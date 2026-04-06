@@ -62,7 +62,7 @@ void main() {
 	vec3  rayDir = normalize(worldPos - viewPos);
 	float dist = length(worldPos - viewPos);
 
-	if (depth == 1.0) {
+	if (depth >= 0.99999) {
 		dist = 50000.0 * worldScale;
 	}
 
@@ -130,16 +130,19 @@ void main() {
 	float atmosTransmittance = sampleAerialPerspectiveTransmittance(rayDir, cloudDistKM);
 
 	// Combine everything
+	// Colossal objects write depth ~0.99999 — treat them like sky (no aerial perspective
+	// fog, which would completely wash them out at that reconstructed distance)
+	bool isSky = depth >= 0.99999;
+
 	vec3 result;
-	if (depth < 1.0) {
-		// 1. Terrain with its own atmosphere
+	if (!isSky) {
+		// Terrain/objects: apply aerial perspective and clouds
 		vec3 terrainAtmos = sceneColor * transmittance + inScattering;
-		// 2. Blend in clouds (which also have atmosphere applied)
 		vec3 cloudsAtmos = cloudColor * atmosTransmittance + atmosInScattering * (1.0 - cloudTransmittance);
 		result = mix(cloudsAtmos, terrainAtmos, cloudTransmittance);
 	} else {
-		// Sky: use the already-rendered sky from sky.frag (contains sun, moon, stars)
-		// and blend clouds on top with atmospheric integration
+		// Sky and colossal objects: preserve scene output (sun, moon, stars, colossal)
+		// and blend clouds on top
 		vec3 cloudsAtmos = cloudColor * atmosTransmittance + atmosInScattering * (1.0 - cloudTransmittance);
 		result = sceneColor * cloudTransmittance + cloudsAtmos;
 	}

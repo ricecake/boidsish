@@ -271,13 +271,22 @@ void main() {
 	// }
 
 	if (current_isColossal) {
+		// Skybox-like rendering: remove view translation so object is fixed
+		// relative to camera orientation (parallax-free, appears infinitely far)
 		mat4 staticView = mat4(mat3(view));
-		vec3 skyPositionOffset = vec3(0.0, -10.0, -500.0);
-		vec4 world_pos = current_model * vec4(displacedPos * 50, 1.0);
-		world_pos.xyz += skyPositionOffset;
-		gl_Position = projection * staticView * world_pos;
+
+		// Scale and transform the model
+		vec4 model_pos = current_model * vec4(displacedPos * 50.0, 1.0);
+
+		// Apply offset in VIEW space (after rotation) so the object always
+		// appears at a consistent direction from the camera regardless of look angle
+		vec4 view_pos = staticView * model_pos;
+		view_pos.z -= 500.0;
+		view_pos.y -= 10.0;
+
+		gl_Position = projection * view_pos;
 		gl_Position.z = gl_Position.w * 0.99999;
-		FragPos = world_pos.xyz;
+		FragPos = model_pos.xyz;
 
 		CurPosition = gl_Position;
 		PrevPosition =

@@ -115,13 +115,28 @@ namespace Boidsish {
 				_lights[0].azimuth = 90.0f;
 				_lights[0].UpdateDirectionFromAngles();
 
-				// Moon: Follows offset path
-				float moon_time = _cycle.time + _cycle.moon_offset;
+				// Moon: Follows offset path with phase drift for monthly cycle
+				// Accumulate fractional days for phase tracking
+				if (!_cycle.paused) {
+					_cycle.moon_phase_days += deltaTime * _cycle.speed / 24.0f;
+				}
+
+				// Phase drift: the moon's offset shifts by 24h over one lunar month
+				// This creates the full → half → new → half → full cycle
+				float phase_drift = std::fmod(_cycle.moon_phase_days, DayNightCycle::kLunarMonth)
+					/ DayNightCycle::kLunarMonth * 24.0f;
+				float effective_offset = _cycle.moon_offset + phase_drift;
+
+				float moon_time = _cycle.time + effective_offset;
 				if (moon_time >= 24.0f)
 					moon_time -= 24.0f;
+				if (moon_time < 0.0f)
+					moon_time += 24.0f;
 				float moon_angle_deg = (moon_time / 24.0f) * 360.0f;
 				_lights[1].elevation = moon_angle_deg - 90.0f;
-				_lights[1].azimuth = _cycle.moon_azimuth;
+
+				// Moon azimuth drifts slowly (~3°/day) to vary its sky track
+				_lights[1].azimuth = _cycle.moon_azimuth + _cycle.moon_phase_days * 3.0f;
 				_lights[1].UpdateDirectionFromAngles();
 
 				float sun_vis = glm::sin(glm::radians(_lights[0].elevation));
@@ -136,24 +151,38 @@ namespace Boidsish {
 					_lights[0].base_intensity = 0.0f;
 				}
 
-				// Moon is active only when sun is down, and has its own intensity curve
-				float moon_active = glm::smoothstep(-0.1f, -0.4f, sun_vis);
+				// Moon reflects sunlight: brightness and color derive from the sun
+				// The sun always illuminates the moon from space regardless of our horizon
+				glm::vec3 sunDir = glm::normalize(-_lights[0].direction);
+				glm::vec3 moonDir = glm::normalize(-_lights[1].direction);
+
+				// Phase: how much of the illuminated face we see
+				// dot = -1 (opposite = full moon), dot = +1 (same side = new moon)
+				float cos_phase = glm::dot(sunDir, moonDir);
+				float phase = glm::clamp((-cos_phase + 1.0f) * 0.5f, 0.05f, 1.0f);
+
+				// Lunar albedo with slight warm tint from regolith
+				const float lunarAlbedo = _cycle.lunar_albedo;
+				const glm::vec3 lunarTint = glm::vec3(0.95f, 0.93f, 0.88f);
+
+				// Moon color = sun's full output × albedo × phase × tint
+				glm::vec3 sunFullRadiance = _lights[0].color * 10.0f;
+				_lights[1].color = sunFullRadiance * lunarAlbedo * phase * lunarTint;
+
 				if (moon_vis > 0.0f) {
-					_lights[1].base_intensity = 1.0f * moon_active;
+					_lights[1].base_intensity = 1.0f;
 				} else {
 					_lights[1].base_intensity = 0.0f;
 				}
 
-				// Update night factor for transitions based on sun visibility
-				// This synchronizes the post-processing and terrain night effects with the atmosphere
 				_cycle.night_factor = glm::smoothstep(0.2f, -0.2f, sun_vis);
 
-				// Basic fallback ambient - mostly handled by Atmosphere system now
+				// Fallback ambient — mostly handled by Atmosphere system now
 				glm::vec3 day_ambient = Constants::General::Colors::DefaultAmbient();
 				glm::vec3 night_ambient = day_ambient * 0.15f;
 
-				// Subtle moon contribution to night ambient
-				night_ambient += glm::vec3(0.01f, 0.02f, 0.04f) * std::max(0.0f, moon_vis) * moon_active;
+				// Moon ambient contribution scales with phase and visibility
+				night_ambient += _lights[1].color * 0.3f * std::max(0.0f, moon_vis);
 
 				float ambient_factor = std::clamp(sun_vis * 5.0f + 0.5f, 0.0f, 1.0f);
 				_ambient_light = glm::mix(night_ambient, day_ambient, ambient_factor);

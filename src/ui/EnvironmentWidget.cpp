@@ -1,5 +1,7 @@
 #include "ui/EnvironmentWidget.h"
 
+#include <cmath>
+
 #include "ConfigManager.h"
 #include "decor_manager.h"
 #include "graphics.h"
@@ -88,6 +90,12 @@ namespace Boidsish {
 					ImGui::SliderFloat("Time (24h)", &cycle.time, 0.0f, 24.0f, "%.1f h");
 					ImGui::SliderFloat("Speed", &cycle.speed, 0.0f, 2.0f, "%.2f");
 					ImGui::Checkbox("Paused", &cycle.paused);
+
+					ImGui::Separator();
+					ImGui::Text("Moon");
+					ImGui::SliderFloat("Lunar Albedo", &cycle.lunar_albedo, 0.0f, 0.5f, "%.3f");
+					ImGui::SliderFloat("Moon Phase (days)", &cycle.moon_phase_days, 0.0f, cycle.kLunarMonth, "%.1f");
+					ImGui::Text("Phase: %.0f%%", (std::fmod(cycle.moon_phase_days, cycle.kLunarMonth) / cycle.kLunarMonth) * 100.0f);
 				}
 
 				// 2. Atmosphere (from PostProcessingWidget)

@@ -81,6 +81,10 @@ float calculateCloudShadow(int light_index, vec3 frag_pos) {
 
 	CloudLayer layer = computeCloudLayer(weather, props);
 
+	// Sample at the center of the dynamic layer — the fixed projection altitude
+	// often falls outside the layer due to altitude offsets from the height map
+	cloudPos.y = (layer.baseFloor + layer.baseCeiling) * 0.5;
+
 	float d = calculateCloudDensity(
 		cloudPos,
 		weather,
@@ -90,7 +94,7 @@ float calculateCloudShadow(int light_index, vec3 frag_pos) {
 		true
 	);
 
-	return mix(1.0, exp(-d * 150.0), cloudShadowIntensity);
+	return mix(1.0, exp(-d * 20.0), cloudShadowIntensity);
 }
 
 /**

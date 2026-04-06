@@ -124,7 +124,10 @@ float calculateCloudDensity(
 	float localDensity = weather.weatherMap * props.densityBase;
 
 	if (simplified) {
-		return smoothstep(coverageThreshold, coverageThreshold + 0.2, localDensity) * densityProfile * props.densityBase;
+		// Include base Worley noise so shadow patterns match the full cloud shapes
+		float baseNoise = fastWorley3d(p / (50000.0 * props.worldScale));
+		float baseDensity = baseNoise * weather.weatherMap;
+		return smoothstep(coverageThreshold, coverageThreshold + 0.4, baseDensity) * densityProfile * props.densityBase;
 	}
 
 	// Base noise for cloud shapes
