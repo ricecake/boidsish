@@ -53,9 +53,10 @@ namespace Boidsish {
 		float cloudDensity;                  // offset 708, 4 bytes
 		float cloudCoverage;                 // offset 712, 4 bytes
 		float cloudWarp;                     // offset 716, 4 bytes
-	}; // Total: 720 bytes
+		alignas(16) glm::vec4 sh_coeffs[9];  // offset 720, 144 bytes
+	}; // Total: 864 bytes
 
-	static_assert(sizeof(LightingUbo) == 720, "LightingUbo must be 720 bytes for UBO alignment");
+	static_assert(sizeof(LightingUbo) == 864, "LightingUbo must be 864 bytes for UBO alignment");
 
 	/**
 	 * @brief Light source data structure for rendering.

@@ -2244,6 +2244,10 @@ namespace Boidsish {
 					lighting_ubo_data_.cloudCoverage = atmosphere_effect->GetCloudCoverage();
 					lighting_ubo_data_.cloudWarp = atmosphere_effect->GetCloudWarp();
 
+					if (atmosphere_manager) {
+						const glm::vec4* sh = atmosphere_manager->GetSHCoefficients();
+						std::memcpy(lighting_ubo_data_.sh_coeffs, sh, 9 * sizeof(glm::vec4));
+					}
 				} else {
 					lighting_ubo_data_.cloudShadowIntensity = 0.0f;
 				}

@@ -145,6 +145,8 @@ namespace Boidsish {
 
 		float GetColorVarianceStrength() const { return _colorVarianceStrength; }
 
+		const glm::vec4* GetSHCoefficients() const { return _shCoeffs; }
+
 	private:
 		void CreateTextures();
 		void CreateShaders();
@@ -153,11 +155,15 @@ namespace Boidsish {
 		GLuint _multiScatteringLUT = 0;
 		GLuint _skyViewLUT = 0;
 		GLuint _aerialPerspectiveLUT = 0;
+		GLuint _shCoeffsBuffer = 0;
 
 		std::unique_ptr<ComputeShader> _transmittanceShader;
 		std::unique_ptr<ComputeShader> _multiScatteringShader;
 		std::unique_ptr<ComputeShader> _skyViewShader;
 		std::unique_ptr<ComputeShader> _aerialPerspectiveShader;
+		std::unique_ptr<ComputeShader> _skyToSHShader;
+
+		glm::vec4 _shCoeffs[9];
 
 		bool _needsPrecompute = true;
 
