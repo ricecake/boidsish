@@ -31,6 +31,7 @@ layout(std140) uniform Lighting {
 	float cloudDensity;
 	float cloudCoverage;
 	float cloudWarp;
+	vec4  sh_coeffs[9];
 };
 
 // Shadow mapping UBO (binding set via glUniformBlockBinding to point 2)

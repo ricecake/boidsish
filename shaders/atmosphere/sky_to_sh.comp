@@ -1,0 +1,86 @@
+#version 430 core
+
+layout(local_size_x = 16, local_size_y = 16) in;
+
+uniform sampler2D u_skyViewLUT;
+
+layout(std430, binding = 0) buffer SHCoeffs {
+	vec4 coefficients[9];
+};
+
+shared vec4 shared_sh[9][256];
+
+#define PI 3.14159265359
+
+void main() {
+	ivec2 size = textureSize(u_skyViewLUT, 0);
+	uint localIdx = gl_LocalInvocationIndex;
+
+	for(int i = 0; i < 9; ++i) {
+		shared_sh[i][localIdx] = vec4(0.0);
+	}
+
+	// Each thread sums a portion of the LUT
+	uint totalTexels = size.x * size.y;
+	uint threads = gl_WorkGroupSize.x * gl_WorkGroupSize.y;
+
+	for (uint idx = localIdx; idx < totalTexels; idx += threads) {
+		ivec2 texel = ivec2(idx % size.x, idx / size.x);
+		vec2 uv = (vec2(texel) + 0.5) / vec2(size);
+
+		vec4 radiance = texture(u_skyViewLUT, uv);
+
+		// Map UV to elevation and azimuth (matching sky_view_lut.comp)
+		float azimuth = uv.x * 2.0 * PI;
+		float adjV = (uv.y < 0.5) ? (1.0 - 2.0 * uv.y) : (2.0 * uv.y - 1.0);
+		float elevation = (uv.y < 0.5) ? (-adjV * adjV * PI * 0.5) : (adjV * adjV * PI * 0.5);
+
+		// Direction vector
+		vec3 rd = vec3(cos(elevation) * sin(azimuth), sin(elevation), -cos(elevation) * cos(azimuth));
+
+		// Differential solid angle dW = cos(elevation) * dElevation * dAzimuth
+		float dAzimuth = 2.0 * PI / float(size.x);
+		// dElevation = d(PI/2 * adjV^2) = PI * adjV * dAdjV
+		// dAdjV = 2.0 / size.y
+		float dElevation = PI * max(adjV, 0.001) * (2.0 / float(size.y));
+		float weight = cos(elevation) * dAzimuth * dElevation;
+
+		// Project onto SH basis
+		float x = rd.x;
+		float y = rd.y;
+		float z = rd.z;
+
+		float sh[9];
+		sh[0] = 0.282095;
+		sh[1] = 0.488603 * y;
+		sh[2] = 0.488603 * z;
+		sh[3] = 0.488603 * x;
+		sh[4] = 1.092548 * x * y;
+		sh[5] = 1.092548 * y * z;
+		sh[6] = 0.315392 * (3.0 * z * z - 1.0);
+		sh[7] = 1.092548 * x * z;
+		sh[8] = 0.546274 * (x * x - y * y);
+
+		for(int i = 0; i < 9; ++i) {
+			shared_sh[i][localIdx] += radiance * sh[i] * weight;
+		}
+	}
+
+	barrier();
+
+	// Reduction within workgroup
+	for (uint s = 128; s > 0; s >>= 1) {
+		if (localIdx < s) {
+			for(int i = 0; i < 9; ++i) {
+				shared_sh[i][localIdx] += shared_sh[i][localIdx + s];
+			}
+		}
+		barrier();
+	}
+
+	if (localIdx == 0) {
+		for(int i = 0; i < 9; ++i) {
+			coefficients[i] = shared_sh[i][0];
+		}
+	}
+}
