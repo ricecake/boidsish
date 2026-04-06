@@ -59,6 +59,10 @@ int main() {
 		});
 
 		visualizer->SetChaseCamera(plane);
+		auto& cam = visualizer->GetCamera();
+		cam.follow_distance = 0.0f;
+		cam.follow_elevation = 0.1f;
+		cam.follow_look_ahead = 5.0f;
 
 		visualizer->Run();
 	} catch (const std::exception& e) {
