@@ -127,6 +127,15 @@ void main() {
 		int samples = 48;
 		int shadow_samples = 4;
 
+		// Capture primary light direction for multi-direction ambient sampling
+		vec3 primaryLightDir = vec3(0, 1, 0);
+		for (int j = 0; j < num_lights; j++) {
+			if (lights[j].type == LIGHT_TYPE_DIRECTIONAL) {
+				primaryLightDir = normalize(-lights[j].direction);
+				break;
+			}
+		}
+
 		float jitter = fastBlueNoise(TexCoords * 10.0 + vec2(sin(time * 0.07), cos(time * -0.05)));
 		float stepSize = (t_end - t_start) / float(samples);
 
@@ -237,10 +246,14 @@ void main() {
 				stepScattering += sunTransmittance * shadowTerm * phase * lights[j].intensity * (j == 0 ? cloudSunLightScale : cloudMoonLightScale);
 			}
 
-			// Use SH-based irradiance for high-fidelity ambient lighting in clouds
-			// Using the up vector (0,1,0) as a simple approximation for the ambient sky light
-			// that hits the cloud volume.
-			vec3 ambient = evalSHIrradiance(vec3(0, 1, 0));
+			// Multi-direction SH ambient: blend overhead sky with sun-facing horizon.
+			// At sunset the horizon sample carries warm orange/red tones.
+			// Scale ambient down at low sun angles so warm direct light dominates.
+			vec3 ambientUp = evalSHIrradiance(vec3(0, 1, 0));
+			vec3 ambientHorizon = evalSHIrradiance(normalize(vec3(primaryLightDir.x, 0.15, primaryLightDir.z)));
+			float sunHeight = max(primaryLightDir.y, 0.0);
+			float ambientScale = mix(0.3, 1.0, smoothstep(0.0, 0.3, sunHeight));
+			vec3 ambient = mix(ambientUp, ambientHorizon, 0.4) * ambientScale;
 			vec3 S = (stepScattering + ambient);
 
 			// lightEnergy += cloudTransmittance * S * stepDensity;

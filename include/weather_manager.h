@@ -119,7 +119,7 @@ namespace Boidsish {
 		float     wind_strength = 0.05f;
 		float     wind_speed = 0.075f;
 		float     wind_frequency = 0.01f;
-		float     cloud_density = 20.0f;
+		float     cloud_density = 0.20f;
 		float     cloud_altitude = 400.0f;
 		float     cloud_thickness = 200.0f;
 		float     haze_density = 0.003f;

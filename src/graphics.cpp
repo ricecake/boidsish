@@ -2297,17 +2297,19 @@ namespace Boidsish {
 					lighting_ubo_data_.cloudMoonLightScale = atmosphere_effect->GetCloudMoonLightScale();
 					lighting_ubo_data_.cloudBeerPowderMix = atmosphere_effect->GetCloudBeerPowderMix();
 
-					if (atmosphere_manager) {
-						const glm::vec4* sh = atmosphere_manager->GetSHCoefficients();
-						std::memcpy(lighting_ubo_data_.sh_coeffs, sh, 9 * sizeof(glm::vec4));
-					}
-				} else {
+					} else {
 					lighting_ubo_data_.cloudShadowIntensity = 0.0f;
 				}
 
 				glBindBuffer(GL_UNIFORM_BUFFER, lighting_ubo);
 				glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(LightingUbo), &lighting_ubo_data_);
 				glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
+				// GPU-side copy of SH coefficients from SSBO into the UBO (no CPU readback)
+				if (atmosphere_manager) {
+					static_assert(offsetof(LightingUbo, sh_coeffs) == 768, "SH offset mismatch");
+					atmosphere_manager->CopySHToUBO(lighting_ubo, 768);
+				}
 			}
 
 			// Frustum UBO for generic passes

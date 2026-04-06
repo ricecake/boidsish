@@ -175,8 +175,8 @@ void main() {
 	// Ensure we are in front of the sun
 	sunMask *= step(0.99, rayLocalZ);
 
-	float r = kEarthRadius + viewPos.y / (1000.0 * worldScale);
-	vec3  sunTransmittance = getTransmittance(r, sunDir.y);
+	float r = kEarthRadius + max(0.0, viewPos.y / (1000.0 * worldScale));
+	vec3  sunTransmittance = max(getTransmittance(r, sunDir.y), vec3(0.001));
 	// Use u_sunRadiance if available (via AtmosphereManager) or fallback to simple sunColor
 	// We divide by PI for physical consistency if it's treated as irradiance
 	vec3 radiance = length(u_sunRadiance) > 0.0 ? u_sunRadiance : sunColor;
@@ -191,7 +191,11 @@ void main() {
 	vec3  nebula = vec3(0.0);//mix(vec3(0.0, 0.1, 0.4), vec3(0.8, 0.2, 0.7), nebula_noise) * 0.4;
 
 	vec3 skyTransmittance = getTransmittance(r, world_ray.y);
-	vec3 spaceBackground = (stars + nebula) * skyTransmittance;
+	// Attenuate stars by sky brightness — on Earth, stars are overwhelmed by
+	// scattered sunlight during the day, not just absorbed
+	float skyBrightness = max(max(skyRadiance.r, skyRadiance.g), skyRadiance.b);
+	float starVisibility = smoothstep(0.5, 0.05, skyBrightness);
+	vec3 spaceBackground = (stars + nebula) * skyTransmittance * starVisibility;
 
 	// 4. Moon Disc with Atmospheric Refraction
 	vec3  moonDir = normalize(u_moonDir);
@@ -219,7 +223,7 @@ void main() {
 	);
 	moonMask *= step(0.99, moonLocalZ);
 
-	vec3 moonTransmittance = getTransmittance(r, moonDir.y);
+	vec3 moonTransmittance = max(getTransmittance(r, moonDir.y), vec3(0.001));
 	vec3 moonDisc = u_moonRadiance * moonMask * moonTransmittance;
 
 	vec3 finalColor = skyRadiance + sunDisc + moonDisc + spaceBackground;

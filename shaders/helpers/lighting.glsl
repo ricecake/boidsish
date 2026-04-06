@@ -58,17 +58,15 @@ float calculateCloudShadow(int light_index, vec3 frag_pos) {
 
 	vec3 cloudPos = frag_pos + L * t;
 
+	// No warp for shadows — warp is a camera viewport trick, shadows should
+	// be cast from actual cloud positions
 	float weatherWarpFactor = 1.0;
-	if (cloudWarp > 0.0) {
-		float camDist = length(cloudPos.xz - viewPos.xz);
-		weatherWarpFactor = smoothstep(0.0, cloudWarp * worldScale, camDist);
-	}
 
 	vec2 weatherUV = cloudPos.xz / (4000.0 * worldScale);
-	float weatherMap = weatherWarpFactor * (fastWorley3d(vec3(weatherUV, time * 0.01)) * 0.5 + 0.5);
+	float weatherMap = weatherWarpFactor * (fastWorley3d(vec3(weatherUV, time * 0.001)) * 0.5 + 0.5);
 
 	vec2 heightUV = cloudPos.xz / (2500.0 * worldScale);
-	float heightMap = weatherWarpFactor * (fastWorley3d(vec3(heightUV, time * 0.004)) * 0.5 + 0.5);
+	float heightMap = weatherWarpFactor * (fastWorley3d(vec3(heightUV, time * 0.0004)) * 0.5 + 0.5);
 
 	CloudWeather weather;
 	weather.weatherMap = weatherMap;
@@ -92,7 +90,7 @@ float calculateCloudShadow(int light_index, vec3 frag_pos) {
 		true
 	);
 
-	return mix(1.0, exp(-d * 1.5), cloudShadowIntensity);
+	return mix(1.0, exp(-d * 150.0), cloudShadowIntensity);
 }
 
 /**

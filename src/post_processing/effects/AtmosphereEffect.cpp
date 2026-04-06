@@ -137,6 +137,7 @@ namespace Boidsish {
 			shader_->setFloat("cloudCoverage", cloud_coverage_);
 			shader_->setFloat("cloudWarp", cloud_warp_);
 			shader_->setVec3("cloudColorUniform", cloud_color_);
+			shader_->setFloat("u_atmosphereHeight", atmosphere_height_);
 
 			shader_->setInt("u_transmittanceLUT", 20);
 			shader_->setInt("u_skyViewLUT", 22);
@@ -224,7 +225,6 @@ namespace Boidsish {
 			composite_shader_->setFloat("u_atmosphereHeight", atmosphere_height_);
 
 			composite_shader_->setInt("u_transmittanceLUT", 20);
-			composite_shader_->setInt("u_skyViewLUT", 22);
 			composite_shader_->setInt("u_aerialPerspectiveLUT", 23);
 
 			glActiveTexture(GL_TEXTURE0);
@@ -236,8 +236,6 @@ namespace Boidsish {
 
 			glActiveTexture(GL_TEXTURE20);
 			glBindTexture(GL_TEXTURE_2D, transmittance_lut_);
-			glActiveTexture(GL_TEXTURE22);
-			glBindTexture(GL_TEXTURE_2D, sky_view_lut_);
 			glActiveTexture(GL_TEXTURE23);
 			glBindTexture(GL_TEXTURE_3D, aerial_perspective_lut_);
 
@@ -246,8 +244,6 @@ namespace Boidsish {
 			// Cleanup
 			glActiveTexture(GL_TEXTURE23);
 			glBindTexture(GL_TEXTURE_3D, 0);
-			glActiveTexture(GL_TEXTURE22);
-			glBindTexture(GL_TEXTURE_2D, 0);
 			glActiveTexture(GL_TEXTURE20);
 			glBindTexture(GL_TEXTURE_2D, 0);
 			glActiveTexture(GL_TEXTURE2);

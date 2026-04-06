@@ -206,10 +206,8 @@ namespace Boidsish {
 		glDispatchCompute(1, 1, 1); // Logic in sky_to_sh.comp uses a single workgroup for simple integration
 		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
-		// Read back results
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, _shCoeffsBuffer);
-		glGetBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, 9 * sizeof(glm::vec4), _shCoeffs);
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+		// SH coefficients remain on GPU — copied to UBO via CopySHToUBO() later.
+		// No CPU readback needed.
 
 		// Analytical estimate of sky ambient irradiance for synchronization with other systems
 		float sunElevation = sunDir.y;
@@ -231,6 +229,16 @@ namespace Boidsish {
 		glm::vec3 nightGlow = glm::vec3(0.01f, 0.012f, 0.018f) * _ambientScatScale * 10.0f;
 
 		_ambientEstimate = sunColor * sunIntensity * ambientFactor + nightGlow;
+	}
+
+	void AtmosphereManager::CopySHToUBO(GLuint lightingUbo, size_t shOffset) {
+		if (_shCoeffsBuffer == 0)
+			return;
+		glBindBuffer(GL_COPY_READ_BUFFER, _shCoeffsBuffer);
+		glBindBuffer(GL_COPY_WRITE_BUFFER, lightingUbo);
+		glCopyBufferSubData(GL_COPY_READ_BUFFER, GL_COPY_WRITE_BUFFER, 0, shOffset, 9 * sizeof(glm::vec4));
+		glBindBuffer(GL_COPY_READ_BUFFER, 0);
+		glBindBuffer(GL_COPY_WRITE_BUFFER, 0);
 	}
 
 	void AtmosphereManager::BindTextures(GLuint firstUnit) {

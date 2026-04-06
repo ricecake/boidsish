@@ -17,25 +17,11 @@ uniform vec3  hazeColor;
 uniform vec2 cloudTexelSize; // 1.0 / lowResSize
 
 // u_transmittanceLUT is declared in helpers/lighting.glsl
-uniform sampler2D u_skyViewLUT;
 uniform sampler3D u_aerialPerspectiveLUT;
 
 #include "../helpers/lighting.glsl"
 #include "../atmosphere/common.glsl"
 #include "helpers/math.glsl"
-
-vec3 sampleSkyView(vec3 rd) {
-	float elevation = asin(clamp(rd.y, -1.0, 1.0));
-	float azimuth = atan(rd.x, -rd.z);
-	if (azimuth < 0.0)
-		azimuth += 2.0 * PI;
-
-	// Non-linear mapping for better horizon detail
-	float v = (elevation < 0.0) ? (0.5 - 0.5 * sqrt(-elevation / (PI * 0.5)))
-								: (0.5 + 0.5 * sqrt(elevation / (PI * 0.5)));
-	vec2  uv = vec2(azimuth / (2.0 * PI), v);
-	return texture(u_skyViewLUT, uv).rgb;
-}
 
 vec3 sampleAerialPerspective(vec3 rd, float distKM) {
 	float azimuth = atan(rd.x, -rd.z);
@@ -152,10 +138,10 @@ void main() {
 		vec3 cloudsAtmos = cloudColor * atmosTransmittance + atmosInScattering * (1.0 - cloudTransmittance);
 		result = mix(cloudsAtmos, terrainAtmos, cloudTransmittance);
 	} else {
-		// Sky
-		vec3 sky = sampleSkyView(rayDir);
+		// Sky: use the already-rendered sky from sky.frag (contains sun, moon, stars)
+		// and blend clouds on top with atmospheric integration
 		vec3 cloudsAtmos = cloudColor * atmosTransmittance + atmosInScattering * (1.0 - cloudTransmittance);
-		result = sky * cloudTransmittance + cloudsAtmos;
+		result = sceneColor * cloudTransmittance + cloudsAtmos;
 	}
 
 	FragColor = vec4(result, 1.0);

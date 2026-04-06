@@ -147,6 +147,9 @@ namespace Boidsish {
 
 		const glm::vec4* GetSHCoefficients() const { return _shCoeffs; }
 
+		// Copy SH coefficients directly from GPU SSBO into a UBO, avoiding CPU readback
+		void CopySHToUBO(GLuint lightingUbo, size_t shOffset);
+
 	private:
 		void CreateTextures();
 		void CreateShaders();
@@ -168,7 +171,7 @@ namespace Boidsish {
 		bool _needsPrecompute = true;
 
 		float     _rayleighScale = 1.0f;
-		float     _mieScale = 0.1f;
+		float     _mieScale = 0.3f;
 		float     _mieAnisotropy = 0.8f;
 		float     _multiScatScale = 1.0f;
 		float     _ambientScatScale = 1.0f;

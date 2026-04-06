@@ -118,7 +118,7 @@ namespace Boidsish {
 										atmosphere_effect->SetHazeColor(haze_color);
 									}
 									float cloud_density = atmosphere_effect->GetCloudDensity();
-									if (ImGui::SliderFloat("Cloud Density", &cloud_density, 0.0f, 50.0f)) {
+									if (ImGui::SliderFloat("Cloud Density", &cloud_density, 0.0f, 1.0f)) {
 										atmosphere_effect->SetCloudDensity(cloud_density);
 									}
 									float cloud_altitude = atmosphere_effect->GetCloudAltitude();
