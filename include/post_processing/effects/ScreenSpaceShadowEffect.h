@@ -2,6 +2,7 @@
 #define SCREEN_SPACE_SHADOW_EFFECT_H
 
 #include "post_processing/IPostProcessingEffect.h"
+#include "post_processing/TemporalAccumulator.h"
 #include <memory>
 #include <GL/glew.h>
 
@@ -41,13 +42,17 @@ namespace Boidsish {
 			void SetSteps(int steps) { steps_ = steps; }
 			int GetSteps() const { return steps_; }
 
+			void SetNoiseTextures(GLuint blueNoise) { blue_noise_texture_ = blueNoise; }
+
 		private:
 			void InitializeTextures();
 
 			std::unique_ptr<ComputeShader> sss_shader_;
 			std::unique_ptr<Shader>        composite_shader_;
+			TemporalAccumulator            temporal_accumulator_;
 
 			GLuint shadow_mask_texture_ = 0;
+			GLuint blue_noise_texture_ = 0;
 			int width_ = 0;
 			int height_ = 0;
 
