@@ -54,7 +54,8 @@ namespace Boidsish {
 		// Sun: Initial azimuth 0 (North), elevation 45 degrees
 		// Moon: Initial azimuth 180 (South), elevation -45 degrees
 		std::vector<Light> _lights{
-			Light::CreateDirectional(0.0f, 45.0f, 1.0f, {1.0f, 0.50196f, 0.25098f}, true),
+			// Light::CreateDirectional(0.0f, 45.0f, 1.0f, {1.0f, 0.50196f, 0.25098f}, true),
+			Light::CreateDirectional(0.0f, 45.0f, 1.0f, {1.0f, 1.0f, 1.0f}, true),
 			Light::CreateDirectional(180.0f, -45.0f, 0.1f, {0.8f, 0.9f, 1.0f}, true)
 		};
 		glm::vec3     _ambient_light = Constants::General::Colors::DefaultAmbient();
