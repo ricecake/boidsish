@@ -3,10 +3,13 @@
 
 #include "fast_noise.glsl"
 
-layout(std140, binding = 8) uniform TerrainData {
+#ifndef TERRAIN_DATA_BLOCK
+#define TERRAIN_DATA_BLOCK
+layout(std140, binding = [[TERRAIN_DATA_BINDING]]) uniform TerrainData {
 	ivec4 u_originSize;    // x, y=z, z=size, w=isBound
 	vec4  u_terrainParams; // x=chunkSize, y=worldScale
 };
+#endif
 
 uniform isampler2D u_chunkGrid;
 uniform sampler2D  u_maxHeightGrid;

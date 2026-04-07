@@ -88,7 +88,7 @@ namespace Boidsish {
 		return _lights;
 	}
 
-	void LightManager::Update(float deltaTime, ITerrainGenerator* terrain, const glm::vec3& cameraPos) {
+	void LightManager::Update(float deltaTime) {
 		PROJECT_PROFILE_SCOPE("LightManager::Update");
 
 		// Spatially varying ambient probes are now managed per-chunk in TerrainRenderManager

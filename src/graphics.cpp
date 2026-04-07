@@ -1851,7 +1851,8 @@ namespace Boidsish {
 
 				// Prepare for rendering (frustum culling for instanced renderer)
 				float world_scale = terrain_generator ? terrain_generator->GetWorldScale() : 1.0f;
-				terrain_render_manager->PrepareForRender(frustum, camera.pos(), world_scale);
+				float day_time = light_manager.GetDayNightCycle().time;
+				terrain_render_manager->PrepareForRender(frustum, camera.pos(), world_scale, lighting_ubo, day_time);
 
 				terrain_render_manager
 					->Render(*Terrain::terrain_shader_, view, proj, viewport_size, clip_plane, effective_quality);
@@ -3144,11 +3145,7 @@ namespace Boidsish {
 			impl->simulation_time += impl->time_scale * delta_time;
 		}
 
-		impl->light_manager.Update(
-			impl->simulation_delta_time,
-			impl->terrain_generator.get(),
-			impl->camera.pos()
-		);
+		impl->light_manager.Update(impl->simulation_delta_time);
 
 		// Update ambient weather
 		if (impl->weather_manager && impl->weather_manager->IsEnabled()) {

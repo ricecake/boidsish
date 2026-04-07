@@ -3,25 +3,12 @@
 layout(local_size_x = 8, local_size_y = 8) in;
 
 #include "helpers/constants.glsl"
-#include "lighting.glsl"
 
-layout(std140, binding = 8) uniform TerrainData {
-	ivec4 u_originSize;    // x, z, size, is_bound
-	vec4  u_terrainParams; // chunkSize, worldScale
-};
+#include "helpers/lighting.glsl"
 
 uniform isampler2D u_chunkGrid;
 uniform sampler2DArray u_heightmapArray;
 uniform sampler2DArray u_biomeMap;
-
-struct BiomeProperties {
-	vec4 albedo_roughness; // rgb = albedo, w = roughness
-	vec4 params;           // x = metallic, y = detailStrength, z = detailScale, w = noiseType
-};
-
-layout(std140, binding = 7) uniform BiomeData {
-	BiomeProperties u_biomes[8];
-};
 
 void main() {
 	ivec2 chunkCoord = ivec2(gl_GlobalInvocationID.xy);

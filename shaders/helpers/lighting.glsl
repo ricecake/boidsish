@@ -89,8 +89,15 @@ float calculateCloudShadow(int light_index, vec3 frag_pos) {
 	return mix(1.0, exp(-d), cloudShadowIntensity);
 }
 
-// Forward declare terrain shadow coverage to avoid hard dependency on terrain_shadows.glsl
+#ifdef USE_TERRAIN_DATA
+// Forward declare terrain shadow coverage from terrain_shadows.glsl
 float terrainShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir);
+#else
+// Fallback if terrain data is not available
+float terrainShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) {
+	return 1.0;
+}
+#endif
 
 /**
  * Calculate shadow factor for a fragment position using a specific shadow map.
@@ -307,10 +314,6 @@ vec3 evalSHIrradiance(vec3 n) {
 }
 
 #ifdef USE_TERRAIN_DATA
-layout(std430, binding = [[TERRAIN_PROBES_BINDING]]) buffer TerrainProbes {
-	AmbientProbe u_terrainProbes[];
-};
-
 /**
  * Look up and interpolate Spherical Harmonic ambient irradiance for a fragment.
  */
@@ -319,7 +322,8 @@ vec3 getSpatialAmbientSH(vec3 worldPos, vec3 N) {
 		return evalSHIrradiance(N);
 
 	float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
-	vec2  gridPos = worldPos.xz / scaledChunkSize;
+	// Offset by -0.5 because probes are calculated at chunk centers (0.5, 0.5)
+	vec2  gridPos = worldPos.xz / scaledChunkSize - 0.5;
 	vec2  fracPos = fract(gridPos);
 	ivec2 chunkCoord = ivec2(floor(gridPos)) - u_originSize.xy;
 

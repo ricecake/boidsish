@@ -81,7 +81,13 @@ namespace Boidsish {
 		/**
 		 * @brief Perform frustum culling and prepare instance buffer.
 		 */
-		void PrepareForRender(const Frustum& frustum, const glm::vec3& camera_pos, float world_scale = 1.0f);
+		void PrepareForRender(
+			const Frustum&   frustum,
+			const glm::vec3& camera_pos,
+			float            world_scale = 1.0f,
+			GLuint           lighting_ubo = 0,
+			float            day_time = -1.0f
+		);
 
 		/**
 		 * @brief Render all visible terrain chunks with single instanced draw.
@@ -172,7 +178,7 @@ namespace Boidsish {
 		/**
 		 * @brief Update the global chunk grid and max height textures.
 		 */
-		void UpdateGridTextures(float world_scale);
+		void UpdateGridTextures(float world_scale, GLuint lighting_ubo = 0, float day_time = -1.0f);
 
 		/**
 		 * @brief Generate mipmaps for the max height grid using MAX reduction.

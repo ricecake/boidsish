@@ -32,7 +32,7 @@ namespace Boidsish {
 		void                RemoveLight(int id);
 		Light*              GetLight(int id);
 		std::vector<Light>& GetLights();
-		void                Update(float deltaTime, ITerrainGenerator* terrain = nullptr, const glm::vec3& cameraPos = glm::vec3(0.0f));
+		void                Update(float deltaTime);
 		glm::vec3           GetAmbientLight() const;
 		void                SetAmbientLight(const glm::vec3& ambient);
 

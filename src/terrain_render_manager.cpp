@@ -536,8 +536,13 @@ namespace Boidsish {
 		return true; // Inside or intersecting all planes
 	}
 
-	void
-	TerrainRenderManager::PrepareForRender(const Frustum& frustum, const glm::vec3& camera_pos, float world_scale) {
+	void TerrainRenderManager::PrepareForRender(
+		const Frustum&   frustum,
+		const glm::vec3& camera_pos,
+		float            world_scale,
+		GLuint           lighting_ubo,
+		float            day_time
+	) {
 		PROJECT_PROFILE_SCOPE("TerrainRenderManager::PrepareForRender");
 		std::lock_guard<std::mutex> lock(mutex_);
 
@@ -545,10 +550,7 @@ namespace Boidsish {
 		last_camera_pos_ = camera_pos;
 		last_world_scale_ = world_scale;
 
-		{
-			PROJECT_PROFILE_SCOPE("UpdateGridTextures");
-			UpdateGridTextures(world_scale);
-		}
+		UpdateGridTextures(world_scale, lighting_ubo, day_time);
 
 		visible_instances_.clear();
 		visible_instances_.reserve(chunks_.size());
@@ -648,7 +650,8 @@ namespace Boidsish {
 		}
 	}
 
-	void TerrainRenderManager::UpdateGridTextures(float world_scale) {
+	void TerrainRenderManager::UpdateGridTextures(float world_scale, GLuint lighting_ubo, float day_time) {
+		PROJECT_PROFILE_SCOPE("TerrainRenderManager::UpdateGridTextures");
 		int grid_size = Constants::Class::Terrain::SliceMapSize();
 		int half_grid = grid_size / 2;
 
@@ -659,8 +662,19 @@ namespace Boidsish {
 		int origin_x = center_chunk_x - half_grid;
 		int origin_z = center_chunk_z - half_grid;
 
+		// Re-dispatch probes if lighting changed significantly (time of day)
+		static float last_probe_update_day_time = -1.0f;
+		bool         lighting_changed = false;
+
+		if (day_time >= 0.0f) {
+			if (std::abs(day_time - last_probe_update_day_time) > 0.1f) { // ~6 mins in game time
+				lighting_changed = true;
+				last_probe_update_day_time = day_time;
+			}
+		}
+
 		if (origin_x == last_grid_origin_x_ && origin_z == last_grid_origin_z_ &&
-		    world_scale == last_grid_world_scale_ && !grid_dirty_) {
+		    world_scale == last_grid_world_scale_ && !grid_dirty_ && !lighting_changed) {
 			return;
 		}
 
@@ -718,6 +732,10 @@ namespace Boidsish {
 			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::TerrainData(), terrain_data_ubo_);
 			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Biomes(), biome_ubo_);
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainProbes(), probe_ssbo_);
+
+			if (lighting_ubo != 0) {
+				glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Lighting(), lighting_ubo);
+			}
 
 			glDispatchCompute((grid_size + 7) / 8, (grid_size + 7) / 8, 1);
 			glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
