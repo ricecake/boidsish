@@ -45,6 +45,7 @@
 #include "post_processing/effects/FilmGrainEffect.h"
 #include "post_processing/effects/GlitchEffect.h"
 #include "post_processing/effects/GtaoEffect.h"
+#include "post_processing/effects/ScreenSpaceShadowEffect.h"
 #include "post_processing/effects/NegativeEffect.h"
 #include "post_processing/effects/OpticalFlowEffect.h"
 #include "post_processing/effects/SdfVolumeEffect.h"
@@ -972,6 +973,10 @@ namespace Boidsish {
 				auto gtao_effect = std::make_shared<PostProcessing::GtaoEffect>();
 				gtao_effect->SetEnabled(true);
 				post_processing_manager_->AddEffect(gtao_effect);
+
+				auto sss_effect = std::make_shared<PostProcessing::ScreenSpaceShadowEffect>();
+				sss_effect->SetEnabled(true);
+				post_processing_manager_->AddEffect(sss_effect);
 
 				auto negative_effect = std::make_shared<PostProcessing::NegativeEffect>();
 				negative_effect->SetEnabled(false);
