@@ -35,6 +35,103 @@ float getTerrainHeight(vec2 worldXZ) {
 	return texture(u_heightmapArray, vec3(remappedUV, float(slice))).r;
 }
 
+/**
+ * Perform a coarse raymarch in a specific direction to check for terrain occlusion.
+ * Similar to terrainShadowCoverage but optimized for ambient occlusion (AO).
+ */
+float marchOcclusion(vec3 p_start, vec3 rayDir, float maxDist) {
+	float t = 0.0;
+	float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
+
+	vec2  gridPos = p_start.xz / scaledChunkSize;
+	ivec2 currentChunk = ivec2(floor(gridPos));
+
+	vec2 d = sign(rayDir.xz);
+	vec2 safeRayDir = vec2(abs(rayDir.x) < 1e-6 ? 1e-6 : abs(rayDir.x), abs(rayDir.z) < 1e-6 ? 1e-6 : abs(rayDir.z));
+	vec2 tDelta = scaledChunkSize / safeRayDir;
+
+	vec2 tMax;
+	tMax.x = (d.x > 0.0) ? (floor(gridPos.x) + 1.0 - gridPos.x) * tDelta.x
+						 : (gridPos.x - floor(gridPos.x)) * tDelta.x;
+	tMax.y = (d.y > 0.0) ? (floor(gridPos.y) + 1.0 - gridPos.y) * tDelta.y
+						 : (gridPos.y - floor(gridPos.y)) * tDelta.y;
+
+	int iter = 0;
+	while (t < maxDist && iter < 16) { // Very few iterations for AO
+		iter++;
+
+		ivec2 localGridCoord = currentChunk - u_originSize.xy;
+		if (localGridCoord.x < 0 || localGridCoord.x >= u_originSize.z || localGridCoord.y < 0 ||
+		    localGridCoord.y >= u_originSize.z) {
+			break;
+		}
+
+		float tNext = min(tMax.x, tMax.y);
+		float tEnd = min(tNext, maxDist);
+
+		vec2  gridUV = (vec2(localGridCoord) + 0.5) / float(u_originSize.z);
+		float h_max = textureLod(u_maxHeightGrid, gridUV, 1.0).r; // Coarse check (mip 1)
+		float rayY = p_start.y + t * rayDir.y;
+
+		if (rayY < h_max) {
+			// Instead of a full sub-march, we just estimate occlusion based on how much
+			// we're below the max height.
+			return clamp(1.0 - (h_max - rayY) / (maxDist * 0.5), 0.0, 1.0);
+		}
+
+		t = tEnd;
+		if (tMax.x < tMax.y) {
+			tMax.x += tDelta.x;
+			currentChunk.x += int(d.x);
+		} else {
+			tMax.y += tDelta.y;
+			currentChunk.y += int(d.y);
+		}
+	}
+
+	return 1.0;
+}
+
+/**
+ * Calculate macro terrain occlusion by sampling in 6 directions around the horizon.
+ * Returns [0, 1] where 0 is fully occluded (valley) and 1 is open sky.
+ */
+float calculateTerrainOcclusion(vec3 worldPos, vec3 normal) {
+	if (u_originSize.w < 1)
+		return 1.0;
+
+	// Use 6 directions for better horizon coverage
+	// Samples at ~30 degrees elevation to capture nearby peaks
+	const float h = 0.866; // cos(30)
+	const float v = 0.5;   // sin(30)
+
+	vec3 dirs[6] = {
+		vec3(h, v, 0.0),
+		vec3(-h, v, 0.0),
+		vec3(h * 0.5, v, h),
+		vec3(-h * 0.5, v, h),
+		vec3(h * 0.5, v, -h),
+		vec3(-h * 0.5, v, -h)
+	};
+
+	float occ = 0.0;
+	float maxDist = 300.0 * u_terrainParams.y;
+	vec3  p_start = worldPos + normal * (1.5 * u_terrainParams.y); // Lift off surface
+
+	for (int i = 0; i < 6; ++i) {
+		occ += marchOcclusion(p_start, dirs[i], maxDist);
+	}
+
+	// Ambient Occlusion is the average visibility
+	float ao = occ / 6.0;
+
+	// Apply a stronger curve to valleys to increase contrast
+	ao = pow(ao, 1.5);
+
+	// Boost for flat/upward surfaces
+	return clamp(ao + normal.y * 0.15, 0.0, 1.0);
+}
+
 float terrainShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) {
 	if (u_originSize.w < 1)
 		return 1.0;
