@@ -62,6 +62,9 @@ layout(std140) uniform Shadows {
 // Shadow map texture array - bound to texture unit 4
 uniform sampler2DArrayShadow shadowMaps;
 
+// Shadow color map texture array - bound to texture unit 16
+uniform sampler2DArray shadowColorMaps;
+
 // Per-light shadow map index (-1 if no shadow for this light)
 // This is set via uniform since the Light struct can't easily store it
 uniform int lightShadowIndices[MAX_LIGHTS];

@@ -95,12 +95,15 @@ float calculateCloudShadow(int light_index, vec3 frag_pos) {
  * Returns 0.0 if fully in shadow, 1.0 if fully lit.
  * Uses PCF (Percentage Closer Filtering) for soft shadow edges.
  */
-float calculateShadow(int light_index, vec3 frag_pos, vec3 normal, vec3 light_dir) {
+float calculateShadow(int light_index, vec3 frag_pos, vec3 normal, vec3 light_dir, out vec3 out_shadow_color) {
+	out_shadow_color = vec3(0.0);
 	// Optimization: Quick terrain raycast for directional lights (Sun)
 	float terrainShadow = 1.0;
 	if (lights[light_index].type == LIGHT_TYPE_DIRECTIONAL) {
 		terrainShadow = terrainShadowCoverage(frag_pos, normal, light_dir);
 		if (terrainShadow <= 0.0) {
+			// Even if hit by macro terrain shadow, we might want to sample color
+			// but for now early out to match existing behavior.
 			return terrainShadow;
 		}
 	}
@@ -182,6 +185,17 @@ float calculateShadow(int light_index, vec3 frag_pos, vec3 normal, vec3 light_di
 
 	// Current depth from light's perspective
 	float current_depth = proj_coords.z;
+
+	// Sample shadow color Map for primary lights (typically 0 and 1)
+	if (light_index <= 1) {
+		// Use a slight offset/blur for better coverage of nearby bounce
+		vec2 texel_size_color = 1.0 / vec2(textureSize(shadowColorMaps, 0).xy);
+		out_shadow_color = texture(shadowColorMaps, vec3(proj_coords.xy, float(shadow_index))).rgb * 0.4;
+		out_shadow_color += texture(shadowColorMaps, vec3(proj_coords.xy + vec2(1, 1) * texel_size_color * 2.0, float(shadow_index))).rgb * 0.15;
+		out_shadow_color += texture(shadowColorMaps, vec3(proj_coords.xy + vec2(-1, -1) * texel_size_color * 2.0, float(shadow_index))).rgb * 0.15;
+		out_shadow_color += texture(shadowColorMaps, vec3(proj_coords.xy + vec2(1, -1) * texel_size_color * 2.0, float(shadow_index))).rgb * 0.15;
+		out_shadow_color += texture(shadowColorMaps, vec3(proj_coords.xy + vec2(-1, 1) * texel_size_color * 2.0, float(shadow_index))).rgb * 0.15;
+	}
 
 	// Improved bias calculation to prevent shadow acne while keeping shadows connected to geometry
 	// The key insight: larger cascades have lower resolution (larger texels), so need larger bias
@@ -545,7 +559,8 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 		float NdotL = max(dot(N, L), 0.0);
 
 		// Calculate shadow with slope-scaled bias
-		float shadow = calculateShadow(i, frag_pos, N, L);
+		vec3  shadow_tint;
+		float shadow = calculateShadow(i, frag_pos, N, L, shadow_tint);
 
 		// Apply cloud shadow for directional lights
 		if (lights[i].type == LIGHT_TYPE_DIRECTIONAL) {
@@ -555,6 +570,10 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 		// Add to outgoing radiance Lo
 		vec3 specular_radiance = specular * radiance * NdotL * shadow;
 		Lo += (kD * albedo / PI) * radiance * NdotL * shadow + specular_radiance;
+
+		// Add reflected indirect light from unshadowed sources
+		Lo += (1.0 - shadow) * shadow_tint * albedo * lights[i].intensity * 0.15;
+
 		spec_lum += get_luminance(specular_radiance);
 	}
 
@@ -673,6 +692,7 @@ vec4 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, floa
 
 		vec3 specular_radiance = specular * radiance * NdotL * shadow;
 		Lo += (kD * albedo / PI) * radiance * NdotL * shadow + specular_radiance;
+
 		spec_lum += get_luminance(specular_radiance);
 	}
 
@@ -738,7 +758,8 @@ vec4 apply_lighting(vec3 frag_pos, vec3 normal, vec3 albedo, float specular_stre
 		calculateLightContribution(i, frag_pos, light_dir, attenuation);
 
 		// Calculate shadow factor for this light with slope-scaled bias
-		float shadow = calculateShadow(i, frag_pos, normal, light_dir);
+		vec3  shadow_tint;
+		float shadow = calculateShadow(i, frag_pos, normal, light_dir, shadow_tint);
 
 		// Atmospheric attenuation for directional light
 		vec3 atmosphereTransmittance = vec3(1.0);
@@ -764,6 +785,10 @@ vec4 apply_lighting(vec3 frag_pos, vec3 normal, vec3 albedo, float specular_stre
 
 		// Apply shadow and attenuation to diffuse and specular, but not ambient
 		result += (diffuse * lights[i].intensity * shadow * attenuation) + specular_contribution;
+
+		// Reflected indirect tint
+		result += (1.0 - shadow) * shadow_tint * albedo * lights[i].intensity * 0.1;
+
 		spec_lum += get_luminance(specular_contribution);
 	}
 

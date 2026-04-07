@@ -64,6 +64,9 @@ namespace Boidsish {
 		 * @param cascade_index Cascade index if using CSM, -1 otherwise
 		 * @param view Camera view matrix for CSM frustum calculation
 		 * @param projection Camera projection matrix for CSM frustum calculation
+		 * @param clear Whether to clear the depth buffer
+		 * @param enable_color Whether to enable color writing (for reflective shadows)
+		 * @param clear_color Whether to clear the color buffer
 		 */
 		void BeginShadowPass(
 			int              map_index,
@@ -74,7 +77,9 @@ namespace Boidsish {
 			const glm::mat4& view = glm::mat4(1.0f),
 			float            fov = Constants::Class::Shadows::DefaultFOV(),
 			float            aspect = 1.0f,
-			bool             clear = true
+			bool             clear = true,
+			bool             enable_color = false,
+			bool             clear_color = true
 		);
 
 		/**
@@ -104,8 +109,9 @@ namespace Boidsish {
 		 *
 		 * @param shader The shader to set up shadow samplers for
 		 * @param texture_unit The texture unit to bind the shadow map array to
+		 * @param color_texture_unit The texture unit to bind the shadow color map array to
 		 */
-		void BindForRendering(Shader& shader, int texture_unit = 10);
+		void BindForRendering(Shader& shader, int texture_unit = 10, int color_texture_unit = 11);
 
 		/**
 		 * @brief Update the shadow UBO with current light-space matrices.
@@ -130,6 +136,11 @@ namespace Boidsish {
 		GLuint GetShadowMapArray() const { return shadow_map_array_; }
 
 		/**
+		 * @brief Get the shadow color map texture array ID.
+		 */
+		GLuint GetShadowColorMapArray() const { return shadow_color_map_array_; }
+
+		/**
 		 * @brief Check if shadow mapping is enabled and initialized.
 		 */
 		bool IsInitialized() const { return initialized_; }
@@ -147,7 +158,8 @@ namespace Boidsish {
 	private:
 		bool                    initialized_ = false;
 		GLuint                  shadow_fbo_ = 0;
-		GLuint                  shadow_map_array_ = 0; // 2D texture array for all shadow maps
+		GLuint                  shadow_map_array_ = 0;       // 2D texture array for all shadow maps
+		GLuint                  shadow_color_map_array_ = 0; // 2D texture array for shadow colors
 		GLuint                  shadow_ubo_ = 0;
 		std::shared_ptr<Shader> shadow_shader_;
 
