@@ -4,7 +4,6 @@
 #include "../helpers/constants.glsl"
 #include "../lighting.glsl"
 #include "clouds.glsl"
-#include "terrain_shadows.glsl"
 
 // Atmosphere constants for transmittance lookup
 const float kEarthRadiusKM = 6360.0;
@@ -89,6 +88,9 @@ float calculateCloudShadow(int light_index, vec3 frag_pos) {
 
 	return mix(1.0, exp(-d), cloudShadowIntensity);
 }
+
+// Forward declare terrain shadow coverage to avoid hard dependency on terrain_shadows.glsl
+float terrainShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir);
 
 /**
  * Calculate shadow factor for a fragment position using a specific shadow map.
@@ -274,67 +276,94 @@ float calculateShadow(int light_index, vec3 frag_pos, vec3 normal, vec3 light_di
 }
 
 /**
- * Evaluate Spherical Harmonics irradiance for a given normal.
- * Uses 2nd-order SH coefficients from the Lighting UBO.
+ * Evaluate Spherical Harmonics irradiance for a given normal and set of coefficients.
  */
-vec3 evalSHIrradiance(vec3 n) {
-	// Constants for SH basis functions
+vec3 evalSHIrradianceFromCoeffs(vec3 n, vec4 coeffs[9]) {
 	float c1 = 0.282095;
 	float c2 = 0.488603;
 	float c3 = 1.092548;
 	float c4 = 0.315392;
 	float c5 = 0.546274;
 
-	// Cosine lobe convolution (irradiance) coefficients
-	// A0 = PI, A1 = 2*PI/3, A2 = PI/4
 	float a0 = 3.141593;
 	float a1 = 2.094395;
 	float a2 = 0.785398;
 
 	vec3 res = vec3(0.0);
-
-	// L0
-	res += a0 * c1 * sh_coeffs[0].rgb;
-
-	// L1
-	res += a1 * c2 * (sh_coeffs[1].rgb * n.y + sh_coeffs[2].rgb * n.z + sh_coeffs[3].rgb * n.x);
-
-	// L2
-	res += a2 * c3 * (sh_coeffs[4].rgb * n.x * n.y + sh_coeffs[5].rgb * n.y * n.z + sh_coeffs[7].rgb * n.x * n.z);
-	res += a2 * c4 * sh_coeffs[6].rgb * (3.0 * n.z * n.z - 1.0);
-	res += a2 * c5 * sh_coeffs[8].rgb * (n.x * n.x - n.y * n.y);
-
+	res += a0 * c1 * coeffs[0].rgb;
+	res += a1 * c2 * (coeffs[1].rgb * n.y + coeffs[2].rgb * n.z + coeffs[3].rgb * n.x);
+	res += a2 * c3 * (coeffs[4].rgb * n.x * n.y + coeffs[5].rgb * n.y * n.z + coeffs[7].rgb * n.x * n.z);
+	res += a2 * c4 * coeffs[6].rgb * (3.0 * n.z * n.z - 1.0);
+	res += a2 * c5 * coeffs[8].rgb * (n.x * n.x - n.y * n.y);
 	return max(res, 0.0);
 }
 
 /**
- * Interpolate spatial ambient irradiance from nearby probes using Inverse Distance Weighting.
+ * Evaluate Spherical Harmonics irradiance for a given normal.
+ * Uses 2nd-order SH coefficients from the Lighting UBO.
  */
-vec3 getSpatialAmbient(vec3 pos) {
-	vec3  totalAmbient = vec3(0.0);
-	float totalWeight = 0.0;
-
-	for (int i = 0; i < 5; ++i) {
-		float dist = length(pos - probes[i].pos.xyz);
-		float radius = probes[i].pos.w;
-
-		// Inverse distance weighting with a small epsilon to avoid division by zero
-		// We use a quadratic falloff for smoother transitions near probes
-		float weight = 1.0 / (dist * dist + 0.001);
-
-		// Clamp influence based on probe radius
-		weight *= smoothstep(radius * 2.0, radius, dist);
-
-		totalAmbient += probes[i].color.rgb * weight;
-		totalWeight += weight;
-	}
-
-	if (totalWeight > 0.0001) {
-		return totalAmbient / totalWeight;
-	}
-
-	return ambient_light; // Fallback to global ambient
+vec3 evalSHIrradiance(vec3 n) {
+	return evalSHIrradianceFromCoeffs(n, sh_coeffs);
 }
+
+#ifdef USE_TERRAIN_DATA
+layout(std430, binding = [[TERRAIN_PROBES_BINDING]]) buffer TerrainProbes {
+	AmbientProbe u_terrainProbes[];
+};
+
+/**
+ * Look up and interpolate Spherical Harmonic ambient irradiance for a fragment.
+ */
+vec3 getSpatialAmbientSH(vec3 worldPos, vec3 N) {
+	if (u_originSize.w < 1)
+		return evalSHIrradiance(N);
+
+	float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
+	vec2  gridPos = worldPos.xz / scaledChunkSize;
+	vec2  fracPos = fract(gridPos);
+	ivec2 chunkCoord = ivec2(floor(gridPos)) - u_originSize.xy;
+
+	// Simple bilinear interpolation between 4 nearest chunk probes
+	vec3 totalSH[9];
+	for (int i = 0; i < 9; ++i)
+		totalSH[i] = vec3(0.0);
+
+	float totalWeight = 0.0;
+	for (int x = 0; x <= 1; ++x) {
+		for (int z = 0; z <= 1; ++z) {
+			ivec2 coord = chunkCoord + ivec2(x, z);
+			if (coord.x >= 0 && coord.x < u_originSize.z && coord.y >= 0 && coord.y < u_originSize.z) {
+				float weight = (x == 0 ? 1.0 - fracPos.x : fracPos.x) * (z == 0 ? 1.0 - fracPos.y : fracPos.y);
+				int   idx = coord.y * u_originSize.z + coord.x;
+				for (int i = 0; i < 9; ++i) {
+					totalSH[i] += u_terrainProbes[idx].sh_coeffs[i].rgb * weight;
+				}
+				totalWeight += weight;
+			}
+		}
+	}
+
+	if (totalWeight > 0.001) {
+		vec4 interpolatedCoeffs[9];
+		for (int i = 0; i < 9; ++i) {
+			interpolatedCoeffs[i] = vec4(totalSH[i] / totalWeight, 1.0);
+		}
+		return evalSHIrradianceFromCoeffs(N, interpolatedCoeffs);
+	}
+
+	return evalSHIrradiance(N);
+}
+
+// Forward declare macro occlusion from terrain_shadows.glsl
+float calculateTerrainOcclusion(vec3 worldPos, vec3 normal);
+#else
+vec3 getSpatialAmbientSH(vec3 worldPos, vec3 N) {
+	return evalSHIrradiance(N);
+}
+float calculateTerrainOcclusion(vec3 worldPos, vec3 normal) {
+	return 1.0;
+}
+#endif
 
 /**
  * Calculate the relative luminance of a color.
@@ -558,24 +587,12 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 		spec_lum += get_luminance(specular_radiance);
 	}
 
-	// Spatially-varying ambient augmented with SH sky irradiance and macro occlusion
-	vec3  spatialAmbient = getSpatialAmbient(frag_pos);
-	vec3  skyIrradiance = evalSHIrradiance(N);
+	// Spatially-varying SH ambient augmented with macro occlusion
 	float terrainOcc = calculateTerrainOcclusion(frag_pos, N);
+	vec3  spatialSHAmbient = getSpatialAmbientSH(frag_pos, N);
 
-	// Apply terrain occlusion to both ambient terms.
-	// Sky irradiance is blocked by the terrain above/around.
-	// Spatial ambient (ground bounce) is also reduced in deep valleys.
-	spatialAmbient *= mix(0.5, 1.0, terrainOcc);
-	skyIrradiance *= terrainOcc;
-
-	// Blend sky and local ground ambient based on upward-facing normal
-	// Using a smoother curve to favor sky contribution on upward surfaces
-	float upFactor = smoothstep(-0.2, 0.5, N.y);
-
-	// Combine input AO with macro terrain occlusion
 	float combinedAO = ao * terrainOcc;
-	vec3  ambientDiffuse = mix(spatialAmbient, skyIrradiance, upFactor) * albedo * combinedAO;
+	vec3  ambientDiffuse = spatialSHAmbient * albedo * combinedAO;
 
 	// Scale down ambient overall to maintain shadow contrast and prevent "flat" look
 	ambientDiffuse *= 0.75;
@@ -588,13 +605,8 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 	float NdotV = max(dot(N, V), 0.0);
 	vec3  F_env = fresnelSchlickRoughness(NdotV, F0_env, roughness);
 
-	// Fake environment color - gradient from local ground to sky
-	float upAmount = R.y * 0.5 + 0.5;
-	vec3  envColor = mix(
-		spatialAmbient,
-		skyIrradiance * 1.2, // Boost sky reflection slightly
-		smoothstep(0.0, 0.7, upAmount)
-	);
+	// Fake environment color using spatial SH
+	vec3 envColor = getSpatialAmbientSH(frag_pos, R);
 
 	// Attenuate reflection by occlusion to prevent glow in caves/valleys
 	envColor *= terrainOcc;
@@ -676,21 +688,12 @@ vec4 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, floa
 		spec_lum += get_luminance(specular_radiance);
 	}
 
-	// Spatially-varying ambient augmented with SH sky irradiance and macro occlusion
-	vec3  spatialAmbient = getSpatialAmbient(frag_pos);
-	vec3  skyIrradiance = evalSHIrradiance(N);
+	// Spatially-varying SH ambient augmented with macro occlusion
 	float terrainOcc = calculateTerrainOcclusion(frag_pos, N);
+	vec3  spatialSHAmbient = getSpatialAmbientSH(frag_pos, N);
 
-	// Apply terrain occlusion to both ambient terms.
-	// Sky irradiance is blocked by the terrain above/around.
-	// Spatial ambient (ground bounce) is also reduced in deep valleys.
-	spatialAmbient *= mix(0.5, 1.0, terrainOcc);
-	skyIrradiance *= terrainOcc;
-
-	// Blend sky and local ground ambient based on upward-facing normal
-	float upFactor = smoothstep(-0.2, 0.5, N.y);
 	float combinedAO = ao * terrainOcc;
-	vec3  ambientDiffuse = mix(spatialAmbient, skyIrradiance, upFactor) * albedo * combinedAO;
+	vec3  ambientDiffuse = spatialSHAmbient * albedo * combinedAO;
 
 	// Scale down ambient overall to maintain shadow contrast
 	ambientDiffuse *= 0.75;
@@ -701,13 +704,8 @@ vec4 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, floa
 	float NdotV = max(dot(N, V), 0.0);
 	vec3  F_env = fresnelSchlickRoughness(NdotV, F0_env, roughness);
 
-	// Fake environment color - gradient from local ground to sky
-	float upAmount = R.y * 0.5 + 0.5;
-	vec3  envColor = mix(
-		spatialAmbient,
-		skyIrradiance * 1.2, // Boost sky reflection slightly
-		smoothstep(0.0, 0.7, upAmount)
-	);
+	// Fake environment color using spatial SH
+	vec3 envColor = getSpatialAmbientSH(frag_pos, R);
 
 	// Attenuate reflection by occlusion to prevent glow in caves/valleys
 	envColor *= terrainOcc;

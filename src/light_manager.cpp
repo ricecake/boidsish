@@ -91,40 +91,7 @@ namespace Boidsish {
 	void LightManager::Update(float deltaTime, ITerrainGenerator* terrain, const glm::vec3& cameraPos) {
 		PROJECT_PROFILE_SCOPE("LightManager::Update");
 
-		// Update ambient probes if terrain is available
-		if (terrain) {
-			const float probeRadius = 100.0f;
-			glm::vec3   probeOffsets[5] = {
-				  glm::vec3(0, 0, 0),
-				  glm::vec3(probeRadius, 0, 0),
-				  glm::vec3(-probeRadius, 0, 0),
-				  glm::vec3(0, 0, probeRadius),
-				  glm::vec3(0, 0, -probeRadius),
-			};
-
-			for (int i = 0; i < 5; ++i) {
-				glm::vec3 pPos = cameraPos + probeOffsets[i];
-				auto [height, normal] = terrain->GetTerrainPropertiesAtPoint(pPos.x, pPos.z);
-				pPos.y = height + 2.0f; // Sample slightly above ground
-
-				float controlValue = terrain->GetBiomeControlValue(pPos.x, pPos.z);
-				int   lowIdx;
-				float t;
-				terrain->GetBiomeIndicesAndWeights(controlValue, lowIdx, t);
-
-				glm::vec3 albedo = glm::mix(kBiomes[lowIdx].albedo, kBiomes[std::min(lowIdx + 1, 7)].albedo, t);
-
-				_probes[i].pos = glm::vec4(pPos, probeRadius);
-				// Ambient probe color is the sky ambient tinted by local ground bounce
-				_probes[i].color = glm::vec4(_ambient_light * (0.5f + 0.5f * albedo), 1.0f);
-			}
-		} else {
-			// Fallback: all probes at camera with default ambient
-			for (int i = 0; i < 5; ++i) {
-				_probes[i].pos = glm::vec4(cameraPos, 100.0f);
-				_probes[i].color = glm::vec4(_ambient_light, 1.0f);
-			}
-		}
+		// Spatially varying ambient probes are now managed per-chunk in TerrainRenderManager
 
 		if (_cycle.enabled) {
 			if (!_cycle.paused) {

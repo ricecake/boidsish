@@ -36,8 +36,6 @@ namespace Boidsish {
 		glm::vec3           GetAmbientLight() const;
 		void                SetAmbientLight(const glm::vec3& ambient);
 
-		const AmbientProbe* GetProbes() const { return _probes; }
-
 		DayNightCycle& GetDayNightCycle() { return _cycle; }
 
 		const DayNightCycle& GetDayNightCycle() const { return _cycle; }
@@ -62,7 +60,6 @@ namespace Boidsish {
 			Light::CreateDirectional(180.0f, -45.0f, 0.1f, {0.8f, 0.9f, 1.0f}, true)
 		};
 		glm::vec3     _ambient_light = Constants::General::Colors::DefaultAmbient();
-		AmbientProbe  _probes[5];
 		DayNightCycle _cycle;
 		int           _next_light_id = 1;
 		/*

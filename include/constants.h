@@ -115,6 +115,10 @@ namespace Boidsish {
 				return 24;
 			}
 
+			constexpr int TerrainProbes() {
+				return 29;
+			}
+
 			constexpr int LiveParticleIndices() {
 				return 33;
 			}

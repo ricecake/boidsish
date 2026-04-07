@@ -100,6 +100,7 @@ namespace Boidsish {
 
 		// Lighting and Shadows
 		ShaderBase::RegisterConstant("MAX_LIGHTS", Constants::Class::Shadows::MaxLights());
+		ShaderBase::RegisterConstant("TERRAIN_PROBES_BINDING", Constants::SsboBinding::TerrainProbes());
 		ShaderBase::RegisterConstant("MAX_SHADOW_MAPS", Constants::Class::Shadows::MaxShadowMaps());
 		ShaderBase::RegisterConstant("MAX_CASCADES", Constants::Class::Shadows::MaxCascades());
 
@@ -2310,13 +2311,10 @@ namespace Boidsish {
 				glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(LightingUbo), &lighting_ubo_data_);
 				glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
-				// Copy ambient probes to UBO data
-				std::memcpy(lighting_ubo_data_.probes, light_manager.GetProbes(), 5 * sizeof(AmbientProbe));
-
 				// GPU-side copy of SH coefficients from SSBO into the UBO (no CPU readback)
 				if (atmosphere_manager) {
-					static_assert(offsetof(LightingUbo, sh_coeffs) == 928, "SH offset mismatch");
-					atmosphere_manager->CopySHToUBO(lighting_ubo, 928);
+					static_assert(offsetof(LightingUbo, sh_coeffs) == 768, "SH offset mismatch");
+					atmosphere_manager->CopySHToUBO(lighting_ubo, 768);
 				}
 			}
 

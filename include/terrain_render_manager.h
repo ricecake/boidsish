@@ -232,8 +232,10 @@ namespace Boidsish {
 		GLuint chunk_grid_texture_ = 0;      // GL_TEXTURE_2D (R16I: texture_slice index, -1 if none)
 		GLuint max_height_grid_texture_ = 0; // GL_TEXTURE_2D (R32F: max_y, mips for hierarchical check)
 		GLuint terrain_data_ubo_ = 0;        // UBO for grid parameters
+		GLuint probe_ssbo_ = 0;              // SSBO for per-chunk SH probes
 
 		std::unique_ptr<ComputeShader> grid_mip_shader_;
+		std::unique_ptr<ComputeShader> probe_compute_shader_;
 
 		// Grid mesh data
 		size_t grid_index_count_ = 0;

@@ -15,10 +15,12 @@ in float      vErosionDelta;
 in float      vRidgeMap;
 in float      vSubstrate;
 
+#define USE_TERRAIN_DATA
 #include "helpers/erosion.glsl"
 #include "helpers/fast_noise.glsl"
 #include "helpers/lighting.glsl"
 #include "helpers/terrain_noise.glsl"
+#include "helpers/terrain_shadows.glsl"
 #include "visual_effects.glsl"
 // #include "helpers/noise.glsl"
 

@@ -12,8 +12,7 @@ struct Light {
 };
 
 struct AmbientProbe {
-	vec4 pos;   // xyz = position, w = radius/scale
-	vec4 color; // rgb = ambient irradiance, w = unused
+	vec4 sh_coeffs[9]; // rgb = coefficients, w = unused
 };
 
 const int MAX_LIGHTS = [[MAX_LIGHTS]];
@@ -46,10 +45,13 @@ layout(std140) uniform Lighting {
 	float cloudShadowOpticalDepthMultiplier;
 	float cloudShadowStepMultiplier;
 	float cloudSunLightScale;
-	float        cloudMoonLightScale;
-	float        cloudBeerPowderMix;
-	AmbientProbe probes[5];
-	vec4         sh_coeffs[9];
+	float cloudMoonLightScale;
+	float cloudBeerPowderMix;
+	vec4  sh_coeffs[9];
+};
+
+layout(std430, binding = [[TERRAIN_PROBES_BINDING]]) buffer TerrainProbes {
+	AmbientProbe u_terrainProbes[];
 };
 
 // Shadow mapping UBO (binding set via glUniformBlockBinding to point 2)

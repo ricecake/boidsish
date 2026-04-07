@@ -64,6 +64,15 @@ namespace Boidsish {
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
 		grid_mip_shader_ = std::make_unique<ComputeShader>("shaders/terrain_hiz_generate.comp");
+		probe_compute_shader_ = std::make_unique<ComputeShader>("shaders/terrain_probes.comp");
+
+		// Create SH probes SSBO
+		glGenBuffers(1, &probe_ssbo_);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, probe_ssbo_);
+		// SH coefficient size is 9 * 16 bytes = 144 bytes per probe
+		size_t probe_count = grid_size * grid_size;
+		glBufferData(GL_SHADER_STORAGE_BUFFER, probe_count * 144, nullptr, GL_DYNAMIC_DRAW);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
 		// Create instance buffer first so we can set up VAO attributes
 		// Pre-allocate for max_chunks to avoid reallocation
@@ -97,6 +106,8 @@ namespace Boidsish {
 			glDeleteTextures(1, &max_height_grid_texture_);
 		if (terrain_data_ubo_)
 			glDeleteBuffers(1, &terrain_data_ubo_);
+		if (probe_ssbo_)
+			glDeleteBuffers(1, &probe_ssbo_);
 	}
 
 	void TerrainRenderManager::CreateGridMesh() {
@@ -687,6 +698,30 @@ namespace Boidsish {
 		last_grid_origin_z_ = origin_z;
 		last_grid_world_scale_ = world_scale;
 		grid_dirty_ = false;
+
+		// Dispatch probe update
+		if (probe_compute_shader_ && probe_compute_shader_->isValid()) {
+			probe_compute_shader_->use();
+			// Bind inputs
+			glActiveTexture(GL_TEXTURE11);
+			glBindTexture(GL_TEXTURE_2D, chunk_grid_texture_);
+			probe_compute_shader_->setInt("u_chunkGrid", 11);
+
+			glActiveTexture(GL_TEXTURE13);
+			glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture_);
+			probe_compute_shader_->setInt("u_heightmapArray", 13);
+
+			glActiveTexture(GL_TEXTURE1);
+			glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture_);
+			probe_compute_shader_->setInt("u_biomeMap", 1);
+
+			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::TerrainData(), terrain_data_ubo_);
+			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Biomes(), biome_ubo_);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainProbes(), probe_ssbo_);
+
+			glDispatchCompute((grid_size + 7) / 8, (grid_size + 7) / 8, 1);
+			glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+		}
 	}
 
 	void TerrainRenderManager::GenerateMaxHeightMips() {
@@ -744,6 +779,7 @@ namespace Boidsish {
 		}
 
 		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::TerrainData(), terrain_data_ubo_);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainProbes(), probe_ssbo_);
 	}
 
 	void TerrainRenderManager::Render(
