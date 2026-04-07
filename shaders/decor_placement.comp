@@ -86,7 +86,7 @@ void main() {
 	float maxDecorDistance = u_distanceParams.z;
 	int   maxInstances = int(u_distanceParams.w);
 
-	uint localIndex = x + y* uint([[CHUNK_SIZE]]);
+	uint localIndex = x + y * uint([[CHUNK_SIZE]]);
 	uint index = uint(baseInstanceIdx) + localIndex;
 
 	if (index >= maxInstances)
@@ -131,7 +131,7 @@ void main() {
 		return;
 
 	vec2 uv = (worldPos - chunkWorldOffset) / chunkSize;
-	vec2 remappedUV = (uv* float([[CHUNK_SIZE]]) + 0.5) / float([[CHUNK_SIZE_PLUS_1]]);
+	vec2 remappedUV = (uv * float([[CHUNK_SIZE]]) + 0.5) / float([[CHUNK_SIZE_PLUS_1]]);
 
 	vec4 terrainSample = textureLod(u_heightmapArray, vec3(remappedUV, chunkSlice), 0.0);
 
