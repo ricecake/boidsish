@@ -6,7 +6,16 @@
 // Physical Constants
 const float kEarthRadius = 6360.0; // km
 
+#ifndef ATMOSPHERE_HEIGHT_DEFINED
+	#define ATMOSPHERE_HEIGHT_DEFINED
 uniform float u_atmosphereHeight;
+#endif
+
+#ifndef TRANSMITTANCE_LUT_DEFINED
+	#define TRANSMITTANCE_LUT_DEFINED
+uniform sampler2D u_transmittanceLUT;
+#endif
+
 #define kAtmosphereHeight u_atmosphereHeight
 #define kTopRadius (kEarthRadius + kAtmosphereHeight)
 

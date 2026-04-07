@@ -31,6 +31,19 @@ layout(std140) uniform Lighting {
 	float cloudDensity;
 	float cloudCoverage;
 	float cloudWarp;
+	float cloudPhaseG1;
+	float cloudPhaseG2;
+	float cloudPhaseAlpha;
+	float cloudPhaseIsotropic;
+	float cloudPowderScale;
+	float cloudPowderMultiplier;
+	float cloudPowderLocalScale;
+	float cloudShadowOpticalDepthMultiplier;
+	float cloudShadowStepMultiplier;
+	float cloudSunLightScale;
+	float cloudMoonLightScale;
+	float cloudBeerPowderMix;
+	vec4  sh_coeffs[9];
 };
 
 // Shadow mapping UBO (binding set via glUniformBlockBinding to point 2)

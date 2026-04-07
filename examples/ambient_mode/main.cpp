@@ -35,9 +35,9 @@ int main() {
 	try {
 		// Disable distracted elements
 		ConfigManager::GetInstance().SetBool("enable_floor", false);
-		ConfigManager::GetInstance().SetBool("enable_sky", false);
+		ConfigManager::GetInstance().SetBool("enable_sky", true);
 
-		Visualizer visualizer(1280, 720, "Ambient Mode: Alaska Sunset");
+		Visualizer visualizer(1280, 720, "Firefly Horizon: Eternal Sunset Ambient ");
 		std::srand(static_cast<unsigned int>(std::time(nullptr)));
 
 		// --- State variables ---
@@ -89,7 +89,7 @@ int main() {
 		});
 
 		// --- Probe & Path State ---
-		auto probe = std::make_shared<Boidsish::Polyhedron>(PolyhedronType::SmallStellatedDodecahedron, 0, 0, 0, 0);
+		auto probe = std::make_shared<Boidsish::Polyhedron>(PolyhedronType::Icosahedron, 0, 0, 0, 0);
 		probe->SetColor(0.2f, 0.8f, 1.0f, 0.5f);
 		probe->SetScale(glm::vec3(5.0f));
 		probe->SetRefractive(true, 1.5f);

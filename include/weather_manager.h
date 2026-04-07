@@ -119,7 +119,7 @@ namespace Boidsish {
 		float     wind_strength = 0.05f;
 		float     wind_speed = 0.075f;
 		float     wind_frequency = 0.01f;
-		float     cloud_density = 20.0f;
+		float     cloud_density = 0.20f;
 		float     cloud_altitude = 400.0f;
 		float     cloud_thickness = 200.0f;
 		float     haze_density = 0.003f;
@@ -212,7 +212,7 @@ namespace Boidsish {
 		void InitializePresets();
 		void UpdateAttribute(WeatherAttribute attr, float target, float deltaTime);
 
-		bool  enabled_ = true;
+		bool  enabled_ = false;
 		float time_scale_ = 0.005f;    // Low frequency over time
 		float spatial_scale_ = 0.001f; // Low frequency over space
 		float hold_threshold_ = 0.05f; // Noise-space distance threshold for updates

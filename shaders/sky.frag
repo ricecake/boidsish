@@ -10,7 +10,7 @@ in vec2 TexCoords;
 uniform mat4 invProjection;
 uniform mat4 invView;
 
-uniform sampler2D u_transmittanceLUT;
+// u_transmittanceLUT is declared in helpers/lighting.glsl
 uniform sampler2D u_skyViewLUT;
 
 uniform vec3 u_sunRadiance; // Added for consistency with scattering
@@ -175,10 +175,11 @@ void main() {
 	// Ensure we are in front of the sun
 	sunMask *= step(0.99, rayLocalZ);
 
-	float r = kEarthRadius + viewPos.y / 1000.0;
-	vec3  sunTransmittance = getTransmittance(r, sunDir.y);
+	float r = kEarthRadius + max(0.0, viewPos.y / (1000.0 * worldScale));
+	vec3  sunTransmittance = max(getTransmittance(r, sunDir.y), vec3(0.001));
 	// Use u_sunRadiance if available (via AtmosphereManager) or fallback to simple sunColor
-	vec3 radiance = length(u_sunRadiance) > 0.0 ? u_sunRadiance : (sunColor * 20.0);
+	// We divide by PI for physical consistency if it's treated as irradiance
+	vec3 radiance = length(u_sunRadiance) > 0.0 ? u_sunRadiance : sunColor;
 	vec3 sunDisc = radiance * sunMask * sunTransmittance;
 
 	// 3. Stars and Nebula
@@ -187,10 +188,14 @@ void main() {
 	vec3  p = world_ray * 4.0;
 	vec3  warp_offset = vec3(fbm(p + time * 0.05));
 	float nebula_noise = fbm(p + warp_offset * 0.5);
-	vec3  nebula = mix(vec3(0.0, 0.1, 0.4), vec3(0.8, 0.2, 0.7), nebula_noise) * 0.4;
+	vec3  nebula = vec3(0.0); // mix(vec3(0.0, 0.1, 0.4), vec3(0.8, 0.2, 0.7), nebula_noise) * 0.4;
 
 	vec3 skyTransmittance = getTransmittance(r, world_ray.y);
-	vec3 spaceBackground = (stars + nebula) * skyTransmittance;
+	// Attenuate stars by sky brightness — on Earth, stars are overwhelmed by
+	// scattered sunlight during the day, not just absorbed
+	float skyBrightness = max(max(skyRadiance.r, skyRadiance.g), skyRadiance.b);
+	float starVisibility = smoothstep(0.5, 0.05, skyBrightness);
+	vec3  spaceBackground = (stars + nebula) * skyTransmittance * starVisibility;
 
 	// 4. Moon Disc with Atmospheric Refraction
 	vec3  moonDir = normalize(u_moonDir);
@@ -218,8 +223,30 @@ void main() {
 	);
 	moonMask *= step(0.99, moonLocalZ);
 
-	vec3 moonTransmittance = getTransmittance(r, moonDir.y);
-	vec3 moonDisc = u_moonRadiance * moonMask * moonTransmittance;
+	vec3 moonTransmittance = max(getTransmittance(r, moonDir.y), vec3(0.001));
+
+	// Phase mask: the lit side of the moon faces the sun.
+	// Project sun direction onto the moon disc plane to find the terminator orientation.
+	float sunOnMoonX = dot(sunDir, moonRight);
+	float sunOnMoonY = dot(sunDir, moonUp);
+	float cosPhase = dot(sunDir, moonDir); // >0 = new moon, <0 = full moon
+
+	// How much of the sun's direction lies in the disc plane vs behind/in front
+	vec2  sunOnDisc = vec2(sunOnMoonX, sunOnMoonY);
+	float projLen = length(sunOnDisc);
+
+	// When sun is to the side (quarter moon), the terminator is a clear line.
+	// When sun is directly behind (full moon) or in front (new moon), projLen→0
+	// and we fall back to uniform illumination based on phase.
+	float terminator = dot(vec2(moonLocalX, moonFlattenedY), sunOnDisc / max(projLen, 0.0001));
+	float phaseMix = smoothstep(0.0, 0.5, projLen);
+	float fullOrNew = (cosPhase < 0.0) ? 1.0 : 0.0;
+	float illumination = mix(fullOrNew, smoothstep(-0.003, 0.003, terminator), phaseMix);
+
+	// Earthshine: dark side gets a faint glow (~8%)
+	float phasedMask = moonMask * mix(0.08, 1.0, illumination);
+
+	vec3 moonDisc = u_moonRadiance * phasedMask * moonTransmittance;
 
 	vec3 finalColor = skyRadiance + sunDisc + moonDisc + spaceBackground;
 

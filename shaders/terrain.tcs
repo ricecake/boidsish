@@ -51,11 +51,6 @@ void sampleHeightmap(vec2 uv, float slice, vec3 worldOffset, out vec3 worldPos, 
 	worldPos.z = worldOffset.z + uv.y * uChunkSize;
 }
 
-float roundToPlaces(float value, float places) {
-	float shift = pow(10.0, places);
-	return round(value * shift) / shift;
-}
-
 bool isLess(vec3 a, vec3 b) {
 	const float epsilon = 0.001;
 	if (abs(a.x - b.x) > epsilon)
@@ -172,7 +167,7 @@ float perturbLevel(vec3 worldPos, vec3 forward) {
 	// COMBINE
 	float finalLevel = max(distanceMin, distanceLevel) * focusCull;
 
-	return clamp(0, 1, finalLevel / [[CHUNK_SIZE]].0);
+	return clamp(0, 1, finalLevel / float([[CHUNK_SIZE]]));
 }
 
 void main() {

@@ -16,8 +16,7 @@ uniform vec3  hazeColor;
 
 uniform vec2 cloudTexelSize; // 1.0 / lowResSize
 
-uniform sampler2D u_transmittanceLUT;
-uniform sampler2D u_skyViewLUT;
+// u_transmittanceLUT is declared in helpers/lighting.glsl
 uniform sampler3D u_aerialPerspectiveLUT;
 
 #include "../atmosphere/common.glsl"
@@ -63,7 +62,7 @@ void main() {
 	vec3  rayDir = normalize(worldPos - viewPos);
 	float dist = length(worldPos - viewPos);
 
-	if (depth == 1.0) {
+	if (depth >= 0.99999) {
 		dist = 50000.0 * worldScale;
 	}
 
@@ -104,7 +103,7 @@ void main() {
 
 			// Depth similarity weight — exponential falloff
 			float depthDiff = abs(centerDepth - sampleDist) / max(centerDepth, 1.0);
-			float depthW = exp(-depthDiff * 50.0);
+			float depthW = exp(-depthDiff * 150.0);
 
 			float w = spatialW * depthW;
 			cloudData += texture(cloudTexture, sampleUV) * w;
@@ -117,16 +116,35 @@ void main() {
 	float cloudTransmittance = cloudData.a;
 
 	// 2. High-res Atmosphere (Haze)
-	float distKM = (dist / 1000.0) * (hazeDensity * 300.0);
+	float distKM = (dist / 1000.0) * hazeDensity;
 	vec3  inScattering = sampleAerialPerspective(rayDir, distKM);
 	float transmittance = sampleAerialPerspectiveTransmittance(rayDir, distKM);
 
-	// Combine everything
-	vec3 result = sceneColor * cloudTransmittance + cloudColor;
+	// 3. Cloud Atmospheric Integration
+	// Clouds should also be affected by the atmosphere between them and the camera.
+	float cloudDist = (cloudAltitude * worldScale - viewPos.y) / max(abs(rayDir.y), 0.01);
+	cloudDist = clamp(cloudDist, 0.0, dist);
+	float cloudDistKM = (cloudDist / 1000.0) * hazeDensity;
 
-	// Apply physically accurate atmosphere
-	if (depth < 1.0) {
-		result = result * transmittance + inScattering;
+	vec3  atmosInScattering = sampleAerialPerspective(rayDir, cloudDistKM);
+	float atmosTransmittance = sampleAerialPerspectiveTransmittance(rayDir, cloudDistKM);
+
+	// Combine everything
+	// Colossal objects write depth ~0.99999 — treat them like sky (no aerial perspective
+	// fog, which would completely wash them out at that reconstructed distance)
+	bool isSky = depth >= 0.99999;
+
+	vec3 result;
+	if (!isSky) {
+		// Terrain/objects: apply aerial perspective and clouds
+		vec3 terrainAtmos = sceneColor * transmittance + inScattering;
+		vec3 cloudsAtmos = cloudColor * atmosTransmittance + atmosInScattering * (1.0 - cloudTransmittance);
+		result = mix(cloudsAtmos, terrainAtmos, cloudTransmittance);
+	} else {
+		// Sky and colossal objects: preserve scene output (sun, moon, stars, colossal)
+		// and blend clouds on top
+		vec3 cloudsAtmos = cloudColor * atmosTransmittance + atmosInScattering * (1.0 - cloudTransmittance);
+		result = sceneColor * cloudTransmittance + cloudsAtmos;
 	}
 
 	FragColor = vec4(result, 1.0);

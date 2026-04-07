@@ -31,26 +31,32 @@ public:
 			}
 
 			if (atmosphere) {
+				auto& cfg = ConfigManager::GetInstance();
 				if (ImGui::CollapsingHeader("Atmosphere Scattering", ImGuiTreeNodeFlags_DefaultOpen)) {
 					float rayleigh = atmosphere->GetRayleighScale();
 					if (ImGui::SliderFloat("Rayleigh Scale", &rayleigh, 0.0f, 10.0f)) {
 						atmosphere->SetRayleighScale(rayleigh);
+						cfg.SetFloat("rayleigh_scale", rayleigh);
 					}
 					float mie = atmosphere->GetMieScale();
 					if (ImGui::SliderFloat("Mie Scale", &mie, 0.0f, 10.0f)) {
 						atmosphere->SetMieScale(mie);
+						cfg.SetFloat("mie_scale", mie);
 					}
 					float mieAnisotropy = atmosphere->GetMieAnisotropy();
 					if (ImGui::SliderFloat("Mie Anisotropy", &mieAnisotropy, 0.0f, 0.99f)) {
 						atmosphere->SetMieAnisotropy(mieAnisotropy);
+						// Add config if needed
 					}
 					float multiScat = atmosphere->GetMultiScatScale();
 					if (ImGui::SliderFloat("MultiScat Scale", &multiScat, 0.0f, 2.0f)) {
 						atmosphere->SetMultiScatScale(multiScat);
+						// Add config if needed
 					}
 					float ambientScat = atmosphere->GetAmbientScatScale();
 					if (ImGui::SliderFloat("Ambient Scat Scale", &ambientScat, 0.0f, 2.0f)) {
 						atmosphere->SetAmbientScatScale(ambientScat);
+						// Add config if needed
 					}
 				}
 
@@ -58,10 +64,12 @@ public:
 					float hazeDensity = atmosphere->GetHazeDensity();
 					if (ImGui::SliderFloat("Haze Density", &hazeDensity, 0.0f, 0.05f, "%.4f")) {
 						atmosphere->SetHazeDensity(hazeDensity);
+						cfg.SetFloat("haze_density", hazeDensity);
 					}
 					float hazeHeight = atmosphere->GetHazeHeight();
 					if (ImGui::SliderFloat("Haze Height", &hazeHeight, 0.0f, 200.0f)) {
 						atmosphere->SetHazeHeight(hazeHeight);
+						cfg.SetFloat("haze_height", hazeHeight);
 					}
 					glm::vec3 hazeColor = atmosphere->GetHazeColor();
 					if (ImGui::ColorEdit3("Haze Color", &hazeColor[0])) {
@@ -71,25 +79,96 @@ public:
 
 				if (ImGui::CollapsingHeader("Clouds", ImGuiTreeNodeFlags_DefaultOpen)) {
 					float cloudDensity = atmosphere->GetCloudDensity();
-					if (ImGui::SliderFloat("Cloud Density", &cloudDensity, 0.0f, 2.0f)) {
+					if (ImGui::SliderFloat("Cloud Density", &cloudDensity, 0.0f, 50.0f)) {
 						atmosphere->SetCloudDensity(cloudDensity);
+						cfg.SetFloat("cloud_density", cloudDensity);
 					}
 					float cloudAltitude = atmosphere->GetCloudAltitude();
 					if (ImGui::SliderFloat("Cloud Altitude", &cloudAltitude, 0.0f, 1000.0f)) {
 						atmosphere->SetCloudAltitude(cloudAltitude);
+						cfg.SetFloat("cloud_altitude", cloudAltitude);
 					}
 					float cloudThickness = atmosphere->GetCloudThickness();
-					if (ImGui::SliderFloat("Cloud Thickness", &cloudThickness, 0.0f, 200.0f)) {
+					if (ImGui::SliderFloat("Cloud Thickness", &cloudThickness, 0.0f, 500.0f)) {
 						atmosphere->SetCloudThickness(cloudThickness);
+						cfg.SetFloat("cloud_thickness", cloudThickness);
 					}
 					glm::vec3 cloudColor = atmosphere->GetCloudColor();
 					if (ImGui::ColorEdit3("Cloud Color", &cloudColor[0])) {
 						atmosphere->SetCloudColor(cloudColor);
 					}
 
-					float cloudShadow = ConfigManager::GetInstance().GetAppSettingFloat("cloud_shadow_intensity", 0.5f);
+					float cloudShadow = cfg.GetAppSettingFloat("cloud_shadow_intensity", 0.5f);
 					if (ImGui::SliderFloat("Cloud Shadow Intensity", &cloudShadow, 0.0f, 1.0f)) {
-						ConfigManager::GetInstance().SetFloat("cloud_shadow_intensity", cloudShadow);
+						cfg.SetFloat("cloud_shadow_intensity", cloudShadow);
+					}
+
+					ImGui::Separator();
+					ImGui::Text("Advanced Cloud Parameters");
+
+					float g1 = atmosphere->GetCloudPhaseG1();
+					if (ImGui::SliderFloat("Phase G1 (Forward)", &g1, 0.0f, 0.99f)) {
+						atmosphere->SetCloudPhaseG1(g1);
+						cfg.SetFloat("cloud_phase_g1", g1);
+					}
+					float g2 = atmosphere->GetCloudPhaseG2();
+					if (ImGui::SliderFloat("Phase G2 (Backward)", &g2, -0.99f, 0.0f)) {
+						atmosphere->SetCloudPhaseG2(g2);
+						cfg.SetFloat("cloud_phase_g2", g2);
+					}
+					float alpha = atmosphere->GetCloudPhaseAlpha();
+					if (ImGui::SliderFloat("Phase Mix Alpha", &alpha, 0.0f, 1.0f)) {
+						atmosphere->SetCloudPhaseAlpha(alpha);
+						cfg.SetFloat("cloud_phase_alpha", alpha);
+					}
+					float isotropic = atmosphere->GetCloudPhaseIsotropic();
+					if (ImGui::SliderFloat("Phase Isotropic Mix", &isotropic, 0.0f, 1.0f)) {
+						atmosphere->SetCloudPhaseIsotropic(isotropic);
+						cfg.SetFloat("cloud_phase_isotropic", isotropic);
+					}
+
+					float p_scale = atmosphere->GetCloudPowderScale();
+					if (ImGui::SliderFloat("Powder Scale", &p_scale, 0.0f, 2.0f)) {
+						atmosphere->SetCloudPowderScale(p_scale);
+						cfg.SetFloat("cloud_powder_scale", p_scale);
+					}
+					float p_mult = atmosphere->GetCloudPowderMultiplier();
+					if (ImGui::SliderFloat("Powder Multiplier", &p_mult, 0.0f, 2.0f)) {
+						atmosphere->SetCloudPowderMultiplier(p_mult);
+						cfg.SetFloat("cloud_powder_multiplier", p_mult);
+					}
+					float p_local = atmosphere->GetCloudPowderLocalScale();
+					if (ImGui::SliderFloat("Powder Local Scale", &p_local, 0.0f, 10.0f)) {
+						atmosphere->SetCloudPowderLocalScale(p_local);
+						cfg.SetFloat("cloud_powder_local_scale", p_local);
+					}
+
+					float s_opt = atmosphere->GetCloudShadowOpticalDepthMultiplier();
+					if (ImGui::SliderFloat("Shadow Optical Depth Mult", &s_opt, 0.0f, 1.0f)) {
+						atmosphere->SetCloudShadowOpticalDepthMultiplier(s_opt);
+						cfg.SetFloat("cloud_shadow_optical_depth_multiplier", s_opt);
+					}
+					float s_step = atmosphere->GetCloudShadowStepMultiplier();
+					if (ImGui::SliderFloat("Shadow Step Mult", &s_step, 0.0f, 1.0f)) {
+						atmosphere->SetCloudShadowStepMultiplier(s_step);
+						cfg.SetFloat("cloud_shadow_step_multiplier", s_step);
+					}
+
+					float sun_scale = atmosphere->GetCloudSunLightScale();
+					if (ImGui::SliderFloat("Sun Light Scale", &sun_scale, 0.0f, 50.0f)) {
+						atmosphere->SetCloudSunLightScale(sun_scale);
+						cfg.SetFloat("cloud_sun_light_scale", sun_scale);
+					}
+					float moon_scale = atmosphere->GetCloudMoonLightScale();
+					if (ImGui::SliderFloat("Moon Light Scale", &moon_scale, 0.0f, 20.0f)) {
+						atmosphere->SetCloudMoonLightScale(moon_scale);
+						cfg.SetFloat("cloud_moon_light_scale", moon_scale);
+					}
+
+					float bp_mix = atmosphere->GetCloudBeerPowderMix();
+					if (ImGui::SliderFloat("Beer-Powder Mix", &bp_mix, 0.0f, 1.0f)) {
+						atmosphere->SetCloudBeerPowderMix(bp_mix);
+						cfg.SetFloat("cloud_beer_powder_mix", bp_mix);
 					}
 				}
 
@@ -216,6 +295,19 @@ private:
 			file << "CloudColor=" << cc.r << "," << cc.g << "," << cc.b << "\n";
 			file << "CloudShadowIntensity="
 			     << ConfigManager::GetInstance().GetAppSettingFloat("cloud_shadow_intensity", 0.5f) << "\n";
+
+			file << "CloudPhaseG1=" << atmosphere->GetCloudPhaseG1() << "\n";
+			file << "CloudPhaseG2=" << atmosphere->GetCloudPhaseG2() << "\n";
+			file << "CloudPhaseAlpha=" << atmosphere->GetCloudPhaseAlpha() << "\n";
+			file << "CloudPhaseIsotropic=" << atmosphere->GetCloudPhaseIsotropic() << "\n";
+			file << "CloudPowderScale=" << atmosphere->GetCloudPowderScale() << "\n";
+			file << "CloudPowderMultiplier=" << atmosphere->GetCloudPowderMultiplier() << "\n";
+			file << "CloudPowderLocalScale=" << atmosphere->GetCloudPowderLocalScale() << "\n";
+			file << "CloudShadowOpticalDepthMultiplier=" << atmosphere->GetCloudShadowOpticalDepthMultiplier() << "\n";
+			file << "CloudShadowStepMultiplier=" << atmosphere->GetCloudShadowStepMultiplier() << "\n";
+			file << "CloudSunLightScale=" << atmosphere->GetCloudSunLightScale() << "\n";
+			file << "CloudMoonLightScale=" << atmosphere->GetCloudMoonLightScale() << "\n";
+			file << "CloudBeerPowderMix=" << atmosphere->GetCloudBeerPowderMix() << "\n";
 
 			file << "\n[PhysicalParameters]\n";
 			file << "AtmosphereHeight=" << atmosphere->GetAtmosphereHeight() << "\n";

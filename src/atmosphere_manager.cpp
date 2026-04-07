@@ -18,6 +18,8 @@ namespace Boidsish {
 			glDeleteTextures(1, &_skyViewLUT);
 		if (_aerialPerspectiveLUT)
 			glDeleteTextures(1, &_aerialPerspectiveLUT);
+		if (_shCoeffsBuffer)
+			glDeleteBuffers(1, &_shCoeffsBuffer);
 	}
 
 	void AtmosphereManager::Initialize() {
@@ -62,6 +64,16 @@ namespace Boidsish {
 		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+
+		// SH Coefficients SSBO: 9 x vec4
+		glGenBuffers(1, &_shCoeffsBuffer);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, _shCoeffsBuffer);
+		glBufferData(GL_SHADER_STORAGE_BUFFER, 9 * sizeof(glm::vec4), nullptr, GL_DYNAMIC_DRAW);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+
+		for (int i = 0; i < 9; ++i) {
+			_shCoeffs[i] = glm::vec4(0.0f);
+		}
 	}
 
 	void AtmosphereManager::CreateShaders() {
@@ -69,6 +81,7 @@ namespace Boidsish {
 		_multiScatteringShader = std::make_unique<ComputeShader>("shaders/atmosphere/multiscattering_lut.comp");
 		_skyViewShader = std::make_unique<ComputeShader>("shaders/atmosphere/sky_view_lut.comp");
 		_aerialPerspectiveShader = std::make_unique<ComputeShader>("shaders/atmosphere/aerial_perspective_lut.comp");
+		_skyToSHShader = std::make_unique<ComputeShader>("shaders/atmosphere/sky_to_sh.comp");
 	}
 
 	void AtmosphereManager::Update(
@@ -184,6 +197,18 @@ namespace Boidsish {
 		glDispatchCompute(32 / 4, 32 / 4, 32 / 4);
 		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
+		// Dispatch SkyToSH
+		_skyToSHShader->use();
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, _skyViewLUT);
+		_skyToSHShader->setInt("u_skyViewLUT", 0);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, _shCoeffsBuffer);
+		glDispatchCompute(1, 1, 1); // Logic in sky_to_sh.comp uses a single workgroup for simple integration
+		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
+		// SH coefficients remain on GPU — copied to UBO via CopySHToUBO() later.
+		// No CPU readback needed.
+
 		// Analytical estimate of sky ambient irradiance for synchronization with other systems
 		float sunElevation = sunDir.y;
 
@@ -204,6 +229,16 @@ namespace Boidsish {
 		glm::vec3 nightGlow = glm::vec3(0.01f, 0.012f, 0.018f) * _ambientScatScale * 10.0f;
 
 		_ambientEstimate = sunColor * sunIntensity * ambientFactor + nightGlow;
+	}
+
+	void AtmosphereManager::CopySHToUBO(GLuint lightingUbo, size_t shOffset) {
+		if (_shCoeffsBuffer == 0)
+			return;
+		glBindBuffer(GL_COPY_READ_BUFFER, _shCoeffsBuffer);
+		glBindBuffer(GL_COPY_WRITE_BUFFER, lightingUbo);
+		glCopyBufferSubData(GL_COPY_READ_BUFFER, GL_COPY_WRITE_BUFFER, 0, shOffset, 9 * sizeof(glm::vec4));
+		glBindBuffer(GL_COPY_READ_BUFFER, 0);
+		glBindBuffer(GL_COPY_WRITE_BUFFER, 0);
 	}
 
 	void AtmosphereManager::BindTextures(GLuint firstUnit) {

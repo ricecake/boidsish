@@ -66,8 +66,8 @@ mat3 rotationFromEuler(vec3 angles) {
 }
 
 void main() {
-	uint x = gl_GlobalInvocationID.x % [[CHUNK_SIZE]]u;
-	uint y = gl_GlobalInvocationID.y % [[CHUNK_SIZE]]u;
+	uint x = gl_GlobalInvocationID.x % uint([[CHUNK_SIZE]]);
+	uint y = gl_GlobalInvocationID.y % uint([[CHUNK_SIZE]]);
 
 	// Read chunk params from SSBO using Z workgroup as chunk index
 	uint        chunkIdx = gl_WorkGroupID.z;
@@ -86,7 +86,7 @@ void main() {
 	float maxDecorDistance = u_distanceParams.z;
 	int   maxInstances = int(u_distanceParams.w);
 
-	uint localIndex = x + y* [[CHUNK_SIZE]]u;
+	uint localIndex = x + y* uint([[CHUNK_SIZE]]);
 	uint index = uint(baseInstanceIdx) + localIndex;
 
 	if (index >= maxInstances)
@@ -112,7 +112,7 @@ void main() {
 	bool            randomYaw = tp.flags.y != 0u;
 	bool            alignToTerrain = tp.flags.z != 0u;
 
-	float gridSize = [[CHUNK_SIZE]].0;
+	float gridSize = float([[CHUNK_SIZE]]);
 	float step = chunkSize / gridSize;
 
 	vec2 localOffset = vec2(float(x), float(y)) * step;
@@ -131,7 +131,7 @@ void main() {
 		return;
 
 	vec2 uv = (worldPos - chunkWorldOffset) / chunkSize;
-	vec2 remappedUV = (uv* [[CHUNK_SIZE]].0 + 0.5) / [[CHUNK_SIZE_PLUS_1]].0;
+	vec2 remappedUV = (uv* float([[CHUNK_SIZE]]) + 0.5) / float([[CHUNK_SIZE_PLUS_1]]);
 
 	vec4 terrainSample = textureLod(u_heightmapArray, vec3(remappedUV, chunkSlice), 0.0);
 

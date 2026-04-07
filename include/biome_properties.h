@@ -86,7 +86,7 @@ namespace Boidsish {
 			20.0f,
 			2.0f
 		}, // Lush
-	       // Grass
+		   // Grass
 		BiomeAttributes{
 			0.05f,
 			0.60f,
@@ -99,7 +99,7 @@ namespace Boidsish {
 			15.0f,
 			2.0f
 		}, // Dry
-	       // Grass
+		   // Grass
 		BiomeAttributes{
 			0.30f,
 			0.50f,
@@ -136,7 +136,7 @@ namespace Boidsish {
 			5.0f,
 			3.0f
 		}, // Brown
-	       // Rock
+		   // Rock
 		BiomeAttributes{
 			0.10f,
 			0.10f,
@@ -149,7 +149,7 @@ namespace Boidsish {
 			4.0f,
 			3.0f
 		}, // Grey
-	       // Rock
+		   // Rock
 		BiomeAttributes{
 			0.05f,
 			0.50f,

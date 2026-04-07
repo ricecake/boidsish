@@ -1040,6 +1040,15 @@ namespace Boidsish {
 			if (terrain_render_manager) {
 				terrain_render_manager->BindTerrainData(s);
 			}
+
+			if (atmosphere_manager) {
+				atmosphere_manager->BindTextures(20);
+				s.trySetInt("u_transmittanceLUT", 20);
+				s.trySetInt("u_skyViewLUT", 22);
+				s.trySetInt("u_aerialPerspectiveLUT", 23);
+				s.trySetFloat("u_atmosphereHeight", atmosphere_manager->GetAtmosphereHeight());
+			}
+
 			if (shadow_manager && shadow_manager->IsInitialized() && frame_config_.enable_shadows) {
 				shadow_manager->BindForRendering(s);
 				std::array<int, 10> shadow_indices;
@@ -1061,6 +1070,12 @@ namespace Boidsish {
 			shader_to_setup.use();
 			if (terrain_render_manager) {
 				terrain_render_manager->BindTerrainData(shader_to_setup);
+			}
+			if (atmosphere_manager) {
+				shader_to_setup.trySetInt("u_transmittanceLUT", 20);
+				shader_to_setup.trySetInt("u_skyViewLUT", 22);
+				shader_to_setup.trySetInt("u_aerialPerspectiveLUT", 23);
+				shader_to_setup.trySetFloat("u_atmosphereHeight", atmosphere_manager->GetAtmosphereHeight());
 			}
 			shader_to_setup.setBool("uUseMDI", false);
 			shader_to_setup.setBool("useSSBOInstancing", false);
@@ -1592,6 +1607,13 @@ namespace Boidsish {
 						glActiveTexture(GL_TEXTURE14);
 						glBindTexture(GL_TEXTURE_2D, compositor_->GetRefractionTexture());
 						s->trySetInt("refractionTexture", 14);
+
+						if (atmosphere_manager) {
+							s->trySetInt("u_transmittanceLUT", 20);
+							s->trySetInt("u_skyViewLUT", 22);
+							s->trySetInt("u_aerialPerspectiveLUT", 23);
+							s->trySetFloat("u_atmosphereHeight", atmosphere_manager->GetAtmosphereHeight());
+						}
 					}
 				}
 
@@ -1870,16 +1892,16 @@ namespace Boidsish {
 			sky_shader->setMat4("invView", glm::inverse(view));
 
 			if (atmosphere_manager) {
-				atmosphere_manager->BindTextures(10);
-				sky_shader->setInt("u_transmittanceLUT", 10);
-				sky_shader->setInt("u_multiScatteringLUT", 11);
-				sky_shader->setInt("u_skyViewLUT", 12);
+				atmosphere_manager->BindTextures(20);
+				sky_shader->setInt("u_transmittanceLUT", 20);
+				sky_shader->setInt("u_multiScatteringLUT", 21);
+				sky_shader->setInt("u_skyViewLUT", 22);
 
 				const auto& lights = light_manager.GetLights();
 				if (!lights.empty()) {
-					sky_shader->setVec3("u_sunRadiance", lights[0].color * lights[0].intensity * 20.0f);
+					sky_shader->setVec3("u_sunRadiance", lights[0].color * lights[0].intensity);
 					if (lights.size() >= 2) {
-						sky_shader->setVec3("u_moonRadiance", lights[1].color * lights[1].intensity * 10.0f);
+						sky_shader->setVec3("u_moonRadiance", lights[1].color * lights[1].intensity);
 						sky_shader->setVec3("u_moonDir", glm::normalize(-lights[1].direction));
 					} else {
 						sky_shader->setVec3("u_moonRadiance", glm::vec3(0.0f));
@@ -2032,10 +2054,8 @@ namespace Boidsish {
 				atmosphere_manager->SetColorVarianceStrength(atmosphere_effect->GetColorVarianceStrength());
 			}
 
-			// We multiply sun intensity by a large factor for the atmosphere model
-			// Standard directional light 1.0 is too dim for physical scattering.
-			// 20.0 is a reasonable physical-ish sun radiance.
-			atmosphere_manager->Update(sun_dir, sun_color, sun_intensity * 20.0f, camera.pos(), simulation_time);
+			// Update the atmosphere model with the current sun/moon light
+			atmosphere_manager->Update(sun_dir, sun_color, sun_intensity, camera.pos(), simulation_time);
 
 			// Sync ambient light from atmosphere to ensure decor and world match
 			glm::vec3 estimated_ambient = atmosphere_manager->GetAmbientEstimate();
@@ -2158,6 +2178,10 @@ namespace Boidsish {
 
 			prev_view_projection = current_vp;
 
+			if (atmosphere_manager) {
+				atmosphere_manager->BindTextures(20);
+			}
+
 			// Resource Preparation (Main Thread)
 			{
 				PROJECT_PROFILE_SCOPE("PrepareResources");
@@ -2234,15 +2258,49 @@ namespace Boidsish {
 				lighting_ubo_data_.view_dir = camera.front();
 
 				if (atmosphere_effect) {
-					lighting_ubo_data_.cloudShadowIntensity = ConfigManager::GetInstance().GetAppSettingFloat(
-						"cloud_shadow_intensity",
-						0.5f
+					auto& cfg = ConfigManager::GetInstance();
+					lighting_ubo_data_.cloudShadowIntensity = cfg.GetAppSettingFloat("cloud_shadow_intensity", 0.5f);
+
+					// Sync with atmosphere_effect based on ConfigManager
+					atmosphere_effect->SetCloudPhaseG1(cfg.GetAppSettingFloat("cloud_phase_g1", 0.7f));
+					atmosphere_effect->SetCloudPhaseG2(cfg.GetAppSettingFloat("cloud_phase_g2", -0.2f));
+					atmosphere_effect->SetCloudPhaseAlpha(cfg.GetAppSettingFloat("cloud_phase_alpha", 0.15f));
+					atmosphere_effect->SetCloudPhaseIsotropic(cfg.GetAppSettingFloat("cloud_phase_isotropic", 0.05f));
+					atmosphere_effect->SetCloudPowderScale(cfg.GetAppSettingFloat("cloud_powder_scale", 0.35f));
+					atmosphere_effect->SetCloudPowderMultiplier(
+						cfg.GetAppSettingFloat("cloud_powder_multiplier", 0.4f)
 					);
+					atmosphere_effect->SetCloudPowderLocalScale(
+						cfg.GetAppSettingFloat("cloud_powder_local_scale", 2.0f)
+					);
+					atmosphere_effect->SetCloudShadowOpticalDepthMultiplier(
+						cfg.GetAppSettingFloat("cloud_shadow_optical_depth_multiplier", 0.1f)
+					);
+					atmosphere_effect->SetCloudShadowStepMultiplier(
+						cfg.GetAppSettingFloat("cloud_shadow_step_multiplier", 0.1f)
+					);
+					atmosphere_effect->SetCloudSunLightScale(cfg.GetAppSettingFloat("cloud_sun_light_scale", 10.0f));
+					atmosphere_effect->SetCloudMoonLightScale(cfg.GetAppSettingFloat("cloud_moon_light_scale", 2.0f));
+					atmosphere_effect->SetCloudBeerPowderMix(cfg.GetAppSettingFloat("cloud_beer_powder_mix", 0.5f));
+
 					lighting_ubo_data_.cloudAltitude = atmosphere_effect->GetCloudAltitude();
 					lighting_ubo_data_.cloudThickness = atmosphere_effect->GetCloudThickness();
 					lighting_ubo_data_.cloudDensity = atmosphere_effect->GetCloudDensity();
 					lighting_ubo_data_.cloudCoverage = atmosphere_effect->GetCloudCoverage();
 					lighting_ubo_data_.cloudWarp = atmosphere_effect->GetCloudWarp();
+					lighting_ubo_data_.cloudPhaseG1 = atmosphere_effect->GetCloudPhaseG1();
+					lighting_ubo_data_.cloudPhaseG2 = atmosphere_effect->GetCloudPhaseG2();
+					lighting_ubo_data_.cloudPhaseAlpha = atmosphere_effect->GetCloudPhaseAlpha();
+					lighting_ubo_data_.cloudPhaseIsotropic = atmosphere_effect->GetCloudPhaseIsotropic();
+					lighting_ubo_data_.cloudPowderScale = atmosphere_effect->GetCloudPowderScale();
+					lighting_ubo_data_.cloudPowderMultiplier = atmosphere_effect->GetCloudPowderMultiplier();
+					lighting_ubo_data_.cloudPowderLocalScale = atmosphere_effect->GetCloudPowderLocalScale();
+					lighting_ubo_data_.cloudShadowOpticalDepthMultiplier = atmosphere_effect
+																			   ->GetCloudShadowOpticalDepthMultiplier();
+					lighting_ubo_data_.cloudShadowStepMultiplier = atmosphere_effect->GetCloudShadowStepMultiplier();
+					lighting_ubo_data_.cloudSunLightScale = atmosphere_effect->GetCloudSunLightScale();
+					lighting_ubo_data_.cloudMoonLightScale = atmosphere_effect->GetCloudMoonLightScale();
+					lighting_ubo_data_.cloudBeerPowderMix = atmosphere_effect->GetCloudBeerPowderMix();
 
 				} else {
 					lighting_ubo_data_.cloudShadowIntensity = 0.0f;
@@ -2251,6 +2309,12 @@ namespace Boidsish {
 				glBindBuffer(GL_UNIFORM_BUFFER, lighting_ubo);
 				glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(LightingUbo), &lighting_ubo_data_);
 				glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
+				// GPU-side copy of SH coefficients from SSBO into the UBO (no CPU readback)
+				if (atmosphere_manager) {
+					static_assert(offsetof(LightingUbo, sh_coeffs) == 768, "SH offset mismatch");
+					atmosphere_manager->CopySHToUBO(lighting_ubo, 768);
+				}
 			}
 
 			// Frustum UBO for generic passes
@@ -2401,6 +2465,9 @@ namespace Boidsish {
 				decor_manager->SetMinPixelSize(
 					ConfigManager::GetInstance().GetAppSettingFloat("foliage_culling_pixel_threshold", 8.0f)
 				);
+				if (atmosphere_manager) {
+					decor_manager->SetAtmosphereManager(atmosphere_manager.get());
+				}
 				decor_manager->Update(
 					simulation_delta_time,
 					camera,

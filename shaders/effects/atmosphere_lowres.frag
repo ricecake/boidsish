@@ -4,6 +4,7 @@ out vec4 FragColor;
 in vec2 TexCoords;
 
 uniform sampler2D depthTexture;
+// u_transmittanceLUT is declared in helpers/lighting.glsl
 
 uniform mat4 invView;
 uniform mat4 invProjection;
@@ -32,6 +33,36 @@ vec3 sampleSkyView(vec3 rd) {
 	return texture(u_skyViewLUT, vec2(u, v)).rgb;
 }
 
+vec3 evalSHIrradiance(vec3 n) {
+	// Constants for SH basis functions
+	float c1 = 0.282095;
+	float c2 = 0.488603;
+	float c3 = 1.092548;
+	float c4 = 0.315392;
+	float c5 = 0.546274;
+
+	// Cosine lobe convolution (irradiance) coefficients
+	// A0 = PI, A1 = 2*PI/3, A2 = PI/4
+	float a0 = 3.141593;
+	float a1 = 2.094395;
+	float a2 = 0.785398;
+
+	vec3 res = vec3(0.0);
+
+	// L0
+	res += a0 * c1 * sh_coeffs[0].rgb;
+
+	// L1
+	res += a1 * c2 * (sh_coeffs[1].rgb * n.y + sh_coeffs[2].rgb * n.z + sh_coeffs[3].rgb * n.x);
+
+	// L2
+	res += a2 * c3 * (sh_coeffs[4].rgb * n.x * n.y + sh_coeffs[5].rgb * n.y * n.z + sh_coeffs[7].rgb * n.x * n.z);
+	res += a2 * c4 * sh_coeffs[6].rgb * (3.0 * n.z * n.z - 1.0);
+	res += a2 * c5 * sh_coeffs[8].rgb * (n.x * n.x - n.y * n.y);
+
+	return max(res, 0.0);
+}
+
 void main() {
 	float depth = texture(depthTexture, TexCoords).r;
 	vec3  zenithRadiance = sampleSkyView(vec3(0, 1, 0)) * 4.0;
@@ -51,10 +82,17 @@ void main() {
 		worldPos = viewPos + rayDir * dist;
 	}
 
-	float baseFloor = (cloudAltitude - 10.0) * worldScale;
-	float baseCeiling = (cloudAltitude + cloudThickness + 300.0) * worldScale;
-	float R_floor = R_earth + baseFloor;
-	float R_ceiling = R_earth + baseCeiling;
+	// Dynamic cloud parameters
+	CloudProperties props;
+	props.altitude = cloudAltitude;
+	props.thickness = cloudThickness;
+	props.densityBase = cloudDensity;
+	props.coverage = cloudCoverage;
+	props.worldScale = worldScale;
+
+	// Wide vertical bounds for intersection (covering all possible dynamic offsets)
+	float R_floor = R_earth + (cloudAltitude - 100.0) * worldScale;
+	float R_ceiling = R_earth + (cloudAltitude + cloudThickness + 1100.0) * worldScale;
 
 	vec3 earthCenter = vec3(viewPos.x, -R_earth, viewPos.z);
 	vec3 relRo = viewPos - earthCenter;
@@ -87,16 +125,17 @@ void main() {
 		int samples = 48;
 		int shadow_samples = 4;
 
+		// Capture primary light direction for multi-direction ambient sampling
+		vec3 primaryLightDir = vec3(0, 1, 0);
+		for (int j = 0; j < num_lights; j++) {
+			if (lights[j].type == LIGHT_TYPE_DIRECTIONAL) {
+				primaryLightDir = normalize(-lights[j].direction);
+				break;
+			}
+		}
+
 		float jitter = fastBlueNoise(TexCoords * 10.0 + vec2(sin(time * 0.07), cos(time * -0.05)));
 		float stepSize = (t_end - t_start) / float(samples);
-
-		vec3  local = viewPos + rayDir * t_start;
-		float adjustedTime = dayTime * smoothstep(0, 1, dayTime) * smoothstep(24, 23, dayTime);
-		vec3  localWeatherDelta = fastCurl3d((local.xyz / (1000 * worldScale)) + vec3(time * 0.001));
-		float localWeather =
-			(fastWorley3d(vec3((local.xz + adjustedTime * localWeatherDelta.xz) / (4000 * worldScale), time * 0.005)) *
-		         0.5 +
-		     0.5);
 
 		for (int i = 0; i < samples; i++) {
 			float t = t_start + (float(i) + jitter) * stepSize;
@@ -107,17 +146,28 @@ void main() {
 			vec3 p_curved = p;
 			p_curved.y = length(p - earthCenter) - R_earth;
 
-			float d = calculateCloudDensity(
-				p_curved,
-				localWeather,
-				cloudAltitude,
-				cloudThickness,
-				cloudDensity,
-				cloudCoverage,
-				worldScale,
-				time,
-				false
-			);
+			// Sample weather at current ray position to avoid depth dependency
+			float weatherWarpFactor = 1.0;
+			vec3  p_curved_warped = vec3(0);
+			if (cloudWarp > 0.0) {
+				float camDist = length(p.xz - viewPos.xz);
+				// weatherWarpFactor = smoothstep(0.0, cloudWarp * worldScale, camDist);
+				p_curved_warped = getWarpedCloudPos(p_curved, weatherWarpFactor);
+			}
+
+			vec2  weatherUV = p.xz / (4000.0 * worldScale);
+			float weatherMap = weatherWarpFactor * (fastWorley3d(vec3(weatherUV, time * 0.001)) * 0.5 + 0.5);
+
+			vec2  heightUV = p.xz / (2500.0 * worldScale);
+			float heightMap = weatherWarpFactor * (fastWorley3d(vec3(heightUV, time * 0.0004)) * 0.5 + 0.5);
+
+			CloudWeather weather;
+			weather.weatherMap = weatherMap;
+			weather.heightMap = heightMap;
+
+			CloudLayer layer = computeCloudLayer(weather, props);
+
+			float d = calculateCloudDensity(p_curved_warped, weather, layer, props, time, false);
 			if (d <= 0.01)
 				continue;
 
@@ -130,39 +180,74 @@ void main() {
 					continue;
 				}
 
-				vec3  L = normalize(-lights[j].direction);
+				vec3 L = normalize(-lights[j].direction);
+
+				vec3  voxelToCenter = p - earthCenter;
+				float r = length(voxelToCenter);
+				float r_world = length(p - earthCenter);
+				float r_km = r_world / (1000.0 * worldScale);
+				float mu = dot(voxelToCenter / r, L);
 				float cosTheta = dot(rayDir, L);
 				float phase = cloudPhase(cosTheta);
 
 				float shadowDensity = 0.0;
-				float shadowStepSize = (baseCeiling - baseFloor) / float(shadow_samples) * 0.1;
+				// float shadowStepSize = layer.thickness / float(shadow_samples) * cloudShadowStepMultiplier;
+				// intersectSphere(p, L, R_ceiling);
+
+				float st_start = 1e10;
+				float st_end = -1e10;
+
+				float t0, t1;
+				if (intersectSphere(p, L, R_ceiling, t0, t1)) {
+					st_start = max(0.0, t0);
+					st_end = t1;
+
+					if (intersectSphere(p, L, R_floor, t0, t1)) {
+						if (t0 < 0.0) {
+							st_start = max(t_start, t1);
+						} else {
+							st_end = min(t_end, t0);
+						}
+					}
+				}
+
+				// vec2 transUV = transmittanceToUV(r, mu);
+				vec2 transUV = transmittanceToUV(r_km, mu);
+				vec3 sunTransmittance = texture(u_transmittanceLUT, transUV).rgb;
+
+				float shadowStepSize = (st_end - st_start) / float(shadow_samples);
 				for (int k = 0; k < shadow_samples; k++) {
 					vec3 sp = p + L * (float(k) + 0.5) * shadowStepSize;
 					vec3 sp_curved = sp;
 					sp_curved.y = length(sp - earthCenter) - R_earth;
 
-					shadowDensity += calculateCloudDensity(
-						sp_curved,
-						localWeather,
-						cloudAltitude,
-						cloudThickness,
-						cloudDensity,
-						cloudCoverage,
-						worldScale,
-						time,
-						true
-					);
+					shadowDensity += calculateCloudDensity(sp_curved, weather, layer, props, time, true);
 				}
-				float opticalDepthToLight = shadowDensity * shadowStepSize * 0.01;
-				float shadowTerm = mix(beerPowder(opticalDepthToLight, d), exp(-opticalDepthToLight) * 0.5, 0.0);
+				float opticalDepthToLight = shadowDensity * shadowStepSize * cloudShadowOpticalDepthMultiplier;
+				float shadowTerm = mix(
+					beerPowder(opticalDepthToLight, d),
+					exp(-opticalDepthToLight),
+					cloudBeerPowderMix
+				);
 
-				stepScattering += lights[j].color * shadowTerm * phase * lights[j].intensity * (j == 0 ? 10.0 : 2.0);
+				// stepScattering += sunTransmittance * lights[j].color * shadowTerm * phase * lights[j].intensity * (j
+				// == 0 ? cloudSunLightScale : cloudMoonLightScale);
+				stepScattering += sunTransmittance * shadowTerm * phase * lights[j].intensity *
+					(j == 0 ? cloudSunLightScale : cloudMoonLightScale);
 			}
 
-			vec3 ambient = mix(ambient_light, zenithRadiance, 0.5) * 0.5;
-			vec3 S = (stepScattering + ambient);
+			// Multi-direction SH ambient: blend overhead sky with sun-facing horizon.
+			// At sunset the horizon sample carries warm orange/red tones.
+			// Scale ambient down at low sun angles so warm direct light dominates.
+			vec3  ambientUp = evalSHIrradiance(vec3(0, 1, 0));
+			vec3  ambientHorizon = evalSHIrradiance(normalize(vec3(primaryLightDir.x, 0.15, primaryLightDir.z)));
+			float sunHeight = max(primaryLightDir.y, 0.0);
+			float ambientScale = mix(0.3, 1.0, smoothstep(0.0, 0.3, sunHeight));
+			vec3  ambient = mix(ambientUp, ambientHorizon, 0.4) * ambientScale;
+			vec3  S = (stepScattering + ambient);
 
-			lightEnergy += cloudTransmittance * S * stepDensity;
+			// lightEnergy += cloudTransmittance * S * stepDensity;
+			lightEnergy += cloudTransmittance * S * (1.0 - transmittanceAtStep);
 			cloudTransmittance *= transmittanceAtStep;
 
 			if (cloudTransmittance < 0.01) {
@@ -170,7 +255,7 @@ void main() {
 			}
 		}
 
-		cloudColor = lightEnergy * cloudColorUniform;
+		cloudColor = lightEnergy; // * cloudColorUniform;
 	}
 
 	FragColor = vec4(cloudColor, cloudTransmittance);

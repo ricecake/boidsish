@@ -3,7 +3,7 @@
 layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
 layout(rgba32f, binding = 0) uniform image3D outAerialPerspective;
 
-uniform sampler2D u_transmittanceLUT;
+// u_transmittanceLUT is declared in common.glsl
 uniform sampler2D u_multiScatteringLUT;
 
 uniform vec3 u_sunDir;

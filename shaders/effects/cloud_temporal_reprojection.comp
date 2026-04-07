@@ -65,7 +65,7 @@ void main() {
 	history = clamp(history, minColor, maxColor);
 
 	// Blend: higher alpha = more history = smoother but more lag
-	vec4 result = mix(current, history, uBlendAlpha);
+	vec4 result = mix(current, history, 0.95); // uBlendAlpha);
 
 	imageStore(outResult, pixel, result);
 }

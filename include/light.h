@@ -38,24 +38,37 @@ namespace Boidsish {
 	 * Replaces 8 separate glBufferSubData calls with one for better GPU throughput.
 	 */
 	struct alignas(16) LightingUbo {
-		LightGPU lights[10];                 // offset 0,   640 bytes
-		int      num_lights;                 // offset 640, 4 bytes
-		float    world_scale;                // offset 644, 4 bytes
-		float    day_time;                   // offset 648, 4 bytes (0-24)
-		float    night_factor;               // offset 652, 4 bytes (0-1)
-		alignas(16) glm::vec3 view_pos;      // offset 656, 12 bytes
-		float cloudShadowIntensity;          // offset 668, 4 bytes
-		alignas(16) glm::vec3 ambient_light; // offset 672, 12 bytes
-		float time;                          // offset 684, 4 bytes
-		alignas(16) glm::vec3 view_dir;      // offset 688, 12 bytes
-		float cloudAltitude;                 // offset 700, 4 bytes
-		float cloudThickness;                // offset 704, 4 bytes
-		float cloudDensity;                  // offset 708, 4 bytes
-		float cloudCoverage;                 // offset 712, 4 bytes
-		float cloudWarp;                     // offset 716, 4 bytes
-	}; // Total: 720 bytes
+		LightGPU lights[10];                     // offset 0,   640 bytes
+		int      num_lights;                     // offset 640, 4 bytes
+		float    world_scale;                    // offset 644, 4 bytes
+		float    day_time;                       // offset 648, 4 bytes (0-24)
+		float    night_factor;                   // offset 652, 4 bytes (0-1)
+		alignas(16) glm::vec3 view_pos;          // offset 656, 12 bytes
+		float cloudShadowIntensity;              // offset 668, 4 bytes
+		alignas(16) glm::vec3 ambient_light;     // offset 672, 12 bytes
+		float time;                              // offset 684, 4 bytes
+		alignas(16) glm::vec3 view_dir;          // offset 688, 12 bytes
+		float cloudAltitude;                     // offset 700, 4 bytes
+		float cloudThickness;                    // offset 704, 4 bytes
+		float cloudDensity;                      // offset 708, 4 bytes
+		float cloudCoverage;                     // offset 712, 4 bytes
+		float cloudWarp;                         // offset 716, 4 bytes
+		float cloudPhaseG1;                      // offset 720, 4 bytes
+		float cloudPhaseG2;                      // offset 724, 4 bytes
+		float cloudPhaseAlpha;                   // offset 728, 4 bytes
+		float cloudPhaseIsotropic;               // offset 732, 4 bytes
+		float cloudPowderScale;                  // offset 736, 4 bytes
+		float cloudPowderMultiplier;             // offset 740, 4 bytes
+		float cloudPowderLocalScale;             // offset 744, 4 bytes
+		float cloudShadowOpticalDepthMultiplier; // offset 748, 4 bytes
+		float cloudShadowStepMultiplier;         // offset 752, 4 bytes
+		float cloudSunLightScale;                // offset 756, 4 bytes
+		float cloudMoonLightScale;               // offset 760, 4 bytes
+		float cloudBeerPowderMix;                // offset 764, 4 bytes
+		alignas(16) glm::vec4 sh_coeffs[9];      // offset 768, 144 bytes
+	}; // Total: 912 bytes
 
-	static_assert(sizeof(LightingUbo) == 720, "LightingUbo must be 720 bytes for UBO alignment");
+	static_assert(sizeof(LightingUbo) == 912, "LightingUbo must be 912 bytes for UBO alignment");
 
 	/**
 	 * @brief Light source data structure for rendering.

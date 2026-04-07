@@ -16,8 +16,14 @@ namespace Boidsish {
 			float speed = 0.0125f; // Rate of time passage
 			bool  paused = false;
 			float night_factor = 0.0f; // 0.0 (day) to 1.0 (night)
-			float moon_offset = 12.0f; // Hours offset from sun
+			float moon_offset = 12.0f; // Hours offset from sun (base, before phase drift)
 			float moon_azimuth = 70.0f;
+
+			// Lunar phase cycle — the moon's offset drifts over a ~29.5 day period
+			// creating the full → half → new → half → full cycle
+			float                  moon_phase_days = 0.0f;
+			float                  lunar_albedo = 0.12f;
+			static constexpr float kLunarMonth = 29.53f;
 		};
 
 		int                 AddLight(const Light& light);
