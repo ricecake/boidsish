@@ -73,25 +73,34 @@ namespace Boidsish {
 		float sensitivity_factor = 20.0f / (forward_speed_ + 5.0f);
 		sensitivity_factor = std::clamp(sensitivity_factor, 0.2f, 2.0f);
 
-		const float kPitchSpeed = 1.5f * sensitivity_factor;
-		const float kYawSpeed = 0.4f * sensitivity_factor; // Sluggish yaw
-		const float kRollSpeed = 3.0f * sensitivity_factor;
+		// Adjust sensitivity based on control and direction
+		// Pitch up and roll should be much less affected by damping
+		float pitch_up_sensitivity = std::max(sensitivity_factor, 0.8f);
+		float roll_sensitivity = std::max(sensitivity_factor, 0.7f);
+		// Yaw should be less affected
+		float yaw_sensitivity = std::max(sensitivity_factor, 0.5f);
+		// Pitch down is fully affected (encourages rolling and pulling up)
+		float pitch_down_sensitivity = sensitivity_factor;
+
+		const float kBasePitchSpeed = 1.5f;
+		const float kBaseYawSpeed = 0.4f; // Sluggish yaw
+		const float kBaseRollSpeed = 3.0f;
 		const float kAutoLevelSpeed = 1.5f;
 		const float kDamping = 2.5f;
 
 		glm::vec3 target_rot_velocity = glm::vec3(0.0f);
 		if (controller_->pitch_up)
-			target_rot_velocity.x += kPitchSpeed;
+			target_rot_velocity.x += kBasePitchSpeed * pitch_up_sensitivity;
 		if (controller_->pitch_down)
-			target_rot_velocity.x -= kPitchSpeed;
+			target_rot_velocity.x -= kBasePitchSpeed * pitch_down_sensitivity;
 		if (controller_->yaw_left)
-			target_rot_velocity.y += kYawSpeed;
+			target_rot_velocity.y += kBaseYawSpeed * yaw_sensitivity;
 		if (controller_->yaw_right)
-			target_rot_velocity.y -= kYawSpeed;
+			target_rot_velocity.y -= kBaseYawSpeed * yaw_sensitivity;
 		if (controller_->roll_left)
-			target_rot_velocity.z += kRollSpeed;
+			target_rot_velocity.z += kBaseRollSpeed * roll_sensitivity;
 		if (controller_->roll_right)
-			target_rot_velocity.z -= kRollSpeed;
+			target_rot_velocity.z -= kBaseRollSpeed * roll_sensitivity;
 
 		// Coordinated Turn (Banking)
 		target_rot_velocity.z += target_rot_velocity.y * 0.8f;
