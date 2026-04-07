@@ -12,8 +12,7 @@ struct Light {
 };
 
 struct AmbientProbe {
-	vec4 pos;   // xyz = position, w = radius/scale
-	vec4 color; // rgb = ambient irradiance, w = unused
+	vec4 sh_coeffs[9]; // rgb = coefficients, w = unused
 };
 
 const int MAX_LIGHTS = [[MAX_LIGHTS]];
@@ -46,14 +45,40 @@ layout(std140) uniform Lighting {
 	float cloudShadowOpticalDepthMultiplier;
 	float cloudShadowStepMultiplier;
 	float cloudSunLightScale;
-	float        cloudMoonLightScale;
-	float        cloudBeerPowderMix;
-	AmbientProbe probes[5];
-	vec4         sh_coeffs[9];
+	float cloudMoonLightScale;
+	float cloudBeerPowderMix;
+	vec4  sh_coeffs[9];
 };
 
+#ifndef TERRAIN_DATA_BLOCK
+#define TERRAIN_DATA_BLOCK
+layout(std140, binding = [[TERRAIN_DATA_BINDING]]) uniform TerrainData {
+	ivec4 u_originSize;    // x, z, size, is_bound
+	vec4  u_terrainParams; // chunkSize, worldScale
+};
+#endif
+
+#ifndef TERRAIN_PROBES_BLOCK
+#define TERRAIN_PROBES_BLOCK
+layout(std430, binding = [[TERRAIN_PROBES_BINDING]]) buffer TerrainProbes {
+	AmbientProbe u_terrainProbes[];
+};
+#endif
+
+struct BiomeShaderProperties {
+	vec4 albedo_roughness; // rgb = albedo, w = roughness
+	vec4 params;           // x = metallic, y = detailStrength, z = detailScale, w = noiseType
+};
+
+#ifndef BIOME_DATA_BLOCK
+#define BIOME_DATA_BLOCK
+layout(std140, binding = [[BIOME_DATA_BINDING]]) uniform BiomeData {
+	BiomeShaderProperties u_biomes[8];
+};
+#endif
+
 // Shadow mapping UBO (binding set via glUniformBlockBinding to point 2)
-layout(std140) uniform Shadows {
+layout(std140, binding = 2) uniform Shadows {
 	mat4 lightSpaceMatrices[MAX_SHADOW_MAPS];
 	vec4 cascadeSplits;
 	int  numShadowLights;

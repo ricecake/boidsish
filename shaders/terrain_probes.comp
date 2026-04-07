@@ -1,0 +1,59 @@
+#version 430 core
+
+layout(local_size_x = 8, local_size_y = 8) in;
+
+#include "helpers/constants.glsl"
+
+#include "helpers/lighting.glsl"
+
+uniform isampler2D u_chunkGrid;
+uniform sampler2DArray u_heightmapArray;
+uniform sampler2DArray u_biomeMap;
+
+void main() {
+	ivec2 chunkCoord = ivec2(gl_GlobalInvocationID.xy);
+	if (chunkCoord.x >= u_originSize.z || chunkCoord.y >= u_originSize.z)
+		return;
+
+	int slice = texelFetch(u_chunkGrid, chunkCoord, 0).r;
+	if (slice < 0) {
+		// Output default sky SH for inactive chunks
+		for (int i = 0; i < 9; ++i) {
+			u_terrainProbes[chunkCoord.y * u_originSize.z + chunkCoord.x].sh_coeffs[i] = sh_coeffs[i];
+		}
+		return;
+	}
+
+	// Sample chunk center properties
+	vec2 centerUV = vec2(0.5);
+	vec3 sampledHeightNorm = texture(u_heightmapArray, vec3(centerUV, float(slice))).rgb;
+	vec2 biomeInfo = texture(u_biomeMap, vec3(centerUV, float(slice))).rg;
+
+	int lowIdx = int(biomeInfo.x);
+	float t = biomeInfo.y;
+	vec3 albedo = mix(u_biomes[lowIdx].albedo_roughness.rgb, u_biomes[min(lowIdx + 1, 7)].albedo_roughness.rgb, t);
+
+	// Estimate local environment irradiance (Ground bounce)
+	// For simplicity, we assume ground bounce is tinted by albedo and ambient sky light
+	vec3 groundColor = ambient_light * (0.4 + 0.6 * albedo);
+
+	// Update SH coefficients for this chunk
+	// Combine sky SH with a downward-facing ground lobe
+	// L0 contribution from ground bounce
+	float c1 = 0.282095;
+	vec3 groundL0 = groundColor * 0.5; // Scale to prevent over-brightening
+
+	for (int i = 0; i < 9; ++i) {
+		vec3 sh = sh_coeffs[i].rgb;
+
+		// Add ground bounce to L0 (index 0) and L1.y (index 1, downward direction)
+		if (i == 0) {
+			sh += groundL0;
+		} else if (i == 1) {
+			// n.y = -1 lobe for ground bounce contribution
+			sh -= groundColor * 0.488603 * 0.3;
+		}
+
+		u_terrainProbes[chunkCoord.y * u_originSize.z + chunkCoord.x].sh_coeffs[i] = vec4(sh, 1.0);
+	}
+}
