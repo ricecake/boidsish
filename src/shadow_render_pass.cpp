@@ -223,6 +223,10 @@ namespace Boidsish {
 
 			for (int map_idx : map_indices) {
 				const auto& info = shadow_map_registry_[map_idx];
+				bool        enable_color = (info.light == &light_manager_.GetLights()[0] ||
+				                     (light_manager_.GetLights().size() > 1 &&
+				                      info.light == &light_manager_.GetLights()[1]));
+
 				shadow_manager_.BeginShadowPass(
 					info.map_index,
 					*info.light,
@@ -232,7 +236,9 @@ namespace Boidsish {
 					frame.view,
 					frame.camera_fov,
 					(float)frame.window_width / (float)frame.window_height,
-					true
+					true,
+					enable_color,
+					false // Temporal fade - don't clear color
 				);
 
 				decor_manager_.Render(
@@ -250,6 +256,10 @@ namespace Boidsish {
 			const auto& info = shadow_map_registry_[map_idx];
 			auto&       state = shadow_map_states_[map_idx];
 
+			bool enable_color = (info.light == &light_manager_.GetLights()[0] ||
+			                     (light_manager_.GetLights().size() > 1 &&
+			                      info.light == &light_manager_.GetLights()[1]));
+
 			shadow_manager_.BeginShadowPass(
 				info.map_index,
 				*info.light,
@@ -259,7 +269,9 @@ namespace Boidsish {
 				frame.view,
 				frame.camera_fov,
 				(float)frame.window_width / (float)frame.window_height,
-				false // DO NOT CLEAR — keep decor shadows
+				false, // DO NOT CLEAR — keep decor shadows
+				enable_color,
+				false // DO NOT CLEAR COLOR
 			);
 
 			render_shapes(shadow_manager_.GetLightSpaceMatrix(info.map_index));

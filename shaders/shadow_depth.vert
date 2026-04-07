@@ -2,6 +2,7 @@
 #extension GL_GOOGLE_include_directive : enable
 
 layout(location = 0) in vec3 aPos;
+layout(location = 1) in vec3 aNormal;
 layout(location = 9) in ivec4 aBoneIDs;
 layout(location = 10) in vec4 aWeights;
 
@@ -32,6 +33,7 @@ uniform bool uUseMDI = false;
 uniform bool useSSBOInstancing = false;
 uniform mat4 lightSpaceMatrix;
 uniform mat4 model;
+uniform vec4  color = vec4(1.0);
 uniform mat4 finalBonesMatrices[100];
 uniform bool use_skinning = false;
 uniform int  bone_matrices_offset = -1;
@@ -45,6 +47,8 @@ uniform vec3  dissolve_plane_normal = vec3(0, 1, 0);
 uniform float dissolve_plane_dist = 0.0;
 
 out vec3     FragPos;
+out vec3     Normal;
+out vec4     vColor;
 flat out int vUniformIndex;
 
 void main() {
@@ -91,6 +95,12 @@ void main() {
 
 	vec3 worldPos = vec3(modelMatrix * vec4(displacedPos, 1.0));
 	FragPos = worldPos;
+
+	vec3 normalInput = aNormal;
+	if (length(normalInput) < 0.1) normalInput = vec3(0, 1, 0);
+	Normal = normalize(mat3(transpose(inverse(modelMatrix))) * normalInput);
+
+	vColor = use_ssbo ? uniforms_data[vUniformIndex].color : color;
 
 	// Apply sway for decor (matches vis.vert logic)
 	if (current_useSSBOInstancing) {

@@ -1055,7 +1055,7 @@ namespace Boidsish {
 			}
 
 			if (shadow_manager && shadow_manager->IsInitialized() && frame_config_.enable_shadows) {
-				shadow_manager->BindForRendering(s);
+				shadow_manager->BindForRendering(s, 10, 16);
 				std::array<int, 10> shadow_indices;
 				shadow_indices.fill(-1);
 				const auto& all_lights = light_manager.GetLights();
@@ -1064,7 +1064,8 @@ namespace Boidsish {
 				}
 				s.setIntArray("lightShadowIndices", shadow_indices.data(), 10);
 			} else {
-				s.setInt("shadowMaps", 4);
+				s.setInt("shadowMaps", 10);
+				s.setInt("shadowColorMaps", 16);
 				std::array<int, 10> shadow_indices;
 				shadow_indices.fill(-1);
 				s.setIntArray("lightShadowIndices", shadow_indices.data(), 10);

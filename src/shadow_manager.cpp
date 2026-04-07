@@ -22,6 +22,9 @@ namespace Boidsish {
 		if (shadow_map_array_ != 0) {
 			glDeleteTextures(1, &shadow_map_array_);
 		}
+		if (shadow_color_map_array_ != 0) {
+			glDeleteTextures(1, &shadow_color_map_array_);
+		}
 		if (shadow_ubo_ != 0) {
 			glDeleteBuffers(1, &shadow_ubo_);
 		}
@@ -61,6 +64,26 @@ namespace Boidsish {
 		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
 		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
 
+		// Create shadow color texture array (for indirect/reflected light)
+		glGenTextures(1, &shadow_color_map_array_);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, shadow_color_map_array_);
+		glTexImage3D(
+			GL_TEXTURE_2D_ARRAY,
+			0,
+			GL_RGBA8,
+			kShadowMapSize,
+			kShadowMapSize,
+			kMaxShadowMaps,
+			0,
+			GL_RGBA,
+			GL_UNSIGNED_BYTE,
+			nullptr
+		);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+
 		// Create shadow framebuffer
 		glGenFramebuffers(1, &shadow_fbo_);
 		glBindFramebuffer(GL_FRAMEBUFFER, shadow_fbo_);
@@ -68,11 +91,16 @@ namespace Boidsish {
 		glDrawBuffer(GL_NONE);
 		glReadBuffer(GL_NONE);
 
-		// Clear all shadow map layers to max depth (1.0)
+		// Clear all shadow map layers to max depth (1.0) and zero color
 		// This ensures unused layers don't cause artifacts
-		glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, shadow_map_array_, 0);
+		glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
 		glClearDepth(1.0);
-		glClear(GL_DEPTH_BUFFER_BIT);
+		for (int i = 0; i < kMaxShadowMaps; ++i) {
+			glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, shadow_map_array_, 0, i);
+			glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, shadow_color_map_array_, 0, i);
+			glDrawBuffer(GL_COLOR_ATTACHMENT0);
+			glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
+		}
 
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
@@ -105,7 +133,9 @@ namespace Boidsish {
 		const glm::mat4& view,
 		float            fov,
 		float            aspect,
-		bool             clear
+		bool             clear,
+		bool             enable_color,
+		bool             clear_color
 	) {
 		PROJECT_PROFILE_SCOPE("ShadowManager::BeginShadowPass");
 		if (!initialized_ || map_index >= kMaxShadowMaps) {
@@ -251,6 +281,23 @@ namespace Boidsish {
 		glBindFramebuffer(GL_FRAMEBUFFER, shadow_fbo_);
 		glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, shadow_map_array_, 0, map_index);
 
+		if (enable_color) {
+			glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, shadow_color_map_array_, 0, map_index);
+			glDrawBuffer(GL_COLOR_ATTACHMENT0);
+
+			if (clear_color) {
+				glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+				glClear(GL_COLOR_BUFFER_BIT);
+			}
+
+			// Temporal accumulation: alpha blending to fade over time
+			glEnable(GL_BLEND);
+			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		} else {
+			glDrawBuffer(GL_NONE);
+			glDisable(GL_BLEND);
+		}
+
 		glViewport(0, 0, kShadowMapSize, kShadowMapSize);
 		if (clear) {
 			glClear(GL_DEPTH_BUFFER_BIT);
@@ -263,11 +310,14 @@ namespace Boidsish {
 		// Set up shadow shader
 		shadow_shader_->use();
 		shadow_shader_->setMat4("lightSpaceMatrix", light_space_matrices_[map_index]);
+		shadow_shader_->setBool("uEnableColor", enable_color);
 	}
 
 	void ShadowManager::EndShadowPass() {
 		// Restore culling state
 		glCullFace(GL_BACK);
+		glDisable(GL_BLEND);
+		glDrawBuffer(GL_NONE);
 	}
 
 	const glm::mat4& ShadowManager::GetLightSpaceMatrix(int map_index) const {
@@ -328,16 +378,19 @@ namespace Boidsish {
 		return frustum;
 	}
 
-	void ShadowManager::BindForRendering(Shader& shader, int texture_unit) {
+	void ShadowManager::BindForRendering(Shader& shader, int texture_unit, int color_texture_unit) {
 		glActiveTexture(GL_TEXTURE0 + texture_unit);
 		glBindTexture(GL_TEXTURE_2D_ARRAY, shadow_map_array_);
 		shader.use();
 		shader.setInt("shadowMaps", texture_unit);
+
+		glActiveTexture(GL_TEXTURE0 + color_texture_unit);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, shadow_color_map_array_);
+		shader.setInt("shadowColorMaps", color_texture_unit);
 	}
 
 	void ShadowManager::UpdateShadowUBO(const std::vector<Light*>& shadow_lights) {
 		// Active shadow maps might be more than shadow lights due to CSM
-		// But for the UBO, we just want to upload all used matrices
 
 		glBindBuffer(GL_UNIFORM_BUFFER, shadow_ubo_);
 
