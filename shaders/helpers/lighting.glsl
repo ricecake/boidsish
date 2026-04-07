@@ -85,16 +85,15 @@ float calculateCloudShadow(int light_index, vec3 frag_pos) {
 	// often falls outside the layer due to altitude offsets from the height map
 	cloudPos.y = (layer.baseFloor + layer.baseCeiling) * 0.5;
 
-	float d = calculateCloudDensity(
+	float d = calculateCloudShadowDensity(
 		cloudPos,
 		weather,
 		layer,
 		props,
-		time,
-		true
+		time
 	);
 
-	return mix(1.0, exp(-d * 3.0), cloudShadowIntensity);
+	return mix(1.0, exp(-d), cloudShadowIntensity);
 }
 
 /**
@@ -452,7 +451,6 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 		calculateLightContribution(i, frag_pos, L, base_attenuation);
 
 		vec3  H = normalize(V + L);
-		float distance = length(lights[i].position - frag_pos);
 
 		// For PBR, we apply intensity boost to compensate for energy conservation
 		// Note: directional lights don't use distance attenuation
@@ -589,8 +587,14 @@ vec4 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, floa
 
 		float NdotL = max(dot(N, L), 0.0);
 
-		vec3 specular_radiance = specular * radiance * NdotL;
-		Lo += (kD * albedo / PI) * radiance * NdotL + specular_radiance;
+		// Apply cloud shadow for directional lights
+		float shadow = 1.0;
+		if (lights[i].type == LIGHT_TYPE_DIRECTIONAL) {
+			shadow *= calculateCloudShadow(i, frag_pos);
+		}
+
+		vec3 specular_radiance = specular * radiance * NdotL * shadow;
+		Lo += (kD * albedo / PI) * radiance * NdotL * shadow + specular_radiance;
 		spec_lum += get_luminance(specular_radiance);
 	}
 
@@ -636,6 +640,9 @@ vec4 apply_lighting(vec3 frag_pos, vec3 normal, vec3 albedo, float specular_stre
 			float r = kEarthRadiusKM + (frag_pos.y / (1000.0 * worldScale));
 			float mu = light_dir.y;
 			atmosphereTransmittance = texture(u_transmittanceLUT, getTransmittanceUV(r, mu)).rgb;
+
+			// Apply cloud shadow
+			shadow *= calculateCloudShadow(i, frag_pos);
 		}
 
 		// Diffuse
@@ -672,10 +679,14 @@ vec4 apply_lighting_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, float sp
 
 		// Atmospheric attenuation for directional light
 		vec3 atmosphereTransmittance = vec3(1.0);
+		float shadow = 1.0;
 		if (lights[i].type == LIGHT_TYPE_DIRECTIONAL) {
 			float r = kEarthRadiusKM + (frag_pos.y / (1000.0 * worldScale));
 			float mu = light_dir.y;
 			atmosphereTransmittance = texture(u_transmittanceLUT, getTransmittanceUV(r, mu)).rgb;
+
+			// Apply cloud shadow
+			shadow *= calculateCloudShadow(i, frag_pos);
 		}
 
 		// Diffuse
@@ -687,9 +698,9 @@ vec4 apply_lighting_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, float sp
 		vec3  reflect_dir = reflect(-light_dir, normal);
 		float spec = pow(max(dot(view_dir, reflect_dir), 0.0), 32);
 		vec3  specular_contribution = lights[i].color * atmosphereTransmittance * spec * specular_strength *
-			lights[i].intensity * attenuation;
+			lights[i].intensity * shadow * attenuation;
 
-		result += (diffuse * lights[i].intensity * attenuation) + specular_contribution;
+		result += (diffuse * lights[i].intensity * shadow * attenuation) + specular_contribution;
 		spec_lum += get_luminance(specular_contribution);
 	}
 
@@ -795,7 +806,13 @@ vec4 apply_lighting_pbr_iridescent_no_shadows(
 		float denominator = 4.0 * NdotV * NdotL + 0.0001;
 		vec3  specular = numerator / denominator;
 
-		vec3 specular_contribution = specular * radiance * NdotL;
+		// Apply cloud shadow for directional lights
+		float shadow = 1.0;
+		if (lights[i].type == LIGHT_TYPE_DIRECTIONAL) {
+			shadow *= calculateCloudShadow(i, frag_pos);
+		}
+
+		vec3 specular_contribution = specular * radiance * NdotL * shadow;
 		specular_total += specular_contribution;
 		spec_lum += get_luminance(specular_contribution);
 	}

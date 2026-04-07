@@ -125,7 +125,7 @@ float calculateCloudDensity(
 
 	if (simplified) {
 		// Include base Worley noise so shadow patterns match the full cloud shapes
-		float baseNoise = fastWorley3d(p / (50000.0 * props.worldScale));
+		float baseNoise = fastWorley3d(p / (50000.0 * props.worldScale) + time * 0.0005);
 		float baseDensity = baseNoise * weather.weatherMap;
 		return smoothstep(coverageThreshold, coverageThreshold + 0.4, baseDensity) * densityProfile * props.densityBase;
 	}
@@ -167,6 +167,16 @@ float calculateCloudDensity(
 	density *= mix(0.6, 1.0, wispyFactor);
 
 	return density * densityProfile * props.densityBase * 3.0;
+}
+
+float calculateCloudShadowDensity(
+	vec3            p,
+	CloudWeather    weather,
+	CloudLayer      layer,
+	CloudProperties props,
+	float           time
+) {
+	return 10.0 * calculateCloudDensity(p, weather, layer, props, time, true);
 }
 
 #endif // HELPERS_CLOUDS_GLSL

@@ -170,12 +170,12 @@ namespace Boidsish {
 
 		bool _needsPrecompute = true;
 
-		float     _rayleighScale = 1.0f;
-		float     _mieScale = 0.3f;
+		float     _rayleighScale = 1.1f;
+		float     _mieScale = 0.35f;
 		float     _mieAnisotropy = 0.8f;
 		float     _multiScatScale = 1.0f;
 		float     _ambientScatScale = 1.0f;
-		float     _atmosphereHeight = 60.0f;
+		float     _atmosphereHeight = 120.0f;
 		glm::vec3 _rayleighScattering = glm::vec3(5.802f, 13.558f, 33.100f) * 1e-3f;
 		float     _mieScattering = 3.996f * 1e-3f;
 		float     _mieExtinction = 4.440f * 1e-3f;
