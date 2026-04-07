@@ -40,10 +40,11 @@ void main() {
 	// Get light direction in view space
 	// Assume lights[0] is the primary light (Sun)
 	vec3 lightDirWorld;
-	if (lights[0].type == 1) { // DIRECTIONAL
-		lightDirWorld = normalize(-lights[0].direction);
+	int light = nightFactor >= 0.5? 1 : 0;
+	if (lights[light].type == 1) { // DIRECTIONAL
+		lightDirWorld = normalize(-lights[light].direction);
 	} else {
-		lightDirWorld = normalize(lights[0].position - (invView * vec4(vPos, 1.0)).xyz);
+		lightDirWorld = normalize(lights[light].position - (invView * vec4(vPos, 1.0)).xyz);
 	}
 
 	// Transform light direction to view space
