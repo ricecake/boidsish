@@ -324,6 +324,15 @@ namespace Boidsish {
 		 */
 		virtual float GetBiomeControlValue(float x, float z) const = 0;
 
+		/**
+		 * @brief Map a control value to biome indices and blend weight.
+		 *
+		 * @param control_value Input control value [0, 1]
+		 * @param low_idx Output: lower biome index in kBiomes
+		 * @param t Output: blend factor between low_idx and (low_idx + 1)
+		 */
+		virtual void GetBiomeIndicesAndWeights(float control_value, int& low_idx, float& t) const = 0;
+
 	protected:
 		// Protected constructor - only derived classes can instantiate
 		ITerrainGenerator() = default;
