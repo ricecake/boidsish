@@ -44,10 +44,12 @@ float marchOcclusion(vec3 p_start, vec3 rayDir, float maxDist) {
 	float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
 
 	// Coarse step size for AO march
-	float step = 12.0 * u_terrainParams.y;
 	float visibility = 1.0;
 
-	while (t < maxDist) {
+	int stepCount = 0;
+	int maxSteps = 5;
+	float step = maxDist / maxSteps;
+	while (t < maxDist && stepCount++ < 5) {
 		vec3  p = p_start + t * rayDir;
 		vec2  gridPos = p.xz / scaledChunkSize;
 		ivec2 chunkCoord = ivec2(floor(gridPos));
@@ -109,7 +111,7 @@ float calculateTerrainOcclusion(vec3 worldPos, vec3 normal) {
 	};
 
 	float occ = 0.0;
-	float maxDist = 300.0 * u_terrainParams.y;
+	float maxDist = 50.0 * u_terrainParams.y;
 	vec3  p_start = worldPos + normal * (1.5 * u_terrainParams.y); // Lift off surface
 
 	for (int i = 0; i < 6; ++i) {
