@@ -77,7 +77,8 @@ void main() {
 			vec3 smoke_color = mix(vec3(0.4, 0.4, 0.45), vs_color * 0.5, 0.2);
 
 			// Apply simple lighting to smoke for depth (no shadows needed for trails)
-			vec3 lit_smoke = apply_lighting_no_shadows(vs_frag_pos, norm, smoke_color, 0.1).rgb;
+			float dummyShadow;
+			vec3 lit_smoke = apply_lighting_no_shadows(vs_frag_pos, norm, smoke_color, 0.1, dummyShadow).rgb;
 
 			// Noise for cloudy texture
 			float noise = snoise(vec2(vs_progress * 5.0, time * 2.0)) * 0.5 + 0.5;
@@ -97,12 +98,14 @@ void main() {
 		float roughness = current_usePBR ? current_trailRoughness : 0.15;
 
 		// Apply PBR iridescent lighting (no shadows for trail effects)
+		float dummyShadowIrr;
 		vec4 iridescent_result_vec = apply_lighting_pbr_iridescent_no_shadows(
 			vs_frag_pos,
 			norm,
 			vs_color,
 			roughness,
-			1.0 // Full iridescence strength
+			1.0, // Full iridescence strength
+			dummyShadowIrr
 		);
 		vec3 iridescent_result = iridescent_result_vec.rgb;
 
@@ -113,19 +116,22 @@ void main() {
 		FragColor = vec4(final_color, 0.85 * camera_fade); // Slightly more opaque for better visibility
 	} else if (current_usePBR) {
 		// --- Standard PBR Trail (no shadows for trails) ---
+		float dummyShadowPBR;
 		vec3 result = apply_lighting_pbr_no_shadows(
 						  vs_frag_pos,
 						  norm,
 						  vs_color,
 						  current_trailRoughness,
 						  current_trailMetallic,
-						  1.0
+						  1.0,
+						  dummyShadowPBR
 		)
 						  .rgb;
 		FragColor = vec4(result, camera_fade);
 	} else {
 		// --- Original Phong Lighting ---
-		vec3 result = apply_lighting_no_shadows(vs_frag_pos, norm, vs_color, 0.5).rgb;
+		float dummyShadowPhong;
+		vec3 result = apply_lighting_no_shadows(vs_frag_pos, norm, vs_color, 0.5, dummyShadowPhong).rgb;
 		FragColor = vec4(result, camera_fade);
 	}
 
