@@ -94,10 +94,12 @@ namespace Boidsish {
 					ImGui::Separator();
 					ImGui::Text("Moon");
 					ImGui::SliderFloat("Lunar Albedo", &cycle.lunar_albedo, 0.0f, 0.5f, "%.3f");
-					ImGui::SliderFloat("Moon Phase (days)", &cycle.moon_phase_days, 0.0f, cycle.kLunarMonth, "%.1f");
+					ImGui::ColorEdit3("Moon Tint", &cycle.moon_tint[0]);
+					ImGui::SliderFloat("Lunar Month (days)", &cycle.lunar_month, 0.1f, 30.0f, "%.2f");
+					ImGui::SliderFloat("Moon Phase (days)", &cycle.moon_phase_days, 0.0f, cycle.lunar_month, "%.1f");
 					ImGui::Text(
 						"Phase: %.0f%%",
-						(std::fmod(cycle.moon_phase_days, cycle.kLunarMonth) / cycle.kLunarMonth) * 100.0f
+						(std::fmod(cycle.moon_phase_days, cycle.lunar_month) / cycle.lunar_month) * 100.0f
 					);
 				}
 
