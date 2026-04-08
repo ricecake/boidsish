@@ -157,6 +157,14 @@ namespace Boidsish {
 								if (ImGui::SliderInt("Rays##SSGI", &rays, 1, 8)) {
 									ssgi_effect->SetRayCount(rays);
 								}
+								float refl_intensity = ssgi_effect->GetReflectionIntensity();
+								if (ImGui::SliderFloat("Reflection Intensity##SSGI", &refl_intensity, 0.0f, 5.0f)) {
+									ssgi_effect->SetReflectionIntensity(refl_intensity);
+								}
+								float rough_factor = ssgi_effect->GetRoughnessFactor();
+								if (ImGui::SliderFloat("Roughness Factor##SSGI", &rough_factor, 0.1f, 2.0f)) {
+									ssgi_effect->SetRoughnessFactor(rough_factor);
+								}
 							}
 						}
 

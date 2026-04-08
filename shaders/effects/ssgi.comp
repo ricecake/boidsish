@@ -6,6 +6,7 @@ layout(binding = 0, rgba16f) uniform image2D outIndirect;
 uniform sampler2D gDepth;
 uniform sampler2D gColor;
 uniform sampler2D gNormal;
+uniform sampler2D gVelocity;
 // uniform sampler2D u_blueNoiseTexture; // Defined in fast_noise.glsl
 uniform sampler2D u_hizTexture;
 uniform sampler2D uShadowMask;
@@ -25,6 +26,8 @@ uniform float uDistanceFalloff = 1.0;
 uniform int   uSteps = 8;
 uniform int   uRayCount = 2;
 uniform int   u_hizMipCount = 0;
+uniform float uReflectionIntensity = 1.0;
+uniform float uRoughnessFactor = 1.0;
 
 // Simple hash functions
 float hash12(vec2 p) {
@@ -61,6 +64,35 @@ vec3 hemisphereSample(vec2 uv, vec3 normal) {
 	return tangent * localDir.x + bitangent * localDir.y + normal * localDir.z;
 }
 
+// GGX VNDF Sampling logic
+// Based on "Sampling the GGX Distribution of Visible Normals" by Heitz (2018)
+vec3 sampleGGXVNDF(vec3 V, float roughness, float u1, float u2) {
+	float alpha = roughness * roughness;
+
+	// 1. Transform to hemispherical configuration
+	vec3 Vh = normalize(vec3(alpha * V.x, alpha * V.y, V.z));
+
+	// 2. Section 4.1: orthotogonal basis (with special case for Vh.z == 1)
+	float lensq = Vh.x * Vh.x + Vh.y * Vh.y;
+	vec3  T1 = lensq > 0.0 ? vec3(-Vh.y, Vh.x, 0.0) * inversesqrt(lensq) : vec3(1.0, 0.0, 0.0);
+	vec3  T2 = cross(Vh, T1);
+
+	// 3. Section 4.2: parameterization of the projected area
+	float r = sqrt(u1);
+	float phi = 2.0 * PI * u2;
+	float t1 = r * cos(phi);
+	float t2 = r * sin(phi);
+	float s = 0.5 * (1.0 + Vh.z);
+	t2 = (1.0 - s) * sqrt(1.0 - t1 * t1) + s * t2;
+
+	// 4. Section 4.3: reprojection onto hemisphere
+	vec3 Nh = t1 * T1 + t2 * T2 + sqrt(max(0.0, 1.0 - t1 * t1 - t2 * t2)) * Vh;
+
+	// 5. Section 4.4: transforming the normal back to the ellipsoid configuration
+	vec3 Ne = normalize(vec3(alpha * Nh.x, alpha * Nh.y, max(0.0, Nh.z)));
+	return Ne;
+}
+
 void main() {
 	ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
 	ivec2 size = imageSize(outIndirect);
@@ -82,6 +114,11 @@ void main() {
 		return;
 	}
 
+	// Material properties from Velocity buffer (RG=velocity, B=roughness, A=metallic)
+	vec4 velData = texture(gVelocity, uv);
+	float roughness = clamp(velData.b * uRoughnessFactor, 0.02, 1.0);
+	float metallic = velData.a;
+
 	// Blue noise for dithering
 	vec2  bnUV = (vec2(pixel) + vec2(frameIndex * 2, frameIndex * 3));// / 8.0;
 	vec4  bn = texture(u_blueNoiseTexture, bnUV);
@@ -89,72 +126,98 @@ void main() {
 	vec3 indirect = vec3(0.0);
 	float totalWeight = 0.0;
 
+	vec3 V = normalize(-vPos); // View direction in view space
+
 	for (int r = 0; r < uRayCount; r++) {
-		// Stochastic direction
 		vec2  jitter = fract(bn.xy + vec2(float(r) * 0.618));
-		vec3  rayDir = hemisphereSample(jitter, vNorm);
+
+		// Choose between diffuse and specular ray
+		bool isSpecular = (hash12(uv + float(r) * 0.1) < metallic) || (hash12(uv + float(r) * 0.2) < 0.2); // Heuristic
+		// Actually, let's just sample both or interleave. For performance, let's interleave based on frame/ray index.
+		isSpecular = ((frameIndex + r) % 2 == 0);
+
+		vec3 rayDir;
+		vec3 weight = vec3(1.0);
+
+		if (isSpecular) {
+			// Specular VNDF sampling
+			vec3 up = abs(vNorm.z) < 0.999 ? vec3(0, 0, 1) : vec3(1, 0, 0);
+			vec3 tangent = normalize(cross(up, vNorm));
+			vec3 bitangent = cross(vNorm, tangent);
+			mat3 tbn = mat3(tangent, bitangent, vNorm);
+
+			vec3 Vlocal = transpose(tbn) * V;
+			vec3 Hlocal = sampleGGXVNDF(Vlocal, roughness, jitter.x, jitter.y);
+			vec3 H = tbn * Hlocal;
+			rayDir = reflect(-V, H);
+
+			// PDF/Weighting for VNDF
+			float NdotL = max(0.0, dot(vNorm, rayDir));
+			float NdotV = max(0.0, dot(vNorm, V));
+			float VdotH = max(0.0, dot(V, H));
+
+			// Fresnel factor (using F0=0.04 for dielectrics, grayscale proxy for metals)
+			vec3 F0 = mix(vec3(0.04), vec3(0.9), metallic);
+			vec3 F = fresnelSchlick(VdotH, F0);
+
+			// Weight = F * G2(V, L) / G1(V)
+			// Using Smith G2 approx: G2(V, L) / G1(V) = G1(L)
+			weight = F * GeometrySchlickGGX(NdotL, roughness);
+			weight *= uReflectionIntensity;
+		} else {
+			// Cosine-weighted diffuse sampling
+			rayDir = hemisphereSample(jitter, vNorm);
+			weight = vec3(1.0); // uIntensity is applied in composite
+		}
+
+		if (dot(rayDir, vNorm) < 0.0) continue;
 
 		float stepSize = uRadius / float(uSteps);
-		float rayDist = stepSize * jitter.x; // Jittered start
+		float rayDist = stepSize * jitter.x;
 
 		bool hit = false;
 		for (int i = 0; i < uSteps; i++) {
 			rayDist += stepSize;
 			vec3  samplePos = vPos + rayDir * rayDist;
 
-			// Project to screen
 			vec4  offsetClip = uProjection * vec4(samplePos, 1.0);
 			vec2  offsetUV = (offsetClip.xy / offsetClip.w) * 0.5 + 0.5;
 
 			if (offsetUV.x < 0.0 || offsetUV.x > 1.0 || offsetUV.y < 0.0 || offsetUV.y > 1.0)
 				break;
 
-			// Sample depth using Hi-Z if available
 			float sampledDepth = texture(gDepth, offsetUV).r;
 			vec3  sampledPos = getViewPos(offsetUV, sampledDepth);
 
-			// Hit check
-			// Depth is negative in view space
 			if (samplePos.z < sampledPos.z) {
-				float thickness = 0.5 * worldScale; // Heuristic
+				float thickness = 0.5 * worldScale;
 				if (samplePos.z > sampledPos.z - thickness) {
-					// Hit!
 					hit = true;
 					vec3 radiance = texture(gColor, offsetUV).rgb;
 					vec3 hitNormal = texture(gNormal, offsetUV).xyz;
 
-					// Weight by cosine and distance falloff
-					float cosTheta = max(0.0, dot(rayDir, vNorm));
-					// float distSq = rayDist * rayDist;
 					float falloff = exp(-rayDist * uDistanceFalloff / worldScale);
-
-					// Avoid self-occlusion from the surface we hit
 					float backface = max(0.0, dot(-rayDir, hitNormal));
-
-					// Use screen space shadow mask to further occlude indirect light
 					float contactOcclusion = texture(uShadowMask, offsetUV).r;
 
-					indirect += radiance * cosTheta * falloff * backface * contactOcclusion;
+					indirect += radiance * weight * falloff * backface * contactOcclusion;
 					break;
 				}
 			}
 		}
 
 		if (!hit) {
-			// Fallback to SH probe if no hit or off-screen
 			vec3 worldRayDir = mat3(invView) * rayDir;
 			vec3 worldPos = (invView * vec4(vPos, 1.0)).xyz;
+			vec3 ambient = getSpatialAmbientSH(worldPos, worldRayDir);
 
-			vec3  ambient = getSpatialAmbientSH(worldPos, worldRayDir);
-			float cosTheta = max(0.0, dot(rayDir, vNorm));
-
-			// Weight fallback by cosine to maintain consistency with hemisphere sampling
-			// Using a slightly lower weight as it's a low-frequency approximation
-			indirect += ambient * cosTheta * 0.1;
+			// Fallback contribution
+			// Specular fallback is handled by standard lighting already in many cases,
+			// but SSGI fallback can fill in localized environment reflections.
+			indirect += ambient * weight * (isSpecular ? 0.5 : 0.1);
 		}
 	}
 
 	indirect /= float(uRayCount);
-
 	imageStore(outIndirect, pixel, vec4(indirect, 1.0));
 }

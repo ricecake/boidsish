@@ -75,7 +75,7 @@ namespace Boidsish {
 			glBindTexture(GL_TEXTURE_2D, 0);
 		}
 
-		void SsgiEffect::Apply(GLuint sourceTexture, GLuint depthTexture, GLuint velocityTexture, GLuint normalTexture, const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix, const glm::vec3& cameraPos) {
+		void SsgiEffect::Apply(GLuint sourceTexture, GLuint depthTexture, GLuint velocityTexture, GLuint normalTexture, const glm::mat4& /* viewMatrix */, const glm::mat4& /* projectionMatrix */, const glm::vec3& /* cameraPos */) {
 			if (!ssgi_shader_ || !ssgi_shader_->isValid())
 				return;
 
@@ -86,6 +86,8 @@ namespace Boidsish {
 			ssgi_shader_->setFloat("uDistanceFalloff", distance_falloff_);
 			ssgi_shader_->setInt("uSteps", steps_);
 			ssgi_shader_->setInt("uRayCount", ray_count_);
+			ssgi_shader_->setFloat("uReflectionIntensity", reflection_intensity_);
+			ssgi_shader_->setFloat("uRoughnessFactor", roughness_factor_);
 
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, depthTexture);
@@ -98,6 +100,10 @@ namespace Boidsish {
 			glActiveTexture(GL_TEXTURE2);
 			glBindTexture(GL_TEXTURE_2D, normalTexture);
 			ssgi_shader_->setInt("gNormal", 2);
+
+			glActiveTexture(GL_TEXTURE6);
+			glBindTexture(GL_TEXTURE_2D, velocityTexture);
+			ssgi_shader_->setInt("gVelocity", 6);
 
 			if (blue_noise_texture_) {
 				glActiveTexture(GL_TEXTURE3);
