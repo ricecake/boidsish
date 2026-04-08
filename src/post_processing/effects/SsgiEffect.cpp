@@ -38,6 +38,21 @@ namespace Boidsish {
 				if (temporal_idx != GL_INVALID_INDEX) {
 					glUniformBlockBinding(ssgi_shader_->ID, temporal_idx, Constants::UboBinding::TemporalData());
 				}
+
+				GLuint terrain_idx = glGetUniformBlockIndex(ssgi_shader_->ID, "TerrainData");
+				if (terrain_idx != GL_INVALID_INDEX) {
+					glUniformBlockBinding(ssgi_shader_->ID, terrain_idx, Constants::UboBinding::TerrainData());
+				}
+
+				GLuint probes_idx = glGetProgramResourceIndex(ssgi_shader_->ID, GL_SHADER_STORAGE_BLOCK, "TerrainProbes");
+				if (probes_idx != GL_INVALID_INDEX) {
+					glShaderStorageBlockBinding(ssgi_shader_->ID, probes_idx, Constants::SsboBinding::TerrainProbes());
+				}
+
+				GLuint biomes_idx = glGetUniformBlockIndex(ssgi_shader_->ID, "BiomeData");
+				if (biomes_idx != GL_INVALID_INDEX) {
+					glUniformBlockBinding(ssgi_shader_->ID, biomes_idx, Constants::UboBinding::Biomes());
+				}
 			}
 
 			temporal_accumulator_.Initialize(width, height, GL_RGBA16F);
