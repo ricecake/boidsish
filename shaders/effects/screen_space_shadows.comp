@@ -67,11 +67,11 @@ void main() {
 
 	float maxDist = uRadius * worldScaleVal;
 
-	// Distance-aware bias to handle depth precision loss
-	float distBias = uBias * worldScaleVal * (1.0 + vPos.z * vPos.z * 0.001);
+	// Reduced distance-aware bias sensitivity
+	float distBias = uBias * worldScaleVal * (1.0 + vPos.z * vPos.z * 0.0001);
 
-	// Use normal for biasing to prevent self-shadowing (acne)
-	vec3 rayStartPos = vPos + vNormal * distBias;
+	// Combined normal and light direction bias
+	vec3 rayStartPos = vPos + (vNormal * 0.5 + lightDirView * 0.5) * distBias;
 
 	// Jittered step size to reduce banding
 	float stepSize = maxDist / float(uSteps);
@@ -86,7 +86,6 @@ void main() {
 		vec3  ndcPos = clipPos.xyz / clipPos.w;
 		vec2  sampleUV = ndcPos.xy * 0.5 + 0.5;
 
-		// Correct NDC check for OpenGL ([-1, 1] for Z if not using glClipControl)
 		if (sampleUV.x < 0.0 || sampleUV.x > 1.0 || sampleUV.y < 0.0 || sampleUV.y > 1.0 || ndcPos.z > 1.0 ||
 		    ndcPos.z < -1.0) {
 			break;
@@ -100,15 +99,14 @@ void main() {
 			float sampleViewZ = sampleViewPos4.z / sampleViewPos4.w;
 
 			// Check if the ray is occluded by geometry
-			// View space Z is negative, so rayPos.z < sampleViewZ means the ray is further from the camera
 			float depthDiff = sampleViewZ - rayPos.z;
-			if (depthDiff > 0.0 && depthDiff < 0.5 * worldScaleVal) {
+
+			// Increased thickness and added epsilon
+			if (depthDiff > 0.01 * worldScaleVal && depthDiff < 2.0 * worldScaleVal) {
 				// Collision!
-				// Soft shadow calculation based on distance from occluder
 				float contactDist = distance(rayPos, rayStartPos);
 				minContactDist = min(minContactDist, contactDist);
 
-				// Quick exit for fully shadowed
 				visibility = 0.0;
 				break;
 			}
@@ -117,11 +115,10 @@ void main() {
 		rayPos += rayStep;
 	}
 
-	// Apply a simple contact hardening effect
-	// Closer occluders = sharper shadows
+	// Improved contact hardening with smoother falloff
 	if (visibility < 1.0) {
-		float shadowStrength = clamp(minContactDist / (maxDist * 0.5), 0.0, 1.0);
-		visibility = shadowStrength;
+		float shadowStrength = clamp(minContactDist / (maxDist), 0.0, 1.0);
+		visibility = pow(shadowStrength, 1.5);
 	}
 
 	imageStore(outShadowMask, pixel, vec4(visibility, 0.0, 0.0, 0.0));
