@@ -239,12 +239,6 @@ namespace Boidsish {
 			glBindTexture(GL_TEXTURE_3D, 0);
 			glActiveTexture(GL_TEXTURE20);
 			glBindTexture(GL_TEXTURE_2D, 0);
-			glActiveTexture(GL_TEXTURE2);
-			glBindTexture(GL_TEXTURE_2D, 0);
-			glActiveTexture(GL_TEXTURE1);
-			glBindTexture(GL_TEXTURE_2D, 0);
-			glActiveTexture(GL_TEXTURE0);
-			glBindTexture(GL_TEXTURE_2D, 0);
 		}
 
 		void AtmosphereEffect::Resize(int width, int height) {

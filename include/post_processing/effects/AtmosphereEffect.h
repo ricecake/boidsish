@@ -223,8 +223,8 @@ namespace Boidsish {
 			float     rayleigh_scale_ = 1.1f;
 			float     mie_scale_ = 0.35f; // Reduced default to prevent "washed out" haze
 			float     mie_anisotropy_ = 0.8f;
-			float     multi_scat_scale_ = 0.1f;
-			float     ambient_scat_scale_ = 0.750f;
+			float     multi_scat_scale_ = 1.0f;
+			float     ambient_scat_scale_ = 1.0f;
 			float     atmosphere_height_ = 120.0f;
 			glm::vec3 rayleigh_scattering_ = glm::vec3(5.802f, 13.558f, 33.100f) * 1e-3f;
 			float     mie_scattering_ = 3.996f * 1e-3f;
