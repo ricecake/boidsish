@@ -4,6 +4,7 @@ layout(local_size_x = 8, local_size_y = 8) in;
 layout(binding = 0, r8) uniform image2D outShadowMask;
 
 uniform sampler2D uDepth;
+uniform sampler2D uNormal;
 uniform sampler2D u_blueNoiseTexture;
 
 #include "temporal_data.glsl"
@@ -36,6 +37,7 @@ void main() {
 	}
 
 	vec3 vPos = getViewPos(uv);
+	vec3 vNormal = normalize(texture(uNormal, uv).xyz);
 
 	// Get light direction in view space
 	// Assume lights[0] is the primary light (Sun)
@@ -52,7 +54,7 @@ void main() {
 	vec3 lightDirView = normalize((worldToView * vec4(lightDirWorld, 0.0)).xyz);
 
 	// Raymarching parameters
-	float shadow = 1.0;
+	float visibility = 1.0;
 	float worldScaleVal = worldScale > 0.0 ? worldScale : 1.0;
 
 	// Dithering
@@ -64,22 +66,29 @@ void main() {
 	}
 
 	float maxDist = uRadius * worldScaleVal;
-	float stepSize = maxDist / float(uSteps);
 
-	// Start position with bias and jitter
-	vec3 rayPos = vPos + lightDirView * (uBias * worldScaleVal + stepSize * dither);
+	// Distance-aware bias to handle depth precision loss
+	float distBias = uBias * worldScaleVal * (1.0 + vPos.z * vPos.z * 0.001);
+
+	// Use normal for biasing to prevent self-shadowing (acne)
+	vec3 rayStartPos = vPos + vNormal * distBias;
+
+	// Jittered step size to reduce banding
+	float stepSize = maxDist / float(uSteps);
 	vec3 rayStep = lightDirView * stepSize;
+	vec3 rayPos = rayStartPos + rayStep * dither;
+
+	float minContactDist = maxDist;
 
 	for (int i = 0; i < uSteps; i++) {
-		rayPos += rayStep;
-
 		// Project ray position to screen space
 		vec4  clipPos = uProjection * vec4(rayPos, 1.0);
 		vec3  ndcPos = clipPos.xyz / clipPos.w;
 		vec2  sampleUV = ndcPos.xy * 0.5 + 0.5;
 
+		// Correct NDC check for OpenGL ([-1, 1] for Z if not using glClipControl)
 		if (sampleUV.x < 0.0 || sampleUV.x > 1.0 || sampleUV.y < 0.0 || sampleUV.y > 1.0 || ndcPos.z > 1.0 ||
-		    ndcPos.z < 0.0) {
+		    ndcPos.z < -1.0) {
 			break;
 		}
 
@@ -92,17 +101,28 @@ void main() {
 
 			// Check if the ray is occluded by geometry
 			// View space Z is negative, so rayPos.z < sampleViewZ means the ray is further from the camera
-			if (rayPos.z < sampleViewZ - 0.01 * worldScaleVal) {
+			float depthDiff = sampleViewZ - rayPos.z;
+			if (depthDiff > 0.0 && depthDiff < 0.5 * worldScaleVal) {
 				// Collision!
-				// Thickness check to avoid shadowing through objects
-				float thickness = 0.5 * worldScaleVal;
-				if (rayPos.z > sampleViewZ - thickness) {
-					shadow = 0.0;
-					break;
-				}
+				// Soft shadow calculation based on distance from occluder
+				float contactDist = distance(rayPos, rayStartPos);
+				minContactDist = min(minContactDist, contactDist);
+
+				// Quick exit for fully shadowed
+				visibility = 0.0;
+				break;
 			}
 		}
+
+		rayPos += rayStep;
 	}
 
-	imageStore(outShadowMask, pixel, vec4(shadow, 0.0, 0.0, 0.0));
+	// Apply a simple contact hardening effect
+	// Closer occluders = sharper shadows
+	if (visibility < 1.0) {
+		float shadowStrength = clamp(minContactDist / (maxDist * 0.5), 0.0, 1.0);
+		visibility = shadowStrength;
+	}
+
+	imageStore(outShadowMask, pixel, vec4(visibility, 0.0, 0.0, 0.0));
 }
