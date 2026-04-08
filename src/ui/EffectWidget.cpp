@@ -9,6 +9,7 @@
 #include "post_processing/effects/FilmGrainEffect.h"
 #include "post_processing/effects/GtaoEffect.h"
 #include "post_processing/effects/ScreenSpaceShadowEffect.h"
+#include "post_processing/effects/SsgiEffect.h"
 #include "post_processing/effects/ToneMappingEffect.h"
 
 namespace Boidsish {
@@ -129,6 +130,32 @@ namespace Boidsish {
 								float ssdi_intensity = gtao_effect->GetSSDIIntensity();
 								if (ImGui::SliderFloat("SSDI Intensity##GTAO", &ssdi_intensity, 0.0f, 5.0f)) {
 									gtao_effect->SetSSDIIntensity(ssdi_intensity);
+								}
+							}
+						}
+
+						if (effect->GetName() == "SSGI" && is_enabled) {
+							auto ssgi_effect = std::dynamic_pointer_cast<PostProcessing::SsgiEffect>(effect);
+							if (ssgi_effect) {
+								float intensity = ssgi_effect->GetIntensity();
+								if (ImGui::SliderFloat("Intensity##SSGI", &intensity, 0.0f, 5.0f)) {
+									ssgi_effect->SetIntensity(intensity);
+								}
+								float radius = ssgi_effect->GetRadius();
+								if (ImGui::SliderFloat("Radius##SSGI", &radius, 0.01f, 10.0f)) {
+									ssgi_effect->SetRadius(radius);
+								}
+								float falloff = ssgi_effect->GetDistanceFalloff();
+								if (ImGui::SliderFloat("Falloff##SSGI", &falloff, 0.01f, 5.0f)) {
+									ssgi_effect->SetDistanceFalloff(falloff);
+								}
+								int steps = ssgi_effect->GetSteps();
+								if (ImGui::SliderInt("Steps##SSGI", &steps, 1, 32)) {
+									ssgi_effect->SetSteps(steps);
+								}
+								int rays = ssgi_effect->GetRayCount();
+								if (ImGui::SliderInt("Rays##SSGI", &rays, 1, 8)) {
+									ssgi_effect->SetRayCount(rays);
 								}
 							}
 						}
