@@ -1,6 +1,7 @@
 #version 430 core
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec2 Velocity;
+layout(location = 2) out vec3 NormalOut;
 
 in vec3 WorldPos;
 in vec3 Normal;
@@ -8,6 +9,9 @@ in vec4 CurPosition;
 in vec4 PrevPosition;
 
 #include "helpers/lighting.glsl"
+#include "temporal_data.glsl"
+
+uniform mat4 view;
 
 vec3 mod289(vec3 x) {
 	return x - floor(x * (1.0 / 289.0)) * 289.0;
@@ -146,4 +150,7 @@ void main() {
 	vec2 a = (CurPosition.xy / CurPosition.w) * 0.5 + 0.5;
 	vec2 b = (PrevPosition.xy / PrevPosition.w) * 0.5 + 0.5;
 	Velocity = a - b;
+
+	// Output view-space normal
+	NormalOut = normalize(mat3(view) * norm);
 }

@@ -27,6 +27,7 @@ namespace Boidsish {
 			glDeleteFramebuffers(1, &main_fbo_);
 			glDeleteTextures(1, &color_tex_);
 			glDeleteTextures(1, &velocity_tex_);
+			glDeleteTextures(1, &normal_tex_);
 			glDeleteTextures(1, &depth_tex_);
 			if (refraction_tex_)
 				glDeleteTextures(1, &refraction_tex_);
@@ -67,6 +68,14 @@ namespace Boidsish {
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, velocity_tex_, 0);
 
+		// Normal attachment
+		glGenTextures(1, &normal_tex_);
+		glBindTexture(GL_TEXTURE_2D, normal_tex_);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, render_width_, render_height_, 0, GL_RGB, GL_FLOAT, NULL);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D, normal_tex_, 0);
+
 		// Depth-stencil texture
 		glGenTextures(1, &depth_tex_);
 		glBindTexture(GL_TEXTURE_2D, depth_tex_);
@@ -99,8 +108,8 @@ namespace Boidsish {
 		} else {
 			glBindFramebuffer(GL_FRAMEBUFFER, main_fbo_);
 			glViewport(0, 0, render_width_, render_height_);
-			GLuint attachments[2] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1};
-			glDrawBuffers(2, attachments);
+			GLuint attachments[3] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2};
+			glDrawBuffers(3, attachments);
 		}
 
 		glEnable(GL_DEPTH_TEST);
@@ -211,6 +220,10 @@ namespace Boidsish {
 		// Resize velocity
 		glBindTexture(GL_TEXTURE_2D, velocity_tex_);
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RG16F, render_width_, render_height_, 0, GL_RG, GL_FLOAT, NULL);
+
+		// Resize normal
+		glBindTexture(GL_TEXTURE_2D, normal_tex_);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, render_width_, render_height_, 0, GL_RGB, GL_FLOAT, NULL);
 
 		// Resize refraction
 		glBindTexture(GL_TEXTURE_2D, refraction_tex_);
