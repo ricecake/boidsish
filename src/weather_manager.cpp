@@ -153,7 +153,7 @@ namespace Boidsish {
 		WeatherPreset sunny;
 		sunny.name = "Sunny";
 		sunny.weight = 10.0f;
-		sunny.settings.sun_intensity = {0.9f, 1.10f};
+		sunny.settings.sun_intensity = {0.90f, 0.110f};
 		sunny.settings.wind_strength = {0.02f, 0.08f};
 		sunny.settings.wind_speed = {0.05f, 0.10f};
 		sunny.settings.wind_frequency = {0.01f, 0.02f};
