@@ -1,6 +1,7 @@
 #version 430 core
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec2 Velocity;
+layout(location = 2) out vec3 NormalOut;
 
 in vec3       Normal;
 in vec3       FragPos;
@@ -27,6 +28,8 @@ uniform bool uIsShadowPass = false;
 // Biome texture array: RG8 - R=low_idx, G=t
 uniform sampler2DArray uBiomeMap;
 uniform float          uRawChunkSize;
+
+uniform mat4 view;
 
 struct BiomeProperties {
 	vec4 albedo_roughness; // rgb = albedo, w = roughness
@@ -558,4 +561,7 @@ void main() {
 
 	// Restore deliberate cyan style for distant terrain
 	FragColor = mix(vec4(0.0, 0.7, 0.7, baseColor.a) * length(baseColor), baseColor, step(1.0, fade));
+
+	// Output view-space normal
+	NormalOut = normalize(mat3(view) * perturbedNorm);
 }
