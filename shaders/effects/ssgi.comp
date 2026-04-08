@@ -1,0 +1,137 @@
+#version 430 core
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(binding = 0, rgba16f) uniform image2D outIndirect;
+
+uniform sampler2D gDepth;
+uniform sampler2D gColor;
+uniform sampler2D gNormal;
+uniform sampler2D u_blueNoiseTexture;
+uniform sampler2D u_hizTexture;
+
+#include "temporal_data.glsl"
+#include "../lighting.glsl"
+
+uniform float uRadius = 2.0;
+uniform float uIntensity = 1.0;
+uniform float uDistanceFalloff = 1.0;
+uniform int   uSteps = 8;
+uniform int   uRayCount = 2;
+uniform int   u_hizMipCount = 0;
+
+#define PI 3.14159265359
+
+// Simple hash functions
+float hash12(vec2 p) {
+	vec3 p3 = fract(vec3(p.xyx) * .1031);
+	p3 += dot(p3, p3.yzx + 33.33);
+	return fract((p3.x + p3.y) * p3.z);
+}
+
+vec3 getViewPos(vec2 uv) {
+	float depth = texture(gDepth, uv).r;
+	vec4  clipPos = vec4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
+	vec4  viewPos = invProjection * clipPos;
+	return viewPos.xyz / viewPos.w;
+}
+
+vec3 getViewPos(vec2 uv, float depth) {
+	vec4 clipPos = vec4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
+	vec4 viewPos = invProjection * clipPos;
+	return viewPos.xyz / viewPos.w;
+}
+
+// Generate a random direction on a hemisphere aligned with the normal
+vec3 hemisphereSample(vec2 uv, vec3 normal) {
+	float phi = 2.0 * PI * uv.x;
+	float cosTheta = sqrt(1.0 - uv.y);
+	float sinTheta = sqrt(uv.y);
+
+	vec3 localDir = vec3(cos(phi) * sinTheta, sin(phi) * sinTheta, cosTheta);
+
+	vec3 up = abs(normal.z) < 0.999 ? vec3(0, 0, 1) : vec3(1, 0, 0);
+	vec3 tangent = normalize(cross(up, normal));
+	vec3 bitangent = cross(normal, tangent);
+
+	return tangent * localDir.x + bitangent * localDir.y + normal * localDir.z;
+}
+
+void main() {
+	ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+	ivec2 size = imageSize(outIndirect);
+	if (pixel.x >= size.x || pixel.y >= size.y)
+		return;
+
+	vec2 uv = (vec2(pixel) + 0.5) / vec2(size);
+
+	float depth = texture(gDepth, uv).r;
+	if (depth >= 0.99999) {
+		imageStore(outIndirect, pixel, vec4(0.0));
+		return;
+	}
+
+	vec3 vPos = getViewPos(uv, depth);
+	vec3 vNorm = texture(gNormal, uv).xyz; // Already in view space
+	if (length(vNorm) < 0.1) {
+		imageStore(outIndirect, pixel, vec4(0.0));
+		return;
+	}
+
+	// Blue noise for dithering
+	vec2  bnUV = (vec2(pixel) + vec2(frameIndex * 13, frameIndex * 7)) / 256.0;
+	vec4  bn = texture(u_blueNoiseTexture, bnUV);
+
+	vec3 indirect = vec3(0.0);
+	float totalWeight = 0.0;
+
+	for (int r = 0; r < uRayCount; r++) {
+		// Stochastic direction
+		vec2  jitter = fract(bn.xy + vec2(float(r) * 0.618));
+		vec3  rayDir = hemisphereSample(jitter, vNorm);
+
+		float stepSize = uRadius / float(uSteps);
+		float rayDist = stepSize * jitter.x; // Jittered start
+
+		for (int i = 0; i < uSteps; i++) {
+			rayDist += stepSize;
+			vec3  samplePos = vPos + rayDir * rayDist;
+
+			// Project to screen
+			vec4  offsetClip = uProjection * vec4(samplePos, 1.0);
+			vec2  offsetUV = (offsetClip.xy / offsetClip.w) * 0.5 + 0.5;
+
+			if (offsetUV.x < 0.0 || offsetUV.x > 1.0 || offsetUV.y < 0.0 || offsetUV.y > 1.0)
+				break;
+
+			// Sample depth using Hi-Z if available
+			float sampledDepth = texture(gDepth, offsetUV).r;
+			vec3  sampledPos = getViewPos(offsetUV, sampledDepth);
+
+			// Hit check
+			// Depth is negative in view space
+			if (samplePos.z < sampledPos.z) {
+				float thickness = 0.5 * worldScale; // Heuristic
+				if (samplePos.z > sampledPos.z - thickness) {
+					// Hit!
+					vec3 radiance = texture(gColor, offsetUV).rgb;
+					vec3 hitNormal = texture(gNormal, offsetUV).xyz;
+
+					// Weight by cosine and distance falloff
+					float cosTheta = max(0.0, dot(rayDir, vNorm));
+					// float distSq = rayDist * rayDist;
+					float falloff = exp(-rayDist * uDistanceFalloff / worldScale);
+
+					// Avoid self-occlusion from the surface we hit
+					float backface = max(0.0, dot(-rayDir, hitNormal));
+
+					indirect += radiance * cosTheta * falloff * backface;
+					break;
+				}
+			}
+		}
+	}
+
+	indirect /= float(uRayCount);
+
+	imageStore(outIndirect, pixel, vec4(indirect, 1.0));
+}
