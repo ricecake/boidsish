@@ -71,7 +71,7 @@ namespace Boidsish {
 		// Normal attachment
 		glGenTextures(1, &normal_tex_);
 		glBindTexture(GL_TEXTURE_2D, normal_tex_);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, render_width_, render_height_, 0, GL_RGB, GL_FLOAT, NULL);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, render_width_, render_height_, 0, GL_RGBA, GL_FLOAT, NULL);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D, normal_tex_, 0);
@@ -223,7 +223,7 @@ namespace Boidsish {
 
 		// Resize normal
 		glBindTexture(GL_TEXTURE_2D, normal_tex_);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, render_width_, render_height_, 0, GL_RGB, GL_FLOAT, NULL);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, render_width_, render_height_, 0, GL_RGBA, GL_FLOAT, NULL);
 
 		// Resize refraction
 		glBindTexture(GL_TEXTURE_2D, refraction_tex_);
