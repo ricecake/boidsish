@@ -151,7 +151,7 @@ namespace Boidsish {
 				// The atmosphere LUTs (transmittance) will handle the color and intensity
 				// change naturally. We keep the sun "on" as long as it's not deep below horizon.
 				if (sun_vis > -0.1f) {
-					_lights[0].base_intensity = 10.0f;
+					_lights[0].base_intensity = 1.0f;
 				} else {
 					_lights[0].base_intensity = 0.0f;
 				}

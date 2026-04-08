@@ -36,7 +36,7 @@ namespace Boidsish {
 
 		GLuint GetAerialPerspectiveLUT() const { return _aerialPerspectiveLUT; }
 
-		void BindTextures(GLuint firstUnit = 10);
+		void BindTextures(GLuint firstUnit = 20);
 
 		// Parameters
 		void SetRayleighScale(float s) {
