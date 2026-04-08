@@ -561,7 +561,7 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 	// Spatially-varying ambient augmented with SH sky irradiance and macro occlusion
 	vec3  spatialAmbient = getSpatialAmbient(frag_pos);
 	vec3  skyIrradiance = evalSHIrradiance(N);
-	float terrainOcc = 1.0;//calculateTerrainOcclusion(frag_pos, N);
+	float terrainOcc = calculateTerrainOcclusion(frag_pos, N);
 
 	// Apply terrain occlusion to both ambient terms.
 	// Sky irradiance is blocked by the terrain above/around.
@@ -575,7 +575,9 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 
 	// Combine input AO with macro terrain occlusion
 	float combinedAO = ao * terrainOcc;
+	// vec3 ambientDiffuse = ambient_light * albedo * ao;
 	vec3  ambientDiffuse = mix(spatialAmbient, skyIrradiance, upFactor) * albedo * combinedAO;
+	// vec3  ambientDiffuse = mix(ambient_light, skyIrradiance, upFactor) * albedo * combinedAO;
 
 	// Scale down ambient overall to maintain shadow contrast and prevent "flat" look
 	ambientDiffuse *= 0.75;
