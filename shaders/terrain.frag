@@ -38,10 +38,6 @@ struct BiomeProperties {
 	vec4 params;           // x = metallic, y = detailStrength, z = detailScale, w = unused
 };
 
-layout(std140, binding = 7) uniform BiomeData {
-	BiomeProperties biomes[8];
-};
-
 #define HEIGHT_BEACH_END (3.0 * worldScale)
 #define HEIGHT_LOWLAND_END (20.0 * worldScale)
 #define HEIGHT_FOREST_END (50.0 * worldScale)
