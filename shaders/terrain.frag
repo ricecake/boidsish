@@ -1,6 +1,6 @@
 #version 430 core
 layout(location = 0) out vec4 FragColor;
-layout(location = 1) out vec2 Velocity;
+layout(location = 1) out vec4 Velocity;
 layout(location = 2) out vec4 NormalOut;
 
 in vec3       Normal;
@@ -243,11 +243,6 @@ void main() {
 		// Output only depth (handled by hardware)
 		return;
 	}
-
-	// Calculate screen-space velocity
-	vec2 a = (CurPosition.xy / CurPosition.w) * 0.5 + 0.5;
-	vec2 b = (PrevPosition.xy / PrevPosition.w) * 0.5 + 0.5;
-	Velocity = a - b;
 
 	// Distance Fade -- precalc
 	vec3  norm = normalize(Normal);
@@ -567,4 +562,9 @@ void main() {
 
 	// Output view-space normal
 	NormalOut = vec4(normalize(mat3(view) * perturbedNorm), primaryShadow);
+
+	// Calculate screen-space velocity and material properties
+	vec2 a = (CurPosition.xy / CurPosition.w) * 0.5 + 0.5;
+	vec2 b = (PrevPosition.xy / PrevPosition.w) * 0.5 + 0.5;
+	Velocity = vec4(a - b, roughness, metallic);
 }
