@@ -8,6 +8,7 @@ uniform sampler2D gColor;
 uniform sampler2D gNormal;
 uniform sampler2D u_blueNoiseTexture;
 uniform sampler2D u_hizTexture;
+uniform sampler2D uShadowMask;
 
 #include "temporal_data.glsl"
 #include "../lighting.glsl"
@@ -124,7 +125,10 @@ void main() {
 					// Avoid self-occlusion from the surface we hit
 					float backface = max(0.0, dot(-rayDir, hitNormal));
 
-					indirect += radiance * cosTheta * falloff * backface;
+					// Use screen space shadow mask to further occlude indirect light
+					float contactOcclusion = texture(uShadowMask, offsetUV).r;
+
+					indirect += radiance * cosTheta * falloff * backface * contactOcclusion;
 					break;
 				}
 			}

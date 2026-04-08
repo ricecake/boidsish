@@ -1,7 +1,7 @@
 #version 430 core
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec2 Velocity;
-layout(location = 2) out vec3 NormalOut;
+layout(location = 2) out vec4 NormalOut;
 
 #include "common_uniforms.glsl"
 
@@ -99,5 +99,7 @@ void main() {
 	Velocity = a - b;
 
 	// Output view-space normal (billboarded quad, so facing camera is -Z in view space)
-	NormalOut = vec3(0, 0, 1);
+	// Checkpoints are currently unlit/emissive and don't receive shadows in their shader logic,
+	// but we'll output 1.0 for the shadow factor to indicate they are fully "lit".
+	NormalOut = vec4(0, 0, 1, 1.0);
 }

@@ -97,12 +97,15 @@ namespace Boidsish {
 			composite_shader_->use();
 			composite_shader_->setInt("uSceneTexture", 0);
 			composite_shader_->setInt("uShadowMask", 1);
+			composite_shader_->setInt("uNormalTexture", 2);
 			composite_shader_->setFloat("uIntensity", intensity_);
 
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, sourceTexture);
 			glActiveTexture(GL_TEXTURE1);
 			glBindTexture(GL_TEXTURE_2D, accumulatedShadow);
+			glActiveTexture(GL_TEXTURE2);
+			glBindTexture(GL_TEXTURE_2D, normalTexture);
 
 			// Note: PostProcessingManager binds a quad VAO before calling Apply()
 			glDrawArrays(GL_TRIANGLES, 0, 6);
