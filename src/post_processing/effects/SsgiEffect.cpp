@@ -136,7 +136,6 @@ namespace Boidsish {
 			composite_shader_->use();
 			composite_shader_->setInt("sceneTexture", 0);
 			composite_shader_->setInt("ssgiTexture", 1);
-			composite_shader_->setFloat("uIntensity", intensity_);
 
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, sourceTexture);

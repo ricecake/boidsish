@@ -128,13 +128,18 @@ void main() {
 
 	vec3 V = normalize(-vPos); // View direction in view space
 
-	for (int r = 0; r < uRayCount; r++) {
-		vec2  jitter = fract(bn.xy + vec2(float(r) * 0.618));
+	// Pre-calculate specular probability based on Fresnel and Metallic
+	vec3  F0 = mix(vec3(0.04), vec3(0.9), metallic);
+	float NdotV = max(0.0, dot(vNorm, V));
+	vec3  F_pixel = fresnelSchlick(NdotV, F0);
+	float specProb = clamp(max(F_pixel.r, max(F_pixel.g, F_pixel.b)), 0.1, 0.9);
 
-		// Choose between diffuse and specular ray
-		bool isSpecular = (hash12(uv + float(r) * 0.1) < metallic) || (hash12(uv + float(r) * 0.2) < 0.2); // Heuristic
-		// Actually, let's just sample both or interleave. For performance, let's interleave based on frame/ray index.
-		isSpecular = ((frameIndex + r) % 2 == 0);
+	for (int r = 0; r < uRayCount; r++) {
+		// Use blue noise channels and hash for selection
+		vec2  jitter = fract(bn.xy + vec2(float(r) * 0.618, float(r) * 0.382));
+		float selectHash = fract(bn.z + float(r) * 0.137);
+
+		bool isSpecular = (selectHash < specProb);
 
 		vec3 rayDir;
 		vec3 weight = vec3(1.0);
@@ -151,23 +156,26 @@ void main() {
 			vec3 H = tbn * Hlocal;
 			rayDir = reflect(-V, H);
 
-			// PDF/Weighting for VNDF
 			float NdotL = max(0.0, dot(vNorm, rayDir));
-			float NdotV = max(0.0, dot(vNorm, V));
 			float VdotH = max(0.0, dot(V, H));
 
-			// Fresnel factor (using F0=0.04 for dielectrics, grayscale proxy for metals)
-			vec3 F0 = mix(vec3(0.04), vec3(0.9), metallic);
 			vec3 F = fresnelSchlick(VdotH, F0);
 
-			// Weight = F * G2(V, L) / G1(V)
-			// Using Smith G2 approx: G2(V, L) / G1(V) = G1(L)
+			// Weight = F * G2(V, L) / (G1(V) * PDF)
+			// For VNDF, PDF = G1(V) * D / (4 * N.V)
+			// Combined: weight = F * G2(V, L) / G1(V)
+			// Smith G2/G1 approx: weight = F * G1(L)
 			weight = F * GeometrySchlickGGX(NdotL, roughness);
-			weight *= uReflectionIntensity;
+			weight *= uReflectionIntensity / specProb;
 		} else {
 			// Cosine-weighted diffuse sampling
 			rayDir = hemisphereSample(jitter, vNorm);
-			weight = vec3(1.0); // uIntensity is applied in composite
+
+			// Weight = Albedo * BRDF / PDF
+			// For cosine-weighted hemisphere, PDF = N.L / PI
+			// Combined: weight = Albedo
+			// Note: Albedo contribution is handled by the hit color (gColor contains base radiance)
+			weight = vec3(1.0 - metallic) * uIntensity / (1.0 - specProb);
 		}
 
 		if (dot(rayDir, vNorm) < 0.0) continue;
