@@ -36,6 +36,7 @@ namespace Boidsish {
 			int GetSteps() const { return steps_; }
 
 			void SetNoiseTextures(GLuint blueNoise) { blue_noise_texture_ = blueNoise; }
+			GLuint GetShadowMaskTexture() const { return temporal_accumulator_.GetResult(); }
 
 		private:
 			void InitializeTextures();

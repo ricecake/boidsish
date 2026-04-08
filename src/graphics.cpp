@@ -979,16 +979,16 @@ namespace Boidsish {
 				gtao_effect->SetEnabled(true);
 				post_processing_manager_->AddEffect(gtao_effect);
 
+				auto sss_effect = std::make_shared<PostProcessing::ScreenSpaceShadowEffect>();
+				sss_effect->SetEnabled(true);
+				post_processing_manager_->AddEffect(sss_effect);
+
 				auto ssgi_effect = std::make_shared<PostProcessing::SsgiEffect>();
 				ssgi_effect->SetEnabled(true);
 				if (noise_manager) {
 					ssgi_effect->SetNoiseTextures(noise_manager->GetBlueNoiseTexture());
 				}
 				post_processing_manager_->AddEffect(ssgi_effect);
-
-				auto sss_effect = std::make_shared<PostProcessing::ScreenSpaceShadowEffect>();
-				sss_effect->SetEnabled(true);
-				post_processing_manager_->AddEffect(sss_effect);
 
 				auto negative_effect = std::make_shared<PostProcessing::NegativeEffect>();
 				negative_effect->SetEnabled(false);
@@ -2556,11 +2556,21 @@ namespace Boidsish {
 				if (hiz_manager && hiz_manager->IsInitialized() && frame_count_ > 0) {
 					hiz_manager->GeneratePyramid(compositor_->GetDepthTexture());
 
-					// Update SSGI with current Hi-Z
+					// Update SSGI with current Hi-Z and Shadow Mask
 					if (post_processing_manager_) {
+						GLuint shadowMask = 0;
+						for (auto& effect : post_processing_manager_->GetPreToneMappingEffects()) {
+							if (auto sss = std::dynamic_pointer_cast<PostProcessing::ScreenSpaceShadowEffect>(effect)) {
+								shadowMask = sss->GetShadowMaskTexture();
+							}
+						}
+
 						for (auto& effect : post_processing_manager_->GetPreToneMappingEffects()) {
 							if (auto ssgi = std::dynamic_pointer_cast<PostProcessing::SsgiEffect>(effect)) {
 								ssgi->SetHiZTexture(hiz_manager->GetHiZTexture(), hiz_manager->GetMipCount());
+								if (shadowMask != 0) {
+									ssgi->SetShadowMaskTexture(shadowMask);
+								}
 							}
 						}
 					}
