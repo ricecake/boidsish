@@ -14,14 +14,7 @@ namespace Boidsish {
 			~ToneMappingEffect();
 
 			void Initialize(int width, int height) override;
-			void Apply(
-				GLuint           sourceTexture,
-				GLuint           depthTexture,
-				GLuint           velocityTexture,
-				const glm::mat4& viewMatrix,
-				const glm::mat4& projectionMatrix,
-				const glm::vec3& cameraPos
-			) override;
+			void Apply(GLuint sourceTexture, GLuint depthTexture, GLuint velocityTexture, GLuint normalTexture, const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix, const glm::vec3& cameraPos) override;
 			void Resize(int width, int height) override;
 
 			void SetMode(float toneMode) { toneMode_ = toneMode; }
