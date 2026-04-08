@@ -489,7 +489,8 @@ const float PBR_INTENSITY_BOOST = 1.0;
  * @param metallic Metallic property [0=dielectric, 1=metal]
  * @param ao Ambient occlusion [0=fully occluded, 1=no occlusion]
  */
-vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness, float metallic, float ao) {
+vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness, float metallic, float ao, out float primaryShadow) {
+	primaryShadow = 1.0;
 	vec3 N = normalize(normal);
 	vec3 V = normalize(viewPos - frag_pos);
 
@@ -551,6 +552,9 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 		if (lights[i].type == LIGHT_TYPE_DIRECTIONAL) {
 			shadow *= calculateCloudShadow(i, frag_pos);
 		}
+
+		if (i == 0)
+			primaryShadow = shadow;
 
 		// Add to outgoing radiance Lo
 		vec3 specular_radiance = specular * radiance * NdotL * shadow;
@@ -621,7 +625,8 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
  * Supports all light types (point, directional, spot).
  * Returns vec4(color.rgb, specular_luminance).
  */
-vec4 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness, float metallic, float ao) {
+vec4 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness, float metallic, float ao, out float primaryShadow) {
+	primaryShadow = 1.0;
 	vec3 N = normalize(normal);
 	vec3 V = normalize(viewPos - frag_pos);
 
@@ -672,6 +677,9 @@ vec4 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, floa
 		if (lights[i].type == LIGHT_TYPE_DIRECTIONAL) {
 			shadow *= calculateCloudShadow(i, frag_pos);
 		}
+
+		if (i == 0)
+			primaryShadow = shadow;
 
 		vec3 specular_radiance = specular * radiance * NdotL * shadow;
 		Lo += (kD * albedo / PI) * radiance * NdotL * shadow + specular_radiance;
@@ -730,7 +738,8 @@ vec4 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, floa
  * Apply lighting with shadow support - supports all light types.
  * Returns vec4(color.rgb, specular_luminance).
  */
-vec4 apply_lighting(vec3 frag_pos, vec3 normal, vec3 albedo, float specular_strength) {
+vec4 apply_lighting(vec3 frag_pos, vec3 normal, vec3 albedo, float specular_strength, out float primaryShadow) {
+	primaryShadow = 1.0;
 	vec3  result = ambient_light * albedo;
 	float spec_lum = 0.0;
 
@@ -752,6 +761,9 @@ vec4 apply_lighting(vec3 frag_pos, vec3 normal, vec3 albedo, float specular_stre
 			// Apply cloud shadow
 			shadow *= calculateCloudShadow(i, frag_pos);
 		}
+
+		if (i == 0)
+			primaryShadow = shadow;
 
 		// Diffuse
 		float diff = max(dot(normal, light_dir), 0.0);
@@ -776,7 +788,8 @@ vec4 apply_lighting(vec3 frag_pos, vec3 normal, vec3 albedo, float specular_stre
  * Apply lighting without shadows - supports all light types.
  * Returns vec4(color.rgb, specular_luminance).
  */
-vec4 apply_lighting_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, float specular_strength) {
+vec4 apply_lighting_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, float specular_strength, out float primaryShadow) {
+	primaryShadow = 1.0;
 	vec3  result = ambient_light * albedo;
 	float spec_lum = 0.0;
 
@@ -796,6 +809,9 @@ vec4 apply_lighting_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, float sp
 			// Apply cloud shadow
 			shadow *= calculateCloudShadow(i, frag_pos);
 		}
+
+		if (i == 0)
+			primaryShadow = shadow;
 
 		// Diffuse
 		float diff = max(dot(normal, light_dir), 0.0);
@@ -861,8 +877,10 @@ vec4 apply_lighting_pbr_iridescent_no_shadows(
 	vec3  normal,
 	vec3  base_color,
 	float roughness,
-	float iridescence_strength
+	float iridescence_strength,
+	out float primaryShadow
 ) {
+	primaryShadow = 1.0;
 	vec3  N = normalize(normal);
 	vec3  V = normalize(viewPos - frag_pos);
 	float NdotV = max(dot(N, V), 0.0);
@@ -920,6 +938,9 @@ vec4 apply_lighting_pbr_iridescent_no_shadows(
 			shadow *= calculateCloudShadow(i, frag_pos);
 		}
 
+		if (i == 0)
+			primaryShadow = shadow;
+
 		vec3 specular_contribution = specular * radiance * NdotL * shadow;
 		specular_total += specular_contribution;
 		spec_lum += get_luminance(specular_contribution);
@@ -969,8 +990,10 @@ vec4 apply_emissive_surface(
 	vec3  emissive_color,
 	float emissive_intensity,
 	vec3  base_albedo,
-	float emissive_coverage
+	float emissive_coverage,
+	out float primaryShadow
 ) {
+	primaryShadow = 1.0;
 	vec3 N = normalize(normal);
 	vec3 V = normalize(viewPos - frag_pos);
 
@@ -984,7 +1007,7 @@ vec4 apply_emissive_surface(
 	// The non-emissive part gets regular lighting
 	vec4 lit_surface = vec4(0.0);
 	if (emissive_coverage < 1.0) {
-		lit_surface = apply_lighting_no_shadows(frag_pos, normal, base_albedo, 0.5);
+		lit_surface = apply_lighting_no_shadows(frag_pos, normal, base_albedo, 0.5, primaryShadow);
 	}
 
 	// Blend between emissive and lit surface
@@ -1014,8 +1037,10 @@ vec4 apply_emissive_surface_pbr(
 	vec3  base_albedo,
 	float roughness,
 	float metallic,
-	float emissive_mask
+	float emissive_mask,
+	out float primaryShadow
 ) {
+	primaryShadow = 1.0;
 	vec3 N = normalize(normal);
 	vec3 V = normalize(viewPos - frag_pos);
 
@@ -1025,7 +1050,7 @@ vec4 apply_emissive_surface_pbr(
 	emission += emissive_color * fresnel * emissive_intensity * 0.3;
 
 	// PBR lit component for non-emissive parts
-	vec4 pbr_lit = apply_lighting_pbr_no_shadows(frag_pos, normal, base_albedo, roughness, metallic, 1.0);
+	vec4 pbr_lit = apply_lighting_pbr_no_shadows(frag_pos, normal, base_albedo, roughness, metallic, 1.0, primaryShadow);
 
 	// Blend based on emissive mask
 	return mix(pbr_lit, vec4(emission, get_luminance(emission)), emissive_mask);

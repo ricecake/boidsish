@@ -1,7 +1,7 @@
 #version 430 core
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec2 Velocity;
-layout(location = 2) out vec3 NormalOut;
+layout(location = 2) out vec4 NormalOut;
 
 in vec3       Normal;
 in vec3       FragPos;
@@ -303,12 +303,16 @@ void main() {
 		vec3 surfaceColor = vec3(0.05, 0.05, 0.08);
 
 		// Highly reflective PBR material
-		vec3 lighting = apply_lighting_pbr(FragPos, norm, surfaceColor, 0.05, 0.9, 1.0).rgb;
+		float primaryShadow;
+		vec3 lighting = apply_lighting_pbr(FragPos, norm, surfaceColor, 0.05, 0.9, 1.0, primaryShadow).rgb;
 		vec3 final_color = lighting + grid_color;
 
 		// Distance fade and distant cyan blend (matching terrain style)
 		vec4 baseColor = vec4(final_color, fade);
 		FragColor = mix(vec4(0.0, 0.7, 0.7, baseColor.a) * length(baseColor), baseColor, step(1.0, fade));
+
+		// Output view-space normal
+		NormalOut = vec4(normalize(mat3(view) * norm), primaryShadow);
 		return;
 	}
 
@@ -514,7 +518,8 @@ void main() {
 	roughness *= mix(1.25, 1.0, windDistortion) * mix(1, mix(1.5, 1.0, windRipple), grassFactor);
 	// perturbedNorm += rawWindNudge * mix(0.0, 1.05, plainRipple);
 
-	vec3 lighting = apply_lighting_pbr(FragPos, perturbedNorm, albedo, roughness, metallic, 1.0).rgb;
+	float primaryShadow;
+	vec3 lighting = apply_lighting_pbr(FragPos, perturbedNorm, albedo, roughness, metallic, 1.0, primaryShadow).rgb;
 
 	// ========================================================================
 	// Neon 80s Synth Style (Night Theme)
@@ -563,5 +568,5 @@ void main() {
 	FragColor = mix(vec4(0.0, 0.7, 0.7, baseColor.a) * length(baseColor), baseColor, step(1.0, fade));
 
 	// Output view-space normal
-	NormalOut = normalize(mat3(view) * perturbedNorm);
+	NormalOut = vec4(normalize(mat3(view) * perturbedNorm), primaryShadow);
 }
