@@ -53,6 +53,11 @@ namespace Boidsish {
 		float     detailStrength;
 		float     detailScale;
 		float     noiseType = 1.0f; // 0: Simplex, 1: Worley, 2: FBM, 3: Ridge
+
+		// Weather related
+		float aerosolType = 0.0f;        // 0: Default, 1: Dust, 2: Organic, 3: Salt, 4: Smoke
+		float aerosolEmission = 0.1f;    // Base quantity of aerosols released
+		float humidityPropensity = 0.5f; // propensity for local humidity
 	};
 
 	struct BiomeShaderProperties {
@@ -61,7 +66,8 @@ namespace Boidsish {
 	};
 
 	inline static const std::array<BiomeAttributes, 8> kBiomes = {
-		// spikeDamp, detailMask, floor, weight, albedo, roughness, metallic, detailStr, detailScale, noiseType
+		// spikeDamp, detailMask, floor, weight, albedo, roughness, metallic, detailStr, detailScale, noiseType,
+		// aerosolType, aerosolEmission, humidityPropensity
 		BiomeAttributes{
 			1.00f,
 			0.90f,
@@ -72,8 +78,10 @@ namespace Boidsish {
 			0.0f,
 			0.10f,
 			40.0f,
-			1.0f
-		}, // Sand
+			1.0f,
+			1.0f,
+			0.8f,
+			0.1f}, // Sand
 		BiomeAttributes{
 			0.80f,
 			0.50f,
@@ -84,9 +92,11 @@ namespace Boidsish {
 			0.0f,
 			0.20f,
 			20.0f,
-			2.0f
-		}, // Lush
-		   // Grass
+			2.0f,
+			2.0f,
+			0.4f,
+			0.7f}, // Lush
+		           // Grass
 		BiomeAttributes{
 			0.05f,
 			0.60f,
@@ -97,9 +107,11 @@ namespace Boidsish {
 			0.0f,
 			0.15f,
 			15.0f,
-			2.0f
-		}, // Dry
-		   // Grass
+			2.0f,
+			1.0f,
+			0.3f,
+			0.3f}, // Dry
+		           // Grass
 		BiomeAttributes{
 			0.30f,
 			0.50f,
@@ -110,8 +122,10 @@ namespace Boidsish {
 			0.0f,
 			0.30f,
 			10.0f,
-			2.0f
-		}, // Forest
+			2.0f,
+			2.0f,
+			0.9f,
+			0.9f}, // Forest
 		BiomeAttributes{
 			0.40f,
 			0.40f,
@@ -122,8 +136,10 @@ namespace Boidsish {
 			0.0f,
 			0.25f,
 			15.0f,
-			2.0f
-		}, // Alpine Meadow
+			2.0f,
+			2.0f,
+			0.5f,
+			0.6f}, // Alpine Meadow
 		BiomeAttributes{
 			0.30f,
 			0.20f,
@@ -134,9 +150,11 @@ namespace Boidsish {
 			0.0f,
 			0.50f,
 			5.0f,
-			3.0f
-		}, // Brown
-		   // Rock
+			3.0f,
+			1.0f,
+			0.2f,
+			0.2f}, // Brown
+		           // Rock
 		BiomeAttributes{
 			0.10f,
 			0.10f,
@@ -147,9 +165,11 @@ namespace Boidsish {
 			0.0f,
 			0.40f,
 			4.0f,
-			3.0f
-		}, // Grey
-		   // Rock
+			3.0f,
+			1.0f,
+			0.1f,
+			0.1f}, // Grey
+		           // Rock
 		BiomeAttributes{
 			0.05f,
 			0.50f,
@@ -160,8 +180,10 @@ namespace Boidsish {
 			0.0f,
 			0.05f,
 			30.0f,
-			0.0f
-		} // Snow
+			0.0f,
+			0.0f,
+			0.05f,
+			0.2f} // Snow
 	};
 
 } // namespace Boidsish
