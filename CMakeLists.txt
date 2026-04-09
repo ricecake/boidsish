@@ -192,6 +192,10 @@ target_compile_definitions(check PRIVATE GLM_ENABLE_EXPERIMENTAL)
 target_link_libraries(check PRIVATE boidsish)
 set_target_properties(check PROPERTIES EXCLUDE_FROM_ALL TRUE)
 
+add_executable(model_converter tools/model_converter.cpp)
+target_link_libraries(model_converter PRIVATE boidsish)
+add_dependencies(check model_converter)
+
 # Add shader preprocessor tool
 add_executable(shader_preprocessor tools/shader_preprocessor.cpp)
 target_link_libraries(shader_preprocessor PRIVATE boidsish)

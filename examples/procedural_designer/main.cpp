@@ -8,6 +8,7 @@
 
 #include "ConfigManager.h"
 #include "IWidget.h"
+#include "asset_manager.h"
 #include "graphics.h"
 #include "imgui.h"
 #include "logger.h"
@@ -58,6 +59,11 @@ public:
 				ExportGridToObj(m_lastModelData, "exported_grid.obj");
 			}
 
+			ImGui::SameLine();
+			if (ImGui::Button("Save Grid to glTF")) {
+				ExportGridToGltf(m_lastModelData, "exported_grid.gltf");
+			}
+
 			ImGui::Separator();
 			ImGui::Text("L-System Symbol Guide:");
 			ImGui::BulletText("'F': Move forward and draw tube");
@@ -76,6 +82,36 @@ public:
 	}
 
 private:
+	void ExportGridToGltf(const std::vector<std::shared_ptr<ModelData>>& gridData, const std::string& filename) {
+		if (gridData.empty())
+			return;
+
+		auto mergedData = std::make_shared<ModelData>();
+		mergedData->model_path = "merged_procedural";
+		mergedData->root_node.name = "Root";
+
+		for (size_t g = 0; g < gridData.size(); ++g) {
+			const auto& data = gridData[g];
+			if (!data)
+				continue;
+
+			for (size_t m = 0; m < data->meshes.size(); ++m) {
+				mergedData->meshes.push_back(data->meshes[m]);
+
+				NodeData meshNode;
+				meshNode.name = "Model_" + std::to_string(g) + "_Mesh_" + std::to_string(m);
+				mergedData->root_node.children.push_back(meshNode);
+			}
+		}
+		mergedData->root_node.childrenCount = (int)mergedData->root_node.children.size();
+
+		if (AssetManager::GetInstance().SaveModelData(mergedData, filename)) {
+			logger::LOG("Grid exported to {}", filename);
+		} else {
+			logger::ERROR("Failed to export grid to glTF");
+		}
+	}
+
 	void ExportGridToObj(const std::vector<std::shared_ptr<ModelData>>& gridData, const std::string& filename) {
 		if (gridData.empty())
 			return;
@@ -99,8 +135,6 @@ private:
 				file << "o Model_" << g << "_Mesh_" << m << "\n";
 
 				for (const auto& v : mesh.vertices) {
-					// We should probably apply the model's grid position here if we want the OBJ to match the
-					// visualizer layout But usually users want the model at origin. Let's export at origin for now.
 					file << "v " << v.Position.x << " " << v.Position.y << " " << v.Position.z << "\n";
 				}
 				for (const auto& v : mesh.vertices) {
@@ -171,12 +205,6 @@ private:
 					float z = (j - (m_gridSize - 1) * 0.5f) * m_spacing;
 					model->SetPosition(x, 0.0f, z);
 					m_vis.AddShape(model);
-
-					// Use internal access to get ModelData (since we are in same namespace or can use friend)
-					// Actually, DesignerWidget is in Boidsish namespace if we wrap it, but main.cpp might not be.
-					// Let's use a public accessor or just reach in if possible.
-					// Model::getMeshes() exists but doesn't give the whole ModelData.
-					// We'll have to add a way to get it or store it.
 					m_lastModelData.push_back(model->GetData());
 				}
 			}

@@ -46,6 +46,14 @@ namespace Boidsish {
 		std::shared_ptr<ma_resource_manager_data_source> GetAudioDataSource(const std::string& path, ma_engine* engine);
 
 		/**
+		 * @brief Save model data to a file (e.g., glTF).
+		 * @param data The model data to save
+		 * @param path The output file path
+		 * @return true if successful
+		 */
+		bool SaveModelData(const std::shared_ptr<ModelData>& data, const std::string& path);
+
+		/**
 		 * @brief Clear all cached assets. Should be called when the graphics context is destroyed.
 		 */
 		void Clear();
