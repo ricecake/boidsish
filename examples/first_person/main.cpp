@@ -170,6 +170,24 @@ int main() {
 					float intensity = 1.0f + rightHoldTime * 2.0f;
 					viz.CreateExplosion(*target, intensity);
 					viz.AddSoundEffect("assets/rocket_explosion.wav", *target, {0, 0, 0}, glm::min(intensity, 5.0f));
+
+					// Spawn a cinder smoke trail from the muzzle to the target
+					auto      cam_pos = camera.pos();
+					auto      cam_fwd = camera.front();
+					auto      cam_up = camera.up();
+					auto      cam_right = glm::normalize(glm::cross(cam_fwd, cam_up));
+					glm::vec3 muzzle_pos = cam_pos + cam_fwd * 1.5f + cam_right * 0.5f - cam_up * 0.3f;
+
+					viz.AddFireEffect(
+						muzzle_pos,
+						FireEffectStyle::Cinder,
+						*target - muzzle_pos,
+						{0, 0, 0},
+						2000,
+						0.1f,
+						EmitterType::Beam,
+						glm::vec3(glm::distance(muzzle_pos, *target), 0, 0)
+					);
 				}
 				rightHoldTime = 0.0f;
 				rightDown = false;
@@ -202,6 +220,24 @@ int main() {
 					viz.GetLightManager().AddLight(flash);
 
 					viz.AddSoundEffect("assets/rocket_explosion.wav", *target, {0, 0, 0}, glm::min(intensity, 5.0f));
+
+					// Spawn a cinder smoke trail from the muzzle to the target
+					auto      cam_pos = camera.pos();
+					auto      cam_fwd = camera.front();
+					auto      cam_up = camera.up();
+					auto      cam_right = glm::normalize(glm::cross(cam_fwd, cam_up));
+					glm::vec3 muzzle_pos = cam_pos + cam_fwd * 1.5f + cam_right * 0.5f - cam_up * 0.3f;
+
+					viz.AddFireEffect(
+						muzzle_pos,
+						FireEffectStyle::Cinder,
+						*target - muzzle_pos,
+						{0, 0, 0},
+						2000,
+						0.1f,
+						EmitterType::Beam,
+						glm::vec3(glm::distance(muzzle_pos, *target), 0, 0)
+					);
 				}
 				leftHoldTime = 0.0f;
 				leftDown = false;
