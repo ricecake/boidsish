@@ -1,5 +1,6 @@
-#version 430 core
+#version 460 core
 #extension GL_GOOGLE_include_directive : enable
+#extension GL_ARB_bindless_texture : enable
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec2 Velocity;
 
@@ -66,6 +67,8 @@ uniform sampler2D texture_metallic1;
 uniform sampler2D texture_roughness1;
 uniform sampler2D texture_ao1;
 uniform sampler2D texture_emissive1;
+
+uniform bool uUseBindless = false;
 
 // use_texture is a bitmask (see common_uniforms.glsl)
 uniform int   use_texture;
@@ -142,38 +145,58 @@ void main() {
 	bool has_emissive = (c_use_texture & 32) != 0;
 
 	if (has_diffuse) {
-		albedo *= texture(texture_diffuse1, TexCoords).rgb;
+		if (uUseBindless && use_ssbo) {
+			albedo *= texture(sampler2D(uniforms_data[vUniformIndex].texture_handles[0]), TexCoords).rgb;
+		} else {
+			albedo *= texture(texture_diffuse1, TexCoords).rgb;
+		}
 	}
 
 	vec3 norm = normalize(Normal);
 	if (has_normal) {
-		// Normal mapping logic (simplified, assuming tangent space matches vertex layout)
-		// For now we just use the texture normal as a hint or replacement
-		// A full TBN implementation would be better if tangents are available.
-		vec3 mappedNormal = texture(texture_normal1, TexCoords).rgb * 2.0 - 1.0;
-		// Simple blending/reorientation if no tangents are provided in vertex format
-		// This is a placeholder for full normal mapping
+		vec3 mappedNormal;
+		if (uUseBindless && use_ssbo) {
+			mappedNormal = texture(sampler2D(uniforms_data[vUniformIndex].texture_handles[1]), TexCoords).rgb * 2.0 - 1.0;
+		} else {
+			mappedNormal = texture(texture_normal1, TexCoords).rgb * 2.0 - 1.0;
+		}
 		norm = normalize(mix(norm, mappedNormal, 0.5));
 	}
 
 	float tex_metallic = c_metallic;
 	if (has_metallic) {
-		tex_metallic *= texture(texture_metallic1, TexCoords).r;
+		if (uUseBindless && use_ssbo) {
+			tex_metallic *= texture(sampler2D(uniforms_data[vUniformIndex].texture_handles[2]), TexCoords).r;
+		} else {
+			tex_metallic *= texture(texture_metallic1, TexCoords).r;
+		}
 	}
 
 	float tex_roughness = c_roughness;
 	if (has_roughness) {
-		tex_roughness *= texture(texture_roughness1, TexCoords).r;
+		if (uUseBindless && use_ssbo) {
+			tex_roughness *= texture(sampler2D(uniforms_data[vUniformIndex].texture_handles[3]), TexCoords).r;
+		} else {
+			tex_roughness *= texture(texture_roughness1, TexCoords).r;
+		}
 	}
 
 	float tex_ao = c_ao;
 	if (has_ao) {
-		tex_ao *= texture(texture_ao1, TexCoords).r;
+		if (uUseBindless && use_ssbo) {
+			tex_ao *= texture(sampler2D(uniforms_data[vUniformIndex].texture_handles[4]), TexCoords).r;
+		} else {
+			tex_ao *= texture(texture_ao1, TexCoords).r;
+		}
 	}
 
 	vec3 emissive = vec3(0.0);
 	if (has_emissive) {
-		emissive = texture(texture_emissive1, TexCoords).rgb;
+		if (uUseBindless && use_ssbo) {
+			emissive = texture(sampler2D(uniforms_data[vUniformIndex].texture_handles[5]), TexCoords).rgb;
+		} else {
+			emissive = texture(texture_emissive1, TexCoords).rgb;
+		}
 	}
 	emissive += c_emissive_color * nightFactor;
 

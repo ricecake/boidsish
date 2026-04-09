@@ -33,16 +33,18 @@ struct CommonUniforms {
 	int   dissolve_enabled;
 	int   bone_matrices_offset;
 	int   use_skinning;
-	float anim_padding[2];
+	int   is_refractive;
+	float refractive_index;
 	float aabb_min_x;
 	float aabb_min_y;
 	float aabb_min_z;
 	float aabb_max_x;
 	float aabb_max_y;
 	float aabb_max_z;
-	int   is_refractive;
-	float refractive_index;
 	float emissive_r;
 	float emissive_g;
 	float emissive_b;
+	float padding_to_handles[2];
+	uvec2 texture_handles[8]; // 64 bytes (8 * 64-bit uints as uvec2 for compatibility)
+	float ssbo_padding[16];
 };
