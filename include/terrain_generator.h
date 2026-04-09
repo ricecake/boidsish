@@ -60,8 +60,14 @@ namespace Boidsish {
 		 * render manager instead of using per-chunk GPU resources.
 		 *
 		 * @param manager The render manager (can be nullptr to disable batched rendering)
+		 * @param lod_level The LOD level this manager handles
 		 */
-		void SetRenderManager(std::shared_ptr<TerrainRenderManager> manager) override { render_manager_ = manager; }
+		void SetRenderManager(std::shared_ptr<TerrainRenderManager> manager, int lod_level = 0) override {
+			if (lod_level == 0)
+				render_manager_ = manager;
+			else if (lod_level == 1)
+				lod1_render_manager_ = manager;
+		}
 
 		/**
 		 * @brief Invalidate a chunk that was evicted from the render manager.
@@ -71,17 +77,24 @@ namespace Boidsish {
 		 * so it will be regenerated when it comes back into view.
 		 *
 		 * @param chunk_key The (chunk_x, chunk_z) key of the evicted chunk
+		 * @param lod_level The LOD level of the evicted chunk
 		 */
-		void InvalidateChunk(std::pair<int, int> chunk_key) override {
+		void InvalidateChunk(std::pair<int, int> chunk_key, int lod_level = 0) override {
 			// No-op: we want to keep the chunk in our CPU cache even if it's
 			// evicted from GPU memory, to avoid expensive re-generation.
 			// It will be re-registered with the renderer when next visible.
 		}
 
 		/**
-		 * @brief Get the render manager.
+		 * @brief Get the render manager for an LOD level.
 		 */
-		std::shared_ptr<TerrainRenderManager> GetRenderManager() const override { return render_manager_; }
+		std::shared_ptr<TerrainRenderManager> GetRenderManager(int lod_level = 0) const override {
+			if (lod_level == 0)
+				return render_manager_;
+			if (lod_level == 1)
+				return lod1_render_manager_;
+			return nullptr;
+		}
 
 		std::vector<uint16_t> GenerateSuperChunkTexture(int requested_x, int requested_z);
 		std::vector<uint16_t> GenerateTextureForArea(int world_x, int world_z, int size);
@@ -295,7 +308,7 @@ namespace Boidsish {
 			return glm::mix(bot, top, uv.y);
 		}
 
-		TerrainGenerationResult generateChunkData(int chunkX, int chunkZ);
+		TerrainGenerationResult generateChunkData(int chunkX, int chunkZ, int stride = 1);
 
 		// Terrain parameters
 		struct TerrainParameters {
@@ -355,9 +368,14 @@ namespace Boidsish {
 
 		// Instanced terrain render manager (optional, when set uses GPU heightmap lookup)
 		std::shared_ptr<TerrainRenderManager> render_manager_;
+		std::shared_ptr<TerrainRenderManager> lod1_render_manager_;
 
 		// Terrain deformation system
 		TerrainDeformationManager deformation_manager_;
+
+		// LOD 1 Cache and async management
+		std::map<std::pair<int, int>, std::shared_ptr<Terrain>>            lod1_chunk_cache_;
+		std::map<std::pair<int, int>, TaskHandle<TerrainGenerationResult>> lod1_pending_chunks_;
 	};
 
 } // namespace Boidsish

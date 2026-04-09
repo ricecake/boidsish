@@ -413,6 +413,7 @@ namespace Boidsish {
 
 		std::shared_ptr<ITerrainGenerator>    terrain_generator;
 		std::shared_ptr<TerrainRenderManager> terrain_render_manager;
+		std::shared_ptr<TerrainRenderManager> lod1_terrain_render_manager;
 		std::unique_ptr<TrailRenderManager>   trail_render_manager;
 
 		std::unique_ptr<MegabufferImpl> megabuffer;
@@ -858,8 +859,22 @@ namespace Boidsish {
 					Constants::Class::Terrain::ChunkSize(),
 					initial_chunks
 				);
-				terrain_generator->SetRenderManager(terrain_render_manager);
+				terrain_generator->SetRenderManager(terrain_render_manager, 0);
+
+				int stride1 = Constants::Class::Terrain::LOD1ChunkSizeMultiplier();
+				lod1_terrain_render_manager = std::make_shared<TerrainRenderManager>(
+					Constants::Class::Terrain::ChunkSize(),
+					initial_chunks / 2, // Distant terrain needs fewer chunks
+					static_cast<float>(Constants::Class::Terrain::ChunkSize() * stride1)
+				);
+				terrain_generator->SetRenderManager(lod1_terrain_render_manager, 1);
 				terrain_render_manager->SetNoise(
+					noise_manager->GetNoiseTexture(),
+					noise_manager->GetCurlTexture(),
+					noise_manager->GetExtraNoiseTexture()
+				);
+
+				lod1_terrain_render_manager->SetNoise(
 					noise_manager->GetNoiseTexture(),
 					noise_manager->GetCurlTexture(),
 					noise_manager->GetExtraNoiseTexture()
@@ -870,7 +885,15 @@ namespace Boidsish {
 				terrain_render_manager->SetEvictionCallback(
 					[weak_gen = std::weak_ptr<ITerrainGenerator>(terrain_generator)](std::pair<int, int> key) {
 						if (auto gen = weak_gen.lock()) {
-							gen->InvalidateChunk(key);
+							gen->InvalidateChunk(key, 0);
+						}
+					}
+				);
+
+				lod1_terrain_render_manager->SetEvictionCallback(
+					[weak_gen = std::weak_ptr<ITerrainGenerator>(terrain_generator)](std::pair<int, int> key) {
+						if (auto gen = weak_gen.lock()) {
+							gen->InvalidateChunk(key, 1);
 						}
 					}
 				);
@@ -1843,17 +1866,40 @@ namespace Boidsish {
 				BindShadows(*Terrain::terrain_shader_);
 			}
 
+			float world_scale = terrain_generator ? terrain_generator->GetWorldScale() : 1.0f;
+
 			// Use batched render manager if available (single draw call for all chunks)
 			if (terrain_render_manager) {
 				// Calculate frustum for culling
 				Frustum frustum = shadow_frustum.has_value() ? *shadow_frustum : CalculateFrustum(view, proj);
 
-				// Prepare for rendering (frustum culling for instanced renderer)
-				float world_scale = terrain_generator ? terrain_generator->GetWorldScale() : 1.0f;
+				// Render LOD 0 (High resolution)
 				terrain_render_manager->PrepareForRender(frustum, camera.pos(), world_scale);
+				Terrain::terrain_shader_->use();
+				Terrain::terrain_shader_->setInt("uLODLevel", 0);
+				Terrain::terrain_shader_->setFloat("uFadeStart", 400.0f * world_scale);
+				Terrain::terrain_shader_->setFloat("uFadeEnd", 512.0f * world_scale);
 
 				terrain_render_manager
 					->Render(*Terrain::terrain_shader_, view, proj, viewport_size, clip_plane, effective_quality);
+
+				// Render LOD 1 (Distant low resolution)
+				if (lod1_terrain_render_manager) {
+					lod1_terrain_render_manager->PrepareForRender(frustum, camera.pos(), world_scale);
+					Terrain::terrain_shader_->use();
+					Terrain::terrain_shader_->setInt("uLODLevel", 1);
+					Terrain::terrain_shader_->setFloat("uFadeStart", 512.0f * world_scale);
+					Terrain::terrain_shader_->setFloat("uFadeEnd", 2000.0f * world_scale);
+
+					lod1_terrain_render_manager->Render(
+						*Terrain::terrain_shader_,
+						view,
+						proj,
+						viewport_size,
+						clip_plane,
+						effective_quality * 0.5f // Lower tessellation quality for distant layer
+					);
+				}
 			} else {
 				// Fallback to per-chunk rendering
 				Terrain::terrain_shader_->use();
@@ -3948,17 +3994,33 @@ namespace Boidsish {
 		impl->terrain_generator = std::move(generator);
 
 		// Set up the render manager for the new generator
-		if (impl->terrain_render_manager && impl->terrain_generator) {
-			impl->terrain_generator->SetRenderManager(impl->terrain_render_manager);
+		if (impl->terrain_generator) {
+			if (impl->terrain_render_manager) {
+				impl->terrain_generator->SetRenderManager(impl->terrain_render_manager, 0);
 
-			// Set up eviction callback with weak_ptr to avoid preventing destruction
-			impl->terrain_render_manager->SetEvictionCallback(
-				[weak_gen = std::weak_ptr<ITerrainGenerator>(impl->terrain_generator)](std::pair<int, int> chunk_key) {
-					if (auto gen = weak_gen.lock()) {
-						gen->InvalidateChunk(chunk_key);
+				// Set up eviction callback with weak_ptr to avoid preventing destruction
+				impl->terrain_render_manager->SetEvictionCallback(
+					[weak_gen = std::weak_ptr<ITerrainGenerator>(impl->terrain_generator)](std::pair<int, int> chunk_key)
+					{
+						if (auto gen = weak_gen.lock()) {
+							gen->InvalidateChunk(chunk_key, 0);
+						}
 					}
-				}
-			);
+				);
+			}
+
+			if (impl->lod1_terrain_render_manager) {
+				impl->terrain_generator->SetRenderManager(impl->lod1_terrain_render_manager, 1);
+
+				impl->lod1_terrain_render_manager->SetEvictionCallback(
+					[weak_gen = std::weak_ptr<ITerrainGenerator>(impl->terrain_generator)](std::pair<int, int> chunk_key)
+					{
+						if (auto gen = weak_gen.lock()) {
+							gen->InvalidateChunk(chunk_key, 1);
+						}
+					}
+				);
+			}
 		}
 	}
 

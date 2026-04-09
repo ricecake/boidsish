@@ -45,7 +45,11 @@ namespace Boidsish {
 	 */
 	class TerrainRenderManager {
 	public:
-		TerrainRenderManager(int chunk_size = Constants::Class::Terrain::ChunkSize(), int max_chunks = 512);
+		TerrainRenderManager(
+			int   chunk_size = Constants::Class::Terrain::ChunkSize(),
+			int   max_chunks = 512,
+			float world_chunk_size = -1.0f
+		);
 		~TerrainRenderManager();
 
 		// Non-copyable
@@ -212,9 +216,10 @@ namespace Boidsish {
 		);
 
 		// Configuration
-		int chunk_size_;           // Grid size per chunk (e.g., 32)
-		int max_chunks_;           // Maximum chunks in texture array
-		int heightmap_resolution_; // (chunk_size + 1) for vertex corners
+		int   chunk_size_;           // Grid size per chunk (e.g., 32)
+		float world_chunk_size_;     // World-space size per chunk (e.g., 32 or 512)
+		int   max_chunks_;           // Maximum chunks in texture array
+		int   heightmap_resolution_; // (chunk_size + 1) for vertex corners
 
 		// OpenGL resources
 		GLuint grid_vao_ = 0;
