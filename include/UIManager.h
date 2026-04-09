@@ -15,6 +15,7 @@ namespace Boidsish {
 
 		struct WindowState {
 			ImVec2 last_expanded_pos;
+			ImVec2 last_expanded_size;
 			bool   was_collapsed = false;
 		};
 
