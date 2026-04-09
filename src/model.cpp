@@ -133,6 +133,7 @@ namespace Boidsish {
 		glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(Vertex), &vertices[0], GL_STATIC_DRAW);
 
 		// Combine primary and shadow indices into a single EBO
+		if (EBO == 0) return; // Should not happen with glGenBuffers above but for safety
 		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
 		size_t primary_size = indices.size() * sizeof(unsigned int);
 		size_t shadow_size = shadow_indices.size() * sizeof(unsigned int);
