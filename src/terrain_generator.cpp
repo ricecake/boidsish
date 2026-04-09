@@ -109,25 +109,37 @@ namespace Boidsish {
 
 		glm::vec2 camera_pos_2d(camera.x, camera.z);
 
+		const float max_view_dist_sq =
+			(dynamic_view_distance * scaled_chunk_size) * (dynamic_view_distance * scaled_chunk_size);
+		const float immediate_load_dist_sq = (5.0f * scaled_chunk_size) * (5.0f * scaled_chunk_size);
+
 		for (int x = current_chunk_x - dynamic_view_distance; x <= current_chunk_x + dynamic_view_distance; ++x) {
 			for (int z = current_chunk_z - dynamic_view_distance; z <= current_chunk_z + dynamic_view_distance; ++z) {
+				// Calculate distance from chunk center to camera
+				glm::vec2 chunk_center(
+					x * scaled_chunk_size + scaled_chunk_size * 0.5f,
+					z * scaled_chunk_size + scaled_chunk_size * 0.5f
+				);
+				float dist_sq = glm::dot(chunk_center - camera_pos_2d, chunk_center - camera_pos_2d);
+
+				// Radial distance check
+				if (dist_sq > max_view_dist_sq) {
+					continue;
+				}
+
 				std::pair<int, int> chunk_coord = {x, z};
 				if (chunk_cache_.find(chunk_coord) == chunk_cache_.end() &&
 				    pending_chunks_.find(chunk_coord) == pending_chunks_.end()) {
+
 					bool in_frustum = isChunkInFrustum(frustum, x, z, scaled_chunk_size, max_h);
 
-					// Calculate distance from chunk center to camera
-					glm::vec2 chunk_center(
-						x * scaled_chunk_size + scaled_chunk_size * 0.5f,
-						z * scaled_chunk_size + scaled_chunk_size * 0.5f
-					);
-					float dist_sq = glm::dot(chunk_center - camera_pos_2d, chunk_center - camera_pos_2d);
-
-					// Priority: HIGH for in-frustum chunks, LOW for out-of-frustum
-					// Within each priority level, distance will determine order
-					TaskPriority priority = in_frustum ? TaskPriority::HIGH : TaskPriority::LOW;
-
-					chunks_to_enqueue.push_back({x, z, priority, dist_sq});
+					// Only load if in frustum OR very close to camera
+					if (in_frustum || dist_sq < immediate_load_dist_sq) {
+						// Priority: HIGH for in-frustum chunks, LOW for out-of-frustum
+						// Within each priority level, distance will determine order
+						TaskPriority priority = in_frustum ? TaskPriority::HIGH : TaskPriority::LOW;
+						chunks_to_enqueue.push_back({x, z, priority, dist_sq});
+					}
 				}
 			}
 		}
@@ -264,12 +276,18 @@ namespace Boidsish {
 		}
 
 		// 4. Unload chunks
+		const float unload_limit_dist = (dynamic_view_distance + kUnloadDistanceBuffer_) * scaled_chunk_size;
+		const float unload_limit_dist_sq = unload_limit_dist * unload_limit_dist;
+
 		std::vector<std::pair<int, int>> to_remove;
 		for (auto const& [key, val] : chunk_cache_) {
-			int dx = std::abs(key.first - current_chunk_x);
-			int dz = std::abs(key.second - current_chunk_z);
-			int limit = dynamic_view_distance + kUnloadDistanceBuffer_;
-			if (dx > limit || dz > limit) {
+			glm::vec2 chunk_center(
+				key.first * scaled_chunk_size + scaled_chunk_size * 0.5f,
+				key.second * scaled_chunk_size + scaled_chunk_size * 0.5f
+			);
+			float dist_sq = glm::dot(chunk_center - camera_pos_2d, chunk_center - camera_pos_2d);
+
+			if (dist_sq > unload_limit_dist_sq) {
 				to_remove.push_back(key);
 			}
 		}
@@ -283,10 +301,13 @@ namespace Boidsish {
 
 		std::vector<std::pair<int, int>> to_cancel;
 		for (auto const& [key, val] : pending_chunks_) {
-			int dx = std::abs(key.first - current_chunk_x);
-			int dz = std::abs(key.second - current_chunk_z);
-			int limit = dynamic_view_distance + kUnloadDistanceBuffer_;
-			if (dx > limit || dz > limit) {
+			glm::vec2 chunk_center(
+				key.first * scaled_chunk_size + scaled_chunk_size * 0.5f,
+				key.second * scaled_chunk_size + scaled_chunk_size * 0.5f
+			);
+			float dist_sq = glm::dot(chunk_center - camera_pos_2d, chunk_center - camera_pos_2d);
+
+			if (dist_sq > unload_limit_dist_sq) {
 				to_cancel.push_back(key);
 			}
 		}

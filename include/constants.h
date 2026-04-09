@@ -163,9 +163,11 @@ namespace Boidsish {
 					return 0.1f;
 				}
 
-				constexpr float DefaultFarPlane() {
-					return 1000.0f;
-				}
+				/**
+				 * @brief The clipping distance for the camera.
+				 * Derived from MaxViewDistance and ChunkSize to ensure all loaded terrain is visible.
+				 */
+				constexpr float DefaultFarPlane();
 
 				constexpr float MinHeight() {
 					return 0.1f;
@@ -255,7 +257,7 @@ namespace Boidsish {
 		namespace Class {
 			namespace Terrain {
 				constexpr int SliceMapSize() {
-					return 128;
+					return 512;
 				}
 			} // namespace Terrain
 
@@ -331,11 +333,11 @@ namespace Boidsish {
 				}
 
 				constexpr int DefaultViewDistance() {
-					return (32 * 10) / ChunkSize();
+					return 48;
 				}
 
 				constexpr int MaxViewDistance() {
-					return (32 * 24) / ChunkSize();
+					return 64;
 				}
 
 				constexpr int UnloadDistanceBuffer() {
@@ -594,4 +596,10 @@ namespace Boidsish {
 			} // namespace Checkpoint
 		} // namespace Class
 	} // namespace Constants
+
+	namespace Constants::Project::Camera {
+		constexpr float DefaultFarPlane() {
+			return static_cast<float>(Class::Terrain::MaxViewDistance() * Class::Terrain::ChunkSize());
+		}
+	} // namespace Constants::Project::Camera
 } // namespace Boidsish
