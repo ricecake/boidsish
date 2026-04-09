@@ -60,10 +60,10 @@ namespace Boidsish {
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-		// Velocity attachment
+		// Velocity attachment (RG = velocity, B = roughness, A = metallic)
 		glGenTextures(1, &velocity_tex_);
 		glBindTexture(GL_TEXTURE_2D, velocity_tex_);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RG16F, render_width_, render_height_, 0, GL_RG, GL_FLOAT, NULL);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, render_width_, render_height_, 0, GL_RGBA, GL_FLOAT, NULL);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, velocity_tex_, 0);
@@ -219,7 +219,7 @@ namespace Boidsish {
 
 		// Resize velocity
 		glBindTexture(GL_TEXTURE_2D, velocity_tex_);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RG16F, render_width_, render_height_, 0, GL_RG, GL_FLOAT, NULL);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, render_width_, render_height_, 0, GL_RGBA, GL_FLOAT, NULL);
 
 		// Resize normal
 		glBindTexture(GL_TEXTURE_2D, normal_tex_);
