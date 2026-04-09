@@ -13,20 +13,13 @@ void main() {
 	float sssFactor = texture(uShadowMask, TexCoords).r;
 	float traditionalShadow = texture(uNormalTexture, TexCoords).a;
 
-	// Improved logic to avoid double-shadowing:
 	// The scene color already has traditional shadow applied.
-	// We want the final shadow to be the minimum of both systems.
-	// finalShadow = min(traditionalShadow, sssFactor)
-	// Since color is already (baseColor * traditionalShadow),
-	// we multiply by (finalShadow / traditionalShadow).
+	// We only want to apply additional shadowing if SSS is darker than the traditional shadow.
+	// relativeSSS is 1.0 if sssFactor >= traditionalShadow, and < 1.0 otherwise.
+	float relativeSSS = clamp(sssFactor / max(traditionalShadow, 0.001), 0.0, 1.0);
 
-	float combinedShadow = min(traditionalShadow, sssFactor);
-
-	// Use a small epsilon to avoid division by zero and handle fully shadowed areas
-	float shadowAdjustment = combinedShadow / max(traditionalShadow, 0.01);
-
-	// Apply intensity mix
-	float shadowFactor = mix(1.0, shadowAdjustment, uIntensity);
+	// Apply intensity only to the delta provided by SSS
+	float shadowFactor = mix(1.0, relativeSSS, uIntensity);
 
 	FragColor = vec4(sceneColor.rgb * shadowFactor, sceneColor.a);
 }
