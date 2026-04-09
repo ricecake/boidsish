@@ -23,7 +23,14 @@ namespace Boidsish {
 
 			void SetSharedDepthTexture(GLuint texture);
 
-			void BeginApply(GLuint sourceTexture, GLuint sourceFbo, GLuint depthTexture, GLuint velocityTexture, GLuint normalTexture);
+			void BeginApply(
+				GLuint sourceTexture,
+				GLuint sourceFbo,
+				GLuint depthTexture,
+				GLuint velocityTexture,
+				GLuint normalTexture,
+				GLuint albedoTexture
+			);
 
 			void AttachDepthToCurrentFBO();
 			void DetachDepthFromPingPongFBOs();
@@ -89,6 +96,7 @@ namespace Boidsish {
 			GLuint depth_texture_ = 0;
 			GLuint velocity_texture_ = 0;
 			GLuint normal_texture_ = 0;
+			GLuint albedo_texture_ = 0;
 			int    fbo_index_ = 0;
 		};
 
