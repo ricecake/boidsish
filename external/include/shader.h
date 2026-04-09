@@ -744,6 +744,58 @@ protected:
 		}
 		return true;
 	}
+
+	bool loadSPIRV(GLuint shaderId, const std::string& path) {
+		if (!GLEW_ARB_gl_spirv && !GLEW_VERSION_4_6) {
+			return false;
+		}
+
+		std::ifstream file(path, std::ios::binary | std::ios::ate);
+		if (!file.is_open()) {
+			return false;
+		}
+
+		std::streamsize size = file.tellg();
+		file.seekg(0, std::ios::beg);
+
+		std::vector<char> buffer(size);
+		if (!file.read(buffer.data(), size)) {
+			return false;
+		}
+
+		glShaderBinary(1, &shaderId, GL_SHADER_BINARY_FORMAT_SPIR_V, buffer.data(), (GLsizei)size);
+		glSpecializeShader(shaderId, "main", 0, nullptr, nullptr);
+
+		GLint success;
+		glGetShaderiv(shaderId, GL_COMPILE_STATUS, &success);
+		if (!success) {
+			GLchar infoLog[1024];
+			glGetShaderInfoLog(shaderId, 1024, NULL, infoLog);
+			std::cerr << "ERROR::SHADER_SPECIALIZATION_ERROR (SPIR-V)\n"
+					  << path << std::endl
+					  << infoLog << "\n -- --------------------------------------------------- -- " << std::endl;
+			return false;
+		}
+
+		return true;
+	}
+
+	std::string getSpvPath(const std::string& path) {
+#ifdef BOIDSISH_BUILD_DIR
+		namespace fs = std::filesystem;
+		fs::path buildDir(BOIDSISH_BUILD_DIR);
+		fs::path p(path);
+		std::string p_str = p.string();
+		size_t      s_idx = p_str.find("shaders/");
+		if (s_idx != std::string::npos) {
+			return (buildDir / p_str.substr(s_idx)).string() + ".spv";
+		} else {
+			return (buildDir / "shaders" / p.filename()).string() + ".spv";
+		}
+#else
+		return path + ".spv";
+#endif
+	}
 };
 
 class Shader: public ShaderBase {
@@ -759,141 +811,123 @@ public:
 		const char* tessEvaluationPath = nullptr,
 		const char* geometryPath = nullptr
 	) {
-		// 1. retrieve the vertex/fragment source code from filePath
-		std::string vertexCode;
-		std::string fragmentCode;
-		std::string tessControlCode;
-		std::string tessEvaluationCode;
-		std::string geometryCode;
+		unsigned int vertex, fragment, tessControl = 0, tessEvaluation = 0, geometry = 0;
+		bool useSpv = (GLEW_ARB_gl_spirv || GLEW_VERSION_4_6);
 
-		std::set<std::string> includedFiles;
-		vertexCode = loadShaderSource(vertexPath, includedFiles);
+		// Try loading SPIR-V
+		bool vertexSpv = false, fragmentSpv = false, tessControlSpv = false, tessEvaluationSpv = false, geometrySpv = false;
 
-		includedFiles.clear();
-		fragmentCode = loadShaderSource(fragmentPath, includedFiles);
-
-		if (tessControlPath != nullptr && tessEvaluationPath != nullptr) {
-			includedFiles.clear();
-			tessControlCode = loadShaderSource(tessControlPath, includedFiles);
-			includedFiles.clear();
-			tessEvaluationCode = loadShaderSource(tessEvaluationPath, includedFiles);
-		}
-
-		if (geometryPath != nullptr) {
-			includedFiles.clear();
-			geometryCode = loadShaderSource(geometryPath, includedFiles);
-		}
-
-		const char* vShaderCode = vertexCode.c_str();
-		const char* fShaderCode = fragmentCode.c_str();
-		// 2. compile shaders
-		unsigned int vertex, fragment;
-		// vertex shader
 		vertex = glCreateShader(GL_VERTEX_SHADER);
-		glShaderSource(vertex, 1, &vShaderCode, NULL);
-		glCompileShader(vertex);
-		if (!checkCompileErrors(vertex, "VERTEX", vertexPath)) {
-			glDeleteShader(vertex);
-			ID = 0;
-			return;
-		}
-		// fragment Shader
+		if (useSpv) vertexSpv = loadSPIRV(vertex, getSpvPath(vertexPath));
+
 		fragment = glCreateShader(GL_FRAGMENT_SHADER);
-		glShaderSource(fragment, 1, &fShaderCode, NULL);
-		glCompileShader(fragment);
-		if (!checkCompileErrors(fragment, "FRAGMENT", fragmentPath)) {
-			glDeleteShader(vertex);
-			glDeleteShader(fragment);
-			ID = 0;
-			return;
-		}
+		if (useSpv) fragmentSpv = loadSPIRV(fragment, getSpvPath(fragmentPath));
 
-		unsigned int tessControl, tessEvaluation;
-		if (tessControlPath != nullptr && tessEvaluationPath != nullptr) {
-			const char* tcShaderCode = tessControlCode.c_str();
+		if (tessControlPath && tessEvaluationPath) {
 			tessControl = glCreateShader(GL_TESS_CONTROL_SHADER);
-			glShaderSource(tessControl, 1, &tcShaderCode, NULL);
-			glCompileShader(tessControl);
-			if (!checkCompileErrors(tessControl, "TESS_CONTROL", tessControlPath)) {
-				glDeleteShader(vertex);
-				glDeleteShader(fragment);
-				glDeleteShader(tessControl);
-				ID = 0;
-				return;
-			}
-
-			const char* teShaderCode = tessEvaluationCode.c_str();
+			if (useSpv) tessControlSpv = loadSPIRV(tessControl, getSpvPath(tessControlPath));
 			tessEvaluation = glCreateShader(GL_TESS_EVALUATION_SHADER);
-			glShaderSource(tessEvaluation, 1, &teShaderCode, NULL);
-			glCompileShader(tessEvaluation);
-			if (!checkCompileErrors(tessEvaluation, "TESS_EVALUATION", tessEvaluationPath)) {
-				glDeleteShader(vertex);
-				glDeleteShader(fragment);
-				glDeleteShader(tessControl);
-				glDeleteShader(tessEvaluation);
-				ID = 0;
-				return;
+			if (useSpv) tessEvaluationSpv = loadSPIRV(tessEvaluation, getSpvPath(tessEvaluationPath));
+		}
+
+		if (geometryPath) {
+			geometry = glCreateShader(GL_GEOMETRY_SHADER);
+			if (useSpv) geometrySpv = loadSPIRV(geometry, getSpvPath(geometryPath));
+		}
+
+		// Fallback to GLSL if SPIR-V failed or not supported
+		if (!vertexSpv) {
+			std::set<std::string> includedFiles;
+			std::string code = loadShaderSource(vertexPath, includedFiles);
+			const char* c_code = code.c_str();
+			glShaderSource(vertex, 1, &c_code, NULL);
+			glCompileShader(vertex);
+			if (!checkCompileErrors(vertex, "VERTEX", vertexPath)) {
+				glDeleteShader(vertex); glDeleteShader(fragment);
+				if (tessControl) glDeleteShader(tessControl); if (tessEvaluation) glDeleteShader(tessEvaluation);
+				if (geometry) glDeleteShader(geometry);
+				ID = 0; return;
 			}
 		}
 
-		// if geometry shader is given, compile geometry shader
-		unsigned int geometry;
-		if (geometryPath != nullptr) {
-			const char* gShaderCode = geometryCode.c_str();
-			geometry = glCreateShader(GL_GEOMETRY_SHADER);
-			glShaderSource(geometry, 1, &gShaderCode, NULL);
+		if (!fragmentSpv) {
+			std::set<std::string> includedFiles;
+			std::string code = loadShaderSource(fragmentPath, includedFiles);
+			const char* c_code = code.c_str();
+			glShaderSource(fragment, 1, &c_code, NULL);
+			glCompileShader(fragment);
+			if (!checkCompileErrors(fragment, "FRAGMENT", fragmentPath)) {
+				glDeleteShader(vertex); glDeleteShader(fragment);
+				if (tessControl) glDeleteShader(tessControl); if (tessEvaluation) glDeleteShader(tessEvaluation);
+				if (geometry) glDeleteShader(geometry);
+				ID = 0; return;
+			}
+		}
+
+		if (tessControlPath && tessEvaluationPath) {
+			if (!tessControlSpv) {
+				std::set<std::string> includedFiles;
+				std::string code = loadShaderSource(tessControlPath, includedFiles);
+				const char* c_code = code.c_str();
+				glShaderSource(tessControl, 1, &c_code, NULL);
+				glCompileShader(tessControl);
+				if (!checkCompileErrors(tessControl, "TESS_CONTROL", tessControlPath)) {
+					glDeleteShader(vertex); glDeleteShader(fragment);
+					glDeleteShader(tessControl); glDeleteShader(tessEvaluation);
+					if (geometry) glDeleteShader(geometry);
+					ID = 0; return;
+				}
+			}
+			if (!tessEvaluationSpv) {
+				std::set<std::string> includedFiles;
+				std::string code = loadShaderSource(tessEvaluationPath, includedFiles);
+				const char* c_code = code.c_str();
+				glShaderSource(tessEvaluation, 1, &c_code, NULL);
+				glCompileShader(tessEvaluation);
+				if (!checkCompileErrors(tessEvaluation, "TESS_EVALUATION", tessEvaluationPath)) {
+					glDeleteShader(vertex); glDeleteShader(fragment);
+					glDeleteShader(tessControl); glDeleteShader(tessEvaluation);
+					if (geometry) glDeleteShader(geometry);
+					ID = 0; return;
+				}
+			}
+		}
+
+		if (geometryPath && !geometrySpv) {
+			std::set<std::string> includedFiles;
+			std::string code = loadShaderSource(geometryPath, includedFiles);
+			const char* c_code = code.c_str();
+			glShaderSource(geometry, 1, &c_code, NULL);
 			glCompileShader(geometry);
 			if (!checkCompileErrors(geometry, "GEOMETRY", geometryPath)) {
-				glDeleteShader(vertex);
-				glDeleteShader(fragment);
-				if (tessControlPath != nullptr && tessEvaluationPath != nullptr) {
-					glDeleteShader(tessControl);
-					glDeleteShader(tessEvaluation);
-				}
+				glDeleteShader(vertex); glDeleteShader(fragment);
+				if (tessControl) glDeleteShader(tessControl); if (tessEvaluation) glDeleteShader(tessEvaluation);
 				glDeleteShader(geometry);
-				ID = 0;
-				return;
+				ID = 0; return;
 			}
 		}
 
-		// shader Program
+		// Link Program
 		ID = glCreateProgram();
 		glAttachShader(ID, vertex);
 		glAttachShader(ID, fragment);
-		if (tessControlPath != nullptr && tessEvaluationPath != nullptr) {
-			glAttachShader(ID, tessControl);
-			glAttachShader(ID, tessEvaluation);
-		}
-		if (geometryPath != nullptr) {
-			glAttachShader(ID, geometry);
-		}
+		if (tessControl) glAttachShader(ID, tessControl);
+		if (tessEvaluation) glAttachShader(ID, tessEvaluation);
+		if (geometry) glAttachShader(ID, geometry);
 
 		glLinkProgram(ID);
 		if (!checkCompileErrors(ID, "PROGRAM", vertexPath)) {
-			glDeleteShader(vertex);
-			glDeleteShader(fragment);
-			if (tessControlPath != nullptr && tessEvaluationPath != nullptr) {
-				glDeleteShader(tessControl);
-				glDeleteShader(tessEvaluation);
-			}
-			if (geometryPath != nullptr) {
-				glDeleteShader(geometry);
-			}
-			glDeleteProgram(ID);
-			ID = 0;
-			return;
+			glDeleteShader(vertex); glDeleteShader(fragment);
+			if (tessControl) glDeleteShader(tessControl); if (tessEvaluation) glDeleteShader(tessEvaluation);
+			if (geometry) glDeleteShader(geometry);
+			glDeleteProgram(ID); ID = 0; return;
 		}
 
-		// delete the shaders as they're linked into our program now and no longer necessary
 		glDeleteShader(vertex);
 		glDeleteShader(fragment);
-		if (tessControlPath != nullptr && tessEvaluationPath != nullptr) {
-			glDeleteShader(tessControl);
-			glDeleteShader(tessEvaluation);
-		}
-		if (geometryPath != nullptr) {
-			glDeleteShader(geometry);
-		}
+		if (tessControl) glDeleteShader(tessControl);
+		if (tessEvaluation) glDeleteShader(tessEvaluation);
+		if (geometry) glDeleteShader(geometry);
 
 		valid_ = true;
 	}
@@ -906,73 +940,50 @@ public:
 	bool valid_{false}; // Track if shader compiled successfully
 
 	ComputeShader(const char* computePath) {
-		std::string           computeCode;
-		std::set<std::string> includedFiles;
-
-		computeCode = loadShaderSource(computePath, includedFiles);
-
-		if (computeCode.empty()) {
-			std::cerr << "ERROR::COMPUTE_SHADER::FILE_NOT_FOUND: " << computePath << std::endl;
-			ID = 0;
-			return;
-		}
-
-		// Check if compute shaders are supported
-		// Use glGetString which is more reliable on some drivers (especially Mesa)
-		int majorVersion = 0, minorVersion = 0;
-		const char* versionStr = reinterpret_cast<const char*>(glGetString(GL_VERSION));
-		if (versionStr && versionStr[0] != '\0') {
-			if (sscanf(versionStr, "%d.%d", &majorVersion, &minorVersion) != 2) {
-				std::cerr << "ERROR::COMPUTE_SHADER::VERSION_PARSE_FAILED: Could not parse GL_VERSION: '"
-				          << versionStr << "'" << std::endl;
-			}
-		} else {
-			std::cerr << "ERROR::COMPUTE_SHADER::NO_CONTEXT: glGetString(GL_VERSION) returned "
-			          << (versionStr ? "empty string" : "NULL")
-			          << " - is there an active OpenGL context?" << std::endl;
-		}
-		if (majorVersion < 4 || (majorVersion == 4 && minorVersion < 3)) {
-			std::cerr << "ERROR::COMPUTE_SHADER::UNSUPPORTED: OpenGL " << majorVersion << "." << minorVersion
-			          << " does not support compute shaders (requires 4.3+)\n"
-			          << "  File: " << computePath << std::endl;
-			ID = 0;
-			return;
-		}
-
-		// Compile compute shader
 		unsigned int compute;
-		const char*  gShaderCode = computeCode.c_str();
+		bool useSpv = (GLEW_ARB_gl_spirv || GLEW_VERSION_4_6);
+		bool computeSpv = false;
+
 		compute = glCreateShader(GL_COMPUTE_SHADER);
-		if (compute == 0) {
-			std::cerr << "ERROR::COMPUTE_SHADER::CREATE_FAILED: glCreateShader returned 0\n"
-			          << "  File: " << computePath << "\n"
-			          << "  GL Error: " << glGetError() << std::endl;
-			ID = 0;
-			return;
+		if (useSpv) computeSpv = loadSPIRV(compute, getSpvPath(computePath));
+
+		if (!computeSpv) {
+			std::string           computeCode;
+			std::set<std::string> includedFiles;
+			computeCode = loadShaderSource(computePath, includedFiles);
+
+			if (computeCode.empty()) {
+				std::cerr << "ERROR::COMPUTE_SHADER::FILE_NOT_FOUND: " << computePath << std::endl;
+				glDeleteShader(compute); ID = 0; return;
+			}
+
+			// Check if compute shaders are supported
+			int majorVersion = 0, minorVersion = 0;
+			const char* versionStr = reinterpret_cast<const char*>(glGetString(GL_VERSION));
+			if (versionStr && sscanf(versionStr, "%d.%d", &majorVersion, &minorVersion) == 2) {
+				if (majorVersion < 4 || (majorVersion == 4 && minorVersion < 3)) {
+					std::cerr << "ERROR::COMPUTE_SHADER::UNSUPPORTED: OpenGL " << majorVersion << "." << minorVersion << " (requires 4.3+)\n";
+					glDeleteShader(compute); ID = 0; return;
+				}
+			}
+
+			const char* c_code = computeCode.c_str();
+			glShaderSource(compute, 1, &c_code, NULL);
+			glCompileShader(compute);
+
+			if (!checkCompileErrors(compute, "COMPUTE", computePath)) {
+				glDeleteShader(compute); ID = 0; return;
+			}
 		}
 
-		glShaderSource(compute, 1, &gShaderCode, NULL);
-		glCompileShader(compute);
-
-		if (!checkCompileErrors(compute, "COMPUTE", computePath)) {
-			glDeleteShader(compute);
-			ID = 0;
-			return;
-		}
-
-		// shader Program
+		// Link Program
 		ID = glCreateProgram();
 		glAttachShader(ID, compute);
-
 		glLinkProgram(ID);
 		if (!checkCompileErrors(ID, "PROGRAM", computePath)) {
-			glDeleteShader(compute);
-			glDeleteProgram(ID);
-			ID = 0;
-			return;
+			glDeleteShader(compute); glDeleteProgram(ID); ID = 0; return;
 		}
 
-		// delete the shaders as they're linked into our program now and no longer necessary
 		glDeleteShader(compute);
 		valid_ = true;
 	}
