@@ -523,25 +523,107 @@ namespace Boidsish {
 		std::mt19937 gen(seed);
 
 		// Parameters
-		const float killDistance = 0.5f;
-		const float influenceRadius = 1.5f;
-		const float growthStep = 0.3f;
-		const int   numAttractors = 400;
-		const float exponent = 2.0f; // Leonardo's rule
+		float killDistance = 0.5f;
+		float influenceRadius = 1.5f;
+		float growthStep = 0.3f;
+		int   numAttractors = 400;
+		float exponent = 2.0f; // Leonardo's rule
+		int   initialTrunkNodes = 10;
 
-		std::vector<SCAttractor>              attractors;
-		std::uniform_real_distribution<float> crownX(-3.0f, 3.0f);
-		std::uniform_real_distribution<float> crownY(3.0f, 10.0f);
-		std::uniform_real_distribution<float> crownZ(-3.0f, 3.0f);
+		int variant = seed % 6;
 
+		// Variant-specific parameter overrides
+		if (variant == 1) { // Sphere
+			numAttractors = 600;
+			influenceRadius = 2.0f;
+		} else if (variant == 2) { // Umbrella
+			numAttractors = 700;
+			initialTrunkNodes = 25;
+			influenceRadius = 2.5f;
+		} else if (variant == 3) { // Spread out
+			numAttractors = 400;
+			influenceRadius = 3.5f;
+			growthStep = 0.5f;
+		} else if (variant == 4) { // Spiral
+			numAttractors = 500;
+			influenceRadius = 1.5f;
+			exponent = 2.5f;
+		} else if (variant == 5) { // Sparse half capsule
+			numAttractors = 350;
+			killDistance = 0.7f;
+			influenceRadius = 2.0f;
+		}
+
+		std::vector<SCAttractor> attractors;
+		std::uniform_real_distribution<float> dis(-1.0f, 1.0f);
+
+		glm::vec3 crownBase(0.0f);
 		for (int i = 0; i < numAttractors; ++i) {
-			attractors.push_back({{crownX(gen), crownY(gen), crownZ(gen)}, true});
+			glm::vec3 pos(0.0f);
+			if (variant == 0) { // Box
+				pos = glm::vec3(dis(gen) * 3.0f, 3.0f + (dis(gen) + 1.0f) * 3.5f, dis(gen) * 3.0f);
+				crownBase = glm::vec3(0, 3, 0);
+			} else if (variant == 1) { // Sphere
+				float phi = (dis(gen) + 1.0f) * (float)std::numbers::pi;
+				float theta = (dis(gen) + 1.0f) * 0.5f * (float)std::numbers::pi;
+				float r = std::pow((dis(gen) + 1.0f) * 0.5f, 1.0f/3.0f) * 4.0f;
+				pos = glm::vec3(
+					r * std::sin(theta) * std::cos(phi),
+					7.0f + r * std::cos(theta),
+					r * std::sin(theta) * std::sin(phi)
+				);
+				crownBase = glm::vec3(0, 7, 0);
+			} else if (variant == 2) { // Umbrella
+				float angle = (dis(gen) + 1.0f) * (float)std::numbers::pi;
+				float r = std::sqrt((dis(gen) + 1.0f) * 0.5f) * 5.0f;
+				pos = glm::vec3(
+					r * std::cos(angle),
+					9.0f + dis(gen) * 1.0f,
+					r * std::sin(angle)
+				);
+				crownBase = glm::vec3(0, 9, 0);
+			} else if (variant == 3) { // Spread out
+				pos = glm::vec3(dis(gen) * 8.0f, 4.0f + (dis(gen) + 1.0f) * 6.0f, dis(gen) * 8.0f);
+				crownBase = glm::vec3(0, 4, 0);
+			} else if (variant == 4) { // Spiral
+				float t = (dis(gen) + 1.0f) * 0.5f;
+				float angle = t * 4.0f * (float)std::numbers::pi;
+				float r = 1.0f + t * 2.0f + dis(gen) * 0.5f;
+				pos = glm::vec3(
+					r * std::cos(angle),
+					2.0f + t * 8.0f + dis(gen) * 0.5f,
+					r * std::sin(angle)
+				);
+				crownBase = glm::vec3(0, 2, 0);
+			} else if (variant == 5) { // Sparse half capsule
+				float phi = (dis(gen) + 1.0f) * (float)std::numbers::pi;
+				float theta = (dis(gen) + 1.0f) * 0.25f * (float)std::numbers::pi;
+				float r = 3.0f + dis(gen) * 0.5f;
+				pos = glm::vec3(
+					r * std::sin(theta) * std::cos(phi),
+					6.0f + r * std::cos(theta),
+					r * std::sin(theta) * std::sin(phi)
+				);
+				crownBase = glm::vec3(0, 6, 0);
+			}
+			attractors.push_back({pos, true});
+		}
+
+		// Add lure attractors to guide trunk to crown
+		float trunkTopY = (float)initialTrunkNodes * growthStep;
+		if (crownBase.y > trunkTopY) {
+			int numLures = 30;
+			for (int i = 0; i < numLures; ++i) {
+				float t = (float)i / (float)numLures;
+				glm::vec3 lurePos = glm::vec3(0, trunkTopY + t * (crownBase.y - trunkTopY), 0);
+				lurePos += glm::vec3(dis(gen) * 0.5f, 0, dis(gen) * 0.5f);
+				attractors.push_back({lurePos, true});
+			}
 		}
 
 		std::vector<SCNode> nodes;
 		// Root nodes (trunk) to reach the crown
 		nodes.push_back({0, -1, {0, 0, 0}});
-		int initialTrunkNodes = 10;
 		for (int i = 1; i <= initialTrunkNodes; ++i) {
 			nodes.push_back({i, i - 1, {0, (float)i * growthStep, 0}});
 			nodes[i - 1].children.push_back(i);
@@ -636,8 +718,9 @@ namespace Boidsish {
 
 		ProceduralIR ir;
 		ir.name = "sc_tree";
-		glm::vec3 woodCol(0.35f, 0.25f, 0.15f);
-		glm::vec3 leafCol(0.1f, 0.45f, 0.1f);
+		std::uniform_real_distribution<float> colDis(-0.05f, 0.05f);
+		glm::vec3 woodCol(0.35f + colDis(gen), 0.25f + colDis(gen), 0.15f + colDis(gen));
+		glm::vec3 leafCol(0.1f + colDis(gen), 0.45f + colDis(gen), 0.1f + colDis(gen));
 
 		std::vector<int> node_to_ir(nodes.size(), -1);
 		for (size_t i = 0; i < nodes.size(); ++i) {
