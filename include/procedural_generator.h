@@ -26,12 +26,13 @@ namespace Boidsish {
 
 	struct SpringPlantConfig {
 		float spring_repulsion = 1.0f;
-		float branch_length_factor = 1.0f;
+		float ground_repulsion = 1.0f;
+		float branch_length_factor = 1.2f;
 		int   iterations = 5;
-		float size_limit = 10.0f;
-		float equilibrium_time = 1.0f; // Seconds per generation
-		float branch_split_factor = 0.5f;
-		float up_pull = 0.5f;
+		float size_limit = 15.0f;
+		float equilibrium_time = 1.5f; // Seconds per generation
+		float branch_split_factor = 0.7f;
+		float up_pull = 1.0f;
 		float curvature = 0.1f;
 		float spiral = 0.1f;
 		int   min_branches = 2;

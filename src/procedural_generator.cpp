@@ -792,6 +792,14 @@ namespace Boidsish {
 					float     angle = node.pos.y * config.spiral + node.generation * 0.5f;
 					glm::vec3 spiralForce(std::cos(angle), 0, std::sin(angle));
 					forces[i] += spiralForce * config.curvature * node.flexibility;
+
+					// 7. Ground Repulsion
+					if (node.pos.y > 0.0001f) {
+						float groundForce = config.ground_repulsion / (node.pos.y * node.pos.y);
+						forces[i].y += std::min(groundForce, 100.0f) * node.flexibility;
+					} else {
+						forces[i].y += 100.0f * node.flexibility;
+					}
 				}
 
 				// Apply forces

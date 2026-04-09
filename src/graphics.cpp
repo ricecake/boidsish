@@ -966,12 +966,14 @@ namespace Boidsish {
 				// --- Shockwave Manager ---
 				shockwave_manager->Initialize(render_width, render_height);
 
+				auto& cfg = ConfigManager::GetInstance();
+
 				auto auto_exposure_effect = std::make_shared<PostProcessing::AutoExposureEffect>();
-				auto_exposure_effect->SetEnabled(true);
+				auto_exposure_effect->SetEnabled(cfg.GetAppSettingBool("enable_auto_exposure", true));
 				post_processing_manager_->AddEffect(auto_exposure_effect);
 
 				auto gtao_effect = std::make_shared<PostProcessing::GtaoEffect>();
-				gtao_effect->SetEnabled(true);
+				gtao_effect->SetEnabled(cfg.GetAppSettingBool("enable_gtao", true));
 				post_processing_manager_->AddEffect(gtao_effect);
 
 				auto negative_effect = std::make_shared<PostProcessing::NegativeEffect>();
@@ -1003,25 +1005,24 @@ namespace Boidsish {
 				post_processing_manager_->AddEffect(film_grain_effect);
 
 				auto super_speed_effect = std::make_shared<PostProcessing::SuperSpeedEffect>();
-				super_speed_effect->SetEnabled(true);
+				super_speed_effect->SetEnabled(cfg.GetAppSettingBool("enable_super_speed", true));
 				post_processing_manager_->AddEffect(super_speed_effect);
 
 				atmosphere_effect = std::make_shared<PostProcessing::AtmosphereEffect>();
-				atmosphere_effect->SetEnabled(true);
+				atmosphere_effect->SetEnabled(cfg.GetAppSettingBool("enable_atmosphere", true));
 				post_processing_manager_->AddEffect(atmosphere_effect);
 
 				auto bloom_effect = std::make_shared<PostProcessing::BloomEffect>(render_width, render_height);
-				bloom_effect->SetEnabled(true);
+				bloom_effect->SetEnabled(cfg.GetAppSettingBool("enable_bloom", true));
 				post_processing_manager_->AddEffect(bloom_effect);
 
 				auto sdf_volume_effect = std::make_shared<PostProcessing::SdfVolumeEffect>();
-				sdf_volume_effect->SetEnabled(true);
+				sdf_volume_effect->SetEnabled(cfg.GetAppSettingBool("enable_sdf_volume", true));
 				post_processing_manager_->AddEffect(sdf_volume_effect);
 
 				if (enable_hdr_) {
 					auto tone_mapping_effect = std::make_shared<PostProcessing::ToneMappingEffect>();
 					tone_mapping_effect->SetEnabled(true);
-					bloom_effect->SetEnabled(true);
 					post_processing_manager_->SetToneMappingEffect(tone_mapping_effect);
 				}
 

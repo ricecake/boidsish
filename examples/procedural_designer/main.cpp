@@ -37,6 +37,7 @@ public:
 			if (m_type == 5) {
 				// Tree Spring config
 				ImGui::SliderFloat("Spring Repulsion", &m_springConfig.spring_repulsion, 0.0f, 10.0f);
+				ImGui::SliderFloat("Ground Repulsion", &m_springConfig.ground_repulsion, 0.0f, 10.0f);
 				ImGui::SliderFloat("Branch Length Factor", &m_springConfig.branch_length_factor, 0.1f, 5.0f);
 				ImGui::SliderInt("Iterations", &m_springConfig.iterations, 1, 10);
 				ImGui::SliderFloat("Size Limit", &m_springConfig.size_limit, 1.0f, 50.0f);
@@ -223,6 +224,17 @@ int main(int argc, char** argv) {
 	config.SetBool("day_night_cycle", false);
 	config.SetBool("enable_floor", true);
 	config.SetFloat("ambient_particle_density", 0.0f);
+
+	config.SetBool("enable_shadows", false);
+	config.SetBool("enable_atmosphere", false);
+	config.SetBool("enable_weather", false);
+	config.SetBool("enable_gtao", false);
+	config.SetBool("enable_bloom", false);
+	config.SetBool("enable_ssgi", false);
+	config.SetBool("enable_sss", false);
+	config.SetBool("enable_auto_exposure", false);
+	config.SetBool("enable_super_speed", false);
+	config.SetBool("enable_sdf_volume", false);
 
 	auto& cycle = vis.GetLightManager().GetDayNightCycle();
 	cycle.paused = true;
