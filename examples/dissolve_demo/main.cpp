@@ -54,6 +54,7 @@ int main() {
 				state.wait_timer -= delta_time;
 				if (state.wait_timer <= 0.0f) {
 					state.is_waiting = false;
+					dissolve_fire->ClearParticles();
 				}
 				return std::vector<std::shared_ptr<Boidsish::Shape>>{};
 			}
@@ -83,9 +84,8 @@ int main() {
 				dissolve_fire->SetDirection(dir);
 
 				if (finished) {
-					dissolve_fire->ClearParticles();
 					state.is_waiting = true;
-					state.wait_timer = 1.0f;
+					state.wait_timer = 3.0f;
 				}
 			}
 
