@@ -840,7 +840,11 @@ namespace Boidsish {
 				);
 				terrain_render_manager = std::make_shared<TerrainRenderManager>(32, initial_chunks);
 				terrain_generator->SetRenderManager(terrain_render_manager);
-				terrain_render_manager->SetNoise(noise_manager->GetNoiseTexture(), noise_manager->GetCurlTexture());
+				terrain_render_manager->SetNoise(
+					noise_manager->GetNoiseTexture(),
+					noise_manager->GetCurlTexture(),
+					noise_manager->GetExtraNoiseTexture()
+				);
 
 				// Set up eviction callback so terrain generator knows when chunks are LRU-evicted
 				// Capture weak_ptr to allow terrain generator to be swapped without dangling reference
@@ -2952,7 +2956,8 @@ namespace Boidsish {
 			impl->terrain_render_manager ? impl->terrain_render_manager->GetBiomeTexture() : 0,
 			impl->lighting_ubo,
 			impl->frustum_ssbo->GetBufferId(),
-			impl->frustum_ssbo->GetFrameOffset() + impl->mdi_frustum_count * sizeof(FrustumDataGPU)
+			impl->frustum_ssbo->GetFrameOffset() + impl->mdi_frustum_count * sizeof(FrustumDataGPU),
+			impl->noise_manager ? impl->noise_manager->GetExtraNoiseTexture() : 0
 		);
 		impl->mesh_explosion_manager->Update(impl->simulation_delta_time, impl->simulation_time);
 		impl->sound_effect_manager->Update(impl->simulation_delta_time);
@@ -3387,8 +3392,13 @@ namespace Boidsish {
 		}
 
 		// Render transparent/particle effects so they are captured in the refraction texture
-		impl->fire_effect_manager
-			->Render(view, impl->projection, impl->camera.pos(), impl->noise_manager->GetNoiseTexture());
+		impl->fire_effect_manager->Render(
+			view,
+			impl->projection,
+			impl->camera.pos(),
+			impl->noise_manager ? impl->noise_manager->GetNoiseTexture() : 0,
+			impl->noise_manager ? impl->noise_manager->GetExtraNoiseTexture() : 0
+		);
 		impl->mesh_explosion_manager->Render(view, impl->projection, impl->camera.pos());
 		if (impl->akira_effect_manager) {
 			impl->akira_effect_manager->Render(view, impl->projection, impl->simulation_time);

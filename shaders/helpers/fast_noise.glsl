@@ -3,10 +3,12 @@
 // u_noiseTexture: 3D, unit 5, R=Simplex/G=Worley/B=FBM/A=Warped
 // u_curlTexture: 3D, unit 6, RGB=Curl/A=FBM Curl Mag
 // u_blueNoiseTexture: 2D, unit 7, RGBA tiling blue noise at 4 frequencies
+// u_extraNoiseTexture: 3D, unit 8, R=Ridge/G=Gradient
 
 uniform sampler3D u_noiseTexture;
 uniform sampler3D u_curlTexture;
 uniform sampler2D u_blueNoiseTexture;
+uniform sampler3D u_extraNoiseTexture;
 
 // R: Simplex 3D
 float fastSimplex3d(vec3 p) {
@@ -26,6 +28,17 @@ float fastFbm3d(vec3 p) {
 // A: Warped FBM 3D
 float fastWarpedFbm3d(vec3 p) {
 	return texture(u_noiseTexture, p).a * 2.0 - 1.0;
+}
+
+// Extra Noises (from u_extraNoiseTexture)
+// R: Ridge 3D
+float fastRidge3d(vec3 p) {
+	return texture(u_extraNoiseTexture, p).r;
+}
+
+// G: Gradient 3D
+float fastGradient3d(vec3 p) {
+	return texture(u_extraNoiseTexture, p).g * 2.0 - 1.0;
 }
 
 // Multi-octave texture FBM
