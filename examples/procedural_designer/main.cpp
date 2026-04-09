@@ -31,19 +31,34 @@ public:
 
 	void Draw() override {
 		if (ImGui::Begin("Procedural Designer")) {
-			const char* types[] = {"Rock", "Grass", "Flower", "Tree", "SC Tree", "Critter"};
+			const char* types[] = {"Rock", "Grass", "Flower", "Tree", "SC Tree", "Tree Spring", "Critter"};
 			ImGui::Combo("Model Type", &m_type, types, IM_ARRAYSIZE(types));
 
-			ImGui::InputText("Axiom", m_axiomBuf, sizeof(m_axiomBuf));
+			if (m_type == 5) {
+				// Tree Spring config
+				ImGui::SliderFloat("Spring Repulsion", &m_springConfig.spring_repulsion, 0.0f, 10.0f);
+				ImGui::SliderFloat("Branch Length Factor", &m_springConfig.branch_length_factor, 0.1f, 5.0f);
+				ImGui::SliderInt("Iterations", &m_springConfig.iterations, 1, 10);
+				ImGui::SliderFloat("Size Limit", &m_springConfig.size_limit, 1.0f, 50.0f);
+				ImGui::SliderFloat("Equilibrium Time", &m_springConfig.equilibrium_time, 0.1f, 5.0f);
+				ImGui::SliderFloat("Branch Split Factor", &m_springConfig.branch_split_factor, 0.1f, 1.0f);
+				ImGui::SliderFloat("Up Pull", &m_springConfig.up_pull, 0.0f, 2.0f);
+				ImGui::SliderFloat("Curvature", &m_springConfig.curvature, 0.0f, 1.0f);
+				ImGui::SliderFloat("Spiral", &m_springConfig.spiral, 0.0f, 1.0f);
+				ImGui::SliderInt("Min Branches", &m_springConfig.min_branches, 1, 5);
+				ImGui::SliderInt("Max Branches", &m_springConfig.max_branches, 1, 10);
+			} else {
+				ImGui::InputText("Axiom", m_axiomBuf, sizeof(m_axiomBuf));
 
-			ImGui::InputTextMultiline(
-				"Rules (one per line)",
-				m_rulesBuf,
-				sizeof(m_rulesBuf),
-				ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 5)
-			);
+				ImGui::InputTextMultiline(
+					"Rules (one per line)",
+					m_rulesBuf,
+					sizeof(m_rulesBuf),
+					ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 5)
+				);
 
-			ImGui::SliderInt("Iterations", &m_iterations, 1, 6);
+				ImGui::SliderInt("Iterations", &m_iterations, 1, 6);
+			}
 			ImGui::SliderInt("Grid Size", &m_gridSize, 1, 10);
 			ImGui::SliderFloat("Spacing", &m_spacing, 1.0f, 20.0f);
 			ImGui::InputInt("Seed Offset", &m_seedOffset);
@@ -162,6 +177,9 @@ private:
 					model = ProceduralGenerator::GenerateSpaceColonizationTree(seed);
 					break;
 				case 5:
+					model = ProceduralGenerator::GenerateSpringPlant(seed, m_springConfig);
+					break;
+				case 6:
 					model = ProceduralGenerator::GenerateCritter(seed, axiom, ruleList, m_iterations);
 					break;
 				}
@@ -192,6 +210,7 @@ private:
 	float                                   m_spacing;
 	int                                     m_iterations;
 	int                                     m_seedOffset;
+	SpringPlantConfig                       m_springConfig;
 };
 
 int main(int argc, char** argv) {
@@ -203,6 +222,11 @@ int main(int argc, char** argv) {
 	config.SetBool("render_decor", false);
 	config.SetBool("day_night_cycle", false);
 	config.SetBool("enable_floor", true);
+	config.SetFloat("ambient_particle_density", 0.0f);
+
+	auto& cycle = vis.GetLightManager().GetDayNightCycle();
+	cycle.paused = true;
+	cycle.time = 16.0f;
 
 	auto designer = std::make_shared<DesignerWidget>(vis);
 	vis.AddWidget(designer);

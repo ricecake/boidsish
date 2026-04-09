@@ -13,7 +13,30 @@ namespace Boidsish {
 
 	class Visualizer;
 
-	enum class ProceduralType { Rock, Grass, Flower, Tree, TreeSpaceColonization, Critter, Structure };
+	enum class ProceduralType {
+		Rock,
+		Grass,
+		Flower,
+		Tree,
+		TreeSpaceColonization,
+		TreeSpring,
+		Critter,
+		Structure
+	};
+
+	struct SpringPlantConfig {
+		float spring_repulsion = 1.0f;
+		float branch_length_factor = 1.0f;
+		int   iterations = 5;
+		float size_limit = 10.0f;
+		float equilibrium_time = 1.0f; // Seconds per generation
+		float branch_split_factor = 0.5f;
+		float up_pull = 0.5f;
+		float curvature = 0.1f;
+		float spiral = 0.1f;
+		int   min_branches = 2;
+		int   max_branches = 3;
+	};
 
 	class ProceduralGenerator {
 	public:
@@ -34,6 +57,7 @@ namespace Boidsish {
 			int                             iterations = 3
 		);
 		static std::shared_ptr<Model> GenerateSpaceColonizationTree(unsigned int seed);
+		static std::shared_ptr<Model> GenerateSpringPlant(unsigned int seed, const SpringPlantConfig& config = {});
 		static std::shared_ptr<Model> GenerateCritter(
 			unsigned int                    seed,
 			const std::string&              axiom = "",
@@ -55,6 +79,7 @@ namespace Boidsish {
 			int                             iterations = 3
 		);
 		static ProceduralIR GenerateSpaceColonizationTreeIR(unsigned int seed);
+		static ProceduralIR GenerateSpringPlantIR(unsigned int seed, const SpringPlantConfig& config = {});
 		static ProceduralIR GenerateCritterIR(
 			unsigned int                    seed,
 			const std::string&              axiom = "",
