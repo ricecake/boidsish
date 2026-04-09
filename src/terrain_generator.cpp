@@ -160,26 +160,24 @@ namespace Boidsish {
 				try {
 					auto&                   future = const_cast<TaskHandle<TerrainGenerationResult>&>(pair.second);
 					TerrainGenerationResult result = future.get();
-					if (result.has_terrain) {
-						auto terrain_chunk = std::make_shared<Terrain>(
-							result.indices,
-							result.positions,
-							result.normals,
-							result.biomes,
-							result.proxy
-						);
-						terrain_chunk
-							->SetPosition(result.chunk_x * scaled_chunk_size, 0, result.chunk_z * scaled_chunk_size);
+					auto                    terrain_chunk = std::make_shared<Terrain>(
+						result.indices,
+						result.positions,
+						result.normals,
+						result.biomes,
+						result.proxy
+					);
+					terrain_chunk
+						->SetPosition(result.chunk_x * scaled_chunk_size, 0, result.chunk_z * scaled_chunk_size);
 
-						if (render_manager_) {
-							terrain_chunk->SetManagedByRenderManager(true);
-							// Registration is deferred to the registration pass below
-						} else {
-							terrain_chunk->setupMesh();
-						}
-
-						chunk_cache_[pair.first] = terrain_chunk;
+					if (render_manager_) {
+						terrain_chunk->SetManagedByRenderManager(true);
+						// Registration is deferred to the registration pass below
+					} else {
+						terrain_chunk->setupMesh();
 					}
+
+					chunk_cache_[pair.first] = terrain_chunk;
 					completed_chunks.push_back(pair.first);
 				} catch (const std::future_error& e) {
 					if (e.code() == std::future_errc::no_state) {
@@ -616,7 +614,7 @@ namespace Boidsish {
 
 				auto res = pointGenerateAll(worldX, worldZ);
 				heightmap[i][j] = res.height_data;
-				has_terrain = has_terrain || res.height_data[0] > 0;
+				has_terrain = true;
 
 				// Calculate biome info using the synchronized control value
 				int   low_idx;
@@ -693,9 +691,6 @@ namespace Boidsish {
 			}
 		}
 
-		if (!has_terrain) {
-			return {{}, {}, {}, {}, {}, chunkX, chunkZ, false};
-		}
 
 		// Generate vertices and normals
 		positions.reserve(num_vertices_x * num_vertices_z);
@@ -1490,42 +1485,35 @@ namespace Boidsish {
 				if (pair.second.is_ready()) {
 					try {
 						TerrainGenerationResult result = pair.second.get();
-						if (result.has_terrain) {
-							auto new_terrain = std::make_shared<Terrain>(
-								result.indices,
-								result.positions,
-								result.normals,
-								result.biomes,
-								result.proxy
-							);
-							new_terrain->SetPosition(
-								result.chunk_x * scaled_chunk_size,
-								0,
-								result.chunk_z * scaled_chunk_size
-							);
+						auto                    new_terrain = std::make_shared<Terrain>(
+							result.indices,
+							result.positions,
+							result.normals,
+							result.biomes,
+							result.proxy
+						);
+						new_terrain->SetPosition(
+							result.chunk_x * scaled_chunk_size,
+							0,
+							result.chunk_z * scaled_chunk_size
+						);
 
-							if (render_manager_) {
-								new_terrain->SetManagedByRenderManager(true);
-								render_manager_->RegisterChunk(
-									pair.first,
-									new_terrain->vertices,
-									new_terrain->normals,
-									new_terrain->biomes,
-									new_terrain->GetIndices(),
-									new_terrain->proxy.minY,
-									new_terrain->proxy.maxY,
-									glm::vec3(result.chunk_x * scaled_chunk_size, 0, result.chunk_z * scaled_chunk_size)
-								);
-							} else {
-								new_terrain->setupMesh();
-							}
-							chunk_cache_[pair.first] = new_terrain;
+						if (render_manager_) {
+							new_terrain->SetManagedByRenderManager(true);
+							render_manager_->RegisterChunk(
+								pair.first,
+								new_terrain->vertices,
+								new_terrain->normals,
+								new_terrain->biomes,
+								new_terrain->GetIndices(),
+								new_terrain->proxy.minY,
+								new_terrain->proxy.maxY,
+								glm::vec3(result.chunk_x * scaled_chunk_size, 0, result.chunk_z * scaled_chunk_size)
+							);
 						} else {
-							if (render_manager_) {
-								render_manager_->UnregisterChunk(pair.first);
-							}
-							chunk_cache_.erase(pair.first);
+							new_terrain->setupMesh();
 						}
+						chunk_cache_[pair.first] = new_terrain;
 						completed_keys.push_back(pair.first);
 						any_completed = true;
 					} catch (...) {
