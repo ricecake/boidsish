@@ -849,7 +849,7 @@ namespace Boidsish {
 				// Chunk size must match terrain_generator.h (32)
 				GLint max_layers = 0;
 				glGetIntegerv(GL_MAX_ARRAY_TEXTURE_LAYERS, &max_layers);
-				int initial_chunks = std::min(2048, max_layers > 0 ? max_layers : 512);
+				int initial_chunks = max_layers > 0 ? std::min(max_layers, 8192) : 1024;
 				logger::LOG(
 					"Terrain render manager: GPU supports " + std::to_string(max_layers) +
 					" texture array layers, using " + std::to_string(initial_chunks)
@@ -1281,7 +1281,7 @@ namespace Boidsish {
 
 		glm::mat4 SetupMatrices(const Camera& cam_to_use) {
 			float world_scale = terrain_generator ? terrain_generator->GetWorldScale() : 1.0f;
-			float far_plane = 1000.0f * std::max(1.0f, world_scale);
+			float far_plane = Constants::Project::Camera::DefaultFarPlane() * std::max(1.0f, world_scale);
 			projection = glm::perspective(glm::radians(cam_to_use.fov), (float)width / (float)height, 0.1f, far_plane);
 			glm::vec3 cameraPos(cam_to_use.x, cam_to_use.y, cam_to_use.z);
 			cameraPos += shake_offset;
@@ -2091,7 +2091,7 @@ namespace Boidsish {
 			frame.frame_count = frame_count_;
 
 			frame.world_scale = terrain_generator ? terrain_generator->GetWorldScale() : 1.0f;
-			frame.far_plane = 1000.0f * std::max(1.0f, frame.world_scale);
+			frame.far_plane = Constants::Project::Camera::DefaultFarPlane() * std::max(1.0f, frame.world_scale);
 
 			frame.render_width = render_width;
 			frame.render_height = render_height;
@@ -2334,7 +2334,7 @@ namespace Boidsish {
 			context.time = simulation_time;
 
 			float world_scale = terrain_generator ? terrain_generator->GetWorldScale() : 1.0f;
-			context.far_plane = 1000.0f * std::max(1.0f, world_scale);
+			context.far_plane = Constants::Project::Camera::DefaultFarPlane() * std::max(1.0f, world_scale);
 			context.frustum = Frustum::FromViewProjection(current_view_matrix, projection);
 			context.shader_table = &shader_table;
 			context.megabuffer = megabuffer.get();
@@ -2411,7 +2411,7 @@ namespace Boidsish {
 			// Calculate frustum for terrain generation and decor placement
 			if (terrain_generator) {
 				float     world_scale_val = terrain_generator->GetWorldScale();
-				float     far_plane_val = 1000.0f * std::max(1.0f, world_scale_val);
+				float     far_plane_val = Constants::Project::Camera::DefaultFarPlane() * std::max(1.0f, world_scale_val);
 				float     generator_fov = camera.fov + 15.0f;
 				glm::mat4 generator_proj =
 					glm::perspective(glm::radians(generator_fov), (float)width / (float)height, 0.1f, far_plane_val);
@@ -3327,7 +3327,7 @@ namespace Boidsish {
 			glm::vec3 cameraPos(impl->camera.x, impl->camera.y, impl->camera.z);
 			glm::mat4 view = glm::lookAt(cameraPos, cameraPos + impl->camera.front(), impl->camera.up());
 			float     world_scale = impl->terrain_generator ? impl->terrain_generator->GetWorldScale() : 1.0f;
-			float     far_plane = 1000.0f * std::max(1.0f, world_scale);
+			float     far_plane = Constants::Project::Camera::DefaultFarPlane() * std::max(1.0f, world_scale);
 			glm::mat4 proj = glm::perspective(
 				glm::radians(impl->camera.fov),
 				(float)impl->width / (float)impl->height,
@@ -3690,7 +3690,7 @@ namespace Boidsish {
 		glm::vec3 ray_dir = ray.direction;
 
 		float world_scale = impl->terrain_generator ? impl->terrain_generator->GetWorldScale() : 1.0f;
-		float max_ray_dist = 1000.0f * std::max(1.0f, world_scale);
+		float max_ray_dist = Constants::Project::Camera::DefaultFarPlane() * std::max(1.0f, world_scale);
 
 		float                      distance;
 		[[maybe_unused]] glm::vec3 normal;
