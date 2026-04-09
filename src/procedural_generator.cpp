@@ -347,24 +347,24 @@ namespace Boidsish {
 		ProceduralIR ir;
 		ir.name = "grass";
 
-		const int num_blades = 5;
+		const int num_blades = 12;
 		for (int i = 0; i < num_blades; ++i) {
 			float angle = (float)i / num_blades * 2.0f * (float)std::numbers::pi;
 			float s = std::sin(angle);
 			float c = std::cos(angle);
 
-			glm::vec3 basePos(c * 0.1f, 0, s * 0.1f);
+			glm::vec3 basePos(c * 0.2f + dis(gen) * 0.3f, 0, s * 0.2f + dis(gen) * 0.3f);
 			glm::vec3 grassCol(0.1f, 0.5f + dis(gen), 0.1f);
 
 			glm::vec3 p1 = basePos;
 			float     r1 = 0.05f;
 			glm::vec3 c1 = grassCol;
 
-			glm::vec3 p2 = basePos + glm::vec3(dis(gen), 0.5f, dis(gen));
+			glm::vec3 p2 = basePos + glm::vec3(dis(gen) * 2.0f, 0.5f, dis(gen) * 2.0f);
 			float     r2 = 0.03f;
 			glm::vec3 c2 = grassCol * 1.2f;
 
-			glm::vec3 p3 = basePos + glm::vec3(dis(gen) * 2.0f, 1.0f, dis(gen) * 2.0f);
+			glm::vec3 p3 = p2 + glm::vec3(dis(gen) * 3.0f, 0.5f, dis(gen) * 3.0f);
 			float     r3 = 0.005f;
 			glm::vec3 c3 = grassCol * 1.5f;
 

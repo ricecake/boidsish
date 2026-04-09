@@ -22,6 +22,7 @@ layout(std430, binding = 12) buffer BoneMatricesSSBO {
 };
 
 #include "helpers/fast_noise.glsl"
+#include "helpers/terrain_noise.glsl"
 #include "helpers/noise.glsl"
 #include "helpers/shockwave.glsl"
 #include "lighting.glsl"
@@ -111,19 +112,38 @@ void main() {
 			float normalizedHeight = clamp(localHeight / totalHeight, 0.0, 1.0);
 
 			// 1. Calculate raw wind magnitude and direction
-			float fateFactor = fastWorley3d(vec3(instanceCenter.xz / 25.0, time * 0.25)) * 0.5 + 0.75;
-			vec2 rawWindNudge = fateFactor * curlNoise2D(instanceCenter.xz * wind_frequency + time * wind_speed * 0.5) *
-				wind_strength * u_windResponsiveness;
+			float fateFactor = fastWorley3d(vec3(instanceCenter.xz / 50.0, time * 0.25)) * 0.5 + 0.50;
+			vec3 windForce = fastCurl3d(
+				vec3(instanceCenter.x * 0.0005 + time * 0.00125, instanceCenter.y * 0.001, instanceCenter.z * 0.0005 + time * 0.0125)
+			);
+			vec3 rawWindNudge3D = (fateFactor * windForce) * wind_strength * u_windResponsiveness;
 
-			float windMag = length(rawWindNudge);
+			float windDistortion = pow(
+				1 -
+					smoothstep(
+						0,
+						1,
+						((1 - dot(rawWindNudge3D, vec3(0, 1, 0))) / 2)
+					),
+				9.0
+			);
+			float plainRipple = tangentGabor(instanceCenter, vec3(0, 1, 0), -1 * windDistortion * rawWindNudge3D, time, 0.5, 0.00001, 0.75) *
+					0.5 +
+				0.5;
+			float windRipple = windDistortion * plainRipple;
+
+			float windMag = length(rawWindNudge3D.xz);
 
 			if (windMag > 0.001) {
-				vec2 windDir2D = rawWindNudge / windMag;
+				vec2 windDir2D = normalize(rawWindNudge3D.xz);
 				vec3 windDir = vec3(windDir2D.x, 0.0, windDir2D.y);
 
 				// 2. Apply Asymptotic Resistance (tanh)
 				float maxDeflection = 1.3;
 				float resistedWindMag = maxDeflection * tanh(windMag / maxDeflection);
+
+				// Incorporate Gabor ripple into deflection
+				resistedWindMag *= (1.0 + windRipple * 2.0);
 
 				// 3. Calculate bending angle based on resisted wind and height
 				float bendAngle = resistedWindMag * pow(normalizedHeight, 1.2) *
