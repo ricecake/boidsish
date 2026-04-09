@@ -75,6 +75,8 @@ namespace Boidsish {
 		return *this;
 	}
 
+	Mesh::~Mesh() { Cleanup(); }
+
 	void Mesh::setupMesh(Megabuffer* mb) {
 		if (mb) {
 			if (allocation.valid)
