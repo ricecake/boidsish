@@ -817,7 +817,7 @@ namespace Boidsish {
 	}
 
 	glm::vec3 TerrainGenerator::getPathDataFlat(glm::vec2 pos) const {
-		return Simplex::dnoise(pos * kPathFrequency);
+		return Simplex::dFlowNoise(pos * kPathFrequency, std::atan2(pos.y, pos.x));
 	}
 
 	glm::vec3 TerrainGenerator::getPathInfluence(float x, float z) const {
