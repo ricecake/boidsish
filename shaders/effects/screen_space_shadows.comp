@@ -37,10 +37,11 @@ void main() {
 	}
 
 	vec3 vPos = getViewPos(uv);
+	// G-buffer normal is typically stored in [0, 1] range, remap to [-1, 1] if needed
+	// Assuming it's already in [-1, 1] based on RGBA16F usage in SceneCompositor
 	vec3 vNormal = normalize(texture(uNormal, uv).xyz);
 
 	// Get light direction in view space
-	// Assume lights[0] is the primary light (Sun)
 	vec3 lightDirWorld;
 	int light = nightFactor >= 0.5? 1 : 0;
 	if (lights[light].type == 1) { // DIRECTIONAL
@@ -52,6 +53,13 @@ void main() {
 	// Transform light direction to view space
 	mat4 worldToView = inverse(invView);
 	vec3 lightDirView = normalize((worldToView * vec4(lightDirWorld, 0.0)).xyz);
+
+	// 1. Skip surfaces facing away from light
+	float dotNL = dot(vNormal, lightDirView);
+	if (dotNL <= 0.0) {
+		imageStore(outShadowMask, pixel, vec4(0.0, 0.0, 0.0, 0.0));
+		return;
+	}
 
 	// Raymarching parameters
 	float visibility = 1.0;
@@ -67,18 +75,18 @@ void main() {
 
 	float maxDist = uRadius * worldScaleVal;
 
-	// Reduced distance-aware bias sensitivity
-	float distBias = uBias * worldScaleVal * (1.0 + vPos.z * vPos.z * 0.0001);
+	// Refined distance-aware bias: more conservative for detail
+	float distBias = uBias * worldScaleVal * (1.0 + vPos.z * vPos.z * 0.00005);
 
-	// Combined normal and light direction bias
-	vec3 rayStartPos = vPos + (vNormal * 0.5 + lightDirView * 0.5) * distBias;
+	// Smaller offset for better detail capture in divots
+	vec3 rayStartPos = vPos + (vNormal * 0.4 + lightDirView * 0.1) * distBias;
 
-	// Jittered step size to reduce banding
 	float stepSize = maxDist / float(uSteps);
 	vec3 rayStep = lightDirView * stepSize;
 	vec3 rayPos = rayStartPos + rayStep * dither;
 
 	float minContactDist = maxDist;
+	float finalEdgeFade = 1.0;
 
 	for (int i = 0; i < uSteps; i++) {
 		// Project ray position to screen space
@@ -98,27 +106,31 @@ void main() {
 			vec4  sampleViewPos4 = invProjection * sampleClipPos;
 			float sampleViewZ = sampleViewPos4.z / sampleViewPos4.w;
 
-			// Check if the ray is occluded by geometry
 			float depthDiff = sampleViewZ - rayPos.z;
 
-			// Increased thickness and added epsilon
+			// Hit detection with tighter threshold and generous thickness
 			if (depthDiff > 0.01 * worldScaleVal && depthDiff < 2.0 * worldScaleVal) {
-				// Collision!
-				float contactDist = distance(rayPos, rayStartPos);
-				minContactDist = min(minContactDist, contactDist);
+				// Screen edge fading: fade out as occluder leaves the screen
+				vec2 edgeDist = min(sampleUV, 1.0 - sampleUV);
+				float edgeFade = clamp(min(edgeDist.x, edgeDist.y) * 10.0, 0.0, 1.0);
 
-				visibility = 0.0;
-				break;
+				if (edgeFade > 0.0) {
+					visibility = 0.0;
+					minContactDist = distance(rayPos, rayStartPos);
+					finalEdgeFade = edgeFade;
+					break;
+				}
 			}
 		}
 
 		rayPos += rayStep;
 	}
 
-	// Improved contact hardening with smoother falloff
+	// Apply contact hardening and screen edge fade
 	if (visibility < 1.0) {
 		float shadowStrength = clamp(minContactDist / (maxDist), 0.0, 1.0);
-		visibility = pow(shadowStrength, 1.5);
+		// Combine visibility with edge fade so shadows disappear smoothly at edges
+		visibility = mix(1.0, shadowStrength, finalEdgeFade);
 	}
 
 	imageStore(outShadowMask, pixel, vec4(visibility, 0.0, 0.0, 0.0));
