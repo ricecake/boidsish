@@ -222,7 +222,7 @@ void main() {
 			// Fallback contribution
 			// Specular fallback is handled by standard lighting already in many cases,
 			// but SSGI fallback can fill in localized environment reflections.
-			indirect += ambient * weight * 0.1;
+			indirect += ambient * weight * 0.05;
 		}
 	}
 
