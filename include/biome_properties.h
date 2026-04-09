@@ -91,7 +91,7 @@ namespace Boidsish {
 			0.05f,
 			0.60f,
 			40.00f,
-			2.0f,
+			3.5f,
 			glm::vec3(0.45f, 0.50f, 0.25f),
 			0.80f,
 			0.0f,
@@ -104,7 +104,7 @@ namespace Boidsish {
 			0.30f,
 			0.50f,
 			60.00f,
-			1.0f,
+			4.0f,
 			glm::vec3(0.12f, 0.28f, 0.10f),
 			0.85f,
 			0.0f,
@@ -138,9 +138,9 @@ namespace Boidsish {
 		}, // Brown
 		   // Rock
 		BiomeAttributes{
+			0.05f,
 			0.10f,
-			0.10f,
-			150.0f,
+			220.0f,
 			3.0f,
 			glm::vec3(0.45f, 0.45f, 0.48f),
 			0.60f,
@@ -151,9 +151,9 @@ namespace Boidsish {
 		}, // Grey
 		   // Rock
 		BiomeAttributes{
-			0.05f,
+			0.02f,
 			0.50f,
-			250.0f,
+			450.0f,
 			5.0f,
 			glm::vec3(0.95f, 0.97f, 1.00f),
 			0.40f,

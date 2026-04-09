@@ -543,7 +543,7 @@ namespace Boidsish {
 		float sx = x / world_scale_;
 		float sz = z / world_scale_;
 
-		glm::vec3 path_influence = getPathInfluence(sx, sz);
+		glm::vec3 path_influence = getPathInfluence(sx * 0.1f, sz * 0.5f);
 		float     path_factor = path_influence.x;
 
 		glm::vec2 push_dir(0.0f);
@@ -557,6 +557,8 @@ namespace Boidsish {
 
 		glm::vec2 warped_pos = glm::vec2(sx, sz) + warp;
 
+		warped_pos *= 0.10f;
+
 		// Calculate biome control value using warped coordinates for synchronization
 		glm::vec2 biome_pos = warped_pos * control_noise_scale_;
 		float     control_value = Simplex::noise(biome_pos + Simplex::curlNoise(biome_pos)) * 0.5f + 0.5f;
@@ -568,12 +570,22 @@ namespace Boidsish {
 		// Force a low-altitude biome (like Sand/Grass) on the path
 		control_value = glm::mix(0.0f, control_value, path_factor);
 
+		// Coarse shaping for broader bases and plateaus
+		// 1. Broaden bases: stay in lower biomes longer
+		control_value = pow(1.3f*control_value, 1.3f);
+
+		// 2. Plateaus: increase prevalence of middle ground via "stepping" the control value
+		control_value += 0.1f * sin(control_value * 4.0f * Constants::General::Math::Pi());
+		control_value = std::clamp(control_value, 0.0f, 1.0f);
+
 		BiomeAttributes current;
 		ApplyWeightedBiome(control_value, current);
 
 		glm::vec3 terrain_height = biomefbm(warped_pos, current);
 
-		float path_floor_level = -0.10f;
+		terrain_height *= std::lerp(2.5, 1.0, glm::smoothstep(30.0f, 300.0f, terrain_height.x));
+
+		float path_floor_level = -0.010f;
 		terrain_height.x = glm::mix(path_floor_level, terrain_height.x, path_factor);
 
 		// Scale height proportionally to world scale
@@ -1042,7 +1054,7 @@ namespace Boidsish {
 
 		glm::vec2 pos(x + warp.x, z + warp.y);
 		pos *= control_noise_scale_;
-		float result = Simplex::noise(pos + Simplex::curlNoise(pos)) * 0.5f + 0.5f;
+		float result = Simplex::noise((pos + Simplex::curlNoise(pos))) * 0.5f + 0.5f;
 
 		// Force a low-altitude biome on the path
 		result = glm::mix(0.0f, result, path_factor);
