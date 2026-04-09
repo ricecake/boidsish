@@ -27,6 +27,9 @@ namespace Boidsish {
 		SetPace(WeatherAttribute::RayleighScaleHeight, WeatherConstants::RayleighScaleHeight.pace);
 		SetPace(WeatherAttribute::MieScaleHeight, WeatherConstants::MieScaleHeight.pace);
 		SetPace(WeatherAttribute::CloudCoverage, WeatherConstants::CloudCoverage.pace);
+		SetPace(WeatherAttribute::AirPressure, 0.1f);
+		SetPace(WeatherAttribute::Temperature, 0.05f);
+		SetPace(WeatherAttribute::Humidity, 0.1f);
 	}
 
 	WeatherManager::~WeatherManager() {}
@@ -117,6 +120,15 @@ namespace Boidsish {
 			break;
 		case WeatherAttribute::CloudCoverage:
 			value_ptr = &current_.cloud_coverage;
+			break;
+		case WeatherAttribute::AirPressure:
+			value_ptr = &current_.air_pressure;
+			break;
+		case WeatherAttribute::Temperature:
+			value_ptr = &current_.temperature;
+			break;
+		case WeatherAttribute::Humidity:
+			value_ptr = &current_.humidity;
 			break;
 		default:
 			return;
@@ -244,7 +256,13 @@ namespace Boidsish {
 		}
 	}
 
-	void WeatherManager::Update(float deltaTime, float totalTime, const glm::vec3& cameraPos) {
+	void WeatherManager::Update(
+		float                  deltaTime,
+		float                  totalTime,
+		const glm::vec3&       cameraPos,
+		float                  timeOfDay,
+		const BiomeAttributes& biome
+	) {
 		if (!enabled_ || presets_.empty())
 			return;
 
@@ -253,7 +271,54 @@ namespace Boidsish {
 		// Calculate weather control coordinate in noise-space
 		glm::vec2 noisePos = glm::vec2(cameraPos.x, cameraPos.z) * spatial_scale_ + glm::vec2(totalTime * time_scale_);
 
-		// Check if we need to update the targets (idling logic)
+		// 1. Physically grounded Air Pressure calculation
+		// 샘플링을 위해 워프된 좌표를 사용
+		glm::vec2 warp = Simplex::curlNoise(noisePos * 2.0f) * 0.5f;
+		glm::vec2 warpedPos = noisePos + warp;
+		// Air pressure sampled via Worley noise (cellular structure of pressure systems)
+		float airPressureFactor = Simplex::worleyNoise(warpedPos * 5.0f);
+		// Map Worley [0,1] to hPa [980, 1040]
+		float targetAirPressure = 980.0f + airPressureFactor * 60.0f;
+
+		// 2. Pressure Gradient for Wind
+		float     delta = 0.01f;
+		float     pX = Simplex::worleyNoise((warpedPos + glm::vec2(delta, 0.0f)) * 5.0f);
+		float     pY = Simplex::worleyNoise((warpedPos + glm::vec2(0.0f, delta)) * 5.0f);
+		glm::vec2 grad = glm::vec2(pX - airPressureFactor, pY - airPressureFactor) / delta;
+
+		float targetWindStrength = glm::length(grad) * 0.5f;
+		if (targetWindStrength > 0.001f) {
+			current_.wind_direction = glm::normalize(glm::vec3(grad.x, 0.0f, grad.y));
+		}
+
+		// 3. Daily Temperature Cycle
+		// Temperature peaks around 2-3 PM (time 14-15)
+		float tempCycle = -std::cos((timeOfDay - 3.0f) * (2.0f * 3.14159f / 24.0f));
+		// Higher pressure usually means clearer skies and higher daytime temps, or colder nights
+		float pressureTempMod = (airPressureFactor - 0.5f) * 5.0f;
+		float targetTemperature = 15.0f + tempCycle * 10.0f + pressureTempMod;
+
+		// 4. Humidity
+		// Relative humidity decreases as temperature increases (if moisture stays constant)
+		// Biome humidity propensity acts as the moisture source
+		float saturationVaporPressure = 6.112f * std::exp((17.67f * targetTemperature) / (targetTemperature + 243.5f));
+		float actualVaporPressure = biome.humidityPropensity * 15.0f; // Simplified
+		float targetHumidity = std::clamp(actualVaporPressure / saturationVaporPressure, 0.0f, 1.0f);
+
+		// 5. Derive Rayleigh and Mie Scattering from Physical parameters
+		// Rayleigh scattering is proportional to pressure and inversely to temperature (density)
+		float densityRatio = (targetAirPressure / 1013.25f) * (288.15f / (targetTemperature + 273.15f));
+		float targetRayleighScale = densityRatio * WeatherConstants::RayleighScale.normal;
+
+		// Mie scattering increases with humidity (aerosol growth) and biome emissions
+		float aerosolFactor = biome.aerosolEmission * (1.0f + targetHumidity * 2.0f);
+		float targetMieScale = aerosolFactor * WeatherConstants::MieScale.normal;
+
+		// 6. Cloud parameters from Humidity and Temperature
+		float targetCloudCoverage = glm::smoothstep(0.4f, 0.9f, targetHumidity);
+		float targetCloudDensity = targetHumidity * 0.5f + (1.0f - airPressureFactor) * 0.5f;
+
+		// Check if we need to update the targets (idling logic for remaining settings)
 		float dist = glm::distance(noisePos, last_control_noise_);
 		bool  manual_changed = (manual_preset_idx_ != last_manual_preset_idx_);
 		if (dist > hold_threshold_ || manual_changed) {
@@ -303,20 +368,25 @@ namespace Boidsish {
 			};
 
 			cached_targets_.sun_intensity = blended.sun_intensity.Lerp(sampleNoise(1.1f));
-			cached_targets_.wind_strength = blended.wind_strength.Lerp(sampleNoise(2.2f));
 			cached_targets_.wind_speed = blended.wind_speed.Lerp(sampleNoise(3.3f));
 			cached_targets_.wind_frequency = blended.wind_frequency.Lerp(sampleNoise(4.4f));
-			cached_targets_.cloud_density = blended.cloud_density.Lerp(sampleNoise(5.5f));
 			cached_targets_.cloud_altitude = blended.cloud_altitude.Lerp(sampleNoise(6.6f));
 			cached_targets_.cloud_thickness = blended.cloud_thickness.Lerp(sampleNoise(7.7f));
 			cached_targets_.haze_density = blended.haze_density.Lerp(sampleNoise(8.8f));
 			cached_targets_.haze_height = blended.haze_height.Lerp(sampleNoise(9.9f));
-			cached_targets_.rayleigh_scale = blended.rayleigh_scale.Lerp(sampleNoise(10.10f));
-			cached_targets_.mie_scale = blended.mie_scale.Lerp(sampleNoise(11.11f));
 			cached_targets_.atmosphere_height = blended.atmosphere_height.Lerp(sampleNoise(12.12f));
 			cached_targets_.rayleigh_scale_height = blended.rayleigh_scale_height.Lerp(sampleNoise(13.13f));
 			cached_targets_.mie_scale_height = blended.mie_scale_height.Lerp(sampleNoise(14.14f));
-			cached_targets_.cloud_coverage = blended.cloud_coverage.Lerp(sampleNoise(15.15f));
+
+			// Override some from physical model
+			cached_targets_.air_pressure = targetAirPressure;
+			cached_targets_.temperature = targetTemperature;
+			cached_targets_.humidity = targetHumidity;
+			cached_targets_.wind_strength = targetWindStrength;
+			cached_targets_.rayleigh_scale = targetRayleighScale;
+			cached_targets_.mie_scale = targetMieScale;
+			cached_targets_.cloud_coverage = targetCloudCoverage;
+			cached_targets_.cloud_density = targetCloudDensity;
 		}
 
 		// Always update attributes toward cached targets using the spring system
@@ -335,6 +405,9 @@ namespace Boidsish {
 		UpdateAttribute(WeatherAttribute::RayleighScaleHeight, cached_targets_.rayleigh_scale_height, deltaTime);
 		UpdateAttribute(WeatherAttribute::MieScaleHeight, cached_targets_.mie_scale_height, deltaTime);
 		UpdateAttribute(WeatherAttribute::CloudCoverage, cached_targets_.cloud_coverage, deltaTime);
+		UpdateAttribute(WeatherAttribute::AirPressure, cached_targets_.air_pressure, deltaTime);
+		UpdateAttribute(WeatherAttribute::Temperature, cached_targets_.temperature, deltaTime);
+		UpdateAttribute(WeatherAttribute::Humidity, cached_targets_.humidity, deltaTime);
 	}
 
 } // namespace Boidsish

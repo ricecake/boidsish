@@ -33,6 +33,19 @@ namespace Boidsish {
 						}
 
 						if (enabled) {
+							const auto& current = weather->GetCurrentWeather();
+							ImGui::Text("Physical State:");
+							ImGui::BulletText("Pressure: %.2f hPa", current.air_pressure);
+							ImGui::BulletText("Temperature: %.1f C", current.temperature);
+							ImGui::BulletText("Humidity: %.1f%%", current.humidity * 100.0f);
+							ImGui::BulletText(
+								"Wind Dir: (%.2f, %.2f)",
+								current.wind_direction.x,
+								current.wind_direction.z
+							);
+
+							ImGui::Separator();
+
 							float time_scale = weather->GetTimeScale();
 							if (ImGui::SliderFloat("Weather Time Scale", &time_scale, 0.0f, 0.015f, "%.3f")) {
 								weather->SetTimeScale(time_scale);

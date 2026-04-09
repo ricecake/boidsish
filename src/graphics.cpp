@@ -3181,7 +3181,29 @@ namespace Boidsish {
 
 		// Update ambient weather
 		if (impl->weather_manager && impl->weather_manager->IsEnabled()) {
-			impl->weather_manager->Update(impl->simulation_delta_time, impl->simulation_time, impl->camera.pos());
+			BiomeAttributes biome_at_cam{};
+			if (impl->terrain_generator) {
+				float control = impl->terrain_generator->GetBiomeControlValue(impl->camera.x, impl->camera.z);
+				int   low_idx;
+				float t;
+				impl->terrain_generator->GetBiomeIndicesAndWeights(control, low_idx, t);
+
+				const auto& low_item = kBiomes[low_idx];
+				const auto& high_item = kBiomes[std::min((int)kBiomes.size() - 1, low_idx + 1)];
+
+				biome_at_cam.aerosolType = std::lerp(low_item.aerosolType, high_item.aerosolType, t);
+				biome_at_cam.aerosolEmission = std::lerp(low_item.aerosolEmission, high_item.aerosolEmission, t);
+				biome_at_cam.humidityPropensity =
+					std::lerp(low_item.humidityPropensity, high_item.humidityPropensity, t);
+			}
+
+			impl->weather_manager->Update(
+				impl->simulation_delta_time,
+				impl->simulation_time,
+				impl->camera.pos(),
+				impl->light_manager.GetDayNightCycle().time,
+				biome_at_cam
+			);
 
 			const auto& w = impl->weather_manager->GetCurrentWeather();
 

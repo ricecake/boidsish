@@ -6,6 +6,7 @@
 #include <vector>
 
 #include <glm/glm.hpp>
+#include "biome_properties.h"
 #include "weather_constants.h"
 
 namespace Boidsish {
@@ -26,6 +27,9 @@ namespace Boidsish {
 		RayleighScaleHeight,
 		MieScaleHeight,
 		CloudCoverage,
+		AirPressure,
+		Temperature,
+		Humidity,
 		Count
 	};
 
@@ -120,6 +124,7 @@ namespace Boidsish {
 		float     wind_strength = WeatherConstants::WindStrength.normal;
 		float     wind_speed = WeatherConstants::WindSpeed.normal;
 		float     wind_frequency = WeatherConstants::WindFrequency.normal;
+		glm::vec3 wind_direction = glm::vec3(1.0f, 0.0f, 0.0f);
 		float     cloud_density = WeatherConstants::CloudDensity.normal;
 		float     cloud_altitude = WeatherConstants::CloudAltitude.normal;
 		float     cloud_thickness = WeatherConstants::CloudThickness.normal;
@@ -135,6 +140,11 @@ namespace Boidsish {
 		float     rayleigh_scale_height = WeatherConstants::RayleighScaleHeight.normal;
 		float     mie_scale_height = WeatherConstants::MieScaleHeight.normal;
 		float     cloud_coverage = WeatherConstants::CloudCoverage.normal;
+
+		// Physical parameters
+		float air_pressure = 1013.25f; // hPa
+		float temperature = 15.0f;    // Celsius
+		float humidity = 0.5f;        // 0-1
 	};
 
 	class WeatherManager {
@@ -142,7 +152,13 @@ namespace Boidsish {
 		WeatherManager();
 		~WeatherManager();
 
-		void Update(float deltaTime, float totalTime, const glm::vec3& cameraPos);
+		void Update(
+			float                  deltaTime,
+			float                  totalTime,
+			const glm::vec3&       cameraPos,
+			float                  timeOfDay,
+			const BiomeAttributes& biome
+		);
 
 		bool IsEnabled() const { return enabled_; }
 
