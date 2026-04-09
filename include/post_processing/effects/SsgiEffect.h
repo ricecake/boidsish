@@ -38,6 +38,12 @@ namespace Boidsish {
 			void SetRayCount(int rays) { ray_count_ = rays; }
 			int GetRayCount() const { return ray_count_; }
 
+			void  SetReflectionIntensity(float intensity) { reflection_intensity_ = intensity; }
+			float GetReflectionIntensity() const { return reflection_intensity_; }
+
+			void  SetRoughnessFactor(float factor) { roughness_factor_ = factor; }
+			float GetRoughnessFactor() const { return roughness_factor_; }
+
 			void SetNoiseTextures(GLuint blueNoise) { blue_noise_texture_ = blueNoise; }
 			void SetHiZTexture(GLuint hiz, int mips) { hiz_texture_ = hiz; hiz_mips_ = mips; }
 			void SetShadowMaskTexture(GLuint mask) { shadow_mask_texture_ = mask; }
@@ -61,6 +67,8 @@ namespace Boidsish {
 			float distance_falloff_ = 1.0f;
 			int   steps_ = 8;
 			int   ray_count_ = 2;
+			float reflection_intensity_ = 1.0f;
+			float roughness_factor_ = 1.0f;
 		};
 
 	} // namespace PostProcessing

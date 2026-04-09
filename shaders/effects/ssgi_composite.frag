@@ -12,8 +12,8 @@ void main() {
 	vec4 ssgi = texture(ssgiTexture, TexCoords);
 
 	// SSGI typically adds to the lit scene
-	// We use uIntensity to control the contribution
-	vec3 result = color.rgb + ssgi.rgb * uIntensity;
+	// Intensity is now handled within the compute shader
+	vec3 result = color.rgb + ssgi.rgb;
 
 	FragColor = vec4(result, color.a);
 }

@@ -1,6 +1,6 @@
 #version 430 core
 layout(location = 0) out vec4 FragColor;
-layout(location = 1) out vec2 Velocity;
+layout(location = 1) out vec4 Velocity;
 layout(location = 2) out vec4 NormalOut;
 
 #include "common_uniforms.glsl"
@@ -93,10 +93,10 @@ void main() {
 
 	FragColor = vec4(finalColor * (1.0 + ringMask), alpha);
 
-	// Calculate screen-space velocity
+	// Calculate screen-space velocity and material properties
 	vec2 a = (CurPosition.xy / CurPosition.w) * 0.5 + 0.5;
 	vec2 b = (PrevPosition.xy / PrevPosition.w) * 0.5 + 0.5;
-	Velocity = a - b;
+	Velocity = vec4(a - b, 0.5, 0.0); // Roughness, Metallic
 
 	// Output view-space normal (billboarded quad, so facing camera is -Z in view space)
 	// Checkpoints are currently unlit/emissive and don't receive shadows in their shader logic,
