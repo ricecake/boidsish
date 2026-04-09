@@ -150,12 +150,30 @@ foreach(APP_DIR ${APP_DIRS})
     endif()
 endforeach()
 
-# Copy assets to the root of the build directory
-add_custom_command(TARGET boidsish POST_BUILD
+# Copy assets and shaders to the root of the build directory
+set(EXTRA_SHADER_INCLUDE_DIRS
+    "${CMAKE_CURRENT_SOURCE_DIR}/external/lygia"
+)
+
+set(COPY_COMMANDS
     COMMAND ${CMAKE_COMMAND} -E copy_directory
     ${CMAKE_CURRENT_SOURCE_DIR}/assets
     ${CMAKE_BINARY_DIR}/assets
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+    ${CMAKE_CURRENT_SOURCE_DIR}/shaders
+    ${CMAKE_BINARY_DIR}/shaders
 )
+
+foreach(DIR ${EXTRA_SHADER_INCLUDE_DIRS})
+    get_filename_component(DIR_NAME ${DIR} NAME)
+    list(APPEND COPY_COMMANDS
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${DIR}
+        ${CMAKE_BINARY_DIR}/shaders/${DIR_NAME}
+    )
+endforeach()
+
+add_custom_command(TARGET boidsish POST_BUILD ${COPY_COMMANDS})
 
 # Find the clang-format executable
 find_program(CLANG_FORMAT_EXE NAMES clang-format)
