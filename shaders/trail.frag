@@ -1,6 +1,8 @@
 #version 460 core
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec4 Velocity;
+layout(location = 2) out vec4 NormalOut;
+layout(location = 3) out vec4 AlbedoOut;
 
 in vec3     vs_color;
 in vec3     vs_normal;
@@ -20,6 +22,7 @@ uniform bool uUseMDI = false;
 
 #include "helpers/lighting.glsl"
 
+uniform mat4  view;
 uniform bool  useIridescence;
 uniform bool  useRocketTrail;
 uniform bool  usePBR;         // Enable PBR lighting for trails
@@ -147,4 +150,6 @@ void main() {
 	}
 
 	Velocity = vec4(a - b, outRoughness, outMetallic);
+	NormalOut = vec4(normalize(mat3(view) * norm), 1.0);
+	AlbedoOut = vec4(vs_color, 1.0);
 }
