@@ -89,7 +89,7 @@ namespace Boidsish {
 
 		float GetMaxHeight() const override {
 			float max_h = 0.0f;
-			for (const auto& biome : kBiomes) {
+			for (const auto& biome : kMetaBiomes) {
 				max_h = std::max(max_h, biome.floorLevel);
 			}
 			return max_h * 0.8f * world_scale_;
@@ -114,6 +114,7 @@ namespace Boidsish {
 		glm::vec3              getPathDataFlat(glm::vec2 pos) const;
 
 		float     getBiomeControlValue(float x, float z) const;
+		glm::vec3 getMetaBiomeWeights(float x, float z) const;
 		glm::vec2 getDomainWarp(float x, float z) const;
 
 		// ========== Cache-Preferring Terrain Queries ==========
@@ -302,7 +303,7 @@ namespace Boidsish {
 			float threshold;
 		};
 
-		void ApplyWeightedBiome(float control_value, BiomeAttributes& current) const;
+		void ApplyWeightedBiome(float control_value, const glm::vec3& metaWeights, BiomeAttributes& current) const;
 		void GetBiomeIndicesAndWeights(float control_value, int& low_idx, float& t) const;
 
 		const int view_distance_ = Constants::Class::Terrain::DefaultViewDistance();          // in chunks
@@ -322,8 +323,11 @@ namespace Boidsish {
 		// Noise generators
 		// FastNoise::SmartNode<> control_noise_generator_;
 
-		auto      fbm(float x, float z, TerrainParameters params);
-		auto      biomefbm(glm::vec2 pos, BiomeAttributes attr) const;
+		glm::vec3 fbm(float x, float z, TerrainParameters params);
+		glm::vec3 biomefbm(glm::vec2 pos, BiomeAttributes attr) const;
+		glm::vec3 biomefbmGrassland(glm::vec2 pos, BiomeAttributes attr) const;
+		glm::vec3 biomefbmDesert(glm::vec2 pos, BiomeAttributes attr) const;
+		glm::vec3 biomefbmTundra(glm::vec2 pos, BiomeAttributes attr) const;
 		glm::vec3 pointGenerate(float x, float y) const;
 
 		glm::vec3 diffToNorm(float dx, float dz) const { return glm::normalize(glm::vec3(-dx, 1.0f, -dz)); }
