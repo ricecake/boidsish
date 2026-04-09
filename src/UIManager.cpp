@@ -70,9 +70,9 @@ namespace Boidsish {
 			ImGuiContext& g = *GImGui;
 			ImGuiIO&      io = ImGui::GetIO();
 
-			float corner_x = 10.0f;
-			float corner_y = io.DisplaySize.y - 10.0f;
-			float current_y = corner_y;
+			const float padding = 10.0f;
+			const float uniform_width = 250.0f;
+			float       current_y = padding;
 
 			std::vector<ImGuiWindow*> collapsed_windows;
 
@@ -95,19 +95,25 @@ namespace Boidsish {
 
 				if (window->Collapsed) {
 					if (!state.was_collapsed) {
-						// Just collapsed, save current position
+						// Just collapsed, save current position and size
 						state.last_expanded_pos = window->Pos;
+						state.last_expanded_size = window->SizeFull;
 						state.was_collapsed = true;
 					}
 					collapsed_windows.push_back(window);
 				} else {
 					if (state.was_collapsed) {
-						// Just uncollapsed, restore previous position
-						window->Pos = state.last_expanded_pos;
+						// Just uncollapsed, restore previous size
+						window->SizeFull = state.last_expanded_size;
+
+						// Right-justify upon opening to keep it on screen
+						window->Pos = ImVec2(io.DisplaySize.x - window->SizeFull.x - padding, padding);
+
 						state.was_collapsed = false;
 					} else {
 						// Update expanded position as user moves it
 						state.last_expanded_pos = window->Pos;
+						state.last_expanded_size = window->SizeFull;
 					}
 				}
 			}
@@ -118,11 +124,10 @@ namespace Boidsish {
 			});
 
 			for (ImGuiWindow* window : collapsed_windows) {
-				// Position in corner
-				float window_height = window->TitleBarHeight;
-				current_y -= window_height;
-				window->Pos = ImVec2(corner_x, current_y);
-				current_y -= 5.0f; // Padding
+				// Position in top-right corner, uniform width, right justified
+				window->SizeFull.x = uniform_width;
+				window->Pos = ImVec2(io.DisplaySize.x - uniform_width - padding, current_y);
+				current_y += window->TitleBarHeight + 5.0f; // Padding
 			}
 		}
 	} // namespace UI
