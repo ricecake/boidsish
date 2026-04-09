@@ -444,24 +444,24 @@ namespace Boidsish {
 			height += (n * amp * correction * mask);
 		}
 
-		// 3. Final Floor Shaping
-		if (height.x < attr.floorLevel) {
-			float t = glm::smoothstep(attr.floorLevel - 0.1f, attr.floorLevel, height.x);
-			height.x = t * attr.floorLevel;
-			height.y *= t;
-			height.z *= t;
-		}
-
 		height.x = height.x * 0.5f + 0.5f;
 		height.y = height.y * 0.5f;
 		height.z = height.z * 0.5f;
 
 		if (height.x > 0) {
 			float floorScale = attr.floorLevel;
-			height.x *= floorScale;
+
+			// Narrower peaks, broader bases by applying a power function to the normalized height
+			float h_raw = height.x;
+			float p = 1.2f;
+			height.x = pow(h_raw, p) * floorScale;
+
+			// Adjust derivatives for the power function: d(h^p)/dx = p * h^(p-1) * dh/dx
+			float deriv_scale = p * pow(std::max(h_raw, 0.0001f), p - 1.0f);
+
 			// Dampen normal steepness slightly to prevent extreme lighting artifacts in depressions
 			// while keeping the visual height the same. 0.4f provides a good balance.
-			float normalScale = floorScale; // * 0.4f;
+			float normalScale = floorScale * deriv_scale;
 			height.y *= normalScale;
 			height.z *= normalScale;
 		}
@@ -567,6 +567,14 @@ namespace Boidsish {
 
 		// Force a low-altitude biome (like Sand/Grass) on the path
 		control_value = glm::mix(0.0f, control_value, path_factor);
+
+		// Coarse shaping for broader bases and plateaus
+		// 1. Broaden bases: stay in lower biomes longer
+		control_value = pow(control_value, 1.3f);
+
+		// 2. Plateaus: increase prevalence of middle ground via "stepping" the control value
+		control_value += 0.07f * sin(control_value * 2.0f * Constants::General::Math::Pi() * 2.0f);
+		control_value = std::clamp(control_value, 0.0f, 1.0f);
 
 		BiomeAttributes current;
 		ApplyWeightedBiome(control_value, current);
