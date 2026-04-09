@@ -501,13 +501,11 @@ namespace Boidsish {
 			chunk.world_offset.y + scaled_chunk_size
 		);
 
-		// // Add a margin for displacements and safety
-		// float margin = 50.0f * world_scale;
-		// min_corner -= glm::vec3(margin, margin, margin);
-		// max_corner += glm::vec3(margin, margin, margin);
+		// Add a safety margin (one chunk size) to prevent edge flickering
+		float margin = scaled_chunk_size;
 
 		glm::vec3 center = (min_corner + max_corner) * 0.5f;
-		glm::vec3 half_size = (max_corner - min_corner) * 0.5f;
+		glm::vec3 half_size = (max_corner - min_corner) * 0.5f + glm::vec3(margin, margin, margin);
 
 		// Test against all 6 frustum planes
 		for (int i = 0; i < 6; ++i) {

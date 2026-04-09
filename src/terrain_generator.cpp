@@ -23,13 +23,20 @@
 #include <libmorton/morton.h>
 
 namespace Boidsish {
-	bool isChunkInFrustum(const Frustum& frustum, int chunkX, int chunkZ, int chunkSize, float amplitude) {
+	bool isChunkInFrustum(
+		const Frustum& frustum,
+		int            chunkX,
+		int            chunkZ,
+		int            chunkSize,
+		float          amplitude,
+		float          margin = 0.0f
+	) {
 		glm::vec3 center(
 			chunkX * chunkSize + chunkSize / 2.0f,
 			amplitude / 2.0f,
 			chunkZ * chunkSize + chunkSize / 2.0f
 		);
-		glm::vec3 halfSize(chunkSize / 2.0f, amplitude / 2.0f, chunkSize / 2.0f);
+		glm::vec3 halfSize(chunkSize / 2.0f + margin, amplitude / 2.0f + margin, chunkSize / 2.0f + margin);
 
 		for (int i = 0; i < 6; ++i) {
 			float r = halfSize.x * std::abs(frustum.planes[i].normal.x) +
@@ -94,6 +101,7 @@ namespace Boidsish {
 		for (const auto& b : kBiomes) {
 			max_h = std::max(max_h, b.floorLevel);
 		}
+		max_h *= world_scale_;
 
 		std::lock_guard<std::recursive_mutex> lock(chunk_cache_mutex_);
 
@@ -131,7 +139,8 @@ namespace Boidsish {
 				if (chunk_cache_.find(chunk_coord) == chunk_cache_.end() &&
 				    pending_chunks_.find(chunk_coord) == pending_chunks_.end()) {
 
-					bool in_frustum = isChunkInFrustum(frustum, x, z, scaled_chunk_size, max_h);
+					// Add a safety margin (one chunk size) to frustum culling to prevent edge flickering
+					bool in_frustum = isChunkInFrustum(frustum, x, z, scaled_chunk_size, max_h, scaled_chunk_size);
 
 					// Only load if in frustum OR very close to camera
 					if (in_frustum || dist_sq < immediate_load_dist_sq) {
@@ -209,9 +218,10 @@ namespace Boidsish {
 		// Priority: 1) In frustum and close, 2) In frustum and far, 3) Out of frustum but close
 		// This prevents pop-in by pre-registering nearby chunks even if not visible yet
 		if (render_manager_) {
-			const int   max_registrations_per_frame = 32; // Increased for faster catch-up
-			const float preload_distance_sq = (dynamic_view_distance * scaled_chunk_size * 0.5f) *
-				(dynamic_view_distance * scaled_chunk_size * 0.5f);
+			const int max_registrations_per_frame = 32; // Increased for faster catch-up
+			// Preload distance: slightly larger than view distance to ensure chunks are ready
+			const float preload_distance_sq =
+				((dynamic_view_distance + 2.0f) * scaled_chunk_size) * ((dynamic_view_distance + 2.0f) * scaled_chunk_size);
 
 			// Collect chunks needing registration with their distances and frustum status
 			struct ChunkToRegister {
@@ -234,7 +244,7 @@ namespace Boidsish {
 						key.second * scaled_chunk_size + scaled_chunk_size * 0.5f
 					);
 					float dist_sq = glm::dot(chunk_center - camera_pos_2d, chunk_center - camera_pos_2d);
-					bool  in_frustum = isChunkInFrustum(frustum, key.first, key.second, scaled_chunk_size, max_h);
+					bool in_frustum = isChunkInFrustum(frustum, key.first, key.second, scaled_chunk_size, max_h, scaled_chunk_size);
 
 					// Register if in frustum OR if close enough to preload
 					if (in_frustum || dist_sq < preload_distance_sq) {
@@ -276,7 +286,8 @@ namespace Boidsish {
 		}
 
 		// 4. Unload chunks
-		const float unload_limit_dist = (dynamic_view_distance + kUnloadDistanceBuffer_) * scaled_chunk_size;
+		// Add a one-chunk buffer (hysteresis) to prevent loading/unloading thrashing
+		const float unload_limit_dist = (dynamic_view_distance + kUnloadDistanceBuffer_ + 1.0f) * scaled_chunk_size;
 		const float unload_limit_dist_sq = unload_limit_dist * unload_limit_dist;
 
 		std::vector<std::pair<int, int>> to_remove;
@@ -340,7 +351,7 @@ namespace Boidsish {
 			glm::vec2 camera_pos_2d(camera.x, camera.z);
 
 			for (auto const& [key, val] : chunk_cache_) {
-				if (val && isChunkInFrustum(frustum, key.first, key.second, scaled_chunk_size, max_h)) {
+				if (val && isChunkInFrustum(frustum, key.first, key.second, scaled_chunk_size, max_h, scaled_chunk_size)) {
 					glm::vec2 chunk_center(
 						key.first * scaled_chunk_size + scaled_chunk_size * 0.5f,
 						key.second * scaled_chunk_size + scaled_chunk_size * 0.5f
