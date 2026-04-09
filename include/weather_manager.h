@@ -6,6 +6,7 @@
 #include <vector>
 
 #include <glm/glm.hpp>
+#include "weather_constants.h"
 
 namespace Boidsish {
 
@@ -115,25 +116,25 @@ namespace Boidsish {
 	 * @brief Current weather values derived from blended ranges and noise.
 	 */
 	struct CurrentWeather {
-		float     sun_intensity = 1.0f;
-		float     wind_strength = 0.05f;
-		float     wind_speed = 0.075f;
-		float     wind_frequency = 0.01f;
-		float     cloud_density = 0.20f;
-		float     cloud_altitude = 400.0f;
-		float     cloud_thickness = 200.0f;
-		float     haze_density = 0.003f;
-		float     haze_height = 20.0f;
-		float     rayleigh_scale = 1.1f;
-		float     mie_scale = 0.1f;
-		float     atmosphere_height = 120.0f;
-		glm::vec3 rayleigh_scattering = glm::vec3(5.802f, 13.558f, 33.100f) * 1e-3f;
-		float     mie_scattering = 3.996f * 1e-3f;
-		float     mie_extinction = 4.440f * 1e-3f;
-		glm::vec3 ozone_absorption = glm::vec3(0.650f, 1.881f, 0.085f) * 1e-3f;
-		float     rayleigh_scale_height = 8.0f;
-		float     mie_scale_height = 1.2f;
-		float     cloud_coverage = 0.75f;
+		float     sun_intensity = WeatherConstants::SunIntensity.normal;
+		float     wind_strength = WeatherConstants::WindStrength.normal;
+		float     wind_speed = WeatherConstants::WindSpeed.normal;
+		float     wind_frequency = WeatherConstants::WindFrequency.normal;
+		float     cloud_density = WeatherConstants::CloudDensity.normal;
+		float     cloud_altitude = WeatherConstants::CloudAltitude.normal;
+		float     cloud_thickness = WeatherConstants::CloudThickness.normal;
+		float     haze_density = WeatherConstants::HazeDensity.normal;
+		float     haze_height = WeatherConstants::HazeHeight.normal;
+		float     rayleigh_scale = WeatherConstants::RayleighScale.normal;
+		float     mie_scale = WeatherConstants::MieScale.normal;
+		float     atmosphere_height = WeatherConstants::AtmosphereHeight.normal;
+		glm::vec3 rayleigh_scattering = WeatherConstants::RayleighScattering;
+		float     mie_scattering = WeatherConstants::MieScattering;
+		float     mie_extinction = WeatherConstants::MieExtinction;
+		glm::vec3 ozone_absorption = WeatherConstants::OzoneAbsorption;
+		float     rayleigh_scale_height = WeatherConstants::RayleighScaleHeight.normal;
+		float     mie_scale_height = WeatherConstants::MieScaleHeight.normal;
+		float     cloud_coverage = WeatherConstants::CloudCoverage.normal;
 	};
 
 	class WeatherManager {

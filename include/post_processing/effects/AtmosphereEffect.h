@@ -3,6 +3,7 @@
 #include <memory>
 
 #include "NoiseManager.h"
+#include "weather_constants.h"
 #include "post_processing/IPostProcessingEffect.h"
 
 class Shader;
@@ -197,15 +198,15 @@ namespace Boidsish {
 			float                          time_ = 0.0f;
 			int                            frame_index_ = 0;
 
-			float     haze_density_ = 1.0f;
-			float     haze_height_ = 20.0f;
-			glm::vec3 haze_color_ = glm::vec3(0.6f, 0.7f, 0.8f);
-			float     cloud_density_ = 0.20f;
-			float     cloud_altitude_ = 400.0f;
-			float     cloud_thickness_ = 200.0f;
-			float     cloud_coverage_ = 0.85f;
+			float     haze_density_ = WeatherConstants::HazeDensity.normal;
+			float     haze_height_ = WeatherConstants::HazeHeight.normal;
+			glm::vec3 haze_color_ = WeatherConstants::DefaultHazeColor;
+			float     cloud_density_ = WeatherConstants::CloudDensity.normal;
+			float     cloud_altitude_ = WeatherConstants::CloudAltitude.normal;
+			float     cloud_thickness_ = WeatherConstants::CloudThickness.normal;
+			float     cloud_coverage_ = WeatherConstants::CloudCoverage.normal;
 			float     cloud_warp_ = 75.0f;
-			glm::vec3 cloud_color_ = glm::vec3(0.95f, 0.95f, 1.0f);
+			glm::vec3 cloud_color_ = WeatherConstants::DefaultCloudColor;
 
 			float cloud_phase_g1_ = 0.875;
 			float cloud_phase_g2_ = -0.3f;
@@ -220,18 +221,18 @@ namespace Boidsish {
 			float cloud_moon_light_scale_ = 2.0f;
 			float cloud_beer_powder_mix_ = 0.577f;
 
-			float     rayleigh_scale_ = 1.1f;
-			float     mie_scale_ = 0.35f; // Reduced default to prevent "washed out" haze
-			float     mie_anisotropy_ = 0.8f;
+			float     rayleigh_scale_ = WeatherConstants::RayleighScale.normal;
+			float     mie_scale_ = WeatherConstants::MieScale.normal;
+			float     mie_anisotropy_ = WeatherConstants::MieAnisotropy;
 			float     multi_scat_scale_ = 0.1f;
 			float     ambient_scat_scale_ = 0.750f;
-			float     atmosphere_height_ = 120.0f;
-			glm::vec3 rayleigh_scattering_ = glm::vec3(5.802f, 13.558f, 33.100f) * 1e-3f;
-			float     mie_scattering_ = 3.996f * 1e-3f;
-			float     mie_extinction_ = 4.440f * 1e-3f;
-			glm::vec3 ozone_absorption_ = glm::vec3(0.650f, 1.881f, 0.085f) * 1e-3f;
-			float     rayleigh_scale_height_ = 8.0f;
-			float     mie_scale_height_ = 1.2f;
+			float     atmosphere_height_ = WeatherConstants::AtmosphereHeight.normal;
+			glm::vec3 rayleigh_scattering_ = WeatherConstants::RayleighScattering;
+			float     mie_scattering_ = WeatherConstants::MieScattering;
+			float     mie_extinction_ = WeatherConstants::MieExtinction;
+			glm::vec3 ozone_absorption_ = WeatherConstants::OzoneAbsorption;
+			float     rayleigh_scale_height_ = WeatherConstants::RayleighScaleHeight.normal;
+			float     mie_scale_height_ = WeatherConstants::MieScaleHeight.normal;
 			float     color_variance_scale_ = 1.0f;
 			float     color_variance_strength_ = 0.0f;
 
