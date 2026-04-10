@@ -3,57 +3,191 @@
 layout(local_size_x = 8, local_size_y = 8) in;
 
 #include "helpers/constants.glsl"
-
 #include "helpers/lighting.glsl"
+#include "helpers/fast_noise.glsl"
 
 uniform isampler2D u_chunkGrid;
 uniform sampler2DArray u_heightmapArray;
-uniform sampler2DArray u_biomeMap;
+
+uniform sampler2D u_gColor;
+uniform sampler2D u_gDepth;
+uniform sampler2D u_gNormal;
+uniform sampler2D u_gAlbedo;
+uniform sampler2D u_gVelocity;
+uniform sampler2D u_skyViewLUT;
+
+uniform uint u_frameIndex;
+uniform mat4 u_view;
+uniform mat4 u_projection;
+uniform mat4 u_invView;
+uniform mat4 u_invProjection;
+
+// Probe settings
+const float k_accumulationAlpha = 0.05;
+const int   k_staggerFactor = 32;
+const int   k_rayCount = 4;
+const int   k_maxSteps = 8;
+
+// SH basis constants
+const float C1 = 0.282095;
+const float C2 = 0.488603;
+const float C3 = 1.092548;
+const float C4 = 0.315392;
+const float C5 = 0.546274;
+
+vec3 hemisphereSample(vec2 uv, vec3 normal) {
+	float phi = 2.0 * PI * uv.x;
+	float cosTheta = sqrt(1.0 - uv.y);
+	float sinTheta = sqrt(uv.y);
+
+	vec3 localDir = vec3(cos(phi) * sinTheta, sin(phi) * sinTheta, cosTheta);
+
+	vec3 up = abs(normal.z) < 0.999 ? vec3(0, 0, 1) : vec3(1, 0, 0);
+	vec3 tangent = normalize(cross(up, normal));
+	vec3 bitangent = cross(normal, tangent);
+
+	return tangent * localDir.x + bitangent * localDir.y + normal * localDir.z;
+}
+
+void projectRadianceToSH(vec3 dir, vec3 radiance, float weight, inout vec3 sh[9]) {
+	float x = dir.x;
+	float y = dir.y;
+	float z = dir.z;
+
+	sh[0] += radiance * C1 * weight;
+	sh[1] += radiance * (C2 * y) * weight;
+	sh[2] += radiance * (C2 * z) * weight;
+	sh[3] += radiance * (C2 * x) * weight;
+	sh[4] += radiance * (C3 * x * y) * weight;
+	sh[5] += radiance * (C3 * y * z) * weight;
+	sh[6] += radiance * (C4 * (3.0 * z * z - 1.0)) * weight;
+	sh[7] += radiance * (C3 * x * z) * weight;
+	sh[8] += radiance * (C5 * (x * x - y * y)) * weight;
+}
+
+vec3 sampleSkyLUT(vec3 rd) {
+	float azimuth = atan(rd.x, -rd.z);
+	if (azimuth < 0.0) azimuth += 2.0 * PI;
+	float uvX = azimuth / (2.0 * PI);
+
+	float elevation = asin(clamp(rd.y, -1.0, 1.0));
+	float adjV = sqrt(abs(elevation) / (PI * 0.5));
+	float uvY = (elevation < 0.0) ? (0.5 - 0.5 * adjV) : (0.5 + 0.5 * adjV);
+
+	return texture(u_skyViewLUT, vec2(uvX, uvY)).rgb;
+}
 
 void main() {
 	ivec2 chunkCoord = ivec2(gl_GlobalInvocationID.xy);
 	if (chunkCoord.x >= u_originSize.z || chunkCoord.y >= u_originSize.z)
 		return;
 
+	int  flatIdx = int(chunkCoord.y * u_originSize.z + chunkCoord.x);
+	bool shouldUpdate = ((uint(flatIdx) + u_frameIndex) % k_staggerFactor) == 0;
+
+	// Special case: Global Sky Probe at the end of the buffer
+	if (chunkCoord == ivec2(0, 0)) {
+		int skyProbeIdx = u_originSize.z * u_originSize.z;
+
+		vec3 skySH[9];
+		for (int i = 0; i < 9; ++i) skySH[i] = vec3(0.0);
+
+		ivec2 bnSize = textureSize(u_blueNoiseTexture, 0);
+		for (int i = 0; i < 16; ++i) {
+			vec2 bnUV = (vec2(i, u_frameIndex % bnSize.y)) / vec2(bnSize);
+			vec4 bn = texture(u_blueNoiseTexture, bnUV);
+
+			float phi = 2.0 * PI * bn.x;
+			float cosTheta = 2.0 * bn.y - 1.0;
+			float sinTheta = sqrt(1.0 - cosTheta * cosTheta);
+			vec3 rd = vec3(sinTheta * cos(phi), cosTheta, sinTheta * sin(phi));
+
+			vec3 radiance = sampleSkyLUT(rd);
+			projectRadianceToSH(rd, radiance, 1.0 / 16.0, skySH);
+		}
+
+		for (int i = 0; i < 9; ++i) {
+			vec3 oldSH = u_terrainProbes[skyProbeIdx].sh_coeffs[i].rgb;
+			u_terrainProbes[skyProbeIdx].sh_coeffs[i] = vec4(mix(oldSH, skySH[i], 0.1), 1.0);
+		}
+	}
+
+	if (!shouldUpdate) return;
+
 	int slice = texelFetch(u_chunkGrid, chunkCoord, 0).r;
 	if (slice < 0) {
-		// Output default sky SH for inactive chunks
 		for (int i = 0; i < 9; ++i) {
-			u_terrainProbes[chunkCoord.y * u_originSize.z + chunkCoord.x].sh_coeffs[i] = sh_coeffs[i];
+			u_terrainProbes[flatIdx].sh_coeffs[i] = sh_coeffs[i];
 		}
 		return;
 	}
 
-	// Sample chunk center properties
-	vec2 centerUV = vec2(0.5);
-	vec3 sampledHeightNorm = texture(u_heightmapArray, vec3(centerUV, float(slice))).rgb;
-	vec2 biomeInfo = texture(u_biomeMap, vec3(centerUV, float(slice))).rg;
+	float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
+	float worldScale = u_terrainParams.y;
+	vec2  worldXZ = (vec2(chunkCoord + u_originSize.xy) + 0.5) * scaledChunkSize;
+	vec4  sampledHeightNorm = texture(u_heightmapArray, vec3(0.5, 0.5, float(slice)));
+	vec3  worldPos = vec3(worldXZ.x, sampledHeightNorm.r, worldXZ.y);
+	vec3  worldNormal = normalize(sampledHeightNorm.gba);
 
-	int lowIdx = int(biomeInfo.x);
-	float t = biomeInfo.y;
-	vec3 albedo = mix(u_biomes[lowIdx].albedo_roughness.rgb, u_biomes[min(lowIdx + 1, 7)].albedo_roughness.rgb, t);
+	vec3 newSH[9];
+	for (int i = 0; i < 9; ++i) newSH[i] = vec3(0.0);
 
-	// Estimate local environment irradiance (Ground bounce)
-	// For simplicity, we assume ground bounce is tinted by albedo and ambient sky light
-	vec3 groundColor = ambient_light * (0.4 + 0.6 * albedo);
+	ivec2 bnSize = textureSize(u_blueNoiseTexture, 0);
+	vec2  bnUV = (vec2(chunkCoord) + vec2(u_frameIndex % bnSize.x, (u_frameIndex / bnSize.x) % bnSize.y)) / vec2(bnSize);
+	vec4  bn = texture(u_blueNoiseTexture, bnUV);
 
-	// Update SH coefficients for this chunk
-	// Combine sky SH with a downward-facing ground lobe
-	// L0 contribution from ground bounce
-	float c1 = 0.282095;
-	vec3 groundL0 = groundColor * 0.5; // Scale to prevent over-brightening
+	for (int i = 0; i < k_rayCount; ++i) {
+		vec2  jitter = fract(bn.xy + vec2(float(i) * 0.618, float(i) * 0.382));
+		vec3  rd = hemisphereSample(jitter, worldNormal);
 
-	for (int i = 0; i < 9; ++i) {
-		vec3 sh = sh_coeffs[i].rgb;
+		vec3 radiance = vec3(0.0);
+		bool hitFound = false;
 
-		// Add ground bounce to L0 (index 0) and L1.y (index 1, downward direction)
-		if (i == 0) {
-			sh += groundL0;
-		} else if (i == 1) {
-			// n.y = -1 lobe for ground bounce contribution
-			sh -= groundColor * 0.488603 * 0.3;
+		// Ray-marching in screen space (simplified)
+		float stepSize = 1.0 * worldScale;
+		for (int s = 1; s <= k_maxSteps; ++s) {
+			vec3  samplePos = worldPos + rd * float(s) * stepSize + worldNormal * 0.1 * worldScale;
+			vec4  clipPos = u_projection * u_view * vec4(samplePos, 1.0);
+			vec3  screenPos = clipPos.xyz / clipPos.w;
+			vec2  uv = screenPos.xy * 0.5 + 0.5;
+
+			if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 || screenPos.z < -1.0 || screenPos.z > 1.0)
+				break;
+
+			float sceneDepth = texture(u_gDepth, uv).r;
+			float sampleDepth = screenPos.z * 0.5 + 0.5; // Map [-1, 1] to [0, 1]
+
+			if (sampleDepth > sceneDepth) {
+				float thickness = 0.5 * worldScale;
+				// Linearize depth for better thickness check
+				float linearSample = u_projection[3][2] / (sampleDepth * -2.0 + 1.0 + u_projection[2][2]);
+				float linearScene = u_projection[3][2] / (sceneDepth * -2.0 + 1.0 + u_projection[2][2]);
+
+				if (abs(linearSample - linearScene) < thickness) {
+					vec3 hitRadiance = texture(u_gColor, uv).rgb;
+					vec3 hitAlbedo = texture(u_gAlbedo, uv).rgb;
+					vec3 hitNormal = texture(u_gNormal, uv).xyz; // View-space normal
+
+					// Validate hit using albedo and normal if useful, or just use radiance
+					// radiance = hitRadiance;
+					// More accurate ambient: use albedo of hit surface * local lighting
+					// But gColor already has lighting.
+					radiance = hitRadiance;
+					hitFound = true;
+					break;
+				}
+			}
 		}
 
-		u_terrainProbes[chunkCoord.y * u_originSize.z + chunkCoord.x].sh_coeffs[i] = vec4(sh, 1.0);
+		if (!hitFound) {
+			radiance = sampleSkyLUT(rd);
+		}
+
+		projectRadianceToSH(rd, radiance, 1.0 / float(k_rayCount), newSH);
+	}
+
+	for (int i = 0; i < 9; ++i) {
+		vec3 oldSH = u_terrainProbes[flatIdx].sh_coeffs[i].rgb;
+		u_terrainProbes[flatIdx].sh_coeffs[i] = vec4(mix(oldSH, newSH[i], k_accumulationAlpha), 1.0);
 	}
 }

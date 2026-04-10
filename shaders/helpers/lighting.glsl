@@ -355,7 +355,11 @@ vec3 getSpatialAmbientSH(vec3 worldPos, vec3 N) {
 		return evalSHIrradianceFromCoeffs(N, interpolatedCoeffs);
 	}
 
-	return evalSHIrradiance(N);
+	// Fallback to Global Sky Probe at the end of the buffer if available
+	int skyProbeIdx = u_originSize.z * u_originSize.z;
+	// We check if sh_coeffs[0].w is 1.0 as a proxy for 'has data'
+	// (though in our EMA implementation it might always be close to 1.0)
+	return evalSHIrradianceFromCoeffs(N, u_terrainProbes[skyProbeIdx].sh_coeffs);
 }
 
 // Forward declare macro occlusion from terrain_shadows.glsl
