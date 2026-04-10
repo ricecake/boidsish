@@ -347,19 +347,23 @@ vec3 getSpatialAmbientSH(vec3 worldPos, vec3 N) {
 		}
 	}
 
+	vec4 interpolatedCoeffs[9];
 	if (totalWeight > 0.001) {
-		vec4 interpolatedCoeffs[9];
 		for (int i = 0; i < 9; ++i) {
 			interpolatedCoeffs[i] = vec4(totalSH[i] / totalWeight, 1.0);
 		}
-		return evalSHIrradianceFromCoeffs(N, interpolatedCoeffs);
+	} else {
+		for (int i = 0; i < 9; ++i) {
+			interpolatedCoeffs[i] = sh_coeffs[i];
+		}
 	}
 
-	// Fallback to Global Sky Probe at the end of the buffer if available
+	// Combine local probes (environmental bounce) with Global Sky Probe (direct sky light)
 	int skyProbeIdx = u_originSize.z * u_originSize.z;
-	// We check if sh_coeffs[0].w is 1.0 as a proxy for 'has data'
-	// (though in our EMA implementation it might always be close to 1.0)
-	return evalSHIrradianceFromCoeffs(N, u_terrainProbes[skyProbeIdx].sh_coeffs);
+	vec3 environmentalIrradiance = evalSHIrradianceFromCoeffs(N, interpolatedCoeffs);
+	vec3 skyIrradiance = evalSHIrradianceFromCoeffs(N, u_terrainProbes[skyProbeIdx].sh_coeffs);
+
+	return environmentalIrradiance + skyIrradiance;
 }
 
 // Forward declare macro occlusion from terrain_shadows.glsl

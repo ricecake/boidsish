@@ -8,6 +8,7 @@ layout(local_size_x = 8, local_size_y = 8) in;
 
 uniform isampler2D u_chunkGrid;
 uniform sampler2DArray u_heightmapArray;
+uniform sampler2DArray u_biomeMap;
 
 uniform sampler2D u_gColor;
 uniform sampler2D u_gDepth;
@@ -23,7 +24,7 @@ uniform mat4 u_invView;
 uniform mat4 u_invProjection;
 
 // Probe settings
-const float k_accumulationAlpha = 0.05;
+const float k_accumulationAlpha = 0.02; // Slower accumulation for better stability with coarse fallback
 const int   k_staggerFactor = 32;
 const int   k_rayCount = 4;
 const int   k_maxSteps = 8;
@@ -75,6 +76,52 @@ vec3 sampleSkyLUT(vec3 rd) {
 	float uvY = (elevation < 0.0) ? (0.5 - 0.5 * adjV) : (0.5 + 0.5 * adjV);
 
 	return texture(u_skyViewLUT, vec2(uvX, uvY)).rgb;
+}
+
+vec3 sampleTerrainFallback(vec3 worldPos, vec3 rayDir) {
+	float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
+	float worldScale = u_terrainParams.y;
+
+	// Coarse heightmap ray-casting for off-screen/occluded terrain
+	float currentDist = 1.0 * worldScale;
+	const int k_coarseSteps = 16;
+	float stepSize = 10.0 * worldScale;
+
+	for (int i = 0; i < k_coarseSteps; ++i) {
+		vec3 p = worldPos + rayDir * currentDist;
+		vec2 gridPos = p.xz / scaledChunkSize - vec2(u_originSize.xy);
+		ivec2 chunkCoord = ivec2(floor(gridPos));
+
+		if (chunkCoord.x >= 0 && chunkCoord.x < u_originSize.z && chunkCoord.y >= 0 && chunkCoord.y < u_originSize.z) {
+			int slice = texelFetch(u_chunkGrid, chunkCoord, 0).r;
+			if (slice >= 0) {
+				vec2 uv = fract(gridPos);
+				float h = texture(u_heightmapArray, vec3(uv, float(slice))).r;
+				if (p.y <= h) {
+					// Hit terrain! Lookup biome
+					vec2 biomeInfo = texture(u_biomeMap, vec3(uv, float(slice))).rg;
+					int lowIdx = int(biomeInfo.x);
+					float t = biomeInfo.y;
+					vec3 albedo = mix(u_biomes[lowIdx].albedo_roughness.rgb, u_biomes[min(lowIdx + 1, 7)].albedo_roughness.rgb, t);
+
+					// Approximate local environment lighting at hit point
+					// Using half ambient as a simple bounce approximation
+					return albedo * ambient_light * 0.5;
+				}
+			}
+		} else {
+			// Out of grid range, assume ground at y=0 if pointing down
+			if (rayDir.y < -0.1) {
+				float t = -worldPos.y / rayDir.y;
+				if (t > 0.0 && t < currentDist + stepSize) {
+					return vec3(0.05, 0.04, 0.03) * ambient_light; // Generic dirt color
+				}
+			}
+			break;
+		}
+		currentDist += stepSize;
+	}
+	return vec3(0.0); // Missed terrain, pointing at sky
 }
 
 void main() {
@@ -143,10 +190,10 @@ void main() {
 		vec3 radiance = vec3(0.0);
 		bool hitFound = false;
 
-		// Ray-marching in screen space (simplified)
+		// Ray-marching in screen space
 		float stepSize = 1.0 * worldScale;
 		for (int s = 1; s <= k_maxSteps; ++s) {
-			vec3  samplePos = worldPos + rd * float(s) * stepSize + worldNormal * 0.1 * worldScale;
+			vec3  samplePos = worldPos + rd * float(s) * stepSize + worldNormal * 0.2 * worldScale;
 			vec4  clipPos = u_projection * u_view * vec4(samplePos, 1.0);
 			vec3  screenPos = clipPos.xyz / clipPos.w;
 			vec2  uv = screenPos.xy * 0.5 + 0.5;
@@ -155,32 +202,30 @@ void main() {
 				break;
 
 			float sceneDepth = texture(u_gDepth, uv).r;
-			float sampleDepth = screenPos.z * 0.5 + 0.5; // Map [-1, 1] to [0, 1]
+			float ndcZ = screenPos.z;
+			float sampleDepth = ndcZ * 0.5 + 0.5;
 
 			if (sampleDepth > sceneDepth) {
-				float thickness = 0.5 * worldScale;
+				float thickness = 1.2 * worldScale;
 				// Linearize depth for better thickness check
-				float linearSample = u_projection[3][2] / (sampleDepth * -2.0 + 1.0 + u_projection[2][2]);
-				float linearScene = u_projection[3][2] / (sceneDepth * -2.0 + 1.0 + u_projection[2][2]);
+				// d = P[3][2] / (ndcZ + P[2][2])
+				float linearSample = u_projection[3][2] / (ndcZ + u_projection[2][2]);
+				float linearScene = u_projection[3][2] / (sceneDepth * 2.0 - 1.0 + u_projection[2][2]);
 
 				if (abs(linearSample - linearScene) < thickness) {
-					vec3 hitRadiance = texture(u_gColor, uv).rgb;
-					vec3 hitAlbedo = texture(u_gAlbedo, uv).rgb;
-					vec3 hitNormal = texture(u_gNormal, uv).xyz; // View-space normal
-
-					// Validate hit using albedo and normal if useful, or just use radiance
-					// radiance = hitRadiance;
-					// More accurate ambient: use albedo of hit surface * local lighting
-					// But gColor already has lighting.
-					radiance = hitRadiance;
-					hitFound = true;
+					// Use hit color only if it's not the sky
+					if (sceneDepth < 0.9999) {
+						radiance = texture(u_gColor, uv).rgb;
+						hitFound = true;
+					}
 					break;
 				}
 			}
 		}
 
 		if (!hitFound) {
-			radiance = sampleSkyLUT(rd);
+			// Fallback to heightmap/biome for off-screen or sky hits
+			radiance = sampleTerrainFallback(worldPos, rd);
 		}
 
 		projectRadianceToSH(rd, radiance, 1.0 / float(k_rayCount), newSH);

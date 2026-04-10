@@ -762,6 +762,10 @@ namespace Boidsish {
 		glBindTexture(GL_TEXTURE_2D, skyLUT);
 		probe_compute_shader_->setInt("u_skyViewLUT", 5);
 
+		glActiveTexture(GL_TEXTURE6);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture_);
+		probe_compute_shader_->setInt("u_biomeMap", 6);
+
 		glActiveTexture(GL_TEXTURE11);
 		glBindTexture(GL_TEXTURE_2D, chunk_grid_texture_);
 		probe_compute_shader_->setInt("u_chunkGrid", 11);
