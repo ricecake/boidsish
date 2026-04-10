@@ -710,34 +710,84 @@ namespace Boidsish {
 		last_grid_origin_z_ = origin_z;
 		last_grid_world_scale_ = world_scale;
 		grid_dirty_ = false;
+	}
 
-		// Dispatch probe update
-		if (probe_compute_shader_ && probe_compute_shader_->isValid()) {
-			probe_compute_shader_->use();
-			// Bind inputs
-			glActiveTexture(GL_TEXTURE11);
-			glBindTexture(GL_TEXTURE_2D, chunk_grid_texture_);
-			probe_compute_shader_->setInt("u_chunkGrid", 11);
+	void TerrainRenderManager::DispatchProbeUpdate(
+		GLuint           colorTex,
+		GLuint           depthTex,
+		GLuint           normalTex,
+		GLuint           albedoTex,
+		GLuint           velocityTex,
+		GLuint           skyLUT,
+		const glm::mat4& view,
+		const glm::mat4& projection,
+		GLuint           lighting_ubo
+	) {
+		PROJECT_PROFILE_SCOPE("TerrainRenderManager::DispatchProbeUpdate");
+		std::lock_guard<std::mutex> lock(mutex_);
 
-			glActiveTexture(GL_TEXTURE13);
-			glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture_);
-			probe_compute_shader_->setInt("u_heightmapArray", 13);
+		if (!probe_compute_shader_ || !probe_compute_shader_->isValid())
+			return;
 
-			glActiveTexture(GL_TEXTURE1);
-			glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture_);
-			probe_compute_shader_->setInt("u_biomeMap", 1);
+		int grid_size = Constants::Class::Terrain::SliceMapSize();
 
-			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::TerrainData(), terrain_data_ubo_);
-			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Biomes(), biome_ubo_);
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainProbes(), probe_ssbo_);
+		probe_compute_shader_->use();
+		frame_count_++;
 
-			if (lighting_ubo != 0) {
-				glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Lighting(), lighting_ubo);
-			}
+		// Bind textures
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, colorTex);
+		probe_compute_shader_->setInt("u_gColor", 0);
 
-			glDispatchCompute((grid_size + 7) / 8, (grid_size + 7) / 8, 1);
-			glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, depthTex);
+		probe_compute_shader_->setInt("u_gDepth", 1);
+
+		glActiveTexture(GL_TEXTURE2);
+		glBindTexture(GL_TEXTURE_2D, normalTex);
+		probe_compute_shader_->setInt("u_gNormal", 2);
+
+		glActiveTexture(GL_TEXTURE3);
+		glBindTexture(GL_TEXTURE_2D, albedoTex);
+		probe_compute_shader_->setInt("u_gAlbedo", 3);
+
+		glActiveTexture(GL_TEXTURE4);
+		glBindTexture(GL_TEXTURE_2D, velocityTex);
+		probe_compute_shader_->setInt("u_gVelocity", 4);
+
+		glActiveTexture(GL_TEXTURE5);
+		glBindTexture(GL_TEXTURE_2D, skyLUT);
+		probe_compute_shader_->setInt("u_skyViewLUT", 5);
+
+		glActiveTexture(GL_TEXTURE6);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture_);
+		probe_compute_shader_->setInt("u_biomeMap", 6);
+
+		glActiveTexture(GL_TEXTURE11);
+		glBindTexture(GL_TEXTURE_2D, chunk_grid_texture_);
+		probe_compute_shader_->setInt("u_chunkGrid", 11);
+
+		glActiveTexture(GL_TEXTURE13);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture_);
+		probe_compute_shader_->setInt("u_heightmapArray", 13);
+
+		// Uniforms
+		probe_compute_shader_->setUint("u_frameIndex", frame_count_);
+		probe_compute_shader_->setMat4("u_view", view);
+		probe_compute_shader_->setMat4("u_projection", projection);
+		probe_compute_shader_->setMat4("u_invView", glm::inverse(view));
+		probe_compute_shader_->setMat4("u_invProjection", glm::inverse(projection));
+
+		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::TerrainData(), terrain_data_ubo_);
+		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Biomes(), biome_ubo_);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainProbes(), probe_ssbo_);
+
+		if (lighting_ubo != 0) {
+			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Lighting(), lighting_ubo);
 		}
+
+		glDispatchCompute((grid_size + 7) / 8, (grid_size + 7) / 8, 1);
+		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 	}
 
 	void TerrainRenderManager::GenerateMaxHeightMips() {

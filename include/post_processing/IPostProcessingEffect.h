@@ -18,6 +18,7 @@ namespace Boidsish {
 				GLuint           depthTexture,
 				GLuint           velocityTexture,
 				GLuint           normalTexture,
+				GLuint           albedoTexture,
 				const glm::mat4& viewMatrix,
 				const glm::mat4& projectionMatrix,
 				const glm::vec3& cameraPos

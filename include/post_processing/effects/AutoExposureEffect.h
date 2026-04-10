@@ -14,7 +14,7 @@ namespace Boidsish {
 			~AutoExposureEffect();
 
 			void Initialize(int width, int height) override;
-			void Apply(GLuint sourceTexture, GLuint depthTexture, GLuint velocityTexture, GLuint normalTexture, const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix, const glm::vec3& cameraPos) override;
+			void Apply(GLuint sourceTexture, GLuint depthTexture, GLuint velocityTexture, GLuint normalTexture, GLuint albedoTexture, const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix, const glm::vec3& cameraPos) override;
 			void Resize(int width, int height) override;
 
 			void SetSpeedUp(float s) { speedUp_ = s; }

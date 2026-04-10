@@ -3332,6 +3332,22 @@ namespace Boidsish {
 		impl->EnsurePacketsSynced(); // fallback if no shadow shapes triggered it
 
 		impl->RenderOpaqueScene(frame);
+
+		// Update terrain probes based on the opaque scene result
+		if (impl->terrain_render_manager && impl->compositor_ && impl->atmosphere_manager) {
+			impl->terrain_render_manager->DispatchProbeUpdate(
+				impl->compositor_->GetColorTexture(),
+				impl->compositor_->GetDepthTexture(),
+				impl->compositor_->GetNormalTexture(),
+				impl->compositor_->GetAlbedoTexture(),
+				impl->compositor_->GetVelocityTexture(),
+				impl->atmosphere_manager->GetSkyViewLUT(),
+				frame.view,
+				frame.projection,
+				impl->lighting_ubo
+			);
+		}
+
 		impl->RenderTransparentScene(frame);
 		impl->RenderPostProcessing(frame);
 		impl->FinalizeFrame();

@@ -7,6 +7,7 @@ uniform sampler2D gDepth;
 uniform sampler2D gColor;
 uniform sampler2D gNormal;
 uniform sampler2D gVelocity;
+uniform sampler2D gAlbedo;
 // uniform sampler2D u_blueNoiseTexture; // Defined in fast_noise.glsl
 uniform sampler2D u_hizTexture;
 uniform sampler2D uShadowMask;
@@ -114,13 +115,15 @@ void main() {
 		return;
 	}
 
-	// Material properties from Velocity buffer (RG=velocity, B=roughness, A=metallic)
-	vec4 velData = texture(gVelocity, uv);
+	// Material properties
+	vec4 velData = texture(gVelocity, uv); // RG=velocity, B=roughness, A=metallic
+	vec3 albedo = texture(gAlbedo, uv).rgb;
 	float roughness = clamp(velData.b * uRoughnessFactor, 0.02, 1.0);
 	float metallic = velData.a;
 
 	// Blue noise for dithering
-	vec2  bnUV = (vec2(pixel) + vec2(frameIndex * 2, frameIndex * 3));// / 8.0;
+	ivec2 bnSize = textureSize(u_blueNoiseTexture, 0);
+	vec2  bnUV = (vec2(pixel) + vec2(frameIndex * 2, frameIndex * 3)) / vec2(bnSize);
 	vec4  bn = texture(u_blueNoiseTexture, bnUV);
 
 	vec3 indirect = vec3(0.0);
@@ -134,10 +137,14 @@ void main() {
 	vec3  F_pixel = fresnelSchlick(NdotV, F0);
 	float specProb = clamp(max(F_pixel.r, max(F_pixel.g, F_pixel.b)), 0.1, 0.9);
 
+	// Rougher surfaces should favor diffuse sampling
+	specProb *= (1.0 - roughness * 0.5);
+
 	for (int r = 0; r < uRayCount; r++) {
 		// Use blue noise channels and hash for selection
-		vec2  jitter = fract(bn.xy + vec2(float(r) * 0.618, float(r) * 0.382));
-		float selectHash = fract(bn.z + float(r) * 0.137);
+		vec2  jitterDir = fract(bn.xy + vec2(float(r) * 0.618, float(r) * 0.382));
+		vec2  jitterDist = fract(bn.zw + vec2(float(r) * 0.137, float(r) * 0.742));
+		float selectHash = fract(bn.w + float(r) * 0.137);
 
 		bool isSpecular = (selectHash < specProb);
 
@@ -152,7 +159,7 @@ void main() {
 			mat3 tbn = mat3(tangent, bitangent, vNorm);
 
 			vec3 Vlocal = transpose(tbn) * V;
-			vec3 Hlocal = sampleGGXVNDF(Vlocal, roughness, jitter.x, jitter.y);
+			vec3 Hlocal = sampleGGXVNDF(Vlocal, roughness, jitterDir.x, jitterDir.y);
 			vec3 H = tbn * Hlocal;
 			rayDir = reflect(-V, H);
 
@@ -169,19 +176,20 @@ void main() {
 			weight *= uReflectionIntensity / specProb;
 		} else {
 			// Cosine-weighted diffuse sampling
-			rayDir = hemisphereSample(jitter, vNorm);
+			rayDir = hemisphereSample(jitterDir, vNorm);
 
 			// Weight = Albedo * BRDF / PDF
 			// For cosine-weighted hemisphere, PDF = N.L / PI
 			// Combined: weight = Albedo
 			// Note: Albedo contribution is handled by the hit color (gColor contains base radiance)
-			weight = vec3(1.0 - metallic) * uIntensity / (1.0 - specProb);
+			// We use the pixel's base albedo to modulate the indirect diffuse light.
+			weight = albedo * (1.0 - metallic) * uIntensity / (1.0 - specProb);
 		}
 
 		if (dot(rayDir, vNorm) < 0.0) continue;
 
 		float stepSize = uRadius / float(uSteps);
-		float rayDist = stepSize * jitter.x;
+		float rayDist = stepSize * jitterDist.x;
 
 		bool hit = false;
 		for (int i = 0; i < uSteps; i++) {
