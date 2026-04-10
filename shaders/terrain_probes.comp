@@ -3,6 +3,12 @@
 layout(local_size_x = 8, local_size_y = 8) in;
 
 #include "helpers/constants.glsl"
+
+#define USE_TERRAIN_DATA
+// Forward declarations for lighting.glsl
+float terrainShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) { return 1.0; }
+float calculateTerrainOcclusion(vec3 worldPos, vec3 normal) { return 1.0; }
+
 #include "helpers/lighting.glsl"
 #include "helpers/fast_noise.glsl"
 
@@ -24,7 +30,7 @@ uniform mat4 u_invView;
 uniform mat4 u_invProjection;
 
 // Probe settings
-const float k_accumulationAlpha = 0.02; // Slower accumulation for better stability with coarse fallback
+const float k_accumulationAlpha = 0.02;
 const int   k_staggerFactor = 32;
 const int   k_rayCount = 4;
 const int   k_maxSteps = 8;
@@ -82,7 +88,6 @@ vec3 sampleTerrainFallback(vec3 worldPos, vec3 rayDir) {
 	float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
 	float worldScale = u_terrainParams.y;
 
-	// Coarse heightmap ray-casting for off-screen/occluded terrain
 	float currentDist = 1.0 * worldScale;
 	const int k_coarseSteps = 16;
 	float stepSize = 10.0 * worldScale;
@@ -96,32 +101,38 @@ vec3 sampleTerrainFallback(vec3 worldPos, vec3 rayDir) {
 			int slice = texelFetch(u_chunkGrid, chunkCoord, 0).r;
 			if (slice >= 0) {
 				vec2 uv = fract(gridPos);
-				float h = texture(u_heightmapArray, vec3(uv, float(slice))).r;
-				if (p.y <= h) {
+				vec4 hNorm = texture(u_heightmapArray, vec3(uv, float(slice)));
+				if (p.y <= hNorm.r) {
 					// Hit terrain! Lookup biome
 					vec2 biomeInfo = texture(u_biomeMap, vec3(uv, float(slice))).rg;
 					int lowIdx = int(biomeInfo.x);
 					float t = biomeInfo.y;
 					vec3 albedo = mix(u_biomes[lowIdx].albedo_roughness.rgb, u_biomes[min(lowIdx + 1, 7)].albedo_roughness.rgb, t);
+					vec3 normal = normalize(hNorm.gba);
 
-					// Approximate local environment lighting at hit point
-					// Using half ambient as a simple bounce approximation
-					return albedo * ambient_light * 0.5;
+					// Improved bounce approximation: local lighting
+					vec3 radiance = vec3(0.0);
+					for (int l = 0; l < min(num_lights, 2); ++l) {
+						vec3 L = normalize(lights[l].type == 1 ? -lights[l].direction : (lights[l].position - p));
+						float NdotL = max(0.0, dot(normal, L));
+						radiance += albedo * lights[l].color * lights[l].intensity * NdotL * 0.4;
+					}
+					radiance += albedo * ambient_light * 0.1;
+					return radiance;
 				}
 			}
 		} else {
-			// Out of grid range, assume ground at y=0 if pointing down
 			if (rayDir.y < -0.1) {
 				float t = -worldPos.y / rayDir.y;
 				if (t > 0.0 && t < currentDist + stepSize) {
-					return vec3(0.05, 0.04, 0.03) * ambient_light; // Generic dirt color
+					return vec3(0.05, 0.04, 0.03) * ambient_light;
 				}
 			}
 			break;
 		}
 		currentDist += stepSize;
 	}
-	return vec3(0.0); // Missed terrain, pointing at sky
+	return vec3(0.0);
 }
 
 void main() {
@@ -163,8 +174,9 @@ void main() {
 
 	int slice = texelFetch(u_chunkGrid, chunkCoord, 0).r;
 	if (slice < 0) {
+		// Output zero for inactive chunks. They should not contribute environmental bounce.
 		for (int i = 0; i < 9; ++i) {
-			u_terrainProbes[flatIdx].sh_coeffs[i] = sh_coeffs[i];
+			u_terrainProbes[flatIdx].sh_coeffs[i] = vec4(0.0, 0.0, 0.0, 1.0);
 		}
 		return;
 	}
@@ -207,13 +219,10 @@ void main() {
 
 			if (sampleDepth > sceneDepth) {
 				float thickness = 1.2 * worldScale;
-				// Linearize depth for better thickness check
-				// d = P[3][2] / (ndcZ + P[2][2])
 				float linearSample = u_projection[3][2] / (ndcZ + u_projection[2][2]);
 				float linearScene = u_projection[3][2] / (sceneDepth * 2.0 - 1.0 + u_projection[2][2]);
 
 				if (abs(linearSample - linearScene) < thickness) {
-					// Use hit color only if it's not the sky
 					if (sceneDepth < 0.9999) {
 						radiance = texture(u_gColor, uv).rgb;
 						hitFound = true;
@@ -224,7 +233,6 @@ void main() {
 		}
 
 		if (!hitFound) {
-			// Fallback to heightmap/biome for off-screen or sky hits
 			radiance = sampleTerrainFallback(worldPos, rd);
 		}
 

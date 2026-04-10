@@ -347,21 +347,32 @@ vec3 getSpatialAmbientSH(vec3 worldPos, vec3 N) {
 		}
 	}
 
+	// Smooth boundary fading for environmental bounce
+	// Distance from edge of the active grid in chunks
+	vec2 centerOffset = abs(gridPos - (vec2(u_originSize.xy) + float(u_originSize.z) * 0.5));
+	float maxDist = float(u_originSize.z) * 0.5;
+	float distToEdge = maxDist - max(centerOffset.x, centerOffset.y);
+	float bounceFade = smoothstep(0.0, 2.0, distToEdge); // Fade over last 2 chunks
+
 	vec4 interpolatedCoeffs[9];
 	if (totalWeight > 0.001) {
 		for (int i = 0; i < 9; ++i) {
 			interpolatedCoeffs[i] = vec4(totalSH[i] / totalWeight, 1.0);
 		}
 	} else {
-		for (int i = 0; i < 9; ++i) {
-			interpolatedCoeffs[i] = sh_coeffs[i];
-		}
+		// No probes available, fallback to sky only
+		bounceFade = 0.0;
 	}
 
 	// Combine local probes (environmental bounce) with Global Sky Probe (direct sky light)
 	int skyProbeIdx = u_originSize.z * u_originSize.z;
-	vec3 environmentalIrradiance = evalSHIrradianceFromCoeffs(N, interpolatedCoeffs);
+	vec3 environmentalIrradiance = evalSHIrradianceFromCoeffs(N, interpolatedCoeffs) * bounceFade;
 	vec3 skyIrradiance = evalSHIrradianceFromCoeffs(N, u_terrainProbes[skyProbeIdx].sh_coeffs);
+
+	// If no probes/sky data found, use analytical SH from UBO
+	if (length(skyIrradiance) < 0.0001) {
+		return evalSHIrradiance(N);
+	}
 
 	return environmentalIrradiance + skyIrradiance;
 }
