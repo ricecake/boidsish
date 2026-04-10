@@ -364,17 +364,12 @@ vec3 getSpatialAmbientSH(vec3 worldPos, vec3 N) {
 		bounceFade = 0.0;
 	}
 
-	// Combine local probes (environmental bounce) with Global Sky Probe (direct sky light)
-	int skyProbeIdx = u_originSize.z * u_originSize.z;
-	vec3 environmentalIrradiance = evalSHIrradianceFromCoeffs(N, interpolatedCoeffs) * bounceFade;
-	vec3 skyIrradiance = evalSHIrradianceFromCoeffs(N, u_terrainProbes[skyProbeIdx].sh_coeffs);
+	// Combine spatially-varying environmental bounce with global sky irradiance
+	vec3 environmentalIrradiance = evalSHIrradianceFromCoeffs(N, interpolatedCoeffs);
+	// vec3 skyIrradiance = evalSHIrradiance(N); // Primary sky term from Lighting UBO
 
-	// If no probes/sky data found, use analytical SH from UBO
-	if (length(skyIrradiance) < 0.0001) {
-		return evalSHIrradiance(N);
-	}
-
-	return environmentalIrradiance + skyIrradiance;
+	// Fade out local environmental bounce at the grid boundaries for a smooth transition
+	return environmentalIrradiance * bounceFade;
 }
 
 // Forward declare macro occlusion from terrain_shadows.glsl
