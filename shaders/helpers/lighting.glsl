@@ -603,7 +603,7 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 	vec3  ambientDiffuse = spatialSHAmbient * albedo * combinedAO;
 
 	// Scale down ambient overall to maintain shadow contrast and prevent "flat" look
-	ambientDiffuse *= 0.75;
+	ambientDiffuse *= 0.5;
 
 	// Environment reflection approximation for glossy surfaces
 	vec3 R = reflect(-V, N);

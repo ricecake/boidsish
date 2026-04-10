@@ -21,7 +21,7 @@ namespace Boidsish {
 
 	namespace WeatherConstants {
 		// Paces and Ranges
-		constexpr WeatherAttributeInfo SunIntensity = {0.1f, 1.0f, 1.2f, 0.5f};
+		constexpr WeatherAttributeInfo SunIntensity = {1.0f, 1.0f, 1.0f, 0.5f};
 		constexpr WeatherAttributeInfo WindStrength = {0.01f, 0.05f, 0.5f, 0.13f};
 		constexpr WeatherAttributeInfo WindSpeed = {0.01f, 0.075f, 0.8f, 0.13f};
 		constexpr WeatherAttributeInfo WindFrequency = {0.005f, 0.01f, 0.08f, 0.05f};
