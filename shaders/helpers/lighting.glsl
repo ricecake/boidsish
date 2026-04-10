@@ -352,7 +352,7 @@ vec3 getSpatialAmbientSH(vec3 worldPos, vec3 N) {
 	vec2 centerOffset = abs(gridPos - (vec2(u_originSize.xy) + float(u_originSize.z) * 0.5));
 	float maxDist = float(u_originSize.z) * 0.5;
 	float distToEdge = maxDist - max(centerOffset.x, centerOffset.y);
-	float bounceFade = smoothstep(0.0, 2.0, distToEdge); // Fade over last 2 chunks
+	float bounceFade = clamp(smoothstep(0.0, 0.50, distToEdge), 0.125, 1.0); // Fade over last 2 chunks
 
 	vec4 interpolatedCoeffs[9];
 	if (totalWeight > 0.001) {
@@ -617,7 +617,7 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 	vec3  ambientDiffuse = spatialSHAmbient * albedo * combinedAO;
 
 	// Scale down ambient overall to maintain shadow contrast and prevent "flat" look
-	ambientDiffuse *= 0.75;
+	// ambientDiffuse *= 0.75;
 
 	// Environment reflection approximation for glossy surfaces
 	vec3 R = reflect(-V, N);

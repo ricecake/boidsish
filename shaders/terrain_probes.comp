@@ -130,7 +130,7 @@ vec3 sampleTerrainFallback(vec3 worldPos, vec3 rayDir) {
 		}
 		currentDist += stepSize;
 	}
-	return vec3(0);//sampleSkyLUT(rayDir); // Missed terrain
+	return sampleSkyLUT(rayDir); // Missed terrain
 }
 
 void main() {
@@ -145,9 +145,9 @@ void main() {
 
 	int slice = texelFetch(u_chunkGrid, chunkCoord, 0).r;
 	if (slice < 0) {
-		for (int i = 0; i < 9; ++i) {
-			u_terrainProbes[flatIdx].sh_coeffs[i] = vec4(0.0, 0.0, 0.0, 1.0);
-		}
+		// for (int i = 0; i < 9; ++i) {
+		// 	u_terrainProbes[flatIdx].sh_coeffs[i] = vec4(0.0, 0.0, 0.0, 1.0);
+		// }
 		return;
 	}
 
