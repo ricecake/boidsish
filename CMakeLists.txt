@@ -120,13 +120,15 @@ foreach(EXAMPLE_DIR ${EXAMPLE_DIRS})
             "${EXAMPLE_DIR}/src/*.cpp"
         )
 
-        add_executable(${EXAMPLE_NAME} ${EXAMPLE_SOURCES})
+        if(EXAMPLE_SOURCES)
+            add_executable(${EXAMPLE_NAME} ${EXAMPLE_SOURCES})
 
-        target_link_libraries(${EXAMPLE_NAME} PRIVATE boidsish)
-        target_include_directories(${EXAMPLE_NAME} PRIVATE "${EXAMPLE_DIR}/include")
+            target_link_libraries(${EXAMPLE_NAME} PRIVATE boidsish)
+            target_include_directories(${EXAMPLE_NAME} PRIVATE "${EXAMPLE_DIR}/include")
 
-        target_compile_definitions(${EXAMPLE_NAME} PRIVATE GLM_ENABLE_EXPERIMENTAL)
-        set_target_properties(${EXAMPLE_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+            target_compile_definitions(${EXAMPLE_NAME} PRIVATE GLM_ENABLE_EXPERIMENTAL)
+            set_target_properties(${EXAMPLE_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+        endif()
     endif()
 endforeach()
 
@@ -142,11 +144,13 @@ foreach(APP_DIR ${APP_DIRS})
             "${APP_DIR}/src/*.cpp"
         )
 
-        add_executable(${APP_NAME} ${APP_SOURCES})
-        target_link_libraries(${APP_NAME} PRIVATE boidsish)
-        target_include_directories(${APP_NAME} PRIVATE "${APP_DIR}/include")
-        target_compile_definitions(${APP_NAME} PRIVATE GLM_ENABLE_EXPERIMENTAL)
-        set_target_properties(${APP_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+        if(APP_SOURCES)
+            add_executable(${APP_NAME} ${APP_SOURCES})
+            target_link_libraries(${APP_NAME} PRIVATE boidsish)
+            target_include_directories(${APP_NAME} PRIVATE "${APP_DIR}/include")
+            target_compile_definitions(${APP_NAME} PRIVATE GLM_ENABLE_EXPERIMENTAL)
+            set_target_properties(${APP_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+        endif()
     endif()
 endforeach()
 
@@ -192,14 +196,16 @@ target_compile_definitions(check PRIVATE GLM_ENABLE_EXPERIMENTAL)
 target_link_libraries(check PRIVATE boidsish)
 set_target_properties(check PROPERTIES EXCLUDE_FROM_ALL TRUE)
 
-add_executable(model_converter tools/model_converter.cpp)
-target_link_libraries(model_converter PRIVATE boidsish)
-add_dependencies(check model_converter)
+# Build Tools
+file(GLOB TOOL_SOURCES "tools/*.cpp")
 
-# Add shader preprocessor tool
-add_executable(shader_preprocessor tools/shader_preprocessor.cpp)
-target_link_libraries(shader_preprocessor PRIVATE boidsish)
-add_dependencies(check shader_preprocessor)
+foreach(TOOL_SOURCE ${TOOL_SOURCES})
+    get_filename_component(TOOL_NAME ${TOOL_SOURCE} NAME_WE)
+
+    add_executable(${TOOL_NAME} ${TOOL_SOURCE})
+    target_link_libraries(${TOOL_NAME} PRIVATE boidsish)
+    add_dependencies(check ${TOOL_NAME})
+endforeach()
 
 # Find glslangValidator
 find_program(GLSLANG_VALIDATOR_EXE NAMES glslangValidator)
@@ -264,157 +270,42 @@ else()
     add_custom_target(glcheck)
 endif()
 
-add_executable(test_rigid_body tests/test_rigid_body.cpp)
-target_link_libraries(test_rigid_body PRIVATE boidsish GTest::GTest GTest::Main)
-set_target_properties(test_rigid_body PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" EXCLUDE_FROM_ALL TRUE)
-add_test(NAME test_rigid_body COMMAND test_rigid_body)
+# Build Tests
+file(GLOB TEST_SOURCES "tests/*.cpp")
+set(ALL_TEST_TARGETS "")
 
-add_executable(test_terrain tests/test_terrain.cpp)
-target_link_libraries(test_terrain PRIVATE boidsish GTest::GTest GTest::Main)
-set_target_properties(test_terrain PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" EXCLUDE_FROM_ALL TRUE)
-add_test(NAME test_terrain COMMAND test_terrain)
+foreach(TEST_SOURCE ${TEST_SOURCES})
+    get_filename_component(TEST_NAME ${TEST_SOURCE} NAME_WE)
 
-add_executable(test_config tests/test_config.cpp)
-target_link_libraries(test_config PRIVATE boidsish GTest::GTest GTest::Main)
-set_target_properties(test_config PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" EXCLUDE_FROM_ALL TRUE)
-add_test(NAME test_config COMMAND test_config)
+    # Special case for collision_test.cpp to keep it named test_collision
+    if(TEST_NAME STREQUAL "collision_test")
+        set(TEST_NAME "test_collision")
+    endif()
 
-add_executable(test_logger tests/test_logger.cpp)
-target_link_libraries(test_logger PRIVATE boidsish GTest::GTest GTest::Main)
-set_target_properties(test_logger PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" EXCLUDE_FROM_ALL TRUE)
-add_test(NAME test_logger COMMAND test_logger)
+    file(READ ${TEST_SOURCE} TEST_CONTENT)
 
-add_executable(test_concurrent_queue tests/test_concurrent_queue.cpp)
-target_link_libraries(test_concurrent_queue PRIVATE boidsish GTest::GTest GTest::Main)
-set_target_properties(test_concurrent_queue PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" EXCLUDE_FROM_ALL TRUE)
-add_test(NAME test_concurrent_queue COMMAND test_concurrent_queue)
+    add_executable(${TEST_NAME} ${TEST_SOURCE})
+    target_link_libraries(${TEST_NAME} PRIVATE boidsish)
 
-add_executable(test_vector tests/test_vector.cpp)
-target_link_libraries(test_vector PRIVATE boidsish GTest::GTest GTest::Main)
-set_target_properties(test_vector PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" EXCLUDE_FROM_ALL TRUE)
-add_test(NAME test_vector COMMAND test_vector)
+    # Automatically detect and link GTest
+    if(TEST_CONTENT MATCHES "gtest/gtest.h")
+        target_link_libraries(${TEST_NAME} PRIVATE GTest::GTest)
+        if(NOT TEST_CONTENT MATCHES "int main")
+            target_link_libraries(${TEST_NAME} PRIVATE GTest::Main)
+        endif()
+    endif()
 
-add_executable(test_thread_pool tests/test_thread_pool.cpp)
-target_link_libraries(test_thread_pool PRIVATE boidsish GTest::GTest GTest::Main)
-set_target_properties(test_thread_pool PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" EXCLUDE_FROM_ALL TRUE)
-add_test(NAME test_thread_pool COMMAND test_thread_pool)
+    set_target_properties(${TEST_NAME} PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
+        EXCLUDE_FROM_ALL TRUE
+    )
 
-add_executable(test_spline tests/test_spline.cpp)
-target_link_libraries(test_spline PRIVATE boidsish GTest::GTest GTest::Main)
-set_target_properties(test_spline PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" EXCLUDE_FROM_ALL TRUE)
-add_test(NAME test_spline COMMAND test_spline)
-
-add_executable(test_shader_framework tests/test_shader_framework.cpp)
-target_link_libraries(test_shader_framework PRIVATE boidsish GTest::GTest GTest::Main)
-set_target_properties(test_shader_framework PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" EXCLUDE_FROM_ALL TRUE)
-add_test(NAME test_shader_framework COMMAND test_shader_framework)
-
-add_executable(test_deformation_overlap tests/test_deformation_overlap.cpp)
-target_link_libraries(test_deformation_overlap PRIVATE boidsish GTest::GTest GTest::Main)
-set_target_properties(test_deformation_overlap PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" EXCLUDE_FROM_ALL TRUE)
-add_test(NAME test_deformation_overlap COMMAND test_deformation_overlap)
-
-add_executable(test_collision tests/collision_test.cpp)
-target_link_libraries(test_collision PRIVATE boidsish GTest::GTest GTest::Main)
-set_target_properties(test_collision PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" EXCLUDE_FROM_ALL TRUE)
-add_test(NAME test_collision COMMAND test_collision)
-
-add_executable(test_model_slice tests/test_model_slice.cpp)
-target_link_libraries(test_model_slice PRIVATE boidsish GTest::GTest GTest::Main)
-set_target_properties(test_model_slice PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" EXCLUDE_FROM_ALL TRUE)
-add_test(NAME test_model_slice COMMAND test_model_slice)
-
-add_executable(test_mesh_optimizer tests/test_mesh_optimizer.cpp)
-target_link_libraries(test_mesh_optimizer PRIVATE boidsish GTest::GTest GTest::Main)
-set_target_properties(test_mesh_optimizer PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" EXCLUDE_FROM_ALL TRUE)
-add_test(NAME test_mesh_optimizer COMMAND test_mesh_optimizer)
-
-add_executable(test_opengl_buffer tests/test_opengl_buffer.cpp)
-target_link_libraries(test_opengl_buffer PRIVATE boidsish GTest::GTest GTest::Main)
-set_target_properties(test_opengl_buffer PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" EXCLUDE_FROM_ALL TRUE)
-add_test(NAME test_opengl_buffer COMMAND test_opengl_buffer)
-
-add_executable(test_procedural_generator tests/test_procedural_generator.cpp)
-target_link_libraries(test_procedural_generator PRIVATE boidsish GTest::GTest GTest::Main)
-set_target_properties(test_procedural_generator PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" EXCLUDE_FROM_ALL TRUE)
-add_test(NAME test_procedural_generator COMMAND test_procedural_generator)
-
-add_executable(test_shape_scaling tests/test_shape_scaling.cpp)
-target_link_libraries(test_shape_scaling PRIVATE boidsish GTest::GTest GTest::Main)
-set_target_properties(test_shape_scaling PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" EXCLUDE_FROM_ALL TRUE)
-add_test(NAME test_shape_scaling COMMAND test_shape_scaling)
-
-add_executable(test_shape_shadows tests/test_shape_shadows.cpp)
-target_link_libraries(test_shape_shadows PRIVATE boidsish GTest::GTest GTest::Main)
-set_target_properties(test_shape_shadows PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" EXCLUDE_FROM_ALL TRUE)
-add_test(NAME test_shape_shadows COMMAND test_shape_shadows)
-
-add_executable(test_polyhedron tests/test_polyhedron.cpp)
-target_link_libraries(test_polyhedron PRIVATE boidsish GTest::GTest GTest::Main)
-set_target_properties(test_polyhedron PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" EXCLUDE_FROM_ALL TRUE)
-add_test(NAME test_polyhedron COMMAND test_polyhedron)
-
-add_executable(test_procedural_custom tests/test_procedural_custom.cpp)
-target_link_libraries(test_procedural_custom PRIVATE boidsish GTest::GTest GTest::Main)
-set_target_properties(test_procedural_custom PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" EXCLUDE_FROM_ALL TRUE)
-add_test(NAME test_procedural_custom COMMAND test_procedural_custom)
-
-add_executable(test_procedural_enhancements tests/test_procedural_enhancements.cpp)
-target_link_libraries(test_procedural_enhancements PRIVATE boidsish GTest::GTest GTest::Main)
-set_target_properties(test_procedural_enhancements PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" EXCLUDE_FROM_ALL TRUE)
-add_test(NAME test_procedural_enhancements COMMAND test_procedural_enhancements)
-
-add_executable(test_procedural_walking tests/test_procedural_walking.cpp)
-target_link_libraries(test_procedural_walking PRIVATE boidsish GTest::GTest GTest::Main)
-set_target_properties(test_procedural_walking PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" EXCLUDE_FROM_ALL TRUE)
-add_test(NAME test_procedural_walking COMMAND test_procedural_walking)
-
-add_executable(test_ik tests/test_ik.cpp)
-target_link_libraries(test_ik PRIVATE boidsish)
-set_target_properties(test_ik PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" EXCLUDE_FROM_ALL TRUE)
-add_test(NAME test_ik COMMAND test_ik)
-
-add_executable(test_camera_system tests/test_camera_system.cpp)
-target_link_libraries(test_camera_system PRIVATE boidsish GTest::GTest GTest::Main)
-set_target_properties(test_camera_system PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" EXCLUDE_FROM_ALL TRUE)
-add_test(NAME test_camera_system COMMAND test_camera_system)
-
-add_executable(test_weather tests/test_weather.cpp)
-target_link_libraries(test_weather PRIVATE boidsish GTest::GTest GTest::Main)
-set_target_properties(test_weather PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" EXCLUDE_FROM_ALL TRUE)
-add_test(NAME test_weather COMMAND test_weather)
-
-add_executable(test_polyhedron_movement tests/test_polyhedron_movement.cpp)
-target_link_libraries(test_polyhedron_movement PRIVATE boidsish GTest::GTest GTest::Main)
-set_target_properties(test_polyhedron_movement PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" EXCLUDE_FROM_ALL TRUE)
-add_test(NAME test_polyhedron_movement COMMAND test_polyhedron_movement)
+    add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
+    list(APPEND ALL_TEST_TARGETS ${TEST_NAME})
+endforeach()
 
 # Group all tests into a single target for convenience
 add_custom_target(tests)
-add_dependencies(tests
-    test_rigid_body
-    test_terrain
-    test_config
-    test_logger
-    test_concurrent_queue
-    test_vector
-    test_thread_pool
-    test_spline
-    test_shader_framework
-    test_deformation_overlap
-    test_collision
-    test_model_slice
-    test_mesh_optimizer
-    test_opengl_buffer
-    test_shape_scaling
-    test_shape_shadows
-    test_polyhedron
-    test_procedural_generator
-    test_procedural_custom
-    test_procedural_enhancements
-    test_procedural_walking
-    test_ik
-    test_camera_system
-    test_weather
-    test_polyhedron_movement
-)
+if(ALL_TEST_TARGETS)
+    add_dependencies(tests ${ALL_TEST_TARGETS})
+endif()
