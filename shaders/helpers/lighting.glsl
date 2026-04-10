@@ -347,15 +347,29 @@ vec3 getSpatialAmbientSH(vec3 worldPos, vec3 N) {
 		}
 	}
 
+	// Smooth boundary fading for environmental bounce
+	// Distance from edge of the active grid in chunks
+	vec2 centerOffset = abs(gridPos - (vec2(u_originSize.xy) + float(u_originSize.z) * 0.5));
+	float maxDist = float(u_originSize.z) * 0.5;
+	float distToEdge = maxDist - max(centerOffset.x, centerOffset.y);
+	float bounceFade = smoothstep(0.0, 2.0, distToEdge); // Fade over last 2 chunks
+
+	vec4 interpolatedCoeffs[9];
 	if (totalWeight > 0.001) {
-		vec4 interpolatedCoeffs[9];
 		for (int i = 0; i < 9; ++i) {
 			interpolatedCoeffs[i] = vec4(totalSH[i] / totalWeight, 1.0);
 		}
-		return evalSHIrradianceFromCoeffs(N, interpolatedCoeffs);
+	} else {
+		// No probes available, fallback to sky only
+		bounceFade = 0.0;
 	}
 
-	return evalSHIrradiance(N);
+	// Combine spatially-varying environmental bounce with global sky irradiance
+	vec3 environmentalIrradiance = evalSHIrradianceFromCoeffs(N, interpolatedCoeffs);
+	// vec3 skyIrradiance = evalSHIrradiance(N); // Primary sky term from Lighting UBO
+
+	// Fade out local environmental bounce at the grid boundaries for a smooth transition
+	return environmentalIrradiance * bounceFade;
 }
 
 // Forward declare macro occlusion from terrain_shadows.glsl
@@ -800,18 +814,11 @@ vec4 apply_lighting_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, float sp
 
 		// Atmospheric attenuation for directional light
 		vec3  atmosphereTransmittance = vec3(1.0);
-		float shadow = 1.0;
 		if (lights[i].type == LIGHT_TYPE_DIRECTIONAL) {
 			float r = kEarthRadiusKM + (frag_pos.y / (1000.0 * worldScale));
 			float mu = light_dir.y;
 			atmosphereTransmittance = texture(u_transmittanceLUT, getTransmittanceUV(r, mu)).rgb;
-
-			// Apply cloud shadow
-			shadow *= calculateCloudShadow(i, frag_pos);
 		}
-
-		if (i == 0)
-			primaryShadow = shadow;
 
 		// Diffuse
 		float diff = max(dot(normal, light_dir), 0.0);
@@ -822,9 +829,9 @@ vec4 apply_lighting_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, float sp
 		vec3  reflect_dir = reflect(-light_dir, normal);
 		float spec = pow(max(dot(view_dir, reflect_dir), 0.0), 32);
 		vec3  specular_contribution = lights[i].color * atmosphereTransmittance * spec * specular_strength *
-			lights[i].intensity * shadow * attenuation;
+			lights[i].intensity * attenuation;
 
-		result += (diffuse * lights[i].intensity * shadow * attenuation) + specular_contribution;
+		result += (diffuse * lights[i].intensity * attenuation) + specular_contribution;
 		spec_lum += get_luminance(specular_contribution);
 	}
 
@@ -932,16 +939,7 @@ vec4 apply_lighting_pbr_iridescent_no_shadows(
 		float denominator = 4.0 * NdotV * NdotL + 0.0001;
 		vec3  specular = numerator / denominator;
 
-		// Apply cloud shadow for directional lights
-		float shadow = 1.0;
-		if (lights[i].type == LIGHT_TYPE_DIRECTIONAL) {
-			shadow *= calculateCloudShadow(i, frag_pos);
-		}
-
-		if (i == 0)
-			primaryShadow = shadow;
-
-		vec3 specular_contribution = specular * radiance * NdotL * shadow;
+		vec3 specular_contribution = specular * radiance * NdotL;
 		specular_total += specular_contribution;
 		spec_lum += get_luminance(specular_contribution);
 	}

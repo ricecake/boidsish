@@ -2,6 +2,7 @@
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec4 Velocity;
 layout(location = 2) out vec4 NormalOut;
+layout(location = 3) out vec4 AlbedoOut;
 
 in vec3 WorldPos;
 in vec3 Normal;
@@ -154,4 +155,5 @@ void main() {
 
 	// Output view-space normal
 	NormalOut = vec4(normalize(mat3(view) * norm), primaryShadow);
+	AlbedoOut = vec4(surfaceColor, 1.0);
 }
