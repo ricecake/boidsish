@@ -332,6 +332,9 @@ vec3 getSpatialAmbientSH(vec3 worldPos, vec3 N) {
 	for (int i = 0; i < 9; ++i)
 		totalSH[i] = vec3(0.0);
 
+	int count = 0;
+	int shs[4];
+
 	float totalWeight = 0.0;
 	for (int x = 0; x <= 1; ++x) {
 		for (int z = 0; z <= 1; ++z) {
@@ -339,6 +342,8 @@ vec3 getSpatialAmbientSH(vec3 worldPos, vec3 N) {
 			if (coord.x >= 0 && coord.x < u_originSize.z && coord.y >= 0 && coord.y < u_originSize.z) {
 				float weight = (x == 0 ? 1.0 - fracPos.x : fracPos.x) * (z == 0 ? 1.0 - fracPos.y : fracPos.y);
 				int   idx = coord.y * u_originSize.z + coord.x;
+				shs[count] = idx;
+				count++;
 				for (int i = 0; i < 9; ++i) {
 					totalSH[i] += u_terrainProbes[idx].sh_coeffs[i].rgb * weight;
 				}
@@ -352,6 +357,15 @@ vec3 getSpatialAmbientSH(vec3 worldPos, vec3 N) {
 		for (int i = 0; i < 9; ++i) {
 			interpolatedCoeffs[i] = vec4(totalSH[i] / totalWeight, 1.0);
 		}
+/*
+		vec3 lightTotal;
+		for (int i =0; i<=3; i++) {
+			lightTotal += evalSHIrradianceFromCoeffs(N, interpolatedCoeffs);
+		}
+		lightTotal /= 4;
+		return lightTotal;
+*/
+		// return (evalSHIrradianceFromCoeffs(N, interpolatedCoeffs) + evalSHIrradianceFromCoeffs(-N, interpolatedCoeffs)) / 2.0;
 		return evalSHIrradianceFromCoeffs(N, interpolatedCoeffs);
 	}
 
@@ -597,7 +611,7 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 
 	// Spatially-varying SH ambient augmented with macro occlusion
 	float terrainOcc = calculateTerrainOcclusion(frag_pos, N);
-	vec3  spatialSHAmbient = getSpatialAmbientSH(frag_pos, N);
+	vec3  spatialSHAmbient = getSpatialAmbientSH(frag_pos, -N);
 
 	float combinedAO = ao * terrainOcc;
 	vec3  ambientDiffuse = spatialSHAmbient * albedo * combinedAO;

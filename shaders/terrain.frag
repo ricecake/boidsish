@@ -307,7 +307,13 @@ void main() {
 
 		// Output view-space normal
 		NormalOut = vec4(normalize(mat3(view) * norm), primaryShadow);
+
+		// Calculate screen-space velocity and material properties
+		vec2 a = (CurPosition.xy / CurPosition.w) * 0.5 + 0.5;
+		vec2 b = (PrevPosition.xy / PrevPosition.w) * 0.5 + 0.5;
+		Velocity = vec4(a - b, 0.05, 0.9);
 		AlbedoOut = vec4(surfaceColor, 1.0);
+
 		return;
 	}
 
@@ -475,14 +481,14 @@ void main() {
 		vec3 bitangent = cross(norm, tangent);
 
 		// Apply perturbation based on noise gradient
-		vec3 perturbation = (tangent * (n - nx) + bitangent * (n - nz)) * (roughnessStrength / eps);
-		perturbedNorm = normalize(norm + perturbation);
+		perturbedNorm = normalize(norm + (tangent * (n - nx) + bitangent * (n - nz)) * (roughnessStrength / eps));
 
-		// Toksvig-like Adjustment: Increase roughness based on normal variance
-		// Procedural normals can cause aliasing; we compensate by increasing roughness
-		// where the normal gradient is high.
-		float variance = dot(perturbation, perturbation);
-		roughness = sqrt(clamp(roughness * roughness + variance * 0.25, 0.0, 1.0));
+		// Toksvig Factor: Adjust roughness based on normal length after interpolation
+		float ft = length(perturbedNorm);
+		ft = clamp(ft, 0.01, 1.0);
+		float r2 = roughness * roughness;
+		float newGloss = r2 / (ft * (1.0 + (1.0 - ft) / r2));
+		roughness = sqrt(newGloss); // Feed this adjusted roughness into your BRDF
 	}
 
 	// Final Lighting

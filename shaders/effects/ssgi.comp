@@ -37,6 +37,30 @@ float hash12(vec2 p) {
 	return fract((p3.x + p3.y) * p3.z);
 }
 
+// A standard 32-bit integer hash
+uint hash(uint x) {
+	x ^= x >> 16;
+	x *= 0x7feb352dU;
+	x ^= x >> 15;
+	x *= 0x846ca68bU;
+	x ^= x >> 16;
+	return x;
+}
+
+// Convert the hashed integer to a float in [0.0, 1.0]
+float randomFloat(uint state) {
+	return float(hash(state)) / 4294967295.0; // Divide by 0xFFFFFFFF
+}
+
+float randomFloat(int state) {
+	return float(hash(uint(state))) / 4294967295.0; // Divide by 0xFFFFFFFF
+}
+
+float randomFloat(float state) {
+	return float(hash(uint(state))) / 4294967295.0; // Divide by 0xFFFFFFFF
+}
+
+
 vec3 getViewPos(vec2 uv) {
 	float depth = texture(gDepth, uv).r;
 	vec4  clipPos = vec4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
@@ -123,7 +147,12 @@ void main() {
 
 	// Blue noise for dithering
 	ivec2 bnSize = textureSize(u_blueNoiseTexture, 0);
-	vec2  bnUV = (vec2(pixel) + vec2(frameIndex * 2, frameIndex * 3)) / vec2(bnSize);
+	float randOne = randomFloat(frameIndex);
+	float randTwo = randomFloat(randOne);
+	float randThree = randomFloat(randTwo);
+	float randFour = randomFloat(randThree);
+	// vec2  bnUV = (vec2(pixel) + vec2(randOne, randTwo)) / vec2(bnSize);
+	vec2  bnUV = (vec2(pixel)+hash12(vec2(randOne, randTwo))) / vec2(bnSize);
 	vec4  bn = texture(u_blueNoiseTexture, bnUV);
 
 	vec3 indirect = vec3(0.0);
@@ -138,7 +167,7 @@ void main() {
 	float specProb = clamp(max(F_pixel.r, max(F_pixel.g, F_pixel.b)), 0.1, 0.9);
 
 	// Rougher surfaces should favor diffuse sampling
-	specProb *= (1.0 - roughness * 0.5);
+	specProb *= (1.0 - roughness * 0.25);
 
 	for (int r = 0; r < uRayCount; r++) {
 		// Use blue noise channels and hash for selection

@@ -327,7 +327,7 @@ namespace Boidsish {
 
 			namespace Terrain {
 				consteval int ChunkSize() {
-					return 32;
+					return 64;
 				}
 
 				consteval int ChunkSizePlus1() {

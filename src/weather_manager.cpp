@@ -155,7 +155,7 @@ namespace Boidsish {
 		WeatherPreset sunny;
 		sunny.name = "Sunny";
 		sunny.weight = 10.0f;
-		sunny.settings.sun_intensity = {SunIntensity.GetValue(0.9f), SunIntensity.GetValue(1.1f)};
+		sunny.settings.sun_intensity = {SunIntensity.GetValue(0.9f), SunIntensity.GetValue(1.0f)};
 		sunny.settings.wind_strength = {WindStrength.GetValue(0.4f), WindStrength.GetValue(1.6f)};
 		sunny.settings.wind_speed = {WindSpeed.GetValue(0.6f), WindSpeed.GetValue(1.3f)};
 		sunny.settings.wind_frequency = {WindFrequency.GetValue(1.0f), WindFrequency.GetValue(2.0f)};
