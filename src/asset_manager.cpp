@@ -11,13 +11,15 @@
 #include "profiler.h"
 #include "stb_image.h"
 #include "stb_image_write.h"
-extern "C" unsigned char *stbi_write_png_to_mem(const unsigned char *pixels, int stride_bytes, int x, int y, int n, int *out_len);
+extern "C" unsigned char*
+stbi_write_png_to_mem(const unsigned char* pixels, int stride_bytes, int x, int y, int n, int* out_len);
+#include <functional>
+
 #include <GL/glew.h>
 #include <assimp/Exporter.hpp>
 #include <assimp/Importer.hpp>
 #include <assimp/postprocess.h>
 #include <assimp/scene.h>
-#include <functional>
 
 namespace Boidsish {
 
@@ -617,17 +619,30 @@ namespace Boidsish {
 
 		aiMatrix4x4 ConvertGLMMatrixToAssimp(const glm::mat4& from) {
 			aiMatrix4x4 to;
-			to.a1 = from[0][0]; to.a2 = from[1][0]; to.a3 = from[2][0]; to.a4 = from[3][0];
-			to.b1 = from[0][1]; to.b2 = from[1][1]; to.b3 = from[2][1]; to.b4 = from[3][1];
-			to.c1 = from[0][2]; to.c2 = from[1][2]; to.c3 = from[2][2]; to.c4 = from[3][2];
-			to.d1 = from[0][3]; to.d2 = from[1][3]; to.d3 = from[2][3]; to.d4 = from[3][3];
+			to.a1 = from[0][0];
+			to.a2 = from[1][0];
+			to.a3 = from[2][0];
+			to.a4 = from[3][0];
+			to.b1 = from[0][1];
+			to.b2 = from[1][1];
+			to.b3 = from[2][1];
+			to.b4 = from[3][1];
+			to.c1 = from[0][2];
+			to.c2 = from[1][2];
+			to.c3 = from[2][2];
+			to.c4 = from[3][2];
+			to.d1 = from[0][3];
+			to.d2 = from[1][3];
+			to.d3 = from[2][3];
+			to.d4 = from[3][3];
 			return to;
 		}
 
 		aiNode* ConvertNodeHierarchy_Internal(const NodeData& nodeData) {
 			aiNode* node = new aiNode();
 			node->mName = nodeData.name;
-			if (node->mName.length == 0) node->mName = "UnnamedNode";
+			if (node->mName.length == 0)
+				node->mName = "UnnamedNode";
 			node->mTransformation = ConvertGLMMatrixToAssimp(nodeData.transformation);
 			if (nodeData.childrenCount > 0) {
 				node->mNumChildren = nodeData.childrenCount;
@@ -649,15 +664,17 @@ namespace Boidsish {
 			std::vector<aiTexture*>              embeddedTextures;
 
 			auto GetOrEmbedTexture = [&](unsigned int textureID) -> std::string {
-				if (textureID == 0) return "";
-				if (textureMap.count(textureID)) return "*" + std::to_string(textureMap[textureID]);
+				if (textureID == 0)
+					return "";
+				if (textureMap.count(textureID))
+					return "*" + std::to_string(textureMap[textureID]);
 				glBindTexture(GL_TEXTURE_2D, textureID);
 				int width, height;
 				glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &width);
 				glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &height);
 				std::vector<unsigned char> pixels(width * height * 4);
 				glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
-				int pngLen = 0;
+				int            pngLen = 0;
 				unsigned char* pngData = stbi_write_png_to_mem(pixels.data(), width * 4, width, height, 4, &pngLen);
 				if (pngData) {
 					aiTexture* tex = new aiTexture();
@@ -676,7 +693,8 @@ namespace Boidsish {
 			};
 
 			scene->mNumMaterials = (unsigned int)data.meshes.size();
-			if (scene->mNumMaterials == 0) scene->mNumMaterials = 1;
+			if (scene->mNumMaterials == 0)
+				scene->mNumMaterials = 1;
 			scene->mMaterials = new aiMaterial*[scene->mNumMaterials];
 			for (unsigned int i = 0; i < scene->mNumMaterials; ++i) {
 				aiMaterial* mat = new aiMaterial();
@@ -685,7 +703,7 @@ namespace Boidsish {
 				mat->AddProperty(&matName, AI_MATKEY_NAME);
 				if (i < data.meshes.size()) {
 					const auto& bMesh = data.meshes[i];
-					aiColor3D diffuse(bMesh.diffuseColor.r, bMesh.diffuseColor.g, bMesh.diffuseColor.b);
+					aiColor3D   diffuse(bMesh.diffuseColor.r, bMesh.diffuseColor.g, bMesh.diffuseColor.b);
 					mat->AddProperty(&diffuse, 1, AI_MATKEY_COLOR_DIFFUSE);
 					mat->AddProperty(&bMesh.opacity, 1, AI_MATKEY_OPACITY);
 					mat->AddProperty(&bMesh.metallic, 1, AI_MATKEY_METALLIC_FACTOR);
@@ -694,14 +712,21 @@ namespace Boidsish {
 					mat->AddProperty(&emissive, 1, AI_MATKEY_COLOR_EMISSIVE);
 					for (const auto& tex : bMesh.textures) {
 						std::string texPath = GetOrEmbedTexture(tex.id);
-						if (texPath.empty()) continue;
+						if (texPath.empty())
+							continue;
 						aiString aPath(texPath);
-						if (tex.type == "texture_diffuse") mat->AddProperty(&aPath, _AI_MATKEY_TEXTURE_BASE, aiTextureType_DIFFUSE, 0);
-						else if (tex.type == "texture_normal") mat->AddProperty(&aPath, _AI_MATKEY_TEXTURE_BASE, aiTextureType_NORMALS, 0);
-						else if (tex.type == "texture_metallic") mat->AddProperty(&aPath, _AI_MATKEY_TEXTURE_BASE, aiTextureType_METALNESS, 0);
-						else if (tex.type == "texture_roughness") mat->AddProperty(&aPath, _AI_MATKEY_TEXTURE_BASE, aiTextureType_DIFFUSE_ROUGHNESS, 0);
-						else if (tex.type == "texture_ao") mat->AddProperty(&aPath, _AI_MATKEY_TEXTURE_BASE, aiTextureType_AMBIENT_OCCLUSION, 0);
-						else if (tex.type == "texture_emissive") mat->AddProperty(&aPath, _AI_MATKEY_TEXTURE_BASE, aiTextureType_EMISSIVE, 0);
+						if (tex.type == "texture_diffuse")
+							mat->AddProperty(&aPath, _AI_MATKEY_TEXTURE_BASE, aiTextureType_DIFFUSE, 0);
+						else if (tex.type == "texture_normal")
+							mat->AddProperty(&aPath, _AI_MATKEY_TEXTURE_BASE, aiTextureType_NORMALS, 0);
+						else if (tex.type == "texture_metallic")
+							mat->AddProperty(&aPath, _AI_MATKEY_TEXTURE_BASE, aiTextureType_METALNESS, 0);
+						else if (tex.type == "texture_roughness")
+							mat->AddProperty(&aPath, _AI_MATKEY_TEXTURE_BASE, aiTextureType_DIFFUSE_ROUGHNESS, 0);
+						else if (tex.type == "texture_ao")
+							mat->AddProperty(&aPath, _AI_MATKEY_TEXTURE_BASE, aiTextureType_AMBIENT_OCCLUSION, 0);
+						else if (tex.type == "texture_emissive")
+							mat->AddProperty(&aPath, _AI_MATKEY_TEXTURE_BASE, aiTextureType_EMISSIVE, 0);
 					}
 				}
 			}
@@ -720,13 +745,15 @@ namespace Boidsish {
 				aMesh->mNormals = new aiVector3D[aMesh->mNumVertices];
 				aMesh->mTextureCoords[0] = new aiVector3D[aMesh->mNumVertices];
 				aMesh->mNumUVComponents[0] = 2;
-				if (bMesh.has_vertex_colors) aMesh->mColors[0] = new aiColor4D[aMesh->mNumVertices];
+				if (bMesh.has_vertex_colors)
+					aMesh->mColors[0] = new aiColor4D[aMesh->mNumVertices];
 				for (unsigned int v = 0; v < aMesh->mNumVertices; ++v) {
 					const auto& bVert = bMesh.vertices[v];
 					aMesh->mVertices[v] = aiVector3D(bVert.Position.x, bVert.Position.y, bVert.Position.z);
 					aMesh->mNormals[v] = aiVector3D(bVert.Normal.x, bVert.Normal.y, bVert.Normal.z);
 					aMesh->mTextureCoords[0][v] = aiVector3D(bVert.TexCoords.x, bVert.TexCoords.y, 0.0f);
-					if (bMesh.has_vertex_colors) aMesh->mColors[0][v] = aiColor4D(bVert.Color.r, bVert.Color.g, bVert.Color.b, 1.0f);
+					if (bMesh.has_vertex_colors)
+						aMesh->mColors[0][v] = aiColor4D(bVert.Color.r, bVert.Color.g, bVert.Color.b, 1.0f);
 				}
 				aMesh->mNumFaces = (unsigned int)bMesh.indices.size() / 3;
 				aMesh->mFaces = new aiFace[aMesh->mNumFaces];
@@ -734,14 +761,17 @@ namespace Boidsish {
 					aiFace& face = aMesh->mFaces[f];
 					face.mNumIndices = 3;
 					face.mIndices = new unsigned int[3];
-					for(int k=0; k<3; ++k) face.mIndices[k] = bMesh.indices[f * 3 + k];
+					for (int k = 0; k < 3; ++k)
+						face.mIndices[k] = bMesh.indices[f * 3 + k];
 				}
 
 				std::map<int, std::vector<aiVertexWeight>> boneWeights;
 				for (unsigned int v = 0; v < (unsigned int)bMesh.vertices.size(); ++v) {
 					for (int k = 0; k < 4; ++k) {
 						if (bMesh.vertices[v].m_Weights[k] > 0.0f) {
-							boneWeights[bMesh.vertices[v].m_BoneIDs[k]].push_back(aiVertexWeight(v, bMesh.vertices[v].m_Weights[k]));
+							boneWeights[bMesh.vertices[v].m_BoneIDs[k]].push_back(
+								aiVertexWeight(v, bMesh.vertices[v].m_Weights[k])
+							);
 						}
 					}
 				}
@@ -757,10 +787,22 @@ namespace Boidsish {
 							if (info.id == boneID) {
 								boneName = name;
 								aiMatrix4x4 m;
-								m.a1 = info.offset[0][0]; m.a2 = info.offset[1][0]; m.a3 = info.offset[2][0]; m.a4 = info.offset[3][0];
-								m.b1 = info.offset[0][1]; m.b2 = info.offset[1][1]; m.b3 = info.offset[2][1]; m.b4 = info.offset[3][1];
-								m.c1 = info.offset[0][2]; m.c2 = info.offset[1][2]; m.c3 = info.offset[2][2]; m.c4 = info.offset[3][2];
-								m.d1 = info.offset[0][3]; m.d2 = info.offset[1][3]; m.d3 = info.offset[2][3]; m.d4 = info.offset[3][3];
+								m.a1 = info.offset[0][0];
+								m.a2 = info.offset[1][0];
+								m.a3 = info.offset[2][0];
+								m.a4 = info.offset[3][0];
+								m.b1 = info.offset[0][1];
+								m.b2 = info.offset[1][1];
+								m.b3 = info.offset[2][1];
+								m.b4 = info.offset[3][1];
+								m.c1 = info.offset[0][2];
+								m.c2 = info.offset[1][2];
+								m.c3 = info.offset[2][2];
+								m.c4 = info.offset[3][2];
+								m.d1 = info.offset[0][3];
+								m.d2 = info.offset[1][3];
+								m.d3 = info.offset[2][3];
+								m.d4 = info.offset[3][3];
 								bone->mOffsetMatrix = m;
 								break;
 							}
@@ -768,7 +810,8 @@ namespace Boidsish {
 						bone->mName = boneName;
 						bone->mNumWeights = (unsigned int)weights.size();
 						bone->mWeights = new aiVertexWeight[bone->mNumWeights];
-						for (unsigned int w = 0; w < bone->mNumWeights; ++w) bone->mWeights[w] = weights[w];
+						for (unsigned int w = 0; w < bone->mNumWeights; ++w)
+							bone->mWeights[w] = weights[w];
 					}
 				}
 			}
@@ -777,7 +820,7 @@ namespace Boidsish {
 				scene->mNumAnimations = (unsigned int)data.animations.size();
 				scene->mAnimations = new aiAnimation*[scene->mNumAnimations];
 				for (unsigned int i = 0; i < scene->mNumAnimations; ++i) {
-					const auto& bAnim = data.animations[i];
+					const auto&  bAnim = data.animations[i];
 					aiAnimation* aAnim = new aiAnimation();
 					scene->mAnimations[i] = aAnim;
 					aAnim->mName = bAnim.name;
@@ -794,19 +837,32 @@ namespace Boidsish {
 						aNodeAnim->mPositionKeys = new aiVectorKey[aNodeAnim->mNumPositionKeys];
 						for (unsigned int k = 0; k < aNodeAnim->mNumPositionKeys; ++k) {
 							aNodeAnim->mPositionKeys[k].mTime = (double)bNodeAnim.positions[k].timeStamp;
-							aNodeAnim->mPositionKeys[k].mValue = aiVector3D(bNodeAnim.positions[k].position.x, bNodeAnim.positions[k].position.y, bNodeAnim.positions[k].position.z);
+							aNodeAnim->mPositionKeys[k].mValue = aiVector3D(
+								bNodeAnim.positions[k].position.x,
+								bNodeAnim.positions[k].position.y,
+								bNodeAnim.positions[k].position.z
+							);
 						}
 						aNodeAnim->mNumRotationKeys = (unsigned int)bNodeAnim.rotations.size();
 						aNodeAnim->mRotationKeys = new aiQuatKey[aNodeAnim->mNumRotationKeys];
 						for (unsigned int k = 0; k < aNodeAnim->mNumRotationKeys; ++k) {
 							aNodeAnim->mRotationKeys[k].mTime = (double)bNodeAnim.rotations[k].timeStamp;
-							aNodeAnim->mRotationKeys[k].mValue = aiQuaternion(bNodeAnim.rotations[k].orientation.w, bNodeAnim.rotations[k].orientation.x, bNodeAnim.rotations[k].orientation.y, bNodeAnim.rotations[k].orientation.z);
+							aNodeAnim->mRotationKeys[k].mValue = aiQuaternion(
+								bNodeAnim.rotations[k].orientation.w,
+								bNodeAnim.rotations[k].orientation.x,
+								bNodeAnim.rotations[k].orientation.y,
+								bNodeAnim.rotations[k].orientation.z
+							);
 						}
 						aNodeAnim->mNumScalingKeys = (unsigned int)bNodeAnim.scales.size();
 						aNodeAnim->mScalingKeys = new aiVectorKey[aNodeAnim->mNumScalingKeys];
 						for (unsigned int k = 0; k < aNodeAnim->mNumScalingKeys; ++k) {
 							aNodeAnim->mScalingKeys[k].mTime = (double)bNodeAnim.scales[k].timeStamp;
-							aNodeAnim->mScalingKeys[k].mValue = aiVector3D(bNodeAnim.scales[k].scale.x, bNodeAnim.scales[k].scale.y, bNodeAnim.scales[k].scale.z);
+							aNodeAnim->mScalingKeys[k].mValue = aiVector3D(
+								bNodeAnim.scales[k].scale.x,
+								bNodeAnim.scales[k].scale.y,
+								bNodeAnim.scales[k].scale.z
+							);
 						}
 					}
 				}
@@ -821,18 +877,20 @@ namespace Boidsish {
 			if (scene->mNumMeshes > 0) {
 				hierarchyRoot->mNumMeshes = scene->mNumMeshes;
 				hierarchyRoot->mMeshes = new unsigned int[scene->mNumMeshes];
-				for (unsigned int i = 0; i < scene->mNumMeshes; ++i) hierarchyRoot->mMeshes[i] = i;
+				for (unsigned int i = 0; i < scene->mNumMeshes; ++i)
+					hierarchyRoot->mMeshes[i] = i;
 			}
 
 			if (!embeddedTextures.empty()) {
 				scene->mNumTextures = (unsigned int)embeddedTextures.size();
 				scene->mTextures = new aiTexture*[scene->mNumTextures];
-				for (unsigned int i = 0; i < scene->mNumTextures; ++i) scene->mTextures[i] = embeddedTextures[i];
+				for (unsigned int i = 0; i < scene->mNumTextures; ++i)
+					scene->mTextures[i] = embeddedTextures[i];
 			}
 
 			return scene;
 		}
-	}
+	} // namespace
 
 	std::shared_ptr<ModelData> AssetManager::GetModelData(const std::string& path) {
 		PROJECT_PROFILE_SCOPE("AssetManager::GetModelData");
@@ -897,25 +955,36 @@ namespace Boidsish {
 	}
 
 	bool AssetManager::SaveModelData(const std::shared_ptr<ModelData>& data, const std::string& path) {
-		if (!data) return false;
+		if (!data)
+			return false;
 		aiScene* scene = ConvertModelDataToAssimpScene(*data);
-		if (!scene) return false;
+		if (!scene)
+			return false;
 		Assimp::Exporter exporter;
 		std::string      formatId = "gltf2";
-		size_t lastDot = path.find_last_of('.');
+		size_t           lastDot = path.find_last_of('.');
 		if (lastDot != std::string::npos) {
 			std::string ext = path.substr(lastDot + 1);
 			std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
-			if (ext == "glb") formatId = "glb2";
-			else if (ext == "obj") formatId = "obj";
-			else if (ext == "stl") formatId = "stlb";
-			else if (ext == "ply") formatId = "ply";
+			if (ext == "glb")
+				formatId = "glb2";
+			else if (ext == "obj")
+				formatId = "obj";
+			else if (ext == "stl")
+				formatId = "stlb";
+			else if (ext == "ply")
+				formatId = "ply";
 		}
 
 		aiReturn result = exporter.Export(scene, formatId, path);
 		delete scene;
 		if (result != AI_SUCCESS) {
-			logger::ERROR("Assimp Export Error ({}): {} (return code: {})", formatId, exporter.GetErrorString(), (int)result);
+			logger::ERROR(
+				"Assimp Export Error ({}): {} (return code: {})",
+				formatId,
+				exporter.GetErrorString(),
+				(int)result
+			);
 			return false;
 		}
 		logger::LOG("Model saved successfully to {}", path);
