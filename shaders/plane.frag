@@ -9,6 +9,8 @@ in vec3 Normal;
 in vec4 CurPosition;
 in vec4 PrevPosition;
 
+#define USE_TERRAIN_DATA
+#include "helpers/terrain_shadows.glsl"
 #include "helpers/lighting.glsl"
 #include "temporal_data.glsl"
 
