@@ -347,15 +347,29 @@ vec3 getSpatialAmbientSH(vec3 worldPos, vec3 N) {
 		}
 	}
 
+	// Smooth boundary fading for environmental bounce
+	// Distance from edge of the active grid in chunks
+	vec2 centerOffset = abs(gridPos - (vec2(u_originSize.xy) + float(u_originSize.z) * 0.5));
+	float maxDist = float(u_originSize.z) * 0.5;
+	float distToEdge = maxDist - max(centerOffset.x, centerOffset.y);
+	float bounceFade = smoothstep(0.0, 2.0, distToEdge); // Fade over last 2 chunks
+
+	vec4 interpolatedCoeffs[9];
 	if (totalWeight > 0.001) {
-		vec4 interpolatedCoeffs[9];
 		for (int i = 0; i < 9; ++i) {
 			interpolatedCoeffs[i] = vec4(totalSH[i] / totalWeight, 1.0);
 		}
-		return evalSHIrradianceFromCoeffs(N, interpolatedCoeffs);
+	} else {
+		// No probes available, fallback to sky only
+		bounceFade = 0.0;
 	}
 
-	return evalSHIrradiance(N);
+	// Combine spatially-varying environmental bounce with global sky irradiance
+	vec3 environmentalIrradiance = evalSHIrradianceFromCoeffs(N, interpolatedCoeffs);
+	vec3 skyIrradiance = evalSHIrradiance(N); // Primary sky term from Lighting UBO
+
+	// Fade out local environmental bounce at the grid boundaries for a smooth transition
+	return skyIrradiance + environmentalIrradiance * bounceFade;
 }
 
 // Forward declare macro occlusion from terrain_shadows.glsl
