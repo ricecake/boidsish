@@ -201,6 +201,14 @@ namespace Boidsish {
 								if (ImGui::SliderFloat("Threshold", &threshold, 0.0f, 3.0f)) {
 									bloom_effect->SetThreshold(threshold);
 								}
+								float min_intensity = bloom_effect->GetMinIntensity();
+								if (ImGui::SliderFloat("Min Intensity (AE)", &min_intensity, 0.0f, 5.0f)) {
+									bloom_effect->SetMinIntensity(min_intensity);
+								}
+								float max_intensity = bloom_effect->GetMaxIntensity();
+								if (ImGui::SliderFloat("Max Intensity (AE)", &max_intensity, 0.0f, 10.0f)) {
+									bloom_effect->SetMaxIntensity(max_intensity);
+								}
 							}
 						}
 					}
