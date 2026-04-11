@@ -116,7 +116,20 @@ void main() {
 	float cloudTransmittance = cloudData.a;
 
 	// 2. High-res Atmosphere (Haze)
-	float distKM = (dist / 1000.0) * hazeDensity;
+	// Add physical aerosol model: density decreases with height
+	float aerosolHeight = hazeHeight * worldScale;
+	float avgAerosolDensity = 1.0;
+	if (abs(rayDir.y) > 0.001) {
+		// Integrated density along ray: (1/rayDir.y) * [exp(-h_start/H) - exp(-h_end/H)] * H
+		float h_start = max(viewPos.y, 0.0);
+		float h_end = max(worldPos.y, 0.0);
+		avgAerosolDensity = (aerosolHeight / (rayDir.y * dist)) * (exp(-h_start / aerosolHeight) - exp(-h_end / aerosolHeight));
+	} else {
+		avgAerosolDensity = exp(-max(viewPos.y, 0.0) / aerosolHeight);
+	}
+	avgAerosolDensity = max(avgAerosolDensity, 0.0);
+
+	float distKM = (dist / 1000.0) * hazeDensity * avgAerosolDensity;
 	vec3  inScattering = sampleAerialPerspective(rayDir, distKM);
 	float transmittance = sampleAerialPerspectiveTransmittance(rayDir, distKM);
 
@@ -124,7 +137,18 @@ void main() {
 	// Clouds should also be affected by the atmosphere between them and the camera.
 	float cloudDist = (cloudAltitude * worldScale - viewPos.y) / max(abs(rayDir.y), 0.01);
 	cloudDist = clamp(cloudDist, 0.0, dist);
-	float cloudDistKM = (cloudDist / 1000.0) * hazeDensity;
+
+	float avgCloudAerosolDensity = 1.0;
+	if (abs(rayDir.y) > 0.001) {
+		float h_start = max(viewPos.y, 0.0);
+		float h_end = max(viewPos.y + rayDir.y * cloudDist, 0.0);
+		avgCloudAerosolDensity = (aerosolHeight / (rayDir.y * cloudDist)) * (exp(-h_start / aerosolHeight) - exp(-h_end / aerosolHeight));
+	} else {
+		avgCloudAerosolDensity = exp(-max(viewPos.y, 0.0) / aerosolHeight);
+	}
+	avgCloudAerosolDensity = max(avgCloudAerosolDensity, 0.0);
+
+	float cloudDistKM = (cloudDist / 1000.0) * hazeDensity * avgCloudAerosolDensity;
 
 	vec3  atmosInScattering = sampleAerialPerspective(rayDir, cloudDistKM);
 	float atmosTransmittance = sampleAerialPerspectiveTransmittance(rayDir, cloudDistKM);
