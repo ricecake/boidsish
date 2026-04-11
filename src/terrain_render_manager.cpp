@@ -686,7 +686,9 @@ namespace Boidsish {
 			if (lx >= 0 && lx < grid_size && lz >= 0 && lz < grid_size) {
 				int idx = lz * grid_size + lx;
 				slice_data[idx] = static_cast<int16_t>(chunk.texture_slice);
-				height_data[idx] = chunk.max_y;
+				// Add a vertical safety buffer to account for dynamic terrain displacements
+				// (erosion, shockwaves, micro-relief) in the Hi-Z structure.
+				height_data[idx] = chunk.max_y + (5.0f * world_scale);
 			}
 		}
 

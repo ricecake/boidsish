@@ -185,13 +185,13 @@ float terrainShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) {
 		float h_max3 = textureLod(u_maxHeightGrid, gridUV, 3.0).r;
 		float rayYAtT = p_start.y + t * lightDir.y;
 
-		if (rayYAtT < h_max3 + (2.0 * u_terrainParams.y)) {
+		if (rayYAtT < h_max3 + (3.0 * u_terrainParams.y)) {
 			// Check mip 1 (2x2 chunks)
 			float h_max1 = textureLod(u_maxHeightGrid, gridUV, 1.0).r;
-			if (rayYAtT < h_max1 + (1.0 * u_terrainParams.y)) {
+			if (rayYAtT < h_max1 + (2.0 * u_terrainParams.y)) {
 				// At LOD 0, check actual chunk height
 				float h_max0 = textureLod(u_maxHeightGrid, gridUV, 0.0).r;
-				if (rayYAtT < h_max0 + (0.5 * u_terrainParams.y)) {
+				if (rayYAtT < h_max0 + (1.0 * u_terrainParams.y)) {
 					int slice = texelFetch(u_chunkGrid, localGridCoord, 0).r;
 					if (slice >= 0) {
 						// Sub-march inside this chunk
@@ -283,11 +283,11 @@ int isPointInTerrainShadowDebug(vec3 worldPos, vec3 normal, vec3 lightDir) {
 		float h_max3 = textureLod(u_maxHeightGrid, gridUV, 3.0).r;
 		float rayYAtT = p_start.y + t * lightDir.y;
 
-		if (rayYAtT < h_max3 + (2.0 * u_terrainParams.y)) {
+		if (rayYAtT < h_max3 + (3.0 * u_terrainParams.y)) {
 			float h_max1 = textureLod(u_maxHeightGrid, gridUV, 1.0).r;
-			if (rayYAtT < h_max1 + (1.0 * u_terrainParams.y)) {
+			if (rayYAtT < h_max1 + (2.0 * u_terrainParams.y)) {
 				float h_max0 = textureLod(u_maxHeightGrid, gridUV, 0.0).r;
-				if (rayYAtT < h_max0 + (0.5 * u_terrainParams.y)) {
+				if (rayYAtT < h_max0 + (1.0 * u_terrainParams.y)) {
 					int slice = texelFetch(u_chunkGrid, localGridCoord, 0).r;
 					if (slice < 0) {
 						return 2; // No slice (Yellow)
