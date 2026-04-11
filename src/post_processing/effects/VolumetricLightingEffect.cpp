@@ -1,6 +1,7 @@
 #include "post_processing/effects/VolumetricLightingEffect.h"
 
 #include <algorithm>
+#include <array>
 #include <iostream>
 
 #include "constants.h"
@@ -27,7 +28,7 @@ namespace Boidsish {
 			width_ = width;
 			height_ = height;
 
-			epipolar_shader_ = std::make_unique<ComputeShader>("shaders/effects/volumetric_lighting_epipolar.comp");
+			epipolar_shader_ = std::make_unique<ComputeShader>("shaders/effects/volumetric_lighting_raymarch.comp");
 			reproject_shader_ = std::make_unique<ComputeShader>("shaders/effects/volumetric_lighting_reproject.comp");
 			blur_shader_ = std::make_unique<ComputeShader>("shaders/effects/volumetric_lighting_blur.comp");
 			composite_shader_ = std::make_unique<Shader>(
@@ -100,15 +101,25 @@ namespace Boidsish {
 		void VolumetricLightingEffect::Apply(GLuint sourceTexture, GLuint depthTexture, GLuint velocityTexture, GLuint normalTexture, GLuint albedoTexture, const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix, const glm::vec3& cameraPos) {
 			// Pass significant light indices to the shader
 			auto significantLights = GetSignificantLights(cameraPos);
-			int numSignificant = std::min((int)significantLights.size(), 4);
+			int  numSignificant = std::min((int)significantLights.size(), 4);
 
-			if (numSignificant <= 0) return;
+			if (numSignificant <= 0) {
+				// Blit source to target anyway to avoid black screen
+				composite_shader_->use();
+				glActiveTexture(GL_TEXTURE0);
+				glBindTexture(GL_TEXTURE_2D, sourceTexture);
+				composite_shader_->setInt("sceneTexture", 0);
+				glActiveTexture(GL_TEXTURE1);
+				glBindTexture(GL_TEXTURE_2D, 0); // No volumetric
+				composite_shader_->setInt("volumetricTexture", 1);
+				glDrawArrays(GL_TRIANGLES, 0, 6);
+				return;
+			}
 
-			// 1. Epipolar Pass
+			// 1. Raymarch Pass (Low-Res 2D Grid)
 			epipolar_shader_->use();
 			epipolar_shader_->setMat4("uInvView", glm::inverse(viewMatrix));
 			epipolar_shader_->setMat4("uInvProj", glm::inverse(projectionMatrix));
-			epipolar_shader_->setMat4("uViewProj", projectionMatrix * viewMatrix);
 			epipolar_shader_->setVec3("uCameraPos", cameraPos);
 			epipolar_shader_->setFloat("uScatteringCoef", scattering_coef_);
 			epipolar_shader_->setFloat("uAbsorptionCoef", absorption_coef_);
@@ -129,19 +140,19 @@ namespace Boidsish {
 			glBindTexture(GL_TEXTURE_3D, noise_textures_.noise);
 			epipolar_shader_->setInt("u_noiseTexture", 5);
 
-			glActiveTexture(GL_TEXTURE6);
-			glBindTexture(GL_TEXTURE_3D, noise_textures_.curl);
-			epipolar_shader_->setInt("u_curlTexture", 6);
-
-			glActiveTexture(GL_TEXTURE8);
-			glBindTexture(GL_TEXTURE_3D, noise_textures_.extra_noise);
-			epipolar_shader_->setInt("u_extraNoiseTexture", 8);
-
 			glActiveTexture(GL_TEXTURE10);
 			glBindTexture(GL_TEXTURE_2D_ARRAY, shadow_map_array_);
 			epipolar_shader_->setInt("shadowMaps", 10);
 
-			glBindImageTexture(0, epipolar_tex_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+			// Pass shadow map indices
+			std::array<int, 10> shadow_indices;
+			shadow_indices.fill(-1);
+			for (size_t j = 0; j < lights_.size() && j < 10; ++j) {
+				shadow_indices[j] = lights_[j].shadow_map_index;
+			}
+			epipolar_shader_->setIntArray("lightShadowIndices", shadow_indices.data(), 10);
+
+			glBindImageTexture(0, volumetric_tex_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 
 			glm::vec4 lightIndices(-1.0f);
 			for (int i = 0; i < numSignificant; ++i) {
@@ -150,28 +161,9 @@ namespace Boidsish {
 			epipolar_shader_->setVec4("uLightIndices", lightIndices);
 			epipolar_shader_->setInt("uNumLights", numSignificant);
 
-			glDispatchCompute(num_lines_, 1, 1);
-			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
-
-			// 2. Reprojection Pass
-			reproject_shader_->use();
-			reproject_shader_->setMat4("uViewProj", projectionMatrix * viewMatrix);
-			reproject_shader_->setVec3("uCameraPos", cameraPos);
-			reproject_shader_->setVec2("uScreenSize", glm::vec2(width_, height_));
-			reproject_shader_->setVec4("uLightIndices", lightIndices);
-			reproject_shader_->setInt("uNumLights", numSignificant);
-
-			glActiveTexture(GL_TEXTURE0);
-			glBindTexture(GL_TEXTURE_2D, epipolar_tex_);
-			reproject_shader_->setInt("uEpipolarTex", 0);
-
-			glActiveTexture(GL_TEXTURE1);
-			glBindTexture(GL_TEXTURE_2D, depthTexture);
-			reproject_shader_->setInt("uDepthTex", 1);
-
-			glBindImageTexture(0, volumetric_tex_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
-
-			glDispatchCompute((width_ / 2 + 15) / 16, (height_ / 2 + 15) / 16, 1);
+			int low_w = std::max(1, width_ / 2);
+			int low_h = std::max(1, height_ / 2);
+			glDispatchCompute((low_w + 15) / 16, (low_h + 15) / 16, 1);
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
 			// 3. Bilateral Blur Pass

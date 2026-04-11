@@ -135,7 +135,7 @@ void main() {
 
 	// Ambient scattering term for night/dark visibility
 	// Scale ambient light contribution by density and distance
-	vec3 ambientScattering = ambient_light * (1.0 - transmittance) * 0.5;
+	vec3 ambientScattering = ambient_light * (1.0 - transmittance) * hazeDensity * 0.2;
 	inScattering += ambientScattering;
 
 	// 3. Cloud Atmospheric Integration
