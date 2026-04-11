@@ -35,6 +35,14 @@ namespace Boidsish {
 
 			float GetThreshold() const { return threshold_; }
 
+			void SetMinIntensity(float minIntensity) { minIntensity_ = minIntensity; }
+
+			float GetMinIntensity() const { return minIntensity_; }
+
+			void SetMaxIntensity(float maxIntensity) { maxIntensity_ = maxIntensity; }
+
+			float GetMaxIntensity() const { return maxIntensity_; }
+
 		private:
 			void InitializeFBOs();
 
@@ -50,6 +58,8 @@ namespace Boidsish {
 			int   _width, _height;
 			float intensity_ = 0.15f;
 			float threshold_ = 1.0f;
+			float minIntensity_ = 0.0f;
+			float maxIntensity_ = 5.0f;
 		};
 
 	} // namespace PostProcessing
