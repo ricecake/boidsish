@@ -10,6 +10,7 @@
 #include "weather_constants.h"
 
 class ComputeShader;
+class ShaderBase;
 
 namespace Boidsish {
 
@@ -39,7 +40,19 @@ namespace Boidsish {
 
 		GLuint GetCloudShadowMap() const { return _cloudShadowMap; }
 
-		void BindTextures(GLuint firstUnit = 10);
+		static constexpr GLuint kTransmittanceUnit = 20;
+		static constexpr GLuint kMultiScatteringUnit = 21;
+		static constexpr GLuint kSkyViewUnit = 22;
+		static constexpr GLuint kAerialPerspectiveUnit = 23;
+		static constexpr GLuint kCloudShadowUnit = 24;
+
+		void BindTextures();
+		void BindToShader(::ShaderBase& shader);
+
+		static constexpr int   kCloudShadowResolution = 512;
+		static constexpr float kCloudShadowWorldSize = 4000.0f;
+
+		float GetCloudShadowWorldSize() const { return kCloudShadowWorldSize; }
 
 		// Parameters
 		void SetRayleighScale(float s) {

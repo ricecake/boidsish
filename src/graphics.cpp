@@ -87,7 +87,7 @@
 #include <glm/ext/matrix_projection.hpp>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
-#include <shader.h>
+#include "shader.h"
 
 namespace Boidsish {
 
@@ -1058,12 +1058,7 @@ namespace Boidsish {
 			}
 
 			if (atmosphere_manager) {
-				atmosphere_manager->BindTextures(20);
-				s.trySetInt("u_transmittanceLUT", 20);
-				s.trySetInt("u_skyViewLUT", 22);
-				s.trySetInt("u_aerialPerspectiveLUT", 23);
-				s.trySetInt("u_cloudShadowMap", 24);
-				s.trySetFloat("u_atmosphereHeight", atmosphere_manager->GetAtmosphereHeight());
+				atmosphere_manager->BindToShader(s);
 			}
 
 			if (shadow_manager && shadow_manager->IsInitialized() && frame_config_.enable_shadows) {
@@ -1089,11 +1084,7 @@ namespace Boidsish {
 				terrain_render_manager->BindTerrainData(shader_to_setup);
 			}
 			if (atmosphere_manager) {
-				shader_to_setup.trySetInt("u_transmittanceLUT", 20);
-				shader_to_setup.trySetInt("u_skyViewLUT", 22);
-				shader_to_setup.trySetInt("u_aerialPerspectiveLUT", 23);
-				shader_to_setup.trySetInt("u_cloudShadowMap", 24);
-				shader_to_setup.trySetFloat("u_atmosphereHeight", atmosphere_manager->GetAtmosphereHeight());
+				atmosphere_manager->BindToShader(shader_to_setup);
 			}
 			shader_to_setup.setBool("uUseMDI", false);
 			shader_to_setup.setBool("useSSBOInstancing", false);
@@ -1911,10 +1902,7 @@ namespace Boidsish {
 			sky_shader->setMat4("invView", glm::inverse(view));
 
 			if (atmosphere_manager) {
-				atmosphere_manager->BindTextures(20);
-				sky_shader->setInt("u_transmittanceLUT", 20);
-				sky_shader->setInt("u_multiScatteringLUT", 21);
-				sky_shader->setInt("u_skyViewLUT", 22);
+				atmosphere_manager->BindToShader(*sky_shader);
 
 				const auto& lights = light_manager.GetLights();
 				if (!lights.empty()) {
@@ -2190,7 +2178,7 @@ namespace Boidsish {
 			prev_view_projection = current_vp;
 
 			if (atmosphere_manager) {
-				atmosphere_manager->BindTextures(20);
+				atmosphere_manager->BindTextures();
 			}
 
 			// Resource Preparation (Main Thread)
@@ -2314,8 +2302,7 @@ namespace Boidsish {
 					lighting_ubo_data_.cloudBeerPowderMix = atmosphere_effect->GetCloudBeerPowderMix();
 
 					// Calculate cloud shadow matrix (world XZ to shadow map UV)
-					// Shadow map is 4000x4000 centered on camera
-					float     mapSize = 4000.0f;
+					float     mapSize = atmosphere_manager->GetCloudShadowWorldSize();
 					glm::vec3 camPos = camera.pos();
 					glm::mat4 shadowMat(1.0f);
 					// 1. Move to camera-relative XZ
