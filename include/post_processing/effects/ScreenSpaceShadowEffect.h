@@ -50,10 +50,10 @@ namespace Boidsish {
 			int width_ = 0;
 			int height_ = 0;
 
-			float intensity_ = 0.5f;
-			float radius_ = 0.5f;
-			float bias_ = 0.05f;
-			int steps_ = 16;
+			float intensity_ = 0.25f;
+			float radius_ = 1.25f;
+			float bias_ = 0.5f;
+			int steps_ = 8;
 		};
 
 	} // namespace PostProcessing
