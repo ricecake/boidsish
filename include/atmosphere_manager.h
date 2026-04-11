@@ -37,6 +37,8 @@ namespace Boidsish {
 
 		GLuint GetAerialPerspectiveLUT() const { return _aerialPerspectiveLUT; }
 
+		GLuint GetCloudShadowMap() const { return _cloudShadowMap; }
+
 		void BindTextures(GLuint firstUnit = 10);
 
 		// Parameters
@@ -159,6 +161,7 @@ namespace Boidsish {
 		GLuint _multiScatteringLUT = 0;
 		GLuint _skyViewLUT = 0;
 		GLuint _aerialPerspectiveLUT = 0;
+		GLuint _cloudShadowMap = 0;
 		GLuint _shCoeffsBuffer = 0;
 
 		std::unique_ptr<ComputeShader> _transmittanceShader;
@@ -166,6 +169,7 @@ namespace Boidsish {
 		std::unique_ptr<ComputeShader> _skyViewShader;
 		std::unique_ptr<ComputeShader> _aerialPerspectiveShader;
 		std::unique_ptr<ComputeShader> _skyToSHShader;
+		std::unique_ptr<ComputeShader> _cloudShadowShader;
 
 		glm::vec4 _shCoeffs[9];
 
