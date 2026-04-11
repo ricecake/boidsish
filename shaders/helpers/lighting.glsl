@@ -18,6 +18,11 @@ uniform float u_atmosphereHeight; // usually 100.0 km
 uniform sampler2D u_transmittanceLUT;
 #endif
 
+#ifndef TERRAIN_GRID_DEFINED
+	#define TERRAIN_GRID_DEFINED
+uniform isampler2D u_chunkGrid;
+#endif
+
 /**
  * Maps height and sun cosine angle to UV coordinates for the transmittance LUT.
  * Matches logic in atmosphere/common.glsl but standalone here for convenience.
@@ -335,14 +340,21 @@ vec3 getSpatialAmbientSH(vec3 worldPos, vec3 N) {
 	float totalWeight = 0.0;
 	for (int x = 0; x <= 1; ++x) {
 		for (int z = 0; z <= 1; ++z) {
-			ivec2 coord = chunkCoord + ivec2(x, z);
-			if (coord.x >= 0 && coord.x < u_originSize.z && coord.y >= 0 && coord.y < u_originSize.z) {
-				float weight = (x == 0 ? 1.0 - fracPos.x : fracPos.x) * (z == 0 ? 1.0 - fracPos.y : fracPos.y);
-				int   idx = coord.y * u_originSize.z + coord.x;
-				for (int i = 0; i < 9; ++i) {
-					totalSH[i] += u_terrainProbes[idx].sh_coeffs[i].rgb * weight;
+			ivec2 localCoord = chunkCoord + ivec2(x, z);
+			if (localCoord.x >= 0 && localCoord.x < u_originSize.z && localCoord.y >= 0 && localCoord.y < u_originSize.z) {
+				// Only include this probe if it's actually registered in the current grid
+				if (texelFetch(u_chunkGrid, localCoord, 0).r >= 0) {
+					float weight = (x == 0 ? 1.0 - fracPos.x : fracPos.x) * (z == 0 ? 1.0 - fracPos.y : fracPos.y);
+
+					ivec2 worldChunkCoord = localCoord + u_originSize.xy;
+					ivec2 toroidalCoord = (worldChunkCoord % u_originSize.z + u_originSize.z) % u_originSize.z;
+					int   idx = toroidalCoord.y * u_originSize.z + toroidalCoord.x;
+
+					for (int i = 0; i < 9; ++i) {
+						totalSH[i] += u_terrainProbes[idx].sh_coeffs[i].rgb * weight;
+					}
+					totalWeight += weight;
 				}
-				totalWeight += weight;
 			}
 		}
 	}
@@ -366,10 +378,12 @@ vec3 getSpatialAmbientSH(vec3 worldPos, vec3 N) {
 
 	// Combine spatially-varying environmental bounce with global sky irradiance
 	vec3 environmentalIrradiance = evalSHIrradianceFromCoeffs(N, interpolatedCoeffs);
-	// vec3 skyIrradiance = evalSHIrradiance(N); // Primary sky term from Lighting UBO
+	vec3 skyIrradiance = evalSHIrradiance(N); // Global sky/ambient fallback
 
-	// Fade out local environmental bounce at the grid boundaries for a smooth transition
-	return environmentalIrradiance * bounceFade;
+	// Smoothly blend between local environmental bounce and global sky irradiance
+	// based on probe availability and grid edge proximity.
+	float t = totalWeight * bounceFade;
+	return mix(skyIrradiance, environmentalIrradiance, clamp(t, 0.0, 1.0));
 }
 
 // Forward declare macro occlusion from terrain_shadows.glsl

@@ -474,6 +474,21 @@ namespace Boidsish {
 			info.world_offset = glm::vec2(world_offset.x, world_offset.z);
 
 			chunks_[chunk_key] = info;
+
+			// Clear SH probe data for this toroidal slot to prevent hotspots from stale data
+			int grid_size = Constants::Class::Terrain::SliceMapSize();
+			int tx = (chunk_key.first % grid_size + grid_size) % grid_size;
+			int tz = (chunk_key.second % grid_size + grid_size) % grid_size;
+			int probe_idx = tz * grid_size + tx;
+
+			if (probe_ssbo_) {
+				glBindBuffer(GL_SHADER_STORAGE_BUFFER, probe_ssbo_);
+				// SH coefficient size is 9 * 16 bytes = 144 bytes per probe
+				std::vector<float> zero_sh(36, 0.0f); // 9 * vec4
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, probe_idx * 144, 144, zero_sh.data());
+				glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+			}
+
 			grid_dirty_ = true;
 		} // mutex released here
 
