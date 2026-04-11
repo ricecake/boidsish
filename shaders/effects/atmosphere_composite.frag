@@ -133,6 +133,11 @@ void main() {
 	vec3  inScattering = sampleAerialPerspective(rayDir, distKM);
 	float transmittance = sampleAerialPerspectiveTransmittance(rayDir, distKM);
 
+	// Ambient scattering term for night/dark visibility
+	// Scale ambient light contribution by density and distance
+	vec3 ambientScattering = ambient_light * (1.0 - transmittance) * 0.5;
+	inScattering += ambientScattering;
+
 	// 3. Cloud Atmospheric Integration
 	// Clouds should also be affected by the atmosphere between them and the camera.
 	float cloudDist = (cloudAltitude * worldScale - viewPos.y) / max(abs(rayDir.y), 0.01);

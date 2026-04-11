@@ -87,21 +87,27 @@ void main() {
         float rayDist = length(worldPos - uCameraPos);
 
         // Limited distance for volumetric effect
-        float maxDist = (2.0 / max((uScatteringCoef + uAbsorptionCoef) * uHazeDensity, 0.001));
+        // Use km for consistency with atmosphere model
+        float extinctionCoef = (uScatteringCoef + uAbsorptionCoef) * uHazeDensity;
+        float maxDist = 200.0 * worldScale; // Default max dist
+        if (extinctionCoef > 0.001) {
+            maxDist = min(maxDist, (2.0 / (extinctionCoef / 1000.0)));
+        }
         rayDist = min(rayDist, maxDist);
 
         // Dithering
         float dither = 0.0;
         ivec2 bnSize = textureSize(u_blueNoiseTexture, 0);
         if (bnSize.x > 0) {
-            dither = fastBlueNoise(uv * (vec2(256, 256) / vec2(bnSize))); // Using fixed size or textureSize
+            dither = fastBlueNoise(uv * (vec2(256, 256) / vec2(bnSize)));
         }
 
         vec3 accumulation = vec3(0.0);
         float transmittance = 1.0;
 
-        int stepCount = 32; // Steps per sample point along the ray
+        int stepCount = 64; // Increased steps for better laser visibility
         float stepSize = rayDist / float(stepCount);
+        float stepSizeKM = stepSize / 1000.0;
 
         for (int s = 0; s < stepCount; ++s) {
             float dist = (float(s) + dither) * stepSize;
@@ -136,8 +142,11 @@ void main() {
                 inScatteredLight += lights[lIdx].color * lights[lIdx].intensity * attenuation * shadow * phase;
             }
 
-            accumulation += inScatteredLight * currentScattering * transmittance * stepSize;
-            transmittance *= exp(-currentExtinction * stepSize);
+            // Ambient term for volumetric scattering (makes it visible at night/dark)
+            inScatteredLight += ambient_light * 0.1;
+
+            accumulation += inScatteredLight * currentScattering * transmittance * stepSizeKM;
+            transmittance *= exp(-currentExtinction * stepSizeKM);
 
             if (transmittance < 0.01) break;
         }

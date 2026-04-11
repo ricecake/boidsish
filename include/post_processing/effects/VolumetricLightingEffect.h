@@ -49,10 +49,11 @@ namespace Boidsish {
 
 			std::unique_ptr<ComputeShader> epipolar_shader_;
 			std::unique_ptr<ComputeShader> reproject_shader_;
+			std::unique_ptr<ComputeShader> blur_shader_;
 			std::unique_ptr<Shader>        composite_shader_;
 
-			int width_ = 0;
-			int height_ = 0;
+			int   width_ = 0;
+			int   height_ = 0;
 			float time_ = 0.0f;
 
 			float scattering_coef_ = 0.1f;
@@ -65,10 +66,11 @@ namespace Boidsish {
 			float haze_height_ = 20.0f;
 
 			// Epipolar resources
-			int num_lines_ = 256;
-			int samples_per_line_ = 256;
+			int    num_lines_ = 256;
+			int    samples_per_line_ = 256;
 			GLuint epipolar_tex_ = 0;
-			GLuint volumetric_tex_ = 0; // Low-res reconstructed or filtered
+			GLuint volumetric_tex_ = 0; // Low-res reconstructed
+			GLuint blurred_tex_ = 0;    // Reconstructed and filtered
 
 			struct LightMetadata {
 				int index;

@@ -15,8 +15,12 @@ namespace Boidsish {
 		}
 
 		VolumetricLightingEffect::~VolumetricLightingEffect() {
-			if (epipolar_tex_) glDeleteTextures(1, &epipolar_tex_);
-			if (volumetric_tex_) glDeleteTextures(1, &volumetric_tex_);
+			if (epipolar_tex_)
+				glDeleteTextures(1, &epipolar_tex_);
+			if (volumetric_tex_)
+				glDeleteTextures(1, &volumetric_tex_);
+			if (blurred_tex_)
+				glDeleteTextures(1, &blurred_tex_);
 		}
 
 		void VolumetricLightingEffect::Initialize(int width, int height) {
@@ -25,12 +29,13 @@ namespace Boidsish {
 
 			epipolar_shader_ = std::make_unique<ComputeShader>("shaders/effects/volumetric_lighting_epipolar.comp");
 			reproject_shader_ = std::make_unique<ComputeShader>("shaders/effects/volumetric_lighting_reproject.comp");
+			blur_shader_ = std::make_unique<ComputeShader>("shaders/effects/volumetric_lighting_blur.comp");
 			composite_shader_ = std::make_unique<Shader>(
 				"shaders/postprocess.vert",
 				"shaders/effects/volumetric_lighting_composite.frag"
 			);
 
-			auto setup_shader = [](Shader& s) {
+			auto setup_shader = [](ShaderBase& s) {
 				s.use();
 				GLuint lighting_idx = glGetUniformBlockIndex(s.ID, "Lighting");
 				if (lighting_idx != GL_INVALID_INDEX) {
@@ -40,17 +45,23 @@ namespace Boidsish {
 				if (shadows_idx != GL_INVALID_INDEX) {
 					glUniformBlockBinding(s.ID, shadows_idx, Constants::UboBinding::Shadows());
 				}
-				s.setInt("shadowMaps", 10);
+				s.trySetInt("shadowMaps", 10);
 			};
 
+			setup_shader(*epipolar_shader_);
+			setup_shader(*reproject_shader_);
 			setup_shader(*composite_shader_);
 
 			InitializeResources();
 		}
 
 		void VolumetricLightingEffect::InitializeResources() {
-			if (epipolar_tex_) glDeleteTextures(1, &epipolar_tex_);
-			if (volumetric_tex_) glDeleteTextures(1, &volumetric_tex_);
+			if (epipolar_tex_)
+				glDeleteTextures(1, &epipolar_tex_);
+			if (volumetric_tex_)
+				glDeleteTextures(1, &volumetric_tex_);
+			if (blurred_tex_)
+				glDeleteTextures(1, &blurred_tex_);
 
 			glGenTextures(1, &epipolar_tex_);
 			glBindTexture(GL_TEXTURE_2D, epipolar_tex_);
@@ -65,6 +76,14 @@ namespace Boidsish {
 			// Reconstruct at half res for performance
 			int low_w = std::max(1, width_ / 2);
 			int low_h = std::max(1, height_ / 2);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, low_w, low_h, 0, GL_RGBA, GL_FLOAT, NULL);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+			glGenTextures(1, &blurred_tex_);
+			glBindTexture(GL_TEXTURE_2D, blurred_tex_);
 			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, low_w, low_h, 0, GL_RGBA, GL_FLOAT, NULL);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -155,15 +174,31 @@ namespace Boidsish {
 			glDispatchCompute((width_ / 2 + 15) / 16, (height_ / 2 + 15) / 16, 1);
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
+			// 3. Bilateral Blur Pass
+			blur_shader_->use();
+			blur_shader_->setVec2("uScreenSize", glm::vec2(width_ / 2, height_ / 2));
 
-			// 3. Composite
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, volumetric_tex_);
+			blur_shader_->setInt("uInputTex", 0);
+
+			glActiveTexture(GL_TEXTURE1);
+			glBindTexture(GL_TEXTURE_2D, depthTexture);
+			blur_shader_->setInt("uDepthTex", 1);
+
+			glBindImageTexture(0, blurred_tex_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+
+			glDispatchCompute((width_ / 2 + 15) / 16, (height_ / 2 + 15) / 16, 1);
+			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+			// 4. Composite
 			composite_shader_->use();
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, sourceTexture);
 			composite_shader_->setInt("sceneTexture", 0);
 
 			glActiveTexture(GL_TEXTURE1);
-			glBindTexture(GL_TEXTURE_2D, volumetric_tex_);
+			glBindTexture(GL_TEXTURE_2D, blurred_tex_);
 			composite_shader_->setInt("volumetricTexture", 1);
 
 			glDrawArrays(GL_TRIANGLES, 0, 6);
@@ -183,7 +218,11 @@ namespace Boidsish {
 
 				float weight = l.intensity * haze_density_;
 				// Boost weight for directional lights as they are global
-				if (l.type == DIRECTIONAL_LIGHT) weight *= 2.0f;
+				if (l.type == DIRECTIONAL_LIGHT)
+					weight *= 2.0f;
+
+				if (weight < visibilityThreshold)
+					continue;
 
 				significant.push_back({(int)i, weight});
 			}
