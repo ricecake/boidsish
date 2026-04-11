@@ -258,8 +258,26 @@ void main() {
 		projectRadianceToSH(rd, radiance, 1.0 / float(k_rayCount), newSH);
 	}
 
+	// Detect if the probe at this toroidal slot is for a different world chunk
+	// We store the world chunk coordinates in the unused 'w' components of the first two coefficients.
+	vec2  storedCoord = vec2(u_terrainProbes[flatIdx].sh_coeffs[0].w, u_terrainProbes[flatIdx].sh_coeffs[1].w);
+	float alpha = k_accumulationAlpha;
+
+	if (distance(storedCoord, vec2(worldChunkCoord)) > 0.1) {
+		// New world position for this slot - full refresh (no temporal accumulation from previous chunk)
+		alpha = 1.0;
+	}
+
 	for (int i = 0; i < 9; ++i) {
 		vec3 oldSH = u_terrainProbes[flatIdx].sh_coeffs[i].rgb;
-		u_terrainProbes[flatIdx].sh_coeffs[i] = vec4(mix(oldSH, newSH[i], k_accumulationAlpha), 1.0);
+		vec4 finalSH = vec4(mix(oldSH, newSH[i], alpha), 1.0);
+
+		// Encode world coordinates in w-components of the first two coefficients
+		if (i == 0)
+			finalSH.w = float(worldChunkCoord.x);
+		if (i == 1)
+			finalSH.w = float(worldChunkCoord.y);
+
+		u_terrainProbes[flatIdx].sh_coeffs[i] = finalSH;
 	}
 }

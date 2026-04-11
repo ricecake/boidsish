@@ -350,10 +350,14 @@ vec3 getSpatialAmbientSH(vec3 worldPos, vec3 N) {
 					ivec2 toroidalCoord = (worldChunkCoord % u_originSize.z + u_originSize.z) % u_originSize.z;
 					int   idx = toroidalCoord.y * u_originSize.z + toroidalCoord.x;
 
-					for (int i = 0; i < 9; ++i) {
-						totalSH[i] += u_terrainProbes[idx].sh_coeffs[i].rgb * weight;
+					// Verify this probe is for the correct world chunk (using encoded coordinates in w)
+					vec2 probeCoord = vec2(u_terrainProbes[idx].sh_coeffs[0].w, u_terrainProbes[idx].sh_coeffs[1].w);
+					if (distance(probeCoord, vec2(worldChunkCoord)) < 0.1) {
+						for (int i = 0; i < 9; ++i) {
+							totalSH[i] += u_terrainProbes[idx].sh_coeffs[i].rgb * weight;
+						}
+						totalWeight += weight;
 					}
-					totalWeight += weight;
 				}
 			}
 		}
