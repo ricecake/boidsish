@@ -2,6 +2,7 @@
 
 #include <iostream>
 
+#include "post_processing/effects/BloomEffect.h"
 #include "profiler.h"
 #include <shader.h>
 
@@ -134,13 +135,22 @@ namespace Boidsish {
 			float            time
 		) {
 			PROJECT_PROFILE_SCOPE("ApplyLateEffects");
+			bool bloomTonemapped = false;
+
 			for (const auto& effect : pre_tone_mapping_effects_) {
 				if (effect->IsEnabled() && !effect->IsEarly()) {
 					ApplyEffectInternal(effect, viewMatrix, projectionMatrix, cameraPos, time);
+
+					// Check if this was a bloom effect that performed tonemapping
+					if (auto bloom = std::dynamic_pointer_cast<BloomEffect>(effect)) {
+						if (bloom->IsToneMappingEnabled()) {
+							bloomTonemapped = true;
+						}
+					}
 				}
 			}
 
-			if (tone_mapping_effect_ && tone_mapping_effect_->IsEnabled()) {
+			if (tone_mapping_effect_ && tone_mapping_effect_->IsEnabled() && !bloomTonemapped) {
 				ApplyEffectInternal(tone_mapping_effect_, viewMatrix, projectionMatrix, cameraPos, time);
 			}
 

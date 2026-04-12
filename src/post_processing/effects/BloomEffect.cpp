@@ -8,16 +8,16 @@ namespace Boidsish {
 	namespace PostProcessing {
 
 		BloomEffect::BloomEffect(int width, int height):
-			_width(width), _height(height), _brightPassFBO(0), _brightPassTexture(0) {
+			_width(width), _height(height), _brightPassFBO(0), _brightPassTexture(0), _bloomTexture(0) {
 			name_ = "Bloom";
 		}
 
 		BloomEffect::~BloomEffect() {
 			glDeleteFramebuffers(1, &_brightPassFBO);
 			glDeleteTextures(1, &_brightPassTexture);
-			for (const auto& mip : _mipChain) {
-				glDeleteFramebuffers(1, &mip.fbo);
-				glDeleteTextures(1, &mip.texture);
+			if (_bloomTexture) glDeleteTextures(1, &_bloomTexture);
+			if (!_upsampleFBOs.empty()) {
+				glDeleteFramebuffers((GLsizei)_upsampleFBOs.size(), _upsampleFBOs.data());
 			}
 		}
 
@@ -29,9 +29,8 @@ namespace Boidsish {
 				"shaders/postprocess.vert",
 				"shaders/effects/bright_pass.frag"
 			);
-			_downsampleShader = std::make_unique<Shader>(
-				"shaders/postprocess.vert",
-				"shaders/effects/bloom_downsample.frag"
+			_downsampleComputeShader = std::make_unique<ComputeShader>(
+				"shaders/effects/bloom_downsample.comp"
 			);
 			_upsampleShader = std::make_unique<Shader>(
 				"shaders/postprocess.vert",
@@ -42,17 +41,17 @@ namespace Boidsish {
 				"shaders/effects/bloom_composite.frag"
 			);
 
-			InitializeFBOs();
+			InitializeResources();
 		}
 
-		void BloomEffect::InitializeFBOs() {
+		void BloomEffect::InitializeResources() {
 			glDeleteFramebuffers(1, &_brightPassFBO);
 			glDeleteTextures(1, &_brightPassTexture);
-			for (const auto& mip : _mipChain) {
-				glDeleteFramebuffers(1, &mip.fbo);
-				glDeleteTextures(1, &mip.texture);
+			if (_bloomTexture) glDeleteTextures(1, &_bloomTexture);
+			if (!_upsampleFBOs.empty()) {
+				glDeleteFramebuffers((GLsizei)_upsampleFBOs.size(), _upsampleFBOs.data());
+				_upsampleFBOs.clear();
 			}
-			_mipChain.clear();
 
 			// Bright pass FBO
 			glGenFramebuffers(1, &_brightPassFBO);
@@ -68,40 +67,25 @@ namespace Boidsish {
 			if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
 				logger::ERROR("Bloom Bright Pass FBO is not complete!");
 
-			glm::vec2 mipSize((float)_width, (float)_height);
+			// Mipmapped Bloom Texture
+			_numMips = 5;
+			glGenTextures(1, &_bloomTexture);
+			glBindTexture(GL_TEXTURE_2D, _bloomTexture);
+			glTexStorage2D(GL_TEXTURE_2D, _numMips, GL_RGBA16F, _width / 2, _height / 2);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-			for (int i = 0; i < 5; i++) {
-				BloomMip mip;
-				mipSize /= 2.0f;
-				mip.size = mipSize;
-
-				glGenFramebuffers(1, &mip.fbo);
-				glBindFramebuffer(GL_FRAMEBUFFER, mip.fbo);
-
-				glGenTextures(1, &mip.texture);
-				glBindTexture(GL_TEXTURE_2D, mip.texture);
-				glTexImage2D(
-					GL_TEXTURE_2D,
-					0,
-					GL_RGB16F,
-					(int)mip.size.x,
-					(int)mip.size.y,
-					0,
-					GL_RGB,
-					GL_FLOAT,
-					nullptr
-				);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-				glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, mip.texture, 0);
-
+			// Create FBOs for upsampling into mip levels
+			_upsampleFBOs.resize(_numMips);
+			glGenFramebuffers(_numMips, _upsampleFBOs.data());
+			for (int i = 0; i < _numMips; i++) {
+				glBindFramebuffer(GL_FRAMEBUFFER, _upsampleFBOs[i]);
+				glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, _bloomTexture, i);
 				if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-					logger::ERROR("Bloom mip FBO " + std::to_string(i) + " is not complete!");
+					logger::ERROR("Bloom upsample FBO " + std::to_string(i) + " is not complete!");
 				}
-				_mipChain.push_back(mip);
 			}
 
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -123,24 +107,22 @@ namespace Boidsish {
 			glBindTexture(GL_TEXTURE_2D, sourceTexture);
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 
-			// 2. Progressive downsample with blur
-			_downsampleShader->use();
-			GLuint    currentTexture = _brightPassTexture;
-			glm::vec2 currentSize(_width, _height);
+			// 2. Compute-based Downsample
+			_downsampleComputeShader->use();
+			_downsampleComputeShader->setVec2("srcResolution", (float)_width, (float)_height);
+			_downsampleComputeShader->setInt("numMips", _numMips);
 
-			for (size_t i = 0; i < _mipChain.size(); i++) {
-				const auto& mip = _mipChain[i];
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, _brightPassTexture);
 
-				glBindFramebuffer(GL_FRAMEBUFFER, mip.fbo);
-				glViewport(0, 0, mip.size.x, mip.size.y);
-
-				glActiveTexture(GL_TEXTURE0);
-				glBindTexture(GL_TEXTURE_2D, currentTexture);
-				glDrawArrays(GL_TRIANGLES, 0, 6);
-
-				currentTexture = mip.texture;
-				currentSize = mip.size;
+			for (int i = 0; i < _numMips; i++) {
+				glBindImageTexture(i, _bloomTexture, i, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 			}
+
+			unsigned int groupsX = (_width / 2 + 15) / 16;
+			unsigned int groupsY = (_height / 2 + 15) / 16;
+			_downsampleComputeShader->dispatch(groupsX, groupsY, 1);
+			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
 
 			// 3. Progressive upsample and accumulate
 			_upsampleShader->use();
@@ -150,22 +132,41 @@ namespace Boidsish {
 			glBlendFunc(GL_ONE, GL_ONE);
 			glBlendEquation(GL_FUNC_ADD);
 
-			for (int i = (int)_mipChain.size() - 1; i > 0; i--) {
-				const auto& srcMip = _mipChain[i];
-				const auto& dstMip = _mipChain[i - 1];
+			for (int i = _numMips - 1; i > 0; i--) {
+				int srcMip = i;
+				int dstMip = i - 1;
 
-				glBindFramebuffer(GL_FRAMEBUFFER, dstMip.fbo);
-				glViewport(0, 0, dstMip.size.x, dstMip.size.y);
+				int dstWidth = (_width / 2) >> dstMip;
+				int dstHeight = (_height / 2) >> dstMip;
+				int srcWidth = (_width / 2) >> srcMip;
+				int srcHeight = (_height / 2) >> srcMip;
 
-				_upsampleShader->setVec2("srcResolution", srcMip.size.x, srcMip.size.y);
+				glBindFramebuffer(GL_FRAMEBUFFER, _upsampleFBOs[dstMip]);
+				glViewport(0, 0, dstWidth, dstHeight);
+
+				_upsampleShader->setVec2("srcResolution", (float)srcWidth, (float)srcHeight);
+
+				// We need to sample from level i and write to level i-1
+				// Note: texture() in GLSL usually samples from all mips or specific one
+				// Our upsample shader uses sampler2D and TexCoords.
+				// To sample a specific mip level with sampler2D, we can use textureLod or bind it differently.
+				// However, bloom_upsample.frag uses texture(srcTexture, TexCoords).
+				// We can use a sampler to restrict the mip range or just use textureLod in shader.
+				// Let's assume we use textureLod(srcTexture, TexCoords, lod) in upsample shader if needed,
+				// or bind only the level we want.
+				// Standard practice for bloom chain without Sampler Objects is binding the whole texture
+				// and using textureLod.
+
 				glActiveTexture(GL_TEXTURE0);
-				glBindTexture(GL_TEXTURE_2D, srcMip.texture);
+				glBindTexture(GL_TEXTURE_2D, _bloomTexture);
+				_upsampleShader->setFloat("srcLod", (float)srcMip);
+
 				glDrawArrays(GL_TRIANGLES, 0, 6);
 			}
 
 			glDisable(GL_BLEND);
 
-			// 4. Final composite with scene
+			// 4. Final composite with scene and integrated tonemapping
 			glBindFramebuffer(GL_FRAMEBUFFER, originalFBO);
 			glViewport(originalViewport[0], originalViewport[1], originalViewport[2], originalViewport[3]);
 			_compositeShader->use();
@@ -174,11 +175,23 @@ namespace Boidsish {
 			_compositeShader->setFloat("intensity", intensity_);
 			_compositeShader->setFloat("minIntensity", minIntensity_);
 			_compositeShader->setFloat("maxIntensity", maxIntensity_);
+
+			_compositeShader->setBool("toneMappingEnabled", _toneMappingEnabled);
+			_compositeShader->setInt("toneMapMode", _toneMappingMode);
+
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, sourceTexture);
 			glActiveTexture(GL_TEXTURE1);
-			glBindTexture(GL_TEXTURE_2D, _mipChain[0].texture);
+			glBindTexture(GL_TEXTURE_2D, _bloomTexture);
+			// We want level 0 of the bloom texture
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+
 			glDrawArrays(GL_TRIANGLES, 0, 6);
+
+			// Reset mip levels for future use
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, _numMips - 1);
 
 			// Cleanup
 			glActiveTexture(GL_TEXTURE1);
@@ -190,7 +203,7 @@ namespace Boidsish {
 		void BloomEffect::Resize(int width, int height) {
 			_width = width;
 			_height = height;
-			InitializeFBOs();
+			InitializeResources();
 		}
 
 	} // namespace PostProcessing

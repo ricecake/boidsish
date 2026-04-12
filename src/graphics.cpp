@@ -1035,6 +1035,11 @@ namespace Boidsish {
 				post_processing_manager_->AddEffect(sdf_volume_effect);
 
 				if (enable_hdr_) {
+					// Enable integrated tonemapping in bloom effect
+					bloom_effect->SetToneMappingEnabled(true);
+					bloom_effect->SetToneMappingMode(2); // Lottes default
+
+					// Still create the standalone effect as a fallback or for when bloom is disabled
 					auto tone_mapping_effect = std::make_shared<PostProcessing::ToneMappingEffect>();
 					tone_mapping_effect->SetEnabled(true);
 					bloom_effect->SetEnabled(true);
