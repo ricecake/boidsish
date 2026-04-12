@@ -12,16 +12,20 @@ int main(int argc, char** argv) {
 	Visualizer visualizer(1280, 720, "Volumetric Lighting Demo - Laser in Fog");
 
 	visualizer.AddPrepareCallback([](Visualizer& v) {
+		auto& config = ConfigManager::GetInstance();
+		config.SetBool("enable_hdr", true);
+		config.SetBool("enable_effects", true);
+
 		auto& lm = v.GetLightManager();
 		auto& wm = *v.GetWeatherManager();
 
 		// 1. Configure "Laser" Spotlight
 		glm::vec3 spotPos(0.0f, 5.0f, 15.0f);
 		glm::vec3 spotDir(0.0f, -0.1f, -1.0f);
-		float     intensity = 100.0f;      // Very high intensity
+		float     intensity = 200.0f;      // Doubled intensity
 		glm::vec3 color(0.0f, 1.0f, 0.5f); // Neon cyan/green laser
-		float     innerAngle = 0.2f;       // Extremely narrow
-		float     outerAngle = 0.5f;
+		float     innerAngle = 1.0f;       // Slightly wider for visibility
+		float     outerAngle = 3.0f;
 
 		Light laser = Light::CreateSpot(spotPos, spotDir, intensity, color, innerAngle, outerAngle, true);
 		lm.AddLight(laser);

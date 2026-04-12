@@ -11,6 +11,7 @@
 #include "post_processing/effects/ScreenSpaceShadowEffect.h"
 #include "post_processing/effects/SsgiEffect.h"
 #include "post_processing/effects/ToneMappingEffect.h"
+#include "post_processing/effects/VolumetricLightingEffect.h"
 
 namespace Boidsish {
 	namespace UI {
@@ -200,6 +201,40 @@ namespace Boidsish {
 								float threshold = bloom_effect->GetThreshold();
 								if (ImGui::SliderFloat("Threshold", &threshold, 0.0f, 3.0f)) {
 									bloom_effect->SetThreshold(threshold);
+								}
+							}
+						}
+
+						if (effect->GetName() == "Volumetric Lighting" && is_enabled) {
+							auto vol_effect = std::dynamic_pointer_cast<PostProcessing::VolumetricLightingEffect>(
+								effect
+							);
+							if (vol_effect) {
+								float scat = vol_effect->GetScatteringCoefficient();
+								if (ImGui::SliderFloat("Scattering##Vol", &scat, 0.0f, 1.0f)) {
+									vol_effect->SetScatteringCoefficient(scat);
+								}
+								float abs = vol_effect->GetAbsorptionCoefficient();
+								if (ImGui::SliderFloat("Absorption##Vol", &abs, 0.0f, 1.0f)) {
+									vol_effect->SetAbsorptionCoefficient(abs);
+								}
+								float phase = vol_effect->GetPhaseG();
+								if (ImGui::SliderFloat("Phase G##Vol", &phase, -0.99f, 0.99f)) {
+									vol_effect->SetPhaseG(phase);
+								}
+								float dens = vol_effect->GetHazeDensity();
+								if (ImGui::SliderFloat("Haze Density##Vol", &dens, 0.0f, 20.0f)) {
+									vol_effect->SetHazeParams(dens, vol_effect->GetHazeHeight());
+								}
+								float intens = vol_effect->GetIntensity();
+								if (ImGui::SliderFloat("Intensity##Vol", &intens, 0.0f, 500.0f)) {
+									vol_effect->SetIntensity(intens);
+								}
+
+								int technique = static_cast<int>(vol_effect->GetTechnique());
+								const char* techniques[] = {"Grid (Robust)", "Epipolar (Optimized)"};
+								if (ImGui::Combo("Technique##Vol", &technique, techniques, 2)) {
+									vol_effect->SetTechnique(static_cast<PostProcessing::VolumetricTechnique>(technique));
 								}
 							}
 						}

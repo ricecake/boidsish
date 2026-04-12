@@ -13,7 +13,7 @@ uniform sampler2D uDepthTex;
 uniform mat4 uViewProj;
 uniform vec3 uCameraPos;
 uniform vec2 uScreenSize;
-uniform vec4 uLightIndices;
+uniform vec4 uLightIndicesA;
 uniform int uNumLights;
 
 const int NUM_LINES = 256;
@@ -26,8 +26,7 @@ void main() {
 
     vec2 uv = (vec2(pixel) + 0.5) / size;
 
-    // 1. Calculate epipole
-    int lightIdx = int(uLightIndices.x);
+    int lightIdx = int(uLightIndicesA.x);
     vec3 lightPos;
     if (lights[lightIdx].type == LIGHT_TYPE_DIRECTIONAL) {
         lightPos = uCameraPos - lights[lightIdx].direction * 10000.0;
@@ -36,19 +35,16 @@ void main() {
     }
 
     vec4 epipoleClip = uViewProj * vec4(lightPos, 1.0);
-    vec2 epipoleScreen = (epipoleClip.xy / epipoleClip.w) * 0.5 + 0.5;
+    vec2 epipoleScreen = (epipoleClip.xy / max(abs(epipoleClip.w), 0.001)) * 0.5 + 0.5;
 
-    // 2. Convert current UV to polar coordinates around epipole
     vec2 dir = uv - epipoleScreen;
     float dist = length(dir);
     float angle = atan(dir.y, dir.x);
     if (angle < 0.0) angle += 2.0 * PI;
 
-    // 3. Map to epipolar texture coordinates
     float lineCoord = (angle / (2.0 * PI)) * float(NUM_LINES);
-    float sampleCoord = (dist / 10.0) * float(SAMPLES_PER_LINE - 1); // Radius 10.0 matches epipolar.comp
+    float sampleCoord = (dist / 10.0) * float(SAMPLES_PER_LINE - 1);
 
-    // Bilinear sampling
     vec4 result = texture(uEpipolarTex, vec2((sampleCoord + 0.5) / float(SAMPLES_PER_LINE), (lineCoord + 0.5) / float(NUM_LINES)));
 
     imageStore(uVolumetricOutput, pixel, result);
