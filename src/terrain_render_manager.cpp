@@ -70,8 +70,15 @@ namespace Boidsish {
 		glGenBuffers(1, &probe_ssbo_);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, probe_ssbo_);
 		// SH coefficient size is 9 * 16 bytes = 144 bytes per probe
-		size_t probe_count = grid_size * grid_size;
-		glBufferData(GL_SHADER_STORAGE_BUFFER, probe_count * 144, nullptr, GL_DYNAMIC_DRAW);
+		// We initialize with a "poison" value in the w-components to force an immediate refresh
+		size_t             probe_count = grid_size * grid_size;
+		std::vector<float> initial_data(probe_count * 36, -99999.0f);
+		glBufferData(
+			GL_SHADER_STORAGE_BUFFER,
+			probe_count * 144,
+			initial_data.data(),
+			GL_DYNAMIC_DRAW
+		);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
 		// Create instance buffer first so we can set up VAO attributes
