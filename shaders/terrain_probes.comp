@@ -28,10 +28,22 @@ uniform mat4 u_invView;
 uniform mat4 u_invProjection;
 
 // Probe settings
-const float k_accumulationAlpha = 0.05;
-const int   k_staggerFactor = 128; // Stagger more to offset higher ray count
-const int   k_rayCount = 16;       // Higher quality probes
-const int   k_maxSteps = 12;       // Slightly longer rays for better coverage
+const float k_accumulationAlpha = 0.25; // Even faster convergence
+const int   k_rayCount = 16;
+const int   k_maxSteps = 12;
+
+uint hash(uint x) {
+	x ^= x >> 16;
+	x *= 0x7feb352dU;
+	x ^= x >> 15;
+	x *= 0x846ca68bU;
+	x ^= x >> 16;
+	return x;
+}
+
+uint hash2D(ivec2 p) {
+	return hash(uint(p.x) ^ hash(uint(p.y)));
+}
 
 // SH basis constants
 const float C1 = 0.282095;
@@ -157,7 +169,7 @@ vec3 sampleTerrainFallback(vec3 worldPos, vec3 rayDir) {
 		}
 		currentDist += stepSize;
 	}
-	return sampleSkyLUT(rayDir); // Missed terrain
+	return vec3(0.0); // Missed terrain (sky is global)
 }
 
 void main() {
@@ -169,7 +181,18 @@ void main() {
 	ivec2 toroidalCoord = (worldChunkCoord % u_originSize.z + u_originSize.z) % u_originSize.z;
 	int   flatIdx = int(toroidalCoord.y * u_originSize.z + toroidalCoord.x);
 
-	bool shouldUpdate = ((uint(flatIdx) + u_frameIndex) % k_staggerFactor) == 0;
+	// Priority-based staggered update
+	// Probes near the center update more frequently
+	vec2  gridCenter = vec2(u_originSize.z) * 0.5;
+	float distToCenter = length(vec2(localCoord) - gridCenter);
+	float centerWeight = smoothstep(float(u_originSize.z) * 0.5, 0.0, distToCenter);
+
+	// Stagger factor ranges from 4 (center) to 32 (edges)
+	int dynamicStagger = int(mix(32.0, 4.0, centerWeight));
+
+	// Use an irregular hash-based sequence to avoid rolling waves
+	uint sequenceSeed = hash2D(worldChunkCoord);
+	bool shouldUpdate = ((sequenceSeed + u_frameIndex) % uint(dynamicStagger)) == 0;
 
 	if (!shouldUpdate)
 		return;
@@ -224,9 +247,9 @@ void main() {
 				break;
 
 			float sceneDepth = texture(u_gDepth, uv).r;
-			// If we hit the skybox, grab the sky radiance immediately and bail
+			// If we hit the skybox, probes should NOT capture it (sky is a global term)
 			if (sceneDepth >= 0.9999) {
-				radiance = sampleSkyLUT(rd);
+				radiance = vec3(0.0);
 				hitFound = true;
 				break;
 			}
@@ -242,7 +265,26 @@ void main() {
 				if (abs(linearSample - linearScene) < thickness) {
 					// Only use hit color if it's NOT the sky
 					if (sceneDepth < 0.9999) {
-						radiance = texture(u_gColor, uv).rgb;
+						// Calculate unlit radiance (albedo * direct lighting) to avoid feedback loops
+						// gColor contains lit radiance, which already includes ambient SH from the previous frame
+						vec3  albedo = texture(u_gAlbedo, uv).rgb;
+						vec4  normData = texture(u_gNormal, uv);
+						vec3  normal = normalize(mat3(u_invView) * normData.xyz);
+						float shadow = normData.w; // Primary light shadow is stored in normal.w
+
+						float z = sceneDepth * 2.0 - 1.0;
+						vec4  clipPos = vec4(uv * 2.0 - 1.0, z, 1.0);
+						vec4  worldPos_ = u_invView * u_invProjection * clipPos;
+						vec3  p = worldPos_.xyz / worldPos_.w;
+
+						radiance = vec3(0.0);
+						for (int l = 0; l < min(num_lights, 2); ++l) {
+							vec3  L = normalize(lights[l].type == 1 ? -lights[l].direction : (lights[l].position - p));
+							float NdotL = max(0.0, dot(normal, L));
+							float lShadow = (l == 0) ? shadow : 1.0;
+							radiance += albedo * lights[l].color * lights[l].intensity * NdotL * lShadow;
+						}
+
 						hitFound = true;
 					}
 					break;

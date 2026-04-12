@@ -384,10 +384,9 @@ vec3 getSpatialAmbientSH(vec3 worldPos, vec3 N) {
 	vec3 environmentalIrradiance = evalSHIrradianceFromCoeffs(N, interpolatedCoeffs);
 	vec3 skyIrradiance = evalSHIrradiance(N); // Global sky/ambient fallback
 
-	// Smoothly blend between local environmental bounce and global sky irradiance
-	// based on probe availability and grid edge proximity.
-	float t = totalWeight * bounceFade;
-	return mix(skyIrradiance, environmentalIrradiance, clamp(t, 0.0, 1.0));
+	// Combine local bounce with global sky irradiance.
+	// We sum them because probes now exclusively capture ground bounce (no sky contribution).
+	return skyIrradiance + environmentalIrradiance * bounceFade;
 }
 
 // Forward declare macro occlusion from terrain_shadows.glsl
