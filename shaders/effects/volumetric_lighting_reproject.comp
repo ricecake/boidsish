@@ -2,18 +2,54 @@
 
 layout(local_size_x = 16, local_size_y = 16) in;
 
-layout(rgba16f, binding = 0) uniform image2D uOutputTex;
+layout(rgba16f, binding = 0) uniform image2D uVolumetricOutput;
 
-uniform sampler2D uInputTex; // The low-res raymarch buffer
+uniform sampler2D uEpipolarTex;
+uniform sampler2D uDepthTex;
 
-uniform vec2 uScreenSize; // Low-res size
+#include "../lighting.glsl"
+#include "../helpers/lighting.glsl"
+
+uniform mat4 uViewProj;
+uniform vec3 uCameraPos;
+uniform vec2 uScreenSize;
+uniform vec4 uLightIndices;
+uniform int uNumLights;
+
+const int NUM_LINES = 256;
+const int SAMPLES_PER_LINE = 512;
 
 void main() {
     ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
-    if (pixel.x >= int(uScreenSize.x) || pixel.y >= int(uScreenSize.y)) return;
+    vec2 size = imageSize(uVolumetricOutput);
+    if (pixel.x >= int(size.x) || pixel.y >= int(size.y)) return;
 
-    vec2 uv = (vec2(pixel) + 0.5) / uScreenSize;
-    vec4 val = texture(uInputTex, uv);
+    vec2 uv = (vec2(pixel) + 0.5) / size;
 
-    imageStore(uOutputTex, pixel, val);
+    // 1. Calculate epipole
+    int lightIdx = int(uLightIndices.x);
+    vec3 lightPos;
+    if (lights[lightIdx].type == LIGHT_TYPE_DIRECTIONAL) {
+        lightPos = uCameraPos - lights[lightIdx].direction * 10000.0;
+    } else {
+        lightPos = lights[lightIdx].position;
+    }
+
+    vec4 epipoleClip = uViewProj * vec4(lightPos, 1.0);
+    vec2 epipoleScreen = (epipoleClip.xy / epipoleClip.w) * 0.5 + 0.5;
+
+    // 2. Convert current UV to polar coordinates around epipole
+    vec2 dir = uv - epipoleScreen;
+    float dist = length(dir);
+    float angle = atan(dir.y, dir.x);
+    if (angle < 0.0) angle += 2.0 * PI;
+
+    // 3. Map to epipolar texture coordinates
+    float lineCoord = (angle / (2.0 * PI)) * float(NUM_LINES);
+    float sampleCoord = (dist / 10.0) * float(SAMPLES_PER_LINE - 1); // Radius 10.0 matches epipolar.comp
+
+    // Bilinear sampling
+    vec4 result = texture(uEpipolarTex, vec2((sampleCoord + 0.5) / float(SAMPLES_PER_LINE), (lineCoord + 0.5) / float(NUM_LINES)));
+
+    imageStore(uVolumetricOutput, pixel, result);
 }

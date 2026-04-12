@@ -28,7 +28,7 @@ namespace Boidsish {
 			width_ = width;
 			height_ = height;
 
-			epipolar_shader_ = std::make_unique<ComputeShader>("shaders/effects/volumetric_lighting_raymarch.comp");
+			epipolar_shader_ = std::make_unique<ComputeShader>("shaders/effects/volumetric_lighting_epipolar.comp");
 			reproject_shader_ = std::make_unique<ComputeShader>("shaders/effects/volumetric_lighting_reproject.comp");
 			blur_shader_ = std::make_unique<ComputeShader>("shaders/effects/volumetric_lighting_blur.comp");
 			composite_shader_ = std::make_unique<Shader>(
@@ -64,6 +64,9 @@ namespace Boidsish {
 			if (blurred_tex_)
 				glDeleteTextures(1, &blurred_tex_);
 
+			samples_per_line_ = 512;
+			num_lines_ = 256;
+
 			glGenTextures(1, &epipolar_tex_);
 			glBindTexture(GL_TEXTURE_2D, epipolar_tex_);
 			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, samples_per_line_, num_lines_, 0, GL_RGBA, GL_FLOAT, NULL);
@@ -74,7 +77,6 @@ namespace Boidsish {
 
 			glGenTextures(1, &volumetric_tex_);
 			glBindTexture(GL_TEXTURE_2D, volumetric_tex_);
-			// Reconstruct at half res for performance
 			int low_w = std::max(1, width_ / 2);
 			int low_h = std::max(1, height_ / 2);
 			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, low_w, low_h, 0, GL_RGBA, GL_FLOAT, NULL);
@@ -99,27 +101,26 @@ namespace Boidsish {
 		}
 
 		void VolumetricLightingEffect::Apply(GLuint sourceTexture, GLuint depthTexture, GLuint velocityTexture, GLuint normalTexture, GLuint albedoTexture, const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix, const glm::vec3& cameraPos) {
-			// Pass significant light indices to the shader
 			auto significantLights = GetSignificantLights(cameraPos);
 			int  numSignificant = std::min((int)significantLights.size(), 4);
 
 			if (numSignificant <= 0) {
-				// Blit source to target anyway to avoid black screen
 				composite_shader_->use();
 				glActiveTexture(GL_TEXTURE0);
 				glBindTexture(GL_TEXTURE_2D, sourceTexture);
 				composite_shader_->setInt("sceneTexture", 0);
 				glActiveTexture(GL_TEXTURE1);
-				glBindTexture(GL_TEXTURE_2D, 0); // No volumetric
+				glBindTexture(GL_TEXTURE_2D, 0);
 				composite_shader_->setInt("volumetricTexture", 1);
 				glDrawArrays(GL_TRIANGLES, 0, 6);
 				return;
 			}
 
-			// 1. Raymarch Pass (Low-Res 2D Grid)
+			// 1. Epipolar Sampling Pass
 			epipolar_shader_->use();
 			epipolar_shader_->setMat4("uInvView", glm::inverse(viewMatrix));
 			epipolar_shader_->setMat4("uInvProj", glm::inverse(projectionMatrix));
+			epipolar_shader_->setMat4("uViewProj", projectionMatrix * viewMatrix);
 			epipolar_shader_->setVec3("uCameraPos", cameraPos);
 			epipolar_shader_->setFloat("uScatteringCoef", scattering_coef_);
 			epipolar_shader_->setFloat("uAbsorptionCoef", absorption_coef_);
@@ -132,19 +133,26 @@ namespace Boidsish {
 			glBindTexture(GL_TEXTURE_2D, depthTexture);
 			epipolar_shader_->setInt("uDepthTex", 0);
 
-			glActiveTexture(GL_TEXTURE1);
+			glActiveTexture(GL_TEXTURE7);
 			glBindTexture(GL_TEXTURE_2D, noise_textures_.blue_noise);
-			epipolar_shader_->setInt("u_blueNoiseTexture", 1);
+			epipolar_shader_->setInt("u_blueNoiseTexture", 7);
 
 			glActiveTexture(GL_TEXTURE5);
 			glBindTexture(GL_TEXTURE_3D, noise_textures_.noise);
 			epipolar_shader_->setInt("u_noiseTexture", 5);
 
+			glActiveTexture(GL_TEXTURE6);
+			glBindTexture(GL_TEXTURE_3D, noise_textures_.curl);
+			epipolar_shader_->setInt("u_curlTexture", 6);
+
+			glActiveTexture(GL_TEXTURE8);
+			glBindTexture(GL_TEXTURE_3D, noise_textures_.extra_noise);
+			epipolar_shader_->setInt("u_extraNoiseTexture", 8);
+
 			glActiveTexture(GL_TEXTURE10);
 			glBindTexture(GL_TEXTURE_2D_ARRAY, shadow_map_array_);
 			epipolar_shader_->setInt("shadowMaps", 10);
 
-			// Pass shadow map indices
 			std::array<int, 10> shadow_indices;
 			shadow_indices.fill(-1);
 			for (size_t j = 0; j < lights_.size() && j < 10; ++j) {
@@ -152,7 +160,7 @@ namespace Boidsish {
 			}
 			epipolar_shader_->setIntArray("lightShadowIndices", shadow_indices.data(), 10);
 
-			glBindImageTexture(0, volumetric_tex_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+			glBindImageTexture(0, epipolar_tex_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 
 			glm::vec4 lightIndices(-1.0f);
 			for (int i = 0; i < numSignificant; ++i) {
@@ -161,6 +169,27 @@ namespace Boidsish {
 			epipolar_shader_->setVec4("uLightIndices", lightIndices);
 			epipolar_shader_->setInt("uNumLights", numSignificant);
 
+			glDispatchCompute(samples_per_line_ / 16, num_lines_ / 16, 1);
+			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+			// 2. Reconstruction Pass
+			reproject_shader_->use();
+			reproject_shader_->setMat4("uViewProj", projectionMatrix * viewMatrix);
+			reproject_shader_->setVec3("uCameraPos", cameraPos);
+			reproject_shader_->setVec4("uLightIndices", lightIndices);
+			reproject_shader_->setInt("uNumLights", numSignificant);
+			reproject_shader_->setVec2("uScreenSize", glm::vec2(width_ / 2, height_ / 2));
+
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, epipolar_tex_);
+			reproject_shader_->setInt("uEpipolarTex", 0);
+
+			glActiveTexture(GL_TEXTURE1);
+			glBindTexture(GL_TEXTURE_2D, depthTexture);
+			reproject_shader_->setInt("uDepthTex", 1);
+
+			glBindImageTexture(0, volumetric_tex_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+
 			int low_w = std::max(1, width_ / 2);
 			int low_h = std::max(1, height_ / 2);
 			glDispatchCompute((low_w + 15) / 16, (low_h + 15) / 16, 1);
@@ -168,7 +197,7 @@ namespace Boidsish {
 
 			// 3. Bilateral Blur Pass
 			blur_shader_->use();
-			blur_shader_->setVec2("uScreenSize", glm::vec2(width_ / 2, height_ / 2));
+			blur_shader_->setVec2("uScreenSize", glm::vec2(low_w, low_h));
 
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, volumetric_tex_);
@@ -180,7 +209,7 @@ namespace Boidsish {
 
 			glBindImageTexture(0, blurred_tex_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 
-			glDispatchCompute((width_ / 2 + 15) / 16, (height_ / 2 + 15) / 16, 1);
+			glDispatchCompute((low_w + 15) / 16, (low_h + 15) / 16, 1);
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
 			// 4. Composite
@@ -198,10 +227,7 @@ namespace Boidsish {
 
 		std::vector<VolumetricLightingEffect::LightMetadata> VolumetricLightingEffect::GetSignificantLights(const glm::vec3& cameraPos) {
 			std::vector<LightMetadata> significant;
-
-			// Heuristic: intensity * aerosol_density > threshold
-			// This ensures we don't march lights that wouldn't be visible in the current fog
-			float visibilityThreshold = 0.05f;
+			float                      visibilityThreshold = 0.05f;
 
 			for (size_t i = 0; i < lights_.size() && i < 10; ++i) {
 				const auto& l = lights_[i];
@@ -209,7 +235,6 @@ namespace Boidsish {
 					continue;
 
 				float weight = l.intensity * haze_density_;
-				// Boost weight for directional lights as they are global
 				if (l.type == DIRECTIONAL_LIGHT)
 					weight *= 2.0f;
 
