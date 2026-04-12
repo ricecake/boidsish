@@ -28,9 +28,7 @@ uniform mat4 u_invView;
 uniform mat4 u_invProjection;
 
 // Probe settings
-const float k_accumulationAlpha = 0.25; // Even faster convergence
-const int   k_rayCount = 16;
-const int   k_maxSteps = 12;
+const int k_maxSteps = 12;
 
 uint hash(uint x) {
 	x ^= x >> 16;
@@ -169,7 +167,7 @@ vec3 sampleTerrainFallback(vec3 worldPos, vec3 rayDir) {
 		}
 		currentDist += stepSize;
 	}
-	return vec3(0.0); // Missed terrain (sky is global)
+	return sampleSkyLUT(rayDir); // Missed terrain (sky is important for occlusion)
 }
 
 void main() {
@@ -180,22 +178,6 @@ void main() {
 	ivec2 worldChunkCoord = localCoord + u_originSize.xy;
 	ivec2 toroidalCoord = (worldChunkCoord % u_originSize.z + u_originSize.z) % u_originSize.z;
 	int   flatIdx = int(toroidalCoord.y * u_originSize.z + toroidalCoord.x);
-
-	// Priority-based staggered update
-	// Probes near the center update more frequently
-	vec2  gridCenter = vec2(u_originSize.z) * 0.5;
-	float distToCenter = length(vec2(localCoord) - gridCenter);
-	float centerWeight = smoothstep(float(u_originSize.z) * 0.5, 0.0, distToCenter);
-
-	// Stagger factor ranges from 4 (center) to 32 (edges)
-	int dynamicStagger = int(mix(32.0, 4.0, centerWeight));
-
-	// Use an irregular hash-based sequence to avoid rolling waves
-	uint sequenceSeed = hash2D(worldChunkCoord);
-	bool shouldUpdate = ((sequenceSeed + u_frameIndex) % uint(dynamicStagger)) == 0;
-
-	if (!shouldUpdate)
-		return;
 
 	int slice = texelFetch(u_chunkGrid, localCoord, 0).r;
 	if (slice < 0) {
@@ -215,22 +197,41 @@ void main() {
 	// Position probe origin slightly above terrain to ensure clear visibility
 	vec3 probeOrigin = worldPos + worldNormal * 1.0 * worldScale;
 
+	// Calculate focus weight based on screen-space position
+	vec4 clipPos = u_projection * u_view * vec4(probeOrigin, 1.0);
+	vec3 screenPos = clipPos.xyz / clipPos.w;
+	float focusWeight = 0.0;
+	if (clipPos.z > 0.0) {
+		float distToScreenCenter = length(screenPos.xy);
+		focusWeight = smoothstep(1.2, 0.0, distToScreenCenter);
+	}
+
+	// Priority-based update parameters
+	int dynamicStagger = int(mix(64.0, 8.0, focusWeight));
+	int rayCount = int(mix(4.0, 24.0, focusWeight));
+	float alpha = mix(0.5, 0.1, focusWeight);
+
+	// Use an irregular hash-based sequence to avoid rolling waves
+	uint sequenceSeed = hash2D(worldChunkCoord);
+	if (((sequenceSeed + u_frameIndex) % uint(dynamicStagger)) != 0)
+		return;
+
 	vec3 newSH[9];
-	for (int i = 0; i < 9; ++i) newSH[i] = vec3(0.0);
+	for (int i = 0; i < 9; ++i)
+		newSH[i] = vec3(0.0);
 
 	ivec2 bnSize = textureSize(u_blueNoiseTexture, 0);
-	vec2  bnUV =
-		(vec2(localCoord) + vec2(u_frameIndex % bnSize.x, (u_frameIndex / bnSize.x) % bnSize.y)) / vec2(bnSize);
-	vec4 bn = texture(u_blueNoiseTexture, bnUV);
+	vec2  bnUV = (vec2(localCoord) + vec2(u_frameIndex % bnSize.x, (u_frameIndex / bnSize.x) % bnSize.y)) / vec2(bnSize);
+	vec4  bn = texture(u_blueNoiseTexture, bnUV);
 
-	for (int i = 0; i < k_rayCount; ++i) {
-		vec2  jitter = fract(bn.xy + vec2(float(i) * 0.618, float(i) * 0.382));
+	for (int i = 0; i < rayCount; ++i) {
+		vec2 jitter = fract(bn.xy + vec2(float(i) * 0.618, float(i) * 0.382));
 
 		// Full sphere sampling to capture bounce from all angles
 		float phi = 2.0 * PI * jitter.x;
 		float cosTheta = 2.0 * jitter.y - 1.0;
 		float sinTheta = sqrt(1.0 - cosTheta * cosTheta);
-		vec3 rd = vec3(sinTheta * cos(phi), cosTheta, sinTheta * sin(phi));
+		vec3  rd = vec3(sinTheta * cos(phi), cosTheta, sinTheta * sin(phi));
 
 		vec3 radiance = vec3(0.0);
 		bool hitFound = false;
@@ -239,22 +240,22 @@ void main() {
 		float stepSize = 1.0 * worldScale;
 		for (int s = 1; s <= k_maxSteps; ++s) {
 			vec3  samplePos = probeOrigin + rd * float(s) * stepSize;
-			vec4  clipPos = u_projection * u_view * vec4(samplePos, 1.0);
-			vec3  screenPos = clipPos.xyz / clipPos.w;
-			vec2  uv = screenPos.xy * 0.5 + 0.5;
+			vec4  clipPos_ = u_projection * u_view * vec4(samplePos, 1.0);
+			vec3  screenPos_ = clipPos_.xyz / clipPos_.w;
+			vec2  uv = screenPos_.xy * 0.5 + 0.5;
 
-			if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 || screenPos.z < -1.0 || screenPos.z > 1.0)
+			if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 || screenPos_.z < -1.0 || screenPos_.z > 1.0)
 				break;
 
 			float sceneDepth = texture(u_gDepth, uv).r;
-			// If we hit the skybox, probes should NOT capture it (sky is a global term)
+			// If we hit the skybox, grab the sky radiance immediately and bail
 			if (sceneDepth >= 0.9999) {
-				radiance = vec3(0.0);
+				radiance = sampleSkyLUT(rd);
 				hitFound = true;
 				break;
 			}
 
-			float ndcZ = screenPos.z;
+			float ndcZ = screenPos_.z;
 			float sampleDepth = ndcZ * 0.5 + 0.5;
 
 			if (sampleDepth > sceneDepth) {
@@ -273,8 +274,8 @@ void main() {
 						float shadow = normData.w; // Primary light shadow is stored in normal.w
 
 						float z = sceneDepth * 2.0 - 1.0;
-						vec4  clipPos = vec4(uv * 2.0 - 1.0, z, 1.0);
-						vec4  worldPos_ = u_invView * u_invProjection * clipPos;
+						vec4  clipPos__ = vec4(uv * 2.0 - 1.0, z, 1.0);
+						vec4  worldPos_ = u_invView * u_invProjection * clipPos__;
 						vec3  p = worldPos_.xyz / worldPos_.w;
 
 						radiance = vec3(0.0);
@@ -297,13 +298,12 @@ void main() {
 			radiance = sampleTerrainFallback(probeOrigin, rd);
 		}
 
-		projectRadianceToSH(rd, radiance, 1.0 / float(k_rayCount), newSH);
+		projectRadianceToSH(rd, radiance, 1.0 / float(rayCount), newSH);
 	}
 
 	// Detect if the probe at this toroidal slot is for a different world chunk
 	// We store the world chunk coordinates in the unused 'w' components of the first two coefficients.
-	vec2  storedCoord = vec2(u_terrainProbes[flatIdx].sh_coeffs[0].w, u_terrainProbes[flatIdx].sh_coeffs[1].w);
-	float alpha = k_accumulationAlpha;
+	vec2 storedCoord = vec2(u_terrainProbes[flatIdx].sh_coeffs[0].w, u_terrainProbes[flatIdx].sh_coeffs[1].w);
 
 	if (distance(storedCoord, vec2(worldChunkCoord)) > 0.1) {
 		// New world position for this slot - full refresh (no temporal accumulation from previous chunk)
