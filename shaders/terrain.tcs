@@ -116,7 +116,7 @@ float GetEdgeTessLevel(vec3 p0, vec3 p1, vec3 n0, vec3 n1) {
 
 	// Base tessellation: target pixels per segment
 	// Target ~8 pixels per triangle edge for high quality, 16 for medium, 32 for low
-	float targetPixels = 8.0 / uTessQualityMultiplier;
+	float targetPixels = 8.0;// / uTessQualityMultiplier;
 
 	// 1. SILHOUETTE BOOST
 	// Boost tessellation for edges that form the silhouette to keep curves smooth

@@ -434,56 +434,56 @@ void main() {
 	// ========================================================================
 	vec3 perturbedNorm = norm;
 
-	if (perturbFactor >= 0.1 && normalStrength > 0.0) {
-		float roughnessStrength = smoothstep(0.1, 1.0, perturbFactor) * normalStrength;
-		float roughnessScale = normalScale * 0.05;
-		vec3  scaledFragPos = FragPos / worldScale;
+	// if (perturbFactor >= 0.1 && normalStrength > 0.0) {
+	// 	float roughnessStrength = smoothstep(0.1, 1.0, perturbFactor) * normalStrength;
+	// 	float roughnessScale = normalScale * 0.05;
+	// 	vec3  scaledFragPos = FragPos / worldScale;
 
-		// Sample biome noise type (using unused params.w)
-		vec2  biomeUV = (TexCoords * uRawChunkSize + 0.5) / (uRawChunkSize + 1.0);
-		vec2  biomeInfo = texture(uBiomeMap, vec3(biomeUV, TextureSlice)).rg;
-		float noiseTypeA = u_biomes[int(biomeInfo.x)].params.w;
-		float noiseTypeB = u_biomes[min(int(biomeInfo.x) + 1, 7)].params.w;
-		float noiseType = mix(noiseTypeA, noiseTypeB, biomeInfo.y);
+	// 	// Sample biome noise type (using unused params.w)
+	// 	vec2  biomeUV = (TexCoords * uRawChunkSize + 0.5) / (uRawChunkSize + 1.0);
+	// 	vec2  biomeInfo = texture(uBiomeMap, vec3(biomeUV, TextureSlice)).rg;
+	// 	float noiseTypeA = u_biomes[int(biomeInfo.x)].params.w;
+	// 	float noiseTypeB = u_biomes[min(int(biomeInfo.x) + 1, 7)].params.w;
+	// 	float noiseType = mix(noiseTypeA, noiseTypeB, biomeInfo.y);
 
-		// Use finite difference to approximate the gradient of the noise field
-		float eps = 0.015;
-		float n, nx, nz;
+	// 	// Use finite difference to approximate the gradient of the noise field
+	// 	float eps = 0.015;
+	// 	float n, nx, nz;
 
-		if (noiseType < 0.5) { // Simplex (0)
-			n = fastSimplex3d(0.1 * scaledFragPos * roughnessScale);
-			nx = fastSimplex3d(0.1 * (scaledFragPos + vec3(eps, 0.0, 0.0)) * roughnessScale);
-			nz = fastSimplex3d(0.1 * (scaledFragPos + vec3(0.0, 0.0, eps)) * roughnessScale);
-		} else if (noiseType < 1.5) { // Worley (1)
-			n = fastWorley3d(0.1 * scaledFragPos * roughnessScale);
-			nx = fastWorley3d(0.1 * (scaledFragPos + vec3(eps, 0.0, 0.0)) * roughnessScale);
-			nz = fastWorley3d(0.1 * (scaledFragPos + vec3(0.0, 0.0, eps)) * roughnessScale);
-		} else if (noiseType < 2.5) { // FBM (2)
-			n = fastFbm3d(0.1 * scaledFragPos * roughnessScale);
-			nx = fastFbm3d(0.1 * (scaledFragPos + vec3(eps, 0.0, 0.0)) * roughnessScale);
-			nz = fastFbm3d(0.1 * (scaledFragPos + vec3(0.0, 0.0, eps)) * roughnessScale);
-		} else { // Ridge (3)
-			n = fastRidge3d(0.1 * scaledFragPos * roughnessScale);
-			nx = fastRidge3d(0.1 * (scaledFragPos + vec3(eps, 0.0, 0.0)) * roughnessScale);
-			nz = fastRidge3d(0.1 * (scaledFragPos + vec3(0.0, 0.0, eps)) * roughnessScale);
-		}
+	// 	if (noiseType < 0.5) { // Simplex (0)
+	// 		n = fastSimplex3d(0.1 * scaledFragPos * roughnessScale);
+	// 		nx = fastSimplex3d(0.1 * (scaledFragPos + vec3(eps, 0.0, 0.0)) * roughnessScale);
+	// 		nz = fastSimplex3d(0.1 * (scaledFragPos + vec3(0.0, 0.0, eps)) * roughnessScale);
+	// 	} else if (noiseType < 1.5) { // Worley (1)
+	// 		n = fastWorley3d(0.1 * scaledFragPos * roughnessScale);
+	// 		nx = fastWorley3d(0.1 * (scaledFragPos + vec3(eps, 0.0, 0.0)) * roughnessScale);
+	// 		nz = fastWorley3d(0.1 * (scaledFragPos + vec3(0.0, 0.0, eps)) * roughnessScale);
+	// 	} else if (noiseType < 2.5) { // FBM (2)
+	// 		n = fastFbm3d(0.1 * scaledFragPos * roughnessScale);
+	// 		nx = fastFbm3d(0.1 * (scaledFragPos + vec3(eps, 0.0, 0.0)) * roughnessScale);
+	// 		nz = fastFbm3d(0.1 * (scaledFragPos + vec3(0.0, 0.0, eps)) * roughnessScale);
+	// 	} else { // Ridge (3)
+	// 		n = fastRidge3d(0.1 * scaledFragPos * roughnessScale);
+	// 		nx = fastRidge3d(0.1 * (scaledFragPos + vec3(eps, 0.0, 0.0)) * roughnessScale);
+	// 		nz = fastRidge3d(0.1 * (scaledFragPos + vec3(0.0, 0.0, eps)) * roughnessScale);
+	// 	}
 
-		// Compute local tangent space to orient the perturbation.
-		// Using a stable basis that doesn't flip at Z-axis alignment.
-		vec3 v = abs(norm.z) < 0.999 ? vec3(0, 0, 1) : vec3(1, 0, 0);
-		vec3 tangent = normalize(cross(v, norm));
-		vec3 bitangent = cross(norm, tangent);
+	// 	// Compute local tangent space to orient the perturbation.
+	// 	// Using a stable basis that doesn't flip at Z-axis alignment.
+	// 	vec3 v = abs(norm.z) < 0.999 ? vec3(0, 0, 1) : vec3(1, 0, 0);
+	// 	vec3 tangent = normalize(cross(v, norm));
+	// 	vec3 bitangent = cross(norm, tangent);
 
-		// Apply perturbation based on noise gradient
-		vec3 perturbation = (tangent * (n - nx) + bitangent * (n - nz)) * (roughnessStrength / eps);
-		perturbedNorm = normalize(norm + perturbation);
+	// 	// Apply perturbation based on noise gradient
+	// 	vec3 perturbation = (tangent * (n - nx) + bitangent * (n - nz)) * (roughnessStrength / eps);
+	// 	perturbedNorm = normalize(norm + perturbation);
 
-		// Toksvig-like Adjustment: Increase roughness based on normal variance
-		// Procedural normals can cause aliasing; we compensate by increasing roughness
-		// where the normal gradient is high.
-		float variance = dot(perturbation, perturbation);
-		roughness = sqrt(clamp(roughness * roughness + variance * 0.25, 0.0, 1.0));
-	}
+	// 	// Toksvig-like Adjustment: Increase roughness based on normal variance
+	// 	// Procedural normals can cause aliasing; we compensate by increasing roughness
+	// 	// where the normal gradient is high.
+	// 	float variance = dot(perturbation, perturbation);
+	// 	roughness = sqrt(clamp(roughness * roughness + variance * 0.25, 0.0, 1.0));
+	// }
 
 	// Final Lighting
 	float fateFactor = fastWorley3d(vec3(FragPos.xz / 50.0, time * 0.25)) * 0.5 + 0.50;
@@ -495,22 +495,22 @@ void main() {
 	vec3  light_dir = normalize(lights[0].position - FragPos);
 	float rim = max(dot(light_dir, normalize(viewPos - FragPos)), 0.0);
 	// albedo += (1-dot(rawWindNudge, perturbedNorm)) * rim * albedo;
-	float windDistortion = pow(
-		1 -
-			smoothstep(
-				0,
-				1,
-				(max(0, dot(vec3(0, 1, 0), perturbedNorm)) * ((1 - dot(rawWindNudge, perturbedNorm)) / 2))
-			),
-		9.0
-	);
-	float plainRipple = tangentGabor(FragPos, norm, -1 * windDistortion * rawWindNudge, time, 0.5, 0.00001, 0.75) *
-			0.5 +
-		0.5;
-	float windRipple = windDistortion * plainRipple;
-	float grassFactor = smoothstep(0.25, 0.5, max(dot(albedo, COL_GRASS_LUSH), dot(albedo, COL_GRASS_DRY)));
-	albedo *= mix(1, mix(1.0, 1.25, windDistortion) * mix(1.0, 1.05, windRipple), grassFactor);
-	roughness *= mix(1.25, 1.0, windDistortion) * mix(1, mix(1.5, 1.0, windRipple), grassFactor);
+	// float windDistortion = pow(
+	// 	1 -
+	// 		smoothstep(
+	// 			0,
+	// 			1,
+	// 			(max(0, dot(vec3(0, 1, 0), perturbedNorm)) * ((1 - dot(rawWindNudge, perturbedNorm)) / 2))
+	// 		),
+	// 	9.0
+	// );
+	// float plainRipple = tangentGabor(FragPos, norm, -1 * windDistortion * rawWindNudge, time, 0.5, 0.00001, 0.75) *
+	// 		0.5 +
+	// 	0.5;
+	// float windRipple = windDistortion * plainRipple;
+	// float grassFactor = smoothstep(0.25, 0.5, max(dot(albedo, COL_GRASS_LUSH), dot(albedo, COL_GRASS_DRY)));
+	// albedo *= mix(1, mix(1.0, 1.25, windDistortion) * mix(1.0, 1.05, windRipple), grassFactor);
+	// roughness *= mix(1.25, 1.0, windDistortion) * mix(1, mix(1.5, 1.0, windRipple), grassFactor);
 	// perturbedNorm += rawWindNudge * mix(0.0, 1.05, plainRipple);
 
 	float primaryShadow;

@@ -207,14 +207,14 @@ void main() {
 	}
 
 	// Priority-based update parameters
-	int dynamicStagger = int(mix(16.0, 1.0, focusWeight));
-	int rayCount = int(mix(4.0, 16.0, focusWeight));
+	int dynamicStagger = int(mix(16.0, 4.0, focusWeight));
+	int rayCount = int(mix(8.0, 32.0, focusWeight));
 	float alpha = mix(0.125, 0.0625, focusWeight);
 
 	// Use an irregular hash-based sequence to avoid rolling waves
 	uint sequenceSeed = hash2D(worldChunkCoord);
-	// if (((sequenceSeed + u_frameIndex) % uint(dynamicStagger)) != 0)
-	// 	return;
+	if (((sequenceSeed + u_frameIndex) % uint(dynamicStagger)) != 0)
+		return;
 
 	vec3 newSH[9];
 	for (int i = 0; i < 9; ++i)
@@ -230,8 +230,9 @@ void main() {
 		// Full sphere sampling to capture bounce from all angles
 		float phi = 2.0 * PI * jitter.x;
 		float cosTheta = 2.0 * jitter.y - 1.0;
+		// float cosTheta = jitter.y;
 		float sinTheta = sqrt(1.0 - cosTheta * cosTheta);
-		vec3  rd = vec3(sinTheta * cos(phi), cosTheta , sinTheta * sin(phi));
+		vec3  rd = vec3(sinTheta * cos(phi), -cosTheta , sinTheta * sin(phi));
 
 		vec3 radiance = vec3(0.0);
 		bool hitFound = false;
