@@ -1,0 +1,288 @@
+#version 430 core
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(binding = 0, rgba16f) uniform image2D outIndirectAO; // RGB: GI, A: AO
+layout(binding = 1, r8)      uniform image2D outShadowMask; // R: SSS
+
+uniform sampler2D gDepth;
+uniform sampler2D gColor;
+uniform sampler2D gNormal;
+uniform sampler2D gVelocity;
+uniform sampler2D gAlbedo;
+// uniform sampler2D u_blueNoiseTexture; // defined in fast_noise.glsl
+uniform sampler2D u_hizTexture;
+uniform sampler2D uShadowMask; // Terrain shadow mask for SSGI fallback/modulation
+
+#define USE_TERRAIN_DATA
+#include "temporal_data.glsl"
+#include "../helpers/lighting.glsl"
+
+// Unified Parameters
+uniform bool  uSSGIEnabled = true;
+uniform bool  uGTAOEnabled = true;
+uniform bool  uSSSEnabled = true;
+
+// SSGI Parameters
+uniform float uSSGIRadius = 2.0;
+uniform float uSSGIIntensity = 1.0;
+uniform float uSSGIDistanceFalloff = 1.0;
+uniform int   uSSGISteps = 8;
+uniform int   uSSGIRayCount = 2;
+uniform float uSSGIReflectionIntensity = 1.0;
+uniform float uSSGIRoughnessFactor = 1.0;
+
+// GTAO Parameters
+uniform float uGTAORadius = 2.0;
+uniform float uGTAOFalloff = 1.0;
+uniform int   uGTAOSteps = 4;
+uniform int   uGTAODirections = 2;
+uniform float uGTAOIntensity = 1.0;
+
+// SSS Parameters
+uniform float uSSSIntensity = 0.5;
+uniform float uSSSRadius = 0.5;
+uniform float uSSSBias = 0.05;
+uniform int   uSSSSteps = 16;
+
+// Shared Helper Functions
+float hash12(vec2 p) {
+	vec3 p3 = fract(vec3(p.xyx) * .1031);
+	p3 += dot(p3, p3.yzx + 33.33);
+	return fract((p3.x + p3.y) * p3.z);
+}
+
+vec3 getViewPos(vec2 uv, float depth) {
+	vec4 clipPos = vec4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
+	vec4 viewPos = invProjection * clipPos;
+	return viewPos.xyz / viewPos.w;
+}
+
+// SSGI Helpers
+vec3 hemisphereSample(vec2 uv, vec3 normal) {
+	float phi = 2.0 * PI * uv.x;
+	float cosTheta = sqrt(1.0 - uv.y);
+	float sinTheta = sqrt(uv.y);
+	vec3 localDir = vec3(cos(phi) * sinTheta, sin(phi) * sinTheta, cosTheta);
+	vec3 up = abs(normal.z) < 0.999 ? vec3(0, 0, 1) : vec3(1, 0, 0);
+	vec3 tangent = normalize(cross(up, normal));
+	vec3 bitangent = cross(normal, tangent);
+	return tangent * localDir.x + bitangent * localDir.y + normal * localDir.z;
+}
+
+vec3 sampleGGXVNDF(vec3 V, float roughness, float u1, float u2) {
+	float alpha = roughness * roughness;
+	vec3 Vh = normalize(vec3(alpha * V.x, alpha * V.y, V.z));
+	float lensq = Vh.x * Vh.x + Vh.y * Vh.y;
+	vec3  T1 = lensq > 0.0 ? vec3(-Vh.y, Vh.x, 0.0) * inversesqrt(lensq) : vec3(1.0, 0.0, 0.0);
+	vec3  T2 = cross(Vh, T1);
+	float r = sqrt(u1);
+	float phi = 2.0 * PI * u2;
+	float t1 = r * cos(phi);
+	float t2 = r * sin(phi);
+	float s = 0.5 * (1.0 + Vh.z);
+	t2 = (1.0 - s) * sqrt(1.0 - t1 * t1) + s * t2;
+	vec3 Nh = t1 * T1 + t2 * T2 + sqrt(max(0.0, 1.0 - t1 * t1 - t2 * t2)) * Vh;
+	vec3 Ne = normalize(vec3(alpha * Nh.x, alpha * Nh.y, max(0.0, Nh.z)));
+	return Ne;
+}
+
+void main() {
+	ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+	ivec2 size = imageSize(outIndirectAO);
+	if (pixel.x >= size.x || pixel.y >= size.y) return;
+
+	vec2 uv = (vec2(pixel) + 0.5) / vec2(size);
+	float depth = texture(gDepth, uv).r;
+
+	if (depth >= 0.99999) {
+		if (uSSGIEnabled || uGTAOEnabled) imageStore(outIndirectAO, pixel, vec4(0.0, 0.0, 0.0, 1.0));
+		if (uSSSEnabled) imageStore(outShadowMask, pixel, vec4(1.0, 0.0, 0.0, 0.0));
+		return;
+	}
+
+	vec3 vPos = getViewPos(uv, depth);
+	vec3 vNorm = normalize(texture(gNormal, uv).xyz);
+	if (length(vNorm) < 0.1) {
+		if (uSSGIEnabled || uGTAOEnabled) imageStore(outIndirectAO, pixel, vec4(0.0, 0.0, 0.0, 1.0));
+		if (uSSSEnabled) imageStore(outShadowMask, pixel, vec4(1.0, 0.0, 0.0, 0.0));
+		return;
+	}
+
+	// Shared Blue Noise
+	ivec2 bnSize = textureSize(u_blueNoiseTexture, 0);
+	vec2 bnUV = (vec2(pixel) + vec2(frameIndex * 13, frameIndex * 7)) / vec2(bnSize);
+	vec4 bn = texture(u_blueNoiseTexture, bnUV);
+
+	// --- 1. Screen Space Shadows (SSS) ---
+	float sssVisibility = 1.0;
+	if (uSSSEnabled) {
+		vec3 lightDirWorld;
+		int light = nightFactor >= 0.5 ? 1 : 0;
+		if (lights[light].type == 1) { // DIRECTIONAL
+			lightDirWorld = normalize(-lights[light].direction);
+		} else {
+			lightDirWorld = normalize(lights[light].position - (invView * vec4(vPos, 1.0)).xyz);
+		}
+		mat4 worldToView = inverse(invView);
+		vec3 lightDirView = normalize((worldToView * vec4(lightDirWorld, 0.0)).xyz);
+
+		float dotNL = dot(vNorm, lightDirView);
+		if (dotNL <= 0.0) {
+			sssVisibility = 0.0;
+		} else {
+			float worldScaleVal = worldScale > 0.0 ? worldScale : 1.0;
+			float maxDist = uSSSRadius * worldScaleVal;
+			float distBias = uSSSBias * worldScaleVal * (1.0 + vPos.z * vPos.z * 0.00005);
+			vec3 rayStartPos = vPos + (vNorm * 0.4 + lightDirView * 0.1) * distBias;
+			float stepSize = maxDist / float(uSSSSteps);
+			vec3 rayStep = lightDirView * stepSize;
+			vec3 rayPos = rayStartPos + rayStep * bn.r;
+
+			float minContactDist = maxDist;
+			float finalEdgeFade = 1.0;
+			bool hit = false;
+
+			for (int i = 0; i < uSSSSteps; i++) {
+				vec4 clipPos = uProjection * vec4(rayPos, 1.0);
+				vec3 ndcPos = clipPos.xyz / clipPos.w;
+				vec2 sampleUV = ndcPos.xy * 0.5 + 0.5;
+
+				if (sampleUV.x < 0.0 || sampleUV.x > 1.0 || sampleUV.y < 0.0 || sampleUV.y > 1.0 || ndcPos.z > 1.0 || ndcPos.z < -1.0) break;
+
+				float sampleDepth = texture(gDepth, sampleUV).r;
+				if (sampleDepth < 1.0) {
+					vec3 sampledPos = getViewPos(sampleUV, sampleDepth);
+					float depthDiff = sampledPos.z - rayPos.z;
+					if (depthDiff > 0.01 * worldScaleVal && depthDiff < 2.0 * worldScaleVal) {
+						vec2 edgeDist = min(sampleUV, 1.0 - sampleUV);
+						float edgeFade = clamp(min(edgeDist.x, edgeDist.y) * 10.0, 0.0, 1.0);
+						if (edgeFade > 0.0) {
+							sssVisibility = 0.0;
+							minContactDist = distance(rayPos, rayStartPos);
+							finalEdgeFade = edgeFade;
+							hit = true;
+							break;
+						}
+					}
+				}
+				rayPos += rayStep;
+			}
+			if (hit) {
+				float shadowStrength = clamp(minContactDist / maxDist, 0.0, 1.0);
+				sssVisibility = mix(1.0, shadowStrength, finalEdgeFade);
+			}
+		}
+		imageStore(outShadowMask, pixel, vec4(sssVisibility, 0.0, 0.0, 0.0));
+	}
+
+	// --- 2. Ground Truth Ambient Occlusion (GTAO) ---
+	float ao = 1.0;
+	if (uGTAOEnabled) {
+		float gtao_ao = 0.0;
+		vec3 viewDir = normalize(-vPos);
+		float spatialOffset = hash12(uv * 1.5);
+		float projScale = uProjection[0][0] * 0.5;
+		float screenRadius = (uGTAORadius * projScale) / -vPos.z;
+		float stepSize = uGTAORadius / float(uGTAOSteps);
+
+		for (int i = 0; i < uGTAODirections; i++) {
+			float angle = (float(i) + bn.x) * (PI / float(uGTAODirections));
+			vec2 dir = vec2(cos(angle), sin(angle));
+			float h1 = -1.0, h2 = -1.0;
+
+			for (int j = 1; j <= uGTAOSteps; j++) {
+				float dist = (float(j) - 1.0 + spatialOffset) * stepSize;
+				vec2 offset = dir * dist * screenRadius;
+				vec3 p1 = getViewPos(uv + offset, texture(gDepth, uv + offset).r);
+				vec3 p2 = getViewPos(uv - offset, texture(gDepth, uv - offset).r);
+				vec3 v1 = p1 - vPos, v2 = p2 - vPos;
+				float d1 = length(v1), d2 = length(v2);
+				float f1 = max(0.0, 1.0 - (d1 * d1) / (uGTAORadius * uGTAORadius * uGTAOFalloff));
+				float f2 = max(0.0, 1.0 - (d2 * d2) / (uGTAORadius * uGTAORadius * uGTAOFalloff));
+				if (d1 < uGTAORadius) h1 = max(h1, dot(normalize(v1), viewDir) * f1);
+				if (d2 < uGTAORadius) h2 = max(h2, dot(normalize(v2), viewDir) * f2);
+			}
+			gtao_ao += (acos(h1) + acos(h2)) / 2.0;
+		}
+		float visibility = gtao_ao / (float(uGTAODirections) * PI);
+		ao = clamp(1.0 - (1.0 - visibility) * uGTAOIntensity, 0.0, 1.0);
+	}
+
+	// --- 3. Screen Space Global Illumination (SSGI) ---
+	vec3 indirect = vec3(0.0);
+	if (uSSGIEnabled) {
+		vec4 velData = texture(gVelocity, uv);
+		vec3 albedo = texture(gAlbedo, uv).rgb;
+		float roughness = clamp(velData.b * uSSGIRoughnessFactor, 0.02, 1.0);
+		float metallic = velData.a;
+		vec3 V = normalize(-vPos);
+		vec3 F0 = mix(vec3(0.04), vec3(0.9), metallic);
+		float NdotV = max(0.0, dot(vNorm, V));
+		vec3 F_pixel = fresnelSchlick(NdotV, F0);
+		float specProb = clamp(max(F_pixel.r, max(F_pixel.g, F_pixel.b)), 0.1, 0.9);
+		specProb *= (1.0 - roughness * 0.5);
+
+		for (int r = 0; r < uSSGIRayCount; r++) {
+			vec2 jitterDir = fract(bn.xy + vec2(float(r) * 0.618, float(r) * 0.382));
+			vec2 jitterDist = fract(bn.zw + vec2(float(r) * 0.137, float(r) * 0.742));
+			float selectHash = fract(bn.w + float(r) * 0.137);
+			bool isSpecular = (selectHash < specProb);
+			vec3 rayDir;
+			vec3 weight = vec3(1.0);
+
+			if (isSpecular) {
+				vec3 up = abs(vNorm.z) < 0.999 ? vec3(0, 0, 1) : vec3(1, 0, 0);
+				vec3 tangent = normalize(cross(up, vNorm));
+				vec3 bitangent = cross(vNorm, tangent);
+				mat3 tbn = mat3(tangent, bitangent, vNorm);
+				vec3 Vlocal = transpose(tbn) * V;
+				vec3 Hlocal = sampleGGXVNDF(Vlocal, roughness, jitterDir.x, jitterDir.y);
+				vec3 H = tbn * Hlocal;
+				rayDir = reflect(-V, H);
+				float NdotL = max(0.0, dot(vNorm, rayDir));
+				float VdotH = max(0.0, dot(V, H));
+				vec3 F = fresnelSchlick(VdotH, F0);
+				weight = F * GeometrySchlickGGX(NdotL, roughness) * uSSGIReflectionIntensity / specProb;
+			} else {
+				rayDir = hemisphereSample(jitterDir, vNorm);
+				weight = albedo * (1.0 - metallic) * uSSGIIntensity / (1.0 - specProb);
+			}
+
+			if (dot(rayDir, vNorm) < 0.0) continue;
+
+			float stepSize = uSSGIRadius / float(uSSGISteps);
+			float rayDist = stepSize * jitterDist.x;
+			bool hit = false;
+			for (int i = 0; i < uSSGISteps; i++) {
+				rayDist += stepSize;
+				vec3 samplePos = vPos + rayDir * rayDist;
+				vec4 offsetClip = uProjection * vec4(samplePos, 1.0);
+				vec2 offsetUV = (offsetClip.xy / offsetClip.w) * 0.5 + 0.5;
+				if (offsetUV.x < 0.0 || offsetUV.x > 1.0 || offsetUV.y < 0.0 || offsetUV.y > 1.0) break;
+				float sampledDepth = texture(gDepth, offsetUV).r;
+				if (samplePos.z < getViewPos(offsetUV, sampledDepth).z) {
+					if (samplePos.z > getViewPos(offsetUV, sampledDepth).z - 0.5 * worldScale) {
+						hit = true;
+						vec3 radiance = texture(gColor, offsetUV).rgb;
+						vec3 hitNormal = texture(gNormal, offsetUV).xyz;
+						float falloff = exp(-rayDist * uSSGIDistanceFalloff / worldScale);
+						float backface = max(0.0, dot(-rayDir, hitNormal));
+						float contactOcclusion = texture(uShadowMask, offsetUV).r;
+						indirect += radiance * weight * falloff * backface * contactOcclusion;
+						break;
+					}
+				}
+			}
+			if (!(hit || isSpecular)) {
+				vec3 worldRayDir = mat3(invView) * rayDir;
+				vec3 worldPos = (invView * vec4(vPos, 1.0)).xyz;
+				indirect += getSpatialAmbientSH(worldPos, worldRayDir) * weight * 0.05;
+			}
+		}
+		indirect /= float(uSSGIRayCount);
+	}
+
+	if (uSSGIEnabled || uGTAOEnabled) {
+		imageStore(outIndirectAO, pixel, vec4(indirect, ao));
+	}
+}
