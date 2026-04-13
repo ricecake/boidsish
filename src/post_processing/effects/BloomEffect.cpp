@@ -2,22 +2,24 @@
 
 #include "logger.h"
 #include "shader.h"
+#include "constants.h"
 #include <glm/gtc/matrix_transform.hpp>
 
 namespace Boidsish {
 	namespace PostProcessing {
 
 		BloomEffect::BloomEffect(int width, int height):
-			_width(width), _height(height), _brightPassFBO(0), _brightPassTexture(0), _bloomTexture(0) {
+			_width(width), _height(height), _bloomTexture(0) {
 			name_ = "Bloom";
 		}
 
 		BloomEffect::~BloomEffect() {
-			glDeleteFramebuffers(1, &_brightPassFBO);
-			glDeleteTextures(1, &_brightPassTexture);
 			if (_bloomTexture) glDeleteTextures(1, &_bloomTexture);
 			if (!_upsampleFBOs.empty()) {
 				glDeleteFramebuffers((GLsizei)_upsampleFBOs.size(), _upsampleFBOs.data());
+			}
+			if (_exposureSsbo) {
+				glDeleteBuffers(1, &_exposureSsbo);
 			}
 		}
 
@@ -25,10 +27,6 @@ namespace Boidsish {
 			_width = width;
 			_height = height;
 
-			_brightPassShader = std::make_unique<Shader>(
-				"shaders/postprocess.vert",
-				"shaders/effects/bright_pass.frag"
-			);
 			_downsampleComputeShader = std::make_unique<ComputeShader>(
 				"shaders/effects/bloom_downsample.comp"
 			);
@@ -45,27 +43,11 @@ namespace Boidsish {
 		}
 
 		void BloomEffect::InitializeResources() {
-			glDeleteFramebuffers(1, &_brightPassFBO);
-			glDeleteTextures(1, &_brightPassTexture);
 			if (_bloomTexture) glDeleteTextures(1, &_bloomTexture);
 			if (!_upsampleFBOs.empty()) {
 				glDeleteFramebuffers((GLsizei)_upsampleFBOs.size(), _upsampleFBOs.data());
 				_upsampleFBOs.clear();
 			}
-
-			// Bright pass FBO
-			glGenFramebuffers(1, &_brightPassFBO);
-			glBindFramebuffer(GL_FRAMEBUFFER, _brightPassFBO);
-			glGenTextures(1, &_brightPassTexture);
-			glBindTexture(GL_TEXTURE_2D, _brightPassTexture);
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, _width, _height, 0, GL_RGB, GL_FLOAT, NULL);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, _brightPassTexture, 0);
-			if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-				logger::ERROR("Bloom Bright Pass FBO is not complete!");
 
 			// Mipmapped Bloom Texture
 			_numMips = 5;
@@ -88,6 +70,27 @@ namespace Boidsish {
 				}
 			}
 
+			// Auto-exposure SSBO
+			if (_exposureSsbo == 0) {
+				struct ExposureData {
+					float adaptedLuminance;
+					float targetLuminance;
+					float minExposure;
+					float maxExposure;
+					int   useAutoExposure;
+					uint32_t totalLogLuma;
+					uint32_t totalPixelCount;
+					uint32_t workgroupCounter;
+				};
+
+				glGenBuffers(1, &_exposureSsbo);
+				glBindBuffer(GL_SHADER_STORAGE_BUFFER, _exposureSsbo);
+				ExposureData initialData = {0.3f, _targetLuminance, _minExposure, _maxExposure, 1, 0, 0, 0};
+				glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(ExposureData), &initialData, GL_DYNAMIC_DRAW);
+				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::AutoExposure(), _exposureSsbo);
+				glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+			}
+
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		}
 
@@ -97,32 +100,44 @@ namespace Boidsish {
 			GLint originalViewport[4];
 			glGetIntegerv(GL_VIEWPORT, originalViewport);
 
-			// 1. Bright pass - extract bright pixels
-			glBindFramebuffer(GL_FRAMEBUFFER, _brightPassFBO);
-			glViewport(0, 0, _width, _height);
-			_brightPassShader->use();
-			_brightPassShader->setInt("sceneTexture", 0);
-			_brightPassShader->setFloat("threshold", threshold_);
-			glActiveTexture(GL_TEXTURE0);
-			glBindTexture(GL_TEXTURE_2D, sourceTexture);
-			glDrawArrays(GL_TRIANGLES, 0, 6);
+			// 1. Update Auto-Exposure SSBO parameters
+			struct ExposureData {
+				float adaptedLuminance;
+				float targetLuminance;
+				float minExposure;
+				float maxExposure;
+				int   useAutoExposure;
+			};
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, _exposureSsbo);
+			float actualTarget = _targetLuminance * (1.0f - _nightFactor * 0.5f);
+			float actualMax = _maxExposure * (1.0f - _nightFactor * 0.4f);
+			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, targetLuminance), sizeof(float), &actualTarget);
+			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, minExposure), sizeof(float), &_minExposure);
+			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, maxExposure), sizeof(float), &actualMax);
+			int enabled = _autoExposureEnabled ? 1 : 0;
+			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, useAutoExposure), sizeof(int), &enabled);
 
-			// 2. Compute-based Downsample
+			// 2. Compute-based Downsample, Bright Pass and Auto-Exposure
 			_downsampleComputeShader->use();
 			_downsampleComputeShader->setVec2("srcResolution", (float)_width, (float)_height);
 			_downsampleComputeShader->setInt("numMips", _numMips);
+			_downsampleComputeShader->setFloat("threshold", threshold_);
+			_downsampleComputeShader->setFloat("deltaTime", _deltaTime);
+			_downsampleComputeShader->setFloat("speedUp", _speedUp);
+			_downsampleComputeShader->setFloat("speedDown", _speedDown);
 
 			glActiveTexture(GL_TEXTURE0);
-			glBindTexture(GL_TEXTURE_2D, _brightPassTexture);
+			glBindTexture(GL_TEXTURE_2D, sourceTexture);
 
 			for (int i = 0; i < _numMips; i++) {
 				glBindImageTexture(i, _bloomTexture, i, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 			}
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::AutoExposure(), _exposureSsbo);
 
 			unsigned int groupsX = (_width / 2 + 15) / 16;
 			unsigned int groupsY = (_height / 2 + 15) / 16;
 			_downsampleComputeShader->dispatch(groupsX, groupsY, 1);
-			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
 
 			// 3. Progressive upsample and accumulate
 			_upsampleShader->use();
@@ -145,17 +160,6 @@ namespace Boidsish {
 				glViewport(0, 0, dstWidth, dstHeight);
 
 				_upsampleShader->setVec2("srcResolution", (float)srcWidth, (float)srcHeight);
-
-				// We need to sample from level i and write to level i-1
-				// Note: texture() in GLSL usually samples from all mips or specific one
-				// Our upsample shader uses sampler2D and TexCoords.
-				// To sample a specific mip level with sampler2D, we can use textureLod or bind it differently.
-				// However, bloom_upsample.frag uses texture(srcTexture, TexCoords).
-				// We can use a sampler to restrict the mip range or just use textureLod in shader.
-				// Let's assume we use textureLod(srcTexture, TexCoords, lod) in upsample shader if needed,
-				// or bind only the level we want.
-				// Standard practice for bloom chain without Sampler Objects is binding the whole texture
-				// and using textureLod.
 
 				glActiveTexture(GL_TEXTURE0);
 				glBindTexture(GL_TEXTURE_2D, _bloomTexture);
@@ -183,9 +187,10 @@ namespace Boidsish {
 			glBindTexture(GL_TEXTURE_2D, sourceTexture);
 			glActiveTexture(GL_TEXTURE1);
 			glBindTexture(GL_TEXTURE_2D, _bloomTexture);
-			// We want level 0 of the bloom texture
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::AutoExposure(), _exposureSsbo);
 
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 
@@ -204,6 +209,13 @@ namespace Boidsish {
 			_width = width;
 			_height = height;
 			InitializeResources();
+		}
+
+		void BloomEffect::SetTime(float time) {
+			if (_lastTime > 0.0f) {
+				_deltaTime = time - _lastTime;
+			}
+			_lastTime = time;
 		}
 
 	} // namespace PostProcessing
