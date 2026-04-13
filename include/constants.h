@@ -41,6 +41,10 @@ namespace Boidsish {
 				return 8;
 			}
 
+			consteval int GrassProps() {
+				return 9;
+			}
+
 			consteval int DecorProps() {
 				return 30;
 			}
@@ -117,6 +121,14 @@ namespace Boidsish {
 
 			consteval int TerrainProbes() {
 				return 29;
+			}
+
+			consteval int GrassInstances() {
+				return 35;
+			}
+
+			consteval int GrassIndirect() {
+				return 36;
 			}
 
 			consteval int LiveParticleIndices() {
