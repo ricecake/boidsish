@@ -60,7 +60,7 @@ namespace Boidsish {
         // Indirect Buffer
         glGenBuffers(1, &grass_indirect_buffer_);
         glBindBuffer(GL_DRAW_INDIRECT_BUFFER, grass_indirect_buffer_);
-        DrawArraysIndirectCommand cmd = {1, 0, 0, 0};
+        DrawArraysIndirectCommand cmd = {4, 0, 0, 0};
         glBufferData(GL_DRAW_INDIRECT_BUFFER, sizeof(DrawArraysIndirectCommand), &cmd, GL_DYNAMIC_DRAW);
         glBindBuffer(GL_DRAW_INDIRECT_BUFFER, 0);
 
@@ -111,7 +111,7 @@ namespace Boidsish {
         glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT);
     }
 
-    void GrassManager::Render(const glm::mat4& view, const glm::mat4& projection, uint32_t lightingUbo, bool isShadowPass) {
+    void GrassManager::Render(const glm::mat4& view, const glm::mat4& projection, std::shared_ptr<TerrainRenderManager> renderManager, uint32_t lightingUbo, bool isShadowPass) {
         if (!enabled_ || !initialized_) return;
 
         PROJECT_PROFILE_SCOPE("GrassManager::Render");
@@ -122,6 +122,10 @@ namespace Boidsish {
         grass_shader_->setBool("uIsShadowPass", isShadowPass);
         grass_shader_->setVec3("uCameraPos", last_camera_pos_);
 
+        if (renderManager) {
+            renderManager->BindTerrainData(*grass_shader_);
+        }
+
         glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::GrassProps(), grass_props_ubo_);
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::GrassInstances(), grass_instances_ssbo_);
         glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Lighting(), lightingUbo);
@@ -129,10 +133,10 @@ namespace Boidsish {
         glBindVertexArray(dummy_vao_);
         glBindBuffer(GL_DRAW_INDIRECT_BUFFER, grass_indirect_buffer_);
 
-        glPatchParameteri(GL_PATCH_VERTICES, 1);
+        glPatchParameteri(GL_PATCH_VERTICES, 4);
 
         glDisable(GL_CULL_FACE);
-        glDrawArraysIndirect(GL_PATCHES, 0);
+        glDrawArraysIndirect(GL_PATCHES, nullptr);
         glEnable(GL_CULL_FACE);
         glBindVertexArray(0);
 

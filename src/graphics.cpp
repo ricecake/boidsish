@@ -2525,7 +2525,7 @@ namespace Boidsish {
 				);
 
 				if (grass_manager && frame.config.render_decor) {
-					grass_manager->Render(glm::mat4(1.0f), light_space_matrix, lighting_ubo, true);
+					grass_manager->Render(glm::mat4(1.0f), light_space_matrix, terrain_render_manager, lighting_ubo, true);
 				}
 			};
 
@@ -2573,7 +2573,7 @@ namespace Boidsish {
 				opaque_pass_->Execute(frame, *compositor_, render_scale, MakeRenderCallbacks(frame));
 
 				if (grass_manager && frame.config.render_decor) {
-					grass_manager->Render(frame.view, frame.projection, lighting_ubo);
+					grass_manager->Render(frame.view, frame.projection, terrain_render_manager, lighting_ubo);
 				}
 
 				// Generate Hi-Z pyramid from current depth buffer after opaque pass

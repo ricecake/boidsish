@@ -64,7 +64,7 @@ void main() {
     float v = gl_TessCoord.y; // along blade (0 to 1)
     float u = gl_TessCoord.x * 2.0 - 1.0; // across blade (-1 to 1)
 
-    // Wind
+    // Wind using global time from Lighting block
     vec2 windUV = basePos.xz * 0.05 + time * 0.5;
     vec2 windNoise = curlNoise2D(windUV);
     float windStrength = length(windNoise) * biomeProps[biomeIdx].windInfluence;

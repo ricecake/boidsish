@@ -35,7 +35,7 @@ namespace Boidsish {
 
         void Initialize();
         void Update(float deltaTime, float time, const class Camera& camera, const class ITerrainGenerator& terrainGen, std::shared_ptr<class TerrainRenderManager> renderManager);
-        void Render(const glm::mat4& view, const glm::mat4& projection, uint32_t lightingUbo, bool isShadowPass = false);
+        void Render(const glm::mat4& view, const glm::mat4& projection, std::shared_ptr<class TerrainRenderManager> renderManager, uint32_t lightingUbo, bool isShadowPass = false);
 
         void SetCameraPos(const glm::vec3& pos) { last_camera_pos_ = pos; }
 
