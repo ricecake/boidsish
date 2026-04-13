@@ -6,6 +6,7 @@ in vec3 fNormal;
 in vec2 fTexCoords;
 in float fHeightFactor;
 in vec3 fWorldPos;
+flat in int fBiomeIdx;
 
 struct GrassProperties {
     vec4  colorTop;
@@ -17,13 +18,13 @@ struct GrassProperties {
     float widthVariance;
     float density;
     float colorVariability;
-    uint  biomeMask;
     float windInfluence;
-    float padding[2];
+    uint  enabled;
+    float padding[3];
 };
 
 layout(std140, binding = 9) uniform GrassProps {
-    GrassProperties props;
+    GrassProperties biomeProps[8];
 };
 
 uniform bool uIsShadowPass;
@@ -46,11 +47,11 @@ void main() {
         return;
     }
 
-    vec3 albedo = mix(props.colorBottom.rgb, props.colorTop.rgb, fHeightFactor);
+    vec3 albedo = mix(biomeProps[fBiomeIdx].colorBottom.rgb, biomeProps[fBiomeIdx].colorTop.rgb, fHeightFactor);
 
     // Add some random variability
     uint seed = uint(abs(fWorldPos.x) * 10.0) ^ uint(abs(fWorldPos.z) * 10.0);
-    float var = hash(seed) * props.colorVariability;
+    float var = hash(seed) * biomeProps[fBiomeIdx].colorVariability;
     albedo += (var * 2.0 - 1.0) * 0.15;
 
     float primaryShadow;

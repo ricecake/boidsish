@@ -6,6 +6,7 @@
 #include <memory>
 #include <map>
 #include <mutex>
+#include <array>
 #include "constants.h"
 #include "biome_properties.h"
 #include "render_shader.h"
@@ -13,8 +14,8 @@
 namespace Boidsish {
 
     struct GrassProperties {
-        glm::vec4 colorTop = glm::vec4(0.2f, 0.5f, 0.1f, 1.0f);
-        glm::vec4 colorBottom = glm::vec4(0.05f, 0.2f, 0.02f, 1.0f);
+        glm::vec4 colorTop = glm::vec4(0.3f, 0.8f, 0.2f, 1.0f);
+        glm::vec4 colorBottom = glm::vec4(0.1f, 0.3f, 0.05f, 1.0f);
         float height = 1.0f;
         float width = 0.1f;
         float rigidity = 0.5f;
@@ -22,14 +23,9 @@ namespace Boidsish {
         float widthVariance = 0.1f;
         float density = 1.0f;
         float colorVariability = 0.2f;
-        uint32_t biomeMask = 0xFFFFFFFF;
         float windInfluence = 1.0f;
-        float padding[2];
-    };
-
-    struct GrassType {
-        GrassProperties props;
-        std::string name;
+        uint32_t enabled = 0;
+        float padding[3];
     };
 
     class GrassManager {
@@ -38,12 +34,12 @@ namespace Boidsish {
         ~GrassManager();
 
         void Initialize();
-        void Update(float deltaTime, const class Camera& camera, const class ITerrainGenerator& terrainGen, std::shared_ptr<class TerrainRenderManager> renderManager);
-        void Render(const glm::mat4& view, const glm::mat4& projection, bool isShadowPass = false);
+        void Update(float deltaTime, float time, const class Camera& camera, const class ITerrainGenerator& terrainGen, std::shared_ptr<class TerrainRenderManager> renderManager);
+        void Render(const glm::mat4& view, const glm::mat4& projection, uint32_t lightingUbo, bool isShadowPass = false);
 
         void SetCameraPos(const glm::vec3& pos) { last_camera_pos_ = pos; }
 
-        void AddGrassType(const std::string& name, const GrassProperties& props);
+        void SetGrassProperties(Biome biome, const GrassProperties& props);
 
         bool IsEnabled() const { return enabled_; }
         void SetEnabled(bool e) { enabled_ = e; }
@@ -52,7 +48,8 @@ namespace Boidsish {
         bool initialized_ = false;
         bool enabled_ = true;
 
-        std::vector<GrassType> grass_types_;
+        std::array<GrassProperties, 8> biome_grass_props_;
+        bool props_dirty_ = false;
 
         uint32_t grass_props_ubo_ = 0;
         uint32_t grass_instances_ssbo_ = 0;
@@ -63,7 +60,7 @@ namespace Boidsish {
 
         struct GrassInstance {
             glm::vec4 pos_rot; // xyz = world pos, w = rotation
-            glm::vec4 scale_seed; // x = height, y = width, z = seed, w = unused
+            glm::vec4 scale_seed_biome; // x = height, y = width, z = seed, w = biome index
         };
 
         static constexpr uint32_t kMaxGrassInstances = 1024 * 1024; // 1M blades
