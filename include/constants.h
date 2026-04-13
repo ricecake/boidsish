@@ -279,7 +279,7 @@ namespace Boidsish {
 
 			namespace Shadows {
 				consteval int MaxLights() {
-					return 10;
+					return 16;
 				}
 
 				consteval int MaxCascades() {

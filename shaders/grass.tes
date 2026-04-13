@@ -42,7 +42,7 @@ out vec3 fWorldPos;
 flat out int fBiomeIdx;
 
 #include "helpers/noise.glsl"
-#include "lighting.glsl"
+#include "helpers/lighting.glsl"
 
 // Simple hash for random values
 float hash(uint x) {
@@ -64,7 +64,7 @@ void main() {
     float v = gl_TessCoord.y; // along blade (0 to 1)
     float u = gl_TessCoord.x * 2.0 - 1.0; // across blade (-1 to 1)
 
-    // Wind using global time from Lighting block
+    // Wind
     vec2 windUV = basePos.xz * 0.05 + time * 0.5;
     vec2 windNoise = curlNoise2D(windUV);
     float windStrength = length(windNoise) * biomeProps[biomeIdx].windInfluence;

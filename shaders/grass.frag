@@ -44,6 +44,7 @@ float hash(uint x) {
 
 void main() {
     if (uIsShadowPass) {
+        FragColor = vec4(0.0);
         return;
     }
 

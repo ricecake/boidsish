@@ -35,7 +35,18 @@ namespace Boidsish {
 
         void Initialize();
         void Update(float deltaTime, float time, const class Camera& camera, const class ITerrainGenerator& terrainGen, std::shared_ptr<class TerrainRenderManager> renderManager);
-        void Render(const glm::mat4& view, const glm::mat4& projection, std::shared_ptr<class TerrainRenderManager> renderManager, uint32_t lightingUbo, bool isShadowPass = false);
+
+        struct RenderResources {
+            uint32_t lightingUbo;
+            uint32_t shadowUbo;
+            uint32_t shadowMaps;
+            uint32_t transmittanceLUT;
+            uint32_t skyViewLUT;
+            uint32_t aerialPerspectiveLUT;
+            const int* shadowIndices;
+        };
+
+        void Render(const glm::mat4& view, const glm::mat4& projection, std::shared_ptr<class TerrainRenderManager> renderManager, const RenderResources& resources, bool isShadowPass = false);
 
         void SetCameraPos(const glm::vec3& pos) { last_camera_pos_ = pos; }
 

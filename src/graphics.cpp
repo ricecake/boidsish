@@ -769,7 +769,6 @@ namespace Boidsish {
 			sound_effect_manager = std::make_unique<SoundEffectManager>(audio_manager.get());
 			trail_render_manager = std::make_unique<TrailRenderManager>();
 
-			const int MAX_LIGHTS = 10;
 			glGenBuffers(1, &lighting_ubo);
 			glBindBuffer(GL_UNIFORM_BUFFER, lighting_ubo);
 			glBufferData(GL_UNIFORM_BUFFER, sizeof(LightingUbo), NULL, GL_DYNAMIC_DRAW);
@@ -796,7 +795,7 @@ namespace Boidsish {
 			);
 
 			// Pre-allocate lighting cache for batched UBO updates
-			gpu_lights_cache_.reserve(MAX_LIGHTS);
+			gpu_lights_cache_.reserve(16);
 
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true)) {
 				glGenBuffers(1, &visual_effects_ubo);
@@ -1070,18 +1069,18 @@ namespace Boidsish {
 
 			if (shadow_manager && shadow_manager->IsInitialized() && frame_config_.enable_shadows) {
 				shadow_manager->BindForRendering(s);
-				std::array<int, 10> shadow_indices;
+				std::array<int, 16> shadow_indices;
 				shadow_indices.fill(-1);
 				const auto& all_lights = light_manager.GetLights();
-				for (size_t j = 0; j < all_lights.size() && j < 10; ++j) {
+				for (size_t j = 0; j < all_lights.size() && j < 16; ++j) {
 					shadow_indices[j] = all_lights[j].shadow_map_index;
 				}
-				s.setIntArray("lightShadowIndices", shadow_indices.data(), 10);
+				s.setIntArray("lightShadowIndices", shadow_indices.data(), 16);
 			} else {
 				s.setInt("shadowMaps", 4);
-				std::array<int, 10> shadow_indices;
+				std::array<int, 16> shadow_indices;
 				shadow_indices.fill(-1);
-				s.setIntArray("lightShadowIndices", shadow_indices.data(), 10);
+				s.setIntArray("lightShadowIndices", shadow_indices.data(), 16);
 			}
 		}
 
@@ -2251,7 +2250,7 @@ namespace Boidsish {
 					CheckpointRingShape::GetShader()->setFloat("time", simulation_time);
 				}
 				const auto& lights = light_manager.GetLights();
-				int         num_lights = std::min(static_cast<int>(lights.size()), 10);
+				int         num_lights = std::min(static_cast<int>(lights.size()), 16);
 
 				gpu_lights_cache_.clear();
 				for (int i = 0; i < num_lights; ++i) {
@@ -2327,8 +2326,8 @@ namespace Boidsish {
 
 				// GPU-side copy of SH coefficients from SSBO into the UBO (no CPU readback)
 				if (atmosphere_manager) {
-					static_assert(offsetof(LightingUbo, sh_coeffs) == 768, "SH offset mismatch");
-					atmosphere_manager->CopySHToUBO(lighting_ubo, 768);
+					static_assert(offsetof(LightingUbo, sh_coeffs) == 1152, "SH offset mismatch");
+					atmosphere_manager->CopySHToUBO(lighting_ubo, 1152);
 				}
 			}
 
@@ -2525,7 +2524,16 @@ namespace Boidsish {
 				);
 
 				if (grass_manager && frame.config.render_decor) {
-					grass_manager->Render(glm::mat4(1.0f), light_space_matrix, terrain_render_manager, lighting_ubo, true);
+					GrassManager::RenderResources res{};
+					res.lightingUbo = lighting_ubo;
+					res.shadowUbo = shadow_manager->GetShadowUbo();
+					grass_manager->Render(
+						glm::mat4(1.0f),
+						light_space_matrix,
+						terrain_render_manager,
+						res,
+						true
+					);
 				}
 			};
 
@@ -2573,7 +2581,29 @@ namespace Boidsish {
 				opaque_pass_->Execute(frame, *compositor_, render_scale, MakeRenderCallbacks(frame));
 
 				if (grass_manager && frame.config.render_decor) {
-					grass_manager->Render(frame.view, frame.projection, terrain_render_manager, lighting_ubo);
+					GrassManager::RenderResources res{};
+					res.lightingUbo = lighting_ubo;
+					res.shadowUbo = shadow_manager->GetShadowUbo();
+					res.shadowMaps = shadow_manager->GetShadowMapArray();
+					if (atmosphere_manager) {
+						res.transmittanceLUT = atmosphere_manager->GetTransmittanceLUT();
+						res.skyViewLUT = atmosphere_manager->GetSkyViewLUT();
+						res.aerialPerspectiveLUT = atmosphere_manager->GetAerialPerspectiveLUT();
+					}
+					std::array<int, 16> shadow_indices;
+					shadow_indices.fill(-1);
+					const auto& all_lights = light_manager.GetLights();
+					for (size_t j = 0; j < all_lights.size() && j < 16; ++j) {
+						shadow_indices[j] = all_lights[j].shadow_map_index;
+					}
+					res.shadowIndices = shadow_indices.data();
+
+					grass_manager->Render(
+						frame.view,
+						frame.projection,
+						terrain_render_manager,
+						res
+					);
 				}
 
 				// Generate Hi-Z pyramid from current depth buffer after opaque pass

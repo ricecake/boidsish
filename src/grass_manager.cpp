@@ -60,7 +60,7 @@ namespace Boidsish {
         // Indirect Buffer
         glGenBuffers(1, &grass_indirect_buffer_);
         glBindBuffer(GL_DRAW_INDIRECT_BUFFER, grass_indirect_buffer_);
-        DrawArraysIndirectCommand cmd = {4, 0, 0, 0};
+        DrawArraysIndirectCommand cmd = {1, 0, 0, 0}; // 1 vertex per blade (1-vertex patch)
         glBufferData(GL_DRAW_INDIRECT_BUFFER, sizeof(DrawArraysIndirectCommand), &cmd, GL_DYNAMIC_DRAW);
         glBindBuffer(GL_DRAW_INDIRECT_BUFFER, 0);
 
@@ -111,7 +111,7 @@ namespace Boidsish {
         glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT);
     }
 
-    void GrassManager::Render(const glm::mat4& view, const glm::mat4& projection, std::shared_ptr<TerrainRenderManager> renderManager, uint32_t lightingUbo, bool isShadowPass) {
+    void GrassManager::Render(const glm::mat4& view, const glm::mat4& projection, std::shared_ptr<TerrainRenderManager> renderManager, const RenderResources& res, bool isShadowPass) {
         if (!enabled_ || !initialized_) return;
 
         PROJECT_PROFILE_SCOPE("GrassManager::Render");
@@ -128,15 +128,38 @@ namespace Boidsish {
 
         glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::GrassProps(), grass_props_ubo_);
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::GrassInstances(), grass_instances_ssbo_);
-        glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Lighting(), lightingUbo);
+        glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Lighting(), res.lightingUbo);
+        glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Shadows(), res.shadowUbo);
+
+        if (!isShadowPass) {
+            glActiveTexture(GL_TEXTURE4);
+            glBindTexture(GL_TEXTURE_2D_ARRAY, res.shadowMaps);
+            grass_shader_->setInt("shadowMaps", 4);
+
+            glActiveTexture(GL_TEXTURE20);
+            glBindTexture(GL_TEXTURE_2D, res.transmittanceLUT);
+            grass_shader_->setInt("u_transmittanceLUT", 20);
+
+            glActiveTexture(GL_TEXTURE22);
+            glBindTexture(GL_TEXTURE_2D, res.skyViewLUT);
+            grass_shader_->setInt("u_skyViewLUT", 22);
+
+            glActiveTexture(GL_TEXTURE23);
+            glBindTexture(GL_TEXTURE_2D, res.aerialPerspectiveLUT);
+            grass_shader_->setInt("u_aerialPerspectiveLUT", 23);
+
+            if (res.shadowIndices) {
+                grass_shader_->setIntArray("lightShadowIndices", res.shadowIndices, 16);
+            }
+        }
 
         glBindVertexArray(dummy_vao_);
         glBindBuffer(GL_DRAW_INDIRECT_BUFFER, grass_indirect_buffer_);
 
-        glPatchParameteri(GL_PATCH_VERTICES, 4);
+        glPatchParameteri(GL_PATCH_VERTICES, 1);
 
         glDisable(GL_CULL_FACE);
-        glDrawArraysIndirect(GL_PATCHES, nullptr);
+        glDrawArraysIndirect(GL_PATCHES, (void*)0);
         glEnable(GL_CULL_FACE);
         glBindVertexArray(0);
 

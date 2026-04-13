@@ -1,6 +1,6 @@
 #version 430 core
 
-layout(vertices = 4) out;
+layout(vertices = 1) out;
 
 in int vInstanceID[];
 out int tInstanceID[];
@@ -13,6 +13,7 @@ void main() {
     vec3 worldPos = gl_in[0].gl_Position.xyz;
     float dist = distance(worldPos, uCameraPos);
 
+    // For quads:
     float tessV = mix(5.0, 2.0, smoothstep(20.0, 60.0, dist));
 
     if (gl_InvocationID == 0) {
