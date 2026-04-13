@@ -46,3 +46,38 @@
 - **Fix 5**: Implement uniform location caching in `ShaderBase` using a `std::unordered_map` to minimize `glGetUniformLocation` overhead.
 - **Fix 6**: Disable copy operations and implement move operations for `ShaderBase` (Rule of Five) to safely manage OpenGL program ownership.
 - **Fix 7**: Add `glDeleteBuffers(1, &frustum_ubo)` to `VisualizerImpl` destructor.
+
+### 7. Memory Leak in Temporal Data
+- **Issue Type**: Memory Leak (OpenGL Buffer)
+- **Location**: `src/graphics.cpp`, `VisualizerImpl::~VisualizerImpl`
+- **Evidence**: `temporal_data_ubo` is created in the constructor but missing from the destructor.
+- **Learning**: Every UBO created for per-frame data synchronization must be explicitly released to prevent driver-side memory bloat.
+
+### 8. Missing RAII in Mesh Class
+- **Issue Type**: Memory Leak (OpenGL Objects)
+- **Location**: `include/model.h`, `src/model.cpp`, `Mesh`
+- **Evidence**: `Mesh` class lacked a destructor, causing its `VAO`, `VBO`, and `EBO` to leak when not using `Megabuffer`.
+- **Learning**: Even when using modern AZDO techniques like `Megabuffer`, legacy fallback paths must remain RAII-compliant to prevent leaks in varied execution environments.
+
+### 9. Resource Ownership in Mesh Cleanup
+- **Issue Type**: Resource Ownership / Logic Error
+- **Location**: `src/model.cpp`, `Mesh::Cleanup`
+- **Evidence**: `Cleanup()` was unconditionally calling `glDeleteVertexArrays(1, &VAO)`, which would erroneously delete the shared `Megabuffer` VAO if `allocation.valid` was true.
+- **Learning**: Destructors and cleanup methods must distinguish between owned and shared resources. Shared resources (like those from a `Megabuffer`) must not be destroyed by individual objects.
+
+### 10. Dead Code (frustum_ubo)
+- **Issue Type**: Dead Code
+- **Location**: `src/graphics.cpp`, `VisualizerImpl`
+- **Evidence**: `frustum_ubo` member variable exists but was never initialized or used, as it was superseded by `frustum_ssbo`.
+- **Learning**: Periodically auditing member variables against their usage helps maintain codebase clarity and prevents "phantom" resource leaks.
+
+## Rationale for Fixes
+- **Fix 1**: Add missing `glDelete*` calls to `VisualizerImpl` destructor to ensure all main scene resources are freed.
+- **Fix 2**: Implement a destructor for `InstanceManager` to clean up VBOs and reuse them across frames.
+- **Fix 3**: Add missing `glDeleteBuffers(1, &ebo)` to `Trail::~Trail`.
+- **Fix 4**: Add a virtual destructor to `ShaderBase` that calls `glDeleteProgram(ID)`.
+- **Fix 5**: Implement uniform location caching in `ShaderBase` using a `std::unordered_map` to minimize `glGetUniformLocation` overhead.
+- **Fix 6**: Disable copy operations and implement move operations for `ShaderBase` (Rule of Five) to safely manage OpenGL program ownership.
+- **Fix 7**: Remove unused `frustum_ubo` and its non-functional leak documentation (was supersede by Fix 10).
+- **Fix 8**: Add `glDeleteBuffers(1, &temporal_data_ubo)` to `VisualizerImpl` destructor.
+- **Fix 9**: Implement a destructor for `Mesh` and update `Cleanup()` to safely handle `Megabuffer`-owned resources by only deleting `VAO` if `!allocation.valid`.

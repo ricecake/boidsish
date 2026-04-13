@@ -80,6 +80,8 @@ namespace Boidsish {
 			if (allocation.valid)
 				return;
 
+			Cleanup(); // Clean up legacy resources before using megabuffer
+
 			// Allocate space for primary geometry
 			allocation = mb->AllocateStatic(
 				static_cast<uint32_t>(vertices.size()),
@@ -167,19 +169,24 @@ namespace Boidsish {
 		glBindVertexArray(0);
 	}
 
+	Mesh::~Mesh() {
+		Cleanup();
+	}
+
 	void Mesh::Cleanup() {
-		if (VAO != 0) {
+		if (VAO != 0 && !allocation.valid) {
 			glDeleteVertexArrays(1, &VAO);
-			VAO = 0;
 		}
-		if (VBO != 0) {
+		if (VBO != 0 && !allocation.valid) {
 			glDeleteBuffers(1, &VBO);
-			VBO = 0;
 		}
-		if (EBO != 0) {
+		if (EBO != 0 && !allocation.valid) {
 			glDeleteBuffers(1, &EBO);
-			EBO = 0;
 		}
+
+		VAO = 0;
+		VBO = 0;
+		EBO = 0;
 		shadow_EBO = 0;
 		allocation.valid = false;
 		shadow_allocation.valid = false;
