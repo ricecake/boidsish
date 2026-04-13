@@ -195,20 +195,20 @@ namespace Boidsish {
 		elapsed = 0.0f;
 	}
 
-	void MeshExplosionManager::Update(float delta_time, float time) {
+	void MeshExplosionManager::Update(const GlobalRenderState& render_state) {
 		PROJECT_PROFILE_SCOPE("MeshExplosionManager::Update");
 		if (!initialized_ || !compute_shader_ || !compute_shader_->isValid())
 			return;
 
-		time_ = time;
-		elapsed += delta_time;
+		time_ = render_state.time;
+		elapsed += render_state.delta_time;
 
 		if (!active_ || elapsed >= 4.0f) {
 			return;
 		}
 
 		compute_shader_->use();
-		compute_shader_->setFloat("u_delta_time", delta_time);
+		compute_shader_->setFloat("u_delta_time", render_state.delta_time);
 
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ssbo_);
 		glDispatchCompute((kMaxFragments / Constants::Class::Explosions::ComputeGroupSize()) + 1, 1, 1);

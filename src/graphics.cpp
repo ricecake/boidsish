@@ -13,6 +13,8 @@
 #include <vector>
 
 #include "ConfigManager.h"
+#include "asset_manager.h"
+#include "render_state.h"
 #include "NoiseManager.h"
 #include "SceneManager.h"
 #include "UIManager.h"
@@ -446,10 +448,9 @@ namespace Boidsish {
 		std::shared_ptr<Shader> postprocess_shader_;
 		ShaderHandle            shadow_shader_handle{0};
 		GLuint                  plane_vao{0}, plane_vbo{0}, sky_vao{0}, blur_quad_vao{0}, blur_quad_vbo{0};
-		GLuint                  lighting_ubo{0};
-		GLuint                  visual_effects_ubo{0};
-		GLuint                  temporal_data_ubo{0};
-		GLuint                  frustum_ubo{0};
+		std::unique_ptr<PersistentBuffer<LightingUbo>>      lighting_ubo;
+		std::unique_ptr<PersistentBuffer<VisualEffectsUbo>> visual_effects_ubo;
+		std::unique_ptr<PersistentBuffer<TemporalUbo>>      temporal_data_ubo;
 		glm::mat4               projection;
 		glm::mat4               prev_view_projection{1.0f};
 
@@ -538,6 +539,9 @@ namespace Boidsish {
 		std::unique_ptr<EarlyEffectsPass>    early_effects_pass_;
 		std::unique_ptr<ParticleEffectsPass> particle_pass_;
 		std::unique_ptr<TransparentPass>     transparent_pass_;
+
+		// Global render state for the current frame
+		GlobalRenderState              render_state_;
 
 		// Scene center computed by shadow pass, used by other systems
 		glm::vec3                      scene_center{0.0f};
@@ -762,46 +766,14 @@ namespace Boidsish {
 			trail_render_manager = std::make_unique<TrailRenderManager>();
 
 			const int MAX_LIGHTS = 10;
-			glGenBuffers(1, &lighting_ubo);
-			glBindBuffer(GL_UNIFORM_BUFFER, lighting_ubo);
-			glBufferData(GL_UNIFORM_BUFFER, sizeof(LightingUbo), NULL, GL_DYNAMIC_DRAW);
-			glBindBuffer(GL_UNIFORM_BUFFER, 0);
-			glBindBufferRange(
-				GL_UNIFORM_BUFFER,
-				Constants::UboBinding::Lighting(),
-				lighting_ubo,
-				0,
-				sizeof(LightingUbo)
-			);
-
-			// Temporal Data UBO
-			glGenBuffers(1, &temporal_data_ubo);
-			glBindBuffer(GL_UNIFORM_BUFFER, temporal_data_ubo);
-			glBufferData(GL_UNIFORM_BUFFER, sizeof(TemporalUbo), NULL, GL_DYNAMIC_DRAW);
-			glBindBuffer(GL_UNIFORM_BUFFER, 0);
-			glBindBufferRange(
-				GL_UNIFORM_BUFFER,
-				Constants::UboBinding::TemporalData(),
-				temporal_data_ubo,
-				0,
-				sizeof(TemporalUbo)
-			);
+			lighting_ubo = std::make_unique<PersistentBuffer<LightingUbo>>(GL_UNIFORM_BUFFER, 1);
+			temporal_data_ubo = std::make_unique<PersistentBuffer<TemporalUbo>>(GL_UNIFORM_BUFFER, 1);
 
 			// Pre-allocate lighting cache for batched UBO updates
 			gpu_lights_cache_.reserve(MAX_LIGHTS);
 
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true)) {
-				glGenBuffers(1, &visual_effects_ubo);
-				glBindBuffer(GL_UNIFORM_BUFFER, visual_effects_ubo);
-				glBufferData(GL_UNIFORM_BUFFER, sizeof(VisualEffectsUbo), NULL, GL_DYNAMIC_DRAW);
-				glBindBuffer(GL_UNIFORM_BUFFER, 0);
-				glBindBufferRange(
-					GL_UNIFORM_BUFFER,
-					Constants::UboBinding::VisualEffects(),
-					visual_effects_ubo,
-					0,
-					sizeof(VisualEffectsUbo)
-				);
+				visual_effects_ubo = std::make_unique<PersistentBuffer<VisualEffectsUbo>>(GL_UNIFORM_BUFFER, 1);
 			}
 
 			shader->use();
@@ -1233,13 +1205,9 @@ namespace Boidsish {
 			// FBOs owned by compositor_ — cleaned up by its destructor
 			compositor_.reset();
 
-			if (lighting_ubo) {
-				glDeleteBuffers(1, &lighting_ubo);
-			}
-
-			if (visual_effects_ubo) {
-				glDeleteBuffers(1, &visual_effects_ubo);
-			}
+			lighting_ubo.reset();
+			visual_effects_ubo.reset();
+			temporal_data_ubo.reset();
 
 			if (occlusion_visibility_ssbo_) {
 				glDeleteBuffers(1, &occlusion_visibility_ssbo_);
@@ -1269,6 +1237,8 @@ namespace Boidsish {
 			}
 			data.camera_pos = cam_pos;
 
+			// GlobalRenderState logic will handle the actual binding where needed.
+			// This keeps FrustumSSBO as a multi-entry SSBO for per-pass data.
 			glBindBufferRange(
 				GL_UNIFORM_BUFFER,
 				Constants::UboBinding::FrustumData(),
@@ -1322,6 +1292,7 @@ namespace Boidsish {
 			bool                               is_shadow_pass = false,
 			bool                               dispatch_hiz_occlusion = false
 		) {
+			bool u_use_mdi_culling = (occlusion_cull_shader_ != nullptr && occlusion_cull_shader_->isValid());
 			PROJECT_PROFILE_SCOPE(
 				layer == RenderLayer::Opaque ? "ExecuteRenderQueue::Opaque" : "ExecuteRenderQueue::Transparent"
 			);
@@ -1411,11 +1382,14 @@ namespace Boidsish {
 
 				// 4. Textures (only if not a shadow pass)
 				if (!is_shadow_pass) {
-					if (a.textures.size() != b.textures.size())
-						return false;
-					for (size_t i = 0; i < a.textures.size(); ++i) {
-						if (a.textures[i].id != b.textures[i].id)
+					// If bindless is supported, we don't need to break batches on texture changes
+					if (!AssetManager::GetInstance().IsBindlessSupported()) {
+						if (a.textures.size() != b.textures.size())
 							return false;
+						for (size_t i = 0; i < a.textures.size(); ++i) {
+							if (a.textures[i].id != b.textures[i].id)
+								return false;
+						}
 					}
 				}
 
@@ -1466,6 +1440,28 @@ namespace Boidsish {
 
 				// Copy uniforms to persistent SSBO
 				uniforms_ptr[mdi_uniform_count] = packet.uniforms;
+
+				// Bindless texture handle injection
+				if (AssetManager::GetInstance().IsBindlessSupported()) {
+					for (const auto& tex : packet.textures) {
+						uint64_t handle = AssetManager::GetInstance().GetTextureHandle(tex.id);
+						glm::uvec2 packed = glm::uvec2((uint32_t)(handle & 0xFFFFFFFF), (uint32_t)(handle >> 32));
+
+						if (tex.type == "texture_diffuse") {
+							uniforms_ptr[mdi_uniform_count].albedo_handle = packed;
+						} else if (tex.type == "texture_normal") {
+							uniforms_ptr[mdi_uniform_count].normal_handle = packed;
+						} else if (tex.type == "texture_metallic") {
+							uniforms_ptr[mdi_uniform_count].metallic_handle = packed;
+						} else if (tex.type == "texture_roughness") {
+							uniforms_ptr[mdi_uniform_count].roughness_handle = packed;
+						} else if (tex.type == "texture_ao") {
+							uniforms_ptr[mdi_uniform_count].ao_handle = packed;
+						} else if (tex.type == "texture_emissive") {
+							uniforms_ptr[mdi_uniform_count].emissive_handle = packed;
+						}
+					}
+				}
 
 				// Handle skeletal animation data
 				if (!packet.bone_matrices.empty()) {
@@ -1532,9 +1528,8 @@ namespace Boidsish {
 				GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT | GL_COMMAND_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT
 			);
 
-			// Hi-Z occlusion culling dispatch (between uniform fill and draw calls)
-			if (dispatch_hiz_occlusion && occlusion_cull_shader_ && occlusion_cull_shader_->isValid() && hiz_manager &&
-			    hiz_manager->IsInitialized() && mdi_uniform_count > 0) {
+			// Unified GPU Culling dispatch (between uniform fill and draw calls)
+			if (u_use_mdi_culling && mdi_uniform_count > 0) {
 				occlusion_cull_shader_->use();
 
 				// Bind uniforms SSBO (current frame's data) for compute to read AABBs
@@ -1553,20 +1548,36 @@ namespace Boidsish {
 					occlusion_visibility_ssbo_
 				);
 
-				// Bind Hi-Z texture
-				glActiveTexture(GL_TEXTURE15);
-				glBindTexture(GL_TEXTURE_2D, hiz_manager->GetHiZTexture());
-				occlusion_cull_shader_->setInt("u_hizTexture", 15);
+				// Bind Hi-Z texture (if available)
+				bool has_hiz = (hiz_manager && hiz_manager->IsInitialized());
+				if (has_hiz) {
+					glActiveTexture(GL_TEXTURE15);
+					glBindTexture(GL_TEXTURE_2D, hiz_manager->GetHiZTexture());
+					occlusion_cull_shader_->setInt("u_hizTexture", 15);
+				}
 
 				// Set uniforms
 				occlusion_cull_shader_->setInt("u_drawCount", static_cast<int>(mdi_uniform_count));
-				glUniform2i(
-					glGetUniformLocation(occlusion_cull_shader_->ID, "u_hizSize"),
-					hiz_manager->GetWidth(),
-					hiz_manager->GetHeight()
-				);
-				occlusion_cull_shader_->setInt("u_hizMipCount", hiz_manager->GetMipCount());
+				if (has_hiz) {
+					glUniform2i(
+						glGetUniformLocation(occlusion_cull_shader_->ID, "u_hizSize"),
+						hiz_manager->GetWidth(),
+						hiz_manager->GetHeight()
+					);
+					occlusion_cull_shader_->setInt("u_hizMipCount", hiz_manager->GetMipCount());
+				}
 				occlusion_cull_shader_->setFloat("u_screenExpansion", 4.0f);
+				occlusion_cull_shader_->setBool("u_enableFrustumCulling", !is_shadow_pass);
+				occlusion_cull_shader_->setBool("u_enableHiZCulling", has_hiz && dispatch_hiz_occlusion);
+
+				// Bind Frustum UBO for compute culling
+				glBindBufferRange(
+					GL_UNIFORM_BUFFER,
+					3, // Hardcoded for now in common_uniforms.glsl via frustum.glsl
+					frustum_ssbo->GetBufferId(),
+					frustum_ssbo->GetFrameOffset() + (mdi_frustum_count - 1) * sizeof(FrustumDataGPU),
+					sizeof(FrustumDataGPU)
+				);
 
 				glDispatchCompute((mdi_uniform_count + 63) / 64, 1, 1);
 				glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
@@ -1591,8 +1602,9 @@ namespace Boidsish {
 					s->setMat4("view", view_mat);
 					s->setMat4("projection", proj_mat);
 					s->setFloat("time", simulation_time);
-					s->setBool("enableFrustumCulling", !is_shadow_pass);
-					s->setBool("enableHiZCulling", dispatch_hiz_occlusion && !is_shadow_pass);
+					// Offloaded to compute, but we keep the uniform for non-MDI fallbacks if any
+					s->setBool("enableFrustumCulling", !u_use_mdi_culling && !is_shadow_pass);
+					s->setBool("enableHiZCulling", !u_use_mdi_culling && dispatch_hiz_occlusion && !is_shadow_pass);
 					if (light_space_mat) {
 						s->setMat4("lightSpaceMatrix", *light_space_mat);
 					}
@@ -1650,27 +1662,32 @@ namespace Boidsish {
 				}
 
 				if (!is_shadow_pass) {
-					unsigned int diffuseNr = 1;
-					unsigned int specularNr = 1;
-					unsigned int normalNr = 1;
-					unsigned int heightNr = 1;
+					bool use_bindless = AssetManager::GetInstance().IsBindlessSupported();
+					s->setBool("uUseBindless", use_bindless);
 
-					for (size_t i = 0; i < batch.textures.size(); ++i) {
-						glActiveTexture(GL_TEXTURE0 + i);
-						glBindTexture(GL_TEXTURE_2D, batch.textures[i].id);
+					if (!use_bindless) {
+						unsigned int diffuseNr = 1;
+						unsigned int specularNr = 1;
+						unsigned int normalNr = 1;
+						unsigned int heightNr = 1;
 
-						std::string number;
-						std::string name = batch.textures[i].type;
-						if (name == "texture_diffuse")
-							number = std::to_string(diffuseNr++);
-						else if (name == "texture_specular")
-							number = std::to_string(specularNr++);
-						else if (name == "texture_normal")
-							number = std::to_string(normalNr++);
-						else if (name == "texture_height")
-							number = std::to_string(heightNr++);
+						for (size_t i = 0; i < batch.textures.size(); ++i) {
+							glActiveTexture(GL_TEXTURE0 + i);
+							glBindTexture(GL_TEXTURE_2D, batch.textures[i].id);
 
-						s->setInt((name + number).c_str(), i);
+							std::string number;
+							std::string name = batch.textures[i].type;
+							if (name == "texture_diffuse")
+								number = std::to_string(diffuseNr++);
+							else if (name == "texture_specular")
+								number = std::to_string(specularNr++);
+							else if (name == "texture_normal")
+								number = std::to_string(normalNr++);
+							else if (name == "texture_height")
+								number = std::to_string(heightNr++);
+
+							s->setInt((name + number).c_str(), i);
+						}
 					}
 					// Note: use_texture is now a bitmask handled in RenderPacket::uniforms (SSBO)
 					// This uniform is only used for non-MDI fallback or special passes
@@ -2134,6 +2151,11 @@ namespace Boidsish {
 			bone_matrices_ssbo->AdvanceFrame();
 			megabuffer->AdvanceFrame();
 
+			lighting_ubo->AdvanceFrame();
+			temporal_data_ubo->AdvanceFrame();
+			if (visual_effects_ubo)
+				visual_effects_ubo->AdvanceFrame();
+
 			int current_idx = uniforms_ssbo->GetCurrentBufferIndex();
 			if (mdi_fences[current_idx]) {
 				glClientWaitSync(mdi_fences[current_idx], GL_SYNC_FLUSH_COMMANDS_BIT, GL_TIMEOUT_IGNORED);
@@ -2153,6 +2175,40 @@ namespace Boidsish {
 			current_view_matrix = SetupMatrices();
 			glm::mat4 current_vp = projection * current_view_matrix;
 
+			// Initialize global render state for this frame
+			render_state_.view = current_view_matrix;
+			render_state_.projection = projection;
+			render_state_.view_projection = current_vp;
+			render_state_.camera_pos = camera.pos();
+			render_state_.time = simulation_time;
+			render_state_.delta_time = simulation_delta_time;
+			render_state_.frame_index = frame_count_;
+			render_state_.ambient_particle_density = frame_config_.ambient_particle_density;
+
+			render_state_.lighting.id = lighting_ubo->GetBufferId();
+			render_state_.lighting.offset = lighting_ubo->GetFrameOffset();
+			render_state_.lighting.size = sizeof(LightingUbo);
+			render_state_.lighting_ptr = lighting_ubo->GetFrameDataPtr();
+
+			render_state_.temporal.id = temporal_data_ubo->GetBufferId();
+			render_state_.temporal.offset = temporal_data_ubo->GetFrameOffset();
+			render_state_.temporal.size = sizeof(TemporalUbo);
+			render_state_.temporal_ptr = temporal_data_ubo->GetFrameDataPtr();
+
+			if (visual_effects_ubo) {
+				render_state_.visual_effects.id = visual_effects_ubo->GetBufferId();
+				render_state_.visual_effects.offset = visual_effects_ubo->GetFrameOffset();
+				render_state_.visual_effects.size = sizeof(VisualEffectsUbo);
+				render_state_.visual_effects_ptr = visual_effects_ubo->GetFrameDataPtr();
+			} else {
+				render_state_.visual_effects = {};
+				render_state_.visual_effects_ptr = nullptr;
+			}
+
+			render_state_.frustum.id = frustum_ssbo->GetBufferId();
+			render_state_.frustum.offset = frustum_ssbo->GetFrameOffset();
+			render_state_.frustum.size = frustum_ssbo->GetElementCount() * sizeof(FrustumDataGPU);
+
 			// Save previous frame's VP for Hi-Z reprojection (before we overwrite it)
 			glm::mat4 hiz_prev_vp = prev_view_projection;
 
@@ -2162,7 +2218,7 @@ namespace Boidsish {
 			}
 
 			// Update Temporal UBO for motion blur and reprojection
-			TemporalUbo temporal_data;
+			TemporalUbo& temporal_data = *render_state_.temporal_ptr;
 			temporal_data.viewProjection = current_vp;
 			temporal_data.prevViewProjection = prev_view_projection;
 			temporal_data.uProjection = projection;
@@ -2171,10 +2227,6 @@ namespace Boidsish {
 			temporal_data.texelSize = glm::vec2(1.0f / render_width, 1.0f / render_height);
 			temporal_data.frameIndex = static_cast<int>(frame_count_);
 			temporal_data.padding = 0.0f;
-
-			glBindBuffer(GL_UNIFORM_BUFFER, temporal_data_ubo);
-			glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(TemporalUbo), &temporal_data);
-			glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
 			prev_view_projection = current_vp;
 
@@ -2191,8 +2243,10 @@ namespace Boidsish {
 			}
 
 			// Visual Effects UBO
-			if (frame_config_.effects_enabled) {
-				VisualEffectsUbo ubo_data{};
+			if (frame_config_.effects_enabled && render_state_.visual_effects_ptr) {
+				VisualEffectsUbo& ubo_data = *render_state_.visual_effects_ptr;
+				std::memset(&ubo_data, 0, sizeof(VisualEffectsUbo));
+
 				for (const auto& shape : shapes) {
 					for (const auto& effect : shape->GetActiveEffects()) {
 						if (effect == VisualEffect::RIPPLE) {
@@ -2223,10 +2277,6 @@ namespace Boidsish {
 				if (frame_config_.artistic_ripple) {
 					ubo_data.ripple_enabled = 1;
 				}
-
-				glBindBuffer(GL_UNIFORM_BUFFER, visual_effects_ubo);
-				glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(VisualEffectsUbo), &ubo_data);
-				glBindBuffer(GL_UNIFORM_BUFFER, 0);
 			}
 
 			// Lighting UBO
@@ -2243,23 +2293,24 @@ namespace Boidsish {
 					gpu_lights_cache_.push_back(lights[i].ToGPU());
 				}
 
-				std::memset(&lighting_ubo_data_, 0, sizeof(LightingUbo));
-				std::memcpy(lighting_ubo_data_.lights, gpu_lights_cache_.data(), num_lights * sizeof(LightGPU));
-				lighting_ubo_data_.num_lights = num_lights;
-				lighting_ubo_data_.world_scale = terrain_generator ? terrain_generator->GetWorldScale() : 1.0f;
-				lighting_ubo_data_.day_time = light_manager.GetDayNightCycle().time;
-				lighting_ubo_data_.night_factor = light_manager.GetDayNightCycle().night_factor;
+				LightingUbo& lighting_ubo_data = *render_state_.lighting_ptr;
+				std::memset(&lighting_ubo_data, 0, sizeof(LightingUbo));
+				std::memcpy(lighting_ubo_data.lights, gpu_lights_cache_.data(), num_lights * sizeof(LightGPU));
+				lighting_ubo_data.num_lights = num_lights;
+				lighting_ubo_data.world_scale = terrain_generator ? terrain_generator->GetWorldScale() : 1.0f;
+				lighting_ubo_data.day_time = light_manager.GetDayNightCycle().time;
+				lighting_ubo_data.night_factor = light_manager.GetDayNightCycle().night_factor;
 				if (post_processing_manager_) {
-					post_processing_manager_->SetNightFactor(lighting_ubo_data_.night_factor);
+					post_processing_manager_->SetNightFactor(lighting_ubo_data.night_factor);
 				}
-				lighting_ubo_data_.view_pos = camera.pos();
-				lighting_ubo_data_.ambient_light = light_manager.GetAmbientLight();
-				lighting_ubo_data_.time = simulation_time;
-				lighting_ubo_data_.view_dir = camera.front();
+				lighting_ubo_data.view_pos = camera.pos();
+				lighting_ubo_data.ambient_light = light_manager.GetAmbientLight();
+				lighting_ubo_data.time = simulation_time;
+				lighting_ubo_data.view_dir = camera.front();
 
 				if (atmosphere_effect) {
 					auto& cfg = ConfigManager::GetInstance();
-					lighting_ubo_data_.cloudShadowIntensity = cfg.GetAppSettingFloat("cloud_shadow_intensity", 0.5f);
+					lighting_ubo_data.cloudShadowIntensity = cfg.GetAppSettingFloat("cloud_shadow_intensity", 0.5f);
 
 					// Sync with atmosphere_effect based on ConfigManager
 					atmosphere_effect->SetCloudPhaseG1(cfg.GetAppSettingFloat("cloud_phase_g1", 0.7f));
@@ -2267,12 +2318,8 @@ namespace Boidsish {
 					atmosphere_effect->SetCloudPhaseAlpha(cfg.GetAppSettingFloat("cloud_phase_alpha", 0.15f));
 					atmosphere_effect->SetCloudPhaseIsotropic(cfg.GetAppSettingFloat("cloud_phase_isotropic", 0.05f));
 					atmosphere_effect->SetCloudPowderScale(cfg.GetAppSettingFloat("cloud_powder_scale", 0.35f));
-					atmosphere_effect->SetCloudPowderMultiplier(
-						cfg.GetAppSettingFloat("cloud_powder_multiplier", 0.4f)
-					);
-					atmosphere_effect->SetCloudPowderLocalScale(
-						cfg.GetAppSettingFloat("cloud_powder_local_scale", 2.0f)
-					);
+					atmosphere_effect->SetCloudPowderMultiplier(cfg.GetAppSettingFloat("cloud_powder_multiplier", 0.4f));
+					atmosphere_effect->SetCloudPowderLocalScale(cfg.GetAppSettingFloat("cloud_powder_local_scale", 2.0f));
 					atmosphere_effect->SetCloudShadowOpticalDepthMultiplier(
 						cfg.GetAppSettingFloat("cloud_shadow_optical_depth_multiplier", 0.1f)
 					);
@@ -2283,37 +2330,37 @@ namespace Boidsish {
 					atmosphere_effect->SetCloudMoonLightScale(cfg.GetAppSettingFloat("cloud_moon_light_scale", 2.0f));
 					atmosphere_effect->SetCloudBeerPowderMix(cfg.GetAppSettingFloat("cloud_beer_powder_mix", 0.5f));
 
-					lighting_ubo_data_.cloudAltitude = atmosphere_effect->GetCloudAltitude();
-					lighting_ubo_data_.cloudThickness = atmosphere_effect->GetCloudThickness();
-					lighting_ubo_data_.cloudDensity = atmosphere_effect->GetCloudDensity();
-					lighting_ubo_data_.cloudCoverage = atmosphere_effect->GetCloudCoverage();
-					lighting_ubo_data_.cloudWarp = atmosphere_effect->GetCloudWarp();
-					lighting_ubo_data_.cloudPhaseG1 = atmosphere_effect->GetCloudPhaseG1();
-					lighting_ubo_data_.cloudPhaseG2 = atmosphere_effect->GetCloudPhaseG2();
-					lighting_ubo_data_.cloudPhaseAlpha = atmosphere_effect->GetCloudPhaseAlpha();
-					lighting_ubo_data_.cloudPhaseIsotropic = atmosphere_effect->GetCloudPhaseIsotropic();
-					lighting_ubo_data_.cloudPowderScale = atmosphere_effect->GetCloudPowderScale();
-					lighting_ubo_data_.cloudPowderMultiplier = atmosphere_effect->GetCloudPowderMultiplier();
-					lighting_ubo_data_.cloudPowderLocalScale = atmosphere_effect->GetCloudPowderLocalScale();
-					lighting_ubo_data_.cloudShadowOpticalDepthMultiplier = atmosphere_effect
-																			   ->GetCloudShadowOpticalDepthMultiplier();
-					lighting_ubo_data_.cloudShadowStepMultiplier = atmosphere_effect->GetCloudShadowStepMultiplier();
-					lighting_ubo_data_.cloudSunLightScale = atmosphere_effect->GetCloudSunLightScale();
-					lighting_ubo_data_.cloudMoonLightScale = atmosphere_effect->GetCloudMoonLightScale();
-					lighting_ubo_data_.cloudBeerPowderMix = atmosphere_effect->GetCloudBeerPowderMix();
+					lighting_ubo_data.cloudAltitude = atmosphere_effect->GetCloudAltitude();
+					lighting_ubo_data.cloudThickness = atmosphere_effect->GetCloudThickness();
+					lighting_ubo_data.cloudDensity = atmosphere_effect->GetCloudDensity();
+					lighting_ubo_data.cloudCoverage = atmosphere_effect->GetCloudCoverage();
+					lighting_ubo_data.cloudWarp = atmosphere_effect->GetCloudWarp();
+					lighting_ubo_data.cloudPhaseG1 = atmosphere_effect->GetCloudPhaseG1();
+					lighting_ubo_data.cloudPhaseG2 = atmosphere_effect->GetCloudPhaseG2();
+					lighting_ubo_data.cloudPhaseAlpha = atmosphere_effect->GetCloudPhaseAlpha();
+					lighting_ubo_data.cloudPhaseIsotropic = atmosphere_effect->GetCloudPhaseIsotropic();
+					lighting_ubo_data.cloudPowderScale = atmosphere_effect->GetCloudPowderScale();
+					lighting_ubo_data.cloudPowderMultiplier = atmosphere_effect->GetCloudPowderMultiplier();
+					lighting_ubo_data.cloudPowderLocalScale = atmosphere_effect->GetCloudPowderLocalScale();
+					lighting_ubo_data.cloudShadowOpticalDepthMultiplier = atmosphere_effect
+																			  ->GetCloudShadowOpticalDepthMultiplier();
+					lighting_ubo_data.cloudShadowStepMultiplier = atmosphere_effect->GetCloudShadowStepMultiplier();
+					lighting_ubo_data.cloudSunLightScale = atmosphere_effect->GetCloudSunLightScale();
+					lighting_ubo_data.cloudMoonLightScale = atmosphere_effect->GetCloudMoonLightScale();
+					lighting_ubo_data.cloudBeerPowderMix = atmosphere_effect->GetCloudBeerPowderMix();
 
 				} else {
-					lighting_ubo_data_.cloudShadowIntensity = 0.0f;
+					lighting_ubo_data.cloudShadowIntensity = 0.0f;
 				}
-
-				glBindBuffer(GL_UNIFORM_BUFFER, lighting_ubo);
-				glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(LightingUbo), &lighting_ubo_data_);
-				glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
 				// GPU-side copy of SH coefficients from SSBO into the UBO (no CPU readback)
 				if (atmosphere_manager) {
 					static_assert(offsetof(LightingUbo, sh_coeffs) == 768, "SH offset mismatch");
-					atmosphere_manager->CopySHToUBO(lighting_ubo, 768);
+					atmosphere_manager->CopySHToUBO(
+						render_state_.lighting.id,
+						768,
+						render_state_.lighting.offset
+					);
 				}
 			}
 
@@ -2437,28 +2484,23 @@ namespace Boidsish {
 
 			clone_manager->Update(simulation_time, camera.pos());
 			fire_effect_manager->Update(
-				simulation_delta_time,
-				simulation_time,
-				frame_config_.ambient_particle_density,
+				render_state_,
 				terrain_render_manager ? terrain_render_manager->GetChunkInfo(terrain_generator->GetWorldScale())
 									   : std::vector<glm::vec4>{},
 				terrain_render_manager ? terrain_render_manager->GetHeightmapTexture() : 0,
 				noise_manager ? noise_manager->GetCurlTexture() : 0,
 				terrain_render_manager ? terrain_render_manager->GetBiomeTexture() : 0,
-				lighting_ubo,
-				frustum_ssbo->GetBufferId(),
-				frustum_ssbo->GetFrameOffset() + mdi_frustum_count * sizeof(FrustumDataGPU),
 				noise_manager ? noise_manager->GetExtraNoiseTexture() : 0
 			);
-			mesh_explosion_manager->Update(simulation_delta_time, simulation_time);
+			mesh_explosion_manager->Update(render_state_);
 			sound_effect_manager->Update(simulation_delta_time);
 			shockwave_manager->Update(simulation_delta_time);
 			if (akira_effect_manager && terrain_generator) {
 				akira_effect_manager->Update(simulation_delta_time, *terrain_generator);
 			}
-			sdf_volume_manager->UpdateUBO();
+			sdf_volume_manager->UpdateUBO(render_state_);
 			sdf_volume_manager->BindUBO(Constants::UboBinding::SdfVolumes());
-			shockwave_manager->UpdateShaderData();
+			shockwave_manager->UpdateShaderData(render_state_);
 			shockwave_manager->BindUBO(Constants::UboBinding::Shockwaves());
 
 			if (decor_manager && terrain_generator && terrain_render_manager) {
@@ -2570,6 +2612,7 @@ namespace Boidsish {
 		void RenderPostProcessing(const FrameData& frame) {
 			PROJECT_PROFILE_SCOPE("PostProcessing");
 			compositor_->ResolveToScreen(
+				render_state_,
 				frame,
 				render_scale,
 				frame.config.effects_enabled ? post_processing_manager_.get() : nullptr,

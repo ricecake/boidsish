@@ -1,5 +1,7 @@
 #version 430 core
 #extension GL_GOOGLE_include_directive : enable
+#extension GL_ARB_bindless_texture : enable
+
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec2 Velocity;
 
@@ -72,6 +74,7 @@ uniform int   use_texture;
 uniform float u_windRimHighlight;
 
 uniform sampler2D refractionTexture;
+uniform bool      uUseBindless = false;
 
 void main() {
 	bool  use_ssbo = uUseMDI && vUniformIndex >= 0;
@@ -141,45 +144,50 @@ void main() {
 	bool has_ao = (c_use_texture & 16) != 0;
 	bool has_emissive = (c_use_texture & 32) != 0;
 
-	if (has_diffuse) {
-		albedo *= texture(texture_diffuse1, TexCoords).rgb;
-	}
-
-	vec3 norm = normalize(Normal);
-	if (has_normal) {
-		// Normal mapping logic (simplified, assuming tangent space matches vertex layout)
-		// For now we just use the texture normal as a hint or replacement
-		// A full TBN implementation would be better if tangents are available.
-		vec3 mappedNormal = texture(texture_normal1, TexCoords).rgb * 2.0 - 1.0;
-		// Simple blending/reorientation if no tangents are provided in vertex format
-		// This is a placeholder for full normal mapping
-		norm = normalize(mix(norm, mappedNormal, 0.5));
-	}
-
 	float tex_metallic = c_metallic;
-	if (has_metallic) {
-		tex_metallic *= texture(texture_metallic1, TexCoords).r;
-	}
-
 	float tex_roughness = c_roughness;
-	if (has_roughness) {
-		tex_roughness *= texture(texture_roughness1, TexCoords).r;
-	}
-
 	float tex_ao = c_ao;
-	if (has_ao) {
-		tex_ao *= texture(texture_ao1, TexCoords).r;
+	vec3 emissive = vec3(0.0);
+	vec3 norm = normalize(Normal);
+
+	if (uUseBindless && use_ssbo) {
+		if (has_diffuse) {
+			uvec2 h = uniforms_data[vUniformIndex].albedo_handle;
+			if (h.x != 0 || h.y != 0) albedo *= texture(sampler2D(h), TexCoords).rgb;
+		}
+		if (has_normal) {
+			uvec2 h = uniforms_data[vUniformIndex].normal_handle;
+			if (h.x != 0 || h.y != 0) norm = normalize(mix(norm, texture(sampler2D(h), TexCoords).rgb * 2.0 - 1.0, 0.5));
+		}
+		if (has_metallic) {
+			uvec2 h = uniforms_data[vUniformIndex].metallic_handle;
+			if (h.x != 0 || h.y != 0) tex_metallic *= texture(sampler2D(h), TexCoords).r;
+		}
+		if (has_roughness) {
+			uvec2 h = uniforms_data[vUniformIndex].roughness_handle;
+			if (h.x != 0 || h.y != 0) tex_roughness *= texture(sampler2D(h), TexCoords).r;
+		}
+		if (has_ao) {
+			uvec2 h = uniforms_data[vUniformIndex].ao_handle;
+			if (h.x != 0 || h.y != 0) tex_ao *= texture(sampler2D(h), TexCoords).r;
+		}
+		if (has_emissive) {
+			uvec2 h = uniforms_data[vUniformIndex].emissive_handle;
+			if (h.x != 0 || h.y != 0) emissive = texture(sampler2D(h), TexCoords).rgb;
+		}
+	} else {
+		if (has_diffuse) albedo *= texture(texture_diffuse1, TexCoords).rgb;
+		if (has_normal) norm = normalize(mix(norm, texture(texture_normal1, TexCoords).rgb * 2.0 - 1.0, 0.5));
+		if (has_metallic) tex_metallic *= texture(texture_metallic1, TexCoords).r;
+		if (has_roughness) tex_roughness *= texture(texture_roughness1, TexCoords).r;
+		if (has_ao) tex_ao *= texture(texture_ao1, TexCoords).r;
+		if (has_emissive) emissive = texture(texture_emissive1, TexCoords).rgb;
 	}
 
-	vec3 emissive = vec3(0.0);
-	if (has_emissive) {
-		emissive = texture(texture_emissive1, TexCoords).rgb;
-	}
 	emissive += c_emissive_color * nightFactor;
 
 	float baseAlpha = c_objectAlpha;
 
-	// Choose between PBR and legacy lighting
 	vec4 lightResult;
 	if (c_usePBR) {
 		lightResult = apply_lighting_pbr(FragPos, norm, albedo * baseAlpha, tex_roughness, tex_metallic, tex_ao);
@@ -192,7 +200,6 @@ void main() {
 	vec3  result = lightResult.rgb;
 	float spec_lum = lightResult.a;
 
-	// Apply wind-driven rim highlight
 	float rim = pow(1.0 - max(dot(norm, normalize(viewPos - FragPos)), 0.0), 3.0);
 	result += rim * WindDeflection * u_windRimHighlight * vec3(1.0);
 
@@ -200,18 +207,12 @@ void main() {
 
 	if (c_is_refractive) {
 		vec3 V = normalize(FragPos - viewPos);
-
 		vec2 screenUV = gl_FragCoord.xy * texelSize;
-
-		// vec3 a = vec3(0.5, 0.5, 0.5);
-		// vec3 b = vec3(0.5, 0.5, 0.5);
-		// vec3 c = vec3(1.0, 1.0, 1.0);
-		// vec3 d = vec3(0.0, 0.33, 0.67); // Shifts for R, G, B
 
 		vec3 a = vec3(0.5, 0.5, 0.5);
 		vec3 b = vec3(0.5, 0.5, 0.5);
 		vec3 c = vec3(0.8, 0.8, 0.8);
-		vec3 d = vec3(0.0, 0.33, 0.67); // Shifts for R, G, B
+		vec3 d = vec3(0.0, 0.33, 0.67);
 
 		vec3  refractionColor = vec3(0);
 		vec3  refractionAcc = vec3(0);
@@ -223,25 +224,15 @@ void main() {
 				norm,
 				1.0 / max(c_refractive_index + jitter * ((float(i) / float(steps - 1)) * 0.15), 1.0)
 			);
-			// Generalized refraction: project refracted ray back to screen space
-			// We use a fixed distance fallback for simplicity, but could sample depth buffer for better accuracy
-			vec3 refractedPos = FragPos + R * 10.0; // Fallback distance
+			vec3 refractedPos = FragPos + R * 10.0;
 			vec4 refractedClip = viewProjection * vec4(refractedPos, 1.0);
 			vec2 refractedUV = (refractedClip.xy / refractedClip.w) * 0.5 + 0.5;
-
-			// Use the direct screen-space offset if IOR is close to 1.0 for better "vanishing"
 			refractedUV = mix(screenUV, refractedUV, smoothstep(1.0, 1.01, c_refractive_index));
-
-			float distToEdge = min(min(refractedUV.x, 1.0 - refractedUV.x), min(refractedUV.y, 1.0 - refractedUV.y));
 
 			vec3 rawColor = texture(refractionTexture, refractedUV).rgb;
 			vec3 testColor = (a + b * cos(6.28318 * (c * (float(i * jitter) / float(steps - 1)) + d)));
 			refractionColor += rawColor * testColor;
 			refractionAcc += testColor;
-			// vec3 nRawColor = normalize(rawColor);
-			// refractionColor.r += (rawColor.r) * dot(rawColor, (testColor));
-			// refractionColor.g += (rawColor.g) * dot(rawColor, (testColor));
-			// refractionColor.b += (rawColor.b) * dot(rawColor, (testColor));
 		}
 
 		refractionColor /= refractionAcc;
@@ -251,47 +242,31 @@ void main() {
 		float distToEdge = min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y));
 		float edgeFade = smoothstep(0.0, 0.05, distToEdge);
 
-		// Blend refraction with the lit surface color.
-		// For refractive objects, we treat the object alpha as a tint rather than traditional transparency.
-		// result = refractionColor;
 		result = mix(refractionColor, result * c_objectColor, c_objectAlpha * 0.25) * edgeFade +
 			mix(refractionColor * (1.0 - edgeFade),
 		        2 * (refractionColor / length(refractionColor)),
 		        pow(1.0 - abs(dot(viewDir, norm)), 10.0));
 	}
 
-	if (c_isLine && c_lineStyle == 1) { // LASER style
-		// Use Y axis for radial glow as defined in Line::InitLineMesh
+	if (c_isLine && c_lineStyle == 1) {
 		float distToCenter = abs(TexCoords.y - 0.5) * 2.0;
-
-		// Solid core
 		float core = smoothstep(0.15, 0.08, distToCenter);
-
-		// Outer glow
 		float glow = exp(-distToCenter * 3.0) * 0.8;
-
-		// Inner glow for extra brightness
 		float innerGlow = exp(-distToCenter * 10.0) * 0.5;
-
-		vec3 coreColor = vec3(1.0, 1.0, 1.0); // Core is white
-		vec3 glowColor = albedo;              // Glow is the object color
-
+		vec3 coreColor = vec3(1.0, 1.0, 1.0);
+		vec3 glowColor = albedo;
 		vec3 laserColor = mix(glowColor, coreColor, core);
 		laserColor += glowColor * glow;
 		laserColor += coreColor * innerGlow;
-
 		result = laserColor;
 	}
 
 	vec4 outColor;
-
-	// Check for laser style first to ensure transparency/glow is handled correctly
 	if (c_isLine && c_lineStyle == 1) {
 		float distToCenter = abs(TexCoords.y - 0.5) * 2.0;
 		float alpha = max(smoothstep(0.15, 0.08, distToCenter), exp(-distToCenter * 3.0) * 0.8);
 		outColor = vec4(result, alpha * fade * c_objectAlpha);
 	} else if (c_isColossal) {
-		// Atmosphere-aware haze using ambient light (responds to time-of-day)
 		vec3  skyColor = ambient_light;
 		float haze_start = 0.0;
 		float haze_end = 150.0 * worldScale;
@@ -301,16 +276,14 @@ void main() {
 	} else {
 		float final_alpha = clamp((baseAlpha + spec_lum) * fade, 0.0, 1.0);
 		if (c_is_refractive) {
-			// Refractive objects should be fully opaque in the blender since they've already
-			// sampled the background themselves.
 			final_alpha = fade;
 		}
 
 		if (c_isTextEffect) {
 			float alpha_factor = 1.0;
-			if (c_textFadeMode == 0) { // Fade In
+			if (c_textFadeMode == 0) {
 				alpha_factor = smoothstep(TexCoords.x, TexCoords.x + c_textFadeSoftness, c_textFadeProgress);
-			} else if (c_textFadeMode == 1) { // Fade Out
+			} else if (c_textFadeMode == 1) {
 				alpha_factor = 1.0 - smoothstep(TexCoords.x, TexCoords.x + c_textFadeSoftness, c_textFadeProgress);
 			}
 			final_alpha *= alpha_factor;
@@ -323,17 +296,10 @@ void main() {
 		}
 
 		outColor = vec4(result, final_alpha);
-		// Restore deliberate cyan style for distant objects
 		outColor = mix(vec4(0.0, 0.7, 0.7, final_alpha) * length(outColor), outColor, step(1.0, fade));
 	}
 
-	// if (nightFactor > 0) {
-	// outColor += nightFactor * (sin(length(FragPos.xz - viewPos.xz * 0.1) + time) * 0.5 + 0.5) * vec4(0, 7, 0, 1);
-	// }
-
 	FragColor = outColor;
-
-	// Calculate screen-space velocity
 	vec2 a = (CurPosition.xy / CurPosition.w) * 0.5 + 0.5;
 	vec2 b = (PrevPosition.xy / PrevPosition.w) * 0.5 + 0.5;
 	Velocity = a - b;

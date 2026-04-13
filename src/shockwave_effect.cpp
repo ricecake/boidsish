@@ -151,7 +151,7 @@ namespace Boidsish {
 		);
 	}
 
-	void ShockwaveManager::UpdateShaderData() {
+	void ShockwaveManager::UpdateShaderData(const GlobalRenderState& render_state) {
 		PROJECT_PROFILE_SCOPE("ShockwaveManager::UpdateShaderData");
 		if (!initialized_ || shockwaves_.empty()) {
 			return;
@@ -202,14 +202,12 @@ namespace Boidsish {
 	}
 
 	void ShockwaveManager::ApplyScreenSpaceEffect(
-		GLuint           source_texture,
-		GLuint           depth_texture,
-		const glm::mat4& view_matrix,
-		const glm::mat4& proj_matrix,
-		const glm::vec3& camera_pos,
-		GLuint           quad_vao,
-		int              target_width,
-		int              target_height
+		const GlobalRenderState& render_state,
+		GLuint                   source_texture,
+		GLuint                   depth_texture,
+		GLuint                   quad_vao,
+		int                      target_width,
+		int                      target_height
 	) {
 		EnsureInitialized();
 
@@ -218,7 +216,7 @@ namespace Boidsish {
 		}
 
 		// Update UBO data first
-		UpdateShaderData();
+		UpdateShaderData(render_state);
 
 		int v_width = (target_width > 0) ? target_width : screen_width_;
 		int v_height = (target_height > 0) ? target_height : screen_height_;
@@ -232,14 +230,14 @@ namespace Boidsish {
 		shader_->setInt("sceneTexture", 0);
 		shader_->setInt("depthTexture", 1);
 		shader_->setVec2("screenSize", glm::vec2(v_width, v_height));
-		shader_->setVec3("cameraPos", camera_pos);
-		shader_->setMat4("viewMatrix", view_matrix);
-		shader_->setMat4("projMatrix", proj_matrix);
+		shader_->setVec3("cameraPos", render_state.camera_pos);
+		shader_->setMat4("viewMatrix", render_state.view);
+		shader_->setMat4("projMatrix", render_state.projection);
 
 		// Calculate near/far planes from projection matrix for depth linearization
 		// For a perspective projection: proj[2][2] = -(far+near)/(far-near), proj[3][2] = -2*far*near/(far-near)
-		float A = proj_matrix[2][2];
-		float B = proj_matrix[3][2];
+		float A = render_state.projection[2][2];
+		float B = render_state.projection[3][2];
 		float near_plane = B / (A - 1.0f);
 		float far_plane = B / (A + 1.0f);
 		shader_->setFloat("nearPlane", near_plane);

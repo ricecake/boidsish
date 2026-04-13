@@ -6,6 +6,7 @@
 
 #include "IManager.h"
 #include "constants.h"
+#include "render_state.h"
 #include <GL/glew.h>
 #include <glm/glm.hpp>
 
@@ -33,7 +34,7 @@ namespace Boidsish {
 		~SdfVolumeManager();
 
 		void Initialize() override;
-		void UpdateUBO();
+		void UpdateUBO(const GlobalRenderState& render_state);
 		void BindUBO(GLuint binding_point) const;
 
 		int  AddSource(const SdfSource& source);

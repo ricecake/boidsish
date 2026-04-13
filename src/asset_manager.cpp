@@ -33,6 +33,13 @@ namespace Boidsish {
 	}
 
 	void AssetManager::Clear() {
+		if (m_bindless_supported) {
+			for (auto& [id, handle] : m_texture_handles) {
+				glMakeTextureHandleNonResidentARB(handle);
+			}
+		}
+		m_texture_handles.clear();
+
 		for (auto& [path, textureId] : m_textures) {
 			glDeleteTextures(1, &textureId);
 		}
@@ -989,6 +996,44 @@ namespace Boidsish {
 		}
 		logger::LOG("Model saved successfully to {}", path);
 		return true;
+	}
+
+	void AssetManager::CheckBindlessSupport() {
+		if (m_bindless_queried)
+			return;
+
+		// GLEW 2.1.0+ handles these function pointers
+		m_bindless_supported = GLEW_ARB_bindless_texture != 0;
+		m_bindless_queried = true;
+
+		if (m_bindless_supported) {
+			logger::LOG("Bindless textures supported and enabled");
+		} else {
+			logger::WARNING("Bindless textures NOT supported on this hardware/driver - using legacy path");
+		}
+	}
+
+	bool AssetManager::IsBindlessSupported() {
+		CheckBindlessSupport();
+		return m_bindless_supported;
+	}
+
+	uint64_t AssetManager::GetTextureHandle(GLuint texture_id) {
+		CheckBindlessSupport();
+		if (!m_bindless_supported || texture_id == 0)
+			return 0;
+
+		auto it = m_texture_handles.find(texture_id);
+		if (it != m_texture_handles.end()) {
+			return it->second;
+		}
+
+		uint64_t handle = glGetTextureHandleARB(texture_id);
+		if (handle != 0) {
+			glMakeTextureHandleResidentARB(handle);
+			m_texture_handles[texture_id] = handle;
+		}
+		return handle;
 	}
 
 	GLuint AssetManager::GetTexture(const std::string& path, const std::string& directory) {

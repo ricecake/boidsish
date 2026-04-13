@@ -29,7 +29,7 @@ namespace Boidsish {
 		logger::INFO("SdfVolumeManager initialized");
 	}
 
-	void SdfVolumeManager::UpdateUBO() {
+	void SdfVolumeManager::UpdateUBO(const GlobalRenderState& render_state) {
 		PROJECT_PROFILE_SCOPE("SdfVolumeManager::UpdateUBO");
 		if (!initialized_)
 			return;

@@ -148,7 +148,7 @@ namespace Boidsish {
 		const glm::vec4* GetSHCoefficients() const { return _shCoeffs; }
 
 		// Copy SH coefficients directly from GPU SSBO into a UBO, avoiding CPU readback
-		void CopySHToUBO(GLuint lightingUbo, size_t shOffset);
+		void CopySHToUBO(GLuint lightingUbo, size_t shOffset, size_t uboTotalOffset = 0);
 
 	private:
 		void CreateTextures();

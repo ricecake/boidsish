@@ -4,6 +4,7 @@ layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
 #include "common_uniforms.glsl"
 #include "temporal_data.glsl"
+#include "frustum.glsl"
 
 // Input: per-draw uniforms (same SSBO the vertex shader reads, contains AABBs)
 layout(std430, binding = 2) readonly buffer UniformsSSBO {
@@ -21,6 +22,8 @@ uniform int       u_drawCount;
 uniform ivec2     u_hizSize; // Mip 0 dimensions
 uniform int       u_hizMipCount;
 uniform float     u_screenExpansion; // Pixel expansion for temporal safety
+uniform bool      u_enableFrustumCulling = true;
+uniform bool      u_enableHiZCulling = true;
 
 // Project world-space AABB to screen-space rect in previous frame's clip space.
 // Returns false if the AABB is entirely behind the camera.
@@ -108,6 +111,20 @@ void main() {
 		return;
 	}
 
+	// 1. Frustum Culling
+	if (u_enableFrustumCulling) {
+		if (!isAABBInFrustum(aabbMin, aabbMax)) {
+			visibility[idx] = 0u;
+			return;
+		}
+	}
+
+	// 2. Hi-Z Occlusion Culling
+	if (!u_enableHiZCulling) {
+		visibility[idx] = 1u;
+		return;
+	}
+
 	// Skip transparent objects - they're not in the depth buffer
 	if (uniforms_data[idx].color.a < 0.99) {
 		visibility[idx] = 1u;
@@ -119,7 +136,8 @@ void main() {
 
 	// Project AABB into previous frame's clip space (matches the Hi-Z pyramid)
 	if (!projectAABB(aabbMin, aabbMax, prevViewProjection, screenRect, nearestDepth)) {
-		// Fully behind camera - frustum culling handles this
+		// Fully behind camera or straddling - projectAABB returns false for fully behind.
+		// If it's behind, we should have already culled it in step 1, but we'll be safe.
 		visibility[idx] = 1u;
 		return;
 	}

@@ -3,6 +3,7 @@
 #include <memory>
 
 #include "frame_data.h"
+#include "render_state.h"
 #include <GL/glew.h>
 
 class Shader;
@@ -39,6 +40,7 @@ namespace Boidsish {
 
 		/// Blit/resolve the final image to the screen backbuffer.
 		void ResolveToScreen(
+			const GlobalRenderState&               render_state,
 			const FrameData&                       frame,
 			float                                  render_scale,
 			PostProcessing::PostProcessingManager* post_fx,

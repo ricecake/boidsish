@@ -6,6 +6,7 @@
 #include "IManager.h"
 #include "constants.h"
 #include "shader.h"
+#include "render_state.h"
 #include "shape.h"
 #include <glm/glm.hpp>
 
@@ -38,7 +39,7 @@ namespace Boidsish {
 
 		void
 		ExplodeShape(std::shared_ptr<Shape> shape, float intensity = 1.0f, const glm::vec3& velocity = glm::vec3(0.0f));
-		void Update(float delta_time, float time);
+		void Update(const GlobalRenderState& render_state);
 		void Render(const glm::mat4& view, const glm::mat4& projection, const glm::vec3& camera_pos);
 
 	private:

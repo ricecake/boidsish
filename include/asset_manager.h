@@ -39,6 +39,17 @@ namespace Boidsish {
 		GLuint GetTexture(const std::string& path, const std::string& directory = "");
 
 		/**
+		 * @brief Get the bindless handle for a texture if supported.
+		 * @return 64-bit handle or 0 if unsupported/not loaded.
+		 */
+		uint64_t GetTextureHandle(GLuint texture_id);
+
+		/**
+		 * @brief Check if bindless textures are supported on current hardware.
+		 */
+		bool IsBindlessSupported();
+
+		/**
 		 * @brief Load or retrieve a cached audio data source.
 		 * @param path File path to the audio file
 		 * @param engine Pointer to the miniaudio engine (required for the resource manager)
@@ -62,7 +73,12 @@ namespace Boidsish {
 		AssetManager() = default;
 		~AssetManager();
 
+		bool m_bindless_supported = false;
+		bool m_bindless_queried = false;
+		void CheckBindlessSupport();
+
 		std::map<std::string, std::shared_ptr<ModelData>>                       m_models;
+		std::map<GLuint, uint64_t>                                              m_texture_handles;
 		std::map<std::string, GLuint>                                           m_textures;
 		std::map<std::string, std::shared_ptr<ma_resource_manager_data_source>> m_audio_sources;
 	};

@@ -1,3 +1,6 @@
+#ifndef COMMON_UNIFORMS_GLSL
+#define COMMON_UNIFORMS_GLSL
+
 struct CommonUniforms {
 	mat4  model;
 	vec4  color;
@@ -5,9 +8,6 @@ struct CommonUniforms {
 	float roughness;
 	float metallic;
 	float ao;
-	// use_texture is a bitmask:
-	// Bit 0 (1): Diffuse, Bit 1 (2): Normal, Bit 2 (4): Metallic,
-	// Bit 3 (8): Roughness, Bit 4 (16): AO, Bit 5 (32): Emissive
 	int   use_texture;
 	int   is_line;
 	int   line_style;
@@ -33,16 +33,27 @@ struct CommonUniforms {
 	int   dissolve_enabled;
 	int   bone_matrices_offset;
 	int   use_skinning;
-	float anim_padding[2];
+	int   is_refractive;
 	float aabb_min_x;
 	float aabb_min_y;
 	float aabb_min_z;
 	float aabb_max_x;
 	float aabb_max_y;
 	float aabb_max_z;
-	int   is_refractive;
 	float refractive_index;
 	float emissive_r;
 	float emissive_g;
 	float emissive_b;
+
+	// Bindless handles (uvec2 for shader compatibility)
+	uvec2 albedo_handle;
+	uvec2 normal_handle;
+	uvec2 metallic_handle;
+	uvec2 roughness_handle;
+	uvec2 ao_handle;
+	uvec2 emissive_handle;
+
+	uint  reserved[54];
 };
+
+#endif
