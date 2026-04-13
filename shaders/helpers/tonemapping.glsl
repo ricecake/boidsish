@@ -8,6 +8,10 @@ layout(std430, binding = 11) buffer AutoExposure {
 	float minExposure;
 	float maxExposure;
 	int   useAutoExposure;
+
+	uint  totalLogLuma;
+	uint  totalPixelCount;
+	uint  workgroupCounter;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
