@@ -66,19 +66,24 @@ float hash(uint x) {
 
 void main() {
     float range = 96.0 * uWorldScale;
-    float gridStep = (range * 2.0) / (gl_NumWorkGroups.x * gl_WorkGroupSize.x);
+    float gridStep = 0.4 * uWorldScale;
 
-    vec2 gridOrigin = uCameraPos.xz - vec2(range);
-    vec2 localPos = vec2(gl_GlobalInvocationID.xy) * gridStep;
-    vec2 worldPosXZ = gridOrigin + localPos;
+    // Global stable grid logic
+    ivec2 cameraCell = ivec2(floor(uCameraPos.xz / gridStep));
+    ivec2 cellID = cameraCell + (ivec2(gl_GlobalInvocationID.xy) - 512);
+    vec2 cellCenter = vec2(cellID) * gridStep;
 
-    float dist = distance(worldPosXZ, uCameraPos.xz);
+    float dist = distance(cellCenter, uCameraPos.xz);
     if (dist > range) return;
 
-    uint seed = uint(abs(worldPosXZ.x) * 1973.0) ^ uint(abs(worldPosXZ.y) * 9277.0);
-    vec2 jitter = vec2(hash(seed), hash(seed + 1234u)) * gridStep * 0.9;
-    worldPosXZ += jitter;
+    // Use absolute cell ID for a perfectly stable seed
+    uint seed = uint(abs(cellID.x) * 1973) ^ uint(abs(cellID.y) * 9277);
+    if (seed == 0) seed = 1;
 
+    vec2 jitter = (vec2(hash(seed), hash(seed + 1234u)) * 2.0 - 1.0) * gridStep * 0.45;
+    vec2 worldPosXZ = cellCenter + jitter;
+
+    // Recalculate distance for precise culling/lod
     dist = distance(worldPosXZ, uCameraPos.xz);
     if (dist > range) return;
 
@@ -114,8 +119,9 @@ void main() {
 
     if (biomeProps[pickedBiome].enabled == 0) return;
 
-    float densityFactor = 1.0 - smoothstep(range * 0.4, range, dist);
-    if (hash(seed + 5678) > biomeProps[pickedBiome].density * densityFactor) return;
+    // Stable density falloff - avoid popping by scaling instead of hard cull where possible
+    float densityFactor = 1.0 - smoothstep(range * 0.8, range, dist);
+    if (hash(seed + 5678) > biomeProps[pickedBiome].density) return;
 
     uint idx = atomicAdd(indirectCommand.instanceCount, 1);
     if (idx >= uint(uMaxInstances)) return;
@@ -126,7 +132,7 @@ void main() {
 
     instances[idx].pos_rot = vec4(worldPosXZ.x, height, worldPosXZ.y, rot);
     instances[idx].scale_seed_biome = vec4(
-        (biomeProps[pickedBiome].height + hVar) * uWorldScale,
+        (biomeProps[pickedBiome].height + hVar) * uWorldScale * densityFactor,
         (biomeProps[pickedBiome].width + wVar) * uWorldScale,
         float(seed),
         float(pickedBiome)
