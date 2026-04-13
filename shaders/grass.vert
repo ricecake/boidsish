@@ -2,7 +2,7 @@
 
 struct GrassInstance {
     vec4 pos_rot;   // xyz = world pos, w = rotation
-    vec4 scale_seed; // x = height, y = width, z = seed, w = unused
+    vec4 scale_seed_biome; // x = height, y = width, z = seed, w = biome index
 };
 
 layout(std430, binding = 35) buffer GrassInstances {
