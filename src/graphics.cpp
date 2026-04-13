@@ -24,6 +24,7 @@
 #include "clone_manager.h"
 #include "curved_text.h"
 #include "decor_manager.h"
+#include "grass_manager.h"
 #include "dot.h"
 #include "entity.h"
 #include "fire_effect_manager.h"
@@ -401,6 +402,7 @@ namespace Boidsish {
 		std::unique_ptr<WeatherManager>                   weather_manager;
 		std::unique_ptr<SceneManager>                     scene_manager;
 		std::shared_ptr<DecorManager>                     decor_manager;
+		std::unique_ptr<GrassManager>                     grass_manager;
 		std::map<int, std::shared_ptr<Trail>>             trails;
 		std::map<int, float>                              trail_last_update;
 		LightManager                                      light_manager;
@@ -759,6 +761,7 @@ namespace Boidsish {
 			shadow_manager = std::make_unique<ShadowManager>();
 			scene_manager = std::make_unique<SceneManager>("scenes");
 			decor_manager = std::make_unique<DecorManager>();
+			grass_manager = std::make_unique<GrassManager>();
 			atmosphere_manager = std::make_unique<AtmosphereManager>();
 			atmosphere_manager->Initialize();
 			weather_manager = std::make_unique<WeatherManager>();
@@ -1198,6 +1201,9 @@ namespace Boidsish {
 
 			if (decor_manager) {
 				decor_manager->SetEnabled(frame_config_.render_decor);
+			}
+			if (grass_manager) {
+				grass_manager->SetEnabled(frame_config_.render_decor); // Tie grass to decor toggle for now
 			}
 		}
 
@@ -2485,6 +2491,17 @@ namespace Boidsish {
 					terrain_render_manager
 				);
 			}
+
+			if (grass_manager && terrain_generator && terrain_render_manager) {
+				grass_manager->SetCameraPos(camera.pos());
+				grass_manager->Update(
+					simulation_delta_time,
+					simulation_time,
+					camera,
+					*terrain_generator,
+					terrain_render_manager
+				);
+			}
 		}
 
 		void RenderShadowPasses(const FrameData& frame) {
@@ -2506,6 +2523,10 @@ namespace Boidsish {
 					std::nullopt,
 					true
 				);
+
+				if (grass_manager && frame.config.render_decor) {
+					grass_manager->Render(glm::mat4(1.0f), light_space_matrix, terrain_render_manager, lighting_ubo, true);
+				}
 			};
 
 			shadow_pass_->Execute(frame, render_shapes);
@@ -2550,6 +2571,10 @@ namespace Boidsish {
 		void RenderOpaqueScene(const FrameData& frame) {
 			if (opaque_pass_ && compositor_) {
 				opaque_pass_->Execute(frame, *compositor_, render_scale, MakeRenderCallbacks(frame));
+
+				if (grass_manager && frame.config.render_decor) {
+					grass_manager->Render(frame.view, frame.projection, terrain_render_manager, lighting_ubo);
+				}
 
 				// Generate Hi-Z pyramid from current depth buffer after opaque pass
 				// so it's available for screen-space effects like SSGI or culling in the same frame
@@ -3385,6 +3410,10 @@ namespace Boidsish {
 				far_plane
 			);
 
+			if (impl->grass_manager) {
+				impl->grass_manager->Initialize();
+			}
+
 			if (impl->decor_manager) {
 				impl->decor_manager->PopulateDefaultDecor();
 				impl->decor_manager->PrepareResources(impl->megabuffer.get());
@@ -4142,6 +4171,10 @@ namespace Boidsish {
 
 	void Visualizer::SetDecorManager(std::shared_ptr<DecorManager> decor_manager) {
 		impl->decor_manager = decor_manager;
+	}
+
+	GrassManager* Visualizer::GetGrassManager() {
+		return impl->grass_manager.get();
 	}
 
 	WeatherManager* Visualizer::GetWeatherManager() {
