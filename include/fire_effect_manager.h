@@ -7,6 +7,7 @@
 #include "IManager.h"
 #include "constants.h"
 #include "fire_effect.h"
+#include "render_state.h"
 #include "shader.h"
 
 namespace Boidsish {
@@ -51,16 +52,11 @@ namespace Boidsish {
 		bool IsAvailable() const;
 
 		void Update(
-			float                         delta_time,
-			float                         time,
-			float                         ambient_density = 0.15f,
+			const GlobalRenderState&      render_state,
 			const std::vector<glm::vec4>& chunk_info = {},
 			GLuint                        heightmap_texture = 0,
 			GLuint                        curl_noise_texture = 0,
 			GLuint                        biome_texture = 0,
-			GLuint                        lighting_ubo = 0,
-			GLuint                        frustum_ubo = 0,
-			GLintptr                      frustum_offset = 0,
 			GLuint                        extra_noise_texture = 0
 		);
 		void Render(

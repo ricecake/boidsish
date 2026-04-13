@@ -119,6 +119,7 @@ namespace Boidsish {
 	}
 
 	void SceneCompositor::ResolveToScreen(
+		const GlobalRenderState&               render_state,
 		const FrameData&                       frame,
 		float                                  render_scale,
 		PostProcessing::PostProcessingManager* post_fx,
@@ -138,11 +139,9 @@ namespace Boidsish {
 
 			if (has_shockwaves && shockwave) {
 				shockwave->ApplyScreenSpaceEffect(
+					render_state,
 					final_texture,
 					depth_tex_,
-					frame.view,
-					frame.projection,
-					frame.camera_pos,
 					blit_vao_,
 					frame.window_width,
 					frame.window_height
@@ -166,11 +165,9 @@ namespace Boidsish {
 
 				if (has_shockwaves && shockwave) {
 					shockwave->ApplyScreenSpaceEffect(
+						render_state,
 						color_tex_,
 						depth_tex_,
-						frame.view,
-						frame.projection,
-						frame.camera_pos,
 						blit_vao_,
 						frame.window_width,
 						frame.window_height

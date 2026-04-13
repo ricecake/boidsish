@@ -231,12 +231,18 @@ namespace Boidsish {
 		_ambientEstimate = sunColor * sunIntensity * ambientFactor + nightGlow;
 	}
 
-	void AtmosphereManager::CopySHToUBO(GLuint lightingUbo, size_t shOffset) {
+	void AtmosphereManager::CopySHToUBO(GLuint lightingUbo, size_t shOffset, size_t uboTotalOffset) {
 		if (_shCoeffsBuffer == 0)
 			return;
 		glBindBuffer(GL_COPY_READ_BUFFER, _shCoeffsBuffer);
 		glBindBuffer(GL_COPY_WRITE_BUFFER, lightingUbo);
-		glCopyBufferSubData(GL_COPY_READ_BUFFER, GL_COPY_WRITE_BUFFER, 0, shOffset, 9 * sizeof(glm::vec4));
+		glCopyBufferSubData(
+			GL_COPY_READ_BUFFER,
+			GL_COPY_WRITE_BUFFER,
+			0,
+			uboTotalOffset + shOffset,
+			9 * sizeof(glm::vec4)
+		);
 		glBindBuffer(GL_COPY_READ_BUFFER, 0);
 		glBindBuffer(GL_COPY_WRITE_BUFFER, 0);
 	}

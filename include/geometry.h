@@ -114,9 +114,6 @@ namespace Boidsish {
 		float ao = 1.0f;        // 4 bytes -> 16 bytes
 
 		// Feature Flags
-		// use_texture is a bitmask:
-		// Bit 0 (1): Diffuse, Bit 1 (2): Normal, Bit 2 (4): Metallic,
-		// Bit 3 (8): Roughness, Bit 4 (16): AO, Bit 5 (32): Emissive
 		int use_texture = 0;    // 4 bytes
 		int is_line = 0;        // 4 bytes
 		int line_style = 0;     // 4 bytes
@@ -152,24 +149,35 @@ namespace Boidsish {
 		// Skeletal Animation
 		int   bone_matrices_offset = -1; // 4 bytes
 		int   use_skinning = 0;          // 4 bytes
-		float anim_padding[2];           // 8 bytes -> 16 bytes
+		int   is_refractive = 0;         // 4 bytes -> 16 bytes
 
-		// Occlusion culling AABB (world space) - individual floats for std430 alignment safety
-		float aabb_min_x = 0.0f;       // 4 bytes
-		float aabb_min_y = 0.0f;       // 4 bytes
-		float aabb_min_z = 0.0f;       // 4 bytes
-		float aabb_max_x = 0.0f;       // 4 bytes -> 16
+		// Occlusion culling AABB (world space)
+		float aabb_min_x = 0.0f; // 4 bytes
+		float aabb_min_y = 0.0f; // 4 bytes
+		float aabb_min_z = 0.0f; // 4 bytes
+		float aabb_max_x = 0.0f; // 4 bytes -> 16
+
 		float aabb_max_y = 0.0f;       // 4 bytes
 		float aabb_max_z = 0.0f;       // 4 bytes
-		int   is_refractive = 0;       // 4 bytes
-		float refractive_index = 1.0f; // 4 bytes -> 16
-		// Padding to 256 bytes for SSBO alignment safety
-		float emissive_r = 0.0f;
-		float emissive_g = 0.0f;
-		float emissive_b = 0.0f;
+		float refractive_index = 1.0f; // 4 bytes
+		float emissive_r = 0.0f;       // 4 bytes -> 16
+
+		float emissive_g = 0.0f; // 4 bytes
+		float emissive_b = 0.0f; // 4 bytes
+
+		// Bindless handles (uvec2 for shader compatibility)
+		glm::uvec2 albedo_handle = {0, 0};    // 8 bytes
+		glm::uvec2 normal_handle = {0, 0};    // 8 bytes -> 24 bytes added to previous base
+
+		// Padding to 512 bytes for SSBO alignment/future-proofing
+		glm::uvec2 metallic_handle = {0, 0};  // 8 bytes
+		glm::uvec2 roughness_handle = {0, 0}; // 8 bytes
+		glm::uvec2 ao_handle = {0, 0};        // 8 bytes
+		glm::uvec2 emissive_handle = {0, 0};  // 8 bytes
+		uint32_t   reserved[54];
 	};
 
-	static_assert(sizeof(CommonUniforms) == 256, "CommonUniforms must be exactly 256 bytes for SSBO alignment");
+	static_assert(sizeof(CommonUniforms) == 512, "CommonUniforms must be exactly 512 bytes for SSBO alignment");
 
 	/**
 	 * @brief Contains all the data necessary for a single draw call.

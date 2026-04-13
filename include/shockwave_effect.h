@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "constants.h"
+#include "render_state.h"
 #include <GL/glew.h>
 #include <glm/glm.hpp>
 
@@ -124,14 +125,12 @@ namespace Boidsish {
 		 * @param quad_vao VAO for full-screen quad rendering
 		 */
 		void ApplyScreenSpaceEffect(
-			GLuint           source_texture,
-			GLuint           depth_texture,
-			const glm::mat4& view_matrix,
-			const glm::mat4& proj_matrix,
-			const glm::vec3& camera_pos,
-			GLuint           quad_vao,
-			int              target_width = -1,
-			int              target_height = -1
+			const GlobalRenderState& render_state,
+			GLuint                   source_texture,
+			GLuint                   depth_texture,
+			GLuint                   quad_vao,
+			int                      target_width = -1,
+			int                      target_height = -1
 		);
 
 		/**
@@ -140,7 +139,7 @@ namespace Boidsish {
 		 * Call this before rendering terrain or entities that should be
 		 * displaced by shockwaves.
 		 */
-		void UpdateShaderData();
+		void UpdateShaderData(const GlobalRenderState& render_state);
 
 		/**
 		 * @brief Bind the shockwave UBO to a binding point.
