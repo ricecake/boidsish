@@ -6,7 +6,7 @@ layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
 struct GrassInstance {
     vec4 pos_rot;   // xyz = world pos, w = rotation
-    vec4 scale_seed; // x = height, y = width, z = seed, w = unused
+    vec4 scale_seed_biome; // x = height, y = width, z = seed, w = biome index
 };
 
 layout(std430, binding = 35) buffer GrassInstances {
@@ -34,18 +34,18 @@ struct GrassProperties {
     float widthVariance;
     float density;
     float colorVariability;
-    uint  biomeMask;
     float windInfluence;
-    float padding[2];
+    uint  enabled;
+    float padding[3];
 };
 
 layout(std140, binding = 9) uniform GrassProps {
-    GrassProperties props;
+    GrassProperties biomeProps[8];
 };
 
 layout(std140, binding = 8) uniform TerrainData {
-    vec4  u_terrainParams; // x=chunkSize, y=worldScale
     ivec4 u_originSize;    // x, z, size, is_bound
+    vec4  u_terrainParams; // x=chunkSize, y=worldScale
 };
 
 uniform isampler2D u_chunkGrid;
@@ -82,9 +82,6 @@ void main() {
     dist = distance(worldPosXZ, uCameraPos.xz);
     if (dist > range) return;
 
-    float densityFactor = 1.0 - smoothstep(range * 0.4, range, dist);
-    if (hash(seed + 5678) > props.density * densityFactor) return;
-
     float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
     ivec2 chunkCoord = ivec2(floor(worldPosXZ / scaledChunkSize));
     ivec2 localGridCoord = chunkCoord - u_originSize.xy;
@@ -112,20 +109,26 @@ void main() {
     int highIdx = min(lowIdx + 1, 7);
     float t = biomeData.g;
 
-    float allowedWeight = 0.0;
-    if ((props.biomeMask & (1u << uint(lowIdx))) != 0u) allowedWeight += (1.0 - t);
-    if ((props.biomeMask & (1u << uint(highIdx))) != 0u) allowedWeight += t;
+    // Pick biome based on weighted probability
+    int pickedBiome = (hash(seed + 5566) < t) ? highIdx : lowIdx;
 
-    if (allowedWeight < 0.1) return;
-    if (hash(seed + 9012) > allowedWeight) return;
+    if (biomeProps[pickedBiome].enabled == 0) return;
+
+    float densityFactor = 1.0 - smoothstep(range * 0.4, range, dist);
+    if (hash(seed + 5678) > biomeProps[pickedBiome].density * densityFactor) return;
 
     uint idx = atomicAdd(indirectCommand.instanceCount, 1);
     if (idx >= uint(uMaxInstances)) return;
 
-    float hVar = (hash(seed + 1357) * 2.0 - 1.0) * props.heightVariance;
-    float wVar = (hash(seed + 2468) * 2.0 - 1.0) * props.widthVariance;
+    float hVar = (hash(seed + 1357) * 2.0 - 1.0) * biomeProps[pickedBiome].heightVariance;
+    float wVar = (hash(seed + 2468) * 2.0 - 1.0) * biomeProps[pickedBiome].widthVariance;
     float rot = hash(seed + 3579) * 6.28318;
 
     instances[idx].pos_rot = vec4(worldPosXZ.x, height, worldPosXZ.y, rot);
-    instances[idx].scale_seed = vec4((props.height + hVar) * uWorldScale, (props.width + wVar) * uWorldScale, float(seed), 0.0);
+    instances[idx].scale_seed_biome = vec4(
+        (biomeProps[pickedBiome].height + hVar) * uWorldScale,
+        (biomeProps[pickedBiome].width + wVar) * uWorldScale,
+        float(seed),
+        float(pickedBiome)
+    );
 }

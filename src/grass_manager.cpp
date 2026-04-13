@@ -19,6 +19,7 @@ namespace Boidsish {
         if (grass_props_ubo_) glDeleteBuffers(1, &grass_props_ubo_);
         if (grass_instances_ssbo_) glDeleteBuffers(1, &grass_instances_ssbo_);
         if (grass_indirect_buffer_) glDeleteBuffers(1, &grass_indirect_buffer_);
+        if (dummy_vao_) glDeleteVertexArrays(1, &dummy_vao_);
     }
 
     void GrassManager::Initialize() {
@@ -62,6 +63,8 @@ namespace Boidsish {
         DrawArraysIndirectCommand cmd = {1, 0, 0, 0};
         glBufferData(GL_DRAW_INDIRECT_BUFFER, sizeof(DrawArraysIndirectCommand), &cmd, GL_DYNAMIC_DRAW);
         glBindBuffer(GL_DRAW_INDIRECT_BUFFER, 0);
+
+        glGenVertexArrays(1, &dummy_vao_);
     }
 
     void GrassManager::SetGrassProperties(Biome biome, const GrassProperties& props) {
@@ -123,6 +126,7 @@ namespace Boidsish {
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::GrassInstances(), grass_instances_ssbo_);
         glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Lighting(), lightingUbo);
 
+        glBindVertexArray(dummy_vao_);
         glBindBuffer(GL_DRAW_INDIRECT_BUFFER, grass_indirect_buffer_);
 
         glPatchParameteri(GL_PATCH_VERTICES, 1);
@@ -130,6 +134,7 @@ namespace Boidsish {
         glDisable(GL_CULL_FACE);
         glDrawArraysIndirect(GL_PATCHES, 0);
         glEnable(GL_CULL_FACE);
+        glBindVertexArray(0);
 
         glBindBuffer(GL_DRAW_INDIRECT_BUFFER, 0);
     }

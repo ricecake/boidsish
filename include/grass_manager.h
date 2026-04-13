@@ -65,6 +65,7 @@ namespace Boidsish {
 
         static constexpr uint32_t kMaxGrassInstances = 1024 * 1024; // 1M blades
         glm::vec3 last_camera_pos_{0.0f};
+        uint32_t dummy_vao_ = 0;
 
         void _InitializeResources();
         void _UpdatePlacement(const class Camera& camera, const class ITerrainGenerator& terrainGen, std::shared_ptr<class TerrainRenderManager> renderManager);
