@@ -10,6 +10,7 @@
 #include "weather_constants.h"
 
 class ComputeShader;
+class ShaderBase;
 
 namespace Boidsish {
 
@@ -37,7 +38,21 @@ namespace Boidsish {
 
 		GLuint GetAerialPerspectiveLUT() const { return _aerialPerspectiveLUT; }
 
-		void BindTextures(GLuint firstUnit = 10);
+		GLuint GetCloudShadowMap() const { return _cloudShadowMap; }
+
+		static constexpr GLuint kTransmittanceUnit = 20;
+		static constexpr GLuint kMultiScatteringUnit = 21;
+		static constexpr GLuint kSkyViewUnit = 22;
+		static constexpr GLuint kAerialPerspectiveUnit = 23;
+		static constexpr GLuint kCloudShadowUnit = 24;
+
+		void BindTextures();
+		void BindToShader(::ShaderBase& shader);
+
+		static constexpr int   kCloudShadowResolution = 512;
+		static constexpr float kCloudShadowWorldSize = 4000.0f;
+
+		float GetCloudShadowWorldSize() const { return kCloudShadowWorldSize; }
 
 		// Parameters
 		void SetRayleighScale(float s) {
@@ -159,6 +174,7 @@ namespace Boidsish {
 		GLuint _multiScatteringLUT = 0;
 		GLuint _skyViewLUT = 0;
 		GLuint _aerialPerspectiveLUT = 0;
+		GLuint _cloudShadowMap = 0;
 		GLuint _shCoeffsBuffer = 0;
 
 		std::unique_ptr<ComputeShader> _transmittanceShader;
@@ -166,6 +182,7 @@ namespace Boidsish {
 		std::unique_ptr<ComputeShader> _skyViewShader;
 		std::unique_ptr<ComputeShader> _aerialPerspectiveShader;
 		std::unique_ptr<ComputeShader> _skyToSHShader;
+		std::unique_ptr<ComputeShader> _cloudShadowShader;
 
 		glm::vec4 _shCoeffs[9];
 
