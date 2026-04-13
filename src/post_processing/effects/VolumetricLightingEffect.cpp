@@ -36,6 +36,7 @@ namespace Boidsish {
 				"shaders/postprocess.vert",
 				"shaders/effects/volumetric_lighting_composite.frag"
 			);
+			passthrough_shader_ = std::make_unique<Shader>("shaders/postprocess.vert", "shaders/postprocess.frag");
 
 			auto setup_shader = [](ShaderBase& s) {
 				s.use();
@@ -107,13 +108,12 @@ namespace Boidsish {
 			int  numSignificant = std::min((int)significantLights.size(), 8);
 
 			if (numSignificant <= 0) {
-				composite_shader_->use();
+				// Avoid "blackout" by skipping the effect if no lights contribute
+				// Just blit source to current framebuffer (which is already bound by PostProcessingManager)
+				passthrough_shader_->use();
+				passthrough_shader_->setInt("sceneTexture", 0);
 				glActiveTexture(GL_TEXTURE0);
 				glBindTexture(GL_TEXTURE_2D, sourceTexture);
-				composite_shader_->setInt("sceneTexture", 0);
-				glActiveTexture(GL_TEXTURE1);
-				glBindTexture(GL_TEXTURE_2D, 0);
-				composite_shader_->setInt("volumetricTexture", 1);
 				glDrawArrays(GL_TRIANGLES, 0, 6);
 				return;
 			}
@@ -124,6 +124,12 @@ namespace Boidsish {
 			ComputeShader* active_shader = (technique_ == VolumetricTechnique::Grid) ? grid_shader_.get() : epipolar_shader_.get();
 
 			active_shader->use();
+			// Explicitly bind Shadows UBO again just in case
+			GLuint shadows_idx = glGetUniformBlockIndex(active_shader->ID, "Shadows");
+			if (shadows_idx != GL_INVALID_INDEX) {
+				glUniformBlockBinding(active_shader->ID, shadows_idx, Constants::UboBinding::Shadows());
+			}
+
 			active_shader->setMat4("uInvView", glm::inverse(viewMatrix));
 			active_shader->setMat4("uInvProj", glm::inverse(projectionMatrix));
 			active_shader->setMat4("uViewProj", projectionMatrix * viewMatrix);
@@ -147,6 +153,14 @@ namespace Boidsish {
 			glActiveTexture(GL_TEXTURE5);
 			glBindTexture(GL_TEXTURE_3D, noise_textures_.noise);
 			active_shader->setInt("u_noiseTexture", 5);
+
+			glActiveTexture(GL_TEXTURE6);
+			glBindTexture(GL_TEXTURE_3D, noise_textures_.curl);
+			active_shader->setInt("u_curlTexture", 6);
+
+			glActiveTexture(GL_TEXTURE8);
+			glBindTexture(GL_TEXTURE_3D, noise_textures_.extra_noise);
+			active_shader->setInt("u_extraNoiseTexture", 8);
 
 			glActiveTexture(GL_TEXTURE10);
 			glBindTexture(GL_TEXTURE_2D_ARRAY, shadow_map_array_);

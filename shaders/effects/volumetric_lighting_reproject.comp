@@ -42,8 +42,12 @@ void main() {
     float angle = atan(dir.y, dir.x);
     if (angle < 0.0) angle += 2.0 * PI;
 
+    vec2 corners[4] = vec2[](vec2(0,0), vec2(1,0), vec2(0,1), vec2(1,1));
+    float maxRadius = 0.0;
+    for(int i=0; i<4; ++i) maxRadius = max(maxRadius, length(corners[i] - epipoleScreen));
+
     float lineCoord = (angle / (2.0 * PI)) * float(NUM_LINES);
-    float sampleCoord = (dist / 10.0) * float(SAMPLES_PER_LINE - 1);
+    float sampleCoord = (dist / maxRadius) * float(SAMPLES_PER_LINE - 1);
 
     vec4 result = texture(uEpipolarTex, vec2((sampleCoord + 0.5) / float(SAMPLES_PER_LINE), (lineCoord + 0.5) / float(NUM_LINES)));
 

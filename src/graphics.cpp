@@ -2097,6 +2097,9 @@ namespace Boidsish {
 				if (noise_manager) {
 					atmosphere_effect->SetNoiseTextures(noise_manager->GetTextures());
 				}
+				if (shadow_manager) {
+					atmosphere_effect->SetShadowMapTexture(shadow_manager->GetShadowMapArray());
+				}
 			}
 		}
 

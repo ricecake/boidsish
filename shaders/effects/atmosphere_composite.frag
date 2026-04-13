@@ -135,7 +135,11 @@ void main() {
 
 	// Ambient scattering term for night/dark visibility
 	// Scale ambient light contribution by density and distance
-	vec3 ambientScattering = ambient_light * (1.0 - transmittance) * hazeDensity * 0.2;
+	float AP_ambient_shadow = 1.0;
+	if (lights[0].type == 1) { // DIRECTIONAL
+		AP_ambient_shadow = terrainShadowCoverage(worldPos, vec3(0,1,0), normalize(-lights[0].direction));
+	}
+	vec3 ambientScattering = ambient_light * (1.0 - transmittance) * hazeDensity * 0.2 * mix(0.3, 1.0, AP_ambient_shadow);
 	inScattering += ambientScattering;
 
 	// 3. Cloud Atmospheric Integration
@@ -163,18 +167,25 @@ void main() {
 	// fog, which would completely wash them out at that reconstructed distance)
 	bool isSky = depth >= 0.99999;
 
-	vec3 result;
-	if (!isSky) {
-		// Terrain/objects: apply aerial perspective and clouds
-		vec3 terrainAtmos = sceneColor * transmittance + inScattering;
-		vec3 cloudsAtmos = cloudColor * atmosTransmittance + atmosInScattering * (1.0 - cloudTransmittance);
-		result = mix(cloudsAtmos, terrainAtmos, cloudTransmittance);
-	} else {
-		// Sky and colossal objects: preserve scene output (sun, moon, stars, colossal)
-		// and blend clouds on top
-		vec3 cloudsAtmos = cloudColor * atmosTransmittance + atmosInScattering * (1.0 - cloudTransmittance);
-		result = sceneColor * cloudTransmittance + cloudsAtmos;
+	// For sky/colossal objects, we still want some physical fog but capped
+	// so it doesn't completely black out the sky.
+	float finalTransmittance = transmittance;
+	vec3  finalInScattering = inScattering;
+
+	if (isSky) {
+		// Capped fog for sky to allow stars/sun/moon to peak through
+		float skyFogDistKM = min(dist / 1000.0, 20.0);
+		finalTransmittance = sampleAerialPerspectiveTransmittance(rayDir, skyFogDistKM * hazeDensity);
+		finalInScattering = sampleAerialPerspective(rayDir, skyFogDistKM * hazeDensity);
+
+		// Add ambient term for sky fog visibility
+		vec3 skyAmbient = ambient_light * (1.0 - finalTransmittance) * hazeDensity * 0.1;
+		finalInScattering += skyAmbient;
 	}
+
+	vec3 terrainAtmos = sceneColor * finalTransmittance + finalInScattering;
+	vec3 cloudsAtmos = cloudColor * atmosTransmittance + atmosInScattering * (1.0 - cloudTransmittance);
+	vec3 result = mix(cloudsAtmos, terrainAtmos, cloudTransmittance);
 
 	FragColor = vec4(result, 1.0);
 }

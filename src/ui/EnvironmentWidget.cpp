@@ -92,7 +92,13 @@ namespace Boidsish {
 					ImGui::Checkbox("Paused", &cycle.paused);
 
 					ImGui::Separator();
+					ImGui::SliderFloat("Sun Volumetric Intensity", &m_visualizer.GetLightManager().GetLights()[0].volumetric_intensity, 0.0f, 10.0f);
+
+					ImGui::Separator();
 					ImGui::Text("Moon");
+					if (m_visualizer.GetLightManager().GetLights().size() > 1) {
+						ImGui::SliderFloat("Moon Volumetric Intensity", &m_visualizer.GetLightManager().GetLights()[1].volumetric_intensity, 0.0f, 10.0f);
+					}
 					ImGui::SliderFloat("Lunar Albedo", &cycle.lunar_albedo, 0.0f, 0.5f, "%.3f");
 					ImGui::ColorEdit3("Moon Tint", &cycle.moon_tint[0]);
 					ImGui::SliderFloat("Lunar Month (days)", &cycle.lunar_month, 0.1f, 30.0f, "%.2f");

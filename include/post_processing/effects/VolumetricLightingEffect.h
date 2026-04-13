@@ -75,6 +75,7 @@ namespace Boidsish {
 			std::unique_ptr<ComputeShader> reproject_shader_;
 			std::unique_ptr<ComputeShader> blur_shader_;
 			std::unique_ptr<Shader>        composite_shader_;
+			std::unique_ptr<Shader>        passthrough_shader_;
 
 			int   width_ = 0;
 			int   height_ = 0;

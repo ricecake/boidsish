@@ -296,13 +296,7 @@ void main() {
 		float alpha = max(smoothstep(0.15, 0.08, distToCenter), exp(-distToCenter * 3.0) * 0.8);
 		outColor = vec4(result, alpha * fade * c_objectAlpha);
 	} else if (c_isColossal) {
-		// Atmosphere-aware haze using ambient light (responds to time-of-day)
-		vec3  skyColor = ambient_light;
-		float haze_start = 0.0;
-		float haze_end = 150.0 * worldScale;
-		float haze_factor = 1.0 - smoothstep(haze_start, haze_end, FragPos.y);
-		vec3  final_haze_color = mix(result, skyColor, haze_factor * 0.5);
-		outColor = vec4(final_haze_color, 1.0);
+		outColor = vec4(result, 1.0);
 	} else {
 		float final_alpha = clamp((baseAlpha + spec_lum) * fade, 0.0, 1.0);
 		if (c_is_refractive) {

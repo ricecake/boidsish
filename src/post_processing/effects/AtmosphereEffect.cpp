@@ -44,7 +44,7 @@ namespace Boidsish {
 				}
 
 				// Explicitly set standard sampler bindings
-				s.setInt("shadowMaps", 4);
+				s.setInt("shadowMaps", 10);
 			};
 
 			setup_shader(*shader_);
@@ -232,9 +232,14 @@ namespace Boidsish {
 			glActiveTexture(GL_TEXTURE23);
 			glBindTexture(GL_TEXTURE_3D, aerial_perspective_lut_);
 
+			glActiveTexture(GL_TEXTURE10);
+			glBindTexture(GL_TEXTURE_2D_ARRAY, shadow_map_array_);
+
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 
 			// Cleanup
+			glActiveTexture(GL_TEXTURE10);
+			glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
 			glActiveTexture(GL_TEXTURE23);
 			glBindTexture(GL_TEXTURE_3D, 0);
 			glActiveTexture(GL_TEXTURE20);

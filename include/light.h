@@ -38,7 +38,8 @@ namespace Boidsish {
 		glm::vec3 direction;    // offset 32, 12 bytes
 		float     inner_cutoff; // offset 44, 4 bytes
 		float     outer_cutoff; // offset 48, 4 bytes
-		float     _padding[3];  // offset 52, 12 bytes of padding
+		float     volumetric_intensity; // offset 52, 4 bytes
+		float     _padding[2];  // offset 56, 8 bytes of padding
 	}; // Total: 64 bytes
 
 	/**
@@ -118,6 +119,8 @@ namespace Boidsish {
 		float inner_cutoff;
 		float outer_cutoff;
 
+		float volumetric_intensity = 1.0f; // Multiplier for volumetric contribution
+
 		// CPU-side shadow configuration (not uploaded to lighting UBO directly)
 		bool casts_shadow = false;
 		int  shadow_map_index = -1;
@@ -141,6 +144,7 @@ namespace Boidsish {
 			gpu.direction = direction;
 			gpu.inner_cutoff = inner_cutoff;
 			gpu.outer_cutoff = outer_cutoff;
+			gpu.volumetric_intensity = volumetric_intensity;
 			return gpu;
 		}
 

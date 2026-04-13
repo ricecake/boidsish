@@ -236,6 +236,21 @@ namespace Boidsish {
 								if (ImGui::Combo("Technique##Vol", &technique, techniques, 2)) {
 									vol_effect->SetTechnique(static_cast<PostProcessing::VolumetricTechnique>(technique));
 								}
+
+								ImGui::Separator();
+								ImGui::Text("Light Contributions");
+								auto& lights = m_visualizer.GetLightManager().GetLights();
+								for (size_t i = 0; i < lights.size(); ++i) {
+									if (!lights[i].casts_shadow)
+										continue;
+									std::string label = "Light " + std::to_string(i) + "##VolContrib";
+									ImGui::SliderFloat(
+										label.c_str(),
+										&lights[i].volumetric_intensity,
+										0.0f,
+										20.0f
+									);
+								}
 							}
 						}
 					}

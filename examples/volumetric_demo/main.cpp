@@ -5,7 +5,6 @@
 #include "weather_manager.h"
 #include <glm/glm.hpp>
 #include <iostream>
-
 using namespace Boidsish;
 
 int main(int argc, char** argv) {
