@@ -14,6 +14,12 @@ class ComputeShader;
 namespace Boidsish {
 	namespace PostProcessing {
 
+		enum class ScreenSpaceResolution {
+			Full = 1,
+			Half = 2,
+			Quarter = 4
+		};
+
 		class UnifiedScreenSpaceEffect : public IPostProcessingEffect {
 		public:
 			UnifiedScreenSpaceEffect();
@@ -71,6 +77,15 @@ namespace Boidsish {
 			void  SetSSSSteps(int steps) { sss_steps_ = steps; }
 			int   GetSSSSteps() const { return sss_steps_; }
 
+			// Resolution
+			void SetResolutionScale(ScreenSpaceResolution scale) {
+				if (resolution_scale_ != scale) {
+					resolution_scale_ = scale;
+					Resize(width_, height_);
+				}
+			}
+			ScreenSpaceResolution GetResolutionScale() const { return resolution_scale_; }
+
 			// Textures
 			void SetBlueNoiseTexture(GLuint blueNoise) { blue_noise_texture_ = blueNoise; }
 			void SetHiZTexture(GLuint hiz, int mips) { hiz_texture_ = hiz; hiz_mips_ = mips; }
@@ -91,6 +106,8 @@ namespace Boidsish {
 			GLuint hiz_texture_ = 0;
 			int    hiz_mips_ = 0;
 			int    width_ = 0, height_ = 0;
+			int    internal_width_ = 0, internal_height_ = 0;
+			ScreenSpaceResolution resolution_scale_ = ScreenSpaceResolution::Full;
 
 			// Toggles
 			bool ssgi_enabled_ = true;

@@ -117,6 +117,17 @@ namespace Boidsish {
 						if (effect->GetName() == "UnifiedScreenSpace" && is_enabled) {
 							auto unified = std::dynamic_pointer_cast<PostProcessing::UnifiedScreenSpaceEffect>(effect);
 							if (unified) {
+								const char* res_modes[] = { "Full", "1/2", "1/4" };
+								int current_res = 0;
+								if (unified->GetResolutionScale() == PostProcessing::ScreenSpaceResolution::Half) current_res = 1;
+								else if (unified->GetResolutionScale() == PostProcessing::ScreenSpaceResolution::Quarter) current_res = 2;
+
+								if (ImGui::Combo("Resolution Scale##Unified", &current_res, res_modes, IM_ARRAYSIZE(res_modes))) {
+									if (current_res == 0) unified->SetResolutionScale(PostProcessing::ScreenSpaceResolution::Full);
+									else if (current_res == 1) unified->SetResolutionScale(PostProcessing::ScreenSpaceResolution::Half);
+									else if (current_res == 2) unified->SetResolutionScale(PostProcessing::ScreenSpaceResolution::Quarter);
+								}
+
 								if (ImGui::TreeNode("SSGI")) {
 									bool ssgi_enabled = unified->IsSSGIEnabled();
 									if (ImGui::Checkbox("Enabled##SSGI", &ssgi_enabled)) unified->SetSSGIEnabled(ssgi_enabled);

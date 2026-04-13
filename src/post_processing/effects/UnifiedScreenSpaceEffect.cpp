@@ -21,6 +21,8 @@ namespace Boidsish {
 		void UnifiedScreenSpaceEffect::Initialize(int width, int height) {
 			width_ = width;
 			height_ = height;
+			internal_width_ = width / static_cast<int>(resolution_scale_);
+			internal_height_ = height / static_cast<int>(resolution_scale_);
 
 			unified_shader_ = std::make_unique<ComputeShader>("shaders/effects/unified_screen_space.comp");
 			composite_shader_ = std::make_unique<Shader>(
@@ -45,8 +47,8 @@ namespace Boidsish {
 				if (biomes_idx != GL_INVALID_INDEX) glUniformBlockBinding(unified_shader_->ID, biomes_idx, Constants::UboBinding::Biomes());
 			}
 
-			gi_ao_accumulator_.Initialize(width, height, GL_RGBA16F);
-			sss_accumulator_.Initialize(width, height, GL_R16F);
+			gi_ao_accumulator_.Initialize(internal_width_, internal_height_, GL_RGBA16F);
+			sss_accumulator_.Initialize(internal_width_, internal_height_, GL_R16F);
 
 			InitializeTextures();
 		}
@@ -57,7 +59,7 @@ namespace Boidsish {
 
 			glGenTextures(1, &gi_ao_texture_);
 			glBindTexture(GL_TEXTURE_2D, gi_ao_texture_);
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, width_, height_, 0, GL_RGBA, GL_FLOAT, NULL);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, internal_width_, internal_height_, 0, GL_RGBA, GL_FLOAT, NULL);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -65,7 +67,7 @@ namespace Boidsish {
 
 			glGenTextures(1, &sss_texture_);
 			glBindTexture(GL_TEXTURE_2D, sss_texture_);
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, width_, height_, 0, GL_RED, GL_UNSIGNED_BYTE, NULL);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, internal_width_, internal_height_, 0, GL_RED, GL_UNSIGNED_BYTE, NULL);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -148,7 +150,7 @@ namespace Boidsish {
 			glBindImageTexture(0, gi_ao_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 			glBindImageTexture(1, sss_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R8);
 
-			glDispatchCompute((width_ + 7) / 8, (height_ + 7) / 8, 1);
+			glDispatchCompute((internal_width_ + 7) / 8, (internal_height_ + 7) / 8, 1);
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
 
 			GLuint accGIAO = gi_ao_accumulator_.Accumulate(gi_ao_texture_, velocityTexture, depthTexture);
@@ -182,8 +184,10 @@ namespace Boidsish {
 		void UnifiedScreenSpaceEffect::Resize(int width, int height) {
 			width_ = width;
 			height_ = height;
-			gi_ao_accumulator_.Resize(width, height);
-			sss_accumulator_.Resize(width, height);
+			internal_width_ = width / static_cast<int>(resolution_scale_);
+			internal_height_ = height / static_cast<int>(resolution_scale_);
+			gi_ao_accumulator_.Resize(internal_width_, internal_height_);
+			sss_accumulator_.Resize(internal_width_, internal_height_);
 			InitializeTextures();
 		}
 
