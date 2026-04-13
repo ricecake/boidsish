@@ -47,6 +47,7 @@ layout(std140) uniform Lighting {
 	float cloudSunLightScale;
 	float cloudMoonLightScale;
 	float cloudBeerPowderMix;
+	mat4  cloudShadowMatrix;
 	vec4  sh_coeffs[9];
 };
 

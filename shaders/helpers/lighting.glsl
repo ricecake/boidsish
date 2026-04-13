@@ -18,6 +18,8 @@ uniform float u_atmosphereHeight; // usually 100.0 km
 uniform sampler2D u_transmittanceLUT;
 #endif
 
+uniform sampler2D u_cloudShadowMap;
+
 /**
  * Maps height and sun cosine angle to UV coordinates for the transmittance LUT.
  * Matches logic in atmosphere/common.glsl but standalone here for convenience.
@@ -57,34 +59,17 @@ float calculateCloudShadow(int light_index, vec3 frag_pos) {
 
 	vec3 cloudPos = frag_pos + L * t;
 
-	// No warp for shadows — warp is a camera viewport trick, shadows should
-	// be cast from actual cloud positions
-	float weatherWarpFactor = 1.0;
+	// Use the precomputed 2D shadow map
+	vec4 shadowUV = cloudShadowMatrix * vec4(cloudPos.xz, 0.0, 1.0);
 
-	vec2  weatherUV = cloudPos.xz / (4000.0 * worldScale);
-	float weatherMap = weatherWarpFactor * (fastWorley3d(vec3(weatherUV, time * 0.001)) * 0.5 + 0.5);
-
-	vec2  heightUV = cloudPos.xz / (2500.0 * worldScale);
-	float heightMap = weatherWarpFactor * (fastWorley3d(vec3(heightUV, time * 0.0004)) * 0.5 + 0.5);
-
-	CloudWeather weather;
-	weather.weatherMap = weatherMap;
-	weather.heightMap = heightMap;
-
-	CloudProperties props;
-	props.altitude = cloudAltitude;
-	props.thickness = cloudThickness;
-	props.densityBase = cloudDensity;
-	props.coverage = cloudCoverage;
-	props.worldScale = worldScale;
-
-	CloudLayer layer = computeCloudLayer(weather, props);
-
-	// Sample at the center of the dynamic layer — the fixed projection altitude
-	// often falls outside the layer due to altitude offsets from the height map
-	cloudPos.y = (layer.baseFloor + layer.baseCeiling) * 0.5;
-
-	float d = calculateCloudShadowDensity(cloudPos, weather, layer, props, time);
+	// Sample the shadow map
+	float d = 0.0;
+	if (shadowUV.x >= 0.0 && shadowUV.x <= 1.0 && shadowUV.y >= 0.0 && shadowUV.y <= 1.0) {
+		d = texture(u_cloudShadowMap, shadowUV.xy).r;
+	} else {
+		// Fallback for points outside the shadow map: evaluate noise directly
+		d = evaluateCloudShadowDensityAtWorldPos(cloudPos.xz, time);
+	}
 
 	return mix(1.0, exp(-d), cloudShadowIntensity);
 }
