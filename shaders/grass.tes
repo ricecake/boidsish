@@ -55,7 +55,7 @@ float hash(uint x) {
 void main() {
     int idx = tInstanceID[0];
     vec3 basePos = instances[idx].pos_rot.xyz;
-    float rotation = instances[idx].pos_rot.w;
+    float baseRotation = instances[idx].pos_rot.w;
     float height = instances[idx].scale_seed_biome.x;
     float width = instances[idx].scale_seed_biome.y;
     uint seed = uint(instances[idx].scale_seed_biome.z);
@@ -69,16 +69,22 @@ void main() {
     vec2 windNoise = curlNoise2D(windUV);
     float windStrength = length(windNoise) * biomeProps[biomeIdx].windInfluence;
 
-    // Bending - rigidity decreases bend
-    float lean = windStrength * v * v * (1.0 - clamp(biomeProps[biomeIdx].rigidity, 0.0, 0.9));
+    // Base Tilt - relatively vertical (clamped to ~15 degrees)
+    float tiltFactor = (hash(seed + 8888) * 2.0 - 1.0) * 0.25;
+    float tiltAngle = tiltFactor * v; // Base tilt increases with height but is subtle
+
+    // Bending - rigidity decreases bend, tip flexes more
+    float bendFactor = windStrength * (1.0 - clamp(biomeProps[biomeIdx].rigidity, 0.0, 0.95));
+    float bend = bendFactor * v * v; // Parabolic bend
+
     vec3 windDir = normalize(vec3(windNoise.x, 0.0, windNoise.y));
 
-    // Random gentle bend
-    float randomBend = (hash(seed + 4321) * 2.0 - 1.0) * 0.2 * v * v;
+    // Random gentle bend/sway
+    float randomBend = (hash(seed + 4321) * 2.0 - 1.0) * 0.1 * v * v;
 
-    // Rotation matrix
-    float s = sin(rotation);
-    float c = cos(rotation);
+    // Combined Rotation matrix (Base rotation around Y)
+    float s = sin(baseRotation);
+    float c = cos(baseRotation);
     mat2 rotMat = mat2(c, s, -s, c);
 
     vec2 localXZ = vec2(u * width * 0.5 * (1.0 - v * v), 0.0); // Parabolic taper
@@ -88,9 +94,15 @@ void main() {
     pos.xz += localXZ;
     pos.y += v * height;
 
-    // Apply bend/wind
-    pos += windDir * lean * height;
+    // Apply base tilt and wind-driven bend
+    // We displace the XZ position additively based on height
+    pos.xz += windDir.xz * bend * height;
     pos.x += randomBend * height;
+    pos.z += tiltAngle * height;
+
+    // Ensure the blade doesn't sink into the ground during heavy bending
+    float distFromBase = length(pos.xz - basePos.xz);
+    pos.y = basePos.y + sqrt(max(0.0, height * height * v * v - distFromBase * distFromBase));
 
     // Rounded Normals across the width
     vec3 faceNormal = normalize(vec3(-s, 0.0, c));

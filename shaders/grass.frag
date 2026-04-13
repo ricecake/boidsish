@@ -76,7 +76,9 @@ void main() {
     FragColor = mix(vec4(0.0, 0.7, 0.7, baseColor.a) * length(baseColor) * 0.5, baseColor, cyanFactor);
 
     // Output view-space normal
-    NormalOut = vec4(normalize(mat3(view) * fNormal), primaryShadow);
+    vec3 N = normalize(fNormal);
+    if (!gl_FrontFacing) N = -N;
+    NormalOut = vec4(normalize(mat3(view) * N), primaryShadow);
     AlbedoOut = vec4(albedo, 1.0);
     VelocityOut = vec4(0.0, 0.0, 0.8, 0.0); // No motion, roughness=0.8, metallic=0.0
 }

@@ -65,15 +65,37 @@ float hash(uint x) {
 }
 
 void main() {
-    float range = 96.0 * uWorldScale;
-    float gridStep = 0.4 * uWorldScale;
+    float range;
+    float gridStep;
+    ivec2 cellID;
 
-    // Global stable grid logic
-    ivec2 cameraCell = ivec2(floor(uCameraPos.xz / gridStep));
-    ivec2 cellID = cameraCell + (ivec2(gl_GlobalInvocationID.xy) - 512);
+    float tier0Range = 48.0 * uWorldScale;
+    float tier1Range = 160.0 * uWorldScale;
+
+    // Partition the 1024x1024 dispatch into two tiers
+    // gl_GlobalInvocationID.x [0, 511] = Tier 0 (High Density)
+    // gl_GlobalInvocationID.x [512, 1023] = Tier 1 (Low Density)
+
+    if (gl_GlobalInvocationID.x < 512) {
+        // Tier 0: High Density
+        gridStep = 0.4 * uWorldScale;
+        range = tier0Range;
+        ivec2 cameraCell = ivec2(floor(uCameraPos.xz / gridStep));
+        cellID = cameraCell + (ivec2(gl_GlobalInvocationID.xy) - ivec2(256, 512));
+    } else {
+        // Tier 1: Low Density (4x area per cell)
+        gridStep = 0.8 * uWorldScale;
+        range = tier1Range;
+        ivec2 cameraCell = ivec2(floor(uCameraPos.xz / gridStep));
+        // Offset gl_GlobalInvocationID.x to [0, 511] range
+        cellID = cameraCell + (ivec2(int(gl_GlobalInvocationID.x) - 512, int(gl_GlobalInvocationID.y)) - ivec2(256, 512));
+    }
+
     vec2 cellCenter = vec2(cellID) * gridStep;
-
     float dist = distance(cellCenter, uCameraPos.xz);
+
+    // Tier 1 discard if inside Tier 0's range to avoid clumping
+    if (gl_GlobalInvocationID.x >= 512 && dist < tier0Range) return;
     if (dist > range) return;
 
     // Use absolute cell ID for a perfectly stable seed
