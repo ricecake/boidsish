@@ -43,14 +43,12 @@
 #include "post_processing/effects/BloomEffect.h"
 #include "post_processing/effects/FilmGrainEffect.h"
 #include "post_processing/effects/GlitchEffect.h"
-#include "post_processing/effects/GtaoEffect.h"
-#include "post_processing/effects/ScreenSpaceShadowEffect.h"
 #include "post_processing/effects/NegativeEffect.h"
 #include "post_processing/effects/OpticalFlowEffect.h"
 #include "post_processing/effects/SdfVolumeEffect.h"
 #include "post_processing/effects/StrobeEffect.h"
-#include "post_processing/effects/SsgiEffect.h"
 #include "post_processing/effects/SuperSpeedEffect.h"
+#include "post_processing/effects/UnifiedScreenSpaceEffect.h"
 #include "post_processing/effects/TimeStutterEffect.h"
 #include "post_processing/effects/ToneMappingEffect.h"
 #include "post_processing/effects/WhispTrailEffect.h"
@@ -969,20 +967,12 @@ namespace Boidsish {
 				// --- Shockwave Manager ---
 				shockwave_manager->Initialize(render_width, render_height);
 
-				auto gtao_effect = std::make_shared<PostProcessing::GtaoEffect>();
-				gtao_effect->SetEnabled(true);
-				post_processing_manager_->AddEffect(gtao_effect);
-
-				auto sss_effect = std::make_shared<PostProcessing::ScreenSpaceShadowEffect>();
-				sss_effect->SetEnabled(true);
-				post_processing_manager_->AddEffect(sss_effect);
-
-				auto ssgi_effect = std::make_shared<PostProcessing::SsgiEffect>();
-				ssgi_effect->SetEnabled(true);
+				auto unified_ss_effect = std::make_shared<PostProcessing::UnifiedScreenSpaceEffect>();
+				unified_ss_effect->SetEnabled(true);
 				if (noise_manager) {
-					ssgi_effect->SetNoiseTextures(noise_manager->GetBlueNoiseTexture());
+					unified_ss_effect->SetBlueNoiseTexture(noise_manager->GetBlueNoiseTexture());
 				}
-				post_processing_manager_->AddEffect(ssgi_effect);
+				post_processing_manager_->AddEffect(unified_ss_effect);
 
 				auto negative_effect = std::make_shared<PostProcessing::NegativeEffect>();
 				negative_effect->SetEnabled(false);
@@ -2559,21 +2549,11 @@ namespace Boidsish {
 				if (hiz_manager && hiz_manager->IsInitialized() && frame_count_ > 0) {
 					hiz_manager->GeneratePyramid(compositor_->GetDepthTexture());
 
-					// Update SSGI with current Hi-Z and Shadow Mask
+					// Update Unified Screen-Space effect with current Hi-Z
 					if (post_processing_manager_) {
-						GLuint shadowMask = 0;
 						for (auto& effect : post_processing_manager_->GetPreToneMappingEffects()) {
-							if (auto sss = std::dynamic_pointer_cast<PostProcessing::ScreenSpaceShadowEffect>(effect)) {
-								shadowMask = sss->GetShadowMaskTexture();
-							}
-						}
-
-						for (auto& effect : post_processing_manager_->GetPreToneMappingEffects()) {
-							if (auto ssgi = std::dynamic_pointer_cast<PostProcessing::SsgiEffect>(effect)) {
-								ssgi->SetHiZTexture(hiz_manager->GetHiZTexture(), hiz_manager->GetMipCount());
-								if (shadowMask != 0) {
-									ssgi->SetShadowMaskTexture(shadowMask);
-								}
+							if (auto unified = std::dynamic_pointer_cast<PostProcessing::UnifiedScreenSpaceEffect>(effect)) {
+								unified->SetHiZTexture(hiz_manager->GetHiZTexture(), hiz_manager->GetMipCount());
 							}
 						}
 					}
