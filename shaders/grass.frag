@@ -56,9 +56,14 @@ void main() {
     uint seed = uint(abs(fWorldPos.x) * 10.0) ^ uint(abs(fWorldPos.z) * 10.0);
     float var = hash(seed) * biomeProps[fBiomeIdx].colorVariability;
     albedo += (var * 2.0 - 1.0) * 0.15;
+    albedo = max(vec3(0.0), albedo); // Clamp to prevent negative color artifacts
+
+    // Normal handling for 2D primitives
+    vec3 N = normalize(fNormal);
+    if (!gl_FrontFacing) N = -N;
 
     float primaryShadow;
-    vec4 litColor = apply_lighting_pbr(fWorldPos, normalize(fNormal), albedo, 0.8, 0.0, 1.0, primaryShadow);
+    vec4 litColor = apply_lighting_pbr(fWorldPos, N, albedo, 0.8, 0.0, 1.0, primaryShadow);
 
     // Distance fade and distant cyan blend (matching terrain style)
     float dist = length(fWorldPos.xz - viewPos.xz);
@@ -76,8 +81,6 @@ void main() {
     FragColor = mix(vec4(0.0, 0.7, 0.7, baseColor.a) * length(baseColor) * 0.5, baseColor, cyanFactor);
 
     // Output view-space normal
-    vec3 N = normalize(fNormal);
-    if (!gl_FrontFacing) N = -N;
     NormalOut = vec4(normalize(mat3(view) * N), primaryShadow);
     AlbedoOut = vec4(albedo, 1.0);
     VelocityOut = vec4(0.0, 0.0, 0.8, 0.0); // No motion, roughness=0.8, metallic=0.0

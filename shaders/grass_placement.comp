@@ -56,6 +56,18 @@ uniform vec3 uCameraPos;
 uniform float uWorldScale;
 uniform float uMaxInstances;
 
+// 8x8 Bayer Matrix for stable ordered dithering
+const int bayer8x8[64] = int[](
+     0, 32,  8, 40,  2, 34, 10, 42,
+    48, 16, 56, 24, 50, 18, 58, 26,
+    12, 44,  4, 36, 14, 46,  6, 38,
+    60, 28, 52, 20, 62, 30, 54, 22,
+     3, 35, 11, 43,  1, 33,  9, 41,
+    51, 19, 59, 27, 49, 17, 57, 25,
+    15, 47,  7, 39, 13, 45,  5, 37,
+    63, 31, 55, 23, 61, 29, 53, 21
+);
+
 // Simple hash for random values
 float hash(uint x) {
     x = ((x >> 16) ^ x) * 0x45d9f3b;
@@ -141,16 +153,15 @@ void main() {
 
     if (biomeProps[pickedBiome].enabled == 0) return;
 
-    // Stable density falloff - avoid popping by scaling only at the very edge
-    // Most of the range should have stable height
-    float heightFade = 1.0 - smoothstep(range * 0.95, range, dist);
+    // Density curve based on distance
+    float densityCurve = 1.0 - smoothstep(range * 0.2, range, dist);
+    float ditherValue = float(bayer8x8[(cellID.y % 8) * 8 + (cellID.x % 8)]) / 64.0;
 
-    // Stable density check
-    float densityThreshold = biomeProps[pickedBiome].density;
-    // Further away we can reduce density to save performance, using stable seed
-    densityThreshold *= (1.0 - smoothstep(range * 0.4, range, dist));
+    // Decisive density check: combine dither and threshold
+    if (densityCurve < ditherValue * (1.0 / max(biomeProps[pickedBiome].density, 0.001))) return;
 
-    if (hash(seed + 5678) > densityThreshold) return;
+    // Stable height fade only at the absolute edge
+    float heightFade = 1.0 - smoothstep(range * 0.98, range, dist);
 
     uint idx = atomicAdd(indirectCommand.instanceCount, 1);
     if (idx >= uint(uMaxInstances)) return;
