@@ -14,6 +14,11 @@ uniform sampler2D u_hizTexture;
 uniform sampler2D uShadowMask; // Terrain shadow mask for SSGI fallback/modulation
 
 #define USE_TERRAIN_DATA
+
+// Forward declarations in lighting.glsl need these if USE_TERRAIN_DATA is defined
+float terrainShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) { return 1.0; }
+float calculateTerrainOcclusion(vec3 worldPos, vec3 normal) { return 1.0; }
+
 #include "temporal_data.glsl"
 #include "../helpers/lighting.glsl"
 
