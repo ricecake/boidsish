@@ -119,9 +119,16 @@ void main() {
 
     if (biomeProps[pickedBiome].enabled == 0) return;
 
-    // Stable density falloff - avoid popping by scaling instead of hard cull where possible
-    float densityFactor = 1.0 - smoothstep(range * 0.8, range, dist);
-    if (hash(seed + 5678) > biomeProps[pickedBiome].density) return;
+    // Stable density falloff - avoid popping by scaling only at the very edge
+    // Most of the range should have stable height
+    float heightFade = 1.0 - smoothstep(range * 0.95, range, dist);
+
+    // Stable density check
+    float densityThreshold = biomeProps[pickedBiome].density;
+    // Further away we can reduce density to save performance, using stable seed
+    densityThreshold *= (1.0 - smoothstep(range * 0.4, range, dist));
+
+    if (hash(seed + 5678) > densityThreshold) return;
 
     uint idx = atomicAdd(indirectCommand.instanceCount, 1);
     if (idx >= uint(uMaxInstances)) return;
@@ -132,7 +139,7 @@ void main() {
 
     instances[idx].pos_rot = vec4(worldPosXZ.x, height, worldPosXZ.y, rot);
     instances[idx].scale_seed_biome = vec4(
-        (biomeProps[pickedBiome].height + hVar) * uWorldScale * densityFactor,
+        (biomeProps[pickedBiome].height + hVar) * uWorldScale * heightFade,
         (biomeProps[pickedBiome].width + wVar) * uWorldScale,
         float(seed),
         float(pickedBiome)

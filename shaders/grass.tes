@@ -81,7 +81,7 @@ void main() {
     float c = cos(rotation);
     mat2 rotMat = mat2(c, s, -s, c);
 
-    vec2 localXZ = vec2(u * width * (1.0 - v * v), 0.0); // Parabolic taper
+    vec2 localXZ = vec2(u * width * 0.5 * (1.0 - v * v), 0.0); // Parabolic taper
     localXZ = rotMat * localXZ;
 
     vec3 pos = basePos;
@@ -95,7 +95,7 @@ void main() {
     // Rounded Normals across the width
     vec3 faceNormal = normalize(vec3(-s, 0.0, c));
     vec3 sideVec = normalize(vec3(c, 0.0, s));
-    fNormal = normalize(faceNormal + sideVec * u * 1.5 + vec3(0.0, v * 0.5, 0.0));
+    fNormal = normalize(faceNormal + sideVec * u * 0.8 + vec3(0.0, v * 0.3, 0.0));
 
     fTexCoords = vec2(u * 0.5 + 0.5, v);
     fHeightFactor = v;
