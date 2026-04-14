@@ -7,6 +7,7 @@
 
 #include <glm/glm.hpp>
 #include "weather_constants.h"
+#include "weather_simulation_manager.h"
 
 namespace Boidsish {
 
@@ -142,7 +143,13 @@ namespace Boidsish {
 		WeatherManager();
 		~WeatherManager();
 
-		void Update(float deltaTime, float totalTime, const glm::vec3& cameraPos);
+		void Update(
+			float                       deltaTime,
+			float                       totalTime,
+			const glm::vec3&            cameraPos,
+			float                       dayNightTemperature = 15.0f,
+			const TerrainRenderManager* terrainRenderManager = nullptr
+		);
 
 		bool IsEnabled() const { return enabled_; }
 
@@ -203,6 +210,15 @@ namespace Boidsish {
 		 */
 		void SetPace(WeatherAttribute attr, float pace);
 
+		/**
+		 * @brief Register a new aerosol emitter.
+		 */
+		void AddAerosolSource(const AerosolSource& source);
+
+		void ClearAerosolSources() { aerosol_sources_.clear(); }
+
+		const WeatherSimulationManager* GetSimulation() const { return simulation_.get(); }
+
 	private:
 		struct AttributeState {
 			float                velocity = 0.0f;
@@ -230,6 +246,9 @@ namespace Boidsish {
 		CurrentWeather      cached_targets_;
 
 		std::array<AttributeState, static_cast<size_t>(WeatherAttribute::Count)> attribute_states_;
+
+		std::unique_ptr<WeatherSimulationManager> simulation_;
+		std::vector<AerosolSource>               aerosol_sources_;
 	};
 
 } // namespace Boidsish

@@ -115,6 +115,10 @@ namespace Boidsish {
 		// Effects
 		ShaderBase::RegisterConstant("MAX_SHOCKWAVES", Constants::Class::Shockwaves::MaxShockwaves());
 
+		// Weather Simulation
+		ShaderBase::RegisterConstant("WEATHER_GRID_A_BINDING", Constants::SsboBinding::WeatherGridA());
+		ShaderBase::RegisterConstant("WEATHER_GRID_B_BINDING", Constants::SsboBinding::WeatherGridB());
+
 		registered = true;
 	}
 
@@ -1138,6 +1142,10 @@ namespace Boidsish {
 			GLuint terrain_idx = glGetUniformBlockIndex(shader_to_setup.ID, "TerrainData");
 			if (terrain_idx != GL_INVALID_INDEX) {
 				glUniformBlockBinding(shader_to_setup.ID, terrain_idx, Constants::UboBinding::TerrainData());
+			}
+			GLuint weather_idx = glGetUniformBlockIndex(shader_to_setup.ID, "WeatherUniforms");
+			if (weather_idx != GL_INVALID_INDEX) {
+				glUniformBlockBinding(shader_to_setup.ID, weather_idx, Constants::UboBinding::WeatherUniforms());
 			}
 		}
 
@@ -3186,7 +3194,16 @@ namespace Boidsish {
 
 		// Update ambient weather
 		if (impl->weather_manager && impl->weather_manager->IsEnabled()) {
-			impl->weather_manager->Update(impl->simulation_delta_time, impl->simulation_time, impl->camera.pos());
+			float night_factor = impl->light_manager.GetDayNightCycle().night_factor;
+			float ambient_temp = glm::mix(25.0f, 10.0f, night_factor);
+
+			impl->weather_manager->Update(
+				impl->simulation_delta_time,
+				impl->simulation_time,
+				impl->camera.pos(),
+				ambient_temp,
+				impl->terrain_render_manager.get()
+			);
 
 			const auto& w = impl->weather_manager->GetCurrentWeather();
 
