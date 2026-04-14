@@ -65,7 +65,7 @@ void main() {
 
     float primaryShadow;
     vec4 litColor = apply_lighting_pbr(fWorldPos, N, albedo, 0.8, 0.0, 1.0, primaryShadow);
-    litColor.rgb = clamp(litColor.rgb, 0.0, 10.0); // Clamp HDR to prevent "bright white" blowouts
+    litColor.rgb = clamp(litColor.rgb, 0.0, 5.0); // Clamp HDR to prevent "bright white" blowouts
 
     // Distance fade and distant cyan blend (matching terrain style)
     float dist = length(fWorldPos.xz - viewPos.xz);
@@ -73,13 +73,14 @@ void main() {
     float fade_end = 570.0 * worldScale;
     float fade = 1.0 - smoothstep(fade_start, fade_end, dist);
 
-    if (fade < 0.2) discard;
+    if (fade < 0.1) discard;
 
     vec4 baseColor = vec4(litColor.rgb, fade);
-    // Standard engine distant cyan blend
-    // Avoid "blue glow" by staying natural until deep into the fade
+    // Standard engine distant cyan blend logic
+    // step(1.0, fade) means: if fade < 1.0 (distant), use cyan.
+    // We stay natural until deep into the fade range to avoid "blue glow"
     float cyanFactor = smoothstep(0.0, 0.1, fade);
-    FragColor = mix(vec4(0.0, 0.7, 0.7, baseColor.a) * min(length(baseColor.rgb), 1.0) * 0.1, baseColor, cyanFactor);
+    FragColor = mix(vec4(0.0, 0.5, 0.5, baseColor.a) * min(length(baseColor.rgb), 1.0) * 0.1, baseColor, cyanFactor);
 
     // Output view-space normal
     NormalOut = vec4(normalize(mat3(view) * N), primaryShadow);

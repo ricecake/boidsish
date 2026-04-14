@@ -2493,6 +2493,14 @@ namespace Boidsish {
 
 			if (grass_manager && terrain_generator && terrain_render_manager) {
 				grass_manager->SetCameraPos(camera.pos());
+				// Ensure Frustum and Terrain Grid are up to date for GPU placement
+				UpdateFrustumUbo(current_view_matrix, projection, camera.pos());
+				terrain_render_manager->UpdateGridTextures(
+					terrain_generator->GetWorldScale(),
+					lighting_ubo,
+					light_manager.GetDayNightCycle().time
+				);
+
 				grass_manager->Update(
 					simulation_delta_time,
 					simulation_time,

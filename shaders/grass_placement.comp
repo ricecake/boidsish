@@ -78,14 +78,32 @@ float hash(uint x) {
 }
 
 void main() {
-    float gridStep = 0.4 * uWorldScale;
-    float range = 160.0 * uWorldScale;
+    float range;
+    float gridStep;
+    ivec2 cellID;
 
-    // Unified high-density grid
-    ivec2 cameraCell = ivec2(floor(uCameraPos.xz / gridStep));
-    ivec2 cellID = cameraCell + (ivec2(gl_GlobalInvocationID.xy) - 512);
+    float tier0Range = 80.0 * uWorldScale;
+    float tier1Range = 400.0 * uWorldScale;
+
+    // Unified 1024x1024 dispatch:
+    // Tier 0 (High density, 0.4m) for nearest,
+    // Tier 1 (Low density, 1.2m) for further out.
+
+    if (gl_GlobalInvocationID.x < 512) {
+        // Tier 0: High Density
+        gridStep = 0.4 * uWorldScale;
+        range = tier0Range;
+        ivec2 cameraCell = ivec2(floor(uCameraPos.xz / gridStep));
+        cellID = cameraCell + (ivec2(gl_GlobalInvocationID.xy) - ivec2(256, 512));
+    } else {
+        // Tier 1: Low Density (3x larger grid step)
+        gridStep = 1.2 * uWorldScale;
+        range = tier1Range;
+        ivec2 cameraCell = ivec2(floor(uCameraPos.xz / gridStep));
+        cellID = cameraCell + (ivec2(int(gl_GlobalInvocationID.x) - 512, int(gl_GlobalInvocationID.y)) - ivec2(256, 512));
+    }
+
     vec2 cellCenter = vec2(cellID) * gridStep;
-
     float dist = distance(cellCenter, uCameraPos.xz);
     if (dist > range) return;
 
@@ -139,9 +157,19 @@ void main() {
 
     if (biomeProps[pickedBiome].enabled == 0) return;
 
-    // Stretched density curve based on distance
-    float densityCurve = 1.0 - smoothstep(range * 0.1, range, dist);
-    float ditherValue = float(bayer8x8[(cellID.y & 7) * 8 + (cellID.x & 7)]) / 64.0;
+    // Stretched density curve based on distance - slower uptick
+    float densityCurve = 1.0 - smoothstep(range * 0.05, range, dist);
+
+    // Rotated Bayer pattern for distant tier to avoid repeating artifacts
+    int bx = cellID.x & 7;
+    int by = cellID.y & 7;
+    if (gl_GlobalInvocationID.x >= 512) {
+        // Rotate pattern for Tier 1
+        int tmp = bx;
+        bx = by;
+        by = 7 - tmp;
+    }
+    float ditherValue = float(bayer8x8[by * 8 + bx]) / 64.0;
 
     // Scale dither by threshold to allow sparse grass even in the dither zones
     float threshold = biomeProps[pickedBiome].density;
