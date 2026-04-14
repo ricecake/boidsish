@@ -7,8 +7,11 @@
 
 #include <glm/glm.hpp>
 #include "weather_constants.h"
+#include "weather_lbm_simulator.h"
 
 namespace Boidsish {
+
+	class ITerrainGenerator;
 
 	enum class WeatherAttribute {
 		SunIntensity,
@@ -142,7 +145,7 @@ namespace Boidsish {
 		WeatherManager();
 		~WeatherManager();
 
-		void Update(float deltaTime, float totalTime, const glm::vec3& cameraPos);
+		void Update(float deltaTime, float totalTime, const glm::vec3& cameraPos, const ITerrainGenerator* terrain = nullptr);
 
 		bool IsEnabled() const { return enabled_; }
 
@@ -203,6 +206,10 @@ namespace Boidsish {
 		 */
 		void SetPace(WeatherAttribute attr, float pace);
 
+		const PhysicallyBasedWeatherOutput* GetPhysicallyBasedWeather() const {
+			return lbm_simulator_ ? &lbm_simulator_->GetOutput() : nullptr;
+		}
+
 	private:
 		struct AttributeState {
 			float                velocity = 0.0f;
@@ -230,6 +237,8 @@ namespace Boidsish {
 		CurrentWeather      cached_targets_;
 
 		std::array<AttributeState, static_cast<size_t>(WeatherAttribute::Count)> attribute_states_;
+
+		std::unique_ptr<WeatherLbmSimulator> lbm_simulator_;
 	};
 
 } // namespace Boidsish

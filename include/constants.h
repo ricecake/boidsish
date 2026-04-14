@@ -41,6 +41,10 @@ namespace Boidsish {
 				return 8;
 			}
 
+			consteval int WeatherUniforms() {
+				return 32;
+			}
+
 			consteval int DecorProps() {
 				return 30;
 			}
@@ -125,6 +129,14 @@ namespace Boidsish {
 
 			consteval int BehaviorDrawCommand() {
 				return 34;
+			}
+
+			consteval int WeatherGridA() {
+				return 37;
+			}
+
+			consteval int WeatherGridB() {
+				return 38;
 			}
 		} // namespace SsboBinding
 

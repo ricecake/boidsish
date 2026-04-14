@@ -3186,7 +3186,12 @@ namespace Boidsish {
 
 		// Update ambient weather
 		if (impl->weather_manager && impl->weather_manager->IsEnabled()) {
-			impl->weather_manager->Update(impl->simulation_delta_time, impl->simulation_time, impl->camera.pos());
+			impl->weather_manager->Update(
+				impl->simulation_delta_time,
+				impl->simulation_time,
+				impl->camera.pos(),
+				impl->terrain_generator.get()
+			);
 
 			const auto& w = impl->weather_manager->GetCurrentWeather();
 
