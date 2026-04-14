@@ -17,7 +17,7 @@ namespace Boidsish {
         for (int i = 0; i < count; ++i) {
             cells_[i].temperature = 0.5f;
             cells_[i].aerosol = 0.0f;
-            cells_[i].vz = 0.0f;
+            cells_[i].vy = 0.0f;
             for (int k = 0; k < 9; ++k) {
                 cells_[i].f[k] = weights[k];
             }
@@ -74,7 +74,9 @@ namespace Boidsish {
         float     rho;
         glm::vec2 u;
         ComputeMacros(x, y, rho, u);
-        return glm::vec3(u.x, u.y, GetCell(x, y).vz);
+        // Engine convention: +y is up.
+        // LBM horizontal plane is XZ, vertical scalar is Y.
+        return glm::vec3(u.x, GetCell(x, y).vy, u.y);
     }
 
     float WeatherLbmSimulator::GetPressure(int x, int y) const {
@@ -133,10 +135,10 @@ namespace Boidsish {
                 // Combined drag: global base drag + per-cell roughness
                 float total_drag = config_.drag + cell_config.roughness;
 
-                // Vertical buoyancy and drag
-                float force_z = config_.buoyancy * (temp - 0.5f) - total_drag * cells_[idx].vz;
-                cells_[idx].vz += force_z * dt;
-                cells_[idx].vz += config_.thermal_rise * temp * dt;
+                // Vertical buoyancy and drag (+y is up)
+                float force_y = config_.buoyancy * (temp - 0.5f) - total_drag * cells_[idx].vy;
+                cells_[idx].vy += force_y * dt;
+                cells_[idx].vy += config_.thermal_rise * temp * dt;
 
                 // Horizontal coupling: thermal gradient inducing horizontal flow
                 // And applying horizontal drag from roughness
@@ -194,7 +196,7 @@ namespace Boidsish {
                     LbmCell res;
                     res.temperature = a.temperature + t * (b.temperature - a.temperature);
                     res.aerosol = a.aerosol + t * (b.aerosol - a.aerosol);
-                    res.vz = a.vz + t * (b.vz - a.vz);
+                    res.vy = a.vy + t * (b.vy - a.vy);
                     return res;
                 };
 
@@ -213,7 +215,7 @@ namespace Boidsish {
                 next_cells_[idx].aerosol = final_cell.aerosol + cell_config.aerosol_release_rate * dt;
                 next_cells_[idx].aerosol *= (1.0f - config_.aerosol_decay * dt);
 
-                next_cells_[idx].vz = final_cell.vz;
+                next_cells_[idx].vy = final_cell.vy;
 
                 // Heat and Aerosol Diffusion (simple Laplacian)
                 float lapT = 0.0f;
@@ -258,8 +260,8 @@ namespace Boidsish {
                     float     noiseSpeed = std::max(0.0f, Simplex::noise(noisePosWind + glm::vec2(200.0f)) * 0.1f);
                     glm::vec2 u(std::cos(noiseAngle) * noiseSpeed, std::sin(noiseAngle) * noiseSpeed);
 
-                    float noiseVz = Simplex::noise(noisePosWind + glm::vec2(300.0f)) * 0.05f;
-                    cells_[idx].vz = noiseVz;
+                    float noiseVy = Simplex::noise(noisePosWind + glm::vec2(300.0f)) * 0.05f;
+                    cells_[idx].vy = noiseVy;
 
                     // Set equilibrium at boundaries
                     float rho = 1.0f;

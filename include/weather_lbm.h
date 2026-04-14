@@ -17,7 +17,7 @@ namespace Boidsish {
         float f[9];        // 36 bytes: D2Q9 distributions
         float temperature; // 4 bytes
         float aerosol;     // 4 bytes
-        float vz;          // 4 bytes: Vertical velocity (2.5D LBM)
+        float vy;          // 4 bytes: Vertical velocity (+y is up)
     };
 
     static_assert(sizeof(LbmCell) == 48, "LbmCell must be exactly 48 bytes");

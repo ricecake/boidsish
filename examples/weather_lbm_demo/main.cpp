@@ -55,11 +55,12 @@ int main() {
                 float a = simulator.GetAerosol(x, y);
                 glm::vec3 v = simulator.GetVelocity(x, y);
                 float p = simulator.GetPressure(x, y);
+                // v.y is UP in engine convention
                 std::cout << "  " << std::left << std::setw(15) << label
                           << " T: " << std::fixed << std::setprecision(3) << t
                           << " A: " << std::setprecision(3) << a
                           << " P: " << std::setprecision(3) << p
-                          << " V: (" << v.x << ", " << v.y << ", " << v.z << ")" << std::endl;
+                          << " V: (" << v.x << ", " << v.y << ", " << v.z << ") [y-up]" << std::endl;
             };
 
             printCell(16, 2, "Aerosol Source");
