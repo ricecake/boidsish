@@ -75,9 +75,10 @@ namespace Boidsish {
 		float cloudMoonLightScale;               // offset 760, 4 bytes
 		float cloudBeerPowderMix;                // offset 764, 4 bytes
 		alignas(16) glm::vec4 sh_coeffs[9];      // offset 768, 144 bytes
-	}; // Total: 912 bytes
+		float _padding[96];                      // Padding to ensure stable 1296 byte size
+	};
 
-	static_assert(sizeof(LightingUbo) == 912, "LightingUbo must be 912 bytes for UBO alignment");
+	static_assert(sizeof(LightingUbo) == 1296, "LightingUbo must be 1296 bytes");
 
 	/**
 	 * @brief Light source data structure for rendering.

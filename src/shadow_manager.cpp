@@ -83,7 +83,8 @@ namespace Boidsish {
 		// int numShadowLights
 		glGenBuffers(1, &shadow_ubo_);
 		glBindBuffer(GL_UNIFORM_BUFFER, shadow_ubo_);
-		size_t ubo_size = sizeof(glm::mat4) * kMaxShadowMaps + 16 + 16; // matrices + splits + count + padding
+		size_t ubo_size = sizeof(glm::mat4) * kMaxShadowMaps + 16 + 16;
+		if (ubo_size < 1024) ubo_size = 1024; // Ensure minimum 1024 bytes as expected by some shaders
 
 		// Initialize UBO with zeros to prevent garbage data
 		std::vector<char> zero_data(ubo_size, 0);
