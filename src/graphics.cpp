@@ -123,6 +123,12 @@ namespace Boidsish {
 		ShaderBase::RegisterConstant("OCCLUSION_VISIBILITY_BINDING", Boidsish::Constants::SsboBinding::OcclusionVisibility());
 		ShaderBase::RegisterConstant("GRASS_INSTANCES_BINDING", Boidsish::Constants::SsboBinding::GrassInstances());
 		ShaderBase::RegisterConstant("GRASS_INDIRECT_BINDING", Boidsish::Constants::SsboBinding::GrassIndirect());
+		ShaderBase::RegisterConstant("MDI_UNIFORMS_BINDING", Boidsish::Constants::SsboBinding::MdiUniforms());
+		ShaderBase::RegisterConstant("DECOR_INSTANCES_BINDING", Boidsish::Constants::SsboBinding::DecorInstances());
+		ShaderBase::RegisterConstant("DECOR_VISIBLE_INSTANCES_BINDING", Boidsish::Constants::SsboBinding::DecorVisibleInstances());
+		ShaderBase::RegisterConstant("DECOR_BLOCK_VALIDITY_BINDING", Boidsish::Constants::SsboBinding::DecorBlockValidity());
+		ShaderBase::RegisterConstant("DECOR_INDIRECT_BINDING", Boidsish::Constants::SsboBinding::DecorIndirect());
+		ShaderBase::RegisterConstant("AUTO_EXPOSURE_BINDING", Boidsish::Constants::SsboBinding::AutoExposure());
 
 		registered = true;
 	}
@@ -1555,7 +1561,7 @@ namespace Boidsish {
 				// Bind uniforms SSBO (current frame's data) for compute to read AABBs
 				glBindBufferRange(
 					GL_SHADER_STORAGE_BUFFER,
-					2,
+					Constants::SsboBinding::MdiUniforms(),
 					uniforms_ssbo->GetBufferId(),
 					frame_element_offset * sizeof(CommonUniforms),
 					mdi_uniform_count * sizeof(CommonUniforms)
@@ -1637,7 +1643,7 @@ namespace Boidsish {
 				// Bind SSBO for this batch's uniforms (replaces uBaseUniformIndex)
 				glBindBufferRange(
 					GL_SHADER_STORAGE_BUFFER,
-					2,
+					Constants::SsboBinding::MdiUniforms(),
 					uniforms_ssbo->GetBufferId(),
 					batch.base_uniform_index * sizeof(CommonUniforms),
 					batch.command_count * sizeof(CommonUniforms)
@@ -1752,7 +1758,7 @@ namespace Boidsish {
 			}
 
 			glBindBuffer(GL_DRAW_INDIRECT_BUFFER, 0);
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, 0);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::MdiUniforms(), 0);
 			glActiveTexture(GL_TEXTURE0);
 		}
 

@@ -38,7 +38,8 @@ namespace Boidsish {
 		glm::vec3 direction;    // offset 32, 12 bytes
 		float     inner_cutoff; // offset 44, 4 bytes
 		float     outer_cutoff; // offset 48, 4 bytes
-		float     _padding[3];  // offset 52, 12 bytes of padding
+		float     volumetric_intensity; // offset 52, 4 bytes
+		float     _padding[2];  // offset 56, 8 bytes of padding
 	}; // Total: 64 bytes
 
 	/**
@@ -75,7 +76,7 @@ namespace Boidsish {
 		float cloudMoonLightScale;               // offset 760, 4 bytes
 		float cloudBeerPowderMix;                // offset 764, 4 bytes
 		alignas(16) glm::mat4 cloudShadowMatrix; // offset 768, 64 bytes
-		alignas(16) glm::vec4 sh_coeffs[9];      // offset 768, 144 bytes
+		alignas(16) glm::vec4 sh_coeffs[9];      // offset 832, 144 bytes
 		float _padding[80];                      // Padding to ensure stable 1296 byte size
 	};
 
@@ -109,6 +110,7 @@ namespace Boidsish {
 		glm::vec3 position;
 		float     intensity;
 		float     base_intensity; // Original intensity before behaviors
+		float     volumetric_intensity = 1.0f;
 		glm::vec3 color;
 		int       type;
 		glm::vec3 direction;
@@ -143,6 +145,7 @@ namespace Boidsish {
 			gpu.direction = direction;
 			gpu.inner_cutoff = inner_cutoff;
 			gpu.outer_cutoff = outer_cutoff;
+			gpu.volumetric_intensity = volumetric_intensity;
 			return gpu;
 		}
 
