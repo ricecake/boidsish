@@ -66,8 +66,8 @@ void main() {
     float u = gl_TessCoord.x * 2.0 - 1.0; // across blade (-1 to 1)
 
     // Wind
-    vec2 windUV = basePos.xz * 0.05 + time * 0.5;
-    vec2 windNoise = curlNoise2D(windUV);
+    vec2 windUV = basePos.xz * 0.05 + time * 0.45;
+    vec2 windNoise = curlNoise2D(windUV) * 0.1;
     float windStrength = length(windNoise) * biomeProps[biomeIdx].windInfluence;
 
     // Base Tilt - relatively vertical (clamped to ~15 degrees)
