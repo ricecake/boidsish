@@ -78,9 +78,9 @@ void projectRadianceToSH(vec3 dir, vec3 radiance, float weight, inout vec3 sh[9]
 	sh[3] += radiance * (C2 * x) * mcWeight;
 	sh[4] += radiance * (C3 * x * y) * mcWeight;
 	sh[5] += radiance * (C3 * y * z) * mcWeight;
-	sh[6] += radiance * (C4 * (3.0 * z * z - 1.0)) * mcWeight;
+	sh[6] += radiance * (C4 * (3.0 * y * y - 1.0)) * mcWeight;
 	sh[7] += radiance * (C3 * x * z) * mcWeight;
-	sh[8] += radiance * (C5 * (x * x - y * y)) * mcWeight;
+	sh[8] += radiance * (C5 * (x * x - z * z)) * mcWeight;
 }
 
 vec3 sampleSkyLUT(vec3 rd) {
@@ -170,69 +170,7 @@ vec3 sampleTerrainFallback(vec3 worldPos, vec3 rayDir) {
 	return sampleSkyLUT(rayDir); // Missed terrain (sky is important for occlusion)
 }
 
-void main() {
-	ivec2 localCoord = ivec2(gl_GlobalInvocationID.xy);
-	if (localCoord.x >= u_originSize.z || localCoord.y >= u_originSize.z)
-		return;
-
-	ivec2 worldChunkCoord = localCoord + u_originSize.xy;
-	ivec2 toroidalCoord = (worldChunkCoord % u_originSize.z + u_originSize.z) % u_originSize.z;
-	int   flatIdx = int(toroidalCoord.y * u_originSize.z + toroidalCoord.x);
-
-	int slice = texelFetch(u_chunkGrid, localCoord, 0).r;
-	if (slice < 0) {
-		// for (int i = 0; i < 9; ++i) {
-		// 	u_terrainProbes[flatIdx].sh_coeffs[i] = vec4(0.0, 0.0, 0.0, 1.0);
-		// }
-		return;
-	}
-
-	float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
-	float worldScale = u_terrainParams.y;
-	vec2  worldXZ = (vec2(worldChunkCoord) + 0.5) * scaledChunkSize;
-	vec4  sampledHeightNorm = texture(u_heightmapArray, vec3(0.5, 0.5, float(slice)));
-	vec3  worldPos = vec3(worldXZ.x, sampledHeightNorm.r, worldXZ.y);
-	vec3  worldNormal = normalize(sampledHeightNorm.gba);
-
-	// Position probe origin slightly above terrain to ensure clear visibility
-	vec3 probeOrigin = worldPos + worldNormal * 1.0 * worldScale;
-
-	// Calculate focus weight based on screen-space position
-	vec4 clipPos = u_projection * u_view * vec4(probeOrigin, 1.0);
-	vec3 screenPos = clipPos.xyz / clipPos.w;
-	float focusWeight = 0.0;
-	if (clipPos.z > 0.0) {
-		float distToScreenCenter = length(screenPos.xy);
-		focusWeight = smoothstep(1.2, 0.0, distToScreenCenter);
-	}
-
-	// Priority-based update parameters
-	int dynamicStagger = int(mix(64.0, 8.0, focusWeight));
-	int rayCount = int(mix(4.0, 24.0, focusWeight));
-	float alpha = mix(0.5, 0.1, focusWeight);
-
-	// Use an irregular hash-based sequence to avoid rolling waves
-	uint sequenceSeed = hash2D(worldChunkCoord);
-	if (((sequenceSeed + u_frameIndex) % uint(dynamicStagger)) != 0)
-		return;
-
-	vec3 newSH[9];
-	for (int i = 0; i < 9; ++i)
-		newSH[i] = vec3(0.0);
-
-	ivec2 bnSize = textureSize(u_blueNoiseTexture, 0);
-	vec2  bnUV = (vec2(localCoord) + vec2(u_frameIndex % bnSize.x, (u_frameIndex / bnSize.x) % bnSize.y)) / vec2(bnSize);
-	vec4  bn = texture(u_blueNoiseTexture, bnUV);
-
-	for (int i = 0; i < rayCount; ++i) {
-		vec2 jitter = fract(bn.xy + vec2(float(i) * 0.618, float(i) * 0.382));
-
-		// Full sphere sampling to capture bounce from all angles
-		float phi = 2.0 * PI * jitter.x;
-		float cosTheta = 2.0 * jitter.y - 1.0;
-		float sinTheta = sqrt(1.0 - cosTheta * cosTheta);
-		vec3  rd = vec3(sinTheta * cos(phi), cosTheta, sinTheta * sin(phi));
-
+void shMarchMain(vec3 rd, vec3 probeOrigin, int rayCount, inout vec3 newSH[9]) {
 		vec3 radiance = vec3(0.0);
 		bool hitFound = false;
 
@@ -274,8 +212,8 @@ void main() {
 						float shadow = normData.w; // Primary light shadow is stored in normal.w
 
 						float z = sceneDepth * 2.0 - 1.0;
-						vec4  clipPos__ = vec4(uv * 2.0 - 1.0, z, 1.0);
-						vec4  worldPos_ = u_invView * u_invProjection * clipPos__;
+						vec4  clipPos_ = vec4(uv * 2.0 - 1.0, z, 1.0);
+						vec4  worldPos_ = u_invView * u_invProjection * clipPos_;
 						vec3  p = worldPos_.xyz / worldPos_.w;
 
 						radiance = vec3(0.0);
@@ -299,6 +237,81 @@ void main() {
 		}
 
 		projectRadianceToSH(rd, radiance, 1.0 / float(rayCount), newSH);
+}
+
+
+
+void main() {
+	ivec2 localCoord = ivec2(gl_GlobalInvocationID.xy);
+	if (localCoord.x >= u_originSize.z || localCoord.y >= u_originSize.z)
+		return;
+
+	ivec2 worldChunkCoord = localCoord + u_originSize.xy;
+	ivec2 toroidalCoord = (worldChunkCoord % u_originSize.z + u_originSize.z) % u_originSize.z;
+	int   flatIdx = int(toroidalCoord.y * u_originSize.z + toroidalCoord.x);
+
+	int slice = texelFetch(u_chunkGrid, localCoord, 0).r;
+	if (slice < 0) {
+		for (int i = 0; i < 9; ++i) {
+			u_terrainProbes[flatIdx].sh_coeffs[i] = vec4(0.0, 0.0, 0.0, 1.0);
+		}
+		return;
+	}
+
+	float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
+	float worldScale = u_terrainParams.y;
+	vec2  worldXZ = (vec2(worldChunkCoord) + 0.5) * scaledChunkSize;
+	vec4  sampledHeightNorm = texture(u_heightmapArray, vec3(0.5, 0.5, float(slice)));
+	vec3  worldPos = vec3(worldXZ.x, sampledHeightNorm.r, worldXZ.y);
+	vec3  worldNormal = normalize(sampledHeightNorm.gba);
+
+	// Position probe origin slightly above terrain to ensure clear visibility
+	vec3 probeOrigin = worldPos + worldNormal * 1.0 * worldScale;
+
+	// Calculate focus weight based on screen-space position
+	vec4 clipPos = u_projection * u_view * vec4(probeOrigin, 1.0);
+	vec3 screenPos = clipPos.xyz / clipPos.w;
+	float focusWeight = 0.0;
+	if (clipPos.z > 0.0) {
+		float distToScreenCenter = length(screenPos.xy);
+		focusWeight = smoothstep(1.2, 0.0, distToScreenCenter);
+	}
+
+	// Priority-based update parameters
+	int dynamicStagger = int(mix(64.0, 8.0, focusWeight));
+	int rayCount = int(mix(1.0, 18.0, focusWeight));
+	float alpha = mix(0.5, 0.1, focusWeight);
+
+	// Use an irregular hash-based sequence to avoid rolling waves
+	uint sequenceSeed = hash2D(worldChunkCoord);
+	// if (((sequenceSeed + u_frameIndex) % uint(dynamicStagger)) != 0)
+		rayCount = 0;
+
+	vec3 newSH[9];
+	for (int i = 0; i < 9; ++i)
+		newSH[i] = vec3(0.0);
+
+	ivec2 bnSize = textureSize(u_blueNoiseTexture, 0);
+	vec2  bnUV = (vec2(localCoord) + vec2(u_frameIndex % bnSize.x, (u_frameIndex / bnSize.x) % bnSize.y)) / vec2(bnSize);
+	vec4  bn = texture(u_blueNoiseTexture, bnUV);
+
+
+	vec2  uv = screenPos.xy * 0.5 + 0.5;
+	for (int i = 0; i < 7; ++i) {
+		shMarchMain(hemisphereSample(uv, vec3(0, -1, 0)), probeOrigin, rayCount + 7, newSH);
+	}
+
+	for (int i = 0; i < rayCount; ++i) {
+		vec2 jitter = fract(bn.xy + vec2(float(i) * 0.618, float(i) * 0.382));
+
+		// Full sphere sampling to capture bounce from all angles
+		float phi = 2.0 * PI * jitter.x;
+		float cosTheta = 2.0 * jitter.y - 1.0;
+		float sinTheta = sqrt(1.0 - cosTheta * cosTheta);
+		vec3  rd = vec3(sinTheta * cos(phi), cosTheta, sinTheta * sin(phi));
+
+
+		shMarchMain(rd, probeOrigin, rayCount + 7, newSH);
 	}
 
 	// Detect if the probe at this toroidal slot is for a different world chunk
@@ -309,6 +322,35 @@ void main() {
 		// New world position for this slot - full refresh (no temporal accumulation from previous chunk)
 		alpha = 1.0;
 	}
+
+
+	// --- ADAPTIVE LUMINANCE INJECTION ---
+	// Only calculate adaptation if we aren't already doing a hard reset
+	if (alpha < 1.0) {
+		vec3 oldL0 = u_terrainProbes[flatIdx].sh_coeffs[0].rgb;
+		vec3 newL0 = newSH[0];
+
+		// Calculate perceived luminance
+		const vec3 LUMINANCE_WEIGHTS = vec3(0.2126, 0.7152, 0.0722);
+		float oldLum = max(dot(oldL0, LUMINANCE_WEIGHTS), 0.0);
+		float newLum = max(dot(newL0, LUMINANCE_WEIGHTS), 0.0);
+
+		// Calculate relative difference to handle HDR values safely.
+		// A jump from 1 to 2 is massive, but a jump from 100 to 101 is noise.
+		float lumDiff = abs(newLum - oldLum);
+		float maxLum = max(max(oldLum, newLum), 0.001); // Prevent divide-by-zero
+		float relativeDiff = lumDiff / maxLum;
+
+		// Map the relative difference to a boost multiplier.
+		// If lighting changes by < 20%, it's just noise/slow movement. Boost is 0.
+		// If lighting changes by > 80%, it's a drastic shift. Boost is 1.0.
+		float adaptationBoost = smoothstep(0.20, 0.80, relativeDiff);
+
+		// Blend the base alpha up to a fast-response alpha (e.g., 0.85)
+		alpha = mix(alpha, 0.85, adaptationBoost);
+	}
+	// ------------------------------------
+
 
 	for (int i = 0; i < 9; ++i) {
 		vec3 oldSH = u_terrainProbes[flatIdx].sh_coeffs[i].rgb;

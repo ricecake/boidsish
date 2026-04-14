@@ -305,8 +305,8 @@ vec3 evalSHIrradianceFromCoeffs(vec3 n, vec4 coeffs[9]) {
 	res += a0 * c1 * coeffs[0].rgb;
 	res += a1 * c2 * (coeffs[1].rgb * n.y + coeffs[2].rgb * n.z + coeffs[3].rgb * n.x);
 	res += a2 * c3 * (coeffs[4].rgb * n.x * n.y + coeffs[5].rgb * n.y * n.z + coeffs[7].rgb * n.x * n.z);
-	res += a2 * c4 * coeffs[6].rgb * (3.0 * n.z * n.z - 1.0);
-	res += a2 * c5 * coeffs[8].rgb * (n.x * n.x - n.y * n.y);
+	res += a2 * c4 * coeffs[6].rgb * (3.0 * n.y * n.y - 1.0);
+	res += a2 * c5 * coeffs[8].rgb * (n.x * n.x - n.z * n.z);
 	return max(res, 0.0);
 }
 
