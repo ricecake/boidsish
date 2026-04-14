@@ -8,8 +8,11 @@
 
 namespace Boidsish {
 
-	WeatherManager::WeatherManager(): enabled_(true) {
+	WeatherManager::WeatherManager(ITerrainGenerator* terrain): enabled_(true), terrain_(terrain) {
 		InitializePresets();
+
+		// Initialize LBM Simulator (scaled to typical terrain range)
+		lbm_simulator_ = std::make_unique<WeatherLbmSimulator>(64, 64);
 
 		// Initialize default paces for various attributes from centralized constants
 		SetPace(WeatherAttribute::SunIntensity, WeatherConstants::SunIntensity.pace);
@@ -244,11 +247,20 @@ namespace Boidsish {
 		}
 	}
 
-	void WeatherManager::Update(float deltaTime, float totalTime, const glm::vec3& cameraPos) {
+	void WeatherManager::Update(float deltaTime, float totalTime, const glm::vec3& cameraPos, float timeOfDay) {
 		if (!enabled_ || presets_.empty())
 			return;
 
 		PROJECT_PROFILE_SCOPE("WeatherManager::Update");
+
+		if (lbm_simulator_ && terrain_) {
+			lbm_simulator_->Update(deltaTime, totalTime, timeOfDay, *terrain_, cameraPos);
+
+			const auto& phys = lbm_simulator_->GetOutput();
+			// Optionally override some current_ targets with physically based results
+			// current_.wind_strength = glm::length(phys.windVelocity);
+			// ...
+		}
 
 		// Calculate weather control coordinate in noise-space
 		glm::vec2 noisePos = glm::vec2(cameraPos.x, cameraPos.z) * spatial_scale_ + glm::vec2(totalTime * time_scale_);

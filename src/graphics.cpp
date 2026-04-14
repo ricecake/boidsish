@@ -761,7 +761,7 @@ namespace Boidsish {
 			decor_manager = std::make_unique<DecorManager>();
 			atmosphere_manager = std::make_unique<AtmosphereManager>();
 			atmosphere_manager->Initialize();
-			weather_manager = std::make_unique<WeatherManager>();
+			weather_manager = std::make_unique<WeatherManager>(terrain_generator.get());
 			audio_manager = std::make_unique<AudioManager>();
 			sound_effect_manager = std::make_unique<SoundEffectManager>(audio_manager.get());
 			trail_render_manager = std::make_unique<TrailRenderManager>();
@@ -3186,7 +3186,12 @@ namespace Boidsish {
 
 		// Update ambient weather
 		if (impl->weather_manager && impl->weather_manager->IsEnabled()) {
-			impl->weather_manager->Update(impl->simulation_delta_time, impl->simulation_time, impl->camera.pos());
+			impl->weather_manager->Update(
+				impl->simulation_delta_time,
+				impl->simulation_time,
+				impl->camera.pos(),
+				impl->light_manager.GetDayNightCycle().time
+			);
 
 			const auto& w = impl->weather_manager->GetCurrentWeather();
 
@@ -4006,6 +4011,10 @@ namespace Boidsish {
 	void Visualizer::InstallTerrainGenerator(std::shared_ptr<ITerrainGenerator> generator) {
 		// Swap the terrain generator
 		impl->terrain_generator = std::move(generator);
+
+		if (impl->weather_manager) {
+			impl->weather_manager->SetTerrainGenerator(impl->terrain_generator.get());
+		}
 
 		// Set up the render manager for the new generator
 		if (impl->terrain_render_manager && impl->terrain_generator) {
