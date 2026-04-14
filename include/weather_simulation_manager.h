@@ -56,7 +56,7 @@ namespace Boidsish {
 			float f[9];
 			float temperature;
 			float aerosol;
-			float padding;
+			float vVel;
 		};
 	};
 

@@ -5,6 +5,10 @@ layout(local_size_x = 8, local_size_y = 8) in;
 #include "weather_lbm_common.glsl"
 
 #define USE_TERRAIN_DATA
+// Forward declarations for lighting.glsl
+float terrainShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) { return 1.0; }
+float calculateTerrainOcclusion(vec3 worldPos, vec3 normal) { return 1.0; }
+
 #include "helpers/lighting.glsl"
 
 uniform isampler2D u_chunkGrid;
@@ -131,7 +135,7 @@ void main() {
     }
 
     // Thermal rising (vertical velocity influenced by temperature)
-    float vVel = cellsA[idx].padding; // Use padding as vertical velocity
+    float vVel = cellsA[idx].vVel;
     float buoyancy = (t_in - u_globalTemperature) * BETA;
     float nextVVel = vVel + buoyancy * u_deltaTime;
     nextVVel *= 0.98; // Vertical drag/damping
@@ -149,5 +153,5 @@ void main() {
 
     cellsB[idx].temperature = nextT;
     cellsB[idx].aerosol = nextA * 0.999; // Slight decay
-    cellsB[idx].padding = nextVVel;
+    cellsB[idx].vVel = nextVVel;
 }

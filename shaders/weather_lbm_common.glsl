@@ -15,7 +15,7 @@ struct LbmCell {
     float f[9];
     float temperature;
     float aerosol;
-    float padding;
+    float vVel;
 };
 
 struct AerosolSource {
@@ -33,14 +33,14 @@ layout(std430, binding = [[WEATHER_GRID_B_BINDING]]) buffer GridB {
 };
 
 layout(std140, binding = 32) uniform WeatherUniforms {
-    vec4 u_originAndSize; // xy = origin, zw = size
-    vec4 u_params;        // x = cellSize, y = globalTemp, zw = unused
+    vec4 u_weatherOriginAndSize; // xy = origin, zw = size
+    vec4 u_weatherParams;        // x = cellSize, y = globalTemp, zw = unused
 };
 
-#define u_width  uint(u_originAndSize.z)
-#define u_height uint(u_originAndSize.w)
-#define u_cellSize u_params.x
-#define u_globalTemperature u_params.y
+#define u_width  uint(u_weatherOriginAndSize.z)
+#define u_height uint(u_weatherOriginAndSize.w)
+#define u_cellSize u_weatherParams.x
+#define u_globalTemperature u_weatherParams.y
 
 uniform float u_deltaTime;
 

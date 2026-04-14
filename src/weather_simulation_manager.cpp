@@ -39,11 +39,17 @@ namespace Boidsish {
 		glBufferData(GL_UNIFORM_BUFFER, sizeof(WeatherUniforms), nullptr, GL_DYNAMIC_DRAW);
 		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
+		// Populate UBO before dispatching init
+		WeatherUniforms uboData{};
+		uboData.originAndSize = glm::vec4(0.0f, 0.0f, (float)width_, (float)height_);
+		uboData.params = glm::vec4(cell_size_, 15.0f, 0.0f, 0.0f);
+		glBindBuffer(GL_UNIFORM_BUFFER, ubo_);
+		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(WeatherUniforms), &uboData);
+		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::WeatherUniforms(), ubo_);
+
 		// Initial state
 		if (init_shader_->isValid()) {
 			init_shader_->use();
-			init_shader_->setUint("u_width", width_);
-			init_shader_->setUint("u_height", height_);
 			init_shader_->setFloat("u_initialTemperature", 15.0f); // Default 15C
 
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::WeatherGridA(), ssbo_[0]);
