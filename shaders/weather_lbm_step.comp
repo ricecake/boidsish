@@ -1,0 +1,157 @@
+#version 430 core
+
+layout(local_size_x = 8, local_size_y = 8) in;
+
+#include "weather_lbm_common.glsl"
+
+#define USE_TERRAIN_DATA
+// Forward declarations for lighting.glsl
+float terrainShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) { return 1.0; }
+float calculateTerrainOcclusion(vec3 worldPos, vec3 normal) { return 1.0; }
+
+#include "helpers/lighting.glsl"
+
+uniform isampler2D u_chunkGrid;
+uniform sampler2DArray u_heightmapArray;
+
+uniform int u_numAerosolSources;
+uniform AerosolSource u_aerosolSources[8];
+
+const float TAU = 0.8; // Relaxation time
+const float GRAVITY = 0.01;
+const float BETA = 0.01; // Thermal expansion coefficient
+const float DIFFUSION = 0.05;
+
+void main() {
+    uint x = gl_GlobalInvocationID.x;
+    uint y = gl_GlobalInvocationID.y;
+
+    if (x >= u_width || y >= u_height) return;
+
+    uint idx = getIdx(x, y);
+
+    // 1. Streaming (Pull from neighbors)
+    float f_in[9];
+    float t_in = cellsA[idx].temperature;
+    float a_in = cellsA[idx].aerosol;
+
+    // Sample terrain to check for boundaries
+    float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
+    vec2 worldPosXZ = vec2(x, y) * u_cellSize;
+    vec2 gridPos = worldPosXZ / scaledChunkSize - vec2(u_originSize.xy);
+    ivec2 chunkCoord = ivec2(floor(gridPos));
+
+    bool isSolid = false;
+    float terrainHeight = -1000.0;
+    if (chunkCoord.x >= 0 && chunkCoord.x < u_originSize.z && chunkCoord.y >= 0 && chunkCoord.y < u_originSize.z) {
+        int slice = texelFetch(u_chunkGrid, chunkCoord, 0).r;
+        if (slice >= 0) {
+            vec2 uv = fract(gridPos);
+            vec2 remappedUV = (uv * u_terrainParams.x + 0.5) / (u_terrainParams.x + 1.0);
+            terrainHeight = texture(u_heightmapArray, vec3(remappedUV, float(slice))).r;
+            // Simple: if ground level is high enough, it's an obstacle for the bottom layer of air
+            // For a 2D weather grid, we might consider the vertical slice at a certain altitude.
+            // Let's assume this simulation is at a low altitude.
+            if (terrainHeight > 10.0) isSolid = true; // Placeholder logic
+        }
+    }
+
+    for (int i = 0; i < 9; ++i) {
+        ivec2 nb = ivec2(x, y) - ivec2(e[i]);
+        if (nb.x >= 0 && nb.x < int(u_width) && nb.y >= 0 && nb.y < int(u_height)) {
+            f_in[i] = cellsA[getIdx(nb.x, nb.y)].f[i];
+        } else {
+            f_in[i] = getEquilibrium(i, 1.0, vec2(0.0)); // Boundary condition
+        }
+    }
+
+    // 2. Macroscopic variables
+    float rho = 0.0;
+    vec2 u = vec2(0.0);
+    for (int i = 0; i < 9; ++i) {
+        rho += f_in[i];
+        u += f_in[i] * e[i];
+    }
+    if (rho > 0.0) u /= rho;
+
+    // 3. Collision with Buoyancy and Drag
+    // In a top-down 2D model, horizontal temperature gradients drive flow (pressure gradients)
+    vec2 gradT = vec2(0.0);
+    for (int i = 1; i < 5; ++i) {
+        ivec2 nb = ivec2(x, y) + ivec2(e[i]);
+        if (nb.x >= 0 && nb.x < int(u_width) && nb.y >= 0 && nb.y < int(u_height)) {
+            gradT += e[i] * cellsA[getIdx(nb.x, nb.y)].temperature;
+        }
+    }
+    vec2 force = -gradT * BETA;
+
+    // Local drag from terrain roughness
+    float drag = clamp(terrainHeight * 0.01, 0.0, 0.5);
+    u *= (1.0 - drag);
+
+    for (int i = 0; i < 9; ++i) {
+        float feq = getEquilibrium(i, rho, u);
+        float fi = f_in[i] - (f_in[i] - feq) / TAU;
+
+        // Add force term
+        fi += 3.0 * w[i] * dot(force, e[i]);
+
+        if (isSolid) {
+            // Simple bounce-back for obstacles
+            cellsB[idx].f[i] = f_in[opp[i]];
+        } else {
+            cellsB[idx].f[i] = fi;
+        }
+    }
+
+    // 4. Heat and Aerosol Advection-Diffusion (Simplified)
+    float nextT = t_in;
+    float nextA = a_in;
+
+    // Advection
+    ivec2 advectPos = ivec2(vec2(x, y) - u * u_deltaTime);
+    if (advectPos.x >= 0 && advectPos.x < int(u_width) && advectPos.y >= 0 && advectPos.y < int(u_height)) {
+        uint advIdx = getIdx(advectPos.x, advectPos.y);
+        nextT = cellsA[advIdx].temperature;
+        nextA = cellsA[advIdx].aerosol;
+    }
+
+    // Diffusion (Laplacian)
+    float lapT = 0.0;
+    float lapA = 0.0;
+    int neighbors = 0;
+    for (int i = 1; i < 5; ++i) { // D2Q5 neighbors
+        ivec2 nb = ivec2(x, y) + ivec2(e[i]);
+        if (nb.x >= 0 && nb.x < int(u_width) && nb.y >= 0 && nb.y < int(u_height)) {
+            uint nbIdx = getIdx(nb.x, nb.y);
+            lapT += cellsA[nbIdx].temperature;
+            lapA += cellsA[nbIdx].aerosol;
+            neighbors++;
+        }
+    }
+    if (neighbors > 0) {
+        nextT += DIFFUSION * (lapT - float(neighbors) * t_in);
+        nextA += DIFFUSION * (lapA - float(neighbors) * a_in);
+    }
+
+    // Thermal rising (vertical velocity influenced by temperature)
+    float vVel = cellsA[idx].vVel;
+    float buoyancy = (t_in - u_globalTemperature) * BETA;
+    float nextVVel = vVel + buoyancy * u_deltaTime;
+    nextVVel *= 0.98; // Vertical drag/damping
+
+    // Thermal rising from global temperature
+    nextT = mix(nextT, u_globalTemperature, 0.01);
+
+    // Aerosol sources
+    for (int i = 0; i < u_numAerosolSources; ++i) {
+        float d = distance(vec2(x, y), u_aerosolSources[i].position);
+        if (d < u_aerosolSources[i].radius) {
+            nextA += u_aerosolSources[i].strength * u_deltaTime * exp(-d*d / (u_aerosolSources[i].radius * u_aerosolSources[i].radius));
+        }
+    }
+
+    cellsB[idx].temperature = nextT;
+    cellsB[idx].aerosol = nextA * 0.999; // Slight decay
+    cellsB[idx].vVel = nextVVel;
+}

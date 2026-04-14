@@ -46,3 +46,8 @@ struct CommonUniforms {
 	float emissive_g;
 	float emissive_b;
 };
+
+struct WeatherUniforms {
+	vec4 originAndSize; // xy = origin, zw = size
+	vec4 params;        // x = cellSize, y = globalTemp, zw = unused
+};

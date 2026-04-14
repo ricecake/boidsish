@@ -11,6 +11,9 @@ namespace Boidsish {
 	WeatherManager::WeatherManager(): enabled_(true) {
 		InitializePresets();
 
+		// Initialize simulation (e.g., 256x256 grid with 1.0m cell size)
+		simulation_ = std::make_unique<WeatherSimulationManager>(256, 256, 1.0f);
+
 		// Initialize default paces for various attributes from centralized constants
 		SetPace(WeatherAttribute::SunIntensity, WeatherConstants::SunIntensity.pace);
 		SetPace(WeatherAttribute::WindStrength, WeatherConstants::WindStrength.pace);
@@ -244,11 +247,22 @@ namespace Boidsish {
 		}
 	}
 
-	void WeatherManager::Update(float deltaTime, float totalTime, const glm::vec3& cameraPos) {
+	void WeatherManager::Update(
+		float                       deltaTime,
+		float                       totalTime,
+		const glm::vec3&            cameraPos,
+		float                       dayNightTemperature,
+		const TerrainRenderManager* terrainRenderManager
+	) {
 		if (!enabled_ || presets_.empty())
 			return;
 
 		PROJECT_PROFILE_SCOPE("WeatherManager::Update");
+
+		// Update LBM simulation with temperature from day/night cycle
+		if (simulation_) {
+			simulation_->Update(deltaTime, dayNightTemperature, aerosol_sources_, terrainRenderManager);
+		}
 
 		// Calculate weather control coordinate in noise-space
 		glm::vec2 noisePos = glm::vec2(cameraPos.x, cameraPos.z) * spatial_scale_ + glm::vec2(totalTime * time_scale_);
@@ -335,6 +349,10 @@ namespace Boidsish {
 		UpdateAttribute(WeatherAttribute::RayleighScaleHeight, cached_targets_.rayleigh_scale_height, deltaTime);
 		UpdateAttribute(WeatherAttribute::MieScaleHeight, cached_targets_.mie_scale_height, deltaTime);
 		UpdateAttribute(WeatherAttribute::CloudCoverage, cached_targets_.cloud_coverage, deltaTime);
+	}
+
+	void WeatherManager::AddAerosolSource(const AerosolSource& source) {
+		aerosol_sources_.push_back(source);
 	}
 
 } // namespace Boidsish
