@@ -55,6 +55,10 @@ namespace Boidsish {
 		} // namespace UboBinding
 
 		namespace SsboBinding {
+			consteval int DecorInstances() {
+				return 10;
+			}
+
 			consteval int AutoExposure() {
 				return 11;
 			}
@@ -65,6 +69,10 @@ namespace Boidsish {
 
 			consteval int OcclusionVisibility() {
 				return 13;
+			}
+
+			consteval int CommonUniforms() {
+				return 21;
 			}
 
 			consteval int ParticleGridHeads() {

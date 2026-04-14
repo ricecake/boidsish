@@ -49,9 +49,13 @@ int main(int argc, char** argv) {
     ShaderBase::RegisterConstant("GRASS_PROPS_BINDING", Boidsish::Constants::UboBinding::GrassProps());
 
     // SSBO Bindings
+    ShaderBase::RegisterConstant("COMMON_UNIFORMS_BINDING", Boidsish::Constants::SsboBinding::CommonUniforms());
+    ShaderBase::RegisterConstant("BONE_MATRIX_BINDING", Boidsish::Constants::SsboBinding::BoneMatrix());
     ShaderBase::RegisterConstant("OCCLUSION_VISIBILITY_BINDING", Boidsish::Constants::SsboBinding::OcclusionVisibility());
+    ShaderBase::RegisterConstant("DECOR_INSTANCES_BINDING", Boidsish::Constants::SsboBinding::DecorInstances());
     ShaderBase::RegisterConstant("GRASS_INSTANCES_BINDING", Boidsish::Constants::SsboBinding::GrassInstances());
     ShaderBase::RegisterConstant("GRASS_INDIRECT_BINDING", Boidsish::Constants::SsboBinding::GrassIndirect());
+    ShaderBase::RegisterConstant("AUTO_EXPOSURE_BINDING", Boidsish::Constants::SsboBinding::AutoExposure());
 
     Preprocessor p;
     std::string processed = p.process(inputPath);
