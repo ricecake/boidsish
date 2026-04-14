@@ -34,12 +34,6 @@ namespace Boidsish {
             return;
         }
 
-        // Set uniform block bindings for the grass shader
-        GLuint lighting_idx = glGetUniformBlockIndex(grass_shader_->ID, "Lighting");
-        if (lighting_idx != GL_INVALID_INDEX) {
-            glUniformBlockBinding(grass_shader_->ID, lighting_idx, Constants::UboBinding::Lighting());
-        }
-
         _InitializeResources();
         initialized_ = true;
         props_dirty_ = true;
@@ -123,6 +117,7 @@ namespace Boidsish {
         grass_shader_->setFloat("time", (float)glfwGetTime());
         grass_shader_->setBool("uIsShadowPass", isShadowPass);
         grass_shader_->setVec3("uCameraPos", last_camera_pos_);
+        grass_shader_->setFloat("worldScale", 1.0f); // Fallback if needed, but usually bound via UBO
 
         if (renderManager) {
             renderManager->BindTerrainData(*grass_shader_);

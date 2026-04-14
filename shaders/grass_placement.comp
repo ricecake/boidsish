@@ -10,7 +10,7 @@ struct GrassInstance {
     vec4 scale_seed_biome; // x = height, y = width, z = seed, w = biome index
 };
 
-layout(std430, binding = 35) buffer GrassInstances {
+layout(std430, binding = [[GRASS_INSTANCES_BINDING]]) buffer GrassInstances {
     GrassInstance instances[];
 };
 
@@ -21,7 +21,7 @@ struct DrawArraysIndirectCommand {
     uint baseInstance;
 };
 
-layout(std430, binding = 36) buffer GrassIndirect {
+layout(std430, binding = [[GRASS_INDIRECT_BINDING]]) buffer GrassIndirect {
     DrawArraysIndirectCommand indirectCommand;
 };
 
@@ -40,11 +40,11 @@ struct GrassProperties {
     float padding[3];
 };
 
-layout(std140, binding = 9) uniform GrassProps {
+layout(std140, binding = [[GRASS_PROPS_BINDING]]) uniform GrassProps {
     GrassProperties biomeProps[8];
 };
 
-layout(std140, binding = 8) uniform TerrainData {
+layout(std140, binding = [[TERRAIN_DATA_BINDING]]) uniform TerrainData {
     ivec4 u_originSize;    // x, z, size, is_bound
     vec4  u_terrainParams; // x=chunkSize, y=worldScale
 };
@@ -120,7 +120,8 @@ void spawnBlade(ivec2 cellID, float gridStep, float range, bool rotateDither) {
     if (normal.y < 0.7) return;
 
     vec2 biomeData = textureLod(uBiomeMap, vec3(remappedUV, float(slice)), 0.0).rg;
-    int pickedBiome = (hash(seed + 5566) < biomeData.g) ? min(int(biomeData.r * 255.0 + 0.5) + 1, 7) : int(biomeData.r * 255.0 + 0.5);
+    int pickedBiome = (hash(seed + 5566) < biomeData.g) ? int(biomeData.r * 255.0 + 0.5) + 1 : int(biomeData.r * 255.0 + 0.5);
+    pickedBiome = clamp(pickedBiome, 0, 7);
 
     if (biomeProps[pickedBiome].enabled == 0) return;
 
