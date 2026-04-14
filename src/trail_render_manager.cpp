@@ -13,7 +13,7 @@
 
 namespace Boidsish {
 
-	TrailRenderManager::TrailRenderManager() {
+	TrailRenderManager::TrailRenderManager(ServiceLocator& /*loc*/) {
 		// Initialize tessellation shader
 		tess_shader_ = std::make_unique<ComputeShader>("shaders/trail_tess.comp");
 

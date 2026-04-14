@@ -17,6 +17,7 @@ class Shader;
 namespace Boidsish {
 
 	class Trail;
+	class ServiceLocator;
 
 	/**
 	 * @brief Manages batched trail rendering for improved performance.
@@ -41,7 +42,7 @@ namespace Boidsish {
 	 */
 	class TrailRenderManager {
 	public:
-		TrailRenderManager();
+		TrailRenderManager(ServiceLocator& loc);
 		~TrailRenderManager();
 
 		// Non-copyable

@@ -8,7 +8,7 @@
 
 namespace Boidsish {
 
-	AtmosphereManager::AtmosphereManager() {}
+	AtmosphereManager::AtmosphereManager(ServiceLocator& /*loc*/) {}
 
 	AtmosphereManager::~AtmosphereManager() {
 		if (_transmittanceLUT)

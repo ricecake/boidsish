@@ -43,9 +43,15 @@ namespace Boidsish {
 	 * 4. Render() issues single instanced draw call
 	 * 5. TES shader samples heightmap to displace flat grid vertices
 	 */
+	class ServiceLocator;
+
 	class TerrainRenderManager {
 	public:
-		TerrainRenderManager(int chunk_size = Constants::Class::Terrain::ChunkSize(), int max_chunks = 512);
+		TerrainRenderManager(
+			ServiceLocator& loc,
+			int             chunk_size = Constants::Class::Terrain::ChunkSize(),
+			int             max_chunks = 512
+		);
 		~TerrainRenderManager();
 
 		// Non-copyable

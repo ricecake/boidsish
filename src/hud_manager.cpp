@@ -14,7 +14,7 @@
 
 namespace Boidsish {
 
-	HudManager::HudManager() {}
+	HudManager::HudManager(ServiceLocator& /*loc*/) {}
 
 	HudManager::~HudManager() {}
 

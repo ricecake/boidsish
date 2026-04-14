@@ -44,9 +44,14 @@ namespace Boidsish {
 	/**
 	 * @brief Manages active Akira effects and their rendering.
 	 */
+	class ServiceLocator;
+
+	/**
+	 * @brief Manages active Akira effects and their rendering.
+	 */
 	class AkiraEffectManager {
 	public:
-		AkiraEffectManager();
+		AkiraEffectManager(ServiceLocator& loc);
 		~AkiraEffectManager();
 
 		/**

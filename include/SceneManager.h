@@ -9,9 +9,11 @@
 
 namespace Boidsish {
 
+	class ServiceLocator;
+
 	class SceneManager {
 	public:
-		SceneManager(const std::string& sceneFolder);
+		SceneManager(ServiceLocator& loc, const std::string& sceneFolder);
 
 		std::vector<std::string> GetDictionaries();
 		void                     LoadDictionary(const std::string& name);

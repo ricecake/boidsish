@@ -11,6 +11,8 @@
 
 namespace Boidsish {
 
+	LightManager::LightManager(ServiceLocator& /*loc*/) {}
+
 	static std::map<char, std::string> morse_alphabet = {
 		{'a', ".-"},    {'b', "-..."},   {'c', "-.-."},   {'d', "-.."},    {'e', "."},     {'f', "..-."},
 		{'g', "--."},   {'h', "...."},   {'i', ".."},     {'j', ".---"},   {'k', "-.-"},   {'l', ".-.."},

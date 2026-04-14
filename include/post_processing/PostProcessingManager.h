@@ -10,11 +10,13 @@
 class Shader; // Forward declaration
 
 namespace Boidsish {
+	class ServiceLocator;
+
 	namespace PostProcessing {
 
 		class PostProcessingManager: public IManager {
 		public:
-			PostProcessingManager(int width, int height, GLuint quad_vao);
+			PostProcessingManager(ServiceLocator& loc, int width, int height, GLuint quad_vao);
 			~PostProcessingManager();
 
 			void Initialize() override;

@@ -25,9 +25,11 @@ namespace Boidsish {
 		glm::vec4 color;  // color (rgb), alpha (a)
 	};
 
+	class ServiceLocator;
+
 	class MeshExplosionManager: public IManager {
 	public:
-		MeshExplosionManager();
+		MeshExplosionManager(ServiceLocator& loc);
 		~MeshExplosionManager();
 
 		// Initialize shaders and buffers. Must be called from main thread with OpenGL context.

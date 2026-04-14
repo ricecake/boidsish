@@ -1,3 +1,5 @@
+#pragma once
+
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -6,6 +8,8 @@
 #include <tuple>
 #include <typeindex>
 #include <unordered_map>
+
+namespace Boidsish {
 
 class ServiceLocator {
 private:
@@ -30,6 +34,34 @@ public:
 			};
 	}
 
+	template <typename Interface, typename Implementation, typename... Args>
+	void RegisterAs(Args... args) {
+		std::unique_lock lock(mtx);
+
+		factories[std::type_index(typeid(Interface))] =
+			[captured_args = std::make_tuple(std::move(args)...)](ServiceLocator& loc) {
+				return std::apply(
+					[&loc](const auto&... unpacked) {
+						return std::static_pointer_cast<void>(std::make_shared<Implementation>(loc, unpacked...));
+					},
+					captured_args
+				);
+			};
+	}
+
+	template <typename T>
+	void Provide(std::shared_ptr<T> instance) {
+		std::unique_lock lock(mtx);
+		instances[std::type_index(typeid(T))] = std::static_pointer_cast<void>(instance);
+	}
+
+	template <typename T>
+	bool Has() const {
+		std::shared_lock lock(mtx);
+		auto             type_idx = std::type_index(typeid(T));
+		return instances.count(type_idx) > 0 || factories.count(type_idx) > 0;
+	}
+
 	template <typename T>
 	std::shared_ptr<T> Get() {
 		auto type_idx = std::type_index(typeid(T));
@@ -42,7 +74,24 @@ public:
 			}
 		}
 
-		// 2. Slow path: We need to instantiate. Grab an exclusive lock.
+		// 2. Slow path: We need to instantiate.
+		// Get the factory under a shared lock.
+		std::function<std::shared_ptr<void>(ServiceLocator&)> factory;
+		{
+			std::shared_lock shared_lock(mtx);
+			if (auto it = factories.find(type_idx); it != factories.end()) {
+				factory = it->second;
+			}
+		}
+
+		if (!factory) {
+			throw std::runtime_error("Service not registered: " + std::string(typeid(T).name()));
+		}
+
+		// Call factory outside of the lock to allow re-entrancy (factory might call Get())
+		std::shared_ptr<void> instance = factory(*this);
+
+		// Now acquire exclusive lock to cache it
 		std::unique_lock exclusive_lock(mtx);
 
 		// Double-check: another thread might have instantiated it while we were waiting for the lock
@@ -50,14 +99,9 @@ public:
 			return std::static_pointer_cast<T>(it->second);
 		}
 
-		// Construct, cache, and return
-		if (auto it = factories.find(type_idx); it != factories.end()) {
-			std::shared_ptr<void> instance = it->second(*this);
-			instances[type_idx] = instance;
-			return std::static_pointer_cast<T>(instance);
-		}
-
-		throw std::runtime_error("Service not registered.");
+		// Cache and return
+		instances[type_idx] = instance;
+		return std::static_pointer_cast<T>(instance);
 	}
 
 	struct Proxy {
@@ -71,3 +115,5 @@ public:
 
 	Proxy operator()() { return Proxy{*this}; }
 };
+
+} // namespace Boidsish

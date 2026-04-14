@@ -9,9 +9,11 @@
 
 namespace Boidsish {
 
+	class ServiceLocator;
+
 	class HudManager {
 	public:
-		HudManager();
+		HudManager(ServiceLocator& loc);
 		~HudManager();
 
 		// Modern API

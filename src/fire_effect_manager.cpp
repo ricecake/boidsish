@@ -25,7 +25,7 @@ namespace Boidsish {
 		float extras[2];
 	};
 
-	FireEffectManager::FireEffectManager() {}
+	FireEffectManager::FireEffectManager(ServiceLocator& /*loc*/) {}
 
 	void FireEffectManager::Initialize() {
 		_EnsureShaderAndBuffers();

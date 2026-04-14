@@ -6,6 +6,7 @@
 #include "decor_manager.h"
 #include "frustum.h"
 #include "graphics.h"
+#include "service_locator.h"
 #include "terrain_generator.h"
 #include "terrain_render_manager.h"
 #include <GL/glew.h>
@@ -23,9 +24,10 @@ int main() {
 	glfwMakeContextCurrent(window);
 	glewInit();
 
-	auto decor_mgr = std::make_unique<DecorManager>();
-	auto terrain_mgr = std::make_shared<TerrainRenderManager>(32, 512);
-	auto terrain_gen = std::make_unique<TerrainGenerator>();
+	ServiceLocator locator;
+	auto           decor_mgr = std::make_shared<DecorManager>(locator);
+	auto           terrain_mgr = std::make_shared<TerrainRenderManager>(locator, 32, 512);
+	auto           terrain_gen = std::make_unique<TerrainGenerator>();
 	terrain_gen->SetRenderManager(terrain_mgr);
 
 	// Increase density to ensure something is placed

@@ -9,7 +9,7 @@
 
 namespace Boidsish {
 
-	HiZManager::HiZManager() = default;
+	HiZManager::HiZManager(ServiceLocator& /*loc*/) {}
 
 	HiZManager::~HiZManager() {
 		DestroyTexture();

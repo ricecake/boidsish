@@ -12,7 +12,7 @@
 
 namespace Boidsish {
 
-	MeshExplosionManager::MeshExplosionManager() {}
+	MeshExplosionManager::MeshExplosionManager(ServiceLocator& /*loc*/) {}
 
 	void MeshExplosionManager::Initialize() {
 		_Initialize();

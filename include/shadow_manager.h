@@ -26,8 +26,21 @@ namespace Boidsish {
 	 *
 	 * Shadow maps use a texture array to support multiple shadow-casting lights.
 	 */
+	class ServiceLocator;
+
+	/**
+	 * @brief Manages shadow map generation and shadow data for the lighting system.
+	 *
+	 * The ShadowManager handles:
+	 * - Creating and managing shadow map depth textures
+	 * - Computing light-space matrices for shadow projection
+	 * - Providing shadow data to shaders via UBO
+	 *
+	 * Shadow maps use a texture array to support multiple shadow-casting lights.
+	 */
 	class ShadowManager: public IManager {
 	public:
+		ShadowManager(ServiceLocator& loc);
 		/// Maximum number of shadow-casting lights supported
 		static constexpr int kMaxShadowLights = Constants::Class::Shadows::MaxLights();
 		static constexpr int kMaxCascades = Constants::Class::Shadows::MaxCascades();

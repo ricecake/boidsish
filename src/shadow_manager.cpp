@@ -11,7 +11,7 @@
 
 namespace Boidsish {
 
-	ShadowManager::ShadowManager() {
+	ShadowManager::ShadowManager(ServiceLocator& /*loc*/) {
 		light_space_matrices_.fill(glm::mat4(1.0f));
 	}
 

@@ -5,7 +5,7 @@
 
 namespace Boidsish {
 
-	SdfVolumeManager::SdfVolumeManager() {}
+	SdfVolumeManager::SdfVolumeManager(ServiceLocator& /*loc*/) {}
 
 	SdfVolumeManager::~SdfVolumeManager() {
 		if (ubo_ != 0) {

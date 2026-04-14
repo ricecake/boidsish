@@ -9,7 +9,7 @@
 
 namespace Boidsish {
 
-	ShockwaveManager::ShockwaveManager() {
+	ShockwaveManager::ShockwaveManager(ServiceLocator& /*loc*/) {
 		shockwaves_.reserve(kMaxShockwaves);
 	}
 

@@ -72,8 +72,20 @@ namespace Boidsish {
 	 * - Providing data to shaders for screen-space distortion
 	 * - Providing data for vertex displacement (terrain/entities)
 	 */
+	class ServiceLocator;
+
+	/**
+	 * @brief Manages active shockwave effects and their GPU rendering.
+	 *
+	 * The ShockwaveManager handles:
+	 * - Creating and tracking active shockwaves
+	 * - Updating shockwave physics (expansion over time)
+	 * - Providing data to shaders for screen-space distortion
+	 * - Providing data for vertex displacement (terrain/entities)
+	 */
 	class ShockwaveManager {
 	public:
+		ShockwaveManager(ServiceLocator& loc);
 		/// Maximum number of simultaneous shockwaves (limited by UBO size)
 		static constexpr int kMaxShockwaves = Constants::Class::Shockwaves::MaxShockwaves();
 

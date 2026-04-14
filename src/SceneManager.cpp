@@ -8,7 +8,7 @@
 
 namespace Boidsish {
 
-	SceneManager::SceneManager(const std::string& sceneFolder): m_sceneFolder(sceneFolder) {
+	SceneManager::SceneManager(ServiceLocator& /*loc*/, const std::string& sceneFolder): m_sceneFolder(sceneFolder) {
 		if (!std::filesystem::exists(m_sceneFolder)) {
 			std::filesystem::create_directories(m_sceneFolder);
 		}

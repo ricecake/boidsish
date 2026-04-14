@@ -8,7 +8,7 @@
 
 namespace Boidsish {
 
-	AkiraEffectManager::AkiraEffectManager() {
+	AkiraEffectManager::AkiraEffectManager(ServiceLocator& /*loc*/) {
 		shader_ = std::make_unique<Shader>("shaders/akira.vert", "shaders/akira.frag");
 	}
 

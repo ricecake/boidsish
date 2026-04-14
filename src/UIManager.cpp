@@ -11,7 +11,7 @@
 
 namespace Boidsish {
 	namespace UI {
-		UIManager::UIManager(GLFWwindow* window) {
+		UIManager::UIManager(ServiceLocator& /*loc*/, GLFWwindow* window) {
 			IMGUI_CHECKVERSION();
 			ImGui::CreateContext();
 			ImGuiIO& io = ImGui::GetIO();

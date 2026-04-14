@@ -6,7 +6,7 @@
 
 namespace Boidsish {
 
-	NoiseManager::NoiseManager() {}
+	NoiseManager::NoiseManager(ServiceLocator& /*loc*/) {}
 
 	NoiseManager::~NoiseManager() {
 		if (noise_texture_ != 0) {

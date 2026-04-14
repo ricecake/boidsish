@@ -3,6 +3,7 @@
 
 #include "decor_manager.h"
 #include "graphics.h"
+#include "service_locator.h"
 #include "procedural_generator.h"
 #include "terrain_generator.h"
 
@@ -18,7 +19,8 @@ int main(int argc, char** argv) {
 	auto tree1 = ProceduralGenerator::GenerateTree(101112);
 	auto tree2 = ProceduralGenerator::GenerateTree(211101);
 
-	auto decor_manager = std::make_shared<DecorManager>();
+	ServiceLocator locator;
+	auto           decor_manager = std::make_shared<DecorManager>(locator);
 
 	// // Add procedural models to decor manager
 	// DecorProperties rock_props = DecorManager::GetDefaultRockProperties();

@@ -16,7 +16,7 @@ namespace Boidsish {
 		glm::vec4  terrain_params; // chunk_size, world_scale, unused, unused
 	};
 
-	TerrainRenderManager::TerrainRenderManager(int chunk_size, int max_chunks):
+	TerrainRenderManager::TerrainRenderManager(ServiceLocator& /*loc*/, int chunk_size, int max_chunks):
 		chunk_size_(chunk_size), max_chunks_(max_chunks), heightmap_resolution_(chunk_size + 1) {
 		// Create Biome UBO
 		glGenBuffers(1, &biome_ubo_);

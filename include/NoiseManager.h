@@ -15,9 +15,11 @@ namespace Boidsish {
 		GLuint extra_noise;
 	};
 
+	class ServiceLocator;
+
 	class NoiseManager: public IManager {
 	public:
-		NoiseManager();
+		NoiseManager(ServiceLocator& loc);
 		~NoiseManager() override;
 
 		void Initialize() override;

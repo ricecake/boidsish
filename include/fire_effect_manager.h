@@ -39,9 +39,11 @@ namespace Boidsish {
 		int       _padding_emitter[2];
 	};
 
+	class ServiceLocator;
+
 	class FireEffectManager: public IManager {
 	public:
-		FireEffectManager();
+		FireEffectManager(ServiceLocator& loc);
 		~FireEffectManager();
 
 		// Initialize shaders and buffers. Must be called from main thread with OpenGL context.

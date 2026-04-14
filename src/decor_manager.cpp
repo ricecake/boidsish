@@ -18,7 +18,7 @@
 
 namespace Boidsish {
 
-	DecorManager::DecorManager() {}
+	DecorManager::DecorManager(ServiceLocator& /*loc*/) {}
 
 	// Use DrawElementsIndirectCommand from geometry.h
 

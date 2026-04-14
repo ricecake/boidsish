@@ -73,7 +73,7 @@ namespace Boidsish {
 		}
 	};
 
-	AudioManager::AudioManager(): m_pimpl(std::make_unique<AudioManagerImpl>()) {}
+	AudioManager::AudioManager(ServiceLocator& /*loc*/): m_pimpl(std::make_unique<AudioManagerImpl>()) {}
 
 	AudioManager::~AudioManager() = default;
 

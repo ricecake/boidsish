@@ -95,9 +95,11 @@ namespace Boidsish {
 		std::vector<DecorInstance> instances;
 	};
 
+	class ServiceLocator;
+
 	class DecorManager {
 	public:
-		DecorManager();
+		DecorManager(ServiceLocator& loc);
 		~DecorManager();
 
 		// Simple overload for basic usage (sets max_density, min_density = max * 0.2)

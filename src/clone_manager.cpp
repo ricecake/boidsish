@@ -11,7 +11,7 @@
 
 namespace Boidsish {
 
-	CloneManager::CloneManager() {}
+	CloneManager::CloneManager(ServiceLocator& /*loc*/) {}
 
 	void CloneManager::CaptureClone(std::shared_ptr<const Shape> shape, float current_time) {
 		if (shape->GetId() < 0)

@@ -8,7 +8,7 @@
 
 namespace Boidsish {
 
-	WeatherManager::WeatherManager(): enabled_(true) {
+	WeatherManager::WeatherManager(ServiceLocator& /*loc*/): enabled_(true) {
 		InitializePresets();
 
 		// Initialize default paces for various attributes from centralized constants
