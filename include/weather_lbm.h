@@ -22,6 +22,15 @@ namespace Boidsish {
 
     static_assert(sizeof(LbmCell) == 48, "LbmCell must be exactly 48 bytes");
 
+    /**
+     * @brief Per-cell configuration for environmental properties.
+     */
+    struct LbmCellConfig {
+        float roughness = 0.01f;          // Per-cell drag factor
+        float aerosol_release_rate = 0.0f; // Continuous aerosol source
+        float sensible_heat_factor = 1.0f; // Rate of heat gain/loss
+    };
+
     struct WeatherLbmConfig {
         int width = 128;
         int height = 128;
@@ -63,6 +72,19 @@ namespace Boidsish {
         void SetObstacle(int x, int y, bool is_obstacle);
 
         /**
+         * @brief Set per-cell configuration.
+         */
+        void SetCellConfig(int x, int y, const LbmCellConfig& config);
+
+        /**
+         * @brief Get macro-scale weather data for a cell.
+         */
+        float GetTemperature(int x, int y) const;
+        float GetAerosol(int x, int y) const;
+        glm::vec3 GetVelocity(int x, int y) const;
+        float GetPressure(int x, int y) const;
+
+        /**
          * @brief Get the grid dimensions.
          */
         int GetWidth() const { return config_.width; }
@@ -71,12 +93,13 @@ namespace Boidsish {
     private:
         void CollideAndStream(float dt, float totalTime);
         void ApplyBoundaries(float totalTime);
-        void ComputeMacros(int x, int y, float& rho, glm::vec2& u);
+        void ComputeMacros(int x, int y, float& rho, glm::vec2& u) const;
 
         WeatherLbmConfig config_;
         std::vector<LbmCell> cells_;
         std::vector<LbmCell> next_cells_;
         std::vector<bool> obstacles_;
+        std::vector<LbmCellConfig> cell_configs_;
 
         // D2Q9 constants
         static constexpr int dx[9] = { 0, 1, 0, -1, 0, 1, -1, -1, 1 };
