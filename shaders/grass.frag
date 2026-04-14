@@ -24,7 +24,7 @@ struct GrassProperties {
     float padding[3];
 };
 
-layout(std140, binding = 9) uniform GrassProps {
+layout(std140, binding = [[GRASS_PROPS_BINDING]]) uniform GrassProps {
     GrassProperties biomeProps[8];
 };
 

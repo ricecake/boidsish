@@ -5,7 +5,7 @@ struct GrassInstance {
     vec4 scale_seed_biome; // x = height, y = width, z = seed, w = biome index
 };
 
-layout(std430, binding = 35) buffer GrassInstances {
+layout(std430, binding = [[GRASS_INSTANCES_BINDING]]) buffer GrassInstances {
     GrassInstance instances[];
 };
 
