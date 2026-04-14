@@ -8,7 +8,7 @@
 
 namespace Boidsish {
 
-	WeatherManager::WeatherManager(): enabled_(true) {
+	WeatherManager::WeatherManager(ITerrainGenerator* terrain): enabled_(true), terrain_(terrain) {
 		InitializePresets();
 
 		// Initialize LBM Simulator (scaled to typical terrain range)
@@ -247,19 +247,14 @@ namespace Boidsish {
 		}
 	}
 
-	void WeatherManager::Update(float deltaTime, float totalTime, const glm::vec3& cameraPos, const ITerrainGenerator* terrain) {
+	void WeatherManager::Update(float deltaTime, float totalTime, const glm::vec3& cameraPos, float timeOfDay) {
 		if (!enabled_ || presets_.empty())
 			return;
 
 		PROJECT_PROFILE_SCOPE("WeatherManager::Update");
 
-		// Calculate cyclic time of day from totalTime (simple approximation)
-		// Assuming day length is some constant or derived from light manager in the future.
-		// For now, let's use a 600s day.
-		float timeOfDay = std::fmod(totalTime, 600.0f) * (24.0f / 600.0f);
-
-		if (lbm_simulator_ && terrain) {
-			lbm_simulator_->Update(deltaTime, totalTime, timeOfDay, *terrain);
+		if (lbm_simulator_ && terrain_) {
+			lbm_simulator_->Update(deltaTime, totalTime, timeOfDay, *terrain_, cameraPos);
 
 			const auto& phys = lbm_simulator_->GetOutput();
 			// Optionally override some current_ targets with physically based results

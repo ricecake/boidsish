@@ -17,12 +17,14 @@ namespace Boidsish {
 
     WeatherLbmSimulator::WeatherLbmSimulator(int width, int height)
         : width_(width), height_(height) {
-        gridA_.resize(width * height);
-        gridB_.resize(width * height);
+        grid1_.resize(width * height);
+        grid2_.resize(width * height);
+        currentGrid_ = &grid1_;
+        nextGrid_ = &grid2_;
         config_.resize(width * height);
 
         // Initial defaults
-        for (auto& cell : gridA_) {
+        for (auto& cell : *currentGrid_) {
             cell.temperature = 288.15f; // 15C
             cell.aerosol = 0.01f;
             cell.vy = 0.0f;
@@ -30,20 +32,37 @@ namespace Boidsish {
                 cell.f[i] = weights[i]; // rho = 1.0, u = 0
             }
         }
-        gridB_ = gridA_;
+        *nextGrid_ = *currentGrid_;
     }
 
     WeatherLbmSimulator::~WeatherLbmSimulator() {}
 
-    void WeatherLbmSimulator::Update(float deltaTime, float totalTime, float timeOfDay, const ITerrainGenerator& terrain) {
-        static bool initialized = false;
-        if (!initialized) {
+    void WeatherLbmSimulator::Update(float deltaTime, float totalTime, float timeOfDay, const ITerrainGenerator& terrain, const glm::vec3& cameraPos) {
+        if (!initialized_) {
             Initialize(terrain);
-            initialized = true;
+            initialized_ = true;
+        }
+
+        // Anchor grid to camera chunk position
+        glm::ivec2 newAnchor;
+        newAnchor.x = (int)std::floor(cameraPos.x / 32.0f) - width_ / 2;
+        newAnchor.y = (int)std::floor(cameraPos.z / 32.0f) - height_ / 2;
+
+        if (newAnchor != gridAnchor_) {
+            // If the grid shifted, we should ideally re-sample or shift distributions.
+            // For now, we simply update the anchor and allow the simulation to adapt.
+            gridAnchor_ = newAnchor;
         }
 
         UpdateConfig(terrain);
-        Step(deltaTime, totalTime, timeOfDay, terrain);
+
+        // Fixed timestep loop
+        accumulator_ += deltaTime;
+        while (accumulator_ >= dt_) {
+            Step(dt_, totalTime, timeOfDay, terrain);
+            accumulator_ -= dt_;
+        }
+
         DeriveAtmosphere(timeOfDay);
     }
 
@@ -52,12 +71,12 @@ namespace Boidsish {
         for (int z = 0; z < height_; ++z) {
             for (int x = 0; x < width_; ++x) {
                 int idx = z * width_ + x;
-                float worldX = (float)x * 32.0f; // Each cell is one chunk (32m)
-                float worldZ = (float)z * 32.0f;
+                float worldX = (float)(x + gridAnchor_.x) * 32.0f;
+                float worldZ = (float)(z + gridAnchor_.y) * 32.0f;
 
                 float n = Simplex::noise(glm::vec2(worldX * 0.001f, worldZ * 0.001f));
-                gridA_[idx].temperature += n * 5.0f;
-                gridA_[idx].aerosol += std::abs(n) * 0.05f;
+                (*currentGrid_)[idx].temperature += n * 5.0f;
+                (*currentGrid_)[idx].aerosol += std::abs(n) * 0.05f;
 
                 // Set initial f based on noise-driven wind
                 glm::vec2 u(Simplex::noise(glm::vec2(worldX * 0.002f, worldZ * 0.002f)),
@@ -65,11 +84,11 @@ namespace Boidsish {
                 u *= 0.1f;
 
                 for (int i = 0; i < 9; ++i) {
-                    gridA_[idx].f[i] = CalculateEquilibrium(i, 1.0f, u);
+                    (*currentGrid_)[idx].f[i] = CalculateEquilibrium(i, 1.0f, u);
                 }
             }
         }
-        gridB_ = gridA_;
+        *nextGrid_ = *currentGrid_;
     }
 
     float WeatherLbmSimulator::CalculateEquilibrium(int i, float rho, glm::vec2 u) {
@@ -82,7 +101,7 @@ namespace Boidsish {
         for (int z = 0; z < height_; ++z) {
             for (int x = 0; x < width_; ++x) {
                 int idx = z * width_ + x;
-                LbmCell& cell = gridA_[idx];
+                LbmCell& cell = (*currentGrid_)[idx];
 
                 // 1. Macros
                 float rho = 0.0f;
@@ -101,26 +120,45 @@ namespace Boidsish {
 
                     int nx = (x + cx[i] + width_) % width_;
                     int nz = (z + cz[i] + height_) % height_;
-                    gridB_[nz * width_ + nx].f[i] = f_post;
+                    (*nextGrid_)[nz * width_ + nx].f[i] = f_post;
                 }
 
-                // Scalar transport (simple advection for temp and aerosol)
-                int nx = (x + (int)(u.x * 2.0f) + width_) % width_;
-                int nz = (z + (int)(u.y * 2.0f) + height_) % height_;
-                gridB_[nz * width_ + nx].temperature = cell.temperature;
-                gridB_[nz * width_ + nx].aerosol = cell.aerosol;
-                gridB_[nz * width_ + nx].vy = cell.vy;
+                // Scalar transport - Semi-Lagrangian
+                glm::vec2 p_back = glm::vec2(x, z) - u * 1.0f; // dt is implicit here for LBM lattice
+                int x0 = (int)std::floor(p_back.x);
+                int z0 = (int)std::floor(p_back.y);
+                float tx = p_back.x - x0;
+                float tz = p_back.y - z0;
+
+                auto sample = [&](int sx, int sz) -> const LbmCell& {
+                    sx = (sx + width_) % width_;
+                    sz = (sz + height_) % height_;
+                    return (*currentGrid_)[sz * width_ + sx];
+                };
+
+                const LbmCell& c00 = sample(x0, z0);
+                const LbmCell& c10 = sample(x0 + 1, z0);
+                const LbmCell& c01 = sample(x0, z0 + 1);
+                const LbmCell& c11 = sample(x0 + 1, z0 + 1);
+
+                LbmCell& nextCell = (*nextGrid_)[idx];
+                nextCell.temperature = glm::mix(glm::mix(c00.temperature, c10.temperature, tx),
+                                               glm::mix(c01.temperature, c11.temperature, tx), tz);
+                nextCell.aerosol = glm::mix(glm::mix(c00.aerosol, c10.aerosol, tx),
+                                           glm::mix(c01.aerosol, c11.aerosol, tx), tz);
+                nextCell.vy = glm::mix(glm::mix(c00.vy, c10.vy, tx),
+                                      glm::mix(c01.vy, c11.vy, tx), tz);
             }
         }
-        gridA_ = gridB_;
+        std::swap(currentGrid_, nextGrid_);
     }
 
     void WeatherLbmSimulator::UpdateConfig(const ITerrainGenerator& terrain) {
         for (int z = 0; z < height_; ++z) {
             for (int x = 0; x < width_; ++x) {
                 int idx = z * width_ + x;
-                float worldX = (float)x * 32.0f;
-                float worldZ = (float)z * 32.0f;
+                float worldX = (float)(x + gridAnchor_.x) * 32.0f;
+                float worldZ = (float)(z + gridAnchor_.y) * 32.0f;
 
                 auto [height, normal] = terrain.GetTerrainPropertiesAtPoint(worldX, worldZ);
                 float control = terrain.GetBiomeControlValue(worldX, worldZ);
@@ -155,8 +193,8 @@ namespace Boidsish {
         float solarAngle = (timeOfDay - 14.0f) * (PI / 12.0f);
         float baseTemp = 288.15f + 10.0f * std::cos(solarAngle); // 15C base + 10C swing
 
-        for (int i = 0; i < (int)gridA_.size(); ++i) {
-            LbmCell& cell = gridA_[i];
+        for (int i = 0; i < (int)currentGrid_->size(); ++i) {
+            LbmCell& cell = (*currentGrid_)[i];
             const LbmCellConfig& cfg = config_[i];
 
             // 2. Sensible Heat Flux (Solar heating)
@@ -204,8 +242,8 @@ namespace Boidsish {
             for (int x = 0; x < width_; ++x) {
                 if (x == 0 || x == width_ - 1 || z == 0 || z == height_ - 1) {
                     int idx = z * width_ + x;
-                    float worldX = (float)x * 32.0f;
-                    float worldZ = (float)z * 32.0f;
+                    float worldX = (float)(x + gridAnchor_.x) * 32.0f;
+                    float worldZ = (float)(z + gridAnchor_.y) * 32.0f;
 
                     glm::vec2 targetU(
                         Simplex::noise(glm::vec2(worldX * 0.001f + totalTime * 0.1f, worldZ * 0.001f)),
@@ -215,11 +253,45 @@ namespace Boidsish {
 
                     // Force boundary equilibrium
                     for (int i = 0; i < 9; ++i) {
-                        gridA_[idx].f[i] = CalculateEquilibrium(i, 1.0f, targetU);
+                        (*currentGrid_)[idx].f[i] = CalculateEquilibrium(i, 1.0f, targetU);
                     }
                 }
             }
         }
+    }
+
+    const LbmCell* WeatherLbmSimulator::GetCellAtPosition(const glm::vec3& pos) const {
+        int chunkX = (int)std::floor(pos.x / 32.0f);
+        int chunkZ = (int)std::floor(pos.z / 32.0f);
+
+        int x = chunkX - gridAnchor_.x;
+        int z = chunkZ - gridAnchor_.y;
+
+        if (x < 0 || x >= width_ || z < 0 || z >= height_) {
+            return nullptr;
+        }
+
+        return &((*currentGrid_)[z * width_ + x]);
+    }
+
+    PhysicallyBasedWeatherOutput WeatherLbmSimulator::GetWeatherAtPosition(const glm::vec3& pos) const {
+        // For now, return global output but update wind from local cell
+        PhysicallyBasedWeatherOutput out = currentOutput_;
+        const LbmCell* cell = GetCellAtPosition(pos);
+        if (cell) {
+            float rho = 0.0f;
+            glm::vec2 u(0.0f);
+            for (int i = 0; i < 9; ++i) {
+                rho += cell->f[i];
+                u.x += cell->f[i] * (float)cx[i];
+                u.y += cell->f[i] * (float)cz[i];
+            }
+            if (rho > 0.0f) u /= rho;
+            out.windVelocity = u;
+            out.verticalWind = cell->vy;
+            out.temperature = cell->temperature;
+        }
+        return out;
     }
 
     void WeatherLbmSimulator::DeriveAtmosphere(float timeOfDay) {
@@ -232,25 +304,25 @@ namespace Boidsish {
         float avgVy = 0.0f;
         glm::vec3 avgAerosolColor(0.0f);
 
-        for (int i = 0; i < (int)gridA_.size(); ++i) {
+        for (int i = 0; i < (int)currentGrid_->size(); ++i) {
             float rho = 0.0f;
             glm::vec2 u(0.0f);
             for (int j = 0; j < 9; ++j) {
-                rho += gridA_[i].f[j];
-                u.x += gridA_[i].f[j] * (float)cx[j];
-                u.y += gridA_[i].f[j] * (float)cz[j];
+                rho += (*currentGrid_)[i].f[j];
+                u.x += (*currentGrid_)[i].f[j] * (float)cx[j];
+                u.y += (*currentGrid_)[i].f[j] * (float)cz[j];
             }
             if (rho > 0.0f) u /= rho;
 
             avgRho += rho;
             avgU += u;
-            avgTemp += gridA_[i].temperature;
-            avgAerosol += gridA_[i].aerosol;
-            avgVy += gridA_[i].vy;
+            avgTemp += (*currentGrid_)[i].temperature;
+            avgAerosol += (*currentGrid_)[i].aerosol;
+            avgVy += (*currentGrid_)[i].vy;
             avgAerosolColor += config_[i].aerosolColor;
         }
 
-        float n = (float)gridA_.size();
+        float n = (float)currentGrid_->size();
         avgRho /= n;
         avgU /= n;
         avgTemp /= n;

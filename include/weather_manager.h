@@ -142,10 +142,10 @@ namespace Boidsish {
 
 	class WeatherManager {
 	public:
-		WeatherManager();
+		WeatherManager(ITerrainGenerator* terrain = nullptr);
 		~WeatherManager();
 
-		void Update(float deltaTime, float totalTime, const glm::vec3& cameraPos, const ITerrainGenerator* terrain = nullptr);
+		void Update(float deltaTime, float totalTime, const glm::vec3& cameraPos, float timeOfDay);
 
 		bool IsEnabled() const { return enabled_; }
 
@@ -210,6 +210,13 @@ namespace Boidsish {
 			return lbm_simulator_ ? &lbm_simulator_->GetOutput() : nullptr;
 		}
 
+		PhysicallyBasedWeatherOutput GetWeatherAtPosition(const glm::vec3& pos) const {
+			if (lbm_simulator_) return lbm_simulator_->GetWeatherAtPosition(pos);
+			return PhysicallyBasedWeatherOutput{};
+		}
+
+		void SetTerrainGenerator(ITerrainGenerator* terrain) { terrain_ = terrain; }
+
 	private:
 		struct AttributeState {
 			float                velocity = 0.0f;
@@ -238,6 +245,7 @@ namespace Boidsish {
 
 		std::array<AttributeState, static_cast<size_t>(WeatherAttribute::Count)> attribute_states_;
 
+		ITerrainGenerator*                   terrain_ = nullptr;
 		std::unique_ptr<WeatherLbmSimulator> lbm_simulator_;
 	};
 
