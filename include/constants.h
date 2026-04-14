@@ -138,6 +138,26 @@ namespace Boidsish {
 			consteval int BehaviorDrawCommand() {
 				return 34;
 			}
+
+			consteval int MdiUniforms() {
+				return 41;
+			}
+
+			consteval int DecorInstances() {
+				return 42;
+			}
+
+			consteval int DecorVisibleInstances() {
+				return 43;
+			}
+
+			consteval int DecorBlockValidity() {
+				return 44;
+			}
+
+			consteval int DecorIndirect() {
+				return 45;
+			}
 		} // namespace SsboBinding
 
 		namespace General {

@@ -9,6 +9,8 @@ struct Light {
 	vec3  direction;
 	float inner_cutoff; // Also: emissive_radius (EMISSIVE), flash_radius (FLASH)
 	float outer_cutoff; // Also: falloff_exp (FLASH)
+	float volumetric_intensity;
+	float _padding[2];
 };
 
 struct AmbientProbe {
@@ -49,6 +51,7 @@ layout(std140, binding = [[LIGHTING_BINDING]]) uniform Lighting {
 	float cloudBeerPowderMix;
 	mat4  cloudShadowMatrix;
 	vec4  sh_coeffs[9];
+	float _ubo_padding[80];
 };
 
 #ifndef TERRAIN_DATA_BLOCK
