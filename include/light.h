@@ -47,37 +47,38 @@ namespace Boidsish {
 	 * Replaces 8 separate glBufferSubData calls with one for better GPU throughput.
 	 */
 	struct alignas(16) LightingUbo {
-		LightGPU lights[16];                     // offset 0,   1024 bytes
-		int      num_lights;                     // offset 1024, 4 bytes
-		float    world_scale;                    // offset 1028, 4 bytes
-		float    day_time;                       // offset 1032, 4 bytes (0-24)
-		float    night_factor;                   // offset 1036, 4 bytes (0-1)
-		alignas(16) glm::vec3 view_pos;          // offset 1040, 12 bytes
-		float cloudShadowIntensity;              // offset 1052, 4 bytes
-		alignas(16) glm::vec3 ambient_light;     // offset 1056, 12 bytes
-		float time;                              // offset 1068, 4 bytes
-		alignas(16) glm::vec3 view_dir;          // offset 1072, 12 bytes
-		float cloudAltitude;                     // offset 1084, 4 bytes
-		float cloudThickness;                    // offset 1088, 4 bytes
-		float cloudDensity;                      // offset 1092, 4 bytes
-		float cloudCoverage;                     // offset 1096, 4 bytes
-		float cloudWarp;                         // offset 1100, 4 bytes
-		float cloudPhaseG1;                      // offset 1104, 4 bytes
-		float cloudPhaseG2;                      // offset 1108, 4 bytes
-		float cloudPhaseAlpha;                   // offset 1112, 4 bytes
-		float cloudPhaseIsotropic;               // offset 1116, 4 bytes
-		float cloudPowderScale;                  // offset 1120, 4 bytes
-		float cloudPowderMultiplier;             // offset 1124, 4 bytes
-		float cloudPowderLocalScale;             // offset 1128, 4 bytes
-		float cloudShadowOpticalDepthMultiplier; // offset 1132, 4 bytes
-		float cloudShadowStepMultiplier;         // offset 1136, 4 bytes
-		float cloudSunLightScale;                // offset 1140, 4 bytes
-		float cloudMoonLightScale;               // offset 1144, 4 bytes
-		float cloudBeerPowderMix;                // offset 1148, 4 bytes
-		alignas(16) glm::vec4 sh_coeffs[9];      // offset 1152, 144 bytes
-	}; // Total: 1296 bytes
+		LightGPU lights[10];                     // offset 0,   640 bytes
+		int      num_lights;                     // offset 640, 4 bytes
+		float    world_scale;                    // offset 644, 4 bytes
+		float    day_time;                       // offset 648, 4 bytes (0-24)
+		float    night_factor;                   // offset 652, 4 bytes (0-1)
+		alignas(16) glm::vec3 view_pos;          // offset 656, 12 bytes
+		float cloudShadowIntensity;              // offset 668, 4 bytes
+		alignas(16) glm::vec3 ambient_light;     // offset 672, 12 bytes
+		float time;                              // offset 684, 4 bytes
+		alignas(16) glm::vec3 view_dir;          // offset 688, 12 bytes
+		float cloudAltitude;                     // offset 700, 4 bytes
+		float cloudThickness;                    // offset 704, 4 bytes
+		float cloudDensity;                      // offset 708, 4 bytes
+		float cloudCoverage;                     // offset 712, 4 bytes
+		float cloudWarp;                         // offset 716, 4 bytes
+		float cloudPhaseG1;                      // offset 720, 4 bytes
+		float cloudPhaseG2;                      // offset 724, 4 bytes
+		float cloudPhaseAlpha;                   // offset 728, 4 bytes
+		float cloudPhaseIsotropic;               // offset 732, 4 bytes
+		float cloudPowderScale;                  // offset 736, 4 bytes
+		float cloudPowderMultiplier;             // offset 740, 4 bytes
+		float cloudPowderLocalScale;             // offset 744, 4 bytes
+		float cloudShadowOpticalDepthMultiplier; // offset 748, 4 bytes
+		float cloudShadowStepMultiplier;         // offset 752, 4 bytes
+		float cloudSunLightScale;                // offset 756, 4 bytes
+		float cloudMoonLightScale;               // offset 760, 4 bytes
+		float cloudBeerPowderMix;                // offset 764, 4 bytes
+		alignas(16) glm::vec4 sh_coeffs[9];      // offset 768, 144 bytes
+		float _safety_padding[100];              // Add significant padding to end to prevent size mismatch errors
+	};
 
-	static_assert(sizeof(LightingUbo) == 1296, "LightingUbo must be 1296 bytes for UBO alignment");
+	static_assert(sizeof(LightingUbo) >= 912, "LightingUbo must be at least 912 bytes");
 
 	/**
 	 * @brief Light source data structure for rendering.

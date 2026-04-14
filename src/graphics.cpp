@@ -795,7 +795,7 @@ namespace Boidsish {
 			);
 
 			// Pre-allocate lighting cache for batched UBO updates
-			gpu_lights_cache_.reserve(16);
+			gpu_lights_cache_.reserve(10);
 
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true)) {
 				glGenBuffers(1, &visual_effects_ubo);
@@ -1069,18 +1069,18 @@ namespace Boidsish {
 
 			if (shadow_manager && shadow_manager->IsInitialized() && frame_config_.enable_shadows) {
 				shadow_manager->BindForRendering(s);
-				std::array<int, 16> shadow_indices;
+				std::array<int, 10> shadow_indices;
 				shadow_indices.fill(-1);
 				const auto& all_lights = light_manager.GetLights();
-				for (size_t j = 0; j < all_lights.size() && j < 16; ++j) {
+				for (size_t j = 0; j < all_lights.size() && j < 10; ++j) {
 					shadow_indices[j] = all_lights[j].shadow_map_index;
 				}
-				s.setIntArray("lightShadowIndices", shadow_indices.data(), 16);
+				s.setIntArray("lightShadowIndices", shadow_indices.data(), 10);
 			} else {
 				s.setInt("shadowMaps", 4);
-				std::array<int, 16> shadow_indices;
+				std::array<int, 10> shadow_indices;
 				shadow_indices.fill(-1);
-				s.setIntArray("lightShadowIndices", shadow_indices.data(), 16);
+				s.setIntArray("lightShadowIndices", shadow_indices.data(), 10);
 			}
 		}
 
@@ -2250,7 +2250,7 @@ namespace Boidsish {
 					CheckpointRingShape::GetShader()->setFloat("time", simulation_time);
 				}
 				const auto& lights = light_manager.GetLights();
-				int         num_lights = std::min(static_cast<int>(lights.size()), 16);
+				int         num_lights = std::min(static_cast<int>(lights.size()), 10);
 
 				gpu_lights_cache_.clear();
 				for (int i = 0; i < num_lights; ++i) {
@@ -2326,8 +2326,8 @@ namespace Boidsish {
 
 				// GPU-side copy of SH coefficients from SSBO into the UBO (no CPU readback)
 				if (atmosphere_manager) {
-					static_assert(offsetof(LightingUbo, sh_coeffs) == 1152, "SH offset mismatch");
-					atmosphere_manager->CopySHToUBO(lighting_ubo, 1152);
+					static_assert(offsetof(LightingUbo, sh_coeffs) == 768, "SH offset mismatch");
+					atmosphere_manager->CopySHToUBO(lighting_ubo, 768);
 				}
 			}
 
@@ -2590,10 +2590,10 @@ namespace Boidsish {
 						res.skyViewLUT = atmosphere_manager->GetSkyViewLUT();
 						res.aerialPerspectiveLUT = atmosphere_manager->GetAerialPerspectiveLUT();
 					}
-					std::array<int, 16> shadow_indices;
+					std::array<int, 10> shadow_indices;
 					shadow_indices.fill(-1);
 					const auto& all_lights = light_manager.GetLights();
-					for (size_t j = 0; j < all_lights.size() && j < 16; ++j) {
+					for (size_t j = 0; j < all_lights.size() && j < 10; ++j) {
 						shadow_indices[j] = all_lights[j].shadow_map_index;
 					}
 					res.shadowIndices = shadow_indices.data();

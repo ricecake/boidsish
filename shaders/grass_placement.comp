@@ -1,6 +1,7 @@
 #version 430 core
 
 #include "helpers/noise.glsl"
+#include "frustum.glsl"
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
@@ -77,38 +78,23 @@ float hash(uint x) {
 }
 
 void main() {
-    float range;
-    float gridStep;
-    ivec2 cellID;
+    float gridStep = 0.4 * uWorldScale;
+    float range = 160.0 * uWorldScale;
 
-    float tier0Range = 48.0 * uWorldScale;
-    float tier1Range = 160.0 * uWorldScale;
-
-    // Partition the 1024x1024 dispatch into two tiers
-    // gl_GlobalInvocationID.x [0, 511] = Tier 0 (High Density)
-    // gl_GlobalInvocationID.x [512, 1023] = Tier 1 (Low Density)
-
-    if (gl_GlobalInvocationID.x < 512) {
-        // Tier 0: High Density
-        gridStep = 0.4 * uWorldScale;
-        range = tier0Range;
-        ivec2 cameraCell = ivec2(floor(uCameraPos.xz / gridStep));
-        cellID = cameraCell + (ivec2(gl_GlobalInvocationID.xy) - ivec2(256, 512));
-    } else {
-        // Tier 1: Low Density (4x area per cell)
-        gridStep = 0.8 * uWorldScale;
-        range = tier1Range;
-        ivec2 cameraCell = ivec2(floor(uCameraPos.xz / gridStep));
-        // Offset gl_GlobalInvocationID.x to [0, 511] range
-        cellID = cameraCell + (ivec2(int(gl_GlobalInvocationID.x) - 512, int(gl_GlobalInvocationID.y)) - ivec2(256, 512));
-    }
-
+    // Unified high-density grid
+    ivec2 cameraCell = ivec2(floor(uCameraPos.xz / gridStep));
+    ivec2 cellID = cameraCell + (ivec2(gl_GlobalInvocationID.xy) - 512);
     vec2 cellCenter = vec2(cellID) * gridStep;
-    float dist = distance(cellCenter, uCameraPos.xz);
 
-    // Tier 1 discard if inside Tier 0's range to avoid clumping
-    if (gl_GlobalInvocationID.x >= 512 && dist < tier0Range) return;
+    float dist = distance(cellCenter, uCameraPos.xz);
     if (dist > range) return;
+
+    // --- Fast GPU Culling ---
+    // Approximate cell AABB for view frustum culling
+    vec3 cellMin = vec3(cellCenter.x - gridStep * 0.5, -20.0 * uWorldScale, cellCenter.y - gridStep * 0.5);
+    vec3 cellMax = vec3(cellCenter.x + gridStep * 0.5, 120.0 * uWorldScale, cellCenter.y + gridStep * 0.5);
+
+    if (!isAABBInFrustum(cellMin, cellMax)) return;
 
     // Use absolute cell ID for a perfectly stable seed
     uint seed = uint(abs(cellID.x) * 1973) ^ uint(abs(cellID.y) * 9277);
@@ -153,15 +139,16 @@ void main() {
 
     if (biomeProps[pickedBiome].enabled == 0) return;
 
-    // Density curve based on distance
-    float densityCurve = 1.0 - smoothstep(range * 0.2, range, dist);
-    float ditherValue = float(bayer8x8[(cellID.y % 8) * 8 + (cellID.x % 8)]) / 64.0;
+    // Stretched density curve based on distance
+    float densityCurve = 1.0 - smoothstep(range * 0.1, range, dist);
+    float ditherValue = float(bayer8x8[(cellID.y & 7) * 8 + (cellID.x & 7)]) / 64.0;
 
-    // Decisive density check: combine dither and threshold
-    if (densityCurve < ditherValue * (1.0 / max(biomeProps[pickedBiome].density, 0.001))) return;
+    // Scale dither by threshold to allow sparse grass even in the dither zones
+    float threshold = biomeProps[pickedBiome].density;
+    if (densityCurve < ditherValue * (1.1 - threshold)) return;
 
     // Stable height fade only at the absolute edge
-    float heightFade = 1.0 - smoothstep(range * 0.98, range, dist);
+    float heightFade = 1.0 - smoothstep(range * 0.95, range, dist);
 
     uint idx = atomicAdd(indirectCommand.instanceCount, 1);
     if (idx >= uint(uMaxInstances)) return;

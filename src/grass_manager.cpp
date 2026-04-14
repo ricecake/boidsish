@@ -5,6 +5,7 @@
 #include "logger.h"
 #include "profiler.h"
 #include <GL/glew.h>
+#include <GLFW/glfw3.h>
 #include <glm/gtc/type_ptr.hpp>
 
 namespace Boidsish {
@@ -119,6 +120,7 @@ namespace Boidsish {
         grass_shader_->use();
         grass_shader_->setMat4("view", view);
         grass_shader_->setMat4("projection", projection);
+        grass_shader_->setFloat("time", (float)glfwGetTime());
         grass_shader_->setBool("uIsShadowPass", isShadowPass);
         grass_shader_->setVec3("uCameraPos", last_camera_pos_);
 
@@ -149,7 +151,7 @@ namespace Boidsish {
             grass_shader_->setInt("u_aerialPerspectiveLUT", 23);
 
             if (res.shadowIndices) {
-                grass_shader_->setIntArray("lightShadowIndices", res.shadowIndices, 16);
+                grass_shader_->setIntArray("lightShadowIndices", res.shadowIndices, 10);
             }
         }
 

@@ -1,5 +1,6 @@
 #version 430 core
 
+#include "lighting.glsl"
 #include "helpers/lighting.glsl"
 
 in vec3 fNormal;
@@ -64,6 +65,7 @@ void main() {
 
     float primaryShadow;
     vec4 litColor = apply_lighting_pbr(fWorldPos, N, albedo, 0.8, 0.0, 1.0, primaryShadow);
+    litColor.rgb = clamp(litColor.rgb, 0.0, 10.0); // Clamp HDR to prevent "bright white" blowouts
 
     // Distance fade and distant cyan blend (matching terrain style)
     float dist = length(fWorldPos.xz - viewPos.xz);
@@ -75,10 +77,9 @@ void main() {
 
     vec4 baseColor = vec4(litColor.rgb, fade);
     // Standard engine distant cyan blend
-    // step(1.0, fade) means: if fade < 1.0 (distant), use cyan.
-    // However, grass should stay its natural color for longer to avoid the "blue glow"
-    float cyanFactor = step(1.0, fade);
-    FragColor = mix(vec4(0.0, 0.7, 0.7, baseColor.a) * length(baseColor) * 0.5, baseColor, cyanFactor);
+    // Avoid "blue glow" by staying natural until deep into the fade
+    float cyanFactor = smoothstep(0.0, 0.1, fade);
+    FragColor = mix(vec4(0.0, 0.7, 0.7, baseColor.a) * min(length(baseColor.rgb), 1.0) * 0.1, baseColor, cyanFactor);
 
     // Output view-space normal
     NormalOut = vec4(normalize(mat3(view) * N), primaryShadow);
