@@ -98,6 +98,7 @@ namespace Boidsish {
 		if (registered)
 			return;
 
+		ShaderBase::RegisterConstant("WIND_DATA_BINDING", Boidsish::Constants::UboBinding::WindData());
 		ShaderBase::RegisterConstant("WEATHER_UNIFORMS_BINDING", Boidsish::Constants::UboBinding::WeatherUniforms());
 		ShaderBase::RegisterConstant("WEATHER_GRID_B_BINDING", Boidsish::Constants::SsboBinding::WeatherGridB());
 		ShaderBase::RegisterConstant("WEATHER_GRID_A_BINDING", Boidsish::Constants::SsboBinding::WeatherGridA());
