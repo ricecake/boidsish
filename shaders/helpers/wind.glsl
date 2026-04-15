@@ -80,7 +80,7 @@ vec3 getWindAtPosition(vec3 worldPos) {
 
 	// Scale turbulence by drag and macro speed
 	float turbulenceIntensity = drag * macroSpeed * curlStrength;
-	vec3 curl = fastCurl3d(worldPos * curlScale + vec3(0.0, time * 0.2, 0.0));
+	vec3 curl = fastCurl3d(worldPos/50.0 * curlScale + vec3(0.0, time * 0.2, 0.0));
 
 	// Add turbulence to macro wind
 	return macroWind + curl * turbulenceIntensity;
