@@ -160,6 +160,7 @@ namespace Boidsish {
 		void SetSpatialScale(float scale) { spatial_scale_ = scale; }
 
 		const CurrentWeather& GetCurrentWeather() const { return current_; }
+		CurrentWeather&       GetCurrentWeatherMutable() { return current_; }
 
 		/**
 		 * @brief Get information about the currently blending weather presets.
@@ -221,6 +222,8 @@ namespace Boidsish {
 
 	private:
 		unsigned int wind_data_ubo_ = 0;
+		unsigned int wind_texture_ = 0;
+		std::vector<glm::vec4> wind_data_cache_;
 
 		struct AttributeState {
 			float                velocity = 0.0f;

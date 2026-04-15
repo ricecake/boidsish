@@ -14,14 +14,9 @@ namespace Boidsish {
 		InitializePresets();
 
 		// Initialize LBM Simulator (scaled to typical terrain range)
-		// 64x60 to match WindDataUbo capacity
-		lbm_simulator_ = std::make_unique<WeatherLbmSimulator>(64, 60);
+		lbm_simulator_ = std::make_unique<WeatherLbmSimulator>(128, 128);
 
-		// Initialize Wind Data UBO
-		glGenBuffers(1, &wind_data_ubo_);
-		glBindBuffer(GL_UNIFORM_BUFFER, wind_data_ubo_);
-		glBufferData(GL_UNIFORM_BUFFER, sizeof(WindDataUbo), nullptr, GL_DYNAMIC_DRAW);
-		glBindBuffer(GL_UNIFORM_BUFFER, 0);
+		wind_data_cache_.resize(128 * 128);
 
 		// Initialize default paces for various attributes from centralized constants
 		SetPace(WeatherAttribute::SunIntensity, WeatherConstants::SunIntensity.pace);
@@ -44,6 +39,9 @@ namespace Boidsish {
 	WeatherManager::~WeatherManager() {
 		if (wind_data_ubo_ != 0) {
 			glDeleteBuffers(1, &wind_data_ubo_);
+		}
+		if (wind_texture_ != 0) {
+			glDeleteTextures(1, &wind_texture_);
 		}
 	}
 
@@ -261,17 +259,40 @@ namespace Boidsish {
 	}
 
 	void WeatherManager::UpdateWindUbo(float totalTime) {
-		if (!lbm_simulator_ || wind_data_ubo_ == 0)
+		if (!lbm_simulator_)
 			return;
 
+		// Lazy initialization of GPU resources
+		if (wind_data_ubo_ == 0) {
+			glGenBuffers(1, &wind_data_ubo_);
+			glBindBuffer(GL_UNIFORM_BUFFER, wind_data_ubo_);
+			glBufferData(GL_UNIFORM_BUFFER, sizeof(WindDataUbo), nullptr, GL_DYNAMIC_DRAW);
+			glBindBuffer(GL_UNIFORM_BUFFER, 0);
+		}
+		if (wind_texture_ == 0) {
+			glGenTextures(1, &wind_texture_);
+			glBindTexture(GL_TEXTURE_2D, wind_texture_);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, lbm_simulator_->GetWidth(), lbm_simulator_->GetHeight(), 0, GL_RGBA, GL_FLOAT, nullptr);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+			glBindTexture(GL_TEXTURE_2D, 0);
+		}
+
 		WindDataUbo ubo;
-		lbm_simulator_->PopulateWindData(ubo, totalTime, current_.wind_frequency, 1.0f);
+		lbm_simulator_->PopulateWindData(ubo, wind_data_cache_, totalTime, current_.wind_frequency, 1.0f);
 
 		glBindBuffer(GL_UNIFORM_BUFFER, wind_data_ubo_);
 		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(WindDataUbo), &ubo);
 		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
 		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::WindData(), wind_data_ubo_);
+
+		// Update Wind Texture
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::WindData());
+		glBindTexture(GL_TEXTURE_2D, wind_texture_);
+		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, lbm_simulator_->GetWidth(), lbm_simulator_->GetHeight(), GL_RGBA, GL_FLOAT, wind_data_cache_.data());
 	}
 
 	void WeatherManager::Update(float deltaTime, float totalTime, const glm::vec3& cameraPos, float timeOfDay) {

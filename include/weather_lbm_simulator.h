@@ -15,7 +15,7 @@ namespace Boidsish {
 
         void Update(float deltaTime, float totalTime, float timeOfDay, const ITerrainGenerator& terrain, const glm::vec3& cameraPos, float windSpeed, float windStrength);
 
-        void PopulateWindData(WindDataUbo& ubo, float totalTime, float curlScale, float curlStrength) const;
+        void PopulateWindData(WindDataUbo& ubo, std::vector<glm::vec4>& grid_out, float totalTime, float curlScale, float curlStrength) const;
 
         const PhysicallyBasedWeatherOutput& GetOutput() const { return currentOutput_; }
 

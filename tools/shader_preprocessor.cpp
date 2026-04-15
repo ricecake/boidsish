@@ -39,6 +39,7 @@ int main(int argc, char** argv) {
     ShaderBase::RegisterConstant("BIOME_DATA_BINDING", Boidsish::Constants::UboBinding::Biomes());
     ShaderBase::RegisterConstant("WEATHER_UNIFORMS_BINDING", Boidsish::Constants::UboBinding::WeatherUniforms());
     ShaderBase::RegisterConstant("WIND_DATA_BINDING", Boidsish::Constants::UboBinding::WindData());
+    ShaderBase::RegisterConstant("WIND_TEXTURE_BINDING", Boidsish::Constants::TextureUnit::WindData());
     ShaderBase::RegisterConstant("WEATHER_GRID_A_BINDING", Boidsish::Constants::SsboBinding::WeatherGridA());
     ShaderBase::RegisterConstant("WEATHER_GRID_B_BINDING", Boidsish::Constants::SsboBinding::WeatherGridB());
 
