@@ -112,19 +112,28 @@ namespace Boidsish {
                     u.x += cell.f[i] * (float)cx[i];
                     u.y += cell.f[i] * (float)cz[i];
                 }
-                if (rho > 0.0f) u /= rho;
+                if (rho > 1e-6f) u /= rho;
+
+                // NaN safety: Reset cell if it explodes
+                if (std::isnan(rho) || rho < 0.1f || rho > 10.0f) {
+                    rho = 1.0f;
+                    u = glm::vec2(0.0f);
+                    cell.temperature = 288.15f;
+                    cell.aerosol = 0.01f;
+                    cell.vy = 0.0f;
+                    for (int i = 0; i < 9; ++i) cell.f[i] = weights[i];
+                }
 
                 // If vy is positive (updraft), air leaves the horizontal plane, reducing density.
                 // If vy is negative (downdraft), air hits the ground and spreads, increasing density.
-                const float massTransferRate = 0.05f; // Tune this based on how aggressive you want the wind
+                const float massTransferRate = 0.05f;
                 float dRho = -cell.vy * massTransferRate * dt_;
 
                 // Apply density change proportionally across the distributions,
                 // clamping to prevent vacuum collapse numerical instability.
-                if (rho + dRho > 0.5f && rho + dRho < 2.0f) {
+                if (rho + dRho > 0.8f && rho + dRho < 1.2f) {
                     rho += dRho;
                     for (int i = 0; i < 9; ++i) {
-                        // Distribute the mass loss/gain evenly weighted
                         cell.f[i] += dRho * weights[i];
                     }
                 }
@@ -245,17 +254,28 @@ namespace Boidsish {
             float buoyancy = tempDiff * 0.001f;
             cell.vy += buoyancy;
 
-            // 4. Drag coupling (Terrain & Biome)
-            // Height-based drag + biome roughness
+            // 4. Drag coupling (Terrain & Biome) - Forcing approach
+            // We apply a force opposite to the velocity rather than bleeding f components.
             float heightDrag = std::max(0.0f, cfg.terrainHeight) * 0.0001f;
             float totalDrag = (cfg.drag * 0.05f) + heightDrag;
 
-            // Apply drag to velocities
             cell.vy *= (1.0f - totalDrag);
+
+            // Calculate current macro wind
+            float rho = 0.0f;
+            glm::vec2 u(0.0f);
             for (int j = 0; j < 9; ++j) {
-                if (j > 0) { // Don't apply to stationary f0
-                    cell.f[j] *= (1.0f - totalDrag * 0.1f);
-                }
+                rho += cell.f[j];
+                u.x += cell.f[j] * (float)cx[j];
+                u.y += cell.f[j] * (float)cz[j];
+            }
+            if (rho > 1e-6f) u /= rho;
+
+            // Apply force vector opposite to u
+            glm::vec2 force = -u * totalDrag * 0.2f;
+            for (int j = 0; j < 9; ++j) {
+                float cu = (float)cx[j] * force.x + (float)cz[j] * force.y;
+                cell.f[j] += weights[j] * 3.0f * cu;
             }
 
             // 5. Aerosol Release
@@ -286,7 +306,8 @@ namespace Boidsish {
                         Simplex::noise(glm::vec2(worldX * 0.001f + totalTime * windSpeed, worldZ * 0.001f)),
                         Simplex::noise(glm::vec2(worldX * 0.001f + 500.0f, worldZ * 0.001f + totalTime * windSpeed))
                     );
-                    targetU *= windStrength * 40.0f; // Significantly increase boundary energy
+                    // Lattice velocity MUST stay below ~0.15 for stability
+                    targetU = glm::clamp(targetU * windStrength * 2.0f, -0.12f, 0.12f);
 
                     // Force boundary equilibrium
                     for (int i = 0; i < 9; ++i) {
@@ -312,8 +333,13 @@ namespace Boidsish {
     }
 
     void WeatherLbmSimulator::PopulateWindData(WindDataUbo& ubo, float totalTime, float curlScale, float curlStrength) const {
+        float gridSpacing = 32.0f;
         ubo.originSize = glm::ivec4(gridAnchor_.x, gridAnchor_.y, width_, height_);
-        ubo.params = glm::vec4(32.0f, totalTime, curlScale, curlStrength);
+        ubo.params = glm::vec4(gridSpacing, totalTime, curlScale, curlStrength);
+
+        // Convert lattice velocity to world velocity (m/s)
+        // lattice_u * (spacing / dt)
+        float conversion = gridSpacing / dt_;
 
         for (int i = 0; i < width_ * height_ && i < 3840; ++i) {
             const LbmCell& cell = (*currentGrid_)[i];
@@ -326,9 +352,9 @@ namespace Boidsish {
                 u.x += cell.f[j] * (float)cx[j];
                 u.y += cell.f[j] * (float)cz[j];
             }
-            if (rho > 0.0f) u /= rho;
+            if (rho > 1e-6f) u /= rho;
 
-            ubo.grid[i].velocityDrag = glm::vec4(u.x, cell.vy, u.y, cfg.drag);
+            ubo.grid[i].velocityDrag = glm::vec4(u.x * conversion, cell.vy * conversion, u.y * conversion, cfg.drag);
         }
     }
 
@@ -344,9 +370,11 @@ namespace Boidsish {
                 u.x += cell->f[i] * (float)cx[i];
                 u.y += cell->f[i] * (float)cz[i];
             }
-            if (rho > 0.0f) u /= rho;
-            out.windVelocity = u;
-            out.verticalWind = cell->vy;
+            if (rho > 1e-6f) u /= rho;
+
+            float conversion = 32.0f / dt_;
+            out.windVelocity = u * conversion;
+            out.verticalWind = cell->vy * conversion;
             out.temperature = cell->temperature;
         }
         return out;
