@@ -2,41 +2,7 @@
 #define TERRAIN_SHADOWS_GLSL
 
 #include "fast_noise.glsl"
-
-#ifndef TERRAIN_DATA_BLOCK
-#define TERRAIN_DATA_BLOCK
-layout(std140, binding = [[TERRAIN_DATA_BINDING]]) uniform TerrainData {
-	ivec4 u_originSize;    // x, y=z, z=size, w=isBound
-	vec4  u_terrainParams; // x=chunkSize, y=worldScale
-};
-#endif
-
-uniform isampler2D u_chunkGrid;
-uniform sampler2D  u_maxHeightGrid;
-// u_heightmapArray is bound to unit 13
-uniform sampler2DArray u_heightmapArray;
-
-float getTerrainHeight(vec2 worldXZ) {
-	if (u_originSize.w < 1)
-		return -10000.0;
-	float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
-	vec2  gridPos = worldXZ / scaledChunkSize;
-	ivec2 chunkCoord = ivec2(floor(gridPos));
-	ivec2 localGridCoord = chunkCoord - u_originSize.xy;
-
-	if (localGridCoord.x < 0 || localGridCoord.x >= u_originSize.z || localGridCoord.y < 0 ||
-	    localGridCoord.y >= u_originSize.z) {
-		return -9999.0; // Debug value
-	}
-
-	int slice = texelFetch(u_chunkGrid, localGridCoord, 0).r;
-	if (slice < 0)
-		return -10000.0;
-
-	vec2 uv = (worldXZ - vec2(chunkCoord) * scaledChunkSize) / scaledChunkSize;
-	vec2 remappedUV = (uv * u_terrainParams.x + 0.5) / (u_terrainParams.x + 1.0);
-	return texture(u_heightmapArray, vec3(remappedUV, float(slice))).r;
-}
+#include "terrain_common.glsl"
 
 /**
  * Perform a coarse raymarch in a specific direction to check for terrain occlusion.
