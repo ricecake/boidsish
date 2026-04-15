@@ -3188,6 +3188,8 @@ namespace Boidsish {
 			config.SetFloat("wind_speed", w.wind_speed);
 			config.SetFloat("wind_frequency", w.wind_frequency);
 
+			impl->weather_manager->UpdateWindUbo(impl->simulation_time);
+
 			// Apply to atmosphere effect
 			if (impl->atmosphere_effect) {
 				impl->atmosphere_effect->SetHazeDensity(w.haze_density);
