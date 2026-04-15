@@ -227,7 +227,8 @@ void main() {
 
 			// 1. Calculate raw wind magnitude and direction from macro wind system
 			vec3 windAtPos = getWindAtPosition(instanceCenter);
-			vec3 rawWindNudge = windAtPos * 25.0 * wind_strength * u_windResponsiveness;
+			// windAtPos is in m/s (up to ~30-40 m/s in storms)
+			vec3 rawWindNudge = windAtPos * wind_strength * u_windResponsiveness;
 
 			float windMag = length(rawWindNudge);
 
@@ -236,8 +237,10 @@ void main() {
 
 				// 2. Apply Asymptotic Resistance (tanh)
 				// Limits maximum deflection so the tree never folds completely flat
-				float maxDeflection = 1.1; // Adjust to tune maximum bend angle limit
-				float resistedWindMag = maxDeflection * tanh(windMag / maxDeflection);
+				float maxDeflection = 1.3; // Allow more deflection for high-speed macro wind
+				// wind_strength (0.01-0.5) * windAtPos (0-40) ~ 0-20.
+				// We need to scale this to a reasonable radian angle.
+				float resistedWindMag = maxDeflection * tanh(windMag * 0.15 / maxDeflection);
 
 				// WindDeflection = resistedWindMag;
 
