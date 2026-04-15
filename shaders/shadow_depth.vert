@@ -113,7 +113,8 @@ void main() {
 
 			// 1. Calculate raw wind magnitude and direction from macro wind system
 			vec3 windAtPos = getWindAtPosition(instanceCenter);
-			vec3 rawWindNudge = windAtPos * 25.0 * wind_strength * u_windResponsiveness;
+			// windAtPos is in m/s (up to ~30-40 m/s in storms)
+			vec3 rawWindNudge = windAtPos * wind_strength * u_windResponsiveness;
 
 			float windMag = length(rawWindNudge);
 
@@ -122,7 +123,7 @@ void main() {
 
 				// 2. Apply Asymptotic Resistance (tanh)
 				float maxDeflection = 1.3;
-				float resistedWindMag = maxDeflection * tanh(windMag / maxDeflection);
+				float resistedWindMag = maxDeflection * tanh(windMag * 0.15 / maxDeflection);
 
 				// 3. Calculate bending angle based on resisted wind and height
 				float bendAngle = resistedWindMag * pow(normalizedHeight, 1.2) *
