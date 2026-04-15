@@ -348,6 +348,10 @@ namespace Boidsish {
 					return ChunkSize() + 1;
 				}
 
+				consteval int BakedResolution() {
+					return 256;
+				}
+
 				consteval int DefaultViewDistance() {
 					return (32 * 10) / ChunkSize();
 				}

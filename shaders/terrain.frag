@@ -30,6 +30,8 @@ uniform bool uIsShadowPass = false;
 
 // Biome texture array: RG8 - R=low_idx, G=t
 uniform sampler2DArray uBiomeMap;
+uniform sampler2DArray uBakedAlbedoRoughness;
+uniform sampler2DArray uBakedParams;
 uniform float          uRawChunkSize;
 
 uniform mat4 view;
@@ -245,6 +247,14 @@ void main() {
 		return;
 	}
 
+	// Sample baked maps
+	vec4 bakedAlbedoRough = texture(uBakedAlbedoRoughness, vec3(TexCoords, TextureSlice));
+	vec4 bakedParams = texture(uBakedParams, vec3(TexCoords, TextureSlice));
+
+	vec3  albedo = bakedAlbedoRough.rgb;
+	float roughness = bakedAlbedoRough.a;
+	float metallic = bakedParams.r;
+
 	// Distance Fade -- precalc
 	vec3  norm = normalize(Normal);
 	float baseFreq = 0.1 / worldScale;
@@ -356,134 +366,13 @@ void main() {
 	// Slope analysis: 1.0 = flat horizontal, 0.0 = vertical cliff
 	float distortedSlope = slope + medNoise * 0.08;
 
-	// // Slope-based cliff blending
-	float verticalMask = smoothstep(0.4, 0.2, slope);
-
-	// Valley/ridge detection
-	float valleyFactor = calculateValleyFactor(FragPos);
-
-	// Moisture calculation
-	float moisture = calculateMoisture(baseHeight, valleyFactor, FragPos);
-
-	// Valley lushness boost
-	float valleyLushness = clamp(-valleyFactor, 0.0, 1.0);
-	moisture = mix(moisture, min(moisture + 0.3, 1.0), valleyLushness);
-
-	// Cliff mask: steep surfaces become rocky
-	// Threshold varies with altitude (snow sticks to steeper surfaces at high alt)
-	// Lower threshold = only steeper surfaces become cliffs (0.5 = ~60° from horizontal)
-	float cliffThreshold = mix(0.4, 0.3, smoothstep(HEIGHT_SNOW_START, HEIGHT_PEAK, baseHeight));
-	float cliffMask = smoothstep(cliffThreshold, cliffThreshold - 0.15, distortedSlope);
-
-	// Near-vertical surfaces (slope < 0.2, ~78° from horizontal) are always cliff-like
-	// float verticalMask = smoothstep(0.25, 0.1, slope);
-	cliffMask = max(cliffMask, verticalMask);
-
-	// Add noise to cliff boundaries for natural look
-	cliffMask += (medNoise - 0.5) * 0.15;
-	cliffMask = clamp(cliffMask, 0.0, 1.0);
-
-	// Don't make beach areas into cliffs
-	float beachMask = 1.0 - smoothstep(0.0, HEIGHT_BEACH_END + 2.0, baseHeight);
-	cliffMask *= (1.0 - beachMask);
-
-	TerrainMaterial biomeMat = getBiomeMaterial(distortedHeight, moisture, combinedNoise);
-	TerrainMaterial cliffMat = getCliffMaterial(baseHeight, medNoise);
-
-	// Substrate-based blending: eroded substrate tends to be rockier, while
-	// deposition substrate (plains/ridges) can be lusher.
-	float substrateCliffFactor = smoothstep(0.2, -0.6, vSubstrate);
-	cliffMask = clamp(cliffMask + substrateCliffFactor * 0.4, 0.0, 1.0);
-
-	// Blend biome with cliff material
-	finalMaterial.albedo = mix(biomeMat.albedo, cliffMat.albedo, cliffMask);
-	finalMaterial.roughness = mix(biomeMat.roughness, cliffMat.roughness, cliffMask);
-	finalMaterial.metallic = mix(biomeMat.metallic, cliffMat.metallic, cliffMask);
-	finalMaterial.normalScale = mix(biomeMat.normalScale, cliffMat.normalScale, cliffMask);
-	finalMaterial.normalStrength = mix(biomeMat.normalStrength, cliffMat.normalStrength, cliffMask);
-
-	// Large-scale macro color shifts
-	finalMaterial.albedo *= (1.0 + macroNoise * 0.12);
-
-	// Add subtle color variation based on combined noise
-	finalMaterial.albedo *= (1.0 + combinedNoise * 0.15);
-
-	// Extra variety for rocky/steep areas to complement normals
-	float rockyVar = fineNoise;
-	float rockyMask = smoothstep(0.5, 0.2, slope); // More variety on steeper slopes
-	finalMaterial.albedo = mix(finalMaterial.albedo, finalMaterial.albedo * (1.0 + rockyVar * 0.2), rockyMask);
-
-	// ========================================================================
-	// Advanced Erosion Filter Coloration
-	// ========================================================================
-	// Apply the extracted color mapping using the data passed from the tessellation shader
-	finalMaterial.albedo = applyErosionColorMappingDefault(finalMaterial.albedo, vRidgeMap, vErosionDelta);
-
-	vec3  albedo = finalMaterial.albedo;
-	float roughness = finalMaterial.roughness;
-	float metallic = finalMaterial.metallic;
-	float normalStrength = finalMaterial.normalStrength;
-	float normalScale = finalMaterial.normalScale;
 
 	// ========================================================================
 	// Detail Variation
 	// ========================================================================
 
-	// ========================================================================
-	// Normal Perturbation (Grain)
-	// ========================================================================
+	// Normal Perturbation (Grain) - simplified with baked normals
 	vec3 perturbedNorm = norm;
-
-	if (perturbFactor >= 0.1 && normalStrength > 0.0) {
-		float roughnessStrength = smoothstep(0.1, 1.0, perturbFactor) * normalStrength;
-		float roughnessScale = normalScale * 0.05;
-		vec3  scaledFragPos = FragPos / worldScale;
-
-		// Sample biome noise type (using unused params.w)
-		vec2  biomeUV = (TexCoords * uRawChunkSize + 0.5) / (uRawChunkSize + 1.0);
-		vec2  biomeInfo = texture(uBiomeMap, vec3(biomeUV, TextureSlice)).rg;
-		float noiseTypeA = u_biomes[int(biomeInfo.x)].params.w;
-		float noiseTypeB = u_biomes[min(int(biomeInfo.x) + 1, 7)].params.w;
-		float noiseType = mix(noiseTypeA, noiseTypeB, biomeInfo.y);
-
-		// Use finite difference to approximate the gradient of the noise field
-		float eps = 0.015;
-		float n, nx, nz;
-
-		if (noiseType < 0.5) { // Simplex (0)
-			n = fastSimplex3d(0.1 * scaledFragPos * roughnessScale);
-			nx = fastSimplex3d(0.1 * (scaledFragPos + vec3(eps, 0.0, 0.0)) * roughnessScale);
-			nz = fastSimplex3d(0.1 * (scaledFragPos + vec3(0.0, 0.0, eps)) * roughnessScale);
-		} else if (noiseType < 1.5) { // Worley (1)
-			n = fastWorley3d(0.1 * scaledFragPos * roughnessScale);
-			nx = fastWorley3d(0.1 * (scaledFragPos + vec3(eps, 0.0, 0.0)) * roughnessScale);
-			nz = fastWorley3d(0.1 * (scaledFragPos + vec3(0.0, 0.0, eps)) * roughnessScale);
-		} else if (noiseType < 2.5) { // FBM (2)
-			n = fastFbm3d(0.1 * scaledFragPos * roughnessScale);
-			nx = fastFbm3d(0.1 * (scaledFragPos + vec3(eps, 0.0, 0.0)) * roughnessScale);
-			nz = fastFbm3d(0.1 * (scaledFragPos + vec3(0.0, 0.0, eps)) * roughnessScale);
-		} else { // Ridge (3)
-			n = fastRidge3d(0.1 * scaledFragPos * roughnessScale);
-			nx = fastRidge3d(0.1 * (scaledFragPos + vec3(eps, 0.0, 0.0)) * roughnessScale);
-			nz = fastRidge3d(0.1 * (scaledFragPos + vec3(0.0, 0.0, eps)) * roughnessScale);
-		}
-
-		// Compute local tangent space to orient the perturbation.
-		// Using a stable basis that doesn't flip at Z-axis alignment.
-		vec3 v = abs(norm.z) < 0.999 ? vec3(0, 0, 1) : vec3(1, 0, 0);
-		vec3 tangent = normalize(cross(v, norm));
-		vec3 bitangent = cross(norm, tangent);
-
-		// Apply perturbation based on noise gradient
-		vec3 perturbation = (tangent * (n - nx) + bitangent * (n - nz)) * (roughnessStrength / eps);
-		perturbedNorm = normalize(norm + perturbation);
-
-		// Toksvig-like Adjustment: Increase roughness based on normal variance
-		// Procedural normals can cause aliasing; we compensate by increasing roughness
-		// where the normal gradient is high.
-		float variance = dot(perturbation, perturbation);
-		roughness = sqrt(clamp(roughness * roughness + variance * 0.25, 0.0, 1.0));
-	}
 
 	// Final Lighting
 	float fateFactor = fastWorley3d(vec3(FragPos.xz / 50.0, time * 0.25)) * 0.5 + 0.50;

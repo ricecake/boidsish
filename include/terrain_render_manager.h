@@ -86,6 +86,7 @@ namespace Boidsish {
 			const glm::vec3& camera_pos,
 			float            world_scale = 1.0f,
 			GLuint           lighting_ubo = 0,
+			GLuint           visual_effects_ubo = 0,
 			float            day_time = -1.0f
 		);
 
@@ -191,6 +192,8 @@ namespace Boidsish {
 				extra_noise_texture_ = extra;
 		}
 
+		void SetVisualEffectsUbo(GLuint ubo) { visual_effects_ubo_ = ubo; }
+
 	private:
 		/**
 		 * @brief Update the global chunk grid and max height textures.
@@ -226,6 +229,9 @@ namespace Boidsish {
 		// Create/resize the heightmap texture array
 		void EnsureTextureCapacity(int required_slices);
 
+		// Bake procedural features into high-res textures
+		void BakeChunk(int slice, const glm::vec2& world_offset);
+
 		// Upload heightmap data to a texture slice
 		void UploadHeightmapSlice(
 			int                           slice,
@@ -250,6 +256,12 @@ namespace Boidsish {
 		GLuint curl_texture_ = 0;
 		GLuint extra_noise_texture_ = 0;
 		GLuint biome_ubo_ = 0; // UBO for BiomeShaderProperties
+		GLuint visual_effects_ubo_ = 0;
+
+		// Baked terrain resources
+		GLuint baked_height_normal_texture_ = 0;   // GL_TEXTURE_2D_ARRAY (RGBA16F: height, oct_x, oct_y, delta)
+		GLuint baked_albedo_roughness_texture_ = 0; // GL_TEXTURE_2D_ARRAY (RGBA8: albedo, roughness)
+		GLuint baked_params_texture_ = 0;           // GL_TEXTURE_2D_ARRAY (RG8: metallic, substrate)
 
 		// Global terrain grid resources
 		GLuint chunk_grid_texture_ = 0;      // GL_TEXTURE_2D (R16I: texture_slice index, -1 if none)
@@ -259,6 +271,7 @@ namespace Boidsish {
 
 		std::unique_ptr<ComputeShader> grid_mip_shader_;
 		std::unique_ptr<ComputeShader> probe_compute_shader_;
+		std::unique_ptr<ComputeShader> bake_compute_shader_;
 
 		// Grid mesh data
 		size_t grid_index_count_ = 0;
