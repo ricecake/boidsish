@@ -179,6 +179,11 @@ namespace Boidsish {
 		 */
 		void BindTerrainData(ShaderBase& shader_base) const;
 
+		/**
+		 * @brief Update the global chunk grid and max height textures.
+		 */
+		void UpdateGridTextures(float world_scale, GLuint lighting_ubo = 0, float day_time = -1.0f);
+
 		void SetNoise(const GLuint& noise, const GLuint& curl, const GLuint& extra = 0) {
 			if (noise != 0) {
 				noise_texture_ = noise;
@@ -192,11 +197,6 @@ namespace Boidsish {
 		}
 
 	private:
-		/**
-		 * @brief Update the global chunk grid and max height textures.
-		 */
-		void UpdateGridTextures(float world_scale, GLuint lighting_ubo = 0, float day_time = -1.0f);
-
 		/**
 		 * @brief Generate mipmaps for the max height grid using MAX reduction.
 		 */

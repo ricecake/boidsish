@@ -130,7 +130,7 @@ namespace Boidsish {
 			glBindTexture(GL_TEXTURE_2D, sourceTexture);
 
 			for (int i = 0; i < _numMips; i++) {
-				glBindImageTexture(i, _bloomTexture, i, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+				glBindImageTexture(5 + i, _bloomTexture, i, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 			}
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::AutoExposure(), _exposureSsbo);
 
@@ -138,6 +138,11 @@ namespace Boidsish {
 			unsigned int groupsY = (_height / 2 + 15) / 16;
 			_downsampleComputeShader->dispatch(groupsX, groupsY, 1);
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
+
+			// Unbind image units so they don't leak into later passes
+			for (int i = 0; i < _numMips; i++) {
+				glBindImageTexture(5 + i, 0, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA16F);
+			}
 
 			// 3. Progressive upsample and accumulate
 			_upsampleShader->use();
