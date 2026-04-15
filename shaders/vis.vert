@@ -239,8 +239,8 @@ void main() {
 				// Limits maximum deflection so the tree never folds completely flat
 				float maxDeflection = 1.3; // Allow more deflection for high-speed macro wind
 				// wind_strength (0.01-0.5) * windAtPos (0-40) ~ 0-20.
-				// We need to scale this to a reasonable radian angle.
-				float resistedWindMag = maxDeflection * tanh(windMag * 0.15 / maxDeflection);
+				// We scale this to a reasonable radian angle. Increase multiplier for visibility.
+				float resistedWindMag = maxDeflection * tanh(windMag * 0.5 / maxDeflection);
 
 				// WindDeflection = resistedWindMag;
 

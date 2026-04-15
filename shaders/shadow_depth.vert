@@ -123,7 +123,7 @@ void main() {
 
 				// 2. Apply Asymptotic Resistance (tanh)
 				float maxDeflection = 1.3;
-				float resistedWindMag = maxDeflection * tanh(windMag * 0.15 / maxDeflection);
+				float resistedWindMag = maxDeflection * tanh(windMag * 0.5 / maxDeflection);
 
 				// 3. Calculate bending angle based on resisted wind and height
 				float bendAngle = resistedWindMag * pow(normalizedHeight, 1.2) *
