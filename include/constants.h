@@ -58,9 +58,15 @@ namespace Boidsish {
 			}
 
 			consteval int WindData() {
-				return 9;
+				return 45;
 			}
 		} // namespace UboBinding
+
+		namespace TextureUnit {
+			consteval int WindData() {
+				return 10;
+			}
+		} // namespace TextureUnit
 
 		namespace SsboBinding {
 			consteval int AutoExposure() {

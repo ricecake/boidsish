@@ -99,6 +99,7 @@ namespace Boidsish {
 			return;
 
 		ShaderBase::RegisterConstant("WIND_DATA_BINDING", Boidsish::Constants::UboBinding::WindData());
+		ShaderBase::RegisterConstant("WIND_TEXTURE_BINDING", Boidsish::Constants::TextureUnit::WindData());
 		ShaderBase::RegisterConstant("WEATHER_UNIFORMS_BINDING", Boidsish::Constants::UboBinding::WeatherUniforms());
 		ShaderBase::RegisterConstant("WEATHER_GRID_B_BINDING", Boidsish::Constants::SsboBinding::WeatherGridB());
 		ShaderBase::RegisterConstant("WEATHER_GRID_A_BINDING", Boidsish::Constants::SsboBinding::WeatherGridA());
@@ -3244,6 +3245,12 @@ namespace Boidsish {
 
 		// Update ambient weather
 		if (impl->weather_manager && impl->weather_manager->IsEnabled()) {
+			// Sync wind settings from Config (tuning controls) to WeatherManager before update
+			auto& config = ConfigManager::GetInstance();
+			impl->weather_manager->GetCurrentWeatherMutable().wind_strength = config.GetAppSettingFloat("wind_strength", 0.065f);
+			impl->weather_manager->GetCurrentWeatherMutable().wind_speed = config.GetAppSettingFloat("wind_speed", 0.075f);
+			impl->weather_manager->GetCurrentWeatherMutable().wind_frequency = config.GetAppSettingFloat("wind_frequency", 0.01f);
+
 			impl->weather_manager->Update(
 				impl->simulation_delta_time,
 				impl->simulation_time,
@@ -3262,12 +3269,6 @@ namespace Boidsish {
 			    impl->light_manager.GetLights()[1].type == DIRECTIONAL_LIGHT) {
 				impl->light_manager.GetLights()[1].intensity *= w.sun_intensity;
 			}
-
-			// Apply to wind settings in Config (for shaders)
-			auto& config = ConfigManager::GetInstance();
-			config.SetFloat("wind_strength", w.wind_strength);
-			config.SetFloat("wind_speed", w.wind_speed);
-			config.SetFloat("wind_frequency", w.wind_frequency);
 
 			impl->weather_manager->UpdateWindUbo(impl->simulation_time);
 
