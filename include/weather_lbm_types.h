@@ -36,6 +36,23 @@ namespace Boidsish {
      * @brief Physically based output of the weather system.
      * Consolidates all derived atmospheric parameters.
      */
+    /**
+     * @brief Matching structure for WindCell in shaders/helpers/wind.glsl
+     */
+    struct WindCellGpu {
+        glm::vec4 velocityDrag; // xyz = velocity, w = drag
+    };
+
+    /**
+     * @brief Matching structure for WindData UBO (std140)
+     * Total size: 16 (OriginSize) + 16 (Params) + 3840 * 16 (Grid) = 61472 bytes
+     */
+    struct WindDataUbo {
+        glm::ivec4 originSize; // x, z = origin, y = width, w = height
+        glm::vec4  params;     // x = spacing, y = time, z = curlScale, w = curlStrength
+        WindCellGpu grid[3840];
+    };
+
     struct PhysicallyBasedWeatherOutput {
         // Basic Physics
         glm::vec2 windVelocity;   // Horizontal wind (from LBM rho/u)
