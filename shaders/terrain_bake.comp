@@ -33,12 +33,17 @@ layout(std140, binding = [[BIOME_DATA_BINDING]]) uniform Biomes {
 	BiomeProperties u_biomes[8];
 };
 
-// Octahedral encoding for normals
+// Helper to avoid sign(0) == 0
+vec2 signNotZero(vec2 v) {
+	return vec2(v.x >= 0.0 ? 1.0 : -1.0, v.y >= 0.0 ? 1.0 : -1.0);
+}
+
+// Octahedral encoding for normals (+Y is Up)
 vec2 octEncode(vec3 n) {
 	float l1norm = abs(n.x) + abs(n.y) + abs(n.z);
-	vec2  res = n.xy * (1.0 / l1norm);
-	if (n.z < 0.0) {
-		res = (1.0 - abs(res.yx)) * sign(res);
+	vec2  res = n.xz * (1.0 / l1norm);
+	if (n.y < 0.0) {
+		res = (1.0 - abs(res.yx)) * signNotZero(res.xy);
 	}
 	return res * 0.5 + 0.5;
 }
@@ -76,6 +81,9 @@ TerrainMaterial getBiomeMaterial(float height, float moisture, float noise, vec2
 	TerrainMaterial mat;
 	mat.metallic = 0.0;
 
+	// Distort height with noise for natural boundaries
+	float h = height + noise * 8.0 * uWorldScale;
+
 	// Sample biome info from low-res map
 	vec2  uv = (worldXZ - uWorldOffset) / uChunkSize;
 	vec2  remappedUV = (uv * uRawChunkSize + 0.5) / (uRawChunkSize + 1.0);
@@ -95,11 +103,8 @@ TerrainMaterial getBiomeMaterial(float height, float moisture, float noise, vec2
 	float biomeRoughness = mix(albRoughA.a, albRoughB.a, t_biome);
 	float biomeMetallic = mix(paramsA.x, paramsB.x, t_biome);
 
-	// Distort height with noise for natural boundaries
-	float h = height + noise * 8.0;
-
-	if (h < HEIGHT_BEACH_END) {
-		float wetness = 1.0 - smoothstep(0.0, HEIGHT_BEACH_END, h);
+	if (h < HEIGHT_BEACH_END * uWorldScale) {
+		float wetness = 1.0 - smoothstep(0.0, HEIGHT_BEACH_END * uWorldScale, h);
 		mat.albedo = mix(COL_SAND_DRY, COL_SAND_WET, wetness);
 		mat.roughness = mix(0.9, 0.4, wetness);
 		mat.normalScale = 40.0;
@@ -107,11 +112,11 @@ TerrainMaterial getBiomeMaterial(float height, float moisture, float noise, vec2
 		return mat;
 	}
 
-	if (h < HEIGHT_LOWLAND_END) {
-		float t = smoothstep(HEIGHT_BEACH_END, HEIGHT_LOWLAND_END, h);
+	if (h < HEIGHT_LOWLAND_END * uWorldScale) {
+		float t = smoothstep(HEIGHT_BEACH_END * uWorldScale, HEIGHT_LOWLAND_END * uWorldScale, h);
 		vec3  grassColor = mix(COL_GRASS_LUSH, COL_GRASS_DRY, t * (1.0 - moisture));
 		float grassRoughness = mix(0.7, 0.8, t * (1.0 - moisture));
-		float sandFade = smoothstep(HEIGHT_BEACH_END, HEIGHT_BEACH_END + 5.0, h);
+		float sandFade = smoothstep(HEIGHT_BEACH_END * uWorldScale, (HEIGHT_BEACH_END + 5.0) * uWorldScale, h);
 		mat.albedo = mix(COL_SAND_DRY, grassColor, sandFade);
 		mat.roughness = mix(0.9, grassRoughness, sandFade);
 		mat.normalScale = mix(40.0, 12.0, sandFade);
@@ -119,8 +124,8 @@ TerrainMaterial getBiomeMaterial(float height, float moisture, float noise, vec2
 		return mat;
 	}
 
-	if (h < HEIGHT_FOREST_END) {
-		float t = smoothstep(HEIGHT_LOWLAND_END, HEIGHT_FOREST_END, h);
+	if (h < HEIGHT_FOREST_END * uWorldScale) {
+		float t = smoothstep(HEIGHT_LOWLAND_END * uWorldScale, HEIGHT_FOREST_END * uWorldScale, h);
 		vec3 forestColor = mix(COL_GRASS_LUSH, COL_FOREST, moisture);
 		mat.albedo = mix(forestColor, COL_GRASS_DRY, t * 0.3);
 		mat.roughness = mix(0.8, 0.85, t * 0.3);
@@ -129,8 +134,8 @@ TerrainMaterial getBiomeMaterial(float height, float moisture, float noise, vec2
 		return mat;
 	}
 
-	if (h < HEIGHT_ALPINE_START) {
-		float t = smoothstep(HEIGHT_FOREST_END, HEIGHT_ALPINE_START, h);
+	if (h < HEIGHT_ALPINE_START * uWorldScale) {
+		float t = smoothstep(HEIGHT_FOREST_END * uWorldScale, HEIGHT_ALPINE_START * uWorldScale, h);
 		mat.albedo = mix(COL_FOREST, COL_ALPINE_MEADOW, t);
 		mat.roughness = 0.8;
 		mat.normalScale = mix(10.0, 15.0, t);
@@ -138,8 +143,8 @@ TerrainMaterial getBiomeMaterial(float height, float moisture, float noise, vec2
 		return mat;
 	}
 
-	if (h < HEIGHT_TREELINE) {
-		float t = smoothstep(HEIGHT_ALPINE_START, HEIGHT_TREELINE, h);
+	if (h < HEIGHT_TREELINE * uWorldScale) {
+		float t = smoothstep(HEIGHT_ALPINE_START * uWorldScale, HEIGHT_TREELINE * uWorldScale, h);
 		mat.albedo = mix(COL_ALPINE_MEADOW, COL_ROCK_GREY, t * 0.4);
 		mat.roughness = mix(0.8, 0.6, t * 0.4);
 		mat.normalScale = mix(15.0, 4.0, t * 0.4);
@@ -147,8 +152,8 @@ TerrainMaterial getBiomeMaterial(float height, float moisture, float noise, vec2
 		return mat;
 	}
 
-	if (h < HEIGHT_SNOW_START) {
-		float t = smoothstep(HEIGHT_TREELINE, HEIGHT_SNOW_START, h);
+	if (h < HEIGHT_SNOW_START * uWorldScale) {
+		float t = smoothstep(HEIGHT_TREELINE * uWorldScale, HEIGHT_SNOW_START * uWorldScale, h);
 		vec3 rockColor = mix(COL_ROCK_BROWN, COL_ROCK_GREY, noise * 0.5 + 0.5);
 		vec3 patchColor = mix(rockColor, COL_ALPINE_MEADOW, moisture * 0.3);
 		mat.albedo = mix(patchColor, COL_SNOW_OLD, t * 0.3);
@@ -158,7 +163,7 @@ TerrainMaterial getBiomeMaterial(float height, float moisture, float noise, vec2
 		return mat;
 	}
 
-	float t = smoothstep(HEIGHT_SNOW_START, HEIGHT_PEAK, h);
+	float t = smoothstep(HEIGHT_SNOW_START * uWorldScale, HEIGHT_PEAK * uWorldScale, h);
 	vec3 snowColor = mix(COL_SNOW_OLD, COL_SNOW_FRESH, t);
 	float rockShow = (1.0 - t) * 0.2 * (1.0 - moisture);
 	mat.albedo = mix(snowColor, COL_ROCK_GREY, rockShow);
@@ -177,9 +182,9 @@ TerrainMaterial getBiomeMaterial(float height, float moisture, float noise, vec2
 TerrainMaterial getCliffMaterial(float height, float noise) {
 	TerrainMaterial mat;
 	mat.metallic = 0.0;
-	float h = height + noise * 5.0;
+	float h = height + noise * 5.0 * uWorldScale;
 
-	if (h < HEIGHT_FOREST_END) {
+	if (h < HEIGHT_FOREST_END * uWorldScale) {
 		float wetness = 0.3 + noise * 0.2;
 		mat.albedo = mix(COL_ROCK_BROWN, COL_ROCK_DARK, wetness);
 		mat.roughness = mix(0.6, 0.3, wetness);
@@ -188,8 +193,8 @@ TerrainMaterial getCliffMaterial(float height, float noise) {
 		return mat;
 	}
 
-	if (h < HEIGHT_SNOW_START) {
-		float t = smoothstep(HEIGHT_FOREST_END, HEIGHT_SNOW_START, h);
+	if (h < HEIGHT_SNOW_START * uWorldScale) {
+		float t = smoothstep(HEIGHT_FOREST_END * uWorldScale, HEIGHT_SNOW_START * uWorldScale, h);
 		mat.albedo = mix(COL_ROCK_BROWN, COL_ROCK_GREY, t + noise * 0.2);
 		mat.roughness = 0.6;
 		mat.normalScale = 3.5;
@@ -197,7 +202,7 @@ TerrainMaterial getCliffMaterial(float height, float noise) {
 		return mat;
 	}
 
-	float snowPatch = smoothstep(HEIGHT_SNOW_START, HEIGHT_PEAK, h) * 0.4;
+	float snowPatch = smoothstep(HEIGHT_SNOW_START * uWorldScale, HEIGHT_PEAK * uWorldScale, h) * 0.4;
 	vec3  highRock = mix(COL_ROCK_GREY, COL_ROCK_DARK, noise * 0.3);
 	mat.albedo = mix(highRock, COL_SNOW_OLD, snowPatch);
 	mat.roughness = mix(0.6, 0.5, snowPatch);
@@ -303,14 +308,14 @@ void main() {
 	float valleyLushness = clamp(-valleyFactor, 0.0, 1.0);
 	moisture = mix(moisture, min(moisture + 0.3, 1.0), valleyLushness);
 
-	float cliffThreshold = mix(0.4, 0.3, smoothstep(HEIGHT_SNOW_START, HEIGHT_PEAK, height));
+	float cliffThreshold = mix(0.4, 0.3, smoothstep(HEIGHT_SNOW_START * uWorldScale, HEIGHT_PEAK * uWorldScale, height));
 	float cliffMask = smoothstep(cliffThreshold, cliffThreshold - 0.15, slope + medNoise * 0.08);
 	float verticalMask = smoothstep(0.4, 0.2, slope);
 	cliffMask = max(cliffMask, verticalMask);
 	cliffMask += (medNoise - 0.5) * 0.15;
 	cliffMask = clamp(cliffMask, 0.0, 1.0);
 
-	float beachMask = 1.0 - smoothstep(0.0, HEIGHT_BEACH_END + 2.0, height);
+	float beachMask = 1.0 - smoothstep(0.0, (HEIGHT_BEACH_END + 2.0) * uWorldScale, height);
 	cliffMask *= (1.0 - beachMask);
 
 	float substrateCliffFactor = smoothstep(0.2, -0.6, vSubstrate);
