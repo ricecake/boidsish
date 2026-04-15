@@ -237,10 +237,10 @@ void main() {
 
 				// 2. Apply Asymptotic Resistance (tanh)
 				// Limits maximum deflection so the tree never folds completely flat
-				float maxDeflection = 1.3; // Allow more deflection for high-speed macro wind
+				float maxDeflection = 1.1; // Allow more deflection for high-speed macro wind
 				// wind_strength (0.01-0.5) * windAtPos (0-40) ~ 0-20.
 				// We scale this to a reasonable radian angle. Increase multiplier for visibility.
-				float resistedWindMag = maxDeflection * tanh(windMag * 0.5 / maxDeflection);
+				float resistedWindMag = maxDeflection * tanh(windMag * 0.15 / maxDeflection);
 
 				// WindDeflection = resistedWindMag;
 
