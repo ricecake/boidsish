@@ -55,6 +55,10 @@ namespace Boidsish {
 		} // namespace UboBinding
 
 		namespace SsboBinding {
+			consteval int DecorInstances() {
+				return 10;
+			}
+
 			consteval int AutoExposure() {
 				return 11;
 			}
@@ -65,6 +69,42 @@ namespace Boidsish {
 
 			consteval int OcclusionVisibility() {
 				return 13;
+			}
+
+			consteval int CommonUniforms() {
+				return 21;
+			}
+
+			consteval int DecorAllInstances() {
+				return 25;
+			}
+
+			consteval int WeatherGridA() {
+				return 37;
+			}
+
+			consteval int WeatherGridB() {
+				return 38;
+			}
+
+			consteval int DecorIndirect() {
+				return 39;
+			}
+
+			consteval int DecorBlockValidity() {
+				return 40;
+			}
+
+			consteval int MeshExplosionFragments() {
+				return 41;
+			}
+
+			consteval int TrailGeneratedVBO() {
+				return 42;
+			}
+
+			consteval int AtmosphereSH() {
+				return 43;
 			}
 
 			consteval int ParticleGridHeads() {

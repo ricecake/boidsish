@@ -2,7 +2,7 @@
 #define TONEMAPPING_GLSL
 
 // Auto-exposure SSBO
-layout(std430, binding = 11) buffer AutoExposure {
+layout(std430, binding = [[AUTO_EXPOSURE_BINDING]]) buffer AutoExposure {
 	float adaptedLuminance;
 	float targetLuminance;
 	float minExposure;
