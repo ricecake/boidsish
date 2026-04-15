@@ -54,7 +54,7 @@ namespace Boidsish {
 			}
 
 			consteval int WindData() {
-				return 39;
+				return 9;
 			}
 		} // namespace UboBinding
 

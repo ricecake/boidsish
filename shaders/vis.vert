@@ -27,6 +27,7 @@ layout(std430, binding = 12) buffer BoneMatricesSSBO {
 
 #include "frustum.glsl"
 #include "helpers/fast_noise.glsl"
+#include "helpers/wind.glsl"
 #include "helpers/lighting.glsl"
 #include "helpers/shockwave.glsl"
 #include "temporal_data.glsl"
@@ -224,21 +225,22 @@ void main() {
 			float totalHeight = max(0.001, u_aabbMax.y - u_aabbMin.y);
 			float normalizedHeight = clamp(localHeight / totalHeight, 0.0, 1.0);
 
-			// 1. Calculate raw wind magnitude and direction
-			float fateFactor = fastWorley3d(vec3(instanceCenter.xz / 25.0, time * 0.25)) * 0.5 + 0.75;
-			vec2 rawWindNudge = fateFactor * curlNoise2D(instanceCenter.xz * wind_frequency + time * wind_speed * 0.5) *
-				wind_strength * u_windResponsiveness;
+			// 1. Calculate raw wind magnitude and direction from macro wind system
+			vec3 windAtPos = getWindAtPosition(instanceCenter);
+			// windAtPos is in m/s (up to ~30-40 m/s in storms)
+			vec3 rawWindNudge = windAtPos * wind_strength * u_windResponsiveness;
 
 			float windMag = length(rawWindNudge);
 
 			if (windMag > 0.001) {
-				vec2 windDir2D = rawWindNudge / windMag;
-				vec3 windDir = vec3(windDir2D.x, 0.0, windDir2D.y);
+				vec3 windDir = rawWindNudge / windMag;
 
 				// 2. Apply Asymptotic Resistance (tanh)
 				// Limits maximum deflection so the tree never folds completely flat
-				float maxDeflection = 1.1; // Adjust to tune maximum bend angle limit
-				float resistedWindMag = maxDeflection * tanh(windMag / maxDeflection);
+				float maxDeflection = 1.3; // Allow more deflection for high-speed macro wind
+				// wind_strength (0.01-0.5) * windAtPos (0-40) ~ 0-20.
+				// We scale this to a reasonable radian angle. Increase multiplier for visibility.
+				float resistedWindMag = maxDeflection * tanh(windMag * 0.5 / maxDeflection);
 
 				// WindDeflection = resistedWindMag;
 

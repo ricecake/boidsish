@@ -5,6 +5,8 @@
 
 #include "Simplex.h"
 #include "profiler.h"
+#include <GL/glew.h>
+#include "constants.h"
 
 namespace Boidsish {
 
@@ -12,7 +14,14 @@ namespace Boidsish {
 		InitializePresets();
 
 		// Initialize LBM Simulator (scaled to typical terrain range)
-		lbm_simulator_ = std::make_unique<WeatherLbmSimulator>(64, 64);
+		// 64x60 to match WindDataUbo capacity
+		lbm_simulator_ = std::make_unique<WeatherLbmSimulator>(64, 60);
+
+		// Initialize Wind Data UBO
+		glGenBuffers(1, &wind_data_ubo_);
+		glBindBuffer(GL_UNIFORM_BUFFER, wind_data_ubo_);
+		glBufferData(GL_UNIFORM_BUFFER, sizeof(WindDataUbo), nullptr, GL_DYNAMIC_DRAW);
+		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
 		// Initialize default paces for various attributes from centralized constants
 		SetPace(WeatherAttribute::SunIntensity, WeatherConstants::SunIntensity.pace);
@@ -32,7 +41,11 @@ namespace Boidsish {
 		SetPace(WeatherAttribute::CloudCoverage, WeatherConstants::CloudCoverage.pace);
 	}
 
-	WeatherManager::~WeatherManager() {}
+	WeatherManager::~WeatherManager() {
+		if (wind_data_ubo_ != 0) {
+			glDeleteBuffers(1, &wind_data_ubo_);
+		}
+	}
 
 	void WeatherManager::SetTarget(WeatherAttribute attr, float target) {
 		if (attr == WeatherAttribute::Count)
@@ -247,6 +260,20 @@ namespace Boidsish {
 		}
 	}
 
+	void WeatherManager::UpdateWindUbo(float totalTime) {
+		if (!lbm_simulator_ || wind_data_ubo_ == 0)
+			return;
+
+		WindDataUbo ubo;
+		lbm_simulator_->PopulateWindData(ubo, totalTime, current_.wind_frequency, 1.0f);
+
+		glBindBuffer(GL_UNIFORM_BUFFER, wind_data_ubo_);
+		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(WindDataUbo), &ubo);
+		glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
+		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::WindData(), wind_data_ubo_);
+	}
+
 	void WeatherManager::Update(float deltaTime, float totalTime, const glm::vec3& cameraPos, float timeOfDay) {
 		if (!enabled_ || presets_.empty())
 			return;
@@ -254,7 +281,7 @@ namespace Boidsish {
 		PROJECT_PROFILE_SCOPE("WeatherManager::Update");
 
 		if (lbm_simulator_ && terrain_) {
-			lbm_simulator_->Update(deltaTime, totalTime, timeOfDay, *terrain_, cameraPos);
+			lbm_simulator_->Update(deltaTime, totalTime, timeOfDay, *terrain_, cameraPos, current_.wind_speed, current_.wind_strength);
 
 			const auto& phys = lbm_simulator_->GetOutput();
 			// Optionally override some current_ targets with physically based results
