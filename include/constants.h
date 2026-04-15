@@ -56,6 +56,10 @@ namespace Boidsish {
 			consteval int DecorPlacementGlobals() {
 				return 31;
 			}
+
+			consteval int WindData() {
+				return 39;
+			}
 		} // namespace UboBinding
 
 		namespace SsboBinding {
