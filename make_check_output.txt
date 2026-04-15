@@ -1,0 +1,43 @@
+-- Configuring done (0.3s)
+-- Generating done (0.9s)
+-- Build files have been written to: /app/build
+gmake[1]: Entering directory '/app/build'
+gmake[2]: Entering directory '/app/build'
+gmake[3]: Entering directory '/app/build'
+gmake[4]: Entering directory '/app/build'
+gmake[4]: Leaving directory '/app/build'
+[ 11%] Built target meshoptimizer
+gmake[4]: Entering directory '/app/build'
+gmake[4]: Leaving directory '/app/build'
+[ 14%] Built target imgui
+gmake[4]: Entering directory '/app/build'
+gmake[4]: Leaving directory '/app/build'
+gmake[4]: Entering directory '/app/build'
+[ 14%] Building CXX object CMakeFiles/boidsish.dir/src/graphics.cpp.o
+[ 14%] Building CXX object CMakeFiles/boidsish.dir/src/sound_effect_manager.cpp.o
+[ 14%] Linking CXX static library libboidsish.a
+gmake[4]: Leaving directory '/app/build'
+[ 57%] Built target boidsish
+gmake[4]: Entering directory '/app/build'
+gmake[4]: Leaving directory '/app/build'
+gmake[4]: Entering directory '/app/build'
+[ 57%] Linking CXX executable model_converter
+gmake[4]: Leaving directory '/app/build'
+[ 57%] Built target model_converter
+gmake[4]: Entering directory '/app/build'
+gmake[4]: Leaving directory '/app/build'
+gmake[4]: Entering directory '/app/build'
+[ 57%] Linking CXX executable shader_preprocessor
+gmake[4]: Leaving directory '/app/build'
+[ 57%] Built target shader_preprocessor
+gmake[4]: Entering directory '/app/build'
+gmake[4]: Leaving directory '/app/build'
+gmake[4]: Entering directory '/app/build'
+[ 57%] Building CXX object CMakeFiles/check.dir/src/graphics.cpp.o
+[ 60%] Building CXX object CMakeFiles/check.dir/src/sound_effect_manager.cpp.o
+[ 60%] Linking CXX static library libcheck.a
+gmake[4]: Leaving directory '/app/build'
+[100%] Built target check
+gmake[3]: Leaving directory '/app/build'
+gmake[2]: Leaving directory '/app/build'
+gmake[1]: Leaving directory '/app/build'

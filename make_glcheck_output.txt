@@ -1,0 +1,171 @@
+rm -rf build/shaders_preprocessed/
+-- Configuring done (0.4s)
+-- Generating done (0.6s)
+-- Build files have been written to: /app/build
+gmake[1]: Entering directory '/app/build'
+gmake[2]: Entering directory '/app/build'
+gmake[3]: Entering directory '/app/build'
+gmake[4]: Entering directory '/app/build'
+gmake[4]: Leaving directory '/app/build'
+[  8%] Built target meshoptimizer
+gmake[4]: Entering directory '/app/build'
+gmake[4]: Leaving directory '/app/build'
+[ 11%] Built target imgui
+gmake[4]: Entering directory '/app/build'
+gmake[4]: Leaving directory '/app/build'
+[ 44%] Built target boidsish
+gmake[4]: Entering directory '/app/build'
+gmake[4]: Leaving directory '/app/build'
+[ 44%] Built target shader_preprocessor
+gmake[4]: Entering directory '/app/build'
+gmake[4]: Leaving directory '/app/build'
+gmake[4]: Entering directory '/app/build'
+[ 44%] Preprocessing shader akira.frag
+[ 46%] Validating shader akira.frag
+[ 46%] Preprocessing shader akira.vert
+[ 46%] Validating shader akira.vert
+[ 46%] Preprocessing shader atmosphere/aerial_perspective_lut.comp
+[ 46%] Validating shader atmosphere/aerial_perspective_lut.comp
+[ 46%] Preprocessing shader atmosphere/cloud_shadow_map.comp
+[ 46%] Validating shader atmosphere/cloud_shadow_map.comp
+[ 48%] Preprocessing shader atmosphere/multiscattering_lut.comp
+[ 48%] Validating shader atmosphere/multiscattering_lut.comp
+[ 48%] Preprocessing shader atmosphere/sky_to_sh.comp
+[ 48%] Validating shader atmosphere/sky_to_sh.comp
+[ 48%] Preprocessing shader atmosphere/sky_view_lut.comp
+[ 51%] Validating shader atmosphere/sky_view_lut.comp
+[ 51%] Preprocessing shader atmosphere/transmittance_lut.comp
+[ 51%] Validating shader atmosphere/transmittance_lut.comp
+[ 51%] Preprocessing shader blue_noise_gen.comp
+[ 51%] Validating shader blue_noise_gen.comp
+[ 51%] Preprocessing shader checkpoint.frag
+[ 51%] Validating shader checkpoint.frag
+[ 53%] Preprocessing shader checkpoint.vert
+[ 53%] Validating shader checkpoint.vert
+[ 53%] Preprocessing shader decor_cull.comp
+[ 55%] Validating shader decor_cull.comp
+[ 55%] Preprocessing shader decor_placement.comp
+[ 55%] Validating shader decor_placement.comp
+[ 55%] Preprocessing shader decor_update_commands.comp
+[ 55%] Validating shader decor_update_commands.comp
+[ 55%] Preprocessing shader effects/atmosphere_composite.frag
+[ 55%] Validating shader effects/atmosphere_composite.frag
+[ 55%] Preprocessing shader effects/atmosphere_lowres.frag
+[ 55%] Validating shader effects/atmosphere_lowres.frag
+[ 57%] Preprocessing shader effects/bloom_composite.frag
+[ 57%] Validating shader effects/bloom_composite.frag
+[ 57%] Preprocessing shader effects/bloom_downsample.comp
+[ 60%] Validating shader effects/bloom_downsample.comp
+[ 60%] Preprocessing shader effects/bloom_downsample.frag
+[ 60%] Validating shader effects/bloom_downsample.frag
+[ 60%] Preprocessing shader effects/bloom_upsample.frag
+[ 60%] Validating shader effects/bloom_upsample.frag
+[ 60%] Preprocessing shader effects/bright_pass.frag
+[ 60%] Validating shader effects/bright_pass.frag
+[ 60%] Preprocessing shader effects/cloud_temporal_reprojection.comp
+[ 60%] Validating shader effects/cloud_temporal_reprojection.comp
+[ 62%] Preprocessing shader effects/gaussian_blur.frag
+[ 62%] Validating shader effects/gaussian_blur.frag
+[ 62%] Preprocessing shader effects/glitch.frag
+[ 64%] Validating shader effects/glitch.frag
+[ 64%] Preprocessing shader effects/negative.frag
+[ 64%] Validating shader effects/negative.frag
+[ 64%] Preprocessing shader effects/sdf_volume.frag
+[ 64%] Validating shader effects/sdf_volume.frag
+[ 64%] Preprocessing shader effects/shockwave.frag
+[ 64%] Validating shader effects/shockwave.frag
+[ 64%] Preprocessing shader effects/strobe.frag
+[ 64%] Validating shader effects/strobe.frag
+[ 66%] Preprocessing shader effects/super_speed.frag
+[ 66%] Validating shader effects/super_speed.frag
+[ 66%] Preprocessing shader effects/temporal_accumulation.comp
+[ 68%] Validating shader effects/temporal_accumulation.comp
+[ 68%] Preprocessing shader effects/tonemapping.frag
+[ 68%] Validating shader effects/tonemapping.frag
+[ 68%] Preprocessing shader effects/unified_screen_space.comp
+[ 68%] Validating shader effects/unified_screen_space.comp
+[ 68%] Preprocessing shader effects/unified_screen_space_composite.frag
+[ 68%] Validating shader effects/unified_screen_space_composite.frag
+[ 68%] Preprocessing shader effects/whisp_trail.frag
+[ 68%] Validating shader effects/whisp_trail.frag
+[ 71%] Preprocessing shader fire.frag
+[ 71%] Validating shader fire.frag
+[ 71%] Preprocessing shader fire.vert
+[ 73%] Validating shader fire.vert
+[ 73%] Preprocessing shader fire_behavior.comp
+[ 73%] Validating shader fire_behavior.comp
+[ 73%] Preprocessing shader fire_lifecycle.comp
+[ 73%] Validating shader fire_lifecycle.comp
+[ 73%] Preprocessing shader hiz_generate.comp
+[ 73%] Validating shader hiz_generate.comp
+[ 75%] Preprocessing shader mesh_explosion.comp
+[ 75%] Validating shader mesh_explosion.comp
+[ 75%] Preprocessing shader mesh_explosion.frag
+[ 75%] Validating shader mesh_explosion.frag
+[ 75%] Preprocessing shader mesh_explosion.geom
+[ 77%] Validating shader mesh_explosion.geom
+[ 77%] Preprocessing shader mesh_explosion.vert
+[ 77%] Validating shader mesh_explosion.vert
+[ 77%] Preprocessing shader noise_gen.comp
+[ 77%] Validating shader noise_gen.comp
+[ 77%] Preprocessing shader occlusion_cull.comp
+[ 77%] Validating shader occlusion_cull.comp
+[ 80%] Preprocessing shader particle_command_fixup.comp
+[ 80%] Validating shader particle_command_fixup.comp
+[ 80%] Preprocessing shader particle_grid_build.comp
+[ 80%] Validating shader particle_grid_build.comp
+[ 80%] Preprocessing shader plane.frag
+[ 82%] Validating shader plane.frag
+[ 82%] Preprocessing shader plane.vert
+[ 82%] Validating shader plane.vert
+[ 82%] Preprocessing shader post_processing/film_grain.frag
+[ 82%] Validating shader post_processing/film_grain.frag
+[ 82%] Preprocessing shader post_processing/optical_flow.frag
+[ 82%] Validating shader post_processing/optical_flow.frag
+[ 84%] Preprocessing shader post_processing/optical_flow.vert
+[ 84%] Validating shader post_processing/optical_flow.vert
+[ 84%] Preprocessing shader post_processing/passthrough.frag
+[ 84%] Validating shader post_processing/passthrough.frag
+[ 84%] Preprocessing shader postprocess.frag
+[ 86%] Validating shader postprocess.frag
+[ 86%] Preprocessing shader postprocess.vert
+[ 86%] Validating shader postprocess.vert
+[ 86%] Preprocessing shader shadow_depth.frag
+[ 86%] Validating shader shadow_depth.frag
+[ 86%] Preprocessing shader shadow_depth.vert
+[ 86%] Validating shader shadow_depth.vert
+[ 88%] Preprocessing shader sky.frag
+[ 88%] Validating shader sky.frag
+[ 88%] Preprocessing shader sky.vert
+[ 91%] Validating shader sky.vert
+[ 91%] Preprocessing shader terrain.frag
+[ 91%] Validating shader terrain.frag
+[ 91%] Preprocessing shader terrain.geom
+[ 91%] Validating shader terrain.geom
+[ 91%] Preprocessing shader terrain.tcs
+[ 91%] Validating shader terrain.tcs
+[ 91%] Preprocessing shader terrain.tes
+[ 91%] Validating shader terrain.tes
+[ 93%] Preprocessing shader terrain.vert
+[ 93%] Validating shader terrain.vert
+[ 93%] Preprocessing shader terrain_hiz_generate.comp
+[ 95%] Validating shader terrain_hiz_generate.comp
+[ 95%] Preprocessing shader terrain_probes.comp
+[ 95%] Validating shader terrain_probes.comp
+[ 95%] Preprocessing shader trail.frag
+[ 95%] Validating shader trail.frag
+[ 95%] Preprocessing shader trail.geom
+[ 95%] Validating shader trail.geom
+[ 95%] Preprocessing shader trail.vert
+[ 95%] Validating shader trail.vert
+[ 97%] Preprocessing shader trail_tess.comp
+[ 97%] Validating shader trail_tess.comp
+[ 97%] Preprocessing shader vis.frag
+[100%] Validating shader vis.frag
+[100%] Preprocessing shader vis.vert
+[100%] Validating shader vis.vert
+gmake[4]: Leaving directory '/app/build'
+[100%] Built target glcheck
+gmake[3]: Leaving directory '/app/build'
+gmake[2]: Leaving directory '/app/build'
+gmake[1]: Leaving directory '/app/build'

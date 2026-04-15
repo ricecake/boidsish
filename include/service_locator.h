@@ -34,6 +34,14 @@ public:
 			};
 	}
 
+	template <typename T>
+	void RegisterFactory(std::function<std::shared_ptr<T>(ServiceLocator&)> factory) {
+		std::unique_lock lock(mtx);
+		factories[std::type_index(typeid(T))] = [factory](ServiceLocator& loc) {
+			return std::static_pointer_cast<void>(factory(loc));
+		};
+	}
+
 	template <typename Interface, typename Implementation, typename... Args>
 	void RegisterAs(Args... args) {
 		std::unique_lock lock(mtx);
@@ -114,6 +122,12 @@ public:
 	};
 
 	Proxy operator()() { return Proxy{*this}; }
+
+	void Clear() {
+		std::unique_lock lock(mtx);
+		instances.clear();
+		factories.clear();
+	}
 };
 
 } // namespace Boidsish

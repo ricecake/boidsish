@@ -549,10 +549,7 @@ namespace Boidsish {
 		glm::mat4                      current_view_matrix{1.0f};
 		std::vector<std::future<void>> pending_packet_futures;
 
-		void RegisterManagers(const char* title) {
-			service_locator.Provide<ConfigManager>(std::shared_ptr<ConfigManager>(&ConfigManager::GetInstance(), [](ConfigManager*) {}));
-			ConfigManager::GetInstance().Initialize(title);
-
+		void RegisterManagers() {
 			service_locator.Register<NoiseManager>();
 			service_locator.Register<LightManager>();
 			service_locator.Register<AudioManager>();
@@ -564,8 +561,20 @@ namespace Boidsish {
 			service_locator.Register<SceneManager>("scenes");
 			service_locator.Register<DecorManager>();
 			service_locator.Register<HudManager>();
-			service_locator.Register<UI::UIManager>(window);
-			service_locator.Register<PostProcessing::PostProcessingManager>(render_width, render_height, blur_quad_vao);
+
+			service_locator.RegisterFactory<UI::UIManager>([this](ServiceLocator& loc) {
+				return std::make_shared<UI::UIManager>(loc, window);
+			});
+
+			service_locator.RegisterFactory<PostProcessing::PostProcessingManager>([this](ServiceLocator& loc) {
+				return std::make_shared<PostProcessing::PostProcessingManager>(
+					loc,
+					render_width,
+					render_height,
+					blur_quad_vao
+				);
+			});
+
 			service_locator.Register<FireEffectManager>();
 			service_locator.Register<MeshExplosionManager>();
 			service_locator.Register<ShockwaveManager>();
@@ -574,17 +583,32 @@ namespace Boidsish {
 			service_locator.Register<SoundEffectManager>();
 			service_locator.Register<TrailRenderManager>();
 
-			GLint max_layers = 0;
-			glGetIntegerv(GL_MAX_ARRAY_TEXTURE_LAYERS, &max_layers);
-			int initial_chunks = max_layers > 0 ? std::min(max_layers, 8192) : 1024;
-			service_locator.Register<TerrainRenderManager>(Constants::Class::Terrain::ChunkSize(), initial_chunks);
+			service_locator.RegisterFactory<TerrainRenderManager>([this](ServiceLocator& loc) {
+				GLint max_layers = 0;
+				glGetIntegerv(GL_MAX_ARRAY_TEXTURE_LAYERS, &max_layers);
+				int initial_chunks = max_layers > 0 ? std::min(max_layers, 8192) : 1024;
+				return std::make_shared<TerrainRenderManager>(
+					loc,
+					Constants::Class::Terrain::ChunkSize(),
+					initial_chunks
+				);
+			});
 		}
 
 		VisualizerImpl(Visualizer* p, int w, int h, const char* title): parent(p), width(w), height(h) {
+			if (!glfwInit())
+				throw std::runtime_error("Failed to initialize GLFW");
+
+			glfwSetErrorCallback([](int error, const char* description) {
+				std::cerr << "GLFW Error " << error << ": " << description << std::endl;
+			});
+
 			RegisterShaderConstants();
 
-			// ConfigManager needs to be initialized before we can get some settings for RegisterManagers
-			// It is initialized inside RegisterManagers
+			ConfigManager::GetInstance().Initialize(title);
+			service_locator.Provide<ConfigManager>(
+				std::shared_ptr<ConfigManager>(&ConfigManager::GetInstance(), [](ConfigManager*) {})
+			);
 
 			enable_hdr_ = ConfigManager::GetInstance().GetAppSettingBool("enable_hdr", true);
 			last_render_terrain_ = ConfigManager::GetInstance().GetAppSettingBool("render_terrain", true);
@@ -643,12 +667,6 @@ namespace Boidsish {
 			input_callbacks.push_back([this](const InputState& state) { this->DefaultInputHandler(state); });
 
 			last_frame = std::chrono::high_resolution_clock::now();
-			if (!glfwInit())
-				throw std::runtime_error("Failed to initialize GLFW");
-
-			glfwSetErrorCallback([](int error, const char* description) {
-				std::cerr << "GLFW Error " << error << ": " << description << std::endl;
-			});
 
 			glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
 			glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6); // Updated to 4.6 for MDI and gl_DrawID support
@@ -677,6 +695,8 @@ namespace Boidsish {
 			// Clear any GL errors from glewExperimental
 			while (glGetError() != GL_NO_ERROR) {
 			}
+
+			RegisterManagers();
 
 			// Enable OpenGL debug output if configured
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_gl_debug", false)) {
@@ -758,32 +778,6 @@ namespace Boidsish {
 				shader_table.Register(std::make_unique<RenderShader>(postprocess_shader_));
 			}
 
-			// NOW REGISTER MANAGERS since we have a GL context and necessary base resources
-			RegisterManagers(title);
-
-			// Retrieve managers from locator
-			noise_manager = service_locator.Get<NoiseManager>();
-			light_manager = service_locator.Get<LightManager>();
-			audio_manager = service_locator.Get<AudioManager>();
-			hiz_manager = service_locator.Get<HiZManager>();
-			clone_manager = service_locator.Get<CloneManager>();
-			shadow_manager = service_locator.Get<ShadowManager>();
-			atmosphere_manager = service_locator.Get<AtmosphereManager>();
-			weather_manager = service_locator.Get<WeatherManager>();
-			scene_manager = service_locator.Get<SceneManager>();
-			decor_manager = service_locator.Get<DecorManager>();
-			hud_manager = service_locator.Get<HudManager>();
-			ui_manager = service_locator.Get<UI::UIManager>();
-			post_processing_manager_ = service_locator.Get<PostProcessing::PostProcessingManager>();
-			fire_effect_manager = service_locator.Get<FireEffectManager>();
-			mesh_explosion_manager = service_locator.Get<MeshExplosionManager>();
-			shockwave_manager = service_locator.Get<ShockwaveManager>();
-			akira_effect_manager = service_locator.Get<AkiraEffectManager>();
-			sdf_volume_manager = service_locator.Get<SdfVolumeManager>();
-			sound_effect_manager = service_locator.Get<SoundEffectManager>();
-			trail_render_manager = service_locator.Get<TrailRenderManager>();
-			terrain_render_manager = service_locator.Get<TerrainRenderManager>();
-
 			// Hi-Z occlusion culling
 			occlusion_cull_shader_ = std::make_unique<ComputeShader>("shaders/occlusion_cull.comp");
 			if (!occlusion_cull_shader_->isValid()) {
@@ -803,13 +797,30 @@ namespace Boidsish {
 				last_camera_pitch_ = camera.pitch;
 			}
 
+			noise_manager = service_locator.Get<NoiseManager>();
 			noise_manager->Initialize();
+			clone_manager = service_locator.Get<CloneManager>();
+			fire_effect_manager = service_locator.Get<FireEffectManager>();
 			fire_effect_manager->Initialize(); // Must initialize on main thread with GL context
+			mesh_explosion_manager = service_locator.Get<MeshExplosionManager>();
 			mesh_explosion_manager->Initialize(); // Must initialize on main thread with GL context
+			shockwave_manager = service_locator.Get<ShockwaveManager>();
+			akira_effect_manager = service_locator.Get<AkiraEffectManager>();
 			SetupAkiraBindings();
+			sdf_volume_manager = service_locator.Get<SdfVolumeManager>();
 			sdf_volume_manager->Initialize();
+			shadow_manager = service_locator.Get<ShadowManager>();
 			shadow_manager->Initialize();
+			scene_manager = service_locator.Get<SceneManager>();
+			decor_manager = service_locator.Get<DecorManager>();
+			atmosphere_manager = service_locator.Get<AtmosphereManager>();
 			atmosphere_manager->Initialize();
+			weather_manager = service_locator.Get<WeatherManager>();
+			audio_manager = service_locator.Get<AudioManager>();
+			sound_effect_manager = service_locator.Get<SoundEffectManager>();
+			trail_render_manager = service_locator.Get<TrailRenderManager>();
+
+			light_manager = service_locator.Get<LightManager>();
 
 			const int MAX_LIGHTS = 10;
 			glGenBuffers(1, &lighting_ubo);
@@ -874,6 +885,7 @@ namespace Boidsish {
 			}
 
 			ui_manager = service_locator.Get<UI::UIManager>();
+			hiz_manager = service_locator.Get<HiZManager>();
 			logger::LOG("Initializing HudManager...");
 			hud_manager = service_locator.Get<HudManager>();
 			logger::LOG("HudManager initialized. Creating HudWidget...");
@@ -1226,6 +1238,34 @@ namespace Boidsish {
 		}
 
 		~VisualizerImpl() {
+			service_locator.Clear();
+
+			// Explicitly reset all shared_ptrs to managers to ensure they are destroyed
+			// while the OpenGL context is still active. Destructors often call GL functions.
+			fire_effect_manager.reset();
+			mesh_explosion_manager.reset();
+			shockwave_manager.reset();
+			akira_effect_manager.reset();
+			sdf_volume_manager.reset();
+			clone_manager.reset();
+			trail_render_manager.reset();
+			ui_manager.reset();
+			hud_manager.reset();
+			post_processing_manager_.reset();
+			atmosphere_effect.reset();
+			decor_manager.reset();
+			terrain_render_manager.reset();
+			terrain_generator.reset();
+			scene_manager.reset();
+			shadow_manager.reset();
+			atmosphere_manager.reset();
+			weather_manager.reset();
+			hiz_manager.reset();
+			sound_effect_manager.reset();
+			audio_manager.reset();
+			light_manager.reset();
+			noise_manager.reset();
+
 			ConfigManager::GetInstance().SetInt("window_width", width);
 			ConfigManager::GetInstance().SetInt("window_height", height);
 			ConfigManager::GetInstance().SetBool("fullscreen", is_fullscreen_);
@@ -1240,18 +1280,6 @@ namespace Boidsish {
 			ConfigManager::GetInstance().SetFloat("camera_path_bank_speed", camera.path_bank_speed);
 
 			ConfigManager::GetInstance().Shutdown();
-
-			// SoundEffectManager holds Sound objects that reference AudioManager's engine
-			sound_effect_manager.reset();
-
-			// AudioManager must be destroyed after all Sound objects
-			audio_manager.reset();
-
-			// TerrainGenerator must be destroyed before thread pool stops
-			terrain_generator.reset();
-
-			// Explicitly reset UI manager before destroying window context
-			ui_manager.reset();
 
 			Shape::DestroySphereMesh();
 			Line::DestroyLineMesh();
