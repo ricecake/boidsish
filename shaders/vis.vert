@@ -227,7 +227,7 @@ void main() {
 
 			// 1. Calculate raw wind magnitude and direction from macro wind system
 			vec3 windAtPos = getWindAtPosition(instanceCenter);
-			vec3 rawWindNudge = windAtPos * wind_strength * u_windResponsiveness;
+			vec3 rawWindNudge = windAtPos * 25.0 * wind_strength * u_windResponsiveness;
 
 			float windMag = length(rawWindNudge);
 

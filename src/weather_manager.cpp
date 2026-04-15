@@ -265,7 +265,7 @@ namespace Boidsish {
 			return;
 
 		WindDataUbo ubo;
-		lbm_simulator_->PopulateWindData(ubo, totalTime, current_.wind_frequency * 0.1f, 0.5f);
+		lbm_simulator_->PopulateWindData(ubo, totalTime, current_.wind_frequency, 1.0f);
 
 		glBindBuffer(GL_UNIFORM_BUFFER, wind_data_ubo_);
 		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(WindDataUbo), &ubo);
@@ -281,7 +281,7 @@ namespace Boidsish {
 		PROJECT_PROFILE_SCOPE("WeatherManager::Update");
 
 		if (lbm_simulator_ && terrain_) {
-			lbm_simulator_->Update(deltaTime, totalTime, timeOfDay, *terrain_, cameraPos);
+			lbm_simulator_->Update(deltaTime, totalTime, timeOfDay, *terrain_, cameraPos, current_.wind_speed, current_.wind_strength);
 
 			const auto& phys = lbm_simulator_->GetOutput();
 			// Optionally override some current_ targets with physically based results

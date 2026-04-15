@@ -13,7 +13,7 @@ namespace Boidsish {
         WeatherLbmSimulator(int width, int height);
         ~WeatherLbmSimulator();
 
-        void Update(float deltaTime, float totalTime, float timeOfDay, const ITerrainGenerator& terrain, const glm::vec3& cameraPos);
+        void Update(float deltaTime, float totalTime, float timeOfDay, const ITerrainGenerator& terrain, const glm::vec3& cameraPos, float windSpeed, float windStrength);
 
         void PopulateWindData(WindDataUbo& ubo, float totalTime, float curlScale, float curlStrength) const;
 
@@ -37,7 +37,7 @@ namespace Boidsish {
 
     private:
         void Initialize(const ITerrainGenerator& terrain);
-        void Step(float deltaTime, float totalTime, float timeOfDay, const ITerrainGenerator& terrain);
+        void Step(float deltaTime, float totalTime, float timeOfDay, const ITerrainGenerator& terrain, float windSpeed, float windStrength);
         void UpdateConfig(const ITerrainGenerator& terrain);
         void DeriveAtmosphere(float timeOfDay);
 
@@ -45,7 +45,7 @@ namespace Boidsish {
         float CalculateEquilibrium(int i, float rho, glm::vec2 u);
         void CollisionAndStreaming();
         void ApplyPhysics(float deltaTime, float totalTime, float timeOfDay);
-        void ApplyBoundaries(float totalTime);
+        void ApplyBoundaries(float totalTime, float windSpeed, float windStrength);
         void ShiftGrid(glm::ivec2 shiftOffset);
 
         int width_;
