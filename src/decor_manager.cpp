@@ -651,7 +651,7 @@ namespace Boidsish {
 			int dispatch_size = (Constants::Class::Terrain::ChunkSize() + 7) / 8;
 			for (size_t i = 0; i < decor_types_.size(); ++i) {
 				placement_shader_->setInt("u_typeIndex", (int)i);
-				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, decor_types_[i].ssbo);
+				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::DecorAllInstances(), decor_types_[i].ssbo);
 				glDispatchCompute(dispatch_size, dispatch_size, num_chunks); // Z = chunk index
 			}
 			glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
@@ -715,7 +715,7 @@ namespace Boidsish {
 
 		// Bind block validity buffer once for all types (shared allocation scheme)
 		culling_shader_->setInt("u_instancesPerBlock", kInstancesPerChunk);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, block_validity_ssbo_);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::DecorBlockValidity(), block_validity_ssbo_);
 
 		for (auto& type : decor_types_) {
 			// Reset atomic counter
@@ -728,8 +728,8 @@ namespace Boidsish {
 			culling_shader_->setVec3("u_aabbMin", type.model->GetData()->aabb.min);
 			culling_shader_->setVec3("u_aabbMax", type.model->GetData()->aabb.max);
 
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, type.ssbo);
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, type.visible_ssbo);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::DecorAllInstances(), type.ssbo);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::DecorInstances(), type.visible_ssbo);
 			glBindBufferBase(GL_ATOMIC_COUNTER_BUFFER, 0, type.count_buffer);
 			glDispatchCompute(kMaxInstancesPerType / 64, 1, 1);
 
@@ -740,10 +740,10 @@ namespace Boidsish {
 			update_commands_shader_->setInt("u_numCommands", (int)type.model->getMeshes().size());
 			glBindBufferBase(GL_ATOMIC_COUNTER_BUFFER, 0, type.count_buffer);
 
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, type.indirect_buffer);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::DecorIndirect(), type.indirect_buffer);
 			glDispatchCompute(1, 1, 1);
 
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, type.shadow_indirect_buffer);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::DecorIndirect(), type.shadow_indirect_buffer);
 			glDispatchCompute(1, 1, 1);
 
 			glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT);
@@ -827,8 +827,7 @@ namespace Boidsish {
 		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::DecorProps(), decor_props_ubo_);
 		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::DecorPlacementGlobals(), temp_globals_ubo);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::DecorChunkParams(), temp_chunk_params_ssbo);
-		// Note: decor_placement.comp uses binding 0 for DecorInstances
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, temp_instance_ssbo);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::DecorAllInstances(), temp_instance_ssbo);
 
 		int                           num_types = (int)decor_types_.size();
 		std::vector<DecorTypeResults> results(num_types);
@@ -944,7 +943,7 @@ namespace Boidsish {
 			auto& type = decor_types_[i];
 
 			// Bind the culled instances SSBO
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 10, type.visible_ssbo);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::DecorInstances(), type.visible_ssbo);
 
 			if (type.model->IsNoCull()) {
 				glDisable(GL_CULL_FACE);

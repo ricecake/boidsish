@@ -49,9 +49,6 @@ layout(std140, binding = [[TERRAIN_DATA_BINDING]]) uniform TerrainData {
     vec4  u_terrainParams; // x=chunkSize, y=worldScale
 };
 
-#ifndef FRUSTUM_BINDING
-#define FRUSTUM_BINDING 3
-#endif
 
 uniform isampler2D u_chunkGrid;
 uniform sampler2DArray u_heightmapArray; // RGBA16F: R=height, GBA=normal.xyz

@@ -16,7 +16,7 @@ layout(std430, binding = [[COMMON_UNIFORMS_BINDING]]) buffer UniformsSSBO {
 uniform bool uUseMDI = false;
 
 // SSBO for decor/foliage instancing
-layout(std430, binding = [[DECOR_INSTANCES_BINDING]]) buffer SSBOInstances {
+layout(std430, binding = [[DECOR_VISIBLE_INSTANCES_BINDING]]) buffer SSBOInstances {
 	mat4 ssboInstanceMatrices[];
 };
 

@@ -37,6 +37,8 @@ int main(int argc, char** argv) {
     ShaderBase::RegisterConstant("TERRAIN_PROBES_BINDING", Boidsish::Constants::SsboBinding::TerrainProbes());
     ShaderBase::RegisterConstant("TERRAIN_DATA_BINDING", Boidsish::Constants::UboBinding::TerrainData());
     ShaderBase::RegisterConstant("BIOME_DATA_BINDING", Boidsish::Constants::UboBinding::Biomes());
+    ShaderBase::RegisterConstant("DECOR_PROPS_BINDING", Boidsish::Constants::UboBinding::DecorProps());
+    ShaderBase::RegisterConstant("DECOR_PLACEMENT_GLOBALS_BINDING", Boidsish::Constants::UboBinding::DecorPlacementGlobals());
 
     // UBO Bindings
     ShaderBase::RegisterConstant("LIGHTING_BINDING", Boidsish::Constants::UboBinding::Lighting());
@@ -52,7 +54,17 @@ int main(int argc, char** argv) {
     ShaderBase::RegisterConstant("COMMON_UNIFORMS_BINDING", Boidsish::Constants::SsboBinding::CommonUniforms());
     ShaderBase::RegisterConstant("BONE_MATRIX_BINDING", Boidsish::Constants::SsboBinding::BoneMatrix());
     ShaderBase::RegisterConstant("OCCLUSION_VISIBILITY_BINDING", Boidsish::Constants::SsboBinding::OcclusionVisibility());
-    ShaderBase::RegisterConstant("DECOR_INSTANCES_BINDING", Boidsish::Constants::SsboBinding::DecorInstances());
+    ShaderBase::RegisterConstant("DECOR_ALL_INSTANCES_BINDING", Boidsish::Constants::SsboBinding::DecorAllInstances());
+    ShaderBase::RegisterConstant("DECOR_VISIBLE_INSTANCES_BINDING", Boidsish::Constants::SsboBinding::DecorInstances());
+    ShaderBase::RegisterConstant("DECOR_INDIRECT_BINDING", Boidsish::Constants::SsboBinding::DecorIndirect());
+    ShaderBase::RegisterConstant("DECOR_BLOCK_VALIDITY_BINDING", Boidsish::Constants::SsboBinding::DecorBlockValidity());
+    ShaderBase::RegisterConstant("MESH_EXPLOSION_FRAGMENTS_BINDING", Boidsish::Constants::SsboBinding::MeshExplosionFragments());
+    ShaderBase::RegisterConstant("DECOR_CHUNK_PARAMS_BINDING", Boidsish::Constants::SsboBinding::DecorChunkParams());
+    ShaderBase::RegisterConstant("TRAIL_POINTS_BINDING", Boidsish::Constants::SsboBinding::TrailPoints());
+    ShaderBase::RegisterConstant("TRAIL_INSTANCES_BINDING", Boidsish::Constants::SsboBinding::TrailInstances());
+    ShaderBase::RegisterConstant("TRAIL_SPINE_DATA_BINDING", Boidsish::Constants::SsboBinding::TrailSpineData());
+    ShaderBase::RegisterConstant("TRAIL_GENERATED_VBO_BINDING", Boidsish::Constants::SsboBinding::TrailGeneratedVBO());
+    ShaderBase::RegisterConstant("ATMOSPHERE_SH_BINDING", Boidsish::Constants::SsboBinding::AtmosphereSH());
     ShaderBase::RegisterConstant("GRASS_INSTANCES_BINDING", Boidsish::Constants::SsboBinding::GrassInstances());
     ShaderBase::RegisterConstant("GRASS_INDIRECT_BINDING", Boidsish::Constants::SsboBinding::GrassIndirect());
     ShaderBase::RegisterConstant("AUTO_EXPOSURE_BINDING", Boidsish::Constants::SsboBinding::AutoExposure());
