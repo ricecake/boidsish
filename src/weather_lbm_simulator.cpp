@@ -333,7 +333,7 @@ namespace Boidsish {
         return &((*currentGrid_)[z * width_ + x]);
     }
 
-    void WeatherLbmSimulator::PopulateWindData(WindDataUbo& ubo, float totalTime, float curlScale, float curlStrength) const {
+    void WeatherLbmSimulator::PopulateWindData(WindDataUbo& ubo, std::vector<glm::vec4>& grid_out, float totalTime, float curlScale, float curlStrength) const {
         float gridSpacing = 32.0f;
         // GLSL: x, z = origin, y = width, w = height
         ubo.originSize = glm::ivec4(gridAnchor_.x, width_, gridAnchor_.y, height_);
@@ -343,7 +343,11 @@ namespace Boidsish {
         // lattice_u * (spacing / dt)
         float conversion = gridSpacing / dt_;
 
-        for (int i = 0; i < width_ * height_ && i < 3840; ++i) {
+        if (grid_out.size() < (size_t)(width_ * height_)) {
+            grid_out.resize(width_ * height_);
+        }
+
+        for (int i = 0; i < width_ * height_; ++i) {
             const LbmCell& cell = (*currentGrid_)[i];
             const LbmCellConfig& cfg = config_[i];
 
@@ -356,7 +360,7 @@ namespace Boidsish {
             }
             if (rho > 1e-6f) u /= rho;
 
-            ubo.grid[i].velocityDrag = glm::vec4(u.x * conversion, cell.vy * conversion, u.y * conversion, cfg.drag);
+            grid_out[i] = glm::vec4(u.x * conversion, cell.vy * conversion, u.y * conversion, cfg.drag);
         }
     }
 
