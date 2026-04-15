@@ -307,7 +307,8 @@ namespace Boidsish {
                         Simplex::noise(glm::vec2(worldX * 0.001f + 500.0f, worldZ * 0.001f + totalTime * windSpeed))
                     );
                     // Lattice velocity MUST stay below ~0.15 for stability
-                    targetU = glm::clamp(targetU * windStrength * 2.0f, -0.12f, 0.12f);
+                    // Using a higher base multiplier (5.0f) and a higher clamp (0.14f)
+                    targetU = glm::clamp(targetU * (0.05f + windStrength * 5.0f), -0.14f, 0.14f);
 
                     // Force boundary equilibrium
                     for (int i = 0; i < 9; ++i) {
@@ -334,7 +335,8 @@ namespace Boidsish {
 
     void WeatherLbmSimulator::PopulateWindData(WindDataUbo& ubo, float totalTime, float curlScale, float curlStrength) const {
         float gridSpacing = 32.0f;
-        ubo.originSize = glm::ivec4(gridAnchor_.x, gridAnchor_.y, width_, height_);
+        // GLSL: x, z = origin, y = width, w = height
+        ubo.originSize = glm::ivec4(gridAnchor_.x, width_, gridAnchor_.y, height_);
         ubo.params = glm::vec4(gridSpacing, totalTime, curlScale, curlStrength);
 
         // Convert lattice velocity to world velocity (m/s)
