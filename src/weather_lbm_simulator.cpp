@@ -38,7 +38,7 @@ namespace Boidsish {
 
     WeatherLbmSimulator::~WeatherLbmSimulator() {}
 
-    void WeatherLbmSimulator::Update(float deltaTime, float totalTime, float timeOfDay, const ITerrainGenerator& terrain, const glm::vec3& cameraPos) {
+    void WeatherLbmSimulator::Update(float deltaTime, float totalTime, float timeOfDay, const ITerrainGenerator& terrain, const glm::vec3& cameraPos, float windSpeed, float windStrength) {
         if (!initialized_) {
             Initialize(terrain);
             initialized_ = true;
@@ -60,7 +60,7 @@ namespace Boidsish {
         // Fixed timestep loop
         accumulator_ += deltaTime;
         while (accumulator_ >= dt_) {
-            Step(dt_, totalTime, timeOfDay, terrain);
+            Step(dt_, totalTime, timeOfDay, terrain, windSpeed, windStrength);
             accumulator_ -= dt_;
         }
 
@@ -213,10 +213,10 @@ namespace Boidsish {
         }
     }
 
-    void WeatherLbmSimulator::Step(float deltaTime, float totalTime, float timeOfDay, const ITerrainGenerator& terrain) {
+    void WeatherLbmSimulator::Step(float deltaTime, float totalTime, float timeOfDay, const ITerrainGenerator& terrain, float windSpeed, float windStrength) {
         CollisionAndStreaming();
         ApplyPhysics(deltaTime, totalTime, timeOfDay);
-        ApplyBoundaries(totalTime);
+        ApplyBoundaries(totalTime, windSpeed, windStrength);
     }
 
     void WeatherLbmSimulator::ApplyPhysics(float deltaTime, float totalTime, float timeOfDay) {
@@ -273,7 +273,7 @@ namespace Boidsish {
         }
     }
 
-    void WeatherLbmSimulator::ApplyBoundaries(float totalTime) {
+    void WeatherLbmSimulator::ApplyBoundaries(float totalTime, float windSpeed, float windStrength) {
         // Apply noise-driven wind at the edges
         for (int z = 0; z < height_; ++z) {
             for (int x = 0; x < width_; ++x) {
@@ -283,10 +283,10 @@ namespace Boidsish {
                     float worldZ = (float)(z + gridAnchor_.y) * 32.0f;
 
                     glm::vec2 targetU(
-                        Simplex::noise(glm::vec2(worldX * 0.001f + totalTime * 0.1f, worldZ * 0.001f)),
-                        Simplex::noise(glm::vec2(worldX * 0.001f + 500.0f, worldZ * 0.001f + totalTime * 0.1f))
+                        Simplex::noise(glm::vec2(worldX * 0.001f + totalTime * windSpeed, worldZ * 0.001f)),
+                        Simplex::noise(glm::vec2(worldX * 0.001f + 500.0f, worldZ * 0.001f + totalTime * windSpeed))
                     );
-                    targetU *= 0.2f;
+                    targetU *= windStrength * 40.0f; // Significantly increase boundary energy
 
                     // Force boundary equilibrium
                     for (int i = 0; i < 9; ++i) {
