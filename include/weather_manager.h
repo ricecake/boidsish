@@ -215,9 +215,13 @@ namespace Boidsish {
 			return PhysicallyBasedWeatherOutput{};
 		}
 
+		void UpdateWindUbo(float totalTime);
+
 		void SetTerrainGenerator(ITerrainGenerator* terrain) { terrain_ = terrain; }
 
 	private:
+		unsigned int wind_data_ubo_ = 0;
+
 		struct AttributeState {
 			float                velocity = 0.0f;
 			float                omega = 2.0f; // Default pace

@@ -311,6 +311,27 @@ namespace Boidsish {
         return &((*currentGrid_)[z * width_ + x]);
     }
 
+    void WeatherLbmSimulator::PopulateWindData(WindDataUbo& ubo, float totalTime, float curlScale, float curlStrength) const {
+        ubo.originSize = glm::ivec4(gridAnchor_.x, gridAnchor_.y, width_, height_);
+        ubo.params = glm::vec4(32.0f, totalTime, curlScale, curlStrength);
+
+        for (int i = 0; i < width_ * height_ && i < 3840; ++i) {
+            const LbmCell& cell = (*currentGrid_)[i];
+            const LbmCellConfig& cfg = config_[i];
+
+            float rho = 0.0f;
+            glm::vec2 u(0.0f);
+            for (int j = 0; j < 9; ++j) {
+                rho += cell.f[j];
+                u.x += cell.f[j] * (float)cx[j];
+                u.y += cell.f[j] * (float)cz[j];
+            }
+            if (rho > 0.0f) u /= rho;
+
+            ubo.grid[i].velocityDrag = glm::vec4(u.x, cell.vy, u.y, cfg.drag);
+        }
+    }
+
     PhysicallyBasedWeatherOutput WeatherLbmSimulator::GetWeatherAtPosition(const glm::vec3& pos) const {
         // For now, return global output but update wind from local cell
         PhysicallyBasedWeatherOutput out = currentOutput_;
