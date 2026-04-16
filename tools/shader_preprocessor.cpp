@@ -77,6 +77,7 @@ int main(int argc, char** argv) {
     ShaderBase::RegisterConstant("BONE_MATRIX_BINDING", Boidsish::Constants::SsboBinding::BoneMatrix());
     ShaderBase::RegisterConstant("BIOME_DATA_BINDING", Boidsish::Constants::UboBinding::Biomes());
     ShaderBase::RegisterConstant("BEHAVIOR_DRAW_COMMAND_BINDING", Boidsish::Constants::SsboBinding::BehaviorDrawCommand());
+    ShaderBase::RegisterConstant("AUTO_EXPOSURE_BINDING", Boidsish::Constants::SsboBinding::AutoExposure());
     ShaderBase::RegisterConstant("ATMOSPHERE_SH_BINDING", Boidsish::Constants::SsboBinding::AtmosphereSH());
 
     Preprocessor p;
