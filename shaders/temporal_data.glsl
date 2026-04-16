@@ -1,4 +1,4 @@
-layout(std140, binding = 6) uniform TemporalData {
+layout(std140, binding = [[TEMPORAL_DATA_BINDING]]) uniform TemporalData {
 	mat4  viewProjection;
 	mat4  prevViewProjection;
 	mat4  uProjection;
