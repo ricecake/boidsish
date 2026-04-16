@@ -18,6 +18,7 @@ layout(std430, binding = [[OCCLUSION_VISIBILITY_BINDING]]) buffer OcclusionVisib
 // Hi-Z pyramid texture
 uniform sampler2D u_hizTexture;
 uniform int       u_drawCount;
+uniform uint      u_baseVisibilityIndex;
 uniform ivec2     u_hizSize; // Mip 0 dimensions
 uniform int       u_hizMipCount;
 uniform float     u_screenExpansion; // Pixel expansion for temporal safety
@@ -155,8 +156,8 @@ void main() {
 	// In standard OpenGL depth: smaller values = closer to camera.
 	// nearestDepth > hizDepth means the closest part of the AABB is behind everything in the Hi-Z region.
 	if (nearestDepth > hizDepth) {
-		visibility[idx] = 0u; // Occluded
+		visibility[u_baseVisibilityIndex + idx] = 0u; // Occluded
 	} else {
-		visibility[idx] = 1u; // Visible
+		visibility[u_baseVisibilityIndex + idx] = 1u; // Visible
 	}
 }

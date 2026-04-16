@@ -65,6 +65,8 @@ layout(std430, binding = [[OCCLUSION_VISIBILITY_BINDING]]) readonly buffer Occlu
 	uint hiz_visibility[];
 };
 
+uniform uint u_baseVisibilityIndex;
+
 uniform vec3  u_aabbMin;
 uniform vec3  u_aabbMax;
 uniform float u_windResponsiveness;
@@ -197,7 +199,7 @@ void main() {
 
 	// Hi-Z occlusion culling - output degenerate triangle if occluded by previous frame's depth
 	if (enableHiZCulling && uUseMDI && !current_isColossal) {
-		if (hiz_visibility[drawID] == 0u) {
+		if (hiz_visibility[u_baseVisibilityIndex + drawID] == 0u) {
 			gl_Position = vec4(0.0, 0.0, -2.0, 1.0);
 			FragPos = vec3(0.0);
 			Normal = vec3(0.0, 1.0, 0.0);
