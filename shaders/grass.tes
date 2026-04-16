@@ -30,8 +30,20 @@ struct GrassProperties {
     float _pad2;
 };
 
+struct GlobalGrassProperties {
+    float lengthMultiplier;
+    float widthMultiplier;
+    float densityMultiplier;
+    float rigidityMultiplier;
+    float windMultiplier;
+    uint  enabled;
+    float _pad0;
+    float _pad1;
+};
+
 layout(std140, binding = [[GRASS_PROPS_BINDING]]) uniform GrassProps {
     GrassProperties biomeProps[8];
+    GlobalGrassProperties globalProps;
 };
 
 uniform mat4 view;
@@ -70,14 +82,14 @@ void main() {
     // Wind
     vec2 windUV = basePos.xz * 0.05 + time * 0.45;
     vec2 windNoise = curlNoise2D(windUV) * 0.1;
-    float windStrength = length(windNoise) * biomeProps[biomeIdx].windInfluence;
+    float windStrength = length(windNoise) * biomeProps[biomeIdx].windInfluence * globalProps.windMultiplier;
 
     // Base Tilt - relatively vertical (clamped to ~15 degrees)
     float tiltFactor = (hash(seed + 8888) * 2.0 - 1.0) * 0.25;
     float tiltAngle = tiltFactor * v; // Base tilt increases with height but is subtle
 
     // Bending - rigidity decreases bend, tip flexes more
-    float bendFactor = windStrength * (1.0 - clamp(biomeProps[biomeIdx].rigidity, 0.0, 0.95));
+    float bendFactor = windStrength * (1.0 - clamp(biomeProps[biomeIdx].rigidity * globalProps.rigidityMultiplier, 0.0, 0.95));
     float bend = bendFactor * v * v; // Parabolic bend
 
     vec3 windDir = normalize(vec3(windNoise.x, 0.0, windNoise.y));

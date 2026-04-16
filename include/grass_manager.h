@@ -32,6 +32,17 @@ namespace Boidsish {
         float _pad2 = 0.0f;
     };
 
+    struct GlobalGrassProperties {
+        float lengthMultiplier = 1.0f;
+        float widthMultiplier = 1.0f;
+        float densityMultiplier = 1.0f;
+        float rigidityMultiplier = 1.0f;
+        float windMultiplier = 1.0f;
+        uint32_t enabled = 1;
+        float _pad0 = 0.0f;
+        float _pad1 = 0.0f;
+    };
+
     class GrassManager {
     public:
         GrassManager();
@@ -60,15 +71,25 @@ namespace Boidsish {
         void SetCameraPos(const glm::vec3& pos) { last_camera_pos_ = pos; }
 
         void SetGrassProperties(Biome biome, const GrassProperties& props);
+        void PopulateDefaultGrassProperties();
 
-        bool IsEnabled() const { return enabled_; }
-        void SetEnabled(bool e) { enabled_ = e; }
+        bool IsEnabled() const { return global_props_.enabled != 0; }
+        void SetEnabled(bool e) {
+            global_props_.enabled = e ? 1 : 0;
+            props_dirty_ = true;
+        }
+
+        const GlobalGrassProperties& GetGlobalProperties() const { return global_props_; }
+        void SetGlobalProperties(const GlobalGrassProperties& props) {
+            global_props_ = props;
+            props_dirty_ = true;
+        }
 
     private:
         bool initialized_ = false;
-        bool enabled_ = true;
 
         std::array<GrassProperties, 8> biome_grass_props_;
+        GlobalGrassProperties global_props_;
         bool props_dirty_ = false;
 
         uint32_t grass_props_ubo_ = 0;

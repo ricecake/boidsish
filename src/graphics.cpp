@@ -1168,6 +1168,7 @@ namespace Boidsish {
 			last_render_floor_ = frame_config_.render_floor;
 
 			frame_config_.render_decor = cfg.GetAppSettingBool("render_decor", true);
+			frame_config_.render_grass = cfg.GetAppSettingBool("grass_enabled", true);
 			frame_config_.artistic_ripple = cfg.GetAppSettingBool("artistic_effect_ripple", false);
 			frame_config_.artistic_color_shift = cfg.GetAppSettingBool("artistic_effect_color_shift", false);
 			frame_config_.artistic_black_and_white = cfg.GetAppSettingBool("artistic_effect_black_and_white", false);
@@ -1203,7 +1204,7 @@ namespace Boidsish {
 				decor_manager->SetEnabled(frame_config_.render_decor);
 			}
 			if (grass_manager) {
-				grass_manager->SetEnabled(frame_config_.render_decor); // Tie grass to decor toggle for now
+				grass_manager->SetEnabled(frame_config_.render_grass);
 			}
 		}
 
@@ -3466,6 +3467,19 @@ namespace Boidsish {
 
 			if (impl->grass_manager) {
 				impl->grass_manager->Initialize();
+
+				// Load grass settings from config
+				auto& cfg = ConfigManager::GetInstance();
+				impl->grass_manager->SetEnabled(cfg.GetAppSettingBool("grass_enabled", true));
+
+				GlobalGrassProperties props;
+				props.lengthMultiplier = cfg.GetAppSettingFloat("grass_length_multiplier", 1.0f);
+				props.widthMultiplier = cfg.GetAppSettingFloat("grass_width_multiplier", 1.0f);
+				props.densityMultiplier = cfg.GetAppSettingFloat("grass_density_multiplier", 1.0f);
+				props.rigidityMultiplier = cfg.GetAppSettingFloat("grass_rigidity_multiplier", 1.0f);
+				props.windMultiplier = cfg.GetAppSettingFloat("grass_wind_multiplier", 1.0f);
+				props.enabled = impl->grass_manager->IsEnabled() ? 1 : 0;
+				impl->grass_manager->SetGlobalProperties(props);
 			}
 
 			if (impl->decor_manager) {
