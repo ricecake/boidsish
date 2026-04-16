@@ -1,0 +1,306 @@
+#version 430 core
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+// Output texture arrays
+layout(rgba16f, binding = 0) uniform writeonly image2DArray uBakedHeightNormal;   // R=height, G=oct_x, B=oct_y, A=erosionDelta
+layout(rgba8, binding = 1)   uniform writeonly image2DArray uBakedAlbedoRoughness; // RGB=albedo, A=roughness
+layout(rgba8, binding = 2)   uniform writeonly image2DArray uBakedParams;          // R=metallic, G=substrate, B=ridgeMap, A=unused
+
+// Input texture arrays (low-res)
+uniform sampler2DArray uHeightmapArray; // R=height, GBA=normal (low-res)
+uniform sampler2DArray uBiomeMap;       // RG8: low_idx, t (low-res)
+
+// Configuration
+uniform float uChunkSize;
+uniform float uRawChunkSize;
+uniform float uWorldScale;
+uniform int   uSlice;
+uniform vec2  uWorldOffset;
+
+#define USE_TERRAIN_DATA
+#include "helpers/erosion.glsl"
+#include "helpers/fast_noise.glsl"
+#include "helpers/terrain_noise.glsl"
+
+layout(std140, binding = [[VISUAL_EFFECTS_BINDING]]) uniform VisualEffects {
+	int   ripple_enabled;
+	int   color_shift_enabled;
+	int   black_and_white_enabled;
+	int   negative_enabled;
+	int   shimmery_enabled;
+	int   glitched_enabled;
+	int   wireframe_enabled;
+	int   erosion_enabled;
+	float wind_strength;
+	float wind_speed;
+	float wind_frequency;
+	float erosion_strength;
+	float erosion_scale;
+	float erosion_detail;
+	float erosion_gully_weight;
+	float erosion_max_dist;
+};
+
+struct BiomeProperties {
+	vec4 albedo_roughness; // rgb = albedo, w = roughness
+	vec4 params;           // x = metallic, y = detailStrength, z = detailScale, w = noiseType
+};
+
+layout(std140, binding = [[BIOME_DATA_BINDING]]) uniform BiomeData {
+	BiomeProperties u_biomes[8];
+};
+
+// Helper to avoid sign(0) == 0
+vec2 signNotZero(vec2 v) {
+	return vec2(v.x >= 0.0 ? 1.0 : -1.0, v.y >= 0.0 ? 1.0 : -1.0);
+}
+
+// Octahedral encoding for normals (+Y is Up)
+vec2 octEncode(vec3 n) {
+	float l1norm = abs(n.x) + abs(n.y) + abs(n.z);
+	vec2  res = n.xz * (1.0 / l1norm);
+	if (n.y < 0.0) {
+		res = (1.0 - abs(res.yx)) * signNotZero(res);
+	}
+	return res * 0.5 + 0.5;
+}
+
+// Biome constants matching terrain.frag
+#define HEIGHT_BEACH_END (3.0)
+#define HEIGHT_LOWLAND_END (20.0)
+#define HEIGHT_FOREST_END (50.0)
+#define HEIGHT_ALPINE_START (60.0)
+#define HEIGHT_TREELINE (80.0)
+#define HEIGHT_SNOW_START (90.0)
+#define HEIGHT_PEAK (100.0)
+
+const vec3 COL_SAND_WET = vec3(0.55, 0.45, 0.35);
+const vec3 COL_SAND_DRY = vec3(0.76, 0.70, 0.55);
+const vec3 COL_GRASS_LUSH = vec3(0.20, 0.45, 0.15);
+const vec3 COL_GRASS_DRY = vec3(0.45, 0.50, 0.25);
+const vec3 COL_FOREST = vec3(0.12, 0.28, 0.10);
+const vec3 COL_ALPINE_MEADOW = vec3(0.35, 0.45, 0.25);
+const vec3 COL_ROCK_BROWN = vec3(0.35, 0.30, 0.25);
+const vec3 COL_ROCK_GREY = vec3(0.45, 0.45, 0.48);
+const vec3 COL_ROCK_DARK = vec3(0.25, 0.23, 0.22);
+const vec3 COL_SNOW_FRESH = vec3(0.95, 0.97, 1.00);
+const vec3 COL_SNOW_OLD = vec3(0.85, 0.88, 0.92);
+
+struct TerrainMaterial {
+	vec3  albedo;
+	float roughness;
+	float metallic;
+};
+
+TerrainMaterial getBiomeMaterial(float height, float moisture, float noise, vec2 worldXZ) {
+	TerrainMaterial mat;
+	mat.metallic = 0.0;
+
+	// Sample biome info from low-res map
+	vec2  uv = (worldXZ - uWorldOffset) / uChunkSize;
+	vec2  remappedUV = (uv * uRawChunkSize + 0.5) / (uRawChunkSize + 1.0);
+	vec2  biomeInfo = texture(uBiomeMap, vec3(remappedUV, float(uSlice))).rg;
+
+	// Map-driven biome blending
+	int lowIdx = int(biomeInfo.x * 255.0 + 0.5);
+	int highIdx = min(lowIdx + 1, 7);
+	float t_biome = biomeInfo.y;
+
+	vec4 albRoughA = u_biomes[lowIdx].albedo_roughness;
+	vec4 albRoughB = u_biomes[highIdx].albedo_roughness;
+	vec4 paramsA = u_biomes[lowIdx].params;
+	vec4 paramsB = u_biomes[highIdx].params;
+
+	vec3  biomeAlbedo = mix(albRoughA.rgb, albRoughB.rgb, t_biome);
+	float biomeRoughness = mix(albRoughA.a, albRoughB.a, t_biome);
+	float biomeMetallic = mix(paramsA.x, paramsB.x, t_biome);
+
+	// Distort height with noise for natural boundaries
+	float h = height + noise * 8.0 * uWorldScale;
+
+	if (h < HEIGHT_BEACH_END * uWorldScale) {
+		float wetness = 1.0 - smoothstep(0.0, HEIGHT_BEACH_END * uWorldScale, h);
+		mat.albedo = mix(COL_SAND_DRY, COL_SAND_WET, wetness);
+		mat.roughness = mix(0.9, 0.4, wetness);
+	} else if (h < HEIGHT_LOWLAND_END * uWorldScale) {
+		float t = smoothstep(HEIGHT_BEACH_END * uWorldScale, HEIGHT_LOWLAND_END * uWorldScale, h);
+		vec3  grassColor = mix(COL_GRASS_LUSH, COL_GRASS_DRY, t * (1.0 - moisture));
+		float grassRoughness = mix(0.7, 0.8, t * (1.0 - moisture));
+		float sandFade = smoothstep(HEIGHT_BEACH_END * uWorldScale, (HEIGHT_BEACH_END + 5.0) * uWorldScale, h);
+		mat.albedo = mix(COL_SAND_DRY, grassColor, sandFade);
+		mat.roughness = mix(0.9, grassRoughness, sandFade);
+	} else if (h < HEIGHT_FOREST_END * uWorldScale) {
+		float t = smoothstep(HEIGHT_LOWLAND_END * uWorldScale, HEIGHT_FOREST_END * uWorldScale, h);
+		vec3 forestColor = mix(COL_GRASS_LUSH, COL_FOREST, moisture);
+		mat.albedo = mix(forestColor, COL_GRASS_DRY, t * 0.3);
+		mat.roughness = mix(0.8, 0.85, t * 0.3);
+	} else if (h < HEIGHT_ALPINE_START * uWorldScale) {
+		float t = smoothstep(HEIGHT_FOREST_END * uWorldScale, HEIGHT_ALPINE_START * uWorldScale, h);
+		mat.albedo = mix(COL_FOREST, COL_ALPINE_MEADOW, t);
+		mat.roughness = 0.8;
+	} else if (h < HEIGHT_TREELINE * uWorldScale) {
+		float t = smoothstep(HEIGHT_ALPINE_START * uWorldScale, HEIGHT_TREELINE * uWorldScale, h);
+		mat.albedo = mix(COL_ALPINE_MEADOW, COL_ROCK_GREY, t * 0.4);
+		mat.roughness = mix(0.8, 0.6, t * 0.4);
+	} else if (h < HEIGHT_SNOW_START * uWorldScale) {
+		float t = smoothstep(HEIGHT_TREELINE * uWorldScale, HEIGHT_SNOW_START * uWorldScale, h);
+		vec3 rockColor = mix(COL_ROCK_BROWN, COL_ROCK_GREY, noise * 0.5 + 0.5);
+		vec3 patchColor = mix(rockColor, COL_ALPINE_MEADOW, moisture * 0.3);
+		mat.albedo = mix(patchColor, COL_SNOW_OLD, t * 0.3);
+		mat.roughness = mix(0.6, 0.5, t * 0.3);
+	} else {
+		float t = smoothstep(HEIGHT_SNOW_START * uWorldScale, HEIGHT_PEAK * uWorldScale, h);
+		vec3 snowColor = mix(COL_SNOW_OLD, COL_SNOW_FRESH, t);
+		float rockShow = (1.0 - t) * 0.2 * (1.0 - moisture);
+		mat.albedo = mix(snowColor, COL_ROCK_GREY, rockShow);
+		mat.roughness = mix(0.5, 0.4, t);
+	}
+
+	// Blend height-based albedo with map-driven biome albedo
+	mat.albedo = mix(mat.albedo, biomeAlbedo, 0.5);
+	mat.roughness = mix(mat.roughness, biomeRoughness, 0.5);
+	mat.metallic = biomeMetallic;
+
+	return mat;
+}
+
+TerrainMaterial getCliffMaterial(float height, float noise) {
+	TerrainMaterial mat;
+	mat.metallic = 0.0;
+	float h = height + noise * 5.0 * uWorldScale;
+
+	if (h < HEIGHT_FOREST_END * uWorldScale) {
+		float wetness = 0.3 + noise * 0.2;
+		mat.albedo = mix(COL_ROCK_BROWN, COL_ROCK_DARK, wetness);
+		mat.roughness = mix(0.6, 0.3, wetness);
+	} else if (h < HEIGHT_SNOW_START * uWorldScale) {
+		float t = smoothstep(HEIGHT_FOREST_END * uWorldScale, HEIGHT_SNOW_START * uWorldScale, h);
+		mat.albedo = mix(COL_ROCK_BROWN, COL_ROCK_GREY, t + noise * 0.2);
+		mat.roughness = 0.6;
+	} else {
+		float snowPatch = smoothstep(HEIGHT_SNOW_START * uWorldScale, HEIGHT_PEAK * uWorldScale, h) * 0.4;
+		vec3  highRock = mix(COL_ROCK_GREY, COL_ROCK_DARK, noise * 0.3);
+		mat.albedo = mix(highRock, COL_SNOW_OLD, snowPatch);
+		mat.roughness = mix(0.6, 0.5, snowPatch);
+	}
+	return mat;
+}
+
+float calculateValleyFactor(vec3 pos) {
+	float scale = 0.02;
+	float center = length(pos * scale);
+	float dx = 5.0;
+	float north = length((pos + vec3(0, 0, dx)) * scale);
+	float south = length((pos - vec3(0, 0, dx)) * scale);
+	float east = length((pos + vec3(dx, 0, 0)) * scale);
+	float west = length((pos - vec3(dx, 0, 0)) * scale);
+	float laplacian = (north + south + east + west) / 4.0 - center;
+	return laplacian * 10.0;
+}
+
+float calculateMoisture(float height, float valleyFactor, vec3 pos) {
+	float baseMoisture = 1.0 - smoothstep(0.0, HEIGHT_PEAK * uWorldScale, height) * 0.6;
+	float valleyMoisture = clamp(-valleyFactor * 0.5, 0.0, 0.4);
+	float noiseMoisture = snoise(pos * 0.03) * 0.2;
+	return clamp(baseMoisture + valleyMoisture + noiseMoisture, 0.0, 1.0);
+}
+
+float getProceduralHeight(vec2 worldXZ) {
+	vec2 uv = (worldXZ - uWorldOffset) / uChunkSize;
+	vec2 remappedUV = (uv * uRawChunkSize + 0.5) / (uRawChunkSize + 1.0);
+	return texture(uHeightmapArray, vec3(remappedUV, float(uSlice))).r;
+}
+
+void main() {
+	ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+	if (pixel.x >= [[BAKED_RESOLUTION]] || pixel.y >= [[BAKED_RESOLUTION]]) return;
+
+	vec2 uv = vec2(pixel) / float([[BAKED_RESOLUTION]] - 1);
+	vec2 worldXZ = uWorldOffset + uv * uChunkSize;
+
+	float height = getProceduralHeight(worldXZ);
+
+	vec2 remappedUV = (uv * uRawChunkSize + 0.5) / (uRawChunkSize + 1.0);
+	vec3 baseNormal = normalize(texture(uHeightmapArray, vec3(remappedUV, float(uSlice))).gba);
+
+	float vErosionDelta = 0.0;
+	float vRidgeMap = 0.0;
+	float vSubstrate = 0.0;
+	float debugOutput = 0.0;
+
+	vec3 norm = baseNormal;
+
+	if (erosion_enabled > 0) {
+		float erosionFadeTarget = clamp((height / uWorldScale) / (200.0 * 0.6), -1.0, 1.0);
+		float invNy = 1.0 / max(norm.y, 0.01);
+		vec3 hAndS = vec3(height / uWorldScale, -norm.x * invNy, -norm.z * invNy);
+
+		vec4 erosionResult = ErosionFilter(
+			worldXZ / uWorldScale,
+			hAndS,
+			erosionFadeTarget,
+			erosion_strength,
+			erosion_gully_weight,
+			erosion_detail,
+			vec4(0.1, 0.0, 0.1, 2.0),
+			vec4(1.25, 1.25, 2.8, 1.5),
+			vec2(0.7, 1.0),
+			uWorldScale * erosion_scale,
+			5,
+			2.0,
+			0.5,
+			0.7,
+			0.5,
+			vRidgeMap,
+			vSubstrate,
+			debugOutput
+		);
+
+		height += erosionResult.x * uWorldScale;
+		vErosionDelta = erosionResult.x;
+		vec2 updatedDeriv = hAndS.yz + erosionResult.yz;
+		norm = normalize(vec3(-updatedDeriv.x, 1.0, -updatedDeriv.y));
+	}
+
+	float baseFreq = 0.1 / uWorldScale;
+	vec3 fragPos = vec3(worldXZ.x, height, worldXZ.y);
+	float largeNoise = fastWarpedFbm3d(fragPos * (baseFreq * 0.1));
+	float medNoise = largeNoise;
+	float combinedNoise = largeNoise;
+
+	float slope = dot(norm, vec3(0.0, 1.0, 0.0));
+	float valleyFactor = calculateValleyFactor(fragPos);
+	float moisture = calculateMoisture(height, valleyFactor, fragPos);
+
+	float valleyLushness = clamp(-valleyFactor, 0.0, 1.0);
+	moisture = mix(moisture, min(moisture + 0.3, 1.0), valleyLushness);
+
+	float cliffThreshold = mix(0.4, 0.3, smoothstep(HEIGHT_SNOW_START * uWorldScale, HEIGHT_PEAK * uWorldScale, height));
+	float cliffMask = smoothstep(cliffThreshold, cliffThreshold - 0.15, slope + medNoise * 0.08);
+	float verticalMask = smoothstep(0.4, 0.2, slope);
+	cliffMask = max(cliffMask, verticalMask);
+	cliffMask += (medNoise - 0.5) * 0.15;
+	cliffMask = clamp(cliffMask, 0.0, 1.0);
+
+	float beachMask = 1.0 - smoothstep(0.0, (HEIGHT_BEACH_END + 2.0) * uWorldScale, height);
+	cliffMask *= (1.0 - beachMask);
+
+	float substrateCliffFactor = smoothstep(0.2, -0.6, vSubstrate);
+	cliffMask = clamp(cliffMask + substrateCliffFactor * 0.4, 0.0, 1.0);
+
+	TerrainMaterial biomeMat = getBiomeMaterial(height, moisture, combinedNoise, worldXZ);
+	TerrainMaterial cliffMat = getCliffMaterial(height, medNoise);
+
+	vec3 albedo = mix(biomeMat.albedo, cliffMat.albedo, cliffMask);
+	float roughness = mix(biomeMat.roughness, cliffMat.roughness, cliffMask);
+	float metallic = mix(biomeMat.metallic, cliffMat.metallic, cliffMask);
+
+	albedo *= (1.0 + largeNoise * 0.12);
+	albedo *= (1.0 + combinedNoise * 0.15);
+	albedo = applyErosionColorMappingDefault(albedo, vRidgeMap, vErosionDelta);
+
+	imageStore(uBakedHeightNormal, ivec3(pixel, uSlice), vec4(height, octEncode(norm), vErosionDelta));
+	imageStore(uBakedAlbedoRoughness, ivec3(pixel, uSlice), vec4(albedo, roughness));
+	imageStore(uBakedParams, ivec3(pixel, uSlice), vec4(metallic, vSubstrate * 0.5 + 0.5, vRidgeMap * 0.5 + 0.5, 0.0));
+}

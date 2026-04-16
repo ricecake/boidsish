@@ -3,6 +3,18 @@
 #define COMPUTE_SHADER
 #include "frustum.glsl"
 #include "lighting.glsl"
+
+#ifndef TERRAIN_HEIGHT_SAMPLERS_DEFINED
+#define TERRAIN_HEIGHT_SAMPLERS_DEFINED
+uniform sampler2DArray uBiomeMap;
+uniform sampler2DArray uBakedHeightNormal;
+uniform sampler2DArray uBakedAlbedoRoughness;
+uniform sampler2DArray uBakedParams;
+#endif
+
+// Map particle system names to terrain sampler names
+#define u_biomeMap uBiomeMap
+
 #include "particle_behavior.glsl"
 #include "particle_helpers.glsl"
 #include "particle_lifecycle.glsl"
@@ -18,7 +30,6 @@ uniform float u_cell_size;
 
 uniform sampler3D      u_curlTexture;
 uniform sampler2DArray u_heightmapArray;
-uniform sampler2DArray u_biomeMap;
 
 layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
 

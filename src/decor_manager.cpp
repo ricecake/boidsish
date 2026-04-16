@@ -644,6 +644,18 @@ namespace Boidsish {
 			glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture);
 			placement_shader_->setInt("u_biomeMap", 1);
 
+			glActiveTexture(GL_TEXTURE16);
+			glBindTexture(GL_TEXTURE_2D_ARRAY, render_manager->GetBakedHeightNormalTexture());
+			placement_shader_->trySetInt("uBakedHeightNormal", 16);
+
+			glActiveTexture(GL_TEXTURE17);
+			glBindTexture(GL_TEXTURE_2D_ARRAY, render_manager->GetBakedAlbedoRoughnessTexture());
+			placement_shader_->trySetInt("uBakedAlbedoRoughness", 17);
+
+			glActiveTexture(GL_TEXTURE18);
+			glBindTexture(GL_TEXTURE_2D_ARRAY, render_manager->GetBakedParamsTexture());
+			placement_shader_->trySetInt("uBakedParams", 18);
+
 			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::DecorProps(), decor_props_ubo_);
 			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::DecorPlacementGlobals(), placement_globals_ubo_);
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::DecorChunkParams(), chunk_params_ssbo_);
@@ -700,6 +712,10 @@ namespace Boidsish {
 
 		if (render_manager) {
 			render_manager->BindTerrainData(*culling_shader_);
+
+			glActiveTexture(GL_TEXTURE16);
+			glBindTexture(GL_TEXTURE_2D_ARRAY, render_manager->GetBakedHeightNormalTexture());
+			culling_shader_->trySetInt("uBakedHeightNormal", 16);
 		}
 
 		// Hi-Z occlusion culling uniforms
@@ -823,6 +839,18 @@ namespace Boidsish {
 		glActiveTexture(GL_TEXTURE1);
 		glBindTexture(GL_TEXTURE_2D_ARRAY, render_manager->GetBiomeTexture());
 		placement_shader_->setInt("u_biomeMap", 1);
+
+		glActiveTexture(GL_TEXTURE16);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, render_manager->GetBakedHeightNormalTexture());
+		placement_shader_->trySetInt("uBakedHeightNormal", 16);
+
+		glActiveTexture(GL_TEXTURE17);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, render_manager->GetBakedAlbedoRoughnessTexture());
+		placement_shader_->trySetInt("uBakedAlbedoRoughness", 17);
+
+		glActiveTexture(GL_TEXTURE18);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, render_manager->GetBakedParamsTexture());
+		placement_shader_->trySetInt("uBakedParams", 18);
 
 		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::DecorProps(), decor_props_ubo_);
 		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::DecorPlacementGlobals(), temp_globals_ubo);

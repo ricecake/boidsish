@@ -102,8 +102,11 @@ namespace Boidsish {
 		ShaderBase::RegisterConstant("MAX_CASCADES", Boidsish::Constants::Class::Shadows::MaxCascades());
 		ShaderBase::RegisterConstant("CHUNK_SIZE", Boidsish::Constants::Class::Terrain::ChunkSize());
 		ShaderBase::RegisterConstant("CHUNK_SIZE_PLUS_1", Boidsish::Constants::Class::Terrain::ChunkSizePlus1());
+		ShaderBase::RegisterConstant("BAKED_RESOLUTION", Boidsish::Constants::Class::Terrain::BakedResolution());
 		ShaderBase::RegisterConstant("MAX_SHOCKWAVES", Boidsish::Constants::Class::Shockwaves::MaxShockwaves());
 		ShaderBase::RegisterConstant("TERRAIN_PROBES_BINDING", Boidsish::Constants::SsboBinding::TerrainProbes());
+		ShaderBase::RegisterConstant("LIGHTING_BINDING", Boidsish::Constants::UboBinding::Lighting());
+		ShaderBase::RegisterConstant("VISUAL_EFFECTS_BINDING", Boidsish::Constants::UboBinding::VisualEffects());
 		ShaderBase::RegisterConstant("TERRAIN_DATA_BINDING", Boidsish::Constants::UboBinding::TerrainData());
 		ShaderBase::RegisterConstant("BIOME_DATA_BINDING", Boidsish::Constants::UboBinding::Biomes());
 		ShaderBase::RegisterConstant("WEATHER_UNIFORMS_BINDING", Boidsish::Constants::UboBinding::WeatherUniforms());
@@ -864,6 +867,7 @@ namespace Boidsish {
 					noise_manager->GetCurlTexture(),
 					noise_manager->GetExtraNoiseTexture()
 				);
+				terrain_render_manager->SetVisualEffectsUbo(visual_effects_ubo);
 
 				// Set up eviction callback so terrain generator knows when chunks are LRU-evicted
 				// Capture weak_ptr to allow terrain generator to be swapped without dangling reference
@@ -1848,7 +1852,14 @@ namespace Boidsish {
 				// Prepare for rendering (frustum culling for instanced renderer)
 				float world_scale = terrain_generator ? terrain_generator->GetWorldScale() : 1.0f;
 				float day_time = light_manager.GetDayNightCycle().time;
-				terrain_render_manager->PrepareForRender(frustum, camera.pos(), world_scale, lighting_ubo, day_time);
+				terrain_render_manager->PrepareForRender(
+					frustum,
+					camera.pos(),
+					world_scale,
+					lighting_ubo,
+					visual_effects_ubo,
+					day_time
+				);
 
 				terrain_render_manager
 					->Render(*Terrain::terrain_shader_, view, proj, viewport_size, clip_plane, effective_quality);
@@ -2442,7 +2453,7 @@ namespace Boidsish {
 				frame_config_.ambient_particle_density,
 				terrain_render_manager ? terrain_render_manager->GetChunkInfo(terrain_generator->GetWorldScale())
 									   : std::vector<glm::vec4>{},
-				terrain_render_manager ? terrain_render_manager->GetHeightmapTexture() : 0,
+				terrain_render_manager ? terrain_render_manager->GetBakedHeightNormalTexture() : 0,
 				noise_manager ? noise_manager->GetCurlTexture() : 0,
 				terrain_render_manager ? terrain_render_manager->GetBiomeTexture() : 0,
 				lighting_ubo,

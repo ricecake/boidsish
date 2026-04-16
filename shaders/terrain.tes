@@ -20,12 +20,12 @@ flat out float TextureSlice;
 out float      perturbFactor;
 out float      tessFactor;
 out float      vIsWater;
-out float      vErosionDelta;
-out float      vRidgeMap;
 out float      vSubstrate;
 
 // Heightmap texture array: R=height, GBA=normal
 uniform sampler2DArray uHeightmap;
+uniform sampler2DArray uBakedHeightNormal;
+uniform sampler2DArray uBakedParams;
 uniform float          uChunkSize;
 uniform float          uRawChunkSize;
 
@@ -34,7 +34,6 @@ uniform mat4 projection;
 uniform vec4 clipPlane;
 uniform bool uIsShadowPass = false;
 
-#include "helpers/erosion.glsl"
 #include "helpers/lighting.glsl"
 #include "helpers/shockwave.glsl"
 #include "helpers/terrain_noise.glsl"
@@ -43,13 +42,29 @@ uniform bool uIsShadowPass = false;
 
 // #include "helpers/fast_noise.glsl"
 
+// Helper to avoid sign(0) == 0
+vec2 signNotZero(vec2 v) {
+	return vec2(v.x >= 0.0 ? 1.0 : -1.0, v.y >= 0.0 ? 1.0 : -1.0);
+}
+
+// Octahedral decoding for normals (+Y is Up)
+vec3 octDecode(vec2 e) {
+	e = e * 2.0 - 1.0;
+	// e.x corresponds to n.x, e.y corresponds to n.z
+	// The reconstructed component is n.y
+	vec3 v = vec3(e.x, 1.0 - abs(e.x) - abs(e.y), e.y);
+	if (v.y < 0.0) {
+		v.xz = (1.0 - abs(v.zx)) * signNotZero(v.xz);
+	}
+	return normalize(v);
+}
+
 // Sample heightmap to get world position and normal
 void sampleHeightmap(vec2 uv, float slice, vec3 worldOffset, out vec3 worldPos, out vec3 normal) {
-	// Remap UV to match the grid center alignment of the heightmap texture
-	vec2  remappedUV = (uv * uRawChunkSize + 0.5) / (uRawChunkSize + 1.0);
-	vec4  data = texture(uHeightmap, vec3(remappedUV, slice));
+	// Sample high-res baked height/normal
+	vec4 data = texture(uBakedHeightNormal, vec3(uv, slice));
 	float height = data.r;
-	normal = normalize(data.gba);
+	normal = octDecode(data.gb);
 
 	worldPos.x = worldOffset.x + uv.x * uChunkSize;
 	worldPos.y = height;
@@ -71,70 +86,9 @@ void main() {
 	// Sample heightmap at the interpolated UV to get world position and normal
 	sampleHeightmap(TexCoords, slice, worldOffset, FragPos, Normal);
 
-	// ========================================================================
-	// Advanced Erosion Filter Application
-	// ========================================================================
-	float terrainDistance = distance(viewPos.xz, FragPos.xz);
-	float blendScale = smoothstep(
-		erosion_max_dist * worldScale,
-		(erosion_max_dist * 0.5) * worldScale,
-		terrainDistance
-	);
-
-	if (erosion_enabled > 0 && terrainDistance < erosion_max_dist * worldScale) {
-		// Note: We apply the erosion filter directly to the geometry for evaluation.
-		float ridgeMapOutput = 0.0;
-		float substrateOutput = 0.0;
-		float debugOutput = 0.0;
-
-		// We update frameworkHeightPeak to provide more vertical range for the eroded features.
-		float frameworkHeightPeak = 200.0 * worldScale;
-		float erosionFadeTarget = clamp(FragPos.y / (frameworkHeightPeak * 0.6), -1.0, 1.0);
-
-		// Approximate local slope from normal for the filter
-		// In the original, yz are derivatives dh/dx and dh/dz.
-		// Our normal is (-dx, 1, -dz) normalized. So -Normal.x and -Normal.z are approx derivatives.
-		vec3 hAndS = vec3(FragPos.y / worldScale, -Normal.x, -Normal.z);
-
-		vec4 erosionResult = ErosionFilter(
-			FragPos.xz / worldScale,
-			hAndS,
-			erosionFadeTarget,
-			blendScale * erosion_strength,
-			erosion_gully_weight,
-			erosion_detail,
-			vec4(0.1, 0.0, 0.1, 2.0),
-			vec4(1.25, 1.25, 2.8, 1.5),
-			vec2(0.7, 1.0),
-			worldScale * erosion_scale,
-			5,
-			2.0,
-			0.5,
-			0.7,
-			0.5,
-			ridgeMapOutput,
-			substrateOutput,
-			debugOutput
-		);
-
-		// Apply height change
-		// Note: We multiply by worldScale to keep it consistent with our coordinate system.
-		float heightDelta = erosionResult.x * worldScale;
-		FragPos.y += blendScale * heightDelta;
-
-		// Update normal based on slope delta
-		// erosionResult.yz is the delta for dh/dx and dh/dz.
-		vec2 updatedDeriv = hAndS.yz + erosionResult.yz;
-		Normal = mix(Normal, normalize(vec3(-updatedDeriv.x, 1.0, -updatedDeriv.y)), blendScale);
-
-		vErosionDelta = erosionResult.x; // Keep unscaled for color mapping
-		vRidgeMap = ridgeMapOutput;
-		vSubstrate = substrateOutput;
-	} else {
-		vErosionDelta = 0.0;
-		vRidgeMap = 0.0;
-		vSubstrate = 0.0;
-	}
+	// Baked parameters
+	vec4 bakedParams = texture(uBakedParams, vec3(TexCoords, slice));
+	vSubstrate = bakedParams.g; // [0, 1]
 
 	// Detect water (height < 0) with a small blend range for stability
 	float waterMask = smoothstep(0.1, -0.1, FragPos.y);
@@ -172,9 +126,9 @@ void main() {
 			float rocks = fastWorley3d(scaledPos * 0.5);
 			float divots = fastSimplex3d(scaledPos * 1.0);
 
-			// Substrate modulation: eroded areas (substrate < 0) are more rocky/rough,
-			// while deposition areas (substrate > 0) are smoother.
-			float substrateMod = mix(1.2, 0.4, clamp(vSubstrate * 0.5 + 0.5, 0.0, 1.0));
+			// Substrate modulation: eroded areas (substrate -> 0) are more rocky/rough,
+			// while deposition areas (substrate -> 1) are smoother.
+			float substrateMod = mix(1.2, 0.4, vSubstrate);
 
 			float displacement = (rocks * 1.15 - abs(divots) * 1.17) * detailFade * substrateMod;
 			FragPos += Normal * displacement;

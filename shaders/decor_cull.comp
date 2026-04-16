@@ -113,7 +113,7 @@ bool isOccludedByTerrain(vec3 pos) {
 		int slice = texelFetch(u_chunkGrid, localGridCoord, 0).r;
 		if (slice >= 0) {
 			vec2  uv_chunk = (p.xz - vec2(chunkCoord) * scaledChunkSize) / scaledChunkSize;
-			float h = texture(u_heightmapArray, vec3(uv_chunk, float(slice))).r;
+			float h = texture(uBakedHeightNormal, vec3(uv_chunk, float(slice))).r;
 			if (p.y < h) {
 				return true; // Terrain blocks line of sight
 			}
