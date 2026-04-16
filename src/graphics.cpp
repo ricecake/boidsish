@@ -1168,6 +1168,7 @@ namespace Boidsish {
 			last_render_floor_ = frame_config_.render_floor;
 
 			frame_config_.render_decor = cfg.GetAppSettingBool("render_decor", true);
+			frame_config_.render_grass = cfg.GetAppSettingBool("grass_enabled", true);
 			frame_config_.artistic_ripple = cfg.GetAppSettingBool("artistic_effect_ripple", false);
 			frame_config_.artistic_color_shift = cfg.GetAppSettingBool("artistic_effect_color_shift", false);
 			frame_config_.artistic_black_and_white = cfg.GetAppSettingBool("artistic_effect_black_and_white", false);
@@ -1194,7 +1195,7 @@ namespace Boidsish {
 				decor_manager->SetEnabled(frame_config_.render_decor);
 			}
 			if (grass_manager) {
-				grass_manager->SetEnabled(frame_config_.render_decor); // Tie grass to decor toggle for now
+				grass_manager->SetEnabled(frame_config_.render_grass);
 			}
 		}
 

@@ -420,9 +420,11 @@ namespace Boidsish {
 
 					auto decor_manager = m_visualizer.GetDecorManager();
 					if (decor_manager) {
-						bool enabled = decor_manager->IsEnabled();
+						auto& cfg = ConfigManager::GetInstance();
+						bool  enabled = decor_manager->IsEnabled();
 						if (ImGui::Checkbox("Enable Foliage", &enabled)) {
 							decor_manager->SetEnabled(enabled);
+							cfg.SetBool("render_decor", enabled);
 						}
 
 						if (enabled) {

@@ -71,6 +71,7 @@ namespace Boidsish {
         void SetCameraPos(const glm::vec3& pos) { last_camera_pos_ = pos; }
 
         void SetGrassProperties(Biome biome, const GrassProperties& props);
+        void PopulateDefaultGrassProperties();
 
         bool IsEnabled() const { return global_props_.enabled != 0; }
         void SetEnabled(bool e) {
