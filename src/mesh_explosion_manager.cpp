@@ -210,10 +210,10 @@ namespace Boidsish {
 		compute_shader_->use();
 		compute_shader_->setFloat("u_delta_time", delta_time);
 
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ssbo_);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::MeshExplosionFragments(), ssbo_);
 		glDispatchCompute((kMaxFragments / Constants::Class::Explosions::ComputeGroupSize()) + 1, 1, 1);
 		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, 0);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::MeshExplosionFragments(), 0);
 	}
 
 	void MeshExplosionManager::Render(const glm::mat4& view, const glm::mat4& projection, const glm::vec3& camera_pos) {
@@ -233,11 +233,11 @@ namespace Boidsish {
 		render_shader_->setMat4("u_view", view);
 		render_shader_->setMat4("u_projection", projection);
 
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ssbo_);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::MeshExplosionFragments(), ssbo_);
 		glBindVertexArray(vao_);
 		glDrawArraysInstanced(GL_TRIANGLES, 0, 3, kMaxFragments);
 		glBindVertexArray(0);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, 0);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::MeshExplosionFragments(), 0);
 
 		glDepthMask(GL_TRUE);
 		glDisable(GL_BLEND);

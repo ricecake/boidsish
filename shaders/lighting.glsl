@@ -19,7 +19,7 @@ const int MAX_LIGHTS = [[MAX_LIGHTS]];
 const int MAX_SHADOW_MAPS = [[MAX_SHADOW_MAPS]];
 const int MAX_CASCADES = [[MAX_CASCADES]];
 
-layout(std140) uniform Lighting {
+layout(std140, binding = [[LIGHTING_BINDING]]) uniform Lighting {
 	Light lights[MAX_LIGHTS];
 	int   num_lights;
 	float worldScale;
@@ -78,8 +78,8 @@ layout(std140, binding = [[BIOME_DATA_BINDING]]) uniform BiomeData {
 };
 #endif
 
-// Shadow mapping UBO (binding set via glUniformBlockBinding to point 2)
-layout(std140, binding = 2) uniform Shadows {
+// Shadow mapping UBO
+layout(std140, binding = [[SHADOWS_BINDING]]) uniform Shadows {
 	mat4 lightSpaceMatrices[MAX_SHADOW_MAPS];
 	vec4 cascadeSplits;
 	int  numShadowLights;

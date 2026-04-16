@@ -234,7 +234,7 @@ namespace Boidsish {
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, _skyViewLUT);
 		_skyToSHShader->setInt("u_skyViewLUT", 0);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, _shCoeffsBuffer);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::AtmosphereSH(), _shCoeffsBuffer);
 		glDispatchCompute(1, 1, 1); // Logic in sky_to_sh.comp uses a single workgroup for simple integration
 		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
