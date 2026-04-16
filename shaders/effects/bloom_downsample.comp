@@ -74,9 +74,12 @@ void main() {
 		bloomColor += texture(srcTexture, uv + vec2(2.0, 0.0) * texelSize).rgb * 0.5;
 		bloomColor /= 10.0;
 
-		// Apply Bright Pass Threshold
+		// Apply Bright Pass Threshold relative to exposure
+		float exposure = targetLuminance / max(adaptedLuminance, 0.0001);
+		float effectiveThreshold = threshold / max(exposure, 0.0001);
+
 		float brightness = dot(bloomColor, vec3(0.2126, 0.7152, 0.0722));
-		if (brightness <= threshold) {
+		if (brightness <= effectiveThreshold) {
 			bloomColor = vec3(0.0);
 		}
 
