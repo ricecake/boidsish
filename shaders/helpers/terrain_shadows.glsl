@@ -12,9 +12,16 @@ layout(std140, binding = [[TERRAIN_DATA_BINDING]]) uniform TerrainData {
 #endif
 
 uniform isampler2D u_chunkGrid;
+#ifndef TERRAIN_HEIGHT_SAMPLERS_DEFINED
+#define TERRAIN_HEIGHT_SAMPLERS_DEFINED
 uniform sampler2D  u_maxHeightGrid;
 // u_heightmapArray is bound to unit 13
 uniform sampler2DArray u_heightmapArray;
+uniform sampler2DArray uBiomeMap;
+uniform sampler2DArray uBakedHeightNormal;
+uniform sampler2DArray uBakedAlbedoRoughness;
+uniform sampler2DArray uBakedParams;
+#endif
 
 float getTerrainHeight(vec2 worldXZ) {
 	if (u_originSize.w < 1)
@@ -34,8 +41,7 @@ float getTerrainHeight(vec2 worldXZ) {
 		return -10000.0;
 
 	vec2 uv = (worldXZ - vec2(chunkCoord) * scaledChunkSize) / scaledChunkSize;
-	vec2 remappedUV = (uv * u_terrainParams.x + 0.5) / (u_terrainParams.x + 1.0);
-	return texture(u_heightmapArray, vec3(remappedUV, float(slice))).r;
+	return texture(uBakedHeightNormal, vec3(uv, float(slice))).r;
 }
 
 /**
@@ -71,8 +77,7 @@ float marchOcclusion(vec3 p_start, vec3 rayDir, float maxDist) {
 			int slice = texelFetch(u_chunkGrid, localGridCoord, 0).r;
 			if (slice >= 0) {
 				vec2  uv_chunk = (p.xz - vec2(chunkCoord) * scaledChunkSize) / scaledChunkSize;
-				vec2  remappedUV = (uv_chunk * u_terrainParams.x + 0.5) / (u_terrainParams.x + 1.0);
-				float h = texture(u_heightmapArray, vec3(remappedUV, float(slice))).r;
+					float h = texture(uBakedHeightNormal, vec3(uv_chunk, float(slice))).r;
 
 				if (p.y < h) {
 					// Soft occlusion based on how much terrain is "above" the ray point
@@ -200,8 +205,7 @@ float terrainShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) {
 						while (subT < tEnd) {
 							vec3  p = p_start + subT * lightDir;
 							vec2  uv_chunk = (p.xz - vec2(currentChunk) * scaledChunkSize) / scaledChunkSize;
-							vec2  remappedUV = (uv_chunk * u_terrainParams.x + 0.5) / (u_terrainParams.x + 1.0);
-							float h = texture(u_heightmapArray, vec3(remappedUV, float(slice))).r;
+							float h = texture(uBakedHeightNormal, vec3(uv_chunk, float(slice))).r;
 							closest = min(closest, 8.0 * ((p.y - h) / subT));
 							if (p.y < h) {
 								float shadowStrength = clamp(subT / (maxDist), 0.0, 1.0);
@@ -301,8 +305,7 @@ int isPointInTerrainShadowDebug(vec3 worldPos, vec3 normal, vec3 lightDir) {
 					while (subT < tEnd) {
 						vec3  p = p_start + subT * lightDir;
 						vec2  uv_chunk = (p.xz - vec2(currentChunk) * scaledChunkSize) / scaledChunkSize;
-						vec2  remappedUV = (uv_chunk * u_terrainParams.x + 0.5) / (u_terrainParams.x + 1.0);
-						float h = texture(u_heightmapArray, vec3(remappedUV, float(slice))).r;
+						float h = texture(uBakedHeightNormal, vec3(uv_chunk, float(slice))).r;
 						if (p.y < h) {
 							return 3; // Hit! (Magenta)
 						}

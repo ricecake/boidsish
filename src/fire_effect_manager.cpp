@@ -449,6 +449,10 @@ namespace Boidsish {
 				shader->setInt("u_biomeMap", 8);
 			}
 
+			glActiveTexture(GL_TEXTURE16);
+			glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture); // Reuse this for now if manager doesn't expose it
+			shader->trySetInt("uBakedHeightNormal", 16);
+
 			if (extra_noise_texture != 0) {
 				glActiveTexture(GL_TEXTURE9);
 				glBindTexture(GL_TEXTURE_3D, extra_noise_texture);

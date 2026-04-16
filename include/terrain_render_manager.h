@@ -150,6 +150,10 @@ namespace Boidsish {
 		 */
 		GLuint GetBiomeTexture() const { return biome_texture_; }
 
+		GLuint GetBakedHeightNormalTexture() const { return baked_height_normal_texture_; }
+		GLuint GetBakedAlbedoRoughnessTexture() const { return baked_albedo_roughness_texture_; }
+		GLuint GetBakedParamsTexture() const { return baked_params_texture_; }
+
 		/**
 		 * @brief Get info about all registered chunks for external use (e.g., decor placement).
 		 * Returns a vector of (world_offset_x, world_offset_z, texture_slice, chunk_size).

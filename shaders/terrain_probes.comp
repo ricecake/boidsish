@@ -15,6 +15,9 @@ float calculateTerrainOcclusion(vec3 worldPos, vec3 normal) { return 1.0; }
 uniform isampler2D u_chunkGrid;
 uniform sampler2DArray u_heightmapArray;
 uniform sampler2DArray u_biomeMap;
+uniform sampler2DArray uBakedHeightNormal;
+uniform sampler2DArray uBakedAlbedoRoughness;
+uniform sampler2DArray uBakedParams;
 
 uniform sampler2D u_gColor;
 uniform sampler2D u_gDepth;
@@ -84,6 +87,21 @@ vec3 sampleSkyLUT(vec3 rd) {
 	return texture(u_skyViewLUT, vec2(uvX, uvY)).rgb;
 }
 
+// Helper to avoid sign(0) == 0
+vec2 signNotZero(vec2 v) {
+	return vec2(v.x >= 0.0 ? 1.0 : -1.0, v.y >= 0.0 ? 1.0 : -1.0);
+}
+
+// Octahedral decoding for normals (+Y is Up)
+vec3 octDecode(vec2 e) {
+	e = e * 2.0 - 1.0;
+	vec3 v = vec3(e.x, 1.0 - abs(e.x) - abs(e.y), e.y);
+	if (v.y < 0.0) {
+		v.xz = (1.0 - abs(v.zx)) * signNotZero(v.xz);
+	}
+	return normalize(v);
+}
+
 vec3 sampleTerrainFallback(vec3 worldPos, vec3 rayDir) {
 	float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
 	float worldScale = u_terrainParams.y;
@@ -101,14 +119,13 @@ vec3 sampleTerrainFallback(vec3 worldPos, vec3 rayDir) {
 			int slice = texelFetch(u_chunkGrid, chunkCoord, 0).r;
 			if (slice >= 0) {
 				vec2 uv = fract(gridPos);
-				vec2 remappedUV = (uv * u_terrainParams.x + 0.5) / (u_terrainParams.x + 1.0);
-				vec4 hNorm = texture(u_heightmapArray, vec3(remappedUV, float(slice)));
-				if (p.y <= hNorm.r) {
-					vec2 biomeInfo = texture(u_biomeMap, vec3(remappedUV, float(slice))).rg;
-					int lowIdx = int(biomeInfo.x);
-					float t = biomeInfo.y;
-					vec3 albedo = mix(u_biomes[lowIdx].albedo_roughness.rgb, u_biomes[min(lowIdx + 1, 7)].albedo_roughness.rgb, t);
-					vec3 normal = normalize(hNorm.gba);
+				// Sample high-res baked data instead of low-res heightmap
+				vec4 bakedData = texture(uBakedHeightNormal, vec3(uv, float(slice)));
+				float bakedHeight = bakedData.r;
+
+				if (p.y <= bakedHeight) {
+					vec3 normal = octDecode(bakedData.gb);
+					vec3 albedo = texture(uBakedAlbedoRoughness, vec3(uv, float(slice))).rgb;
 
 					vec3 radiance = vec3(0.0);
 					for (int l = 0; l < min(num_lights, 2); ++l) {
@@ -155,10 +172,11 @@ void main() {
 	float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
 	float worldScale = u_terrainParams.y;
 	vec2  worldXZ = (vec2(chunkCoord + u_originSize.xy) + 0.5) * scaledChunkSize;
-	// Sample center of chunk (uv=0.5). remapUV = (0.5 * size + 0.5) / (size + 1.0) = 0.5
-	vec4  sampledHeightNorm = texture(u_heightmapArray, vec3(0.5, 0.5, float(slice)));
-	vec3  worldPos = vec3(worldXZ.x, sampledHeightNorm.r, worldXZ.y);
-	vec3  worldNormal = normalize(sampledHeightNorm.gba);
+
+	// Sample center of chunk (uv=0.5) using baked data
+	vec4 bakedData = texture(uBakedHeightNormal, vec3(0.5, 0.5, float(slice)));
+	vec3 worldPos = vec3(worldXZ.x, bakedData.r, worldXZ.y);
+	vec3 worldNormal = octDecode(bakedData.gb);
 
 	// Position probe origin slightly above terrain to ensure clear visibility
 	vec3 probeOrigin = worldPos + worldNormal * 1.0 * worldScale;

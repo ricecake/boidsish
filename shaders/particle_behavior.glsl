@@ -35,6 +35,21 @@ const float kCinderLifetime = 8.0;
 const float kCinderDriftIntensity = 4.0;
 const float kCinderBuoyancy = 1.5;
 
+// Helper to avoid sign(0) == 0
+vec2 signNotZero(vec2 v) {
+	return vec2(v.x >= 0.0 ? 1.0 : -1.0, v.y >= 0.0 ? 1.0 : -1.0);
+}
+
+// Octahedral decoding for normals (+Y is Up)
+vec3 octDecode(vec2 e) {
+	e = e * 2.0 - 1.0;
+	vec3 v = vec3(e.x, 1.0 - abs(e.x) - abs(e.y), e.y);
+	if (v.y < 0.0) {
+		v.xz = (1.0 - abs(v.zx)) * signNotZero(v.xz);
+	}
+	return normalize(v);
+}
+
 void handleTerrainCollision(inout Particle p, int num_chunks, sampler2DArray heightmapArray) {
 	bool collided = false;
 	for (int i = 0; i < num_chunks; i++) {
@@ -42,9 +57,11 @@ void handleTerrainCollision(inout Particle p, int num_chunks, sampler2DArray hei
 		if (p.pos.x >= chunk.worldOffset.x && p.pos.x < chunk.worldOffset.x + chunk.size &&
 		    p.pos.z >= chunk.worldOffset.y && p.pos.z < chunk.worldOffset.y + chunk.size) {
 			vec2  uv = (p.pos.xz - chunk.worldOffset) / chunk.size;
-			vec4  terrain = texture(heightmapArray, vec3(uv, chunk.slice));
+
+			// Use high-resolution baked data if available, otherwise fallback to low-res
+			vec4 terrain = texture(uBakedHeightNormal, vec3(uv, chunk.slice));
 			float height = terrain.r;
-			vec3  normal = vec3(terrain.g, terrain.b, terrain.a);
+			vec3  normal = octDecode(terrain.gb);
 
 			if (p.pos.y < height) {
 				p.pos.y = height + 0.05;

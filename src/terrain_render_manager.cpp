@@ -409,7 +409,7 @@ namespace Boidsish {
 			// Bind output textures as images
 			glBindImageTexture(0, baked_height_normal_texture_, 0, GL_TRUE, slice, GL_WRITE_ONLY, GL_RGBA16F);
 			glBindImageTexture(1, baked_albedo_roughness_texture_, 0, GL_TRUE, slice, GL_WRITE_ONLY, GL_RGBA8);
-			glBindImageTexture(2, baked_params_texture_, 0, GL_TRUE, slice, GL_WRITE_ONLY, GL_RG8);
+			glBindImageTexture(2, baked_params_texture_, 0, GL_TRUE, slice, GL_WRITE_ONLY, GL_RGBA8);
 
 			// Bind input textures
 			glActiveTexture(GL_TEXTURE0);
@@ -885,6 +885,18 @@ namespace Boidsish {
 		glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture_);
 		probe_compute_shader_->setInt("u_heightmapArray", 13);
 
+		glActiveTexture(GL_TEXTURE16);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, baked_height_normal_texture_);
+		probe_compute_shader_->trySetInt("uBakedHeightNormal", 16);
+
+		glActiveTexture(GL_TEXTURE17);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, baked_albedo_roughness_texture_);
+		probe_compute_shader_->trySetInt("uBakedAlbedoRoughness", 17);
+
+		glActiveTexture(GL_TEXTURE18);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, baked_params_texture_);
+		probe_compute_shader_->trySetInt("uBakedParams", 18);
+
 		// Uniforms
 		probe_compute_shader_->setUint("u_frameIndex", frame_count_);
 		probe_compute_shader_->setMat4("u_view", view);
@@ -1016,17 +1028,17 @@ namespace Boidsish {
 		glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture_);
 		shader.setInt("uBiomeMap", 1);
 
-		glActiveTexture(GL_TEXTURE2);
+		glActiveTexture(GL_TEXTURE16);
 		glBindTexture(GL_TEXTURE_2D_ARRAY, baked_height_normal_texture_);
-		shader.trySetInt("uBakedHeightNormal", 2);
+		shader.trySetInt("uBakedHeightNormal", 16);
 
-		glActiveTexture(GL_TEXTURE3);
+		glActiveTexture(GL_TEXTURE17);
 		glBindTexture(GL_TEXTURE_2D_ARRAY, baked_albedo_roughness_texture_);
-		shader.trySetInt("uBakedAlbedoRoughness", 3);
+		shader.trySetInt("uBakedAlbedoRoughness", 17);
 
-		glActiveTexture(GL_TEXTURE4);
+		glActiveTexture(GL_TEXTURE18);
 		glBindTexture(GL_TEXTURE_2D_ARRAY, baked_params_texture_);
-		shader.trySetInt("uBakedParams", 4);
+		shader.trySetInt("uBakedParams", 18);
 
 		glActiveTexture(GL_TEXTURE5);
 		glBindTexture(GL_TEXTURE_3D, noise_texture_);

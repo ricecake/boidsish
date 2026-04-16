@@ -105,6 +105,8 @@ namespace Boidsish {
 		ShaderBase::RegisterConstant("BAKED_RESOLUTION", Boidsish::Constants::Class::Terrain::BakedResolution());
 		ShaderBase::RegisterConstant("MAX_SHOCKWAVES", Boidsish::Constants::Class::Shockwaves::MaxShockwaves());
 		ShaderBase::RegisterConstant("TERRAIN_PROBES_BINDING", Boidsish::Constants::SsboBinding::TerrainProbes());
+		ShaderBase::RegisterConstant("LIGHTING_BINDING", Boidsish::Constants::UboBinding::Lighting());
+		ShaderBase::RegisterConstant("VISUAL_EFFECTS_BINDING", Boidsish::Constants::UboBinding::VisualEffects());
 		ShaderBase::RegisterConstant("TERRAIN_DATA_BINDING", Boidsish::Constants::UboBinding::TerrainData());
 		ShaderBase::RegisterConstant("BIOME_DATA_BINDING", Boidsish::Constants::UboBinding::Biomes());
 		ShaderBase::RegisterConstant("WEATHER_UNIFORMS_BINDING", Boidsish::Constants::UboBinding::WeatherUniforms());
@@ -2451,7 +2453,7 @@ namespace Boidsish {
 				frame_config_.ambient_particle_density,
 				terrain_render_manager ? terrain_render_manager->GetChunkInfo(terrain_generator->GetWorldScale())
 									   : std::vector<glm::vec4>{},
-				terrain_render_manager ? terrain_render_manager->GetHeightmapTexture() : 0,
+				terrain_render_manager ? terrain_render_manager->GetBakedHeightNormalTexture() : 0,
 				noise_manager ? noise_manager->GetCurlTexture() : 0,
 				terrain_render_manager ? terrain_render_manager->GetBiomeTexture() : 0,
 				lighting_ubo,
