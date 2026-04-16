@@ -24,6 +24,10 @@ uniform sampler2D u_skyViewLUT;
 uniform uint u_frameIndex;
 uniform mat4 u_view;
 uniform mat4 u_projection;
+
+uniform float u_probeScaling;
+uniform float u_probeConvergenceSpeed;
+uniform int   u_probeRayMultiplier;
 uniform mat4 u_invView;
 uniform mat4 u_invProjection;
 
@@ -282,8 +286,8 @@ void main() {
 
 	// Priority-based update parameters
 	int dynamicStagger = int(mix(64.0, 8.0, focusWeight));
-	int rayCount = int(mix(1.0, 18.0, focusWeight));
-	float alpha = mix(0.5, 0.1, focusWeight);
+	int rayCount = int(mix(1.0, 18.0, focusWeight)) * u_probeRayMultiplier;
+	float alpha = mix(0.5, 0.1, focusWeight) * u_probeConvergenceSpeed;
 
 	uint sequenceSeed = hash2D(worldChunkCoord);
 
@@ -335,7 +339,10 @@ void main() {
 		alpha = 0.95;
 	} else {
 		rayCount = int(mix(float(rayCount), float(rayCount) * 2.0, neighborStaggerScale));
-		alpha = mix(alpha, mix(alpha, 0.8, neighborStaggerScale), 0.5);
+
+		// Faster convergence for large differences, more gradual for small ones
+		float convergenceBase = mix(alpha, 0.8, neighborStaggerScale);
+		alpha = mix(pow(convergenceBase, 1.5), pow(convergenceBase, 0.5), neighborStaggerScale);
 
 		int stagger = int(mix(float(dynamicStagger), float(dynamicStagger) / 4.0, neighborStaggerScale));
 		stagger = max(1, stagger);
@@ -399,7 +406,7 @@ void main() {
 	}
 
 	for (int i = 0; i < 9; ++i) {
-		vec4 finalSH = vec4(mix(oldSH[i], newSH[i], alpha), 1.0);
+		vec4 finalSH = vec4(mix(oldSH[i], newSH[i] * u_probeScaling, alpha), 1.0);
 
 		// Encode world coordinates in w-components of the first two coefficients
 		if (i == 0)

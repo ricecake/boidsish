@@ -730,7 +730,10 @@ namespace Boidsish {
 		GLuint           skyLUT,
 		const glm::mat4& view,
 		const glm::mat4& projection,
-		GLuint           lighting_ubo
+		GLuint           lighting_ubo,
+		float            probe_scaling,
+		float            probe_convergence,
+		int              probe_ray_multiplier
 	) {
 		PROJECT_PROFILE_SCOPE("TerrainRenderManager::DispatchProbeUpdate");
 		std::lock_guard<std::mutex> lock(mutex_);
@@ -786,6 +789,10 @@ namespace Boidsish {
 		probe_compute_shader_->setMat4("u_projection", projection);
 		probe_compute_shader_->setMat4("u_invView", glm::inverse(view));
 		probe_compute_shader_->setMat4("u_invProjection", glm::inverse(projection));
+
+		probe_compute_shader_->setFloat("u_probeScaling", probe_scaling);
+		probe_compute_shader_->setFloat("u_probeConvergenceSpeed", probe_convergence);
+		probe_compute_shader_->setInt("u_probeRayMultiplier", probe_ray_multiplier);
 
 		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::TerrainData(), terrain_data_ubo_);
 		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Biomes(), biome_ubo_);

@@ -1186,6 +1186,15 @@ namespace Boidsish {
 				Constants::Class::Particles::DefaultAmbientDensity()
 			);
 			frame_config_.enable_shadows = cfg.GetAppSettingBool("enable_shadows", true);
+
+			frame_config_.sh_probe_scaling = cfg.GetAppSettingFloat("sh_probe_scaling", 1.0f);
+			frame_config_.sh_probe_convergence_speed = cfg.GetAppSettingFloat("sh_probe_convergence_speed", 1.0f);
+			frame_config_.sh_probe_ray_count_multiplier = cfg.GetAppSettingInt("sh_probe_ray_count_multiplier", 1);
+
+			light_manager.SetProbeScaling(frame_config_.sh_probe_scaling);
+			light_manager.SetProbeConvergenceSpeed(frame_config_.sh_probe_convergence_speed);
+			light_manager.SetProbeRayCountMultiplier(frame_config_.sh_probe_ray_count_multiplier);
+
 			frame_config_.wind_strength = cfg.GetAppSettingFloat("wind_strength", 0.065f);
 			frame_config_.wind_speed = cfg.GetAppSettingFloat("wind_speed", 0.075f);
 			frame_config_.wind_frequency = cfg.GetAppSettingFloat("wind_frequency", 0.01f);
@@ -3411,7 +3420,10 @@ namespace Boidsish {
 				impl->atmosphere_manager->GetSkyViewLUT(),
 				frame.view,
 				frame.projection,
-				impl->lighting_ubo
+				impl->lighting_ubo,
+				impl->frame_config_.sh_probe_scaling,
+				impl->frame_config_.sh_probe_convergence_speed,
+				impl->frame_config_.sh_probe_ray_count_multiplier
 			);
 		}
 
