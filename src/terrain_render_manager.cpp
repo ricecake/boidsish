@@ -693,7 +693,9 @@ namespace Boidsish {
 			if (lx >= 0 && lx < grid_size && lz >= 0 && lz < grid_size) {
 				int idx = lz * grid_size + lx;
 				slice_data[idx] = static_cast<int16_t>(chunk.texture_slice);
-				height_data[idx] = chunk.max_y;
+				// Add a vertical safety buffer to account for dynamic terrain displacements
+				// (erosion, shockwaves, micro-relief) in the Hi-Z structure.
+				height_data[idx] = chunk.max_y + (5.0f * world_scale);
 			}
 		}
 
@@ -844,6 +846,10 @@ namespace Boidsish {
 		glActiveTexture(GL_TEXTURE13);
 		glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture_);
 		shader_base.setInt("u_heightmapArray", 13);
+
+		glActiveTexture(GL_TEXTURE17);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture_);
+		shader_base.setInt("uBiomeMap", 17);
 
 		if (extra_noise_texture_ != 0) {
 			glActiveTexture(GL_TEXTURE8);

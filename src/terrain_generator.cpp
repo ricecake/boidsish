@@ -574,7 +574,7 @@ namespace Boidsish {
 		float sx = x / world_scale_;
 		float sz = z / world_scale_;
 
-		glm::vec3 path_influence = getPathInfluence(sx*0.1f, sz*0.5f);
+		glm::vec3 path_influence = getPathInfluence(sx*0.07f, sz*0.25f);
 		float     path_factor = path_influence.x;
 
 		glm::vec2 push_dir(0.0f);

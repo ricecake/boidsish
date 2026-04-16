@@ -112,9 +112,10 @@ vec3 sampleTerrainFallback(vec3 worldPos, vec3 rayDir) {
 			int slice = texelFetch(u_chunkGrid, chunkCoord, 0).r;
 			if (slice >= 0) {
 				vec2 uv = fract(gridPos);
-				vec4 hNorm = texture(u_heightmapArray, vec3(uv, float(slice)));
+				vec2 remappedUV = (uv * u_terrainParams.x + 0.5) / (u_terrainParams.x + 1.0);
+				vec4 hNorm = texture(u_heightmapArray, vec3(remappedUV, float(slice)));
 				if (p.y <= hNorm.r) {
-					vec2 biomeInfo = texture(u_biomeMap, vec3(uv, float(slice))).rg;
+					vec2 biomeInfo = texture(u_biomeMap, vec3(remappedUV, float(slice))).rg;
 					int lowIdx = int(biomeInfo.x);
 					float t = biomeInfo.y;
 					vec3 albedo = mix(u_biomes[lowIdx].albedo_roughness.rgb, u_biomes[min(lowIdx + 1, 7)].albedo_roughness.rgb, t);

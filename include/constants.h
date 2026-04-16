@@ -41,6 +41,14 @@ namespace Boidsish {
 				return 8;
 			}
 
+			consteval int WeatherUniforms() {
+				return 32;
+			}
+
+			consteval int GrassProps() {
+				return 9;
+			}
+
 			consteval int DecorProps() {
 				return 30;
 			}
@@ -119,12 +127,28 @@ namespace Boidsish {
 				return 29;
 			}
 
+			consteval int GrassInstances() {
+				return 35;
+			}
+
+			consteval int GrassIndirect() {
+				return 36;
+			}
+
 			consteval int LiveParticleIndices() {
 				return 33;
 			}
 
 			consteval int BehaviorDrawCommand() {
 				return 34;
+			}
+
+			consteval int WeatherGridA() {
+				return 37;
+			}
+
+			consteval int WeatherGridB() {
+				return 38;
 			}
 		} // namespace SsboBinding
 
@@ -369,7 +393,7 @@ namespace Boidsish {
 				}
 
 				consteval float PathCorridorWidth() {
-					return 0.35f;
+					return 0.15f;
 				}
 
 				consteval float WarpStrength() {

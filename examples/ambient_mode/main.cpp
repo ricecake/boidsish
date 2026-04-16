@@ -19,7 +19,7 @@
 #include "model.h"
 #include "polyhedron.h"
 #include "post_processing/PostProcessingManager.h"
-#include "post_processing/effects/AutoExposureEffect.h"
+#include "post_processing/effects/BloomEffect.h"
 #include "procedural_generator.h"
 #include "rigid_body.h"
 #include "spline.h"
@@ -188,22 +188,22 @@ int main() {
 		// --- Input Controls ---
 		visualizer.AddInputCallback([&](const Boidsish::InputState& state) {
 			auto&                                               post_manager = visualizer.GetPostProcessingManager();
-			std::shared_ptr<PostProcessing::AutoExposureEffect> exposure;
+			std::shared_ptr<PostProcessing::BloomEffect> bloom;
 
 			for (auto& effect : post_manager.GetPreToneMappingEffects()) {
-				if (auto ae = std::dynamic_pointer_cast<PostProcessing::AutoExposureEffect>(effect)) {
-					exposure = ae;
+				if (auto bl = std::dynamic_pointer_cast<PostProcessing::BloomEffect>(effect)) {
+					bloom = bl;
 					break;
 				}
 			}
 
-			if (exposure) {
-				float lum = exposure->GetTargetLuminance();
+			if (bloom) {
+				float lum = bloom->GetTargetLuminance();
 				if (state.keys[GLFW_KEY_UP])
 					lum += 0.1f * state.delta_time;
 				if (state.keys[GLFW_KEY_DOWN])
 					lum -= 0.1f * state.delta_time;
-				exposure->SetTargetLuminance(std::clamp(lum, 0.05f, 2.0f));
+				bloom->SetTargetLuminance(std::clamp(lum, 0.05f, 2.0f));
 			}
 
 			if (state.key_down[GLFW_KEY_SPACE]) {
