@@ -4,7 +4,7 @@ layout(local_size_x = 16, local_size_y = 16) in;
 
 uniform sampler2D u_skyViewLUT;
 
-layout(std430, binding = 0) buffer SHCoeffs {
+layout(std430, binding = [[ATMOSPHERE_SH_BINDING]]) buffer SHCoeffs {
 	vec4 coefficients[9];
 };
 

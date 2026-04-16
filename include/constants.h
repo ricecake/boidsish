@@ -69,6 +69,10 @@ namespace Boidsish {
 		} // namespace TextureUnit
 
 		namespace SsboBinding {
+			consteval int DecorInstances() {
+				return 10;
+			}
+
 			consteval int AutoExposure() {
 				return 11;
 			}
@@ -99,6 +103,14 @@ namespace Boidsish {
 
 			consteval int TrailSpineData() {
 				return 20;
+			}
+
+			consteval int CommonUniforms() {
+				return 21;
+			}
+
+			consteval int DecorAllInstances() {
+				return 25;
 			}
 
 			consteval int DecorChunkParams() {
@@ -159,6 +171,26 @@ namespace Boidsish {
 
 			consteval int WeatherGridB() {
 				return 38;
+			}
+
+			consteval int DecorIndirect() {
+				return 39;
+			}
+
+			consteval int DecorBlockValidity() {
+				return 40;
+			}
+
+			consteval int MeshExplosionFragments() {
+				return 41;
+			}
+
+			consteval int TrailGeneratedVBO() {
+				return 42;
+			}
+
+			consteval int AtmosphereSH() {
+				return 43;
 			}
 		} // namespace SsboBinding
 
