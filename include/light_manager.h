@@ -37,6 +37,14 @@ namespace Boidsish {
 		glm::vec3           GetAmbientLight() const;
 		void                SetAmbientLight(const glm::vec3& ambient);
 
+		// SH Probe Tuning
+		float GetProbeScaling() const { return _probe_scaling; }
+		void  SetProbeScaling(float scaling) { _probe_scaling = scaling; }
+		float GetProbeConvergenceSpeed() const { return _probe_convergence_speed; }
+		void  SetProbeConvergenceSpeed(float speed) { _probe_convergence_speed = speed; }
+		int   GetProbeRayCountMultiplier() const { return _probe_ray_count_multiplier; }
+		void  SetProbeRayCountMultiplier(int multiplier) { _probe_ray_count_multiplier = multiplier; }
+
 		DayNightCycle& GetDayNightCycle() { return _cycle; }
 
 		const DayNightCycle& GetDayNightCycle() const { return _cycle; }
@@ -64,6 +72,11 @@ namespace Boidsish {
 		glm::vec3     _ambient_light = Constants::General::Colors::DefaultAmbient();
 		DayNightCycle _cycle;
 		int           _next_light_id = 1;
+
+		// SH Probe Tuning
+		float _probe_scaling = 1.0f;
+		float _probe_convergence_speed = 1.0f;
+		int   _probe_ray_count_multiplier = 1;
 		/*
 		    ambient: 53/58/44
 		    def: 231/27/0 @0,100,-100->0,-5.7,7.5 and 6.3 intense
