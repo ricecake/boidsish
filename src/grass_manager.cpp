@@ -66,7 +66,7 @@ namespace Boidsish {
         // Properties UBO
         glGenBuffers(1, &grass_props_ubo_);
         glBindBuffer(GL_UNIFORM_BUFFER, grass_props_ubo_);
-        glBufferData(GL_UNIFORM_BUFFER, 8 * sizeof(GrassProperties), nullptr, GL_DYNAMIC_DRAW);
+        glBufferData(GL_UNIFORM_BUFFER, 8 * sizeof(GrassProperties) + sizeof(GlobalGrassProperties), nullptr, GL_DYNAMIC_DRAW);
         glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
         // Instance SSBO
@@ -95,14 +95,17 @@ namespace Boidsish {
     }
 
     void GrassManager::Update(float deltaTime, float time, const Camera& camera, const ITerrainGenerator& terrainGen, std::shared_ptr<TerrainRenderManager> renderManager) {
-        if (!enabled_ || !initialized_) return;
+        if (!initialized_) return;
 
         if (props_dirty_) {
             glBindBuffer(GL_UNIFORM_BUFFER, grass_props_ubo_);
             glBufferSubData(GL_UNIFORM_BUFFER, 0, 8 * sizeof(GrassProperties), biome_grass_props_.data());
+            glBufferSubData(GL_UNIFORM_BUFFER, 8 * sizeof(GrassProperties), sizeof(GlobalGrassProperties), &global_props_);
             glBindBuffer(GL_UNIFORM_BUFFER, 0);
             props_dirty_ = false;
         }
+
+        if (!IsEnabled()) return;
 
         PROJECT_PROFILE_SCOPE("GrassManager::Update");
         _UpdatePlacement(camera, terrainGen, renderManager);
@@ -130,7 +133,7 @@ namespace Boidsish {
     }
 
     void GrassManager::Render(const glm::mat4& view, const glm::mat4& projection, std::shared_ptr<TerrainRenderManager> renderManager, const RenderResources& res, bool isShadowPass) {
-        if (!enabled_ || !initialized_) return;
+        if (!IsEnabled() || !initialized_) return;
 
         PROJECT_PROFILE_SCOPE("GrassManager::Render");
 

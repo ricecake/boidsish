@@ -3454,6 +3454,19 @@ namespace Boidsish {
 
 			if (impl->grass_manager) {
 				impl->grass_manager->Initialize();
+
+				// Load grass settings from config
+				auto& cfg = ConfigManager::GetInstance();
+				impl->grass_manager->SetEnabled(cfg.GetAppSettingBool("grass_enabled", true));
+
+				GlobalGrassProperties props;
+				props.lengthMultiplier = cfg.GetAppSettingFloat("grass_length_multiplier", 1.0f);
+				props.widthMultiplier = cfg.GetAppSettingFloat("grass_width_multiplier", 1.0f);
+				props.densityMultiplier = cfg.GetAppSettingFloat("grass_density_multiplier", 1.0f);
+				props.rigidityMultiplier = cfg.GetAppSettingFloat("grass_rigidity_multiplier", 1.0f);
+				props.windMultiplier = cfg.GetAppSettingFloat("grass_wind_multiplier", 1.0f);
+				props.enabled = impl->grass_manager->IsEnabled() ? 1 : 0;
+				impl->grass_manager->SetGlobalProperties(props);
 			}
 
 			if (impl->decor_manager) {
