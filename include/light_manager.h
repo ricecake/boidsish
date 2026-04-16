@@ -14,11 +14,11 @@ namespace Boidsish {
 	public:
 		struct DayNightCycle {
 			bool  enabled = true;
-			float time = 12.0f;    // 0.0 - 24.0 (12.0 is noon)
+			float time = 8.0f;    // 0.0 - 24.0 (12.0 is noon)
 			float speed = 0.0125f; // Rate of time passage
 			bool  paused = false;
 			float night_factor = 0.0f; // 0.0 (day) to 1.0 (night)
-			float moon_offset = 12.0f; // Hours offset from sun (base, before phase drift)
+			float moon_offset = 6.0f; // Hours offset from sun (base, before phase drift)
 			float moon_azimuth = 70.0f;
 
 			// Lunar phase cycle — the moon's offset drifts over a ~29.5 day period
@@ -36,6 +36,14 @@ namespace Boidsish {
 		void                Update(float deltaTime);
 		glm::vec3           GetAmbientLight() const;
 		void                SetAmbientLight(const glm::vec3& ambient);
+
+		// SH Probe Tuning
+		float GetProbeScaling() const { return _probe_scaling; }
+		void  SetProbeScaling(float scaling) { _probe_scaling = scaling; }
+		float GetProbeConvergenceSpeed() const { return _probe_convergence_speed; }
+		void  SetProbeConvergenceSpeed(float speed) { _probe_convergence_speed = speed; }
+		int   GetProbeRayCountMultiplier() const { return _probe_ray_count_multiplier; }
+		void  SetProbeRayCountMultiplier(int multiplier) { _probe_ray_count_multiplier = multiplier; }
 
 		DayNightCycle& GetDayNightCycle() { return _cycle; }
 
@@ -58,12 +66,17 @@ namespace Boidsish {
 		// Moon: Initial azimuth 180 (South), elevation -45 degrees
 		std::vector<Light> _lights{
 			// Light::CreateDirectional(0.0f, 45.0f, 1.0f, {1.0f, 0.50196f, 0.25098f}, true),
-			Light::CreateDirectional(0.0f, 45.0f, 1.0f, {1.0f, 1.0f, 1.0f}, true),
-			Light::CreateDirectional(180.0f, -45.0f, 0.1f, {0.8f, 0.9f, 1.0f}, true)
+			Light::CreateDirectional(0.0f, 45.0f, 100.0f, {1.0f, 1.0f, 1.0f}, true),
+			Light::CreateDirectional(180.0f, -45.0f, 10.0f, {0.8f, 0.9f, 1.0f}, true)
 		};
 		glm::vec3     _ambient_light = Constants::General::Colors::DefaultAmbient();
 		DayNightCycle _cycle;
 		int           _next_light_id = 1;
+
+		// SH Probe Tuning
+		float _probe_scaling = 0.125f;
+		float _probe_convergence_speed = 0.50f;
+		int   _probe_ray_count_multiplier = 1;
 		/*
 		    ambient: 53/58/44
 		    def: 231/27/0 @0,100,-100->0,-5.7,7.5 and 6.3 intense

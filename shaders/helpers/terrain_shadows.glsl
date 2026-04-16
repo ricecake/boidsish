@@ -11,8 +11,12 @@ layout(std140, binding = [[TERRAIN_DATA_BINDING]]) uniform TerrainData {
 };
 #endif
 
+#ifndef TERRAIN_GRID_DEFINED
+	#define TERRAIN_GRID_DEFINED
 uniform isampler2D u_chunkGrid;
-uniform sampler2D  u_maxHeightGrid;
+#endif
+
+uniform sampler2D u_maxHeightGrid;
 // u_heightmapArray is bound to unit 13
 uniform sampler2DArray u_heightmapArray;
 
