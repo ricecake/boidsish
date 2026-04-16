@@ -1602,6 +1602,7 @@ namespace Boidsish {
 
 				// Set uniforms
 				occlusion_cull_shader_->setInt("u_drawCount", static_cast<int>(mdi_uniform_count));
+				occlusion_cull_shader_->setUint("u_baseVisibilityIndex", 0);
 				glUniform2i(
 					glGetUniformLocation(occlusion_cull_shader_->ID, "u_hizSize"),
 					hiz_manager->GetWidth(),
@@ -1682,13 +1683,12 @@ namespace Boidsish {
 
 				// Bind visibility SSBO for Hi-Z occlusion culling (matching uniform indexing)
 				if (dispatch_hiz_occlusion && !is_shadow_pass) {
-					glBindBufferRange(
+					glBindBufferBase(
 						GL_SHADER_STORAGE_BUFFER,
 						Constants::SsboBinding::OcclusionVisibility(),
-						occlusion_visibility_ssbo_,
-						(batch.base_uniform_index - frame_element_offset) * sizeof(uint32_t),
-						batch.command_count * sizeof(uint32_t)
+						occlusion_visibility_ssbo_
 					);
+					s->setUint("u_baseVisibilityIndex", batch.base_uniform_index - frame_element_offset);
 				}
 
 				if (!is_shadow_pass) {

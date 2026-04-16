@@ -165,7 +165,7 @@ namespace Boidsish {
             grass_shader_->setInt("u_skyViewLUT", 22);
 
             glActiveTexture(GL_TEXTURE23);
-            glBindTexture(GL_TEXTURE_2D, res.aerialPerspectiveLUT);
+            glBindTexture(GL_TEXTURE_3D, res.aerialPerspectiveLUT);
             grass_shader_->setInt("u_aerialPerspectiveLUT", 23);
 
             if (res.cloudShadowMap) {
