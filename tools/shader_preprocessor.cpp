@@ -56,6 +56,7 @@ int main(int argc, char** argv) {
     ShaderBase::RegisterConstant("DECOR_PLACEMENT_GLOBALS_BINDING", Boidsish::Constants::UboBinding::DecorPlacementGlobals());
 
     // SSBO Bindings
+    ShaderBase::RegisterConstant("AUTO_EXPOSURE_BINDING", Boidsish::Constants::SsboBinding::AutoExposure());
     ShaderBase::RegisterConstant("COMMON_UNIFORMS_BINDING", Boidsish::Constants::SsboBinding::CommonUniforms());
     ShaderBase::RegisterConstant("BONE_MATRIX_BINDING", Boidsish::Constants::SsboBinding::BoneMatrix());
     ShaderBase::RegisterConstant("OCCLUSION_VISIBILITY_BINDING", Boidsish::Constants::SsboBinding::OcclusionVisibility());

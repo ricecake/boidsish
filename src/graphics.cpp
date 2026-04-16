@@ -132,6 +132,7 @@ namespace Boidsish {
 		ShaderBase::RegisterConstant("TRAIL_INSTANCES_BINDING", Boidsish::Constants::SsboBinding::TrailInstances());
 		ShaderBase::RegisterConstant("TRAIL_SPINE_DATA_BINDING", Boidsish::Constants::SsboBinding::TrailSpineData());
 		ShaderBase::RegisterConstant("TRAIL_GENERATED_VBO_BINDING", Boidsish::Constants::SsboBinding::TrailGeneratedVBO());
+		ShaderBase::RegisterConstant("AUTO_EXPOSURE_BINDING", Boidsish::Constants::SsboBinding::AutoExposure());
 		ShaderBase::RegisterConstant("PARTICLE_BUFFER_BINDING", Boidsish::Constants::SsboBinding::ParticleBuffer());
 		ShaderBase::RegisterConstant("EMITTER_BUFFER_BINDING", Boidsish::Constants::SsboBinding::EmitterBuffer());
 		ShaderBase::RegisterConstant("VISIBLE_PARTICLE_INDICES_BINDING", Boidsish::Constants::SsboBinding::VisibleParticleIndices());
