@@ -921,11 +921,14 @@ namespace Boidsish {
 		shader->setMat4("model", glm::mat4(1.0f));
 		shader->setBool("useSSBOInstancing", true);
 		shader->setBool("uUseMDI", false);
-		shader->setBool("isTextEffect", false);
+		shader->setBool("isArcadeText", false);
+		shader->setBool("isLine", false);
 		shader->setBool("isColossal", false);
 		shader->setBool("is_instanced", false);
 		shader->setVec3("objectColor", 1.0f, 1.0f, 1.0f);
 		shader->setBool("usePBR", false);
+		shader->setBool("use_skinning", false);
+		shader->setInt("bone_matrices_offset", -1);
 		shader->setVec4("clipPlane", 0.0f, 0.0f, 0.0f, 0.0f);
 		shader->setFloat(
 			"ripple_strength",
