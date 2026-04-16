@@ -70,8 +70,15 @@ namespace Boidsish {
 		glGenBuffers(1, &probe_ssbo_);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, probe_ssbo_);
 		// SH coefficient size is 9 * 16 bytes = 144 bytes per probe
-		size_t probe_count = grid_size * grid_size;
-		glBufferData(GL_SHADER_STORAGE_BUFFER, probe_count * 144, nullptr, GL_DYNAMIC_DRAW);
+		// We initialize with a "poison" value in the w-components to force an immediate refresh
+		size_t             probe_count = grid_size * grid_size;
+		std::vector<float> initial_data(probe_count * 36, -99999.0f);
+		glBufferData(
+			GL_SHADER_STORAGE_BUFFER,
+			probe_count * 144,
+			initial_data.data(),
+			GL_DYNAMIC_DRAW
+		);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
 		// Create instance buffer first so we can set up VAO attributes
@@ -723,7 +730,10 @@ namespace Boidsish {
 		GLuint           skyLUT,
 		const glm::mat4& view,
 		const glm::mat4& projection,
-		GLuint           lighting_ubo
+		GLuint           lighting_ubo,
+		float            probe_scaling,
+		float            probe_convergence,
+		int              probe_ray_multiplier
 	) {
 		PROJECT_PROFILE_SCOPE("TerrainRenderManager::DispatchProbeUpdate");
 		std::lock_guard<std::mutex> lock(mutex_);
@@ -779,6 +789,10 @@ namespace Boidsish {
 		probe_compute_shader_->setMat4("u_projection", projection);
 		probe_compute_shader_->setMat4("u_invView", glm::inverse(view));
 		probe_compute_shader_->setMat4("u_invProjection", glm::inverse(projection));
+
+		probe_compute_shader_->setFloat("u_probeScaling", probe_scaling);
+		probe_compute_shader_->setFloat("u_probeConvergenceSpeed", probe_convergence);
+		probe_compute_shader_->setInt("u_probeRayMultiplier", probe_ray_multiplier);
 
 		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::TerrainData(), terrain_data_ubo_);
 		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Biomes(), biome_ubo_);

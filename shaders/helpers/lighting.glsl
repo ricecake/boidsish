@@ -19,6 +19,10 @@ uniform sampler2D u_transmittanceLUT;
 #endif
 
 uniform sampler2D u_cloudShadowMap;
+#ifndef TERRAIN_GRID_DEFINED
+	#define TERRAIN_GRID_DEFINED
+uniform isampler2D u_chunkGrid;
+#endif
 
 /**
  * Maps height and sun cosine angle to UV coordinates for the transmittance LUT.
@@ -285,8 +289,8 @@ vec3 evalSHIrradianceFromCoeffs(vec3 n, vec4 coeffs[9]) {
 	res += a0 * c1 * coeffs[0].rgb;
 	res += a1 * c2 * (coeffs[1].rgb * n.y + coeffs[2].rgb * n.z + coeffs[3].rgb * n.x);
 	res += a2 * c3 * (coeffs[4].rgb * n.x * n.y + coeffs[5].rgb * n.y * n.z + coeffs[7].rgb * n.x * n.z);
-	res += a2 * c4 * coeffs[6].rgb * (3.0 * n.z * n.z - 1.0);
-	res += a2 * c5 * coeffs[8].rgb * (n.x * n.x - n.y * n.y);
+	res += a2 * c4 * coeffs[6].rgb * (3.0 * n.y * n.y - 1.0);
+	res += a2 * c5 * coeffs[8].rgb * (n.x * n.x - n.z * n.z);
 	return max(res, 0.0);
 }
 
@@ -320,14 +324,25 @@ vec3 getSpatialAmbientSH(vec3 worldPos, vec3 N) {
 	float totalWeight = 0.0;
 	for (int x = 0; x <= 1; ++x) {
 		for (int z = 0; z <= 1; ++z) {
-			ivec2 coord = chunkCoord + ivec2(x, z);
-			if (coord.x >= 0 && coord.x < u_originSize.z && coord.y >= 0 && coord.y < u_originSize.z) {
-				float weight = (x == 0 ? 1.0 - fracPos.x : fracPos.x) * (z == 0 ? 1.0 - fracPos.y : fracPos.y);
-				int   idx = coord.y * u_originSize.z + coord.x;
-				for (int i = 0; i < 9; ++i) {
-					totalSH[i] += u_terrainProbes[idx].sh_coeffs[i].rgb * weight;
+			ivec2 localCoord = chunkCoord + ivec2(x, z);
+			if (localCoord.x >= 0 && localCoord.x < u_originSize.z && localCoord.y >= 0 && localCoord.y < u_originSize.z) {
+				// Only include this probe if it's actually registered in the current grid
+				if (texelFetch(u_chunkGrid, localCoord, 0).r >= 0) {
+					float weight = (x == 0 ? 1.0 - fracPos.x : fracPos.x) * (z == 0 ? 1.0 - fracPos.y : fracPos.y);
+
+					ivec2 worldChunkCoord = localCoord + u_originSize.xy;
+					ivec2 toroidalCoord = (worldChunkCoord % u_originSize.z + u_originSize.z) % u_originSize.z;
+					int   idx = toroidalCoord.y * u_originSize.z + toroidalCoord.x;
+
+					// Verify this probe is for the correct world chunk (using encoded coordinates in w)
+					vec2 probeCoord = vec2(u_terrainProbes[idx].sh_coeffs[0].w, u_terrainProbes[idx].sh_coeffs[1].w);
+					if (distance(probeCoord, vec2(worldChunkCoord)) < 0.1) {
+						for (int i = 0; i < 9; ++i) {
+							totalSH[i] += u_terrainProbes[idx].sh_coeffs[i].rgb * weight;
+						}
+						totalWeight += weight;
+					}
 				}
-				totalWeight += weight;
 			}
 		}
 	}
@@ -351,10 +366,11 @@ vec3 getSpatialAmbientSH(vec3 worldPos, vec3 N) {
 
 	// Combine spatially-varying environmental bounce with global sky irradiance
 	vec3 environmentalIrradiance = evalSHIrradianceFromCoeffs(N, interpolatedCoeffs);
-	// vec3 skyIrradiance = evalSHIrradiance(N); // Primary sky term from Lighting UBO
+	vec3 skyIrradiance = evalSHIrradiance(N); // Global sky/ambient fallback
 
-	// Fade out local environmental bounce at the grid boundaries for a smooth transition
-	return environmentalIrradiance * bounceFade;
+	// Combine spatially-varying environmental SH (sky + bounce) with global sky irradiance.
+	// We blend between them because probes now capture both sky and ground bounce.
+	return mix(skyIrradiance, environmentalIrradiance, clamp(totalWeight * bounceFade, 0.0, 1.0));
 }
 
 // Forward declare macro occlusion from terrain_shadows.glsl
