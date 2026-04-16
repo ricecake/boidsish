@@ -1,7 +1,7 @@
 #ifndef VISUAL_EFFECTS_GLSL
 #define VISUAL_EFFECTS_GLSL
 
-layout(std140) uniform VisualEffects {
+layout(std140, binding = [[VISUAL_EFFECTS_BINDING]]) uniform VisualEffects {
 	int   ripple_enabled;
 	int   color_shift_enabled;
 	int   black_and_white_enabled;
