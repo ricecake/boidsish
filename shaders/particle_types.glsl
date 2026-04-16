@@ -52,72 +52,72 @@ struct DispatchIndirectCommand {
 };
 
 #ifdef COMPUTE_SHADER
-layout(std430, binding = 16) buffer ParticleBuffer {
+layout(std430, binding = [[PARTICLE_BUFFER_BINDING]]) buffer ParticleBuffer {
 	Particle particles[];
 };
 
-layout(std430, binding = 22) buffer EmitterBuffer {
+layout(std430, binding = [[EMITTER_BUFFER_BINDING]]) buffer EmitterBuffer {
 	Emitter emitters[];
 };
 
-layout(std430, binding = 27) writeonly buffer VisibleIndicesBuffer {
+layout(std430, binding = [[VISIBLE_PARTICLE_INDICES_BINDING]]) writeonly buffer VisibleIndicesBuffer {
 	uint visible_indices[];
 };
 
-layout(std430, binding = 33) buffer LiveIndicesBuffer {
+layout(std430, binding = [[LIVE_PARTICLE_INDICES_BINDING]]) buffer LiveIndicesBuffer {
 	uint live_indices[];
 };
 
-layout(std430, binding = 14) buffer ParticleGridHeads {
+layout(std430, binding = [[PARTICLE_GRID_HEADS_BINDING]]) buffer ParticleGridHeads {
 	int grid_heads[];
 };
 
-layout(std430, binding = 15) buffer ParticleGridNext {
+layout(std430, binding = [[PARTICLE_GRID_NEXT_BINDING]]) buffer ParticleGridNext {
 	int grid_next[];
 };
 #else
-layout(std430, binding = 16) readonly buffer ParticleBuffer {
+layout(std430, binding = [[PARTICLE_BUFFER_BINDING]]) readonly buffer ParticleBuffer {
 	Particle particles[];
 };
 
-layout(std430, binding = 22) readonly buffer EmitterBuffer {
+layout(std430, binding = [[EMITTER_BUFFER_BINDING]]) readonly buffer EmitterBuffer {
 	Emitter emitters[];
 };
 
-layout(std430, binding = 27) readonly buffer VisibleIndicesBuffer {
+layout(std430, binding = [[VISIBLE_PARTICLE_INDICES_BINDING]]) readonly buffer VisibleIndicesBuffer {
 	uint visible_indices[];
 };
 
-layout(std430, binding = 33) readonly buffer LiveIndicesBuffer {
+layout(std430, binding = [[LIVE_PARTICLE_INDICES_BINDING]]) readonly buffer LiveIndicesBuffer {
 	uint live_indices[];
 };
 
-layout(std430, binding = 14) readonly buffer ParticleGridHeads {
+layout(std430, binding = [[PARTICLE_GRID_HEADS_BINDING]]) readonly buffer ParticleGridHeads {
 	int grid_heads[];
 };
 
-layout(std430, binding = 15) readonly buffer ParticleGridNext {
+layout(std430, binding = [[PARTICLE_GRID_NEXT_BINDING]]) readonly buffer ParticleGridNext {
 	int grid_next[];
 };
 #endif
 
-layout(std430, binding = 17) buffer IndirectionBuffer {
+layout(std430, binding = [[INDIRECTION_BUFFER_BINDING]]) buffer IndirectionBuffer {
 	int particle_to_emitter_map[];
 };
 
-layout(std430, binding = 23) buffer ChunkInfoBuffer {
+layout(std430, binding = [[TERRAIN_CHUNK_INFO_BINDING]]) buffer ChunkInfoBuffer {
 	ChunkInfo chunks[];
 };
 
-layout(std430, binding = 24) buffer SliceDataBuffer {
+layout(std430, binding = [[SLICE_DATA_BINDING]]) buffer SliceDataBuffer {
 	vec4 slice_data[];
 };
 
-layout(std430, binding = 28) buffer DrawCommandBuffer {
+layout(std430, binding = [[PARTICLE_DRAW_COMMAND_BINDING]]) buffer DrawCommandBuffer {
 	DrawArraysIndirectCommand draw_command;
 };
 
-layout(std430, binding = 34) buffer BehaviorCommandBuffer {
+layout(std430, binding = [[BEHAVIOR_DRAW_COMMAND_BINDING]]) buffer BehaviorCommandBuffer {
 	DispatchIndirectCommand behavior_command;
 };
 

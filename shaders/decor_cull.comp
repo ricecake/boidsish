@@ -6,15 +6,15 @@ struct Instance {
 	mat4 model;
 };
 
-layout(std430, binding = 0) readonly buffer MainInstances {
+layout(std430, binding = [[DECOR_ALL_INSTANCES_BINDING]]) readonly buffer MainInstances {
 	Instance all_instances[];
 };
 
-layout(std430, binding = 1) writeonly buffer VisibleInstances {
+layout(std430, binding = [[DECOR_INSTANCES_BINDING]]) writeonly buffer VisibleInstances {
 	Instance visible_instances[];
 };
 
-layout(std430, binding = 3) readonly buffer BlockValidity {
+layout(std430, binding = [[DECOR_BLOCK_VALIDITY_BINDING]]) readonly buffer BlockValidity {
 	uint block_valid[];
 };
 

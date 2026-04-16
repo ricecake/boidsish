@@ -123,6 +123,32 @@ namespace Boidsish {
 		ShaderBase::RegisterConstant("GRASS_PROPS_BINDING", Boidsish::Constants::UboBinding::GrassProps());
 		ShaderBase::RegisterConstant("GRASS_INSTANCES_BINDING", Boidsish::Constants::SsboBinding::GrassInstances());
 		ShaderBase::RegisterConstant("GRASS_INDIRECT_BINDING", Boidsish::Constants::SsboBinding::GrassIndirect());
+		ShaderBase::RegisterConstant("DECOR_PROPS_BINDING", Boidsish::Constants::UboBinding::DecorProps());
+		ShaderBase::RegisterConstant("DECOR_PLACEMENT_GLOBALS_BINDING", Boidsish::Constants::UboBinding::DecorPlacementGlobals());
+		ShaderBase::RegisterConstant("DECOR_INSTANCES_BINDING", Boidsish::Constants::SsboBinding::DecorInstances());
+		ShaderBase::RegisterConstant("DECOR_ALL_INSTANCES_BINDING", Boidsish::Constants::SsboBinding::DecorAllInstances());
+		ShaderBase::RegisterConstant("DECOR_CHUNK_PARAMS_BINDING", Boidsish::Constants::SsboBinding::DecorChunkParams());
+		ShaderBase::RegisterConstant("DECOR_INDIRECT_BINDING", Boidsish::Constants::SsboBinding::DecorIndirect());
+		ShaderBase::RegisterConstant("DECOR_BLOCK_VALIDITY_BINDING", Boidsish::Constants::SsboBinding::DecorBlockValidity());
+		ShaderBase::RegisterConstant("ATMOSPHERE_SH_BINDING", Boidsish::Constants::SsboBinding::AtmosphereSH());
+		ShaderBase::RegisterConstant("MESH_EXPLOSION_FRAGMENTS_BINDING", Boidsish::Constants::SsboBinding::MeshExplosionFragments());
+		ShaderBase::RegisterConstant("TRAIL_POINTS_BINDING", Boidsish::Constants::SsboBinding::TrailPoints());
+		ShaderBase::RegisterConstant("TRAIL_INSTANCES_BINDING", Boidsish::Constants::SsboBinding::TrailInstances());
+		ShaderBase::RegisterConstant("TRAIL_SPINE_DATA_BINDING", Boidsish::Constants::SsboBinding::TrailSpineData());
+		ShaderBase::RegisterConstant("TRAIL_GENERATED_VBO_BINDING", Boidsish::Constants::SsboBinding::TrailGeneratedVBO());
+		ShaderBase::RegisterConstant("PARTICLE_BUFFER_BINDING", Boidsish::Constants::SsboBinding::ParticleBuffer());
+		ShaderBase::RegisterConstant("EMITTER_BUFFER_BINDING", Boidsish::Constants::SsboBinding::EmitterBuffer());
+		ShaderBase::RegisterConstant("VISIBLE_PARTICLE_INDICES_BINDING", Boidsish::Constants::SsboBinding::VisibleParticleIndices());
+		ShaderBase::RegisterConstant("LIVE_PARTICLE_INDICES_BINDING", Boidsish::Constants::SsboBinding::LiveParticleIndices());
+		ShaderBase::RegisterConstant("PARTICLE_GRID_HEADS_BINDING", Boidsish::Constants::SsboBinding::ParticleGridHeads());
+		ShaderBase::RegisterConstant("PARTICLE_GRID_NEXT_BINDING", Boidsish::Constants::SsboBinding::ParticleGridNext());
+		ShaderBase::RegisterConstant("INDIRECTION_BUFFER_BINDING", Boidsish::Constants::SsboBinding::IndirectionBuffer());
+		ShaderBase::RegisterConstant("TERRAIN_CHUNK_INFO_BINDING", Boidsish::Constants::SsboBinding::TerrainChunkInfo());
+		ShaderBase::RegisterConstant("SLICE_DATA_BINDING", Boidsish::Constants::SsboBinding::SliceData());
+		ShaderBase::RegisterConstant("PARTICLE_DRAW_COMMAND_BINDING", Boidsish::Constants::SsboBinding::ParticleDrawCommand());
+		ShaderBase::RegisterConstant("BEHAVIOR_DRAW_COMMAND_BINDING", Boidsish::Constants::SsboBinding::BehaviorDrawCommand());
+		ShaderBase::RegisterConstant("COMMON_UNIFORMS_BINDING", Boidsish::Constants::SsboBinding::CommonUniforms());
+		ShaderBase::RegisterConstant("BONE_MATRIX_BINDING", Boidsish::Constants::SsboBinding::BoneMatrix());
 		ShaderBase::RegisterConstant("FRUSTUM_BINDING", Boidsish::Constants::UboBinding::FrustumData());
 		ShaderBase::RegisterConstant("DECOR_INSTANCES_BINDING", Boidsish::Constants::SsboBinding::DecorInstances());
 		ShaderBase::RegisterConstant("DECOR_INDIRECT_BINDING", Boidsish::Constants::SsboBinding::DecorIndirect());
@@ -1398,7 +1424,7 @@ namespace Boidsish {
 			uint32_t index_frame_offset = megabuffer->GetIndexFrameOffset();
 
 			// We bind SSBO per-batch using glBindBufferRange to set the base uniform index
-			// glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, uniforms_ssbo->GetBufferId());
+			// glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::CommonUniforms(), uniforms_ssbo->GetBufferId());
 
 			struct Batch {
 				ShaderHandle                           shader_handle;
