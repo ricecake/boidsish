@@ -651,7 +651,7 @@ namespace Boidsish {
 			int dispatch_size = (Constants::Class::Terrain::ChunkSize() + 7) / 8;
 			for (size_t i = 0; i < decor_types_.size(); ++i) {
 				placement_shader_->setInt("u_typeIndex", (int)i);
-				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::DecorInstances(), decor_types_[i].ssbo);
+				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::DecorAllInstances(), decor_types_[i].ssbo);
 				glDispatchCompute(dispatch_size, dispatch_size, num_chunks); // Z = chunk index
 			}
 			glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
@@ -827,7 +827,7 @@ namespace Boidsish {
 		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::DecorProps(), decor_props_ubo_);
 		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::DecorPlacementGlobals(), temp_globals_ubo);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::DecorChunkParams(), temp_chunk_params_ssbo);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::DecorInstances(), temp_instance_ssbo);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::DecorAllInstances(), temp_instance_ssbo);
 
 		int                           num_types = (int)decor_types_.size();
 		std::vector<DecorTypeResults> results(num_types);
@@ -920,6 +920,7 @@ namespace Boidsish {
 		}
 		shader->setMat4("model", glm::mat4(1.0f));
 		shader->setBool("useSSBOInstancing", true);
+		shader->setBool("uUseMDI", false);
 		shader->setBool("isTextEffect", false);
 		shader->setBool("isColossal", false);
 		shader->setBool("is_instanced", false);
