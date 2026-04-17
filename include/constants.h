@@ -56,6 +56,10 @@ namespace Boidsish {
 			consteval int DecorPlacementGlobals() {
 				return 31;
 			}
+
+			consteval int VolumetricLighting() {
+				return 46;
+			}
 		} // namespace UboBinding
 
 		namespace SsboBinding {
@@ -149,6 +153,10 @@ namespace Boidsish {
 
 			consteval int WeatherGridB() {
 				return 38;
+			}
+
+			consteval int VolumetricFroxelData() {
+				return 47;
 			}
 		} // namespace SsboBinding
 
@@ -576,6 +584,24 @@ namespace Boidsish {
 					return 1000000;
 				}
 			} // namespace Megabuffer
+
+			namespace VolumetricLighting {
+				consteval int GridSizeX() {
+					return 160;
+				}
+
+				consteval int GridSizeY() {
+					return 90;
+				}
+
+				consteval int GridSizeZ() {
+					return 64;
+				}
+
+				consteval int MaxCascades() {
+					return 3;
+				}
+			} // namespace VolumetricLighting
 
 			namespace Checkpoint {
 				consteval float DefaultRadius() {

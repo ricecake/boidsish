@@ -72,6 +72,7 @@
 #include "terrain_render_manager.h"
 #include "trail.h"
 #include "trail_render_manager.h"
+#include "volumetric_lighting_manager.h"
 #include "ui/EffectWidget.h"
 #include "ui/EnvironmentWidget.h"
 #include "ui/ProfilerWidget.h"
@@ -405,6 +406,7 @@ namespace Boidsish {
 		std::unique_ptr<ShadowManager>                    shadow_manager;
 		std::unique_ptr<AtmosphereManager>                atmosphere_manager;
 		std::shared_ptr<PostProcessing::AtmosphereEffect> atmosphere_effect;
+		std::unique_ptr<VolumetricLightingManager>        volumetric_lighting_manager;
 		std::unique_ptr<WeatherManager>                   weather_manager;
 		std::unique_ptr<SceneManager>                     scene_manager;
 		std::shared_ptr<DecorManager>                     decor_manager;
@@ -770,6 +772,8 @@ namespace Boidsish {
 			grass_manager = std::make_unique<GrassManager>();
 			atmosphere_manager = std::make_unique<AtmosphereManager>();
 			atmosphere_manager->Initialize();
+			volumetric_lighting_manager = std::make_unique<VolumetricLightingManager>();
+			volumetric_lighting_manager->Initialize();
 			weather_manager = std::make_unique<WeatherManager>(terrain_generator.get());
 			audio_manager = std::make_unique<AudioManager>();
 			sound_effect_manager = std::make_unique<SoundEffectManager>(audio_manager.get());
@@ -3402,6 +3406,10 @@ namespace Boidsish {
 		impl->packets_synced_ = false;
 		impl->GenerateRenderPacketsAsync();
 		impl->UpdateSystems();
+
+		if (impl->volumetric_lighting_manager) {
+			impl->volumetric_lighting_manager->Update(frame.view, frame.projection, frame.camera_pos, frame.camera_front, frame.simulation_delta_time);
+		}
 
 		// Shadow decor renders during the overlap window (no packets needed).
 		// The shape callback triggers lazy sync when packets are first needed.
