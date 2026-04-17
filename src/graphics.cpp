@@ -52,6 +52,7 @@
 #include "post_processing/effects/UnifiedScreenSpaceEffect.h"
 #include "post_processing/effects/TimeStutterEffect.h"
 #include "post_processing/effects/ToneMappingEffect.h"
+#include "post_processing/effects/VolumetricLightingEffect.h"
 #include "post_processing/effects/WhispTrailEffect.h"
 #include "profiler.h"
 #include "render_passes.h"
@@ -385,7 +386,7 @@ namespace Boidsish {
 	};
 
 	struct Visualizer::VisualizerImpl {
-		Visualizer*                                       parent;
+		Visualizer*                                               parent;
 		GLFWwindow*                                       window;
 		int                                               width, height;
 		Camera                                            camera;
@@ -404,8 +405,9 @@ namespace Boidsish {
 		std::unique_ptr<SdfVolumeManager>                 sdf_volume_manager;
 		std::unique_ptr<ShadowManager>                    shadow_manager;
 		std::unique_ptr<AtmosphereManager>                atmosphere_manager;
-		std::shared_ptr<PostProcessing::AtmosphereEffect> atmosphere_effect;
-		std::unique_ptr<WeatherManager>                   weather_manager;
+		std::shared_ptr<PostProcessing::AtmosphereEffect>        atmosphere_effect;
+		std::shared_ptr<PostProcessing::VolumetricLightingEffect> volumetric_lighting_effect;
+		std::unique_ptr<WeatherManager>                           weather_manager;
 		std::unique_ptr<SceneManager>                     scene_manager;
 		std::shared_ptr<DecorManager>                     decor_manager;
 		std::unique_ptr<GrassManager>                     grass_manager;
@@ -1021,6 +1023,13 @@ namespace Boidsish {
 				atmosphere_effect = std::make_shared<PostProcessing::AtmosphereEffect>();
 				atmosphere_effect->SetEnabled(true);
 				post_processing_manager_->AddEffect(atmosphere_effect);
+
+				volumetric_lighting_effect = std::make_shared<PostProcessing::VolumetricLightingEffect>();
+				volumetric_lighting_effect->SetEnabled(true);
+				if (noise_manager) {
+					volumetric_lighting_effect->SetNoiseTextures(noise_manager->GetTextures());
+				}
+				post_processing_manager_->AddEffect(volumetric_lighting_effect);
 
 				auto bloom_effect = std::make_shared<PostProcessing::BloomEffect>(render_width, render_height);
 				bloom_effect->SetEnabled(true);
@@ -2091,6 +2100,9 @@ namespace Boidsish {
 				);
 				if (noise_manager) {
 					atmosphere_effect->SetNoiseTextures(noise_manager->GetTextures());
+				}
+				if (shadow_manager) {
+					atmosphere_effect->SetShadowMapTexture(shadow_manager->GetShadowMapArray());
 				}
 			}
 		}
@@ -3297,6 +3309,18 @@ namespace Boidsish {
 				impl->atmosphere_effect->SetOzoneAbsorption(w.ozone_absorption);
 				impl->atmosphere_effect->SetRayleighScaleHeight(w.rayleigh_scale_height);
 				impl->atmosphere_effect->SetMieScaleHeight(w.mie_scale_height);
+			}
+
+			// Apply to volumetric lighting effect
+			if (impl->volumetric_lighting_effect) {
+				impl->volumetric_lighting_effect->SetHazeParams(w.haze_density, w.haze_height);
+				// We can also sync scattering/absorption with Mie parameters
+				impl->volumetric_lighting_effect->SetScatteringCoefficient(w.mie_scale * 0.1f);
+				impl->volumetric_lighting_effect->SetAbsorptionCoefficient(w.mie_scale * 0.01f);
+				impl->volumetric_lighting_effect->SetLights(impl->light_manager.GetLights());
+				if (impl->shadow_manager) {
+					impl->volumetric_lighting_effect->SetShadowMapTexture(impl->shadow_manager->GetShadowMapArray());
+				}
 			}
 		}
 

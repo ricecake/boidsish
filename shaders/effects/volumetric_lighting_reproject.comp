@@ -1,0 +1,55 @@
+#version 430 core
+
+layout(local_size_x = 16, local_size_y = 16) in;
+
+layout(rgba16f, binding = 0) uniform image2D uVolumetricOutput;
+
+uniform sampler2D uEpipolarTex;
+uniform sampler2D uDepthTex;
+
+#include "../lighting.glsl"
+#include "../helpers/lighting.glsl"
+
+uniform mat4 uViewProj;
+uniform vec3 uCameraPos;
+uniform vec2 uScreenSize;
+uniform vec4 uLightIndicesA;
+uniform int uNumLights;
+
+const int NUM_LINES = 256;
+const int SAMPLES_PER_LINE = 512;
+
+void main() {
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    vec2 size = imageSize(uVolumetricOutput);
+    if (pixel.x >= int(size.x) || pixel.y >= int(size.y)) return;
+
+    vec2 uv = (vec2(pixel) + 0.5) / size;
+
+    int lightIdx = int(uLightIndicesA.x);
+    vec3 lightPos;
+    if (lights[lightIdx].type == LIGHT_TYPE_DIRECTIONAL) {
+        lightPos = uCameraPos - lights[lightIdx].direction * 10000.0;
+    } else {
+        lightPos = lights[lightIdx].position;
+    }
+
+    vec4 epipoleClip = uViewProj * vec4(lightPos, 1.0);
+    vec2 epipoleScreen = (epipoleClip.xy / max(abs(epipoleClip.w), 0.001)) * 0.5 + 0.5;
+
+    vec2 dir = uv - epipoleScreen;
+    float dist = length(dir);
+    float angle = atan(dir.y, dir.x);
+    if (angle < 0.0) angle += 2.0 * PI;
+
+    vec2 corners[4] = vec2[](vec2(0,0), vec2(1,0), vec2(0,1), vec2(1,1));
+    float maxRadius = 0.0;
+    for(int i=0; i<4; ++i) maxRadius = max(maxRadius, length(corners[i] - epipoleScreen));
+
+    float lineCoord = (angle / (2.0 * PI)) * float(NUM_LINES);
+    float sampleCoord = (dist / maxRadius) * float(SAMPLES_PER_LINE - 1);
+
+    vec4 result = texture(uEpipolarTex, vec2((sampleCoord + 0.5) / float(SAMPLES_PER_LINE), (lineCoord + 0.5) / float(NUM_LINES)));
+
+    imageStore(uVolumetricOutput, pixel, result);
+}

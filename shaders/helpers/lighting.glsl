@@ -89,6 +89,44 @@ float terrainShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) {
 #endif
 
 /**
+ * Normal-independent shadow lookup for volumetric scattering.
+ */
+float calculateVolumetricShadow(int light_index, vec3 p, vec3 light_dir) {
+	float terrainShadow = terrainShadowCoverage(p, vec3(0, 1, 0), light_dir);
+	if (terrainShadow <= 0.0) return 0.0;
+
+	int shadow_index = lightShadowIndices[light_index];
+	if (shadow_index < 0 || numShadowLights <= 0) return terrainShadow;
+
+	// CSM selection for directional lights
+	if (lights[light_index].type == LIGHT_TYPE_DIRECTIONAL) {
+		float depth = dot(p - viewPos, viewDir);
+		int cascade = MAX_CASCADES - 1;
+		for (int i = 0; i < MAX_CASCADES; ++i) {
+			if (depth < cascadeSplits[i]) {
+				cascade = i;
+				break;
+			}
+		}
+		shadow_index += cascade;
+	}
+
+	if (shadow_index >= MAX_SHADOW_MAPS) return terrainShadow;
+
+	vec4 p_light = lightSpaceMatrices[shadow_index] * vec4(p, 1.0);
+	vec3 proj = p_light.xyz / p_light.w;
+	proj = proj * 0.5 + 0.5;
+
+	if (proj.x < 0.0 || proj.x > 1.0 || proj.y < 0.0 || proj.y > 1.0 || proj.z > 1.0 || proj.z < 0.0) {
+		return terrainShadow;
+	}
+
+	// Single tap for volumetric speed
+	float shadow = texture(shadowMaps, vec4(proj.xy, float(shadow_index), proj.z - 0.005));
+	return min(terrainShadow, shadow);
+}
+
+/**
  * Calculate shadow factor for a fragment position using a specific shadow map.
  * Returns 0.0 if fully in shadow, 1.0 if fully lit.
  * Uses PCF (Percentage Closer Filtering) for soft shadow edges.
@@ -612,6 +650,13 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 
 	// Spatially-varying SH ambient augmented with macro occlusion
 	float terrainOcc = calculateTerrainOcclusion(frag_pos, N);
+
+	// Multi-pass shadow masking for ambient scattering
+	float ambientShadowMask = 1.0;
+	if (lights[0].type == LIGHT_TYPE_DIRECTIONAL) {
+		ambientShadowMask = min(ambientShadowMask, terrainShadowCoverage(frag_pos, N, normalize(-lights[0].direction)));
+	}
+
 	vec3  spatialSHAmbient = getSpatialAmbientSH(frag_pos, N);
 
 	float combinedAO = ao * terrainOcc;
@@ -643,7 +688,7 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 	vec3 ambientSpecular = F_env * envColor * envStrength * combinedAO;
 
 	// Combine diffuse and specular ambient
-	vec3 ambient = ambientDiffuse * (1.0 - metallic * 0.9) + ambientSpecular;
+	vec3 ambient = (ambientDiffuse * (1.0 - metallic * 0.9) + ambientSpecular) * mix(0.5, 1.0, ambientShadowMask);
 	vec3 color = ambient + Lo;
 
 	return vec4(color, spec_lum + get_luminance(ambientSpecular));

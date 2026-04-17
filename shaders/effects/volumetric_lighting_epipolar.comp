@@ -1,0 +1,139 @@
+#version 430 core
+
+layout(local_size_x = 16, local_size_y = 16) in;
+
+layout(rgba16f, binding = 0) uniform image2D uEpipolarOutput;
+
+uniform sampler2D uDepthTex;
+
+#include "../lighting.glsl"
+#include "../helpers/lighting.glsl"
+#include "../helpers/fast_noise.glsl"
+
+uniform mat4 uInvView;
+uniform mat4 uInvProj;
+uniform mat4 uViewProj;
+uniform vec3 uCameraPos;
+
+uniform float uScatteringCoef;
+uniform float uAbsorptionCoef;
+uniform float uPhaseG;
+uniform float uHazeDensity;
+uniform float uHazeHeight;
+uniform float uIntensity;
+uniform float uTime;
+
+uniform vec4 uLightIndicesA;
+uniform vec4 uLightIndicesB;
+uniform int uNumLights;
+
+const int NUM_LINES = 256;
+const int SAMPLES_PER_LINE = 512;
+
+float HenyeyGreenstein(float g, float cosTheta) {
+    float g2 = g * g;
+    return (1.0 - g2) / (4.0 * PI * pow(max(1.0 + g2 - 2.0 * g * cosTheta, 0.001), 1.5));
+}
+
+void main() {
+    uint sampleIdx = gl_GlobalInvocationID.x;
+    uint lineIdx = gl_GlobalInvocationID.y;
+
+    if (sampleIdx >= SAMPLES_PER_LINE || lineIdx >= NUM_LINES) return;
+    ivec2 coord = ivec2(sampleIdx, lineIdx);
+
+    if (uNumLights <= 0) return;
+
+    int epipoleLightIdx = int(uLightIndicesA.x);
+    vec3 epipoleLightPos;
+    if (lights[epipoleLightIdx].type == LIGHT_TYPE_DIRECTIONAL) {
+        epipoleLightPos = uCameraPos - lights[epipoleLightIdx].direction * 10000.0;
+    } else {
+        epipoleLightPos = lights[epipoleLightIdx].position;
+    }
+
+    vec4 epipoleClip = uViewProj * vec4(epipoleLightPos, 1.0);
+    vec2 epipoleScreen = (epipoleClip.xy / max(abs(epipoleClip.w), 0.001)) * 0.5 + 0.5;
+
+    float angle = (float(lineIdx) / float(NUM_LINES)) * 2.0 * PI;
+    vec2 dir = vec2(cos(angle), sin(angle));
+
+    // Dynamic radius to exactly cover the screen from the epipole
+    // We compute the distance to the 4 corners and take the max
+    vec2 corners[4] = vec2[](vec2(0,0), vec2(1,0), vec2(0,1), vec2(1,1));
+    float maxRadius = 0.0;
+    for(int i=0; i<4; ++i) maxRadius = max(maxRadius, length(corners[i] - epipoleScreen));
+
+    float t_norm = float(sampleIdx) / float(SAMPLES_PER_LINE - 1);
+    vec2 uv = epipoleScreen + dir * t_norm * maxRadius;
+
+    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
+        imageStore(uEpipolarOutput, coord, vec4(0.0));
+        return;
+    }
+
+    float depth = texture(uDepthTex, uv).r;
+    float z = depth * 2.0 - 1.0;
+    vec4 clipPos = vec4(uv * 2.0 - 1.0, z, 1.0);
+    vec4 viewPosRel = uInvProj * clipPos;
+    viewPosRel /= viewPosRel.w;
+    vec3 worldPos = (uInvView * viewPosRel).xyz;
+
+    vec3 rayDir = normalize(worldPos - uCameraPos);
+    float rayDist = length(worldPos - uCameraPos);
+    if (depth >= 0.9999) rayDist = 1000.0 * worldScale;
+
+    float extScale = max((uScatteringCoef + uAbsorptionCoef) * uHazeDensity, 0.0001);
+    float maxDist = min(rayDist, 1000.0 * worldScale);
+    if (extScale > 0.0001) maxDist = min(maxDist, 4.0 / (extScale / 1000.0));
+
+    float dither = fastBlueNoise(uv * 10.0 + vec2(uTime * 0.01));
+
+    int steps = 32;
+    float stepSize = maxDist / float(steps);
+    float stepSizeKM = stepSize / 1000.0;
+
+    vec3 accumulation = vec3(0.0);
+    float transmittance = 1.0;
+
+    for (int s = 0; s < steps; ++s) {
+        float d = (float(s) + dither) * stepSize;
+        vec3 p = uCameraPos + rayDir * d;
+
+        float density = exp(-max(p.y, 0.0) / max(uHazeHeight * worldScale, 1.0)) * uHazeDensity;
+        float currentScattering = uScatteringCoef * density;
+        float currentExtinction = (uScatteringCoef + uAbsorptionCoef) * density;
+
+        vec3 inScatteredLight = vec3(0.0);
+
+        for (int i = 0; i < uNumLights; ++i) {
+            int lIdx = (i < 4) ? int(uLightIndicesA[i]) : int(uLightIndicesB[i-4]);
+            if (lIdx < 0) continue;
+
+            vec3 L;
+            float attenuation;
+            calculateLightContribution(lIdx, p, L, attenuation);
+
+            if (attenuation * lights[lIdx].intensity < 0.0001) continue;
+
+            float shadow = calculateVolumetricShadow(lIdx, p, L);
+
+            if (lights[lIdx].type == LIGHT_TYPE_DIRECTIONAL) shadow *= calculateCloudShadow(lIdx, p);
+
+            float cosTheta = dot(rayDir, L);
+            float phase = HenyeyGreenstein(uPhaseG, cosTheta);
+
+            inScatteredLight += lights[lIdx].color * (lights[lIdx].intensity * lights[lIdx].volumetric_intensity * uIntensity) * attenuation * shadow * phase;
+        }
+
+        inScatteredLight += ambient_light * 0.1;
+
+        // Integration in KM
+        accumulation += inScatteredLight * (currentScattering / 1000.0) * transmittance * stepSize;
+        transmittance *= exp(-(currentExtinction / 1000.0) * stepSize);
+
+        if (transmittance < 0.01) break;
+    }
+
+    imageStore(uEpipolarOutput, coord, vec4(accumulation, transmittance));
+}

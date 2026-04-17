@@ -9,6 +9,7 @@ struct Light {
 	vec3  direction;
 	float inner_cutoff; // Also: emissive_radius (EMISSIVE), flash_radius (FLASH)
 	float outer_cutoff; // Also: falloff_exp (FLASH)
+	float volumetric_intensity;
 };
 
 struct AmbientProbe {
