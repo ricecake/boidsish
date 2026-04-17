@@ -9,10 +9,10 @@ layout(std140, binding = [[VOLUMETRIC_LIGHTING_BINDING]]) uniform VolumetricLigh
     vec4 gridSize;      // x, y, z, num_cascades
     vec4 clipParams;    // x=near, y=far, z=log_base, w=worldScale
     vec4 cascadeFars;   // x, y, z, w (matches std140 array layout)
-    vec4 hazeParams;    // x=density, y=height, z=unused, w=unused
+    vec4 hazeParams;    // x=density, y=height, z=mie_anisotropy, w=unused
     vec4 hazeColor;     // rgb=color, w=unused
     vec4 cloudParams;   // x=altitude, y=thickness, z=density, w=coverage
-    vec4 cloudParams2;  // x=warp, y=time, z=unused, w=unused
+    vec4 cloudParams2;  // x=warp, y=time, z=mie_anisotropy, w=unused
 } ubo;
 
 #include "atmosphere/common.glsl"

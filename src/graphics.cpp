@@ -3417,7 +3417,11 @@ namespace Boidsish {
 				frame.camera_front,
 				frame.simulation_delta_time,
 				impl->weather_manager->GetCurrentWeather(),
-				frame.world_scale
+				frame.world_scale,
+				impl->light_manager,
+				impl->shadow_manager.get(),
+				impl->terrain_render_manager.get(),
+				impl->atmosphere_manager.get()
 			);
 		}
 

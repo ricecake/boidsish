@@ -12,6 +12,10 @@ class ComputeShader;
 namespace Boidsish {
 
 	struct CurrentWeather;
+	class LightManager;
+	class ShadowManager;
+	class TerrainRenderManager;
+	class AtmosphereManager;
 
 	struct VolumetricCascade {
 		GLuint texture = 0;         // Scattering/Extinction texture (RGBA16F)
@@ -41,7 +45,7 @@ namespace Boidsish {
 		~VolumetricLightingManager();
 
 		void Initialize() override;
-		void Update(const glm::mat4& view, const glm::mat4& projection, const glm::vec3& camera_pos, const glm::vec3& camera_front, float delta_time, const CurrentWeather& weather, float world_scale);
+		void Update(const glm::mat4& view, const glm::mat4& projection, const glm::vec3& camera_pos, const glm::vec3& camera_front, float delta_time, const CurrentWeather& weather, float world_scale, LightManager& light_manager, ShadowManager* shadow_manager, TerrainRenderManager* terrain_render_manager, AtmosphereManager* atmosphere_manager);
 
 		GLuint GetCascadeTexture(int index) const { return cascades_[index].texture; }
 
@@ -60,6 +64,7 @@ namespace Boidsish {
 		std::unique_ptr<ComputeShader> density_init_shader_;
 		std::unique_ptr<ComputeShader> voxelize_particles_shader_;
 		std::unique_ptr<ComputeShader> inject_clouds_shader_;
+		std::unique_ptr<ComputeShader> lighting_injection_shader_;
 
 		glm::mat4 last_projection_{0.0f};
 		glm::vec3 last_camera_pos_{0.0f};
