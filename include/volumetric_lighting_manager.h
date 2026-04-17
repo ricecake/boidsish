@@ -18,8 +18,9 @@ namespace Boidsish {
 	class AtmosphereManager;
 
 	struct VolumetricCascade {
-		GLuint texture = 0;         // Scattering/Extinction texture (RGBA16F)
-		GLuint density_texture = 0; // Accumulated density texture (RGBA16F/RGBA32F for atomics)
+		GLuint texture = 0;            // Scattering/Extinction texture (RGBA16F)
+		GLuint density_texture = 0;    // Accumulated density texture (RGBA16F/RGBA32F for atomics)
+		GLuint integrated_texture = 0; // Final integrated in-scattering/transmittance (RGBA16F)
 		float  near_dist = 0.0f;
 		float  far_dist = 0.0f;
 	};
@@ -47,7 +48,7 @@ namespace Boidsish {
 		void Initialize() override;
 		void Update(const glm::mat4& view, const glm::mat4& projection, const glm::vec3& camera_pos, const glm::vec3& camera_front, float delta_time, const CurrentWeather& weather, float world_scale, LightManager& light_manager, ShadowManager* shadow_manager, TerrainRenderManager* terrain_render_manager, AtmosphereManager* atmosphere_manager);
 
-		GLuint GetCascadeTexture(int index) const { return cascades_[index].texture; }
+		GLuint GetCascadeTexture(int index) const { return cascades_[index].integrated_texture; }
 
 		int GetNumCascades() const { return static_cast<int>(cascades_.size()); }
 
@@ -65,6 +66,7 @@ namespace Boidsish {
 		std::unique_ptr<ComputeShader> voxelize_particles_shader_;
 		std::unique_ptr<ComputeShader> inject_clouds_shader_;
 		std::unique_ptr<ComputeShader> lighting_injection_shader_;
+		std::unique_ptr<ComputeShader> integration_shader_;
 
 		glm::mat4 last_projection_{0.0f};
 		glm::vec3 last_camera_pos_{0.0f};

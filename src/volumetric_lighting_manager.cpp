@@ -22,6 +22,9 @@ namespace Boidsish {
 			if (cascade.density_texture) {
 				glDeleteTextures(1, &cascade.density_texture);
 			}
+			if (cascade.integrated_texture) {
+				glDeleteTextures(1, &cascade.integrated_texture);
+			}
 		}
 		if (froxel_data_ssbo_) {
 			glDeleteBuffers(1, &froxel_data_ssbo_);
@@ -73,6 +76,17 @@ namespace Boidsish {
 			glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 			glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
 
+			glGenTextures(1, &cascades_[i].integrated_texture);
+			glBindTexture(GL_TEXTURE_3D, cascades_[i].integrated_texture);
+			// Using RGBA16F for integrated result (scattering_rgb, transmittance_a)
+			glTexImage3D(GL_TEXTURE_3D, 0, GL_RGBA16F, grid_x_, grid_y_, grid_z_, 0, GL_RGBA, GL_FLOAT, nullptr);
+
+			glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+
 			cascades_[i].near_dist = (i == 0) ? near_plane : cascade_fars[i - 1];
 			cascades_[i].far_dist = cascade_fars[i];
 		}
@@ -100,6 +114,7 @@ namespace Boidsish {
 		voxelize_particles_shader_ = std::make_unique<ComputeShader>("shaders/volumetric_voxelize_particles.comp");
 		inject_clouds_shader_ = std::make_unique<ComputeShader>("shaders/volumetric_clouds_injection.comp");
 		lighting_injection_shader_ = std::make_unique<ComputeShader>("shaders/volumetric_lighting_injection.comp");
+		integration_shader_ = std::make_unique<ComputeShader>("shaders/volumetric_integration.comp");
 	}
 
 	void VolumetricLightingManager::Update(const glm::mat4& view, const glm::mat4& projection, const glm::vec3& camera_pos, const glm::vec3& camera_front, float /*delta_time*/, const CurrentWeather& weather, float world_scale, LightManager& light_manager, ShadowManager* shadow_manager, TerrainRenderManager* terrain_render_manager, AtmosphereManager* atmosphere_manager) {
@@ -231,6 +246,24 @@ namespace Boidsish {
 				glBindImageTexture(1, cascades_[i].texture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 
 				glDispatchCompute((grid_x_ + 7) / 8, (grid_y_ + 7) / 8, (grid_z_ + 7) / 8);
+			}
+			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+		}
+
+		// Phase 4: Integration via Prefix Sums
+		if (integration_shader_ && integration_shader_->isValid()) {
+			integration_shader_->use();
+
+			for (int i = 0; i < num_cascades_; ++i) {
+				integration_shader_->setInt("u_cascadeIdx", i);
+
+				// Read from Phase 3 scattering/extinction texture
+				glBindImageTexture(0, cascades_[i].texture, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA16F);
+				// Write to final integrated texture
+				glBindImageTexture(1, cascades_[i].integrated_texture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+
+				// Integration is performed per (x, y) column
+				glDispatchCompute((grid_x_ + 7) / 8, (grid_y_ + 7) / 8, 1);
 			}
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 		}

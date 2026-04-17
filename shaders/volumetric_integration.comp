@@ -1,0 +1,68 @@
+#version 460 core
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(std140, binding = [[VOLUMETRIC_LIGHTING_BINDING]]) uniform VolumetricLighting {
+    mat4 view;
+    mat4 projection;
+    mat4 invViewProj;
+    vec4 gridSize;      // x, y, z, num_cascades
+    vec4 clipParams;    // x=near, y=far, z=log_base, w=worldScale
+    vec4 cascadeFars;   // x, y, z, w (matches std140 array layout)
+    vec4 hazeParams;    // x=density, y=height, z=mie_anisotropy, w=unused
+    vec4 hazeColor;     // rgb=color, w=unused
+    vec4 cloudParams;   // x=altitude, y=thickness, z=density, w=coverage
+    vec4 cloudParams2;  // x=warp, y=time, z=unused, w=unused
+} ubo;
+
+layout(rgba16f, binding = 0) uniform readonly image3D u_lightingGrid;
+layout(rgba16f, binding = 1) uniform writeonly image3D u_integratedGrid;
+
+uniform int u_cascadeIdx;
+
+void main() {
+    uint x = gl_GlobalInvocationID.x;
+    uint y = gl_GlobalInvocationID.y;
+
+    uint gridSizeX = uint(ubo.gridSize.x);
+    uint gridSizeY = uint(ubo.gridSize.y);
+    uint gridSizeZ = uint(ubo.gridSize.z);
+
+    if (x >= gridSizeX || y >= gridSizeY) {
+        return;
+    }
+
+    uint cascadeIdx = uint(u_cascadeIdx);
+    float nearPlane = (cascadeIdx == 0) ? ubo.clipParams.x : ubo.cascadeFars[cascadeIdx - 1];
+    float farPlane = ubo.cascadeFars[cascadeIdx];
+
+    vec3 accumulatedScattering = vec3(0.0);
+    float accumulatedTransmittance = 1.0;
+
+    float zNear = nearPlane;
+    float zFar = farPlane;
+
+    for (uint z = 0; z < gridSizeZ; ++z) {
+        vec4 lightingData = imageLoad(u_lightingGrid, ivec3(x, y, z));
+        vec3 scattering = lightingData.rgb;
+        float extinction = lightingData.a;
+
+        // Calculate slice thickness
+        float sliceNear = zNear * pow(zFar / zNear, float(z) / float(gridSizeZ));
+        float sliceFar  = zNear * pow(zFar / zNear, float(z + 1) / float(gridSizeZ));
+        float deltaD = sliceFar - sliceNear;
+
+        // Integration step
+        float stepTransmittance = exp(-extinction * deltaD);
+
+        // Analytical integration of scattering over the step:
+        // L_scat = integral from 0 to deltaD of S * exp(-E * t) dt
+        // L_scat = S * (1 - exp(-E * deltaD)) / E
+        vec3 sliceScattering = scattering * (1.0 - stepTransmittance) / max(extinction, 0.0001);
+
+        accumulatedScattering += sliceScattering * accumulatedTransmittance;
+        accumulatedTransmittance *= stepTransmittance;
+
+        imageStore(u_integratedGrid, ivec3(x, y, z), vec4(accumulatedScattering, accumulatedTransmittance));
+    }
+}
