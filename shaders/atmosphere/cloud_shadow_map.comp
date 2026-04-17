@@ -5,7 +5,7 @@ layout(local_size_x = 16, local_size_y = 16) in;
 layout(r16f, binding = 0) uniform image2D u_cloudShadowMap;
 
 #include "../helpers/constants.glsl"
-#include "../lighting.glsl"
+#include "types/lighting.glsl"
 #include "../helpers/clouds.glsl"
 
 uniform vec2 u_mapCenter;

@@ -3,7 +3,7 @@
 
 #include "helpers/spatial_hash.glsl"
 #include "particle_helpers.glsl"
-#include "particle_types.glsl"
+#include "types/particle_types.glsl"
 
 // Simulation parameters
 const float kExhaustSpeed = 30.0;

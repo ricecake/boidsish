@@ -1,8 +1,8 @@
 #version 430 core
 
 #include "frustum.glsl"
-#include "lighting.glsl"
-#include "particle_types.glsl"
+#include "types/lighting.glsl"
+#include "types/particle_types.glsl"
 
 uniform mat4  u_view;
 uniform mat4  u_projection;

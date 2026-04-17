@@ -24,7 +24,7 @@ layout(std430, binding = 12) buffer BoneMatricesSSBO {
 #include "helpers/fast_noise.glsl"
 #include "helpers/noise.glsl"
 #include "helpers/shockwave.glsl"
-#include "lighting.glsl"
+#include "types/lighting.glsl"
 #include "temporal_data.glsl"
 #include "visual_effects.glsl"
 

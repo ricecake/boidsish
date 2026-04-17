@@ -56,7 +56,7 @@ out vec3 fWorldPos;
 flat out int fBiomeIdx;
 
 #include "helpers/noise.glsl"
-#include "lighting.glsl"
+#include "types/lighting.glsl"
 #include "helpers/lighting.glsl"
 
 // Simple hash for random values

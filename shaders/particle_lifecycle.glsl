@@ -4,7 +4,7 @@
 #include "frustum.glsl"
 #include "particle_behavior.glsl"
 #include "particle_helpers.glsl"
-#include "particle_types.glsl"
+#include "types/particle_types.glsl"
 
 bool updateLifetime(
 	inout Particle p,
