@@ -1,5 +1,3 @@
-#ifndef HELPERS_LIGHTING_GLSL
-#define HELPERS_LIGHTING_GLSL
 
 #include "helpers/terrain_shadows.glsl"
 #include "helpers/constants.glsl"
@@ -1121,4 +1119,3 @@ vec3 apply_flash_lighting(
 	return result;
 }
 
-#endif // HELPERS_LIGHTING_GLSL

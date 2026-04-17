@@ -1,5 +1,3 @@
-#ifndef PARTICLE_BEHAVIOR_GLSL
-#define PARTICLE_BEHAVIOR_GLSL
 
 #include "helpers/spatial_hash.glsl"
 #include "particle_helpers.glsl"
@@ -285,4 +283,3 @@ void updateBehavior(
 	}
 }
 
-#endif

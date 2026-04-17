@@ -1,5 +1,3 @@
-#ifndef HELPERS_NOISE_GLSL
-#define HELPERS_NOISE_GLSL
 
 //
 // Description : Array and textureless GLSL 2D/3D simplex noise function.
@@ -210,4 +208,3 @@ vec3 hash33(vec3 p) {
 }
 #endif
 
-#endif // HELPERS_NOISE_GLSL

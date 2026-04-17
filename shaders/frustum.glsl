@@ -1,5 +1,3 @@
-#ifndef FRUSTUM_GLSL
-#define FRUSTUM_GLSL
 
 // Frustum UBO for GPU-side frustum culling (binding point 3)
 // Each plane is stored as vec4: xyz = normal, w = distance
@@ -49,4 +47,3 @@ bool isAABBInFrustum(vec3 minCorner, vec3 maxCorner) {
 	return true;
 }
 
-#endif

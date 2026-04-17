@@ -1,5 +1,3 @@
-#ifndef VISUAL_EFFECTS_GLSL
-#define VISUAL_EFFECTS_GLSL
 
 layout(std140) uniform VisualEffects {
 	int   ripple_enabled;
@@ -20,4 +18,3 @@ layout(std140) uniform VisualEffects {
 	float erosion_max_dist;
 };
 
-#endif

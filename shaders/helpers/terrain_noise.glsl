@@ -1,5 +1,3 @@
-#ifndef TERRAIN_NOISE_GLSL
-#define TERRAIN_NOISE_GLSL
 
 vec3 mod289(vec3 x) {
 	return x - floor(x * (1.0 / 289.0)) * 289.0;
@@ -194,4 +192,3 @@ float tangentGabor(
 	return gaborWindNoise(surfacePos, surfaceCurl, time, freq, bandwidth, sparsity);
 }
 
-#endif // TERRAIN_NOISE_GLSL

@@ -1,5 +1,3 @@
-#ifndef PARTICLE_LIFECYCLE_GLSL
-#define PARTICLE_LIFECYCLE_GLSL
 
 #include "frustum.glsl"
 #include "particle_behavior.glsl"
@@ -275,4 +273,3 @@ void handleVisibility(Particle p, uint gid) {
 	}
 }
 
-#endif

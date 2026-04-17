@@ -1,5 +1,3 @@
-#ifndef HELPERS_EROSION_GLSL
-#define HELPERS_EROSION_GLSL
 
 /*
 ================================================================================
@@ -235,4 +233,3 @@ vec3 applyErosionColorMappingDefault(vec3 albedo, float ridgeMap, float heightDe
 	return applyErosionColorMapping(albedo, ridgeMap, heightDelta, sediment, rock);
 }
 
-#endif // HELPERS_EROSION_GLSL

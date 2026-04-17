@@ -1,5 +1,3 @@
-#ifndef TERRAIN_SHADOWS_GLSL
-#define TERRAIN_SHADOWS_GLSL
 
 #include "fast_noise.glsl"
 
@@ -334,4 +332,3 @@ int isPointInTerrainShadowDebug(vec3 worldPos, vec3 normal, vec3 lightDir) {
 	return 0; // Miss (Green)
 }
 
-#endif
