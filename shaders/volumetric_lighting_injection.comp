@@ -1,0 +1,117 @@
+#version 460 core
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
+
+#define USE_TERRAIN_DATA
+#include "helpers/constants.glsl"
+#include "lighting.glsl"
+#include "helpers/lighting.glsl"
+#include "helpers/math.glsl"
+
+layout(std140, binding = [[VOLUMETRIC_LIGHTING_BINDING]]) uniform VolumetricLighting {
+    mat4 view;
+    mat4 projection;
+    mat4 invViewProj;
+    vec4 gridSize;      // x, y, z, num_cascades
+    vec4 clipParams;    // x=near, y=far, z=log_base, w=worldScale
+    vec4 cascadeFars;   // x, y, z, w (matches std140 array layout)
+    vec4 hazeParams;    // x=density, y=height, z=unused, w=unused
+    vec4 hazeColor;     // rgb=color, w=unused
+    vec4 cloudParams;   // x=altitude, y=thickness, z=density, w=coverage
+    vec4 cloudParams2;  // x=warp, y=time, z=unused, w=unused
+} ubo;
+
+struct FroxelData {
+    vec4 minBounds;
+    vec4 maxBounds;
+};
+
+layout(std430, binding = [[VOLUMETRIC_FROXEL_DATA_BINDING]]) readonly buffer VolumetricFroxelData {
+    FroxelData froxels[];
+};
+
+layout(rgba16f, binding = 0) uniform readonly image3D u_densityGrid;
+layout(rgba16f, binding = 1) uniform writeonly image3D u_lightingGrid;
+
+uniform int u_cascadeIdx;
+
+// Henyey-Greenstein phase function
+float phaseHG(float cosTheta, float g) {
+    float g2 = g * g;
+    return (1.0 / (4.0 * PI)) * (1.0 - g2) / pow(1.0 + g2 - 2.0 * g * cosTheta, 1.5);
+}
+
+void main() {
+    uint x = gl_GlobalInvocationID.x;
+    uint y = gl_GlobalInvocationID.y;
+    uint z = gl_GlobalInvocationID.z;
+
+    uint gridSizeX = uint(ubo.gridSize.x);
+    uint gridSizeY = uint(ubo.gridSize.y);
+    uint gridSizeZ = uint(ubo.gridSize.z);
+
+    if (x >= gridSizeX || y >= gridSizeY || z >= gridSizeZ) {
+        return;
+    }
+
+    uint cascadeIdx = uint(u_cascadeIdx);
+    uint globalZOffset = cascadeIdx * gridSizeZ;
+    uint froxelIdx = (globalZOffset + z) * gridSizeX * gridSizeY + y * gridSizeX + x;
+
+    vec3 minBounds = froxels[froxelIdx].minBounds.xyz;
+    vec3 maxBounds = froxels[froxelIdx].maxBounds.xyz;
+    vec3 froxelCenter = (minBounds + maxBounds) * 0.5;
+
+    // Load accumulated density (scattering.rgb, extinction.a)
+    vec4 densityData = imageLoad(u_densityGrid, ivec3(x, y, z));
+    float extinction = densityData.a;
+    vec3 scatteringColor = densityData.rgb;
+
+    if (extinction <= 0.0) {
+        imageStore(u_lightingGrid, ivec3(x, y, z), vec4(0.0));
+        return;
+    }
+
+    vec3 totalScattering = vec3(0.0);
+    vec3 V = normalize(viewPos - froxelCenter);
+
+    // Direct lighting contribution
+    for (int i = 0; i < num_lights; ++i) {
+        vec3 L;
+        float attenuation;
+        calculateLightContribution(i, froxelCenter, L, attenuation);
+
+        if (attenuation <= 0.0) continue;
+
+        // Shadowing
+        float shadow = calculateShadow(i, froxelCenter, vec3(0, 1, 0), L); // Using world up as proxy normal for volume
+
+        if (lights[i].type == LIGHT_TYPE_DIRECTIONAL) {
+            shadow *= calculateCloudShadow(i, froxelCenter);
+        }
+
+        if (shadow <= 0.0) continue;
+
+        // Phase function
+        float cosTheta = dot(V, L);
+        float phase = phaseHG(cosTheta, ubo.hazeParams.z);
+
+        // Radiance calculation (simplified for volume)
+        vec3 atmosphereTransmittance = vec3(1.0);
+        if (lights[i].type == LIGHT_TYPE_DIRECTIONAL) {
+            float r = kEarthRadiusKM + (froxelCenter.y / (1000.0 * worldScale));
+            float mu = L.y;
+            atmosphereTransmittance = texture(u_transmittanceLUT, getTransmittanceUV(r, mu)).rgb;
+        }
+
+        vec3 radiance = lights[i].color * lights[i].intensity * attenuation * atmosphereTransmittance;
+        totalScattering += scatteringColor * radiance * phase * shadow;
+    }
+
+    // Ambient injection
+    vec3 ambient = getSpatialAmbientSH(froxelCenter, vec3(0, 1, 0)) * scatteringColor;
+    totalScattering += ambient;
+
+    // Store: RGB = Scattering, A = Extinction
+    imageStore(u_lightingGrid, ivec3(x, y, z), vec4(totalScattering, extinction));
+}

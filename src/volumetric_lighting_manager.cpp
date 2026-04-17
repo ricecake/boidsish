@@ -118,7 +118,7 @@ namespace Boidsish {
 			ubo_data.cascade_fars[i] = cascades_[i].far_dist * world_scale;
 		}
 
-		ubo_data.haze_params = glm::vec4(weather.haze_density, weather.haze_height, 0.0f, 0.0f);
+		ubo_data.haze_params = glm::vec4(weather.haze_density, weather.haze_height, WeatherConstants::MieAnisotropy, 0.0f);
 		ubo_data.haze_color = glm::vec4(0.6f, 0.7f, 0.8f, 1.0f); // Fallback color
 		ubo_data.cloud_params = glm::vec4(weather.cloud_altitude, weather.cloud_thickness, weather.cloud_density, weather.cloud_coverage);
 		ubo_data.cloud_params2 = glm::vec4(0.0f, (float)glfwGetTime(), 0.0f, 0.0f);

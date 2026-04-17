@@ -29,7 +29,7 @@ namespace Boidsish {
 		glm::vec4 clip_params;    // x=near, y=far, z=log_base, w=worldScale
 		glm::vec4 cascade_fars;   // x, y, z, w (matches std140 array layout)
 
-		glm::vec4 haze_params;    // x=density, y=height, z=unused, w=unused
+		glm::vec4 haze_params;    // x=density, y=height, z=mie_anisotropy, w=unused
 		glm::vec4 haze_color;     // rgb=color, w=unused
 		glm::vec4 cloud_params;   // x=altitude, y=thickness, z=density, w=coverage
 		glm::vec4 cloud_params2;  // x=warp, y=time, z=unused, w=unused
