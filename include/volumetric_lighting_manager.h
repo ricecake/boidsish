@@ -11,17 +11,28 @@ class ComputeShader;
 
 namespace Boidsish {
 
+	struct CurrentWeather;
+
 	struct VolumetricCascade {
-		GLuint texture = 0;
+		GLuint texture = 0;         // Scattering/Extinction texture (RGBA16F)
+		GLuint density_texture = 0; // Accumulated density texture (RGBA16F/RGBA32F for atomics)
 		float  near_dist = 0.0f;
 		float  far_dist = 0.0f;
 	};
 
 	struct alignas(16) VolumetricLightingUbo {
+		glm::mat4 view;
+		glm::mat4 projection;
 		glm::mat4 inv_view_proj;
+
 		glm::vec4 grid_size;      // x, y, z, num_cascades
-		glm::vec4 clip_params;    // x=near, y=far, z=log_base, w=unused
+		glm::vec4 clip_params;    // x=near, y=far, z=log_base, w=worldScale
 		glm::vec4 cascade_fars;   // x, y, z, w (matches std140 array layout)
+
+		glm::vec4 haze_params;    // x=density, y=height, z=unused, w=unused
+		glm::vec4 haze_color;     // rgb=color, w=unused
+		glm::vec4 cloud_params;   // x=altitude, y=thickness, z=density, w=coverage
+		glm::vec4 cloud_params2;  // x=warp, y=time, z=unused, w=unused
 	};
 
 	class VolumetricLightingManager : public IManager {
@@ -30,7 +41,7 @@ namespace Boidsish {
 		~VolumetricLightingManager();
 
 		void Initialize() override;
-		void Update(const glm::mat4& view, const glm::mat4& projection, const glm::vec3& camera_pos, const glm::vec3& camera_front, float delta_time);
+		void Update(const glm::mat4& view, const glm::mat4& projection, const glm::vec3& camera_pos, const glm::vec3& camera_front, float delta_time, const CurrentWeather& weather, float world_scale);
 
 		GLuint GetCascadeTexture(int index) const { return cascades_[index].texture; }
 
@@ -46,6 +57,9 @@ namespace Boidsish {
 		GLuint                         lighting_ubo_ = 0;
 
 		std::unique_ptr<ComputeShader> grid_init_shader_;
+		std::unique_ptr<ComputeShader> density_init_shader_;
+		std::unique_ptr<ComputeShader> voxelize_particles_shader_;
+		std::unique_ptr<ComputeShader> inject_clouds_shader_;
 
 		glm::mat4 last_projection_{0.0f};
 		glm::vec3 last_camera_pos_{0.0f};

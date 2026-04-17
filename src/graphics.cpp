@@ -122,6 +122,8 @@ namespace Boidsish {
 		ShaderBase::RegisterConstant("CHUNK_SIZE", Boidsish::Constants::Class::Terrain::ChunkSize());
 		ShaderBase::RegisterConstant("CHUNK_SIZE_PLUS_1", Boidsish::Constants::Class::Terrain::ChunkSizePlus1());
 		ShaderBase::RegisterConstant("BIOME_DATA_BINDING", Boidsish::Constants::UboBinding::Biomes());
+		ShaderBase::RegisterConstant("VOLUMETRIC_LIGHTING_BINDING", Boidsish::Constants::UboBinding::VolumetricLighting());
+		ShaderBase::RegisterConstant("VOLUMETRIC_FROXEL_DATA_BINDING", Boidsish::Constants::SsboBinding::VolumetricFroxelData());
 
 		registered = true;
 	}
@@ -3408,7 +3410,15 @@ namespace Boidsish {
 		impl->UpdateSystems();
 
 		if (impl->volumetric_lighting_manager) {
-			impl->volumetric_lighting_manager->Update(frame.view, frame.projection, frame.camera_pos, frame.camera_front, frame.simulation_delta_time);
+			impl->volumetric_lighting_manager->Update(
+				frame.view,
+				frame.projection,
+				frame.camera_pos,
+				frame.camera_front,
+				frame.simulation_delta_time,
+				impl->weather_manager->GetCurrentWeather(),
+				frame.world_scale
+			);
 		}
 
 		// Shadow decor renders during the overlap window (no packets needed).
