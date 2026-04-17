@@ -59,6 +59,10 @@ namespace Boidsish {
 		} // namespace UboBinding
 
 		namespace SsboBinding {
+			consteval int DecorInstances() {
+				return 10;
+			}
+
 			consteval int AutoExposure() {
 				return 11;
 			}
@@ -79,6 +83,14 @@ namespace Boidsish {
 				return 15;
 			}
 
+			consteval int ParticleBuffer() {
+				return 16;
+			}
+
+			consteval int IndirectionBuffer() {
+				return 17;
+			}
+
 			consteval int TrailPoints() {
 				return 18;
 			}
@@ -89,6 +101,26 @@ namespace Boidsish {
 
 			consteval int TrailSpineData() {
 				return 20;
+			}
+
+			consteval int CommonUniforms() {
+				return 21;
+			}
+
+			consteval int EmitterBuffer() {
+				return 22;
+			}
+
+			consteval int TerrainChunkInfo() {
+				return 23;
+			}
+
+			consteval int SliceData() {
+				return 24;
+			}
+
+			consteval int DecorAllInstances() {
+				return 25;
 			}
 
 			consteval int DecorChunkParams() {
@@ -103,36 +135,8 @@ namespace Boidsish {
 				return 28;
 			}
 
-			consteval int ParticleBuffer() {
-				return 16;
-			}
-
-			consteval int EmitterBuffer() {
-				return 22;
-			}
-
-			consteval int IndirectionBuffer() {
-				return 17;
-			}
-
-			consteval int TerrainChunkInfo() {
-				return 23;
-			}
-
-			consteval int SliceData() {
-				return 24;
-			}
-
 			consteval int TerrainProbes() {
 				return 29;
-			}
-
-			consteval int GrassInstances() {
-				return 35;
-			}
-
-			consteval int GrassIndirect() {
-				return 36;
 			}
 
 			consteval int LiveParticleIndices() {
@@ -143,12 +147,40 @@ namespace Boidsish {
 				return 34;
 			}
 
+			consteval int GrassInstances() {
+				return 35;
+			}
+
+			consteval int GrassIndirect() {
+				return 36;
+			}
+
 			consteval int WeatherGridA() {
 				return 37;
 			}
 
 			consteval int WeatherGridB() {
 				return 38;
+			}
+
+			consteval int DecorIndirect() {
+				return 39;
+			}
+
+			consteval int DecorBlockValidity() {
+				return 40;
+			}
+
+			consteval int MeshExplosionFragments() {
+				return 41;
+			}
+
+			consteval int TrailGeneratedVBO() {
+				return 42;
+			}
+
+			consteval int AtmosphereSH() {
+				return 43;
 			}
 		} // namespace SsboBinding
 

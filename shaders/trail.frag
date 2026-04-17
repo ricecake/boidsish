@@ -14,14 +14,14 @@ flat in int vUniformIndex;
 
 #include "common_uniforms.glsl"
 
-layout(std430, binding = 2) buffer UniformsSSBO {
+layout(std430, binding = [[COMMON_UNIFORMS_BINDING]]) buffer UniformsSSBO {
 	CommonUniforms uniforms_data[];
 };
 
 uniform bool uUseMDI = false;
 
-#define USE_TERRAIN_DATA
-#include "helpers/terrain_shadows.glsl"
+// #define USE_TERRAIN_DATA
+// #include "helpers/terrain_shadows.glsl"
 #include "helpers/lighting.glsl"
 
 uniform mat4  view;
