@@ -2,11 +2,11 @@
 
 #define COMPUTE_SHADER
 #include "frustum.glsl"
-#include "lighting.glsl"
+#include "types/lighting.glsl"
 #include "particle_behavior.glsl"
 #include "particle_helpers.glsl"
 #include "particle_lifecycle.glsl"
-#include "particle_types.glsl"
+#include "types/particle_types.glsl"
 
 uniform float u_delta_time;
 uniform float u_time;

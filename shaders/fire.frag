@@ -1,7 +1,7 @@
 #version 430 core
 
-#include "lighting.glsl"
-#include "particle_types.glsl"
+#include "types/lighting.glsl"
+#include "types/particle_types.glsl"
 
 in float         v_lifetime;
 in vec4          view_pos;

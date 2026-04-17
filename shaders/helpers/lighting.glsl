@@ -1,9 +1,9 @@
 #ifndef HELPERS_LIGHTING_GLSL
 #define HELPERS_LIGHTING_GLSL
 
-#include "../helpers/constants.glsl"
-#include "../lighting.glsl"
-#include "clouds.glsl"
+#include "helpers/constants.glsl"
+#include "types/lighting.glsl"
+#include "helpers/clouds.glsl"
 
 // Atmosphere constants for transmittance lookup
 const float kEarthRadiusKM = 6360.0;

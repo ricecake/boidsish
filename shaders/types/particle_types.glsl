@@ -1,6 +1,3 @@
-#ifndef PARTICLE_TYPES_GLSL
-#define PARTICLE_TYPES_GLSL
-
 // Must match the C++ struct layout in fire_effect.h
 struct Particle {
 	vec4  pos; // Position (w is lifetime)
@@ -120,5 +117,3 @@ layout(std430, binding = 28) buffer DrawCommandBuffer {
 layout(std430, binding = 34) buffer BehaviorCommandBuffer {
 	DispatchIndirectCommand behavior_command;
 };
-
-#endif

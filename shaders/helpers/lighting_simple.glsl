@@ -13,6 +13,6 @@
 //   - apply_lighting_pbr_no_shadows()       -> PBR without shadows
 //   - apply_lighting_pbr_iridescent_no_shadows() -> iridescent effect
 
-#include "lighting.glsl"
+#include "types/lighting.glsl"
 
 #endif // HELPERS_LIGHTING_SIMPLE_GLSL

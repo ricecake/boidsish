@@ -1,7 +1,7 @@
 #ifndef HELPERS_CLOUDS_GLSL
 #define HELPERS_CLOUDS_GLSL
 
-#include "../lighting.glsl"
+#include "types/lighting.glsl"
 #include "fast_noise.glsl"
 #include "math.glsl"
 

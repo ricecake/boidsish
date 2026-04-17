@@ -1,6 +1,6 @@
 #version 430 core
 
-#include "lighting.glsl"
+#include "types/lighting.glsl"
 #include "helpers/lighting.glsl"
 
 in vec3 fNormal;
