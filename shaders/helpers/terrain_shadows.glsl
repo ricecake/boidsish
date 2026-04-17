@@ -16,9 +16,11 @@ layout(std140, binding = [[TERRAIN_DATA_BINDING]]) uniform TerrainData {
 uniform isampler2D u_chunkGrid;
 #endif
 
+#ifndef TERRAIN_HEIGHT_SAMPLERS_DEFINED
+#define TERRAIN_HEIGHT_SAMPLERS_DEFINED
 uniform sampler2D u_maxHeightGrid;
-// u_heightmapArray is bound to unit 13
 uniform sampler2DArray u_heightmapArray;
+#endif
 
 float getTerrainHeight(vec2 worldXZ) {
 	if (u_originSize.w < 1)

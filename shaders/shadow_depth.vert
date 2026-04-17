@@ -1,5 +1,5 @@
 #version 460 core
-#extension GL_GOOGLE_include_directive : enable
+
 
 layout(location = 0) in vec3 aPos;
 layout(location = 9) in ivec4 aBoneIDs;

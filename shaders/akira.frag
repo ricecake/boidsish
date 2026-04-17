@@ -2,7 +2,7 @@
 
 out vec4 FragColor;
 
-#define USE_TERRAIN_DATA
+
 #include "helpers/terrain_shadows.glsl"
 #include "helpers/lighting.glsl"
 

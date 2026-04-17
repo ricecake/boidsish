@@ -4,14 +4,13 @@ layout(local_size_x = 8, local_size_y = 8) in;
 
 #include "helpers/constants.glsl"
 
-#define USE_TERRAIN_DATA
-// Forward declarations for lighting.glsl
-float terrainShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) { return 1.0; }
-float calculateTerrainOcclusion(vec3 worldPos, vec3 normal) { return 1.0; }
+
+// // Forward declarations for lighting.glsl
+// float terrainShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) { return 1.0; }
+// float calculateTerrainOcclusion(vec3 worldPos, vec3 normal) { return 1.0; }
 
 #include "helpers/lighting.glsl"
 #include "helpers/fast_noise.glsl"
-uniform sampler2DArray u_heightmapArray;
 uniform sampler2DArray u_biomeMap;
 
 uniform sampler2D u_gColor;
