@@ -1,5 +1,5 @@
 #version 430 core
-#extension GL_GOOGLE_include_directive : enable
+
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec4 Velocity;
 layout(location = 2) out vec4 NormalOut;
@@ -16,7 +16,7 @@ uniform bool uUseMDI = false;
 flat in int  vUniformIndex;
 
 #include "helpers/fast_noise.glsl"
-#define USE_TERRAIN_DATA
+
 #include "helpers/terrain_shadows.glsl"
 #include "helpers/lighting.glsl"
 #include "visual_effects.frag"
