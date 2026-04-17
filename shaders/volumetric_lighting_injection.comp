@@ -1,10 +1,10 @@
-#version 460 core
+#version 430 core
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
 
+#include "helpers/fast_noise.glsl"
 #define USE_TERRAIN_DATA
-#include "helpers/constants.glsl"
-#include "lighting.glsl"
+#include "helpers/terrain_shadows.glsl"
 #include "helpers/lighting.glsl"
 #include "helpers/math.glsl"
 
