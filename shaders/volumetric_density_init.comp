@@ -1,0 +1,64 @@
+#version 460 core
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
+
+layout(std140, binding = [[VOLUMETRIC_LIGHTING_BINDING]]) uniform VolumetricLighting {
+    mat4 view;
+    mat4 projection;
+    mat4 invViewProj;
+    vec4 gridSize;      // x, y, z, num_cascades
+    vec4 clipParams;    // x=near, y=far, z=log_base, w=worldScale
+    vec4 cascadeFars;   // x, y, z, w (matches std140 array layout)
+    vec4 hazeParams;    // x=density, y=height, z=unused, w=unused
+    vec4 hazeColor;     // rgb=color, w=unused
+    vec4 cloudParams;   // x=altitude, y=thickness, z=density, w=coverage
+    vec4 cloudParams2;  // x=warp, y=time, z=unused, w=unused
+} ubo;
+
+struct FroxelData {
+    vec4 minBounds;
+    vec4 maxBounds;
+};
+
+layout(std430, binding = [[VOLUMETRIC_FROXEL_DATA_BINDING]]) readonly buffer VolumetricFroxelData {
+    FroxelData froxels[];
+};
+
+layout(rgba16f, binding = 0) uniform writeonly image3D u_densityGrid;
+
+uniform int u_cascadeIdx;
+
+void main() {
+    uint x = gl_GlobalInvocationID.x;
+    uint y = gl_GlobalInvocationID.y;
+    uint z = gl_GlobalInvocationID.z;
+
+    uint gridSizeX = uint(ubo.gridSize.x);
+    uint gridSizeY = uint(ubo.gridSize.y);
+    uint gridSizeZ = uint(ubo.gridSize.z);
+
+    if (x >= gridSizeX || y >= gridSizeY || z >= gridSizeZ) {
+        return;
+    }
+
+    uint cascadeIdx = uint(u_cascadeIdx);
+    uint globalZOffset = cascadeIdx * gridSizeZ;
+    uint froxelIdx = (globalZOffset + z) * gridSizeX * gridSizeY + y * gridSizeX + x;
+
+    vec3 minBounds = froxels[froxelIdx].minBounds.xyz;
+    vec3 maxBounds = froxels[froxelIdx].maxBounds.xyz;
+    vec3 froxelCenter = (minBounds + maxBounds) * 0.5;
+
+    // Exponential fog initialization
+    float hazeDensity = ubo.hazeParams.x;
+    float hazeHeight = ubo.hazeParams.y * ubo.clipParams.w; // worldScale
+
+    float heightFalloff = exp(-max(0.0, froxelCenter.y) / max(0.001, hazeHeight));
+    float density = hazeDensity * heightFalloff;
+
+    // RGBA16F: scattering_rgb, extinction_a
+    // For haze, we assume scattering = extinction (albedo = 1.0) for simplicity in init
+    vec4 initialData = vec4(ubo.hazeColor.rgb * density, density);
+
+    imageStore(u_densityGrid, ivec3(x, y, z), initialData);
+}

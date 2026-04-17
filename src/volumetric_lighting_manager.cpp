@@ -2,6 +2,8 @@
 #include <iostream>
 #include <shader.h>
 #include "logger.h"
+#include "weather_manager.h"
+#include <GLFW/glfw3.h>
 
 namespace Boidsish {
 
@@ -11,6 +13,9 @@ namespace Boidsish {
 		for (auto& cascade : cascades_) {
 			if (cascade.texture) {
 				glDeleteTextures(1, &cascade.texture);
+			}
+			if (cascade.density_texture) {
+				glDeleteTextures(1, &cascade.density_texture);
 			}
 		}
 		if (froxel_data_ssbo_) {
@@ -52,7 +57,18 @@ namespace Boidsish {
 			glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 			glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
 
-			cascades_[i].near_dist = (i == 0) ? near_plane : cascade_fars[i-1];
+			glGenTextures(1, &cascades_[i].density_texture);
+			glBindTexture(GL_TEXTURE_3D, cascades_[i].density_texture);
+			// Using RGBA16F for accumulated density/color (scattering_rgb, extinction_a)
+			glTexImage3D(GL_TEXTURE_3D, 0, GL_RGBA16F, grid_x_, grid_y_, grid_z_, 0, GL_RGBA, GL_FLOAT, nullptr);
+
+			glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+
+			cascades_[i].near_dist = (i == 0) ? near_plane : cascade_fars[i - 1];
 			cascades_[i].far_dist = cascade_fars[i];
 		}
 		glBindTexture(GL_TEXTURE_3D, 0);
@@ -75,25 +91,46 @@ namespace Boidsish {
 
 	void VolumetricLightingManager::CreateShaders() {
 		grid_init_shader_ = std::make_unique<ComputeShader>("shaders/volumetric_grid_init.comp");
+		density_init_shader_ = std::make_unique<ComputeShader>("shaders/volumetric_density_init.comp");
+		voxelize_particles_shader_ = std::make_unique<ComputeShader>("shaders/volumetric_voxelize_particles.comp");
+		inject_clouds_shader_ = std::make_unique<ComputeShader>("shaders/volumetric_clouds_injection.comp");
 	}
 
-	void VolumetricLightingManager::Update(const glm::mat4& view, const glm::mat4& projection, const glm::vec3& camera_pos, const glm::vec3& camera_front, float /*delta_time*/) {
+	void VolumetricLightingManager::Update(const glm::mat4& view, const glm::mat4& projection, const glm::vec3& camera_pos, const glm::vec3& camera_front, float /*delta_time*/, const CurrentWeather& weather, float world_scale) {
 		if (!initialized_) return;
 
 		frame_counter_++;
+
+		// Update UBO data
+		VolumetricLightingUbo ubo_data;
+		ubo_data.view = view;
+		ubo_data.projection = projection;
+		ubo_data.inv_view_proj = glm::inverse(projection * view);
+		ubo_data.grid_size = glm::vec4(grid_x_, grid_y_, grid_z_, num_cascades_);
+
+		float near_plane = 0.1f;
+		float far_plane = Constants::Project::Camera::DefaultFarPlane() * world_scale;
+		float log_base = 0.0f; // Could be computed if needed
+		ubo_data.clip_params = glm::vec4(near_plane, far_plane, log_base, world_scale);
+
+		ubo_data.cascade_fars = glm::vec4(0.0f);
+		for (int i = 0; i < num_cascades_; ++i) {
+			ubo_data.cascade_fars[i] = cascades_[i].far_dist * world_scale;
+		}
+
+		ubo_data.haze_params = glm::vec4(weather.haze_density, weather.haze_height, 0.0f, 0.0f);
+		ubo_data.haze_color = glm::vec4(0.6f, 0.7f, 0.8f, 1.0f); // Fallback color
+		ubo_data.cloud_params = glm::vec4(weather.cloud_altitude, weather.cloud_thickness, weather.cloud_density, weather.cloud_coverage);
+		ubo_data.cloud_params2 = glm::vec4(0.0f, (float)glfwGetTime(), 0.0f, 0.0f);
+
+		glBindBuffer(GL_UNIFORM_BUFFER, lighting_ubo_);
+		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(VolumetricLightingUbo), &ubo_data);
+		glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::VolumetricLighting(), lighting_ubo_, 0, sizeof(VolumetricLightingUbo));
 
 		// Re-initialize grid if projection changed or camera moved/rotated
 		bool projection_changed = (projection != last_projection_);
 		bool camera_moved = (glm::distance(camera_pos, last_camera_pos_) > 0.1f);
 		bool camera_rotated = (glm::dot(camera_front, last_camera_front_) < 0.999f);
-
-		// Determine which cascades to update based on frequency
-		// Cascade 0: Every frame
-		// Cascade 1: Every 2 frames
-		// Cascade 2: Every 4 frames
-		bool update_c0 = true;
-		bool update_c1 = (frame_counter_ % 2 == 0);
-		bool update_c2 = (frame_counter_ % 4 == 0);
 
 		if (projection_changed || camera_moved || camera_rotated) {
 			last_projection_ = projection;
@@ -101,44 +138,50 @@ namespace Boidsish {
 			last_camera_front_ = camera_front;
 
 			grid_init_shader_->use();
-
-			VolumetricLightingUbo ubo_data;
-			ubo_data.inv_view_proj = glm::inverse(projection * view);
-			ubo_data.grid_size = glm::vec4(grid_x_, grid_y_, grid_z_, num_cascades_);
-
-			float near_plane = 0.1f;
-			float far_plane = Constants::Project::Camera::DefaultFarPlane();
-			ubo_data.clip_params = glm::vec4(near_plane, far_plane, 0.0f, 0.0f);
-
-			ubo_data.cascade_fars = glm::vec4(0.0f);
-			for (int i = 0; i < num_cascades_; ++i) {
-				ubo_data.cascade_fars[i] = cascades_[i].far_dist;
-			}
-
-			glBindBuffer(GL_UNIFORM_BUFFER, lighting_ubo_);
-			glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(VolumetricLightingUbo), &ubo_data);
-
-			glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::VolumetricLighting(), lighting_ubo_, 0, sizeof(VolumetricLightingUbo));
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::VolumetricFroxelData(), froxel_data_ssbo_);
 
-			// Dispatch initialization for cascades that need update
-			// For Phase 1, we update all if anything changed, but we can respect flags
-			if (update_c0) {
-				// Update cascade 0
-				grid_init_shader_->setInt("u_cascadeIdx", 0);
+			for (int i = 0; i < num_cascades_; ++i) {
+				grid_init_shader_->setInt("u_cascadeIdx", i);
 				glDispatchCompute((grid_x_ + 7) / 8, (grid_y_ + 7) / 8, (grid_z_ + 7) / 8);
 			}
-			if (update_c1 && num_cascades_ > 1) {
-				grid_init_shader_->setInt("u_cascadeIdx", 1);
-				glDispatchCompute((grid_x_ + 7) / 8, (grid_y_ + 7) / 8, (grid_z_ + 7) / 8);
-			}
-			if (update_c2 && num_cascades_ > 2) {
-				grid_init_shader_->setInt("u_cascadeIdx", 2);
-				glDispatchCompute((grid_x_ + 7) / 8, (grid_y_ + 7) / 8, (grid_z_ + 7) / 8);
-			}
-
 			glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 		}
+
+		// Phase 2: Density and Media Voxelization
+
+		// 1. Initialize density grid with fog
+		density_init_shader_->use();
+		for (int i = 0; i < num_cascades_; ++i) {
+			density_init_shader_->setInt("u_cascadeIdx", i);
+			glBindImageTexture(0, cascades_[i].density_texture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+			glDispatchCompute((grid_x_ + 7) / 8, (grid_y_ + 7) / 8, (grid_z_ + 7) / 8);
+		}
+		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+		// 2. Voxelize particles (local cascades 0 and 1)
+		voxelize_particles_shader_->use();
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleBuffer(), 16); // [[PARTICLE_BUFFER_BINDING]]
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleDrawCommand(), 28);   // [[PARTICLE_DRAW_COMMAND_BINDING]]
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::VolumetricFroxelData(), froxel_data_ssbo_);
+
+		for (int i = 0; i < std::min(num_cascades_, 2); ++i) {
+			voxelize_particles_shader_->setInt("u_cascadeIdx", i);
+			glBindImageTexture(0, cascades_[i].density_texture, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA16F);
+			// Dispatch depends on particle count, but for scattering we can iterate particles or cells.
+			// Task says: "dispatch a compute pass that scatters particle density and color into the grid"
+			// So we dispatch per particle.
+			glDispatchCompute((Constants::Class::Particles::MaxParticles() + 63) / 64, 1, 1);
+		}
+		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+		// 3. Inject cloud density (outer cascades 1 and 2)
+		inject_clouds_shader_->use();
+		for (int i = 1; i < num_cascades_; ++i) {
+			inject_clouds_shader_->setInt("u_cascadeIdx", i);
+			glBindImageTexture(0, cascades_[i].density_texture, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA16F);
+			glDispatchCompute((grid_x_ + 7) / 8, (grid_y_ + 7) / 8, (grid_z_ + 7) / 8);
+		}
+		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 	}
 
 } // namespace Boidsish
