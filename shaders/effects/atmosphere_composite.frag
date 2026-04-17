@@ -22,6 +22,7 @@ uniform sampler3D u_aerialPerspectiveLUT;
 #include "../atmosphere/common.glsl"
 #include "../helpers/lighting.glsl"
 #include "helpers/math.glsl"
+#include "../helpers/volumetric_lighting.glsl"
 
 vec3 sampleAerialPerspective(vec3 rd, float distKM) {
 	float azimuth = atan(rd.x, -rd.z);
@@ -61,9 +62,11 @@ void main() {
 
 	vec3  rayDir = normalize(worldPos - viewPos);
 	float dist = length(worldPos - viewPos);
+	float planarDepth = dot(worldPos - viewPos, viewDir);
 
 	if (depth >= 0.99999) {
 		dist = 50000.0 * worldScale;
+		planarDepth = 50000.0 * worldScale;
 	}
 
 	// 1. Bilateral upsample of low-res clouds
@@ -115,6 +118,11 @@ void main() {
 	vec3  cloudColor = cloudData.rgb;
 	float cloudTransmittance = cloudData.a;
 
+	// 1.5 Volumetric Lighting (Cascaded Froxel Grid)
+	vec4 volLight = getVolumetricLighting(TexCoords, planarDepth);
+	vec3 volScattering = volLight.rgb;
+	float volTransmittance = volLight.a;
+
 	// 2. High-res Atmosphere (Haze)
 	float distKM = (dist / 1000.0) * hazeDensity;
 	vec3  inScattering = sampleAerialPerspective(rayDir, distKM);
@@ -136,15 +144,20 @@ void main() {
 
 	vec3 result;
 	if (!isSky) {
+		// Apply Volumetrics to scene first
+		vec3 baseColor = sceneColor * volTransmittance + volScattering;
+
 		// Terrain/objects: apply aerial perspective and clouds
-		vec3 terrainAtmos = sceneColor * transmittance + inScattering;
+		vec3 terrainAtmos = baseColor * transmittance + inScattering;
 		vec3 cloudsAtmos = cloudColor * atmosTransmittance + atmosInScattering * (1.0 - cloudTransmittance);
 		result = mix(cloudsAtmos, terrainAtmos, cloudTransmittance);
 	} else {
 		// Sky and colossal objects: preserve scene output (sun, moon, stars, colossal)
-		// and blend clouds on top
+		// but volumetrics still apply to the distant view (shafts of light)
+		vec3 baseColor = sceneColor * volTransmittance + volScattering;
+
 		vec3 cloudsAtmos = cloudColor * atmosTransmittance + atmosInScattering * (1.0 - cloudTransmittance);
-		result = sceneColor * cloudTransmittance + cloudsAtmos;
+		result = baseColor * cloudTransmittance + cloudsAtmos;
 	}
 
 	FragColor = vec4(result, 1.0);

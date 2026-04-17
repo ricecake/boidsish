@@ -1093,6 +1093,17 @@ namespace Boidsish {
 			if (atmosphere_manager) {
 				atmosphere_manager->BindToShader(shader_to_setup);
 			}
+			if (volumetric_lighting_manager) {
+				glActiveTexture(GL_TEXTURE10);
+				glBindTexture(GL_TEXTURE_3D, volumetric_lighting_manager->GetCascadeTexture(0));
+				shader_to_setup.trySetInt("u_volumetricIntegrated0", 10);
+				glActiveTexture(GL_TEXTURE11);
+				glBindTexture(GL_TEXTURE_3D, volumetric_lighting_manager->GetCascadeTexture(1));
+				shader_to_setup.trySetInt("u_volumetricIntegrated1", 11);
+				glActiveTexture(GL_TEXTURE12);
+				glBindTexture(GL_TEXTURE_3D, volumetric_lighting_manager->GetCascadeTexture(2));
+				shader_to_setup.trySetInt("u_volumetricIntegrated2", 12);
+			}
 			shader_to_setup.setBool("uUseMDI", false);
 			shader_to_setup.setBool("useSSBOInstancing", false);
 			shader_to_setup.setBool("use_skinning", false);
@@ -1636,6 +1647,8 @@ namespace Boidsish {
 						glActiveTexture(GL_TEXTURE14);
 						glBindTexture(GL_TEXTURE_2D, compositor_->GetRefractionTexture());
 						s->trySetInt("refractionTexture", 14);
+
+						s->trySetBool("uApplyVolumetrics", layer == RenderLayer::Transparent);
 
 						if (atmosphere_manager) {
 							s->trySetInt("u_transmittanceLUT", 20);
@@ -3423,6 +3436,14 @@ namespace Boidsish {
 				impl->terrain_render_manager.get(),
 				impl->atmosphere_manager.get()
 			);
+
+				if (impl->atmosphere_effect) {
+					impl->atmosphere_effect->SetVolumetricTextures(
+						impl->volumetric_lighting_manager->GetCascadeTexture(0),
+						impl->volumetric_lighting_manager->GetCascadeTexture(1),
+						impl->volumetric_lighting_manager->GetCascadeTexture(2)
+					);
+				}
 		}
 
 		// Shadow decor renders during the overlap window (no packets needed).

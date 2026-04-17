@@ -21,6 +21,7 @@ flat in int  vUniformIndex;
 #include "helpers/lighting.glsl"
 #include "visual_effects.frag"
 #include "visual_effects.glsl"
+#include "helpers/volumetric_lighting.glsl"
 
 in vec3  FragPos;
 in vec4  CurPosition;
@@ -78,6 +79,7 @@ uniform float u_windRimHighlight;
 uniform sampler2D refractionTexture;
 
 uniform mat4 view;
+uniform bool uApplyVolumetrics = false;
 
 void main() {
 	bool  use_ssbo = uUseMDI && vUniformIndex >= 0;
@@ -332,6 +334,13 @@ void main() {
 		outColor = vec4(result, final_alpha);
 		// Restore deliberate cyan style for distant objects
 		outColor = mix(vec4(0.0, 0.7, 0.7, final_alpha) * length(outColor), outColor, step(1.0, fade));
+	}
+
+	if (uApplyVolumetrics) {
+		vec2 screenUV = gl_FragCoord.xy * texelSize;
+		float planarDepth = dot(FragPos - viewPos, viewDir);
+		vec4 volLight = getVolumetricLighting(screenUV, planarDepth);
+		outColor.rgb = outColor.rgb * volLight.a + volLight.rgb;
 	}
 
 	// if (nightFactor > 0) {

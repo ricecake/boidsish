@@ -43,6 +43,11 @@ namespace Boidsish {
 					glUniformBlockBinding(s.ID, effects_idx, Constants::UboBinding::VisualEffects());
 				}
 
+				GLuint vol_idx = glGetUniformBlockIndex(s.ID, "VolumetricLighting");
+				if (vol_idx != GL_INVALID_INDEX) {
+					glUniformBlockBinding(s.ID, vol_idx, Constants::UboBinding::VolumetricLighting());
+				}
+
 				// Explicitly set standard sampler bindings
 				s.setInt("shadowMaps", 4);
 			};
@@ -231,6 +236,19 @@ namespace Boidsish {
 			glBindTexture(GL_TEXTURE_2D, transmittance_lut_);
 			glActiveTexture(GL_TEXTURE23);
 			glBindTexture(GL_TEXTURE_3D, aerial_perspective_lut_);
+
+			// Bind Volumetric Cascades (Units 10, 11, 12)
+			glActiveTexture(GL_TEXTURE10);
+			glBindTexture(GL_TEXTURE_3D, volumetric_textures_[0]);
+			composite_shader_->trySetInt("u_volumetricIntegrated0", 10);
+
+			glActiveTexture(GL_TEXTURE11);
+			glBindTexture(GL_TEXTURE_3D, volumetric_textures_[1]);
+			composite_shader_->trySetInt("u_volumetricIntegrated1", 11);
+
+			glActiveTexture(GL_TEXTURE12);
+			glBindTexture(GL_TEXTURE_3D, volumetric_textures_[2]);
+			composite_shader_->trySetInt("u_volumetricIntegrated2", 12);
 
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 
