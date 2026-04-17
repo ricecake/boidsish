@@ -14,6 +14,7 @@ namespace Boidsish {
         for (int i = 0; i < 8; ++i) {
             biome_grass_props_[i].enabled = 0;
         }
+        global_props_ = GlobalGrassProperties();
     }
 
     GrassManager::~GrassManager() {
@@ -25,6 +26,8 @@ namespace Boidsish {
 
     void GrassManager::Initialize() {
         if (initialized_) return;
+
+        PopulateDefaultGrassProperties();
 
         placement_shader_ = std::make_unique<ComputeShader>("shaders/grass_placement.comp");
         grass_shader_ = std::make_shared<Shader>("shaders/grass.vert", "shaders/grass.frag", "shaders/grass.tcs", "shaders/grass.tes");
@@ -66,7 +69,7 @@ namespace Boidsish {
         // Properties UBO
         glGenBuffers(1, &grass_props_ubo_);
         glBindBuffer(GL_UNIFORM_BUFFER, grass_props_ubo_);
-        glBufferData(GL_UNIFORM_BUFFER, 8 * sizeof(GrassProperties), nullptr, GL_DYNAMIC_DRAW);
+        glBufferData(GL_UNIFORM_BUFFER, 8 * sizeof(GrassProperties) + sizeof(GlobalGrassProperties), nullptr, GL_DYNAMIC_DRAW);
         glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
         // Instance SSBO
@@ -94,15 +97,96 @@ namespace Boidsish {
         props_dirty_ = true;
     }
 
+    void GrassManager::PopulateDefaultGrassProperties() {
+        // Lush Grass
+        GrassProperties lushGrass;
+        lushGrass.colorTop = glm::vec4(0.3f, 0.8f, 0.2f, 1.0f);
+        lushGrass.colorBottom = glm::vec4(0.1f, 0.3f, 0.05f, 1.0f);
+        lushGrass.height = 1.0f;
+        lushGrass.width = 0.1f;
+        lushGrass.density = 1.0f;
+        lushGrass.windInfluence = 1.0f;
+        lushGrass.rigidity = 0.3f;
+        SetGrassProperties(Biome::LushGrass, lushGrass);
+
+        // Dry Grass
+        GrassProperties dryGrass;
+        dryGrass.colorTop = glm::vec4(0.7f, 0.6f, 0.3f, 1.0f);
+        dryGrass.colorBottom = glm::vec4(0.3f, 0.25f, 0.1f, 1.0f);
+        dryGrass.height = 0.8f;
+        dryGrass.width = 0.08f;
+        dryGrass.density = 0.7f;
+        dryGrass.windInfluence = 0.6f;
+        dryGrass.rigidity = 0.6f;
+        SetGrassProperties(Biome::DryGrass, dryGrass);
+
+        // Forest Grass
+        GrassProperties forestGrass;
+        forestGrass.colorTop = glm::vec4(0.1f, 0.4f, 0.1f, 1.0f);
+        forestGrass.colorBottom = glm::vec4(0.02f, 0.1f, 0.02f, 1.0f);
+        forestGrass.height = 1.5f;
+        forestGrass.width = 0.12f;
+        forestGrass.density = 0.9f;
+        forestGrass.windInfluence = 0.4f;
+        forestGrass.rigidity = 0.5f;
+        SetGrassProperties(Biome::Forest, forestGrass);
+
+        // Alpine Meadow Grass
+        GrassProperties alpineGrass;
+        alpineGrass.colorTop = glm::vec4(0.4f, 0.9f, 0.4f, 1.0f);
+        alpineGrass.colorBottom = glm::vec4(0.1f, 0.4f, 0.1f, 1.0f);
+        alpineGrass.height = 0.6f;
+        alpineGrass.width = 0.06f;
+        alpineGrass.density = 1.0f;
+        alpineGrass.windInfluence = 1.2f;
+        alpineGrass.rigidity = 0.2f;
+        SetGrassProperties(Biome::AlpineMeadow, alpineGrass);
+
+        // Add some basic grass properties to other biomes to ensure we always have some coverage
+        GrassProperties rockGrass;
+        rockGrass.colorTop = glm::vec4(0.35f, 0.4f, 0.2f, 1.0f);
+        rockGrass.colorBottom = glm::vec4(0.1f, 0.15f, 0.05f, 1.0f);
+        rockGrass.height = 0.4f;
+        rockGrass.width = 0.05f;
+        rockGrass.density = 0.3f;
+        rockGrass.windInfluence = 0.4f;
+        rockGrass.rigidity = 0.7f;
+        SetGrassProperties(Biome::BrownRock, rockGrass);
+        SetGrassProperties(Biome::GreyRock, rockGrass);
+
+        GrassProperties sandGrass;
+        sandGrass.colorTop = glm::vec4(0.5f, 0.5f, 0.2f, 1.0f);
+        sandGrass.colorBottom = glm::vec4(0.2f, 0.2f, 0.05f, 1.0f);
+        sandGrass.height = 0.3f;
+        sandGrass.width = 0.04f;
+        sandGrass.density = 0.2f;
+        sandGrass.windInfluence = 0.5f;
+        sandGrass.rigidity = 0.4f;
+        SetGrassProperties(Biome::Sand, sandGrass);
+
+        GrassProperties snowGrass;
+        snowGrass.colorTop = glm::vec4(0.8f, 0.9f, 0.95f, 1.0f);
+        snowGrass.colorBottom = glm::vec4(0.4f, 0.5f, 0.55f, 1.0f);
+        snowGrass.height = 0.2f;
+        snowGrass.width = 0.04f;
+        snowGrass.density = 0.1f;
+        snowGrass.windInfluence = 0.2f;
+        snowGrass.rigidity = 0.8f;
+        SetGrassProperties(Biome::Snow, snowGrass);
+    }
+
     void GrassManager::Update(float deltaTime, float time, const Camera& camera, const ITerrainGenerator& terrainGen, std::shared_ptr<TerrainRenderManager> renderManager) {
-        if (!enabled_ || !initialized_) return;
+        if (!initialized_) return;
 
         if (props_dirty_) {
             glBindBuffer(GL_UNIFORM_BUFFER, grass_props_ubo_);
             glBufferSubData(GL_UNIFORM_BUFFER, 0, 8 * sizeof(GrassProperties), biome_grass_props_.data());
+            glBufferSubData(GL_UNIFORM_BUFFER, 8 * sizeof(GrassProperties), sizeof(GlobalGrassProperties), &global_props_);
             glBindBuffer(GL_UNIFORM_BUFFER, 0);
             props_dirty_ = false;
         }
+
+        if (!IsEnabled()) return;
 
         PROJECT_PROFILE_SCOPE("GrassManager::Update");
         _UpdatePlacement(camera, terrainGen, renderManager);
@@ -130,7 +214,7 @@ namespace Boidsish {
     }
 
     void GrassManager::Render(const glm::mat4& view, const glm::mat4& projection, std::shared_ptr<TerrainRenderManager> renderManager, const RenderResources& res, bool isShadowPass) {
-        if (!enabled_ || !initialized_) return;
+        if (!IsEnabled() || !initialized_) return;
 
         PROJECT_PROFILE_SCOPE("GrassManager::Render");
 
