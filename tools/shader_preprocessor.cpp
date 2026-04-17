@@ -31,6 +31,10 @@ int main(int argc, char** argv) {
     ShaderBase::RegisterConstant("MAX_LIGHTS", Boidsish::Constants::Class::Shadows::MaxLights());
     ShaderBase::RegisterConstant("MAX_SHADOW_MAPS", Boidsish::Constants::Class::Shadows::MaxShadowMaps());
     ShaderBase::RegisterConstant("MAX_CASCADES", Boidsish::Constants::Class::Shadows::MaxCascades());
+    ShaderBase::RegisterConstant("VOLUMETRIC_GRID_SIZE_X", Boidsish::Constants::Class::VolumetricLighting::GridSizeX());
+    ShaderBase::RegisterConstant("VOLUMETRIC_GRID_SIZE_Y", Boidsish::Constants::Class::VolumetricLighting::GridSizeY());
+    ShaderBase::RegisterConstant("VOLUMETRIC_GRID_SIZE_Z", Boidsish::Constants::Class::VolumetricLighting::GridSizeZ());
+    ShaderBase::RegisterConstant("VOLUMETRIC_MAX_CASCADES", Boidsish::Constants::Class::VolumetricLighting::MaxCascades());
     ShaderBase::RegisterConstant("CHUNK_SIZE", Boidsish::Constants::Class::Terrain::ChunkSize());
     ShaderBase::RegisterConstant("CHUNK_SIZE_PLUS_1", Boidsish::Constants::Class::Terrain::ChunkSizePlus1());
     ShaderBase::RegisterConstant("MAX_SHOCKWAVES", Boidsish::Constants::Class::Shockwaves::MaxShockwaves());
@@ -50,11 +54,13 @@ int main(int argc, char** argv) {
     ShaderBase::RegisterConstant("SDF_VOLUMES_BINDING", Boidsish::Constants::UboBinding::SdfVolumes());
     ShaderBase::RegisterConstant("TEMPORAL_DATA_BINDING", Boidsish::Constants::UboBinding::TemporalData());
     ShaderBase::RegisterConstant("GRASS_PROPS_BINDING", Boidsish::Constants::UboBinding::GrassProps());
+    ShaderBase::RegisterConstant("VOLUMETRIC_LIGHTING_BINDING", Boidsish::Constants::UboBinding::VolumetricLighting());
 
     // SSBO Bindings
     ShaderBase::RegisterConstant("OCCLUSION_VISIBILITY_BINDING", Boidsish::Constants::SsboBinding::OcclusionVisibility());
     ShaderBase::RegisterConstant("GRASS_INSTANCES_BINDING", Boidsish::Constants::SsboBinding::GrassInstances());
     ShaderBase::RegisterConstant("GRASS_INDIRECT_BINDING", Boidsish::Constants::SsboBinding::GrassIndirect());
+    ShaderBase::RegisterConstant("VOLUMETRIC_FROXEL_DATA_BINDING", Boidsish::Constants::SsboBinding::VolumetricFroxelData());
 
     Preprocessor p;
     std::string processed = p.process(inputPath);
