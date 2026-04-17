@@ -1,5 +1,3 @@
-#ifndef LIGHTING_GLSL
-#define LIGHTING_GLSL
 
 struct Light {
 	vec3  position;
@@ -92,4 +90,3 @@ uniform sampler2DArrayShadow shadowMaps;
 // This is set via uniform since the Light struct can't easily store it
 uniform int lightShadowIndices[MAX_LIGHTS];
 
-#endif

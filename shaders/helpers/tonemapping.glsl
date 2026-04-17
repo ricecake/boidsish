@@ -1,5 +1,3 @@
-#ifndef TONEMAPPING_GLSL
-#define TONEMAPPING_GLSL
 
 // Auto-exposure SSBO
 layout(std430, binding = 11) buffer AutoExposure {
@@ -206,4 +204,3 @@ vec3 applyTonemapping(vec3 tex, int toneMapMode) {
 	}
 }
 
-#endif // TONEMAPPING_GLSL

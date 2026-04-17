@@ -1,5 +1,3 @@
-#ifndef SHOCKWAVE_HELPER_GLSL
-#define SHOCKWAVE_HELPER_GLSL
 
 // Maximum number of simultaneous shockwaves (must match C++ kMaxShockwaves)
 #define MAX_SHOCKWAVES [[MAX_SHOCKWAVES]]
@@ -72,4 +70,3 @@ vec3 getShockwaveDisplacement(vec3 worldPos, float localHeight, bool useSway) {
 	return totalDisplacement;
 }
 
-#endif

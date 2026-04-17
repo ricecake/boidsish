@@ -1,5 +1,3 @@
-#ifndef PARTICLE_HELPERS_GLSL
-#define PARTICLE_HELPERS_GLSL
 
 // Basic pseudo-random number generator
 float rand(vec2 co) {
@@ -39,4 +37,3 @@ float fbmCurlMagnitude(vec3 p, float time, sampler3D curlTexture) {
 	return texture(curlTexture, lookupPos).a;
 }
 
-#endif

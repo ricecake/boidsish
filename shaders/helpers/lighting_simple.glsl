@@ -1,5 +1,3 @@
-#ifndef HELPERS_LIGHTING_SIMPLE_GLSL
-#define HELPERS_LIGHTING_SIMPLE_GLSL
 
 // Simple lighting without shadow support
 // Use this for shaders that don't need shadows (sky, trails, etc.)
@@ -15,4 +13,3 @@
 
 #include "types/lighting.glsl"
 
-#endif // HELPERS_LIGHTING_SIMPLE_GLSL

@@ -1,5 +1,3 @@
-#ifndef SPATIAL_HASH_GLSL
-#define SPATIAL_HASH_GLSL
 
 uint get_cell_idx(vec3 pos, float cellSize, uint gridSize) {
 	ivec3 cellPos = ivec3(floor(pos / cellSize));
@@ -8,4 +6,3 @@ uint get_cell_idx(vec3 pos, float cellSize, uint gridSize) {
 	return h % gridSize;
 }
 
-#endif

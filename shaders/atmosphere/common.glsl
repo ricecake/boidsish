@@ -1,5 +1,3 @@
-#ifndef ATMOSPHERE_COMMON_GLSL
-#define ATMOSPHERE_COMMON_GLSL
 
 #include "../helpers/constants.glsl"
 
@@ -104,4 +102,3 @@ void UVToTransmittance(vec2 uv, out float r, out float mu) {
 	r = kEarthRadius + uv.y * kAtmosphereHeight;
 }
 
-#endif

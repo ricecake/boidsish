@@ -1,5 +1,3 @@
-#ifndef HELPERS_CLOUDS_GLSL
-#define HELPERS_CLOUDS_GLSL
 
 #include "types/lighting.glsl"
 #include "fast_noise.glsl"
@@ -208,4 +206,3 @@ float evaluateCloudShadowDensityAtWorldPos(vec2 worldXZ, float time) {
 	return calculateCloudShadowDensity(cloudPos, weather, layer, props, time);
 }
 
-#endif // HELPERS_CLOUDS_GLSL
