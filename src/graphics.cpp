@@ -1153,6 +1153,11 @@ namespace Boidsish {
 			if (terrain_idx != GL_INVALID_INDEX) {
 				glUniformBlockBinding(shader_to_setup.ID, terrain_idx, Constants::UboBinding::TerrainData());
 			}
+
+			GLuint plant_idx = glGetUniformBlockIndex(shader_to_setup.ID, "PlantProps");
+			if (plant_idx != GL_INVALID_INDEX) {
+				glUniformBlockBinding(shader_to_setup.ID, plant_idx, Constants::UboBinding::PlantProps());
+			}
 		}
 
 		void SetupAkiraBindings() {
@@ -2587,6 +2592,7 @@ namespace Boidsish {
 					GrassManager::RenderResources res{};
 					res.lightingUbo = lighting_ubo;
 					res.shadowUbo = shadow_manager->GetShadowUbo();
+					res.time = simulation_time;
 					grass_manager->Render(
 						glm::mat4(1.0f),
 						light_space_matrix,
@@ -2664,6 +2670,7 @@ namespace Boidsish {
 						shadow_indices[j] = all_lights[j].shadow_map_index;
 					}
 					res.shadowIndices = shadow_indices.data();
+					res.time = simulation_time;
 
 					grass_manager->Render(
 						frame.view,
@@ -2681,7 +2688,8 @@ namespace Boidsish {
 					plant_manager->Render(
 						frame.view,
 						frame.projection,
-						res
+						res,
+						temporal_data_ubo
 					);
 				}
 

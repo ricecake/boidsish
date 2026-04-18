@@ -88,7 +88,7 @@ void spawnPlant(ivec2 cellID, float gridStep, float range) {
     // Alien plants like lush grass or forest biomes
     if (pickedBiome != 1 && pickedBiome != 3) return;
 
-    if (hash(seed + 9999) > 0.05) return; // Rare
+    if (hash(seed + 9999) > 0.6) return; // Balanced rarity
 
     uint idx = atomicAdd(indirectCommand.instanceCount, 1);
     if (idx >= uint(uMaxInstances)) return;
@@ -101,6 +101,7 @@ void spawnPlant(ivec2 cellID, float gridStep, float range) {
 void main() {
     float gridStep = 4.0 * uWorldScale;
     ivec2 cameraCell = ivec2(floor(uCameraPos.xz / gridStep));
-    ivec2 cellID = cameraCell + (ivec2(gl_GlobalInvocationID.xy) - 128);
-    spawnPlant(cellID, gridStep, 200.0 * uWorldScale);
+    // Center the dispatch around the camera. 64x64 threads -> 32 offset.
+    ivec2 cellID = cameraCell + (ivec2(gl_GlobalInvocationID.xy) - 32);
+    spawnPlant(cellID, gridStep, 150.0 * uWorldScale);
 }

@@ -64,6 +64,7 @@ namespace Boidsish {
             uint32_t curlTexture;
             uint32_t extraNoiseTexture;
             const int* shadowIndices;
+            float time;
         };
 
         void Render(const glm::mat4& view, const glm::mat4& projection, std::shared_ptr<class TerrainRenderManager> renderManager, const RenderResources& resources, bool isShadowPass = false);

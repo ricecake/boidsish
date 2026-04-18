@@ -93,15 +93,17 @@ vec3 getSplinePoint(float t, vec3 basePos, float seed, float length) {
 
     // Curve
     p.x += sin(t * 3.14159 * 0.5) * props.curveStrength * length;
+    p.z += (1.0 - cos(t * 3.14159 * 0.5)) * props.curveStrength * length;
 
     // Spiral
     float spiral = t * props.spiralFrequency * 6.28318;
-    p.x += cos(spiral + seed) * props.curveStrength * 0.5 * h;
-    p.z += sin(spiral + seed) * props.curveStrength * 0.5 * h;
+    float spiralRadius = t * props.curveStrength * length * 0.3;
+    p.x += cos(spiral + seed) * spiralRadius;
+    p.z += sin(spiral + seed) * spiralRadius;
 
     // Zig-zag
-    p.x += sin(t * 20.0 + seed) * props.zigZagStrength * length * 0.1;
-    p.z += cos(t * 15.0 - seed) * props.zigZagStrength * length * 0.1;
+    p.x += sin(t * 20.0 + seed * 123.0) * props.zigZagStrength * length * 0.1;
+    p.z += cos(t * 15.0 - seed * 456.0) * props.zigZagStrength * length * 0.1;
 
     // Wind sway
     vec2 windUV = basePos.xz * 0.05 + uTime * 0.45;
@@ -245,9 +247,9 @@ void main() {
             float normalX = encodedNormal.x;
             float normalY = encodedNormal.y;
             // Pack as: X.YYYY (since they are 0..1)
-            float packed = floor(normalX * 1000.0 + 0.5) + clamp(normalY, 0.0, 0.999);
+            float packedNormalValToStore = floor(normalX * 1000.0 + 0.5) + clamp(normalY, 0.0, 0.999);
 
-            grass_instances[g_idx].pos_rot = vec4(pos, packed);
+            grass_instances[g_idx].pos_rot = vec4(pos, packedNormalValToStore);
             grass_instances[g_idx].scale_seed_biome = vec4(
                 0.4 * uWorldScale, // height
                 0.06 * uWorldScale, // width

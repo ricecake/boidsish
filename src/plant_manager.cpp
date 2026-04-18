@@ -33,6 +33,19 @@ namespace Boidsish {
             // return; // Continue for now, maybe they will be created later
         }
 
+        // Bind UBOs for the plant shader (Lighting, Shadows, PlantProps)
+        GLuint lighting_idx = glGetUniformBlockIndex(plant_shader_->ID, "Lighting");
+        if (lighting_idx != GL_INVALID_INDEX)
+            glUniformBlockBinding(plant_shader_->ID, lighting_idx, Constants::UboBinding::Lighting());
+
+        GLuint shadows_idx = glGetUniformBlockIndex(plant_shader_->ID, "Shadows");
+        if (shadows_idx != GL_INVALID_INDEX)
+            glUniformBlockBinding(plant_shader_->ID, shadows_idx, Constants::UboBinding::Shadows());
+
+        GLuint plant_idx = glGetUniformBlockIndex(plant_shader_->ID, "PlantProps");
+        if (plant_idx != GL_INVALID_INDEX)
+            glUniformBlockBinding(plant_shader_->ID, plant_idx, Constants::UboBinding::PlantProps());
+
         _InitializeResources();
         initialized_ = true;
     }
@@ -95,6 +108,8 @@ namespace Boidsish {
             placement_shader_->setFloat("uWorldScale", terrainGen.GetWorldScale());
             placement_shader_->setFloat("uMaxInstances", (float)kMaxPlantInstances);
 
+            // The terrain data UBO/Textures are already bound by BindTerrainData
+
             // Reset instanceCount in indirect buffer for placement (we use instanceCount as a counter here)
             uint32_t zero = 0;
             glBindBuffer(GL_SHADER_STORAGE_BUFFER, plant_indirect_buffer_);
@@ -136,7 +151,7 @@ namespace Boidsish {
         }
     }
 
-    void PlantManager::Render(const glm::mat4& view, const glm::mat4& projection, const GrassManager::RenderResources& res, bool isShadowPass) {
+    void PlantManager::Render(const glm::mat4& view, const glm::mat4& projection, const GrassManager::RenderResources& res, uint32_t temporalUbo, bool isShadowPass) {
         if (!initialized_ || !enabled_) return;
 
         PROJECT_PROFILE_SCOPE("PlantManager::Render");
@@ -144,10 +159,13 @@ namespace Boidsish {
         plant_shader_->use();
         plant_shader_->setMat4("view", view);
         plant_shader_->setMat4("projection", projection);
+        plant_shader_->setFloat("uTime", res.time);
         plant_shader_->setBool("uIsShadowPass", isShadowPass);
 
         glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Lighting(), res.lightingUbo);
         glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Shadows(), res.shadowUbo);
+        glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::PlantProps(), plant_props_ubo_);
+        glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::TemporalData(), temporalUbo);
 
         if (!isShadowPass) {
             glActiveTexture(GL_TEXTURE4);
@@ -159,7 +177,9 @@ namespace Boidsish {
         glBindVertexArray(dummy_vao_);
         glBindBuffer(GL_DRAW_INDIRECT_BUFFER, plant_indirect_buffer_);
 
+        glDisable(GL_CULL_FACE);
         glDrawArraysIndirect(GL_TRIANGLES, (void*)0);
+        glEnable(GL_CULL_FACE);
 
         glBindVertexArray(0);
         glBindBuffer(GL_DRAW_INDIRECT_BUFFER, 0);

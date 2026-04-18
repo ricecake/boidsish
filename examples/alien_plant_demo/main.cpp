@@ -10,6 +10,12 @@ int main() {
         Visualizer visualizer(1280, 720, "Alien Plant Demo");
 
         visualizer.AddPrepareCallback([](Visualizer& v) {
+            // Center camera near biomes where plants spawn
+            v.GetCamera().x = 10.0f;
+            v.GetCamera().z = 10.0f;
+            v.GetCamera().y = 20.0f;
+            v.GetCamera().pitch = -30.0f;
+
             auto plantManager = v.GetPlantManager();
             if (plantManager) {
                 PlantProperties props;

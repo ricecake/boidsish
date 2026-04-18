@@ -12,9 +12,14 @@ out float vs_type;
 
 uniform mat4 view;
 uniform mat4 projection;
+uniform float uTime;
 uniform bool uIsShadowPass;
 
 #include "helpers/lighting.glsl"
+#include "temporal_data.glsl"
+
+out vec4 CurPosition;
+out vec4 PrevPosition;
 
 void main() {
     vs_frag_pos = aPos.xyz;
@@ -24,4 +29,6 @@ void main() {
     vs_type = aColor.w;
 
     gl_Position = projection * view * vec4(vs_frag_pos, 1.0);
+    CurPosition = gl_Position;
+    PrevPosition = prevViewProjection * vec4(vs_frag_pos, 1.0);
 }

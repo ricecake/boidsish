@@ -109,9 +109,9 @@ void main() {
     // Combined Rotation matrix (Base rotation around Y or Normal-aligned)
     mat3 alignMat = mat3(1.0);
     if (isAlienPlant) {
-        float packed = baseRotation;
-        float normalX = floor(packed) * 0.001;
-        float normalY = fract(packed);
+        float packedNormalValFromBase = baseRotation;
+        float normalX = floor(packedNormalValFromBase) * 0.001;
+        float normalY = fract(packedNormalValFromBase);
         vec3 N = octDecode(vec2(normalX, normalY) * 2.0 - 1.0);
         vec3 T = abs(N.y) < 0.9 ? vec3(0, 1, 0) : vec3(1, 0, 0);
         vec3 B = normalize(cross(N, T));
