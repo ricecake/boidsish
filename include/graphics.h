@@ -574,6 +574,7 @@ namespace Boidsish {
 		DecorManager*                          GetDecorManager();
 		void                                   SetDecorManager(std::shared_ptr<DecorManager> decor_manager);
 		GrassManager*                          GetGrassManager();
+		class PlantManager*                    GetPlantManager();
 		WeatherManager*                        GetWeatherManager();
 		PostProcessing::PostProcessingManager& GetPostProcessingManager();
 		float                                  GetLastFrameTime() const;

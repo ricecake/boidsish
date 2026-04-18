@@ -1,0 +1,259 @@
+#version 430 core
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+#include "helpers/noise.glsl"
+
+struct PlantInstance {
+    vec4 pos_rot;   // xyz = world pos, w = rotation
+    vec4 seed_params; // x = seed, y = biome, zw = unused
+};
+
+layout(std430, binding = [[PLANT_INSTANCES_BINDING]]) buffer PlantInstances {
+    PlantInstance instances[];
+};
+
+struct DrawArraysIndirectCommand {
+    uint count;
+    uint instanceCount;
+    uint first;
+    uint baseInstance;
+};
+
+layout(std430, binding = [[PLANT_INDIRECT_BINDING]]) buffer PlantIndirect {
+    DrawArraysIndirectCommand indirectCommand;
+};
+
+struct PlantVertex {
+    vec4 pos;    // xyz = pos, w = u
+    vec4 normal; // xyz = normal, w = v
+    vec4 color;  // rgb = color, w = type (0=tube, 1=ball)
+};
+
+layout(std430, binding = [[PLANT_GENERATED_VBO_BINDING]]) buffer GeneratedVBO {
+    PlantVertex out_vertices[];
+};
+
+struct GrassInstance {
+    vec4 pos_rot;   // xyz = world pos, w = rotation
+    vec4 scale_seed_biome; // x = height, y = width, z = seed, w = biome index
+};
+
+layout(std430, binding = [[GRASS_INSTANCES_BINDING]]) buffer GrassInstances {
+    GrassInstance grass_instances[];
+};
+
+layout(std430, binding = [[GRASS_INDIRECT_BINDING]]) buffer GrassIndirect {
+    uint grass_count;
+    uint grass_instanceCount;
+    uint grass_first;
+    uint grass_baseInstance;
+};
+
+struct PlantProperties {
+    vec4 tubeColor;
+    vec4 ballColor;
+    vec4 grassColor;
+    float tubeRadius;
+    float tubeLength;
+    float ballRadius;
+    float grassDensity;
+    float curveStrength;
+    float spiralFrequency;
+    float zigZagStrength;
+    float windInfluence;
+    uint enabled;
+    float _pad0, _pad1, _pad2;
+};
+
+layout(std140, binding = [[PLANT_PROPS_BINDING]]) uniform PlantProps {
+    PlantProperties props;
+};
+
+uniform float uTime;
+uniform float uWorldScale;
+uniform float uMaxVertices;
+
+float hash(uint x) {
+    x = ((x >> 16) ^ x) * 0x45d9f3b;
+    x = ((x >> 16) ^ x) * 0x45d9f3b;
+    x = (x >> 16) ^ x;
+    return float(x) / 4294967295.0;
+}
+
+vec2 octEncode(vec3 n) {
+    n /= (abs(n.x) + abs(n.y) + abs(n.z));
+    vec2 res = n.y >= 0.0 ? n.xz : (1.0 - abs(n.zx)) * sign(n.xz);
+    return res * 0.5 + 0.5;
+}
+
+vec3 getSplinePoint(float t, vec3 basePos, float seed, float length) {
+    float h = t * length;
+    vec3 p = basePos + vec3(0, h, 0);
+
+    // Curve
+    p.x += sin(t * 3.14159 * 0.5) * props.curveStrength * length;
+
+    // Spiral
+    float spiral = t * props.spiralFrequency * 6.28318;
+    p.x += cos(spiral + seed) * props.curveStrength * 0.5 * h;
+    p.z += sin(spiral + seed) * props.curveStrength * 0.5 * h;
+
+    // Zig-zag
+    p.x += sin(t * 20.0 + seed) * props.zigZagStrength * length * 0.1;
+    p.z += cos(t * 15.0 - seed) * props.zigZagStrength * length * 0.1;
+
+    // Wind sway
+    vec2 windUV = basePos.xz * 0.05 + uTime * 0.45;
+    vec2 windNoise = curlNoise2D(windUV) * 0.1 * props.windInfluence;
+    p.xz += windNoise * t * t * length;
+
+    return p;
+}
+
+void main() {
+    uint plantID = gl_GlobalInvocationID.x;
+    if (plantID >= indirectCommand.instanceCount) return;
+
+    PlantInstance inst = instances[plantID];
+    vec3 basePos = inst.pos_rot.xyz;
+    float seed = inst.seed_params.x;
+    float length = props.tubeLength * uWorldScale;
+
+    const int num_rings = 16;
+    const int verts_per_ring = 8;
+
+    // 1. Generate Tube
+    uint tube_vertex_count = (num_rings - 1) * verts_per_ring * 6;
+    uint base_v_idx = atomicAdd(indirectCommand.count, tube_vertex_count);
+    if (base_v_idx + tube_vertex_count > uint(uMaxVertices)) return;
+
+    for (int i = 0; i < num_rings; ++i) {
+        float t = float(i) / float(num_rings - 1);
+        vec3 p = getSplinePoint(t, basePos, seed, length);
+        vec3 p_next = getSplinePoint(t + 0.01, basePos, seed, length);
+        vec3 tangent = normalize(p_next - p);
+        vec3 up_vec = abs(tangent.y) < 0.9 ? vec3(0, 1, 0) : vec3(1, 0, 0);
+        vec3 right_vec = normalize(cross(tangent, up_vec));
+        up_vec = normalize(cross(right_vec, tangent));
+
+        float radius = props.tubeRadius * uWorldScale * (1.0 - t * 0.5); // Taper
+
+        if (i < num_rings - 1) {
+            float t_next = float(i + 1) / float(num_rings - 1);
+            vec3 p_n = getSplinePoint(t_next, basePos, seed, length);
+            vec3 p_next_n = getSplinePoint(t_next + 0.01, basePos, seed, length);
+            vec3 tangent_n = normalize(p_next_n - p_n);
+            vec3 up_n = abs(tangent_n.y) < 0.9 ? vec3(0, 1, 0) : vec3(1, 0, 0);
+            vec3 right_n = normalize(cross(tangent_n, up_n));
+            up_n = normalize(cross(right_n, tangent_n));
+            float radius_n = props.tubeRadius * uWorldScale * (1.0 - t_next * 0.5);
+
+            for (int j = 0; j < verts_per_ring; ++j) {
+                float u = float(j) / float(verts_per_ring);
+                float angle = u * 6.28318;
+                vec3 n0 = right_vec * cos(angle) + up_vec * sin(angle);
+                vec3 pos0 = p + n0 * radius;
+
+                float u_next = float(j + 1) / float(verts_per_ring);
+                float angle_next = u_next * 6.28318;
+                vec3 n_next = right_vec * cos(angle_next) + up_vec * sin(angle_next);
+                vec3 pos_next = p + n_next * radius;
+
+                vec3 n0_n = right_n * cos(angle) + up_n * sin(angle);
+                vec3 pos0_n = p_n + n0_n * radius_n;
+
+                vec3 n_next_n = right_n * cos(angle_next) + up_n * sin(angle_next);
+                vec3 pos_next_n = p_n + n_next_n * radius_n;
+
+                uint v_idx = base_v_idx + (i * verts_per_ring + j) * 6;
+                out_vertices[v_idx + 0] = PlantVertex(vec4(pos0, u), vec4(n0, t), props.tubeColor);
+                out_vertices[v_idx + 1] = PlantVertex(vec4(pos0_n, u), vec4(n0_n, t_next), props.tubeColor);
+                out_vertices[v_idx + 2] = PlantVertex(vec4(pos_next, u_next), vec4(n_next, t), props.tubeColor);
+
+                out_vertices[v_idx + 3] = PlantVertex(vec4(pos_next, u_next), vec4(n_next, t), props.tubeColor);
+                out_vertices[v_idx + 4] = PlantVertex(vec4(pos0_n, u), vec4(n0_n, t_next), props.tubeColor);
+                out_vertices[v_idx + 5] = PlantVertex(vec4(pos_next_n, u_next), vec4(n_next_n, t_next), props.tubeColor);
+            }
+        }
+    }
+
+    // 2. Generate Ball
+    vec3 ballCenter = getSplinePoint(1.0, basePos, seed, length);
+    const int ball_rings = 8;
+    const int ball_segments = 8;
+    uint ball_vertex_count = ball_rings * ball_segments * 6;
+    uint ball_v_idx = atomicAdd(indirectCommand.count, ball_vertex_count);
+    if (ball_v_idx + ball_vertex_count > uint(uMaxVertices)) return;
+
+    for (int i = 0; i < ball_rings; ++i) {
+        float lat0 = 3.14159 * (-0.5 + float(i) / ball_rings);
+        float z0 = sin(lat0);
+        float r0 = cos(lat0);
+
+        float lat1 = 3.14159 * (-0.5 + float(i + 1) / ball_rings);
+        float z1 = sin(lat1);
+        float r1 = cos(lat1);
+
+        for (int j = 0; j < ball_segments; ++j) {
+            float lng0 = 2.0 * 3.14159 * float(j) / ball_segments;
+            float x0 = cos(lng0);
+            float y0 = sin(lng0);
+
+            float lng1 = 2.0 * 3.14159 * float(j + 1) / ball_segments;
+            float x1 = cos(lng1);
+            float y1 = sin(lng1);
+
+            vec3 n00 = vec3(x0 * r0, z0, y0 * r0);
+            vec3 n10 = vec3(x1 * r0, z0, y1 * r0);
+            vec3 n01 = vec3(x0 * r1, z1, y0 * r1);
+            vec3 n11 = vec3(x1 * r1, z1, y1 * r1);
+
+            vec3 p00 = ballCenter + n00 * props.ballRadius * uWorldScale;
+            vec3 p10 = ballCenter + n10 * props.ballRadius * uWorldScale;
+            vec3 p01 = ballCenter + n01 * props.ballRadius * uWorldScale;
+            vec3 p11 = ballCenter + n11 * props.ballRadius * uWorldScale;
+
+            uint v_base = ball_v_idx + (i * ball_segments + j) * 6;
+            out_vertices[v_base + 0] = PlantVertex(vec4(p00, 0), vec4(n00, 1.0), props.ballColor);
+            out_vertices[v_base + 1] = PlantVertex(vec4(p10, 0), vec4(n10, 1.0), props.ballColor);
+            out_vertices[v_base + 2] = PlantVertex(vec4(p01, 0), vec4(n01, 1.0), props.ballColor);
+
+            out_vertices[v_base + 3] = PlantVertex(vec4(p01, 0), vec4(n01, 1.0), props.ballColor);
+            out_vertices[v_base + 4] = PlantVertex(vec4(p10, 0), vec4(n10, 1.0), props.ballColor);
+            out_vertices[v_base + 5] = PlantVertex(vec4(p11, 0), vec4(n11, 1.0), props.ballColor);
+        }
+    }
+
+    // 3. Generate Grass on Ball
+    int num_grass = int(props.grassDensity * 40.0);
+    for (int g = 0; g < num_grass; ++g) {
+        uint g_seed = uint(seed) ^ uint(g * 12345);
+        float phi = acos(2.0 * hash(g_seed) - 1.0);
+        float theta = 2.0 * 3.14159 * hash(g_seed + 1u);
+
+        vec3 normal = vec3(sin(phi) * cos(theta), cos(phi), sin(phi) * sin(theta));
+        vec3 pos = ballCenter + normal * props.ballRadius * uWorldScale;
+
+        uint g_idx = atomicAdd(grass_instanceCount, 1);
+        if (g_idx < 1000000) {
+            vec2 encodedNormal = octEncode(normal);
+            // We'll pack the normal into the rotation field and a special biome index
+            float packedNormal = encodedNormal.x + floor(encodedNormal.y * 1000.0) * 0.001;
+            // Actually, let's just use two floats or pack them into a single one more carefully.
+            // pos_rot.w is rotation. Let's use it for encoded normal.
+            float normalX = encodedNormal.x;
+            float normalY = encodedNormal.y;
+            // Pack as: X.YYYY (since they are 0..1)
+            float packed = floor(normalX * 1000.0 + 0.5) + clamp(normalY, 0.0, 0.999);
+
+            grass_instances[g_idx].pos_rot = vec4(pos, packed);
+            grass_instances[g_idx].scale_seed_biome = vec4(
+                0.4 * uWorldScale, // height
+                0.06 * uWorldScale, // width
+                float(g_seed),
+                10.0 // Special biome flag for alien plant grass
+            );
+        }
+    }
+}

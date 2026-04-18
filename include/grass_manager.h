@@ -85,6 +85,9 @@ namespace Boidsish {
             props_dirty_ = true;
         }
 
+        uint32_t GetGrassInstancesSSBO() const { return grass_instances_ssbo_; }
+        uint32_t GetGrassIndirectBuffer() const { return grass_indirect_buffer_; }
+
     private:
         bool initialized_ = false;
 

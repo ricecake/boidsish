@@ -67,6 +67,14 @@ float hash(uint x) {
 	return float(x) / 4294967295.0;
 }
 
+vec3 octDecode(vec2 encoded) {
+    vec3 n = vec3(encoded.x, 1.0 - abs(encoded.x) - abs(encoded.y), encoded.y);
+    float t = max(-n.y, 0.0);
+    n.x += n.x >= 0.0 ? -t : t;
+    n.z += n.z >= 0.0 ? -t : t;
+    return normalize(n);
+}
+
 void main() {
     int idx = tInstanceID[0];
     vec3 basePos = instances[idx].pos_rot.xyz;
@@ -75,6 +83,7 @@ void main() {
     float width = instances[idx].scale_seed_biome.y;
     uint seed = uint(instances[idx].scale_seed_biome.z);
     int biomeIdx = int(instances[idx].scale_seed_biome.w);
+    bool isAlienPlant = biomeIdx >= 10;
 
     float v = gl_TessCoord.y; // along blade (0 to 1)
     float u = gl_TessCoord.x * 2.0 - 1.0; // across blade (-1 to 1)
@@ -97,17 +106,31 @@ void main() {
     // Random gentle bend/sway
     float randomBend = (hash(seed + 4321) * 2.0 - 1.0) * 0.1 * v * v;
 
-    // Combined Rotation matrix (Base rotation around Y)
-    float s = sin(baseRotation);
-    float c = cos(baseRotation);
-    mat2 rotMat = mat2(c, s, -s, c);
+    // Combined Rotation matrix (Base rotation around Y or Normal-aligned)
+    mat3 alignMat = mat3(1.0);
+    if (isAlienPlant) {
+        float packed = baseRotation;
+        float normalX = floor(packed) * 0.001;
+        float normalY = fract(packed);
+        vec3 N = octDecode(vec2(normalX, normalY) * 2.0 - 1.0);
+        vec3 T = abs(N.y) < 0.9 ? vec3(0, 1, 0) : vec3(1, 0, 0);
+        vec3 B = normalize(cross(N, T));
+        T = normalize(cross(B, N));
+        alignMat = mat3(B, N, T); // N is up for the blade
+    } else {
+        float s = sin(baseRotation);
+        float c = cos(baseRotation);
+        alignMat = mat3(
+            c, 0, s,
+            0, 1, 0,
+           -s, 0, c
+        );
+    }
 
-    vec2 localXZ = vec2(u * width * 0.5 * (1.0 - v * v), 0.0); // Parabolic taper
-    localXZ = rotMat * localXZ;
+    vec3 localPos = vec3(u * width * 0.5 * (1.0 - v * v), v * height, 0.0);
+    vec3 worldOffset = alignMat * localPos;
 
-    vec3 pos = basePos;
-    pos.xz += localXZ;
-    pos.y += v * height;
+    vec3 pos = basePos + worldOffset;
 
     // Apply base tilt and wind-driven bend
     // We displace the XZ position additively based on height
@@ -116,18 +139,21 @@ void main() {
     pos.z += tiltAngle * height;
 
     // Ensure the blade doesn't sink into the ground during heavy bending
-    float distFromBase = length(pos.xz - basePos.xz);
-    pos.y = basePos.y + sqrt(max(0.0, height * height * v * v - distFromBase * distFromBase));
+    // (Only for terrain grass)
+    if (!isAlienPlant) {
+        float distFromBase = length(pos.xz - basePos.xz);
+        pos.y = basePos.y + sqrt(max(0.0, height * height * v * v - distFromBase * distFromBase));
+    }
 
     // Rounded Normals across the width
-    vec3 faceNormal = normalize(vec3(-s, 0.0, c));
-    vec3 sideVec = normalize(vec3(c, 0.0, s));
-    fNormal = normalize(faceNormal + sideVec * u * 0.8 + vec3(0.0, v * 0.3, 0.0));
+    vec3 faceNormal = alignMat[2]; // Forward vector of alignment
+    vec3 sideVec = alignMat[0];    // Right vector of alignment
+    fNormal = normalize(faceNormal + sideVec * u * 0.8 + alignMat[1] * v * 0.3);
 
     fTexCoords = vec2(u * 0.5 + 0.5, v);
     fHeightFactor = v;
     fWorldPos = pos;
-    fBiomeIdx = biomeIdx;
+    fBiomeIdx = isAlienPlant ? 1 : biomeIdx; // Fallback to lush grass props for alien grass
 
     gl_Position = projection * view * vec4(pos, 1.0);
 }
