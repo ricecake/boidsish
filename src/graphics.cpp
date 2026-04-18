@@ -500,6 +500,12 @@ namespace Boidsish {
 		glm::quat             path_orientation_ = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
 		float                 path_auto_bank_angle_ = 0.0f;
 
+		// First person camera state
+		float fp_vertical_velocity = 0.0f;
+		bool  fp_is_grounded = false;
+		float fp_smoothed_ground_height = 0.0f;
+		float fp_current_eye_height = Constants::Project::Camera::FirstPersonEyeHeight();
+
 		bool is_fullscreen_ = false;
 		int  windowed_xpos_, windowed_ypos_, windowed_width_, windowed_height_;
 
@@ -2023,6 +2029,8 @@ namespace Boidsish {
 				UpdateChaseCamera(input_state.delta_time);
 			} else if (camera_mode == CameraMode::PATH_FOLLOW) {
 				UpdatePathFollowCamera(input_state.delta_time);
+			} else if (camera_mode == CameraMode::FIRST_PERSON) {
+				UpdateFirstPersonCamera(input_state.delta_time);
 			}
 		}
 
@@ -2765,6 +2773,9 @@ namespace Boidsish {
 					single_track_orbit_pitch = -89.0f;
 				break;
 			}
+			case CameraMode::FIRST_PERSON:
+				// Input for first person is handled in UpdateFirstPersonCamera
+				break;
 			default:
 				// No movement controls for other modes (AUTO, STATIONARY, CHASE)
 				break;
@@ -2784,6 +2795,8 @@ namespace Boidsish {
 					parent->SetCameraMode(CameraMode::AUTO);
 				} else if (state.key_down[GLFW_KEY_7]) {
 					parent->SetCameraMode(CameraMode::STATIONARY);
+				} else if (state.key_down[GLFW_KEY_6]) {
+					parent->SetCameraMode(CameraMode::FIRST_PERSON);
 				}
 			}
 
@@ -3039,6 +3052,93 @@ namespace Boidsish {
 			camera.yaw = glm::degrees(atan2(front.x, -front.z));
 			camera.pitch = glm::degrees(asin(front.y));
 			camera.pitch = std::max(-89.0f, std::min(89.0f, camera.pitch));
+		}
+
+		void UpdateFirstPersonCamera(float delta_time) {
+			if (camera_mode != CameraMode::FIRST_PERSON) {
+				return;
+			}
+
+			// 1. Handle Input for Horizontal Movement
+			float move_speed = camera.speed;
+			if (input_state.keys[GLFW_KEY_LEFT_SHIFT]) {
+				move_speed *= Constants::Project::Camera::FirstPersonSprintMultiplier();
+			}
+
+			glm::vec3 front_full = camera.front();
+			glm::vec3 front_xz = glm::normalize(glm::vec3(front_full.x, 0.0f, front_full.z));
+			glm::vec3 right_xz = glm::normalize(glm::cross(front_xz, glm::vec3(0.0f, 1.0f, 0.0f)));
+
+			glm::vec3 move_dir(0.0f);
+			if (input_state.keys[GLFW_KEY_W])
+				move_dir += front_xz;
+			if (input_state.keys[GLFW_KEY_S])
+				move_dir -= front_xz;
+			if (input_state.keys[GLFW_KEY_A])
+				move_dir -= right_xz;
+			if (input_state.keys[GLFW_KEY_D])
+				move_dir += right_xz;
+
+			if (glm::length(move_dir) > 0.001f) {
+				move_dir = glm::normalize(move_dir);
+				camera.x += move_dir.x * move_speed * delta_time;
+				camera.z += move_dir.z * move_speed * delta_time;
+			}
+
+			// 2. Handle Crouch
+			float target_eye_height = input_state.keys[GLFW_KEY_LEFT_CONTROL]
+				? Constants::Project::Camera::FirstPersonCrouchHeight()
+				: Constants::Project::Camera::FirstPersonEyeHeight();
+
+			// Smoothly interpolate eye height
+			fp_current_eye_height = glm::mix(fp_current_eye_height, target_eye_height, 1.0f - exp(-delta_time * 10.0f));
+
+			// 3. Ground Sampling and Smoothing
+			// Sample multiple points around the camera for more stable height
+			float     avg_ground_height = 0.0f;
+			float     sample_radius = 0.5f;
+			glm::vec2 samples[] = {
+				{0.0f, 0.0f}, {sample_radius, 0.0f}, {-sample_radius, 0.0f}, {0.0f, sample_radius}, {0.0f, -sample_radius}
+			};
+
+			int valid_samples = 0;
+			for (const auto& offset : samples) {
+				auto [h, n] = parent->GetTerrainPropertiesAtPoint(camera.x + offset.x, camera.z + offset.y);
+				avg_ground_height += h;
+				valid_samples++;
+			}
+			avg_ground_height /= valid_samples;
+
+			// Dampen the ground height response
+			float ground_lerp = 1.0f - exp(-delta_time * Constants::Project::Camera::FirstPersonGroundSmoothing());
+			fp_smoothed_ground_height = glm::mix(fp_smoothed_ground_height, avg_ground_height, ground_lerp);
+
+			// 4. Vertical Physics (Gravity and Jump)
+			if (fp_is_grounded) {
+				fp_vertical_velocity = 0.0f;
+				camera.y = fp_smoothed_ground_height + fp_current_eye_height;
+
+				if (input_state.keys[GLFW_KEY_SPACE]) {
+					fp_vertical_velocity = Constants::Project::Camera::FirstPersonJumpForce();
+					fp_is_grounded = false;
+				}
+			} else {
+				fp_vertical_velocity -= Constants::Project::Camera::FirstPersonGravity() * delta_time;
+				camera.y += fp_vertical_velocity * delta_time;
+
+				// Landing check
+				if (camera.y <= fp_smoothed_ground_height + fp_current_eye_height) {
+					camera.y = fp_smoothed_ground_height + fp_current_eye_height;
+					fp_vertical_velocity = 0.0f;
+					fp_is_grounded = true;
+				}
+			}
+
+			// 5. Rotation handling (Mouse)
+			float sensitivity = 0.1f;
+			camera.yaw += input_state.mouse_delta_x * sensitivity;
+			camera.pitch += input_state.mouse_delta_y * sensitivity;
+			camera.pitch = std::clamp(camera.pitch, -89.0f, 89.0f);
 		}
 
 		void UpdatePathFollowCamera(float delta_time) {
@@ -3634,6 +3734,11 @@ namespace Boidsish {
 		state.path_orientation = impl->path_orientation_;
 		state.path_auto_bank_angle = impl->path_auto_bank_angle_;
 
+		state.fp_vertical_velocity = impl->fp_vertical_velocity;
+		state.fp_is_grounded = impl->fp_is_grounded;
+		state.fp_smoothed_ground_height = impl->fp_smoothed_ground_height;
+		state.fp_current_eye_height = impl->fp_current_eye_height;
+
 		return state;
 	}
 
@@ -3691,6 +3796,11 @@ namespace Boidsish {
 		impl->path_direction_ = state.path_direction;
 		impl->path_orientation_ = state.path_orientation;
 		impl->path_auto_bank_angle_ = state.path_auto_bank_angle;
+
+		impl->fp_vertical_velocity = state.fp_vertical_velocity;
+		impl->fp_is_grounded = state.fp_is_grounded;
+		impl->fp_smoothed_ground_height = state.fp_smoothed_ground_height;
+		impl->fp_current_eye_height = state.fp_current_eye_height;
 	}
 
 	void Visualizer::LookAt(const glm::vec3& target) {
@@ -3971,6 +4081,15 @@ namespace Boidsish {
 			break;
 		case CameraMode::PATH_FOLLOW:
 			glfwSetInputMode(impl->window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+			break;
+		case CameraMode::FIRST_PERSON:
+			glfwSetInputMode(impl->window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+			impl->first_mouse = true;
+			// Reset first person state
+			impl->fp_vertical_velocity = 0.0f;
+			impl->fp_is_grounded = false;
+			auto [h, n] = GetTerrainPropertiesAtPoint(impl->camera.x, impl->camera.z);
+			impl->fp_smoothed_ground_height = h;
 			break;
 		}
 	}
