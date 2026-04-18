@@ -229,6 +229,14 @@ public:
 		}
 	}
 
+	void trySetBool(const std::string& name, bool value) const {
+		int loc = getUniformLocation(name);
+		if (loc != -1) {
+			glUniform1i(loc, (int)value);
+			m_UniformValues[loc] = UniformValue{value};
+		}
+	}
+
 	// ------------------------------------------------------------------------
 	void setUint(const std::string& name, unsigned int value) const {
 		int loc = getUniformLocation(name);
