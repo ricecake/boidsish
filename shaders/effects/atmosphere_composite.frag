@@ -1,9 +1,9 @@
 #version 430 core
+#include "../textures/scene.glsl"
 out vec4 FragColor;
 
 in vec2 TexCoords;
 
-uniform sampler2D sceneTexture;
 uniform sampler2D depthTexture;
 uniform sampler2D cloudTexture; // Low-res clouds (temporally accumulated)
 
@@ -21,7 +21,7 @@ uniform sampler3D u_aerialPerspectiveLUT;
 
 #include "../atmosphere/common.glsl"
 #include "../helpers/lighting.glsl"
-#include "helpers/math.glsl"
+#include "../helpers/math.glsl"
 
 vec3 sampleAerialPerspective(vec3 rd, float distKM) {
 	float azimuth = atan(rd.x, -rd.z);

@@ -25,7 +25,6 @@ out float      vRidgeMap;
 out float      vSubstrate;
 
 // Heightmap texture array: R=height, GBA=normal
-uniform sampler2DArray uHeightmap;
 uniform float          uChunkSize;
 uniform float          uRawChunkSize;
 
@@ -37,9 +36,11 @@ uniform bool uIsShadowPass = false;
 #include "helpers/erosion.glsl"
 #include "helpers/lighting.glsl"
 #include "helpers/shockwave.glsl"
+#include "textures/terrain.glsl"
+#include "textures/terrain.glsl"
 #include "helpers/terrain_noise.glsl"
 #include "temporal_data.glsl"
-#include "visual_effects.glsl"
+#include "types/visual_effects.glsl"
 
 // #include "helpers/fast_noise.glsl"
 

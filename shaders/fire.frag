@@ -1,6 +1,9 @@
 #version 430 core
 
 #include "types/lighting.glsl"
+#include "types/shadows.glsl"
+#include "types/terrain.glsl"
+#include "types/biomes.glsl"
 #include "types/particle_types.glsl"
 
 in float         v_lifetime;

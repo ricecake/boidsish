@@ -1,7 +1,11 @@
 #version 430 core
 
-#include "frustum.glsl"
+#include "helpers/frustum.glsl"
+#include "types/occlusion_visibility.glsl"
 #include "types/lighting.glsl"
+#include "types/shadows.glsl"
+#include "types/terrain.glsl"
+#include "types/biomes.glsl"
 #include "types/particle_types.glsl"
 
 uniform mat4  u_view;

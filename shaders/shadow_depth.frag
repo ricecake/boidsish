@@ -1,11 +1,14 @@
 #version 430 core
 
 
-#include "common_uniforms.glsl"
+#include "types/common.glsl"
+#include "types/temporal_data.glsl"
+#include "types/lighting.glsl"
+#include "types/lighting.glsl"
+#include "types/terrain.glsl"
+#include "types/biomes.glsl"
+#include "types/shadows.glsl"
 
-layout(std430, binding = 2) buffer UniformsSSBO {
-	CommonUniforms uniforms_data[];
-};
 
 uniform bool uUseMDI = false;
 in vec3      FragPos;

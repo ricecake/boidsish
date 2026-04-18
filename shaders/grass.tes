@@ -57,6 +57,9 @@ flat out int fBiomeIdx;
 
 #include "helpers/noise.glsl"
 #include "types/lighting.glsl"
+#include "types/shadows.glsl"
+#include "types/terrain.glsl"
+#include "types/biomes.glsl"
 #include "helpers/lighting.glsl"
 
 // Simple hash for random values

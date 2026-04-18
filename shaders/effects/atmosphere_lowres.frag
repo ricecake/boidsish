@@ -16,7 +16,7 @@ uniform vec3 cloudColorUniform;
 #include "../helpers/clouds.glsl"
 #include "../helpers/fast_noise.glsl"
 #include "../helpers/lighting.glsl"
-#include "helpers/math.glsl"
+#include "../helpers/math.glsl"
 
 uniform sampler2D u_skyViewLUT;
 

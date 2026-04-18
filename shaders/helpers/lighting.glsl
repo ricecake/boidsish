@@ -2,6 +2,9 @@
 #include "helpers/terrain_shadows.glsl"
 #include "helpers/constants.glsl"
 #include "types/lighting.glsl"
+#include "types/terrain.glsl"
+#include "types/biomes.glsl"
+#include "types/shadows.glsl"
 #include "helpers/clouds.glsl"
 
 // Atmosphere constants for transmittance lookup

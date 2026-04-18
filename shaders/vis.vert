@@ -7,31 +7,28 @@ layout(location = 8) in vec3 aVertexColor;
 layout(location = 9) in ivec4 aBoneIDs;
 layout(location = 10) in vec4 aWeights;
 
-#include "common_uniforms.glsl"
+#include "types/common.glsl"
+#include "types/temporal_data.glsl"
+#include "types/lighting.glsl"
 
-layout(std430, binding = 2) buffer UniformsSSBO {
-	CommonUniforms uniforms_data[];
-};
 
 uniform bool uUseMDI = false;
 
 // SSBO for decor/foliage instancing (binding 10)
-layout(std430, binding = 10) buffer SSBOInstances {
-	mat4 ssboInstanceMatrices[];
-};
 
 // SSBO for bone matrices (binding 12)
-layout(std430, binding = 12) buffer BoneMatricesSSBO {
-	mat4 boneMatrices[];
-};
 
-#include "frustum.glsl"
+#include "helpers/frustum.glsl"
+#include "types/occlusion_visibility.glsl"
+#include "types/terrain.glsl"
+#include "types/biomes.glsl"
+#include "types/common_types.glsl"
 #include "helpers/fast_noise.glsl"
 #include "helpers/lighting.glsl"
 #include "helpers/shockwave.glsl"
-#include "temporal_data.glsl"
-#include "visual_effects.glsl"
-#include "visual_effects.vert"
+#include "types/temporal_data.glsl"
+#include "types/lighting.glsl"
+#include "helpers/visual_effects.vert"
 
 out vec3     FragPos;
 out vec4     CurPosition;
@@ -60,9 +57,6 @@ uniform float frustumCullRadius = 5.0; // Approximate object radius for sphere t
 uniform bool  enableHiZCulling = false;
 
 // Hi-Z occlusion visibility (per-draw, written by occlusion_cull.comp)
-layout(std430, binding = 13) readonly buffer OcclusionVisibility {
-	uint hiz_visibility[];
-};
 
 uniform vec3  u_aabbMin;
 uniform vec3  u_aabbMax;

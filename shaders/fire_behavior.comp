@@ -1,8 +1,12 @@
 #version 430 core
 
 #define COMPUTE_SHADER
-#include "frustum.glsl"
+#include "helpers/frustum.glsl"
+#include "types/occlusion_visibility.glsl"
 #include "types/lighting.glsl"
+#include "types/shadows.glsl"
+#include "types/terrain.glsl"
+#include "types/biomes.glsl"
 #include "particle_behavior.glsl"
 #include "particle_helpers.glsl"
 #include "particle_lifecycle.glsl"
@@ -17,8 +21,6 @@ uniform uint  u_grid_size;
 uniform float u_cell_size;
 
 uniform sampler3D      u_curlTexture;
-uniform sampler2DArray u_heightmapArray;
-uniform sampler2DArray u_biomeMap;
 
 layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
 

@@ -1,6 +1,7 @@
 #version 430 core
 
 #include "helpers/lighting.glsl"
+#include "textures/shadows.glsl"
 
 in vec3 fFragPos;
 in vec3 fNormal;

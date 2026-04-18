@@ -11,7 +11,8 @@ uniform mat4 view;
 uniform mat4 projection;
 
 #include "helpers/lighting.glsl"
-#include "temporal_data.glsl"
+#include "types/temporal_data.glsl"
+#include "types/lighting.glsl"
 
 void main() {
 	WorldPos = vec3(model * vec4(aPos, 1.0));

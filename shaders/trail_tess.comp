@@ -2,21 +2,21 @@
 
 layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
 
-#include "trail_common.glsl"
+#include "types/trail_types.glsl"
 
-layout(std430, binding = 18) readonly buffer TrailPointsSSBO {
+layout(std430, binding = [[TRAIL_POINTS_BINDING]]) readonly buffer TrailPointsSSBO {
 	TrailPoint points[];
 };
 
-layout(std430, binding = 19) readonly buffer TrailInstancesSSBO {
+layout(std430, binding = [[TRAIL_INSTANCES_BINDING]]) readonly buffer TrailInstancesSSBO {
 	TrailInstance instances[];
 };
 
-layout(std430, binding = 20) buffer TrailSpineSSBO {
+layout(std430, binding = [[TRAIL_SPINE_DATA_BINDING]]) buffer TrailSpineSSBO {
 	TrailSpinePoint spine[];
 };
 
-layout(std430, binding = 0) writeonly buffer GeneratedVBO {
+layout(std430, binding = [[TRAIL_GENERATED_VBO_BINDING]]) writeonly buffer GeneratedVBO {
 	TrailVertex out_vertices[];
 };
 

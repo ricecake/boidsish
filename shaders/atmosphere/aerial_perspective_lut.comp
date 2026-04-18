@@ -19,6 +19,9 @@ uniform float u_colorVarianceStrength;
 
 #include "../helpers/fast_noise.glsl"
 #include "types/lighting.glsl"
+#include "types/shadows.glsl"
+#include "types/terrain.glsl"
+#include "types/biomes.glsl"
 #include "common.glsl"
 
 vec3 getTransmittance(float r, float mu) {

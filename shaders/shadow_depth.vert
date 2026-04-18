@@ -5,28 +5,28 @@ layout(location = 0) in vec3 aPos;
 layout(location = 9) in ivec4 aBoneIDs;
 layout(location = 10) in vec4 aWeights;
 
-#include "common_uniforms.glsl"
+#include "types/common.glsl"
+#include "types/temporal_data.glsl"
+#include "types/lighting.glsl"
+#include "types/lighting.glsl"
+#include "types/terrain.glsl"
+#include "types/biomes.glsl"
+#include "types/shadows.glsl"
 
-layout(std430, binding = 2) buffer UniformsSSBO {
-	CommonUniforms uniforms_data[];
-};
 
 // SSBO for decor/foliage instancing (binding 10)
-layout(std430, binding = 10) buffer SSBOInstances {
-	mat4 ssboInstanceMatrices[];
-};
 
 // SSBO for bone matrices (binding 12)
-layout(std430, binding = 12) buffer BoneMatricesSSBO {
-	mat4 boneMatrices[];
-};
 
 #include "helpers/fast_noise.glsl"
 #include "helpers/noise.glsl"
 #include "helpers/shockwave.glsl"
 #include "types/lighting.glsl"
-#include "temporal_data.glsl"
-#include "visual_effects.glsl"
+#include "types/shadows.glsl"
+#include "types/terrain.glsl"
+#include "types/biomes.glsl"
+#include "types/temporal_data.glsl"
+#include "types/lighting.glsl"
 
 uniform bool uUseMDI = false;
 uniform bool useSSBOInstancing = false;

@@ -12,7 +12,9 @@ in vec4 PrevPosition;
 
 #include "helpers/terrain_shadows.glsl"
 #include "helpers/lighting.glsl"
-#include "temporal_data.glsl"
+#include "textures/shadows.glsl"
+#include "types/temporal_data.glsl"
+#include "types/lighting.glsl"
 
 uniform mat4 view;
 

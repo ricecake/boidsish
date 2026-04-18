@@ -1,7 +1,7 @@
 
 #include "types/lighting.glsl"
-#include "fast_noise.glsl"
-#include "math.glsl"
+#include "helpers/fast_noise.glsl"
+#include "helpers/math.glsl"
 
 float cloudPhase(float cosTheta) {
 	// Dual-lobe Henyey-Greenstein for forward and back scattering

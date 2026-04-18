@@ -1,9 +1,9 @@
 #version 430 core
+#include "../textures/scene.glsl"
 out vec4 FragColor;
 
 in vec2 TexCoords;
 
-uniform sampler2D sceneTexture;
 uniform sampler2D strobeTexture;
 
 uniform float time;

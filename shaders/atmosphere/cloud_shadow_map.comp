@@ -6,6 +6,9 @@ layout(r16f, binding = 0) uniform image2D u_cloudShadowMap;
 
 #include "../helpers/constants.glsl"
 #include "types/lighting.glsl"
+#include "types/shadows.glsl"
+#include "types/terrain.glsl"
+#include "types/biomes.glsl"
 #include "../helpers/clouds.glsl"
 
 uniform vec2 u_mapCenter;

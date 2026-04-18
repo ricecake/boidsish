@@ -21,7 +21,6 @@ out vec3       WorldPos_TC_out[];
 out vec3       WorldNorm_TC_out[];
 
 // Heightmap texture array: R=height, GBA=normal
-uniform sampler2DArray uHeightmap;
 uniform float          uChunkSize;
 uniform float          uRawChunkSize;
 
