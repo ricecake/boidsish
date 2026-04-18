@@ -159,6 +159,18 @@ namespace Boidsish {
 
 		void SetSpatialScale(float scale) { spatial_scale_ = scale; }
 
+		bool IsMacroSimEnabled() const { return macro_sim_enabled_; }
+		void SetMacroSimEnabled(bool enabled) { macro_sim_enabled_ = enabled; }
+
+		float GetSimTau() const { return lbm_simulator_ ? lbm_simulator_->GetTau() : 0.8f; }
+		void  SetSimTau(float tau) {
+			if (lbm_simulator_) lbm_simulator_->SetTau(tau);
+		}
+
+		void ResetMacroSim() {
+			if (lbm_simulator_ && terrain_) lbm_simulator_->Reset(*terrain_);
+		}
+
 		const CurrentWeather& GetCurrentWeather() const { return current_; }
 		CurrentWeather&       GetCurrentWeatherMutable() { return current_; }
 
@@ -235,6 +247,7 @@ namespace Boidsish {
 		void UpdateAttribute(WeatherAttribute attr, float target, float deltaTime);
 
 		bool  enabled_ = true;
+		bool  macro_sim_enabled_ = true;
 		float time_scale_ = 0.005f;    // Low frequency over time
 		float spatial_scale_ = 0.001f; // Low frequency over space
 		float hold_threshold_ = 0.05f; // Noise-space distance threshold for updates
