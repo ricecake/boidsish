@@ -221,7 +221,8 @@ namespace Boidsish {
         grass_shader_->use();
         grass_shader_->setMat4("view", view);
         grass_shader_->setMat4("projection", projection);
-        grass_shader_->setFloat("time", (float)glfwGetTime());
+        // We use the time passed in via resources or simulation time for sync
+        grass_shader_->setFloat("time", res.time);
         grass_shader_->setBool("uIsShadowPass", isShadowPass);
         grass_shader_->setVec3("uCameraPos", last_camera_pos_);
         grass_shader_->setFloat("worldScale", 1.0f); // Fallback if needed, but usually bound via UBO

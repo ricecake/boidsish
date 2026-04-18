@@ -5,6 +5,7 @@
 #include "ConfigManager.h"
 #include "decor_manager.h"
 #include "grass_manager.h"
+#include "plant_manager.h"
 #include "graphics.h"
 #include "imgui.h"
 #include "post_processing/PostProcessingManager.h"
@@ -467,6 +468,37 @@ namespace Boidsish {
 					float wind_frequency = config.GetAppSettingFloat("wind_frequency", 0.01f);
 					if (ImGui::SliderFloat("Wind Frequency", &wind_frequency, 0.01f, 1.0f)) {
 						config.SetFloat("wind_frequency", wind_frequency);
+					}
+				}
+
+				// 5.5 Alien Plants
+				if (ImGui::CollapsingHeader("Alien Plants", ImGuiTreeNodeFlags_DefaultOpen)) {
+					auto plant_manager = m_visualizer.GetPlantManager();
+					if (plant_manager) {
+						bool enabled = plant_manager->IsEnabled();
+						if (ImGui::Checkbox("Enable Alien Plants", &enabled)) {
+							plant_manager->SetEnabled(enabled);
+						}
+
+						if (enabled) {
+							auto& props = plant_manager->GetProperties();
+							bool changed = false;
+							if (ImGui::ColorEdit3("Tube Color", &props.tubeColor[0])) changed = true;
+							if (ImGui::ColorEdit3("Ball Color", &props.ballColor[0])) changed = true;
+							if (ImGui::ColorEdit3("Grass Color", &props.grassColor[0])) changed = true;
+							if (ImGui::SliderFloat("Tube Radius", &props.tubeRadius, 0.01f, 1.0f)) changed = true;
+							if (ImGui::SliderFloat("Tube Length", &props.tubeLength, 0.5f, 10.0f)) changed = true;
+							if (ImGui::SliderFloat("Ball Radius", &props.ballRadius, 0.1f, 2.0f)) changed = true;
+							if (ImGui::SliderFloat("Grass Density", &props.grassDensity, 0.0f, 5.0f)) changed = true;
+							if (ImGui::SliderFloat("Curve Strength", &props.curveStrength, 0.0f, 2.0f)) changed = true;
+							if (ImGui::SliderFloat("Spiral Frequency", &props.spiralFrequency, 0.0f, 10.0f)) changed = true;
+							if (ImGui::SliderFloat("Zig-Zag Strength", &props.zigZagStrength, 0.0f, 2.0f)) changed = true;
+							if (ImGui::SliderFloat("Plant Wind Influence", &props.windInfluence, 0.0f, 5.0f)) changed = true;
+
+							if (changed) {
+								plant_manager->MarkDirty();
+							}
+						}
 					}
 				}
 

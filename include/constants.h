@@ -56,6 +56,10 @@ namespace Boidsish {
 			consteval int DecorPlacementGlobals() {
 				return 31;
 			}
+
+			consteval int PlantProps() {
+				return 50;
+			}
 		} // namespace UboBinding
 
 		namespace SsboBinding {
@@ -181,6 +185,18 @@ namespace Boidsish {
 
 			consteval int AtmosphereSH() {
 				return 43;
+			}
+
+			consteval int PlantInstances() {
+				return 54;
+			}
+
+			consteval int PlantIndirect() {
+				return 55;
+			}
+
+			consteval int PlantGeneratedVBO() {
+				return 56;
 			}
 		} // namespace SsboBinding
 

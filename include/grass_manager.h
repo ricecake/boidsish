@@ -64,6 +64,7 @@ namespace Boidsish {
             uint32_t curlTexture;
             uint32_t extraNoiseTexture;
             const int* shadowIndices;
+            float time;
         };
 
         void Render(const glm::mat4& view, const glm::mat4& projection, std::shared_ptr<class TerrainRenderManager> renderManager, const RenderResources& resources, bool isShadowPass = false);
@@ -84,6 +85,9 @@ namespace Boidsish {
             global_props_ = props;
             props_dirty_ = true;
         }
+
+        uint32_t GetGrassInstancesSSBO() const { return grass_instances_ssbo_; }
+        uint32_t GetGrassIndirectBuffer() const { return grass_indirect_buffer_; }
 
     private:
         bool initialized_ = false;

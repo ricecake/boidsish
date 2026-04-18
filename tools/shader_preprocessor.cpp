@@ -67,6 +67,10 @@ int main(int argc, char** argv) {
     ShaderBase::RegisterConstant("BONE_MATRIX_BINDING", Boidsish::Constants::SsboBinding::BoneMatrix());
     ShaderBase::RegisterConstant("ATMOSPHERE_SH_BINDING", Boidsish::Constants::SsboBinding::AtmosphereSH());
     ShaderBase::RegisterConstant("MESH_EXPLOSION_FRAGMENTS_BINDING", Boidsish::Constants::SsboBinding::MeshExplosionFragments());
+    ShaderBase::RegisterConstant("PLANT_PROPS_BINDING", Boidsish::Constants::UboBinding::PlantProps());
+    ShaderBase::RegisterConstant("PLANT_INSTANCES_BINDING", Boidsish::Constants::SsboBinding::PlantInstances());
+    ShaderBase::RegisterConstant("PLANT_INDIRECT_BINDING", Boidsish::Constants::SsboBinding::PlantIndirect());
+    ShaderBase::RegisterConstant("PLANT_GENERATED_VBO_BINDING", Boidsish::Constants::SsboBinding::PlantGeneratedVBO());
 
     Preprocessor p;
     std::string processed = p.process(inputPath);

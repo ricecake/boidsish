@@ -25,6 +25,7 @@
 #include "curved_text.h"
 #include "decor_manager.h"
 #include "grass_manager.h"
+#include "plant_manager.h"
 #include "dot.h"
 #include "entity.h"
 #include "fire_effect_manager.h"
@@ -133,6 +134,10 @@ namespace Boidsish {
 		ShaderBase::RegisterConstant("BIOME_DATA_BINDING", Boidsish::Constants::UboBinding::Biomes());
 		ShaderBase::RegisterConstant("ATMOSPHERE_SH_BINDING", Boidsish::Constants::SsboBinding::AtmosphereSH());
 		ShaderBase::RegisterConstant("MESH_EXPLOSION_FRAGMENTS_BINDING", Boidsish::Constants::SsboBinding::MeshExplosionFragments());
+		ShaderBase::RegisterConstant("PLANT_PROPS_BINDING", Boidsish::Constants::UboBinding::PlantProps());
+		ShaderBase::RegisterConstant("PLANT_INSTANCES_BINDING", Boidsish::Constants::SsboBinding::PlantInstances());
+		ShaderBase::RegisterConstant("PLANT_INDIRECT_BINDING", Boidsish::Constants::SsboBinding::PlantIndirect());
+		ShaderBase::RegisterConstant("PLANT_GENERATED_VBO_BINDING", Boidsish::Constants::SsboBinding::PlantGeneratedVBO());
 
 		registered = true;
 	}
@@ -421,6 +426,7 @@ namespace Boidsish {
 		std::unique_ptr<SceneManager>                     scene_manager;
 		std::shared_ptr<DecorManager>                     decor_manager;
 		std::unique_ptr<GrassManager>                     grass_manager;
+		std::unique_ptr<PlantManager>                     plant_manager;
 		std::map<int, std::shared_ptr<Trail>>             trails;
 		std::map<int, float>                              trail_last_update;
 		LightManager                                      light_manager;
@@ -786,6 +792,7 @@ namespace Boidsish {
 			scene_manager = std::make_unique<SceneManager>("scenes");
 			decor_manager = std::make_unique<DecorManager>();
 			grass_manager = std::make_unique<GrassManager>();
+			plant_manager = std::make_unique<PlantManager>();
 			atmosphere_manager = std::make_unique<AtmosphereManager>();
 			atmosphere_manager->Initialize();
 			weather_manager = std::make_unique<WeatherManager>(terrain_generator.get());
@@ -1145,6 +1152,11 @@ namespace Boidsish {
 			GLuint terrain_idx = glGetUniformBlockIndex(shader_to_setup.ID, "TerrainData");
 			if (terrain_idx != GL_INVALID_INDEX) {
 				glUniformBlockBinding(shader_to_setup.ID, terrain_idx, Constants::UboBinding::TerrainData());
+			}
+
+			GLuint plant_idx = glGetUniformBlockIndex(shader_to_setup.ID, "PlantProps");
+			if (plant_idx != GL_INVALID_INDEX) {
+				glUniformBlockBinding(shader_to_setup.ID, plant_idx, Constants::UboBinding::PlantProps());
 			}
 		}
 
@@ -2542,6 +2554,18 @@ namespace Boidsish {
 					terrain_render_manager
 				);
 			}
+
+			if (plant_manager && terrain_generator && terrain_render_manager) {
+				plant_manager->Update(
+					simulation_delta_time,
+					simulation_time,
+					camera,
+					*terrain_generator,
+					terrain_render_manager,
+					grass_manager->GetGrassInstancesSSBO(),
+					grass_manager->GetGrassIndirectBuffer()
+				);
+			}
 		}
 
 		void RenderShadowPasses(const FrameData& frame) {
@@ -2568,6 +2592,7 @@ namespace Boidsish {
 					GrassManager::RenderResources res{};
 					res.lightingUbo = lighting_ubo;
 					res.shadowUbo = shadow_manager->GetShadowUbo();
+					res.time = simulation_time;
 					grass_manager->Render(
 						glm::mat4(1.0f),
 						light_space_matrix,
@@ -2645,12 +2670,26 @@ namespace Boidsish {
 						shadow_indices[j] = all_lights[j].shadow_map_index;
 					}
 					res.shadowIndices = shadow_indices.data();
+					res.time = simulation_time;
 
 					grass_manager->Render(
 						frame.view,
 						frame.projection,
 						terrain_render_manager,
 						res
+					);
+				}
+
+				if (plant_manager) {
+					GrassManager::RenderResources res{};
+					res.lightingUbo = lighting_ubo;
+					res.shadowUbo = shadow_manager->GetShadowUbo();
+					res.shadowMaps = shadow_manager->GetShadowMapArray();
+					plant_manager->Render(
+						frame.view,
+						frame.projection,
+						res,
+						temporal_data_ubo
 					);
 				}
 
@@ -3595,6 +3634,10 @@ namespace Boidsish {
 				impl->grass_manager->SetGlobalProperties(props);
 			}
 
+			if (impl->plant_manager) {
+				impl->plant_manager->Initialize();
+			}
+
 			if (impl->decor_manager) {
 				impl->decor_manager->PopulateDefaultDecor();
 				impl->decor_manager->PrepareResources(impl->megabuffer.get());
@@ -4379,6 +4422,10 @@ namespace Boidsish {
 
 	GrassManager* Visualizer::GetGrassManager() {
 		return impl->grass_manager.get();
+	}
+
+	PlantManager* Visualizer::GetPlantManager() {
+		return impl->plant_manager.get();
 	}
 
 	WeatherManager* Visualizer::GetWeatherManager() {
