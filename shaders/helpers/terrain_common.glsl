@@ -9,7 +9,11 @@ layout(std140, binding = [[TERRAIN_DATA_BINDING]]) uniform TerrainData {
 };
 #endif
 
+#ifndef TERRAIN_GRID_DEFINED
+	#define TERRAIN_GRID_DEFINED
 uniform isampler2D u_chunkGrid;
+#endif
+
 uniform sampler2D  u_maxHeightGrid;
 uniform sampler2DArray u_heightmapArray;
 

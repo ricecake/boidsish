@@ -64,7 +64,7 @@ namespace Boidsish {
 
 		namespace TextureUnit {
 			consteval int WindData() {
-				return 10;
+				return 14;
 			}
 		} // namespace TextureUnit
 
