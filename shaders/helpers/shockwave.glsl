@@ -11,7 +11,7 @@ struct ShockwaveData {
 };
 
 // Shockwave UBO (binding point 4)
-layout(std140, binding = 4) uniform Shockwaves {
+layout(std140, binding = [[SHOCKWAVES_BINDING]]) uniform Shockwaves {
 	int           shockwave_count; // Padded to 16 bytes
 	int           _pad1, _pad2, _pad3;
 	ShockwaveData shockwaves[MAX_SHOCKWAVES];

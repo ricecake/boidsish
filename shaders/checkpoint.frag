@@ -4,7 +4,9 @@ layout(location = 1) out vec4 Velocity;
 layout(location = 2) out vec4 NormalOut;
 layout(location = 3) out vec4 AlbedoOut;
 
-#include "common_uniforms.glsl"
+#include "types/common.glsl"
+#include "types/temporal_data.glsl"
+#include "types/lighting.glsl"
 
 layout(std430, binding = [[COMMON_UNIFORMS_BINDING]]) buffer UniformsSSBO {
 	CommonUniforms uniforms_data[];

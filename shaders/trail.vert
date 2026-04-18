@@ -9,7 +9,9 @@ out vec3     vs_normal;
 out vec3     vs_frag_pos;
 flat out int vUniformIndex;
 
-#include "common_uniforms.glsl"
+#include "types/common.glsl"
+#include "types/temporal_data.glsl"
+#include "types/lighting.glsl"
 
 layout(std430, binding = [[COMMON_UNIFORMS_BINDING]]) buffer UniformsSSBO {
 	CommonUniforms uniforms_data[];
@@ -23,7 +25,7 @@ uniform vec4 clipPlane;
 
 #include "helpers/lighting.glsl"
 #include "helpers/noise.glsl"
-#include "temporal_data.glsl"
+#include "types/temporal_data.glsl"
 
 out vec4 CurPosition;
 out vec4 PrevPosition;

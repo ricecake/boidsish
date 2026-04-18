@@ -20,10 +20,12 @@ in float      vSubstrate;
 
 #include "helpers/erosion.glsl"
 #include "helpers/fast_noise.glsl"
+#include "helpers/math.glsl"
 #include "helpers/terrain_noise.glsl"
 #include "helpers/terrain_shadows.glsl"
 #include "helpers/lighting.glsl"
-#include "visual_effects.glsl"
+#include "textures/shadows.glsl"
+#include "types/lighting.glsl"
 // #include "helpers/noise.glsl"
 
 uniform bool uIsShadowPass = false;

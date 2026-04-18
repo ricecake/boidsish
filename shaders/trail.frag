@@ -12,7 +12,9 @@ in vec4     CurPosition;
 in vec4     PrevPosition;
 flat in int vUniformIndex;
 
-#include "common_uniforms.glsl"
+#include "types/common.glsl"
+#include "types/temporal_data.glsl"
+#include "types/lighting.glsl"
 
 layout(std430, binding = [[COMMON_UNIFORMS_BINDING]]) buffer UniformsSSBO {
 	CommonUniforms uniforms_data[];
@@ -23,6 +25,7 @@ uniform bool uUseMDI = false;
 // #define USE_TERRAIN_DATA
 // #include "helpers/terrain_shadows.glsl"
 #include "helpers/lighting.glsl"
+#include "textures/shadows.glsl"
 
 uniform mat4  view;
 uniform bool  useIridescence;

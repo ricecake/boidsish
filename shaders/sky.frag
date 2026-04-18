@@ -9,6 +9,7 @@ in vec2 TexCoords;
 
 #include "atmosphere/common.glsl"
 #include "helpers/lighting.glsl"
+#include "textures/shadows.glsl"
 
 uniform mat4 invProjection;
 uniform mat4 invView;

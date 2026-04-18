@@ -1,13 +1,9 @@
 #version 430 core
+#include "../textures/post_processing.glsl"
 out vec4 FragColor;
 
 in vec2 TexCoords;
 
-uniform sampler2D uSceneTexture;
-uniform sampler2D uGIAOTexture;  // RGB: GI, A: AO
-uniform sampler2D uSSSTexture;   // R: SSS
-uniform sampler2D uNormalTexture; // A: traditional shadow
-uniform sampler2D uDepthTexture;  // High-res depth
 
 uniform bool  uSSGIEnabled = true;
 uniform bool  uGTAOEnabled = true;
@@ -53,13 +49,13 @@ vec4 sampleBilateral(sampler2D lowResTex, sampler2D highResDepth, vec2 uv) {
 }
 
 void main() {
-	vec4 color = texture(uSceneTexture, TexCoords);
+	vec4 color = texture(u_sceneTexture, TexCoords);
 
     // Use bilateral upsampling for low-res effects
-	vec4 giao = sampleBilateral(uGIAOTexture, uDepthTexture, TexCoords);
-	float sssFactor = sampleBilateral(uSSSTexture, uDepthTexture, TexCoords).r;
+	vec4 giao = sampleBilateral(u_giaoTexture, u_depthTexture, TexCoords);
+	float sssFactor = sampleBilateral(u_sssTexture, u_depthTexture, TexCoords).r;
 
-	float traditionalShadow = texture(uNormalTexture, TexCoords).a;
+	float traditionalShadow = texture(u_normalTexture, TexCoords).a;
 
 	vec3 result = color.rgb;
 

@@ -1,5 +1,6 @@
 
-#include "fast_noise.glsl"
+#include "textures/terrain.glsl"
+#include "helpers/fast_noise.glsl"
 
 #ifndef TERRAIN_DATA_BLOCK
 #define TERRAIN_DATA_BLOCK
@@ -16,8 +17,6 @@ uniform isampler2D u_chunkGrid;
 
 #ifndef TERRAIN_HEIGHT_SAMPLERS_DEFINED
 #define TERRAIN_HEIGHT_SAMPLERS_DEFINED
-uniform sampler2D u_maxHeightGrid;
-uniform sampler2DArray u_heightmapArray;
 #endif
 
 float getTerrainHeight(vec2 worldXZ) {

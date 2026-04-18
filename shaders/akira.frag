@@ -5,6 +5,7 @@ out vec4 FragColor;
 
 #include "helpers/terrain_shadows.glsl"
 #include "helpers/lighting.glsl"
+#include "textures/shadows.glsl"
 
 in vec3 FragPos;
 in vec3 Normal;

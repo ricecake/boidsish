@@ -1,4 +1,5 @@
 #include "graphics.h"
+#include "shader_registration.h"
 
 #include <algorithm>
 #include <array>
@@ -133,11 +134,10 @@ namespace Boidsish {
 		ShaderBase::RegisterConstant("BIOME_DATA_BINDING", Boidsish::Constants::UboBinding::Biomes());
 		ShaderBase::RegisterConstant("ATMOSPHERE_SH_BINDING", Boidsish::Constants::SsboBinding::AtmosphereSH());
 		ShaderBase::RegisterConstant("MESH_EXPLOSION_FRAGMENTS_BINDING", Boidsish::Constants::SsboBinding::MeshExplosionFragments());
+		RegisterAllShaderConstants<ShaderBase>();
 
 		registered = true;
 	}
-
-	// OpenGL Debug callback for diagnosing GPU errors
 	static void GLAPIENTRY OpenGLDebugCallback(
 		GLenum        source,
 		GLenum        type,

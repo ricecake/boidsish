@@ -6,6 +6,7 @@
 #include <filesystem>
 #include "shader.h"
 #include "constants.h"
+#include "shader_registration.h"
 
 /**
  * @brief Preprocessor class that exposes loadShaderSource from ShaderBase.
@@ -23,6 +24,8 @@ int main(int argc, char** argv) {
         std::cerr << "Usage: " << argv[0] << " <input_shader> <output_file>" << std::endl;
         return 1;
     }
+
+    Boidsish::RegisterAllShaderConstants<ShaderBase>();
 
     std::string inputPath = argv[1];
     std::string outputPath = argv[2];

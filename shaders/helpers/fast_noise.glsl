@@ -5,10 +5,6 @@
 // u_blueNoiseTexture: 2D, unit 7, RGBA tiling blue noise at 4 frequencies
 // u_extraNoiseTexture: 3D, unit 8, R=Ridge/G=Gradient
 
-uniform sampler3D u_noiseTexture;
-uniform sampler3D u_curlTexture;
-uniform sampler2D u_blueNoiseTexture;
-uniform sampler3D u_extraNoiseTexture;
 
 // R: Simplex 3D
 float fastSimplex3d(vec3 p) {

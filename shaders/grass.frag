@@ -1,7 +1,11 @@
 #version 430 core
 
 #include "types/lighting.glsl"
+#include "types/shadows.glsl"
+#include "types/terrain.glsl"
+#include "types/biomes.glsl"
 #include "helpers/lighting.glsl"
+#include "textures/shadows.glsl"
 
 in vec3 fNormal;
 in vec2 fTexCoords;

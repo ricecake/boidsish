@@ -5,8 +5,12 @@ layout(location = 1) out vec4 Velocity;
 layout(location = 2) out vec4 NormalOut;
 layout(location = 3) out vec4 AlbedoOut;
 
-#include "common_uniforms.glsl"
-#include "temporal_data.glsl"
+#include "types/common.glsl"
+#include "types/temporal_data.glsl"
+#include "types/lighting.glsl"
+#include "textures/refraction.glsl"
+#include "textures/pbr.glsl"
+#include "types/temporal_data.glsl"
 
 layout(std430, binding = [[COMMON_UNIFORMS_BINDING]]) buffer UniformsSSBO {
 	CommonUniforms uniforms_data[];
@@ -19,8 +23,9 @@ flat in int  vUniformIndex;
 
 #include "helpers/terrain_shadows.glsl"
 #include "helpers/lighting.glsl"
-#include "visual_effects.frag"
-#include "visual_effects.glsl"
+#include "textures/shadows.glsl"
+#include "helpers/visual_effects.frag"
+#include "types/lighting.glsl"
 
 in vec3  FragPos;
 in vec4  CurPosition;
@@ -64,18 +69,11 @@ uniform bool  is_refractive = false;
 uniform float refractive_index = 1.0;
 uniform vec3  emissiveColor = vec3(0.0);
 
-uniform sampler2D texture_diffuse1;
-uniform sampler2D texture_normal1;
-uniform sampler2D texture_metallic1;
-uniform sampler2D texture_roughness1;
-uniform sampler2D texture_ao1;
-uniform sampler2D texture_emissive1;
 
 // use_texture is a bitmask (see common_uniforms.glsl)
 uniform int   use_texture;
 uniform float u_windRimHighlight;
 
-uniform sampler2D refractionTexture;
 
 uniform mat4 view;
 

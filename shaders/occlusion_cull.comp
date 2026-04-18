@@ -2,8 +2,11 @@
 
 layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
-#include "common_uniforms.glsl"
-#include "temporal_data.glsl"
+#include "types/common.glsl"
+#include "types/temporal_data.glsl"
+#include "types/lighting.glsl"
+#include "types/occlusion_visibility.glsl"
+#include "types/temporal_data.glsl"
 
 // Input: per-draw uniforms (same SSBO the vertex shader reads, contains AABBs)
 layout(std430, binding = [[COMMON_UNIFORMS_BINDING]]) readonly buffer UniformsSSBO {
@@ -11,12 +14,8 @@ layout(std430, binding = [[COMMON_UNIFORMS_BINDING]]) readonly buffer UniformsSS
 };
 
 // Output: per-draw visibility (1 = visible, 0 = occluded)
-layout(std430, binding = 12) buffer OcclusionVisibility {
-	uint visibility[];
-};
 
 // Hi-Z pyramid texture
-uniform sampler2D u_hizTexture;
 uniform int       u_drawCount;
 uniform ivec2     u_hizSize; // Mip 0 dimensions
 uniform int       u_hizMipCount;
