@@ -113,7 +113,7 @@ namespace Boidsish {
 		int   sh_probe_ray_count_multiplier = 1;
 	};
 
-	enum class CameraMode { FREE, AUTO, TRACKING, STATIONARY, CHASE, PATH_FOLLOW };
+	enum class CameraMode { FREE, AUTO, TRACKING, STATIONARY, CHASE, PATH_FOLLOW, FIRST_PERSON };
 
 	// Forward declaration for PrepareCallback
 	class Visualizer;
@@ -223,6 +223,12 @@ namespace Boidsish {
 		int                   path_direction;
 		glm::quat             path_orientation;
 		float                 path_auto_bank_angle;
+
+		// First person camera state
+		float fp_vertical_velocity;
+		bool  fp_is_grounded;
+		float fp_smoothed_ground_height;
+		float fp_current_eye_height;
 	};
 
 	using InputCallback = std::function<void(const InputState&)>;
