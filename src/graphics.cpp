@@ -1094,15 +1094,15 @@ namespace Boidsish {
 				atmosphere_manager->BindToShader(shader_to_setup);
 			}
 			if (volumetric_lighting_manager) {
-				glActiveTexture(GL_TEXTURE25);
+				glActiveTexture(GL_TEXTURE28);
 				glBindTexture(GL_TEXTURE_3D, volumetric_lighting_manager->GetCascadeTexture(0));
-				shader_to_setup.trySetInt("u_volumetricIntegrated0", 25);
-				glActiveTexture(GL_TEXTURE26);
+				shader_to_setup.trySetInt("u_volumetricIntegrated0", 28);
+				glActiveTexture(GL_TEXTURE29);
 				glBindTexture(GL_TEXTURE_3D, volumetric_lighting_manager->GetCascadeTexture(1));
-				shader_to_setup.trySetInt("u_volumetricIntegrated1", 26);
-				glActiveTexture(GL_TEXTURE27);
+				shader_to_setup.trySetInt("u_volumetricIntegrated1", 29);
+				glActiveTexture(GL_TEXTURE30);
 				glBindTexture(GL_TEXTURE_3D, volumetric_lighting_manager->GetCascadeTexture(2));
-				shader_to_setup.trySetInt("u_volumetricIntegrated2", 27);
+				shader_to_setup.trySetInt("u_volumetricIntegrated2", 30);
 			}
 			shader_to_setup.setBool("uUseMDI", false);
 			shader_to_setup.setBool("useSSBOInstancing", false);

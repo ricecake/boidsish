@@ -237,18 +237,18 @@ namespace Boidsish {
 			glActiveTexture(GL_TEXTURE23);
 			glBindTexture(GL_TEXTURE_3D, aerial_perspective_lut_);
 
-			// Bind Volumetric Cascades (Units 25, 26, 27)
-			glActiveTexture(GL_TEXTURE25);
+			// Bind Volumetric Cascades (Units 28, 29, 30)
+			glActiveTexture(GL_TEXTURE28);
 			glBindTexture(GL_TEXTURE_3D, volumetric_textures_[0]);
-			composite_shader_->trySetInt("u_volumetricIntegrated0", 25);
+			composite_shader_->trySetInt("u_volumetricIntegrated0", 28);
 
-			glActiveTexture(GL_TEXTURE26);
+			glActiveTexture(GL_TEXTURE29);
 			glBindTexture(GL_TEXTURE_3D, volumetric_textures_[1]);
-			composite_shader_->trySetInt("u_volumetricIntegrated1", 26);
+			composite_shader_->trySetInt("u_volumetricIntegrated1", 29);
 
-			glActiveTexture(GL_TEXTURE27);
+			glActiveTexture(GL_TEXTURE30);
 			glBindTexture(GL_TEXTURE_3D, volumetric_textures_[2]);
-			composite_shader_->trySetInt("u_volumetricIntegrated2", 27);
+			composite_shader_->trySetInt("u_volumetricIntegrated2", 30);
 
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 
