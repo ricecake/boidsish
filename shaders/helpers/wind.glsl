@@ -56,7 +56,7 @@ vec3 getWindAtPosition(vec3 worldPos) {
 		}
 	}
 
-	// 3. Small scale chaotic noise (Curl Noise)
+// 3. Small scale chaotic noise (Curl Noise)
 	// Energy pulled from macro wind by terrain drag drives local turbulence
 	float time = u_windParams.y;
 	float curlScale = u_windParams.z;
@@ -64,7 +64,14 @@ vec3 getWindAtPosition(vec3 worldPos) {
 
 	// Scale turbulence by drag and macro speed
 	float turbulenceIntensity = drag * macroSpeed * curlStrength;
-	vec3 curl = fastCurl3d(worldPos/50.0 * curlScale + vec3(0.0, time * 0.2, 0.0));
+
+	// Advect the sampling coordinates downstream using the macro wind.
+	// You may want to expose 'advectionSpeed' as a uniform to tune the visual flow.
+	float advectionSpeed = 1.0;
+	vec3 advectedPos = worldPos - (macroWind * time * advectionSpeed);
+
+	// Sample the curl noise using the moving coordinate space
+	vec3 curl = fastCurl3d(advectedPos/10.0 * curlScale + vec3(0.0, time * 0.02, 0.0));
 
 	// Add turbulence to macro wind
 	return macroWind + curl * turbulenceIntensity;

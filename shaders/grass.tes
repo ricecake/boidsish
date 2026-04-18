@@ -58,6 +58,8 @@ flat out int fBiomeIdx;
 #include "helpers/noise.glsl"
 #include "lighting.glsl"
 #include "helpers/lighting.glsl"
+#include "helpers/wind.glsl"
+
 
 // Simple hash for random values
 float hash(uint x) {
@@ -80,8 +82,7 @@ void main() {
     float u = gl_TessCoord.x * 2.0 - 1.0; // across blade (-1 to 1)
 
     // Wind
-    vec2 windUV = basePos.xz * 0.05 + time * 0.45;
-    vec2 windNoise = curlNoise2D(windUV) * 0.1;
+    vec3 windNoise = getWindAtPosition(basePos);
     float windStrength = length(windNoise) * biomeProps[biomeIdx].windInfluence * globalProps.windMultiplier;
 
     // Base Tilt - relatively vertical (clamped to ~15 degrees)
