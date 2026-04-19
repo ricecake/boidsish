@@ -281,7 +281,24 @@ namespace Boidsish {
 		}
 
 		WindDataUbo ubo;
-		lbm_simulator_->PopulateWindData(ubo, wind_data_cache_, totalTime, current_.wind_frequency, 1.0f);
+		if (macro_sim_enabled_) {
+			lbm_simulator_->PopulateWindData(ubo, wind_data_cache_, totalTime, current_.wind_frequency, 1.0f);
+		} else {
+			// Still need to populate UBO metadata for correct texture sampling in shaders
+			lbm_simulator_->PopulateWindData(ubo, wind_data_cache_, totalTime, current_.wind_frequency, 1.0f);
+
+			// Fallback: Uniform slowly changing wind vector
+			float wind_t = totalTime * 0.05f;
+			glm::vec2 windDir(
+				Simplex::noise(glm::vec2(wind_t, 123.456f)),
+				Simplex::noise(glm::vec2(987.654f, wind_t))
+			);
+			// Scale by current tuning controls
+			float     conversion = 32.0f / 0.1f;
+			glm::vec2 windVec = windDir * current_.wind_strength * conversion;
+
+			std::fill(wind_data_cache_.begin(), wind_data_cache_.end(), glm::vec4(windVec.x, 0.0f, windVec.y, 0.0f));
+		}
 
 		glBindBuffer(GL_UNIFORM_BUFFER, wind_data_ubo_);
 		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(WindDataUbo), &ubo);
@@ -292,7 +309,17 @@ namespace Boidsish {
 		// Update Wind Texture
 		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::WindData());
 		glBindTexture(GL_TEXTURE_2D, wind_texture_);
-		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, lbm_simulator_->GetWidth(), lbm_simulator_->GetHeight(), GL_RGBA, GL_FLOAT, wind_data_cache_.data());
+		glTexSubImage2D(
+			GL_TEXTURE_2D,
+			0,
+			0,
+			0,
+			lbm_simulator_->GetWidth(),
+			lbm_simulator_->GetHeight(),
+			GL_RGBA,
+			GL_FLOAT,
+			wind_data_cache_.data()
+		);
 	}
 
 	void WeatherManager::Update(float deltaTime, float totalTime, const glm::vec3& cameraPos, float timeOfDay) {
@@ -302,7 +329,21 @@ namespace Boidsish {
 		PROJECT_PROFILE_SCOPE("WeatherManager::Update");
 
 		if (lbm_simulator_ && terrain_) {
-			lbm_simulator_->Update(deltaTime, totalTime, timeOfDay, *terrain_, cameraPos, current_.wind_speed, current_.wind_strength);
+			if (macro_sim_enabled_) {
+				lbm_simulator_->Update(
+					deltaTime,
+					totalTime,
+					timeOfDay,
+					*terrain_,
+					cameraPos,
+					current_.wind_speed,
+					current_.wind_strength
+				);
+			} else {
+				// We still need to anchor the simulator grid so PopulateWindData UBO metadata is correct
+				// But we don't run the expensive LBM steps.
+				lbm_simulator_->UpdateAnchor(cameraPos);
+			}
 
 			const auto& phys = lbm_simulator_->GetOutput();
 			// Optionally override some current_ targets with physically based results

@@ -251,6 +251,30 @@ namespace Boidsish {
 					return 10.0f;
 				}
 
+				consteval float FirstPersonEyeHeight() {
+					return 1.8f;
+				}
+
+				consteval float FirstPersonCrouchHeight() {
+					return 0.9f;
+				}
+
+				consteval float FirstPersonSprintMultiplier() {
+					return 2.0f;
+				}
+
+				consteval float FirstPersonJumpForce() {
+					return 6.5f;
+				}
+
+				consteval float FirstPersonGravity() {
+					return 18.0f;
+				}
+
+				consteval float FirstPersonGroundSmoothing() {
+					return 5.0f;
+				}
+
 				consteval float SpeedStep() {
 					return 2.5f;
 				}

@@ -38,24 +38,28 @@ namespace Boidsish {
 
     WeatherLbmSimulator::~WeatherLbmSimulator() {}
 
-    void WeatherLbmSimulator::Update(float deltaTime, float totalTime, float timeOfDay, const ITerrainGenerator& terrain, const glm::vec3& cameraPos, float windSpeed, float windStrength) {
-        if (!initialized_) {
-            Initialize(terrain);
-            initialized_ = true;
-        }
+	void WeatherLbmSimulator::UpdateAnchor(const glm::vec3& cameraPos) {
+		// Anchor grid to camera chunk position
+		glm::ivec2 newAnchor;
+		newAnchor.x = (int)std::floor(cameraPos.x / 32.0f) - width_ / 2;
+		newAnchor.y = (int)std::floor(cameraPos.z / 32.0f) - height_ / 2;
 
-        // Anchor grid to camera chunk position
-        glm::ivec2 newAnchor;
-        newAnchor.x = (int)std::floor(cameraPos.x / 32.0f) - width_ / 2;
-        newAnchor.y = (int)std::floor(cameraPos.z / 32.0f) - height_ / 2;
+		if (newAnchor != gridAnchor_) {
+			glm::ivec2 shiftOffset = newAnchor - gridAnchor_;
+			ShiftGrid(shiftOffset);
+			gridAnchor_ = newAnchor;
+		}
+	}
 
-        if (newAnchor != gridAnchor_) {
-            glm::ivec2 shiftOffset = newAnchor - gridAnchor_;
-            ShiftGrid(shiftOffset);
-            gridAnchor_ = newAnchor;
-        }
+	void WeatherLbmSimulator::Update(float deltaTime, float totalTime, float timeOfDay, const ITerrainGenerator& terrain, const glm::vec3& cameraPos, float windSpeed, float windStrength) {
+		if (!initialized_) {
+			Initialize(terrain);
+			initialized_ = true;
+		}
 
-        UpdateConfig(terrain);
+		UpdateAnchor(cameraPos);
+
+		UpdateConfig(terrain);
 
         // Fixed timestep loop
         accumulator_ += deltaTime;
