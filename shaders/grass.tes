@@ -93,7 +93,7 @@ void main() {
     float bendFactor = windStrength * (1.0 - clamp(biomeProps[biomeIdx].rigidity * globalProps.rigidityMultiplier, 0.0, 0.95));
     float bend = bendFactor * v * v; // Parabolic bend
 
-    vec3 windDir = normalize(vec3(windNoise.x, 0.0, windNoise.y));
+    vec3 windDir = normalize(vec3(windNoise.x, 0.0, windNoise.z));
 
     // Random gentle bend/sway
     float randomBend = (hash(seed + 4321) * 2.0 - 1.0) * 0.1 * v * v;
@@ -110,7 +110,7 @@ void main() {
     vec3 offset = vec3(localXZ.x, v * height, localXZ.y);
 
     // 2. Apply Asymptotic Resistance (tanh)
-    float maxDeflection = 1.1;
+    float maxDeflection = 1.5;
     float resistedWindMag = maxDeflection * tanh(windStrength * 0.15 / maxDeflection);
 
     // 3. Calculate bending angle combining resisted wind, height (v), and base tilts

@@ -71,7 +71,7 @@ vec3 getWindAtPosition(vec3 worldPos) {
 	vec3 advectedPos = worldPos - (macroWind * time * advectionSpeed);
 
 	// Sample the curl noise using the moving coordinate space
-	vec3 curl = fastCurl3d(advectedPos/10.0 * curlScale + vec3(0.0, time * 0.02, 0.0));
+	vec3 curl = fastCurl3d(advectedPos/20.0 * curlScale + vec3(0.0, time * 0.02, 0.0));
 
 	// Add turbulence to macro wind
 	return macroWind + curl * turbulenceIntensity;
