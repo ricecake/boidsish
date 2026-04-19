@@ -892,8 +892,10 @@ namespace Boidsish {
 				terrain_render_manager->SetNoise(
 					noise_manager->GetNoiseTexture(),
 					noise_manager->GetCurlTexture(),
+					noise_manager->GetBlueNoiseTexture(),
 					noise_manager->GetExtraNoiseTexture()
 				);
+				terrain_render_manager->SetVisualEffectsUbo(visual_effects_ubo);
 
 				// Set up eviction callback so terrain generator knows when chunks are LRU-evicted
 				// Capture weak_ptr to allow terrain generator to be swapped without dangling reference

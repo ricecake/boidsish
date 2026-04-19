@@ -1,0 +1,101 @@
+#version 430 core
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+#include "helpers/erosion.glsl"
+#include "helpers/fast_noise.glsl"
+#include "helpers/terrain_noise.glsl"
+#include "visual_effects.glsl"
+
+// Input: Raw heightmap (R=height, GBA=normal)
+uniform sampler2DArray u_rawHeightmap;
+// Input: Biome map (RG8)
+uniform sampler2DArray u_biomeMap;
+
+// Output: Baked heightmap (RGBA16F: R=height, GBA=normal)
+layout(rgba16f, binding = 0) uniform writeonly image2DArray u_bakedHeightmap;
+// Output: Baked params (RGBA16F: R=erosionDelta, G=ridgeMap, B=substrate, A=waterMask)
+layout(rgba16f, binding = 1) uniform writeonly image2DArray u_bakedParams;
+
+uniform int u_slice;
+uniform float u_worldScale;
+uniform float u_chunkSize;
+uniform vec2 u_worldOffset;
+
+void main() {
+	ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+	ivec3 imageCoords = ivec3(pixel, u_slice);
+	int res = imageSize(u_bakedHeightmap).x;
+	if (pixel.x >= res || pixel.y >= res)
+		return;
+
+	vec2 uv = vec2(pixel) / float(res - 1);
+	// Remap UV to match texture sampling in shaders
+	vec2  remappedUV = (uv * (res - 1.0) + 0.5) / float(res);
+	vec4  data = texture(u_rawHeightmap, vec3(remappedUV, float(u_slice)));
+	float height = data.r;
+	vec3  normal = normalize(data.gba);
+
+	vec3 fragPos;
+	fragPos.x = u_worldOffset.x + uv.x * u_chunkSize;
+	fragPos.y = height;
+	fragPos.z = u_worldOffset.y + uv.y * u_chunkSize;
+
+	float vErosionDelta = 0.0;
+	float vRidgeMap = 0.0;
+	float vSubstrate = 0.0;
+
+	// Apply Erosion
+	if (erosion_enabled > 0) {
+		float ridgeMapOutput = 0.0;
+		float substrateOutput = 0.0;
+		float debugOutput = 0.0;
+
+		float frameworkHeightPeak = 200.0 * u_worldScale;
+		float erosionFadeTarget = clamp(fragPos.y / (frameworkHeightPeak * 0.6), -1.0, 1.0);
+
+		vec3 hAndS = vec3(fragPos.y / u_worldScale, -normal.x, -normal.z);
+
+		vec4 erosionResult = ErosionFilter(
+			fragPos.xz / u_worldScale,
+			hAndS,
+			erosionFadeTarget,
+			erosion_strength, // We bake with full strength, distance fade is removed or handled later
+			erosion_gully_weight,
+			erosion_detail,
+			vec4(0.1, 0.0, 0.1, 2.0),
+			vec4(1.25, 1.25, 2.8, 1.5),
+			vec2(0.7, 1.0),
+			u_worldScale * erosion_scale,
+			5,
+			2.0,
+			0.5,
+			0.7,
+			0.5,
+			ridgeMapOutput,
+			substrateOutput,
+			debugOutput
+		);
+
+		float heightDelta = erosionResult.x * u_worldScale;
+		fragPos.y += heightDelta;
+
+		vec2 updatedDeriv = hAndS.yz + erosionResult.yz;
+		normal = normalize(vec3(-updatedDeriv.x, 1.0, -updatedDeriv.y));
+
+		vErosionDelta = erosionResult.x;
+		vRidgeMap = ridgeMapOutput;
+		vSubstrate = substrateOutput;
+	}
+
+	// Apply Macro-relief displacement (consistent with terrain.tes)
+	fragPos += 0.5 * fastWorley3d(fragPos / 50.0) * fastBlueNoise(fragPos.zx) * normal *
+		smoothstep(10.0, 1.0, fragPos.y) * smoothstep(0.01, 1.0, fragPos.y);
+
+	// Detect water
+	float vIsWater = smoothstep(0.1, -0.1, fragPos.y);
+
+	// Final height is fragPos.y
+	imageStore(u_bakedHeightmap, imageCoords, vec4(fragPos.y, normal.x, normal.y, normal.z));
+	imageStore(u_bakedParams, imageCoords, vec4(vErosionDelta, vRidgeMap, vSubstrate, vIsWater));
+}
