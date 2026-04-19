@@ -29,13 +29,14 @@ void main() {
 	if (pixel.x >= res || pixel.y >= res)
 		return;
 
-	vec2 uv = vec2(pixel) / float(res - 1);
-	// Remap UV to match texture sampling in shaders
-	vec2  remappedUV = (uv * (res - 1.0) + 0.5) / float(res);
-	vec4  data = texture(u_rawHeightmap, vec3(remappedUV, float(u_slice)));
+	float worldScaleVal = max(u_worldScale, 0.0001);
+
+	// Fetch raw data using texelFetch to avoid any interpolation/bleeding issues during bake
+	vec4  data = texelFetch(u_rawHeightmap, imageCoords, 0);
 	float height = data.r;
 	vec3  normal = normalize(data.gba);
 
+	vec2 uv = vec2(pixel) / float(res - 1);
 	vec3 fragPos;
 	fragPos.x = u_worldOffset.x + uv.x * u_chunkSize;
 	fragPos.y = height;
@@ -51,13 +52,13 @@ void main() {
 		float substrateOutput = 0.0;
 		float debugOutput = 0.0;
 
-		float frameworkHeightPeak = 200.0 * u_worldScale;
+		float frameworkHeightPeak = 200.0 * worldScaleVal;
 		float erosionFadeTarget = clamp(fragPos.y / (frameworkHeightPeak * 0.6), -1.0, 1.0);
 
-		vec3 hAndS = vec3(fragPos.y / u_worldScale, -normal.x, -normal.z);
+		vec3 hAndS = vec3(fragPos.y / worldScaleVal, -normal.x, -normal.z);
 
 		vec4 erosionResult = ErosionFilter(
-			fragPos.xz / u_worldScale,
+			fragPos.xz / worldScaleVal,
 			hAndS,
 			erosionFadeTarget,
 			erosion_strength, // We bake with full strength, distance fade is removed or handled later
@@ -66,7 +67,7 @@ void main() {
 			vec4(0.1, 0.0, 0.1, 2.0),
 			vec4(1.25, 1.25, 2.8, 1.5),
 			vec2(0.7, 1.0),
-			u_worldScale * erosion_scale,
+			worldScaleVal * erosion_scale,
 			5,
 			2.0,
 			0.5,
@@ -77,7 +78,7 @@ void main() {
 			debugOutput
 		);
 
-		float heightDelta = erosionResult.x * u_worldScale;
+		float heightDelta = erosionResult.x * worldScaleVal;
 		fragPos.y += heightDelta;
 
 		vec2 updatedDeriv = hAndS.yz + erosionResult.yz;

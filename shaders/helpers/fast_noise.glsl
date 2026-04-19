@@ -12,33 +12,33 @@ uniform sampler3D u_extraNoiseTexture;
 
 // R: Simplex 3D
 float fastSimplex3d(vec3 p) {
-	return texture(u_noiseTexture, p).r * 2.0 - 1.0;
+	return textureLod(u_noiseTexture, p, 0.0).r * 2.0 - 1.0;
 }
 
 // G: Worley 3D
 float fastWorley3d(vec3 p) {
-	return texture(u_noiseTexture, p).g;
+	return textureLod(u_noiseTexture, p, 0.0).g;
 }
 
 // B: FBM 3D
 float fastFbm3d(vec3 p) {
-	return texture(u_noiseTexture, p).b * 2.0 - 1.0;
+	return textureLod(u_noiseTexture, p, 0.0).b * 2.0 - 1.0;
 }
 
 // A: Warped FBM 3D
 float fastWarpedFbm3d(vec3 p) {
-	return texture(u_noiseTexture, p).a * 2.0 - 1.0;
+	return textureLod(u_noiseTexture, p, 0.0).a * 2.0 - 1.0;
 }
 
 // Extra Noises (from u_extraNoiseTexture)
 // R: Ridge 3D
 float fastRidge3d(vec3 p) {
-	return texture(u_extraNoiseTexture, p).r;
+	return textureLod(u_extraNoiseTexture, p, 0.0).r;
 }
 
 // G: Gradient 3D
 float fastGradient3d(vec3 p) {
-	return texture(u_extraNoiseTexture, p).g * 2.0 - 1.0;
+	return textureLod(u_extraNoiseTexture, p, 0.0).g * 2.0 - 1.0;
 }
 
 // Multi-octave texture FBM
@@ -55,17 +55,17 @@ float fastTextureFbm(vec3 p, int octaves) {
 
 // Curl Noise lookup
 vec3 fastCurl3d(vec3 p) {
-	return texture(u_curlTexture, p).rgb;
+	return textureLod(u_curlTexture, p, 0.0).rgb;
 }
 
 // FBM Curl magnitude lookup
 float fastFbmCurl3d(vec3 p) {
-	return texture(u_curlTexture, p).a;
+	return textureLod(u_curlTexture, p, 0.0).a;
 }
 
 // Blue Noise lookups (at different frequencies)
 float fastBlueNoise(vec2 uv, int frequencyIndex) {
-	vec4 bn = texture(u_blueNoiseTexture, uv);
+	vec4 bn = textureLod(u_blueNoiseTexture, uv, 0.0);
 	if (frequencyIndex == 0)
 		return bn.r;
 	if (frequencyIndex == 1)
@@ -76,5 +76,5 @@ float fastBlueNoise(vec2 uv, int frequencyIndex) {
 }
 
 float fastBlueNoise(vec2 uv) {
-	return texture(u_blueNoiseTexture, uv).r;
+	return textureLod(u_blueNoiseTexture, uv, 0.0).r;
 }

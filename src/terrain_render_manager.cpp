@@ -401,7 +401,8 @@ namespace Boidsish {
 		const std::vector<unsigned int>& indices, // Not used in this implementation
 		float                            min_y,
 		float                            max_y,
-		const glm::vec3&                 world_offset
+		const glm::vec3&                 world_offset,
+		float                            world_scale
 	) {
 		// Deferred eviction callback to avoid deadlock
 		// (caller may hold terrain generator's mutex, and callback needs that mutex)
@@ -439,7 +440,7 @@ namespace Boidsish {
 			if (it != chunks_.end()) {
 				// Update existing chunk's heightmap
 				UploadHeightmapSlice(it->second.texture_slice, heightmap, reordered_normals, reordered_biomes);
-				BakeHeightmapSlice(it->second.texture_slice, last_world_scale_, glm::vec2(world_offset.x, world_offset.z));
+				BakeHeightmapSlice(it->second.texture_slice, world_scale, glm::vec2(world_offset.x, world_offset.z));
 				it->second.min_y = min_y;
 				it->second.max_y = max_y;
 				it->second.update_count++;
@@ -508,7 +509,7 @@ namespace Boidsish {
 
 			// Upload heightmap data
 			UploadHeightmapSlice(slice, heightmap, reordered_normals, reordered_biomes);
-			BakeHeightmapSlice(slice, last_world_scale_, glm::vec2(world_offset.x, world_offset.z));
+			BakeHeightmapSlice(slice, world_scale, glm::vec2(world_offset.x, world_offset.z));
 
 			// Store chunk info
 			ChunkInfo info{};

@@ -277,7 +277,8 @@ namespace Boidsish {
 					chunk.terrain->GetIndices(),
 					chunk.terrain->proxy.minY,
 					chunk.terrain->proxy.maxY,
-					glm::vec3(chunk.key.first * scaled_chunk_size, 0, chunk.key.second * scaled_chunk_size)
+					glm::vec3(chunk.key.first * scaled_chunk_size, 0, chunk.key.second * scaled_chunk_size),
+					world_scale_
 				);
 				registrations_this_frame++;
 			}
@@ -1542,7 +1543,8 @@ namespace Boidsish {
 								new_terrain->GetIndices(),
 								new_terrain->proxy.minY,
 								new_terrain->proxy.maxY,
-								glm::vec3(result.chunk_x * scaled_chunk_size, 0, result.chunk_z * scaled_chunk_size)
+								glm::vec3(result.chunk_x * scaled_chunk_size, 0, result.chunk_z * scaled_chunk_size),
+								world_scale_
 							);
 						} else {
 							new_terrain->setupMesh();

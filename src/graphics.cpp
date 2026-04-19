@@ -824,6 +824,21 @@ namespace Boidsish {
 				glGenBuffers(1, &visual_effects_ubo);
 				glBindBuffer(GL_UNIFORM_BUFFER, visual_effects_ubo);
 				glBufferData(GL_UNIFORM_BUFFER, sizeof(VisualEffectsUbo), NULL, GL_DYNAMIC_DRAW);
+
+				// Initialize with defaults from FrameConfigCache
+				VisualEffectsUbo ubo_data{};
+				ubo_data.erosion_enabled = 1;
+				ubo_data.wind_strength = 0.15f;
+				ubo_data.wind_speed = 0.15f;
+				ubo_data.wind_frequency = 0.1f;
+				ubo_data.erosion_strength = 0.12f;
+				ubo_data.erosion_scale = 0.15f;
+				ubo_data.erosion_detail = 1.5f;
+				ubo_data.erosion_gully_weight = 0.5f;
+				ubo_data.erosion_max_dist = 450.0f;
+
+				glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(VisualEffectsUbo), &ubo_data);
+
 				glBindBuffer(GL_UNIFORM_BUFFER, 0);
 				glBindBufferRange(
 					GL_UNIFORM_BUFFER,

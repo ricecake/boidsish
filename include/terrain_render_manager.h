@@ -65,7 +65,8 @@ namespace Boidsish {
 			const std::vector<unsigned int>& indices,
 			float                            min_y,
 			float                            max_y,
-			const glm::vec3&                 world_offset
+			const glm::vec3&                 world_offset,
+			float                            world_scale
 		);
 
 		/**
