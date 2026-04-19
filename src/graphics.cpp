@@ -3395,12 +3395,6 @@ namespace Boidsish {
 
 		// Update ambient weather
 		if (impl->weather_manager && impl->weather_manager->IsEnabled()) {
-			// Sync wind settings from Config (tuning controls) to WeatherManager before update
-			auto& config = ConfigManager::GetInstance();
-			impl->weather_manager->GetCurrentWeatherMutable().wind_strength = config.GetAppSettingFloat("wind_strength", 0.065f);
-			impl->weather_manager->GetCurrentWeatherMutable().wind_speed = config.GetAppSettingFloat("wind_speed", 0.075f);
-			impl->weather_manager->GetCurrentWeatherMutable().wind_frequency = config.GetAppSettingFloat("wind_frequency", 0.01f);
-
 			impl->weather_manager->Update(
 				impl->simulation_delta_time,
 				impl->simulation_time,
@@ -3441,6 +3435,8 @@ namespace Boidsish {
 				impl->atmosphere_effect->SetOzoneAbsorption(w.ozone_absorption);
 				impl->atmosphere_effect->SetRayleighScaleHeight(w.rayleigh_scale_height);
 				impl->atmosphere_effect->SetMieScaleHeight(w.mie_scale_height);
+				impl->atmosphere_effect->SetHazeColor(w.haze_color);
+				impl->atmosphere_effect->SetCloudColor(w.cloud_color);
 			}
 		}
 
