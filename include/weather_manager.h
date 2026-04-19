@@ -29,6 +29,17 @@ namespace Boidsish {
 		RayleighScaleHeight,
 		MieScaleHeight,
 		CloudCoverage,
+		MieScattering,
+		MieExtinction,
+		RayleighScatteringR,
+		RayleighScatteringG,
+		RayleighScatteringB,
+		HazeColorR,
+		HazeColorG,
+		HazeColorB,
+		CloudColorR,
+		CloudColorG,
+		CloudColorB,
 		Count
 	};
 
@@ -58,8 +69,13 @@ namespace Boidsish {
 		WeatherRange<float> mie_scale;
 		WeatherRange<float> atmosphere_height;
 		WeatherRange<float> rayleigh_scale_height;
-		WeatherRange<float> mie_scale_height;
-		WeatherRange<float> cloud_coverage;
+		WeatherRange<float>     mie_scale_height;
+		WeatherRange<float>     cloud_coverage;
+		WeatherRange<float>     mie_scattering;
+		WeatherRange<float>     mie_extinction;
+		WeatherRange<glm::vec3> rayleigh_scattering;
+		WeatherRange<glm::vec3> haze_color;
+		WeatherRange<glm::vec3> cloud_color;
 
 		WeatherSettings operator+(const WeatherSettings& other) const {
 			return {
@@ -77,7 +93,12 @@ namespace Boidsish {
 				atmosphere_height + other.atmosphere_height,
 				rayleigh_scale_height + other.rayleigh_scale_height,
 				mie_scale_height + other.mie_scale_height,
-				cloud_coverage + other.cloud_coverage
+				cloud_coverage + other.cloud_coverage,
+				mie_scattering + other.mie_scattering,
+				mie_extinction + other.mie_extinction,
+				rayleigh_scattering + other.rayleigh_scattering,
+				haze_color + other.haze_color,
+				cloud_color + other.cloud_color
 			};
 		}
 
@@ -97,7 +118,12 @@ namespace Boidsish {
 				atmosphere_height * f,
 				rayleigh_scale_height * f,
 				mie_scale_height * f,
-				cloud_coverage * f
+				cloud_coverage * f,
+				mie_scattering * f,
+				mie_extinction * f,
+				rayleigh_scattering * f,
+				haze_color * f,
+				cloud_color * f
 			};
 		}
 	};
@@ -138,6 +164,8 @@ namespace Boidsish {
 		float     rayleigh_scale_height = WeatherConstants::RayleighScaleHeight.normal;
 		float     mie_scale_height = WeatherConstants::MieScaleHeight.normal;
 		float     cloud_coverage = WeatherConstants::CloudCoverage.normal;
+		glm::vec3 haze_color = WeatherConstants::DefaultHazeColor;
+		glm::vec3 cloud_color = WeatherConstants::DefaultCloudColor;
 	};
 
 	class WeatherManager {

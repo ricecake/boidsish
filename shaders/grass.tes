@@ -126,8 +126,22 @@ void main() {
                            rotationAxis * dot(rotationAxis, initialRelativePos) * (1.0 - cosTheta);
 
     // --- Blade Width and Rotation ---
-    float s = sin(baseRotation);
-    float c = cos(baseRotation);
+    // Distance-based weight (you can pass the range as uniforms)
+    float distToCam = distance(viewPos, basePos);
+    float billboardWeight = max(0.5, smoothstep(7.50, 50.0, distToCam));
+
+    // Original facing direction
+    vec2 origDir = vec2(cos(baseRotation), sin(baseRotation));
+
+    // Camera facing direction (XZ plane only)
+    vec2 camDir = normalize(viewPos.xz - basePos.xz);
+
+    // Normalized linear interpolation (nlerp) of the directions
+    vec2 finalDir = normalize(mix(origDir, camDir, billboardWeight));
+
+    // Reconstruct sine and cosine for your matrix
+    float c = finalDir.y;
+    float s = finalDir.x;
     mat2 rotMat = mat2(c, s, -s, c);
 
     // Horizontal offset across the blade
