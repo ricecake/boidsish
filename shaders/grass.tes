@@ -103,22 +103,31 @@ void main() {
     float c = cos(baseRotation);
     mat2 rotMat = mat2(c, s, -s, c);
 
-    vec2 localXZ = vec2(u * width * 0.5 * (1.0 - v * v), 0.0); // Parabolic taper
-    localXZ = rotMat * localXZ;
+    vec2 localXZ = vec2(u * width * 0.5 * (1.0 - v * v), 0.0);
+    localXZ = rotMat * localXZ; // Parabolic taper
 
-    vec3 pos = basePos;
-    pos.xz += localXZ;
-    pos.y += v * height;
+    // 1. Initial offset from base
+    vec3 offset = vec3(localXZ.x, v * height, localXZ.y);
 
-    // Apply base tilt and wind-driven bend
-    // We displace the XZ position additively based on height
-    pos.xz += windDir.xz * bend * height;
-    pos.x += randomBend * height;
-    pos.z += tiltAngle * height;
+    // 2. Apply Asymptotic Resistance (tanh)
+    float maxDeflection = 1.1;
+    float resistedWindMag = maxDeflection * tanh(windStrength * 0.15 / maxDeflection);
 
-    // Ensure the blade doesn't sink into the ground during heavy bending
-    float distFromBase = length(pos.xz - basePos.xz);
-    pos.y = basePos.y + sqrt(max(0.0, height * height * v * v - distFromBase * distFromBase));
+    // 3. Calculate bending angle combining resisted wind, height (v), and base tilts
+    float bendAngle = resistedWindMag * pow(v, 1.2) * smoothstep(0.05, 1.0, v);
+    bendAngle += tiltAngle + randomBend; // Fold your subtle tilts directly into the angle
+
+    // 4. Primary Bend (Rodrigues' Rotation)
+    vec3 rotationAxis = normalize(cross(vec3(0.0, 1.0, 0.0), windDir));
+    float cosTheta = cos(bendAngle);
+    float sinTheta = sin(bendAngle);
+
+    vec3 rotatedOffset = offset * cosTheta +
+                         cross(rotationAxis, offset) * sinTheta +
+                         rotationAxis * dot(rotationAxis, offset) * (1.0 - cosTheta);
+
+    // 5. Final world position
+    vec3 pos = basePos + rotatedOffset;
 
     // Rounded Normals across the width
     vec3 faceNormal = normalize(vec3(-s, 0.0, c));
