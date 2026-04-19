@@ -66,6 +66,10 @@ namespace Boidsish {
 			consteval int WindData() {
 				return 14;
 			}
+
+			consteval int PhasorNoise() {
+				return 16;
+			}
 		} // namespace TextureUnit
 
 		namespace SsboBinding {
