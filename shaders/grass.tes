@@ -85,40 +85,58 @@ void main() {
     vec3 windNoise = getWindAtPosition(basePos);
     float windStrength = length(windNoise) * biomeProps[biomeIdx].windInfluence * globalProps.windMultiplier;
 
-    // Base Tilt - relatively vertical (clamped to ~15 degrees)
-    float tiltFactor = (hash(seed + 8888) * 2.0 - 1.0) * 0.25;
-    float tiltAngle = tiltFactor * v; // Base tilt increases with height but is subtle
+    // --- Combined Deflection ---
+    // Wind Direction
+    vec3 windDir = (length(windNoise) > 0.001) ? normalize(vec3(windNoise.x, 0.0, windNoise.z)) : vec3(1.0, 0.0, 0.0);
 
-    // Bending - rigidity decreases bend, tip flexes more
+    // 1. Wind-driven bend
     float bendFactor = windStrength * (1.0 - clamp(biomeProps[biomeIdx].rigidity * globalProps.rigidityMultiplier, 0.0, 0.95));
-    float bend = bendFactor * v * v; // Parabolic bend
+    float windBendAngle = bendFactor * v * v; // Parabolic bend
 
-    vec3 windDir = normalize(vec3(windNoise.x, 0.0, windNoise.y));
+    // 2. Base Tilt (static variety)
+    float tiltFactor = (hash(seed + 8888) * 2.0 - 1.0) * 0.15;
+    float tiltAngle = tiltFactor * v;
 
-    // Random gentle bend/sway
-    float randomBend = (hash(seed + 4321) * 2.0 - 1.0) * 0.1 * v * v;
+    // 3. Random gentle sway (low-frequency variety)
+    float randomSway = (hash(seed + 4321) * 2.0 - 1.0) * 0.05 * v * v;
 
-    // Combined Rotation matrix (Base rotation around Y)
+    // Consolidate deflection into a single world-space vector and total angle
+    // This ensures that even with no wind, the grass has some natural lean.
+    vec3 staticDeflection = vec3(randomSway, 0.0, tiltAngle);
+    vec3 windDeflection = windDir * windBendAngle;
+
+    vec3 combinedDeflection = staticDeflection + windDeflection;
+    float totalBendAngle = length(combinedDeflection);
+    vec3 deflectionDir = (totalBendAngle > 0.0001) ? normalize(combinedDeflection) : vec3(1.0, 0.0, 0.0);
+
+    // --- Rotation-based Displacement (Rodrigues' Rotation) ---
+    // Axis perpendicular to Up and Deflection
+    vec3 rotationAxis = normalize(cross(vec3(0.0, 1.0, 0.0), deflectionDir));
+
+    // Initial local position before bending (vertical segment)
+    float segmentHeight = v * height;
+    vec3 initialRelativePos = vec3(0.0, segmentHeight, 0.0);
+
+    // Rodrigues' rotation of the vertical segment
+    float cosTheta = cos(totalBendAngle);
+    float sinTheta = sin(totalBendAngle);
+
+    vec3 bentRelativePos = initialRelativePos * cosTheta +
+                           cross(rotationAxis, initialRelativePos) * sinTheta +
+                           rotationAxis * dot(rotationAxis, initialRelativePos) * (1.0 - cosTheta);
+
+    // --- Blade Width and Rotation ---
     float s = sin(baseRotation);
     float c = cos(baseRotation);
     mat2 rotMat = mat2(c, s, -s, c);
 
+    // Horizontal offset across the blade
     vec2 localXZ = vec2(u * width * 0.5 * (1.0 - v * v), 0.0); // Parabolic taper
     localXZ = rotMat * localXZ;
 
-    vec3 pos = basePos;
+    // Final World Position
+    vec3 pos = basePos + bentRelativePos;
     pos.xz += localXZ;
-    pos.y += v * height;
-
-    // Apply base tilt and wind-driven bend
-    // We displace the XZ position additively based on height
-    pos.xz += windDir.xz * bend * height;
-    pos.x += randomBend * height;
-    pos.z += tiltAngle * height;
-
-    // Ensure the blade doesn't sink into the ground during heavy bending
-    float distFromBase = length(pos.xz - basePos.xz);
-    pos.y = basePos.y + sqrt(max(0.0, height * height * v * v - distFromBase * distFromBase));
 
     // Rounded Normals across the width
     vec3 faceNormal = normalize(vec3(-s, 0.0, c));
