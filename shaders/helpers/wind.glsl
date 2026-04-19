@@ -81,7 +81,24 @@ vec3 getWindAtPosition(vec3 worldPos) {
 	float dynamicCurlScale = curlScale * (0.8 + 0.4 * gustiness);
 	vec3 curl = fastCurl3d(advectedPos/20.0 * dynamicCurlScale + vec3(0.0, time * 0.02, 0.0));
 
-	// 4. Combined Result
+	// 4. Phasor Ripples
+	// We use the phasor noise to introduce smooth, undulating ripples.
+	// This provides less jerky local variance than traditional noise and adds organic character.
+	float rippleFreq = 0.025;
+	float ripplePhaseSpeed = 2.5;
+	// Advect ripple sampling by macro wind to keep them feeling part of the flow
+	vec2 rippleUV = worldPos.xz * rippleFreq - macroWind.xz * time * 0.05;
+	float ripple = fastPhasor2d(rippleUV, time * ripplePhaseSpeed);
+
+	// Modulate turbulence intensity and introduce a subtle directional shift to the flow
+	turbulenceIntensity *= (0.8 + 0.4 * (ripple * 0.5 + 0.5));
+	if (macroSpeed > 0.001) {
+		// Apply a small perpendicular shift based on the ripple
+		vec2 perpWind = vec2(-macroWind.z, macroWind.x) / macroSpeed;
+		macroWind.xz += perpWind * (ripple * macroSpeed * 0.15);
+	}
+
+	// 5. Combined Result
 	// Instead of just adding curl, we use it to perturb the direction of the macro wind,
 	// creating the effect of chaotic swirls within the flow.
 	if (macroSpeed > 0.001) {
