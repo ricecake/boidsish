@@ -154,6 +154,11 @@ namespace Boidsish {
 		GLuint GetBiomeTexture() const { return biome_texture_; }
 
 		/**
+		 * @brief Get the baked params texture array for shader binding.
+		 */
+		GLuint GetBakedParamsTexture() const { return baked_params_texture_; }
+
+		/**
 		 * @brief Get info about all registered chunks for external use (e.g., decor placement).
 		 * Returns a vector of (world_offset_x, world_offset_z, texture_slice, chunk_size).
 		 * @param world_scale The world scale to apply to the chunk size.
@@ -260,10 +265,11 @@ namespace Boidsish {
 		GLuint grid_vbo_ = 0;
 		GLuint grid_ebo_ = 0;
 		GLuint instance_vbo_ = 0;
-		GLuint raw_heightmap_texture_ = 0; // GL_TEXTURE_2D_ARRAY (RGBA16F: height, normal.xyz)
-		GLuint heightmap_texture_ = 0;     // GL_TEXTURE_2D_ARRAY (RGBA16F: baked height, normal.xyz)
-		GLuint baked_params_texture_ = 0;  // GL_TEXTURE_2D_ARRAY (RGBA16F: erosion, ridge, substrate, water)
-		GLuint biome_texture_ = 0;         // GL_TEXTURE_2D_ARRAY (RG8: low_idx, t)
+		GLuint raw_heightmap_texture_ = 0;           // GL_TEXTURE_2D_ARRAY (RGBA16F: height, normal.xyz)
+		GLuint heightmap_texture_ = 0;               // GL_TEXTURE_2D_ARRAY (RGBA16F: baked height, normal.xyz)
+		GLuint baked_height_intermediate_texture_ = 0; // GL_TEXTURE_2D_ARRAY (R32F: displaced height)
+		GLuint baked_params_texture_ = 0;            // GL_TEXTURE_2D_ARRAY (RGBA16F: erosion, ridge, substrate, water)
+		GLuint biome_texture_ = 0;                   // GL_TEXTURE_2D_ARRAY (RG8: low_idx, t)
 		GLuint noise_texture_ = 0;
 		GLuint curl_texture_ = 0;
 		GLuint blue_noise_texture_ = 0;
@@ -278,7 +284,8 @@ namespace Boidsish {
 
 		std::unique_ptr<ComputeShader> grid_mip_shader_;
 		std::unique_ptr<ComputeShader> probe_compute_shader_;
-		std::unique_ptr<ComputeShader> bake_shader_;
+		std::unique_ptr<ComputeShader> bake_height_shader_;
+		std::unique_ptr<ComputeShader> bake_normal_shader_;
 
 		GLuint visual_effects_ubo_ = 0;
 

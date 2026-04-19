@@ -65,7 +65,8 @@ namespace Boidsish {
 
 		grid_mip_shader_ = std::make_unique<ComputeShader>("shaders/terrain_hiz_generate.comp");
 		probe_compute_shader_ = std::make_unique<ComputeShader>("shaders/terrain_probes.comp");
-		bake_shader_ = std::make_unique<ComputeShader>("shaders/terrain_bake.comp");
+		bake_height_shader_ = std::make_unique<ComputeShader>("shaders/terrain_bake_height.comp");
+		bake_normal_shader_ = std::make_unique<ComputeShader>("shaders/terrain_bake_normal.comp");
 
 		// Create SH probes SSBO
 		glGenBuffers(1, &probe_ssbo_);
@@ -106,6 +107,8 @@ namespace Boidsish {
 			glDeleteTextures(1, &raw_heightmap_texture_);
 		if (heightmap_texture_)
 			glDeleteTextures(1, &heightmap_texture_);
+		if (baked_height_intermediate_texture_)
+			glDeleteTextures(1, &baked_height_intermediate_texture_);
 		if (baked_params_texture_)
 			glDeleteTextures(1, &baked_params_texture_);
 		if (biome_texture_)
@@ -233,6 +236,8 @@ namespace Boidsish {
 			raw_heightmap_texture_ = 0;
 			glDeleteTextures(1, &heightmap_texture_);
 			heightmap_texture_ = 0;
+			glDeleteTextures(1, &baked_height_intermediate_texture_);
+			baked_height_intermediate_texture_ = 0;
 			glDeleteTextures(1, &baked_params_texture_);
 			baked_params_texture_ = 0;
 
@@ -291,6 +296,19 @@ namespace Boidsish {
 		// Filtering for smooth interpolation
 		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+		// Create 2D texture array for intermediate baked heights
+		glGenTextures(1, &baked_height_intermediate_texture_);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, baked_height_intermediate_texture_);
+		glTexImage3D(
+			GL_TEXTURE_2D_ARRAY,
+			0, GL_R32F, heightmap_resolution_, heightmap_resolution_, max_chunks_,
+			0, GL_RED, GL_FLOAT, nullptr
+		);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
@@ -896,9 +914,9 @@ namespace Boidsish {
 		glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture_);
 		shader_base.setInt("u_heightmapArray", 13);
 
-		glActiveTexture(GL_TEXTURE14);
+		glActiveTexture(GL_TEXTURE19);
 		glBindTexture(GL_TEXTURE_2D_ARRAY, baked_params_texture_);
-		shader_base.setInt("u_bakedParamsArray", 14);
+		shader_base.setInt("u_bakedParamsArray", 19);
 
 		glActiveTexture(GL_TEXTURE17);
 		glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture_);
@@ -915,48 +933,65 @@ namespace Boidsish {
 	}
 
 	void TerrainRenderManager::BakeHeightmapSlice(int slice, float world_scale, const glm::vec2& world_offset) {
-		if (!bake_shader_ || !bake_shader_->isValid())
+		if (!bake_height_shader_ || !bake_height_shader_->isValid() || !bake_normal_shader_ ||
+		    !bake_normal_shader_->isValid())
 			return;
 
-		bake_shader_->use();
-		bake_shader_->setInt("u_slice", slice);
-		bake_shader_->setFloat("u_worldScale", world_scale);
-		bake_shader_->setFloat("u_chunkSize", static_cast<float>(chunk_size_ * world_scale));
-		bake_shader_->setVec2("u_worldOffset", world_offset);
+		float scaled_chunk_size = static_cast<float>(chunk_size_ * world_scale);
+
+		// Pass 1: Displacement
+		bake_height_shader_->use();
+		bake_height_shader_->setInt("u_slice", slice);
+		bake_height_shader_->setFloat("u_worldScale", world_scale);
+		bake_height_shader_->setFloat("u_chunkSize", scaled_chunk_size);
+		bake_height_shader_->setVec2("u_worldOffset", world_offset);
 
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D_ARRAY, raw_heightmap_texture_);
-		bake_shader_->setInt("u_rawHeightmap", 0);
+		bake_height_shader_->setInt("u_rawHeightmap", 0);
 
 		glActiveTexture(GL_TEXTURE1);
 		glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture_);
-		bake_shader_->setInt("u_biomeMap", 1);
+		bake_height_shader_->setInt("u_biomeMap", 1);
 
 		glActiveTexture(GL_TEXTURE5);
 		glBindTexture(GL_TEXTURE_3D, noise_texture_);
-		bake_shader_->setInt("u_noiseTexture", 5);
+		bake_height_shader_->setInt("u_noiseTexture", 5);
 
 		glActiveTexture(GL_TEXTURE6);
 		glBindTexture(GL_TEXTURE_3D, curl_texture_);
-		bake_shader_->setInt("u_curlTexture", 6);
+		bake_height_shader_->setInt("u_curlTexture", 6);
 
 		glActiveTexture(GL_TEXTURE7);
 		glBindTexture(GL_TEXTURE_2D, blue_noise_texture_);
-		bake_shader_->setInt("u_blueNoiseTexture", 7);
+		bake_height_shader_->setInt("u_blueNoiseTexture", 7);
 
 		if (extra_noise_texture_ != 0) {
 			glActiveTexture(GL_TEXTURE8);
 			glBindTexture(GL_TEXTURE_3D, extra_noise_texture_);
-			bake_shader_->setInt("u_extraNoiseTexture", 8);
+			bake_height_shader_->setInt("u_extraNoiseTexture", 8);
 		}
 
-		glBindImageTexture(0, heightmap_texture_, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+		glBindImageTexture(0, baked_height_intermediate_texture_, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_R32F);
 		glBindImageTexture(1, baked_params_texture_, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 
-		// VisualEffects UBO
 		if (visual_effects_ubo_ != 0) {
 			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::VisualEffects(), visual_effects_ubo_);
 		}
+
+		glDispatchCompute((heightmap_resolution_ + 7) / 8, (heightmap_resolution_ + 7) / 8, 1);
+		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+
+		// Pass 2: Normals
+		bake_normal_shader_->use();
+		bake_normal_shader_->setInt("u_slice", slice);
+		bake_normal_shader_->setFloat("u_chunkSize", scaled_chunk_size);
+
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, baked_height_intermediate_texture_);
+		bake_normal_shader_->setInt("u_displacedHeight", 0);
+
+		glBindImageTexture(0, heightmap_texture_, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 
 		glDispatchCompute((heightmap_resolution_ + 7) / 8, (heightmap_resolution_ + 7) / 8, 1);
 		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
@@ -999,9 +1034,9 @@ namespace Boidsish {
 		glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture_);
 		shader.setInt("uHeightmap", 0);
 
-		glActiveTexture(GL_TEXTURE10);
+		glActiveTexture(GL_TEXTURE19);
 		glBindTexture(GL_TEXTURE_2D_ARRAY, baked_params_texture_);
-		shader.setInt("uBakedParams", 10);
+		shader.setInt("uBakedParams", 19);
 
 		// Bind biome texture array
 		glActiveTexture(GL_TEXTURE1);

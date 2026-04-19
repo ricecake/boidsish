@@ -12,8 +12,8 @@ uniform sampler2DArray u_rawHeightmap;
 // Input: Biome map (RG8)
 uniform sampler2DArray u_biomeMap;
 
-// Output: Baked heightmap (RGBA16F: R=height, GBA=normal)
-layout(rgba16f, binding = 0) uniform writeonly image2DArray u_bakedHeightmap;
+// Output: Displaced height (R32F)
+layout(r32f, binding = 0) uniform writeonly image2DArray u_displacedHeight;
 // Output: Baked params (RGBA16F: R=erosionDelta, G=ridgeMap, B=substrate, A=waterMask)
 layout(rgba16f, binding = 1) uniform writeonly image2DArray u_bakedParams;
 
@@ -25,13 +25,13 @@ uniform vec2 u_worldOffset;
 void main() {
 	ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
 	ivec3 imageCoords = ivec3(pixel, u_slice);
-	int res = imageSize(u_bakedHeightmap).x;
+	int res = imageSize(u_displacedHeight).x;
 	if (pixel.x >= res || pixel.y >= res)
 		return;
 
 	float worldScaleVal = max(u_worldScale, 0.0001);
 
-	// Fetch raw data using texelFetch
+	// Fetch raw data
 	vec4  data = texelFetch(u_rawHeightmap, imageCoords, 0);
 	float height = data.r;
 	vec3  normal = normalize(data.gba);
@@ -46,7 +46,7 @@ void main() {
 	float vRidgeMap = 0.0;
 	float vSubstrate = 0.0;
 
-	// Apply Erosion (Matching original TES logic and approximations)
+	// Apply Erosion
 	if (erosion_enabled > 0) {
 		float ridgeMapOutput = 0.0;
 		float substrateOutput = 0.0;
@@ -55,7 +55,6 @@ void main() {
 		float frameworkHeightPeak = 200.0 * worldScaleVal;
 		float erosionFadeTarget = clamp(fragPos.y / (frameworkHeightPeak * 0.6), -1.0, 1.0);
 
-		// Matching TES approximation: use -normal.x and -normal.z as derivatives
 		vec3 hAndS = vec3(fragPos.y / worldScaleVal, -normal.x, -normal.z);
 
 		vec4 erosionResult = ErosionFilter(
@@ -79,28 +78,22 @@ void main() {
 			debugOutput
 		);
 
-		// Update height
 		fragPos.y += erosionResult.x * worldScaleVal;
-
-		// Update normal based on slope delta (matching TES)
-		vec2 updatedDeriv = hAndS.yz + erosionResult.yz;
-		normal = normalize(vec3(-updatedDeriv.x, 1.0, -updatedDeriv.y));
-
 		vErosionDelta = erosionResult.x;
 		vRidgeMap = ridgeMapOutput;
 		vSubstrate = substrateOutput;
+
+		// Update normal for macro-displacement direction
+		vec2 updatedDeriv = hAndS.yz + erosionResult.yz;
+		normal = normalize(vec3(-updatedDeriv.x, 1.0, -updatedDeriv.y));
 	}
 
-	// Apply Macro-relief displacement (Matches TES, position only for heightmap)
-	// Note: TES displaces along Normal, but for heightmap we can only do Y easily.
-	// Since Normal.y is usually large, this is a good approximation.
+	// Apply Macro-relief displacement (position only)
 	fragPos.y += 0.5 * fastWorley3d(fragPos / 50.0) * fastBlueNoise(fragPos.zx) * normal.y *
 		smoothstep(10.0, 1.0, fragPos.y) * smoothstep(0.01, 1.0, fragPos.y);
 
-	// Detect water
 	float vIsWater = smoothstep(0.1, -0.1, fragPos.y);
 
-	// Final baked data
-	imageStore(u_bakedHeightmap, imageCoords, vec4(fragPos.y, normal.x, normal.y, normal.z));
+	imageStore(u_displacedHeight, imageCoords, vec4(fragPos.y, 0.0, 0.0, 0.0));
 	imageStore(u_bakedParams, imageCoords, vec4(vErosionDelta, vRidgeMap, vSubstrate, vIsWater));
 }

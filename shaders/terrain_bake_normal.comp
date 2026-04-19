@@ -1,0 +1,34 @@
+#version 430 core
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+// Input: Displaced heights (R32F)
+uniform sampler2DArray u_displacedHeight;
+
+// Output: Baked heightmap (RGBA16F: R=height, GBA=normal)
+layout(rgba16f, binding = 0) uniform writeonly image2DArray u_bakedHeightmap;
+
+uniform int u_slice;
+uniform float u_chunkSize;
+
+void main() {
+	ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+	ivec3 imageCoords = ivec3(pixel, u_slice);
+	int res = imageSize(u_bakedHeightmap).x;
+	if (pixel.x >= res || pixel.y >= res)
+		return;
+
+	// Central height
+	float h = texelFetch(u_displacedHeight, imageCoords, 0).r;
+
+	// Finite differences for high-quality normals
+	float hL = texelFetch(u_displacedHeight, ivec3(max(pixel.x - 1, 0), pixel.y, u_slice), 0).r;
+	float hR = texelFetch(u_displacedHeight, ivec3(min(pixel.x + 1, res - 1), pixel.y, u_slice), 0).r;
+	float hD = texelFetch(u_displacedHeight, ivec3(pixel.x, max(pixel.y - 1, 0), u_slice), 0).r;
+	float hU = texelFetch(u_displacedHeight, ivec3(pixel.x, min(pixel.y + 1, res - 1), u_slice), 0).r;
+
+	float texelSize = u_chunkSize / float(res - 1);
+	vec3 normal = normalize(vec3(hL - hR, 2.0 * texelSize, hD - hU));
+
+	imageStore(u_bakedHeightmap, imageCoords, vec4(h, normal.x, normal.y, normal.z));
+}

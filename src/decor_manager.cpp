@@ -644,6 +644,10 @@ namespace Boidsish {
 			glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture);
 			placement_shader_->setInt("u_biomeMap", 1);
 
+			glActiveTexture(GL_TEXTURE2);
+			glBindTexture(GL_TEXTURE_2D_ARRAY, render_manager->GetBakedParamsTexture());
+			placement_shader_->setInt("u_bakedParamsArray", 2);
+
 			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::DecorProps(), decor_props_ubo_);
 			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::DecorPlacementGlobals(), placement_globals_ubo_);
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::DecorChunkParams(), chunk_params_ssbo_);
@@ -823,6 +827,10 @@ namespace Boidsish {
 		glActiveTexture(GL_TEXTURE1);
 		glBindTexture(GL_TEXTURE_2D_ARRAY, render_manager->GetBiomeTexture());
 		placement_shader_->setInt("u_biomeMap", 1);
+
+		glActiveTexture(GL_TEXTURE2);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, render_manager->GetBakedParamsTexture());
+		placement_shader_->setInt("u_bakedParamsArray", 2);
 
 		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::DecorProps(), decor_props_ubo_);
 		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::DecorPlacementGlobals(), temp_globals_ubo);
