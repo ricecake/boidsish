@@ -171,7 +171,30 @@ namespace Boidsish {
             glActiveTexture(GL_TEXTURE4);
             glBindTexture(GL_TEXTURE_2D_ARRAY, res.shadowMaps);
             plant_shader_->setInt("shadowMaps", 4);
-            // ... bind other textures if needed ...
+
+            glActiveTexture(GL_TEXTURE20);
+            glBindTexture(GL_TEXTURE_2D, res.transmittanceLUT);
+            plant_shader_->setInt("u_transmittanceLUT", 20);
+
+            glActiveTexture(GL_TEXTURE22);
+            glBindTexture(GL_TEXTURE_2D, res.skyViewLUT);
+            plant_shader_->setInt("u_skyViewLUT", 22);
+
+            glActiveTexture(GL_TEXTURE23);
+            glBindTexture(GL_TEXTURE_3D, res.aerialPerspectiveLUT);
+            plant_shader_->setInt("u_aerialPerspectiveLUT", 23);
+
+            if (res.cloudShadowMap) {
+                glActiveTexture(GL_TEXTURE24);
+                glBindTexture(GL_TEXTURE_2D, res.cloudShadowMap);
+                plant_shader_->setInt("u_cloudShadowMap", 24);
+            }
+
+            plant_shader_->setFloat("u_atmosphereHeight", res.atmosphereHeight);
+
+            if (res.shadowIndices) {
+                plant_shader_->setIntArray("lightShadowIndices", res.shadowIndices, 10);
+            }
         }
 
         glBindVertexArray(dummy_vao_);

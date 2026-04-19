@@ -103,5 +103,5 @@ void main() {
     ivec2 cameraCell = ivec2(floor(uCameraPos.xz / gridStep));
     // Center the dispatch around the camera. 64x64 threads -> 32 offset.
     ivec2 cellID = cameraCell + (ivec2(gl_GlobalInvocationID.xy) - 32);
-    spawnPlant(cellID, gridStep, 150.0 * uWorldScale);
+    spawnPlant(cellID, gridStep, 120.0 * uWorldScale);
 }

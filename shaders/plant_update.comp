@@ -169,13 +169,29 @@ void main() {
                 vec3 pos_next_n = p_n + n_next_n * radius_n;
 
                 uint v_idx = base_v_idx + (i * verts_per_ring + j) * 6;
-                out_vertices[v_idx + 0] = PlantVertex(vec4(pos0, u), vec4(n0, t), props.tubeColor);
-                out_vertices[v_idx + 1] = PlantVertex(vec4(pos0_n, u), vec4(n0_n, t_next), props.tubeColor);
-                out_vertices[v_idx + 2] = PlantVertex(vec4(pos_next, u_next), vec4(n_next, t), props.tubeColor);
+                out_vertices[v_idx + 0].pos = vec4(pos0, u);
+                out_vertices[v_idx + 0].normal = vec4(n0, t);
+                out_vertices[v_idx + 0].color = props.tubeColor;
 
-                out_vertices[v_idx + 3] = PlantVertex(vec4(pos_next, u_next), vec4(n_next, t), props.tubeColor);
-                out_vertices[v_idx + 4] = PlantVertex(vec4(pos0_n, u), vec4(n0_n, t_next), props.tubeColor);
-                out_vertices[v_idx + 5] = PlantVertex(vec4(pos_next_n, u_next), vec4(n_next_n, t_next), props.tubeColor);
+                out_vertices[v_idx + 1].pos = vec4(pos0_n, u);
+                out_vertices[v_idx + 1].normal = vec4(n0_n, t_next);
+                out_vertices[v_idx + 1].color = props.tubeColor;
+
+                out_vertices[v_idx + 2].pos = vec4(pos_next, u_next);
+                out_vertices[v_idx + 2].normal = vec4(n_next, t);
+                out_vertices[v_idx + 2].color = props.tubeColor;
+
+                out_vertices[v_idx + 3].pos = vec4(pos_next, u_next);
+                out_vertices[v_idx + 3].normal = vec4(n_next, t);
+                out_vertices[v_idx + 3].color = props.tubeColor;
+
+                out_vertices[v_idx + 4].pos = vec4(pos0_n, u);
+                out_vertices[v_idx + 4].normal = vec4(n0_n, t_next);
+                out_vertices[v_idx + 4].color = props.tubeColor;
+
+                out_vertices[v_idx + 5].pos = vec4(pos_next_n, u_next);
+                out_vertices[v_idx + 5].normal = vec4(n_next_n, t_next);
+                out_vertices[v_idx + 5].color = props.tubeColor;
             }
         }
     }
@@ -217,13 +233,29 @@ void main() {
             vec3 p11 = ballCenter + n11 * props.ballRadius * uWorldScale;
 
             uint v_base = ball_v_idx + (i * ball_segments + j) * 6;
-            out_vertices[v_base + 0] = PlantVertex(vec4(p00, 0), vec4(n00, 1.0), props.ballColor);
-            out_vertices[v_base + 1] = PlantVertex(vec4(p10, 0), vec4(n10, 1.0), props.ballColor);
-            out_vertices[v_base + 2] = PlantVertex(vec4(p01, 0), vec4(n01, 1.0), props.ballColor);
+            out_vertices[v_base + 0].pos = vec4(p00, 0.0);
+            out_vertices[v_base + 0].normal = vec4(n00, 1.0);
+            out_vertices[v_base + 0].color = props.ballColor;
 
-            out_vertices[v_base + 3] = PlantVertex(vec4(p01, 0), vec4(n01, 1.0), props.ballColor);
-            out_vertices[v_base + 4] = PlantVertex(vec4(p10, 0), vec4(n10, 1.0), props.ballColor);
-            out_vertices[v_base + 5] = PlantVertex(vec4(p11, 0), vec4(n11, 1.0), props.ballColor);
+            out_vertices[v_base + 1].pos = vec4(p10, 0.0);
+            out_vertices[v_base + 1].normal = vec4(n10, 1.0);
+            out_vertices[v_base + 1].color = props.ballColor;
+
+            out_vertices[v_base + 2].pos = vec4(p01, 0.0);
+            out_vertices[v_base + 2].normal = vec4(n01, 1.0);
+            out_vertices[v_base + 2].color = props.ballColor;
+
+            out_vertices[v_base + 3].pos = vec4(p01, 0.0);
+            out_vertices[v_base + 3].normal = vec4(n01, 1.0);
+            out_vertices[v_base + 3].color = props.ballColor;
+
+            out_vertices[v_base + 4].pos = vec4(p10, 0.0);
+            out_vertices[v_base + 4].normal = vec4(n10, 1.0);
+            out_vertices[v_base + 4].color = props.ballColor;
+
+            out_vertices[v_base + 5].pos = vec4(p11, 0.0);
+            out_vertices[v_base + 5].normal = vec4(n11, 1.0);
+            out_vertices[v_base + 5].color = props.ballColor;
         }
     }
 
@@ -247,9 +279,9 @@ void main() {
             float normalX = encodedNormal.x;
             float normalY = encodedNormal.y;
             // Pack as: X.YYYY (since they are 0..1)
-            float packedNormalValToStore = floor(normalX * 1000.0 + 0.5) + clamp(normalY, 0.0, 0.999);
+            float pnvts = floor(normalX * 1000.0 + 0.5) + clamp(normalY, 0.0, 0.999);
 
-            grass_instances[g_idx].pos_rot = vec4(pos, packedNormalValToStore);
+            grass_instances[g_idx].pos_rot = vec4(pos, pnvts);
             grass_instances[g_idx].scale_seed_biome = vec4(
                 0.4 * uWorldScale, // height
                 0.06 * uWorldScale, // width

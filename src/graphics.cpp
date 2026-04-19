@@ -2685,6 +2685,22 @@ namespace Boidsish {
 					res.lightingUbo = lighting_ubo;
 					res.shadowUbo = shadow_manager->GetShadowUbo();
 					res.shadowMaps = shadow_manager->GetShadowMapArray();
+					res.time = simulation_time;
+					if (atmosphere_manager) {
+						res.transmittanceLUT = atmosphere_manager->GetTransmittanceLUT();
+						res.skyViewLUT = atmosphere_manager->GetSkyViewLUT();
+						res.aerialPerspectiveLUT = atmosphere_manager->GetAerialPerspectiveLUT();
+						res.cloudShadowMap = atmosphere_manager->GetCloudShadowMap();
+						res.atmosphereHeight = atmosphere_manager->GetAtmosphereHeight();
+					}
+					std::array<int, 10> shadow_indices;
+					shadow_indices.fill(-1);
+					const auto& all_lights = light_manager.GetLights();
+					for (size_t j = 0; j < all_lights.size() && j < 10; ++j) {
+						shadow_indices[j] = all_lights[j].shadow_map_index;
+					}
+					res.shadowIndices = shadow_indices.data();
+
 					plant_manager->Render(
 						frame.view,
 						frame.projection,
