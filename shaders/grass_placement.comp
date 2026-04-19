@@ -65,6 +65,7 @@ layout(std140, binding = [[TERRAIN_DATA_BINDING]]) uniform TerrainData {
 
 uniform isampler2D u_chunkGrid;
 uniform sampler2DArray u_heightmapArray; // RGBA16F: R=height, GBA=normal.xyz
+uniform sampler2DArray u_bakedParamsArray;
 uniform sampler2DArray uBiomeMap;   // RG8: R=low_idx, G=t
 
 uniform vec3 uCameraPos;
@@ -131,7 +132,10 @@ void spawnBlade(ivec2 cellID, float gridStep, float range, bool rotateDither) {
     float height = terrainSample.r;
     vec3 normal = terrainSample.gba;
 
-    if (height <= 0.0) {
+    vec4 bakedParams = textureLod(u_bakedParamsArray, vec3(remappedUV, float(slice)), 0.0);
+    float isWater = bakedParams.a;
+
+    if (isWater > 0.5) {
         return;
     }
 

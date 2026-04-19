@@ -10,6 +10,7 @@ layout(std430, binding = 0) buffer DecorInstances {
 
 // Heightmap and biome textures from TerrainRenderManager
 uniform sampler2DArray u_heightmapArray; // RGBA16F: R=height, GBA=normal.xyz
+uniform sampler2DArray u_bakedParamsArray;
 uniform sampler2DArray u_biomeMap;       // RG8: R=low_idx, G=t
 
 // Per-type properties (uploaded once in PrepareResources)
@@ -137,6 +138,13 @@ void main() {
 
 	float height = terrainSample.r;
 	vec3  normal = vec3(terrainSample.g, terrainSample.b, terrainSample.a);
+
+	vec4 bakedParams = textureLod(u_bakedParamsArray, vec3(remappedUV, chunkSlice), 0.0);
+	float isWater = bakedParams.a;
+
+	if (isWater > 0.5) {
+		return;
+	}
 
 	if (height < minHeight * worldScale || height > maxHeight * worldScale)
 		return;

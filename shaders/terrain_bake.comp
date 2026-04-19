@@ -31,7 +31,7 @@ void main() {
 
 	float worldScaleVal = max(u_worldScale, 0.0001);
 
-	// Fetch raw data using texelFetch to avoid any interpolation/bleeding issues during bake
+	// Fetch raw data using texelFetch
 	vec4  data = texelFetch(u_rawHeightmap, imageCoords, 0);
 	float height = data.r;
 	vec3  normal = normalize(data.gba);
@@ -46,7 +46,7 @@ void main() {
 	float vRidgeMap = 0.0;
 	float vSubstrate = 0.0;
 
-	// Apply Erosion
+	// Apply Erosion (Matching original TES logic and approximations)
 	if (erosion_enabled > 0) {
 		float ridgeMapOutput = 0.0;
 		float substrateOutput = 0.0;
@@ -55,13 +55,14 @@ void main() {
 		float frameworkHeightPeak = 200.0 * worldScaleVal;
 		float erosionFadeTarget = clamp(fragPos.y / (frameworkHeightPeak * 0.6), -1.0, 1.0);
 
+		// Matching TES approximation: use -normal.x and -normal.z as derivatives
 		vec3 hAndS = vec3(fragPos.y / worldScaleVal, -normal.x, -normal.z);
 
 		vec4 erosionResult = ErosionFilter(
 			fragPos.xz / worldScaleVal,
 			hAndS,
 			erosionFadeTarget,
-			erosion_strength, // We bake with full strength, distance fade is removed or handled later
+			erosion_strength,
 			erosion_gully_weight,
 			erosion_detail,
 			vec4(0.1, 0.0, 0.1, 2.0),
@@ -78,9 +79,10 @@ void main() {
 			debugOutput
 		);
 
-		float heightDelta = erosionResult.x * worldScaleVal;
-		fragPos.y += heightDelta;
+		// Update height
+		fragPos.y += erosionResult.x * worldScaleVal;
 
+		// Update normal based on slope delta (matching TES)
 		vec2 updatedDeriv = hAndS.yz + erosionResult.yz;
 		normal = normalize(vec3(-updatedDeriv.x, 1.0, -updatedDeriv.y));
 
@@ -89,14 +91,16 @@ void main() {
 		vSubstrate = substrateOutput;
 	}
 
-	// Apply Macro-relief displacement (consistent with terrain.tes)
-	fragPos += 0.5 * fastWorley3d(fragPos / 50.0) * fastBlueNoise(fragPos.zx) * normal *
+	// Apply Macro-relief displacement (Matches TES, position only for heightmap)
+	// Note: TES displaces along Normal, but for heightmap we can only do Y easily.
+	// Since Normal.y is usually large, this is a good approximation.
+	fragPos.y += 0.5 * fastWorley3d(fragPos / 50.0) * fastBlueNoise(fragPos.zx) * normal.y *
 		smoothstep(10.0, 1.0, fragPos.y) * smoothstep(0.01, 1.0, fragPos.y);
 
 	// Detect water
 	float vIsWater = smoothstep(0.1, -0.1, fragPos.y);
 
-	// Final height is fragPos.y
+	// Final baked data
 	imageStore(u_bakedHeightmap, imageCoords, vec4(fragPos.y, normal.x, normal.y, normal.z));
 	imageStore(u_bakedParams, imageCoords, vec4(vErosionDelta, vRidgeMap, vSubstrate, vIsWater));
 }
