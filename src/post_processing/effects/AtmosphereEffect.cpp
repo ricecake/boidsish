@@ -48,6 +48,11 @@ namespace Boidsish {
 					glUniformBlockBinding(s.ID, vol_idx, Constants::UboBinding::VolumetricLighting());
 				}
 
+				GLuint temporal_idx = glGetUniformBlockIndex(s.ID, "TemporalData");
+				if (temporal_idx != GL_INVALID_INDEX) {
+					glUniformBlockBinding(s.ID, temporal_idx, Boidsish::Constants::UboBinding::TemporalData());
+				}
+
 				// Explicitly set standard sampler bindings
 				s.setInt("shadowMaps", 4);
 			};

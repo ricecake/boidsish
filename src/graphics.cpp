@@ -3432,6 +3432,7 @@ namespace Boidsish {
 				impl->weather_manager->GetCurrentWeather(),
 				frame.world_scale,
 				impl->light_manager,
+					impl->lighting_ubo,
 				impl->shadow_manager.get(),
 				impl->terrain_render_manager.get(),
 				impl->atmosphere_manager.get()

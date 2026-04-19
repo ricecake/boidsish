@@ -46,7 +46,7 @@ namespace Boidsish {
 		~VolumetricLightingManager();
 
 		void Initialize() override;
-		void Update(const glm::mat4& view, const glm::mat4& projection, const glm::vec3& camera_pos, const glm::vec3& camera_front, float delta_time, const CurrentWeather& weather, float world_scale, LightManager& light_manager, ShadowManager* shadow_manager, TerrainRenderManager* terrain_render_manager, AtmosphereManager* atmosphere_manager);
+		void Update(const glm::mat4& view, const glm::mat4& projection, const glm::vec3& camera_pos, const glm::vec3& camera_front, float delta_time, const CurrentWeather& weather, float world_scale, LightManager& light_manager, GLuint lighting_ubo, ShadowManager* shadow_manager, TerrainRenderManager* terrain_render_manager, AtmosphereManager* atmosphere_manager);
 
 		GLuint GetCascadeTexture(int index) const { return cascades_[index].integrated_texture; }
 

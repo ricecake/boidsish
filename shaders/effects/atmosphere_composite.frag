@@ -124,9 +124,29 @@ void main() {
 	float volTransmittance = volLight.a;
 
 	// 2. High-res Atmosphere (Haze)
+	// We only apply Aerial Perspective (AP) for the distance BEYOND the volumetric grid
+	// to avoid double-fogging within the grid's range.
+	float gridMaxDist = volUbo.cascadeFars.z;
+	float remainingDist = max(0.0, dist - gridMaxDist);
+
+	// Reconstruct the point where the ray exits the volumetric grid
+	vec3 gridExitPos = viewPos + rayDir * min(dist, gridMaxDist);
 	float distKM = (dist / 1000.0) * hazeDensity;
-	vec3  inScattering = sampleAerialPerspective(rayDir, distKM);
-	float transmittance = sampleAerialPerspectiveTransmittance(rayDir, distKM);
+
+	// Total atmosphere from camera to fragment
+	vec3  totalInScattering = sampleAerialPerspective(rayDir, distKM);
+	float totalTransmittance = sampleAerialPerspectiveTransmittance(rayDir, distKM);
+
+	// Atmosphere from camera to grid exit
+	float gridExitKM = (min(dist, gridMaxDist) / 1000.0) * hazeDensity;
+	vec3  gridExitInScattering = sampleAerialPerspective(rayDir, gridExitKM);
+	float gridExitTransmittance = sampleAerialPerspectiveTransmittance(rayDir, gridExitKM);
+
+	// Atmosphere from grid exit to fragment (Analytical Aerial Perspective fallback)
+	// L_segment = L_total - L_front * T_back
+	// This is mathematically equivalent to the contribution from gridExitPos to worldPos.
+	vec3  remainingInScattering = max(vec3(0.0), totalInScattering - gridExitInScattering * (totalTransmittance / gridExitTransmittance));
+	float remainingTransmittance = totalTransmittance / max(gridExitTransmittance, 0.001);
 
 	// 3. Cloud Atmospheric Integration
 	// Clouds should also be affected by the atmosphere between them and the camera.
@@ -144,20 +164,27 @@ void main() {
 
 	vec3 result;
 	if (!isSky) {
-		// Apply Volumetrics to scene first
-		vec3 baseColor = sceneColor * volTransmittance + volScattering;
+		// 1. Scene color through the distance beyond the grid (AP fog)
+		vec3 distantScene = sceneColor * remainingTransmittance + remainingInScattering;
 
-		// Terrain/objects: apply aerial perspective and clouds
-		vec3 terrainAtmos = baseColor * transmittance + inScattering;
+		// 2. Distant scene through the volumetric grid
+		vec3 terrainAtmos = distantScene * volTransmittance + volScattering;
+
+		// 3. Blend with clouds (clouds are already AP-fogged in step 3)
 		vec3 cloudsAtmos = cloudColor * atmosTransmittance + atmosInScattering * (1.0 - cloudTransmittance);
 		result = mix(cloudsAtmos, terrainAtmos, cloudTransmittance);
 	} else {
-		// Sky and colossal objects: preserve scene output (sun, moon, stars, colossal)
-		// but volumetrics still apply to the distant view (shafts of light)
-		vec3 baseColor = sceneColor * volTransmittance + volScattering;
+		// For sky/colossal, sceneColor already contains the sky and AP.
+		// We use the scene color directly as the background for the volumetric grid.
+		// To avoid double-fogging, we use distantScene (un-fogged sky) as base for volumetrics.
+		vec3 distantScene = max(vec3(0.0), (sceneColor - gridExitInScattering) / max(gridExitTransmittance, 0.001));
+		vec3 gridScene = distantScene * volTransmittance + volScattering;
+
+		// Re-apply the AP fog from camera to grid exit
+		vec3 terrainAtmos = gridScene * gridExitTransmittance + gridExitInScattering;
 
 		vec3 cloudsAtmos = cloudColor * atmosTransmittance + atmosInScattering * (1.0 - cloudTransmittance);
-		result = baseColor * cloudTransmittance + cloudsAtmos;
+		result = terrainAtmos * cloudTransmittance + cloudsAtmos;
 	}
 
 	FragColor = vec4(result, 1.0);

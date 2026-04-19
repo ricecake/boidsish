@@ -115,9 +115,36 @@ namespace Boidsish {
 		inject_clouds_shader_ = std::make_unique<ComputeShader>("shaders/volumetric_clouds_injection.comp");
 		lighting_injection_shader_ = std::make_unique<ComputeShader>("shaders/volumetric_lighting_injection.comp");
 		integration_shader_ = std::make_unique<ComputeShader>("shaders/volumetric_integration.comp");
+
+		auto setup_vol_shader = [](ShaderBase& s) {
+			s.use();
+			GLuint vol_idx = glGetUniformBlockIndex(s.ID, "VolumetricLighting");
+			if (vol_idx != GL_INVALID_INDEX) {
+				glUniformBlockBinding(s.ID, vol_idx, Constants::UboBinding::VolumetricLighting());
+			}
+			GLuint lighting_idx = glGetUniformBlockIndex(s.ID, "Lighting");
+			if (lighting_idx != GL_INVALID_INDEX) {
+				glUniformBlockBinding(s.ID, lighting_idx, Constants::UboBinding::Lighting());
+			}
+			GLuint shadows_idx = glGetUniformBlockIndex(s.ID, "Shadows");
+			if (shadows_idx != GL_INVALID_INDEX) {
+				glUniformBlockBinding(s.ID, shadows_idx, Constants::UboBinding::Shadows());
+			}
+			GLuint terrain_idx = glGetUniformBlockIndex(s.ID, "TerrainData");
+			if (terrain_idx != GL_INVALID_INDEX) {
+				glUniformBlockBinding(s.ID, terrain_idx, Constants::UboBinding::TerrainData());
+			}
+		};
+
+		if (grid_init_shader_) setup_vol_shader(*grid_init_shader_);
+		if (density_init_shader_) setup_vol_shader(*density_init_shader_);
+		if (voxelize_particles_shader_) setup_vol_shader(*voxelize_particles_shader_);
+		if (inject_clouds_shader_) setup_vol_shader(*inject_clouds_shader_);
+		if (lighting_injection_shader_) setup_vol_shader(*lighting_injection_shader_);
+		if (integration_shader_) setup_vol_shader(*integration_shader_);
 	}
 
-	void VolumetricLightingManager::Update(const glm::mat4& view, const glm::mat4& projection, const glm::vec3& camera_pos, const glm::vec3& camera_front, float /*delta_time*/, const CurrentWeather& weather, float world_scale, LightManager& light_manager, ShadowManager* shadow_manager, TerrainRenderManager* terrain_render_manager, AtmosphereManager* atmosphere_manager) {
+	void VolumetricLightingManager::Update(const glm::mat4& view, const glm::mat4& projection, const glm::vec3& camera_pos, const glm::vec3& camera_front, float /*delta_time*/, const CurrentWeather& weather, float world_scale, LightManager& light_manager, GLuint lighting_ubo, ShadowManager* shadow_manager, TerrainRenderManager* terrain_render_manager, AtmosphereManager* atmosphere_manager) {
 		if (!initialized_) return;
 
 		frame_counter_++;
@@ -210,6 +237,9 @@ namespace Boidsish {
 
 			// Bind UBOs
 			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::VolumetricLighting(), lighting_ubo_);
+			if (lighting_ubo != 0) {
+				glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Lighting(), lighting_ubo);
+			}
 
 			if (shadow_manager) {
 				glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Shadows(), shadow_manager->GetShadowUbo());
