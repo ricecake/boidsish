@@ -56,25 +56,49 @@ vec3 getWindAtPosition(vec3 worldPos) {
 		}
 	}
 
-// 3. Small scale chaotic noise (Curl Noise)
-	// Energy pulled from macro wind by terrain drag drives local turbulence
+// 3. Structured Gusts and Swirls
+	// Energy pulled from macro wind by terrain drag drives local turbulence.
+	// We introduce "gustiness" by modulating turbulence scale and intensity with large-scale noise.
 	float time = u_windParams.y;
 	float curlScale = u_windParams.z;
 	float curlStrength = u_windParams.w;
 
-	// Scale turbulence by drag and macro speed
-	float turbulenceIntensity = drag * macroSpeed * curlStrength;
+	// Gustiness: large-scale noise that moves with the macro wind
+	// This creates areas of high/low turbulence that feel like structured gusts.
+	float gustAdvectionSpeed = 0.5;
+	vec3 gustPos = worldPos - (macroWind * time * gustAdvectionSpeed);
+	float gustiness = fastSimplex3d(gustPos * 0.005) * 0.5 + 0.5;
+
+	// Scale turbulence intensity by drag, macro speed, and the structured gust factor
+	float turbulenceIntensity = drag * macroSpeed * curlStrength * (0.2 + 0.8 * gustiness);
 
 	// Advect the sampling coordinates downstream using the macro wind.
-	// You may want to expose 'advectionSpeed' as a uniform to tune the visual flow.
 	float advectionSpeed = 1.0;
 	vec3 advectedPos = worldPos - (macroWind * time * advectionSpeed);
 
 	// Sample the curl noise using the moving coordinate space
-	vec3 curl = fastCurl3d(advectedPos/10.0 * curlScale + vec3(0.0, time * 0.02, 0.0));
+	// We modulate the curl scale slightly by gustiness to add variety to swirl sizes
+	float dynamicCurlScale = curlScale * (0.8 + 0.4 * gustiness);
+	vec3 curl = fastCurl3d(advectedPos/12.0 * dynamicCurlScale + vec3(0.0, time * 0.02, 0.0));
 
-	// Add turbulence to macro wind
-	return macroWind + curl * turbulenceIntensity;
+	// 4. Combined Result
+	// Instead of just adding curl, we use it to perturb the direction of the macro wind,
+	// creating the effect of chaotic swirls within the flow.
+	if (macroSpeed > 0.001) {
+		// Use curl to rotate the macro wind vector slightly
+		vec3 rotationAxis = normalize(curl + vec3(0.0, 1.0, 0.0)); // Bias axis toward Up
+		float rotationAngle = turbulenceIntensity * 0.15;
+
+		float cosTheta = cos(rotationAngle);
+		float sinTheta = sin(rotationAngle);
+
+		macroWind = macroWind * cosTheta +
+					cross(rotationAxis, macroWind) * sinTheta +
+					rotationAxis * dot(rotationAxis, macroWind) * (1.0 - cosTheta);
+	}
+
+	// Add a final additive turbulence component for high-frequency jitter
+	return macroWind + curl * (turbulenceIntensity * 0.3);
 }
 
 #endif // HELPERS_WIND_GLSL
