@@ -67,7 +67,7 @@ vec3 getWindAtPosition(vec3 worldPos) {
 
 	// Advect the sampling coordinates downstream using the macro wind.
 	// You may want to expose 'advectionSpeed' as a uniform to tune the visual flow.
-	float advectionSpeed = 1.0;
+	float advectionSpeed = 0.50;
 	vec3 advectedPos = worldPos - (macroWind * time * advectionSpeed);
 
 	// Sample the curl noise using the moving coordinate space
