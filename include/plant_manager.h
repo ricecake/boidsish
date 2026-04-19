@@ -45,7 +45,7 @@ namespace Boidsish {
         void Initialize();
         void Update(float deltaTime, float time, const class Camera& camera, const class ITerrainGenerator& terrainGen, std::shared_ptr<class TerrainRenderManager> renderManager, uint32_t grassInstancesSSBO, uint32_t grassIndirectBuffer);
 
-        void Render(const glm::mat4& view, const glm::mat4& projection, const GrassManager::RenderResources& resources, uint32_t temporalUbo, bool isShadowPass = false);
+        void Render(const glm::mat4& view, const glm::mat4& projection, std::shared_ptr<class TerrainRenderManager> renderManager, const GrassManager::RenderResources& resources, uint32_t temporalUbo, bool isShadowPass = false);
 
         void SetEnabled(bool e) { enabled_ = e; }
         bool IsEnabled() const { return enabled_; }

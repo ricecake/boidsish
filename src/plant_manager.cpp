@@ -148,10 +148,14 @@ namespace Boidsish {
             // We used it as a counter for placement, but all geometry is generated into one large buffer.
             uint32_t one = 1;
             glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(DrawArraysIndirectCommand, instanceCount), sizeof(uint32_t), &one);
+
+            // Clamp vertex count to prevent OOB if something went wrong
+            // (Read back is slow, but we can do a GPU-GPU copy or just trust the atomic if bounds check is in shader)
+            // For now, let's just rely on the shader's bounds check.
         }
     }
 
-    void PlantManager::Render(const glm::mat4& view, const glm::mat4& projection, const GrassManager::RenderResources& res, uint32_t temporalUbo, bool isShadowPass) {
+    void PlantManager::Render(const glm::mat4& view, const glm::mat4& projection, std::shared_ptr<class TerrainRenderManager> renderManager, const GrassManager::RenderResources& res, uint32_t temporalUbo, bool isShadowPass) {
         if (!initialized_ || !enabled_) return;
 
         PROJECT_PROFILE_SCOPE("PlantManager::Render");
@@ -161,6 +165,11 @@ namespace Boidsish {
         plant_shader_->setMat4("projection", projection);
         plant_shader_->setFloat("uTime", res.time);
         plant_shader_->setBool("uIsShadowPass", isShadowPass);
+        plant_shader_->setVec4("clipPlane", glm::vec4(0, 0, 0, 0)); // Default
+
+        if (renderManager) {
+            renderManager->BindTerrainData(*plant_shader_);
+        }
 
         glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Lighting(), res.lightingUbo);
         glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Shadows(), res.shadowUbo);

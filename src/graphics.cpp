@@ -2704,6 +2704,7 @@ namespace Boidsish {
 					plant_manager->Render(
 						frame.view,
 						frame.projection,
+						terrain_render_manager,
 						res,
 						temporal_data_ubo
 					);

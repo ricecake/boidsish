@@ -92,6 +92,7 @@ void main() {
     vec2 windUV = basePos.xz * 0.05 + time * 0.45;
     vec2 windNoise = curlNoise2D(windUV) * 0.1;
     float windStrength = length(windNoise) * biomeProps[biomeIdx].windInfluence * globalProps.windMultiplier;
+    vec3 windDir = normalize(vec3(windNoise.x, 0.0, windNoise.y));
 
     // Base Tilt - relatively vertical (clamped to ~15 degrees)
     float tiltFactor = (hash(seed + 8888) * 2.0 - 1.0) * 0.25;
@@ -101,10 +102,30 @@ void main() {
     float bendFactor = windStrength * (1.0 - clamp(biomeProps[biomeIdx].rigidity * globalProps.rigidityMultiplier, 0.0, 0.95));
     float bend = bendFactor * v * v; // Parabolic bend
 
-    vec3 windDir = normalize(vec3(windNoise.x, 0.0, windNoise.y));
-
     // Random gentle bend/sway
     float randomBend = (hash(seed + 4321) * 2.0 - 1.0) * 0.1 * v * v;
+
+    // --- Seuss-like "Floppy" physics for Alien Plants ---
+    vec3 floppyOffset = vec3(0.0);
+    if (isAlienPlant) {
+        float rigidity = clamp(biomeProps[biomeIdx].rigidity * globalProps.rigidityMultiplier, 0.0, 1.0);
+
+        // 1. Gravity Droop: pull tips down toward the ground
+        float droop = (1.0 - rigidity) * 1.5 * v * v;
+        floppyOffset.y -= droop * height;
+
+        // 2. Fur-like "Wiggle": multi-harmonic sine waves along the length
+        float wiggleSpeed = 4.0;
+        float wiggleFreq = 8.0;
+        float wiggleAmp = (1.0 - rigidity) * 0.15 * v;
+        float wiggle = sin(v * wiggleFreq - time * wiggleSpeed + hash(seed) * 6.28) * wiggleAmp;
+        float wiggle2 = cos(v * wiggleFreq * 0.7 + time * wiggleSpeed * 1.2) * wiggleAmp * 0.5;
+
+        floppyOffset.xz += (wiggle + wiggle2) * height;
+
+        // Enhance wind reaction for floppy grass
+        bend *= 2.0;
+    }
 
     // Combined Rotation matrix (Base rotation around Y or Normal-aligned)
     mat3 alignMat = mat3(1.0);
@@ -137,6 +158,9 @@ void main() {
     pos.xz += windDir.xz * bend * height;
     pos.x += randomBend * height;
     pos.z += tiltAngle * height;
+
+    // Apply floppy Seuss effects
+    pos += floppyOffset;
 
     // Ensure the blade doesn't sink into the ground during heavy bending
     // (Only for terrain grass)

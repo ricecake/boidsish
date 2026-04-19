@@ -92,18 +92,21 @@ vec3 getSplinePoint(float t, vec3 basePos, float seed, float length) {
     vec3 p = basePos + vec3(0, h, 0);
 
     // Curve
-    p.x += sin(t * 3.14159 * 0.5) * props.curveStrength * length;
-    p.z += (1.0 - cos(t * 3.14159 * 0.5)) * props.curveStrength * length;
+    float curvePhase = t * 3.14159 * 0.5;
+    p.x += sin(curvePhase) * props.curveStrength * length;
+    p.z += (1.0 - cos(curvePhase)) * props.curveStrength * length;
 
     // Spiral
     float spiral = t * props.spiralFrequency * 6.28318;
-    float spiralRadius = t * props.curveStrength * length * 0.3;
+    float spiralRadius = sin(t * 3.14159) * props.curveStrength * length * 0.5; // Bulge in middle
     p.x += cos(spiral + seed) * spiralRadius;
     p.z += sin(spiral + seed) * spiralRadius;
 
     // Zig-zag
-    p.x += sin(t * 20.0 + seed * 123.0) * props.zigZagStrength * length * 0.1;
-    p.z += cos(t * 15.0 - seed * 456.0) * props.zigZagStrength * length * 0.1;
+    float zig = sin(t * 30.0 + seed * 123.0) * props.zigZagStrength * length * 0.05;
+    float zag = cos(t * 25.0 - seed * 456.0) * props.zigZagStrength * length * 0.05;
+    p.x += zig;
+    p.z += zag;
 
     // Wind sway
     vec2 windUV = basePos.xz * 0.05 + uTime * 0.45;
