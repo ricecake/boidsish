@@ -80,6 +80,41 @@ namespace Boidsish {
 									);
 								}
 							}
+
+							ImGui::Separator();
+							if (ImGui::TreeNode("Macro Weather Simulation")) {
+								bool macro_enabled = weather->IsMacroSimEnabled();
+								if (ImGui::Checkbox("Enable Macro Simulation", &macro_enabled)) {
+									weather->SetMacroSimEnabled(macro_enabled);
+								}
+
+								if (macro_enabled) {
+									float tau = weather->GetSimTau();
+									if (ImGui::SliderFloat("Simulation Relaxation (Tau)", &tau, 0.51f, 2.0f, "%.2f")) {
+										weather->SetSimTau(tau);
+									}
+
+									if (ImGui::Button("Reset Simulation")) {
+										weather->ResetMacroSim();
+									}
+
+									const auto* phys = weather->GetPhysicallyBasedWeather();
+									if (phys) {
+										ImGui::Text("Simulation State:");
+										ImGui::Text(
+											"Wind: (%.2f, %.2f) m/s (H), %.2f m/s (V)",
+											phys->windVelocity.x,
+											phys->windVelocity.y,
+											phys->verticalWind
+										);
+										ImGui::Text("Temp: %.1f K (%.1f C)", phys->temperature, phys->temperature - 273.15f);
+										ImGui::Text("Pressure: %.1f hPa", phys->pressure);
+										ImGui::Text("Humidity: %.1f%%", phys->humidity * 100.0f);
+										ImGui::Text("Cloud Coverage: %.1f%%", phys->cloudCoverage * 100.0f);
+									}
+								}
+								ImGui::TreePop();
+							}
 						}
 					}
 				}

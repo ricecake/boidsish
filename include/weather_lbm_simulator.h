@@ -15,6 +15,11 @@ namespace Boidsish {
 
         void Update(float deltaTime, float totalTime, float timeOfDay, const ITerrainGenerator& terrain, const glm::vec3& cameraPos, float windSpeed, float windStrength);
 
+        /**
+         * @brief Updates the grid anchor based on camera position without stepping the simulation.
+         */
+        void UpdateAnchor(const glm::vec3& cameraPos);
+
         void PopulateWindData(WindDataUbo& ubo, std::vector<glm::vec4>& grid_out, float totalTime, float curlScale, float curlStrength) const;
 
         const PhysicallyBasedWeatherOutput& GetOutput() const { return currentOutput_; }
@@ -34,6 +39,16 @@ namespace Boidsish {
         const std::vector<LbmCell>& GetCells() const { return *currentGrid_; }
         int GetWidth() const { return width_; }
         int GetHeight() const { return height_; }
+
+        float GetTau() const { return tau_; }
+        void  SetTau(float tau) {
+            tau_ = std::max(0.51f, tau);
+            omega_ = 1.0f / tau_;
+        }
+
+        void Reset(const ITerrainGenerator& terrain) {
+            Initialize(terrain);
+        }
 
     private:
         void Initialize(const ITerrainGenerator& terrain);
@@ -62,9 +77,9 @@ namespace Boidsish {
         glm::ivec2 gridAnchor_ = {0, 0}; // Grid origin in chunk coordinates
 
         // LBM Constants
-        static constexpr float dt_ = 0.1f;  // Fixed simulation timestep
-        static constexpr float tau_ = 0.8f; // Relaxation time
-        static constexpr float omega_ = 1.0f / tau_;
+        static constexpr float dt_ = 0.1f; // Fixed simulation timestep
+        float                  tau_ = 0.8f;
+        float                  omega_ = 1.25f;
 
         // D2Q9 Constants
         static const int cx[9];

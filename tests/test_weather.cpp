@@ -52,22 +52,22 @@ TEST(WeatherManagerTest, ExternalTargetOverride) {
     glm::vec3 cameraPos(0.0f);
 
     float override_target = 0.5f;
-    wm.SetTarget(WeatherAttribute::SunIntensity, override_target);
-    wm.SetPace(WeatherAttribute::SunIntensity, 10.0f); // Fast pace for testing
+    wm.SetTarget(WeatherAttribute::CloudDensity, override_target);
+    wm.SetPace(WeatherAttribute::CloudDensity, 10.0f); // Fast pace for testing
 
     // Update for a long time to reach target
     for(int i = 0; i < 100; ++i) {
         wm.Update(0.1f, i * 0.1f, cameraPos, 12.0f);
     }
 
-    EXPECT_NEAR(wm.GetCurrentWeather().sun_intensity, override_target, 0.01f);
+    EXPECT_NEAR(wm.GetCurrentWeather().cloud_density, override_target, 0.01f);
 
     // Clear target and ensure it moves again (or at least doesn't stay fixed if we move time/space)
-    wm.ClearTarget(WeatherAttribute::SunIntensity);
-    float value_after_clear = wm.GetCurrentWeather().sun_intensity;
+    wm.ClearTarget(WeatherAttribute::CloudDensity);
+    float value_after_clear = wm.GetCurrentWeather().cloud_density;
 
     wm.Update(10.0f, 200.0f, cameraPos + glm::vec3(1000.0f), 12.0f);
-    float value_after_update = wm.GetCurrentWeather().sun_intensity;
+    float value_after_update = wm.GetCurrentWeather().cloud_density;
 
     EXPECT_NE(value_after_clear, value_after_update);
 }
