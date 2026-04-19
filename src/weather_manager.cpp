@@ -34,6 +34,19 @@ namespace Boidsish {
 		SetPace(WeatherAttribute::RayleighScaleHeight, WeatherConstants::RayleighScaleHeight.pace);
 		SetPace(WeatherAttribute::MieScaleHeight, WeatherConstants::MieScaleHeight.pace);
 		SetPace(WeatherAttribute::CloudCoverage, WeatherConstants::CloudCoverage.pace);
+
+		// Initialize default paces for new attributes
+		SetPace(WeatherAttribute::MieScattering, 0.2f);
+		SetPace(WeatherAttribute::MieExtinction, 0.2f);
+		SetPace(WeatherAttribute::RayleighScatteringR, 0.1f);
+		SetPace(WeatherAttribute::RayleighScatteringG, 0.1f);
+		SetPace(WeatherAttribute::RayleighScatteringB, 0.1f);
+		SetPace(WeatherAttribute::HazeColorR, 0.1f);
+		SetPace(WeatherAttribute::HazeColorG, 0.1f);
+		SetPace(WeatherAttribute::HazeColorB, 0.1f);
+		SetPace(WeatherAttribute::CloudColorR, 0.1f);
+		SetPace(WeatherAttribute::CloudColorG, 0.1f);
+		SetPace(WeatherAttribute::CloudColorB, 0.1f);
 	}
 
 	WeatherManager::~WeatherManager() {
@@ -132,6 +145,39 @@ namespace Boidsish {
 		case WeatherAttribute::CloudCoverage:
 			value_ptr = &current_.cloud_coverage;
 			break;
+		case WeatherAttribute::MieScattering:
+			value_ptr = &current_.mie_scattering;
+			break;
+		case WeatherAttribute::MieExtinction:
+			value_ptr = &current_.mie_extinction;
+			break;
+		case WeatherAttribute::RayleighScatteringR:
+			value_ptr = &current_.rayleigh_scattering.r;
+			break;
+		case WeatherAttribute::RayleighScatteringG:
+			value_ptr = &current_.rayleigh_scattering.g;
+			break;
+		case WeatherAttribute::RayleighScatteringB:
+			value_ptr = &current_.rayleigh_scattering.b;
+			break;
+		case WeatherAttribute::HazeColorR:
+			value_ptr = &current_.haze_color.r;
+			break;
+		case WeatherAttribute::HazeColorG:
+			value_ptr = &current_.haze_color.g;
+			break;
+		case WeatherAttribute::HazeColorB:
+			value_ptr = &current_.haze_color.b;
+			break;
+		case WeatherAttribute::CloudColorR:
+			value_ptr = &current_.cloud_color.r;
+			break;
+		case WeatherAttribute::CloudColorG:
+			value_ptr = &current_.cloud_color.g;
+			break;
+		case WeatherAttribute::CloudColorB:
+			value_ptr = &current_.cloud_color.b;
+			break;
 		default:
 			return;
 		}
@@ -184,6 +230,11 @@ namespace Boidsish {
 		sunny.settings.rayleigh_scale_height = {RayleighScaleHeight.GetValue(0.85f), RayleighScaleHeight.GetValue(1.15f)};
 		sunny.settings.mie_scale_height = {MieScaleHeight.GetValue(0.8f), MieScaleHeight.GetValue(1.2f)};
 		sunny.settings.cloud_coverage = {CloudCoverage.GetValue(0.93f), CloudCoverage.GetValue(1.07f)};
+		sunny.settings.mie_scattering = {MieScattering, MieScattering};
+		sunny.settings.mie_extinction = {MieExtinction, MieExtinction};
+		sunny.settings.rayleigh_scattering = {RayleighScattering, RayleighScattering};
+		sunny.settings.haze_color = {DefaultHazeColor, DefaultHazeColor};
+		sunny.settings.cloud_color = {DefaultCloudColor, DefaultCloudColor};
 		presets_.push_back(sunny);
 
 		// 2. Cloudy
@@ -205,6 +256,11 @@ namespace Boidsish {
 		cloudy.settings.rayleigh_scale_height = {RayleighScaleHeight.GetValue(0.7f), RayleighScaleHeight.GetValue(1.0f)};
 		cloudy.settings.mie_scale_height = {MieScaleHeight.GetValue(1.2f), MieScaleHeight.GetValue(1.8f)};
 		cloudy.settings.cloud_coverage = {CloudCoverage.GetValue(1.1f), CloudCoverage.GetValue(1.2f)};
+		cloudy.settings.mie_scattering = {MieScattering, MieScattering * 1.5f};
+		cloudy.settings.mie_extinction = {MieExtinction, MieExtinction * 1.5f};
+		cloudy.settings.rayleigh_scattering = {RayleighScattering, RayleighScattering * 1.1f};
+		cloudy.settings.haze_color = {DefaultHazeColor * 0.9f, DefaultHazeColor};
+		cloudy.settings.cloud_color = {DefaultCloudColor * 0.9f, DefaultCloudColor};
 		presets_.push_back(cloudy);
 
 		// 3. Overcast
@@ -226,6 +282,11 @@ namespace Boidsish {
 		overcast.settings.rayleigh_scale_height = {RayleighScaleHeight.GetValue(0.4f), RayleighScaleHeight.GetValue(0.8f)};
 		overcast.settings.mie_scale_height = {MieScaleHeight.GetValue(1.8f), MieScaleHeight.GetValue(2.0f)};
 		overcast.settings.cloud_coverage = {CloudCoverage.GetValue(1.2f), CloudCoverage.GetValue(2.0f)};
+		overcast.settings.mie_scattering = {MieScattering * 1.5f, MieScattering * 2.0f};
+		overcast.settings.mie_extinction = {MieExtinction * 1.5f, MieExtinction * 2.0f};
+		overcast.settings.rayleigh_scattering = {RayleighScattering * 1.1f, RayleighScattering * 1.3f};
+		overcast.settings.haze_color = {DefaultHazeColor * 0.7f, DefaultHazeColor * 0.8f};
+		overcast.settings.cloud_color = {DefaultCloudColor * 0.7f, DefaultCloudColor * 0.8f};
 		presets_.push_back(overcast);
 
 		// 4. Foggy
@@ -247,6 +308,11 @@ namespace Boidsish {
 		foggy.settings.rayleigh_scale_height = {RayleighScaleHeight.GetValue(0.1f), RayleighScaleHeight.GetValue(0.5f)};
 		foggy.settings.mie_scale_height = {MieScaleHeight.GetValue(2.0f), MieScaleHeight.GetValue(2.0f)};
 		foggy.settings.cloud_coverage = {CloudCoverage.GetValue(0.2f), CloudCoverage.GetValue(0.5f)};
+		foggy.settings.mie_scattering = {MieScattering * 2.0f, MieScattering * 5.0f};
+		foggy.settings.mie_extinction = {MieExtinction * 2.0f, MieExtinction * 5.0f};
+		foggy.settings.rayleigh_scattering = {RayleighScattering * 1.3f, RayleighScattering * 1.5f};
+		foggy.settings.haze_color = {DefaultHazeColor * 0.5f, DefaultHazeColor * 0.6f};
+		foggy.settings.cloud_color = {DefaultCloudColor * 0.5f, DefaultCloudColor * 0.6f};
 		presets_.push_back(foggy);
 
 		// Calculate CDF
@@ -345,10 +411,6 @@ namespace Boidsish {
 				lbm_simulator_->UpdateAnchor(cameraPos);
 			}
 
-			const auto& phys = lbm_simulator_->GetOutput();
-			// Optionally override some current_ targets with physically based results
-			// current_.wind_strength = glm::length(phys.windVelocity);
-			// ...
 		}
 
 		// Calculate weather control coordinate in noise-space
@@ -372,6 +434,12 @@ namespace Boidsish {
 				blending_info_.is_manual = true;
 			} else {
 				float controlValue = Simplex::noise(noisePos) * 0.5f + 0.5f;
+
+				// If LBM is enabled, use its cloud coverage to drive weather transitions
+				if (macro_sim_enabled_ && lbm_simulator_) {
+					controlValue = lbm_simulator_->GetOutput().cloudCoverage;
+				}
+
 				float totalWeight = cdf_.back();
 				float targetValue = std::clamp(controlValue, 0.0f, 1.0f) * totalWeight;
 
@@ -403,28 +471,57 @@ namespace Boidsish {
 				return Simplex::noise(noisePos * 2.0f + glm::vec2(offset)) * 0.5f + 0.5f;
 			};
 
-			cached_targets_.sun_intensity = blended.sun_intensity.Lerp(sampleNoise(1.1f));
+			float humidity = 0.5f;
+			float pressure = 1.0f;
+			float temperature = 0.5f;
+			if (macro_sim_enabled_ && lbm_simulator_) {
+				const auto& phys = lbm_simulator_->GetOutput();
+				humidity = phys.humidity;
+				pressure = std::clamp((phys.pressure - 950.0f) / 100.0f, 0.0f, 1.0f);
+				temperature = std::clamp((phys.temperature - 250.0f) / 50.0f, 0.0f, 1.0f);
+			}
+
+			cached_targets_.sun_intensity = blended.sun_intensity.Lerp(sampleNoise(1.1f) * (1.0f - humidity * 0.5f));
 			cached_targets_.wind_strength = blended.wind_strength.Lerp(sampleNoise(2.2f));
 			cached_targets_.wind_speed = blended.wind_speed.Lerp(sampleNoise(3.3f));
 			cached_targets_.wind_frequency = blended.wind_frequency.Lerp(sampleNoise(4.4f));
-			cached_targets_.cloud_density = blended.cloud_density.Lerp(sampleNoise(5.5f));
+			cached_targets_.cloud_density = blended.cloud_density.Lerp(humidity);
 			cached_targets_.cloud_altitude = blended.cloud_altitude.Lerp(sampleNoise(6.6f));
-			cached_targets_.cloud_thickness = blended.cloud_thickness.Lerp(sampleNoise(7.7f));
-			cached_targets_.haze_density = blended.haze_density.Lerp(sampleNoise(8.8f));
+			cached_targets_.cloud_thickness = blended.cloud_thickness.Lerp(humidity);
+			cached_targets_.haze_density = blended.haze_density.Lerp(humidity);
 			cached_targets_.haze_height = blended.haze_height.Lerp(sampleNoise(9.9f));
-			cached_targets_.rayleigh_scale = blended.rayleigh_scale.Lerp(sampleNoise(10.10f));
-			cached_targets_.mie_scale = blended.mie_scale.Lerp(sampleNoise(11.11f));
-			cached_targets_.atmosphere_height = blended.atmosphere_height.Lerp(sampleNoise(12.12f));
-			cached_targets_.rayleigh_scale_height = blended.rayleigh_scale_height.Lerp(sampleNoise(13.13f));
-			cached_targets_.mie_scale_height = blended.mie_scale_height.Lerp(sampleNoise(14.14f));
-			cached_targets_.cloud_coverage = blended.cloud_coverage.Lerp(sampleNoise(15.15f));
+			cached_targets_.rayleigh_scale = blended.rayleigh_scale.Lerp(pressure);
+			cached_targets_.mie_scale = blended.mie_scale.Lerp(humidity);
+			cached_targets_.atmosphere_height = blended.atmosphere_height.Lerp(pressure);
+			cached_targets_.rayleigh_scale_height = blended.rayleigh_scale_height.Lerp(temperature);
+			cached_targets_.mie_scale_height = blended.mie_scale_height.Lerp(humidity);
+			cached_targets_.cloud_coverage = blended.cloud_coverage.Lerp(humidity);
+
+			cached_targets_.mie_scattering = blended.mie_scattering.Lerp(humidity);
+			cached_targets_.mie_extinction = blended.mie_extinction.Lerp(humidity);
+			cached_targets_.rayleigh_scattering = blended.rayleigh_scattering.Lerp(pressure);
+			cached_targets_.haze_color = blended.haze_color.Lerp(humidity);
+			cached_targets_.cloud_color = blended.cloud_color.Lerp(humidity);
+		}
+
+		// If LBM is enabled, some targets are driven directly by simulation
+		if (macro_sim_enabled_ && lbm_simulator_) {
+			const auto& phys = lbm_simulator_->GetOutput();
+			cached_targets_.rayleigh_scattering = phys.rayleighScattering;
+			cached_targets_.mie_scattering = phys.mieScattering;
+			cached_targets_.mie_extinction = phys.mieExtinction;
+			cached_targets_.haze_color = phys.aerosolColor; // LBM aerosol color maps to haze color
+			cached_targets_.cloud_coverage = phys.cloudCoverage;
+			cached_targets_.cloud_density = phys.cloudDensity;
+			cached_targets_.cloud_altitude = phys.cloudAltitude;
+			cached_targets_.cloud_thickness = phys.cloudThickness;
 		}
 
 		// Always update attributes toward cached targets using the spring system
-		// UpdateAttribute(WeatherAttribute::SunIntensity, cached_targets_.sun_intensity, deltaTime);
-		// UpdateAttribute(WeatherAttribute::WindStrength, cached_targets_.wind_strength, deltaTime);
-		// UpdateAttribute(WeatherAttribute::WindSpeed, cached_targets_.wind_speed, deltaTime);
-		// UpdateAttribute(WeatherAttribute::WindFrequency, cached_targets_.wind_frequency, deltaTime);
+		UpdateAttribute(WeatherAttribute::SunIntensity, cached_targets_.sun_intensity, deltaTime);
+		UpdateAttribute(WeatherAttribute::WindStrength, cached_targets_.wind_strength, deltaTime);
+		UpdateAttribute(WeatherAttribute::WindSpeed, cached_targets_.wind_speed, deltaTime);
+		UpdateAttribute(WeatherAttribute::WindFrequency, cached_targets_.wind_frequency, deltaTime);
 		UpdateAttribute(WeatherAttribute::CloudDensity, cached_targets_.cloud_density, deltaTime);
 		UpdateAttribute(WeatherAttribute::CloudAltitude, cached_targets_.cloud_altitude, deltaTime);
 		UpdateAttribute(WeatherAttribute::CloudThickness, cached_targets_.cloud_thickness, deltaTime);
@@ -436,6 +533,19 @@ namespace Boidsish {
 		UpdateAttribute(WeatherAttribute::RayleighScaleHeight, cached_targets_.rayleigh_scale_height, deltaTime);
 		UpdateAttribute(WeatherAttribute::MieScaleHeight, cached_targets_.mie_scale_height, deltaTime);
 		UpdateAttribute(WeatherAttribute::CloudCoverage, cached_targets_.cloud_coverage, deltaTime);
+
+		// Update new attributes
+		UpdateAttribute(WeatherAttribute::MieScattering, cached_targets_.mie_scattering, deltaTime);
+		UpdateAttribute(WeatherAttribute::MieExtinction, cached_targets_.mie_extinction, deltaTime);
+		UpdateAttribute(WeatherAttribute::RayleighScatteringR, cached_targets_.rayleigh_scattering.r, deltaTime);
+		UpdateAttribute(WeatherAttribute::RayleighScatteringG, cached_targets_.rayleigh_scattering.g, deltaTime);
+		UpdateAttribute(WeatherAttribute::RayleighScatteringB, cached_targets_.rayleigh_scattering.b, deltaTime);
+		UpdateAttribute(WeatherAttribute::HazeColorR, cached_targets_.haze_color.r, deltaTime);
+		UpdateAttribute(WeatherAttribute::HazeColorG, cached_targets_.haze_color.g, deltaTime);
+		UpdateAttribute(WeatherAttribute::HazeColorB, cached_targets_.haze_color.b, deltaTime);
+		UpdateAttribute(WeatherAttribute::CloudColorR, cached_targets_.cloud_color.r, deltaTime);
+		UpdateAttribute(WeatherAttribute::CloudColorG, cached_targets_.cloud_color.g, deltaTime);
+		UpdateAttribute(WeatherAttribute::CloudColorB, cached_targets_.cloud_color.b, deltaTime);
 	}
 
 } // namespace Boidsish
