@@ -187,7 +187,14 @@ namespace Boidsish {
 		 */
 		void UpdateGridTextures(float world_scale, GLuint lighting_ubo = 0, float day_time = -1.0f);
 
-		void SetNoise(const GLuint& noise, const GLuint& curl, const GLuint& extra = 0) {
+		/**
+		 * @brief Run the compute shader to bake erosion and other static displacements.
+		 */
+		void BakeHeightmapSlice(int slice, float world_scale, const glm::vec2& world_offset);
+
+		void SetVisualEffectsUbo(GLuint ubo) { visual_effects_ubo_ = ubo; }
+
+		void SetNoise(const GLuint& noise, const GLuint& curl, const GLuint& blue, const GLuint& extra = 0) {
 			if (noise != 0) {
 				noise_texture_ = noise;
 			}
@@ -195,6 +202,11 @@ namespace Boidsish {
 			if (curl != 0) {
 				curl_texture_ = curl;
 			}
+
+			if (blue != 0) {
+				blue_noise_texture_ = blue;
+			}
+
 			if (extra != 0)
 				extra_noise_texture_ = extra;
 		}
@@ -247,10 +259,13 @@ namespace Boidsish {
 		GLuint grid_vbo_ = 0;
 		GLuint grid_ebo_ = 0;
 		GLuint instance_vbo_ = 0;
-		GLuint heightmap_texture_ = 0; // GL_TEXTURE_2D_ARRAY (RGBA16F: height, normal.xyz)
-		GLuint biome_texture_ = 0;     // GL_TEXTURE_2D_ARRAY (RG8: low_idx, t)
+		GLuint raw_heightmap_texture_ = 0; // GL_TEXTURE_2D_ARRAY (RGBA16F: height, normal.xyz)
+		GLuint heightmap_texture_ = 0;     // GL_TEXTURE_2D_ARRAY (RGBA16F: baked height, normal.xyz)
+		GLuint baked_params_texture_ = 0;  // GL_TEXTURE_2D_ARRAY (RGBA16F: erosion, ridge, substrate, water)
+		GLuint biome_texture_ = 0;         // GL_TEXTURE_2D_ARRAY (RG8: low_idx, t)
 		GLuint noise_texture_ = 0;
 		GLuint curl_texture_ = 0;
+		GLuint blue_noise_texture_ = 0;
 		GLuint extra_noise_texture_ = 0;
 		GLuint biome_ubo_ = 0; // UBO for BiomeShaderProperties
 
@@ -262,6 +277,9 @@ namespace Boidsish {
 
 		std::unique_ptr<ComputeShader> grid_mip_shader_;
 		std::unique_ptr<ComputeShader> probe_compute_shader_;
+		std::unique_ptr<ComputeShader> bake_shader_;
+
+		GLuint visual_effects_ubo_ = 0;
 
 		// Grid mesh data
 		size_t grid_index_count_ = 0;
