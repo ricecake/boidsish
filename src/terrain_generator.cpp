@@ -603,7 +603,7 @@ namespace Boidsish {
 		BiomeAttributes current;
 		ApplyWeightedBiome(control_value, current);
 
-		glm::vec3 terrain_height = biomefbm(warped_pos * 0.5f, current);
+		glm::vec3 terrain_height = 1.35f * biomefbm(warped_pos * 0.25f, current);
 
 		float path_floor_level = -0.10f;
 		terrain_height.x = glm::mix(path_floor_level, terrain_height.x, path_factor);
