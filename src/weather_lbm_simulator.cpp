@@ -53,7 +53,7 @@ namespace Boidsish {
 
 	void WeatherLbmSimulator::Update(float deltaTime, float totalTime, float timeOfDay, const ITerrainGenerator& terrain, const glm::vec3& cameraPos, float windSpeed, float windStrength) {
 		if (!initialized_) {
-			Initialize(terrain);
+			Initialize(terrain, totalTime, timeOfDay);
 			initialized_ = true;
 		}
 
@@ -68,10 +68,10 @@ namespace Boidsish {
             accumulator_ -= dt_;
         }
 
-        DeriveAtmosphere(timeOfDay);
+        DeriveAtmosphere(totalTime, timeOfDay);
     }
 
-    void WeatherLbmSimulator::Initialize(const ITerrainGenerator& terrain) {
+    void WeatherLbmSimulator::Initialize(const ITerrainGenerator& terrain, float totalTime, float timeOfDay) {
         // Perturb initial state with noise
         for (int z = 0; z < height_; ++z) {
             for (int x = 0; x < width_; ++x) {
@@ -79,9 +79,11 @@ namespace Boidsish {
                 float worldX = (float)(x + gridAnchor_.x) * 32.0f;
                 float worldZ = (float)(z + gridAnchor_.y) * 32.0f;
 
+                float baseTemp = GetBaseTemperature(worldX, worldZ, totalTime, timeOfDay);
+
                 float n = Simplex::noise(glm::vec2(worldX * 0.001f, worldZ * 0.001f));
-                (*currentGrid_)[idx].temperature += n * 5.0f;
-                (*currentGrid_)[idx].aerosol += std::abs(n) * 0.05f;
+                (*currentGrid_)[idx].temperature = baseTemp + n * 5.0f;
+                (*currentGrid_)[idx].aerosol = 0.01f + std::abs(n) * 0.05f;
 
                 // Set initial f based on noise-driven wind
                 glm::vec2 u(Simplex::noise(glm::vec2(worldX * 0.002f, worldZ * 0.002f)),
@@ -229,13 +231,12 @@ namespace Boidsish {
     void WeatherLbmSimulator::Step(float deltaTime, float totalTime, float timeOfDay, const ITerrainGenerator& terrain, float windSpeed, float windStrength) {
         CollisionAndStreaming();
         ApplyPhysics(deltaTime, totalTime, timeOfDay);
-        ApplyBoundaries(totalTime, windSpeed, windStrength);
+        ApplyBoundaries(totalTime, windSpeed, windStrength, timeOfDay);
     }
 
     void WeatherLbmSimulator::ApplyPhysics(float deltaTime, float totalTime, float timeOfDay) {
         const float PI = 3.14159265358979323846f;
-        float solarAngle = (timeOfDay - 14.0f) * (PI / 12.0f);
-        float baseTemp = 288.15f + 10.0f * std::cos(solarAngle);
+        float seasonalIntensity = 0.5f + 0.5f * GetSeasonalFactor(totalTime); // 0.5 to 1.0
 
         // Rate at which temperature normalizes to ambient (tune this).
         // A smaller number means the terrain holds heat longer into the evening.
@@ -245,11 +246,19 @@ namespace Boidsish {
             LbmCell& cell = (*currentGrid_)[i];
             const LbmCellConfig& cfg = config_[i];
 
+            int x = i % width_;
+            int z = i / width_;
+            float worldX = (float)(x + gridAnchor_.x) * 32.0f;
+            float worldZ = (float)(z + gridAnchor_.y) * 32.0f;
+
+            float baseTemp = GetBaseTemperature(worldX, worldZ, totalTime, timeOfDay);
+
             // 1. Radiative Cooling / Atmospheric Mixing
             cell.temperature += (baseTemp - cell.temperature) * coolingRelaxation;
 
             // 2. Sensible Heat Flux (Solar heating)
-            float heating = std::max(0.0f, std::cos(solarAngle)) * cfg.sensibleHeatFactor * 0.1f;
+            float solarAngle = (timeOfDay + (worldX * 0.001f) - 14.0f) * (PI / 12.0f);
+            float heating = std::max(0.0f, std::cos(solarAngle)) * cfg.sensibleHeatFactor * 0.1f * seasonalIntensity;
             cell.temperature += heating;
 
             // 3. Boussinesq Buoyancy
@@ -283,7 +292,7 @@ namespace Boidsish {
             }
 
             // 5. Aerosol Release
-            cell.aerosol += cfg.aerosolReleaseRate * 0.001f;
+            cell.aerosol += cfg.aerosolReleaseRate * 0.001f * seasonalIntensity;
             // Diffusion / Decay
             cell.aerosol *= 0.99f;
 
@@ -297,7 +306,7 @@ namespace Boidsish {
         }
     }
 
-    void WeatherLbmSimulator::ApplyBoundaries(float totalTime, float windSpeed, float windStrength) {
+    void WeatherLbmSimulator::ApplyBoundaries(float totalTime, float windSpeed, float windStrength, float timeOfDay) {
         // Apply noise-driven wind at the edges
         for (int z = 0; z < height_; ++z) {
             for (int x = 0; x < width_; ++x) {
@@ -306,21 +315,60 @@ namespace Boidsish {
                     float worldX = (float)(x + gridAnchor_.x) * 32.0f;
                     float worldZ = (float)(z + gridAnchor_.y) * 32.0f;
 
-                    glm::vec2 targetU(
+                    // Prevailing wind based on spatial gradient
+                    glm::vec2 prevailingWind(0.02f, 0.01f); // Baseline flow
+                    prevailingWind += glm::vec2(worldX + worldZ, worldX - worldZ) * 0.00001f;
+
+                    glm::vec2 noiseWind(
                         Simplex::noise(glm::vec2(worldX * 0.001f + totalTime * windSpeed, worldZ * 0.001f)),
                         Simplex::noise(glm::vec2(worldX * 0.001f + 500.0f, worldZ * 0.001f + totalTime * windSpeed))
                     );
+
+                    glm::vec2 targetU = prevailingWind + noiseWind * 0.1f;
+
                     // Lattice velocity MUST stay below ~0.15 for stability
-                    // Using a higher base multiplier (5.0f) and a higher clamp (0.14f)
                     targetU = glm::clamp(targetU * (0.05f + windStrength * 5.0f), -0.14f, 0.14f);
 
                     // Force boundary equilibrium
                     for (int i = 0; i < 9; ++i) {
                         (*currentGrid_)[idx].f[i] = CalculateEquilibrium(i, 1.0f, targetU);
                     }
+
+                    // Boundaries also track temperature targets
+                    // Note: This is simpler than full LBM thermal boundaries but helps stability
+                    float targetTemp = GetBaseTemperature(worldX, worldZ, totalTime, timeOfDay);
+                    (*currentGrid_)[idx].temperature = glm::mix((*currentGrid_)[idx].temperature, targetTemp, 0.1f);
                 }
             }
         }
+    }
+
+    float WeatherLbmSimulator::GetSeasonalFactor(float totalTime) const {
+        const float seasonalPeriod = 7200.0f; // 2 hours for full cycle
+        return 0.5f + 0.5f * std::cos(totalTime * (2.0f * 3.14159265f / seasonalPeriod));
+    }
+
+    float WeatherLbmSimulator::GetBaseTemperature(float worldX, float worldZ, float totalTime, float timeOfDay) const {
+        const float PI = 3.14159265358979323846f;
+
+        // 1. Seasonal variation (0.0 to 1.0)
+        float seasonalFactor = GetSeasonalFactor(totalTime);
+        float seasonalTempOffset = (seasonalFactor - 0.5f) * 25.0f; // +/- 12.5C
+
+        // 2. Diurnal variation with longitudinal offset
+        // "east side pegged to be ahead of the west side"
+        float longitudeOffset = worldX * 0.001f;
+        float localTimeOfDay = timeOfDay + longitudeOffset;
+
+        float solarAngle = (localTimeOfDay - 14.0f) * (PI / 12.0f);
+        float diurnalTemp = 12.0f * std::cos(solarAngle);
+
+        // 3. Spatial gradient (slanted midpoint)
+        // A prevailing gradient that makes things generally colder towards "North-West" (negative X, positive Z)
+        float spatialGradient = (worldX - worldZ) * 0.0002f;
+
+        float baseTemp = 285.15f + seasonalTempOffset + diurnalTemp + spatialGradient;
+        return baseTemp;
     }
 
     const LbmCell* WeatherLbmSimulator::GetCellAtPosition(const glm::vec3& pos) const {
@@ -390,7 +438,7 @@ namespace Boidsish {
         return out;
     }
 
-    void WeatherLbmSimulator::DeriveAtmosphere(float timeOfDay) {
+    void WeatherLbmSimulator::DeriveAtmosphere(float totalTime, float timeOfDay) {
         const float PI = 3.14159265358979323846f;
         // Average the simulation state for global weather output
         float avgRho = 0.0f;
@@ -458,6 +506,10 @@ namespace Boidsish {
         float cloudPotential = std::max(0.0f, currentOutput_.humidity - 0.7f) * 3.33f;
         cloudPotential += std::max(0.0f, avgVy) * 10.0f;
 
+        // Seasonal cloud factor (more cloudy in "winter"/colder phases)
+        float seasonalFactor = GetSeasonalFactor(totalTime);
+        cloudPotential += (1.0f - seasonalFactor) * 0.3f;
+
         currentOutput_.cloudCoverage = std::clamp(cloudPotential * 0.5f, 0.0f, 1.0f);
         currentOutput_.cloudDensity = std::clamp(cloudPotential, 0.0f, 1.0f);
         currentOutput_.cloudAltitude = 400.0f + 200.0f * (1.0f - currentOutput_.humidity);
@@ -471,24 +523,15 @@ namespace Boidsish {
 
         for (int z = 0; z < height_; ++z) {
             for (int x = 0; x < width_; ++x) {
-                // Source index relative to the shift
-                int srcX = x + shiftOffset.x;
-                int srcZ = z + shiftOffset.y;
+                // Toroidal inheritance: cells "falling off" one side re-enter the other.
+                // This ensures continuity of simulation state (vortex/thermal persistence).
+                int srcX = (x + shiftOffset.x) % width_;
+                if (srcX < 0) srcX += width_;
 
-                int dstIdx = z * width_ + x;
+                int srcZ = (z + shiftOffset.y) % height_;
+                if (srcZ < 0) srcZ += height_;
 
-                // If the source is within the old grid bounds, copy it over
-                if (srcX >= 0 && srcX < width_ && srcZ >= 0 && srcZ < height_) {
-                    tempGrid[dstIdx] = (*currentGrid_)[srcZ * width_ + srcX];
-                } else {
-                    // This is a newly revealed edge cell; initialize it to ambient
-                    tempGrid[dstIdx].temperature = 288.15f;
-                    tempGrid[dstIdx].aerosol = 0.01f;
-                    tempGrid[dstIdx].vy = 0.0f;
-                    for (int i = 0; i < 9; ++i) {
-                        tempGrid[dstIdx].f[i] = weights[i]; // rho = 1.0, u = 0.0
-                    }
-                }
+                tempGrid[z * width_ + x] = (*currentGrid_)[srcZ * width_ + srcX];
             }
         }
 
