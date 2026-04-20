@@ -67,7 +67,7 @@ vec3 getWindAtPosition(vec3 worldPos) {
 	vec2 windDir2D = macroSpeed > 0.001 ? macroWind.xz / macroSpeed : vec2(1.0, 0.0);
 
 	// Gustiness: Swap Worley for a smoother noise to get rolling packets, not sharp cells
-	float gustAdvectionSpeed = 0.05;
+	float gustAdvectionSpeed = 0.5;
 	vec3 gustPos = worldPos - (macroWind * wrappedTime * gustAdvectionSpeed);
 
 	// Assuming fastSimplex3d exists in your noise library. If not, smooth the Worley aggressively.
