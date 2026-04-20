@@ -46,15 +46,26 @@ namespace Boidsish {
             omega_ = 1.0f / tau_;
         }
 
-        void Reset(const ITerrainGenerator& terrain) {
-            Initialize(terrain);
+        void Reset(const ITerrainGenerator& terrain, float totalTime = 0.0f, float timeOfDay = 12.0f) {
+            Initialize(terrain, totalTime, timeOfDay);
         }
 
     private:
-        void Initialize(const ITerrainGenerator& terrain);
+        void Initialize(const ITerrainGenerator& terrain, float totalTime, float timeOfDay);
         void Step(float deltaTime, float totalTime, float timeOfDay, const ITerrainGenerator& terrain, float windSpeed, float windStrength);
+
+        /**
+         * @brief Calculates base temperature for a world position including diurnal, seasonal, and spatial gradients.
+         */
+        float GetBaseTemperature(float worldX, float worldZ, float totalTime, float timeOfDay) const;
+
+        /**
+         * @brief Returns a [0, 1] seasonal factor (0 = winter, 1 = summer).
+         */
+        float GetSeasonalFactor(float totalTime) const;
+
         void UpdateConfig(const ITerrainGenerator& terrain);
-        void DeriveAtmosphere(float timeOfDay);
+        void DeriveAtmosphere(float totalTime, float timeOfDay);
 
         // LBM Operators
         float CalculateEquilibrium(int i, float rho, glm::vec2 u);
