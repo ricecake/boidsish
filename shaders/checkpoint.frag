@@ -6,10 +6,6 @@ layout(location = 3) out vec4 AlbedoOut;
 
 #include "common_uniforms.glsl"
 
-layout(std430, binding = [[COMMON_UNIFORMS_BINDING]]) buffer UniformsSSBO {
-	CommonUniforms uniforms_data[];
-};
-
 uniform bool uUseMDI = false;
 flat in int  vUniformIndex;
 

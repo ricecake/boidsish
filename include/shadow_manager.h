@@ -14,6 +14,7 @@ class Shader;
 
 namespace Boidsish {
 
+	class ServiceLocator;
 	struct Light;
 
 	/**
@@ -36,7 +37,7 @@ namespace Boidsish {
 		/// Shadow map resolution (width and height)
 		static constexpr int kShadowMapSize = Constants::Class::Shadows::MapSize();
 
-		ShadowManager();
+		ShadowManager(ServiceLocator& loc);
 		~ShadowManager();
 
 		// Non-copyable

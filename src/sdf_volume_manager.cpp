@@ -1,11 +1,12 @@
 #include "sdf_volume_manager.h"
 
 #include "logger.h"
+#include "service_locator.h"
 #include "profiler.h"
 
 namespace Boidsish {
 
-	SdfVolumeManager::SdfVolumeManager() {}
+	SdfVolumeManager::SdfVolumeManager(ServiceLocator& /*loc*/) {}
 
 	SdfVolumeManager::~SdfVolumeManager() {
 		if (ubo_ != 0) {

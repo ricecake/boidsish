@@ -1,6 +1,8 @@
 #include "decor_manager.h"
 
 #include <algorithm>
+
+#include "service_locator.h"
 #include <set>
 
 #include "ConfigManager.h"
@@ -18,7 +20,7 @@
 
 namespace Boidsish {
 
-	DecorManager::DecorManager() {}
+	DecorManager::DecorManager(ServiceLocator& /*loc*/) {}
 
 	// Use DrawElementsIndirectCommand from geometry.h
 

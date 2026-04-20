@@ -4,11 +4,12 @@
 
 #include "audio_manager.h"
 #include "profiler.h"
+#include "service_locator.h"
 #include "sound.h"
 
 namespace Boidsish {
 
-	SoundEffectManager::SoundEffectManager(AudioManager* audio_manager): _audio_manager(audio_manager) {}
+	SoundEffectManager::SoundEffectManager(ServiceLocator& loc): _audio_manager(loc.Get<AudioManager>().get()) {}
 
 	SoundEffectManager::~SoundEffectManager() {
 		// Clear all effects before destruction to ensure Sound objects

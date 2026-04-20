@@ -13,6 +13,8 @@
 
 namespace Boidsish {
 
+    class ServiceLocator;
+
     struct GrassProperties {
         glm::vec4 colorTop = glm::vec4(0.3f, 0.8f, 0.2f, 1.0f);
         glm::vec4 colorBottom = glm::vec4(0.1f, 0.3f, 0.05f, 1.0f);
@@ -45,7 +47,7 @@ namespace Boidsish {
 
     class GrassManager {
     public:
-        GrassManager();
+        GrassManager(ServiceLocator& loc);
         ~GrassManager();
 
         void Initialize();
@@ -53,6 +55,8 @@ namespace Boidsish {
 
         struct RenderResources {
             uint32_t lightingUbo;
+            size_t   lightingUboOffset = 0;
+            size_t   lightingUboSize = 0;
             uint32_t shadowUbo;
             uint32_t shadowMaps;
             uint32_t transmittanceLUT;

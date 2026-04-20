@@ -1,6 +1,8 @@
 #include "hiz_manager.h"
 
 #include <algorithm>
+
+#include "service_locator.h"
 #include <cmath>
 #include <iostream>
 
@@ -9,7 +11,7 @@
 
 namespace Boidsish {
 
-	HiZManager::HiZManager() = default;
+	HiZManager::HiZManager(ServiceLocator& /*loc*/) {}
 
 	HiZManager::~HiZManager() {
 		DestroyTexture();

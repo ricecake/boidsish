@@ -9,10 +9,6 @@ layout(location = 10) in vec4 aWeights;
 
 #include "common_uniforms.glsl"
 
-layout(std430, binding = [[COMMON_UNIFORMS_BINDING]]) buffer UniformsSSBO {
-	CommonUniforms uniforms_data[];
-};
-
 uniform bool uUseMDI = false;
 
 // SSBO for decor/foliage instancing
@@ -60,7 +56,7 @@ uniform float frustumCullRadius = 5.0; // Approximate object radius for sphere t
 uniform bool  enableHiZCulling = false;
 
 // Hi-Z occlusion visibility (per-draw, written by occlusion_cull.comp)
-layout(std430, binding = 13) readonly buffer OcclusionVisibility {
+layout(std430, binding = [[OCCLUSION_VISIBILITY_BINDING]]) readonly buffer OcclusionVisibility {
 	uint hiz_visibility[];
 };
 

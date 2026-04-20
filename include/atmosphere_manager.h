@@ -14,9 +14,11 @@ class ShaderBase;
 
 namespace Boidsish {
 
+	class ServiceLocator;
+
 	class AtmosphereManager: public IManager {
 	public:
-		AtmosphereManager();
+		AtmosphereManager(ServiceLocator& loc);
 		~AtmosphereManager();
 
 		void Initialize() override;

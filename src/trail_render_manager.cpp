@@ -1,6 +1,8 @@
 #include "trail_render_manager.h"
 
 #include <algorithm>
+
+#include "service_locator.h"
 #include <cstring>
 #include <iostream>
 #include <vector>
@@ -13,7 +15,7 @@
 
 namespace Boidsish {
 
-	TrailRenderManager::TrailRenderManager() {
+	TrailRenderManager::TrailRenderManager(ServiceLocator& /*loc*/) {
 		// Initialize tessellation shader
 		tess_shader_ = std::make_unique<ComputeShader>("shaders/trail_tess.comp");
 

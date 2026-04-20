@@ -8,6 +8,8 @@
 
 namespace Boidsish {
 
+	class ServiceLocator;
+
 	struct NoiseTextures {
 		GLuint noise;
 		GLuint curl;
@@ -17,7 +19,7 @@ namespace Boidsish {
 
 	class NoiseManager: public IManager {
 	public:
-		NoiseManager();
+		NoiseManager(ServiceLocator& loc);
 		~NoiseManager() override;
 
 		void Initialize() override;

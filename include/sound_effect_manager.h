@@ -10,11 +10,12 @@
 
 namespace Boidsish {
 
+	class ServiceLocator;
 	class AudioManager; // Forward declaration
 
 	class SoundEffectManager {
 	public:
-		SoundEffectManager(AudioManager* audio_manager);
+		SoundEffectManager(ServiceLocator& loc);
 		~SoundEffectManager();
 
 		std::shared_ptr<SoundEffect> AddEffect(

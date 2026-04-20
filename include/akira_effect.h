@@ -11,6 +11,8 @@ class Shader;
 
 namespace Boidsish {
 
+	class ServiceLocator;
+
 	/**
 	 * @brief Represents a single Akira visual effect instance.
 	 *
@@ -46,7 +48,7 @@ namespace Boidsish {
 	 */
 	class AkiraEffectManager {
 	public:
-		AkiraEffectManager();
+		AkiraEffectManager(ServiceLocator& loc);
 		~AkiraEffectManager();
 
 		/**

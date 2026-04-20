@@ -1,4 +1,6 @@
 #include "grass_manager.h"
+
+#include "service_locator.h"
 #include "graphics.h"
 #include "terrain_render_manager.h"
 #include "terrain_generator_interface.h"
@@ -10,7 +12,7 @@
 
 namespace Boidsish {
 
-    GrassManager::GrassManager() {
+    GrassManager::GrassManager(ServiceLocator& /*loc*/) {
         for (int i = 0; i < 8; ++i) {
             biome_grass_props_[i].enabled = 0;
         }
@@ -232,7 +234,12 @@ namespace Boidsish {
 
         glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::GrassProps(), grass_props_ubo_);
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::GrassInstances(), grass_instances_ssbo_);
-        glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Lighting(), res.lightingUbo);
+        if (res.lightingUboSize > 0) {
+            glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::Lighting(),
+                res.lightingUbo, res.lightingUboOffset, res.lightingUboSize);
+        } else {
+            glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Lighting(), res.lightingUbo);
+        }
         glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Shadows(), res.shadowUbo);
 
         if (!isShadowPass) {

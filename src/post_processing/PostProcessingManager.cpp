@@ -4,12 +4,13 @@
 
 #include "post_processing/effects/BloomEffect.h"
 #include "profiler.h"
+#include "service_locator.h"
 #include <shader.h>
 
 namespace Boidsish {
 	namespace PostProcessing {
 
-		PostProcessingManager::PostProcessingManager(int width, int height, GLuint quad_vao):
+		PostProcessingManager::PostProcessingManager(ServiceLocator& /*loc*/, int width, int height, GLuint quad_vao):
 			width_(width), height_(height), quad_vao_(quad_vao) {
 			pingpong_fbo_[0] = 0;
 			pingpong_fbo_[1] = 0;

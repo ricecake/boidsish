@@ -5,6 +5,7 @@
 #include <mutex>
 #include <shared_mutex>
 #include <stdexcept>
+#include <string>
 #include <tuple>
 #include <typeindex>
 #include <unordered_map>

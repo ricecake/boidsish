@@ -1,6 +1,8 @@
 #include "mesh_explosion_manager.h"
 
 #include <cstring>
+
+#include "service_locator.h"
 #include <iostream>
 #include <random>
 
@@ -12,7 +14,7 @@
 
 namespace Boidsish {
 
-	MeshExplosionManager::MeshExplosionManager() {}
+	MeshExplosionManager::MeshExplosionManager(ServiceLocator& /*loc*/) {}
 
 	void MeshExplosionManager::Initialize() {
 		_Initialize();

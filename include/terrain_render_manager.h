@@ -17,6 +17,7 @@ class ComputeShader;
 
 namespace Boidsish {
 
+	class ServiceLocator;
 	struct Frustum;
 
 	/**
@@ -45,7 +46,7 @@ namespace Boidsish {
 	 */
 	class TerrainRenderManager {
 	public:
-		TerrainRenderManager(int chunk_size = Constants::Class::Terrain::ChunkSize(), int max_chunks = 512);
+		TerrainRenderManager(ServiceLocator& loc, int chunk_size = Constants::Class::Terrain::ChunkSize(), int max_chunks = 512);
 		~TerrainRenderManager();
 
 		// Non-copyable
@@ -86,6 +87,8 @@ namespace Boidsish {
 			const glm::vec3& camera_pos,
 			float            world_scale = 1.0f,
 			GLuint           lighting_ubo = 0,
+			GLintptr         lighting_ubo_offset = 0,
+			GLsizeiptr       lighting_ubo_size = 0,
 			float            day_time = -1.0f
 		);
 
@@ -104,6 +107,8 @@ namespace Boidsish {
 			const glm::mat4& view,
 			const glm::mat4& projection,
 			GLuint           lighting_ubo,
+			GLintptr         lighting_ubo_offset = 0,
+			GLsizeiptr       lighting_ubo_size = 0,
 			float            probe_scaling = 1.0f,
 			float            probe_convergence = 1.0f,
 			int              probe_ray_multiplier = 1
@@ -185,7 +190,7 @@ namespace Boidsish {
 		/**
 		 * @brief Update the global chunk grid and max height textures.
 		 */
-		void UpdateGridTextures(float world_scale, GLuint lighting_ubo = 0, float day_time = -1.0f);
+		void UpdateGridTextures(float world_scale, GLuint lighting_ubo = 0, GLintptr lighting_ubo_offset = 0, GLsizeiptr lighting_ubo_size = 0, float day_time = -1.0f);
 
 		void SetNoise(const GLuint& noise, const GLuint& curl, const GLuint& extra = 0) {
 			if (noise != 0) {

@@ -2,13 +2,15 @@
 
 #include <iostream>
 
+#include "service_locator.h"
+
 #include "profiler.h"
 #include "shader.h"
 #include "constants.h"
 
 namespace Boidsish {
 
-	AtmosphereManager::AtmosphereManager() {}
+	AtmosphereManager::AtmosphereManager(ServiceLocator& /*loc*/) {}
 
 	AtmosphereManager::~AtmosphereManager() {
 		if (_transmittanceLUT)

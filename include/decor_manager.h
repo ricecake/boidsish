@@ -17,6 +17,7 @@
 
 namespace Boidsish {
 
+	class ServiceLocator;
 	class ITerrainGenerator;
 	class TerrainRenderManager;
 	struct Camera;
@@ -97,7 +98,7 @@ namespace Boidsish {
 
 	class DecorManager {
 	public:
-		DecorManager();
+		DecorManager(ServiceLocator& loc);
 		~DecorManager();
 
 		// Simple overload for basic usage (sets max_density, min_density = max * 0.2)

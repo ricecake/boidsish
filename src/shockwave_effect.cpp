@@ -2,6 +2,8 @@
 
 #include <algorithm>
 
+#include "service_locator.h"
+
 #include "logger.h"
 #include "profiler.h"
 #include "shader.h"
@@ -9,7 +11,7 @@
 
 namespace Boidsish {
 
-	ShockwaveManager::ShockwaveManager() {
+	ShockwaveManager::ShockwaveManager(ServiceLocator& /*loc*/) {
 		shockwaves_.reserve(kMaxShockwaves);
 	}
 
