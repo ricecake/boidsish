@@ -173,43 +173,7 @@ namespace Boidsish {
 			);
 		}
 
-		// 2. Process completed chunks (without blocking the main thread)
-		std::vector<std::pair<int, int>> completed_chunks;
-		for (auto& pair : pending_chunks_) {
-			if (pair.second.is_ready()) {
-				try {
-					auto&                   future = const_cast<TaskHandle<TerrainGenerationResult>&>(pair.second);
-					TerrainGenerationResult result = future.get();
-					auto                    terrain_chunk = std::make_shared<Terrain>(
-						result.indices,
-						result.positions,
-						result.normals,
-						result.biomes,
-						result.proxy
-					);
-					terrain_chunk
-						->SetPosition(result.chunk_x * scaled_chunk_size, 0, result.chunk_z * scaled_chunk_size);
-
-					if (render_manager_) {
-						terrain_chunk->SetManagedByRenderManager(true);
-						// Registration is deferred to the registration pass below
-					} else {
-						terrain_chunk->setupMesh();
-					}
-
-					chunk_cache_[pair.first] = terrain_chunk;
-					completed_chunks.push_back(pair.first);
-				} catch (const std::future_error& e) {
-					if (e.code() == std::future_errc::no_state) {
-						completed_chunks.push_back(pair.first);
-					}
-				}
-			}
-		}
-
-		for (const auto& key : completed_chunks) {
-			pending_chunks_.erase(key);
-		}
+		ProcessCompletedChunks();
 
 		// 3. Registration Pass: Register chunks with render manager
 		// Priority: 1) In frustum and close, 2) In frustum and far, 3) Out of frustum but close
@@ -371,6 +335,124 @@ namespace Boidsish {
 				visible_chunks_.push_back(vci.terrain);
 			}
 		}
+	}
+
+	void TerrainGenerator::ProcessCompletedChunks() {
+		float scaled_chunk_size = static_cast<float>(chunk_size_) * world_scale_;
+		std::vector<std::pair<int, int>> completed_chunks;
+		{
+			std::lock_guard<std::recursive_mutex> lock(chunk_cache_mutex_);
+			for (auto& pair : pending_chunks_) {
+				if (pair.second.is_ready()) {
+					try {
+						auto&                   future = const_cast<TaskHandle<TerrainGenerationResult>&>(pair.second);
+						TerrainGenerationResult result = future.get();
+						auto                    terrain_chunk = std::make_shared<Terrain>(
+							result.indices,
+							result.positions,
+							result.normals,
+							result.biomes,
+							result.proxy
+						);
+						terrain_chunk->SetPosition(
+							result.chunk_x * scaled_chunk_size,
+							0,
+							result.chunk_z * scaled_chunk_size
+						);
+
+						if (render_manager_) {
+							terrain_chunk->SetManagedByRenderManager(true);
+						} else {
+							terrain_chunk->setupMesh();
+						}
+
+						chunk_cache_[pair.first] = terrain_chunk;
+						completed_chunks.push_back(pair.first);
+					} catch (...) {
+						completed_chunks.push_back(pair.first);
+					}
+				}
+			}
+
+			for (auto& pair : pending_deformations_) {
+				if (pair.second.is_ready()) {
+					try {
+						TerrainGenerationResult result = pair.second.get();
+						auto                    new_terrain = std::make_shared<Terrain>(
+							result.indices,
+							result.positions,
+							result.normals,
+							result.biomes,
+							result.proxy
+						);
+						new_terrain->SetPosition(
+							result.chunk_x * scaled_chunk_size,
+							0,
+							result.chunk_z * scaled_chunk_size
+						);
+
+						if (render_manager_) {
+							new_terrain->SetManagedByRenderManager(true);
+						} else {
+							new_terrain->setupMesh();
+						}
+						chunk_cache_[pair.first] = new_terrain;
+						completed_chunks.push_back(pair.first);
+					} catch (...) {
+						completed_chunks.push_back(pair.first);
+					}
+				}
+			}
+
+			for (const auto& key : completed_chunks) {
+				pending_chunks_.erase(key);
+				pending_deformations_.erase(key);
+			}
+		}
+	}
+
+	void TerrainGenerator::WaitForAllChunks(const Frustum& frustum, const Camera& camera) {
+		logger::LOG("TerrainGenerator: Waiting for all chunks to load...");
+		float scaled_chunk_size = static_cast<float>(chunk_size_) * world_scale_;
+
+		// Initial Update to enqueue all necessary chunks
+		Update(frustum, camera);
+
+		// Loop until all pending tasks are finished
+		while (true) {
+			ProcessCompletedChunks();
+			{
+				std::lock_guard<std::recursive_mutex> lock(chunk_cache_mutex_);
+				if (pending_chunks_.empty() && pending_deformations_.empty()) {
+					break;
+				}
+			}
+			std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		}
+
+		// Full Registration Pass (Unthrottled)
+		if (render_manager_) {
+			std::lock_guard<std::recursive_mutex> lock(chunk_cache_mutex_);
+			for (auto const& [key, terrain_chunk] : chunk_cache_) {
+				if (!render_manager_->HasChunk(key)) {
+					render_manager_->RegisterChunk(
+						key,
+						terrain_chunk->vertices,
+						terrain_chunk->normals,
+						terrain_chunk->biomes,
+						terrain_chunk->GetIndices(),
+						terrain_chunk->proxy.minY,
+						terrain_chunk->proxy.maxY,
+						glm::vec3(key.first * scaled_chunk_size, 0, key.second * scaled_chunk_size)
+					);
+				}
+			}
+			render_manager_->CommitUpdates();
+		}
+
+		// Final Update to sync visible_chunks_ and any remaining state
+		Update(frustum, camera);
+		logger::LOG("TerrainGenerator: All chunks loaded and registered.");
 	}
 
 	auto TerrainGenerator::fbm(float x, float z, TerrainParameters params) {
