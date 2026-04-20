@@ -496,7 +496,7 @@ void main() {
 	vec3 rawWindNudge = (fateFactor * windForce); // / (abs(normalize(FragPos).y - normalize(windForce).y));
 */
 
-	vec3 windAtPos = getWindAtPosition(vec3(FragPos.x, 0.5, FragPos.z));
+	// vec3 windAtPos = getWindAtPosition(vec3(FragPos.x, 0.5, FragPos.z));
 	// vec3 rawWindNudge = windAtPos;//wind_strength;
 
 	// vec3  light_dir = normalize(lights[0].position - FragPos);
@@ -518,7 +518,7 @@ void main() {
 	// float grassFactor = smoothstep(0.25, 0.5, max(dot(albedo, COL_GRASS_LUSH), dot(albedo, COL_GRASS_DRY)));
 	// albedo *= mix(1, mix(1.0, 1.25, windDistortion) * mix(1.0, 1.05, windRipple), grassFactor);
 	// roughness *= mix(1.25, 1.0, windDistortion) * mix(1, mix(1.5, 1.0, windRipple), grassFactor);
-	albedo = (vec3(1.0)-albedo) * windAtPos;
+	// albedo = (vec3(1.0)-albedo) * windAtPos;
 	// perturbedNorm += rawWindNudge * mix(0.0, 1.05, plainRipple);
 
 	float primaryShadow;
