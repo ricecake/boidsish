@@ -33,6 +33,7 @@ vec3 getWindAtPosition(vec3 worldPos) {
 	vec4 macroData = texture(u_windTexture, uv);
 
 	vec3 macroWind = macroData.xyz;
+	// return macroWind;
 	float drag = macroData.w;
 	float macroSpeed = length(macroWind);
 
@@ -63,32 +64,40 @@ vec3 getWindAtPosition(vec3 worldPos) {
 	float curlScale = u_windParams.z;
 	float curlStrength = u_windParams.w;
 
+	// CRITICAL: We use a wrapped time for advection to maintain floating-point precision
+	// during long-running sessions, as sampling coordinates grow linearly with time.
+	float wrappedTime = mod(time, 128.0);
+
 	// Gustiness: large-scale noise that moves with the macro wind
 	// This creates areas of high/low turbulence that feel like structured gusts.
-	float gustAdvectionSpeed = 1.0;
-	vec3 gustPos = worldPos - (macroWind * time * gustAdvectionSpeed);
-	float gustiness = fastWorley3d(gustPos/ 150.0) * 0.5 + 0.5;
+	float gustAdvectionSpeed = 0.5;
+	vec3 gustPos = worldPos - (macroWind * wrappedTime * gustAdvectionSpeed);
+	float gustiness = smoothstep(0.5, 1.0, (fastWorley3d(gustPos/ 250.0) * 0.5 + 0.5));
+	// float gustiness = fastWorley3d(gustPos/ 150.0);
 
 	// Scale turbulence intensity by drag, macro speed, and the structured gust factor
 	float turbulenceIntensity = drag * macroSpeed * curlStrength * (0.2 + 0.8 * gustiness);
 
 	// Advect the sampling coordinates downstream using the macro wind.
 	float advectionSpeed = 0.250;
-	vec3 advectedPos = worldPos - (macroWind * time * advectionSpeed);
+	vec3 advectedPos = worldPos - (macroWind * wrappedTime * advectionSpeed);
 
 	// Sample the curl noise using the moving coordinate space
 	// We modulate the curl scale slightly by gustiness to add variety to swirl sizes
 	float dynamicCurlScale = curlScale * (0.8 + 0.4 * gustiness);
-	vec3 curl = fastCurl3d(advectedPos/100.0 * dynamicCurlScale + vec3(0.0, time * 0.002, 0.0));
+	vec3 curl = fastCurl3d(advectedPos/200.0 * dynamicCurlScale + vec3(0.0, wrappedTime * 0.02, 0.0));
 
 	// 4. Phasor Ripples
 	// We use the phasor noise to introduce smooth, undulating ripples.
 	// This provides less jerky local variance than traditional noise and adds organic character.
-	float rippleFreq = 0.25;
-	float ripplePhaseSpeed = 2.5;
+	float rippleFreq = 0.005;
+	float ripplePhaseSpeed = 0.05;
 	// Advect ripple sampling by macro wind to keep them feeling part of the flow
-	vec2 rippleUV = worldPos.xz * rippleFreq - macroWind.xz * time * 0.05;
-	float ripple = fastPhasor2d(rippleUV, time * ripplePhaseSpeed);
+	vec2 rippleUV = worldPos.xz * rippleFreq;// - macroWind.xz * wrappedTime * 0.5;
+	float phaseShift = dot(macroWind.xz, worldPos.xz) + (wrappedTime * ripplePhaseSpeed);
+	// float ripple = fastPhasor2d(rippleUV, wrappedTime * ripplePhaseSpeed);
+	// float ripple = smoothstep(0.33, 0.66, fastPhasor2d(rippleUV, phaseShift) * 0.5 + 0.5);
+	float ripple = fastPhasor2d(rippleUV, phaseShift);
 
 	// Modulate turbulence intensity and introduce a subtle directional shift to the flow
 	turbulenceIntensity *= (0.8 + 0.4 * (ripple * 0.5 + 0.5));
@@ -97,6 +106,8 @@ vec3 getWindAtPosition(vec3 worldPos) {
 		vec2 perpWind = vec2(-macroWind.z, macroWind.x) / macroSpeed;
 		macroWind.xz += perpWind * (ripple * macroSpeed * 0.15);
 	}
+
+	// macroWind *= ripple * gustiness;
 
 	// 5. Combined Result
 	// Instead of just adding curl, we use it to perturb the direction of the macro wind,
@@ -115,7 +126,7 @@ vec3 getWindAtPosition(vec3 worldPos) {
 	}
 
 	// Add a final additive turbulence component for high-frequency jitter
-	return macroWind + curl * (turbulenceIntensity * 0.3);
+	return macroWind + curl * (turbulenceIntensity * 0.13);
 }
 
 #endif // HELPERS_WIND_GLSL

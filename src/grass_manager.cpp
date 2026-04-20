@@ -236,26 +236,26 @@ namespace Boidsish {
         glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Shadows(), res.shadowUbo);
 
         if (!isShadowPass) {
-            glActiveTexture(GL_TEXTURE4);
+            glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::ShadowMaps());
             glBindTexture(GL_TEXTURE_2D_ARRAY, res.shadowMaps);
-            grass_shader_->setInt("shadowMaps", 4);
+            grass_shader_->setInt("shadowMaps", Constants::TextureUnit::ShadowMaps());
 
-            glActiveTexture(GL_TEXTURE20);
+            glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereTransmittance());
             glBindTexture(GL_TEXTURE_2D, res.transmittanceLUT);
-            grass_shader_->setInt("u_transmittanceLUT", 20);
+            grass_shader_->setInt("u_transmittanceLUT", Constants::TextureUnit::AtmosphereTransmittance());
 
-            glActiveTexture(GL_TEXTURE22);
+            glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereSkyView());
             glBindTexture(GL_TEXTURE_2D, res.skyViewLUT);
-            grass_shader_->setInt("u_skyViewLUT", 22);
+            grass_shader_->setInt("u_skyViewLUT", Constants::TextureUnit::AtmosphereSkyView());
 
-            glActiveTexture(GL_TEXTURE23);
+            glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereAerialPerspective());
             glBindTexture(GL_TEXTURE_3D, res.aerialPerspectiveLUT);
-            grass_shader_->setInt("u_aerialPerspectiveLUT", 23);
+            grass_shader_->setInt("u_aerialPerspectiveLUT", Constants::TextureUnit::AtmosphereAerialPerspective());
 
             if (res.cloudShadowMap) {
-                glActiveTexture(GL_TEXTURE24);
+                glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereCloudShadow());
                 glBindTexture(GL_TEXTURE_2D, res.cloudShadowMap);
-                grass_shader_->setInt("u_cloudShadowMap", 24);
+                grass_shader_->setInt("u_cloudShadowMap", Constants::TextureUnit::AtmosphereCloudShadow());
             }
 
             grass_shader_->setFloat("u_atmosphereHeight", res.atmosphereHeight);
@@ -263,19 +263,19 @@ namespace Boidsish {
             // Noise textures are needed by the cloud shadow fallback path
             // (evaluateCloudShadowDensityAtWorldPos in clouds.glsl uses fastWorley3d)
             if (res.noiseTexture) {
-                glActiveTexture(GL_TEXTURE5);
+                glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::NoiseSimplex());
                 glBindTexture(GL_TEXTURE_3D, res.noiseTexture);
-                grass_shader_->setInt("u_noiseTexture", 5);
+                grass_shader_->setInt("u_noiseTexture", Constants::TextureUnit::NoiseSimplex());
             }
             if (res.curlTexture) {
-                glActiveTexture(GL_TEXTURE6);
+                glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::NoiseCurl());
                 glBindTexture(GL_TEXTURE_3D, res.curlTexture);
-                grass_shader_->setInt("u_curlTexture", 6);
+                grass_shader_->setInt("u_curlTexture", Constants::TextureUnit::NoiseCurl());
             }
             if (res.extraNoiseTexture) {
-                glActiveTexture(GL_TEXTURE8);
+                glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::NoiseExtra());
                 glBindTexture(GL_TEXTURE_3D, res.extraNoiseTexture);
-                grass_shader_->setInt("u_extraNoiseTexture", 8);
+                grass_shader_->setInt("u_extraNoiseTexture", Constants::TextureUnit::NoiseExtra());
             }
 
             if (res.shadowIndices) {

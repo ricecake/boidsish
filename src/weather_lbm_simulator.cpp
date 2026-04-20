@@ -46,8 +46,9 @@ namespace Boidsish {
 
 		if (newAnchor != gridAnchor_) {
 			glm::ivec2 shiftOffset = newAnchor - gridAnchor_;
-			ShiftGrid(shiftOffset);
+			// CRITICAL: Update anchor BEFORE shifting so newly revealed cells know their world position
 			gridAnchor_ = newAnchor;
+			ShiftGrid(shiftOffset);
 		}
 	}
 

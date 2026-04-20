@@ -52,7 +52,7 @@ void main() {
 
     // Scale UV to control the frequency/grid size of the phasor noise
     // Using a grid size of 32.0 for a 256x256 texture means 8x8 grid cells
-    float gridScale = 32.0;
+    float gridScale = 128.0;
     vec2 pos = (uv / vec2(size)) * gridScale;
 
     // Bandwidth controls the size of the kernels, sparsity controls density

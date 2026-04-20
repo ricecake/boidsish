@@ -27,7 +27,7 @@ int main(int argc, char** argv) {
     std::string inputPath = argv[1];
     std::string outputPath = argv[2];
 
-    ShaderBase::RegisterConstant("PHASOR_TEXTURE_BINDING", Boidsish::Constants::TextureUnit::PhasorNoise());
+    ShaderBase::RegisterConstant("PHASOR_TEXTURE_BINDING", Boidsish::Constants::TextureUnit::NoisePhasor());
     ShaderBase::RegisterConstant("WIND_TEXTURE_BINDING", Boidsish::Constants::TextureUnit::WindData());
     ShaderBase::RegisterConstant("WIND_DATA_BINDING", Boidsish::Constants::UboBinding::WindData());
     ShaderBase::RegisterConstant("WEATHER_UNIFORMS_BINDING", Boidsish::Constants::UboBinding::WeatherUniforms());
