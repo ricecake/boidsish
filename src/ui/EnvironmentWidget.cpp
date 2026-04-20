@@ -112,6 +112,59 @@ namespace Boidsish {
 										ImGui::Text("Humidity: %.1f%%", phys->humidity * 100.0f);
 										ImGui::Text("Cloud Coverage: %.1f%%", phys->cloudCoverage * 100.0f);
 									}
+
+									ImGui::Separator();
+									if (ImGui::TreeNode("Atmospheric Injections")) {
+										ImGui::SliderFloat("Target Pressure (hPa)", &m_targetPressure, 800.0f, 1200.0f, "%.1f");
+										ImGui::SliderFloat("Target Temperature (K)", &m_targetTemperature, 200.0f, 400.0f, "%.1f");
+										ImGui::SliderFloat("Target Aerosol", &m_targetAerosol, 0.0f, 1.0f, "%.3f");
+										ImGui::SliderFloat("Burst Strength", &m_burstStrength, 0.0f, 0.15f, "%.3f");
+
+										auto get_target_pos = [&]() -> glm::vec3 {
+											auto screen_w = ImGui::GetIO().DisplaySize.x;
+											auto screen_h = ImGui::GetIO().DisplaySize.y;
+											auto pos = m_visualizer.ScreenToWorld(screen_w * 0.5f, screen_h * 0.5f);
+											return pos.value_or(m_visualizer.GetCamera().pos());
+										};
+
+										if (ImGui::Button("Inject Pressure")) {
+											weather->InjectPressure(get_target_pos(), m_targetPressure, m_burstStrength);
+										}
+										ImGui::SameLine();
+										if (ImGui::Button("Burst (1100 hPa)")) {
+											weather->InjectPressure(get_target_pos(), 1100.0f, 0.1f);
+										}
+										ImGui::SameLine();
+										if (ImGui::Button("Vacuum (900 hPa)")) {
+											weather->InjectPressure(get_target_pos(), 900.0f, 0.0f);
+										}
+
+										if (ImGui::Button("Inject Temperature")) {
+											weather->InjectTemperature(get_target_pos(), m_targetTemperature);
+										}
+										ImGui::SameLine();
+										if (ImGui::Button("Heat (350 K)")) {
+											weather->InjectTemperature(get_target_pos(), 350.0f);
+										}
+										ImGui::SameLine();
+										if (ImGui::Button("Cold (250 K)")) {
+											weather->InjectTemperature(get_target_pos(), 250.0f);
+										}
+
+										if (ImGui::Button("Inject Aerosol")) {
+											weather->InjectAerosol(get_target_pos(), m_targetAerosol);
+										}
+										ImGui::SameLine();
+										if (ImGui::Button("Dusty (0.5)")) {
+											weather->InjectAerosol(get_target_pos(), 0.5f);
+										}
+										ImGui::SameLine();
+										if (ImGui::Button("Clean (0.0)")) {
+											weather->InjectAerosol(get_target_pos(), 0.0f);
+										}
+
+										ImGui::TreePop();
+									}
 								}
 								ImGui::TreePop();
 							}
