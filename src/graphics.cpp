@@ -459,6 +459,8 @@ namespace Boidsish {
 		bool                                           paused = false;
 		float                                          simulation_time = 0.0f;
 		float                                          simulation_delta_time = 0.0f;
+		float                                          accumulator = 0.0f;
+		const float                                    fixed_dt = 1.0f / 60.0f;
 		float                                          time_scale = 1.0f;
 		float                                          ripple_strength = 0.0f;
 		std::chrono::high_resolution_clock::time_point last_frame;
@@ -1559,6 +1561,15 @@ namespace Boidsish {
 				occlusion_cull_shader_->setInt("u_hizTexture", 15);
 
 				// Set uniforms
+				GLuint temporal_idx = glGetUniformBlockIndex(occlusion_cull_shader_->ID, "TemporalData");
+				if (temporal_idx != GL_INVALID_INDEX) {
+					glUniformBlockBinding(
+						occlusion_cull_shader_->ID,
+						temporal_idx,
+						Constants::UboBinding::TemporalData()
+					);
+				}
+
 				occlusion_cull_shader_->setInt("u_drawCount", static_cast<int>(mdi_uniform_count));
 				glUniform2i(
 					glGetUniformLocation(occlusion_cull_shader_->ID, "u_hizSize"),
@@ -1568,8 +1579,11 @@ namespace Boidsish {
 				occlusion_cull_shader_->setInt("u_hizMipCount", hiz_manager->GetMipCount());
 				occlusion_cull_shader_->setFloat("u_screenExpansion", 4.0f);
 
-				glDispatchCompute((mdi_uniform_count + 63) / 64, 1, 1);
-				glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+				{
+					PROJECT_PROFILE_SCOPE("OcclusionCullDispatch");
+					glDispatchCompute((mdi_uniform_count + 63) / 64, 1, 1);
+					glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+				}
 			}
 
 			// 2. Execute batches
@@ -1762,43 +1776,37 @@ namespace Boidsish {
 							trails[shape->GetId()]->SetMetallic(shape->GetTrailMetallic());
 						}
 					}
-					trails[shape->GetId()]->AddPoint(
-						glm::vec3(shape->GetX(), shape->GetY(), shape->GetZ()),
-						glm::vec3(shape->GetR(), shape->GetG(), shape->GetB())
-					);
 					trail_last_update[shape->GetId()] = time;
 				}
 			}
 
 			// Sync with render manager
 			if (trail_render_manager) {
-				for (auto& [trail_id, trail] : trails) {
-					if (!trail_render_manager->HasTrail(trail_id)) {
-						trail_render_manager->RegisterTrail(trail_id, trail->GetMaxPoints());
-						trail->SetManagedByRenderManager(true);
-					}
+				for (const auto& shape : shapes) {
+					if (shape->GetTrailLength() > 0 && !paused) {
+						int trail_id = shape->GetId();
+						auto trail = trails[trail_id];
+						if (!trail_render_manager->HasTrail(trail_id)) {
+							trail_render_manager->RegisterTrail(trail_id, trail->GetMaxPoints());
+							trail->SetManagedByRenderManager(true);
+						}
 
-					trail_render_manager->SetTrailParams(
-						trail_id,
-						trail->GetIridescent(),
-						trail->GetUseRocketTrail(),
-						trail->GetUsePBR(),
-						trail->GetRoughness(),
-						trail->GetMetallic(),
-						trail->GetBaseThickness()
-					);
-
-					if (trail->IsDirty()) {
-						trail_render_manager->UpdateTrailData(
+						trail_render_manager->SetTrailParams(
 							trail_id,
-							trail->GetPoints(),
-							trail->GetHead(),
-							trail->GetTail(),
-							trail->IsFull(),
-							trail->GetMinBound(),
-							trail->GetMaxBound()
+							trail->GetIridescent(),
+							trail->GetUseRocketTrail(),
+							trail->GetUsePBR(),
+							trail->GetRoughness(),
+							trail->GetMetallic(),
+							trail->GetBaseThickness()
 						);
-						trail->ClearDirty();
+
+						// GPU-side point update
+						trail_render_manager->AddPoint(
+							trail_id,
+							glm::vec3(shape->GetX(), shape->GetY(), shape->GetZ()),
+							glm::vec3(shape->GetR(), shape->GetG(), shape->GetB())
+						);
 					}
 				}
 				trail_render_manager->CommitUpdates();
@@ -3138,55 +3146,77 @@ namespace Boidsish {
 		}
 
 		if (!impl->paused) {
-			// TODO: Implement a fixed timestep for simulation stability.
-			// See performance_and_quality_audit.md#4-fixed-timestep-for-simulation-stability
-			impl->simulation_time += impl->time_scale * delta_time;
-		}
+			impl->accumulator += impl->time_scale * delta_time;
 
-		impl->light_manager.Update(impl->simulation_delta_time);
+			while (impl->accumulator >= impl->fixed_dt) {
+				PROJECT_PROFILE_SCOPE("FixedUpdate");
+				impl->simulation_delta_time = impl->fixed_dt;
+				impl->simulation_time += impl->fixed_dt;
 
-		// Update ambient weather
-		if (impl->weather_manager && impl->weather_manager->IsEnabled()) {
-			impl->weather_manager->Update(impl->simulation_delta_time, impl->simulation_time, impl->camera.pos());
+				impl->light_manager.Update(impl->simulation_delta_time);
 
-			const auto& w = impl->weather_manager->GetCurrentWeather();
+				// Update ambient weather
+				if (impl->weather_manager && impl->weather_manager->IsEnabled()) {
+					impl->weather_manager->Update(
+						impl->simulation_delta_time,
+						impl->simulation_time,
+						impl->camera.pos()
+					);
 
-			// Apply to primary lights (Sun and Moon)
-			// We multiply instead of assigning to preserve the Day/Night cycle's intensity curves.
-			if (!impl->light_manager.GetLights().empty()) {
-				impl->light_manager.GetLights()[0].intensity *= w.sun_intensity;
+					const auto& w = impl->weather_manager->GetCurrentWeather();
+
+					// Apply to primary lights (Sun and Moon)
+					// We multiply instead of assigning to preserve the Day/Night cycle's intensity curves.
+					if (!impl->light_manager.GetLights().empty()) {
+						impl->light_manager.GetLights()[0].intensity *= w.sun_intensity;
+					}
+					if (impl->light_manager.GetLights().size() > 1 &&
+					    impl->light_manager.GetLights()[1].type == DIRECTIONAL_LIGHT) {
+						impl->light_manager.GetLights()[1].intensity *= w.sun_intensity;
+					}
+
+					// Apply to wind settings in Config (for shaders)
+					auto& config = ConfigManager::GetInstance();
+					config.SetFloat("wind_strength", w.wind_strength);
+					config.SetFloat("wind_speed", w.wind_speed);
+					config.SetFloat("wind_frequency", w.wind_frequency);
+
+					// Apply to atmosphere effect
+					if (impl->atmosphere_effect) {
+						impl->atmosphere_effect->SetHazeDensity(w.haze_density);
+						impl->atmosphere_effect->SetHazeHeight(w.haze_height);
+						impl->atmosphere_effect->SetCloudDensity(w.cloud_density);
+						impl->atmosphere_effect->SetCloudAltitude(w.cloud_altitude);
+						impl->atmosphere_effect->SetCloudThickness(w.cloud_thickness);
+						impl->atmosphere_effect->SetCloudCoverage(w.cloud_coverage);
+						impl->atmosphere_effect->SetRayleighScale(w.rayleigh_scale);
+						impl->atmosphere_effect->SetMieScale(w.mie_scale);
+
+						// Atmosphere-specific attributes from weather
+						impl->atmosphere_effect->SetAtmosphereHeight(w.atmosphere_height);
+						impl->atmosphere_effect->SetRayleighScattering(w.rayleigh_scattering);
+						impl->atmosphere_effect->SetMieScattering(w.mie_scattering);
+						impl->atmosphere_effect->SetMieExtinction(w.mie_extinction);
+						impl->atmosphere_effect->SetOzoneAbsorption(w.ozone_absorption);
+						impl->atmosphere_effect->SetRayleighScaleHeight(w.rayleigh_scale_height);
+						impl->atmosphere_effect->SetMieScaleHeight(w.mie_scale_height);
+					}
+				}
+
+				// Logical updates migrated from Render
+				impl->GatherShapes();
+				impl->UpdateCamera();
+				impl->UpdateAudio();
+				impl->UpdateAtmosphere();
+				impl->UpdateTrailsLogical();
+
+				// Update Systems (Fire, Mesh Explosion, etc.)
+				impl->UpdateSystems();
+
+				impl->accumulator -= impl->fixed_dt;
 			}
-			if (impl->light_manager.GetLights().size() > 1 &&
-			    impl->light_manager.GetLights()[1].type == DIRECTIONAL_LIGHT) {
-				impl->light_manager.GetLights()[1].intensity *= w.sun_intensity;
-			}
-
-			// Apply to wind settings in Config (for shaders)
-			auto& config = ConfigManager::GetInstance();
-			config.SetFloat("wind_strength", w.wind_strength);
-			config.SetFloat("wind_speed", w.wind_speed);
-			config.SetFloat("wind_frequency", w.wind_frequency);
-
-			// Apply to atmosphere effect
-			if (impl->atmosphere_effect) {
-				impl->atmosphere_effect->SetHazeDensity(w.haze_density);
-				impl->atmosphere_effect->SetHazeHeight(w.haze_height);
-				impl->atmosphere_effect->SetCloudDensity(w.cloud_density);
-				impl->atmosphere_effect->SetCloudAltitude(w.cloud_altitude);
-				impl->atmosphere_effect->SetCloudThickness(w.cloud_thickness);
-				impl->atmosphere_effect->SetCloudCoverage(w.cloud_coverage);
-				impl->atmosphere_effect->SetRayleighScale(w.rayleigh_scale);
-				impl->atmosphere_effect->SetMieScale(w.mie_scale);
-
-				// Atmosphere-specific attributes from weather
-				impl->atmosphere_effect->SetAtmosphereHeight(w.atmosphere_height);
-				impl->atmosphere_effect->SetRayleighScattering(w.rayleigh_scattering);
-				impl->atmosphere_effect->SetMieScattering(w.mie_scattering);
-				impl->atmosphere_effect->SetMieExtinction(w.mie_extinction);
-				impl->atmosphere_effect->SetOzoneAbsorption(w.ozone_absorption);
-				impl->atmosphere_effect->SetRayleighScaleHeight(w.rayleigh_scale_height);
-				impl->atmosphere_effect->SetMieScaleHeight(w.mie_scale_height);
-			}
+		} else {
+			impl->simulation_delta_time = 0.0f;
 		}
 
 		// --- Adaptive Tessellation Logic ---
@@ -3290,7 +3320,6 @@ namespace Boidsish {
 		impl->PrepareUBOs();
 		impl->packets_synced_ = false;
 		impl->GenerateRenderPacketsAsync();
-		impl->UpdateSystems();
 
 		// Shadow decor renders during the overlap window (no packets needed).
 		// The shape callback triggers lazy sync when packets are first needed.

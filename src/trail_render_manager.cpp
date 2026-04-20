@@ -14,8 +14,9 @@
 namespace Boidsish {
 
 	TrailRenderManager::TrailRenderManager() {
-		// Initialize tessellation shader
+		// Initialize shaders
 		tess_shader_ = std::make_unique<ComputeShader>("shaders/trail_tess.comp");
+		update_shader_ = std::make_unique<ComputeShader>("shaders/trail_update.comp");
 
 		// Create VAO for rendering generated geometry
 		glGenVertexArrays(1, &vao_);
@@ -84,6 +85,10 @@ namespace Boidsish {
 		// Max trails (200) * Max rings (1024) * TrailSpinePoint size (4 vec4 = 64 bytes)
 		glBufferData(GL_SHADER_STORAGE_BUFFER, 200 * 1024 * 64, nullptr, GL_DYNAMIC_DRAW);
 
+		glGenBuffers(1, &updates_ssbo_);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, updates_ssbo_);
+		glBufferData(GL_SHADER_STORAGE_BUFFER, 1000 * sizeof(TrailUpdate), nullptr, GL_DYNAMIC_DRAW);
+
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 	}
 
@@ -100,6 +105,8 @@ namespace Boidsish {
 			glDeleteBuffers(1, &instances_ssbo_);
 		if (spine_ssbo_)
 			glDeleteBuffers(1, &spine_ssbo_);
+		if (updates_ssbo_)
+			glDeleteBuffers(1, &updates_ssbo_);
 	}
 
 	bool TrailRenderManager::RegisterTrail(int trail_id, size_t max_points) {
@@ -242,13 +249,80 @@ namespace Boidsish {
 		points_capacity_ = new_capacity;
 	}
 
+	void TrailRenderManager::AddPoint(int trail_id, const glm::vec3& pos, const glm::vec3& color) {
+		std::lock_guard<std::mutex> lock(mutex_);
+		auto                        it = trail_allocations_.find(trail_id);
+		if (it == trail_allocations_.end())
+			return;
+
+		auto& alloc = it->second;
+
+		// Initialize bounds if this is the first point
+		if (alloc.head == 0 && alloc.tail == 0 && !alloc.is_full) {
+			alloc.min_bound = pos - glm::vec3(alloc.base_thickness);
+			alloc.max_bound = pos + glm::vec3(alloc.base_thickness);
+		} else {
+			alloc.min_bound = glm::min(alloc.min_bound, pos - glm::vec3(alloc.base_thickness));
+			alloc.max_bound = glm::max(alloc.max_bound, pos + glm::vec3(alloc.base_thickness));
+		}
+
+		// Update CPU-side ring buffer state for GetRenderPackets and next frame's instance data upload
+		if (alloc.is_full) {
+			alloc.head = (alloc.head + 1) % alloc.max_points;
+			alloc.tail = (alloc.tail + 1) % alloc.max_points;
+		} else {
+			size_t next_tail = (alloc.tail + 1) % alloc.max_points;
+			alloc.tail = next_tail;
+			if (next_tail == 0) {
+				alloc.is_full = true;
+				alloc.head = 1;
+			}
+		}
+
+		// Find the index in the instances array (this is a bit slow with a map, but we only have ~200 trails)
+		int idx = 0;
+		for (auto const& [tid, talloc] : trail_allocations_) {
+			if (tid == trail_id)
+				break;
+			idx++;
+		}
+
+		TrailUpdate up;
+		up.pos = glm::vec4(pos, 1.0f);
+		up.color = glm::vec4(color, 1.0f);
+		up.trail_idx = idx;
+		up.is_active = 1;
+		pending_gpu_updates_.push_back(up);
+	}
+
 	void TrailRenderManager::CommitUpdates() {
 		PROJECT_PROFILE_SCOPE("TrailRenderManager::CommitUpdates");
 		std::lock_guard<std::mutex> lock(mutex_);
 		if (trail_allocations_.empty())
 			return;
 
-		// 1. Upload points and metadata
+		// 1. GPU-side point updates
+		if (!pending_gpu_updates_.empty()) {
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, updates_ssbo_);
+			glBufferSubData(
+				GL_SHADER_STORAGE_BUFFER,
+				0,
+				pending_gpu_updates_.size() * sizeof(TrailUpdate),
+				pending_gpu_updates_.data()
+			);
+
+			update_shader_->use();
+			update_shader_->setInt("u_num_updates", pending_gpu_updates_.size());
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 18, points_ssbo_);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 19, instances_ssbo_);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 21, updates_ssbo_);
+
+			glDispatchCompute((pending_gpu_updates_.size() + 63) / 64, 1, 1);
+			glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+			pending_gpu_updates_.clear();
+		}
+
+		// 2. Upload points and metadata
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, points_ssbo_);
 		for (auto& [id, data] : pending_point_data_) {
 			auto it = trail_allocations_.find(id);
@@ -304,7 +378,7 @@ namespace Boidsish {
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, instances_ssbo_);
 		glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, instance_data.size() * sizeof(uint32_t), instance_data.data());
 
-		// 2. Dispatch tessellation compute shader
+		// 3. Dispatch tessellation compute shader
 		tess_shader_->use();
 		tess_shader_->setInt("u_num_instances", trail_allocations_.size());
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 18, points_ssbo_);

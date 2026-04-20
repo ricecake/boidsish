@@ -115,6 +115,11 @@ namespace Boidsish {
 		);
 
 		/**
+		 * @brief Update a trail with a new point (GPU-side).
+		 */
+		void AddPoint(int trail_id, const glm::vec3& pos, const glm::vec3& color);
+
+		/**
 		 * @brief Commit any pending buffer updates to the GPU.
 		 *
 		 * Call this once per frame after all trail updates.
@@ -153,6 +158,13 @@ namespace Boidsish {
 		// Buffer management
 		void EnsureBufferCapacity(size_t required_points);
 
+		struct TrailUpdate {
+			glm::vec4 pos;
+			glm::vec4 color;
+			int       trail_idx;
+			int       is_active;
+		};
+
 		// OpenGL resources
 		GLuint vao_ = 0;
 		GLuint tess_vbo_ = 0;
@@ -160,6 +172,7 @@ namespace Boidsish {
 		GLuint points_ssbo_ = 0;
 		GLuint instances_ssbo_ = 0;
 		GLuint spine_ssbo_ = 0;
+		GLuint updates_ssbo_ = 0;
 
 		// Buffer capacity
 		size_t points_capacity_ = 0;
@@ -186,8 +199,11 @@ namespace Boidsish {
 		// Thread safety
 		mutable std::mutex mutex_;
 
-		// Compute shader for tessellation
+		// Compute shaders
 		std::unique_ptr<class ComputeShader> tess_shader_;
+		std::unique_ptr<class ComputeShader> update_shader_;
+
+		std::vector<TrailUpdate> pending_gpu_updates_;
 
 		// Constants
 		static constexpr size_t INITIAL_POINTS_CAPACITY = 100000;
