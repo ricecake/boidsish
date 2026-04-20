@@ -277,6 +277,16 @@ namespace Boidsish {
                 glBindTexture(GL_TEXTURE_3D, res.extraNoiseTexture);
                 grass_shader_->setInt("u_extraNoiseTexture", Constants::TextureUnit::NoiseExtra());
             }
+            if (res.blueNoiseTexture) {
+                glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::NoiseBlue());
+                glBindTexture(GL_TEXTURE_2D, res.blueNoiseTexture);
+                grass_shader_->trySetInt("u_blueNoiseTexture", Constants::TextureUnit::NoiseBlue());
+            }
+            if (res.phasorTexture) {
+                glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::NoisePhasor());
+                glBindTexture(GL_TEXTURE_2D, res.phasorTexture);
+                grass_shader_->trySetInt("u_phasorTexture", Constants::TextureUnit::NoisePhasor());
+            }
 
             if (res.shadowIndices) {
                 grass_shader_->setIntArray("lightShadowIndices", res.shadowIndices, 10);

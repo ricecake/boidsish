@@ -33,7 +33,7 @@ namespace Boidsish {
 			}
 
 			// Explicitly set standard sampler bindings
-			shader_->setInt("shadowMaps", 4);
+			shader_->setInt("shadowMaps", Constants::TextureUnit::ShadowMaps());
 
 			width_ = width;
 			height_ = height;

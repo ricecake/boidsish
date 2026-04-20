@@ -4,6 +4,7 @@
 #include <set>
 
 #include "ConfigManager.h"
+#include "NoiseManager.h"
 #include "atmosphere_manager.h"
 #include "geometry.h"
 #include "graphics.h"
@@ -897,10 +898,11 @@ namespace Boidsish {
 	}
 
 	void DecorManager::Render(
-		const glm::mat4&                view,
-		const glm::mat4&                projection,
-		const std::optional<glm::mat4>& light_space_matrix,
-		Shader*                         shader_override
+		const glm::mat4&                      view,
+		const glm::mat4&                      projection,
+		std::shared_ptr<TerrainRenderManager> render_manager,
+		const std::optional<glm::mat4>&       light_space_matrix,
+		Shader*                               shader_override
 	) {
 		PROJECT_PROFILE_SCOPE("DecorManager::Render");
 		if (!enabled_ || !initialized_ || decor_types_.empty())
@@ -935,9 +937,17 @@ namespace Boidsish {
 			ConfigManager::GetInstance().GetAppSettingBool("artistic_effect_ripple", false) ? 0.05f : 0.0f
 		);
 
-		// Atmosphere texture bindings for cloud shadows and transmittance-based lighting.
+		// Bind terrain, atmosphere and noise data
+		if (render_manager) {
+			render_manager->BindTerrainData(*shader);
+		}
+
 		if (atmosphere_manager_) {
 			atmosphere_manager_->BindToShader(*shader);
+		}
+
+		if (noise_manager_) {
+			noise_manager_->BindDefault(*shader);
 		}
 
 		for (size_t i = 0; i < decor_types_.size(); ++i) {
