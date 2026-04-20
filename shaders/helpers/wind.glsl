@@ -72,8 +72,9 @@ vec3 getWindAtPosition(vec3 worldPos) {
 	// This creates areas of high/low turbulence that feel like structured gusts.
 	float gustAdvectionSpeed = 0.5;
 	vec3 gustPos = worldPos - (macroWind * wrappedTime * gustAdvectionSpeed);
-	float gustiness = smoothstep(0.5, 1.0, (fastWorley3d(gustPos/ 250.0) * 0.5 + 0.5));
+	// float gustiness = smoothstep(0.5, 1.0, (fastWorley3d(gustPos/ 250.0) * 0.5 + 0.5));
 	// float gustiness = fastWorley3d(gustPos/ 150.0);
+	float gustiness = fastSimplex3d(gustPos/ 150.0);
 
 	// Scale turbulence intensity by drag, macro speed, and the structured gust factor
 	float turbulenceIntensity = drag * macroSpeed * curlStrength * (0.2 + 0.8 * gustiness);
@@ -94,7 +95,7 @@ vec3 getWindAtPosition(vec3 worldPos) {
 	float ripplePhaseSpeed = 0.05;
 	// Advect ripple sampling by macro wind to keep them feeling part of the flow
 	vec2 rippleUV = worldPos.xz * rippleFreq;// - macroWind.xz * wrappedTime * 0.5;
-	float phaseShift = dot(macroWind.xz, worldPos.xz) + (wrappedTime * ripplePhaseSpeed);
+	float phaseShift = dot(normalize(macroWind.xz), worldPos.xz) + (wrappedTime * ripplePhaseSpeed);
 	// float ripple = fastPhasor2d(rippleUV, wrappedTime * ripplePhaseSpeed);
 	// float ripple = smoothstep(0.33, 0.66, fastPhasor2d(rippleUV, phaseShift) * 0.5 + 0.5);
 	float ripple = fastPhasor2d(rippleUV, phaseShift);

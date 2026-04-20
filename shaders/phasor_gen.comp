@@ -52,12 +52,12 @@ void main() {
 
     // Scale UV to control the frequency/grid size of the phasor noise
     // Using a grid size of 32.0 for a 256x256 texture means 8x8 grid cells
-    float gridScale = 128.0;
+    float gridScale = 32.0;
     vec2 pos = (uv / vec2(size)) * gridScale;
 
     // Bandwidth controls the size of the kernels, sparsity controls density
-    float bandwidth = 0.5;
-    float sparsity = 0.2;
+    float bandwidth = 10.0;
+    float sparsity = 0.001;
 
     vec2 phasor = computeBakedPhasor(pos, bandwidth, sparsity, vec2(gridScale));
 
