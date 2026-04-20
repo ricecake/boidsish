@@ -168,7 +168,7 @@ namespace Boidsish {
 	}
 
 	void Mesh::Cleanup() {
-		if (VAO != 0) {
+		if (VAO != 0 && !allocation.valid) {
 			glDeleteVertexArrays(1, &VAO);
 			VAO = 0;
 		}

@@ -150,6 +150,8 @@ namespace Boidsish {
 
 								stbi_image_free(imageData);
 								logger::LOG("Compressed embedded texture loaded: {}", str.C_Str());
+								// Register with AssetManager for cleanup
+								AssetManager::GetInstance().RegisterTexture(data.model_path + "#" + str.C_Str(), texture.id);
 							} else {
 								logger::ERROR("Failed to load compressed embedded texture: {}", str.C_Str());
 								texture.id = 0;
@@ -185,6 +187,8 @@ namespace Boidsish {
 								embeddedTexture->mWidth,
 								embeddedTexture->mHeight
 							);
+							// Register with AssetManager for cleanup
+							AssetManager::GetInstance().RegisterTexture(data.model_path + "#" + str.C_Str(), texture.id);
 						}
 					} else {
 						// Robust file-based texture lookup
@@ -1045,6 +1049,21 @@ namespace Boidsish {
 		}
 
 		return textureID;
+	}
+
+	void AssetManager::RegisterTexture(const std::string& key, GLuint textureId) {
+		if (textureId == 0)
+			return;
+
+		auto it = m_textures.find(key);
+		if (it != m_textures.end()) {
+			if (it->second != textureId) {
+				glDeleteTextures(1, &it->second);
+				it->second = textureId;
+			}
+		} else {
+			m_textures[key] = textureId;
+		}
 	}
 
 	std::shared_ptr<ma_resource_manager_data_source>

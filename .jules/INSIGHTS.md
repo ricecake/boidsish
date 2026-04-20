@@ -45,4 +45,32 @@
 - **Fix 4**: Add a virtual destructor to `ShaderBase` that calls `glDeleteProgram(ID)`.
 - **Fix 5**: Implement uniform location caching in `ShaderBase` using a `std::unordered_map` to minimize `glGetUniformLocation` overhead.
 - **Fix 6**: Disable copy operations and implement move operations for `ShaderBase` (Rule of Five) to safely manage OpenGL program ownership.
-- **Fix 7**: Add `glDeleteBuffers(1, &frustum_ubo)` to `VisualizerImpl` destructor.
+- **Fix 7**: Add `glDeleteBuffers(1, &temporal_data_ubo)` and `glDeleteSync` for `mdi_fences` to `VisualizerImpl` destructor.
+- **Fix 8**: Update `Mesh::Cleanup` to skip `glDeleteVertexArrays` for VAOs managed by `Megabuffer` (avoiding accidental deletion of the global shared VAO).
+- **Fix 9**: Add `RegisterTexture` to `AssetManager` and use it for embedded model textures to ensure they are cleaned up when the manager is cleared.
+
+## New Findings
+
+### 7. Missing Resource Cleanup in Visualizer (Temporal UBO)
+- **Issue Type**: Memory Leak (OpenGL Buffer)
+- **Location**: `src/graphics.cpp`, `VisualizerImpl::~VisualizerImpl`
+- **Evidence**: `temporal_data_ubo` was created in the constructor but missing from the destructor.
+- **Learning**: Explicit management of OpenGL resources in `VisualizerImpl` must be exhaustive to prevent driver-side leaks during visualizer recreation.
+
+### 8. Missing Resource Cleanup in Visualizer (Sync Objects)
+- **Issue Type**: Memory Leak (OpenGL Sync)
+- **Location**: `src/graphics.cpp`, `VisualizerImpl::~VisualizerImpl`
+- **Evidence**: `mdi_fences` (GLsync objects) were created every frame but never deleted in the destructor.
+- **Learning**: Sync objects are small but can accumulate and eventually exhaust driver resources if not managed.
+
+### 9. Incorrect Resource Management in Mesh System
+- **Issue Type**: Improper Resource Management (OpenGL VAO)
+- **Location**: `src/model.cpp`, `Mesh::Cleanup`
+- **Evidence**: `Mesh` objects were deleting VAOs that might be owned by a shared `Megabuffer`.
+- **Learning**: Centralized "Megabuffers" require careful ownership checks to prevent local objects from destroying global state.
+
+### 10. Memory Leak in Asset Management (Embedded Textures)
+- **Issue Type**: Memory Leak (OpenGL Texture)
+- **Location**: `src/asset_manager.cpp`, `LoadMaterialTextures`
+- **Evidence**: Embedded textures were created on the fly but never registered with `AssetManager` for cleanup.
+- **Learning**: The `AssetManager`'s scope should extend to all dynamic textures, including those embedded in model files.

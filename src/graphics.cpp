@@ -449,7 +449,6 @@ namespace Boidsish {
 		GLuint                  lighting_ubo{0};
 		GLuint                  visual_effects_ubo{0};
 		GLuint                  temporal_data_ubo{0};
-		GLuint                  frustum_ubo{0};
 		glm::mat4               projection;
 		glm::mat4               prev_view_projection{1.0f};
 
@@ -1241,8 +1240,19 @@ namespace Boidsish {
 				glDeleteBuffers(1, &visual_effects_ubo);
 			}
 
+			if (temporal_data_ubo) {
+				glDeleteBuffers(1, &temporal_data_ubo);
+			}
+
 			if (occlusion_visibility_ssbo_) {
 				glDeleteBuffers(1, &occlusion_visibility_ssbo_);
+			}
+
+			for (int i = 0; i < 3; ++i) {
+				if (mdi_fences[i]) {
+					glDeleteSync(mdi_fences[i]);
+					mdi_fences[i] = 0;
+				}
 			}
 
 			if (window)
@@ -1256,7 +1266,7 @@ namespace Boidsish {
 			return Frustum::FromViewProjection(view, projection);
 		}
 
-		void UpdateFrustumUbo(const glm::mat4& view_mat, const glm::mat4& proj_mat, const glm::vec3& cam_pos) {
+		void UpdateFrustumSsbo(const glm::mat4& view_mat, const glm::mat4& proj_mat, const glm::vec3& cam_pos) {
 			if (mdi_frustum_count >= frustum_ssbo->GetElementCount())
 				return;
 
@@ -1343,9 +1353,9 @@ namespace Boidsish {
 			if (packets.empty())
 				return;
 
-			// Update Frustum UBO for GPU-side culling for this specific pass
+			// Update Frustum SSBO for GPU-side culling for this specific pass
 			if (!is_shadow_pass) {
-				UpdateFrustumUbo(view_mat, proj_mat, camera_pos);
+				UpdateFrustumSsbo(view_mat, proj_mat, camera_pos);
 			}
 
 			// Get pointers to persistent buffers
@@ -2317,10 +2327,10 @@ namespace Boidsish {
 				}
 			}
 
-			// Frustum UBO for generic passes
+			// Frustum SSBO for generic passes
 			{
 				glm::mat4 view_mat = glm::lookAt(camera.pos(), camera.pos() + camera.front(), camera.up());
-				UpdateFrustumUbo(view_mat, projection, camera.pos());
+				UpdateFrustumSsbo(view_mat, projection, camera.pos());
 			}
 		}
 
@@ -2522,8 +2532,8 @@ namespace Boidsish {
 						);
 					},
 				.bind_shadows = [this](Shader& s) { BindShadows(s); },
-				.update_frustum_ubo = [this,
-			                           &frame]() { UpdateFrustumUbo(frame.view, frame.projection, frame.camera_pos); },
+				.update_frustum_ssbo = [this,
+			                            &frame]() { UpdateFrustumSsbo(frame.view, frame.projection, frame.camera_pos); },
 				.render_terrain =
 					[this, &frame]() {
 						PROJECT_PROFILE_SCOPE("RenderTerrain");

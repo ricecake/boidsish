@@ -39,7 +39,7 @@ namespace Boidsish {
 	struct RenderCallbacks {
 		std::function<void(RenderLayer layer, bool dispatch_hiz)> execute_queue;
 		std::function<void(Shader& s)>                            bind_shadows;
-		std::function<void()>                                     update_frustum_ubo;
+		std::function<void()>                                     update_frustum_ssbo;
 		std::function<void()>                                     render_terrain;
 		std::function<void()>                                     render_plane;
 		std::function<void()>                                     render_sky;

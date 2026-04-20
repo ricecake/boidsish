@@ -43,7 +43,7 @@ namespace Boidsish {
 		compositor.BeginScene(frame, render_scale);
 
 		cb.bind_shadows(main_shader_);
-		cb.update_frustum_ubo();
+		cb.update_frustum_ssbo();
 
 		// Decor culling and rendering
 		if (hiz_.IsInitialized() && hiz_culling_enabled_ && frame.frame_count > 0) {
