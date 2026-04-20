@@ -58,63 +58,58 @@ vec3 getWindAtPosition(vec3 worldPos) {
 	}
 
 // 3. Structured Gusts and Swirls
+	// Use continuous time. Do not wrap it, or the phase math will fracture.
 	float time = u_windParams.y;
 	float curlScale = u_windParams.z;
 	float curlStrength = u_windParams.w;
-	float wrappedTime = mod(time, 128.0);
 
 	// Extract normalized direction for predictable math
 	vec2 windDir2D = macroSpeed > 0.001 ? macroWind.xz / macroSpeed : vec2(1.0, 0.0);
 
-	// Gustiness: Swap Worley for a smoother noise to get rolling packets, not sharp cells
+	// Gustiness: Smoothstep the simplex to create wide, rolling "valleys" of stillness
 	float gustAdvectionSpeed = 0.5;
-	vec3 gustPos = worldPos - (macroWind * wrappedTime * gustAdvectionSpeed);
-
-	// Assuming fastSimplex3d exists in your noise library. If not, smooth the Worley aggressively.
-	// float gustiness = smoothstep(0.2, 0.8, fastSimplex3d(gustPos / 250.0) * 0.5 + 0.5);
-	float gustiness = fastSimplex3d(gustPos / 250.0) * 0.5 + 0.5;
+	vec3 gustPos = worldPos - (macroWind * time * gustAdvectionSpeed);
+	float gustiness = smoothstep(0.1, 0.7, fastSimplex3d(gustPos / 250.0) * 0.5 + 0.5);
 
 	// 4. Phasor Ripples (The "Packets")
-	// rippleFreq controls the physical size of the gust packets (how often the Gabor kernels appear)
-	float rippleFreq = 0.0001;
+	// Increase frequency so the baked Gabor kernels are physically smaller
+	float rippleFreq = 0.005;
 	vec2 rippleUV = worldPos.xz * rippleFreq;
 
-	// rippleTightness controls the spatial frequency of the waves INSIDE the packet
 	float rippleTightness = 0.05;
-	float ripplePhaseSpeed = 5.0; // Needs to be higher since we normalized the vector
+	float ripplePhaseSpeed = 5.0;
 
-	// Normalize the dot product to decouple wave tightness from wind speed
-	float phaseShift = dot(windDir2D, worldPos.xz) * rippleTightness - (wrappedTime * ripplePhaseSpeed);
+	float phaseShift = dot(windDir2D, worldPos.xz) * rippleTightness - (time * ripplePhaseSpeed);
 	float rawPhasor = fastPhasor2d(rippleUV, phaseShift);
 
-	// Remap to strictly positive to prevent "inverse gusts" (wind dying down)
-	float positiveRipple = rawPhasor * 0.5 + 0.5;
+	// Remap and apply an asymmetric power curve to fix the "pulling" vertex snap-back
+	// This makes the gust hit quickly, but release slowly.
+	float positiveRipple = pow(rawPhasor * 0.5 + 0.5, 2.0);
 
-	// 5. Apply the Gust Surge
-	// Instead of perpendicular wiggles, add a forward surge along the wind direction
+	// 5. The Stillness Filter
+	// Attenuate the base wind during lulls, but ONLY if the macro wind is relatively weak.
+	// Storms (high macroSpeed) will ignore the lull and blow continuously.
+	float calmThreshold = smoothstep(45.0, 0.0, macroSpeed);
+	float baseWindMultiplier = mix(1.0, gustiness, calmThreshold);
+
+	vec3 finalWind = macroWind * baseWindMultiplier;
+
+	// 6. Apply the Gust Surge
 	if (macroSpeed > 0.001) {
-		float surgeStrength = 1.5; // How much harder the gust blows
-		// Multiply by the gustiness envelope so the ripples only appear inside the macro gusts
+		float surgeStrength = 1.5;
+		// The surge only exists inside the macro gusts
 		float localizedSurge = positiveRipple * gustiness * surgeStrength * macroSpeed;
-
-		macroWind.xz += windDir2D * localizedSurge;
+		finalWind.xz += windDir2D * localizedSurge;
 	}
 
-	// 6. Local Turbulence (Curl)
-	float advectionSpeed = 0.250;
-	vec3 advectedPos = worldPos - (macroWind * wrappedTime * advectionSpeed);
-
-	// dynamicCurlScale adds variety to swirl sizes
+	// 7. Local Turbulence (Curl)
 	float dynamicCurlScale = curlScale * (0.8 + 0.4 * gustiness);
-	vec3 curl = fastCurl3d(advectedPos/200.0 * dynamicCurlScale + vec3(0.0, wrappedTime * 0.02, 0.0));
+	vec3 advectedPos = worldPos - (finalWind * time * 0.250);
+	vec3 curl = fastCurl3d(advectedPos/200.0 * dynamicCurlScale + vec3(0.0, time * 0.02, 0.0));
 
-	float turbulenceIntensity = drag * macroSpeed * curlStrength;
-
-	// Apply curl cleanly as a final perturbation, removing the complex rotation logic
-	// return (macroWind + curl * turbulenceIntensity) * smoothstep(0.75, 0.80, positiveRipple);//pow(gustiness, 3);
-	// return (macroWind) * smoothstep(0.0, 0.5, step(0.85, positiveRipple));//pow(gustiness, 3);
-	// return ((macroWind + curl * turbulenceIntensity)) * smoothstep(0.45, 1.0, positiveRipple);//pow(gustiness, 3);
-	return ((macroWind + curl * turbulenceIntensity)) * smoothstep(0.45 * smoothstep(50.0, 0.0, length(macroWind)), 1.0, positiveRipple);//pow(gustiness, 3);
+	// Add curl strictly as a final perturbation
+	float turbulenceIntensity = drag * length(finalWind) * curlStrength;
+	return finalWind + curl * turbulenceIntensity;
 }
 
 #endif // HELPERS_WIND_GLSL

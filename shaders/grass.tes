@@ -95,9 +95,8 @@ void main() {
     // We scale this to a reasonable radian angle. Increase multiplier for visibility.
     float resistedwindStrength = maxDeflection * tanh(windStrength * 0.15 / maxDeflection);
 
-    float bendFactor = windStrength * (1.0 - clamp(biomeProps[biomeIdx].rigidity * globalProps.rigidityMultiplier, 0.0, 0.95));
-    float windBendAngle = resistedwindStrength * pow(v, 1.2) * smoothstep(0.05, 1.0, v);
-    // float windBendAngle = bendFactor * v * v; // Parabolic bend
+    float bendFactor = (1.0 - clamp(biomeProps[biomeIdx].rigidity * globalProps.rigidityMultiplier, 0.0, 0.95));
+    float windBendAngle =  bendFactor * resistedwindStrength * pow(v, 1.2) * smoothstep(0.05, 1.0, v);
 
     // 2. Base Tilt (static variety)
     float tiltFactor = (hash(seed + 8888) * 2.0 - 1.0) * 0.15;
@@ -132,7 +131,7 @@ void main() {
                            rotationAxis * dot(rotationAxis, initialRelativePos) * (1.0 - cosTheta);
 
     // --- Blade Width and Rotation ---
-    // Distance-based weight (you can pass the range as uniforms)
+    // Distance-based weight
     float distToCam = distance(viewPos, basePos);
     float billboardWeight = max(0.5, smoothstep(7.50, 50.0, distToCam));
 
@@ -145,7 +144,7 @@ void main() {
     // Normalized linear interpolation (nlerp) of the directions
     vec2 finalDir = normalize(mix(origDir, camDir, billboardWeight));
 
-    // Reconstruct sine and cosine for your matrix
+    // Reconstruct sine and cosine
     float c = finalDir.y;
     float s = finalDir.x;
     mat2 rotMat = mat2(c, s, -s, c);

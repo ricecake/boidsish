@@ -514,9 +514,9 @@ void main() {
 	float plainRipple = 1;//tangentGabor(FragPos, norm, -1 * windDistortion * rawWindNudge, time, 0.5, 0.00001, 0.75) * 0.5 + 0.5;
 	float windRipple = windDistortion * plainRipple;
 	float grassFactor = smoothstep(0.25, 0.5, max(dot(albedo, COL_GRASS_LUSH), dot(albedo, COL_GRASS_DRY)));
-	albedo *= mix(1, mix(1.0, 1.25, windDistortion) * mix(1.0, 1.05, windRipple), grassFactor);
+	// albedo *= mix(1, mix(1.0, 1.25, windDistortion) * mix(1.0, 1.05, windRipple), grassFactor);
 	roughness *= mix(1.25, 1.0, windDistortion) * mix(1, mix(1.5, 1.0, windRipple), grassFactor);
-	// albedo = normalize(albedo+windAtPos);
+	albedo = normalize(albedo+windAtPos);
 	// perturbedNorm += rawWindNudge * mix(0.0, 1.05, plainRipple);
 
 	float primaryShadow;
