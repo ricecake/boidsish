@@ -636,13 +636,13 @@ namespace Boidsish {
 			// Bind everything once, then one dispatch per type
 			placement_shader_->use();
 
-			glActiveTexture(GL_TEXTURE0);
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainHeightmap());
 			glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture);
-			placement_shader_->setInt("u_heightmapArray", 0);
+			placement_shader_->setInt("u_heightmapArray", Constants::TextureUnit::TerrainHeightmap());
 
-			glActiveTexture(GL_TEXTURE1);
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainBiomeMap());
 			glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture);
-			placement_shader_->setInt("u_biomeMap", 1);
+			placement_shader_->setInt("u_biomeMap", Constants::TextureUnit::TerrainBiomeMap());
 
 			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::DecorProps(), decor_props_ubo_);
 			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::DecorPlacementGlobals(), placement_globals_ubo_);
@@ -705,9 +705,9 @@ namespace Boidsish {
 		// Hi-Z occlusion culling uniforms
 		culling_shader_->setBool("u_enableHiZ", hiz_enabled_ && !is_shadow_pass);
 		if (hiz_enabled_ && !is_shadow_pass) {
-			glActiveTexture(GL_TEXTURE15);
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::HiZ());
 			glBindTexture(GL_TEXTURE_2D, hiz_texture_);
-			culling_shader_->setInt("u_hizTexture", 15);
+			culling_shader_->setInt("u_hizTexture", Constants::TextureUnit::HiZ());
 			culling_shader_->setMat4("u_prevViewProjection", hiz_prev_vp_);
 			glUniform2i(glGetUniformLocation(culling_shader_->ID, "u_hizSize"), hiz_width_, hiz_height_);
 			culling_shader_->setInt("u_hizMipCount", hiz_mip_count_);
@@ -816,13 +816,13 @@ namespace Boidsish {
 
 		// 3. Dispatch placement for each type
 		placement_shader_->use();
-		glActiveTexture(GL_TEXTURE0);
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainHeightmap());
 		glBindTexture(GL_TEXTURE_2D_ARRAY, render_manager->GetHeightmapTexture());
-		placement_shader_->setInt("u_heightmapArray", 0);
+		placement_shader_->setInt("u_heightmapArray", Constants::TextureUnit::TerrainHeightmap());
 
-		glActiveTexture(GL_TEXTURE1);
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainBiomeMap());
 		glBindTexture(GL_TEXTURE_2D_ARRAY, render_manager->GetBiomeTexture());
-		placement_shader_->setInt("u_biomeMap", 1);
+		placement_shader_->setInt("u_biomeMap", Constants::TextureUnit::TerrainBiomeMap());
 
 		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::DecorProps(), decor_props_ubo_);
 		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::DecorPlacementGlobals(), temp_globals_ubo);

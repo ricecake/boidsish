@@ -63,10 +63,14 @@ vec3 getWindAtPosition(vec3 worldPos) {
 	float curlScale = u_windParams.z;
 	float curlStrength = u_windParams.w;
 
+	// CRITICAL: We use a wrapped time for advection to maintain floating-point precision
+	// during long-running sessions, as sampling coordinates grow linearly with time.
+	float wrappedTime = mod(time, 2048.0);
+
 	// Gustiness: large-scale noise that moves with the macro wind
 	// This creates areas of high/low turbulence that feel like structured gusts.
 	float gustAdvectionSpeed = 1.0;
-	vec3 gustPos = worldPos - (macroWind * time * gustAdvectionSpeed);
+	vec3 gustPos = worldPos - (macroWind * wrappedTime * gustAdvectionSpeed);
 	float gustiness = fastWorley3d(gustPos/ 150.0) * 0.5 + 0.5;
 
 	// Scale turbulence intensity by drag, macro speed, and the structured gust factor
@@ -74,12 +78,12 @@ vec3 getWindAtPosition(vec3 worldPos) {
 
 	// Advect the sampling coordinates downstream using the macro wind.
 	float advectionSpeed = 0.250;
-	vec3 advectedPos = worldPos - (macroWind * time * advectionSpeed);
+	vec3 advectedPos = worldPos - (macroWind * wrappedTime * advectionSpeed);
 
 	// Sample the curl noise using the moving coordinate space
 	// We modulate the curl scale slightly by gustiness to add variety to swirl sizes
 	float dynamicCurlScale = curlScale * (0.8 + 0.4 * gustiness);
-	vec3 curl = fastCurl3d(advectedPos/100.0 * dynamicCurlScale + vec3(0.0, time * 0.002, 0.0));
+	vec3 curl = fastCurl3d(advectedPos/100.0 * dynamicCurlScale + vec3(0.0, wrappedTime * 0.002, 0.0));
 
 	// 4. Phasor Ripples
 	// We use the phasor noise to introduce smooth, undulating ripples.
@@ -87,8 +91,8 @@ vec3 getWindAtPosition(vec3 worldPos) {
 	float rippleFreq = 0.25;
 	float ripplePhaseSpeed = 2.5;
 	// Advect ripple sampling by macro wind to keep them feeling part of the flow
-	vec2 rippleUV = worldPos.xz * rippleFreq - macroWind.xz * time * 0.05;
-	float ripple = fastPhasor2d(rippleUV, time * ripplePhaseSpeed);
+	vec2 rippleUV = worldPos.xz * rippleFreq - macroWind.xz * wrappedTime * 0.05;
+	float ripple = fastPhasor2d(rippleUV, wrappedTime * ripplePhaseSpeed);
 
 	// Modulate turbulence intensity and introduce a subtle directional shift to the flow
 	turbulenceIntensity *= (0.8 + 0.4 * (ripple * 0.5 + 0.5));

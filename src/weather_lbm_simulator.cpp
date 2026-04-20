@@ -46,8 +46,9 @@ namespace Boidsish {
 
 		if (newAnchor != gridAnchor_) {
 			glm::ivec2 shiftOffset = newAnchor - gridAnchor_;
-			ShiftGrid(shiftOffset);
+			// CRITICAL: Update anchor BEFORE shifting so newly revealed cells know their world position
 			gridAnchor_ = newAnchor;
+			ShiftGrid(shiftOffset);
 		}
 	}
 
@@ -481,12 +482,22 @@ namespace Boidsish {
                 if (srcX >= 0 && srcX < width_ && srcZ >= 0 && srcZ < height_) {
                     tempGrid[dstIdx] = (*currentGrid_)[srcZ * width_ + srcX];
                 } else {
-                    // This is a newly revealed edge cell; initialize it to ambient
-                    tempGrid[dstIdx].temperature = 288.15f;
-                    tempGrid[dstIdx].aerosol = 0.01f;
+                    // This is a newly revealed edge cell; initialize it using noise
+                    // to match the plausible initial state of the world.
+                    float worldX = (float)(x + gridAnchor_.x) * 32.0f;
+                    float worldZ = (float)(z + gridAnchor_.y) * 32.0f;
+
+                    float n = Simplex::noise(glm::vec2(worldX * 0.001f, worldZ * 0.001f));
+                    tempGrid[dstIdx].temperature = 288.15f + n * 5.0f;
+                    tempGrid[dstIdx].aerosol = 0.01f + std::abs(n) * 0.05f;
                     tempGrid[dstIdx].vy = 0.0f;
+
+                    glm::vec2 u(Simplex::noise(glm::vec2(worldX * 0.002f, worldZ * 0.002f)),
+                                 Simplex::noise(glm::vec2(worldX * 0.002f + 100.0f, worldZ * 0.002f + 100.0f)));
+                    u *= 0.1f;
+
                     for (int i = 0; i < 9; ++i) {
-                        tempGrid[dstIdx].f[i] = weights[i]; // rho = 1.0, u = 0.0
+                        tempGrid[dstIdx].f[i] = CalculateEquilibrium(i, 1.0f, u);
                     }
                 }
             }

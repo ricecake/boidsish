@@ -139,27 +139,30 @@ namespace Boidsish {
 		glActiveTexture(GL_TEXTURE0 + unit + 3);
 		glBindTexture(GL_TEXTURE_3D, extra_noise_texture_);
 
-		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::PhasorNoise());
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::NoisePhasor());
 		glBindTexture(GL_TEXTURE_2D, phasor_noise_texture_);
 	}
 
 	void NoiseManager::BindDefault(ShaderBase& shader) const {
-		glActiveTexture(GL_TEXTURE5);
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::NoiseSimplex());
 		glBindTexture(GL_TEXTURE_3D, noise_texture_);
-		shader.trySetInt("u_noiseTexture", 5);
-		glActiveTexture(GL_TEXTURE6);
-		glBindTexture(GL_TEXTURE_3D, curl_noise_texture_);
-		shader.trySetInt("u_curlTexture", 6);
-		glActiveTexture(GL_TEXTURE7);
-		glBindTexture(GL_TEXTURE_2D, blue_noise_texture_);
-		shader.trySetInt("u_blueNoiseTexture", 7);
-		glActiveTexture(GL_TEXTURE8);
-		glBindTexture(GL_TEXTURE_3D, extra_noise_texture_);
-		shader.trySetInt("u_extraNoiseTexture", 8);
+		shader.trySetInt("u_noiseTexture", Constants::TextureUnit::NoiseSimplex());
 
-		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::PhasorNoise());
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::NoiseCurl());
+		glBindTexture(GL_TEXTURE_3D, curl_noise_texture_);
+		shader.trySetInt("u_curlTexture", Constants::TextureUnit::NoiseCurl());
+
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::NoiseBlue());
+		glBindTexture(GL_TEXTURE_2D, blue_noise_texture_);
+		shader.trySetInt("u_blueNoiseTexture", Constants::TextureUnit::NoiseBlue());
+
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::NoiseExtra());
+		glBindTexture(GL_TEXTURE_3D, extra_noise_texture_);
+		shader.trySetInt("u_extraNoiseTexture", Constants::TextureUnit::NoiseExtra());
+
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::NoisePhasor());
 		glBindTexture(GL_TEXTURE_2D, phasor_noise_texture_);
-		shader.trySetInt("u_phasorTexture", Constants::TextureUnit::PhasorNoise());
+		shader.trySetInt("u_phasorTexture", Constants::TextureUnit::NoisePhasor());
 	}
 
 } // namespace Boidsish

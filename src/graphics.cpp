@@ -1119,7 +1119,7 @@ namespace Boidsish {
 				}
 				s.setIntArray("lightShadowIndices", shadow_indices.data(), 10);
 			} else {
-				s.setInt("shadowMaps", 4);
+				s.setInt("shadowMaps", Constants::TextureUnit::ShadowMaps());
 				std::array<int, 10> shadow_indices;
 				shadow_indices.fill(-1);
 				s.setIntArray("lightShadowIndices", shadow_indices.data(), 10);
@@ -1624,9 +1624,9 @@ namespace Boidsish {
 				);
 
 				// Bind Hi-Z texture
-				glActiveTexture(GL_TEXTURE15);
+				glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::HiZ());
 				glBindTexture(GL_TEXTURE_2D, hiz_manager->GetHiZTexture());
-				occlusion_cull_shader_->setInt("u_hizTexture", 15);
+				occlusion_cull_shader_->setInt("u_hizTexture", Constants::TextureUnit::HiZ());
 
 				// Set uniforms
 				occlusion_cull_shader_->setInt("u_drawCount", static_cast<int>(mdi_uniform_count));
@@ -1674,10 +1674,10 @@ namespace Boidsish {
 					}
 
 					if (!is_shadow_pass) {
-						// Bind refraction texture to a fixed unit (14) if not a shadow pass
-						glActiveTexture(GL_TEXTURE14);
+						// Bind refraction texture if not a shadow pass
+						glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::Refraction());
 						glBindTexture(GL_TEXTURE_2D, compositor_->GetRefractionTexture());
-						s->trySetInt("refractionTexture", 14);
+						s->trySetInt("refractionTexture", Constants::TextureUnit::Refraction());
 
 						if (atmosphere_manager) {
 							atmosphere_manager->BindTextures();
