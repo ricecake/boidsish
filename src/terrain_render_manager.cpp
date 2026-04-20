@@ -66,6 +66,7 @@ namespace Boidsish {
 
 		grid_mip_shader_ = std::make_unique<ComputeShader>("shaders/terrain_hiz_generate.comp");
 		probe_compute_shader_ = std::make_unique<ComputeShader>("shaders/terrain_probes.comp");
+		terrain_bake_shader_ = std::make_unique<ComputeShader>("shaders/terrain_bake.comp");
 
 		// Create SH probes SSBO
 		glGenBuffers(1, &probe_ssbo_);
@@ -80,6 +81,12 @@ namespace Boidsish {
 			initial_data.data(),
 			GL_DYNAMIC_DRAW
 		);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+
+		// Create BakeTasks SSBO
+		glGenBuffers(1, &bake_ssbo_);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, bake_ssbo_);
+		glBufferData(GL_SHADER_STORAGE_BUFFER, 1024 * sizeof(BakeTask), nullptr, GL_DYNAMIC_DRAW);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
 		// Create instance buffer first so we can set up VAO attributes
@@ -102,8 +109,12 @@ namespace Boidsish {
 			glDeleteBuffers(1, &grid_ebo_);
 		if (instance_vbo_)
 			glDeleteBuffers(1, &instance_vbo_);
+		if (raw_heightmap_texture_)
+			glDeleteTextures(1, &raw_heightmap_texture_);
 		if (heightmap_texture_)
 			glDeleteTextures(1, &heightmap_texture_);
+		if (baked_params_texture_)
+			glDeleteTextures(1, &baked_params_texture_);
 		if (biome_texture_)
 			glDeleteTextures(1, &biome_texture_);
 		if (biome_ubo_)
@@ -116,6 +127,8 @@ namespace Boidsish {
 			glDeleteBuffers(1, &terrain_data_ubo_);
 		if (probe_ssbo_)
 			glDeleteBuffers(1, &probe_ssbo_);
+		if (bake_ssbo_)
+			glDeleteBuffers(1, &bake_ssbo_);
 	}
 
 	void TerrainRenderManager::CreateGridMesh() {
@@ -199,7 +212,7 @@ namespace Boidsish {
 	}
 
 	void TerrainRenderManager::EnsureTextureCapacity(int required_slices) {
-		if (heightmap_texture_ && biome_texture_ && required_slices <= max_chunks_) {
+		if (raw_heightmap_texture_ && heightmap_texture_ && baked_params_texture_ && biome_texture_ && required_slices <= max_chunks_) {
 			return; // Already have enough capacity
 		}
 
@@ -222,11 +235,15 @@ namespace Boidsish {
 
 		// If we need to resize and texture exists, existing data will be lost
 		// This shouldn't happen often with proper capacity management
-		if (heightmap_texture_) {
+		if (raw_heightmap_texture_) {
 			std::cerr << "[TerrainRenderManager] WARNING: Texture array resize from " << max_chunks_ << " to "
 			          << new_capacity << " - existing heightmap data will be lost!" << std::endl;
+			glDeleteTextures(1, &raw_heightmap_texture_);
+			raw_heightmap_texture_ = 0;
 			glDeleteTextures(1, &heightmap_texture_);
 			heightmap_texture_ = 0;
+			glDeleteTextures(1, &baked_params_texture_);
+			baked_params_texture_ = 0;
 
 			if (biome_texture_) {
 				glDeleteTextures(1, &biome_texture_);
@@ -241,60 +258,21 @@ namespace Boidsish {
 
 		max_chunks_ = new_capacity;
 
-		// Create 2D texture array for heightmaps
-		// Format: RGBA16F - R=height, GBA=normal.xyz
-		glGenTextures(1, &heightmap_texture_);
-		glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture_);
+		auto create_array = [&](GLuint& tex, GLenum internalFormat, GLenum format, GLenum type, bool linear) {
+			glGenTextures(1, &tex);
+			glBindTexture(GL_TEXTURE_2D_ARRAY, tex);
+			glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, internalFormat, heightmap_resolution_, heightmap_resolution_,
+			             max_chunks_, 0, format, type, nullptr);
+			glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, linear ? GL_LINEAR : GL_NEAREST);
+			glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, linear ? GL_LINEAR : GL_NEAREST);
+			glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		};
 
-		// Allocate storage for all slices
-		glTexImage3D(
-			GL_TEXTURE_2D_ARRAY,
-			0,                     // mip level
-			GL_RGBA16F,            // internal format (height + normal)
-			heightmap_resolution_, // width
-			heightmap_resolution_, // height
-			max_chunks_,           // depth (number of slices)
-			0,                     // border
-			GL_RGBA,               // format
-			GL_FLOAT,              // type
-			nullptr                // no initial data
-		);
-
-		// Check for errors
-		GLenum err = glGetError();
-		if (err != GL_NO_ERROR) {
-			std::cerr << "[TerrainRenderManager] ERROR: glTexImage3D failed with error " << err
-			          << " (resolution=" << heightmap_resolution_ << ", slices=" << max_chunks_ << ")" << std::endl;
-		}
-
-		// Filtering for smooth interpolation
-		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-		// Create 2D texture array for biomes
-		// Format: RG8 - R=low_idx, G=t
-		glGenTextures(1, &biome_texture_);
-		glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture_);
-
-		glTexImage3D(
-			GL_TEXTURE_2D_ARRAY,
-			0,                     // mip level
-			GL_RG8,                // internal format
-			heightmap_resolution_, // width
-			heightmap_resolution_, // height
-			max_chunks_,           // depth (number of slices)
-			0,                     // border
-			GL_RG,                 // format
-			GL_UNSIGNED_BYTE,      // type
-			nullptr                // no initial data
-		);
-
-		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		create_array(raw_heightmap_texture_, GL_RGBA16F, GL_RGBA, GL_FLOAT, true);
+		create_array(heightmap_texture_, GL_RGBA16F, GL_RGBA, GL_FLOAT, true);
+		create_array(baked_params_texture_, GL_RGBA16F, GL_RGBA, GL_FLOAT, true);
+		create_array(biome_texture_, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, true);
 
 		glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
 	}
@@ -307,7 +285,7 @@ namespace Boidsish {
 	) {
 		const int num_pixels = heightmap_resolution_ * heightmap_resolution_;
 
-		// Pack height + normal into RGBA16F format
+		// Pack height + normal into RGBA16F format for raw_heightmap_texture_
 		std::vector<float> packed_data;
 		packed_data.reserve(num_pixels * 4);
 
@@ -318,7 +296,7 @@ namespace Boidsish {
 			packed_data.push_back(normals[i].z); // A = normal.z
 		}
 
-		glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture_);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, raw_heightmap_texture_);
 		glTexSubImage3D(
 			GL_TEXTURE_2D_ARRAY,
 			0, // mip level
@@ -333,12 +311,15 @@ namespace Boidsish {
 			packed_data.data()
 		);
 
-		// Pack biome indices/weights into RG8 format
+		// Pack biome indices/weights into RGBA8 format
+		// R = low_idx, G = t, B = bake_flag (0), A = unused
 		std::vector<uint8_t> biome_data;
-		biome_data.reserve(num_pixels * 2);
+		biome_data.reserve(num_pixels * 4);
 		for (int i = 0; i < num_pixels; ++i) {
 			biome_data.push_back(static_cast<uint8_t>(biomes[i].x));                 // R = low_idx
 			biome_data.push_back(static_cast<uint8_t>(biomes[i].y * 255.0f + 0.5f)); // G = t
+			biome_data.push_back(0);                                                 // B = bake_flag (not baked yet)
+			biome_data.push_back(0);                                                 // A = unused
 		}
 
 		glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture_);
@@ -351,7 +332,7 @@ namespace Boidsish {
 			heightmap_resolution_,
 			heightmap_resolution_,
 			1,
-			GL_RG,
+			GL_RGBA,
 			GL_UNSIGNED_BYTE,
 			biome_data.data()
 		);
@@ -409,6 +390,9 @@ namespace Boidsish {
 				it->second.max_y = max_y;
 				it->second.update_count++;
 				grid_dirty_ = true;
+
+				// Queue for baking
+				bake_queue_.push_back({glm::ivec2(chunk_key.first, chunk_key.second), it->second.texture_slice, 0});
 				return;
 			}
 
@@ -473,6 +457,9 @@ namespace Boidsish {
 
 			// Upload heightmap data
 			UploadHeightmapSlice(slice, heightmap, reordered_normals, reordered_biomes);
+
+			// Queue for baking
+			bake_queue_.push_back({glm::ivec2(chunk_key.first, chunk_key.second), slice, 0});
 
 			// Store chunk info
 			ChunkInfo info{};
@@ -552,6 +539,10 @@ namespace Boidsish {
 		float            day_time
 	) {
 		PROJECT_PROFILE_SCOPE("TerrainRenderManager::PrepareForRender");
+
+		// Perform baking before culling and rendering
+		PerformBaking(world_scale);
+
 		std::lock_guard<std::mutex> lock(mutex_);
 
 		// Store camera position and world scale for LRU eviction decisions in RegisterChunk
@@ -870,6 +861,10 @@ namespace Boidsish {
 		shader_base.trySetInt("uBiomeMap", Constants::TextureUnit::TerrainBiomeMap());
 		shader_base.trySetInt("u_biomeMap", Constants::TextureUnit::TerrainBiomeMap());
 
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereCloudShadow()); // Reusing unit for baked params
+		glBindTexture(GL_TEXTURE_2D_ARRAY, baked_params_texture_);
+		shader_base.trySetInt("uBakedParams", Constants::TextureUnit::AtmosphereCloudShadow());
+
 		if (extra_noise_texture_ != 0) {
 			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::NoiseExtra());
 			glBindTexture(GL_TEXTURE_3D, extra_noise_texture_);
@@ -984,6 +979,61 @@ namespace Boidsish {
 
 		glBindVertexArray(0);
 		glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
+	}
+
+	void TerrainRenderManager::PerformBaking(float world_scale) {
+		std::vector<BakeTask> tasks;
+		{
+			std::lock_guard<std::mutex> lock(mutex_);
+			if (bake_queue_.empty()) return;
+			tasks = std::move(bake_queue_);
+			bake_queue_.clear();
+		}
+
+		if (!terrain_bake_shader_ || !terrain_bake_shader_->isValid()) return;
+
+		PROJECT_PROFILE_SCOPE("TerrainRenderManager::PerformBaking");
+
+		terrain_bake_shader_->use();
+
+		// Bind raw input textures
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, raw_heightmap_texture_);
+		terrain_bake_shader_->setInt("u_rawHeightmapArray", 0);
+
+		// Bind biome map as image for read/write status
+		glBindImageTexture(1, biome_texture_, 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA8);
+		terrain_bake_shader_->setInt("u_biomeMap", 1);
+
+		// Bind output textures as images
+		glBindImageTexture(2, heightmap_texture_, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+		terrain_bake_shader_->setInt("u_heightmapArray", 2);
+		glBindImageTexture(3, baked_params_texture_, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+		terrain_bake_shader_->setInt("u_bakedParamsArray", 3);
+
+		// Bind UBOs
+		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::TerrainData(), terrain_data_ubo_);
+		if (visual_effects_ubo_ != 0) {
+			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::VisualEffects(), visual_effects_ubo_);
+		}
+
+		// Process in batches
+		const size_t max_batch = 1024;
+		for (size_t i = 0; i < tasks.size(); i += max_batch) {
+			size_t batch_size = std::min(max_batch, tasks.size() - i);
+
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, bake_ssbo_);
+			glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, batch_size * sizeof(BakeTask), &tasks[i]);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainChunkInfo(), bake_ssbo_);
+
+			terrain_bake_shader_->setInt("u_numTasks", static_cast<int>(batch_size));
+
+			// Local size is 8x8, chunk size is 32+1=33
+			// We need 5x5 workgroups to cover 33x33 pixels per slice
+			glDispatchCompute(5, 5, static_cast<GLuint>(batch_size));
+		}
+
+		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
 	}
 
 	size_t TerrainRenderManager::GetRegisteredChunkCount() const {

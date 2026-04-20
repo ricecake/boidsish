@@ -2219,6 +2219,9 @@ namespace Boidsish {
 
 			// Visual Effects UBO
 			if (frame_config_.effects_enabled) {
+				if (terrain_render_manager && visual_effects_pb) {
+					terrain_render_manager->SetVisualEffectsUbo(visual_effects_pb->GetBufferId());
+				}
 				VisualEffectsUbo ubo_data{};
 				for (const auto& shape : shapes) {
 					for (const auto& effect : shape->GetActiveEffects()) {

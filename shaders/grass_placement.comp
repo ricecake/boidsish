@@ -65,7 +65,7 @@ layout(std140, binding = [[TERRAIN_DATA_BINDING]]) uniform TerrainData {
 
 uniform isampler2D u_chunkGrid;
 uniform sampler2DArray u_heightmapArray; // RGBA16F: R=height, GBA=normal.xyz
-uniform sampler2DArray uBiomeMap;   // RG8: R=low_idx, G=t
+uniform sampler2DArray uBiomeMap;   // RGBA8: R=low_idx, G=t, B=bake_flag
 
 uniform vec3 uCameraPos;
 uniform float uWorldScale;

@@ -1,0 +1,162 @@
+#version 430 core
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+#include "helpers/constants.glsl"
+#include "visual_effects.glsl"
+
+layout(std140, binding = [[TERRAIN_DATA_BINDING]]) uniform TerrainData {
+	ivec4 u_originSize;    // x, z, size, is_bound
+	vec4  u_terrainParams; // x=chunkSize, y=worldScale
+};
+
+// Input: Raw heightmap (R=height, GBA=normal)
+uniform sampler2DArray u_rawHeightmapArray;
+// Input: Biome data (RG8: R=low_idx, G=t)
+layout(rgba8) uniform image2DArray u_biomeMap;
+
+// Output: Baked heightmap (RGBA16F: R=height, GBA=normal)
+layout(rgba16f) uniform image2DArray u_heightmapArray;
+// Output: Baked params (RGBA16F: R=erosionDelta, G=ridgeMap, B=substrate, A=waterMask)
+layout(rgba16f) uniform image2DArray u_bakedParamsArray;
+
+struct BakeTask {
+	ivec2 chunk_coord;
+	int   slice;
+	int   _pad;
+};
+
+layout(std430, binding = [[TERRAIN_CHUNK_INFO_BINDING]]) readonly buffer BakeTasks {
+	BakeTask tasks[];
+};
+
+uniform int u_numTasks;
+
+#include "helpers/noise.glsl"
+#include "helpers/erosion.glsl"
+#include "helpers/terrain_noise.glsl"
+
+// Shared memory for height and params to allow neighbor sampling for normals
+// Group size 8x8 + 1 pixel border = 10x10
+shared float s_heights[10][10];
+shared vec4  s_params[10][10];
+
+float calculateHeightAndParams(vec2 uv, int slice, vec2 worldOffset, float chunkSize, float rawChunkSize, float worldScale, out vec4 params) {
+	vec2  remappedUV = (uv * rawChunkSize + 0.5) / (rawChunkSize + 1.0);
+	vec4  data = textureLod(u_rawHeightmapArray, vec3(remappedUV, float(slice)), 0.0);
+	float height = data.r;
+	vec3  rawNormal = normalize(data.gba);
+
+	vec3 worldPos;
+	worldPos.x = worldOffset.x + uv.x * chunkSize;
+	worldPos.y = height;
+	worldPos.z = worldOffset.y + uv.y * chunkSize;
+
+	float ridgeMapOutput = 0.0;
+	float substrateOutput = 0.0;
+	float debugOutput = 0.0;
+	float erosionDelta = 0.0;
+
+	vec3 currentNormal = rawNormal;
+	float currentHeight = height;
+
+	if (erosion_enabled > 0) {
+		float frameworkHeightPeak = 200.0 * worldScale;
+		float erosionFadeTarget = clamp(currentHeight / (frameworkHeightPeak * 0.6), -1.0, 1.0);
+		vec3 hAndS = vec3(currentHeight / worldScale, -currentNormal.x, -currentNormal.z);
+
+		vec4 erosionResult = ErosionFilter(
+			worldPos.xz / worldScale,
+			hAndS,
+			erosionFadeTarget,
+			erosion_strength,
+			erosion_gully_weight,
+			erosion_detail,
+			vec4(0.1, 0.0, 0.1, 2.0),
+			vec4(1.25, 1.25, 2.8, 1.5),
+			vec2(0.7, 1.0),
+			worldScale * erosion_scale,
+			5,
+			2.0,
+			0.5,
+			0.7,
+			0.5,
+			ridgeMapOutput,
+			substrateOutput,
+			debugOutput
+		);
+
+		currentHeight += erosionResult.x * worldScale;
+		erosionDelta = erosionResult.x;
+	}
+
+	float waterMask = smoothstep(0.1, -0.1, currentHeight);
+	if (waterMask > 0.0) {
+		currentHeight = mix(currentHeight, 0.0, waterMask);
+	}
+
+	params = vec4(erosionDelta, ridgeMapOutput, substrateOutput, waterMask);
+	return currentHeight;
+}
+
+void main() {
+	int taskIdx = int(gl_WorkGroupID.z);
+	if (taskIdx >= u_numTasks) return;
+
+	BakeTask task = tasks[taskIdx];
+	int slice = task.slice;
+	float chunkSize = u_terrainParams.x * u_terrainParams.y;
+	float rawChunkSize = u_terrainParams.x;
+	float worldScale = u_terrainParams.y;
+	vec2 worldOffset = vec2(task.chunk_coord) * chunkSize;
+
+	int res = int(rawChunkSize) + 1;
+
+	// Each thread processes one main pixel + potentially some border pixels for the shared cache
+	ivec2 baseCoord = ivec2(gl_WorkGroupID.xy) * 8;
+	ivec2 localID = ivec2(gl_LocalInvocationID.xy);
+
+	// Load 10x10 area into shared memory (8x8 inner + 1 border)
+	for (int i = localID.x; i < 10; i += 8) {
+		for (int j = localID.y; j < 10; j += 8) {
+			ivec2 pixelCoord = baseCoord + ivec2(i, j) - 1;
+			// Clamp to chunk boundaries
+			ivec2 clampedCoord = clamp(pixelCoord, 0, res - 1);
+			vec2 uv = vec2(clampedCoord) / rawChunkSize;
+
+			vec4 params;
+			s_heights[i][j] = calculateHeightAndParams(uv, slice, worldOffset, chunkSize, rawChunkSize, worldScale, params);
+			s_params[i][j] = params;
+		}
+	}
+
+	barrier();
+
+	ivec2 pixelCoord = baseCoord + localID;
+	if (pixelCoord.x >= res || pixelCoord.y >= res) return;
+
+	// Finite difference normal from baked heights
+	float hL = s_heights[localID.x][localID.y + 1];
+	float hR = s_heights[localID.x + 2][localID.y + 1];
+	float hD = s_heights[localID.x + 1][localID.y];
+	float hU = s_heights[localID.x + 1][localID.y + 2];
+
+	// We need to be careful at chunk edges. The shared memory border only helps within the dispatch.
+	// If baseCoord + localID is on the chunk edge, we might need real neighbor data.
+	// But for a single chunk bake, finite difference within the chunk is usually acceptable
+	// as long as the generator was consistent at edges.
+
+	float dx = (hR - hL) / (2.0 * worldScale);
+	float dz = (hU - hD) / (2.0 * worldScale);
+	vec3 bakedNormal = normalize(vec3(-dx, 1.0, -dz));
+	float bakedHeight = s_heights[localID.x + 1][localID.y + 1];
+	vec4 bakedParams = s_params[localID.x + 1][localID.y + 1];
+
+	imageStore(u_heightmapArray, ivec3(pixelCoord, slice), vec4(bakedHeight, bakedNormal));
+	imageStore(u_bakedParamsArray, ivec3(pixelCoord, slice), bakedParams);
+
+	// Mark as baked in the biome map (B channel)
+	vec4 biomeData = imageLoad(u_biomeMap, ivec3(pixelCoord, slice));
+	biomeData.b = 1.0;
+	imageStore(u_biomeMap, ivec3(pixelCoord, slice), biomeData);
+}
