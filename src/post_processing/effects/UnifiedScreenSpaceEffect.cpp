@@ -127,24 +127,25 @@ namespace Boidsish {
 			unified_shader_->setInt("gAlbedo", 4);
 
 			if (blue_noise_texture_) {
-				glActiveTexture(GL_TEXTURE5);
+				glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::NoiseBlue());
 				glBindTexture(GL_TEXTURE_2D, blue_noise_texture_);
-				unified_shader_->setInt("u_blueNoiseTexture", 5);
+				unified_shader_->setInt("u_blueNoiseTexture", Constants::TextureUnit::NoiseBlue());
 			}
 
 			if (hiz_texture_) {
-				glActiveTexture(GL_TEXTURE6);
+				glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::HiZ());
 				glBindTexture(GL_TEXTURE_2D, hiz_texture_);
-				unified_shader_->setInt("u_hizTexture", 6);
+				unified_shader_->setInt("u_hizTexture", Constants::TextureUnit::HiZ());
 				unified_shader_->setInt("u_hizMipCount", hiz_mips_);
 			}
 
 			// Use the accumulated shadow mask from the previous frame for SSGI coordination
+			// We use Unit 9 as a scratch unit for post-fx specific accumulations
 			GLuint prevShadowMask = sss_accumulator_.GetResult();
 			if (prevShadowMask) {
-				glActiveTexture(GL_TEXTURE7);
+				glActiveTexture(GL_TEXTURE9);
 				glBindTexture(GL_TEXTURE_2D, prevShadowMask);
-				unified_shader_->setInt("uShadowMask", 7);
+				unified_shader_->setInt("uShadowMask", 9);
 			}
 
 			glBindImageTexture(0, gi_ao_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);

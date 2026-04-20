@@ -105,7 +105,7 @@ namespace Boidsish {
 		 * @param shader The shader to set up shadow samplers for
 		 * @param texture_unit The texture unit to bind the shadow map array to
 		 */
-		void BindForRendering(Shader& shader, int texture_unit = 10);
+		void BindForRendering(Shader& shader, int texture_unit = Constants::TextureUnit::ShadowMaps());
 
 		/**
 		 * @brief Update the shadow UBO with current light-space matrices.

@@ -63,8 +63,59 @@ namespace Boidsish {
 		} // namespace UboBinding
 
 		namespace TextureUnit {
-			consteval int WindData() {
+			consteval int ShadowMaps() {
+				return 10;
+			}
+			consteval int TerrainChunkGrid() {
+				return 11;
+			}
+			consteval int TerrainMaxHeight() {
+				return 12;
+			}
+			consteval int TerrainHeightmap() {
+				return 13;
+			}
+			consteval int TerrainBiomeMap() {
 				return 14;
+			}
+			consteval int Refraction() {
+				return 15;
+			}
+			consteval int NoiseSimplex() {
+				return 16;
+			}
+			consteval int NoiseCurl() {
+				return 17;
+			}
+			consteval int NoiseBlue() {
+				return 18;
+			}
+			consteval int NoiseExtra() {
+				return 19;
+			}
+			consteval int NoisePhasor() {
+				return 20;
+			}
+			consteval int AtmosphereTransmittance() {
+				return 21;
+			}
+			consteval int AtmosphereMultiScattering() {
+				return 22;
+			}
+			consteval int AtmosphereSkyView() {
+				return 23;
+			}
+			consteval int AtmosphereAerialPerspective() {
+				return 24;
+			}
+			consteval int AtmosphereCloudShadow() {
+				return 25;
+			}
+			consteval int WindData() {
+				return 26;
+			}
+			consteval int HiZ() {
+				return 27;
 			}
 		} // namespace TextureUnit
 

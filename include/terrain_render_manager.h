@@ -187,16 +187,23 @@ namespace Boidsish {
 		 */
 		void UpdateGridTextures(float world_scale, GLuint lighting_ubo = 0, float day_time = -1.0f);
 
-		void SetNoise(const GLuint& noise, const GLuint& curl, const GLuint& extra = 0) {
-			if (noise != 0) {
-				noise_texture_ = noise;
-			}
-
-			if (curl != 0) {
+		void SetNoise(
+			GLuint simplex,
+			GLuint curl,
+			GLuint extra = 0,
+			GLuint blue = 0,
+			GLuint phasor = 0
+		) {
+			if (simplex != 0)
+				noise_texture_ = simplex;
+			if (curl != 0)
 				curl_texture_ = curl;
-			}
 			if (extra != 0)
 				extra_noise_texture_ = extra;
+			if (blue != 0)
+				blue_noise_texture_ = blue;
+			if (phasor != 0)
+				phasor_noise_texture_ = phasor;
 		}
 
 	private:
@@ -252,6 +259,8 @@ namespace Boidsish {
 		GLuint noise_texture_ = 0;
 		GLuint curl_texture_ = 0;
 		GLuint extra_noise_texture_ = 0;
+		GLuint blue_noise_texture_ = 0;
+		GLuint phasor_noise_texture_ = 0;
 		GLuint biome_ubo_ = 0; // UBO for BiomeShaderProperties
 
 		// Global terrain grid resources

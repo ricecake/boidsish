@@ -432,27 +432,27 @@ namespace Boidsish {
 			shader->setFloat("u_cell_size", Constants::Class::Particles::ParticleGridCellSize());
 
 			if (heightmap_texture != 0) {
-				glActiveTexture(GL_TEXTURE7);
+				glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainHeightmap());
 				glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture);
-				shader->setInt("u_heightmapArray", 7);
+				shader->setInt("u_heightmapArray", Constants::TextureUnit::TerrainHeightmap());
 			}
 
 			if (curl_noise_texture != 0) {
-				glActiveTexture(GL_TEXTURE6);
+				glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::NoiseCurl());
 				glBindTexture(GL_TEXTURE_3D, curl_noise_texture);
-				shader->setInt("u_curlTexture", 6);
+				shader->setInt("u_curlTexture", Constants::TextureUnit::NoiseCurl());
 			}
 
 			if (biome_texture != 0) {
-				glActiveTexture(GL_TEXTURE8);
+				glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainBiomeMap());
 				glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture);
-				shader->setInt("u_biomeMap", 8);
+				shader->setInt("u_biomeMap", Constants::TextureUnit::TerrainBiomeMap());
 			}
 
 			if (extra_noise_texture != 0) {
-				glActiveTexture(GL_TEXTURE9);
+				glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::NoiseExtra());
 				glBindTexture(GL_TEXTURE_3D, extra_noise_texture);
-				shader->setInt("u_extraNoiseTexture", 9);
+				shader->setInt("u_extraNoiseTexture", Constants::TextureUnit::NoiseExtra());
 			}
 		};
 
@@ -724,15 +724,15 @@ namespace Boidsish {
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::VisibleParticleIndices(), visible_indices_buffer_);
 
 		if (noise_texture != 0) {
-			glActiveTexture(GL_TEXTURE5);
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::NoiseSimplex());
 			glBindTexture(GL_TEXTURE_3D, noise_texture);
-			render_shader_->setInt("u_noiseTexture", 5);
+			render_shader_->setInt("u_noiseTexture", Constants::TextureUnit::NoiseSimplex());
 		}
 
 		if (extra_noise_texture != 0) {
-			glActiveTexture(GL_TEXTURE8);
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::NoiseExtra());
 			glBindTexture(GL_TEXTURE_3D, extra_noise_texture);
-			render_shader_->setInt("u_extraNoiseTexture", 8);
+			render_shader_->setInt("u_extraNoiseTexture", Constants::TextureUnit::NoiseExtra());
 		}
 
 		// Enable GPU frustum culling for particles

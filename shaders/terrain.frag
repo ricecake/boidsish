@@ -25,7 +25,7 @@ in float      vSubstrate;
 #include "helpers/lighting.glsl"
 #include "visual_effects.glsl"
 // #include "helpers/noise.glsl"
-// #include "helpers/wind.glsl"
+#include "helpers/wind.glsl"
 
 
 uniform bool uIsShadowPass = false;
@@ -488,15 +488,16 @@ void main() {
 	}
 
 	// Final Lighting
-	// float fateFactor = fastWorley3d(vec3(FragPos.xz / 50.0, time * 0.25)) * 0.5 + 0.50;
-	// vec3  windForce = fastCurl3d(
-	// 	vec3(FragPos.x * 0.0005 + time * 0.00125, FragPos.y * 0.001, FragPos.z * 0.0005 + time * 0.0125)
-	// );
-	// vec3 rawWindNudge = (fateFactor * windForce); // / (abs(normalize(FragPos).y - normalize(windForce).y));
+/*
+	float fateFactor = fastWorley3d(vec3(FragPos.xz / 50.0, time * 0.25)) * 0.5 + 0.50;
+	vec3  windForce = fastCurl3d(
+		vec3(FragPos.x * 0.0005 + time * 0.00125, FragPos.y * 0.001, FragPos.z * 0.0005 + time * 0.0125)
+	);
+	vec3 rawWindNudge = (fateFactor * windForce); // / (abs(normalize(FragPos).y - normalize(windForce).y));
+*/
 
-
-	// vec3 windAtPos = getWindAtPosition(vec3(FragPos.x, 0.5, FragPos.z));
-	// vec3 rawWindNudge = windAtPos * 0.05;//wind_strength;
+	vec3 windAtPos = getWindAtPosition(vec3(FragPos.x, 0.5, FragPos.z));
+	// vec3 rawWindNudge = windAtPos;//wind_strength;
 
 	// vec3  light_dir = normalize(lights[0].position - FragPos);
 	// float rim = max(dot(light_dir, normalize(viewPos - FragPos)), 0.0);
@@ -517,6 +518,7 @@ void main() {
 	// float grassFactor = smoothstep(0.25, 0.5, max(dot(albedo, COL_GRASS_LUSH), dot(albedo, COL_GRASS_DRY)));
 	// albedo *= mix(1, mix(1.0, 1.25, windDistortion) * mix(1.0, 1.05, windRipple), grassFactor);
 	// roughness *= mix(1.25, 1.0, windDistortion) * mix(1, mix(1.5, 1.0, windRipple), grassFactor);
+	albedo = normalize(albedo+windAtPos);
 	// perturbedNorm += rawWindNudge * mix(0.0, 1.05, plainRipple);
 
 	float primaryShadow;

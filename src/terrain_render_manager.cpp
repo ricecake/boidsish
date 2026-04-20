@@ -767,21 +767,21 @@ namespace Boidsish {
 		glBindTexture(GL_TEXTURE_2D, velocityTex);
 		probe_compute_shader_->setInt("u_gVelocity", 4);
 
-		glActiveTexture(GL_TEXTURE5);
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereSkyView());
 		glBindTexture(GL_TEXTURE_2D, skyLUT);
-		probe_compute_shader_->setInt("u_skyViewLUT", 5);
+		probe_compute_shader_->setInt("u_skyViewLUT", Constants::TextureUnit::AtmosphereSkyView());
 
-		glActiveTexture(GL_TEXTURE6);
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainBiomeMap());
 		glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture_);
-		probe_compute_shader_->setInt("u_biomeMap", 6);
+		probe_compute_shader_->setInt("u_biomeMap", Constants::TextureUnit::TerrainBiomeMap());
 
-		glActiveTexture(GL_TEXTURE11);
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainChunkGrid());
 		glBindTexture(GL_TEXTURE_2D, chunk_grid_texture_);
-		probe_compute_shader_->setInt("u_chunkGrid", 11);
+		probe_compute_shader_->setInt("u_chunkGrid", Constants::TextureUnit::TerrainChunkGrid());
 
-		glActiveTexture(GL_TEXTURE13);
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainHeightmap());
 		glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture_);
-		probe_compute_shader_->setInt("u_heightmapArray", 13);
+		probe_compute_shader_->setInt("u_heightmapArray", Constants::TextureUnit::TerrainHeightmap());
 
 		// Uniforms
 		probe_compute_shader_->setUint("u_frameIndex", frame_count_);
@@ -842,26 +842,40 @@ namespace Boidsish {
 
 	void TerrainRenderManager::BindTerrainData(ShaderBase& shader_base) const {
 		shader_base.use();
-		glActiveTexture(GL_TEXTURE11);
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainChunkGrid());
 		glBindTexture(GL_TEXTURE_2D, chunk_grid_texture_);
-		shader_base.setInt("u_chunkGrid", 11);
+		shader_base.setInt("u_chunkGrid", Constants::TextureUnit::TerrainChunkGrid());
 
-		glActiveTexture(GL_TEXTURE12);
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainMaxHeight());
 		glBindTexture(GL_TEXTURE_2D, max_height_grid_texture_);
-		shader_base.setInt("u_maxHeightGrid", 12);
+		shader_base.setInt("u_maxHeightGrid", Constants::TextureUnit::TerrainMaxHeight());
 
-		glActiveTexture(GL_TEXTURE13);
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainHeightmap());
 		glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture_);
-		shader_base.setInt("u_heightmapArray", 13);
+		shader_base.trySetInt("u_heightmapArray", Constants::TextureUnit::TerrainHeightmap());
+		shader_base.trySetInt("uHeightmap", Constants::TextureUnit::TerrainHeightmap());
 
-		glActiveTexture(GL_TEXTURE17);
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainBiomeMap());
 		glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture_);
-		shader_base.setInt("uBiomeMap", 17);
+		shader_base.trySetInt("uBiomeMap", Constants::TextureUnit::TerrainBiomeMap());
+		shader_base.trySetInt("u_biomeMap", Constants::TextureUnit::TerrainBiomeMap());
 
 		if (extra_noise_texture_ != 0) {
-			glActiveTexture(GL_TEXTURE8);
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::NoiseExtra());
 			glBindTexture(GL_TEXTURE_3D, extra_noise_texture_);
-			shader_base.setInt("u_extraNoiseTexture", 8);
+			shader_base.setInt("u_extraNoiseTexture", Constants::TextureUnit::NoiseExtra());
+		}
+
+		if (blue_noise_texture_ != 0) {
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::NoiseBlue());
+			glBindTexture(GL_TEXTURE_2D, blue_noise_texture_);
+			shader_base.trySetInt("u_blueNoiseTexture", Constants::TextureUnit::NoiseBlue());
+		}
+
+		if (phasor_noise_texture_ != 0) {
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::NoisePhasor());
+			glBindTexture(GL_TEXTURE_2D, phasor_noise_texture_);
+			shader_base.trySetInt("u_phasorTexture", Constants::TextureUnit::NoisePhasor());
 		}
 
 		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::TerrainData(), terrain_data_ubo_);
@@ -901,26 +915,41 @@ namespace Boidsish {
 		}
 
 		// Bind heightmap texture array
-		glActiveTexture(GL_TEXTURE0);
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainHeightmap());
 		glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture_);
-		shader.setInt("uHeightmap", 0);
+		shader.trySetInt("uHeightmap", Constants::TextureUnit::TerrainHeightmap());
+		shader.trySetInt("u_heightmapArray", Constants::TextureUnit::TerrainHeightmap());
 
 		// Bind biome texture array
-		glActiveTexture(GL_TEXTURE1);
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainBiomeMap());
 		glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture_);
-		shader.setInt("uBiomeMap", 1);
+		shader.trySetInt("uBiomeMap", Constants::TextureUnit::TerrainBiomeMap());
+		shader.trySetInt("u_biomeMap", Constants::TextureUnit::TerrainBiomeMap());
 
-		glActiveTexture(GL_TEXTURE5);
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::NoiseSimplex());
 		glBindTexture(GL_TEXTURE_3D, noise_texture_);
-		shader.setInt("u_noiseTexture", 5);
+		shader.setInt("u_noiseTexture", Constants::TextureUnit::NoiseSimplex());
 
-		glActiveTexture(GL_TEXTURE6);
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::NoiseCurl());
 		glBindTexture(GL_TEXTURE_3D, curl_texture_);
-		shader.setInt("u_curlTexture", 6);
+		shader.setInt("u_curlTexture", Constants::TextureUnit::NoiseCurl());
+
 		if (extra_noise_texture_ != 0) {
-			glActiveTexture(GL_TEXTURE8);
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::NoiseExtra());
 			glBindTexture(GL_TEXTURE_3D, extra_noise_texture_);
-			shader.setInt("u_extraNoiseTexture", 8);
+			shader.setInt("u_extraNoiseTexture", Constants::TextureUnit::NoiseExtra());
+		}
+
+		if (blue_noise_texture_ != 0) {
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::NoiseBlue());
+			glBindTexture(GL_TEXTURE_2D, blue_noise_texture_);
+			shader.trySetInt("u_blueNoiseTexture", Constants::TextureUnit::NoiseBlue());
+		}
+
+		if (phasor_noise_texture_ != 0) {
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::NoisePhasor());
+			glBindTexture(GL_TEXTURE_2D, phasor_noise_texture_);
+			shader.trySetInt("u_phasorTexture", Constants::TextureUnit::NoisePhasor());
 		}
 
 		// Bind Biome UBO

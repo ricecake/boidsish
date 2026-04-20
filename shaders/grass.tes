@@ -90,8 +90,14 @@ void main() {
     vec3 windDir = (length(windNoise) > 0.001) ? normalize(vec3(windNoise.x, 0.0, windNoise.z)) : vec3(1.0, 0.0, 0.0);
 
     // 1. Wind-driven bend
+    float maxDeflection = 1.1; // Allow more deflection for high-speed macro wind
+    // wind_strength (0.01-0.5) * windAtPos (0-40) ~ 0-20.
+    // We scale this to a reasonable radian angle. Increase multiplier for visibility.
+    float resistedwindStrength = maxDeflection * tanh(windStrength * 0.15 / maxDeflection);
+
     float bendFactor = windStrength * (1.0 - clamp(biomeProps[biomeIdx].rigidity * globalProps.rigidityMultiplier, 0.0, 0.95));
-    float windBendAngle = bendFactor * v * v; // Parabolic bend
+    float windBendAngle = resistedwindStrength * pow(v, 1.2) * smoothstep(0.05, 1.0, v);
+    // float windBendAngle = bendFactor * v * v; // Parabolic bend
 
     // 2. Base Tilt (static variety)
     float tiltFactor = (hash(seed + 8888) * 2.0 - 1.0) * 0.15;
