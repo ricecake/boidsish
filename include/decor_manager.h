@@ -157,10 +157,11 @@ namespace Boidsish {
 		 * Uses the results from the most recent Cull() call.
 		 */
 		void Render(
-			const glm::mat4&                view,
-			const glm::mat4&                projection,
-			const std::optional<glm::mat4>& light_space_matrix = std::nullopt,
-			Shader*                         shader_override = nullptr
+			const glm::mat4&                      view,
+			const glm::mat4&                      projection,
+			std::shared_ptr<TerrainRenderManager> render_manager,
+			const std::optional<glm::mat4>&       light_space_matrix = std::nullopt,
+			Shader*                               shader_override = nullptr
 		);
 
 		void SetEnabled(bool enabled) { enabled_ = enabled; }
@@ -192,6 +193,7 @@ namespace Boidsish {
 		void SetMinPixelSize(float size) { min_pixel_size_ = size; }
 
 		void SetAtmosphereManager(class AtmosphereManager* mgr) { atmosphere_manager_ = mgr; }
+		void SetNoiseManager(class NoiseManager* mgr) { noise_manager_ = mgr; }
 
 		/**
 		 * @brief Retrieves all decor instances within the specified terrain chunks.
@@ -265,6 +267,7 @@ namespace Boidsish {
 		float                    max_decor_distance_ = 600.0f;
 		float                    min_pixel_size_ = 4.0f;
 		class AtmosphereManager* atmosphere_manager_ = nullptr;
+		class NoiseManager*      noise_manager_ = nullptr;
 
 		// Hi-Z occlusion culling data (set per-frame by SetHiZData)
 		GLuint    hiz_texture_ = 0;

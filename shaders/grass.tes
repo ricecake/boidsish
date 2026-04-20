@@ -58,6 +58,8 @@ flat out int fBiomeIdx;
 #include "helpers/noise.glsl"
 #include "lighting.glsl"
 #include "helpers/lighting.glsl"
+#include "helpers/wind.glsl"
+
 
 // Simple hash for random values
 float hash(uint x) {
@@ -80,44 +82,80 @@ void main() {
     float u = gl_TessCoord.x * 2.0 - 1.0; // across blade (-1 to 1)
 
     // Wind
-    vec2 windUV = basePos.xz * 0.05 + time * 0.45;
-    vec2 windNoise = curlNoise2D(windUV) * 0.1;
+    vec3 windNoise = getWindAtPosition(basePos);
     float windStrength = length(windNoise) * biomeProps[biomeIdx].windInfluence * globalProps.windMultiplier;
 
-    // Base Tilt - relatively vertical (clamped to ~15 degrees)
-    float tiltFactor = (hash(seed + 8888) * 2.0 - 1.0) * 0.25;
-    float tiltAngle = tiltFactor * v; // Base tilt increases with height but is subtle
+    // --- Combined Deflection ---
+    // Wind Direction
+    vec3 windDir = (length(windNoise) > 0.001) ? normalize(vec3(windNoise.x, 0.0, windNoise.z)) : vec3(1.0, 0.0, 0.0);
 
-    // Bending - rigidity decreases bend, tip flexes more
-    float bendFactor = windStrength * (1.0 - clamp(biomeProps[biomeIdx].rigidity * globalProps.rigidityMultiplier, 0.0, 0.95));
-    float bend = bendFactor * v * v; // Parabolic bend
+    // 1. Wind-driven bend
+    float maxDeflection = 1.1; // Allow more deflection for high-speed macro wind
+    // wind_strength (0.01-0.5) * windAtPos (0-40) ~ 0-20.
+    // We scale this to a reasonable radian angle. Increase multiplier for visibility.
+    float resistedwindStrength = maxDeflection * tanh(windStrength * 0.15 / maxDeflection);
 
-    vec3 windDir = normalize(vec3(windNoise.x, 0.0, windNoise.y));
+    float bendFactor = (1.0 - clamp(biomeProps[biomeIdx].rigidity * globalProps.rigidityMultiplier, 0.0, 0.95));
+    float windBendAngle =  bendFactor * resistedwindStrength * pow(v, 1.2) * smoothstep(0.05, 1.0, v);
 
-    // Random gentle bend/sway
-    float randomBend = (hash(seed + 4321) * 2.0 - 1.0) * 0.1 * v * v;
+    // 2. Base Tilt (static variety)
+    float tiltFactor = (hash(seed + 8888) * 2.0 - 1.0) * 0.15;
+    float tiltAngle = tiltFactor * v;
 
-    // Combined Rotation matrix (Base rotation around Y)
-    float s = sin(baseRotation);
-    float c = cos(baseRotation);
+    // 3. Random gentle sway (low-frequency variety)
+    float randomSway = (hash(seed + 4321) * 2.0 - 1.0) * 0.05 * v * v;
+
+    // Consolidate deflection into a single world-space vector and total angle
+    // This ensures that even with no wind, the grass has some natural lean.
+    vec3 staticDeflection = vec3(randomSway, 0.0, tiltAngle);
+    vec3 windDeflection = windDir * windBendAngle;
+
+    vec3 combinedDeflection = staticDeflection + windDeflection;
+    float totalBendAngle = length(combinedDeflection);
+    vec3 deflectionDir = (totalBendAngle > 0.0001) ? normalize(combinedDeflection) : vec3(1.0, 0.0, 0.0);
+
+    // --- Rotation-based Displacement (Rodrigues' Rotation) ---
+    // Axis perpendicular to Up and Deflection
+    vec3 rotationAxis = normalize(cross(vec3(0.0, 1.0, 0.0), deflectionDir));
+
+    // Initial local position before bending (vertical segment)
+    float segmentHeight = v * height;
+    vec3 initialRelativePos = vec3(0.0, segmentHeight, 0.0);
+
+    // Rodrigues' rotation of the vertical segment
+    float cosTheta = cos(totalBendAngle);
+    float sinTheta = sin(totalBendAngle);
+
+    vec3 bentRelativePos = initialRelativePos * cosTheta +
+                           cross(rotationAxis, initialRelativePos) * sinTheta +
+                           rotationAxis * dot(rotationAxis, initialRelativePos) * (1.0 - cosTheta);
+
+    // --- Blade Width and Rotation ---
+    // Distance-based weight
+    float distToCam = distance(viewPos, basePos);
+    float billboardWeight = max(0.5, smoothstep(7.50, 50.0, distToCam));
+
+    // Original facing direction
+    vec2 origDir = vec2(cos(baseRotation), sin(baseRotation));
+
+    // Camera facing direction (XZ plane only)
+    vec2 camDir = normalize(viewPos.xz - basePos.xz);
+
+    // Normalized linear interpolation (nlerp) of the directions
+    vec2 finalDir = normalize(mix(origDir, camDir, billboardWeight));
+
+    // Reconstruct sine and cosine
+    float c = finalDir.y;
+    float s = finalDir.x;
     mat2 rotMat = mat2(c, s, -s, c);
 
+    // Horizontal offset across the blade
     vec2 localXZ = vec2(u * width * 0.5 * (1.0 - v * v), 0.0); // Parabolic taper
     localXZ = rotMat * localXZ;
 
-    vec3 pos = basePos;
+    // Final World Position
+    vec3 pos = basePos + bentRelativePos;
     pos.xz += localXZ;
-    pos.y += v * height;
-
-    // Apply base tilt and wind-driven bend
-    // We displace the XZ position additively based on height
-    pos.xz += windDir.xz * bend * height;
-    pos.x += randomBend * height;
-    pos.z += tiltAngle * height;
-
-    // Ensure the blade doesn't sink into the ground during heavy bending
-    float distFromBase = length(pos.xz - basePos.xz);
-    pos.y = basePos.y + sqrt(max(0.0, height * height * v * v - distFromBase * distFromBase));
 
     // Rounded Normals across the width
     vec3 faceNormal = normalize(vec3(-s, 0.0, c));

@@ -9,6 +9,7 @@ uniform sampler3D u_noiseTexture;
 uniform sampler3D u_curlTexture;
 uniform sampler2D u_blueNoiseTexture;
 uniform sampler3D u_extraNoiseTexture;
+uniform sampler2D u_phasorTexture;
 
 // R: Simplex 3D
 float fastSimplex3d(vec3 p) {
@@ -77,4 +78,20 @@ float fastBlueNoise(vec2 uv, int frequencyIndex) {
 
 float fastBlueNoise(vec2 uv) {
 	return texture(u_blueNoiseTexture, uv).r;
+}
+
+/**
+ * Fast 2D Phasor noise lookup.
+ * Performs complex multiplication of baked phasor with runtime phase.
+ * Returns the real part of the resulting complex number.
+ */
+float fastPhasor2d(vec2 uv, float runtimePhase) {
+	vec2 baked = texture(u_phasorTexture, uv).rg;
+
+	// Complex multiplication: (R_baked + i*I_baked) * (cos(phi) + i*sin(phi))
+	// Result real part = R_baked * cos(phi) - I_baked * sin(phi)
+	float cosPhi = cos(runtimePhase);
+	float sinPhi = sin(runtimePhase);
+
+	return baked.x * cosPhi - baked.y * sinPhi;
 }

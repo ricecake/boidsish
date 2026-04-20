@@ -44,7 +44,7 @@ namespace Boidsish {
 				}
 
 				// Explicitly set standard sampler bindings
-				s.setInt("shadowMaps", 4);
+				s.setInt("shadowMaps", Constants::TextureUnit::ShadowMaps());
 			};
 
 			setup_shader(*shader_);
@@ -132,26 +132,26 @@ namespace Boidsish {
 			shader_->setVec3("cloudColorUniform", cloud_color_);
 			shader_->setFloat("u_atmosphereHeight", atmosphere_height_);
 
-			shader_->setInt("u_transmittanceLUT", 20);
-			shader_->setInt("u_skyViewLUT", 22);
-			shader_->trySetInt("u_noiseTexture", 5);
-			shader_->trySetInt("u_curlTexture", 6);
-			shader_->trySetInt("u_blueNoiseTexture", 7);
-			shader_->trySetInt("u_extraNoiseTexture", 8);
+			shader_->setInt("u_transmittanceLUT", Constants::TextureUnit::AtmosphereTransmittance());
+			shader_->setInt("u_skyViewLUT", Constants::TextureUnit::AtmosphereSkyView());
+			shader_->trySetInt("u_noiseTexture", Constants::TextureUnit::NoiseSimplex());
+			shader_->trySetInt("u_curlTexture", Constants::TextureUnit::NoiseCurl());
+			shader_->trySetInt("u_blueNoiseTexture", Constants::TextureUnit::NoiseBlue());
+			shader_->trySetInt("u_extraNoiseTexture", Constants::TextureUnit::NoiseExtra());
 
 			glActiveTexture(GL_TEXTURE1);
 			glBindTexture(GL_TEXTURE_2D, depthTexture);
-			glActiveTexture(GL_TEXTURE20);
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereTransmittance());
 			glBindTexture(GL_TEXTURE_2D, transmittance_lut_);
-			glActiveTexture(GL_TEXTURE22);
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereSkyView());
 			glBindTexture(GL_TEXTURE_2D, sky_view_lut_);
-			glActiveTexture(GL_TEXTURE5);
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::NoiseSimplex());
 			glBindTexture(GL_TEXTURE_3D, noise_textures_.noise);
-			glActiveTexture(GL_TEXTURE6);
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::NoiseCurl());
 			glBindTexture(GL_TEXTURE_3D, noise_textures_.curl);
-			glActiveTexture(GL_TEXTURE7);
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::NoiseBlue());
 			glBindTexture(GL_TEXTURE_2D, noise_textures_.blue_noise);
-			glActiveTexture(GL_TEXTURE8);
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::NoiseExtra());
 			glBindTexture(GL_TEXTURE_3D, noise_textures_.extra_noise);
 
 			glDrawArrays(GL_TRIANGLES, 0, 6);
@@ -217,8 +217,8 @@ namespace Boidsish {
 			composite_shader_->setVec2("cloudTexelSize", glm::vec2(1.0f / low_res_width, 1.0f / low_res_height));
 			composite_shader_->setFloat("u_atmosphereHeight", atmosphere_height_);
 
-			composite_shader_->setInt("u_transmittanceLUT", 20);
-			composite_shader_->setInt("u_aerialPerspectiveLUT", 23);
+			composite_shader_->setInt("u_transmittanceLUT", Constants::TextureUnit::AtmosphereTransmittance());
+			composite_shader_->setInt("u_aerialPerspectiveLUT", Constants::TextureUnit::AtmosphereAerialPerspective());
 
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, sourceTexture);
@@ -227,17 +227,17 @@ namespace Boidsish {
 			glActiveTexture(GL_TEXTURE2);
 			glBindTexture(GL_TEXTURE_2D, cloud_source);
 
-			glActiveTexture(GL_TEXTURE20);
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereTransmittance());
 			glBindTexture(GL_TEXTURE_2D, transmittance_lut_);
-			glActiveTexture(GL_TEXTURE23);
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereAerialPerspective());
 			glBindTexture(GL_TEXTURE_3D, aerial_perspective_lut_);
 
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 
 			// Cleanup
-			glActiveTexture(GL_TEXTURE23);
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereAerialPerspective());
 			glBindTexture(GL_TEXTURE_3D, 0);
-			glActiveTexture(GL_TEXTURE20);
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereTransmittance());
 			glBindTexture(GL_TEXTURE_2D, 0);
 			glActiveTexture(GL_TEXTURE2);
 			glBindTexture(GL_TEXTURE_2D, 0);

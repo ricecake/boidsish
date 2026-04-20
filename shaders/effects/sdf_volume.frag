@@ -17,7 +17,7 @@ struct SdfSource {
 	vec4 params;           // x: charge, y: type, zw: unused
 };
 
-layout(std140) uniform SdfVolumes {
+layout(std140, binding = [[SDF_VOLUMES_BINDING]]) uniform SdfVolumes {
 	int       numSources;
 	SdfSource sources[128];
 };

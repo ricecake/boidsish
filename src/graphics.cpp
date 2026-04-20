@@ -879,7 +879,9 @@ namespace Boidsish {
 				terrain_render_manager->SetNoise(
 					noise_manager->GetNoiseTexture(),
 					noise_manager->GetCurlTexture(),
-					noise_manager->GetExtraNoiseTexture()
+					noise_manager->GetExtraNoiseTexture(),
+					noise_manager->GetBlueNoiseTexture(),
+					noise_manager->GetPhasorNoiseTexture()
 				);
 
 				// Set up eviction callback so terrain generator knows when chunks are LRU-evicted
@@ -1072,7 +1074,7 @@ namespace Boidsish {
 				}
 				s.setIntArray("lightShadowIndices", shadow_indices.data(), 10);
 			} else {
-				s.setInt("shadowMaps", 4);
+				s.setInt("shadowMaps", Constants::TextureUnit::ShadowMaps());
 				std::array<int, 10> shadow_indices;
 				shadow_indices.fill(-1);
 				s.setIntArray("lightShadowIndices", shadow_indices.data(), 10);
@@ -1382,7 +1384,7 @@ namespace Boidsish {
 			uint32_t index_frame_offset = megabuffer->GetIndexFrameOffset();
 
 			// We bind SSBO per-batch using glBindBufferRange to set the base uniform index
-			// glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, uniforms_ssbo->GetBufferId());
+			// glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::CommonUniforms(), uniforms_ssbo->GetBufferId());
 
 			struct Batch {
 				ShaderHandle                           shader_handle;
@@ -1575,12 +1577,13 @@ namespace Boidsish {
 				);
 
 				// Bind Hi-Z texture
-				glActiveTexture(GL_TEXTURE15);
+				glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::HiZ());
 				glBindTexture(GL_TEXTURE_2D, hiz_manager->GetHiZTexture());
-				occlusion_cull_shader_->setInt("u_hizTexture", 15);
+				occlusion_cull_shader_->setInt("u_hizTexture", Constants::TextureUnit::HiZ());
 
 				// Set uniforms
 				occlusion_cull_shader_->setInt("u_drawCount", static_cast<int>(mdi_uniform_count));
+				occlusion_cull_shader_->setUint("u_baseVisibilityIndex", 0);
 				glUniform2i(
 					glGetUniformLocation(occlusion_cull_shader_->ID, "u_hizSize"),
 					hiz_manager->GetWidth(),
@@ -1623,18 +1626,22 @@ namespace Boidsish {
 						s->setVec4("clipPlane", glm::vec4(0, 0, 0, 0));
 					}
 
+					if (terrain_render_manager) {
+						terrain_render_manager->BindTerrainData(*s);
+					}
+
 					if (!is_shadow_pass) {
-						// Bind refraction texture to a fixed unit (14) if not a shadow pass
-						glActiveTexture(GL_TEXTURE14);
+						// Bind refraction texture if not a shadow pass
+						glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::Refraction());
 						glBindTexture(GL_TEXTURE_2D, compositor_->GetRefractionTexture());
-						s->trySetInt("refractionTexture", 14);
+						s->trySetInt("refractionTexture", Constants::TextureUnit::Refraction());
 
 						if (atmosphere_manager) {
-							atmosphere_manager->BindTextures();
-							s->trySetInt("u_transmittanceLUT", 20);
-							s->trySetInt("u_skyViewLUT", 22);
-							s->trySetInt("u_aerialPerspectiveLUT", 23);
-							s->trySetFloat("u_atmosphereHeight", atmosphere_manager->GetAtmosphereHeight());
+							atmosphere_manager->BindToShader(*s);
+						}
+
+						if (noise_manager) {
+							noise_manager->BindDefault(*s);
 						}
 					}
 				}
@@ -1662,13 +1669,12 @@ namespace Boidsish {
 
 				// Bind visibility SSBO for Hi-Z occlusion culling (matching uniform indexing)
 				if (dispatch_hiz_occlusion && !is_shadow_pass) {
-					glBindBufferRange(
+					glBindBufferBase(
 						GL_SHADER_STORAGE_BUFFER,
 						Constants::SsboBinding::OcclusionVisibility(),
-						occlusion_visibility_ssbo_,
-						(batch.base_uniform_index - frame_element_offset) * sizeof(uint32_t),
-						batch.command_count * sizeof(uint32_t)
+						occlusion_visibility_ssbo_
 					);
+					s->setUint("u_baseVisibilityIndex", batch.base_uniform_index - frame_element_offset);
 				}
 
 				if (!is_shadow_pass) {
@@ -2551,6 +2557,9 @@ namespace Boidsish {
 				if (atmosphere_manager) {
 					decor_manager->SetAtmosphereManager(atmosphere_manager.get());
 				}
+				if (noise_manager) {
+					decor_manager->SetNoiseManager(noise_manager.get());
+				}
 				decor_manager->Update(
 					simulation_delta_time,
 					camera,
@@ -2679,6 +2688,8 @@ namespace Boidsish {
 						res.noiseTexture = noise_manager->GetNoiseTexture();
 						res.curlTexture = noise_manager->GetCurlTexture();
 						res.extraNoiseTexture = noise_manager->GetExtraNoiseTexture();
+						res.blueNoiseTexture = noise_manager->GetBlueNoiseTexture();
+						res.phasorTexture = noise_manager->GetPhasorNoiseTexture();
 					}
 					std::array<int, 10> shadow_indices;
 					shadow_indices.fill(-1);
@@ -3421,11 +3432,7 @@ namespace Boidsish {
 
 			const auto& w = impl->weather_manager->GetCurrentWeather();
 
-			// Apply to wind settings in Config (for shaders)
-			auto& config = ConfigManager::GetInstance();
-			config.SetFloat("wind_strength", w.wind_strength);
-			config.SetFloat("wind_speed", w.wind_speed);
-			config.SetFloat("wind_frequency", w.wind_frequency);
+			impl->weather_manager->UpdateWindUbo(impl->simulation_time);
 
 			// Apply to atmosphere effect
 			if (impl->atmosphere_effect) {
@@ -3446,6 +3453,8 @@ namespace Boidsish {
 				impl->atmosphere_effect->SetOzoneAbsorption(w.ozone_absorption);
 				impl->atmosphere_effect->SetRayleighScaleHeight(w.rayleigh_scale_height);
 				impl->atmosphere_effect->SetMieScaleHeight(w.mie_scale_height);
+				impl->atmosphere_effect->SetHazeColor(w.haze_color);
+				impl->atmosphere_effect->SetCloudColor(w.cloud_color);
 			}
 		}
 
@@ -3637,8 +3646,20 @@ namespace Boidsish {
 				impl->decor_manager->PopulateDefaultDecor();
 				impl->decor_manager->PrepareResources(impl->megabuffer.get());
 
-				impl->decor_manager->Cull(view, impl->projection, impl->render_width, impl->render_height);
-				impl->decor_manager->Render(view, impl->projection);
+				if (impl->noise_manager) {
+					impl->decor_manager->SetNoiseManager(impl->noise_manager.get());
+				}
+
+				impl->decor_manager->Cull(
+					view,
+					impl->projection,
+					impl->render_width,
+					impl->render_height,
+					std::nullopt,
+					std::nullopt,
+					impl->terrain_render_manager
+				);
+				impl->decor_manager->Render(view, impl->projection, impl->terrain_render_manager);
 			}
 
 			// Create render passes now that all dependencies are initialized

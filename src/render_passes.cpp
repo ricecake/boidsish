@@ -66,7 +66,7 @@ namespace Boidsish {
 			std::nullopt,
 			terrain_render_manager_
 		);
-		decor_.Render(frame.view, frame.projection);
+		decor_.Render(frame.view, frame.projection, terrain_render_manager_);
 
 		cb.execute_queue(RenderLayer::Opaque, hiz_culling_enabled_ && frame.frame_count > 0);
 
