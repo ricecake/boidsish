@@ -430,6 +430,7 @@ namespace Boidsish {
 		InputState                                             input_state{};
 		std::vector<InputCallback>                             input_callbacks;
 		std::vector<PrepareCallback>                           prepare_callbacks;
+		std::vector<UpdateHandler>                             update_handlers;
 		bool                                                   prepared_{false};
 		std::unique_ptr<UI::UIManager>                         ui_manager;
 		std::unique_ptr<HudManager>                            hud_manager;
@@ -3366,6 +3367,10 @@ namespace Boidsish {
 		}
 
 		impl->light_manager.Update(impl->simulation_delta_time);
+		for (auto& handler : impl->update_handlers) {
+			handler(impl->simulation_time, impl->simulation_delta_time);
+		}
+
 
 		// Update ambient weather
 		if (impl->weather_manager && impl->weather_manager->IsEnabled()) {
@@ -3637,15 +3642,13 @@ namespace Boidsish {
 
 			impl->transparent_pass_ = std::make_unique<TransparentPass>();
 
-			// Update terrain once to start chunk loading around the camera
-			impl->terrain_generator->Update(impl->CalculateFrustum(view, proj), impl->camera);
-
-			// Process any pending async chunk loads
-			// Give terrain generation a head start
-			for (int i = 0; i < 10; ++i) {
-				impl->terrain_generator->Update(impl->CalculateFrustum(view, proj), impl->camera);
-				std::this_thread::sleep_for(std::chrono::milliseconds(10));
+			// Ensure all noise LUTs are fully generated
+			if (impl->noise_manager) {
+				impl->noise_manager->Generate();
 			}
+
+			// Load all chunks immediately without throttling and wait for completion
+			impl->terrain_generator->WaitForAllChunks(impl->CalculateFrustum(view, proj), impl->camera);
 		}
 
 		// --- Verify GPU features ---
@@ -3924,6 +3927,14 @@ namespace Boidsish {
 	void Visualizer::AddInputCallback(InputCallback callback) {
 		impl->input_callbacks.push_back(callback);
 	}
+	void Visualizer::AddUpdateHandler(UpdateHandler handler) {
+		impl->update_handlers.push_back(handler);
+	}
+
+	void Visualizer::ClearUpdateHandlers() {
+		impl->update_handlers.clear();
+	}
+
 
 	Ray Visualizer::GetRayFromScreen(double screen_x, double screen_y) const {
 		glm::vec3 screen_pos(screen_x, impl->height - screen_y, 0.0f);

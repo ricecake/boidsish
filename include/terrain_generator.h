@@ -43,6 +43,7 @@ namespace Boidsish {
 		// ==================== ITerrainGenerator Interface ====================
 
 		void                                         Update(const Frustum& frustum, const Camera& camera) override;
+		void                                         WaitForAllChunks(const Frustum& frustum, const Camera& camera) override;
 		const std::vector<std::shared_ptr<Terrain>>& GetVisibleChunks() const override;
 		std::vector<std::shared_ptr<Terrain>>        GetVisibleChunksCopy() const override;
 
@@ -278,6 +279,7 @@ namespace Boidsish {
 		void ProcessPendingDeformations();
 
 	private:
+		void      ProcessCompletedChunks();
 		glm::vec2 findClosestPointOnPath(glm::vec2 sample_pos) const;
 		glm::vec3 getPathInfluence(float x, float z) const;
 
