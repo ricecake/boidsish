@@ -112,7 +112,8 @@ vec3 getWindAtPosition(vec3 worldPos) {
 
 	// Apply curl cleanly as a final perturbation, removing the complex rotation logic
 	// return (macroWind + curl * turbulenceIntensity) * smoothstep(0.75, 0.80, positiveRipple);//pow(gustiness, 3);
-	return (macroWind) * smoothstep(0.0, 0.5, step(0.85, positiveRipple));//pow(gustiness, 3);
+	// return (macroWind) * smoothstep(0.0, 0.5, step(0.85, positiveRipple));//pow(gustiness, 3);
+	return ((macroWind + curl * turbulenceIntensity)) * smoothstep(0.0, 1.0, step(0.85, positiveRipple));//pow(gustiness, 3);
 }
 
 #endif // HELPERS_WIND_GLSL
