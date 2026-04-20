@@ -1680,11 +1680,7 @@ namespace Boidsish {
 						s->trySetInt("refractionTexture", Constants::TextureUnit::Refraction());
 
 						if (atmosphere_manager) {
-							atmosphere_manager->BindTextures();
-							s->trySetInt("u_transmittanceLUT", 20);
-							s->trySetInt("u_skyViewLUT", 22);
-							s->trySetInt("u_aerialPerspectiveLUT", 23);
-							s->trySetFloat("u_atmosphereHeight", atmosphere_manager->GetAtmosphereHeight());
+							atmosphere_manager->BindToShader(*s);
 						}
 					}
 				}
