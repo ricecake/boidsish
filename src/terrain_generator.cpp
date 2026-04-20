@@ -591,8 +591,9 @@ namespace Boidsish {
 		// Calculate biome control value using warped coordinates for synchronization
 		glm::vec2 biome_pos = warped_pos * control_noise_scale_;
 		biome_pos *= 0.5f;
-		float     control_value = Simplex::noise(biome_pos + Simplex::curlNoise(biome_pos)) * 0.5f + 0.5f;
-
+		float control_value_rough = Simplex::noise(biome_pos + Simplex::curlNoise(biome_pos)) * 0.5f + 0.5f;
+		float control_value_smooth = Simplex::flowNoise( biome_pos + Simplex::fBm(biome_pos), 8.0f ) * 0.5f + 0.5f;
+		float control_value = std::lerp(control_value_rough, control_value_smooth, Simplex::iqfBm(biome_pos)  * 0.5f + 0.5f);
 		if (std::isnan(control_value) || std::isinf(control_value)) {
 			control_value = 0.0f;
 		}
