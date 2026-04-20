@@ -276,9 +276,26 @@ namespace Boidsish {
 		     .random_yaw = true,
 		     .align_to_terrain = true,
 		     .biomes = {Biome::LushGrass, Biome::DryGrass, Biome::Forest, Biome::AlpineMeadow},
-		     .wind_responsiveness = 1,
+		     .wind_responsiveness = 1.0f,
 		     .wind_rim_highlight = 1.0f},
 			2
+		);
+
+		// High Density "Lush" Grass
+		AddProceduralDecor(
+			ProceduralType::Grass,
+			{.min_density = 0.6f,
+		     .max_density = 1.2f,
+		     .base_scale = 0.4f,
+		     .scale_variance = 0.1f,
+		     .min_height = 1.0f,
+		     .max_height = 90.0f,
+		     .random_yaw = true,
+		     .align_to_terrain = true,
+		     .biomes = {Biome::LushGrass, Biome::Forest},
+		     .wind_responsiveness = 1.2f,
+		     .wind_rim_highlight = 0.8f},
+			3
 		);
 	}
 
