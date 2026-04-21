@@ -385,7 +385,7 @@ namespace Boidsish {
 
 		// Scoped lock - released before calling eviction callback to avoid deadlock
 		{
-			std::lock_guard<std::mutex> lock(mutex_);
+			std::lock_guard<std::recursive_mutex> lock(mutex_);
 
 			// If chunk already exists, update it
 			auto it = chunks_.find(chunk_key);
@@ -485,7 +485,7 @@ namespace Boidsish {
 	}
 
 	void TerrainRenderManager::UnregisterChunk(std::pair<int, int> chunk_key) {
-		std::lock_guard<std::mutex> lock(mutex_);
+		std::lock_guard<std::recursive_mutex> lock(mutex_);
 
 		auto it = chunks_.find(chunk_key);
 		if (it == chunks_.end()) {
@@ -499,7 +499,7 @@ namespace Boidsish {
 	}
 
 	bool TerrainRenderManager::HasChunk(std::pair<int, int> chunk_key) const {
-		std::lock_guard<std::mutex> lock(mutex_);
+		std::lock_guard<std::recursive_mutex> lock(mutex_);
 		return chunks_.count(chunk_key) > 0;
 	}
 
@@ -546,16 +546,16 @@ namespace Boidsish {
 	) {
 		PROJECT_PROFILE_SCOPE("TerrainRenderManager::PrepareForRender");
 
-		// Perform baking before culling and rendering
-		PerformBaking(world_scale);
-
-		std::lock_guard<std::mutex> lock(mutex_);
+		std::lock_guard<std::recursive_mutex> lock(mutex_);
 
 		// Store camera position and world scale for LRU eviction decisions in RegisterChunk
 		last_camera_pos_ = camera_pos;
 		last_world_scale_ = world_scale;
 
 		UpdateGridTextures(world_scale, lighting_ubo, lighting_ubo_offset, lighting_ubo_size, day_time);
+
+		// Perform baking after updating grid textures to ensure UBO is fresh
+		PerformBaking(world_scale);
 
 		visible_instances_.clear();
 		visible_instances_.reserve(chunks_.size());
@@ -738,7 +738,7 @@ namespace Boidsish {
 		int              probe_ray_multiplier
 	) {
 		PROJECT_PROFILE_SCOPE("TerrainRenderManager::DispatchProbeUpdate");
-		std::lock_guard<std::mutex> lock(mutex_);
+		std::lock_guard<std::recursive_mutex> lock(mutex_);
 
 		if (!probe_compute_shader_ || !probe_compute_shader_->isValid())
 			return;
@@ -902,7 +902,7 @@ namespace Boidsish {
 		float                           tess_quality_multiplier
 	) {
 		PROJECT_PROFILE_SCOPE("TerrainRenderManager::Render");
-		std::lock_guard<std::mutex> lock(mutex_);
+		std::lock_guard<std::recursive_mutex> lock(mutex_);
 
 		if (visible_instances_.empty() || grid_vao_ == 0 || grid_index_count_ == 0) {
 			return;
@@ -994,7 +994,7 @@ namespace Boidsish {
 	void TerrainRenderManager::PerformBaking(float world_scale) {
 		std::vector<BakeTask> tasks;
 		{
-			std::lock_guard<std::mutex> lock(mutex_);
+			std::lock_guard<std::recursive_mutex> lock(mutex_);
 			if (bake_queue_.empty())
 				return;
 			tasks = std::move(bake_queue_);
@@ -1010,21 +1010,18 @@ namespace Boidsish {
 		PROJECT_PROFILE_SCOPE("TerrainRenderManager::PerformBaking");
 
 		terrain_bake_shader_->use();
+		// Bindings are now handled via preprocessor tokens in the shader (layout(binding=...))
 
 		// Bind raw input textures
 		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainRawHeightmap());
 		glBindTexture(GL_TEXTURE_2D_ARRAY, raw_heightmap_texture_);
-		terrain_bake_shader_->setInt("u_rawHeightmapArray", Constants::TextureUnit::TerrainRawHeightmap());
 
 		// Bind biome map as image for read/write status
-		glBindImageTexture(1, biome_texture_, 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA8);
-		terrain_bake_shader_->setInt("u_biomeMap", 1);
+		glBindImageTexture(Constants::TextureUnit::TerrainBiomeImage(), biome_texture_, 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA8);
 
 		// Bind output textures as images
-		glBindImageTexture(2, heightmap_texture_, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
-		terrain_bake_shader_->setInt("u_heightmapArray", 2);
-		glBindImageTexture(3, baked_params_texture_, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
-		terrain_bake_shader_->setInt("u_bakedParamsArray", 3);
+		glBindImageTexture(Constants::TextureUnit::TerrainHeightmapImage(), heightmap_texture_, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+		glBindImageTexture(Constants::TextureUnit::TerrainBakedParamsImage(), baked_params_texture_, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 
 		// Bind UBOs
 		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::TerrainData(), terrain_data_ubo_);
@@ -1050,20 +1047,23 @@ namespace Boidsish {
 		}
 
 		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+
+		// Synchronize to ensure initial loads are fully baked before rendering
+		glFinish();
 	}
 
 	size_t TerrainRenderManager::GetRegisteredChunkCount() const {
-		std::lock_guard<std::mutex> lock(mutex_);
+		std::lock_guard<std::recursive_mutex> lock(mutex_);
 		return chunks_.size();
 	}
 
 	size_t TerrainRenderManager::GetVisibleChunkCount() const {
-		std::lock_guard<std::mutex> lock(mutex_);
+		std::lock_guard<std::recursive_mutex> lock(mutex_);
 		return visible_instances_.size();
 	}
 
 	std::vector<glm::vec4> TerrainRenderManager::GetChunkInfo(float world_scale) const {
-		std::lock_guard<std::mutex> lock(mutex_);
+		std::lock_guard<std::recursive_mutex> lock(mutex_);
 		std::vector<glm::vec4>      result;
 		result.reserve(chunks_.size());
 		for (const auto& [key, chunk] : chunks_) {
@@ -1080,7 +1080,7 @@ namespace Boidsish {
 	}
 
 	std::vector<TerrainRenderManager::DecorChunkData> TerrainRenderManager::GetDecorChunkData(float world_scale) const {
-		std::lock_guard<std::mutex> lock(mutex_);
+		std::lock_guard<std::recursive_mutex> lock(mutex_);
 		std::vector<DecorChunkData> result;
 		result.reserve(chunks_.size());
 		float scaled_chunk_size = static_cast<float>(chunk_size_ * world_scale);

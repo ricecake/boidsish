@@ -314,12 +314,12 @@ namespace Boidsish {
 
 		// Camera position for LRU eviction (updated by PrepareForRender)
 		glm::vec3 last_camera_pos_{0.0f, 0.0f, 0.0f};
-		float     last_world_scale_ = 1.0f;
+		float     last_world_scale_ = -1.0f;
 
 		uint32_t frame_count_ = 0;
 
 		// Thread safety
-		mutable std::mutex mutex_;
+		mutable std::recursive_mutex mutex_;
 
 		// Grid update tracking
 		int   last_grid_origin_x_ = -999999;

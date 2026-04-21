@@ -11,14 +11,14 @@ layout(std140, binding = [[TERRAIN_DATA_BINDING]]) uniform TerrainData {
 };
 
 // Input: Raw heightmap (R=height, GBA=normal)
-uniform sampler2DArray u_rawHeightmapArray;
+layout(binding = [[RAW_HEIGHTMAP_BINDING]]) uniform sampler2DArray u_rawHeightmapArray;
 // Input: Biome data (RG8: R=low_idx, G=t)
-layout(rgba8) uniform image2DArray u_biomeMap;
+layout(rgba8, binding = [[BIOME_MAP_IMAGE_BINDING]]) uniform image2DArray u_biomeMap;
 
 // Output: Baked heightmap (RGBA16F: R=height, GBA=normal)
-layout(rgba16f) uniform image2DArray u_heightmapArray;
+layout(rgba16f, binding = [[BAKED_HEIGHTMAP_IMAGE_BINDING]]) uniform image2DArray u_heightmapArray;
 // Output: Baked params (RGBA16F: R=erosionDelta, G=ridgeMap, B=substrate, A=waterMask)
-layout(rgba16f) uniform image2DArray u_bakedParamsArray;
+layout(rgba16f, binding = [[BAKED_PARAMS_IMAGE_BINDING]]) uniform image2DArray u_bakedParamsArray;
 
 struct BakeTask {
 	ivec2 chunk_coord;
@@ -133,7 +133,8 @@ void main() {
 	barrier();
 
 	ivec2 pixelCoord = baseCoord + localID;
-	if (pixelCoord.x >= res || pixelCoord.y >= res) return;
+	if (pixelCoord.x >= [[CHUNK_SIZE_PLUS_1]] || pixelCoord.y >= [[CHUNK_SIZE_PLUS_1]])
+		return;
 
 	// Finite difference normal from baked heights
 	float hL = s_heights[localID.x][localID.y + 1];
