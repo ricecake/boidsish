@@ -27,7 +27,10 @@ layout(std140, binding = [[WIND_DATA_BINDING]]) uniform WindData {
 
 #include "../helpers/constants.glsl"
 #define SHADOWS_UBO_MAPPING
-#include "../helpers/terrain_shadows.glsl"
+// terrain_shadows.glsl defines calculateTerrainOcclusion and terrainShadowCoverage
+// We only include lighting.glsl which brings them in if USE_TERRAIN_DATA is defined.
+// To avoid redefinition, we'll avoid double-including if possible.
+#define USE_TERRAIN_DATA
 #include "../lighting.glsl"
 #include "../helpers/lighting.glsl"
 
@@ -70,9 +73,6 @@ void main() {
     }
 
     vec3 lightDir = u_vol.sunDir.xyz;
-
-    // Use the comprehensive shadow function from helpers/lighting.glsl
-    // Index 0 is the primary light (Sun)
     float shadow = calculateShadow(0, worldPos, vec3(0, 1, 0), lightDir);
 
     vec3 viewDir = normalize(viewPos - worldPos);
