@@ -861,9 +861,9 @@ namespace Boidsish {
 		shader_base.trySetInt("uBiomeMap", Constants::TextureUnit::TerrainBiomeMap());
 		shader_base.trySetInt("u_biomeMap", Constants::TextureUnit::TerrainBiomeMap());
 
-		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereCloudShadow()); // Reusing unit for baked params
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainBakedParams());
 		glBindTexture(GL_TEXTURE_2D_ARRAY, baked_params_texture_);
-		shader_base.trySetInt("uBakedParams", Constants::TextureUnit::AtmosphereCloudShadow());
+		shader_base.trySetInt("uBakedParams", Constants::TextureUnit::TerrainBakedParams());
 
 		if (extra_noise_texture_ != 0) {
 			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::NoiseExtra());
@@ -997,9 +997,9 @@ namespace Boidsish {
 		terrain_bake_shader_->use();
 
 		// Bind raw input textures
-		glActiveTexture(GL_TEXTURE0);
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainRawHeightmap());
 		glBindTexture(GL_TEXTURE_2D_ARRAY, raw_heightmap_texture_);
-		terrain_bake_shader_->setInt("u_rawHeightmapArray", 0);
+		terrain_bake_shader_->setInt("u_rawHeightmapArray", Constants::TextureUnit::TerrainRawHeightmap());
 
 		// Bind biome map as image for read/write status
 		glBindImageTexture(1, biome_texture_, 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA8);
