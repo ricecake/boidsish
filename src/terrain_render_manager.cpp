@@ -311,6 +311,22 @@ namespace Boidsish {
 			packed_data.data()
 		);
 
+		// Also upload to heightmap_texture_ as a fallback until baking is complete
+		glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture_);
+		glTexSubImage3D(
+			GL_TEXTURE_2D_ARRAY,
+			0,
+			0,
+			0,
+			slice,
+			heightmap_resolution_,
+			heightmap_resolution_,
+			1,
+			GL_RGBA,
+			GL_FLOAT,
+			packed_data.data()
+		);
+
 		// Pack biome indices/weights into RGBA8 format
 		// R = low_idx, G = t, B = bake_flag (0), A = unused
 		std::vector<uint8_t> biome_data;
@@ -364,7 +380,7 @@ namespace Boidsish {
 		// Update world scale tracking if it's the first chunk
 		const int res = heightmap_resolution_;
 		if (last_world_scale_ < 0.0f && res > 1) {
-			float dist_x = glm::length(positions[res] - positions[0]);
+			float dist_x = std::abs(positions[res].x - positions[0].x);
 			last_world_scale_ = dist_x;
 		}
 
@@ -988,6 +1004,8 @@ namespace Boidsish {
 	}
 
 	void TerrainRenderManager::CommitUpdates() {
+		// Ensure grid textures and UBO are up to date before baking
+		UpdateGridTextures(last_world_scale_);
 		PerformBaking(last_world_scale_);
 	}
 

@@ -433,6 +433,10 @@ namespace Boidsish {
 		// Full Registration Pass (Unthrottled)
 		if (render_manager_) {
 			std::lock_guard<std::recursive_mutex> lock(chunk_cache_mutex_);
+
+			// Ensure manager knows the correct camera and scale for initial baking
+			render_manager_->PrepareForRender(frustum, camera.pos(), world_scale_);
+
 			for (auto const& [key, terrain_chunk] : chunk_cache_) {
 				if (!render_manager_->HasChunk(key)) {
 					render_manager_->RegisterChunk(
