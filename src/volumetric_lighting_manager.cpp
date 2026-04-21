@@ -86,7 +86,7 @@ namespace Boidsish {
         ubo.prevViewProj = _prevViewProj;
 
         ubo.gridParams = glm::vec4(_nearPlane, _farPlane, 1.0f, (float)kMaxVolumetricCascades);
-        ubo.resolution = glm::vec4((float)_gridW, (float)_gridH, (float)_gridD, 1.0f);
+        ubo.resolution = glm::vec4((float)_gridW, (float)_gridH, (float)_gridD, _intensity);
 
         // Cascaded Splits (matches shadow manager for consistency)
         ubo.cascadeSplits = glm::vec4(20.0f, 50.0f, 150.0f, 700.0f);
@@ -94,12 +94,12 @@ namespace Boidsish {
         const auto& lights = lightMgr->GetLights();
         if (!lights.empty()) {
             ubo.sunDir = glm::vec4(-lights[0].direction, lights[0].intensity);
-            ubo.sunColor = glm::vec4(lights[0].color, atmosphereMgr->GetMieAnisotropy());
+            ubo.sunColor = glm::vec4(lights[0].color, _phaseG);
         }
 
         const auto& weather = weatherMgr->GetCurrentWeather();
         ubo.hazeParams = glm::vec4(weather.haze_density, weather.haze_height, 0.01f, 0.5f);
-        ubo.ambientColor = glm::vec4(atmosphereMgr->GetAmbientEstimate(), 1.0f);
+        ubo.ambientColor = glm::vec4(atmosphereMgr->GetAmbientEstimate(), _scatteringScale);
         ubo.cloudParams = glm::vec4(weather.cloud_coverage, weather.cloud_density, 0.5f, 0.0f);
 
         glBindBuffer(GL_UNIFORM_BUFFER, _parameterUbo);
@@ -111,6 +111,9 @@ namespace Boidsish {
 
     void VolumetricLightingManager::Dispatch(const glm::mat4& view, const glm::mat4& projection, const glm::vec3& cameraPos, float totalTime) {
         PROJECT_PROFILE_SCOPE("VolumetricLighting::Dispatch");
+
+        _lightingInjectionShader->use();
+        _lightingInjectionShader->setFloat("u_extinctionScale", _extinctionScale);
 
         auto weatherMgr = _loc.Get<WeatherManager>();
         auto noiseMgr = _loc.Get<NoiseManager>();

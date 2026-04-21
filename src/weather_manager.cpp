@@ -11,7 +11,7 @@
 
 namespace Boidsish {
 
-	WeatherManager::WeatherManager(ServiceLocator& /*loc*/): enabled_(true), terrain_(nullptr) {
+	WeatherManager::WeatherManager(ServiceLocator& loc): loc_(loc), enabled_(true), terrain_(nullptr) {
 		InitializePresets();
 
 		// Initialize LBM Simulator (scaled to typical terrain range)

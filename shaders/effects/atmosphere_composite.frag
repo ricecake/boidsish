@@ -149,7 +149,7 @@ void main() {
 	// fog, which would completely wash them out at that reconstructed distance)
 	bool isSky = depth >= 0.99999;
 
-	// 4. Volumetric Lighting Integration
+	// 4. Volumetric Lighting Integration (Cascaded Sampling with Blending)
 	int volCascade = 3;
     for (int i = 0; i < 4; ++i) {
         if (dist < u_vol.cascadeSplits[i]) {
@@ -157,11 +157,26 @@ void main() {
             break;
         }
     }
+
 	float v_near = (volCascade == 0) ? u_vol.gridParams.x : u_vol.cascadeSplits[volCascade-1];
     float v_far = u_vol.cascadeSplits[volCascade];
 
 	float volZ = log(max(dist, v_near) / v_near) / log(v_far / v_near);
 	vec4 volumetric = texture(u_volumetricIntegrated[volCascade], vec3(TexCoords, volZ));
+
+    // Smooth cascade transitions
+    if (volCascade < 3) {
+        float blendStart = u_vol.cascadeSplits[volCascade] * 0.9;
+        float blendEnd = u_vol.cascadeSplits[volCascade];
+        if (dist > blendStart) {
+            float blendT = (dist - blendStart) / (blendEnd - blendStart);
+            float next_near = u_vol.cascadeSplits[volCascade];
+            float next_far = u_vol.cascadeSplits[volCascade+1];
+            float next_volZ = log(max(dist, next_near) / next_near) / log(next_far / next_near);
+            vec4 next_volumetric = texture(u_volumetricIntegrated[volCascade+1], vec3(TexCoords, next_volZ));
+            volumetric = mix(volumetric, next_volumetric, blendT);
+        }
+    }
 
 	vec3 result;
 	if (!isSky) {

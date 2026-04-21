@@ -11,6 +11,7 @@
 #include "post_processing/effects/AtmosphereEffect.h"
 #include "terrain_generator_interface.h"
 #include "weather_manager.h"
+#include "volumetric_lighting_manager.h"
 
 namespace Boidsish {
 	namespace UI {
@@ -563,7 +564,33 @@ namespace Boidsish {
 					}
 				}
 
-				// 6. Terrain Erosion
+				// 6. Volumetric Lighting
+				if (ImGui::CollapsingHeader("Volumetric Lighting", ImGuiTreeNodeFlags_DefaultOpen)) {
+					auto vol_manager = m_visualizer.GetVolumetricLightingManager();
+					if (vol_manager) {
+						float intensity = vol_manager->GetIntensity();
+						if (ImGui::SliderFloat("Intensity", &intensity, 0.0f, 10.0f)) {
+							vol_manager->SetIntensity(intensity);
+						}
+
+						float scat = vol_manager->GetScatteringScale();
+						if (ImGui::SliderFloat("Scattering Scale", &scat, 0.0f, 5.0f)) {
+							vol_manager->SetScatteringScale(scat);
+						}
+
+						float ext = vol_manager->GetExtinctionScale();
+						if (ImGui::SliderFloat("Extinction Scale", &ext, 0.0f, 5.0f)) {
+							vol_manager->SetExtinctionScale(ext);
+						}
+
+						float g = vol_manager->GetPhaseG();
+						if (ImGui::SliderFloat("Mie Anisotropy (G)", &g, 0.0f, 0.99f)) {
+							vol_manager->SetPhaseG(g);
+						}
+					}
+				}
+
+				// 7. Terrain Erosion
 				if (ImGui::CollapsingHeader("Terrain Erosion", ImGuiTreeNodeFlags_DefaultOpen)) {
 					auto& config = ConfigManager::GetInstance();
 

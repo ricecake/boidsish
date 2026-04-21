@@ -42,6 +42,7 @@ namespace Boidsish {
 	class FireEffect;
 	class SoundEffect;
 	class FireEffectManager;
+	class VolumetricLightingManager;
 	class ShockwaveManager;
 	class SdfVolumeManager;
 	struct SdfSource;
@@ -578,6 +579,7 @@ namespace Boidsish {
 		void                                   SetDecorManager(std::shared_ptr<DecorManager> decor_manager);
 		GrassManager*                          GetGrassManager();
 		WeatherManager*                        GetWeatherManager();
+		VolumetricLightingManager*             GetVolumetricLightingManager();
 		PostProcessing::PostProcessingManager& GetPostProcessingManager();
 		float                                  GetLastFrameTime() const;
 

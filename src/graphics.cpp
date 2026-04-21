@@ -4482,6 +4482,10 @@ namespace Boidsish {
 		return impl->weather_manager.get();
 	}
 
+	VolumetricLightingManager* Visualizer::GetVolumetricLightingManager() {
+		return impl->volumetric_lighting_manager.get();
+	}
+
 	PostProcessing::PostProcessingManager& Visualizer::GetPostProcessingManager() {
 		return *impl->post_processing_manager_;
 	}

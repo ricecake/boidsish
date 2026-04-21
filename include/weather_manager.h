@@ -265,6 +265,8 @@ namespace Boidsish {
 		void SetTerrainGenerator(ITerrainGenerator* terrain) { terrain_ = terrain; }
 
 	private:
+		ServiceLocator& loc_;
+
 		unsigned int wind_data_ubo_ = 0;
 		unsigned int wind_texture_ = 0;
 		unsigned int aerosol_texture_ = 0;

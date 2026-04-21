@@ -47,6 +47,16 @@ namespace Boidsish {
 
         void BindToShader(class ShaderBase& shader);
 
+        // Parameters
+        float GetIntensity() const { return _intensity; }
+        void  SetIntensity(float i) { _intensity = i; }
+        float GetScatteringScale() const { return _scatteringScale; }
+        void  SetScatteringScale(float s) { _scatteringScale = s; }
+        float GetExtinctionScale() const { return _extinctionScale; }
+        void  SetExtinctionScale(float e) { _extinctionScale = e; }
+        float GetPhaseG() const { return _phaseG; }
+        void  SetPhaseG(float g) { _phaseG = g; }
+
     private:
         void CreateTextures();
         void CreateShaders();
@@ -71,10 +81,16 @@ namespace Boidsish {
         // Grid configuration
         int _gridW = 160;
         int _gridH = 90;
-        int _gridD = 64;
+        int _gridD = 128; // Increased depth for better god ray resolution
 
         float _nearPlane = 0.1f;
         float _farPlane = 100.0f; // Standard volumetric range
+
+        // Runtime params
+        float _intensity = 1.0f;
+        float _scatteringScale = 1.0f;
+        float _extinctionScale = 1.0f;
+        float _phaseG = 0.8f;
 
         glm::mat4 _prevViewProj{1.0f};
     };

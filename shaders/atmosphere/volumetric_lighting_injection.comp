@@ -19,6 +19,7 @@ layout(std140, binding = [[VOLUMETRIC_LIGHTING_BINDING]]) uniform VolumetricLigh
 uniform usampler3D u_densityVolume;
 uniform sampler2D u_aerosolTexture;
 uniform int u_cascadeIndex;
+uniform float u_extinctionScale = 1.0;
 
 layout(std140, binding = [[WIND_DATA_BINDING]]) uniform WindData {
 	ivec4 u_windOriginSize;
@@ -74,6 +75,7 @@ void main() {
 
     vec3 lightDir = u_vol.sunDir.xyz;
     float shadow = calculateShadow(0, worldPos, vec3(0, 1, 0), lightDir);
+    shadow *= calculateCloudShadow(0, worldPos);
 
     vec3 viewDir = normalize(viewPos - worldPos);
     float cosTheta = dot(lightDir, -viewDir);
@@ -84,14 +86,16 @@ void main() {
     vec4 aerosolData = texture(u_aerosolTexture, lbmUV);
     vec3 localAerosolColor = aerosolData.rgb;
 
+    float scatteringScale = u_vol.ambientColor.w;
+
     vec3 directLight = u_vol.sunColor.rgb * u_vol.sunDir.w * shadow * phase;
     directLight *= localAerosolColor;
 
     vec3 ambient = getSpatialAmbientSH(worldPos, vec3(0, 1, 0));
     ambient *= localAerosolColor;
 
-    vec3 scatteredLight = (directLight + ambient) * density * u_vol.resolution.w;
-    float extinction = density;
+    vec3 scatteredLight = (directLight + ambient) * density * u_vol.resolution.w * scatteringScale;
+    float extinction = density * u_extinctionScale;
 
     imageStore(outScatteringVolume, texel, vec4(scatteredLight, extinction));
 }
