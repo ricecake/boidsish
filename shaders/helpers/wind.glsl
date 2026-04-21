@@ -72,12 +72,15 @@ vec3 getWindAtPosition(vec3 worldPos) {
 	float gustiness = smoothstep(0.1, 0.7, fastSimplex3d(gustPos / 250.0) * 0.5 + 0.5);
 
 	// 4. Phasor Ripples (The "Packets")
-	// Increase frequency so the baked Gabor kernels are physically smaller
-	float rippleFreq = 0.001;
+	// Frequency and phase speed adapt to macro speed to prevent high-frequency chaos.
+	// As speed increases, we widen the ripples and slow down their oscillation.
+	float speedSmoothing = 1.0 / (1.0 + macroSpeed * 0.05);
+
+	float rippleFreq = 0.005 * speedSmoothing;
 	vec2 rippleUV = worldPos.xz * rippleFreq;
 
 	float rippleTightness = 0.05;
-	float ripplePhaseSpeed = 5.0;
+	float ripplePhaseSpeed = 5.0 * speedSmoothing;
 
 	float phaseShift = dot(windDir2D, worldPos.xz) * rippleTightness - (time * ripplePhaseSpeed);
 	float rawPhasor = fastPhasor2d(rippleUV, phaseShift);
@@ -103,10 +106,13 @@ vec3 getWindAtPosition(vec3 worldPos) {
 	}
 
 	// 7. Local Turbulence (Curl)
-	float dynamicCurlScale = curlScale * (0.8 + 0.4 * gustiness);
+	// Scale and temporal drift also adapt to macro speed for smoother transitions at high intensity.
+	float dynamicCurlScale = curlScale * (0.8 + 0.4 * gustiness) * speedSmoothing;
 	vec3 advectedPos = worldPos - (finalWind * time * 0.250);
-	vec3 curl = fastCurl3d(advectedPos/250.0 * dynamicCurlScale + vec3(0.0, time * 0.01, 0.0));
-	float turbulenceIntensity = drag * length(finalWind) * curlStrength * 0.5;
+
+	// Intensity is dampened slightly at very high speeds to maintain structure
+	vec3 curl = fastCurl3d(advectedPos/200.0 * dynamicCurlScale + vec3(0.0, time * 0.02 * speedSmoothing, 0.0));
+	float turbulenceIntensity = drag * length(finalWind) * curlStrength * speedSmoothing;
 
 	// Modulate turbulence intensity and introduce a subtle directional shift to the flow
 	turbulenceIntensity *= (0.8 + 0.4 * (positiveRipple * 0.5 + 0.5));
@@ -115,8 +121,6 @@ vec3 getWindAtPosition(vec3 worldPos) {
 		vec2 perpWind = vec2(-macroWind.z, macroWind.x) / macroSpeed;
 		macroWind.xz += perpWind * (positiveRipple * macroSpeed * 0.15);
 	}
-
-	// macroWind *= ripple * gustiness;
 
 	// 5. Combined Result
 	// Instead of just adding curl, we use it to perturb the direction of the macro wind,
@@ -134,7 +138,7 @@ vec3 getWindAtPosition(vec3 worldPos) {
 					rotationAxis * dot(rotationAxis, macroWind) * (1.0 - cosTheta);
 	}
 
-	// Add curl strictly as a final perturbation
+	// Add curl as a final perturbation
 	return finalWind + curl * turbulenceIntensity;
 }
 

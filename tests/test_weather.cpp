@@ -1,18 +1,21 @@
 #include <gtest/gtest.h>
 #include "weather_manager.h"
+#include "service_locator.h"
 #include <glm/glm.hpp>
 
 using namespace Boidsish;
 
 TEST(WeatherManagerTest, Initialization) {
-    WeatherManager wm;
+    ServiceLocator loc;
+    WeatherManager wm(loc);
     EXPECT_TRUE(wm.IsEnabled());
     EXPECT_GT(wm.GetTimeScale(), 0.0f);
     EXPECT_GT(wm.GetSpatialScale(), 0.0f);
 }
 
 TEST(WeatherManagerTest, Update) {
-    WeatherManager wm;
+    ServiceLocator loc;
+    WeatherManager wm(loc);
     glm::vec3 cameraPos(0.0f);
     wm.Update(0.016f, 0.0f, cameraPos, 12.0f);
 
@@ -34,7 +37,8 @@ TEST(WeatherManagerTest, Update) {
 }
 
 TEST(WeatherManagerTest, SmoothTransition) {
-    WeatherManager wm;
+    ServiceLocator loc;
+    WeatherManager wm(loc);
     glm::vec3 cameraPos(0.0f);
 
     // Initial state
@@ -48,7 +52,8 @@ TEST(WeatherManagerTest, SmoothTransition) {
 }
 
 TEST(WeatherManagerTest, ExternalTargetOverride) {
-    WeatherManager wm;
+    ServiceLocator loc;
+    WeatherManager wm(loc);
     glm::vec3 cameraPos(0.0f);
 
     float override_target = 0.5f;
@@ -73,7 +78,8 @@ TEST(WeatherManagerTest, ExternalTargetOverride) {
 }
 
 TEST(WeatherManagerTest, EnableDisable) {
-    WeatherManager wm;
+    ServiceLocator loc;
+    WeatherManager wm(loc);
     wm.SetEnabled(false);
 
     glm::vec3 cameraPos(0.0f);
