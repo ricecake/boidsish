@@ -69,13 +69,13 @@ void main() {
 			float blue_intensity = pow(flame_progress, 12.0) * 0.3;
 			flame_emission += vec3(0.3, 0.5, 1.0) * blue_intensity;
 
-			FragColor = vec4(flame_emission, camera_fade);
+			FragColor = vec4(flame_emission * camera_fade, camera_fade);
 		} else {
 			// --- Smoke with subtle lighting ---
 			float smoke_progress = vs_progress / flame_threshold;
 
-			// Base smoke color
-			vec3 smoke_color = mix(vec3(0.4, 0.4, 0.45), vs_color * 0.5, 0.2);
+			// Base smoke color - darkened to prevent washing out in HDR
+			vec3 smoke_color = mix(vec3(0.1, 0.1, 0.12), vs_color * 0.2, 0.2);
 
 			// Apply simple lighting to smoke for depth (no shadows needed for trails)
 			float dummyShadow;
@@ -85,13 +85,14 @@ void main() {
 			float noise = snoise(vec2(vs_progress * 5.0, time * 2.0)) * 0.5 + 0.5;
 
 			// Alpha fades out at the tail
-			float alpha = smoothstep(0.0, 0.2, smoke_progress) * (0.35 + noise * 0.25);
+			float alpha = smoothstep(0.0, 0.2, smoke_progress) * (0.35 + noise * 0.25) * camera_fade;
 
 			// Subtle inner glow near the flame
 			float glow = smoothstep(0.7, 0.9, smoke_progress) * 0.3;
 			lit_smoke += vec3(1.0, 0.4, 0.1) * glow;
 
-			FragColor = vec4(lit_smoke, alpha * camera_fade);
+			// Use premultiplied alpha
+			FragColor = vec4(lit_smoke * alpha, alpha);
 		}
 	} else if (current_useIridescence) {
 		// --- PBR Iridescent Trail ---
@@ -114,7 +115,8 @@ void main() {
 		float fresnel = pow(1.0 - abs(dot(view_dir, norm)), 5.0);
 		vec3  final_color = mix(iridescent_result, vec3(1.0), fresnel * 0.3);
 
-		FragColor = vec4(final_color, 0.85 * camera_fade); // Slightly more opaque for better visibility
+		float alpha = 0.85 * camera_fade;
+		FragColor = vec4(final_color * alpha, alpha); // Slightly more opaque for better visibility
 	} else if (current_usePBR) {
 		// --- Standard PBR Trail (no shadows for trails) ---
 		float dummyShadowPBR;
@@ -128,12 +130,12 @@ void main() {
 						  dummyShadowPBR
 		)
 						  .rgb;
-		FragColor = vec4(result, camera_fade);
+		FragColor = vec4(result * camera_fade, camera_fade);
 	} else {
 		// --- Original Phong Lighting ---
 		float dummyShadowPhong;
 		vec3 result = apply_lighting_no_shadows(vs_frag_pos, norm, vs_color, 0.5, dummyShadowPhong).rgb;
-		FragColor = vec4(result, camera_fade);
+		FragColor = vec4(result * camera_fade, camera_fade);
 	}
 
 	// Calculate screen-space velocity and material properties

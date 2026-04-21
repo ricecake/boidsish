@@ -136,7 +136,7 @@ namespace Boidsish {
 
 	void TransparentPass::Execute(const FrameData& frame, const RenderCallbacks& cb) {
 		glEnable(GL_BLEND);
-		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 		glDepthMask(GL_FALSE);
 
 		cb.execute_queue(RenderLayer::Transparent, false);

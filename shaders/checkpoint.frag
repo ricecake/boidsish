@@ -76,7 +76,10 @@ void main() {
 	// Add bright highlights on the ring
 	float highlights = step(0.8, sin(angle * 10.0 + time * 2.0));
 	vec3  finalColor = color;
-	if (c_style != 2) { // Not BLACK
+	if (c_style == 0) { // GOLD
+		finalColor *= 1.5; // Boost gold base
+		finalColor += highlights * 2.0; // HDR highlights
+	} else if (c_style != 2) { // Not BLACK
 		finalColor += highlights * 0.4;
 	} else {
 		finalColor += highlights * 0.15;
@@ -88,7 +91,8 @@ void main() {
 	if (alpha < 0.01)
 		discard;
 
-	FragColor = vec4(finalColor * (1.0 + ringMask), alpha);
+	// Use premultiplied alpha
+	FragColor = vec4(finalColor * (1.0 + ringMask) * alpha, alpha);
 
 	// Calculate screen-space velocity and material properties
 	vec2 a = (CurPosition.xy / CurPosition.w) * 0.5 + 0.5;

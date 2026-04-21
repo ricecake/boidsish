@@ -76,8 +76,8 @@ void main() {
 			float hue = u_time * 2.0 + v_lifetime * 1.5 + float(v_particle_idx) * 0.1;
 			color = 0.6 + 0.4 * cos(hue + vec3(0, 2, 4));
 
-			// Add a bit of "twinkle" based on time and position
-			float twinkle = sin(u_time * 15.0 + v_lifetime * 5.0 + gl_PointCoord.x * 10.0) * 0.5 + 0.5;
+			// Add a bit of "twinkle" based on time - removed gl_PointCoord to prevent black edges
+			float twinkle = sin(u_time * 15.0 + v_lifetime * 5.0) * 0.5 + 0.5;
 			color *= 0.6 + 0.4 * twinkle;
 
 			// Add a "sparkle" highlight

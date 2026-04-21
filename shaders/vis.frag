@@ -292,7 +292,8 @@ void main() {
 	if (c_isLine && c_lineStyle == 1) {
 		float distToCenter = abs(TexCoords.y - 0.5) * 2.0;
 		float alpha = max(smoothstep(0.15, 0.08, distToCenter), exp(-distToCenter * 3.0) * 0.8);
-		outColor = vec4(result, alpha * fade * c_objectAlpha);
+		// For LASER style, we use premultiplied alpha: result is already glowing, alpha is for visibility
+		outColor = vec4(result * fade * c_objectAlpha, alpha * fade * c_objectAlpha);
 	} else if (c_isColossal) {
 		// Atmosphere-aware haze using ambient light (responds to time-of-day)
 		vec3  skyColor = ambient_light;
@@ -325,9 +326,10 @@ void main() {
 			result *= rainbow;
 		}
 
-		outColor = vec4(result, final_alpha);
+		// Use Premultiplied Alpha
+		outColor = vec4(result * fade, final_alpha);
 		// Restore deliberate cyan style for distant objects
-		outColor = mix(vec4(0.0, 0.7, 0.7, final_alpha) * length(outColor), outColor, step(1.0, fade));
+		outColor = mix(vec4(0.0, 0.7, 0.7, final_alpha) * length(outColor.rgb), outColor, step(1.0, fade));
 	}
 
 	// if (nightFactor > 0) {

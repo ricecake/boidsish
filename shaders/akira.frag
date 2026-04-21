@@ -53,5 +53,6 @@ void main() {
 		litColor.rgb += baseColor * emissive;
 	}
 
-	FragColor = litColor;
+	// Use premultiplied alpha
+	FragColor = vec4(litColor.rgb * alpha, alpha);
 }
