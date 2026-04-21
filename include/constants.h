@@ -132,6 +132,18 @@ namespace Boidsish {
 			consteval int TerrainBakedParamsImage() {
 				return 32;
 			}
+			consteval int TerrainAlbedo() {
+				return 33;
+			}
+			consteval int TerrainPBR() {
+				return 34;
+			}
+			consteval int TerrainAlbedoImage() {
+				return 35;
+			}
+			consteval int TerrainPBRImage() {
+				return 36;
+			}
 		} // namespace TextureUnit
 
 		namespace SsboBinding {

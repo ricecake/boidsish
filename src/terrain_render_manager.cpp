@@ -67,6 +67,7 @@ namespace Boidsish {
 		grid_mip_shader_ = std::make_unique<ComputeShader>("shaders/terrain_hiz_generate.comp");
 		probe_compute_shader_ = std::make_unique<ComputeShader>("shaders/terrain_probes.comp");
 		terrain_bake_shader_ = std::make_unique<ComputeShader>("shaders/terrain_bake.comp");
+		terrain_material_bake_shader_ = std::make_unique<ComputeShader>("shaders/terrain_material_bake.comp");
 
 		// Create SH probes SSBO
 		glGenBuffers(1, &probe_ssbo_);
@@ -115,6 +116,10 @@ namespace Boidsish {
 			glDeleteTextures(1, &heightmap_texture_);
 		if (baked_params_texture_)
 			glDeleteTextures(1, &baked_params_texture_);
+		if (albedo_texture_)
+			glDeleteTextures(1, &albedo_texture_);
+		if (material_texture_)
+			glDeleteTextures(1, &material_texture_);
 		if (biome_texture_)
 			glDeleteTextures(1, &biome_texture_);
 		if (biome_ubo_)
@@ -212,7 +217,8 @@ namespace Boidsish {
 	}
 
 	void TerrainRenderManager::EnsureTextureCapacity(int required_slices) {
-		if (raw_heightmap_texture_ && heightmap_texture_ && baked_params_texture_ && biome_texture_ && required_slices <= max_chunks_) {
+		if (raw_heightmap_texture_ && heightmap_texture_ && baked_params_texture_ && albedo_texture_ &&
+		    material_texture_ && biome_texture_ && required_slices <= max_chunks_) {
 			return; // Already have enough capacity
 		}
 
@@ -244,6 +250,10 @@ namespace Boidsish {
 			heightmap_texture_ = 0;
 			glDeleteTextures(1, &baked_params_texture_);
 			baked_params_texture_ = 0;
+			glDeleteTextures(1, &albedo_texture_);
+			albedo_texture_ = 0;
+			glDeleteTextures(1, &material_texture_);
+			material_texture_ = 0;
 
 			if (biome_texture_) {
 				glDeleteTextures(1, &biome_texture_);
@@ -258,21 +268,22 @@ namespace Boidsish {
 
 		max_chunks_ = new_capacity;
 
-		auto create_array = [&](GLuint& tex, GLenum internalFormat, GLenum format, GLenum type, bool linear) {
+		auto create_array = [&](GLuint& tex, GLenum internalFormat, GLenum format, GLenum type, bool linear, int res) {
 			glGenTextures(1, &tex);
 			glBindTexture(GL_TEXTURE_2D_ARRAY, tex);
-			glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, internalFormat, heightmap_resolution_, heightmap_resolution_,
-			             max_chunks_, 0, format, type, nullptr);
+			glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, internalFormat, res, res, max_chunks_, 0, format, type, nullptr);
 			glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, linear ? GL_LINEAR : GL_NEAREST);
 			glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, linear ? GL_LINEAR : GL_NEAREST);
 			glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 			glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 		};
 
-		create_array(raw_heightmap_texture_, GL_RGBA16F, GL_RGBA, GL_FLOAT, true);
-		create_array(heightmap_texture_, GL_RGBA16F, GL_RGBA, GL_FLOAT, true);
-		create_array(baked_params_texture_, GL_RGBA16F, GL_RGBA, GL_FLOAT, true);
-		create_array(biome_texture_, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, true);
+		create_array(raw_heightmap_texture_, GL_RGBA16F, GL_RGBA, GL_FLOAT, true, heightmap_resolution_);
+		create_array(heightmap_texture_, GL_RGBA16F, GL_RGBA, GL_FLOAT, true, heightmap_resolution_);
+		create_array(baked_params_texture_, GL_RGBA16F, GL_RGBA, GL_FLOAT, true, heightmap_resolution_);
+		create_array(albedo_texture_, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, true, kTextureResolution);
+		create_array(material_texture_, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, true, kTextureResolution);
+		create_array(biome_texture_, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, true, heightmap_resolution_);
 
 		glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
 	}
@@ -886,6 +897,14 @@ namespace Boidsish {
 		glBindTexture(GL_TEXTURE_2D_ARRAY, baked_params_texture_);
 		shader_base.trySetInt("uBakedParams", Constants::TextureUnit::TerrainBakedParams());
 
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainAlbedo());
+		glBindTexture(GL_TEXTURE_2D_ARRAY, albedo_texture_);
+		shader_base.trySetInt("uTerrainAlbedo", Constants::TextureUnit::TerrainAlbedo());
+
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainPBR());
+		glBindTexture(GL_TEXTURE_2D_ARRAY, material_texture_);
+		shader_base.trySetInt("uTerrainPBR", Constants::TextureUnit::TerrainPBR());
+
 		if (extra_noise_texture_ != 0) {
 			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::NoiseExtra());
 			glBindTexture(GL_TEXTURE_3D, extra_noise_texture_);
@@ -951,6 +970,14 @@ namespace Boidsish {
 		glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture_);
 		shader.trySetInt("uBiomeMap", Constants::TextureUnit::TerrainBiomeMap());
 		shader.trySetInt("u_biomeMap", Constants::TextureUnit::TerrainBiomeMap());
+
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainAlbedo());
+		glBindTexture(GL_TEXTURE_2D_ARRAY, albedo_texture_);
+		shader.trySetInt("uTerrainAlbedo", Constants::TextureUnit::TerrainAlbedo());
+
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainPBR());
+		glBindTexture(GL_TEXTURE_2D_ARRAY, material_texture_);
+		shader.trySetInt("uTerrainPBR", Constants::TextureUnit::TerrainPBR());
 
 		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::NoiseSimplex());
 		glBindTexture(GL_TEXTURE_3D, noise_texture_);
@@ -1046,7 +1073,7 @@ namespace Boidsish {
 			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::VisualEffects(), visual_effects_ubo_);
 		}
 
-		// Process in batches
+		// Process Height Bake in batches
 		const size_t max_batch = 1024;
 		for (size_t i = 0; i < tasks.size(); i += max_batch) {
 			size_t batch_size = std::min(max_batch, tasks.size() - i);
@@ -1064,6 +1091,51 @@ namespace Boidsish {
 		}
 
 		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+
+		// Dispatch Material Bake
+		if (terrain_material_bake_shader_ && terrain_material_bake_shader_->isValid()) {
+			terrain_material_bake_shader_->use();
+
+			// Input textures
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainHeightmap());
+			glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture_);
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainBakedParams());
+			glBindTexture(GL_TEXTURE_2D_ARRAY, baked_params_texture_);
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainBiomeMap());
+			glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture_);
+			terrain_material_bake_shader_->setInt("u_heightmapArray", Constants::TextureUnit::TerrainHeightmap());
+			terrain_material_bake_shader_->setInt("u_bakedParamsArray", Constants::TextureUnit::TerrainBakedParams());
+			terrain_material_bake_shader_->setInt("u_biomeMap", Constants::TextureUnit::TerrainBiomeMap());
+
+			// Output images
+			glBindImageTexture(Constants::TextureUnit::TerrainAlbedoImage(), albedo_texture_, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA8);
+			glBindImageTexture(Constants::TextureUnit::TerrainPBRImage(), material_texture_, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA8);
+
+			// UBOs
+			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::TerrainData(), terrain_data_ubo_);
+			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Biomes(), biome_ubo_);
+			if (grass_props_ubo_ != 0) {
+				glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::GrassProps(), grass_props_ubo_);
+			}
+
+			// Batch process tasks for material baking
+			for (size_t i = 0; i < tasks.size(); i += max_batch) {
+				size_t batch_size = std::min(max_batch, tasks.size() - i);
+
+				glBindBuffer(GL_SHADER_STORAGE_BUFFER, bake_ssbo_);
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, batch_size * sizeof(BakeTask), &tasks[i]);
+				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainChunkInfo(), bake_ssbo_);
+
+				terrain_material_bake_shader_->setInt("u_numTasks", static_cast<int>(batch_size));
+
+				// High-res texture resolution (256x256)
+				GLuint groups_x = (kTextureResolution + 7) / 8;
+				GLuint groups_y = (kTextureResolution + 7) / 8;
+				glDispatchCompute(groups_x, groups_y, static_cast<GLuint>(batch_size));
+			}
+
+			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+		}
 
 		// Synchronize to ensure initial loads are fully baked before rendering
 		if (force_sync) {

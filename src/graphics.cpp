@@ -892,6 +892,9 @@ namespace Boidsish {
 				if (visual_effects_pb) {
 					terrain_render_manager->SetVisualEffectsUbo(visual_effects_pb->GetBufferId());
 				}
+				if (grass_manager) {
+					terrain_render_manager->SetGrassPropsUbo(grass_manager->GetPropsUbo());
+				}
 				terrain_generator->SetRenderManager(terrain_render_manager);
 				terrain_render_manager->SetNoise(
 					noise_manager->GetNoiseTexture(),

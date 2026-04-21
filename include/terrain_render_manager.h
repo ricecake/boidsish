@@ -203,6 +203,11 @@ namespace Boidsish {
 		 */
 		void SetVisualEffectsUbo(GLuint ubo) { visual_effects_ubo_ = ubo; }
 
+		/**
+		 * @brief Set the GrassProps UBO for material baking.
+		 */
+		void SetGrassPropsUbo(GLuint ubo) { grass_props_ubo_ = ubo; }
+
 		void SetNoise(
 			GLuint simplex,
 			GLuint curl,
@@ -264,6 +269,7 @@ namespace Boidsish {
 		int chunk_size_;           // Grid size per chunk (e.g., 32)
 		int max_chunks_;           // Maximum chunks in texture array
 		int heightmap_resolution_; // (chunk_size + 1) for vertex corners
+		static constexpr int kTextureResolution = 256; // High-res terrain textures
 
 		// OpenGL resources
 		GLuint grid_vao_ = 0;
@@ -273,6 +279,8 @@ namespace Boidsish {
 		GLuint raw_heightmap_texture_ = 0; // GL_TEXTURE_2D_ARRAY (RGBA16F: height, normal.xyz)
 		GLuint heightmap_texture_ = 0;     // GL_TEXTURE_2D_ARRAY (RGBA16F: baked height, baked normal)
 		GLuint baked_params_texture_ = 0;  // GL_TEXTURE_2D_ARRAY (RGBA16F: erosion, ridge, substrate, water)
+		GLuint albedo_texture_ = 0;        // GL_TEXTURE_2D_ARRAY (RGBA8: albedo)
+		GLuint material_texture_ = 0;      // GL_TEXTURE_2D_ARRAY (RGBA8: roughness, metallic, AO, unused)
 		GLuint biome_texture_ = 0;         // GL_TEXTURE_2D_ARRAY (RGBA8: low_idx, t, bake_flag, unused)
 		GLuint noise_texture_ = 0;
 		GLuint curl_texture_ = 0;
@@ -288,10 +296,12 @@ namespace Boidsish {
 		GLuint probe_ssbo_ = 0;              // SSBO for per-chunk SH probes
 		GLuint bake_ssbo_ = 0;               // SSBO for BakeTask
 		GLuint visual_effects_ubo_ = 0;      // Bound by graphics.cpp
+		GLuint grass_props_ubo_ = 0;         // Bound by grass_manager.cpp
 
 		std::unique_ptr<ComputeShader> grid_mip_shader_;
 		std::unique_ptr<ComputeShader> probe_compute_shader_;
 		std::unique_ptr<ComputeShader> terrain_bake_shader_;
+		std::unique_ptr<ComputeShader> terrain_material_bake_shader_;
 
 		// Grid mesh data
 		size_t grid_index_count_ = 0;
