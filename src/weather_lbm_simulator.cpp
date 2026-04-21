@@ -388,8 +388,8 @@ namespace Boidsish {
 
     void WeatherLbmSimulator::PopulateWindData(WindDataUbo& ubo, std::vector<glm::vec4>& grid_out, float totalTime, float curlScale, float curlStrength) const {
         float gridSpacing = 32.0f;
-        // GLSL: x, z = origin, y = width, w = height
-        ubo.originSize = glm::ivec4(gridAnchor_.x, width_, gridAnchor_.y, height_);
+        // GLSL: xy = origin (anchor), zw = size (width/height)
+        ubo.originSize = glm::ivec4(gridAnchor_.x, gridAnchor_.y, width_, height_);
         ubo.params = glm::vec4(gridSpacing, totalTime, curlScale, curlStrength);
 
         // Convert lattice velocity to world velocity (m/s)

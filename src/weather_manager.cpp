@@ -409,9 +409,23 @@ namespace Boidsish {
 			for (int i = 0; i < (int)cells.size(); ++i) {
 				aerosol_data_cache_[i] = glm::vec4(configs[i].aerosolColor, cells[i].aerosol);
 			}
-			glBindTexture(GL_TEXTURE_2D, aerosol_texture_);
-			glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, lbm_simulator_->GetWidth(), lbm_simulator_->GetHeight(), GL_RGBA, GL_FLOAT, aerosol_data_cache_.data());
+		} else {
+			// Fallback: Use current haze color and a uniform aerosol density
+			glm::vec4 fallback(current_.haze_color, 0.1f);
+			std::fill(aerosol_data_cache_.begin(), aerosol_data_cache_.end(), fallback);
 		}
+		glBindTexture(GL_TEXTURE_2D, aerosol_texture_);
+		glTexSubImage2D(
+			GL_TEXTURE_2D,
+			0,
+			0,
+			0,
+			lbm_simulator_->GetWidth(),
+			lbm_simulator_->GetHeight(),
+			GL_RGBA,
+			GL_FLOAT,
+			aerosol_data_cache_.data()
+		);
 	}
 
 	void WeatherManager::Update(float deltaTime, float totalTime, const glm::vec3& cameraPos, float timeOfDay) {

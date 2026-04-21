@@ -10,10 +10,15 @@ layout(std140, binding = [[VOLUMETRIC_LIGHTING_BINDING]]) uniform VolumetricLigh
     vec4 resolution;     // x: gridW, y: gridH, z: gridD, w: intensity
     vec4 sunDir;         // xyz: dir, w: sun intensity
     vec4 sunColor;       // rgb: color, w: mie anisotropy (g)
+    vec4 moonDir;        // xyz: dir, w: moon intensity
+    vec4 moonColor;      // rgb: color, w: reserved
     vec4 hazeParams;     // x: haze density, y: haze height, z: noise scale, w: noise strength
+    vec4 hazeColor;      // rgb: color, w: reserved
     vec4 ambientColor;   // rgb: color, w: scattering scale
     vec4 cloudParams;    // x: cloud coverage, y: cloud density, z: cloud shadow intensity, w: reserved
     vec4 cascadeSplits;
+    vec4 viewPosVol;     // xyz: camPos, w: worldScale
+    vec4 timeParams;     // x: totalTime, y: frameIndex, zw: reserved
 } u_vol;
 
 uniform usampler3D u_densityVolume;
@@ -33,6 +38,7 @@ layout(std140, binding = [[WIND_DATA_BINDING]]) uniform WindData {
 // To avoid redefinition, we'll avoid double-including if possible.
 #define USE_TERRAIN_DATA
 #include "../lighting.glsl"
+#include "../helpers/terrain_shadows.glsl"
 #include "../helpers/lighting.glsl"
 
 vec3 get_world_pos(vec3 uvw) {
@@ -40,9 +46,7 @@ vec3 get_world_pos(vec3 uvw) {
     vec4 far_pt = u_vol.invViewProj * vec4(ndc_xy, 1.0, 1.0);
     far_pt /= far_pt.w;
 
-    vec4 cam_pos_h = u_vol.invViewProj * vec4(0, 0, -1, 1);
-    vec3 cam_pos = cam_pos_h.xyz / cam_pos_h.w;
-
+    vec3 cam_pos = u_vol.viewPosVol.xyz;
     vec3 ray_dir = normalize(far_pt.xyz - cam_pos);
 
     float z_near = (u_cascadeIndex == 0) ? u_vol.gridParams.x : u_vol.cascadeSplits[u_cascadeIndex-1];
@@ -73,28 +77,71 @@ void main() {
         return;
     }
 
-    vec3 lightDir = u_vol.sunDir.xyz;
-    float shadow = calculateShadow(0, worldPos, vec3(0, 1, 0), lightDir);
-    shadow *= calculateCloudShadow(0, worldPos);
+    // Use actual view position from UBO
+    vec3 camPos = u_vol.viewPosVol.xyz;
+    vec3 viewDir = normalize(camPos - worldPos);
 
-    vec3 viewDir = normalize(viewPos - worldPos);
-    float cosTheta = dot(lightDir, -viewDir);
-    float phase = hg_phase(cosTheta, u_vol.sunColor.w);
+    // Sun contribution
+    vec3 sunDir = u_vol.sunDir.xyz;
+    float sunShadow = calculateShadow(0, worldPos, vec3(0, 1, 0), sunDir);
+    sunShadow *= calculateCloudShadow(0, worldPos);
+    float sunPhase = hg_phase(dot(sunDir, -viewDir), u_vol.sunColor.w);
+    vec3 sunContribution = u_vol.sunColor.rgb * u_vol.sunDir.w * sunShadow * sunPhase;
+
+    // Moon contribution
+    vec3 moonDir = u_vol.moonDir.xyz;
+    float moonShadow = calculateShadow(1, worldPos, vec3(0, 1, 0), moonDir);
+    float moonPhase = hg_phase(dot(moonDir, -viewDir), u_vol.sunColor.w);
+    vec3 moonContribution = u_vol.moonColor.rgb * u_vol.moonDir.w * moonShadow * moonPhase;
 
     float gridSpacing = u_windParams.x;
     vec2 lbmUV = ((worldPos.xz / gridSpacing) - vec2(u_windOriginSize.xz)) / vec2(u_windOriginSize.yw);
     vec4 aerosolData = texture(u_aerosolTexture, lbmUV);
-    vec3 localAerosolColor = aerosolData.rgb;
+
+    // Blend local aerosol color with global haze color
+    vec3 localAerosolColor = mix(u_vol.hazeColor.rgb, aerosolData.rgb, aerosolData.a);
 
     float scatteringScale = u_vol.ambientColor.w;
 
-    vec3 directLight = u_vol.sunColor.rgb * u_vol.sunDir.w * shadow * phase;
+    vec3 directLight = (sunContribution + moonContribution);
     directLight *= localAerosolColor;
 
+    // --- Iterative Point/Spot Light Injection ---
+    vec3 dynamicLight = vec3(0.0);
+    // Iterate through all active lights (Sun is 0, Moon is typically 1, others follow)
+    // We start from 0 to include Sun/Moon if they are non-directional (unlikely but possible)
+    // and process all other local emitters.
+    for (int i = 0; i < num_lights; ++i) {
+        vec3 L;
+        float attenuation;
+        calculateLightContribution(i, worldPos, L, attenuation);
+
+        if (attenuation > 0.001) {
+            float phase = hg_phase(dot(L, -viewDir), u_vol.sunColor.w);
+            float shadow = 1.0;
+            // Only evaluate shadows for the most prominent lights to save performance
+            if (i < 2) {
+                shadow = calculateShadow(i, worldPos, vec3(0, 1, 0), L);
+                if (i == 0) shadow *= calculateCloudShadow(0, worldPos);
+            }
+
+            dynamicLight += lights[i].color * lights[i].intensity * attenuation * phase * shadow;
+        }
+    }
+
+    // ambient SH already accounts for sky color, but tint it with aerosol
+    // For volumetric samples, use the sample itself as the normal fallback or vertical
     vec3 ambient = getSpatialAmbientSH(worldPos, vec3(0, 1, 0));
+    // Apply a hemispherical visibility factor to ambient light based on height
+    // Reducing ambient in volumes increases crepuscular ray contrast
+    float heightFactor = clamp(worldPos.y / 50.0, 0.01, 0.1);
+    ambient *= heightFactor;
     ambient *= localAerosolColor;
 
-    vec3 scatteredLight = (directLight + ambient) * density * u_vol.resolution.w * scatteringScale;
+    vec3 scatteredLight = (dynamicLight * localAerosolColor + ambient) * density * u_vol.resolution.w * scatteringScale;
+    // Boost scattering for visibility in HDR
+    scatteredLight *= 20.0;
+
     float extinction = density * u_extinctionScale;
 
     imageStore(outScatteringVolume, texel, vec4(scatteredLight, extinction));

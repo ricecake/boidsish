@@ -53,9 +53,15 @@ namespace Boidsish {
         for (int i = 0; i < kMaxVolumetricCascades; ++i) {
             // Distant cascades can have lower resolution
             int div = 1 << i;
+            // Density volumes MUST use NEAREST filtering for integer textures
             create3DTexture(_densityVolumes[i], GL_R32UI, _gridW / div, _gridH / div, _gridD, GL_RED_INTEGER, GL_UNSIGNED_INT);
-            create3DTexture(_scatteringVolumes[i], GL_RGBA16F, _gridW / div, _gridH / div, _gridD);
-            create3DTexture(_integratedVolumes[i], GL_RGBA16F, _gridW / div, _gridH / div, _gridD);
+            glBindTexture(GL_TEXTURE_3D, _densityVolumes[i]);
+            glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+            // Use RGBA32F for integration volumes to prevent precision/clamping issues during Z-accumulation
+            create3DTexture(_scatteringVolumes[i], GL_RGBA32F, _gridW / div, _gridH / div, _gridD);
+            create3DTexture(_integratedVolumes[i], GL_RGBA32F, _gridW / div, _gridH / div, _gridD);
         }
 
         glBindTexture(GL_TEXTURE_3D, 0);
@@ -75,7 +81,7 @@ namespace Boidsish {
         glBindBuffer(GL_UNIFORM_BUFFER, 0);
     }
 
-    void VolumetricLightingManager::Update(float deltaTime, float totalTime, const glm::mat4& view, const glm::mat4& projection, const glm::vec3& cameraPos) {
+    void VolumetricLightingManager::Update(float deltaTime, float totalTime, const glm::mat4& view, const glm::mat4& projection, const glm::vec3& cameraPos, float worldScale) {
         auto weatherMgr = _loc.Get<WeatherManager>();
         auto lightMgr = _loc.Get<LightManager>();
         auto atmosphereMgr = _loc.Get<AtmosphereManager>();
@@ -85,22 +91,29 @@ namespace Boidsish {
         ubo.invViewProj = glm::inverse(viewProj);
         ubo.prevViewProj = _prevViewProj;
 
-        ubo.gridParams = glm::vec4(_nearPlane, _farPlane, 1.0f, (float)kMaxVolumetricCascades);
+        ubo.gridParams = glm::vec4(_nearPlane, _farPlane * worldScale, 1.0f, (float)kMaxVolumetricCascades);
         ubo.resolution = glm::vec4((float)_gridW, (float)_gridH, (float)_gridD, _intensity);
 
-        // Cascaded Splits (matches shadow manager for consistency)
-        ubo.cascadeSplits = glm::vec4(20.0f, 50.0f, 150.0f, 700.0f);
+        // Cascaded Splits
+        ubo.cascadeSplits = glm::vec4(50.0f, 150.0f, 500.0f, 2000.0f) * worldScale;
 
         const auto& lights = lightMgr->GetLights();
         if (!lights.empty()) {
             ubo.sunDir = glm::vec4(-lights[0].direction, lights[0].intensity);
             ubo.sunColor = glm::vec4(lights[0].color, _phaseG);
+            if (lights.size() > 1) {
+                ubo.moonDir = glm::vec4(-lights[1].direction, lights[1].intensity);
+                ubo.moonColor = glm::vec4(lights[1].color, 0.0f);
+            }
         }
 
         const auto& weather = weatherMgr->GetCurrentWeather();
         ubo.hazeParams = glm::vec4(weather.haze_density, weather.haze_height, 0.01f, 0.5f);
+        ubo.hazeColor = glm::vec4(weather.haze_color, 1.0f);
         ubo.ambientColor = glm::vec4(atmosphereMgr->GetAmbientEstimate(), _scatteringScale);
         ubo.cloudParams = glm::vec4(weather.cloud_coverage, weather.cloud_density, 0.5f, 0.0f);
+        ubo.viewPosVol = glm::vec4(cameraPos, worldScale);
+        ubo.timeParams = glm::vec4(totalTime, (float)_frameIndex++, 0.0f, 0.0f);
 
         glBindBuffer(GL_UNIFORM_BUFFER, _parameterUbo);
         glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(VolumetricLightingUbo), &ubo);
@@ -137,10 +150,22 @@ namespace Boidsish {
         // Note: We use the actual buffer handle from the service if needed,
         // but for now we assume it's already bound to LIGHTING_BINDING by VisualizerImpl.
 
-        // Bind SH Probes
+        // Bind SH Probes and Terrain Data
         auto terrainMgr = _loc.Get<TerrainRenderManager>();
+        auto atmosphereMgr = _loc.Get<AtmosphereManager>();
+
         if (terrainMgr) {
             glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainProbes(), terrainMgr->GetProbeBuffer());
+            terrainMgr->BindTerrainData(*_lightingInjectionShader);
+            terrainMgr->BindTerrainData(*_densityVoxelizationShader);
+        }
+        if (atmosphereMgr) {
+            atmosphereMgr->BindToShader(*_lightingInjectionShader);
+
+            // Bind Cloud Shadow Map specifically for volumetric injection
+            glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereCloudShadow());
+            glBindTexture(GL_TEXTURE_2D, atmosphereMgr->GetCloudShadowMap());
+            _lightingInjectionShader->trySetInt("u_cloudShadowMap", Constants::TextureUnit::AtmosphereCloudShadow());
         }
 
         for (int cascade = 0; cascade < kMaxVolumetricCascades; ++cascade) {
@@ -151,6 +176,7 @@ namespace Boidsish {
 
             _densityVoxelizationShader->use();
             _densityVoxelizationShader->setInt("u_cascadeIndex", cascade);
+            if (noiseMgr) noiseMgr->BindDefault(*_densityVoxelizationShader);
             glBindImageTexture(0, _densityVolumes[cascade], 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_R32UI);
             if (noiseMgr) noiseMgr->BindDefault(*_densityVoxelizationShader);
             if (weatherMgr) {
@@ -189,16 +215,32 @@ namespace Boidsish {
                 glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::ShadowMaps());
                 glBindTexture(GL_TEXTURE_2D_ARRAY, shadowMgr->GetShadowMapArray());
                 _lightingInjectionShader->trySetInt("shadowMaps", Constants::TextureUnit::ShadowMaps());
+
+                std::array<int, 10> shadow_indices;
+                shadow_indices.fill(-1);
+                const auto& all_lights = lightMgr->GetLights();
+                for (size_t j = 0; j < all_lights.size() && j < 10; ++j) {
+                    shadow_indices[j] = all_lights[j].shadow_map_index;
+                }
+                glUniform1iv(glGetUniformLocation(_lightingInjectionShader->ID, "lightShadowIndices"), 10, shadow_indices.data());
             }
             glDispatchCompute((cw + 7) / 8, (ch + 7) / 8, (cd + 7) / 8);
             glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
 
             _integrationShader->use();
             _integrationShader->setInt("u_cascadeIndex", cascade);
-            glBindImageTexture(0, _integratedVolumes[cascade], 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+            if (noiseMgr) noiseMgr->BindDefault(*_integrationShader);
+            glBindImageTexture(0, _integratedVolumes[cascade], 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA32F);
             glActiveTexture(GL_TEXTURE1);
             glBindTexture(GL_TEXTURE_3D, _scatteringVolumes[cascade]);
             _integrationShader->setInt("u_scatteringVolume", 1);
+
+            if (cascade > 0) {
+                glActiveTexture(GL_TEXTURE2);
+                glBindTexture(GL_TEXTURE_3D, _integratedVolumes[cascade - 1]);
+                _integrationShader->setInt("u_previousIntegrated", 2);
+            }
+
             glDispatchCompute((cw + 7) / 8, (ch + 7) / 8, 1);
             glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
         }

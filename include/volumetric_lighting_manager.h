@@ -22,10 +22,15 @@ namespace Boidsish {
         glm::vec4 resolution;     // x: gridW, y: gridH, z: gridD, w: intensity
         glm::vec4 sunDir;         // xyz: dir, w: sun intensity
         glm::vec4 sunColor;       // rgb: color, w: mie anisotropy (g)
+        glm::vec4 moonDir;        // xyz: dir, w: moon intensity
+        glm::vec4 moonColor;      // rgb: color, w: reserved
         glm::vec4 hazeParams;     // x: haze density, y: haze height, z: noise scale, w: noise strength
+        glm::vec4 hazeColor;      // rgb: color, w: reserved
         glm::vec4 ambientColor;   // rgb: color, w: scattering scale
         glm::vec4 cloudParams;    // x: cloud coverage, y: cloud density, z: cloud shadow intensity, w: reserved
         glm::vec4 cascadeSplits;  // Near plane distances for each cascade
+        glm::vec4 viewPosVol;     // xyz: camera world pos, w: world scale
+        glm::vec4 timeParams;     // x: totalTime, y: frameIndex, zw: reserved
     };
 
     class VolumetricLightingManager : public IManager {
@@ -34,7 +39,7 @@ namespace Boidsish {
         ~VolumetricLightingManager();
 
         void Initialize() override;
-        void Update(float deltaTime, float totalTime, const glm::mat4& view, const glm::mat4& projection, const glm::vec3& cameraPos);
+        void Update(float deltaTime, float totalTime, const glm::mat4& view, const glm::mat4& projection, const glm::vec3& cameraPos, float worldScale);
 
         void Dispatch(
             const glm::mat4& view,
@@ -79,18 +84,19 @@ namespace Boidsish {
         std::unique_ptr<ComputeShader> _integrationShader;
 
         // Grid configuration
-        int _gridW = 160;
-        int _gridH = 90;
-        int _gridD = 128; // Increased depth for better god ray resolution
+        int _gridW = 200;
+        int _gridH = 112;
+        int _gridD = 160; // Increased depth for better god ray resolution
 
-        float _nearPlane = 0.1f;
-        float _farPlane = 100.0f; // Standard volumetric range
+        float _nearPlane = 1.0f;
+        float _farPlane = 2000.0f; // Extended volumetric range
+        int   _frameIndex = 0;
 
         // Runtime params
-        float _intensity = 1.0f;
-        float _scatteringScale = 1.0f;
-        float _extinctionScale = 1.0f;
-        float _phaseG = 0.8f;
+        float _intensity = 100.0f;
+        float _scatteringScale = 50.0f;
+        float _extinctionScale = 0.2f;
+        float _phaseG = 0.80f;
 
         glm::mat4 _prevViewProj{1.0f};
     };

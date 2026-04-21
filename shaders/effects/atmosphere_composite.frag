@@ -26,10 +26,15 @@ layout(std140, binding = [[VOLUMETRIC_LIGHTING_BINDING]]) uniform VolumetricLigh
     vec4 resolution;     // x: gridW, y: gridH, z: gridD, w: intensity
     vec4 sunDir;         // xyz: dir, w: sun intensity
     vec4 sunColor;       // rgb: color, w: mie anisotropy (g)
+    vec4 moonDir;        // xyz: dir, w: moon intensity
+    vec4 moonColor;      // rgb: color, w: reserved
     vec4 hazeParams;     // x: haze density, y: haze height, z: noise scale, w: noise strength
+    vec4 hazeColor;      // rgb: color, w: reserved
     vec4 ambientColor;   // rgb: color, w: scattering scale
     vec4 cloudParams;    // x: cloud coverage, y: cloud density, z: cloud shadow intensity, w: reserved
     vec4 cascadeSplits;
+    vec4 viewPosVol;     // xyz: camPos, w: worldScale
+    vec4 timeParams;     // x: totalTime, y: frameIndex, zw: reserved
 } u_vol;
 
 uniform sampler3D u_volumetricIntegrated[4];
@@ -117,8 +122,9 @@ void main() {
 			float spatialW = bx * by;
 
 			// Depth similarity weight — exponential falloff
-			float depthDiff = abs(centerDepth - sampleDist) / max(centerDepth, 1.0);
-			float depthW = exp(-depthDiff * 150.0);
+			// Significantly relaxed to ensure volumetric coverage is stable
+			float depthDiff = abs(centerDepth - sampleDist) / max(centerDepth, 5.0);
+			float depthW = exp(-depthDiff * 5.0);
 
 			float w = spatialW * depthW;
 			cloudData += texture(cloudTexture, sampleUV) * w;
@@ -162,19 +168,28 @@ void main() {
     float v_far = u_vol.cascadeSplits[volCascade];
 
 	float volZ = log(max(dist, v_near) / v_near) / log(v_far / v_near);
-	vec4 volumetric = texture(u_volumetricIntegrated[volCascade], vec3(TexCoords, volZ));
+	vec4 volumetric;
+    if (volCascade == 0) volumetric = texture(u_volumetricIntegrated[0], vec3(TexCoords, volZ));
+    else if (volCascade == 1) volumetric = texture(u_volumetricIntegrated[1], vec3(TexCoords, volZ));
+    else if (volCascade == 2) volumetric = texture(u_volumetricIntegrated[2], vec3(TexCoords, volZ));
+    else volumetric = texture(u_volumetricIntegrated[3], vec3(TexCoords, volZ));
 
     // Smooth cascade transitions
     if (volCascade < 3) {
-        float blendStart = u_vol.cascadeSplits[volCascade] * 0.9;
+        float blendStart = u_vol.cascadeSplits[volCascade] * 0.8; // Wider blend zone
         float blendEnd = u_vol.cascadeSplits[volCascade];
         if (dist > blendStart) {
             float blendT = (dist - blendStart) / (blendEnd - blendStart);
             float next_near = u_vol.cascadeSplits[volCascade];
             float next_far = u_vol.cascadeSplits[volCascade+1];
             float next_volZ = log(max(dist, next_near) / next_near) / log(next_far / next_near);
-            vec4 next_volumetric = texture(u_volumetricIntegrated[volCascade+1], vec3(TexCoords, next_volZ));
-            volumetric = mix(volumetric, next_volumetric, blendT);
+
+            vec4 next_volumetric;
+            if (volCascade + 1 == 1) next_volumetric = texture(u_volumetricIntegrated[1], vec3(TexCoords, next_volZ));
+            else if (volCascade + 1 == 2) next_volumetric = texture(u_volumetricIntegrated[2], vec3(TexCoords, next_volZ));
+            else next_volumetric = texture(u_volumetricIntegrated[3], vec3(TexCoords, next_volZ));
+
+            volumetric = mix(volumetric, next_volumetric, smoothstep(0.0, 1.0, blendT));
         }
     }
 
@@ -183,8 +198,10 @@ void main() {
 		// Terrain/objects: apply aerial perspective and clouds
 		vec3 terrainAtmos = sceneColor * transmittance + inScattering;
 
-		// Apply volumetric
-		terrainAtmos = terrainAtmos * volumetric.a + volumetric.rgb;
+		// Apply volumetric with strong additive contribution
+		// Attenuate scene color by transmittance, then add scattering
+		// Increased multiplier for visibility
+		terrainAtmos = terrainAtmos * volumetric.a + volumetric.rgb * 15.0;
 
 		vec3 cloudsAtmos = cloudColor * atmosTransmittance + atmosInScattering * (1.0 - cloudTransmittance);
 		result = mix(cloudsAtmos, terrainAtmos, cloudTransmittance);
@@ -192,7 +209,8 @@ void main() {
 		// Sky and colossal objects: preserve scene output (sun, moon, stars, colossal)
 		// and blend clouds on top
 		vec4 skyVol = texture(u_volumetricIntegrated[3], vec3(TexCoords, 1.0));
-		vec3 skyResult = sceneColor * skyVol.a + skyVol.rgb;
+		// Sky scattering boost
+		vec3 skyResult = sceneColor * skyVol.a + skyVol.rgb * 15.0;
 
 		vec3 cloudsAtmos = cloudColor * atmosTransmittance + atmosInScattering * (1.0 - cloudTransmittance);
 		result = skyResult * cloudTransmittance + cloudsAtmos;

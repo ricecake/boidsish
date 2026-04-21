@@ -10,10 +10,15 @@ layout(std140, binding = [[VOLUMETRIC_LIGHTING_BINDING]]) uniform VolumetricLigh
     vec4 resolution;     // x: gridW, y: gridH, z: gridD, w: intensity
     vec4 sunDir;         // xyz: dir, w: sun intensity
     vec4 sunColor;       // rgb: color, w: mie anisotropy (g)
+    vec4 moonDir;        // xyz: dir, w: moon intensity
+    vec4 moonColor;      // rgb: color, w: reserved
     vec4 hazeParams;     // x: haze density, y: haze height, z: noise scale, w: noise strength
+    vec4 hazeColor;      // rgb: color, w: reserved
     vec4 ambientColor;   // rgb: color, w: scattering scale
     vec4 cloudParams;    // x: cloud coverage, y: cloud density, z: cloud shadow intensity, w: reserved
     vec4 cascadeSplits;
+    vec4 viewPosVol;     // xyz: camPos, w: worldScale
+    vec4 timeParams;     // x: totalTime, y: frameIndex, zw: reserved
 } u_vol;
 
 #include "../helpers/fast_noise.glsl"
@@ -27,21 +32,13 @@ uniform sampler2D u_aerosolTexture;
 uniform int u_cascadeIndex;
 
 vec3 get_world_pos(vec3 uvw) {
-    // 1. Reconstruct ray direction in world space from screen UV
     vec2 ndc_xy = uvw.xy * 2.0 - 1.0;
-    vec4 near_pt = u_vol.invViewProj * vec4(ndc_xy, -1.0, 1.0);
-    near_pt /= near_pt.w;
     vec4 far_pt = u_vol.invViewProj * vec4(ndc_xy, 1.0, 1.0);
     far_pt /= far_pt.w;
 
-    vec3 ray_origin = (u_vol.invViewProj * vec4(0, 0, -1, 1)).xyz; // Approximate cam pos from invVP if needed, but better use u_vol.viewPos if we had it.
-    // Actually, we need the camera position. Let's assume view_pos_near at center is cam pos.
-    vec4 cam_pos_h = u_vol.invViewProj * vec4(0, 0, -1, 1);
-    vec3 cam_pos = cam_pos_h.xyz / cam_pos_h.w;
-
+    vec3 cam_pos = u_vol.viewPosVol.xyz;
     vec3 ray_dir = normalize(far_pt.xyz - cam_pos);
 
-    // 2. Map logarithmic depth to linear distance
     float z_near = (u_cascadeIndex == 0) ? u_vol.gridParams.x : u_vol.cascadeSplits[u_cascadeIndex-1];
     float z_far = u_vol.cascadeSplits[u_cascadeIndex];
     float dist = z_near * pow(z_far / z_near, uvw.z);
@@ -60,15 +57,18 @@ void main() {
     vec3 worldPos = get_world_pos(uvw);
 
     float height = worldPos.y;
-    float haze = u_vol.hazeParams.x * exp(-max(0.0, height - u_vol.hazeParams.y) * 0.1);
+    // Lower falloff for more persistent fog height-wise (0.005 = 200m scale height)
+    float haze = u_vol.hazeParams.x * exp(-max(0.0, height - u_vol.hazeParams.y) * 0.005);
 
     float gridSpacing = u_windParams.x;
+    // Fix LBM UV mapping: xy is origin, zw is size
     vec2 lbmUV = ((worldPos.xz / gridSpacing) - vec2(u_windOriginSize.xz)) / vec2(u_windOriginSize.yw);
     vec4 aerosolSample = texture(u_aerosolTexture, lbmUV);
     float aerosolDensity = aerosolSample.a;
 
     float noise = fastSimplex3d(worldPos * u_vol.hazeParams.z) * u_vol.hazeParams.w;
-    float density = max(0.0, haze + aerosolDensity + noise);
+    // Boost baseline density
+    float density = max(0.0, haze + aerosolDensity * 5.0 + noise) + 0.05;
 
     // Convert to fixed point for atomic additions in particle pass
     uint densityFixed = uint(density * 1000.0);

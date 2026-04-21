@@ -2053,12 +2053,14 @@ namespace Boidsish {
 				return;
 
 			if (volumetric_lighting_manager) {
+				float world_scale = terrain_generator ? terrain_generator->GetWorldScale() : 1.0f;
 				volumetric_lighting_manager->Update(
 					simulation_delta_time,
 					simulation_time,
 					current_view_matrix,
 					projection,
-					camera.pos()
+					camera.pos(),
+					world_scale
 				);
 			}
 

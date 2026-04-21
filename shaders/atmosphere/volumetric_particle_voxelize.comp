@@ -9,10 +9,15 @@ layout(std140, binding = [[VOLUMETRIC_LIGHTING_BINDING]]) uniform VolumetricLigh
     vec4 resolution;     // x: gridW, y: gridH, z: gridD, w: intensity
     vec4 sunDir;         // xyz: dir, w: sun intensity
     vec4 sunColor;       // rgb: color, w: mie anisotropy (g)
+    vec4 moonDir;        // xyz: dir, w: moon intensity
+    vec4 moonColor;      // rgb: color, w: reserved
     vec4 hazeParams;     // x: haze density, y: haze height, z: noise scale, w: noise strength
+    vec4 hazeColor;      // rgb: color, w: reserved
     vec4 ambientColor;   // rgb: color, w: scattering scale
     vec4 cloudParams;    // x: cloud coverage, y: cloud density, z: cloud shadow intensity, w: reserved
     vec4 cascadeSplits;
+    vec4 viewPosVol;     // xyz: camPos, w: worldScale
+    vec4 timeParams;     // x: totalTime, y: frameIndex, zw: reserved
 } u_vol;
 
 #define COMPUTE_SHADER
