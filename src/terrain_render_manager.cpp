@@ -361,7 +361,13 @@ namespace Boidsish {
 		//   texture[z * num_x + x] = height at local (x, z)
 		// This means we need to transpose the data.
 
-		const int              res = heightmap_resolution_;
+		// Update world scale tracking if it's the first chunk
+		const int res = heightmap_resolution_;
+		if (last_world_scale_ < 0.0f && res > 1) {
+			float dist_x = glm::length(positions[res] - positions[0]);
+			last_world_scale_ = dist_x;
+		}
+
 		std::vector<float>     heightmap(res * res);
 		std::vector<glm::vec3> reordered_normals(res * res);
 		std::vector<glm::vec2> reordered_biomes(res * res);
@@ -981,16 +987,25 @@ namespace Boidsish {
 		glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
 	}
 
+	void TerrainRenderManager::CommitUpdates() {
+		PerformBaking(last_world_scale_);
+	}
+
 	void TerrainRenderManager::PerformBaking(float world_scale) {
 		std::vector<BakeTask> tasks;
 		{
 			std::lock_guard<std::mutex> lock(mutex_);
-			if (bake_queue_.empty()) return;
+			if (bake_queue_.empty())
+				return;
 			tasks = std::move(bake_queue_);
 			bake_queue_.clear();
 		}
 
-		if (!terrain_bake_shader_ || !terrain_bake_shader_->isValid()) return;
+		if (world_scale <= 0.0f)
+			world_scale = 1.0f; // Fallback for early calls
+
+		if (!terrain_bake_shader_ || !terrain_bake_shader_->isValid())
+			return;
 
 		PROJECT_PROFILE_SCOPE("TerrainRenderManager::PerformBaking");
 
@@ -1028,9 +1043,10 @@ namespace Boidsish {
 
 			terrain_bake_shader_->setInt("u_numTasks", static_cast<int>(batch_size));
 
-			// Local size is 8x8, chunk size is 32+1=33
-			// We need 5x5 workgroups to cover 33x33 pixels per slice
-			glDispatchCompute(5, 5, static_cast<GLuint>(batch_size));
+			// Local size is 8x8. Calculate workgroup counts to cover resolution.
+			GLuint groups_x = (heightmap_resolution_ + 7) / 8;
+			GLuint groups_y = (heightmap_resolution_ + 7) / 8;
+			glDispatchCompute(groups_x, groups_y, static_cast<GLuint>(batch_size));
 		}
 
 		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);

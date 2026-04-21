@@ -127,9 +127,9 @@ namespace Boidsish {
 		);
 
 		/**
-		 * @brief Commit any pending updates (no-op for this implementation).
+		 * @brief Commit any pending updates.
 		 */
-		void CommitUpdates() {}
+		void CommitUpdates();
 
 		/**
 		 * @brief Set a callback to be notified when a chunk is evicted due to LRU.

@@ -80,6 +80,15 @@ namespace Boidsish {
 		}
 
 		/**
+		 * @brief Get a pointer to a specific frame's buffer segment.
+		 */
+		T* GetFrameDataPtr(int buffer_index) {
+			assert(mapped_bytes_ != nullptr && "PersistentBuffer was not successfully mapped");
+			assert(buffer_index >= 0 && buffer_index < num_buffers_);
+			return reinterpret_cast<T*>(mapped_bytes_ + (buffer_index * aligned_frame_stride_));
+		}
+
+		/**
 		 * @brief Get the byte offset for the current frame's buffer segment.
 		 * Guaranteed to be aligned for GL_UNIFORM_BUFFER targets.
 		 */
