@@ -63,8 +63,8 @@ namespace Boidsish {
         GLuint _parameterUbo = 0;
 
         // Compute shaders
-        std::unique_ptr<ComputeShader> _gridInitShader;
         std::unique_ptr<ComputeShader> _densityVoxelizationShader;
+        std::unique_ptr<ComputeShader> _particleVoxelizationShader;
         std::unique_ptr<ComputeShader> _lightingInjectionShader;
         std::unique_ptr<ComputeShader> _integrationShader;
 

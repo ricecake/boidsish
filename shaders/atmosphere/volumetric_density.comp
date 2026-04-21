@@ -1,7 +1,7 @@
 #version 430 core
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
-layout(r16f, binding = 0) uniform image3D outDensityVolume;
+layout(r32ui, binding = 0) uniform uimage3D outDensityVolume;
 
 layout(std140, binding = [[VOLUMETRIC_LIGHTING_BINDING]]) uniform VolumetricLighting {
     mat4 invViewProj;
@@ -18,27 +18,35 @@ layout(std140, binding = [[VOLUMETRIC_LIGHTING_BINDING]]) uniform VolumetricLigh
 
 #include "../helpers/fast_noise.glsl"
 
-uniform sampler2D u_aerosolTexture;
-uniform int u_cascadeIndex;
-
 layout(std140, binding = [[WIND_DATA_BINDING]]) uniform WindData {
 	ivec4 u_windOriginSize;
 	vec4  u_windParams;
 };
 
+uniform sampler2D u_aerosolTexture;
+uniform int u_cascadeIndex;
+
 vec3 get_world_pos(vec3 uvw) {
+    // 1. Reconstruct ray direction in world space from screen UV
+    vec2 ndc_xy = uvw.xy * 2.0 - 1.0;
+    vec4 near_pt = u_vol.invViewProj * vec4(ndc_xy, -1.0, 1.0);
+    near_pt /= near_pt.w;
+    vec4 far_pt = u_vol.invViewProj * vec4(ndc_xy, 1.0, 1.0);
+    far_pt /= far_pt.w;
+
+    vec3 ray_origin = (u_vol.invViewProj * vec4(0, 0, -1, 1)).xyz; // Approximate cam pos from invVP if needed, but better use u_vol.viewPos if we had it.
+    // Actually, we need the camera position. Let's assume view_pos_near at center is cam pos.
+    vec4 cam_pos_h = u_vol.invViewProj * vec4(0, 0, -1, 1);
+    vec3 cam_pos = cam_pos_h.xyz / cam_pos_h.w;
+
+    vec3 ray_dir = normalize(far_pt.xyz - cam_pos);
+
+    // 2. Map logarithmic depth to linear distance
     float z_near = (u_cascadeIndex == 0) ? u_vol.gridParams.x : u_vol.cascadeSplits[u_cascadeIndex-1];
     float z_far = u_vol.cascadeSplits[u_cascadeIndex];
-    float linear_z = z_near * pow(z_far / z_near, uvw.z);
+    float dist = z_near * pow(z_far / z_near, uvw.z);
 
-    vec2 ndc_xy = uvw.xy * 2.0 - 1.0;
-    vec4 view_pos_near = u_vol.invViewProj * vec4(ndc_xy, -1.0, 1.0);
-    view_pos_near /= view_pos_near.w;
-    vec4 view_pos_far = u_vol.invViewProj * vec4(ndc_xy, 1.0, 1.0);
-    view_pos_far /= view_pos_far.w;
-
-    float d = (linear_z - u_vol.gridParams.x) / (u_vol.gridParams.y - u_vol.gridParams.x);
-    return mix(view_pos_near.xyz, view_pos_far.xyz, d);
+    return cam_pos + ray_dir * dist;
 }
 
 void main() {
@@ -62,5 +70,7 @@ void main() {
     float noise = fastSimplex3d(worldPos * u_vol.hazeParams.z) * u_vol.hazeParams.w;
     float density = max(0.0, haze + aerosolDensity + noise);
 
-    imageStore(outDensityVolume, texel, vec4(density, 0, 0, 0));
+    // Convert to fixed point for atomic additions in particle pass
+    uint densityFixed = uint(density * 1000.0);
+    imageStore(outDensityVolume, texel, uvec4(densityFixed, 0, 0, 0));
 }

@@ -75,6 +75,11 @@ namespace Boidsish {
 		// Texture unit bindings
 		T::RegisterConstant("PHASOR_TEXTURE_BINDING", Constants::TextureUnit::NoisePhasor());
 		T::RegisterConstant("WIND_TEXTURE_BINDING", Constants::TextureUnit::WindData());
+		T::RegisterConstant("VOLUMETRIC_CASCADE0_UNIT", Constants::TextureUnit::VolumetricCascade0());
+		T::RegisterConstant("VOLUMETRIC_CASCADE1_UNIT", Constants::TextureUnit::VolumetricCascade1());
+		T::RegisterConstant("VOLUMETRIC_CASCADE2_UNIT", Constants::TextureUnit::VolumetricCascade2());
+		T::RegisterConstant("VOLUMETRIC_CASCADE3_UNIT", Constants::TextureUnit::VolumetricCascade3());
+		T::RegisterConstant("AEROSOL_DATA_UNIT", Constants::TextureUnit::AerosolData());
 	}
 
 } // namespace Boidsish

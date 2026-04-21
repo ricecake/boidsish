@@ -38,10 +38,10 @@ namespace Boidsish {
     }
 
     void VolumetricLightingManager::CreateTextures() {
-        auto create3DTexture = [&](GLuint& tex, GLenum internalFormat, int w, int h, int d) {
+        auto create3DTexture = [&](GLuint& tex, GLenum internalFormat, int w, int h, int d, GLenum format = GL_RGBA, GLenum type = GL_FLOAT) {
             glGenTextures(1, &tex);
             glBindTexture(GL_TEXTURE_3D, tex);
-            glTexImage3D(GL_TEXTURE_3D, 0, internalFormat, w, h, d, 0, GL_RGBA, GL_FLOAT, nullptr);
+            glTexImage3D(GL_TEXTURE_3D, 0, internalFormat, w, h, d, 0, format, type, nullptr);
             glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
             glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
             glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -52,7 +52,7 @@ namespace Boidsish {
         for (int i = 0; i < kMaxVolumetricCascades; ++i) {
             // Distant cascades can have lower resolution
             int div = 1 << i;
-            create3DTexture(_densityVolumes[i], GL_R16F, _gridW / div, _gridH / div, _gridD);
+            create3DTexture(_densityVolumes[i], GL_R32UI, _gridW / div, _gridH / div, _gridD, GL_RED_INTEGER, GL_UNSIGNED_INT);
             create3DTexture(_scatteringVolumes[i], GL_RGBA16F, _gridW / div, _gridH / div, _gridD);
             create3DTexture(_integratedVolumes[i], GL_RGBA16F, _gridW / div, _gridH / div, _gridD);
         }
@@ -61,8 +61,8 @@ namespace Boidsish {
     }
 
     void VolumetricLightingManager::CreateShaders() {
-        _gridInitShader = std::make_unique<ComputeShader>("shaders/atmosphere/volumetric_grid_init.comp");
         _densityVoxelizationShader = std::make_unique<ComputeShader>("shaders/atmosphere/volumetric_density.comp");
+        _particleVoxelizationShader = std::make_unique<ComputeShader>("shaders/atmosphere/volumetric_particle_voxelize.comp");
         _lightingInjectionShader = std::make_unique<ComputeShader>("shaders/atmosphere/volumetric_lighting_injection.comp");
         _integrationShader = std::make_unique<ComputeShader>("shaders/atmosphere/volumetric_integration.comp");
     }
@@ -111,13 +111,31 @@ namespace Boidsish {
     void VolumetricLightingManager::Dispatch(const glm::mat4& view, const glm::mat4& projection, const glm::vec3& cameraPos, float totalTime) {
         PROJECT_PROFILE_SCOPE("VolumetricLighting::Dispatch");
 
-        // Bind UBO for parameters
-        glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::VolumetricLighting(), _parameterUbo, 0, sizeof(VolumetricLightingUbo));
-
         auto weatherMgr = _loc.Get<WeatherManager>();
         auto noiseMgr = _loc.Get<NoiseManager>();
         auto shadowMgr = _loc.Get<ShadowManager>();
         auto lightMgr = _loc.Get<LightManager>();
+        auto fireMgr = _loc.Get<FireEffectManager>();
+
+        // Bind UBO for parameters
+        glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::VolumetricLighting(), _parameterUbo, 0, sizeof(VolumetricLightingUbo));
+
+        // Bind WindData UBO for world-space aerosol mapping
+        weatherMgr->UpdateWindUbo(totalTime); // Ensure updated
+
+        // Bind Shadows UBO for CSM
+        if (shadowMgr) {
+            glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::Shadows(), shadowMgr->GetShadowUbo(), 0, 16 * sizeof(glm::mat4) + 2 * sizeof(glm::vec4) + 16);
+        }
+
+        // Bind Lighting UBO for viewPos
+        // (VisualizerImpl usually handles this but we do it here for compute safety)
+        if (lightMgr) {
+            glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::Lighting(), lightMgr->GetLightingUbo(), 0, sizeof(LightingUbo));
+        }
+
+        // Bind SH Probes
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainProbes(), _loc.Get<TerrainRenderManager>()->GetProbeBuffer());
 
         for (int cascade = 0; cascade < kMaxVolumetricCascades; ++cascade) {
             int div = 1 << cascade;
@@ -127,15 +145,28 @@ namespace Boidsish {
 
             _densityVoxelizationShader->use();
             _densityVoxelizationShader->setInt("u_cascadeIndex", cascade);
-            glBindImageTexture(0, _densityVolumes[cascade], 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_R16F);
+            glBindImageTexture(0, _densityVolumes[cascade], 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_R32UI);
             if (noiseMgr) noiseMgr->BindDefault(*_densityVoxelizationShader);
             if (weatherMgr) {
-                glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::WindData() + 1);
+                glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AerosolData());
                 glBindTexture(GL_TEXTURE_2D, weatherMgr->GetAerosolTexture());
-                _densityVoxelizationShader->trySetInt("u_aerosolTexture", Constants::TextureUnit::WindData() + 1);
+                _densityVoxelizationShader->trySetInt("u_aerosolTexture", Constants::TextureUnit::AerosolData());
             }
             glDispatchCompute((cw + 7) / 8, (ch + 7) / 8, (cd + 7) / 8);
             glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+            // Splat particles into the density volume
+            if (fireMgr) {
+                _particleVoxelizationShader->use();
+                _particleVoxelizationShader->setInt("u_cascadeIndex", cascade);
+                _particleVoxelizationShader->setInt("u_particleCount", Constants::Class::Particles::MaxParticles());
+                glBindImageTexture(0, _densityVolumes[cascade], 0, GL_TRUE, 0, GL_READ_WRITE, GL_R32UI);
+
+                // Particle buffer is already bound to PARTICLE_BUFFER_BINDING in VisualizerImpl::UpdateSystems
+
+                glDispatchCompute((Constants::Class::Particles::MaxParticles() + 255) / 256, 1, 1);
+                glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+            }
 
             _lightingInjectionShader->use();
             _lightingInjectionShader->setInt("u_cascadeIndex", cascade);
@@ -170,9 +201,10 @@ namespace Boidsish {
     void VolumetricLightingManager::BindToShader(class ShaderBase& shader) {
         for (int i = 0; i < kMaxVolumetricCascades; ++i) {
             std::string name = "u_volumetricIntegrated[" + std::to_string(i) + "]";
-            glActiveTexture(GL_TEXTURE0 + 28 + i);
+            int unit = Constants::TextureUnit::VolumetricCascade0() + i;
+            glActiveTexture(GL_TEXTURE0 + unit);
             glBindTexture(GL_TEXTURE_3D, _integratedVolumes[i]);
-            shader.trySetInt(name, 28 + i);
+            shader.trySetInt(name, unit);
         }
 
         // Also bind the VolumetricLighting UBO

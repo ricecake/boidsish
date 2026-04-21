@@ -121,6 +121,21 @@ namespace Boidsish {
 			consteval int HiZ() {
 				return 27;
 			}
+			consteval int VolumetricCascade0() {
+				return 28;
+			}
+			consteval int VolumetricCascade1() {
+				return 29;
+			}
+			consteval int VolumetricCascade2() {
+				return 30;
+			}
+			consteval int VolumetricCascade3() {
+				return 31;
+			}
+			consteval int AerosolData() {
+				return 32;
+			}
 		} // namespace TextureUnit
 
 		namespace SsboBinding {

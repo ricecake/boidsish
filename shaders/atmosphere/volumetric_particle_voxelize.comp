@@ -1,0 +1,75 @@
+#version 430 core
+
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+layout(std140, binding = [[VOLUMETRIC_LIGHTING_BINDING]]) uniform VolumetricLighting {
+    mat4 invViewProj;
+    mat4 prevViewProj;
+    vec4 gridParams;     // x: near, y: far, z: log bias, w: cascade count
+    vec4 resolution;     // x: gridW, y: gridH, z: gridD, w: intensity
+    vec4 sunDir;         // xyz: dir, w: sun intensity
+    vec4 sunColor;       // rgb: color, w: mie anisotropy (g)
+    vec4 hazeParams;     // x: haze density, y: haze height, z: noise scale, w: noise strength
+    vec4 ambientColor;   // rgb: color, w: scattering scale
+    vec4 cloudParams;    // x: cloud coverage, y: cloud density, z: cloud shadow intensity, w: reserved
+    vec4 cascadeSplits;
+} u_vol;
+
+#include "../particle_types.glsl"
+
+layout(std430, binding = [[PARTICLE_BUFFER_BINDING]]) buffer ParticleBuffer {
+    Particle particles[];
+};
+
+// We use an image to store density. Since images don't support atomic float addition,
+// we use a workaround with imageAtomicAdd on a uint image (fixed point).
+layout(r32ui, binding = 0) uniform uimage3D outDensityVolume;
+
+uniform int u_cascadeIndex;
+uniform int u_particleCount;
+
+void main() {
+    uint idx = gl_GlobalInvocationID.x;
+    if (idx >= u_particleCount) return;
+
+    Particle p = particles[idx];
+    if (p.life <= 0.0) return;
+
+    vec3 worldPos = p.pos.xyz;
+
+    // Project to view space
+    vec4 viewPosH = u_vol.prevViewProj * vec4(worldPos, 1.0); // Use prev VP if needed, but current is better.
+    // Wait, VolumetricLightingUbo has invViewProj (current). Let's use it to get cam pos.
+    vec4 cam_pos_h = u_vol.invViewProj * vec4(0, 0, -1, 1);
+    vec3 cam_pos = cam_pos_h.xyz / cam_pos_h.w;
+
+    float dist = length(worldPos - cam_pos);
+
+    // Check if within cascade
+    float z_near = (u_cascadeIndex == 0) ? u_vol.gridParams.x : u_vol.cascadeSplits[u_cascadeIndex-1];
+    float z_far = u_vol.cascadeSplits[u_cascadeIndex];
+
+    if (dist < z_near || dist > z_far) return;
+
+    // Determine voxel coordinate
+    vec4 ndc = u_vol.prevViewProj * vec4(worldPos, 1.0); // This is not quite right for froxels
+    // We need projection of worldPos into the view-frustum.
+    // Let's use the actual projection.
+
+    // Convert dist to log Z
+    float volZ = log(dist / z_near) / log(z_far / z_near);
+
+    // Screen UV
+    vec4 clipPos = (u_vol.invViewProj == mat4(0)) ? vec4(0) : (inverse(u_vol.invViewProj) * vec4(worldPos, 1.0));
+    vec2 uv = (clipPos.xy / clipPos.w) * 0.5 + 0.5;
+
+    if (any(lessThan(uv, vec2(0))) || any(greaterThan(uv, vec2(1)))) return;
+
+    float div = pow(2.0, float(u_cascadeIndex));
+    ivec3 texel = ivec3(uv * (u_vol.resolution.xy / div), volZ * u_vol.resolution.z);
+
+    // Splat density (fixed point atomic add)
+    // Scale density by some factor
+    uint densityFixed = uint(p.color.a * 1000.0);
+    imageAtomicAdd(outDensityVolume, texel, densityFixed);
+}
