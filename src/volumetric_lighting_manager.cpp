@@ -8,6 +8,7 @@
 #include "light_manager.h"
 #include "fire_effect_manager.h"
 #include "atmosphere_manager.h"
+#include "terrain_render_manager.h"
 #include "profiler.h"
 #include <iostream>
 #include <glm/gtc/matrix_transform.hpp>
@@ -130,12 +131,14 @@ namespace Boidsish {
 
         // Bind Lighting UBO for viewPos
         // (VisualizerImpl usually handles this but we do it here for compute safety)
-        if (lightMgr) {
-            glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::Lighting(), lightMgr->GetLightingUbo(), 0, sizeof(LightingUbo));
-        }
+        // Note: We use the actual buffer handle from the service if needed,
+        // but for now we assume it's already bound to LIGHTING_BINDING by VisualizerImpl.
 
         // Bind SH Probes
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainProbes(), _loc.Get<TerrainRenderManager>()->GetProbeBuffer());
+        auto terrainMgr = _loc.Get<TerrainRenderManager>();
+        if (terrainMgr) {
+            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainProbes(), terrainMgr->GetProbeBuffer());
+        }
 
         for (int cascade = 0; cascade < kMaxVolumetricCascades; ++cascade) {
             int div = 1 << cascade;

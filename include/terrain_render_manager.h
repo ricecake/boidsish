@@ -158,6 +158,11 @@ namespace Boidsish {
 		GLuint GetBiomeTexture() const { return biome_texture_; }
 
 		/**
+		 * @brief Get the SH probe SSBO.
+		 */
+		GLuint GetProbeBuffer() const { return probe_ssbo_; }
+
+		/**
 		 * @brief Get info about all registered chunks for external use (e.g., decor placement).
 		 * Returns a vector of (world_offset_x, world_offset_z, texture_slice, chunk_size).
 		 * @param world_scale The world scale to apply to the chunk size.
