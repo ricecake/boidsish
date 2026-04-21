@@ -268,22 +268,28 @@ namespace Boidsish {
 
 		max_chunks_ = new_capacity;
 
-		auto create_array = [&](GLuint& tex, GLenum internalFormat, GLenum format, GLenum type, bool linear, int res) {
+		auto create_array = [&](GLuint& tex, GLenum internalFormat, bool linear, int res, bool mipmaps) {
 			glGenTextures(1, &tex);
 			glBindTexture(GL_TEXTURE_2D_ARRAY, tex);
-			glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, internalFormat, res, res, max_chunks_, 0, format, type, nullptr);
-			glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, linear ? GL_LINEAR : GL_NEAREST);
+			int mips = mipmaps ? 1 + static_cast<int>(std::floor(std::log2(res))) : 1;
+			glTexStorage3D(GL_TEXTURE_2D_ARRAY, mips, internalFormat, res, res, max_chunks_);
+
+			if (mipmaps) {
+				glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+			} else {
+				glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, linear ? GL_LINEAR : GL_NEAREST);
+			}
 			glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, linear ? GL_LINEAR : GL_NEAREST);
 			glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 			glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 		};
 
-		create_array(raw_heightmap_texture_, GL_RGBA16F, GL_RGBA, GL_FLOAT, true, heightmap_resolution_);
-		create_array(heightmap_texture_, GL_RGBA16F, GL_RGBA, GL_FLOAT, true, heightmap_resolution_);
-		create_array(baked_params_texture_, GL_RGBA16F, GL_RGBA, GL_FLOAT, true, heightmap_resolution_);
-		create_array(albedo_texture_, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, true, kTextureResolution);
-		create_array(material_texture_, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, true, kTextureResolution);
-		create_array(biome_texture_, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, true, heightmap_resolution_);
+		create_array(raw_heightmap_texture_, GL_RGBA16F, true, heightmap_resolution_, false);
+		create_array(heightmap_texture_, GL_RGBA16F, true, heightmap_resolution_, false);
+		create_array(baked_params_texture_, GL_RGBA16F, true, heightmap_resolution_, false);
+		create_array(albedo_texture_, GL_RGBA8, true, kTextureResolution, true);
+		create_array(material_texture_, GL_RGBA8, true, kTextureResolution, true);
+		create_array(biome_texture_, GL_RGBA8, true, heightmap_resolution_, false);
 
 		glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
 	}
@@ -1135,6 +1141,13 @@ namespace Boidsish {
 			}
 
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+
+			// Generate mipmaps for high-res material textures
+			glBindTexture(GL_TEXTURE_2D_ARRAY, albedo_texture_);
+			glGenerateMipmap(GL_TEXTURE_2D_ARRAY);
+			glBindTexture(GL_TEXTURE_2D_ARRAY, material_texture_);
+			glGenerateMipmap(GL_TEXTURE_2D_ARRAY);
+			glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
 		}
 
 		// Synchronize to ensure initial loads are fully baked before rendering

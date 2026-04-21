@@ -261,11 +261,11 @@ void main() {
     vec3 worldPos = vec3(worldOffset.x + texUV.x * chunkSize, height, worldOffset.y + texUV.y * chunkSize);
     float baseFreq = 0.1 / worldScale;
 
-    float largeNoise = fastWarpedFbm3d(worldPos * (baseFreq * 0.1));
-	float medNoise = largeNoise;
-	float fineNoise = largeNoise;
-	float macroNoise = largeNoise;
-	float combinedNoise = largeNoise;
+    float largeNoise = fastWarpedFbm3d(worldPos * (baseFreq * 0.5));
+	float medNoise = fastWorley3d(vec3(largeNoise) * (baseFreq * 2.0));
+	float fineNoise = fastFbm3d(worldPos * (baseFreq * 5.0));
+	float macroNoise = fastSimplex3d(worldPos * (baseFreq * 0.1));
+	float combinedNoise = largeNoise * 0.6 + (1.0 - medNoise) * 0.3 + fineNoise * 0.1;
 
     float slope = dot(normal, vec3(0.0, 1.0, 0.0));
     float distortedSlope = slope + medNoise * 0.08;
