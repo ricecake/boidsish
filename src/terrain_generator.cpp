@@ -241,7 +241,8 @@ namespace Boidsish {
 					chunk.terrain->GetIndices(),
 					chunk.terrain->proxy.minY,
 					chunk.terrain->proxy.maxY,
-					glm::vec3(chunk.key.first * scaled_chunk_size, 0, chunk.key.second * scaled_chunk_size)
+					glm::vec3(chunk.key.first * scaled_chunk_size, 0, chunk.key.second * scaled_chunk_size),
+					world_scale_
 				);
 				registrations_this_frame++;
 			}
@@ -433,6 +434,10 @@ namespace Boidsish {
 		// Full Registration Pass (Unthrottled)
 		if (render_manager_) {
 			std::lock_guard<std::recursive_mutex> lock(chunk_cache_mutex_);
+
+			// Ensure manager knows the correct camera and scale for initial baking
+			render_manager_->PrepareForRender(frustum, camera.pos(), world_scale_);
+
 			for (auto const& [key, terrain_chunk] : chunk_cache_) {
 				if (!render_manager_->HasChunk(key)) {
 					render_manager_->RegisterChunk(
@@ -443,11 +448,12 @@ namespace Boidsish {
 						terrain_chunk->GetIndices(),
 						terrain_chunk->proxy.minY,
 						terrain_chunk->proxy.maxY,
-						glm::vec3(key.first * scaled_chunk_size, 0, key.second * scaled_chunk_size)
+						glm::vec3(key.first * scaled_chunk_size, 0, key.second * scaled_chunk_size),
+						world_scale_
 					);
 				}
 			}
-			render_manager_->CommitUpdates();
+			render_manager_->CommitUpdates(true);
 		}
 
 		// Final Update to sync visible_chunks_ and any remaining state
@@ -1625,7 +1631,8 @@ namespace Boidsish {
 								new_terrain->GetIndices(),
 								new_terrain->proxy.minY,
 								new_terrain->proxy.maxY,
-								glm::vec3(result.chunk_x * scaled_chunk_size, 0, result.chunk_z * scaled_chunk_size)
+								glm::vec3(result.chunk_x * scaled_chunk_size, 0, result.chunk_z * scaled_chunk_size),
+								world_scale_
 							);
 						} else {
 							new_terrain->setupMesh();

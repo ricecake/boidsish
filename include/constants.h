@@ -117,6 +117,21 @@ namespace Boidsish {
 			consteval int HiZ() {
 				return 27;
 			}
+			consteval int TerrainBakedParams() {
+				return 28;
+			}
+			consteval int TerrainRawHeightmap() {
+				return 29;
+			}
+			consteval int TerrainBiomeImage() {
+				return 30;
+			}
+			consteval int TerrainHeightmapImage() {
+				return 31;
+			}
+			consteval int TerrainBakedParamsImage() {
+				return 32;
+			}
 		} // namespace TextureUnit
 
 		namespace SsboBinding {
