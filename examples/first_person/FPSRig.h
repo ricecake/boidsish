@@ -93,6 +93,17 @@ namespace Boidsish {
 
 		std::shared_ptr<Model> GetModel() const { return model_; }
 
+		/**
+		 * @brief Get the world-space position of the teapot's spout (muzzle).
+		 * @return glm::vec3 world-space position
+		 */
+		glm::vec3 GetMuzzlePosition() const {
+			if (!model_)
+				return glm::vec3(0.0f);
+			// The Utah teapot spout is roughly at (3.43, 1.2, 0) in its original model space.
+			return glm::vec3(model_->GetModelMatrix() * glm::vec4(3.43f, 1.2f, 0.0f, 1.0f));
+		}
+
 	private:
 		std::shared_ptr<Model> model_;
 		float                  currentSwayX_ = 0.0f;
