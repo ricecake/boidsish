@@ -260,12 +260,16 @@ namespace Boidsish {
 
 		void UpdateWindUbo(float totalTime);
 
+		unsigned int GetAerosolTexture() const { return aerosol_texture_; }
+
 		void SetTerrainGenerator(ITerrainGenerator* terrain) { terrain_ = terrain; }
 
 	private:
 		unsigned int wind_data_ubo_ = 0;
 		unsigned int wind_texture_ = 0;
+		unsigned int aerosol_texture_ = 0;
 		std::vector<glm::vec4> wind_data_cache_;
+		std::vector<glm::vec4> aerosol_data_cache_;
 
 		struct AttributeState {
 			float                velocity = 0.0f;

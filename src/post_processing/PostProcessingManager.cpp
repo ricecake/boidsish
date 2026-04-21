@@ -10,8 +10,8 @@
 namespace Boidsish {
 	namespace PostProcessing {
 
-		PostProcessingManager::PostProcessingManager(ServiceLocator& /*loc*/, int width, int height, GLuint quad_vao):
-			width_(width), height_(height), quad_vao_(quad_vao) {
+		PostProcessingManager::PostProcessingManager(ServiceLocator& loc, int width, int height, GLuint quad_vao):
+			loc_(loc), width_(width), height_(height), quad_vao_(quad_vao) {
 			pingpong_fbo_[0] = 0;
 			pingpong_fbo_[1] = 0;
 		}
@@ -52,12 +52,14 @@ namespace Boidsish {
 		}
 
 		void PostProcessingManager::AddEffect(std::shared_ptr<IPostProcessingEffect> effect) {
+			effect->SetServiceLocator(loc_);
 			effect->Initialize(width_, height_);
 			pre_tone_mapping_effects_.push_back(effect);
 		}
 
 		void PostProcessingManager::SetToneMappingEffect(std::shared_ptr<IPostProcessingEffect> effect) {
 			if (effect) {
+				effect->SetServiceLocator(loc_);
 				effect->Initialize(width_, height_);
 			}
 			tone_mapping_effect_ = effect;

@@ -7,6 +7,8 @@
 #include <glm/glm.hpp>
 
 namespace Boidsish {
+	class ServiceLocator;
+
 	namespace PostProcessing {
 
 		class IPostProcessingEffect {
@@ -38,8 +40,11 @@ namespace Boidsish {
 
 			virtual bool IsEarly() const { return false; }
 
+			void SetServiceLocator(ServiceLocator& loc) { service_locator_ = &loc; }
+
 		protected:
-			std::string name_;
+			ServiceLocator* service_locator_ = nullptr;
+			std::string     name_;
 			bool        is_enabled_ = true;
 		};
 

@@ -74,6 +74,7 @@ namespace Boidsish {
 			std::shared_ptr<IPostProcessingEffect> GetToneMappingEffect() { return tone_mapping_effect_; }
 
 		private:
+			ServiceLocator&                                     loc_;
 			void InitializeFBOs();
 			void ApplyEffectInternal(
 				std::shared_ptr<IPostProcessingEffect> effect,

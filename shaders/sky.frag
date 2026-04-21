@@ -10,6 +10,21 @@ in vec2 TexCoords;
 #include "atmosphere/common.glsl"
 #include "helpers/lighting.glsl"
 
+layout(std140, binding = [[VOLUMETRIC_LIGHTING_BINDING]]) uniform VolumetricLighting {
+    mat4 invViewProj;
+    mat4 prevViewProj;
+    vec4 gridParams;     // x: near, y: far, z: log bias, w: cascade count
+    vec4 resolution;     // x: gridW, y: gridH, z: gridD, w: intensity
+    vec4 sunDir;         // xyz: dir, w: sun intensity
+    vec4 sunColor;       // rgb: color, w: mie anisotropy (g)
+    vec4 hazeParams;     // x: haze density, y: haze height, z: noise scale, w: noise strength
+    vec4 ambientColor;   // rgb: color, w: scattering scale
+    vec4 cloudParams;    // x: cloud coverage, y: cloud density, z: cloud shadow intensity, w: reserved
+    vec4 cascadeSplits;
+} u_vol;
+
+uniform sampler3D u_volumetricIntegrated[4];
+
 uniform mat4 invProjection;
 uniform mat4 invView;
 
@@ -248,6 +263,11 @@ void main() {
 	vec3 moonDisc = u_moonRadiance * phasedMask * moonTransmittance;
 
 	vec3 finalColor = skyRadiance + sunDisc + moonDisc + spaceBackground;
+
+    // Volumetric Lighting Integration for the sky (sample outermost cascade at far plane)
+    vec2 volUV = TexCoords;
+    vec4 volumetric = texture(u_volumetricIntegrated[3], vec3(volUV, 1.0));
+    finalColor = finalColor * volumetric.a + volumetric.rgb;
 
 	FragColor = vec4(finalColor, 1.0);
 	Velocity = vec4(0, 0, 1.0, 0.0); // Roughness 1.0 (sky is not reflective), Metallic 0.0

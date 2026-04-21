@@ -1,0 +1,66 @@
+#version 430 core
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
+layout(r16f, binding = 0) uniform image3D outDensityVolume;
+
+layout(std140, binding = [[VOLUMETRIC_LIGHTING_BINDING]]) uniform VolumetricLighting {
+    mat4 invViewProj;
+    mat4 prevViewProj;
+    vec4 gridParams;     // x: near, y: far, z: log bias, w: cascade count
+    vec4 resolution;     // x: gridW, y: gridH, z: gridD, w: intensity
+    vec4 sunDir;         // xyz: dir, w: sun intensity
+    vec4 sunColor;       // rgb: color, w: mie anisotropy (g)
+    vec4 hazeParams;     // x: haze density, y: haze height, z: noise scale, w: noise strength
+    vec4 ambientColor;   // rgb: color, w: scattering scale
+    vec4 cloudParams;    // x: cloud coverage, y: cloud density, z: cloud shadow intensity, w: reserved
+    vec4 cascadeSplits;
+} u_vol;
+
+#include "../helpers/fast_noise.glsl"
+
+uniform sampler2D u_aerosolTexture;
+uniform int u_cascadeIndex;
+
+layout(std140, binding = [[WIND_DATA_BINDING]]) uniform WindData {
+	ivec4 u_windOriginSize;
+	vec4  u_windParams;
+};
+
+vec3 get_world_pos(vec3 uvw) {
+    float z_near = (u_cascadeIndex == 0) ? u_vol.gridParams.x : u_vol.cascadeSplits[u_cascadeIndex-1];
+    float z_far = u_vol.cascadeSplits[u_cascadeIndex];
+    float linear_z = z_near * pow(z_far / z_near, uvw.z);
+
+    vec2 ndc_xy = uvw.xy * 2.0 - 1.0;
+    vec4 view_pos_near = u_vol.invViewProj * vec4(ndc_xy, -1.0, 1.0);
+    view_pos_near /= view_pos_near.w;
+    vec4 view_pos_far = u_vol.invViewProj * vec4(ndc_xy, 1.0, 1.0);
+    view_pos_far /= view_pos_far.w;
+
+    float d = (linear_z - u_vol.gridParams.x) / (u_vol.gridParams.y - u_vol.gridParams.x);
+    return mix(view_pos_near.xyz, view_pos_far.xyz, d);
+}
+
+void main() {
+    ivec3 texel = ivec3(gl_GlobalInvocationID.xyz);
+    float div = pow(2.0, float(u_cascadeIndex));
+    vec3 res = vec3(u_vol.resolution.x / div, u_vol.resolution.y / div, u_vol.resolution.z);
+
+    if (any(greaterThanEqual(texel, ivec3(res)))) return;
+
+    vec3 uvw = (vec3(texel) + 0.5) / res;
+    vec3 worldPos = get_world_pos(uvw);
+
+    float height = worldPos.y;
+    float haze = u_vol.hazeParams.x * exp(-max(0.0, height - u_vol.hazeParams.y) * 0.1);
+
+    float gridSpacing = u_windParams.x;
+    vec2 lbmUV = ((worldPos.xz / gridSpacing) - vec2(u_windOriginSize.xz)) / vec2(u_windOriginSize.yw);
+    vec4 aerosolSample = texture(u_aerosolTexture, lbmUV);
+    float aerosolDensity = aerosolSample.a;
+
+    float noise = fastSimplex3d(worldPos * u_vol.hazeParams.z) * u_vol.hazeParams.w;
+    float density = max(0.0, haze + aerosolDensity + noise);
+
+    imageStore(outDensityVolume, texel, vec4(density, 0, 0, 0));
+}

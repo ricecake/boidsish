@@ -72,6 +72,7 @@
 #include "terrain_render_manager.h"
 #include "trail.h"
 #include "trail_render_manager.h"
+#include "volumetric_lighting_manager.h"
 #include "ui/EffectWidget.h"
 #include "ui/EnvironmentWidget.h"
 #include "ui/ProfilerWidget.h"
@@ -383,6 +384,7 @@ namespace Boidsish {
 		std::shared_ptr<AtmosphereManager>                atmosphere_manager;
 		std::shared_ptr<PostProcessing::AtmosphereEffect> atmosphere_effect;
 		std::shared_ptr<WeatherManager>                   weather_manager;
+		std::shared_ptr<VolumetricLightingManager>        volumetric_lighting_manager;
 		std::shared_ptr<SceneManager>                     scene_manager;
 		std::shared_ptr<DecorManager>                     decor_manager;
 		std::shared_ptr<GrassManager>                     grass_manager;
@@ -553,6 +555,7 @@ namespace Boidsish {
 			service_locator_.Register<ShadowManager>();
 			service_locator_.Register<AtmosphereManager>();
 			service_locator_.Register<WeatherManager>();
+			service_locator_.Register<VolumetricLightingManager>();
 			service_locator_.Register<SceneManager>("scenes");
 			service_locator_.Register<DecorManager>();
 			service_locator_.Register<GrassManager>();
@@ -806,6 +809,8 @@ namespace Boidsish {
 			atmosphere_manager = service_locator_.Get<AtmosphereManager>();
 			atmosphere_manager->Initialize();
 			weather_manager = service_locator_.Get<WeatherManager>();
+			volumetric_lighting_manager = service_locator_.Get<VolumetricLightingManager>();
+			volumetric_lighting_manager->Initialize();
 			if (terrain_generator) {
 				weather_manager->SetTerrainGenerator(terrain_generator.get());
 			}
@@ -2047,6 +2052,16 @@ namespace Boidsish {
 			if (!atmosphere_manager)
 				return;
 
+			if (volumetric_lighting_manager) {
+				volumetric_lighting_manager->Update(
+					simulation_delta_time,
+					simulation_time,
+					current_view_matrix,
+					projection,
+					camera.pos()
+				);
+			}
+
 			glm::vec3 sun_dir = glm::normalize(glm::vec3(0.0f, 1.0f, 0.0f)); // Default
 			glm::vec3 sun_color = glm::vec3(1.0f);
 			float     sun_intensity = 1.0f;
@@ -2668,6 +2683,23 @@ namespace Boidsish {
 
 		void RenderOpaqueScene(const FrameData& frame) {
 			if (opaque_pass_ && compositor_) {
+				if (volumetric_lighting_manager) {
+					// Ensure Lighting and Shadow UBOs are bound for compute
+					glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::Lighting(),
+						lighting_pb->GetBufferId(), lighting_pb->GetFrameOffset(), sizeof(LightingUbo));
+
+					if (shadow_manager) {
+						glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::Shadows(),
+							shadow_manager->GetShadowUbo(), 0, 16 * sizeof(glm::mat4) + 2 * sizeof(glm::vec4) + 16);
+					}
+
+					volumetric_lighting_manager->Dispatch(
+						frame.view,
+						frame.projection,
+						frame.camera_pos,
+						frame.simulation_time
+					);
+				}
 				opaque_pass_->Execute(frame, *compositor_, render_scale, MakeRenderCallbacks(frame));
 
 				if (grass_manager && frame.config.render_decor) {

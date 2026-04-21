@@ -27,6 +27,20 @@ in float      vSubstrate;
 // #include "helpers/noise.glsl"
 #include "helpers/wind.glsl"
 
+layout(std140, binding = [[VOLUMETRIC_LIGHTING_BINDING]]) uniform VolumetricLighting {
+    mat4 invViewProj;
+    mat4 prevViewProj;
+    vec4 gridParams;     // x: near, y: far, z: log bias, w: cascade count
+    vec4 resolution;     // x: gridW, y: gridH, z: gridD, w: intensity
+    vec4 sunDir;         // xyz: dir, w: sun intensity
+    vec4 sunColor;       // rgb: color, w: mie anisotropy (g)
+    vec4 hazeParams;     // x: haze density, y: haze height, z: noise scale, w: noise strength
+    vec4 ambientColor;   // rgb: color, w: scattering scale
+    vec4 cloudParams;    // x: cloud coverage, y: cloud density, z: cloud shadow intensity, w: reserved
+    vec4 cascadeSplits;
+} u_vol;
+
+uniform sampler3D u_volumetricIntegrated[4];
 
 uniform bool uIsShadowPass = false;
 
@@ -557,6 +571,28 @@ void main() {
 	float nightNoise = fastWorley3d(vec3(FragPos.xy / (25 * worldScale), time * 0.08));
 	float nightFade = smoothstep(fade_start - 10, fade_end, dist + nightNoise * 100.0);
 	lighting = mix(mix(lighting, gridLight, smoothstep(fade_start - 150, fade_end - 20, dist)), newLighting, nightFade);
+
+	// ========================================================================
+	// Volumetric Lighting Integration
+	// ========================================================================
+    float viewDist = length(FragPos - viewPos);
+
+    int volCascade = 3;
+    for (int i = 0; i < 4; ++i) {
+        if (viewDist < u_vol.cascadeSplits[i]) {
+            volCascade = i;
+            break;
+        }
+    }
+
+    float v_near = (volCascade == 0) ? u_vol.gridParams.x : u_vol.cascadeSplits[volCascade-1];
+    float v_far = u_vol.cascadeSplits[volCascade];
+
+    float volZ = log(max(viewDist, v_near) / v_near) / log(v_far / v_near);
+    vec2 volUV = (CurPosition.xy / CurPosition.w) * 0.5 + 0.5;
+
+    vec4 volumetric = texture(u_volumetricIntegrated[volCascade], vec3(volUV, volZ));
+    lighting = lighting * volumetric.a + volumetric.rgb;
 
 	// ========================================================================
 	// Distance Fade

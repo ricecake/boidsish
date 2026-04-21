@@ -19,6 +19,21 @@ uniform vec2 cloudTexelSize; // 1.0 / lowResSize
 // u_transmittanceLUT is declared in helpers/lighting.glsl
 uniform sampler3D u_aerialPerspectiveLUT;
 
+layout(std140, binding = [[VOLUMETRIC_LIGHTING_BINDING]]) uniform VolumetricLighting {
+    mat4 invViewProj;
+    mat4 prevViewProj;
+    vec4 gridParams;     // x: near, y: far, z: log bias, w: cascade count
+    vec4 resolution;     // x: gridW, y: gridH, z: gridD, w: intensity
+    vec4 sunDir;         // xyz: dir, w: sun intensity
+    vec4 sunColor;       // rgb: color, w: mie anisotropy (g)
+    vec4 hazeParams;     // x: haze density, y: haze height, z: noise scale, w: noise strength
+    vec4 ambientColor;   // rgb: color, w: scattering scale
+    vec4 cloudParams;    // x: cloud coverage, y: cloud density, z: cloud shadow intensity, w: reserved
+    vec4 cascadeSplits;
+} u_vol;
+
+uniform sampler3D u_volumetricIntegrated[4];
+
 #include "../atmosphere/common.glsl"
 #include "../helpers/lighting.glsl"
 #include "helpers/math.glsl"
@@ -134,17 +149,38 @@ void main() {
 	// fog, which would completely wash them out at that reconstructed distance)
 	bool isSky = depth >= 0.99999;
 
+	// 4. Volumetric Lighting Integration
+	int volCascade = 3;
+    for (int i = 0; i < 4; ++i) {
+        if (dist < u_vol.cascadeSplits[i]) {
+            volCascade = i;
+            break;
+        }
+    }
+	float v_near = (volCascade == 0) ? u_vol.gridParams.x : u_vol.cascadeSplits[volCascade-1];
+    float v_far = u_vol.cascadeSplits[volCascade];
+
+	float volZ = log(max(dist, v_near) / v_near) / log(v_far / v_near);
+	vec4 volumetric = texture(u_volumetricIntegrated[volCascade], vec3(TexCoords, volZ));
+
 	vec3 result;
 	if (!isSky) {
 		// Terrain/objects: apply aerial perspective and clouds
 		vec3 terrainAtmos = sceneColor * transmittance + inScattering;
+
+		// Apply volumetric
+		terrainAtmos = terrainAtmos * volumetric.a + volumetric.rgb;
+
 		vec3 cloudsAtmos = cloudColor * atmosTransmittance + atmosInScattering * (1.0 - cloudTransmittance);
 		result = mix(cloudsAtmos, terrainAtmos, cloudTransmittance);
 	} else {
 		// Sky and colossal objects: preserve scene output (sun, moon, stars, colossal)
 		// and blend clouds on top
+		vec4 skyVol = texture(u_volumetricIntegrated[3], vec3(TexCoords, 1.0));
+		vec3 skyResult = sceneColor * skyVol.a + skyVol.rgb;
+
 		vec3 cloudsAtmos = cloudColor * atmosTransmittance + atmosInScattering * (1.0 - cloudTransmittance);
-		result = sceneColor * cloudTransmittance + cloudsAtmos;
+		result = skyResult * cloudTransmittance + cloudsAtmos;
 	}
 
 	FragColor = vec4(result, 1.0);

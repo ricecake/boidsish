@@ -2,6 +2,8 @@
 
 #include "constants.h"
 #include "shader.h"
+#include "service_locator.h"
+#include "volumetric_lighting_manager.h"
 
 namespace Boidsish {
 	namespace PostProcessing {
@@ -103,6 +105,7 @@ namespace Boidsish {
 		}
 
 		void AtmosphereEffect::Apply(GLuint sourceTexture, GLuint depthTexture, GLuint velocityTexture, GLuint normalTexture, GLuint albedoTexture, const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix, const glm::vec3& cameraPos) {
+			auto volMgr = service_locator_ ? service_locator_->Get<VolumetricLightingManager>() : nullptr;
 			// Re-bind the previous framebuffer (which was the target for this effect)
 			// We MUST bind it back if we changed it.
 			// Save the current FBO before changing it.
@@ -219,6 +222,10 @@ namespace Boidsish {
 
 			composite_shader_->setInt("u_transmittanceLUT", Constants::TextureUnit::AtmosphereTransmittance());
 			composite_shader_->setInt("u_aerialPerspectiveLUT", Constants::TextureUnit::AtmosphereAerialPerspective());
+
+			if (volMgr) {
+				volMgr->BindToShader(*composite_shader_);
+			}
 
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, sourceTexture);

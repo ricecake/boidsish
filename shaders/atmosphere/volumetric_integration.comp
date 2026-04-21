@@ -1,0 +1,58 @@
+#version 430 core
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+layout(rgba16f, binding = 0) uniform image3D outIntegratedVolume;
+
+layout(std140, binding = [[VOLUMETRIC_LIGHTING_BINDING]]) uniform VolumetricLighting {
+    mat4 invViewProj;
+    mat4 prevViewProj;
+    vec4 gridParams;     // x: near, y: far, z: log bias, w: cascade count
+    vec4 resolution;     // x: gridW, y: gridH, z: gridD, w: intensity
+    vec4 sunDir;         // xyz: dir, w: sun intensity
+    vec4 sunColor;       // rgb: color, w: mie anisotropy (g)
+    vec4 hazeParams;     // x: haze density, y: haze height, z: noise scale, w: noise strength
+    vec4 ambientColor;   // rgb: color, w: scattering scale
+    vec4 cloudParams;    // x: cloud coverage, y: cloud density, z: cloud shadow intensity, w: reserved
+    vec4 cascadeSplits;
+} u_vol;
+
+uniform sampler3D u_scatteringVolume;
+uniform int u_cascadeIndex;
+
+void main() {
+    ivec2 texelXY = ivec2(gl_GlobalInvocationID.xy);
+    float div = pow(2.0, float(u_cascadeIndex));
+    vec2 resXY = vec2(u_vol.resolution.x / div, u_vol.resolution.y / div);
+
+    if (any(greaterThanEqual(texelXY, ivec2(resXY)))) return;
+
+    vec3 accumulatedLight = vec3(0.0);
+    float accumulatedTransmittance = 1.0;
+
+    int depthSlices = int(u_vol.resolution.z);
+    float z_near = (u_cascadeIndex == 0) ? u_vol.gridParams.x : u_vol.cascadeSplits[u_cascadeIndex-1];
+    float z_far = u_vol.cascadeSplits[u_cascadeIndex];
+
+    float prev_linear_z = z_near;
+
+    for (int z = 0; z < depthSlices; ++z) {
+        ivec3 texel = ivec3(texelXY, z);
+        vec3 uvw = (vec3(texel) + 0.5) / vec3(resXY, float(depthSlices));
+
+        vec4 scatteringExtinction = texture(u_scatteringVolume, uvw);
+        vec3 scattering = scatteringExtinction.rgb;
+        float extinction = scatteringExtinction.a;
+
+        float linear_z = z_near * pow(z_far / z_near, (float(z) + 1.0) / float(depthSlices));
+        float dt = linear_z - prev_linear_z;
+        prev_linear_z = linear_z;
+
+        float transmittance = exp(-extinction * dt);
+        vec3 integral = scattering * dt;
+
+        accumulatedLight += integral * accumulatedTransmittance;
+        accumulatedTransmittance *= transmittance;
+
+        imageStore(outIntegratedVolume, texel, vec4(accumulatedLight, accumulatedTransmittance));
+    }
+}

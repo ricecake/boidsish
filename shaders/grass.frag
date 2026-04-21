@@ -51,6 +51,21 @@ layout(location = 3) out vec4 AlbedoOut;
 
 uniform mat4 view;
 
+layout(std140, binding = [[VOLUMETRIC_LIGHTING_BINDING]]) uniform VolumetricLighting {
+    mat4 invViewProj;
+    mat4 prevViewProj;
+    vec4 gridParams;     // x: near, y: far, z: log bias, w: cascade count
+    vec4 resolution;     // x: gridW, y: gridH, z: gridD, w: intensity
+    vec4 sunDir;         // xyz: dir, w: sun intensity
+    vec4 sunColor;       // rgb: color, w: mie anisotropy (g)
+    vec4 hazeParams;     // x: haze density, y: haze height, z: noise scale, w: noise strength
+    vec4 ambientColor;   // rgb: color, w: scattering scale
+    vec4 cloudParams;    // x: cloud coverage, y: cloud density, z: cloud shadow intensity, w: reserved
+    vec4 cascadeSplits;
+} u_vol;
+
+uniform sampler3D u_volumetricIntegrated[4];
+
 // Simple hash for random values
 float hash(uint x) {
 	x = ((x >> 16) ^ x) * 0x45d9f3b;
@@ -81,6 +96,26 @@ void main() {
     float primaryShadow;
     vec4 litColor = apply_lighting_pbr(fWorldPos, N, albedo, 0.8, 0.0, ao, primaryShadow);
     litColor.rgb = clamp(litColor.rgb, 0.0, 5.0); // Clamp HDR to prevent "bright white" blowouts
+
+    // Volumetric Lighting Integration
+    float viewDist = length(fWorldPos - viewPos);
+
+    int volCascade = 3;
+    for (int i = 0; i < 4; ++i) {
+        if (viewDist < u_vol.cascadeSplits[i]) {
+            volCascade = i;
+            break;
+        }
+    }
+
+    float v_near = (volCascade == 0) ? u_vol.gridParams.x : u_vol.cascadeSplits[volCascade-1];
+    float v_far = u_vol.cascadeSplits[volCascade];
+
+    float volZ = log(max(viewDist, v_near) / v_near) / log(v_far / v_near);
+    vec4 screenPos = projection * view * vec4(fWorldPos, 1.0);
+    vec2 volUV = (screenPos.xy / screenPos.w) * 0.5 + 0.5;
+    vec4 volumetric = texture(u_volumetricIntegrated[volCascade], vec3(volUV, volZ));
+    litColor.rgb = litColor.rgb * volumetric.a + volumetric.rgb;
 
     // Distance fade and distant cyan blend (matching terrain style)
     float dist = length(fWorldPos.xz - viewPos.xz);

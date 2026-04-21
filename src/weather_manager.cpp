@@ -18,6 +18,7 @@ namespace Boidsish {
 		lbm_simulator_ = std::make_unique<WeatherLbmSimulator>(128, 128);
 
 		wind_data_cache_.resize(128 * 128);
+		aerosol_data_cache_.resize(128 * 128);
 
 		// Initialize default paces for various attributes from centralized constants
 		SetPace(WeatherAttribute::SunIntensity, WeatherConstants::SunIntensity.pace);
@@ -56,6 +57,9 @@ namespace Boidsish {
 		}
 		if (wind_texture_ != 0) {
 			glDeleteTextures(1, &wind_texture_);
+		}
+		if (aerosol_texture_ != 0) {
+			glDeleteTextures(1, &aerosol_texture_);
 		}
 	}
 
@@ -346,6 +350,16 @@ namespace Boidsish {
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 			glBindTexture(GL_TEXTURE_2D, 0);
 		}
+		if (aerosol_texture_ == 0) {
+			glGenTextures(1, &aerosol_texture_);
+			glBindTexture(GL_TEXTURE_2D, aerosol_texture_);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, lbm_simulator_->GetWidth(), lbm_simulator_->GetHeight(), 0, GL_RGBA, GL_FLOAT, nullptr);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+			glBindTexture(GL_TEXTURE_2D, 0);
+		}
 
 		WindDataUbo ubo;
 		if (macro_sim_enabled_) {
@@ -387,6 +401,17 @@ namespace Boidsish {
 			GL_FLOAT,
 			wind_data_cache_.data()
 		);
+
+		// Update Aerosol Texture
+		if (macro_sim_enabled_) {
+			const auto& cells = lbm_simulator_->GetCells();
+			const auto& configs = lbm_simulator_->GetConfig();
+			for (int i = 0; i < (int)cells.size(); ++i) {
+				aerosol_data_cache_[i] = glm::vec4(configs[i].aerosolColor, cells[i].aerosol);
+			}
+			glBindTexture(GL_TEXTURE_2D, aerosol_texture_);
+			glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, lbm_simulator_->GetWidth(), lbm_simulator_->GetHeight(), GL_RGBA, GL_FLOAT, aerosol_data_cache_.data());
+		}
 	}
 
 	void WeatherManager::Update(float deltaTime, float totalTime, const glm::vec3& cameraPos, float timeOfDay) {

@@ -1,0 +1,101 @@
+#version 430 core
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
+layout(rgba16f, binding = 0) uniform image3D outScatteringVolume;
+
+layout(std140, binding = [[VOLUMETRIC_LIGHTING_BINDING]]) uniform VolumetricLighting {
+    mat4 invViewProj;
+    mat4 prevViewProj;
+    vec4 gridParams;     // x: near, y: far, z: log bias, w: cascade count
+    vec4 resolution;     // x: gridW, y: gridH, z: gridD, w: intensity
+    vec4 sunDir;         // xyz: dir, w: sun intensity
+    vec4 sunColor;       // rgb: color, w: mie anisotropy (g)
+    vec4 hazeParams;     // x: haze density, y: haze height, z: noise scale, w: noise strength
+    vec4 ambientColor;   // rgb: color, w: scattering scale
+    vec4 cloudParams;    // x: cloud coverage, y: cloud density, z: cloud shadow intensity, w: reserved
+    vec4 cascadeSplits;
+} u_vol;
+
+uniform sampler3D u_densityVolume;
+uniform sampler2D u_aerosolTexture;
+uniform int u_cascadeIndex;
+
+layout(std140, binding = [[WIND_DATA_BINDING]]) uniform WindData {
+	ivec4 u_windOriginSize;
+	vec4  u_windParams;
+};
+
+#include "../helpers/constants.glsl"
+#define SHADOWS_UBO_MAPPING
+#include "../helpers/terrain_shadows.glsl"
+#include "../lighting.glsl"
+
+vec3 get_world_pos(vec3 uvw) {
+    float z_near = (u_cascadeIndex == 0) ? u_vol.gridParams.x : u_vol.cascadeSplits[u_cascadeIndex-1];
+    float z_far = u_vol.cascadeSplits[u_cascadeIndex];
+    float linear_z = z_near * pow(z_far / z_near, uvw.z);
+
+    vec2 ndc_xy = uvw.xy * 2.0 - 1.0;
+    vec4 view_pos_near = u_vol.invViewProj * vec4(ndc_xy, -1.0, 1.0);
+    view_pos_near /= view_pos_near.w;
+    vec4 view_pos_far = u_vol.invViewProj * vec4(ndc_xy, 1.0, 1.0);
+    view_pos_far /= view_pos_far.w;
+
+    float d = (linear_z - u_vol.gridParams.x) / (u_vol.gridParams.y - u_vol.gridParams.x);
+    return mix(view_pos_near.xyz, view_pos_far.xyz, d);
+}
+
+float hg_phase(float cosTheta, float g) {
+    float g2 = g * g;
+    return (1.0 - g2) / (4.0 * PI * pow(max(1e-4, 1.0 + g2 - 2.0 * g * cosTheta), 1.5));
+}
+
+void main() {
+    ivec3 texel = ivec3(gl_GlobalInvocationID.xyz);
+    float div = pow(2.0, float(u_cascadeIndex));
+    vec3 res = vec3(u_vol.resolution.x / div, u_vol.resolution.y / div, u_vol.resolution.z);
+
+    if (any(greaterThanEqual(texel, ivec3(res)))) return;
+
+    vec3 uvw = (vec3(texel) + 0.5) / res;
+    vec3 worldPos = get_world_pos(uvw);
+    float density = texture(u_densityVolume, uvw).r;
+
+    if (density <= 0.0) {
+        imageStore(outScatteringVolume, texel, vec4(0, 0, 0, 0));
+        return;
+    }
+
+    vec3 lightDir = u_vol.sunDir.xyz;
+    float shadow = 1.0;
+
+    vec4 fragPosWorld = vec4(worldPos, 1.0);
+    int cascadeIndex = 0;
+    float distToCam = length(worldPos - viewPos);
+    for (int i = 0; i < 4; ++i) {
+        if (distToCam < u_shadows.cascadeSplits[i]) {
+            cascadeIndex = i;
+            break;
+        }
+    }
+    vec4 fragPosLightSpace = u_shadows.lightSpaceMatrices[cascadeIndex] * fragPosWorld;
+    shadow = calculate_shadow_csm(fragPosLightSpace, cascadeIndex, 0.005);
+
+    vec3 viewDir = normalize(viewPos - worldPos);
+    float cosTheta = dot(lightDir, -viewDir);
+    float phase = hg_phase(cosTheta, u_vol.sunColor.w);
+
+    vec4 aerosolData = texture(u_aerosolTexture, uvw.xy);
+    vec3 localAerosolColor = aerosolData.rgb;
+
+    vec3 directLight = u_vol.sunColor.rgb * u_vol.sunDir.w * shadow * phase;
+    directLight *= localAerosolColor;
+
+    vec3 ambient = u_vol.ambientColor.rgb * u_vol.ambientColor.w;
+    ambient *= localAerosolColor;
+
+    vec3 scatteredLight = (directLight + ambient) * density * u_vol.resolution.w;
+    float extinction = density;
+
+    imageStore(outScatteringVolume, texel, vec4(scatteredLight, extinction));
+}

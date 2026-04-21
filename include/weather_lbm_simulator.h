@@ -37,6 +37,7 @@ namespace Boidsish {
 
         // Debugging / Inspection
         const std::vector<LbmCell>& GetCells() const { return *currentGrid_; }
+        const std::vector<LbmCellConfig>& GetConfig() const { return config_; }
         int GetWidth() const { return width_; }
         int GetHeight() const { return height_; }
 
