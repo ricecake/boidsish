@@ -67,13 +67,13 @@ vec3 getWindAtPosition(vec3 worldPos) {
 	vec2 windDir2D = macroSpeed > 0.001 ? macroWind.xz / macroSpeed : vec2(1.0, 0.0);
 
 	// Gustiness: Smoothstep the simplex to create wide, rolling "valleys" of stillness
-	float gustAdvectionSpeed = 0.5;
+	float gustAdvectionSpeed = 0.75;
 	vec3 gustPos = worldPos - (macroWind * time * gustAdvectionSpeed);
 	float gustiness = smoothstep(0.1, 0.7, fastSimplex3d(gustPos / 250.0) * 0.5 + 0.5);
 
 	// 4. Phasor Ripples (The "Packets")
 	// Increase frequency so the baked Gabor kernels are physically smaller
-	float rippleFreq = 0.005;
+	float rippleFreq = 0.001;
 	vec2 rippleUV = worldPos.xz * rippleFreq;
 
 	float rippleTightness = 0.05;
@@ -89,14 +89,14 @@ vec3 getWindAtPosition(vec3 worldPos) {
 	// 5. The Stillness Filter
 	// Attenuate the base wind during lulls, but ONLY if the macro wind is relatively weak.
 	// Storms (high macroSpeed) will ignore the lull and blow continuously.
-	float calmThreshold = smoothstep(45.0, 0.0, macroSpeed);
+	float calmThreshold = smoothstep(50.0, 0.0, macroSpeed);
 	float baseWindMultiplier = mix(1.0, gustiness, calmThreshold);
 
 	vec3 finalWind = macroWind * baseWindMultiplier;
 
 	// 6. Apply the Gust Surge
 	if (macroSpeed > 0.001) {
-		float surgeStrength = 1.5;
+		float surgeStrength = 2.5;
 		// The surge only exists inside the macro gusts
 		float localizedSurge = positiveRipple * gustiness * surgeStrength * macroSpeed;
 		finalWind.xz += windDir2D * localizedSurge;
@@ -105,10 +105,36 @@ vec3 getWindAtPosition(vec3 worldPos) {
 	// 7. Local Turbulence (Curl)
 	float dynamicCurlScale = curlScale * (0.8 + 0.4 * gustiness);
 	vec3 advectedPos = worldPos - (finalWind * time * 0.250);
-	vec3 curl = fastCurl3d(advectedPos/200.0 * dynamicCurlScale + vec3(0.0, time * 0.02, 0.0));
+	vec3 curl = fastCurl3d(advectedPos/250.0 * dynamicCurlScale + vec3(0.0, time * 0.01, 0.0));
+	float turbulenceIntensity = drag * length(finalWind) * curlStrength * 0.5;
+
+	// Modulate turbulence intensity and introduce a subtle directional shift to the flow
+	turbulenceIntensity *= (0.8 + 0.4 * (positiveRipple * 0.5 + 0.5));
+	if (macroSpeed > 0.001) {
+		// Apply a small perpendicular shift based on the ripple
+		vec2 perpWind = vec2(-macroWind.z, macroWind.x) / macroSpeed;
+		macroWind.xz += perpWind * (positiveRipple * macroSpeed * 0.15);
+	}
+
+	// macroWind *= ripple * gustiness;
+
+	// 5. Combined Result
+	// Instead of just adding curl, we use it to perturb the direction of the macro wind,
+	// creating the effect of chaotic swirls within the flow.
+	if (macroSpeed > 0.001) {
+		// Use curl to rotate the macro wind vector slightly
+		vec3 rotationAxis = normalize(curl + vec3(0.0, 1.0, 0.0)); // Bias axis toward Up
+		float rotationAngle = turbulenceIntensity * 0.15;
+
+		float cosTheta = cos(rotationAngle);
+		float sinTheta = sin(rotationAngle);
+
+		macroWind = macroWind * cosTheta +
+					cross(rotationAxis, macroWind) * sinTheta +
+					rotationAxis * dot(rotationAxis, macroWind) * (1.0 - cosTheta);
+	}
 
 	// Add curl strictly as a final perturbation
-	float turbulenceIntensity = drag * length(finalWind) * curlStrength;
 	return finalWind + curl * turbulenceIntensity;
 }
 
