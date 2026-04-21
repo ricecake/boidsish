@@ -386,6 +386,69 @@ namespace Boidsish {
         return &((*currentGrid_)[z * width_ + x]);
     }
 
+    void WeatherLbmSimulator::InjectPressure(const glm::vec3& pos, float pressureHpa, float burstStrength) {
+        int chunkX = (int)std::floor(pos.x / 32.0f);
+        int chunkZ = (int)std::floor(pos.z / 32.0f);
+
+        int gx = chunkX - gridAnchor_.x;
+        int gz = chunkZ - gridAnchor_.y;
+
+        if (gx < 0 || gx >= width_ || gz < 0 || gz >= height_) return;
+
+        float targetRho = pressureHpa / 1013.25f;
+
+        auto inject = [&](int x, int z, float rho, glm::vec2 u) {
+            if (x < 0 || x >= width_ || z < 0 || z >= height_) return;
+            int idx = z * width_ + x;
+            for (int i = 0; i < 9; ++i) {
+                float val = CalculateEquilibrium(i, rho, u);
+                (*currentGrid_)[idx].f[i] = val;
+                (*nextGrid_)[idx].f[i] = val;
+            }
+        };
+
+        // Set center cell
+        inject(gx, gz, targetRho, glm::vec2(0.0f));
+
+        // Prime neighbors if burst is requested
+        if (burstStrength > 0.0f) {
+            for (int i = 1; i < 9; ++i) {
+                int nx = gx + cx[i];
+                int nz = gz + cz[i];
+                glm::vec2 outwardU = glm::normalize(glm::vec2(cx[i], cz[i])) * burstStrength;
+                inject(nx, nz, 1.0f, outwardU);
+            }
+        }
+    }
+
+    void WeatherLbmSimulator::InjectAerosol(const glm::vec3& pos, float concentration) {
+        int chunkX = (int)std::floor(pos.x / 32.0f);
+        int chunkZ = (int)std::floor(pos.z / 32.0f);
+
+        int gx = chunkX - gridAnchor_.x;
+        int gz = chunkZ - gridAnchor_.y;
+
+        if (gx < 0 || gx >= width_ || gz < 0 || gz >= height_) return;
+
+        int idx = gz * width_ + gx;
+        (*currentGrid_)[idx].aerosol = concentration;
+        (*nextGrid_)[idx].aerosol = concentration;
+    }
+
+    void WeatherLbmSimulator::InjectTemperature(const glm::vec3& pos, float temperatureK) {
+        int chunkX = (int)std::floor(pos.x / 32.0f);
+        int chunkZ = (int)std::floor(pos.z / 32.0f);
+
+        int gx = chunkX - gridAnchor_.x;
+        int gz = chunkZ - gridAnchor_.y;
+
+        if (gx < 0 || gx >= width_ || gz < 0 || gz >= height_) return;
+
+        int idx = gz * width_ + gx;
+        (*currentGrid_)[idx].temperature = temperatureK;
+        (*nextGrid_)[idx].temperature = temperatureK;
+    }
+
     void WeatherLbmSimulator::PopulateWindData(WindDataUbo& ubo, std::vector<glm::vec4>& grid_out, float totalTime, float curlScale, float curlStrength) const {
         float gridSpacing = 32.0f;
         // GLSL: x, z = origin, y = width, w = height

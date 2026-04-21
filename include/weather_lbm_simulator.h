@@ -50,6 +50,22 @@ namespace Boidsish {
             Initialize(terrain, totalTime, timeOfDay);
         }
 
+        /**
+         * @brief Manually inject a pressure burst or vacuum at a world position.
+         * @param burstStrength If > 0, primes neighboring cells to move away from the center.
+         */
+        void InjectPressure(const glm::vec3& pos, float pressureHpa, float burstStrength);
+
+        /**
+         * @brief Manually inject aerosol concentration at a world position.
+         */
+        void InjectAerosol(const glm::vec3& pos, float concentration);
+
+        /**
+         * @brief Manually inject temperature at a world position.
+         */
+        void InjectTemperature(const glm::vec3& pos, float temperatureK);
+
     private:
         void Initialize(const ITerrainGenerator& terrain, float totalTime, float timeOfDay);
         void Step(float deltaTime, float totalTime, float timeOfDay, const ITerrainGenerator& terrain, float windSpeed, float windStrength);
