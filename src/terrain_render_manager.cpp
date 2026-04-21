@@ -364,12 +364,16 @@ namespace Boidsish {
 		const std::vector<unsigned int>& indices, // Not used in this implementation
 		float                            min_y,
 		float                            max_y,
-		const glm::vec3&                 world_offset
+		const glm::vec3&                 world_offset,
+		float                            world_scale
 	) {
 		// Deferred eviction callback to avoid deadlock
 		// (caller may hold terrain generator's mutex, and callback needs that mutex)
 		bool                should_notify_eviction = false;
 		std::pair<int, int> evicted_chunk_key;
+
+		// Update world scale tracking
+		last_world_scale_ = world_scale;
 
 		// The positions array from TerrainGenerator is in X-major order:
 		//   positions[x * num_z + z] = position at local (x, y, z)
@@ -377,12 +381,7 @@ namespace Boidsish {
 		//   texture[z * num_x + x] = height at local (x, z)
 		// This means we need to transpose the data.
 
-		// Update world scale tracking if it's the first chunk
 		const int res = heightmap_resolution_;
-		if (last_world_scale_ < 0.0f && res > 1) {
-			float dist_x = std::abs(positions[res].x - positions[0].x);
-			last_world_scale_ = dist_x;
-		}
 
 		std::vector<float>     heightmap(res * res);
 		std::vector<glm::vec3> reordered_normals(res * res);
@@ -1003,13 +1002,13 @@ namespace Boidsish {
 		glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
 	}
 
-	void TerrainRenderManager::CommitUpdates() {
+	void TerrainRenderManager::CommitUpdates(bool force_sync) {
 		// Ensure grid textures and UBO are up to date before baking
 		UpdateGridTextures(last_world_scale_);
-		PerformBaking(last_world_scale_);
+		PerformBaking(last_world_scale_, force_sync);
 	}
 
-	void TerrainRenderManager::PerformBaking(float world_scale) {
+	void TerrainRenderManager::PerformBaking(float world_scale, bool force_sync) {
 		std::vector<BakeTask> tasks;
 		{
 			std::lock_guard<std::recursive_mutex> lock(mutex_);
@@ -1067,7 +1066,9 @@ namespace Boidsish {
 		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
 
 		// Synchronize to ensure initial loads are fully baked before rendering
-		glFinish();
+		if (force_sync) {
+			glFinish();
+		}
 	}
 
 	size_t TerrainRenderManager::GetRegisteredChunkCount() const {

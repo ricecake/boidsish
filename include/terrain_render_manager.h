@@ -66,7 +66,8 @@ namespace Boidsish {
 			const std::vector<unsigned int>& indices,
 			float                            min_y,
 			float                            max_y,
-			const glm::vec3&                 world_offset
+			const glm::vec3&                 world_offset,
+			float                            world_scale
 		);
 
 		/**
@@ -129,7 +130,7 @@ namespace Boidsish {
 		/**
 		 * @brief Commit any pending updates.
 		 */
-		void CommitUpdates();
+		void CommitUpdates(bool force_sync = false);
 
 		/**
 		 * @brief Set a callback to be notified when a chunk is evicted due to LRU.
@@ -195,7 +196,7 @@ namespace Boidsish {
 		/**
 		 * @brief Perform deferred terrain baking for queued chunks.
 		 */
-		void PerformBaking(float world_scale);
+		void PerformBaking(float world_scale, bool force_sync = false);
 
 		/**
 		 * @brief Set the VisualEffects UBO for baking parameters.
