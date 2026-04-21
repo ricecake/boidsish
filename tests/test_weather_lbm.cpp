@@ -35,6 +35,7 @@ public:
     uint32_t AddAkira(const glm::vec3&, float) override { return 0; }
     void InvalidateDeformedChunks(std::optional<uint32_t>) override {}
     void GetBiomeIndicesAndWeights(float, int& low_idx, float& t) const override { low_idx = 0; t = 0.5f; }
+    void WaitForAllChunks(const Frustum&, const Camera&) override {}
 
 private:
     std::vector<std::shared_ptr<Terrain>> chunks_;
