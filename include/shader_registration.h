@@ -80,8 +80,6 @@ namespace Boidsish {
 		T::RegisterConstant("TERRAIN_BIOME_MAP_BINDING", Constants::TextureUnit::TerrainBiomeMap());
 		T::RegisterConstant("TERRAIN_ALBEDO_BINDING", Constants::TextureUnit::TerrainAlbedo());
 		T::RegisterConstant("TERRAIN_PBR_BINDING", Constants::TextureUnit::TerrainPBR());
-		T::RegisterConstant("GRASS_PROPS_BINDING", Constants::UboBinding::GrassProps());
-		T::RegisterConstant("BIOME_DATA_BINDING", Constants::UboBinding::Biomes());
 
 		T::RegisterConstant("BIOME_MAP_IMAGE_BINDING", Constants::TextureUnit::TerrainBiomeImage());
 		T::RegisterConstant("BAKED_HEIGHTMAP_IMAGE_BINDING", Constants::TextureUnit::TerrainHeightmapImage());

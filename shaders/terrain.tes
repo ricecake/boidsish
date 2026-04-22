@@ -46,173 +46,91 @@ uniform bool uIsShadowPass = false;
 #include "temporal_data.glsl"
 #include "visual_effects.glsl"
 
-// #include "helpers/fast_noise.glsl"
-
-// Sample heightmap to get world position and normal
 void sampleHeightmap(vec2 uv, float slice, vec3 worldOffset, out vec3 worldPos, out vec3 normal) {
-	// Remap UV to match the grid center alignment of the heightmap texture
 	vec2  remappedUV = (uv * uRawChunkSize + 0.5) / (uRawChunkSize + 1.0);
 	vec4  data = texture(uHeightmap, vec3(remappedUV, slice));
-	float height = data.r;
-	normal = normalize(data.gba);
-
 	worldPos.x = worldOffset.x + uv.x * uChunkSize;
-	worldPos.y = height;
+	worldPos.y = data.r;
 	worldPos.z = worldOffset.z + uv.y * uChunkSize;
+	normal = normalize(data.gba);
 }
 
 void main() {
 	vec2 uv = gl_TessCoord.xy;
-
-	// Get instance data (same for all corners)
 	float slice = TextureSlice_TC_out[0];
 	vec3  worldOffset = WorldOffset_TC_out[0];
 
-	// Interpolate texture coordinates for this tessellated vertex
 	vec2 texCoord1 = mix(TexCoords_TC_out[0], TexCoords_TC_out[1], uv.x);
 	vec2 texCoord2 = mix(TexCoords_TC_out[3], TexCoords_TC_out[2], uv.x);
 	TexCoords = mix(texCoord1, texCoord2, uv.y);
 
-	// Sample heightmap at the interpolated UV to get world position and normal
 	sampleHeightmap(TexCoords, slice, worldOffset, FragPos, Normal);
 
-	// Remap UV to match the grid center alignment of the heightmap texture
 	vec2 remappedUV = (TexCoords * uRawChunkSize + 0.5) / (uRawChunkSize + 1.0);
 	vec4 biomeData = texture(u_biomeMap, vec3(remappedUV, slice));
 	bool isBaked = biomeData.b > 0.5;
 
 	if (isBaked) {
-		// Use baked results
 		vec4 bakedParams = texture(uBakedParams, vec3(remappedUV, slice));
 		vErosionDelta = bakedParams.r;
 		vRidgeMap = bakedParams.g;
 		vSubstrate = bakedParams.b;
 		vIsWater = bakedParams.a;
-
-		// Height and Normal were already updated by sampleHeightmap because it samples uHeightmap
-		// which now points to the baked texture array in the manager.
 	} else {
-		// FALLBACK: Execute existing erosion and displacement logic
+		// Fallback for unbaked chunks
 		float terrainDistance = distance(viewPos.xz, FragPos.xz);
-		float blendScale = smoothstep(
-			erosion_max_dist * worldScale,
-			(erosion_max_dist * 0.5) * worldScale,
-			terrainDistance
-		);
+		float blendScale = smoothstep(erosion_max_dist * worldScale, (erosion_max_dist * 0.5) * worldScale, terrainDistance);
 
 		if (erosion_enabled > 0 && terrainDistance < erosion_max_dist * worldScale) {
-			float ridgeMapOutput = 0.0;
-			float substrateOutput = 0.0;
-			float debugOutput = 0.0;
-
+			float ridgeMapOutput = 0.0, substrateOutput = 0.0, debugOutput = 0.0;
 			float frameworkHeightPeak = 200.0 * worldScale;
 			float erosionFadeTarget = clamp(FragPos.y / (frameworkHeightPeak * 0.6), -1.0, 1.0);
-
 			vec3 hAndS = vec3(FragPos.y / worldScale, -Normal.x, -Normal.z);
 
-			vec4 erosionResult = ErosionFilter(
-				FragPos.xz / worldScale,
-				hAndS,
-				erosionFadeTarget,
-				blendScale * erosion_strength,
-				erosion_gully_weight,
-				erosion_detail,
-				vec4(0.1, 0.0, 0.1, 2.0),
-				vec4(1.25, 1.25, 2.8, 1.5),
-				vec2(0.7, 1.0),
-				worldScale * erosion_scale,
-				5,
-				2.0,
-				0.5,
-				0.7,
-				0.5,
-				ridgeMapOutput,
-				substrateOutput,
-				debugOutput
-			);
-
-			float heightDelta = erosionResult.x * worldScale;
-			FragPos.y += blendScale * heightDelta;
-
+			vec4 erosionResult = ErosionFilter(FragPos.xz / worldScale, hAndS, erosionFadeTarget, blendScale * erosion_strength, erosion_gully_weight, erosion_detail, vec4(0.1, 0.0, 0.1, 2.0), vec4(1.25, 1.25, 2.8, 1.5), vec2(0.7, 1.0), worldScale * erosion_scale, 5, 2.0, 0.5, 0.7, 0.5, ridgeMapOutput, substrateOutput, debugOutput);
+			FragPos.y += blendScale * erosionResult.x * worldScale;
 			vec2 updatedDeriv = hAndS.yz + erosionResult.yz;
 			Normal = mix(Normal, normalize(vec3(-updatedDeriv.x, 1.0, -updatedDeriv.y)), blendScale);
-
 			vErosionDelta = erosionResult.x;
 			vRidgeMap = ridgeMapOutput;
 			vSubstrate = substrateOutput;
 		} else {
-			vErosionDelta = 0.0;
-			vRidgeMap = 0.0;
-			vSubstrate = 0.0;
+			vErosionDelta = 0.0; vRidgeMap = 0.0; vSubstrate = 0.0;
 		}
-
 		vIsWater = smoothstep(0.1, -0.1, FragPos.y);
+
+		// Apply Micro-relief for unbaked path
+		if (!uIsShadowPass && vIsWater <= 0.0) {
+			float dist = distance(viewPos, FragPos);
+			float detailFade = smoothstep(200.0, 50.0, dist) * smoothstep(16.0, 32.0, tessFactor_TC_out[0]);
+			if (detailFade > 0.0) {
+				vec3 scaledPos = FragPos * 2.0;
+				float rocks = fastWorley3d(scaledPos * 0.5);
+				float divots = fastSimplex3d(scaledPos * 1.0);
+				float substrateMod = mix(1.2, 0.4, clamp(vSubstrate * 0.5 + 0.5, 0.0, 1.0));
+				FragPos += Normal * (rocks * 1.15 - abs(divots) * 1.17) * detailFade * substrateMod;
+			}
+		}
+		FragPos += 0.5 * fastWorley3d(FragPos / 50.0) * fastBlueNoise(FragPos.zx) * Normal * smoothstep(10, 1, FragPos.y) * smoothstep(0.01, 1, FragPos.y);
 	}
 
-	float waterMask = vIsWater;
-
-	if (waterMask > 0.0) {
+	if (vIsWater > 0.0) {
 		float landHeight = FragPos.y;
-		float waterHeight = 0.0;
-
-		// Add gentle ripple displacement
 		float rippleTime = time * 2.0;
 		float ripple = sin(FragPos.x * 0.5 + rippleTime) * 0.05 + cos(FragPos.z * 0.5 + rippleTime * 0.8) * 0.05;
-		waterHeight += ripple;
-
-		// Approximate normal for the ripple surface
-		float dx = 0.05 * cos(FragPos.x * 0.5 + rippleTime) * 0.5;
-		float dz = 0.05 * -sin(FragPos.z * 0.5 + rippleTime * 0.8) * 0.4;
-		vec3  waterNormal = normalize(vec3(-dx, 1.0, -dz));
-
-		FragPos.y = mix(landHeight, waterHeight, waterMask);
-		Normal = normalize(mix(Normal, waterNormal, waterMask));
+		vec3 waterNormal = normalize(vec3(-0.025 * cos(FragPos.x * 0.5 + rippleTime), 1.0, 0.02 * sin(FragPos.z * 0.5 + rippleTime * 0.8)));
+		FragPos.y = mix(landHeight, ripple, vIsWater);
+		Normal = normalize(mix(Normal, waterNormal, vIsWater));
 	}
 
-	// Apply shockwave ripple to terrain
 	FragPos += getShockwaveDisplacement(FragPos, 0.0, false);
 
-	// Micro-relief displacement (rocks and divots)
-	if (!uIsShadowPass && waterMask <= 0.0) {
-		float dist = distance(viewPos, FragPos);
-		// Only apply where there is enough tessellation and the camera is close
-		float detailFade = smoothstep(200.0, 50.0, dist) * smoothstep(16.0, 32.0, tessFactor);
-
-		if (detailFade > 0.0) {
-			vec3  scaledPos = FragPos * 2.0;
-			float rocks = fastWorley3d(scaledPos * 0.5);
-			float divots = fastSimplex3d(scaledPos * 1.0);
-
-			// Substrate modulation: eroded areas (substrate < 0) are more rocky/rough,
-			// while deposition areas (substrate > 0) are smoother.
-			float substrateMod = mix(1.2, 0.4, clamp(vSubstrate * 0.5 + 0.5, 0.0, 1.0));
-
-			float displacement = (rocks * 1.15 - abs(divots) * 1.17) * detailFade * substrateMod;
-			FragPos += Normal * displacement;
-		}
-	}
-
-	// Clip plane for reflections
 	gl_ClipDistance[0] = dot(FragPos, clipPlane.xyz) + clipPlane.w;
-
-	// How much to perturb normal
-	float perturbFactor1 = mix(perturbFactor_TC_out[0], perturbFactor_TC_out[1], uv.x);
-	float perturbFactor2 = mix(perturbFactor_TC_out[3], perturbFactor_TC_out[2], uv.x);
-	perturbFactor = mix(perturbFactor1, perturbFactor2, uv.y);
-
-	FragPos += 0.5 * fastWorley3d(FragPos / 50.0) * fastBlueNoise(FragPos.zx) * Normal * smoothstep(10, 1, FragPos.y) *
-		smoothstep(0.01, 1, FragPos.y);
-
-	float tessFactor1 = mix(tessFactor_TC_out[0], tessFactor_TC_out[1], uv.x);
-	float tessFactor2 = mix(tessFactor_TC_out[3], tessFactor_TC_out[2], uv.x);
-	tessFactor = mix(tessFactor1, tessFactor2, uv.y);
-
-	// out float tessFactor;
+	perturbFactor = mix(mix(perturbFactor_TC_out[0], perturbFactor_TC_out[1], uv.x), mix(perturbFactor_TC_out[3], perturbFactor_TC_out[2], uv.x), uv.y);
+	tessFactor = mix(mix(tessFactor_TC_out[0], tessFactor_TC_out[1], uv.x), mix(tessFactor_TC_out[3], tessFactor_TC_out[2], uv.x), uv.y);
 	TextureSlice = slice;
 
-	// Final vertex position
 	gl_Position = projection * view * vec4(FragPos, 1.0);
-
 	CurPosition = gl_Position;
 	PrevPosition = prevViewProjection * vec4(FragPos, 1.0);
 }

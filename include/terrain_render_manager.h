@@ -279,8 +279,8 @@ namespace Boidsish {
 		GLuint raw_heightmap_texture_ = 0; // GL_TEXTURE_2D_ARRAY (RGBA16F: height, normal.xyz)
 		GLuint heightmap_texture_ = 0;     // GL_TEXTURE_2D_ARRAY (RGBA16F: baked height, baked normal)
 		GLuint baked_params_texture_ = 0;  // GL_TEXTURE_2D_ARRAY (RGBA16F: erosion, ridge, substrate, water)
-		GLuint albedo_texture_ = 0;        // GL_TEXTURE_2D_ARRAY (RGBA8: albedo)
-		GLuint material_texture_ = 0;      // GL_TEXTURE_2D_ARRAY (RGBA8: roughness, metallic, AO, unused)
+		GLuint albedo_texture_ = 0;        // GL_TEXTURE_2D_ARRAY (RGBA8: albedo, AO)
+		GLuint material_texture_ = 0;      // GL_TEXTURE_2D_ARRAY (RGBA8: roughness, metallic, normal.xz)
 		GLuint biome_texture_ = 0;         // GL_TEXTURE_2D_ARRAY (RGBA8: low_idx, t, bake_flag, unused)
 		GLuint noise_texture_ = 0;
 		GLuint curl_texture_ = 0;
