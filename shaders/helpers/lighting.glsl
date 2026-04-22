@@ -526,6 +526,34 @@ void calculateLightContribution(int light_index, vec3 frag_pos, out vec3 light_d
 // PBR is inherently darker than legacy Phong.
 const float PBR_INTENSITY_BOOST = 1.0;
 
+void evaluate_brdf(
+    vec3 N, vec3 V, vec3 L, vec3 albedo, float roughness, float metallic, vec3 F0,
+    vec3 radiance, float shadow, inout vec3 Lo, inout float spec_lum)
+{
+    float NdotL = dot(N, L);
+    if (NdotL <= 0.0) return; // Early-out: Light is behind the fragment
+
+    vec3 H = normalize(V + L);
+
+    float NDF = DistributionGGX(N, H, roughness);
+    float G   = GeometrySmith(N, V, L, roughness);
+    vec3  F   = fresnelSchlick(max(dot(H, V), 0.0), F0);
+
+    vec3  numerator = NDF * G * F;
+    float denominator = 4.0 * max(dot(N, V), 0.0) * NdotL + 0.0001;
+    vec3  specular = numerator / denominator;
+
+    vec3 kS = F;
+    vec3 kD = vec3(1.0) - kS;
+    kD *= 1.0 - metallic;
+
+    vec3 specular_radiance = specular * radiance * NdotL * shadow;
+
+    Lo += (kD * albedo / PI) * radiance * NdotL * shadow + specular_radiance;
+    spec_lum += get_luminance(specular_radiance);
+}
+
+
 /**
  * PBR lighting with Cook-Torrance BRDF - supports all light types.
  * Returns vec4(color.rgb, specular_luminance).
@@ -550,64 +578,57 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 	vec3  Lo = vec3(0.0);
 	float spec_lum = 0.0;
 
-	for (int i = 0; i < num_lights; ++i) {
-		// Get light direction and attenuation based on light type
-		vec3  L;
+	// ------------------------------------------------------------------
+	// PASS 1: Global Directional Light (Sun/Moon)
+	// ------------------------------------------------------------------
+	int sun_idx = 0;
+	for (int i = 0; i < min(2, num_lights); ++i) {
+		if (lights[sun_idx].type != LIGHT_TYPE_DIRECTIONAL) {
+			continue;
+		}
+
+		vec3 L;
+		float base_attenuation; // Unused for directional, but needed for your function signature
+		calculateLightContribution(sun_idx, frag_pos, L, base_attenuation);
+
+		// Quick culling before calculating attenuation or shadows
+		if (dot(N, L) <= 0.0) continue;
+
+		// Atmospheric transmittance isolated outside the loop
+		float r = kEarthRadiusKM + (frag_pos.y / (1000.0 * worldScale));
+		vec3 atmosphereTransmittance = texture(u_transmittanceLUT, getTransmittanceUV(r, L.y)).rgb;
+
+		float attenuation = lights[sun_idx].intensity * PBR_INTENSITY_BOOST;
+		vec3 radiance = lights[sun_idx].color * attenuation * atmosphereTransmittance;
+
+		// Cloud shadows isolated outside the loop
+		float shadow = calculateShadow(sun_idx, frag_pos, N, L);
+		shadow *= calculateCloudShadow(sun_idx, frag_pos);
+
+		if (i == 0) {
+			primaryShadow = shadow;
+		}
+
+		evaluate_brdf(N, V, L, albedo, roughness, metallic, F0, radiance, shadow, Lo, spec_lum);
+	}
+
+	// ------------------------------------------------------------------
+	// PASS 2: Local Lights (Point/Spot)
+	// ------------------------------------------------------------------
+	for (int i = 2; i < num_lights; ++i) {
+		vec3 L;
 		float base_attenuation;
 		calculateLightContribution(i, frag_pos, L, base_attenuation);
 
-		vec3 H = normalize(V + L);
+		// Quick culling before calculating attenuation or shadows
+		if (dot(N, L) <= 0.0) continue;
 
-		// For PBR, we apply intensity boost to compensate for energy conservation
-		// Note: directional lights don't use distance attenuation
-		float attenuation;
-		vec3  atmosphereTransmittance = vec3(1.0);
+		float attenuation = (lights[i].intensity * PBR_INTENSITY_BOOST) * base_attenuation;
+		vec3 radiance = lights[i].color * attenuation;
 
-		if (lights[i].type == LIGHT_TYPE_DIRECTIONAL) {
-			attenuation = lights[i].intensity * PBR_INTENSITY_BOOST;
-
-			// Apply atmospheric attenuation for directional lights (Sun/Moon)
-			float r = kEarthRadiusKM + (frag_pos.y / (1000.0 * worldScale));
-			float mu = L.y;
-			atmosphereTransmittance = texture(u_transmittanceLUT, getTransmittanceUV(r, mu)).rgb;
-		} else {
-			attenuation = (lights[i].intensity * PBR_INTENSITY_BOOST) * base_attenuation;
-		}
-		vec3 radiance = lights[i].color * attenuation * atmosphereTransmittance;
-
-		// Cook-Torrance BRDF
-		float NDF = DistributionGGX(N, H, roughness);
-		float G = GeometrySmith(N, V, L, roughness);
-		vec3  F = fresnelSchlick(max(dot(H, V), 0.0), F0);
-
-		vec3  numerator = NDF * G * F;
-		float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.0001;
-		vec3  specular = numerator / denominator;
-
-		// kS is Fresnel (specular component)
-		vec3 kS = F;
-		// kD is diffuse component (energy conservation: kD + kS = 1.0)
-		vec3 kD = vec3(1.0) - kS;
-		// Metals don't have diffuse lighting
-		kD *= 1.0 - metallic;
-
-		float NdotL = max(dot(N, L), 0.0);
-
-		// Calculate shadow with slope-scaled bias
 		float shadow = calculateShadow(i, frag_pos, N, L);
 
-		// Apply cloud shadow for directional lights
-		if (lights[i].type == LIGHT_TYPE_DIRECTIONAL) {
-			shadow *= calculateCloudShadow(i, frag_pos);
-		}
-
-		if (i == 0)
-			primaryShadow = shadow;
-
-		// Add to outgoing radiance Lo
-		vec3 specular_radiance = specular * radiance * NdotL * shadow;
-		Lo += (kD * albedo / PI) * radiance * NdotL * shadow + specular_radiance;
-		spec_lum += get_luminance(specular_radiance);
+		evaluate_brdf(N, V, L, albedo, roughness, metallic, F0, radiance, shadow, Lo, spec_lum);
 	}
 
 	// Spatially-varying SH ambient augmented with macro occlusion
