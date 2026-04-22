@@ -1143,11 +1143,23 @@ namespace Boidsish {
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
 
 			// Generate mipmaps for high-res material textures
-			glBindTexture(GL_TEXTURE_2D_ARRAY, albedo_texture_);
-			glGenerateMipmap(GL_TEXTURE_2D_ARRAY);
-			glBindTexture(GL_TEXTURE_2D_ARRAY, material_texture_);
-			glGenerateMipmap(GL_TEXTURE_2D_ARRAY);
-			glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
+			// Optimization: generate mipmaps only for the newly updated slices using texture views.
+			// This avoids re-generating mipmaps for the entire 512+ slice array every time a chunk is added.
+			auto generate_slice_mipmaps = [&](GLuint texture, const std::vector<BakeTask>& batch_tasks) {
+				int mips = 1 + static_cast<int>(std::floor(std::log2(kTextureResolution)));
+				for (const auto& task : batch_tasks) {
+					GLuint view;
+					glGenTextures(1, &view);
+					glTextureView(view, GL_TEXTURE_2D, texture, GL_RGBA8, 0, mips, task.slice, 1);
+					glBindTexture(GL_TEXTURE_2D, view);
+					glGenerateMipmap(GL_TEXTURE_2D);
+					glBindTexture(GL_TEXTURE_2D, 0);
+					glDeleteTextures(1, &view);
+				}
+			};
+
+			generate_slice_mipmaps(albedo_texture_, tasks);
+			generate_slice_mipmaps(material_texture_, tasks);
 		}
 
 		// Synchronize to ensure initial loads are fully baked before rendering

@@ -58,9 +58,9 @@ layout(binding = [[BAKED_PARAMS_BINDING]]) uniform sampler2DArray u_bakedParamsA
 // Input: Biome data (RG8: R=low_idx, G=t)
 layout(binding = [[TERRAIN_BIOME_MAP_BINDING]]) uniform sampler2DArray u_biomeMap;
 
-// Output: Albedo (RGBA8)
+// Output: Albedo (RGBA8: RGB=Albedo, A=AO)
 layout(rgba8, binding = [[TERRAIN_ALBEDO_IMAGE_BINDING]]) uniform image2DArray u_albedoOutput;
-// Output: PBR (RGBA8: R=roughness, G=metallic, B=AO, A=unused)
+// Output: PBR (RGBA8: R=roughness, G=metallic, B=Normal.x, A=Normal.z)
 layout(rgba8, binding = [[TERRAIN_PBR_IMAGE_BINDING]]) uniform image2DArray u_pbrOutput;
 
 struct BakeTask {
@@ -228,6 +228,42 @@ TerrainMaterial getCliffMaterial(float height, float noise) {
 	return mat;
 }
 
+// Optimization: Shared memory for height sampling
+const int WORKGROUP_SIZE = 8;
+const int SHARED_SIZE = WORKGROUP_SIZE + 2;
+shared float s_heights[SHARED_SIZE][SHARED_SIZE];
+
+// Reconstruct height with micro-relief at a given high-res UV
+float get_high_res_height(vec2 uv, float slice, vec3 worldOffset) {
+    vec2 remappedUV = (uv * u_terrainParams.x + 0.5) / (u_terrainParams.x + 1.0);
+    vec4 data = textureLod(u_heightmapArray, vec3(remappedUV, slice), 0.0);
+    float height = data.r;
+    vec3 normal = normalize(data.gba);
+
+    float chunkSize = u_terrainParams.x * u_terrainParams.y;
+    vec3 worldPos;
+    worldPos.x = worldOffset.x + uv.x * chunkSize;
+    worldPos.y = height;
+    worldPos.z = worldOffset.z + uv.y * chunkSize;
+
+    vec4 bakedParams = textureLod(u_bakedParamsArray, vec3(remappedUV, slice), 0.0);
+    float substrate = bakedParams.b;
+    float waterMask = bakedParams.a;
+
+    if (waterMask <= 0.0) {
+        vec3  scaledPos = worldPos * 2.0;
+        float rocks = fastWorley3d(scaledPos * 0.5);
+        float divots = fastSimplex3d(scaledPos * 1.0);
+        float substrateMod = mix(1.2, 0.4, clamp(substrate * 0.5 + 0.5, 0.0, 1.0));
+        float displacement = (rocks * 1.15 - abs(divots) * 1.17) * substrateMod;
+        height += normal.y * displacement;
+    }
+
+    height += 0.5 * fastWorley3d(worldPos / 50.0) * fastBlueNoise(worldPos.zx) * normal.y * smoothstep(10, 1, worldPos.y) * smoothstep(0.01, 1, worldPos.y);
+
+    return height;
+}
+
 void main() {
 	int taskIdx = int(gl_WorkGroupID.z);
 	if (taskIdx >= u_numTasks) return;
@@ -236,29 +272,49 @@ void main() {
 	int slice = task.slice;
 	float chunkSize = u_terrainParams.x * u_terrainParams.y;
 	float rawChunkSize = u_terrainParams.x;
-	vec2 worldOffset = vec2(task.chunk_coord) * chunkSize;
+	vec3 worldOffset = vec3(vec2(task.chunk_coord) * chunkSize, 0.0).xzy;
 
-	ivec2 pixelCoord = ivec2(gl_GlobalInvocationID.xy);
+	ivec2 baseCoord = ivec2(gl_WorkGroupID.xy) * WORKGROUP_SIZE;
+	ivec2 localID = ivec2(gl_LocalInvocationID.xy);
+
+	// Load heights into shared memory for efficient finite difference normal calculation
+	for (int i = localID.x; i < SHARED_SIZE; i += WORKGROUP_SIZE) {
+		for (int j = localID.y; j < SHARED_SIZE; j += WORKGROUP_SIZE) {
+			ivec2 pixelCoord = baseCoord + ivec2(i, j) - 1;
+			vec2 uv = clamp(vec2(pixelCoord) / 255.0, 0.0, 1.0);
+			s_heights[i][j] = get_high_res_height(uv, float(slice), worldOffset);
+		}
+	}
+
+	barrier();
+
+	ivec2 pixelCoord = baseCoord + localID;
 	if (pixelCoord.x >= 256 || pixelCoord.y >= 256)
 		return;
 
-	vec2 texUV = vec2(pixelCoord) / 255.0;
-    // Map high-res UV back to the [0.5, res-0.5] range for bilinear sampling from the 33x33 maps
+	float h = s_heights[localID.x + 1][localID.y + 1];
+	float hR = s_heights[localID.x + 2][localID.y + 1];
+	float hU = s_heights[localID.x + 1][localID.y + 2];
+
+    float texelSize = 1.0 / 255.0;
+    float dx = (hR - h) / (texelSize * chunkSize);
+    float dz = (hU - h) / (texelSize * chunkSize);
+    vec3 normal = normalize(vec3(-dx, 1.0, -dz));
+
+    vec2 texUV = vec2(pixelCoord) / 255.0;
     vec2 remappedUV = (texUV * rawChunkSize + 0.5) / (rawChunkSize + 1.0);
-
-    vec4 bakedHeightNormal = textureLod(u_heightmapArray, vec3(remappedUV, float(slice)), 0.0);
-    float height = bakedHeightNormal.r;
-    vec3 normal = normalize(bakedHeightNormal.gba);
-
     vec4 bakedParams = textureLod(u_bakedParamsArray, vec3(remappedUV, float(slice)), 0.0);
     float erosionDelta = bakedParams.r;
     float ridgeMap = bakedParams.g;
     float substrate = bakedParams.b;
     float waterMask = bakedParams.a;
 
-    vec2 biomeInfo = textureLod(u_biomeMap, vec3(remappedUV, float(slice)), 0.0).rg;
+    vec2 biomeInfoRaw = textureLod(u_biomeMap, vec3(remappedUV, float(slice)), 0.0).rg;
+    int lowIdx = int(biomeInfoRaw.r * 255.0 + 0.5);
+    int highIdx = clamp(lowIdx + 1, 0, 7);
+    float t_biome = biomeInfoRaw.g;
 
-    vec3 worldPos = vec3(worldOffset.x + texUV.x * chunkSize, height, worldOffset.y + texUV.y * chunkSize);
+    vec3 worldPos = vec3(worldOffset.x + texUV.x * chunkSize, h, worldOffset.z + texUV.y * chunkSize);
     float baseFreq = 0.1 / worldScale;
 
     float largeNoise = fastWarpedFbm3d(worldPos * (baseFreq * 0.5));
@@ -267,24 +323,24 @@ void main() {
 	float macroNoise = fastSimplex3d(worldPos * (baseFreq * 0.1));
 	float combinedNoise = largeNoise * 0.6 + (1.0 - medNoise) * 0.3 + fineNoise * 0.1;
 
-    float slope = dot(normal, vec3(0.0, 1.0, 0.0));
+    float slope = normal.y;
     float distortedSlope = slope + medNoise * 0.08;
     float verticalMask = smoothstep(0.4, 0.2, slope);
     float valleyFactor = calculateValleyFactor(worldPos);
-    float moisture = calculateMoisture(height, valleyFactor, worldPos);
+    float moisture = calculateMoisture(h, valleyFactor, worldPos);
     float valleyLushness = clamp(-valleyFactor, 0.0, 1.0);
 	moisture = mix(moisture, min(moisture + 0.3, 1.0), valleyLushness);
 
-    float cliffThreshold = mix(0.4, 0.3, smoothstep(HEIGHT_SNOW_START, HEIGHT_PEAK, height));
+    float cliffThreshold = mix(0.4, 0.3, smoothstep(HEIGHT_SNOW_START, HEIGHT_PEAK, h));
 	float cliffMask = smoothstep(cliffThreshold, cliffThreshold - 0.15, distortedSlope);
     cliffMask = max(cliffMask, verticalMask);
     cliffMask += (medNoise - 0.5) * 0.15;
 	cliffMask = clamp(cliffMask, 0.0, 1.0);
-    float beachMask = 1.0 - smoothstep(0.0, HEIGHT_BEACH_END + 2.0, height);
+    float beachMask = 1.0 - smoothstep(0.0, HEIGHT_BEACH_END + 2.0, h);
 	cliffMask *= (1.0 - beachMask);
 
-    TerrainMaterial biomeMat = getBiomeMaterial(height + largeNoise * 5.0 * worldScale, moisture, combinedNoise);
-	TerrainMaterial cliffMat = getCliffMaterial(height, medNoise);
+    TerrainMaterial biomeMat = getBiomeMaterial(h + largeNoise * 5.0 * worldScale, moisture, combinedNoise);
+	TerrainMaterial cliffMat = getCliffMaterial(h, medNoise);
 
     float substrateCliffFactor = smoothstep(0.2, -0.6, substrate);
 	cliffMask = clamp(cliffMask + substrateCliffFactor * 0.4, 0.0, 1.0);
@@ -305,15 +361,15 @@ void main() {
 
     finalMaterial.albedo = applyErosionColorMappingDefault(finalMaterial.albedo, ridgeMap, erosionDelta);
 
-    // Normal Perturbation (Grain) pre-bake
+    // Normal Perturbation (Grain)
     if (finalMaterial.normalStrength > 0.0) {
         float roughnessStrength = finalMaterial.normalStrength;
 		float roughnessScale = finalMaterial.normalScale * 0.05;
 		vec3  scaledFragPos = worldPos / worldScale;
 
-		float noiseTypeA = u_biomes[int(biomeInfo.x)].params.w;
-		float noiseTypeB = u_biomes[min(int(biomeInfo.x) + 1, 7)].params.w;
-		float noiseType = mix(noiseTypeA, noiseTypeB, biomeInfo.y);
+		float noiseTypeA = u_biomes[lowIdx].params.w;
+		float noiseTypeB = u_biomes[highIdx].params.w;
+		float noiseType = mix(noiseTypeA, noiseTypeB, t_biome);
 
 		float eps = 0.015;
 		float n, nx, nz;
@@ -335,24 +391,27 @@ void main() {
 			nz = fastRidge3d(0.1 * (scaledFragPos + vec3(0.0, 0.0, eps)) * roughnessScale);
 		}
 
-		float variance = ( (n-nx)*(n-nx) + (n-nz)*(n-nz) ) * (roughnessStrength / eps) * (roughnessStrength / eps);
+		vec3 v = abs(normal.z) < 0.999 ? vec3(0, 0, 1) : vec3(1, 0, 0);
+		vec3 tangent = normalize(cross(v, normal));
+		vec3 bitangent = cross(normal, tangent);
+		vec3 perturbation = (tangent * (n - nx) + bitangent * (n - nz)) * (roughnessStrength / eps);
+		normal = normalize(normal + perturbation);
+
+		float variance = dot(perturbation, perturbation);
 		finalMaterial.roughness = sqrt(clamp(finalMaterial.roughness * finalMaterial.roughness + variance * 0.25, 0.0, 1.0));
     }
 
     // AO calculation based on grass density
-    float grassDensityA = biomeProps[int(biomeInfo.x)].density;
-    float grassDensityB = biomeProps[min(int(biomeInfo.x) + 1, 7)].density;
-    float grassDensity = mix(grassDensityA, grassDensityB, biomeInfo.y) * globalProps.densityMultiplier;
+    float grassDensityA = biomeProps[lowIdx].density;
+    float grassDensityB = biomeProps[highIdx].density;
+    float grassDensity = mix(grassDensityA, grassDensityB, t_biome) * globalProps.densityMultiplier;
 
-    // Water awareness: grass doesn't grow under water
     grassDensity *= (1.0 - waterMask);
-    // Slope awareness: grass doesn't grow on cliffs
     grassDensity *= (1.0 - cliffMask);
 
     float ao = clamp(1.0 - grassDensity * 0.4, 0.6, 1.0);
-    // Darken valleys with AO
     ao *= mix(1.0, 0.8, valleyLushness);
 
-    imageStore(u_albedoOutput, ivec3(pixelCoord, slice), vec4(finalMaterial.albedo, 1.0));
-    imageStore(u_pbrOutput, ivec3(pixelCoord, slice), vec4(finalMaterial.roughness, finalMaterial.metallic, ao, 1.0));
+    imageStore(u_albedoOutput, ivec3(pixelCoord, slice), vec4(finalMaterial.albedo, ao));
+    imageStore(u_pbrOutput, ivec3(pixelCoord, slice), vec4(finalMaterial.roughness, finalMaterial.metallic, normal.x * 0.5 + 0.5, normal.z * 0.5 + 0.5));
 }

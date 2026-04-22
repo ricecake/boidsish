@@ -315,61 +315,24 @@ void main() {
 		return;
 	}
 
-	// ========================================================================
-	// Noise Generation
-	// ========================================================================
-	// Scale world-space position for detail noise to match terrain scaling
-	// float largeNoise =    mix(fastFbm3d(FragPos * (baseFreq * 5.0)), fastWarpedFbm3d(FragPos * (baseFreq * 0.5)),
-	// fastWorley3d(FragPos * (baseFreq * 0.1)));
-	float largeNoise = fastWarpedFbm3d(FragPos * (baseFreq * 0.1));
-	float medNoise = largeNoise;
-	float fineNoise = largeNoise;
-	float macroNoise = largeNoise;
-	float combinedNoise = largeNoise;
-
-	float distanceFactor = dist * smoothstep(0, 10.0, FragPos.y);
-	float noseFade = fade_start - 100.0;
-	/*
-	    if (distanceFactor < noseFade) {
-	        largeNoise = fastWarpedFbm3d(FragPos * (baseFreq * 0.5));
-	        medNoise = fastWorley3d(vec3(largeNoise) * (baseFreq * 2.0));
-	        fineNoise = fastFbm3d(FragPos * (baseFreq * 5.0));
-	        macroNoise = fastSimplex3d(FragPos * (baseFreq * 0.1));
-	        combinedNoise = largeNoise * 0.6 + (1.0 - medNoise) * 0.3 + fineNoise * 0.1;
-
-	        if (distanceFactor > 250) {
-	            float angle = 1.0 - dot(viewDir, viewPos - FragPos);
-	            largeNoise = mix(largeNoise, 1.0, angle * smoothstep(noseFade, fade_end, distanceFactor));
-	            medNoise = mix(medNoise, 1.0, angle * smoothstep(noseFade, fade_end, distanceFactor));
-	            fineNoise = mix(fineNoise, 1.0, angle * smoothstep(noseFade, fade_end, distanceFactor));
-	            macroNoise = mix(macroNoise, 1.0, angle * smoothstep(noseFade, fade_end, distanceFactor));
-	            combinedNoise = mix(combinedNoise, 1.0, angle * smoothstep(noseFade, fade_end, distanceFactor));
-	        }
-	    }
-	*/
 
 	// ========================================================================
 	// Material Lookup
 	// ========================================================================
-    vec3  bakedAlbedo = texture(uTerrainAlbedo, vec3(TexCoords, TextureSlice)).rgb;
-    vec3  bakedPBR = texture(uTerrainPBR, vec3(TexCoords, TextureSlice)).rgb;
+    vec4  bakedAlbedoAO = texture(uTerrainAlbedo, vec3(TexCoords, TextureSlice));
+    vec4  bakedPBRNorm = texture(uTerrainPBR, vec3(TexCoords, TextureSlice));
 
-	vec3  albedo = bakedAlbedo;
-	float roughness = bakedPBR.r;
-	float metallic = bakedPBR.g;
-    float ao = bakedPBR.b;
-
-	// ========================================================================
-	// Detail Variation
-	// ========================================================================
+	vec3  albedo = bakedAlbedoAO.rgb;
+    float ao = bakedAlbedoAO.a;
+	float roughness = bakedPBRNorm.r;
+	float metallic = bakedPBRNorm.g;
 
 	// ========================================================================
-	// Dynamic Normal Perturbation (Grain)
+	// Normal Reconstruction
 	// ========================================================================
-    // Note: We already baked grain into roughness in the material bake shader.
-    // However, if we want distance-dependent smoothing, we can keep it here,
-    // but for now, the precomputed grain should be sufficient.
-	vec3 perturbedNorm = norm;
+    vec2  bakedNormalXZ = bakedPBRNorm.ba * 2.0 - 1.0;
+    float bakedNormalY = sqrt(max(0.0, 1.0 - dot(bakedNormalXZ, bakedNormalXZ)));
+	vec3  perturbedNorm = normalize(vec3(bakedNormalXZ.x, bakedNormalY, bakedNormalXZ.y));
 
 	// Final Lighting
 	vec3 windAtPos = getWindAtPosition(vec3(FragPos.x, 0.5, FragPos.z));

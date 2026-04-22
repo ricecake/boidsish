@@ -88,9 +88,6 @@ void main() {
 		vRidgeMap = bakedParams.g;
 		vSubstrate = bakedParams.b;
 		vIsWater = bakedParams.a;
-
-		// Height and Normal were already updated by sampleHeightmap because it samples uHeightmap
-		// which now points to the baked texture array in the manager.
 	} else {
 		// FALLBACK: Execute existing erosion and displacement logic
 		float terrainDistance = distance(viewPos.xz, FragPos.xz);
@@ -173,6 +170,8 @@ void main() {
 	FragPos += getShockwaveDisplacement(FragPos, 0.0, false);
 
 	// Micro-relief displacement (rocks and divots)
+    // Note: We use high-res precomputed height in frag, but for vertex displacement,
+    // we still apply it here to match the visuals, though ideally this should also be baked.
 	if (!uIsShadowPass && waterMask <= 0.0) {
 		float dist = distance(viewPos, FragPos);
 		// Only apply where there is enough tessellation and the camera is close
