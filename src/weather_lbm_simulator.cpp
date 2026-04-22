@@ -134,7 +134,10 @@ namespace Boidsish {
                 // If vy is positive (updraft), air leaves the horizontal plane, reducing density.
                 // If vy is negative (downdraft), air hits the ground and spreads, increasing density.
                 const float massTransferRate = 0.05f;
-                float dRho = -cell.vy * massTransferRate * dt_;
+                float dRho = glm::clamp(-cell.vy * massTransferRate * dt_, 0.0f, 0.1f);
+                if (glm::length(u) >= 0.3f) {
+                    u = 0.3f * glm::normalize(u);
+                }
 
                 // Apply density change proportionally across the distributions,
                 // clamping to prevent vacuum collapse numerical instability.
@@ -197,6 +200,8 @@ namespace Boidsish {
 
                 nextCell.vy = glm::mix(glm::mix(c00.vy, c10.vy, tx),
                                       glm::mix(c01.vy, c11.vy, tx), tz);
+
+                nextCell.vy *= glm::mix(0.95f, 0.75f, glm::smoothstep(0.0f, 1.0f, nextCell.vy));
             }
         }
         std::swap(currentGrid_, nextGrid_);

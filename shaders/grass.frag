@@ -2,6 +2,7 @@
 
 #include "lighting.glsl"
 #include "helpers/lighting.glsl"
+#include "visual_effects.glsl"
 
 in vec3 fNormal;
 in vec2 fTexCoords;
@@ -70,6 +71,12 @@ void main() {
     if (!gl_FrontFacing) N = -N;
 
     vec3 albedo = mix(biomeProps[fBiomeIdx].colorBottom.rgb, biomeProps[fBiomeIdx].colorTop.rgb, fHeightFactor);
+    float roughness = 0.8;
+
+    // Apply wetness: darkening and reduction in roughness
+    albedo = mix(albedo, albedo * 0.4, wetness * 0.6);
+    roughness = mix(roughness, 0.1, wetness * 0.9);
+
     float ao = smoothstep(0.0, 0.5, fHeightFactor) * smoothstep(0.0, 0.25, biomeProps[fBiomeIdx].density);
     float dist = length(fWorldPos.xz - viewPos.xz);
 
@@ -89,7 +96,7 @@ void main() {
 
 
     float primaryShadow;
-    vec4 litColor = apply_lighting_foliage(fWorldPos, N, albedo, 0.8, 0.0, ao, primaryShadow);
+    vec4 litColor = apply_lighting_foliage(fWorldPos, N, albedo, roughness, 0.0, ao, primaryShadow);
     litColor.rgb = clamp(litColor.rgb, 0.0, 5.0); // Clamp HDR to prevent "bright white" blowouts
 
     // Distance fade and distant cyan blend (matching terrain style)
@@ -109,5 +116,5 @@ void main() {
     // Output view-space normal
     NormalOut = vec4(normalize(mat3(view) * N), primaryShadow);
     AlbedoOut = vec4(albedo, 1.0);
-    VelocityOut = vec4(0.0, 0.0, 0.8, 0.0); // No motion, roughness=0.8, metallic=0.0
+    VelocityOut = vec4(0.0, 0.0, roughness, 0.0); // No motion
 }

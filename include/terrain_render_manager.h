@@ -110,8 +110,8 @@ namespace Boidsish {
 			GLuint           lighting_ubo,
 			GLintptr         lighting_ubo_offset = 0,
 			GLsizeiptr       lighting_ubo_size = 0,
-			float            probe_scaling = 1.0f,
-			float            probe_convergence = 1.0f,
+			float            probe_scaling = 0.125f,
+			float            probe_convergence = 0.5f,
 			int              probe_ray_multiplier = 1
 		);
 

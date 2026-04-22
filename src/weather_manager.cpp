@@ -35,6 +35,8 @@ namespace Boidsish {
 		SetPace(WeatherAttribute::RayleighScaleHeight, WeatherConstants::RayleighScaleHeight.pace);
 		SetPace(WeatherAttribute::MieScaleHeight, WeatherConstants::MieScaleHeight.pace);
 		SetPace(WeatherAttribute::CloudCoverage, WeatherConstants::CloudCoverage.pace);
+		SetPace(WeatherAttribute::Precipitation, WeatherConstants::Precipitation.pace);
+		SetPace(WeatherAttribute::Temperature, WeatherConstants::Temperature.pace);
 
 		// Initialize default paces for new attributes
 		SetPace(WeatherAttribute::MieScattering, 0.2f);
@@ -146,6 +148,12 @@ namespace Boidsish {
 		case WeatherAttribute::CloudCoverage:
 			value_ptr = &current_.cloud_coverage;
 			break;
+		case WeatherAttribute::Precipitation:
+			value_ptr = &current_.precipitation;
+			break;
+		case WeatherAttribute::Temperature:
+			value_ptr = &current_.temperature;
+			break;
 		case WeatherAttribute::MieScattering:
 			value_ptr = &current_.mie_scattering;
 			break;
@@ -231,6 +239,8 @@ namespace Boidsish {
 		sunny.settings.rayleigh_scale_height = {RayleighScaleHeight.GetValue(0.85f), RayleighScaleHeight.GetValue(1.15f)};
 		sunny.settings.mie_scale_height = {MieScaleHeight.GetValue(0.8f), MieScaleHeight.GetValue(1.2f)};
 		sunny.settings.cloud_coverage = {CloudCoverage.GetValue(0.93f), CloudCoverage.GetValue(1.07f)};
+		sunny.settings.precipitation = {0.0f, 0.0f};
+		sunny.settings.temperature = {Temperature.GetValue(0.9f), Temperature.GetValue(1.1f)};
 		sunny.settings.mie_scattering = {MieScattering, MieScattering};
 		sunny.settings.mie_extinction = {MieExtinction, MieExtinction};
 		sunny.settings.rayleigh_scattering = {RayleighScattering, RayleighScattering};
@@ -257,6 +267,8 @@ namespace Boidsish {
 		cloudy.settings.rayleigh_scale_height = {RayleighScaleHeight.GetValue(0.7f), RayleighScaleHeight.GetValue(1.0f)};
 		cloudy.settings.mie_scale_height = {MieScaleHeight.GetValue(1.2f), MieScaleHeight.GetValue(1.8f)};
 		cloudy.settings.cloud_coverage = {CloudCoverage.GetValue(1.1f), CloudCoverage.GetValue(1.2f)};
+		cloudy.settings.precipitation = {0.0f, 0.1f};
+		cloudy.settings.temperature = {Temperature.GetValue(0.8f), Temperature.GetValue(1.0f)};
 		cloudy.settings.mie_scattering = {MieScattering, MieScattering * 1.5f};
 		cloudy.settings.mie_extinction = {MieExtinction, MieExtinction * 1.5f};
 		cloudy.settings.rayleigh_scattering = {RayleighScattering, RayleighScattering * 1.1f};
@@ -283,6 +295,8 @@ namespace Boidsish {
 		overcast.settings.rayleigh_scale_height = {RayleighScaleHeight.GetValue(0.4f), RayleighScaleHeight.GetValue(0.8f)};
 		overcast.settings.mie_scale_height = {MieScaleHeight.GetValue(1.8f), MieScaleHeight.GetValue(2.0f)};
 		overcast.settings.cloud_coverage = {CloudCoverage.GetValue(1.2f), CloudCoverage.GetValue(2.0f)};
+		overcast.settings.precipitation = {0.1f, 0.3f};
+		overcast.settings.temperature = {Temperature.GetValue(0.7f), Temperature.GetValue(0.9f)};
 		overcast.settings.mie_scattering = {MieScattering * 1.5f, MieScattering * 2.0f};
 		overcast.settings.mie_extinction = {MieExtinction * 1.5f, MieExtinction * 2.0f};
 		overcast.settings.rayleigh_scattering = {RayleighScattering * 1.1f, RayleighScattering * 1.3f};
@@ -309,12 +323,70 @@ namespace Boidsish {
 		foggy.settings.rayleigh_scale_height = {RayleighScaleHeight.GetValue(0.1f), RayleighScaleHeight.GetValue(0.5f)};
 		foggy.settings.mie_scale_height = {MieScaleHeight.GetValue(2.0f), MieScaleHeight.GetValue(2.0f)};
 		foggy.settings.cloud_coverage = {CloudCoverage.GetValue(0.2f), CloudCoverage.GetValue(0.5f)};
+		foggy.settings.precipitation = {0.0f, 0.05f};
+		foggy.settings.temperature = {WeatherConstants::Temperature.GetValue(0.6f), WeatherConstants::Temperature.GetValue(0.8f)};
 		foggy.settings.mie_scattering = {MieScattering * 2.0f, MieScattering * 5.0f};
 		foggy.settings.mie_extinction = {MieExtinction * 2.0f, MieExtinction * 5.0f};
 		foggy.settings.rayleigh_scattering = {RayleighScattering * 1.3f, RayleighScattering * 1.5f};
 		foggy.settings.haze_color = {DefaultHazeColor * 0.5f, DefaultHazeColor * 0.6f};
 		foggy.settings.cloud_color = {DefaultCloudColor * 0.5f, DefaultCloudColor * 0.6f};
 		presets_.push_back(foggy);
+
+		// 5. Rainy
+		WeatherPreset rainy;
+		rainy.name = "Rainy";
+		rainy.weight = 3.0f;
+		rainy.settings.sun_intensity = {SunIntensity.GetValue(0.1f), SunIntensity.GetValue(0.4f)};
+		rainy.settings.wind_strength = {WindStrength.GetValue(1.5f), WindStrength.GetValue(3.0f)};
+		rainy.settings.wind_speed = {WindSpeed.GetValue(1.5f), WindSpeed.GetValue(3.0f)};
+		rainy.settings.wind_frequency = {WindFrequency.GetValue(1.5f), WindFrequency.GetValue(2.5f)};
+		rainy.settings.cloud_density = {CloudDensity.GetValue(1.8f), CloudDensity.GetValue(2.0f)};
+		rainy.settings.cloud_altitude = {CloudAltitude.GetValue(0.1f), CloudAltitude.GetValue(0.2f)};
+		rainy.settings.cloud_thickness = {CloudThickness.GetValue(1.8f), CloudThickness.GetValue(2.0f)};
+		rainy.settings.haze_density = {HazeDensity.GetValue(1.5f), HazeDensity.GetValue(2.0f)};
+		rainy.settings.haze_height = {HazeHeight.GetValue(1.5f), HazeHeight.GetValue(2.0f)};
+		rainy.settings.rayleigh_scale = {RayleighScale.GetValue(1.4f), RayleighScale.GetValue(1.8f)};
+		rainy.settings.mie_scale = {MieScale.GetValue(1.5f), MieScale.GetValue(2.0f)};
+		rainy.settings.atmosphere_height = {AtmosphereHeight.GetValue(0.3f), AtmosphereHeight.GetValue(0.6f)};
+		rainy.settings.rayleigh_scale_height = {RayleighScaleHeight.GetValue(0.4f), RayleighScaleHeight.GetValue(0.8f)};
+		rainy.settings.mie_scale_height = {MieScaleHeight.GetValue(1.8f), MieScaleHeight.GetValue(2.0f)};
+		rainy.settings.cloud_coverage = {CloudCoverage.GetValue(1.5f), CloudCoverage.GetValue(2.0f)};
+		rainy.settings.precipitation = {0.5f, 1.0f};
+		rainy.settings.temperature = {WeatherConstants::Temperature.GetValue(0.7f), WeatherConstants::Temperature.GetValue(0.9f)}; // Moderate
+		rainy.settings.mie_scattering = {MieScattering * 1.5f, MieScattering * 2.0f};
+		rainy.settings.mie_extinction = {MieExtinction * 1.5f, MieExtinction * 2.0f};
+		rainy.settings.rayleigh_scattering = {RayleighScattering * 1.1f, RayleighScattering * 1.3f};
+		rainy.settings.haze_color = {DefaultHazeColor * 0.6f, DefaultHazeColor * 0.7f};
+		rainy.settings.cloud_color = {DefaultCloudColor * 0.6f, DefaultCloudColor * 0.7f};
+		presets_.push_back(rainy);
+
+		// 6. Snowy
+		WeatherPreset snowy;
+		snowy.name = "Snowy";
+		snowy.weight = 2.0f;
+		snowy.settings.sun_intensity = {SunIntensity.GetValue(0.1f), SunIntensity.GetValue(0.3f)};
+		snowy.settings.wind_strength = {WindStrength.GetValue(1.0f), WindStrength.GetValue(2.5f)};
+		snowy.settings.wind_speed = {WindSpeed.GetValue(1.0f), WindSpeed.GetValue(2.5f)};
+		snowy.settings.wind_frequency = {WindFrequency.GetValue(1.0f), WindFrequency.GetValue(2.0f)};
+		snowy.settings.cloud_density = {CloudDensity.GetValue(1.5f), CloudDensity.GetValue(2.0f)};
+		snowy.settings.cloud_altitude = {CloudAltitude.GetValue(0.1f), CloudAltitude.GetValue(0.3f)};
+		snowy.settings.cloud_thickness = {CloudThickness.GetValue(1.5f), CloudThickness.GetValue(2.0f)};
+		snowy.settings.haze_density = {HazeDensity.GetValue(1.8f), HazeDensity.GetValue(2.0f)};
+		snowy.settings.haze_height = {HazeHeight.GetValue(1.5f), HazeHeight.GetValue(2.0f)};
+		snowy.settings.rayleigh_scale = {RayleighScale.GetValue(1.4f), RayleighScale.GetValue(1.8f)};
+		snowy.settings.mie_scale = {MieScale.GetValue(1.5f), MieScale.GetValue(2.0f)};
+		snowy.settings.atmosphere_height = {AtmosphereHeight.GetValue(0.3f), AtmosphereHeight.GetValue(0.6f)};
+		snowy.settings.rayleigh_scale_height = {RayleighScaleHeight.GetValue(0.4f), RayleighScaleHeight.GetValue(0.8f)};
+		snowy.settings.mie_scale_height = {MieScaleHeight.GetValue(1.8f), MieScaleHeight.GetValue(2.0f)};
+		snowy.settings.cloud_coverage = {CloudCoverage.GetValue(1.2f), CloudCoverage.GetValue(2.0f)};
+		snowy.settings.precipitation = {0.4f, 0.8f};
+		snowy.settings.temperature = {WeatherConstants::Temperature.GetValue(0.2f), WeatherConstants::Temperature.GetValue(0.4f)}; // Low
+		snowy.settings.mie_scattering = {MieScattering * 2.0f, MieScattering * 4.0f};
+		snowy.settings.mie_extinction = {MieExtinction * 2.0f, MieExtinction * 4.0f};
+		snowy.settings.rayleigh_scattering = {RayleighScattering * 1.2f, RayleighScattering * 1.4f};
+		snowy.settings.haze_color = {DefaultHazeColor * 0.8f, DefaultHazeColor * 0.9f};
+		snowy.settings.cloud_color = {DefaultCloudColor * 0.8f, DefaultCloudColor * 0.9f};
+		presets_.push_back(snowy);
 
 		// Calculate CDF
 		cdf_.clear();
@@ -497,6 +569,8 @@ namespace Boidsish {
 			cached_targets_.rayleigh_scale_height = blended.rayleigh_scale_height.Lerp(temperature);
 			cached_targets_.mie_scale_height = blended.mie_scale_height.Lerp(humidity);
 			cached_targets_.cloud_coverage = blended.cloud_coverage.Lerp(humidity);
+			cached_targets_.precipitation = blended.precipitation.Lerp(humidity);
+			cached_targets_.temperature = blended.temperature.Lerp(temperature);
 
 			cached_targets_.mie_scattering = blended.mie_scattering.Lerp(humidity);
 			cached_targets_.mie_extinction = blended.mie_extinction.Lerp(humidity);
@@ -516,6 +590,12 @@ namespace Boidsish {
 			cached_targets_.cloud_density = phys.cloudDensity;
 			cached_targets_.cloud_altitude = phys.cloudAltitude;
 			cached_targets_.cloud_thickness = phys.cloudThickness;
+			cached_targets_.temperature = phys.temperature;
+
+			// Precipitation heuristic: High humidity + updrafts + clouds
+			float precip = std::max(0.0f, phys.humidity - 0.8f) * 5.0f;
+			precip *= phys.cloudCoverage;
+			cached_targets_.precipitation = std::clamp(precip, 0.0f, 1.0f);
 		}
 
 		// Always update attributes toward cached targets using the spring system
@@ -534,6 +614,8 @@ namespace Boidsish {
 		UpdateAttribute(WeatherAttribute::RayleighScaleHeight, cached_targets_.rayleigh_scale_height, deltaTime);
 		UpdateAttribute(WeatherAttribute::MieScaleHeight, cached_targets_.mie_scale_height, deltaTime);
 		UpdateAttribute(WeatherAttribute::CloudCoverage, cached_targets_.cloud_coverage, deltaTime);
+		UpdateAttribute(WeatherAttribute::Precipitation, cached_targets_.precipitation, deltaTime);
+		UpdateAttribute(WeatherAttribute::Temperature, cached_targets_.temperature, deltaTime);
 
 		// Update new attributes
 		UpdateAttribute(WeatherAttribute::MieScattering, cached_targets_.mie_scattering, deltaTime);
