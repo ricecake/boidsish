@@ -35,11 +35,7 @@ layout(std140, binding = [[WIND_DATA_BINDING]]) uniform WindData {
 
 #include "../helpers/constants.glsl"
 #define SHADOWS_UBO_MAPPING
-// terrain_shadows.glsl defines calculateTerrainOcclusion and terrainShadowCoverage
-// We only include lighting.glsl which brings them in if USE_TERRAIN_DATA is defined.
-// To avoid redefinition, we'll avoid double-including if possible.
 #define USE_TERRAIN_DATA
-#include "../lighting.glsl"
 #include "../helpers/terrain_shadows.glsl"
 #include "../helpers/lighting.glsl"
 #include "../helpers/fast_noise.glsl"

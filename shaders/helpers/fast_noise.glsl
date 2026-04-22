@@ -1,3 +1,6 @@
+#ifndef HELPERS_FAST_NOISE_GLSL
+#define HELPERS_FAST_NOISE_GLSL
+
 // Helper functions for fast texture-based noise lookups
 // Requires noise texture samplers bound to fixed units:
 // u_noiseTexture: 3D, unit 5, R=Simplex/G=Worley/B=FBM/A=Warped
@@ -95,3 +98,5 @@ float fastPhasor2d(vec2 uv, float runtimePhase) {
 
 	return baked.x * cosPhi - baked.y * sinPhi;
 }
+
+#endif // HELPERS_FAST_NOISE_GLSL

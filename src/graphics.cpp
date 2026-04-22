@@ -784,6 +784,7 @@ namespace Boidsish {
 			}
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_terrain", true)) {
 				terrain_generator = std::make_shared<TerrainGenerator>();
+				service_locator_.Provide<ITerrainGenerator>(terrain_generator);
 				last_camera_yaw_ = camera.yaw;
 				last_camera_pitch_ = camera.pitch;
 			}
@@ -4329,6 +4330,7 @@ namespace Boidsish {
 	void Visualizer::InstallTerrainGenerator(std::shared_ptr<ITerrainGenerator> generator) {
 		// Swap the terrain generator
 		impl->terrain_generator = std::move(generator);
+		impl->service_locator_.Provide<ITerrainGenerator>(impl->terrain_generator);
 
 		if (impl->weather_manager) {
 			impl->weather_manager->SetTerrainGenerator(impl->terrain_generator.get());
