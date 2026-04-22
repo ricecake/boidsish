@@ -13,6 +13,7 @@ uniform float frustumCullRadius = 1.0;
 out float         v_lifetime;
 out vec4          view_pos;
 out vec4          v_pos;
+out vec3          v_vel;
 out float         v_extra[2];
 out vec3          v_epicenter;
 flat out int      v_style;
@@ -25,6 +26,7 @@ void main() {
 	uint     particle_idx = visible_indices[gl_VertexID];
 	Particle p = particles[particle_idx];
 	v_pos = p.pos;
+	v_vel = p.vel.xyz;
 	v_epicenter = p.epicenter;
 	v_extra = p.extras;
 
@@ -47,18 +49,21 @@ void main() {
 			gl_PointSize = 4.0 + v_lifetime * 20.0;
 		} else if (p.style == STYLE_GLITTER) {                                     // Glitter
 			gl_PointSize = 6.0;                                                    // Small, consistent square
-		} else if (p.style == 8) {                                                 // Debug
+		} else if (p.style == STYLE_DEBUG) {                                       // Debug
 			gl_PointSize = 8.0;                                                    // Fixed size point
-		} else if (p.style == 5 || p.style == 6 || p.style == 7 || p.style == 9) { // Ambient, Bubbles, Fireflies,
-			                                                                       // Cinder
+		} else if (p.style == STYLE_RAIN) {
+			gl_PointSize = clamp(40.0 / (-view_pos.z * 0.1), 1.0, 10.0);
+		} else if (p.style == STYLE_SNOW) {
+			gl_PointSize = clamp(30.0 / (-view_pos.z * 0.1), 2.0, 15.0);
+		} else if (p.style == STYLE_AMBIENT || p.style == STYLE_BUBBLES || p.style == STYLE_FIREFLIES || p.style == STYLE_CINDER) {
 			// Prominent size but attenuated by distance
 			gl_PointSize = 15.0 / (-view_pos.z * 0.05);
 
 			// Vary size by sub-style and random factor
 			float size_var = fract(sin(float(particle_idx) * 123.456) * 456.789);
-			if (p.style == 6 || (p.style == 5 && v_emitter_id == 2)) { // Bubbles vary more in size
+			if (p.style == STYLE_BUBBLES || (p.style == STYLE_AMBIENT && v_emitter_id == 2)) { // Bubbles vary more in size
 				gl_PointSize *= (0.5 + size_var * 1.5);
-			} else if (p.style == 9) { // Cinders are a bit smaller but vary
+			} else if (p.style == STYLE_CINDER) { // Cinders are a bit smaller but vary
 				gl_PointSize *= (0.6 + size_var * 0.4);
 				gl_PointSize *= 0.8;
 			} else {

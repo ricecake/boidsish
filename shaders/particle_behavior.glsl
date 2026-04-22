@@ -4,6 +4,8 @@
 #include "helpers/spatial_hash.glsl"
 #include "particle_helpers.glsl"
 #include "particle_types.glsl"
+#include "visual_effects.glsl"
+#include "helpers/wind.glsl"
 
 // Simulation parameters
 const float kExhaustSpeed = 30.0;
@@ -239,6 +241,21 @@ void updateFireBehavior(
 		p.vel.y += kCinderBuoyancy * ageFactor * dt;
 		p.vel.xyz *= 0.98; // Drag
 		maxSpeed = 5.0;
+	} else if (p.style == STYLE_RAIN) {
+		maxSpeed = 40.0;
+		p.vel.y -= 50.0 * dt; // Heavy gravity
+		vec3 wind = getWindAtPosition(p.pos.xyz);
+		p.vel.xyz += wind * 5.0 * dt;
+		p.vel.xyz *= 0.99; // Air resistance
+	} else if (p.style == STYLE_SNOW) {
+		maxSpeed = 5.0;
+		p.vel.y -= 2.0 * dt; // Light gravity
+		vec3 wind = getWindAtPosition(p.pos.xyz);
+		p.vel.xyz += wind * 10.0 * dt;
+		// Add some flutter/wobble
+		p.vel.x += sin(time * 5.0 + float(gl_GlobalInvocationID.x)) * 0.5 * dt;
+		p.vel.z += cos(time * 4.0 + float(gl_GlobalInvocationID.x)) * 0.5 * dt;
+		p.vel.xyz *= 0.95; // High air resistance
 	}
 
 	if (p.style != STYLE_SPARKS && p.style != STYLE_GLITTER && p.style != STYLE_AMBIENT && p.style != STYLE_BUBBLES && p.style != STYLE_FIREFLIES && p.style != STYLE_DEBUG && p.style != STYLE_CINDER &&

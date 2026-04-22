@@ -392,6 +392,12 @@ void main() {
 	// Add subtle color variation based on combined noise
 	finalMaterial.albedo *= (1.0 + combinedNoise * 0.15);
 
+	// Apply global wetness from precipitation
+	// Wet surfaces are darker and much smoother (glossier)
+	float globalWetness = wetness;
+	finalMaterial.albedo = mix(finalMaterial.albedo, finalMaterial.albedo * 0.5, globalWetness * 0.5);
+	finalMaterial.roughness = mix(finalMaterial.roughness, 0.1, globalWetness * 0.8);
+
 	// Extra variety for rocky/steep areas to complement normals
 	float rockyVar = fineNoise;
 	float rockyMask = smoothstep(0.5, 0.2, slope); // More variety on steeper slopes

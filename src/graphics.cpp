@@ -451,6 +451,7 @@ namespace Boidsish {
 		float                                          simulation_delta_time = 0.0f;
 		float                                          time_scale = 1.0f;
 		float                                          ripple_strength = 0.0f;
+		float                                          wetness_ = 0.0f;
 		std::chrono::high_resolution_clock::time_point last_frame;
 
 		CameraMode camera_mode = CameraMode::AUTO;
@@ -2272,6 +2273,11 @@ namespace Boidsish {
 				}
 
 				if (visual_effects_pb) {
+					const auto& w = weather_manager->GetCurrentWeather();
+					ubo_data.rain_intensity = (w.temperature > 273.15f) ? w.precipitation : 0.0f;
+					ubo_data.snow_intensity = (w.temperature <= 273.15f) ? w.precipitation : 0.0f;
+					ubo_data.wetness = wetness_;
+
 					*visual_effects_pb->GetFrameDataPtr() = ubo_data;
 					glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::VisualEffects(),
 						visual_effects_pb->GetBufferId(), visual_effects_pb->GetFrameOffset(),
@@ -3454,6 +3460,18 @@ namespace Boidsish {
 			);
 
 			const auto& w = impl->weather_manager->GetCurrentWeather();
+
+			// Calculate precipitation targets
+			float rain_target = (w.temperature > 273.15f) ? w.precipitation : 0.0f;
+			float snow_target = (w.temperature <= 273.15f) ? w.precipitation : 0.0f;
+
+			// Accumulate wetness when it rains, and let it dry over time
+			if (rain_target > 0.01f) {
+				impl->wetness_ += rain_target * impl->simulation_delta_time * 0.1f;
+			} else {
+				impl->wetness_ -= impl->simulation_delta_time * 0.02f; // Drying
+			}
+			impl->wetness_ = std::clamp(impl->wetness_, 0.0f, 1.0f);
 
 			impl->weather_manager->UpdateWindUbo(impl->simulation_time);
 

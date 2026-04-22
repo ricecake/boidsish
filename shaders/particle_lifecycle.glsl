@@ -5,6 +5,7 @@
 #include "particle_behavior.glsl"
 #include "particle_helpers.glsl"
 #include "particle_types.glsl"
+#include "visual_effects.glsl"
 
 bool updateLifetime(
 	inout Particle p,
@@ -255,6 +256,34 @@ void respawnParticle(
 					}
 				}
 			}
+		}
+
+		if (p.pos.w <= 0.0 && (rain_intensity > 0.01 || snow_intensity > 0.01)) {
+			// --- 3c. Precipitation Respawn ---
+			// Spawn in a box around the camera
+			vec2 seed = vec2(float(gid) * 0.123, time * 0.456);
+			vec3 rand_offset = rand3(seed) * 2.0 - 1.0;
+
+			// Top-down box: 40x40 area, 20 units high
+			float box_w = 40.0;
+			float box_h = 20.0;
+
+			p.pos.x = viewPos.x + rand_offset.x * box_w;
+			p.pos.z = viewPos.z + rand_offset.z * box_w;
+			p.pos.y = viewPos.y + box_h; // Spawn high
+
+			// Distribute lifetime so they don't all pop at once
+			p.pos.w = 2.0 * rand(seed.yx);
+
+			if (rain_intensity > snow_intensity) {
+				p.style = STYLE_RAIN;
+				p.vel = vec4(0, -30.0, 0, 0); // Fast fall
+			} else {
+				p.style = STYLE_SNOW;
+				p.vel = vec4(0, -2.0, 0, 0);  // Slow fall
+			}
+			p.emitter_index = -1;
+			p.emitter_id = -1;
 		}
 
 		if (p.pos.w <= 0.0) {
