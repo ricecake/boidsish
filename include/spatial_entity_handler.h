@@ -4,10 +4,13 @@
 #include <limits>
 #include <memory>
 #include <mutex>
+#include <shared_mutex>
+#include <typeindex>
+#include <vector>
 
 #include "entity.h"
 #include "graphics.h"
-#include <RTree.h>
+#include "bvh_spatial_structure.h"
 
 namespace Boidsish {
 
@@ -16,29 +19,34 @@ namespace Boidsish {
 		SpatialEntityHandler(
 			task_thread_pool::task_thread_pool& thread_pool,
 			std::shared_ptr<Visualizer>         visualizer = nullptr
-		):
-			EntityHandler(thread_pool, visualizer),
-			read_rtree_(std::make_unique<RTree<int, float, 3>>()),
-			write_rtree_(std::make_unique<RTree<int, float, 3>>()) {}
+		);
+
+		virtual ~SpatialEntityHandler();
 
 		using EntityHandler::AddEntity;
 
 		template <typename T>
 		std::vector<std::shared_ptr<T>> GetEntitiesInRadius(const Vector3& center, float radius) const {
-			std::vector<std::shared_ptr<T>> result;
-			float                           min[] = {center.x - radius, center.y - radius, center.z - radius};
-			float                           max[] = {center.x + radius, center.y + radius, center.z + radius};
-
-			read_rtree_->Search(min, max, [&](int id) {
-				auto entity = GetEntity(id);
-				if (entity && entity->GetPosition().DistanceTo(center) <= radius) {
-					auto typed_entity = std::dynamic_pointer_cast<T>(entity);
-					if (typed_entity) {
-						result.push_back(typed_entity);
-					}
+			std::vector<int> allowed_ids;
+			if constexpr (!std::is_same_v<T, EntityBase>) {
+				auto typed_entities = GetEntitiesByType<T>();
+				for (auto* e : typed_entities) {
+					allowed_ids.push_back(e->GetId());
 				}
-				return true; // continue searching
-			});
+			}
+
+			std::vector<std::shared_ptr<T>> result;
+			glm::vec3                       c(center.x, center.y, center.z);
+
+			std::shared_lock lock(bvh_mutex_);
+			auto             ids = bvh_.GetEntityIdsInRadius(c, radius, allowed_ids);
+
+			for (int id : ids) {
+				auto entity = GetEntity(id);
+				if (entity) {
+					result.push_back(std::static_pointer_cast<T>(entity));
+				}
+			}
 
 			return result;
 		}
@@ -50,43 +58,46 @@ namespace Boidsish {
 			float          expansion_factor = 2.0f,
 			int            max_expansions = 10
 		) const {
-			float radius = initial_radius;
-			for (int i = 0; i < max_expansions; ++i) {
-				auto entities_in_radius = GetEntitiesInRadius<T>(center, radius);
-				if (!entities_in_radius.empty()) {
-					return *std::min_element(
-						entities_in_radius.begin(),
-						entities_in_radius.end(),
-						[&](const auto& a, const auto& b) {
-							return center.DistanceTo(a->GetPosition()) < center.DistanceTo(b->GetPosition());
-						}
-					);
+			(void)initial_radius;
+			(void)expansion_factor;
+			(void)max_expansions;
+
+			std::vector<int> allowed_ids;
+			if constexpr (!std::is_same_v<T, EntityBase>) {
+				auto typed_entities = GetEntitiesByType<T>();
+				for (auto* e : typed_entities) {
+					allowed_ids.push_back(e->GetId());
 				}
-				radius *= expansion_factor;
+			}
+
+			glm::vec3        c(center.x, center.y, center.z);
+			std::shared_lock lock(bvh_mutex_);
+			int              id = bvh_.FindNearestId(c, 1e10f, allowed_ids);
+			if (id != -1) {
+				auto entity = GetEntity(id);
+				if (entity) {
+					return std::static_pointer_cast<T>(entity);
+				}
 			}
 			return nullptr;
 		}
 
-	protected:
-		void OnEntityUpdated(std::shared_ptr<EntityBase> entity) override {
-			const Vector3               pos = entity->GetPosition();
-			float                       min[3] = {pos.x, pos.y, pos.z};
-			float                       max[3] = {pos.x, pos.y, pos.z};
-			std::lock_guard<std::mutex> lock(write_mutex_);
-			write_rtree_->Insert(min, max, entity->GetId());
-		}
+		/**
+		 * @brief BVH-accelerated raycasting against all entities.
+		 */
+		std::shared_ptr<EntityBase>
+		RaycastEntities(const Ray& ray, float& out_t, glm::vec3& out_hit_point) const override;
 
-		void PostTimestep(float time, float delta_time) override {
-			(void)time;
-			(void)delta_time;
-			read_rtree_.swap(write_rtree_);
-			write_rtree_->RemoveAll();
-		}
+	protected:
+		// BVH is rebuilt from scratch every frame, so we don't need incremental updates.
+		void OnEntityUpdated(std::shared_ptr<EntityBase> entity) override { (void)entity; }
+
+		void PostTimestep(float time, float delta_time) override;
 
 	private:
-		mutable std::unique_ptr<RTree<int, float, 3>> read_rtree_;
-		mutable std::unique_ptr<RTree<int, float, 3>> write_rtree_;
-		mutable std::mutex                            write_mutex_;
+		BvhSpatialStructure bvh_;
+		BvhSpatialStructure next_bvh_; // Double buffering
+		mutable std::shared_mutex bvh_mutex_;
 	};
 
 } // namespace Boidsish
