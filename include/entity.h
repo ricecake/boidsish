@@ -327,7 +327,7 @@ namespace Boidsish {
 		 * @param out_hit_point Output: world-space hit point
 		 * @return Pointer to the closest hit entity, or nullptr if none hit
 		 */
-		std::shared_ptr<EntityBase> RaycastEntities(const Ray& ray, float& out_t, glm::vec3& out_hit_point) const;
+		virtual std::shared_ptr<EntityBase> RaycastEntities(const Ray& ray, float& out_t, glm::vec3& out_hit_point) const;
 
 		// Get all entities (for iteration)
 		const std::map<int, std::shared_ptr<EntityBase>>& GetAllEntities() const { return entities_; }
