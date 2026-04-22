@@ -16,8 +16,6 @@ uniform int   u_num_chunks;
 uniform uint  u_grid_size;
 uniform float u_cell_size;
 
-uniform sampler3D      u_curlTexture;
-uniform sampler2DArray u_heightmapArray;
 uniform sampler2DArray u_biomeMap;
 
 layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
