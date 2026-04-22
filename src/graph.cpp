@@ -25,7 +25,7 @@ namespace Boidsish {
 	}
 
 	const int   CYLINDER_SEGMENTS = 12;
-	const float EDGE_RADIUS_SCALE = 0.02f;
+	const float EDGE_RADIUS_SCALE = 0.01f;
 	const int   CURVE_SEGMENTS = 10;
 
 	void Graph::PrepareResources(Megabuffer* mb) const {

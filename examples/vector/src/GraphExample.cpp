@@ -15,16 +15,16 @@ namespace Boidsish {
 		static std::shared_ptr<Graph> graph = nullptr;
 		if (!graph) {
 			graph = std::make_shared<Graph>(0, 0, 0, 0);
-			// Initial setup
+			// Initial setup with tapering sizes
 			auto root = graph->AddVertex(Vector3(0, 0, 0), 48.0f, 0, 0, 1, 1);
-			auto trunk = graph->AddVertex(Vector3(0, 6, 0), 16.0f, 0, 1, 1, 1);
+			auto trunk = graph->AddVertex(Vector3(0, 6, 0), 32.0f, 0, 1, 1, 1);
 			root.Link(trunk);
 
-			graph->AddVertex(Vector3(0, 11, 0), 24.0f).Link(trunk);
-			graph->AddVertex(Vector3(3, 10, 0), 24.0f).Link(trunk);
-			graph->AddVertex(Vector3(-3, 10, 0), 24.0f).Link(trunk);
-			graph->AddVertex(Vector3(0, 10, 3), 24.0f).Link(trunk);
-			graph->AddVertex(Vector3(0, 10, -3), 24.0f).Link(trunk);
+			graph->AddVertex(Vector3(0, 11, 0), 16.0f).Link(trunk);
+			graph->AddVertex(Vector3(3, 10, 0), 16.0f).Link(trunk);
+			graph->AddVertex(Vector3(-3, 10, 0), 16.0f).Link(trunk);
+			graph->AddVertex(Vector3(0, 10, 3), 16.0f).Link(trunk);
+			graph->AddVertex(Vector3(0, 10, -3), 16.0f).Link(trunk);
 		}
 
 		// Update vertex positions and colors over time
