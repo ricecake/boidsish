@@ -301,7 +301,6 @@ namespace Boidsish {
 		std::unique_ptr<ComputeShader> grid_mip_shader_;
 		std::unique_ptr<ComputeShader> probe_compute_shader_;
 		std::unique_ptr<ComputeShader> terrain_bake_shader_;
-		std::unique_ptr<ComputeShader> terrain_material_bake_shader_;
 
 		// Grid mesh data
 		size_t grid_index_count_ = 0;

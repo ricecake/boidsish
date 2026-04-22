@@ -67,7 +67,6 @@ namespace Boidsish {
 		grid_mip_shader_ = std::make_unique<ComputeShader>("shaders/terrain_hiz_generate.comp");
 		probe_compute_shader_ = std::make_unique<ComputeShader>("shaders/terrain_probes.comp");
 		terrain_bake_shader_ = std::make_unique<ComputeShader>("shaders/terrain_bake.comp");
-		terrain_material_bake_shader_ = std::make_unique<ComputeShader>("shaders/terrain_material_bake.comp");
 
 		// Create SH probes SSBO
 		glGenBuffers(1, &probe_ssbo_);
@@ -1079,7 +1078,20 @@ namespace Boidsish {
 			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::VisualEffects(), visual_effects_ubo_);
 		}
 
-		// Process Height Bake in batches
+		// Dispatch Terrain Bake (Combined Height, Material, Normal)
+		terrain_bake_shader_->use();
+
+		// Bind Material/Biome UBOs for baking
+		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Biomes(), biome_ubo_);
+		if (grass_props_ubo_ != 0) {
+			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::GrassProps(), grass_props_ubo_);
+		}
+
+		// Bind high-res output images
+		glBindImageTexture(Constants::TextureUnit::TerrainAlbedoImage(), albedo_texture_, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA8);
+		glBindImageTexture(Constants::TextureUnit::TerrainPBRImage(), material_texture_, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA8);
+
+		// Process in batches
 		const size_t max_batch = 1024;
 		for (size_t i = 0; i < tasks.size(); i += max_batch) {
 			size_t batch_size = std::min(max_batch, tasks.size() - i);
@@ -1090,58 +1102,15 @@ namespace Boidsish {
 
 			terrain_bake_shader_->setInt("u_numTasks", static_cast<int>(batch_size));
 
-			// Local size is 8x8. Calculate workgroup counts to cover resolution.
-			GLuint groups_x = (heightmap_resolution_ + 7) / 8;
-			GLuint groups_y = (heightmap_resolution_ + 7) / 8;
+			// High-res texture resolution (256x256). The shader also updates the 33x33 heightmap grid.
+			GLuint groups_x = (kTextureResolution + 7) / 8;
+			GLuint groups_y = (kTextureResolution + 7) / 8;
 			glDispatchCompute(groups_x, groups_y, static_cast<GLuint>(batch_size));
 		}
 
 		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
 
-		// Dispatch Material Bake
-		if (terrain_material_bake_shader_ && terrain_material_bake_shader_->isValid()) {
-			terrain_material_bake_shader_->use();
-
-			// Input textures
-			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainHeightmap());
-			glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture_);
-			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainBakedParams());
-			glBindTexture(GL_TEXTURE_2D_ARRAY, baked_params_texture_);
-			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainBiomeMap());
-			glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture_);
-			terrain_material_bake_shader_->setInt("u_heightmapArray", Constants::TextureUnit::TerrainHeightmap());
-			terrain_material_bake_shader_->setInt("u_bakedParamsArray", Constants::TextureUnit::TerrainBakedParams());
-			terrain_material_bake_shader_->setInt("u_biomeMap", Constants::TextureUnit::TerrainBiomeMap());
-
-			// Output images
-			glBindImageTexture(Constants::TextureUnit::TerrainAlbedoImage(), albedo_texture_, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA8);
-			glBindImageTexture(Constants::TextureUnit::TerrainPBRImage(), material_texture_, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA8);
-
-			// UBOs
-			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::TerrainData(), terrain_data_ubo_);
-			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Biomes(), biome_ubo_);
-			if (grass_props_ubo_ != 0) {
-				glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::GrassProps(), grass_props_ubo_);
-			}
-
-			// Batch process tasks for material baking
-			for (size_t i = 0; i < tasks.size(); i += max_batch) {
-				size_t batch_size = std::min(max_batch, tasks.size() - i);
-
-				glBindBuffer(GL_SHADER_STORAGE_BUFFER, bake_ssbo_);
-				glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, batch_size * sizeof(BakeTask), &tasks[i]);
-				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainChunkInfo(), bake_ssbo_);
-
-				terrain_material_bake_shader_->setInt("u_numTasks", static_cast<int>(batch_size));
-
-				// High-res texture resolution (256x256)
-				GLuint groups_x = (kTextureResolution + 7) / 8;
-				GLuint groups_y = (kTextureResolution + 7) / 8;
-				glDispatchCompute(groups_x, groups_y, static_cast<GLuint>(batch_size));
-			}
-
-			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
-
+		{
 			// Generate mipmaps for high-res material textures
 			// Optimization: generate mipmaps only for the newly updated slices using texture views.
 			// This avoids re-generating mipmaps for the entire 512+ slice array every time a chunk is added.
