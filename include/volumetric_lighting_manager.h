@@ -30,7 +30,8 @@ namespace Boidsish {
         glm::vec4 cloudParams;    // x: cloud coverage, y: cloud density, z: cloud shadow intensity, w: reserved
         glm::vec4 cascadeSplits;  // Near plane distances for each cascade
         glm::vec4 viewPosVol;     // xyz: camera world pos, w: world scale
-        glm::vec4 timeParams;     // x: totalTime, y: frameIndex, zw: reserved
+        glm::vec4 viewDirVol;     // xyz: camera forward, w: reserved
+        glm::vec4 timeParams;     // x: totalTime, y: frameIndex, z: debugMode, w: reserved
     };
 
     class VolumetricLightingManager : public IManager {
@@ -61,6 +62,8 @@ namespace Boidsish {
         void  SetExtinctionScale(float e) { _extinctionScale = e; }
         float GetPhaseG() const { return _phaseG; }
         void  SetPhaseG(float g) { _phaseG = g; }
+        int   GetDebugMode() const { return _debugMode; }
+        void  SetDebugMode(int m) { _debugMode = m; }
 
     private:
         void CreateTextures();
@@ -86,17 +89,18 @@ namespace Boidsish {
         // Grid configuration
         int _gridW = 200;
         int _gridH = 112;
-        int _gridD = 160; // Increased depth for better god ray resolution
+        int _gridD = 200; // Further increased depth for better god ray resolution
 
         float _nearPlane = 1.0f;
         float _farPlane = 2000.0f; // Extended volumetric range
         int   _frameIndex = 0;
 
         // Runtime params
-        float _intensity = 100.0f;
-        float _scatteringScale = 50.0f;
+        float _intensity = 80.0f;
+        float _scatteringScale = 60.0f;
         float _extinctionScale = 0.2f;
-        float _phaseG = 0.80f;
+        float _phaseG = 0.95f;
+        int   _debugMode = 0;
 
         glm::mat4 _prevViewProj{1.0f};
     };

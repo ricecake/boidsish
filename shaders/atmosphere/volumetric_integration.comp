@@ -12,13 +12,16 @@ layout(std140, binding = [[VOLUMETRIC_LIGHTING_BINDING]]) uniform VolumetricLigh
     vec4 resolution;     // x: gridW, y: gridH, z: gridD, w: intensity
     vec4 sunDir;         // xyz: dir, w: sun intensity
     vec4 sunColor;       // rgb: color, w: mie anisotropy (g)
+    vec4 moonDir;        // xyz: dir, w: moon intensity
+    vec4 moonColor;      // rgb: color, w: reserved
     vec4 hazeParams;     // x: haze density, y: haze height, z: noise scale, w: noise strength
     vec4 hazeColor;      // rgb: color, w: reserved
     vec4 ambientColor;   // rgb: color, w: scattering scale
     vec4 cloudParams;    // x: cloud coverage, y: cloud density, z: cloud shadow intensity, w: reserved
     vec4 cascadeSplits;
     vec4 viewPosVol;     // xyz: camPos, w: worldScale
-    vec4 timeParams;     // x: totalTime, y: frameIndex, zw: reserved
+    vec4 viewDirVol;     // xyz: camForward, w: reserved
+    vec4 timeParams;     // x: totalTime, y: frameIndex, z: debugMode, w: reserved
 } u_vol;
 
 uniform sampler3D u_scatteringVolume;
@@ -36,6 +39,8 @@ void main() {
     float accumulatedTransmittance = 1.0;
 
     if (u_cascadeIndex > 0) {
+        // Sample the LAST depth slice of the previous cascade to continue accumulation
+        // resXY of current cascade is half of previous if div increases
         vec4 prev = textureLod(u_previousIntegrated, vec3((vec2(texelXY) + 0.5) / resXY, 1.0), 0.0);
         accumulatedLight = prev.rgb;
         accumulatedTransmittance = prev.a;

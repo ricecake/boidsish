@@ -101,6 +101,10 @@ float calculateTerrainOcclusion(vec3 worldPos, vec3 normal) {
 float terrainShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) {
 	if (u_originSize.w < 1)
 		return 1.0;
+
+	// Detect volumetric sample (vertical normal signal)
+	bool isVolumetric = (abs(normal.y) > 0.999 && abs(normal.x) < 0.001 && abs(normal.z) < 0.001);
+
 	// lightDir is from fragment to light
 	float sundownShadow = smoothstep(0.0, 0.02, lightDir.y);
 	if (lightDir.y <= 0.02) {
@@ -110,8 +114,10 @@ float terrainShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) {
 	float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
 
 	// Better initial bias: move along normal and a bit along light direction.
-	// Increased bias and light-dir push to prevent self-shadowing grooves at chunk boundaries.
-	vec3  p_start = worldPos + normal * (0.8 * u_terrainParams.y) + lightDir * (1.2 * u_terrainParams.y);
+	// Volumetric samples (air) need near-zero bias to avoid skipping terrain peaks.
+	float normalBias = isVolumetric ? 0.001 : 0.8;
+	float lightBias = isVolumetric ? 0.001 : 1.2;
+	vec3  p_start = worldPos + normal * (normalBias * u_terrainParams.y) + lightDir * (lightBias * u_terrainParams.y);
 	float t = 0.0;
 	float maxDist = 1200.0 * u_terrainParams.y;
 

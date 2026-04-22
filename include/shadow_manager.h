@@ -156,13 +156,13 @@ namespace Boidsish {
 		GLuint                  shadow_map_array_ = 0; // 2D texture array for all shadow maps
 		GLuint                  shadow_ubo_ = 0;
 		std::shared_ptr<Shader> shadow_shader_;
+		ServiceLocator& _loc;
 
 		int                                   active_shadow_count_ = 0;
 		std::array<glm::mat4, kMaxShadowMaps> light_space_matrices_;
-		// Cascade splits: logarithmic distribution for better near-field detail
-		// Near splits are tighter for crisp close shadows
-		// Far cascade (3) acts as catchall extending to very distant terrain
-		std::array<float, kMaxCascades> cascade_splits_ = {20.0f, 50.0f, 150.0f, 700.0f};
+		// Cascade splits: matching volumetric grid for consistency
+		// Scaled by world_scale during UBO update and pass initialization
+		std::array<float, kMaxCascades> cascade_splits_ = {50.0f, 150.0f, 500.0f, 2000.0f};
 
 		std::vector<glm::vec4> GetFrustumCornersWorldSpace(const glm::mat4& proj, const glm::mat4& view);
 	};

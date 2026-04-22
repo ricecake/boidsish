@@ -204,6 +204,12 @@ float calculateShadow(int light_index, vec3 frag_pos, vec3 normal, vec3 light_di
 	// Final bias combines all factors
 	float bias = (base_bias + slope_bias) * cascade_bias_scale;
 
+	// Volumetric Voxel optimization: voxel samples often have a vertical normal fallback (0,1,0).
+	// For these, we want a very small bias to ensure light rays are correctly occluded.
+	if (abs(normal.y) > 0.999 && abs(normal.x) < 0.001 && abs(normal.z) < 0.001) {
+		bias = 0.0001 * (1.0 + float(cascade) * 0.5);
+	}
+
 	// Clamp to prevent over-biasing that causes disconnected shadows
 	bias = clamp(bias, 0.0001, 0.01);
 

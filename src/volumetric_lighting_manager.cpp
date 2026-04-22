@@ -113,7 +113,11 @@ namespace Boidsish {
         ubo.ambientColor = glm::vec4(atmosphereMgr->GetAmbientEstimate(), _scatteringScale);
         ubo.cloudParams = glm::vec4(weather.cloud_coverage, weather.cloud_density, 0.5f, 0.0f);
         ubo.viewPosVol = glm::vec4(cameraPos, worldScale);
-        ubo.timeParams = glm::vec4(totalTime, (float)_frameIndex++, 0.0f, 0.0f);
+
+        glm::vec3 front = glm::transpose(view)[2]; // Get forward vector from view matrix
+        ubo.viewDirVol = glm::vec4(-front.x, -front.y, -front.z, 0.0f);
+
+        ubo.timeParams = glm::vec4(totalTime, (float)_frameIndex++, (float)_debugMode, 0.0f);
 
         glBindBuffer(GL_UNIFORM_BUFFER, _parameterUbo);
         glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(VolumetricLightingUbo), &ubo);
@@ -142,10 +146,11 @@ namespace Boidsish {
 
         // Bind Shadows UBO for CSM
         if (shadowMgr) {
-            glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::Shadows(), shadowMgr->GetShadowUbo(), 0, 16 * sizeof(glm::mat4) + 2 * sizeof(glm::vec4) + 16);
+            // Shadows UBO layout: mat4[16] (1024) + vec4 (16) + int/padding (16) = 1056 bytes
+            glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::Shadows(), shadowMgr->GetShadowUbo(), 0, 1056);
         }
 
-        // Bind Lighting UBO for viewPos
+        // Bind Lighting UBO for viewPos and viewDir
         // (VisualizerImpl usually handles this but we do it here for compute safety)
         // Note: We use the actual buffer handle from the service if needed,
         // but for now we assume it's already bound to LIGHTING_BINDING by VisualizerImpl.
@@ -159,8 +164,14 @@ namespace Boidsish {
             terrainMgr->BindTerrainData(*_lightingInjectionShader);
             terrainMgr->BindTerrainData(*_densityVoxelizationShader);
         }
+
         if (atmosphereMgr) {
             atmosphereMgr->BindToShader(*_lightingInjectionShader);
+
+            // Bind Transmittance LUT - CRITICAL for directional light scattering
+            glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereTransmittance());
+            glBindTexture(GL_TEXTURE_2D, atmosphereMgr->GetTransmittanceLUT());
+            _lightingInjectionShader->trySetInt("u_transmittanceLUT", Constants::TextureUnit::AtmosphereTransmittance());
 
             // Bind Cloud Shadow Map specifically for volumetric injection
             glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereCloudShadow());
@@ -202,7 +213,9 @@ namespace Boidsish {
 
             _lightingInjectionShader->use();
             _lightingInjectionShader->setInt("u_cascadeIndex", cascade);
-            glBindImageTexture(0, _scatteringVolumes[cascade], 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+            if (noiseMgr) noiseMgr->BindDefault(*_lightingInjectionShader);
+            // Must use GL_RGBA32F to match the texture format and avoid binding errors
+            glBindImageTexture(0, _scatteringVolumes[cascade], 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA32F);
             glActiveTexture(GL_TEXTURE1);
             glBindTexture(GL_TEXTURE_3D, _densityVolumes[cascade]);
             _lightingInjectionShader->setInt("u_densityVolume", 1);
@@ -212,9 +225,14 @@ namespace Boidsish {
                 _lightingInjectionShader->trySetInt("u_aerosolTexture", 2);
             }
             if (shadowMgr && lightMgr) {
+                // We bind to both shadowMaps (Shadow Sampler) and u_shadowMapsRaw (Normal Sampler)
                 glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::ShadowMaps());
                 glBindTexture(GL_TEXTURE_2D_ARRAY, shadowMgr->GetShadowMapArray());
                 _lightingInjectionShader->trySetInt("shadowMaps", Constants::TextureUnit::ShadowMaps());
+
+                glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::ShadowMapsRaw());
+                glBindTexture(GL_TEXTURE_2D_ARRAY, shadowMgr->GetShadowMapArray());
+                _lightingInjectionShader->trySetInt("u_shadowMapsRaw", Constants::TextureUnit::ShadowMapsRaw());
 
                 std::array<int, 10> shadow_indices;
                 shadow_indices.fill(-1);

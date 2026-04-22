@@ -122,9 +122,9 @@ void main() {
 			float spatialW = bx * by;
 
 			// Depth similarity weight — exponential falloff
-			// Significantly relaxed to ensure volumetric coverage is stable
-			float depthDiff = abs(centerDepth - sampleDist) / max(centerDepth, 5.0);
-			float depthW = exp(-depthDiff * 5.0);
+			// Balanced for high-dynamic range volumetric scattering
+			float depthDiff = abs(centerDepth - sampleDist) / max(centerDepth, 1.0);
+			float depthW = exp(-depthDiff * 20.0);
 
 			float w = spatialW * depthW;
 			cloudData += texture(cloudTexture, sampleUV) * w;
@@ -198,10 +198,9 @@ void main() {
 		// Terrain/objects: apply aerial perspective and clouds
 		vec3 terrainAtmos = sceneColor * transmittance + inScattering;
 
-		// Apply volumetric with strong additive contribution
+		// Apply volumetric with balanced additive contribution
 		// Attenuate scene color by transmittance, then add scattering
-		// Increased multiplier for visibility
-		terrainAtmos = terrainAtmos * volumetric.a + volumetric.rgb * 15.0;
+		terrainAtmos = terrainAtmos * volumetric.a + volumetric.rgb * 5.0;
 
 		vec3 cloudsAtmos = cloudColor * atmosTransmittance + atmosInScattering * (1.0 - cloudTransmittance);
 		result = mix(cloudsAtmos, terrainAtmos, cloudTransmittance);
@@ -209,12 +208,25 @@ void main() {
 		// Sky and colossal objects: preserve scene output (sun, moon, stars, colossal)
 		// and blend clouds on top
 		vec4 skyVol = texture(u_volumetricIntegrated[3], vec3(TexCoords, 1.0));
-		// Sky scattering boost
-		vec3 skyResult = sceneColor * skyVol.a + skyVol.rgb * 15.0;
+		// Sky scattering
+		vec3 skyResult = sceneColor * skyVol.a + skyVol.rgb * 5.0;
 
 		vec3 cloudsAtmos = cloudColor * atmosTransmittance + atmosInScattering * (1.0 - cloudTransmittance);
 		result = skyResult * cloudTransmittance + cloudsAtmos;
 	}
 
-	FragColor = vec4(result, 1.0);
+	if (int(u_vol.timeParams.z) == 1) { // Density Debug
+        FragColor = vec4(vec3(volumetric.a), 1.0);
+    } else if (int(u_vol.timeParams.z) == 2) { // Scattering Debug
+        FragColor = vec4(volumetric.rgb * 0.1, 1.0);
+    } else if (int(u_vol.timeParams.z) == 3) { // Cascade Debug
+        vec3 cascadeColors[4] = { vec3(1,0,0), vec3(0,1,0), vec3(0,0,1), vec3(1,1,0) };
+        FragColor = vec4(cascadeColors[volCascade], 1.0);
+    } else if (int(u_vol.timeParams.z) == 4) { // Shadows Debug
+        FragColor = vec4(volumetric.rgb * 0.5, 1.0);
+    } else if (int(u_vol.timeParams.z) == 5) { // Voxel Shadow Debug
+        FragColor = vec4(vec3(volumetric.rgb), 1.0);
+    } else {
+        FragColor = vec4(result, 1.0);
+    }
 }

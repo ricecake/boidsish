@@ -5,6 +5,8 @@
 #include "service_locator.h"
 #include <vector>
 
+#include "light_manager.h"
+#include "terrain_generator_interface.h"
 #include "light.h"
 #include "logger.h"
 #include "profiler.h"
@@ -13,7 +15,7 @@
 
 namespace Boidsish {
 
-	ShadowManager::ShadowManager(ServiceLocator& /*loc*/) {
+	ShadowManager::ShadowManager(ServiceLocator& loc): _loc(loc) {
 		light_space_matrices_.fill(glm::mat4(1.0f));
 	}
 
@@ -124,9 +126,11 @@ namespace Boidsish {
 		glm::mat4 light_projection;
 
 		if (light.type == DIRECTIONAL_LIGHT && cascade_index >= 0) {
+			float worldScale = 1.0f;
+			if (auto terrain = _loc.Get<ITerrainGenerator>()) worldScale = terrain->GetWorldScale();
 			// CSM for directional light
-			float near_split = (cascade_index == 0) ? 0.1f : cascade_splits_[cascade_index - 1];
-			float far_split = cascade_splits_[cascade_index];
+			float near_split = (cascade_index == 0) ? 0.1f : cascade_splits_[cascade_index - 1] * worldScale;
+			float far_split = cascade_splits_[cascade_index] * worldScale;
 
 			glm::mat4 cascade_proj = glm::perspective(glm::radians(fov), aspect, near_split, far_split);
 
@@ -347,8 +351,15 @@ namespace Boidsish {
 		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::mat4) * kMaxShadowMaps, light_space_matrices_.data());
 
 		// Upload cascade splits
+		// We scale these by worldScale so calculateShadow (using dot(frag_pos - viewPos, viewDir))
+		// compares against world-space distance.
+		float worldScale = 1.0f;
+		if (auto terrain = _loc.Get<ITerrainGenerator>()) worldScale = terrain->GetWorldScale();
+		std::array<float, kMaxCascades> scaled_splits;
+		for(int i=0; i<kMaxCascades; ++i) scaled_splits[i] = cascade_splits_[i] * worldScale;
+
 		size_t splits_offset = sizeof(glm::mat4) * kMaxShadowMaps;
-		glBufferSubData(GL_UNIFORM_BUFFER, splits_offset, sizeof(float) * kMaxCascades, cascade_splits_.data());
+		glBufferSubData(GL_UNIFORM_BUFFER, splits_offset, sizeof(float) * kMaxCascades, scaled_splits.data());
 
 		// Upload shadow count (at offset after all matrices and splits)
 		size_t count_offset = splits_offset + 16; // align to 16 bytes

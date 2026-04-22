@@ -136,6 +136,9 @@ namespace Boidsish {
 			consteval int AerosolData() {
 				return 32;
 			}
+			consteval int ShadowMapsRaw() {
+				return 33;
+			}
 		} // namespace TextureUnit
 
 		namespace SsboBinding {

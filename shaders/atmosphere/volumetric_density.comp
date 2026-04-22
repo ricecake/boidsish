@@ -18,10 +18,12 @@ layout(std140, binding = [[VOLUMETRIC_LIGHTING_BINDING]]) uniform VolumetricLigh
     vec4 cloudParams;    // x: cloud coverage, y: cloud density, z: cloud shadow intensity, w: reserved
     vec4 cascadeSplits;
     vec4 viewPosVol;     // xyz: camPos, w: worldScale
-    vec4 timeParams;     // x: totalTime, y: frameIndex, zw: reserved
+    vec4 viewDirVol;     // xyz: camForward, w: reserved
+    vec4 timeParams;     // x: totalTime, y: frameIndex, z: debugMode, w: reserved
 } u_vol;
 
 #include "../helpers/fast_noise.glsl"
+#include "../helpers/terrain_common.glsl"
 
 layout(std140, binding = [[WIND_DATA_BINDING]]) uniform WindData {
 	ivec4 u_windOriginSize;
@@ -61,14 +63,18 @@ void main() {
     float haze = u_vol.hazeParams.x * exp(-max(0.0, height - u_vol.hazeParams.y) * 0.005);
 
     float gridSpacing = u_windParams.x;
-    // Fix LBM UV mapping: xy is origin, zw is size
-    vec2 lbmUV = ((worldPos.xz / gridSpacing) - vec2(u_windOriginSize.xz)) / vec2(u_windOriginSize.yw);
+    // Fix LBM UV mapping: xy = origin (anchor), zw = size (width/height)
+    vec2 lbmUV = ((worldPos.xz / gridSpacing) - vec2(u_windOriginSize.xy)) / vec2(u_windOriginSize.zw);
     vec4 aerosolSample = texture(u_aerosolTexture, lbmUV);
     float aerosolDensity = aerosolSample.a;
 
-    float noise = fastSimplex3d(worldPos * u_vol.hazeParams.z) * u_vol.hazeParams.w;
-    // Boost baseline density
-    float density = max(0.0, haze + aerosolDensity * 5.0 + noise) + 0.05;
+    float noise = fastSimplex3d(worldPos * u_vol.hazeParams.z + vec3(0.0, u_vol.timeParams.x * 0.1, 0.0)) * u_vol.hazeParams.w;
+    // Massive boost for baseline density and aerosols
+    float density = max(0.0, (haze + aerosolDensity * 15.0 + noise * 2.0)) + 0.15;
+
+    // Mask density below terrain surface to avoid "glowing underground" artifacts
+    float terrainH = getTerrainHeight(worldPos.xz);
+    if (worldPos.y < terrainH - 1.0) density = 0.0;
 
     // Convert to fixed point for atomic additions in particle pass
     uint densityFixed = uint(density * 1000.0);

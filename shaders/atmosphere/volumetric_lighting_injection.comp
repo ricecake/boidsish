@@ -1,7 +1,7 @@
 #version 430 core
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
-layout(rgba16f, binding = 0) uniform image3D outScatteringVolume;
+layout(rgba32f, binding = 0) uniform image3D outScatteringVolume;
 
 layout(std140, binding = [[VOLUMETRIC_LIGHTING_BINDING]]) uniform VolumetricLighting {
     mat4 invViewProj;
@@ -18,11 +18,13 @@ layout(std140, binding = [[VOLUMETRIC_LIGHTING_BINDING]]) uniform VolumetricLigh
     vec4 cloudParams;    // x: cloud coverage, y: cloud density, z: cloud shadow intensity, w: reserved
     vec4 cascadeSplits;
     vec4 viewPosVol;     // xyz: camPos, w: worldScale
-    vec4 timeParams;     // x: totalTime, y: frameIndex, zw: reserved
+    vec4 viewDirVol;     // xyz: camForward, w: reserved
+    vec4 timeParams;     // x: totalTime, y: frameIndex, z: debugMode, w: reserved
 } u_vol;
 
 uniform usampler3D u_densityVolume;
 uniform sampler2D u_aerosolTexture;
+uniform sampler2DArray u_shadowMapsRaw;
 uniform int u_cascadeIndex;
 uniform float u_extinctionScale = 1.0;
 
@@ -40,6 +42,7 @@ layout(std140, binding = [[WIND_DATA_BINDING]]) uniform WindData {
 #include "../lighting.glsl"
 #include "../helpers/terrain_shadows.glsl"
 #include "../helpers/lighting.glsl"
+#include "../helpers/fast_noise.glsl"
 
 vec3 get_world_pos(vec3 uvw) {
     vec2 ndc_xy = uvw.xy * 2.0 - 1.0;
@@ -77,25 +80,21 @@ void main() {
         return;
     }
 
+    // Jitter world position for shadow sampling to reduce artifacts from low-res grid
+    float jitter = textureLod(u_blueNoiseTexture, (vec2(texel.xy) + u_vol.timeParams.y * 1.618) / 128.0, 0.0).r;
+    float linear_z_jitter = jitter - 0.5;
+    vec3 jitteredUVW = uvw;
+    jitteredUVW.z = clamp(uvw.z + (linear_z_jitter / u_vol.resolution.z), 0.0, 1.0);
+    worldPos = get_world_pos(jitteredUVW);
+
     // Use actual view position from UBO
+    // Using V instead of viewDir to avoid hiding the global uniform which calculateShadow needs for cascade selection
     vec3 camPos = u_vol.viewPosVol.xyz;
-    vec3 viewDir = normalize(camPos - worldPos);
-
-    // Sun contribution
-    vec3 sunDir = u_vol.sunDir.xyz;
-    float sunShadow = calculateShadow(0, worldPos, vec3(0, 1, 0), sunDir);
-    sunShadow *= calculateCloudShadow(0, worldPos);
-    float sunPhase = hg_phase(dot(sunDir, -viewDir), u_vol.sunColor.w);
-    vec3 sunContribution = u_vol.sunColor.rgb * u_vol.sunDir.w * sunShadow * sunPhase;
-
-    // Moon contribution
-    vec3 moonDir = u_vol.moonDir.xyz;
-    float moonShadow = calculateShadow(1, worldPos, vec3(0, 1, 0), moonDir);
-    float moonPhase = hg_phase(dot(moonDir, -viewDir), u_vol.sunColor.w);
-    vec3 moonContribution = u_vol.moonColor.rgb * u_vol.moonDir.w * moonShadow * moonPhase;
+    vec3 V = normalize(camPos - worldPos);
 
     float gridSpacing = u_windParams.x;
-    vec2 lbmUV = ((worldPos.xz / gridSpacing) - vec2(u_windOriginSize.xz)) / vec2(u_windOriginSize.yw);
+    // Fix LBM UV mapping: xy = origin (anchor), zw = size (width/height)
+    vec2 lbmUV = ((worldPos.xz / gridSpacing) - vec2(u_windOriginSize.xy)) / vec2(u_windOriginSize.zw);
     vec4 aerosolData = texture(u_aerosolTexture, lbmUV);
 
     // Blend local aerosol color with global haze color
@@ -103,44 +102,84 @@ void main() {
 
     float scatteringScale = u_vol.ambientColor.w;
 
-    vec3 directLight = (sunContribution + moonContribution);
-    directLight *= localAerosolColor;
-
-    // --- Iterative Point/Spot Light Injection ---
+    // --- Unified Light Injection Loop ---
     vec3 dynamicLight = vec3(0.0);
-    // Iterate through all active lights (Sun is 0, Moon is typically 1, others follow)
-    // We start from 0 to include Sun/Moon if they are non-directional (unlikely but possible)
-    // and process all other local emitters.
+    float debugShadowFactor = 1.0;
+
+    // Iterate through all active lights
     for (int i = 0; i < num_lights; ++i) {
         vec3 L;
         float attenuation;
         calculateLightContribution(i, worldPos, L, attenuation);
 
-        if (attenuation > 0.001) {
-            float phase = hg_phase(dot(L, -viewDir), u_vol.sunColor.w);
-            float shadow = 1.0;
-            // Only evaluate shadows for the most prominent lights to save performance
-            if (i < 2) {
-                shadow = calculateShadow(i, worldPos, vec3(0, 1, 0), L);
-                if (i == 0) shadow *= calculateCloudShadow(0, worldPos);
+        if (attenuation > 1e-6) {
+            float phase = hg_phase(dot(L, -V), u_vol.sunColor.w);
+            float lightShadow = 1.0;
+            vec3 lightColor = lights[i].color;
+
+            int shadowIndex = lightShadowIndices[i];
+
+            if (shadowIndex >= 0 && i < 8) {
+                if (i < 2) {
+                    // Manual CSM Selection for robust compute shadows
+                    int cascade = -1;
+                    // d = depth from camera along forward axis
+                    float d = dot(worldPos - u_vol.viewPosVol.xyz, u_vol.viewDirVol.xyz);
+                    for (int c = 0; c < 4; ++c) {
+                        if (d < u_vol.cascadeSplits[c]) {
+                            cascade = c;
+                            break;
+                        }
+                    }
+                    if (cascade == -1) cascade = 3;
+
+                    int targetShadowIndex = shadowIndex + cascade;
+                    vec4 shadowCoord = lightSpaceMatrices[targetShadowIndex] * vec4(worldPos, 1.0);
+                    shadowCoord.xyz = shadowCoord.xyz / shadowCoord.w * 0.5 + 0.5;
+
+                    // Manual depth comparison for robustness in compute
+                    float depthInMap = texture(u_shadowMapsRaw, vec3(shadowCoord.xy, float(targetShadowIndex))).r;
+                    lightShadow = (shadowCoord.z - 0.00002 < depthInMap) ? 1.0 : 0.0;
+
+                    if (i == 0) lightShadow *= calculateCloudShadow(0, worldPos);
+
+                    // Passing vec3(0,1,0) as normal to signal volumetric sample for better bias
+                    lightShadow *= terrainShadowCoverage(worldPos, vec3(0, 1, 0), L);
+
+                    // Apply atmospheric transmittance
+                    float r = kEarthRadiusKM + (worldPos.y / (1000.0 * u_vol.viewPosVol.w));
+                    float mu = L.y;
+                    vec3 transLUT = texture(u_transmittanceLUT, getTransmittanceUV(r, mu)).rgb;
+                    lightColor *= transLUT;
+                } else {
+                    // Local spot/point shadows
+                    vec4 shadowCoord = lightSpaceMatrices[shadowIndex] * vec4(worldPos, 1.0);
+                    shadowCoord.xyz = shadowCoord.xyz / shadowCoord.w * 0.5 + 0.5;
+                    float depthInMap = texture(u_shadowMapsRaw, vec3(shadowCoord.xy, float(shadowIndex))).r;
+                    lightShadow = (shadowCoord.z - 0.0005 < depthInMap) ? 1.0 : 0.0;
+                }
+
+                if (i == 0) debugShadowFactor = lightShadow;
             }
 
-            dynamicLight += lights[i].color * lights[i].intensity * attenuation * phase * shadow;
+            dynamicLight += lightColor * lights[i].intensity * attenuation * phase * lightShadow;
         }
     }
 
     // ambient SH already accounts for sky color, but tint it with aerosol
-    // For volumetric samples, use the sample itself as the normal fallback or vertical
     vec3 ambient = getSpatialAmbientSH(worldPos, vec3(0, 1, 0));
-    // Apply a hemispherical visibility factor to ambient light based on height
-    // Reducing ambient in volumes increases crepuscular ray contrast
-    float heightFactor = clamp(worldPos.y / 50.0, 0.01, 0.1);
+    // Extremely reduced ambient visibility factor in volumes maximizes crepuscular ray contrast
+    // Base ambient should be near-zero in air for localized shafts
+    float heightFactor = clamp(worldPos.y / 200.0, 0.0005, 0.002);
     ambient *= heightFactor;
     ambient *= localAerosolColor;
 
     vec3 scatteredLight = (dynamicLight * localAerosolColor + ambient) * density * u_vol.resolution.w * scatteringScale;
-    // Boost scattering for visibility in HDR
-    scatteredLight *= 20.0;
+    // Massive boost for visibility in HDR composite
+    scatteredLight *= 450.0;
+
+    if (u_vol.timeParams.z == 4.0) scatteredLight = vec3(debugShadowFactor);
+    if (u_vol.timeParams.z == 5.0) scatteredLight = vec3(density);
 
     float extinction = density * u_extinctionScale;
 

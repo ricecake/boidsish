@@ -587,6 +587,12 @@ namespace Boidsish {
 						if (ImGui::SliderFloat("Mie Anisotropy (G)", &g, 0.0f, 0.99f)) {
 							vol_manager->SetPhaseG(g);
 						}
+
+						int debugMode = vol_manager->GetDebugMode();
+						const char* debugModes[] = { "None", "Density", "Scattering", "Cascade Splits", "Shadows", "Voxel Shadow Map" };
+						if (ImGui::Combo("Debug Mode", &debugMode, debugModes, 6)) {
+							vol_manager->SetDebugMode(debugMode);
+						}
 					}
 				}
 
