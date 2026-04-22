@@ -23,7 +23,7 @@ namespace Boidsish {
 		}
 
 		// Rebuild the "next" implementation (write buffer)
-		next_bvh_.Rebuild(entities);
+		next_bvh_.Update(entities);
 
 		// Swap it into the active implementation (read buffer)
 		std::unique_lock lock(bvh_mutex_);

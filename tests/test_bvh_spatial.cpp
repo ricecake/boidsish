@@ -74,3 +74,25 @@ TEST(SpatialEntityHandlerTest, Raycast) {
     EXPECT_EQ(hit->GetId(), id);
     EXPECT_NEAR(t, 9.0f, 0.1f);
 }
+
+TEST(SpatialEntityHandlerTest, Refit) {
+    task_thread_pool::task_thread_pool pool;
+    SpatialEntityHandler handler(pool);
+
+    auto id = handler.AddEntity<TestEntity>(Vector3(0, 0, 0));
+    handler.operator()(1.0f); // Build
+
+    auto entity = handler.GetEntity(id);
+    entity->SetPosition(Vector3(20, 0, 0));
+
+    handler.operator()(2.0f); // Should trigger Refit instead of Rebuild
+
+    // Search at new position
+    auto near_entities = handler.GetEntitiesInRadius<TestEntity>(Vector3(20, 0, 0), 1.0f);
+    ASSERT_EQ(near_entities.size(), 1);
+    EXPECT_EQ(near_entities[0]->GetPosition().x, 20.0f);
+
+    // Search at old position
+    auto old_entities = handler.GetEntitiesInRadius<TestEntity>(Vector3(0, 0, 0), 1.0f);
+    EXPECT_EQ(old_entities.size(), 0);
+}

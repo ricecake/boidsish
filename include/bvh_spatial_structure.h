@@ -33,10 +33,12 @@ namespace Boidsish {
         }
 
         /**
-         * @brief Rebuilds the BVH from a list of entities.
-         * This should be called once per frame.
+         * @brief Updates the BVH from a list of entities.
+         *
+         * Automatically decides between a full rebuild and a faster refit
+         * based on whether the set of entities has changed.
          */
-        void Rebuild(const std::vector<std::shared_ptr<EntityBase>>& entities);
+        void Update(const std::vector<std::shared_ptr<EntityBase>>& entities);
 
         /**
          * @brief Finds all entities within a certain radius.

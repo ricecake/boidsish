@@ -15,6 +15,24 @@ namespace Boidsish {
         std::vector<glm::vec3> entity_positions;
         std::unordered_map<int, int> id_to_prim;
 
+        void Update(const std::vector<std::shared_ptr<EntityBase>>& entities) {
+            bool needs_rebuild = entities.size() != entity_ids.size();
+            if (!needs_rebuild) {
+                for (size_t i = 0; i < entities.size(); ++i) {
+                    if (entities[i]->GetId() != entity_ids[i]) {
+                        needs_rebuild = true;
+                        break;
+                    }
+                }
+            }
+
+            if (needs_rebuild) {
+                Rebuild(entities);
+            } else {
+                Refit(entities);
+            }
+        }
+
         void Rebuild(const std::vector<std::shared_ptr<EntityBase>>& entities) {
             id_to_prim.clear();
             if (entities.empty()) {
@@ -30,8 +48,8 @@ namespace Boidsish {
 
             for (size_t i = 0; i < entities.size(); ++i) {
                 const auto& entity = entities[i];
-                auto pos = entity->GetPosition();
-                float size = entity->GetSize() * 0.5f;
+                auto        pos = entity->GetPosition();
+                float       size = entity->GetSize() * 0.5f;
 
                 bvh_aabbs[i * 2] = tinybvh::bvhvec4(pos.x - size, pos.y - size, pos.z - size, 0.0f);
                 bvh_aabbs[i * 2 + 1] = tinybvh::bvhvec4(pos.x + size, pos.y + size, pos.z + size, 0.0f);
@@ -41,6 +59,50 @@ namespace Boidsish {
             }
 
             bvh.BuildAABB(bvh_aabbs.data(), (uint32_t)entities.size());
+        }
+
+        void Refit(const std::vector<std::shared_ptr<EntityBase>>& entities) {
+            if (entities.empty())
+                return;
+
+            // Update AABBs and positions
+            for (size_t i = 0; i < entities.size(); ++i) {
+                const auto& entity = entities[i];
+                auto        pos = entity->GetPosition();
+                float       size = entity->GetSize() * 0.5f;
+
+                bvh_aabbs[i * 2] = tinybvh::bvhvec4(pos.x - size, pos.y - size, pos.z - size, 0.0f);
+                bvh_aabbs[i * 2 + 1] = tinybvh::bvhvec4(pos.x + size, pos.y + size, pos.z + size, 0.0f);
+                entity_positions[i] = glm::vec3(pos.x, pos.y, pos.z);
+            }
+
+            // Manually refit the BVH nodes using updated AABBs
+            // BVH::Refit in tiny_bvh is designed for triangles, so we implement our own
+            // which is simple since it's just a post-order traversal of the tree.
+            RefitRecursive(0);
+            bvh.aabbMin = bvh.bvhNode[0].aabbMin;
+            bvh.aabbMax = bvh.bvhNode[0].aabbMax;
+        }
+
+        void RefitRecursive(uint32_t nodeIdx) {
+            auto& node = bvh.bvhNode[nodeIdx];
+            if (node.isLeaf()) {
+                tinybvh::bvhvec3 bmin(BVH_FAR), bmax(-BVH_FAR);
+                for (uint32_t i = 0; i < node.triCount; ++i) {
+                    uint32_t primIdx = bvh.primIdx[node.leftFirst + i];
+                    bmin = tinybvh_min(bmin, tinybvh::bvhvec3(bvh_aabbs[primIdx * 2]));
+                    bmax = tinybvh_max(bmax, tinybvh::bvhvec3(bvh_aabbs[primIdx * 2 + 1]));
+                }
+                node.aabbMin = bmin;
+                node.aabbMax = bmax;
+            } else {
+                RefitRecursive(node.leftFirst);
+                RefitRecursive(node.leftFirst + 1);
+                const auto& left = bvh.bvhNode[node.leftFirst];
+                const auto& right = bvh.bvhNode[node.leftFirst + 1];
+                node.aabbMin = tinybvh_min(left.aabbMin, right.aabbMin);
+                node.aabbMax = tinybvh_max(left.aabbMax, right.aabbMax);
+            }
         }
 
         static bool SphereAABBIntersect(
@@ -202,8 +264,8 @@ namespace Boidsish {
     BvhSpatialStructure::BvhSpatialStructure(BvhSpatialStructure&&) noexcept = default;
     BvhSpatialStructure& BvhSpatialStructure::operator=(BvhSpatialStructure&&) noexcept = default;
 
-    void BvhSpatialStructure::Rebuild(const std::vector<std::shared_ptr<EntityBase>>& entities) {
-        impl_->Rebuild(entities);
+    void BvhSpatialStructure::Update(const std::vector<std::shared_ptr<EntityBase>>& entities) {
+        impl_->Update(entities);
     }
 
     std::vector<int> BvhSpatialStructure::GetEntityIdsInRadius(const glm::vec3& center, float radius, const std::vector<int>& allowed_ids) const {
