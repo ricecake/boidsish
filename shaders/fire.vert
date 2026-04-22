@@ -52,9 +52,9 @@ void main() {
 		} else if (p.style == STYLE_DEBUG) {                                       // Debug
 			gl_PointSize = 8.0;                                                    // Fixed size point
 		} else if (p.style == STYLE_RAIN) {
-			gl_PointSize = clamp(40.0 / (-view_pos.z * 0.1), 1.0, 10.0);
+			gl_PointSize = clamp(100.0 / (-view_pos.z * 0.1), 2.0, 30.0);
 		} else if (p.style == STYLE_SNOW) {
-			gl_PointSize = clamp(30.0 / (-view_pos.z * 0.1), 2.0, 15.0);
+			gl_PointSize = clamp(80.0 / (-view_pos.z * 0.1), 4.0, 40.0);
 		} else if (p.style == STYLE_AMBIENT || p.style == STYLE_BUBBLES || p.style == STYLE_FIREFLIES || p.style == STYLE_CINDER) {
 			// Prominent size but attenuated by distance
 			gl_PointSize = 15.0 / (-view_pos.z * 0.05);

@@ -229,19 +229,18 @@ void main() {
 			alpha = v_lifetime * 0.4;
 		} else if (v_style == STYLE_RAIN) {
 			// Streak based on velocity
-			vec2 vel_dir = normalize(v_vel.xy + vec2(0.0001)); // View-space velocity would be better but let's try this
+			vec2 vel_dir = normalize(v_vel.xy + vec2(0.0001));
 			// For billboards, gl_PointCoord is 0..1.
-			// We can stretch the circle into a line.
-			float streak = smoothstep(0.1, 0.0, abs(gl_PointCoord.x - 0.5));
-			color = vec3(0.6, 0.7, 0.8) * 0.5;
-			alpha = streak * smoothstep(0.0, 0.2, v_lifetime);
-			shapeMask = 1.0; // Override default circle
+			float streak = smoothstep(0.15, 0.0, abs(gl_PointCoord.x - 0.5));
+			color = vec3(0.7, 0.8, 1.0) * 1.5; // Brighter rain
+			alpha = streak * smoothstep(0.0, 0.1, v_lifetime);
+			shapeMask = 1.0;
 		} else if (v_style == STYLE_SNOW) {
 			// Soft flake
 			float flake = smoothstep(0.25, 0.0, distSq);
-			color = vec3(0.9, 0.95, 1.0);
-			alpha = flake * smoothstep(0.0, 0.2, v_lifetime);
-			shapeMask = 1.0; // Override default circle
+			color = vec3(1.0, 1.0, 1.0) * 1.5; // Brighter snow
+			alpha = flake * smoothstep(0.0, 0.1, v_lifetime);
+			shapeMask = 1.0;
 		}
 
 		// Apply circular mask and premultiplied alpha to all simple styles

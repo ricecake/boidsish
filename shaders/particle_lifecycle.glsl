@@ -29,7 +29,8 @@ bool updateLifetime(
 	p.pos.w -= dt;
 
 	// View-distance/direction culling
-	if (distance(p.pos.xz, viewPos.xz) > 5.0 && dot(p.pos.xz - viewPos.xz, viewDir.xz) < 0) {
+	float cullDist = (p.style == STYLE_RAIN || p.style == STYLE_SNOW) ? 100.0 : 15.0;
+	if (distance(p.pos.xz, viewPos.xz) > cullDist && dot(p.pos.xz - viewPos.xz, viewDir.xz) < -0.5) {
 		p.pos.w = 0;
 	}
 
@@ -260,30 +261,38 @@ void respawnParticle(
 
 		if (p.pos.w <= 0.0 && (rain_intensity > 0.01 || snow_intensity > 0.01)) {
 			// --- 3c. Precipitation Respawn ---
-			// Spawn in a box around the camera
+			// Ensure we don't hog too many particles if other things are happening,
+			// but also ensure a minimum amount for visibility.
+			// Recycled particles are used here.
+
 			vec2 seed = vec2(float(gid) * 0.123, time * 0.456);
-			vec3 rand_offset = rand3(seed) * 2.0 - 1.0;
+			float spawn_chance = max(rain_intensity, snow_intensity);
 
-			// Top-down box: 40x40 area, 20 units high
-			float box_w = 40.0;
-			float box_h = 20.0;
+			if (rand(seed + 0.77) < spawn_chance) {
+				vec3 rand_offset = rand3(seed) * 2.0 - 1.0;
 
-			p.pos.x = viewPos.x + rand_offset.x * box_w;
-			p.pos.z = viewPos.z + rand_offset.z * box_w;
-			p.pos.y = viewPos.y + box_h; // Spawn high
+				// Top-down box around camera
+				float box_w = 60.0;
+				float box_h = 30.0;
 
-			// Distribute lifetime so they don't all pop at once
-			p.pos.w = 2.0 * rand(seed.yx);
+				p.pos.x = viewPos.x + rand_offset.x * box_w;
+				p.pos.z = viewPos.z + rand_offset.z * box_w;
+				p.pos.y = viewPos.y + (rand_offset.y * 0.5 + 0.5) * box_h; // Distribute in height
 
-			if (rain_intensity > snow_intensity) {
-				p.style = STYLE_RAIN;
-				p.vel = vec4(0, -30.0, 0, 0); // Fast fall
-			} else {
-				p.style = STYLE_SNOW;
-				p.vel = vec4(0, -2.0, 0, 0);  // Slow fall
+				// Distribute lifetime so they don't all pop at once
+				p.pos.w = 2.0 + 1.0 * rand(seed.yx);
+
+				if (rain_intensity > snow_intensity) {
+					p.style = STYLE_RAIN;
+					p.vel = vec4(0, -40.0, 0, 0); // Fast fall
+				} else {
+					p.style = STYLE_SNOW;
+					p.vel = vec4(0, -3.0, 0, 0);  // Slow fall
+				}
+				p.emitter_index = -1;
+				p.emitter_id = -1;
+				p.epicenter = p.pos.xyz;
 			}
-			p.emitter_index = -1;
-			p.emitter_id = -1;
 		}
 
 		if (p.pos.w <= 0.0) {

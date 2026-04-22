@@ -50,6 +50,28 @@ namespace Boidsish {
 							}
 
 							ImGui::Separator();
+							const auto& cur = weather->GetCurrentWeather();
+							float temp = cur.temperature;
+							if (ImGui::SliderFloat("Temperature (K)", &temp, 200.0f, 350.0f, "%.1f K")) {
+								weather->SetTarget(WeatherAttribute::Temperature, temp);
+							}
+							ImGui::Text("  (%.1f C / %.1f F)", temp - 273.15f, (temp - 273.15f) * 1.8f + 32.0f);
+
+							float precip = cur.precipitation;
+							if (ImGui::SliderFloat("Precipitation", &precip, 0.0f, 1.0f, "%.2f")) {
+								weather->SetTarget(WeatherAttribute::Precipitation, precip);
+							}
+
+							// Display derived intensities and wetness
+							float rain = (cur.temperature > 273.15f) ? cur.precipitation : 0.0f;
+							float snow = (cur.temperature <= 273.15f) ? cur.precipitation : 0.0f;
+							ImGui::Text("Rain Intensity: %.2f", rain);
+							ImGui::Text("Snow Intensity: %.2f", snow);
+
+							// Wetness is in VisualEffects UBO, handled in graphics.cpp but we can't easily get it here
+							// without exposing it through Visualizer. For now just show targets.
+
+							ImGui::Separator();
 
 							// Weather selection dropdown
 							int                      manual_idx = weather->GetManualPreset();
