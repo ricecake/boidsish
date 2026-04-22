@@ -143,7 +143,7 @@ void main() {
                     lightShadow *= terrainShadowCoverage(worldPos, vec3(0, 1, 0), L);
 
                     // Apply atmospheric transmittance
-                    float r = kEarthRadiusKM + (worldPos.y / (1000.0 * u_vol.viewPosVol.w));
+                    float r = kEarthRadiusKM + (worldPos.y / 1000.0); // Already in world units
                     float mu = L.y;
                     vec3 transLUT = texture(u_transmittanceLUT, getTransmittanceUV(r, mu)).rgb;
                     lightColor *= transLUT;
@@ -170,14 +170,17 @@ void main() {
     ambient *= heightFactor;
     ambient *= localAerosolColor;
 
-    vec3 scatteredLight = (dynamicLight * localAerosolColor + ambient) * density * u_vol.resolution.w * scatteringScale;
-    // Massive boost for visibility in HDR composite
-    scatteredLight *= 450.0;
+    // Physical Energy Conservation: single scattering albedo
+    // Scattering is a fraction of extinction.
+    float extinction = density * u_extinctionScale;
+    vec3 scatteredLight = (dynamicLight * localAerosolColor + ambient) * extinction * u_vol.resolution.w * scatteringScale;
+
+    // Safety & Energy Conservation
+    scatteredLight = max(vec3(0.0), scatteredLight);
+    extinction = max(0.0001, extinction);
 
     if (u_vol.timeParams.z == 4.0) scatteredLight = vec3(debugShadowFactor);
     if (u_vol.timeParams.z == 5.0) scatteredLight = vec3(density);
-
-    float extinction = density * u_extinctionScale;
 
     imageStore(outScatteringVolume, texel, vec4(scatteredLight, extinction));
 }

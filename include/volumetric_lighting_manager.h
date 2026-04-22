@@ -96,10 +96,10 @@ namespace Boidsish {
         int   _frameIndex = 0;
 
         // Runtime params
-        float _intensity = 80.0f;
-        float _scatteringScale = 60.0f;
-        float _extinctionScale = 0.2f;
-        float _phaseG = 0.95f;
+        float _intensity = 1.0f;
+        float _scatteringScale = 0.1f;
+        float _extinctionScale = 0.1f;
+        float _phaseG = 0.7f;
         int   _debugMode = 0;
 
         glm::mat4 _prevViewProj{1.0f};

@@ -569,12 +569,12 @@ namespace Boidsish {
 					auto vol_manager = m_visualizer.GetVolumetricLightingManager();
 					if (vol_manager) {
 						float intensity = vol_manager->GetIntensity();
-						if (ImGui::SliderFloat("Intensity", &intensity, 0.0f, 500.0f)) {
+						if (ImGui::SliderFloat("Intensity", &intensity, 0.0f, 10.0f)) {
 							vol_manager->SetIntensity(intensity);
 						}
 
 						float scat = vol_manager->GetScatteringScale();
-						if (ImGui::SliderFloat("Scattering Scale", &scat, 0.0f, 200.0f)) {
+						if (ImGui::SliderFloat("Scattering Scale", &scat, 0.0f, 10.0f)) {
 							vol_manager->SetScatteringScale(scat);
 						}
 

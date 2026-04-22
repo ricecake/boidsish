@@ -65,18 +65,19 @@ void main() {
         float extinction = scatteringExtinction.a;
 
         float linear_z = z_near * pow(z_far / z_near, (float(z) + 1.0) / float(depthSlices));
-        float dt = linear_z - prev_linear_z;
+        // dt in kilometers for physical coefficients
+        float dt = (linear_z - prev_linear_z) / 1000.0;
         prev_linear_z = linear_z;
 
         // Analytical integration of scattering and extinction over the slice
         // Using: S_slice = S * (1 - exp(-extinction * dt)) / extinction
-        float transmittance = exp(-extinction * dt);
+        float transmittance = clamp(exp(-max(0.0, extinction) * dt), 0.0, 1.0);
         // Handle zero extinction to avoid division by zero
         vec3 integral = (extinction > 1e-6) ? scattering * (1.0 - transmittance) / extinction : scattering * dt;
 
-        accumulatedLight += integral * accumulatedTransmittance;
+        accumulatedLight += max(vec3(0.0), integral) * accumulatedTransmittance;
         accumulatedTransmittance *= transmittance;
 
-        imageStore(outIntegratedVolume, texel, vec4(accumulatedLight, accumulatedTransmittance));
+        imageStore(outIntegratedVolume, texel, vec4(accumulatedLight, clamp(accumulatedTransmittance, 0.0, 1.0)));
     }
 }

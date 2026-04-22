@@ -200,7 +200,7 @@ void main() {
 
 		// Apply volumetric with balanced additive contribution
 		// Attenuate scene color by transmittance, then add scattering
-		terrainAtmos = terrainAtmos * volumetric.a + volumetric.rgb * 5.0;
+		terrainAtmos = terrainAtmos * volumetric.a + volumetric.rgb;
 
 		vec3 cloudsAtmos = cloudColor * atmosTransmittance + atmosInScattering * (1.0 - cloudTransmittance);
 		result = mix(cloudsAtmos, terrainAtmos, cloudTransmittance);
@@ -209,23 +209,24 @@ void main() {
 		// and blend clouds on top
 		vec4 skyVol = texture(u_volumetricIntegrated[3], vec3(TexCoords, 1.0));
 		// Sky scattering
-		vec3 skyResult = sceneColor * skyVol.a + skyVol.rgb * 5.0;
+		vec3 skyResult = sceneColor * skyVol.a + skyVol.rgb;
 
 		vec3 cloudsAtmos = cloudColor * atmosTransmittance + atmosInScattering * (1.0 - cloudTransmittance);
 		result = skyResult * cloudTransmittance + cloudsAtmos;
 	}
 
 	if (int(u_vol.timeParams.z) == 1) { // Density Debug
-        FragColor = vec4(vec3(volumetric.a), 1.0);
+        // Transmittance is in .a, show it directly or invert for optical depth
+        FragColor = vec4(vec3(1.0 - volumetric.a), 1.0);
     } else if (int(u_vol.timeParams.z) == 2) { // Scattering Debug
-        FragColor = vec4(volumetric.rgb * 0.1, 1.0);
+        FragColor = vec4(volumetric.rgb * 0.005, 1.0); // Consistent scale down for HDR visibility
     } else if (int(u_vol.timeParams.z) == 3) { // Cascade Debug
         vec3 cascadeColors[4] = { vec3(1,0,0), vec3(0,1,0), vec3(0,0,1), vec3(1,1,0) };
         FragColor = vec4(cascadeColors[volCascade], 1.0);
     } else if (int(u_vol.timeParams.z) == 4) { // Shadows Debug
-        FragColor = vec4(volumetric.rgb * 0.5, 1.0);
+        FragColor = vec4(volumetric.rgb * 0.005, 1.0);
     } else if (int(u_vol.timeParams.z) == 5) { // Voxel Shadow Debug
-        FragColor = vec4(vec3(volumetric.rgb), 1.0);
+        FragColor = vec4(volumetric.rgb * 0.005, 1.0);
     } else {
         FragColor = vec4(result, 1.0);
     }

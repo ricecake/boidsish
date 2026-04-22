@@ -58,9 +58,9 @@ void main() {
     vec3 uvw = (vec3(texel) + 0.5) / res;
     vec3 worldPos = get_world_pos(uvw);
 
-    float height = worldPos.y;
-    // Lower falloff for more persistent fog height-wise (0.005 = 200m scale height)
-    float haze = u_vol.hazeParams.x * exp(-max(0.0, height - u_vol.hazeParams.y) * 0.005);
+    float height = worldPos.y; // Already in world units
+    // Haze falloff: 0.001 = 1km scale height
+    float haze = u_vol.hazeParams.x * exp(-max(0.0, height - u_vol.hazeParams.y) * 0.001);
 
     float gridSpacing = u_windParams.x;
     // Fix LBM UV mapping: xy = origin (anchor), zw = size (width/height)
@@ -69,8 +69,8 @@ void main() {
     float aerosolDensity = aerosolSample.a;
 
     float noise = fastSimplex3d(worldPos * u_vol.hazeParams.z + vec3(0.0, u_vol.timeParams.x * 0.1, 0.0)) * u_vol.hazeParams.w;
-    // Massive boost for baseline density and aerosols
-    float density = max(0.0, (haze + aerosolDensity * 15.0 + noise * 2.0)) + 0.15;
+    // Physical baseline density and aerosols
+    float density = max(0.0, (haze + aerosolDensity * 1.5 + noise * 0.2)) + 0.01;
 
     // Mask density below terrain surface to avoid "glowing underground" artifacts
     float terrainH = getTerrainHeight(worldPos.xz);
