@@ -117,9 +117,6 @@ namespace Boidsish {
 			consteval int HiZ() {
 				return 27;
 			}
-			consteval int TerrainBakedParams() {
-				return 28;
-			}
 			consteval int TerrainRawHeightmap() {
 				return 29;
 			}
@@ -128,9 +125,6 @@ namespace Boidsish {
 			}
 			consteval int TerrainHeightmapImage() {
 				return 31;
-			}
-			consteval int TerrainBakedParamsImage() {
-				return 32;
 			}
 			consteval int TerrainAlbedo() {
 				return 33;
@@ -542,6 +536,10 @@ namespace Boidsish {
 
 				consteval float WarpStrength() {
 					return 20.0f;
+				}
+
+				consteval int TextureResolutionMultiplier() {
+					return 1;
 				}
 			} // namespace Terrain
 

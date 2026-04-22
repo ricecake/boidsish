@@ -57,10 +57,8 @@ layout(binding = [[RAW_HEIGHTMAP_BINDING]]) uniform sampler2DArray u_rawHeightma
 // Input: Biome data (RG8: R=low_idx, G=t)
 layout(rgba8, binding = [[BIOME_MAP_IMAGE_BINDING]]) uniform image2DArray u_biomeMap;
 
-// Output: Baked heightmap (RGBA16F: R=height, GBA=normal)
+// Output: Baked heightmap (RGBA16F: R=height, G=normal.x, B=normal.z, A=waterMask)
 layout(rgba16f, binding = [[BAKED_HEIGHTMAP_IMAGE_BINDING]]) uniform image2DArray u_heightmapArray;
-// Output: Baked params (RGBA16F: R=erosionDelta, G=ridgeMap, B=substrate, A=waterMask)
-layout(rgba16f, binding = [[BAKED_PARAMS_IMAGE_BINDING]]) uniform image2DArray u_bakedParamsArray;
 
 // Output: Albedo (RGBA8: RGB=Albedo, A=AO)
 layout(rgba8, binding = [[TERRAIN_ALBEDO_IMAGE_BINDING]]) uniform image2DArray u_albedoOutput;
@@ -77,12 +75,12 @@ layout(std430, binding = [[TERRAIN_CHUNK_INFO_BINDING]]) readonly buffer BakeTas
 	BakeTask tasks[];
 };
 
-uniform int u_numTasks;
-
 #include "helpers/noise.glsl"
 #include "helpers/fast_noise.glsl"
 #include "helpers/erosion.glsl"
 #include "helpers/terrain_noise.glsl"
+
+uniform int u_numTasks;
 
 float getWorldScaleVal() { return u_terrainParams.y; }
 
@@ -261,20 +259,24 @@ void main() {
     float chunkSize = rawChunkSize * worldScale;
     vec2 worldOffset = vec2(task.chunk_coord) * chunkSize;
     ivec2 pixelCoord = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 outSize = imageSize(u_albedoOutput).xy;
 
-    // 1. Each thread computes its primary baked height/erosion (redundant for border but race-free)
-    vec2 uv = vec2(pixelCoord) / 255.0;
+    // 1. Each thread computes its primary baked height/erosion
+    vec2 uv = vec2(pixelCoord) / vec2(outSize - 1);
     BakeResult myRes = compute_baked_height(uv, slice, worldOffset, rawChunkSize, chunkSize);
 
-    // 2. Write to 33x33 tessellation heightmap if this thread is a grid point
-    // Using simple mapping: pixel 0, 8, 16... 248, 255
-    ivec2 gridPos = ivec2(-1);
-    if (pixelCoord.x % 8 == 0) gridPos.x = pixelCoord.x / 8; else if (pixelCoord.x == 255) gridPos.x = 32;
-    if (pixelCoord.y % 8 == 0) gridPos.y = pixelCoord.y / 8; else if (pixelCoord.y == 255) gridPos.y = 32;
+    // 2. Write to 33x33 tessellation heightmap if this thread corresponds to a grid point
+    // We use integer steps to ensure we hit the 33x33 grid points exactly.
+    int step = int(outSize.x) / int(rawChunkSize);
+    if (step < 1) step = 1;
 
-    if (gridPos.x != -1 && gridPos.y != -1) {
-        imageStore(u_heightmapArray, ivec3(gridPos, slice), vec4(myRes.height, myRes.normal));
-        imageStore(u_bakedParamsArray, ivec3(gridPos, slice), vec4(myRes.erosionDelta, myRes.ridgeMap, myRes.substrate, myRes.waterMask));
+    ivec2 gridPos = ivec2(-1);
+    if (pixelCoord.x % step == 0) gridPos.x = pixelCoord.x / step; else if (pixelCoord.x == outSize.x - 1) gridPos.x = 32;
+    if (pixelCoord.y % step == 0) gridPos.y = pixelCoord.y / step; else if (pixelCoord.y == outSize.y - 1) gridPos.y = 32;
+
+    if (gridPos.x != -1 && gridPos.y != -1 && gridPos.x <= 32 && gridPos.y <= 32) {
+        // R=height, G=normal.x, B=normal.z, A=waterMask
+        imageStore(u_heightmapArray, ivec3(gridPos, slice), vec4(myRes.height, myRes.normal.x, myRes.normal.z, myRes.waterMask));
         vec4 biomeData = imageLoad(u_biomeMap, ivec3(gridPos, slice));
         biomeData.b = 1.0; // Mark as baked
         imageStore(u_biomeMap, ivec3(gridPos, slice), biomeData);
@@ -284,19 +286,17 @@ void main() {
     ivec2 localID = ivec2(gl_LocalInvocationID.xy);
     ivec2 baseCoord = ivec2(gl_WorkGroupID.xy) * WORKGROUP_SIZE;
 
-    // Cooperative load into shared memory with 1-pixel border
     for (int i = localID.x; i < SHARED_SIZE; i += WORKGROUP_SIZE) {
         for (int j = localID.y; j < SHARED_SIZE; j += WORKGROUP_SIZE) {
-            ivec2 pC = clamp(baseCoord + ivec2(i, j) - 1, ivec2(0), ivec2(255));
-            BakeResult br = compute_baked_height(vec2(pC) / 255.0, slice, worldOffset, rawChunkSize, chunkSize);
+            ivec2 pC = clamp(baseCoord + ivec2(i, j) - 1, ivec2(0), outSize - 1);
+            BakeResult br = compute_baked_height(vec2(pC) / vec2(outSize - 1), slice, worldOffset, rawChunkSize, chunkSize);
             s_heights[i][j] = br.height;
         }
     }
     barrier();
 
-    // High-res Normal from shared memory
     float h0 = s_heights[localID.x + 1][localID.y + 1];
-    float tSz = 1.0 / 255.0;
+    float tSz = 1.0 / float(outSize.x - 1);
     vec3 normal = normalize(vec3(
         -(s_heights[localID.x + 2][localID.y + 1] - s_heights[localID.x][localID.y + 1]) / (2.0 * tSz * chunkSize),
         1.0,
@@ -332,13 +332,13 @@ void main() {
     finalM.albedo = applyErosionColorMappingDefault(finalM.albedo, myRes.ridgeMap, myRes.erosionDelta);
 
     // Grain Normals
-    if (finalM.normalStrength > 0.0) {
-        ivec2 bCoord = clamp(ivec2(uv * rawChunkSize), ivec2(0), ivec2(32));
-        vec2 bInfo = imageLoad(u_biomeMap, ivec3(bCoord, slice)).rg;
-        int lowIdx = int(bInfo.r * 255.0 + 0.5), highIdx = clamp(lowIdx + 1, 0, 7);
-        float t_biome = bInfo.g;
-        float nType = mix(u_biomes[lowIdx].params.w, u_biomes[highIdx].params.w, t_biome);
+    ivec2 bCoord = clamp(ivec2(uv * rawChunkSize), ivec2(0), ivec2(32));
+    vec2 bInfo = imageLoad(u_biomeMap, ivec3(bCoord, slice)).rg;
+    int lowIdx = int(bInfo.r * 255.0 + 0.5), highIdx = clamp(lowIdx + 1, 0, 7);
+    float t_biome = bInfo.g;
 
+    if (finalM.normalStrength > 0.0) {
+        float nType = mix(u_biomes[lowIdx].params.w, u_biomes[highIdx].params.w, t_biome);
         float ep = 0.015, n, nx, nz;
         vec3 sP = worldP / worldScale * finalM.normalScale * 0.005;
         if (nType < 0.5) { n = fastSimplex3d(sP); nx = fastSimplex3d(sP + vec3(ep, 0, 0)); nz = fastSimplex3d(sP + vec3(0, 0, ep)); }
@@ -355,10 +355,6 @@ void main() {
     }
 
     // AO based on grass density
-    ivec2 bCoord = clamp(ivec2(uv * rawChunkSize), ivec2(0), ivec2(32));
-    vec2 bInfo = imageLoad(u_biomeMap, ivec3(bCoord, slice)).rg;
-    int lowIdx = int(bInfo.r * 255.0 + 0.5), highIdx = clamp(lowIdx + 1, 0, 7);
-    float t_biome = bInfo.g;
     float gDen = mix(biomeProps[lowIdx].density, biomeProps[highIdx].density, t_biome) * globalProps.densityMultiplier;
     float ao = clamp(1.0 - (gDen * (1.0 - myRes.waterMask) * (1.0 - cliffM)) * 0.4, 0.6, 1.0) * mix(1.0, 0.8, clamp(-vFactor, 0.0, 1.0));
 

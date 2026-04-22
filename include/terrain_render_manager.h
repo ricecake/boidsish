@@ -269,7 +269,7 @@ namespace Boidsish {
 		int chunk_size_;           // Grid size per chunk (e.g., 32)
 		int max_chunks_;           // Maximum chunks in texture array
 		int heightmap_resolution_; // (chunk_size + 1) for vertex corners
-		static constexpr int kTextureResolution = 256; // High-res terrain textures
+		int texture_resolution_;   // For baked albedo/PBR textures
 
 		// OpenGL resources
 		GLuint grid_vao_ = 0;
@@ -277,8 +277,7 @@ namespace Boidsish {
 		GLuint grid_ebo_ = 0;
 		GLuint instance_vbo_ = 0;
 		GLuint raw_heightmap_texture_ = 0; // GL_TEXTURE_2D_ARRAY (RGBA16F: height, normal.xyz)
-		GLuint heightmap_texture_ = 0;     // GL_TEXTURE_2D_ARRAY (RGBA16F: baked height, baked normal)
-		GLuint baked_params_texture_ = 0;  // GL_TEXTURE_2D_ARRAY (RGBA16F: erosion, ridge, substrate, water)
+		GLuint heightmap_texture_ = 0;     // GL_TEXTURE_2D_ARRAY (RGBA16F: baked height, normal.xz, water)
 		GLuint albedo_texture_ = 0;        // GL_TEXTURE_2D_ARRAY (RGBA8: albedo, AO)
 		GLuint material_texture_ = 0;      // GL_TEXTURE_2D_ARRAY (RGBA8: roughness, metallic, normal.xz)
 		GLuint biome_texture_ = 0;         // GL_TEXTURE_2D_ARRAY (RGBA8: low_idx, t, bake_flag, unused)

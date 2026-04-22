@@ -24,10 +24,8 @@ out float      vErosionDelta;
 out float      vRidgeMap;
 out float      vSubstrate;
 
-// Heightmap texture array: R=height, GBA=normal
+// Heightmap texture array: R=height, G=normal.x, B=normal.z, A=waterMask
 uniform sampler2DArray uHeightmap;
-// Baked params: R=erosionDelta, G=ridgeMap, B=substrate, A=waterMask
-uniform sampler2DArray uBakedParams;
 // Biome map: R=lowIdx, G=t, B=bakeFlag
 uniform sampler2DArray u_biomeMap;
 
@@ -46,13 +44,17 @@ uniform bool uIsShadowPass = false;
 #include "temporal_data.glsl"
 #include "visual_effects.glsl"
 
-void sampleHeightmap(vec2 uv, float slice, vec3 worldOffset, out vec3 worldPos, out vec3 normal) {
+void sampleHeightmap(vec2 uv, float slice, vec3 worldOffset, out vec3 worldPos, out vec3 normal, out float waterMask) {
 	vec2  remappedUV = (uv * uRawChunkSize + 0.5) / (uRawChunkSize + 1.0);
 	vec4  data = texture(uHeightmap, vec3(remappedUV, slice));
 	worldPos.x = worldOffset.x + uv.x * uChunkSize;
 	worldPos.y = data.r;
 	worldPos.z = worldOffset.z + uv.y * uChunkSize;
-	normal = normalize(data.gba);
+
+	// Reconstruct normal from XZ
+	float normalY = sqrt(clamp(1.0 - dot(data.gb, data.gb), 0.0, 1.0));
+	normal = normalize(vec3(data.g, normalY, data.b));
+	waterMask = data.a;
 }
 
 void main() {
@@ -64,19 +66,13 @@ void main() {
 	vec2 texCoord2 = mix(TexCoords_TC_out[3], TexCoords_TC_out[2], uv.x);
 	TexCoords = mix(texCoord1, texCoord2, uv.y);
 
-	sampleHeightmap(TexCoords, slice, worldOffset, FragPos, Normal);
+	sampleHeightmap(TexCoords, slice, worldOffset, FragPos, Normal, vIsWater);
 
 	vec2 remappedUV = (TexCoords * uRawChunkSize + 0.5) / (uRawChunkSize + 1.0);
 	vec4 biomeData = texture(u_biomeMap, vec3(remappedUV, slice));
 	bool isBaked = biomeData.b > 0.5;
 
-	if (isBaked) {
-		vec4 bakedParams = texture(uBakedParams, vec3(remappedUV, slice));
-		vErosionDelta = bakedParams.r;
-		vRidgeMap = bakedParams.g;
-		vSubstrate = bakedParams.b;
-		vIsWater = bakedParams.a;
-	} else {
+	if (!isBaked) {
 		// Fallback for unbaked chunks
 		float terrainDistance = distance(viewPos.xz, FragPos.xz);
 		float blendScale = smoothstep(erosion_max_dist * worldScale, (erosion_max_dist * 0.5) * worldScale, terrainDistance);
@@ -112,7 +108,13 @@ void main() {
 			}
 		}
 		FragPos += 0.5 * fastWorley3d(FragPos / 50.0) * fastBlueNoise(FragPos.zx) * Normal * smoothstep(10, 1, FragPos.y) * smoothstep(0.01, 1, FragPos.y);
-	}
+	} else {
+        // For baked chunks, we only have erosion delta for coloring fallback if needed,
+        // but typically the baked albedo/PBR already incorporates it.
+        vErosionDelta = 0.0;
+        vRidgeMap = 0.0;
+        vSubstrate = 0.0;
+    }
 
 	if (vIsWater > 0.0) {
 		float landHeight = FragPos.y;

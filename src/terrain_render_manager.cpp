@@ -19,6 +19,8 @@ namespace Boidsish {
 
 	TerrainRenderManager::TerrainRenderManager(ServiceLocator& /*loc*/, int chunk_size, int max_chunks):
 		chunk_size_(chunk_size), max_chunks_(max_chunks), heightmap_resolution_(chunk_size + 1) {
+		texture_resolution_ = chunk_size * Constants::Class::Terrain::TextureResolutionMultiplier();
+
 		// Create Biome UBO
 		glGenBuffers(1, &biome_ubo_);
 		glBindBuffer(GL_UNIFORM_BUFFER, biome_ubo_);
@@ -113,8 +115,6 @@ namespace Boidsish {
 			glDeleteTextures(1, &raw_heightmap_texture_);
 		if (heightmap_texture_)
 			glDeleteTextures(1, &heightmap_texture_);
-		if (baked_params_texture_)
-			glDeleteTextures(1, &baked_params_texture_);
 		if (albedo_texture_)
 			glDeleteTextures(1, &albedo_texture_);
 		if (material_texture_)
@@ -216,7 +216,7 @@ namespace Boidsish {
 	}
 
 	void TerrainRenderManager::EnsureTextureCapacity(int required_slices) {
-		if (raw_heightmap_texture_ && heightmap_texture_ && baked_params_texture_ && albedo_texture_ &&
+		if (raw_heightmap_texture_ && heightmap_texture_ && albedo_texture_ &&
 		    material_texture_ && biome_texture_ && required_slices <= max_chunks_) {
 			return; // Already have enough capacity
 		}
@@ -247,8 +247,6 @@ namespace Boidsish {
 			raw_heightmap_texture_ = 0;
 			glDeleteTextures(1, &heightmap_texture_);
 			heightmap_texture_ = 0;
-			glDeleteTextures(1, &baked_params_texture_);
-			baked_params_texture_ = 0;
 			glDeleteTextures(1, &albedo_texture_);
 			albedo_texture_ = 0;
 			glDeleteTextures(1, &material_texture_);
@@ -285,9 +283,8 @@ namespace Boidsish {
 
 		create_array(raw_heightmap_texture_, GL_RGBA16F, true, heightmap_resolution_, false);
 		create_array(heightmap_texture_, GL_RGBA16F, true, heightmap_resolution_, false);
-		create_array(baked_params_texture_, GL_RGBA16F, true, heightmap_resolution_, false);
-		create_array(albedo_texture_, GL_RGBA8, true, kTextureResolution, true);
-		create_array(material_texture_, GL_RGBA8, true, kTextureResolution, true);
+		create_array(albedo_texture_, GL_RGBA8, true, texture_resolution_, true);
+		create_array(material_texture_, GL_RGBA8, true, texture_resolution_, true);
 		create_array(biome_texture_, GL_RGBA8, true, heightmap_resolution_, false);
 
 		glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
@@ -898,10 +895,6 @@ namespace Boidsish {
 		shader_base.trySetInt("uBiomeMap", Constants::TextureUnit::TerrainBiomeMap());
 		shader_base.trySetInt("u_biomeMap", Constants::TextureUnit::TerrainBiomeMap());
 
-		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainBakedParams());
-		glBindTexture(GL_TEXTURE_2D_ARRAY, baked_params_texture_);
-		shader_base.trySetInt("uBakedParams", Constants::TextureUnit::TerrainBakedParams());
-
 		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainAlbedo());
 		glBindTexture(GL_TEXTURE_2D_ARRAY, albedo_texture_);
 		shader_base.trySetInt("uTerrainAlbedo", Constants::TextureUnit::TerrainAlbedo());
@@ -1070,7 +1063,6 @@ namespace Boidsish {
 
 		// Bind output textures as images
 		glBindImageTexture(Constants::TextureUnit::TerrainHeightmapImage(), heightmap_texture_, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
-		glBindImageTexture(Constants::TextureUnit::TerrainBakedParamsImage(), baked_params_texture_, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 
 		// Bind UBOs
 		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::TerrainData(), terrain_data_ubo_);
@@ -1102,9 +1094,9 @@ namespace Boidsish {
 
 			terrain_bake_shader_->setInt("u_numTasks", static_cast<int>(batch_size));
 
-			// High-res texture resolution (256x256). The shader also updates the 33x33 heightmap grid.
-			GLuint groups_x = (kTextureResolution + 7) / 8;
-			GLuint groups_y = (kTextureResolution + 7) / 8;
+			// High-res texture resolution. The shader also updates the 33x33 heightmap grid.
+			GLuint groups_x = (texture_resolution_ + 7) / 8;
+			GLuint groups_y = (texture_resolution_ + 7) / 8;
 			glDispatchCompute(groups_x, groups_y, static_cast<GLuint>(batch_size));
 		}
 
