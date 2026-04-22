@@ -29,6 +29,8 @@ namespace Boidsish {
 		RayleighScaleHeight,
 		MieScaleHeight,
 		CloudCoverage,
+		Precipitation,
+		Temperature,
 		MieScattering,
 		MieExtinction,
 		RayleighScatteringR,
@@ -71,6 +73,8 @@ namespace Boidsish {
 		WeatherRange<float> rayleigh_scale_height;
 		WeatherRange<float>     mie_scale_height;
 		WeatherRange<float>     cloud_coverage;
+		WeatherRange<float>     precipitation;
+		WeatherRange<float>     temperature;
 		WeatherRange<float>     mie_scattering;
 		WeatherRange<float>     mie_extinction;
 		WeatherRange<glm::vec3> rayleigh_scattering;
@@ -94,6 +98,8 @@ namespace Boidsish {
 				rayleigh_scale_height + other.rayleigh_scale_height,
 				mie_scale_height + other.mie_scale_height,
 				cloud_coverage + other.cloud_coverage,
+				precipitation + other.precipitation,
+				temperature + other.temperature,
 				mie_scattering + other.mie_scattering,
 				mie_extinction + other.mie_extinction,
 				rayleigh_scattering + other.rayleigh_scattering,
@@ -119,6 +125,8 @@ namespace Boidsish {
 				rayleigh_scale_height * f,
 				mie_scale_height * f,
 				cloud_coverage * f,
+				precipitation * f,
+				temperature * f,
 				mie_scattering * f,
 				mie_extinction * f,
 				rayleigh_scattering * f,
@@ -164,6 +172,8 @@ namespace Boidsish {
 		float     rayleigh_scale_height = WeatherConstants::RayleighScaleHeight.normal;
 		float     mie_scale_height = WeatherConstants::MieScaleHeight.normal;
 		float     cloud_coverage = WeatherConstants::CloudCoverage.normal;
+		float     precipitation = 0.0f;
+		float     temperature = 288.15f;
 		glm::vec3 haze_color = WeatherConstants::DefaultHazeColor;
 		glm::vec3 cloud_color = WeatherConstants::DefaultCloudColor;
 	};

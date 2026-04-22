@@ -137,6 +137,10 @@ namespace Boidsish {
 			if (comp_frustum_idx != GL_INVALID_INDEX) {
 				glUniformBlockBinding(shader->ID, comp_frustum_idx, Constants::UboBinding::FrustumData());
 			}
+			GLuint comp_vfx_idx = glGetUniformBlockIndex(shader->ID, "VisualEffects");
+			if (comp_vfx_idx != GL_INVALID_INDEX) {
+				glUniformBlockBinding(shader->ID, comp_vfx_idx, Constants::UboBinding::VisualEffects());
+			}
 		};
 
 		setup_comp_ubos(lifecycle_shader_.get());
@@ -279,7 +283,10 @@ namespace Boidsish {
 		GLsizeiptr                    lighting_ubo_size,
 		GLuint                        frustum_ubo,
 		GLintptr                      frustum_offset,
-		GLuint                        extra_noise_texture
+		GLuint                        extra_noise_texture,
+		GLuint                        visual_effects_ubo,
+		GLintptr                      vfx_offset,
+		GLsizeiptr                    vfx_size
 	) {
 		PROJECT_PROFILE_SCOPE("FireEffectManager::Update");
 		std::lock_guard<std::mutex> lock(mutex_);
@@ -477,6 +484,20 @@ namespace Boidsish {
 				frustum_offset,
 				sizeof(FrustumDataGPU)
 			);
+		}
+
+		if (visual_effects_ubo != 0) {
+			if (vfx_size > 0) {
+				glBindBufferRange(
+					GL_UNIFORM_BUFFER,
+					Constants::UboBinding::VisualEffects(),
+					visual_effects_ubo,
+					vfx_offset,
+					vfx_size
+				);
+			} else {
+				glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::VisualEffects(), visual_effects_ubo);
+			}
 		}
 
 		// --- Phase 1: Lifecycle ---

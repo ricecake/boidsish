@@ -38,14 +38,14 @@ void main() {
 		v_particle_idx = particle_idx;
 
 		// Set point size based on lifetime and style
-		if (p.style == 0) { // Rocket Trail
+		if (p.style == STYLE_ROCKET_TRAIL) { // Rocket Trail
 			gl_PointSize = smoothstep((1.0 - v_lifetime), v_lifetime, v_lifetime / 2.0) *
 				15.0;                                                              // Smaller, more consistent size
-		} else if (p.style == 1) {                                                 // Explosion
+		} else if (p.style == STYLE_EXPLOSION) {                                   // Explosion
 			gl_PointSize = (1.0 - (1.0 - v_lifetime) * (1.0 - v_lifetime)) * 60.0; // Starts large, shrinks fast
-		} else if (p.style == 3) {                                                 // Sparks
+		} else if (p.style == STYLE_SPARKS) {                                      // Sparks
 			gl_PointSize = 4.0 + v_lifetime * 20.0;
-		} else if (p.style == 4) {                                                 // Glitter
+		} else if (p.style == STYLE_GLITTER) {                                     // Glitter
 			gl_PointSize = 6.0;                                                    // Small, consistent square
 		} else if (p.style == 8) {                                                 // Debug
 			gl_PointSize = 8.0;                                                    // Fixed size point

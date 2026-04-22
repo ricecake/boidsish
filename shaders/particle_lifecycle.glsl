@@ -18,7 +18,7 @@ bool updateLifetime(
 	// Hijack/Clear Logic
 	if (emitter_index != -1 && num_emitters > 0 && emitter_index < num_emitters) {
 		Emitter emitter = emitters[emitter_index];
-		if (emitter.request_clear != 0 || (p.style == 5 && p.pos.w > 0.0) ||
+		if (emitter.request_clear != 0 || (p.style == STYLE_AMBIENT && p.pos.w > 0.0) ||
 		    (p.emitter_id != emitter.id && p.pos.w <= 0.50)) {
 			p.pos.w = 0.0;
 		}
@@ -205,7 +205,7 @@ void respawnParticle(
 						float total_lifetime = 10.0 + rand(spawnSeed + 4.4) * 5.0;
 						float skipped_time = rand(spawnSeed + 7.7) * total_lifetime;
 
-						p.style = 5; // Ambient
+						p.style = STYLE_AMBIENT; // Ambient
 						p.emitter_index = biome_idx;
 						p.pos = vec4(
 							pos.x,
@@ -260,7 +260,7 @@ void respawnParticle(
 		if (p.pos.w <= 0.0) {
 			p.pos.w = 0.0;
 			if (emitter_index == -1) {
-				p.style = 5;
+				p.style = STYLE_AMBIENT;
 				p.emitter_index = -1;
 				p.emitter_id = -1;
 			}

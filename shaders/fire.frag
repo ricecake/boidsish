@@ -55,9 +55,9 @@ void main() {
 
 	vec3  color = vec3(0.0);
 	float alpha = 0.0;
-	if (v_style == 0 || v_style == 3 || v_style == 4 || v_style == 5 || v_style == 6 || v_style == 7 || v_style == 8 ||
-	    v_style == 9 || v_style == 28) {
-		if (v_style == 3) {                       // Sparks
+	if (v_style == STYLE_ROCKET_TRAIL || v_style == STYLE_SPARKS || v_style == STYLE_GLITTER || v_style == STYLE_AMBIENT || v_style == STYLE_BUBBLES || v_style == STYLE_FIREFLIES || v_style == STYLE_DEBUG ||
+	    v_style == STYLE_CINDER || v_style == STYLE_IRIDESCENT || v_style == STYLE_RAIN || v_style == STYLE_SNOW) {
+		if (v_style == STYLE_SPARKS) {                       // Sparks
 			vec3 hot_color = vec3(1.0, 1.0, 1.0); // White
 			vec3 mid_color = vec3(1.0, 0.8, 0.3); // Bright Yellow/Orange
 			color = mix(mid_color, hot_color, smoothstep(0.0, 0.5, v_lifetime));
@@ -70,7 +70,7 @@ void main() {
 				color *= 0.3;
 			}
 			alpha = smoothstep(0.0, 0.1, v_lifetime);
-		} else if (v_style == 4) { // Glitter
+		} else if (v_style == STYLE_GLITTER) { // Glitter
 			// Glitter uses a colorful rainbow shift
 			// We use u_time and v_lifetime to create motion in the color space
 			float hue = u_time * 2.0 + v_lifetime * 1.5 + float(v_particle_idx) * 0.1;
@@ -84,7 +84,7 @@ void main() {
 			float sparkle = pow(twinkle, 10.0) * 2.0;
 			color += vec3(sparkle);
 			alpha = clamp(v_lifetime, 0.0, 1.0);
-		} else if (v_style == 5) { // Ambient
+		} else if (v_style == STYLE_AMBIENT) { // Ambient
 			int  sub_style = v_emitter_id;
 			vec3 biome_albedo = (v_emitter_index >= 0 && v_emitter_index < 8) ? u_biomeAlbedos[v_emitter_index]
 																			  : vec3(0.5);
@@ -149,7 +149,7 @@ void main() {
 				color *= (2.0 + twinkle * 8.0);
 				alpha = 0.01 + step(twinkle_t, 0.6) * (0.4 + twinkle * 0.6) * smoothstep(0.0, 0.5, v_lifetime);
 			}
-		} else if (v_style == 6) { // Bubbles
+		} else if (v_style == STYLE_BUBBLES) { // Bubbles
 			// Use local spherical normal for better visuals
 			vec3 n;
 			n.xy = circ * 2.0;
@@ -169,12 +169,12 @@ void main() {
 
 			color = mix(iridescent_color, vec3(1.0), fresnel * 0.5 + 0.2) + spec;
 			alpha = 0.6 * smoothstep(0.0, 0.5, v_lifetime);
-		} else if (v_style == 7) {                    // Fireflies
+		} else if (v_style == STYLE_FIREFLIES) {      // Fireflies
 			vec3  firefly_base = vec3(0.7, 0.9, 0.1); // Yellow-Green
 			float twinkle = sin(u_time * 6.0 + float(v_particle_idx)) * 0.5 + 0.5;
 			color = firefly_base * (2.0 + twinkle * 8.0);
 			alpha = (0.4 + twinkle * 0.6) * smoothstep(0.0, 0.5, v_lifetime);
-		} else if (v_style == 28) {
+		} else if (v_style == STYLE_IRIDESCENT) {
 			// --- Iridescence Effect ---
 			// Fresnel term for the base reflectivity
 			float fresnel = pow(max(0.0, 1.0 - distSq * 4.0), 5.0);
@@ -202,12 +202,12 @@ void main() {
 
 			color = mix(iridescent_color, vec3(1.0), fresnel) + specular;
 			alpha = 0.75;
-		} else if (v_style == 8) {        // Debug
+		} else if (v_style == STYLE_DEBUG) { // Debug
 			float hue = v_lifetime * 0.5; // Shift through spectrum
 			color = 0.6 + 0.4 * cos(hue * 6.28 + vec3(0, 2, 4));
 			color *= 3.0; // Bright for bloom
 			alpha = 1.0;
-		} else if (v_style == 9) { // Cinder
+		} else if (v_style == STYLE_CINDER) { // Cinder
 			// Irregular shape via noise
 			float n = snoise3d(vec3(gl_PointCoord * 6.0, float(v_particle_idx)));
 			shapeMask = smoothstep(0.2 + n * 0.15, 0.05, distSq);
@@ -223,7 +223,7 @@ void main() {
 			color = mix(color, orange, highlights);
 
 			alpha = smoothstep(0.0, 0.5, v_lifetime);
-		} else if (v_style == 0) { // Exhaust (Smoke)
+		} else if (v_style == STYLE_ROCKET_TRAIL) { // Exhaust (Smoke)
 			color = vec3(0.1);     // Dark smoke
 			alpha = v_lifetime * 0.4;
 		}
@@ -244,13 +244,13 @@ void main() {
 
 		// Broad roiling motion (low frequency)
 		// Scale down for broader features, especially for explosions
-		float roilScale = (v_style == 1) ? 0.015 : 0.03;
+		float roilScale = (v_style == STYLE_EXPLOSION) ? 0.015 : 0.03;
 		vec3  roilCoords = v_pos.xyz * roilScale - vec3(0.0, u_time * 0.1, 0.0);
 		float roil = fastFbm3d(roilCoords) * 0.5 + 0.5;
 
 		// Worley "knoblyness" and broad structures
 		// Scale by distance to increase structural variation as it expands
-		float worleyScale = (v_style == 1) ? 0.05 : 0.1;
+		float worleyScale = (v_style == STYLE_EXPLOSION) ? 0.05 : 0.1;
 		float expansionFactor = 1.0 + distFromEpicenter * 0.03;
 		vec3  worleyCoords = v_pos.xyz * worleyScale * expansionFactor + vec3(u_time * 0.05);
 		float knobly = fastWorley3d(worleyCoords);
@@ -269,7 +269,7 @@ void main() {
 
 		// Heat influenced by expansion for explosions
 		float epicenterCooling = 1.0;
-		if (v_style == 1) {
+		if (v_style == STYLE_EXPLOSION) {
 			epicenterCooling = smoothstep(80.0, 0.0, distFromEpicenter);
 		}
 

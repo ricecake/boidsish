@@ -2557,7 +2557,10 @@ namespace Boidsish {
 				static_cast<GLsizeiptr>(render_state_.lighting.size),
 				frustum_ssbo->GetBufferId(),
 				frustum_ssbo->GetFrameOffset() + mdi_frustum_count * sizeof(FrustumDataGPU),
-				noise_manager ? noise_manager->GetExtraNoiseTexture() : 0
+				noise_manager ? noise_manager->GetExtraNoiseTexture() : 0,
+				render_state_.visual_effects.id,
+				static_cast<GLintptr>(render_state_.visual_effects.offset),
+				static_cast<GLsizeiptr>(render_state_.visual_effects.size)
 			);
 			mesh_explosion_manager->Update(simulation_delta_time, simulation_time);
 			sound_effect_manager->Update(simulation_delta_time);

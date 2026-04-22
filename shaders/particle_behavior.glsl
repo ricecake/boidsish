@@ -193,46 +193,46 @@ void updateFireBehavior(
 	sampler2DArray heightmapArray
 ) {
 	float maxSpeed = 10.0;
-	if (p.style == 0) { // MissileExhaust
+	if (p.style == STYLE_ROCKET_TRAIL) { // MissileExhaust
 		maxSpeed = kExhaustSpeed;
 		p.vel.xyz -= p.vel.xyz * kExhaustDrag * 2 * (1 - (p.vel.xyz / 30)) * dt;
-	} else if (p.style == 1) { // Explosion
+	} else if (p.style == STYLE_EXPLOSION) { // Explosion
 		maxSpeed = kExplosionSpeed;
 		p.vel.xyz -= p.vel.xyz * kExplosionDrag * dt;
 		float dist = distance(p.pos.xyz, p.epicenter);
 		float curlInfluence = smoothstep(5.0, 30.0, dist) + smoothstep(5, 1, length(p.vel.xyz) * kExplosionDrag * dt);
 		p.vel.xyz += curlNoise(p.pos.xyz, time, curlTexture) * curlInfluence * 15.0 * dt;
-	} else if (p.style == 2) { // Fire
+	} else if (p.style == STYLE_FIRE) { // Fire
 		// maxSpeed = kFireSpeed;
 		p.vel.y += (kFireSpeed / p.pos.w) * dt;
 		p.vel.x += (rand(p.pos.xy + time) - 0.5) * kFireSpread * dt * 0.25;
 		p.vel.z += (rand(p.pos.yz + time) - 0.5) * kFireSpread * dt * 0.25;
-	} else if (p.style == 3) { // Sparks
+	} else if (p.style == STYLE_SPARKS) { // Sparks
 		maxSpeed = kSparksSpeed;
 		p.vel.xyz -= p.vel.xyz * kSparksDrag * dt;
 		p.vel.y -= kSparksGravity * dt;
-	} else if (p.style == 4) { // Glitter
+	} else if (p.style == STYLE_GLITTER) { // Glitter
 		maxSpeed = kGlitterSpeed;
 		p.vel.xyz -= p.vel.xyz * kGlitterDrag * dt;
 		float dist = distance(p.pos.xyz, p.epicenter);
 		float curlInfluence = smoothstep(5.0, 30.0, dist) + smoothstep(5, 1, length(p.vel.xyz) * kGlitterDrag * dt);
 		p.vel.xyz += curlNoise(p.pos.xyz, time, curlTexture) * curlInfluence * 5.0 * dt;
 		p.vel.y -= kGlitterGravity * dt;
-	} else if (p.style == 6) { // Bubbles
+	} else if (p.style == STYLE_BUBBLES) { // Bubbles
 		float curlInfluence = 0.5;
 		p.vel.xyz += curlNoise(p.pos.xyz, time, curlTexture) * curlInfluence * dt;
 		p.vel.y += 0.4 * dt; // Rising
 		p.vel.xyz *= 0.97;
 		maxSpeed = 1.5;
-	} else if (p.style == 7) { // Fireflies
+	} else if (p.style == STYLE_FIREFLIES) { // Fireflies
 		float curlInfluence = 0.8;
 		p.vel.xyz += curlNoise(p.pos.xyz, time, curlTexture) * curlInfluence * dt;
 		p.vel.y += 0.15 * dt; // Gentle rising
 		p.vel.xyz *= 0.99;
 		maxSpeed = 2.0;
-	} else if (p.style == 8) { // Debug
+	} else if (p.style == STYLE_DEBUG) { // Debug
 		p.vel.xyz = vec3(0.0);
-	} else if (p.style == 9) { // Cinder
+	} else if (p.style == STYLE_CINDER) { // Cinder
 		float ageFactor = clamp(1.0 - (p.pos.w / kCinderLifetime), 0.0, 1.0);
 		float curlInfluence = ageFactor * kCinderDriftIntensity;
 		p.vel.xyz += curlNoise(p.pos.xyz, time, curlTexture) * curlInfluence * dt;
@@ -241,12 +241,12 @@ void updateFireBehavior(
 		maxSpeed = 5.0;
 	}
 
-	if (p.style != 3 && p.style != 4 && p.style != 5 && p.style != 6 && p.style != 7 && p.style != 8 && p.style != 9 &&
-	    p.style != 2) {
+	if (p.style != STYLE_SPARKS && p.style != STYLE_GLITTER && p.style != STYLE_AMBIENT && p.style != STYLE_BUBBLES && p.style != STYLE_FIREFLIES && p.style != STYLE_DEBUG && p.style != STYLE_CINDER &&
+	    p.style != STYLE_FIRE && p.style != STYLE_RAIN && p.style != STYLE_SNOW) {
 		p.vel.y -= 0.05 * dt;
 	}
 
-	if (p.style != 5 && p.style != 6 && p.style != 7 && p.style != 8 && p.style != 9 && p.style != 2) {
+	if (p.style != STYLE_AMBIENT && p.style != STYLE_BUBBLES && p.style != STYLE_FIREFLIES && p.style != STYLE_DEBUG && p.style != STYLE_CINDER && p.style != STYLE_FIRE && p.style != STYLE_RAIN && p.style != STYLE_SNOW) {
 		p.vel.xyz += vec3(mix(curlNoise(p.pos.xyz, time, curlTexture) * 3, vec3(0, 0, 0), length(p.vel) / maxSpeed)) *
 			dt;
 	}
@@ -267,7 +267,7 @@ void updateBehavior(
 	int            num_chunks,
 	sampler2DArray heightmapArray
 ) {
-	if (p.style == 5) {
+	if (p.style == STYLE_AMBIENT) {
 		updateAmbientParticle(
 			p,
 			dt,
