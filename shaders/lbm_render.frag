@@ -4,14 +4,13 @@ layout(location = 0) out vec4 FragColor;
 
 in vec3 v_worldPos;
 
+#include "helpers/lbm_common.glsl"
+
 layout(binding = 0) uniform sampler3D u_mass;
 layout(binding = 1) uniform sampler3D u_velocity;
 layout(binding = 2) uniform sampler2D u_depthTexture;
 
 uniform vec3 u_cameraPos;
-uniform ivec3 u_resolution;
-uniform vec3 u_worldScale;
-uniform vec3 u_worldOrigin;
 uniform vec3 u_waterColor;
 uniform mat4 view;
 uniform mat4 projection;
@@ -30,8 +29,8 @@ void main() {
     vec3 ro = u_cameraPos;
     vec3 rd = normalize(v_worldPos - u_cameraPos);
 
-    vec3 boxMin = u_worldOrigin;
-    vec3 boxMax = u_worldOrigin + u_worldScale;
+    vec3 boxMin = u_worldOrigin.xyz;
+    vec3 boxMax = u_worldOrigin.xyz + u_worldScale.xyz;
 
     float tnear, tfar;
     if (intersect_aabb(ro, rd, boxMin, boxMax, tnear, tfar) > 1e20) {
@@ -40,38 +39,44 @@ void main() {
 
     tnear = max(tnear, 0.0);
 
-    vec2 screenUV = gl_FragCoord.xy / textureSize(u_depthTexture, 0);
-    float sceneDepth = texture(u_depthTexture, screenUV).r;
+    ivec2 screenCoord = ivec2(gl_FragCoord.xy);
+    float sceneDepth = texelFetch(u_depthTexture, screenCoord, 0).r;
 
-    const int MAX_STEPS = 128;
+    const int MAX_STEPS = 64;
     float stepSize = (tfar - tnear) / float(MAX_STEPS);
     float t = tnear;
 
     vec4 sum = vec4(0.0);
 
+    // Optimization: Calculate matrix products once
+    mat4 vp = projection * view;
+
     for (int i = 0; i < MAX_STEPS; ++i) {
         vec3 p = ro + rd * t;
 
-        vec4 projPos = projection * view * vec4(p, 1.0);
+        vec4 projPos = vp * vec4(p, 1.0);
         float pDepth = (projPos.z / projPos.w) * 0.5 + 0.5;
         if (pDepth > sceneDepth) break;
 
-        vec3 uvw = (p - u_worldOrigin) / u_worldScale;
+        vec3 uvw = (p - u_worldOrigin.xyz) / u_worldScale.xyz;
         float mass = texture(u_mass, uvw).r;
 
-        if (mass > 0.05) {
-            float alpha = smoothstep(0.05, 0.2, mass) * 0.4;
+        if (mass > 0.02) {
+            float normalizedMass = clamp(mass / u_lbmParams.z, 0.0, 1.0);
+            float alpha = smoothstep(0.02, 0.1, normalizedMass) * 0.25;
 
-            // Basic lighting
-            vec3 normal = textureLod(u_velocity, uvw, 0).xyz; // Simplified normal from velocity/gradient
-            float diff = max(0.2, dot(normalize(vec3(1,1,1)), normal));
+            // Fresnel
+            float fresnel = 1.0 - max(0.0, dot(-rd, vec3(0,1,0)));
+            alpha += fresnel * 0.1;
+
+            float diff = 0.7 + 0.3 * max(0.0, dot(normalize(vec3(0.5, 1.0, 0.2)), vec3(0,1,0)));
 
             vec4 col = vec4(u_waterColor * diff, alpha);
             col.rgb *= col.a;
             sum += col * (1.0 - sum.a);
         }
 
-        if (sum.a > 0.98) break;
+        if (sum.a > 0.95) break;
         t += stepSize;
         if (t > tfar) break;
     }

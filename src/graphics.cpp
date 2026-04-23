@@ -396,6 +396,7 @@ namespace Boidsish {
 		std::vector<InputCallback>                             input_callbacks;
 		std::vector<PrepareCallback>                           prepare_callbacks;
 		std::vector<UpdateHandler>                             update_handlers;
+		std::vector<DrawHandler>                               draw_handlers;
 		bool                                                   prepared_{false};
 		std::shared_ptr<UI::UIManager>                         ui_manager;
 		std::shared_ptr<HudManager>                            hud_manager;
@@ -2678,6 +2679,12 @@ namespace Boidsish {
 							dispatch_hiz
 						);
 					},
+				.render_custom =
+					[this](const glm::mat4& view, const glm::mat4& projection, const glm::vec3& camera_pos) {
+						for (auto& handler : draw_handlers) {
+							handler(view, projection, camera_pos);
+						}
+					},
 				.bind_shadows = [this](Shader& s) { BindShadows(s); },
 				.update_frustum_ubo = [this,
 			                           &frame]() { UpdateFrustumUbo(frame.view, frame.projection, frame.camera_pos); },
@@ -4035,6 +4042,14 @@ namespace Boidsish {
 
 	void Visualizer::ClearUpdateHandlers() {
 		impl->update_handlers.clear();
+	}
+
+	void Visualizer::AddDrawHandler(DrawHandler handler) {
+		impl->draw_handlers.push_back(handler);
+	}
+
+	void Visualizer::ClearDrawHandlers() {
+		impl->draw_handlers.clear();
 	}
 
 

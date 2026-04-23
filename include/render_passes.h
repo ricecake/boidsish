@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <glm/glm.hpp>
 
 class Shader; // Global scope — external library type
 
@@ -38,6 +39,7 @@ namespace Boidsish {
 	 */
 	struct RenderCallbacks {
 		std::function<void(RenderLayer layer, bool dispatch_hiz)> execute_queue;
+		std::function<void(const glm::mat4& view, const glm::mat4& projection, const glm::vec3& camera_pos)> render_custom;
 		std::function<void(Shader& s)>                            bind_shadows;
 		std::function<void()>                                     update_frustum_ubo;
 		std::function<void()>                                     render_terrain;

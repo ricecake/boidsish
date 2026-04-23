@@ -57,6 +57,7 @@ namespace Boidsish {
 
         FluidLbmConfig config_;
         bool initialized_ = false;
+        bool obstaclesDirty_ = true;
 
         // GPU Resources
         // We use 5 RGBA32F 3D textures to store 19 populations (double buffered = 10 textures)
@@ -75,6 +76,7 @@ namespace Boidsish {
         uint32_t bvhNodesBuffer_ = 0;
         uint32_t bvhIndicesBuffer_ = 0;
         uint32_t meshVerticesBuffer_ = 0;
+        uint32_t paramsUbo_ = 0;
 
         // Shaders
         uint32_t lbmStepShader_ = 0;

@@ -26,11 +26,6 @@ layout(std430, binding = 2) buffer MeshVertices {
 };
 
 uniform vec3 u_center;
-uniform float u_radius;
-uniform float u_amount;
-uniform ivec3 u_resolution;
-uniform vec3 u_worldScale;
-uniform vec3 u_worldOrigin;
 uniform int u_mode; // 0 = sphere, 1 = mesh
 uniform int u_numNodes;
 uniform mat4 u_invMeshTransform;
@@ -92,20 +87,20 @@ bool is_inside_mesh(vec3 p) {
 
 void main() {
     ivec3 pos = ivec3(gl_GlobalInvocationID.xyz);
-    if (any(greaterThanEqual(pos, u_resolution))) return;
+    if (any(greaterThanEqual(pos, u_resolution.xyz))) return;
 
-    vec3 worldPos = u_worldOrigin + (vec3(pos) / vec3(u_resolution)) * u_worldScale;
+    vec3 worldPos = u_worldOrigin.xyz + (vec3(pos) / vec3(u_resolution.xyz)) * u_worldScale.xyz;
 
     bool inside = false;
     if (u_mode == 0) {
-        inside = distance(worldPos, u_center) < u_radius;
+        inside = distance(worldPos, u_center) < u_worldScale.w;
     } else {
         vec3 meshLocalPos = (u_invMeshTransform * vec4(worldPos, 1.0)).xyz;
         inside = is_inside_mesh(meshLocalPos);
     }
 
     if (inside) {
-        float rho = u_amount;
+        float rho = u_lbmParams.z;
         vec3 u = vec3(0.0);
         float f[19];
         for (int i = 0; i < 19; ++i) f[i] = calculate_equilibrium(i, rho, u);
@@ -116,7 +111,7 @@ void main() {
         imageStore(u_pop[3], pos, vec4(f[12], f[13], f[14], f[15]));
         imageStore(u_pop[4], pos, vec4(f[16], f[17], f[18], 0.0));
 
-        imageStore(u_mass, pos, vec4(1.0));
+        imageStore(u_mass, pos, vec4(rho)); // Fix: Initialize mass to rho
         imageStore(u_velocity, pos, vec4(u, rho));
     }
 }

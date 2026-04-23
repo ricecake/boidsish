@@ -14,11 +14,11 @@
 namespace Boidsish {
 
     struct LbmParamsGpu {
-        glm::vec3 gravity;
-        float dt;
-        float tau;
-        float omega;
-        glm::ivec3 resolution;
+        glm::vec4 gravity_dt;      // xyz = gravity, w = dt
+        glm::vec4 lbm_amount;      // x = tau, y = omega, z = amount, w = unused
+        glm::ivec4 resolution;     // xyz = res, w = unused
+        glm::vec4 world_scale_rad; // xyz = scale, w = radius
+        glm::vec4 world_origin;    // xyz = origin, w = unused
     };
 
     FluidLbmManager::FluidLbmManager() {}
@@ -40,6 +40,7 @@ namespace Boidsish {
             if (bvhNodesBuffer_) glDeleteBuffers(1, &bvhNodesBuffer_);
             if (bvhIndicesBuffer_) glDeleteBuffers(1, &bvhIndicesBuffer_);
             if (meshVerticesBuffer_) glDeleteBuffers(1, &meshVerticesBuffer_);
+            if (paramsUbo_) glDeleteBuffers(1, &paramsUbo_);
         }
     }
 
@@ -51,8 +52,10 @@ namespace Boidsish {
         glGenBuffers(1, &bvhNodesBuffer_);
         glGenBuffers(1, &bvhIndicesBuffer_);
         glGenBuffers(1, &meshVerticesBuffer_);
+        glGenBuffers(1, &paramsUbo_);
+        glBindBuffer(GL_UNIFORM_BUFFER, paramsUbo_);
+        glBufferData(GL_UNIFORM_BUFFER, sizeof(LbmParamsGpu), nullptr, GL_DYNAMIC_DRAW);
 
-        // Clear textures
         float zeroF = 0.0f;
         uint32_t zeroU = 0;
         glClearTexImage(massTexture_, 0, GL_RED, GL_FLOAT, &zeroF);
@@ -64,6 +67,7 @@ namespace Boidsish {
         }
 
         initialized_ = true;
+        obstaclesDirty_ = true;
         logger::INFO("FluidLbmManager initialized with resolution {}x{}x{}", config_.resolution.x, config_.resolution.y, config_.resolution.z);
     }
 
@@ -112,11 +116,16 @@ namespace Boidsish {
         UpdateObstacles();
 
         LbmParamsGpu params;
-        params.gravity = glm::vec3(0.0f, -config_.gravity * 0.1f, 0.0f);
-        params.dt = 1.0f;
-        params.tau = 0.5f + 3.0f * config_.viscosity;
-        params.omega = 1.0f / params.tau;
-        params.resolution = config_.resolution;
+        params.gravity_dt = glm::vec4(0.0f, -config_.gravity * 0.001f, 0.0f, 1.0f); // Slower gravity in lattice units
+        params.lbm_amount.x = 0.5f + 3.0f * config_.viscosity; // tau
+        params.lbm_amount.y = 1.0f / params.lbm_amount.x; // omega
+        params.resolution = glm::ivec4(config_.resolution, 0);
+        params.world_scale_rad = glm::vec4(config_.worldScale, 0.0f);
+        params.world_origin = glm::vec4(config_.worldOrigin, 0.0f);
+
+        glBindBuffer(GL_UNIFORM_BUFFER, paramsUbo_);
+        glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(LbmParamsGpu), &params);
+        glBindBufferBase(GL_UNIFORM_BUFFER, 0, paramsUbo_);
 
         int subSteps = 4;
         for (int s = 0; s < subSteps; ++s) {
@@ -136,12 +145,6 @@ namespace Boidsish {
             glBindImageTexture(11, obstacleTexture_, 0, GL_TRUE, 0, GL_READ_ONLY, GL_R8);
             glBindImageTexture(12, velocityTexture_, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA32F);
 
-            glUniform3fv(glGetUniformLocation(lbmStepShader_, "u_params.gravity"), 1, glm::value_ptr(params.gravity));
-            glUniform1f(glGetUniformLocation(lbmStepShader_, "u_params.dt"), params.dt);
-            glUniform1f(glGetUniformLocation(lbmStepShader_, "u_params.tau"), params.tau);
-            glUniform1f(glGetUniformLocation(lbmStepShader_, "u_params.omega"), params.omega);
-            glUniform3iv(glGetUniformLocation(lbmStepShader_, "u_params.resolution"), 1, glm::value_ptr(params.resolution));
-
             glDispatchCompute((config_.resolution.x + 3) / 4, (config_.resolution.y + 3) / 4, (config_.resolution.z + 3) / 4);
             glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
@@ -151,8 +154,6 @@ namespace Boidsish {
             }
             glBindImageTexture(5, massTexture_, 0, GL_TRUE, 0, GL_READ_WRITE, GL_R32F);
             glBindImageTexture(6, velocityTexture_, 0, GL_TRUE, 0, GL_READ_ONLY, GL_RGBA32F);
-
-            glUniform3iv(glGetUniformLocation(lbmSurfaceShader_, "u_params.resolution"), 1, glm::value_ptr(params.resolution));
 
             glDispatchCompute((config_.resolution.x + 3) / 4, (config_.resolution.y + 3) / 4, (config_.resolution.z + 3) / 4);
             glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
@@ -172,10 +173,9 @@ namespace Boidsish {
         glUniformMatrix4fv(glGetUniformLocation(lbmRenderShader_, "view"), 1, GL_FALSE, glm::value_ptr(view));
         glUniformMatrix4fv(glGetUniformLocation(lbmRenderShader_, "projection"), 1, GL_FALSE, glm::value_ptr(proj));
         glUniform3fv(glGetUniformLocation(lbmRenderShader_, "u_cameraPos"), 1, glm::value_ptr(cameraPos));
-        glUniform3iv(glGetUniformLocation(lbmRenderShader_, "u_resolution"), 1, glm::value_ptr(config_.resolution));
-        glUniform3fv(glGetUniformLocation(lbmRenderShader_, "u_worldScale"), 1, glm::value_ptr(config_.worldScale));
-        glUniform3fv(glGetUniformLocation(lbmRenderShader_, "u_worldOrigin"), 1, glm::value_ptr(config_.worldOrigin));
-        glUniform3f(glGetUniformLocation(lbmRenderShader_, "u_waterColor"), 0.0f, 0.4f, 0.8f);
+        glUniform3f(glGetUniformLocation(lbmRenderShader_, "u_waterColor"), 0.1f, 0.4f, 0.7f);
+
+        glBindBufferBase(GL_UNIFORM_BUFFER, 0, paramsUbo_);
 
         glm::mat4 model = glm::translate(glm::mat4(1.0f), config_.worldOrigin);
         glm::mat4 scale = glm::scale(glm::mat4(1.0f), config_.worldScale);
@@ -186,8 +186,12 @@ namespace Boidsish {
         glBindTexture(GL_TEXTURE_3D, massTexture_);
         glUniform1i(glGetUniformLocation(lbmRenderShader_, "u_mass"), 0);
 
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_3D, velocityTexture_);
+        glUniform1i(glGetUniformLocation(lbmRenderShader_, "u_velocity"), 1);
+
         if (depthTexture != 0) {
-            glActiveTexture(GL_TEXTURE2); // Use unit 2 as per layout(binding = 2) in frag
+            glActiveTexture(GL_TEXTURE2);
             glBindTexture(GL_TEXTURE_2D, depthTexture);
             glUniform1i(glGetUniformLocation(lbmRenderShader_, "u_depthTexture"), 2);
         }
@@ -220,6 +224,19 @@ namespace Boidsish {
     void FluidLbmManager::InjectFluid(const glm::vec3& center, float radius, float amount) {
         if (!initialized_) return;
 
+        LbmParamsGpu params;
+        params.lbm_amount.z = amount;
+        params.world_scale_rad.w = radius;
+        params.world_origin = glm::vec4(config_.worldOrigin, 0.0f);
+        params.world_scale_rad.x = config_.worldScale.x;
+        params.world_scale_rad.y = config_.worldScale.y;
+        params.world_scale_rad.z = config_.worldScale.z;
+        params.resolution = glm::ivec4(config_.resolution, 0);
+
+        glBindBuffer(GL_UNIFORM_BUFFER, paramsUbo_);
+        glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(LbmParamsGpu), &params);
+        glBindBufferBase(GL_UNIFORM_BUFFER, 0, paramsUbo_);
+
         glUseProgram(lbmInitShader_);
 
         GLuint pops[5];
@@ -233,11 +250,6 @@ namespace Boidsish {
         glBindImageTexture(6, velocityTexture_, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA32F);
 
         glUniform3fv(glGetUniformLocation(lbmInitShader_, "u_center"), 1, glm::value_ptr(center));
-        glUniform1f(glGetUniformLocation(lbmInitShader_, "u_radius"), radius);
-        glUniform1f(glGetUniformLocation(lbmInitShader_, "u_amount"), amount);
-        glUniform3iv(glGetUniformLocation(lbmInitShader_, "u_resolution"), 1, glm::value_ptr(config_.resolution));
-        glUniform3fv(glGetUniformLocation(lbmInitShader_, "u_worldScale"), 1, glm::value_ptr(config_.worldScale));
-        glUniform3fv(glGetUniformLocation(lbmInitShader_, "u_worldOrigin"), 1, glm::value_ptr(config_.worldOrigin));
         glUniform1i(glGetUniformLocation(lbmInitShader_, "u_mode"), 0);
 
         glDispatchCompute((config_.resolution.x + 3) / 4, (config_.resolution.y + 3) / 4, (config_.resolution.z + 3) / 4);
@@ -248,6 +260,18 @@ namespace Boidsish {
         if (!initialized_) return;
 
         auto cached = BuildOrGetBvh(model);
+
+        LbmParamsGpu params;
+        params.lbm_amount.z = amount;
+        params.world_origin = glm::vec4(config_.worldOrigin, 0.0f);
+        params.world_scale_rad.x = config_.worldScale.x;
+        params.world_scale_rad.y = config_.worldScale.y;
+        params.world_scale_rad.z = config_.worldScale.z;
+        params.resolution = glm::ivec4(config_.resolution, 0);
+
+        glBindBuffer(GL_UNIFORM_BUFFER, paramsUbo_);
+        glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(LbmParamsGpu), &params);
+        glBindBufferBase(GL_UNIFORM_BUFFER, 0, paramsUbo_);
 
         glUseProgram(lbmInitShader_);
 
@@ -276,11 +300,6 @@ namespace Boidsish {
         glm::mat4 invMeshTransform = glm::inverse(model->GetModelMatrix());
         glUniformMatrix4fv(glGetUniformLocation(lbmInitShader_, "u_invMeshTransform"), 1, GL_FALSE, glm::value_ptr(invMeshTransform));
         glUniform1i(glGetUniformLocation(lbmInitShader_, "u_numNodes"), (int)cached.numNodes);
-
-        glUniform1f(glGetUniformLocation(lbmInitShader_, "u_amount"), amount);
-        glUniform3iv(glGetUniformLocation(lbmInitShader_, "u_resolution"), 1, glm::value_ptr(config_.resolution));
-        glUniform3fv(glGetUniformLocation(lbmInitShader_, "u_worldScale"), 1, glm::value_ptr(config_.worldScale));
-        glUniform3fv(glGetUniformLocation(lbmInitShader_, "u_worldOrigin"), 1, glm::value_ptr(config_.worldOrigin));
         glUniform1i(glGetUniformLocation(lbmInitShader_, "u_mode"), 1);
 
         glDispatchCompute((config_.resolution.x + 3) / 4, (config_.resolution.y + 3) / 4, (config_.resolution.z + 3) / 4);
@@ -289,9 +308,12 @@ namespace Boidsish {
 
     void FluidLbmManager::AddObstacleModel(std::shared_ptr<Model> model) {
         obstacleModels_.push_back(model);
+        obstaclesDirty_ = true;
     }
 
     void FluidLbmManager::UpdateObstacles() {
+        if (!obstaclesDirty_) return;
+
         float zero = 0.0f;
         glClearTexImage(obstacleTexture_, 0, GL_RED, GL_FLOAT, &zero);
 
@@ -310,9 +332,7 @@ namespace Boidsish {
             glBindBufferBase(GL_UNIFORM_BUFFER, 8, terrainDataUbo_);
         }
 
-        glUniform3iv(glGetUniformLocation(lbmVoxelizeShader_, "u_resolution"), 1, glm::value_ptr(config_.resolution));
-        glUniform3fv(glGetUniformLocation(lbmVoxelizeShader_, "u_worldScale"), 1, glm::value_ptr(config_.worldScale));
-        glUniform3fv(glGetUniformLocation(lbmVoxelizeShader_, "u_worldOrigin"), 1, glm::value_ptr(config_.worldOrigin));
+        glBindBufferBase(GL_UNIFORM_BUFFER, 0, paramsUbo_);
 
         if (obstacleModels_.empty()) {
             glUniform1i(glGetUniformLocation(lbmVoxelizeShader_, "u_numNodes"), 0);
@@ -345,6 +365,7 @@ namespace Boidsish {
                 first = false;
             }
         }
+        obstaclesDirty_ = false;
     }
 
     FluidLbmManager::CachedBvh FluidLbmManager::BuildOrGetBvh(std::shared_ptr<Model> model) {

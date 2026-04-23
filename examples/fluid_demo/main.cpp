@@ -6,62 +6,41 @@
 
 using namespace Boidsish;
 
-class FluidShape : public Shape {
-public:
-    FluidShape(FluidLbmManager* manager, Visualizer* viz) : manager_(manager), viz_(viz) {}
-
-    void render() const override {
-        manager_->SetTerrainData(viz_->GetTerrainHeightmapTexture(), viz_->GetTerrainChunkGridTexture(), viz_->GetTerrainDataUbo());
-        manager_->Render(viz_->GetViewMatrix(), viz_->GetProjectionMatrix(), viz_->GetCamera().pos(), viz_->GetDepthTexture());
-    }
-
-    AABB GetAABB() const override {
-        auto config = manager_->GetConfig();
-        return AABB(config.worldOrigin, config.worldOrigin + config.worldScale);
-    }
-    std::string GetInstanceKey() const override { return "FluidSimulation"; }
-private:
-    FluidLbmManager* manager_;
-    Visualizer* viz_;
-};
-
 int main() {
     try {
         Visualizer viz(1280, 720, "3D LBM Fluid Demo");
 
         // Initial camera setup
-        Camera cam(0.0f, 15.0f, 30.0f, -20.0f, 0.0f);
+        Camera cam(0.0f, 15.0f, 35.0f, -20.0f, 0.0f);
         viz.SetCamera(cam);
 
         FluidLbmManager fluidManager;
         FluidLbmConfig config;
-        config.resolution = {64, 64, 64};
+        config.resolution = {32, 32, 32}; // Balanced for performance
         config.worldScale = {30.0f, 30.0f, 30.0f};
-        config.worldOrigin = {-15.0f, 2.0f, -15.0f};
-        config.gravity = 20.0f; // High gravity for quick drop
-        config.viscosity = 0.005f; // Low viscosity for splashes
+        config.worldOrigin = {-15.0f, -2.0f, -15.0f};
+        config.gravity = 25.0f; // Fast drop
+        config.viscosity = 0.005f;
         fluidManager.Initialize(config);
 
-        // Drop a ball of water
-        fluidManager.InjectFluid({0.0f, 25.0f, 0.0f}, 5.0f, 0.5f);
+        // Inject initial fluid
+        fluidManager.InjectFluid({0.0f, 20.0f, 0.0f}, 4.0f, 0.5f);
 
         viz.AddUpdateHandler([&](float totalTime, float dt) {
-            fluidManager.Step(dt);
+            // Cap delta time for simulation stability
+            float simDt = std::min(dt, 0.033f);
+            fluidManager.Step(simDt);
 
-            // Periodically inject more fluid for continuous action
             static float lastInject = 0;
-            if (totalTime - lastInject > 5.0f) {
-                fluidManager.InjectFluid({0.0f, 25.0f, 0.0f}, 4.0f, 0.5f);
+            if (totalTime - lastInject > 6.0f) {
+                fluidManager.InjectFluid({0.0f, 20.0f, 0.0f}, 4.0f, 0.5f);
                 lastInject = totalTime;
             }
         });
 
-        auto fluidShape = std::make_shared<FluidShape>(&fluidManager, &viz);
-
-        viz.AddShapeHandler([&](float /*totalTime*/) {
-            std::vector<std::shared_ptr<Shape>> shapes;
-            shapes.push_back(fluidShape);
-            return shapes;
+        viz.AddDrawHandler([&](const glm::mat4& view, const glm::mat4& proj, const glm::vec3& camPos) {
+            fluidManager.SetTerrainData(viz.GetTerrainHeightmapTexture(), viz.GetTerrainChunkGridTexture(), viz.GetTerrainDataUbo());
+            fluidManager.Render(view, proj, camPos, viz.GetDepthTexture());
         });
 
         viz.Run();

@@ -140,6 +140,7 @@ namespace Boidsish {
 		glDepthMask(GL_FALSE);
 
 		cb.execute_queue(RenderLayer::Transparent, false);
+		cb.render_custom(frame.view, frame.projection, frame.camera_pos);
 
 		glDepthMask(GL_TRUE);
 	}
