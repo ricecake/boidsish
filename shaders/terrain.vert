@@ -11,11 +11,14 @@ layout(location = 4) in vec4 aBounds;              // x = min_y, y = max_y (for 
 out vec3       LocalPos_VS_out;  // Local grid position (for TCS to transform)
 out vec2       TexCoords_VS_out; // Heightmap UV
 out vec3       viewForward;
+out vec4 ClipPos_VS_out;
+
 flat out float TextureSlice_VS_out; // Which slice in texture array
 flat out vec3  WorldOffset_VS_out;  // World offset for this chunk
 flat out vec4  Bounds_VS_out;       // Min/max Y bounds
 
 uniform mat4 view;
+uniform mat4 projection;
 
 void main() {
 	// Extract camera forward vector
@@ -29,6 +32,11 @@ void main() {
 	TextureSlice_VS_out = aWorldOffsetAndSlice.w;
 	WorldOffset_VS_out = aWorldOffsetAndSlice.xyz;
 	Bounds_VS_out = aBounds;
+
+
+	// Perform matrix multiplication once per vertex
+	vec3 worldPos = aWorldOffsetAndSlice.xyz + aPos;
+	ClipPos_VS_out = projection * view * vec4(worldPos, 1.0);
 
 	// Output flat local position (Y will be displaced in TES after heightmap lookup)
 	gl_Position = vec4(aPos, 1.0);
