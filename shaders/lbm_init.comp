@@ -1,0 +1,46 @@
+#version 450 core
+
+layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
+
+#include "helpers/lbm_common.glsl"
+
+layout(binding = 0, rgba32f) uniform image3D u_pop[5];
+layout(binding = 5, r32f) uniform image3D u_mass;
+layout(binding = 6, rgba32f) uniform image3D u_velocity;
+
+uniform vec3 u_center;
+uniform float u_radius;
+uniform float u_amount; // Target density
+uniform ivec3 u_resolution;
+uniform vec3 u_worldScale;
+uniform vec3 u_worldOrigin;
+
+void main() {
+    ivec3 pos = ivec3(gl_GlobalInvocationID.xyz);
+    if (any(greaterThanEqual(pos, u_resolution))) return;
+
+    vec3 worldPos = u_worldOrigin + (vec3(pos) / vec3(u_resolution)) * u_worldScale;
+
+    if (distance(worldPos, u_center) < u_radius) {
+        float rho = u_amount;
+        vec3 u = vec3(0.0);
+
+        for (int i = 0; i < 19; ++i) {
+            float feq = calculate_equilibrium(i, rho, u);
+            imageStore(u_pop[i / 4], pos, vec4(0.0)); // Initialize
+        }
+
+        // This is a bit inefficient due to multiple imageStores, but it's only for init/injection
+        float f[19];
+        for (int i = 0; i < 19; ++i) f[i] = calculate_equilibrium(i, rho, u);
+
+        imageStore(u_pop[0], pos, vec4(f[0], f[1], f[2], f[3]));
+        imageStore(u_pop[1], pos, vec4(f[4], f[5], f[6], f[7]));
+        imageStore(u_pop[2], pos, vec4(f[8], f[9], f[10], f[11]));
+        imageStore(u_pop[3], pos, vec4(f[12], f[13], f[14], f[15]));
+        imageStore(u_pop[4], pos, vec4(f[16], f[17], f[18], 0.0));
+
+        imageStore(u_mass, pos, vec4(1.0)); // Fully filled
+        imageStore(u_velocity, pos, vec4(u, rho));
+    }
+}

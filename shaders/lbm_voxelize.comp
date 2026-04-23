@@ -1,0 +1,122 @@
+#version 450 core
+
+layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
+
+layout(binding = 0, r8) uniform image3D u_obstacles;
+layout(binding = 1) uniform sampler2D u_terrainHeightmap;
+
+// BVH structures matching tiny_bvh (Wald 32-byte layout)
+struct BVHNode {
+    vec3 aabbMin; uint leftFirst;
+    vec3 aabbMax; uint triCount;
+};
+
+layout(std430, binding = 0) buffer BVHNodes {
+    BVHNode nodes[];
+};
+
+layout(std430, binding = 1) buffer BVHIndices {
+    uint indices[];
+};
+
+layout(std430, binding = 2) buffer MeshVertices {
+    vec4 vertices[]; // xyz, w ignored
+};
+
+uniform ivec3 u_resolution;
+uniform vec3 u_worldScale;
+uniform vec3 u_worldOrigin;
+uniform int u_numNodes;
+uniform mat4 u_meshTransform;
+uniform mat4 u_invMeshTransform;
+uniform float u_terrainScale; // world scale of terrain
+
+// Ray-AABB intersection for BVH traversal
+float intersect_aabb(vec3 ro, vec3 rd, vec3 boxMin, vec3 boxMax) {
+    vec3 tMin = (boxMin - ro) / rd;
+    vec3 tMax = (boxMax - ro) / rd;
+    vec3 t1 = min(tMin, tMax);
+    vec3 t2 = max(tMin, tMax);
+    float tNear = max(max(t1.x, t1.y), t1.z);
+    float tFar = min(min(t2.x, t2.y), t2.z);
+    return (tNear <= tFar && tFar > 0.0) ? tNear : 1e30;
+}
+
+bool intersect_triangle(vec3 ro, vec3 rd, vec3 v0, vec3 v1, vec3 v2) {
+    vec3 edge1 = v1 - v0;
+    vec3 edge2 = v2 - v0;
+    vec3 h = cross(rd, edge2);
+    float a = dot(edge1, h);
+    if (abs(a) < 0.000001) return false;
+    float f = 1.0 / a;
+    vec3 s = ro - v0;
+    float u = f * dot(s, h);
+    if (u < 0.0 || u > 1.0) return false;
+    vec3 q = cross(s, edge1);
+    float v = f * dot(rd, q);
+    if (v < 0.0 || u + v > 1.0) return false;
+    float t = f * dot(edge2, q);
+    return t > 0.0;
+}
+
+// Simple parity count for mesh interior check (raycasting)
+bool is_inside_mesh(vec3 p) {
+    vec3 ro = p;
+    vec3 rd = vec3(0, 1, 0); // Ray upwards
+    int hits = 0;
+
+    uint stack[32];
+    uint stackPtr = 0;
+    stack[stackPtr++] = 0;
+
+    while (stackPtr > 0) {
+        uint nodeIdx = stack[--stackPtr];
+        BVHNode node = nodes[nodeIdx];
+
+        if (intersect_aabb(ro, rd, node.aabbMin, node.aabbMax) < 1e30) {
+            if (node.triCount > 0) {
+                for (uint i = 0; i < node.triCount; ++i) {
+                    uint triIdx = indices[node.leftFirst + i];
+                    vec3 v0 = vertices[triIdx * 3 + 0].xyz;
+                    vec3 v1 = vertices[triIdx * 3 + 1].xyz;
+                    vec3 v2 = vertices[triIdx * 3 + 2].xyz;
+                    if (intersect_triangle(ro, rd, v0, v1, v2)) {
+                        hits++;
+                    }
+                }
+            } else {
+                stack[stackPtr++] = node.leftFirst;
+                stack[stackPtr++] = node.leftFirst + 1;
+            }
+        }
+    }
+    return (hits % 2) != 0;
+}
+
+void main() {
+    ivec3 pos = ivec3(gl_GlobalInvocationID.xyz);
+    if (any(greaterThanEqual(pos, u_resolution))) return;
+
+    vec3 worldPos = u_worldOrigin + (vec3(pos) / vec3(u_resolution)) * u_worldScale;
+
+    bool obstacle = false;
+
+    // 1. Terrain obstacle
+    vec2 terrainUV = (worldPos.xz - u_worldOrigin.xz) / u_worldScale.xz;
+    if (all(greaterThanEqual(terrainUV, vec2(0))) && all(lessThanEqual(terrainUV, vec2(1)))) {
+        float terrainHeight = texture(u_terrainHeightmap, terrainUV).r;
+        if (worldPos.y < terrainHeight) {
+            obstacle = true;
+        }
+    }
+
+    // 2. Mesh obstacle
+    if (!obstacle && u_numNodes > 0) {
+        vec3 meshLocalPos = (u_invMeshTransform * vec4(worldPos, 1.0)).xyz;
+        if (is_inside_mesh(meshLocalPos)) {
+            obstacle = true;
+        }
+    }
+
+    imageStore(u_obstacles, pos, vec4(obstacle ? 1.0 : 0.0));
+}

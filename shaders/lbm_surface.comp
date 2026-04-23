@@ -1,0 +1,46 @@
+#version 450 core
+
+layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
+
+#include "helpers/lbm_common.glsl"
+
+layout(binding = 0, rgba32f) uniform readonly image3D u_pop[5];
+layout(binding = 5, r32f) uniform image3D u_mass;
+layout(binding = 6, rgba32f) uniform readonly image3D u_velocity;
+
+uniform LbmParams u_params;
+
+// Simplified Volume of Fluid (VOF) or Mass Tracking
+// Based on: "Lattice Boltzmann simulation of free-surface flow"
+void main() {
+    ivec3 pos = ivec3(gl_GlobalInvocationID.xyz);
+    if (any(greaterThanEqual(pos, u_params.resolution))) return;
+
+    float mass = imageLoad(u_mass, pos).r;
+    vec4 velRho = imageLoad(u_velocity, pos);
+    float rho = velRho.w;
+
+    if (rho <= 0.0) return;
+
+    // Mass change based on flux between cells
+    float delta_mass = 0.0;
+
+    for (int i = 1; i < 19; ++i) {
+        ivec3 neighbor_pos = pos + ivec3(D3Q19_X[i], D3Q19_Y[i], D3Q19_Z[i]);
+        if (any(lessThan(neighbor_pos, ivec3(0))) || any(greaterThanEqual(neighbor_pos, u_params.resolution))) continue;
+
+        // Distribution function at neighbor in the opposite direction
+        int opp = D3Q19_OPPOSITE[i];
+        float f_inv = imageLoad(u_pop[opp / 4], neighbor_pos)[opp % 4];
+        float f_curr = imageLoad(u_pop[i / 4], pos)[i % 4];
+
+        // Simplified flux: difference in distributions
+        // In full VOF LBM, we'd use the liquid fraction (epsilon) to weight this
+        delta_mass += (f_inv - f_curr);
+    }
+
+    mass += delta_mass;
+    mass = clamp(mass, 0.0, rho); // Mass cannot exceed density in a cell
+
+    imageStore(u_mass, pos, vec4(mass));
+}
