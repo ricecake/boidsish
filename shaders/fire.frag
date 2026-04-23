@@ -7,6 +7,7 @@ in float         v_lifetime;
 in vec4          view_pos;
 in vec4          v_pos;
 in vec3          v_vel;
+in vec3          v_vel_view;
 in vec3          v_epicenter;
 flat in int      v_style;
 flat in int      v_emitter_index;
@@ -228,11 +229,24 @@ void main() {
 			color = vec3(0.1);     // Dark smoke
 			alpha = v_lifetime * 0.4;
 		} else if (v_style == STYLE_RAIN) {
-			// Streak based on velocity
-			vec2 vel_dir = normalize(v_vel.xy + vec2(0.0001));
-			// For billboards, gl_PointCoord is 0..1.
-			float streak = smoothstep(0.15, 0.0, abs(gl_PointCoord.x - 0.5));
-			color = vec3(0.7, 0.8, 1.0) * 1.5; // Brighter rain
+			// Streak based on view-space velocity
+			vec2  vel_dir = normalize(v_vel_view.xy + vec2(1e-6));
+			float angle = atan(vel_dir.y, vel_dir.x) + 1.5707; // Rotate to align with streak
+			mat2  rot = mat2(cos(angle), -sin(angle), sin(angle), cos(angle));
+
+			vec2 uv = (gl_PointCoord - 0.5) * rot + 0.5;
+
+			// progress along the streak (0.0 to 1.0)
+			float y = clamp(uv.y, 0.0, 1.0);
+
+			// Taper: wider at the head (y=1), thinner at the tail (y=0)
+			float width = mix(0.02, 0.15, y);
+			float streak = smoothstep(width, width * 0.5, abs(uv.x - 0.5));
+
+			// Length falloff
+			streak *= smoothstep(0.0, 0.2, uv.y) * smoothstep(1.0, 0.8, uv.y);
+
+			color = vec3(0.7, 0.8, 1.0) * 2.0; // Brighter rain
 			alpha = streak * smoothstep(0.0, 0.1, v_lifetime);
 			shapeMask = 1.0;
 		} else if (v_style == STYLE_SNOW) {

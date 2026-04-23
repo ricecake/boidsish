@@ -31,6 +31,8 @@ namespace Boidsish {
 		CloudCoverage,
 		Precipitation,
 		Temperature,
+		Humidity,
+		Pressure,
 		MieScattering,
 		MieExtinction,
 		RayleighScatteringR,
@@ -75,6 +77,8 @@ namespace Boidsish {
 		WeatherRange<float>     cloud_coverage;
 		WeatherRange<float>     precipitation;
 		WeatherRange<float>     temperature;
+		WeatherRange<float>     humidity;
+		WeatherRange<float>     pressure;
 		WeatherRange<float>     mie_scattering;
 		WeatherRange<float>     mie_extinction;
 		WeatherRange<glm::vec3> rayleigh_scattering;
@@ -100,6 +104,8 @@ namespace Boidsish {
 				cloud_coverage + other.cloud_coverage,
 				precipitation + other.precipitation,
 				temperature + other.temperature,
+				humidity + other.humidity,
+				pressure + other.pressure,
 				mie_scattering + other.mie_scattering,
 				mie_extinction + other.mie_extinction,
 				rayleigh_scattering + other.rayleigh_scattering,
@@ -127,6 +133,8 @@ namespace Boidsish {
 				cloud_coverage * f,
 				precipitation * f,
 				temperature * f,
+				humidity * f,
+				pressure * f,
 				mie_scattering * f,
 				mie_extinction * f,
 				rayleigh_scattering * f,
@@ -174,6 +182,8 @@ namespace Boidsish {
 		float     cloud_coverage = WeatherConstants::CloudCoverage.normal;
 		float     precipitation = 0.0f;
 		float     temperature = 288.15f;
+		float     humidity = 0.5f;
+		float     pressure = 1013.25f;
 		glm::vec3 haze_color = WeatherConstants::DefaultHazeColor;
 		glm::vec3 cloud_color = WeatherConstants::DefaultCloudColor;
 	};

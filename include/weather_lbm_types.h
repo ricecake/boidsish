@@ -18,6 +18,7 @@ namespace Boidsish {
         float f[9];      // D2Q9 distributions
         float temperature;
         float aerosol;
+        float humidity;
         float vy;        // Vertical velocity
     };
 
