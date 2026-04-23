@@ -29,7 +29,7 @@ namespace Boidsish {
             if (_scatteringVolumes[i]) glDeleteTextures(1, &_scatteringVolumes[i]);
             if (_integratedVolumes[i]) glDeleteTextures(1, &_integratedVolumes[i]);
         }
-        if (_parameterUbo) glDeleteBuffers(1, &_parameterUbo);
+        _parameterUbo.reset();
     }
 
     void VolumetricLightingManager::Initialize() {
@@ -75,10 +75,7 @@ namespace Boidsish {
     }
 
     void VolumetricLightingManager::CreateBuffers() {
-        glGenBuffers(1, &_parameterUbo);
-        glBindBuffer(GL_UNIFORM_BUFFER, _parameterUbo);
-        glBufferData(GL_UNIFORM_BUFFER, sizeof(VolumetricLightingUbo), nullptr, GL_DYNAMIC_DRAW);
-        glBindBuffer(GL_UNIFORM_BUFFER, 0);
+        _parameterUbo = std::make_unique<PersistentBuffer<VolumetricLightingUbo>>(GL_UNIFORM_BUFFER, 1, 3);
     }
 
     void VolumetricLightingManager::Update(float deltaTime, float totalTime, const glm::mat4& view, const glm::mat4& projection, const glm::vec3& cameraPos, float worldScale) {
@@ -119,9 +116,9 @@ namespace Boidsish {
 
         ubo.timeParams = glm::vec4(totalTime, (float)_frameIndex++, (float)_debugMode, 0.0f);
 
-        glBindBuffer(GL_UNIFORM_BUFFER, _parameterUbo);
-        glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(VolumetricLightingUbo), &ubo);
-        glBindBuffer(GL_UNIFORM_BUFFER, 0);
+        if (_parameterUbo) {
+            *(_parameterUbo->GetFrameDataPtr()) = ubo;
+        }
 
         _prevViewProj = viewProj;
     }
@@ -139,7 +136,10 @@ namespace Boidsish {
         auto fireMgr = _loc.Get<FireEffectManager>();
 
         // Bind UBO for parameters
-        glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::VolumetricLighting(), _parameterUbo, 0, sizeof(VolumetricLightingUbo));
+        if (_parameterUbo) {
+            glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::VolumetricLighting(),
+                _parameterUbo->GetBufferId(), _parameterUbo->GetFrameOffset(), sizeof(VolumetricLightingUbo));
+        }
 
         // Bind WindData UBO for world-space aerosol mapping
         weatherMgr->UpdateWindUbo(totalTime); // Ensure updated

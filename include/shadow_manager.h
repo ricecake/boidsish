@@ -7,6 +7,7 @@
 #include "IManager.h"
 #include "constants.h"
 #include "frustum.h"
+#include "persistent_buffer.h"
 #include <GL/glew.h>
 #include <glm/glm.hpp>
 
@@ -16,6 +17,13 @@ namespace Boidsish {
 
 	class ServiceLocator;
 	struct Light;
+
+	struct ShadowUbo {
+		glm::mat4 lightSpaceMatrices[Constants::Class::Shadows::MaxShadowMaps()];
+		glm::vec4 cascadeSplits;
+		int       numShadowLights;
+		int       _padding[3];
+	};
 
 	/**
 	 * @brief Manages shadow map generation and shadow data for the lighting system.
@@ -133,7 +141,11 @@ namespace Boidsish {
 		/**
 		 * @brief Get the shadow UBO ID.
 		 */
-		GLuint GetShadowUbo() const { return shadow_ubo_; }
+		GLuint GetShadowUbo() const { return shadow_ubo_ ? shadow_ubo_->GetBufferId() : 0; }
+
+		size_t GetShadowUboOffset() const { return shadow_ubo_ ? shadow_ubo_->GetFrameOffset() : 0; }
+
+		void AdvanceFrame() { if (shadow_ubo_) shadow_ubo_->AdvanceFrame(); }
 
 		/**
 		 * @brief Check if shadow mapping is enabled and initialized.
@@ -154,7 +166,7 @@ namespace Boidsish {
 		bool                    initialized_ = false;
 		GLuint                  shadow_fbo_ = 0;
 		GLuint                  shadow_map_array_ = 0; // 2D texture array for all shadow maps
-		GLuint                  shadow_ubo_ = 0;
+		std::unique_ptr<PersistentBuffer<ShadowUbo>> shadow_ubo_;
 		std::shared_ptr<Shader> shadow_shader_;
 		ServiceLocator& _loc;
 

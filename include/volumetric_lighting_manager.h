@@ -6,6 +6,7 @@
 #include <glm/glm.hpp>
 #include "IManager.h"
 #include "shader.h"
+#include "persistent_buffer.h"
 
 namespace Boidsish {
 
@@ -49,6 +50,8 @@ namespace Boidsish {
             float            totalTime
         );
 
+        void AdvanceFrame() { if (_parameterUbo) _parameterUbo->AdvanceFrame(); }
+
         GLuint GetIntegratedVolume() const;
 
         void BindToShader(class ShaderBase& shader);
@@ -78,7 +81,7 @@ namespace Boidsish {
         GLuint _integratedVolumes[kMaxVolumetricCascades];
 
         // UBO for parameters
-        GLuint _parameterUbo = 0;
+        std::unique_ptr<PersistentBuffer<VolumetricLightingUbo>> _parameterUbo;
 
         // Compute shaders
         std::unique_ptr<ComputeShader> _densityVoxelizationShader;

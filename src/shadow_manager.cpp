@@ -26,9 +26,7 @@ namespace Boidsish {
 		if (shadow_map_array_ != 0) {
 			glDeleteTextures(1, &shadow_map_array_);
 		}
-		if (shadow_ubo_ != 0) {
-			glDeleteBuffers(1, &shadow_ubo_);
-		}
+		shadow_ubo_.reset();
 	}
 
 	void ShadowManager::Initialize() {
@@ -81,20 +79,7 @@ namespace Boidsish {
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 		// Create shadow UBO for light-space matrices
-		// Layout:
-		// mat4 lightSpaceMatrices[kMaxShadowMaps]
-		// vec4 cascadeSplits
-		// int numShadowLights
-		glGenBuffers(1, &shadow_ubo_);
-		glBindBuffer(GL_UNIFORM_BUFFER, shadow_ubo_);
-		size_t ubo_size = sizeof(glm::mat4) * kMaxShadowMaps + 16 + 16; // matrices + splits + count + padding
-
-		// Initialize UBO with zeros to prevent garbage data
-		std::vector<char> zero_data(ubo_size, 0);
-		glBufferData(GL_UNIFORM_BUFFER, ubo_size, zero_data.data(), GL_DYNAMIC_DRAW);
-
-		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Shadows(), shadow_ubo_);
-		glBindBuffer(GL_UNIFORM_BUFFER, 0);
+		shadow_ubo_ = std::make_unique<PersistentBuffer<ShadowUbo>>(GL_UNIFORM_BUFFER, 1, 3);
 
 		initialized_ = true;
 		logger::INFO("ShadowManager initialized with {} shadow map slots", kMaxShadowMaps);
@@ -342,31 +327,31 @@ namespace Boidsish {
 	}
 
 	void ShadowManager::UpdateShadowUBO(const std::vector<Light*>& shadow_lights) {
-		// Active shadow maps might be more than shadow lights due to CSM
-		// But for the UBO, we just want to upload all used matrices
+		if (!shadow_ubo_) return;
 
-		glBindBuffer(GL_UNIFORM_BUFFER, shadow_ubo_);
+		ShadowUbo* ubo = shadow_ubo_->GetFrameDataPtr();
 
-		// Upload all light-space matrices
-		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::mat4) * kMaxShadowMaps, light_space_matrices_.data());
+		// Update all light-space matrices
+		for (int i = 0; i < kMaxShadowMaps; ++i) {
+			ubo->lightSpaceMatrices[i] = light_space_matrices_[i];
+		}
 
-		// Upload cascade splits
-		// We scale these by worldScale so calculateShadow (using dot(frag_pos - viewPos, viewDir))
-		// compares against world-space distance.
+		// Update cascade splits
 		float worldScale = 1.0f;
 		if (auto terrain = _loc.Get<ITerrainGenerator>()) worldScale = terrain->GetWorldScale();
-		std::array<float, kMaxCascades> scaled_splits;
-		for(int i=0; i<kMaxCascades; ++i) scaled_splits[i] = cascade_splits_[i] * worldScale;
 
-		size_t splits_offset = sizeof(glm::mat4) * kMaxShadowMaps;
-		glBufferSubData(GL_UNIFORM_BUFFER, splits_offset, sizeof(float) * kMaxCascades, scaled_splits.data());
+		ubo->cascadeSplits = glm::vec4(
+			cascade_splits_[0] * worldScale,
+			cascade_splits_[1] * worldScale,
+			cascade_splits_[2] * worldScale,
+			cascade_splits_[3] * worldScale
+		);
 
-		// Upload shadow count (at offset after all matrices and splits)
-		size_t count_offset = splits_offset + 16; // align to 16 bytes
-		active_shadow_count_ = kMaxShadowMaps;    // Just indicate we have slots
-		glBufferSubData(GL_UNIFORM_BUFFER, count_offset, sizeof(int), &active_shadow_count_);
+		active_shadow_count_ = kMaxShadowMaps; // Just indicate we have slots
+		ubo->numShadowLights = active_shadow_count_;
 
-		glBindBuffer(GL_UNIFORM_BUFFER, 0);
+		glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::Shadows(),
+			shadow_ubo_->GetBufferId(), shadow_ubo_->GetFrameOffset(), sizeof(ShadowUbo));
 	}
 
 	std::vector<glm::vec4> ShadowManager::GetFrustumCornersWorldSpace(const glm::mat4& proj, const glm::mat4& view) {

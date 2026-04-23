@@ -2053,18 +2053,6 @@ namespace Boidsish {
 			if (!atmosphere_manager)
 				return;
 
-			if (volumetric_lighting_manager) {
-				float world_scale = terrain_generator ? terrain_generator->GetWorldScale() : 1.0f;
-				volumetric_lighting_manager->Update(
-					simulation_delta_time,
-					simulation_time,
-					current_view_matrix,
-					projection,
-					camera.pos(),
-					world_scale
-				);
-			}
-
 			glm::vec3 sun_dir = glm::normalize(glm::vec3(0.0f, 1.0f, 0.0f)); // Default
 			glm::vec3 sun_color = glm::vec3(1.0f);
 			float     sun_intensity = 1.0f;
@@ -2186,6 +2174,8 @@ namespace Boidsish {
 			lighting_pb->AdvanceFrame();
 			temporal_pb->AdvanceFrame();
 			if (visual_effects_pb) visual_effects_pb->AdvanceFrame();
+			if (volumetric_lighting_manager) volumetric_lighting_manager->AdvanceFrame();
+			if (shadow_manager) shadow_manager->AdvanceFrame();
 
 			int current_idx = uniforms_ssbo->GetCurrentBufferIndex();
 			if (mdi_fences[current_idx]) {
@@ -2426,6 +2416,19 @@ namespace Boidsish {
 				render_state_.global_bindings.UboRange(Constants::UboBinding::VisualEffects(),
 					visual_effects_pb->GetBufferId(), visual_effects_pb->GetFrameOffset(),
 					sizeof(VisualEffectsUbo));
+			}
+
+			// Volumetric Lighting UBO
+			if (volumetric_lighting_manager) {
+				float world_scale = terrain_generator ? terrain_generator->GetWorldScale() : 1.0f;
+				volumetric_lighting_manager->Update(
+					simulation_delta_time,
+					simulation_time,
+					current_view_matrix,
+					projection,
+					camera.pos(),
+					world_scale
+				);
 			}
 		}
 
@@ -2693,7 +2696,7 @@ namespace Boidsish {
 
 					if (shadow_manager) {
 						glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::Shadows(),
-							shadow_manager->GetShadowUbo(), 0, 16 * sizeof(glm::mat4) + 2 * sizeof(glm::vec4) + 16);
+							shadow_manager->GetShadowUbo(), shadow_manager->GetShadowUboOffset(), sizeof(ShadowUbo));
 					}
 
 					volumetric_lighting_manager->Dispatch(
