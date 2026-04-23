@@ -4,6 +4,7 @@
 #include "asset_manager.h"
 #include "service_locator.h"
 #include "shader.h"
+#include "model.h"
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -94,14 +95,14 @@ namespace Boidsish {
         if (render.isValid()) lbmRenderShader_ = render.ID; render.ID = 0;
     }
 
-    void FluidLbmManager::Step(float /*dt*/) {
+    void FluidLbmManager::Step(float dt) {
         if (!initialized_) return;
 
         UpdateObstacles();
 
         LbmParamsGpu params;
         params.gravity = glm::vec3(0.0f, -config_.gravity * 0.001f, 0.0f);
-        params.dt = 1.0f;
+        params.dt = dt * 10.0f; // Scale simulation dt
         params.tau = 0.5f + 3.0f * config_.viscosity;
         params.omega = 1.0f / params.tau;
         params.resolution = config_.resolution;
@@ -148,8 +149,11 @@ namespace Boidsish {
         useA_ = !useA_;
     }
 
-    void FluidLbmManager::Render(const glm::mat4& view, const glm::mat4& proj, const glm::vec3& cameraPos) {
+    void FluidLbmManager::Render(const glm::mat4& view, const glm::mat4& proj, const glm::vec3& cameraPos, uint32_t depthTexture) {
         if (!initialized_) return;
+
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
         glUseProgram(lbmRenderShader_);
 
@@ -170,8 +174,14 @@ namespace Boidsish {
         glBindTexture(GL_TEXTURE_3D, massTexture_);
         glUniform1i(glGetUniformLocation(lbmRenderShader_, "u_mass"), 0);
 
+        if (depthTexture != 0) {
+            glActiveTexture(GL_TEXTURE1);
+            glBindTexture(GL_TEXTURE_2D, depthTexture);
+            glUniform1i(glGetUniformLocation(lbmRenderShader_, "u_depthTexture"), 1);
+        }
+
         // Draw a cube for raymarching
-        static GLuint vao = 0, vbo = 0;
+        static GLuint vao = 0, vbo = 0, ebo = 0;
         if (vao == 0) {
             float vertices[] = {
                 0,0,0, 1,0,0, 1,1,0, 0,1,0, 0,0,1, 1,0,1, 1,1,1, 0,1,1
@@ -181,7 +191,7 @@ namespace Boidsish {
             };
             glGenVertexArrays(1, &vao);
             glGenBuffers(1, &vbo);
-            GLuint ebo; glGenBuffers(1, &ebo);
+            glGenBuffers(1, &ebo);
             glBindVertexArray(vao);
             glBindBuffer(GL_ARRAY_BUFFER, vbo);
             glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
@@ -192,6 +202,8 @@ namespace Boidsish {
         }
         glBindVertexArray(vao);
         glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
+
+        glDisable(GL_BLEND);
     }
 
     void FluidLbmManager::InjectFluid(const glm::vec3& center, float radius, float amount) {
@@ -215,32 +227,148 @@ namespace Boidsish {
         glUniform3iv(glGetUniformLocation(lbmInitShader_, "u_resolution"), 1, glm::value_ptr(config_.resolution));
         glUniform3fv(glGetUniformLocation(lbmInitShader_, "u_worldScale"), 1, glm::value_ptr(config_.worldScale));
         glUniform3fv(glGetUniformLocation(lbmInitShader_, "u_worldOrigin"), 1, glm::value_ptr(config_.worldOrigin));
+        glUniform1i(glGetUniformLocation(lbmInitShader_, "u_mode"), 0); // Sphere mode
 
         glDispatchCompute((config_.resolution.x + 3) / 4, (config_.resolution.y + 3) / 4, (config_.resolution.z + 3) / 4);
         glMemoryBarrier(GL_ALL_BARRIER_BITS);
     }
 
-    void FluidLbmManager::AddObstacleMesh(uint32_t meshId, const glm::mat4& transform) {
-        obstacleMeshes_.push_back({meshId, transform});
+    void FluidLbmManager::InjectFluidFromModel(std::shared_ptr<Model> model, float amount) {
+        if (!initialized_) return;
+
+        auto cached = BuildOrGetBvh(model);
+
+        glUseProgram(lbmInitShader_);
+
+        GLuint pops[5];
+        if (useA_) { for(int i=0; i<5; ++i) pops[i] = populationsA_[i]; }
+        else { for(int i=0; i<5; ++i) pops[i] = populationsB_[i]; }
+
+        for(int i=0; i<5; ++i) {
+            glBindImageTexture(i, pops[i], 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA32F);
+        }
+        glBindImageTexture(5, massTexture_, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_R32F);
+        glBindImageTexture(6, velocityTexture_, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA32F);
+
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, bvhNodesBuffer_);
+        glBufferData(GL_SHADER_STORAGE_BUFFER, cached.nodes.size(), cached.nodes.data(), GL_DYNAMIC_DRAW);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, bvhNodesBuffer_);
+
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, bvhIndicesBuffer_);
+        glBufferData(GL_SHADER_STORAGE_BUFFER, cached.indices.size() * sizeof(uint32_t), cached.indices.data(), GL_DYNAMIC_DRAW);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, bvhIndicesBuffer_);
+
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, meshVerticesBuffer_);
+        glBufferData(GL_SHADER_STORAGE_BUFFER, cached.vertices.size() * sizeof(glm::vec4), cached.vertices.data(), GL_DYNAMIC_DRAW);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, meshVerticesBuffer_);
+
+        glm::mat4 meshTransform = model->GetModelMatrix();
+        glm::mat4 invMeshTransform = glm::inverse(meshTransform);
+
+        glUniformMatrix4fv(glGetUniformLocation(lbmInitShader_, "u_meshTransform"), 1, GL_FALSE, glm::value_ptr(meshTransform));
+        glUniformMatrix4fv(glGetUniformLocation(lbmInitShader_, "u_invMeshTransform"), 1, GL_FALSE, glm::value_ptr(invMeshTransform));
+        glUniform1i(glGetUniformLocation(lbmInitShader_, "u_numNodes"), (int)cached.numNodes);
+
+        glUniform1f(glGetUniformLocation(lbmInitShader_, "u_amount"), amount);
+        glUniform3iv(glGetUniformLocation(lbmInitShader_, "u_resolution"), 1, glm::value_ptr(config_.resolution));
+        glUniform3fv(glGetUniformLocation(lbmInitShader_, "u_worldScale"), 1, glm::value_ptr(config_.worldScale));
+        glUniform3fv(glGetUniformLocation(lbmInitShader_, "u_worldOrigin"), 1, glm::value_ptr(config_.worldOrigin));
+        glUniform1i(glGetUniformLocation(lbmInitShader_, "u_mode"), 1); // Mesh mode
+
+        glDispatchCompute((config_.resolution.x + 3) / 4, (config_.resolution.y + 3) / 4, (config_.resolution.z + 3) / 4);
+        glMemoryBarrier(GL_ALL_BARRIER_BITS);
+    }
+
+    void FluidLbmManager::AddObstacleModel(std::shared_ptr<Model> model) {
+        obstacleModels_.push_back(model);
     }
 
     void FluidLbmManager::UpdateObstacles() {
-        // Clear obstacles
         float zero = 0.0f;
         glClearTexImage(obstacleTexture_, 0, GL_RED, GL_FLOAT, &zero);
 
-        if (obstacleMeshes_.empty()) return;
-
-        // Voxelize meshes into obstacleTexture_
         glUseProgram(lbmVoxelizeShader_);
-        glBindImageTexture(0, obstacleTexture_, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_R8);
+        glBindImageTexture(0, obstacleTexture_, 0, GL_TRUE, 0, GL_READ_WRITE, GL_R8);
+
+        if (terrainHeightmap_ != 0) {
+            glActiveTexture(GL_TEXTURE1);
+            glBindTexture(GL_TEXTURE_2D, terrainHeightmap_);
+            glUniform1i(glGetUniformLocation(lbmVoxelizeShader_, "u_terrainHeightmap"), 1);
+        }
 
         glUniform3iv(glGetUniformLocation(lbmVoxelizeShader_, "u_resolution"), 1, glm::value_ptr(config_.resolution));
         glUniform3fv(glGetUniformLocation(lbmVoxelizeShader_, "u_worldScale"), 1, glm::value_ptr(config_.worldScale));
         glUniform3fv(glGetUniformLocation(lbmVoxelizeShader_, "u_worldOrigin"), 1, glm::value_ptr(config_.worldOrigin));
 
-        glDispatchCompute((config_.resolution.x + 3) / 4, (config_.resolution.y + 3) / 4, (config_.resolution.z + 3) / 4);
-        glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+        if (obstacleModels_.empty()) {
+            glUniform1i(glGetUniformLocation(lbmVoxelizeShader_, "u_numNodes"), 0);
+            glUniform1i(glGetUniformLocation(lbmVoxelizeShader_, "u_firstPass"), 1);
+            glDispatchCompute((config_.resolution.x + 3) / 4, (config_.resolution.y + 3) / 4, (config_.resolution.z + 3) / 4);
+        } else {
+            bool first = true;
+            for (const auto& model : obstacleModels_) {
+                auto cached = BuildOrGetBvh(model);
+
+                glBindBuffer(GL_SHADER_STORAGE_BUFFER, bvhNodesBuffer_);
+                glBufferData(GL_SHADER_STORAGE_BUFFER, cached.nodes.size(), cached.nodes.data(), GL_DYNAMIC_DRAW);
+                glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, bvhNodesBuffer_);
+
+                glBindBuffer(GL_SHADER_STORAGE_BUFFER, bvhIndicesBuffer_);
+                glBufferData(GL_SHADER_STORAGE_BUFFER, cached.indices.size() * sizeof(uint32_t), cached.indices.data(), GL_DYNAMIC_DRAW);
+                glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, bvhIndicesBuffer_);
+
+                glBindBuffer(GL_SHADER_STORAGE_BUFFER, meshVerticesBuffer_);
+                glBufferData(GL_SHADER_STORAGE_BUFFER, cached.vertices.size() * sizeof(glm::vec4), cached.vertices.data(), GL_DYNAMIC_DRAW);
+                glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, meshVerticesBuffer_);
+
+                glm::mat4 meshTransform = model->GetModelMatrix();
+                glm::mat4 invMeshTransform = glm::inverse(meshTransform);
+
+                glUniformMatrix4fv(glGetUniformLocation(lbmVoxelizeShader_, "u_meshTransform"), 1, GL_FALSE, glm::value_ptr(meshTransform));
+                glUniformMatrix4fv(glGetUniformLocation(lbmVoxelizeShader_, "u_invMeshTransform"), 1, GL_FALSE, glm::value_ptr(invMeshTransform));
+                glUniform1i(glGetUniformLocation(lbmVoxelizeShader_, "u_numNodes"), (int)cached.numNodes);
+                glUniform1i(glGetUniformLocation(lbmVoxelizeShader_, "u_firstPass"), first ? 1 : 0);
+
+                glDispatchCompute((config_.resolution.x + 3) / 4, (config_.resolution.y + 3) / 4, (config_.resolution.z + 3) / 4);
+                glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+                first = false;
+            }
+        }
+    }
+
+    FluidLbmManager::CachedBvh FluidLbmManager::BuildOrGetBvh(std::shared_ptr<Model> model) {
+        std::string key = model->GetInstanceKey();
+        if (bvhCache_.count(key)) return bvhCache_[key];
+
+        std::vector<Vertex> vertices;
+        std::vector<unsigned int> indices;
+        model->GetGeometry(vertices, indices);
+
+        CachedBvh cached;
+        if (vertices.empty()) {
+            cached.numNodes = 0;
+            return cached;
+        }
+
+        // De-index into triangle soup
+        std::vector<tinybvh::bvhvec4> bvhVerts;
+        for (unsigned int idx : indices) {
+            const auto& v = vertices[idx];
+            bvhVerts.emplace_back(v.Position.x, v.Position.y, v.Position.z, 1.0f);
+        }
+
+        tinybvh::BVH bvh;
+        bvh.Build(bvhVerts.data(), (uint32_t)bvhVerts.size() / 3);
+
+        cached.numNodes = bvh.usedNodes;
+        cached.nodes.resize(bvh.usedNodes * sizeof(tinybvh::BVH::BVHNode));
+        memcpy(cached.nodes.data(), bvh.bvhNode, cached.nodes.size());
+
+        cached.indices.assign(bvh.primIdx, bvh.primIdx + bvh.idxCount);
+        for(const auto& v : bvhVerts) cached.vertices.push_back(glm::vec4(v.x, v.y, v.z, v.w));
+
+        bvhCache_[key] = cached;
+        return cached;
     }
 
 } // namespace Boidsish

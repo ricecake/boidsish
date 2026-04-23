@@ -4,6 +4,7 @@
 #include <vector>
 #include <memory>
 #include <string>
+#include <map>
 #include "opengl_buffer.h"
 
 namespace Boidsish {
@@ -16,6 +17,8 @@ namespace Boidsish {
         glm::vec3 worldOrigin = {0.0f, 0.0f, 0.0f};
     };
 
+    class Model;
+
     class FluidLbmManager {
     public:
         FluidLbmManager();
@@ -23,20 +26,30 @@ namespace Boidsish {
 
         void Initialize(const FluidLbmConfig& config);
         void Step(float dt);
-        void Render(const glm::mat4& view, const glm::mat4& proj, const glm::vec3& cameraPos);
+        void Render(const glm::mat4& view, const glm::mat4& proj, const glm::vec3& cameraPos, uint32_t depthTexture = 0);
 
         void InjectFluid(const glm::vec3& center, float radius, float amount);
+        void InjectFluidFromModel(std::shared_ptr<Model> model, float amount);
 
         // Add a model as an obstacle
-        void AddObstacleMesh(uint32_t meshId, const glm::mat4& transform);
+        void AddObstacleModel(std::shared_ptr<Model> model);
+        void SetTerrainHeightmap(uint32_t heightmap) { terrainHeightmap_ = heightmap; }
 
         // Accessors
         const FluidLbmConfig& GetConfig() const { return config_; }
 
     private:
+        struct CachedBvh {
+            std::vector<uint8_t> nodes;
+            std::vector<uint32_t> indices;
+            std::vector<glm::vec4> vertices;
+            uint32_t numNodes;
+        };
+
         void CreateTextures();
         void CreateShaders();
         void UpdateObstacles();
+        CachedBvh BuildOrGetBvh(std::shared_ptr<Model> model);
 
         FluidLbmConfig config_;
         bool initialized_ = false;
@@ -50,6 +63,7 @@ namespace Boidsish {
         uint32_t massTexture_ = 0;      // R32F: Mass fraction (0 to 1)
         uint32_t obstacleTexture_ = 0;  // R8: 1 if obstacle, 0 otherwise
         uint32_t velocityTexture_ = 0;  // RGB32F: Macroscopic velocity (cached for rendering)
+        uint32_t terrainHeightmap_ = 0;
 
         // BVH SSBOs
         uint32_t bvhNodesBuffer_ = 0;
@@ -64,11 +78,8 @@ namespace Boidsish {
         uint32_t lbmRenderShader_ = 0;
 
         // Obstacles
-        struct ObstacleMesh {
-            uint32_t meshId;
-            glm::mat4 transform;
-        };
-        std::vector<ObstacleMesh> obstacleMeshes_;
+        std::vector<std::shared_ptr<Model>> obstacleModels_;
+        std::map<std::string, CachedBvh> bvhCache_;
     };
 
 } // namespace Boidsish

@@ -8,12 +8,90 @@ layout(binding = 0, rgba32f) uniform image3D u_pop[5];
 layout(binding = 5, r32f) uniform image3D u_mass;
 layout(binding = 6, rgba32f) uniform image3D u_velocity;
 
+// BVH structures matching tiny_bvh (Wald 32-byte layout)
+struct BVHNode {
+    vec3 aabbMin; uint leftFirst;
+    vec3 aabbMax; uint triCount;
+};
+
+layout(std430, binding = 0) buffer BVHNodes {
+    BVHNode nodes[];
+};
+
+layout(std430, binding = 1) buffer BVHIndices {
+    uint indices[];
+};
+
+layout(std430, binding = 2) buffer MeshVertices {
+    vec4 vertices[]; // xyz, w ignored
+};
+
 uniform vec3 u_center;
 uniform float u_radius;
 uniform float u_amount; // Target density
 uniform ivec3 u_resolution;
 uniform vec3 u_worldScale;
 uniform vec3 u_worldOrigin;
+uniform int u_mode; // 0 = sphere, 1 = mesh
+uniform int u_numNodes;
+uniform mat4 u_meshTransform;
+uniform mat4 u_invMeshTransform;
+
+// Ray-AABB intersection for BVH traversal
+float intersect_aabb(vec3 ro, vec3 rd, vec3 boxMin, vec3 boxMax) {
+    vec3 tMin = (boxMin - ro) / rd;
+    vec3 tMax = (boxMax - ro) / rd;
+    vec3 t1 = min(tMin, tMax);
+    vec3 t2 = max(tMin, tMax);
+    float tNear = max(max(t1.x, t1.y), t1.z);
+    float tFar = min(min(t2.x, t2.y), t2.z);
+    return (tNear <= tFar && tFar > 0.0) ? tNear : 1e30;
+}
+
+bool intersect_triangle(vec3 ro, vec3 rd, vec3 v0, vec3 v1, vec3 v2) {
+    vec3 edge1 = v1 - v0;
+    vec3 edge2 = v2 - v0;
+    vec3 h = cross(rd, edge2);
+    float a = dot(edge1, h);
+    if (abs(a) < 0.000001) return false;
+    float f = 1.0 / a;
+    vec3 s = ro - v0;
+    float u = f * dot(s, h);
+    if (u < 0.0 || u > 1.0) return false;
+    vec3 q = cross(s, edge1);
+    float v = f * dot(rd, q);
+    if (v < 0.0 || u + v > 1.0) return false;
+    float t = f * dot(edge2, q);
+    return t > 0.0;
+}
+
+bool is_inside_mesh(vec3 p) {
+    vec3 ro = p;
+    vec3 rd = vec3(0, 1, 0);
+    int hits = 0;
+    uint stack[32];
+    uint stackPtr = 0;
+    stack[stackPtr++] = 0;
+    while (stackPtr > 0) {
+        uint nodeIdx = stack[--stackPtr];
+        BVHNode node = nodes[nodeIdx];
+        if (intersect_aabb(ro, rd, node.aabbMin, node.aabbMax) < 1e30) {
+            if (node.triCount > 0) {
+                for (uint i = 0; i < node.triCount; ++i) {
+                    uint triIdx = indices[node.leftFirst + i];
+                    vec3 v0 = vertices[triIdx * 3 + 0].xyz;
+                    vec3 v1 = vertices[triIdx * 3 + 1].xyz;
+                    vec3 v2 = vertices[triIdx * 3 + 2].xyz;
+                    if (intersect_triangle(ro, rd, v0, v1, v2)) hits++;
+                }
+            } else {
+                stack[stackPtr++] = node.leftFirst;
+                stack[stackPtr++] = node.leftFirst + 1;
+            }
+        }
+    }
+    return (hits % 2) != 0;
+}
 
 void main() {
     ivec3 pos = ivec3(gl_GlobalInvocationID.xyz);
@@ -21,16 +99,17 @@ void main() {
 
     vec3 worldPos = u_worldOrigin + (vec3(pos) / vec3(u_resolution)) * u_worldScale;
 
-    if (distance(worldPos, u_center) < u_radius) {
+    bool inside = false;
+    if (u_mode == 0) {
+        inside = distance(worldPos, u_center) < u_radius;
+    } else {
+        vec3 meshLocalPos = (u_invMeshTransform * vec4(worldPos, 1.0)).xyz;
+        inside = is_inside_mesh(meshLocalPos);
+    }
+
+    if (inside) {
         float rho = u_amount;
         vec3 u = vec3(0.0);
-
-        for (int i = 0; i < 19; ++i) {
-            float feq = calculate_equilibrium(i, rho, u);
-            imageStore(u_pop[i / 4], pos, vec4(0.0)); // Initialize
-        }
-
-        // This is a bit inefficient due to multiple imageStores, but it's only for init/injection
         float f[19];
         for (int i = 0; i < 19; ++i) f[i] = calculate_equilibrium(i, rho, u);
 
@@ -40,7 +119,7 @@ void main() {
         imageStore(u_pop[3], pos, vec4(f[12], f[13], f[14], f[15]));
         imageStore(u_pop[4], pos, vec4(f[16], f[17], f[18], 0.0));
 
-        imageStore(u_mass, pos, vec4(1.0)); // Fully filled
+        imageStore(u_mass, pos, vec4(1.0));
         imageStore(u_velocity, pos, vec4(u, rho));
     }
 }

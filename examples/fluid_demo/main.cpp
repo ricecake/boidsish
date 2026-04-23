@@ -8,10 +8,12 @@ using namespace Boidsish;
 
 class FluidShape : public Shape {
 public:
-    FluidShape(FluidLbmManager* manager) : manager_(manager) {}
+    FluidShape(FluidLbmManager* manager, Visualizer* viz) : manager_(manager), viz_(viz) {}
+
     void render() const override {
-        // This is called during the main render pass
+        manager_->Render(viz_->GetViewMatrix(), viz_->GetProjectionMatrix(), viz_->GetCamera().pos());
     }
+
     AABB GetAABB() const override {
         auto config = manager_->GetConfig();
         return AABB(config.worldOrigin, config.worldOrigin + config.worldScale);
@@ -19,6 +21,7 @@ public:
     std::string GetInstanceKey() const override { return "FluidSimulation"; }
 private:
     FluidLbmManager* manager_;
+    Visualizer* viz_;
 };
 
 int main() {
@@ -32,14 +35,15 @@ int main() {
         config.worldOrigin = {-10.0f, 0.0f, -10.0f};
         fluidManager.Initialize(config);
 
-        // Drop a ball of water
+        // Add a model as an obstacle (e.g., a simple cube or teapot if available)
+        // For this demo, let's just drop a ball of water first
         fluidManager.InjectFluid({0.0f, 15.0f, 0.0f}, 3.0f, 1.0f);
 
         viz.AddUpdateHandler([&](float dt, float /*totalTime*/) {
             fluidManager.Step(dt);
         });
 
-        auto fluidShape = std::make_shared<FluidShape>(&fluidManager);
+        auto fluidShape = std::make_shared<FluidShape>(&fluidManager, &viz);
 
         viz.AddShapeHandler([&](float /*totalTime*/) {
             std::vector<std::shared_ptr<Shape>> shapes;

@@ -26,6 +26,7 @@ float calculate_equilibrium(int i, float rho, vec3 u) {
     vec3 ci = vec3(D3Q19_X[i], D3Q19_Y[i], D3Q19_Z[i]);
     float cu = dot(ci, u);
     float uu = dot(u, u);
+    // Standard D3Q19 equilibrium formula
     return D3Q19_W[i] * rho * (1.0 + 3.0*cu + 4.5*cu*cu - 1.5*uu);
 }
 
