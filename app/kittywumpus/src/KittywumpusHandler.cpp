@@ -11,6 +11,7 @@
 #include "Swooper.h"
 #include "VortexFlockingEntity.h"
 #include "RedDotEnemy.h"
+#include "ShieldBoid.h"
 #include "checkpoint_ring.h"
 #include "constants.h"
 #include "graphics.h"
@@ -138,9 +139,21 @@ void KittywumpusHandler::RemoveEntity(int id) {
 			// Heal player
 			auto targets = GetEntitiesByType<KittywumpusPlane>();
 			if (!targets.empty()) {
-				targets[0]->AddHealth(10.0f);
+				auto player = targets[0];
+				player->AddHealth(10.0f);
 				if (health_gauge_) {
-					health_gauge_->SetValue(targets[0]->GetHealth() / targets[0]->GetMaxHealth());
+					health_gauge_->SetValue(player->GetHealth() / player->GetMaxHealth());
+				}
+
+				// Capture nearby ShieldBoids
+				auto boids = GetEntitiesByType<ShieldBoid>();
+				glm::vec3 ring_pos = ring->GetPosition().Toglm();
+				for (auto& boid : boids) {
+					if (boid->GetState() == ShieldBoidState::WILD) {
+						if (glm::distance(boid->GetPosition().Toglm(), ring_pos) < 50.0f) {
+							boid->Capture(player);
+						}
+					}
 				}
 			}
 			break;

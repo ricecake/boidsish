@@ -3,6 +3,7 @@
 #include "Beam.h"
 #include "CatBomb.h"
 #include "CatMissile.h"
+#include "ShieldBoid.h"
 #include "KittywumpusHandler.h" // For selected_weapon
 #include "Tracer.h"
 #include "entity.h"
@@ -529,7 +530,24 @@ void KittywumpusPlane::UpdateShape() {
 }
 
 void KittywumpusPlane::OnHit(const EntityHandler& handler, float damage) {
-	(void)handler;
+	auto boids = handler.GetEntitiesByType<ShieldBoid>();
+	std::shared_ptr<EntityBase> protector = nullptr;
+	for (auto* boid : boids) {
+		if (boid->GetState() == ShieldBoidState::CAPTURED) {
+			protector = handler.GetEntity(boid->GetId());
+			break;
+		}
+	}
+
+	if (protector) {
+		// Boid absorbs most of the damage and dies
+		damage *= 0.1f;
+		handler.QueueRemoveEntity(protector->GetId());
+		handler.EnqueueVisualizerAction([pos = protector->GetPosition().Toglm(), vis = handler.vis]() {
+			if (vis) vis->AddFireEffect(pos, FireEffectStyle::Explosion, glm::vec3(0, 1, 0), glm::vec3(0, 0, 0), -1, 0.5f);
+		});
+	}
+
 	health_ -= damage;
 	damage_pending_++;
 	if (state_ == PlaneState::DYING) {

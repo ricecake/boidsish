@@ -55,6 +55,7 @@ namespace Boidsish {
 		}
 
 		virtual bool IsTargetable() const { return false; }
+		virtual bool IsThreat() const { return false; }
 
 		virtual glm::vec3 GetApproachPoint() const { return rigid_body_.GetPosition(); }
 

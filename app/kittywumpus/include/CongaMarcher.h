@@ -8,6 +8,7 @@ namespace Boidsish {
 	class CongaMarcher: public Entity<Model> {
 	public:
 		CongaMarcher(int id, Vector3 pos, int leader_id = -1);
+		bool IsThreat() const override { return true; }
 
 		void UpdateEntity(const EntityHandler& handler, float time, float delta_time) override;
 		void OnHit(const EntityHandler& handler, float damage) override;
