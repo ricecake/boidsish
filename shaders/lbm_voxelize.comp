@@ -1,0 +1,127 @@
+#version 450 core
+
+layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
+
+#include "helpers/lbm_common.glsl"
+
+layout(binding = 0, r8) uniform image3D u_obstacles;
+layout(binding = 1) uniform sampler2DArray u_terrainHeightmap;
+layout(binding = 2) uniform isampler2D u_chunkGrid;
+
+struct BVHNode {
+    vec3 aabbMin; uint leftFirst;
+    vec3 aabbMax; uint triCount;
+};
+
+layout(std430, binding = 0) buffer BVHNodes {
+    BVHNode nodes[];
+};
+
+layout(std430, binding = 1) buffer BVHIndices {
+    uint indices[];
+};
+
+layout(std430, binding = 2) buffer MeshVertices {
+    vec4 vertices[];
+};
+
+layout(std140, binding = 8) uniform TerrainData {
+    ivec4 terrain_originSize;    // x, z, size, is_bound
+    vec4  terrain_params; // chunk_size, world_scale, unused, unused
+};
+
+uniform int u_numNodes;
+uniform mat4 u_invMeshTransform;
+uniform int u_firstPass;
+
+float intersect_aabb(vec3 ro, vec3 rd, vec3 boxMin, vec3 boxMax) {
+    vec3 tMin = (boxMin - ro) / rd;
+    vec3 tMax = (boxMax - ro) / rd;
+    vec3 t1 = min(tMin, tMax);
+    vec3 t2 = max(tMin, tMax);
+    float tNear = max(max(t1.x, t1.y), t1.z);
+    float tFar = min(min(t2.x, t2.y), t2.z);
+    return (tNear <= tFar && tFar > 0.0) ? tNear : 1e30;
+}
+
+bool intersect_triangle(vec3 ro, vec3 rd, vec3 v0, vec3 v1, vec3 v2) {
+    vec3 edge1 = v1 - v0;
+    vec3 edge2 = v2 - v0;
+    vec3 h = cross(rd, edge2);
+    float a = dot(edge1, h);
+    if (abs(a) < 0.000001) return false;
+    float f = 1.0 / a;
+    vec3 s = ro - v0;
+    float u = f * dot(s, h);
+    if (u < 0.0 || u > 1.0) return false;
+    vec3 q = cross(s, edge1);
+    float v = f * dot(rd, q);
+    if (v < 0.0 || u + v > 1.0) return false;
+    float t = f * dot(edge2, q);
+    return t > 0.0;
+}
+
+bool is_inside_mesh(vec3 p) {
+    vec3 ro = p;
+    vec3 rd = vec3(0, 1, 0);
+    int hits = 0;
+    uint stack[32];
+    uint stackPtr = 0;
+    stack[stackPtr++] = 0;
+    while (stackPtr > 0) {
+        uint nodeIdx = stack[--stackPtr];
+        BVHNode node = nodes[nodeIdx];
+        if (intersect_aabb(ro, rd, node.aabbMin, node.aabbMax) < 1e30) {
+            if (node.triCount > 0) {
+                for (uint i = 0; i < node.triCount; ++i) {
+                    uint triIdx = indices[node.leftFirst + i];
+                    vec3 v0 = vertices[triIdx * 3 + 0].xyz;
+                    vec3 v1 = vertices[triIdx * 3 + 1].xyz;
+                    vec3 v2 = vertices[triIdx * 3 + 2].xyz;
+                    if (intersect_triangle(ro, rd, v0, v1, v2)) hits++;
+                }
+            } else {
+                stack[stackPtr++] = node.leftFirst;
+                stack[stackPtr++] = node.leftFirst + 1;
+            }
+        }
+    }
+    return (hits % 2) != 0;
+}
+
+float get_terrain_height(vec3 worldPos) {
+    float scaledChunkSize = terrain_params.x * terrain_params.y;
+    int cx = int(floor(worldPos.x / scaledChunkSize));
+    int cz = int(floor(worldPos.z / scaledChunkSize));
+
+    ivec2 localChunk = ivec2(cx, cz) - terrain_originSize.xz;
+    if (any(lessThan(localChunk, ivec2(0))) || any(greaterThanEqual(localChunk, ivec2(terrain_originSize.z)))) return -1000.0;
+
+    int slice = texelFetch(u_chunkGrid, localChunk, 0).r;
+    if (slice < 0) return -1000.0;
+
+    vec2 uv = fract(worldPos.xz / scaledChunkSize);
+    return texture(u_terrainHeightmap, vec3(uv, float(slice))).r;
+}
+
+void main() {
+    ivec3 pos = ivec3(gl_GlobalInvocationID.xyz);
+    if (any(greaterThanEqual(pos, u_resolution.xyz))) return;
+
+    vec3 worldPos = u_worldOrigin.xyz + (vec3(pos) / vec3(u_resolution.xyz)) * u_worldScale.xyz;
+
+    float existing = imageLoad(u_obstacles, pos).r;
+    bool obstacle = existing > 0.5;
+
+    if (u_firstPass != 0) {
+        float terrainHeight = get_terrain_height(worldPos);
+        if (worldPos.y < terrainHeight) obstacle = true;
+    }
+
+    if (!obstacle && u_numNodes > 0) {
+        vec3 meshLocalPos = (u_invMeshTransform * vec4(worldPos, 1.0)).xyz;
+        if (is_inside_mesh(meshLocalPos)) obstacle = true;
+    }
+
+    if (obstacle) imageStore(u_obstacles, pos, vec4(1.0));
+}

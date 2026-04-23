@@ -234,6 +234,7 @@ namespace Boidsish {
 	using InputCallback = std::function<void(const InputState&)>;
 	using PrepareCallback = std::function<void(Visualizer&)>;
 	using UpdateHandler = std::function<void(float, float)>;
+	using DrawHandler = std::function<void(const glm::mat4&, const glm::mat4&, const glm::vec3&)>;
 
 	// Main visualization class
 	class Terrain;
@@ -322,6 +323,8 @@ namespace Boidsish {
 		void AddInputCallback(InputCallback callback);
 		void AddUpdateHandler(UpdateHandler handler);
 		void ClearUpdateHandlers();
+		void AddDrawHandler(DrawHandler handler);
+		void ClearDrawHandlers();
 
 		/**
 		 * @brief Generates a ray from a screen-space coordinate.
@@ -583,6 +586,11 @@ namespace Boidsish {
 
 		float GetRenderScale() const;
 		void  SetRenderScale(float scale);
+
+		uint32_t GetDepthTexture() const;
+		uint32_t GetTerrainHeightmapTexture() const;
+		uint32_t GetTerrainChunkGridTexture() const;
+		uint32_t GetTerrainDataUbo() const;
 
 		Config&       GetConfig();
 		AudioManager& GetAudioManager();

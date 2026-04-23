@@ -153,6 +153,10 @@ namespace Boidsish {
 		 */
 		GLuint GetHeightmapTexture() const { return heightmap_texture_; }
 
+		GLuint GetChunkGridTexture() const { return chunk_grid_texture_; }
+
+		GLuint GetTerrainDataUbo() const { return terrain_data_ubo_; }
+
 		/**
 		 * @brief Get the biome texture array for shader binding.
 		 */

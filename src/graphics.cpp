@@ -396,6 +396,7 @@ namespace Boidsish {
 		std::vector<InputCallback>                             input_callbacks;
 		std::vector<PrepareCallback>                           prepare_callbacks;
 		std::vector<UpdateHandler>                             update_handlers;
+		std::vector<DrawHandler>                               draw_handlers;
 		bool                                                   prepared_{false};
 		std::shared_ptr<UI::UIManager>                         ui_manager;
 		std::shared_ptr<HudManager>                            hud_manager;
@@ -2678,6 +2679,12 @@ namespace Boidsish {
 							dispatch_hiz
 						);
 					},
+				.render_custom =
+					[this](const glm::mat4& view, const glm::mat4& projection, const glm::vec3& camera_pos) {
+						for (auto& handler : draw_handlers) {
+							handler(view, projection, camera_pos);
+						}
+					},
 				.bind_shadows = [this](Shader& s) { BindShadows(s); },
 				.update_frustum_ubo = [this,
 			                           &frame]() { UpdateFrustumUbo(frame.view, frame.projection, frame.camera_pos); },
@@ -4037,6 +4044,14 @@ namespace Boidsish {
 		impl->update_handlers.clear();
 	}
 
+	void Visualizer::AddDrawHandler(DrawHandler handler) {
+		impl->draw_handlers.push_back(handler);
+	}
+
+	void Visualizer::ClearDrawHandlers() {
+		impl->draw_handlers.clear();
+	}
+
 
 	Ray Visualizer::GetRayFromScreen(double screen_x, double screen_y) const {
 		glm::vec3 screen_pos(screen_x, impl->height - screen_y, 0.0f);
@@ -4497,6 +4512,22 @@ namespace Boidsish {
 
 	float Visualizer::GetLastFrameTime() const {
 		return impl->input_state.delta_time;
+	}
+
+	uint32_t Visualizer::GetDepthTexture() const {
+		return impl->compositor_ ? impl->compositor_->GetDepthTexture() : 0;
+	}
+
+	uint32_t Visualizer::GetTerrainHeightmapTexture() const {
+		return impl->terrain_render_manager ? impl->terrain_render_manager->GetHeightmapTexture() : 0;
+	}
+
+	uint32_t Visualizer::GetTerrainChunkGridTexture() const {
+		return impl->terrain_render_manager ? impl->terrain_render_manager->GetChunkGridTexture() : 0;
+	}
+
+	uint32_t Visualizer::GetTerrainDataUbo() const {
+		return impl->terrain_render_manager ? impl->terrain_render_manager->GetTerrainDataUbo() : 0;
 	}
 
 	void Visualizer::RemoveFireEffect(const std::shared_ptr<FireEffect>& effect) const {
