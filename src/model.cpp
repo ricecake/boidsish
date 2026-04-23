@@ -472,10 +472,10 @@ namespace Boidsish {
 	Model::~Model() = default;
 
 	void Model::PrepareResources(Megabuffer* mb) const {
-		if (!m_data || !mb)
+		if (!m_data)
 			return;
 		for (auto& mesh : m_data->meshes) {
-			mesh.setupMesh(mb);
+			mesh.setupMesh(AllowMegabuffer() ? mb : nullptr);
 		}
 	}
 

@@ -693,19 +693,19 @@ namespace Boidsish {
 
 			namespace Megabuffer {
 				consteval size_t MaxVertices() {
-					return 1000000;
-				}
-
-				consteval size_t MaxIndices() {
 					return 2000000;
 				}
 
+				consteval size_t MaxIndices() {
+					return 4000000;
+				}
+
 				consteval size_t StaticVertexLimit() {
-					return 500000;
+					return 1000000;
 				}
 
 				consteval size_t StaticIndexLimit() {
-					return 1000000;
+					return 2000000;
 				}
 			} // namespace Megabuffer
 
