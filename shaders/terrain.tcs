@@ -6,6 +6,8 @@ layout(vertices = 4) out;
 in vec3       LocalPos_VS_out[];
 in vec2       TexCoords_VS_out[];
 in vec3       viewForward[];
+in vec4 ClipPos_VS_out[];
+
 flat in float TextureSlice_VS_out[];
 flat in vec3  WorldOffset_VS_out[];
 flat in vec4  Bounds_VS_out[];
@@ -62,42 +64,46 @@ bool isLess(vec3 a, vec3 b) {
 	return false;
 }
 
-float GetEdgeTessLevel(vec3 p0, vec3 p1, vec3 n0, vec3 n1) {
+bool isLessUV(vec2 uvA, vec2 uvB) {
+    const float epsilon = 0.0001;
+    if (abs(uvA.x - uvB.x) > epsilon) {
+        return uvA.x < uvB.x;
+    }
+    return uvA.y < uvB.y;
+}
+
+float GetEdgeTessLevel(vec3 p0, vec3 p1, vec3 n0, vec3 n1, vec2 uv0, vec2 uv1, vec4 clip0, vec4 clip1) {
+// float GetEdgeTessLevel(vec3 p0, vec3 p1, vec3 n0, vec3 n1) {
 	// Sort vertices deterministically to ensure shared edges between chunks
 	// produce identical results regardless of vertex order.
 	vec3 lp0 = p0;
 	vec3 lp1 = p1;
 	vec3 ln0 = n0;
 	vec3 ln1 = n1;
-	if (!isLess(lp0, lp1)) {
+
+	vec4 c0 = clip0;
+	vec4 c1 = clip1;
+
+    // Sort using UVs to guarantee neighbor patch edge consistency
+    if (!isLessUV(uv0, uv1)) {
+        c0 = clip1;
+        c1 = clip0;
 		lp0 = p1;
 		lp1 = p0;
 		ln0 = n1;
 		ln1 = n0;
-	}
-
-	// Project to clip space
-	vec4 clip0 = projection * view * vec4(lp0, 1.0);
-	vec4 clip1 = projection * view * vec4(lp1, 1.0);
+    }
 
 	vec3 midPos = (lp0 + lp1) * 0.5;
 	vec3 midNormal = normalize(ln0 + ln1);
 
-	if (midPos.y <= 1.0) {
-		return uTessLevelMax;
-	}
-
 	float dist = min(distance(viewPos, lp0), distance(viewPos, lp1));
-
-	// Guard against points behind camera
-	if (clip0.w <= 0.0 && clip1.w <= 0.0)
-		return uTessLevelMin;
 
 	// Hybrid Tessellation Metric:
 	// Screen-space calculation is unstable near the camera plane.
 	// We use a distance-based fallback for vertices near or behind the camera.
 	float pixelLength;
-	float minW = min(clip0.w, clip1.w);
+	float minW = min(c0.w, c1.w);
 
 	if (minW < 0.1) {
 		// Near camera: use distance-based approximation
@@ -107,8 +113,8 @@ float GetEdgeTessLevel(vec3 p0, vec3 p1, vec3 n0, vec3 n1) {
 		pixelLength = (distance(lp0, lp1) / max(dist, 0.1)) * focalLength;
 	} else {
 		// Safe distance: use precise screen-space projection
-		vec2 ndc0 = clip0.xy / clip0.w;
-		vec2 ndc1 = clip1.xy / clip1.w;
+		vec2 ndc0 = c0.xy / c0.w;
+		vec2 ndc1 = c1.xy / c1.w;
 		vec2 pixel0 = (ndc0 * 0.5 + 0.5) * uViewportSize;
 		vec2 pixel1 = (ndc1 * 0.5 + 0.5) * uViewportSize;
 		pixelLength = length(pixel1 - pixel0);
@@ -117,6 +123,10 @@ float GetEdgeTessLevel(vec3 p0, vec3 p1, vec3 n0, vec3 n1) {
 	// Base tessellation: target pixels per segment
 	// Target ~8 pixels per triangle edge for high quality, 16 for medium, 32 for low
 	float targetPixels = 8.0 / uTessQualityMultiplier;
+
+	if (pixelLength / targetPixels <= 1) {
+		return 1.0;
+	}
 
 	// 1. SILHOUETTE BOOST
 	// Boost tessellation for edges that form the silhouette to keep curves smooth
@@ -128,8 +138,9 @@ float GetEdgeTessLevel(vec3 p0, vec3 p1, vec3 n0, vec3 n1) {
 	// 2. CURVATURE BOOST
 	// Boost tessellation where surface normal changes rapidly
 	float curvatureFactor = 1.0 - dot(ln0, ln1);
-	float curvatureBoost = mix(1.0, 5.0, clamp(curvatureFactor * 10.0, 0.0, 1.0));
-	return clamp((pixelLength * silhouetteBoost * curvatureBoost) / targetPixels, uTessLevelMin, uTessLevelMax);
+	float curvatureBoost = dist >= 100? 1.0 : mix(1.0, 5.0, clamp(curvatureFactor * 10.0, 0.0, 1.0));
+
+	return clamp((pixelLength * max(silhouetteBoost, curvatureBoost)) / targetPixels, uTessLevelMin, uTessLevelMax);
 }
 
 float perturbLevel(vec3 worldPos, vec3 forward) {
@@ -176,14 +187,46 @@ void main() {
 
 	// Calculate a representative tessellation factor for the vertex (used for shading effects)
 	// We use a small offset to estimate local screen-space size
-	float vTess = GetEdgeTessLevel(pos, pos + vec3(uChunkSize * 0.03, 0, 0), norm, norm);
+	float vTess = GetEdgeTessLevel(pos, pos + vec3(uChunkSize * 0.03, 0, 0), norm, norm, TexCoords_VS_out[gl_InvocationID], TexCoords_VS_out[gl_InvocationID], ClipPos_VS_out[gl_InvocationID], ClipPos_VS_out[gl_InvocationID]);
 	tessFactor_TC_out[gl_InvocationID] = vTess;
 	perturbFactor_TC_out[gl_InvocationID] = perturbLevel(pos, viewForward[gl_InvocationID]);
 
 	if (gl_InvocationID == 0) {
+		// Inside terrain.tcs main(), at the start of the gl_InvocationID == 0 block:
+
+		int outLeft = 0, outRight = 0;
+		int outBottom = 0, outTop = 0;
+		int outNear = 0, outFar = 0;
+
+		for (int i = 0; i < 4; i++) {
+			vec4 clip = ClipPos_VS_out[i];
+
+			// Count how many vertices fall outside each specific plane
+			if (clip.x < -clip.w) outLeft++;
+			if (clip.x >  clip.w) outRight++;
+			if (clip.y < -clip.w) outBottom++;
+			if (clip.y >  clip.w) outTop++;
+			if (clip.z < -clip.w) outNear++;
+			if (clip.z >  clip.w) outFar++;
+		}
+
+		// If all 4 corners fail the SAME plane test, the entire patch is off-screen.
+		// If the camera is inside the patch, no single counter will reach 4.
+		if (outLeft == 4 || outRight == 4 || outBottom == 4 || outTop == 4 || outNear == 4 || outFar == 4) {
+			gl_TessLevelOuter[0] = 0.0;
+			gl_TessLevelOuter[1] = 0.0;
+			gl_TessLevelOuter[2] = 0.0;
+			gl_TessLevelOuter[3] = 0.0;
+			gl_TessLevelInner[0] = 0.0;
+			gl_TessLevelInner[1] = 0.0;
+			return;
+		}
+
 		// Sample heightmap for all 4 corners to get world positions and normals
 		vec3 worldPos0, worldPos1, worldPos2, worldPos3;
 		vec3 normal0, normal1, normal2, normal3;
+		vec4 clip0, clip1, clip2, clip3;
+		vec2 uv0, uv1, uv2, uv3;
 
 		worldPos0 = WorldPos_TC_out[0];
 		worldPos1 = WorldPos_TC_out[1];
@@ -194,6 +237,16 @@ void main() {
 		normal1 = WorldNorm_TC_out[1];
 		normal2 = WorldNorm_TC_out[2];
 		normal3 = WorldNorm_TC_out[3];
+
+		clip0 = ClipPos_VS_out[0];
+		clip1 = ClipPos_VS_out[1];
+		clip2 = ClipPos_VS_out[2];
+		clip3 = ClipPos_VS_out[3];
+
+		uv0 = TexCoords_VS_out[0];
+		uv1 = TexCoords_VS_out[1];
+		uv2 = TexCoords_VS_out[2];
+		uv3 = TexCoords_VS_out[3];
 
 		// Project each edge to screen space and determine tessellation level
 		// Correct Mapping for Quads:
@@ -210,12 +263,12 @@ void main() {
 		// gl_TessLevelInner[1] = max(gl_TessLevelOuter[0], gl_TessLevelOuter[2]);
 
 		float edge1 = max(
-			GetEdgeTessLevel(worldPos0, worldPos1, normal0, normal1),
-			GetEdgeTessLevel(worldPos2, worldPos3, normal2, normal3)
+			GetEdgeTessLevel(worldPos0, worldPos1, normal0, normal1, uv0, uv1, clip0, clip1),
+			GetEdgeTessLevel(worldPos2, worldPos3, normal2, normal3, uv2, uv3, clip2, clip3)
 		);
 		float edge2 = max(
-			GetEdgeTessLevel(worldPos3, worldPos0, normal3, normal0),
-			GetEdgeTessLevel(worldPos1, worldPos2, normal1, normal2)
+			GetEdgeTessLevel(worldPos3, worldPos0, normal3, normal0, uv3, uv0, clip3, clip0),
+			GetEdgeTessLevel(worldPos1, worldPos2, normal1, normal2, uv1, uv2, clip1, clip2)
 		);
 
 		gl_TessLevelOuter[0] = edge2;
