@@ -154,6 +154,15 @@ namespace Boidsish {
 		// Vertex Texture Coords
 		glEnableVertexAttribArray(2);
 		glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, TexCoords));
+
+		// Pivot
+		glEnableVertexAttribArray(3);
+		glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Pivot));
+
+		// Stiffness
+		glEnableVertexAttribArray(4);
+		glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Stiffness));
+
 		// Vertex Color
 		glEnableVertexAttribArray(8);
 		glVertexAttribPointer(8, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Color));
@@ -647,6 +656,8 @@ namespace Boidsish {
 			packet.uniforms.use_texture = use_texture_mask;
 			packet.uniforms.is_colossal = IsColossal();
 			packet.uniforms.use_vertex_color = (mesh.has_vertex_colors && !has_diffuse) ? 1 : 0;
+			packet.uniforms.variety_seed = (float)(GetId() % 1000);
+			packet.uniforms.variety_amount = 0.05f; // Default small variety for all models
 
 			packet.uniforms.dissolve_enabled = dissolve_enabled_ ? 1 : 0;
 			packet.uniforms.dissolve_plane_normal = dissolve_plane_normal_;

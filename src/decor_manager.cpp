@@ -964,6 +964,8 @@ namespace Boidsish {
 
 			shader->setVec3("u_aabbMin", type.model->GetData()->aabb.min);
 			shader->setVec3("u_aabbMax", type.model->GetData()->aabb.max);
+			shader->setFloat("variety_seed", (float)(i * 100));
+			shader->setFloat("variety_amount", 0.1f);
 			shader->setFloat("u_windResponsiveness", type.props.wind_responsiveness);
 			shader->setFloat("u_windRimHighlight", type.props.wind_rim_highlight);
 

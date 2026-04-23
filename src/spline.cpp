@@ -131,7 +131,13 @@ namespace Boidsish {
 						float   angle = 2.0f * std::numbers::pi * j / cylinder_segments;
 						Vector3 cn = (normal * cos(angle) + bitangent * sin(angle)).Normalized();
 						Vector3 pos = point + cn * r;
-						ring.push_back({glm::vec3(pos.x, pos.y, pos.z), glm::vec3(cn.x, cn.y, cn.z), color});
+						ring.push_back({
+							glm::vec3(pos.x, pos.y, pos.z),
+							glm::vec3(cn.x, cn.y, cn.z),
+							color,
+							glm::vec3(p1.x, p1.y, p1.z),
+							1.0f
+						});
 					}
 					rings.push_back(ring);
 				}
@@ -156,6 +162,7 @@ namespace Boidsish {
 			const std::vector<Vector3>&   ups,
 			const std::vector<float>&     sizes,
 			const std::vector<glm::vec3>& colors,
+			const std::vector<float>&     stiffnesses,
 			bool                          is_looping,
 			int                           curve_segments,
 			int                           cylinder_segments
@@ -188,6 +195,10 @@ namespace Boidsish {
 					Vector3   point = CatmullRom(t, p0, p1, p2, p3);
 					glm::vec3 color = (1 - t) * colors[p1_idx] + t * colors[p2_idx];
 					float     r = ((1 - t) * sizes[p1_idx] + t * sizes[p2_idx]) * EDGE_RADIUS_SCALE;
+					float     stiffness = 1.0f;
+					if (!stiffnesses.empty()) {
+						stiffness = (1 - t) * stiffnesses[p1_idx] + t * stiffnesses[p2_idx];
+					}
 
 					Vector3 tangent;
 					if (j < curve_segments) {
@@ -222,7 +233,13 @@ namespace Boidsish {
 						float   angle = 2.0f * std::numbers::pi * k / cylinder_segments;
 						Vector3 cn = (normal * cos(angle) + bitangent * sin(angle)).Normalized();
 						Vector3 pos = point + cn * r;
-						ring.push_back({glm::vec3(pos.x, pos.y, pos.z), glm::vec3(cn.x, cn.y, cn.z), color});
+						ring.push_back({
+							glm::vec3(pos.x, pos.y, pos.z),
+							glm::vec3(cn.x, cn.y, cn.z),
+							color,
+							glm::vec3(p1.x, p1.y, p1.z),
+							stiffness
+						});
 					}
 					rings.push_back(ring);
 				}

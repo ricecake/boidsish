@@ -19,6 +19,14 @@ int main(int argc, char** argv) {
 	auto tree1 = ProceduralGenerator::GenerateTree(101112);
 	auto tree2 = ProceduralGenerator::GenerateTree(211101);
 
+	// Add more instances of the same model to show variety
+	std::vector<std::shared_ptr<Model>> many_trees;
+	for (int i = 0; i < 10; ++i) {
+		auto t = std::make_shared<Model>(tree1->GetData());
+		t->SetPosition(-20.0f + i * 4.0f, 0.0f, -10.0f);
+		vis.AddShape(t);
+	}
+
 	ServiceLocator loc;
 	auto decor_manager = std::make_shared<DecorManager>(loc);
 

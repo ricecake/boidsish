@@ -28,6 +28,8 @@ namespace Boidsish {
 			glm::vec3                  color,
 			int                        lat_segments,
 			int                        lon_segments,
+			glm::vec3                  pivot = glm::vec3(0.0f),
+			float                      stiffness = 1.0f,
 			glm::vec3                  scale = glm::vec3(1.0f)
 		) {
 			unsigned int base = (unsigned int)vertices.size();
@@ -48,6 +50,8 @@ namespace Boidsish {
 					v.Normal = glm::normalize(normal / scale); // Adjusted normal for non-uniform scale
 					v.Color = color;
 					v.TexCoords = glm::vec2((float)lon / lon_segments, (float)lat / lat_segments);
+					v.Pivot = pivot;
+					v.Stiffness = stiffness;
 					vertices.push_back(v);
 				}
 			}
@@ -74,7 +78,9 @@ namespace Boidsish {
 			glm::vec3                  center,
 			glm::quat                  orientation,
 			glm::vec3                  half_extents,
-			glm::vec3                  color
+			glm::vec3                  color,
+			glm::vec3                  pivot = glm::vec3(0.0f),
+			float                      stiffness = 1.0f
 		) {
 			glm::vec3 corners[8] =
 				{{-1, -1, -1}, {1, -1, -1}, {1, 1, -1}, {-1, 1, -1}, {-1, -1, 1}, {1, -1, 1}, {1, 1, 1}, {-1, 1, 1}};
@@ -105,6 +111,8 @@ namespace Boidsish {
 					v.Normal = normal;
 					v.Color = color;
 					v.TexCoords = faces[i].uv[j];
+					v.Pivot = pivot;
+					v.Stiffness = stiffness;
 					vertices.push_back(v);
 				}
 				indices.push_back(face_base + 0);
@@ -122,7 +130,9 @@ namespace Boidsish {
 			glm::vec3                  center,
 			glm::quat                  orientation,
 			glm::vec3                  half_extents,
-			glm::vec3                  color
+			glm::vec3                  color,
+			glm::vec3                  pivot = glm::vec3(0.0f),
+			float                      stiffness = 1.0f
 		) {
 			glm::vec3 c[6] = {{-1, -1, -1}, {1, -1, -1}, {1, 1, -1}, {-1, 1, -1}, {-1, -1, 1}, {1, -1, 1}};
 			for (int i = 0; i < 6; ++i)
@@ -133,6 +143,8 @@ namespace Boidsish {
 				Vertex       v;
 				v.Normal = orientation * n;
 				v.Color = color;
+				v.Pivot = pivot;
+				v.Stiffness = stiffness;
 				v.Position = center + orientation * c[i1];
 				v.TexCoords = {0, 0};
 				vertices.push_back(v);
@@ -151,6 +163,8 @@ namespace Boidsish {
 				Vertex       v;
 				v.Normal = orientation * n;
 				v.Color = color;
+				v.Pivot = pivot;
+				v.Stiffness = stiffness;
 				v.Position = center + orientation * c[i1];
 				v.TexCoords = {0, 0};
 				vertices.push_back(v);
@@ -184,7 +198,9 @@ namespace Boidsish {
 			glm::vec3                  center,
 			glm::quat                  orientation,
 			glm::vec3                  half_extents,
-			glm::vec3                  color
+			glm::vec3                  color,
+			glm::vec3                  pivot = glm::vec3(0.0f),
+			float                      stiffness = 1.0f
 		) {
 			glm::vec3 c[5] = {{0, 1, 0}, {-1, -1, 1}, {1, -1, 1}, {1, -1, -1}, {-1, -1, -1}};
 			for (int i = 0; i < 5; ++i)
@@ -196,6 +212,8 @@ namespace Boidsish {
 				Vertex       v;
 				v.Normal = orientation * n;
 				v.Color = color;
+				v.Pivot = pivot;
+				v.Stiffness = stiffness;
 				v.Position = center + orientation * c[i1];
 				v.TexCoords = {0.5, 1};
 				vertices.push_back(v);
@@ -219,6 +237,8 @@ namespace Boidsish {
 			Vertex       v;
 			v.Normal = orientation * glm::vec3(0, -1, 0);
 			v.Color = color;
+			v.Pivot = pivot;
+			v.Stiffness = stiffness;
 			v.Position = center + orientation * c[1];
 			v.TexCoords = {0, 0};
 			vertices.push_back(v);
@@ -441,6 +461,7 @@ namespace Boidsish {
 				std::vector<Vector3>   ups;
 				std::vector<float>     sizes;
 				std::vector<glm::vec3> colors;
+				std::vector<float>     stiffnesses;
 
 				int              curr = i;
 				bool             first = true;
@@ -463,6 +484,7 @@ namespace Boidsish {
 						ups.push_back(Vector3(0, 1, 0));
 						sizes.push_back(te.radius / SPLINE_RADIUS_SCALE);
 						colors.push_back(te.color);
+						stiffnesses.push_back(te.stiffness);
 						first = false;
 					}
 					int next = -1;
@@ -477,6 +499,7 @@ namespace Boidsish {
 							ups.push_back(Vector3(0, 1, 0));
 							sizes.push_back(cp.radius / SPLINE_RADIUS_SCALE);
 							colors.push_back(cp.color);
+							stiffnesses.push_back(te.stiffness); // Control points inherit segment stiffness
 							segment_bones.push_back(curr_bone);
 							for (int cp_child : cp.children) {
 								if (ir.elements[cp_child].type == ProceduralElementType::Tube) {
@@ -491,6 +514,7 @@ namespace Boidsish {
 					ups.push_back(Vector3(0, 1, 0));
 					sizes.push_back(te.end_radius / SPLINE_RADIUS_SCALE);
 					colors.push_back(te.color);
+					stiffnesses.push_back(te.stiffness);
 					segment_bones.push_back(curr_bone);
 					curr = next;
 				}
@@ -501,7 +525,7 @@ namespace Boidsish {
 					}
 					auto&        group = grouped_meshes[mat];
 					int          v_start = (int)group.vertices.size();
-					auto         tube_data = Spline::GenerateTube(points, ups, sizes, colors, false, 10, 8);
+					auto         tube_data = Spline::GenerateTube(points, ups, sizes, colors, stiffnesses, false, 10, 8);
 					unsigned int base = (unsigned int)group.vertices.size();
 					for (const auto& vd : tube_data) {
 						Vertex v;
@@ -509,6 +533,8 @@ namespace Boidsish {
 						v.Normal = vd.normal;
 						v.Color = vd.color;
 						v.TexCoords = glm::vec2(0.5f);
+						v.Pivot = vd.pivot;
+						v.Stiffness = vd.stiffness;
 						group.vertices.push_back(v);
 					}
 					for (unsigned int k = 0; k < (unsigned int)tube_data.size(); ++k)
@@ -539,13 +565,13 @@ namespace Boidsish {
 			int   v_start = (int)group.vertices.size();
 
 			if (e.type == ProceduralElementType::Hub) {
-				GenerateUVSphere(group.vertices, group.indices, e.position, e.radius, e.color, 6, 6);
+				GenerateUVSphere(group.vertices, group.indices, e.position, e.radius, e.color, 6, 6, e.position, e.stiffness);
 			} else if (e.type == ProceduralElementType::Box) {
-				GenerateBox(group.vertices, group.indices, e.position, e.orientation, e.dimensions, e.color);
+				GenerateBox(group.vertices, group.indices, e.position, e.orientation, e.dimensions, e.color, e.position, e.stiffness);
 			} else if (e.type == ProceduralElementType::Wedge) {
-				GenerateWedge(group.vertices, group.indices, e.position, e.orientation, e.dimensions, e.color);
+				GenerateWedge(group.vertices, group.indices, e.position, e.orientation, e.dimensions, e.color, e.position, e.stiffness);
 			} else if (e.type == ProceduralElementType::Pyramid) {
-				GeneratePyramid(group.vertices, group.indices, e.position, e.orientation, e.dimensions, e.color);
+				GeneratePyramid(group.vertices, group.indices, e.position, e.orientation, e.dimensions, e.color, e.position, e.stiffness);
 			} else if (e.type == ProceduralElementType::Puffball) {
 				if (e.variant == 1)
 					GenerateUVSphere(
@@ -556,10 +582,12 @@ namespace Boidsish {
 						e.color,
 						8,
 						8,
+						e.position,
+						e.stiffness,
 						glm::vec3(1.0f, 0.4f, 1.0f)
 					);
 				else
-					GenerateUVSphere(group.vertices, group.indices, e.position, e.radius, e.color, 4, 4);
+					GenerateUVSphere(group.vertices, group.indices, e.position, e.radius, e.color, 4, 4, e.position, e.stiffness);
 			} else {
 				continue;
 			}
@@ -580,7 +608,8 @@ namespace Boidsish {
 		                       glm::quat                  ori,
 		                       float                      size,
 		                       glm::vec3                  color,
-		                       int                        variant) {
+		                       int                        variant,
+		                       float                      stiffness) {
 			unsigned int           base = (unsigned int)vertices.size();
 			std::vector<glm::vec3> pts;
 			if (variant == 1)
@@ -608,6 +637,8 @@ namespace Boidsish {
 				v.Normal = ori * glm::vec3(0, 0, 1);
 				v.Color = color;
 				v.TexCoords = glm::vec2(0.5f);
+				v.Pivot = pos;
+				v.Stiffness = stiffness;
 				vertices.push_back(v);
 			}
 			for (size_t i = 1; i < pts.size() - 1; ++i) {
@@ -630,7 +661,7 @@ namespace Boidsish {
 				auto& group = grouped_meshes[mat];
 				group.is_leaf = true;
 				int v_start = (int)group.vertices.size();
-				AddLeafGeom(group.vertices, group.indices, e.position, e.orientation, e.radius, e.color, e.variant);
+				AddLeafGeom(group.vertices, group.indices, e.position, e.orientation, e.radius, e.color, e.variant, e.stiffness);
 
 				SkinningMode sm = e.skinning_mode;
 				if (sm == SkinningMode::Auto)

@@ -383,6 +383,27 @@ namespace Boidsish {
 			(void*)offsetof(::Boidsish::Vertex, TexCoords)
 		);
 		glEnableVertexAttribArray(2);
+
+		glVertexAttribPointer(
+			3,
+			3,
+			GL_FLOAT,
+			GL_FALSE,
+			sizeof(::Boidsish::Vertex),
+			(void*)offsetof(::Boidsish::Vertex, Pivot)
+		);
+		glEnableVertexAttribArray(3);
+
+		glVertexAttribPointer(
+			4,
+			1,
+			GL_FLOAT,
+			GL_FALSE,
+			sizeof(::Boidsish::Vertex),
+			(void*)offsetof(::Boidsish::Vertex, Stiffness)
+		);
+		glEnableVertexAttribArray(4);
+
 		glVertexAttribPointer(
 			8,
 			3,

@@ -56,7 +56,7 @@ namespace Boidsish {
 				colors.push_back(glm::vec3(waypoint.r, waypoint.g, waypoint.b));
 			}
 
-			auto all_vertices_data = Spline::GenerateTube(points, ups, sizes, colors, mode_ == PathMode::LOOP);
+			auto all_vertices_data = Spline::GenerateTube(points, ups, sizes, colors, {}, mode_ == PathMode::LOOP);
 			edge_vertex_count_ = static_cast<int>(all_vertices_data.size());
 
 			std::vector<Vertex> vertices;
@@ -101,7 +101,7 @@ namespace Boidsish {
 			colors.push_back(glm::vec3(waypoint.r, waypoint.g, waypoint.b));
 		}
 
-		auto all_vertices_data = Spline::GenerateTube(points, ups, sizes, colors, mode_ == PathMode::LOOP);
+		auto all_vertices_data = Spline::GenerateTube(points, ups, sizes, colors, {}, mode_ == PathMode::LOOP);
 		edge_vertex_count_ = all_vertices_data.size();
 
 		std::vector<Vertex> vertices;
@@ -477,6 +477,8 @@ namespace Boidsish {
 		packet.uniforms.use_texture = 0;
 		packet.uniforms.use_vertex_color = 1; // Path uses vertex colors
 		packet.uniforms.is_colossal = IsColossal();
+		packet.uniforms.variety_seed = (float)(GetId() % 1000);
+		packet.uniforms.variety_amount = 0.0f;
 
 		packet.casts_shadows = CastsShadows();
 

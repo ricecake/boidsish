@@ -14,6 +14,8 @@ namespace Boidsish {
 
 		struct VertexData {
 			glm::vec3 pos, normal, color;
+			glm::vec3 pivot = glm::vec3(0.0f);
+			float     stiffness = 1.0f;
 		};
 
 		struct GraphNode {
@@ -39,7 +41,8 @@ namespace Boidsish {
 			const std::vector<Vector3>&   ups,
 			const std::vector<float>&     sizes,
 			const std::vector<glm::vec3>& colors,
-			bool                          is_looping,
+			const std::vector<float>&     stiffnesses = {},
+			bool                          is_looping = false,
 			int                           curve_segments = 10,
 			int                           cylinder_segments = 12
 		);

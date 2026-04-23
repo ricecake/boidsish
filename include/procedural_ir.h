@@ -38,6 +38,7 @@ namespace Boidsish {
 		float     roughness = 0.5f;
 		float     metallic = 0.0f;
 		float     ao = 1.0f;
+		float     stiffness = 1.0f;
 		glm::vec3 emissiveColor = glm::vec3(0.0f);
 		int       variant = 0; // Shape variant for Leaf, etc.
 
@@ -72,7 +73,8 @@ namespace Boidsish {
 			int                parent_idx = -1,
 			const std::string& name = "",
 			bool               is_bone = false,
-			SkinningMode       skin = SkinningMode::Auto
+			SkinningMode       skin = SkinningMode::Auto,
+			float              stiffness = 1.0f
 		) {
 			ProceduralElement e;
 			e.type = ProceduralElementType::Tube;
@@ -85,6 +87,7 @@ namespace Boidsish {
 			e.parent = parent_idx;
 			e.name = name;
 			e.is_bone = is_bone;
+			e.stiffness = stiffness;
 
 			int idx = static_cast<int>(elements.size());
 			elements.push_back(e);
@@ -102,7 +105,8 @@ namespace Boidsish {
 			int                parent_idx = -1,
 			const std::string& name = "",
 			bool               is_bone = false,
-			SkinningMode       skin = SkinningMode::Auto
+			SkinningMode       skin = SkinningMode::Auto,
+			float              stiffness = 1.0f
 		) {
 			ProceduralElement e;
 			e.type = ProceduralElementType::Hub;
@@ -112,6 +116,7 @@ namespace Boidsish {
 			e.parent = parent_idx;
 			e.name = name;
 			e.is_bone = is_bone;
+			e.stiffness = stiffness;
 
 			int idx = static_cast<int>(elements.size());
 			elements.push_back(e);
@@ -131,7 +136,8 @@ namespace Boidsish {
 			int                parent_idx = -1,
 			const std::string& name = "",
 			bool               is_bone = false,
-			SkinningMode       skin = SkinningMode::Auto
+			SkinningMode       skin = SkinningMode::Auto,
+			float              stiffness = 1.0f
 		) {
 			ProceduralElement e;
 			e.type = ProceduralElementType::Leaf;
@@ -143,6 +149,7 @@ namespace Boidsish {
 			e.parent = parent_idx;
 			e.name = name;
 			e.is_bone = is_bone;
+			e.stiffness = stiffness;
 
 			int idx = static_cast<int>(elements.size());
 			elements.push_back(e);
@@ -161,7 +168,8 @@ namespace Boidsish {
 			int                parent_idx = -1,
 			const std::string& name = "",
 			bool               is_bone = false,
-			SkinningMode       skin = SkinningMode::Auto
+			SkinningMode       skin = SkinningMode::Auto,
+			float              stiffness = 1.0f
 		) {
 			ProceduralElement e;
 			e.type = ProceduralElementType::Puffball;
@@ -172,6 +180,7 @@ namespace Boidsish {
 			e.parent = parent_idx;
 			e.name = name;
 			e.is_bone = is_bone;
+			e.stiffness = stiffness;
 
 			int idx = static_cast<int>(elements.size());
 			elements.push_back(e);
@@ -190,7 +199,8 @@ namespace Boidsish {
 			int                parent_idx = -1,
 			const std::string& name = "",
 			bool               is_bone = false,
-			SkinningMode       skin = SkinningMode::Auto
+			SkinningMode       skin = SkinningMode::Auto,
+			float              stiffness = 1.0f
 		) {
 			ProceduralElement e;
 			e.type = ProceduralElementType::Box;
@@ -201,6 +211,7 @@ namespace Boidsish {
 			e.parent = parent_idx;
 			e.name = name;
 			e.is_bone = is_bone;
+			e.stiffness = stiffness;
 
 			int idx = static_cast<int>(elements.size());
 			elements.push_back(e);
@@ -219,7 +230,8 @@ namespace Boidsish {
 			int                parent_idx = -1,
 			const std::string& name = "",
 			bool               is_bone = false,
-			SkinningMode       skin = SkinningMode::Auto
+			SkinningMode       skin = SkinningMode::Auto,
+			float              stiffness = 1.0f
 		) {
 			ProceduralElement e;
 			e.type = ProceduralElementType::Wedge;
@@ -230,6 +242,7 @@ namespace Boidsish {
 			e.parent = parent_idx;
 			e.name = name;
 			e.is_bone = is_bone;
+			e.stiffness = stiffness;
 
 			int idx = static_cast<int>(elements.size());
 			elements.push_back(e);
@@ -248,7 +261,8 @@ namespace Boidsish {
 			int                parent_idx = -1,
 			const std::string& name = "",
 			bool               is_bone = false,
-			SkinningMode       skin = SkinningMode::Auto
+			SkinningMode       skin = SkinningMode::Auto,
+			float              stiffness = 1.0f
 		) {
 			ProceduralElement e;
 			e.type = ProceduralElementType::Pyramid;
@@ -259,6 +273,7 @@ namespace Boidsish {
 			e.parent = parent_idx;
 			e.name = name;
 			e.is_bone = is_bone;
+			e.stiffness = stiffness;
 
 			int idx = static_cast<int>(elements.size());
 			elements.push_back(e);

@@ -57,6 +57,8 @@ namespace Boidsish {
 		packet.uniforms.ao = ao_;
 		packet.uniforms.use_texture = false;
 		packet.uniforms.is_colossal = is_colossal_;
+		packet.uniforms.variety_seed = (float)(GetId() % 1000);
+		packet.uniforms.variety_amount = 0.0f;
 
 		packet.uniforms.dissolve_enabled = dissolve_enabled_ ? 1 : 0;
 		packet.uniforms.dissolve_plane_normal = dissolve_plane_normal_;
@@ -281,6 +283,10 @@ namespace Boidsish {
 			glEnableVertexAttribArray(1);
 			glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, TexCoords));
 			glEnableVertexAttribArray(2);
+			glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Pivot));
+			glEnableVertexAttribArray(3);
+			glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Stiffness));
+			glEnableVertexAttribArray(4);
 			glVertexAttribPointer(8, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Color));
 			glEnableVertexAttribArray(8);
 

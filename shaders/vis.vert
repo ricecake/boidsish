@@ -3,6 +3,8 @@
 layout(location = 0) in vec3 aPos;
 layout(location = 1) in vec3 aNormal;
 layout(location = 2) in vec2 aTexCoords;
+layout(location = 3) in vec3 aPivot;
+layout(location = 4) in float aStiffness;
 layout(location = 8) in vec3 aVertexColor;
 layout(location = 9) in ivec4 aBoneIDs;
 layout(location = 10) in vec4 aWeights;
@@ -63,6 +65,9 @@ layout(std430, binding = [[OCCLUSION_VISIBILITY_BINDING]]) readonly buffer Occlu
 
 uniform uint u_baseVisibilityIndex;
 
+uniform float variety_seed;
+uniform float variety_amount;
+
 uniform vec3  u_aabbMin;
 uniform vec3  u_aabbMax;
 uniform float u_windResponsiveness;
@@ -94,9 +99,53 @@ void main() {
 	bool  current_useSSBOInstancing = use_ssbo ? (uniforms_data[vUniformIndex].use_ssbo_instancing != 0)
 											   : useSSBOInstancing;
 
+	float current_variety_seed = use_ssbo ? uniforms_data[vUniformIndex].variety_seed : variety_seed;
+	float current_variety_amount = use_ssbo ? uniforms_data[vUniformIndex].variety_amount : variety_amount;
+
 	WindDeflection = 0.0;
 	vec3 displacedPos = aPos;
 	vec3 displacedNormal = aNormal;
+
+	// Procedural variety displacement
+	if (current_variety_amount > 0.001) {
+		// Use aPivot and current_variety_seed to create instance-specific variation
+		// This can lengthen/shorten segments and reposition limbs
+		vec3 toVertex = aPos - aPivot;
+		float dist = length(toVertex);
+		if (dist > 0.0001) {
+			vec3 dir = toVertex / dist;
+
+			// Variation parameters based on seed
+			float seed = current_variety_seed + dot(aPivot, vec3(12.9898, 78.233, 45.164));
+			if (current_useSSBOInstancing) {
+				seed += float(gl_InstanceID) * 0.61803398875;
+			}
+			float noiseX = fract(sin(seed) * 43758.5453);
+			float noiseY = fract(sin(seed + 1.0) * 43758.5453);
+			float noiseZ = fract(sin(seed + 2.0) * 43758.5453);
+
+			// 1. Lengthening/shortening (scaling along limb axis)
+			float scaleVariation = 1.0 + (noiseX * 2.0 - 1.0) * current_variety_amount;
+			displacedPos = aPivot + toVertex * scaleVariation;
+
+			// 2. Bending/Repositioning (angular rotation around pivot)
+			// Small rotations based on stiffness
+			if (aStiffness < 0.99) {
+				float bendScale = (1.0 - aStiffness) * current_variety_amount;
+				float angleX = (noiseY * 2.0 - 1.0) * bendScale;
+				float angleZ = (noiseZ * 2.0 - 1.0) * bendScale;
+
+				mat3 rotX = mat3(1, 0, 0, 0, cos(angleX), -sin(angleX), 0, sin(angleX), cos(angleX));
+				mat3 rotZ = mat3(cos(angleZ), -sin(angleZ), 0, sin(angleZ), cos(angleZ), 0, 0, 0, 1);
+
+				vec3 relativePos = displacedPos - aPivot;
+				relativePos = rotX * rotZ * relativePos;
+				displacedPos = aPivot + relativePos;
+
+				displacedNormal = normalize(rotX * rotZ * displacedNormal);
+			}
+		}
+	}
 
 	if (current_use_skinning) {
 		vec4  totalPosition = vec4(0.0);
