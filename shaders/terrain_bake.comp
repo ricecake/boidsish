@@ -155,7 +155,8 @@ void main() {
 	float bakedHeight = s_heights[localID.x + 1][localID.y + 1];
 	vec4 bakedParams = s_params[localID.x + 1][localID.y + 1];
 
-	imageStore(u_heightmapArray, ivec3(pixelCoord, slice), vec4(bakedHeight, bakedNormal));
+	// Optimized packing: R=height, G=normal.x, B=normal.z, A=waterMask
+	imageStore(u_heightmapArray, ivec3(pixelCoord, slice), vec4(bakedHeight, bakedNormal.x, bakedNormal.z, bakedParams.a));
 	imageStore(u_bakedParamsArray, ivec3(pixelCoord, slice), bakedParams);
 
 	// Mark as baked in the biome map (B channel)

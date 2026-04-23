@@ -192,27 +192,11 @@ void main() {
 	perturbFactor_TC_out[gl_InvocationID] = perturbLevel(pos, viewForward[gl_InvocationID]);
 
 	if (gl_InvocationID == 0) {
-		// Inside terrain.tcs main(), at the start of the gl_InvocationID == 0 block:
+		// Proper AABB Frustum Culling
+		vec3 minBound = vec3(worldOffset.x, Bounds_VS_out[0].x, worldOffset.z);
+		vec3 maxBound = vec3(worldOffset.x + uChunkSize, Bounds_VS_out[0].y, worldOffset.z + uChunkSize);
 
-		int outLeft = 0, outRight = 0;
-		int outBottom = 0, outTop = 0;
-		int outNear = 0, outFar = 0;
-
-		for (int i = 0; i < 4; i++) {
-			vec4 clip = ClipPos_VS_out[i];
-
-			// Count how many vertices fall outside each specific plane
-			if (clip.x < -clip.w) outLeft++;
-			if (clip.x >  clip.w) outRight++;
-			if (clip.y < -clip.w) outBottom++;
-			if (clip.y >  clip.w) outTop++;
-			if (clip.z < -clip.w) outNear++;
-			if (clip.z >  clip.w) outFar++;
-		}
-
-		// If all 4 corners fail the SAME plane test, the entire patch is off-screen.
-		// If the camera is inside the patch, no single counter will reach 4.
-		if (outLeft == 4 || outRight == 4 || outBottom == 4 || outTop == 4 || outNear == 4 || outFar == 4) {
+		if (!isAABBInFrustum(minBound, maxBound)) {
 			gl_TessLevelOuter[0] = 0.0;
 			gl_TessLevelOuter[1] = 0.0;
 			gl_TessLevelOuter[2] = 0.0;

@@ -286,14 +286,14 @@ namespace Boidsish {
 		const int num_pixels = heightmap_resolution_ * heightmap_resolution_;
 
 		// Pack height + normal into RGBA16F format for raw_heightmap_texture_
-		std::vector<float> packed_data;
-		packed_data.reserve(num_pixels * 4);
+		std::vector<float> packed_raw_data;
+		packed_raw_data.reserve(num_pixels * 4);
 
 		for (int i = 0; i < num_pixels; ++i) {
-			packed_data.push_back(heightmap[i]); // R = height
-			packed_data.push_back(normals[i].x); // G = normal.x
-			packed_data.push_back(normals[i].y); // B = normal.y
-			packed_data.push_back(normals[i].z); // A = normal.z
+			packed_raw_data.push_back(heightmap[i]); // R = height
+			packed_raw_data.push_back(normals[i].x); // G = normal.x
+			packed_raw_data.push_back(normals[i].y); // B = normal.y
+			packed_raw_data.push_back(normals[i].z); // A = normal.z
 		}
 
 		glBindTexture(GL_TEXTURE_2D_ARRAY, raw_heightmap_texture_);
@@ -308,10 +308,22 @@ namespace Boidsish {
 			1,                     // depth (one slice)
 			GL_RGBA,
 			GL_FLOAT,
-			packed_data.data()
+			packed_raw_data.data()
 		);
 
-		// Also upload to heightmap_texture_ as a fallback until baking is complete
+		// Also upload to heightmap_texture_ as a fallback until baking is complete.
+		// Fallback follows the optimized layout: R=height, G=norm.x, B=norm.z, A=waterMask.
+		std::vector<float> packed_baked_fallback;
+		packed_baked_fallback.reserve(num_pixels * 4);
+		for (int i = 0; i < num_pixels; ++i) {
+			packed_baked_fallback.push_back(heightmap[i]); // R = height
+			packed_baked_fallback.push_back(normals[i].x); // G = normal.x
+			packed_baked_fallback.push_back(normals[i].z); // B = normal.z
+			// Approximate water mask for fallback: anything below 0 is likely water
+			float water_mask = heightmap[i] < 0.0f ? 1.0f : 0.0f;
+			packed_baked_fallback.push_back(water_mask); // A = waterMask
+		}
+
 		glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture_);
 		glTexSubImage3D(
 			GL_TEXTURE_2D_ARRAY,
@@ -324,7 +336,7 @@ namespace Boidsish {
 			1,
 			GL_RGBA,
 			GL_FLOAT,
-			packed_data.data()
+			packed_baked_fallback.data()
 		);
 
 		// Pack biome indices/weights into RGBA8 format

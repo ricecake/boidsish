@@ -48,13 +48,22 @@ uniform bool uIsShadowPass = false;
 
 // #include "helpers/fast_noise.glsl"
 
-// Sample heightmap to get world position and normal
-void sampleHeightmap(vec2 uv, float slice, vec3 worldOffset, out vec3 worldPos, out vec3 normal) {
+// Sample heightmap to get world position, normal, and water mask
+void sampleHeightmap(vec2 uv, float slice, vec3 worldOffset, bool isBaked, out vec3 worldPos, out vec3 normal, out float waterMask) {
 	// Remap UV to match the grid center alignment of the heightmap texture
-	vec2  remappedUV = (uv * uRawChunkSize + 0.5) / (uRawChunkSize + 1.0);
-	vec4  data = textureLod(uHeightmap, vec3(remappedUV, slice), 0.0);
+	vec2 remappedUV = (uv * uRawChunkSize + 0.5) / (uRawChunkSize + 1.0);
+	vec4 data = textureLod(uHeightmap, vec3(remappedUV, slice), 0.0);
+
 	float height = data.r;
-	normal = normalize(data.gba);
+	if (isBaked) {
+		// Optimized path: reconstruct normal from XZ and get waterMask from Alpha
+		normal = normalize(vec3(data.g, sqrt(max(0.0, 1.0 - data.g * data.g - data.b * data.b)), data.b));
+		waterMask = data.a;
+	} else {
+		// Raw path: normal is GBA
+		normal = normalize(data.gba);
+		waterMask = 0.0; // Will be calculated/sampled later if not baked
+	}
 
 	worldPos.x = worldOffset.x + uv.x * uChunkSize;
 	worldPos.y = height;
@@ -73,21 +82,22 @@ void main() {
 	vec2 texCoord2 = mix(TexCoords_TC_out[3], TexCoords_TC_out[2], uv.x);
 	TexCoords = mix(texCoord1, texCoord2, uv.y);
 
-	// Sample heightmap at the interpolated UV to get world position and normal
-	sampleHeightmap(TexCoords, slice, worldOffset, FragPos, Normal);
-
 	// Remap UV to match the grid center alignment of the heightmap texture
 	vec2 remappedUV = (TexCoords * uRawChunkSize + 0.5) / (uRawChunkSize + 1.0);
 	vec4 biomeData = textureLod(u_biomeMap, vec3(remappedUV, slice), 0.0);
 	bool isBaked = biomeData.b > 0.5;
 
+	float waterMask;
+	// Sample heightmap at the interpolated UV to get world position, normal, and water mask
+	sampleHeightmap(TexCoords, slice, worldOffset, isBaked, FragPos, Normal, waterMask);
+
 	vec4 bakedParams = textureLod(uBakedParams, vec3(remappedUV, slice), 0.0);
 	vErosionDelta = bakedParams.r;
 	vRidgeMap = bakedParams.g;
 	vSubstrate = bakedParams.b;
-	vIsWater = bakedParams.a;
+	vIsWater = isBaked ? waterMask : bakedParams.a;
 
-	float waterMask = vIsWater;
+	waterMask = vIsWater;
 
 	if (waterMask > 0.0) {
 		float landHeight = FragPos.y;
