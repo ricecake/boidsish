@@ -29,7 +29,7 @@ bool updateLifetime(
 	p.pos.w -= dt;
 
 	// View-distance/direction culling
-	float cullDist = (p.style == STYLE_RAIN || p.style == STYLE_SNOW) ? 100.0 : 15.0;
+	float cullDist = (p.style == STYLE_RAIN || p.style == STYLE_SNOW) ? 150.0 : 15.0;
 	if (distance(p.pos.xz, viewPos.xz) > cullDist && dot(p.pos.xz - viewPos.xz, viewDir.xz) < -0.5) {
 		p.pos.w = 0;
 	}
@@ -266,14 +266,15 @@ void respawnParticle(
 			// Recycled particles are used here.
 
 			vec2 seed = vec2(float(gid) * 0.123, time * 0.456);
-			float spawn_chance = max(rain_intensity, snow_intensity);
+			// Lower maximum density/spawn chance
+			float spawn_chance = max(rain_intensity, snow_intensity) * 0.6;
 
 			if (rand(seed + 0.77) < spawn_chance) {
 				vec3 rand_offset = rand3(seed) * 2.0 - 1.0;
 
-				// Top-down box around camera
-				float box_w = 60.0;
-				float box_h = 30.0;
+				// Top-down box around camera - slightly longer distance
+				float box_w = 100.0;
+				float box_h = 50.0;
 
 				p.pos.x = viewPos.x + rand_offset.x * box_w;
 				p.pos.z = viewPos.z + rand_offset.z * box_w;

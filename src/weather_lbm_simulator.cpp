@@ -28,6 +28,7 @@ namespace Boidsish {
         for (auto& cell : *currentGrid_) {
             cell.temperature = 288.15f; // 15C
             cell.aerosol = 0.01f;
+            cell.humidity = 0.5f;
             cell.vy = 0.0f;
             for (int i = 0; i < 9; ++i) {
                 cell.f[i] = weights[i]; // rho = 1.0, u = 0
@@ -52,7 +53,7 @@ namespace Boidsish {
 		}
 	}
 
-	void WeatherLbmSimulator::Update(float deltaTime, float totalTime, float timeOfDay, const ITerrainGenerator& terrain, const glm::vec3& cameraPos, float windSpeed, float windStrength) {
+	void WeatherLbmSimulator::Update(float deltaTime, float totalTime, float timeOfDay, const ITerrainGenerator& terrain, const glm::vec3& cameraPos, float windSpeed, float windStrength, float targetTemp, float targetPressure, float targetHumidity) {
 		if (!initialized_) {
 			Initialize(terrain, totalTime, timeOfDay);
 			initialized_ = true;
@@ -65,7 +66,9 @@ namespace Boidsish {
         // Fixed timestep loop
         accumulator_ += deltaTime;
         while (accumulator_ >= dt_) {
-            Step(dt_, totalTime, timeOfDay, terrain, windSpeed, windStrength);
+            CollisionAndStreaming();
+            ApplyPhysics(dt_, totalTime, timeOfDay);
+            ApplyBoundaries(totalTime, windSpeed, windStrength, timeOfDay, targetTemp, targetPressure, targetHumidity);
             accumulator_ -= dt_;
         }
 
@@ -85,6 +88,7 @@ namespace Boidsish {
                 float n = Simplex::noise(glm::vec2(worldX * 0.001f, worldZ * 0.001f));
                 (*currentGrid_)[idx].temperature = baseTemp + n * 5.0f;
                 (*currentGrid_)[idx].aerosol = 0.01f + std::abs(n) * 0.05f;
+                (*currentGrid_)[idx].humidity = 0.4f + std::abs(n) * 0.2f;
 
                 // Set initial f based on noise-driven wind
                 glm::vec2 u(Simplex::noise(glm::vec2(worldX * 0.002f, worldZ * 0.002f)),
@@ -127,6 +131,7 @@ namespace Boidsish {
                     u = glm::vec2(0.0f);
                     cell.temperature = 288.15f;
                     cell.aerosol = 0.01f;
+                    cell.humidity = 0.5f;
                     cell.vy = 0.0f;
                     for (int i = 0; i < 9; ++i) cell.f[i] = weights[i];
                 }
@@ -200,6 +205,9 @@ namespace Boidsish {
                 nextCell.aerosol = glm::mix(glm::mix(c00.aerosol, c10.aerosol, tx),
                                            glm::mix(c01.aerosol, c11.aerosol, tx), tz);
 
+                nextCell.humidity = glm::mix(glm::mix(c00.humidity, c10.humidity, tx),
+                                            glm::mix(c01.humidity, c11.humidity, tx), tz);
+
                 nextCell.vy = glm::mix(glm::mix(c00.vy, c10.vy, tx),
                                       glm::mix(c01.vy, c11.vy, tx), tz);
 
@@ -236,11 +244,6 @@ namespace Boidsish {
         }
     }
 
-    void WeatherLbmSimulator::Step(float deltaTime, float totalTime, float timeOfDay, const ITerrainGenerator& terrain, float windSpeed, float windStrength) {
-        CollisionAndStreaming();
-        ApplyPhysics(deltaTime, totalTime, timeOfDay);
-        ApplyBoundaries(totalTime, windSpeed, windStrength, timeOfDay);
-    }
 
     void WeatherLbmSimulator::ApplyPhysics(float deltaTime, float totalTime, float timeOfDay) {
         const float PI = 3.14159265358979323846f;
@@ -304,6 +307,22 @@ namespace Boidsish {
             // Diffusion / Decay
             cell.aerosol *= 0.99f;
 
+            // 6. Humidity modeling (Evaporation & Condensation)
+            // Evaporation based on sensible heat factor (proxy for ground moisture availability) and temperature
+            float tc_local = cell.temperature - 273.15f;
+            float evaporation = std::max(0.0f, tc_local) * cfg.sensibleHeatFactor * 0.0001f;
+            cell.humidity += evaporation;
+
+            // Saturation check (Bolton's formula simplified)
+            float es_local = 6.112f * std::exp(17.67f * tc_local / (tc_local + 243.5f));
+            // In our simulation, humidity 1.0 = es_local.
+            // If it goes significantly above 1.0, it should condense.
+            if (cell.humidity > 1.0f) {
+                float excess = cell.humidity - 1.0f;
+                cell.humidity -= excess * 0.1f; // Sink to precipitation
+            }
+            cell.humidity = std::clamp(cell.humidity, 0.0f, 1.2f);
+
             // Thermal rising effects horizontal wind (divergence)
             // If vy is high, it "sucks" air in (simplified)
             glm::vec2 inflow(0.0f);
@@ -314,7 +333,9 @@ namespace Boidsish {
         }
     }
 
-    void WeatherLbmSimulator::ApplyBoundaries(float totalTime, float windSpeed, float windStrength, float timeOfDay) {
+    void WeatherLbmSimulator::ApplyBoundaries(float totalTime, float windSpeed, float windStrength, float timeOfDay, float targetTemp, float targetPressure, float targetHumidity) {
+        float targetRho = targetPressure / 1013.25f;
+
         // Apply noise-driven wind at the edges
         for (int z = 0; z < height_; ++z) {
             for (int x = 0; x < width_; ++x) {
@@ -343,13 +364,16 @@ namespace Boidsish {
 
                     // Force boundary equilibrium
                     for (int i = 0; i < 9; ++i) {
-                        (*currentGrid_)[idx].f[i] = CalculateEquilibrium(i, 1.0f, targetU);
+                        (*currentGrid_)[idx].f[i] = CalculateEquilibrium(i, targetRho, targetU);
                     }
 
-                    // Boundaries also track temperature targets
+                    // Boundaries also track targets
                     // Note: This is simpler than full LBM thermal boundaries but helps stability
-                    float targetTemp = GetBaseTemperature(worldX, worldZ, totalTime, timeOfDay);
-                    (*currentGrid_)[idx].temperature = glm::mix((*currentGrid_)[idx].temperature, targetTemp, 0.1f);
+                    float baseTemp = GetBaseTemperature(worldX, worldZ, totalTime, timeOfDay);
+                    // Mix between local diurnal/seasonal base and global target
+                    float finalTargetTemp = glm::mix(baseTemp, targetTemp, 0.5f);
+                    (*currentGrid_)[idx].temperature = glm::mix((*currentGrid_)[idx].temperature, finalTargetTemp, 0.1f);
+                    (*currentGrid_)[idx].humidity = glm::mix((*currentGrid_)[idx].humidity, targetHumidity, 0.1f);
                 }
             }
         }
@@ -509,6 +533,7 @@ namespace Boidsish {
             out.windVelocity = u * conversion;
             out.verticalWind = cell->vy * conversion;
             out.temperature = cell->temperature;
+            out.humidity = cell->humidity;
         }
         return out;
     }
@@ -520,6 +545,7 @@ namespace Boidsish {
         glm::vec2 avgU(0.0f);
         float avgTemp = 0.0f;
         float avgAerosol = 0.0f;
+        float avgHumidity = 0.0f;
         float avgVy = 0.0f;
         glm::vec3 avgAerosolColor(0.0f);
 
@@ -537,6 +563,7 @@ namespace Boidsish {
             avgU += u;
             avgTemp += (*currentGrid_)[i].temperature;
             avgAerosol += (*currentGrid_)[i].aerosol;
+            avgHumidity += (*currentGrid_)[i].humidity;
             avgVy += (*currentGrid_)[i].vy;
             avgAerosolColor += config_[i].aerosolColor;
         }
@@ -546,6 +573,7 @@ namespace Boidsish {
         avgU /= n;
         avgTemp /= n;
         avgAerosol /= n;
+        avgHumidity /= n;
         avgVy /= n;
         avgAerosolColor /= n;
 
@@ -558,13 +586,8 @@ namespace Boidsish {
         // P = P0 * exp(-Mgh/RT) - highly simplified
         currentOutput_.pressure = 1013.25f * avgRho;
 
-        // 2. Humidity derivation (Bolton's formula for saturation vapor pressure)
-        // es = 6.112 * exp(17.67 * Tc / (Tc + 243.5))
-        float tc = avgTemp - 273.15f;
-        float es = 6.112f * std::exp(17.67f * tc / (tc + 243.5f));
-        // Simple heuristic for actual vapor pressure based on aerosol (proxy for condensation nuclei)
-        float e = es * (0.4f + 0.3f * std::sin(timeOfDay * PI / 12.0f) + avgAerosol * 2.0f);
-        currentOutput_.humidity = std::clamp(e / es, 0.0f, 1.0f);
+        // 2. Humidity derivation
+        currentOutput_.humidity = std::clamp(avgHumidity, 0.0f, 1.0f);
 
         // 3. Rayleigh Scattering (P/T dependent)
         // BetaR = BetaR0 * (P/P0) * (T0/T)

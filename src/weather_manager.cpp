@@ -37,6 +37,8 @@ namespace Boidsish {
 		SetPace(WeatherAttribute::CloudCoverage, WeatherConstants::CloudCoverage.pace);
 		SetPace(WeatherAttribute::Precipitation, WeatherConstants::Precipitation.pace);
 		SetPace(WeatherAttribute::Temperature, WeatherConstants::Temperature.pace);
+		SetPace(WeatherAttribute::Humidity, 0.1f);
+		SetPace(WeatherAttribute::Pressure, 0.1f);
 
 		// Initialize default paces for new attributes
 		SetPace(WeatherAttribute::MieScattering, 0.2f);
@@ -154,6 +156,12 @@ namespace Boidsish {
 		case WeatherAttribute::Temperature:
 			value_ptr = &current_.temperature;
 			break;
+		case WeatherAttribute::Humidity:
+			value_ptr = &current_.humidity;
+			break;
+		case WeatherAttribute::Pressure:
+			value_ptr = &current_.pressure;
+			break;
 		case WeatherAttribute::MieScattering:
 			value_ptr = &current_.mie_scattering;
 			break;
@@ -241,6 +249,8 @@ namespace Boidsish {
 		sunny.settings.cloud_coverage = {CloudCoverage.GetValue(0.93f), CloudCoverage.GetValue(1.07f)};
 		sunny.settings.precipitation = {0.0f, 0.0f};
 		sunny.settings.temperature = {Temperature.GetValue(0.9f), Temperature.GetValue(1.1f)};
+		sunny.settings.humidity = {0.2f, 0.4f};
+		sunny.settings.pressure = {1010.0f, 1020.0f};
 		sunny.settings.mie_scattering = {MieScattering, MieScattering};
 		sunny.settings.mie_extinction = {MieExtinction, MieExtinction};
 		sunny.settings.rayleigh_scattering = {RayleighScattering, RayleighScattering};
@@ -269,6 +279,8 @@ namespace Boidsish {
 		cloudy.settings.cloud_coverage = {CloudCoverage.GetValue(1.1f), CloudCoverage.GetValue(1.2f)};
 		cloudy.settings.precipitation = {0.0f, 0.1f};
 		cloudy.settings.temperature = {Temperature.GetValue(0.8f), Temperature.GetValue(1.0f)};
+		cloudy.settings.humidity = {0.5f, 0.7f};
+		cloudy.settings.pressure = {1000.0f, 1010.0f};
 		cloudy.settings.mie_scattering = {MieScattering, MieScattering * 1.5f};
 		cloudy.settings.mie_extinction = {MieExtinction, MieExtinction * 1.5f};
 		cloudy.settings.rayleigh_scattering = {RayleighScattering, RayleighScattering * 1.1f};
@@ -297,6 +309,8 @@ namespace Boidsish {
 		overcast.settings.cloud_coverage = {CloudCoverage.GetValue(1.2f), CloudCoverage.GetValue(2.0f)};
 		overcast.settings.precipitation = {0.1f, 0.3f};
 		overcast.settings.temperature = {Temperature.GetValue(0.7f), Temperature.GetValue(0.9f)};
+		overcast.settings.humidity = {0.7f, 0.9f};
+		overcast.settings.pressure = {990.0f, 1005.0f};
 		overcast.settings.mie_scattering = {MieScattering * 1.5f, MieScattering * 2.0f};
 		overcast.settings.mie_extinction = {MieExtinction * 1.5f, MieExtinction * 2.0f};
 		overcast.settings.rayleigh_scattering = {RayleighScattering * 1.1f, RayleighScattering * 1.3f};
@@ -325,6 +339,8 @@ namespace Boidsish {
 		foggy.settings.cloud_coverage = {CloudCoverage.GetValue(0.2f), CloudCoverage.GetValue(0.5f)};
 		foggy.settings.precipitation = {0.0f, 0.05f};
 		foggy.settings.temperature = {WeatherConstants::Temperature.GetValue(0.6f), WeatherConstants::Temperature.GetValue(0.8f)};
+		foggy.settings.humidity = {0.8f, 1.0f};
+		foggy.settings.pressure = {1005.0f, 1015.0f};
 		foggy.settings.mie_scattering = {MieScattering * 2.0f, MieScattering * 5.0f};
 		foggy.settings.mie_extinction = {MieExtinction * 2.0f, MieExtinction * 5.0f};
 		foggy.settings.rayleigh_scattering = {RayleighScattering * 1.3f, RayleighScattering * 1.5f};
@@ -353,6 +369,8 @@ namespace Boidsish {
 		rainy.settings.cloud_coverage = {CloudCoverage.GetValue(1.5f), CloudCoverage.GetValue(2.0f)};
 		rainy.settings.precipitation = {0.5f, 1.0f};
 		rainy.settings.temperature = {WeatherConstants::Temperature.GetValue(0.7f), WeatherConstants::Temperature.GetValue(0.9f)}; // Moderate
+		rainy.settings.humidity = {0.85f, 1.0f};
+		rainy.settings.pressure = {980.0f, 1000.0f};
 		rainy.settings.mie_scattering = {MieScattering * 1.5f, MieScattering * 2.0f};
 		rainy.settings.mie_extinction = {MieExtinction * 1.5f, MieExtinction * 2.0f};
 		rainy.settings.rayleigh_scattering = {RayleighScattering * 1.1f, RayleighScattering * 1.3f};
@@ -381,6 +399,8 @@ namespace Boidsish {
 		snowy.settings.cloud_coverage = {CloudCoverage.GetValue(1.2f), CloudCoverage.GetValue(2.0f)};
 		snowy.settings.precipitation = {0.4f, 0.8f};
 		snowy.settings.temperature = {WeatherConstants::Temperature.GetValue(0.2f), WeatherConstants::Temperature.GetValue(0.4f)}; // Low
+		snowy.settings.humidity = {0.7f, 0.9f};
+		snowy.settings.pressure = {985.0f, 1005.0f};
 		snowy.settings.mie_scattering = {MieScattering * 2.0f, MieScattering * 4.0f};
 		snowy.settings.mie_extinction = {MieExtinction * 2.0f, MieExtinction * 4.0f};
 		snowy.settings.rayleigh_scattering = {RayleighScattering * 1.2f, RayleighScattering * 1.4f};
@@ -476,7 +496,10 @@ namespace Boidsish {
 					*terrain_,
 					cameraPos,
 					current_.wind_speed,
-					current_.wind_strength
+					current_.wind_strength,
+					current_.temperature,
+					current_.pressure,
+					current_.humidity
 				);
 			} else {
 				// We still need to anchor the simulator grid so PopulateWindData UBO metadata is correct
@@ -571,6 +594,8 @@ namespace Boidsish {
 			cached_targets_.cloud_coverage = blended.cloud_coverage.Lerp(humidity);
 			cached_targets_.precipitation = blended.precipitation.Lerp(humidity);
 			cached_targets_.temperature = blended.temperature.Lerp(temperature);
+			cached_targets_.humidity = blended.humidity.Lerp(humidity);
+			cached_targets_.pressure = blended.pressure.Lerp(pressure);
 
 			cached_targets_.mie_scattering = blended.mie_scattering.Lerp(humidity);
 			cached_targets_.mie_extinction = blended.mie_extinction.Lerp(humidity);
@@ -616,6 +641,8 @@ namespace Boidsish {
 		UpdateAttribute(WeatherAttribute::CloudCoverage, cached_targets_.cloud_coverage, deltaTime);
 		UpdateAttribute(WeatherAttribute::Precipitation, cached_targets_.precipitation, deltaTime);
 		UpdateAttribute(WeatherAttribute::Temperature, cached_targets_.temperature, deltaTime);
+		UpdateAttribute(WeatherAttribute::Humidity, cached_targets_.humidity, deltaTime);
+		UpdateAttribute(WeatherAttribute::Pressure, cached_targets_.pressure, deltaTime);
 
 		// Update new attributes
 		UpdateAttribute(WeatherAttribute::MieScattering, cached_targets_.mie_scattering, deltaTime);
