@@ -8,7 +8,6 @@ layout(binding = 0, rgba32f) uniform image3D u_pop[5];
 layout(binding = 5, r32f) uniform image3D u_mass;
 layout(binding = 6, rgba32f) uniform image3D u_velocity;
 
-// BVH structures matching tiny_bvh (Wald 32-byte layout)
 struct BVHNode {
     vec3 aabbMin; uint leftFirst;
     vec3 aabbMax; uint triCount;
@@ -23,21 +22,19 @@ layout(std430, binding = 1) buffer BVHIndices {
 };
 
 layout(std430, binding = 2) buffer MeshVertices {
-    vec4 vertices[]; // xyz, w ignored
+    vec4 vertices[];
 };
 
 uniform vec3 u_center;
 uniform float u_radius;
-uniform float u_amount; // Target density
+uniform float u_amount;
 uniform ivec3 u_resolution;
 uniform vec3 u_worldScale;
 uniform vec3 u_worldOrigin;
 uniform int u_mode; // 0 = sphere, 1 = mesh
 uniform int u_numNodes;
-uniform mat4 u_meshTransform;
 uniform mat4 u_invMeshTransform;
 
-// Ray-AABB intersection for BVH traversal
 float intersect_aabb(vec3 ro, vec3 rd, vec3 boxMin, vec3 boxMax) {
     vec3 tMin = (boxMin - ro) / rd;
     vec3 tMax = (boxMax - ro) / rd;

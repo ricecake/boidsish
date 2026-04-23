@@ -4499,6 +4499,22 @@ namespace Boidsish {
 		return impl->input_state.delta_time;
 	}
 
+	uint32_t Visualizer::GetDepthTexture() const {
+		return impl->compositor_ ? impl->compositor_->GetDepthTexture() : 0;
+	}
+
+	uint32_t Visualizer::GetTerrainHeightmapTexture() const {
+		return impl->terrain_render_manager ? impl->terrain_render_manager->GetHeightmapTexture() : 0;
+	}
+
+	uint32_t Visualizer::GetTerrainChunkGridTexture() const {
+		return impl->terrain_render_manager ? impl->terrain_render_manager->GetChunkGridTexture() : 0;
+	}
+
+	uint32_t Visualizer::GetTerrainDataUbo() const {
+		return impl->terrain_render_manager ? impl->terrain_render_manager->GetTerrainDataUbo() : 0;
+	}
+
 	void Visualizer::RemoveFireEffect(const std::shared_ptr<FireEffect>& effect) const {
 		impl->fire_effect_manager->RemoveEffect(effect);
 	}

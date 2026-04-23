@@ -584,6 +584,11 @@ namespace Boidsish {
 		float GetRenderScale() const;
 		void  SetRenderScale(float scale);
 
+		uint32_t GetDepthTexture() const;
+		uint32_t GetTerrainHeightmapTexture() const;
+		uint32_t GetTerrainChunkGridTexture() const;
+		uint32_t GetTerrainDataUbo() const;
+
 		Config&       GetConfig();
 		AudioManager& GetAudioManager();
 

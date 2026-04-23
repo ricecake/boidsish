@@ -26,18 +26,7 @@ float intersect_aabb(vec3 ro, vec3 rd, vec3 boxMin, vec3 boxMax, out float tnear
     return (tnear <= tfar && tfar > 0.0) ? tnear : 1e30;
 }
 
-float get_scene_depth(vec2 uv) {
-    float z = texture(u_depthTexture, uv).r;
-    // Standard conversion from non-linear depth to linear world distance
-    // This is a placeholder; actual conversion depends on near/far planes
-    // For now, we'll use a simplified depth test if linear depth isn't easily available
-    return z;
-}
-
 void main() {
-    vec2 screenUV = gl_FragCoord.xy / textureSize(u_depthTexture, 0);
-    float sceneDepth = texture(u_depthTexture, screenUV).r;
-
     vec3 ro = u_cameraPos;
     vec3 rd = normalize(v_worldPos - u_cameraPos);
 
@@ -51,7 +40,9 @@ void main() {
 
     tnear = max(tnear, 0.0);
 
-    // Raymarching
+    vec2 screenUV = gl_FragCoord.xy / textureSize(u_depthTexture, 0);
+    float sceneDepth = texture(u_depthTexture, screenUV).r;
+
     const int MAX_STEPS = 128;
     float stepSize = (tfar - tnear) / float(MAX_STEPS);
     float t = tnear;
@@ -61,7 +52,6 @@ void main() {
     for (int i = 0; i < MAX_STEPS; ++i) {
         vec3 p = ro + rd * t;
 
-        // Scene depth test
         vec4 projPos = projection * view * vec4(p, 1.0);
         float pDepth = (projPos.z / projPos.w) * 0.5 + 0.5;
         if (pDepth > sceneDepth) break;
@@ -69,14 +59,19 @@ void main() {
         vec3 uvw = (p - u_worldOrigin) / u_worldScale;
         float mass = texture(u_mass, uvw).r;
 
-        if (mass > 0.01) {
-            float alpha = mass * 0.5;
-            vec4 col = vec4(u_waterColor, alpha);
+        if (mass > 0.05) {
+            float alpha = smoothstep(0.05, 0.2, mass) * 0.4;
+
+            // Basic lighting
+            vec3 normal = textureLod(u_velocity, uvw, 0).xyz; // Simplified normal from velocity/gradient
+            float diff = max(0.2, dot(normalize(vec3(1,1,1)), normal));
+
+            vec4 col = vec4(u_waterColor * diff, alpha);
             col.rgb *= col.a;
             sum += col * (1.0 - sum.a);
         }
 
-        if (sum.a > 0.95) break;
+        if (sum.a > 0.98) break;
         t += stepSize;
         if (t > tfar) break;
     }

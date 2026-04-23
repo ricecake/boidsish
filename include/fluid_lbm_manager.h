@@ -33,7 +33,11 @@ namespace Boidsish {
 
         // Add a model as an obstacle
         void AddObstacleModel(std::shared_ptr<Model> model);
-        void SetTerrainHeightmap(uint32_t heightmap) { terrainHeightmap_ = heightmap; }
+        void SetTerrainData(uint32_t heightmap, uint32_t chunkGrid, uint32_t dataUbo) {
+            terrainHeightmap_ = heightmap;
+            terrainChunkGrid_ = chunkGrid;
+            terrainDataUbo_ = dataUbo;
+        }
 
         // Accessors
         const FluidLbmConfig& GetConfig() const { return config_; }
@@ -64,6 +68,8 @@ namespace Boidsish {
         uint32_t obstacleTexture_ = 0;  // R8: 1 if obstacle, 0 otherwise
         uint32_t velocityTexture_ = 0;  // RGB32F: Macroscopic velocity (cached for rendering)
         uint32_t terrainHeightmap_ = 0;
+        uint32_t terrainChunkGrid_ = 0;
+        uint32_t terrainDataUbo_ = 0;
 
         // BVH SSBOs
         uint32_t bvhNodesBuffer_ = 0;

@@ -11,7 +11,8 @@ public:
     FluidShape(FluidLbmManager* manager, Visualizer* viz) : manager_(manager), viz_(viz) {}
 
     void render() const override {
-        manager_->Render(viz_->GetViewMatrix(), viz_->GetProjectionMatrix(), viz_->GetCamera().pos());
+        manager_->SetTerrainData(viz_->GetTerrainHeightmapTexture(), viz_->GetTerrainChunkGridTexture(), viz_->GetTerrainDataUbo());
+        manager_->Render(viz_->GetViewMatrix(), viz_->GetProjectionMatrix(), viz_->GetCamera().pos(), viz_->GetDepthTexture());
     }
 
     AABB GetAABB() const override {
@@ -28,19 +29,31 @@ int main() {
     try {
         Visualizer viz(1280, 720, "3D LBM Fluid Demo");
 
+        // Initial camera setup
+        Camera cam(0.0f, 15.0f, 30.0f, -20.0f, 0.0f);
+        viz.SetCamera(cam);
+
         FluidLbmManager fluidManager;
         FluidLbmConfig config;
         config.resolution = {64, 64, 64};
-        config.worldScale = {20.0f, 20.0f, 20.0f};
-        config.worldOrigin = {-10.0f, 0.0f, -10.0f};
+        config.worldScale = {30.0f, 30.0f, 30.0f};
+        config.worldOrigin = {-15.0f, 2.0f, -15.0f};
+        config.gravity = 20.0f; // High gravity for quick drop
+        config.viscosity = 0.005f; // Low viscosity for splashes
         fluidManager.Initialize(config);
 
-        // Add a model as an obstacle (e.g., a simple cube or teapot if available)
-        // For this demo, let's just drop a ball of water first
-        fluidManager.InjectFluid({0.0f, 15.0f, 0.0f}, 3.0f, 1.0f);
+        // Drop a ball of water
+        fluidManager.InjectFluid({0.0f, 25.0f, 0.0f}, 5.0f, 0.5f);
 
-        viz.AddUpdateHandler([&](float dt, float /*totalTime*/) {
+        viz.AddUpdateHandler([&](float totalTime, float dt) {
             fluidManager.Step(dt);
+
+            // Periodically inject more fluid for continuous action
+            static float lastInject = 0;
+            if (totalTime - lastInject > 5.0f) {
+                fluidManager.InjectFluid({0.0f, 25.0f, 0.0f}, 4.0f, 0.5f);
+                lastInject = totalTime;
+            }
         });
 
         auto fluidShape = std::make_shared<FluidShape>(&fluidManager, &viz);

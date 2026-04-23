@@ -3,7 +3,8 @@
 layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
 
 layout(binding = 0, r8) uniform image3D u_obstacles;
-layout(binding = 1) uniform sampler2D u_terrainHeightmap;
+layout(binding = 1) uniform sampler2DArray u_terrainHeightmap;
+layout(binding = 2) uniform isampler2D u_chunkGrid;
 
 struct BVHNode {
     vec3 aabbMin; uint leftFirst;
@@ -19,7 +20,12 @@ layout(std430, binding = 1) buffer BVHIndices {
 };
 
 layout(std430, binding = 2) buffer MeshVertices {
-    vec4 vertices[]; // triangle soup
+    vec4 vertices[];
+};
+
+layout(std140, binding = 8) uniform TerrainData {
+    ivec4 u_originSize;    // x, z, size, is_bound
+    vec4  u_terrainParams; // chunk_size, world_scale, unused, unused
 };
 
 uniform ivec3 u_resolution;
@@ -28,7 +34,7 @@ uniform vec3 u_worldOrigin;
 uniform int u_numNodes;
 uniform mat4 u_meshTransform;
 uniform mat4 u_invMeshTransform;
-uniform int u_firstPass; // 1 if first obstacle, 0 otherwise
+uniform int u_firstPass;
 
 float intersect_aabb(vec3 ro, vec3 rd, vec3 boxMin, vec3 boxMax) {
     vec3 tMin = (boxMin - ro) / rd;
@@ -85,6 +91,21 @@ bool is_inside_mesh(vec3 p) {
     return (hits % 2) != 0;
 }
 
+float get_terrain_height(vec3 worldPos) {
+    float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
+    int cx = int(floor(worldPos.x / scaledChunkSize));
+    int cz = int(floor(worldPos.z / scaledChunkSize));
+
+    ivec2 localChunk = ivec2(cx, cz) - u_originSize.xz;
+    if (any(lessThan(localChunk, ivec2(0))) || any(greaterThanEqual(localChunk, ivec2(u_originSize.y)))) return -1000.0;
+
+    int slice = texelFetch(u_chunkGrid, localChunk, 0).r;
+    if (slice < 0) return -1000.0;
+
+    vec2 uv = fract(worldPos.xz / scaledChunkSize);
+    return texture(u_terrainHeightmap, vec3(uv, float(slice))).r;
+}
+
 void main() {
     ivec3 pos = ivec3(gl_GlobalInvocationID.xyz);
     if (any(greaterThanEqual(pos, u_resolution))) return;
@@ -95,15 +116,10 @@ void main() {
     bool obstacle = existing > 0.5;
 
     if (u_firstPass != 0) {
-        // 1. Terrain obstacle
-        vec2 terrainUV = (worldPos.xz - u_worldOrigin.xz) / u_worldScale.xz;
-        if (all(greaterThanEqual(terrainUV, vec2(0))) && all(lessThanEqual(terrainUV, vec2(1)))) {
-            float terrainHeight = texture(u_terrainHeightmap, terrainUV).r;
-            if (worldPos.y < terrainHeight) obstacle = true;
-        }
+        float terrainHeight = get_terrain_height(worldPos);
+        if (worldPos.y < terrainHeight) obstacle = true;
     }
 
-    // 2. Mesh obstacle
     if (!obstacle && u_numNodes > 0) {
         vec3 meshLocalPos = (u_invMeshTransform * vec4(worldPos, 1.0)).xyz;
         if (is_inside_mesh(meshLocalPos)) obstacle = true;

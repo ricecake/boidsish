@@ -52,6 +52,17 @@ namespace Boidsish {
         glGenBuffers(1, &bvhIndicesBuffer_);
         glGenBuffers(1, &meshVerticesBuffer_);
 
+        // Clear textures
+        float zeroF = 0.0f;
+        uint32_t zeroU = 0;
+        glClearTexImage(massTexture_, 0, GL_RED, GL_FLOAT, &zeroF);
+        glClearTexImage(obstacleTexture_, 0, GL_RED, GL_UNSIGNED_BYTE, &zeroU);
+        glClearTexImage(velocityTexture_, 0, GL_RGBA, GL_FLOAT, &zeroF);
+        for(int i=0; i<5; ++i) {
+            glClearTexImage(populationsA_[i], 0, GL_RGBA, GL_FLOAT, &zeroF);
+            glClearTexImage(populationsB_[i], 0, GL_RGBA, GL_FLOAT, &zeroF);
+        }
+
         initialized_ = true;
         logger::INFO("FluidLbmManager initialized with resolution {}x{}x{}", config_.resolution.x, config_.resolution.y, config_.resolution.z);
     }
@@ -101,52 +112,53 @@ namespace Boidsish {
         UpdateObstacles();
 
         LbmParamsGpu params;
-        params.gravity = glm::vec3(0.0f, -config_.gravity * 0.001f, 0.0f);
-        params.dt = dt * 10.0f; // Scale simulation dt
+        params.gravity = glm::vec3(0.0f, -config_.gravity * 0.1f, 0.0f);
+        params.dt = 1.0f;
         params.tau = 0.5f + 3.0f * config_.viscosity;
         params.omega = 1.0f / params.tau;
         params.resolution = config_.resolution;
 
-        GLuint inPops[5], outPops[5];
-        if (useA_) {
-            for(int i=0; i<5; ++i) { inPops[i] = populationsA_[i]; outPops[i] = populationsB_[i]; }
-        } else {
-            for(int i=0; i<5; ++i) { inPops[i] = populationsB_[i]; outPops[i] = populationsA_[i]; }
+        int subSteps = 4;
+        for (int s = 0; s < subSteps; ++s) {
+            GLuint inPops[5], outPops[5];
+            if (useA_) {
+                for(int i=0; i<5; ++i) { inPops[i] = populationsA_[i]; outPops[i] = populationsB_[i]; }
+            } else {
+                for(int i=0; i<5; ++i) { inPops[i] = populationsB_[i]; outPops[i] = populationsA_[i]; }
+            }
+
+            glUseProgram(lbmStepShader_);
+            for(int i=0; i<5; ++i) {
+                glBindImageTexture(i, inPops[i], 0, GL_TRUE, 0, GL_READ_ONLY, GL_RGBA32F);
+                glBindImageTexture(5 + i, outPops[i], 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA32F);
+            }
+            glBindImageTexture(10, massTexture_, 0, GL_TRUE, 0, GL_READ_WRITE, GL_R32F);
+            glBindImageTexture(11, obstacleTexture_, 0, GL_TRUE, 0, GL_READ_ONLY, GL_R8);
+            glBindImageTexture(12, velocityTexture_, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA32F);
+
+            glUniform3fv(glGetUniformLocation(lbmStepShader_, "u_params.gravity"), 1, glm::value_ptr(params.gravity));
+            glUniform1f(glGetUniformLocation(lbmStepShader_, "u_params.dt"), params.dt);
+            glUniform1f(glGetUniformLocation(lbmStepShader_, "u_params.tau"), params.tau);
+            glUniform1f(glGetUniformLocation(lbmStepShader_, "u_params.omega"), params.omega);
+            glUniform3iv(glGetUniformLocation(lbmStepShader_, "u_params.resolution"), 1, glm::value_ptr(params.resolution));
+
+            glDispatchCompute((config_.resolution.x + 3) / 4, (config_.resolution.y + 3) / 4, (config_.resolution.z + 3) / 4);
+            glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+            glUseProgram(lbmSurfaceShader_);
+            for(int i=0; i<5; ++i) {
+                glBindImageTexture(i, outPops[i], 0, GL_TRUE, 0, GL_READ_ONLY, GL_RGBA32F);
+            }
+            glBindImageTexture(5, massTexture_, 0, GL_TRUE, 0, GL_READ_WRITE, GL_R32F);
+            glBindImageTexture(6, velocityTexture_, 0, GL_TRUE, 0, GL_READ_ONLY, GL_RGBA32F);
+
+            glUniform3iv(glGetUniformLocation(lbmSurfaceShader_, "u_params.resolution"), 1, glm::value_ptr(params.resolution));
+
+            glDispatchCompute((config_.resolution.x + 3) / 4, (config_.resolution.y + 3) / 4, (config_.resolution.z + 3) / 4);
+            glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+            useA_ = !useA_;
         }
-
-        // 1. Step (Collision & Streaming)
-        glUseProgram(lbmStepShader_);
-        for(int i=0; i<5; ++i) {
-            glBindImageTexture(i, inPops[i], 0, GL_TRUE, 0, GL_READ_ONLY, GL_RGBA32F);
-            glBindImageTexture(5 + i, outPops[i], 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA32F);
-        }
-        glBindImageTexture(10, massTexture_, 0, GL_TRUE, 0, GL_READ_WRITE, GL_R32F);
-        glBindImageTexture(11, obstacleTexture_, 0, GL_TRUE, 0, GL_READ_ONLY, GL_R8);
-        glBindImageTexture(12, velocityTexture_, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA32F);
-
-        glUniform3fv(glGetUniformLocation(lbmStepShader_, "u_params.gravity"), 1, glm::value_ptr(params.gravity));
-        glUniform1f(glGetUniformLocation(lbmStepShader_, "u_params.dt"), params.dt);
-        glUniform1f(glGetUniformLocation(lbmStepShader_, "u_params.tau"), params.tau);
-        glUniform1f(glGetUniformLocation(lbmStepShader_, "u_params.omega"), params.omega);
-        glUniform3iv(glGetUniformLocation(lbmStepShader_, "u_params.resolution"), 1, glm::value_ptr(params.resolution));
-
-        glDispatchCompute((config_.resolution.x + 3) / 4, (config_.resolution.y + 3) / 4, (config_.resolution.z + 3) / 4);
-        glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
-
-        // 2. Surface tracking
-        glUseProgram(lbmSurfaceShader_);
-        for(int i=0; i<5; ++i) {
-            glBindImageTexture(i, outPops[i], 0, GL_TRUE, 0, GL_READ_ONLY, GL_RGBA32F);
-        }
-        glBindImageTexture(5, massTexture_, 0, GL_TRUE, 0, GL_READ_WRITE, GL_R32F);
-        glBindImageTexture(6, velocityTexture_, 0, GL_TRUE, 0, GL_READ_ONLY, GL_RGBA32F);
-
-        glUniform3iv(glGetUniformLocation(lbmSurfaceShader_, "u_params.resolution"), 1, glm::value_ptr(params.resolution));
-
-        glDispatchCompute((config_.resolution.x + 3) / 4, (config_.resolution.y + 3) / 4, (config_.resolution.z + 3) / 4);
-        glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
-
-        useA_ = !useA_;
     }
 
     void FluidLbmManager::Render(const glm::mat4& view, const glm::mat4& proj, const glm::vec3& cameraPos, uint32_t depthTexture) {
@@ -175,12 +187,11 @@ namespace Boidsish {
         glUniform1i(glGetUniformLocation(lbmRenderShader_, "u_mass"), 0);
 
         if (depthTexture != 0) {
-            glActiveTexture(GL_TEXTURE1);
+            glActiveTexture(GL_TEXTURE2); // Use unit 2 as per layout(binding = 2) in frag
             glBindTexture(GL_TEXTURE_2D, depthTexture);
-            glUniform1i(glGetUniformLocation(lbmRenderShader_, "u_depthTexture"), 1);
+            glUniform1i(glGetUniformLocation(lbmRenderShader_, "u_depthTexture"), 2);
         }
 
-        // Draw a cube for raymarching
         static GLuint vao = 0, vbo = 0, ebo = 0;
         if (vao == 0) {
             float vertices[] = {
@@ -227,7 +238,7 @@ namespace Boidsish {
         glUniform3iv(glGetUniformLocation(lbmInitShader_, "u_resolution"), 1, glm::value_ptr(config_.resolution));
         glUniform3fv(glGetUniformLocation(lbmInitShader_, "u_worldScale"), 1, glm::value_ptr(config_.worldScale));
         glUniform3fv(glGetUniformLocation(lbmInitShader_, "u_worldOrigin"), 1, glm::value_ptr(config_.worldOrigin));
-        glUniform1i(glGetUniformLocation(lbmInitShader_, "u_mode"), 0); // Sphere mode
+        glUniform1i(glGetUniformLocation(lbmInitShader_, "u_mode"), 0);
 
         glDispatchCompute((config_.resolution.x + 3) / 4, (config_.resolution.y + 3) / 4, (config_.resolution.z + 3) / 4);
         glMemoryBarrier(GL_ALL_BARRIER_BITS);
@@ -262,10 +273,7 @@ namespace Boidsish {
         glBufferData(GL_SHADER_STORAGE_BUFFER, cached.vertices.size() * sizeof(glm::vec4), cached.vertices.data(), GL_DYNAMIC_DRAW);
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, meshVerticesBuffer_);
 
-        glm::mat4 meshTransform = model->GetModelMatrix();
-        glm::mat4 invMeshTransform = glm::inverse(meshTransform);
-
-        glUniformMatrix4fv(glGetUniformLocation(lbmInitShader_, "u_meshTransform"), 1, GL_FALSE, glm::value_ptr(meshTransform));
+        glm::mat4 invMeshTransform = glm::inverse(model->GetModelMatrix());
         glUniformMatrix4fv(glGetUniformLocation(lbmInitShader_, "u_invMeshTransform"), 1, GL_FALSE, glm::value_ptr(invMeshTransform));
         glUniform1i(glGetUniformLocation(lbmInitShader_, "u_numNodes"), (int)cached.numNodes);
 
@@ -273,7 +281,7 @@ namespace Boidsish {
         glUniform3iv(glGetUniformLocation(lbmInitShader_, "u_resolution"), 1, glm::value_ptr(config_.resolution));
         glUniform3fv(glGetUniformLocation(lbmInitShader_, "u_worldScale"), 1, glm::value_ptr(config_.worldScale));
         glUniform3fv(glGetUniformLocation(lbmInitShader_, "u_worldOrigin"), 1, glm::value_ptr(config_.worldOrigin));
-        glUniform1i(glGetUniformLocation(lbmInitShader_, "u_mode"), 1); // Mesh mode
+        glUniform1i(glGetUniformLocation(lbmInitShader_, "u_mode"), 1);
 
         glDispatchCompute((config_.resolution.x + 3) / 4, (config_.resolution.y + 3) / 4, (config_.resolution.z + 3) / 4);
         glMemoryBarrier(GL_ALL_BARRIER_BITS);
@@ -292,8 +300,14 @@ namespace Boidsish {
 
         if (terrainHeightmap_ != 0) {
             glActiveTexture(GL_TEXTURE1);
-            glBindTexture(GL_TEXTURE_2D, terrainHeightmap_);
+            glBindTexture(GL_TEXTURE_2D_ARRAY, terrainHeightmap_);
             glUniform1i(glGetUniformLocation(lbmVoxelizeShader_, "u_terrainHeightmap"), 1);
+
+            glActiveTexture(GL_TEXTURE2);
+            glBindTexture(GL_TEXTURE_2D, terrainChunkGrid_);
+            glUniform1i(glGetUniformLocation(lbmVoxelizeShader_, "u_chunkGrid"), 2);
+
+            glBindBufferBase(GL_UNIFORM_BUFFER, 8, terrainDataUbo_);
         }
 
         glUniform3iv(glGetUniformLocation(lbmVoxelizeShader_, "u_resolution"), 1, glm::value_ptr(config_.resolution));
@@ -321,10 +335,7 @@ namespace Boidsish {
                 glBufferData(GL_SHADER_STORAGE_BUFFER, cached.vertices.size() * sizeof(glm::vec4), cached.vertices.data(), GL_DYNAMIC_DRAW);
                 glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, meshVerticesBuffer_);
 
-                glm::mat4 meshTransform = model->GetModelMatrix();
-                glm::mat4 invMeshTransform = glm::inverse(meshTransform);
-
-                glUniformMatrix4fv(glGetUniformLocation(lbmVoxelizeShader_, "u_meshTransform"), 1, GL_FALSE, glm::value_ptr(meshTransform));
+                glm::mat4 invMeshTransform = glm::inverse(model->GetModelMatrix());
                 glUniformMatrix4fv(glGetUniformLocation(lbmVoxelizeShader_, "u_invMeshTransform"), 1, GL_FALSE, glm::value_ptr(invMeshTransform));
                 glUniform1i(glGetUniformLocation(lbmVoxelizeShader_, "u_numNodes"), (int)cached.numNodes);
                 glUniform1i(glGetUniformLocation(lbmVoxelizeShader_, "u_firstPass"), first ? 1 : 0);
@@ -350,7 +361,6 @@ namespace Boidsish {
             return cached;
         }
 
-        // De-index into triangle soup
         std::vector<tinybvh::bvhvec4> bvhVerts;
         for (unsigned int idx : indices) {
             const auto& v = vertices[idx];
