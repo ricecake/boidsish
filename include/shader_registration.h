@@ -28,6 +28,7 @@ namespace Boidsish {
 		T::RegisterConstant("DECOR_PLACEMENT_GLOBALS_BINDING", Constants::UboBinding::DecorPlacementGlobals());
 		T::RegisterConstant("WEATHER_UNIFORMS_BINDING", Constants::UboBinding::WeatherUniforms());
 		T::RegisterConstant("WIND_DATA_BINDING", Constants::UboBinding::WindData());
+		T::RegisterConstant("VOLUMETRIC_LIGHTING_BINDING", Constants::UboBinding::VolumetricLighting());
 
 		// SSBO Bindings
 		T::RegisterConstant("DECOR_INSTANCES_BINDING", Constants::SsboBinding::DecorInstances());

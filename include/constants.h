@@ -140,6 +140,10 @@ namespace Boidsish {
 			consteval int WindData() {
 				return std::to_underlying(Constants::Bindings::Ubo::WindData);
 			}
+
+			consteval int VolumetricLighting() {
+				return 46;
+			}
 		} // namespace UboBinding
 
 		namespace TextureUnit {
@@ -245,6 +249,14 @@ namespace Boidsish {
 
 			consteval int TerrainShadowMapImage() {
 				return std::to_underlying(Constants::Bindings::Texture::TerrainShadowMapImage);
+			}
+
+			consteval int VolumetricCascades() {
+				return 40;
+			}
+
+			consteval int WeatherScalars() {
+				return 42;
 			}
 		} // namespace TextureUnit
 
