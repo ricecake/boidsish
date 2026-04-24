@@ -46,7 +46,6 @@
 #include "post_processing/effects/GlitchEffect.h"
 #include "post_processing/effects/NegativeEffect.h"
 #include "post_processing/effects/OpticalFlowEffect.h"
-#include "post_processing/effects/SdfVolumeEffect.h"
 #include "post_processing/effects/StrobeEffect.h"
 #include "post_processing/effects/SuperSpeedEffect.h"
 #include "post_processing/effects/UnifiedScreenSpaceEffect.h"
@@ -58,6 +57,7 @@
 #include "render_queue.h"
 #include "scene_compositor.h"
 #include "sdf_volume_manager.h"
+#include "shape.h"
 #include "shader_table.h"
 #include "shadow_manager.h"
 #include "shadow_render_pass.h"
@@ -537,6 +537,7 @@ namespace Boidsish {
 		std::unique_ptr<OpaqueScenePass>     opaque_pass_;
 		std::unique_ptr<EarlyEffectsPass>    early_effects_pass_;
 		std::unique_ptr<ParticleEffectsPass> particle_pass_;
+		std::unique_ptr<SdfVolumePass>       sdf_volume_pass_;
 		std::unique_ptr<TransparentPass>     transparent_pass_;
 
 		// Scene center computed by shadow pass, used by other systems
@@ -1046,9 +1047,6 @@ namespace Boidsish {
 				bloom_effect->SetEnabled(true);
 				post_processing_manager_->AddEffect(bloom_effect);
 
-				auto sdf_volume_effect = std::make_shared<PostProcessing::SdfVolumeEffect>();
-				sdf_volume_effect->SetEnabled(true);
-				post_processing_manager_->AddEffect(sdf_volume_effect);
 
 				if (enable_hdr_) {
 					// Enable integrated tonemapping in bloom effect
@@ -1115,10 +1113,6 @@ namespace Boidsish {
 			shader_to_setup.setVec4("clipPlane", glm::vec4(0.0f));
 			if (noise_manager) {
 				noise_manager->BindDefault(shader_to_setup);
-			}
-			GLuint sdf_volumes_idx = glGetUniformBlockIndex(shader_to_setup.ID, "SdfVolumes");
-			if (sdf_volumes_idx != GL_INVALID_INDEX) {
-				glUniformBlockBinding(shader_to_setup.ID, sdf_volumes_idx, Constants::UboBinding::SdfVolumes());
 			}
 			GLuint lighting_idx = glGetUniformBlockIndex(shader_to_setup.ID, "Lighting");
 			if (lighting_idx != GL_INVALID_INDEX) {
@@ -2577,8 +2571,8 @@ namespace Boidsish {
 			if (akira_effect_manager && terrain_generator) {
 				akira_effect_manager->Update(simulation_delta_time, *terrain_generator);
 			}
-			sdf_volume_manager->UpdateUBO();
-			sdf_volume_manager->BindUBO(Constants::UboBinding::SdfVolumes());
+			sdf_volume_manager->UpdateSSBO();
+			sdf_volume_manager->BindSSBO(Constants::SsboBinding::SdfVolumes());
 			shockwave_manager->UpdateShaderData();
 			shockwave_manager->BindUBO(Constants::UboBinding::Shockwaves());
 
@@ -2759,6 +2753,23 @@ namespace Boidsish {
 		void RenderTransparentScene(const FrameData& frame) {
 			if (early_effects_pass_ && compositor_) {
 				early_effects_pass_->Execute(frame, *compositor_);
+			}
+
+			if (sdf_volume_pass_ && compositor_) {
+				// After early effects, the scene lives in the post-processing pipeline's
+				// ping-pong FBO. Use that as the source so SDF composites on top of
+				// the post-effects scene, and writes back to the correct FBO.
+				GLuint scene_tex = (post_processing_manager_ && frame.config.effects_enabled)
+					? post_processing_manager_->GetFinalTexture()
+					: compositor_->GetColorTexture();
+				GLuint depth_tex = compositor_->GetDepthTexture();
+				GLuint target_fbo = (post_processing_manager_ && frame.config.effects_enabled)
+					? post_processing_manager_->GetCurrentFBO()
+					: compositor_->GetMainFBO();
+
+				glBindVertexArray(blur_quad_vao);
+				sdf_volume_pass_->Execute(frame, scene_tex, depth_tex, target_fbo);
+				glBindVertexArray(0);
 			}
 
 			if (particle_pass_) {
@@ -3745,6 +3756,11 @@ namespace Boidsish {
 				);
 			}
 
+			impl->sdf_volume_pass_ = std::make_unique<SdfVolumePass>(*impl->sdf_volume_manager);
+			if (impl->noise_manager) {
+				auto tex = impl->noise_manager->GetTextures();
+				impl->sdf_volume_pass_->SetNoiseTextures(tex.noise, tex.curl, tex.blue_noise, tex.extra_noise);
+			}
 			impl->transparent_pass_ = std::make_unique<TransparentPass>();
 
 			// Ensure all noise LUTs are fully generated
@@ -4656,6 +4672,31 @@ namespace Boidsish {
 		effect->SetColor(color.r, color.g, color.b);
 		impl->transient_effects.push_back(effect);
 		return effect;
+	}
+
+	void Visualizer::TriggerSdfExplosion(const glm::vec3& position, float intensity) {
+		SdfSource source;
+		source.position = position;
+		source.radius = 0.5f * intensity; // Start small, will expand via SdfShape
+		source.color = glm::vec3(1.0f, 0.6f, 0.15f);
+		source.smoothness = 3.0f;
+		source.charge = 1.0f;
+		source.type = 0;
+
+		source.volumetric = true;
+		source.density = 1.5f * intensity;
+		source.absorption = 0.8f;
+		source.noise_scale = 0.15f;
+		source.noise_intensity = 0.9f;
+		source.color_inner = glm::vec3(1.0f, 0.85f, 0.3f);  // Yellow-white hot core
+		source.color_outer = glm::vec3(0.9f, 0.15f, 0.02f);  // Deep red exterior
+		source.emission = 5.0f * intensity;
+		source.ground_y = position.y - 0.1f; // Default ground at spawn point
+
+		auto shape = std::make_shared<SdfShape>(*impl->sdf_volume_manager, source);
+		shape->SetLifetime(2.5f * sqrt(0.5f*intensity));
+
+		impl->transient_effects.push_back(shape);
 	}
 
 	void Visualizer::TriggerComplexExplosion(

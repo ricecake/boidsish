@@ -19,7 +19,7 @@ namespace Boidsish {
 		T::RegisterConstant("SHADOWS_BINDING", Constants::UboBinding::Shadows());
 		T::RegisterConstant("FRUSTUM_BINDING", Constants::UboBinding::FrustumData());
 		T::RegisterConstant("SHOCKWAVES_BINDING", Constants::UboBinding::Shockwaves());
-		T::RegisterConstant("SDF_VOLUMES_BINDING", Constants::UboBinding::SdfVolumes());
+		T::RegisterConstant("SDF_VOLUMES_BINDING", Constants::SsboBinding::SdfVolumes());
 		T::RegisterConstant("TEMPORAL_DATA_BINDING", Constants::UboBinding::TemporalData());
 		T::RegisterConstant("BIOME_DATA_BINDING", Constants::UboBinding::Biomes());
 		T::RegisterConstant("TERRAIN_DATA_BINDING", Constants::UboBinding::TerrainData());

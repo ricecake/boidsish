@@ -26,7 +26,6 @@ consteval bool ValidateUboBindings() {
 		Constants::UboBinding::Shadows(),
 		Constants::UboBinding::FrustumData(),
 		Constants::UboBinding::Shockwaves(),
-		Constants::UboBinding::SdfVolumes(),
 		Constants::UboBinding::TemporalData(),
 		Constants::UboBinding::Biomes(),
 		Constants::UboBinding::TerrainData(),
@@ -71,6 +70,7 @@ consteval bool ValidateSsboBindings() {
 		Constants::SsboBinding::MeshExplosionFragments(),
 		Constants::SsboBinding::TrailGeneratedVBO(),
 		Constants::SsboBinding::AtmosphereSH(),
+		Constants::SsboBinding::SdfVolumes(),
 	};
 	return AllUnique(ssbos);
 }
