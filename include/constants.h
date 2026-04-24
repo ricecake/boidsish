@@ -212,7 +212,7 @@ namespace Boidsish {
 			}
 
 			consteval int SdfVolumes() {
-				return 25;
+				return 44;
 			}
 
 			consteval int LiveParticleIndices() {
