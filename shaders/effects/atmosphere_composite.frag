@@ -209,50 +209,33 @@ void main() {
 		vec3 nearScattering = volumetric.rgb;
 		float nearTransmittance = volumetric.a;
 
-		vec3 farScattering = vec3(0.0);
-		float farTransmittance = 1.0;
-
-		if (dist > froxelFar) {
-			// Calculate atmosphere contribution beyond froxel range
-			// We approximate this by taking the total AP and removing the near-field part.
-			// total = near + (far * nearTransmittance) => far = (total - near) / nearTransmittance
-
-			// However, a simpler and more stable way is to just use AP LUT for the whole range
-			// but fade it out in the near field where froxels are active.
-			farScattering = inScattering;
-			farTransmittance = transmittance;
-		}
-
-		// Combined: Attenuate scene by total transmittance, then add both scattering terms.
-		// Since 'volumetric' for dist > 2km is already the integrated scattering up to 2km,
-		// we just need to add the atmosphere contribution from 2km to 'dist'.
-
-		// Correct analytical blend:
-		// Result = scene * T_near * T_far + S_near + S_far * T_near
-
-		// If dist < froxelFar, AP LUT and Froxels overlap. Froxels are more detailed and
-		// respect terrain shadows better.
 		vec3 terrainAtmos;
 		if (dist <= froxelFar) {
+			// Inside froxel range: froxels provide the complete atmosphere.
+			// This respects terrain shadows perfectly.
 			terrainAtmos = sceneColor * nearTransmittance + nearScattering;
 		} else {
-			// For distant objects, we use the AP LUT for the global feel, but
-			// the froxel grid provides the near-field "god rays" and local scattering.
-			// AP LUT transmittance already includes the near-field.
-			terrainAtmos = sceneColor * transmittance + inScattering + (nearScattering - sampleAerialPerspective(rayDir, froxelFar/1000.0) * nearTransmittance);
-			// The above is complex. Let's use the most stable physical combination:
-			terrainAtmos = sceneColor * transmittance + inScattering;
+			// Beyond froxel range:
+			// 1. Get total AP LUT contribution up to 'dist'
+			vec3 totalS = inScattering;
+			float totalT = transmittance;
 
-			// Replace the first 2km of global atmosphere with froxel data
-			float AP_near_T = sampleAerialPerspectiveTransmittance(rayDir, froxelFar/1000.0);
-			vec3 AP_near_S = sampleAerialPerspective(rayDir, froxelFar/1000.0);
+			// 2. Get AP LUT contribution for the near part (0 to froxelFar)
+			float nearLUT_T = sampleAerialPerspectiveTransmittance(rayDir, froxelFar / 1000.0);
+			vec3 nearLUT_S = sampleAerialPerspective(rayDir, froxelFar / 1000.0);
 
-			// Atmosphere beyond 2km:
-			// S_far = (inScattering - AP_near_S)
-			// T_far = transmittance / AP_near_T
+			// 3. Extract the 'far' part from the AP LUT (beyond froxelFar):
+			// AP_LUT = near_part + (far_part * near_transmittance)
+			// => far_part = (AP_LUT - near_part) / near_transmittance
+			vec3 farS = (totalS - nearLUT_S) / max(nearLUT_T, 1e-4);
+			float farT = totalT / max(nearLUT_T, 1e-4);
 
-			terrainAtmos = (sceneColor * (transmittance / AP_near_T) + (inScattering - AP_near_S)) * nearTransmittance + nearScattering;
+			// 4. Combine with froxel near-field (which has god rays and terrain shadows):
+			terrainAtmos = (sceneColor * farT + farS) * nearTransmittance + nearScattering;
 		}
+
+		// Safety clamp to prevent negative colors from numerical instability
+		terrainAtmos = max(vec3(0.0), terrainAtmos);
 
 		vec3 cloudsAtmos = cloudColor * atmosTransmittance + atmosInScattering * (1.0 - cloudTransmittance);
 		result = mix(cloudsAtmos, terrainAtmos, cloudTransmittance);

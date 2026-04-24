@@ -7,6 +7,7 @@
 
 #include "ConfigManager.h"
 #include "NoiseManager.h"
+#include "weather_manager.h"
 #include "atmosphere_manager.h"
 #include "geometry.h"
 #include "graphics.h"
@@ -21,7 +22,7 @@
 
 namespace Boidsish {
 
-	DecorManager::DecorManager(ServiceLocator& /*loc*/) {}
+	DecorManager::DecorManager(ServiceLocator& loc): _loc(loc) {}
 
 	// Use DrawElementsIndirectCommand from geometry.h
 
@@ -950,6 +951,17 @@ namespace Boidsish {
 
 		if (noise_manager_) {
 			noise_manager_->BindDefault(*shader);
+		}
+
+		// Bind wind resources if available (for wind sway and highlights)
+		auto weatherMgr = _loc.Get<WeatherManager>();
+		if (weatherMgr) {
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::WindData());
+			glBindTexture(GL_TEXTURE_2D, weatherMgr->GetWindTexture());
+			shader->trySetInt("u_windTexture", Constants::TextureUnit::WindData());
+
+			glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::WindData(),
+				weatherMgr->GetWindUbo(), weatherMgr->GetWindUboOffset(), sizeof(WindDataUbo));
 		}
 
 		for (size_t i = 0; i < decor_types_.size(); ++i) {

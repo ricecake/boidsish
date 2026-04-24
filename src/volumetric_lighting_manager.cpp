@@ -148,7 +148,6 @@ namespace Boidsish {
         }
 
         // Bind WindData UBO for world-space aerosol mapping
-        weatherMgr->UpdateWindUbo(totalTime); // Ensure updated
 
         // Bind Shadows UBO for CSM
         if (shadowMgr) {
@@ -221,9 +220,9 @@ namespace Boidsish {
             glBindTexture(GL_TEXTURE_3D, _densityVolumes[_textureFrameIndex][cascade]);
             _lightingInjectionShader->setInt("u_densityVolume", 1);
             if (weatherMgr) {
-                glActiveTexture(GL_TEXTURE2);
+                glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AerosolData());
                 glBindTexture(GL_TEXTURE_2D, weatherMgr->GetAerosolTexture());
-                _lightingInjectionShader->trySetInt("u_aerosolTexture", 2);
+                _lightingInjectionShader->trySetInt("u_aerosolTexture", Constants::TextureUnit::AerosolData());
             }
             if (shadowMgr && lightMgr) {
                 // We bind to both shadowMaps (Shadow Sampler) and u_shadowMapsRaw (Normal Sampler)

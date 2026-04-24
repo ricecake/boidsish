@@ -406,6 +406,7 @@ namespace Boidsish {
 			glm::vec4 fallback(current_.haze_color, 0.1f);
 			std::fill(aerosol_data_cache_.begin(), aerosol_data_cache_.end(), fallback);
 		}
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AerosolData());
 		glBindTexture(GL_TEXTURE_2D, aerosol_texture_);
 		glTexSubImage2D(
 			GL_TEXTURE_2D,

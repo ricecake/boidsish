@@ -1136,6 +1136,10 @@ namespace Boidsish {
 			if (terrain_idx != GL_INVALID_INDEX) {
 				glUniformBlockBinding(shader_to_setup.ID, terrain_idx, Constants::UboBinding::TerrainData());
 			}
+			GLuint wind_idx = glGetUniformBlockIndex(shader_to_setup.ID, "WindData");
+			if (wind_idx != GL_INVALID_INDEX) {
+				glUniformBlockBinding(shader_to_setup.ID, wind_idx, Constants::UboBinding::WindData());
+			}
 		}
 
 		void SetupAkiraBindings() {
@@ -2431,6 +2435,12 @@ namespace Boidsish {
 						sizeof(VolumetricLightingUbo));
 				}
 			}
+			if (weather_manager) {
+				weather_manager->UpdateWindUbo(simulation_time);
+				render_state_.global_bindings.UboRange(Constants::UboBinding::WindData(),
+					weather_manager->GetWindUbo(), weather_manager->GetWindUboOffset(),
+					sizeof(WindDataUbo));
+			}
 
 			// Volumetric Lighting UBO
 			if (volumetric_lighting_manager) {
@@ -3496,7 +3506,7 @@ namespace Boidsish {
 
 			const auto& w = impl->weather_manager->GetCurrentWeather();
 
-			impl->weather_manager->UpdateWindUbo(impl->simulation_time);
+			// Wind UBO update moved to PrepareUBOs for triple-buffering alignment
 
 			// Apply to atmosphere effect
 			if (impl->atmosphere_effect) {

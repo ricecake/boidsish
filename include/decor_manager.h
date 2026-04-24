@@ -212,6 +212,7 @@ namespace Boidsish {
 		);
 
 	private:
+		ServiceLocator& _loc;
 		void _Initialize();
 		void _UpdateAllocation(
 			const Camera&                         camera,
