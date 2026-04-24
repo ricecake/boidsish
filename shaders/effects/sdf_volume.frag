@@ -27,6 +27,7 @@ layout(std430, binding = [[SDF_VOLUMES_BINDING]]) buffer SdfVolumes {
 };
 
 #include "lygia/sdf/sphereSDF.glsl"
+#include "lygia/lighting/blackbody.glsl"
 #include "../helpers/fast_noise.glsl"
 #include "helpers/noise.glsl"
 
@@ -252,7 +253,7 @@ float sampleSourceDensity(vec3 p, int index) {
 	vec3 warp = fastCurl3d((p+time)/ (10.0*noise_intensity));
 	d += (fastFbm3d(p*warp / (10.0*noise_intensity) * d*time*0.5)*0.5+0.5) * smoothstep(0, 0.25, noise_intensity);
 	d += fastRidge3d(rel/(10.0*noise_intensity) * smoothstep(0, 0.5, noise_intensity)+time*0.75);
-	d += pow(1-abs(fastWarpedFbm3d(rel/10.0 * 0.6*smoothstep(0, 0.75, dist) + warp*time*0.00005)), 5);
+	// d += pow(1-abs(fastWarpedFbm3d(rel/10.0 * 0.6*smoothstep(0, 0.75, dist) + warp*time*0.00005)), 5);
     d += fastWorley3d(rel/100.0 *smoothstep(0, 0.75, d) + time*0.5);
 	float ground_dist = (p.y - ground_y) / max(radius, 0.01);
 	if (ground_dist < 0.3) {
@@ -327,7 +328,8 @@ float sampleSourceDensity(vec3 p, int index) {
 // --- Temperature-driven color ---
 
 vec3 explosionColor(float normalized_d, float ntime, vec3 color_inner, vec3 color_outer) {
-	float temperature = normalized_d * (1.0 - ntime * 0.7);
+	float temperature = 100+(40000 * smoothstep(0.0, 0.75, normalized_d * (1.0 - ntime * 0.7)));
+	return blackbody(temperature);
 
 	vec3 white_hot = vec3(1.0, 0.95, 0.8);
 	vec3 yellow    = vec3(1.0, 0.8, 0.2);
