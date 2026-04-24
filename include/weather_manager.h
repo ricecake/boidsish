@@ -265,6 +265,10 @@ namespace Boidsish {
 
 		unsigned int GetAerosolTexture() const { return aerosol_texture_; }
 
+		uint32_t GetWindUbo() const { return wind_data_ubo_ ? wind_data_ubo_->GetBufferId() : 0; }
+		size_t   GetWindUboOffset() const { return wind_data_ubo_ ? wind_data_ubo_->GetFrameOffset() : 0; }
+		uint32_t GetWindTexture() const { return wind_texture_; }
+
 		void SetTerrainGenerator(ITerrainGenerator* terrain) { terrain_ = terrain; }
 
 	private:

@@ -16,18 +16,22 @@
 namespace Boidsish {
 
     VolumetricLightingManager::VolumetricLightingManager(ServiceLocator& loc) : _loc(loc) {
-        for (int i = 0; i < kMaxVolumetricCascades; ++i) {
-            _densityVolumes[i] = 0;
-            _scatteringVolumes[i] = 0;
-            _integratedVolumes[i] = 0;
+        for (int f = 0; f < 3; ++f) {
+            for (int i = 0; i < kMaxVolumetricCascades; ++i) {
+                _densityVolumes[f][i] = 0;
+                _scatteringVolumes[f][i] = 0;
+                _integratedVolumes[f][i] = 0;
+            }
         }
     }
 
     VolumetricLightingManager::~VolumetricLightingManager() {
-        for (int i = 0; i < kMaxVolumetricCascades; ++i) {
-            if (_densityVolumes[i]) glDeleteTextures(1, &_densityVolumes[i]);
-            if (_scatteringVolumes[i]) glDeleteTextures(1, &_scatteringVolumes[i]);
-            if (_integratedVolumes[i]) glDeleteTextures(1, &_integratedVolumes[i]);
+        for (int f = 0; f < 3; ++f) {
+            for (int i = 0; i < kMaxVolumetricCascades; ++i) {
+                if (_densityVolumes[f][i]) glDeleteTextures(1, &_densityVolumes[f][i]);
+                if (_scatteringVolumes[f][i]) glDeleteTextures(1, &_scatteringVolumes[f][i]);
+                if (_integratedVolumes[f][i]) glDeleteTextures(1, &_integratedVolumes[f][i]);
+            }
         }
         _parameterUbo.reset();
     }
@@ -50,18 +54,20 @@ namespace Boidsish {
             glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
         };
 
-        for (int i = 0; i < kMaxVolumetricCascades; ++i) {
-            // Distant cascades can have lower resolution
-            int div = 1 << i;
-            // Density volumes MUST use NEAREST filtering for integer textures
-            create3DTexture(_densityVolumes[i], GL_R32UI, _gridW / div, _gridH / div, _gridD, GL_RED_INTEGER, GL_UNSIGNED_INT);
-            glBindTexture(GL_TEXTURE_3D, _densityVolumes[i]);
-            glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-            glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        for (int f = 0; f < 3; ++f) {
+            for (int i = 0; i < kMaxVolumetricCascades; ++i) {
+                // Distant cascades can have lower resolution
+                int div = 1 << i;
+                // Density volumes MUST use NEAREST filtering for integer textures
+                create3DTexture(_densityVolumes[f][i], GL_R32UI, _gridW / div, _gridH / div, _gridD, GL_RED_INTEGER, GL_UNSIGNED_INT);
+                glBindTexture(GL_TEXTURE_3D, _densityVolumes[f][i]);
+                glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+                glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
-            // Use RGBA32F for integration volumes to prevent precision/clamping issues during Z-accumulation
-            create3DTexture(_scatteringVolumes[i], GL_RGBA32F, _gridW / div, _gridH / div, _gridD);
-            create3DTexture(_integratedVolumes[i], GL_RGBA32F, _gridW / div, _gridH / div, _gridD);
+                // Switch to RGBA16F for integration volumes to reduce memory footprint
+                create3DTexture(_scatteringVolumes[f][i], GL_RGBA16F, _gridW / div, _gridH / div, _gridD);
+                create3DTexture(_integratedVolumes[f][i], GL_RGBA16F, _gridW / div, _gridH / div, _gridD);
+            }
         }
 
         glBindTexture(GL_TEXTURE_3D, 0);
@@ -150,11 +156,6 @@ namespace Boidsish {
                 shadowMgr->GetShadowUbo(), shadowMgr->GetShadowUboOffset(), sizeof(ShadowUbo));
         }
 
-        // Bind Lighting UBO for viewPos and viewDir
-        // (VisualizerImpl usually handles this but we do it here for compute safety)
-        // Note: We use the actual buffer handle from the service if needed,
-        // but for now we assume it's already bound to LIGHTING_BINDING by VisualizerImpl.
-
         // Bind SH Probes and Terrain Data
         auto terrainMgr = _loc.Get<TerrainRenderManager>();
         auto atmosphereMgr = _loc.Get<AtmosphereManager>();
@@ -188,7 +189,7 @@ namespace Boidsish {
             _densityVoxelizationShader->use();
             _densityVoxelizationShader->setInt("u_cascadeIndex", cascade);
             if (noiseMgr) noiseMgr->BindDefault(*_densityVoxelizationShader);
-            glBindImageTexture(0, _densityVolumes[cascade], 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_R32UI);
+            glBindImageTexture(0, _densityVolumes[_textureFrameIndex][cascade], 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_R32UI);
             if (noiseMgr) noiseMgr->BindDefault(*_densityVoxelizationShader);
             if (weatherMgr) {
                 glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AerosolData());
@@ -203,7 +204,7 @@ namespace Boidsish {
                 _particleVoxelizationShader->use();
                 _particleVoxelizationShader->setInt("u_cascadeIndex", cascade);
                 _particleVoxelizationShader->setInt("u_particleCount", Constants::Class::Particles::MaxParticles());
-                glBindImageTexture(0, _densityVolumes[cascade], 0, GL_TRUE, 0, GL_READ_WRITE, GL_R32UI);
+                glBindImageTexture(0, _densityVolumes[_textureFrameIndex][cascade], 0, GL_TRUE, 0, GL_READ_WRITE, GL_R32UI);
 
                 // Particle buffer is already bound to PARTICLE_BUFFER_BINDING in VisualizerImpl::UpdateSystems
 
@@ -214,10 +215,10 @@ namespace Boidsish {
             _lightingInjectionShader->use();
             _lightingInjectionShader->setInt("u_cascadeIndex", cascade);
             if (noiseMgr) noiseMgr->BindDefault(*_lightingInjectionShader);
-            // Must use GL_RGBA32F to match the texture format and avoid binding errors
-            glBindImageTexture(0, _scatteringVolumes[cascade], 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA32F);
+            // Must use GL_RGBA16F to match the texture format
+            glBindImageTexture(0, _scatteringVolumes[_textureFrameIndex][cascade], 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
             glActiveTexture(GL_TEXTURE1);
-            glBindTexture(GL_TEXTURE_3D, _densityVolumes[cascade]);
+            glBindTexture(GL_TEXTURE_3D, _densityVolumes[_textureFrameIndex][cascade]);
             _lightingInjectionShader->setInt("u_densityVolume", 1);
             if (weatherMgr) {
                 glActiveTexture(GL_TEXTURE2);
@@ -248,14 +249,14 @@ namespace Boidsish {
             _integrationShader->use();
             _integrationShader->setInt("u_cascadeIndex", cascade);
             if (noiseMgr) noiseMgr->BindDefault(*_integrationShader);
-            glBindImageTexture(0, _integratedVolumes[cascade], 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA32F);
+            glBindImageTexture(0, _integratedVolumes[_textureFrameIndex][cascade], 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
             glActiveTexture(GL_TEXTURE1);
-            glBindTexture(GL_TEXTURE_3D, _scatteringVolumes[cascade]);
+            glBindTexture(GL_TEXTURE_3D, _scatteringVolumes[_textureFrameIndex][cascade]);
             _integrationShader->setInt("u_scatteringVolume", 1);
 
             if (cascade > 0) {
                 glActiveTexture(GL_TEXTURE2);
-                glBindTexture(GL_TEXTURE_3D, _integratedVolumes[cascade - 1]);
+                glBindTexture(GL_TEXTURE_3D, _integratedVolumes[_textureFrameIndex][cascade - 1]);
                 _integrationShader->setInt("u_previousIntegrated", 2);
             }
 
@@ -265,11 +266,14 @@ namespace Boidsish {
     }
 
     void VolumetricLightingManager::BindToShader(class ShaderBase& shader) {
+        // Read from the previous frame's completed volume to avoid race conditions/strobing
+        int readIdx = (_textureFrameIndex + 2) % 3;
+
         for (int i = 0; i < kMaxVolumetricCascades; ++i) {
             std::string name = "u_volumetricIntegrated[" + std::to_string(i) + "]";
             int unit = Constants::TextureUnit::VolumetricCascade0() + i;
             glActiveTexture(GL_TEXTURE0 + unit);
-            glBindTexture(GL_TEXTURE_3D, _integratedVolumes[i]);
+            glBindTexture(GL_TEXTURE_3D, _integratedVolumes[readIdx][i]);
             shader.trySetInt(name, unit);
         }
 
@@ -281,7 +285,8 @@ namespace Boidsish {
     }
 
     GLuint VolumetricLightingManager::GetIntegratedVolume() const {
-        return _integratedVolumes[0]; // Return near cascade by default
+        int readIdx = (_textureFrameIndex + 2) % 3;
+        return _integratedVolumes[readIdx][0]; // Return near cascade by default
     }
 
 } // namespace Boidsish

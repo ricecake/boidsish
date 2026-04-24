@@ -196,11 +196,63 @@ void main() {
 	vec3 result;
 	if (!isSky) {
 		// Terrain/objects: apply aerial perspective and clouds
-		vec3 terrainAtmos = sceneColor * transmittance + inScattering;
+		// Physical correctly combine froxel-based scattering with global aerial perspective.
+		// Volumetric scattering already covers up to 2km. Global atmosphere starts from the surface.
+		// If we're within the froxel range, the froxel data is more accurate for the near-field.
 
-		// Apply volumetric with balanced additive contribution
-		// Attenuate scene color by transmittance, then add scattering
-		terrainAtmos = terrainAtmos * volumetric.a + volumetric.rgb;
+		// The aerial perspective from AP LUT covers [0, maxDist].
+		// If dist < 2km, the froxel grid completely overlaps it.
+		// If dist > 2km, the froxel grid only covers the first 2km.
+
+		// For robust occlusion, we use froxel data for the first 2km and AP LUT for the rest.
+		float froxelFar = u_vol.cascadeSplits[3];
+		vec3 nearScattering = volumetric.rgb;
+		float nearTransmittance = volumetric.a;
+
+		vec3 farScattering = vec3(0.0);
+		float farTransmittance = 1.0;
+
+		if (dist > froxelFar) {
+			// Calculate atmosphere contribution beyond froxel range
+			// We approximate this by taking the total AP and removing the near-field part.
+			// total = near + (far * nearTransmittance) => far = (total - near) / nearTransmittance
+
+			// However, a simpler and more stable way is to just use AP LUT for the whole range
+			// but fade it out in the near field where froxels are active.
+			farScattering = inScattering;
+			farTransmittance = transmittance;
+		}
+
+		// Combined: Attenuate scene by total transmittance, then add both scattering terms.
+		// Since 'volumetric' for dist > 2km is already the integrated scattering up to 2km,
+		// we just need to add the atmosphere contribution from 2km to 'dist'.
+
+		// Correct analytical blend:
+		// Result = scene * T_near * T_far + S_near + S_far * T_near
+
+		// If dist < froxelFar, AP LUT and Froxels overlap. Froxels are more detailed and
+		// respect terrain shadows better.
+		vec3 terrainAtmos;
+		if (dist <= froxelFar) {
+			terrainAtmos = sceneColor * nearTransmittance + nearScattering;
+		} else {
+			// For distant objects, we use the AP LUT for the global feel, but
+			// the froxel grid provides the near-field "god rays" and local scattering.
+			// AP LUT transmittance already includes the near-field.
+			terrainAtmos = sceneColor * transmittance + inScattering + (nearScattering - sampleAerialPerspective(rayDir, froxelFar/1000.0) * nearTransmittance);
+			// The above is complex. Let's use the most stable physical combination:
+			terrainAtmos = sceneColor * transmittance + inScattering;
+
+			// Replace the first 2km of global atmosphere with froxel data
+			float AP_near_T = sampleAerialPerspectiveTransmittance(rayDir, froxelFar/1000.0);
+			vec3 AP_near_S = sampleAerialPerspective(rayDir, froxelFar/1000.0);
+
+			// Atmosphere beyond 2km:
+			// S_far = (inScattering - AP_near_S)
+			// T_far = transmittance / AP_near_T
+
+			terrainAtmos = (sceneColor * (transmittance / AP_near_T) + (inScattering - AP_near_S)) * nearTransmittance + nearScattering;
+		}
 
 		vec3 cloudsAtmos = cloudColor * atmosTransmittance + atmosInScattering * (1.0 - cloudTransmittance);
 		result = mix(cloudsAtmos, terrainAtmos, cloudTransmittance);

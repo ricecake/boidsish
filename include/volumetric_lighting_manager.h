@@ -50,7 +50,10 @@ namespace Boidsish {
             float            totalTime
         );
 
-        void AdvanceFrame() { if (_parameterUbo) _parameterUbo->AdvanceFrame(); }
+        void AdvanceFrame() {
+            if (_parameterUbo) _parameterUbo->AdvanceFrame();
+            _textureFrameIndex = (_textureFrameIndex + 1) % 3;
+        }
 
         GLuint GetIntegratedVolume() const;
 
@@ -77,10 +80,12 @@ namespace Boidsish {
 
         ServiceLocator& _loc;
 
-        // 3D textures for the froxel grid (one set per cascade)
-        GLuint _densityVolumes[kMaxVolumetricCascades];
-        GLuint _scatteringVolumes[kMaxVolumetricCascades];
-        GLuint _integratedVolumes[kMaxVolumetricCascades];
+        // 3D textures for the froxel grid (one set per cascade, triple buffered)
+        GLuint _densityVolumes[3][kMaxVolumetricCascades];
+        GLuint _scatteringVolumes[3][kMaxVolumetricCascades];
+        GLuint _integratedVolumes[3][kMaxVolumetricCascades];
+
+        int _textureFrameIndex = 0;
 
         // UBO for parameters
         std::unique_ptr<PersistentBuffer<VolumetricLightingUbo>> _parameterUbo;

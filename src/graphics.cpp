@@ -2616,6 +2616,10 @@ namespace Boidsish {
 					light_manager->GetDayNightCycle().time
 				);
 
+				if (weather_manager) {
+					weather_manager->UpdateWindUbo(simulation_time);
+				}
+
 				grass_manager->Update(
 					simulation_delta_time,
 					simulation_time,
@@ -2729,6 +2733,14 @@ namespace Boidsish {
 					res.lightingUboSize = render_state_.lighting.size;
 					res.shadowUbo = shadow_manager->GetShadowUbo();
 					res.shadowMaps = shadow_manager->GetShadowMapArray();
+
+					if (weather_manager) {
+						res.windUbo = weather_manager->GetWindUbo();
+						res.windUboOffset = weather_manager->GetWindUboOffset();
+						res.windUboSize = sizeof(WindDataUbo);
+						res.windTexture = weather_manager->GetWindTexture();
+					}
+
 					if (atmosphere_manager) {
 						res.transmittanceLUT = atmosphere_manager->GetTransmittanceLUT();
 						res.skyViewLUT = atmosphere_manager->GetSkyViewLUT();

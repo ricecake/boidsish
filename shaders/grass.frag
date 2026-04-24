@@ -1,5 +1,7 @@
 #version 430 core
 
+#define USE_TERRAIN_DATA
+#include "helpers/terrain_shadows.glsl"
 #include "lighting.glsl"
 #include "helpers/lighting.glsl"
 
