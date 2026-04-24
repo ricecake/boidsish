@@ -21,7 +21,7 @@ struct SdfSource {
 	vec4 color_outer;            // rgb: outer color, a: ground_y
 };
 
-layout(std140, binding = [[SDF_VOLUMES_BINDING]]) uniform SdfVolumes {
+layout(std430, binding = [[SDF_VOLUMES_BINDING]]) buffer SdfVolumes {
 	int       numSources;
 	SdfSource sources[];
 };
