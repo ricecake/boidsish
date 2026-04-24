@@ -186,15 +186,16 @@ void respawnParticle(
 					}
 				}
 
-				if (chunk_idx != -1 && distance(pos.xz, viewPos.xz) <= 750.0 * worldScale) {
-					vec2  uv = (pos.xz - chunk.worldOffset) / chunk.size;
-					vec4  terrain = texture(heightmapArray, vec3(uv, chunk.slice));
-					float height = terrain.r + 0.05;
-					vec2  biome_data = texture(biomeMap, vec3(uv, chunk.slice)).rg;
+				TerrainInfo info = getTerrainInfo(pos.xz);
 
-					int biome_idx = int(biome_data.x * 255.0 + 0.5);
-					if (rand(spawnSeed + 0.987) < biome_data.y) {
-						biome_idx = min(biome_idx + 1, 7);
+				if (info.isValid && distance(pos.xz, viewPos.xz) <= 750.0 * worldScale) {
+					if (info.waterMask > 0.5 && p.emitter_index != 0) { // Don't spawn ambient (except bubbles) in water
+						return;
+					}
+
+					int biome_idx = info.lowIdx;
+					if (rand(spawnSeed + 0.987) < info.biomeLerp) {
+						biome_idx = info.highIdx;
 					}
 
 					vec3 jitter = (rand3(spawnSeed + 0.1) - 0.5) * 4.0;
@@ -211,7 +212,7 @@ void respawnParticle(
 						p.emitter_index = biome_idx;
 						p.pos = vec4(
 							pos.x,
-							height + 1.0 + rand(spawnSeed + 3.3) * 2.0,
+							info.height + 1.0 + rand(spawnSeed + 3.3) * 2.0,
 							pos.z,
 							total_lifetime - skipped_time
 						);

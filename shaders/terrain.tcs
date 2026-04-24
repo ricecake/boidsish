@@ -22,11 +22,7 @@ out float      tessFactor_TC_out[];
 out vec3       WorldPos_TC_out[];
 out vec3       WorldNorm_TC_out[];
 
-// Heightmap texture array: R=height, GBA=normal
-uniform sampler2DArray uHeightmap;
-uniform float          uChunkSize;
-uniform float          uRawChunkSize;
-
+#include "helpers/terrain_common.glsl"
 #include "frustum.glsl"
 #include "helpers/lighting.glsl"
 
@@ -39,19 +35,6 @@ uniform mat4 view;
 uniform mat4 projection;
 uniform vec2 uViewportSize;
 
-// Sample heightmap to get world position and normal
-void sampleHeightmap(vec2 uv, float slice, vec3 worldOffset, out vec3 worldPos, out vec3 normal) {
-	// Remap UV to match the grid center alignment of the heightmap texture
-	vec2  remappedUV = (uv * uRawChunkSize + 0.5) / (uRawChunkSize + 1.0);
-	vec4  data = texture(uHeightmap, vec3(remappedUV, slice));
-	float height = data.r;
-	normal = normalize(data.gba);
-
-	// Compute world position: local XZ from UV, Y from heightmap
-	worldPos.x = worldOffset.x + uv.x * uChunkSize;
-	worldPos.y = height;
-	worldPos.z = worldOffset.z + uv.y * uChunkSize;
-}
 
 bool isLess(vec3 a, vec3 b) {
 	const float epsilon = 0.001;
@@ -178,23 +161,28 @@ void main() {
 	float slice = TextureSlice_VS_out[0];
 	vec3  worldOffset = WorldOffset_VS_out[0];
 
-	// Sample heightmap for this vertex
-	vec3 pos, norm;
-	sampleHeightmap(TexCoords_VS_out[gl_InvocationID], slice, worldOffset, pos, norm);
+	// Centralized terrain sampling
+	vec2 uv = TexCoords_VS_out[gl_InvocationID];
+	float rawChunkSize = u_terrainParams.x;
+	vec2 remappedUV = (uv * rawChunkSize + 0.5) / (rawChunkSize + 1.0);
+	TerrainInfo info = getTerrainInfoFromSlice(slice, remappedUV);
+
+	vec3 pos = vec3(worldOffset.x + uv.x * u_terrainParams.x * worldScale, info.height, worldOffset.z + uv.y * u_terrainParams.x * worldScale);
+	vec3 norm = info.normal;
 
 	WorldPos_TC_out[gl_InvocationID] = pos;
 	WorldNorm_TC_out[gl_InvocationID] = norm;
 
 	// Calculate a representative tessellation factor for the vertex (used for shading effects)
 	// We use a small offset to estimate local screen-space size
-	float vTess = GetEdgeTessLevel(pos, pos + vec3(uChunkSize * 0.03, 0, 0), norm, norm, TexCoords_VS_out[gl_InvocationID], TexCoords_VS_out[gl_InvocationID], ClipPos_VS_out[gl_InvocationID], ClipPos_VS_out[gl_InvocationID]);
+	float vTess = GetEdgeTessLevel(pos, pos + vec3(u_terrainParams.x * worldScale * 0.03, 0, 0), norm, norm, TexCoords_VS_out[gl_InvocationID], TexCoords_VS_out[gl_InvocationID], ClipPos_VS_out[gl_InvocationID], ClipPos_VS_out[gl_InvocationID]);
 	tessFactor_TC_out[gl_InvocationID] = vTess;
 	perturbFactor_TC_out[gl_InvocationID] = perturbLevel(pos, viewForward[gl_InvocationID]);
 
 	if (gl_InvocationID == 0) {
 		// Proper AABB Frustum Culling
 		vec3 minBound = vec3(worldOffset.x, Bounds_VS_out[0].x, worldOffset.z);
-		vec3 maxBound = vec3(worldOffset.x + uChunkSize, Bounds_VS_out[0].y, worldOffset.z + uChunkSize);
+		vec3 maxBound = vec3(worldOffset.x + u_terrainParams.x * worldScale, Bounds_VS_out[0].y, worldOffset.z + u_terrainParams.x * worldScale);
 
 		if (!isAABBInFrustum(minBound, maxBound)) {
 			gl_TessLevelOuter[0] = 0.0;

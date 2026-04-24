@@ -24,12 +24,8 @@ out float      vErosionDelta;
 out float      vRidgeMap;
 out float      vSubstrate;
 
-// Heightmap texture array: R=height, GBA=normal
-uniform sampler2DArray uHeightmap;
 // Baked params: R=erosionDelta, G=ridgeMap, B=substrate, A=waterMask
 uniform sampler2DArray uBakedParams;
-// Biome map: R=lowIdx, G=t, B=bakeFlag
-uniform sampler2DArray u_biomeMap;
 
 uniform float uChunkSize;
 uniform float uRawChunkSize;
@@ -48,27 +44,7 @@ uniform bool uIsShadowPass = false;
 
 // #include "helpers/fast_noise.glsl"
 
-// Sample heightmap to get world position, normal, and water mask
-void sampleHeightmap(vec2 uv, float slice, vec3 worldOffset, bool isBaked, out vec3 worldPos, out vec3 normal, out float waterMask) {
-	// Remap UV to match the grid center alignment of the heightmap texture
-	vec2 remappedUV = (uv * uRawChunkSize + 0.5) / (uRawChunkSize + 1.0);
-	vec4 data = textureLod(uHeightmap, vec3(remappedUV, slice), 0.0);
-
-	float height = data.r;
-	if (isBaked) {
-		// Optimized path: reconstruct normal from XZ and get waterMask from Alpha
-		normal = normalize(vec3(data.g, sqrt(max(0.0, 1.0 - data.g * data.g - data.b * data.b)), data.b));
-		waterMask = data.a;
-	} else {
-		// Raw path: normal is GBA
-		normal = normalize(data.gba);
-		waterMask = 0.0; // Will be calculated/sampled later if not baked
-	}
-
-	worldPos.x = worldOffset.x + uv.x * uChunkSize;
-	worldPos.y = height;
-	worldPos.z = worldOffset.z + uv.y * uChunkSize;
-}
+#include "helpers/terrain_common.glsl"
 
 void main() {
 	vec2 uv = gl_TessCoord.xy;
@@ -82,22 +58,24 @@ void main() {
 	vec2 texCoord2 = mix(TexCoords_TC_out[3], TexCoords_TC_out[2], uv.x);
 	TexCoords = mix(texCoord1, texCoord2, uv.y);
 
-	// Remap UV to match the grid center alignment of the heightmap texture
-	vec2 remappedUV = (TexCoords * uRawChunkSize + 0.5) / (uRawChunkSize + 1.0);
-	vec4 biomeData = textureLod(u_biomeMap, vec3(remappedUV, slice), 0.0);
-	bool isBaked = biomeData.b > 0.5;
+	// Centralized terrain sampling
+	float rawChunkSize = u_terrainParams.x;
+	vec2 remappedUV = (TexCoords * rawChunkSize + 0.5) / (rawChunkSize + 1.0);
+	TerrainInfo info = getTerrainInfoFromSlice(slice, remappedUV);
 
-	float waterMask;
-	// Sample heightmap at the interpolated UV to get world position, normal, and water mask
-	sampleHeightmap(TexCoords, slice, worldOffset, isBaked, FragPos, Normal, waterMask);
+	FragPos.x = worldOffset.x + TexCoords.x * uChunkSize;
+	FragPos.y = info.height;
+	FragPos.z = worldOffset.z + TexCoords.y * uChunkSize;
+	Normal = info.normal;
 
+	// Sample baked parameters (erosion, ridge, substrate)
 	vec4 bakedParams = textureLod(uBakedParams, vec3(remappedUV, slice), 0.0);
 	vErosionDelta = bakedParams.r;
 	vRidgeMap = bakedParams.g;
 	vSubstrate = bakedParams.b;
-	vIsWater = isBaked ? waterMask : bakedParams.a;
+	vIsWater = info.waterMask;
 
-	waterMask = vIsWater;
+	float waterMask = vIsWater;
 
 	if (waterMask > 0.0) {
 		float landHeight = FragPos.y;

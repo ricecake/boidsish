@@ -30,8 +30,8 @@ in float      vSubstrate;
 
 uniform bool uIsShadowPass = false;
 
-// Biome texture array: RG8 - R=low_idx, G=t
-uniform sampler2DArray uBiomeMap;
+#include "helpers/terrain_common.glsl"
+
 uniform float          uRawChunkSize;
 
 uniform mat4 view;
@@ -431,10 +431,10 @@ void main() {
 
 		// Sample biome noise type (using unused params.w)
 		vec2  biomeUV = (TexCoords * uRawChunkSize + 0.5) / (uRawChunkSize + 1.0);
-		vec2  biomeInfo = texture(uBiomeMap, vec3(biomeUV, TextureSlice)).rg;
-		float noiseTypeA = u_biomes[int(biomeInfo.x)].params.w;
-		float noiseTypeB = u_biomes[min(int(biomeInfo.x) + 1, 7)].params.w;
-		float noiseType = mix(noiseTypeA, noiseTypeB, biomeInfo.y);
+		TerrainInfo info = getTerrainInfoFromSlice(TextureSlice, biomeUV);
+		float noiseTypeA = u_biomes[info.lowIdx].params.w;
+		float noiseTypeB = u_biomes[info.highIdx].params.w;
+		float noiseType = mix(noiseTypeA, noiseTypeB, info.biomeLerp);
 
 		// Use finite difference to approximate the gradient of the noise field
 		float eps = 0.015;

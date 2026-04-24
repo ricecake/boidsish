@@ -8,9 +8,7 @@ layout(std430, binding = [[DECOR_ALL_INSTANCES_BINDING]]) buffer DecorInstances 
 	mat4 instances[];
 };
 
-// Heightmap and biome textures from TerrainRenderManager
-uniform sampler2DArray u_heightmapArray; // RGBA16F: R=height, GBA=normal.xyz
-uniform sampler2DArray u_biomeMap;       // RGBA8: R=low_idx, G=t, B=bake_flag
+#include "helpers/terrain_common.glsl"
 
 // Per-type properties (uploaded once in PrepareResources)
 struct DecorTypeParams {
@@ -73,7 +71,6 @@ void main() {
 	uint        chunkIdx = gl_WorkGroupID.z;
 	ChunkParams cp = chunks[chunkIdx];
 	vec2        chunkWorldOffset = cp.offsetSliceSize.xy;
-	float       chunkSlice = cp.offsetSliceSize.z;
 	float       chunkSize = cp.offsetSliceSize.w;
 	int         baseInstanceIdx = cp.indices.x;
 
@@ -130,17 +127,12 @@ void main() {
 	    worldPos.y < chunkWorldOffset.y || worldPos.y >= chunkWorldOffset.y + chunkSize)
 		return;
 
-	vec2 uv = (worldPos - chunkWorldOffset) / chunkSize;
-	vec2 remappedUV = (uv * float([[CHUNK_SIZE]]) + 0.5) / float([[CHUNK_SIZE_PLUS_1]]);
+	TerrainInfo info = getTerrainInfo(worldPos);
+	if (!info.isValid) return;
 
-	vec4 terrainSample = textureLod(u_heightmapArray, vec3(remappedUV, chunkSlice), 0.0);
-
-	float height = terrainSample.r;
-	vec3  normal = vec3(terrainSample.g, terrainSample.b, terrainSample.a);
-
-	if (height < minHeight * worldScale || height > maxHeight * worldScale)
+	if (info.height < minHeight * worldScale || info.height > maxHeight * worldScale || info.waterMask > 0.5)
 		return;
-	float slope = 1.0 - normal.y;
+	float slope = 1.0 - info.normal.y;
 	if (slope < minSlope || slope > maxSlope)
 		return;
 
@@ -162,16 +154,11 @@ void main() {
 	if (distToCam > maxDecorDistance)
 		return;
 
-	vec2  biomeData = textureLod(u_biomeMap, vec3(remappedUV, chunkSlice), 0.0).rg;
-	int   lowIdx = int(biomeData.r * 255.0 + 0.5);
-	int   highIdx = min(lowIdx + 1, 7);
-	float t = biomeData.g;
-
 	float allowedWeight = 0.0;
-	if ((biomeMask & (1u << uint(lowIdx))) != 0u)
-		allowedWeight += (1.0 - t);
-	if ((biomeMask & (1u << uint(highIdx))) != 0u)
-		allowedWeight += t;
+	if ((biomeMask & (1u << uint(info.lowIdx))) != 0u)
+		allowedWeight += (1.0 - info.biomeLerp);
+	if ((biomeMask & (1u << uint(info.highIdx))) != 0u)
+		allowedWeight += info.biomeLerp;
 
 	if (allowedWeight < 0.01)
 		return;
@@ -181,7 +168,7 @@ void main() {
 	if (hash(seed + 5678) > effectiveDensity)
 		return;
 
-	vec3 worldPos3D = vec3(worldPos.x, height, worldPos.y);
+	vec3 worldPos3D = vec3(worldPos.x, info.height, worldPos.y);
 
 	float scaleNoise = (snoise(scaledWorldPos * 0.1) + 1.0) * 0.5;
 
@@ -196,7 +183,7 @@ void main() {
 
 	if (alignToTerrain) {
 		vec3 up = vec3(0.0, 1.0, 0.0);
-		vec3 terrainUp = normalize(normal);
+		vec3 terrainUp = normalize(info.normal);
 
 		if (abs(dot(up, terrainUp)) < 0.999) {
 			vec3  axis = normalize(cross(up, terrainUp));

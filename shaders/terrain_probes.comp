@@ -11,8 +11,7 @@ float calculateTerrainOcclusion(vec3 worldPos, vec3 normal) { return 1.0; }
 
 #include "helpers/lighting.glsl"
 #include "helpers/fast_noise.glsl"
-uniform sampler2DArray u_heightmapArray;
-uniform sampler2DArray u_biomeMap; // RGBA8: R=low_idx, G=t, B=bake_flag
+#include "helpers/terrain_common.glsl"
 
 uniform sampler2D u_gColor;
 uniform sampler2D u_gDepth;
@@ -109,57 +108,38 @@ vec3 sampleTerrainFallback(vec3 worldPos, vec3 rayDir) {
 
 	for (int i = 0; i < k_coarseSteps; ++i) {
 		vec3 p = worldPos + rayDir * currentDist;
-		vec2 gridPos = p.xz / scaledChunkSize - vec2(u_originSize.xy);
-		ivec2 chunkCoord = ivec2(floor(gridPos));
+		TerrainInfo info = getTerrainInfo(p.xz);
+		if (info.isValid) {
+			if (p.y <= info.height) {
+				vec3 albedo = mix(u_biomes[info.lowIdx].albedo_roughness.rgb, u_biomes[info.highIdx].albedo_roughness.rgb, info.biomeLerp);
+				vec3 normal = info.normal;
 
-		if (chunkCoord.x >= 0 && chunkCoord.x < u_originSize.z && chunkCoord.y >= 0 && chunkCoord.y < u_originSize.z) {
-			int slice = texelFetch(u_chunkGrid, chunkCoord, 0).r;
-			if (slice >= 0) {
-				vec2 uv = fract(gridPos);
-				vec2 remappedUV = (uv * u_terrainParams.x + 0.5) / (u_terrainParams.x + 1.0);
-				vec4 hNorm = texture(u_heightmapArray, vec3(remappedUV, float(slice)));
-				if (p.y <= hNorm.r) {
-					vec2 biomeInfo = texture(u_biomeMap, vec3(remappedUV, float(slice))).rg;
-					int lowIdx = int(biomeInfo.x);
-					float t = biomeInfo.y;
-					vec3 albedo = mix(u_biomes[lowIdx].albedo_roughness.rgb, u_biomes[min(lowIdx + 1, 7)].albedo_roughness.rgb, t);
-					vec3 normal = normalize(hNorm.gba);
+				vec3 radiance = vec3(0.0);
+				for (int l = 0; l < min(num_lights, 2); ++l) {
+					vec3  L = normalize(lights[l].type == 1 ? -lights[l].direction : (lights[l].position - p));
+					float NdotL = max(0.0, dot(normal, L));
 
-					vec3 radiance = vec3(0.0);
-					for (int l = 0; l < min(num_lights, 2); ++l) {
-						vec3  L = normalize(lights[l].type == 1 ? -lights[l].direction : (lights[l].position - p));
-						float NdotL = max(0.0, dot(normal, L));
-
-						// Coarse shadow/occlusion test for directional lights in fallback
-						float shadow = 1.0;
-						if (lights[l].type == 1) {
-							// Simple raymarch check against heightmap
-							vec3  shadowP = p + normal * (0.5 * worldScale);
-							float shadowT = 2.0 * worldScale;
-							for (int step = 0; step < 8; ++step) {
-								vec3  testP = shadowP + L * shadowT;
-								vec2  testGridPos = testP.xz / scaledChunkSize - vec2(u_originSize.xy);
-								ivec2 testCoord = ivec2(floor(testGridPos));
-								if (testCoord.x >= 0 && testCoord.x < u_originSize.z && testCoord.y >= 0 &&
-								    testCoord.y < u_originSize.z) {
-									int testSlice = texelFetch(u_chunkGrid, testCoord, 0).r;
-									if (testSlice >= 0) {
-										float h = texture(u_heightmapArray, vec3(fract(testGridPos), float(testSlice))).r;
-										if (testP.y < h) {
-											shadow = 0.0;
-											break;
-										}
-									}
-								}
-								shadowT += 4.0 * worldScale;
+					// Coarse shadow/occlusion test for directional lights in fallback
+					float shadow = 1.0;
+					if (lights[l].type == 1) {
+						// Simple raymarch check against heightmap
+						vec3  shadowP = p + normal * (0.5 * worldScale);
+						float shadowT = 2.0 * worldScale;
+						for (int step = 0; step < 8; ++step) {
+							vec3  testP = shadowP + L * shadowT;
+							float h = getTerrainHeight(testP.xz);
+							if (testP.y < h) {
+								shadow = 0.0;
+								break;
 							}
+							shadowT += 4.0 * worldScale;
 						}
-
-						// Direct illumination contribution to ground bounce (diffuse only for SH)
-						radiance += albedo * lights[l].color * lights[l].intensity * NdotL * 0.5 * shadow;
 					}
-					return radiance;
+
+					// Direct illumination contribution to ground bounce (diffuse only for SH)
+					radiance += albedo * lights[l].color * lights[l].intensity * NdotL * 0.5 * shadow;
 				}
+				return radiance;
 			}
 		} else {
 			if (rayDir.y < -0.01) {
@@ -257,20 +237,20 @@ void main() {
 	ivec2 toroidalCoord = (worldChunkCoord % u_originSize.z + u_originSize.z) % u_originSize.z;
 	int   flatIdx = int(toroidalCoord.y * u_originSize.z + toroidalCoord.x);
 
-	int slice = texelFetch(u_chunkGrid, localCoord, 0).r;
-	if (slice < 0) {
+	float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
+	vec2  worldXZ = (vec2(worldChunkCoord) + 0.5) * scaledChunkSize;
+
+	TerrainInfo info = getTerrainInfo(worldXZ);
+	if (!info.isValid) {
 		for (int i = 0; i < 9; ++i) {
 			u_terrainProbes[flatIdx].sh_coeffs[i] = vec4(0.0, 0.0, 0.0, 1.0);
 		}
 		return;
 	}
 
-	float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
 	float worldScaleVal = u_terrainParams.y;
-	vec2  worldXZ = (vec2(worldChunkCoord) + 0.5) * scaledChunkSize;
-	vec4  sampledHeightNorm = texture(u_heightmapArray, vec3(0.5, 0.5, float(slice)));
-	vec3  worldPos = vec3(worldXZ.x, sampledHeightNorm.r, worldXZ.y);
-	vec3  worldNormal = normalize(sampledHeightNorm.gba);
+	vec3  worldPos = vec3(worldXZ.x, info.height, worldXZ.y);
+	vec3  worldNormal = info.normal;
 
 	// Position probe origin slightly above terrain to ensure clear visibility
 	vec3 probeOrigin = worldPos + worldNormal * 1.0 * worldScaleVal;

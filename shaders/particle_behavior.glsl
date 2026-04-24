@@ -2,9 +2,11 @@
 #define PARTICLE_BEHAVIOR_GLSL
 
 #include "helpers/spatial_hash.glsl"
+
 #include "particle_helpers.glsl"
 #include "particle_types.glsl"
 #include "visual_effects.glsl"
+#include "helpers/terrain_common.glsl"
 #include "helpers/wind.glsl"
 
 // Simulation parameters
@@ -38,22 +40,14 @@ const float kCinderDriftIntensity = 4.0;
 const float kCinderBuoyancy = 1.5;
 
 void handleTerrainCollision(inout Particle p, int num_chunks, sampler2DArray heightmapArray) {
+	TerrainInfo info = getTerrainInfo(p.pos.xz);
 	bool collided = false;
-	for (int i = 0; i < num_chunks; i++) {
-		ChunkInfo chunk = chunks[i];
-		if (p.pos.x >= chunk.worldOffset.x && p.pos.x < chunk.worldOffset.x + chunk.size &&
-		    p.pos.z >= chunk.worldOffset.y && p.pos.z < chunk.worldOffset.y + chunk.size) {
-			vec2  uv = (p.pos.xz - chunk.worldOffset) / chunk.size;
-			vec4  terrain = texture(heightmapArray, vec3(uv, chunk.slice));
-			float height = terrain.r;
-			vec3  normal = vec3(terrain.g, terrain.b, terrain.a);
 
-			if (p.pos.y < height) {
-				p.pos.y = height + 0.05;
-				p.vel.xyz = reflect(p.vel.xyz, normal) * 0.4;
-				collided = true;
-			}
-			break;
+	if (info.isValid) {
+		if (p.pos.y < info.height) {
+			p.pos.y = info.height + 0.05;
+			p.vel.xyz = reflect(p.vel.xyz, info.normal) * 0.4;
+			collided = true;
 		}
 	}
 
