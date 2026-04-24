@@ -22,6 +22,11 @@ namespace Boidsish {
 
         void PopulateWindData(WindDataUbo& ubo, std::vector<glm::vec4>& grid_out, float totalTime, float curlScale, float curlStrength) const;
 
+        /**
+         * @brief Takes a full snapshot of the simulation state for asynchronous readback.
+         */
+        void TakeSnapshot(LbmSnapshot& snapshot, float totalTime, float curlScale, float curlStrength) const;
+
         const PhysicallyBasedWeatherOutput& GetOutput() const { return currentOutput_; }
 
         /**

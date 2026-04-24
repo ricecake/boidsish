@@ -515,6 +515,25 @@ namespace Boidsish {
         }
     }
 
+    void WeatherLbmSimulator::TakeSnapshot(LbmSnapshot& snapshot, float totalTime, float curlScale, float curlStrength) const {
+        snapshot.output = currentOutput_;
+        snapshot.gridAnchor = gridAnchor_;
+        PopulateWindData(snapshot.uboMetadata, snapshot.windData, totalTime, curlScale, curlStrength);
+
+        if (snapshot.scalarData.size() < (size_t)(width_ * height_)) {
+            snapshot.scalarData.resize(width_ * height_);
+        }
+
+        for (int i = 0; i < width_ * height_; ++i) {
+            const LbmCell& cell = (*currentGrid_)[i];
+            float rho = 0.0f;
+            for (int j = 0; j < 9; ++j) rho += cell.f[j];
+            snapshot.scalarData[i] = glm::vec4(cell.temperature, cell.humidity, 1013.25f * rho, cell.aerosol);
+        }
+
+        snapshot.valid = true;
+    }
+
     PhysicallyBasedWeatherOutput WeatherLbmSimulator::GetWeatherAtPosition(const glm::vec3& pos) const {
         // For now, return global output but update wind from local cell
         PhysicallyBasedWeatherOutput out = currentOutput_;
