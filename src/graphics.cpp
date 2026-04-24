@@ -1250,6 +1250,9 @@ namespace Boidsish {
 			// AudioManager must be destroyed after all Sound objects
 			audio_manager.reset();
 
+			// WeatherManager must be destroyed before TerrainGenerator as it may reference it
+			weather_manager.reset();
+
 			// TerrainGenerator must be destroyed before thread pool stops
 			terrain_generator.reset();
 

@@ -17,8 +17,6 @@ namespace Boidsish {
 		// Initialize LBM Simulator (scaled to typical terrain range)
 		lbm_simulator_ = std::make_unique<WeatherLbmSimulator>(128, 128);
 
-		wind_data_cache_.resize(128 * 128);
-
 		// Initialize default paces for various attributes from centralized constants
 		SetPace(WeatherAttribute::SunIntensity, WeatherConstants::SunIntensity.pace);
 		SetPace(WeatherAttribute::WindStrength, WeatherConstants::WindStrength.pace);
@@ -55,6 +53,13 @@ namespace Boidsish {
 	}
 
 	WeatherManager::~WeatherManager() {
+		if (lbm_task_.has_value()) {
+			lbm_task_->cancel();
+			try {
+				lbm_task_->get();
+			} catch (...) {}
+		}
+
 		if (wind_data_ubo_ != 0) {
 			glDeleteBuffers(1, &wind_data_ubo_);
 		}
@@ -95,6 +100,55 @@ namespace Boidsish {
 		manual_preset_idx_ = index;
 		// Force update on next frame
 		last_control_noise_ = glm::vec2(-1000.0f);
+	}
+
+	const PhysicallyBasedWeatherOutput* WeatherManager::GetPhysicallyBasedWeather() const {
+		return latest_snapshot_.valid ? &latest_snapshot_.output : nullptr;
+	}
+
+	PhysicallyBasedWeatherOutput WeatherManager::GetWeatherAtPosition(const glm::vec3& pos) const {
+		if (!latest_snapshot_.valid)
+			return PhysicallyBasedWeatherOutput{};
+
+		PhysicallyBasedWeatherOutput out = latest_snapshot_.output;
+
+		// Localize if possible using snapshot data
+		int chunkX = (int)std::floor(pos.x / 32.0f);
+		int chunkZ = (int)std::floor(pos.z / 32.0f);
+		int x = chunkX - latest_snapshot_.gridAnchor.x;
+		int z = chunkZ - latest_snapshot_.gridAnchor.y;
+
+		int width = latest_snapshot_.uboMetadata.originSize.y;
+		int height = latest_snapshot_.uboMetadata.originSize.w;
+
+		if (x >= 0 && x < width && z >= 0 && z < height) {
+			int         idx = z * width + x;
+			const auto& wind = latest_snapshot_.windData[idx];
+			const auto& scalars = latest_snapshot_.scalarData[idx];
+
+			out.windVelocity = glm::vec2(wind.x, wind.z);
+			out.verticalWind = wind.y;
+			out.temperature = scalars.x;
+			out.humidity = scalars.y;
+			out.pressure = scalars.z;
+		}
+
+		return out;
+	}
+
+	void WeatherManager::InjectPressure(const glm::vec3& pos, float pressureHpa, float burstStrength) {
+		std::lock_guard<std::mutex> lock(injection_mutex_);
+		pending_injections_.push_back({LbmInjectionType::Pressure, pos, pressureHpa, burstStrength});
+	}
+
+	void WeatherManager::InjectAerosol(const glm::vec3& pos, float concentration) {
+		std::lock_guard<std::mutex> lock(injection_mutex_);
+		pending_injections_.push_back({LbmInjectionType::Aerosol, pos, concentration, 0.0f});
+	}
+
+	void WeatherManager::InjectTemperature(const glm::vec3& pos, float temperatureK) {
+		std::lock_guard<std::mutex> lock(injection_mutex_);
+		pending_injections_.push_back({LbmInjectionType::Temperature, pos, temperatureK, 0.0f});
 	}
 
 	void WeatherManager::UpdateAttribute(WeatherAttribute attr, float target, float deltaTime) {
@@ -418,7 +472,7 @@ namespace Boidsish {
 	}
 
 	void WeatherManager::UpdateWindUbo(float totalTime) {
-		if (!lbm_simulator_)
+		if (!latest_snapshot_.valid)
 			return;
 
 		// Lazy initialization of GPU resources
@@ -439,13 +493,10 @@ namespace Boidsish {
 			glBindTexture(GL_TEXTURE_2D, 0);
 		}
 
-		WindDataUbo ubo;
-		if (macro_sim_enabled_) {
-			lbm_simulator_->PopulateWindData(ubo, wind_data_cache_, totalTime, current_.wind_frequency, 1.0f);
-		} else {
-			// Still need to populate UBO metadata for correct texture sampling in shaders
-			lbm_simulator_->PopulateWindData(ubo, wind_data_cache_, totalTime, current_.wind_frequency, 1.0f);
+		WindDataUbo ubo = latest_snapshot_.uboMetadata;
+		const auto& wind_data = latest_snapshot_.windData;
 
+		if (!macro_sim_enabled_) {
 			// Fallback: Uniform slowly changing wind vector
 			float wind_t = totalTime * 0.05f;
 			glm::vec2 windDir(
@@ -456,29 +507,40 @@ namespace Boidsish {
 			float     conversion = 32.0f / 0.1f;
 			glm::vec2 windVec = windDir * current_.wind_strength * conversion;
 
-			std::fill(wind_data_cache_.begin(), wind_data_cache_.end(), glm::vec4(windVec.x, 0.0f, windVec.y, 0.0f));
+			// We still use the snapshot's grid dimensions for metadata but override the content
+			std::vector<glm::vec4> fallback_data(wind_data.size(), glm::vec4(windVec.x, 0.0f, windVec.y, 0.0f));
+
+			glBindBuffer(GL_UNIFORM_BUFFER, wind_data_ubo_);
+			glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(WindDataUbo), &ubo);
+			glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
+			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::WindData(), wind_data_ubo_);
+
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::WindData());
+			glBindTexture(GL_TEXTURE_2D, wind_texture_);
+			glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, ubo.originSize.y, ubo.originSize.w, GL_RGBA, GL_FLOAT, fallback_data.data());
+		} else {
+			glBindBuffer(GL_UNIFORM_BUFFER, wind_data_ubo_);
+			glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(WindDataUbo), &ubo);
+			glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
+			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::WindData(), wind_data_ubo_);
+
+			// Update Wind Texture
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::WindData());
+			glBindTexture(GL_TEXTURE_2D, wind_texture_);
+			glTexSubImage2D(
+				GL_TEXTURE_2D,
+				0,
+				0,
+				0,
+				ubo.originSize.y,
+				ubo.originSize.w,
+				GL_RGBA,
+				GL_FLOAT,
+				wind_data.data()
+			);
 		}
-
-		glBindBuffer(GL_UNIFORM_BUFFER, wind_data_ubo_);
-		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(WindDataUbo), &ubo);
-		glBindBuffer(GL_UNIFORM_BUFFER, 0);
-
-		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::WindData(), wind_data_ubo_);
-
-		// Update Wind Texture
-		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::WindData());
-		glBindTexture(GL_TEXTURE_2D, wind_texture_);
-		glTexSubImage2D(
-			GL_TEXTURE_2D,
-			0,
-			0,
-			0,
-			lbm_simulator_->GetWidth(),
-			lbm_simulator_->GetHeight(),
-			GL_RGBA,
-			GL_FLOAT,
-			wind_data_cache_.data()
-		);
 	}
 
 	void WeatherManager::Update(float deltaTime, float totalTime, const glm::vec3& cameraPos, float timeOfDay) {
@@ -487,26 +549,81 @@ namespace Boidsish {
 
 		PROJECT_PROFILE_SCOPE("WeatherManager::Update");
 
-		if (lbm_simulator_ && terrain_) {
-			if (macro_sim_enabled_) {
-				lbm_simulator_->Update(
-					deltaTime,
-					totalTime,
-					timeOfDay,
-					*terrain_,
-					cameraPos,
-					current_.wind_speed,
-					current_.wind_strength,
-					current_.temperature,
-					current_.pressure,
-					current_.humidity
-				);
-			} else {
-				// We still need to anchor the simulator grid so PopulateWindData UBO metadata is correct
-				// But we don't run the expensive LBM steps.
-				lbm_simulator_->UpdateAnchor(cameraPos);
+		// Accumulate delta for the LBM background task
+		lbm_delta_accumulator_ += deltaTime;
+
+		// Manage background task
+		if (!lbm_task_.has_value() || lbm_task_->is_ready()) {
+			if (lbm_task_.has_value()) {
+				latest_snapshot_ = lbm_task_->get();
 			}
 
+			// Fire next task immediately
+			float taskDelta = lbm_delta_accumulator_;
+			lbm_delta_accumulator_ = 0.0f;
+
+			// Capture parameters by value for thread safety
+			float windSpeed = current_.wind_speed;
+			float windStrength = current_.wind_strength;
+			float windFreq = current_.wind_frequency;
+			float temperature = current_.temperature;
+			float pressure = current_.pressure;
+			float humidity = current_.humidity;
+			bool simEnabled = macro_sim_enabled_;
+
+			lbm_task_ = lbm_pool_.enqueue(TaskPriority::MEDIUM, [this, taskDelta, totalTime, timeOfDay, cameraPos, windSpeed, windStrength, windFreq, temperature, pressure, humidity, simEnabled]() {
+				if (!lbm_simulator_ || !terrain_) {
+					return LbmSnapshot{};
+				}
+
+				// Handle reset request
+				if (reset_requested_.exchange(false)) {
+					lbm_simulator_->Reset(*terrain_, totalTime, timeOfDay);
+				}
+
+				// Handle injections
+				std::vector<LbmInjection> injections;
+				{
+					std::lock_guard<std::mutex> lock(injection_mutex_);
+					injections = std::move(pending_injections_);
+					pending_injections_.clear();
+				}
+
+				for (const auto& inj : injections) {
+					switch (inj.type) {
+					case LbmInjectionType::Pressure:
+						lbm_simulator_->InjectPressure(inj.pos, inj.value1, inj.value2);
+						break;
+					case LbmInjectionType::Aerosol:
+						lbm_simulator_->InjectAerosol(inj.pos, inj.value1);
+						break;
+					case LbmInjectionType::Temperature:
+						lbm_simulator_->InjectTemperature(inj.pos, inj.value1);
+						break;
+					}
+				}
+
+				if (simEnabled) {
+					lbm_simulator_->Update(
+						taskDelta,
+						totalTime,
+						timeOfDay,
+						*terrain_,
+						cameraPos,
+						windSpeed,
+						windStrength,
+						temperature,
+						pressure,
+						humidity
+					);
+				} else {
+					lbm_simulator_->UpdateAnchor(cameraPos);
+				}
+
+				LbmSnapshot snap;
+				lbm_simulator_->TakeSnapshot(snap, totalTime, windFreq, 1.0f);
+				return snap;
+			});
 		}
 
 		// Calculate weather control coordinate in noise-space
@@ -532,8 +649,8 @@ namespace Boidsish {
 				float controlValue = Simplex::noise(noisePos) * 0.5f + 0.5f;
 
 				// If LBM is enabled, use its cloud coverage to drive weather transitions
-				if (macro_sim_enabled_ && lbm_simulator_) {
-					controlValue = lbm_simulator_->GetOutput().cloudCoverage;
+				if (macro_sim_enabled_ && latest_snapshot_.valid) {
+					controlValue = latest_snapshot_.output.cloudCoverage;
 				}
 
 				float totalWeight = cdf_.back();
@@ -570,8 +687,8 @@ namespace Boidsish {
 			float humidity = 0.5f;
 			float pressure = 1.0f;
 			float temperature = 0.5f;
-			if (macro_sim_enabled_ && lbm_simulator_) {
-				const auto& phys = lbm_simulator_->GetOutput();
+			if (macro_sim_enabled_ && latest_snapshot_.valid) {
+				const auto& phys = latest_snapshot_.output;
 				humidity = phys.humidity;
 				pressure = std::clamp((phys.pressure - 950.0f) / 100.0f, 0.0f, 1.0f);
 				temperature = std::clamp((phys.temperature - 250.0f) / 50.0f, 0.0f, 1.0f);
@@ -605,8 +722,8 @@ namespace Boidsish {
 		}
 
 		// If LBM is enabled, some targets are driven directly by simulation
-		if (macro_sim_enabled_ && lbm_simulator_) {
-			const auto& phys = lbm_simulator_->GetOutput();
+		if (macro_sim_enabled_ && latest_snapshot_.valid) {
+			const auto& phys = latest_snapshot_.output;
 			cached_targets_.rayleigh_scattering = phys.rayleighScattering;
 			cached_targets_.mie_scattering = phys.mieScattering;
 			cached_targets_.mie_extinction = phys.mieExtinction;
