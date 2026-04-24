@@ -295,6 +295,17 @@ namespace Boidsish {
                 grass_shader_->trySetInt("u_phasorTexture", Constants::TextureUnit::NoisePhasor());
             }
 
+            if (res.windTexture) {
+                glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::WindData());
+                glBindTexture(GL_TEXTURE_2D, res.windTexture);
+                grass_shader_->trySetInt("u_windTexture", Constants::TextureUnit::WindData());
+            }
+
+            if (res.windUbo) {
+                glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::WindData(),
+                    res.windUbo, res.windUboOffset, res.windUboSize);
+            }
+
             if (res.shadowIndices) {
                 grass_shader_->setIntArray("lightShadowIndices", res.shadowIndices, 10);
             }
