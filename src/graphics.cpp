@@ -2176,6 +2176,7 @@ namespace Boidsish {
 			if (visual_effects_pb) visual_effects_pb->AdvanceFrame();
 			if (volumetric_lighting_manager) volumetric_lighting_manager->AdvanceFrame();
 			if (shadow_manager) shadow_manager->AdvanceFrame();
+			if (weather_manager) weather_manager->AdvanceFrame();
 
 			int current_idx = uniforms_ssbo->GetCurrentBufferIndex();
 			if (mdi_fences[current_idx]) {
@@ -2416,6 +2417,19 @@ namespace Boidsish {
 				render_state_.global_bindings.UboRange(Constants::UboBinding::VisualEffects(),
 					visual_effects_pb->GetBufferId(), visual_effects_pb->GetFrameOffset(),
 					sizeof(VisualEffectsUbo));
+			}
+			if (shadow_manager) {
+				render_state_.global_bindings.UboRange(Constants::UboBinding::Shadows(),
+					shadow_manager->GetShadowUbo(), shadow_manager->GetShadowUboOffset(),
+					sizeof(ShadowUbo));
+			}
+			if (volumetric_lighting_manager) {
+				auto vol_ubo = volumetric_lighting_manager->GetParameterUbo();
+				if (vol_ubo) {
+					render_state_.global_bindings.UboRange(Constants::UboBinding::VolumetricLighting(),
+						vol_ubo->GetBufferId(), vol_ubo->GetFrameOffset(),
+						sizeof(VolumetricLightingUbo));
+				}
 			}
 
 			// Volumetric Lighting UBO

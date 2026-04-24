@@ -52,9 +52,7 @@ namespace Boidsish {
 	}
 
 	WeatherManager::~WeatherManager() {
-		if (wind_data_ubo_ != 0) {
-			glDeleteBuffers(1, &wind_data_ubo_);
-		}
+		wind_data_ubo_.reset();
 		if (wind_texture_ != 0) {
 			glDeleteTextures(1, &wind_texture_);
 		}
@@ -334,11 +332,8 @@ namespace Boidsish {
 			return;
 
 		// Lazy initialization of GPU resources
-		if (wind_data_ubo_ == 0) {
-			glGenBuffers(1, &wind_data_ubo_);
-			glBindBuffer(GL_UNIFORM_BUFFER, wind_data_ubo_);
-			glBufferData(GL_UNIFORM_BUFFER, sizeof(WindDataUbo), nullptr, GL_DYNAMIC_DRAW);
-			glBindBuffer(GL_UNIFORM_BUFFER, 0);
+		if (!wind_data_ubo_) {
+			wind_data_ubo_ = std::make_unique<PersistentBuffer<WindDataUbo>>(GL_UNIFORM_BUFFER, 1, 3);
 		}
 		if (wind_texture_ == 0) {
 			glGenTextures(1, &wind_texture_);
@@ -361,12 +356,12 @@ namespace Boidsish {
 			glBindTexture(GL_TEXTURE_2D, 0);
 		}
 
-		WindDataUbo ubo;
+		WindDataUbo* ubo_ptr = wind_data_ubo_->GetFrameDataPtr();
 		if (macro_sim_enabled_) {
-			lbm_simulator_->PopulateWindData(ubo, wind_data_cache_, totalTime, current_.wind_frequency, 1.0f);
+			lbm_simulator_->PopulateWindData(*ubo_ptr, wind_data_cache_, totalTime, current_.wind_frequency, 1.0f);
 		} else {
 			// Still need to populate UBO metadata for correct texture sampling in shaders
-			lbm_simulator_->PopulateWindData(ubo, wind_data_cache_, totalTime, current_.wind_frequency, 1.0f);
+			lbm_simulator_->PopulateWindData(*ubo_ptr, wind_data_cache_, totalTime, current_.wind_frequency, 1.0f);
 
 			// Fallback: Uniform slowly changing wind vector
 			float wind_t = totalTime * 0.05f;
@@ -381,11 +376,8 @@ namespace Boidsish {
 			std::fill(wind_data_cache_.begin(), wind_data_cache_.end(), glm::vec4(windVec.x, 0.0f, windVec.y, 0.0f));
 		}
 
-		glBindBuffer(GL_UNIFORM_BUFFER, wind_data_ubo_);
-		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(WindDataUbo), &ubo);
-		glBindBuffer(GL_UNIFORM_BUFFER, 0);
-
-		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::WindData(), wind_data_ubo_);
+		glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::WindData(),
+			wind_data_ubo_->GetBufferId(), wind_data_ubo_->GetFrameOffset(), sizeof(WindDataUbo));
 
 		// Update Wind Texture
 		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::WindData());

@@ -54,6 +54,8 @@ namespace Boidsish {
 
         GLuint GetIntegratedVolume() const;
 
+        PersistentBuffer<VolumetricLightingUbo>* GetParameterUbo() const { return _parameterUbo.get(); }
+
         void BindToShader(class ShaderBase& shader);
 
         // Parameters

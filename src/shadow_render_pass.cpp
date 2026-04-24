@@ -176,8 +176,10 @@ namespace Boidsish {
 	}
 
 	void ShadowRenderPass::Execute(const FrameData& frame, ShapeRenderCallback render_shapes) {
-		if (maps_to_update_.empty())
+		if (maps_to_update_.empty()) {
+			shadow_manager_.UpdateShadowUBO(shadow_lights_);
 			return;
+		}
 
 		glEnable(GL_DEPTH_TEST);
 		shadow_manager_.GetShadowShader().use();

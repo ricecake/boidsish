@@ -8,6 +8,7 @@
 #include <glm/glm.hpp>
 #include "weather_constants.h"
 #include "weather_lbm_simulator.h"
+#include "persistent_buffer.h"
 
 namespace Boidsish {
 
@@ -260,6 +261,8 @@ namespace Boidsish {
 
 		void UpdateWindUbo(float totalTime);
 
+		void AdvanceFrame() { if (wind_data_ubo_) wind_data_ubo_->AdvanceFrame(); }
+
 		unsigned int GetAerosolTexture() const { return aerosol_texture_; }
 
 		void SetTerrainGenerator(ITerrainGenerator* terrain) { terrain_ = terrain; }
@@ -267,7 +270,7 @@ namespace Boidsish {
 	private:
 		ServiceLocator& loc_;
 
-		unsigned int wind_data_ubo_ = 0;
+		std::unique_ptr<PersistentBuffer<WindDataUbo>> wind_data_ubo_;
 		unsigned int wind_texture_ = 0;
 		unsigned int aerosol_texture_ = 0;
 		std::vector<glm::vec4> wind_data_cache_;

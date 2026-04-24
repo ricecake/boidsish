@@ -146,8 +146,8 @@ namespace Boidsish {
 
         // Bind Shadows UBO for CSM
         if (shadowMgr) {
-            // Shadows UBO layout: mat4[16] (1024) + vec4 (16) + int/padding (16) = 1056 bytes
-            glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::Shadows(), shadowMgr->GetShadowUbo(), 0, 1056);
+            glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::Shadows(),
+                shadowMgr->GetShadowUbo(), shadowMgr->GetShadowUboOffset(), sizeof(ShadowUbo));
         }
 
         // Bind Lighting UBO for viewPos and viewDir
