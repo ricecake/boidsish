@@ -375,39 +375,8 @@ namespace Boidsish {
 				}
 			}
 
-			for (auto& pair : pending_deformations_) {
-				if (pair.second.is_ready()) {
-					try {
-						TerrainGenerationResult result = pair.second.get();
-						auto                    new_terrain = std::make_shared<Terrain>(
-							result.indices,
-							result.positions,
-							result.normals,
-							result.biomes,
-							result.proxy
-						);
-						new_terrain->SetPosition(
-							result.chunk_x * scaled_chunk_size,
-							0,
-							result.chunk_z * scaled_chunk_size
-						);
-
-						if (render_manager_) {
-							new_terrain->SetManagedByRenderManager(true);
-						} else {
-							new_terrain->setupMesh();
-						}
-						chunk_cache_[pair.first] = new_terrain;
-						completed_chunks.push_back(pair.first);
-					} catch (...) {
-						completed_chunks.push_back(pair.first);
-					}
-				}
-			}
-
 			for (const auto& key : completed_chunks) {
 				pending_chunks_.erase(key);
-				pending_deformations_.erase(key);
 			}
 		}
 	}
@@ -422,6 +391,7 @@ namespace Boidsish {
 		// Loop until all pending tasks are finished
 		while (true) {
 			ProcessCompletedChunks();
+			ProcessPendingDeformations();
 			{
 				std::lock_guard<std::recursive_mutex> lock(chunk_cache_mutex_);
 				if (pending_chunks_.empty() && pending_deformations_.empty()) {
@@ -509,6 +479,16 @@ namespace Boidsish {
 			pair.second.cancel();
 		}
 		pending_chunks_.clear();
+
+		for (auto& pair : pending_deformations_) {
+			pair.second.cancel();
+		}
+		pending_deformations_.clear();
+
+		{
+			std::lock_guard<std::mutex> def_lock(deformation_queue_mutex_);
+			queued_deformation_ids_.clear();
+		}
 
 		// Unregister from render manager and clear cache
 		if (render_manager_) {
