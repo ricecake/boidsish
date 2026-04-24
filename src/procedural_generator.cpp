@@ -369,7 +369,7 @@ namespace Boidsish {
 			glm::vec3 c3 = grassCol * 1.5f;
 
 			int id1 = ir.AddTube(p1, p2, r1, r2, c1, -1, "", false, SkinningMode::Auto, 1.0f);
-			ir.AddTube(p2, p3, r2, r3, c2, id1, "", false, SkinningMode::Auto, 0.2f); // Tip is flexible
+			ir.AddTube(p2, p3, r2, r3, c2, id1, "", false, SkinningMode::Auto, 0.1f); // Tip is flexible
 		}
 
 		return ir;
@@ -448,7 +448,7 @@ namespace Boidsish {
 					"",
 					false,
 					SkinningMode::Auto,
-					current.thickness * 10.0f // Thinner stems are more flexible
+					glm::clamp(current.thickness * 5.0f, 0.05f, 1.0f) // Base is stiff, tip is floppy
 				);
 				current.position = next_pos;
 				current.thickness = next_thickness;
@@ -733,7 +733,7 @@ namespace Boidsish {
 					"",
 					false,
 					SkinningMode::Auto,
-					glm::clamp(current.thickness * 4.0f, 0.1f, 1.0f)
+					glm::clamp(current.thickness * 3.0f, 0.1f, 1.0f)
 				);
 				current.position = nextPos;
 				current.last_node_idx = id;
@@ -961,7 +961,7 @@ namespace Boidsish {
 					"",
 					false,
 					SkinningMode::Auto,
-					glm::clamp(current.thickness * 8.0f, 0.1f, 1.0f)
+					glm::clamp(current.thickness * 6.0f, 0.1f, 1.0f)
 				);
 				current.position = next_pos;
 				current.thickness = next_thickness;

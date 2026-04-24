@@ -74,6 +74,8 @@ namespace Boidsish {
 			dissolve_plane_dist_(other.dissolve_plane_dist_),
 			is_refractive_(other.is_refractive_),
 			refractive_index_(other.refractive_index_),
+			variety_seed_(other.variety_seed_),
+			variety_amount_(other.variety_amount_),
 			shadow_caster_override_(other.shadow_caster_override_) {}
 
 		Shape& operator=(Shape&& other) noexcept {
@@ -114,6 +116,8 @@ namespace Boidsish {
 				dissolve_plane_dist_ = other.dissolve_plane_dist_;
 				is_refractive_ = other.is_refractive_;
 				refractive_index_ = other.refractive_index_;
+				variety_seed_ = other.variety_seed_;
+				variety_amount_ = other.variety_amount_;
 				shadow_caster_override_ = other.shadow_caster_override_;
 			}
 			return *this;
@@ -449,6 +453,20 @@ namespace Boidsish {
 			MarkDirty();
 		}
 
+		inline float GetVarietySeed() const { return variety_seed_; }
+
+		inline void SetVarietySeed(float seed) {
+			variety_seed_ = seed;
+			MarkDirty();
+		}
+
+		inline float GetVarietyAmount() const { return variety_amount_; }
+
+		inline void SetVarietyAmount(float amount) {
+			variety_amount_ = amount;
+			MarkDirty();
+		}
+
 		// Static shader reference
 		static std::shared_ptr<Shader> shader;
 		static ShaderHandle            shader_handle;
@@ -512,6 +530,8 @@ namespace Boidsish {
 			dissolve_plane_dist_(0.0f),
 			is_refractive_(false),
 			refractive_index_(1.0f),
+			variety_seed_((float)(id == 0 ? s_nextId.load() : id)),
+			variety_amount_(0.0f),
 			shadow_caster_override_(std::nullopt) {}
 
 		virtual bool GetDefaultCastsShadows() const { return !is_colossal_; }
@@ -559,6 +579,8 @@ namespace Boidsish {
 		float     dissolve_plane_dist_;
 		bool      is_refractive_;
 		float     refractive_index_;
+		float     variety_seed_;
+		float     variety_amount_;
 
 	public:
 		// Shared sphere mesh (public for instancing support)

@@ -477,8 +477,8 @@ namespace Boidsish {
 		packet.uniforms.use_texture = 0;
 		packet.uniforms.use_vertex_color = 1; // Path uses vertex colors
 		packet.uniforms.is_colossal = IsColossal();
-		packet.uniforms.variety_seed = (float)(GetId() % 1000);
-		packet.uniforms.variety_amount = 0.0f;
+		packet.uniforms.variety_seed = GetVarietySeed();
+		packet.uniforms.variety_amount = GetVarietyAmount();
 
 		packet.casts_shadows = CastsShadows();
 

@@ -57,8 +57,8 @@ namespace Boidsish {
 		packet.uniforms.ao = ao_;
 		packet.uniforms.use_texture = false;
 		packet.uniforms.is_colossal = is_colossal_;
-		packet.uniforms.variety_seed = (float)(GetId() % 1000);
-		packet.uniforms.variety_amount = 0.0f;
+		packet.uniforms.variety_seed = variety_seed_;
+		packet.uniforms.variety_amount = variety_amount_;
 
 		packet.uniforms.dissolve_enabled = dissolve_enabled_ ? 1 : 0;
 		packet.uniforms.dissolve_plane_normal = dissolve_plane_normal_;
@@ -122,6 +122,9 @@ namespace Boidsish {
 			shader.setFloat("metallic", GetMetallic());
 			shader.setFloat("ao", GetAO());
 		}
+
+		shader.setFloat("variety_seed", GetVarietySeed());
+		shader.setFloat("variety_amount", GetVarietyAmount());
 
 		OnPreRender(shader);
 

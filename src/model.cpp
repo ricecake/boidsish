@@ -520,6 +520,9 @@ namespace Boidsish {
 			shader.setFloat("ao", GetAO());
 		}
 
+		shader.setFloat("variety_seed", GetVarietySeed());
+		shader.setFloat("variety_amount", GetVarietyAmount());
+
 		if (this->no_cull_) {
 			glDisable(GL_CULL_FACE);
 		}
@@ -656,8 +659,8 @@ namespace Boidsish {
 			packet.uniforms.use_texture = use_texture_mask;
 			packet.uniforms.is_colossal = IsColossal();
 			packet.uniforms.use_vertex_color = (mesh.has_vertex_colors && !has_diffuse) ? 1 : 0;
-			packet.uniforms.variety_seed = (float)(GetId() % 1000);
-			packet.uniforms.variety_amount = 0.05f; // Default small variety for all models
+			packet.uniforms.variety_seed = GetVarietySeed();
+			packet.uniforms.variety_amount = GetVarietyAmount();
 
 			packet.uniforms.dissolve_enabled = dissolve_enabled_ ? 1 : 0;
 			packet.uniforms.dissolve_plane_normal = dissolve_plane_normal_;
