@@ -48,6 +48,7 @@ namespace Boidsish {
 	class DecorManager;
 	class GrassManager;
 	class WeatherManager;
+	class VolumetricLightingManager;
 	class Path;
 
 	namespace PostProcessing {

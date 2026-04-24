@@ -176,6 +176,14 @@ namespace Boidsish {
 				aerial_perspective_lut_ = aerialPerspective;
 			}
 
+			void SetVolumetricCascades(GLuint cascade0, GLuint cascade1, GLuint ubo, size_t uboOffset, size_t uboSize) {
+				volumetric_cascade0_ = cascade0;
+				volumetric_cascade1_ = cascade1;
+				volumetric_ubo_ = ubo;
+				volumetric_ubo_offset_ = uboOffset;
+				volumetric_ubo_size_ = uboSize;
+			}
+
 			void SetNoiseTextures(const NoiseTextures& textures) { noise_textures_ = textures; }
 
 			void SetRenderScale(float scale) {
@@ -241,7 +249,13 @@ namespace Boidsish {
 			GLuint sky_view_lut_ = 0;
 			GLuint aerial_perspective_lut_ = 0;
 
-			NoiseTextures noise_textures_ = {0, 0, 0};
+			GLuint volumetric_cascade0_ = 0;
+			GLuint volumetric_cascade1_ = 0;
+			GLuint volumetric_ubo_ = 0;
+			size_t volumetric_ubo_offset_ = 0;
+			size_t volumetric_ubo_size_ = 0;
+
+			NoiseTextures noise_textures_ = {0, 0, 0, 0};
 
 			int   width_ = 0;
 			int   height_ = 0;

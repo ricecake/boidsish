@@ -56,6 +56,10 @@ namespace Boidsish {
 			consteval int WindData() {
 				return 45;
 			}
+
+			consteval int VolumetricLighting() {
+				return 46;
+			}
 		} // namespace UboBinding
 
 		namespace TextureUnit {
@@ -127,6 +131,14 @@ namespace Boidsish {
 			}
 			consteval int TerrainBakedParamsImage() {
 				return 32;
+			}
+
+			consteval int VolumetricCascades() {
+				return 40;
+			}
+
+			consteval int WeatherScalars() {
+				return 42;
 			}
 		} // namespace TextureUnit
 
