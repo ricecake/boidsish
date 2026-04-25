@@ -45,7 +45,10 @@ void main() {
         float dz = abs(currentZ - prevZ);
         prevZ = currentZ;
 
-        float stepTransmittance = exp(-extinction * dz);
+        // Convert world distance (m) to km for atmospheric coefficients
+        float dzKM = dz / 1000.0;
+
+        float stepTransmittance = exp(-extinction * dzKM);
         vec3 stepScattering = scattering * (1.0 - stepTransmittance) / max(extinction, 1e-6);
 
         accumulatedLight += accumulatedTransmittance * stepScattering;

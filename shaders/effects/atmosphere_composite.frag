@@ -3,9 +3,9 @@ out vec4 FragColor;
 
 in vec2 TexCoords;
 
-uniform sampler2D sceneTexture;
-uniform sampler2D depthTexture;
-uniform sampler2D cloudTexture; // Low-res clouds (temporally accumulated)
+layout(binding = 0) uniform sampler2D sceneTexture;
+layout(binding = 1) uniform sampler2D depthTexture;
+layout(binding = 2) uniform sampler2D cloudTexture; // Low-res clouds (temporally accumulated)
 
 uniform mat4 invView;
 uniform mat4 invProjection;
@@ -17,10 +17,10 @@ uniform vec3  hazeColor;
 uniform vec2 cloudTexelSize; // 1.0 / lowResSize
 
 // u_transmittanceLUT is declared in helpers/lighting.glsl
-uniform sampler3D u_aerialPerspectiveLUT;
+layout(binding = [[ATMOSPHERE_AERIAL_PERSPECTIVE_BINDING]]) uniform sampler3D u_aerialPerspectiveLUT;
 
-uniform sampler3D u_volumetricCascade0;
-uniform sampler3D u_volumetricCascade1;
+layout(binding = [[VOLUMETRIC_CASCADE0_BINDING]]) uniform sampler3D u_volumetricCascade0;
+layout(binding = [[VOLUMETRIC_CASCADE1_BINDING]]) uniform sampler3D u_volumetricCascade1;
 
 struct VolumetricLighting {
     vec4 cascadeRanges;
@@ -74,10 +74,10 @@ vec4 sampleVolumetric(vec2 screenUV, float dist) {
     float far1 = u_volData.cascadeRanges.w;
 
     if (dist < far0) {
-        float w = log(dist / near0) / log(far0 / near0);
+        float w = log(max(dist, near0) / near0) / log(far0 / near0);
         return texture(u_volumetricCascade0, vec3(screenUV, w));
     } else if (dist < far1) {
-        float w = log(dist / near1) / log(far1 / near1);
+        float w = log(max(dist, near1) / near1) / log(far1 / near1);
         return texture(u_volumetricCascade1, vec3(screenUV, w));
     }
     return vec4(0.0, 0.0, 0.0, 1.0);
