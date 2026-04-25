@@ -3650,7 +3650,8 @@ namespace Boidsish {
 				impl->simulation_time,
 				weatherTex,
 				weatherGrid,
-				aerosolColor
+					aerosolColor,
+					impl->light_manager->GetLights()
 			);
 		}
 		impl->packets_synced_ = false;

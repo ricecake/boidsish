@@ -32,7 +32,7 @@ in float      vSubstrate;
 uniform bool uIsShadowPass = false;
 
 // Biome texture array: RG8 - R=low_idx, G=t
-uniform sampler2DArray uBiomeMap;
+#include "textures/terrain.glsl"
 uniform float          uRawChunkSize;
 
 uniform mat4 view;
