@@ -67,20 +67,49 @@ float sampleAerialPerspectiveTransmittance(vec3 rd, float distKM) {
 	return texture(u_aerialPerspectiveLUT, vec3(u, v, w)).a;
 }
 
-vec4 sampleVolumetric(vec2 screenUV, float dist) {
-    float near0 = u_volData.cascadeRanges.x;
-    float far0 = u_volData.cascadeRanges.y;
-    float near1 = u_volData.cascadeRanges.z;
-    float far1 = u_volData.cascadeRanges.w;
+uniform sampler3D u_volumetricCascade2;
+uniform sampler3D u_volumetricCascade3;
 
-    if (dist < far0) {
-        float w = log(max(dist, near0) / near0) / log(far0 / near0);
-        return texture(u_volumetricCascade0, vec3(screenUV, w));
-    } else if (dist < far1) {
-        float w = log(max(dist, near1) / near1) / log(far1 / near1);
-        return texture(u_volumetricCascade1, vec3(screenUV, w));
+vec4 sampleVolumetricChained(vec2 screenUV, float dist) {
+    float ranges[5] = { 0.1, u_volData.cascadeRanges.x, u_volData.cascadeRanges.y, u_volData.cascadeRanges.z, u_volData.cascadeRanges.w };
+
+    vec3 totalScat = vec3(0.0);
+    float totalTrans = 1.0;
+
+    // Cascade 0
+    if (dist > ranges[0]) {
+        float d = min(dist, ranges[1]);
+        float w = log(d / ranges[0]) / log(ranges[1] / ranges[0]);
+        vec4 sample0 = texture(u_volumetricCascade0, vec3(screenUV, w));
+        totalScat += totalTrans * sample0.rgb;
+        totalTrans *= sample0.a;
     }
-    return vec4(0.0, 0.0, 0.0, 1.0);
+    // Cascade 1
+    if (dist > ranges[1]) {
+        float d = min(dist, ranges[2]);
+        float w = log(d / ranges[1]) / log(ranges[2] / ranges[1]);
+        vec4 sample1 = texture(u_volumetricCascade1, vec3(screenUV, w));
+        totalScat += totalTrans * sample1.rgb;
+        totalTrans *= sample1.a;
+    }
+    // Cascade 2
+    if (dist > ranges[2]) {
+        float d = min(dist, ranges[3]);
+        float w = log(d / ranges[2]) / log(ranges[3] / ranges[2]);
+        vec4 sample2 = texture(u_volumetricCascade2, vec3(screenUV, w));
+        totalScat += totalTrans * sample2.rgb;
+        totalTrans *= sample2.a;
+    }
+    // Cascade 3
+    if (dist > ranges[3]) {
+        float d = min(dist, ranges[4]);
+        float w = log(d / ranges[3]) / log(ranges[4] / ranges[3]);
+        vec4 sample3 = texture(u_volumetricCascade3, vec3(screenUV, w));
+        totalScat += totalTrans * sample3.rgb;
+        totalTrans *= sample3.a;
+    }
+
+    return vec4(totalScat, totalTrans);
 }
 
 void main() {
@@ -95,9 +124,11 @@ void main() {
 
 	vec3  rayDir = normalize(worldPos - viewPos);
 	float dist = length(worldPos - viewPos);
+	float linearDepth = abs(viewSpacePosition.z);
 
 	if (depth >= 0.99999) {
 		dist = 50000.0 * worldScale;
+		linearDepth = 50000.0 * worldScale;
 	}
 
 	// 1. Bilateral upsample of low-res clouds
@@ -155,7 +186,8 @@ void main() {
 	float transmittance = sampleAerialPerspectiveTransmittance(rayDir, distKM);
 
     // 2.5 Volumetric Lighting (Froxels)
-    vec4 volData = sampleVolumetric(TexCoords, dist);
+    // Use linear Z-depth for froxel sampling to match grid distribution
+    vec4 volData = sampleVolumetricChained(TexCoords, linearDepth);
     vec3 volScattering = volData.rgb;
     float volTransmittance = volData.a;
 

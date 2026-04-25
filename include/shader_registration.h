@@ -86,6 +86,8 @@ namespace Boidsish {
 
 		T::RegisterConstant("VOLUMETRIC_CASCADE0_BINDING", Constants::TextureUnit::VolumetricCascades());
 		T::RegisterConstant("VOLUMETRIC_CASCADE1_BINDING", Constants::TextureUnit::VolumetricCascades() + 1);
+		T::RegisterConstant("VOLUMETRIC_CASCADE2_BINDING", Constants::TextureUnit::VolumetricCascades() + 2);
+		T::RegisterConstant("VOLUMETRIC_CASCADE3_BINDING", Constants::TextureUnit::VolumetricCascades() + 3);
 		T::RegisterConstant("WEATHER_SCALARS_BINDING", Constants::TextureUnit::WeatherScalars());
 
 		T::RegisterConstant("RAW_HEIGHTMAP_BINDING", Constants::TextureUnit::TerrainRawHeightmap());

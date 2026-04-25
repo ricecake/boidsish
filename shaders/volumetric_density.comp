@@ -31,8 +31,8 @@ uniform mat4 invView;
 
 // Helper to convert froxel UVW to view-space position
 vec3 getFroxelViewPos(vec3 uvw, int cascade) {
-    float near = (cascade == 0) ? u_volData.cascadeRanges.x : u_volData.cascadeRanges.z;
-    float far = (cascade == 0) ? u_volData.cascadeRanges.y : u_volData.cascadeRanges.w;
+    float near = (cascade == 0) ? 0.1 : (cascade == 1) ? u_volData.cascadeRanges.x : (cascade == 2) ? u_volData.cascadeRanges.y : u_volData.cascadeRanges.z;
+    float far = (cascade == 0) ? u_volData.cascadeRanges.x : (cascade == 1) ? u_volData.cascadeRanges.y : (cascade == 2) ? u_volData.cascadeRanges.z : u_volData.cascadeRanges.w;
 
     // Logarithmic depth distribution
     float zView = near * pow(far / near, uvw.z);
@@ -85,7 +85,8 @@ void main() {
     extinction *= heightFalloff;
 
     // Tint scattering by weather aerosol color
-    vec3 coloredScattering = mix(vec3(scattering), u_aerosolColor * scattering, aerosol);
+    // Increase influence of aerosol color for better visibility
+    vec3 coloredScattering = mix(vec3(scattering), u_aerosolColor * scattering, aerosol * 5.0);
 
     imageStore(outDensityExtinction, texel, vec4(coloredScattering, extinction));
 }
