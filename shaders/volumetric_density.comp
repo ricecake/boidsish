@@ -23,7 +23,8 @@ layout(std140, binding = [[VOLUMETRIC_LIGHTING_BINDING]]) uniform VolumetricUnif
 };
 
 uniform int u_cascadeIndex;
-uniform sampler2D u_weatherScalars; // x: temp, y: humidity, z: pressure, w: aerosol
+layout(binding = [[WEATHER_SCALARS_BINDING]]) uniform sampler2D u_weatherScalars; // x: temp, y: humidity, z: pressure, w: aerosol
+uniform vec3 u_aerosolColor;
 
 uniform mat4 projection;
 uniform mat4 invView;
@@ -59,7 +60,7 @@ void main() {
     if (u_volData.weatherGridOriginSize.y > 0) {
         // Map world XZ to weather grid texture
         // Origin is in chunk coordinates (32m per chunk)
-        vec2 gridOriginWorld = u_volData.weatherGridOriginSize.xz * 32.0;
+        vec2 gridOriginWorld = vec2(u_volData.weatherGridOriginSize.x, u_volData.weatherGridOriginSize.z) * 32.0;
         vec2 gridPos = (worldPos.xz - gridOriginWorld) / (32.0 * vec2(u_volData.weatherGridOriginSize.y, u_volData.weatherGridOriginSize.w));
 
         if (all(greaterThanEqual(gridPos, vec2(0.0))) && all(lessThanEqual(gridPos, vec2(1.0)))) {
@@ -70,17 +71,21 @@ void main() {
     }
 
     // Base coefficients
-    float scattering = u_volData.scatteringCoeff;
-    float extinction = u_volData.extinctionCoeff;
+    float baseScattering = u_volData.scatteringCoeff;
+    float baseExtinction = u_volData.extinctionCoeff;
 
-    // Apply weather influence
-    scattering *= (1.0 + aerosol * 5.0 + humidity * 0.5);
-    extinction *= (1.0 + aerosol * 5.0 + humidity * 1.2);
+    // Modulate by local weather
+    float fogDensity = aerosol * 10.0 + humidity * 0.5;
+    float scattering = baseScattering * (1.0 + fogDensity);
+    float extinction = baseExtinction * (1.0 + fogDensity);
 
     // Height falloff
-    float heightFalloff = exp(-max(0.0, worldPos.y) * 0.02);
+    float heightFalloff = exp(-max(0.0, worldPos.y) * 0.01);
     scattering *= heightFalloff;
     extinction *= heightFalloff;
 
-    imageStore(outDensityExtinction, texel, vec4(vec3(scattering), extinction));
+    // Tint scattering by weather aerosol color
+    vec3 coloredScattering = mix(vec3(scattering), u_aerosolColor * scattering, aerosol);
+
+    imageStore(outDensityExtinction, texel, vec4(coloredScattering, extinction));
 }
