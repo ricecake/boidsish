@@ -138,7 +138,7 @@ namespace Boidsish {
 			}
 
 			consteval int WeatherScalars() {
-				return 42;
+				return 44;
 			}
 		} // namespace TextureUnit
 
