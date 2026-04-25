@@ -101,11 +101,11 @@ vec3 sampleSkyLUT(vec3 rd) {
 
 vec3 sampleTerrainFallback(vec3 worldPos, vec3 rayDir) {
 	float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
-	float worldScale = u_terrainParams.y;
+	float worldScaleVal = u_terrainParams.y;
 
-	float currentDist = 0.5 * worldScale;
+	float currentDist = 0.5 * worldScaleVal;
 	const int k_coarseSteps = 16;
-	float stepSize = 8.0 * worldScale;
+	float stepSize = 8.0 * worldScaleVal;
 
 	for (int i = 0; i < k_coarseSteps; ++i) {
 		vec3 p = worldPos + rayDir * currentDist;
@@ -130,12 +130,24 @@ vec3 sampleTerrainFallback(vec3 worldPos, vec3 rayDir) {
 						vec3  L = normalize(lights[l].type == 1 ? -lights[l].direction : (lights[l].position - p));
 						float NdotL = max(0.0, dot(normal, L));
 
+						// Directional lights (Sun/Moon) check
+						if (lights[l].type == 1 && L.y <= 0.0) continue;
+
 						// Coarse shadow/occlusion test for directional lights in fallback
 						float shadow = 1.0;
+						vec3 atmosphereTransmittance = vec3(1.0);
+
 						if (lights[l].type == 1) {
+							// Atmospheric transmittance
+							float r = kEarthRadiusKM + (p.y / (1000.0 * worldScaleVal));
+							atmosphereTransmittance = texture(u_transmittanceLUT, getTransmittanceUV(r, L.y)).rgb;
+
+							// Cloud shadows
+							shadow *= calculateCloudShadow(l, p);
+
 							// Simple raymarch check against heightmap
-							vec3  shadowP = p + normal * (0.5 * worldScale);
-							float shadowT = 2.0 * worldScale;
+							vec3  shadowP = p + normal * (0.5 * worldScaleVal);
+							float shadowT = 2.0 * worldScaleVal;
 							for (int step = 0; step < 8; ++step) {
 								vec3  testP = shadowP + L * shadowT;
 								vec2  testGridPos = testP.xz / scaledChunkSize - vec2(u_originSize.xy);
@@ -151,12 +163,12 @@ vec3 sampleTerrainFallback(vec3 worldPos, vec3 rayDir) {
 										}
 									}
 								}
-								shadowT += 4.0 * worldScale;
+								shadowT += 4.0 * worldScaleVal;
 							}
 						}
 
 						// Direct illumination contribution to ground bounce (diffuse only for SH)
-						radiance += albedo * lights[l].color * lights[l].intensity * NdotL * 0.5 * shadow;
+						radiance += albedo * lights[l].color * lights[l].intensity * atmosphereTransmittance * NdotL * 0.5 * shadow;
 					}
 					return radiance;
 				}
@@ -227,8 +239,19 @@ void shMarchMain(vec3 rd, vec3 probeOrigin, int totalRayCount, inout vec3 newSH[
 						for (int l = 0; l < min(num_lights, 2); ++l) {
 							vec3  L = normalize(lights[l].type == 1 ? -lights[l].direction : (lights[l].position - p));
 							float NdotL = max(0.0, dot(normal, L));
+
+							if (lights[l].type == 1 && L.y <= 0.0) continue;
+
 							float lShadow = (l == 0) ? shadow : 1.0;
-							radiance += albedo * lights[l].color * lights[l].intensity * NdotL * lShadow;
+							vec3 atmosphereTransmittance = vec3(1.0);
+
+							if (lights[l].type == 1) {
+								float r = kEarthRadiusKM + (p.y / (1000.0 * worldScaleVal));
+								atmosphereTransmittance = texture(u_transmittanceLUT, getTransmittanceUV(r, L.y)).rgb;
+								lShadow *= calculateCloudShadow(l, p);
+							}
+
+							radiance += albedo * lights[l].color * lights[l].intensity * atmosphereTransmittance * NdotL * lShadow;
 						}
 
 						hitFound = true;

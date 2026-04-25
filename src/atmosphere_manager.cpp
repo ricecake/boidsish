@@ -123,7 +123,8 @@ namespace Boidsish {
 		const glm::vec3& sunColor,
 		float            sunIntensity,
 		const glm::vec3& cameraPos,
-		float            time
+		float            time,
+		float            worldScale
 	) {
 		PROJECT_PROFILE_SCOPE("AtmosphereManager::Update");
 		if (_needsPrecompute) {
@@ -185,6 +186,13 @@ namespace Boidsish {
 		_skyViewShader->setFloat("u_mieScale", _mieScale);
 		_skyViewShader->setFloat("u_mieAnisotropy", _mieAnisotropy);
 		_skyViewShader->setFloat("u_multiScatScale", _multiScatScale);
+
+		glActiveTexture(GL_TEXTURE3);
+		glBindTexture(GL_TEXTURE_2D, _cloudShadowMap);
+		_skyViewShader->setInt("u_cloudShadowMap", 3);
+
+		_skyViewShader->setFloat("u_worldScale", worldScale);
+		_skyViewShader->setFloat("u_cloudShadowIntensity", _cloudShadowIntensity);
 
 		_skyViewShader->setFloat("u_atmosphereHeight", _atmosphereHeight);
 		_skyViewShader->setVec3("u_rayleighScatteringBase", _rayleighScattering);

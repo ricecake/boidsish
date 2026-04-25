@@ -183,7 +183,7 @@ void main() {
 	// Use u_sunRadiance if available (via AtmosphereManager) or fallback to simple sunColor
 	// We divide by PI for physical consistency if it's treated as irradiance
 	vec3 radiance = length(u_sunRadiance) > 0.0 ? u_sunRadiance : sunColor;
-	vec3 sunDisc = radiance * sunMask * sunTransmittance;
+	vec3 sunDisc = radiance * sunMask * sunTransmittance * smoothstep(-0.01, 0.01, sunDir.y);
 
 	// 3. Stars and Nebula
 	vec3 stars = starLayer(world_ray) * vec3(1.0, 0.9, 0.8);
@@ -245,7 +245,7 @@ void main() {
 	// Earthshine: dark side gets a faint glow (~8%)
 	float phasedMask = moonMask * mix(0.08, 1.0, moonIllumination);
 
-	vec3 moonDisc = u_moonRadiance * phasedMask * moonTransmittance;
+	vec3 moonDisc = u_moonRadiance * phasedMask * moonTransmittance * smoothstep(-0.01, 0.01, moonDir.y);
 
 	vec3 finalColor = skyRadiance + sunDisc + moonDisc + spaceBackground;
 
