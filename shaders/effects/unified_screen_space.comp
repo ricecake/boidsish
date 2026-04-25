@@ -29,13 +29,15 @@ uniform sampler2D uShadowMask; // Terrain shadow mask for SSGI fallback/modulati
 float terrainShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) { return 1.0; }
 float calculateTerrainOcclusion(vec3 worldPos, vec3 normal) { return 1.0; }
 
-#include "temporal_data.glsl"
+#include "../restir/restir_common.glsl"
 #include "../helpers/lighting.glsl"
 
 // Unified Parameters
 uniform bool  uSSGIEnabled = true;
 uniform bool  uGTAOEnabled = true;
 uniform bool  uSSSEnabled = true;
+
+uniform float uRestirDIIntensity = 1.0;
 
 // SSGI Parameters
 uniform float uSSGIRadius = 2.0;
@@ -305,24 +307,41 @@ void main() {
 			}
 		}
 
-		// Add ReSTIR DI contribution
+		// Fallback integration
+		indirect /= float(uSSGIRayCount);
+	}
+
+	// --- 4. ReSTIR Direct Illumination (DI) ---
+	vec3 di_lighting = vec3(0.0);
+	if (uSSGIEnabled) { // Share toggle for now or add new one
 		Reservoir di_res = di_reservoirs[reservoir_idx];
 		if (di_res.W > 0.0) {
 			LightData ld = getLightData(di_res.light_index);
 			vec3 worldPos = (invView * vec4(vPos, 1.0)).xyz;
 			vec3 worldNorm = normalize(mat3(invView) * vNorm);
+			vec3 albedo = texture(gAlbedo, uv).rgb;
 
-			vec3 L = normalize(ld.position - worldPos);
+			vec3 L_vec = ld.position - worldPos;
+			float distSq = dot(L_vec, L_vec);
+			vec3 L = normalize(L_vec);
 			float dotNL = max(0.0, dot(worldNorm, L));
-			float distSq = dot(ld.position - worldPos, ld.position - worldPos);
 
-			indirect += ld.color * ld.intensity * dotNL * di_res.W / max(0.001, distSq);
+			if (dotNL > 0.0) {
+				// Perform screen-space visibility check for the reservoir
+				vec3 targetView = (view * vec4(ld.position, 1.0)).xyz;
+
+				if (checkVisibility(vPos, targetView, gDepth)) {
+					// Use physical falloff and normalization, multiply by albedo and metallic factor for correct material response
+					float metallic = texture(gVelocity, uv).a;
+					vec3 diffuse_resp = (albedo / PI) * (1.0 - metallic);
+					di_lighting = diffuse_resp * ld.color * ld.intensity * dotNL * di_res.W * uRestirDIIntensity / max(0.001, distSq);
+				}
+			}
 		}
-
-		indirect /= float(uSSGIRayCount);
 	}
 
 	if (uSSGIEnabled || uGTAOEnabled) {
-		imageStore(outIndirectAO, pixel, vec4(indirect, ao));
+		// Output RGB: ReSTIR DI + averaged SSGI, A: GTAO
+		imageStore(outIndirectAO, pixel, vec4(di_lighting + indirect, ao));
 	}
 }

@@ -87,6 +87,7 @@ namespace Boidsish {
 			unified_shader_->setBool("uSSSEnabled", sss_enabled_);
 
 			// Parameters
+			unified_shader_->setFloat("uRestirDIIntensity", restir_di_intensity_);
 			unified_shader_->setFloat("uSSGIIntensity", ssgi_intensity_);
 			unified_shader_->setFloat("uSSGIRadius", ssgi_radius_);
 			unified_shader_->setFloat("uSSGIDistanceFalloff", ssgi_falloff_);

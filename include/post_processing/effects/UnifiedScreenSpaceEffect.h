@@ -55,6 +55,9 @@ namespace Boidsish {
 			void  SetSSGIRoughnessFactor(float factor) { ssgi_roughness_factor_ = factor; }
 			float GetSSGIRoughnessFactor() const { return ssgi_roughness_factor_; }
 
+			void  SetRestirDIIntensity(float intensity) { restir_di_intensity_ = intensity; }
+			float GetRestirDIIntensity() const { return restir_di_intensity_; }
+
 			// GTAO Parameters
 			void  SetGTAOIntensity(float intensity) { gtao_intensity_ = intensity; }
 			float GetGTAOIntensity() const { return gtao_intensity_; }
@@ -133,6 +136,7 @@ namespace Boidsish {
 			int   ssgi_ray_count_ = 2;
 			float ssgi_reflection_intensity_ = 1.0f;
 			float ssgi_roughness_factor_ = 1.0f;
+			float restir_di_intensity_ = 1.0f;
 
 			// GTAO
 			float gtao_intensity_ = 0.5f;
