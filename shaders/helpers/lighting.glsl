@@ -16,10 +16,10 @@ uniform float u_atmosphereHeight; // usually 100.0 km
 
 #ifndef TRANSMITTANCE_LUT_DEFINED
 	#define TRANSMITTANCE_LUT_DEFINED
-uniform sampler2D u_transmittanceLUT;
+layout(binding = [[ATMOSPHERE_TRANSMITTANCE_BINDING]]) uniform sampler2D u_transmittanceLUT;
 #endif
 
-uniform sampler2D u_cloudShadowMap;
+layout(binding = [[ATMOSPHERE_CLOUD_SHADOW_BINDING]]) uniform sampler2D u_cloudShadowMap;
 #ifndef TERRAIN_GRID_DEFINED
 	#define TERRAIN_GRID_DEFINED
 uniform isampler2D u_chunkGrid;

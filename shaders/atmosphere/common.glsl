@@ -13,7 +13,7 @@ uniform float u_atmosphereHeight;
 
 #ifndef TRANSMITTANCE_LUT_DEFINED
 	#define TRANSMITTANCE_LUT_DEFINED
-uniform sampler2D u_transmittanceLUT;
+layout(binding = [[ATMOSPHERE_TRANSMITTANCE_BINDING]]) uniform sampler2D u_transmittanceLUT;
 #endif
 
 #define kAtmosphereHeight u_atmosphereHeight
