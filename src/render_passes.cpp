@@ -252,6 +252,12 @@ namespace Boidsish {
 
 		manager_.BindSSBO(Constants::SsboBinding::SdfVolumes());
 
+		// Bind TemporalData for refraction reprojection
+		// The binding point is already managed by the engine (Unit 6),
+		// but we should ensure it's bound if we want to use 'viewProjection'
+		// for distorted background UVs. Actually, Visualizer handles this
+		// globally, but SdfVolumePass is called manually in VisualizerImpl::Render.
+
 		glDisable(GL_DEPTH_TEST);
 		glDepthMask(GL_FALSE);
 		glDisable(GL_BLEND);

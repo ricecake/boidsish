@@ -34,16 +34,19 @@ namespace Boidsish {
 		float normalized_time = 0.0f; // 0–1 progress through lifetime
 		float emission = 0.0f;        // self-illumination intensity
 		float ground_y = -1e6f;       // terrain floor (prevents explosion below ground)
+
+		float refraction_strength = 0.0f;
 	};
 
 	// GPU-friendly structure for SSBO
 	struct SdfSourceGPU {
 		glm::vec4 position_radius;      // xyz: pos, w: radius
 		glm::vec4 color_smoothness;     // rgb: color, a: smoothness
-		glm::vec4 charge_type_vol_unused; // x: charge, y: type, z: volumetric (0 or 1), w: unused
+		glm::vec4 charge_type_vol_time; // x: charge, y: type, z: volumetric, w: normalized_time
 		glm::vec4 volumetric_params;    // x: density, y: absorption, z: noise_scale, w: noise_intensity
-		glm::vec4 color_inner;          // rgb: inner color, a: unused
-		glm::vec4 color_outer;          // rgb: outer color, a: unused
+		glm::vec4 color_inner;          // rgb: inner color, a: emission
+		glm::vec4 color_outer;          // rgb: outer color, a: ground_y
+		glm::vec4 extra_params;         // x: refraction_strength, yzw: unused
 	};
 
 	class SdfVolumeManager: public IManager {
