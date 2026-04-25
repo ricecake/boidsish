@@ -41,7 +41,8 @@ namespace Boidsish {
 			float deltaTime,
 			float time,
 			GLuint weatherScalarTexture,
-			const glm::ivec4& weatherGridOriginSize
+			const glm::ivec4& weatherGridOriginSize,
+			const glm::vec3& aerosolColor
 		);
 
 		void AdvanceFrame();
@@ -79,6 +80,7 @@ namespace Boidsish {
 
 		GLuint _weatherScalarTexture = 0;
 		glm::ivec4 _weatherGridOriginSize = glm::ivec4(0);
+		glm::vec3 _aerosolColor = glm::vec3(1.0f);
 
 		float _intensity = 1.0f;
 		float _scatteringCoeff = 0.1f;

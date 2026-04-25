@@ -10,6 +10,9 @@ class Shader;
 class ComputeShader;
 
 namespace Boidsish {
+
+	class WeatherManager;
+
 	namespace PostProcessing {
 
 		class AtmosphereEffect: public IPostProcessingEffect {
@@ -186,6 +189,8 @@ namespace Boidsish {
 
 			void SetNoiseTextures(const NoiseTextures& textures) { noise_textures_ = textures; }
 
+			void SetWeatherManager(WeatherManager* weather) { weather_manager = weather; }
+
 			void SetRenderScale(float scale) {
 				if (render_scale_ != scale) {
 					render_scale_ = scale;
@@ -256,6 +261,8 @@ namespace Boidsish {
 			size_t volumetric_ubo_size_ = 0;
 
 			NoiseTextures noise_textures_ = {0, 0, 0, 0};
+
+			WeatherManager* weather_manager = nullptr;
 
 			int   width_ = 0;
 			int   height_ = 0;
