@@ -74,7 +74,8 @@ void main() {
     }
 
     float p_hat_final = targetFunction(worldPos, worldNorm, getLightData(r.light_index));
-    r.W = (p_hat_final > 0) ? (r.w_sum / (r.m * p_hat_final)) : 0.0;
+    r.W = safeDiv(r.w_sum, r.m * p_hat_final);
+    r.W = clamp(r.W, 0.0, 1e4); // Clamp normalization factor
 
     reservoirs[reservoir_idx] = r;
 }

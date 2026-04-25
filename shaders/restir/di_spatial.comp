@@ -49,11 +49,23 @@ void main() {
 
     uint seed = uint(pixel.y * size.x + pixel.x) ^ hash(uint(frameIndex) + 200u);
 
+    // Rotated disk sampling for spatial reuse
+    float rotation = pcg_hash(seed++) * 2.0 * PI;
+    float cosRot = cos(rotation);
+    float sinRot = sin(rotation);
+
     for (int i = 0; i < u_spatial_samples; i++) {
-        float angle = pcg_hash(seed++) * 2.0 * PI;
-        float dist = pcg_hash(seed++) * float(u_spatial_radius);
-        ivec2 offset = ivec2(cos(angle) * dist, sin(angle) * dist);
-        ivec2 neighborPixel = pixel + offset;
+        float r_val = pcg_hash(seed++);
+        float angle = (float(i) / float(u_spatial_samples)) * 2.0 * PI;
+        float dist = sqrt(r_val) * float(u_spatial_radius);
+
+        vec2 rawOffset = vec2(cos(angle), sin(angle)) * dist;
+        vec2 rotatedOffset = vec2(
+            rawOffset.x * cosRot - rawOffset.y * sinRot,
+            rawOffset.x * sinRot + rawOffset.y * cosRot
+        );
+
+        ivec2 neighborPixel = pixel + ivec2(rotatedOffset);
 
         if (neighborPixel.x >= 0 && neighborPixel.x < size.x && neighborPixel.y >= 0 && neighborPixel.y < size.y) {
             uint neighbor_idx = neighborPixel.y * size.x + neighborPixel.x;
@@ -72,7 +84,8 @@ void main() {
     }
 
     float p_hat_final = targetFunction(worldPos, worldNorm, getLightData(current.light_index));
-    current.W = (p_hat_final > 0) ? (current.w_sum / (current.m * p_hat_final)) : 0.0;
+    current.W = safeDiv(current.w_sum, current.m * p_hat_final);
+    current.W = clamp(current.W, 0.0, 1e4);
 
     new_reservoirs[reservoir_idx] = current;
 }

@@ -135,9 +135,11 @@ namespace Boidsish {
 		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
 		// 3. DI Spatial Reuse
+		// We must ping-pong here to avoid race conditions and directional line artifacts
 		bind_textures(di_spatial_shader_.get());
-		// Reuse temporal output as spatial input in-place-ish (or ping-pong)
-		// For simplicity, we skip a third buffer and just do one spatial pass into reservoirs0
+		// Input is temporal result in reservoirs0, output to reservoirs1
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::RestirReservoirs0(), reservoir_buffers_[1 - current_buffer_index_]);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::RestirReservoirs1(), reservoir_buffers_[current_buffer_index_]);
 		glDispatchCompute((width_ + 7) / 8, (height_ + 7) / 8, 1);
 		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
@@ -153,6 +155,9 @@ namespace Boidsish {
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::RestirGIReservoirs1(), gi_reservoir_buffers_[1 - current_buffer_index_]);
 		glDispatchCompute((width_ + 7) / 8, (height_ + 7) / 8, 1);
 		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
+		// Swap buffer index for next frame's temporal pass
+		// Note: Spatial pass above already essentially "advanced" the DI state by outputting to the 1-current index.
 
 		current_buffer_index_ = 1 - current_buffer_index_;
 	}
