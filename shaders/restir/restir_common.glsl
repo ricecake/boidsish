@@ -70,6 +70,10 @@ LightData getLightData(uint index) {
     return ld;
 }
 
+float safeDiv(float a, float b) {
+    return (b != 0.0) ? (a / b) : 0.0;
+}
+
 float luminance(vec3 c) {
     return dot(c, vec3(0.2126, 0.7152, 0.0722));
 }
@@ -106,6 +110,8 @@ void updateReservoir(inout Reservoir r, uint light_index, float weight, float ra
     if (random * r.w_sum < weight) {
         r.light_index = light_index;
     }
+    // Clamp weight sum to prevent numerical explosion
+    r.w_sum = min(r.w_sum, 1e7);
 }
 
 // Simple screen-space visibility check against depth buffer

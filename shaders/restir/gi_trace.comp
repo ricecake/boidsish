@@ -103,7 +103,8 @@ void main() {
         r.light_index = packedUV;
         r.w_sum = p_hat;
         r.m = 1.0;
-        r.W = 1.0;
+        r.W = safeDiv(r.w_sum, r.m);
+        r.W = clamp(r.W, 0.0, 100.0);
     }
 
     reservoirs[reservoir_idx] = r;

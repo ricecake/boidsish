@@ -62,7 +62,8 @@ void main() {
 
             vec2 finalHitUV = vec2(float(current.light_index & 0xFFFF) / 65535.0, float(current.light_index >> 16) / 65535.0);
             float p_hat_final = luminance(texture(gColor, finalHitUV).rgb);
-            current.W = (p_hat_final > 0) ? (current.w_sum / (current.m * p_hat_final)) : 0.0;
+            current.W = safeDiv(current.w_sum, current.m * p_hat_final);
+            current.W = clamp(current.W, 0.0, 100.0);
         }
     }
 

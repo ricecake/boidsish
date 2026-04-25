@@ -234,6 +234,10 @@ void main() {
 	vec4 giao = sampleBilateral(uGIAOTexture, uDepthTexture, uNormalTexture, TexCoords);
 	float sssFactor = sampleBilateral(uSSSTexture, uDepthTexture, uNormalTexture, TexCoords).r;
 
+    // Basic firefly rejection: clamp ReSTIR contribution based on scene luminance
+    float max_gi = max(color.r, max(color.g, color.b)) * 10.0 + 1.0;
+    giao.rgb = min(giao.rgb, vec3(max_gi));
+
 	float traditionalShadow = texture(uNormalTexture, TexCoords).a;
 
 	vec3 result = color.rgb;
