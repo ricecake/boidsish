@@ -67,7 +67,7 @@ namespace Boidsish {
 
 		ServiceLocator& _loc;
 
-		static constexpr int kNumCascades = 2;
+		static constexpr int kNumCascades = 4;
 		static constexpr int kNumBuffers = 3;
 
 		GLuint _scatteringVolumes[kNumCascades][kNumBuffers];
@@ -94,8 +94,10 @@ namespace Boidsish {
 		int _resY = 72;
 		int _resZ = 128;
 
-		float _cascade0Far = 50.0f;
-		float _cascade1Far = 2000.0f;
+		float _cascade0Far = 20.0f;
+		float _cascade1Far = 80.0f;
+		float _cascade2Far = 350.0f;
+		float _cascade3Far = 2000.0f;
 	};
 
 } // namespace Boidsish

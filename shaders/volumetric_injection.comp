@@ -30,8 +30,8 @@ uniform mat4 projection;
 uniform mat4 invView;
 
 vec3 getFroxelViewPos(vec3 uvw, int cascade) {
-    float near = (cascade == 0) ? u_volData.cascadeRanges.x : u_volData.cascadeRanges.z;
-    float far = (cascade == 0) ? u_volData.cascadeRanges.y : u_volData.cascadeRanges.w;
+    float near = (cascade == 0) ? 0.1 : (cascade == 1) ? u_volData.cascadeRanges.x : (cascade == 2) ? u_volData.cascadeRanges.y : u_volData.cascadeRanges.z;
+    float far = (cascade == 0) ? u_volData.cascadeRanges.x : (cascade == 1) ? u_volData.cascadeRanges.y : (cascade == 2) ? u_volData.cascadeRanges.z : u_volData.cascadeRanges.w;
     float zView = near * pow(far / near, uvw.z);
     vec2 ndc = uvw.xy * 2.0 - 1.0;
     float invP00 = 1.0 / projection[0][0];
@@ -70,6 +70,8 @@ void main() {
 
         float cosTheta = dot(V, L);
         float phase = hgPhase(cosTheta, u_volData.phaseG);
+        // Add isotropic scattering (20% mix) to ensure visibility from all angles
+        phase = mix(phase, 1.0 / (4.0 * PI), 0.2);
 
         totalScatteredLight += lights[i].color * lights[i].intensity * shadow * phase * u_volData.intensity;
     }

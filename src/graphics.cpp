@@ -2137,9 +2137,14 @@ namespace Boidsish {
 					atmosphere_effect->SetNoiseTextures(noise_manager->GetTextures());
 				}
 				if (volumetric_lighting_manager) {
-					atmosphere_effect->SetVolumetricCascades(
+					std::vector<GLuint> cascades = {
 						volumetric_lighting_manager->GetIntegratedVolume(0),
 						volumetric_lighting_manager->GetIntegratedVolume(1),
+						volumetric_lighting_manager->GetIntegratedVolume(2),
+						volumetric_lighting_manager->GetIntegratedVolume(3)
+					};
+					atmosphere_effect->SetVolumetricCascades(
+						cascades,
 						render_state_.volumetric_lighting.id,
 						render_state_.volumetric_lighting.offset,
 						render_state_.volumetric_lighting.size
