@@ -4694,7 +4694,7 @@ namespace Boidsish {
 		source.ground_y = position.y - 0.1f; // Default ground at spawn point
 
 		auto shape = std::make_shared<SdfShape>(*impl->sdf_volume_manager, source);
-		shape->SetLifetime(2.5f * sqrt(0.5f*intensity));
+		shape->SetLifetime(3.0f * sqrt(intensity));
 
 		impl->transient_effects.push_back(shape);
 	}
