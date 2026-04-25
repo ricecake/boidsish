@@ -17,12 +17,10 @@ float hash12(vec2 p) {
 // spatial noise suitable for temporal accumulation.
 float blueish(vec2 p, float scale) {
     p *= scale;
-    
     // Multi-scale neighborhood comparison
     float n = hash12(p);
     float avg = 0.0;
     float weightSum = 0.0;
-    
     // Sample a 3x3 neighborhood
     for (int y = -1; y <= 1; y++) {
         for (int x = -1; x <= 1; x++) {
@@ -34,10 +32,10 @@ float blueish(vec2 p, float scale) {
         }
     }
     avg /= weightSum;
-    
+
     // High-pass filter: push values away from neighborhood average
     float res = n - avg;
-    
+
     // Soft-clamping and remapping to [0, 1]
     return clamp(res * 2.0 + 0.5, 0.0, 1.0);
 }

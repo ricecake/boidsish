@@ -2,8 +2,8 @@
 #extension GL_GOOGLE_include_directive : enable
 layout(local_size_x = 8, local_size_y = 8) in;
 
+#define TEMPORAL_DATA_DEFINED
 #include "restir_common.glsl"
-#include "../temporal_data.glsl"
 
 layout(std430, binding = [[RESTIR_RESERVOIRS0_BINDING]]) buffer NewReservoirs {
     Reservoir new_reservoirs[];
@@ -47,7 +47,7 @@ void main() {
     vec3 worldPos = (invView * vec4(vPos, 1.0)).xyz;
     vec3 worldNorm = normalize(mat3(invView) * vNorm);
 
-    uint seed = uint(pixel.y * size.x + pixel.x) ^ uint(time * 3000.0);
+    uint seed = uint(pixel.y * size.x + pixel.x) ^ hash(uint(frameIndex) + 200u);
 
     for (int i = 0; i < u_spatial_samples; i++) {
         float angle = pcg_hash(seed++) * 2.0 * PI;

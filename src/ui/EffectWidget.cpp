@@ -100,7 +100,10 @@ namespace Boidsish {
 									else if (current_res == 2) unified->SetResolutionScale(PostProcessing::ScreenSpaceResolution::Quarter);
 								}
 
-								if (ImGui::TreeNode("SSGI")) {
+								if (ImGui::TreeNode("ReSTIR / SSGI")) {
+									float di_intensity = unified->GetRestirDIIntensity();
+									if (ImGui::SliderFloat("DI Intensity##Restir", &di_intensity, 0.0f, 10.0f)) unified->SetRestirDIIntensity(di_intensity);
+
 									bool ssgi_enabled = unified->IsSSGIEnabled();
 									if (ImGui::Checkbox("Enabled##SSGI", &ssgi_enabled)) unified->SetSSGIEnabled(ssgi_enabled);
 

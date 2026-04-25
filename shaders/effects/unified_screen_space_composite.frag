@@ -76,10 +76,10 @@ void main() {
 		result *= ao;
 	}
 
-	// 3. Apply Global Illumination (SSGI)
+	// 3. Apply Global Illumination (SSGI) and ReSTIR
 	if (uSSGIEnabled) {
-		vec3 ssgi = giao.rgb;
-		result += ssgi;
+		vec3 restir_ssgi = giao.rgb;
+		result += restir_ssgi * uSSGIIntensity;
 	}
 
 	FragColor = vec4(result, color.a);
