@@ -2,8 +2,10 @@
 #extension GL_GOOGLE_include_directive : enable
 layout(local_size_x = 8, local_size_y = 8) in;
 
+#include "../helpers/fast_noise.glsl"
+
+#define TEMPORAL_DATA_DEFINED
 #include "restir_common.glsl"
-#include "../temporal_data.glsl"
 
 layout(std430, binding = [[RESTIR_RESERVOIRS0_BINDING]]) buffer RestirReservoirs {
     Reservoir reservoirs[];
@@ -31,7 +33,14 @@ void main() {
     if (pixel.x >= size.x || pixel.y >= size.y) return;
 
     uint reservoir_idx = pixel.y * size.x + pixel.x;
-    vec2 uv = (vec2(pixel) + 0.5) / vec2(size);
+
+    // Use spatiotemporal blue noise for jittered sampling
+    vec2 bnUV = (vec2(pixel) + 0.5) / vec2(textureSize(u_blueNoiseTexture, 0).xy);
+    float jitterX = fastSpatiotemporalBlueNoise(bnUV, 0, frameIndex);
+    float jitterY = fastSpatiotemporalBlueNoise(bnUV, 1, frameIndex);
+
+    vec2 jitter = vec2(jitterX, jitterY) - 0.5;
+    vec2 uv = (vec2(pixel) + 0.5 + jitter) / vec2(size);
     float depth = texture(gDepth, uv).r;
 
     if (depth >= 1.0) {
@@ -51,7 +60,7 @@ void main() {
         return;
     }
 
-    uint seed = uint(pixel.y * size.x + pixel.x) ^ uint(time * 1000.0);
+    uint seed = uint(pixel.y * size.x + pixel.x) ^ hash(uint(frameIndex));
 
     for (int i = 0; i < u_num_samples; i++) {
         float rand1 = pcg_hash(seed++);

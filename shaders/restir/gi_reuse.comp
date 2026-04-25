@@ -50,7 +50,7 @@ void main() {
         vec3 prevNorm = normalize(texture(gNormal, prevUV).xyz);
 
         if (abs(depth - prevDepth) < 0.01 && dot(vNorm, prevNorm) > 0.9) {
-            uint seed = uint(pixel.y * size.x + pixel.x) ^ uint(time * 5000.0);
+            uint seed = uint(pixel.y * size.x + pixel.x) ^ hash(uint(frameIndex) + 400u);
 
             vec2 hitUV = vec2(float(previous.light_index & 0xFFFF) / 65535.0, float(previous.light_index >> 16) / 65535.0);
             float p_hat = luminance(texture(gColor, hitUV).rgb);

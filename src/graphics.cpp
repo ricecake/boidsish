@@ -2780,6 +2780,7 @@ namespace Boidsish {
 						compositor_->GetVelocityTexture(),
 						compositor_->GetColorTexture(),
 						compositor_->GetAlbedoTexture(),
+						noise_manager ? noise_manager->GetBlueNoiseTexture() : 0,
 						*light_manager,
 						fire_effect_manager.get()
 					);
