@@ -3,6 +3,7 @@
 
 #include "fast_noise.glsl"
 #include "terrain_common.glsl"
+#include "sdf_common.glsl"
 
 // Wind data UBO - stores macro wind grid and simulation parameters
 #ifndef WIND_DATA_BLOCK
@@ -138,6 +139,23 @@ vec3 getWindAtPosition(vec3 worldPos) {
 		macroWind = macroWind * cosTheta +
 					cross(rotationAxis, macroWind) * sinTheta +
 					rotationAxis * dot(rotationAxis, macroWind) * (1.0 - cosTheta);
+	}
+
+	// 8. SDF Interaction (Explosion pressure etc.)
+	for (int i = 0; i < numSources; ++i) {
+		float ntime = sources[i].charge_type_vol_time.w;
+		if (ntime > 0.0 && ntime < 1.0) {
+			vec3  center = sources[i].position_radius.xyz;
+			float radius = sources[i].position_radius.w;
+			vec3  toPos = worldPos - center;
+			float dist = length(toPos);
+
+			// Strong radial outward pressure for explosions
+			if (dist < radius * 8.0 && dist > 0.001) {
+				float force = sources[i].charge_type_vol_time.x * 20.0 * (1.0 - ntime) * exp(-dist / (radius * 2.0));
+				finalWind += normalize(toPos) * force;
+			}
+		}
 	}
 
 	// Add curl as a final perturbation

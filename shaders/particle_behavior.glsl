@@ -6,6 +6,7 @@
 #include "particle_types.glsl"
 #include "visual_effects.glsl"
 #include "helpers/wind.glsl"
+#include "helpers/sdf_common.glsl"
 
 // Simulation parameters
 const float kExhaustSpeed = 30.0;
@@ -272,6 +273,25 @@ void updateFireBehavior(
 	handleTerrainCollision(p, num_chunks, heightmapArray);
 }
 
+void updateSdfParticleInteraction(inout Particle p, float dt) {
+	for (int i = 0; i < numSources; ++i) {
+		float ntime = sources[i].charge_type_vol_time.w;
+		if (ntime > 0.0 && ntime < 1.0) {
+			vec3  center = sources[i].position_radius.xyz;
+			float radius = sources[i].position_radius.w;
+			vec3  toPos = p.pos.xyz - center;
+			float dist = length(toPos);
+
+			if (dist < radius * 6.0 && dist > 0.001) {
+				// Apply direct force to velocity
+				float charge = sources[i].charge_type_vol_time.x;
+				float force = charge * 50.0 * (1.0 - ntime) * exp(-dist / (radius * 1.5));
+				p.vel.xyz += normalize(toPos) * force * dt;
+			}
+		}
+	}
+}
+
 void updateBehavior(
 	inout Particle p,
 	float          dt,
@@ -284,6 +304,8 @@ void updateBehavior(
 	int            num_chunks,
 	sampler2DArray heightmapArray
 ) {
+	updateSdfParticleInteraction(p, dt);
+
 	if (p.style == STYLE_AMBIENT) {
 		updateAmbientParticle(
 			p,
