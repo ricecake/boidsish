@@ -106,6 +106,9 @@ namespace Boidsish {
 			unified_shader_->setFloat("uSSSBias", sss_bias_);
 			unified_shader_->setInt("uSSSSteps", sss_steps_);
 
+			unified_shader_->setInt("u_num_lights", num_lights_);
+			unified_shader_->setInt("u_num_fire_particles", num_fire_particles_);
+
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, depthTexture);
 			unified_shader_->setInt("gDepth", 0);
@@ -137,6 +140,20 @@ namespace Boidsish {
 				glBindTexture(GL_TEXTURE_2D, hiz_texture_);
 				unified_shader_->setInt("u_hizTexture", Constants::TextureUnit::HiZ());
 				unified_shader_->setInt("u_hizMipCount", hiz_mips_);
+			}
+
+			if (di_reservoir_buffer_) {
+				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::RestirReservoirs0(), di_reservoir_buffer_);
+			}
+			if (gi_reservoir_buffer_) {
+				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::RestirGIReservoirs0(), gi_reservoir_buffer_);
+			}
+
+			if (all_lights_ssbo_) {
+				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::AllLights(), all_lights_ssbo_);
+			}
+			if (particle_buffer_) {
+				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleBuffer(), particle_buffer_);
 			}
 
 			// Use the accumulated shadow mask from the previous frame for SSGI coordination

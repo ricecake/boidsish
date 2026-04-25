@@ -48,6 +48,9 @@ namespace Boidsish {
 		int   GetProbeRayCountMultiplier() const { return _probe_ray_count_multiplier; }
 		void  SetProbeRayCountMultiplier(int multiplier) { _probe_ray_count_multiplier = multiplier; }
 
+		uint32_t GetAllLightsSsbo() const { return _all_lights_ssbo; }
+		int      GetActiveLightCount() const { return _active_light_count; }
+
 		DayNightCycle& GetDayNightCycle() { return _cycle; }
 
 		const DayNightCycle& GetDayNightCycle() const { return _cycle; }
@@ -80,6 +83,9 @@ namespace Boidsish {
 		float _probe_scaling = 0.125f;
 		float _probe_convergence_speed = 0.50f;
 		int   _probe_ray_count_multiplier = 1;
+
+		uint32_t _all_lights_ssbo = 0;
+		int      _active_light_count = 0;
 		/*
 		    ambient: 53/58/44
 		    def: 231/27/0 @0,100,-100->0,-5.7,7.5 and 6.3 intense
