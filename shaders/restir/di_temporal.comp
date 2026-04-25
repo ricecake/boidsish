@@ -2,8 +2,8 @@
 #extension GL_GOOGLE_include_directive : enable
 layout(local_size_x = 8, local_size_y = 8) in;
 
+#define TEMPORAL_DATA_DEFINED
 #include "restir_common.glsl"
-#include "../temporal_data.glsl"
 
 layout(std430, binding = [[RESTIR_RESERVOIRS0_BINDING]]) buffer NewReservoirs {
     Reservoir new_reservoirs[];
@@ -56,7 +56,7 @@ void main() {
         vec3 prevNorm = normalize(texture(gNormal, prevUV).xyz);
 
         if (abs(depth - prevDepth) < 0.01 && dot(vNorm, prevNorm) > 0.9) {
-            uint seed = uint(pixel.y * size.x + pixel.x) ^ uint(time * 2000.0);
+            uint seed = uint(pixel.y * size.x + pixel.x) ^ hash(uint(frameIndex) + 100u);
 
             // Limit temporal history
             previous.m = min(previous.m, 20.0 * current.m);

@@ -33,6 +33,7 @@ namespace Boidsish {
 			GLuint velocityTex,
 			GLuint colorTex,
 			GLuint albedoTex,
+			GLuint blueNoiseTex,
 			LightManager& lightManager,
 			FireEffectManager* fireManager
 		);

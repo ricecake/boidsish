@@ -2,8 +2,8 @@
 #extension GL_GOOGLE_include_directive : enable
 layout(local_size_x = 8, local_size_y = 8) in;
 
+#include "../helpers/fast_noise.glsl"
 #include "restir_common.glsl"
-#include "../temporal_data.glsl"
 #include "../helpers/lighting.glsl"
 
 layout(std430, binding = [[RESTIR_GI_RESERVOIRS0_BINDING]]) buffer GIReservoirs {
@@ -44,7 +44,14 @@ void main() {
     if (pixel.x >= size.x || pixel.y >= size.y) return;
 
     uint reservoir_idx = pixel.y * size.x + pixel.x;
-    vec2 uv = (vec2(pixel) + 0.5) / vec2(size);
+
+    // Use spatiotemporal blue noise for jittered sampling
+    vec2 bnUV = (vec2(pixel) + 0.5) / vec2(textureSize(u_blueNoiseTexture, 0).xy);
+    float jitterX = fastSpatiotemporalBlueNoise(bnUV, 2, frameIndex);
+    float jitterY = fastSpatiotemporalBlueNoise(bnUV, 3, frameIndex);
+
+    vec2 jitter = vec2(jitterX, jitterY) - 0.5;
+    vec2 uv = (vec2(pixel) + 0.5 + jitter) / vec2(size);
     float depth = texture(gDepth, uv).r;
 
     if (depth >= 1.0) {
@@ -57,11 +64,16 @@ void main() {
     vec3 worldPos = (invView * vec4(vPos, 1.0)).xyz;
     vec3 worldNorm = normalize(mat3(invView) * vNorm);
 
-    uint seed = uint(pixel.y * size.x + pixel.x) ^ uint(time * 4000.0);
+    uint seed = uint(pixel.y * size.x + pixel.x) ^ hash(uint(frameIndex) + 300u);
 
     // GI Trace: Sample indirect light
     // We trace a ray in screen space to find a hitting point
-    vec3 rayDir = hemisphereSample(vec2(pcg_hash(seed++), pcg_hash(seed++)), vNorm);
+    // Use spatiotemporal blue noise to drive ray direction
+    vec2 randRay = vec2(
+        fastSpatiotemporalBlueNoise(bnUV, 0, frameIndex),
+        fastSpatiotemporalBlueNoise(bnUV, 1, frameIndex)
+    );
+    vec3 rayDir = hemisphereSample(randRay, vNorm);
 
     float stepSize = 1.0 / float(16);
     float rayDist = stepSize * pcg_hash(seed++);
