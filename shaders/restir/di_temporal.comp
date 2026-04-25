@@ -1,0 +1,79 @@
+#version 430 core
+#extension GL_GOOGLE_include_directive : enable
+layout(local_size_x = 8, local_size_y = 8) in;
+
+#include "restir_common.glsl"
+#include "../temporal_data.glsl"
+
+layout(std430, binding = [[RESTIR_RESERVOIRS0_BINDING]]) buffer NewReservoirs {
+    Reservoir new_reservoirs[];
+};
+
+layout(std430, binding = [[RESTIR_RESERVOIRS1_BINDING]]) buffer OldReservoirs {
+    Reservoir old_reservoirs[];
+};
+
+uniform sampler2D gDepth;
+uniform sampler2D gNormal;
+uniform sampler2D gVelocity;
+
+float pcg_hash(uint seed) {
+    uint state = seed * 747796405u + 2891336453u;
+    uint word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+    return float((word >> 22u) ^ word) / 4294967295.0;
+}
+
+vec3 getViewPos(vec2 uv, float depth) {
+	vec4 clipPos = vec4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
+	vec4 viewPos = invProjection * clipPos;
+	return viewPos.xyz / viewPos.w;
+}
+
+void main() {
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = textureSize(gDepth, 0);
+    if (pixel.x >= size.x || pixel.y >= size.y) return;
+
+    uint reservoir_idx = pixel.y * size.x + pixel.x;
+    vec2 uv = (vec2(pixel) + 0.5) / vec2(size);
+    float depth = texture(gDepth, uv).r;
+
+    if (depth >= 1.0) return;
+
+    vec2 velocity = texture(gVelocity, uv).rg;
+    vec2 prevUV = uv - velocity;
+
+    Reservoir current = new_reservoirs[reservoir_idx];
+
+    if (prevUV.x >= 0.0 && prevUV.x <= 1.0 && prevUV.y >= 0.0 && prevUV.y <= 1.0) {
+        ivec2 prevPixel = ivec2(prevUV * vec2(size));
+        uint prev_idx = prevPixel.y * size.x + prevPixel.x;
+        Reservoir previous = old_reservoirs[prev_idx];
+
+        // Check for disocclusion
+        float prevDepth = texture(gDepth, prevUV).r;
+        vec3 vNorm = normalize(texture(gNormal, uv).xyz);
+        vec3 prevNorm = normalize(texture(gNormal, prevUV).xyz);
+
+        if (abs(depth - prevDepth) < 0.01 && dot(vNorm, prevNorm) > 0.9) {
+            uint seed = uint(pixel.y * size.x + pixel.x) ^ uint(time * 2000.0);
+
+            // Limit temporal history
+            previous.m = min(previous.m, 20.0 * current.m);
+
+            vec3 vPos = getViewPos(uv, depth);
+            vec3 worldPos = (invView * vec4(vPos, 1.0)).xyz;
+            vec3 worldNorm = normalize(mat3(invView) * vNorm);
+
+            float p_hat = targetFunction(worldPos, worldNorm, getLightData(previous.light_index));
+            float weight = p_hat * previous.W * previous.m;
+            updateReservoir(current, previous.light_index, weight, pcg_hash(seed));
+            current.m += previous.m;
+
+            float p_hat_final = targetFunction(worldPos, worldNorm, getLightData(current.light_index));
+            current.W = (p_hat_final > 0) ? (current.w_sum / (current.m * p_hat_final)) : 0.0;
+        }
+    }
+
+    new_reservoirs[reservoir_idx] = current;
+}

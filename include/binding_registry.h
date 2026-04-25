@@ -71,6 +71,11 @@ consteval bool ValidateSsboBindings() {
 		Constants::SsboBinding::TrailGeneratedVBO(),
 		Constants::SsboBinding::AtmosphereSH(),
 		Constants::SsboBinding::SdfVolumes(),
+		Constants::SsboBinding::AllLights(),
+		Constants::SsboBinding::RestirReservoirs0(),
+		Constants::SsboBinding::RestirReservoirs1(),
+		Constants::SsboBinding::RestirGIReservoirs0(),
+		Constants::SsboBinding::RestirGIReservoirs1(),
 	};
 	return AllUnique(ssbos);
 }
