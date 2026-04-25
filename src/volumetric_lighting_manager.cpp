@@ -3,6 +3,9 @@
 #include "profiler.h"
 #include "shader.h"
 #include "constants.h"
+#include "atmosphere_manager.h"
+#include "shadow_manager.h"
+#include "terrain_render_manager.h"
 #include <iostream>
 
 namespace Boidsish {
@@ -113,7 +116,8 @@ namespace Boidsish {
 		float time,
 		GLuint weatherScalarTexture,
 		const glm::ivec4& weatherGridOriginSize,
-		const glm::vec3& aerosolColor
+		const glm::vec3& aerosolColor,
+		const std::vector<Light>& allLights
 	) {
 		PROJECT_PROFILE_SCOPE("VolumetricLighting::Update");
 
@@ -122,6 +126,16 @@ namespace Boidsish {
 		_aerosolColor = aerosolColor;
 
 		UpdateUbo();
+
+		auto atmo = _loc.Get<AtmosphereManager>();
+		auto shadows = _loc.Get<ShadowManager>();
+		auto terrain = _loc.Get<TerrainRenderManager>();
+
+		std::array<int, 10> shadow_indices;
+		shadow_indices.fill(-1);
+		for (size_t j = 0; j < allLights.size() && j < 10; ++j) {
+			shadow_indices[j] = allLights[j].shadow_map_index;
+		}
 
 		for (int c = 0; c < kNumCascades; ++c) {
 			// 1. Voxelize Density
@@ -147,6 +161,28 @@ namespace Boidsish {
 			_injectionShader->setMat4("projection", projection);
 			_injectionShader->setMat4("invView", glm::inverse(view));
 			_injectionShader->setVec3("viewPos", cameraPos);
+			_injectionShader->setIntArray("lightShadowIndices", shadow_indices.data(), 10);
+
+			if (shadows) {
+				glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::ShadowMaps());
+				glBindTexture(GL_TEXTURE_2D_ARRAY, shadows->GetShadowMapArray());
+				_injectionShader->setInt("shadowMaps", Constants::TextureUnit::ShadowMaps());
+			}
+
+			if (atmo) {
+				glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereCloudShadow());
+				glBindTexture(GL_TEXTURE_2D, atmo->GetCloudShadowMap());
+				_injectionShader->setInt("u_cloudShadowMap", Constants::TextureUnit::AtmosphereCloudShadow());
+
+				glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereTransmittance());
+				glBindTexture(GL_TEXTURE_2D, atmo->GetTransmittanceLUT());
+				_injectionShader->setInt("u_transmittanceLUT", Constants::TextureUnit::AtmosphereTransmittance());
+			}
+
+			if (terrain) {
+				terrain->BindTerrainData(*_injectionShader);
+			}
+
 			glBindImageTexture(0, _scatteringVolumes[c][_frameIndex], 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA16F);
 			glDispatchCompute((_resX + 7) / 8, (_resY + 7) / 8, (_resZ + 3) / 4);
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
