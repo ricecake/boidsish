@@ -7,6 +7,7 @@
 #include <glm/glm.hpp>
 #include "IManager.h"
 #include "persistent_buffer.h"
+#include "light.h"
 
 class ComputeShader;
 
@@ -42,7 +43,8 @@ namespace Boidsish {
 			float time,
 			GLuint weatherScalarTexture,
 			const glm::ivec4& weatherGridOriginSize,
-			const glm::vec3& aerosolColor
+			const glm::vec3& aerosolColor,
+			const std::vector<Light>& allLights
 		);
 
 		void AdvanceFrame();

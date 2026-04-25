@@ -3,7 +3,7 @@
 
 #include "types/shadows.glsl"
 
-// Shadow map texture array - bound to texture unit 4
-uniform sampler2DArrayShadow shadowMaps;
+// Shadow map texture array
+layout(binding = [[SHADOW_MAPS_BINDING]]) uniform sampler2DArrayShadow shadowMaps;
 
 #endif

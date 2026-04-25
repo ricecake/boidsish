@@ -3,8 +3,10 @@
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 4) in;
 layout(rgba16f, binding = 0) uniform image3D inOutScatteringExtinction;
 
+#define USE_TERRAIN_DATA
 #include "helpers/constants.glsl"
 #include "lighting.glsl"
+#include "helpers/terrain_shadows.glsl"
 #include "helpers/lighting.glsl"
 
 struct VolumetricLighting {
@@ -62,6 +64,7 @@ void main() {
         if (lights[i].type != LIGHT_TYPE_DIRECTIONAL) continue;
 
         vec3 L = normalize(-lights[i].direction);
+        // Note: passing up-vector as normal for the shadow calculation in air
         float shadow = calculateShadow(i, worldPos, vec3(0, 1, 0), L);
         shadow *= calculateCloudShadow(i, worldPos);
 
