@@ -73,6 +73,7 @@ namespace Boidsish {
 		GLuint velocityTex,
 		GLuint colorTex,
 		GLuint albedoTex,
+		GLuint blueNoiseTex,
 		LightManager& lightManager,
 		FireEffectManager* fireManager
 	) {
@@ -112,6 +113,12 @@ namespace Boidsish {
 			glActiveTexture(GL_TEXTURE4);
 			glBindTexture(GL_TEXTURE_2D, albedoTex);
 			s->setInt("gAlbedo", 4);
+
+			if (blueNoiseTex) {
+				glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::NoiseBlue());
+				glBindTexture(GL_TEXTURE_2D, blueNoiseTex);
+				s->setInt("u_blueNoiseTexture", Constants::TextureUnit::NoiseBlue());
+			}
 		};
 
 		// 1. DI Initial Sampling
