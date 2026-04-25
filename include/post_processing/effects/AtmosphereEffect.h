@@ -179,9 +179,8 @@ namespace Boidsish {
 				aerial_perspective_lut_ = aerialPerspective;
 			}
 
-			void SetVolumetricCascades(GLuint cascade0, GLuint cascade1, GLuint ubo, size_t uboOffset, size_t uboSize) {
-				volumetric_cascade0_ = cascade0;
-				volumetric_cascade1_ = cascade1;
+			void SetVolumetricCascades(const std::vector<GLuint>& cascades, GLuint ubo, size_t uboOffset, size_t uboSize) {
+				volumetric_cascades_ = cascades;
 				volumetric_ubo_ = ubo;
 				volumetric_ubo_offset_ = uboOffset;
 				volumetric_ubo_size_ = uboSize;
@@ -254,8 +253,7 @@ namespace Boidsish {
 			GLuint sky_view_lut_ = 0;
 			GLuint aerial_perspective_lut_ = 0;
 
-			GLuint volumetric_cascade0_ = 0;
-			GLuint volumetric_cascade1_ = 0;
+			std::vector<GLuint> volumetric_cascades_;
 			GLuint volumetric_ubo_ = 0;
 			size_t volumetric_ubo_offset_ = 0;
 			size_t volumetric_ubo_size_ = 0;

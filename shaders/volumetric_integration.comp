@@ -29,8 +29,8 @@ void main() {
     vec3 accumulatedLight = vec3(0.0);
     float accumulatedTransmittance = 1.0;
 
-    float near = (u_cascadeIndex == 0) ? u_volData.cascadeRanges.x : u_volData.cascadeRanges.z;
-    float far = (u_cascadeIndex == 0) ? u_volData.cascadeRanges.y : u_volData.cascadeRanges.w;
+    float near = (u_cascadeIndex == 0) ? 0.1 : (u_cascadeIndex == 1) ? u_volData.cascadeRanges.x : (u_cascadeIndex == 2) ? u_volData.cascadeRanges.y : u_volData.cascadeRanges.z;
+    float far = (u_cascadeIndex == 0) ? u_volData.cascadeRanges.x : (u_cascadeIndex == 1) ? u_volData.cascadeRanges.y : (u_cascadeIndex == 2) ? u_volData.cascadeRanges.z : u_volData.cascadeRanges.w;
 
     float prevZ = near;
 
@@ -41,7 +41,8 @@ void main() {
         vec3 scattering = data.rgb;
         float extinction = data.a;
 
-        float currentZ = near * pow(far / near, (float(z) + 0.5) / float(u_volData.cascadeRes.z));
+        // Use slice edge for integration distance to ensure full coverage
+        float currentZ = near * pow(far / near, (float(z + 1)) / float(u_volData.cascadeRes.z));
         float dz = abs(currentZ - prevZ);
         prevZ = currentZ;
 

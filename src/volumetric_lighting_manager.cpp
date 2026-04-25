@@ -88,7 +88,7 @@ namespace Boidsish {
 
 	void VolumetricLightingManager::UpdateUbo() {
 		VolumetricLightingUbo data{};
-		data.cascadeRanges = glm::vec4(0.1f, _cascade0Far, _cascade0Far, _cascade1Far);
+		data.cascadeRanges = glm::vec4(_cascade0Far, _cascade1Far, _cascade2Far, _cascade3Far);
 		data.cascadeRes = glm::ivec4(_resX, _resY, _resZ, 0);
 		data.intensity = _intensity;
 		data.scatteringCoeff = _scatteringCoeff;
