@@ -12,12 +12,15 @@ uniform vec3 u_cameraPos;
 
 uniform float u_multiScatScale;
 uniform float u_time;
+uniform float u_worldScale;
+uniform float u_cloudShadowIntensity;
 
 uniform float u_colorVarianceScale;
 uniform float u_colorVarianceStrength;
 
 #include "../helpers/fast_noise.glsl"
 #include "common.glsl"
+#include "../helpers/lighting.glsl"
 
 vec3 getTransmittance(float r, float mu) {
 	vec2 uv = transmittanceToUV(r, mu);
@@ -91,8 +94,17 @@ void main() {
 
 		vec3 multiScat = getMultiScattering(length(p), cosSun) * u_multiScatScale;
 
+		// Factor in cloud shadows for direct sun contribution to scattering
+		// For the global sky probe, we sample clouds at a position along the ray.
+		// Since SkyView is often used for ambient, accounting for clouds near the observer is most important.
+		// Convert Km planet-relative p back to world-space meters for the shadow check.
+		// We use evaluateCloudShadowDensityAtWorldPos directly to avoid including lighting.glsl and its uniforms.
+		vec3 worldPos = u_cameraPos + (p - ro) * 1000.0;
+		float cloudD = evaluateCloudShadowDensityAtWorldPos(worldPos.xz, u_time);
+		float cloudShadow = mix(1.0, exp(-cloudD), u_cloudShadowIntensity);
+
 		// Correctly scale multi-scattering by sun radiance as it's proportional to it
-		vec3 inScattered = (phase * u_sunRadiance * Ts + multiScat * u_sunRadiance * (s.rayleigh + s.mie)) * dt;
+		vec3 inScattered = (phase * u_sunRadiance * Ts * cloudShadow + multiScat * u_sunRadiance * (s.rayleigh + s.mie)) * dt;
 		L += T * inScattered;
 		T *= exp(-s.extinction * dt);
 	}
