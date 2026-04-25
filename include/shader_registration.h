@@ -28,6 +28,7 @@ namespace Boidsish {
 		T::RegisterConstant("DECOR_PLACEMENT_GLOBALS_BINDING", Constants::UboBinding::DecorPlacementGlobals());
 		T::RegisterConstant("WEATHER_UNIFORMS_BINDING", Constants::UboBinding::WeatherUniforms());
 		T::RegisterConstant("WIND_DATA_BINDING", Constants::UboBinding::WindData());
+		T::RegisterConstant("VOLUMETRIC_LIGHTING_BINDING", Constants::UboBinding::VolumetricLighting());
 
 		// SSBO Bindings
 		T::RegisterConstant("DECOR_INSTANCES_BINDING", Constants::SsboBinding::DecorInstances());
@@ -67,12 +68,27 @@ namespace Boidsish {
 		T::RegisterConstant("MAX_SHADOW_MAPS", Constants::Class::Shadows::MaxShadowMaps());
 		T::RegisterConstant("MAX_CASCADES", Constants::Class::Shadows::MaxCascades());
 		T::RegisterConstant("MAX_SHOCKWAVES", Constants::Class::Shockwaves::MaxShockwaves());
+		T::RegisterConstant("SHADOW_MAPS_BINDING", Constants::TextureUnit::ShadowMaps());
 		T::RegisterConstant("CHUNK_SIZE", Constants::Class::Terrain::ChunkSize());
 		T::RegisterConstant("CHUNK_SIZE_PLUS_1", Constants::Class::Terrain::ChunkSizePlus1());
 
 		// Texture unit bindings
 		T::RegisterConstant("PHASOR_TEXTURE_BINDING", Constants::TextureUnit::NoisePhasor());
 		T::RegisterConstant("WIND_TEXTURE_BINDING", Constants::TextureUnit::WindData());
+
+		T::RegisterConstant("ATMOSPHERE_TRANSMITTANCE_BINDING", Constants::TextureUnit::AtmosphereTransmittance());
+		T::RegisterConstant("ATMOSPHERE_SKY_VIEW_BINDING", Constants::TextureUnit::AtmosphereSkyView());
+		T::RegisterConstant("ATMOSPHERE_AERIAL_PERSPECTIVE_BINDING", Constants::TextureUnit::AtmosphereAerialPerspective());
+		T::RegisterConstant("ATMOSPHERE_CLOUD_SHADOW_BINDING", Constants::TextureUnit::AtmosphereCloudShadow());
+
+		T::RegisterConstant("TERRAIN_GRID_BINDING", Constants::TextureUnit::TerrainChunkGrid());
+		T::RegisterConstant("MAX_HEIGHT_GRID_BINDING", Constants::TextureUnit::TerrainMaxHeight());
+
+		T::RegisterConstant("VOLUMETRIC_CASCADE0_BINDING", Constants::TextureUnit::VolumetricCascades());
+		T::RegisterConstant("VOLUMETRIC_CASCADE1_BINDING", Constants::TextureUnit::VolumetricCascades() + 1);
+		T::RegisterConstant("VOLUMETRIC_CASCADE2_BINDING", Constants::TextureUnit::VolumetricCascades() + 2);
+		T::RegisterConstant("VOLUMETRIC_CASCADE3_BINDING", Constants::TextureUnit::VolumetricCascades() + 3);
+		T::RegisterConstant("WEATHER_SCALARS_BINDING", Constants::TextureUnit::WeatherScalars());
 
 		T::RegisterConstant("RAW_HEIGHTMAP_BINDING", Constants::TextureUnit::TerrainRawHeightmap());
 		T::RegisterConstant("BAKED_HEIGHTMAP_BINDING", Constants::TextureUnit::TerrainHeightmap());

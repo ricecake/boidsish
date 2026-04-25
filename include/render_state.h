@@ -32,6 +32,7 @@ namespace Boidsish {
 		BufferRange temporal;
 		BufferRange visual_effects;
 		BufferRange frustum;
+		BufferRange volumetric_lighting;
 
 		// CPU pointers to the current frame's data in persistent mapped buffers
 		LightingUbo*      lighting_ptr = nullptr;

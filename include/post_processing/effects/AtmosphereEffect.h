@@ -10,6 +10,9 @@ class Shader;
 class ComputeShader;
 
 namespace Boidsish {
+
+	class WeatherManager;
+
 	namespace PostProcessing {
 
 		class AtmosphereEffect: public IPostProcessingEffect {
@@ -176,7 +179,16 @@ namespace Boidsish {
 				aerial_perspective_lut_ = aerialPerspective;
 			}
 
+			void SetVolumetricCascades(const std::vector<GLuint>& cascades, GLuint ubo, size_t uboOffset, size_t uboSize) {
+				volumetric_cascades_ = cascades;
+				volumetric_ubo_ = ubo;
+				volumetric_ubo_offset_ = uboOffset;
+				volumetric_ubo_size_ = uboSize;
+			}
+
 			void SetNoiseTextures(const NoiseTextures& textures) { noise_textures_ = textures; }
+
+			void SetWeatherManager(WeatherManager* weather) { weather_manager = weather; }
 
 			void SetRenderScale(float scale) {
 				if (render_scale_ != scale) {
@@ -241,7 +253,14 @@ namespace Boidsish {
 			GLuint sky_view_lut_ = 0;
 			GLuint aerial_perspective_lut_ = 0;
 
-			NoiseTextures noise_textures_ = {0, 0, 0};
+			std::vector<GLuint> volumetric_cascades_;
+			GLuint volumetric_ubo_ = 0;
+			size_t volumetric_ubo_offset_ = 0;
+			size_t volumetric_ubo_size_ = 0;
+
+			NoiseTextures noise_textures_ = {0, 0, 0, 0};
+
+			WeatherManager* weather_manager = nullptr;
 
 			int   width_ = 0;
 			int   height_ = 0;

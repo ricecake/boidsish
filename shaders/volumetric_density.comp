@@ -1,0 +1,92 @@
+#version 430 core
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 4) in;
+layout(rgba16f, binding = 0) uniform image3D outDensityExtinction;
+
+#include "helpers/constants.glsl"
+#include "lighting.glsl"
+
+struct VolumetricLighting {
+    vec4 cascadeRanges;
+    ivec4 cascadeRes;
+    float intensity;
+    float scatteringCoeff;
+    float extinctionCoeff;
+    float mieAnisotropy;
+    vec4 ambientFactor;
+    float phaseG;
+    ivec4 weatherGridOriginSize;
+};
+
+layout(std140, binding = [[VOLUMETRIC_LIGHTING_BINDING]]) uniform VolumetricUniforms {
+    VolumetricLighting u_volData;
+};
+
+uniform int u_cascadeIndex;
+layout(binding = [[WEATHER_SCALARS_BINDING]]) uniform sampler2D u_weatherScalars; // x: temp, y: humidity, z: pressure, w: aerosol
+uniform vec3 u_aerosolColor;
+
+uniform mat4 projection;
+uniform mat4 invView;
+
+// Helper to convert froxel UVW to view-space position
+vec3 getFroxelViewPos(vec3 uvw, int cascade) {
+    float near = (cascade == 0) ? 0.1 : (cascade == 1) ? u_volData.cascadeRanges.x : (cascade == 2) ? u_volData.cascadeRanges.y : u_volData.cascadeRanges.z;
+    float far = (cascade == 0) ? u_volData.cascadeRanges.x : (cascade == 1) ? u_volData.cascadeRanges.y : (cascade == 2) ? u_volData.cascadeRanges.z : u_volData.cascadeRanges.w;
+
+    // Logarithmic depth distribution
+    float zView = near * pow(far / near, uvw.z);
+
+    vec2 ndc = uvw.xy * 2.0 - 1.0;
+
+    float invP00 = 1.0 / projection[0][0];
+    float invP11 = 1.0 / projection[1][1];
+
+    return vec3(ndc.x * zView * invP00, ndc.y * zView * invP11, -zView);
+}
+
+void main() {
+    ivec3 texel = ivec3(gl_GlobalInvocationID.xyz);
+    if (any(greaterThanEqual(texel, u_volData.cascadeRes.xyz))) return;
+
+    vec3 uvw = (vec3(texel) + 0.5) / vec3(u_volData.cascadeRes.xyz);
+    vec3 viewPos_f = getFroxelViewPos(uvw, u_cascadeIndex);
+    vec3 worldPos = (invView * vec4(viewPos_f, 1.0)).xyz;
+
+    // Sample localized weather data
+    float humidity = 0.5;
+    float aerosol = 0.1;
+
+    if (u_volData.weatherGridOriginSize.y > 0) {
+        // Map world XZ to weather grid texture
+        // Origin is in chunk coordinates (32m per chunk)
+        vec2 gridOriginWorld = vec2(u_volData.weatherGridOriginSize.x, u_volData.weatherGridOriginSize.z) * 32.0;
+        vec2 gridPos = (worldPos.xz - gridOriginWorld) / (32.0 * vec2(u_volData.weatherGridOriginSize.y, u_volData.weatherGridOriginSize.w));
+
+        if (all(greaterThanEqual(gridPos, vec2(0.0))) && all(lessThanEqual(gridPos, vec2(1.0)))) {
+            vec4 weather = texture(u_weatherScalars, gridPos);
+            humidity = weather.y;
+            aerosol = weather.w;
+        }
+    }
+
+    // Base coefficients
+    float baseScattering = u_volData.scatteringCoeff;
+    float baseExtinction = u_volData.extinctionCoeff;
+
+    // Modulate by local weather
+    float fogDensity = aerosol * 10.0 + humidity * 0.5;
+    float scattering = baseScattering * (1.0 + fogDensity);
+    float extinction = baseExtinction * (1.0 + fogDensity);
+
+    // Height falloff
+    float heightFalloff = exp(-max(0.0, worldPos.y) * 0.01);
+    scattering *= heightFalloff;
+    extinction *= heightFalloff;
+
+    // Tint scattering by weather aerosol color
+    // Increase influence of aerosol color for better visibility
+    vec3 coloredScattering = mix(vec3(scattering), u_aerosolColor * scattering, aerosol * 5.0);
+
+    imageStore(outDensityExtinction, texel, vec4(coloredScattering, extinction));
+}

@@ -84,6 +84,7 @@
 #include "shader_registration.h"
 #include "visual_effects.h"
 #include "weather_manager.h"
+#include "volumetric_lighting_manager.h"
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include <glm/ext/matrix_projection.hpp>
@@ -381,6 +382,7 @@ namespace Boidsish {
 		std::shared_ptr<SdfVolumeManager>                 sdf_volume_manager;
 		std::shared_ptr<ShadowManager>                    shadow_manager;
 		std::shared_ptr<AtmosphereManager>                atmosphere_manager;
+		std::shared_ptr<VolumetricLightingManager>        volumetric_lighting_manager;
 		std::shared_ptr<PostProcessing::AtmosphereEffect> atmosphere_effect;
 		std::shared_ptr<WeatherManager>                   weather_manager;
 		std::shared_ptr<SceneManager>                     scene_manager;
@@ -554,6 +556,7 @@ namespace Boidsish {
 			service_locator_.Register<CloneManager>();
 			service_locator_.Register<ShadowManager>();
 			service_locator_.Register<AtmosphereManager>();
+			service_locator_.Register<VolumetricLightingManager>();
 			service_locator_.Register<WeatherManager>();
 			service_locator_.Register<SceneManager>("scenes");
 			service_locator_.Register<DecorManager>();
@@ -807,6 +810,8 @@ namespace Boidsish {
 			grass_manager = service_locator_.Get<GrassManager>();
 			atmosphere_manager = service_locator_.Get<AtmosphereManager>();
 			atmosphere_manager->Initialize();
+			volumetric_lighting_manager = service_locator_.Get<VolumetricLightingManager>();
+			volumetric_lighting_manager->Initialize();
 			weather_manager = service_locator_.Get<WeatherManager>();
 			if (terrain_generator) {
 				weather_manager->SetTerrainGenerator(terrain_generator.get());
@@ -1041,6 +1046,7 @@ namespace Boidsish {
 
 				atmosphere_effect = std::make_shared<PostProcessing::AtmosphereEffect>();
 				atmosphere_effect->SetEnabled(true);
+				atmosphere_effect->SetWeatherManager(weather_manager.get());
 				post_processing_manager_->AddEffect(atmosphere_effect);
 
 				auto bloom_effect = std::make_shared<PostProcessing::BloomEffect>(render_width, render_height);
@@ -2118,6 +2124,20 @@ namespace Boidsish {
 				if (noise_manager) {
 					atmosphere_effect->SetNoiseTextures(noise_manager->GetTextures());
 				}
+				if (volumetric_lighting_manager) {
+					std::vector<GLuint> cascades = {
+						volumetric_lighting_manager->GetIntegratedVolume(0),
+						volumetric_lighting_manager->GetIntegratedVolume(1),
+						volumetric_lighting_manager->GetIntegratedVolume(2),
+						volumetric_lighting_manager->GetIntegratedVolume(3)
+					};
+					atmosphere_effect->SetVolumetricCascades(
+						cascades,
+						render_state_.volumetric_lighting.id,
+						render_state_.volumetric_lighting.offset,
+						render_state_.volumetric_lighting.size
+					);
+				}
 			}
 		}
 
@@ -2173,6 +2193,9 @@ namespace Boidsish {
 		}
 
 		void PrepareFrame() {
+			if (volumetric_lighting_manager) {
+				volumetric_lighting_manager->AdvanceFrame();
+			}
 			// Advance persistent buffers and handle synchronization
 			indirect_elements_buffer->AdvanceFrame();
 			indirect_arrays_buffer->AdvanceFrame();
@@ -2413,6 +2436,13 @@ namespace Boidsish {
 				frustum_ssbo->GetFrameOffset(),
 				sizeof(FrustumDataGPU),
 			};
+			if (volumetric_lighting_manager) {
+				render_state_.volumetric_lighting = {
+					volumetric_lighting_manager->GetUboId(),
+					volumetric_lighting_manager->GetUboOffset(),
+					volumetric_lighting_manager->GetUboSize(),
+				};
+			}
 
 			render_state_.view = current_view_matrix;
 			render_state_.projection = projection;
@@ -3612,6 +3642,23 @@ namespace Boidsish {
 		impl->PopulateFrameData(frame);
 
 		impl->PrepareUBOs();
+
+		if (impl->volumetric_lighting_manager) {
+			GLuint     weatherTex = impl->weather_manager ? impl->weather_manager->GetWeatherScalarTexture() : 0;
+			glm::ivec4 weatherGrid = impl->weather_manager ? impl->weather_manager->GetWeatherGridOriginSize() : glm::ivec4(0);
+			glm::vec3  aerosolColor = impl->weather_manager ? impl->weather_manager->GetCurrentWeather().haze_color : glm::vec3(1.0f);
+			impl->volumetric_lighting_manager->Update(
+				impl->current_view_matrix,
+				impl->projection,
+				impl->camera.pos(),
+				impl->simulation_delta_time,
+				impl->simulation_time,
+				weatherTex,
+				weatherGrid,
+					aerosolColor,
+					impl->light_manager->GetLights()
+			);
+		}
 		impl->packets_synced_ = false;
 		impl->GenerateRenderPacketsAsync();
 		impl->UpdateSystems();

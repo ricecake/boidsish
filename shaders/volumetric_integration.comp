@@ -1,0 +1,60 @@
+#version 430 core
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+layout(rgba16f, binding = 0) uniform image3D inScatteringExtinction;
+layout(rgba16f, binding = 1) uniform image3D outIntegrated;
+
+struct VolumetricLighting {
+    vec4 cascadeRanges;
+    ivec4 cascadeRes;
+    float intensity;
+    float scatteringCoeff;
+    float extinctionCoeff;
+    float mieAnisotropy;
+    vec4 ambientFactor;
+    float phaseG;
+    ivec4 weatherGridOriginSize;
+};
+
+layout(std140, binding = [[VOLUMETRIC_LIGHTING_BINDING]]) uniform VolumetricUniforms {
+    VolumetricLighting u_volData;
+};
+
+uniform int u_cascadeIndex;
+
+void main() {
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    if (any(greaterThanEqual(pixel, u_volData.cascadeRes.xy))) return;
+
+    vec3 accumulatedLight = vec3(0.0);
+    float accumulatedTransmittance = 1.0;
+
+    float near = (u_cascadeIndex == 0) ? 0.1 : (u_cascadeIndex == 1) ? u_volData.cascadeRanges.x : (u_cascadeIndex == 2) ? u_volData.cascadeRanges.y : u_volData.cascadeRanges.z;
+    float far = (u_cascadeIndex == 0) ? u_volData.cascadeRanges.x : (u_cascadeIndex == 1) ? u_volData.cascadeRanges.y : (u_cascadeIndex == 2) ? u_volData.cascadeRanges.z : u_volData.cascadeRanges.w;
+
+    float prevZ = near;
+
+    for (int z = 0; z < u_volData.cascadeRes.z; ++z) {
+        ivec3 texel = ivec3(pixel, z);
+        vec4 data = imageLoad(inScatteringExtinction, texel);
+
+        vec3 scattering = data.rgb;
+        float extinction = data.a;
+
+        // Use slice edge for integration distance to ensure full coverage
+        float currentZ = near * pow(far / near, (float(z + 1)) / float(u_volData.cascadeRes.z));
+        float dz = abs(currentZ - prevZ);
+        prevZ = currentZ;
+
+        // Convert world distance (m) to km for atmospheric coefficients
+        float dzKM = dz / 1000.0;
+
+        float stepTransmittance = exp(-extinction * dzKM);
+        vec3 stepScattering = scattering * (1.0 - stepTransmittance) / max(extinction, 1e-6);
+
+        accumulatedLight += accumulatedTransmittance * stepScattering;
+        accumulatedTransmittance *= stepTransmittance;
+
+        imageStore(outIntegrated, texel, vec4(accumulatedLight, accumulatedTransmittance));
+    }
+}
