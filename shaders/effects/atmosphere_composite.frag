@@ -19,6 +19,24 @@ uniform vec2 cloudTexelSize; // 1.0 / lowResSize
 // u_transmittanceLUT is declared in helpers/lighting.glsl
 uniform sampler3D u_aerialPerspectiveLUT;
 
+uniform sampler3D u_volumetricCascade0;
+uniform sampler3D u_volumetricCascade1;
+
+struct VolumetricLighting {
+    vec4 cascadeRanges;
+    ivec4 cascadeRes;
+    float intensity;
+    float scatteringCoeff;
+    float extinctionCoeff;
+    float mieAnisotropy;
+    vec4 ambientFactor;
+    float phaseG;
+};
+
+layout(std140, binding = [[VOLUMETRIC_LIGHTING_BINDING]]) uniform VolumetricUniforms {
+    VolumetricLighting u_volData;
+};
+
 #include "../atmosphere/common.glsl"
 #include "../helpers/lighting.glsl"
 #include "helpers/math.glsl"
@@ -47,6 +65,22 @@ float sampleAerialPerspectiveTransmittance(vec3 rd, float distKM) {
 	float w = distKM / 32.0;
 
 	return texture(u_aerialPerspectiveLUT, vec3(u, v, w)).a;
+}
+
+vec4 sampleVolumetric(vec2 screenUV, float dist) {
+    float near0 = u_volData.cascadeRanges.x;
+    float far0 = u_volData.cascadeRanges.y;
+    float near1 = u_volData.cascadeRanges.z;
+    float far1 = u_volData.cascadeRanges.w;
+
+    if (dist < far0) {
+        float w = log(max(dist, near0) / near0) / log(far0 / near0);
+        return texture(u_volumetricCascade0, vec3(screenUV, w));
+    } else if (dist < far1) {
+        float w = log(max(dist, near1) / near1) / log(far1 / near1);
+        return texture(u_volumetricCascade1, vec3(screenUV, w));
+    }
+    return vec4(0.0, 0.0, 0.0, 1.0);
 }
 
 void main() {
@@ -119,6 +153,15 @@ void main() {
 	float distKM = (dist / 1000.0) * hazeDensity;
 	vec3  inScattering = sampleAerialPerspective(rayDir, distKM);
 	float transmittance = sampleAerialPerspectiveTransmittance(rayDir, distKM);
+
+    // 2.5 Volumetric Lighting (Froxels)
+    vec4 volData = sampleVolumetric(TexCoords, dist);
+    vec3 volScattering = volData.rgb;
+    float volTransmittance = volData.a;
+
+    // Apply volumetric lighting
+    inScattering = inScattering * volTransmittance + volScattering;
+    transmittance *= volTransmittance;
 
 	// 3. Cloud Atmospheric Integration
 	// Clouds should also be affected by the atmosphere between them and the camera.

@@ -66,6 +66,9 @@ namespace Boidsish {
 		if (wind_texture_ != 0) {
 			glDeleteTextures(1, &wind_texture_);
 		}
+		if (scalar_texture_ != 0) {
+			glDeleteTextures(1, &scalar_texture_);
+		}
 	}
 
 	void WeatherManager::SetTarget(WeatherAttribute attr, float target) {
@@ -492,9 +495,20 @@ namespace Boidsish {
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 			glBindTexture(GL_TEXTURE_2D, 0);
 		}
+		if (scalar_texture_ == 0) {
+			glGenTextures(1, &scalar_texture_);
+			glBindTexture(GL_TEXTURE_2D, scalar_texture_);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, lbm_simulator_->GetWidth(), lbm_simulator_->GetHeight(), 0, GL_RGBA, GL_FLOAT, nullptr);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+			glBindTexture(GL_TEXTURE_2D, 0);
+		}
 
 		WindDataUbo ubo = latest_snapshot_.uboMetadata;
 		const auto& wind_data = latest_snapshot_.windData;
+		const auto& scalar_data = latest_snapshot_.scalarData;
 
 		if (!macro_sim_enabled_) {
 			// Fallback: Uniform slowly changing wind vector
@@ -539,6 +553,20 @@ namespace Boidsish {
 				GL_RGBA,
 				GL_FLOAT,
 				wind_data.data()
+			);
+
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::WeatherScalars());
+			glBindTexture(GL_TEXTURE_2D, scalar_texture_);
+			glTexSubImage2D(
+				GL_TEXTURE_2D,
+				0,
+				0,
+				0,
+				ubo.originSize.y,
+				ubo.originSize.w,
+				GL_RGBA,
+				GL_FLOAT,
+				scalar_data.data()
 			);
 		}
 	}

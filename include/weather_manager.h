@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include <GL/glew.h>
 #include <glm/glm.hpp>
 #include "thread_pool.h"
 #include "weather_constants.h"
@@ -282,6 +283,12 @@ namespace Boidsish {
 
 		void InjectTemperature(const glm::vec3& pos, float temperatureK);
 
+		GLuint GetWeatherScalarTexture() const { return scalar_texture_; }
+		glm::ivec4 GetWeatherGridOriginSize() const {
+			if (!latest_snapshot_.valid) return glm::ivec4(0);
+			return latest_snapshot_.uboMetadata.originSize;
+		}
+
 		void UpdateWindUbo(float totalTime);
 
 		void SetTerrainGenerator(ITerrainGenerator* terrain) { terrain_ = terrain; }
@@ -289,6 +296,7 @@ namespace Boidsish {
 	private:
 		unsigned int wind_data_ubo_ = 0;
 		unsigned int wind_texture_ = 0;
+		unsigned int scalar_texture_ = 0;
 
 		ThreadPool                              lbm_pool_;
 		std::optional<TaskHandle<LbmSnapshot>>  lbm_task_;
