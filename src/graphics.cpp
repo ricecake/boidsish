@@ -2755,10 +2755,14 @@ namespace Boidsish {
 				early_effects_pass_->Execute(frame, *compositor_);
 			}
 
+			if (particle_pass_) {
+				particle_pass_->Execute(frame);
+			}
+
 			if (sdf_volume_pass_ && compositor_) {
-				// After early effects, the scene lives in the post-processing pipeline's
+				// After early effects and particles, the scene lives in the post-processing pipeline's
 				// ping-pong FBO. Use that as the source so SDF composites on top of
-				// the post-effects scene, and writes back to the correct FBO.
+				// the post-effects scene (including particles), and writes back to the correct FBO.
 				GLuint scene_tex = (post_processing_manager_ && frame.config.effects_enabled)
 					? post_processing_manager_->GetFinalTexture()
 					: compositor_->GetColorTexture();
@@ -2770,10 +2774,6 @@ namespace Boidsish {
 				glBindVertexArray(blur_quad_vao);
 				sdf_volume_pass_->Execute(frame, scene_tex, depth_tex, target_fbo);
 				glBindVertexArray(0);
-			}
-
-			if (particle_pass_) {
-				particle_pass_->Execute(frame);
 			}
 
 			// Capture background for refraction
@@ -4681,7 +4681,7 @@ namespace Boidsish {
 		source.color = glm::vec3(1.0f, 0.6f, 0.15f);
 		source.smoothness = 3.0f;
 		source.charge = 1.0f;
-		source.type = 0;
+		source.type = 1; // Mushroom
 
 		source.volumetric = true;
 		source.density = 1.5f * intensity;
