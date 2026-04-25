@@ -1045,6 +1045,7 @@ namespace Boidsish {
 
 				atmosphere_effect = std::make_shared<PostProcessing::AtmosphereEffect>();
 				atmosphere_effect->SetEnabled(true);
+				atmosphere_effect->SetWeatherManager(weather_manager.get());
 				post_processing_manager_->AddEffect(atmosphere_effect);
 
 				auto bloom_effect = std::make_shared<PostProcessing::BloomEffect>(render_width, render_height);
@@ -2115,12 +2116,6 @@ namespace Boidsish {
 			// Update the atmosphere model with the current sun/moon light
 			float world_scale = terrain_generator ? terrain_generator->GetWorldScale() : 1.0f;
 			atmosphere_manager->Update(sun_dir, sun_color, sun_intensity, camera.pos(), simulation_time, world_scale);
-
-			if (volumetric_lighting_manager) {
-				GLuint weatherTex = weather_manager ? weather_manager->GetWeatherScalarTexture() : 0;
-				glm::ivec4 weatherGrid = weather_manager ? weather_manager->GetWeatherGridOriginSize() : glm::ivec4(0);
-				volumetric_lighting_manager->Update(SetupMatrices(), projection, camera.pos(), simulation_delta_time, simulation_time, weatherTex, weatherGrid);
-			}
 
 			// Sync ambient light from atmosphere to ensure decor and world match
 			glm::vec3 estimated_ambient = atmosphere_manager->GetAmbientEstimate();
@@ -3649,6 +3644,22 @@ namespace Boidsish {
 		impl->PopulateFrameData(frame);
 
 		impl->PrepareUBOs();
+
+		if (impl->volumetric_lighting_manager) {
+			GLuint     weatherTex = impl->weather_manager ? impl->weather_manager->GetWeatherScalarTexture() : 0;
+			glm::ivec4 weatherGrid = impl->weather_manager ? impl->weather_manager->GetWeatherGridOriginSize() : glm::ivec4(0);
+			glm::vec3  aerosolColor = impl->weather_manager ? impl->weather_manager->GetCurrentWeather().haze_color : glm::vec3(1.0f);
+			impl->volumetric_lighting_manager->Update(
+				impl->current_view_matrix,
+				impl->projection,
+				impl->camera.pos(),
+				impl->simulation_delta_time,
+				impl->simulation_time,
+				weatherTex,
+				weatherGrid,
+				aerosolColor
+			);
+		}
 		impl->packets_synced_ = false;
 		impl->GenerateRenderPacketsAsync();
 		impl->UpdateSystems();

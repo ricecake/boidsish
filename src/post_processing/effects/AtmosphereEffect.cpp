@@ -2,6 +2,7 @@
 
 #include "constants.h"
 #include "shader.h"
+#include "weather_manager.h"
 
 namespace Boidsish {
 	namespace PostProcessing {
@@ -217,8 +218,14 @@ namespace Boidsish {
 			composite_shader_->setVec2("cloudTexelSize", glm::vec2(1.0f / low_res_width, 1.0f / low_res_height));
 			composite_shader_->setFloat("u_atmosphereHeight", atmosphere_height_);
 
-			composite_shader_->setInt("u_transmittanceLUT", Constants::TextureUnit::AtmosphereTransmittance());
-			composite_shader_->setInt("u_aerialPerspectiveLUT", Constants::TextureUnit::AtmosphereAerialPerspective());
+			if (volumetric_ubo_) {
+				GLuint vol_idx = glGetUniformBlockIndex(composite_shader_->ID, "VolumetricUniforms");
+				if (vol_idx != GL_INVALID_INDEX) {
+					glUniformBlockBinding(composite_shader_->ID, vol_idx, Constants::UboBinding::VolumetricLighting());
+				}
+				glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::VolumetricLighting(),
+					volumetric_ubo_, volumetric_ubo_offset_, volumetric_ubo_size_);
+			}
 
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, sourceTexture);
@@ -231,6 +238,14 @@ namespace Boidsish {
 			glBindTexture(GL_TEXTURE_2D, transmittance_lut_);
 			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereAerialPerspective());
 			glBindTexture(GL_TEXTURE_3D, aerial_perspective_lut_);
+
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::VolumetricCascades());
+			glBindTexture(GL_TEXTURE_3D, volumetric_cascade0_);
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::VolumetricCascades() + 1);
+			glBindTexture(GL_TEXTURE_3D, volumetric_cascade1_);
+
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::WeatherScalars());
+			glBindTexture(GL_TEXTURE_2D, weather_manager->GetWeatherScalarTexture());
 
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 

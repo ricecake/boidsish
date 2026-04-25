@@ -112,12 +112,14 @@ namespace Boidsish {
 		float deltaTime,
 		float time,
 		GLuint weatherScalarTexture,
-		const glm::ivec4& weatherGridOriginSize
+		const glm::ivec4& weatherGridOriginSize,
+		const glm::vec3& aerosolColor
 	) {
 		PROJECT_PROFILE_SCOPE("VolumetricLighting::Update");
 
 		_weatherScalarTexture = weatherScalarTexture;
 		_weatherGridOriginSize = weatherGridOriginSize;
+		_aerosolColor = aerosolColor;
 
 		UpdateUbo();
 
@@ -128,6 +130,7 @@ namespace Boidsish {
 			_densityShader->setMat4("view", view);
 			_densityShader->setMat4("projection", projection);
 			_densityShader->setMat4("invView", glm::inverse(view));
+			_densityShader->setVec3("u_aerosolColor", _aerosolColor);
 
 			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::WeatherScalars());
 			glBindTexture(GL_TEXTURE_2D, _weatherScalarTexture);
