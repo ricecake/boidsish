@@ -71,7 +71,8 @@ void main() {
             current.m += previous.m;
 
             float p_hat_final = targetFunction(worldPos, worldNorm, getLightData(current.light_index));
-            current.W = (p_hat_final > 0) ? (current.w_sum / (current.m * p_hat_final)) : 0.0;
+            current.W = safeDiv(current.w_sum, current.m * p_hat_final);
+            current.W = clamp(current.W, 0.0, 1e4);
         }
     }
 
