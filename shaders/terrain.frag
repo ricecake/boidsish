@@ -261,7 +261,7 @@ void main() {
 	float fade_end = 570.0 * worldScale;
 	float fade = 1.0 - smoothstep(fade_start, fade_end, dist + n_fade * 40.0);
 
-	if (fade <= 0.01) {
+	if (fade < 0.2) {
 		discard;
 	}
 

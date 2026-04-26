@@ -43,18 +43,6 @@ float fastRidge3d(vec3 p) {
 	return texture(u_extraNoiseTexture, p).r;
 }
 
-// vec3 fastRidge3dGrad(vec3 p, float scale, out float eps) {
-// 	ivec3 size = textureSize(u_extraNoiseTexture, 0);
-// 	 eps = 1.0 / length(size);
-// 	// vec4 gathered = textureGather(u_extraNoiseTexture, p * scale);
-// 	float n = fastRidge3d(scaledFragPos);
-// 	float nx = fastRidge3d((scaledFragPos + vec3(eps, 0.0, 0.0)));
-// 	float nz = fastRidge3d((scaledFragPos + vec3(0.0, 0.0, eps)));
-
-// 	return vec3(nx, n, nz);
-// }
-
-
 // G: Gradient 3D
 float fastGradient3d(vec3 p) {
 	return texture(u_extraNoiseTexture, p).g * 2.0 - 1.0;

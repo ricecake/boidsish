@@ -247,7 +247,7 @@ void main() {
 			streak *= smoothstep(0.0, 0.2, uv.y) * smoothstep(1.0, 0.8, uv.y);
 
 			color = vec3(0.7, 0.8, 1.0) * 2.0; // Brighter rain
-			alpha = streak * smoothstep(0.0, 0.1, v_lifetime);
+			alpha = 0.5 * streak * smoothstep(0.0, 0.1, v_lifetime);
 			shapeMask = 1.0;
 		} else if (v_style == STYLE_SNOW) {
 			// Soft flake
