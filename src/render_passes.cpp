@@ -221,7 +221,7 @@ namespace Boidsish {
 		shader_->setInt("depthTexture", 1);
 		shader_->setInt("historyTexture", 2);
 		shader_->setVec2("u_sdfScreenSize", glm::vec2(width_, height_));
-		shader_->setVec3("u_sdfCameraPos", frame.camera_pos);
+		shader_->setVec3("u_sdfCamPos", frame.camera_pos);
 		shader_->setMat4("u_sdfInvView", frame.inv_view);
 		shader_->setMat4("u_sdfInvProjection", glm::inverse(frame.projection));
 		shader_->setFloat("u_sdfTime", frame.simulation_time);
