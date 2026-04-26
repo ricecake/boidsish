@@ -105,17 +105,27 @@ float targetFunction(vec3 pos, vec3 norm, LightData ld) {
 }
 
 void updateReservoir(inout Reservoir r, uint light_index, float weight, float random) {
+    if (isnan(weight) || isinf(weight) || weight <= 0.0) return;
+
+    // Recovery: if existing reservoir is corrupt, reset it
+    if (isnan(r.w_sum) || isinf(r.w_sum)) {
+        r.w_sum = 0.0;
+        r.m = 0.0;
+        r.W = 0.0;
+    }
+
     r.w_sum += weight;
     r.m += 1.0;
     if (random * r.w_sum < weight) {
         r.light_index = light_index;
     }
     // Clamp weight sum to prevent numerical explosion
-    r.w_sum = min(r.w_sum, 1e7);
+    r.w_sum = min(r.w_sum, 1e6);
 }
 
 // Simple screen-space visibility check against depth buffer
 bool checkVisibility(vec3 viewPos, vec3 targetViewPos, sampler2D depthTex) {
+    if (isnan(targetViewPos.x)) return false;
     vec3 rayDir = targetViewPos - viewPos;
     float dist = length(rayDir);
     if (dist < 0.01) return true;

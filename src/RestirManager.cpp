@@ -61,9 +61,9 @@ namespace Boidsish {
 		}
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
-		// Create permutation texture array (128x128 x 8 slices)
+		// Create permutation texture array (128x128 x 16 slices)
 		int p_size = 128;
-		int p_slices = 8;
+		int p_slices = 16;
 		glGenTextures(1, &permutation_tex_);
 		glBindTexture(GL_TEXTURE_2D_ARRAY, permutation_tex_);
 		glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_RG8_SNORM, p_size, p_size, p_slices, 0, GL_RG, GL_BYTE, nullptr);
@@ -220,9 +220,9 @@ namespace Boidsish {
 			}
 
 			if (permutation_tex_) {
-				glActiveTexture(GL_TEXTURE8); // Use fixed unit 8 for permutation
-				glBindTexture(GL_TEXTURE_2D, permutation_tex_);
-				s->setInt("u_permutationTexture", 8);
+				glActiveTexture(GL_TEXTURE0 + 37); // Use high unit 37 to avoid conflicts
+				glBindTexture(GL_TEXTURE_2D_ARRAY, permutation_tex_);
+				s->setInt("u_permutationTexture", 37);
 			}
 		};
 
@@ -276,8 +276,23 @@ namespace Boidsish {
 		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
 		// Swap buffer index for next frame's temporal pass
-
 		current_buffer_index_ = 1 - current_buffer_index_;
+
+		// Unbind all resources to prevent state leakage to other systems (UI, etc)
+		// We only unbind high units and private SSBOs to avoid disrupting engine core units
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::NoiseBlue());
+		glBindTexture(GL_TEXTURE_2D, 0);
+		glActiveTexture(GL_TEXTURE0 + 37);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
+
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::AllLights(), 0);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleBuffer(), 0);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::RestirReservoirs0(), 0);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::RestirReservoirs1(), 0);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::RestirGIReservoirs0(), 0);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::RestirGIReservoirs1(), 0);
+
+		glUseProgram(0);
 	}
 
 } // namespace Boidsish

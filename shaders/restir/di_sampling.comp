@@ -75,7 +75,15 @@ void main() {
 
     float p_hat_final = targetFunction(worldPos, worldNorm, getLightData(r.light_index));
     r.W = safeDiv(r.w_sum, r.m * p_hat_final);
-    r.W = clamp(r.W, 0.0, 1e4); // Clamp normalization factor
+
+    // Stale reservoir kick-out: if normalization is too small for a high sample count, force reset
+    if (r.m > 100.0 && r.W < 1e-4) {
+        r.w_sum = 0.0;
+        r.m = 0.0;
+        r.W = 0.0;
+    }
+
+    r.W = clamp(r.W, 0.0, 100.0); // Tighter clamp to prevent NaNs and over-exposure
 
     reservoirs[reservoir_idx] = r;
 }

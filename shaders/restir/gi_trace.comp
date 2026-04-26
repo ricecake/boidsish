@@ -2,8 +2,8 @@
 #extension GL_GOOGLE_include_directive : enable
 layout(local_size_x = 8, local_size_y = 8) in;
 
-#include "../helpers/fast_noise.glsl"
 #include "restir_common.glsl"
+#include "../helpers/fast_noise.glsl"
 #include "../helpers/lighting.glsl"
 
 layout(std430, binding = [[RESTIR_GI_RESERVOIRS0_BINDING]]) buffer GIReservoirs {

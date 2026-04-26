@@ -206,6 +206,24 @@ namespace Boidsish {
 			glBindTexture(GL_TEXTURE_2D, depthTexture);
 
 			glDrawArrays(GL_TRIANGLES, 0, 6);
+
+			// Unbind all to prevent state leakage
+			glUseProgram(0);
+
+			glBindImageTexture(0, 0, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA16F);
+			glBindImageTexture(1, 0, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R8);
+
+			glActiveTexture(GL_TEXTURE9);
+			glBindTexture(GL_TEXTURE_2D, 0);
+			glActiveTexture(GL_TEXTURE0 + 37);
+			glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::HiZ());
+			glBindTexture(GL_TEXTURE_2D, 0);
+
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::RestirReservoirs0(), 0);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::RestirGIReservoirs0(), 0);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::AllLights(), 0);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleBuffer(), 0);
 		}
 
 		void UnifiedScreenSpaceEffect::Resize(int width, int height) {

@@ -5,6 +5,7 @@ layout(binding = 0, rgba16f) uniform image2D outIndirectAO; // RGB: GI, A: AO
 layout(binding = 1, r8)      uniform image2D outShadowMask; // R: SSS
 
 #include "../restir/restir_common.glsl"
+#include "../helpers/fast_noise.glsl"
 
 layout(std430, binding = [[RESTIR_RESERVOIRS0_BINDING]]) buffer RestirReservoirs {
     Reservoir di_reservoirs[];
@@ -19,7 +20,6 @@ uniform sampler2D gColor;
 uniform sampler2D gNormal;
 uniform sampler2D gVelocity;
 uniform sampler2D gAlbedo;
-// uniform sampler2D u_blueNoiseTexture; // defined in fast_noise.glsl
 uniform sampler2D u_hizTexture;
 uniform sampler2D uShadowMask; // Terrain shadow mask for SSGI fallback/modulation
 
@@ -29,7 +29,6 @@ uniform sampler2D uShadowMask; // Terrain shadow mask for SSGI fallback/modulati
 float terrainShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) { return 1.0; }
 float calculateTerrainOcclusion(vec3 worldPos, vec3 normal) { return 1.0; }
 
-#include "../restir/restir_common.glsl"
 #include "../helpers/lighting.glsl"
 
 // Unified Parameters

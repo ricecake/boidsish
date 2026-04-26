@@ -264,19 +264,19 @@ namespace Boidsish {
 			}
 
 			consteval int RestirReservoirs0() {
-				return 47;
+				return 51;
 			}
 
 			consteval int RestirReservoirs1() {
-				return 48;
+				return 52;
 			}
 
 			consteval int RestirGIReservoirs0() {
-				return 49;
+				return 53;
 			}
 
 			consteval int RestirGIReservoirs1() {
-				return 50;
+				return 54;
 			}
 		} // namespace SsboBinding
 

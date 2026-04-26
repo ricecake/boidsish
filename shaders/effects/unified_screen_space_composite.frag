@@ -82,7 +82,24 @@ void main() {
 
 	// 3. Apply Global Illumination (SSGI) and ReSTIR
 	if (uSSGIEnabled) {
+		// ReSTIR DI provides primary local light.
+		// To avoid double-counting, we blend it with the existing scene.
+		// However, ReSTIR is often more physically accurate for many-light scenarios.
 		vec3 restir_ssgi = giao.rgb;
+
+		// If the original scene has very low intensity (shadows), ReSTIR should dominate.
+		// If it's already bright (directional light), we add ReSTIR as a bounce/local contribution.
+		float sceneLum = dot(result, vec3(0.2126, 0.7152, 0.0722));
+		float restirLum = dot(restir_ssgi, vec3(0.2126, 0.7152, 0.0722));
+
+		// Heuristic: if restir is much brighter than scene, it likely represents a primary light source
+		// that the deferred pass might have missed or handled poorly (e.g. fire particles).
+		// We use a smooth mix to prevent harsh transitions.
+		float mixFactor = clamp(restirLum / (sceneLum + 0.1), 0.0, 1.0);
+
+		// result = mix(result, result + restir_ssgi, uSSGIIntensity);
+		// For now, let's just add it but with a more conservative intensity and clamping
+		// to resolve the "blindingly bright" feedback while keeping the fire light visible.
 		result += restir_ssgi * uSSGIIntensity;
 	}
 

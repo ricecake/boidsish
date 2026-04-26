@@ -4,6 +4,7 @@ layout(local_size_x = 8, local_size_y = 8) in;
 
 #define TEMPORAL_DATA_DEFINED
 #include "restir_common.glsl"
+#include "../helpers/fast_noise.glsl"
 
 layout(std430, binding = [[RESTIR_RESERVOIRS0_BINDING]]) buffer NewReservoirs {
     Reservoir new_reservoirs[];
@@ -49,6 +50,7 @@ void main() {
     Reservoir current = new_reservoirs[reservoir_idx];
 
     // Duplication detection within the 8x8 workgroup
+    // We store the candidate from the previous reservoir for comparison
     group_candidates[local_idx] = current.light_index;
     memoryBarrierShared();
     barrier();
@@ -69,16 +71,16 @@ void main() {
             uint seed = uint(pixel.y * size.x + pixel.x) ^ hash(uint(frameIndex) + 100u);
 
             // Limit temporal history
-            float m_limit = 20.0 * current.m;
+            float m_limit = 20.0 * max(current.m, 1.0);
 
-            // Count duplicates in the group
+            // Count duplicates in the group (coarse suppression of correlation)
             uint dup_count = 0;
             for (int i = 0; i < 64; i++) {
                 if (group_candidates[i] == previous.light_index) dup_count++;
             }
 
-            // Suppress temporal confidence if candidate is highly duplicated
-            if (dup_count > 4) {
+            // Suppress temporal confidence if candidate is highly duplicated in neighbors
+            if (dup_count > 8) {
                 m_limit = 2.0;
             }
 
@@ -89,13 +91,21 @@ void main() {
             vec3 worldNorm = normalize(mat3(invView) * vNorm);
 
             float p_hat = targetFunction(worldPos, worldNorm, getLightData(previous.light_index));
+
+            // Stale reservoir kick-out: if normalization is too small for a high sample count, or p_hat is zero, force reset
+            if (previous.m > 100.0 && (previous.W < 1e-4 || p_hat <= 0.0)) {
+                previous.w_sum = 0.0;
+                previous.m = 0.0;
+                previous.W = 0.0;
+            }
+
             float weight = p_hat * previous.W * previous.m;
             updateReservoir(current, previous.light_index, weight, pcg_hash(seed));
             current.m += previous.m;
 
             float p_hat_final = targetFunction(worldPos, worldNorm, getLightData(current.light_index));
             current.W = safeDiv(current.w_sum, current.m * p_hat_final);
-            current.W = clamp(current.W, 0.0, 1e4);
+            current.W = clamp(current.W, 0.0, 100.0);
         }
     }
 
