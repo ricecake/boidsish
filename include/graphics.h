@@ -465,6 +465,10 @@ namespace Boidsish {
 
 		void TriggerSdfExplosion(const glm::vec3& position, float intensity = 1.0f);
 
+		int  AddSdfEnvironmentalWind();
+		int  AddSdfEnvironmentalBubbles();
+		int  AddSdfSolidSphere(const glm::vec3& position, float radius, const glm::vec3& color);
+
 		/**
 		 * @brief Add a curved text effect in world space.
 		 *

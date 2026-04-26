@@ -440,21 +440,18 @@ namespace Boidsish {
 			float t = std::min(age_ / lifetime_, 1.0f);
 			source_.normalized_time = t;
 
-			// Non-linear expansion: fast initial burst, slowing down (sqrt curve)
-			float expansion = std::sqrt(t);
-			source_.radius = initial_radius_ * (1.0f + expansion * 8.0f);
+			if (source_.high_type == SdfHighType::Volumetric && source_.sub_type == 1) { // Explosion
+				// Non-linear expansion: fast initial burst, slowing down (sqrt curve)
+				float expansion = std::sqrt(t);
+				source_.radius = initial_radius_ * (1.0f + expansion * 8.0f);
 
-			// Density peaks early then fades — fireball is densest shortly after detonation
-			float density_curve = std::sin(t * 3.14159f) * (1.0f - t * 0.5f);
-			source_.density = initial_density_ * std::max(0.0f, density_curve);
+				// Density peaks early then fades — fireball is densest shortly after detonation
+				float density_curve = std::sin(t * 3.14159f) * (1.0f - t * 0.5f);
+				source_.density = initial_density_ * std::max(0.0f, density_curve);
 
-			// Emission fades as the explosion cools
-			source_.emission = initial_density_ * 3.0f * (1.0f - t) * (1.0f - t);
-
-			// // Upward drift: hot gas rises, creating mushroom shape
-			// glm::vec3 pos = initial_position_;
-			// pos.y += expansion * initial_radius_ * 3.0f;
-			// source_.position = pos;
+				// Emission fades as the explosion cools
+				source_.emission = initial_density_ * 3.0f * (1.0f - t) * (1.0f - t);
+			}
 		} else {
 			source_.position = GetPosition();
 		}
