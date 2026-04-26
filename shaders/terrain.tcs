@@ -43,7 +43,7 @@ uniform vec2 uViewportSize;
 void sampleHeightmap(vec2 uv, float slice, vec3 worldOffset, out vec3 worldPos, out vec3 normal) {
 	// Remap UV to match the grid center alignment of the heightmap texture
 	vec2  remappedUV = (uv * uRawChunkSize + 0.5) / (uRawChunkSize + 1.0);
-	vec4  data = texture(uHeightmap, vec3(remappedUV, slice));
+	vec4  data = textureLod(uHeightmap, vec3(remappedUV, slice), 0.0);
 	float height = data.r;
 	normal = normalize(data.gba);
 
@@ -73,9 +73,6 @@ bool isLessUV(vec2 uvA, vec2 uvB) {
 }
 
 float GetEdgeTessLevel(vec3 p0, vec3 p1, vec3 n0, vec3 n1, vec2 uv0, vec2 uv1, vec4 clip0, vec4 clip1) {
-// float GetEdgeTessLevel(vec3 p0, vec3 p1, vec3 n0, vec3 n1) {
-	// Sort vertices deterministically to ensure shared edges between chunks
-	// produce identical results regardless of vertex order.
 	vec3 lp0 = p0;
 	vec3 lp1 = p1;
 	vec3 ln0 = n0;
@@ -84,7 +81,6 @@ float GetEdgeTessLevel(vec3 p0, vec3 p1, vec3 n0, vec3 n1, vec2 uv0, vec2 uv1, v
 	vec4 c0 = clip0;
 	vec4 c1 = clip1;
 
-    // Sort using UVs to guarantee neighbor patch edge consistency
     if (!isLessUV(uv0, uv1)) {
         c0 = clip1;
         c1 = clip0;
@@ -192,27 +188,11 @@ void main() {
 	perturbFactor_TC_out[gl_InvocationID] = perturbLevel(pos, viewForward[gl_InvocationID]);
 
 	if (gl_InvocationID == 0) {
-		// Inside terrain.tcs main(), at the start of the gl_InvocationID == 0 block:
+		// Proper AABB Frustum Culling
+		vec3 minBound = vec3(worldOffset.x, Bounds_VS_out[0].x, worldOffset.z);
+		vec3 maxBound = vec3(worldOffset.x + u_terrainParams.x * worldScale, Bounds_VS_out[0].y, worldOffset.z + u_terrainParams.x * worldScale);
 
-		int outLeft = 0, outRight = 0;
-		int outBottom = 0, outTop = 0;
-		int outNear = 0, outFar = 0;
-
-		for (int i = 0; i < 4; i++) {
-			vec4 clip = ClipPos_VS_out[i];
-
-			// Count how many vertices fall outside each specific plane
-			if (clip.x < -clip.w) outLeft++;
-			if (clip.x >  clip.w) outRight++;
-			if (clip.y < -clip.w) outBottom++;
-			if (clip.y >  clip.w) outTop++;
-			if (clip.z < -clip.w) outNear++;
-			if (clip.z >  clip.w) outFar++;
-		}
-
-		// If all 4 corners fail the SAME plane test, the entire patch is off-screen.
-		// If the camera is inside the patch, no single counter will reach 4.
-		if (outLeft == 4 || outRight == 4 || outBottom == 4 || outTop == 4 || outNear == 4 || outFar == 4) {
+		if (!isAABBInFrustum(minBound, maxBound)) {
 			gl_TessLevelOuter[0] = 0.0;
 			gl_TessLevelOuter[1] = 0.0;
 			gl_TessLevelOuter[2] = 0.0;
