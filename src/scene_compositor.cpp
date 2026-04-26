@@ -159,8 +159,9 @@ namespace Boidsish {
 			glDisable(GL_DEPTH_TEST);
 			glClear(GL_COLOR_BUFFER_BIT);
 
+			bool shockwave_applied = false;
 			if (has_shockwaves && shockwave) {
-				shockwave->ApplyScreenSpaceEffect(
+				shockwave_applied = shockwave->ApplyScreenSpaceEffect(
 					final_texture,
 					depth_tex_,
 					frame.view,
@@ -170,7 +171,9 @@ namespace Boidsish {
 					frame.window_width,
 					frame.window_height
 				);
-			} else {
+			}
+
+			if (!shockwave_applied) {
 				blit_shader_->use();
 				blit_shader_->setInt("screenTexture", 0);
 				glActiveTexture(GL_TEXTURE0);
@@ -187,8 +190,9 @@ namespace Boidsish {
 				glDisable(GL_DEPTH_TEST);
 				glClear(GL_COLOR_BUFFER_BIT);
 
+				bool shockwave_applied = false;
 				if (has_shockwaves && shockwave) {
-					shockwave->ApplyScreenSpaceEffect(
+					shockwave_applied = shockwave->ApplyScreenSpaceEffect(
 						color_tex_,
 						depth_tex_,
 						frame.view,
@@ -198,7 +202,9 @@ namespace Boidsish {
 						frame.window_width,
 						frame.window_height
 					);
-				} else {
+				}
+
+				if (!shockwave_applied) {
 					glBindFramebuffer(GL_READ_FRAMEBUFFER, main_fbo_);
 					glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
 					glBlitFramebuffer(
