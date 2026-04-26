@@ -14,6 +14,7 @@ namespace Boidsish {
 	RestirManager::~RestirManager() {
 		if (reservoir_buffers_[0]) glDeleteBuffers(2, reservoir_buffers_);
 		if (gi_reservoir_buffers_[0]) glDeleteBuffers(2, gi_reservoir_buffers_);
+		if (permutation_tex_) glDeleteTextures(1, &permutation_tex_);
 	}
 
 	void RestirManager::Initialize() {
@@ -22,6 +23,8 @@ namespace Boidsish {
 		di_spatial_shader_ = std::make_unique<ComputeShader>("shaders/restir/di_spatial.comp");
 		gi_trace_shader_ = std::make_unique<ComputeShader>("shaders/restir/gi_trace.comp");
 		gi_reuse_shader_ = std::make_unique<ComputeShader>("shaders/restir/gi_reuse.comp");
+		gi_spatial_shader_ = std::make_unique<ComputeShader>("shaders/restir/gi_spatial.comp");
+		permutation_shader_ = std::make_unique<ComputeShader>("shaders/restir/permutation_gen.comp");
 
 		auto setup_comp = [&](ComputeShader* s) {
 			if (!s || !s->isValid()) return;
@@ -35,11 +38,13 @@ namespace Boidsish {
 		setup_comp(di_spatial_shader_.get());
 		setup_comp(gi_trace_shader_.get());
 		setup_comp(gi_reuse_shader_.get());
+		setup_comp(gi_spatial_shader_.get());
 	}
 
 	void RestirManager::CreateBuffers(int width, int height) {
 		if (reservoir_buffers_[0]) glDeleteBuffers(2, reservoir_buffers_);
 		if (gi_reservoir_buffers_[0]) glDeleteBuffers(2, gi_reservoir_buffers_);
+		if (permutation_tex_) glDeleteTextures(1, &permutation_tex_);
 
 		size_t size = width * height * sizeof(ReservoirCPU);
 		glGenBuffers(2, reservoir_buffers_);
@@ -53,6 +58,22 @@ namespace Boidsish {
 			glBufferData(GL_SHADER_STORAGE_BUFFER, size, nullptr, GL_DYNAMIC_DRAW);
 		}
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+
+		// Create permutation texture (128x128 tile)
+		glGenTextures(1, &permutation_tex_);
+		glBindTexture(GL_TEXTURE_2D, permutation_tex_);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 128, 128, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+		if (permutation_shader_ && permutation_shader_->isValid()) {
+			permutation_shader_->use();
+			glBindImageTexture(0, permutation_tex_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA8);
+			glDispatchCompute(128 / 16, 128 / 16, 1);
+			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+		}
 	}
 
 	void RestirManager::Resize(int width, int height) {
@@ -119,6 +140,12 @@ namespace Boidsish {
 				glBindTexture(GL_TEXTURE_2D, blueNoiseTex);
 				s->setInt("u_blueNoiseTexture", Constants::TextureUnit::NoiseBlue());
 			}
+
+			if (permutation_tex_) {
+				glActiveTexture(GL_TEXTURE8); // Use fixed unit 8 for permutation
+				glBindTexture(GL_TEXTURE_2D, permutation_tex_);
+				s->setInt("u_permutationTexture", 8);
+			}
 		};
 
 		// 1. DI Initial Sampling
@@ -135,11 +162,16 @@ namespace Boidsish {
 		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
 		// 3. DI Spatial Reuse
-		// We must ping-pong here to avoid race conditions and directional line artifacts
+		// We must ping-pong here to avoid race conditions and directional line artifacts.
+		// Temporal result is in reservoir_buffers_[current_buffer_index_].
+		// We read from it and write the spatial result to reservoir_buffers_[1 - current_buffer_index_].
 		bind_textures(di_spatial_shader_.get());
-		// Input is temporal result in reservoirs0, output to reservoirs1
+
+		// NewReservoirs (Binding 47) <- 1 - current
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::RestirReservoirs0(), reservoir_buffers_[1 - current_buffer_index_]);
+		// OldReservoirs (Binding 48) <- current
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::RestirReservoirs1(), reservoir_buffers_[current_buffer_index_]);
+
 		glDispatchCompute((width_ + 7) / 8, (height_ + 7) / 8, 1);
 		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
@@ -151,13 +183,21 @@ namespace Boidsish {
 
 		// 5. GI Temporal Reuse
 		bind_textures(gi_reuse_shader_.get());
+		// Output to reservoirs0 (current), input from reservoirs1 (previous)
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::RestirGIReservoirs0(), gi_reservoir_buffers_[current_buffer_index_]);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::RestirGIReservoirs1(), gi_reservoir_buffers_[1 - current_buffer_index_]);
 		glDispatchCompute((width_ + 7) / 8, (height_ + 7) / 8, 1);
 		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
+		// 6. GI Spatial Reuse
+		bind_textures(gi_spatial_shader_.get());
+		// Input from reservoirs0 (temporal result), output to reservoirs1
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::RestirGIReservoirs0(), gi_reservoir_buffers_[1 - current_buffer_index_]);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::RestirGIReservoirs1(), gi_reservoir_buffers_[current_buffer_index_]);
+		glDispatchCompute((width_ + 7) / 8, (height_ + 7) / 8, 1);
+		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
 		// Swap buffer index for next frame's temporal pass
-		// Note: Spatial pass above already essentially "advanced" the DI state by outputting to the 1-current index.
 
 		current_buffer_index_ = 1 - current_buffer_index_;
 	}

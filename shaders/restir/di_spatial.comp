@@ -1,6 +1,5 @@
-#version 450 core
+#version 430 core
 #extension GL_GOOGLE_include_directive : enable
-#extension GL_KHR_shader_subgroup_shuffle : enable
 layout(local_size_x = 8, local_size_y = 8) in;
 
 #define TEMPORAL_DATA_DEFINED
@@ -17,6 +16,7 @@ layout(std430, binding = [[RESTIR_RESERVOIRS1_BINDING]]) buffer OldReservoirs {
 uniform sampler2D gDepth;
 uniform sampler2D gNormal;
 uniform sampler2D gVelocity;
+uniform sampler2D u_permutationTexture;
 uniform int u_spatial_radius = 4;
 uniform int u_spatial_samples = 4;
 
@@ -43,9 +43,11 @@ void main() {
 
     if (depth >= 1.0) return;
 
-    Reservoir current = new_reservoirs[reservoir_idx];
+    // Initialize current reservoir from the temporal pass result (stored in old_reservoirs)
+    Reservoir current = old_reservoirs[reservoir_idx];
     vec3 vNorm = normalize(texture(gNormal, uv).xyz);
     vec3 vPos = getViewPos(uv, depth);
+    float roughness = texture(gVelocity, uv).b;
     vec3 worldPos = (invView * vec4(vPos, 1.0)).xyz;
     vec3 worldNorm = normalize(mat3(invView) * vNorm);
 
@@ -88,29 +90,27 @@ void main() {
         }
     }
 
-    // 2. Subgroup-based Reciprocal Spatial Reuse (fast local exchange)
-    // We exchange data within the 8x8 workgroup using subgroup operations.
-    // This provides a "free" extra spatial reuse pass without VRAM round-trip.
-    uint sg_id = gl_SubgroupInvocationID;
-    uint sg_size = gl_SubgroupSize;
+    // 2. Reciprocal Neighbor Selection using permutation texture
+    // This mathematically guarantees if A targets B, B targets A.
+    vec2 permUV = (vec2(pixel) + 0.5) / 128.0;
+    vec2 perm = texture(u_permutationTexture, permUV).rg * 255.0; // [0, 15]
+    ivec2 offset = ivec2(int(perm.x) - 8, int(perm.y) - 8);
 
-    // Reciprocal indices using XOR
-    uint neighbor_sg_id = sg_id ^ 1; // exchange with horizontal neighbor
-    if (neighbor_sg_id < sg_size) {
-        uint  n_light = subgroupShuffle(current.light_index, neighbor_sg_id);
-        float n_wsum = subgroupShuffle(current.w_sum, neighbor_sg_id);
-        float n_m = subgroupShuffle(current.m, neighbor_sg_id);
-        float n_W = subgroupShuffle(current.W, neighbor_sg_id);
+    ivec2 neighborPixel = pixel + offset;
+    if (neighborPixel.x >= 0 && neighborPixel.x < size.x && neighborPixel.y >= 0 && neighborPixel.y < size.y) {
+        uint neighbor_idx = neighborPixel.y * size.x + neighborPixel.x;
+        Reservoir neighbor = old_reservoirs[neighbor_idx];
 
-        // Simple reciprocal check: target same pixel
-        // For subgroupShuffle, the reciprocation is guaranteed by the XOR.
+        vec2 neighborUV = (vec2(neighborPixel) + 0.5) / vec2(size);
+        float neighborDepth = texture(gDepth, neighborUV).r;
+        vec3 neighborNorm = normalize(texture(gNormal, neighborUV).xyz);
+        float neighborRoughness = texture(gVelocity, neighborUV).b;
 
-        // We only perform the update if the neighbor is valid (simplified check here)
-        if (n_m > 0.0) {
-            float p_hat = targetFunction(worldPos, worldNorm, getLightData(n_light));
-            float weight = p_hat * n_W * n_m;
-            updateReservoir(current, n_light, weight, pcg_hash(seed++));
-            current.m += n_m;
+        if (restirGeometryCheck(depth, vNorm, roughness, neighborDepth, neighborNorm, neighborRoughness)) {
+            float p_hat = targetFunction(worldPos, worldNorm, getLightData(neighbor.light_index));
+            float weight = p_hat * neighbor.W * neighbor.m;
+            updateReservoir(current, neighbor.light_index, weight, pcg_hash(seed++));
+            current.m += neighbor.m;
         }
     }
 

@@ -1,0 +1,77 @@
+#version 430 core
+#extension GL_GOOGLE_include_directive : enable
+layout(local_size_x = 8, local_size_y = 8) in;
+
+#define TEMPORAL_DATA_DEFINED
+#include "restir_common.glsl"
+
+layout(std430, binding = [[RESTIR_GI_RESERVOIRS0_BINDING]]) buffer NewGIReservoirs {
+    Reservoir new_gi_reservoirs[];
+};
+
+layout(std430, binding = [[RESTIR_GI_RESERVOIRS1_BINDING]]) buffer OldGIReservoirs {
+    Reservoir old_gi_reservoirs[];
+};
+
+uniform sampler2D gDepth;
+uniform sampler2D gNormal;
+uniform sampler2D gVelocity;
+uniform sampler2D gColor;
+uniform sampler2D u_permutationTexture;
+uniform int u_spatial_radius = 8;
+
+float pcg_hash(uint seed) {
+    uint state = seed * 747796405u + 2891336453u;
+    uint word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+    return float((word >> 22u) ^ word) / 4294967295.0;
+}
+
+void main() {
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = textureSize(gDepth, 0);
+    if (pixel.x >= size.x || pixel.y >= size.y) return;
+
+    uint reservoir_idx = pixel.y * size.x + pixel.x;
+    vec2 uv = (vec2(pixel) + 0.5) / vec2(size);
+    float depth = texture(gDepth, uv).r;
+
+    if (depth >= 1.0) return;
+
+    // Input is temporal result in old_gi_reservoirs
+    Reservoir current = old_gi_reservoirs[reservoir_idx];
+    vec3 vNorm = normalize(texture(gNormal, uv).xyz);
+    float roughness = texture(gVelocity, uv).b;
+
+    uint seed = uint(pixel.y * size.x + pixel.x) ^ hash(uint(frameIndex) + 600u);
+
+    // Reciprocal Neighbor Selection using permutation texture
+    vec2 permUV = (vec2(pixel) + 0.5) / 128.0;
+    vec2 perm = texture(u_permutationTexture, permUV).rg * 255.0;
+    ivec2 offset = ivec2(int(perm.x) - 8, int(perm.y) - 8) * (u_spatial_radius / 8);
+
+    ivec2 neighborPixel = pixel + offset;
+    if (neighborPixel.x >= 0 && neighborPixel.x < size.x && neighborPixel.y >= 0 && neighborPixel.y < size.y) {
+        uint neighbor_idx = neighborPixel.y * size.x + neighborPixel.x;
+        Reservoir neighbor = old_gi_reservoirs[neighbor_idx];
+
+        vec2 neighborUV = (vec2(neighborPixel) + 0.5) / vec2(size);
+        float neighborDepth = texture(gDepth, neighborUV).r;
+        vec3 neighborNorm = normalize(texture(gNormal, neighborUV).xyz);
+        float neighborRoughness = texture(gVelocity, neighborUV).b;
+
+        if (restirGeometryCheck(depth, vNorm, roughness, neighborDepth, neighborNorm, neighborRoughness)) {
+            vec2 hitUV = vec2(float(neighbor.light_index & 0xFFFF) / 65535.0, float(neighbor.light_index >> 16) / 65535.0);
+            float p_hat = luminance(texture(gColor, hitUV).rgb);
+            float weight = p_hat * neighbor.W * neighbor.m;
+            updateReservoir(current, neighbor.light_index, weight, pcg_hash(seed++));
+            current.m += neighbor.m;
+        }
+    }
+
+    vec2 finalHitUV = vec2(float(current.light_index & 0xFFFF) / 65535.0, float(current.light_index >> 16) / 65535.0);
+    float p_hat_final = luminance(texture(gColor, finalHitUV).rgb);
+    current.W = safeDiv(current.w_sum, current.m * p_hat_final);
+    current.W = clamp(current.W, 0.0, 100.0);
+
+    new_gi_reservoirs[reservoir_idx] = current;
+}

@@ -40,6 +40,8 @@ namespace Boidsish {
 
 		void Resize(int width, int height);
 
+		GLuint GetPermutationTexture() const { return permutation_tex_; }
+
 		GLuint GetCurrentDIRiservoirBuffer() const { return reservoir_buffers_[current_buffer_index_]; }
 		GLuint GetCurrentGIRiservoirBuffer() const { return gi_reservoir_buffers_[current_buffer_index_]; }
 
@@ -50,9 +52,12 @@ namespace Boidsish {
 		std::unique_ptr<ComputeShader> di_spatial_shader_;
 		std::unique_ptr<ComputeShader> gi_trace_shader_;
 		std::unique_ptr<ComputeShader> gi_reuse_shader_;
+		std::unique_ptr<ComputeShader> gi_spatial_shader_;
+		std::unique_ptr<ComputeShader> permutation_shader_;
 
 		GLuint reservoir_buffers_[2] = {0, 0};
 		GLuint gi_reservoir_buffers_[2] = {0, 0};
+		GLuint permutation_tex_ = 0;
 		int    current_buffer_index_ = 0;
 		int    width_ = 0, height_ = 0;
 
