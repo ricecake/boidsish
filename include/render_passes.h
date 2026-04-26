@@ -123,9 +123,10 @@ namespace Boidsish {
 			blue_noise_tex_ = blue_noise; extra_noise_tex_ = extra_noise;
 		}
 
-		void SetEnvironmentTextures(GLuint wind, GLuint scalars) {
+		void SetEnvironmentTextures(GLuint wind, GLuint scalars, GLuint windUbo) {
 			wind_tex_ = wind;
 			weather_scalars_tex_ = scalars;
+			wind_ubo_ = windUbo;
 		}
 
 		void SetParticleBuffers(GLuint particles, GLuint emitters, GLuint gridHeads, GLuint gridNext) {
@@ -151,7 +152,7 @@ namespace Boidsish {
 		bool had_sources_ = false;
 
 		GLuint noise_tex_ = 0, curl_tex_ = 0, blue_noise_tex_ = 0, extra_noise_tex_ = 0;
-		GLuint wind_tex_ = 0, weather_scalars_tex_ = 0;
+		GLuint wind_tex_ = 0, weather_scalars_tex_ = 0, wind_ubo_ = 0;
 		GLuint particle_buffer_ = 0, emitter_buffer_ = 0, grid_heads_buffer_ = 0, grid_next_buffer_ = 0;
 		GLuint lighting_ubo_ = 0;
 		GLintptr lighting_offset_ = 0;

@@ -7,7 +7,7 @@ uniform sampler2D sceneTexture;
 uniform sampler2D depthTexture;
 uniform sampler2D historyTexture;
 uniform vec2      u_sdfScreenSize;
-uniform vec3      u_sdfCameraPos;
+uniform vec3      u_sdfCamPos;
 uniform mat4      u_sdfInvView;
 uniform mat4      u_sdfInvProjection;
 uniform float     u_sdfTime;
@@ -51,7 +51,7 @@ layout(binding = [[WEATHER_SCALARS_TEXTURE_BINDING]]) uniform sampler2D u_weathe
 
 layout(std140, binding = [[WIND_DATA_BINDING]]) uniform WindData {
 	ivec4 u_windOriginSize; // x, z = origin in chunks, y = size (width), w = height (60)
-	vec4  u_windParams;     // x = chunkSpacing (32.0), y = time, z = curlScale, w = curlStrength
+	vec4  u_windParams;     // x = chunkSpacing (32.0), y = time_wind, z = curlScale, w = curlStrength
 };
 
 // High Types
@@ -101,7 +101,7 @@ float sdMushroom(vec3 p, float maxRadius, float ntime) {
 vec3 getWindAtPos(vec3 worldPos) {
     if (u_windOriginSize.y <= 0) return vec3(0.0);
     float gridSpacing = u_windParams.x;
-    vec2 gridCoord = (worldPos.xz / gridSpacing) - vec2(u_windOriginSize.xz);
+    vec2 gridCoord = (worldPos.xz / gridSpacing) - vec2(u_windOriginSize.xy);
     vec2 uv = gridCoord / vec2(u_windOriginSize.y, u_windOriginSize.w);
     return texture(u_windTexture, uv).xyz;
 }
@@ -109,7 +109,7 @@ vec3 getWindAtPos(vec3 worldPos) {
 vec4 getWeatherScalarsAtPos(vec3 worldPos) {
     if (u_windOriginSize.y <= 0) return vec4(288.0, 0.5, 1013.0, 0.0);
     float gridSpacing = u_windParams.x;
-    vec2 gridCoord = (worldPos.xz / gridSpacing) - vec2(u_windOriginSize.xz);
+    vec2 gridCoord = (worldPos.xz / gridSpacing) - vec2(u_windOriginSize.xy);
     vec2 uv = gridCoord / vec2(u_windOriginSize.y, u_windOriginSize.w);
     return texture(u_weatherScalars, uv);
 }
@@ -333,7 +333,7 @@ void main() {
 	vec4 viewTargetPos_ = u_sdfInvProjection * ndcPos;
 	viewTargetPos_ /= viewTargetPos_.w;
 	vec4 worldTargetPos = u_sdfInvView * viewTargetPos_;
-	float sceneDistance = length(worldTargetPos.xyz - u_sdfCameraPos);
+	float sceneDistance = length(worldTargetPos.xyz - u_sdfCamPos);
 	if (depth >= 0.999999) sceneDistance = 1000.0;
 
 	vec4 target = u_sdfInvProjection * vec4(TexCoords * 2.0 - 1.0, 1.0, 1.0);
@@ -345,7 +345,7 @@ void main() {
     bool  contributed;
     bool  hitSolid;
     vec3  solidPos;
-	refractiveVolumetricMarch(u_sdfCameraPos, rayDir, sceneDistance, volAccumColor, transmittance, finalRayDir, contributed, hitSolid, solidPos);
+	refractiveVolumetricMarch(u_sdfCamPos, rayDir, sceneDistance, volAccumColor, transmittance, finalRayDir, contributed, hitSolid, solidPos);
 
     if (!contributed) {
         FragColor = sceneColorSample;
@@ -356,10 +356,10 @@ void main() {
     if (hitSolid) {
         vec3 normal = getSolidNormal(solidPos);
         vec3 albedo = getSolidColor(solidPos);
-        float primaryShadow;
+        float primaryShadow = 1.0;
         baseColor = apply_lighting_pbr_no_shadows(solidPos, normal, albedo, 0.5, 0.0, 1.0, primaryShadow).rgb;
     } else {
-        vec3 refractedWorldPos = u_sdfCameraPos + finalRayDir * sceneDistance;
+        vec3 refractedWorldPos = u_sdfCamPos + finalRayDir * sceneDistance;
         vec4 refractedClip = viewProjection * vec4(refractedWorldPos, 1.0);
         vec2 refractedUV = (refractedClip.xy / refractedClip.w) * 0.5 + 0.5;
 

@@ -2786,7 +2786,8 @@ namespace Boidsish {
 				if (weather_manager) {
 					sdf_volume_pass_->SetEnvironmentTextures(
 						weather_manager->GetWindTexture(),
-						weather_manager->GetWeatherScalarTexture()
+						weather_manager->GetWeatherScalarTexture(),
+						weather_manager->GetWindUbo()
 					);
 				}
 				if (fire_effect_manager) {

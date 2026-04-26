@@ -262,6 +262,10 @@ namespace Boidsish {
 			shader_->trySetInt("u_weatherScalars", Constants::TextureUnit::WeatherScalars());
 		}
 
+		if (wind_ubo_) {
+			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::WindData(), wind_ubo_);
+		}
+
 		manager_.BindSSBO(Constants::SsboBinding::SdfVolumes());
 
 		if (particle_buffer_) {

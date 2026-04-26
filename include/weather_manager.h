@@ -290,6 +290,7 @@ namespace Boidsish {
 	public:
 		GLuint GetWindTexture() const { return wind_texture_; }
 		GLuint GetWeatherScalarTexture() const { return scalar_texture_; }
+		GLuint GetWindUbo() const { return wind_data_ubo_; }
 
 	private:
 		unsigned int wind_data_ubo_ = 0;
