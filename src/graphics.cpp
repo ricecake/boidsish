@@ -1894,11 +1894,19 @@ namespace Boidsish {
 				// Prepare for rendering (frustum culling for instanced renderer)
 				float world_scale = terrain_generator ? terrain_generator->GetWorldScale() : 1.0f;
 				float day_time = light_manager->GetDayNightCycle().time;
+
+				glm::vec3 sun_dir(0.0f);
+				const auto& lights = light_manager->GetLights();
+				if (!lights.empty() && lights[0].type == DIRECTIONAL_LIGHT) {
+					sun_dir = -lights[0].direction; // To light
+				}
+
 				terrain_render_manager->PrepareForRender(frustum, camera.pos(), world_scale,
 				render_state_.lighting.id,
 				static_cast<GLintptr>(render_state_.lighting.offset),
 				static_cast<GLsizeiptr>(render_state_.lighting.size),
-				day_time);
+				day_time,
+				sun_dir);
 
 				terrain_render_manager
 					->Render(*Terrain::terrain_shader_, view, proj, viewport_size, clip_plane, effective_quality);

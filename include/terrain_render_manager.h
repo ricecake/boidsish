@@ -46,6 +46,12 @@ namespace Boidsish {
 	 */
 	class TerrainRenderManager {
 	public:
+		struct BakeTask {
+			glm::ivec2 chunk_coord;
+			int        slice;
+			int        _pad;
+		};
+
 		TerrainRenderManager(ServiceLocator& loc, int chunk_size = Constants::Class::Terrain::ChunkSize(), int max_chunks = 512);
 		~TerrainRenderManager();
 
@@ -90,7 +96,8 @@ namespace Boidsish {
 			GLuint           lighting_ubo = 0,
 			GLintptr         lighting_ubo_offset = 0,
 			GLsizeiptr       lighting_ubo_size = 0,
-			float            day_time = -1.0f
+			float            day_time = -1.0f,
+			const glm::vec3& sun_dir = glm::vec3(0.0f)
 		);
 
 		/**
@@ -189,6 +196,16 @@ namespace Boidsish {
 		void BindTerrainData(ShaderBase& shader_base) const;
 
 		/**
+		 * @brief Update the horizon map for newly added or modified chunks.
+		 */
+		void UpdateHorizonMap(const std::vector<BakeTask>& tasks);
+
+		/**
+		 * @brief Update the global terrain shadow map.
+		 */
+		void UpdateTerrainShadowMap(const glm::vec3& light_dir, float world_scale);
+
+		/**
 		 * @brief Update the global chunk grid and max height textures.
 		 */
 		void UpdateGridTextures(float world_scale, GLuint lighting_ubo = 0, GLintptr lighting_ubo_offset = 0, GLsizeiptr lighting_ubo_size = 0, float day_time = -1.0f);
@@ -273,6 +290,8 @@ namespace Boidsish {
 		GLuint raw_heightmap_texture_ = 0; // GL_TEXTURE_2D_ARRAY (RGBA16F: height, normal.xyz)
 		GLuint heightmap_texture_ = 0;     // GL_TEXTURE_2D_ARRAY (RGBA16F: baked height, baked normal)
 		GLuint baked_params_texture_ = 0;  // GL_TEXTURE_2D_ARRAY (RGBA16F: erosion, ridge, substrate, water)
+		GLuint horizon_map_texture_ = 0;   // GL_TEXTURE_2D_ARRAY (RGBA16F: 8 directions)
+		GLuint terrain_shadow_map_texture_ = 0; // GL_TEXTURE_2D (R8)
 		GLuint biome_texture_ = 0;         // GL_TEXTURE_2D_ARRAY (RGBA8: low_idx, t, bake_flag, unused)
 		GLuint noise_texture_ = 0;
 		GLuint curl_texture_ = 0;
@@ -292,15 +311,11 @@ namespace Boidsish {
 		std::unique_ptr<ComputeShader> grid_mip_shader_;
 		std::unique_ptr<ComputeShader> probe_compute_shader_;
 		std::unique_ptr<ComputeShader> terrain_bake_shader_;
+		std::unique_ptr<ComputeShader> terrain_horizon_shader_;
+		std::unique_ptr<ComputeShader> terrain_shadow_map_shader_;
 
 		// Grid mesh data
 		size_t grid_index_count_ = 0;
-
-		struct BakeTask {
-			glm::ivec2 chunk_coord;
-			int        slice;
-			int        _pad;
-		};
 
 		// Chunk management
 		std::map<std::pair<int, int>, ChunkInfo> chunks_;
@@ -327,6 +342,11 @@ namespace Boidsish {
 		int   last_grid_origin_z_ = -999999;
 		float last_grid_world_scale_ = -1.0f;
 		bool  grid_dirty_ = true;
+
+		int   last_shadow_grid_origin_x_ = -999999;
+		int   last_shadow_grid_origin_z_ = -999999;
+		float last_shadow_grid_world_scale_ = -1.0f;
+		glm::vec3 last_shadow_light_dir_{0.0f};
 
 		// Eviction callback for notifying TerrainGenerator
 		std::function<void(std::pair<int, int>)> eviction_callback_;

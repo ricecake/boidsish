@@ -4,6 +4,11 @@
 #include "fast_noise.glsl"
 #include "terrain_common.glsl"
 
+#ifndef TERRAIN_SHADOW_MAP_DEFINED
+#define TERRAIN_SHADOW_MAP_DEFINED
+uniform sampler2D u_terrainShadowMap;
+#endif
+
 /**
  * Perform a coarse raymarch in a specific direction to check for terrain occlusion.
  * Similar to terrainShadowCoverage but optimized for ambient occlusion (AO).
@@ -101,13 +106,25 @@ float calculateTerrainOcclusion(vec3 worldPos, vec3 normal) {
 float terrainShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) {
 	if (u_originSize.w < 1)
 		return 1.0;
+
+	float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
+
+#ifndef SKIP_SHADOW_MAP_LOOKUP
+	// Fast path: Precomputed terrain shadow map
+	float shadowMapWorldSize = float(u_originSize.z) * scaledChunkSize;
+	vec2 shadowOrigin = vec2(u_originSize.xy) * scaledChunkSize;
+	vec2 shadowUV = (worldPos.xz - shadowOrigin) / shadowMapWorldSize;
+
+	if (shadowUV.x >= 0.0 && shadowUV.x <= 1.0 && shadowUV.y >= 0.0 && shadowUV.y <= 1.0) {
+		return texture(u_terrainShadowMap, shadowUV).r;
+	}
+#endif
+
 	// lightDir is from fragment to light
 	float sundownShadow = smoothstep(0.0, 0.02, lightDir.y);
 	if (lightDir.y <= 0.02) {
 		return sundownShadow;
 	}
-
-	float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
 
 	// Better initial bias: move along normal and a bit along light direction.
 	// Increased bias and light-dir push to prevent self-shadowing grooves at chunk boundaries.
