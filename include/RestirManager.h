@@ -62,6 +62,7 @@ namespace Boidsish {
 		int    width_ = 0, height_ = 0;
 
 		void CreateBuffers(int width, int height);
+		std::vector<int8_t> generateReciprocalPermutation(int size, int maxRadius, uint32_t seed);
 	};
 
 } // namespace Boidsish

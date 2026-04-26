@@ -17,7 +17,7 @@ uniform sampler2D gDepth;
 uniform sampler2D gNormal;
 uniform sampler2D gVelocity;
 uniform sampler2D gColor;
-uniform sampler2D u_permutationTexture;
+uniform sampler2DArray u_permutationTexture;
 uniform int u_spatial_radius = 8;
 
 float pcg_hash(uint seed) {
@@ -44,10 +44,11 @@ void main() {
 
     uint seed = uint(pixel.y * size.x + pixel.x) ^ hash(uint(frameIndex) + 600u);
 
-    // Reciprocal Neighbor Selection using permutation texture
+    // Reciprocal Neighbor Selection using permutation texture array
     vec2 permUV = (vec2(pixel) + 0.5) / 128.0;
-    vec2 perm = texture(u_permutationTexture, permUV).rg * 255.0;
-    ivec2 offset = ivec2(int(perm.x) - 8, int(perm.y) - 8) * (u_spatial_radius / 8);
+    vec3 permCoords = vec3(permUV, float(frameIndex % 8));
+    vec2 perm = texture(u_permutationTexture, permCoords).rg * 127.0;
+    ivec2 offset = ivec2(int(round(perm.x)), int(round(perm.y)));
 
     ivec2 neighborPixel = pixel + offset;
     if (neighborPixel.x >= 0 && neighborPixel.x < size.x && neighborPixel.y >= 0 && neighborPixel.y < size.y) {
