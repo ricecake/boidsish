@@ -148,4 +148,22 @@ bool checkVisibility(vec3 viewPos, vec3 targetViewPos, sampler2D depthTex) {
     return true;
 }
 
+// Adaptive geometry validation for ReSTIR
+// Scales the normal threshold based on material roughness
+bool restirGeometryCheck(
+    float depth, vec3 vNorm, float roughness,
+    float neighborDepth, vec3 neighborVNorm, float neighborRoughness
+) {
+    // Basic depth check (tuned for engine scale)
+    if (abs(depth - neighborDepth) > 0.02 * worldScale) return false;
+
+    // Adaptive normal threshold: 0.99 for glossy (r=0), 0.5 for rough (r=1)
+    float min_rough = min(roughness, neighborRoughness);
+    float normal_threshold = mix(0.99, 0.5, clamp(min_rough, 0.0, 1.0));
+
+    if (dot(vNorm, neighborVNorm) < normal_threshold) return false;
+
+    return true;
+}
+
 #endif

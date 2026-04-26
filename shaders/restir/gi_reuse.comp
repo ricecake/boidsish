@@ -13,6 +13,8 @@ layout(std430, binding = [[RESTIR_GI_RESERVOIRS1_BINDING]]) buffer OldGIReservoi
     Reservoir old_gi_reservoirs[];
 };
 
+shared uint group_candidates[64];
+
 uniform sampler2D gDepth;
 uniform sampler2D gNormal;
 uniform sampler2D gVelocity;
@@ -26,6 +28,7 @@ float pcg_hash(uint seed) {
 
 void main() {
     ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    uint  local_idx = gl_LocalInvocationIndex;
     ivec2 size = textureSize(gDepth, 0);
     if (pixel.x >= size.x || pixel.y >= size.y) return;
 
@@ -40,6 +43,11 @@ void main() {
 
     Reservoir current = new_gi_reservoirs[reservoir_idx];
 
+    // Duplication detection within the 8x8 workgroup
+    group_candidates[local_idx] = current.light_index;
+    memoryBarrierShared();
+    barrier();
+
     if (prevUV.x >= 0.0 && prevUV.x <= 1.0 && prevUV.y >= 0.0 && prevUV.y <= 1.0) {
         ivec2 prevPixel = ivec2(prevUV * vec2(size));
         uint prev_idx = prevPixel.y * size.x + prevPixel.x;
@@ -48,8 +56,10 @@ void main() {
         float prevDepth = texture(gDepth, prevUV).r;
         vec3 vNorm = normalize(texture(gNormal, uv).xyz);
         vec3 prevNorm = normalize(texture(gNormal, prevUV).xyz);
+        float roughness = texture(gVelocity, uv).b;
+        float prevRoughness = texture(gVelocity, prevUV).b;
 
-        if (abs(depth - prevDepth) < 0.01 && dot(vNorm, prevNorm) > 0.9) {
+        if (restirGeometryCheck(depth, vNorm, roughness, prevDepth, prevNorm, prevRoughness)) {
             uint seed = uint(pixel.y * size.x + pixel.x) ^ hash(uint(frameIndex) + 400u);
 
             vec2 hitUV = vec2(float(previous.light_index & 0xFFFF) / 65535.0, float(previous.light_index >> 16) / 65535.0);
@@ -58,7 +68,15 @@ void main() {
 
             updateReservoir(current, previous.light_index, weight, pcg_hash(seed));
             current.m += previous.m;
-            current.m = min(current.m, 30.0); // limit history
+
+            // Count duplicates in the group
+            uint dup_count = 0;
+            for (int i = 0; i < 64; i++) {
+                if (group_candidates[i] == previous.light_index) dup_count++;
+            }
+
+            float m_limit = (dup_count > 4) ? 2.0 : 30.0;
+            current.m = min(current.m, m_limit); // limit history
 
             vec2 finalHitUV = vec2(float(current.light_index & 0xFFFF) / 65535.0, float(current.light_index >> 16) / 65535.0);
             float p_hat_final = luminance(texture(gColor, finalHitUV).rgb);
