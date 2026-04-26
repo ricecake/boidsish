@@ -124,8 +124,9 @@ namespace Boidsish {
 		 * @param proj_matrix The current projection matrix
 		 * @param camera_pos The camera world position
 		 * @param quad_vao VAO for full-screen quad rendering
+		 * @return true if the effect was applied, false if no shockwaves were active
 		 */
-		void ApplyScreenSpaceEffect(
+		bool ApplyScreenSpaceEffect(
 			GLuint           source_texture,
 			GLuint           depth_texture,
 			const glm::mat4& view_matrix,
