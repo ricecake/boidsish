@@ -94,11 +94,12 @@ void main() {
 	albedo += rim * smoothstep(0.5, 1.0, fTexCoords.y) * 0.5 * vec3(1.0);
 
 
-    albedo *= smoothstep(0.05, 0.25, length(fTexCoords.x)) * smoothstep(0.95, 0.75, length(fTexCoords.x));
+    vec3 highlight = albedo * mix(smoothstep(0.05, 0.25, length(fTexCoords.x)) * smoothstep(0.95, 0.75, length(fTexCoords.x)), 1.0, smoothstep(30.0, 75.0, length(viewPos - fWorldPos)));
 
 
     float primaryShadow;
     vec4 litColor = apply_lighting_foliage(fWorldPos, N, albedo, roughness, 0.0, ao, primaryShadow);
+    litColor = min(litColor, vec4(highlight, litColor.a));
     litColor.rgb = clamp(litColor.rgb, 0.0, 5.0); // Clamp HDR to prevent "bright white" blowouts
 
     // Distance fade and distant cyan blend (matching terrain style)

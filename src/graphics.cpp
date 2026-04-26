@@ -3256,7 +3256,7 @@ namespace Boidsish {
 			}
 
 			// 5. Rotation handling (Mouse)
-			float sensitivity = 0.1f;
+			float sensitivity = 0.5f;
 			camera.yaw += input_state.mouse_delta_x * sensitivity;
 			camera.pitch += input_state.mouse_delta_y * sensitivity;
 			camera.pitch = std::clamp(camera.pitch, -89.0f, 89.0f);
