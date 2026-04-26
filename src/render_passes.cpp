@@ -250,7 +250,32 @@ namespace Boidsish {
 			glBindTexture(GL_TEXTURE_3D, extra_noise_tex_);
 		}
 
+		if (wind_tex_) {
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::WindData());
+			glBindTexture(GL_TEXTURE_2D, wind_tex_);
+			shader_->trySetInt("u_windTexture", Constants::TextureUnit::WindData());
+		}
+
+		if (weather_scalars_tex_) {
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::WeatherScalars());
+			glBindTexture(GL_TEXTURE_2D, weather_scalars_tex_);
+			shader_->trySetInt("u_weatherScalars", Constants::TextureUnit::WeatherScalars());
+		}
+
 		manager_.BindSSBO(Constants::SsboBinding::SdfVolumes());
+
+		if (particle_buffer_) {
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleBuffer(), particle_buffer_);
+		}
+		if (emitter_buffer_) {
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::EmitterBuffer(), emitter_buffer_);
+		}
+		if (grid_heads_buffer_) {
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleGridHeads(), grid_heads_buffer_);
+		}
+		if (grid_next_buffer_) {
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleGridNext(), grid_next_buffer_);
+		}
 
 		glDisable(GL_DEPTH_TEST);
 		glDepthMask(GL_FALSE);

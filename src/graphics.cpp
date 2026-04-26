@@ -2783,6 +2783,21 @@ namespace Boidsish {
 					? post_processing_manager_->GetCurrentFBO()
 					: compositor_->GetMainFBO();
 
+				if (weather_manager) {
+					sdf_volume_pass_->SetEnvironmentTextures(
+						weather_manager->GetWindTexture(),
+						weather_manager->GetWeatherScalarTexture()
+					);
+				}
+				if (fire_effect_manager) {
+					sdf_volume_pass_->SetParticleBuffers(
+						fire_effect_manager->GetParticleBuffer(),
+						fire_effect_manager->GetEmitterBuffer(),
+						fire_effect_manager->GetGridHeadsBuffer(),
+						fire_effect_manager->GetGridNextBuffer()
+					);
+				}
+
 				glBindVertexArray(blur_quad_vao);
 				sdf_volume_pass_->Execute(frame, scene_tex, depth_tex, target_fbo);
 				glBindVertexArray(0);

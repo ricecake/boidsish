@@ -137,6 +137,9 @@ namespace Boidsish {
 			consteval int TerrainShadowMapImage() {
 				return 36;
 			}
+			consteval int WeatherScalars() {
+				return 42;
+			}
 		} // namespace TextureUnit
 
 		namespace SsboBinding {

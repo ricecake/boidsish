@@ -78,6 +78,11 @@ namespace Boidsish {
 			GLuint           extra_noise_texture = 0
 		);
 
+		GLuint GetParticleBuffer() const { return particle_buffer_; }
+		GLuint GetEmitterBuffer() const { return emitter_buffer_; }
+		GLuint GetGridHeadsBuffer() const { return grid_heads_buffer_; }
+		GLuint GetGridNextBuffer() const { return grid_next_buffer_; }
+
 		// Add a new fire effect and return a pointer to it
 		std::shared_ptr<FireEffect> AddEffect(
 			const glm::vec3& position,

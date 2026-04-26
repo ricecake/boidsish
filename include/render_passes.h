@@ -123,6 +123,18 @@ namespace Boidsish {
 			blue_noise_tex_ = blue_noise; extra_noise_tex_ = extra_noise;
 		}
 
+		void SetEnvironmentTextures(GLuint wind, GLuint scalars) {
+			wind_tex_ = wind;
+			weather_scalars_tex_ = scalars;
+		}
+
+		void SetParticleBuffers(GLuint particles, GLuint emitters, GLuint gridHeads, GLuint gridNext) {
+			particle_buffer_ = particles;
+			emitter_buffer_ = emitters;
+			grid_heads_buffer_ = gridHeads;
+			grid_next_buffer_ = gridNext;
+		}
+
 	private:
 		SdfVolumeManager& manager_;
 		std::unique_ptr<Shader> shader_;
@@ -133,6 +145,8 @@ namespace Boidsish {
 		bool had_sources_ = false;
 
 		GLuint noise_tex_ = 0, curl_tex_ = 0, blue_noise_tex_ = 0, extra_noise_tex_ = 0;
+		GLuint wind_tex_ = 0, weather_scalars_tex_ = 0;
+		GLuint particle_buffer_ = 0, emitter_buffer_ = 0, grid_heads_buffer_ = 0, grid_next_buffer_ = 0;
 
 		void EnsureResources(int w, int h);
 		void ClearHistory();
