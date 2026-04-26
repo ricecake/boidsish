@@ -58,6 +58,33 @@ float smin(float a, float b, float k) {
     return min(a, b) - h * h * 0.25 / k;
 }
 
+// Exact distance to an ellipsoid
+float sdEllipsoid(vec3 p, vec3 r) {
+    float k0 = length(p / r);
+    float k1 = length(p / (r * r));
+    return k0 * (k0 - 1.0) / k1;
+}
+
+// Exact distance to a capped cylinder
+float sdCappedCylinder(vec3 p, float h, float r) {
+    vec2 d = abs(vec2(length(p.xz), p.y)) - vec2(r, h);
+    return min(max(d.x, d.y), 0.0) + length(max(d, 0.0));
+}
+
+float sdExplosionBase(vec3 p, float maxRadius, float ntime) {
+    float currentRadius = maxRadius * mix(0.1, 1.0, ntime);
+    float stemHeight    = maxRadius * mix(0.0, 1.2, ntime);
+    float capThickness  = currentRadius * mix(0.8, 0.3, ntime);
+
+    vec3 capPos = p - vec3(0.0, stemHeight, 0.0);
+    float cap = sdEllipsoid(capPos, vec3(currentRadius, capThickness, currentRadius));
+
+    vec3 stemPos = p - vec3(0.0, stemHeight * 0.5, 0.0);
+    float stem = sdCappedCylinder(stemPos, stemHeight * 0.5, currentRadius * 0.2);
+
+    return smin(cap, stem, currentRadius * 0.3);
+}
+
 // Environment lookups
 vec3 getWindAtPos(vec3 worldPos) {
     if (u_windOriginSize.y <= 0) return vec3(0.0);
@@ -82,6 +109,33 @@ int getParticleGridHash(vec3 pos) {
     return int(h % [[PARTICLE_GRID_SIZE]]);
 }
 
+// --- SDF Definitions ---
+
+float mapDistance(vec3 p) {
+	float d = 1e10;
+	for (int i = 0; i < numSources; ++i) {
+		if (sources[i].charge_type_vol_time.x > 0.0 && sources[i].charge_type_vol_time.z < 0.5) {
+            float d_src;
+            if (sources[i].charge_type_vol_time.y == 1.0) { // Mushroom
+                d_src = sdExplosionBase(p - sources[i].position_radius.xyz, sources[i].position_radius.w, sources[i].charge_type_vol_time.w);
+            } else {
+			    d_src = sphereSDF(p - sources[i].position_radius.xyz, sources[i].position_radius.w);
+            }
+			d = smin(d, d_src, sources[i].color_smoothness.a);
+		}
+	}
+    // Subtraction
+    for (int i = 0; i < numSources; ++i) {
+		if (sources[i].charge_type_vol_time.x < 0.0) {
+			float d_src = sphereSDF(p - sources[i].position_radius.xyz, sources[i].position_radius.w);
+            float k = sources[i].color_smoothness.a;
+            float h = clamp(0.5 - 0.5 * (d + d_src) / k, 0.0, 1.0);
+            d = mix(d, -d_src, h) + k * h * (1.0 - h);
+		}
+	}
+	return d;
+}
+
 // --- Volumetric Refraction Logic ---
 
 struct SampledProperties {
@@ -104,7 +158,13 @@ SampledProperties sampleVolume(vec3 p) {
 
         vec3  center = sources[i].position_radius.xyz;
         float radius = sources[i].position_radius.w;
-        float d = sphereSDF(p - center, radius);
+        float ntime = sources[i].charge_type_vol_time.w;
+        float d;
+        if (sources[i].charge_type_vol_time.y == 1.0) {
+            d = sdExplosionBase(p - center, radius, ntime);
+        } else {
+            d = sphereSDF(p - center, radius);
+        }
 
         if (d < radius * 0.5) {
             float normalized_d = clamp(-d / radius, 0.0, 1.0);
@@ -114,7 +174,6 @@ SampledProperties sampleVolume(vec3 p) {
             res.density += d_sample;
             res.absorption += d_sample * sources[i].volumetric_params.y;
             res.emission += d_sample * sources[i].color_inner.rgb * sources[i].color_inner.a;
-            // Density increases IOR
             res.ior += d_sample * 0.2;
         }
     }
@@ -126,6 +185,7 @@ SampledProperties sampleVolume(vec3 p) {
         float heat = clamp((temp - 300.0) / 20.0, 0.0, 1.0);
         float noise = fastFbm3d(p * 2.0 + vec3(0.0, -time * 5.0, 0.0));
         res.ior += heat * noise * 0.05;
+        res.density += heat * noise * 0.01;
     }
 
     // 3. Wind Whisps
@@ -144,7 +204,7 @@ SampledProperties sampleVolume(vec3 p) {
     int gridIdx = getParticleGridHash(p);
     int head = grid_heads[gridIdx];
     int count = 0;
-    while (head != -1 && count < 8) {
+    while (head != -1 && count < 16) {
         Particle part = particles[head];
         if (part.style == STYLE_BUBBLES) {
             float d = distance(p, part.pos.xyz) - 0.5;
@@ -172,20 +232,31 @@ vec3 calculateIORGradient(vec3 p) {
 
 void refractiveVolumetricMarch(
 	vec3 rayOrigin, vec3 rayDir, float maxDist,
-	out vec3 accumColor, out float transmittance, out vec3 finalRayDir
+	out vec3 accumColor, out float transmittance, out vec3 finalRayDir, out bool hitSurface
 ) {
 	accumColor = vec3(0.0);
 	transmittance = 1.0;
     finalRayDir = rayDir;
+    hitSurface = false;
 
-    int steps = 64;
+    int steps = 48;
     float stepSize = maxDist / float(steps);
     float jitter = fastBlueNoise(TexCoords * screenSize * 0.0005 + time) * stepSize;
 
     vec3 p = rayOrigin + rayDir * jitter;
     vec3 currDir = rayDir;
+    float t = jitter;
 
     for (int i = 0; i < steps; ++i) {
+        if (t > maxDist) break;
+
+        // Check for opaque SDF surfaces
+        float d_sdf = mapDistance(p);
+        if (d_sdf < 0.01) {
+            hitSurface = true;
+            break;
+        }
+
         SampledProperties prop = sampleVolume(p);
 
         if (prop.density > 0.001 || abs(prop.ior - 1.0) > 0.001) {
@@ -199,6 +270,7 @@ void refractiveVolumetricMarch(
         }
 
         p += currDir * stepSize;
+        t += stepSize;
         if (transmittance < 0.01) break;
     }
     finalRayDir = currDir;
@@ -224,7 +296,8 @@ void main() {
 	vec3  volAccumColor;
 	float transmittance;
     vec3  finalRayDir;
-	refractiveVolumetricMarch(cameraPos, rayDir, sceneDistance, volAccumColor, transmittance, finalRayDir);
+    bool  hitSdfSurface;
+	refractiveVolumetricMarch(cameraPos, rayDir, sceneDistance, volAccumColor, transmittance, finalRayDir, hitSdfSurface);
 
     // Reproject background UV based on final ray direction
     vec3 refractedWorldPos = cameraPos + finalRayDir * sceneDistance;
@@ -237,5 +310,18 @@ void main() {
     }
 
     vec3 sceneColor = texture(sceneTexture, refractedUV).rgb;
-    FragColor = vec4(volAccumColor + sceneColor * transmittance, 1.0);
+    vec3 currentFrameColor = volAccumColor + sceneColor * transmittance;
+
+    // Temporal Reprojection for smoothing
+    vec4 historyColor = texture(historyTexture, TexCoords); // Use direct UV since we already accounted for ray movement
+    // Actually, temporal reprojection should use prevViewProjection if the camera moved.
+    vec4 prevClip = prevViewProjection * vec4(worldPos.xyz, 1.0);
+    vec2 prevUV = (prevClip.xy / prevClip.w) * 0.5 + 0.5;
+
+    if (prevUV.x >= 0.0 && prevUV.x <= 1.0 && prevUV.y >= 0.0 && prevUV.y <= 1.0 && frameIndex > 0) {
+        historyColor = texture(historyTexture, prevUV);
+        FragColor = mix(vec4(currentFrameColor, 1.0), historyColor, 0.8);
+    } else {
+        FragColor = vec4(currentFrameColor, 1.0);
+    }
 }
