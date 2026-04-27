@@ -8,6 +8,7 @@
 #include "mesh_optimizer_util.h"
 #include "procedural_mesher.h"
 #include "procedural_optimizer.h"
+#include "procedural_refiner.h"
 #include "spline.h"
 #include "terrain_deformation_manager.h"
 #include "terrain_deformations.h"
@@ -311,12 +312,14 @@ namespace Boidsish {
 		}
 
 		ProceduralOptimizer::Optimize(ir);
+		ProceduralRefiner::Refine(ir);
 		return ProceduralMesher::GenerateModel(ir);
 	}
 
 	std::shared_ptr<Model> ProceduralGenerator::GenerateSpringPlant(unsigned int seed, const SpringPlantConfig& config) {
 		auto ir = GenerateSpringPlantIR(seed, config);
 		ProceduralOptimizer::Optimize(ir);
+		ProceduralRefiner::Refine(ir);
 		return ProceduralMesher::GenerateModel(ir);
 	}
 
@@ -404,6 +407,7 @@ namespace Boidsish {
 	std::shared_ptr<Model> ProceduralGenerator::GenerateGrass(unsigned int seed) {
 		auto ir = GenerateGrassIR(seed);
 		ProceduralOptimizer::Optimize(ir);
+		ProceduralRefiner::Refine(ir);
 		return ProceduralMesher::GenerateModel(ir);
 	}
 
@@ -536,12 +540,14 @@ namespace Boidsish {
 	) {
 		auto ir = GenerateFlowerIR(seed, custom_axiom, custom_rules, iterations);
 		ProceduralOptimizer::Optimize(ir);
+		ProceduralRefiner::Refine(ir);
 		return ProceduralMesher::GenerateModel(ir);
 	}
 
 	std::shared_ptr<Model> ProceduralGenerator::GenerateSpaceColonizationTree(unsigned int seed) {
 		auto ir = GenerateSpaceColonizationTreeIR(seed);
 		ProceduralOptimizer::Optimize(ir);
+		ProceduralRefiner::Refine(ir);
 		return ProceduralMesher::GenerateModel(ir);
 	}
 
@@ -1115,6 +1121,7 @@ namespace Boidsish {
 	) {
 		auto ir = GenerateTreeIR(seed, custom_axiom, custom_rules, iterations);
 		ProceduralOptimizer::Optimize(ir);
+		ProceduralRefiner::Refine(ir);
 		return ProceduralMesher::GenerateModel(ir);
 	}
 
@@ -1126,6 +1133,7 @@ namespace Boidsish {
 	) {
 		auto ir = GenerateCritterIR(seed, custom_axiom, custom_rules, iterations);
 		ProceduralOptimizer::Optimize(ir);
+		ProceduralRefiner::Refine(ir);
 		return ProceduralMesher::GenerateModel(ir);
 	}
 
