@@ -114,9 +114,7 @@ void main() {
 	}
 
 	// Shared Blue Noise
-	ivec2 bnSize = textureSize(u_blueNoiseTexture, 0);
-	vec2 bnUV = (vec2(pixel) + vec2(frameIndex * 13, frameIndex * 7)) / vec2(bnSize);
-	vec4 bn = texture(u_blueNoiseTexture, bnUV);
+	vec4 bn = fastSpatiotemporalBlueNoise(vec2(pixel), frameIndex);
 
 	// --- 1. Screen Space Shadows (SSS) ---
 	float sssVisibility = 1.0;
