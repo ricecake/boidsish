@@ -275,7 +275,8 @@ namespace Boidsish {
 		GLuint                        lighting_ubo,
 		GLuint                        frustum_ubo,
 		GLintptr                      frustum_offset,
-		GLuint                        extra_noise_texture
+		GLuint                        extra_noise_texture,
+		GLintptr                      lighting_offset
 	) {
 		PROJECT_PROFILE_SCOPE("FireEffectManager::Update");
 		std::lock_guard<std::mutex> lock(mutex_);
@@ -457,7 +458,13 @@ namespace Boidsish {
 		};
 
 		if (lighting_ubo != 0) {
-			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Lighting(), lighting_ubo);
+			glBindBufferRange(
+				GL_UNIFORM_BUFFER,
+				Constants::UboBinding::Lighting(),
+				lighting_ubo,
+				lighting_offset,
+				sizeof(LightingUbo)
+			);
 		}
 
 		if (frustum_ubo != 0) {
