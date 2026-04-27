@@ -4,6 +4,7 @@ layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
 #include "common_uniforms.glsl"
 #include "temporal_data.glsl"
+#include "frustum.glsl"
 
 // Input: per-draw uniforms (same SSBO the vertex shader reads, contains AABBs)
 layout(std430, binding = 2) readonly buffer UniformsSSBO {
@@ -114,12 +115,18 @@ void main() {
 		return;
 	}
 
+	// 1. Frustum Culling
+	if (!isAABBInFrustum(aabbMin, aabbMax)) {
+		visibility[idx] = 0u;
+		return;
+	}
+
 	vec4  screenRect;
 	float nearestDepth;
 
 	// Project AABB into previous frame's clip space (matches the Hi-Z pyramid)
 	if (!projectAABB(aabbMin, aabbMax, prevViewProjection, screenRect, nearestDepth)) {
-		// Fully behind camera - frustum culling handles this
+		// Straddling or otherwise not suitable for Hi-Z, but passed frustum
 		visibility[idx] = 1u;
 		return;
 	}
