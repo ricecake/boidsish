@@ -32,6 +32,13 @@ bool updateLifetime(
 		p.pos.w = 0;
 	}
 
+	// Height-based recycling for rising particles
+	if (p.style == 5 && (p.emitter_id == 5 || p.emitter_id == 6)) {
+		if (p.pos.y > 500.0 * worldScale) {
+			p.pos.w = 0.0;
+		}
+	}
+
 	return p.pos.w <= 0.0;
 }
 
@@ -205,19 +212,20 @@ void respawnParticle(
 						float total_lifetime = 10.0 + rand(spawnSeed + 4.4) * 5.0;
 						float skipped_time = rand(spawnSeed + 7.7) * total_lifetime;
 
-						p.style = 5; // Ambient
-						p.emitter_index = biome_idx;
-						p.pos = vec4(
-							pos.x,
-							height + 1.0 + rand(spawnSeed + 3.3) * 2.0,
-							pos.z,
-							total_lifetime - skipped_time
-						);
-						p.vel = vec4(rand3(spawnSeed + 5.5) * 0.5, 0.0);
-						p.epicenter = p.pos.xyz;
+						int   sub_style = 0;
+						float r_ambient = rand(spawnSeed + 6.6);
 
-						int sub_style = 0;
-						if (biome_idx == 7) {
+						if (r_ambient < 0.05) { // 5% chance for rising particles
+							if (nightFactor > 0.5) {
+								sub_style = 6; // Sky Lantern
+							} else {
+								sub_style = 5; // Balloon
+							}
+							total_lifetime = 60.0 + randomFloat(particleSeed) * 60.0;
+							skipped_time = rand(spawnSeed + 7.7) * total_lifetime;
+							p.extras[0] = (150.0 + randomFloat(hash(particleSeed)) * 200.0) * worldScale;
+							p.extras[1] = 0.5 + randomFloat(hash(hash(particleSeed))) * 0.5;
+						} else if (biome_idx == 7) {
 							sub_style = 3; // Snowflake
 						} else if (biome_idx == 0) {
 							sub_style = 2; // Bubble
@@ -236,6 +244,16 @@ void respawnParticle(
 							}
 						}
 
+						p.style = 5; // Ambient
+						p.emitter_index = biome_idx;
+						p.pos = vec4(
+							pos.x,
+							height + 1.0 + rand(spawnSeed + 3.3) * 2.0,
+							pos.z,
+							total_lifetime - skipped_time
+						);
+						p.vel = vec4(rand3(spawnSeed + 5.5) * 0.5, 0.0);
+						p.epicenter = p.pos.xyz;
 						p.emitter_id = sub_style;
 
 						if (skipped_time > 0.001) {
