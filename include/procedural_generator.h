@@ -40,8 +40,11 @@ namespace Boidsish {
 	};
 
 	struct VarietyParams {
-		float base_stiffness = 1.0f;   // Scale of variety at root
-		float stiffness_dropoff = 1.0f; // Multiplier per level of hierarchy
+		float base_stiffness = 0.0f;   // Scale of variety at root
+		float stiffness_dropoff = 0.8f; // Multiplier per level of hierarchy
+
+		VarietyParams(float base = 0.0f, float dropoff = 0.8f)
+			: base_stiffness(base), stiffness_dropoff(dropoff) {}
 	};
 
 	class ProceduralGenerator {

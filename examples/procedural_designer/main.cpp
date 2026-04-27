@@ -65,6 +65,11 @@ public:
 			ImGui::SliderFloat("Spacing", &m_spacing, 1.0f, 20.0f);
 			ImGui::InputInt("Seed Offset", &m_seedOffset);
 
+			if (ImGui::CollapsingHeader("Variety Settings")) {
+				ImGui::SliderFloat("Base Variety (Stiffness)", &m_variety.base_stiffness, 0.0f, 2.0f);
+				ImGui::SliderFloat("Variety Dropoff", &m_variety.stiffness_dropoff, 0.0f, 1.0f);
+			}
+
 			if (ImGui::Button("Generate")) {
 				m_seedOffset += m_gridSize * m_gridSize;
 				Generate();
@@ -200,22 +205,22 @@ private:
 					model = ProceduralGenerator::GenerateRock(seed);
 					break;
 				case 1:
-					model = ProceduralGenerator::GenerateGrass(seed);
+					model = ProceduralGenerator::GenerateGrass(seed, m_variety);
 					break;
 				case 2:
-					model = ProceduralGenerator::GenerateFlower(seed, axiom, ruleList, m_iterations);
+					model = ProceduralGenerator::GenerateFlower(seed, axiom, ruleList, m_iterations, m_variety);
 					break;
 				case 3:
-					model = ProceduralGenerator::GenerateTree(seed, axiom, ruleList, m_iterations);
+					model = ProceduralGenerator::GenerateTree(seed, axiom, ruleList, m_iterations, m_variety);
 					break;
 				case 4:
-					model = ProceduralGenerator::GenerateSpaceColonizationTree(seed);
+					model = ProceduralGenerator::GenerateSpaceColonizationTree(seed, m_variety);
 					break;
 				case 5:
-					model = ProceduralGenerator::GenerateSpringPlant(seed, m_springConfig);
+					model = ProceduralGenerator::GenerateSpringPlant(seed, m_springConfig, m_variety);
 					break;
 				case 6:
-					model = ProceduralGenerator::GenerateCritter(seed, axiom, ruleList, m_iterations);
+					model = ProceduralGenerator::GenerateCritter(seed, axiom, ruleList, m_iterations, m_variety);
 					break;
 				}
 
@@ -240,6 +245,7 @@ private:
 	int                                     m_iterations;
 	int                                     m_seedOffset;
 	SpringPlantConfig                       m_springConfig;
+	VarietyParams                           m_variety;
 };
 
 int main(int argc, char** argv) {

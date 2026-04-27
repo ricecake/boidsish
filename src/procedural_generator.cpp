@@ -530,11 +530,11 @@ namespace Boidsish {
 			} else if (c == ']') {
 				// Legacy flower head if it was just an empty branch ending
 				if (custom_axiom.empty()) {
-					ir.AddPuffball(current.position, 0.15f, glm::vec3(1.0f, 0.9f, 0.2f), 1, current.last_node_idx);
+					ir.AddPuffball(current.position, 0.15f, glm::vec3(1.0f, 0.9f, 0.2f), 1, current.last_node_idx, "", false, SkinningMode::Smooth, current.stiffness);
 					for (int i = 0; i < 6; ++i) {
 						glm::quat petalOri = current.orientation * glm::angleAxis(i * 1.04f, glm::vec3(0, 1, 0));
 						petalOri = petalOri * glm::angleAxis(1.0f, glm::vec3(1, 0, 0));
-						ir.AddLeaf(current.position, petalOri, 0.3f, palette[1], 0, current.last_node_idx);
+						ir.AddLeaf(current.position, petalOri, 0.3f, palette[1], 0, current.last_node_idx, "", false, SkinningMode::Smooth, current.stiffness);
 					}
 				}
 				current = stack.top();
@@ -794,7 +794,8 @@ namespace Boidsish {
 
 		for (size_t i = 0; i < nodes.size(); ++i) {
 			if (nodes[i].children.empty()) {
-				ir.AddPuffball(nodes[i].pos, 0.4f, leafCol, node_to_ir[i]);
+				float stiffness = variety.base_stiffness * std::pow(variety.stiffness_dropoff, (float)node_depth[i]);
+				ir.AddPuffball(nodes[i].pos, 0.4f, leafCol, 0, node_to_ir[i], "", false, SkinningMode::Smooth, stiffness);
 			}
 		}
 
@@ -1037,12 +1038,13 @@ namespace Boidsish {
 
 				if (!tooClose) {
 					populatedPoints.push_back(nodes[i].pos);
+					float stiffness = variety.base_stiffness * std::pow(variety.stiffness_dropoff, (float)nodes[i].generation);
 					if (dis(gen) > 0.8f) {
-						ir.AddPuffball(nodes[i].pos, 0.25f, flowerCol, 1, nodeToIr[i]);
+						ir.AddPuffball(nodes[i].pos, 0.25f, flowerCol, 1, nodeToIr[i], "", false, SkinningMode::Smooth, stiffness);
 					} else {
 						glm::quat leafOri = glm::angleAxis(dis(gen) * 6.28f, glm::vec3(0, 1, 0)) *
 						                    glm::angleAxis(dis(gen) * 1.57f, glm::vec3(1, 0, 0));
-						ir.AddLeaf(nodes[i].pos, leafOri, 0.4f, leafCol, 0, nodeToIr[i]);
+						ir.AddLeaf(nodes[i].pos, leafOri, 0.4f, leafCol, 0, nodeToIr[i], "", false, SkinningMode::Smooth, stiffness);
 					}
 				}
 			}
@@ -1138,7 +1140,7 @@ namespace Boidsish {
 				current.thickness *= 0.707f; // Slightly more conservative area conservation
 			} else if (c == ']') {
 				if (current.thickness < 0.15f) {
-					ir.AddPuffball(current.position, 0.6f, leafCol, current.last_node_idx);
+					ir.AddPuffball(current.position, 0.6f, leafCol, 0, current.last_node_idx, "", false, SkinningMode::Smooth, current.stiffness);
 				}
 				current = stack.top();
 				stack.pop();
