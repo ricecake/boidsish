@@ -9,19 +9,23 @@ TEST(ProceduralGeneratorTest, GenerateAllTypes) {
     ASSERT_NE(rock, nullptr);
     EXPECT_GT(rock->getMeshes().size(), 0);
 
-    auto grass = ProceduralGenerator::Generate(ProceduralType::Grass, 456);
+    VarietyParams variety;
+    variety.base_stiffness = 1.2f;
+    variety.stiffness_dropoff = 0.8f;
+
+    auto grass = ProceduralGenerator::Generate(ProceduralType::Grass, 456, variety);
     ASSERT_NE(grass, nullptr);
     EXPECT_GT(grass->getMeshes().size(), 0);
 
-    auto flower = ProceduralGenerator::Generate(ProceduralType::Flower, 789);
+    auto flower = ProceduralGenerator::Generate(ProceduralType::Flower, 789, variety);
     ASSERT_NE(flower, nullptr);
     EXPECT_GT(flower->getMeshes().size(), 0);
 
-    auto tree = ProceduralGenerator::Generate(ProceduralType::Tree, 101112);
+    auto tree = ProceduralGenerator::Generate(ProceduralType::Tree, 101112, variety);
     ASSERT_NE(tree, nullptr);
     EXPECT_GT(tree->getMeshes().size(), 0);
 
-    auto scTree = ProceduralGenerator::Generate(ProceduralType::TreeSpaceColonization, 1337);
+    auto scTree = ProceduralGenerator::Generate(ProceduralType::TreeSpaceColonization, 1337, variety);
     ASSERT_NE(scTree, nullptr);
     EXPECT_GT(scTree->getMeshes().size(), 0);
 

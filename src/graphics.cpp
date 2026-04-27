@@ -1839,6 +1839,10 @@ namespace Boidsish {
 
 			glBindBuffer(GL_DRAW_INDIRECT_BUFFER, 0);
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::CommonUniforms(), 0);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::HierarchyParents(), 0);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::HierarchyLocals(), 0);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::HierarchyInvBinds(), 0);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::HierarchyStiffness(), 0);
 			glActiveTexture(GL_TEXTURE0);
 		}
 
