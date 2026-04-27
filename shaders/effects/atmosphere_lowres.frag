@@ -126,13 +126,10 @@ void main() {
 			}
 
 			vec2  weatherUV = p.xz / (4000.0 * worldScale);
-			// float weatherMap = weatherWarpFactor * (fastWorley3d(vec3(weatherUV, time * 0.001)) * 0.5 + 0.5);
-			weatherUV = (viewPos.zy + (rayDir * t).zy) / (4000.0 * worldScale);
-			float weatherMap = weatherWarpFactor * (fastPhasor2d(weatherUV, time * 0.001) * 0.5 + 0.5);
+			float weatherMap = weatherWarpFactor * (fastWorley3d(vec3(weatherUV, time * 0.001)) * 0.5 + 0.5);
 
 			vec2  heightUV = p.xz / (2500.0 * worldScale);
 			float heightMap = weatherWarpFactor * (fastWorley3d(vec3(heightUV, time * 0.0004)) * 0.5 + 0.5);
-			// float heightMap = weatherWarpFactor * (fastPhasor2d(heightUV, time * 0.0004) * 0.5 + 0.5);
 
 			CloudWeather weather;
 			weather.weatherMap = weatherMap;
