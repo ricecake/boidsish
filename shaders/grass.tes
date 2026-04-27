@@ -82,7 +82,7 @@ void main() {
     float v = gl_TessCoord.y; // along blade (0 to 1)
     float u = gl_TessCoord.x * 2.0 - 1.0; // across blade (-1 to 1)
 
-    width += 5 * width * v * smoothstep(35, 75, dist);
+    width += 3 * width * smoothstep(35, 75, dist);
 
     // Wind
     float distanceFade = smoothstep(250, 75, dist);
@@ -151,7 +151,7 @@ void main() {
     vec2 forward = finalDir;
     vec2 right = vec2(forward.y, -forward.x); // 2D cross product ensures perpendicularity
 
-    float currentWidth = u * width * 0.5 * mix(1.0, 0.10, v * v);
+    float currentWidth = u * width * 0.5 * mix(1.0, 0.10, pow(v, mix(2, 5, smoothstep(32, 64, distToCam))));
     vec2 localXZ = right * currentWidth;
 
     // Final World Position
