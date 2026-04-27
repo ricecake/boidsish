@@ -1,4 +1,5 @@
-#version 430 core
+#version 450 core
+#extension GL_ARB_shader_draw_parameters : enable
 
 #include "frustum.glsl"
 #include "lighting.glsl"

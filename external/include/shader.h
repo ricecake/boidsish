@@ -721,6 +721,96 @@ protected:
 		return "";
 	}
 
+	bool tryLoadSPIRV(GLuint shader, const std::string& path) {
+#ifndef GL_SHADER_BINARY_FORMAT_SPIR_V
+#define GL_SHADER_BINARY_FORMAT_SPIR_V 0x9551
+#endif
+		namespace fs = std::filesystem;
+		fs::path p = fs::absolute(fs::path(path));
+		try {
+			p = fs::weakly_canonical(p);
+			fs::path root = fs::current_path();
+			if (p.string().find(root.string()) == 0) {
+				p = fs::relative(p, root);
+			}
+		} catch (...) {
+		}
+
+		std::string unifiedPath;
+
+#ifdef BOIDSISH_BUILD_DIR
+		fs::path buildDir(BOIDSISH_BUILD_DIR);
+		fs::path p_abs = fs::absolute(p);
+		fs::path build_abs = fs::absolute(buildDir);
+
+		auto it_p = p_abs.begin();
+		auto it_b = build_abs.begin();
+		bool alreadyInBuild = true;
+		while (it_b != build_abs.end()) {
+			if (it_p == p_abs.end() || *it_p != *it_b) {
+				alreadyInBuild = false;
+				break;
+			}
+			++it_p;
+			++it_b;
+		}
+
+		std::string ext = p.extension().string();
+		if (ext == ".tcs")
+			ext = ".tesc";
+		else if (ext == ".tes")
+			ext = ".tese";
+
+		std::string relPath;
+		if (alreadyInBuild) {
+			relPath = fs::relative(p, buildDir / "shaders_preprocessed").string();
+		} else {
+			std::string p_str = p.string();
+			size_t      s_idx = p_str.find("shaders/");
+			if (s_idx != std::string::npos) {
+				relPath = p_str.substr(s_idx + 8);
+			} else {
+				relPath = p.filename().string();
+			}
+		}
+		fs::path relPath_path(relPath);
+		unifiedPath = (buildDir / "shaders_preprocessed" / relPath_path.parent_path() / (relPath_path.stem().string() + ext)).string();
+#else
+		unifiedPath = p.string();
+#endif
+
+		std::string spvPath = unifiedPath + ".spv";
+		if (!fs::exists(spvPath)) {
+			return false;
+		}
+
+		std::ifstream file(spvPath, std::ios::binary | std::ios::ate);
+		if (!file.is_open()) {
+			return false;
+		}
+
+		size_t            size = file.tellg();
+		std::vector<char> buffer(size);
+		file.seekg(0);
+		file.read(buffer.data(), size);
+		file.close();
+
+		glShaderBinary(1, &shader, GL_SHADER_BINARY_FORMAT_SPIR_V, buffer.data(), size);
+		glSpecializeShader(shader, "main", 0, nullptr, nullptr);
+
+		GLint success;
+		glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
+		if (!success) {
+			GLchar infoLog[1024];
+			glGetShaderInfoLog(shader, 1024, NULL, infoLog);
+			std::cerr << "ERROR::SHADER::SPIRV_SPECIALIZATION_FAILED: " << spvPath << "\n"
+					  << infoLog << std::endl;
+			return false;
+		}
+
+		return true;
+	}
+
 	bool checkCompileErrors(GLuint shader, std::string type, std::string filePath) {
 		GLint  success;
 		GLchar infoLog[1024];
@@ -790,49 +880,78 @@ public:
 		unsigned int vertex, fragment;
 		// vertex shader
 		vertex = glCreateShader(GL_VERTEX_SHADER);
-		glShaderSource(vertex, 1, &vShaderCode, NULL);
-		glCompileShader(vertex);
-		if (!checkCompileErrors(vertex, "VERTEX", vertexPath)) {
-			glDeleteShader(vertex);
-			ID = 0;
-			return;
+		bool vertexLoaded = false;
+#ifdef BOIDSISH_USE_SPIRV
+		if (tryLoadSPIRV(vertex, vertexPath))
+			vertexLoaded = true;
+#endif
+		if (!vertexLoaded) {
+			glShaderSource(vertex, 1, &vShaderCode, NULL);
+			glCompileShader(vertex);
+			if (!checkCompileErrors(vertex, "VERTEX", vertexPath)) {
+				glDeleteShader(vertex);
+				ID = 0;
+				return;
+			}
 		}
+
 		// fragment Shader
 		fragment = glCreateShader(GL_FRAGMENT_SHADER);
-		glShaderSource(fragment, 1, &fShaderCode, NULL);
-		glCompileShader(fragment);
-		if (!checkCompileErrors(fragment, "FRAGMENT", fragmentPath)) {
-			glDeleteShader(vertex);
-			glDeleteShader(fragment);
-			ID = 0;
-			return;
+		bool fragmentLoaded = false;
+#ifdef BOIDSISH_USE_SPIRV
+		if (tryLoadSPIRV(fragment, fragmentPath))
+			fragmentLoaded = true;
+#endif
+		if (!fragmentLoaded) {
+			glShaderSource(fragment, 1, &fShaderCode, NULL);
+			glCompileShader(fragment);
+			if (!checkCompileErrors(fragment, "FRAGMENT", fragmentPath)) {
+				glDeleteShader(vertex);
+				glDeleteShader(fragment);
+				ID = 0;
+				return;
+			}
 		}
 
 		unsigned int tessControl, tessEvaluation;
 		if (tessControlPath != nullptr && tessEvaluationPath != nullptr) {
 			const char* tcShaderCode = tessControlCode.c_str();
 			tessControl = glCreateShader(GL_TESS_CONTROL_SHADER);
-			glShaderSource(tessControl, 1, &tcShaderCode, NULL);
-			glCompileShader(tessControl);
-			if (!checkCompileErrors(tessControl, "TESS_CONTROL", tessControlPath)) {
-				glDeleteShader(vertex);
-				glDeleteShader(fragment);
-				glDeleteShader(tessControl);
-				ID = 0;
-				return;
+			bool tcLoaded = false;
+#ifdef BOIDSISH_USE_SPIRV
+			if (tryLoadSPIRV(tessControl, tessControlPath))
+				tcLoaded = true;
+#endif
+			if (!tcLoaded) {
+				glShaderSource(tessControl, 1, &tcShaderCode, NULL);
+				glCompileShader(tessControl);
+				if (!checkCompileErrors(tessControl, "TESS_CONTROL", tessControlPath)) {
+					glDeleteShader(vertex);
+					glDeleteShader(fragment);
+					glDeleteShader(tessControl);
+					ID = 0;
+					return;
+				}
 			}
 
 			const char* teShaderCode = tessEvaluationCode.c_str();
 			tessEvaluation = glCreateShader(GL_TESS_EVALUATION_SHADER);
-			glShaderSource(tessEvaluation, 1, &teShaderCode, NULL);
-			glCompileShader(tessEvaluation);
-			if (!checkCompileErrors(tessEvaluation, "TESS_EVALUATION", tessEvaluationPath)) {
-				glDeleteShader(vertex);
-				glDeleteShader(fragment);
-				glDeleteShader(tessControl);
-				glDeleteShader(tessEvaluation);
-				ID = 0;
-				return;
+			bool teLoaded = false;
+#ifdef BOIDSISH_USE_SPIRV
+			if (tryLoadSPIRV(tessEvaluation, tessEvaluationPath))
+				teLoaded = true;
+#endif
+			if (!teLoaded) {
+				glShaderSource(tessEvaluation, 1, &teShaderCode, NULL);
+				glCompileShader(tessEvaluation);
+				if (!checkCompileErrors(tessEvaluation, "TESS_EVALUATION", tessEvaluationPath)) {
+					glDeleteShader(vertex);
+					glDeleteShader(fragment);
+					glDeleteShader(tessControl);
+					glDeleteShader(tessEvaluation);
+					ID = 0;
+					return;
+				}
 			}
 		}
 
@@ -841,18 +960,25 @@ public:
 		if (geometryPath != nullptr) {
 			const char* gShaderCode = geometryCode.c_str();
 			geometry = glCreateShader(GL_GEOMETRY_SHADER);
-			glShaderSource(geometry, 1, &gShaderCode, NULL);
-			glCompileShader(geometry);
-			if (!checkCompileErrors(geometry, "GEOMETRY", geometryPath)) {
-				glDeleteShader(vertex);
-				glDeleteShader(fragment);
-				if (tessControlPath != nullptr && tessEvaluationPath != nullptr) {
-					glDeleteShader(tessControl);
-					glDeleteShader(tessEvaluation);
+			bool gLoaded = false;
+#ifdef BOIDSISH_USE_SPIRV
+			if (tryLoadSPIRV(geometry, geometryPath))
+				gLoaded = true;
+#endif
+			if (!gLoaded) {
+				glShaderSource(geometry, 1, &gShaderCode, NULL);
+				glCompileShader(geometry);
+				if (!checkCompileErrors(geometry, "GEOMETRY", geometryPath)) {
+					glDeleteShader(vertex);
+					glDeleteShader(fragment);
+					if (tessControlPath != nullptr && tessEvaluationPath != nullptr) {
+						glDeleteShader(tessControl);
+						glDeleteShader(tessEvaluation);
+					}
+					glDeleteShader(geometry);
+					ID = 0;
+					return;
 				}
-				glDeleteShader(geometry);
-				ID = 0;
-				return;
 			}
 		}
 
@@ -945,19 +1071,26 @@ public:
 		compute = glCreateShader(GL_COMPUTE_SHADER);
 		if (compute == 0) {
 			std::cerr << "ERROR::COMPUTE_SHADER::CREATE_FAILED: glCreateShader returned 0\n"
-			          << "  File: " << computePath << "\n"
-			          << "  GL Error: " << glGetError() << std::endl;
+					  << "  File: " << computePath << "\n"
+					  << "  GL Error: " << glGetError() << std::endl;
 			ID = 0;
 			return;
 		}
 
-		glShaderSource(compute, 1, &gShaderCode, NULL);
-		glCompileShader(compute);
+		bool computeLoaded = false;
+#ifdef BOIDSISH_USE_SPIRV
+		if (tryLoadSPIRV(compute, computePath))
+			computeLoaded = true;
+#endif
+		if (!computeLoaded) {
+			glShaderSource(compute, 1, &gShaderCode, NULL);
+			glCompileShader(compute);
 
-		if (!checkCompileErrors(compute, "COMPUTE", computePath)) {
-			glDeleteShader(compute);
-			ID = 0;
-			return;
+			if (!checkCompileErrors(compute, "COMPUTE", computePath)) {
+				glDeleteShader(compute);
+				ID = 0;
+				return;
+			}
 		}
 
 		// shader Program

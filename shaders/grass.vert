@@ -1,4 +1,5 @@
-#version 430 core
+#version 450 core
+#extension GL_ARB_shader_draw_parameters : enable
 
 struct GrassInstance {
     vec4 pos_rot;   // xyz = world pos, w = rotation

@@ -1,4 +1,4 @@
-#version 460 core
+#version 450 core
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec4 Velocity;
 layout(location = 2) out vec4 NormalOut;

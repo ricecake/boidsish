@@ -1,4 +1,5 @@
-#version 460 core
+#version 450 core
+#extension GL_ARB_shader_draw_parameters : enable
 #extension GL_GOOGLE_include_directive : enable
 
 layout(location = 0) in vec3 aPos;
@@ -45,7 +46,7 @@ out vec3     FragPos;
 flat out int vUniformIndex;
 
 void main() {
-	int drawID = gl_DrawID;
+	int drawID = gl_DrawIDARB;
 
 	vUniformIndex = uUseMDI ? drawID : -1;
 	bool use_ssbo = uUseMDI && vUniformIndex >= 0;
