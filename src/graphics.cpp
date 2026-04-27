@@ -3707,6 +3707,10 @@ namespace Boidsish {
 				props.windMultiplier = cfg.GetAppSettingFloat("grass_wind_multiplier", 1.0f);
 				props.enabled = impl->grass_manager->IsEnabled() ? 1 : 0;
 				impl->grass_manager->SetGlobalProperties(props);
+
+				if (impl->terrain_render_manager) {
+					impl->terrain_render_manager->SetGrassPropsUbo(impl->grass_manager->GetGrassPropsUbo());
+				}
 			}
 
 			if (impl->decor_manager) {

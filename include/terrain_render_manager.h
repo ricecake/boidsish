@@ -220,6 +220,11 @@ namespace Boidsish {
 		 */
 		void SetVisualEffectsUbo(GLuint ubo) { visual_effects_ubo_ = ubo; }
 
+		/**
+		 * @brief Set the GrassProps UBO for terrain tinting and AO baseline shift.
+		 */
+		void SetGrassPropsUbo(GLuint ubo) { grass_props_ubo_ = ubo; }
+
 		void SetNoise(
 			GLuint simplex,
 			GLuint curl,
@@ -307,6 +312,7 @@ namespace Boidsish {
 		GLuint probe_ssbo_ = 0;              // SSBO for per-chunk SH probes
 		GLuint bake_ssbo_ = 0;               // SSBO for BakeTask
 		GLuint visual_effects_ubo_ = 0;      // Bound by graphics.cpp
+		GLuint grass_props_ubo_ = 0;
 
 		std::unique_ptr<ComputeShader> grid_mip_shader_;
 		std::unique_ptr<ComputeShader> probe_compute_shader_;

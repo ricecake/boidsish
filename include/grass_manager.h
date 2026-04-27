@@ -91,6 +91,8 @@ namespace Boidsish {
             props_dirty_ = true;
         }
 
+        uint32_t GetGrassPropsUbo() const { return grass_props_ubo_; }
+
     private:
         bool initialized_ = false;
 
