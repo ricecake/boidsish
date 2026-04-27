@@ -56,7 +56,10 @@ namespace Boidsish {
 			int nextIndex = 1 - _currentIndex;
 
 			_accumulationShader->use();
-			_accumulationShader->setFloat("uAlpha", 0.9f);
+
+			float activeAlpha = _firstFrame ? 0.0f : 0.9f;
+			_accumulationShader->setFloat("uAlpha", activeAlpha);
+			_firstFrame = false;
 
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, currentFrame);

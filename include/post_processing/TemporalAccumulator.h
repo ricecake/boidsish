@@ -43,6 +43,7 @@ namespace Boidsish {
 			int                            _currentIndex = 0;
 			int                            _width = 0, _height = 0;
 			GLenum                         _internalFormat = GL_R16F;
+			bool                           _firstFrame = true;
 		};
 
 	} // namespace PostProcessing

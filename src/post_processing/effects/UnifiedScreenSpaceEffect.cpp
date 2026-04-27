@@ -181,10 +181,25 @@ namespace Boidsish {
 			GLuint accSSS = sss_accumulator_.Accumulate(sss_texture_, velocityTexture, depthTexture);
 
 			composite_shader_->use();
+
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, sourceTexture);
 			composite_shader_->setInt("uSceneTexture", 0);
+
+			glActiveTexture(GL_TEXTURE1);
+			glBindTexture(GL_TEXTURE_2D, accGIAO);
 			composite_shader_->setInt("uGIAOTexture", 1);
+
+			glActiveTexture(GL_TEXTURE2);
+			glBindTexture(GL_TEXTURE_2D, accSSS);
 			composite_shader_->setInt("uSSSTexture", 2);
+
+			glActiveTexture(GL_TEXTURE3);
+			glBindTexture(GL_TEXTURE_2D, normalTexture);
 			composite_shader_->setInt("uNormalTexture", 3);
+
+			glActiveTexture(GL_TEXTURE4);
+			glBindTexture(GL_TEXTURE_2D, depthTexture);
 			composite_shader_->setInt("uDepthTexture", 4);
 
 			composite_shader_->setBool("uSSGIEnabled", ssgi_enabled_);
@@ -193,17 +208,6 @@ namespace Boidsish {
 			composite_shader_->setFloat("uSSSIntensity", sss_intensity_);
 			composite_shader_->setFloat("uGTAOIntensity", gtao_intensity_);
 			composite_shader_->setFloat("uSSGIIntensity", ssgi_intensity_);
-
-			glActiveTexture(GL_TEXTURE0);
-			glBindTexture(GL_TEXTURE_2D, sourceTexture);
-			glActiveTexture(GL_TEXTURE1);
-			glBindTexture(GL_TEXTURE_2D, accGIAO);
-			glActiveTexture(GL_TEXTURE2);
-			glBindTexture(GL_TEXTURE_2D, accSSS);
-			glActiveTexture(GL_TEXTURE3);
-			glBindTexture(GL_TEXTURE_2D, normalTexture);
-			glActiveTexture(GL_TEXTURE4);
-			glBindTexture(GL_TEXTURE_2D, depthTexture);
 
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 
