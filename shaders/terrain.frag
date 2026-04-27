@@ -37,6 +37,39 @@ uniform float          uRawChunkSize;
 
 uniform mat4 view;
 
+struct GrassProperties {
+    vec4  colorTop;
+    vec4  colorBottom;
+    float height;
+    float width;
+    float rigidity;
+    float heightVariance;
+    float widthVariance;
+    float density;
+    float colorVariability;
+    float windInfluence;
+    uint  enabled;
+    float _pad0;
+    float _pad1;
+    float _pad2;
+};
+
+struct GlobalGrassProperties {
+    float lengthMultiplier;
+    float widthMultiplier;
+    float densityMultiplier;
+    float rigidityMultiplier;
+    float windMultiplier;
+    uint  enabled;
+    float _pad0;
+    float _pad1;
+};
+
+layout(std140, binding = [[GRASS_PROPS_BINDING]]) uniform GrassProps {
+    GrassProperties u_grassBiomes[8];
+    GlobalGrassProperties u_grassGlobal;
+};
+
 struct BiomeProperties {
 	vec4 albedo_roughness; // rgb = albedo, w = roughness
 	vec4 params;           // x = metallic, y = detailStrength, z = detailScale, w = unused
@@ -410,6 +443,35 @@ void main() {
 	// Apply the extracted color mapping using the data passed from the tessellation shader
 	finalMaterial.albedo = applyErosionColorMappingDefault(finalMaterial.albedo, vRidgeMap, vErosionDelta);
 
+	// ========================================================================
+	// Grass-based Tinting and AO baseline shift
+	// ========================================================================
+	float grassAO = 0.0;
+	if (u_grassGlobal.enabled != 0) {
+		vec2  biomeUV = (TexCoords * uRawChunkSize + 0.5) / (uRawChunkSize + 1.0);
+		vec2  biomeData = texture(uBiomeMap, vec3(biomeUV, TextureSlice)).rg;
+		int   idxA = int(biomeData.r * 255.0 + 0.5);
+		int   idxB = min(idxA + 1, 7);
+		float t = biomeData.g;
+
+		float densityA = u_grassBiomes[idxA].density * float(u_grassBiomes[idxA].enabled);
+		float densityB = u_grassBiomes[idxB].density * float(u_grassBiomes[idxB].enabled);
+		float interpolatedDensity = mix(densityA, densityB, t) * u_grassGlobal.densityMultiplier;
+
+		vec3 colorA = u_grassBiomes[idxA].colorBottom.rgb;
+		vec3 colorB = u_grassBiomes[idxB].colorBottom.rgb;
+		vec3 grassColor = mix(colorA, colorB, t);
+
+		// Apply effect only on relatively flat surfaces where grass would grow
+		float grassMask = smoothstep(0.7, 0.8, norm.y) * clamp(interpolatedDensity, 0.0, 1.0);
+
+		// Tint terrain towards grass color
+		finalMaterial.albedo = mix(finalMaterial.albedo, grassColor * 0.5, grassMask * 0.5);
+
+		// AO baseline shift - darken dense grass areas
+		grassAO = grassMask * 0.45;
+	}
+
 	vec3  albedo = finalMaterial.albedo;
 	float roughness = finalMaterial.roughness;
 	float metallic = finalMaterial.metallic;
@@ -503,7 +565,7 @@ void main() {
 */
 
 	float primaryShadow;
-	vec3 lighting = apply_lighting_pbr(FragPos, perturbedNorm, albedo, roughness, metallic, 1.0, primaryShadow).rgb;
+	vec3 lighting = apply_lighting_pbr(FragPos, perturbedNorm, albedo, roughness, metallic, 1.0 - grassAO, primaryShadow).rgb;
 
 	// ========================================================================
 	// Neon 80s Synth Style (Night Theme)
