@@ -152,7 +152,8 @@ namespace Boidsish {
 		// Skeletal Animation
 		int   bone_matrices_offset = -1; // 4 bytes
 		int   use_skinning = 0;          // 4 bytes
-		float anim_padding[2];           // 8 bytes -> 16 bytes
+		int   hierarchy_offset = -1;     // 4 bytes
+		float anim_padding[1];           // 4 bytes -> 16 bytes
 
 		// Occlusion culling AABB (world space) - individual floats for std430 alignment safety
 		float aabb_min_x = 0.0f;       // 4 bytes
@@ -234,6 +235,15 @@ namespace Boidsish {
 
 		// Skeletal Animation
 		std::vector<glm::mat4> bone_matrices;
+
+		// Hierarchical Perturbation
+		struct HierarchyData {
+			std::vector<int>       parents;
+			std::vector<glm::mat4> locals;
+			std::vector<glm::mat4> inv_binds;
+			std::vector<float>     stiffnesses;
+		};
+		std::shared_ptr<HierarchyData> hierarchy;
 	};
 
 	/**

@@ -280,29 +280,29 @@ namespace Boidsish {
 		}
 	} // namespace
 
-	std::shared_ptr<Model> ProceduralGenerator::Generate(ProceduralType type, unsigned int seed) {
+	std::shared_ptr<Model> ProceduralGenerator::Generate(ProceduralType type, unsigned int seed, VarietyParams variety) {
 		ProceduralIR ir;
 
 		switch (type) {
 		case ProceduralType::Rock:
 			return GenerateRock(seed);
 		case ProceduralType::Grass:
-			ir = GenerateGrassIR(seed);
+			ir = GenerateGrassIR(seed, variety);
 			break;
 		case ProceduralType::Flower:
-			ir = GenerateFlowerIR(seed);
+			ir = GenerateFlowerIR(seed, "", {}, 2, variety);
 			break;
 		case ProceduralType::Tree:
-			ir = GenerateTreeIR(seed);
+			ir = GenerateTreeIR(seed, "", {}, 3, variety);
 			break;
 		case ProceduralType::TreeSpaceColonization:
-			ir = GenerateSpaceColonizationTreeIR(seed);
+			ir = GenerateSpaceColonizationTreeIR(seed, variety);
 			break;
 		case ProceduralType::TreeSpring:
-			ir = GenerateSpringPlantIR(seed);
+			ir = GenerateSpringPlantIR(seed, {}, variety);
 			break;
 		case ProceduralType::Critter:
-			ir = GenerateCritterIR(seed);
+			ir = GenerateCritterIR(seed, "", {}, 3, variety);
 			break;
 		case ProceduralType::Structure:
 			ir = GenerateStructureIR(seed);
@@ -316,8 +316,8 @@ namespace Boidsish {
 		return ProceduralMesher::GenerateModel(ir);
 	}
 
-	std::shared_ptr<Model> ProceduralGenerator::GenerateSpringPlant(unsigned int seed, const SpringPlantConfig& config) {
-		auto ir = GenerateSpringPlantIR(seed, config);
+	std::shared_ptr<Model> ProceduralGenerator::GenerateSpringPlant(unsigned int seed, const SpringPlantConfig& config, VarietyParams variety) {
+		auto ir = GenerateSpringPlantIR(seed, config, variety);
 		ProceduralOptimizer::Optimize(ir);
 		ProceduralRefiner::Refine(ir);
 		return ProceduralMesher::GenerateModel(ir);
@@ -369,7 +369,7 @@ namespace Boidsish {
 		return model;
 	}
 
-	ProceduralIR ProceduralGenerator::GenerateGrassIR(unsigned int seed) {
+	ProceduralIR ProceduralGenerator::GenerateGrassIR(unsigned int seed, VarietyParams variety) {
 		std::mt19937                          gen(seed);
 		std::uniform_real_distribution<float> dis(-0.1f, 0.1f);
 
@@ -397,15 +397,15 @@ namespace Boidsish {
 			float     r3 = 0.005f;
 			glm::vec3 c3 = grassCol * 1.5f;
 
-			int id1 = ir.AddTube(p1, p2, r1, r2, c1);
-			ir.AddTube(p2, p3, r2, r3, c2, id1);
+			int id1 = ir.AddTube(p1, p2, r1, r2, c1, -1, "", true, SkinningMode::Smooth, variety.base_stiffness);
+			ir.AddTube(p2, p3, r2, r3, c2, id1, "", true, SkinningMode::Smooth, variety.base_stiffness * variety.stiffness_dropoff);
 		}
 
 		return ir;
 	}
 
-	std::shared_ptr<Model> ProceduralGenerator::GenerateGrass(unsigned int seed) {
-		auto ir = GenerateGrassIR(seed);
+	std::shared_ptr<Model> ProceduralGenerator::GenerateGrass(unsigned int seed, VarietyParams variety) {
+		auto ir = GenerateGrassIR(seed, variety);
 		ProceduralOptimizer::Optimize(ir);
 		ProceduralRefiner::Refine(ir);
 		return ProceduralMesher::GenerateModel(ir);
@@ -415,7 +415,8 @@ namespace Boidsish {
 		unsigned int                    seed,
 		const std::string&              custom_axiom,
 		const std::vector<std::string>& custom_rules,
-		int                             iterations
+		int                             iterations,
+		VarietyParams                   variety
 	) {
 		std::mt19937                          gen(seed);
 		std::uniform_real_distribution<float> dis(-0.1f, 0.1f);
@@ -448,6 +449,8 @@ namespace Boidsish {
 			glm::vec3 color;
 			int       color_idx;
 			int       variant;
+			float     stiffness;
+			int       depth;
 		};
 
 		std::vector<glm::vec3> palette = {
@@ -460,7 +463,7 @@ namespace Boidsish {
 		};
 
 		std::stack<TurtleStateIR> stack;
-		TurtleStateIR             current = {glm::vec3(0, 0, 0), glm::quat(1, 0, 0, 0), 0.04f, -1, palette[0], 0, 0};
+		TurtleStateIR             current = {glm::vec3(0, 0, 0), glm::quat(1, 0, 0, 0), 0.04f, -1, palette[0], 0, 0, variety.base_stiffness, 0};
 		float                     angle = 0.5f;
 		float                     step = 0.4f;
 
@@ -474,11 +477,17 @@ namespace Boidsish {
 					current.thickness,
 					next_thickness,
 					current.color,
-					current.last_node_idx
+					current.last_node_idx,
+					"",
+					true,
+					SkinningMode::Smooth,
+					current.stiffness
 				);
 				current.position = next_pos;
 				current.thickness = next_thickness;
 				current.last_node_idx = id;
+				current.depth++;
+				current.stiffness *= variety.stiffness_dropoff;
 			} else if (c == 'L') {
 				ir.AddLeaf(
 					current.position,
@@ -486,12 +495,16 @@ namespace Boidsish {
 					0.3f,
 					current.color,
 					current.variant,
-					current.last_node_idx
+					current.last_node_idx,
+					"",
+					true,
+					SkinningMode::Rigid,
+					current.stiffness
 				);
 			} else if (c == 'P') {
-				ir.AddPuffball(current.position, 0.15f, current.color, 0, current.last_node_idx);
+				ir.AddPuffball(current.position, 0.15f, current.color, 0, current.last_node_idx, "", true, SkinningMode::Rigid, current.stiffness);
 			} else if (c == 'B') {
-				ir.AddPuffball(current.position, 0.15f, current.color, 1, current.last_node_idx);
+				ir.AddPuffball(current.position, 0.15f, current.color, 1, current.last_node_idx, "", true, SkinningMode::Rigid, current.stiffness);
 			} else if (c == '\'') {
 				current.color_idx = (current.color_idx + 1) % palette.size();
 				current.color = palette[current.color_idx];
@@ -517,11 +530,11 @@ namespace Boidsish {
 			} else if (c == ']') {
 				// Legacy flower head if it was just an empty branch ending
 				if (custom_axiom.empty()) {
-					ir.AddPuffball(current.position, 0.15f, glm::vec3(1.0f, 0.9f, 0.2f), 1, current.last_node_idx);
+					ir.AddPuffball(current.position, 0.15f, glm::vec3(1.0f, 0.9f, 0.2f), 1, current.last_node_idx, "", false, SkinningMode::Smooth, current.stiffness);
 					for (int i = 0; i < 6; ++i) {
 						glm::quat petalOri = current.orientation * glm::angleAxis(i * 1.04f, glm::vec3(0, 1, 0));
 						petalOri = petalOri * glm::angleAxis(1.0f, glm::vec3(1, 0, 0));
-						ir.AddLeaf(current.position, petalOri, 0.3f, palette[1], 0, current.last_node_idx);
+						ir.AddLeaf(current.position, petalOri, 0.3f, palette[1], 0, current.last_node_idx, "", false, SkinningMode::Smooth, current.stiffness);
 					}
 				}
 				current = stack.top();
@@ -536,22 +549,23 @@ namespace Boidsish {
 		unsigned int                    seed,
 		const std::string&              custom_axiom,
 		const std::vector<std::string>& custom_rules,
-		int                             iterations
+		int                             iterations,
+		VarietyParams                   variety
 	) {
-		auto ir = GenerateFlowerIR(seed, custom_axiom, custom_rules, iterations);
+		auto ir = GenerateFlowerIR(seed, custom_axiom, custom_rules, iterations, variety);
 		ProceduralOptimizer::Optimize(ir);
 		ProceduralRefiner::Refine(ir);
 		return ProceduralMesher::GenerateModel(ir);
 	}
 
-	std::shared_ptr<Model> ProceduralGenerator::GenerateSpaceColonizationTree(unsigned int seed) {
-		auto ir = GenerateSpaceColonizationTreeIR(seed);
+	std::shared_ptr<Model> ProceduralGenerator::GenerateSpaceColonizationTree(unsigned int seed, VarietyParams variety) {
+		auto ir = GenerateSpaceColonizationTreeIR(seed, variety);
 		ProceduralOptimizer::Optimize(ir);
 		ProceduralRefiner::Refine(ir);
 		return ProceduralMesher::GenerateModel(ir);
 	}
 
-	ProceduralIR ProceduralGenerator::GenerateSpaceColonizationTreeIR(unsigned int seed) {
+	ProceduralIR ProceduralGenerator::GenerateSpaceColonizationTreeIR(unsigned int seed, VarietyParams variety) {
 		std::mt19937 gen(seed);
 
 		// Parameters
@@ -754,33 +768,41 @@ namespace Boidsish {
 		glm::vec3 woodCol(0.35f + colDis(gen), 0.25f + colDis(gen), 0.15f + colDis(gen));
 		glm::vec3 leafCol(0.1f + colDis(gen), 0.45f + colDis(gen), 0.1f + colDis(gen));
 
-		std::vector<int> node_to_ir(nodes.size(), -1);
+		std::vector<int>   node_to_ir(nodes.size(), -1);
+		std::vector<int>   node_depth(nodes.size(), 0);
 		for (size_t i = 0; i < nodes.size(); ++i) {
 			if (nodes[i].parentId != -1) {
 				int parent_ir = node_to_ir[nodes[i].parentId];
+				node_depth[i] = node_depth[nodes[i].parentId] + 1;
+				float stiffness = variety.base_stiffness * std::pow(variety.stiffness_dropoff, (float)node_depth[i]);
 				node_to_ir[i] = ir.AddTube(
 					nodes[nodes[i].parentId].pos,
 					nodes[i].pos,
 					nodes[nodes[i].parentId].radius,
 					nodes[i].radius,
 					woodCol,
-					parent_ir
+					parent_ir,
+					"",
+					true,
+					SkinningMode::Smooth,
+					stiffness
 				);
 			} else {
-				node_to_ir[i] = ir.AddHub(nodes[i].pos, nodes[i].radius, woodCol);
+				node_to_ir[i] = ir.AddHub(nodes[i].pos, nodes[i].radius, woodCol, -1, "", true, SkinningMode::Smooth, variety.base_stiffness);
 			}
 		}
 
 		for (size_t i = 0; i < nodes.size(); ++i) {
 			if (nodes[i].children.empty()) {
-				ir.AddPuffball(nodes[i].pos, 0.4f, leafCol, node_to_ir[i]);
+				float stiffness = variety.base_stiffness * std::pow(variety.stiffness_dropoff, (float)node_depth[i]);
+				ir.AddPuffball(nodes[i].pos, 0.4f, leafCol, 0, node_to_ir[i], "", false, SkinningMode::Smooth, stiffness);
 			}
 		}
 
 		return ir;
 	}
 
-	ProceduralIR ProceduralGenerator::GenerateSpringPlantIR(unsigned int seed, const SpringPlantConfig& config) {
+	ProceduralIR ProceduralGenerator::GenerateSpringPlantIR(unsigned int seed, const SpringPlantConfig& config, VarietyParams variety) {
 		std::mt19937                          gen(seed);
 		std::uniform_real_distribution<float> dis(0.0f, 1.0f);
 
@@ -978,6 +1000,7 @@ namespace Boidsish {
 		glm::vec3 woodCol(0.35f, 0.25f, 0.15f);
 		std::vector<int> nodeToIr(nodes.size(), -1);
 		for (size_t i = 0; i < nodes.size(); ++i) {
+			float stiffness = variety.base_stiffness * std::pow(variety.stiffness_dropoff, (float)nodes[i].generation);
 			if (nodes[i].parentId != -1) {
 				nodeToIr[i] = ir.AddTube(
 					nodes[nodes[i].parentId].pos,
@@ -985,10 +1008,14 @@ namespace Boidsish {
 					nodes[nodes[i].parentId].radius,
 					nodes[i].radius,
 					woodCol,
-					nodeToIr[nodes[i].parentId]
+					nodeToIr[nodes[i].parentId],
+					"",
+					true,
+					SkinningMode::Smooth,
+					stiffness
 				);
 			} else {
-				nodeToIr[i] = ir.AddHub(nodes[i].pos, nodes[i].radius, woodCol);
+				nodeToIr[i] = ir.AddHub(nodes[i].pos, nodes[i].radius, woodCol, -1, "", true, SkinningMode::Smooth, stiffness);
 			}
 		}
 
@@ -1011,12 +1038,13 @@ namespace Boidsish {
 
 				if (!tooClose) {
 					populatedPoints.push_back(nodes[i].pos);
+					float stiffness = variety.base_stiffness * std::pow(variety.stiffness_dropoff, (float)nodes[i].generation);
 					if (dis(gen) > 0.8f) {
-						ir.AddPuffball(nodes[i].pos, 0.25f, flowerCol, 1, nodeToIr[i]);
+						ir.AddPuffball(nodes[i].pos, 0.25f, flowerCol, 1, nodeToIr[i], "", false, SkinningMode::Smooth, stiffness);
 					} else {
 						glm::quat leafOri = glm::angleAxis(dis(gen) * 6.28f, glm::vec3(0, 1, 0)) *
 						                    glm::angleAxis(dis(gen) * 1.57f, glm::vec3(1, 0, 0));
-						ir.AddLeaf(nodes[i].pos, leafOri, 0.4f, leafCol, 0, nodeToIr[i]);
+						ir.AddLeaf(nodes[i].pos, leafOri, 0.4f, leafCol, 0, nodeToIr[i], "", false, SkinningMode::Smooth, stiffness);
 					}
 				}
 			}
@@ -1029,7 +1057,8 @@ namespace Boidsish {
 		unsigned int                    seed,
 		const std::string&              custom_axiom,
 		const std::vector<std::string>& custom_rules,
-		int                             iterations
+		int                             iterations,
+		VarietyParams                   variety
 	) {
 		std::mt19937                          gen(seed);
 		std::uniform_real_distribution<float> dis(-0.1f, 0.1f);
@@ -1060,10 +1089,12 @@ namespace Boidsish {
 			glm::quat orientation;
 			float     thickness;
 			int       last_node_idx;
+			float     stiffness;
+			int       depth;
 		};
 
 		std::stack<TurtleStateIR> stack;
-		TurtleStateIR             current = {glm::vec3(0, 0, 0), glm::quat(1, 0, 0, 0), 0.25f, -1};
+		TurtleStateIR             current = {glm::vec3(0, 0, 0), glm::quat(1, 0, 0, 0), 0.25f, -1, variety.base_stiffness, 0};
 		float                     angle = 0.5f;
 		float                     step = 0.6f;
 
@@ -1081,10 +1112,16 @@ namespace Boidsish {
 					current.thickness,
 					current.thickness,
 					woodCol,
-					current.last_node_idx
+					current.last_node_idx,
+					"",
+					true,
+					SkinningMode::Smooth,
+					current.stiffness
 				);
 				current.position = nextPos;
 				current.last_node_idx = id;
+				current.depth++;
+				current.stiffness *= variety.stiffness_dropoff;
 			} else if (c == '+' || c == '-' || c == '&' || c == '^' || c == '\\' || c == '/') {
 				if (c == '+')
 					current.orientation = current.orientation * glm::angleAxis(angle + dis(gen), glm::vec3(1, 0, 0));
@@ -1103,7 +1140,7 @@ namespace Boidsish {
 				current.thickness *= 0.707f; // Slightly more conservative area conservation
 			} else if (c == ']') {
 				if (current.thickness < 0.15f) {
-					ir.AddPuffball(current.position, 0.6f, leafCol, current.last_node_idx);
+					ir.AddPuffball(current.position, 0.6f, leafCol, 0, current.last_node_idx, "", false, SkinningMode::Smooth, current.stiffness);
 				}
 				current = stack.top();
 				stack.pop();
@@ -1117,9 +1154,10 @@ namespace Boidsish {
 		unsigned int                    seed,
 		const std::string&              custom_axiom,
 		const std::vector<std::string>& custom_rules,
-		int                             iterations
+		int                             iterations,
+		VarietyParams                   variety
 	) {
-		auto ir = GenerateTreeIR(seed, custom_axiom, custom_rules, iterations);
+		auto ir = GenerateTreeIR(seed, custom_axiom, custom_rules, iterations, variety);
 		ProceduralOptimizer::Optimize(ir);
 		ProceduralRefiner::Refine(ir);
 		return ProceduralMesher::GenerateModel(ir);
@@ -1129,9 +1167,10 @@ namespace Boidsish {
 		unsigned int                    seed,
 		const std::string&              custom_axiom,
 		const std::vector<std::string>& custom_rules,
-		int                             iterations
+		int                             iterations,
+		VarietyParams                   variety
 	) {
-		auto ir = GenerateCritterIR(seed, custom_axiom, custom_rules, iterations);
+		auto ir = GenerateCritterIR(seed, custom_axiom, custom_rules, iterations, variety);
 		ProceduralOptimizer::Optimize(ir);
 		ProceduralRefiner::Refine(ir);
 		return ProceduralMesher::GenerateModel(ir);
@@ -1255,7 +1294,8 @@ namespace Boidsish {
 		unsigned int                    seed,
 		const std::string&              custom_axiom,
 		const std::vector<std::string>& custom_rules,
-		int                             iterations
+		int                             iterations,
+		VarietyParams                   variety
 	) {
 		std::mt19937                          gen(seed);
 		std::uniform_real_distribution<float> dis(-0.1f, 0.1f);
@@ -1282,6 +1322,8 @@ namespace Boidsish {
 			glm::vec3 color;
 			int       color_idx;
 			int       variant;
+			float     stiffness;
+			int       depth;
 		};
 
 		std::vector<glm::vec3> palette = {
@@ -1293,7 +1335,7 @@ namespace Boidsish {
 		};
 
 		std::stack<TurtleStateIR> stack;
-		TurtleStateIR             current = {glm::vec3(0, 0, 0), glm::quat(1, 0, 0, 0), 0.1f, -1, palette[0], 0, 0};
+		TurtleStateIR             current = {glm::vec3(0, 0, 0), glm::quat(1, 0, 0, 0), 0.1f, -1, palette[0], 0, 0, variety.base_stiffness, 0};
 		float                     angle = 0.4f;
 		float                     step = 0.5f;
 
@@ -1307,11 +1349,17 @@ namespace Boidsish {
 					current.thickness,
 					next_thickness,
 					current.color,
-					current.last_node_idx
+					current.last_node_idx,
+					"",
+					true,
+					SkinningMode::Smooth,
+					current.stiffness
 				);
 				current.position = next_pos;
 				current.thickness = next_thickness;
 				current.last_node_idx = id;
+				current.depth++;
+				current.stiffness *= variety.stiffness_dropoff;
 			} else if (c == 'L') {
 				ir.AddLeaf(
 					current.position,
@@ -1319,12 +1367,16 @@ namespace Boidsish {
 					0.4f,
 					current.color,
 					current.variant,
-					current.last_node_idx
+					current.last_node_idx,
+					"",
+					true,
+					SkinningMode::Rigid,
+					current.stiffness
 				);
 			} else if (c == 'P') {
-				ir.AddPuffball(current.position, 0.2f, current.color, 0, current.last_node_idx);
+				ir.AddPuffball(current.position, 0.2f, current.color, 0, current.last_node_idx, "", true, SkinningMode::Rigid, current.stiffness);
 			} else if (c == 'B') {
-				ir.AddPuffball(current.position, 0.2f, current.color, 1, current.last_node_idx);
+				ir.AddPuffball(current.position, 0.2f, current.color, 1, current.last_node_idx, "", true, SkinningMode::Rigid, current.stiffness);
 			} else if (c == '\'') {
 				current.color_idx = (current.color_idx + 1) % palette.size();
 				current.color = palette[current.color_idx];

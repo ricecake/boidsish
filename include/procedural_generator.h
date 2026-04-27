@@ -39,53 +39,67 @@ namespace Boidsish {
 		int   max_branches = 3;
 	};
 
+	struct VarietyParams {
+		float base_stiffness = 0.0f;   // Scale of variety at root
+		float stiffness_dropoff = 0.8f; // Multiplier per level of hierarchy
+
+		VarietyParams(float base = 0.0f, float dropoff = 0.8f)
+			: base_stiffness(base), stiffness_dropoff(dropoff) {}
+	};
+
 	class ProceduralGenerator {
 	public:
-		static std::shared_ptr<Model> Generate(ProceduralType type, unsigned int seed);
+		static std::shared_ptr<Model> Generate(ProceduralType type, unsigned int seed, VarietyParams variety = {});
 
 		static std::shared_ptr<Model> GenerateRock(unsigned int seed);
-		static std::shared_ptr<Model> GenerateGrass(unsigned int seed);
+		static std::shared_ptr<Model> GenerateGrass(unsigned int seed, VarietyParams variety = {});
 		static std::shared_ptr<Model> GenerateFlower(
 			unsigned int                    seed,
 			const std::string&              axiom = "",
 			const std::vector<std::string>& rules = {},
-			int                             iterations = 2
+			int                             iterations = 2,
+			VarietyParams                   variety = {}
 		);
 		static std::shared_ptr<Model> GenerateTree(
 			unsigned int                    seed,
 			const std::string&              axiom = "",
 			const std::vector<std::string>& rules = {},
-			int                             iterations = 3
+			int                             iterations = 3,
+			VarietyParams                   variety = {}
 		);
-		static std::shared_ptr<Model> GenerateSpaceColonizationTree(unsigned int seed);
-		static std::shared_ptr<Model> GenerateSpringPlant(unsigned int seed, const SpringPlantConfig& config = {});
+		static std::shared_ptr<Model> GenerateSpaceColonizationTree(unsigned int seed, VarietyParams variety = {});
+		static std::shared_ptr<Model> GenerateSpringPlant(unsigned int seed, const SpringPlantConfig& config = {}, VarietyParams variety = {});
 		static std::shared_ptr<Model> GenerateCritter(
 			unsigned int                    seed,
 			const std::string&              axiom = "",
 			const std::vector<std::string>& rules = {},
-			int                             iterations = 3
+			int                             iterations = 3,
+			VarietyParams                   variety = {}
 		);
 
-		static ProceduralIR GenerateGrassIR(unsigned int seed);
+		static ProceduralIR GenerateGrassIR(unsigned int seed, VarietyParams variety = {});
 		static ProceduralIR GenerateFlowerIR(
 			unsigned int                    seed,
 			const std::string&              axiom = "",
 			const std::vector<std::string>& rules = {},
-			int                             iterations = 2
+			int                             iterations = 2,
+			VarietyParams                   variety = {}
 		);
 		static ProceduralIR GenerateTreeIR(
 			unsigned int                    seed,
 			const std::string&              axiom = "",
 			const std::vector<std::string>& rules = {},
-			int                             iterations = 3
+			int                             iterations = 3,
+			VarietyParams                   variety = {}
 		);
-		static ProceduralIR GenerateSpaceColonizationTreeIR(unsigned int seed);
-		static ProceduralIR GenerateSpringPlantIR(unsigned int seed, const SpringPlantConfig& config = {});
+		static ProceduralIR GenerateSpaceColonizationTreeIR(unsigned int seed, VarietyParams variety = {});
+		static ProceduralIR GenerateSpringPlantIR(unsigned int seed, const SpringPlantConfig& config = {}, VarietyParams variety = {});
 		static ProceduralIR GenerateCritterIR(
 			unsigned int                    seed,
 			const std::string&              axiom = "",
 			const std::vector<std::string>& rules = {},
-			int                             iterations = 3
+			int                             iterations = 3,
+			VarietyParams                   variety = {}
 		);
 		static ProceduralIR GenerateStructureIR(unsigned int seed);
 

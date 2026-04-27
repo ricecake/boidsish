@@ -414,6 +414,10 @@ namespace Boidsish {
 		std::unique_ptr<PersistentBuffer<CommonUniforms>>              uniforms_ssbo;
 		std::unique_ptr<PersistentBuffer<FrustumDataGPU>>              frustum_ssbo;
 		std::unique_ptr<PersistentBuffer<glm::mat4>>                   bone_matrices_ssbo;
+		std::unique_ptr<PersistentBuffer<int>>                         hierarchy_parents_ssbo;
+		std::unique_ptr<PersistentBuffer<glm::mat4>>                   hierarchy_locals_ssbo;
+		std::unique_ptr<PersistentBuffer<glm::mat4>>                   hierarchy_inv_binds_ssbo;
+		std::unique_ptr<PersistentBuffer<float>>                       hierarchy_stiffness_ssbo;
 		GLsync                                                         mdi_fences[3]{0, 0, 0};
 
 		// MDI offset tracking across layers within a single frame
@@ -422,6 +426,7 @@ namespace Boidsish {
 		uint32_t mdi_uniform_count = 0;
 		uint32_t mdi_frustum_count = 0;
 		uint32_t mdi_bone_count = 0;
+		uint32_t mdi_hierarchy_count = 0;
 
 		// Hi-Z occlusion culling
 		std::shared_ptr<HiZManager>    hiz_manager;
@@ -764,6 +769,10 @@ namespace Boidsish {
 			uniforms_ssbo = std::make_unique<PersistentBuffer<CommonUniforms>>(GL_SHADER_STORAGE_BUFFER, 65536);
 			frustum_ssbo = std::make_unique<PersistentBuffer<FrustumDataGPU>>(GL_UNIFORM_BUFFER, 64);
 			bone_matrices_ssbo = std::make_unique<PersistentBuffer<glm::mat4>>(GL_SHADER_STORAGE_BUFFER, 65536);
+			hierarchy_parents_ssbo = std::make_unique<PersistentBuffer<int>>(GL_SHADER_STORAGE_BUFFER, 65536);
+			hierarchy_locals_ssbo = std::make_unique<PersistentBuffer<glm::mat4>>(GL_SHADER_STORAGE_BUFFER, 65536);
+			hierarchy_inv_binds_ssbo = std::make_unique<PersistentBuffer<glm::mat4>>(GL_SHADER_STORAGE_BUFFER, 65536);
+			hierarchy_stiffness_ssbo = std::make_unique<PersistentBuffer<float>>(GL_SHADER_STORAGE_BUFFER, 65536);
 
 			// Hi-Z occlusion culling
 			occlusion_cull_shader_ = std::make_unique<ComputeShader>("shaders/occlusion_cull.comp");
@@ -1391,6 +1400,10 @@ namespace Boidsish {
 			DrawArraysIndirectCommand*   arrays_cmd_ptr = indirect_arrays_buffer->GetFrameDataPtr();
 			CommonUniforms*              uniforms_ptr = uniforms_ssbo->GetFrameDataPtr();
 			glm::mat4*                   bones_ptr = bone_matrices_ssbo->GetFrameDataPtr();
+			int*                         h_parents_ptr = hierarchy_parents_ssbo->GetFrameDataPtr();
+			glm::mat4*                   h_locals_ptr = hierarchy_locals_ssbo->GetFrameDataPtr();
+			glm::mat4*                   h_inv_binds_ptr = hierarchy_inv_binds_ssbo->GetFrameDataPtr();
+			float*                       h_stiffness_ptr = hierarchy_stiffness_ssbo->GetFrameDataPtr();
 
 			uint32_t max_elements = 65536; // Buffer capacity
 			uint32_t frame_element_offset = uniforms_ssbo->GetCurrentBufferIndex() * max_elements;
@@ -1516,6 +1529,20 @@ namespace Boidsish {
 						);
 						uniforms_ptr[mdi_uniform_count].bone_matrices_offset = (int)mdi_bone_count;
 						mdi_bone_count += bone_count;
+					}
+				}
+
+				// Handle hierarchy data
+				if (packet.hierarchy) {
+					uint32_t count = static_cast<uint32_t>(packet.hierarchy->parents.size());
+					if (mdi_hierarchy_count + count <= 65536) {
+						std::memcpy(&h_parents_ptr[mdi_hierarchy_count], packet.hierarchy->parents.data(), count * sizeof(int));
+						std::memcpy(&h_locals_ptr[mdi_hierarchy_count], packet.hierarchy->locals.data(), count * sizeof(glm::mat4));
+						std::memcpy(&h_inv_binds_ptr[mdi_hierarchy_count], packet.hierarchy->inv_binds.data(), count * sizeof(glm::mat4));
+						std::memcpy(&h_stiffness_ptr[mdi_hierarchy_count], packet.hierarchy->stiffnesses.data(), count * sizeof(float));
+
+						uniforms_ptr[mdi_uniform_count].hierarchy_offset = (int)mdi_hierarchy_count;
+						mdi_hierarchy_count += count;
 					}
 				}
 
@@ -1680,6 +1707,37 @@ namespace Boidsish {
 					bone_matrices_ssbo->GetFrameOffset(),
 					bone_matrices_ssbo->GetElementCount() * sizeof(glm::mat4)
 				);
+
+				// Bind hierarchy SSBOs
+				glBindBufferRange(
+					GL_SHADER_STORAGE_BUFFER,
+					Constants::SsboBinding::HierarchyParents(),
+					hierarchy_parents_ssbo->GetBufferId(),
+					hierarchy_parents_ssbo->GetFrameOffset(),
+					hierarchy_parents_ssbo->GetElementCount() * sizeof(int)
+				);
+				glBindBufferRange(
+					GL_SHADER_STORAGE_BUFFER,
+					Constants::SsboBinding::HierarchyLocals(),
+					hierarchy_locals_ssbo->GetBufferId(),
+					hierarchy_locals_ssbo->GetFrameOffset(),
+					hierarchy_locals_ssbo->GetElementCount() * sizeof(glm::mat4)
+				);
+				glBindBufferRange(
+					GL_SHADER_STORAGE_BUFFER,
+					Constants::SsboBinding::HierarchyInvBinds(),
+					hierarchy_inv_binds_ssbo->GetBufferId(),
+					hierarchy_inv_binds_ssbo->GetFrameOffset(),
+					hierarchy_inv_binds_ssbo->GetElementCount() * sizeof(glm::mat4)
+				);
+				glBindBufferRange(
+					GL_SHADER_STORAGE_BUFFER,
+					Constants::SsboBinding::HierarchyStiffness(),
+					hierarchy_stiffness_ssbo->GetBufferId(),
+					hierarchy_stiffness_ssbo->GetFrameOffset(),
+					hierarchy_stiffness_ssbo->GetElementCount() * sizeof(float)
+				);
+
 				s->setBool("uUseMDI", true);
 
 				// Bind visibility SSBO for Hi-Z occlusion culling (matching uniform indexing)
@@ -1781,6 +1839,10 @@ namespace Boidsish {
 
 			glBindBuffer(GL_DRAW_INDIRECT_BUFFER, 0);
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::CommonUniforms(), 0);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::HierarchyParents(), 0);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::HierarchyLocals(), 0);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::HierarchyInvBinds(), 0);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::HierarchyStiffness(), 0);
 			glActiveTexture(GL_TEXTURE0);
 		}
 
@@ -2191,6 +2253,10 @@ namespace Boidsish {
 			uniforms_ssbo->AdvanceFrame();
 			frustum_ssbo->AdvanceFrame();
 			bone_matrices_ssbo->AdvanceFrame();
+			hierarchy_parents_ssbo->AdvanceFrame();
+			hierarchy_locals_ssbo->AdvanceFrame();
+			hierarchy_inv_binds_ssbo->AdvanceFrame();
+			hierarchy_stiffness_ssbo->AdvanceFrame();
 			megabuffer->AdvanceFrame();
 			lighting_pb->AdvanceFrame();
 			temporal_pb->AdvanceFrame();
@@ -2209,6 +2275,7 @@ namespace Boidsish {
 			mdi_uniform_count = 0;
 			mdi_frustum_count = 0;
 			mdi_bone_count = 0;
+			mdi_hierarchy_count = 0;
 		}
 
 		void PrepareUBOs() {

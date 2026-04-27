@@ -463,6 +463,35 @@ namespace Boidsish {
 		}
 	}
 
+	void ModelData::FlattenHierarchy() {
+		if (bone_info_map.empty())
+			return;
+
+		bone_parents.resize(bone_count, -1);
+		bone_locals.resize(bone_count, glm::mat4(1.0f));
+		bone_inv_binds.resize(bone_count, glm::mat4(1.0f));
+		bone_stiffnesses.resize(bone_count, 1.0f);
+
+		std::function<void(const NodeData&, int)> traverse = [&](const NodeData& node, int parent_bone_id) {
+			int current_bone_id = -1;
+			auto it = bone_info_map.find(node.name);
+			if (it != bone_info_map.end()) {
+				current_bone_id = it->second.id;
+				bone_parents[current_bone_id] = parent_bone_id;
+				bone_locals[current_bone_id] = node.transformation;
+				bone_inv_binds[current_bone_id] = it->second.offset;
+				// Stiffness remains default 1.0 unless set elsewhere
+			}
+
+			for (const auto& child : node.children) {
+				traverse(child, current_bone_id != -1 ? current_bone_id : parent_bone_id);
+			}
+		};
+
+		traverse(root_node, -1);
+		hierarchy_flattened = true;
+	}
+
 	Model::Model(std::shared_ptr<ModelData> data, bool no_cull): Shape(), m_data(data), no_cull_(no_cull) {
 		if (m_data) {
 			m_animator = std::make_unique<Animator>(m_data);
@@ -657,6 +686,14 @@ namespace Boidsish {
 			if (m_animator && !m_data->bone_info_map.empty()) {
 				packet.uniforms.use_skinning = 1;
 				packet.bone_matrices = m_animator->GetFinalBoneMatrices();
+
+				if (m_data->hierarchy_flattened) {
+					packet.hierarchy = std::make_shared<RenderPacket::HierarchyData>();
+					packet.hierarchy->parents = m_data->bone_parents;
+					packet.hierarchy->locals = m_data->bone_locals;
+					packet.hierarchy->inv_binds = m_data->bone_inv_binds;
+					packet.hierarchy->stiffnesses = m_data->bone_stiffnesses;
+				}
 			}
 			// Occlusion culling AABB with velocity expansion
 			AABB      meshAABB = m_data->aabb.Transform(model_matrix);

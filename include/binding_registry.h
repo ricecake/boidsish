@@ -72,6 +72,11 @@ consteval bool ValidateSsboBindings() {
 		Constants::SsboBinding::TrailGeneratedVBO(),
 		Constants::SsboBinding::AtmosphereSH(),
 		Constants::SsboBinding::SdfVolumes(),
+		Constants::SsboBinding::BoneHierarchy(),
+		Constants::SsboBinding::HierarchyParents(),
+		Constants::SsboBinding::HierarchyLocals(),
+		Constants::SsboBinding::HierarchyInvBinds(),
+		Constants::SsboBinding::HierarchyStiffness(),
 	};
 	return AllUnique(ssbos);
 }
