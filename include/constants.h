@@ -1,271 +1,380 @@
 #pragma once
 
+#include <utility>
+
 #include <glm/glm.hpp>
 
 namespace Boidsish {
 	namespace Constants {
+		namespace Bindings {
+			enum class Texture {
+				ShadowMaps = 10,
+				TerrainChunkGrid = 11,
+				TerrainMaxHeight = 12,
+				TerrainHeightmap = 13,
+				TerrainBiomeMap = 14,
+				Refraction = 15,
+				NoiseSimplex = 16,
+				NoiseCurl = 17,
+				NoiseBlue = 18,
+				NoiseExtra = 19,
+				NoisePhasor = 20,
+				AtmosphereTransmittance = 21,
+				AtmosphereMultiScattering = 22,
+				AtmosphereSkyView = 23,
+				AtmosphereAerialPerspective = 24,
+				AtmosphereCloudShadow = 25,
+				WindData = 26,
+				HiZ = 27,
+				TerrainBakedParams = 28,
+				TerrainRawHeightmap = 29,
+				TerrainBiomeImage = 30,
+				TerrainHeightmapImage = 31,
+				TerrainBakedParamsImage = 32,
+				TerrainHorizonMap = 33,
+				TerrainShadowMap = 35,
+				TerrainShadowMapImage = 36,
+			};
+
+			enum class Ubo {
+				Lighting = 0,
+				VisualEffects = 1,
+				Shadows = 2,
+				FrustumData = 3,
+				Shockwaves = 4,
+				TemporalData = 6,
+				Biomes = 7,
+				TerrainData = 8,
+				WeatherUniforms = 32,
+				GrassProps = 9,
+				DecorProps = 30,
+				DecorPlacementGlobals = 31,
+				WindData = 45,
+			};
+
+			enum class Ssbo {
+				DecorInstances = 10,
+				AutoExposure = 11,
+				BoneMatrix = 12,
+				OcclusionVisibility = 13,
+				ParticleGridHeads = 14,
+				ParticleGridNext = 15,
+				ParticleBuffer = 16,
+				IndirectionBuffer = 17,
+				TrailPoints = 18,
+				TrailInstances = 19,
+				TrailSpineData = 20,
+				CommonUniforms = 21,
+				EmitterBuffer = 22,
+				TerrainChunkInfo = 23,
+				SliceData = 24,
+				DecorAllInstances = 25,
+				DecorChunkParams = 26,
+				VisibleParticleIndices = 27,
+				ParticleDrawCommand = 28,
+				TerrainProbes = 29,
+				SdfVolumes = 44,
+				LiveParticleIndices = 33,
+				BehaviorDrawCommand = 34,
+				GrassInstances = 35,
+				GrassIndirect = 36,
+				WeatherGridA = 37,
+				WeatherGridB = 38,
+				DecorIndirect = 39,
+				DecorBlockValidity = 40,
+				MeshExplosionFragments = 41,
+				TrailGeneratedVBO = 42,
+				AtmosphereSH = 43,
+			};
+		} // namespace Bindings
+
 		namespace UboBinding {
 			consteval int Lighting() {
-				return 0;
+				return std::to_underlying(Constants::Bindings::Ubo::Lighting);
 			}
 
 			consteval int VisualEffects() {
-				return 1;
+				return std::to_underlying(Constants::Bindings::Ubo::VisualEffects);
 			}
 
 			consteval int Shadows() {
-				return 2;
+				return std::to_underlying(Constants::Bindings::Ubo::Shadows);
 			}
 
 			consteval int FrustumData() {
-				return 3;
+				return std::to_underlying(Constants::Bindings::Ubo::FrustumData);
 			}
 
 			consteval int Shockwaves() {
-				return 4;
+				return std::to_underlying(Constants::Bindings::Ubo::Shockwaves);
 			}
 
 			consteval int TemporalData() {
-				return 6;
+				return std::to_underlying(Constants::Bindings::Ubo::TemporalData);
 			}
 
 			consteval int Biomes() {
-				return 7;
+				return std::to_underlying(Constants::Bindings::Ubo::Biomes);
 			}
 
 			consteval int TerrainData() {
-				return 8;
+				return std::to_underlying(Constants::Bindings::Ubo::TerrainData);
 			}
 
 			consteval int WeatherUniforms() {
-				return 32;
+				return std::to_underlying(Constants::Bindings::Ubo::WeatherUniforms);
 			}
 
 			consteval int GrassProps() {
-				return 9;
+				return std::to_underlying(Constants::Bindings::Ubo::GrassProps);
 			}
 
 			consteval int DecorProps() {
-				return 30;
+				return std::to_underlying(Constants::Bindings::Ubo::DecorProps);
 			}
 
 			consteval int DecorPlacementGlobals() {
-				return 31;
+				return std::to_underlying(Constants::Bindings::Ubo::DecorPlacementGlobals);
 			}
 
 			consteval int WindData() {
-				return 45;
+				return std::to_underlying(Constants::Bindings::Ubo::WindData);
 			}
 		} // namespace UboBinding
 
 		namespace TextureUnit {
 			consteval int ShadowMaps() {
-				return 10;
+				return std::to_underlying(Constants::Bindings::Texture::ShadowMaps);
 			}
+
 			consteval int TerrainChunkGrid() {
-				return 11;
+				return std::to_underlying(Constants::Bindings::Texture::TerrainChunkGrid);
 			}
+
 			consteval int TerrainMaxHeight() {
-				return 12;
+				return std::to_underlying(Constants::Bindings::Texture::TerrainMaxHeight);
 			}
+
 			consteval int TerrainHeightmap() {
-				return 13;
+				return std::to_underlying(Constants::Bindings::Texture::TerrainHeightmap);
 			}
+
 			consteval int TerrainBiomeMap() {
-				return 14;
+				return std::to_underlying(Constants::Bindings::Texture::TerrainBiomeMap);
 			}
+
 			consteval int Refraction() {
-				return 15;
+				return std::to_underlying(Constants::Bindings::Texture::Refraction);
 			}
+
 			consteval int NoiseSimplex() {
-				return 16;
+				return std::to_underlying(Constants::Bindings::Texture::NoiseSimplex);
 			}
+
 			consteval int NoiseCurl() {
-				return 17;
+				return std::to_underlying(Constants::Bindings::Texture::NoiseCurl);
 			}
+
 			consteval int NoiseBlue() {
-				return 18;
+				return std::to_underlying(Constants::Bindings::Texture::NoiseBlue);
 			}
+
 			consteval int NoiseExtra() {
-				return 19;
+				return std::to_underlying(Constants::Bindings::Texture::NoiseExtra);
 			}
+
 			consteval int NoisePhasor() {
-				return 20;
+				return std::to_underlying(Constants::Bindings::Texture::NoisePhasor);
 			}
+
 			consteval int AtmosphereTransmittance() {
-				return 21;
+				return std::to_underlying(Constants::Bindings::Texture::AtmosphereTransmittance);
 			}
+
 			consteval int AtmosphereMultiScattering() {
-				return 22;
+				return std::to_underlying(Constants::Bindings::Texture::AtmosphereMultiScattering);
 			}
+
 			consteval int AtmosphereSkyView() {
-				return 23;
+				return std::to_underlying(Constants::Bindings::Texture::AtmosphereSkyView);
 			}
+
 			consteval int AtmosphereAerialPerspective() {
-				return 24;
+				return std::to_underlying(Constants::Bindings::Texture::AtmosphereAerialPerspective);
 			}
+
 			consteval int AtmosphereCloudShadow() {
-				return 25;
+				return std::to_underlying(Constants::Bindings::Texture::AtmosphereCloudShadow);
 			}
+
 			consteval int WindData() {
-				return 26;
+				return std::to_underlying(Constants::Bindings::Texture::WindData);
 			}
+
 			consteval int HiZ() {
-				return 27;
+				return std::to_underlying(Constants::Bindings::Texture::HiZ);
 			}
+
 			consteval int TerrainBakedParams() {
-				return 28;
+				return std::to_underlying(Constants::Bindings::Texture::TerrainBakedParams);
 			}
+
 			consteval int TerrainRawHeightmap() {
-				return 29;
+				return std::to_underlying(Constants::Bindings::Texture::TerrainRawHeightmap);
 			}
+
 			consteval int TerrainBiomeImage() {
-				return 30;
+				return std::to_underlying(Constants::Bindings::Texture::TerrainBiomeImage);
 			}
+
 			consteval int TerrainHeightmapImage() {
-				return 31;
+				return std::to_underlying(Constants::Bindings::Texture::TerrainHeightmapImage);
 			}
+
 			consteval int TerrainBakedParamsImage() {
-				return 32;
+				return std::to_underlying(Constants::Bindings::Texture::TerrainBakedParamsImage);
 			}
+
 			consteval int TerrainHorizonMap() {
-				return 33;
+				return std::to_underlying(Constants::Bindings::Texture::TerrainHorizonMap);
 			}
+
 			consteval int TerrainShadowMap() {
-				return 35;
+				return std::to_underlying(Constants::Bindings::Texture::TerrainShadowMap);
 			}
+
 			consteval int TerrainShadowMapImage() {
-				return 36;
+				return std::to_underlying(Constants::Bindings::Texture::TerrainShadowMapImage);
 			}
 		} // namespace TextureUnit
 
 		namespace SsboBinding {
 			consteval int DecorInstances() {
-				return 10;
+				return std::to_underlying(Constants::Bindings::Ssbo::DecorInstances);
 			}
 
 			consteval int AutoExposure() {
-				return 11;
+				return std::to_underlying(Constants::Bindings::Ssbo::AutoExposure);
 			}
 
 			consteval int BoneMatrix() {
-				return 12;
+				return std::to_underlying(Constants::Bindings::Ssbo::BoneMatrix);
 			}
 
 			consteval int OcclusionVisibility() {
-				return 13;
+				return std::to_underlying(Constants::Bindings::Ssbo::OcclusionVisibility);
 			}
 
 			consteval int ParticleGridHeads() {
-				return 14;
+				return std::to_underlying(Constants::Bindings::Ssbo::ParticleGridHeads);
 			}
 
 			consteval int ParticleGridNext() {
-				return 15;
+				return std::to_underlying(Constants::Bindings::Ssbo::ParticleGridNext);
 			}
 
 			consteval int ParticleBuffer() {
-				return 16;
+				return std::to_underlying(Constants::Bindings::Ssbo::ParticleBuffer);
 			}
 
 			consteval int IndirectionBuffer() {
-				return 17;
+				return std::to_underlying(Constants::Bindings::Ssbo::IndirectionBuffer);
 			}
 
 			consteval int TrailPoints() {
-				return 18;
+				return std::to_underlying(Constants::Bindings::Ssbo::TrailPoints);
 			}
 
 			consteval int TrailInstances() {
-				return 19;
+				return std::to_underlying(Constants::Bindings::Ssbo::TrailInstances);
 			}
 
 			consteval int TrailSpineData() {
-				return 20;
+				return std::to_underlying(Constants::Bindings::Ssbo::TrailSpineData);
 			}
 
 			consteval int CommonUniforms() {
-				return 21;
+				return std::to_underlying(Constants::Bindings::Ssbo::CommonUniforms);
 			}
 
 			consteval int EmitterBuffer() {
-				return 22;
+				return std::to_underlying(Constants::Bindings::Ssbo::EmitterBuffer);
 			}
 
 			consteval int TerrainChunkInfo() {
-				return 23;
+				return std::to_underlying(Constants::Bindings::Ssbo::TerrainChunkInfo);
 			}
 
 			consteval int SliceData() {
-				return 24;
+				return std::to_underlying(Constants::Bindings::Ssbo::SliceData);
 			}
 
 			consteval int DecorAllInstances() {
-				return 25;
+				return std::to_underlying(Constants::Bindings::Ssbo::DecorAllInstances);
 			}
 
 			consteval int DecorChunkParams() {
-				return 26;
+				return std::to_underlying(Constants::Bindings::Ssbo::DecorChunkParams);
 			}
 
 			consteval int VisibleParticleIndices() {
-				return 27;
+				return std::to_underlying(Constants::Bindings::Ssbo::VisibleParticleIndices);
 			}
 
 			consteval int ParticleDrawCommand() {
-				return 28;
+				return std::to_underlying(Constants::Bindings::Ssbo::ParticleDrawCommand);
 			}
 
 			consteval int TerrainProbes() {
-				return 29;
+				return std::to_underlying(Constants::Bindings::Ssbo::TerrainProbes);
 			}
 
 			consteval int SdfVolumes() {
-				return 44;
+				return std::to_underlying(Constants::Bindings::Ssbo::SdfVolumes);
 			}
 
 			consteval int LiveParticleIndices() {
-				return 33;
+				return std::to_underlying(Constants::Bindings::Ssbo::LiveParticleIndices);
 			}
 
 			consteval int BehaviorDrawCommand() {
-				return 34;
+				return std::to_underlying(Constants::Bindings::Ssbo::BehaviorDrawCommand);
 			}
 
 			consteval int GrassInstances() {
-				return 35;
+				return std::to_underlying(Constants::Bindings::Ssbo::GrassInstances);
 			}
 
 			consteval int GrassIndirect() {
-				return 36;
+				return std::to_underlying(Constants::Bindings::Ssbo::GrassIndirect);
 			}
 
 			consteval int WeatherGridA() {
-				return 37;
+				return std::to_underlying(Constants::Bindings::Ssbo::WeatherGridA);
 			}
 
 			consteval int WeatherGridB() {
-				return 38;
+				return std::to_underlying(Constants::Bindings::Ssbo::WeatherGridB);
 			}
 
 			consteval int DecorIndirect() {
-				return 39;
+				return std::to_underlying(Constants::Bindings::Ssbo::DecorIndirect);
 			}
 
 			consteval int DecorBlockValidity() {
-				return 40;
+				return std::to_underlying(Constants::Bindings::Ssbo::DecorBlockValidity);
 			}
 
 			consteval int MeshExplosionFragments() {
-				return 41;
+				return std::to_underlying(Constants::Bindings::Ssbo::MeshExplosionFragments);
 			}
 
 			consteval int TrailGeneratedVBO() {
-				return 42;
+				return std::to_underlying(Constants::Bindings::Ssbo::TrailGeneratedVBO);
 			}
 
 			consteval int AtmosphereSH() {
-				return 43;
+				return std::to_underlying(Constants::Bindings::Ssbo::AtmosphereSH);
 			}
 		} // namespace SsboBinding
 
@@ -736,21 +845,65 @@ namespace Boidsish {
 				}
 
 				namespace Colors {
-					consteval float GoldR() { return 1.0f; }
-					consteval float GoldG() { return 0.84f; }
-					consteval float GoldB() { return 0.0f; }
-					consteval float SilverR() { return 0.75f; }
-					consteval float SilverG() { return 0.75f; }
-					consteval float SilverB() { return 0.75f; }
-					consteval float BlackR() { return 0.01f; }
-					consteval float BlackG() { return 0.01f; }
-					consteval float BlackB() { return 0.01f; }
-					consteval float BlueR() { return 0.0f; }
-					consteval float BlueG() { return 0.5f; }
-					consteval float BlueB() { return 1.0f; }
-					consteval float NeonGreenR() { return 0.2f; }
-					consteval float NeonGreenG() { return 1.0f; }
-					consteval float NeonGreenB() { return 0.2f; }
+					consteval float GoldR() {
+						return 1.0f;
+					}
+
+					consteval float GoldG() {
+						return 0.84f;
+					}
+
+					consteval float GoldB() {
+						return 0.0f;
+					}
+
+					consteval float SilverR() {
+						return 0.75f;
+					}
+
+					consteval float SilverG() {
+						return 0.75f;
+					}
+
+					consteval float SilverB() {
+						return 0.75f;
+					}
+
+					consteval float BlackR() {
+						return 0.01f;
+					}
+
+					consteval float BlackG() {
+						return 0.01f;
+					}
+
+					consteval float BlackB() {
+						return 0.01f;
+					}
+
+					consteval float BlueR() {
+						return 0.0f;
+					}
+
+					consteval float BlueG() {
+						return 0.5f;
+					}
+
+					consteval float BlueB() {
+						return 1.0f;
+					}
+
+					consteval float NeonGreenR() {
+						return 0.2f;
+					}
+
+					consteval float NeonGreenG() {
+						return 1.0f;
+					}
+
+					consteval float NeonGreenB() {
+						return 0.2f;
+					}
 
 					consteval glm::vec3 Gold() {
 						return glm::vec3(GoldR(), GoldG(), GoldB());
