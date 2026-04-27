@@ -148,22 +148,18 @@ void main() {
     // Normalized linear interpolation (nlerp) of the directions
     vec2 finalDir = normalize(mix(origDir, camDir, billboardWeight));
 
-    // Reconstruct sine and cosine
-    float c = finalDir.y;
-    float s = finalDir.x;
-    mat2 rotMat = mat2(c, s, -s, c);
+    vec2 forward = finalDir;
+    vec2 right = vec2(forward.y, -forward.x); // 2D cross product ensures perpendicularity
 
-    // Horizontal offset across the blade
-    vec2 localXZ = vec2(u * width * 0.5 * mix(1.0, 0.10, v * v), 0.0); // Parabolic taper
-    localXZ = rotMat * localXZ;
+    float currentWidth = u * width * 0.5 * mix(1.0, 0.10, v * v);
+    vec2 localXZ = right * currentWidth;
 
     // Final World Position
     vec3 pos = basePos + bentRelativePos;
     pos.xz += localXZ;
 
-    // Rounded Normals across the width
-    vec3 faceNormal = normalize(vec3(-s, 0.0, c));
-    vec3 sideVec = normalize(vec3(c, 0.0, s));
+    vec3 faceNormal = vec3(forward.x, 0.0, forward.y);
+    vec3 sideVec = vec3(right.x, 0.0, right.y);
     fNormal = normalize(faceNormal + sideVec * u * 0.8 + vec3(0.0, v * 0.3, 0.0));
 
     fTexCoords = vec2(u * 0.5 + 0.5, v);
