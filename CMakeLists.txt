@@ -26,6 +26,11 @@ if(ENABLE_PROFILING)
     add_definitions(-DPROFILING_ENABLED)
 endif()
 
+option(BOIDSISH_USE_SPIRV "Compile and use SPIR-V shaders" OFF)
+if(BOIDSISH_USE_SPIRV)
+    add_definitions(-DBOIDSISH_USE_SPIRV)
+endif()
+
 set(IMGUI_DIR external/imgui)
 set(STB_DIR "${CMAKE_SOURCE_DIR}/external/stb")
 
@@ -271,13 +276,24 @@ if(GLSLANG_VALIDATOR_EXE)
             COMMENT "Preprocessing shader ${REL_SHADER}"
         )
 
-        add_custom_command(
-            OUTPUT ${STAMP_FILE}
-            COMMAND ${GLSLANG_VALIDATOR_EXE} ${PREPROCESSED_FILE}
-            COMMAND ${CMAKE_COMMAND} -E touch ${STAMP_FILE}
-            DEPENDS ${PREPROCESSED_FILE}
-            COMMENT "Validating shader ${REL_SHADER}"
-        )
+        if(BOIDSISH_USE_SPIRV)
+            set(SPV_FILE "${PREPROCESSED_FILE}.spv")
+            add_custom_command(
+                OUTPUT ${STAMP_FILE} ${SPV_FILE}
+                COMMAND ${GLSLANG_VALIDATOR_EXE} -G --auto-map-locations --auto-map-bindings ${PREPROCESSED_FILE} -o ${SPV_FILE}
+                COMMAND ${CMAKE_COMMAND} -E touch ${STAMP_FILE}
+                DEPENDS ${PREPROCESSED_FILE}
+                COMMENT "Compiling shader ${REL_SHADER} to SPIR-V"
+            )
+        else()
+            add_custom_command(
+                OUTPUT ${STAMP_FILE}
+                COMMAND ${GLSLANG_VALIDATOR_EXE} ${PREPROCESSED_FILE}
+                COMMAND ${CMAKE_COMMAND} -E touch ${STAMP_FILE}
+                DEPENDS ${PREPROCESSED_FILE}
+                COMMENT "Validating shader ${REL_SHADER}"
+            )
+        endif()
 
         list(APPEND VALIDATION_OUTPUTS ${STAMP_FILE})
     endforeach()

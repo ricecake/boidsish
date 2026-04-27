@@ -1,4 +1,5 @@
-#version 430 core
+#version 450 core
+#extension GL_ARB_shader_draw_parameters : enable
 layout(location = 0) in vec3 aPos;
 
 out vec3 WorldPos;

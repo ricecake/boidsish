@@ -1,4 +1,5 @@
-#version 420 core
+#version 450 core
+#extension GL_ARB_shader_draw_parameters : enable
 
 // Per-vertex attributes (from flat grid mesh)
 layout(location = 0) in vec3 aPos;       // Flat grid position (x, 0, z) in [0, chunk_size]
