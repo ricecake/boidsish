@@ -220,11 +220,11 @@ namespace Boidsish {
 		shader_->setInt("sceneTexture", 0);
 		shader_->setInt("depthTexture", 1);
 		shader_->setInt("historyTexture", 2);
-		shader_->setVec2("screenSize", glm::vec2(width_, height_));
-		shader_->setVec3("cameraPos", frame.camera_pos);
-		shader_->setMat4("invView", frame.inv_view);
-		shader_->setMat4("invProjection", glm::inverse(frame.projection));
-		shader_->setFloat("time", frame.simulation_time);
+		shader_->setVec2("u_sdfScreenSize", glm::vec2(width_, height_));
+		shader_->setVec3("u_sdfCamPos", frame.camera_pos);
+		shader_->setMat4("u_sdfInvView", frame.inv_view);
+		shader_->setMat4("u_sdfInvProjection", glm::inverse(frame.projection));
+		shader_->setFloat("u_sdfTime", frame.simulation_time);
 
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, sceneTexture);
@@ -250,7 +250,40 @@ namespace Boidsish {
 			glBindTexture(GL_TEXTURE_3D, extra_noise_tex_);
 		}
 
+		if (wind_tex_) {
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::WindData());
+			glBindTexture(GL_TEXTURE_2D, wind_tex_);
+			shader_->trySetInt("u_windTexture", Constants::TextureUnit::WindData());
+		}
+
+		if (weather_scalars_tex_) {
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::WeatherScalars());
+			glBindTexture(GL_TEXTURE_2D, weather_scalars_tex_);
+			shader_->trySetInt("u_weatherScalars", Constants::TextureUnit::WeatherScalars());
+		}
+
+		if (wind_ubo_) {
+			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::WindData(), wind_ubo_);
+		}
+
 		manager_.BindSSBO(Constants::SsboBinding::SdfVolumes());
+
+		if (particle_buffer_) {
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleBuffer(), particle_buffer_);
+		}
+		if (emitter_buffer_) {
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::EmitterBuffer(), emitter_buffer_);
+		}
+		if (grid_heads_buffer_) {
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleGridHeads(), grid_heads_buffer_);
+		}
+		if (grid_next_buffer_) {
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleGridNext(), grid_next_buffer_);
+		}
+
+		if (lighting_ubo_) {
+			glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::Lighting(), lighting_ubo_, lighting_offset_, lighting_size_);
+		}
 
 		glDisable(GL_DEPTH_TEST);
 		glDepthMask(GL_FALSE);

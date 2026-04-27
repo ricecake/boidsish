@@ -45,11 +45,11 @@ namespace Boidsish {
 			SdfSourceGPU data;
 			data.position_radius = glm::vec4(source.position, source.radius);
 			data.color_smoothness = glm::vec4(source.color, source.smoothness);
-			data.charge_type_vol_unused = glm::vec4(
-				source.charge,
-				static_cast<float>(source.type),
-				source.volumetric ? 1.0f : 0.0f,
-				source.normalized_time
+			data.high_sub_flags_charge = glm::vec4(
+				static_cast<float>(source.high_type),
+				static_cast<float>(source.sub_type),
+				static_cast<float>(source.flags),
+				source.charge
 			);
 			data.volumetric_params = glm::vec4(
 				source.density,
@@ -57,8 +57,10 @@ namespace Boidsish {
 				source.noise_scale,
 				source.noise_intensity
 			);
-			data.color_inner = glm::vec4(source.color_inner, source.emission);
-			data.color_outer = glm::vec4(source.color_outer, source.ground_y);
+			data.color_inner_emission = glm::vec4(source.color_inner, source.emission);
+			data.color_outer_ground = glm::vec4(source.color_outer, source.ground_y);
+			data.extra_params = source.extra_params;
+			data.time_unused = glm::vec4(source.normalized_time, 0.0f, 0.0f, 0.0f);
 			gpu_data.push_back(data);
 		}
 

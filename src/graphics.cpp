@@ -2783,6 +2783,28 @@ namespace Boidsish {
 					? post_processing_manager_->GetCurrentFBO()
 					: compositor_->GetMainFBO();
 
+				if (weather_manager) {
+					sdf_volume_pass_->SetEnvironmentTextures(
+						weather_manager->GetWindTexture(),
+						weather_manager->GetWeatherScalarTexture(),
+						weather_manager->GetWindUbo()
+					);
+				}
+				if (fire_effect_manager) {
+					sdf_volume_pass_->SetParticleBuffers(
+						fire_effect_manager->GetParticleBuffer(),
+						fire_effect_manager->GetEmitterBuffer(),
+						fire_effect_manager->GetGridHeadsBuffer(),
+						fire_effect_manager->GetGridNextBuffer()
+					);
+				}
+
+				sdf_volume_pass_->SetLightingBuffer(
+					render_state_.lighting.id,
+					render_state_.lighting.offset,
+					render_state_.lighting.size
+				);
+
 				glBindVertexArray(blur_quad_vao);
 				sdf_volume_pass_->Execute(frame, scene_tex, depth_tex, target_fbo);
 				glBindVertexArray(0);
@@ -4686,6 +4708,35 @@ namespace Boidsish {
 		return effect;
 	}
 
+	int Visualizer::AddSdfEnvironmentalWind() {
+		SdfSource source;
+		source.high_type = SdfHighType::Environmental;
+		source.sub_type = 0; // Wind
+		source.flags = 1; // Refraction
+		source.color_inner = glm::vec3(0.8f, 0.9f, 1.0f);
+		return AddSdfSource(source);
+	}
+
+	int Visualizer::AddSdfEnvironmentalBubbles() {
+		SdfSource source;
+		source.high_type = SdfHighType::Environmental;
+		source.sub_type = 1; // Bubbles
+		source.flags = 1; // Refraction
+		return AddSdfSource(source);
+	}
+
+	int Visualizer::AddSdfSolidSphere(const glm::vec3& position, float radius, const glm::vec3& color) {
+		SdfSource source;
+		source.high_type = SdfHighType::Solid;
+		source.sub_type = 0; // Sphere
+		source.position = position;
+		source.radius = radius;
+		source.color = color;
+		source.smoothness = 1.0f;
+		source.charge = 1.0f;
+		return AddSdfSource(source);
+	}
+
 	void Visualizer::TriggerSdfExplosion(const glm::vec3& position, float intensity) {
 		SdfSource source;
 		source.position = position;
@@ -4693,9 +4744,10 @@ namespace Boidsish {
 		source.color = glm::vec3(1.0f, 0.6f, 0.15f);
 		source.smoothness = 3.0f;
 		source.charge = 1.0f;
-		source.type = 0;
+		source.high_type = SdfHighType::Volumetric;
+		source.sub_type = 1; // Mushroom/Explosion
+		source.flags = 1; // Refractive
 
-		source.volumetric = true;
 		source.density = 1.5f * intensity;
 		source.absorption = 0.8f;
 		source.noise_scale = 0.15f;
