@@ -12,20 +12,31 @@
  */
 class Preprocessor : public ShaderBase {
 public:
-    std::string process(const std::string& path) {
-        std::set<std::string> includedFiles;
+    std::string process(const std::string& path, std::set<std::string>& includedFiles) {
         return loadShaderSource(path, includedFiles);
     }
 };
 
 int main(int argc, char** argv) {
-    if (argc < 3) {
-        std::cerr << "Usage: " << argv[0] << " <input_shader> <output_file>" << std::endl;
-        return 1;
+    std::string inputPath;
+    std::string outputPath;
+    std::string depfilePath;
+
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        if (arg == "--depfile" && i + 1 < argc) {
+            depfilePath = argv[++i];
+        } else if (inputPath.empty()) {
+            inputPath = arg;
+        } else if (outputPath.empty()) {
+            outputPath = arg;
+        }
     }
 
-    std::string inputPath = argv[1];
-    std::string outputPath = argv[2];
+    if (inputPath.empty() || outputPath.empty()) {
+        std::cerr << "Usage: " << argv[0] << " [--depfile <depfile>] <input_shader> <output_file>" << std::endl;
+        return 1;
+    }
 
     // Register constants (synchronized with src/graphics.cpp)
     ShaderBase::RegisterConstant("MAX_LIGHTS", Boidsish::Constants::Class::Shadows::MaxLights());
@@ -36,7 +47,8 @@ int main(int argc, char** argv) {
     ShaderBase::RegisterConstant("MAX_SHOCKWAVES", Boidsish::Constants::Class::Shockwaves::MaxShockwaves());
 
     Preprocessor p;
-    std::string processed = p.process(inputPath);
+    std::set<std::string> includedFiles;
+    std::string processed = p.process(inputPath, includedFiles);
 
     if (processed.empty()) {
         std::cerr << "Error: Failed to preprocess " << inputPath << std::endl;
@@ -56,6 +68,22 @@ int main(int argc, char** argv) {
     }
     out << processed;
     out.close();
+
+    // Write dependency file if requested
+    if (!depfilePath.empty()) {
+        std::ofstream dep(depfilePath);
+        if (dep.is_open()) {
+            dep << outputPath << ":";
+            for (const auto& file : includedFiles) {
+                // The input file itself is also a dependency
+                dep << " " << file;
+            }
+            dep << std::endl;
+            dep.close();
+        } else {
+            std::cerr << "Warning: Failed to open depfile " << depfilePath << std::endl;
+        }
+    }
 
     return 0;
 }
