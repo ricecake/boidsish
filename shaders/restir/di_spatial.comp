@@ -1,0 +1,129 @@
+#version 430 core
+#extension GL_GOOGLE_include_directive : enable
+layout(local_size_x = 8, local_size_y = 8) in;
+
+#define TEMPORAL_DATA_DEFINED
+#include "restir_common.glsl"
+#include "../helpers/fast_noise.glsl"
+
+layout(std430, binding = [[RESTIR_RESERVOIRS0_BINDING]]) buffer NewReservoirs {
+    Reservoir new_reservoirs[];
+};
+
+layout(std430, binding = [[RESTIR_RESERVOIRS1_BINDING]]) buffer OldReservoirs {
+    Reservoir old_reservoirs[];
+};
+
+uniform sampler2D gDepth;
+uniform sampler2D gNormal;
+uniform sampler2D gVelocity;
+uniform sampler2DArray u_permutationTexture;
+uniform int u_spatial_radius = 4;
+uniform int u_spatial_samples = 4;
+
+float pcg_hash(uint seed) {
+    uint state = seed * 747796405u + 2891336453u;
+    uint word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+    return float((word >> 22u) ^ word) / 4294967295.0;
+}
+
+vec3 getViewPos(vec2 uv, float depth) {
+	vec4 clipPos = vec4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
+	vec4 viewPos = invProjection * clipPos;
+	return viewPos.xyz / viewPos.w;
+}
+
+void main() {
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = textureSize(gDepth, 0);
+    if (pixel.x >= size.x || pixel.y >= size.y) return;
+
+    uint reservoir_idx = pixel.y * size.x + pixel.x;
+    vec2 uv = (vec2(pixel) + 0.5) / vec2(size);
+    float depth = texture(gDepth, uv).r;
+
+    if (depth >= 1.0) return;
+
+    // Initialize current reservoir from the temporal pass result (stored in old_reservoirs)
+    Reservoir current = old_reservoirs[reservoir_idx];
+    vec3 vNorm = normalize(texture(gNormal, uv).xyz);
+    vec3 vPos = getViewPos(uv, depth);
+    float roughness = texture(gVelocity, uv).b;
+    vec3 worldPos = (invView * vec4(vPos, 1.0)).xyz;
+    vec3 worldNorm = normalize(mat3(invView) * vNorm);
+
+    uint seed = uint(pixel.y * size.x + pixel.x) ^ hash(uint(frameIndex) + 200u);
+
+    // 1. VRAM-based spatial reuse (for large radius)
+    float rotation = pcg_hash(seed++) * 2.0 * PI;
+    float cosRot = cos(rotation);
+    float sinRot = sin(rotation);
+
+    for (int i = 0; i < u_spatial_samples; i++) {
+        float r_val = pcg_hash(seed++);
+        float angle = (float(i) / float(u_spatial_samples)) * 2.0 * PI;
+        float dist = sqrt(r_val) * float(u_spatial_radius);
+
+        vec2 rawOffset = vec2(cos(angle), sin(angle)) * dist;
+        vec2 rotatedOffset = vec2(
+            rawOffset.x * cosRot - rawOffset.y * sinRot,
+            rawOffset.x * sinRot + rawOffset.y * cosRot
+        );
+
+        ivec2 neighborPixel = pixel + ivec2(rotatedOffset);
+
+        if (neighborPixel.x >= 0 && neighborPixel.x < size.x && neighborPixel.y >= 0 && neighborPixel.y < size.y) {
+            uint neighbor_idx = neighborPixel.y * size.x + neighborPixel.x;
+            Reservoir neighbor = old_reservoirs[neighbor_idx];
+
+            vec2 neighborUV = (vec2(neighborPixel) + 0.5) / vec2(size);
+            float neighborDepth = texture(gDepth, neighborUV).r;
+            vec3 neighborNorm = normalize(texture(gNormal, neighborUV).xyz);
+            float neighborRoughness = texture(gVelocity, neighborUV).b;
+
+            if (restirGeometryCheck(depth, vNorm, roughness, neighborDepth, neighborNorm, neighborRoughness)) {
+                float p_hat = targetFunction(worldPos, worldNorm, getLightData(neighbor.light_index));
+                float weight = p_hat * neighbor.W * neighbor.m;
+                updateReservoir(current, neighbor.light_index, weight, pcg_hash(seed++));
+                current.m += neighbor.m;
+            }
+        }
+    }
+
+    // 2. Reciprocal Neighbor Selection using permutation texture array
+    // This mathematically guarantees if A targets B, B targets A.
+    vec2 permUV = (vec2(pixel) + 0.5) / 128.0;
+    vec3 permCoords = vec3(permUV, float(frameIndex % 16));
+    vec2 perm = texture(u_permutationTexture, permCoords).rg * 127.0;
+    ivec2 offset = ivec2(int(round(perm.x)), int(round(perm.y)));
+
+    ivec2 neighborPixel = pixel + offset;
+    if (neighborPixel.x >= 0 && neighborPixel.x < size.x && neighborPixel.y >= 0 && neighborPixel.y < size.y) {
+        uint neighbor_idx = neighborPixel.y * size.x + neighborPixel.x;
+        Reservoir neighbor = old_reservoirs[neighbor_idx];
+
+        vec2 neighborUV = (vec2(neighborPixel) + 0.5) / vec2(size);
+        float neighborDepth = texture(gDepth, neighborUV).r;
+        vec3 neighborNorm = normalize(texture(gNormal, neighborUV).xyz);
+        float neighborRoughness = texture(gVelocity, neighborUV).b;
+
+        if (restirGeometryCheck(depth, vNorm, roughness, neighborDepth, neighborNorm, neighborRoughness)) {
+            LightData ld = getLightData(neighbor.light_index);
+            vec3 targetView = (view * vec4(ld.position, 1.0)).xyz;
+
+            // Visibility check for spatial candidate
+            if (checkVisibility(vPos, targetView, gDepth)) {
+                float p_hat = targetFunction(worldPos, worldNorm, ld);
+                float weight = p_hat * neighbor.W * neighbor.m;
+                updateReservoir(current, neighbor.light_index, weight, pcg_hash(seed++));
+                current.m += neighbor.m;
+            }
+        }
+    }
+
+    float p_hat_final = targetFunction(worldPos, worldNorm, getLightData(current.light_index));
+    current.W = safeDiv(current.w_sum, current.m * p_hat_final);
+    current.W = clamp(current.W, 0.0, 100.0);
+
+    new_reservoirs[reservoir_idx] = current;
+}

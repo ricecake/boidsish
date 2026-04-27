@@ -55,6 +55,9 @@ namespace Boidsish {
 			void  SetSSGIRoughnessFactor(float factor) { ssgi_roughness_factor_ = factor; }
 			float GetSSGIRoughnessFactor() const { return ssgi_roughness_factor_; }
 
+			void  SetRestirDIIntensity(float intensity) { restir_di_intensity_ = intensity; }
+			float GetRestirDIIntensity() const { return restir_di_intensity_; }
+
 			// GTAO Parameters
 			void  SetGTAOIntensity(float intensity) { gtao_intensity_ = intensity; }
 			float GetGTAOIntensity() const { return gtao_intensity_; }
@@ -90,6 +93,11 @@ namespace Boidsish {
 			void SetBlueNoiseTexture(GLuint blueNoise) { blue_noise_texture_ = blueNoise; }
 			void SetHiZTexture(GLuint hiz, int mips) { hiz_texture_ = hiz; hiz_mips_ = mips; }
 
+			void SetRestirDIReservoir(GLuint buffer) { di_reservoir_buffer_ = buffer; }
+			void SetRestirGIReservoir(GLuint buffer) { gi_reservoir_buffer_ = buffer; }
+			void SetLightCounts(int numLights, int numFire) { num_lights_ = numLights; num_fire_particles_ = numFire; }
+			void SetLightBuffers(GLuint allLights, GLuint particles) { all_lights_ssbo_ = allLights; particle_buffer_ = particles; }
+
 			GLuint GetShadowMaskTexture() const { return sss_accumulator_.GetResult(); }
 
 		private:
@@ -104,6 +112,12 @@ namespace Boidsish {
 			GLuint sss_texture_ = 0;
 			GLuint blue_noise_texture_ = 0;
 			GLuint hiz_texture_ = 0;
+			GLuint di_reservoir_buffer_ = 0;
+			GLuint gi_reservoir_buffer_ = 0;
+			GLuint all_lights_ssbo_ = 0;
+			GLuint particle_buffer_ = 0;
+			int    num_lights_ = 0;
+			int    num_fire_particles_ = 0;
 			int    hiz_mips_ = 0;
 			int    width_ = 0, height_ = 0;
 			int    internal_width_ = 0, internal_height_ = 0;
@@ -122,6 +136,7 @@ namespace Boidsish {
 			int   ssgi_ray_count_ = 2;
 			float ssgi_reflection_intensity_ = 1.0f;
 			float ssgi_roughness_factor_ = 1.0f;
+			float restir_di_intensity_ = 1.0f;
 
 			// GTAO
 			float gtao_intensity_ = 0.5f;

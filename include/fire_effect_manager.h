@@ -96,6 +96,10 @@ namespace Boidsish {
 		void _EnsureShaderAndBuffers();
 		void _UpdateParticleAllocation();
 
+	public:
+		GLuint GetParticleBuffer() const { return particle_buffer_; }
+
+	private:
 		std::vector<std::shared_ptr<FireEffect>> effects_;
 		std::vector<int>                         particle_to_emitter_map_;
 		mutable std::mutex                       mutex_;

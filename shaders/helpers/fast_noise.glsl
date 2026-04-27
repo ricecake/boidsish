@@ -86,6 +86,14 @@ float fastBlueNoise(vec2 uv) {
 	return texture(u_blueNoiseTexture, uv).r;
 }
 
+// Spatiotemporal Blue Noise lookup using golden ratio shift
+// Useful for Monte Carlo integration across frames
+float fastSpatiotemporalBlueNoise(vec2 uv, int frequencyIndex, int frameIndex) {
+    float bn = fastBlueNoise(uv, frequencyIndex);
+    // Golden ratio = 0.61803398875
+    return fract(bn + float(frameIndex) * 0.61803398875);
+}
+
 /**
  * Fast 2D Phasor noise lookup.
  * Performs complex multiplication of baked phasor with runtime phase.

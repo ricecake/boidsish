@@ -55,6 +55,7 @@
 #include "profiler.h"
 #include "render_passes.h"
 #include "render_queue.h"
+#include "RestirManager.h"
 #include "scene_compositor.h"
 #include "sdf_volume_manager.h"
 #include "shape.h"
@@ -379,6 +380,7 @@ namespace Boidsish {
 		std::shared_ptr<ShockwaveManager>                 shockwave_manager;
 		std::shared_ptr<AkiraEffectManager>               akira_effect_manager;
 		std::shared_ptr<SdfVolumeManager>                 sdf_volume_manager;
+		std::shared_ptr<RestirManager>                    restir_manager;
 		std::shared_ptr<ShadowManager>                    shadow_manager;
 		std::shared_ptr<AtmosphereManager>                atmosphere_manager;
 		std::shared_ptr<PostProcessing::AtmosphereEffect> atmosphere_effect;
@@ -564,6 +566,7 @@ namespace Boidsish {
 			service_locator_.Register<ShockwaveManager>();
 			service_locator_.Register<AkiraEffectManager>();
 			service_locator_.Register<SdfVolumeManager>();
+			service_locator_.Register<RestirManager>();
 			service_locator_.Register<SoundEffectManager>();
 			service_locator_.Register<TrailRenderManager>();
 
@@ -801,6 +804,8 @@ namespace Boidsish {
 			SetupAkiraBindings();
 			sdf_volume_manager = service_locator_.Get<SdfVolumeManager>();
 			sdf_volume_manager->Initialize();
+			restir_manager = service_locator_.Get<RestirManager>();
+			restir_manager->Initialize();
 			shadow_manager = service_locator_.Get<ShadowManager>();
 			scene_manager = service_locator_.Get<SceneManager>();
 			decor_manager = service_locator_.Get<DecorManager>();
@@ -2585,6 +2590,7 @@ namespace Boidsish {
 			}
 			sdf_volume_manager->UpdateSSBO();
 			sdf_volume_manager->BindSSBO(Constants::SsboBinding::SdfVolumes());
+			restir_manager->Update(render_width, render_height, simulation_time);
 			shockwave_manager->UpdateShaderData();
 			shockwave_manager->BindUBO(Constants::UboBinding::Shockwaves());
 
@@ -2755,9 +2761,29 @@ namespace Boidsish {
 						for (auto& effect : post_processing_manager_->GetPreToneMappingEffects()) {
 							if (auto unified = std::dynamic_pointer_cast<PostProcessing::UnifiedScreenSpaceEffect>(effect)) {
 								unified->SetHiZTexture(hiz_manager->GetHiZTexture(), hiz_manager->GetMipCount());
+								if (restir_manager) {
+									unified->SetRestirDIReservoir(restir_manager->GetCurrentDIRiservoirBuffer());
+									unified->SetRestirGIReservoir(restir_manager->GetCurrentGIRiservoirBuffer());
+									unified->SetLightCounts(light_manager->GetActiveLightCount(), fire_effect_manager ? Constants::Class::Particles::MaxParticles() : 0);
+									unified->SetLightBuffers(light_manager->GetAllLightsSsbo(), fire_effect_manager ? fire_effect_manager->GetParticleBuffer() : 0);
+								}
 							}
 						}
 					}
+				}
+
+				// Dispatch ReSTIR after Opaque Pass (G-Buffer is ready)
+				if (restir_manager) {
+					restir_manager->Dispatch(
+						compositor_->GetDepthTexture(),
+						compositor_->GetNormalTexture(),
+						compositor_->GetVelocityTexture(),
+						compositor_->GetColorTexture(),
+						compositor_->GetAlbedoTexture(),
+						noise_manager ? noise_manager->GetBlueNoiseTexture() : 0,
+						*light_manager,
+						fire_effect_manager.get()
+					);
 				}
 			}
 		}
@@ -4751,17 +4777,20 @@ namespace Boidsish {
 			glm::vec3(shape->GetR(), shape->GetG(), shape->GetB())
 		);
 
-		// 5. Flash light
-		Light flash = Light::CreateFlash(
-			position,
-			25.0f * intensity,
-			glm::vec3(1.0f, 0.7f, 0.3f), // Warm orange flash
-			25.0f * intensity
-		);
-		flash.auto_remove = true;
-		flash.behavior.loop = false;
-		flash.SetEaseOut(0.5f * intensity);
-		impl->light_manager->AddLight(flash);
+		// 5. Flash lights - Use multiple lights for more volume with ReSTIR
+		for (int i = 0; i < 3; i++) {
+			glm::vec3 offset = (i == 0) ? glm::vec3(0) : (glm::vec3(rand() % 100 - 50, rand() % 100 - 50, rand() % 100 - 50) * 0.1f * intensity);
+			Light flash = Light::CreateFlash(
+				position + offset,
+				25.0f * intensity,
+				glm::vec3(1.0f, 0.7f, 0.3f), // Warm orange flash
+				25.0f * intensity
+			);
+			flash.auto_remove = true;
+			flash.behavior.loop = false;
+			flash.SetEaseOut(0.5f * intensity);
+			impl->light_manager->AddLight(flash);
+		}
 	}
 
 	void Visualizer::CreateExplosion(const glm::vec3& position, float intensity) {
@@ -4798,17 +4827,20 @@ namespace Boidsish {
 		impl->shockwave_manager
 			->AddShockwave(position, normal, max_radius, duration, wave_intensity, ring_width, color);
 
-		// Add a flash light
-		Light flash = Light::CreateFlash(
-			position,
-			45.0f * intensity,
-			glm::vec3(1.0f, 0.8f, 0.5f), // Bright yellow-orange flash
-			45.0f * intensity
-		);
-		flash.auto_remove = true;
-		flash.behavior.loop = false;
-		flash.SetEaseOut(0.4f * intensity);
-		impl->light_manager->AddLight(flash);
+		// Add flash lights
+		for (int i = 0; i < 4; i++) {
+			glm::vec3 offset = (i == 0) ? glm::vec3(0) : (glm::vec3(rand() % 100 - 50, rand() % 100 - 50, rand() % 100 - 50) * 0.2f * intensity);
+			Light flash = Light::CreateFlash(
+				position + offset,
+				45.0f * intensity,
+				glm::vec3(1.0f, 0.8f, 0.5f), // Bright yellow-orange flash
+				45.0f * intensity
+			);
+			flash.auto_remove = true;
+			flash.behavior.loop = false;
+			flash.SetEaseOut(0.4f * intensity);
+			impl->light_manager->AddLight(flash);
+		}
 	}
 
 	void Visualizer::CreateShockwave(

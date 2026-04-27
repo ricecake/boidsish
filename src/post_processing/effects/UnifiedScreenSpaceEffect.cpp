@@ -87,6 +87,7 @@ namespace Boidsish {
 			unified_shader_->setBool("uSSSEnabled", sss_enabled_);
 
 			// Parameters
+			unified_shader_->setFloat("uRestirDIIntensity", restir_di_intensity_);
 			unified_shader_->setFloat("uSSGIIntensity", ssgi_intensity_);
 			unified_shader_->setFloat("uSSGIRadius", ssgi_radius_);
 			unified_shader_->setFloat("uSSGIDistanceFalloff", ssgi_falloff_);
@@ -105,6 +106,9 @@ namespace Boidsish {
 			unified_shader_->setFloat("uSSSRadius", sss_radius_);
 			unified_shader_->setFloat("uSSSBias", sss_bias_);
 			unified_shader_->setInt("uSSSSteps", sss_steps_);
+
+			unified_shader_->setInt("u_num_lights", num_lights_);
+			unified_shader_->setInt("u_num_fire_particles", num_fire_particles_);
 
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, depthTexture);
@@ -139,6 +143,20 @@ namespace Boidsish {
 				unified_shader_->setInt("u_hizMipCount", hiz_mips_);
 			}
 
+			if (di_reservoir_buffer_) {
+				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::RestirReservoirs0(), di_reservoir_buffer_);
+			}
+			if (gi_reservoir_buffer_) {
+				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::RestirGIReservoirs0(), gi_reservoir_buffer_);
+			}
+
+			if (all_lights_ssbo_) {
+				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::AllLights(), all_lights_ssbo_);
+			}
+			if (particle_buffer_) {
+				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleBuffer(), particle_buffer_);
+			}
+
 			// Use the accumulated shadow mask from the previous frame for SSGI coordination
 			// We use Unit 9 as a scratch unit for post-fx specific accumulations
 			GLuint prevShadowMask = sss_accumulator_.GetResult();
@@ -163,10 +181,25 @@ namespace Boidsish {
 			GLuint accSSS = sss_accumulator_.Accumulate(sss_texture_, velocityTexture, depthTexture);
 
 			composite_shader_->use();
+
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, sourceTexture);
 			composite_shader_->setInt("uSceneTexture", 0);
+
+			glActiveTexture(GL_TEXTURE1);
+			glBindTexture(GL_TEXTURE_2D, accGIAO);
 			composite_shader_->setInt("uGIAOTexture", 1);
+
+			glActiveTexture(GL_TEXTURE2);
+			glBindTexture(GL_TEXTURE_2D, accSSS);
 			composite_shader_->setInt("uSSSTexture", 2);
+
+			glActiveTexture(GL_TEXTURE3);
+			glBindTexture(GL_TEXTURE_2D, normalTexture);
 			composite_shader_->setInt("uNormalTexture", 3);
+
+			glActiveTexture(GL_TEXTURE4);
+			glBindTexture(GL_TEXTURE_2D, depthTexture);
 			composite_shader_->setInt("uDepthTexture", 4);
 
 			composite_shader_->setBool("uSSGIEnabled", ssgi_enabled_);
@@ -176,18 +209,25 @@ namespace Boidsish {
 			composite_shader_->setFloat("uGTAOIntensity", gtao_intensity_);
 			composite_shader_->setFloat("uSSGIIntensity", ssgi_intensity_);
 
-			glActiveTexture(GL_TEXTURE0);
-			glBindTexture(GL_TEXTURE_2D, sourceTexture);
-			glActiveTexture(GL_TEXTURE1);
-			glBindTexture(GL_TEXTURE_2D, accGIAO);
-			glActiveTexture(GL_TEXTURE2);
-			glBindTexture(GL_TEXTURE_2D, accSSS);
-			glActiveTexture(GL_TEXTURE3);
-			glBindTexture(GL_TEXTURE_2D, normalTexture);
-			glActiveTexture(GL_TEXTURE4);
-			glBindTexture(GL_TEXTURE_2D, depthTexture);
-
 			glDrawArrays(GL_TRIANGLES, 0, 6);
+
+			// Unbind all to prevent state leakage
+			glUseProgram(0);
+
+			glBindImageTexture(0, 0, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA16F);
+			glBindImageTexture(1, 0, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R8);
+
+			glActiveTexture(GL_TEXTURE9);
+			glBindTexture(GL_TEXTURE_2D, 0);
+			glActiveTexture(GL_TEXTURE0 + 37);
+			glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::HiZ());
+			glBindTexture(GL_TEXTURE_2D, 0);
+
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::RestirReservoirs0(), 0);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::RestirGIReservoirs0(), 0);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::AllLights(), 0);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleBuffer(), 0);
 		}
 
 		void UnifiedScreenSpaceEffect::Resize(int width, int height) {

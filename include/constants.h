@@ -267,6 +267,26 @@ namespace Boidsish {
 			consteval int AtmosphereSH() {
 				return 43;
 			}
+
+			consteval int AllLights() {
+				return 46;
+			}
+
+			consteval int RestirReservoirs0() {
+				return 51;
+			}
+
+			consteval int RestirReservoirs1() {
+				return 52;
+			}
+
+			consteval int RestirGIReservoirs0() {
+				return 53;
+			}
+
+			consteval int RestirGIReservoirs1() {
+				return 54;
+			}
 		} // namespace SsboBinding
 
 		namespace General {
