@@ -61,6 +61,10 @@ namespace Boidsish {
 		T::RegisterConstant("MESH_EXPLOSION_FRAGMENTS_BINDING", Constants::SsboBinding::MeshExplosionFragments());
 		T::RegisterConstant("TRAIL_GENERATED_VBO_BINDING", Constants::SsboBinding::TrailGeneratedVBO());
 		T::RegisterConstant("ATMOSPHERE_SH_BINDING", Constants::SsboBinding::AtmosphereSH());
+		T::RegisterConstant("HIERARCHY_PARENTS_BINDING", Constants::SsboBinding::HierarchyParents());
+		T::RegisterConstant("HIERARCHY_LOCALS_BINDING", Constants::SsboBinding::HierarchyLocals());
+		T::RegisterConstant("HIERARCHY_INVBIND_BINDING", Constants::SsboBinding::HierarchyInvBinds());
+		T::RegisterConstant("HIERARCHY_STIFFNESS_BINDING", Constants::SsboBinding::HierarchyStiffness());
 
 		// Limits and Sizes
 		T::RegisterConstant("MAX_LIGHTS", Constants::Class::Shadows::MaxLights());

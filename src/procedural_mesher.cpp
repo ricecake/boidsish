@@ -577,6 +577,7 @@ namespace Boidsish {
 				}
 
 				data->AddBone(bname, pname, local);
+				data->bone_stiffnesses[bone_id] = e.stiffness;
 				element_to_bone[i] = bone_id;
 			} else if (e.parent != -1) {
 				element_to_bone[i] = element_to_bone[e.parent];
@@ -930,6 +931,8 @@ namespace Boidsish {
 		for (auto& [key, group] : grouped_meshes) {
 			finalize_mesh(group);
 		}
+
+		data->FlattenHierarchy();
 
 		auto model = std::make_shared<Model>(data, false);
 		model->SetAllowMegabuffer(false);

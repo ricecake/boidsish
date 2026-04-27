@@ -21,6 +21,22 @@ layout(std430, binding = [[BONE_MATRIX_BINDING]]) buffer BoneMatricesSSBO {
 	mat4 boneMatrices[];
 };
 
+layout(std430, binding = [[HIERARCHY_PARENTS_BINDING]]) readonly buffer HierarchyParents {
+	int h_parents[];
+};
+
+layout(std430, binding = [[HIERARCHY_LOCALS_BINDING]]) readonly buffer HierarchyLocals {
+	mat4 h_locals[];
+};
+
+layout(std430, binding = [[HIERARCHY_INVBIND_BINDING]]) readonly buffer HierarchyInvBinds {
+	mat4 h_invBinds[];
+};
+
+layout(std430, binding = [[HIERARCHY_STIFFNESS_BINDING]]) readonly buffer HierarchyStiffnesses {
+	float h_stiffnesses[];
+};
+
 #include "frustum.glsl"
 #include "helpers/fast_noise.glsl"
 #include "helpers/wind.glsl"
@@ -98,7 +114,79 @@ void main() {
 	vec3 displacedPos = aPos;
 	vec3 displacedNormal = aNormal;
 
-	if (current_use_skinning) {
+	int current_hierarchy_offset = use_ssbo ? uniforms_data[vUniformIndex].hierarchy_offset : -1;
+
+	mat4 modelMatrix;
+	if (current_useSSBOInstancing) {
+		modelMatrix = ssboInstanceMatrices[gl_InstanceID];
+	} else {
+		modelMatrix = current_model;
+	}
+
+	if (current_use_skinning && current_hierarchy_offset >= 0) {
+		vec3 seedPos = vec3(modelMatrix[3]);
+		float globalSeed = fract(sin(dot(seedPos, vec3(12.9898, 78.233, 45.164))) * 43758.5453);
+
+		vec4  totalPosition = vec4(0.0);
+		vec3  totalNormal = vec3(0.0);
+		float totalWeight = 0.0;
+
+		for (int i = 0; i < 4; i++) {
+			int boneID = aBoneIDs[i];
+			if (boneID < 0 || boneID >= 100)
+				continue;
+
+			float weight = aWeights[i];
+			if (weight < 0.001) continue;
+
+			// Compute hierarchical perturbed transform
+			mat4 perturbedGlobal = mat4(1.0);
+			int curr = boneID;
+			int safety = 0;
+
+			// Compute chain of transforms up to root
+			while (curr != -1 && safety < 16) {
+				int h_idx = current_hierarchy_offset + curr;
+				mat4 local = h_locals[h_idx];
+				float stiffness = h_stiffnesses[h_idx];
+
+				// Procedural variety for this specific limb node
+				float limbSeed = fract(sin(float(curr) * 1.618 + globalSeed) * 43758.5453);
+
+				// Apply limb scaling variety (length)
+				float scaleVariety = 1.0 + (limbSeed - 0.5) * 0.4 * stiffness;
+				local[1].xyz *= scaleVariety; // Scale along Y (assumed bone direction)
+
+				// Apply limb rotation variety
+				float angle = (limbSeed - 0.5) * 0.5 * stiffness;
+				float s = sin(angle);
+				float c = cos(angle);
+				vec3 axis = normalize(vec3(limbSeed, 1.0, fract(limbSeed * 7.0)));
+
+				mat3 m_rot = mat3(1.0);
+				m_rot[0] = vec3(c + axis.x*axis.x*(1.0-c), axis.x*axis.y*(1.0-c) + axis.z*s, axis.x*axis.z*(1.0-c) - axis.y*s);
+				m_rot[1] = vec3(axis.y*axis.x*(1.0-c) - axis.z*s, c + axis.y*axis.y*(1.0-c), axis.y*axis.z*(1.0-c) + axis.x*s);
+				m_rot[2] = vec3(axis.z*axis.x*(1.0-c) + axis.y*s, axis.z*axis.y*(1.0-c) - axis.x*s, c + axis.z*axis.z*(1.0-c));
+
+				local = mat4(m_rot) * local;
+
+				perturbedGlobal = local * perturbedGlobal;
+				curr = h_parents[h_idx];
+				safety++;
+			}
+
+			mat4 finalBoneMatrix = perturbedGlobal * h_invBinds[current_hierarchy_offset + boneID];
+
+			totalPosition += (finalBoneMatrix * vec4(displacedPos, 1.0)) * weight;
+			totalNormal += (mat3(finalBoneMatrix) * displacedNormal) * weight;
+			totalWeight += weight;
+		}
+
+		if (totalWeight > 0.001) {
+			displacedPos = totalPosition.xyz / totalWeight;
+			displacedNormal = normalize(totalNormal);
+		}
+	} else if (current_use_skinning) {
 		vec4  totalPosition = vec4(0.0);
 		vec3  totalNormal = vec3(0.0);
 		float totalWeight = 0.0;
@@ -165,12 +253,6 @@ void main() {
 		displacedNormal = normalize(aNormal - gradient);
 	}
 
-	mat4 modelMatrix;
-	if (current_useSSBOInstancing) {
-		modelMatrix = ssboInstanceMatrices[gl_InstanceID];
-	} else {
-		modelMatrix = current_model;
-	}
 
 	// Extract world position (translation from model matrix)
 	vec3  instanceCenter = vec3(modelMatrix[3]);

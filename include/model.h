@@ -189,6 +189,15 @@ namespace Boidsish {
 		std::vector<Animation>          animations;
 		NodeData                        root_node;
 
+		// Flattened hierarchy for GPU (optional)
+		std::vector<int>       bone_parents;
+		std::vector<glm::mat4> bone_locals;
+		std::vector<glm::mat4> bone_inv_binds;
+		std::vector<float>     bone_stiffnesses;
+		bool                   hierarchy_flattened = false;
+
+		void FlattenHierarchy();
+
 		void AddBone(const std::string& name, const std::string& parentName, const glm::mat4& localTransform) {
 			if (bone_info_map.find(name) != bone_info_map.end())
 				return;
@@ -234,6 +243,10 @@ namespace Boidsish {
 			}
 			info.offset = glm::inverse(parentGlobal * localTransform);
 			bone_info_map[name] = info;
+
+			if (bone_stiffnesses.size() < (size_t)bone_count) {
+				bone_stiffnesses.resize(bone_count, 1.0f);
+			}
 		}
 	};
 

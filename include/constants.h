@@ -224,6 +224,26 @@ namespace Boidsish {
 				return 44;
 			}
 
+			consteval int BoneHierarchy() {
+				return 46;
+			}
+
+			consteval int HierarchyParents() {
+				return 51;
+			}
+
+			consteval int HierarchyLocals() {
+				return 52;
+			}
+
+			consteval int HierarchyInvBinds() {
+				return 53;
+			}
+
+			consteval int HierarchyStiffness() {
+				return 54;
+			}
+
 			consteval int LiveParticleIndices() {
 				return 33;
 			}
