@@ -32,29 +32,29 @@ void main() {
 
 	// Skip degenerate AABBs (lines, text, particles that don't want culling)
 	if (aabbMin == aabbMax) {
-		visibility[idx] = 1u;
+		visibility[u_baseVisibilityIndex + idx] = 1u;
 		return;
 	}
 
 	// Skip colossal objects (skybox) - always visible
 	if (uniforms_data[idx].is_colossal != 0) {
-		visibility[idx] = 1u;
+		visibility[u_baseVisibilityIndex + idx] = 1u;
 		return;
 	}
 
 	// Skip transparent objects - they're not in the depth buffer
 	if (uniforms_data[idx].color.a < 0.99) {
-		visibility[idx] = 1u;
+		visibility[u_baseVisibilityIndex + idx] = 1u;
 		return;
 	}
 
 	if (!isAABBInFrustum(aabbMin, aabbMax)) {
-		visibility[idx] = 0u;
+		visibility[u_baseVisibilityIndex + idx] = 0u;
 		return;
 	}
 
 	if (isTooSmall(aabbMin, aabbMax, uniforms_data[idx].model, viewProjection, u_viewportSize, u_minPixelSize)) {
-		visibility[idx] = 0u;
+		visibility[u_baseVisibilityIndex + idx] = 0u;
 		return;
 	}
 
