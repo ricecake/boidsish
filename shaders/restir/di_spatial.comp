@@ -15,6 +15,8 @@ layout(std430, binding = [[RESTIR_RESERVOIRS1_BINDING]]) buffer OldReservoirs {
 
 uniform sampler2D gDepth;
 uniform sampler2D gNormal;
+uniform sampler2D gVelocity;
+uniform sampler2D gAlbedo;
 uniform int u_spatial_radius = 4;
 uniform int u_spatial_samples = 4;
 
@@ -41,11 +43,20 @@ void main() {
 
     if (depth >= 1.0) return;
 
-    Reservoir current = new_reservoirs[reservoir_idx];
+    // FIX: Read from the temporal result (OldReservoirs) instead of the output buffer
+    Reservoir current = old_reservoirs[reservoir_idx];
+
     vec3 vNorm = normalize(texture(gNormal, uv).xyz);
     vec3 vPos = getViewPos(uv, depth);
     vec3 worldPos = (invView * vec4(vPos, 1.0)).xyz;
     vec3 worldNorm = normalize(mat3(invView) * vNorm);
+    vec3 V = normalize(viewPos - worldPos);
+
+    vec4 albedoData = texture(gAlbedo, uv);
+    vec3 albedo = albedoData.rgb;
+    vec4 velData = texture(gVelocity, uv);
+    float roughness = clamp(velData.b, 0.05, 1.0);
+    float metallic = velData.a;
 
     uint seed = uint(pixel.y * size.x + pixel.x) ^ hash(uint(frameIndex) + 200u);
 
@@ -74,8 +85,9 @@ void main() {
             float neighborDepth = texture(gDepth, (vec2(neighborPixel) + 0.5) / vec2(size)).r;
             vec3 neighborNorm = normalize(texture(gNormal, (vec2(neighborPixel) + 0.5) / vec2(size)).xyz);
 
-            if (abs(depth - neighborDepth) < 0.01 && dot(vNorm, neighborNorm) > 0.9) {
-                float p_hat = targetFunction(worldPos, worldNorm, getLightData(neighbor.light_index));
+            float normalThreshold = mix(0.99, 0.7, roughness);
+            if (abs(depth - neighborDepth) < 0.01 && dot(vNorm, neighborNorm) > normalThreshold) {
+                float p_hat = targetFunction(worldPos, worldNorm, V, albedo, roughness, metallic, getLightData(neighbor.light_index));
                 float weight = p_hat * neighbor.W * neighbor.m;
                 updateReservoir(current, neighbor.light_index, weight, pcg_hash(seed++));
                 current.m += neighbor.m;
@@ -83,7 +95,7 @@ void main() {
         }
     }
 
-    float p_hat_final = targetFunction(worldPos, worldNorm, getLightData(current.light_index));
+    float p_hat_final = targetFunction(worldPos, worldNorm, V, albedo, roughness, metallic, getLightData(current.light_index));
     current.W = safeDiv(current.w_sum, current.m * p_hat_final);
     current.W = clamp(current.W, 0.0, 1e4);
 

@@ -3,6 +3,7 @@ layout(local_size_x = 8, local_size_y = 8) in;
 
 layout(binding = 0, rgba16f) uniform image2D outIndirectAO; // RGB: GI, A: AO
 layout(binding = 1, r8)      uniform image2D outShadowMask; // R: SSS
+layout(binding = 2, rgba16f) uniform image2D outRestirDI;   // RGB: ReSTIR DI
 
 #include "../restir/restir_common.glsl"
 
@@ -34,10 +35,13 @@ float calculateTerrainOcclusion(vec3 worldPos, vec3 normal) { return 1.0; }
 
 // Unified Parameters
 uniform bool  uSSGIEnabled = true;
+uniform bool  uRestirDIEnabled = true;
+uniform bool  uRestirGIEnabled = true;
 uniform bool  uGTAOEnabled = true;
 uniform bool  uSSSEnabled = true;
 
 uniform float uRestirDIIntensity = 1.0;
+uniform float uRestirGIIntensity = 1.0;
 
 // SSGI Parameters
 uniform float uSSGIRadius = 2.0;
@@ -115,6 +119,7 @@ void main() {
 	if (depth >= 0.99999) {
 		if (uSSGIEnabled || uGTAOEnabled) imageStore(outIndirectAO, pixel, vec4(0.0, 0.0, 0.0, 1.0));
 		if (uSSSEnabled) imageStore(outShadowMask, pixel, vec4(1.0, 0.0, 0.0, 0.0));
+		if (uRestirDIEnabled) imageStore(outRestirDI, pixel, vec4(0.0));
 		return;
 	}
 
@@ -123,6 +128,7 @@ void main() {
 	if (length(vNorm) < 0.1) {
 		if (uSSGIEnabled || uGTAOEnabled) imageStore(outIndirectAO, pixel, vec4(0.0, 0.0, 0.0, 1.0));
 		if (uSSSEnabled) imageStore(outShadowMask, pixel, vec4(1.0, 0.0, 0.0, 0.0));
+		if (uRestirDIEnabled) imageStore(outRestirDI, pixel, vec4(0.0));
 		return;
 	}
 
@@ -296,10 +302,10 @@ void main() {
 				vec3 worldPos = (invView * vec4(vPos, 1.0)).xyz;
 				// Fallback to ReSTIR GI or SH probes
 				Reservoir gi_res = gi_reservoirs[reservoir_idx];
-				if (gi_res.W > 0.0) {
+				if (uRestirGIEnabled && gi_res.W > 0.0) {
 					vec2 hitUV = vec2(float(gi_res.light_index & 0xFFFF) / 65535.0, float(gi_res.light_index >> 16) / 65535.0);
 					vec3 radiance = texture(gColor, hitUV).rgb;
-					indirect += radiance * weight * gi_res.W;
+					indirect += radiance * weight * gi_res.W * uRestirGIIntensity;
 				} else {
 					float fallbackWeight = isSpecular ? 0.05 : 0.45;
 					indirect += getSpatialAmbientSH(worldPos, worldRayDir) * weight * fallbackWeight;
@@ -313,13 +319,17 @@ void main() {
 
 	// --- 4. ReSTIR Direct Illumination (DI) ---
 	vec3 di_lighting = vec3(0.0);
-	if (uSSGIEnabled) { // Share toggle for now or add new one
+	if (uRestirDIEnabled) {
 		Reservoir di_res = di_reservoirs[reservoir_idx];
 		if (di_res.W > 0.0) {
 			LightData ld = getLightData(di_res.light_index);
 			vec3 worldPos = (invView * vec4(vPos, 1.0)).xyz;
 			vec3 worldNorm = normalize(mat3(invView) * vNorm);
+            vec3 V = normalize(viewPos - worldPos);
 			vec3 albedo = texture(gAlbedo, uv).rgb;
+            vec4 velData = texture(gVelocity, uv);
+            float roughness = clamp(velData.b, 0.05, 1.0);
+            float metallic = velData.a;
 
 			vec3 L_vec = ld.position - worldPos;
 			float distSq = dot(L_vec, L_vec);
@@ -331,17 +341,31 @@ void main() {
 				vec3 targetView = (view * vec4(ld.position, 1.0)).xyz;
 
 				if (checkVisibility(vPos, targetView, gDepth)) {
-					// Use physical falloff and normalization, multiply by albedo and metallic factor for correct material response
-					float metallic = texture(gVelocity, uv).a;
-					vec3 diffuse_resp = (albedo / PI) * (1.0 - metallic);
-					di_lighting = diffuse_resp * ld.color * ld.intensity * dotNL * di_res.W * uRestirDIIntensity / max(0.001, distSq);
+                    // Re-evaluate full BRDF for final shading (Material Balancing)
+                    vec3 H = normalize(V + L);
+                    float dotNV = max(1e-4, dot(worldNorm, V));
+                    float dotHV = max(0.0, dot(H, V));
+                    vec3 F0 = mix(vec3(0.04), albedo, metallic);
+                    vec3 F = fresnelSchlickFast(dotHV, F0);
+                    float D = DistributionGGX(worldNorm, H, roughness);
+                    float Vis = VisibilitySmithGGXCorrelated(dotNL, dotNV, roughness);
+                    vec3 specular = D * Vis * F;
+                    vec3 kS = F;
+                    vec3 kD = (vec3(1.0) - kS) * (1.0 - metallic);
+                    vec3 brdf = (kD * albedo / PI) + specular;
+
+					di_lighting = brdf * ld.color * ld.intensity * dotNL * di_res.W * uRestirDIIntensity / max(0.0001, distSq);
 				}
 			}
 		}
 	}
 
 	if (uSSGIEnabled || uGTAOEnabled) {
-		// Output RGB: ReSTIR DI + averaged SSGI, A: GTAO
-		imageStore(outIndirectAO, pixel, vec4(di_lighting + indirect, ao));
+		imageStore(outIndirectAO, pixel, vec4(indirect, ao));
 	}
+    if (uRestirDIEnabled) {
+        imageStore(outRestirDI, pixel, vec4(di_lighting, 1.0));
+    } else {
+        imageStore(outRestirDI, pixel, vec4(0.0));
+    }
 }
