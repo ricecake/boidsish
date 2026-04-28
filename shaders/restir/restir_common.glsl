@@ -4,6 +4,7 @@
 #include "../types/lighting.glsl"
 #include "../helpers/constants.glsl"
 #include "../helpers/brdf.glsl"
+#include "particle_types.glsl"
 
 struct Reservoir {
     uint  light_index; // Index into AllLights SSBO or fire particles
@@ -24,20 +25,20 @@ layout(std430, binding = [[ALL_LIGHTS_BINDING]]) buffer AllLights {
     Light gpu_lights[];
 };
 
-// Fire particle access
-struct Particle {
-	vec4 pos;
-	vec4 vel;
-	vec3 epicenter;
-	int   style;
-	int   emitter_index;
-	int   emitter_id;
-	float extras[2];
-};
+// // Fire particle access
+// struct Particle {
+// 	vec4 pos;
+// 	vec4 vel;
+// 	vec3 epicenter;
+// 	int   style;
+// 	int   emitter_index;
+// 	int   emitter_id;
+// 	float extras[2];
+// };
 
-layout(std430, binding = [[PARTICLE_BUFFER_BINDING]]) buffer ParticleBuffer {
-    Particle particles[];
-};
+// layout(std430, binding = [[PARTICLE_BUFFER_BINDING]]) buffer ParticleBuffer {
+//     Particle particles[];
+// };
 
 #ifndef RESTIR_UNIFORMS_DEFINED
 #define RESTIR_UNIFORMS_DEFINED
@@ -60,13 +61,32 @@ LightData getLightData(uint index) {
         if (ld.type == 1) ld.intensity *= 100.0;
     } else {
         uint p_idx = index - uint(u_num_lights);
-        ld.position = particles[p_idx].pos.xyz;
-        ld.direction = vec3(0, -1, 0);
-        // Fire particles are typically orange/yellow/white
-        ld.color = vec3(1.0, 0.6, 0.2);
-        // Use lifetime (w) as intensity base for fire particles
-        ld.intensity = clamp(particles[p_idx].pos.w, 0.0, 1.0) * 5.0;
-        ld.type = 0; // POINT
+        Particle p = particles[p_idx];
+        if (p.style == STYLE_FIRE) {
+            ld.position = particles[p_idx].pos.xyz;
+            ld.direction = vec3(0, -1, 0);
+            // Fire particles are typically orange/yellow/white
+            ld.color = vec3(1.0, 0.6, 0.2);
+            // Use lifetime (w) as intensity base for fire particles
+            ld.intensity = clamp(particles[p_idx].pos.w, 0.0, 1.0);
+            ld.type = 0; // POINT
+        } else if (p.style == STYLE_AMBIENT && p.emitter_id == 4 ) {
+            ld.position = particles[p_idx].pos.xyz;
+            ld.direction = vec3(0, -1, 0);
+            // Fire particles are typically orange/yellow/white
+            ld.color = vec3(0.7, 0.9, 0.1);
+            // Use lifetime (w) as intensity base for fire particles
+            ld.intensity = clamp(particles[p_idx].pos.w, 0.0, 1.0);
+            ld.type = 0; // POINT
+        } else {
+            ld.position = particles[p_idx].pos.xyz;
+            ld.direction = vec3(0, -1, 0);
+            // Fire particles are typically orange/yellow/white
+            ld.color = vec3(0.2, 0.5, 0.1);
+            // Use lifetime (w) as intensity base for fire particles
+            ld.intensity = 0.0;//clamp(particles[p_idx].pos.w, 0.0, 1.0) * 5.0;
+            ld.type = 0; // POINT
+        }
     }
     return ld;
 }
