@@ -240,10 +240,10 @@ void main() {
 	float sssFactor = sampleBilateral(uSSSTexture, uDepthTexture, uNormalTexture, TexCoords).r;
     vec3 di_lighting = sampleBilateral(uDITexture, uDepthTexture, uNormalTexture, TexCoords).rgb;
 
-    // Basic firefly rejection: clamp ReSTIR contribution based on scene luminance
-    float max_lum = max(color.r, max(color.g, color.b)) * 10.0 + 2.0;
-    giao.rgb = min(giao.rgb, vec3(max_lum));
-    di_lighting = min(di_lighting, vec3(max_lum));
+	// Basic firefly rejection: clamp ReSTIR contribution based on scene luminance
+	float max_lum = max(color.r, max(color.g, color.b)) * 10.0 + 2.0;
+	giao.rgb = min(giao.rgb, vec3(max_lum));
+	di_lighting = min(di_lighting, vec3(max_lum));
 
 	float traditionalShadow = texture(uNormalTexture, TexCoords).a;
 
@@ -263,9 +263,9 @@ void main() {
 	}
 
 	// 3. Apply ReSTIR Direct Illumination
-    if (uRestirDIEnabled) {
-        result += di_lighting; // Intensity already applied in compute
-    }
+	if (uRestirDIEnabled) {
+		result += di_lighting; // Intensity already applied in compute
+	}
 
 	// 4. Apply Global Illumination (SSGI)
 	if (uSSGIEnabled) {
