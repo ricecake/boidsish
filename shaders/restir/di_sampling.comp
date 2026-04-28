@@ -39,7 +39,7 @@ void main() {
     // Use spatiotemporal blue noise for jittered sampling
     vec2 bnUV = (vec2(pixel) + 0.5) / vec2(textureSize(u_blueNoiseTexture, 0).xy);
     float jitterX = fastSpatiotemporalBlueNoise(bnUV, 0, frameIndex);
-    float jitterY = fastSpatiotemporalBlueNoise(bnUV, 1, frameIndex);
+    float jitterY = fastSpatiotemporalBlueNoise(bnUV, 0, frameIndex);
 
     vec2 jitter = vec2(jitterX, jitterY) - 0.5;
     vec2 uv = (vec2(pixel) + 0.5 + jitter) / vec2(size);
