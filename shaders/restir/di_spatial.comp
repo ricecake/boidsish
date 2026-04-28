@@ -89,15 +89,16 @@ void main() {
 
         // Clamp to screen bounds
         neighborPixel = clamp(neighborPixel, ivec2(0), size - 1);
+        vec2 neighborUV = (vec2(neighborPixel) + 0.5) / vec2(size);
 
         uint neighbor_idx = neighborPixel.y * size.x + neighborPixel.x;
         Reservoir neighbor = old_reservoirs[neighbor_idx];
 
-        float neighborDepth = texture(gDepth, (vec2(neighborPixel) + 0.5) / vec2(size)).r;
-        vec3 neighborNorm = normalize(texture(gNormal, (vec2(neighborPixel) + 0.5) / vec2(size)).xyz);
+        float neighborDepth = texture(gDepth, neighborUV).r;
+        vec3 neighborNorm = normalize(texture(gNormal, neighborUV).xyz);
+        float neighborRoughness = texture(gVelocity, neighborUV).b;
 
-        float normalThreshold = mix(0.99, 0.7, roughness);
-        if (abs(depth - neighborDepth) < 0.01 && dot(vNorm, neighborNorm) > normalThreshold) {
+        if (restirGeometryCheck(depth, vNorm, roughness, neighborDepth, neighborNorm, neighborRoughness)) {
             float p_hat = targetFunction(worldPos, worldNorm, V, albedo, roughness, metallic, getLightData(neighbor.light_index));
             float weight = p_hat * neighbor.W * neighbor.m;
             updateReservoir(current, neighbor.light_index, weight, pcg_hash(seed++));
