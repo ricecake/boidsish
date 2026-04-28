@@ -3,6 +3,7 @@
 
 #include "../types/lighting.glsl"
 #include "../helpers/constants.glsl"
+#include "../helpers/brdf.glsl"
 
 struct Reservoir {
     uint  light_index; // Index into AllLights SSBO or fire particles
@@ -85,26 +86,50 @@ uint hash(uint x) {
 	return x;
 }
 
-float targetFunction(vec3 pos, vec3 norm, LightData ld) {
+float targetFunction(vec3 pos, vec3 norm, vec3 V, vec3 albedo, float roughness, float metallic, LightData ld) {
     vec3 L;
     float attenuation = 1.0;
 
     if (ld.type == 1) { // DIRECTIONAL
         L = normalize(-ld.direction);
-        // For directional lights, we use a constant large distance for p_hat calculation
-        attenuation = 100.0;
+        attenuation = 1.0;
     } else {
         vec3 L_vec = ld.position - pos;
         float distSq = dot(L_vec, L_vec);
         L = normalize(L_vec);
-        attenuation = 1.0 / max(0.001, distSq);
+        // Using a slightly more robust falloff for ReSTIR importance
+        attenuation = 1.0 / max(0.0001, distSq);
     }
 
     float dotNL = max(0.0, dot(norm, L));
-    return luminance(ld.color) * ld.intensity * dotNL * attenuation;
+    if (dotNL <= 0.0) return 0.0;
+
+    vec3 H = normalize(V + L);
+    float dotNV = max(1e-4, dot(norm, V));
+    float dotNH = max(0.0, dot(norm, H));
+    float dotHV = max(0.0, dot(H, V));
+
+    vec3 F0 = mix(vec3(0.04), albedo, metallic);
+    vec3 F = fresnelSchlickFast(dotHV, F0);
+    float D = DistributionGGX(norm, H, roughness);
+    float Vis = VisibilitySmithGGXCorrelated(dotNL, dotNV, roughness);
+    vec3 specular = D * Vis * F;
+
+    vec3 kS = F;
+    vec3 kD = (vec3(1.0) - kS) * (1.0 - metallic);
+
+    vec3 brdf = (kD * albedo / PI) + specular;
+    vec3 radiance = ld.color * ld.intensity * attenuation;
+
+    vec3 final_color = brdf * radiance * dotNL;
+
+    float lum = luminance(final_color);
+    if (isnan(lum) || isinf(lum)) return 0.0;
+    return max(0.0, lum);
 }
 
 void updateReservoir(inout Reservoir r, uint light_index, float weight, float random) {
+    if (isnan(weight) || isinf(weight) || weight <= 0.0) return;
     r.w_sum += weight;
     r.m += 1.0;
     if (random * r.w_sum < weight) {

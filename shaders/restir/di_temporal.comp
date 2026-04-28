@@ -16,6 +16,7 @@ layout(std430, binding = [[RESTIR_RESERVOIRS1_BINDING]]) buffer OldReservoirs {
 uniform sampler2D gDepth;
 uniform sampler2D gNormal;
 uniform sampler2D gVelocity;
+uniform sampler2D gAlbedo;
 
 float pcg_hash(uint seed) {
     uint state = seed * 747796405u + 2891336453u;
@@ -40,7 +41,12 @@ void main() {
 
     if (depth >= 1.0) return;
 
-    vec2 velocity = texture(gVelocity, uv).rg;
+    vec4 velData = texture(gVelocity, uv);
+    vec2 velocity = velData.rg;
+    float roughness = clamp(velData.b, 0.05, 1.0);
+    float metallic = velData.a;
+    vec3 albedo = texture(gAlbedo, uv).rgb;
+
     vec2 prevUV = uv - velocity;
 
     Reservoir current = new_reservoirs[reservoir_idx];
@@ -55,22 +61,25 @@ void main() {
         vec3 vNorm = normalize(texture(gNormal, uv).xyz);
         vec3 prevNorm = normalize(texture(gNormal, prevUV).xyz);
 
-        if (abs(depth - prevDepth) < 0.01 && dot(vNorm, prevNorm) > 0.9) {
+        float normalThreshold = mix(0.99, 0.7, roughness);
+        if (abs(depth - prevDepth) < 0.01 && dot(vNorm, prevNorm) > normalThreshold) {
             uint seed = uint(pixel.y * size.x + pixel.x) ^ hash(uint(frameIndex) + 100u);
 
-            // Limit temporal history
-            previous.m = min(previous.m, 20.0 * current.m);
+            // Limit temporal history - stricter for glossy surfaces to prevent smearing
+            float maxHistory = mix(8.0, 32.0, roughness);
+            previous.m = min(previous.m, maxHistory * current.m);
 
             vec3 vPos = getViewPos(uv, depth);
             vec3 worldPos = (invView * vec4(vPos, 1.0)).xyz;
             vec3 worldNorm = normalize(mat3(invView) * vNorm);
+            vec3 V = normalize(viewPos - worldPos);
 
-            float p_hat = targetFunction(worldPos, worldNorm, getLightData(previous.light_index));
+            float p_hat = targetFunction(worldPos, worldNorm, V, albedo, roughness, metallic, getLightData(previous.light_index));
             float weight = p_hat * previous.W * previous.m;
             updateReservoir(current, previous.light_index, weight, pcg_hash(seed));
             current.m += previous.m;
 
-            float p_hat_final = targetFunction(worldPos, worldNorm, getLightData(current.light_index));
+            float p_hat_final = targetFunction(worldPos, worldNorm, V, albedo, roughness, metallic, getLightData(current.light_index));
             current.W = safeDiv(current.w_sum, current.m * p_hat_final);
             current.W = clamp(current.W, 0.0, 1e4);
         }

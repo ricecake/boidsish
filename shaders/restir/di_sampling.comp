@@ -13,6 +13,8 @@ layout(std430, binding = [[RESTIR_RESERVOIRS0_BINDING]]) buffer RestirReservoirs
 
 uniform sampler2D gDepth;
 uniform sampler2D gNormal;
+uniform sampler2D gVelocity;
+uniform sampler2D gAlbedo;
 uniform int u_num_samples = 8;
 
 float pcg_hash(uint seed) {
@@ -52,6 +54,13 @@ void main() {
     vec3 vNorm = normalize(texture(gNormal, uv).xyz);
     vec3 worldPos = (invView * vec4(vPos, 1.0)).xyz;
     vec3 worldNorm = normalize(mat3(invView) * vNorm);
+    vec3 V = normalize(viewPos - worldPos);
+
+    vec4 albedoData = texture(gAlbedo, uv);
+    vec3 albedo = albedoData.rgb;
+    vec4 velData = texture(gVelocity, uv);
+    float roughness = clamp(velData.b, 0.05, 1.0);
+    float metallic = velData.a;
 
     Reservoir r = Reservoir(0, 0, 0, 0);
     uint total_lights = uint(u_num_lights + u_num_fire_particles);
@@ -68,12 +77,12 @@ void main() {
         uint light_idx = uint(rand1 * float(total_lights)) % total_lights;
 
         LightData ld = getLightData(light_idx);
-        float p_hat = targetFunction(worldPos, worldNorm, ld);
+        float p_hat = targetFunction(worldPos, worldNorm, V, albedo, roughness, metallic, ld);
         float weight = p_hat * float(total_lights);
         updateReservoir(r, light_idx, weight, rand2);
     }
 
-    float p_hat_final = targetFunction(worldPos, worldNorm, getLightData(r.light_index));
+    float p_hat_final = targetFunction(worldPos, worldNorm, V, albedo, roughness, metallic, getLightData(r.light_index));
     r.W = safeDiv(r.w_sum, r.m * p_hat_final);
     r.W = clamp(r.W, 0.0, 1e4); // Clamp normalization factor
 

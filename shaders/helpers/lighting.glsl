@@ -4,6 +4,7 @@
 #include "../helpers/constants.glsl"
 #include "../lighting.glsl"
 #include "clouds.glsl"
+#include "brdf.glsl"
 
 // Atmosphere constants for transmittance lookup
 const float kEarthRadiusKM = 6360.0;
@@ -39,6 +40,76 @@ const int LIGHT_TYPE_DIRECTIONAL = 1;
 const int LIGHT_TYPE_SPOT = 2;
 const int LIGHT_TYPE_EMISSIVE = 3; // Glowing object light (can cast shadows)
 const int LIGHT_TYPE_FLASH = 4;    // Explosion/flash light (rapid falloff)
+
+/**
+ * Calculate light direction and attenuation for any light type.
+ * @param light_index Index into the lights array
+ * @param frag_pos Fragment world position
+ * @param light_dir Output: normalized direction from fragment to light
+ * @param attenuation Output: combined distance and angular attenuation
+ */
+void calculateLightContribution(int light_index, vec3 frag_pos, out vec3 light_dir, out float attenuation) {
+	attenuation = 1.0;
+
+	if (lights[light_index].type == LIGHT_TYPE_POINT) {
+		// Point light: attenuates with distance
+		light_dir = normalize(lights[light_index].position - frag_pos);
+		float distance = length(lights[light_index].position - frag_pos);
+		// Practical attenuation curve (inverse square falloff with linear term)
+		attenuation = 1.0 / (1.0 + 0.09 * distance + 0.032 * distance * distance);
+
+	} else if (lights[light_index].type == LIGHT_TYPE_DIRECTIONAL) {
+		// Directional light: no attenuation, parallel rays
+		light_dir = normalize(-lights[light_index].direction);
+		attenuation = 1.0;
+
+	} else if (lights[light_index].type == LIGHT_TYPE_SPOT) {
+		// Spot light: distance attenuation + angular falloff
+		light_dir = normalize(lights[light_index].position - frag_pos);
+		float distance = length(lights[light_index].position - frag_pos);
+		attenuation = 1.0 / (1.0 + 0.09 * distance + 0.032 * distance * distance);
+
+		// Angular falloff using inner/outer cutoff angles
+		float theta = dot(light_dir, normalize(-lights[light_index].direction));
+		float epsilon = lights[light_index].inner_cutoff - lights[light_index].outer_cutoff;
+		float angular_intensity = clamp((theta - lights[light_index].outer_cutoff) / epsilon, 0.0, 1.0);
+		attenuation *= angular_intensity;
+
+	} else if (lights[light_index].type == LIGHT_TYPE_EMISSIVE) {
+		// Emissive/glowing object light: similar to point light but with soft near-field
+		// inner_cutoff stores the emissive object radius for soft falloff
+		light_dir = normalize(lights[light_index].position - frag_pos);
+		float distance = length(lights[light_index].position - frag_pos);
+		float emissive_radius = lights[light_index].inner_cutoff;
+
+		// Soft falloff that accounts for the size of the glowing object
+		// Avoids harsh falloff when very close to the light source
+		float effective_dist = max(distance - emissive_radius * 0.5, 0.0);
+		attenuation = 1.0 / (1.0 + 0.09 * effective_dist + 0.032 * effective_dist * effective_dist);
+
+		// Boost intensity when inside or near the emissive radius
+		float proximity_boost = smoothstep(emissive_radius * 2.0, 0.0, distance);
+		attenuation = mix(attenuation, 1.0, proximity_boost * 0.5);
+
+	} else if (lights[light_index].type == LIGHT_TYPE_FLASH) {
+		// Flash/explosion light: very bright with rapid falloff
+		// inner_cutoff = flash radius, outer_cutoff = falloff exponent
+		light_dir = normalize(lights[light_index].position - frag_pos);
+		float distance = length(lights[light_index].position - frag_pos);
+		float flash_radius = lights[light_index].inner_cutoff;
+		float falloff_exp = lights[light_index].outer_cutoff;
+
+		// Normalized distance (0 at center, 1 at radius edge)
+		float norm_dist = distance / max(flash_radius, 0.001);
+
+		// Sharp inverse-power falloff for explosive effect
+		// Falls off rapidly but smoothly
+		attenuation = 1.0 / pow(1.0 + norm_dist, falloff_exp);
+
+		// Hard cutoff at 2x radius to prevent distant influence
+		attenuation *= smoothstep(2.0, 1.5, norm_dist);
+	}
+}
 
 /**
  * Calculate cloud shadow factor for a fragment position.
@@ -393,155 +464,7 @@ float get_luminance(vec3 color) {
 }
 
 // ============================================================================
-// PBR Functions (Cook-Torrance BRDF)
-// ============================================================================
-
-// Normal Distribution Function (GGX/Trowbridge-Reitz)
-float DistributionGGX(vec3 N, vec3 H, float roughness) {
-	// Clamp roughness to avoid singularity at 0 (causes black surfaces)
-	float r = max(roughness, 0.04);
-	float a = r * r;
-	float a2 = a * a;
-	float NdotH = max(dot(N, H), 0.0);
-	float NdotH2 = NdotH * NdotH;
-
-	float nom = a2;
-	float denom = (NdotH2 * (a2 - 1.0) + 1.0);
-	denom = PI * denom * denom;
-
-	return nom / max(denom, 0.0001);
-}
-
-// Geometry function (Schlick-GGX)
-float GeometrySchlickGGX(float NdotV, float roughness) {
-	float r = (roughness + 1.0);
-	float k = (r * r) / 8.0;
-
-	float nom = NdotV;
-	float denom = NdotV * (1.0 - k) + k;
-
-	return nom / max(denom, 0.0001);
-}
-
-// Smith's method for geometry obstruction and shadowing
-float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness) {
-	float NdotV = max(dot(N, V), 0.0);
-	float NdotL = max(dot(N, L), 0.0);
-	float ggx2 = GeometrySchlickGGX(NdotV, roughness);
-	float ggx1 = GeometrySchlickGGX(NdotL, roughness);
-
-	return ggx1 * ggx2;
-}
-
-// Fresnel-Schlick approximation
-vec3 fresnelSchlick(float cosTheta, vec3 F0) {
-	return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
-}
-
-// Fresnel-Schlick with roughness - for environment reflections
-// Rough surfaces have less pronounced Fresnel effect
-vec3 fresnelSchlickRoughness(float cosTheta, vec3 F0, float roughness) {
-	return F0 + (max(vec3(1.0 - roughness), F0) - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
-}
-
-vec3 fresnelSchlickFast(float cosTheta, vec3 F0) {
-    float c = clamp(cosTheta, 0.0, 1.0);
-    return F0 + (1.0 - F0) * exp2((-5.55473 * c - 6.98316) * c);
-}
-
-vec3 fresnelSchlickRoughnessFast(float cosTheta, vec3 F0, float roughness) {
-    float c = clamp(cosTheta, 0.0, 1.0);
-    return F0 + (max(vec3(1.0 - roughness), F0) - F0) * exp2((-5.55473 * c - 6.98316) * c);
-}
-
-// Replaces both Geometry functions AND the BRDF denominator
-float VisibilitySmithGGXCorrelated(float NdotL, float NdotV, float roughness) {
-	// Note: 'roughness' here should be the remapped alpha (roughness^2)
-	// for perceptual linearity, matching your NDF's 'a'
-	float a2 = roughness * roughness;
-
-	float lambdaV = NdotL * sqrt((NdotV - a2 * NdotV) * NdotV + a2);
-	float lambdaL = NdotV * sqrt((NdotL - a2 * NdotL) * NdotL + a2);
-
-	return 0.5 / max(lambdaV + lambdaL, 0.0001);
-}
-
-// ============================================================================
-// Attenuation Helpers for Light Types
-// ============================================================================
-
-/**
- * Calculate light direction and attenuation for any light type.
- * @param light_index Index into the lights array
- * @param frag_pos Fragment world position
- * @param light_dir Output: normalized direction from fragment to light
- * @param attenuation Output: combined distance and angular attenuation
- */
-void calculateLightContribution(int light_index, vec3 frag_pos, out vec3 light_dir, out float attenuation) {
-	attenuation = 1.0;
-
-	if (lights[light_index].type == LIGHT_TYPE_POINT) {
-		// Point light: attenuates with distance
-		light_dir = normalize(lights[light_index].position - frag_pos);
-		float distance = length(lights[light_index].position - frag_pos);
-		// Practical attenuation curve (inverse square falloff with linear term)
-		attenuation = 1.0 / (1.0 + 0.09 * distance + 0.032 * distance * distance);
-
-	} else if (lights[light_index].type == LIGHT_TYPE_DIRECTIONAL) {
-		// Directional light: no attenuation, parallel rays
-		light_dir = normalize(-lights[light_index].direction);
-		attenuation = 1.0;
-
-	} else if (lights[light_index].type == LIGHT_TYPE_SPOT) {
-		// Spot light: distance attenuation + angular falloff
-		light_dir = normalize(lights[light_index].position - frag_pos);
-		float distance = length(lights[light_index].position - frag_pos);
-		attenuation = 1.0 / (1.0 + 0.09 * distance + 0.032 * distance * distance);
-
-		// Angular falloff using inner/outer cutoff angles
-		float theta = dot(light_dir, normalize(-lights[light_index].direction));
-		float epsilon = lights[light_index].inner_cutoff - lights[light_index].outer_cutoff;
-		float angular_intensity = clamp((theta - lights[light_index].outer_cutoff) / epsilon, 0.0, 1.0);
-		attenuation *= angular_intensity;
-
-	} else if (lights[light_index].type == LIGHT_TYPE_EMISSIVE) {
-		// Emissive/glowing object light: similar to point light but with soft near-field
-		// inner_cutoff stores the emissive object radius for soft falloff
-		light_dir = normalize(lights[light_index].position - frag_pos);
-		float distance = length(lights[light_index].position - frag_pos);
-		float emissive_radius = lights[light_index].inner_cutoff;
-
-		// Soft falloff that accounts for the size of the glowing object
-		// Avoids harsh falloff when very close to the light source
-		float effective_dist = max(distance - emissive_radius * 0.5, 0.0);
-		attenuation = 1.0 / (1.0 + 0.09 * effective_dist + 0.032 * effective_dist * effective_dist);
-
-		// Boost intensity when inside or near the emissive radius
-		float proximity_boost = smoothstep(emissive_radius * 2.0, 0.0, distance);
-		attenuation = mix(attenuation, 1.0, proximity_boost * 0.5);
-
-	} else if (lights[light_index].type == LIGHT_TYPE_FLASH) {
-		// Flash/explosion light: very bright with rapid falloff
-		// inner_cutoff = flash radius, outer_cutoff = falloff exponent
-		light_dir = normalize(lights[light_index].position - frag_pos);
-		float distance = length(lights[light_index].position - frag_pos);
-		float flash_radius = lights[light_index].inner_cutoff;
-		float falloff_exp = lights[light_index].outer_cutoff;
-
-		// Normalized distance (0 at center, 1 at radius edge)
-		float norm_dist = distance / max(flash_radius, 0.001);
-
-		// Sharp inverse-power falloff for explosive effect
-		// Falls off rapidly but smoothly
-		attenuation = 1.0 / pow(1.0 + norm_dist, falloff_exp);
-
-		// Hard cutoff at 2x radius to prevent distant influence
-		attenuation *= smoothstep(2.0, 1.5, norm_dist);
-	}
-}
-
-// ============================================================================
-// PBR Lighting Functions
+// PBR Lighting Functions (Cook-Torrance BRDF)
 // ============================================================================
 
 // PBR intensity multiplier to compensate for energy conservation
