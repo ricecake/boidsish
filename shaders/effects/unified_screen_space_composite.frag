@@ -102,13 +102,22 @@ vec4 sampleBilateral(sampler2D lowResTex, sampler2D highResDepth, sampler2D high
 			float normalW = pow(max(dot(centerNormal, sampleNormal), 0.0), normalSigma);
 
 			float weight = spatialW * depthW * normalW;
+			// Guarantee the center pixel always contributes,
+			// preventing absolute zero accumulation on sharp edges.
+			if (x == 0 && y == 0) {
+				weight = max(weight, 0.1);
+			}
 
 			sumColor += color * weight;
 			sumWeight += weight;
 		}
 	}
 
-	return sumColor / max(sumWeight, 0.0001);
+	if (sumWeight < 0.001) {
+		return texture(lowResTex, uv);
+	}
+
+	return sumColor / sumWeight;
 }
 
 void main() {
