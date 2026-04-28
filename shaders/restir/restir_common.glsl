@@ -51,6 +51,12 @@ uniform mat4 view;
 
 LightData getLightData(uint index) {
     LightData ld;
+    ld.position = vec3(0);
+    ld.direction = vec3(0, -1, 0);
+    ld.color = vec3(0);
+    ld.intensity = 0.0;
+    ld.type = 0; // POINT
+
     if (index < uint(u_num_lights)) {
         ld.position = gpu_lights[index].position;
         ld.direction = gpu_lights[index].direction;
@@ -62,30 +68,30 @@ LightData getLightData(uint index) {
     } else {
         uint p_idx = index - uint(u_num_lights);
         Particle p = particles[p_idx];
-        if (p.style == STYLE_FIRE) {
-            ld.position = particles[p_idx].pos.xyz;
-            ld.direction = vec3(0, -1, 0);
-            // Fire particles are typically orange/yellow/white
-            ld.color = vec3(1.0, 0.6, 0.2);
-            // Use lifetime (w) as intensity base for fire particles
-            ld.intensity = clamp(particles[p_idx].pos.w, 0.0, 1.0);
-            ld.type = 0; // POINT
-        } else if (p.style == STYLE_AMBIENT && p.emitter_id == 4 ) {
-            ld.position = particles[p_idx].pos.xyz;
-            ld.direction = vec3(0, -1, 0);
-            // Fire particles are typically orange/yellow/white
-            ld.color = vec3(0.7, 0.9, 0.1);
-            // Use lifetime (w) as intensity base for fire particles
-            ld.intensity = clamp(particles[p_idx].pos.w, 0.0, 1.0);
-            ld.type = 0; // POINT
-        } else {
-            ld.position = particles[p_idx].pos.xyz;
-            ld.direction = vec3(0, -1, 0);
-            // Fire particles are typically orange/yellow/white
-            ld.color = vec3(0.2, 0.5, 0.1);
-            // Use lifetime (w) as intensity base for fire particles
-            ld.intensity = 0.0;//clamp(particles[p_idx].pos.w, 0.0, 1.0) * 5.0;
-            ld.type = 0; // POINT
+
+        // Ensure particle is alive
+        if (p.pos.w > 0.0) {
+            ld.position = p.pos.xyz;
+
+            if (p.style == STYLE_FIRE) {
+                ld.color = vec3(1.0, 0.6, 0.2);
+                ld.intensity = clamp(p.pos.w, 0.0, 1.0);
+            } else if (p.style == STYLE_EXPLOSION) {
+                ld.color = vec3(1.0, 0.9, 0.5);
+                ld.intensity = clamp(p.pos.w, 0.0, 1.0) * 5.0;
+            } else if (p.style == STYLE_SPARKS || p.style == STYLE_CINDER) {
+                ld.color = vec3(1.0, 0.5, 0.1);
+                ld.intensity = clamp(p.pos.w, 0.0, 1.0) * 0.5;
+            } else if (p.style == STYLE_ROCKET_TRAIL) {
+                ld.color = vec3(0.5, 0.7, 1.0);
+                ld.intensity = clamp(p.pos.w, 0.0, 1.0) * 2.0;
+            } else if (p.style == STYLE_FIREFLIES) {
+                ld.color = vec3(0.6, 1.0, 0.3);
+                ld.intensity = clamp(p.pos.w, 0.0, 1.0) * 0.2;
+            } else if (p.style == STYLE_AMBIENT && p.emitter_id == 4) {
+                ld.color = vec3(0.7, 0.9, 0.1);
+                ld.intensity = clamp(p.pos.w, 0.0, 1.0);
+            }
         }
     }
     return ld;
@@ -99,10 +105,13 @@ float luminance(vec3 c) {
     return dot(c, vec3(0.2126, 0.7152, 0.0722));
 }
 
+// A standard 32-bit integer hash
 uint hash(uint x) {
-	x = ((x >> 16) ^ x) * 0x45d9f3b;
-	x = ((x >> 16) ^ x) * 0x45d9f3b;
-	x = (x >> 16) ^ x;
+	x ^= x >> 16;
+	x *= 0x7feb352dU;
+	x ^= x >> 15;
+	x *= 0x846ca68bU;
+	x ^= x >> 16;
 	return x;
 }
 
