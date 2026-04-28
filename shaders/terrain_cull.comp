@@ -1,0 +1,56 @@
+#version 430 core
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+#include "helpers/culling.glsl"
+#include "frustum.glsl"
+
+struct ChunkInfo {
+	vec4 world_offset_and_slice; // xyz = world offset, w = texture slice index
+	vec4 bounds;                 // xy = min/max Y for this chunk
+};
+
+layout(std430, binding = 0) readonly buffer InChunks {
+	ChunkInfo chunks[];
+};
+
+layout(std430, binding = 1) writeonly buffer OutVisibility {
+	uint visibility[];
+};
+
+uniform int   u_numChunks;
+uniform mat4  u_prevViewProjection;
+uniform sampler2D u_hizTexture;
+uniform ivec2 u_hizSize;
+uniform int   u_hizMipCount;
+uniform float u_chunkSize;
+uniform bool  u_enableHiZ;
+
+void main() {
+	uint idx = gl_GlobalInvocationID.x;
+	if (idx >= u_numChunks)
+		return;
+
+	vec3 worldOffset = chunks[idx].world_offset_and_slice.xyz;
+	float minY = chunks[idx].bounds.x;
+	float maxY = chunks[idx].bounds.y;
+
+	vec3 aabbMin = vec3(worldOffset.x, minY, worldOffset.z);
+	vec3 aabbMax = vec3(worldOffset.x + u_chunkSize, maxY, worldOffset.z + u_chunkSize);
+
+	// 1. Frustum Culling
+	if (!isAABBInFrustum(aabbMin, aabbMax)) {
+		visibility[idx] = 0u;
+		return;
+	}
+
+	// 2. Hi-Z Occlusion Culling
+	if (u_enableHiZ) {
+		if (isOccludedWorld(aabbMin, aabbMax, u_prevViewProjection, u_hizTexture, u_hizSize, u_hizMipCount, 4.0)) {
+			visibility[idx] = 0u;
+			return;
+		}
+	}
+
+	visibility[idx] = 1u;
+}

@@ -668,7 +668,8 @@ namespace Boidsish {
 		int                                   viewport_height,
 		const std::optional<glm::mat4>&       light_space_matrix,
 		const std::optional<glm::vec3>&       light_dir,
-		std::shared_ptr<TerrainRenderManager> render_manager
+		std::shared_ptr<TerrainRenderManager> render_manager,
+		const std::optional<glm::mat4>&       main_light_vp
 	) {
 		PROJECT_PROFILE_SCOPE("DecorManager::Cull");
 		if (!enabled_ || !initialized_ || decor_types_.empty())
@@ -692,6 +693,20 @@ namespace Boidsish {
 		culling_shader_->setMat4("u_viewProj", viewProj);
 		culling_shader_->setVec2("u_viewportSize", glm::vec2((float)viewport_width, (float)viewport_height));
 		culling_shader_->setFloat("u_minPixelSize", min_pixel_size_);
+
+		// Default light frustum state
+		if (main_light_vp.has_value() && !is_shadow_pass) {
+			Frustum light_frustum = Frustum::FromViewProjection(glm::mat4(1.0f), *main_light_vp);
+			culling_shader_->setBool("u_enableLightFrustum", true);
+			for (int p = 0; p < 6; ++p) {
+				culling_shader_->setVec4(
+					"u_lightFrustumPlanes[" + std::to_string(p) + "]",
+					glm::vec4(light_frustum.planes[p].normal, light_frustum.planes[p].distance)
+				);
+			}
+		} else {
+			culling_shader_->setBool("u_enableLightFrustum", false);
+		}
 
 		if (light_dir.has_value()) {
 			culling_shader_->setVec3("u_lightDir", *light_dir);

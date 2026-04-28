@@ -20,7 +20,7 @@ float marchOcclusion(vec3 p_start, vec3 rayDir, float maxDist) {
 	float visibility = 1.0;
 
 	float stepCount = 0;
-	float maxSteps = 5;
+	float maxSteps = 8;
 	float step = maxDist/maxSteps;
 	while (t < maxDist && stepCount++ <= maxSteps) {
 		vec3  p = p_start + t * rayDir;

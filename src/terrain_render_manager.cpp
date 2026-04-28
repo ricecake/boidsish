@@ -64,6 +64,7 @@ namespace Boidsish {
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
+		terrain_cull_shader_ = std::make_unique<ComputeShader>("shaders/terrain_cull.comp");
 		grid_mip_shader_ = std::make_unique<ComputeShader>("shaders/terrain_hiz_generate.comp");
 		probe_compute_shader_ = std::make_unique<ComputeShader>("shaders/terrain_probes.comp");
 		terrain_bake_shader_ = std::make_unique<ComputeShader>("shaders/terrain_bake.comp");
@@ -107,6 +108,11 @@ namespace Boidsish {
 		instance_buffer_capacity_ = max_chunks * sizeof(InstanceData);
 		glBufferData(GL_ARRAY_BUFFER, instance_buffer_capacity_, nullptr, GL_DYNAMIC_DRAW);
 
+		glGenBuffers(1, &chunk_visibility_ssbo_);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, chunk_visibility_ssbo_);
+		glBufferData(GL_SHADER_STORAGE_BUFFER, max_chunks * sizeof(uint32_t), nullptr, GL_DYNAMIC_DRAW);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+
 		CreateGridMesh();
 		EnsureTextureCapacity(max_chunks);
 	}
@@ -120,6 +126,8 @@ namespace Boidsish {
 			glDeleteBuffers(1, &grid_ebo_);
 		if (instance_vbo_)
 			glDeleteBuffers(1, &instance_vbo_);
+		if (chunk_visibility_ssbo_)
+			glDeleteBuffers(1, &chunk_visibility_ssbo_);
 		if (raw_heightmap_texture_)
 			glDeleteTextures(1, &raw_heightmap_texture_);
 		if (heightmap_texture_)
@@ -957,13 +965,33 @@ namespace Boidsish {
 		const glm::mat4&                projection,
 		const glm::vec2&                viewport_size,
 		const std::optional<glm::vec4>& clip_plane,
-		float                           tess_quality_multiplier
+		float                           tess_quality_multiplier,
+		bool                            dispatch_hiz
 	) {
 		PROJECT_PROFILE_SCOPE("TerrainRenderManager::Render");
 		std::lock_guard<std::recursive_mutex> lock(mutex_);
 
 		if (visible_instances_.empty() || grid_vao_ == 0 || grid_index_count_ == 0) {
 			return;
+		}
+
+		if (dispatch_hiz && terrain_cull_shader_ && terrain_cull_shader_->isValid() && hiz_texture_ != 0) {
+			terrain_cull_shader_->use();
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, instance_vbo_);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, chunk_visibility_ssbo_);
+			terrain_cull_shader_->setInt("u_numChunks", (int)visible_instances_.size());
+			terrain_cull_shader_->setFloat("u_chunkSize", chunk_size_ * last_world_scale_);
+
+			terrain_cull_shader_->setBool("u_enableHiZ", true);
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::HiZ());
+			glBindTexture(GL_TEXTURE_2D, hiz_texture_);
+			terrain_cull_shader_->setInt("u_hizTexture", Constants::TextureUnit::HiZ());
+			terrain_cull_shader_->setMat4("u_prevViewProjection", hiz_prev_vp_);
+			glUniform2i(glGetUniformLocation(terrain_cull_shader_->ID, "u_hizSize"), hiz_width_, hiz_height_);
+			terrain_cull_shader_->setInt("u_hizMipCount", hiz_mip_count_);
+
+			glDispatchCompute(((int)visible_instances_.size() + 63) / 64, 1, 1);
+			glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 		}
 
 		shader.use();
@@ -1026,6 +1054,10 @@ namespace Boidsish {
 
 		// Bind VAO (instance attributes already configured during initialization)
 		glBindVertexArray(grid_vao_);
+
+		// Bind visibility buffer
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::OcclusionVisibility(), chunk_visibility_ssbo_);
+		shader.setBool("uUseGPUCulling", dispatch_hiz);
 
 		// Note: EBO is already captured in VAO state during initialization
 

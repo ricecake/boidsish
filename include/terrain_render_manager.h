@@ -131,7 +131,8 @@ namespace Boidsish {
 			const glm::mat4&                projection,
 			const glm::vec2&                viewport_size,
 			const std::optional<glm::vec4>& clip_plane,
-			float                           tess_quality_multiplier
+			float                           tess_quality_multiplier,
+			bool                            dispatch_hiz = false
 		);
 
 		/**
@@ -225,6 +226,14 @@ namespace Boidsish {
 		 */
 		void SetGrassPropsUbo(GLuint ubo) { grass_props_ubo_ = ubo; }
 
+		void SetHiZData(GLuint hiz_texture, int hiz_width, int hiz_height, int mip_count, const glm::mat4& prev_vp) {
+			hiz_texture_ = hiz_texture;
+			hiz_width_ = hiz_width;
+			hiz_height_ = hiz_height;
+			hiz_mip_count_ = mip_count;
+			hiz_prev_vp_ = prev_vp;
+		}
+
 		void SetNoise(
 			GLuint simplex,
 			GLuint curl,
@@ -306,6 +315,7 @@ namespace Boidsish {
 		GLuint biome_ubo_ = 0; // UBO for BiomeShaderProperties
 
 		// Global terrain grid resources
+		GLuint chunk_visibility_ssbo_ = 0;
 		GLuint chunk_grid_texture_ = 0;      // GL_TEXTURE_2D (R16I: texture_slice index, -1 if none)
 		GLuint max_height_grid_texture_ = 0; // GL_TEXTURE_2D (R32F: max_y, mips for hierarchical check)
 		GLuint terrain_data_ubo_ = 0;        // UBO for grid parameters
@@ -314,6 +324,14 @@ namespace Boidsish {
 		GLuint visual_effects_ubo_ = 0;      // Bound by graphics.cpp
 		GLuint grass_props_ubo_ = 0;
 
+		// Hi-Z occlusion data
+		GLuint    hiz_texture_ = 0;
+		int       hiz_width_ = 0;
+		int       hiz_height_ = 0;
+		int       hiz_mip_count_ = 0;
+		glm::mat4 hiz_prev_vp_{1.0f};
+
+		std::unique_ptr<ComputeShader> terrain_cull_shader_;
 		std::unique_ptr<ComputeShader> grid_mip_shader_;
 		std::unique_ptr<ComputeShader> probe_compute_shader_;
 		std::unique_ptr<ComputeShader> terrain_bake_shader_;

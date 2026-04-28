@@ -1,4 +1,4 @@
-#version 420 core
+#version 430 core
 
 // Per-vertex attributes (from flat grid mesh)
 layout(location = 0) in vec3 aPos;       // Flat grid position (x, 0, z) in [0, chunk_size]
@@ -16,8 +16,17 @@ flat out vec3  WorldOffset_VS_out;  // World offset for this chunk
 flat out vec4  Bounds_VS_out;       // Min/max Y bounds
 
 uniform mat4 view;
+uniform bool uUseGPUCulling = false;
+layout(std430, binding = [[OCCLUSION_VISIBILITY_BINDING]]) readonly buffer OcclusionVisibility {
+	uint visibility[];
+};
 
 void main() {
+	if (uUseGPUCulling && visibility[gl_InstanceID] == 0) {
+		gl_Position = vec4(0.0, 0.0, 0.0, 0.0);
+		return;
+	}
+
 	// Extract camera forward vector
 	viewForward = vec3(-view[0][2], -view[1][2], -view[2][2]);
 

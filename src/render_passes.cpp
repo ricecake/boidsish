@@ -65,7 +65,8 @@ namespace Boidsish {
 			frame.render_height,
 			std::nullopt,
 			std::nullopt,
-			terrain_render_manager_
+			terrain_render_manager_,
+			shadows_.GetLightSpaceMatrix(0) // Assume cascade 0 for primary light frustum
 		);
 		decor_.Render(frame.view, frame.projection, terrain_render_manager_);
 
