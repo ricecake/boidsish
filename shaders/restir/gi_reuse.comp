@@ -48,8 +48,10 @@ void main() {
         float prevDepth = texture(gDepth, prevUV).r;
         vec3 vNorm = normalize(texture(gNormal, uv).xyz);
         vec3 prevNorm = normalize(texture(gNormal, prevUV).xyz);
+        float roughness = texture(gVelocity, uv).b;
+        float prevRoughness = texture(gVelocity, prevUV).b;
 
-        if (abs(depth - prevDepth) < 0.01 && dot(vNorm, prevNorm) > 0.9) {
+        if (restirGeometryCheck(depth, vNorm, roughness, prevDepth, prevNorm, prevRoughness)) {
             uint seed = uint(pixel.y * size.x + pixel.x) ^ hash(uint(frameIndex) + 400u);
 
             vec2 hitUV = vec2(float(previous.light_index & 0xFFFF) / 65535.0, float(previous.light_index >> 16) / 65535.0);
