@@ -1901,6 +1901,16 @@ namespace Boidsish {
 					sun_dir = -lights[0].direction; // To light
 				}
 
+				if (hiz_manager && hiz_manager->IsInitialized() && enable_hiz_culling_ && frame_count_ > 0) {
+					terrain_render_manager->SetHiZData(
+						hiz_manager->GetHiZTexture(),
+						hiz_manager->GetWidth(),
+						hiz_manager->GetHeight(),
+						hiz_manager->GetMipCount(),
+						prev_view_projection
+					);
+				}
+
 				terrain_render_manager->PrepareForRender(frustum, camera.pos(), world_scale,
 				render_state_.lighting.id,
 				static_cast<GLintptr>(render_state_.lighting.offset),
@@ -1909,7 +1919,7 @@ namespace Boidsish {
 				sun_dir);
 
 				terrain_render_manager
-					->Render(*Terrain::terrain_shader_, view, proj, viewport_size, clip_plane, effective_quality);
+					->Render(*Terrain::terrain_shader_, view, proj, viewport_size, clip_plane, effective_quality, enable_hiz_culling_ && frame_count_ > 0);
 			} else {
 				// Fallback to per-chunk rendering
 				Terrain::terrain_shader_->use();
@@ -2609,6 +2619,18 @@ namespace Boidsish {
 
 			if (grass_manager && terrain_generator && terrain_render_manager) {
 				grass_manager->SetCameraPos(camera.pos());
+
+				if (hiz_manager && hiz_manager->IsInitialized() && enable_hiz_culling_ && frame_count_ > 0) {
+					grass_manager->SetHiZData(
+						hiz_manager->GetHiZTexture(),
+						hiz_manager->GetWidth(),
+						hiz_manager->GetHeight(),
+						hiz_manager->GetMipCount(),
+						prev_view_projection
+					);
+				}
+				grass_manager->SetChunkVisibilitySsbo(terrain_render_manager->GetChunkVisibilitySsbo());
+
 				// Ensure Frustum and Terrain Grid are up to date for GPU placement
 				UpdateFrustumUbo(current_view_matrix, projection, camera.pos());
 				terrain_render_manager->UpdateGridTextures(

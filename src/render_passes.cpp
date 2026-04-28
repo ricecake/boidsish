@@ -65,7 +65,8 @@ namespace Boidsish {
 			frame.render_height,
 			std::nullopt,
 			std::nullopt,
-			terrain_render_manager_
+			terrain_render_manager_,
+			shadows_.GetLightSpaceMatrix(3) // Use widest cascade for conservative shadow caster culling
 		);
 		decor_.Render(frame.view, frame.projection, terrain_render_manager_);
 

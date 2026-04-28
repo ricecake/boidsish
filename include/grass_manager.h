@@ -93,6 +93,20 @@ namespace Boidsish {
 
         uint32_t GetGrassPropsUbo() const { return grass_props_ubo_; }
 
+        /// Set Hi-Z occlusion data for GPU placement culling.
+        void SetHiZData(uint32_t hiz_texture, int hiz_width, int hiz_height, int mip_count, const glm::mat4& prev_vp) {
+            hiz_texture_ = hiz_texture;
+            hiz_width_ = hiz_width;
+            hiz_height_ = hiz_height;
+            hiz_mip_count_ = mip_count;
+            hiz_prev_vp_ = prev_vp;
+            hiz_enabled_ = true;
+        }
+
+        void SetHiZEnabled(bool enabled) { hiz_enabled_ = enabled; }
+
+        void SetChunkVisibilitySsbo(uint32_t ssbo) { chunk_visibility_ssbo_ = ssbo; }
+
     private:
         bool initialized_ = false;
 
@@ -115,6 +129,15 @@ namespace Boidsish {
         static constexpr uint32_t kMaxGrassInstances = 1024 * 1024; // 1M blades
         glm::vec3 last_camera_pos_{0.0f};
         uint32_t dummy_vao_ = 0;
+
+        // Hi-Z occlusion culling data
+        uint32_t  hiz_texture_ = 0;
+        int       hiz_width_ = 0;
+        int       hiz_height_ = 0;
+        int       hiz_mip_count_ = 0;
+        glm::mat4 hiz_prev_vp_{1.0f};
+        bool      hiz_enabled_ = false;
+        uint32_t  chunk_visibility_ssbo_ = 0;
 
         void _InitializeResources();
         void _UpdatePlacement(const class Camera& camera, const class ITerrainGenerator& terrainGen, std::shared_ptr<class TerrainRenderManager> renderManager);
