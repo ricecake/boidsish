@@ -3,6 +3,7 @@
 #include <memory>
 
 #include "frame_data.h"
+#include "persistent_texture.h"
 #include <GL/glew.h>
 
 class Shader;
@@ -50,28 +51,28 @@ namespace Boidsish {
 		// --- Accessors for external consumers ---
 		GLuint GetMainFBO() const { return main_fbo_; }
 
-		GLuint GetColorTexture() const { return color_tex_; }
+		GLuint GetColorTexture() const { return color_tex_->GetId(); }
 
-		GLuint GetDepthTexture() const { return depth_tex_; }
+		GLuint GetDepthTexture() const { return depth_tex_->GetId(); }
 
-		GLuint GetVelocityTexture() const { return velocity_tex_; }
+		GLuint GetVelocityTexture() const { return velocity_tex_->GetId(); }
 
-		GLuint GetNormalTexture() const { return normal_tex_; }
+		GLuint GetNormalTexture() const { return normal_tex_->GetId(); }
 
-		GLuint GetAlbedoTexture() const { return albedo_tex_; }
+		GLuint GetAlbedoTexture() const { return albedo_tex_->GetId(); }
 
-		GLuint GetRefractionTexture() const { return refraction_tex_; }
+		GLuint GetRefractionTexture() const { return refraction_tex_->GetId(); }
 
 		GLuint GetBlitVAO() const { return blit_vao_; }
 
 	private:
 		GLuint main_fbo_ = 0;
-		GLuint color_tex_ = 0;
-		GLuint velocity_tex_ = 0;
-		GLuint normal_tex_ = 0;
-		GLuint albedo_tex_ = 0;
-		GLuint depth_tex_ = 0;
-		GLuint refraction_tex_ = 0;
+		std::unique_ptr<PersistentTexture> color_tex_;
+		std::unique_ptr<PersistentTexture> velocity_tex_;
+		std::unique_ptr<PersistentTexture> normal_tex_;
+		std::unique_ptr<PersistentTexture> albedo_tex_;
+		std::unique_ptr<PersistentTexture> depth_tex_;
+		std::unique_ptr<PersistentTexture> refraction_tex_;
 
 		// Blit quad — owned externally (shared with post-processing), just referenced
 		GLuint                  blit_vao_ = 0;

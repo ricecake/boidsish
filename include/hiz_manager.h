@@ -2,6 +2,7 @@
 
 #include <memory>
 
+#include "persistent_texture.h"
 #include <GL/glew.h>
 
 class ComputeShader;
@@ -35,7 +36,8 @@ namespace Boidsish {
 		/// @param depthTexture The main FBO depth texture (GL_DEPTH24_STENCIL8 or GL_DEPTH_COMPONENT)
 		void GeneratePyramid(GLuint depthTexture);
 
-		GLuint GetHiZTexture() const { return hiz_texture_; }
+		GLuint GetHiZTexture() const { return hiz_texture_ ? hiz_texture_->GetId() : 0; }
+		const PersistentTexture& GetHiZPersistentTexture() const { return *hiz_texture_; }
 
 		int GetMipCount() const { return mip_count_; }
 
@@ -47,10 +49,9 @@ namespace Boidsish {
 
 	private:
 		void CreateTexture();
-		void DestroyTexture();
 
-		std::unique_ptr<ComputeShader> generate_shader_;
-		GLuint                         hiz_texture_ = 0;
+		std::unique_ptr<ComputeShader>       generate_shader_;
+		std::unique_ptr<PersistentTexture> hiz_texture_;
 		int                            render_width_ = 0; // Full render resolution (depth buffer size)
 		int                            render_height_ = 0;
 		int                            hiz_width_ = 0; // Hi-Z base resolution (half render res)

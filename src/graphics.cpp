@@ -426,7 +426,7 @@ namespace Boidsish {
 		// Hi-Z occlusion culling
 		std::shared_ptr<HiZManager>    hiz_manager;
 		std::unique_ptr<ComputeShader> occlusion_cull_shader_;
-		GLuint                         occlusion_visibility_ssbo_{0};
+		std::unique_ptr<PersistentBuffer<uint32_t>> occlusion_visibility_ssbo_;
 		bool                           enable_hiz_culling_{true};
 
 		std::shared_ptr<Shader> shader;
@@ -772,11 +772,9 @@ namespace Boidsish {
 				enable_hiz_culling_ = false;
 			}
 			// Create visibility SSBO (GPU-only buffer, written by compute, read by vertex shader)
-			glGenBuffers(1, &occlusion_visibility_ssbo_);
-			glBindBuffer(GL_SHADER_STORAGE_BUFFER, occlusion_visibility_ssbo_);
+			occlusion_visibility_ssbo_ = std::make_unique<PersistentBuffer<uint32_t>>(GL_SHADER_STORAGE_BUFFER, 65536, 1);
 			std::vector<uint32_t> initial_vis(65536, 1u); // All visible initially
-			glBufferStorage(GL_SHADER_STORAGE_BUFFER, 65536 * sizeof(uint32_t), initial_vis.data(), 0);
-			glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+			memcpy(occlusion_visibility_ssbo_->GetFullBufferPtr(), initial_vis.data(), initial_vis.size() * sizeof(uint32_t));
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true)) {
 				postprocess_shader_ = std::make_shared<Shader>("shaders/postprocess.vert", "shaders/postprocess.frag");
 				shader_table.Register(std::make_unique<RenderShader>(postprocess_shader_));
@@ -1276,10 +1274,7 @@ namespace Boidsish {
 			lighting_pb.reset();
 			visual_effects_pb.reset();
 			temporal_pb.reset();
-
-			if (occlusion_visibility_ssbo_) {
-				glDeleteBuffers(1, &occlusion_visibility_ssbo_);
-			}
+			occlusion_visibility_ssbo_.reset();
 
 			service_locator_.Clear();
 
@@ -1548,7 +1543,7 @@ namespace Boidsish {
 					cmd.firstIndex = (use_shadow_indices ? packet.shadow_first_index : packet.first_index) +
 						(uses_megabuffer ? index_frame_offset : 0);
 					cmd.baseVertex = static_cast<int32_t>(
-						packet.base_vertex + (uses_megabuffer ? vertex_frame_offset : 0)
+						packet.base_vertex + (uses_megabuffer ? vertex_frame_offset : 0) + packet.vbo_offset
 					);
 					cmd.baseInstance = 0;
 					elements_cmd_ptr[mdi_elements_count++] = cmd;
@@ -1556,7 +1551,7 @@ namespace Boidsish {
 					DrawArraysIndirectCommand cmd{};
 					cmd.count = packet.vertex_count;
 					cmd.instanceCount = std::max(1, packet.instance_count);
-					cmd.first = packet.base_vertex + (uses_megabuffer ? vertex_frame_offset : 0);
+					cmd.first = packet.base_vertex + (uses_megabuffer ? vertex_frame_offset : 0) + packet.vbo_offset;
 					cmd.baseInstance = 0;
 					arrays_cmd_ptr[mdi_arrays_count++] = cmd;
 				}
@@ -1585,11 +1580,7 @@ namespace Boidsish {
 				);
 
 				// Bind visibility SSBO for compute to write
-				glBindBufferBase(
-					GL_SHADER_STORAGE_BUFFER,
-					Constants::SsboBinding::OcclusionVisibility(),
-					occlusion_visibility_ssbo_
-				);
+				occlusion_visibility_ssbo_->BindBase(Constants::SsboBinding::OcclusionVisibility());
 
 				// Bind Hi-Z texture
 				glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::HiZ());
@@ -1684,11 +1675,7 @@ namespace Boidsish {
 
 				// Bind visibility SSBO for Hi-Z occlusion culling (matching uniform indexing)
 				if (dispatch_hiz_occlusion && !is_shadow_pass) {
-					glBindBufferBase(
-						GL_SHADER_STORAGE_BUFFER,
-						Constants::SsboBinding::OcclusionVisibility(),
-						occlusion_visibility_ssbo_
-					);
+					occlusion_visibility_ssbo_->BindBase(Constants::SsboBinding::OcclusionVisibility());
 					s->setUint("u_baseVisibilityIndex", batch.base_uniform_index - frame_element_offset);
 				}
 
@@ -2194,6 +2181,7 @@ namespace Boidsish {
 			megabuffer->AdvanceFrame();
 			lighting_pb->AdvanceFrame();
 			temporal_pb->AdvanceFrame();
+			if (shadow_manager) shadow_manager->AdvanceFrame();
 			if (visual_effects_pb) visual_effects_pb->AdvanceFrame();
 
 			int current_idx = uniforms_ssbo->GetCurrentBufferIndex();
@@ -2713,8 +2701,8 @@ namespace Boidsish {
 					res.lightingUbo = render_state_.lighting.id;
 					res.lightingUboOffset = render_state_.lighting.offset;
 					res.lightingUboSize = render_state_.lighting.size;
-					res.shadowUbo = shadow_manager->GetShadowUbo();
-					res.shadowMaps = shadow_manager->GetShadowMapArray();
+					res.shadowUbo = shadow_manager->GetShadowUbo().GetBufferId();
+					res.shadowMaps = shadow_manager->GetShadowMapArray().GetId();
 					if (atmosphere_manager) {
 						res.transmittanceLUT = atmosphere_manager->GetTransmittanceLUT();
 						res.skyViewLUT = atmosphere_manager->GetSkyViewLUT();

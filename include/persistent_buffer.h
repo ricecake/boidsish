@@ -111,6 +111,20 @@ namespace Boidsish {
 
 		T* GetFullBufferPtr() { return reinterpret_cast<T*>(mapped_bytes_); }
 
+		/**
+		 * @brief Bind the buffer to a specific binding point using the full buffer.
+		 * @param index The binding point index.
+		 */
+		void BindBase(GLuint index) const { glBindBufferBase(target_, index, buffer_id_); }
+
+		/**
+		 * @brief Bind the current frame's segment to a specific binding point.
+		 * @param index The binding point index.
+		 */
+		void BindRange(GLuint index) const {
+			glBindBufferRange(target_, index, buffer_id_, GetFrameOffset(), aligned_frame_stride_);
+		}
+
 	private:
 		GLuint buffer_id_ = 0;
 		GLenum target_;

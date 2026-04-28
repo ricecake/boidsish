@@ -25,9 +25,6 @@ namespace Boidsish {
 	}
 
 	MeshExplosionManager::~MeshExplosionManager() {
-		if (ssbo_ != 0) {
-			glDeleteBuffers(1, &ssbo_);
-		}
 		if (vao_ != 0) {
 			glDeleteVertexArrays(1, &vao_);
 		}
@@ -63,17 +60,8 @@ namespace Boidsish {
 			glUniformBlockBinding(render_shader_->ID, shadows_idx, Constants::UboBinding::Shadows());
 		}
 
-		glGenBuffers(1, &ssbo_);
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_);
-		std::vector<MeshExplosionFragment> initial_data(kMaxFragments);
-		memset(initial_data.data(), 0, kMaxFragments * sizeof(MeshExplosionFragment));
-		glBufferData(
-			GL_SHADER_STORAGE_BUFFER,
-			kMaxFragments * sizeof(MeshExplosionFragment),
-			initial_data.data(),
-			GL_DYNAMIC_DRAW
-		);
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+		ssbo_ = std::make_unique<PersistentBuffer<MeshExplosionFragment>>(GL_SHADER_STORAGE_BUFFER, kMaxFragments, 3);
+		memset(ssbo_->GetFullBufferPtr(), 0, ssbo_->GetTotalSize());
 
 		glGenVertexArrays(1, &vao_);
 
@@ -165,34 +153,18 @@ namespace Boidsish {
 		if (new_fragments.empty())
 			return;
 
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_);
+		MeshExplosionFragment* dst = ssbo_->GetFrameDataPtr();
 		if (current_fragment_index_ + new_fragments.size() <= kMaxFragments) {
-			glBufferSubData(
-				GL_SHADER_STORAGE_BUFFER,
-				current_fragment_index_ * sizeof(MeshExplosionFragment),
-				new_fragments.size() * sizeof(MeshExplosionFragment),
-				new_fragments.data()
-			);
+			memcpy(dst + current_fragment_index_, new_fragments.data(), new_fragments.size() * sizeof(MeshExplosionFragment));
 			current_fragment_index_ = (current_fragment_index_ + new_fragments.size()) % kMaxFragments;
 		} else {
 			// Circular buffer wrap around
 			size_t first_part = kMaxFragments - current_fragment_index_;
-			glBufferSubData(
-				GL_SHADER_STORAGE_BUFFER,
-				current_fragment_index_ * sizeof(MeshExplosionFragment),
-				first_part * sizeof(MeshExplosionFragment),
-				new_fragments.data()
-			);
+			memcpy(dst + current_fragment_index_, new_fragments.data(), first_part * sizeof(MeshExplosionFragment));
 			size_t second_part = new_fragments.size() - first_part;
-			glBufferSubData(
-				GL_SHADER_STORAGE_BUFFER,
-				0,
-				second_part * sizeof(MeshExplosionFragment),
-				new_fragments.data() + first_part
-			);
+			memcpy(dst, new_fragments.data() + first_part, second_part * sizeof(MeshExplosionFragment));
 			current_fragment_index_ = second_part;
 		}
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 		active_ = true;
 		elapsed = 0.0f;
 	}
@@ -209,10 +181,12 @@ namespace Boidsish {
 			return;
 		}
 
+		ssbo_->AdvanceFrame();
+
 		compute_shader_->use();
 		compute_shader_->setFloat("u_delta_time", delta_time);
 
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::MeshExplosionFragments(), ssbo_);
+		ssbo_->BindRange(Constants::SsboBinding::MeshExplosionFragments());
 		glDispatchCompute((kMaxFragments / Constants::Class::Explosions::ComputeGroupSize()) + 1, 1, 1);
 		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::MeshExplosionFragments(), 0);
@@ -235,7 +209,7 @@ namespace Boidsish {
 		render_shader_->setMat4("u_view", view);
 		render_shader_->setMat4("u_projection", projection);
 
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::MeshExplosionFragments(), ssbo_);
+		ssbo_->BindRange(Constants::SsboBinding::MeshExplosionFragments());
 		glBindVertexArray(vao_);
 		glDrawArraysInstanced(GL_TRIANGLES, 0, 3, kMaxFragments);
 		glBindVertexArray(0);

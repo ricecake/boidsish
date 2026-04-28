@@ -9,6 +9,7 @@
 
 #include "constants.h"
 #include "geometry.h"
+#include "persistent_buffer.h"
 #include <GL/glew.h>
 #include <glm/glm.hpp>
 
@@ -129,6 +130,32 @@ namespace Boidsish {
 		size_t GetTotalVertexCount() const;
 
 	private:
+		struct TrailSpinePoint {
+			glm::vec4 pos;
+			glm::vec4 color;
+			glm::vec4 tangent;
+			glm::vec4 normal;
+		};
+
+		struct TrailPoint {
+			glm::vec4 pos;
+			glm::vec4 color;
+		};
+
+		struct TrailInstance {
+			uint32_t points_offset; // Offset in TrailPoints SSBO
+			uint32_t head;          // Ring buffer head index
+			uint32_t tail;          // Ring buffer tail index
+			uint32_t max_points;    // Max points in the ring buffer
+			float    thickness;
+			uint32_t vertex_offset; // Offset in the generated VBO (in vertices)
+			uint32_t is_full;
+			uint32_t flags; // 1: iridescent, 2: rocket, 4: pbr
+			float    roughness;
+			float    metallic;
+			uint32_t _padding[2];
+		};
+
 		struct TrailAllocation {
 			size_t points_offset; // Offset in TrailPoints SSBO
 			size_t max_points;    // Maximum points allocated for this trail
@@ -156,11 +183,11 @@ namespace Boidsish {
 
 		// OpenGL resources
 		GLuint vao_ = 0;
-		GLuint tess_vbo_ = 0;
-		GLuint tess_ebo_ = 0;
-		GLuint points_ssbo_ = 0;
-		GLuint instances_ssbo_ = 0;
-		GLuint spine_ssbo_ = 0;
+		std::unique_ptr<PersistentBuffer<float>>         tess_vbo_;
+		std::unique_ptr<PersistentBuffer<uint32_t>>      tess_ebo_;
+		std::unique_ptr<PersistentBuffer<TrailPoint>>    points_ssbo_;
+		std::unique_ptr<PersistentBuffer<TrailInstance>> instances_ssbo_;
+		std::unique_ptr<PersistentBuffer<TrailSpinePoint>> spine_ssbo_;
 
 		// Buffer capacity
 		size_t points_capacity_ = 0;

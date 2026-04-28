@@ -13,9 +13,7 @@ namespace Boidsish {
 
 	HiZManager::HiZManager(ServiceLocator& /*loc*/) {}
 
-	HiZManager::~HiZManager() {
-		DestroyTexture();
-	}
+	HiZManager::~HiZManager() {}
 
 	void HiZManager::Initialize(int width, int height) {
 		PROJECT_PROFILE_SCOPE("HiZManager::Initialize");
@@ -43,28 +41,20 @@ namespace Boidsish {
 		hiz_width_ = std::max(1, width / 2);
 		hiz_height_ = std::max(1, height / 2);
 
-		DestroyTexture();
 		CreateTexture();
 	}
 
 	void HiZManager::CreateTexture() {
 		mip_count_ = 1 + static_cast<int>(std::floor(std::log2(std::max(hiz_width_, hiz_height_))));
+		hiz_texture_ = std::make_unique<PersistentTexture>(GL_TEXTURE_2D, GL_R32F, hiz_width_, hiz_height_, 1, mip_count_);
 
-		glGenTextures(1, &hiz_texture_);
-		glBindTexture(GL_TEXTURE_2D, hiz_texture_);
-		glTexStorage2D(GL_TEXTURE_2D, mip_count_, GL_R32F, hiz_width_, hiz_height_);
+		GLuint id = hiz_texture_->GetId();
+		glBindTexture(GL_TEXTURE_2D, id);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 		glBindTexture(GL_TEXTURE_2D, 0);
-	}
-
-	void HiZManager::DestroyTexture() {
-		if (hiz_texture_) {
-			glDeleteTextures(1, &hiz_texture_);
-			hiz_texture_ = 0;
-		}
 	}
 
 	void HiZManager::GeneratePyramid(GLuint depthTexture) {
@@ -79,6 +69,7 @@ namespace Boidsish {
 		int src_w = render_width_;
 		int src_h = render_height_;
 
+		GLuint hiz_id = hiz_texture_->GetId();
 		for (int mip = 0; mip < mip_count_; ++mip) {
 			int dst_w = std::max(1, hiz_width_ >> mip);
 			int dst_h = std::max(1, hiz_height_ >> mip);
@@ -93,14 +84,14 @@ namespace Boidsish {
 				glBindTexture(GL_TEXTURE_2D, depthTexture);
 			} else {
 				// Mip N: 2x MAX downsample from previous Hi-Z mip
-				glBindTexture(GL_TEXTURE_2D, hiz_texture_);
+				glBindTexture(GL_TEXTURE_2D, hiz_id);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, mip - 1);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, mip - 1);
 			}
 			generate_shader_->setInt("u_srcDepth", 0);
 
 			// Bind destination mip as image
-			glBindImageTexture(0, hiz_texture_, mip, GL_FALSE, 0, GL_WRITE_ONLY, GL_R32F);
+			glBindImageTexture(0, hiz_id, mip, GL_FALSE, 0, GL_WRITE_ONLY, GL_R32F);
 
 			// Dispatch
 			glDispatchCompute((dst_w + 7) / 8, (dst_h + 7) / 8, 1);
@@ -114,7 +105,7 @@ namespace Boidsish {
 		}
 
 		// Reset texture parameters if we modified them
-		glBindTexture(GL_TEXTURE_2D, hiz_texture_);
+		glBindTexture(GL_TEXTURE_2D, hiz_id);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, mip_count_ - 1);
 		glBindTexture(GL_TEXTURE_2D, 0);

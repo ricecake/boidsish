@@ -5,6 +5,8 @@
 #include <vector>
 
 #include "IManager.h"
+#include "persistent_buffer.h"
+#include "persistent_texture.h"
 #include <GL/glew.h>
 #include <glm/glm.hpp>
 #include "weather_constants.h"
@@ -33,15 +35,15 @@ namespace Boidsish {
 
 		glm::vec3 GetAmbientEstimate() const { return _ambientEstimate; }
 
-		GLuint GetTransmittanceLUT() const { return _transmittanceLUT; }
+		GLuint GetTransmittanceLUT() const { return _transmittanceLUT ? _transmittanceLUT->GetId() : 0; }
 
-		GLuint GetMultiScatteringLUT() const { return _multiScatteringLUT; }
+		GLuint GetMultiScatteringLUT() const { return _multiScatteringLUT ? _multiScatteringLUT->GetId() : 0; }
 
-		GLuint GetSkyViewLUT() const { return _skyViewLUT; }
+		GLuint GetSkyViewLUT() const { return _skyViewLUT ? _skyViewLUT->GetId() : 0; }
 
-		GLuint GetAerialPerspectiveLUT() const { return _aerialPerspectiveLUT; }
+		GLuint GetAerialPerspectiveLUT() const { return _aerialPerspectiveLUT ? _aerialPerspectiveLUT->GetId() : 0; }
 
-		GLuint GetCloudShadowMap() const { return _cloudShadowMap; }
+		GLuint GetCloudShadowMap() const { return _cloudShadowMap ? _cloudShadowMap->GetId() : 0; }
 
 		static constexpr GLuint kTransmittanceUnit = 20;
 		static constexpr GLuint kMultiScatteringUnit = 21;
@@ -177,12 +179,12 @@ namespace Boidsish {
 		void CreateTextures();
 		void CreateShaders();
 
-		GLuint _transmittanceLUT = 0;
-		GLuint _multiScatteringLUT = 0;
-		GLuint _skyViewLUT = 0;
-		GLuint _aerialPerspectiveLUT = 0;
-		GLuint _cloudShadowMap = 0;
-		GLuint _shCoeffsBuffer = 0;
+		std::unique_ptr<PersistentTexture> _transmittanceLUT;
+		std::unique_ptr<PersistentTexture> _multiScatteringLUT;
+		std::unique_ptr<PersistentTexture> _skyViewLUT;
+		std::unique_ptr<PersistentTexture> _aerialPerspectiveLUT;
+		std::unique_ptr<PersistentTexture> _cloudShadowMap;
+		std::unique_ptr<PersistentBuffer<glm::vec4>> _shCoeffsBuffer;
 
 		std::unique_ptr<ComputeShader> _transmittanceShader;
 		std::unique_ptr<ComputeShader> _multiScatteringShader;

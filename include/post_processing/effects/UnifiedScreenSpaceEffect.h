@@ -4,6 +4,7 @@
 #include <memory>
 #include <string>
 
+#include "persistent_texture.h"
 #include "post_processing/IPostProcessingEffect.h"
 #include "post_processing/TemporalAccumulator.h"
 #include <glm/glm.hpp>
@@ -100,8 +101,8 @@ namespace Boidsish {
 			TemporalAccumulator            gi_ao_accumulator_;
 			TemporalAccumulator            sss_accumulator_;
 
-			GLuint gi_ao_texture_ = 0;
-			GLuint sss_texture_ = 0;
+			std::unique_ptr<PersistentTexture> gi_ao_texture_;
+			std::unique_ptr<PersistentTexture> sss_texture_;
 			GLuint blue_noise_texture_ = 0;
 			GLuint hiz_texture_ = 0;
 			int    hiz_mips_ = 0;

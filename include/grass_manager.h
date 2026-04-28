@@ -9,6 +9,8 @@
 #include <array>
 #include "constants.h"
 #include "biome_properties.h"
+#include "geometry.h"
+#include "persistent_buffer.h"
 #include "render_shader.h"
 
 namespace Boidsish {
@@ -45,8 +47,18 @@ namespace Boidsish {
         float _pad1 = 0.0f;
     };
 
+    struct GrassPropsUboData {
+        GrassProperties       biome_props[8];
+        GlobalGrassProperties global_props;
+    };
+
     class GrassManager {
     public:
+        struct GrassInstance {
+            glm::vec4 pos_rot; // xyz = world pos, w = rotation
+            glm::vec4 scale_seed_biome; // x = height, y = width, z = seed, w = biome index
+        };
+
         GrassManager(ServiceLocator& loc);
         ~GrassManager();
 
@@ -57,18 +69,18 @@ namespace Boidsish {
             uint32_t lightingUbo;
             size_t   lightingUboOffset = 0;
             size_t   lightingUboSize = 0;
-            uint32_t shadowUbo;
-            uint32_t shadowMaps;
-            uint32_t transmittanceLUT;
-            uint32_t skyViewLUT;
-            uint32_t aerialPerspectiveLUT;
-            uint32_t cloudShadowMap;
-            float atmosphereHeight;
-            uint32_t noiseTexture;
-            uint32_t curlTexture;
-            uint32_t extraNoiseTexture;
-            uint32_t blueNoiseTexture;
-            uint32_t phasorTexture;
+            GLuint   shadowUbo;
+            GLuint   shadowMaps;
+            GLuint   transmittanceLUT;
+            GLuint   skyViewLUT;
+            GLuint   aerialPerspectiveLUT;
+            GLuint   cloudShadowMap;
+            float    atmosphereHeight;
+            GLuint   noiseTexture;
+            GLuint   curlTexture;
+            GLuint   extraNoiseTexture;
+            GLuint   blueNoiseTexture;
+            GLuint   phasorTexture;
             const int* shadowIndices;
         };
 
@@ -98,17 +110,12 @@ namespace Boidsish {
         GlobalGrassProperties global_props_;
         bool props_dirty_ = false;
 
-        uint32_t grass_props_ubo_ = 0;
-        uint32_t grass_instances_ssbo_ = 0;
-        uint32_t grass_indirect_buffer_ = 0;
+        std::unique_ptr<PersistentBuffer<GrassPropsUboData>>        grass_props_ubo_;
+        std::unique_ptr<PersistentBuffer<GrassInstance>>           grass_instances_ssbo_;
+        std::unique_ptr<PersistentBuffer<DrawArraysIndirectCommand>> grass_indirect_buffer_;
 
         std::unique_ptr<class ComputeShader> placement_shader_;
         std::shared_ptr<class Shader> grass_shader_;
-
-        struct GrassInstance {
-            glm::vec4 pos_rot; // xyz = world pos, w = rotation
-            glm::vec4 scale_seed_biome; // x = height, y = width, z = seed, w = biome index
-        };
 
         static constexpr uint32_t kMaxGrassInstances = 1024 * 1024; // 1M blades
         glm::vec3 last_camera_pos_{0.0f};

@@ -8,6 +8,9 @@
 #include <vector>
 
 #include "constants.h"
+#include "persistent_buffer.h"
+#include "persistent_texture.h"
+#include "biome_properties.h"
 #include <GL/glew.h>
 #include <glm/glm.hpp>
 
@@ -158,12 +161,12 @@ namespace Boidsish {
 		/**
 		 * @brief Get the heightmap texture array for shader binding.
 		 */
-		GLuint GetHeightmapTexture() const { return heightmap_texture_; }
+		GLuint GetHeightmapTexture() const { return heightmap_texture_ ? heightmap_texture_->GetId() : 0; }
 
 		/**
 		 * @brief Get the biome texture array for shader binding.
 		 */
-		GLuint GetBiomeTexture() const { return biome_texture_; }
+		GLuint GetBiomeTexture() const { return biome_texture_ ? biome_texture_->GetId() : 0; }
 
 		/**
 		 * @brief Get info about all registered chunks for external use (e.g., decor placement).
@@ -284,28 +287,28 @@ namespace Boidsish {
 
 		// OpenGL resources
 		GLuint grid_vao_ = 0;
-		GLuint grid_vbo_ = 0;
-		GLuint grid_ebo_ = 0;
-		GLuint instance_vbo_ = 0;
-		GLuint raw_heightmap_texture_ = 0; // GL_TEXTURE_2D_ARRAY (RGBA16F: height, normal.xyz)
-		GLuint heightmap_texture_ = 0;     // GL_TEXTURE_2D_ARRAY (RGBA16F: baked height, baked normal)
-		GLuint baked_params_texture_ = 0;  // GL_TEXTURE_2D_ARRAY (RGBA16F: erosion, ridge, substrate, water)
-		GLuint horizon_map_texture_ = 0;   // GL_TEXTURE_2D_ARRAY (RGBA16F: 8 directions)
-		GLuint terrain_shadow_map_texture_ = 0; // GL_TEXTURE_2D (R8)
-		GLuint biome_texture_ = 0;         // GL_TEXTURE_2D_ARRAY (RGBA8: low_idx, t, bake_flag, unused)
+		std::unique_ptr<PersistentBuffer<float>>         grid_vbo_;
+		std::unique_ptr<PersistentBuffer<uint32_t>>      grid_ebo_;
+		std::unique_ptr<PersistentBuffer<InstanceData>> instance_vbo_;
+		std::unique_ptr<PersistentTexture> raw_heightmap_texture_; // GL_TEXTURE_2D_ARRAY (RGBA16F: height, normal.xyz)
+		std::unique_ptr<PersistentTexture> heightmap_texture_;     // GL_TEXTURE_2D_ARRAY (RGBA16F: baked height, baked normal)
+		std::unique_ptr<PersistentTexture> baked_params_texture_;  // GL_TEXTURE_2D_ARRAY (RGBA16F: erosion, ridge, substrate, water)
+		std::unique_ptr<PersistentTexture> horizon_map_texture_;   // GL_TEXTURE_2D_ARRAY (RGBA16F: 8 directions)
+		std::unique_ptr<PersistentTexture> terrain_shadow_map_texture_; // GL_TEXTURE_2D (R8)
+		std::unique_ptr<PersistentTexture> biome_texture_;         // GL_TEXTURE_2D_ARRAY (RGBA8: low_idx, t, bake_flag, unused)
 		GLuint noise_texture_ = 0;
 		GLuint curl_texture_ = 0;
 		GLuint extra_noise_texture_ = 0;
 		GLuint blue_noise_texture_ = 0;
 		GLuint phasor_noise_texture_ = 0;
-		GLuint biome_ubo_ = 0; // UBO for BiomeShaderProperties
+		std::unique_ptr<PersistentBuffer<BiomeShaderProperties>> biome_ubo_; // UBO for BiomeShaderProperties
 
 		// Global terrain grid resources
-		GLuint chunk_grid_texture_ = 0;      // GL_TEXTURE_2D (R16I: texture_slice index, -1 if none)
-		GLuint max_height_grid_texture_ = 0; // GL_TEXTURE_2D (R32F: max_y, mips for hierarchical check)
-		GLuint terrain_data_ubo_ = 0;        // UBO for grid parameters
-		GLuint probe_ssbo_ = 0;              // SSBO for per-chunk SH probes
-		GLuint bake_ssbo_ = 0;               // SSBO for BakeTask
+		std::unique_ptr<PersistentTexture> chunk_grid_texture_;      // GL_TEXTURE_2D (R16I: texture_slice index, -1 if none)
+		std::unique_ptr<PersistentTexture> max_height_grid_texture_; // GL_TEXTURE_2D (R32F: max_y, mips for hierarchical check)
+		std::unique_ptr<PersistentBuffer<struct TerrainDataUbo>> terrain_data_ubo_;        // UBO for grid parameters
+		std::unique_ptr<PersistentBuffer<glm::vec4>> probe_ssbo_;              // SSBO for per-chunk SH probes (vec4[9] per probe)
+		std::unique_ptr<PersistentBuffer<BakeTask>>  bake_ssbo_;               // SSBO for BakeTask
 		GLuint visual_effects_ubo_ = 0;      // Bound by graphics.cpp
 
 		std::unique_ptr<ComputeShader> grid_mip_shader_;

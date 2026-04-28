@@ -13,10 +13,6 @@ namespace Boidsish {
 		AtmosphereEffect::~AtmosphereEffect() {
 			if (low_res_fbo_) {
 				glDeleteFramebuffers(1, &low_res_fbo_);
-				glDeleteTextures(1, &low_res_texture_);
-			}
-			if (temporal_textures_[0]) {
-				glDeleteTextures(2, temporal_textures_);
 			}
 		}
 
@@ -60,20 +56,21 @@ namespace Boidsish {
 		void AtmosphereEffect::InitializeLowResResources() {
 			if (low_res_fbo_ == 0) {
 				glGenFramebuffers(1, &low_res_fbo_);
-				glGenTextures(1, &low_res_texture_);
 			}
 
 			int low_res_width = std::max(1, static_cast<int>(width_ * render_scale_));
 			int low_res_height = std::max(1, static_cast<int>(height_ * render_scale_));
 
+			low_res_texture_ = std::make_unique<PersistentTexture>(GL_TEXTURE_2D, GL_RGBA16F, low_res_width, low_res_height, 1, 1);
+			GLuint low_res_id = low_res_texture_->GetId();
+
 			glBindFramebuffer(GL_FRAMEBUFFER, low_res_fbo_);
-			glBindTexture(GL_TEXTURE_2D, low_res_texture_);
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, low_res_width, low_res_height, 0, GL_RGBA, GL_FLOAT, NULL);
+			glBindTexture(GL_TEXTURE_2D, low_res_id);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, low_res_texture_, 0);
+			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, low_res_id, 0);
 
 			if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
 				std::cerr << "ERROR::ATMOSPHERE_EFFECT: Low-res FBO is not complete!" << std::endl;
@@ -86,13 +83,11 @@ namespace Boidsish {
 			int low_res_width = std::max(1, static_cast<int>(width_ * render_scale_));
 			int low_res_height = std::max(1, static_cast<int>(height_ * render_scale_));
 
-			if (temporal_textures_[0]) {
-				glDeleteTextures(2, temporal_textures_);
-			}
-			glGenTextures(2, temporal_textures_);
 			for (int i = 0; i < 2; i++) {
-				glBindTexture(GL_TEXTURE_2D, temporal_textures_[i]);
-				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, low_res_width, low_res_height, 0, GL_RGBA, GL_FLOAT, NULL);
+				temporal_textures_[i] = std::make_unique<PersistentTexture>(GL_TEXTURE_2D, GL_RGBA16F, low_res_width, low_res_height, 1, 1);
+
+				GLuint id = temporal_textures_[i]->GetId();
+				glBindTexture(GL_TEXTURE_2D, id);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -159,7 +154,7 @@ namespace Boidsish {
 			// --- PASS 1.5: Temporal Reprojection (compute, at low res) ---
 			// Blend current low-res clouds with reprojected history to reduce noise and
 			// effectively supersample the low-res buffer over multiple frames.
-			GLuint    cloud_source = low_res_texture_;
+			GLuint    cloud_source = low_res_texture_->GetId();
 			glm::mat4 invView = glm::inverse(viewMatrix);
 			glm::mat4 invProj = glm::inverse(projectionMatrix);
 
@@ -178,20 +173,20 @@ namespace Boidsish {
 				temporal_shader_->setInt("uDepthTexture", 2);
 
 				glActiveTexture(GL_TEXTURE0);
-				glBindTexture(GL_TEXTURE_2D, low_res_texture_);
+				glBindTexture(GL_TEXTURE_2D, low_res_texture_->GetId());
 				glActiveTexture(GL_TEXTURE1);
-				glBindTexture(GL_TEXTURE_2D, temporal_textures_[temporal_index_]);
+				glBindTexture(GL_TEXTURE_2D, temporal_textures_[temporal_index_]->GetId());
 				glActiveTexture(GL_TEXTURE2);
 				glBindTexture(GL_TEXTURE_2D, depthTexture);
 
-				glBindImageTexture(0, temporal_textures_[next_temporal], 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+				glBindImageTexture(0, temporal_textures_[next_temporal]->GetId(), 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 
 				glDispatchCompute((low_res_width + 7) / 8, (low_res_height + 7) / 8, 1);
 				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
 				temporal_index_ = next_temporal;
 				has_valid_history_ = true;
-				cloud_source = temporal_textures_[temporal_index_];
+				cloud_source = temporal_textures_[temporal_index_]->GetId();
 			}
 
 			// Store current VP for next frame's reprojection

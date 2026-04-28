@@ -59,13 +59,6 @@ namespace Boidsish {
 				lbm_task_->get();
 			} catch (...) {}
 		}
-
-		if (wind_data_ubo_ != 0) {
-			glDeleteBuffers(1, &wind_data_ubo_);
-		}
-		if (wind_texture_ != 0) {
-			glDeleteTextures(1, &wind_texture_);
-		}
 	}
 
 	void WeatherManager::SetTarget(WeatherAttribute attr, float target) {
@@ -476,25 +469,20 @@ namespace Boidsish {
 			return;
 
 		// Lazy initialization of GPU resources
-		if (wind_data_ubo_ == 0) {
-			glGenBuffers(1, &wind_data_ubo_);
-			glBindBuffer(GL_UNIFORM_BUFFER, wind_data_ubo_);
-			glBufferData(GL_UNIFORM_BUFFER, sizeof(WindDataUbo), nullptr, GL_DYNAMIC_DRAW);
-			glBindBuffer(GL_UNIFORM_BUFFER, 0);
+		if (!wind_data_ubo_) {
+			wind_data_ubo_ = std::make_unique<PersistentBuffer<WindDataUbo>>(GL_UNIFORM_BUFFER, 1, 3);
+			wind_data_ubo_->BindBase(Constants::UboBinding::WindData());
 		}
-		if (wind_texture_ == 0) {
-			glGenTextures(1, &wind_texture_);
-			glBindTexture(GL_TEXTURE_2D, wind_texture_);
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, lbm_simulator_->GetWidth(), lbm_simulator_->GetHeight(), 0, GL_RGBA, GL_FLOAT, nullptr);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-			glBindTexture(GL_TEXTURE_2D, 0);
+		if (!wind_texture_) {
+			wind_texture_ = std::make_unique<PersistentTexture>(GL_TEXTURE_2D, GL_RGBA32F, lbm_simulator_->GetWidth(), lbm_simulator_->GetHeight());
 		}
 
-		WindDataUbo ubo = latest_snapshot_.uboMetadata;
+		wind_data_ubo_->AdvanceFrame();
+		wind_data_ubo_->BindRange(Constants::UboBinding::WindData());
+		*wind_data_ubo_->GetFrameDataPtr() = latest_snapshot_.uboMetadata;
+
 		const auto& wind_data = latest_snapshot_.windData;
+		const auto& ubo = latest_snapshot_.uboMetadata;
 
 		if (!macro_sim_enabled_) {
 			// Fallback: Uniform slowly changing wind vector
@@ -510,36 +498,12 @@ namespace Boidsish {
 			// We still use the snapshot's grid dimensions for metadata but override the content
 			std::vector<glm::vec4> fallback_data(wind_data.size(), glm::vec4(windVec.x, 0.0f, windVec.y, 0.0f));
 
-			glBindBuffer(GL_UNIFORM_BUFFER, wind_data_ubo_);
-			glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(WindDataUbo), &ubo);
-			glBindBuffer(GL_UNIFORM_BUFFER, 0);
-
-			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::WindData(), wind_data_ubo_);
-
-			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::WindData());
-			glBindTexture(GL_TEXTURE_2D, wind_texture_);
-			glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, ubo.originSize.y, ubo.originSize.w, GL_RGBA, GL_FLOAT, fallback_data.data());
+			wind_texture_->Bind(Constants::TextureUnit::WindData());
+			wind_texture_->Update2D(fallback_data.data(), 0, 0, ubo.originSize.y, ubo.originSize.w, GL_RGBA, GL_FLOAT);
 		} else {
-			glBindBuffer(GL_UNIFORM_BUFFER, wind_data_ubo_);
-			glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(WindDataUbo), &ubo);
-			glBindBuffer(GL_UNIFORM_BUFFER, 0);
-
-			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::WindData(), wind_data_ubo_);
-
 			// Update Wind Texture
-			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::WindData());
-			glBindTexture(GL_TEXTURE_2D, wind_texture_);
-			glTexSubImage2D(
-				GL_TEXTURE_2D,
-				0,
-				0,
-				0,
-				ubo.originSize.y,
-				ubo.originSize.w,
-				GL_RGBA,
-				GL_FLOAT,
-				wind_data.data()
-			);
+			wind_texture_->Bind(Constants::TextureUnit::WindData());
+			wind_texture_->Update2D(wind_data.data(), 0, 0, ubo.originSize.y, ubo.originSize.w, GL_RGBA, GL_FLOAT);
 		}
 	}
 

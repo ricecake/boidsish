@@ -16,14 +16,8 @@ namespace Boidsish {
 	}
 
 	ShockwaveManager::~ShockwaveManager() {
-		if (ubo_ != 0) {
-			glDeleteBuffers(1, &ubo_);
-		}
 		if (fbo_ != 0) {
 			glDeleteFramebuffers(1, &fbo_);
-		}
-		if (output_texture_ != 0) {
-			glDeleteTextures(1, &output_texture_);
 		}
 	}
 
@@ -39,27 +33,22 @@ namespace Boidsish {
 		shader_ = std::make_unique<Shader>("shaders/postprocess.vert", "shaders/effects/shockwave.frag");
 
 		// Create UBO for shockwave data
-		glGenBuffers(1, &ubo_);
-		glBindBuffer(GL_UNIFORM_BUFFER, ubo_);
-
-		// Allocate space for: count (16 bytes for alignment) + array of shockwave data
-		size_t ubo_size = 16 + kMaxShockwaves * sizeof(ShockwaveGPUData);
-		glBufferData(GL_UNIFORM_BUFFER, ubo_size, nullptr, GL_DYNAMIC_DRAW);
-		glBindBuffer(GL_UNIFORM_BUFFER, 0);
+		ubo_ = std::make_unique<PersistentBuffer<ShockwaveUboData>>(GL_UNIFORM_BUFFER, 1, 3);
+		memset(ubo_->GetFullBufferPtr(), 0, ubo_->GetTotalSize());
 
 		// Create intermediate FBO for effect rendering
 		glGenFramebuffers(1, &fbo_);
-		glGenTextures(1, &output_texture_);
+		output_texture_ = std::make_unique<PersistentTexture>(GL_TEXTURE_2D, GL_RGBA16F, screen_width_, screen_height_, 1, 1);
 
-		glBindTexture(GL_TEXTURE_2D, output_texture_);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, screen_width_, screen_height_, 0, GL_RGBA, GL_FLOAT, nullptr);
+		GLuint id = output_texture_->GetId();
+		glBindTexture(GL_TEXTURE_2D, id);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
 		glBindFramebuffer(GL_FRAMEBUFFER, fbo_);
-		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, output_texture_, 0);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, id, 0);
 
 		if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
 			logger::ERROR("Shockwave FBO incomplete!");
@@ -80,9 +69,18 @@ namespace Boidsish {
 		screen_width_ = width;
 		screen_height_ = height;
 
-		if (output_texture_ != 0) {
-			glBindTexture(GL_TEXTURE_2D, output_texture_);
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, width, height, 0, GL_RGBA, GL_FLOAT, nullptr);
+		if (output_texture_) {
+			output_texture_ = std::make_unique<PersistentTexture>(GL_TEXTURE_2D, GL_RGBA16F, width, height, 1, 1);
+			GLuint id = output_texture_->GetId();
+			glBindTexture(GL_TEXTURE_2D, id);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+			glBindFramebuffer(GL_FRAMEBUFFER, fbo_);
+			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, id, 0);
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 			glBindTexture(GL_TEXTURE_2D, 0);
 		}
 	}
@@ -155,16 +153,19 @@ namespace Boidsish {
 
 	void ShockwaveManager::UpdateShaderData() {
 		PROJECT_PROFILE_SCOPE("ShockwaveManager::UpdateShaderData");
-		if (!initialized_ || shockwaves_.empty()) {
+		if (!initialized_) {
 			return;
 		}
 
-		// Prepare GPU data
-		std::vector<ShockwaveGPUData> gpu_data;
-		gpu_data.reserve(shockwaves_.size());
+		ubo_->AdvanceFrame();
+		ShockwaveUboData* data_ptr = ubo_->GetFrameDataPtr();
+		int               count = 0;
 
 		for (const auto& wave : shockwaves_) {
-			ShockwaveGPUData data{};
+			if (count >= kMaxShockwaves)
+				break;
+
+			ShockwaveGPUData& data = data_ptr->shockwaves[count];
 			data.center_radius = glm::vec4(wave.center, wave.current_radius);
 			data.normal_unused = glm::vec4(wave.normal, 0.0f);
 			data.params = glm::vec4(
@@ -174,32 +175,15 @@ namespace Boidsish {
 				wave.GetNormalizedAge()
 			);
 			data.color_unused = glm::vec4(wave.color, 0.0f);
-			gpu_data.push_back(data);
+			count++;
 		}
 
-		// Upload to UBO
-		glBindBuffer(GL_UNIFORM_BUFFER, ubo_);
-
-		// Write count (padded to 16 bytes for std140)
-		int count = static_cast<int>(gpu_data.size());
-		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(int), &count);
-
-		// Write shockwave array
-		if (!gpu_data.empty()) {
-			glBufferSubData(
-				GL_UNIFORM_BUFFER,
-				16, // After count padding
-				gpu_data.size() * sizeof(ShockwaveGPUData),
-				gpu_data.data()
-			);
-		}
-
-		glBindBuffer(GL_UNIFORM_BUFFER, 0);
+		data_ptr->count = count;
 	}
 
 	void ShockwaveManager::BindUBO(GLuint binding_point) const {
-		if (ubo_ != 0) {
-			glBindBufferBase(GL_UNIFORM_BUFFER, binding_point, ubo_);
+		if (ubo_) {
+			ubo_->BindRange(binding_point);
 		}
 	}
 

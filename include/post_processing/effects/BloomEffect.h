@@ -3,6 +3,8 @@
 #include <memory>
 #include <vector>
 
+#include "persistent_buffer.h"
+#include "persistent_texture.h"
 #include "post_processing/IPostProcessingEffect.h"
 #include <glm/glm.hpp>
 
@@ -64,15 +66,26 @@ namespace Boidsish {
 		private:
 			void InitializeResources();
 
+			struct ExposureSsboData {
+				float    adaptedLuminance;
+				float    targetLuminance;
+				float    minExposure;
+				float    maxExposure;
+				int      useAutoExposure;
+				uint32_t totalLogLuma;
+				uint32_t totalPixelCount;
+				uint32_t workgroupCounter;
+			};
+
 			std::unique_ptr<ComputeShader> _downsampleComputeShader;
 			std::unique_ptr<Shader>        _upsampleShader;
 			std::unique_ptr<Shader>        _compositeShader;
 
-			GLuint _bloomTexture; // Mipmapped texture
-			int    _numMips;
-			std::vector<GLuint> _upsampleFBOs;
+			std::unique_ptr<PersistentTexture> _bloomTexture; // Mipmapped texture
+			int                                _numMips;
+			std::vector<GLuint>                _upsampleFBOs;
 
-			GLuint _exposureSsbo = 0;
+			std::unique_ptr<PersistentBuffer<ExposureSsboData>> _exposureSsbo;
 
 			int   _width, _height;
 			float intensity_ = 0.075f;

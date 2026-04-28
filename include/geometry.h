@@ -226,6 +226,9 @@ namespace Boidsish {
 		// Instancing - instance_count used for SSBO-based instancing if needed.
 		int instance_count = 0;
 
+		// Offset into VBO for this draw call (in vertices)
+		uint32_t vbo_offset = 0;
+
 		// Pass identification
 		bool casts_shadows = true;
 

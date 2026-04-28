@@ -1,5 +1,7 @@
 #include "post_processing/effects/BloomEffect.h"
 
+#include <cstring>
+
 #include "logger.h"
 #include "shader.h"
 #include "constants.h"
@@ -9,17 +11,13 @@ namespace Boidsish {
 	namespace PostProcessing {
 
 		BloomEffect::BloomEffect(int width, int height):
-			_width(width), _height(height), _bloomTexture(0) {
+			_width(width), _height(height) {
 			name_ = "Bloom";
 		}
 
 		BloomEffect::~BloomEffect() {
-			if (_bloomTexture) glDeleteTextures(1, &_bloomTexture);
 			if (!_upsampleFBOs.empty()) {
 				glDeleteFramebuffers((GLsizei)_upsampleFBOs.size(), _upsampleFBOs.data());
-			}
-			if (_exposureSsbo) {
-				glDeleteBuffers(1, &_exposureSsbo);
 			}
 		}
 
@@ -43,7 +41,6 @@ namespace Boidsish {
 		}
 
 		void BloomEffect::InitializeResources() {
-			if (_bloomTexture) glDeleteTextures(1, &_bloomTexture);
 			if (!_upsampleFBOs.empty()) {
 				glDeleteFramebuffers((GLsizei)_upsampleFBOs.size(), _upsampleFBOs.data());
 				_upsampleFBOs.clear();
@@ -51,9 +48,10 @@ namespace Boidsish {
 
 			// Mipmapped Bloom Texture
 			_numMips = 5;
-			glGenTextures(1, &_bloomTexture);
-			glBindTexture(GL_TEXTURE_2D, _bloomTexture);
-			glTexStorage2D(GL_TEXTURE_2D, _numMips, GL_RGBA16F, _width / 2, _height / 2);
+			_bloomTexture = std::make_unique<PersistentTexture>(GL_TEXTURE_2D, GL_RGBA16F, _width / 2, _height / 2, 1, _numMips);
+
+			GLuint bloom_id = _bloomTexture->GetId();
+			glBindTexture(GL_TEXTURE_2D, bloom_id);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -64,31 +62,22 @@ namespace Boidsish {
 			glGenFramebuffers(_numMips, _upsampleFBOs.data());
 			for (int i = 0; i < _numMips; i++) {
 				glBindFramebuffer(GL_FRAMEBUFFER, _upsampleFBOs[i]);
-				glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, _bloomTexture, i);
+				glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, bloom_id, i);
 				if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
 					logger::ERROR("Bloom upsample FBO " + std::to_string(i) + " is not complete!");
 				}
 			}
 
 			// Auto-exposure SSBO
-			if (_exposureSsbo == 0) {
-				struct ExposureData {
-					float adaptedLuminance;
-					float targetLuminance;
-					float minExposure;
-					float maxExposure;
-					int   useAutoExposure;
-					uint32_t totalLogLuma;
-					uint32_t totalPixelCount;
-					uint32_t workgroupCounter;
-				};
-
-				glGenBuffers(1, &_exposureSsbo);
-				glBindBuffer(GL_SHADER_STORAGE_BUFFER, _exposureSsbo);
-				ExposureData initialData = {0.3f, _targetLuminance, _minExposure, _maxExposure, 1, 0, 0, 0};
-				glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(ExposureData), &initialData, GL_DYNAMIC_DRAW);
-				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::AutoExposure(), _exposureSsbo);
-				glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+			if (!_exposureSsbo) {
+				_exposureSsbo = std::make_unique<PersistentBuffer<ExposureSsboData>>(GL_SHADER_STORAGE_BUFFER, 1, 1);
+				ExposureSsboData* data = _exposureSsbo->GetFullBufferPtr();
+				memset(data, 0, sizeof(ExposureSsboData));
+				data->adaptedLuminance = 0.3f;
+				data->targetLuminance = _targetLuminance;
+				data->minExposure = _minExposure;
+				data->maxExposure = _maxExposure;
+				data->useAutoExposure = 1;
 			}
 
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -101,21 +90,11 @@ namespace Boidsish {
 			glGetIntegerv(GL_VIEWPORT, originalViewport);
 
 			// 1. Update Auto-Exposure SSBO parameters
-			struct ExposureData {
-				float adaptedLuminance;
-				float targetLuminance;
-				float minExposure;
-				float maxExposure;
-				int   useAutoExposure;
-			};
-			glBindBuffer(GL_SHADER_STORAGE_BUFFER, _exposureSsbo);
-			float actualTarget = _targetLuminance * (1.0f - _nightFactor * 0.5f);
-			float actualMax = _maxExposure * (1.0f - _nightFactor * 0.4f);
-			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, targetLuminance), sizeof(float), &actualTarget);
-			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, minExposure), sizeof(float), &_minExposure);
-			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, maxExposure), sizeof(float), &actualMax);
-			int enabled = _autoExposureEnabled ? 1 : 0;
-			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, useAutoExposure), sizeof(int), &enabled);
+			ExposureSsboData* data = _exposureSsbo->GetFullBufferPtr();
+			data->targetLuminance = _targetLuminance * (1.0f - _nightFactor * 0.5f);
+			data->minExposure = _minExposure;
+			data->maxExposure = _maxExposure * (1.0f - _nightFactor * 0.4f);
+			data->useAutoExposure = _autoExposureEnabled ? 1 : 0;
 
 			// 2. Compute-based Downsample, Bright Pass and Auto-Exposure
 			_downsampleComputeShader->use();
@@ -129,10 +108,11 @@ namespace Boidsish {
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, sourceTexture);
 
+			GLuint bloom_id = _bloomTexture->GetId();
 			for (int i = 0; i < _numMips; i++) {
-				glBindImageTexture(5 + i, _bloomTexture, i, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+				glBindImageTexture(5 + i, bloom_id, i, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 			}
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::AutoExposure(), _exposureSsbo);
+			_exposureSsbo->BindBase(Constants::SsboBinding::AutoExposure());
 
 			unsigned int groupsX = (_width / 2 + 15) / 16;
 			unsigned int groupsY = (_height / 2 + 15) / 16;
@@ -167,7 +147,7 @@ namespace Boidsish {
 				_upsampleShader->setVec2("srcResolution", (float)srcWidth, (float)srcHeight);
 
 				glActiveTexture(GL_TEXTURE0);
-				glBindTexture(GL_TEXTURE_2D, _bloomTexture);
+				glBindTexture(GL_TEXTURE_2D, bloom_id);
 				_upsampleShader->setFloat("srcLod", (float)srcMip);
 
 				glDrawArrays(GL_TRIANGLES, 0, 6);
@@ -191,11 +171,11 @@ namespace Boidsish {
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, sourceTexture);
 			glActiveTexture(GL_TEXTURE1);
-			glBindTexture(GL_TEXTURE_2D, _bloomTexture);
+			glBindTexture(GL_TEXTURE_2D, bloom_id);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
 
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::AutoExposure(), _exposureSsbo);
+			_exposureSsbo->BindBase(Constants::SsboBinding::AutoExposure());
 
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 
