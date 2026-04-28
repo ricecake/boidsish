@@ -60,9 +60,10 @@ void main() {
         float prevDepth = texture(gDepth, prevUV).r;
         vec3 vNorm = normalize(texture(gNormal, uv).xyz);
         vec3 prevNorm = normalize(texture(gNormal, prevUV).xyz);
+        float roughness = texture(gVelocity, uv).b;
+        float prevRoughness = texture(gVelocity, prevUV).b;
 
-        float normalThreshold = mix(0.99, 0.7, roughness);
-        if (abs(depth - prevDepth) < 0.01 && dot(vNorm, prevNorm) > normalThreshold) {
+        if (restirGeometryCheck(depth, vNorm, roughness, prevDepth, prevNorm, prevRoughness)) {
             uint seed = uint(pixel.y * size.x + pixel.x) ^ hash(uint(frameIndex) + 100u);
 
             // Limit temporal history - stricter for glossy surfaces to prevent smearing
