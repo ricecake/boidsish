@@ -32,6 +32,23 @@ vec3 getViewPos(vec2 uv, float depth) {
 	return viewPos.xyz / viewPos.w;
 }
 
+ivec2 involute(ivec2 curr, uint dim, uint seed) {
+	// Assuming N is a power of 2, mask = N - 1
+	uint mask = dim - 1;
+	uint S = uint(curr.x) + uint(curr.y);
+
+	// Generate arbitrary non-linear noise based on the invariant sum
+	uint noise = hash(seed ^ hash(S));
+
+	// Clear the lowest bit of the noise, then insert the opposite parity of S
+	uint F = (noise & ~1u) | ((S + 1u) & 1u);
+
+	// Apply the transformation
+	uint x_new = (curr.y + F) & mask;
+	uint y_new = (curr.x - F) & mask;
+	return ivec2(x_new, y_new);
+}
+
 void main() {
     ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
     ivec2 size = textureSize(gDepth, 0);
@@ -60,38 +77,31 @@ void main() {
 
     uint seed = uint(pixel.y * size.x + pixel.x) ^ hash(uint(frameIndex) + 200u);
 
-    // Rotated disk sampling for spatial reuse
-    float rotation = pcg_hash(seed++) * 2.0 * PI;
-    float cosRot = cos(rotation);
-    float sinRot = sin(rotation);
+    // Perform reciprocal swaps using involute function
+    // Divide screen into 16x16 chunks
+    const uint dim = 16;
+    ivec2 chunkId = pixel / int(dim);
+    ivec2 localPixel = pixel % int(dim);
 
     for (int i = 0; i < u_spatial_samples; i++) {
-        float r_val = pcg_hash(seed++);
-        float angle = (float(i) / float(u_spatial_samples)) * 2.0 * PI;
-        float dist = sqrt(r_val) * float(u_spatial_radius);
+        ivec2 localNeighbor = involute(localPixel, dim, uint(frameIndex) + uint(i));
+        ivec2 neighborPixel = chunkId * int(dim) + localNeighbor;
 
-        vec2 rawOffset = vec2(cos(angle), sin(angle)) * dist;
-        vec2 rotatedOffset = vec2(
-            rawOffset.x * cosRot - rawOffset.y * sinRot,
-            rawOffset.x * sinRot + rawOffset.y * cosRot
-        );
+        // Clamp to screen bounds
+        neighborPixel = clamp(neighborPixel, ivec2(0), size - 1);
 
-        ivec2 neighborPixel = pixel + ivec2(rotatedOffset);
+        uint neighbor_idx = neighborPixel.y * size.x + neighborPixel.x;
+        Reservoir neighbor = old_reservoirs[neighbor_idx];
 
-        if (neighborPixel.x >= 0 && neighborPixel.x < size.x && neighborPixel.y >= 0 && neighborPixel.y < size.y) {
-            uint neighbor_idx = neighborPixel.y * size.x + neighborPixel.x;
-            Reservoir neighbor = old_reservoirs[neighbor_idx];
+        float neighborDepth = texture(gDepth, (vec2(neighborPixel) + 0.5) / vec2(size)).r;
+        vec3 neighborNorm = normalize(texture(gNormal, (vec2(neighborPixel) + 0.5) / vec2(size)).xyz);
 
-            float neighborDepth = texture(gDepth, (vec2(neighborPixel) + 0.5) / vec2(size)).r;
-            vec3 neighborNorm = normalize(texture(gNormal, (vec2(neighborPixel) + 0.5) / vec2(size)).xyz);
-
-            float normalThreshold = mix(0.99, 0.7, roughness);
-            if (abs(depth - neighborDepth) < 0.01 && dot(vNorm, neighborNorm) > normalThreshold) {
-                float p_hat = targetFunction(worldPos, worldNorm, V, albedo, roughness, metallic, getLightData(neighbor.light_index));
-                float weight = p_hat * neighbor.W * neighbor.m;
-                updateReservoir(current, neighbor.light_index, weight, pcg_hash(seed++));
-                current.m += neighbor.m;
-            }
+        float normalThreshold = mix(0.99, 0.7, roughness);
+        if (abs(depth - neighborDepth) < 0.01 && dot(vNorm, neighborNorm) > normalThreshold) {
+            float p_hat = targetFunction(worldPos, worldNorm, V, albedo, roughness, metallic, getLightData(neighbor.light_index));
+            float weight = p_hat * neighbor.W * neighbor.m;
+            updateReservoir(current, neighbor.light_index, weight, pcg_hash(seed++));
+            current.m += neighbor.m;
         }
     }
 
