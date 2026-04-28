@@ -8,12 +8,17 @@ uniform sampler2D uGIAOTexture;  // RGB: GI, A: AO
 uniform sampler2D uSSSTexture;   // R: SSS
 uniform sampler2D uNormalTexture; // A: traditional shadow
 uniform sampler2D uDepthTexture;  // High-res depth
+uniform sampler2D uDITexture;     // RGB: ReSTIR DI
 
 uniform bool  uSSGIEnabled = true;
+uniform bool  uRestirDIEnabled = true;
+uniform bool  uRestirGIEnabled = true;
 uniform bool  uGTAOEnabled = true;
 uniform bool  uSSSEnabled = true;
 
 uniform float uSSGIIntensity = 1.0;
+uniform float uRestirDIIntensity = 1.0;
+uniform float uRestirGIIntensity = 1.0;
 uniform float uGTAOIntensity = 1.0;
 uniform float uSSSIntensity = 0.5;
 
@@ -233,10 +238,12 @@ void main() {
 	// Use bilateral upsampling for low-res effects
 	vec4 giao = sampleBilateral(uGIAOTexture, uDepthTexture, uNormalTexture, TexCoords);
 	float sssFactor = sampleBilateral(uSSSTexture, uDepthTexture, uNormalTexture, TexCoords).r;
+    vec3 di_lighting = sampleBilateral(uDITexture, uDepthTexture, uNormalTexture, TexCoords).rgb;
 
     // Basic firefly rejection: clamp ReSTIR contribution based on scene luminance
-    float max_gi = max(color.r, max(color.g, color.b)) * 10.0 + 1.0;
-    giao.rgb = min(giao.rgb, vec3(max_gi));
+    float max_lum = max(color.r, max(color.g, color.b)) * 10.0 + 2.0;
+    giao.rgb = min(giao.rgb, vec3(max_lum));
+    di_lighting = min(di_lighting, vec3(max_lum));
 
 	float traditionalShadow = texture(uNormalTexture, TexCoords).a;
 
@@ -255,10 +262,15 @@ void main() {
 		result *= ao;
 	}
 
-	// 3. Apply Global Illumination (SSGI) and ReSTIR
+	// 3. Apply ReSTIR Direct Illumination
+    if (uRestirDIEnabled) {
+        result += di_lighting; // Intensity already applied in compute
+    }
+
+	// 4. Apply Global Illumination (SSGI)
 	if (uSSGIEnabled) {
-		vec3 restir_ssgi = giao.rgb;
-		result += restir_ssgi * uSSGIIntensity;
+		vec3 ssgi = giao.rgb;
+		result += ssgi * uSSGIIntensity;
 	}
 
 	FragColor = vec4(result, color.a);

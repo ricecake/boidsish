@@ -34,6 +34,10 @@ namespace Boidsish {
 			// Global Toggles
 			void SetSSGIEnabled(bool enabled) { ssgi_enabled_ = enabled; }
 			bool IsSSGIEnabled() const { return ssgi_enabled_; }
+			void SetRestirDIEnabled(bool enabled) { restir_di_enabled_ = enabled; }
+			bool IsRestirDIEnabled() const { return restir_di_enabled_; }
+			void SetRestirGIEnabled(bool enabled) { restir_gi_enabled_ = enabled; }
+			bool IsRestirGIEnabled() const { return restir_gi_enabled_; }
 			void SetGTAOEnabled(bool enabled) { gtao_enabled_ = enabled; }
 			bool IsGTAOEnabled() const { return gtao_enabled_; }
 			void SetSSSEnabled(bool enabled) { sss_enabled_ = enabled; }
@@ -57,6 +61,8 @@ namespace Boidsish {
 
 			void  SetRestirDIIntensity(float intensity) { restir_di_intensity_ = intensity; }
 			float GetRestirDIIntensity() const { return restir_di_intensity_; }
+			void  SetRestirGIIntensity(float intensity) { restir_gi_intensity_ = intensity; }
+			float GetRestirGIIntensity() const { return restir_gi_intensity_; }
 
 			// GTAO Parameters
 			void  SetGTAOIntensity(float intensity) { gtao_intensity_ = intensity; }
@@ -106,9 +112,11 @@ namespace Boidsish {
 			std::unique_ptr<ComputeShader> unified_shader_;
 			std::unique_ptr<Shader>        composite_shader_;
 			TemporalAccumulator            gi_ao_accumulator_;
+			TemporalAccumulator            di_accumulator_;
 			TemporalAccumulator            sss_accumulator_;
 
 			GLuint gi_ao_texture_ = 0;
+			GLuint di_texture_ = 0;
 			GLuint sss_texture_ = 0;
 			GLuint blue_noise_texture_ = 0;
 			GLuint hiz_texture_ = 0;
@@ -125,11 +133,14 @@ namespace Boidsish {
 
 			// Toggles
 			bool ssgi_enabled_ = true;
+			bool restir_di_enabled_ = true;
+			bool restir_gi_enabled_ = true;
 			bool gtao_enabled_ = true;
 			bool sss_enabled_ = true;
 
 			// SSGI
 			float ssgi_intensity_ = 1.0f;
+			float restir_gi_intensity_ = 1.0f;
 			float ssgi_radius_ = 2.0f;
 			float ssgi_falloff_ = 1.0f;
 			int   ssgi_steps_ = 8;
