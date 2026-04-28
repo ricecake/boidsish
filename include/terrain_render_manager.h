@@ -166,6 +166,8 @@ namespace Boidsish {
 		 */
 		GLuint GetBiomeTexture() const { return biome_texture_; }
 
+		GLuint GetChunkVisibilitySsbo() const { return chunk_visibility_ssbo_; }
+
 		/**
 		 * @brief Get info about all registered chunks for external use (e.g., decor placement).
 		 * Returns a vector of (world_offset_x, world_offset_z, texture_slice, chunk_size).

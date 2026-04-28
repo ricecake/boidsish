@@ -66,7 +66,7 @@ namespace Boidsish {
 			std::nullopt,
 			std::nullopt,
 			terrain_render_manager_,
-			shadows_.GetLightSpaceMatrix(0) // Assume cascade 0 for primary light frustum
+			shadows_.GetLightSpaceMatrix(3) // Use widest cascade for conservative shadow caster culling
 		);
 		decor_.Render(frame.view, frame.projection, terrain_render_manager_);
 

@@ -19,6 +19,7 @@ layout(std430, binding = 1) writeonly buffer OutVisibility {
 };
 
 uniform int   u_numChunks;
+uniform vec4  u_frustumPlanes[6];
 uniform mat4  u_prevViewProjection;
 uniform sampler2D u_hizTexture;
 uniform ivec2 u_hizSize;
@@ -32,6 +33,7 @@ void main() {
 		return;
 
 	vec3 worldOffset = chunks[idx].world_offset_and_slice.xyz;
+	int  slice = int(chunks[idx].world_offset_and_slice.w);
 	float minY = chunks[idx].bounds.x;
 	float maxY = chunks[idx].bounds.y;
 
@@ -39,18 +41,18 @@ void main() {
 	vec3 aabbMax = vec3(worldOffset.x + u_chunkSize, maxY, worldOffset.z + u_chunkSize);
 
 	// 1. Frustum Culling
-	if (!isAABBInFrustum(aabbMin, aabbMax)) {
-		visibility[idx] = 0u;
+	if (!isAABBInFrustumExtended(aabbMin, aabbMax, u_frustumPlanes)) {
+		visibility[slice] = 0u;
 		return;
 	}
 
 	// 2. Hi-Z Occlusion Culling
 	if (u_enableHiZ) {
 		if (isOccludedWorld(aabbMin, aabbMax, u_prevViewProjection, u_hizTexture, u_hizSize, u_hizMipCount, 4.0)) {
-			visibility[idx] = 0u;
+			visibility[slice] = 0u;
 			return;
 		}
 	}
 
-	visibility[idx] = 1u;
+	visibility[slice] = 1u;
 }

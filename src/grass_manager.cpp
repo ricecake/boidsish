@@ -180,6 +180,8 @@ namespace Boidsish {
     void GrassManager::Update(float deltaTime, float time, const Camera& camera, const ITerrainGenerator& terrainGen, std::shared_ptr<TerrainRenderManager> renderManager) {
         if (!initialized_) return;
 
+        last_camera_pos_ = camera.pos();
+
         if (props_dirty_) {
             glBindBuffer(GL_UNIFORM_BUFFER, grass_props_ubo_);
             glBufferSubData(GL_UNIFORM_BUFFER, 0, 8 * sizeof(GrassProperties), biome_grass_props_.data());
@@ -206,6 +208,26 @@ namespace Boidsish {
         placement_shader_->setVec3("uCameraPos", camera.pos());
         placement_shader_->setFloat("uWorldScale", terrainGen.GetWorldScale());
         placement_shader_->setFloat("uMaxInstances", (float)kMaxGrassInstances);
+
+        // Hi-Z occlusion culling uniforms
+        placement_shader_->setBool("u_enableHiZ", hiz_enabled_);
+        if (hiz_enabled_) {
+            glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::HiZ());
+            glBindTexture(GL_TEXTURE_2D, hiz_texture_);
+            placement_shader_->setInt("u_hizTexture", Constants::TextureUnit::HiZ());
+            placement_shader_->setMat4("u_prevViewProjection", hiz_prev_vp_);
+            glUniform2i(glGetUniformLocation(placement_shader_->ID, "u_hizSize"), hiz_width_, hiz_height_);
+            placement_shader_->setInt("u_hizMipCount", hiz_mip_count_);
+            placement_shader_->setVec2("u_viewportSize", glm::vec2(hiz_width_, hiz_height_));
+        }
+        placement_shader_->setFloat("u_minPixelSize", 2.0f);
+
+        if (chunk_visibility_ssbo_ != 0) {
+            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, chunk_visibility_ssbo_);
+            placement_shader_->setBool("u_useChunkCulling", true);
+        } else {
+            placement_shader_->setBool("u_useChunkCulling", false);
+        }
 
         uint32_t zero = 0;
         glBindBuffer(GL_DRAW_INDIRECT_BUFFER, grass_indirect_buffer_);

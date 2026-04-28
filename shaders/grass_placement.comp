@@ -73,6 +73,11 @@ uniform vec3 uCameraPos;
 uniform float uWorldScale;
 uniform float uMaxInstances;
 
+layout(std430, binding = 1) readonly buffer ChunkVisibility {
+    uint chunkVisibility[];
+};
+uniform bool u_useChunkCulling = false;
+
 // Hi-Z occlusion culling uniforms
 uniform sampler2D u_hizTexture;
 uniform mat4      u_prevViewProjection;
@@ -143,6 +148,10 @@ void spawnBlade(ivec2 cellID, float gridStep, float range, bool rotateDither) {
 
     int slice = texelFetch(u_chunkGrid, localGridCoord, 0).r;
     if (slice < 0) return;
+
+    if (u_useChunkCulling && chunkVisibility[slice] == 0) {
+        return;
+    }
 
     vec2 chunkBase = vec2(chunkCoord) * scaledChunkSize;
     vec2 uv = (worldPosXZ - chunkBase) / scaledChunkSize;

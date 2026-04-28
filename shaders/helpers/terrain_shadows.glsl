@@ -166,7 +166,7 @@ float terrainShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) {
 
 		vec2 gridUV = (vec2(localGridCoord) + 0.5) / float(u_originSize.z);
 
-		// Hi-Z Skip: using max height mips to skip expensive sub-marches
+		// Hierarchical skip using max height mips
 		float h_max3 = textureLod(u_maxHeightGrid, gridUV, 3.0).r;
 		float rayYAtT = p_start.y + t * lightDir.y;
 

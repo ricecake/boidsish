@@ -2619,6 +2619,18 @@ namespace Boidsish {
 
 			if (grass_manager && terrain_generator && terrain_render_manager) {
 				grass_manager->SetCameraPos(camera.pos());
+
+				if (hiz_manager && hiz_manager->IsInitialized() && enable_hiz_culling_ && frame_count_ > 0) {
+					grass_manager->SetHiZData(
+						hiz_manager->GetHiZTexture(),
+						hiz_manager->GetWidth(),
+						hiz_manager->GetHeight(),
+						hiz_manager->GetMipCount(),
+						prev_view_projection
+					);
+				}
+				grass_manager->SetChunkVisibilitySsbo(terrain_render_manager->GetChunkVisibilitySsbo());
+
 				// Ensure Frustum and Terrain Grid are up to date for GPU placement
 				UpdateFrustumUbo(current_view_matrix, projection, camera.pos());
 				terrain_render_manager->UpdateGridTextures(

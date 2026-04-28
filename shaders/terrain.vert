@@ -22,7 +22,7 @@ layout(std430, binding = [[OCCLUSION_VISIBILITY_BINDING]]) readonly buffer Occlu
 };
 
 void main() {
-	if (uUseGPUCulling && visibility[gl_InstanceID] == 0) {
+	if (uUseGPUCulling && visibility[int(aWorldOffsetAndSlice.w)] == 0) {
 		gl_Position = vec4(0.0, 0.0, 0.0, 0.0);
 		return;
 	}

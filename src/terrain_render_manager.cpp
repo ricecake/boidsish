@@ -977,10 +977,25 @@ namespace Boidsish {
 
 		if (dispatch_hiz && terrain_cull_shader_ && terrain_cull_shader_->isValid() && hiz_texture_ != 0) {
 			terrain_cull_shader_->use();
+
+			// 1. Clear visibility buffer (all visible initially)
+			uint32_t one = 1;
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, chunk_visibility_ssbo_);
+			glClearBufferData(GL_SHADER_STORAGE_BUFFER, GL_R32UI, GL_RED_INTEGER, GL_UNSIGNED_INT, &one);
+
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, instance_vbo_);
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, chunk_visibility_ssbo_);
 			terrain_cull_shader_->setInt("u_numChunks", (int)visible_instances_.size());
 			terrain_cull_shader_->setFloat("u_chunkSize", chunk_size_ * last_world_scale_);
+
+			// Set frustum planes
+			Frustum frustum = Frustum::FromViewProjection(view, projection);
+			for (int p = 0; p < 6; ++p) {
+				terrain_cull_shader_->setVec4(
+					"u_frustumPlanes[" + std::to_string(p) + "]",
+					glm::vec4(frustum.planes[p].normal, frustum.planes[p].distance)
+				);
+			}
 
 			terrain_cull_shader_->setBool("u_enableHiZ", true);
 			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::HiZ());
