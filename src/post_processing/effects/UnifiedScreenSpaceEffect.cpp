@@ -15,6 +15,7 @@ namespace Boidsish {
 
 		UnifiedScreenSpaceEffect::~UnifiedScreenSpaceEffect() {
 			if (gi_ao_texture_) glDeleteTextures(1, &gi_ao_texture_);
+			if (di_texture_) glDeleteTextures(1, &di_texture_);
 			if (sss_texture_) glDeleteTextures(1, &sss_texture_);
 		}
 
@@ -48,6 +49,7 @@ namespace Boidsish {
 			}
 
 			gi_ao_accumulator_.Initialize(internal_width_, internal_height_, GL_RGBA16F);
+			di_accumulator_.Initialize(internal_width_, internal_height_, GL_RGBA16F);
 			sss_accumulator_.Initialize(internal_width_, internal_height_, GL_R16F);
 
 			InitializeTextures();
@@ -55,10 +57,19 @@ namespace Boidsish {
 
 		void UnifiedScreenSpaceEffect::InitializeTextures() {
 			if (gi_ao_texture_) glDeleteTextures(1, &gi_ao_texture_);
+			if (di_texture_) glDeleteTextures(1, &di_texture_);
 			if (sss_texture_) glDeleteTextures(1, &sss_texture_);
 
 			glGenTextures(1, &gi_ao_texture_);
 			glBindTexture(GL_TEXTURE_2D, gi_ao_texture_);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, internal_width_, internal_height_, 0, GL_RGBA, GL_FLOAT, NULL);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+			glGenTextures(1, &di_texture_);
+			glBindTexture(GL_TEXTURE_2D, di_texture_);
 			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, internal_width_, internal_height_, 0, GL_RGBA, GL_FLOAT, NULL);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -83,11 +94,14 @@ namespace Boidsish {
 
 			// Toggles
 			unified_shader_->setBool("uSSGIEnabled", ssgi_enabled_);
+			unified_shader_->setBool("uRestirDIEnabled", restir_di_enabled_);
+			unified_shader_->setBool("uRestirGIEnabled", restir_gi_enabled_);
 			unified_shader_->setBool("uGTAOEnabled", gtao_enabled_);
 			unified_shader_->setBool("uSSSEnabled", sss_enabled_);
 
 			// Parameters
 			unified_shader_->setFloat("uRestirDIIntensity", restir_di_intensity_);
+			unified_shader_->setFloat("uRestirGIIntensity", restir_gi_intensity_);
 			unified_shader_->setFloat("uSSGIIntensity", ssgi_intensity_);
 			unified_shader_->setFloat("uSSGIRadius", ssgi_radius_);
 			unified_shader_->setFloat("uSSGIDistanceFalloff", ssgi_falloff_);
@@ -168,6 +182,7 @@ namespace Boidsish {
 
 			glBindImageTexture(0, gi_ao_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 			glBindImageTexture(1, sss_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R8);
+			glBindImageTexture(2, di_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 
 			glDispatchCompute((internal_width_ + 7) / 8, (internal_height_ + 7) / 8, 1);
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
@@ -176,8 +191,10 @@ namespace Boidsish {
 			// subsequent draw calls (e.g. grass rendering, bloom).
 			glBindImageTexture(0, 0, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA16F);
 			glBindImageTexture(1, 0, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R8);
+			glBindImageTexture(2, 0, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA16F);
 
 			GLuint accGIAO = gi_ao_accumulator_.Accumulate(gi_ao_texture_, velocityTexture, depthTexture);
+			GLuint accDI = di_accumulator_.Accumulate(di_texture_, velocityTexture, depthTexture);
 			GLuint accSSS = sss_accumulator_.Accumulate(sss_texture_, velocityTexture, depthTexture);
 
 			composite_shader_->use();
@@ -186,13 +203,19 @@ namespace Boidsish {
 			composite_shader_->setInt("uSSSTexture", 2);
 			composite_shader_->setInt("uNormalTexture", 3);
 			composite_shader_->setInt("uDepthTexture", 4);
+			composite_shader_->setInt("uDITexture", 5);
 
 			composite_shader_->setBool("uSSGIEnabled", ssgi_enabled_);
+			composite_shader_->setBool("uRestirDIEnabled", restir_di_enabled_);
+			composite_shader_->setBool("uRestirGIEnabled", restir_gi_enabled_);
 			composite_shader_->setBool("uGTAOEnabled", gtao_enabled_);
 			composite_shader_->setBool("uSSSEnabled", sss_enabled_);
+
 			composite_shader_->setFloat("uSSSIntensity", sss_intensity_);
 			composite_shader_->setFloat("uGTAOIntensity", gtao_intensity_);
 			composite_shader_->setFloat("uSSGIIntensity", ssgi_intensity_);
+			composite_shader_->setFloat("uRestirDIIntensity", restir_di_intensity_);
+			composite_shader_->setFloat("uRestirGIIntensity", restir_gi_intensity_);
 
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, sourceTexture);
@@ -204,6 +227,8 @@ namespace Boidsish {
 			glBindTexture(GL_TEXTURE_2D, normalTexture);
 			glActiveTexture(GL_TEXTURE4);
 			glBindTexture(GL_TEXTURE_2D, depthTexture);
+			glActiveTexture(GL_TEXTURE5);
+			glBindTexture(GL_TEXTURE_2D, accDI);
 
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 		}
@@ -214,6 +239,7 @@ namespace Boidsish {
 			internal_width_ = width / static_cast<int>(resolution_scale_);
 			internal_height_ = height / static_cast<int>(resolution_scale_);
 			gi_ao_accumulator_.Resize(internal_width_, internal_height_);
+			di_accumulator_.Resize(internal_width_, internal_height_);
 			sss_accumulator_.Resize(internal_width_, internal_height_);
 			InitializeTextures();
 		}
