@@ -3,6 +3,7 @@
 #include <memory>
 
 #include "NoiseManager.h"
+#include "persistent_texture.h"
 #include "weather_constants.h"
 #include "post_processing/IPostProcessingEffect.h"
 
@@ -247,11 +248,11 @@ namespace Boidsish {
 			int   height_ = 0;
 			float render_scale_ = 0.50f;
 
-			GLuint low_res_fbo_ = 0;
-			GLuint low_res_texture_ = 0;
+			GLuint                             low_res_fbo_ = 0;
+			std::unique_ptr<PersistentTexture> low_res_texture_;
 
 			// Temporal reprojection: double-buffered history at low res
-			GLuint    temporal_textures_[2] = {0, 0};
+			std::unique_ptr<PersistentTexture> temporal_textures_[2];
 			int       temporal_index_ = 0;
 			glm::mat4 prev_view_projection_ = glm::mat4(1.0f);
 			bool      has_valid_history_ = false;

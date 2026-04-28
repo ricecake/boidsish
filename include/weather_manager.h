@@ -8,6 +8,8 @@
 #include <vector>
 
 #include <glm/glm.hpp>
+#include "persistent_buffer.h"
+#include "persistent_texture.h"
 #include "thread_pool.h"
 #include "weather_constants.h"
 #include "weather_lbm_simulator.h"
@@ -198,6 +200,9 @@ namespace Boidsish {
 		WeatherManager(ServiceLocator& loc);
 		~WeatherManager();
 
+		GLuint GetWindTexture() const { return wind_texture_ ? wind_texture_->GetId() : 0; }
+		GLuint GetWindUbo() const { return wind_data_ubo_ ? wind_data_ubo_->GetBufferId() : 0; }
+
 		void Update(float deltaTime, float totalTime, const glm::vec3& cameraPos, float timeOfDay);
 
 		bool IsEnabled() const { return enabled_; }
@@ -287,8 +292,8 @@ namespace Boidsish {
 		void SetTerrainGenerator(ITerrainGenerator* terrain) { terrain_ = terrain; }
 
 	private:
-		unsigned int wind_data_ubo_ = 0;
-		unsigned int wind_texture_ = 0;
+		std::unique_ptr<PersistentBuffer<WindDataUbo>> wind_data_ubo_;
+		std::unique_ptr<PersistentTexture>           wind_texture_;
 
 		ThreadPool                              lbm_pool_;
 		std::optional<TaskHandle<LbmSnapshot>>  lbm_task_;

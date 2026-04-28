@@ -25,85 +25,35 @@ namespace Boidsish {
 	SceneCompositor::~SceneCompositor() {
 		if (main_fbo_) {
 			glDeleteFramebuffers(1, &main_fbo_);
-			glDeleteTextures(1, &color_tex_);
-			glDeleteTextures(1, &velocity_tex_);
-			glDeleteTextures(1, &normal_tex_);
-			glDeleteTextures(1, &albedo_tex_);
-			glDeleteTextures(1, &depth_tex_);
-			if (refraction_tex_)
-				glDeleteTextures(1, &refraction_tex_);
 		}
 	}
 
 	void SceneCompositor::CreateTextures() {
 		// Color attachment
-		glGenTextures(1, &color_tex_);
-		glBindTexture(GL_TEXTURE_2D, color_tex_);
-		if (hdr_) {
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, render_width_, render_height_, 0, GL_RGB, GL_FLOAT, NULL);
-		} else {
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, render_width_, render_height_, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
-		}
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, color_tex_, 0);
+		GLint color_format = hdr_ ? GL_RGB16F : GL_RGB8;
+		color_tex_ = std::make_unique<PersistentTexture>(GL_TEXTURE_2D, color_format, render_width_, render_height_);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, color_tex_->GetId(), 0);
 
 		// Refraction texture (not attached to FBO, copied into via glCopyTexSubImage2D)
-		glGenTextures(1, &refraction_tex_);
-		glBindTexture(GL_TEXTURE_2D, refraction_tex_);
-		if (hdr_) {
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, render_width_, render_height_, 0, GL_RGB, GL_FLOAT, NULL);
-		} else {
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, render_width_, render_height_, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
-		}
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		refraction_tex_ = std::make_unique<PersistentTexture>(GL_TEXTURE_2D, color_format, render_width_, render_height_);
 
 		// Velocity attachment (RG = velocity, B = roughness, A = metallic)
-		glGenTextures(1, &velocity_tex_);
-		glBindTexture(GL_TEXTURE_2D, velocity_tex_);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, render_width_, render_height_, 0, GL_RGBA, GL_FLOAT, NULL);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, velocity_tex_, 0);
+		velocity_tex_ = std::make_unique<PersistentTexture>(GL_TEXTURE_2D, GL_RGBA16F, render_width_, render_height_);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, velocity_tex_->GetId(), 0);
 
 		// Normal attachment
-		glGenTextures(1, &normal_tex_);
-		glBindTexture(GL_TEXTURE_2D, normal_tex_);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, render_width_, render_height_, 0, GL_RGBA, GL_FLOAT, NULL);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D, normal_tex_, 0);
+		normal_tex_ = std::make_unique<PersistentTexture>(GL_TEXTURE_2D, GL_RGBA16F, render_width_, render_height_);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D, normal_tex_->GetId(), 0);
 
 		// Albedo attachment
-		glGenTextures(1, &albedo_tex_);
-		glBindTexture(GL_TEXTURE_2D, albedo_tex_);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, render_width_, render_height_, 0, GL_RGBA, GL_FLOAT, NULL);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT3, GL_TEXTURE_2D, albedo_tex_, 0);
+		albedo_tex_ = std::make_unique<PersistentTexture>(GL_TEXTURE_2D, GL_RGBA16F, render_width_, render_height_);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT3, GL_TEXTURE_2D, albedo_tex_->GetId(), 0);
 
 		// Depth-stencil texture
-		glGenTextures(1, &depth_tex_);
-		glBindTexture(GL_TEXTURE_2D, depth_tex_);
-		glTexImage2D(
-			GL_TEXTURE_2D,
-			0,
-			GL_DEPTH24_STENCIL8,
-			render_width_,
-			render_height_,
-			0,
-			GL_DEPTH_STENCIL,
-			GL_UNSIGNED_INT_24_8,
-			NULL
-		);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, depth_tex_, 0);
+		depth_tex_ = std::make_unique<PersistentTexture>(GL_TEXTURE_2D, GL_DEPTH24_STENCIL8, render_width_, render_height_);
+		depth_tex_->SetParameter(GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		depth_tex_->SetParameter(GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, depth_tex_->GetId(), 0);
 	}
 
 	void SceneCompositor::BeginScene(const FrameData& frame, float render_scale) {
@@ -130,13 +80,13 @@ namespace Boidsish {
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	}
 
-	void SceneCompositor::CaptureRefraction(const FrameData& frame, bool effects_enabled, GLuint post_fx_fbo) {
+	void SceneCompositor::CaptureRefraction(const FrameData& /*frame*/, bool effects_enabled, GLuint post_fx_fbo) {
 		if (effects_enabled && post_fx_fbo != 0) {
 			glBindFramebuffer(GL_READ_FRAMEBUFFER, post_fx_fbo);
 		} else {
 			glBindFramebuffer(GL_READ_FRAMEBUFFER, main_fbo_);
 		}
-		glBindTexture(GL_TEXTURE_2D, refraction_tex_);
+		glBindTexture(GL_TEXTURE_2D, refraction_tex_->GetId());
 		glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, render_width_, render_height_);
 		glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
 	}
@@ -163,7 +113,7 @@ namespace Boidsish {
 			if (has_shockwaves && shockwave) {
 				shockwave_applied = shockwave->ApplyScreenSpaceEffect(
 					final_texture,
-					depth_tex_,
+					depth_tex_->GetId(),
 					frame.view,
 					frame.projection,
 					frame.camera_pos,
@@ -193,8 +143,8 @@ namespace Boidsish {
 				bool shockwave_applied = false;
 				if (has_shockwaves && shockwave) {
 					shockwave_applied = shockwave->ApplyScreenSpaceEffect(
-						color_tex_,
-						depth_tex_,
+						color_tex_->GetId(),
+						depth_tex_->GetId(),
 						frame.view,
 						frame.projection,
 						frame.camera_pos,
@@ -229,47 +179,9 @@ namespace Boidsish {
 		render_height_ = render_height;
 		hdr_ = enable_hdr;
 
-		// Resize color
-		glBindTexture(GL_TEXTURE_2D, color_tex_);
-		if (hdr_) {
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, render_width_, render_height_, 0, GL_RGB, GL_FLOAT, NULL);
-		} else {
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, render_width_, render_height_, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
-		}
-
-		// Resize velocity
-		glBindTexture(GL_TEXTURE_2D, velocity_tex_);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, render_width_, render_height_, 0, GL_RGBA, GL_FLOAT, NULL);
-
-		// Resize normal
-		glBindTexture(GL_TEXTURE_2D, normal_tex_);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, render_width_, render_height_, 0, GL_RGBA, GL_FLOAT, NULL);
-
-		// Resize albedo
-		glBindTexture(GL_TEXTURE_2D, albedo_tex_);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, render_width_, render_height_, 0, GL_RGBA, GL_FLOAT, NULL);
-
-		// Resize refraction
-		glBindTexture(GL_TEXTURE_2D, refraction_tex_);
-		if (hdr_) {
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, render_width_, render_height_, 0, GL_RGB, GL_FLOAT, NULL);
-		} else {
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, render_width_, render_height_, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
-		}
-
-		// Resize depth-stencil
-		glBindTexture(GL_TEXTURE_2D, depth_tex_);
-		glTexImage2D(
-			GL_TEXTURE_2D,
-			0,
-			GL_DEPTH24_STENCIL8,
-			render_width_,
-			render_height_,
-			0,
-			GL_DEPTH_STENCIL,
-			GL_UNSIGNED_INT_24_8,
-			NULL
-		);
+		glBindFramebuffer(GL_FRAMEBUFFER, main_fbo_);
+		CreateTextures();
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	}
 
 } // namespace Boidsish

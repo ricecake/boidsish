@@ -12,20 +12,7 @@ namespace Boidsish {
 
 	AtmosphereManager::AtmosphereManager(ServiceLocator& /*loc*/) {}
 
-	AtmosphereManager::~AtmosphereManager() {
-		if (_transmittanceLUT)
-			glDeleteTextures(1, &_transmittanceLUT);
-		if (_multiScatteringLUT)
-			glDeleteTextures(1, &_multiScatteringLUT);
-		if (_skyViewLUT)
-			glDeleteTextures(1, &_skyViewLUT);
-		if (_aerialPerspectiveLUT)
-			glDeleteTextures(1, &_aerialPerspectiveLUT);
-		if (_cloudShadowMap)
-			glDeleteTextures(1, &_cloudShadowMap);
-		if (_shCoeffsBuffer)
-			glDeleteBuffers(1, &_shCoeffsBuffer);
-	}
+	AtmosphereManager::~AtmosphereManager() {}
 
 	void AtmosphereManager::Initialize() {
 		CreateTextures();
@@ -34,56 +21,22 @@ namespace Boidsish {
 
 	void AtmosphereManager::CreateTextures() {
 		// Transmittance LUT: 256x64 RGBA32F
-		glGenTextures(1, &_transmittanceLUT);
-		glBindTexture(GL_TEXTURE_2D, _transmittanceLUT);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, 256, 64, 0, GL_RGBA, GL_FLOAT, nullptr);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		_transmittanceLUT = std::make_unique<PersistentTexture>(GL_TEXTURE_2D, GL_RGBA32F, 256, 64);
 
 		// MultiScattering LUT: 32x32 RGBA32F
-		glGenTextures(1, &_multiScatteringLUT);
-		glBindTexture(GL_TEXTURE_2D, _multiScatteringLUT);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, 32, 32, 0, GL_RGBA, GL_FLOAT, nullptr);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		_multiScatteringLUT = std::make_unique<PersistentTexture>(GL_TEXTURE_2D, GL_RGBA32F, 32, 32);
 
 		// SkyView LUT: 192x108 RGBA32F
-		glGenTextures(1, &_skyViewLUT);
-		glBindTexture(GL_TEXTURE_2D, _skyViewLUT);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, 192, 108, 0, GL_RGBA, GL_FLOAT, nullptr);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		_skyViewLUT = std::make_unique<PersistentTexture>(GL_TEXTURE_2D, GL_RGBA32F, 192, 108);
 
 		// AerialPerspective LUT: 32x32x32 RGBA32F (Volume)
-		glGenTextures(1, &_aerialPerspectiveLUT);
-		glBindTexture(GL_TEXTURE_3D, _aerialPerspectiveLUT);
-		glTexImage3D(GL_TEXTURE_3D, 0, GL_RGBA32F, 32, 32, 32, 0, GL_RGBA, GL_FLOAT, nullptr);
-		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+		_aerialPerspectiveLUT = std::make_unique<PersistentTexture>(GL_TEXTURE_3D, GL_RGBA32F, 32, 32, 32);
 
 		// Cloud Shadow Map: 512x512 R16F
-		glGenTextures(1, &_cloudShadowMap);
-		glBindTexture(GL_TEXTURE_2D, _cloudShadowMap);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_R16F, 512, 512, 0, GL_RED, GL_FLOAT, nullptr);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		_cloudShadowMap = std::make_unique<PersistentTexture>(GL_TEXTURE_2D, GL_R16F, 512, 512);
 
 		// SH Coefficients SSBO: 9 x vec4
-		glGenBuffers(1, &_shCoeffsBuffer);
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, _shCoeffsBuffer);
-		glBufferData(GL_SHADER_STORAGE_BUFFER, 9 * sizeof(glm::vec4), nullptr, GL_DYNAMIC_DRAW);
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+		_shCoeffsBuffer = std::make_unique<PersistentBuffer<glm::vec4>>(GL_SHADER_STORAGE_BUFFER, 9, 1);
 
 		for (int i = 0; i < 9; ++i) {
 			_shCoeffs[i] = glm::vec4(0.0f);
@@ -141,7 +94,7 @@ namespace Boidsish {
 			_transmittanceShader->setFloat("u_rayleighScaleHeight", _rayleighScaleHeight);
 			_transmittanceShader->setFloat("u_mieScaleHeight", _mieScaleHeight);
 
-			glBindImageTexture(0, _transmittanceLUT, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
+			_transmittanceLUT->BindImage(0, GL_WRITE_ONLY);
 			glDispatchCompute(256 / 8, 64 / 8, 1);
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
@@ -159,9 +112,8 @@ namespace Boidsish {
 			_multiScatteringShader->setFloat("u_rayleighScaleHeight", _rayleighScaleHeight);
 			_multiScatteringShader->setFloat("u_mieScaleHeight", _mieScaleHeight);
 
-			glBindImageTexture(0, _multiScatteringLUT, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
-			glActiveTexture(GL_TEXTURE1);
-			glBindTexture(GL_TEXTURE_2D, _transmittanceLUT);
+			_multiScatteringLUT->BindImage(0, GL_WRITE_ONLY);
+			_transmittanceLUT->Bind(1);
 			_multiScatteringShader->setInt("u_transmittanceLUT", 1);
 			glDispatchCompute(1, 1, 1); // Local size is 32x32, which matches texture size
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
@@ -171,11 +123,9 @@ namespace Boidsish {
 
 		// Dispatch SkyView
 		_skyViewShader->use();
-		glBindImageTexture(0, _skyViewLUT, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
-		glActiveTexture(GL_TEXTURE1);
-		glBindTexture(GL_TEXTURE_2D, _transmittanceLUT);
-		glActiveTexture(GL_TEXTURE2);
-		glBindTexture(GL_TEXTURE_2D, _multiScatteringLUT);
+		_skyViewLUT->BindImage(0, GL_WRITE_ONLY);
+		_transmittanceLUT->Bind(1);
+		_multiScatteringLUT->Bind(2);
 		_skyViewShader->setInt("u_transmittanceLUT", 1);
 		_skyViewShader->setInt("u_multiScatteringLUT", 2);
 		_skyViewShader->setVec3("u_sunDir", sunDir);
@@ -187,8 +137,7 @@ namespace Boidsish {
 		_skyViewShader->setFloat("u_mieAnisotropy", _mieAnisotropy);
 		_skyViewShader->setFloat("u_multiScatScale", _multiScatScale);
 
-		glActiveTexture(GL_TEXTURE3);
-		glBindTexture(GL_TEXTURE_2D, _cloudShadowMap);
+		_cloudShadowMap->Bind(3);
 		_skyViewShader->setInt("u_cloudShadowMap", 3);
 
 		_skyViewShader->setFloat("u_worldScale", worldScale);
@@ -209,11 +158,9 @@ namespace Boidsish {
 
 		// Dispatch AerialPerspective
 		_aerialPerspectiveShader->use();
-		glBindImageTexture(0, _aerialPerspectiveLUT, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA32F);
-		glActiveTexture(GL_TEXTURE1);
-		glBindTexture(GL_TEXTURE_2D, _transmittanceLUT);
-		glActiveTexture(GL_TEXTURE2);
-		glBindTexture(GL_TEXTURE_2D, _multiScatteringLUT);
+		_aerialPerspectiveLUT->BindImage(0, GL_WRITE_ONLY, 0, GL_TRUE);
+		_transmittanceLUT->Bind(1);
+		_multiScatteringLUT->Bind(2);
 		_aerialPerspectiveShader->setInt("u_transmittanceLUT", 1);
 		_aerialPerspectiveShader->setInt("u_multiScatteringLUT", 2);
 		_aerialPerspectiveShader->setVec3("u_sunDir", sunDir);
@@ -241,16 +188,15 @@ namespace Boidsish {
 
 		// Dispatch SkyToSH
 		_skyToSHShader->use();
-		glActiveTexture(GL_TEXTURE0);
-		glBindTexture(GL_TEXTURE_2D, _skyViewLUT);
+		_skyViewLUT->Bind(0);
 		_skyToSHShader->setInt("u_skyViewLUT", 0);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::AtmosphereSH(), _shCoeffsBuffer);
+		_shCoeffsBuffer->BindBase(Constants::SsboBinding::AtmosphereSH());
 		glDispatchCompute(1, 1, 1); // Logic in sky_to_sh.comp uses a single workgroup for simple integration
 		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
 		// Dispatch Cloud Shadow Map
 		_cloudShadowShader->use();
-		glBindImageTexture(0, _cloudShadowMap, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R16F);
+		_cloudShadowMap->BindImage(0, GL_WRITE_ONLY);
 		_cloudShadowShader->setVec2("u_mapCenter", glm::vec2(cameraPos.x, cameraPos.z));
 		_cloudShadowShader->setFloat("u_mapSize", kCloudShadowWorldSize);
 		glDispatchCompute(kCloudShadowResolution / 16, kCloudShadowResolution / 16, 1);
@@ -282,9 +228,9 @@ namespace Boidsish {
 	}
 
 	void AtmosphereManager::CopySHToUBO(GLuint lightingUbo, size_t shOffset) {
-		if (_shCoeffsBuffer == 0)
+		if (!_shCoeffsBuffer)
 			return;
-		glBindBuffer(GL_COPY_READ_BUFFER, _shCoeffsBuffer);
+		glBindBuffer(GL_COPY_READ_BUFFER, _shCoeffsBuffer->GetBufferId());
 		glBindBuffer(GL_COPY_WRITE_BUFFER, lightingUbo);
 		glCopyBufferSubData(GL_COPY_READ_BUFFER, GL_COPY_WRITE_BUFFER, 0, shOffset, 9 * sizeof(glm::vec4));
 		glBindBuffer(GL_COPY_READ_BUFFER, 0);
@@ -292,16 +238,11 @@ namespace Boidsish {
 	}
 
 	void AtmosphereManager::BindTextures() {
-		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereTransmittance());
-		glBindTexture(GL_TEXTURE_2D, _transmittanceLUT);
-		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereMultiScattering());
-		glBindTexture(GL_TEXTURE_2D, _multiScatteringLUT);
-		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereSkyView());
-		glBindTexture(GL_TEXTURE_2D, _skyViewLUT);
-		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereAerialPerspective());
-		glBindTexture(GL_TEXTURE_3D, _aerialPerspectiveLUT);
-		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereCloudShadow());
-		glBindTexture(GL_TEXTURE_2D, _cloudShadowMap);
+		_transmittanceLUT->Bind(Constants::TextureUnit::AtmosphereTransmittance());
+		_multiScatteringLUT->Bind(Constants::TextureUnit::AtmosphereMultiScattering());
+		_skyViewLUT->Bind(Constants::TextureUnit::AtmosphereSkyView());
+		_aerialPerspectiveLUT->Bind(Constants::TextureUnit::AtmosphereAerialPerspective());
+		_cloudShadowMap->Bind(Constants::TextureUnit::AtmosphereCloudShadow());
 	}
 
 	void AtmosphereManager::BindToShader(::ShaderBase& shader) {

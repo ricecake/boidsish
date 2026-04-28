@@ -7,6 +7,7 @@
 #include "constants.h"
 #include "shader.h"
 #include "shape.h"
+#include "persistent_buffer.h"
 #include <glm/glm.hpp>
 
 namespace Boidsish {
@@ -49,7 +50,7 @@ namespace Boidsish {
 		bool                           active_ = false;
 		float                          elapsed = 0.0f;
 		bool                           initialized_ = false;
-		unsigned int                   ssbo_ = 0;
+		std::unique_ptr<PersistentBuffer<MeshExplosionFragment>> ssbo_;
 		unsigned int                   vao_ = 0;
 		std::unique_ptr<Shader>        render_shader_;
 		std::unique_ptr<ComputeShader> compute_shader_;

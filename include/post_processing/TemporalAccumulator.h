@@ -3,6 +3,7 @@
 
 #include <memory>
 
+#include "persistent_texture.h"
 #include <GL/glew.h>
 #include <glm/glm.hpp>
 
@@ -32,17 +33,16 @@ namespace Boidsish {
 			 */
 			GLuint Accumulate(GLuint currentFrame, GLuint velocityTexture, GLuint depthTexture);
 
-			GLuint GetResult() const { return _historyTextures[_currentIndex]; }
+			GLuint GetResult() const { return _historyTextures[_currentIndex] ? _historyTextures[_currentIndex]->GetId() : 0; }
 
 		private:
-			void Cleanup();
 			void CreateTextures();
 
-			std::unique_ptr<ComputeShader> _accumulationShader;
-			GLuint                         _historyTextures[2] = {0, 0};
-			int                            _currentIndex = 0;
-			int                            _width = 0, _height = 0;
-			GLenum                         _internalFormat = GL_R16F;
+			std::unique_ptr<ComputeShader>     _accumulationShader;
+			std::unique_ptr<PersistentTexture> _historyTextures[2];
+			int                                _currentIndex = 0;
+			int                                _width = 0, _height = 0;
+			GLenum                             _internalFormat = GL_R16F;
 		};
 
 	} // namespace PostProcessing

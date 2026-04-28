@@ -7,6 +7,8 @@
 #include "IManager.h"
 #include "constants.h"
 #include "frustum.h"
+#include "persistent_buffer.h"
+#include "persistent_texture.h"
 #include <GL/glew.h>
 #include <glm/glm.hpp>
 
@@ -16,6 +18,13 @@ namespace Boidsish {
 
 	class ServiceLocator;
 	struct Light;
+
+	struct ShadowUboData {
+		glm::mat4 lightSpaceMatrices[Constants::Class::Shadows::MaxShadowMaps()];
+		glm::vec4 cascadeSplits;
+		int       numShadowLights;
+		float     padding[3];
+	};
 
 	/**
 	 * @brief Manages shadow map generation and shadow data for the lighting system.
@@ -126,14 +135,22 @@ namespace Boidsish {
 		const std::array<float, kMaxCascades>& GetCascadeSplits() const { return cascade_splits_; }
 
 		/**
-		 * @brief Get the shadow map texture array ID.
+		 * @brief Get the shadow map texture array.
 		 */
-		GLuint GetShadowMapArray() const { return shadow_map_array_; }
+		const PersistentTexture& GetShadowMapArray() const { return *shadow_map_array_; }
 
 		/**
-		 * @brief Get the shadow UBO ID.
+		 * @brief Get the shadow UBO.
 		 */
-		GLuint GetShadowUbo() const { return shadow_ubo_; }
+		const PersistentBuffer<ShadowUboData>& GetShadowUbo() const { return *shadow_ubo_; }
+
+		/**
+		 * @brief Advance the shadow UBO to the next frame.
+		 */
+		void AdvanceFrame() {
+			if (shadow_ubo_)
+				shadow_ubo_->AdvanceFrame();
+		}
 
 		/**
 		 * @brief Check if shadow mapping is enabled and initialized.
@@ -151,11 +168,11 @@ namespace Boidsish {
 		Frustum GetShadowFrustum(int map_index) const;
 
 	private:
-		bool                    initialized_ = false;
-		GLuint                  shadow_fbo_ = 0;
-		GLuint                  shadow_map_array_ = 0; // 2D texture array for all shadow maps
-		GLuint                  shadow_ubo_ = 0;
-		std::shared_ptr<Shader> shadow_shader_;
+		bool                             initialized_ = false;
+		GLuint                           shadow_fbo_ = 0;
+		std::unique_ptr<PersistentTexture> shadow_map_array_; // 2D texture array for all shadow maps
+		std::unique_ptr<PersistentBuffer<ShadowUboData>> shadow_ubo_;
+		std::shared_ptr<Shader>          shadow_shader_;
 
 		int                                   active_shadow_count_ = 0;
 		std::array<glm::mat4, kMaxShadowMaps> light_space_matrices_;

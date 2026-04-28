@@ -13,10 +13,7 @@ namespace Boidsish {
 			is_enabled_ = true;
 		}
 
-		UnifiedScreenSpaceEffect::~UnifiedScreenSpaceEffect() {
-			if (gi_ao_texture_) glDeleteTextures(1, &gi_ao_texture_);
-			if (sss_texture_) glDeleteTextures(1, &sss_texture_);
-		}
+		UnifiedScreenSpaceEffect::~UnifiedScreenSpaceEffect() {}
 
 		void UnifiedScreenSpaceEffect::Initialize(int width, int height) {
 			width_ = width;
@@ -54,20 +51,16 @@ namespace Boidsish {
 		}
 
 		void UnifiedScreenSpaceEffect::InitializeTextures() {
-			if (gi_ao_texture_) glDeleteTextures(1, &gi_ao_texture_);
-			if (sss_texture_) glDeleteTextures(1, &sss_texture_);
+			gi_ao_texture_ = std::make_unique<PersistentTexture>(GL_TEXTURE_2D, GL_RGBA16F, internal_width_, internal_height_, 1, 1);
+			sss_texture_ = std::make_unique<PersistentTexture>(GL_TEXTURE_2D, GL_R8, internal_width_, internal_height_, 1, 1);
 
-			glGenTextures(1, &gi_ao_texture_);
-			glBindTexture(GL_TEXTURE_2D, gi_ao_texture_);
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, internal_width_, internal_height_, 0, GL_RGBA, GL_FLOAT, NULL);
+			glBindTexture(GL_TEXTURE_2D, gi_ao_texture_->GetId());
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-			glGenTextures(1, &sss_texture_);
-			glBindTexture(GL_TEXTURE_2D, sss_texture_);
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, internal_width_, internal_height_, 0, GL_RED, GL_UNSIGNED_BYTE, NULL);
+			glBindTexture(GL_TEXTURE_2D, sss_texture_->GetId());
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -148,8 +141,8 @@ namespace Boidsish {
 				unified_shader_->setInt("uShadowMask", 9);
 			}
 
-			glBindImageTexture(0, gi_ao_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
-			glBindImageTexture(1, sss_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R8);
+			glBindImageTexture(0, gi_ao_texture_->GetId(), 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+			glBindImageTexture(1, sss_texture_->GetId(), 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R8);
 
 			glDispatchCompute((internal_width_ + 7) / 8, (internal_height_ + 7) / 8, 1);
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
@@ -159,8 +152,8 @@ namespace Boidsish {
 			glBindImageTexture(0, 0, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA16F);
 			glBindImageTexture(1, 0, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R8);
 
-			GLuint accGIAO = gi_ao_accumulator_.Accumulate(gi_ao_texture_, velocityTexture, depthTexture);
-			GLuint accSSS = sss_accumulator_.Accumulate(sss_texture_, velocityTexture, depthTexture);
+			GLuint accGIAO = gi_ao_accumulator_.Accumulate(gi_ao_texture_->GetId(), velocityTexture, depthTexture);
+			GLuint accSSS = sss_accumulator_.Accumulate(sss_texture_->GetId(), velocityTexture, depthTexture);
 
 			composite_shader_->use();
 			composite_shader_->setInt("uSceneTexture", 0);

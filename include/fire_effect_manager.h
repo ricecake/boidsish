@@ -7,6 +7,8 @@
 #include "IManager.h"
 #include "constants.h"
 #include "fire_effect.h"
+#include "geometry.h"
+#include "persistent_buffer.h"
 #include "shader.h"
 
 namespace Boidsish {
@@ -39,6 +41,13 @@ namespace Boidsish {
 		float     slice_area;
 		int       request_clear;
 		int       _padding_emitter[2];
+	};
+
+	struct FireParticle {
+		glm::vec4 pos_age;
+		glm::vec4 vel_life;
+		glm::vec4 color_alpha;
+		glm::vec4 size_type_emitter_id;
 	};
 
 	class FireEffectManager: public IManager {
@@ -106,17 +115,17 @@ namespace Boidsish {
 		std::unique_ptr<ComputeShader> grid_build_shader_;
 		std::unique_ptr<Shader>        render_shader_;
 
-		GLuint particle_buffer_{0};
-		GLuint grid_heads_buffer_{0};
-		GLuint grid_next_buffer_{0};
-		GLuint emitter_buffer_{0};
-		GLuint indirection_buffer_{0};
-		GLuint terrain_chunk_buffer_{0};
-		GLuint slice_data_buffer_{0};
-		GLuint visible_indices_buffer_{0};
-		GLuint live_indices_buffer_{0};
-		GLuint draw_command_buffer_{0};
-		GLuint behavior_command_buffer_{0};
+		std::unique_ptr<PersistentBuffer<FireParticle>>             particle_buffer_;
+		std::unique_ptr<PersistentBuffer<int32_t>>                  grid_heads_buffer_;
+		std::unique_ptr<PersistentBuffer<int32_t>>                  grid_next_buffer_;
+		std::unique_ptr<PersistentBuffer<Emitter>>                  emitter_buffer_;
+		std::unique_ptr<PersistentBuffer<int32_t>>                  indirection_buffer_;
+		std::unique_ptr<PersistentBuffer<ChunkInfo>>                terrain_chunk_buffer_;
+		std::unique_ptr<PersistentBuffer<glm::vec4>>                slice_data_buffer_;
+		std::unique_ptr<PersistentBuffer<uint32_t>>                 visible_indices_buffer_;
+		std::unique_ptr<PersistentBuffer<uint32_t>>                 live_indices_buffer_;
+		std::unique_ptr<PersistentBuffer<DrawArraysIndirectCommand>> draw_command_buffer_;
+		std::unique_ptr<PersistentBuffer<DrawArraysIndirectCommand>> behavior_command_buffer_;
 		GLuint dummy_vao_{0};
 
 		bool   initialized_{false};

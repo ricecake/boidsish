@@ -4,6 +4,8 @@
 #include <vector>
 
 #include "constants.h"
+#include "persistent_buffer.h"
+#include "persistent_texture.h"
 #include <GL/glew.h>
 #include <glm/glm.hpp>
 
@@ -64,6 +66,12 @@ namespace Boidsish {
 	};
 
 	static_assert(sizeof(ShockwaveGPUData) == 64, "ShockwaveGPUData must be 64 bytes for std140 alignment");
+
+	struct ShockwaveUboData {
+		int              count;
+		int              padding[3];
+		ShockwaveGPUData shockwaves[Constants::Class::Shockwaves::MaxShockwaves()];
+	};
 
 	/**
 	 * @brief Manages active shockwave effects and their GPU rendering.
@@ -152,6 +160,8 @@ namespace Boidsish {
 		 */
 		void BindUBO(GLuint binding_point) const;
 
+		PersistentBuffer<ShockwaveUboData>& GetUBO() { return *ubo_; }
+
 		/**
 		 * @brief Get the number of currently active shockwaves.
 		 */
@@ -195,17 +205,17 @@ namespace Boidsish {
 	private:
 		void EnsureInitialized();
 
-		std::vector<Shockwave>  shockwaves_;
-		std::unique_ptr<Shader> shader_;
-		GLuint                  ubo_{0};
-		bool                    initialized_{false};
-		int                     screen_width_{0};
-		int                     screen_height_{0};
-		float                   global_intensity_{1.0f};
+		std::vector<Shockwave>                         shockwaves_;
+		std::unique_ptr<Shader>                        shader_;
+		std::unique_ptr<PersistentBuffer<ShockwaveUboData>> ubo_;
+		bool                                           initialized_{false};
+		int                                            screen_width_{0};
+		int                                            screen_height_{0};
+		float                                          global_intensity_{1.0f};
 
 		// Intermediate FBO for effect rendering
-		GLuint fbo_{0};
-		GLuint output_texture_{0};
+		GLuint                             fbo_{0};
+		std::unique_ptr<PersistentTexture> output_texture_;
 	};
 
 } // namespace Boidsish
