@@ -1,5 +1,4 @@
 #version 430 core
-#extension GL_GOOGLE_include_directive : enable
 layout(local_size_x = 8, local_size_y = 8) in;
 
 #define TEMPORAL_DATA_DEFINED
@@ -12,6 +11,8 @@ layout(std430, binding = [[RESTIR_RESERVOIRS0_BINDING]]) buffer NewReservoirs {
 layout(std430, binding = [[RESTIR_RESERVOIRS1_BINDING]]) buffer OldReservoirs {
     Reservoir old_reservoirs[];
 };
+
+shared uint group_candidates[64];
 
 uniform sampler2D gDepth;
 uniform sampler2D gNormal;
@@ -32,10 +33,33 @@ vec3 getViewPos(vec2 uv, float depth) {
 
 void main() {
     ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    uint  local_idx = gl_LocalInvocationIndex;
     ivec2 size = textureSize(gDepth, 0);
-    if (pixel.x >= size.x || pixel.y >= size.y) return;
 
-    uint reservoir_idx = pixel.y * size.x + pixel.x;
+    bool is_valid_pixel = (pixel.x < size.x && pixel.y < size.y);
+    // if (pixel.x >= size.x || pixel.y >= size.y) return;
+
+    // uint reservoir_idx = pixel.y * size.x + pixel.x;
+    // Reservoir current = new_reservoirs[reservoir_idx];
+
+    uint reservoir_idx = 0;
+    Reservoir current = Reservoir(0, 0, 0, 0);
+
+    // Only read VRAM if the pixel is valid
+    if (is_valid_pixel) {
+        reservoir_idx = pixel.y * size.x + pixel.x;
+        current = new_reservoirs[reservoir_idx];
+    }
+
+    // Duplication detection within the 8x8 workgroup
+    // We store the candidate from the previous reservoir for comparison
+    // group_candidates[local_idx] = current.light_index;
+    group_candidates[local_idx] = is_valid_pixel ? current.light_index : 0xFFFFFFFFu;
+    memoryBarrierShared();
+    barrier();
+
+    if (!is_valid_pixel) return;
+
     vec2 uv = (vec2(pixel) + 0.5) / vec2(size);
     float depth = texture(gDepth, uv).r;
 
@@ -48,8 +72,6 @@ void main() {
     vec3 albedo = texture(gAlbedo, uv).rgb;
 
     vec2 prevUV = uv - velocity;
-
-    Reservoir current = new_reservoirs[reservoir_idx];
 
     if (prevUV.x >= 0.0 && prevUV.x <= 1.0 && prevUV.y >= 0.0 && prevUV.y <= 1.0) {
         ivec2 prevPixel = ivec2(prevUV * vec2(size));
@@ -66,9 +88,21 @@ void main() {
         if (restirGeometryCheck(depth, vNorm, roughness, prevDepth, prevNorm, prevRoughness)) {
             uint seed = uint(pixel.y * size.x + pixel.x) ^ hash(uint(frameIndex) + 100u);
 
-            // Limit temporal history - stricter for glossy surfaces to prevent smearing
-            float maxHistory = mix(8.0, 32.0, roughness);
-            previous.m = min(previous.m, maxHistory * current.m);
+           // Limit temporal history
+            float m_limit = 20.0 * max(current.m, 1.0);
+
+            // Count duplicates in the group (coarse suppression of correlation)
+            uint dup_count = 0;
+            for (int i = 0; i < 64; i++) {
+                if (group_candidates[i] == previous.light_index) dup_count++;
+            }
+
+            // Suppress temporal confidence if candidate is highly duplicated in neighbors
+            if (dup_count > 8) {
+                m_limit = 2.0;
+            }
+
+            previous.m = min(previous.m, m_limit);
 
             vec3 vPos = getViewPos(uv, depth);
             vec3 worldPos = (invView * vec4(vPos, 1.0)).xyz;
