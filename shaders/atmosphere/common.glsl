@@ -92,10 +92,22 @@ float rayleighPhase(float cosTheta) {
 	return 3.0 / (16.0 * PI) * (1.0 + cosTheta * cosTheta);
 }
 
+float hgPhase(float cosTheta, float g) {
+    float g2 = g * g;
+    return (1.0 - g2) / (4.0 * PI * pow(max(1e-4, 1.0 + g2 - 2.0 * g * cosTheta), 1.5));
+}
+
+float dualLobehgPhase(float cosTheta, float g) {
+    float phaseForward = hgPhase(cosTheta, g);
+    float phaseBackward = hgPhase(cosTheta, -0.5 * g);
+    return mix(phaseForward, phaseBackward, 0.2);
+}
+
 float miePhase(float cosTheta) {
 	float g = u_mieAnisotropy;
-	float g2 = g * g;
-	return (1.0 - g2) / (4.0 * PI * pow(max(1e-4, 1.0 + g2 - 2.0 * g * cosTheta), 1.5));
+    float phase = dualLobehgPhase(cosTheta, g);
+    // Add isotropic scattering (10% mix) to ensure visibility from all angles
+    return mix(phase, 1.0 / (4.0 * PI), 0.1);
 }
 
 // LUT mapping functions - Simple Linear mapping for Transmittance to avoid precision issues

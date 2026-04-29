@@ -52,8 +52,6 @@ namespace Boidsish {
 
 		// Parameters
 		void SetIntensity(float i) { _intensity = i; }
-		void SetScatteringCoeff(float s) { _scatteringCoeff = s; }
-		void SetExtinctionCoeff(float e) { _extinctionCoeff = e; }
 
 		GLuint GetIntegratedVolume(int cascade) const { return _integratedVolumes[cascade][_frameIndex]; }
 		GLuint GetUboId() const { return _ubo->GetBufferId(); }
@@ -85,9 +83,6 @@ namespace Boidsish {
 		glm::vec3 _aerosolColor = glm::vec3(1.0f);
 
 		float _intensity = 1.0f;
-		float _scatteringCoeff = 0.1f;
-		float _extinctionCoeff = 0.1f;
-		float _mieAnisotropy = 0.7f;
 
 		// Froxel Resolution
 		int _resX = 128;
