@@ -13,21 +13,10 @@ layout(std430, binding = [[RESTIR_RESERVOIRS1_BINDING]]) buffer OldReservoirs {
     Reservoir old_reservoirs[];
 };
 
-uniform sampler2D gDepth;
-uniform sampler2D gNormal;
-uniform sampler2D gVelocity;
-uniform sampler2D gAlbedo;
-
 float pcg_hash(uint seed) {
     uint state = seed * 747796405u + 2891336453u;
     uint word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
     return float((word >> 22u) ^ word) / 4294967295.0;
-}
-
-vec3 getViewPos(vec2 uv, float depth) {
-	vec4 clipPos = vec4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
-	vec4 viewPos = invProjection * clipPos;
-	return viewPos.xyz / viewPos.w;
 }
 
 void main() {

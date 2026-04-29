@@ -157,5 +157,5 @@ void main() {
 
 	// Output view-space normal
 	NormalOut = vec4(normalize(mat3(view) * norm), primaryShadow);
-	AlbedoOut = vec4(surfaceColor, 1.0);
+	AlbedoOut = vec4(surfaceColor, 0.0);
 }

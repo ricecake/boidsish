@@ -99,5 +99,5 @@ void main() {
 	// Checkpoints are currently unlit/emissive and don't receive shadows in their shader logic,
 	// but we'll output 1.0 for the shadow factor to indicate they are fully "lit".
 	NormalOut = vec4(0, 0, 1, 1.0);
-	AlbedoOut = vec4(finalColor, 1.0);
+	AlbedoOut = vec4(finalColor, length(FragColor.rgb));
 }

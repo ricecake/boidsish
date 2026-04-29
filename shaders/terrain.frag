@@ -343,7 +343,7 @@ void main() {
 
 		// Output view-space normal
 		NormalOut = vec4(normalize(mat3(view) * norm), primaryShadow);
-		AlbedoOut = vec4(surfaceColor, 1.0);
+		AlbedoOut = vec4(surfaceColor, 0.0);
 		return;
 	}
 
@@ -616,7 +616,7 @@ void main() {
 
 	// Output view-space normal
 	NormalOut = vec4(normalize(mat3(view) * perturbedNorm), primaryShadow);
-	AlbedoOut = vec4(albedo, 1.0);
+	AlbedoOut = vec4(albedo, 0.0);
 
 	// Calculate screen-space velocity and material properties
 	vec2 a = (CurPosition.xy / CurPosition.w) * 0.5 + 0.5;

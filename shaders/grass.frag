@@ -121,6 +121,6 @@ void main() {
 
     // Output view-space normal
     NormalOut = vec4(normalize(mat3(view) * N), primaryShadow);
-    AlbedoOut = vec4(albedo, 1.0);
+    AlbedoOut = vec4(albedo, 0.0);
     VelocityOut = vec4(0.0, 0.0, roughness, 0.0); // No motion
 }

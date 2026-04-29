@@ -11,22 +11,12 @@ layout(std430, binding = [[RESTIR_RESERVOIRS0_BINDING]]) buffer RestirReservoirs
     Reservoir reservoirs[];
 };
 
-uniform sampler2D gDepth;
-uniform sampler2D gNormal;
-uniform sampler2D gVelocity;
-uniform sampler2D gAlbedo;
 uniform int u_num_samples = 8;
 
 float pcg_hash(uint seed) {
     uint state = seed * 747796405u + 2891336453u;
     uint word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
     return float((word >> 22u) ^ word) / 4294967295.0;
-}
-
-vec3 getViewPos(vec2 uv, float depth) {
-	vec4 clipPos = vec4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
-	vec4 viewPos = invProjection * clipPos;
-	return viewPos.xyz / viewPos.w;
 }
 
 void main() {
@@ -71,15 +61,46 @@ void main() {
 
     uint seed = uint(pixel.y * size.x + pixel.x) ^ hash(uint(frameIndex));
 
-    for (int i = 0; i < u_num_samples; i++) {
+    // Hybrid sampling: Analytic lights + screen-space emissive pixels
+    // We split samples between the two pools.
+    int analytic_samples = u_num_samples / 2;
+    int pixel_samples = u_num_samples - analytic_samples;
+
+    // 1. Analytic light sampling
+    for (int i = 0; i < analytic_samples; i++) {
         float rand1 = pcg_hash(seed++);
         float rand2 = pcg_hash(seed++);
         uint light_idx = uint(rand1 * float(total_lights)) % total_lights;
 
         LightData ld = getLightData(light_idx);
         float p_hat = targetFunction(worldPos, worldNorm, V, albedo, roughness, metallic, ld);
-        float weight = p_hat * float(total_lights);
+        float weight = p_hat * float(total_lights) * (float(u_num_samples) / float(analytic_samples));
         updateReservoir(r, light_idx, weight, rand2);
+    }
+
+    // 2. Screen-space emissive pixel sampling
+    // We sample random pixels and prioritize those with high emissive intensity in gAlbedo.w
+    for (int i = 0; i < pixel_samples; i++) {
+        float randX = pcg_hash(seed++);
+        float randY = pcg_hash(seed++);
+        float rand2 = pcg_hash(seed++);
+
+        ivec2 samplePixel = ivec2(randX * float(size.x), randY * float(size.y));
+        samplePixel = clamp(samplePixel, ivec2(0), size - 1);
+
+        float emissiveIntensity = texelFetch(gAlbedo, samplePixel, 0).w;
+
+        // Only consider pixels that are actually emissive
+        if (emissiveIntensity > 0.0) {
+            uint light_idx = uint(samplePixel.y * size.x + samplePixel.x) | 0x80000000u;
+            LightData ld = getLightData(light_idx);
+            float p_hat = targetFunction(worldPos, worldNorm, V, albedo, roughness, metallic, ld);
+
+            // Weight accounts for the probability of picking this pixel (1/totalPixels)
+            // modulated by the fact that we're only doing N pixel samples.
+            float weight = p_hat * float(size.x * size.y) * (float(u_num_samples) / float(pixel_samples));
+            updateReservoir(r, light_idx, weight, rand2);
+        }
     }
 
     float p_hat_final = targetFunction(worldPos, worldNorm, V, albedo, roughness, metallic, getLightData(r.light_index));
