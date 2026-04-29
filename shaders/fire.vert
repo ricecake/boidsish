@@ -15,8 +15,7 @@ out vec4          view_pos;
 out vec4          v_pos;
 out vec3          v_vel;
 out vec3          v_vel_view;
-out float         v_extra[2];
-out vec3          v_epicenter;
+out vec3          v_origin;
 flat out int      v_style;
 flat out int      v_emitter_index;
 flat out int      v_emitter_id;
@@ -29,52 +28,50 @@ void main() {
 	v_pos = p.pos;
 	v_vel = p.vel.xyz;
 	v_vel_view = (u_view * vec4(p.vel.xyz, 0.0)).xyz;
-	v_epicenter = p.epicenter;
-	v_extra = p.extras;
+	v_origin = p.origin.xyz;
+	v_style = p.style;
+	v_emitter_index = p.emitter_index;
+	v_emitter_id = p.emitter_id;
+	v_particle_idx = particle_idx;
+	v_p = p;
 
 	{
 		view_pos = u_view * vec4(p.pos.xyz, 1.0);
 		gl_Position = u_projection * view_pos;
 		v_lifetime = p.pos.w;
-		v_style = p.style;
-		v_emitter_index = p.emitter_index;
-		v_emitter_id = p.emitter_id;
-		v_particle_idx = particle_idx;
 
-		// Set point size based on lifetime and style
-		if (p.style == STYLE_ROCKET_TRAIL) { // Rocket Trail
-			gl_PointSize = smoothstep((1.0 - v_lifetime), v_lifetime, v_lifetime / 2.0) *
-				15.0;                                                              // Smaller, more consistent size
-		} else if (p.style == STYLE_EXPLOSION) {                                   // Explosion
-			gl_PointSize = (1.0 - (1.0 - v_lifetime) * (1.0 - v_lifetime)) * 60.0; // Starts large, shrinks fast
-		} else if (p.style == STYLE_SPARKS) {                                      // Sparks
-			gl_PointSize = 4.0 + v_lifetime * 20.0;
-		} else if (p.style == STYLE_GLITTER) {                                     // Glitter
-			gl_PointSize = 6.0;                                                    // Small, consistent square
-		} else if (p.style == STYLE_DEBUG) {                                       // Debug
-			gl_PointSize = 8.0;                                                    // Fixed size point
-		} else if (p.style == STYLE_RAIN) {
-			gl_PointSize = clamp(100.0 / (-view_pos.z * 0.1), 2.0, 30.0);
-		} else if (p.style == STYLE_SNOW) {
-			gl_PointSize = clamp(80.0 / (-view_pos.z * 0.1), 4.0, 40.0);
-		} else if (p.style == STYLE_AMBIENT || p.style == STYLE_BUBBLES || p.style == STYLE_FIREFLIES || p.style == STYLE_CINDER) {
-			// Prominent size but attenuated by distance
-			gl_PointSize = 15.0 / (-view_pos.z * 0.05);
+		gl_PointSize = p.vel.w; // Use size from velocity.w
 
-			// Vary size by sub-style and random factor
-			float size_var = fract(sin(float(particle_idx) * 123.456) * 456.789);
-			if (p.style == STYLE_BUBBLES || (p.style == STYLE_AMBIENT && v_emitter_id == 2)) { // Bubbles vary more in size
-				gl_PointSize *= (0.5 + size_var * 1.5);
-			} else if (p.style == STYLE_CINDER) { // Cinders are a bit smaller but vary
-				gl_PointSize *= (0.6 + size_var * 0.4);
-				gl_PointSize *= 0.8;
+		// Fallback for uninitialized size
+		if (gl_PointSize <= 0.0) {
+			if (p.style == STYLE_ROCKET_TRAIL) {
+				gl_PointSize = smoothstep((1.0 - v_lifetime), v_lifetime, v_lifetime / 2.0) * 15.0;
+			} else if (p.style == STYLE_EXPLOSION) {
+				gl_PointSize = (1.0 - (1.0 - v_lifetime) * (1.0 - v_lifetime)) * 60.0;
+			} else if (p.style == STYLE_SPARKS) {
+				gl_PointSize = 4.0 + v_lifetime * 20.0;
+			} else if (p.style == STYLE_GLITTER) {
+				gl_PointSize = 6.0;
+			} else if (p.style == STYLE_DEBUG) {
+				gl_PointSize = 8.0;
+			} else if (p.style == STYLE_RAIN) {
+				gl_PointSize = clamp(100.0 / (-view_pos.z * 0.1), 2.0, 30.0);
+			} else if (p.style == STYLE_SNOW) {
+				gl_PointSize = clamp(80.0 / (-view_pos.z * 0.1), 4.0, 40.0);
+			} else if (p.style == STYLE_AMBIENT || p.style == STYLE_BUBBLES || p.style == STYLE_FIREFLIES || p.style == STYLE_CINDER || p.style == STYLE_LEAF || p.style == STYLE_PETAL) {
+				gl_PointSize = 15.0 / (-view_pos.z * 0.05);
+				float size_var = fract(sin(float(particle_idx) * 123.456) * 456.789);
+				if (p.style == STYLE_BUBBLES) {
+					gl_PointSize *= (0.5 + size_var * 1.5);
+				} else if (p.style == STYLE_CINDER) {
+					gl_PointSize *= (0.6 + size_var * 0.4) * 0.8;
+				} else {
+					gl_PointSize *= (0.8 + size_var * 0.4);
+				}
+				gl_PointSize = clamp(gl_PointSize, 2.0, 40.0);
 			} else {
-				gl_PointSize *= (0.8 + size_var * 0.4);
+				gl_PointSize = smoothstep(2.0 * (1.0 - v_lifetime), v_lifetime, v_lifetime / 2.5) * 25.0;
 			}
-
-			gl_PointSize = clamp(gl_PointSize, 2.0, 40.0);
-		} else {
-			gl_PointSize = smoothstep(2.0 * (1.0 - v_lifetime), v_lifetime, v_lifetime / 2.5) * 25.0;
 		}
 	}
 }
