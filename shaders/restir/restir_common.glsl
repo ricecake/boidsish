@@ -25,21 +25,6 @@ layout(std430, binding = [[ALL_LIGHTS_BINDING]]) buffer AllLights {
     Light gpu_lights[];
 };
 
-// // Fire particle access
-// struct Particle {
-// 	vec4 pos;
-// 	vec4 vel;
-// 	vec3 epicenter;
-// 	int   style;
-// 	int   emitter_index;
-// 	int   emitter_id;
-// 	float extras[2];
-// };
-
-// layout(std430, binding = [[PARTICLE_BUFFER_BINDING]]) buffer ParticleBuffer {
-//     Particle particles[];
-// };
-
 #ifndef RESTIR_UNIFORMS_DEFINED
 #define RESTIR_UNIFORMS_DEFINED
 uniform int u_num_lights;
@@ -72,26 +57,8 @@ LightData getLightData(uint index) {
         // Ensure particle is alive
         if (p.pos.w > 0.0) {
             ld.position = p.pos.xyz;
-
-            if (p.style == STYLE_FIRE) {
-                ld.color = vec3(1.0, 0.6, 0.2);
-                ld.intensity = clamp(p.pos.w, 0.0, 1.0);
-            } else if (p.style == STYLE_EXPLOSION) {
-                ld.color = vec3(1.0, 0.9, 0.5);
-                ld.intensity = clamp(p.pos.w, 0.0, 1.0) * 5.0;
-            } else if (p.style == STYLE_SPARKS || p.style == STYLE_CINDER) {
-                ld.color = vec3(1.0, 0.5, 0.1);
-                ld.intensity = clamp(p.pos.w, 0.0, 1.0) * 0.5;
-            } else if (p.style == STYLE_ROCKET_TRAIL) {
-                ld.color = vec3(0.5, 0.7, 1.0);
-                ld.intensity = clamp(p.pos.w, 0.0, 1.0) * 2.0;
-            } else if (p.style == STYLE_FIREFLIES) {
-                ld.color = vec3(0.6, 1.0, 0.3);
-                ld.intensity = clamp(p.pos.w, 0.0, 1.0) * 0.2;
-            } else if (p.style == STYLE_AMBIENT && p.emitter_id == 4) {
-                ld.color = vec3(0.7, 0.9, 0.1);
-                ld.intensity = clamp(p.pos.w, 0.0, 1.0);
-            }
+            ld.color = p.color.rgb;
+            ld.intensity = p.origin.w;
         }
     }
     return ld;

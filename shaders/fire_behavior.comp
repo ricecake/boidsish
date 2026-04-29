@@ -7,6 +7,7 @@
 #include "particle_helpers.glsl"
 #include "particle_lifecycle.glsl"
 #include "particle_types.glsl"
+#include "helpers/noise.glsl"
 
 uniform float u_delta_time;
 uniform float u_time;
