@@ -77,13 +77,21 @@ vec4 rejectFireflies(vec4 current, sampler2D rawTex, sampler2D historyTex, sampl
 	vec4 hStddev = sqrt(max(vec4(0.0), (hm2 / 9.0) - (hMean * hMean)));
 	vec4 historicalClamp = hMean + hStddev * 3.0;
 
+	// Spatial stability in the current frame
+	float spatialLum = luminance(mean.rgb);
+	float spatialStd = luminance(stddev.rgb);
+	float stability = 1.0 - clamp(spatialStd / (spatialLum + 0.001), 0.0, 1.0);
+
 	// If current is significantly brighter than BOTH spatial neighborhood AND historical neighborhood, it's likely a firefly.
-	vec4 rejected = min(current, spatialClamp);
+	vec4 rejected = min(current, mean + stddev * mix(3.0, 8.0, stability));
 
 	float hLum = luminance(historicalClamp.rgb);
 	float currentLum = luminance(current.rgb);
-	// Allow some growth but suppress extreme spikes relative to historical neighborhood
-	float maxLum = hLum * 5.0 + 0.1;
+
+	// Allow more growth if the current signal is spatially stable (i.e., not a single isolated pixel)
+	float maxGrowth = mix(5.0, 50.0, stability);
+	float maxLum = hLum * maxGrowth + 0.1;
+
 	if (currentLum > maxLum) {
 		rejected.rgb *= (maxLum / max(0.001, currentLum));
 	}

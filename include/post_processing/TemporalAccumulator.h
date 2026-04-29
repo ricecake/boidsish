@@ -23,6 +23,8 @@ namespace Boidsish {
 			void Initialize(int width, int height, GLenum internalFormat = GL_R16F);
 			void Resize(int width, int height);
 
+			void SetAlpha(float alpha) { _alpha = alpha; }
+
 			/**
 			 * @brief Accumulate the current frame's signal with history.
 			 * @param currentFrame Signal for the current frame.
@@ -33,6 +35,7 @@ namespace Boidsish {
 			GLuint Accumulate(GLuint currentFrame, GLuint velocityTexture, GLuint depthTexture);
 
 			GLuint GetResult() const { return _historyTextures[_currentIndex]; }
+			GLuint GetHistoryTexture() const { return _historyTextures[1 - _currentIndex]; }
 
 		private:
 			void Cleanup();
@@ -43,6 +46,7 @@ namespace Boidsish {
 			int                            _currentIndex = 0;
 			int                            _width = 0, _height = 0;
 			GLenum                         _internalFormat = GL_R16F;
+			float                          _alpha = 0.9f;
 		};
 
 	} // namespace PostProcessing
