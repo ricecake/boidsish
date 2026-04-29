@@ -13,17 +13,22 @@
 #define STYLE_CINDER 9
 #define STYLE_RAIN 10
 #define STYLE_SNOW 11
+#define STYLE_LEAF 12
+#define STYLE_PETAL 13
 #define STYLE_IRIDESCENT 28
 
-// Must match the C++ struct layout in fire_effect.h
+// Must match the C++ struct layout in fire_effect_manager.cpp
 struct Particle {
-	vec4  pos; // Position (w is lifetime)
-	vec4  vel; // Velocity (w is unused)
-	vec3  epicenter;
+	vec4  pos;           // x, y, z, lifetime
+	vec4  vel;           // x, y, z, size
+	vec4  color;         // r, g, b, a
+	vec4  origin;        // x, y, z, intensity
+	float phase;
+	float counter;
 	int   style;
-	int   emitter_index;
 	int   emitter_id;
-	float extras[2];
+	int   emitter_index;
+	int   _padding[3];
 };
 
 // Must match the C++ Emitter struct in fire_effect_manager.h
