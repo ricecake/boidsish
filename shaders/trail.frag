@@ -149,5 +149,10 @@ void main() {
 
 	Velocity = vec4(a - b, outRoughness, outMetallic);
 	NormalOut = vec4(normalize(mat3(view) * norm), 1.0);
-	AlbedoOut = vec4(vs_color, 1.0);
+
+	float emissive_lum = 0.0;
+	if (current_useRocketTrail && vs_progress > 0.9) {
+		emissive_lum = luminance(FragColor.rgb);
+	}
+	AlbedoOut = vec4(vs_color, emissive_lum);
 }

@@ -15,11 +15,6 @@ layout(std430, binding = [[RESTIR_GI_RESERVOIRS0_BINDING]]) buffer RestirGIReser
     Reservoir gi_reservoirs[];
 };
 
-uniform sampler2D gDepth;
-uniform sampler2D gColor;
-uniform sampler2D gNormal;
-uniform sampler2D gVelocity;
-uniform sampler2D gAlbedo;
 // uniform sampler2D u_blueNoiseTexture; // defined in fast_noise.glsl
 uniform sampler2D u_hizTexture;
 uniform sampler2D uShadowMask; // Terrain shadow mask for SSGI fallback/modulation
@@ -29,8 +24,6 @@ uniform sampler2D uShadowMask; // Terrain shadow mask for SSGI fallback/modulati
 // Forward declarations in lighting.glsl need these if USE_TERRAIN_DATA is defined
 float terrainShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) { return 1.0; }
 float calculateTerrainOcclusion(vec3 worldPos, vec3 normal) { return 1.0; }
-
-#include "../restir/restir_common.glsl"
 #include "../helpers/lighting.glsl"
 
 // Unified Parameters
@@ -72,11 +65,6 @@ float hash12(vec2 p) {
 	return fract((p3.x + p3.y) * p3.z);
 }
 
-vec3 getViewPos(vec2 uv, float depth) {
-	vec4 clipPos = vec4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
-	vec4 viewPos = invProjection * clipPos;
-	return viewPos.xyz / viewPos.w;
-}
 
 // SSGI Helpers
 vec3 hemisphereSample(vec2 uv, vec3 normal) {

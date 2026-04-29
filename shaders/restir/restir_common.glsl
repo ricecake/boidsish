@@ -46,7 +46,19 @@ uniform int u_num_lights;
 uniform int u_num_fire_particles;
 uniform mat4 view;
 
+uniform sampler2D gDepth;
+uniform sampler2D gNormal;
+uniform sampler2D gVelocity;
+uniform sampler2D gAlbedo;
+uniform sampler2D gColor;
+
 #include "../types/temporal_data.glsl"
+
+vec3 getViewPos(vec2 uv, float depth) {
+	vec4 clipPos = vec4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
+	vec4 viewPos = invProjection * clipPos;
+	return viewPos.xyz / viewPos.w;
+}
 #endif
 
 LightData getLightData(uint index) {
@@ -56,6 +68,24 @@ LightData getLightData(uint index) {
     ld.color = vec3(0);
     ld.intensity = 0.0;
     ld.type = 0; // POINT
+
+    if ((index & 0x80000000u) != 0) {
+        // Screen-space pixel light
+        uint  p_idx = index & 0x7FFFFFFFu;
+        ivec2 size = textureSize(gColor, 0);
+        vec2  uv = (vec2(p_idx % size.x, p_idx / size.x) + 0.5) / vec2(size);
+        float d = texture(gDepth, uv).r;
+        if (d < 1.0) {
+            vec3 vPos = getViewPos(uv, d);
+            ld.position = (invView * vec4(vPos, 1.0)).xyz;
+            ld.color = texture(gColor, uv).rgb;
+            // For emissive surfaces, the "intensity" is already baked into the color.
+            // We use a small boost here to prioritize them during sampling if they are truly emissive.
+            ld.intensity = 2.0;
+            ld.type = 3; // EMISSIVE
+        }
+        return ld;
+    }
 
     if (index < uint(u_num_lights)) {
         ld.position = gpu_lights[index].position;
@@ -101,10 +131,6 @@ float safeDiv(float a, float b) {
     return (b != 0.0) ? (a / b) : 0.0;
 }
 
-float luminance(vec3 c) {
-    return dot(c, vec3(0.2126, 0.7152, 0.0722));
-}
-
 // A standard 32-bit integer hash
 uint hash(uint x) {
 	x ^= x >> 16;
@@ -122,6 +148,13 @@ float targetFunction(vec3 pos, vec3 norm, vec3 V, vec3 albedo, float roughness, 
     if (ld.type == 1) { // DIRECTIONAL
         L = normalize(-ld.direction);
         attenuation = 1.0;
+    } else if (ld.type == 3) { // EMISSIVE
+        vec3 L_vec = ld.position - pos;
+        float distSq = dot(L_vec, L_vec);
+        L = normalize(L_vec);
+        // Emissive pixel lights use a larger minimum distance to avoid artifacts
+        // from pixels very close to the surface (e.g. self-shadowing or corners)
+        attenuation = 1.0 / max(0.05 * worldScale, distSq);
     } else {
         vec3 L_vec = ld.position - pos;
         float distSq = dot(L_vec, L_vec);

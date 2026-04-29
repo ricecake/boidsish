@@ -338,5 +338,5 @@ void main() {
 
 	// Output view-space normal
 	NormalOut = vec4(normalize(mat3(view) * norm), primaryShadow);
-	AlbedoOut = vec4(albedo * baseAlpha, 1.0);
+	AlbedoOut = vec4(albedo * baseAlpha, luminance(emissive));
 }
