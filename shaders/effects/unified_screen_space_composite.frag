@@ -9,6 +9,11 @@ uniform sampler2D uSSSTexture;   // R: SSS
 uniform sampler2D uNormalTexture; // A: traditional shadow
 uniform sampler2D uDepthTexture;  // High-res depth
 uniform sampler2D uDITexture;     // RGB: ReSTIR DI
+uniform sampler2D uVelocityTexture;
+uniform sampler2D uRawGIAOTexture;
+uniform sampler2D uRawDITexture;
+uniform sampler2D uHistoryGIAOTexture;
+uniform sampler2D uHistoryDITexture;
 
 uniform bool  uSSGIEnabled = true;
 uniform bool  uRestirDIEnabled = true;
@@ -23,6 +28,77 @@ uniform float uGTAOIntensity = 1.0;
 uniform float uSSSIntensity = 0.5;
 
 // Bilateral upsampling helpers
+float luminance(vec3 c) {
+	return dot(c, vec3(0.2126, 0.7152, 0.0722));
+}
+
+vec4 rejectFireflies(vec4 current, sampler2D rawTex, sampler2D historyTex, sampler2D velocityTex, sampler2D depthTex, vec2 uv, vec2 lowResInvSize) {
+	// 1. Spatial Check in raw (recent) frame
+	vec4 m1 = vec4(0.0);
+	vec4 m2 = vec4(0.0);
+	for (int y = -1; y <= 1; y++) {
+		for (int x = -1; x <= 1; x++) {
+			vec4 val = texture(rawTex, uv + vec2(x, y) * lowResInvSize);
+			m1 += val;
+			m2 += val * val;
+		}
+	}
+	vec4 mean = m1 / 9.0;
+	vec4 stddev = sqrt(max(vec4(0.0), (m2 / 9.0) - (mean * mean)));
+	vec4 spatialClamp = mean + stddev * 3.0;
+
+	// 2. Temporal Check
+	vec2 velocity = texture(velocityTex, uv).rg;
+	vec2 prevUV = uv - velocity;
+	vec4 history = texture(historyTex, prevUV);
+
+	// Validation: Check if reprojected pixel is on the same surface
+	float currentDepth = texture(depthTex, uv).r;
+	float prevDepth = texture(depthTex, prevUV).r;
+	bool validHistory = (prevUV.x >= 0.0 && prevUV.x <= 1.0 && prevUV.y >= 0.0 && prevUV.y <= 1.0) && (abs(currentDepth - prevDepth) < 0.01);
+
+	// 3. Historical Neighborhood Check
+	vec4 hm1 = vec4(0.0);
+	vec4 hm2 = vec4(0.0);
+	if (validHistory) {
+		for (int y = -1; y <= 1; y++) {
+			for (int x = -1; x <= 1; x++) {
+				vec4 val = texture(historyTex, prevUV + vec2(x, y) * lowResInvSize);
+				hm1 += val;
+				hm2 += val * val;
+			}
+		}
+	} else {
+        // If history is invalid, we fallback to spatial clamp only
+        return min(current, spatialClamp);
+    }
+
+	vec4 hMean = hm1 / 9.0;
+	vec4 hStddev = sqrt(max(vec4(0.0), (hm2 / 9.0) - (hMean * hMean)));
+	vec4 historicalClamp = hMean + hStddev * 3.0;
+
+	// Spatial stability in the current frame
+	float spatialLum = luminance(mean.rgb);
+	float spatialStd = luminance(stddev.rgb);
+	float stability = 1.0 - clamp(spatialStd / (spatialLum + 0.001), 0.0, 1.0);
+
+	// If current is significantly brighter than BOTH spatial neighborhood AND historical neighborhood, it's likely a firefly.
+	vec4 rejected = min(current, mean + stddev * mix(3.0, 8.0, stability));
+
+	float hLum = luminance(historicalClamp.rgb);
+	float currentLum = luminance(current.rgb);
+
+	// Allow more growth if the current signal is spatially stable (i.e., not a single isolated pixel)
+	float maxGrowth = mix(5.0, 50.0, stability);
+	float maxLum = hLum * maxGrowth + 0.1;
+
+	if (currentLum > maxLum) {
+		rejected.rgb *= (maxLum / max(0.001, currentLum));
+	}
+
+	return rejected;
+}
+
 vec4 sampleBilateral(sampler2D lowResTex, sampler2D highResDepth, vec2 uv) {
 	ivec2 lowResSize = textureSize(lowResTex, 0);
 	vec2 lowResInvSize = 1.0 / vec2(lowResSize);
@@ -131,15 +207,17 @@ void main() {
 		return;
 	}
 
+	ivec2 lowResSize = textureSize(uGIAOTexture, 0);
+	vec2 lowResInvSize = 1.0 / vec2(lowResSize);
+
 	// Use bilateral upsampling for low-res effects
 	vec4 giao = sampleBilateral(uGIAOTexture, uDepthTexture, uNormalTexture, TexCoords);
 	float sssFactor = sampleBilateral(uSSSTexture, uDepthTexture, uNormalTexture, TexCoords).r;
 	vec3 di_lighting = sampleBilateral(uDITexture, uDepthTexture, uNormalTexture, TexCoords).rgb;
 
-	// Basic firefly rejection: clamp ReSTIR contribution based on scene luminance
-	float max_lum = max(color.r, max(color.g, color.b)) * 10.0 + 2.0;
-	giao.rgb = min(giao.rgb, vec3(max_lum));
-	di_lighting = min(di_lighting, vec3(max_lum));
+	// Advanced firefly rejection
+	giao = rejectFireflies(giao, uRawGIAOTexture, uHistoryGIAOTexture, uVelocityTexture, uDepthTexture, TexCoords, lowResInvSize);
+	di_lighting = rejectFireflies(vec4(di_lighting, 1.0), uRawDITexture, uHistoryDITexture, uVelocityTexture, uDepthTexture, TexCoords, lowResInvSize).rgb;
 
 	float traditionalShadow = texture(uNormalTexture, TexCoords).a;
 
