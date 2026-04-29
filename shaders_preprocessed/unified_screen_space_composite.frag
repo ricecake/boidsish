@@ -1,4 +1,6 @@
 #version 430 core
+#ifndef GSHADERS_EFFECTS_UNIFIED_SCREEN_SPACE_COMPOSITE_FRAG
+#define GSHADERS_EFFECTS_UNIFIED_SCREEN_SPACE_COMPOSITE_FRAG
 out vec4 FragColor;
 
 in vec2 TexCoords;
@@ -241,3 +243,4 @@ void main() {
 
 	FragColor = vec4(result, color.a);
 }
+#endif // GSHADERS_EFFECTS_UNIFIED_SCREEN_SPACE_COMPOSITE_FRAG
