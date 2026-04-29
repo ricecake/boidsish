@@ -40,38 +40,26 @@ void main() {
 		gl_Position = u_projection * view_pos;
 		v_lifetime = p.pos.w;
 
-		gl_PointSize = p.vel.w; // Use size from velocity.w
+		float base_size = p.vel.w;
 
-		// Fallback for uninitialized size
-		if (gl_PointSize <= 0.0) {
-			if (p.style == STYLE_ROCKET_TRAIL) {
-				gl_PointSize = smoothstep((1.0 - v_lifetime), v_lifetime, v_lifetime / 2.0) * 15.0;
-			} else if (p.style == STYLE_EXPLOSION) {
-				gl_PointSize = (1.0 - (1.0 - v_lifetime) * (1.0 - v_lifetime)) * 60.0;
-			} else if (p.style == STYLE_SPARKS) {
-				gl_PointSize = 4.0 + v_lifetime * 20.0;
-			} else if (p.style == STYLE_GLITTER) {
-				gl_PointSize = 6.0;
-			} else if (p.style == STYLE_DEBUG) {
-				gl_PointSize = 8.0;
-			} else if (p.style == STYLE_RAIN) {
-				gl_PointSize = clamp(100.0 / (-view_pos.z * 0.1), 2.0, 30.0);
-			} else if (p.style == STYLE_SNOW) {
-				gl_PointSize = clamp(80.0 / (-view_pos.z * 0.1), 4.0, 40.0);
-			} else if (p.style == STYLE_AMBIENT || p.style == STYLE_BUBBLES || p.style == STYLE_FIREFLIES || p.style == STYLE_CINDER || p.style == STYLE_LEAF || p.style == STYLE_PETAL) {
-				gl_PointSize = 15.0 / (-view_pos.z * 0.05);
-				float size_var = fract(sin(float(particle_idx) * 123.456) * 456.789);
-				if (p.style == STYLE_BUBBLES) {
-					gl_PointSize *= (0.5 + size_var * 1.5);
-				} else if (p.style == STYLE_CINDER) {
-					gl_PointSize *= (0.6 + size_var * 0.4) * 0.8;
-				} else {
-					gl_PointSize *= (0.8 + size_var * 0.4);
-				}
-				gl_PointSize = clamp(gl_PointSize, 2.0, 40.0);
+		if (p.style == STYLE_RAIN) {
+			gl_PointSize = clamp(base_size / (-view_pos.z * 0.1), 2.0, 30.0);
+		} else if (p.style == STYLE_SNOW) {
+			gl_PointSize = clamp(base_size / (-view_pos.z * 0.1), 4.0, 40.0);
+		} else if (p.style == STYLE_AMBIENT || p.style == STYLE_BUBBLES || p.style == STYLE_FIREFLIES || p.style == STYLE_CINDER || p.style == STYLE_LEAF || p.style == STYLE_PETAL) {
+			gl_PointSize = base_size / (-view_pos.z * 0.05);
+
+			float size_var = fract(sin(float(particle_idx) * 123.456) * 456.789);
+			if (p.style == STYLE_BUBBLES) {
+				gl_PointSize *= (0.5 + size_var * 1.5);
+			} else if (p.style == STYLE_CINDER) {
+				gl_PointSize *= (0.6 + size_var * 0.4) * 0.8;
 			} else {
-				gl_PointSize = smoothstep(2.0 * (1.0 - v_lifetime), v_lifetime, v_lifetime / 2.5) * 25.0;
+				gl_PointSize *= (0.8 + size_var * 0.4);
 			}
+			gl_PointSize = clamp(gl_PointSize, 2.0, 40.0);
+		} else {
+			gl_PointSize = base_size;
 		}
 	}
 }

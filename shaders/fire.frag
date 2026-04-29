@@ -107,7 +107,7 @@ void main() {
 		alpha *= shapeMask;
 		color *= alpha;
 	} else {
-		float maxLife = (v_style == 1) ? kExplosionLifetime : kFireLifetime;
+		float maxLife = (v_style == STYLE_EXPLOSION) ? kExplosionLifetime : kFireLifetime;
 		float distFromEpicenter = length(v_pos.xyz - v_origin);
 		float normalizedLife = clamp(v_lifetime / maxLife, 0.0, 1.0);
 		float roilScale = (v_style == STYLE_EXPLOSION) ? 0.015 : 0.03;

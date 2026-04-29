@@ -19,7 +19,7 @@ bool updateLifetime(
 	// Hijack/Clear Logic
 	if (emitter_index != -1 && num_emitters > 0 && emitter_index < num_emitters) {
 		Emitter emitter = emitters[emitter_index];
-		if (emitter.request_clear != 0 || (p.emitter_id == -1 && p.pos.w > 0.0) ||
+		if (emitter.request_clear != 0 || (p.emitter_id < 0 && p.pos.w > 0.0) ||
 		    (p.emitter_id != emitter.id && p.pos.w <= 0.50)) {
 			p.pos.w = 0.0;
 		}
@@ -317,7 +317,7 @@ void spawnPrecipitation(inout Particle p, uint gid, float time, vec3 viewPos) {
 			p.vel = vec4(0, -3.0, 0, 15.0);
 		}
 		p.emitter_index = -1;
-		p.emitter_id = -1;
+		p.emitter_id = -2; // Denotes precipitation
 		p.origin.xyz = p.pos.xyz;
 		p.origin.w = 1.0;
 	}

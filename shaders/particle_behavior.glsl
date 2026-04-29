@@ -100,6 +100,8 @@ void applyAmbientAvoidance(inout Particle p, float dt, float time, vec3 viewPos,
 void updateRocketTrail(inout Particle p, float dt) {
 	p.vel.xyz -= p.vel.xyz * kExhaustDrag * 2.0 * (1.0 - (length(p.vel.xyz) / 30.0)) * dt;
 	p.color = vec4(0.1, 0.1, 0.1, p.pos.w * 0.4);
+	p.vel.w = smoothstep(0.0, 1.0, p.pos.w / kExhaustLifetime) * 15.0;
+	p.origin.w = 2.0; // Intensity
 }
 
 void updateExplosion(inout Particle p, float dt, float time, sampler3D curlTexture) {
@@ -107,12 +109,22 @@ void updateExplosion(inout Particle p, float dt, float time, sampler3D curlTextu
 	float dist = distance(p.pos.xyz, p.origin.xyz);
 	float curlInfluence = smoothstep(5.0, 30.0, dist) + smoothstep(5, 1, length(p.vel.xyz) * kExplosionDrag * dt);
 	p.vel.xyz += curlNoise(p.pos.xyz, time, curlTexture) * curlInfluence * 15.0 * dt;
+
+	float normLife = clamp(p.pos.w / kExplosionLifetime, 0.0, 1.0);
+	p.vel.w = (1.0 - (1.0 - normLife) * (1.0 - normLife)) * 60.0;
+	p.color = vec4(1.0, 0.9, 0.5, normLife);
+	p.origin.w = 5.0 * normLife;
 }
 
 void updateFire(inout Particle p, float dt, float time) {
 	p.vel.y += (kFireSpeed / p.pos.w) * dt;
 	p.vel.x += (rand(p.pos.xy + time) - 0.5) * kFireSpread * dt * 0.25;
 	p.vel.z += (rand(p.pos.yz + time) - 0.5) * kFireSpread * dt * 0.25;
+
+	float normLife = clamp(p.pos.w / kFireLifetime, 0.0, 1.0);
+	p.vel.w = smoothstep(2.0 * (1.0 - normLife), normLife, normLife / 2.5) * 25.0;
+	p.color = vec4(1.0, 0.6, 0.2, normLife);
+	p.origin.w = 2.0 * normLife;
 }
 
 void updateSparks(inout Particle p, float dt) {
@@ -125,6 +137,9 @@ void updateSparks(inout Particle p, float dt) {
 	float pop = sin(p.pos.w * 600.0);
 	p.color.rgb *= (pop > 0.0) ? 3.0 : 0.3;
 	p.color.a = smoothstep(0.0, 0.1, p.pos.w);
+
+	p.vel.w = 4.0 + p.pos.w * 20.0;
+	p.origin.w = 1.0 * p.color.a;
 }
 
 void updateGlitter(inout Particle p, float dt, float time, sampler3D curlTexture) {
@@ -140,6 +155,9 @@ void updateGlitter(inout Particle p, float dt, float time, sampler3D curlTexture
 	p.color.rgb *= 0.6 + 0.4 * twinkle;
 	p.color.rgb += vec3(pow(twinkle, 10.0) * 2.0);
 	p.color.a = clamp(p.pos.w, 0.0, 1.0);
+
+	p.vel.w = 6.0;
+	p.origin.w = 0.5 * p.color.a;
 }
 
 void updateBubbles(inout Particle p, float dt, float time, sampler3D curlTexture) {
@@ -148,6 +166,8 @@ void updateBubbles(inout Particle p, float dt, float time, sampler3D curlTexture
 	p.vel.y += 0.4 * dt;
 	p.vel.xyz *= 0.97;
 	p.color = vec4(1.0, 1.0, 1.0, 0.6 * smoothstep(0.0, 0.5, p.pos.w));
+	p.vel.w = 15.0;
+	p.origin.w = 0.0; // Non-emissive
 }
 
 void updateFireflies(inout Particle p, float dt, float time, sampler3D curlTexture) {
@@ -160,6 +180,8 @@ void updateFireflies(inout Particle p, float dt, float time, sampler3D curlTextu
 	float twinkle = sin(time * 6.0 + float(gl_GlobalInvocationID.x)) * 0.5 + 0.5;
 	p.color.rgb = firefly_base * (2.0 + twinkle * 8.0);
 	p.color.a = (0.4 + twinkle * 0.6) * smoothstep(0.0, 0.5, p.pos.w);
+	p.vel.w = 15.0;
+	p.origin.w = 0.2 * p.color.a;
 }
 
 void updateCinder(inout Particle p, float dt, float time, sampler3D curlTexture) {
@@ -174,6 +196,8 @@ void updateCinder(inout Particle p, float dt, float time, sampler3D curlTexture)
 	float highlights = smoothstep(0.4, 0.9, snoise3d(p.pos.xyz * 40.0 + time));
 	p.color.rgb = mix(p.color.rgb, vec3(2.5, 0.8, 0.2), highlights);
 	p.color.a = smoothstep(0.0, 0.5, p.pos.w);
+	p.vel.w = 12.0;
+	p.origin.w = 0.5 * p.color.a;
 }
 
 void updateRain(inout Particle p, float dt, float time) {
@@ -182,6 +206,9 @@ void updateRain(inout Particle p, float dt, float time) {
 	p.vel.xyz += wind * 5.0 * dt;
 	p.vel.xyz *= 0.99;
 	p.color = vec4(0.7, 0.8, 1.0, 1.0) * 2.0;
+	p.color.a *= smoothstep(0.0, 0.1, p.pos.w);
+	p.vel.w = 100.0;
+	p.origin.w = 0.0;
 }
 
 void updateSnow(inout Particle p, float dt, float time) {
@@ -192,6 +219,9 @@ void updateSnow(inout Particle p, float dt, float time) {
 	p.vel.z += cos(time * 4.0 + float(gl_GlobalInvocationID.x)) * 0.5 * dt;
 	p.vel.xyz *= 0.95;
 	p.color = vec4(1.0, 1.0, 1.0, 1.0) * 1.5;
+	p.color.a *= smoothstep(0.0, 0.1, p.pos.w);
+	p.vel.w = 80.0;
+	p.origin.w = 0.0;
 }
 
 void updateLeaf(inout Particle p, float dt, float time, sampler3D curlTexture) {
@@ -207,6 +237,8 @@ void updateLeaf(inout Particle p, float dt, float time, sampler3D curlTexture) {
 	p.color.rgb *= flutter;
 	p.color.rgb += vec3(0.1) * pow(flutter, 10.0);
 	p.color.a = smoothstep(0.0, 0.5, p.pos.w) * 0.9;
+	p.vel.w = 15.0;
+	p.origin.w = 0.0;
 }
 
 void updatePetal(inout Particle p, float dt, float time, sampler3D curlTexture) {
@@ -219,6 +251,8 @@ void updatePetal(inout Particle p, float dt, float time, sampler3D curlTexture) 
 	float flutter = sin(time * 8.0 + p.pos.x * 2.0) * 0.4 + 0.6;
 	p.color.rgb *= flutter;
 	p.color.a = smoothstep(0.0, 0.5, p.pos.w) * 0.95;
+	p.vel.w = 15.0;
+	p.origin.w = 0.0;
 }
 
 void updateAmbientBubble(inout Particle p, float dt, float time, sampler3D curlTexture) {
@@ -227,6 +261,8 @@ void updateAmbientBubble(inout Particle p, float dt, float time, sampler3D curlT
 	p.vel.y += 0.4 * dt;
 	p.vel.xyz *= pow(0.97, dt / 0.016);
 	p.color = vec4(1.0, 1.0, 1.0, 0.6 * smoothstep(0.0, 0.5, p.pos.w));
+	p.vel.w = 15.0;
+	p.origin.w = 0.0;
 }
 
 void updateAmbientSnowflake(inout Particle p, float dt, float time, sampler3D curlTexture) {
@@ -235,6 +271,8 @@ void updateAmbientSnowflake(inout Particle p, float dt, float time, sampler3D cu
 	p.vel.y -= 0.5 * dt;
 	p.vel.xyz *= pow(0.99, dt / 0.016);
 	p.color = vec4(0.9, 0.95, 1.0, 0.8 * smoothstep(0.0, 0.5, p.pos.w)) * (1.2 + 0.3 * sin(time * 2.0 + p.pos.x));
+	p.vel.w = 15.0;
+	p.origin.w = 0.0;
 }
 
 void updateAmbientFirefly(
@@ -245,12 +283,15 @@ void updateAmbientFirefly(
 	uint           gridSize,
 	sampler3D      curlTexture
 ) {
-	float last_twinkle_time = p.origin.w;
-	float twinkle_t = float(time) - last_twinkle_time;
-	bool  is_refractory = (twinkle_t < 0.75);
+	// Sync twinkle state using counter and phase
+	p.counter += dt;
+	float cycle_time = p.phase + 0.75; // Period + refractory period
+	if (p.counter > cycle_time) {
+		p.counter = fract(p.counter / cycle_time) * cycle_time;
+	}
 
-	if (!is_refractory) {
-		p.counter += dt / p.phase;
+	// Simple repulsion from other particles using the spatial grid
+	if (p.counter > 0.75) { // Only check for sync during "flash ready" phase
 		for (int x = -1; x <= 1; x++) {
 			for (int y = -1; y <= 1; y++) {
 				for (int z = -1; z <= 1; z++) {
@@ -260,11 +301,11 @@ void updateAmbientFirefly(
 					while (otherIdx != -1 && safety < 100) {
 						if (otherIdx != int(gl_GlobalInvocationID.x)) {
 							Particle otherP = particles[otherIdx];
-							float    other_twinkle_t = float(time) - otherP.origin.w;
-							if (other_twinkle_t < (dt * 2.0)) {
+							// If neighbor is flashing, speed up our own counter to sync
+							if (otherP.counter < 0.6) {
 								float distSq = pow(distance(otherP.pos.xyz, p.pos.xyz), 2.0);
 								float pulse_strength = 0.15;
-								p.counter += pulse_strength / max(distSq, 0.01);
+								p.counter += (pulse_strength / max(distSq, 0.01)) * dt;
 							}
 						}
 						otherIdx = grid_next[otherIdx];
@@ -275,21 +316,17 @@ void updateAmbientFirefly(
 		}
 	}
 
-	if (p.counter >= 1.0 && !is_refractory) {
-		p.counter = 0.0;
-		p.origin.w = time;
-	}
-
 	float curlInfluence = 0.8;
 	p.vel.xyz += curlNoise(p.pos.xyz, time, curlTexture) * curlInfluence * dt;
 	p.vel.y += 0.15 * dt;
 	p.vel.xyz *= pow(0.99, dt / 0.016);
 
 	vec3 firefly_base = vec3(0.7, 0.9, 0.1);
-	float cur_twinkle_t = float(time) - p.origin.w;
-	float twinkle = pow(smoothstep(0.0, 0.3, cur_twinkle_t) * (1.0 - smoothstep(0.4, 0.6, cur_twinkle_t)), 2) * step(cur_twinkle_t, 0.6);
+	float twinkle = pow(smoothstep(0.0, 0.3, p.counter) * (1.0 - smoothstep(0.4, 0.6, p.counter)), 2) * step(p.counter, 0.6);
 	p.color.rgb = firefly_base * (2.0 + twinkle * 8.0);
-	p.color.a = 0.01 + step(cur_twinkle_t, 0.6) * (0.4 + twinkle * 0.6) * smoothstep(0.0, 0.5, p.pos.w);
+	p.color.a = 0.01 + step(p.counter, 0.6) * (0.4 + twinkle * 0.6) * smoothstep(0.0, 0.5, p.pos.w);
+	p.vel.w = 15.0;
+	p.origin.w = 0.5 * p.color.a;
 }
 
 void updateAmbientParticle(
@@ -321,12 +358,32 @@ void updateAmbientParticle(
 	} else {
 		p.vel.xyz += curlNoise(p.pos.xyz, time, curlTexture) * dt;
 		p.vel.xyz *= pow(0.99, dt / 0.016);
+		p.vel.w = 15.0;
+		p.color.a = smoothstep(0.0, 0.5, p.pos.w);
+		p.origin.w = 0.0;
 	}
 
 	applyAmbientAvoidance(p, dt, time, viewPos, viewDir, curlTexture);
 
 	if (length(p.vel.xyz) > maxSpeed) {
 		p.vel.xyz = normalize(p.vel.xyz) * maxSpeed;
+	}
+
+	p.pos.xyz += p.vel.xyz * dt;
+	handleTerrainCollision(p, num_chunks, heightmapArray);
+}
+
+void updatePrecipitationBehavior(
+	inout Particle p,
+	float          dt,
+	float          time,
+	int            num_chunks,
+	sampler2DArray heightmapArray
+) {
+	if (p.style == STYLE_RAIN) {
+		updateRain(p, dt, time);
+	} else if (p.style == STYLE_SNOW) {
+		updateSnow(p, dt, time);
 	}
 
 	p.pos.xyz += p.vel.xyz * dt;
@@ -412,6 +469,8 @@ void updateBehavior(
 			num_chunks,
 			heightmapArray
 		);
+	} else if (p.emitter_id == -2) {
+		updatePrecipitationBehavior(p, dt, time, num_chunks, heightmapArray);
 	} else {
 		updateFireBehavior(p, dt, time, curlTexture, num_chunks, heightmapArray);
 	}
