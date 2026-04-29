@@ -191,6 +191,14 @@ void main() {
     vec3 volScattering = volData.rgb;
     float volTransmittance = volData.a;
 
+    // To prevent terrain bleeding, we need to ensure that the unshadowed high-res haze (Aerial Perspective)
+    // is masked by the volumetric transmittance. However, the high-res haze also needs to be
+    // consistent with the shadowed froxels.
+    // We apply a depth-based weight to the aerial perspective to ensure it doesn't bleed through
+    // close terrain.
+    float bleedingMask = smoothstep(0.0, 10.0, dist);
+    inScattering *= bleedingMask;
+
     // Apply volumetric lighting
     inScattering = inScattering * volTransmittance + volScattering;
     transmittance *= volTransmittance;

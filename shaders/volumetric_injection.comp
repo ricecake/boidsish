@@ -5,6 +5,7 @@ layout(rgba16f, binding = 0) uniform image3D inOutScatteringExtinction;
 
 #define USE_TERRAIN_DATA
 #include "helpers/constants.glsl"
+#include "atmosphere/common.glsl"
 #include "lighting.glsl"
 #include "helpers/terrain_shadows.glsl"
 #include "helpers/lighting.glsl"
@@ -39,17 +40,12 @@ vec3 getFroxelViewPos(vec3 uvw, int cascade) {
     return vec3(ndc.x * zView * invP00, ndc.y * zView * invP11, -zView);
 }
 
-float hgPhase(float cosTheta, float g) {
-    float g2 = g * g;
-    return (1.0 - g2) / (4.0 * PI * pow(1.0 + g2 - 2.0 * g * cosTheta, 1.5));
-}
-
 void main() {
     ivec3 texel = ivec3(gl_GlobalInvocationID.xyz);
     if (any(greaterThanEqual(texel, u_volData.cascadeRes.xyz))) return;
 
     vec4 data = imageLoad(inOutScatteringExtinction, texel);
-    float scatteringBase = data.r;
+    vec3 scatteringBase = data.rgb;
     float extinction = data.a;
 
     vec3 uvw = (vec3(texel) + 0.5) / vec3(u_volData.cascadeRes.xyz);
@@ -65,13 +61,17 @@ void main() {
 
         vec3 L = normalize(-lights[i].direction);
         // Note: passing up-vector as normal for the shadow calculation in air
-        float shadow = calculateShadow(i, worldPos, vec3(0, 1, 0), L);
+        // We use a small offset to avoid self-shadowing issues at the terrain boundary
+        float shadow = calculateShadow(i, worldPos + L * 0.1, vec3(0, 1, 0), L);
         shadow *= calculateCloudShadow(i, worldPos);
 
         float cosTheta = dot(V, L);
-        float phase = hgPhase(cosTheta, u_volData.phaseG);
-        // Add isotropic scattering (20% mix) to ensure visibility from all angles
-        phase = mix(phase, 1.0 / (4.0 * PI), 0.2);
+
+        float g = u_volData.phaseG;
+        float phase = dualLobehgPhase(cosTheta, g);
+
+        // Add isotropic scattering (10% mix) to ensure a baseline visibility
+        phase = mix(phase, 1.0 / (4.0 * PI), 0.1);
 
         totalScatteredLight += lights[i].color * lights[i].intensity * shadow * phase * u_volData.intensity;
     }
