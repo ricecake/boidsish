@@ -87,15 +87,26 @@ namespace Boidsish {
 	}
 
 	void VolumetricLightingManager::UpdateUbo() {
+		auto atmo = _loc.Get<AtmosphereManager>();
+
 		VolumetricLightingUbo data{};
 		data.cascadeRanges = glm::vec4(_cascade0Far, _cascade1Far, _cascade2Far, _cascade3Far);
 		data.cascadeRes = glm::ivec4(_resX, _resY, _resZ, 0);
 		data.intensity = _intensity;
-		data.scatteringCoeff = _scatteringCoeff;
-		data.extinctionCoeff = _extinctionCoeff;
-		data.mieAnisotropy = _mieAnisotropy;
+
+		if (atmo) {
+			data.scatteringCoeff = atmo->GetMieScattering();
+			data.extinctionCoeff = atmo->GetMieExtinction();
+			data.mieAnisotropy = atmo->GetMieAnisotropy();
+			data.phaseG = atmo->GetMieAnisotropy();
+		} else {
+			data.scatteringCoeff = 0.1f;
+			data.extinctionCoeff = 0.1f;
+			data.mieAnisotropy = 0.7f;
+			data.phaseG = 0.7f;
+		}
+
 		data.ambientFactor = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
-		data.phaseG = _mieAnisotropy;
 		data.weatherGridOriginSize = _weatherGridOriginSize;
 
 		*_ubo->GetFrameDataPtr() = data;
@@ -144,7 +155,12 @@ namespace Boidsish {
 			_densityShader->setMat4("view", view);
 			_densityShader->setMat4("projection", projection);
 			_densityShader->setMat4("invView", glm::inverse(view));
-			_densityShader->setVec3("u_aerosolColor", _aerosolColor);
+
+			if (atmo) {
+				_densityShader->setVec3("u_aerosolColor", atmo->GetAerosolColor());
+			} else {
+				_densityShader->setVec3("u_aerosolColor", _aerosolColor);
+			}
 
 			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::WeatherScalars());
 			glBindTexture(GL_TEXTURE_2D, _weatherScalarTexture);
