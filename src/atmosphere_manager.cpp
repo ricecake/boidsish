@@ -185,6 +185,7 @@ namespace Boidsish {
 		_skyViewShader->setFloat("u_rayleighScale", _rayleighScale);
 		_skyViewShader->setFloat("u_mieScale", _mieScale);
 		_skyViewShader->setFloat("u_mieAnisotropy", _mieAnisotropy);
+		_skyViewShader->setVec3("u_aerosolColor", _aerosolColor);
 		_skyViewShader->setFloat("u_multiScatScale", _multiScatScale);
 
 		glActiveTexture(GL_TEXTURE3);
@@ -223,6 +224,7 @@ namespace Boidsish {
 		_aerialPerspectiveShader->setFloat("u_rayleighScale", _rayleighScale);
 		_aerialPerspectiveShader->setFloat("u_mieScale", _mieScale);
 		_aerialPerspectiveShader->setFloat("u_mieAnisotropy", _mieAnisotropy);
+		_aerialPerspectiveShader->setVec3("u_aerosolColor", _aerosolColor);
 		_aerialPerspectiveShader->setFloat("u_multiScatScale", _multiScatScale);
 		_aerialPerspectiveShader->setFloat("u_ambientScatScale", _ambientScatScale);
 
