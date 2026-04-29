@@ -137,7 +137,13 @@ void main() {
 	vec3 di_lighting = sampleBilateral(uDITexture, uDepthTexture, uNormalTexture, TexCoords).rgb;
 
 	// Basic firefly rejection: clamp ReSTIR contribution based on scene luminance
-	float max_lum = max(color.r, max(color.g, color.b)) * 10.0 + 2.0;
+	vec4 gR = textureGather(uSceneTexture, TexCoords, 0);
+	vec4 gG = textureGather(uSceneTexture, TexCoords, 1);
+	vec4 gB = textureGather(uSceneTexture, TexCoords, 2);
+
+	vec3 gAvg = vec3(length(gR)+di_lighting.r, length(gG)+di_lighting.g, length(gB)+di_lighting.b)/4.0;
+
+	float max_lum = max(gAvg.r, max(gAvg.g, gAvg.b));
 	giao.rgb = min(giao.rgb, vec3(max_lum));
 	di_lighting = min(di_lighting, vec3(max_lum));
 

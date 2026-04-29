@@ -82,7 +82,7 @@ void main() {
 
     for (int i = 0; i < 16; i++) {
         rayDist += stepSize;
-        vec3 samplePos = vPos + rayDir * rayDist * 5.0; // scale ray
+        vec3 samplePos = vPos + rayDir * (randRay.x+rayDist) * 5.0; // scale ray
         vec4 offsetClip = uProjection * vec4(samplePos, 1.0);
         vec2 offsetUV = (offsetClip.xy / offsetClip.w) * 0.5 + 0.5;
         if (offsetUV.x < 0.0 || offsetUV.x > 1.0 || offsetUV.y < 0.0 || offsetUV.y > 1.0) break;
