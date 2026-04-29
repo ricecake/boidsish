@@ -34,6 +34,7 @@ uniform float u_mieScaleHeight;
 uniform float u_rayleighScale;
 uniform float u_mieScale;
 uniform float u_mieAnisotropy;
+uniform vec3  u_aerosolColor;
 
 uniform vec3 u_ozoneAbsorptionBase;
 #define kOzoneAbsorption u_ozoneAbsorptionBase
@@ -76,8 +77,13 @@ Sampling getAtmosphereProperties(float h) {
 
 	Sampling s;
 	s.rayleigh = kRayleighScattering * rd * u_rayleighScale;
-	s.mie = vec3(kMieScattering * md * u_mieScale);
-	s.extinction = s.rayleigh + vec3(kMieExtinction * md * u_mieScale) + kOzoneAbsorption * od;
+
+	// Tint Mie scattering and extinction by aerosol color
+	vec3 mieColor = mix(vec3(1.0), u_aerosolColor, 0.5);
+	s.mie = vec3(kMieScattering * md * u_mieScale) * mieColor;
+
+	vec3 mieExtinction = vec3(kMieExtinction * md * u_mieScale) * mieColor;
+	s.extinction = s.rayleigh + mieExtinction + kOzoneAbsorption * od;
 	return s;
 }
 

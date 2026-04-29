@@ -3548,6 +3548,10 @@ namespace Boidsish {
 				impl->atmosphere_effect->SetHazeColor(w.haze_color);
 				impl->atmosphere_effect->SetCloudColor(w.cloud_color);
 			}
+
+			if (impl->atmosphere_manager) {
+				impl->atmosphere_manager->SetAerosolColor(w.haze_color);
+			}
 		}
 
 		// --- Adaptive Tessellation Logic ---

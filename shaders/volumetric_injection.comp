@@ -49,7 +49,7 @@ void main() {
     if (any(greaterThanEqual(texel, u_volData.cascadeRes.xyz))) return;
 
     vec4 data = imageLoad(inOutScatteringExtinction, texel);
-    float scatteringBase = data.r;
+    vec3 scatteringBase = data.rgb;
     float extinction = data.a;
 
     vec3 uvw = (vec3(texel) + 0.5) / vec3(u_volData.cascadeRes.xyz);
@@ -65,13 +65,21 @@ void main() {
 
         vec3 L = normalize(-lights[i].direction);
         // Note: passing up-vector as normal for the shadow calculation in air
-        float shadow = calculateShadow(i, worldPos, vec3(0, 1, 0), L);
+        // We use a small offset to avoid self-shadowing issues at the terrain boundary
+        float shadow = calculateShadow(i, worldPos + L * 0.1, vec3(0, 1, 0), L);
         shadow *= calculateCloudShadow(i, worldPos);
 
         float cosTheta = dot(V, L);
-        float phase = hgPhase(cosTheta, u_volData.phaseG);
-        // Add isotropic scattering (20% mix) to ensure visibility from all angles
-        phase = mix(phase, 1.0 / (4.0 * PI), 0.2);
+
+        // Dual-lobed Henyey-Greenstein phase function
+        // Combined forward (g) and back (-0.3 * g) scattering for better visibility from all angles
+        float g = u_volData.phaseG;
+        float phaseForward = hgPhase(cosTheta, g);
+        float phaseBackward = hgPhase(cosTheta, -0.5 * g);
+        float phase = mix(phaseForward, phaseBackward, 0.2);
+
+        // Add isotropic scattering (10% mix) to ensure a baseline visibility
+        phase = mix(phase, 1.0 / (4.0 * PI), 0.1);
 
         totalScatteredLight += lights[i].color * lights[i].intensity * shadow * phase * u_volData.intensity;
     }

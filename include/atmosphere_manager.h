@@ -164,6 +164,9 @@ namespace Boidsish {
 
 		float GetColorVarianceStrength() const { return _colorVarianceStrength; }
 
+		void SetAerosolColor(const glm::vec3& c) { _aerosolColor = c; }
+		glm::vec3 GetAerosolColor() const { return _aerosolColor; }
+
 		void SetCloudShadowIntensity(float i) { _cloudShadowIntensity = i; }
 
 		float GetCloudShadowIntensity() const { return _cloudShadowIntensity; }
@@ -210,6 +213,7 @@ namespace Boidsish {
 		float     _colorVarianceScale = 1.0f;
 		float     _colorVarianceStrength = 0.0f;
 		float     _cloudShadowIntensity = 0.5f;
+		glm::vec3 _aerosolColor = glm::vec3(1.0f);
 
 		glm::vec3 _ambientEstimate = glm::vec3(0.0f);
 	};

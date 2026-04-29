@@ -192,7 +192,7 @@ namespace Boidsish {
 			_integrationShader->setInt("u_cascadeIndex", c);
 			glBindImageTexture(0, _scatteringVolumes[c][_frameIndex], 0, GL_TRUE, 0, GL_READ_ONLY, GL_RGBA16F);
 			glBindImageTexture(1, _integratedVolumes[c][_frameIndex], 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
-			glDispatchCompute((_resX + 7) / 8, (_resY + 7) / 8, 1);
+			glDispatchCompute(_resX, _resY, 1);
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 		}
 	}
