@@ -3378,16 +3378,6 @@ namespace Boidsish {
 
 			const auto& w = impl->weather_manager->GetCurrentWeather();
 
-			// Apply to primary lights (Sun and Moon)
-			// We multiply instead of assigning to preserve the Day/Night cycle's intensity curves.
-			if (!impl->light_manager.GetLights().empty()) {
-				impl->light_manager.GetLights()[0].intensity *= w.sun_intensity;
-			}
-			if (impl->light_manager.GetLights().size() > 1 &&
-			    impl->light_manager.GetLights()[1].type == DIRECTIONAL_LIGHT) {
-				impl->light_manager.GetLights()[1].intensity *= w.sun_intensity;
-			}
-
 			// Apply to wind settings in Config (for shaders)
 			auto& config = ConfigManager::GetInstance();
 			config.SetFloat("wind_strength", w.wind_strength);
