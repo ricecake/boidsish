@@ -73,6 +73,7 @@ namespace Boidsish {
 
 				std::vector<std::vector<VertexData>> rings;
 				Vector3                              last_normal;
+				float                                total_length = (p2 - p1).Magnitude();
 
 				{
 					Vector3 point1 = CatmullRom(0.0f, p0, p1, p2, p3);
@@ -90,6 +91,9 @@ namespace Boidsish {
 						last_normal = tangent.Cross(Vector3(1, 0, 0)).Normalized();
 				}
 
+				float cumulative_v = 0.0f;
+				Vector3 prev_point = p1;
+
 				for (int i = 0; i <= curve_segments; ++i) {
 					std::vector<VertexData> ring;
 					float                   t = (float)i / curve_segments;
@@ -97,6 +101,9 @@ namespace Boidsish {
 					Vector3   point = CatmullRom(t, p0, p1, p2, p3);
 					glm::vec3 color = (1 - t) * v1.color + t * v2.color;
 					float     r = ((1 - t) * v1.size + t * v2.size) * EDGE_RADIUS_SCALE;
+
+					cumulative_v += (point - prev_point).Magnitude();
+					prev_point = point;
 
 					Vector3 tangent;
 					if (i < curve_segments) {
@@ -107,11 +114,11 @@ namespace Boidsish {
 							tangent = (next_point - point).Normalized();
 						}
 					} else {
-						Vector3 prev_point = CatmullRom((float)(i - 1) / curve_segments, p0, p1, p2, p3);
-						if ((point - prev_point).MagnitudeSquared() < 1e-6) {
+						Vector3 prev_p = CatmullRom((float)(i - 1) / curve_segments, p0, p1, p2, p3);
+						if ((point - prev_p).MagnitudeSquared() < 1e-6) {
 							tangent = Vector3(0, 1, 0);
 						} else {
-							tangent = (point - prev_point).Normalized();
+							tangent = (point - prev_p).Normalized();
 						}
 					}
 
@@ -131,7 +138,12 @@ namespace Boidsish {
 						float   angle = 2.0f * std::numbers::pi * j / cylinder_segments;
 						Vector3 cn = (normal * cos(angle) + bitangent * sin(angle)).Normalized();
 						Vector3 pos = point + cn * r;
-						ring.push_back({glm::vec3(pos.x, pos.y, pos.z), glm::vec3(cn.x, cn.y, cn.z), color});
+						ring.push_back({
+							glm::vec3(pos.x, pos.y, pos.z),
+							glm::vec3(cn.x, cn.y, cn.z),
+							color,
+							glm::vec2((float)j / cylinder_segments, cumulative_v)
+						});
 					}
 					rings.push_back(ring);
 				}
@@ -180,6 +192,13 @@ namespace Boidsish {
 
 				std::vector<std::vector<VertexData>> rings;
 				Vector3                              last_normal = ups[p1_idx];
+				float                                segment_v_start = 0.0f;
+				for (size_t prev_i = 0; prev_i < i; ++prev_i) {
+					segment_v_start += (points[(prev_i + 1) % points.size()] - points[prev_i]).Magnitude();
+				}
+
+				float   cumulative_v = 0.0f;
+				Vector3 prev_p = p1;
 
 				for (int j = 0; j <= curve_segments; ++j) {
 					std::vector<VertexData> ring;
@@ -188,6 +207,9 @@ namespace Boidsish {
 					Vector3   point = CatmullRom(t, p0, p1, p2, p3);
 					glm::vec3 color = (1 - t) * colors[p1_idx] + t * colors[p2_idx];
 					float     r = ((1 - t) * sizes[p1_idx] + t * sizes[p2_idx]) * EDGE_RADIUS_SCALE;
+
+					cumulative_v += (point - prev_p).Magnitude();
+					prev_p = point;
 
 					Vector3 tangent;
 					if (j < curve_segments) {
@@ -198,11 +220,11 @@ namespace Boidsish {
 							tangent = (next_point - point).Normalized();
 						}
 					} else {
-						Vector3 prev_point = CatmullRom((float)(j - 1) / curve_segments, p0, p1, p2, p3);
-						if ((point - prev_point).MagnitudeSquared() < 1e-6) {
+						Vector3 prev_curve_p = CatmullRom((float)(j - 1) / curve_segments, p0, p1, p2, p3);
+						if ((point - prev_curve_p).MagnitudeSquared() < 1e-6) {
 							tangent = Vector3(0, 1, 0);
 						} else {
-							tangent = (point - prev_point).Normalized();
+							tangent = (point - prev_curve_p).Normalized();
 						}
 					}
 
@@ -222,7 +244,12 @@ namespace Boidsish {
 						float   angle = 2.0f * std::numbers::pi * k / cylinder_segments;
 						Vector3 cn = (normal * cos(angle) + bitangent * sin(angle)).Normalized();
 						Vector3 pos = point + cn * r;
-						ring.push_back({glm::vec3(pos.x, pos.y, pos.z), glm::vec3(cn.x, cn.y, cn.z), color});
+						ring.push_back({
+							glm::vec3(pos.x, pos.y, pos.z),
+							glm::vec3(cn.x, cn.y, cn.z),
+							color,
+							glm::vec2((float)k / cylinder_segments, segment_v_start + cumulative_v)
+						});
 					}
 					rings.push_back(ring);
 				}
