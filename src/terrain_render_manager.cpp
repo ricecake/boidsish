@@ -840,6 +840,10 @@ namespace Boidsish {
 		glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture_);
 		shader_base.setInt("u_heightmapArray", 13);
 
+		glActiveTexture(GL_TEXTURE17);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture_);
+		shader_base.setInt("uBiomeMap", 17);
+
 		if (extra_noise_texture_ != 0) {
 			glActiveTexture(GL_TEXTURE8);
 			glBindTexture(GL_TEXTURE_3D, extra_noise_texture_);

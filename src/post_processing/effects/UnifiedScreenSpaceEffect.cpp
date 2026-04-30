@@ -153,6 +153,11 @@ namespace Boidsish {
 			glDispatchCompute((internal_width_ + 7) / 8, (internal_height_ + 7) / 8, 1);
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
 
+			// Unbind image units to prevent stale bindings from interfering with
+			// subsequent draw calls (e.g. grass rendering, bloom).
+			glBindImageTexture(0, 0, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA16F);
+			glBindImageTexture(1, 0, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R8);
+
 			GLuint accGIAO = gi_ao_accumulator_.Accumulate(gi_ao_texture_, velocityTexture, depthTexture);
 			GLuint accSSS = sss_accumulator_.Accumulate(sss_texture_, velocityTexture, depthTexture);
 

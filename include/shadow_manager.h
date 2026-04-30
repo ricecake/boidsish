@@ -130,6 +130,11 @@ namespace Boidsish {
 		GLuint GetShadowMapArray() const { return shadow_map_array_; }
 
 		/**
+		 * @brief Get the shadow UBO ID.
+		 */
+		GLuint GetShadowUbo() const { return shadow_ubo_; }
+
+		/**
 		 * @brief Check if shadow mapping is enabled and initialized.
 		 */
 		bool IsInitialized() const { return initialized_; }
