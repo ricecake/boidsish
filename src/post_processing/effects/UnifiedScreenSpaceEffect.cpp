@@ -52,6 +52,10 @@ namespace Boidsish {
 			di_accumulator_.Initialize(internal_width_, internal_height_, GL_RGBA16F);
 			sss_accumulator_.Initialize(internal_width_, internal_height_, GL_R16F);
 
+			gi_ao_accumulator_.SetAlpha(0.85f);
+			di_accumulator_.SetAlpha(0.85f);
+			sss_accumulator_.SetAlpha(0.95f);
+
 			InitializeTextures();
 		}
 
@@ -204,6 +208,11 @@ namespace Boidsish {
 			composite_shader_->setInt("uNormalTexture", 3);
 			composite_shader_->setInt("uDepthTexture", 4);
 			composite_shader_->setInt("uDITexture", 5);
+			composite_shader_->setInt("uVelocityTexture", 6);
+			composite_shader_->setInt("uRawGIAOTexture", 7);
+			composite_shader_->setInt("uRawDITexture", 8);
+			composite_shader_->setInt("uHistoryGIAOTexture", 9);
+			composite_shader_->setInt("uHistoryDITexture", 10);
 
 			composite_shader_->setBool("uSSGIEnabled", ssgi_enabled_);
 			composite_shader_->setBool("uRestirDIEnabled", restir_di_enabled_);
@@ -229,6 +238,16 @@ namespace Boidsish {
 			glBindTexture(GL_TEXTURE_2D, depthTexture);
 			glActiveTexture(GL_TEXTURE5);
 			glBindTexture(GL_TEXTURE_2D, accDI);
+			glActiveTexture(GL_TEXTURE6);
+			glBindTexture(GL_TEXTURE_2D, velocityTexture);
+			glActiveTexture(GL_TEXTURE7);
+			glBindTexture(GL_TEXTURE_2D, gi_ao_texture_);
+			glActiveTexture(GL_TEXTURE8);
+			glBindTexture(GL_TEXTURE_2D, di_texture_);
+			glActiveTexture(GL_TEXTURE9);
+			glBindTexture(GL_TEXTURE_2D, gi_ao_accumulator_.GetHistoryTexture());
+			glActiveTexture(GL_TEXTURE10);
+			glBindTexture(GL_TEXTURE_2D, di_accumulator_.GetHistoryTexture());
 
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 		}

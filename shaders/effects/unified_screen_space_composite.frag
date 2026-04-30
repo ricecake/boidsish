@@ -9,6 +9,11 @@ uniform sampler2D uSSSTexture;   // R: SSS
 uniform sampler2D uNormalTexture; // A: traditional shadow
 uniform sampler2D uDepthTexture;  // High-res depth
 uniform sampler2D uDITexture;     // RGB: ReSTIR DI
+uniform sampler2D uVelocityTexture;
+uniform sampler2D uRawGIAOTexture;
+uniform sampler2D uRawDITexture;
+uniform sampler2D uHistoryGIAOTexture;
+uniform sampler2D uHistoryDITexture;
 
 uniform bool  uSSGIEnabled = true;
 uniform bool  uRestirDIEnabled = true;
@@ -234,22 +239,28 @@ void main() {
 		return;
 	}
 
+	ivec2 lowResSize = textureSize(uGIAOTexture, 0);
+	vec2 lowResInvSize = 1.0 / vec2(lowResSize);
 
 	// Use bilateral upsampling for low-res effects
 	vec4 giao = sampleBilateral(uGIAOTexture, uDepthTexture, uNormalTexture, TexCoords);
 	float sssFactor = sampleBilateral(uSSSTexture, uDepthTexture, uNormalTexture, TexCoords).r;
     vec3 di_lighting = sampleBilateral(uDITexture, uDepthTexture, uNormalTexture, TexCoords).rgb;
 
-	// Basic firefly rejection: clamp ReSTIR contribution based on scene luminance
-	vec4 gR = textureGather(uSceneTexture, TexCoords, 0);
-	vec4 gG = textureGather(uSceneTexture, TexCoords, 1);
-	vec4 gB = textureGather(uSceneTexture, TexCoords, 2);
+	// // Basic firefly rejection: clamp ReSTIR contribution based on scene luminance
+	// vec4 gR = textureGather(uSceneTexture, TexCoords, 0);
+	// vec4 gG = textureGather(uSceneTexture, TexCoords, 1);
+	// vec4 gB = textureGather(uSceneTexture, TexCoords, 2);
 
-	vec3 gAvg = vec3(length(gR)+di_lighting.r, length(gG)+di_lighting.g, length(gB)+di_lighting.b)/4.0;
+	// vec3 gAvg = vec3(length(gR)+di_lighting.r, length(gG)+di_lighting.g, length(gB)+di_lighting.b)/4.0;
 
-	float max_lum = max(gAvg.r, max(gAvg.g, gAvg.b));
-	giao.rgb = min(giao.rgb, vec3(max_lum));
-	di_lighting = min(di_lighting, vec3(max_lum));
+	// float max_lum = max(gAvg.r, max(gAvg.g, gAvg.b));
+	// giao.rgb = min(giao.rgb, vec3(max_lum));
+	// di_lighting = min(di_lighting, vec3(max_lum));
+
+	// Advanced firefly rejection
+	giao = rejectFireflies(giao, uRawGIAOTexture, uHistoryGIAOTexture, uVelocityTexture, uDepthTexture, TexCoords, lowResInvSize);
+	di_lighting = rejectFireflies(vec4(di_lighting, 1.0), uRawDITexture, uHistoryDITexture, uVelocityTexture, uDepthTexture, TexCoords, lowResInvSize).rgb;
 
 	float traditionalShadow = texture(uNormalTexture, TexCoords).a;
 
