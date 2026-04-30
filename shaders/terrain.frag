@@ -2,6 +2,7 @@
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec4 Velocity;
 layout(location = 2) out vec4 NormalOut;
+layout(location = 3) out vec4 AlbedoOut;
 
 in vec3       Normal;
 in vec3       FragPos;
@@ -306,6 +307,7 @@ void main() {
 
 		// Output view-space normal
 		NormalOut = vec4(normalize(mat3(view) * norm), primaryShadow);
+		AlbedoOut = vec4(surfaceColor, 1.0);
 		return;
 	}
 
@@ -473,14 +475,14 @@ void main() {
 		vec3 bitangent = cross(norm, tangent);
 
 		// Apply perturbation based on noise gradient
-		perturbedNorm = normalize(norm + (tangent * (n - nx) + bitangent * (n - nz)) * (roughnessStrength / eps));
+		vec3 perturbation = (tangent * (n - nx) + bitangent * (n - nz)) * (roughnessStrength / eps);
+		perturbedNorm = normalize(norm + perturbation);
 
-		// Toksvig Factor: Adjust roughness based on normal length after interpolation
-		float ft = length(perturbedNorm);
-		ft = clamp(ft, 0.01, 1.0);
-		float r2 = roughness * roughness;
-		float newGloss = r2 / (ft * (1.0 + (1.0 - ft) / r2));
-		roughness = sqrt(newGloss); // Feed this adjusted roughness into your BRDF
+		// Toksvig-like Adjustment: Increase roughness based on normal variance
+		// Procedural normals can cause aliasing; we compensate by increasing roughness
+		// where the normal gradient is high.
+		float variance = dot(perturbation, perturbation);
+		roughness = sqrt(clamp(roughness * roughness + variance * 0.25, 0.0, 1.0));
 	}
 
 	// Final Lighting
@@ -562,6 +564,7 @@ void main() {
 
 	// Output view-space normal
 	NormalOut = vec4(normalize(mat3(view) * perturbedNorm), primaryShadow);
+	AlbedoOut = vec4(albedo, 1.0);
 
 	// Calculate screen-space velocity and material properties
 	vec2 a = (CurPosition.xy / CurPosition.w) * 0.5 + 0.5;

@@ -90,6 +90,23 @@ namespace Boidsish {
 		);
 
 		/**
+		 * @brief Dispatch probe update compute shader.
+		 *
+		 * Uses rendered scene data to update per-chunk SH probes.
+		 */
+		void DispatchProbeUpdate(
+			GLuint           colorTex,
+			GLuint           depthTex,
+			GLuint           normalTex,
+			GLuint           albedoTex,
+			GLuint           velocityTex,
+			GLuint           skyLUT,
+			const glm::mat4& view,
+			const glm::mat4& projection,
+			GLuint           lighting_ubo
+		);
+
+		/**
 		 * @brief Render all visible terrain chunks with single instanced draw.
 		 */
 		void Render(
@@ -258,6 +275,8 @@ namespace Boidsish {
 		// Camera position for LRU eviction (updated by PrepareForRender)
 		glm::vec3 last_camera_pos_{0.0f, 0.0f, 0.0f};
 		float     last_world_scale_ = 1.0f;
+
+		uint32_t frame_count_ = 0;
 
 		// Thread safety
 		mutable std::mutex mutex_;

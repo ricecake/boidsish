@@ -46,7 +46,7 @@ namespace Boidsish {
 			glBindTexture(GL_TEXTURE_2D, 0);
 		}
 
-		void GtaoEffect::Apply(GLuint sourceTexture, GLuint depthTexture, GLuint velocityTexture, GLuint normalTexture, const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix, const glm::vec3& cameraPos) {
+		void GtaoEffect::Apply(GLuint sourceTexture, GLuint depthTexture, GLuint velocityTexture, GLuint normalTexture, GLuint albedoTexture, const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix, const glm::vec3& cameraPos) {
 			if (!gtao_shader_ || !gtao_shader_->isValid())
 				return;
 

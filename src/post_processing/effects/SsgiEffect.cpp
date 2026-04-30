@@ -75,7 +75,7 @@ namespace Boidsish {
 			glBindTexture(GL_TEXTURE_2D, 0);
 		}
 
-		void SsgiEffect::Apply(GLuint sourceTexture, GLuint depthTexture, GLuint velocityTexture, GLuint normalTexture, const glm::mat4& /* viewMatrix */, const glm::mat4& /* projectionMatrix */, const glm::vec3& /* cameraPos */) {
+		void SsgiEffect::Apply(GLuint sourceTexture, GLuint depthTexture, GLuint velocityTexture, GLuint normalTexture, GLuint albedoTexture, const glm::mat4& /* viewMatrix */, const glm::mat4& /* projectionMatrix */, const glm::vec3& /* cameraPos */) {
 			if (!ssgi_shader_ || !ssgi_shader_->isValid())
 				return;
 
@@ -104,6 +104,10 @@ namespace Boidsish {
 			glActiveTexture(GL_TEXTURE6);
 			glBindTexture(GL_TEXTURE_2D, velocityTexture);
 			ssgi_shader_->setInt("gVelocity", 6);
+
+			glActiveTexture(GL_TEXTURE7);
+			glBindTexture(GL_TEXTURE_2D, albedoTexture);
+			ssgi_shader_->setInt("gAlbedo", 7);
 
 			if (blue_noise_texture_) {
 				glActiveTexture(GL_TEXTURE3);

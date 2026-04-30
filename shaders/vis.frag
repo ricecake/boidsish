@@ -3,6 +3,7 @@
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec4 Velocity;
 layout(location = 2) out vec4 NormalOut;
+layout(location = 3) out vec4 AlbedoOut;
 
 #include "common_uniforms.glsl"
 #include "temporal_data.glsl"
@@ -344,4 +345,5 @@ void main() {
 
 	// Output view-space normal
 	NormalOut = vec4(normalize(mat3(view) * norm), primaryShadow);
+	AlbedoOut = vec4(albedo * baseAlpha, 1.0);
 }
