@@ -393,7 +393,7 @@ namespace Boidsish {
 				}
 
 				consteval float PathCorridorWidth() {
-					return 0.35f;
+					return 0.15f;
 				}
 
 				consteval float WarpStrength() {
