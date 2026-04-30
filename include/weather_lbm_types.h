@@ -77,4 +77,22 @@ namespace Boidsish {
         float timeOfDay;          // 0.0 - 24.0
     };
 
+    struct LbmSnapshot {
+        PhysicallyBasedWeatherOutput output;
+        std::vector<glm::vec4>       windData;
+        std::vector<glm::vec4>       scalarData; // x: temp, y: humidity, z: pressure, w: aerosol
+        WindDataUbo                  uboMetadata;
+        glm::ivec2                   gridAnchor;
+        bool                         valid = false;
+    };
+
+    enum class LbmInjectionType { Pressure, Aerosol, Temperature };
+
+    struct LbmInjection {
+        LbmInjectionType type;
+        glm::vec3        pos;
+        float            value1;
+        float            value2;
+    };
+
 } // namespace Boidsish

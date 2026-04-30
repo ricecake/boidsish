@@ -1,11 +1,14 @@
 #pragma once
 
 #include <array>
+#include <atomic>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <vector>
 
 #include <glm/glm.hpp>
+#include "thread_pool.h"
 #include "weather_constants.h"
 #include "weather_lbm_simulator.h"
 
@@ -218,7 +221,7 @@ namespace Boidsish {
 		}
 
 		void ResetMacroSim() {
-			if (lbm_simulator_ && terrain_) lbm_simulator_->Reset(*terrain_);
+			reset_requested_ = true;
 		}
 
 		const CurrentWeather& GetCurrentWeather() const { return current_; }
@@ -269,26 +272,15 @@ namespace Boidsish {
 		 */
 		void SetPace(WeatherAttribute attr, float pace);
 
-		const PhysicallyBasedWeatherOutput* GetPhysicallyBasedWeather() const {
-			return lbm_simulator_ ? &lbm_simulator_->GetOutput() : nullptr;
-		}
+		const PhysicallyBasedWeatherOutput* GetPhysicallyBasedWeather() const;
 
-		PhysicallyBasedWeatherOutput GetWeatherAtPosition(const glm::vec3& pos) const {
-			if (lbm_simulator_) return lbm_simulator_->GetWeatherAtPosition(pos);
-			return PhysicallyBasedWeatherOutput{};
-		}
+		PhysicallyBasedWeatherOutput GetWeatherAtPosition(const glm::vec3& pos) const;
 
-		void InjectPressure(const glm::vec3& pos, float pressureHpa, float burstStrength) {
-			if (lbm_simulator_) lbm_simulator_->InjectPressure(pos, pressureHpa, burstStrength);
-		}
+		void InjectPressure(const glm::vec3& pos, float pressureHpa, float burstStrength);
 
-		void InjectAerosol(const glm::vec3& pos, float concentration) {
-			if (lbm_simulator_) lbm_simulator_->InjectAerosol(pos, concentration);
-		}
+		void InjectAerosol(const glm::vec3& pos, float concentration);
 
-		void InjectTemperature(const glm::vec3& pos, float temperatureK) {
-			if (lbm_simulator_) lbm_simulator_->InjectTemperature(pos, temperatureK);
-		}
+		void InjectTemperature(const glm::vec3& pos, float temperatureK);
 
 		void UpdateWindUbo(float totalTime);
 
@@ -297,7 +289,14 @@ namespace Boidsish {
 	private:
 		unsigned int wind_data_ubo_ = 0;
 		unsigned int wind_texture_ = 0;
-		std::vector<glm::vec4> wind_data_cache_;
+
+		ThreadPool                              lbm_pool_;
+		std::optional<TaskHandle<LbmSnapshot>>  lbm_task_;
+		LbmSnapshot                             latest_snapshot_;
+		std::vector<LbmInjection>               pending_injections_;
+		std::mutex                              injection_mutex_;
+		std::atomic<bool>                       reset_requested_{false};
+		float                                   lbm_delta_accumulator_ = 0.0f;
 
 		struct AttributeState {
 			float                velocity = 0.0f;
