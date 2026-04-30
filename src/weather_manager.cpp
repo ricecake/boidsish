@@ -11,22 +11,22 @@ namespace Boidsish {
 	WeatherManager::WeatherManager(): enabled_(true) {
 		InitializePresets();
 
-		// Initialize default paces for various attributes
-		SetPace(WeatherAttribute::SunIntensity, 0.5f);
-		SetPace(WeatherAttribute::WindStrength, 0.13f);
-		SetPace(WeatherAttribute::WindSpeed, 0.13f);
-		SetPace(WeatherAttribute::WindFrequency, 0.05f);
-		SetPace(WeatherAttribute::CloudDensity, 0.2f);
-		SetPace(WeatherAttribute::CloudAltitude, 0.1f);
-		SetPace(WeatherAttribute::CloudThickness, 0.1f);
-		SetPace(WeatherAttribute::HazeDensity, 0.2f);
-		SetPace(WeatherAttribute::HazeHeight, 0.1f);
-		SetPace(WeatherAttribute::RayleighScale, 0.1f);
-		SetPace(WeatherAttribute::MieScale, 0.1f);
-		SetPace(WeatherAttribute::AtmosphereHeight, 0.05f);
-		SetPace(WeatherAttribute::RayleighScaleHeight, 0.05f);
-		SetPace(WeatherAttribute::MieScaleHeight, 0.05f);
-		SetPace(WeatherAttribute::CloudCoverage, 0.2f);
+		// Initialize default paces for various attributes from centralized constants
+		SetPace(WeatherAttribute::SunIntensity, WeatherConstants::SunIntensity.pace);
+		SetPace(WeatherAttribute::WindStrength, WeatherConstants::WindStrength.pace);
+		SetPace(WeatherAttribute::WindSpeed, WeatherConstants::WindSpeed.pace);
+		SetPace(WeatherAttribute::WindFrequency, WeatherConstants::WindFrequency.pace);
+		SetPace(WeatherAttribute::CloudDensity, WeatherConstants::CloudDensity.pace);
+		SetPace(WeatherAttribute::CloudAltitude, WeatherConstants::CloudAltitude.pace);
+		SetPace(WeatherAttribute::CloudThickness, WeatherConstants::CloudThickness.pace);
+		SetPace(WeatherAttribute::HazeDensity, WeatherConstants::HazeDensity.pace);
+		SetPace(WeatherAttribute::HazeHeight, WeatherConstants::HazeHeight.pace);
+		SetPace(WeatherAttribute::RayleighScale, WeatherConstants::RayleighScale.pace);
+		SetPace(WeatherAttribute::MieScale, WeatherConstants::MieScale.pace);
+		SetPace(WeatherAttribute::AtmosphereHeight, WeatherConstants::AtmosphereHeight.pace);
+		SetPace(WeatherAttribute::RayleighScaleHeight, WeatherConstants::RayleighScaleHeight.pace);
+		SetPace(WeatherAttribute::MieScaleHeight, WeatherConstants::MieScaleHeight.pace);
+		SetPace(WeatherAttribute::CloudCoverage, WeatherConstants::CloudCoverage.pace);
 	}
 
 	WeatherManager::~WeatherManager() {}
@@ -145,92 +145,94 @@ namespace Boidsish {
 	}
 
 	void WeatherManager::InitializePresets() {
-		// Initialize cached targets to default sunny values to prevent initial transition
+		// Initialize cached targets to default values to prevent initial transition
 		cached_targets_ = current_;
+
+		using namespace WeatherConstants;
 
 		presets_.clear();
 		// 1. Sunny
 		WeatherPreset sunny;
 		sunny.name = "Sunny";
 		sunny.weight = 10.0f;
-		sunny.settings.sun_intensity = {0.90f, 0.110f};
-		sunny.settings.wind_strength = {0.02f, 0.08f};
-		sunny.settings.wind_speed = {0.05f, 0.10f};
-		sunny.settings.wind_frequency = {0.01f, 0.02f};
-		sunny.settings.cloud_density = {0.18f, 0.22f};
-		sunny.settings.cloud_altitude = {380.0f, 420.0f};
-		sunny.settings.cloud_thickness = {180.0f, 220.0f};
-		sunny.settings.haze_density = {0.002f, 0.004f};
-		sunny.settings.haze_height = {15.0f, 25.0f};
-		sunny.settings.rayleigh_scale = {1.0f, 1.2f};
-		sunny.settings.mie_scale = {0.2f, 0.4f};
-		sunny.settings.atmosphere_height = {110.0f, 130.0f};
-		sunny.settings.rayleigh_scale_height = {7.0f, 9.0f};
-		sunny.settings.mie_scale_height = {1.0f, 1.4f};
-		sunny.settings.cloud_coverage = {0.70f, 0.80f};
+		sunny.settings.sun_intensity = {SunIntensity.GetValue(0.9f), SunIntensity.GetValue(1.1f)};
+		sunny.settings.wind_strength = {WindStrength.GetValue(0.4f), WindStrength.GetValue(1.6f)};
+		sunny.settings.wind_speed = {WindSpeed.GetValue(0.6f), WindSpeed.GetValue(1.3f)};
+		sunny.settings.wind_frequency = {WindFrequency.GetValue(1.0f), WindFrequency.GetValue(2.0f)};
+		sunny.settings.cloud_density = {CloudDensity.GetValue(0.9f), CloudDensity.GetValue(1.1f)};
+		sunny.settings.cloud_altitude = {CloudAltitude.GetValue(0.95f), CloudAltitude.GetValue(1.05f)};
+		sunny.settings.cloud_thickness = {CloudThickness.GetValue(0.9f), CloudThickness.GetValue(1.1f)};
+		sunny.settings.haze_density = {HazeDensity.GetValue(0.6f), HazeDensity.GetValue(1.3f)};
+		sunny.settings.haze_height = {HazeHeight.GetValue(0.75f), HazeHeight.GetValue(1.25f)};
+		sunny.settings.rayleigh_scale = {RayleighScale.GetValue(0.9f), RayleighScale.GetValue(1.1f)};
+		sunny.settings.mie_scale = {MieScale.GetValue(0.6f), MieScale.GetValue(1.1f)};
+		sunny.settings.atmosphere_height = {AtmosphereHeight.GetValue(0.9f), AtmosphereHeight.GetValue(1.1f)};
+		sunny.settings.rayleigh_scale_height = {RayleighScaleHeight.GetValue(0.85f), RayleighScaleHeight.GetValue(1.15f)};
+		sunny.settings.mie_scale_height = {MieScaleHeight.GetValue(0.8f), MieScaleHeight.GetValue(1.2f)};
+		sunny.settings.cloud_coverage = {CloudCoverage.GetValue(0.93f), CloudCoverage.GetValue(1.07f)};
 		presets_.push_back(sunny);
 
 		// 2. Cloudy
 		WeatherPreset cloudy;
 		cloudy.name = "Cloudy";
 		cloudy.weight = 6.0f;
-		cloudy.settings.sun_intensity = {0.50f, 0.80f};
-		cloudy.settings.wind_strength = {0.1f, 0.2f};
-		cloudy.settings.wind_speed = {0.2f, 0.4f};
-		cloudy.settings.wind_frequency = {0.02f, 0.05f};
-		cloudy.settings.cloud_density = {0.30f, 0.50f};
-		cloudy.settings.cloud_altitude = {250.0f, 350.0f};
-		cloudy.settings.cloud_thickness = {300.0f, 500.0f};
-		cloudy.settings.haze_density = {0.005f, 0.010f};
-		cloudy.settings.haze_height = {30.0f, 60.0f};
-		cloudy.settings.rayleigh_scale = {1.2f, 1.5f};
-		cloudy.settings.mie_scale = {0.4f, 0.8f};
-		cloudy.settings.atmosphere_height = {80.0f, 110.0f};
-		cloudy.settings.rayleigh_scale_height = {6.0f, 8.0f};
-		cloudy.settings.mie_scale_height = {1.5f, 2.5f};
-		cloudy.settings.cloud_coverage = {0.80f, 0.90f};
+		cloudy.settings.sun_intensity = {SunIntensity.GetValue(0.5f), SunIntensity.GetValue(0.8f)};
+		cloudy.settings.wind_strength = {WindStrength.GetValue(1.5f), WindStrength.GetValue(2.0f)};
+		cloudy.settings.wind_speed = {WindSpeed.GetValue(1.5f), WindSpeed.GetValue(2.0f)};
+		cloudy.settings.wind_frequency = {WindFrequency.GetValue(1.2f), WindFrequency.GetValue(1.8f)};
+		cloudy.settings.cloud_density = {CloudDensity.GetValue(1.5f), CloudDensity.GetValue(2.0f)};
+		cloudy.settings.cloud_altitude = {CloudAltitude.GetValue(0.5f), CloudAltitude.GetValue(0.8f)};
+		cloudy.settings.cloud_thickness = {CloudThickness.GetValue(1.2f), CloudThickness.GetValue(1.8f)};
+		cloudy.settings.haze_density = {HazeDensity.GetValue(1.5f), HazeDensity.GetValue(1.8f)};
+		cloudy.settings.haze_height = {HazeHeight.GetValue(1.2f), HazeHeight.GetValue(1.6f)};
+		cloudy.settings.rayleigh_scale = {RayleighScale.GetValue(1.1f), RayleighScale.GetValue(1.4f)};
+		cloudy.settings.mie_scale = {MieScale.GetValue(1.1f), MieScale.GetValue(1.8f)};
+		cloudy.settings.atmosphere_height = {AtmosphereHeight.GetValue(0.6f), AtmosphereHeight.GetValue(0.9f)};
+		cloudy.settings.rayleigh_scale_height = {RayleighScaleHeight.GetValue(0.7f), RayleighScaleHeight.GetValue(1.0f)};
+		cloudy.settings.mie_scale_height = {MieScaleHeight.GetValue(1.2f), MieScaleHeight.GetValue(1.8f)};
+		cloudy.settings.cloud_coverage = {CloudCoverage.GetValue(1.1f), CloudCoverage.GetValue(1.2f)};
 		presets_.push_back(cloudy);
 
 		// 3. Overcast
 		WeatherPreset overcast;
 		overcast.name = "Overcast";
 		overcast.weight = 4.0f;
-		overcast.settings.sun_intensity = {0.20f, 0.50f};
-		overcast.settings.wind_strength = {0.2f, 0.5f};
-		overcast.settings.wind_speed = {0.4f, 0.8f};
-		overcast.settings.wind_frequency = {0.04f, 0.08f};
-		overcast.settings.cloud_density = {0.60f, 1.00f};
-		overcast.settings.cloud_altitude = {100.0f, 200.0f};
-		overcast.settings.cloud_thickness = {500.0f, 800.0f};
-		overcast.settings.haze_density = {0.01f, 0.02f};
-		overcast.settings.haze_height = {50.0f, 100.0f};
-		overcast.settings.rayleigh_scale = {1.5f, 2.0f};
-		overcast.settings.mie_scale = {0.5f, 1.0f};
-		overcast.settings.atmosphere_height = {50.0f, 80.0f};
-		overcast.settings.rayleigh_scale_height = {5.0f, 7.0f};
-		overcast.settings.mie_scale_height = {3.0f, 5.0f};
-		overcast.settings.cloud_coverage = {0.90f, 1.00f};
+		overcast.settings.sun_intensity = {SunIntensity.GetValue(0.2f), SunIntensity.GetValue(0.5f)};
+		overcast.settings.wind_strength = {WindStrength.GetValue(1.8f), WindStrength.GetValue(2.0f)};
+		overcast.settings.wind_speed = {WindSpeed.GetValue(1.8f), WindSpeed.GetValue(2.0f)};
+		overcast.settings.wind_frequency = {WindFrequency.GetValue(1.5f), WindFrequency.GetValue(2.0f)};
+		overcast.settings.cloud_density = {CloudDensity.GetValue(1.8f), CloudDensity.GetValue(2.0f)};
+		overcast.settings.cloud_altitude = {CloudAltitude.GetValue(0.1f), CloudAltitude.GetValue(0.3f)};
+		overcast.settings.cloud_thickness = {CloudThickness.GetValue(1.8f), CloudThickness.GetValue(2.0f)};
+		overcast.settings.haze_density = {HazeDensity.GetValue(1.8f), HazeDensity.GetValue(2.0f)};
+		overcast.settings.haze_height = {HazeHeight.GetValue(1.5f), HazeHeight.GetValue(2.0f)};
+		overcast.settings.rayleigh_scale = {RayleighScale.GetValue(1.4f), RayleighScale.GetValue(1.8f)};
+		overcast.settings.mie_scale = {MieScale.GetValue(1.5f), MieScale.GetValue(2.0f)};
+		overcast.settings.atmosphere_height = {AtmosphereHeight.GetValue(0.3f), AtmosphereHeight.GetValue(0.6f)};
+		overcast.settings.rayleigh_scale_height = {RayleighScaleHeight.GetValue(0.4f), RayleighScaleHeight.GetValue(0.8f)};
+		overcast.settings.mie_scale_height = {MieScaleHeight.GetValue(1.8f), MieScaleHeight.GetValue(2.0f)};
+		overcast.settings.cloud_coverage = {CloudCoverage.GetValue(1.2f), CloudCoverage.GetValue(2.0f)};
 		presets_.push_back(overcast);
 
 		// 4. Foggy
 		WeatherPreset foggy;
 		foggy.name = "Foggy";
 		foggy.weight = 2.0f;
-		foggy.settings.sun_intensity = {0.10f, 0.30f};
-		foggy.settings.wind_strength = {0.01f, 0.05f};
-		foggy.settings.wind_speed = {0.01f, 0.1f};
-		foggy.settings.wind_frequency = {0.005f, 0.02f};
-		foggy.settings.cloud_density = {0.20f, 0.40f};
-		foggy.settings.cloud_altitude = {150.0f, 250.0f};
-		foggy.settings.cloud_thickness = {50.0f, 150.0f};
-		foggy.settings.haze_density = {0.03f, 0.06f};
-		foggy.settings.haze_height = {80.0f, 150.0f};
-		foggy.settings.rayleigh_scale = {2.0f, 3.0f};
-		foggy.settings.mie_scale = {1.5f, 4.0f};
-		foggy.settings.atmosphere_height = {30.0f, 50.0f};
-		foggy.settings.rayleigh_scale_height = {4.0f, 6.0f};
-		foggy.settings.mie_scale_height = {5.0f, 10.0f};
-		foggy.settings.cloud_coverage = {0.3f, 0.5f};
+		foggy.settings.sun_intensity = {SunIntensity.GetValue(0.1f), SunIntensity.GetValue(0.3f)};
+		foggy.settings.wind_strength = {WindStrength.GetValue(0.1f), WindStrength.GetValue(0.5f)};
+		foggy.settings.wind_speed = {WindSpeed.GetValue(0.1f), WindSpeed.GetValue(0.5f)};
+		foggy.settings.wind_frequency = {WindFrequency.GetValue(0.5f), WindFrequency.GetValue(1.0f)};
+		foggy.settings.cloud_density = {CloudDensity.GetValue(1.0f), CloudDensity.GetValue(1.5f)};
+		foggy.settings.cloud_altitude = {CloudAltitude.GetValue(0.2f), CloudAltitude.GetValue(0.5f)};
+		foggy.settings.cloud_thickness = {CloudThickness.GetValue(0.1f), CloudThickness.GetValue(0.5f)};
+		foggy.settings.haze_density = {HazeDensity.GetValue(2.0f), HazeDensity.GetValue(2.0f)}; // High density
+		foggy.settings.haze_height = {HazeHeight.GetValue(1.8f), HazeHeight.GetValue(2.0f)};
+		foggy.settings.rayleigh_scale = {RayleighScale.GetValue(1.8f), RayleighScale.GetValue(2.0f)};
+		foggy.settings.mie_scale = {MieScale.GetValue(1.8f), MieScale.GetValue(2.0f)};
+		foggy.settings.atmosphere_height = {AtmosphereHeight.GetValue(0.1f), AtmosphereHeight.GetValue(0.3f)};
+		foggy.settings.rayleigh_scale_height = {RayleighScaleHeight.GetValue(0.1f), RayleighScaleHeight.GetValue(0.5f)};
+		foggy.settings.mie_scale_height = {MieScaleHeight.GetValue(2.0f), MieScaleHeight.GetValue(2.0f)};
+		foggy.settings.cloud_coverage = {CloudCoverage.GetValue(0.2f), CloudCoverage.GetValue(0.5f)};
 		presets_.push_back(foggy);
 
 		// Calculate CDF

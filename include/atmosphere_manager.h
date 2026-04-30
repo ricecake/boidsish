@@ -7,6 +7,7 @@
 #include "IManager.h"
 #include <GL/glew.h>
 #include <glm/glm.hpp>
+#include "weather_constants.h"
 
 class ComputeShader;
 
@@ -170,18 +171,18 @@ namespace Boidsish {
 
 		bool _needsPrecompute = true;
 
-		float     _rayleighScale = 1.1f;
-		float     _mieScale = 0.35f;
-		float     _mieAnisotropy = 0.8f;
+		float     _rayleighScale = WeatherConstants::RayleighScale.normal;
+		float     _mieScale = WeatherConstants::MieScale.normal;
+		float     _mieAnisotropy = WeatherConstants::MieAnisotropy;
 		float     _multiScatScale = 1.0f;
 		float     _ambientScatScale = 1.0f;
-		float     _atmosphereHeight = 120.0f;
-		glm::vec3 _rayleighScattering = glm::vec3(5.802f, 13.558f, 33.100f) * 1e-3f;
-		float     _mieScattering = 3.996f * 1e-3f;
-		float     _mieExtinction = 4.440f * 1e-3f;
-		glm::vec3 _ozoneAbsorption = glm::vec3(0.650f, 1.881f, 0.085f) * 1e-3f;
-		float     _rayleighScaleHeight = 8.0f;
-		float     _mieScaleHeight = 1.2f;
+		float     _atmosphereHeight = WeatherConstants::AtmosphereHeight.normal;
+		glm::vec3 _rayleighScattering = WeatherConstants::RayleighScattering;
+		float     _mieScattering = WeatherConstants::MieScattering;
+		float     _mieExtinction = WeatherConstants::MieExtinction;
+		glm::vec3 _ozoneAbsorption = WeatherConstants::OzoneAbsorption;
+		float     _rayleighScaleHeight = WeatherConstants::RayleighScaleHeight.normal;
+		float     _mieScaleHeight = WeatherConstants::MieScaleHeight.normal;
 		float     _colorVarianceScale = 1.0f;
 		float     _colorVarianceStrength = 0.0f;
 
