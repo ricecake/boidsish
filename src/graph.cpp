@@ -16,14 +16,16 @@ namespace Boidsish {
 	Graph::Graph(int id, float x, float y, float z): Shape(id, x, y, z, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0) {}
 
 	Graph::~Graph() {
-		if (buffers_initialized_) {
-			glDeleteVertexArrays(1, &graph_vao_);
-			glDeleteBuffers(1, &graph_vbo_);
+		if (buffers_initialized_ && !allocation_.valid) {
+			if (graph_vao_)
+				glDeleteVertexArrays(1, &graph_vao_);
+			if (graph_vbo_)
+				glDeleteBuffers(1, &graph_vbo_);
 		}
 	}
 
 	const int   CYLINDER_SEGMENTS = 12;
-	const float EDGE_RADIUS_SCALE = 0.02f;
+	const float EDGE_RADIUS_SCALE = 0.01f;
 	const int   CURVE_SEGMENTS = 10;
 
 	void Graph::PrepareResources(Megabuffer* mb) const {
@@ -196,6 +198,10 @@ namespace Boidsish {
 			for (const auto& node : vertices)
 				cached_vertex_positions_.push_back(node.position);
 			buffers_initialized_ = true;
+
+			if (nodes_changed) {
+				const_cast<Graph*>(this)->MarkDirty();
+			}
 		} else {
 			SetupBuffers();
 		}
@@ -462,6 +468,25 @@ namespace Boidsish {
 		info.index_count = 0;
 		info.allocation = allocation_;
 		return info;
+	}
+
+	AABB Graph::GetAABB() const {
+		if (vertices.empty()) {
+			return Shape::GetAABB();
+		}
+
+		glm::vec3 min_p(std::numeric_limits<float>::max());
+		glm::vec3 max_p(-std::numeric_limits<float>::max());
+
+		for (const auto& node : vertices) {
+			glm::vec3 p(node.position.x, node.position.y, node.position.z);
+			float     radius = node.size * EDGE_RADIUS_SCALE;
+			min_p = glm::min(min_p, p - glm::vec3(radius));
+			max_p = glm::max(max_p, p + glm::vec3(radius));
+		}
+
+		AABB local(min_p, max_p);
+		return local.Transform(GetModelMatrix());
 	}
 
 } // namespace Boidsish

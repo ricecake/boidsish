@@ -178,10 +178,27 @@ void main() {
 
 	// GPU frustum culling - output degenerate triangle if outside frustum
 	if (enableFrustumCulling && !current_isColossal) {
-		// Use sphere test with approximate radius based on scale
-		float effectiveRadius = frustumCullRadius * instanceScale;
+		bool inFrustum = true;
 
-		if (!isSphereInFrustum(instanceCenter, effectiveRadius)) {
+		if (use_ssbo) {
+			// Use the accurate AABB from the SSBO if available
+			vec3 aabbMin = vec3(uniforms_data[vUniformIndex].aabb_min_x, uniforms_data[vUniformIndex].aabb_min_y,
+								uniforms_data[vUniformIndex].aabb_min_z);
+			vec3 aabbMax = vec3(uniforms_data[vUniformIndex].aabb_max_x, uniforms_data[vUniformIndex].aabb_max_y,
+								uniforms_data[vUniformIndex].aabb_max_z);
+
+			// Check for degenerate AABB (signals no culling desired or unset)
+			if (aabbMin != aabbMax) {
+				inFrustum = isAABBInFrustum(aabbMin, aabbMax);
+			} else {
+				inFrustum = isSphereInFrustum(instanceCenter, frustumCullRadius * instanceScale);
+			}
+		} else {
+			// Fallback to sphere test for immediate rendering
+			inFrustum = isSphereInFrustum(instanceCenter, frustumCullRadius * instanceScale);
+		}
+
+		if (!inFrustum) {
 			// Output degenerate triangle (all vertices at same point)
 			// GPU will automatically cull this
 			gl_Position = vec4(0.0, 0.0, -2.0, 1.0); // Behind near plane
