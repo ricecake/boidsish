@@ -327,24 +327,6 @@ void main() {
 
 	float distanceFactor = dist * smoothstep(0, 10.0, FragPos.y);
 	float noseFade = fade_start - 100.0;
-	/*
-	    if (distanceFactor < noseFade) {
-	        largeNoise = fastWarpedFbm3d(FragPos * (baseFreq * 0.5));
-	        medNoise = fastWorley3d(vec3(largeNoise) * (baseFreq * 2.0));
-	        fineNoise = fastFbm3d(FragPos * (baseFreq * 5.0));
-	        macroNoise = fastSimplex3d(FragPos * (baseFreq * 0.1));
-	        combinedNoise = largeNoise * 0.6 + (1.0 - medNoise) * 0.3 + fineNoise * 0.1;
-
-	        if (distanceFactor > 250) {
-	            float angle = 1.0 - dot(viewDir, viewPos - FragPos);
-	            largeNoise = mix(largeNoise, 1.0, angle * smoothstep(noseFade, fade_end, distanceFactor));
-	            medNoise = mix(medNoise, 1.0, angle * smoothstep(noseFade, fade_end, distanceFactor));
-	            fineNoise = mix(fineNoise, 1.0, angle * smoothstep(noseFade, fade_end, distanceFactor));
-	            macroNoise = mix(macroNoise, 1.0, angle * smoothstep(noseFade, fade_end, distanceFactor));
-	            combinedNoise = mix(combinedNoise, 1.0, angle * smoothstep(noseFade, fade_end, distanceFactor));
-	        }
-	    }
-	*/
 
 	TerrainMaterial finalMaterial;
 	// ========================================================================
@@ -452,23 +434,23 @@ void main() {
 		float eps = 0.015;
 		float n, nx, nz;
 
-		if (noiseType < 0.5) { // Simplex (0)
-			n = fastSimplex3d(0.1 * scaledFragPos * roughnessScale);
-			nx = fastSimplex3d(0.1 * (scaledFragPos + vec3(eps, 0.0, 0.0)) * roughnessScale);
-			nz = fastSimplex3d(0.1 * (scaledFragPos + vec3(0.0, 0.0, eps)) * roughnessScale);
-		} else if (noiseType < 1.5) { // Worley (1)
-			n = fastWorley3d(0.1 * scaledFragPos * roughnessScale);
-			nx = fastWorley3d(0.1 * (scaledFragPos + vec3(eps, 0.0, 0.0)) * roughnessScale);
-			nz = fastWorley3d(0.1 * (scaledFragPos + vec3(0.0, 0.0, eps)) * roughnessScale);
-		} else if (noiseType < 2.5) { // FBM (2)
-			n = fastFbm3d(0.1 * scaledFragPos * roughnessScale);
-			nx = fastFbm3d(0.1 * (scaledFragPos + vec3(eps, 0.0, 0.0)) * roughnessScale);
-			nz = fastFbm3d(0.1 * (scaledFragPos + vec3(0.0, 0.0, eps)) * roughnessScale);
-		} else { // Ridge (3)
+		// if (noiseType < 0.5) { // Simplex (0)
+			// n = fastSimplex3d(0.1 * scaledFragPos * roughnessScale);
+			// nx = fastSimplex3d(0.1 * (scaledFragPos + vec3(eps, 0.0, 0.0)) * roughnessScale);
+			// nz = fastSimplex3d(0.1 * (scaledFragPos + vec3(0.0, 0.0, eps)) * roughnessScale);
+		// } else if (noiseType < 1.5) { // Worley (1)
+		// 	n = fastWorley3d(0.1 * scaledFragPos * roughnessScale);
+		// 	nx = fastWorley3d(0.1 * (scaledFragPos + vec3(eps, 0.0, 0.0)) * roughnessScale);
+		// 	nz = fastWorley3d(0.1 * (scaledFragPos + vec3(0.0, 0.0, eps)) * roughnessScale);
+		// } else if (noiseType < 2.5) { // FBM (2)
+		// 	n = fastFbm3d(0.1 * scaledFragPos * roughnessScale);
+		// 	nx = fastFbm3d(0.1 * (scaledFragPos + vec3(eps, 0.0, 0.0)) * roughnessScale);
+		// 	nz = fastFbm3d(0.1 * (scaledFragPos + vec3(0.0, 0.0, eps)) * roughnessScale);
+		// } else { // Ridge (3)
 			n = fastRidge3d(0.1 * scaledFragPos * roughnessScale);
 			nx = fastRidge3d(0.1 * (scaledFragPos + vec3(eps, 0.0, 0.0)) * roughnessScale);
 			nz = fastRidge3d(0.1 * (scaledFragPos + vec3(0.0, 0.0, eps)) * roughnessScale);
-		}
+		// }
 
 		// Compute local tangent space to orient the perturbation.
 		// Using a stable basis that doesn't flip at Z-axis alignment.
@@ -488,6 +470,7 @@ void main() {
 	}
 
 	// Final Lighting
+/*
 	vec3 windAtPos = getWindAtPosition(vec3(FragPos.x, 0.5, FragPos.z));
 
 	vec3  light_dir = normalize(lights[0].position - FragPos);
@@ -506,6 +489,7 @@ void main() {
 	float grassFactor = smoothstep(0.25, 0.5, max(dot(albedo, COL_GRASS_LUSH), dot(albedo, COL_GRASS_DRY)));
 	albedo *= mix(1, mix(1.0, 1.25, windDistortion) * mix(1.0, 1.05, windRipple), grassFactor);
 	roughness *= mix(1.25, 1.0, windDistortion) * mix(1, mix(1.5, 1.0, windRipple), grassFactor);
+*/
 
 	float primaryShadow;
 	vec3 lighting = apply_lighting_pbr(FragPos, perturbedNorm, albedo, roughness, metallic, 1.0, primaryShadow).rgb;
