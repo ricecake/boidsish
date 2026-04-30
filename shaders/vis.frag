@@ -16,6 +16,8 @@ uniform bool uUseMDI = false;
 flat in int  vUniformIndex;
 
 #include "helpers/fast_noise.glsl"
+#define USE_TERRAIN_DATA
+#include "helpers/terrain_shadows.glsl"
 #include "helpers/lighting.glsl"
 #include "visual_effects.frag"
 #include "visual_effects.glsl"

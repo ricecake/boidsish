@@ -20,6 +20,8 @@ layout(std430, binding = 2) buffer UniformsSSBO {
 
 uniform bool uUseMDI = false;
 
+#define USE_TERRAIN_DATA
+#include "helpers/terrain_shadows.glsl"
 #include "helpers/lighting.glsl"
 
 uniform mat4  view;

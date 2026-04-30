@@ -145,7 +145,7 @@ float terrainShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) {
 
 	// Better initial bias: move along normal and a bit along light direction.
 	// Increased bias and light-dir push to prevent self-shadowing grooves at chunk boundaries.
-	vec3  p_start = worldPos + normal * (0.5 * u_terrainParams.y) + lightDir * 2.0;
+	vec3  p_start = worldPos + normal * (0.8 * u_terrainParams.y) + lightDir * (1.2 * u_terrainParams.y);
 	float t = 0.0;
 	float maxDist = 1200.0 * u_terrainParams.y;
 
@@ -185,27 +185,29 @@ float terrainShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) {
 		float h_max3 = textureLod(u_maxHeightGrid, gridUV, 3.0).r;
 		float rayYAtT = p_start.y + t * lightDir.y;
 
-		if (rayYAtT < h_max3 + 1.0) {
+		if (rayYAtT < h_max3 + (3.0 * u_terrainParams.y)) {
 			// Check mip 1 (2x2 chunks)
 			float h_max1 = textureLod(u_maxHeightGrid, gridUV, 1.0).r;
-			if (rayYAtT < h_max1 + 0.5) {
+			if (rayYAtT < h_max1 + (2.0 * u_terrainParams.y)) {
 				// At LOD 0, check actual chunk height
 				float h_max0 = textureLod(u_maxHeightGrid, gridUV, 0.0).r;
-				if (rayYAtT < h_max0 + 0.25) {
+				if (rayYAtT < h_max0 + (1.0 * u_terrainParams.y)) {
 					int slice = texelFetch(u_chunkGrid, localGridCoord, 0).r;
 					if (slice >= 0) {
 						// Sub-march inside this chunk
 						float subT = t;
-						float subStep = 1.5 * u_terrainParams.y;
+						float subStep = 0.5 * u_terrainParams.y;
 						while (subT < tEnd) {
 							vec3  p = p_start + subT * lightDir;
 							vec2  uv_chunk = (p.xz - vec2(currentChunk) * scaledChunkSize) / scaledChunkSize;
 							vec2  remappedUV = (uv_chunk * u_terrainParams.x + 0.5) / (u_terrainParams.x + 1.0);
 							float h = texture(u_heightmapArray, vec3(remappedUV, float(slice))).r;
-							if (p.y < h) {
-								return 0.0; // Hit terrain!
-							}
 							closest = min(closest, 8.0 * ((p.y - h) / subT));
+							if (p.y < h) {
+								float shadowStrength = clamp(subT / (maxDist), 0.0, 1.0);
+
+								return shadowStrength; // Hit terrain!
+							}
 							subT += subStep;
 						}
 					}
@@ -226,7 +228,7 @@ float terrainShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) {
 		}
 	}
 
-	return closest;
+	return 1.0-clamp(pow(closest, 3) / (maxDist), 0.0, 1.0);
 }
 
 bool isPointInTerrainShadow(vec3 worldPos, vec3 normal, vec3 lightDir) {
@@ -244,7 +246,7 @@ int isPointInTerrainShadowDebug(vec3 worldPos, vec3 normal, vec3 lightDir) {
 		return -2; // Orange-ish (Light below horizon or too low)
 
 	float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
-	vec3  p_start = worldPos + normal * (0.2 * u_terrainParams.y) + lightDir * 1.5;
+	vec3  p_start = worldPos + normal * (0.8 * u_terrainParams.y) + lightDir * (1.2 * u_terrainParams.y);
 	float t = 0.0;
 	float maxDist = 1200.0 * u_terrainParams.y;
 
@@ -276,9 +278,6 @@ int isPointInTerrainShadowDebug(vec3 worldPos, vec3 normal, vec3 lightDir) {
 		if (localGridCoord.y >= u_originSize.z)
 			return 14;
 
-		if (u_originSize.z != 128)
-			return 5;
-
 		float tNext = min(tMax.x, tMax.y);
 		float tEnd = min(tNext, maxDist);
 
@@ -286,11 +285,11 @@ int isPointInTerrainShadowDebug(vec3 worldPos, vec3 normal, vec3 lightDir) {
 		float h_max3 = textureLod(u_maxHeightGrid, gridUV, 3.0).r;
 		float rayYAtT = p_start.y + t * lightDir.y;
 
-		if (rayYAtT < h_max3 + 1.0) {
+		if (rayYAtT < h_max3 + (3.0 * u_terrainParams.y)) {
 			float h_max1 = textureLod(u_maxHeightGrid, gridUV, 1.0).r;
-			if (rayYAtT < h_max1 + 0.5) {
+			if (rayYAtT < h_max1 + (2.0 * u_terrainParams.y)) {
 				float h_max0 = textureLod(u_maxHeightGrid, gridUV, 0.0).r;
-				if (rayYAtT < h_max0 + 0.25) {
+				if (rayYAtT < h_max0 + (1.0 * u_terrainParams.y)) {
 					int slice = texelFetch(u_chunkGrid, localGridCoord, 0).r;
 					if (slice < 0) {
 						return 2; // No slice (Yellow)
@@ -298,11 +297,12 @@ int isPointInTerrainShadowDebug(vec3 worldPos, vec3 normal, vec3 lightDir) {
 
 					// Sub-march inside this chunk
 					float subT = t;
-					float subStep = 1.5 * u_terrainParams.y;
+					float subStep = 0.5 * u_terrainParams.y;
 					while (subT < tEnd) {
 						vec3  p = p_start + subT * lightDir;
 						vec2  uv_chunk = (p.xz - vec2(currentChunk) * scaledChunkSize) / scaledChunkSize;
-						float h = texture(u_heightmapArray, vec3(uv_chunk, float(slice))).r;
+						vec2  remappedUV = (uv_chunk * u_terrainParams.x + 0.5) / (u_terrainParams.x + 1.0);
+						float h = texture(u_heightmapArray, vec3(remappedUV, float(slice))).r;
 						if (p.y < h) {
 							return 3; // Hit! (Magenta)
 						}
