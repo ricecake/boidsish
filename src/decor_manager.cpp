@@ -264,22 +264,22 @@ namespace Boidsish {
 		// 	2
 		// );
 
-		// Procedural Grass
-		AddProceduralDecor(
-			ProceduralType::Grass,
-			{.min_density = 0.15f,
-		     .max_density = 0.25f,
-		     .base_scale = 0.5f,
-		     .scale_variance = 0.1f,
-		     .min_height = 0.01f,
-		     .max_height = 200.0f,
-		     .random_yaw = true,
-		     .align_to_terrain = true,
-		     .biomes = {Biome::LushGrass, Biome::DryGrass, Biome::Forest, Biome::AlpineMeadow},
-		     .wind_responsiveness = 1,
-		     .wind_rim_highlight = 1.0f},
-			2
-		);
+		// // Procedural Grass
+		// AddProceduralDecor(
+		// 	ProceduralType::Grass,
+		// 	{.min_density = 0.15f,
+		//      .max_density = 0.25f,
+		//      .base_scale = 0.5f,
+		//      .scale_variance = 0.1f,
+		//      .min_height = 0.01f,
+		//      .max_height = 200.0f,
+		//      .random_yaw = true,
+		//      .align_to_terrain = true,
+		//      .biomes = {Biome::LushGrass, Biome::DryGrass, Biome::Forest, Biome::AlpineMeadow},
+		//      .wind_responsiveness = 1,
+		//      .wind_rim_highlight = 1.0f},
+		// 	2
+		// );
 	}
 
 	DecorProperties DecorManager::GetDefaultTreeProperties() {
