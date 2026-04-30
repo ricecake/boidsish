@@ -1199,8 +1199,8 @@ namespace Boidsish {
 			);
 			frame_config_.enable_shadows = cfg.GetAppSettingBool("enable_shadows", true);
 
-			frame_config_.sh_probe_scaling = cfg.GetAppSettingFloat("sh_probe_scaling", 1.0f);
-			frame_config_.sh_probe_convergence_speed = cfg.GetAppSettingFloat("sh_probe_convergence_speed", 1.0f);
+			frame_config_.sh_probe_scaling = cfg.GetAppSettingFloat("sh_probe_scaling", 0.125f);
+			frame_config_.sh_probe_convergence_speed = cfg.GetAppSettingFloat("sh_probe_convergence_speed", 0.5f);
 			frame_config_.sh_probe_ray_count_multiplier = cfg.GetAppSettingInt("sh_probe_ray_count_multiplier", 1);
 
 			light_manager.SetProbeScaling(frame_config_.sh_probe_scaling);
