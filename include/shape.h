@@ -74,7 +74,8 @@ namespace Boidsish {
 			dissolve_plane_dist_(other.dissolve_plane_dist_),
 			is_refractive_(other.is_refractive_),
 			refractive_index_(other.refractive_index_),
-			shadow_caster_override_(other.shadow_caster_override_) {}
+			shadow_caster_override_(other.shadow_caster_override_),
+			allow_megabuffer_(other.allow_megabuffer_) {}
 
 		Shape& operator=(Shape&& other) noexcept {
 			if (this != &other) {
@@ -115,6 +116,7 @@ namespace Boidsish {
 				is_refractive_ = other.is_refractive_;
 				refractive_index_ = other.refractive_index_;
 				shadow_caster_override_ = other.shadow_caster_override_;
+				allow_megabuffer_ = other.allow_megabuffer_;
 			}
 			return *this;
 		}
@@ -326,6 +328,13 @@ namespace Boidsish {
 			MarkDirty();
 		}
 
+		inline bool AllowMegabuffer() const { return allow_megabuffer_; }
+
+		inline void SetAllowMegabuffer(bool allow) {
+			allow_megabuffer_ = allow;
+			MarkDirty();
+		}
+
 		// Returns a key identifying what shapes can be instanced together
 		// Shapes with the same key share the same mesh data
 		virtual std::string GetInstanceKey() const = 0;
@@ -512,7 +521,8 @@ namespace Boidsish {
 			dissolve_plane_dist_(0.0f),
 			is_refractive_(false),
 			refractive_index_(1.0f),
-			shadow_caster_override_(std::nullopt) {}
+			shadow_caster_override_(std::nullopt),
+			allow_megabuffer_(true) {}
 
 		virtual bool GetDefaultCastsShadows() const { return !is_colossal_; }
 
@@ -552,6 +562,7 @@ namespace Boidsish {
 		bool      use_pbr_;
 
 		std::optional<bool> shadow_caster_override_;
+		bool                allow_megabuffer_;
 
 	protected:
 		bool      dissolve_enabled_;

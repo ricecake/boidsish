@@ -743,7 +743,9 @@ namespace Boidsish {
 			finalize_mesh(group);
 		}
 
-		return std::make_shared<Model>(data, false);
+		auto model = std::make_shared<Model>(data, false);
+		model->SetAllowMegabuffer(false);
+		return model;
 	}
 
 	std::shared_ptr<ModelData> ProceduralMesher::GenerateDirectMesh(const ProceduralIR& ir) {
