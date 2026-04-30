@@ -245,8 +245,8 @@ void main() {
 	// Use bilateral upsampling for low-res effects
 	vec4 giao = sampleBilateral(uGIAOTexture, uDepthTexture, uNormalTexture, TexCoords);
 	float sssFactor = sampleBilateral(uSSSTexture, uDepthTexture, uNormalTexture, TexCoords).r;
-    vec3 di_lighting = sampleBilateral(uDITexture, uDepthTexture, uNormalTexture, TexCoords).rgb;
-
+	vec3 di_lighting = sampleBilateral(uDITexture, uDepthTexture, uNormalTexture, TexCoords).rgb;
+    // di_lighting += tentUpsample(uDITexture, 5.0, 0.0, TexCoords).rgb;
 	// // Basic firefly rejection: clamp ReSTIR contribution based on scene luminance
 	// vec4 gR = textureGather(uSceneTexture, TexCoords, 0);
 	// vec4 gG = textureGather(uSceneTexture, TexCoords, 1);
@@ -259,8 +259,8 @@ void main() {
 	// di_lighting = min(di_lighting, vec3(max_lum));
 
 	// Advanced firefly rejection
-	giao = rejectFireflies(giao, uRawGIAOTexture, uHistoryGIAOTexture, uVelocityTexture, uDepthTexture, TexCoords, lowResInvSize);
-	di_lighting = rejectFireflies(vec4(di_lighting, 1.0), uRawDITexture, uHistoryDITexture, uVelocityTexture, uDepthTexture, TexCoords, lowResInvSize).rgb;
+	// giao = rejectFireflies(giao, uRawGIAOTexture, uHistoryGIAOTexture, uVelocityTexture, uDepthTexture, TexCoords, lowResInvSize);
+	// di_lighting = rejectFireflies(vec4(di_lighting, 1.0), uRawDITexture, uHistoryDITexture, uVelocityTexture, uDepthTexture, TexCoords, lowResInvSize).rgb;
 
 	float traditionalShadow = texture(uNormalTexture, TexCoords).a;
 
