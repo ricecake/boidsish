@@ -26,8 +26,20 @@ struct GrassProperties {
     float _pad2;
 };
 
+struct GlobalGrassProperties {
+    float lengthMultiplier;
+    float widthMultiplier;
+    float densityMultiplier;
+    float rigidityMultiplier;
+    float windMultiplier;
+    uint  enabled;
+    float _pad0;
+    float _pad1;
+};
+
 layout(std140, binding = [[GRASS_PROPS_BINDING]]) uniform GrassProps {
     GrassProperties biomeProps[8];
+    GlobalGrassProperties globalProps;
 };
 
 uniform bool uIsShadowPass;

@@ -42,8 +42,20 @@ struct GrassProperties {
     float _pad2;
 };
 
+struct GlobalGrassProperties {
+    float lengthMultiplier;
+    float widthMultiplier;
+    float densityMultiplier;
+    float rigidityMultiplier;
+    float windMultiplier;
+    uint  enabled;
+    float _pad0;
+    float _pad1;
+};
+
 layout(std140, binding = [[GRASS_PROPS_BINDING]]) uniform GrassProps {
     GrassProperties biomeProps[8];
+    GlobalGrassProperties globalProps;
 };
 
 layout(std140, binding = [[TERRAIN_DATA_BINDING]]) uniform TerrainData {
@@ -140,7 +152,7 @@ void spawnBlade(ivec2 cellID, float gridStep, float range, bool rotateDither) {
     }
     float ditherValue = float(bayer8x8[by * 8 + bx]) / 64.0;
 
-    if (densityCurve < ditherValue * (1.1 - biomeProps[pickedBiome].density)) return;
+    if (densityCurve < ditherValue * (1.1 - biomeProps[pickedBiome].density * globalProps.densityMultiplier)) return;
 
     float heightFade = 1.0 - smoothstep(range * 0.95, range, dist);
 
@@ -153,8 +165,8 @@ void spawnBlade(ivec2 cellID, float gridStep, float range, bool rotateDither) {
 
     instances[idx].pos_rot = vec4(worldPosXZ.x, height, worldPosXZ.y, rot);
     instances[idx].scale_seed_biome = vec4(
-        (biomeProps[pickedBiome].height + hVar) * uWorldScale * heightFade,
-        (biomeProps[pickedBiome].width + wVar) * uWorldScale,
+        (biomeProps[pickedBiome].height + hVar) * uWorldScale * heightFade * globalProps.lengthMultiplier,
+        (biomeProps[pickedBiome].width + wVar) * uWorldScale * globalProps.widthMultiplier,
         float(seed),
         float(pickedBiome)
     );

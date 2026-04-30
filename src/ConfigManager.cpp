@@ -64,6 +64,12 @@ namespace Boidsish {
 		GetAppSettingBool("render_terrain", true);
 		GetAppSettingBool("render_floor", false);
 		GetAppSettingBool("render_skybox", true);
+		GetAppSettingBool("grass_enabled", true);
+		GetAppSettingFloat("grass_length_multiplier", 1.0f);
+		GetAppSettingFloat("grass_width_multiplier", 1.0f);
+		GetAppSettingFloat("grass_density_multiplier", 1.0f);
+		GetAppSettingFloat("grass_rigidity_multiplier", 1.0f);
+		GetAppSettingFloat("grass_wind_multiplier", 1.0f);
 		GetAppSettingBool("artistic_effect_ripple", false);
 		GetAppSettingBool("artistic_effect_color_shift", false);
 		GetAppSettingBool("artistic_effect_black_and_white", false);

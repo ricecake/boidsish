@@ -4,6 +4,7 @@
 
 #include "ConfigManager.h"
 #include "decor_manager.h"
+#include "grass_manager.h"
 #include "graphics.h"
 #include "imgui.h"
 #include "post_processing/PostProcessingManager.h"
@@ -78,6 +79,49 @@ namespace Boidsish {
 										blend.t * 100.0f
 									);
 								}
+							}
+						}
+					}
+				}
+
+				// 3.5 Grass
+				if (ImGui::CollapsingHeader("Grass", ImGuiTreeNodeFlags_DefaultOpen)) {
+					auto grass_manager = m_visualizer.GetGrassManager();
+					if (grass_manager) {
+						auto& cfg = ConfigManager::GetInstance();
+						bool  enabled = grass_manager->IsEnabled();
+						if (ImGui::Checkbox("Enable Grass", &enabled)) {
+							grass_manager->SetEnabled(enabled);
+							cfg.SetBool("grass_enabled", enabled);
+						}
+
+						if (enabled) {
+							GlobalGrassProperties props = grass_manager->GetGlobalProperties();
+							bool                  changed = false;
+
+							if (ImGui::SliderFloat("Length Multiplier", &props.lengthMultiplier, 0.1f, 5.0f)) {
+								changed = true;
+								cfg.SetFloat("grass_length_multiplier", props.lengthMultiplier);
+							}
+							if (ImGui::SliderFloat("Width Multiplier", &props.widthMultiplier, 0.1f, 5.0f)) {
+								changed = true;
+								cfg.SetFloat("grass_width_multiplier", props.widthMultiplier);
+							}
+							if (ImGui::SliderFloat("Density Multiplier", &props.densityMultiplier, 0.0f, 2.0f)) {
+								changed = true;
+								cfg.SetFloat("grass_density_multiplier", props.densityMultiplier);
+							}
+							if (ImGui::SliderFloat("Rigidity Multiplier", &props.rigidityMultiplier, 0.0f, 2.0f)) {
+								changed = true;
+								cfg.SetFloat("grass_rigidity_multiplier", props.rigidityMultiplier);
+							}
+							if (ImGui::SliderFloat("Wind Multiplier", &props.windMultiplier, 0.0f, 5.0f)) {
+								changed = true;
+								cfg.SetFloat("grass_wind_multiplier", props.windMultiplier);
+							}
+
+							if (changed) {
+								grass_manager->SetGlobalProperties(props);
 							}
 						}
 					}
@@ -376,9 +420,11 @@ namespace Boidsish {
 
 					auto decor_manager = m_visualizer.GetDecorManager();
 					if (decor_manager) {
-						bool enabled = decor_manager->IsEnabled();
+						auto& cfg = ConfigManager::GetInstance();
+						bool  enabled = decor_manager->IsEnabled();
 						if (ImGui::Checkbox("Enable Foliage", &enabled)) {
 							decor_manager->SetEnabled(enabled);
+							cfg.SetBool("render_decor", enabled);
 						}
 
 						if (enabled) {
