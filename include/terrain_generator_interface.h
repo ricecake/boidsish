@@ -60,6 +60,18 @@ namespace Boidsish {
 		virtual void Update(const Frustum& frustum, const Camera& camera) = 0;
 
 		/**
+		 * @brief Load all necessary chunks immediately and wait for completion.
+		 *
+		 * This method is intended for use during initialization or transitions where
+		 * asynchronous loading is not desired. It will block until all chunks
+		 * within the view distance are generated and registered.
+		 *
+		 * @param frustum Current view frustum
+		 * @param camera Current camera state
+		 */
+		virtual void WaitForAllChunks(const Frustum& frustum, const Camera& camera) = 0;
+
+		/**
 		 * @brief Get visible terrain chunks for rendering.
 		 *
 		 * Returns a reference to the internal visible chunks list.

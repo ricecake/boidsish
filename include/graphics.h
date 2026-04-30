@@ -233,6 +233,7 @@ namespace Boidsish {
 
 	using InputCallback = std::function<void(const InputState&)>;
 	using PrepareCallback = std::function<void(Visualizer&)>;
+	using UpdateHandler = std::function<void(float, float)>;
 
 	// Main visualization class
 	class Terrain;
@@ -319,6 +320,8 @@ namespace Boidsish {
 
 		// Add an input callback to the chain of handlers.
 		void AddInputCallback(InputCallback callback);
+		void AddUpdateHandler(UpdateHandler handler);
+		void ClearUpdateHandlers();
 
 		/**
 		 * @brief Generates a ray from a screen-space coordinate.
