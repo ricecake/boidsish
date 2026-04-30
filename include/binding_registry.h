@@ -33,6 +33,7 @@ consteval bool ValidateUboBindings() {
 		Constants::UboBinding::DecorProps(),
 		Constants::UboBinding::DecorPlacementGlobals(),
 		Constants::UboBinding::WeatherUniforms(),
+		Constants::UboBinding::WindData(),
 	};
 	return AllUnique(ubos);
 }
