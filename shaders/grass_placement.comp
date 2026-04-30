@@ -172,19 +172,22 @@ void spawnBlade(ivec2 cellID, float gridStep, float range, bool rotateDither) {
     );
 }
 
+vec3 makeGridCoord(vec3 invocationPos, vec3 cameraPos, int index) {
+    float scale = 0.2 * exp2(float(index)) * uWorldScale;
+    vec2 cameraCell = floor(cameraPos.xz / scale);
+    vec2 cellID = cameraCell + (invocationPos.xz);
+   return vec3(cellID, scale);
+}
+
 void main() {
-    float gridStep2 = 0.8 * uWorldScale;
-    ivec2 cameraCell2 = ivec2(floor(uCameraPos.xz / gridStep2));
-    ivec2 cellID2 = cameraCell2 + (ivec2(gl_GlobalInvocationID.xy) - 512);
-    spawnBlade(cellID2, gridStep2, 512.0 * uWorldScale, true);
+    vec3 offset = (gl_NumWorkGroups.xzy * gl_WorkGroupSize.xzy)/2.0;
+    vec3 coord = gl_GlobalInvocationID.xzy - offset;
 
-    float gridStep1 = 0.4 * uWorldScale;
-    ivec2 cameraCell1 = ivec2(floor(uCameraPos.xz / gridStep1));
-    ivec2 cellID1 = cameraCell1 + (ivec2(gl_GlobalInvocationID.xy) - 256);
-    spawnBlade(cellID1, gridStep1, 128.0 * uWorldScale, false);
+    vec3 cell0 = makeGridCoord(coord, uCameraPos, 0);
+    vec3 cell1 = makeGridCoord(coord, uCameraPos, 1);
+    vec3 cell3 = makeGridCoord(coord, uCameraPos, 3);
 
-    float gridStep0 = 0.2 * uWorldScale;
-    ivec2 cameraCell0 = ivec2(floor(uCameraPos.xz / gridStep0));
-    ivec2 cellID0 = cameraCell0 + (ivec2(gl_GlobalInvocationID.xy) - 128);
-    spawnBlade(cellID0, gridStep0, 64.0 * uWorldScale, false);
+    spawnBlade(ivec2(cell0.xy), cell0.z, 64 * uWorldScale, false);
+    spawnBlade(ivec2(cell1.xy), cell1.z, 128 * uWorldScale, true);
+    spawnBlade(ivec2(cell3.xy), cell3.z, 512 * uWorldScale, false);
 }
