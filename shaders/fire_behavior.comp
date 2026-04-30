@@ -43,7 +43,8 @@ void main() {
 		u_grid_size,
 		u_curlTexture,
 		u_num_chunks,
-		u_heightmapArray
+		u_heightmapArray,
+		gid
 	);
 
 	particles[gid] = p;
