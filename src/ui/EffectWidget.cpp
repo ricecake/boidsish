@@ -6,9 +6,7 @@
 #include "post_processing/PostProcessingManager.h"
 #include "post_processing/effects/BloomEffect.h"
 #include "post_processing/effects/FilmGrainEffect.h"
-#include "post_processing/effects/GtaoEffect.h"
-#include "post_processing/effects/ScreenSpaceShadowEffect.h"
-#include "post_processing/effects/SsgiEffect.h"
+#include "post_processing/effects/UnifiedScreenSpaceEffect.h"
 #include "post_processing/effects/ToneMappingEffect.h"
 
 namespace Boidsish {
@@ -88,76 +86,87 @@ namespace Boidsish {
 							}
 						}
 
-						if (effect->GetName() == "GTAO" && is_enabled) {
-							auto gtao_effect = std::dynamic_pointer_cast<PostProcessing::GtaoEffect>(effect);
-							if (gtao_effect) {
-								float radius = gtao_effect->GetRadius();
-								if (ImGui::SliderFloat("Radius##GTAO", &radius, 0.01f, 5.0f)) {
-									gtao_effect->SetRadius(radius);
-								}
-								float intensity = gtao_effect->GetIntensity();
-								if (ImGui::SliderFloat("Intensity##GTAO", &intensity, 0.0f, 5.0f)) {
-									gtao_effect->SetIntensity(intensity);
-								}
-								float ssdi_intensity = gtao_effect->GetSSDIIntensity();
-								if (ImGui::SliderFloat("SSDI Intensity##GTAO", &ssdi_intensity, 0.0f, 5.0f)) {
-									gtao_effect->SetSSDIIntensity(ssdi_intensity);
-								}
-							}
-						}
+						if (effect->GetName() == "UnifiedScreenSpace" && is_enabled) {
+							auto unified = std::dynamic_pointer_cast<PostProcessing::UnifiedScreenSpaceEffect>(effect);
+							if (unified) {
+								const char* res_modes[] = { "Full", "1/2", "1/4" };
+								int current_res = 0;
+								if (unified->GetResolutionScale() == PostProcessing::ScreenSpaceResolution::Half) current_res = 1;
+								else if (unified->GetResolutionScale() == PostProcessing::ScreenSpaceResolution::Quarter) current_res = 2;
 
-						if (effect->GetName() == "SSGI" && is_enabled) {
-							auto ssgi_effect = std::dynamic_pointer_cast<PostProcessing::SsgiEffect>(effect);
-							if (ssgi_effect) {
-								float intensity = ssgi_effect->GetIntensity();
-								if (ImGui::SliderFloat("Intensity##SSGI", &intensity, 0.0f, 5.0f)) {
-									ssgi_effect->SetIntensity(intensity);
+								if (ImGui::Combo("Resolution Scale##Unified", &current_res, res_modes, IM_ARRAYSIZE(res_modes))) {
+									if (current_res == 0) unified->SetResolutionScale(PostProcessing::ScreenSpaceResolution::Full);
+									else if (current_res == 1) unified->SetResolutionScale(PostProcessing::ScreenSpaceResolution::Half);
+									else if (current_res == 2) unified->SetResolutionScale(PostProcessing::ScreenSpaceResolution::Quarter);
 								}
-								float radius = ssgi_effect->GetRadius();
-								if (ImGui::SliderFloat("Radius##SSGI", &radius, 0.01f, 10.0f)) {
-									ssgi_effect->SetRadius(radius);
-								}
-								float falloff = ssgi_effect->GetDistanceFalloff();
-								if (ImGui::SliderFloat("Falloff##SSGI", &falloff, 0.01f, 5.0f)) {
-									ssgi_effect->SetDistanceFalloff(falloff);
-								}
-								int steps = ssgi_effect->GetSteps();
-								if (ImGui::SliderInt("Steps##SSGI", &steps, 1, 32)) {
-									ssgi_effect->SetSteps(steps);
-								}
-								int rays = ssgi_effect->GetRayCount();
-								if (ImGui::SliderInt("Rays##SSGI", &rays, 1, 8)) {
-									ssgi_effect->SetRayCount(rays);
-								}
-								float refl_intensity = ssgi_effect->GetReflectionIntensity();
-								if (ImGui::SliderFloat("Reflection Intensity##SSGI", &refl_intensity, 0.0f, 5.0f)) {
-									ssgi_effect->SetReflectionIntensity(refl_intensity);
-								}
-								float rough_factor = ssgi_effect->GetRoughnessFactor();
-								if (ImGui::SliderFloat("Roughness Factor##SSGI", &rough_factor, 0.1f, 2.0f)) {
-									ssgi_effect->SetRoughnessFactor(rough_factor);
-								}
-							}
-						}
 
-						if (effect->GetName() == "ScreenSpaceShadows" && is_enabled) {
-							auto sss_effect = std::dynamic_pointer_cast<PostProcessing::ScreenSpaceShadowEffect>(effect);
-							if (sss_effect) {
-								float intensity = sss_effect->GetIntensity();
-								if (ImGui::SliderFloat("Intensity##SSS", &intensity, 0.0f, 1.0f)) {
-									sss_effect->SetIntensity(intensity);
+								if (ImGui::TreeNode("SSGI")) {
+									bool ssgi_enabled = unified->IsSSGIEnabled();
+									if (ImGui::Checkbox("Enabled##SSGI", &ssgi_enabled)) unified->SetSSGIEnabled(ssgi_enabled);
+
+									float intensity = unified->GetSSGIIntensity();
+									if (ImGui::SliderFloat("Intensity##SSGI", &intensity, 0.0f, 5.0f)) unified->SetSSGIIntensity(intensity);
+
+									float radius = unified->GetSSGIRadius();
+									if (ImGui::SliderFloat("Radius##SSGI", &radius, 0.01f, 10.0f)) unified->SetSSGIRadius(radius);
+
+									float falloff = unified->GetSSGIDistanceFalloff();
+									if (ImGui::SliderFloat("Falloff##SSGI", &falloff, 0.01f, 5.0f)) unified->SetSSGIDistanceFalloff(falloff);
+
+									int steps = unified->GetSSGISteps();
+									if (ImGui::SliderInt("Steps##SSGI", &steps, 1, 32)) unified->SetSSGISteps(steps);
+
+									int rays = unified->GetSSGIRayCount();
+									if (ImGui::SliderInt("Rays##SSGI", &rays, 1, 8)) unified->SetSSGIRayCount(rays);
+
+									float refl_intensity = unified->GetSSGIReflectionIntensity();
+									if (ImGui::SliderFloat("Reflection Intensity##SSGI", &refl_intensity, 0.0f, 5.0f)) unified->SetSSGIReflectionIntensity(refl_intensity);
+
+									float rough_factor = unified->GetSSGIRoughnessFactor();
+									if (ImGui::SliderFloat("Roughness Factor##SSGI", &rough_factor, 0.1f, 2.0f)) unified->SetSSGIRoughnessFactor(rough_factor);
+
+									ImGui::TreePop();
 								}
-								float radius = sss_effect->GetRadius();
-								if (ImGui::SliderFloat("Radius##SSS", &radius, 0.01f, 5.0f)) {
-									sss_effect->SetRadius(radius);
+
+								if (ImGui::TreeNode("GTAO")) {
+									bool gtao_enabled = unified->IsGTAOEnabled();
+									if (ImGui::Checkbox("Enabled##GTAO", &gtao_enabled)) unified->SetGTAOEnabled(gtao_enabled);
+
+									float radius = unified->GetGTAORadius();
+									if (ImGui::SliderFloat("Radius##GTAO", &radius, 0.01f, 5.0f)) unified->SetGTAORadius(radius);
+
+									float intensity = unified->GetGTAOIntensity();
+									if (ImGui::SliderFloat("Intensity##GTAO", &intensity, 0.0f, 5.0f)) unified->SetGTAOIntensity(intensity);
+
+									float falloff = unified->GetGTAOFalloff();
+									if (ImGui::SliderFloat("Falloff##GTAO", &falloff, 0.01f, 5.0f)) unified->SetGTAOFalloff(falloff);
+
+									int steps = unified->GetGTAOSteps();
+									if (ImGui::SliderInt("Steps##GTAO", &steps, 1, 32)) unified->SetGTAOSteps(steps);
+
+									int dirs = unified->GetGTAODirections();
+									if (ImGui::SliderInt("Directions##GTAO", &dirs, 1, 8)) unified->SetGTAODirections(dirs);
+
+									ImGui::TreePop();
 								}
-								float bias = sss_effect->GetBias();
-								if (ImGui::SliderFloat("Bias##SSS", &bias, 0.001f, 0.5f)) {
-									sss_effect->SetBias(bias);
-								}
-								int steps = sss_effect->GetSteps();
-								if (ImGui::SliderInt("Steps##SSS", &steps, 4, 64)) {
-									sss_effect->SetSteps(steps);
+
+								if (ImGui::TreeNode("SSS")) {
+									bool sss_enabled = unified->IsSSSEnabled();
+									if (ImGui::Checkbox("Enabled##SSS", &sss_enabled)) unified->SetSSSEnabled(sss_enabled);
+
+									float intensity = unified->GetSSSIntensity();
+									if (ImGui::SliderFloat("Intensity##SSS", &intensity, 0.0f, 1.0f)) unified->SetSSSIntensity(intensity);
+
+									float radius = unified->GetSSSRadius();
+									if (ImGui::SliderFloat("Radius##SSS", &radius, 0.01f, 5.0f)) unified->SetSSSRadius(radius);
+
+									float bias = unified->GetSSSBias();
+									if (ImGui::SliderFloat("Bias##SSS", &bias, 0.001f, 0.5f)) unified->SetSSSBias(bias);
+
+									int steps = unified->GetSSSSteps();
+									if (ImGui::SliderInt("Steps##SSS", &steps, 4, 64)) unified->SetSSSSteps(steps);
+
+									ImGui::TreePop();
 								}
 							}
 						}
