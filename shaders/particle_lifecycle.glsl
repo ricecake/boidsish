@@ -55,6 +55,11 @@ void respawnParticle(
 	float          cellSize,
 	uint           gridSize
 ) {
+	if (particles_enabled == 0) {
+		p.pos.w = 0.0;
+		return;
+	}
+
 	if (p.pos.w <= 0.0) {
 		// --- 3a. Fire Effect Respawn ---
 		if (emitter_index != -1 && num_emitters > 0 && emitter_index < num_emitters) {
@@ -218,29 +223,60 @@ void respawnParticle(
 						p.vel = vec4(rand3(spawnSeed + 5.5) * 0.5, 0.0);
 						p.epicenter = p.pos.xyz;
 
-						int sub_style = 0;
+						// Weighted selection of sub_style
+						float weights[5] = {0.0, 0.0, 0.0, 0.0, 0.0};
 						if (biome_idx == 7) {
-							sub_style = 3; // Snowflake
+							weights[3] = 1.0; // Snowflake
 						} else if (biome_idx == 0) {
-							sub_style = 2; // Bubble
+							weights[2] = 1.0; // Bubble
 						} else {
 							if (nightFactor > 0.5) {
-								sub_style = 4; // Firefly
-								p.extras[0] = 3.0 + 2.0 * fract(randomFloat(hash(particleSeed)));
-								p.extras[1] = 0.0;
-								p.vel.w = 0.0;
+								weights[4] = 1.0; // Firefly
 							} else {
-								float r = rand(spawnSeed + 6.6);
-								if (biome_idx == 4)
-									sub_style = (r < 0.7) ? 1 : 0;
-								else
-									sub_style = (r < 0.2) ? 1 : 0;
+								if (biome_idx == 4) {
+									weights[1] = 0.7; // Petal
+									weights[0] = 0.3; // Leaf
+								} else {
+									weights[1] = 0.2; // Petal
+									weights[0] = 0.8; // Leaf
+								}
 							}
+						}
+
+						// Apply user weights
+						weights[0] *= ambient_leaf_weight;
+						weights[1] *= ambient_petal_weight;
+						weights[2] *= ambient_bubble_weight;
+						weights[3] *= ambient_snowflake_weight;
+						weights[4] *= ambient_firefly_weight;
+
+						float total_weight = weights[0] + weights[1] + weights[2] + weights[3] + weights[4];
+						int   sub_style = 0;
+
+						if (total_weight > 0.0) {
+							float r = rand(spawnSeed + 6.6) * total_weight;
+							float current_sum = 0.0;
+							for (int i = 0; i < 5; i++) {
+								current_sum += weights[i];
+								if (r <= current_sum) {
+									sub_style = i;
+									break;
+								}
+							}
+						} else {
+							// If all weights are 0, don't spawn
+							p.pos.w = 0.0;
+						}
+
+						if (sub_style == 4) { // Firefly
+							p.extras[0] = 3.0 + 2.0 * fract(randomFloat(hash(particleSeed)));
+							p.extras[1] = 0.0;
+							p.vel.w = 0.0;
 						}
 
 						p.emitter_id = sub_style;
 
-						if (skipped_time > 0.001) {
+						if (p.pos.w > 0.0 && skipped_time > 0.001) {
 							updateAmbientParticle(
 								p,
 								skipped_time,

@@ -597,11 +597,49 @@ namespace Boidsish {
 				// 4. Particles
 				if (ImGui::CollapsingHeader("Particles", ImGuiTreeNodeFlags_DefaultOpen)) {
 					auto& config = ConfigManager::GetInstance();
-					float density = config.GetAppSettingFloat("ambient_particle_density", 0.15f);
-					if (ImGui::SliderFloat("Ambient Density", &density, 0.0f, 1.0f)) {
-						config.SetFloat("ambient_particle_density", density);
+
+					bool particles_enabled = config.GetAppSettingBool("particles_enabled", true);
+					if (ImGui::Checkbox("Enable Particle System", &particles_enabled)) {
+						config.SetBool("particles_enabled", particles_enabled);
 					}
-					ImGui::Text("Controls the spawn rate of ambient particles.");
+
+					if (particles_enabled) {
+						float density = config.GetAppSettingFloat("ambient_particle_density", 0.15f);
+						if (ImGui::SliderFloat("Ambient Density", &density, 0.0f, 1.0f)) {
+							config.SetFloat("ambient_particle_density", density);
+						}
+						ImGui::Text("Controls the spawn rate of ambient particles.");
+
+						ImGui::Separator();
+						if (ImGui::TreeNode("Ambient Particle Mix")) {
+							float leaf_w = config.GetAppSettingFloat("ambient_leaf_weight", 1.0f);
+							if (ImGui::SliderFloat("Leaf Weight", &leaf_w, 0.0f, 5.0f)) {
+								config.SetFloat("ambient_leaf_weight", leaf_w);
+							}
+
+							float petal_w = config.GetAppSettingFloat("ambient_petal_weight", 1.0f);
+							if (ImGui::SliderFloat("Petal Weight", &petal_w, 0.0f, 5.0f)) {
+								config.SetFloat("ambient_petal_weight", petal_w);
+							}
+
+							float bubble_w = config.GetAppSettingFloat("ambient_bubble_weight", 1.0f);
+							if (ImGui::SliderFloat("Bubble Weight", &bubble_w, 0.0f, 5.0f)) {
+								config.SetFloat("ambient_bubble_weight", bubble_w);
+							}
+
+							float snowflake_w = config.GetAppSettingFloat("ambient_snowflake_weight", 1.0f);
+							if (ImGui::SliderFloat("Snowflake Weight", &snowflake_w, 0.0f, 5.0f)) {
+								config.SetFloat("ambient_snowflake_weight", snowflake_w);
+							}
+
+							float firefly_w = config.GetAppSettingFloat("ambient_firefly_weight", 1.0f);
+							if (ImGui::SliderFloat("Firefly Weight", &firefly_w, 0.0f, 5.0f)) {
+								config.SetFloat("ambient_firefly_weight", firefly_w);
+							}
+
+							ImGui::TreePop();
+						}
+					}
 				}
 
 				// 5. Wind (from EffectsWidget)

@@ -84,7 +84,13 @@ namespace Boidsish {
 		GetAppSettingFloat("foliage_culling_pixel_threshold", 10.0f);
 
 		// Particle settings
+		GetAppSettingBool("particles_enabled", true);
 		GetAppSettingFloat("ambient_particle_density", Constants::Class::Particles::DefaultAmbientDensity());
+		GetAppSettingFloat("ambient_leaf_weight", 1.0f);
+		GetAppSettingFloat("ambient_petal_weight", 1.0f);
+		GetAppSettingFloat("ambient_bubble_weight", 1.0f);
+		GetAppSettingFloat("ambient_snowflake_weight", 1.0f);
+		GetAppSettingFloat("ambient_firefly_weight", 1.0f);
 
 		// SH Probe settings
 		GetAppSettingFloat("sh_probe_scaling", 1.0f);

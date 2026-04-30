@@ -22,6 +22,13 @@ layout(std140, binding = [[VISUAL_EFFECTS_BINDING]]) uniform VisualEffects {
 	float snow_intensity;
 	float wetness;
 	float _pad_vfx;
+	int   particles_enabled;
+	float ambient_leaf_weight;
+	float ambient_petal_weight;
+	float ambient_bubble_weight;
+	float ambient_snowflake_weight;
+	float ambient_firefly_weight;
+	float _pad_particles[2];
 };
 
 #endif
