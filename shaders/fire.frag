@@ -57,7 +57,7 @@ void main() {
 	float alpha = 0.0;
 
 	if (v_style == STYLE_ROCKET_TRAIL || v_style == STYLE_SPARKS || v_style == STYLE_GLITTER || v_style == STYLE_BUBBLES || v_style == STYLE_FIREFLIES || v_style == STYLE_DEBUG ||
-	    v_style == STYLE_CINDER || v_style == STYLE_IRIDESCENT || v_style == STYLE_RAIN || v_style == STYLE_SNOW || v_style == STYLE_LEAF || v_style == STYLE_PETAL) {
+	    v_style == STYLE_CINDER || v_style == STYLE_IRIDESCENT || v_style == STYLE_RAIN || v_style == STYLE_SNOW || v_style == STYLE_LEAF || v_style == STYLE_PETAL || v_style == STYLE_BIRDS) {
 
 		color = v_p.color.rgb;
 		alpha = v_p.color.a;
@@ -102,6 +102,13 @@ void main() {
 		} else if (v_style == STYLE_CINDER) {
 			float n = snoise3d(vec3(gl_PointCoord * 6.0, float(v_particle_idx)));
 			shapeMask = smoothstep(0.2 + n * 0.15, 0.05, distSq);
+		} else if (v_style == STYLE_BIRDS) {
+			float flap = sin(u_time * 15.0 + v_p.phase);
+			float wing_y = abs(gl_PointCoord.x - 0.5) * (0.8 + flap * 0.4);
+			float body = smoothstep(0.1, 0.0, abs(gl_PointCoord.y - 0.5 - wing_y) + abs(gl_PointCoord.x - 0.5) * 0.5);
+			shapeMask = body;
+			color = vec3(0.02, 4.02, 0.03); // Dark bird color
+			alpha = 1.0;
 		}
 
 		alpha *= shapeMask;
