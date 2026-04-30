@@ -15,6 +15,7 @@
 #define STYLE_SNOW 11
 #define STYLE_LEAF 12
 #define STYLE_PETAL 13
+#define STYLE_BIRDS 14
 #define STYLE_IRIDESCENT 28
 
 // Must match the C++ struct layout in fire_effect_manager.cpp

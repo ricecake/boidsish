@@ -255,6 +255,90 @@ void updatePetal(inout Particle p, float dt, float time, sampler3D curlTexture) 
 	p.origin.w = 0.0;
 }
 
+void updateBirds(
+	inout Particle p,
+	float          dt,
+	float          time,
+	float          cellSize,
+	uint           gridSize,
+	sampler3D      curlTexture,
+	int            num_chunks,
+	sampler2DArray heightmapArray
+) {
+	vec3  separation = vec3(0.0);
+	vec3  alignment = vec3(0.0);
+	vec3  cohesion = vec3(0.0);
+	int   neighborCount = 0;
+	float perceptionRadius = 8.0;
+
+	for (int x = -1; x <= 1; x++) {
+		for (int y = -1; y <= 1; y++) {
+			for (int z = -1; z <= 1; z++) {
+				uint cellIdx = get_cell_idx(p.pos.xyz + vec3(x, y, z) * cellSize, cellSize, gridSize);
+				int  otherIdx = grid_heads[cellIdx];
+				int  safety = 0;
+				while (otherIdx != -1 && safety < 50) {
+					if (otherIdx != int(gl_GlobalInvocationID.x)) {
+						Particle otherP = particles[otherIdx];
+						if (otherP.style == STYLE_BIRDS) {
+							float dist = distance(p.pos.xyz, otherP.pos.xyz);
+							if (dist > 0.0 && dist < perceptionRadius) {
+								separation += (p.pos.xyz - otherP.pos.xyz) / (dist * dist + 0.01);
+								alignment += otherP.vel.xyz;
+								cohesion += otherP.pos.xyz;
+								neighborCount++;
+							}
+						}
+					}
+					otherIdx = grid_next[otherIdx];
+					safety++;
+				}
+			}
+		}
+	}
+
+	if (neighborCount > 0) {
+		alignment /= float(neighborCount);
+		cohesion = (cohesion / float(neighborCount)) - p.pos.xyz;
+		p.vel.xyz += alignment * 0.4 * dt;
+		p.vel.xyz += cohesion * 0.1 * dt;
+		p.vel.xyz += separation * 2.5 * dt;
+	}
+
+	float terrainHeight = 0.0;
+	bool  foundTerrain = false;
+	for (int i = 0; i < num_chunks; i++) {
+		ChunkInfo chunk = chunks[i];
+		if (p.pos.x >= chunk.worldOffset.x && p.pos.x < chunk.worldOffset.x + chunk.size &&
+		    p.pos.z >= chunk.worldOffset.y && p.pos.z < chunk.worldOffset.y + chunk.size) {
+			vec2 uv = (p.pos.xz - chunk.worldOffset) / chunk.size;
+			terrainHeight = texture(heightmapArray, vec3(uv, chunk.slice)).r;
+			foundTerrain = true;
+			break;
+		}
+	}
+
+	if (p.pos.w < 2.0 && foundTerrain) {
+		vec3  target = vec3(p.pos.x, terrainHeight - 0.2, p.pos.z);
+		vec3  toTarget = target - p.pos.xyz;
+		p.vel.xyz += normalize(toTarget + vec3(0, -0.1, 0)) * 5.0 * dt;
+	} else {
+		p.vel.xyz += curlNoise(p.pos.xyz, time, curlTexture) * 1.5 * dt;
+		if (foundTerrain) {
+			if (p.pos.y < terrainHeight + 2.0)
+				p.vel.y += 2.5 * dt;
+			if (p.pos.y > terrainHeight + 15.0)
+				p.vel.y -= 1.5 * dt;
+		}
+	}
+
+	p.vel.xyz *= pow(0.97, dt / 0.016);
+	p.color = vec4(0.05, 0.05, 0.05, smoothstep(0.0, 1.0, p.pos.w));
+	if (p.pos.w < 1.0 && foundTerrain && p.pos.y < terrainHeight + 0.5) {
+		p.color.a *= smoothstep(0.0, 1.0, p.pos.w);
+	}
+}
+
 void updateAmbientBubble(inout Particle p, float dt, float time, sampler3D curlTexture) {
 	float curlInfluence = 0.5;
 	p.vel.xyz += curlNoise(p.pos.xyz, time, curlTexture) * curlInfluence * dt;
@@ -355,6 +439,9 @@ void updateAmbientParticle(
 		maxSpeed = 1.2;
 	} else if (p.style == STYLE_FIREFLIES) {
 		updateAmbientFirefly(p, dt, time, cellSize, gridSize, curlTexture);
+	} else if (p.style == STYLE_BIRDS) {
+		updateBirds(p, dt, time, cellSize, gridSize, curlTexture, num_chunks, heightmapArray);
+		maxSpeed = 6.0;
 	} else {
 		p.vel.xyz += curlNoise(p.pos.xyz, time, curlTexture) * dt;
 		p.vel.xyz *= pow(0.99, dt / 0.016);
