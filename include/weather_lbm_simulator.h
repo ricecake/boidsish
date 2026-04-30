@@ -18,7 +18,7 @@ namespace Boidsish {
         /**
          * @brief Updates the grid anchor based on camera position without stepping the simulation.
          */
-        void UpdateAnchor(const glm::vec3& cameraPos);
+        void UpdateAnchor(const glm::vec3& cameraPos, float totalTime, float timeOfDay);
 
         void PopulateWindData(WindDataUbo& ubo, std::vector<glm::vec4>& grid_out, float totalTime, float curlScale, float curlStrength) const;
 
@@ -55,6 +55,8 @@ namespace Boidsish {
             Initialize(terrain, totalTime, timeOfDay);
         }
 
+        static constexpr int kPadding = 2;
+
         /**
          * @brief Manually inject a pressure burst or vacuum at a world position.
          * @param burstStrength If > 0, primes neighboring cells to move away from the center.
@@ -73,6 +75,7 @@ namespace Boidsish {
 
     private:
         void Initialize(const ITerrainGenerator& terrain, float totalTime, float timeOfDay);
+        void InitializeCell(int x, int z, float totalTime, float timeOfDay, LbmCell& cell);
         void Step(float deltaTime, float totalTime, float timeOfDay, const ITerrainGenerator& terrain, float windSpeed, float windStrength);
 
         /**
@@ -93,7 +96,7 @@ namespace Boidsish {
         void CollisionAndStreaming();
         void ApplyPhysics(float deltaTime, float totalTime, float timeOfDay);
         void ApplyBoundaries(float totalTime, float windSpeed, float windStrength, float timeOfDay, float targetTemp, float targetPressure, float targetHumidity);
-        void ShiftGrid(glm::ivec2 shiftOffset);
+        void ShiftGrid(glm::ivec2 shiftOffset, float totalTime, float timeOfDay);
 
         int width_;
         int height_;
