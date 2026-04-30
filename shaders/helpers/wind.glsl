@@ -63,7 +63,7 @@ vec3 getWindAtPosition(vec3 worldPos) {
 	float curlScale = u_windParams.z;
 	float curlStrength = u_windParams.w;
 
-	float flatTime = mix(mod(time, 29), mod(time * 1.07, 31), sin(time * 0.001) * 0.5 + 0.5);
+	float flatTime = mix(mod(time, 29) * sin(time) * 0.5 + 0.5, mod(time * 1.07, 31)  * cos(time) * 0.5 + 0.5, sin(time) * 0.5 + 0.5);
 
 	// Extract normalized direction for predictable math
 	vec2 windDir2D = macroSpeed > 0.001 ? macroWind.xz / macroSpeed : vec2(1.0, 0.0);

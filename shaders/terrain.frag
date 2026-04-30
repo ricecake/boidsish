@@ -26,6 +26,7 @@ in float      vSubstrate;
 #include "visual_effects.glsl"
 // #include "helpers/noise.glsl"
 #include "helpers/wind.glsl"
+// #include "lygia/color/space/rgb2lab.glsl"
 
 
 uniform bool uIsShadowPass = false;
@@ -476,8 +477,9 @@ void main() {
 	}
 
 	// Final Lighting
-	vec3 windAtPos = getWindAtPosition(vec3(FragPos.x, 0.5, FragPos.z));
-	albedo = length(albedo) * normalize(albedo+windAtPos);
+	// vec3 windAtPos = getWindAtPosition(vec3(FragPos.x, 0.5, FragPos.z));
+	// albedo = length(albedo) * normalize(albedo+windAtPos);
+	// albedo = rgb2lab(albedo);
 
 /*
 	vec3 windAtPos = getWindAtPosition(vec3(FragPos.x, 0.5, FragPos.z));
