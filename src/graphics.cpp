@@ -1200,6 +1200,12 @@ namespace Boidsish {
 				"ambient_particle_density",
 				Constants::Class::Particles::DefaultAmbientDensity()
 			);
+			frame_config_.particles_enabled = cfg.GetAppSettingBool("particles_enabled", true);
+			frame_config_.ambient_leaf_weight = cfg.GetAppSettingFloat("ambient_leaf_weight", 1.0f);
+			frame_config_.ambient_petal_weight = cfg.GetAppSettingFloat("ambient_petal_weight", 1.0f);
+			frame_config_.ambient_bubble_weight = cfg.GetAppSettingFloat("ambient_bubble_weight", 1.0f);
+			frame_config_.ambient_snowflake_weight = cfg.GetAppSettingFloat("ambient_snowflake_weight", 1.0f);
+			frame_config_.ambient_firefly_weight = cfg.GetAppSettingFloat("ambient_firefly_weight", 1.0f);
 			frame_config_.enable_shadows = cfg.GetAppSettingBool("enable_shadows", true);
 
 			frame_config_.sh_probe_scaling = cfg.GetAppSettingFloat("sh_probe_scaling", 0.125f);
@@ -2287,6 +2293,13 @@ namespace Boidsish {
 					ubo_data.snow_intensity = (w.temperature <= 273.15f) ? w.precipitation : 0.0f;
 					ubo_data.wetness = wetness_;
 
+					ubo_data.particles_enabled = frame_config_.particles_enabled ? 1 : 0;
+					ubo_data.ambient_leaf_weight = frame_config_.ambient_leaf_weight;
+					ubo_data.ambient_petal_weight = frame_config_.ambient_petal_weight;
+					ubo_data.ambient_bubble_weight = frame_config_.ambient_bubble_weight;
+					ubo_data.ambient_snowflake_weight = frame_config_.ambient_snowflake_weight;
+					ubo_data.ambient_firefly_weight = frame_config_.ambient_firefly_weight;
+
 					*visual_effects_pb->GetFrameDataPtr() = ubo_data;
 					glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::VisualEffects(),
 						visual_effects_pb->GetBufferId(), visual_effects_pb->GetFrameOffset(),
@@ -2558,25 +2571,27 @@ namespace Boidsish {
 			}
 
 			clone_manager->Update(simulation_time, camera.pos());
-			fire_effect_manager->Update(
-				simulation_delta_time,
-				simulation_time,
-				frame_config_.ambient_particle_density,
-				terrain_render_manager ? terrain_render_manager->GetChunkInfo(terrain_generator->GetWorldScale())
-									   : std::vector<glm::vec4>{},
-				terrain_render_manager ? terrain_render_manager->GetHeightmapTexture() : 0,
-				noise_manager ? noise_manager->GetCurlTexture() : 0,
-				terrain_render_manager ? terrain_render_manager->GetBiomeTexture() : 0,
-				render_state_.lighting.id,
-				static_cast<GLintptr>(render_state_.lighting.offset),
-				static_cast<GLsizeiptr>(render_state_.lighting.size),
-				frustum_ssbo->GetBufferId(),
-				frustum_ssbo->GetFrameOffset() + mdi_frustum_count * sizeof(FrustumDataGPU),
-				noise_manager ? noise_manager->GetExtraNoiseTexture() : 0,
-				render_state_.visual_effects.id,
-				static_cast<GLintptr>(render_state_.visual_effects.offset),
-				static_cast<GLsizeiptr>(render_state_.visual_effects.size)
-			);
+			if (frame_config_.particles_enabled) {
+				fire_effect_manager->Update(
+					simulation_delta_time,
+					simulation_time,
+					frame_config_.ambient_particle_density,
+					terrain_render_manager ? terrain_render_manager->GetChunkInfo(terrain_generator->GetWorldScale())
+										: std::vector<glm::vec4>{},
+					terrain_render_manager ? terrain_render_manager->GetHeightmapTexture() : 0,
+					noise_manager ? noise_manager->GetCurlTexture() : 0,
+					terrain_render_manager ? terrain_render_manager->GetBiomeTexture() : 0,
+					render_state_.lighting.id,
+					static_cast<GLintptr>(render_state_.lighting.offset),
+					static_cast<GLsizeiptr>(render_state_.lighting.size),
+					frustum_ssbo->GetBufferId(),
+					frustum_ssbo->GetFrameOffset() + mdi_frustum_count * sizeof(FrustumDataGPU),
+					noise_manager ? noise_manager->GetExtraNoiseTexture() : 0,
+					render_state_.visual_effects.id,
+					static_cast<GLintptr>(render_state_.visual_effects.offset),
+					static_cast<GLsizeiptr>(render_state_.visual_effects.size)
+				);
+			}
 			mesh_explosion_manager->Update(simulation_delta_time, simulation_time);
 			sound_effect_manager->Update(simulation_delta_time);
 			shockwave_manager->Update(simulation_delta_time);
