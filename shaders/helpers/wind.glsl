@@ -57,18 +57,20 @@ vec3 getWindAtPosition(vec3 worldPos) {
 		}
 	}
 
-// 3. Structured Gusts and Swirls
+	// 3. Structured Gusts and Swirls
 	// Use continuous time. Do not wrap it, or the phase math will fracture.
 	float time = u_windParams.y;
 	float curlScale = u_windParams.z;
 	float curlStrength = u_windParams.w;
+
+	float flatTime = mix(mod(time, 29), mod(time * 1.07, 31), sin(time * 0.001) * 0.5 + 0.5);
 
 	// Extract normalized direction for predictable math
 	vec2 windDir2D = macroSpeed > 0.001 ? macroWind.xz / macroSpeed : vec2(1.0, 0.0);
 
 	// Gustiness: Smoothstep the simplex to create wide, rolling "valleys" of stillness
 	float gustAdvectionSpeed = 0.75;
-	vec3 gustPos = worldPos - (macroWind * time * gustAdvectionSpeed);
+	vec3 gustPos = worldPos - (macroWind * flatTime * gustAdvectionSpeed);
 	float gustiness = smoothstep(0.1, 0.7, fastSimplex3d(gustPos / 250.0) * 0.5 + 0.5);
 
 	// 4. Phasor Ripples (The "Packets")
