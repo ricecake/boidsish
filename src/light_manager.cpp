@@ -98,13 +98,9 @@ namespace Boidsish {
 				_cycle.time += deltaTime * _cycle.speed;
 				if (_cycle.time >= 24.0f) {
 					_cycle.time -= 24.0f;
-					// Randomize moon azimuth for the next cycle (between 45 and 135 degrees)
-					_cycle.moon_azimuth = 45.0f + static_cast<float>(rand()) / (static_cast<float>(RAND_MAX) / 90.0f);
 				}
 				if (_cycle.time < 0.0f) {
 					_cycle.time += 24.0f;
-					// Randomize if we wrap back (rare but possible)
-					_cycle.moon_azimuth = 45.0f + static_cast<float>(rand()) / (static_cast<float>(RAND_MAX) / 90.0f);
 				}
 			}
 
@@ -128,8 +124,8 @@ namespace Boidsish {
 
 				// Phase drift: the moon's offset shifts by 24h over one lunar month
 				// This creates the full → half → new → half → full cycle
-				float phase_drift = std::fmod(_cycle.moon_phase_days, DayNightCycle::kLunarMonth) /
-					DayNightCycle::kLunarMonth * 24.0f;
+				float phase_drift = std::fmod(_cycle.moon_phase_days, _cycle.lunar_month) /
+					_cycle.lunar_month * 24.0f;
 				float effective_offset = _cycle.moon_offset + phase_drift;
 
 				float moon_time = _cycle.time + effective_offset;
@@ -140,8 +136,11 @@ namespace Boidsish {
 				float moon_angle_deg = (moon_time / 24.0f) * 360.0f;
 				_lights[1].elevation = moon_angle_deg - 90.0f;
 
-				// Moon azimuth drifts slowly (~3°/day) to vary its sky track
-				_lights[1].azimuth = _cycle.moon_azimuth + _cycle.moon_phase_days * 3.0f;
+				// Moon azimuth is made erratic using multiple sine waves
+				// This ensures it doesn't always set 180 degrees from where it rose
+				float erratic_azimuth = 30.0f * std::sin(_cycle.moon_phase_days * 0.7f) +
+					15.0f * std::sin(_cycle.moon_phase_days * 2.3f + moon_time * 0.1f);
+				_lights[1].azimuth = _cycle.moon_azimuth + erratic_azimuth;
 				_lights[1].UpdateDirectionFromAngles();
 
 				float sun_vis = glm::sin(glm::radians(_lights[0].elevation));
@@ -168,7 +167,7 @@ namespace Boidsish {
 
 				// Lunar albedo with slight warm tint from regolith
 				const float     lunarAlbedo = _cycle.lunar_albedo;
-				const glm::vec3 lunarTint = glm::vec3(0.95f, 0.93f, 0.88f);
+				const glm::vec3 lunarTint = _cycle.moon_tint;
 
 				// Moon color = sun's full output × albedo × phase × tint
 				glm::vec3 sunFullRadiance = _lights[0].color * 10.0f;

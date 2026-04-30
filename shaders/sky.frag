@@ -227,26 +227,22 @@ void main() {
 
 	vec3 moonTransmittance = max(getTransmittance(r, moonDir.y), vec3(0.001));
 
-	// Phase mask: the lit side of the moon faces the sun.
-	// Project sun direction onto the moon disc plane to find the terminator orientation.
-	float sunOnMoonX = dot(sunDir, moonRight);
-	float sunOnMoonY = dot(sunDir, moonUp);
-	float cosPhase = dot(sunDir, moonDir); // >0 = new moon, <0 = full moon
+	// Realistic Spherical Moon Terminator
+	// We treat the moon disc as the projection of a 3D sphere.
+	// Normalized coordinates on the moon disc:
+	float moonDiscRadius = moonAngularRadius;
+	vec2  moonDiscCoord = vec2(moonLocalX, moonFlattenedY) / moonDiscRadius;
+	float r2 = dot(moonDiscCoord, moonDiscCoord);
 
-	// How much of the sun's direction lies in the disc plane vs behind/in front
-	vec2  sunOnDisc = vec2(sunOnMoonX, sunOnMoonY);
-	float projLen = length(sunOnDisc);
+	// Calculate surface normal on the sphere at this point (facing observer)
+	float z = sqrt(max(0.0, 1.0 - r2));
+	vec3  moonSurfaceNormal = normalize(moonDiscCoord.x * moonRight + moonDiscCoord.y * moonUp + z * moonDir);
 
-	// When sun is to the side (quarter moon), the terminator is a clear line.
-	// When sun is directly behind (full moon) or in front (new moon), projLen→0
-	// and we fall back to uniform illumination based on phase.
-	float terminator = dot(vec2(moonLocalX, moonFlattenedY), sunOnDisc / max(projLen, 0.0001));
-	float phaseMix = smoothstep(0.0, 0.5, projLen);
-	float fullOrNew = (cosPhase < 0.0) ? 1.0 : 0.0;
-	float illumination = mix(fullOrNew, smoothstep(-0.003, 0.003, terminator), phaseMix);
+	// Lit side of the moon faces the sun.
+	float moonIllumination = max(0.0, dot(moonSurfaceNormal, sunDir));
 
 	// Earthshine: dark side gets a faint glow (~8%)
-	float phasedMask = moonMask * mix(0.08, 1.0, illumination);
+	float phasedMask = moonMask * mix(0.08, 1.0, moonIllumination);
 
 	vec3 moonDisc = u_moonRadiance * phasedMask * moonTransmittance;
 
