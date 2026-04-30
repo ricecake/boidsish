@@ -2755,6 +2755,10 @@ namespace Boidsish {
 				early_effects_pass_->Execute(frame, *compositor_);
 			}
 
+			if (particle_pass_) {
+				particle_pass_->Execute(frame);
+			}
+
 			if (sdf_volume_pass_ && compositor_) {
 				// After early effects, the scene lives in the post-processing pipeline's
 				// ping-pong FBO. Use that as the source so SDF composites on top of
@@ -2770,10 +2774,6 @@ namespace Boidsish {
 				glBindVertexArray(blur_quad_vao);
 				sdf_volume_pass_->Execute(frame, scene_tex, depth_tex, target_fbo);
 				glBindVertexArray(0);
-			}
-
-			if (particle_pass_) {
-				particle_pass_->Execute(frame);
 			}
 
 			// Capture background for refraction
