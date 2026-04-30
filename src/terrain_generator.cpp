@@ -574,7 +574,7 @@ namespace Boidsish {
 		float sx = x / world_scale_;
 		float sz = z / world_scale_;
 
-		glm::vec3 path_influence = getPathInfluence(sx, sz);
+		glm::vec3 path_influence = getPathInfluence(sx*0.1f, sz*0.5f);
 		float     path_factor = path_influence.x;
 
 		glm::vec2 push_dir(0.0f);
@@ -590,6 +590,7 @@ namespace Boidsish {
 
 		// Calculate biome control value using warped coordinates for synchronization
 		glm::vec2 biome_pos = warped_pos * control_noise_scale_;
+		biome_pos *= 0.5f;
 		float     control_value = Simplex::noise(biome_pos + Simplex::curlNoise(biome_pos)) * 0.5f + 0.5f;
 
 		if (std::isnan(control_value) || std::isinf(control_value)) {
@@ -602,7 +603,7 @@ namespace Boidsish {
 		BiomeAttributes current;
 		ApplyWeightedBiome(control_value, current);
 
-		glm::vec3 terrain_height = biomefbm(warped_pos, current);
+		glm::vec3 terrain_height = biomefbm(warped_pos * 0.5f, current);
 
 		float path_floor_level = -0.10f;
 		terrain_height.x = glm::mix(path_floor_level, terrain_height.x, path_factor);
