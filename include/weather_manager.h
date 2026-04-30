@@ -7,8 +7,11 @@
 
 #include <glm/glm.hpp>
 #include "weather_constants.h"
+#include "weather_lbm_simulator.h"
 
 namespace Boidsish {
+
+	class ITerrainGenerator;
 
 	enum class WeatherAttribute {
 		SunIntensity,
@@ -139,10 +142,10 @@ namespace Boidsish {
 
 	class WeatherManager {
 	public:
-		WeatherManager();
+		WeatherManager(ITerrainGenerator* terrain = nullptr);
 		~WeatherManager();
 
-		void Update(float deltaTime, float totalTime, const glm::vec3& cameraPos);
+		void Update(float deltaTime, float totalTime, const glm::vec3& cameraPos, float timeOfDay);
 
 		bool IsEnabled() const { return enabled_; }
 
@@ -203,6 +206,17 @@ namespace Boidsish {
 		 */
 		void SetPace(WeatherAttribute attr, float pace);
 
+		const PhysicallyBasedWeatherOutput* GetPhysicallyBasedWeather() const {
+			return lbm_simulator_ ? &lbm_simulator_->GetOutput() : nullptr;
+		}
+
+		PhysicallyBasedWeatherOutput GetWeatherAtPosition(const glm::vec3& pos) const {
+			if (lbm_simulator_) return lbm_simulator_->GetWeatherAtPosition(pos);
+			return PhysicallyBasedWeatherOutput{};
+		}
+
+		void SetTerrainGenerator(ITerrainGenerator* terrain) { terrain_ = terrain; }
+
 	private:
 		struct AttributeState {
 			float                velocity = 0.0f;
@@ -230,6 +244,9 @@ namespace Boidsish {
 		CurrentWeather      cached_targets_;
 
 		std::array<AttributeState, static_cast<size_t>(WeatherAttribute::Count)> attribute_states_;
+
+		ITerrainGenerator*                   terrain_ = nullptr;
+		std::unique_ptr<WeatherLbmSimulator> lbm_simulator_;
 	};
 
 } // namespace Boidsish

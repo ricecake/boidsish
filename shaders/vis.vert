@@ -237,29 +237,53 @@ void main() {
 
 				// 2. Apply Asymptotic Resistance (tanh)
 				// Limits maximum deflection so the tree never folds completely flat
-				float maxDeflection = 1.3; // Adjust to tune maximum bend angle limit
+				float maxDeflection = 1.1; // Adjust to tune maximum bend angle limit
 				float resistedWindMag = maxDeflection * tanh(windMag / maxDeflection);
 
-				WindDeflection = resistedWindMag;
+				// WindDeflection = resistedWindMag;
 
 				// 3. Calculate bending angle based on resisted wind and height
 				float bendAngle = resistedWindMag * pow(normalizedHeight, 1.2) *
 					smoothstep(0.05, 1.0, normalizedHeight);
 
-				// 4. Arc Mapping via Rodrigues' Rotation Formula
+				// --- SECONDARY FLUTTER (Directional Displacement) ---
+				// 1. Branch Factor: Isolate the canopy from the trunk
+				vec2 trunkCenterXZ = (u_aabbMin.xz + u_aabbMax.xz) * 0.5;
+				float distFromTrunk = length(aPos.xz - trunkCenterXZ);
+				float maxRadius = max(0.001, (u_aabbMax.x - u_aabbMin.x) * 0.5);
+
+				// Dead-zone near the trunk (e.g., inner 15%), scaling up to 1.0 at the AABB edge
+				float branchFactor = smoothstep(maxRadius * 0.15, maxRadius, distFromTrunk);
+
+				// 2. High-Frequency Flutter
+				// Multipliers here simulate the rapid rustling of lighter geometry.
+				// Dotting aPos with an arbitrary vector provides a quick spatial phase offset.
+				float flutterSpeed = wind_speed * 4.0;
+				float phase = dot(aPos, vec3(1.3, 0.7, 1.1));
+
+				// Small amplitude multiplier (0.05) prevents the mesh from tearing
+				float flutterMag = sin(time * flutterSpeed + phase) * branchFactor * wind_strength * 0.05;
+
+				// 3. Apply Displacement
+				// Pushing along the vertex normal is standard for this tier of detail.
+				vec3 flutterOffset = aNormal * flutterMag;
+
+				// Base offset for the trunk rotation, now including the local flutter
+				vec3 offset = (FragPos - worldBaseCenter) + flutterOffset;
+
+
+				// --- PRIMARY TRUNK BEND (Rodrigues' Rotation) ---
 				// Find the axis perpendicular to both Up and the Wind direction
 				vec3 rotationAxis = normalize(cross(vec3(0.0, 1.0, 0.0), windDir));
-				vec3 offset = FragPos - worldBaseCenter;
 
 				float cosTheta = cos(bendAngle);
 				float sinTheta = sin(bendAngle);
 
-				// Rotate the vertex offset around the base pivot
+				// Rotate the combined offset around the base pivot
 				vec3 rotatedOffset = offset * cosTheta + cross(rotationAxis, offset) * sinTheta +
-					rotationAxis * dot(rotationAxis, offset) * (1.0 - cosTheta);
+									rotationAxis * dot(rotationAxis, offset) * (1.0 - cosTheta);
 
-				FragPos = worldBaseCenter + rotatedOffset;
-			}
+				FragPos = worldBaseCenter + rotatedOffset;			}
 		}
 	}
 
