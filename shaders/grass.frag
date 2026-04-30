@@ -91,10 +91,13 @@ void main() {
     // albedo = mix(albedo, exp2(albedo), smoothstep(0.5, 1.0, fTexCoords.y) * smoothstep(25, 50, dist));// * dist;
 	// Apply wind-driven rim highlight
 	float rim = pow(1.0 - max(dot(N, normalize(viewPos - fWorldPos)), 0.0), 3.0);
-	albedo += rim * smoothstep(0.5, 1.0, fTexCoords.y) * 0.5 * vec3(1.0);
+	albedo += rim * smoothstep(0.33, 0.66, fTexCoords.y) * smoothstep(1.0, 0.66, fTexCoords.y) * vec3(1.0);
 
 
-    vec3 highlight = albedo * mix(smoothstep(0.05, 0.25, length(fTexCoords.x)) * smoothstep(0.95, 0.75, length(fTexCoords.x)), 1.0, smoothstep(30.0, 75.0, length(viewPos - fWorldPos)));
+    vec3 highlight = albedo * mix(
+          smoothstep(0.05, 0.25, length(fTexCoords.x)) * smoothstep(0.95, 0.75, length(fTexCoords.x)),
+        1.0,
+        smoothstep(16.0, 128.0, length(viewPos - fWorldPos)));
 
 
     float primaryShadow;

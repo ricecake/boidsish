@@ -173,17 +173,26 @@ void spawnBlade(ivec2 cellID, float gridStep, float range, bool rotateDither) {
 }
 
 void main() {
-    // Tier 1: Sparse global grid (1M cells over 800m square)
-    float gridStep1 = 0.8 * uWorldScale;
-    ivec2 cameraCell1 = ivec2(floor(uCameraPos.xz / gridStep1));
-    ivec2 cellID1 = cameraCell1 + (ivec2(gl_GlobalInvocationID.xy) - 512);
-    spawnBlade(cellID1, gridStep1, 400.0 * uWorldScale, true);
+    // Tier 2: Sparse global grid (1M cells over 800m square)
+    float gridStep2 = 0.8 * uWorldScale;
+    ivec2 cameraCell2 = ivec2(floor(uCameraPos.xz / gridStep2));
+    ivec2 cellID2 = cameraCell2 + (ivec2(gl_GlobalInvocationID.xy) - 512);
+    spawnBlade(cellID2, gridStep2, 512.0 * uWorldScale, true);
+
+    // Tier 1: Dense local grid (256k extra cells over 200m square)
+    if (gl_GlobalInvocationID.x < 512 && gl_GlobalInvocationID.y < 512) {
+        float gridStep1 = 0.4 * uWorldScale;
+        ivec2 cameraCell1 = ivec2(floor(uCameraPos.xz / gridStep1));
+        ivec2 cellID1 = cameraCell1 + (ivec2(gl_GlobalInvocationID.xy) - 256);
+        spawnBlade(cellID1, gridStep1, 128.0 * uWorldScale, false);
+    }
 
     // Tier 0: Dense local grid (256k extra cells over 200m square)
-    if (gl_GlobalInvocationID.x < 512 && gl_GlobalInvocationID.y < 512) {
-        float gridStep0 = 0.4 * uWorldScale;
+    if (gl_GlobalInvocationID.x < 256 && gl_GlobalInvocationID.y < 256) {
+        float gridStep0 = 0.2 * uWorldScale;
         ivec2 cameraCell0 = ivec2(floor(uCameraPos.xz / gridStep0));
-        ivec2 cellID0 = cameraCell0 + (ivec2(gl_GlobalInvocationID.xy) - 256);
-        spawnBlade(cellID0, gridStep0, 100.0 * uWorldScale, false);
+        ivec2 cellID0 = cameraCell0 + (ivec2(gl_GlobalInvocationID.xy) - 128);
+        spawnBlade(cellID0, gridStep0, 64.0 * uWorldScale, false);
     }
+
 }
