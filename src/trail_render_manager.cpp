@@ -307,10 +307,10 @@ namespace Boidsish {
 		// 2. Dispatch tessellation compute shader
 		tess_shader_->use();
 		tess_shader_->setInt("u_num_instances", trail_allocations_.size());
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 18, points_ssbo_);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 19, instances_ssbo_);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 20, spine_ssbo_);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, tess_vbo_);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TrailPoints(), points_ssbo_);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TrailInstances(), instances_ssbo_);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TrailSpineData(), spine_ssbo_);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TrailGeneratedVBO(), tess_vbo_);
 
 		glDispatchCompute(trail_allocations_.size(), 1, 1);
 		glMemoryBarrier(GL_VERTEX_ATTRIB_ARRAY_BARRIER_BIT);
