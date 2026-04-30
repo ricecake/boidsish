@@ -65,6 +65,10 @@ void main() {
         return;
     }
 
+    // Normal handling for 2D primitives
+    vec3 N = normalize(fNormal);
+    if (!gl_FrontFacing) N = -N;
+
     vec3 albedo = mix(biomeProps[fBiomeIdx].colorBottom.rgb, biomeProps[fBiomeIdx].colorTop.rgb, fHeightFactor);
     float ao = smoothstep(0.0, 0.5, fHeightFactor) * smoothstep(0.0, 0.25, biomeProps[fBiomeIdx].density);
     float dist = length(fWorldPos.xz - viewPos.xz);
@@ -75,17 +79,17 @@ void main() {
     albedo += (var * 2.0 - 1.0) * 0.15;
     albedo = max(vec3(0.0), albedo); // Clamp to prevent negative color artifacts
 
-    albedo = mix(albedo, albedo * 10.50, smoothstep(0.5, 1.0, fTexCoords.y) * smoothstep(25, 50, dist));// * dist;
+    // albedo = mix(albedo, exp2(albedo), smoothstep(0.5, 1.0, fTexCoords.y) * smoothstep(25, 50, dist));// * dist;
+	// Apply wind-driven rim highlight
+	float rim = pow(1.0 - max(dot(N, normalize(viewPos - fWorldPos)), 0.0), 3.0);
+	albedo += rim * smoothstep(0.5, 1.0, fTexCoords.y) * 0.5 * vec3(1.0);
+
 
     albedo *= smoothstep(0.05, 0.25, length(fTexCoords.x)) * smoothstep(0.95, 0.75, length(fTexCoords.x));
 
 
-    // Normal handling for 2D primitives
-    vec3 N = normalize(fNormal);
-    if (!gl_FrontFacing) N = -N;
-
     float primaryShadow;
-    vec4 litColor = apply_lighting_pbr(fWorldPos, N, albedo, 0.8, 0.0, ao, primaryShadow);
+    vec4 litColor = apply_lighting_foliage(fWorldPos, N, albedo, 0.8, 0.0, ao, primaryShadow);
     litColor.rgb = clamp(litColor.rgb, 0.0, 5.0); // Clamp HDR to prevent "bright white" blowouts
 
     // Distance fade and distant cyan blend (matching terrain style)
