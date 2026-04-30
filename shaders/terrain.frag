@@ -470,6 +470,9 @@ void main() {
 	}
 
 	// Final Lighting
+	vec3 windAtPos = getWindAtPosition(vec3(FragPos.x, 0.5, FragPos.z));
+	albedo = length(albedo) * normalize(albedo+windAtPos);
+
 /*
 	vec3 windAtPos = getWindAtPosition(vec3(FragPos.x, 0.5, FragPos.z));
 

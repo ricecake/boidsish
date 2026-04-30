@@ -318,14 +318,18 @@ namespace Boidsish {
 
                     // Prevailing wind based on spatial gradient
                     glm::vec2 prevailingWind(0.02f, 0.01f); // Baseline flow
-                    prevailingWind += glm::vec2(worldX + worldZ, worldX - worldZ) * 0.00001f;
+                    prevailingWind += glm::vec2(worldX + worldZ, worldX - worldZ) * 0.0001f;
 
-                    glm::vec2 noiseWind(
-                        Simplex::noise(glm::vec2(worldX * 0.001f + totalTime * windSpeed, worldZ * 0.001f)),
-                        Simplex::noise(glm::vec2(worldX * 0.001f + 500.0f, worldZ * 0.001f + totalTime * windSpeed))
-                    );
+                    prevailingWind = glm::normalize(prevailingWind);
+
+                    auto noiseWind = Simplex::curlNoise(glm::vec2(worldX * 0.001f + totalTime * windSpeed, worldZ * 0.001f + totalTime * windSpeed), atan2(prevailingWind.x, prevailingWind.y));
+                    // glm::vec2 noiseWind(
+                    //     Simplex::noise(glm::vec2(worldX * 0.001f + totalTime * windSpeed, worldZ * 0.001f)),
+                    //     Simplex::noise(glm::vec2(worldX * 0.001f + 500.0f, worldZ * 0.001f + totalTime * windSpeed))
+                    // );
 
                     glm::vec2 targetU = prevailingWind + noiseWind * 0.1f;
+                    targetU *= Simplex::noise({worldX, worldZ}) * 0.5f + 0.5f;
 
                     // Lattice velocity MUST stay below ~0.15 for stability
                     targetU = glm::clamp(targetU * (0.05f + windStrength * 5.0f), -0.14f, 0.14f);
@@ -366,7 +370,7 @@ namespace Boidsish {
 
         // 3. Spatial gradient (slanted midpoint)
         // A prevailing gradient that makes things generally colder towards "North-West" (negative X, positive Z)
-        float spatialGradient = (worldX - worldZ) * 0.0002f;
+        float spatialGradient = (worldX - worldZ) * 0.02f;
 
         float baseTemp = 285.15f + seasonalTempOffset + diurnalTemp + spatialGradient;
         return baseTemp;
