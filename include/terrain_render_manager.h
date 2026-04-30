@@ -103,7 +103,10 @@ namespace Boidsish {
 			GLuint           skyLUT,
 			const glm::mat4& view,
 			const glm::mat4& projection,
-			GLuint           lighting_ubo
+			GLuint           lighting_ubo,
+			float            probe_scaling = 1.0f,
+			float            probe_convergence = 1.0f,
+			int              probe_ray_multiplier = 1
 		);
 
 		/**
