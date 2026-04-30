@@ -24,7 +24,7 @@ namespace Boidsish {
 			// Lunar phase cycle — the moon's offset drifts over a ~29.5 day period
 			// creating the full → half → new → half → full cycle
 			float                  moon_phase_days = 0.0f;
-			float                  lunar_albedo = 0.12f;
+			float                  lunar_albedo = 0.005f;
 			static constexpr float kLunarMonth = 29.53f;
 		};
 
