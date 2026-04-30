@@ -66,7 +66,8 @@ namespace Boidsish {
 			const std::vector<unsigned int>& indices,
 			float                            min_y,
 			float                            max_y,
-			const glm::vec3&                 world_offset
+			const glm::vec3&                 world_offset,
+			float                            world_scale
 		);
 
 		/**
@@ -127,9 +128,9 @@ namespace Boidsish {
 		);
 
 		/**
-		 * @brief Commit any pending updates (no-op for this implementation).
+		 * @brief Commit any pending updates.
 		 */
-		void CommitUpdates() {}
+		void CommitUpdates(bool force_sync = false);
 
 		/**
 		 * @brief Set a callback to be notified when a chunk is evicted due to LRU.
@@ -191,6 +192,16 @@ namespace Boidsish {
 		 * @brief Update the global chunk grid and max height textures.
 		 */
 		void UpdateGridTextures(float world_scale, GLuint lighting_ubo = 0, GLintptr lighting_ubo_offset = 0, GLsizeiptr lighting_ubo_size = 0, float day_time = -1.0f);
+
+		/**
+		 * @brief Perform deferred terrain baking for queued chunks.
+		 */
+		void PerformBaking(float world_scale, bool force_sync = false);
+
+		/**
+		 * @brief Set the VisualEffects UBO for baking parameters.
+		 */
+		void SetVisualEffectsUbo(GLuint ubo) { visual_effects_ubo_ = ubo; }
 
 		void SetNoise(
 			GLuint simplex,
@@ -259,8 +270,10 @@ namespace Boidsish {
 		GLuint grid_vbo_ = 0;
 		GLuint grid_ebo_ = 0;
 		GLuint instance_vbo_ = 0;
-		GLuint heightmap_texture_ = 0; // GL_TEXTURE_2D_ARRAY (RGBA16F: height, normal.xyz)
-		GLuint biome_texture_ = 0;     // GL_TEXTURE_2D_ARRAY (RG8: low_idx, t)
+		GLuint raw_heightmap_texture_ = 0; // GL_TEXTURE_2D_ARRAY (RGBA16F: height, normal.xyz)
+		GLuint heightmap_texture_ = 0;     // GL_TEXTURE_2D_ARRAY (RGBA16F: baked height, baked normal)
+		GLuint baked_params_texture_ = 0;  // GL_TEXTURE_2D_ARRAY (RGBA16F: erosion, ridge, substrate, water)
+		GLuint biome_texture_ = 0;         // GL_TEXTURE_2D_ARRAY (RGBA8: low_idx, t, bake_flag, unused)
 		GLuint noise_texture_ = 0;
 		GLuint curl_texture_ = 0;
 		GLuint extra_noise_texture_ = 0;
@@ -273,17 +286,28 @@ namespace Boidsish {
 		GLuint max_height_grid_texture_ = 0; // GL_TEXTURE_2D (R32F: max_y, mips for hierarchical check)
 		GLuint terrain_data_ubo_ = 0;        // UBO for grid parameters
 		GLuint probe_ssbo_ = 0;              // SSBO for per-chunk SH probes
+		GLuint bake_ssbo_ = 0;               // SSBO for BakeTask
+		GLuint visual_effects_ubo_ = 0;      // Bound by graphics.cpp
 
 		std::unique_ptr<ComputeShader> grid_mip_shader_;
 		std::unique_ptr<ComputeShader> probe_compute_shader_;
+		std::unique_ptr<ComputeShader> terrain_bake_shader_;
 
 		// Grid mesh data
 		size_t grid_index_count_ = 0;
+
+		struct BakeTask {
+			glm::ivec2 chunk_coord;
+			int        slice;
+			int        _pad;
+		};
 
 		// Chunk management
 		std::map<std::pair<int, int>, ChunkInfo> chunks_;
 		std::vector<int>                         free_slices_; // Available texture slices
 		int                                      next_slice_ = 0;
+
+		std::vector<BakeTask> bake_queue_;
 
 		// Per-frame instance data
 		std::vector<InstanceData> visible_instances_;
@@ -291,12 +315,12 @@ namespace Boidsish {
 
 		// Camera position for LRU eviction (updated by PrepareForRender)
 		glm::vec3 last_camera_pos_{0.0f, 0.0f, 0.0f};
-		float     last_world_scale_ = 1.0f;
+		float     last_world_scale_ = -1.0f;
 
 		uint32_t frame_count_ = 0;
 
 		// Thread safety
-		mutable std::mutex mutex_;
+		mutable std::recursive_mutex mutex_;
 
 		// Grid update tracking
 		int   last_grid_origin_x_ = -999999;

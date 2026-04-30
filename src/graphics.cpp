@@ -822,6 +822,20 @@ namespace Boidsish {
 
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true)) {
 				visual_effects_pb = std::make_unique<PersistentBuffer<VisualEffectsUbo>>(GL_UNIFORM_BUFFER, 1, 3);
+				// Initialize with default values to avoid race conditions during early baking
+				VisualEffectsUbo default_vfx{};
+				default_vfx.erosion_enabled = ConfigManager::GetInstance().GetAppSettingBool("erosion_enabled", true);
+				default_vfx.erosion_strength = ConfigManager::GetInstance().GetAppSettingFloat("erosion_strength", 0.12f);
+				default_vfx.erosion_scale = ConfigManager::GetInstance().GetAppSettingFloat("erosion_scale", 0.15f);
+				default_vfx.erosion_detail = ConfigManager::GetInstance().GetAppSettingFloat("erosion_detail", 1.5f);
+				default_vfx.erosion_gully_weight = ConfigManager::GetInstance().GetAppSettingFloat("erosion_gully_weight", 0.5f);
+				default_vfx.erosion_max_dist = ConfigManager::GetInstance().GetAppSettingFloat("erosion_max_dist", 450.0f);
+				default_vfx.wind_strength = ConfigManager::GetInstance().GetAppSettingFloat("wind_strength", 0.065f);
+				default_vfx.wind_speed = ConfigManager::GetInstance().GetAppSettingFloat("wind_speed", 0.075f);
+				default_vfx.wind_frequency = ConfigManager::GetInstance().GetAppSettingFloat("wind_frequency", 0.01f);
+				for (int i = 0; i < 3; ++i) {
+					*visual_effects_pb->GetFrameDataPtr(i) = default_vfx;
+				}
 			}
 
 			shader->use();
@@ -875,6 +889,9 @@ namespace Boidsish {
 					" texture array layers, using " + std::to_string(initial_chunks)
 				);
 				terrain_render_manager = service_locator_.Get<TerrainRenderManager>();
+				if (visual_effects_pb) {
+					terrain_render_manager->SetVisualEffectsUbo(visual_effects_pb->GetBufferId());
+				}
 				terrain_generator->SetRenderManager(terrain_render_manager);
 				terrain_render_manager->SetNoise(
 					noise_manager->GetNoiseTexture(),
@@ -2219,6 +2236,9 @@ namespace Boidsish {
 
 			// Visual Effects UBO
 			if (frame_config_.effects_enabled) {
+				if (terrain_render_manager && visual_effects_pb) {
+					terrain_render_manager->SetVisualEffectsUbo(visual_effects_pb->GetBufferId());
+				}
 				VisualEffectsUbo ubo_data{};
 				for (const auto& shape : shapes) {
 					for (const auto& effect : shape->GetActiveEffects()) {
