@@ -6,12 +6,18 @@ layout(binding = 0, rgba16f) uniform image2D outIndirect;
 uniform sampler2D gDepth;
 uniform sampler2D gColor;
 uniform sampler2D gNormal;
-uniform sampler2D u_blueNoiseTexture;
+// uniform sampler2D u_blueNoiseTexture; // Defined in fast_noise.glsl
 uniform sampler2D u_hizTexture;
 uniform sampler2D uShadowMask;
 
+#define USE_TERRAIN_DATA
+
+// Forward declarations in lighting.glsl need these if USE_TERRAIN_DATA is defined
+float terrainShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) { return 1.0; }
+float calculateTerrainOcclusion(vec3 worldPos, vec3 normal) { return 1.0; }
+
 #include "temporal_data.glsl"
-#include "../lighting.glsl"
+#include "../helpers/lighting.glsl"
 
 uniform float uRadius = 2.0;
 uniform float uIntensity = 1.0;
@@ -19,8 +25,6 @@ uniform float uDistanceFalloff = 1.0;
 uniform int   uSteps = 8;
 uniform int   uRayCount = 2;
 uniform int   u_hizMipCount = 0;
-
-#define PI 3.14159265359
 
 // Simple hash functions
 float hash12(vec2 p) {
@@ -93,6 +97,7 @@ void main() {
 		float stepSize = uRadius / float(uSteps);
 		float rayDist = stepSize * jitter.x; // Jittered start
 
+		bool hit = false;
 		for (int i = 0; i < uSteps; i++) {
 			rayDist += stepSize;
 			vec3  samplePos = vPos + rayDir * rayDist;
@@ -114,6 +119,7 @@ void main() {
 				float thickness = 0.5 * worldScale; // Heuristic
 				if (samplePos.z > sampledPos.z - thickness) {
 					// Hit!
+					hit = true;
 					vec3 radiance = texture(gColor, offsetUV).rgb;
 					vec3 hitNormal = texture(gNormal, offsetUV).xyz;
 
@@ -132,6 +138,19 @@ void main() {
 					break;
 				}
 			}
+		}
+
+		if (!hit) {
+			// Fallback to SH probe if no hit or off-screen
+			vec3 worldRayDir = mat3(invView) * rayDir;
+			vec3 worldPos = (invView * vec4(vPos, 1.0)).xyz;
+
+			vec3  ambient = getSpatialAmbientSH(worldPos, worldRayDir);
+			float cosTheta = max(0.0, dot(rayDir, vNorm));
+
+			// Weight fallback by cosine to maintain consistency with hemisphere sampling
+			// Using a slightly lower weight as it's a low-frequency approximation
+			indirect += ambient * cosTheta * 0.5;
 		}
 	}
 
