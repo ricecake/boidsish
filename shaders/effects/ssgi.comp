@@ -83,7 +83,7 @@ void main() {
 	}
 
 	// Blue noise for dithering
-	vec2  bnUV = (vec2(pixel) + vec2(frameIndex * 13, frameIndex * 7)) / 256.0;
+	vec2  bnUV = (vec2(pixel) + vec2(frameIndex * 2, frameIndex * 3));// / 8.0;
 	vec4  bn = texture(u_blueNoiseTexture, bnUV);
 
 	vec3 indirect = vec3(0.0);
@@ -150,7 +150,7 @@ void main() {
 
 			// Weight fallback by cosine to maintain consistency with hemisphere sampling
 			// Using a slightly lower weight as it's a low-frequency approximation
-			indirect += ambient * cosTheta * 0.5;
+			indirect += ambient * cosTheta * 0.1;
 		}
 	}
 
