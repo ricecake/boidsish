@@ -258,6 +258,18 @@ namespace Boidsish {
 			return PhysicallyBasedWeatherOutput{};
 		}
 
+		void InjectPressure(const glm::vec3& pos, float pressureHpa, float burstStrength) {
+			if (lbm_simulator_) lbm_simulator_->InjectPressure(pos, pressureHpa, burstStrength);
+		}
+
+		void InjectAerosol(const glm::vec3& pos, float concentration) {
+			if (lbm_simulator_) lbm_simulator_->InjectAerosol(pos, concentration);
+		}
+
+		void InjectTemperature(const glm::vec3& pos, float temperatureK) {
+			if (lbm_simulator_) lbm_simulator_->InjectTemperature(pos, temperatureK);
+		}
+
 		void UpdateWindUbo(float totalTime);
 
 		void SetTerrainGenerator(ITerrainGenerator* terrain) { terrain_ = terrain; }
