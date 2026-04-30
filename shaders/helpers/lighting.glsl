@@ -444,6 +444,30 @@ vec3 fresnelSchlickRoughness(float cosTheta, vec3 F0, float roughness) {
 	return F0 + (max(vec3(1.0 - roughness), F0) - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
 }
 
+vec3 fresnelSchlickFast(float cosTheta, vec3 F0) {
+    float f = clamp(1.0 - cosTheta, 0.0, 1.0);
+    float f5 = exp2((-5.55473 * f - 6.98316) * f);
+    return F0 + (1.0 - F0) * f5;
+}
+
+vec3 fresnelSchlickRoughnessFast(float cosTheta, vec3 F0, float roughness) {
+    float f = clamp(1.0 - cosTheta, 0.0, 1.0);
+    float f5 = exp2((-5.55473 * f - 6.98316) * f);
+    return F0 + (max(vec3(1.0 - roughness), F0) - F0) * f5;
+}
+
+// Replaces both Geometry functions AND the BRDF denominator
+float VisibilitySmithGGXCorrelated(float NdotL, float NdotV, float roughness) {
+	// Note: 'roughness' here should be the remapped alpha (roughness^2)
+	// for perceptual linearity, matching your NDF's 'a'
+	float a2 = roughness * roughness;
+
+	float lambdaV = NdotL * sqrt((NdotV - a2 * NdotV) * NdotV + a2);
+	float lambdaL = NdotV * sqrt((NdotL - a2 * NdotL) * NdotL + a2);
+
+	return 0.5 / max(lambdaV + lambdaL, 0.0001);
+}
+
 // ============================================================================
 // Attenuation Helpers for Light Types
 // ============================================================================
@@ -530,18 +554,17 @@ void evaluate_brdf(
     vec3 N, vec3 V, vec3 L, vec3 albedo, float roughness, float metallic, vec3 F0,
     vec3 radiance, float shadow, inout vec3 Lo, inout float spec_lum)
 {
-    float NdotL = dot(N, L);
-    if (NdotL <= 0.0) return; // Early-out: Light is behind the fragment
+    float NdotL = max(dot(N, L), 0.0);
+    if (NdotL <= 0.0) return; // Early out
 
+    float NdotV = max(dot(N, V), 1e-4);
     vec3 H = normalize(V + L);
+    float HdotV = max(dot(H, V), 0.0);
 
     float NDF = DistributionGGX(N, H, roughness);
-    float G   = GeometrySmith(N, V, L, roughness);
-    vec3  F   = fresnelSchlick(max(dot(H, V), 0.0), F0);
-
-    vec3  numerator = NDF * G * F;
-    float denominator = 4.0 * max(dot(N, V), 0.0) * NdotL + 0.0001;
-    vec3  specular = numerator / denominator;
+    float V_term = VisibilitySmithGGXCorrelated(NdotL, NdotV, roughness);
+    vec3 F = fresnelSchlickFast(HdotV, F0);
+    vec3 specular = NDF * V_term * F;
 
     vec3 kS = F;
     vec3 kD = vec3(1.0) - kS;
@@ -552,7 +575,6 @@ void evaluate_brdf(
     Lo += (kD * albedo / PI) * radiance * NdotL * shadow + specular_radiance;
     spec_lum += get_luminance(specular_radiance);
 }
-
 
 /**
  * PBR lighting with Cook-Torrance BRDF - supports all light types.
