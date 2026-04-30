@@ -20,21 +20,13 @@ uniform float u_time;
 uniform vec3  u_biomeAlbedos[8];
 #include "helpers/fast_noise.glsl"
 #include "helpers/noise.glsl"
+#include "particle_helpers.glsl"
 
 // Robust polynomial fit for HDR-friendly fire
 vec3 blackbody_hdr(float t) {
-	vec3 col;
-	// Red kicks in immediately and saturates quickly
-	col.r = smoothstep(0.0, 0.2, t);
-
-	// Green starts earlier for more orange and yellow
-	col.g = smoothstep(0.02, 0.4, t);
-
-	// Blue for the core hot spot
-	col.b = smoothstep(0.3, 0.8, t);
-
-	// Hollywood stunt fire: Rich orange/yellow boost
-	return col * vec3(8.0, 2.5, 1.5);
+	// Map t [0, 1] to Kelvin [800, 3500]
+	float temp = mix(800.0, 3500.0, t);
+	return blackbody(temp);
 }
 
 float turbulence(vec2 p) {
@@ -110,15 +102,28 @@ void main() {
 		float maxLife = (v_style == STYLE_EXPLOSION) ? kExplosionLifetime : kFireLifetime;
 		float distFromEpicenter = length(v_pos.xyz - v_origin);
 		float normalizedLife = clamp(v_lifetime / maxLife, 0.0, 1.0);
-		float roilScale = (v_style == STYLE_EXPLOSION) ? 0.015 : 0.03;
-		float roil = fastFbm3d(v_pos.xyz * roilScale - vec3(0.0, u_time * 0.1, 0.0)) * 0.5 + 0.5;
-		float worleyScale = (v_style == STYLE_EXPLOSION) ? 0.05 : 0.1;
-		float knobly = fastWorley3d(v_pos.xyz * worleyScale * (1.0 + distFromEpicenter * 0.03) + vec3(u_time * 0.05));
-		float noiseDetail = mix(roil, knobly, abs(fastSimplex3d(vec3(0, u_time, 0))));
-		noiseDetail = mix(noiseDetail, noiseDetail * (fastSimplex3d(vec3(gl_PointCoord * 0.4, u_time * 0.05)) * 0.5 + 0.5), 0.35);
-		float heat = normalizedLife * pow(noiseDetail, 1.4) * pow(max(0.0, 1.0 - (distSq * 4.0)), 0.7) * ((v_style == STYLE_EXPLOSION) ? smoothstep(80.0, 0.0, distFromEpicenter) : 1.0);
-		alpha = shapeMask * smoothstep(0.01, 0.12, heat) * turbulence(gl_PointCoord);
-		color = blackbody_hdr(heat) * alpha * 12.0 * (1.0 + normalizedLife);
+
+		if (v_style == STYLE_EXPLOSION) {
+			// Physics-based explosion rendering
+			color = v_p.color.rgb;
+			float intensity = v_p.origin.w;
+
+			float noiseDetail = fastFbm3d(v_pos.xyz * 0.02 - vec3(0.0, u_time * 0.1, 0.0)) * 0.5 + 0.5;
+			noiseDetail *= fastWorley3d(v_pos.xyz * 0.05 + vec3(u_time * 0.05));
+
+			alpha = shapeMask * smoothstep(0.1, 0.5, normalizedLife * noiseDetail);
+			color *= alpha * intensity * 15.0;
+		} else {
+			float roilScale = 0.03;
+			float roil = fastFbm3d(v_pos.xyz * roilScale - vec3(0.0, u_time * 0.1, 0.0)) * 0.5 + 0.5;
+			float worleyScale = 0.1;
+			float knobly = fastWorley3d(v_pos.xyz * worleyScale * (1.0 + distFromEpicenter * 0.03) + vec3(u_time * 0.05));
+			float noiseDetail = mix(roil, knobly, abs(fastSimplex3d(vec3(0, u_time, 0))));
+			noiseDetail = mix(noiseDetail, noiseDetail * (fastSimplex3d(vec3(gl_PointCoord * 0.4, u_time * 0.05)) * 0.5 + 0.5), 0.35);
+			float heat = normalizedLife * pow(noiseDetail, 1.4) * pow(max(0.0, 1.0 - (distSq * 4.0)), 0.7);
+			alpha = shapeMask * smoothstep(0.01, 0.12, heat) * turbulence(gl_PointCoord);
+			color = blackbody_hdr(heat) * alpha * 12.0 * (1.0 + normalizedLife);
+		}
 	}
 
 	FragColor = vec4(color, alpha);

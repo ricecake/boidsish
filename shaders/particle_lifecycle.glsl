@@ -288,7 +288,8 @@ void spawnAmbientParticle(
 					gridSize,
 					curlTexture,
 					num_chunks,
-					heightmapArray
+					heightmapArray,
+					gid
 				);
 			}
 		}

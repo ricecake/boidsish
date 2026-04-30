@@ -104,16 +104,82 @@ void updateRocketTrail(inout Particle p, float dt) {
 	p.origin.w = 2.0; // Intensity
 }
 
-void updateExplosion(inout Particle p, float dt, float time, sampler3D curlTexture) {
-	p.vel.xyz -= p.vel.xyz * kExplosionDrag * dt;
+void updateExplosion(
+	inout Particle p,
+	float          dt,
+	float          time,
+	sampler3D      curlTexture,
+	uint           gid,
+	float          cellSize,
+	uint           gridSize
+) {
+	float normLife = clamp(p.pos.w / kExplosionLifetime, 0.0, 1.0);
+	float temperature = mix(800.0, 3500.0, pow(normLife, 0.5));
+
+	// 1. Atmospheric Drag
+	float dragFactor = kExplosionDrag * (1.0 + (1.0 - normLife) * 2.0);
+	p.vel.xyz -= p.vel.xyz * dragFactor * dt;
+
+	// 2. Buoyancy (Hot air rises)
+	float buoyancy = (temperature - 800.0) * 0.005;
+	p.vel.y += buoyancy * dt;
+
+	// 3. Expansion (Size grows as it cools and spreads)
+	p.vel.w = mix(60.0, 15.0, normLife); // Start hot/small-ish, expand, then fade
+
+	// Existing curl noise for some randomness
 	float dist = distance(p.pos.xyz, p.origin.xyz);
 	float curlInfluence = smoothstep(5.0, 30.0, dist) + smoothstep(5, 1, length(p.vel.xyz) * kExplosionDrag * dt);
 	p.vel.xyz += curlNoise(p.pos.xyz, time, curlTexture) * curlInfluence * 15.0 * dt;
 
-	float normLife = clamp(p.pos.w / kExplosionLifetime, 0.0, 1.0);
-	p.vel.w = (1.0 - (1.0 - normLife) * (1.0 - normLife)) * 60.0;
-	p.color = vec4(1.0, 0.9, 0.5, normLife);
-	p.origin.w = 5.0 * normLife;
+	// 4. Vorticity Confinement
+	vec3  vorticity = vec3(0.0);
+	vec3  vorticityGrad = vec3(0.0);
+	float totalWeight = 0.0;
+
+	for (int x = -1; x <= 1; x++) {
+		for (int y = -1; y <= 1; y++) {
+			for (int z = -1; z <= 1; z++) {
+				uint cellIdx = get_cell_idx(p.pos.xyz + vec3(x, y, z) * cellSize, cellSize, gridSize);
+				int  otherIdx = grid_heads[cellIdx];
+				int  safety = 0;
+				while (otherIdx != -1 && safety < 50) {
+					if (otherIdx != int(gid)) {
+						Particle otherP = particles[otherIdx];
+						if (otherP.style == STYLE_EXPLOSION) {
+							vec3  diff = otherP.pos.xyz - p.pos.xyz;
+							float distSq = dot(diff, diff);
+							if (distSq < cellSize * cellSize && distSq > 0.001) {
+								float weight = 1.0 - sqrt(distSq) / cellSize;
+								vec3  relVel = otherP.vel.xyz - p.vel.xyz;
+								vorticity += cross(diff, relVel) * weight;
+								totalWeight += weight;
+							}
+						}
+					}
+					otherIdx = grid_next[otherIdx];
+					safety++;
+				}
+			}
+		}
+	}
+
+	if (totalWeight > 0.0) {
+		vorticity /= totalWeight;
+		float omega = length(vorticity);
+		if (omega > 0.001) {
+			// Approximate gradient of vorticity magnitude
+			vec3 N = normalize(vorticity);
+			vorticityGrad = cross(N, vec3(0, 1, 0)); // Very rough approximation for toroidal swirl
+			vec3 confinementForce = cross(vorticityGrad, vorticity) * 0.5;
+			p.vel.xyz += confinementForce * dt;
+		}
+	}
+
+	// 5. Color and Intensity (Blackbody driven)
+	p.color.rgb = blackbody(temperature);
+	p.color.a = normLife;
+	p.origin.w = (temperature / 1000.0) * normLife * 2.0;
 }
 
 void updateFire(inout Particle p, float dt, float time) {
@@ -339,7 +405,8 @@ void updateAmbientParticle(
 	uint           gridSize,
 	sampler3D      curlTexture,
 	int            num_chunks,
-	sampler2DArray heightmapArray
+	sampler2DArray heightmapArray,
+	uint           gid
 ) {
 	float maxSpeed = 2.0;
 
@@ -396,14 +463,17 @@ void updateFireBehavior(
 	float          time,
 	sampler3D      curlTexture,
 	int            num_chunks,
-	sampler2DArray heightmapArray
+	sampler2DArray heightmapArray,
+	uint           gid,
+	float          cellSize,
+	uint           gridSize
 ) {
 	float maxSpeed = 10.0;
 	if (p.style == STYLE_ROCKET_TRAIL) {
 		updateRocketTrail(p, dt);
 		maxSpeed = kExhaustSpeed;
 	} else if (p.style == STYLE_EXPLOSION) {
-		updateExplosion(p, dt, time, curlTexture);
+		updateExplosion(p, dt, time, curlTexture, gid, cellSize, gridSize);
 		maxSpeed = kExplosionSpeed;
 	} else if (p.style == STYLE_FIRE) {
 		updateFire(p, dt, time);
@@ -454,7 +524,8 @@ void updateBehavior(
 	uint           gridSize,
 	sampler3D      curlTexture,
 	int            num_chunks,
-	sampler2DArray heightmapArray
+	sampler2DArray heightmapArray,
+	uint           gid
 ) {
 	if (p.emitter_id == -1) {
 		updateAmbientParticle(
@@ -467,12 +538,13 @@ void updateBehavior(
 			gridSize,
 			curlTexture,
 			num_chunks,
-			heightmapArray
+			heightmapArray,
+			gid
 		);
 	} else if (p.emitter_id == -2) {
 		updatePrecipitationBehavior(p, dt, time, num_chunks, heightmapArray);
 	} else {
-		updateFireBehavior(p, dt, time, curlTexture, num_chunks, heightmapArray);
+		updateFireBehavior(p, dt, time, curlTexture, num_chunks, heightmapArray, gid, cellSize, gridSize);
 	}
 }
 
