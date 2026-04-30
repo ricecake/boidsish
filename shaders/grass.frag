@@ -67,12 +67,18 @@ void main() {
 
     vec3 albedo = mix(biomeProps[fBiomeIdx].colorBottom.rgb, biomeProps[fBiomeIdx].colorTop.rgb, fHeightFactor);
     float ao = smoothstep(0.0, 0.5, fHeightFactor) * smoothstep(0.0, 0.25, biomeProps[fBiomeIdx].density);
+    float dist = length(fWorldPos.xz - viewPos.xz);
 
     // Add some random variability
     uint seed = uint(abs(fWorldPos.x) * 10.0) ^ uint(abs(fWorldPos.z) * 10.0);
     float var = hash(seed) * biomeProps[fBiomeIdx].colorVariability;
     albedo += (var * 2.0 - 1.0) * 0.15;
     albedo = max(vec3(0.0), albedo); // Clamp to prevent negative color artifacts
+
+    albedo = mix(albedo, albedo * 10.50, smoothstep(0.5, 1.0, fTexCoords.y) * smoothstep(25, 50, dist));// * dist;
+
+    albedo *= smoothstep(0.05, 0.25, length(fTexCoords.x)) * smoothstep(0.95, 0.75, length(fTexCoords.x));
+
 
     // Normal handling for 2D primitives
     vec3 N = normalize(fNormal);
@@ -83,7 +89,6 @@ void main() {
     litColor.rgb = clamp(litColor.rgb, 0.0, 5.0); // Clamp HDR to prevent "bright white" blowouts
 
     // Distance fade and distant cyan blend (matching terrain style)
-    float dist = length(fWorldPos.xz - viewPos.xz);
     float fade_start = 560.0 * worldScale;
     float fade_end = 570.0 * worldScale;
     float fade = 1.0 - smoothstep(fade_start, fade_end, dist);

@@ -77,12 +77,16 @@ void main() {
     float width = instances[idx].scale_seed_biome.y;
     uint seed = uint(instances[idx].scale_seed_biome.z);
     int biomeIdx = int(instances[idx].scale_seed_biome.w);
+    float dist = distance(viewPos, basePos);
 
     float v = gl_TessCoord.y; // along blade (0 to 1)
     float u = gl_TessCoord.x * 2.0 - 1.0; // across blade (-1 to 1)
 
+    width += 5 * width * v * smoothstep(25, 75, dist);
+
     // Wind
-    vec3 windNoise = getWindAtPosition(basePos);
+    float distanceFade = smoothstep(100, 50, dist);
+    vec3 windNoise =  distanceFade > 0? distanceFade * getWindAtPosition(basePos) : vec3(0);
     float windStrength = length(windNoise) * biomeProps[biomeIdx].windInfluence * globalProps.windMultiplier;
 
     // --- Combined Deflection ---
@@ -90,7 +94,7 @@ void main() {
     vec3 windDir = (length(windNoise) > 0.001) ? normalize(vec3(windNoise.x, 0.0, windNoise.z)) : vec3(1.0, 0.0, 0.0);
 
     // 1. Wind-driven bend
-    float maxDeflection = 1.1; // Allow more deflection for high-speed macro wind
+    float maxDeflection = 1.3; // Allow more deflection for high-speed macro wind
     // wind_strength (0.01-0.5) * windAtPos (0-40) ~ 0-20.
     // We scale this to a reasonable radian angle. Increase multiplier for visibility.
     float resistedwindStrength = maxDeflection * tanh(windStrength * 0.15 / maxDeflection);
@@ -150,7 +154,7 @@ void main() {
     mat2 rotMat = mat2(c, s, -s, c);
 
     // Horizontal offset across the blade
-    vec2 localXZ = vec2(u * width * 0.5 * (1.0 - v * v), 0.0); // Parabolic taper
+    vec2 localXZ = vec2(u * width * 0.5 * mix(1.0, 0.10, v * v), 0.0); // Parabolic taper
     localXZ = rotMat * localXZ;
 
     // Final World Position
