@@ -15,14 +15,7 @@ namespace Boidsish {
 			shader_ = std::make_unique<Shader>("shaders/postprocess.vert", "shaders/effects/glitch.frag");
 		}
 
-		void GlitchEffect::Apply(
-			GLuint sourceTexture,
-			GLuint depthTexture,
-			GLuint /* velocityTexture */,
-			const glm::mat4& viewMatrix,
-			const glm::mat4& projectionMatrix,
-			const glm::vec3& cameraPos
-		) {
+		void GlitchEffect::Apply(GLuint sourceTexture, GLuint depthTexture, GLuint velocityTexture, GLuint normalTexture, const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix, const glm::vec3& cameraPos) {
 			shader_->use();
 			shader_->setInt("sceneTexture", 0);
 			shader_->setFloat("time", time_);

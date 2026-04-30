@@ -56,6 +56,8 @@ namespace Boidsish {
 
 		GLuint GetVelocityTexture() const { return velocity_tex_; }
 
+		GLuint GetNormalTexture() const { return normal_tex_; }
+
 		GLuint GetRefractionTexture() const { return refraction_tex_; }
 
 		GLuint GetBlitVAO() const { return blit_vao_; }
@@ -64,6 +66,7 @@ namespace Boidsish {
 		GLuint main_fbo_ = 0;
 		GLuint color_tex_ = 0;
 		GLuint velocity_tex_ = 0;
+		GLuint normal_tex_ = 0;
 		GLuint depth_tex_ = 0;
 		GLuint refraction_tex_ = 0;
 

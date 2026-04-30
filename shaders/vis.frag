@@ -2,6 +2,7 @@
 #extension GL_GOOGLE_include_directive : enable
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec2 Velocity;
+layout(location = 2) out vec3 NormalOut;
 
 #include "common_uniforms.glsl"
 #include "temporal_data.glsl"
@@ -72,6 +73,8 @@ uniform int   use_texture;
 uniform float u_windRimHighlight;
 
 uniform sampler2D refractionTexture;
+
+uniform mat4 view;
 
 void main() {
 	bool  use_ssbo = uUseMDI && vUniformIndex >= 0;
@@ -337,4 +340,7 @@ void main() {
 	vec2 a = (CurPosition.xy / CurPosition.w) * 0.5 + 0.5;
 	vec2 b = (PrevPosition.xy / PrevPosition.w) * 0.5 + 0.5;
 	Velocity = a - b;
+
+	// Output view-space normal
+	NormalOut = normalize(mat3(view) * norm);
 }

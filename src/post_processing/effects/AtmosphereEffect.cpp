@@ -102,14 +102,7 @@ namespace Boidsish {
 			has_valid_history_ = false;
 		}
 
-		void AtmosphereEffect::Apply(
-			GLuint sourceTexture,
-			GLuint depthTexture,
-			GLuint /* velocityTexture */,
-			const glm::mat4& viewMatrix,
-			const glm::mat4& projectionMatrix,
-			const glm::vec3& /* cameraPos */
-		) {
+		void AtmosphereEffect::Apply(GLuint sourceTexture, GLuint depthTexture, GLuint velocityTexture, GLuint normalTexture, const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix, const glm::vec3& cameraPos) {
 			// Re-bind the previous framebuffer (which was the target for this effect)
 			// We MUST bind it back if we changed it.
 			// Save the current FBO before changing it.

@@ -50,6 +50,7 @@
 #include "post_processing/effects/OpticalFlowEffect.h"
 #include "post_processing/effects/SdfVolumeEffect.h"
 #include "post_processing/effects/StrobeEffect.h"
+#include "post_processing/effects/SsgiEffect.h"
 #include "post_processing/effects/SuperSpeedEffect.h"
 #include "post_processing/effects/TimeStutterEffect.h"
 #include "post_processing/effects/ToneMappingEffect.h"
@@ -973,6 +974,13 @@ namespace Boidsish {
 				auto gtao_effect = std::make_shared<PostProcessing::GtaoEffect>();
 				gtao_effect->SetEnabled(true);
 				post_processing_manager_->AddEffect(gtao_effect);
+
+				auto ssgi_effect = std::make_shared<PostProcessing::SsgiEffect>();
+				ssgi_effect->SetEnabled(true);
+				if (noise_manager) {
+					ssgi_effect->SetNoiseTextures(noise_manager->GetBlueNoiseTexture());
+				}
+				post_processing_manager_->AddEffect(ssgi_effect);
 
 				auto sss_effect = std::make_shared<PostProcessing::ScreenSpaceShadowEffect>();
 				sss_effect->SetEnabled(true);
@@ -2161,14 +2169,6 @@ namespace Boidsish {
 			current_view_matrix = SetupMatrices();
 			glm::mat4 current_vp = projection * current_view_matrix;
 
-			// Save previous frame's VP for Hi-Z reprojection (before we overwrite it)
-			glm::mat4 hiz_prev_vp = prev_view_projection;
-
-			// Generate Hi-Z pyramid from previous frame's depth buffer
-			if (hiz_manager && hiz_manager->IsInitialized() && enable_hiz_culling_ && frame_count_ > 0 && compositor_) {
-				hiz_manager->GeneratePyramid(compositor_->GetDepthTexture());
-			}
-
 			// Update Temporal UBO for motion blur and reprojection
 			TemporalUbo temporal_data;
 			temporal_data.viewProjection = current_vp;
@@ -2552,6 +2552,21 @@ namespace Boidsish {
 		void RenderOpaqueScene(const FrameData& frame) {
 			if (opaque_pass_ && compositor_) {
 				opaque_pass_->Execute(frame, *compositor_, render_scale, MakeRenderCallbacks(frame));
+
+				// Generate Hi-Z pyramid from current depth buffer after opaque pass
+				// so it's available for screen-space effects like SSGI or culling in the same frame
+				if (hiz_manager && hiz_manager->IsInitialized() && frame_count_ > 0) {
+					hiz_manager->GeneratePyramid(compositor_->GetDepthTexture());
+
+					// Update SSGI with current Hi-Z
+					if (post_processing_manager_) {
+						for (auto& effect : post_processing_manager_->GetPreToneMappingEffects()) {
+							if (auto ssgi = std::dynamic_pointer_cast<PostProcessing::SsgiEffect>(effect)) {
+								ssgi->SetHiZTexture(hiz_manager->GetHiZTexture(), hiz_manager->GetMipCount());
+							}
+						}
+					}
+				}
 			}
 		}
 

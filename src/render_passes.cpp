@@ -93,7 +93,8 @@ namespace Boidsish {
 			compositor.GetColorTexture(),
 			compositor.GetMainFBO(),
 			compositor.GetDepthTexture(),
-			compositor.GetVelocityTexture()
+			compositor.GetVelocityTexture(),
+			compositor.GetNormalTexture()
 		);
 		post_fx_.ApplyEarlyEffects(frame.view, frame.projection, frame.camera_pos, frame.simulation_time);
 

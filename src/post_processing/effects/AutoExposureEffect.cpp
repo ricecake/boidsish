@@ -37,14 +37,7 @@ namespace Boidsish {
 			glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 		}
 
-		void AutoExposureEffect::Apply(
-			GLuint sourceTexture,
-			GLuint /* depthTexture */,
-			GLuint /* velocityTexture */,
-			const glm::mat4& /* viewMatrix */,
-			const glm::mat4& /* projectionMatrix */,
-			const glm::vec3& /* cameraPos */
-		) {
+		void AutoExposureEffect::Apply(GLuint sourceTexture, GLuint depthTexture, GLuint velocityTexture, GLuint normalTexture, const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix, const glm::vec3& cameraPos) {
 			// Update SSBO with latest parameters
 			struct ExposureData {
 				float adaptedLuminance;

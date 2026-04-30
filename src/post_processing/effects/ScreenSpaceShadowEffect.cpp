@@ -59,14 +59,7 @@ namespace Boidsish {
 			glBindTexture(GL_TEXTURE_2D, 0);
 		}
 
-		void ScreenSpaceShadowEffect::Apply(
-			GLuint sourceTexture,
-			GLuint depthTexture,
-			GLuint velocityTexture,
-			const glm::mat4& /* viewMatrix */,
-			const glm::mat4& /* projectionMatrix */,
-			const glm::vec3& /* cameraPos */
-		) {
+		void ScreenSpaceShadowEffect::Apply(GLuint sourceTexture, GLuint depthTexture, GLuint velocityTexture, GLuint normalTexture, const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix, const glm::vec3& cameraPos) {
 			if (!sss_shader_ || !sss_shader_->isValid())
 				return;
 
