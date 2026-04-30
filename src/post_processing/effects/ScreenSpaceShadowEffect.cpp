@@ -74,6 +74,10 @@ namespace Boidsish {
 			glBindTexture(GL_TEXTURE_2D, depthTexture);
 			sss_shader_->setInt("uDepth", 0);
 
+			glActiveTexture(GL_TEXTURE2);
+			glBindTexture(GL_TEXTURE_2D, normalTexture);
+			sss_shader_->setInt("uNormal", 2);
+
 			if (blue_noise_texture_) {
 				glActiveTexture(GL_TEXTURE1);
 				glBindTexture(GL_TEXTURE_2D, blue_noise_texture_);

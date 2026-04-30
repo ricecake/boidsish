@@ -26,7 +26,7 @@ void main() {
 	float shadowAdjustment = combinedShadow / max(traditionalShadow, 0.01);
 
 	// Apply intensity mix
-	float shadowFactor = mix(1.0, shadowAdjustment, uIntensity);
+	float shadowFactor = mix(1.0, shadowAdjustment, uIntensity * (1.0 - sssFactor));
 
 	FragColor = vec4(sceneColor.rgb * shadowFactor, sceneColor.a);
 }
