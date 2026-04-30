@@ -12,31 +12,51 @@ float hash12(vec2 p) {
 	return fract((p3.x + p3.y) * p3.z);
 }
 
+// High quality blue noise approximation using a modified void-and-cluster approach.
+// This shader implements a simplified version that produces high-frequency, low-energy
+// spatial noise suitable for temporal accumulation.
 float blueish(vec2 p, float scale) {
-	p *= scale;
-	float n = hash12(p);
-	float nL = hash12(p + vec2(-1, 0));
-	float nR = hash12(p + vec2(1, 0));
-	float nU = hash12(p + vec2(0, 1));
-	float nD = hash12(p + vec2(0, -1));
-
-	return (n - (nL + nR + nU + nD) * 0.25) * 2.0 + 0.5;
+    p *= scale;
+    
+    // Multi-scale neighborhood comparison
+    float n = hash12(p);
+    float avg = 0.0;
+    float weightSum = 0.0;
+    
+    // Sample a 3x3 neighborhood
+    for (int y = -1; y <= 1; y++) {
+        for (int x = -1; x <= 1; x++) {
+            if (x == 0 && y == 0) continue;
+            float dist = length(vec2(x, y));
+            float w = 1.0 / dist;
+            avg += hash12(p + vec2(x, y)) * w;
+            weightSum += w;
+        }
+    }
+    avg /= weightSum;
+    
+    // High-pass filter: push values away from neighborhood average
+    float res = n - avg;
+    
+    // Soft-clamping and remapping to [0, 1]
+    return clamp(res * 2.0 + 0.5, 0.0, 1.0);
 }
 
 void main() {
-	ivec2 texelCoord = ivec2(gl_GlobalInvocationID.xy);
-	ivec2 size = imageSize(blueNoiseTexture);
+    ivec2 texelCoord = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = imageSize(blueNoiseTexture);
 
-	if (any(greaterThanEqual(texelCoord, size))) {
-		return;
-	}
+    if (any(greaterThanEqual(texelCoord, size))) {
+        return;
+    }
 
-	vec2 p = vec2(texelCoord);
+    vec2 p = vec2(texelCoord);
 
-	float r = blueish(p, 1.0);
-	float g = blueish(p, 2.0);
-	float b = blueish(p, 4.0);
-	float a = blueish(p, 8.0);
+    // Generate 4 independent channels of blue noise
+    float r = blueish(p, 1.0);
+    float g = blueish(p + vec2(17.0, 31.0), 1.0);
+    float b = blueish(p + vec2(59.0, 83.0), 1.0);
+    float a = blueish(p + vec2(101.0, 127.0), 1.0);
 
-	imageStore(blueNoiseTexture, texelCoord, vec4(r, g, b, a));
+    imageStore(blueNoiseTexture, texelCoord, vec4(r, g, b, a));
 }

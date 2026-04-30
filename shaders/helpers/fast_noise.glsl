@@ -19,33 +19,33 @@ uniform sampler2D u_phasorTexture;
 
 // R: Simplex 3D
 float fastSimplex3d(vec3 p) {
-	return texture(u_noiseTexture, p).r * 2.0 - 1.0;
+	return textureLod(u_noiseTexture, p, 0.0).r * 2.0 - 1.0;
 }
 
 // G: Worley 3D
 float fastWorley3d(vec3 p) {
-	return texture(u_noiseTexture, p).g;
+	return textureLod(u_noiseTexture, p, 0.0).g;
 }
 
 // B: FBM 3D
 float fastFbm3d(vec3 p) {
-	return texture(u_noiseTexture, p).b * 2.0 - 1.0;
+	return textureLod(u_noiseTexture, p, 0.0).b * 2.0 - 1.0;
 }
 
 // A: Warped FBM 3D
 float fastWarpedFbm3d(vec3 p) {
-	return texture(u_noiseTexture, p).a * 2.0 - 1.0;
+	return textureLod(u_noiseTexture, p, 0.0).a * 2.0 - 1.0;
 }
 
 // Extra Noises (from u_extraNoiseTexture)
 // R: Ridge 3D
 float fastRidge3d(vec3 p) {
-	return texture(u_extraNoiseTexture, p).r;
+	return textureLod(u_extraNoiseTexture, p, 0.0).r;
 }
 
 // G: Gradient 3D
 float fastGradient3d(vec3 p) {
-	return texture(u_extraNoiseTexture, p).g * 2.0 - 1.0;
+	return textureLod(u_extraNoiseTexture, p, 0.0).g * 2.0 - 1.0;
 }
 
 // Multi-octave texture FBM
@@ -53,7 +53,7 @@ float fastTextureFbm(vec3 p, int octaves) {
 	float value = 0.0;
 	float amplitude = 0.5;
 	for (int i = 0; i < octaves; i++) {
-		value += amplitude * (texture(u_noiseTexture, p).r * 2.0 - 1.0);
+		value += amplitude * (textureLod(u_noiseTexture, p, 0.0).r * 2.0 - 1.0);
 		p *= 2.0;
 		amplitude *= 0.5;
 	}
@@ -62,17 +62,17 @@ float fastTextureFbm(vec3 p, int octaves) {
 
 // Curl Noise lookup
 vec3 fastCurl3d(vec3 p) {
-	return texture(u_curlTexture, p).rgb;
+	return textureLod(u_curlTexture, p, 0.0).rgb;
 }
 
 // FBM Curl magnitude lookup
 float fastFbmCurl3d(vec3 p) {
-	return texture(u_curlTexture, p).a;
+	return textureLod(u_curlTexture, p, 0.0).a;
 }
 
 // Blue Noise lookups (at different frequencies)
 float fastBlueNoise(vec2 uv, int frequencyIndex) {
-	vec4 bn = texture(u_blueNoiseTexture, uv);
+	vec4 bn = textureLod(u_blueNoiseTexture, uv, 0.0);
 	if (frequencyIndex == 0)
 		return bn.r;
 	if (frequencyIndex == 1)
@@ -83,7 +83,29 @@ float fastBlueNoise(vec2 uv, int frequencyIndex) {
 }
 
 float fastBlueNoise(vec2 uv) {
-	return texture(u_blueNoiseTexture, uv).r;
+	return textureLod(u_blueNoiseTexture, uv, 0.0).r;
+}
+
+// Spatiotemporal Blue Noise lookup using golden ratio shift
+// Useful for Monte Carlo integration across frames
+float fastSpatiotemporalBlueNoise(vec2 uv, int frequencyIndex, int frameIndex) {
+    float bn = fastBlueNoise(uv, frequencyIndex);
+    // Golden ratio = 0.61803398875
+    return fract(bn + float(frameIndex) * 0.61803398875);
+}
+
+// float fastSpatiotemporalBlueNoise(vec2 uv, int frameIndex) {
+// 	return fastSpatiotemporalBlueNoise(uv, 0, frameIndex);
+// }
+
+vec4 fastSpatiotemporalBlueNoise(vec2 uv, int frameIndex) {
+	ivec2 bnSize = textureSize(u_blueNoiseTexture, 0);
+	vec2 bnUV = (uv + vec2(frameIndex * 13, frameIndex * 7)) / vec2(bnSize);
+	vec4 bn = textureLod(u_blueNoiseTexture, bnUV, 0.0);
+    // float bn = fastBlueNoise(uv, frequencyIndex);
+    // Golden ratio = 0.61803398875
+    // return fract(bn + vec4(2.0*sin(frameIndex*0.5)  * 0.61803398875));
+    return fract(bn + vec4(frameIndex)  * 0.61803398875);
 }
 
 /**
@@ -92,7 +114,7 @@ float fastBlueNoise(vec2 uv) {
  * Returns the real part of the resulting complex number.
  */
 float fastPhasor2d(vec2 uv, float runtimePhase) {
-	vec2 baked = texture(u_phasorTexture, uv).rg;
+	vec2 baked = textureLod(u_phasorTexture, uv, 0.0).rg;
 
 	// Complex multiplication: (R_baked + i*I_baked) * (cos(phi) + i*sin(phi))
 	// Result real part = R_baked * cos(phi) - I_baked * sin(phi)
