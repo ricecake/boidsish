@@ -214,7 +214,7 @@ void main() {
 			}
 		}
 
-		if (!hit) {
+		if (!(hit || isSpecular)) {
 			vec3 worldRayDir = mat3(invView) * rayDir;
 			vec3 worldPos = (invView * vec4(vPos, 1.0)).xyz;
 			vec3 ambient = getSpatialAmbientSH(worldPos, worldRayDir);
@@ -222,7 +222,7 @@ void main() {
 			// Fallback contribution
 			// Specular fallback is handled by standard lighting already in many cases,
 			// but SSGI fallback can fill in localized environment reflections.
-			indirect += ambient * weight * (isSpecular ? 0.5 : 0.1);
+			indirect += ambient * weight * 0.1;
 		}
 	}
 
