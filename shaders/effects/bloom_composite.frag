@@ -18,14 +18,10 @@ void main() {
 	vec3 sceneColor = texture(sceneTexture, TexCoords).rgb;
 	vec3 bloomColor = texture(bloomBlur, TexCoords).rgb;
 
-	float actualIntensity = intensity;
-	if (useAutoExposure != 0) {
-		actualIntensity *= (adaptedLuminance / max(targetLuminance, 0.0001));
-		actualIntensity = clamp(actualIntensity, minIntensity, maxIntensity);
-	}
-
-	// Additive blending
-	vec3 result = sceneColor + bloomColor * actualIntensity;
+	// Add bloom to HDR scene color.
+    // We removed the manual 'actualIntensity' scaling here because bloom should scale
+    // with exposure naturally just like the rest of the scene.
+	vec3 result = sceneColor + bloomColor * intensity;
 
 	if (toneMappingEnabled) {
 		if (useAutoExposure != 0) {

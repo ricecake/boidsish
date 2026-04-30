@@ -166,6 +166,7 @@ namespace Boidsish {
 			composite_shader_->setInt("uGIAOTexture", 1);
 			composite_shader_->setInt("uSSSTexture", 2);
 			composite_shader_->setInt("uNormalTexture", 3);
+			composite_shader_->setInt("uDepthTexture", 4);
 
 			composite_shader_->setBool("uSSGIEnabled", ssgi_enabled_);
 			composite_shader_->setBool("uGTAOEnabled", gtao_enabled_);
@@ -182,6 +183,8 @@ namespace Boidsish {
 			glBindTexture(GL_TEXTURE_2D, accSSS);
 			glActiveTexture(GL_TEXTURE3);
 			glBindTexture(GL_TEXTURE_2D, normalTexture);
+			glActiveTexture(GL_TEXTURE4);
+			glBindTexture(GL_TEXTURE_2D, depthTexture);
 
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 		}
