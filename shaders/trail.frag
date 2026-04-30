@@ -1,6 +1,6 @@
 #version 460 core
 layout(location = 0) out vec4 FragColor;
-layout(location = 1) out vec2 Velocity;
+layout(location = 1) out vec4 Velocity;
 
 in vec3     vs_color;
 in vec3     vs_normal;
@@ -135,8 +135,16 @@ void main() {
 		FragColor = vec4(result, camera_fade);
 	}
 
-	// Calculate screen-space velocity
+	// Calculate screen-space velocity and material properties
 	vec2 a = (CurPosition.xy / CurPosition.w) * 0.5 + 0.5;
 	vec2 b = (PrevPosition.xy / PrevPosition.w) * 0.5 + 0.5;
-	Velocity = a - b;
+
+	float outRoughness = current_usePBR ? current_trailRoughness : 0.5;
+	float outMetallic = current_usePBR ? current_trailMetallic : 0.0;
+	if (current_useIridescence) {
+		outRoughness = 0.15;
+		outMetallic = 0.5;
+	}
+
+	Velocity = vec4(a - b, outRoughness, outMetallic);
 }

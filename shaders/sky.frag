@@ -1,7 +1,7 @@
 #version 430 core
 
 out vec4 FragColor;
-layout(location = 1) out vec2 Velocity;
+layout(location = 1) out vec4 Velocity;
 layout(location = 2) out vec4 NormalOut;
 
 in vec2 TexCoords;
@@ -249,6 +249,6 @@ void main() {
 	vec3 finalColor = skyRadiance + sunDisc + moonDisc + spaceBackground;
 
 	FragColor = vec4(finalColor, 1.0);
-	Velocity = vec2(0, 0);
+	Velocity = vec4(0, 0, 1.0, 0.0); // Roughness 1.0 (sky is not reflective), Metallic 0.0
 	NormalOut = vec4(0, 0, 0, 1.0);
 }

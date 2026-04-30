@@ -1,6 +1,6 @@
 #version 430 core
 layout(location = 0) out vec4 FragColor;
-layout(location = 1) out vec2 Velocity;
+layout(location = 1) out vec4 Velocity;
 layout(location = 2) out vec4 NormalOut;
 
 in vec3 WorldPos;
@@ -147,10 +147,10 @@ void main() {
 	vec4 outColor = vec4(final_color, fade);
 	FragColor = mix(vec4(0.7, 0.1, 0.7, fade) * length(outColor), outColor, step(1, fade));
 
-	// Calculate screen-space velocity
+	// Calculate screen-space velocity and material properties
 	vec2 a = (CurPosition.xy / CurPosition.w) * 0.5 + 0.5;
 	vec2 b = (PrevPosition.xy / PrevPosition.w) * 0.5 + 0.5;
-	Velocity = a - b;
+	Velocity = vec4(a - b, 0.05, 0.9); // Roughness, Metallic
 
 	// Output view-space normal
 	NormalOut = vec4(normalize(mat3(view) * norm), primaryShadow);
