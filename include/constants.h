@@ -323,15 +323,15 @@ namespace Boidsish {
 				}
 
 				consteval float DefaultSpeed() {
-					return 10.0f;
+					return 15.0f;
 				}
 
 				consteval float FirstPersonEyeHeight() {
-					return 1.8f;
+					return 4.8f;
 				}
 
 				consteval float FirstPersonCrouchHeight() {
-					return 0.9f;
+					return 1.5f;
 				}
 
 				consteval float FirstPersonSprintMultiplier() {
@@ -339,7 +339,7 @@ namespace Boidsish {
 				}
 
 				consteval float FirstPersonJumpForce() {
-					return 6.5f;
+					return 12.5f;
 				}
 
 				consteval float FirstPersonGravity() {
