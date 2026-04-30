@@ -4,7 +4,6 @@
 #include "graphics.h"
 #include "imgui.h"
 #include "post_processing/PostProcessingManager.h"
-#include "post_processing/effects/AutoExposureEffect.h"
 #include "post_processing/effects/BloomEffect.h"
 #include "post_processing/effects/FilmGrainEffect.h"
 #include "post_processing/effects/GtaoEffect.h"
@@ -78,33 +77,6 @@ namespace Boidsish {
 							effect->SetEnabled(is_enabled);
 						}
 
-						if (effect->GetName() == "AutoExposure" && is_enabled) {
-							auto auto_exposure_effect = std::dynamic_pointer_cast<PostProcessing::AutoExposureEffect>(
-								effect
-							);
-							if (auto_exposure_effect) {
-								float speed_up = auto_exposure_effect->GetSpeedUp();
-								if (ImGui::SliderFloat("Speed Up", &speed_up, 0.1f, 10.0f)) {
-									auto_exposure_effect->SetSpeedUp(speed_up);
-								}
-								float speed_down = auto_exposure_effect->GetSpeedDown();
-								if (ImGui::SliderFloat("Speed Down", &speed_down, 0.1f, 10.0f)) {
-									auto_exposure_effect->SetSpeedDown(speed_down);
-								}
-								float target_lum = auto_exposure_effect->GetTargetLuminance();
-								if (ImGui::SliderFloat("Target Luminance", &target_lum, 0.01f, 1.0f)) {
-									auto_exposure_effect->SetTargetLuminance(target_lum);
-								}
-								float min_exposure = auto_exposure_effect->GetMinExposure();
-								if (ImGui::SliderFloat("Min Exposure", &min_exposure, 0.01f, 10.0f)) {
-									auto_exposure_effect->SetMinExposure(min_exposure);
-								}
-								float max_exposure = auto_exposure_effect->GetMaxExposure();
-								if (ImGui::SliderFloat("Max Exposure", &max_exposure, 1.0f, 100.0f)) {
-									auto_exposure_effect->SetMaxExposure(max_exposure);
-								}
-							}
-						}
 
 						if (effect->GetName() == "Film Grain" && is_enabled) {
 							auto film_grain_effect = std::dynamic_pointer_cast<PostProcessing::FilmGrainEffect>(effect);
@@ -208,6 +180,35 @@ namespace Boidsish {
 								float max_intensity = bloom_effect->GetMaxIntensity();
 								if (ImGui::SliderFloat("Max Intensity (AE)", &max_intensity, 0.0f, 10.0f)) {
 									bloom_effect->SetMaxIntensity(max_intensity);
+								}
+
+								ImGui::Separator();
+								ImGui::Text("Auto-Exposure");
+								bool ae_enabled = bloom_effect->IsAutoExposureEnabled();
+								if (ImGui::Checkbox("Enable AE", &ae_enabled)) {
+									bloom_effect->SetAutoExposureEnabled(ae_enabled);
+								}
+								if (ae_enabled) {
+									float target_lum = bloom_effect->GetTargetLuminance();
+									if (ImGui::SliderFloat("Target Luminance", &target_lum, 0.01f, 1.0f)) {
+										bloom_effect->SetTargetLuminance(target_lum);
+									}
+									float speed_up = bloom_effect->GetSpeedUp();
+									if (ImGui::SliderFloat("Speed Up", &speed_up, 0.1f, 10.0f)) {
+										bloom_effect->SetAdaptationSpeeds(speed_up, bloom_effect->GetSpeedDown());
+									}
+									float speed_down = bloom_effect->GetSpeedDown();
+									if (ImGui::SliderFloat("Speed Down", &speed_down, 0.1f, 10.0f)) {
+										bloom_effect->SetAdaptationSpeeds(bloom_effect->GetSpeedUp(), speed_down);
+									}
+									float min_exposure = bloom_effect->GetMinExposure();
+									if (ImGui::SliderFloat("Min Exposure", &min_exposure, 0.01f, 10.0f)) {
+										bloom_effect->SetExposureLimits(min_exposure, bloom_effect->GetMaxExposure());
+									}
+									float max_exposure = bloom_effect->GetMaxExposure();
+									if (ImGui::SliderFloat("Max Exposure", &max_exposure, 1.0f, 100.0f)) {
+										bloom_effect->SetExposureLimits(bloom_effect->GetMinExposure(), max_exposure);
+									}
 								}
 							}
 						}
