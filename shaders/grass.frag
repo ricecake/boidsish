@@ -66,6 +66,7 @@ void main() {
     }
 
     vec3 albedo = mix(biomeProps[fBiomeIdx].colorBottom.rgb, biomeProps[fBiomeIdx].colorTop.rgb, fHeightFactor);
+    float ao = smoothstep(0.0, 0.5, fHeightFactor) * smoothstep(0.0, 0.25, biomeProps[fBiomeIdx].density);
 
     // Add some random variability
     uint seed = uint(abs(fWorldPos.x) * 10.0) ^ uint(abs(fWorldPos.z) * 10.0);
@@ -78,7 +79,7 @@ void main() {
     if (!gl_FrontFacing) N = -N;
 
     float primaryShadow;
-    vec4 litColor = apply_lighting_pbr(fWorldPos, N, albedo, 0.8, 0.0, 1.0, primaryShadow);
+    vec4 litColor = apply_lighting_pbr(fWorldPos, N, albedo, 0.8, 0.0, ao, primaryShadow);
     litColor.rgb = clamp(litColor.rgb, 0.0, 5.0); // Clamp HDR to prevent "bright white" blowouts
 
     // Distance fade and distant cyan blend (matching terrain style)
