@@ -102,12 +102,15 @@ namespace Boidsish {
 
 		// Lighting and Shadows
 		ShaderBase::RegisterConstant("MAX_LIGHTS", Constants::Class::Shadows::MaxLights());
+		ShaderBase::RegisterConstant("TERRAIN_PROBES_BINDING", Constants::SsboBinding::TerrainProbes());
 		ShaderBase::RegisterConstant("MAX_SHADOW_MAPS", Constants::Class::Shadows::MaxShadowMaps());
 		ShaderBase::RegisterConstant("MAX_CASCADES", Constants::Class::Shadows::MaxCascades());
 
 		// Terrain and Decor
 		ShaderBase::RegisterConstant("CHUNK_SIZE", Constants::Class::Terrain::ChunkSize());
 		ShaderBase::RegisterConstant("CHUNK_SIZE_PLUS_1", Constants::Class::Terrain::ChunkSizePlus1());
+		ShaderBase::RegisterConstant("TERRAIN_DATA_BINDING", Boidsish::Constants::UboBinding::TerrainData());
+		ShaderBase::RegisterConstant("BIOME_DATA_BINDING", Boidsish::Constants::UboBinding::Biomes());
 
 		// Effects
 		ShaderBase::RegisterConstant("MAX_SHOCKWAVES", Constants::Class::Shockwaves::MaxShockwaves());
@@ -1866,7 +1869,8 @@ namespace Boidsish {
 
 				// Prepare for rendering (frustum culling for instanced renderer)
 				float world_scale = terrain_generator ? terrain_generator->GetWorldScale() : 1.0f;
-				terrain_render_manager->PrepareForRender(frustum, camera.pos(), world_scale);
+				float day_time = light_manager.GetDayNightCycle().time;
+				terrain_render_manager->PrepareForRender(frustum, camera.pos(), world_scale, lighting_ubo, day_time);
 
 				terrain_render_manager
 					->Render(*Terrain::terrain_shader_, view, proj, viewport_size, clip_plane, effective_quality);
@@ -2318,13 +2322,10 @@ namespace Boidsish {
 				glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(LightingUbo), &lighting_ubo_data_);
 				glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
-				// Copy ambient probes to UBO data
-				std::memcpy(lighting_ubo_data_.probes, light_manager.GetProbes(), 5 * sizeof(AmbientProbe));
-
 				// GPU-side copy of SH coefficients from SSBO into the UBO (no CPU readback)
 				if (atmosphere_manager) {
-					static_assert(offsetof(LightingUbo, sh_coeffs) == 928, "SH offset mismatch");
-					atmosphere_manager->CopySHToUBO(lighting_ubo, 928);
+					static_assert(offsetof(LightingUbo, sh_coeffs) == 768, "SH offset mismatch");
+					atmosphere_manager->CopySHToUBO(lighting_ubo, 768);
 				}
 			}
 
@@ -3169,11 +3170,7 @@ namespace Boidsish {
 			impl->simulation_time += impl->time_scale * delta_time;
 		}
 
-		impl->light_manager.Update(
-			impl->simulation_delta_time,
-			impl->terrain_generator.get(),
-			impl->camera.pos()
-		);
+		impl->light_manager.Update(impl->simulation_delta_time);
 
 		// Update ambient weather
 		if (impl->weather_manager && impl->weather_manager->IsEnabled()) {

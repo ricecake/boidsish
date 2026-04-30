@@ -16,13 +16,12 @@ namespace Boidsish {
 	};
 
 	/**
-	 * @brief Spatially-varying ambient probe data for UBO upload.
+	 * @brief Per-chunk Spherical Harmonic probe data.
 	 *
-	 * Captures the environment color (sky + ground) at a specific world position.
+	 * Each probe stores 2nd-order SH coefficients (9 x vec4).
 	 */
 	struct AmbientProbe {
-		glm::vec4 pos;   // xyz = world position, w = radius or influence scale
-		glm::vec4 color; // rgb = ambient irradiance, w = unused
+		glm::vec4 sh_coeffs[9]; // rgb = coefficients, w = unused
 	};
 
 	/**
@@ -75,11 +74,10 @@ namespace Boidsish {
 		float cloudSunLightScale;                // offset 756, 4 bytes
 		float cloudMoonLightScale;               // offset 760, 4 bytes
 		float cloudBeerPowderMix;                // offset 764, 4 bytes
-		AmbientProbe probes[5];                  // offset 768, 160 bytes
-		alignas(16) glm::vec4 sh_coeffs[9];      // offset 928, 144 bytes
-	}; // Total: 1072 bytes
+		alignas(16) glm::vec4 sh_coeffs[9];      // offset 768, 144 bytes
+	}; // Total: 912 bytes
 
-	static_assert(sizeof(LightingUbo) == 1072, "LightingUbo must be 1072 bytes for UBO alignment");
+	static_assert(sizeof(LightingUbo) == 912, "LightingUbo must be 912 bytes for UBO alignment");
 
 	/**
 	 * @brief Light source data structure for rendering.

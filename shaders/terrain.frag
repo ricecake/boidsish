@@ -16,10 +16,12 @@ in float      vErosionDelta;
 in float      vRidgeMap;
 in float      vSubstrate;
 
+#define USE_TERRAIN_DATA
 #include "helpers/erosion.glsl"
 #include "helpers/fast_noise.glsl"
-#include "helpers/lighting.glsl"
 #include "helpers/terrain_noise.glsl"
+#include "helpers/terrain_shadows.glsl"
+#include "helpers/lighting.glsl"
 #include "visual_effects.glsl"
 // #include "helpers/noise.glsl"
 
@@ -443,8 +445,8 @@ void main() {
 		// Sample biome noise type (using unused params.w)
 		vec2  biomeUV = (TexCoords * uRawChunkSize + 0.5) / (uRawChunkSize + 1.0);
 		vec2  biomeInfo = texture(uBiomeMap, vec3(biomeUV, TextureSlice)).rg;
-		float noiseTypeA = biomes[int(biomeInfo.x)].params.w;
-		float noiseTypeB = biomes[min(int(biomeInfo.x) + 1, 7)].params.w;
+		float noiseTypeA = u_biomes[int(biomeInfo.x)].params.w;
+		float noiseTypeB = u_biomes[min(int(biomeInfo.x) + 1, 7)].params.w;
 		float noiseType = mix(noiseTypeA, noiseTypeB, biomeInfo.y);
 
 		// Use finite difference to approximate the gradient of the noise field

@@ -3,10 +3,13 @@
 
 #include "fast_noise.glsl"
 
-layout(std140, binding = 8) uniform TerrainData {
+#ifndef TERRAIN_DATA_BLOCK
+#define TERRAIN_DATA_BLOCK
+layout(std140, binding = [[TERRAIN_DATA_BINDING]]) uniform TerrainData {
 	ivec4 u_originSize;    // x, y=z, z=size, w=isBound
 	vec4  u_terrainParams; // x=chunkSize, y=worldScale
 };
+#endif
 
 uniform isampler2D u_chunkGrid;
 uniform sampler2D  u_maxHeightGrid;
@@ -44,12 +47,13 @@ float marchOcclusion(vec3 p_start, vec3 rayDir, float maxDist) {
 	float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
 
 	// Coarse step size for AO march
+	// float step = 12.0 * u_terrainParams.y;
 	float visibility = 1.0;
 
-	int stepCount = 0;
-	int maxSteps = 5;
-	float step = maxDist / maxSteps;
-	while (t < maxDist && stepCount++ < 5) {
+	float stepCount = 0;
+	float maxSteps = 5;
+	float step = maxDist/maxSteps;
+	while (t < maxDist && stepCount++ <= maxSteps) {
 		vec3  p = p_start + t * rayDir;
 		vec2  gridPos = p.xz / scaledChunkSize;
 		ivec2 chunkCoord = ivec2(floor(gridPos));
