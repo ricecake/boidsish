@@ -8,10 +8,13 @@
 
 namespace Boidsish {
 
+	class ServiceLocator;
 	class ITerrainGenerator;
 
 	class LightManager {
 	public:
+		LightManager(ServiceLocator& loc);
+
 		struct DayNightCycle {
 			bool  enabled = true;
 			float time = 8.0f;    // 0.0 - 24.0 (12.0 is noon)

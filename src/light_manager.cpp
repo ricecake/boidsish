@@ -1,6 +1,8 @@
 #include "light_manager.h"
 
 #include <algorithm>
+
+#include "service_locator.h"
 #include <cmath>
 #include <cstdlib>
 #include <map>
@@ -20,6 +22,8 @@ namespace Boidsish {
 		{'5', "....."}, {'6', "-...."},  {'7', "--..."},  {'8', "---.."},  {'9', "----."}, {'0', "-----"},
 		{' ', "/"},     {',', "--..--"}, {'.', ".-.-.-"}, {'\'', ".----."}
 	};
+
+	LightManager::LightManager(ServiceLocator& /*loc*/) {}
 
 	static void GenerateMorseSequence(Light& light) {
 		light.behavior.morse_sequence.clear();

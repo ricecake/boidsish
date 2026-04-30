@@ -1,6 +1,7 @@
 #include "audio_manager.h"
 
 #include "logger.h"
+#include "service_locator.h"
 #include "profiler.h"
 #include "sound.h"
 
@@ -73,7 +74,7 @@ namespace Boidsish {
 		}
 	};
 
-	AudioManager::AudioManager(): m_pimpl(std::make_unique<AudioManagerImpl>()) {}
+	AudioManager::AudioManager(ServiceLocator& /*loc*/): m_pimpl(std::make_unique<AudioManagerImpl>()) {}
 
 	AudioManager::~AudioManager() = default;
 

@@ -16,6 +16,7 @@ class Shader;
 
 namespace Boidsish {
 
+	class ServiceLocator;
 	class Trail;
 
 	/**
@@ -41,7 +42,7 @@ namespace Boidsish {
 	 */
 	class TrailRenderManager {
 	public:
-		TrailRenderManager();
+		TrailRenderManager(ServiceLocator& loc);
 		~TrailRenderManager();
 
 		// Non-copyable

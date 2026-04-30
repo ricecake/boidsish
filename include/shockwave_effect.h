@@ -11,6 +11,8 @@ class Shader;
 
 namespace Boidsish {
 
+	class ServiceLocator;
+
 	/**
 	 * @brief Represents a single expanding shockwave ring effect.
 	 *
@@ -77,7 +79,7 @@ namespace Boidsish {
 		/// Maximum number of simultaneous shockwaves (limited by UBO size)
 		static constexpr int kMaxShockwaves = Constants::Class::Shockwaves::MaxShockwaves();
 
-		ShockwaveManager();
+		ShockwaveManager(ServiceLocator& loc);
 		~ShockwaveManager();
 
 		/**

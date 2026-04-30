@@ -7,6 +7,7 @@
 #include "constants.h"
 #include "graphics.h" // For Frustum
 #include "profiler.h"
+#include "service_locator.h"
 #include "shader.h"
 
 namespace Boidsish {
@@ -16,7 +17,7 @@ namespace Boidsish {
 		glm::vec4  terrain_params; // chunk_size, world_scale, unused, unused
 	};
 
-	TerrainRenderManager::TerrainRenderManager(int chunk_size, int max_chunks):
+	TerrainRenderManager::TerrainRenderManager(ServiceLocator& /*loc*/, int chunk_size, int max_chunks):
 		chunk_size_(chunk_size), max_chunks_(max_chunks), heightmap_resolution_(chunk_size + 1) {
 		// Create Biome UBO
 		glGenBuffers(1, &biome_ubo_);
@@ -546,6 +547,8 @@ namespace Boidsish {
 		const glm::vec3& camera_pos,
 		float            world_scale,
 		GLuint           lighting_ubo,
+		GLintptr         lighting_ubo_offset,
+		GLsizeiptr       lighting_ubo_size,
 		float            day_time
 	) {
 		PROJECT_PROFILE_SCOPE("TerrainRenderManager::PrepareForRender");
@@ -555,7 +558,7 @@ namespace Boidsish {
 		last_camera_pos_ = camera_pos;
 		last_world_scale_ = world_scale;
 
-		UpdateGridTextures(world_scale, lighting_ubo, day_time);
+		UpdateGridTextures(world_scale, lighting_ubo, lighting_ubo_offset, lighting_ubo_size, day_time);
 
 		visible_instances_.clear();
 		visible_instances_.reserve(chunks_.size());
@@ -655,7 +658,7 @@ namespace Boidsish {
 		}
 	}
 
-	void TerrainRenderManager::UpdateGridTextures(float world_scale, GLuint lighting_ubo, float day_time) {
+	void TerrainRenderManager::UpdateGridTextures(float world_scale, GLuint lighting_ubo, GLintptr lighting_ubo_offset, GLsizeiptr lighting_ubo_size, float day_time) {
 		PROJECT_PROFILE_SCOPE("TerrainRenderManager::UpdateGridTextures");
 		int grid_size = Constants::Class::Terrain::SliceMapSize();
 		int half_grid = grid_size / 2;
@@ -731,6 +734,8 @@ namespace Boidsish {
 		const glm::mat4& view,
 		const glm::mat4& projection,
 		GLuint           lighting_ubo,
+		GLintptr         lighting_ubo_offset,
+		GLsizeiptr       lighting_ubo_size,
 		float            probe_scaling,
 		float            probe_convergence,
 		int              probe_ray_multiplier
@@ -799,7 +804,12 @@ namespace Boidsish {
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainProbes(), probe_ssbo_);
 
 		if (lighting_ubo != 0) {
-			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Lighting(), lighting_ubo);
+			if (lighting_ubo_size > 0) {
+				glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::Lighting(),
+					lighting_ubo, lighting_ubo_offset, lighting_ubo_size);
+			} else {
+				glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Lighting(), lighting_ubo);
+			}
 		}
 
 		glDispatchCompute((grid_size + 7) / 8, (grid_size + 7) / 8, 1);

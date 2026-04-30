@@ -11,6 +11,8 @@
 
 namespace Boidsish {
 
+	class ServiceLocator;
+
 	struct SdfSource {
 		glm::vec3 position;
 		float     radius;
@@ -29,7 +31,7 @@ namespace Boidsish {
 
 	class SdfVolumeManager: public IManager {
 	public:
-		SdfVolumeManager();
+		SdfVolumeManager(ServiceLocator& loc);
 		~SdfVolumeManager();
 
 		void Initialize() override;

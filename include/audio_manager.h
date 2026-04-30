@@ -10,11 +10,12 @@ struct ma_engine;
 
 namespace Boidsish {
 
+	class ServiceLocator;
 	class Sound; // Forward declaration
 
 	class AudioManager {
 	public:
-		AudioManager();
+		AudioManager(ServiceLocator& loc);
 		~AudioManager();
 
 		// Non-copyable

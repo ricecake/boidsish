@@ -1,6 +1,8 @@
 #include "fire_effect_manager.h"
 
 #include <algorithm>
+
+#include "service_locator.h"
 #include <numeric>
 #include <queue>
 
@@ -25,7 +27,7 @@ namespace Boidsish {
 		float extras[2];
 	};
 
-	FireEffectManager::FireEffectManager() {}
+	FireEffectManager::FireEffectManager(ServiceLocator& /*loc*/) {}
 
 	void FireEffectManager::Initialize() {
 		_EnsureShaderAndBuffers();
@@ -273,6 +275,8 @@ namespace Boidsish {
 		GLuint                        curl_noise_texture,
 		GLuint                        biome_texture,
 		GLuint                        lighting_ubo,
+		GLintptr                      lighting_ubo_offset,
+		GLsizeiptr                    lighting_ubo_size,
 		GLuint                        frustum_ubo,
 		GLintptr                      frustum_offset,
 		GLuint                        extra_noise_texture
@@ -457,7 +461,12 @@ namespace Boidsish {
 		};
 
 		if (lighting_ubo != 0) {
-			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Lighting(), lighting_ubo);
+			if (lighting_ubo_size > 0) {
+				glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::Lighting(),
+					lighting_ubo, lighting_ubo_offset, lighting_ubo_size);
+			} else {
+				glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Lighting(), lighting_ubo);
+			}
 		}
 
 		if (frustum_ubo != 0) {

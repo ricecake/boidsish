@@ -8,6 +8,8 @@ class ComputeShader;
 
 namespace Boidsish {
 
+	class ServiceLocator;
+
 	/**
 	 * @brief Manages a Hi-Z (Hierarchical Z-buffer) pyramid for GPU occlusion culling.
 	 *
@@ -17,7 +19,7 @@ namespace Boidsish {
 	 */
 	class HiZManager {
 	public:
-		HiZManager();
+		HiZManager(ServiceLocator& loc);
 		~HiZManager();
 
 		/// Create the Hi-Z texture and compile compute shader.

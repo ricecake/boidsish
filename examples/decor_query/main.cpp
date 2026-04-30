@@ -4,6 +4,7 @@
 #include <thread>
 
 #include "decor_manager.h"
+#include "service_locator.h"
 #include "frustum.h"
 #include "graphics.h"
 #include "terrain_generator.h"
@@ -23,8 +24,9 @@ int main() {
 	glfwMakeContextCurrent(window);
 	glewInit();
 
-	auto decor_mgr = std::make_unique<DecorManager>();
-	auto terrain_mgr = std::make_shared<TerrainRenderManager>(32, 512);
+	ServiceLocator loc;
+	auto decor_mgr = std::make_unique<DecorManager>(loc);
+	auto terrain_mgr = std::make_shared<TerrainRenderManager>(loc, 32, 512);
 	auto terrain_gen = std::make_unique<TerrainGenerator>();
 	terrain_gen->SetRenderManager(terrain_mgr);
 

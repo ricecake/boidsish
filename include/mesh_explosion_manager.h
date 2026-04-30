@@ -11,6 +11,8 @@
 
 namespace Boidsish {
 
+	class ServiceLocator;
+
 	struct MeshExplosionFragment {
 		glm::vec4 v0;     // local pos0.xyz, unused (w)
 		glm::vec4 v1;     // local pos1.xyz, unused (w)
@@ -27,7 +29,7 @@ namespace Boidsish {
 
 	class MeshExplosionManager: public IManager {
 	public:
-		MeshExplosionManager();
+		MeshExplosionManager(ServiceLocator& loc);
 		~MeshExplosionManager();
 
 		// Initialize shaders and buffers. Must be called from main thread with OpenGL context.

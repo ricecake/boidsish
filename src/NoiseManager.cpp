@@ -1,12 +1,13 @@
 #include "NoiseManager.h"
 
 #include "logger.h"
+#include "service_locator.h"
 #include "profiler.h"
 #include <GL/glew.h>
 
 namespace Boidsish {
 
-	NoiseManager::NoiseManager() {}
+	NoiseManager::NoiseManager(ServiceLocator& /*loc*/) {}
 
 	NoiseManager::~NoiseManager() {
 		if (noise_texture_ != 0) {

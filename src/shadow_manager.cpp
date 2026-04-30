@@ -1,6 +1,8 @@
 #include "shadow_manager.h"
 
 #include <iostream>
+
+#include "service_locator.h"
 #include <vector>
 
 #include "light.h"
@@ -11,7 +13,7 @@
 
 namespace Boidsish {
 
-	ShadowManager::ShadowManager() {
+	ShadowManager::ShadowManager(ServiceLocator& /*loc*/) {
 		light_space_matrices_.fill(glm::mat4(1.0f));
 	}
 

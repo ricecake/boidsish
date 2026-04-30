@@ -14,10 +14,6 @@ flat in int vUniformIndex;
 
 #include "common_uniforms.glsl"
 
-layout(std430, binding = [[COMMON_UNIFORMS_BINDING]]) buffer UniformsSSBO {
-	CommonUniforms uniforms_data[];
-};
-
 uniform bool uUseMDI = false;
 
 // #define USE_TERRAIN_DATA

@@ -1,6 +1,7 @@
 #include "akira_effect.h"
 
 #include "profiler.h"
+#include "service_locator.h"
 #include "shape.h"
 #include <GL/glew.h>
 #include <glm/gtc/matrix_transform.hpp>
@@ -8,7 +9,7 @@
 
 namespace Boidsish {
 
-	AkiraEffectManager::AkiraEffectManager() {
+	AkiraEffectManager::AkiraEffectManager(ServiceLocator& /*loc*/) {
 		shader_ = std::make_unique<Shader>("shaders/akira.vert", "shaders/akira.frag");
 	}
 

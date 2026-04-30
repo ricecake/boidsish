@@ -3,6 +3,7 @@
 #include <algorithm>
 
 #include "IWidget.h"
+#include "service_locator.h"
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
@@ -11,7 +12,7 @@
 
 namespace Boidsish {
 	namespace UI {
-		UIManager::UIManager(GLFWwindow* window) {
+		UIManager::UIManager(ServiceLocator& /*loc*/, GLFWwindow* window) {
 			IMGUI_CHECKVERSION();
 			ImGui::CreateContext();
 			ImGuiIO& io = ImGui::GetIO();

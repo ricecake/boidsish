@@ -5,10 +5,11 @@
 
 #include "Simplex.h"
 #include "profiler.h"
+#include "service_locator.h"
 
 namespace Boidsish {
 
-	WeatherManager::WeatherManager(ITerrainGenerator* terrain): enabled_(true), terrain_(terrain) {
+	WeatherManager::WeatherManager(ServiceLocator& /*loc*/): enabled_(true), terrain_(nullptr) {
 		InitializePresets();
 
 		// Initialize LBM Simulator (scaled to typical terrain range)

@@ -10,6 +10,7 @@ class Shader;
 
 namespace Boidsish {
 
+	class ServiceLocator;
 	class Shape;
 
 	// Stores the state of a single frozen clone.
@@ -23,7 +24,7 @@ namespace Boidsish {
 	// Manages the creation, lifecycle, and rendering of clones for the freeze-frame trail effect.
 	class CloneManager {
 	public:
-		CloneManager();
+		CloneManager(ServiceLocator& loc);
 
 		// Creates a clone of the given shape at its current state.
 		void CaptureClone(std::shared_ptr<const Shape> shape, float current_time);

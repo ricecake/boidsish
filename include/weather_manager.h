@@ -140,9 +140,11 @@ namespace Boidsish {
 		float     cloud_coverage = WeatherConstants::CloudCoverage.normal;
 	};
 
+	class ServiceLocator;
+
 	class WeatherManager {
 	public:
-		WeatherManager(ITerrainGenerator* terrain = nullptr);
+		WeatherManager(ServiceLocator& loc);
 		~WeatherManager();
 
 		void Update(float deltaTime, float totalTime, const glm::vec3& cameraPos, float timeOfDay);
