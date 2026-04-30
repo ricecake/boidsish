@@ -119,6 +119,10 @@ void spawnBlade(ivec2 cellID, float gridStep, float range, bool rotateDither) {
     float height = terrainSample.r;
     vec3 normal = terrainSample.gba;
 
+    if (height <= 0.0) {
+        return;
+    }
+
     if (normal.y < 0.7) return;
 
     vec2 biomeData = textureLod(uBiomeMap, vec3(remappedUV, float(slice)), 0.0).rg;
