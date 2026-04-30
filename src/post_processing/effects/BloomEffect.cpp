@@ -172,6 +172,8 @@ namespace Boidsish {
 			_compositeShader->setInt("sceneTexture", 0);
 			_compositeShader->setInt("bloomBlur", 1);
 			_compositeShader->setFloat("intensity", intensity_);
+			_compositeShader->setFloat("minIntensity", minIntensity_);
+			_compositeShader->setFloat("maxIntensity", maxIntensity_);
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, sourceTexture);
 			glActiveTexture(GL_TEXTURE1);
