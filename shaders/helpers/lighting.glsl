@@ -558,13 +558,27 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 		spec_lum += get_luminance(specular_radiance);
 	}
 
-	// Spatially-varying ambient augmented with SH sky irradiance
-	vec3 spatialAmbient = getSpatialAmbient(frag_pos);
-	vec3 skyIrradiance = evalSHIrradiance(N);
+	// Spatially-varying ambient augmented with SH sky irradiance and macro occlusion
+	vec3  spatialAmbient = getSpatialAmbient(frag_pos);
+	vec3  skyIrradiance = evalSHIrradiance(N);
+	float terrainOcc = calculateTerrainOcclusion(frag_pos, N);
+
+	// Apply terrain occlusion to both ambient terms.
+	// Sky irradiance is blocked by the terrain above/around.
+	// Spatial ambient (ground bounce) is also reduced in deep valleys.
+	spatialAmbient *= mix(0.5, 1.0, terrainOcc);
+	skyIrradiance *= terrainOcc;
 
 	// Blend sky and local ground ambient based on upward-facing normal
-	float upFactor = N.y * 0.5 + 0.5;
-	vec3  ambientDiffuse = mix(spatialAmbient, skyIrradiance, upFactor) * albedo * ao;
+	// Using a smoother curve to favor sky contribution on upward surfaces
+	float upFactor = smoothstep(-0.2, 0.5, N.y);
+
+	// Combine input AO with macro terrain occlusion
+	float combinedAO = ao * terrainOcc;
+	vec3  ambientDiffuse = mix(spatialAmbient, skyIrradiance, upFactor) * albedo * combinedAO;
+
+	// Scale down ambient overall to maintain shadow contrast and prevent "flat" look
+	ambientDiffuse *= 0.75;
 
 	// Environment reflection approximation for glossy surfaces
 	vec3 R = reflect(-V, N);
@@ -582,13 +596,16 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 		smoothstep(0.0, 0.7, upAmount)
 	);
 
+	// Attenuate reflection by occlusion to prevent glow in caves/valleys
+	envColor *= terrainOcc;
+
 	// Environment reflection strength based on smoothness
 	float smoothness = 1.0 - roughness;
 	float envStrength = smoothness * smoothness * 0.8;
 
 	// Metallic surfaces should reflect the environment color tinted by albedo
 	// Non-metallic surfaces reflect environment but less strongly
-	vec3 ambientSpecular = F_env * envColor * envStrength * ao;
+	vec3 ambientSpecular = F_env * envColor * envStrength * combinedAO;
 
 	// Combine diffuse and specular ambient
 	vec3 ambient = ambientDiffuse * (1.0 - metallic * 0.9) + ambientSpecular;
@@ -659,17 +676,45 @@ vec4 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, floa
 		spec_lum += get_luminance(specular_radiance);
 	}
 
-	// Ambient (same as shadowed version)
-	vec3  ambientDiffuse = ambient_light * albedo * ao;
-	vec3  R = reflect(-V, N);
+	// Spatially-varying ambient augmented with SH sky irradiance and macro occlusion
+	vec3  spatialAmbient = getSpatialAmbient(frag_pos);
+	vec3  skyIrradiance = evalSHIrradiance(N);
+	float terrainOcc = calculateTerrainOcclusion(frag_pos, N);
+
+	// Apply terrain occlusion to both ambient terms.
+	// Sky irradiance is blocked by the terrain above/around.
+	// Spatial ambient (ground bounce) is also reduced in deep valleys.
+	spatialAmbient *= mix(0.5, 1.0, terrainOcc);
+	skyIrradiance *= terrainOcc;
+
+	// Blend sky and local ground ambient based on upward-facing normal
+	float upFactor = smoothstep(-0.2, 0.5, N.y);
+	float combinedAO = ao * terrainOcc;
+	vec3  ambientDiffuse = mix(spatialAmbient, skyIrradiance, upFactor) * albedo * combinedAO;
+
+	// Scale down ambient overall to maintain shadow contrast
+	ambientDiffuse *= 0.75;
+
+	vec3 R = reflect(-V, N);
+
 	vec3  F0_env = mix(vec3(0.04), albedo, metallic);
 	float NdotV = max(dot(N, V), 0.0);
 	vec3  F_env = fresnelSchlickRoughness(NdotV, F0_env, roughness);
+
+	// Fake environment color - gradient from local ground to sky
 	float upAmount = R.y * 0.5 + 0.5;
-	vec3  envColor = mix(ambient_light * 0.2, ambient_light * 1.2, smoothstep(0.0, 0.7, upAmount));
+	vec3  envColor = mix(
+		spatialAmbient,
+		skyIrradiance * 1.2, // Boost sky reflection slightly
+		smoothstep(0.0, 0.7, upAmount)
+	);
+
+	// Attenuate reflection by occlusion to prevent glow in caves/valleys
+	envColor *= terrainOcc;
+
 	float smoothness = 1.0 - roughness;
 	float envStrength = smoothness * smoothness * 0.8;
-	vec3  ambientSpecular = F_env * envColor * envStrength * ao;
+	vec3  ambientSpecular = F_env * envColor * envStrength * combinedAO;
 	vec3  ambient = ambientDiffuse * (1.0 - metallic * 0.9) + ambientSpecular;
 
 	return vec4(ambient + Lo, spec_lum + get_luminance(ambientSpecular));
