@@ -168,6 +168,6 @@ void main() {
         float gridStep0 = 0.4 * uWorldScale;
         ivec2 cameraCell0 = ivec2(floor(uCameraPos.xz / gridStep0));
         ivec2 cellID0 = cameraCell0 + (ivec2(gl_GlobalInvocationID.xy) - 256);
-        spawnBlade(cellID0, gridStep0, 80.0 * uWorldScale, false);
+        spawnBlade(cellID0, gridStep0, 100.0 * uWorldScale, false);
     }
 }
