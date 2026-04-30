@@ -5,26 +5,28 @@ in vec2 TexCoords;
 
 uniform sampler2D uSceneTexture;
 uniform sampler2D uShadowMask;
+uniform sampler2D uNormalTexture;
 uniform float     uIntensity = 0.5;
 
 void main() {
 	vec4  sceneColor = texture(uSceneTexture, TexCoords);
+	float sssFactor = texture(uShadowMask, TexCoords).r;
+	float traditionalShadow = texture(uNormalTexture, TexCoords).a;
 
-	// float shadow = 0.0; //texture(uShadowMask, TexCoords).r;
+	// Improved logic to avoid double-shadowing:
+	// The scene color already has traditional shadow applied.
+	// We want the final shadow to be the minimum of both systems.
+	// finalShadow = min(traditionalShadow, sssFactor)
+	// Since color is already (baseColor * traditionalShadow),
+	// we multiply by (finalShadow / traditionalShadow).
 
+	float combinedShadow = min(traditionalShadow, sssFactor);
 
-	// for (int i = -1; i <= 1; i++) {
-	// 	for (int j = -1; j <= 1; j++) {
-	// 		shadow += texture(uShadowMask, TexCoords).r;
-	// 	}
-	// }
+	// Use a small epsilon to avoid division by zero and handle fully shadowed areas
+	float shadowAdjustment = combinedShadow / max(traditionalShadow, 0.01);
 
-	float shadow = texture(uShadowMask, TexCoords).r;
-
-	// Simple multiplication of the scene color by the shadow factor
-	// We mix based on intensity to allow tuning
-	// float shadowFactor = mix(1.0, shadow / 9.0, uIntensity);
-	float shadowFactor = mix(1.0, shadow, uIntensity);
+	// Apply intensity mix
+	float shadowFactor = mix(1.0, shadowAdjustment, uIntensity);
 
 	FragColor = vec4(sceneColor.rgb * shadowFactor, sceneColor.a);
 }

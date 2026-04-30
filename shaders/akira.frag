@@ -43,7 +43,8 @@ void main() {
 		litColor = vec4(baseColor * (1.0 + emissive), alpha);
 	} else {
 		// Apply iridescence logic
-		litColor = apply_lighting_pbr_iridescent_no_shadows(FragPos, N, baseColor, 0.05, 0.9);
+		float dummyShadow;
+		litColor = apply_lighting_pbr_iridescent_no_shadows(FragPos, N, baseColor, 0.05, 0.9, dummyShadow);
 		litColor.a *= alpha;
 
 		// Add some remaining emissive glow

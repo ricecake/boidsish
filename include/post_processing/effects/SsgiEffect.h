@@ -40,6 +40,7 @@ namespace Boidsish {
 
 			void SetNoiseTextures(GLuint blueNoise) { blue_noise_texture_ = blueNoise; }
 			void SetHiZTexture(GLuint hiz, int mips) { hiz_texture_ = hiz; hiz_mips_ = mips; }
+			void SetShadowMaskTexture(GLuint mask) { shadow_mask_texture_ = mask; }
 
 		private:
 			void InitializeTextures();
@@ -51,6 +52,7 @@ namespace Boidsish {
 			GLuint ssgi_texture_ = 0;
 			GLuint blue_noise_texture_ = 0;
 			GLuint hiz_texture_ = 0;
+			GLuint shadow_mask_texture_ = 0;
 			int    hiz_mips_ = 0;
 			int    width_ = 0, height_ = 0;
 

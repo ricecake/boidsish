@@ -97,6 +97,12 @@ namespace Boidsish {
 				ssgi_shader_->setInt("u_hizMipCount", hiz_mips_);
 			}
 
+			if (shadow_mask_texture_) {
+				glActiveTexture(GL_TEXTURE5);
+				glBindTexture(GL_TEXTURE_2D, shadow_mask_texture_);
+				ssgi_shader_->setInt("uShadowMask", 5);
+			}
+
 			glBindImageTexture(0, ssgi_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 
 			glDispatchCompute((width_ / 2 + 7) / 8, (height_ / 2 + 7) / 8, 1);

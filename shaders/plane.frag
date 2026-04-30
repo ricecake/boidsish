@@ -1,7 +1,7 @@
 #version 430 core
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec2 Velocity;
-layout(location = 2) out vec3 NormalOut;
+layout(location = 2) out vec4 NormalOut;
 
 in vec3 WorldPos;
 in vec3 Normal;
@@ -137,7 +137,8 @@ void main() {
 	// --- Plane lighting ---
 	vec3 norm = normalize(Normal);
 	vec3 surfaceColor = vec3(0.05, 0.05, 0.08);
-	vec3 lighting = apply_lighting(WorldPos, norm, surfaceColor, 0.8).rgb;
+	float primaryShadow;
+	vec3 lighting = apply_lighting(WorldPos, norm, surfaceColor, 0.8, primaryShadow).rgb;
 
 	// --- Combine colors ---
 	vec3 final_color = lighting * surfaceColor + grid_color;
@@ -152,5 +153,5 @@ void main() {
 	Velocity = a - b;
 
 	// Output view-space normal
-	NormalOut = normalize(mat3(view) * norm);
+	NormalOut = vec4(normalize(mat3(view) * norm), primaryShadow);
 }
