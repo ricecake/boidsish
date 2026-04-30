@@ -8,6 +8,9 @@
 
 #include <GL/glew.h>
 
+#include "persistent_buffer.h"
+#include "persistent_texture.h"
+
 namespace Boidsish {
 
 inline constexpr int kMaxTextureBindings = 16;
@@ -38,10 +41,19 @@ public:
 		return *this;
 	}
 
+	BindingSet& Texture(int unit, const PersistentTexture& tex) {
+		return Texture(unit, tex.GetId(), tex.GetTarget());
+	}
+
 	BindingSet& Ssbo(int binding_point, GLuint buffer) {
 		assert(num_buffers_ < kMaxBufferBindings && "BindingSet buffer capacity exceeded");
 		buffers_[num_buffers_++] = {GL_SHADER_STORAGE_BUFFER, binding_point, buffer, false, 0, 0};
 		return *this;
+	}
+
+	template <typename T>
+	BindingSet& Ssbo(int binding_point, const PersistentBuffer<T>& buffer) {
+		return Ssbo(binding_point, buffer.GetBufferId());
 	}
 
 	BindingSet& SsboRange(int binding_point, GLuint buffer, GLintptr offset, GLsizeiptr size) {
@@ -50,16 +62,41 @@ public:
 		return *this;
 	}
 
+	template <typename T>
+	BindingSet& SsboRange(int binding_point, const PersistentBuffer<T>& buffer) {
+		return SsboRange(
+			binding_point,
+			buffer.GetBufferId(),
+			buffer.GetFrameOffset(),
+			buffer.GetTotalSize() / buffer.GetNumBuffers()
+		);
+	}
+
 	BindingSet& Ubo(int binding_point, GLuint buffer) {
 		assert(num_buffers_ < kMaxBufferBindings && "BindingSet buffer capacity exceeded");
 		buffers_[num_buffers_++] = {GL_UNIFORM_BUFFER, binding_point, buffer, false, 0, 0};
 		return *this;
 	}
 
+	template <typename T>
+	BindingSet& Ubo(int binding_point, const PersistentBuffer<T>& buffer) {
+		return Ubo(binding_point, buffer.GetBufferId());
+	}
+
 	BindingSet& UboRange(int binding_point, GLuint buffer, GLintptr offset, GLsizeiptr size) {
 		assert(num_buffers_ < kMaxBufferBindings && "BindingSet buffer capacity exceeded");
 		buffers_[num_buffers_++] = {GL_UNIFORM_BUFFER, binding_point, buffer, true, offset, size};
 		return *this;
+	}
+
+	template <typename T>
+	BindingSet& UboRange(int binding_point, const PersistentBuffer<T>& buffer) {
+		return UboRange(
+			binding_point,
+			buffer.GetBufferId(),
+			buffer.GetFrameOffset(),
+			buffer.GetTotalSize() / buffer.GetNumBuffers()
+		);
 	}
 
 	void Apply() const {

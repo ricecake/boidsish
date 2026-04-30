@@ -4,6 +4,7 @@ layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
 #include "common_uniforms.glsl"
 #include "temporal_data.glsl"
+#include "frustum.glsl"
 
 // Output: per-draw visibility (1 = visible, 0 = occluded)
 layout(std430, binding = [[OCCLUSION_VISIBILITY_BINDING]]) buffer OcclusionVisibility {
@@ -110,6 +111,11 @@ void main() {
 		return;
 	}
 
+	if (!isAABBInFrustum(aabbMin, aabbMax)) {
+		visibility[idx] = 0u;
+		return;
+	}
+
 	vec4  screenRect;
 	float nearestDepth;
 
@@ -131,6 +137,11 @@ void main() {
 	vec2  pixelSize = screenSize * vec2(u_hizSize);
 	float maxPixelDim = max(pixelSize.x, pixelSize.y);
 	int   mipLevel = clamp(int(ceil(log2(max(maxPixelDim, 1.0) / 2.0))), 0, u_hizMipCount - 1);
+
+	if (distance(aabbMin, aabbMax) <= length(pixelSize)) {
+		visibility[idx] = 0u;
+		return;
+	}
 
 	// Sample Hi-Z at 4 corners of the screen rect at the chosen mip level
 	// Take max across all samples (most conservative - farthest depth in the region)
