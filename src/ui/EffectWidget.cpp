@@ -8,6 +8,7 @@
 #include "post_processing/effects/BloomEffect.h"
 #include "post_processing/effects/FilmGrainEffect.h"
 #include "post_processing/effects/GtaoEffect.h"
+#include "post_processing/effects/ScreenSpaceShadowEffect.h"
 #include "post_processing/effects/ToneMappingEffect.h"
 
 namespace Boidsish {
@@ -128,6 +129,28 @@ namespace Boidsish {
 								float ssdi_intensity = gtao_effect->GetSSDIIntensity();
 								if (ImGui::SliderFloat("SSDI Intensity##GTAO", &ssdi_intensity, 0.0f, 5.0f)) {
 									gtao_effect->SetSSDIIntensity(ssdi_intensity);
+								}
+							}
+						}
+
+						if (effect->GetName() == "ScreenSpaceShadows" && is_enabled) {
+							auto sss_effect = std::dynamic_pointer_cast<PostProcessing::ScreenSpaceShadowEffect>(effect);
+							if (sss_effect) {
+								float intensity = sss_effect->GetIntensity();
+								if (ImGui::SliderFloat("Intensity##SSS", &intensity, 0.0f, 1.0f)) {
+									sss_effect->SetIntensity(intensity);
+								}
+								float radius = sss_effect->GetRadius();
+								if (ImGui::SliderFloat("Radius##SSS", &radius, 0.01f, 5.0f)) {
+									sss_effect->SetRadius(radius);
+								}
+								float bias = sss_effect->GetBias();
+								if (ImGui::SliderFloat("Bias##SSS", &bias, 0.001f, 0.5f)) {
+									sss_effect->SetBias(bias);
+								}
+								int steps = sss_effect->GetSteps();
+								if (ImGui::SliderInt("Steps##SSS", &steps, 4, 64)) {
+									sss_effect->SetSteps(steps);
 								}
 							}
 						}
