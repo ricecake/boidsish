@@ -84,7 +84,7 @@
 #include <glm/ext/matrix_projection.hpp>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
-#include <shader.h>
+#include "shader.h"
 
 namespace Boidsish {
 
@@ -1047,11 +1047,7 @@ namespace Boidsish {
 			}
 
 			if (atmosphere_manager) {
-				atmosphere_manager->BindTextures(20);
-				s.trySetInt("u_transmittanceLUT", 20);
-				s.trySetInt("u_skyViewLUT", 22);
-				s.trySetInt("u_aerialPerspectiveLUT", 23);
-				s.trySetFloat("u_atmosphereHeight", atmosphere_manager->GetAtmosphereHeight());
+				atmosphere_manager->BindToShader(s);
 			}
 
 			if (shadow_manager && shadow_manager->IsInitialized() && frame_config_.enable_shadows) {
@@ -1077,10 +1073,7 @@ namespace Boidsish {
 				terrain_render_manager->BindTerrainData(shader_to_setup);
 			}
 			if (atmosphere_manager) {
-				shader_to_setup.trySetInt("u_transmittanceLUT", 20);
-				shader_to_setup.trySetInt("u_skyViewLUT", 22);
-				shader_to_setup.trySetInt("u_aerialPerspectiveLUT", 23);
-				shader_to_setup.trySetFloat("u_atmosphereHeight", atmosphere_manager->GetAtmosphereHeight());
+				atmosphere_manager->BindToShader(shader_to_setup);
 			}
 			shader_to_setup.setBool("uUseMDI", false);
 			shader_to_setup.setBool("useSSBOInstancing", false);
@@ -1902,10 +1895,7 @@ namespace Boidsish {
 			sky_shader->setMat4("invView", glm::inverse(view));
 
 			if (atmosphere_manager) {
-				atmosphere_manager->BindTextures(20);
-				sky_shader->setInt("u_transmittanceLUT", 20);
-				sky_shader->setInt("u_multiScatteringLUT", 21);
-				sky_shader->setInt("u_skyViewLUT", 22);
+				atmosphere_manager->BindToShader(*sky_shader);
 
 				const auto& lights = light_manager.GetLights();
 				if (!lights.empty()) {
@@ -2181,7 +2171,7 @@ namespace Boidsish {
 			prev_view_projection = current_vp;
 
 			if (atmosphere_manager) {
-				atmosphere_manager->BindTextures(20);
+				atmosphere_manager->BindTextures();
 			}
 
 			// Resource Preparation (Main Thread)
@@ -2304,6 +2294,19 @@ namespace Boidsish {
 					lighting_ubo_data_.cloudMoonLightScale = atmosphere_effect->GetCloudMoonLightScale();
 					lighting_ubo_data_.cloudBeerPowderMix = atmosphere_effect->GetCloudBeerPowderMix();
 
+					// Calculate cloud shadow matrix (world XZ to shadow map UV)
+					float     mapSize = atmosphere_manager->GetCloudShadowWorldSize();
+					glm::vec3 camPos = camera.pos();
+					glm::mat4 shadowMat(1.0f);
+					// 1. Move to camera-relative XZ
+					shadowMat = glm::translate(shadowMat, glm::vec3(0.5f, 0.5f, 0.0f));
+					// 2. Scale to [0, 1] UV space
+					shadowMat = glm::scale(shadowMat, glm::vec3(1.0f / mapSize, 1.0f / mapSize, 1.0f));
+					// 3. Center on camera
+					shadowMat = glm::translate(shadowMat, glm::vec3(-camPos.x, -camPos.z, 0.0f));
+
+					lighting_ubo_data_.cloudShadowMatrix = shadowMat;
+
 				} else {
 					lighting_ubo_data_.cloudShadowIntensity = 0.0f;
 				}
@@ -2314,8 +2317,8 @@ namespace Boidsish {
 
 				// GPU-side copy of SH coefficients from SSBO into the UBO (no CPU readback)
 				if (atmosphere_manager) {
-					static_assert(offsetof(LightingUbo, sh_coeffs) == 768, "SH offset mismatch");
-					atmosphere_manager->CopySHToUBO(lighting_ubo, 768);
+					static_assert(offsetof(LightingUbo, sh_coeffs) == 832, "SH offset mismatch");
+					atmosphere_manager->CopySHToUBO(lighting_ubo, 832);
 				}
 			}
 

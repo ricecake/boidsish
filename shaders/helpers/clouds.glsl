@@ -175,4 +175,37 @@ float calculateCloudShadowDensity(vec3 p, CloudWeather weather, CloudLayer layer
 	return 10.0 * calculateCloudDensity(p, weather, layer, props, time, true);
 }
 
+/**
+ * High-level function to evaluate cloud shadow density at a specific world XZ position.
+ * This encapsulates the logic used by both the shadow map generator and the runtime fallback.
+ */
+float evaluateCloudShadowDensityAtWorldPos(vec2 worldXZ, float time) {
+	// Replicate logic from calculateCloudShadow in lighting.glsl
+	// This ensures the shadow map matches what the raymarch would have produced
+	float shadowAltitude = cloudAltitude + cloudThickness * 0.5;
+	float scaledCloudAltitude = shadowAltitude * worldScale;
+	vec3  cloudPos = vec3(worldXZ.x, scaledCloudAltitude, worldXZ.y);
+
+	float weatherMap = (fastWorley3d(vec3(cloudPos.xz / (4000.0 * worldScale), time * 0.001)) * 0.5 + 0.5);
+	float heightMap = (fastWorley3d(vec3(cloudPos.xz / (2500.0 * worldScale), time * 0.0004)) * 0.5 + 0.5);
+
+	CloudWeather weather;
+	weather.weatherMap = weatherMap;
+	weather.heightMap = heightMap;
+
+	CloudProperties props;
+	props.altitude = cloudAltitude;
+	props.thickness = cloudThickness;
+	props.densityBase = cloudDensity;
+	props.coverage = cloudCoverage;
+	props.worldScale = worldScale;
+
+	CloudLayer layer = computeCloudLayer(weather, props);
+
+	// Sample at the center of the dynamic layer
+	cloudPos.y = (layer.baseFloor + layer.baseCeiling) * 0.5;
+
+	return calculateCloudShadowDensity(cloudPos, weather, layer, props, time);
+}
+
 #endif // HELPERS_CLOUDS_GLSL
