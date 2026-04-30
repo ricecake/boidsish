@@ -8,15 +8,10 @@
 
 // Forward declarations
 class Shader;
+class ComputeShader;
 
 namespace Boidsish {
 	namespace PostProcessing {
-
-		struct BloomMip {
-			glm::vec2 size;
-			GLuint    fbo;
-			GLuint    texture;
-		};
 
 		class BloomEffect: public IPostProcessingEffect {
 		public:
@@ -43,23 +38,34 @@ namespace Boidsish {
 
 			float GetMaxIntensity() const { return maxIntensity_; }
 
+			void SetToneMappingEnabled(bool enabled) { _toneMappingEnabled = enabled; }
+			bool IsToneMappingEnabled() const { return _toneMappingEnabled; }
+			void SetToneMappingMode(int mode) { _toneMappingMode = mode; }
+			int GetToneMappingMode() const { return _toneMappingMode; }
+
 		private:
-			void InitializeFBOs();
+			void InitializeResources();
 
-			std::unique_ptr<Shader> _brightPassShader;
-			std::unique_ptr<Shader> _downsampleShader;
-			std::unique_ptr<Shader> _upsampleShader;
-			std::unique_ptr<Shader> _compositeShader;
+			std::unique_ptr<Shader>        _brightPassShader;
+			std::unique_ptr<ComputeShader> _downsampleComputeShader;
+			std::unique_ptr<Shader>        _upsampleShader;
+			std::unique_ptr<Shader>        _compositeShader;
 
-			GLuint                _brightPassFBO;
-			GLuint                _brightPassTexture;
-			std::vector<BloomMip> _mipChain;
+			GLuint _brightPassFBO;
+			GLuint _brightPassTexture;
+
+			GLuint             _bloomTexture; // Mipmapped texture
+			int                _numMips;
+			std::vector<GLuint> _upsampleFBOs;
 
 			int   _width, _height;
 			float intensity_ = 0.075f;
 			float threshold_ = 1.0f;
 			float minIntensity_ = 0.05f;
 			float maxIntensity_ = 0.150f;
+
+			bool _toneMappingEnabled = false;
+			int  _toneMappingMode = 2;
 		};
 
 	} // namespace PostProcessing
