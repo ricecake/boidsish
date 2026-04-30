@@ -32,6 +32,38 @@ float luminance(vec3 c) {
 	return dot(c, vec3(0.2126, 0.7152, 0.0722));
 }
 
+vec4 tentUpsample(sampler2D srcTexture, float filterRadius, float srcLod, vec2 TexCoords) {
+	vec2 srcResolution = textureSize(srcTexture, 0);
+	filterRadius = max(1.0, filterRadius);
+	srcLod = max(0.0, srcLod);
+
+	// Dual Kawase blur upsample with tent filter
+	// Provides smooth, high-quality upsampling with natural blur
+	vec2  texelSize = 1.0 / srcResolution;
+	float radius = filterRadius;
+
+	// 9-tap tent filter for smooth upsampling
+	vec3 result = vec3(0.0);
+
+	// Center sample (weight 4)
+	result += textureLod(srcTexture, TexCoords, srcLod).rgb * 4.0;
+
+	// Diagonal samples at half-pixel offset (weight 1 each)
+	result += textureLod(srcTexture, TexCoords + vec2(-radius, -radius) * texelSize, srcLod).rgb;
+	result += textureLod(srcTexture, TexCoords + vec2(radius, -radius) * texelSize, srcLod).rgb;
+	result += textureLod(srcTexture, TexCoords + vec2(-radius, radius) * texelSize, srcLod).rgb;
+	result += textureLod(srcTexture, TexCoords + vec2(radius, radius) * texelSize, srcLod).rgb;
+
+	// Cardinal samples at half-pixel offset (weight 2 each)
+	result += textureLod(srcTexture, TexCoords + vec2(0.0, -radius) * texelSize, srcLod).rgb * 2.0;
+	result += textureLod(srcTexture, TexCoords + vec2(0.0, radius) * texelSize, srcLod).rgb * 2.0;
+	result += textureLod(srcTexture, TexCoords + vec2(-radius, 0.0) * texelSize, srcLod).rgb * 2.0;
+	result += textureLod(srcTexture, TexCoords + vec2(radius, 0.0) * texelSize, srcLod).rgb * 2.0;
+
+	return vec4(result / 16.0, 1.0);
+}
+
+
 vec4 rejectFireflies(vec4 current, sampler2D rawTex, sampler2D historyTex, sampler2D velocityTex, sampler2D depthTex, vec2 uv, vec2 lowResInvSize) {
 	// 1. Spatial Check in raw (recent) frame
 	vec4 m1 = vec4(0.0);
@@ -214,7 +246,7 @@ void main() {
 	vec4 giao = sampleBilateral(uGIAOTexture, uDepthTexture, uNormalTexture, TexCoords);
 	float sssFactor = sampleBilateral(uSSSTexture, uDepthTexture, uNormalTexture, TexCoords).r;
 	vec3 di_lighting = sampleBilateral(uDITexture, uDepthTexture, uNormalTexture, TexCoords).rgb;
-
+    // di_lighting += tentUpsample(uDITexture, 5.0, 0.0, TexCoords).rgb;
 	// // Basic firefly rejection: clamp ReSTIR contribution based on scene luminance
 	// vec4 gR = textureGather(uSceneTexture, TexCoords, 0);
 	// vec4 gG = textureGather(uSceneTexture, TexCoords, 1);
@@ -227,8 +259,8 @@ void main() {
 	// di_lighting = min(di_lighting, vec3(max_lum));
 
 	// Advanced firefly rejection
-	giao = rejectFireflies(giao, uRawGIAOTexture, uHistoryGIAOTexture, uVelocityTexture, uDepthTexture, TexCoords, lowResInvSize);
-	di_lighting = rejectFireflies(vec4(di_lighting, 1.0), uRawDITexture, uHistoryDITexture, uVelocityTexture, uDepthTexture, TexCoords, lowResInvSize).rgb;
+	// giao = rejectFireflies(giao, uRawGIAOTexture, uHistoryGIAOTexture, uVelocityTexture, uDepthTexture, TexCoords, lowResInvSize);
+	// di_lighting = rejectFireflies(vec4(di_lighting, 1.0), uRawDITexture, uHistoryDITexture, uVelocityTexture, uDepthTexture, TexCoords, lowResInvSize).rgb;
 
 	float traditionalShadow = texture(uNormalTexture, TexCoords).a;
 
