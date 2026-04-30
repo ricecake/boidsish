@@ -42,6 +42,45 @@ layout(std140, binding = 6) uniform TemporalData {
 	float padding_temporal;
 };
 
+
+// Standard smooth minimum function
+float smin(float a, float b, float k) {
+    float h = max(k - abs(a - b), 0.0);
+    return min(a, b) - h * h * 0.25 / k;
+}
+
+// Exact distance to an ellipsoid
+float sdEllipsoid(vec3 p, vec3 r) {
+    float k0 = length(p / r);
+    float k1 = length(p / (r * r));
+    return k0 * (k0 - 1.0) / k1;
+}
+
+// Exact distance to a capped cylinder
+float sdCappedCylinder(vec3 p, float h, float r) {
+    vec2 d = abs(vec2(length(p.xz), p.y)) - vec2(r, h);
+    return min(max(d.x, d.y), 0.0) + length(max(d, 0.0));
+}
+
+float sdExplosionBase(vec3 p, float maxRadius, float ntime) {
+    // Animate dimensions over time to grow the mushroom
+    float currentRadius = maxRadius * mix(0.1, 1.0, ntime);
+    float stemHeight    = maxRadius * mix(0.0, 1.2, ntime);
+    float capThickness  = currentRadius * mix(0.8, 0.3, ntime);
+
+    // Position the cap at the top of the stem
+    vec3 capPos = p - vec3(0.0, stemHeight, 0.0);
+    float cap = sdEllipsoid(capPos, vec3(currentRadius, capThickness, currentRadius));
+
+    // Position the stem
+    vec3 stemPos = p - vec3(0.0, stemHeight * 0.5, 0.0);
+    float stem = sdCappedCylinder(stemPos, stemHeight * 0.5, currentRadius * 0.2);
+
+    // Smoothly blend them. The blend factor (k) can also scale with the explosion size.
+    return smin(cap, stem, currentRadius * 0.3);
+}
+
+
 // --- Noise from earlier shader: ridged fBm for sharp creases ---
 float ridgedFbm(vec3 p) {
 	float sum = 0.0;
@@ -128,11 +167,11 @@ vec3 getNormal(vec3 p) {
 	));
 }
 
-float smin( float a, float b, float k )
-{
-    float h = max(k-abs(a-b),0.0);
-    return min(a, b) - h*h*0.25/k;
-}
+// float smin( float a, float b, float k )
+// {
+//     float h = max(k-abs(a-b),0.0);
+//     return min(a, b) - h*h*0.25/k;
+// }
 
 // --- Mushroom-shaped SDF ---
 // SDF for a cylinder (stem)
@@ -198,6 +237,7 @@ float sdMushroom(vec3 p, float radius, float ntime) {
 
 
 float mushroomSDF(vec3 p, float radius, float ntime) {
+	return sdExplosionBase(p, radius, ntime);
     p.y -= radius;
 
     // 1. Normalize the height to a 0.0 (base) to 1.0 (top) range
@@ -232,6 +272,38 @@ float mushroomSDF(vec3 p, float radius, float ntime) {
     return ((length(warped) - radius) * 0.4);
 }
 
+
+vec3 getVortexAdvection(vec3 p, vec3 ringCenter, float ringRadius, float time, float swirlSpeed) {
+    // 1. Get position relative to the center of the cap
+    vec3 rel = p - ringCenter;
+
+    // 2. Find the closest point on the 1D ring (the core of the torus)
+    vec3 ringCore = normalize(vec3(rel.x, 0.0, rel.z)) * ringRadius;
+
+    // 3. Vector from that core point to our current sample point
+    vec3 fromCore = rel - ringCore;
+
+    // 4. Tangent vector of the ring itself
+    vec3 ringTangent = cross(vec3(0.0, 1.0, 0.0), normalize(ringCore));
+
+    // 5. The direction of the swirl is orthogonal to both the ring's tangent and the vector to the core
+    vec3 swirlDir = normalize(cross(fromCore, ringTangent));
+
+    // 6. Attenuate the swirl strength based on distance from the core
+    // (Swirls fastest near the core, drops off further away)
+    float distToCore = length(fromCore);
+    float intensity = 1.0 / (1.0 + distToCore * 2.0);
+
+    // Return the coordinate offset
+    return swirlDir * time * swirlSpeed * intensity;
+}
+
+// Implementation inside your density function:
+// vec3 ringCenter = vec3(0.0, currentStemHeight, 0.0);
+// vec3 advectionOffset = getVortexAdvection(p, ringCenter, currentRadius, time, 2.5);
+// float noise = fastFbm3d(p + advectionOffset);
+// float finalDensity = max(0.0, baseSDFDistance - noise * noiseScale);
+
 // --- Per-source volumetric density with rich noise ---
 
 float sampleSourceDensity(vec3 p, int index) {
@@ -242,19 +314,34 @@ float sampleSourceDensity(vec3 p, int index) {
 	float noise_scale = sources[index].volumetric_params.z;
 	float noise_intensity = sources[index].volumetric_params.w;
 
+	// ntime = smoothstep(0, 0.5, ntime) * 0.5 * smoothstep(0.5);
+	// ntime = pow(ntime, 0.15);
+	// ntime = exp2(ntime);
+	// ntime = mix(smoothstep(0, 0.5, ntime), smoothstep(0, 1, ntime), pow(ntime, 3));
+
 	if (p.y < ground_y) return 0.0;
 
 	vec3 rel = p - center;
-	float d = mushroomSDF(rel, radius * (fastWarpedFbm3d(p/30.0+time*0.8*1/radius)*0.65+0.98) , ntime);
+	float d = mushroomSDF(rel, radius * (fastWarpedFbm3d(p/30.0+ntime*0.8*1/radius)*0.65+0.98) , ntime);
 	if (d > radius * 0.05) return 0.0;
+	float dist = distance(p.xz, center.xz);
+
+	vec3 ringCenter = vec3(0.0, radius*2.0, 0.0);
+	vec3 advectionOffset = getVortexAdvection(p, ringCenter, radius, ntime, 2.5);
+	float noise = fastFbm3d(p + advectionOffset);
+	noise *= fastRidge3d(rel/(10.0*noise_intensity) * smoothstep(0, 0.5, noise_intensity)+ntime*0.75) *0.5 + 0.5;
+    noise *= fastWorley3d(rel/100.0 *smoothstep(0, 0.75, d) + ntime*0.5) * 0.5 + 0.5;
+	float finalDensity = max(0.0, dist - noise * noise_scale);
+	return finalDensity;
+
+
 
 	float normalized_d = clamp(-d / radius, 0.0, 1.0);
-	float dist = distance(p.xz, center.xz);
 	vec3 warp = fastCurl3d((p+time)/ (10.0*noise_intensity));
-	d += (fastFbm3d(p*warp / (10.0*noise_intensity) * d*time*0.5)*0.5+0.5) * smoothstep(0, 0.25, noise_intensity);
-	d += fastRidge3d(rel/(10.0*noise_intensity) * smoothstep(0, 0.5, noise_intensity)+time*0.75);
+	// d += (fastFbm3d(p*warp / (10.0*noise_intensity) * d*time*0.5)*0.5+0.5) * smoothstep(0, 0.25, noise_intensity);
 	// d += pow(1-abs(fastWarpedFbm3d(rel/10.0 * 0.6*smoothstep(0, 0.75, dist) + warp*time*0.00005)), 5);
     d += fastWorley3d(rel/100.0 *smoothstep(0, 0.75, d) + time*0.5);
+	d -= fastRidge3d(rel/(10.0*noise_intensity) * smoothstep(0, 1.0, d)+time*0.75);
 	float ground_dist = (p.y - ground_y) / max(radius, 0.01);
 	if (ground_dist < 0.3) {
 		d *= 1.0 + 2.5 * smoothstep(0.3, 0.0, ground_dist);
@@ -328,7 +415,31 @@ float sampleSourceDensity(vec3 p, int index) {
 // --- Temperature-driven color ---
 
 vec3 explosionColor(float normalized_d, float ntime, vec3 color_inner, vec3 color_outer) {
-	float temperature = 100+(40000 * smoothstep(0.0, 0.75, normalized_d * (1.0 - ntime * 0.7)));
+	// vec4 sceneColorSample = texture(sceneTexture, TexCoords);
+	// vec3 sceneColor = sceneColorSample.rgb;
+	// float depth = texture(depthTexture, TexCoords).r;
+
+
+	// vec3 R = refract(
+	// 	V,
+	// 	norm,
+	// 	1.0 / max(c_refractive_index + jitter * ((float(i) / float(steps - 1)) * 0.15), 1.0)
+	// );
+	// // Generalized refraction: project refracted ray back to screen space
+	// // We use a fixed distance fallback for simplicity, but could sample depth buffer for better accuracy
+	// vec3 refractedPos = FragPos + R * 10.0; // Fallback distance
+	// vec4 refractedClip = viewProjection * vec4(refractedPos, 1.0);
+	// vec2 refractedUV = (refractedClip.xy / refractedClip.w) * 0.5 + 0.5;
+
+	// // Use the direct screen-space offset if IOR is close to 1.0 for better "vanishing"
+	// refractedUV = mix(screenUV, refractedUV, smoothstep(1.0, 1.01, c_refractive_index));
+
+	// float distToEdge = min(min(refractedUV.x, 1.0 - refractedUV.x), min(refractedUV.y, 1.0 - refractedUV.y));
+
+	// vec3 rawColor = texture(refractionTexture, refractedUV).rgb;
+
+
+	float temperature = 100+(30000 * smoothstep(0.0, 0.90, pow(normalized_d, 2)));
 	return blackbody(temperature);
 
 	vec3 white_hot = vec3(1.0, 0.95, 0.8);
@@ -394,12 +505,14 @@ void volumetricMarch(
 	global_t_end = min(global_t_end, maxDist);
 
 	// Blue noise jitter to reduce banding
-	float jitter = fastBlueNoise(TexCoords * screenSize * 0.1);
+	// float jitter = fastBlueNoise(frameIndex+TexCoords * screenSize * 0.0005);
 
 	int num_steps = 56;
 	float stepSize = (global_t_end - global_t_start) / float(num_steps);
+	float jitter = fastBlueNoise(sin(frameIndex + time) + TexCoords * screenSize * 0.0005);
 
 	for (int j = 0; j < num_steps; ++j) {
+		// Blue noise jitter to reduce banding
 		float curT = global_t_start + stepSize * (float(j) + jitter);
 		if (curT > maxDist) break;
 
@@ -416,6 +529,7 @@ void volumetricMarch(
 			if (sources[i].charge_type_vol_time.z < 0.5) continue;
 
 			float ntime = sources[i].charge_type_vol_time.w;
+			ntime = mix(smoothstep(0, 0.5, ntime), smoothstep(0, 1, ntime), pow(ntime, 3));
 
             float fader = smoothstep(1.0, 0.85, ntime);
 
@@ -430,10 +544,44 @@ void volumetricMarch(
 
             vec3 thing = p - center;//vec3(center.x, p.y, center.z);
             // thing.y = 0.0;
-			float md = mushroomSDF(thing, radius, ntime);
-			float nd = d*clamp(-md / radius, 0.0, 1.0);
 
-			vec3 col = explosionColor(nd, ntime, sources[i].color_inner.rgb, sources[i].color_outer.rgb);
+			float md = mushroomSDF(thing, radius, ntime);
+			float nd = mod(d*clamp(-md / radius, 0.0, 1.0), 0.8) * fader;
+
+
+			// vec4 sceneColorSample = texture(sceneTexture, TexCoords);
+			// vec3 sceneColor = sceneColorSample.rgb;
+			// float depth = texture(depthTexture, TexCoords).r;
+
+
+			vec3 R = refract(
+				normalize(rayDir),
+				normalize(thing),
+				1.0 / max(nd, 1.0)
+			);
+			// Generalized refraction: project refracted ray back to screen space
+			// We use a fixed distance fallback for simplicity, but could sample depth buffer for better accuracy
+			vec3 refractedPos = p + R * 10.0; // Fallback distance
+			vec4 refractedClip = viewProjection * vec4(refractedPos, 1.0);
+			vec2 refractedUV = (refractedClip.xy / refractedClip.w) * 0.5 + 0.5;
+
+			// Use the direct screen-space offset if IOR is close to 1.0 for better "vanishing"
+			refractedUV = mix(TexCoords, refractedUV, smoothstep(1.0, 1.01, nd));
+
+			float distToEdge = min(min(refractedUV.x, 1.0 - refractedUV.x), min(refractedUV.y, 1.0 - refractedUV.y));
+
+			vec3 col = texture(sceneTexture, refractedUV).rgb;
+			vec3 historyColor = texture(historyTexture, refractedUV).rgb;
+
+			col = (col - historyColor)/max(vec3(0.01), historyColor+col);
+			// col = (col - historyColor)/max(vec3(0.01), historyColor);
+
+			// col *= vec3(0.06, 0.4, 1.50);
+			// col = vec3(1.0) - col;
+
+
+
+			// vec3 col = explosionColor(nd, ntime, sources[i].color_inner.rgb, sources[i].color_outer.rgb);
 			float emit = emission * nd * (1.0 - ntime) * fader;
 			col += col * emit;
 
