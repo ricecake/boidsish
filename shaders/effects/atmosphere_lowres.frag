@@ -33,36 +33,6 @@ vec3 sampleSkyView(vec3 rd) {
 	return texture(u_skyViewLUT, vec2(u, v)).rgb;
 }
 
-vec3 evalSHIrradiance(vec3 n) {
-	// Constants for SH basis functions
-	float c1 = 0.282095;
-	float c2 = 0.488603;
-	float c3 = 1.092548;
-	float c4 = 0.315392;
-	float c5 = 0.546274;
-
-	// Cosine lobe convolution (irradiance) coefficients
-	// A0 = PI, A1 = 2*PI/3, A2 = PI/4
-	float a0 = 3.141593;
-	float a1 = 2.094395;
-	float a2 = 0.785398;
-
-	vec3 res = vec3(0.0);
-
-	// L0
-	res += a0 * c1 * sh_coeffs[0].rgb;
-
-	// L1
-	res += a1 * c2 * (sh_coeffs[1].rgb * n.y + sh_coeffs[2].rgb * n.z + sh_coeffs[3].rgb * n.x);
-
-	// L2
-	res += a2 * c3 * (sh_coeffs[4].rgb * n.x * n.y + sh_coeffs[5].rgb * n.y * n.z + sh_coeffs[7].rgb * n.x * n.z);
-	res += a2 * c4 * sh_coeffs[6].rgb * (3.0 * n.z * n.z - 1.0);
-	res += a2 * c5 * sh_coeffs[8].rgb * (n.x * n.x - n.y * n.y);
-
-	return max(res, 0.0);
-}
-
 void main() {
 	float depth = texture(depthTexture, TexCoords).r;
 	vec3  zenithRadiance = sampleSkyView(vec3(0, 1, 0)) * 4.0;

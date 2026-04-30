@@ -274,6 +274,69 @@ float calculateShadow(int light_index, vec3 frag_pos, vec3 normal, vec3 light_di
 }
 
 /**
+ * Evaluate Spherical Harmonics irradiance for a given normal.
+ * Uses 2nd-order SH coefficients from the Lighting UBO.
+ */
+vec3 evalSHIrradiance(vec3 n) {
+	// Constants for SH basis functions
+	float c1 = 0.282095;
+	float c2 = 0.488603;
+	float c3 = 1.092548;
+	float c4 = 0.315392;
+	float c5 = 0.546274;
+
+	// Cosine lobe convolution (irradiance) coefficients
+	// A0 = PI, A1 = 2*PI/3, A2 = PI/4
+	float a0 = 3.141593;
+	float a1 = 2.094395;
+	float a2 = 0.785398;
+
+	vec3 res = vec3(0.0);
+
+	// L0
+	res += a0 * c1 * sh_coeffs[0].rgb;
+
+	// L1
+	res += a1 * c2 * (sh_coeffs[1].rgb * n.y + sh_coeffs[2].rgb * n.z + sh_coeffs[3].rgb * n.x);
+
+	// L2
+	res += a2 * c3 * (sh_coeffs[4].rgb * n.x * n.y + sh_coeffs[5].rgb * n.y * n.z + sh_coeffs[7].rgb * n.x * n.z);
+	res += a2 * c4 * sh_coeffs[6].rgb * (3.0 * n.z * n.z - 1.0);
+	res += a2 * c5 * sh_coeffs[8].rgb * (n.x * n.x - n.y * n.y);
+
+	return max(res, 0.0);
+}
+
+/**
+ * Interpolate spatial ambient irradiance from nearby probes using Inverse Distance Weighting.
+ */
+vec3 getSpatialAmbient(vec3 pos) {
+	vec3  totalAmbient = vec3(0.0);
+	float totalWeight = 0.0;
+
+	for (int i = 0; i < 5; ++i) {
+		float dist = length(pos - probes[i].pos.xyz);
+		float radius = probes[i].pos.w;
+
+		// Inverse distance weighting with a small epsilon to avoid division by zero
+		// We use a quadratic falloff for smoother transitions near probes
+		float weight = 1.0 / (dist * dist + 0.001);
+
+		// Clamp influence based on probe radius
+		weight *= smoothstep(radius * 2.0, radius, dist);
+
+		totalAmbient += probes[i].color.rgb * weight;
+		totalWeight += weight;
+	}
+
+	if (totalWeight > 0.0001) {
+		return totalAmbient / totalWeight;
+	}
+
+	return ambient_light; // Fallback to global ambient
+}
+
+/**
  * Calculate the relative luminance of a color.
  * Used for determining how much a specular highlight should contribute to fragment opacity.
  */
@@ -495,8 +558,13 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 		spec_lum += get_luminance(specular_radiance);
 	}
 
-	// Ambient lighting for PBR (uses ambient_light uniform from main branch)
-	vec3 ambientDiffuse = ambient_light * albedo * ao;
+	// Spatially-varying ambient augmented with SH sky irradiance
+	vec3 spatialAmbient = getSpatialAmbient(frag_pos);
+	vec3 skyIrradiance = evalSHIrradiance(N);
+
+	// Blend sky and local ground ambient based on upward-facing normal
+	float upFactor = N.y * 0.5 + 0.5;
+	vec3  ambientDiffuse = mix(spatialAmbient, skyIrradiance, upFactor) * albedo * ao;
 
 	// Environment reflection approximation for glossy surfaces
 	vec3 R = reflect(-V, N);
@@ -506,12 +574,11 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 	float NdotV = max(dot(N, V), 0.0);
 	vec3  F_env = fresnelSchlickRoughness(NdotV, F0_env, roughness);
 
-	// Fake environment color - gradient from horizon to sky
-	// Scaled by ambient_light to respond to time-of-day
+	// Fake environment color - gradient from local ground to sky
 	float upAmount = R.y * 0.5 + 0.5;
 	vec3  envColor = mix(
-		ambient_light * 0.2, // Ground color (approximate bounce)
-		ambient_light * 1.2, // Sky color (approximate)
+		spatialAmbient,
+		skyIrradiance * 1.2, // Boost sky reflection slightly
 		smoothstep(0.0, 0.7, upAmount)
 	);
 

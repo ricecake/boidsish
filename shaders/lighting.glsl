@@ -11,6 +11,11 @@ struct Light {
 	float outer_cutoff; // Also: falloff_exp (FLASH)
 };
 
+struct AmbientProbe {
+	vec4 pos;   // xyz = position, w = radius/scale
+	vec4 color; // rgb = ambient irradiance, w = unused
+};
+
 const int MAX_LIGHTS = [[MAX_LIGHTS]];
 const int MAX_SHADOW_MAPS = [[MAX_SHADOW_MAPS]];
 const int MAX_CASCADES = [[MAX_CASCADES]];
@@ -41,9 +46,10 @@ layout(std140) uniform Lighting {
 	float cloudShadowOpticalDepthMultiplier;
 	float cloudShadowStepMultiplier;
 	float cloudSunLightScale;
-	float cloudMoonLightScale;
-	float cloudBeerPowderMix;
-	vec4  sh_coeffs[9];
+	float        cloudMoonLightScale;
+	float        cloudBeerPowderMix;
+	AmbientProbe probes[5];
+	vec4         sh_coeffs[9];
 };
 
 // Shadow mapping UBO (binding set via glUniformBlockBinding to point 2)

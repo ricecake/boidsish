@@ -2313,10 +2313,13 @@ namespace Boidsish {
 				glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(LightingUbo), &lighting_ubo_data_);
 				glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
+				// Copy ambient probes to UBO data
+				std::memcpy(lighting_ubo_data_.probes, light_manager.GetProbes(), 5 * sizeof(AmbientProbe));
+
 				// GPU-side copy of SH coefficients from SSBO into the UBO (no CPU readback)
 				if (atmosphere_manager) {
-					static_assert(offsetof(LightingUbo, sh_coeffs) == 768, "SH offset mismatch");
-					atmosphere_manager->CopySHToUBO(lighting_ubo, 768);
+					static_assert(offsetof(LightingUbo, sh_coeffs) == 928, "SH offset mismatch");
+					atmosphere_manager->CopySHToUBO(lighting_ubo, 928);
 				}
 			}
 
@@ -3146,7 +3149,11 @@ namespace Boidsish {
 			impl->simulation_time += impl->time_scale * delta_time;
 		}
 
-		impl->light_manager.Update(impl->simulation_delta_time);
+		impl->light_manager.Update(
+			impl->simulation_delta_time,
+			impl->terrain_generator.get(),
+			impl->camera.pos()
+		);
 
 		// Update ambient weather
 		if (impl->weather_manager && impl->weather_manager->IsEnabled()) {
