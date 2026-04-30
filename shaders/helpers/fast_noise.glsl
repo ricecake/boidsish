@@ -1,3 +1,6 @@
+#ifndef HELPERS_FAST_NOISE_GLSL
+#define HELPERS_FAST_NOISE_GLSL
+
 // Helper functions for fast texture-based noise lookups
 // Requires noise texture samplers bound to fixed units:
 // u_noiseTexture: 3D, unit 5, R=Simplex/G=Worley/B=FBM/A=Warped
@@ -5,11 +8,14 @@
 // u_blueNoiseTexture: 2D, unit 7, RGBA tiling blue noise at 4 frequencies
 // u_extraNoiseTexture: 3D, unit 8, R=Ridge/G=Gradient
 
+#ifndef NOISE_TEXTURES_DEFINED
+#define NOISE_TEXTURES_DEFINED
 uniform sampler3D u_noiseTexture;
 uniform sampler3D u_curlTexture;
 uniform sampler2D u_blueNoiseTexture;
 uniform sampler3D u_extraNoiseTexture;
 uniform sampler2D u_phasorTexture;
+#endif
 
 // R: Simplex 3D
 float fastSimplex3d(vec3 p) {
@@ -95,3 +101,5 @@ float fastPhasor2d(vec2 uv, float runtimePhase) {
 
 	return baked.x * cosPhi - baked.y * sinPhi;
 }
+
+#endif // HELPERS_FAST_NOISE_GLSL

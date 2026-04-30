@@ -29,5 +29,9 @@ namespace Boidsish {
 		float erosion_detail;
 		float erosion_gully_weight;
 		float erosion_max_dist;
+		float rain_intensity;
+		float snow_intensity;
+		float wetness;
+		float _pad_vfx;
 	};
 } // namespace Boidsish

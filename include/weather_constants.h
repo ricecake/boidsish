@@ -36,6 +36,8 @@ namespace Boidsish {
 		constexpr WeatherAttributeInfo RayleighScaleHeight = {4.0f, 8.0f, 10.0f, 0.05f};
 		constexpr WeatherAttributeInfo MieScaleHeight = {1.0f, 1.2f, 10.0f, 0.05f};
 		constexpr WeatherAttributeInfo CloudCoverage = {0.0f, 0.85f, 1.0f, 0.2f};
+		constexpr WeatherAttributeInfo Precipitation = {0.0f, 0.0f, 1.0f, 0.1f};
+		constexpr WeatherAttributeInfo Temperature = {263.15f, 288.15f, 313.15f, 0.05f}; // -10C to 40C
 
 		// Fixed Atmosphere Constants (Canonical)
 		inline const glm::vec3 RayleighScattering = glm::vec3(5.802f, 13.558f, 33.100f) * 1e-3f;
