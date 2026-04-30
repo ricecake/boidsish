@@ -14,6 +14,7 @@ out float         v_lifetime;
 out vec4          view_pos;
 out vec4          v_pos;
 out vec3          v_vel;
+out vec3          v_vel_view;
 out float         v_extra[2];
 out vec3          v_epicenter;
 flat out int      v_style;
@@ -27,6 +28,7 @@ void main() {
 	Particle p = particles[particle_idx];
 	v_pos = p.pos;
 	v_vel = p.vel.xyz;
+	v_vel_view = (u_view * vec4(p.vel.xyz, 0.0)).xyz;
 	v_epicenter = p.epicenter;
 	v_extra = p.extras;
 

@@ -13,7 +13,7 @@ namespace Boidsish {
         WeatherLbmSimulator(int width, int height);
         ~WeatherLbmSimulator();
 
-        void Update(float deltaTime, float totalTime, float timeOfDay, const ITerrainGenerator& terrain, const glm::vec3& cameraPos, float windSpeed, float windStrength);
+        void Update(float deltaTime, float totalTime, float timeOfDay, const ITerrainGenerator& terrain, const glm::vec3& cameraPos, float windSpeed, float windStrength, float targetTemp, float targetPressure, float targetHumidity);
 
         /**
          * @brief Updates the grid anchor based on camera position without stepping the simulation.
@@ -87,7 +87,7 @@ namespace Boidsish {
         float CalculateEquilibrium(int i, float rho, glm::vec2 u);
         void CollisionAndStreaming();
         void ApplyPhysics(float deltaTime, float totalTime, float timeOfDay);
-        void ApplyBoundaries(float totalTime, float windSpeed, float windStrength, float timeOfDay);
+        void ApplyBoundaries(float totalTime, float windSpeed, float windStrength, float timeOfDay, float targetTemp, float targetPressure, float targetHumidity);
         void ShiftGrid(glm::ivec2 shiftOffset);
 
         int width_;

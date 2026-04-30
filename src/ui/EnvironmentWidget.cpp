@@ -55,11 +55,28 @@ namespace Boidsish {
 							if (ImGui::SliderFloat("Temperature (K)", &temp, 200.0f, 350.0f, "%.1f K")) {
 								weather->SetTarget(WeatherAttribute::Temperature, temp);
 							}
+							ImGui::SameLine();
+							if (ImGui::Button("Reset##Temp")) {
+								weather->ClearTarget(WeatherAttribute::Temperature);
+							}
 							ImGui::Text("  (%.1f C / %.1f F)", temp - 273.15f, (temp - 273.15f) * 1.8f + 32.0f);
 
 							float precip = cur.precipitation;
 							if (ImGui::SliderFloat("Precipitation", &precip, 0.0f, 1.0f, "%.2f")) {
 								weather->SetTarget(WeatherAttribute::Precipitation, precip);
+							}
+							ImGui::SameLine();
+							if (ImGui::Button("Reset##Precip")) {
+								weather->ClearTarget(WeatherAttribute::Precipitation);
+							}
+
+							float humidity = cur.humidity;
+							if (ImGui::SliderFloat("Humidity", &humidity, 0.0f, 1.0f, "%.2f")) {
+								weather->SetTarget(WeatherAttribute::Humidity, humidity);
+							}
+							ImGui::SameLine();
+							if (ImGui::Button("Reset##Humidity")) {
+								weather->ClearTarget(WeatherAttribute::Humidity);
 							}
 
 							// Display derived intensities and wetness

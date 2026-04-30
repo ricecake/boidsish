@@ -49,7 +49,7 @@ TEST(WeatherLbmTest, BasicSimulation) {
 
     // Run a few steps
     for (int i = 0; i < 10; ++i) {
-        sim.Update(0.016f, i * 0.016f, 12.0f, terrain, cameraPos, 0.075f, 0.065f);
+        sim.Update(0.016f, i * 0.016f, 12.0f, terrain, cameraPos, 0.075f, 0.065f, 288.15f, 1013.25f, 0.5f);
     }
 
     const auto& out = sim.GetOutput();
@@ -77,7 +77,7 @@ TEST(WeatherLbmTest, Conservation) {
     }
 
     // Step simulation
-    sim.Update(0.016f, 0.016f, 12.0f, terrain, cameraPos, 0.075f, 0.065f);
+    sim.Update(0.016f, 0.016f, 12.0f, terrain, cameraPos, 0.075f, 0.065f, 288.15f, 1013.25f, 0.5f);
 
     float finalRho = 0.0f;
     for (const auto& cell : sim.GetCells()) {
@@ -95,7 +95,7 @@ TEST(WeatherLbmTest, AtmosphereDerivations) {
     MockTerrain terrain;
     glm::vec3 cameraPos(0.0f);
 
-    sim.Update(0.016f, 0.016f, 12.0f, terrain, cameraPos, 0.075f, 0.065f);
+    sim.Update(0.016f, 0.016f, 12.0f, terrain, cameraPos, 0.075f, 0.065f, 288.15f, 1013.25f, 0.5f);
     const auto& out = sim.GetOutput();
 
     // Rayleigh scattering should be positive
