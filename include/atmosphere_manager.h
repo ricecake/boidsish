@@ -27,7 +27,8 @@ namespace Boidsish {
 			const glm::vec3& sunColor,
 			float            sunIntensity,
 			const glm::vec3& cameraPos,
-			float            time
+			float            time,
+			float            worldScale
 		);
 
 		glm::vec3 GetAmbientEstimate() const { return _ambientEstimate; }
@@ -163,6 +164,10 @@ namespace Boidsish {
 
 		float GetColorVarianceStrength() const { return _colorVarianceStrength; }
 
+		void SetCloudShadowIntensity(float i) { _cloudShadowIntensity = i; }
+
+		float GetCloudShadowIntensity() const { return _cloudShadowIntensity; }
+
 		const glm::vec4* GetSHCoefficients() const { return _shCoeffs; }
 
 		// Copy SH coefficients directly from GPU SSBO into a UBO, avoiding CPU readback
@@ -204,6 +209,7 @@ namespace Boidsish {
 		float     _mieScaleHeight = WeatherConstants::MieScaleHeight.normal;
 		float     _colorVarianceScale = 1.0f;
 		float     _colorVarianceStrength = 0.0f;
+		float     _cloudShadowIntensity = 0.5f;
 
 		glm::vec3 _ambientEstimate = glm::vec3(0.0f);
 	};

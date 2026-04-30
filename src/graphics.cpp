@@ -2099,10 +2099,14 @@ namespace Boidsish {
 				atmosphere_manager->SetMieScaleHeight(atmosphere_effect->GetMieScaleHeight());
 				atmosphere_manager->SetColorVarianceScale(atmosphere_effect->GetColorVarianceScale());
 				atmosphere_manager->SetColorVarianceStrength(atmosphere_effect->GetColorVarianceStrength());
+
+			float cloudShadowIntensity = ConfigManager::GetInstance().GetAppSettingFloat("cloud_shadow_intensity", 0.5f);
+			atmosphere_manager->SetCloudShadowIntensity(cloudShadowIntensity);
 			}
 
 			// Update the atmosphere model with the current sun/moon light
-			atmosphere_manager->Update(sun_dir, sun_color, sun_intensity, camera.pos(), simulation_time);
+			float world_scale = terrain_generator ? terrain_generator->GetWorldScale() : 1.0f;
+			atmosphere_manager->Update(sun_dir, sun_color, sun_intensity, camera.pos(), simulation_time, world_scale);
 
 			// Sync ambient light from atmosphere to ensure decor and world match
 			glm::vec3 estimated_ambient = atmosphere_manager->GetAmbientEstimate();
@@ -2637,20 +2641,20 @@ namespace Boidsish {
 					true
 				);
 
-				if (grass_manager && frame.config.render_decor) {
-					GrassManager::RenderResources res{};
-					res.lightingUbo = render_state_.lighting.id;
-					res.lightingUboOffset = render_state_.lighting.offset;
-					res.lightingUboSize = render_state_.lighting.size;
-					res.shadowUbo = shadow_manager->GetShadowUbo();
-					grass_manager->Render(
-						glm::mat4(1.0f),
-						light_space_matrix,
-						terrain_render_manager,
-						res,
-						true
-					);
-				}
+				// if (grass_manager && frame.config.render_decor) {
+				// 	GrassManager::RenderResources res{};
+				// 	res.lightingUbo = render_state_.lighting.id;
+				// 	res.lightingUboOffset = render_state_.lighting.offset;
+				// 	res.lightingUboSize = render_state_.lighting.size;
+				// 	res.shadowUbo = shadow_manager->GetShadowUbo();
+				// 	grass_manager->Render(
+				// 		glm::mat4(1.0f),
+				// 		light_space_matrix,
+				// 		terrain_render_manager,
+				// 		res,
+				// 		true
+				// 	);
+				// }
 			};
 
 			shadow_pass_->Execute(frame, render_shapes);

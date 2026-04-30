@@ -601,7 +601,6 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 	// ------------------------------------------------------------------
 	// PASS 1: Global Directional Light (Sun/Moon)
 	// ------------------------------------------------------------------
-	int sun_idx = 0;
 	for (int i = 0; i < min(2, num_lights); ++i) {
 		if (lights[i].type != LIGHT_TYPE_DIRECTIONAL) {
 			continue;
@@ -611,8 +610,8 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 		float base_attenuation; // Unused for directional, but needed for your function signature
 		calculateLightContribution(i, frag_pos, L, base_attenuation);
 
-		// Quick culling before calculating attenuation or shadows
-		if (dot(N, L) <= 0.0) continue;
+		// Horizon check and normal-facing check
+		if (L.y <= 0.0 || dot(N, L) <= 0.0) continue;
 
 		// Atmospheric transmittance isolated outside the loop
 		float r = kEarthRadiusKM + (frag_pos.y / (1000.0 * worldScale));
@@ -746,13 +745,16 @@ vec4 apply_lighting_foliage(vec3 frag_pos, vec3 normal, vec3 albedo, float rough
 			continue;
 		}
         vec3 L; float atten;
-        calculateLightContribution(0, frag_pos, L, atten);
+        calculateLightContribution(i, frag_pos, L, atten);
+
+		// Horizon check
+		if (L.y <= 0.0) continue;
 
         float r = kEarthRadiusKM + (frag_pos.y / (1000.0 * worldScale));
         vec3 atmosphereTransmittance = texture(u_transmittanceLUT, getTransmittanceUV(r, L.y)).rgb;
-        vec3 radiance = lights[0].color * (lights[0].intensity * PBR_INTENSITY_BOOST) * atmosphereTransmittance;
+        vec3 radiance = lights[i].color * (lights[i].intensity * PBR_INTENSITY_BOOST) * atmosphereTransmittance;
 
-        float shadow = calculateShadow(0, frag_pos, N, L) * calculateCloudShadow(0, frag_pos);
+        float shadow = min(calculateShadow(i, frag_pos, N, L), calculateCloudShadow(i, frag_pos));
 		if (i == 0) {
 			primaryShadow = shadow;
 		}
@@ -761,7 +763,7 @@ vec4 apply_lighting_foliage(vec3 frag_pos, vec3 normal, vec3 albedo, float rough
     }
 
     // PASS 2: Local Lights
-    for (int i = 1; i < num_lights; ++i) {
+    for (int i = min(2, num_lights); i < num_lights; ++i) {
         vec3 L; float base_atten;
         calculateLightContribution(i, frag_pos, L, base_atten);
 
