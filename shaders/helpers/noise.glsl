@@ -210,4 +210,13 @@ vec3 hash33(vec3 p) {
 }
 #endif
 
+#ifndef FNC_HASH22
+	#define FNC_HASH22
+vec2 hash22(vec2 p) {
+	vec3 p3 = fract(vec3(p.xyx) * vec3(443.897, 441.423, 437.195));
+	p3 += dot(p3, p3.yzx + 19.19);
+	return fract((p3.xx + p3.yz) * p3.zy);
+}
+#endif
+
 #endif // HELPERS_NOISE_GLSL

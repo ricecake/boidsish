@@ -13,7 +13,14 @@ namespace Boidsish {
         WeatherLbmSimulator(int width, int height);
         ~WeatherLbmSimulator();
 
-        void Update(float deltaTime, float totalTime, float timeOfDay, const ITerrainGenerator& terrain, const glm::vec3& cameraPos);
+        void Update(float deltaTime, float totalTime, float timeOfDay, const ITerrainGenerator& terrain, const glm::vec3& cameraPos, float windSpeed, float windStrength);
+
+        /**
+         * @brief Updates the grid anchor based on camera position without stepping the simulation.
+         */
+        void UpdateAnchor(const glm::vec3& cameraPos);
+
+        void PopulateWindData(WindDataUbo& ubo, std::vector<glm::vec4>& grid_out, float totalTime, float curlScale, float curlStrength) const;
 
         const PhysicallyBasedWeatherOutput& GetOutput() const { return currentOutput_; }
 
@@ -33,17 +40,38 @@ namespace Boidsish {
         int GetWidth() const { return width_; }
         int GetHeight() const { return height_; }
 
+        float GetTau() const { return tau_; }
+        void  SetTau(float tau) {
+            tau_ = std::max(0.51f, tau);
+            omega_ = 1.0f / tau_;
+        }
+
+        void Reset(const ITerrainGenerator& terrain, float totalTime = 0.0f, float timeOfDay = 12.0f) {
+            Initialize(terrain, totalTime, timeOfDay);
+        }
+
     private:
-        void Initialize(const ITerrainGenerator& terrain);
-        void Step(float deltaTime, float totalTime, float timeOfDay, const ITerrainGenerator& terrain);
+        void Initialize(const ITerrainGenerator& terrain, float totalTime, float timeOfDay);
+        void Step(float deltaTime, float totalTime, float timeOfDay, const ITerrainGenerator& terrain, float windSpeed, float windStrength);
+
+        /**
+         * @brief Calculates base temperature for a world position including diurnal, seasonal, and spatial gradients.
+         */
+        float GetBaseTemperature(float worldX, float worldZ, float totalTime, float timeOfDay) const;
+
+        /**
+         * @brief Returns a [0, 1] seasonal factor (0 = winter, 1 = summer).
+         */
+        float GetSeasonalFactor(float totalTime) const;
+
         void UpdateConfig(const ITerrainGenerator& terrain);
-        void DeriveAtmosphere(float timeOfDay);
+        void DeriveAtmosphere(float totalTime, float timeOfDay);
 
         // LBM Operators
         float CalculateEquilibrium(int i, float rho, glm::vec2 u);
         void CollisionAndStreaming();
         void ApplyPhysics(float deltaTime, float totalTime, float timeOfDay);
-        void ApplyBoundaries(float totalTime);
+        void ApplyBoundaries(float totalTime, float windSpeed, float windStrength, float timeOfDay);
         void ShiftGrid(glm::ivec2 shiftOffset);
 
         int width_;
@@ -60,9 +88,9 @@ namespace Boidsish {
         glm::ivec2 gridAnchor_ = {0, 0}; // Grid origin in chunk coordinates
 
         // LBM Constants
-        static constexpr float dt_ = 0.1f;  // Fixed simulation timestep
-        static constexpr float tau_ = 0.8f; // Relaxation time
-        static constexpr float omega_ = 1.0f / tau_;
+        static constexpr float dt_ = 0.1f; // Fixed simulation timestep
+        float                  tau_ = 0.8f;
+        float                  omega_ = 1.25f;
 
         // D2Q9 Constants
         static const int cx[9];

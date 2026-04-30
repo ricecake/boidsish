@@ -236,7 +236,7 @@ namespace Boidsish {
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, _skyViewLUT);
 		_skyToSHShader->setInt("u_skyViewLUT", 0);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, _shCoeffsBuffer);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::AtmosphereSH(), _shCoeffsBuffer);
 		glDispatchCompute(1, 1, 1); // Logic in sky_to_sh.comp uses a single workgroup for simple integration
 		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
@@ -284,25 +284,25 @@ namespace Boidsish {
 	}
 
 	void AtmosphereManager::BindTextures() {
-		glActiveTexture(GL_TEXTURE0 + kTransmittanceUnit);
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereTransmittance());
 		glBindTexture(GL_TEXTURE_2D, _transmittanceLUT);
-		glActiveTexture(GL_TEXTURE0 + kMultiScatteringUnit);
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereMultiScattering());
 		glBindTexture(GL_TEXTURE_2D, _multiScatteringLUT);
-		glActiveTexture(GL_TEXTURE0 + kSkyViewUnit);
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereSkyView());
 		glBindTexture(GL_TEXTURE_2D, _skyViewLUT);
-		glActiveTexture(GL_TEXTURE0 + kAerialPerspectiveUnit);
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereAerialPerspective());
 		glBindTexture(GL_TEXTURE_3D, _aerialPerspectiveLUT);
-		glActiveTexture(GL_TEXTURE0 + kCloudShadowUnit);
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereCloudShadow());
 		glBindTexture(GL_TEXTURE_2D, _cloudShadowMap);
 	}
 
 	void AtmosphereManager::BindToShader(::ShaderBase& shader) {
 		BindTextures();
-		shader.trySetInt("u_transmittanceLUT", kTransmittanceUnit);
-		shader.trySetInt("u_multiScatteringLUT", kMultiScatteringUnit);
-		shader.trySetInt("u_skyViewLUT", kSkyViewUnit);
-		shader.trySetInt("u_aerialPerspectiveLUT", kAerialPerspectiveUnit);
-		shader.trySetInt("u_cloudShadowMap", kCloudShadowUnit);
+		shader.trySetInt("u_transmittanceLUT", Constants::TextureUnit::AtmosphereTransmittance());
+		shader.trySetInt("u_multiScatteringLUT", Constants::TextureUnit::AtmosphereMultiScattering());
+		shader.trySetInt("u_skyViewLUT", Constants::TextureUnit::AtmosphereSkyView());
+		shader.trySetInt("u_aerialPerspectiveLUT", Constants::TextureUnit::AtmosphereAerialPerspective());
+		shader.trySetInt("u_cloudShadowMap", Constants::TextureUnit::AtmosphereCloudShadow());
 		shader.trySetFloat("u_atmosphereHeight", _atmosphereHeight);
 	}
 

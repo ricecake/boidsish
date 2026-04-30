@@ -1,0 +1,65 @@
+#version 430 core
+
+layout(local_size_x = 16, local_size_y = 16) in;
+
+layout(rgba16f, binding = 0) uniform image2D u_phasorImage;
+
+#include "helpers/noise.glsl"
+
+vec2 computeBakedPhasor(vec2 pos, float bandwidth, float sparsity, vec2 textureSize) {
+    vec2 gridId = floor(pos);
+    vec2 gridFract = fract(pos);
+
+    vec2 phasorAcc = vec2(0.0); // x = Real (cos), y = Imaginary (sin)
+
+    for (int y = -1; y <= 1; y++) {
+        for (int x = -1; x <= 1; x++) {
+            vec2 neighborOffset = vec2(float(x), float(y));
+            vec2 cellId = gridId + neighborOffset;
+
+            // Wrap the cell ID for seamless tiling across the texture
+            vec2 wrappedCellId = mod(cellId, textureSize);
+
+            vec2 randVal = hash22(wrappedCellId);
+            if (randVal.y < sparsity) continue;
+
+            vec2 impulsePos = neighborOffset + randVal;
+            vec2 p = gridFract - impulsePos;
+
+            float distSq = dot(p, p);
+            float envelope = exp(-3.14159 * bandwidth * bandwidth * distSq);
+
+            // Random base phase for this specific splat
+            float basePhase = randVal.x * 6.28318;
+
+            // Accumulate as a complex number: envelope * e^(i * basePhase)
+            phasorAcc.x += randVal.y * envelope * cos(basePhase);
+            phasorAcc.y += randVal.y * envelope * sin(basePhase);
+        }
+    }
+    return phasorAcc;
+}
+
+void main() {
+    ivec2 texelCoord = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = imageSize(u_phasorImage);
+
+    if (any(greaterThanEqual(texelCoord, size))) {
+        return;
+    }
+
+    vec2 uv = vec2(texelCoord);
+
+    // Scale UV to control the frequency/grid size of the phasor noise
+    // Using a grid size of 32.0 for a 256x256 texture means 8x8 grid cells
+    float gridScale = 128.0;
+    vec2 pos = (uv / vec2(size)) * gridScale;
+
+    // Bandwidth controls the size of the kernels, sparsity controls density
+    float bandwidth = 1.750;
+    float sparsity = 0.125;
+
+    vec2 phasor = computeBakedPhasor(pos, bandwidth, sparsity, vec2(gridScale));
+
+    imageStore(u_phasorImage, texelCoord, vec4(phasor, 0.0, 1.0));
+}

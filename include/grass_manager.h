@@ -67,6 +67,8 @@ namespace Boidsish {
             uint32_t noiseTexture;
             uint32_t curlTexture;
             uint32_t extraNoiseTexture;
+            uint32_t blueNoiseTexture;
+            uint32_t phasorTexture;
             const int* shadowIndices;
         };
 

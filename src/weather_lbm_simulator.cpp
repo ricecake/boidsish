@@ -38,36 +38,41 @@ namespace Boidsish {
 
     WeatherLbmSimulator::~WeatherLbmSimulator() {}
 
-    void WeatherLbmSimulator::Update(float deltaTime, float totalTime, float timeOfDay, const ITerrainGenerator& terrain, const glm::vec3& cameraPos) {
-        if (!initialized_) {
-            Initialize(terrain);
-            initialized_ = true;
-        }
+	void WeatherLbmSimulator::UpdateAnchor(const glm::vec3& cameraPos) {
+		// Anchor grid to camera chunk position
+		glm::ivec2 newAnchor;
+		newAnchor.x = (int)std::floor(cameraPos.x / 32.0f) - width_ / 2;
+		newAnchor.y = (int)std::floor(cameraPos.z / 32.0f) - height_ / 2;
 
-        // Anchor grid to camera chunk position
-        glm::ivec2 newAnchor;
-        newAnchor.x = (int)std::floor(cameraPos.x / 32.0f) - width_ / 2;
-        newAnchor.y = (int)std::floor(cameraPos.z / 32.0f) - height_ / 2;
+		if (newAnchor != gridAnchor_) {
+			glm::ivec2 shiftOffset = newAnchor - gridAnchor_;
+			// CRITICAL: Update anchor BEFORE shifting so newly revealed cells know their world position
+			gridAnchor_ = newAnchor;
+			ShiftGrid(shiftOffset);
+		}
+	}
 
-        if (newAnchor != gridAnchor_) {
-            glm::ivec2 shiftOffset = newAnchor - gridAnchor_;
-            ShiftGrid(shiftOffset);
-            gridAnchor_ = newAnchor;
-        }
+	void WeatherLbmSimulator::Update(float deltaTime, float totalTime, float timeOfDay, const ITerrainGenerator& terrain, const glm::vec3& cameraPos, float windSpeed, float windStrength) {
+		if (!initialized_) {
+			Initialize(terrain, totalTime, timeOfDay);
+			initialized_ = true;
+		}
 
-        UpdateConfig(terrain);
+		UpdateAnchor(cameraPos);
+
+		UpdateConfig(terrain);
 
         // Fixed timestep loop
         accumulator_ += deltaTime;
         while (accumulator_ >= dt_) {
-            Step(dt_, totalTime, timeOfDay, terrain);
+            Step(dt_, totalTime, timeOfDay, terrain, windSpeed, windStrength);
             accumulator_ -= dt_;
         }
 
-        DeriveAtmosphere(timeOfDay);
+        DeriveAtmosphere(totalTime, timeOfDay);
     }
 
-    void WeatherLbmSimulator::Initialize(const ITerrainGenerator& terrain) {
+    void WeatherLbmSimulator::Initialize(const ITerrainGenerator& terrain, float totalTime, float timeOfDay) {
         // Perturb initial state with noise
         for (int z = 0; z < height_; ++z) {
             for (int x = 0; x < width_; ++x) {
@@ -75,9 +80,11 @@ namespace Boidsish {
                 float worldX = (float)(x + gridAnchor_.x) * 32.0f;
                 float worldZ = (float)(z + gridAnchor_.y) * 32.0f;
 
+                float baseTemp = GetBaseTemperature(worldX, worldZ, totalTime, timeOfDay);
+
                 float n = Simplex::noise(glm::vec2(worldX * 0.001f, worldZ * 0.001f));
-                (*currentGrid_)[idx].temperature += n * 5.0f;
-                (*currentGrid_)[idx].aerosol += std::abs(n) * 0.05f;
+                (*currentGrid_)[idx].temperature = baseTemp + n * 5.0f;
+                (*currentGrid_)[idx].aerosol = 0.01f + std::abs(n) * 0.05f;
 
                 // Set initial f based on noise-driven wind
                 glm::vec2 u(Simplex::noise(glm::vec2(worldX * 0.002f, worldZ * 0.002f)),
@@ -112,19 +119,28 @@ namespace Boidsish {
                     u.x += cell.f[i] * (float)cx[i];
                     u.y += cell.f[i] * (float)cz[i];
                 }
-                if (rho > 0.0f) u /= rho;
+                if (rho > 1e-6f) u /= rho;
+
+                // NaN safety: Reset cell if it explodes
+                if (std::isnan(rho) || rho < 0.1f || rho > 10.0f) {
+                    rho = 1.0f;
+                    u = glm::vec2(0.0f);
+                    cell.temperature = 288.15f;
+                    cell.aerosol = 0.01f;
+                    cell.vy = 0.0f;
+                    for (int i = 0; i < 9; ++i) cell.f[i] = weights[i];
+                }
 
                 // If vy is positive (updraft), air leaves the horizontal plane, reducing density.
                 // If vy is negative (downdraft), air hits the ground and spreads, increasing density.
-                const float massTransferRate = 0.05f; // Tune this based on how aggressive you want the wind
+                const float massTransferRate = 0.05f;
                 float dRho = -cell.vy * massTransferRate * dt_;
 
                 // Apply density change proportionally across the distributions,
                 // clamping to prevent vacuum collapse numerical instability.
-                if (rho + dRho > 0.5f && rho + dRho < 2.0f) {
+                if (rho + dRho > 0.8f && rho + dRho < 1.2f) {
                     rho += dRho;
                     for (int i = 0; i < 9; ++i) {
-                        // Distribute the mass loss/gain evenly weighted
                         cell.f[i] += dRho * weights[i];
                     }
                 }
@@ -213,16 +229,15 @@ namespace Boidsish {
         }
     }
 
-    void WeatherLbmSimulator::Step(float deltaTime, float totalTime, float timeOfDay, const ITerrainGenerator& terrain) {
+    void WeatherLbmSimulator::Step(float deltaTime, float totalTime, float timeOfDay, const ITerrainGenerator& terrain, float windSpeed, float windStrength) {
         CollisionAndStreaming();
         ApplyPhysics(deltaTime, totalTime, timeOfDay);
-        ApplyBoundaries(totalTime);
+        ApplyBoundaries(totalTime, windSpeed, windStrength, timeOfDay);
     }
 
     void WeatherLbmSimulator::ApplyPhysics(float deltaTime, float totalTime, float timeOfDay) {
         const float PI = 3.14159265358979323846f;
-        float solarAngle = (timeOfDay - 14.0f) * (PI / 12.0f);
-        float baseTemp = 288.15f + 10.0f * std::cos(solarAngle);
+        float seasonalIntensity = 0.5f + 0.5f * GetSeasonalFactor(totalTime); // 0.5 to 1.0
 
         // Rate at which temperature normalizes to ambient (tune this).
         // A smaller number means the terrain holds heat longer into the evening.
@@ -232,11 +247,19 @@ namespace Boidsish {
             LbmCell& cell = (*currentGrid_)[i];
             const LbmCellConfig& cfg = config_[i];
 
+            int x = i % width_;
+            int z = i / width_;
+            float worldX = (float)(x + gridAnchor_.x) * 32.0f;
+            float worldZ = (float)(z + gridAnchor_.y) * 32.0f;
+
+            float baseTemp = GetBaseTemperature(worldX, worldZ, totalTime, timeOfDay);
+
             // 1. Radiative Cooling / Atmospheric Mixing
             cell.temperature += (baseTemp - cell.temperature) * coolingRelaxation;
 
             // 2. Sensible Heat Flux (Solar heating)
-            float heating = std::max(0.0f, std::cos(solarAngle)) * cfg.sensibleHeatFactor * 0.1f;
+            float solarAngle = (timeOfDay + (worldX * 0.001f) - 14.0f) * (PI / 12.0f);
+            float heating = std::max(0.0f, std::cos(solarAngle)) * cfg.sensibleHeatFactor * 0.1f * seasonalIntensity;
             cell.temperature += heating;
 
             // 3. Boussinesq Buoyancy
@@ -245,21 +268,32 @@ namespace Boidsish {
             float buoyancy = tempDiff * 0.001f;
             cell.vy += buoyancy;
 
-            // 4. Drag coupling (Terrain & Biome)
-            // Height-based drag + biome roughness
+            // 4. Drag coupling (Terrain & Biome) - Forcing approach
+            // We apply a force opposite to the velocity rather than bleeding f components.
             float heightDrag = std::max(0.0f, cfg.terrainHeight) * 0.0001f;
             float totalDrag = (cfg.drag * 0.05f) + heightDrag;
 
-            // Apply drag to velocities
             cell.vy *= (1.0f - totalDrag);
+
+            // Calculate current macro wind
+            float rho = 0.0f;
+            glm::vec2 u(0.0f);
             for (int j = 0; j < 9; ++j) {
-                if (j > 0) { // Don't apply to stationary f0
-                    cell.f[j] *= (1.0f - totalDrag * 0.1f);
-                }
+                rho += cell.f[j];
+                u.x += cell.f[j] * (float)cx[j];
+                u.y += cell.f[j] * (float)cz[j];
+            }
+            if (rho > 1e-6f) u /= rho;
+
+            // Apply force vector opposite to u
+            glm::vec2 force = -u * totalDrag * 0.2f;
+            for (int j = 0; j < 9; ++j) {
+                float cu = (float)cx[j] * force.x + (float)cz[j] * force.y;
+                cell.f[j] += weights[j] * 3.0f * cu;
             }
 
             // 5. Aerosol Release
-            cell.aerosol += cfg.aerosolReleaseRate * 0.001f;
+            cell.aerosol += cfg.aerosolReleaseRate * 0.001f * seasonalIntensity;
             // Diffusion / Decay
             cell.aerosol *= 0.99f;
 
@@ -273,7 +307,7 @@ namespace Boidsish {
         }
     }
 
-    void WeatherLbmSimulator::ApplyBoundaries(float totalTime) {
+    void WeatherLbmSimulator::ApplyBoundaries(float totalTime, float windSpeed, float windStrength, float timeOfDay) {
         // Apply noise-driven wind at the edges
         for (int z = 0; z < height_; ++z) {
             for (int x = 0; x < width_; ++x) {
@@ -282,19 +316,60 @@ namespace Boidsish {
                     float worldX = (float)(x + gridAnchor_.x) * 32.0f;
                     float worldZ = (float)(z + gridAnchor_.y) * 32.0f;
 
-                    glm::vec2 targetU(
-                        Simplex::noise(glm::vec2(worldX * 0.001f + totalTime * 0.1f, worldZ * 0.001f)),
-                        Simplex::noise(glm::vec2(worldX * 0.001f + 500.0f, worldZ * 0.001f + totalTime * 0.1f))
+                    // Prevailing wind based on spatial gradient
+                    glm::vec2 prevailingWind(0.02f, 0.01f); // Baseline flow
+                    prevailingWind += glm::vec2(worldX + worldZ, worldX - worldZ) * 0.00001f;
+
+                    glm::vec2 noiseWind(
+                        Simplex::noise(glm::vec2(worldX * 0.001f + totalTime * windSpeed, worldZ * 0.001f)),
+                        Simplex::noise(glm::vec2(worldX * 0.001f + 500.0f, worldZ * 0.001f + totalTime * windSpeed))
                     );
-                    targetU *= 0.2f;
+
+                    glm::vec2 targetU = prevailingWind + noiseWind * 0.1f;
+
+                    // Lattice velocity MUST stay below ~0.15 for stability
+                    targetU = glm::clamp(targetU * (0.05f + windStrength * 5.0f), -0.14f, 0.14f);
 
                     // Force boundary equilibrium
                     for (int i = 0; i < 9; ++i) {
                         (*currentGrid_)[idx].f[i] = CalculateEquilibrium(i, 1.0f, targetU);
                     }
+
+                    // Boundaries also track temperature targets
+                    // Note: This is simpler than full LBM thermal boundaries but helps stability
+                    float targetTemp = GetBaseTemperature(worldX, worldZ, totalTime, timeOfDay);
+                    (*currentGrid_)[idx].temperature = glm::mix((*currentGrid_)[idx].temperature, targetTemp, 0.1f);
                 }
             }
         }
+    }
+
+    float WeatherLbmSimulator::GetSeasonalFactor(float totalTime) const {
+        const float seasonalPeriod = 7200.0f; // 2 hours for full cycle
+        return 0.5f + 0.5f * std::cos(totalTime * (2.0f * 3.14159265f / seasonalPeriod));
+    }
+
+    float WeatherLbmSimulator::GetBaseTemperature(float worldX, float worldZ, float totalTime, float timeOfDay) const {
+        const float PI = 3.14159265358979323846f;
+
+        // 1. Seasonal variation (0.0 to 1.0)
+        float seasonalFactor = GetSeasonalFactor(totalTime);
+        float seasonalTempOffset = (seasonalFactor - 0.5f) * 25.0f; // +/- 12.5C
+
+        // 2. Diurnal variation with longitudinal offset
+        // "east side pegged to be ahead of the west side"
+        float longitudeOffset = worldX * 0.001f;
+        float localTimeOfDay = timeOfDay + longitudeOffset;
+
+        float solarAngle = (localTimeOfDay - 14.0f) * (PI / 12.0f);
+        float diurnalTemp = 12.0f * std::cos(solarAngle);
+
+        // 3. Spatial gradient (slanted midpoint)
+        // A prevailing gradient that makes things generally colder towards "North-West" (negative X, positive Z)
+        float spatialGradient = (worldX - worldZ) * 0.0002f;
+
+        float baseTemp = 285.15f + seasonalTempOffset + diurnalTemp + spatialGradient;
+        return baseTemp;
     }
 
     const LbmCell* WeatherLbmSimulator::GetCellAtPosition(const glm::vec3& pos) const {
@@ -311,6 +386,37 @@ namespace Boidsish {
         return &((*currentGrid_)[z * width_ + x]);
     }
 
+    void WeatherLbmSimulator::PopulateWindData(WindDataUbo& ubo, std::vector<glm::vec4>& grid_out, float totalTime, float curlScale, float curlStrength) const {
+        float gridSpacing = 32.0f;
+        // GLSL: x, z = origin, y = width, w = height
+        ubo.originSize = glm::ivec4(gridAnchor_.x, width_, gridAnchor_.y, height_);
+        ubo.params = glm::vec4(gridSpacing, totalTime, curlScale, curlStrength);
+
+        // Convert lattice velocity to world velocity (m/s)
+        // lattice_u * (spacing / dt)
+        float conversion = gridSpacing / dt_;
+
+        if (grid_out.size() < (size_t)(width_ * height_)) {
+            grid_out.resize(width_ * height_);
+        }
+
+        for (int i = 0; i < width_ * height_; ++i) {
+            const LbmCell& cell = (*currentGrid_)[i];
+            const LbmCellConfig& cfg = config_[i];
+
+            float rho = 0.0f;
+            glm::vec2 u(0.0f);
+            for (int j = 0; j < 9; ++j) {
+                rho += cell.f[j];
+                u.x += cell.f[j] * (float)cx[j];
+                u.y += cell.f[j] * (float)cz[j];
+            }
+            if (rho > 1e-6f) u /= rho;
+
+            grid_out[i] = glm::vec4(u.x * conversion, cell.vy * conversion, u.y * conversion, cfg.drag);
+        }
+    }
+
     PhysicallyBasedWeatherOutput WeatherLbmSimulator::GetWeatherAtPosition(const glm::vec3& pos) const {
         // For now, return global output but update wind from local cell
         PhysicallyBasedWeatherOutput out = currentOutput_;
@@ -323,15 +429,17 @@ namespace Boidsish {
                 u.x += cell->f[i] * (float)cx[i];
                 u.y += cell->f[i] * (float)cz[i];
             }
-            if (rho > 0.0f) u /= rho;
-            out.windVelocity = u;
-            out.verticalWind = cell->vy;
+            if (rho > 1e-6f) u /= rho;
+
+            float conversion = 32.0f / dt_;
+            out.windVelocity = u * conversion;
+            out.verticalWind = cell->vy * conversion;
             out.temperature = cell->temperature;
         }
         return out;
     }
 
-    void WeatherLbmSimulator::DeriveAtmosphere(float timeOfDay) {
+    void WeatherLbmSimulator::DeriveAtmosphere(float totalTime, float timeOfDay) {
         const float PI = 3.14159265358979323846f;
         // Average the simulation state for global weather output
         float avgRho = 0.0f;
@@ -399,6 +507,10 @@ namespace Boidsish {
         float cloudPotential = std::max(0.0f, currentOutput_.humidity - 0.7f) * 3.33f;
         cloudPotential += std::max(0.0f, avgVy) * 10.0f;
 
+        // Seasonal cloud factor (more cloudy in "winter"/colder phases)
+        float seasonalFactor = GetSeasonalFactor(totalTime);
+        cloudPotential += (1.0f - seasonalFactor) * 0.3f;
+
         currentOutput_.cloudCoverage = std::clamp(cloudPotential * 0.5f, 0.0f, 1.0f);
         currentOutput_.cloudDensity = std::clamp(cloudPotential, 0.0f, 1.0f);
         currentOutput_.cloudAltitude = 400.0f + 200.0f * (1.0f - currentOutput_.humidity);
@@ -412,24 +524,15 @@ namespace Boidsish {
 
         for (int z = 0; z < height_; ++z) {
             for (int x = 0; x < width_; ++x) {
-                // Source index relative to the shift
-                int srcX = x + shiftOffset.x;
-                int srcZ = z + shiftOffset.y;
+                // Toroidal inheritance: cells "falling off" one side re-enter the other.
+                // This ensures continuity of simulation state (vortex/thermal persistence).
+                int srcX = (x + shiftOffset.x) % width_;
+                if (srcX < 0) srcX += width_;
 
-                int dstIdx = z * width_ + x;
+                int srcZ = (z + shiftOffset.y) % height_;
+                if (srcZ < 0) srcZ += height_;
 
-                // If the source is within the old grid bounds, copy it over
-                if (srcX >= 0 && srcX < width_ && srcZ >= 0 && srcZ < height_) {
-                    tempGrid[dstIdx] = (*currentGrid_)[srcZ * width_ + srcX];
-                } else {
-                    // This is a newly revealed edge cell; initialize it to ambient
-                    tempGrid[dstIdx].temperature = 288.15f;
-                    tempGrid[dstIdx].aerosol = 0.01f;
-                    tempGrid[dstIdx].vy = 0.0f;
-                    for (int i = 0; i < 9; ++i) {
-                        tempGrid[dstIdx].f[i] = weights[i]; // rho = 1.0, u = 0.0
-                    }
-                }
+                tempGrid[z * width_ + x] = (*currentGrid_)[srcZ * width_ + srcX];
             }
         }
 

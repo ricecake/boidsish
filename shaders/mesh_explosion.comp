@@ -14,7 +14,7 @@ struct Fragment {
 	vec4 color;
 };
 
-layout(std430, binding = 0) buffer FragmentBuffer {
+layout(std430, binding = [[MESH_EXPLOSION_FRAGMENTS_BINDING]]) buffer FragmentBuffer {
 	Fragment fragments[];
 };
 

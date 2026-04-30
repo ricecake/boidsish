@@ -238,6 +238,7 @@ namespace Boidsish {
 				decor_manager_.Render(
 					frame.view,
 					frame.projection,
+					terrain_render_manager_,
 					shadow_manager_.GetLightSpaceMatrix(info.map_index),
 					shadow_manager_.GetShadowShaderPtr().get()
 				);

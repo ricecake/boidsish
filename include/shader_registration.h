@@ -27,6 +27,7 @@ namespace Boidsish {
 		T::RegisterConstant("DECOR_PROPS_BINDING", Constants::UboBinding::DecorProps());
 		T::RegisterConstant("DECOR_PLACEMENT_GLOBALS_BINDING", Constants::UboBinding::DecorPlacementGlobals());
 		T::RegisterConstant("WEATHER_UNIFORMS_BINDING", Constants::UboBinding::WeatherUniforms());
+		T::RegisterConstant("WIND_DATA_BINDING", Constants::UboBinding::WindData());
 
 		// SSBO Bindings
 		T::RegisterConstant("DECOR_INSTANCES_BINDING", Constants::SsboBinding::DecorInstances());
@@ -68,6 +69,10 @@ namespace Boidsish {
 		T::RegisterConstant("MAX_SHOCKWAVES", Constants::Class::Shockwaves::MaxShockwaves());
 		T::RegisterConstant("CHUNK_SIZE", Constants::Class::Terrain::ChunkSize());
 		T::RegisterConstant("CHUNK_SIZE_PLUS_1", Constants::Class::Terrain::ChunkSizePlus1());
+
+		// Texture unit bindings
+		T::RegisterConstant("PHASOR_TEXTURE_BINDING", Constants::TextureUnit::NoisePhasor());
+		T::RegisterConstant("WIND_TEXTURE_BINDING", Constants::TextureUnit::WindData());
 	}
 
 } // namespace Boidsish
