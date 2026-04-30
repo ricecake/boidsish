@@ -561,7 +561,7 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 	// Spatially-varying ambient augmented with SH sky irradiance and macro occlusion
 	vec3  spatialAmbient = getSpatialAmbient(frag_pos);
 	vec3  skyIrradiance = evalSHIrradiance(N);
-	float terrainOcc = calculateTerrainOcclusion(frag_pos, N);
+	float terrainOcc = 1.0;//calculateTerrainOcclusion(frag_pos, N);
 
 	// Apply terrain occlusion to both ambient terms.
 	// Sky irradiance is blocked by the terrain above/around.
