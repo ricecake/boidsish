@@ -261,13 +261,27 @@ void spawnAmbientParticle(
 
 			if (biome_idx == 7) {
 				p.style = STYLE_SNOW;
+				if (rand(spawnSeed + 6.6) > weight_snow) {
+					p.pos.w = 0.0;
+					return;
+				}
 			} else if (biome_idx == 0) {
 				p.style = STYLE_BUBBLES;
+				if (rand(spawnSeed + 6.6) > weight_bubble) {
+					p.pos.w = 0.0;
+					return;
+				}
 			} else {
 				if (nightFactor > 0.5) {
 					p.style = STYLE_FIREFLIES;
 					p.phase = 3.0 + 2.0 * fract(randomFloat(hash(particleSeed)));
 					p.counter = 0.0;
+
+				// Weight-based rejection
+				if (rand(spawnSeed + 6.6) > weight_firefly) {
+					p.pos.w = 0.0;
+					return;
+				}
 				} else {
 					float r = rand(spawnSeed + 6.6);
 					if (r < 0.15 && (biome_idx == 1 || biome_idx == 3 || biome_idx == 4)) {
@@ -276,11 +290,30 @@ void spawnAmbientParticle(
 						p.pos.y = height + 0.1;
 						p.pos.w = 300;
 						p.vel.w = 45.0; // Bird size
+
+					// Weight-based rejection
+					if (rand(spawnSeed + 6.6) > weight_bird) {
+						p.pos.w = 0.0;
+						return;
+					}
 					} else {
-						if (biome_idx == 4)
-							p.style = (r < 0.7) ? STYLE_PETAL : STYLE_LEAF;
-						else
-							p.style = (r < 0.2) ? STYLE_PETAL : STYLE_LEAF;
+					// Apply weighted style selection
+					float w_petal = (biome_idx == 4) ? 0.7 : 0.2;
+					w_petal *= weight_petal;
+					float w_leaf = (1.0 - ((biome_idx == 4) ? 0.7 : 0.2)) * weight_leaf;
+
+					float total_w = w_petal + w_leaf;
+					if (total_w > 0.0) {
+						float rand_w = rand(spawnSeed + 9.9) * total_w;
+						if (rand_w < w_petal) {
+							p.style = STYLE_PETAL;
+						} else {
+							p.style = STYLE_LEAF;
+						}
+					} else {
+						p.pos.w = 0.0;
+						return;
+					}
 					}
 				}
 			}
@@ -349,6 +382,8 @@ void respawnParticle(
 	float          cellSize,
 	uint           gridSize
 ) {
+	if (particles_enabled == 0) return;
+
 	if (p.pos.w <= 0.0) {
 		// --- 3a. Fire Effect Respawn ---
 		if (emitter_index != -1 && num_emitters > 0 && emitter_index < num_emitters) {

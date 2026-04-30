@@ -120,6 +120,10 @@ namespace Boidsish {
 		fire_(fire), explosions_(explosions), akira_(akira), noise_(noise) {}
 
 	void ParticleEffectsPass::Execute(const FrameData& frame) {
+		if (!frame.config.particles_enabled) {
+			return;
+		}
+
 		fire_.Render(
 			frame.view,
 			frame.projection,

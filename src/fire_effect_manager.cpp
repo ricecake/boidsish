@@ -273,6 +273,7 @@ namespace Boidsish {
 	void FireEffectManager::Update(
 		float                         delta_time,
 		float                         time,
+		bool                          enabled,
 		float                         ambient_density,
 		const std::vector<glm::vec4>& chunk_info,
 		GLuint                        heightmap_texture,
@@ -292,6 +293,10 @@ namespace Boidsish {
 		std::lock_guard<std::mutex> lock(mutex_);
 		if (!initialized_ || !lifecycle_shader_ || !lifecycle_shader_->isValid() || !behavior_shader_ ||
 		    !behavior_shader_->isValid() || !fixup_shader_ || !fixup_shader_->isValid()) {
+			return;
+		}
+
+		if (!enabled) {
 			return;
 		}
 

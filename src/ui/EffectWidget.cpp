@@ -61,7 +61,57 @@ namespace Boidsish {
 					}
 				}
 
-				// 2. Post-Processing Effects (from PostProcessingWidget)
+				// 2. Particle System Controls
+				if (ImGui::CollapsingHeader("Particle System", ImGuiTreeNodeFlags_DefaultOpen)) {
+					auto& config = ConfigManager::GetInstance();
+
+					bool particles_enabled = config.GetAppSettingBool("particles_enabled", true);
+					if (ImGui::Checkbox("Enable Particle System", &particles_enabled)) {
+						config.SetBool("particles_enabled", particles_enabled);
+					}
+
+					if (particles_enabled) {
+						float density = config.GetAppSettingFloat("ambient_particle_density", 0.15f);
+						if (ImGui::SliderFloat("Ambient Density", &density, 0.0f, 1.0f)) {
+							config.SetFloat("ambient_particle_density", density);
+						}
+
+						ImGui::Separator();
+						ImGui::Text("Ambient Type Proportions");
+
+						float w_leaf = config.GetAppSettingFloat("ambient_weight_leaf", 1.0f);
+						if (ImGui::SliderFloat("Leaf Weight", &w_leaf, 0.0f, 1.0f)) {
+							config.SetFloat("ambient_weight_leaf", w_leaf);
+						}
+
+						float w_petal = config.GetAppSettingFloat("ambient_weight_petal", 1.0f);
+						if (ImGui::SliderFloat("Petal Weight", &w_petal, 0.0f, 1.0f)) {
+							config.SetFloat("ambient_weight_petal", w_petal);
+						}
+
+						float w_bubble = config.GetAppSettingFloat("ambient_weight_bubble", 1.0f);
+						if (ImGui::SliderFloat("Bubble Weight", &w_bubble, 0.0f, 1.0f)) {
+							config.SetFloat("ambient_weight_bubble", w_bubble);
+						}
+
+						float w_snow = config.GetAppSettingFloat("ambient_weight_snow", 1.0f);
+						if (ImGui::SliderFloat("Snow Weight", &w_snow, 0.0f, 1.0f)) {
+							config.SetFloat("ambient_weight_snow", w_snow);
+						}
+
+						float w_firefly = config.GetAppSettingFloat("ambient_weight_firefly", 1.0f);
+						if (ImGui::SliderFloat("Firefly Weight", &w_firefly, 0.0f, 1.0f)) {
+							config.SetFloat("ambient_weight_firefly", w_firefly);
+						}
+
+						float w_bird = config.GetAppSettingFloat("ambient_weight_bird", 1.0f);
+						if (ImGui::SliderFloat("Bird Weight", &w_bird, 0.0f, 1.0f)) {
+							config.SetFloat("ambient_weight_bird", w_bird);
+						}
+					}
+				}
+
+				// 3. Post-Processing Effects (from PostProcessingWidget)
 				if (ImGui::CollapsingHeader("Post-Processing", ImGuiTreeNodeFlags_DefaultOpen)) {
 					auto& manager = m_visualizer.GetPostProcessingManager();
 
