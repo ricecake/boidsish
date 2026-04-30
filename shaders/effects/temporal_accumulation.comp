@@ -34,6 +34,18 @@ void main() {
 
 	vec4 history = texture(uHistoryFrame, prevUV);
 
+	// Validation
+	float prevDepth = texture(uDepth, prevUV).r;
+	float currentDepth = texture(uDepth, uv).r;
+
+	// Simple depth-based validation to reduce ghosting
+	// In linear space or reversed-Z this might need adjustment,
+	// but basically we want to see if they are the same surface.
+	if (abs(currentDepth - prevDepth) > 0.01) {
+		imageStore(outResult, pixel, current);
+		return;
+	}
+
 	// 3. Neighborhood Clamping to reduce ghosting
 	// Sample 3x3 neighborhood of current frame
 	vec4 m1 = vec4(0.0);
@@ -49,16 +61,38 @@ void main() {
 	vec4 mean = m1 / 9.0;
 	vec4 stddev = sqrt(max(vec4(0.0), (m2 / 9.0) - (mean * mean)));
 
+	// Spatial stability: how uniform is the local neighborhood?
+	// Higher stability means the current value is likely a real feature, not noise/firefly.
+	float spatialLum = dot(mean.rgb, vec3(0.2126, 0.7152, 0.0722));
+	float spatialStd = dot(stddev.rgb, vec3(0.2126, 0.7152, 0.0722));
+	float stability = 1.0 - clamp(spatialStd / (spatialLum + 0.001), 0.0, 1.0);
+
 	// Clamp history to neighborhood of current
-	float gamma = 1.0; // configurable
+	// Use a tighter clamp (gamma) for firefly rejection, but loosen it if the area is stable
+	float gamma = mix(1.2, 4.0, stability);
 	vec4  minColor = mean - gamma * stddev;
 	vec4  maxColor = mean + gamma * stddev;
 	history = clamp(history, minColor, maxColor);
 
+	// Additionally reject current outliers that are far from history
+	// this helps prevent fireflies from ever entering the history
+	vec4 m_diff = abs(current - history);
+	// Loosen outlier rejection if stability is high
+	if (any(greaterThan(m_diff, stddev * (4.0 + stability * 8.0) + 0.1))) {
+		current = mix(current, history, 0.5);
+	}
+
 	// 4. Accumulate
 	// Higher alpha means more history
-	// If it's a checkerboard update, we might want to adjust alpha
+	// If the current signal is stable but significantly different from history,
+	// reduce alpha to adapt faster to lighting changes.
 	float activeAlpha = uAlpha;
+	float currentLum = dot(current.rgb, vec3(0.2126, 0.7152, 0.0722));
+	float historyLum = dot(history.rgb, vec3(0.2126, 0.7152, 0.0722));
+
+	if (stability > 0.8 && abs(currentLum - historyLum) > 0.1) {
+		activeAlpha *= 0.5; // Adapt faster to stable lighting changes
+	}
 
 	// Detect if current pixel was actually updated (for checkerboarding)
 	// This depends on how we pass the info.
