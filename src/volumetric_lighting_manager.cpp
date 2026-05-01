@@ -60,14 +60,18 @@ namespace Boidsish {
 	void VolumetricLightingManager::Update(
 		const glm::mat4& view_proj,
 		const glm::mat4& inv_view_proj,
+		const glm::mat4& view,
+		const glm::mat4& projection,
 		const glm::vec3& cam_pos,
 		const glm::vec3& cam_dir,
-		float near_p,
-		float far_p,
-		float simulation_time
+		float            near_p,
+		float            far_p,
+		float            simulation_time
 	) {
 		params_.view_projection = view_proj;
 		params_.inv_view_projection = inv_view_proj;
+		params_.view = view;
+		params_.projection = projection;
 		params_.camera_pos_near = glm::vec4(cam_pos, near_p);
 		params_.camera_dir_far = glm::vec4(cam_dir, far_p);
 		params_.grid_res_pad = glm::ivec4(grid_res_, 0);
@@ -103,11 +107,6 @@ namespace Boidsish {
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::BehaviorDrawCommand(), behavior_command_buffer);
 
 		glBindBuffer(GL_DISPATCH_INDIRECT_BUFFER, behavior_command_buffer);
-		// The behavior_command struct starts with num_groups_x, y, z.
-		// We want to dispatch based on particle count, but we can just use 1, 1, 1 and do a loop if needed,
-		// or use the count field from behavior_command_buffer if it was set up for that.
-		// Looking at fire_effect_manager, behavior_command is DispatchIndirectCommand: num_groups_x, y, z, count.
-		// glDispatchComputeIndirect(0) will use num_groups_x, y, z.
 		glDispatchComputeIndirect(0);
 		glBindBuffer(GL_DISPATCH_INDIRECT_BUFFER, 0);
 

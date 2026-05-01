@@ -7,18 +7,16 @@ layout(local_size_x = 256) in;
 layout(std140, binding = [[VOLUMETRIC_LIGHTING_BINDING]]) uniform VolumetricLightingParams {
     mat4 u_view_projection;
     mat4 u_inv_view_projection;
+    mat4 u_view;
+    mat4 u_projection;
     vec4 u_camera_pos_near; // xyz, w: near
     vec4 u_camera_dir_far;  // xyz, w: far
     ivec4 u_grid_res_pad;   // xyz, w: pad
 };
 
 layout(std430, binding = [[VOLUMETRIC_LIGHT_ACCUMULATION_BINDING]]) buffer AccumulationBuffer {
-    uint accumulation[]; // packed RGB: 10, 11, 11 bits? or separate buffers. Let's use 3 separate uints for simplicity and range.
+    uint accumulation[];
 };
-
-// Actually, let's use 3 separate buffers for R, G, B to avoid packing issues with atomics
-// Or use one big buffer where R, G, B are stored contiguously.
-// grid_res.x * grid_res.y * grid_res.z * 3
 
 uint get_index(ivec3 vox, int channel) {
     uint vox_idx = vox.z * (u_grid_res_pad.x * u_grid_res_pad.y) + vox.y * u_grid_res_pad.x + vox.x;
@@ -41,9 +39,20 @@ vec3 world_to_froxel(vec3 world_pos) {
     return vec3(uv, slice);
 }
 
+vec3 get_voxel_view_pos(ivec3 vox) {
+    vec3 froxel_coord = (vec3(vox) + 0.5) / vec3(u_grid_res_pad.xyz);
+    float vz = u_camera_pos_near.w * pow(u_camera_dir_far.w / u_camera_pos_near.w, froxel_coord.z);
+
+    vec2 ndc = froxel_coord.xy * 2.0 - 1.0;
+
+    // Assuming standard symmetric perspective projection
+    // view_x = ndc_x * vz / proj[0][0]
+    // view_y = ndc_y * vz / proj[1][1]
+    return vec3(ndc.x * vz / u_projection[0][0], ndc.y * vz / u_projection[1][1], vz);
+}
+
 void main() {
     uint gid = gl_GlobalInvocationID.x;
-    // We use indirect dispatch so behavior_command.count is the number of live particles
     if (gid >= behavior_command.count) return;
 
     uint p_idx = live_indices[gid];
@@ -51,7 +60,6 @@ void main() {
 
     if (p.pos.w <= 0.0) return;
 
-    // Only emissive particles
     bool is_emissive = (
         p.style == STYLE_EXPLOSION ||
         p.style == STYLE_FIRE ||
@@ -65,14 +73,35 @@ void main() {
     vec3 froxel_coord = world_to_froxel(p.pos.xyz);
     if (any(lessThan(froxel_coord, vec3(0.0))) || any(greaterThanEqual(froxel_coord, vec3(1.0)))) return;
 
-    ivec3 vox = ivec3(froxel_coord * vec3(u_grid_res_pad.xyz));
+    ivec3 center_vox = ivec3(froxel_coord * vec3(u_grid_res_pad.xyz));
 
-    // Simple splat: atomic add to the voxel
-    // Use fixed point for accumulation: multiply by 100.0 for fixed point range
+    vec3 p_view_pos = (u_view * vec4(p.pos.xyz, 1.0)).xyz;
     float intensity = p.origin.w * p.color.a;
-    vec3 radiance = p.color.rgb * intensity * 100.0;
 
-    atomicAdd(accumulation[get_index(vox, 0)], uint(max(0.0, radiance.r)));
-    atomicAdd(accumulation[get_index(vox, 1)], uint(max(0.0, radiance.g)));
-    atomicAdd(accumulation[get_index(vox, 2)], uint(max(0.0, radiance.b)));
+    // Physical attenuation parameters
+    float light_radius = p.vel.w * 8.0; // Influence radius scales with particle size
+    float base_radiance = intensity * 10000.0; // Scale for fixed-point atomic accumulation
+
+    // Neighborhood splatting (3x3x3)
+    for (int sz = -1; sz <= 1; ++sz) {
+        for (int sy = -1; sy <= 1; ++sy) {
+            for (int sx = -1; sx <= 1; ++sx) {
+                ivec3 vox = center_vox + ivec3(sx, sy, sz);
+                if (any(lessThan(vox, ivec3(0))) || any(greaterThanEqual(vox, u_grid_res_pad.xyz))) continue;
+
+                vec3 v_view_pos = get_voxel_view_pos(vox);
+                float dist = distance(p_view_pos, v_view_pos);
+
+                // Falloff: 1.0 at center, 0.0 at light_radius
+                float atten = smoothstep(light_radius, 0.0, dist);
+                if (atten <= 0.0) continue;
+
+                vec3 v_radiance = p.color.rgb * base_radiance * atten;
+
+                atomicAdd(accumulation[get_index(vox, 0)], uint(max(0.0, v_radiance.r)));
+                atomicAdd(accumulation[get_index(vox, 1)], uint(max(0.0, v_radiance.g)));
+                atomicAdd(accumulation[get_index(vox, 2)], uint(max(0.0, v_radiance.b)));
+            }
+        }
+    }
 }

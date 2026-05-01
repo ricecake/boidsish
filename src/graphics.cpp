@@ -2650,6 +2650,8 @@ namespace Boidsish {
 			volumetric_lighting_manager->Update(
 				frame.view_projection,
 				glm::inverse(frame.view_projection),
+				frame.view,
+				frame.projection,
 				frame.camera_pos,
 				frame.camera_front,
 				0.1f, // near

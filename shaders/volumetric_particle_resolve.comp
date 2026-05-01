@@ -6,6 +6,8 @@ layout(binding = [[VOLUMETRIC_LIGHT_TEXTURE_BINDING]], rgba16f) uniform image3D 
 layout(std140, binding = [[VOLUMETRIC_LIGHTING_BINDING]]) uniform VolumetricLightingParams {
     mat4 u_view_projection;
     mat4 u_inv_view_projection;
+    mat4 u_view;
+    mat4 u_projection;
     vec4 u_camera_pos_near; // xyz, w: near
     vec4 u_camera_dir_far;  // xyz, w: far
     ivec4 u_grid_res_pad;   // xyz, w: pad
@@ -20,17 +22,39 @@ uint get_index(ivec3 vox, int channel) {
     return vox_idx * 3 + channel;
 }
 
+vec3 get_radiance(ivec3 vox) {
+    if (any(lessThan(vox, ivec3(0))) || any(greaterThanEqual(vox, u_grid_res_pad.xyz))) return vec3(0.0);
+    return vec3(
+        float(accumulation[get_index(vox, 0)]),
+        float(accumulation[get_index(vox, 1)]),
+        float(accumulation[get_index(vox, 2)])
+    ) / 10000.0;
+}
+
 void main() {
     ivec3 vox = ivec3(gl_GlobalInvocationID.xyz);
     if (any(greaterThanEqual(vox, u_grid_res_pad.xyz))) return;
 
-    vec3 radiance = vec4(
-        float(accumulation[get_index(vox, 0)]),
-        float(accumulation[get_index(vox, 1)]),
-        float(accumulation[get_index(vox, 2)]),
-        0.0
-    ).rgb / 100.0;
+    // Spatial Filtering: 3x3x3 Box Blur to soften the point splats
+    vec3 radiance = vec3(0.0);
+    float total_weight = 0.0;
 
-    // Simple resolve for now. Could add blurring or temporal accumulation here.
+    // Center weight
+    radiance += get_radiance(vox) * 2.0;
+    total_weight += 2.0;
+
+    // Neighbor weights
+    for (int sz = -1; sz <= 1; ++sz) {
+        for (int sy = -1; sy <= 1; ++sy) {
+            for (int sx = -1; sx <= 1; ++sx) {
+                if (sx == 0 && sy == 0 && sz == 0) continue;
+                radiance += get_radiance(vox + ivec3(sx, sy, sz));
+                total_weight += 1.0;
+            }
+        }
+    }
+
+    radiance /= total_weight;
+
     imageStore(outVolumetricTexture, vox, vec4(radiance, 1.0));
 }

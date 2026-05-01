@@ -15,6 +15,8 @@ namespace Boidsish {
 	struct alignas(16) VolumetricLightingParams {
 		glm::mat4 view_projection;
 		glm::mat4 inv_view_projection;
+		glm::mat4 view;
+		glm::mat4 projection;
 		glm::vec4 camera_pos_near; // xyz, w: near
 		glm::vec4 camera_dir_far;  // xyz, w: far
 		glm::ivec4 grid_res_pad;   // xyz, w: pad
@@ -30,11 +32,13 @@ namespace Boidsish {
 		void Update(
 			const glm::mat4& view_proj,
 			const glm::mat4& inv_view_proj,
+			const glm::mat4& view,
+			const glm::mat4& projection,
 			const glm::vec3& cam_pos,
 			const glm::vec3& cam_dir,
-			float near_p,
-			float far_p,
-			float simulation_time
+			float            near_p,
+			float            far_p,
+			float            simulation_time
 		);
 
 		void Clear();
