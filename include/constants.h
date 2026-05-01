@@ -653,7 +653,7 @@ namespace Boidsish {
 
 			namespace Particles {
 				consteval int MaxParticles() {
-					return 64000;
+					return 128000;
 				}
 
 				consteval int MaxEmitters() {
