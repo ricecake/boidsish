@@ -72,6 +72,7 @@
 #include "terrain_render_manager.h"
 #include "trail.h"
 #include "trail_render_manager.h"
+#include "volumetric_lighting_manager.h"
 #include "ui/EffectWidget.h"
 #include "ui/EnvironmentWidget.h"
 #include "ui/ProfilerWidget.h"
@@ -379,6 +380,7 @@ namespace Boidsish {
 		std::shared_ptr<ShockwaveManager>                 shockwave_manager;
 		std::shared_ptr<AkiraEffectManager>               akira_effect_manager;
 		std::shared_ptr<SdfVolumeManager>                 sdf_volume_manager;
+		std::shared_ptr<VolumetricLightingManager>        volumetric_lighting_manager;
 		std::shared_ptr<ShadowManager>                    shadow_manager;
 		std::shared_ptr<AtmosphereManager>                atmosphere_manager;
 		std::shared_ptr<PostProcessing::AtmosphereEffect> atmosphere_effect;
@@ -564,6 +566,7 @@ namespace Boidsish {
 			service_locator_.Register<ShockwaveManager>();
 			service_locator_.Register<AkiraEffectManager>();
 			service_locator_.Register<SdfVolumeManager>();
+			service_locator_.Register<VolumetricLightingManager>();
 			service_locator_.Register<SoundEffectManager>();
 			service_locator_.Register<TrailRenderManager>();
 
@@ -801,6 +804,8 @@ namespace Boidsish {
 			SetupAkiraBindings();
 			sdf_volume_manager = service_locator_.Get<SdfVolumeManager>();
 			sdf_volume_manager->Initialize();
+			volumetric_lighting_manager = service_locator_.Get<VolumetricLightingManager>();
+			volumetric_lighting_manager->Initialize();
 			shadow_manager = service_locator_.Get<ShadowManager>();
 			scene_manager = service_locator_.Get<SceneManager>();
 			decor_manager = service_locator_.Get<DecorManager>();
@@ -1072,6 +1077,15 @@ namespace Boidsish {
 
 		void BindShadows(Shader& s) {
 			s.use();
+			if (volumetric_lighting_manager) {
+				volumetric_lighting_manager->BindForSampling(Constants::TextureUnit::VolumetricLightTexture());
+				s.trySetInt("u_volumetricLightTexture", Constants::TextureUnit::VolumetricLightTexture());
+				GLuint block_idx = glGetUniformBlockIndex(s.ID, "VolumetricLightingParams");
+				if (block_idx != GL_INVALID_INDEX) {
+					glUniformBlockBinding(s.ID, block_idx, Constants::UboBinding::VolumetricLighting());
+				}
+			}
+
 			if (terrain_render_manager) {
 				terrain_render_manager->BindTerrainData(s);
 			}
@@ -2629,6 +2643,29 @@ namespace Boidsish {
 			}
 		}
 
+		void RenderVolumetricLighting(const FrameData& frame) {
+			if (!volumetric_lighting_manager || !fire_effect_manager)
+				return;
+
+			volumetric_lighting_manager->Update(
+				frame.view_projection,
+				glm::inverse(frame.view_projection),
+				frame.camera_pos,
+				frame.camera_front,
+				0.1f, // near
+				frame.far_plane,
+				frame.simulation_time
+			);
+			volumetric_lighting_manager->Clear();
+			volumetric_lighting_manager->InjectParticles(
+				fire_effect_manager->GetParticleBuffer(),
+				Constants::Class::Particles::MaxParticles(),
+				fire_effect_manager->GetLiveIndicesBuffer(),
+				fire_effect_manager->GetBehaviorCommandBuffer()
+			);
+			volumetric_lighting_manager->Resolve();
+		}
+
 		void RenderShadowPasses(const FrameData& frame) {
 			if (!shadow_pass_ || !shadow_pass_->HasUpdates())
 				return;
@@ -3627,6 +3664,9 @@ namespace Boidsish {
 		impl->packets_synced_ = false;
 		impl->GenerateRenderPacketsAsync();
 		impl->UpdateSystems();
+
+		// Volumetric lighting must be updated before opaque scene to avoid one-frame lag
+		impl->RenderVolumetricLighting(frame);
 
 		// Shadow decor renders during the overlap window (no packets needed).
 		// The shape callback triggers lazy sync when packets are first needed.

@@ -1,0 +1,36 @@
+#version 430 core
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(binding = [[VOLUMETRIC_LIGHT_TEXTURE_BINDING]], rgba16f) uniform image3D outVolumetricTexture;
+
+layout(std140, binding = [[VOLUMETRIC_LIGHTING_BINDING]]) uniform VolumetricLightingParams {
+    mat4 u_view_projection;
+    mat4 u_inv_view_projection;
+    vec4 u_camera_pos_near; // xyz, w: near
+    vec4 u_camera_dir_far;  // xyz, w: far
+    ivec4 u_grid_res_pad;   // xyz, w: pad
+};
+
+layout(std430, binding = [[VOLUMETRIC_LIGHT_ACCUMULATION_BINDING]]) buffer AccumulationBuffer {
+    uint accumulation[];
+};
+
+uint get_index(ivec3 vox, int channel) {
+    uint vox_idx = vox.z * (u_grid_res_pad.x * u_grid_res_pad.y) + vox.y * u_grid_res_pad.x + vox.x;
+    return vox_idx * 3 + channel;
+}
+
+void main() {
+    ivec3 vox = ivec3(gl_GlobalInvocationID.xyz);
+    if (any(greaterThanEqual(vox, u_grid_res_pad.xyz))) return;
+
+    vec3 radiance = vec4(
+        float(accumulation[get_index(vox, 0)]),
+        float(accumulation[get_index(vox, 1)]),
+        float(accumulation[get_index(vox, 2)]),
+        0.0
+    ).rgb / 100.0;
+
+    // Simple resolve for now. Could add blurring or temporal accumulation here.
+    imageStore(outVolumetricTexture, vox, vec4(radiance, 1.0));
+}

@@ -13,6 +13,7 @@
 #include "scene_compositor.h"
 #include "shadow_manager.h"
 #include "sdf_volume_manager.h"
+#include "volumetric_lighting_manager.h"
 #include "terrain_render_manager.h"
 #include <GL/glew.h>
 #include <shader.h>
