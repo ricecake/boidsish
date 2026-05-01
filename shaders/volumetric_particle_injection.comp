@@ -45,10 +45,9 @@ vec3 get_voxel_view_pos(ivec3 vox) {
 
     vec2 ndc = froxel_coord.xy * 2.0 - 1.0;
 
-    // Assuming standard symmetric perspective projection
     // view_x = ndc_x * vz / proj[0][0]
     // view_y = ndc_y * vz / proj[1][1]
-    return vec3(ndc.x * vz / u_projection[0][0], ndc.y * vz / u_projection[1][1], vz);
+    return vec3(ndc.x * vz / u_projection[0][0], ndc.y * vz / u_projection[1][1], -vz);
 }
 
 void main() {
@@ -79,21 +78,21 @@ void main() {
     float intensity = p.origin.w * p.color.a;
 
     // Physical attenuation parameters
-    float light_radius = p.vel.w * 8.0; // Influence radius scales with particle size
-    float base_radiance = intensity * 10000.0; // Scale for fixed-point atomic accumulation
+    float light_radius = p.vel.w * 15.0;
+    float base_radiance = intensity * 5000000.0; // Boosted for visibility
 
-    // Neighborhood splatting (3x3x3)
-    for (int sz = -1; sz <= 1; ++sz) {
-        for (int sy = -1; sy <= 1; ++sy) {
-            for (int sx = -1; sx <= 1; ++sx) {
+    // Neighborhood splatting (5x5x5)
+    for (int sz = -2; sz <= 2; ++sz) {
+        for (int sy = -2; sy <= 2; ++sy) {
+            for (int sx = -2; sx <= 2; ++sx) {
                 ivec3 vox = center_vox + ivec3(sx, sy, sz);
                 if (any(lessThan(vox, ivec3(0))) || any(greaterThanEqual(vox, u_grid_res_pad.xyz))) continue;
 
                 vec3 v_view_pos = get_voxel_view_pos(vox);
                 float dist = distance(p_view_pos, v_view_pos);
 
-                // Falloff: 1.0 at center, 0.0 at light_radius
-                float atten = smoothstep(light_radius, 0.0, dist);
+                // Falloff
+                float atten = clamp(1.0 - (dist * dist) / (light_radius * light_radius), 0.0, 1.0);
                 if (atten <= 0.0) continue;
 
                 vec3 v_radiance = p.color.rgb * base_radiance * atten;

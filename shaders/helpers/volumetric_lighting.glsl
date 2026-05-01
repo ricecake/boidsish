@@ -4,6 +4,8 @@
 layout(std140, binding = [[VOLUMETRIC_LIGHTING_BINDING]]) uniform VolumetricLightingParams {
     mat4 u_volViewProjection;
     mat4 u_volInvViewProjection;
+    mat4 u_volView;
+    mat4 u_volProjection;
     vec4 u_volCameraPosNear; // xyz, w: near
     vec4 u_volCameraDirFar;  // xyz, w: far
     ivec4 u_volGridResPad;   // xyz, w: pad
@@ -26,7 +28,7 @@ vec3 sampleVolumetricLight(vec3 worldPos) {
         return vec3(0.0);
     }
 
-    return texture(u_volumetricLightTexture, vec3(uv, slice)).rgb;
+    return texture(u_volumetricLightTexture, vec3(uv, slice)).rgb * 10.0;
 }
 
 #endif

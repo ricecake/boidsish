@@ -35,15 +35,13 @@ void main() {
     ivec3 vox = ivec3(gl_GlobalInvocationID.xyz);
     if (any(greaterThanEqual(vox, u_grid_res_pad.xyz))) return;
 
-    // Spatial Filtering: 3x3x3 Box Blur to soften the point splats
+    // Spatial Filtering: 3x3x3 Box Blur
     vec3 radiance = vec3(0.0);
     float total_weight = 0.0;
 
-    // Center weight
-    radiance += get_radiance(vox) * 2.0;
-    total_weight += 2.0;
+    radiance += get_radiance(vox) * 4.0;
+    total_weight += 4.0;
 
-    // Neighbor weights
     for (int sz = -1; sz <= 1; ++sz) {
         for (int sy = -1; sy <= 1; ++sy) {
             for (int sx = -1; sx <= 1; ++sx) {
