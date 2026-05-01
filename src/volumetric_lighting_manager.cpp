@@ -54,7 +54,19 @@ namespace Boidsish {
 
 		if (!clear_shader_->isValid() || !inject_shader_->isValid() || !resolve_shader_->isValid()) {
 			logger::ERROR("Failed to compile volumetric lighting shaders");
+			return;
 		}
+
+		auto setup_shader = [](ComputeShader& s) {
+			s.use();
+			GLuint block_idx = glGetUniformBlockIndex(s.ID, "VolumetricLightingParams");
+			if (block_idx != GL_INVALID_INDEX) {
+				glUniformBlockBinding(s.ID, block_idx, Constants::UboBinding::VolumetricLighting());
+			}
+		};
+
+		setup_shader(*inject_shader_);
+		setup_shader(*resolve_shader_);
 	}
 
 	void VolumetricLightingManager::Update(
@@ -79,6 +91,7 @@ namespace Boidsish {
 
 		glBindBuffer(GL_UNIFORM_BUFFER, params_ubo_);
 		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(VolumetricLightingParams), &params_);
+		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::VolumetricLighting(), params_ubo_);
 		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 	}
 

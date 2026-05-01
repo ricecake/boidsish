@@ -1672,6 +1672,15 @@ namespace Boidsish {
 						if (noise_manager) {
 							noise_manager->BindDefault(*s);
 						}
+
+						if (volumetric_lighting_manager) {
+							volumetric_lighting_manager->BindForSampling(Constants::TextureUnit::VolumetricLightTexture());
+							s->trySetInt("u_volumetricLightTexture", Constants::TextureUnit::VolumetricLightTexture());
+							GLuint block_idx = glGetUniformBlockIndex(s->ID, "VolumetricLightingParams");
+							if (block_idx != GL_INVALID_INDEX) {
+								glUniformBlockBinding(s->ID, block_idx, Constants::UboBinding::VolumetricLighting());
+							}
+						}
 					}
 				}
 
@@ -3662,13 +3671,15 @@ namespace Boidsish {
 		FrameData frame = impl->current_frame_.NextFrame();
 		impl->PopulateFrameData(frame);
 
-		impl->PrepareUBOs();
 		impl->packets_synced_ = false;
 		impl->GenerateRenderPacketsAsync();
 		impl->UpdateSystems();
 
 		// Volumetric lighting must be updated before opaque scene to avoid one-frame lag
+		// and must be done before PrepareUBOs/ExecuteRenderQueue if we want it available there.
 		impl->RenderVolumetricLighting(frame);
+
+		impl->PrepareUBOs();
 
 		// Shadow decor renders during the overlap window (no packets needed).
 		// The shape callback triggers lazy sync when packets are first needed.

@@ -24,30 +24,34 @@ uint get_index(ivec3 vox, int channel) {
 
 vec3 get_radiance(ivec3 vox) {
     if (any(lessThan(vox, ivec3(0))) || any(greaterThanEqual(vox, u_grid_res_pad.xyz))) return vec3(0.0);
-    return vec3(
+    return vec4(
         float(accumulation[get_index(vox, 0)]),
         float(accumulation[get_index(vox, 1)]),
-        float(accumulation[get_index(vox, 2)])
-    ) / 10000.0;
+        float(accumulation[get_index(vox, 2)]),
+        0.0
+    ).rgb / 1000000.0; // Match injection scale
 }
 
 void main() {
     ivec3 vox = ivec3(gl_GlobalInvocationID.xyz);
     if (any(greaterThanEqual(vox, u_grid_res_pad.xyz))) return;
 
-    // Spatial Filtering: 3x3x3 Box Blur
+    // Spatial Filtering: Gaussian-like 3x3x3 Box Blur
     vec3 radiance = vec3(0.0);
     float total_weight = 0.0;
 
-    radiance += get_radiance(vox) * 4.0;
-    total_weight += 4.0;
+    // Center weight
+    radiance += get_radiance(vox) * 8.0;
+    total_weight += 8.0;
 
+    // 1st order neighbors
     for (int sz = -1; sz <= 1; ++sz) {
         for (int sy = -1; sy <= 1; ++sy) {
             for (int sx = -1; sx <= 1; ++sx) {
                 if (sx == 0 && sy == 0 && sz == 0) continue;
-                radiance += get_radiance(vox + ivec3(sx, sy, sz));
-                total_weight += 1.0;
+                float weight = 1.0 / (1.0 + float(abs(sx) + abs(sy) + abs(sz)));
+                radiance += get_radiance(vox + ivec3(sx, sy, sz)) * weight;
+                total_weight += weight;
             }
         }
     }

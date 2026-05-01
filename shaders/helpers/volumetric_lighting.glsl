@@ -11,7 +11,7 @@ layout(std140, binding = [[VOLUMETRIC_LIGHTING_BINDING]]) uniform VolumetricLigh
     ivec4 u_volGridResPad;   // xyz, w: pad
 };
 
-uniform sampler3D u_volumetricLightTexture;
+layout(binding = [[VOLUMETRIC_LIGHT_TEXTURE_BINDING]]) uniform sampler3D u_volumetricLightTexture;
 
 vec3 sampleVolumetricLight(vec3 worldPos) {
     vec4 clipPos = u_volViewProjection * vec4(worldPos, 1.0);
@@ -28,7 +28,7 @@ vec3 sampleVolumetricLight(vec3 worldPos) {
         return vec3(0.0);
     }
 
-    return texture(u_volumetricLightTexture, vec3(uv, slice)).rgb * 10.0;
+    return texture(u_volumetricLightTexture, vec3(uv, slice)).rgb;
 }
 
 #endif

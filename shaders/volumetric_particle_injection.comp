@@ -30,10 +30,7 @@ vec3 world_to_froxel(vec3 world_pos) {
 
     // Logarithmic Z mapping
     float view_z = dot(world_pos - u_camera_pos_near.xyz, u_camera_dir_far.xyz);
-
-    // Safety guard for particles behind or too close to the camera
     if (view_z < u_camera_pos_near.w) return vec3(-1.0);
-
     float slice = log2(view_z / u_camera_pos_near.w) / log2(u_camera_dir_far.w / u_camera_pos_near.w);
 
     return vec3(uv, slice);
@@ -42,11 +39,7 @@ vec3 world_to_froxel(vec3 world_pos) {
 vec3 get_voxel_view_pos(ivec3 vox) {
     vec3 froxel_coord = (vec3(vox) + 0.5) / vec3(u_grid_res_pad.xyz);
     float vz = u_camera_pos_near.w * pow(u_camera_dir_far.w / u_camera_pos_near.w, froxel_coord.z);
-
     vec2 ndc = froxel_coord.xy * 2.0 - 1.0;
-
-    // view_x = ndc_x * vz / proj[0][0]
-    // view_y = ndc_y * vz / proj[1][1]
     return vec3(ndc.x * vz / u_projection[0][0], ndc.y * vz / u_projection[1][1], -vz);
 }
 
@@ -73,26 +66,22 @@ void main() {
     if (any(lessThan(froxel_coord, vec3(0.0))) || any(greaterThanEqual(froxel_coord, vec3(1.0)))) return;
 
     ivec3 center_vox = ivec3(froxel_coord * vec3(u_grid_res_pad.xyz));
-
     vec3 p_view_pos = (u_view * vec4(p.pos.xyz, 1.0)).xyz;
     float intensity = p.origin.w * p.color.a;
 
     // Physical attenuation parameters
-    float light_radius = p.vel.w * 15.0;
-    float base_radiance = intensity * 5000000.0; // Boosted for visibility
+    float light_radius = p.vel.w * 35.0; // Broaden the light
+    float base_radiance = intensity * 1000000.0; // 10^6 fixed point scale
 
-    // Neighborhood splatting (5x5x5)
-    for (int sz = -2; sz <= 2; ++sz) {
-        for (int sy = -2; sy <= 2; ++sy) {
-            for (int sx = -2; sx <= 2; ++sx) {
+    for (int sz = -3; sz <= 3; ++sz) {
+        for (int sy = -3; sy <= 3; ++sy) {
+            for (int sx = -3; sx <= 3; ++sx) {
                 ivec3 vox = center_vox + ivec3(sx, sy, sz);
                 if (any(lessThan(vox, ivec3(0))) || any(greaterThanEqual(vox, u_grid_res_pad.xyz))) continue;
 
                 vec3 v_view_pos = get_voxel_view_pos(vox);
                 float dist = distance(p_view_pos, v_view_pos);
-
-                // Falloff
-                float atten = clamp(1.0 - (dist * dist) / (light_radius * light_radius), 0.0, 1.0);
+                float atten = smoothstep(light_radius, 0.0, dist);
                 if (atten <= 0.0) continue;
 
                 vec3 v_radiance = p.color.rgb * base_radiance * atten;

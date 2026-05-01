@@ -51,7 +51,7 @@ namespace Boidsish {
 				DecorProps = 30,
 				DecorPlacementGlobals = 31,
 				WindData = 45,
-				VolumetricLighting = 33,
+				VolumetricLighting = 48,
 			};
 
 			enum class Ssbo {
