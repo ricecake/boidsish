@@ -19,8 +19,10 @@ bool updateLifetime(
 	// Hijack/Clear Logic
 	if (emitter_index != -1 && num_emitters > 0 && emitter_index < num_emitters) {
 		Emitter emitter = emitters[emitter_index];
-		if (emitter.request_clear != 0 || (p.emitter_id < 0 && p.pos.w > 0.0) ||
-		    (p.emitter_id != emitter.id && p.pos.w <= 0.50)) {
+		// If emitter requests a clear, or if the particle was assigned to a different emitter (and is nearly dead), kill it.
+		// Note: We no longer kill live ambient particles (p.emitter_id < 0) immediately.
+		// They will live out their lifetime before the emitter takes over this slot.
+		if (emitter.request_clear != 0 || (p.emitter_id >= 0 && p.emitter_id != emitter.id && p.pos.w <= 0.50)) {
 			p.pos.w = 0.0;
 		}
 	}
@@ -356,7 +358,7 @@ void respawnParticle(
 		}
 
 		// --- 3b. Sparse Ambient Respawn ---
-		if (p.pos.w <= 0.0) {
+		if (p.pos.w <= 0.0 && emitter_index == -1) {
 			spawnAmbientParticle(
 				p,
 				gid,
@@ -375,7 +377,7 @@ void respawnParticle(
 		}
 
 		// --- 3c. Precipitation Respawn ---
-		if (p.pos.w <= 0.0 && (rain_intensity > 0.01 || snow_intensity > 0.01)) {
+		if (p.pos.w <= 0.0 && emitter_index == -1 && (rain_intensity > 0.01 || snow_intensity > 0.01)) {
 			spawnPrecipitation(p, gid, time, viewPos);
 		}
 
