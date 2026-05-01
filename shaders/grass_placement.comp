@@ -91,10 +91,64 @@ float hash(uint x) {
     return float(x) / 4294967295.0;
 }
 
-void spawnBlade(ivec2 cellID, float gridStep, float range, bool rotateDither) {
-    vec2 cellCenter = vec2(cellID) * gridStep;
+
+struct GridCell {
+    vec2 Coord;
+    int index;
+    float scale;
+    float minRange;
+    float maxRange;
+    float lower;
+    float upper;
+
+};
+    // smoothstep(minRange - (maxRange+minRange/4), maxRange + (maxRange+minRange/4), distance)
+    // minRange = exp2(floor((index-1)*log2(3)))
+    // maxRange = exp2(floor(index*log2(3)))
+    // morton codes on logarithmic grid?  log-spiral grid - two sets of N log spirals in opposite directions.
+
+GridCell makeGridCell(vec3 invocationPos, vec3 cameraPos, int index) {
+    float scale = 0.1 * exp2(float(index)) * uWorldScale;
+    vec2 cameraCell = floor(cameraPos.xz / scale);
+    vec2 cellID = cameraCell + (invocationPos.xz);
+
+    return GridCell(
+        cellID,
+        index,
+        scale,
+        index > 0? exp2(floor(log2(3)*(index+1))) : 0.0,
+        exp2(floor(log2(3)* index+2)),
+        index > 0? exp2(floor(log2(3)*(index))) : 0.0,
+        exp2(floor(log2(3)* index+3))
+    );
+}
+
+
+
+vec3 makeGridCoord(vec3 invocationPos, vec3 cameraPos, int index) {
+    float scale = 0.2 * exp2(float(index)) * uWorldScale;
+    vec2 cameraCell = floor(cameraPos.xz / scale);
+    vec2 cellID = cameraCell + (invocationPos.xz);
+   return vec3(cellID, scale);
+}
+
+
+
+// void spawnBlade(ivec2 cellID, float gridStep, float range, bool rotateDither) {
+void spawnBlade(GridCell cell) {
+    float gridStep = cell.scale;
+    // float lower = cell.minRange - ((cell.maxRange+cell.minRange)/4);
+    // float upper = cell.maxRange + ((cell.maxRange+cell.minRange)/4);
+
+    float lower = cell.lower;
+    float upper = cell.upper;
+
+    bool rotateDither = (cell.index % 2 > 0);
+    ivec2 cellID = ivec2(cell.Coord);
+
+    vec2 cellCenter = vec2(cell.Coord) * cell.scale;
     float dist = distance(cellCenter, uCameraPos.xz);
-    if (dist > range) return;
+    if ((dist > upper) || (dist < lower)) return;
 
     // --- Fast GPU Culling ---
     vec3 cellMin = vec3(cellCenter.x - gridStep * 0.5, -20.0 * uWorldScale, cellCenter.y - gridStep * 0.5);
@@ -109,7 +163,7 @@ void spawnBlade(ivec2 cellID, float gridStep, float range, bool rotateDither) {
     vec2 worldPosXZ = cellCenter + jitter;
 
     dist = distance(worldPosXZ, uCameraPos.xz);
-    if (dist > range) return;
+    if ((dist > upper) || (dist < lower)) return;
 
     float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
     ivec2 chunkCoord = ivec2(floor(worldPosXZ / scaledChunkSize));
@@ -137,13 +191,16 @@ void spawnBlade(ivec2 cellID, float gridStep, float range, bool rotateDither) {
 
     if (normal.y < 0.7) return;
 
+    // dist *= -dot(normal, frustumPlanes[4].xyz);
+
     vec2 biomeData = textureLod(uBiomeMap, vec3(remappedUV, float(slice)), 0.0).rg;
     int pickedBiome = (hash(seed + 5566) < biomeData.g) ? int(biomeData.r * 255.0 + 0.5) + 1 : int(biomeData.r * 255.0 + 0.5);
     pickedBiome = clamp(pickedBiome, 0, 7);
 
     if (biomeProps[pickedBiome].enabled == 0) return;
 
-    float densityCurve = 1.0 - smoothstep(range * 0.1, range, dist);
+    // float densityCurve = 1.0 - smoothstep(range * 0.1, range, dist);
+    float densityCurve = smoothstep(lower, cell.minRange, dist) * (1.0 - smoothstep(cell.maxRange, upper, dist));
 
     int bx = cellID.x & 7;
     int by = cellID.y & 7;
@@ -151,10 +208,13 @@ void spawnBlade(ivec2 cellID, float gridStep, float range, bool rotateDither) {
         int tmp = bx; bx = by; by = 7 - tmp;
     }
     float ditherValue = float(bayer8x8[by * 8 + bx]) / 64.0;
+    float finalDither = ditherValue * (1.1 - biomeProps[pickedBiome].density * globalProps.densityMultiplier);
 
-    if (densityCurve < ditherValue * (1.1 - biomeProps[pickedBiome].density * globalProps.densityMultiplier)) return;
+    if (densityCurve < finalDither) return;
 
-    float heightFade = 1.0 - smoothstep(range * 0.95, range, dist);
+    // float heightFade = 1.0;// - smoothstep(lower, upper, dist);
+    // float heightFade = (1.0 - smoothstep(cell.maxRange, upper, dist));
+    float heightFade = max(smoothstep(lower, cell.minRange, dist), (1.0 - smoothstep(cell.maxRange, upper, dist)));
 
     uint idx = atomicAdd(indirectCommand.instanceCount, 1);
     if (idx >= uint(uMaxInstances)) return;
@@ -172,22 +232,29 @@ void spawnBlade(ivec2 cellID, float gridStep, float range, bool rotateDither) {
     );
 }
 
-vec3 makeGridCoord(vec3 invocationPos, vec3 cameraPos, int index) {
-    float scale = 0.2 * exp2(float(index)) * uWorldScale;
-    vec2 cameraCell = floor(cameraPos.xz / scale);
-    vec2 cellID = cameraCell + (invocationPos.xz);
-   return vec3(cellID, scale);
-}
-
 void main() {
     vec3 offset = (gl_NumWorkGroups.xzy * gl_WorkGroupSize.xzy)/2.0;
     vec3 coord = gl_GlobalInvocationID.xzy - offset;
 
-    vec3 cell0 = makeGridCoord(coord, uCameraPos, 0);
-    vec3 cell1 = makeGridCoord(coord, uCameraPos, 1);
-    vec3 cell3 = makeGridCoord(coord, uCameraPos, 3);
+    // vec3 cell00 = makeGridCoord(coord, uCameraPos, -1);
+    // vec3 cell0 = makeGridCoord(coord, uCameraPos, 0);
+    // vec3 cell1 = makeGridCoord(coord, uCameraPos, 1);
+    // vec3 cell2 = makeGridCoord(coord, uCameraPos, 2);
 
-    spawnBlade(ivec2(cell0.xy), cell0.z, 64 * uWorldScale, false);
-    spawnBlade(ivec2(cell1.xy), cell1.z, 128 * uWorldScale, true);
-    spawnBlade(ivec2(cell3.xy), cell3.z, 512 * uWorldScale, false);
+    // // spawnBlade(ivec2(cell00.xy), cell00.z, 16 * uWorldScale, true);
+    // spawnBlade(ivec2(cell0.xy), cell0.z, 64 * uWorldScale, false);
+    // spawnBlade(ivec2(cell1.xy), cell1.z, 128 * uWorldScale, true);
+    // spawnBlade(ivec2(cell2.xy), cell2.z, 512 * uWorldScale, false);
+
+    // for (int i = 0; i <= 4; i++) {
+    // GridCell cell = makeGridCell(coord, uCameraPos, i);
+    // spawnBlade(cell);
+    // }
+
+    spawnBlade(makeGridCell(coord, uCameraPos, 0));
+    spawnBlade(makeGridCell(coord, uCameraPos, 1));
+    spawnBlade(makeGridCell(coord, uCameraPos, 2));
+    spawnBlade(makeGridCell(coord, uCameraPos, 3));
+    spawnBlade(makeGridCell(coord, uCameraPos, 4));
+
 }
