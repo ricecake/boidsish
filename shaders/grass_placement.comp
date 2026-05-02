@@ -108,37 +108,33 @@ struct GridCell {
     // morton codes on logarithmic grid?  log-spiral grid - two sets of N log spirals in opposite directions.
 
 GridCell makeGridCell(vec3 invocationPos, vec3 cameraPos, int index) {
-    float scale = 0.1 * exp2(float(index)) * uWorldScale;
+    float baseScale = 0.2 * uWorldScale;
+    float baseRange = 20.0 * uWorldScale;
+
+    float scale = baseScale * exp(float(index));
     vec2 cameraCell = floor(cameraPos.xz / scale);
     vec2 cellID = cameraCell + (invocationPos.xz);
+
+    float maxRange = baseRange * exp(float(index));
+    float minRange = (index <= 0) ? 0.0 : baseRange * exp(float(index - 1));
+
+    // Overlap to mask changes in density and grid size
+    float lower = minRange;//(index <= 1) ? minRange : baseRange * exp(float(index - 2));
+    float upper = baseRange * exp(float(index+1));
 
     return GridCell(
         cellID,
         index,
         scale,
-        index > 0? exp2(floor(log2(3)*(index+1))) : 0.0,
-        exp2(floor(log2(3)* index+2)),
-        index > 0? exp2(floor(log2(3)*(index))) : 0.0,
-        exp2(floor(log2(3)* index+3))
+        minRange,
+        maxRange,
+        lower,
+        upper
     );
 }
 
-
-
-vec3 makeGridCoord(vec3 invocationPos, vec3 cameraPos, int index) {
-    float scale = 0.2 * exp2(float(index)) * uWorldScale;
-    vec2 cameraCell = floor(cameraPos.xz / scale);
-    vec2 cellID = cameraCell + (invocationPos.xz);
-   return vec3(cellID, scale);
-}
-
-
-
-// void spawnBlade(ivec2 cellID, float gridStep, float range, bool rotateDither) {
 void spawnBlade(GridCell cell) {
     float gridStep = cell.scale;
-    // float lower = cell.minRange - ((cell.maxRange+cell.minRange)/4);
-    // float upper = cell.maxRange + ((cell.maxRange+cell.minRange)/4);
 
     float lower = cell.lower;
     float upper = cell.upper;
@@ -199,8 +195,9 @@ void spawnBlade(GridCell cell) {
 
     if (biomeProps[pickedBiome].enabled == 0) return;
 
-    // float densityCurve = 1.0 - smoothstep(range * 0.1, range, dist);
-    float densityCurve = smoothstep(lower, cell.minRange, dist) * (1.0 - smoothstep(cell.maxRange, upper, dist));
+    float fadeIn = (cell.index == 0) ? 1.0 : smoothstep(lower, cell.minRange, dist);
+    float fadeOut = 1.0 - smoothstep(cell.maxRange, upper, dist);
+    float densityCurve = fadeIn * fadeOut;
 
     int bx = cellID.x & 7;
     int by = cellID.y & 7;
@@ -212,9 +209,7 @@ void spawnBlade(GridCell cell) {
 
     if (densityCurve < finalDither) return;
 
-    // float heightFade = 1.0;// - smoothstep(lower, upper, dist);
-    // float heightFade = (1.0 - smoothstep(cell.maxRange, upper, dist));
-    float heightFade = max(smoothstep(lower, cell.minRange, dist), (1.0 - smoothstep(cell.maxRange, upper, dist)));
+    float heightFade = densityCurve;
 
     uint idx = atomicAdd(indirectCommand.instanceCount, 1);
     if (idx >= uint(uMaxInstances)) return;
@@ -236,25 +231,8 @@ void main() {
     vec3 offset = (gl_NumWorkGroups.xzy * gl_WorkGroupSize.xzy)/2.0;
     vec3 coord = gl_GlobalInvocationID.xzy - offset;
 
-    // vec3 cell00 = makeGridCoord(coord, uCameraPos, -1);
-    // vec3 cell0 = makeGridCoord(coord, uCameraPos, 0);
-    // vec3 cell1 = makeGridCoord(coord, uCameraPos, 1);
-    // vec3 cell2 = makeGridCoord(coord, uCameraPos, 2);
-
-    // // spawnBlade(ivec2(cell00.xy), cell00.z, 16 * uWorldScale, true);
-    // spawnBlade(ivec2(cell0.xy), cell0.z, 64 * uWorldScale, false);
-    // spawnBlade(ivec2(cell1.xy), cell1.z, 128 * uWorldScale, true);
-    // spawnBlade(ivec2(cell2.xy), cell2.z, 512 * uWorldScale, false);
-
-    // for (int i = 0; i <= 4; i++) {
-    // GridCell cell = makeGridCell(coord, uCameraPos, i);
-    // spawnBlade(cell);
-    // }
-
+    spawnBlade(makeGridCell(coord, uCameraPos, -1));
     spawnBlade(makeGridCell(coord, uCameraPos, 0));
     spawnBlade(makeGridCell(coord, uCameraPos, 1));
     spawnBlade(makeGridCell(coord, uCameraPos, 2));
-    spawnBlade(makeGridCell(coord, uCameraPos, 3));
-    spawnBlade(makeGridCell(coord, uCameraPos, 4));
-
 }
