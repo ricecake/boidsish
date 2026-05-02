@@ -248,9 +248,6 @@ namespace Boidsish {
 										scene.post_processing.time_stutter_enabled = effect->IsEnabled();
 									}
 								}
-								if (auto tm = ppm.GetToneMappingEffect()) {
-									scene.post_processing.tone_mapping_enabled = tm->IsEnabled();
-								}
 							}
 
 							m_sceneManager.AddScene(scene);
@@ -357,9 +354,6 @@ namespace Boidsish {
 									} else if (effect->GetName() == "TimeStutter") {
 										effect->SetEnabled(scene.post_processing.time_stutter_enabled);
 									}
-								}
-								if (auto tm = ppm.GetToneMappingEffect()) {
-									tm->SetEnabled(scene.post_processing.tone_mapping_enabled);
 								}
 							}
 						}

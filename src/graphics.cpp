@@ -50,7 +50,6 @@
 #include "post_processing/effects/SuperSpeedEffect.h"
 #include "post_processing/effects/UnifiedScreenSpaceEffect.h"
 #include "post_processing/effects/TimeStutterEffect.h"
-#include "post_processing/effects/ToneMappingEffect.h"
 #include "post_processing/effects/WhispTrailEffect.h"
 #include "profiler.h"
 #include "render_passes.h"
@@ -1053,11 +1052,7 @@ namespace Boidsish {
 					bloom_effect->SetToneMappingEnabled(true);
 					bloom_effect->SetToneMappingMode(2); // Lottes default
 
-					// Still create the standalone effect as a fallback or for when bloom is disabled
-					auto tone_mapping_effect = std::make_shared<PostProcessing::ToneMappingEffect>();
-					tone_mapping_effect->SetEnabled(true);
 					bloom_effect->SetEnabled(true);
-					post_processing_manager_->SetToneMappingEffect(tone_mapping_effect);
 				}
 
 				// --- UI ---

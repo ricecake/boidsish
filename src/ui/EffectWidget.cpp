@@ -7,7 +7,6 @@
 #include "post_processing/effects/BloomEffect.h"
 #include "post_processing/effects/FilmGrainEffect.h"
 #include "post_processing/effects/UnifiedScreenSpaceEffect.h"
-#include "post_processing/effects/ToneMappingEffect.h"
 
 namespace Boidsish {
 	namespace UI {
@@ -219,31 +218,27 @@ namespace Boidsish {
 										bloom_effect->SetExposureLimits(bloom_effect->GetMinExposure(), max_exposure);
 									}
 								}
-							}
-						}
-					}
-
-					if (auto effect = manager.GetToneMappingEffect()) {
-						auto tone_mapping_effect = std::dynamic_pointer_cast<PostProcessing::ToneMappingEffect>(effect);
-						ImGui::Separator();
-						bool is_enabled = tone_mapping_effect->IsEnabled();
-						if (ImGui::Checkbox("Tone Mapping", &is_enabled)) {
-							tone_mapping_effect->SetEnabled(is_enabled);
-						}
-						if (is_enabled) {
-							const char* modes[] = {
-								"ACES",
-								"Filmic",
-								"Lottes",
-								"Reinhard",
-								"Reinhard II",
-								"Uchimura",
-								"Uncharted 2",
-								"Unreal 3"
-							};
-							int current_mode = tone_mapping_effect->GetMode();
-							if (ImGui::Combo("Mode", &current_mode, modes, IM_ARRAYSIZE(modes))) {
-								tone_mapping_effect->SetMode(current_mode);
+								ImGui::Separator();
+								bool is_enabled = bloom_effect->IsToneMappingEnabled();
+								if (ImGui::Checkbox("Tone Mapping", &is_enabled)) {
+									bloom_effect->SetToneMappingEnabled(is_enabled);
+								}
+								if (is_enabled) {
+									const char* modes[] = {
+										"ACES",
+										"Filmic",
+										"Lottes",
+										"Reinhard",
+										"Reinhard II",
+										"Uchimura",
+										"Uncharted 2",
+										"Unreal 3"
+									};
+									int current_mode = bloom_effect->GetToneMappingMode();
+									if (ImGui::Combo("Mode", &current_mode, modes, IM_ARRAYSIZE(modes))) {
+										bloom_effect->SetToneMappingMode(current_mode);
+									}
+								}
 							}
 						}
 					}
