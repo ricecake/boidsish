@@ -12,6 +12,9 @@ class ComputeShader;
 namespace Boidsish {
 
 	class WeatherManager;
+	class ShadowManager;
+	class TerrainRenderManager;
+	class AtmosphereManager;
 
 	namespace PostProcessing {
 
@@ -189,6 +192,10 @@ namespace Boidsish {
 			void SetNoiseTextures(const NoiseTextures& textures) { noise_textures_ = textures; }
 
 			void SetWeatherManager(WeatherManager* weather) { weather_manager = weather; }
+			void SetShadowManager(ShadowManager* shadows) { shadow_manager_ = shadows; }
+			void SetTerrainRenderManager(TerrainRenderManager* terrain) { terrain_render_manager_ = terrain; }
+			void SetAtmosphereManager(AtmosphereManager* atmo) { atmosphere_manager_ = atmo; }
+			void SetLightShadowIndices(const std::vector<int>& indices) { light_shadow_indices_ = indices; }
 
 			void SetRenderScale(float scale) {
 				if (render_scale_ != scale) {
@@ -260,7 +267,11 @@ namespace Boidsish {
 
 			NoiseTextures noise_textures_ = {0, 0, 0, 0};
 
-			WeatherManager* weather_manager = nullptr;
+			WeatherManager*      weather_manager = nullptr;
+			ShadowManager*       shadow_manager_ = nullptr;
+			TerrainRenderManager* terrain_render_manager_ = nullptr;
+			AtmosphereManager*   atmosphere_manager_ = nullptr;
+			std::vector<int>     light_shadow_indices_;
 
 			int   width_ = 0;
 			int   height_ = 0;
