@@ -2093,6 +2093,10 @@ namespace Boidsish {
 			}
 
 			if (atmosphere_effect) {
+				atmosphere_effect->SetAtmosphereManager(atmosphere_manager.get());
+				atmosphere_effect->SetShadowManager(shadow_manager.get());
+				atmosphere_effect->SetTerrainRenderManager(terrain_render_manager.get());
+
 				atmosphere_manager->SetRayleighScale(atmosphere_effect->GetRayleighScale());
 				atmosphere_manager->SetMieScale(atmosphere_effect->GetMieScale());
 				atmosphere_manager->SetMieAnisotropy(atmosphere_effect->GetMieAnisotropy());
@@ -2109,8 +2113,8 @@ namespace Boidsish {
 				atmosphere_manager->SetColorVarianceScale(atmosphere_effect->GetColorVarianceScale());
 				atmosphere_manager->SetColorVarianceStrength(atmosphere_effect->GetColorVarianceStrength());
 
-			float cloudShadowIntensity = ConfigManager::GetInstance().GetAppSettingFloat("cloud_shadow_intensity", 0.5f);
-			atmosphere_manager->SetCloudShadowIntensity(cloudShadowIntensity);
+				float cloudShadowIntensity = ConfigManager::GetInstance().GetAppSettingFloat("cloud_shadow_intensity", 0.5f);
+				atmosphere_manager->SetCloudShadowIntensity(cloudShadowIntensity);
 			}
 
 			// Update the atmosphere model with the current sun/moon light
@@ -2145,6 +2149,13 @@ namespace Boidsish {
 						render_state_.volumetric_lighting.size
 					);
 				}
+
+				const auto& lights = light_manager->GetLights();
+				std::vector<int> shadow_indices;
+				for (const auto& l : lights) {
+					shadow_indices.push_back(l.shadow_map_index);
+				}
+				atmosphere_effect->SetLightShadowIndices(shadow_indices);
 			}
 		}
 
