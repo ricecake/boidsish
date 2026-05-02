@@ -80,7 +80,7 @@ namespace Boidsish {
 			float minIntensity_ = 0.05f;
 			float maxIntensity_ = 0.150f;
 
-			bool _toneMappingEnabled = false;
+			bool _toneMappingEnabled = true;
 			int  _toneMappingMode = 2;
 
 			bool  _autoExposureEnabled = true;

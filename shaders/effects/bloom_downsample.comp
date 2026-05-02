@@ -9,18 +9,7 @@ layout(binding = 7, rgba16f) uniform writeonly image2D outMip2;
 layout(binding = 8, rgba16f) uniform writeonly image2D outMip3;
 layout(binding = 9, rgba16f) uniform writeonly image2D outMip4;
 
-// Auto-exposure SSBO
-layout(std430, binding = [[AUTO_EXPOSURE_BINDING]]) buffer AutoExposure {
-	float adaptedLuminance;
-	float targetLuminance;
-	float minExposure;
-	float maxExposure;
-	int   useAutoExposure;
-
-	uint  totalLogLuma;
-	uint  totalPixelCount;
-	uint  workgroupCounter;
-};
+#include "types/autoexposure.glsl"
 
 uniform vec2  srcResolution; // Full resolution of srcTexture
 uniform int   numMips;
