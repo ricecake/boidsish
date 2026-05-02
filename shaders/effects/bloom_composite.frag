@@ -13,6 +13,7 @@ uniform bool toneMappingEnabled = false;
 uniform int  toneMapMode = 2;
 
 #include "helpers/tonemapping.glsl"
+#include "types/autoexposure.glsl"
 
 void main() {
 	vec3 sceneColor = texture(sceneTexture, TexCoords).rgb;
@@ -23,12 +24,13 @@ void main() {
     // with exposure naturally just like the rest of the scene.
 	vec3 result = sceneColor + bloomColor * intensity;
 
+	if (useAutoExposure != 0) {
+		float exposure = targetLuminance / max(adaptedLuminance, 0.0001);
+		exposure = clamp(exposure, minExposure, maxExposure);
+		result *= exposure;
+	}
+
 	if (toneMappingEnabled) {
-		if (useAutoExposure != 0) {
-			float exposure = targetLuminance / max(adaptedLuminance, 0.0001);
-			exposure = clamp(exposure, minExposure, maxExposure);
-			result *= exposure;
-		}
 		result = applyTonemapping(result, toneMapMode);
 	}
 

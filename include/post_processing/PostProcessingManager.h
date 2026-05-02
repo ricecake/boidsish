@@ -21,7 +21,6 @@ namespace Boidsish {
 
 			void Initialize() override;
 			void AddEffect(std::shared_ptr<IPostProcessingEffect> effect);
-			void SetToneMappingEffect(std::shared_ptr<IPostProcessingEffect> effect);
 
 			void SetSharedDepthTexture(GLuint texture);
 
@@ -71,8 +70,6 @@ namespace Boidsish {
 				return pre_tone_mapping_effects_;
 			}
 
-			std::shared_ptr<IPostProcessingEffect> GetToneMappingEffect() { return tone_mapping_effect_; }
-
 		private:
 			void InitializeFBOs();
 			void ApplyEffectInternal(
@@ -85,7 +82,6 @@ namespace Boidsish {
 
 			int                                                 width_, height_;
 			std::vector<std::shared_ptr<IPostProcessingEffect>> pre_tone_mapping_effects_;
-			std::shared_ptr<IPostProcessingEffect>              tone_mapping_effect_;
 			GLuint                                              quad_vao_;
 
 			GLuint pingpong_fbo_[2];
