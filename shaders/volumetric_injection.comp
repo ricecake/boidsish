@@ -8,17 +8,21 @@ layout(rgba16f, binding = 0) uniform image3D inOutScatteringExtinction;
 #include "lighting.glsl"
 #include "helpers/terrain_shadows.glsl"
 #include "helpers/lighting.glsl"
+#include "helpers/spatial_hash.glsl"
+#include "particle_types.glsl"
 
 struct VolumetricLighting {
-    vec4 cascadeRanges;
+    vec4  cascadeRanges;
     ivec4 cascadeRes;
     float intensity;
     float scatteringCoeff;
     float extinctionCoeff;
     float mieAnisotropy;
-    vec4 ambientFactor;
+    vec4  ambientFactor;
     float phaseG;
+    float _pad1, _pad2, _pad3;
     ivec4 weatherGridOriginSize;
+    float _padding2[4];
 };
 
 layout(std140, binding = [[VOLUMETRIC_LIGHTING_BINDING]]) uniform VolumetricUniforms {
@@ -28,6 +32,9 @@ layout(std140, binding = [[VOLUMETRIC_LIGHTING_BINDING]]) uniform VolumetricUnif
 uniform int u_cascadeIndex;
 uniform mat4 projection;
 uniform mat4 invView;
+
+uniform uint  u_grid_size;
+uniform float u_cell_size;
 
 vec3 getFroxelViewPos(vec3 uvw, int cascade) {
     float near = (cascade == 0) ? 0.1 : (cascade == 1) ? u_volData.cascadeRanges.x : (cascade == 2) ? u_volData.cascadeRanges.y : u_volData.cascadeRanges.z;
@@ -68,7 +75,7 @@ void main() {
         float shadow = calculateShadow(i, worldPos, vec3(0, 1, 0), L);
         shadow *= calculateCloudShadow(i, worldPos);
 
-        float cosTheta = dot(V, L);
+        float cosTheta = dot(V, -L); // -L is from light to worldPos
         float phase = hgPhase(cosTheta, u_volData.phaseG);
         // Add isotropic scattering (20% mix) to ensure visibility from all angles
         phase = mix(phase, 1.0 / (4.0 * PI), 0.2);
@@ -79,6 +86,41 @@ void main() {
     // 2. Ambient Lighting from SH Probes
     vec3 ambient = getSpatialAmbientSH(worldPos, vec3(0, 1, 0));
     totalScatteredLight += ambient * u_volData.ambientFactor.rgb * u_volData.ambientFactor.w;
+
+    // 3. Particle Lighting (Local Emissive)
+    if (u_grid_size > 0) {
+        vec3 particleLighting = vec3(0.0);
+        float searchRadius = u_cell_size * 1.5;
+        float searchRadiusSq = searchRadius * searchRadius;
+
+        for (int x = -1; x <= 1; x++) {
+            for (int y = -1; y <= 1; y++) {
+                for (int z = -1; z <= 1; z++) {
+                    uint cellIdx = get_cell_idx(worldPos + vec3(x, y, z) * u_cell_size, u_cell_size, u_grid_size);
+                    int pIdx = grid_heads[cellIdx];
+                    int safety = 0;
+                    while (pIdx != -1 && safety < 100) {
+                        Particle p = particles[pIdx];
+                        if (p.pos.w > 0.0 && p.origin.w > 0.0) {
+                            float distSq = dot(p.pos.xyz - worldPos, p.pos.xyz - worldPos);
+                            if (distSq < searchRadiusSq) {
+                                float dist = sqrt(distSq);
+                                vec3 L = (p.pos.xyz - worldPos) / max(dist, 0.001); // To light
+                                float phase = mix(hgPhase(dot(V, -L), u_volData.phaseG), 1.0 / (4.0 * PI), 0.2);
+
+                                // Simple distance attenuation
+                                float attenuation = 1.0 / (1.0 + 0.1 * dist + 0.1 * distSq);
+                                particleLighting += p.color.rgb * p.origin.w * attenuation * phase;
+                            }
+                        }
+                        pIdx = grid_next[pIdx];
+                        safety++;
+                    }
+                }
+            }
+        }
+        totalScatteredLight += particleLighting * u_volData.intensity;
+    }
 
     imageStore(inOutScatteringExtinction, texel, vec4(totalScatteredLight * scatteringBase, extinction));
 }
