@@ -24,14 +24,17 @@ layout(binding = [[VOLUMETRIC_CASCADE0_BINDING]]) uniform sampler3D u_volumetric
 layout(binding = [[VOLUMETRIC_CASCADE1_BINDING]]) uniform sampler3D u_volumetricCascade1;
 
 struct VolumetricLighting {
-    vec4 cascadeRanges;
+    vec4  cascadeRanges;
     ivec4 cascadeRes;
     float intensity;
     float scatteringCoeff;
     float extinctionCoeff;
     float mieAnisotropy;
-    vec4 ambientFactor;
+    vec4  ambientFactor;
     float phaseG;
+    float _pad1, _pad2, _pad3;
+    ivec4 weatherGridOriginSize;
+    float _padding2[4];
 };
 
 layout(std140, binding = [[VOLUMETRIC_LIGHTING_BINDING]]) uniform VolumetricUniforms {
