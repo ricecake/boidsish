@@ -3494,8 +3494,6 @@ namespace Boidsish {
 			}
 			impl->wetness_ = std::clamp(impl->wetness_, 0.0f, 1.0f);
 
-			impl->weather_manager->UpdateWindUbo(impl->simulation_time);
-
 			// Apply to atmosphere effect
 			if (impl->atmosphere_effect) {
 				impl->atmosphere_effect->SetHazeDensity(w.haze_density);
@@ -3622,6 +3620,14 @@ namespace Boidsish {
 		impl->packets_synced_ = false;
 		impl->GenerateRenderPacketsAsync();
 		impl->UpdateSystems();
+
+		if (impl->weather_manager && impl->weather_manager->IsEnabled()) {
+			impl->weather_manager->UpdateWindUbo(
+				impl->simulation_time,
+				impl->noise_manager.get(),
+				impl->terrain_render_manager.get()
+			);
+		}
 
 		// Shadow decor renders during the overlap window (no packets needed).
 		// The shape callback triggers lazy sync when packets are first needed.

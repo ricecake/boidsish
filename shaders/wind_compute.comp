@@ -1,0 +1,32 @@
+#version 460 core
+
+#define WIND_COMPUTE
+#include "helpers/wind.glsl"
+
+layout(local_size_x = 16, local_size_y = 16) in;
+
+layout(rgba32f, binding = [[INTEGRATED_WIND_IMAGE_BINDING]]) uniform writeonly image2D u_integratedWindImage;
+
+void main() {
+    ivec2 texelCoord = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = imageSize(u_integratedWindImage);
+
+    if (texelCoord.x >= size.x || texelCoord.y >= size.y) {
+        return;
+    }
+
+    // Calculate world position corresponding to this texel
+    float gridSpacing = u_windParams.x;
+    vec2 uv = (vec2(texelCoord) + 0.5) / vec2(size);
+
+    // World XZ = (uv * originSize.yw + originSize.xz) * gridSpacing
+    vec2 worldXZ = (uv * vec2(u_windOriginSize.y, u_windOriginSize.w) + vec2(u_windOriginSize.xz)) * gridSpacing;
+
+    // We sample at a representative height (e.g., ground level + 1.0)
+    // The wind system uses getTerrainHeight internally for deflection
+    float height = getTerrainHeight(worldXZ) + 1.0;
+
+    vec4 integratedWind = computeWindAtPosition(vec3(worldXZ.x, height, worldXZ.y));
+
+    imageStore(u_integratedWindImage, texelCoord, integratedWind);
+}

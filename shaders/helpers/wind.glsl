@@ -13,14 +13,31 @@ layout(std140, binding = [[WIND_DATA_BINDING]]) uniform WindData {
 };
 
 layout(binding = [[WIND_TEXTURE_BINDING]]) uniform sampler2D u_windTexture;
+#ifdef WIND_COMPUTE
+layout(binding = [[LBM_WIND_TEXTURE_BINDING]]) uniform sampler2D u_lbmWindTexture;
+#endif
 #endif
 
+/**
+ * Fast lookup for pre-integrated wind data.
+ */
+vec3 getWindAtPosition(vec3 worldPos) {
+	if (u_windOriginSize.y <= 0) return vec3(0.0);
+
+	float gridSpacing = u_windParams.x;
+	vec2 gridCoord = (worldPos.xz / gridSpacing) - vec2(u_windOriginSize.xz);
+	vec2 uv = gridCoord / vec2(u_windOriginSize.y, u_windOriginSize.w);
+
+	return texture(u_windTexture, uv).xyz;
+}
+
+#ifdef WIND_COMPUTE
 /**
  * Calculates the combined wind vector at a given world position.
  * Incorporates macro LBM-derived wind, terrain deflection, and small-scale curl noise.
  */
-vec3 getWindAtPosition(vec3 worldPos) {
-	if (u_windOriginSize.y <= 0) return vec3(0.0);
+vec4 computeWindAtPosition(vec3 worldPos) {
+	if (u_windOriginSize.y <= 0) return vec4(0.0);
 
 	float gridSpacing = u_windParams.x;
 	// Measurements are at cell centers, so offset by half spacing for interpolation
@@ -30,7 +47,8 @@ vec3 getWindAtPosition(vec3 worldPos) {
 	vec2 uv = gridCoord / vec2(u_windOriginSize.y, u_windOriginSize.w);
 
 	// 1. Hardware-accelerated bilinear interpolation of macro wind and drag
-	vec4 macroData = texture(u_windTexture, uv);
+	// Use the RAW LBM texture here for integration
+	vec4 macroData = texture(u_lbmWindTexture, uv);
 
 	vec3 macroWind = macroData.xyz;
 	// return macroWind;
@@ -141,7 +159,8 @@ vec3 getWindAtPosition(vec3 worldPos) {
 	}
 
 	// Add curl as a final perturbation
-	return finalWind + curl * turbulenceIntensity;
+	return vec4(finalWind + curl * turbulenceIntensity, drag);
 }
+#endif
 
 #endif // HELPERS_WIND_GLSL
