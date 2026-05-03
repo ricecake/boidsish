@@ -7,6 +7,7 @@
 #include "shadow_manager.h"
 #include "terrain_render_manager.h"
 #include <iostream>
+#include <GLFW/glfw3.h>
 
 namespace Boidsish {
 
@@ -106,6 +107,18 @@ namespace Boidsish {
 			data.phaseG = 0.7f;
 		}
 
+		data.time = static_cast<float>(glfwGetTime());
+		data.noiseScale = 0.05f;
+		data.noiseStrength = 1.0f; // Enable full noise modulation by default
+
+		if (atmo) {
+			data.globalAerosol = atmo->GetMieScale();
+			data.globalHumidity = atmo->GetMieScattering() * 100.0f; // Heuristic scale
+		} else {
+			data.globalAerosol = 0.1f;
+			data.globalHumidity = 0.5f;
+		}
+
 		data.ambientFactor = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
 		data.weatherGridOriginSize = _weatherGridOriginSize;
 
@@ -156,11 +169,8 @@ namespace Boidsish {
 			_densityShader->setMat4("projection", projection);
 			_densityShader->setMat4("invView", glm::inverse(view));
 
-			if (atmo) {
-				_densityShader->setVec3("u_aerosolColor", atmo->GetAerosolColor());
-			} else {
-				_densityShader->setVec3("u_aerosolColor", _aerosolColor);
-			}
+			// Prioritize the passed-in aerosolColor which includes immediate UI overrides
+			_densityShader->setVec3("u_aerosolColor", _aerosolColor);
 
 			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::WeatherScalars());
 			glBindTexture(GL_TEXTURE_2D, _weatherScalarTexture);
@@ -176,7 +186,6 @@ namespace Boidsish {
 			_injectionShader->setMat4("view", view);
 			_injectionShader->setMat4("projection", projection);
 			_injectionShader->setMat4("invView", glm::inverse(view));
-			_injectionShader->setVec3("viewPos", cameraPos);
 			_injectionShader->setIntArray("lightShadowIndices", shadow_indices.data(), 10);
 
 			if (shadows) {

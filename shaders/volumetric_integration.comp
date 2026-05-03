@@ -13,9 +13,14 @@ struct VolumetricLighting {
     float mieAnisotropy;
     vec4 ambientFactor;
     float phaseG;
-    float _pad1, _pad2, _pad3;
+    float time;
+    float noiseScale;
+    float noiseStrength;
+    float globalAerosol;
+    float globalHumidity;
+    float _pad1, _pad2;
     ivec4 weatherGridOriginSize;
-    float _padding2[4];
+    vec4 _padding2;
 };
 
 layout(std140, binding = [[VOLUMETRIC_LIGHTING_BINDING]]) uniform VolumetricUniforms {

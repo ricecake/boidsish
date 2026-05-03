@@ -307,7 +307,8 @@ namespace Boidsish {
 											weather->SetTarget(WeatherAttribute::HazeColorR, haze_color.r);
 											weather->SetTarget(WeatherAttribute::HazeColorG, haze_color.g);
 											weather->SetTarget(WeatherAttribute::HazeColorB, haze_color.b);
-										} else atmosphere_effect->SetHazeColor(haze_color);
+										}
+										atmosphere_effect->SetHazeColor(haze_color);
 									}
 									float cloud_density = atmosphere_effect->GetCloudDensity();
 									if (ImGui::SliderFloat("Cloud Density", &cloud_density, 0.0f, 1.0f)) {

@@ -5,6 +5,7 @@ layout(rgba16f, binding = 0) uniform image3D inOutScatteringExtinction;
 
 #define USE_TERRAIN_DATA
 #include "helpers/constants.glsl"
+#include "helpers/fast_noise.glsl"
 #include "atmosphere/common.glsl"
 #include "lighting.glsl"
 #include "helpers/terrain_shadows.glsl"
@@ -19,9 +20,14 @@ struct VolumetricLighting {
     float mieAnisotropy;
     vec4 ambientFactor;
     float phaseG;
-    float _pad1, _pad2, _pad3;
+    float time;
+    float noiseScale;
+    float noiseStrength;
+    float globalAerosol;
+    float globalHumidity;
+    float _pad1, _pad2;
     ivec4 weatherGridOriginSize;
-    float _padding2[4];
+    vec4 _padding2;
 };
 
 layout(std140, binding = [[VOLUMETRIC_LIGHTING_BINDING]]) uniform VolumetricUniforms {
@@ -50,37 +56,63 @@ void main() {
     vec3 scatteringBase = data.rgb;
     float extinction = data.a;
 
-    vec3 uvw = (vec3(texel) + 0.5) / vec3(u_volData.cascadeRes.xyz);
+    // Temporal jitter using blue noise
+    float jitter = fastBlueNoise(vec2(texel.xy) / 1024.0, int(u_volData.time * 60.0) % 64);
+    vec3 uvw = (vec3(texel) + 0.5 + vec3(0, 0, jitter - 0.5)) / vec3(u_volData.cascadeRes.xyz);
     vec3 viewPos_f = getFroxelViewPos(uvw, u_cascadeIndex);
     vec3 worldPos = (invView * vec4(viewPos_f, 1.0)).xyz;
     vec3 V = normalize(viewPos - worldPos);
 
     vec3 totalScatteredLight = vec3(0.0);
 
-    // 1. Direct Lighting (Sun/Moon)
-    for (int i = 0; i < min(2, num_lights); ++i) {
-        if (lights[i].type != LIGHT_TYPE_DIRECTIONAL) continue;
+    // 1. Direct and Local Lighting
+    // Performance optimization: Process up to 4 lights in the volumetric pass
+    for (int i = 0; i < min(4, num_lights); ++i) {
+        vec3 L;
+        float attenuation = 1.0;
 
-        vec3 L = normalize(-lights[i].direction);
-        // Note: passing up-vector as normal for the shadow calculation in air
-        // We use a small offset to avoid self-shadowing issues at the terrain boundary
+        if (lights[i].type == LIGHT_TYPE_DIRECTIONAL) {
+            L = normalize(-lights[i].direction);
+        } else {
+            L = normalize(lights[i].position - worldPos);
+            float dist = length(lights[i].position - worldPos);
+            // Local light attenuation (inverse square with linear term)
+            attenuation = 1.0 / (1.0 + 0.1 * dist + 0.05 * dist * dist);
+
+            if (lights[i].type == LIGHT_TYPE_SPOT) {
+                float theta = dot(L, normalize(-lights[i].direction));
+                float epsilon = lights[i].inner_cutoff - lights[i].outer_cutoff;
+                attenuation *= clamp((theta - lights[i].outer_cutoff) / epsilon, 0.0, 1.0);
+            }
+        }
+
+        if (attenuation <= 1e-4) continue;
+
+        // Shadow calculation with a small offset to avoid self-shadowing at terrain boundaries
         float shadow = calculateShadow(i, worldPos + L * 0.1, vec3(0, 1, 0), L);
-        shadow *= calculateCloudShadow(i, worldPos);
+        if (lights[i].type == LIGHT_TYPE_DIRECTIONAL) {
+            shadow *= calculateCloudShadow(i, worldPos);
+        }
+
+        if (shadow <= 1e-4) continue;
 
         float cosTheta = dot(V, -L);
 
-        float g = u_volData.phaseG;
+        // Use extremely sharpened anisotropy for god-rays
+        // High g-values (0.95+) create very directional rays that appear as distinct beams
+        float g = max(u_volData.phaseG, 0.96);
         float phase = dualLobehgPhase(cosTheta, g);
 
-        // Add isotropic scattering (10% mix) to ensure a baseline visibility
-        phase = mix(phase, 1.0 / (4.0 * PI), 0.1);
+        // Minimal isotropic mix to keep rays from washing out into a general haze
+        phase = mix(phase, 1.0 / (4.0 * PI), 0.005);
 
-        totalScatteredLight += lights[i].color * lights[i].intensity * shadow * phase * u_volData.intensity;
+        totalScatteredLight += lights[i].color * lights[i].intensity * attenuation * shadow * phase * u_volData.intensity;
     }
 
     // 2. Ambient Lighting from SH Probes
+    // Minimal ambient contribution to maximize beam contrast
     vec3 ambient = getSpatialAmbientSH(worldPos, vec3(0, 1, 0));
-    totalScatteredLight += ambient * u_volData.ambientFactor.rgb * u_volData.ambientFactor.w;
+    totalScatteredLight += ambient * u_volData.ambientFactor.rgb * u_volData.ambientFactor.w * 0.005;
 
     imageStore(inOutScatteringExtinction, texel, vec4(totalScatteredLight * scatteringBase, extinction));
 }
