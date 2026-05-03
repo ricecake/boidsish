@@ -2122,6 +2122,9 @@ namespace Boidsish {
 					atmosphere_manager->GetSkyViewLUT(),
 					atmosphere_manager->GetAerialPerspectiveLUT()
 				);
+				if (weather_manager) {
+					atmosphere_effect->SetWeatherScalarsTexture(weather_manager->GetWeatherScalarsTexture());
+				}
 				if (noise_manager) {
 					atmosphere_effect->SetNoiseTextures(noise_manager->GetTextures());
 				}

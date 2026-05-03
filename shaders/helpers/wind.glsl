@@ -13,7 +13,32 @@ layout(std140, binding = [[WIND_DATA_BINDING]]) uniform WindData {
 };
 
 layout(binding = [[WIND_TEXTURE_BINDING]]) uniform sampler2D u_windTexture;
+layout(binding = [[WEATHER_SCALARS_BINDING]]) uniform sampler2D u_weatherScalarsTexture;
 #endif
+
+/**
+ * Look up local weather scalars (temp, humidity, pressure, aerosol) at a world position.
+ * Blends local simulation data with global defaults at the simulation edge.
+ */
+vec4 getWeatherScalarsAtPosition(vec3 worldPos) {
+	if (u_windOriginSize.y <= 0) return vec4(288.15, 0.5, 1013.25, 0.0);
+
+	float gridSpacing = u_windParams.x;
+	vec2 gridCoord = (worldPos.xz / gridSpacing) - vec2(u_windOriginSize.xz);
+	vec2 uv = gridCoord / vec2(u_windOriginSize.y, u_windOriginSize.w);
+
+	// Calculate distance from the nearest edge in UV space
+	vec2 edgeDist = min(uv, 1.0 - uv);
+	float minDist = min(edgeDist.x, edgeDist.y);
+
+	// Fade out local simulation data over the last 5% of the grid
+	float edgeFade = smoothstep(0.0, 0.05, minDist);
+
+	vec4 localScalars = texture(u_weatherScalarsTexture, uv);
+	vec4 globalScalars = vec4(288.15, 0.5, 1013.25, 0.0); // T, H, P, A
+
+	return mix(globalScalars, localScalars, edgeFade);
+}
 
 /**
  * Calculates the combined wind vector at a given world position.
@@ -29,10 +54,15 @@ vec3 getWindAtPosition(vec3 worldPos) {
 	// Normalize to [0, 1] for texture sampling
 	vec2 uv = gridCoord / vec2(u_windOriginSize.y, u_windOriginSize.w);
 
+	// Calculate edge fade for wind
+	vec2 edgeDist = min(uv, 1.0 - uv);
+	float minDist = min(edgeDist.x, edgeDist.y);
+	float edgeFade = smoothstep(0.0, 0.05, minDist);
+
 	// 1. Hardware-accelerated bilinear interpolation of macro wind and drag
 	vec4 macroData = texture(u_windTexture, uv);
 
-	vec3 macroWind = macroData.xyz;
+	vec3 macroWind = mix(vec3(0.0), macroData.xyz, edgeFade);
 	// return macroWind;
 	float drag = macroData.w;
 	float macroSpeed = length(macroWind);
@@ -139,6 +169,12 @@ vec3 getWindAtPosition(vec3 worldPos) {
 					cross(rotationAxis, macroWind) * sinTheta +
 					rotationAxis * dot(rotationAxis, macroWind) * (1.0 - cosTheta);
 	}
+
+	// 8. Height Scaling
+	// Wind is stronger at higher altitudes.
+	float altitudeFactor = 1.0 + max(0.0, worldPos.y) * 0.0005;
+	finalWind *= altitudeFactor;
+	turbulenceIntensity *= altitudeFactor;
 
 	// Add curl as a final perturbation
 	return finalWind + curl * turbulenceIntensity;

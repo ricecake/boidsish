@@ -176,6 +176,8 @@ namespace Boidsish {
 				aerial_perspective_lut_ = aerialPerspective;
 			}
 
+			void SetWeatherScalarsTexture(GLuint texture) { weather_scalars_texture_ = texture; }
+
 			void SetNoiseTextures(const NoiseTextures& textures) { noise_textures_ = textures; }
 
 			void SetRenderScale(float scale) {
@@ -240,6 +242,7 @@ namespace Boidsish {
 			GLuint multi_scattering_lut_ = 0;
 			GLuint sky_view_lut_ = 0;
 			GLuint aerial_perspective_lut_ = 0;
+			GLuint weather_scalars_texture_ = 0;
 
 			NoiseTextures noise_textures_ = {0, 0, 0};
 

@@ -34,6 +34,7 @@ namespace Boidsish {
 				TerrainHorizonMap = 33,
 				TerrainShadowMap = 35,
 				TerrainShadowMapImage = 36,
+				WeatherScalars = 42,
 			};
 
 			enum class Ubo {
@@ -245,6 +246,10 @@ namespace Boidsish {
 
 			consteval int TerrainShadowMapImage() {
 				return std::to_underlying(Constants::Bindings::Texture::TerrainShadowMapImage);
+			}
+
+			consteval int WeatherScalars() {
+				return std::to_underlying(Constants::Bindings::Texture::WeatherScalars);
 			}
 		} // namespace TextureUnit
 

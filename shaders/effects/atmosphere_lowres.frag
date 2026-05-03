@@ -61,8 +61,8 @@ void main() {
 	props.worldScale = worldScale;
 
 	// Wide vertical bounds for intersection (covering all possible dynamic offsets)
-	float R_floor = R_earth + (cloudAltitude - 100.0) * worldScale;
-	float R_ceiling = R_earth + (cloudAltitude + cloudThickness + 1100.0) * worldScale;
+	float R_floor = R_earth + (cloudAltitude - 500.0) * worldScale;
+	float R_ceiling = R_earth + (cloudAltitude + cloudThickness + 2500.0) * worldScale;
 
 	vec3 earthCenter = vec3(viewPos.x, -R_earth, viewPos.z);
 	vec3 relRo = viewPos - earthCenter;
@@ -135,7 +135,7 @@ void main() {
 			weather.weatherMap = weatherMap;
 			weather.heightMap = heightMap;
 
-			CloudLayer layer = computeCloudLayer(weather, props);
+			CloudLayer layer = computeCloudLayer(weather, props, p_curved);
 
 			float d = calculateCloudDensity(p_curved_warped, weather, layer, props, time, false);
 			if (d <= 0.01)
