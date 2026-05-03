@@ -24,8 +24,9 @@ namespace Boidsish {
 		float mieAnisotropy;
 		glm::vec4 ambientFactor; // xyz = color, w = intensity
 		float phaseG;
+		float _pad1, _pad2, _pad3; // Padding for 16-byte alignment
 		glm::ivec4 weatherGridOriginSize; // x,z = origin, y = width, w = height
-		float _padding[3];
+		float _padding2[4]; // Padding to make struct size a multiple of 16
 	};
 
 	class VolumetricLightingManager : public IManager {

@@ -32,6 +32,9 @@ struct VolumetricLighting {
     float mieAnisotropy;
     vec4 ambientFactor;
     float phaseG;
+    float _pad1, _pad2, _pad3;
+    ivec4 weatherGridOriginSize;
+    float _padding2[4];
 };
 
 layout(std140, binding = [[VOLUMETRIC_LIGHTING_BINDING]]) uniform VolumetricUniforms {
@@ -70,8 +73,8 @@ float sampleAerialPerspectiveTransmittance(vec3 rd, float distKM) {
 	return texture(u_aerialPerspectiveLUT, vec3(u, v, w)).a;
 }
 
-uniform sampler3D u_volumetricCascade2;
-uniform sampler3D u_volumetricCascade3;
+layout(binding = [[VOLUMETRIC_CASCADE2_BINDING]]) uniform sampler3D u_volumetricCascade2;
+layout(binding = [[VOLUMETRIC_CASCADE3_BINDING]]) uniform sampler3D u_volumetricCascade3;
 
 vec4 sampleVolumetricChained(vec2 screenUV, float dist) {
     float ranges[5] = { 0.1, u_volData.cascadeRanges.x, u_volData.cascadeRanges.y, u_volData.cascadeRanges.z, u_volData.cascadeRanges.w };
