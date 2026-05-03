@@ -15,18 +15,24 @@ namespace Boidsish {
 
 	class ServiceLocator;
 
-	struct VolumetricLightingUbo {
-		glm::vec4 cascadeRanges; // x=c0_near, y=c0_far, z=c1_near, w=c1_far
-		glm::ivec4 cascadeRes;    // x,y,z resolution, w unused
-		float intensity;
-		float scatteringCoeff;
-		float extinctionCoeff;
-		float mieAnisotropy;
-		glm::vec4 ambientFactor; // xyz = color, w = intensity
-		float phaseG;
-		glm::ivec4 weatherGridOriginSize; // x,z = origin, y = width, w = height
-		float _padding[3];
-	};
+	struct alignas(16) VolumetricLightingUbo {
+		glm::vec4  cascadeRanges; // offset 0
+		glm::ivec4 cascadeRes;    // offset 16
+		float      intensity;       // offset 32
+		float      scatteringCoeff; // offset 36
+		float      extinctionCoeff; // offset 40
+		float      mieAnisotropy;   // offset 44
+		glm::vec4  ambientFactor;   // offset 48, xyz = color, w = intensity
+		float      phaseG;         // offset 64
+		float      time;           // offset 68
+		float      noiseScale;     // offset 72
+		float      noiseStrength;  // offset 76
+		float      globalAerosol;  // offset 80
+		float      globalHumidity; // offset 84
+		float      _pad1, _pad2;   // offset 88, 92 - Align to 16 bytes for next vector
+		glm::ivec4 weatherGridOriginSize; // offset 96, x,z = origin, y = width, w = height
+		glm::vec4  _padding2;             // offset 112, Final padding for 16-byte alignment
+	}; // Total: 128 bytes
 
 	class VolumetricLightingManager : public IManager {
 	public:

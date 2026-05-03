@@ -79,7 +79,8 @@ Sampling getAtmosphereProperties(float h) {
 	s.rayleigh = kRayleighScattering * rd * u_rayleighScale;
 
 	// Tint Mie scattering and extinction by aerosol color
-	vec3 mieColor = mix(vec3(1.0), u_aerosolColor, 0.5);
+	// u_aerosolColor is now the direct base for Mie properties for stronger visual impact
+	vec3 mieColor = u_aerosolColor;
 	s.mie = vec3(kMieScattering * md * u_mieScale) * mieColor;
 
 	vec3 mieExtinction = vec3(kMieExtinction * md * u_mieScale) * mieColor;

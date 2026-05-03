@@ -4,6 +4,7 @@ layout(local_size_x = 8, local_size_y = 8, local_size_z = 4) in;
 layout(rgba16f, binding = 0) uniform image3D outDensityExtinction;
 
 #include "helpers/constants.glsl"
+#include "helpers/fast_noise.glsl"
 #include "lighting.glsl"
 
 struct VolumetricLighting {
@@ -15,7 +16,14 @@ struct VolumetricLighting {
     float mieAnisotropy;
     vec4 ambientFactor;
     float phaseG;
+    float time;
+    float noiseScale;
+    float noiseStrength;
+    float globalAerosol;
+    float globalHumidity;
+    float _pad1, _pad2;
     ivec4 weatherGridOriginSize;
+    vec4 _padding2;
 };
 
 layout(std140, binding = [[VOLUMETRIC_LIGHTING_BINDING]]) uniform VolumetricUniforms {
@@ -70,23 +78,42 @@ void main() {
         }
     }
 
-    // Base coefficients
-    float baseScattering = u_volData.scatteringCoeff;
-    float baseExtinction = u_volData.extinctionCoeff;
+    // Base coefficients - boosted for dramatic local visibility
+    // Atmospheric Mie coefficients are too small for distinct local volumes (god-rays)
+    float baseScattering = u_volData.scatteringCoeff * 75.0;
+    float baseExtinction = u_volData.extinctionCoeff * 75.0;
 
-    // Modulate by local weather
-    float fogDensity = aerosol * 10.0 + humidity * 0.5;
+    // Combine local weather data with global weather parameters for manual UI influence
+    float combinedAerosol = max(aerosol, u_volData.globalAerosol);
+    float combinedHumidity = max(humidity, u_volData.globalHumidity);
+
+    // Modulate by local weather - massive scaling for dramatic rays
+    float fogDensity = combinedAerosol * 1500.0 + combinedHumidity * 150.0;
+
+    // Add volumetric noise (3-octave FBM for wispy texture)
+    vec3 noisePos = worldPos * u_volData.noiseScale + vec3(0, u_volData.time * 0.04, 0);
+    float noise = fastSimplex3d(noisePos) * 0.5;
+    noise += fastSimplex3d(noisePos * 2.31 + vec3(1.2, 0.5, 3.1)) * 0.25;
+    noise += fastSimplex3d(noisePos * 5.17 + vec3(0.7, 4.4, 0.2)) * 0.125;
+    noise = noise * 0.5 + 0.5;
+
+    // Extremely high-contrast noise creates sharp "light shafts" and "caverns" in the air.
+    // This high variance is essential for the god-ray effect.
+    noise = smoothstep(0.1, 0.7, noise);
+    noise = pow(noise, 4.0) * 8.0;
+    fogDensity *= mix(1.0, noise, u_volData.noiseStrength);
+
     float scattering = baseScattering * (1.0 + fogDensity);
     float extinction = baseExtinction * (1.0 + fogDensity);
 
-    // Height falloff
-    float heightFalloff = exp(-max(0.0, worldPos.y) * 0.01);
+    // Height falloff (softer to allow rays to reach higher)
+    float heightFalloff = exp(-max(0.0, worldPos.y) * 0.005);
     scattering *= heightFalloff;
     extinction *= heightFalloff;
 
     // Tint scattering by weather aerosol color
-    // Increase influence of aerosol color for better visibility
-    vec3 coloredScattering = mix(vec3(scattering), u_aerosolColor * scattering, aerosol * 5.0);
+    // u_aerosolColor is now the direct base for colored scattering to ensure visibility of UI changes
+    vec3 coloredScattering = u_aerosolColor * scattering;
 
     imageStore(outDensityExtinction, texel, vec4(coloredScattering, extinction));
 }

@@ -32,6 +32,14 @@ struct VolumetricLighting {
     float mieAnisotropy;
     vec4 ambientFactor;
     float phaseG;
+    float time;
+    float noiseScale;
+    float noiseStrength;
+    float globalAerosol;
+    float globalHumidity;
+    float _pad1, _pad2;
+    ivec4 weatherGridOriginSize;
+    vec4 _padding2;
 };
 
 layout(std140, binding = [[VOLUMETRIC_LIGHTING_BINDING]]) uniform VolumetricUniforms {
@@ -40,6 +48,7 @@ layout(std140, binding = [[VOLUMETRIC_LIGHTING_BINDING]]) uniform VolumetricUnif
 
 #define USE_TERRAIN_DATA
 #include "../atmosphere/common.glsl"
+#include "../helpers/fast_noise.glsl"
 #include "../helpers/terrain_shadows.glsl"
 #include "../helpers/lighting.glsl"
 #include "helpers/math.glsl"
@@ -70,8 +79,8 @@ float sampleAerialPerspectiveTransmittance(vec3 rd, float distKM) {
 	return texture(u_aerialPerspectiveLUT, vec3(u, v, w)).a;
 }
 
-uniform sampler3D u_volumetricCascade2;
-uniform sampler3D u_volumetricCascade3;
+layout(binding = [[VOLUMETRIC_CASCADE2_BINDING]]) uniform sampler3D u_volumetricCascade2;
+layout(binding = [[VOLUMETRIC_CASCADE3_BINDING]]) uniform sampler3D u_volumetricCascade3;
 
 vec4 sampleVolumetricChained(vec2 screenUV, float dist) {
     float ranges[5] = { 0.1, u_volData.cascadeRanges.x, u_volData.cascadeRanges.y, u_volData.cascadeRanges.z, u_volData.cascadeRanges.w };
@@ -79,10 +88,14 @@ vec4 sampleVolumetricChained(vec2 screenUV, float dist) {
     vec3 totalScat = vec3(0.0);
     float totalTrans = 1.0;
 
+    // Temporal jitter for bilateral upsampling/raymarching
+    float jitter = fastBlueNoise(screenUV, int(u_volData.time * 60.0) % 64) - 0.5;
+
     // Cascade 0
     if (dist > ranges[0]) {
         float d = min(dist, ranges[1]);
         float w = log(d / ranges[0]) / log(ranges[1] / ranges[0]);
+        w = clamp(w + jitter / float(u_volData.cascadeRes.z), 0.0, 1.0);
         vec4 sample0 = texture(u_volumetricCascade0, vec3(screenUV, w));
         totalScat += totalTrans * sample0.rgb;
         totalTrans *= sample0.a;
@@ -91,6 +104,7 @@ vec4 sampleVolumetricChained(vec2 screenUV, float dist) {
     if (dist > ranges[1]) {
         float d = min(dist, ranges[2]);
         float w = log(d / ranges[1]) / log(ranges[2] / ranges[1]);
+        w = clamp(w + jitter / float(u_volData.cascadeRes.z), 0.0, 1.0);
         vec4 sample1 = texture(u_volumetricCascade1, vec3(screenUV, w));
         totalScat += totalTrans * sample1.rgb;
         totalTrans *= sample1.a;
@@ -99,6 +113,7 @@ vec4 sampleVolumetricChained(vec2 screenUV, float dist) {
     if (dist > ranges[2]) {
         float d = min(dist, ranges[3]);
         float w = log(d / ranges[2]) / log(ranges[3] / ranges[2]);
+        w = clamp(w + jitter / float(u_volData.cascadeRes.z), 0.0, 1.0);
         vec4 sample2 = texture(u_volumetricCascade2, vec3(screenUV, w));
         totalScat += totalTrans * sample2.rgb;
         totalTrans *= sample2.a;
@@ -107,6 +122,7 @@ vec4 sampleVolumetricChained(vec2 screenUV, float dist) {
     if (dist > ranges[3]) {
         float d = min(dist, ranges[4]);
         float w = log(d / ranges[3]) / log(ranges[4] / ranges[3]);
+        w = clamp(w + jitter / float(u_volData.cascadeRes.z), 0.0, 1.0);
         vec4 sample3 = texture(u_volumetricCascade3, vec3(screenUV, w));
         totalScat += totalTrans * sample3.rgb;
         totalTrans *= sample3.a;
@@ -183,28 +199,45 @@ void main() {
 	vec3  cloudColor = cloudData.rgb;
 	float cloudTransmittance = cloudData.a;
 
-	// 2. High-res Atmosphere (Haze)
-	float distKM = (dist / 1000.0) * hazeDensity;
-	vec3  inScattering = sampleAerialPerspective(rayDir, distKM);
-	float transmittance = sampleAerialPerspectiveTransmittance(rayDir, distKM);
-
-    // 2.5 Volumetric Lighting (Froxels)
-    // Use linear Z-depth for froxel sampling to match grid distribution
+    // 2. Volumetric Lighting (Froxels)
+    // We use volumetric lighting for the foreground (up to 2km) as it captures
+    // high-frequency light shafts and local variation.
     vec4 volData = sampleVolumetricChained(TexCoords, linearDepth);
     vec3 volScattering = volData.rgb;
     float volTransmittance = volData.a;
 
-    // To prevent terrain bleeding, we need to ensure that the unshadowed high-res haze (Aerial Perspective)
-    // is masked by the volumetric transmittance. However, the high-res haze also needs to be
-    // consistent with the shadowed froxels.
-    // We apply a depth-based weight to the aerial perspective to ensure it doesn't bleed through
-    // close terrain.
+    // 2.5 High-res Atmosphere (Aerial Perspective continuation)
+    // For the background, we use the analytical aerial perspective LUT.
+    // We start the analytical integration from where the volumetric cascades end (~2km)
+    // if the object is further away.
+    float volumetricMaxDist = u_volData.cascadeRanges.w;
+    float analyticalStartDist = min(dist, volumetricMaxDist);
+    float analyticalRemainingDist = max(0.0, dist - analyticalStartDist);
+
+    float distKM = (dist / 1000.0) * hazeDensity;
+    float startKM = (analyticalStartDist / 1000.0) * hazeDensity;
+
+    // Analytical atmospheric contribution for the remaining distance
+    vec3  atmoInScattering = sampleAerialPerspective(rayDir, distKM);
+    float atmoTransmittance = sampleAerialPerspectiveTransmittance(rayDir, distKM);
+
+    vec3  atmoStartInScattering = sampleAerialPerspective(rayDir, startKM);
+    float atmoStartTransmittance = sampleAerialPerspectiveTransmittance(rayDir, startKM);
+
+    // Chain the integration:
+    // inScattering = Volumetric + VolumetricTransmittance * AnalyticalContinuation
+    // AnalyticalContinuation = (AtmoTotal - AtmoStart * AtmoRemainingTrans)
+    float analyticalContinuationTrans = atmoTransmittance / max(atmoStartTransmittance, 1e-4);
+    vec3  analyticalContinuationScat = max(vec3(0.0), atmoInScattering - atmoStartInScattering * analyticalContinuationTrans);
+
+    vec3  inScattering = volScattering + volTransmittance * analyticalContinuationScat;
+    float transmittance = volTransmittance * analyticalContinuationTrans;
+
+    // Mask out close-range analytical scattering to prevent terrain bleeding
     float bleedingMask = smoothstep(0.0, 10.0, dist);
     inScattering *= bleedingMask;
 
-    // Apply volumetric lighting
-    inScattering = inScattering * volTransmittance + volScattering;
-    transmittance *= volTransmittance;
+    // 3. Shadowing for in-scattering (prevent sunrise/sunset glow through hills)
 
 	// 3. Cloud Atmospheric Integration
 	// Clouds should also be affected by the atmosphere between them and the camera.
@@ -222,7 +255,7 @@ void main() {
 
 	vec3 result;
 	if (!isSky) {
-		// 4. Shadowing for in-scattering (prevent sunrise/sunset glow through hills)
+		// 4. Shadowing for analytical continuation
 		float atmosShadow = 1.0;
 		if (num_lights > 0 && lights[0].type == LIGHT_TYPE_DIRECTIONAL) {
 			vec3 N = texture(normalTexture, TexCoords).xyz * 2.0 - 1.0;
@@ -234,12 +267,14 @@ void main() {
 			atmosShadow = mix(0.15, 1.0, atmosShadow);
 		}
 
+        // Note: inScattering already contains both volumetric and analytical continuation.
+        // We apply shadow only to the analytical continuation part if we were being rigorous,
+        // but for dramatic effect we can shadow the whole thing if it's behind terrain.
 		inScattering *= atmosShadow;
-		atmosInScattering *= atmosShadow;
 
 		// Terrain/objects: apply aerial perspective and clouds
 		vec3 terrainAtmos = sceneColor * transmittance + inScattering;
-		vec3 cloudsAtmos = cloudColor * atmosTransmittance + atmosInScattering * (1.0 - cloudTransmittance);
+		vec3 cloudsAtmos = cloudColor * atmoTransmittance + atmoInScattering * (1.0 - cloudTransmittance);
 		result = mix(cloudsAtmos, terrainAtmos, cloudTransmittance);
 	} else {
 		// Sky and colossal objects: preserve scene output (sun, moon, stars, colossal)

@@ -3561,7 +3561,13 @@ namespace Boidsish {
 			}
 
 			if (impl->atmosphere_manager) {
-				impl->atmosphere_manager->SetAerosolColor(w.haze_color);
+				// Use the color from AtmosphereEffect if available, as it might have manual UI overrides.
+				// This ensures immediate feedback for aerosol color changes.
+				if (impl->atmosphere_effect) {
+					impl->atmosphere_manager->SetAerosolColor(impl->atmosphere_effect->GetHazeColor());
+				} else {
+					impl->atmosphere_manager->SetAerosolColor(w.haze_color);
+				}
 			}
 		}
 
@@ -3669,6 +3675,12 @@ namespace Boidsish {
 			GLuint     weatherTex = impl->weather_manager ? impl->weather_manager->GetWeatherScalarTexture() : 0;
 			glm::ivec4 weatherGrid = impl->weather_manager ? impl->weather_manager->GetWeatherGridOriginSize() : glm::ivec4(0);
 			glm::vec3  aerosolColor = impl->weather_manager ? impl->weather_manager->GetCurrentWeather().haze_color : glm::vec3(1.0f);
+
+			// Prefer immediate UI feedback for aerosol color if available
+			if (impl->atmosphere_effect) {
+				aerosolColor = impl->atmosphere_effect->GetHazeColor();
+			}
+
 			impl->volumetric_lighting_manager->Update(
 				impl->current_view_matrix,
 				impl->projection,
