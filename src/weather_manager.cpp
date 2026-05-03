@@ -617,7 +617,7 @@ namespace Boidsish {
 						humidity
 					);
 				} else {
-					lbm_simulator_->UpdateAnchor(cameraPos);
+					lbm_simulator_->UpdateAnchor(cameraPos, totalTime, timeOfDay);
 				}
 
 				LbmSnapshot snap;
