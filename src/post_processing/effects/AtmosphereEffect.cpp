@@ -134,6 +134,7 @@ namespace Boidsish {
 
 			shader_->setInt("u_transmittanceLUT", Constants::TextureUnit::AtmosphereTransmittance());
 			shader_->setInt("u_skyViewLUT", Constants::TextureUnit::AtmosphereSkyView());
+			shader_->trySetInt("u_weatherScalarsTexture", Constants::TextureUnit::WeatherScalars());
 			shader_->trySetInt("u_noiseTexture", Constants::TextureUnit::NoiseSimplex());
 			shader_->trySetInt("u_curlTexture", Constants::TextureUnit::NoiseCurl());
 			shader_->trySetInt("u_blueNoiseTexture", Constants::TextureUnit::NoiseBlue());
@@ -145,6 +146,8 @@ namespace Boidsish {
 			glBindTexture(GL_TEXTURE_2D, transmittance_lut_);
 			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereSkyView());
 			glBindTexture(GL_TEXTURE_2D, sky_view_lut_);
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::WeatherScalars());
+			glBindTexture(GL_TEXTURE_2D, weather_scalars_texture_);
 			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::NoiseSimplex());
 			glBindTexture(GL_TEXTURE_3D, noise_textures_.noise);
 			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::NoiseCurl());

@@ -284,11 +284,14 @@ namespace Boidsish {
 
 		void UpdateWindUbo(float totalTime);
 
+		unsigned int GetWeatherScalarsTexture() const { return weather_scalars_texture_; }
+
 		void SetTerrainGenerator(ITerrainGenerator* terrain) { terrain_ = terrain; }
 
 	private:
 		unsigned int wind_data_ubo_ = 0;
 		unsigned int wind_texture_ = 0;
+		unsigned int weather_scalars_texture_ = 0;
 
 		ThreadPool                              lbm_pool_;
 		std::optional<TaskHandle<LbmSnapshot>>  lbm_task_;

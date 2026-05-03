@@ -85,6 +85,7 @@ namespace Boidsish {
 		T::RegisterConstant("TERRAIN_HORIZON_MAP_BINDING", Constants::TextureUnit::TerrainHorizonMap());
 		T::RegisterConstant("TERRAIN_SHADOW_MAP_BINDING", Constants::TextureUnit::TerrainShadowMap());
 		T::RegisterConstant("TERRAIN_SHADOW_MAP_IMAGE_BINDING", Constants::TextureUnit::TerrainShadowMapImage());
+		T::RegisterConstant("WEATHER_SCALARS_BINDING", Constants::TextureUnit::WeatherScalars());
 	}
 
 } // namespace Boidsish
