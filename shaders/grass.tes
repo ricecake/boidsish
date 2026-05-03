@@ -151,7 +151,18 @@ void main() {
     vec2 forward = finalDir;
     vec2 right = vec2(forward.y, -forward.x); // 2D cross product ensures perpendicularity
 
-    float currentWidth = u * width * 0.5 * mix(mix(1.0, 0.10, smoothstep(0, 0.9, pow(v, mix(2, 5, smoothstep(32, 64, distToCam))))), 0.5, smoothstep(32, 64, distToCam));//+(1-smoothstep(0.0, 0.5, v))*3;
+
+    // Taper curve: 1.0 at the base (v=0), 0.0 at the tip (v=1).
+    // Increasing the exponent makes the blade hold its width further up before pinching.
+    float shapeExponent = mix(2.0, 4.0, smoothstep(32.0, 128.0, distToCam));
+    float shapeProfile = 1.0 - pow(v, shapeExponent);
+
+    // Artificially widen the entire blade at distance to preserve density
+    float distanceWidthBoost = mix(1.0, 2.5, smoothstep(32.0, 128.0, distToCam));
+
+    float currentWidth = u * width * 0.5 * shapeProfile * distanceWidthBoost;
+
+    // float currentWidth = u * width * 0.5 * mix(mix(1.0, 0.10, smoothstep(0, 0.9, pow(v, mix(2, 5, smoothstep(32, 64, distToCam))))), 0.5, smoothstep(32, 64, distToCam));//+(1-smoothstep(0.0, 0.5, v))*3;
     vec2 localXZ = right * currentWidth;
 
     // Final World Position
