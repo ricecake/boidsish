@@ -49,7 +49,7 @@ struct GrassProperties {
     float colorVariability;
     float windInfluence;
     uint  enabled;
-    float _pad0;
+    float flowerRatio;
     float _pad1;
     float _pad2;
 };

@@ -29,7 +29,7 @@ namespace Boidsish {
         uint32_t enabled = 0;
         // Pad to 16-byte alignment without using an array, since std140 arrays
         // have 16-byte element stride which would blow up the struct size.
-        float _pad0 = 0.0f;
+        float flowerRatio = 0.0f;
         float _pad1 = 0.0f;
         float _pad2 = 0.0f;
     };

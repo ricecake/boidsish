@@ -1,6 +1,7 @@
 #version 430 core
 
 #include "helpers/noise.glsl"
+#include "helpers/fast_noise.glsl"
 #include "frustum.glsl"
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
@@ -37,7 +38,7 @@ struct GrassProperties {
     float colorVariability;
     float windInfluence;
     uint  enabled;
-    float _pad0;
+    float flowerRatio;
     float _pad1;
     float _pad2;
 };
@@ -214,7 +215,11 @@ void spawnBlade(GridCell cell) {
     uint idx = atomicAdd(indirectCommand.instanceCount, 1);
     if (idx >= uint(uMaxInstances)) return;
 
+    float patchNoise = fastWorley3d(vec3(worldPosXZ * 0.1, 0.0));
+    float patchLengthBoost = smoothstep(0.4, 0.7, patchNoise) * 0.5;
+
     float hVar = (hash(seed + 1357) * 2.0 - 1.0) * biomeProps[pickedBiome].heightVariance;
+    hVar += patchLengthBoost;
     float wVar = (hash(seed + 2468) * 2.0 - 1.0) * biomeProps[pickedBiome].widthVariance;
     float rot = hash(seed + 3579) * 6.28318;
 

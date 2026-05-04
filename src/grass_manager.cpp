@@ -109,6 +109,7 @@ namespace Boidsish {
         lushGrass.density = 1.0f;
         lushGrass.windInfluence = 1.0f;
         lushGrass.rigidity = 0.3f;
+        lushGrass.flowerRatio = 0.05f;
         SetGrassProperties(Biome::LushGrass, lushGrass);
 
         // Dry Grass
@@ -142,6 +143,7 @@ namespace Boidsish {
         alpineGrass.density = 1.0f;
         alpineGrass.windInfluence = 1.2f;
         alpineGrass.rigidity = 0.2f;
+        alpineGrass.flowerRatio = 0.15f;
         SetGrassProperties(Biome::AlpineMeadow, alpineGrass);
 
         // Add some basic grass properties to other biomes to ensure we always have some coverage
