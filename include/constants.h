@@ -414,11 +414,11 @@ namespace Boidsish {
 			} // namespace Window
 
 			namespace Camera {
-				consteval float DefaultFOV() {
+				constexpr float DefaultFOV() {
 					return 45.0f;
 				}
 
-				consteval float DefaultNearPlane() {
+				constexpr float DefaultNearPlane() {
 					return 0.1f;
 				}
 
@@ -428,80 +428,80 @@ namespace Boidsish {
 				 */
 				constexpr float DefaultFarPlane();
 
-				consteval float MinHeight() {
+				constexpr float MinHeight() {
 					return 0.1f;
 				}
 
-				consteval float MinSpeed() {
+				constexpr float MinSpeed() {
 					return 0.5f;
 				}
 
-				consteval float DefaultSpeed() {
+				constexpr float DefaultSpeed() {
 					return 15.0f;
 				}
 
-				consteval float FirstPersonEyeHeight() {
+				constexpr float FirstPersonEyeHeight() {
 					return 4.8f;
 				}
 
-				consteval float FirstPersonCrouchHeight() {
+				constexpr float FirstPersonCrouchHeight() {
 					return 1.5f;
 				}
 
-				consteval float FirstPersonSprintMultiplier() {
+				constexpr float FirstPersonSprintMultiplier() {
 					return 2.0f;
 				}
 
-				consteval float FirstPersonJumpForce() {
+				constexpr float FirstPersonJumpForce() {
 					return 12.5f;
 				}
 
-				consteval float FirstPersonGravity() {
+				constexpr float FirstPersonGravity() {
 					return 18.0f;
 				}
 
-				consteval float FirstPersonGroundSmoothing() {
+				constexpr float FirstPersonGroundSmoothing() {
 					return 5.0f;
 				}
 
-				consteval float SpeedStep() {
+				constexpr float SpeedStep() {
 					return 2.5f;
 				}
 
-				consteval float RollSpeed() {
+				constexpr float RollSpeed() {
 					return 45.0f;
 				}
 
 				// Path following
-				consteval float DefaultPathSpeed() {
+				constexpr float DefaultPathSpeed() {
 					return 20.0f;
 				}
 
-				consteval float PathBankFactor() {
+				constexpr float PathBankFactor() {
 					return 1.8f;
 				}
 
-				consteval float PathBankSpeed() {
+				constexpr float PathBankSpeed() {
 					return 3.5f;
 				}
 
-				consteval float ChaseTrailBehind() {
+				constexpr float ChaseTrailBehind() {
 					return 15.0f;
 				}
 
-				consteval float ChaseElevation() {
+				constexpr float ChaseElevation() {
 					return 5.0f;
 				}
 
-				consteval float ChaseLookAhead() {
+				constexpr float ChaseLookAhead() {
 					return 10.0f;
 				}
 
-				consteval float ChaseResponsiveness() {
+				constexpr float ChaseResponsiveness() {
 					return 1.5f;
 				}
 
-				consteval float PathFollowSmoothing() {
+				constexpr float PathFollowSmoothing() {
 					return 5.0f;
 				}
 

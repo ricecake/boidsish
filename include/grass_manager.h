@@ -51,7 +51,7 @@ namespace Boidsish {
         ~GrassManager();
 
         void Initialize();
-        void Update(float deltaTime, float time, const class Camera& camera, const class ITerrainGenerator& terrainGen, std::shared_ptr<class TerrainRenderManager> renderManager);
+        void Update(float deltaTime, float time, const struct Camera& camera, const class ITerrainGenerator& terrainGen, std::shared_ptr<class TerrainRenderManager> renderManager);
 
         struct RenderResources {
             uint32_t lightingUbo;
@@ -117,7 +117,7 @@ namespace Boidsish {
         uint32_t dummy_vao_ = 0;
 
         void _InitializeResources();
-        void _UpdatePlacement(const class Camera& camera, const class ITerrainGenerator& terrainGen, std::shared_ptr<class TerrainRenderManager> renderManager);
+        void _UpdatePlacement(const struct Camera& camera, const class ITerrainGenerator& terrainGen, std::shared_ptr<class TerrainRenderManager> renderManager);
     };
 
 }

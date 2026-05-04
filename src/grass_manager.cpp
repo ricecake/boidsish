@@ -182,6 +182,8 @@ namespace Boidsish {
     void GrassManager::Update(float deltaTime, float time, const Camera& camera, const ITerrainGenerator& terrainGen, std::shared_ptr<TerrainRenderManager> renderManager) {
         if (!initialized_) return;
 
+        last_camera_pos_ = camera.pos();
+
         if (props_dirty_) {
             glBindBuffer(GL_UNIFORM_BUFFER, grass_props_ubo_);
             glBufferSubData(GL_UNIFORM_BUFFER, 0, 8 * sizeof(GrassProperties), biome_grass_props_.data());
