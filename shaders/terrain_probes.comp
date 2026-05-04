@@ -187,7 +187,7 @@ vec3 sampleTerrainFallback(vec3 worldPos, vec3 rayDir) {
 	return sampleSkyLUT(rayDir); // Missed terrain (sky is important for occlusion)
 }
 
-void shMarchMain(vec3 rd, vec3 probeOrigin, int totalRayCount, inout vec3 newSH[9]) {
+void shMarchMain(vec3 rd, vec3 probeOrigin, vec3 volRadiance, int totalRayCount, inout vec3 newSH[9]) {
 		if (totalRayCount <= 0) return;
 		vec3 radiance = vec3(0.0);
 		bool hitFound = false;
@@ -267,7 +267,7 @@ void shMarchMain(vec3 rd, vec3 probeOrigin, int totalRayCount, inout vec3 newSH[
 		}
 
 		// Add subtle volumetric tint from emissive particles
-		radiance += sampleVolumetricLight(probeOrigin) * 0.05;
+		radiance += volRadiance;
 
 		projectRadianceToSH(rd, radiance, 1.0 / float(totalRayCount), newSH);
 }
@@ -418,8 +418,7 @@ void main() {
 	for (int i = 0; i < baseSamples; ++i) {
 		vec2  jitter = fract(bn.zw + vec2(float(i) * 0.618, float(i) * 0.382));
 		vec3  rd = hemisphereSample(jitter, -worldNormal);
-		shMarchMain(rd, probeOrigin, rayCount + baseSamples, newSH);
-		projectRadianceToSH(rd, volRadiance, 1.0 / float(rayCount + baseSamples), newSH);
+		shMarchMain(rd, probeOrigin, volRadiance, rayCount + baseSamples, newSH);
 	}
 
 	for (int i = 0; i < rayCount; ++i) {
@@ -431,8 +430,7 @@ void main() {
 		float sinTheta = sqrt(max(0.0, 1.0 - cosTheta * cosTheta));
 		vec3  rd = vec3(sinTheta * cos(phi), cosTheta, sinTheta * sin(phi));
 
-		shMarchMain(rd, probeOrigin, rayCount + baseSamples, newSH);
-		projectRadianceToSH(rd, volRadiance, 1.0 / float(rayCount + baseSamples), newSH);
+		shMarchMain(rd, probeOrigin, volRadiance, rayCount + baseSamples, newSH);
 	}
 
 	for (int i = 0; i < 9; ++i) {

@@ -66,6 +66,12 @@ namespace Boidsish {
 
 		grid_mip_shader_ = std::make_unique<ComputeShader>("shaders/terrain_hiz_generate.comp");
 		probe_compute_shader_ = std::make_unique<ComputeShader>("shaders/terrain_probes.comp");
+		if (probe_compute_shader_->isValid()) {
+			GLuint block_idx = glGetUniformBlockIndex(probe_compute_shader_->ID, "VolumetricLightingParams");
+			if (block_idx != GL_INVALID_INDEX) {
+				glUniformBlockBinding(probe_compute_shader_->ID, block_idx, Constants::UboBinding::VolumetricLighting());
+			}
+		}
 		terrain_bake_shader_ = std::make_unique<ComputeShader>("shaders/terrain_bake.comp");
 		terrain_horizon_shader_ = std::make_unique<ComputeShader>("shaders/terrain_horizon_update.comp");
 		terrain_shadow_map_shader_ = std::make_unique<ComputeShader>("shaders/terrain_shadow_map.comp");
