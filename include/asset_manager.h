@@ -39,6 +39,13 @@ namespace Boidsish {
 		GLuint GetTexture(const std::string& path, const std::string& directory = "");
 
 		/**
+		 * @brief Register an externally created texture with the manager for central cleanup.
+		 * @param path Key to associate with the texture
+		 * @param textureID The OpenGL texture handle
+		 */
+		void RegisterTexture(const std::string& path, GLuint textureID);
+
+		/**
 		 * @brief Load or retrieve a cached audio data source.
 		 * @param path File path to the audio file
 		 * @param engine Pointer to the miniaudio engine (required for the resource manager)

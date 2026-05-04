@@ -52,6 +52,8 @@ namespace Boidsish {
 		Mesh(const Mesh& other);
 		Mesh& operator=(const Mesh& other);
 
+		~Mesh();
+
 		// Render the mesh
 		void render() const;
 		void render(Shader& shader) const; // Render with specific shader (for shadow pass, etc.)

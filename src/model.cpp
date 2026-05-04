@@ -75,6 +75,10 @@ namespace Boidsish {
 		return *this;
 	}
 
+	Mesh::~Mesh() {
+		Cleanup();
+	}
+
 	void Mesh::setupMesh(Megabuffer* mb) {
 		if (mb) {
 			if (allocation.valid)
@@ -273,19 +277,6 @@ namespace Boidsish {
 		// draw mesh
 		glBindVertexArray(VAO);
 
-		// Validate EBO is properly bound after VAO binding
-		GLint current_ebo = 0;
-		glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &current_ebo);
-		if (current_ebo == 0) {
-			logger::ERROR("Mesh::render() - No EBO bound after VAO {} bind! EBO should be {}", VAO, EBO);
-			if (EBO != 0) {
-				glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-			} else {
-				glBindVertexArray(0);
-				return;
-			}
-		}
-
 		if (allocation.valid) {
 			glDrawElementsBaseVertex(
 				GL_TRIANGLES,
@@ -343,19 +334,6 @@ namespace Boidsish {
 		// draw mesh
 		glBindVertexArray(VAO);
 
-		// Validate EBO is properly bound after VAO binding
-		GLint current_ebo = 0;
-		glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &current_ebo);
-		if (current_ebo == 0) {
-			logger::ERROR("Mesh::render(shader) - No EBO bound after VAO {} bind! EBO should be {}", VAO, EBO);
-			if (EBO != 0) {
-				glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-			} else {
-				glBindVertexArray(0);
-				return;
-			}
-		}
-
 		if (allocation.valid) {
 			glDrawElementsBaseVertex(
 				GL_TRIANGLES,
@@ -378,31 +356,7 @@ namespace Boidsish {
 			return;
 
 		if (doVAO) {
-			// Validate VAO before instanced render
-			if (!IsValidVAO(VAO)) {
-				logger::ERROR(
-					"Mesh::render_instanced - Invalid VAO {} (glIsVertexArray={})",
-					VAO,
-					glIsVertexArray(VAO)
-				);
-				return;
-			}
 			glBindVertexArray(VAO);
-		}
-
-		// Validate EBO is properly bound (should be part of VAO state)
-		GLint current_ebo = 0;
-		glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &current_ebo);
-		if (current_ebo == 0) {
-			logger::ERROR("Mesh::render_instanced - No EBO bound! VAO={}, EBO={}", VAO, EBO);
-			// Attempt recovery if EBO is missing but we know what it should be
-			if (EBO != 0) {
-				glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-			} else {
-				if (doVAO)
-					glBindVertexArray(0);
-				return;
-			}
 		}
 
 		glDrawElementsInstanced(GL_TRIANGLES, static_cast<unsigned int>(indices.size()), GL_UNSIGNED_INT, 0, count);
