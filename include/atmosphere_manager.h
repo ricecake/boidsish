@@ -7,14 +7,18 @@
 #include "IManager.h"
 #include <GL/glew.h>
 #include <glm/glm.hpp>
+#include "weather_constants.h"
 
 class ComputeShader;
+class ShaderBase;
 
 namespace Boidsish {
 
+	class ServiceLocator;
+
 	class AtmosphereManager: public IManager {
 	public:
-		AtmosphereManager();
+		AtmosphereManager(ServiceLocator& loc);
 		~AtmosphereManager();
 
 		void Initialize() override;
@@ -23,7 +27,8 @@ namespace Boidsish {
 			const glm::vec3& sunColor,
 			float            sunIntensity,
 			const glm::vec3& cameraPos,
-			float            time
+			float            time,
+			float            worldScale
 		);
 
 		glm::vec3 GetAmbientEstimate() const { return _ambientEstimate; }
@@ -36,7 +41,21 @@ namespace Boidsish {
 
 		GLuint GetAerialPerspectiveLUT() const { return _aerialPerspectiveLUT; }
 
-		void BindTextures(GLuint firstUnit = 10);
+		GLuint GetCloudShadowMap() const { return _cloudShadowMap; }
+
+		static constexpr GLuint kTransmittanceUnit = 20;
+		static constexpr GLuint kMultiScatteringUnit = 21;
+		static constexpr GLuint kSkyViewUnit = 22;
+		static constexpr GLuint kAerialPerspectiveUnit = 23;
+		static constexpr GLuint kCloudShadowUnit = 24;
+
+		void BindTextures();
+		void BindToShader(::ShaderBase& shader);
+
+		static constexpr int   kCloudShadowResolution = 512;
+		static constexpr float kCloudShadowWorldSize = 4000.0f;
+
+		float GetCloudShadowWorldSize() const { return kCloudShadowWorldSize; }
 
 		// Parameters
 		void SetRayleighScale(float s) {
@@ -145,6 +164,10 @@ namespace Boidsish {
 
 		float GetColorVarianceStrength() const { return _colorVarianceStrength; }
 
+		void SetCloudShadowIntensity(float i) { _cloudShadowIntensity = i; }
+
+		float GetCloudShadowIntensity() const { return _cloudShadowIntensity; }
+
 		const glm::vec4* GetSHCoefficients() const { return _shCoeffs; }
 
 		// Copy SH coefficients directly from GPU SSBO into a UBO, avoiding CPU readback
@@ -158,6 +181,7 @@ namespace Boidsish {
 		GLuint _multiScatteringLUT = 0;
 		GLuint _skyViewLUT = 0;
 		GLuint _aerialPerspectiveLUT = 0;
+		GLuint _cloudShadowMap = 0;
 		GLuint _shCoeffsBuffer = 0;
 
 		std::unique_ptr<ComputeShader> _transmittanceShader;
@@ -165,25 +189,27 @@ namespace Boidsish {
 		std::unique_ptr<ComputeShader> _skyViewShader;
 		std::unique_ptr<ComputeShader> _aerialPerspectiveShader;
 		std::unique_ptr<ComputeShader> _skyToSHShader;
+		std::unique_ptr<ComputeShader> _cloudShadowShader;
 
 		glm::vec4 _shCoeffs[9];
 
 		bool _needsPrecompute = true;
 
-		float     _rayleighScale = 1.1f;
-		float     _mieScale = 0.35f;
-		float     _mieAnisotropy = 0.8f;
+		float     _rayleighScale = WeatherConstants::RayleighScale.normal;
+		float     _mieScale = WeatherConstants::MieScale.normal;
+		float     _mieAnisotropy = WeatherConstants::MieAnisotropy;
 		float     _multiScatScale = 1.0f;
 		float     _ambientScatScale = 1.0f;
-		float     _atmosphereHeight = 120.0f;
-		glm::vec3 _rayleighScattering = glm::vec3(5.802f, 13.558f, 33.100f) * 1e-3f;
-		float     _mieScattering = 3.996f * 1e-3f;
-		float     _mieExtinction = 4.440f * 1e-3f;
-		glm::vec3 _ozoneAbsorption = glm::vec3(0.650f, 1.881f, 0.085f) * 1e-3f;
-		float     _rayleighScaleHeight = 8.0f;
-		float     _mieScaleHeight = 1.2f;
+		float     _atmosphereHeight = WeatherConstants::AtmosphereHeight.normal;
+		glm::vec3 _rayleighScattering = WeatherConstants::RayleighScattering;
+		float     _mieScattering = WeatherConstants::MieScattering;
+		float     _mieExtinction = WeatherConstants::MieExtinction;
+		glm::vec3 _ozoneAbsorption = WeatherConstants::OzoneAbsorption;
+		float     _rayleighScaleHeight = WeatherConstants::RayleighScaleHeight.normal;
+		float     _mieScaleHeight = WeatherConstants::MieScaleHeight.normal;
 		float     _colorVarianceScale = 1.0f;
 		float     _colorVarianceStrength = 0.0f;
+		float     _cloudShadowIntensity = 0.5f;
 
 		glm::vec3 _ambientEstimate = glm::vec3(0.0f);
 	};

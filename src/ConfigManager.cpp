@@ -64,6 +64,12 @@ namespace Boidsish {
 		GetAppSettingBool("render_terrain", true);
 		GetAppSettingBool("render_floor", false);
 		GetAppSettingBool("render_skybox", true);
+		GetAppSettingBool("grass_enabled", true);
+		GetAppSettingFloat("grass_length_multiplier", 1.0f);
+		GetAppSettingFloat("grass_width_multiplier", 1.0f);
+		GetAppSettingFloat("grass_density_multiplier", 1.0f);
+		GetAppSettingFloat("grass_rigidity_multiplier", 1.0f);
+		GetAppSettingFloat("grass_wind_multiplier", 1.0f);
 		GetAppSettingBool("artistic_effect_ripple", false);
 		GetAppSettingBool("artistic_effect_color_shift", false);
 		GetAppSettingBool("artistic_effect_black_and_white", false);
@@ -79,6 +85,11 @@ namespace Boidsish {
 
 		// Particle settings
 		GetAppSettingFloat("ambient_particle_density", Constants::Class::Particles::DefaultAmbientDensity());
+
+		// SH Probe settings
+		GetAppSettingFloat("sh_probe_scaling", 1.0f);
+		GetAppSettingFloat("sh_probe_convergence_speed", 1.0f);
+		GetAppSettingInt("sh_probe_ray_count_multiplier", 1);
 
 		// Mesh optimization settings
 		GetAppSettingBool("mesh_optimizer_enabled", true);

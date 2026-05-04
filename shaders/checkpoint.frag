@@ -1,12 +1,10 @@
 #version 430 core
 layout(location = 0) out vec4 FragColor;
-layout(location = 1) out vec2 Velocity;
+layout(location = 1) out vec4 Velocity;
+layout(location = 2) out vec4 NormalOut;
+layout(location = 3) out vec4 AlbedoOut;
 
 #include "common_uniforms.glsl"
-
-layout(std430, binding = 2) buffer UniformsSSBO {
-	CommonUniforms uniforms_data[];
-};
 
 uniform bool uUseMDI = false;
 flat in int  vUniformIndex;
@@ -92,8 +90,14 @@ void main() {
 
 	FragColor = vec4(finalColor * (1.0 + ringMask), alpha);
 
-	// Calculate screen-space velocity
+	// Calculate screen-space velocity and material properties
 	vec2 a = (CurPosition.xy / CurPosition.w) * 0.5 + 0.5;
 	vec2 b = (PrevPosition.xy / PrevPosition.w) * 0.5 + 0.5;
-	Velocity = a - b;
+	Velocity = vec4(a - b, 0.5, 0.0); // Roughness, Metallic
+
+	// Output view-space normal (billboarded quad, so facing camera is -Z in view space)
+	// Checkpoints are currently unlit/emissive and don't receive shadows in their shader logic,
+	// but we'll output 1.0 for the shadow factor to indicate they are fully "lit".
+	NormalOut = vec4(0, 0, 1, 1.0);
+	AlbedoOut = vec4(finalColor, 1.0);
 }

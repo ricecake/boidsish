@@ -25,7 +25,8 @@ void main() {
 
 	// Use apply_lighting_no_shadows for better performance on many fragments
 	// but still getting all scene lights and ambient light.
-	vec4 lightResult = apply_lighting_no_shadows(fFragPos, norm, baseColor, 0.5);
+	float dummyShadow;
+	vec4 lightResult = apply_lighting_no_shadows(fFragPos, norm, baseColor, 0.5, dummyShadow);
 
 	FragColor = vec4(lightResult.rgb, fColor.a);
 }

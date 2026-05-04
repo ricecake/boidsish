@@ -1,13 +1,23 @@
 #pragma once
 
 #include <array>
+#include <atomic>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <vector>
 
 #include <glm/glm.hpp>
+#include "thread_pool.h"
+#include "weather_constants.h"
+#include "weather_lbm_simulator.h"
+#include "shader.h"
 
 namespace Boidsish {
+
+	class ITerrainGenerator;
+	class NoiseManager;
+	class TerrainRenderManager;
 
 	enum class WeatherAttribute {
 		SunIntensity,
@@ -25,6 +35,21 @@ namespace Boidsish {
 		RayleighScaleHeight,
 		MieScaleHeight,
 		CloudCoverage,
+		Precipitation,
+		Temperature,
+		Humidity,
+		Pressure,
+		MieScattering,
+		MieExtinction,
+		RayleighScatteringR,
+		RayleighScatteringG,
+		RayleighScatteringB,
+		HazeColorR,
+		HazeColorG,
+		HazeColorB,
+		CloudColorR,
+		CloudColorG,
+		CloudColorB,
 		Count
 	};
 
@@ -54,8 +79,17 @@ namespace Boidsish {
 		WeatherRange<float> mie_scale;
 		WeatherRange<float> atmosphere_height;
 		WeatherRange<float> rayleigh_scale_height;
-		WeatherRange<float> mie_scale_height;
-		WeatherRange<float> cloud_coverage;
+		WeatherRange<float>     mie_scale_height;
+		WeatherRange<float>     cloud_coverage;
+		WeatherRange<float>     precipitation;
+		WeatherRange<float>     temperature;
+		WeatherRange<float>     humidity;
+		WeatherRange<float>     pressure;
+		WeatherRange<float>     mie_scattering;
+		WeatherRange<float>     mie_extinction;
+		WeatherRange<glm::vec3> rayleigh_scattering;
+		WeatherRange<glm::vec3> haze_color;
+		WeatherRange<glm::vec3> cloud_color;
 
 		WeatherSettings operator+(const WeatherSettings& other) const {
 			return {
@@ -73,7 +107,16 @@ namespace Boidsish {
 				atmosphere_height + other.atmosphere_height,
 				rayleigh_scale_height + other.rayleigh_scale_height,
 				mie_scale_height + other.mie_scale_height,
-				cloud_coverage + other.cloud_coverage
+				cloud_coverage + other.cloud_coverage,
+				precipitation + other.precipitation,
+				temperature + other.temperature,
+				humidity + other.humidity,
+				pressure + other.pressure,
+				mie_scattering + other.mie_scattering,
+				mie_extinction + other.mie_extinction,
+				rayleigh_scattering + other.rayleigh_scattering,
+				haze_color + other.haze_color,
+				cloud_color + other.cloud_color
 			};
 		}
 
@@ -93,7 +136,16 @@ namespace Boidsish {
 				atmosphere_height * f,
 				rayleigh_scale_height * f,
 				mie_scale_height * f,
-				cloud_coverage * f
+				cloud_coverage * f,
+				precipitation * f,
+				temperature * f,
+				humidity * f,
+				pressure * f,
+				mie_scattering * f,
+				mie_extinction * f,
+				rayleigh_scattering * f,
+				haze_color * f,
+				cloud_color * f
 			};
 		}
 	};
@@ -115,33 +167,41 @@ namespace Boidsish {
 	 * @brief Current weather values derived from blended ranges and noise.
 	 */
 	struct CurrentWeather {
-		float     sun_intensity = 1.0f;
-		float     wind_strength = 0.05f;
-		float     wind_speed = 0.075f;
-		float     wind_frequency = 0.01f;
-		float     cloud_density = 0.20f;
-		float     cloud_altitude = 400.0f;
-		float     cloud_thickness = 200.0f;
-		float     haze_density = 0.003f;
-		float     haze_height = 20.0f;
-		float     rayleigh_scale = 1.1f;
-		float     mie_scale = 0.1f;
-		float     atmosphere_height = 120.0f;
-		glm::vec3 rayleigh_scattering = glm::vec3(5.802f, 13.558f, 33.100f) * 1e-3f;
-		float     mie_scattering = 3.996f * 1e-3f;
-		float     mie_extinction = 4.440f * 1e-3f;
-		glm::vec3 ozone_absorption = glm::vec3(0.650f, 1.881f, 0.085f) * 1e-3f;
-		float     rayleigh_scale_height = 8.0f;
-		float     mie_scale_height = 1.2f;
-		float     cloud_coverage = 0.75f;
+		float     sun_intensity = WeatherConstants::SunIntensity.normal;
+		float     wind_strength = WeatherConstants::WindStrength.normal;
+		float     wind_speed = WeatherConstants::WindSpeed.normal;
+		float     wind_frequency = WeatherConstants::WindFrequency.normal;
+		float     cloud_density = WeatherConstants::CloudDensity.normal;
+		float     cloud_altitude = WeatherConstants::CloudAltitude.normal;
+		float     cloud_thickness = WeatherConstants::CloudThickness.normal;
+		float     haze_density = WeatherConstants::HazeDensity.normal;
+		float     haze_height = WeatherConstants::HazeHeight.normal;
+		float     rayleigh_scale = WeatherConstants::RayleighScale.normal;
+		float     mie_scale = WeatherConstants::MieScale.normal;
+		float     atmosphere_height = WeatherConstants::AtmosphereHeight.normal;
+		glm::vec3 rayleigh_scattering = WeatherConstants::RayleighScattering;
+		float     mie_scattering = WeatherConstants::MieScattering;
+		float     mie_extinction = WeatherConstants::MieExtinction;
+		glm::vec3 ozone_absorption = WeatherConstants::OzoneAbsorption;
+		float     rayleigh_scale_height = WeatherConstants::RayleighScaleHeight.normal;
+		float     mie_scale_height = WeatherConstants::MieScaleHeight.normal;
+		float     cloud_coverage = WeatherConstants::CloudCoverage.normal;
+		float     precipitation = 0.0f;
+		float     temperature = 288.15f;
+		float     humidity = 0.5f;
+		float     pressure = 1013.25f;
+		glm::vec3 haze_color = WeatherConstants::DefaultHazeColor;
+		glm::vec3 cloud_color = WeatherConstants::DefaultCloudColor;
 	};
+
+	class ServiceLocator;
 
 	class WeatherManager {
 	public:
-		WeatherManager();
+		WeatherManager(ServiceLocator& loc);
 		~WeatherManager();
 
-		void Update(float deltaTime, float totalTime, const glm::vec3& cameraPos);
+		void Update(float deltaTime, float totalTime, const glm::vec3& cameraPos, float timeOfDay);
 
 		bool IsEnabled() const { return enabled_; }
 
@@ -155,7 +215,20 @@ namespace Boidsish {
 
 		void SetSpatialScale(float scale) { spatial_scale_ = scale; }
 
+		bool IsMacroSimEnabled() const { return macro_sim_enabled_; }
+		void SetMacroSimEnabled(bool enabled) { macro_sim_enabled_ = enabled; }
+
+		float GetSimTau() const { return lbm_simulator_ ? lbm_simulator_->GetTau() : 0.8f; }
+		void  SetSimTau(float tau) {
+			if (lbm_simulator_) lbm_simulator_->SetTau(tau);
+		}
+
+		void ResetMacroSim() {
+			reset_requested_ = true;
+		}
+
 		const CurrentWeather& GetCurrentWeather() const { return current_; }
+		CurrentWeather&       GetCurrentWeatherMutable() { return current_; }
 
 		/**
 		 * @brief Get information about the currently blending weather presets.
@@ -202,7 +275,34 @@ namespace Boidsish {
 		 */
 		void SetPace(WeatherAttribute attr, float pace);
 
+		const PhysicallyBasedWeatherOutput* GetPhysicallyBasedWeather() const;
+
+		PhysicallyBasedWeatherOutput GetWeatherAtPosition(const glm::vec3& pos) const;
+
+		void InjectPressure(const glm::vec3& pos, float pressureHpa, float burstStrength);
+
+		void InjectAerosol(const glm::vec3& pos, float concentration);
+
+		void InjectTemperature(const glm::vec3& pos, float temperatureK);
+
+		void UpdateWindUbo(float totalTime, NoiseManager* noise, TerrainRenderManager* terrain_render);
+
+		void SetTerrainGenerator(ITerrainGenerator* terrain) { terrain_ = terrain; }
+
 	private:
+		unsigned int wind_data_ubo_ = 0;
+		unsigned int wind_texture_ = 0;
+		unsigned int lbm_wind_texture_ = 0;
+		std::unique_ptr<ComputeShader> wind_compute_shader_;
+
+		ThreadPool                              lbm_pool_;
+		std::optional<TaskHandle<LbmSnapshot>>  lbm_task_;
+		LbmSnapshot                             latest_snapshot_;
+		std::vector<LbmInjection>               pending_injections_;
+		std::mutex                              injection_mutex_;
+		std::atomic<bool>                       reset_requested_{false};
+		float                                   lbm_delta_accumulator_ = 0.0f;
+
 		struct AttributeState {
 			float                velocity = 0.0f;
 			float                omega = 2.0f; // Default pace
@@ -212,7 +312,8 @@ namespace Boidsish {
 		void InitializePresets();
 		void UpdateAttribute(WeatherAttribute attr, float target, float deltaTime);
 
-		bool  enabled_ = false;
+		bool  enabled_ = true;
+		bool  macro_sim_enabled_ = true;
 		float time_scale_ = 0.005f;    // Low frequency over time
 		float spatial_scale_ = 0.001f; // Low frequency over space
 		float hold_threshold_ = 0.05f; // Noise-space distance threshold for updates
@@ -229,6 +330,9 @@ namespace Boidsish {
 		CurrentWeather      cached_targets_;
 
 		std::array<AttributeState, static_cast<size_t>(WeatherAttribute::Count)> attribute_states_;
+
+		ITerrainGenerator*                   terrain_ = nullptr;
+		std::unique_ptr<WeatherLbmSimulator> lbm_simulator_;
 	};
 
 } // namespace Boidsish

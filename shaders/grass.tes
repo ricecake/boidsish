@@ -1,0 +1,182 @@
+#version 430 core
+
+layout(quads, equal_spacing, ccw) in;
+
+in int tInstanceID[];
+
+struct GrassInstance {
+    vec4 pos_rot;   // xyz = world pos, w = rotation
+    vec4 scale_seed_biome; // x = height, y = width, z = seed, w = biome index
+};
+
+layout(std430, binding = [[GRASS_INSTANCES_BINDING]]) buffer GrassInstances {
+    GrassInstance instances[];
+};
+
+struct GrassProperties {
+    vec4  colorTop;
+    vec4  colorBottom;
+    float height;
+    float width;
+    float rigidity;
+    float heightVariance;
+    float widthVariance;
+    float density;
+    float colorVariability;
+    float windInfluence;
+    uint  enabled;
+    float _pad0;
+    float _pad1;
+    float _pad2;
+};
+
+struct GlobalGrassProperties {
+    float lengthMultiplier;
+    float widthMultiplier;
+    float densityMultiplier;
+    float rigidityMultiplier;
+    float windMultiplier;
+    uint  enabled;
+    float _pad0;
+    float _pad1;
+};
+
+layout(std140, binding = [[GRASS_PROPS_BINDING]]) uniform GrassProps {
+    GrassProperties biomeProps[8];
+    GlobalGrassProperties globalProps;
+};
+
+uniform mat4 view;
+uniform mat4 projection;
+
+out vec3 fNormal;
+out vec2 fTexCoords;
+out float fHeightFactor;
+out vec3 fWorldPos;
+flat out int fBiomeIdx;
+
+#include "helpers/noise.glsl"
+#include "lighting.glsl"
+#include "helpers/lighting.glsl"
+#include "helpers/wind.glsl"
+
+
+// Simple hash for random values
+float hash(uint x) {
+	x = ((x >> 16) ^ x) * 0x45d9f3b;
+	x = ((x >> 16) ^ x) * 0x45d9f3b;
+	x = (x >> 16) ^ x;
+	return float(x) / 4294967295.0;
+}
+
+void main() {
+    int idx = tInstanceID[0];
+    vec3 basePos = instances[idx].pos_rot.xyz;
+    float baseRotation = instances[idx].pos_rot.w;
+    float height = instances[idx].scale_seed_biome.x;
+    float width = instances[idx].scale_seed_biome.y;
+    uint seed = uint(instances[idx].scale_seed_biome.z);
+    int biomeIdx = int(instances[idx].scale_seed_biome.w);
+    float dist = distance(viewPos, basePos);
+
+    float v = gl_TessCoord.y; // along blade (0 to 1)
+    float u = gl_TessCoord.x * 2.0 - 1.0; // across blade (-1 to 1)
+
+    width += 3 * width * smoothstep(35, 75, dist);
+
+    // Wind
+    float distanceFade = smoothstep(250, 75, dist);
+    vec3 windNoise =  distanceFade > 0? distanceFade * getWindAtPosition(basePos) : vec3(0);
+    float windStrength = length(windNoise) * biomeProps[biomeIdx].windInfluence * globalProps.windMultiplier;
+
+    // --- Combined Deflection ---
+    // Wind Direction
+    vec3 windDir = (length(windNoise) > 0.001) ? normalize(vec3(windNoise.x, 0.0, windNoise.z)) : vec3(1.0, 0.0, 0.0);
+
+    // 1. Wind-driven bend
+    float maxDeflection = 1.3; // Allow more deflection for high-speed macro wind
+    // wind_strength (0.01-0.5) * windAtPos (0-40) ~ 0-20.
+    // We scale this to a reasonable radian angle. Increase multiplier for visibility.
+    float resistedwindStrength = maxDeflection * tanh(windStrength * 0.15 / maxDeflection);
+
+    float bendFactor = (1.0 - clamp(biomeProps[biomeIdx].rigidity * globalProps.rigidityMultiplier, 0.0, 0.95));
+    float windBendAngle =  bendFactor * resistedwindStrength * pow(v, 1.2) * smoothstep(0.05, 1.0, v);
+
+    // 2. Base Tilt (static variety)
+    float tiltFactor = (hash(seed + 8888) * 2.0 - 1.0) * 0.15;
+    float tiltAngle = tiltFactor * v;
+
+    // 3. Random gentle sway (low-frequency variety)
+    float randomSway = (hash(seed + 4321) * 2.0 - 1.0) * 0.05 * v * v;
+
+    // Consolidate deflection into a single world-space vector and total angle
+    // This ensures that even with no wind, the grass has some natural lean.
+    vec3 staticDeflection = vec3(randomSway, 0.0, tiltAngle);
+    vec3 windDeflection = windDir * windBendAngle;
+
+    vec3 combinedDeflection = staticDeflection + windDeflection;
+    float totalBendAngle = length(combinedDeflection);
+    vec3 deflectionDir = (totalBendAngle > 0.0001) ? normalize(combinedDeflection) : vec3(1.0, 0.0, 0.0);
+
+    // --- Rotation-based Displacement (Rodrigues' Rotation) ---
+    // Axis perpendicular to Up and Deflection
+    vec3 rotationAxis = normalize(cross(vec3(0.0, 1.0, 0.0), deflectionDir));
+
+    // Initial local position before bending (vertical segment)
+    float segmentHeight = v * height;
+    vec3 initialRelativePos = vec3(0.0, segmentHeight, 0.0);
+
+    // Rodrigues' rotation of the vertical segment
+    float cosTheta = cos(totalBendAngle);
+    float sinTheta = sin(totalBendAngle);
+
+    vec3 bentRelativePos = initialRelativePos * cosTheta +
+                           cross(rotationAxis, initialRelativePos) * sinTheta +
+                           rotationAxis * dot(rotationAxis, initialRelativePos) * (1.0 - cosTheta);
+
+    // --- Blade Width and Rotation ---
+    // Distance-based weight
+    float distToCam = distance(viewPos, basePos);
+    float billboardWeight = max(0.75, smoothstep(5.50, 50.0, distToCam));
+
+    // Original facing direction
+    vec2 origDir = vec2(cos(baseRotation), sin(baseRotation));
+
+    // Camera facing direction (XZ plane only)
+    vec2 camDir = normalize(viewPos.xz - basePos.xz);
+
+    // Normalized linear interpolation (nlerp) of the directions
+    vec2 finalDir = normalize(mix(origDir, camDir, billboardWeight));
+
+    vec2 forward = finalDir;
+    vec2 right = vec2(forward.y, -forward.x); // 2D cross product ensures perpendicularity
+
+
+    // Taper curve: 1.0 at the base (v=0), 0.0 at the tip (v=1).
+    // Increasing the exponent makes the blade hold its width further up before pinching.
+    float shapeExponent = mix(2.0, 4.0, smoothstep(32.0, 128.0, distToCam));
+    float shapeProfile = 1.0 - pow(v, shapeExponent);
+
+    // Artificially widen the entire blade at distance to preserve density
+    float distanceWidthBoost = mix(1.0, 2.5, smoothstep(32.0, 128.0, distToCam));
+
+    float currentWidth = u * width * 0.5 * shapeProfile * distanceWidthBoost;
+
+    // float currentWidth = u * width * 0.5 * mix(mix(1.0, 0.10, smoothstep(0, 0.9, pow(v, mix(2, 5, smoothstep(32, 64, distToCam))))), 0.5, smoothstep(32, 64, distToCam));//+(1-smoothstep(0.0, 0.5, v))*3;
+    vec2 localXZ = right * currentWidth;
+
+    // Final World Position
+    vec3 pos = basePos + bentRelativePos;
+    pos.xz += localXZ;
+
+    vec3 faceNormal = vec3(forward.x, 0.0, forward.y);
+    vec3 sideVec = vec3(right.x, 0.0, right.y);
+    fNormal = normalize(faceNormal + sideVec * u * 0.8 + vec3(0.0, v * 0.3, 0.0));
+
+    fTexCoords = vec2(u * 0.5 + 0.5, v);
+    fHeightFactor = v;
+    fWorldPos = pos;
+    fBiomeIdx = biomeIdx;
+
+    gl_Position = projection * view * vec4(pos, 1.0);
+}

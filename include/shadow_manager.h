@@ -14,6 +14,7 @@ class Shader;
 
 namespace Boidsish {
 
+	class ServiceLocator;
 	struct Light;
 
 	/**
@@ -36,7 +37,7 @@ namespace Boidsish {
 		/// Shadow map resolution (width and height)
 		static constexpr int kShadowMapSize = Constants::Class::Shadows::MapSize();
 
-		ShadowManager();
+		ShadowManager(ServiceLocator& loc);
 		~ShadowManager();
 
 		// Non-copyable
@@ -105,7 +106,7 @@ namespace Boidsish {
 		 * @param shader The shader to set up shadow samplers for
 		 * @param texture_unit The texture unit to bind the shadow map array to
 		 */
-		void BindForRendering(Shader& shader, int texture_unit = 10);
+		void BindForRendering(Shader& shader, int texture_unit = Constants::TextureUnit::ShadowMaps());
 
 		/**
 		 * @brief Update the shadow UBO with current light-space matrices.
@@ -128,6 +129,11 @@ namespace Boidsish {
 		 * @brief Get the shadow map texture array ID.
 		 */
 		GLuint GetShadowMapArray() const { return shadow_map_array_; }
+
+		/**
+		 * @brief Get the shadow UBO ID.
+		 */
+		GLuint GetShadowUbo() const { return shadow_ubo_; }
 
 		/**
 		 * @brief Check if shadow mapping is enabled and initialized.

@@ -8,16 +8,19 @@
 
 namespace Boidsish {
 
+	class ServiceLocator;
+
 	struct NoiseTextures {
 		GLuint noise;
 		GLuint curl;
 		GLuint blue_noise;
 		GLuint extra_noise;
+		GLuint phasor;
 	};
 
 	class NoiseManager: public IManager {
 	public:
-		NoiseManager();
+		NoiseManager(ServiceLocator& loc);
 		~NoiseManager() override;
 
 		void Initialize() override;
@@ -31,8 +34,15 @@ namespace Boidsish {
 
 		GLuint GetExtraNoiseTexture() const { return extra_noise_texture_; }
 
+		GLuint GetPhasorNoiseTexture() const { return phasor_noise_texture_; }
+
 		NoiseTextures GetTextures() const {
-			return {noise_texture_, curl_noise_texture_, blue_noise_texture_, extra_noise_texture_};
+			return {
+				noise_texture_,
+				curl_noise_texture_,
+				blue_noise_texture_,
+				extra_noise_texture_,
+				phasor_noise_texture_};
 		}
 
 		void Bind(GLuint unit) const;
@@ -41,10 +51,12 @@ namespace Boidsish {
 	private:
 		std::unique_ptr<ComputeShader> compute_shader_;
 		std::unique_ptr<ComputeShader> blue_noise_shader_;
+		std::unique_ptr<ComputeShader> phasor_gen_shader_;
 		GLuint                         noise_texture_ = 0;
 		GLuint                         curl_noise_texture_ = 0;
 		GLuint                         blue_noise_texture_ = 0;
 		GLuint                         extra_noise_texture_ = 0;
+		GLuint                         phasor_noise_texture_ = 0;
 		int                            size_ = 64; // 64x64x64
 		int                            blue_noise_size_ = 256;
 	};

@@ -3,10 +3,6 @@
 
 #include "common_uniforms.glsl"
 
-layout(std430, binding = 2) buffer UniformsSSBO {
-	CommonUniforms uniforms_data[];
-};
-
 uniform bool uUseMDI = false;
 in vec3      FragPos;
 flat in int  vUniformIndex;

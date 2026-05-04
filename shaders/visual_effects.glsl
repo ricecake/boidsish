@@ -1,7 +1,7 @@
 #ifndef VISUAL_EFFECTS_GLSL
 #define VISUAL_EFFECTS_GLSL
 
-layout(std140) uniform VisualEffects {
+layout(std140, binding = [[VISUAL_EFFECTS_BINDING]]) uniform VisualEffects {
 	int   ripple_enabled;
 	int   color_shift_enabled;
 	int   black_and_white_enabled;
@@ -18,6 +18,10 @@ layout(std140) uniform VisualEffects {
 	float erosion_detail;
 	float erosion_gully_weight;
 	float erosion_max_dist;
+	float rain_intensity;
+	float snow_intensity;
+	float wetness;
+	float _pad_vfx;
 };
 
 #endif

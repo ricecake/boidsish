@@ -1,0 +1,126 @@
+#version 430 core
+
+#define USE_TERRAIN_DATA
+#include "helpers/terrain_shadows.glsl"
+#include "lighting.glsl"
+#include "helpers/lighting.glsl"
+#include "visual_effects.glsl"
+
+in vec3 fNormal;
+in vec2 fTexCoords;
+in float fHeightFactor;
+in vec3 fWorldPos;
+flat in int fBiomeIdx;
+
+struct GrassProperties {
+    vec4  colorTop;
+    vec4  colorBottom;
+    float height;
+    float width;
+    float rigidity;
+    float heightVariance;
+    float widthVariance;
+    float density;
+    float colorVariability;
+    float windInfluence;
+    uint  enabled;
+    float _pad0;
+    float _pad1;
+    float _pad2;
+};
+
+struct GlobalGrassProperties {
+    float lengthMultiplier;
+    float widthMultiplier;
+    float densityMultiplier;
+    float rigidityMultiplier;
+    float windMultiplier;
+    uint  enabled;
+    float _pad0;
+    float _pad1;
+};
+
+layout(std140, binding = [[GRASS_PROPS_BINDING]]) uniform GrassProps {
+    GrassProperties biomeProps[8];
+    GlobalGrassProperties globalProps;
+};
+
+uniform bool uIsShadowPass;
+
+layout(location = 0) out vec4 FragColor;
+layout(location = 1) out vec4 VelocityOut;
+layout(location = 2) out vec4 NormalOut;
+layout(location = 3) out vec4 AlbedoOut;
+
+uniform mat4 view;
+
+// Simple hash for random values
+float hash(uint x) {
+	x = ((x >> 16) ^ x) * 0x45d9f3b;
+	x = ((x >> 16) ^ x) * 0x45d9f3b;
+	x = (x >> 16) ^ x;
+	return float(x) / 4294967295.0;
+}
+
+void main() {
+    if (uIsShadowPass) {
+        FragColor = vec4(0.0);
+        return;
+    }
+
+    // Normal handling for 2D primitives
+    vec3 N = normalize(fNormal);
+    if (!gl_FrontFacing) N = -N;
+
+    vec3 albedo = mix(biomeProps[fBiomeIdx].colorBottom.rgb, biomeProps[fBiomeIdx].colorTop.rgb, fHeightFactor);
+    float roughness = 0.8;
+
+    // Apply wetness: darkening and reduction in roughness
+    albedo = mix(albedo, albedo * 0.4, wetness * 0.6);
+    roughness = mix(roughness, 0.1, wetness * 0.9);
+
+    float ao = smoothstep(0.0, 0.5, fHeightFactor) * smoothstep(0.0, 0.25, biomeProps[fBiomeIdx].density);
+    float dist = length(fWorldPos.xz - viewPos.xz);
+
+    // Add some random variability
+    uint seed = uint(abs(fWorldPos.x) * 10.0) ^ uint(abs(fWorldPos.z) * 10.0);
+    float var = hash(seed) * biomeProps[fBiomeIdx].colorVariability;
+    albedo += (var * 2.0 - 1.0) * 0.15;
+    albedo = max(vec3(0.0), albedo); // Clamp to prevent negative color artifacts
+
+    // albedo = mix(albedo, exp2(albedo), smoothstep(0.5, 1.0, fTexCoords.y) * smoothstep(25, 50, dist));// * dist;
+	// Apply wind-driven rim highlight
+	float rim = pow(1.0 - max(dot(N, normalize(viewPos - fWorldPos)), 0.0), 3.0);
+	albedo += rim * smoothstep(0.33, 0.66, fTexCoords.y) * smoothstep(1.0, 0.66, fTexCoords.y) * vec3(1.0);
+
+
+    vec3 highlight = albedo * mix(
+          smoothstep(0.05, 0.25, length(fTexCoords.x)) * smoothstep(0.95, 0.75, length(fTexCoords.x)),
+        1.0,
+        smoothstep(16.0, 128.0, length(viewPos - fWorldPos)));
+
+
+    float primaryShadow;
+    vec4 litColor = apply_lighting_foliage(fWorldPos, N, albedo, roughness, 0.0, ao, primaryShadow);
+    litColor = min(litColor, vec4(highlight, litColor.a));
+    litColor.rgb = clamp(litColor.rgb, 0.0, 5.0); // Clamp HDR to prevent "bright white" blowouts
+
+    // Distance fade and distant cyan blend (matching terrain style)
+    float fade_start = 560.0 * worldScale;
+    float fade_end = 570.0 * worldScale;
+    float fade = 1.0 - smoothstep(fade_start, fade_end, dist);
+
+    if (fade < 0.1) discard;
+
+    vec4 baseColor = vec4(litColor.rgb, fade);
+    // Standard engine distant cyan blend logic
+    // step(1.0, fade) means: if fade < 1.0 (distant), use cyan.
+    // We stay natural until deep into the fade range to avoid "blue glow"
+    float cyanFactor = smoothstep(0.0, 0.1, fade);
+    FragColor = mix(vec4(0.0, 0.5, 0.5, baseColor.a) * min(length(baseColor.rgb), 1.0) * 0.1, baseColor, cyanFactor);
+
+    // Output view-space normal
+    NormalOut = vec4(normalize(mat3(view) * N), primaryShadow);
+    AlbedoOut = vec4(albedo, 1.0);
+    VelocityOut = vec4(0.0, 0.0, roughness, 0.0); // No motion
+}

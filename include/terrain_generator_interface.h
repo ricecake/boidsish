@@ -60,6 +60,18 @@ namespace Boidsish {
 		virtual void Update(const Frustum& frustum, const Camera& camera) = 0;
 
 		/**
+		 * @brief Load all necessary chunks immediately and wait for completion.
+		 *
+		 * This method is intended for use during initialization or transitions where
+		 * asynchronous loading is not desired. It will block until all chunks
+		 * within the view distance are generated and registered.
+		 *
+		 * @param frustum Current view frustum
+		 * @param camera Current camera state
+		 */
+		virtual void WaitForAllChunks(const Frustum& frustum, const Camera& camera) = 0;
+
+		/**
 		 * @brief Get visible terrain chunks for rendering.
 		 *
 		 * Returns a reference to the internal visible chunks list.
@@ -323,6 +335,15 @@ namespace Boidsish {
 		 * @return Control value (0 = first biome, 1 = last biome)
 		 */
 		virtual float GetBiomeControlValue(float x, float z) const = 0;
+
+		/**
+		 * @brief Map a control value to biome indices and blend weight.
+		 *
+		 * @param control_value Input control value [0, 1]
+		 * @param low_idx Output: lower biome index in kBiomes
+		 * @param t Output: blend factor between low_idx and (low_idx + 1)
+		 */
+		virtual void GetBiomeIndicesAndWeights(float control_value, int& low_idx, float& t) const = 0;
 
 	protected:
 		// Protected constructor - only derived classes can instantiate

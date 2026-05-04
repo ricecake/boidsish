@@ -4,7 +4,7 @@
 #include "../helpers/constants.glsl"
 #include "../lighting.glsl"
 #include "clouds.glsl"
-#include "terrain_shadows.glsl"
+#include "brdf.glsl"
 
 // Atmosphere constants for transmittance lookup
 const float kEarthRadiusKM = 6360.0;
@@ -17,6 +17,12 @@ uniform float u_atmosphereHeight; // usually 100.0 km
 #ifndef TRANSMITTANCE_LUT_DEFINED
 	#define TRANSMITTANCE_LUT_DEFINED
 uniform sampler2D u_transmittanceLUT;
+#endif
+
+uniform sampler2D u_cloudShadowMap;
+#ifndef TERRAIN_GRID_DEFINED
+	#define TERRAIN_GRID_DEFINED
+uniform isampler2D u_chunkGrid;
 #endif
 
 /**
@@ -34,6 +40,76 @@ const int LIGHT_TYPE_DIRECTIONAL = 1;
 const int LIGHT_TYPE_SPOT = 2;
 const int LIGHT_TYPE_EMISSIVE = 3; // Glowing object light (can cast shadows)
 const int LIGHT_TYPE_FLASH = 4;    // Explosion/flash light (rapid falloff)
+
+/**
+ * Calculate light direction and attenuation for any light type.
+ * @param light_index Index into the lights array
+ * @param frag_pos Fragment world position
+ * @param light_dir Output: normalized direction from fragment to light
+ * @param attenuation Output: combined distance and angular attenuation
+ */
+void calculateLightContribution(int light_index, vec3 frag_pos, out vec3 light_dir, out float attenuation) {
+	attenuation = 1.0;
+
+	if (lights[light_index].type == LIGHT_TYPE_POINT) {
+		// Point light: attenuates with distance
+		light_dir = normalize(lights[light_index].position - frag_pos);
+		float distance = length(lights[light_index].position - frag_pos);
+		// Practical attenuation curve (inverse square falloff with linear term)
+		attenuation = 1.0 / (1.0 + 0.09 * distance + 0.032 * distance * distance);
+
+	} else if (lights[light_index].type == LIGHT_TYPE_DIRECTIONAL) {
+		// Directional light: no attenuation, parallel rays
+		light_dir = normalize(-lights[light_index].direction);
+		attenuation = 1.0;
+
+	} else if (lights[light_index].type == LIGHT_TYPE_SPOT) {
+		// Spot light: distance attenuation + angular falloff
+		light_dir = normalize(lights[light_index].position - frag_pos);
+		float distance = length(lights[light_index].position - frag_pos);
+		attenuation = 1.0 / (1.0 + 0.09 * distance + 0.032 * distance * distance);
+
+		// Angular falloff using inner/outer cutoff angles
+		float theta = dot(light_dir, normalize(-lights[light_index].direction));
+		float epsilon = lights[light_index].inner_cutoff - lights[light_index].outer_cutoff;
+		float angular_intensity = clamp((theta - lights[light_index].outer_cutoff) / epsilon, 0.0, 1.0);
+		attenuation *= angular_intensity;
+
+	} else if (lights[light_index].type == LIGHT_TYPE_EMISSIVE) {
+		// Emissive/glowing object light: similar to point light but with soft near-field
+		// inner_cutoff stores the emissive object radius for soft falloff
+		light_dir = normalize(lights[light_index].position - frag_pos);
+		float distance = length(lights[light_index].position - frag_pos);
+		float emissive_radius = lights[light_index].inner_cutoff;
+
+		// Soft falloff that accounts for the size of the glowing object
+		// Avoids harsh falloff when very close to the light source
+		float effective_dist = max(distance - emissive_radius * 0.5, 0.0);
+		attenuation = 1.0 / (1.0 + 0.09 * effective_dist + 0.032 * effective_dist * effective_dist);
+
+		// Boost intensity when inside or near the emissive radius
+		float proximity_boost = smoothstep(emissive_radius * 2.0, 0.0, distance);
+		attenuation = mix(attenuation, 1.0, proximity_boost * 0.5);
+
+	} else if (lights[light_index].type == LIGHT_TYPE_FLASH) {
+		// Flash/explosion light: very bright with rapid falloff
+		// inner_cutoff = flash radius, outer_cutoff = falloff exponent
+		light_dir = normalize(lights[light_index].position - frag_pos);
+		float distance = length(lights[light_index].position - frag_pos);
+		float flash_radius = lights[light_index].inner_cutoff;
+		float falloff_exp = lights[light_index].outer_cutoff;
+
+		// Normalized distance (0 at center, 1 at radius edge)
+		float norm_dist = distance / max(flash_radius, 0.001);
+
+		// Sharp inverse-power falloff for explosive effect
+		// Falls off rapidly but smoothly
+		attenuation = 1.0 / pow(1.0 + norm_dist, falloff_exp);
+
+		// Hard cutoff at 2x radius to prevent distant influence
+		attenuation *= smoothstep(2.0, 1.5, norm_dist);
+	}
+}
 
 /**
  * Calculate cloud shadow factor for a fragment position.
@@ -58,37 +134,30 @@ float calculateCloudShadow(int light_index, vec3 frag_pos) {
 
 	vec3 cloudPos = frag_pos + L * t;
 
-	// No warp for shadows — warp is a camera viewport trick, shadows should
-	// be cast from actual cloud positions
-	float weatherWarpFactor = 1.0;
+	// Use the precomputed 2D shadow map
+	vec4 shadowUV = cloudShadowMatrix * vec4(cloudPos.xz, 0.0, 1.0);
 
-	vec2  weatherUV = cloudPos.xz / (4000.0 * worldScale);
-	float weatherMap = weatherWarpFactor * (fastWorley3d(vec3(weatherUV, time * 0.001)) * 0.5 + 0.5);
-
-	vec2  heightUV = cloudPos.xz / (2500.0 * worldScale);
-	float heightMap = weatherWarpFactor * (fastWorley3d(vec3(heightUV, time * 0.0004)) * 0.5 + 0.5);
-
-	CloudWeather weather;
-	weather.weatherMap = weatherMap;
-	weather.heightMap = heightMap;
-
-	CloudProperties props;
-	props.altitude = cloudAltitude;
-	props.thickness = cloudThickness;
-	props.densityBase = cloudDensity;
-	props.coverage = cloudCoverage;
-	props.worldScale = worldScale;
-
-	CloudLayer layer = computeCloudLayer(weather, props);
-
-	// Sample at the center of the dynamic layer — the fixed projection altitude
-	// often falls outside the layer due to altitude offsets from the height map
-	cloudPos.y = (layer.baseFloor + layer.baseCeiling) * 0.5;
-
-	float d = calculateCloudShadowDensity(cloudPos, weather, layer, props, time);
+	// Sample the shadow map
+	float d = 0.0;
+	if (shadowUV.x >= 0.0 && shadowUV.x <= 1.0 && shadowUV.y >= 0.0 && shadowUV.y <= 1.0) {
+		d = texture(u_cloudShadowMap, shadowUV.xy).r;
+	} else {
+		// Fallback for points outside the shadow map: evaluate noise directly
+		d = evaluateCloudShadowDensityAtWorldPos(cloudPos.xz, time);
+	}
 
 	return mix(1.0, exp(-d), cloudShadowIntensity);
 }
+
+#ifdef USE_TERRAIN_DATA
+// Forward declare terrain shadow coverage from terrain_shadows.glsl
+float terrainShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir);
+#else
+// Fallback if terrain data is not available
+float terrainShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) {
+	return 1.0;
+}
+#endif
 
 /**
  * Calculate shadow factor for a fragment position using a specific shadow map.
@@ -274,6 +343,119 @@ float calculateShadow(int light_index, vec3 frag_pos, vec3 normal, vec3 light_di
 }
 
 /**
+ * Evaluate Spherical Harmonics irradiance for a given normal and set of coefficients.
+ */
+vec3 evalSHIrradianceFromCoeffs(vec3 n, vec4 coeffs[9]) {
+	float c1 = 0.282095;
+	float c2 = 0.488603;
+	float c3 = 1.092548;
+	float c4 = 0.315392;
+	float c5 = 0.546274;
+
+	float a0 = 3.141593;
+	float a1 = 2.094395;
+	float a2 = 0.785398;
+
+	vec3 res = vec3(0.0);
+	res += a0 * c1 * coeffs[0].rgb;
+	res += a1 * c2 * (coeffs[1].rgb * n.y + coeffs[2].rgb * n.z + coeffs[3].rgb * n.x);
+	res += a2 * c3 * (coeffs[4].rgb * n.x * n.y + coeffs[5].rgb * n.y * n.z + coeffs[7].rgb * n.x * n.z);
+	res += a2 * c4 * coeffs[6].rgb * (3.0 * n.y * n.y - 1.0);
+	res += a2 * c5 * coeffs[8].rgb * (n.x * n.x - n.z * n.z);
+	return max(res, 0.0);
+}
+
+/**
+ * Evaluate Spherical Harmonics irradiance for a given normal.
+ * Uses 2nd-order SH coefficients from the Lighting UBO.
+ */
+vec3 evalSHIrradiance(vec3 n) {
+	return evalSHIrradianceFromCoeffs(n, sh_coeffs);
+}
+
+#ifdef USE_TERRAIN_DATA
+/**
+ * Look up and interpolate Spherical Harmonic ambient irradiance for a fragment.
+ */
+vec3 getSpatialAmbientSH(vec3 worldPos, vec3 N) {
+	if (u_originSize.w < 1)
+		return evalSHIrradiance(N);
+
+	float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
+	// Offset by -0.5 because probes are calculated at chunk centers (0.5, 0.5)
+	vec2  gridPos = worldPos.xz / scaledChunkSize - 0.5;
+	vec2  fracPos = fract(gridPos);
+	ivec2 chunkCoord = ivec2(floor(gridPos)) - u_originSize.xy;
+
+	// Simple bilinear interpolation between 4 nearest chunk probes
+	vec3 totalSH[9];
+	for (int i = 0; i < 9; ++i)
+		totalSH[i] = vec3(0.0);
+
+	float totalWeight = 0.0;
+	for (int x = 0; x <= 1; ++x) {
+		for (int z = 0; z <= 1; ++z) {
+			ivec2 localCoord = chunkCoord + ivec2(x, z);
+			if (localCoord.x >= 0 && localCoord.x < u_originSize.z && localCoord.y >= 0 && localCoord.y < u_originSize.z) {
+				// Only include this probe if it's actually registered in the current grid
+				if (texelFetch(u_chunkGrid, localCoord, 0).r >= 0) {
+					float weight = (x == 0 ? 1.0 - fracPos.x : fracPos.x) * (z == 0 ? 1.0 - fracPos.y : fracPos.y);
+
+					ivec2 worldChunkCoord = localCoord + u_originSize.xy;
+					ivec2 toroidalCoord = (worldChunkCoord % u_originSize.z + u_originSize.z) % u_originSize.z;
+					int   idx = toroidalCoord.y * u_originSize.z + toroidalCoord.x;
+
+					// Verify this probe is for the correct world chunk (using encoded coordinates in w)
+					vec2 probeCoord = vec2(u_terrainProbes[idx].sh_coeffs[0].w, u_terrainProbes[idx].sh_coeffs[1].w);
+					if (distance(probeCoord, vec2(worldChunkCoord)) < 0.1) {
+						for (int i = 0; i < 9; ++i) {
+							totalSH[i] += u_terrainProbes[idx].sh_coeffs[i].rgb * weight;
+						}
+						totalWeight += weight;
+					}
+				}
+			}
+		}
+	}
+
+	// Smooth boundary fading for environmental bounce
+	// Distance from edge of the active grid in chunks
+	vec2 centerOffset = abs(gridPos - (vec2(u_originSize.xy) + float(u_originSize.z) * 0.5));
+	float maxDist = float(u_originSize.z) * 0.5;
+	float distToEdge = maxDist - max(centerOffset.x, centerOffset.y);
+	float bounceFade = clamp(smoothstep(0.0, 0.50, distToEdge), 0.125, 1.0); // Fade over last 2 chunks
+
+	vec4 interpolatedCoeffs[9];
+	if (totalWeight > 0.001) {
+		for (int i = 0; i < 9; ++i) {
+			interpolatedCoeffs[i] = vec4(totalSH[i] / totalWeight, 1.0);
+		}
+	} else {
+		// No probes available, fallback to sky only
+		bounceFade = 0.0;
+	}
+
+	// Combine spatially-varying environmental bounce with global sky irradiance
+	vec3 environmentalIrradiance = evalSHIrradianceFromCoeffs(N, interpolatedCoeffs);
+	vec3 skyIrradiance = evalSHIrradiance(N); // Global sky/ambient fallback
+
+	// Combine spatially-varying environmental SH (sky + bounce) with global sky irradiance.
+	// We blend between them because probes now capture both sky and ground bounce.
+	return mix(skyIrradiance, environmentalIrradiance, clamp(totalWeight * bounceFade, 0.0, 1.0));
+}
+
+// Forward declare macro occlusion from terrain_shadows.glsl
+float calculateTerrainOcclusion(vec3 worldPos, vec3 normal);
+#else
+vec3 getSpatialAmbientSH(vec3 worldPos, vec3 N) {
+	return evalSHIrradiance(N);
+}
+float calculateTerrainOcclusion(vec3 worldPos, vec3 normal) {
+	return 1.0;
+}
+#endif
+
+/**
  * Calculate the relative luminance of a color.
  * Used for determining how much a specular highlight should contribute to fragment opacity.
  */
@@ -282,138 +464,38 @@ float get_luminance(vec3 color) {
 }
 
 // ============================================================================
-// PBR Functions (Cook-Torrance BRDF)
-// ============================================================================
-
-// Normal Distribution Function (GGX/Trowbridge-Reitz)
-float DistributionGGX(vec3 N, vec3 H, float roughness) {
-	// Clamp roughness to avoid singularity at 0 (causes black surfaces)
-	float r = max(roughness, 0.04);
-	float a = r * r;
-	float a2 = a * a;
-	float NdotH = max(dot(N, H), 0.0);
-	float NdotH2 = NdotH * NdotH;
-
-	float nom = a2;
-	float denom = (NdotH2 * (a2 - 1.0) + 1.0);
-	denom = PI * denom * denom;
-
-	return nom / max(denom, 0.0001);
-}
-
-// Geometry function (Schlick-GGX)
-float GeometrySchlickGGX(float NdotV, float roughness) {
-	float r = (roughness + 1.0);
-	float k = (r * r) / 8.0;
-
-	float nom = NdotV;
-	float denom = NdotV * (1.0 - k) + k;
-
-	return nom / max(denom, 0.0001);
-}
-
-// Smith's method for geometry obstruction and shadowing
-float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness) {
-	float NdotV = max(dot(N, V), 0.0);
-	float NdotL = max(dot(N, L), 0.0);
-	float ggx2 = GeometrySchlickGGX(NdotV, roughness);
-	float ggx1 = GeometrySchlickGGX(NdotL, roughness);
-
-	return ggx1 * ggx2;
-}
-
-// Fresnel-Schlick approximation
-vec3 fresnelSchlick(float cosTheta, vec3 F0) {
-	return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
-}
-
-// Fresnel-Schlick with roughness - for environment reflections
-// Rough surfaces have less pronounced Fresnel effect
-vec3 fresnelSchlickRoughness(float cosTheta, vec3 F0, float roughness) {
-	return F0 + (max(vec3(1.0 - roughness), F0) - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
-}
-
-// ============================================================================
-// Attenuation Helpers for Light Types
-// ============================================================================
-
-/**
- * Calculate light direction and attenuation for any light type.
- * @param light_index Index into the lights array
- * @param frag_pos Fragment world position
- * @param light_dir Output: normalized direction from fragment to light
- * @param attenuation Output: combined distance and angular attenuation
- */
-void calculateLightContribution(int light_index, vec3 frag_pos, out vec3 light_dir, out float attenuation) {
-	attenuation = 1.0;
-
-	if (lights[light_index].type == LIGHT_TYPE_POINT) {
-		// Point light: attenuates with distance
-		light_dir = normalize(lights[light_index].position - frag_pos);
-		float distance = length(lights[light_index].position - frag_pos);
-		// Practical attenuation curve (inverse square falloff with linear term)
-		attenuation = 1.0 / (1.0 + 0.09 * distance + 0.032 * distance * distance);
-
-	} else if (lights[light_index].type == LIGHT_TYPE_DIRECTIONAL) {
-		// Directional light: no attenuation, parallel rays
-		light_dir = normalize(-lights[light_index].direction);
-		attenuation = 1.0;
-
-	} else if (lights[light_index].type == LIGHT_TYPE_SPOT) {
-		// Spot light: distance attenuation + angular falloff
-		light_dir = normalize(lights[light_index].position - frag_pos);
-		float distance = length(lights[light_index].position - frag_pos);
-		attenuation = 1.0 / (1.0 + 0.09 * distance + 0.032 * distance * distance);
-
-		// Angular falloff using inner/outer cutoff angles
-		float theta = dot(light_dir, normalize(-lights[light_index].direction));
-		float epsilon = lights[light_index].inner_cutoff - lights[light_index].outer_cutoff;
-		float angular_intensity = clamp((theta - lights[light_index].outer_cutoff) / epsilon, 0.0, 1.0);
-		attenuation *= angular_intensity;
-
-	} else if (lights[light_index].type == LIGHT_TYPE_EMISSIVE) {
-		// Emissive/glowing object light: similar to point light but with soft near-field
-		// inner_cutoff stores the emissive object radius for soft falloff
-		light_dir = normalize(lights[light_index].position - frag_pos);
-		float distance = length(lights[light_index].position - frag_pos);
-		float emissive_radius = lights[light_index].inner_cutoff;
-
-		// Soft falloff that accounts for the size of the glowing object
-		// Avoids harsh falloff when very close to the light source
-		float effective_dist = max(distance - emissive_radius * 0.5, 0.0);
-		attenuation = 1.0 / (1.0 + 0.09 * effective_dist + 0.032 * effective_dist * effective_dist);
-
-		// Boost intensity when inside or near the emissive radius
-		float proximity_boost = smoothstep(emissive_radius * 2.0, 0.0, distance);
-		attenuation = mix(attenuation, 1.0, proximity_boost * 0.5);
-
-	} else if (lights[light_index].type == LIGHT_TYPE_FLASH) {
-		// Flash/explosion light: very bright with rapid falloff
-		// inner_cutoff = flash radius, outer_cutoff = falloff exponent
-		light_dir = normalize(lights[light_index].position - frag_pos);
-		float distance = length(lights[light_index].position - frag_pos);
-		float flash_radius = lights[light_index].inner_cutoff;
-		float falloff_exp = lights[light_index].outer_cutoff;
-
-		// Normalized distance (0 at center, 1 at radius edge)
-		float norm_dist = distance / max(flash_radius, 0.001);
-
-		// Sharp inverse-power falloff for explosive effect
-		// Falls off rapidly but smoothly
-		attenuation = 1.0 / pow(1.0 + norm_dist, falloff_exp);
-
-		// Hard cutoff at 2x radius to prevent distant influence
-		attenuation *= smoothstep(2.0, 1.5, norm_dist);
-	}
-}
-
-// ============================================================================
-// PBR Lighting Functions
+// PBR Lighting Functions (Cook-Torrance BRDF)
 // ============================================================================
 
 // PBR intensity multiplier to compensate for energy conservation
 // PBR is inherently darker than legacy Phong.
 const float PBR_INTENSITY_BOOST = 1.0;
+
+void evaluate_brdf(
+    vec3 N, vec3 V, vec3 L, vec3 albedo, float roughness, float metallic, vec3 F0,
+    vec3 radiance, float shadow, inout vec3 Lo, inout float spec_lum)
+{
+    float NdotL = max(dot(N, L), 0.0);
+    if (NdotL <= 0.0) return; // Early out
+
+    float NdotV = max(dot(N, V), 1e-4);
+    vec3 H = normalize(V + L);
+    float HdotV = max(dot(H, V), 0.0);
+
+    float NDF = DistributionGGX(N, H, roughness);
+    float V_term = VisibilitySmithGGXCorrelated(NdotL, NdotV, roughness);
+    vec3 F = fresnelSchlickFast(HdotV, F0);
+    vec3 specular = NDF * V_term * F;
+
+    vec3 kS = F;
+    vec3 kD = vec3(1.0) - kS;
+    kD *= 1.0 - metallic;
+
+    vec3 specular_radiance = specular * radiance * NdotL * shadow;
+
+    Lo += (kD * albedo / PI) * radiance * NdotL * shadow + specular_radiance;
+    spec_lum += get_luminance(specular_radiance);
+}
 
 /**
  * PBR lighting with Cook-Torrance BRDF - supports all light types.
@@ -426,7 +508,8 @@ const float PBR_INTENSITY_BOOST = 1.0;
  * @param metallic Metallic property [0=dielectric, 1=metal]
  * @param ao Ambient occlusion [0=fully occluded, 1=no occlusion]
  */
-vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness, float metallic, float ao) {
+vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness, float metallic, float ao, out float primaryShadow) {
+	primaryShadow = 1.0;
 	vec3 N = normalize(normal);
 	vec3 V = normalize(viewPos - frag_pos);
 
@@ -438,65 +521,73 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 	vec3  Lo = vec3(0.0);
 	float spec_lum = 0.0;
 
-	for (int i = 0; i < num_lights; ++i) {
-		// Get light direction and attenuation based on light type
-		vec3  L;
+	// ------------------------------------------------------------------
+	// PASS 1: Global Directional Light (Sun/Moon)
+	// ------------------------------------------------------------------
+	for (int i = 0; i < min(2, num_lights); ++i) {
+		if (lights[i].type != LIGHT_TYPE_DIRECTIONAL) {
+			continue;
+		}
+
+		if (lights[i].intensity <= 0.0) {
+			continue;
+		}
+
+		vec3 L;
+		float base_attenuation; // Unused for directional, but needed for your function signature
+		calculateLightContribution(i, frag_pos, L, base_attenuation);
+
+		// Horizon check and normal-facing check
+		if (L.y <= 0.0 || dot(N, L) <= 0.0) continue;
+
+		// Atmospheric transmittance isolated outside the loop
+		float r = kEarthRadiusKM + (frag_pos.y / (1000.0 * worldScale));
+		vec3 atmosphereTransmittance = texture(u_transmittanceLUT, getTransmittanceUV(r, L.y)).rgb;
+
+		float attenuation = lights[i].intensity * PBR_INTENSITY_BOOST;
+		vec3 radiance = lights[i].color * attenuation * atmosphereTransmittance;
+
+		// Cloud shadows isolated outside the loop
+		float shadow = calculateShadow(i, frag_pos, N, L);
+		shadow *= calculateCloudShadow(i, frag_pos);
+
+		primaryShadow = min(primaryShadow, shadow);
+
+		evaluate_brdf(N, V, L, albedo, roughness, metallic, F0, radiance, shadow, Lo, spec_lum);
+	}
+
+	// ------------------------------------------------------------------
+	// PASS 2: Local Lights (Point/Spot)
+	// ------------------------------------------------------------------
+	for (int i = 2; i < num_lights; ++i) {
+		if (lights[i].intensity <= 0.0) {
+			continue;
+		}
+
+		vec3 L;
 		float base_attenuation;
 		calculateLightContribution(i, frag_pos, L, base_attenuation);
 
-		vec3 H = normalize(V + L);
+		// Quick culling before calculating attenuation or shadows
+		if (dot(N, L) <= 0.0) continue;
 
-		// For PBR, we apply intensity boost to compensate for energy conservation
-		// Note: directional lights don't use distance attenuation
-		float attenuation;
-		vec3  atmosphereTransmittance = vec3(1.0);
+		float attenuation = (lights[i].intensity * PBR_INTENSITY_BOOST) * base_attenuation;
+		vec3 radiance = lights[i].color * attenuation;
 
-		if (lights[i].type == LIGHT_TYPE_DIRECTIONAL) {
-			attenuation = lights[i].intensity * PBR_INTENSITY_BOOST;
-
-			// Apply atmospheric attenuation for directional lights (Sun/Moon)
-			float r = kEarthRadiusKM + (frag_pos.y / (1000.0 * worldScale));
-			float mu = L.y;
-			atmosphereTransmittance = texture(u_transmittanceLUT, getTransmittanceUV(r, mu)).rgb;
-		} else {
-			attenuation = (lights[i].intensity * PBR_INTENSITY_BOOST) * base_attenuation;
-		}
-		vec3 radiance = lights[i].color * attenuation * atmosphereTransmittance;
-
-		// Cook-Torrance BRDF
-		float NDF = DistributionGGX(N, H, roughness);
-		float G = GeometrySmith(N, V, L, roughness);
-		vec3  F = fresnelSchlick(max(dot(H, V), 0.0), F0);
-
-		vec3  numerator = NDF * G * F;
-		float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.0001;
-		vec3  specular = numerator / denominator;
-
-		// kS is Fresnel (specular component)
-		vec3 kS = F;
-		// kD is diffuse component (energy conservation: kD + kS = 1.0)
-		vec3 kD = vec3(1.0) - kS;
-		// Metals don't have diffuse lighting
-		kD *= 1.0 - metallic;
-
-		float NdotL = max(dot(N, L), 0.0);
-
-		// Calculate shadow with slope-scaled bias
 		float shadow = calculateShadow(i, frag_pos, N, L);
 
-		// Apply cloud shadow for directional lights
-		if (lights[i].type == LIGHT_TYPE_DIRECTIONAL) {
-			shadow *= calculateCloudShadow(i, frag_pos);
-		}
-
-		// Add to outgoing radiance Lo
-		vec3 specular_radiance = specular * radiance * NdotL * shadow;
-		Lo += (kD * albedo / PI) * radiance * NdotL * shadow + specular_radiance;
-		spec_lum += get_luminance(specular_radiance);
+		evaluate_brdf(N, V, L, albedo, roughness, metallic, F0, radiance, shadow, Lo, spec_lum);
 	}
 
-	// Ambient lighting for PBR (uses ambient_light uniform from main branch)
-	vec3 ambientDiffuse = ambient_light * albedo * ao;
+	// Spatially-varying SH ambient augmented with macro occlusion
+	float terrainOcc = calculateTerrainOcclusion(frag_pos, N);
+	vec3  spatialSHAmbient = getSpatialAmbientSH(frag_pos, N);
+
+	float combinedAO = ao * terrainOcc;
+	vec3  ambientDiffuse = spatialSHAmbient * albedo * combinedAO;
+
+	// Scale down ambient overall to maintain shadow contrast and prevent "flat" look
+	// ambientDiffuse *= 0.75;
 
 	// Environment reflection approximation for glossy surfaces
 	vec3 R = reflect(-V, N);
@@ -506,14 +597,11 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 	float NdotV = max(dot(N, V), 0.0);
 	vec3  F_env = fresnelSchlickRoughness(NdotV, F0_env, roughness);
 
-	// Fake environment color - gradient from horizon to sky
-	// Scaled by ambient_light to respond to time-of-day
-	float upAmount = R.y * 0.5 + 0.5;
-	vec3  envColor = mix(
-		ambient_light * 0.2, // Ground color (approximate bounce)
-		ambient_light * 1.2, // Sky color (approximate)
-		smoothstep(0.0, 0.7, upAmount)
-	);
+	// Fake environment color using spatial SH
+	vec3 envColor = getSpatialAmbientSH(frag_pos, R);
+
+	// Attenuate reflection by occlusion to prevent glow in caves/valleys
+	envColor *= terrainOcc;
 
 	// Environment reflection strength based on smoothness
 	float smoothness = 1.0 - roughness;
@@ -521,7 +609,7 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 
 	// Metallic surfaces should reflect the environment color tinted by albedo
 	// Non-metallic surfaces reflect environment but less strongly
-	vec3 ambientSpecular = F_env * envColor * envStrength * ao;
+	vec3 ambientSpecular = F_env * envColor * envStrength * combinedAO;
 
 	// Combine diffuse and specular ambient
 	vec3 ambient = ambientDiffuse * (1.0 - metallic * 0.9) + ambientSpecular;
@@ -530,12 +618,114 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 	return vec4(color, spec_lum + get_luminance(ambientSpecular));
 }
 
+void evaluate_foliage_brdf(
+    vec3 N, vec3 V, vec3 L, vec3 albedo, float roughness, float metallic, vec3 F0,
+    vec3 radiance, float shadow, float translucency, inout vec3 Lo, inout float spec_lum)
+{
+    float NdotL = dot(N, L);
+    float NdotV = max(dot(N, V), 1e-4);
+
+    // 1. FRONT-SIDE REFLECTION (Standard PBR)
+    // Only calculate specular if the light is actually in front of the normal
+    if (NdotL > 0.0) {
+        vec3 H = normalize(V + L);
+        float HdotV = max(dot(H, V), 0.0);
+
+        float NDF = DistributionGGX(N, H, roughness);
+        float V_term = VisibilitySmithGGXCorrelated(NdotL, NdotV, roughness);
+        vec3  F = fresnelSchlickFast(HdotV, F0);
+
+        vec3 specular = NDF * V_term * F;
+        vec3 kS = F;
+        vec3 kD = (vec3(1.0) - kS) * (1.0 - metallic);
+
+        vec3 specular_out = specular * radiance * NdotL * shadow;
+        Lo += (kD * albedo / PI) * radiance * NdotL * shadow + specular_out;
+        spec_lum += get_luminance(specular_out);
+    }
+
+    // 2. BACK-SIDE TRANSMISSION (Subsurface Scattering approximation)
+    // If the light is behind the camera-facing normal, it "bleeds" through.
+    // We use a simplified 'Wrapped' or 'Inverted' diffuse model.
+    float transmissionNdotL = max(-NdotL, 0.0);
+    if (transmissionNdotL > 0.0) {
+        // Translucent light is generally filtered by the material color (albedo)
+        // and doesn't have a specular component.
+        vec3 transmission_out = (albedo / PI) * radiance * transmissionNdotL * translucency * shadow;
+        Lo += transmission_out;
+    }
+}
+
+vec4 apply_lighting_foliage(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness, float metallic, float ao, out float primaryShadow) {
+    primaryShadow = 1.0;
+    vec3 N = normalize(normal); // Already flipped via gl_FrontFacing in grass.frag
+    vec3 V = normalize(viewPos - frag_pos);
+    vec3 F0 = mix(vec3(0.04), albedo, metallic);
+
+    vec3 Lo = vec3(0.0);
+    float spec_lum = 0.0;
+
+    // How much light bleeds through the grass (0.0 to 1.0)
+    float translucency = 0.5;
+
+    // PASS 1: Directional Light (with Atmosphere & Clouds)
+	for (int i = 0; i < min(2, num_lights); ++i) {
+		if (lights[i].type != LIGHT_TYPE_DIRECTIONAL) {
+			continue;
+		}
+		if (lights[i].intensity <= 0.0) {
+			continue;
+		}
+
+        vec3 L; float atten;
+        calculateLightContribution(i, frag_pos, L, atten);
+
+		// Horizon check
+		if (L.y <= 0.0) continue;
+
+        float r = kEarthRadiusKM + (frag_pos.y / (1000.0 * worldScale));
+        vec3 atmosphereTransmittance = texture(u_transmittanceLUT, getTransmittanceUV(r, L.y)).rgb;
+        vec3 radiance = lights[i].color * (lights[i].intensity * PBR_INTENSITY_BOOST) * atmosphereTransmittance;
+
+        float shadow = min(calculateShadow(i, frag_pos, N, L), calculateCloudShadow(i, frag_pos));
+
+		primaryShadow = min(primaryShadow, shadow);
+
+        evaluate_foliage_brdf(N, V, L, albedo, roughness, metallic, F0, radiance, shadow, translucency, Lo, spec_lum);
+    }
+
+    // PASS 2: Local Lights
+    for (int i = min(2, num_lights); i < num_lights; ++i) {
+		if (lights[i].intensity <= 0.0) {
+			continue;
+		}
+
+        vec3 L; float base_atten;
+        calculateLightContribution(i, frag_pos, L, base_atten);
+
+        // We only skip if the light is perpendicular (rare)
+        if (abs(dot(N, L)) < 0.0001) continue;
+
+        vec3 radiance = lights[i].color * (lights[i].intensity * PBR_INTENSITY_BOOST) * base_atten;
+        float shadow = calculateShadow(i, frag_pos, N, L);
+
+        evaluate_foliage_brdf(N, V, L, albedo, roughness, metallic, F0, radiance, shadow, translucency, Lo, spec_lum);
+    }
+
+    // Standard Ambient (using your existing SH logic)
+    float terrainOcc = calculateTerrainOcclusion(frag_pos, N);
+    vec3 ambient = (getSpatialAmbientSH(frag_pos, N) * albedo) * (ao * terrainOcc);
+
+    return vec4(ambient + Lo, spec_lum);
+}
+
 /**
  * PBR lighting without shadows - for shaders that don't need shadow calculations.
  * Supports all light types (point, directional, spot).
  * Returns vec4(color.rgb, specular_luminance).
  */
-vec4 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness, float metallic, float ao) {
+vec4 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness, float metallic, float ao, out float primaryShadow) {
+	primaryShadow = 1.0;
 	vec3 N = normalize(normal);
 	vec3 V = normalize(viewPos - frag_pos);
 
@@ -587,22 +777,39 @@ vec4 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, floa
 			shadow *= calculateCloudShadow(i, frag_pos);
 		}
 
+		if (i == 0)
+			primaryShadow = shadow;
+
 		vec3 specular_radiance = specular * radiance * NdotL * shadow;
 		Lo += (kD * albedo / PI) * radiance * NdotL * shadow + specular_radiance;
 		spec_lum += get_luminance(specular_radiance);
 	}
 
-	// Ambient (same as shadowed version)
-	vec3  ambientDiffuse = ambient_light * albedo * ao;
-	vec3  R = reflect(-V, N);
+	// Spatially-varying SH ambient augmented with macro occlusion
+	float terrainOcc = calculateTerrainOcclusion(frag_pos, N);
+	vec3  spatialSHAmbient = getSpatialAmbientSH(frag_pos, N);
+
+	float combinedAO = ao * terrainOcc;
+	vec3  ambientDiffuse = spatialSHAmbient * albedo * combinedAO;
+
+	// Scale down ambient overall to maintain shadow contrast
+	ambientDiffuse *= 0.75;
+
+	vec3 R = reflect(-V, N);
+
 	vec3  F0_env = mix(vec3(0.04), albedo, metallic);
 	float NdotV = max(dot(N, V), 0.0);
 	vec3  F_env = fresnelSchlickRoughness(NdotV, F0_env, roughness);
-	float upAmount = R.y * 0.5 + 0.5;
-	vec3  envColor = mix(ambient_light * 0.2, ambient_light * 1.2, smoothstep(0.0, 0.7, upAmount));
+
+	// Fake environment color using spatial SH
+	vec3 envColor = getSpatialAmbientSH(frag_pos, R);
+
+	// Attenuate reflection by occlusion to prevent glow in caves/valleys
+	envColor *= terrainOcc;
+
 	float smoothness = 1.0 - roughness;
 	float envStrength = smoothness * smoothness * 0.8;
-	vec3  ambientSpecular = F_env * envColor * envStrength * ao;
+	vec3  ambientSpecular = F_env * envColor * envStrength * combinedAO;
 	vec3  ambient = ambientDiffuse * (1.0 - metallic * 0.9) + ambientSpecular;
 
 	return vec4(ambient + Lo, spec_lum + get_luminance(ambientSpecular));
@@ -616,7 +823,8 @@ vec4 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, floa
  * Apply lighting with shadow support - supports all light types.
  * Returns vec4(color.rgb, specular_luminance).
  */
-vec4 apply_lighting(vec3 frag_pos, vec3 normal, vec3 albedo, float specular_strength) {
+vec4 apply_lighting(vec3 frag_pos, vec3 normal, vec3 albedo, float specular_strength, out float primaryShadow) {
+	primaryShadow = 1.0;
 	vec3  result = ambient_light * albedo;
 	float spec_lum = 0.0;
 
@@ -638,6 +846,9 @@ vec4 apply_lighting(vec3 frag_pos, vec3 normal, vec3 albedo, float specular_stre
 			// Apply cloud shadow
 			shadow *= calculateCloudShadow(i, frag_pos);
 		}
+
+		if (i == 0)
+			primaryShadow = shadow;
 
 		// Diffuse
 		float diff = max(dot(normal, light_dir), 0.0);
@@ -662,7 +873,8 @@ vec4 apply_lighting(vec3 frag_pos, vec3 normal, vec3 albedo, float specular_stre
  * Apply lighting without shadows - supports all light types.
  * Returns vec4(color.rgb, specular_luminance).
  */
-vec4 apply_lighting_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, float specular_strength) {
+vec4 apply_lighting_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, float specular_strength, out float primaryShadow) {
+	primaryShadow = 1.0;
 	vec3  result = ambient_light * albedo;
 	float spec_lum = 0.0;
 
@@ -673,14 +885,10 @@ vec4 apply_lighting_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, float sp
 
 		// Atmospheric attenuation for directional light
 		vec3  atmosphereTransmittance = vec3(1.0);
-		float shadow = 1.0;
 		if (lights[i].type == LIGHT_TYPE_DIRECTIONAL) {
 			float r = kEarthRadiusKM + (frag_pos.y / (1000.0 * worldScale));
 			float mu = light_dir.y;
 			atmosphereTransmittance = texture(u_transmittanceLUT, getTransmittanceUV(r, mu)).rgb;
-
-			// Apply cloud shadow
-			shadow *= calculateCloudShadow(i, frag_pos);
 		}
 
 		// Diffuse
@@ -692,9 +900,9 @@ vec4 apply_lighting_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, float sp
 		vec3  reflect_dir = reflect(-light_dir, normal);
 		float spec = pow(max(dot(view_dir, reflect_dir), 0.0), 32);
 		vec3  specular_contribution = lights[i].color * atmosphereTransmittance * spec * specular_strength *
-			lights[i].intensity * shadow * attenuation;
+			lights[i].intensity * attenuation;
 
-		result += (diffuse * lights[i].intensity * shadow * attenuation) + specular_contribution;
+		result += (diffuse * lights[i].intensity * attenuation) + specular_contribution;
 		spec_lum += get_luminance(specular_contribution);
 	}
 
@@ -747,8 +955,10 @@ vec4 apply_lighting_pbr_iridescent_no_shadows(
 	vec3  normal,
 	vec3  base_color,
 	float roughness,
-	float iridescence_strength
+	float iridescence_strength,
+	out float primaryShadow
 ) {
+	primaryShadow = 1.0;
 	vec3  N = normalize(normal);
 	vec3  V = normalize(viewPos - frag_pos);
 	float NdotV = max(dot(N, V), 0.0);
@@ -800,13 +1010,7 @@ vec4 apply_lighting_pbr_iridescent_no_shadows(
 		float denominator = 4.0 * NdotV * NdotL + 0.0001;
 		vec3  specular = numerator / denominator;
 
-		// Apply cloud shadow for directional lights
-		float shadow = 1.0;
-		if (lights[i].type == LIGHT_TYPE_DIRECTIONAL) {
-			shadow *= calculateCloudShadow(i, frag_pos);
-		}
-
-		vec3 specular_contribution = specular * radiance * NdotL * shadow;
+		vec3 specular_contribution = specular * radiance * NdotL;
 		specular_total += specular_contribution;
 		spec_lum += get_luminance(specular_contribution);
 	}
@@ -855,8 +1059,10 @@ vec4 apply_emissive_surface(
 	vec3  emissive_color,
 	float emissive_intensity,
 	vec3  base_albedo,
-	float emissive_coverage
+	float emissive_coverage,
+	out float primaryShadow
 ) {
+	primaryShadow = 1.0;
 	vec3 N = normalize(normal);
 	vec3 V = normalize(viewPos - frag_pos);
 
@@ -870,7 +1076,7 @@ vec4 apply_emissive_surface(
 	// The non-emissive part gets regular lighting
 	vec4 lit_surface = vec4(0.0);
 	if (emissive_coverage < 1.0) {
-		lit_surface = apply_lighting_no_shadows(frag_pos, normal, base_albedo, 0.5);
+		lit_surface = apply_lighting_no_shadows(frag_pos, normal, base_albedo, 0.5, primaryShadow);
 	}
 
 	// Blend between emissive and lit surface
@@ -900,8 +1106,10 @@ vec4 apply_emissive_surface_pbr(
 	vec3  base_albedo,
 	float roughness,
 	float metallic,
-	float emissive_mask
+	float emissive_mask,
+	out float primaryShadow
 ) {
+	primaryShadow = 1.0;
 	vec3 N = normalize(normal);
 	vec3 V = normalize(viewPos - frag_pos);
 
@@ -911,7 +1119,7 @@ vec4 apply_emissive_surface_pbr(
 	emission += emissive_color * fresnel * emissive_intensity * 0.3;
 
 	// PBR lit component for non-emissive parts
-	vec4 pbr_lit = apply_lighting_pbr_no_shadows(frag_pos, normal, base_albedo, roughness, metallic, 1.0);
+	vec4 pbr_lit = apply_lighting_pbr_no_shadows(frag_pos, normal, base_albedo, roughness, metallic, 1.0, primaryShadow);
 
 	// Blend based on emissive mask
 	return mix(pbr_lit, vec4(emission, get_luminance(emission)), emissive_mask);

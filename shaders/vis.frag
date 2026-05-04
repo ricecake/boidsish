@@ -1,19 +1,19 @@
 #version 430 core
 #extension GL_GOOGLE_include_directive : enable
 layout(location = 0) out vec4 FragColor;
-layout(location = 1) out vec2 Velocity;
+layout(location = 1) out vec4 Velocity;
+layout(location = 2) out vec4 NormalOut;
+layout(location = 3) out vec4 AlbedoOut;
 
 #include "common_uniforms.glsl"
 #include "temporal_data.glsl"
-
-layout(std430, binding = 2) buffer UniformsSSBO {
-	CommonUniforms uniforms_data[];
-};
 
 uniform bool uUseMDI = false;
 flat in int  vUniformIndex;
 
 #include "helpers/fast_noise.glsl"
+#define USE_TERRAIN_DATA
+#include "helpers/terrain_shadows.glsl"
 #include "helpers/lighting.glsl"
 #include "visual_effects.frag"
 #include "visual_effects.glsl"
@@ -72,6 +72,8 @@ uniform int   use_texture;
 uniform float u_windRimHighlight;
 
 uniform sampler2D refractionTexture;
+
+uniform mat4 view;
 
 void main() {
 	bool  use_ssbo = uUseMDI && vUniformIndex >= 0;
@@ -181,13 +183,9 @@ void main() {
 
 	// Choose between PBR and legacy lighting
 	vec4 lightResult;
-	if (c_usePBR) {
-		lightResult = apply_lighting_pbr(FragPos, norm, albedo * baseAlpha, tex_roughness, tex_metallic, tex_ao);
-		lightResult.rgb += emissive;
-	} else {
-		lightResult = apply_lighting(FragPos, norm, albedo * baseAlpha, 1.0);
-		lightResult.rgb += emissive;
-	}
+	float primaryShadow;
+	lightResult = apply_lighting_pbr(FragPos, norm, albedo * baseAlpha, tex_roughness, tex_metallic, tex_ao, primaryShadow);
+	lightResult.rgb += emissive;
 
 	vec3  result = lightResult.rgb;
 	float spec_lum = lightResult.a;
@@ -333,8 +331,12 @@ void main() {
 
 	FragColor = outColor;
 
-	// Calculate screen-space velocity
+	// Calculate screen-space velocity and material properties
 	vec2 a = (CurPosition.xy / CurPosition.w) * 0.5 + 0.5;
 	vec2 b = (PrevPosition.xy / PrevPosition.w) * 0.5 + 0.5;
-	Velocity = a - b;
+	Velocity = vec4(a - b, tex_roughness, tex_metallic);
+
+	// Output view-space normal
+	NormalOut = vec4(normalize(mat3(view) * norm), primaryShadow);
+	AlbedoOut = vec4(albedo * baseAlpha, 1.0);
 }

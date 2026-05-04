@@ -8,6 +8,7 @@
 #include "mesh_optimizer_util.h"
 #include "procedural_mesher.h"
 #include "procedural_optimizer.h"
+#include "procedural_refiner.h"
 #include "spline.h"
 #include "terrain_deformation_manager.h"
 #include "terrain_deformations.h"
@@ -32,6 +33,21 @@ namespace Boidsish {
 		struct SCAttractor {
 			glm::vec3 pos;
 			bool      active = true;
+		};
+
+		struct SpringNode {
+			int       id;
+			int       parentId;
+			glm::vec3 pos;
+			glm::vec3 lastPos;
+			glm::vec3 velocity = {0, 0, 0};
+			float     radius = 0.1f;
+			float     maxLength = 1.0f;
+			float     currentLength = 0.0f;
+			bool      isSplit = false;
+			int       generation = 0;
+			float     flexibility = 1.0f;
+			bool      isEnd = true;
 		};
 
 		struct LSystem {
@@ -282,6 +298,9 @@ namespace Boidsish {
 		case ProceduralType::TreeSpaceColonization:
 			ir = GenerateSpaceColonizationTreeIR(seed);
 			break;
+		case ProceduralType::TreeSpring:
+			ir = GenerateSpringPlantIR(seed);
+			break;
 		case ProceduralType::Critter:
 			ir = GenerateCritterIR(seed);
 			break;
@@ -293,6 +312,14 @@ namespace Boidsish {
 		}
 
 		ProceduralOptimizer::Optimize(ir);
+		ProceduralRefiner::Refine(ir);
+		return ProceduralMesher::GenerateModel(ir);
+	}
+
+	std::shared_ptr<Model> ProceduralGenerator::GenerateSpringPlant(unsigned int seed, const SpringPlantConfig& config) {
+		auto ir = GenerateSpringPlantIR(seed, config);
+		ProceduralOptimizer::Optimize(ir);
+		ProceduralRefiner::Refine(ir);
 		return ProceduralMesher::GenerateModel(ir);
 	}
 
@@ -337,7 +364,9 @@ namespace Boidsish {
 		indices = {0, 11, 5, 0, 5, 1, 0, 1, 7, 0, 7, 10, 0, 10, 11, 1, 5, 9, 5, 11, 4,  11, 10, 2,  10, 7, 6, 7, 1, 8,
 		           3, 9,  4, 3, 4, 2, 3, 2, 6, 3, 6, 8,  3, 8,  9,  4, 9, 5, 2, 4,  11, 6,  2,  10, 8,  6, 7, 9, 8, 1};
 
-		return std::make_shared<Model>(CreateModelDataFromGeometry(vertices, indices, glm::vec3(1.0f)));
+		auto model = std::make_shared<Model>(CreateModelDataFromGeometry(vertices, indices, glm::vec3(1.0f)));
+		model->SetAllowMegabuffer(false);
+		return model;
 	}
 
 	ProceduralIR ProceduralGenerator::GenerateGrassIR(unsigned int seed) {
@@ -378,6 +407,7 @@ namespace Boidsish {
 	std::shared_ptr<Model> ProceduralGenerator::GenerateGrass(unsigned int seed) {
 		auto ir = GenerateGrassIR(seed);
 		ProceduralOptimizer::Optimize(ir);
+		ProceduralRefiner::Refine(ir);
 		return ProceduralMesher::GenerateModel(ir);
 	}
 
@@ -510,12 +540,14 @@ namespace Boidsish {
 	) {
 		auto ir = GenerateFlowerIR(seed, custom_axiom, custom_rules, iterations);
 		ProceduralOptimizer::Optimize(ir);
+		ProceduralRefiner::Refine(ir);
 		return ProceduralMesher::GenerateModel(ir);
 	}
 
 	std::shared_ptr<Model> ProceduralGenerator::GenerateSpaceColonizationTree(unsigned int seed) {
 		auto ir = GenerateSpaceColonizationTreeIR(seed);
 		ProceduralOptimizer::Optimize(ir);
+		ProceduralRefiner::Refine(ir);
 		return ProceduralMesher::GenerateModel(ir);
 	}
 
@@ -523,25 +555,107 @@ namespace Boidsish {
 		std::mt19937 gen(seed);
 
 		// Parameters
-		const float killDistance = 0.5f;
-		const float influenceRadius = 1.5f;
-		const float growthStep = 0.3f;
-		const int   numAttractors = 400;
-		const float exponent = 2.0f; // Leonardo's rule
+		float killDistance = 0.5f;
+		float influenceRadius = 1.5f;
+		float growthStep = 0.3f;
+		int   numAttractors = 400;
+		float exponent = 2.0f; // Leonardo's rule
+		int   initialTrunkNodes = 10;
 
-		std::vector<SCAttractor>              attractors;
-		std::uniform_real_distribution<float> crownX(-3.0f, 3.0f);
-		std::uniform_real_distribution<float> crownY(3.0f, 10.0f);
-		std::uniform_real_distribution<float> crownZ(-3.0f, 3.0f);
+		int variant = seed % 6;
 
+		// Variant-specific parameter overrides
+		if (variant == 1) { // Sphere
+			numAttractors = 600;
+			influenceRadius = 2.0f;
+		} else if (variant == 2) { // Umbrella
+			numAttractors = 700;
+			initialTrunkNodes = 25;
+			influenceRadius = 2.5f;
+		} else if (variant == 3) { // Spread out
+			numAttractors = 400;
+			influenceRadius = 3.5f;
+			growthStep = 0.5f;
+		} else if (variant == 4) { // Spiral
+			numAttractors = 500;
+			influenceRadius = 1.5f;
+			exponent = 2.5f;
+		} else if (variant == 5) { // Sparse half capsule
+			numAttractors = 350;
+			killDistance = 0.7f;
+			influenceRadius = 2.0f;
+		}
+
+		std::vector<SCAttractor> attractors;
+		std::uniform_real_distribution<float> dis(-1.0f, 1.0f);
+
+		glm::vec3 crownBase(0.0f);
 		for (int i = 0; i < numAttractors; ++i) {
-			attractors.push_back({{crownX(gen), crownY(gen), crownZ(gen)}, true});
+			glm::vec3 pos(0.0f);
+			if (variant == 0) { // Box
+				pos = glm::vec3(dis(gen) * 3.0f, 3.0f + (dis(gen) + 1.0f) * 3.5f, dis(gen) * 3.0f);
+				crownBase = glm::vec3(0, 3, 0);
+			} else if (variant == 1) { // Sphere
+				float phi = (dis(gen) + 1.0f) * (float)std::numbers::pi;
+				float theta = (dis(gen) + 1.0f) * 0.5f * (float)std::numbers::pi;
+				float r = std::pow((dis(gen) + 1.0f) * 0.5f, 1.0f/3.0f) * 4.0f;
+				pos = glm::vec3(
+					r * std::sin(theta) * std::cos(phi),
+					7.0f + r * std::cos(theta),
+					r * std::sin(theta) * std::sin(phi)
+				);
+				crownBase = glm::vec3(0, 7, 0);
+			} else if (variant == 2) { // Umbrella
+				float angle = (dis(gen) + 1.0f) * (float)std::numbers::pi;
+				float r = std::sqrt((dis(gen) + 1.0f) * 0.5f) * 5.0f;
+				pos = glm::vec3(
+					r * std::cos(angle),
+					9.0f + dis(gen) * 1.0f,
+					r * std::sin(angle)
+				);
+				crownBase = glm::vec3(0, 9, 0);
+			} else if (variant == 3) { // Spread out
+				pos = glm::vec3(dis(gen) * 8.0f, 4.0f + (dis(gen) + 1.0f) * 6.0f, dis(gen) * 8.0f);
+				crownBase = glm::vec3(0, 4, 0);
+			} else if (variant == 4) { // Spiral
+				float t = (dis(gen) + 1.0f) * 0.5f;
+				float angle = t * 4.0f * (float)std::numbers::pi;
+				float r = 1.0f + t * 2.0f + dis(gen) * 0.5f;
+				pos = glm::vec3(
+					r * std::cos(angle),
+					2.0f + t * 8.0f + dis(gen) * 0.5f,
+					r * std::sin(angle)
+				);
+				crownBase = glm::vec3(0, 2, 0);
+			} else if (variant == 5) { // Sparse half capsule
+				float phi = (dis(gen) + 1.0f) * (float)std::numbers::pi;
+				float theta = (dis(gen) + 1.0f) * 0.25f * (float)std::numbers::pi;
+				float r = 3.0f + dis(gen) * 0.5f;
+				pos = glm::vec3(
+					r * std::sin(theta) * std::cos(phi),
+					6.0f + r * std::cos(theta),
+					r * std::sin(theta) * std::sin(phi)
+				);
+				crownBase = glm::vec3(0, 6, 0);
+			}
+			attractors.push_back({pos, true});
+		}
+
+		// Add lure attractors to guide trunk to crown
+		float trunkTopY = (float)initialTrunkNodes * growthStep;
+		if (crownBase.y > trunkTopY) {
+			int numLures = 30;
+			for (int i = 0; i < numLures; ++i) {
+				float t = (float)i / (float)numLures;
+				glm::vec3 lurePos = glm::vec3(0, trunkTopY + t * (crownBase.y - trunkTopY), 0);
+				lurePos += glm::vec3(dis(gen) * 0.5f, 0, dis(gen) * 0.5f);
+				attractors.push_back({lurePos, true});
+			}
 		}
 
 		std::vector<SCNode> nodes;
 		// Root nodes (trunk) to reach the crown
 		nodes.push_back({0, -1, {0, 0, 0}});
-		int initialTrunkNodes = 10;
 		for (int i = 1; i <= initialTrunkNodes; ++i) {
 			nodes.push_back({i, i - 1, {0, (float)i * growthStep, 0}});
 			nodes[i - 1].children.push_back(i);
@@ -636,8 +750,9 @@ namespace Boidsish {
 
 		ProceduralIR ir;
 		ir.name = "sc_tree";
-		glm::vec3 woodCol(0.35f, 0.25f, 0.15f);
-		glm::vec3 leafCol(0.1f, 0.45f, 0.1f);
+		std::uniform_real_distribution<float> colDis(-0.05f, 0.05f);
+		glm::vec3 woodCol(0.35f + colDis(gen), 0.25f + colDis(gen), 0.15f + colDis(gen));
+		glm::vec3 leafCol(0.1f + colDis(gen), 0.45f + colDis(gen), 0.1f + colDis(gen));
 
 		std::vector<int> node_to_ir(nodes.size(), -1);
 		for (size_t i = 0; i < nodes.size(); ++i) {
@@ -659,6 +774,251 @@ namespace Boidsish {
 		for (size_t i = 0; i < nodes.size(); ++i) {
 			if (nodes[i].children.empty()) {
 				ir.AddPuffball(nodes[i].pos, 0.4f, leafCol, node_to_ir[i]);
+			}
+		}
+
+		return ir;
+	}
+
+	ProceduralIR ProceduralGenerator::GenerateSpringPlantIR(unsigned int seed, const SpringPlantConfig& config) {
+		std::mt19937                          gen(seed);
+		std::uniform_real_distribution<float> dis(0.0f, 1.0f);
+
+		ProceduralIR ir;
+		ir.name = "spring_plant";
+
+		std::vector<SpringNode> nodes;
+		// Initial root node at origin
+		SpringNode root;
+		root.id = 0;
+		root.parentId = -1;
+		root.pos = {0, 0, 0};
+		root.lastPos = root.pos;
+		root.radius = 0.2f;
+		root.generation = 0;
+		root.isEnd = false;
+		root.isSplit = true;
+		nodes.push_back(root);
+
+		// First segment end
+		SpringNode firstEnd;
+		firstEnd.id = 1;
+		firstEnd.parentId = 0;
+		firstEnd.pos = {0, 0.1f, 0};
+		firstEnd.lastPos = firstEnd.pos;
+		firstEnd.radius = 0.15f;
+		firstEnd.generation = 1;
+		firstEnd.maxLength = config.branch_length_factor;
+		firstEnd.currentLength = 0.1f;
+		firstEnd.isEnd = true;
+		firstEnd.isSplit = false;
+		firstEnd.flexibility = 1.0f;
+		nodes.push_back(firstEnd);
+
+		int nextId = 2;
+
+		for (int iter = 0; iter < config.iterations; ++iter) {
+			// Growth and Simulation Loop
+			float dt = 0.02f;
+			int   steps = static_cast<int>(config.equilibrium_time / dt);
+			if (steps < 1)
+				steps = 1;
+
+			for (int step = 0; step < steps; ++step) {
+				std::vector<glm::vec3> forces(nodes.size(), glm::vec3(0.0f));
+
+				for (size_t i = 0; i < nodes.size(); ++i) {
+					if (nodes[i].parentId == -1)
+						continue;
+
+					SpringNode& node = nodes[i];
+					SpringNode& parent = nodes[node.parentId];
+
+					// 1. Growth: segments grow over time until they hit maxLength
+					if (node.currentLength < node.maxLength) {
+						float growth = 0.5f * dt;
+						node.currentLength += growth;
+						if (node.currentLength > node.maxLength)
+							node.currentLength = node.maxLength;
+
+						// Also grow thicker
+						node.radius += growth * 0.1f;
+					}
+
+					// 2. Spring Force to parent (Distance constraint)
+					glm::vec3 toParent = parent.pos - node.pos;
+					float     dist = glm::length(toParent);
+					if (dist > 0.0001f) {
+						float springForce = (dist - node.currentLength) * 50.0f;
+						forces[i] += (toParent / dist) * springForce;
+					}
+
+					// 3. Upward Pull
+					forces[i] += glm::vec3(0, config.up_pull, 0) * node.flexibility;
+
+					// 4. Outward Pull (Away from Y axis)
+					glm::vec3 outward = node.pos;
+					outward.y = 0;
+					if (glm::length(outward) > 0.0001f) {
+						forces[i] += glm::normalize(outward) * config.up_pull * 0.5f * node.flexibility;
+					}
+
+					// 5. Repulsion from other ends
+					if (node.isEnd) {
+						for (size_t j = 0; j < nodes.size(); ++j) {
+							if (i == j)
+								continue;
+							if (!nodes[j].isEnd)
+								continue;
+
+							glm::vec3 diff = node.pos - nodes[j].pos;
+							float     d2 = glm::length2(diff);
+							if (d2 < 16.0f && d2 > 0.0001f) {
+								forces[i] += (glm::normalize(diff) * config.spring_repulsion) / d2;
+							}
+						}
+					}
+
+					// 6. Curvature and Spiral
+					float     angle = node.pos.y * config.spiral + node.generation * 0.5f;
+					glm::vec3 spiralForce(std::cos(angle), 0, std::sin(angle));
+					forces[i] += spiralForce * config.curvature * node.flexibility;
+
+					// 7. Ground Repulsion
+					if (node.pos.y > 0.0001f) {
+						float groundForce = config.ground_repulsion / (node.pos.y * node.pos.y);
+						forces[i].y += std::min(groundForce, 100.0f) * node.flexibility;
+					} else {
+						forces[i].y += 100.0f * node.flexibility;
+					}
+				}
+
+				// Apply forces
+				for (size_t i = 0; i < nodes.size(); ++i) {
+					if (nodes[i].parentId == -1)
+						continue;
+					nodes[i].velocity += forces[i] * dt;
+					nodes[i].velocity *= 0.9f; // Damping
+					nodes[i].pos += nodes[i].velocity * dt;
+
+					// Ground constraint
+					if (nodes[i].pos.y < 0) {
+						nodes[i].pos.y = 0;
+						nodes[i].velocity.y = 0;
+					}
+				}
+			}
+
+			// Splitting Phase
+			std::vector<SpringNode> newNodes;
+			for (size_t i = 0; i < nodes.size(); ++i) {
+				if (nodes[i].isEnd && !nodes[i].isSplit && nodes[i].currentLength >= nodes[i].maxLength * 0.5f) {
+					nodes[i].isSplit = true;
+					nodes[i].isEnd = false;
+					nodes[i].flexibility = 0.1f; // Reduced flexibility once split
+
+					std::uniform_int_distribution<int> branchDis(config.min_branches, config.max_branches);
+					int                                numBranches = branchDis(gen);
+
+					for (int b = 0; b < numBranches; ++b) {
+						SpringNode newNode;
+						newNode.id = nextId++;
+						newNode.parentId = nodes[i].id;
+						// Small initial push for branches
+						glm::vec3 dir = {0, 1, 0};
+						if (nodes[i].parentId != -1) {
+							glm::vec3 d = nodes[i].pos - nodes[nodes[i].parentId].pos;
+							if (glm::length(d) > 0.001f)
+								dir = glm::normalize(d);
+						}
+
+						glm::vec3 side = glm::cross(dir, glm::vec3(0, 0, 1));
+						if (glm::length(side) < 0.001f)
+							side = glm::vec3(1, 0, 0);
+						glm::quat q = glm::angleAxis((b - (numBranches - 1) * 0.5f) * 0.5f, side);
+
+						newNode.pos = nodes[i].pos + q * dir * 0.05f;
+						newNode.lastPos = newNode.pos;
+						newNode.velocity = {0, 0, 0};
+						newNode.generation = nodes[i].generation + 1;
+						// Max length reduces each generation
+						newNode.maxLength = nodes[i].maxLength * config.branch_split_factor;
+						newNode.currentLength = 0.05f;
+						newNode.isEnd = true;
+						newNode.isSplit = false;
+						newNode.flexibility = 1.0f;
+						newNode.radius = nodes[i].radius * 0.75f;
+						newNodes.push_back(newNode);
+					}
+				}
+			}
+			if (newNodes.empty() && iter > 0)
+				break; // No more growth
+
+			nodes.insert(nodes.end(), newNodes.begin(), newNodes.end());
+
+			// Size limit check
+			float maxH = 0;
+			for (const auto& n : nodes)
+				if (n.pos.y > maxH)
+					maxH = n.pos.y;
+			if (maxH > config.size_limit)
+				break;
+		}
+
+		// Thickness adjustment (after growth, make parents thicker)
+		for (int i = (int)nodes.size() - 1; i >= 0; --i) {
+			if (nodes[i].parentId != -1) {
+				SpringNode& parent = nodes[nodes[i].parentId];
+				parent.radius = std::max(parent.radius, nodes[i].radius * 1.1f);
+			}
+		}
+
+		// Convert to IR
+		glm::vec3 woodCol(0.35f, 0.25f, 0.15f);
+		std::vector<int> nodeToIr(nodes.size(), -1);
+		for (size_t i = 0; i < nodes.size(); ++i) {
+			if (nodes[i].parentId != -1) {
+				nodeToIr[i] = ir.AddTube(
+					nodes[nodes[i].parentId].pos,
+					nodes[i].pos,
+					nodes[nodes[i].parentId].radius,
+					nodes[i].radius,
+					woodCol,
+					nodeToIr[nodes[i].parentId]
+				);
+			} else {
+				nodeToIr[i] = ir.AddHub(nodes[i].pos, nodes[i].radius, woodCol);
+			}
+		}
+
+		// Leaves and Flowers (fashion that avoids overlap)
+		std::vector<glm::vec3> populatedPoints;
+		float                  minDist = 0.4f;
+
+		glm::vec3 leafCol(0.1f, 0.45f, 0.1f);
+		glm::vec3 flowerCol(0.95f, 0.8f, 0.2f);
+
+		for (int i = (int)nodes.size() - 1; i >= 0; i--) {
+			if (nodes[i].generation > 2 || nodes[i].isEnd) {
+				bool tooClose = false;
+				for (const auto& p : populatedPoints) {
+					if (glm::distance(nodes[i].pos, p) < minDist) {
+						tooClose = true;
+						break;
+					}
+				}
+
+				if (!tooClose) {
+					populatedPoints.push_back(nodes[i].pos);
+					if (dis(gen) > 0.8f) {
+						ir.AddPuffball(nodes[i].pos, 0.25f, flowerCol, 1, nodeToIr[i]);
+					} else {
+						glm::quat leafOri = glm::angleAxis(dis(gen) * 6.28f, glm::vec3(0, 1, 0)) *
+						                    glm::angleAxis(dis(gen) * 1.57f, glm::vec3(1, 0, 0));
+						ir.AddLeaf(nodes[i].pos, leafOri, 0.4f, leafCol, 0, nodeToIr[i]);
+					}
+				}
 			}
 		}
 
@@ -761,6 +1121,7 @@ namespace Boidsish {
 	) {
 		auto ir = GenerateTreeIR(seed, custom_axiom, custom_rules, iterations);
 		ProceduralOptimizer::Optimize(ir);
+		ProceduralRefiner::Refine(ir);
 		return ProceduralMesher::GenerateModel(ir);
 	}
 
@@ -772,6 +1133,7 @@ namespace Boidsish {
 	) {
 		auto ir = GenerateCritterIR(seed, custom_axiom, custom_rules, iterations);
 		ProceduralOptimizer::Optimize(ir);
+		ProceduralRefiner::Refine(ir);
 		return ProceduralMesher::GenerateModel(ir);
 	}
 

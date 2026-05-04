@@ -1,6 +1,8 @@
 #version 460 core
 layout(location = 0) out vec4 FragColor;
-layout(location = 1) out vec2 Velocity;
+layout(location = 1) out vec4 Velocity;
+layout(location = 2) out vec4 NormalOut;
+layout(location = 3) out vec4 AlbedoOut;
 
 in vec3     vs_color;
 in vec3     vs_normal;
@@ -12,14 +14,13 @@ flat in int vUniformIndex;
 
 #include "common_uniforms.glsl"
 
-layout(std430, binding = 2) buffer UniformsSSBO {
-	CommonUniforms uniforms_data[];
-};
-
 uniform bool uUseMDI = false;
 
+// #define USE_TERRAIN_DATA
+// #include "helpers/terrain_shadows.glsl"
 #include "helpers/lighting.glsl"
 
+uniform mat4  view;
 uniform bool  useIridescence;
 uniform bool  useRocketTrail;
 uniform bool  usePBR;         // Enable PBR lighting for trails
@@ -77,7 +78,8 @@ void main() {
 			vec3 smoke_color = mix(vec3(0.4, 0.4, 0.45), vs_color * 0.5, 0.2);
 
 			// Apply simple lighting to smoke for depth (no shadows needed for trails)
-			vec3 lit_smoke = apply_lighting_no_shadows(vs_frag_pos, norm, smoke_color, 0.1).rgb;
+			float dummyShadow;
+			vec3 lit_smoke = apply_lighting_no_shadows(vs_frag_pos, norm, smoke_color, 0.1, dummyShadow).rgb;
 
 			// Noise for cloudy texture
 			float noise = snoise(vec2(vs_progress * 5.0, time * 2.0)) * 0.5 + 0.5;
@@ -97,12 +99,14 @@ void main() {
 		float roughness = current_usePBR ? current_trailRoughness : 0.15;
 
 		// Apply PBR iridescent lighting (no shadows for trail effects)
+		float dummyShadowIrr;
 		vec4 iridescent_result_vec = apply_lighting_pbr_iridescent_no_shadows(
 			vs_frag_pos,
 			norm,
 			vs_color,
 			roughness,
-			1.0 // Full iridescence strength
+			1.0, // Full iridescence strength
+			dummyShadowIrr
 		);
 		vec3 iridescent_result = iridescent_result_vec.rgb;
 
@@ -113,24 +117,37 @@ void main() {
 		FragColor = vec4(final_color, 0.85 * camera_fade); // Slightly more opaque for better visibility
 	} else if (current_usePBR) {
 		// --- Standard PBR Trail (no shadows for trails) ---
+		float dummyShadowPBR;
 		vec3 result = apply_lighting_pbr_no_shadows(
 						  vs_frag_pos,
 						  norm,
 						  vs_color,
 						  current_trailRoughness,
 						  current_trailMetallic,
-						  1.0
+						  1.0,
+						  dummyShadowPBR
 		)
 						  .rgb;
 		FragColor = vec4(result, camera_fade);
 	} else {
 		// --- Original Phong Lighting ---
-		vec3 result = apply_lighting_no_shadows(vs_frag_pos, norm, vs_color, 0.5).rgb;
+		float dummyShadowPhong;
+		vec3 result = apply_lighting_no_shadows(vs_frag_pos, norm, vs_color, 0.5, dummyShadowPhong).rgb;
 		FragColor = vec4(result, camera_fade);
 	}
 
-	// Calculate screen-space velocity
+	// Calculate screen-space velocity and material properties
 	vec2 a = (CurPosition.xy / CurPosition.w) * 0.5 + 0.5;
 	vec2 b = (PrevPosition.xy / PrevPosition.w) * 0.5 + 0.5;
-	Velocity = a - b;
+
+	float outRoughness = current_usePBR ? current_trailRoughness : 0.5;
+	float outMetallic = current_usePBR ? current_trailMetallic : 0.0;
+	if (current_useIridescence) {
+		outRoughness = 0.15;
+		outMetallic = 0.5;
+	}
+
+	Velocity = vec4(a - b, outRoughness, outMetallic);
+	NormalOut = vec4(normalize(mat3(view) * norm), 1.0);
+	AlbedoOut = vec4(vs_color, 1.0);
 }

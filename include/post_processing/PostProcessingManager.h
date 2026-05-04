@@ -10,20 +10,28 @@
 class Shader; // Forward declaration
 
 namespace Boidsish {
+	class ServiceLocator;
+
 	namespace PostProcessing {
 
 		class PostProcessingManager: public IManager {
 		public:
-			PostProcessingManager(int width, int height, GLuint quad_vao);
+			PostProcessingManager(ServiceLocator& loc, int width, int height, GLuint quad_vao);
 			~PostProcessingManager();
 
 			void Initialize() override;
 			void AddEffect(std::shared_ptr<IPostProcessingEffect> effect);
-			void SetToneMappingEffect(std::shared_ptr<IPostProcessingEffect> effect);
 
 			void SetSharedDepthTexture(GLuint texture);
 
-			void BeginApply(GLuint sourceTexture, GLuint sourceFbo, GLuint depthTexture, GLuint velocityTexture);
+			void BeginApply(
+				GLuint sourceTexture,
+				GLuint sourceFbo,
+				GLuint depthTexture,
+				GLuint velocityTexture,
+				GLuint normalTexture,
+				GLuint albedoTexture
+			);
 
 			void AttachDepthToCurrentFBO();
 			void DetachDepthFromPingPongFBOs();
@@ -62,8 +70,6 @@ namespace Boidsish {
 				return pre_tone_mapping_effects_;
 			}
 
-			std::shared_ptr<IPostProcessingEffect> GetToneMappingEffect() { return tone_mapping_effect_; }
-
 		private:
 			void InitializeFBOs();
 			void ApplyEffectInternal(
@@ -76,7 +82,6 @@ namespace Boidsish {
 
 			int                                                 width_, height_;
 			std::vector<std::shared_ptr<IPostProcessingEffect>> pre_tone_mapping_effects_;
-			std::shared_ptr<IPostProcessingEffect>              tone_mapping_effect_;
 			GLuint                                              quad_vao_;
 
 			GLuint pingpong_fbo_[2];
@@ -88,6 +93,8 @@ namespace Boidsish {
 			GLuint current_fbo_ = 0;
 			GLuint depth_texture_ = 0;
 			GLuint velocity_texture_ = 0;
+			GLuint normal_texture_ = 0;
+			GLuint albedo_texture_ = 0;
 			int    fbo_index_ = 0;
 		};
 

@@ -11,6 +11,8 @@
 
 namespace Boidsish {
 
+	class ServiceLocator;
+
 	// This struct is mirrored in the compute shader.
 	// It must match the layout and padding there.
 	struct ChunkInfo {
@@ -41,7 +43,7 @@ namespace Boidsish {
 
 	class FireEffectManager: public IManager {
 	public:
-		FireEffectManager();
+		FireEffectManager(ServiceLocator& loc);
 		~FireEffectManager();
 
 		// Initialize shaders and buffers. Must be called from main thread with OpenGL context.
@@ -59,9 +61,14 @@ namespace Boidsish {
 			GLuint                        curl_noise_texture = 0,
 			GLuint                        biome_texture = 0,
 			GLuint                        lighting_ubo = 0,
+			GLintptr                      lighting_ubo_offset = 0,
+			GLsizeiptr                    lighting_ubo_size = 0,
 			GLuint                        frustum_ubo = 0,
 			GLintptr                      frustum_offset = 0,
-			GLuint                        extra_noise_texture = 0
+			GLuint                        extra_noise_texture = 0,
+			GLuint                        visual_effects_ubo = 0,
+			GLintptr                      vfx_offset = 0,
+			GLsizeiptr                    vfx_size = 0
 		);
 		void Render(
 			const glm::mat4& view,
@@ -114,6 +121,7 @@ namespace Boidsish {
 
 		bool   initialized_{false};
 		bool   needs_reallocation_{false};
+		float  ambient_density_{0.15f};
 		float  time_{0.0f};
 		size_t emitter_buffer_capacity_{0}; // Track capacity to avoid per-frame reallocation
 

@@ -43,6 +43,7 @@ namespace Boidsish {
 		// ==================== ITerrainGenerator Interface ====================
 
 		void                                         Update(const Frustum& frustum, const Camera& camera) override;
+		void                                         WaitForAllChunks(const Frustum& frustum, const Camera& camera) override;
 		const std::vector<std::shared_ptr<Terrain>>& GetVisibleChunks() const override;
 		std::vector<std::shared_ptr<Terrain>>        GetVisibleChunksCopy() const override;
 
@@ -278,6 +279,7 @@ namespace Boidsish {
 		void ProcessPendingDeformations();
 
 	private:
+		void      ProcessCompletedChunks();
 		glm::vec2 findClosestPointOnPath(glm::vec2 sample_pos) const;
 		glm::vec3 getPathInfluence(float x, float z) const;
 
@@ -305,7 +307,7 @@ namespace Boidsish {
 		};
 
 		void ApplyWeightedBiome(float control_value, BiomeAttributes& current) const;
-		void GetBiomeIndicesAndWeights(float control_value, int& low_idx, float& t) const;
+		void GetBiomeIndicesAndWeights(float control_value, int& low_idx, float& t) const override;
 
 		const int view_distance_ = Constants::Class::Terrain::DefaultViewDistance();          // in chunks
 		const int kUnloadDistanceBuffer_ = Constants::Class::Terrain::UnloadDistanceBuffer(); // in chunks

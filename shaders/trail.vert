@@ -11,10 +11,6 @@ flat out int vUniformIndex;
 
 #include "common_uniforms.glsl"
 
-layout(std430, binding = 2) buffer UniformsSSBO {
-	CommonUniforms uniforms_data[];
-};
-
 uniform bool uUseMDI = false;
 uniform mat4 model;
 uniform mat4 view;

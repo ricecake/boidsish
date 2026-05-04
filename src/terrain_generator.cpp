@@ -173,45 +173,7 @@ namespace Boidsish {
 			);
 		}
 
-		// 2. Process completed chunks (without blocking the main thread)
-		std::vector<std::pair<int, int>> completed_chunks;
-		for (auto& pair : pending_chunks_) {
-			if (pair.second.is_ready()) {
-				try {
-					auto&                   future = const_cast<TaskHandle<TerrainGenerationResult>&>(pair.second);
-					TerrainGenerationResult result = future.get();
-					if (result.has_terrain) {
-						auto terrain_chunk = std::make_shared<Terrain>(
-							result.indices,
-							result.positions,
-							result.normals,
-							result.biomes,
-							result.proxy
-						);
-						terrain_chunk
-							->SetPosition(result.chunk_x * scaled_chunk_size, 0, result.chunk_z * scaled_chunk_size);
-
-						if (render_manager_) {
-							terrain_chunk->SetManagedByRenderManager(true);
-							// Registration is deferred to the registration pass below
-						} else {
-							terrain_chunk->setupMesh();
-						}
-
-						chunk_cache_[pair.first] = terrain_chunk;
-					}
-					completed_chunks.push_back(pair.first);
-				} catch (const std::future_error& e) {
-					if (e.code() == std::future_errc::no_state) {
-						completed_chunks.push_back(pair.first);
-					}
-				}
-			}
-		}
-
-		for (const auto& key : completed_chunks) {
-			pending_chunks_.erase(key);
-		}
+		ProcessCompletedChunks();
 
 		// 3. Registration Pass: Register chunks with render manager
 		// Priority: 1) In frustum and close, 2) In frustum and far, 3) Out of frustum but close
@@ -279,7 +241,8 @@ namespace Boidsish {
 					chunk.terrain->GetIndices(),
 					chunk.terrain->proxy.minY,
 					chunk.terrain->proxy.maxY,
-					glm::vec3(chunk.key.first * scaled_chunk_size, 0, chunk.key.second * scaled_chunk_size)
+					glm::vec3(chunk.key.first * scaled_chunk_size, 0, chunk.key.second * scaled_chunk_size),
+					world_scale_
 				);
 				registrations_this_frame++;
 			}
@@ -375,6 +338,99 @@ namespace Boidsish {
 		}
 	}
 
+	void TerrainGenerator::ProcessCompletedChunks() {
+		float scaled_chunk_size = static_cast<float>(chunk_size_) * world_scale_;
+		std::vector<std::pair<int, int>> completed_chunks;
+		{
+			std::lock_guard<std::recursive_mutex> lock(chunk_cache_mutex_);
+			for (auto& pair : pending_chunks_) {
+				if (pair.second.is_ready()) {
+					try {
+						auto&                   future = const_cast<TaskHandle<TerrainGenerationResult>&>(pair.second);
+						TerrainGenerationResult result = future.get();
+						auto                    terrain_chunk = std::make_shared<Terrain>(
+							result.indices,
+							result.positions,
+							result.normals,
+							result.biomes,
+							result.proxy
+						);
+						terrain_chunk->SetPosition(
+							result.chunk_x * scaled_chunk_size,
+							0,
+							result.chunk_z * scaled_chunk_size
+						);
+
+						if (render_manager_) {
+							terrain_chunk->SetManagedByRenderManager(true);
+						} else {
+							terrain_chunk->setupMesh();
+						}
+
+						chunk_cache_[pair.first] = terrain_chunk;
+						completed_chunks.push_back(pair.first);
+					} catch (...) {
+						completed_chunks.push_back(pair.first);
+					}
+				}
+			}
+
+			for (const auto& key : completed_chunks) {
+				pending_chunks_.erase(key);
+			}
+		}
+	}
+
+	void TerrainGenerator::WaitForAllChunks(const Frustum& frustum, const Camera& camera) {
+		logger::LOG("TerrainGenerator: Waiting for all chunks to load...");
+		float scaled_chunk_size = static_cast<float>(chunk_size_) * world_scale_;
+
+		// Initial Update to enqueue all necessary chunks
+		Update(frustum, camera);
+
+		// Loop until all pending tasks are finished
+		while (true) {
+			ProcessCompletedChunks();
+			ProcessPendingDeformations();
+			{
+				std::lock_guard<std::recursive_mutex> lock(chunk_cache_mutex_);
+				if (pending_chunks_.empty() && pending_deformations_.empty()) {
+					break;
+				}
+			}
+			std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		}
+
+		// Full Registration Pass (Unthrottled)
+		if (render_manager_) {
+			std::lock_guard<std::recursive_mutex> lock(chunk_cache_mutex_);
+
+			// Ensure manager knows the correct camera and scale for initial baking
+			render_manager_->PrepareForRender(frustum, camera.pos(), world_scale_);
+
+			for (auto const& [key, terrain_chunk] : chunk_cache_) {
+				if (!render_manager_->HasChunk(key)) {
+					render_manager_->RegisterChunk(
+						key,
+						terrain_chunk->vertices,
+						terrain_chunk->normals,
+						terrain_chunk->biomes,
+						terrain_chunk->GetIndices(),
+						terrain_chunk->proxy.minY,
+						terrain_chunk->proxy.maxY,
+						glm::vec3(key.first * scaled_chunk_size, 0, key.second * scaled_chunk_size),
+						world_scale_
+					);
+				}
+			}
+			render_manager_->CommitUpdates(true);
+		}
+
+		// Final Update to sync visible_chunks_ and any remaining state
+		Update(frustum, camera);
+		logger::LOG("TerrainGenerator: All chunks loaded and registered.");
+	}
+
 	auto TerrainGenerator::fbm(float x, float z, TerrainParameters params) {
 		glm::vec3 total;
 		float     frequency = params.frequency;
@@ -423,6 +479,16 @@ namespace Boidsish {
 			pair.second.cancel();
 		}
 		pending_chunks_.clear();
+
+		for (auto& pair : pending_deformations_) {
+			pair.second.cancel();
+		}
+		pending_deformations_.clear();
+
+		{
+			std::lock_guard<std::mutex> def_lock(deformation_queue_mutex_);
+			queued_deformation_ids_.clear();
+		}
 
 		// Unregister from render manager and clear cache
 		if (render_manager_) {
@@ -576,7 +642,7 @@ namespace Boidsish {
 		float sx = x / world_scale_;
 		float sz = z / world_scale_;
 
-		glm::vec3 path_influence = getPathInfluence(sx, sz);
+		glm::vec3 path_influence = getPathInfluence(sx*0.07f, sz*0.25f);
 		float     path_factor = path_influence.x;
 
 		glm::vec2 push_dir(0.0f);
@@ -592,8 +658,10 @@ namespace Boidsish {
 
 		// Calculate biome control value using warped coordinates for synchronization
 		glm::vec2 biome_pos = warped_pos * control_noise_scale_;
-		float     control_value = Simplex::noise(biome_pos + Simplex::curlNoise(biome_pos)) * 0.5f + 0.5f;
-
+		biome_pos *= 0.5f;
+		float control_value_rough = Simplex::noise(biome_pos + Simplex::curlNoise(biome_pos)) * 0.5f + 0.5f;
+		float control_value_smooth = Simplex::flowNoise( biome_pos + Simplex::fBm(biome_pos), 8.0f ) * 0.5f + 0.5f;
+		float control_value = std::lerp(control_value_rough, control_value_smooth, Simplex::iqfBm(biome_pos)  * 0.5f + 0.5f);
 		if (std::isnan(control_value) || std::isinf(control_value)) {
 			control_value = 0.0f;
 		}
@@ -604,7 +672,7 @@ namespace Boidsish {
 		BiomeAttributes current;
 		ApplyWeightedBiome(control_value, current);
 
-		glm::vec3 terrain_height = biomefbm(warped_pos, current);
+		glm::vec3 terrain_height = 1.35f * biomefbm(warped_pos * 0.25f, current);
 
 		float path_floor_level = -0.10f;
 		terrain_height.x = glm::mix(path_floor_level, terrain_height.x, path_factor);
@@ -649,7 +717,7 @@ namespace Boidsish {
 
 				auto res = pointGenerateAll(worldX, worldZ);
 				heightmap[i][j] = res.height_data;
-				has_terrain = has_terrain || res.height_data[0] > 0;
+				has_terrain = true;
 
 				// Calculate biome info using the synchronized control value
 				int   low_idx;
@@ -726,9 +794,6 @@ namespace Boidsish {
 			}
 		}
 
-		if (!has_terrain) {
-			return {{}, {}, {}, {}, {}, chunkX, chunkZ, false};
-		}
 
 		// Generate vertices and normals
 		positions.reserve(num_vertices_x * num_vertices_z);
@@ -1523,42 +1588,36 @@ namespace Boidsish {
 				if (pair.second.is_ready()) {
 					try {
 						TerrainGenerationResult result = pair.second.get();
-						if (result.has_terrain) {
-							auto new_terrain = std::make_shared<Terrain>(
-								result.indices,
-								result.positions,
-								result.normals,
-								result.biomes,
-								result.proxy
-							);
-							new_terrain->SetPosition(
-								result.chunk_x * scaled_chunk_size,
-								0,
-								result.chunk_z * scaled_chunk_size
-							);
+						auto                    new_terrain = std::make_shared<Terrain>(
+							result.indices,
+							result.positions,
+							result.normals,
+							result.biomes,
+							result.proxy
+						);
+						new_terrain->SetPosition(
+							result.chunk_x * scaled_chunk_size,
+							0,
+							result.chunk_z * scaled_chunk_size
+						);
 
-							if (render_manager_) {
-								new_terrain->SetManagedByRenderManager(true);
-								render_manager_->RegisterChunk(
-									pair.first,
-									new_terrain->vertices,
-									new_terrain->normals,
-									new_terrain->biomes,
-									new_terrain->GetIndices(),
-									new_terrain->proxy.minY,
-									new_terrain->proxy.maxY,
-									glm::vec3(result.chunk_x * scaled_chunk_size, 0, result.chunk_z * scaled_chunk_size)
-								);
-							} else {
-								new_terrain->setupMesh();
-							}
-							chunk_cache_[pair.first] = new_terrain;
+						if (render_manager_) {
+							new_terrain->SetManagedByRenderManager(true);
+							render_manager_->RegisterChunk(
+								pair.first,
+								new_terrain->vertices,
+								new_terrain->normals,
+								new_terrain->biomes,
+								new_terrain->GetIndices(),
+								new_terrain->proxy.minY,
+								new_terrain->proxy.maxY,
+								glm::vec3(result.chunk_x * scaled_chunk_size, 0, result.chunk_z * scaled_chunk_size),
+								world_scale_
+							);
 						} else {
-							if (render_manager_) {
-								render_manager_->UnregisterChunk(pair.first);
-							}
-							chunk_cache_.erase(pair.first);
+							new_terrain->setupMesh();
 						}
+						chunk_cache_[pair.first] = new_terrain;
 						completed_keys.push_back(pair.first);
 						any_completed = true;
 					} catch (...) {

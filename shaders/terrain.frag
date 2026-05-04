@@ -1,6 +1,8 @@
 #version 430 core
 layout(location = 0) out vec4 FragColor;
-layout(location = 1) out vec2 Velocity;
+layout(location = 1) out vec4 Velocity;
+layout(location = 2) out vec4 NormalOut;
+layout(location = 3) out vec4 AlbedoOut;
 
 in vec3       Normal;
 in vec3       FragPos;
@@ -15,12 +17,17 @@ in float      vErosionDelta;
 in float      vRidgeMap;
 in float      vSubstrate;
 
+#define USE_TERRAIN_DATA
 #include "helpers/erosion.glsl"
 #include "helpers/fast_noise.glsl"
-#include "helpers/lighting.glsl"
 #include "helpers/terrain_noise.glsl"
+#include "helpers/terrain_shadows.glsl"
+#include "helpers/lighting.glsl"
 #include "visual_effects.glsl"
 // #include "helpers/noise.glsl"
+#include "helpers/wind.glsl"
+// #include "lygia/color/space/rgb2lab.glsl"
+
 
 uniform bool uIsShadowPass = false;
 
@@ -28,13 +35,44 @@ uniform bool uIsShadowPass = false;
 uniform sampler2DArray uBiomeMap;
 uniform float          uRawChunkSize;
 
+uniform mat4 view;
+
+struct GrassProperties {
+    vec4  colorTop;
+    vec4  colorBottom;
+    float height;
+    float width;
+    float rigidity;
+    float heightVariance;
+    float widthVariance;
+    float density;
+    float colorVariability;
+    float windInfluence;
+    uint  enabled;
+    float _pad0;
+    float _pad1;
+    float _pad2;
+};
+
+struct GlobalGrassProperties {
+    float lengthMultiplier;
+    float widthMultiplier;
+    float densityMultiplier;
+    float rigidityMultiplier;
+    float windMultiplier;
+    uint  enabled;
+    float _pad0;
+    float _pad1;
+};
+
+layout(std140, binding = [[GRASS_PROPS_BINDING]]) uniform GrassProps {
+    GrassProperties u_grassBiomes[8];
+    GlobalGrassProperties u_grassGlobal;
+};
+
 struct BiomeProperties {
 	vec4 albedo_roughness; // rgb = albedo, w = roughness
 	vec4 params;           // x = metallic, y = detailStrength, z = detailScale, w = unused
-};
-
-layout(std140, binding = 7) uniform BiomeData {
-	BiomeProperties biomes[8];
 };
 
 #define HEIGHT_BEACH_END (3.0 * worldScale)
@@ -243,11 +281,6 @@ void main() {
 		return;
 	}
 
-	// Calculate screen-space velocity
-	vec2 a = (CurPosition.xy / CurPosition.w) * 0.5 + 0.5;
-	vec2 b = (PrevPosition.xy / PrevPosition.w) * 0.5 + 0.5;
-	Velocity = a - b;
-
 	// Distance Fade -- precalc
 	vec3  norm = normalize(Normal);
 	float baseFreq = 0.1 / worldScale;
@@ -300,12 +333,17 @@ void main() {
 		vec3 surfaceColor = vec3(0.05, 0.05, 0.08);
 
 		// Highly reflective PBR material
-		vec3 lighting = apply_lighting_pbr(FragPos, norm, surfaceColor, 0.05, 0.9, 1.0).rgb;
+		float primaryShadow;
+		vec3 lighting = apply_lighting_pbr(FragPos, norm, surfaceColor, 0.05, 0.9, 1.0, primaryShadow).rgb;
 		vec3 final_color = lighting + grid_color;
 
 		// Distance fade and distant cyan blend (matching terrain style)
 		vec4 baseColor = vec4(final_color, fade);
 		FragColor = mix(vec4(0.0, 0.7, 0.7, baseColor.a) * length(baseColor), baseColor, step(1.0, fade));
+
+		// Output view-space normal
+		NormalOut = vec4(normalize(mat3(view) * norm), primaryShadow);
+		AlbedoOut = vec4(surfaceColor, 1.0);
 		return;
 	}
 
@@ -323,24 +361,6 @@ void main() {
 
 	float distanceFactor = dist * smoothstep(0, 10.0, FragPos.y);
 	float noseFade = fade_start - 100.0;
-	/*
-	    if (distanceFactor < noseFade) {
-	        largeNoise = fastWarpedFbm3d(FragPos * (baseFreq * 0.5));
-	        medNoise = fastWorley3d(vec3(largeNoise) * (baseFreq * 2.0));
-	        fineNoise = fastFbm3d(FragPos * (baseFreq * 5.0));
-	        macroNoise = fastSimplex3d(FragPos * (baseFreq * 0.1));
-	        combinedNoise = largeNoise * 0.6 + (1.0 - medNoise) * 0.3 + fineNoise * 0.1;
-
-	        if (distanceFactor > 250) {
-	            float angle = 1.0 - dot(viewDir, viewPos - FragPos);
-	            largeNoise = mix(largeNoise, 1.0, angle * smoothstep(noseFade, fade_end, distanceFactor));
-	            medNoise = mix(medNoise, 1.0, angle * smoothstep(noseFade, fade_end, distanceFactor));
-	            fineNoise = mix(fineNoise, 1.0, angle * smoothstep(noseFade, fade_end, distanceFactor));
-	            macroNoise = mix(macroNoise, 1.0, angle * smoothstep(noseFade, fade_end, distanceFactor));
-	            combinedNoise = mix(combinedNoise, 1.0, angle * smoothstep(noseFade, fade_end, distanceFactor));
-	        }
-	    }
-	*/
 
 	TerrainMaterial finalMaterial;
 	// ========================================================================
@@ -406,6 +426,12 @@ void main() {
 	// Add subtle color variation based on combined noise
 	finalMaterial.albedo *= (1.0 + combinedNoise * 0.15);
 
+	// Apply global wetness from precipitation
+	// Wet surfaces are darker and much smoother (glossier)
+	float globalWetness = wetness;
+	finalMaterial.albedo = mix(finalMaterial.albedo, finalMaterial.albedo * 0.5, globalWetness * 0.5);
+	finalMaterial.roughness = mix(finalMaterial.roughness, 0.1, globalWetness * 0.8);
+
 	// Extra variety for rocky/steep areas to complement normals
 	float rockyVar = fineNoise;
 	float rockyMask = smoothstep(0.5, 0.2, slope); // More variety on steeper slopes
@@ -416,6 +442,90 @@ void main() {
 	// ========================================================================
 	// Apply the extracted color mapping using the data passed from the tessellation shader
 	finalMaterial.albedo = applyErosionColorMappingDefault(finalMaterial.albedo, vRidgeMap, vErosionDelta);
+
+	// ========================================================================
+	// Grass-based Tinting and AO baseline shift
+	// ========================================================================
+	float grassAO = 0.0;
+	vec3 perturbedNorm = norm;
+	if (u_grassGlobal.enabled != 0) {
+		vec2  biomeUV = (TexCoords * uRawChunkSize + 0.5) / (uRawChunkSize + 1.0);
+		vec2  biomeData = texture(uBiomeMap, vec3(biomeUV, TextureSlice)).rg;
+		int   idxA = int(biomeData.r * 255.0 + 0.5);
+		int   idxB = min(idxA + 1, 7);
+		float t = biomeData.g;
+
+		float densityA = u_grassBiomes[idxA].density * float(u_grassBiomes[idxA].enabled);
+		float densityB = u_grassBiomes[idxB].density * float(u_grassBiomes[idxB].enabled);
+		float interpolatedDensity = mix(densityA, densityB, t) * u_grassGlobal.densityMultiplier;
+
+		vec3 colorA = u_grassBiomes[idxA].colorBottom.rgb;
+		vec3 colorB = u_grassBiomes[idxB].colorBottom.rgb;
+		vec3 grassColor = mix(colorA, colorB, t);
+
+		// Apply effect only on relatively flat surfaces where grass would grow
+		float grassMask = smoothstep(0.7, 0.8, norm.y) * clamp(interpolatedDensity, 0.0, 1.0);
+
+		// AO baseline shift - darken dense grass areas
+		grassAO = grassMask * 0.75;
+
+		vec3 windAtPos = getWindAtPosition(vec3(FragPos.x, FragPos.y+0.5, FragPos.z));
+		// albedo = length(albedo) * normalize(albedo+windAtPos);
+		// albedo = rgb2lab(albedo);
+
+
+		float distanceFactor = smoothstep(200, 350, dist);
+
+/*
+		// Tint terrain towards grass color
+		// finalMaterial.albedo = mix(finalMaterial.albedo, grassColor * (1.0 + 0.05 * smoothstep(0.0, 1.0, distanceFactor * length(windAtPos))), grassMask);
+		// finalMaterial.albedo = mix(finalMaterial.albedo, grassColor, grassMask);
+		// finalMaterial.albedo *= pow(fastRidge3d(FragPos / 10.0) * 0.5 + 0.5, 2);
+		// float noiseVal = fastRidge3d(FragPos / max(1.0, 10.0 * distanceFactor)) * 0.5 + 0.5;
+		// Remap noise to [0.7, 1.3] so it darkens AND brightens the albedo
+		// float albedoMultiplier = mix(0.7, 1.3, noiseVal);
+		// finalMaterial.albedo *= albedoMultiplier;
+
+		finalMaterial.roughness = clamp(finalMaterial.roughness * 1.25, 0.0, 1.0);
+
+
+		// 1. Flatten the normal towards up based on density and distance
+		// perturbedNorm = mix(perturbedNorm, vec3(0.0, 1.0, 0.0), interpolatedDensity * distanceFactor);
+
+		// 2. Gently tilt the normal in the direction of the wind
+		// We use a small multiplier (e.g., 0.15) so the normal only leans a few degrees.
+		float windTiltStrength = 0.01;
+		perturbedNorm.xz += windAtPos.xz * distanceFactor * windTiltStrength;
+
+		// 3. Re-normalize to ensure it's a valid surface normal
+		perturbedNorm = normalize(perturbedNorm);
+*/
+// ... [biome blending setup remains the same] ...
+
+// 1. Re-enable the canopy flattening. This is crucial for hiding the underlying terrain bumps.
+perturbedNorm = mix(norm, vec3(0.0, 1.0, 0.0), interpolatedDensity * distanceFactor);
+perturbedNorm = normalize(perturbedNorm);
+
+float gustIntensity = smoothstep(5.0, 10.0, length(windAtPos)*0.5);
+vec3 undersideColor = grassColor * 1.25 + vec3(0.05, 0.05, 0.0);
+vec3 dynamicGrassColor = mix(grassColor, undersideColor, gustIntensity);
+
+finalMaterial.albedo = mix(finalMaterial.albedo, dynamicGrassColor, grassMask * distanceFactor);
+
+// finalMaterial.albedo *= pow(fastRidge3d(FragPos / 10.0) * 0.5 + 0.5, 2);
+
+float floorTexture = pow(fastRidge3d(FragPos / 10.0) * 0.5 + 0.5, 2);
+float noiseVal = 1.0-pow(fastRidge3d((FragPos+windAtPos*sin(time*0.1)) / mix(1.0, 100.0, distanceFactor)) * 0.5 + 0.5, 3);
+// float albedoMultiplier = mix(0.7, 1.3, noiseVal);
+// float albedoMultiplier = mix(0.7, 1.3, mix(floorTexture, noiseVal, distanceFactor));
+float albedoMultiplier = mix(floorTexture, mix(0.7, 1.3, noiseVal), distanceFactor);
+
+finalMaterial.albedo *= albedoMultiplier;
+
+float dynamicRoughness = mix(1.25, 0.7, gustIntensity);
+finalMaterial.roughness = mix(finalMaterial.roughness, clamp(finalMaterial.roughness * dynamicRoughness, 0.0, 1.0), distanceFactor);
+
+	}
 
 	vec3  albedo = finalMaterial.albedo;
 	float roughness = finalMaterial.roughness;
@@ -430,9 +540,8 @@ void main() {
 	// ========================================================================
 	// Normal Perturbation (Grain)
 	// ========================================================================
-	vec3 perturbedNorm = norm;
 
-	if (perturbFactor >= 0.1 && normalStrength > 0.0) {
+	if (perturbFactor >= 0.1 && normalStrength > 0.0 && dist < 300) {
 		float roughnessStrength = smoothstep(0.1, 1.0, perturbFactor) * normalStrength;
 		float roughnessScale = normalScale * 0.05;
 		vec3  scaledFragPos = FragPos / worldScale;
@@ -440,31 +549,17 @@ void main() {
 		// Sample biome noise type (using unused params.w)
 		vec2  biomeUV = (TexCoords * uRawChunkSize + 0.5) / (uRawChunkSize + 1.0);
 		vec2  biomeInfo = texture(uBiomeMap, vec3(biomeUV, TextureSlice)).rg;
-		float noiseTypeA = biomes[int(biomeInfo.x)].params.w;
-		float noiseTypeB = biomes[min(int(biomeInfo.x) + 1, 7)].params.w;
+		float noiseTypeA = u_biomes[int(biomeInfo.x)].params.w;
+		float noiseTypeB = u_biomes[min(int(biomeInfo.x) + 1, 7)].params.w;
 		float noiseType = mix(noiseTypeA, noiseTypeB, biomeInfo.y);
 
 		// Use finite difference to approximate the gradient of the noise field
 		float eps = 0.015;
 		float n, nx, nz;
 
-		if (noiseType < 0.5) { // Simplex (0)
-			n = fastSimplex3d(0.1 * scaledFragPos * roughnessScale);
-			nx = fastSimplex3d(0.1 * (scaledFragPos + vec3(eps, 0.0, 0.0)) * roughnessScale);
-			nz = fastSimplex3d(0.1 * (scaledFragPos + vec3(0.0, 0.0, eps)) * roughnessScale);
-		} else if (noiseType < 1.5) { // Worley (1)
-			n = fastWorley3d(0.1 * scaledFragPos * roughnessScale);
-			nx = fastWorley3d(0.1 * (scaledFragPos + vec3(eps, 0.0, 0.0)) * roughnessScale);
-			nz = fastWorley3d(0.1 * (scaledFragPos + vec3(0.0, 0.0, eps)) * roughnessScale);
-		} else if (noiseType < 2.5) { // FBM (2)
-			n = fastFbm3d(0.1 * scaledFragPos * roughnessScale);
-			nx = fastFbm3d(0.1 * (scaledFragPos + vec3(eps, 0.0, 0.0)) * roughnessScale);
-			nz = fastFbm3d(0.1 * (scaledFragPos + vec3(0.0, 0.0, eps)) * roughnessScale);
-		} else { // Ridge (3)
-			n = fastRidge3d(0.1 * scaledFragPos * roughnessScale);
-			nx = fastRidge3d(0.1 * (scaledFragPos + vec3(eps, 0.0, 0.0)) * roughnessScale);
-			nz = fastRidge3d(0.1 * (scaledFragPos + vec3(0.0, 0.0, eps)) * roughnessScale);
-		}
+		n = fastRidge3d(0.1 * scaledFragPos * roughnessScale);
+		nx = fastRidge3d(0.1 * (scaledFragPos + vec3(eps, 0.0, 0.0)) * roughnessScale);
+		nz = fastRidge3d(0.1 * (scaledFragPos + vec3(0.0, 0.0, eps)) * roughnessScale);
 
 		// Compute local tangent space to orient the perturbation.
 		// Using a stable basis that doesn't flip at Z-axis alignment.
@@ -473,45 +568,44 @@ void main() {
 		vec3 bitangent = cross(norm, tangent);
 
 		// Apply perturbation based on noise gradient
-		perturbedNorm = normalize(norm + (tangent * (n - nx) + bitangent * (n - nz)) * (roughnessStrength / eps));
+		vec3 perturbation = (tangent * (n - nx) + bitangent * (n - nz)) * (roughnessStrength / eps);
+		perturbedNorm = normalize(norm + perturbation);
 
-		// Toksvig Factor: Adjust roughness based on normal length after interpolation
-		float ft = length(perturbedNorm);
-		ft = clamp(ft, 0.01, 1.0);
-		float r2 = roughness * roughness;
-		float newGloss = r2 / (ft * (1.0 + (1.0 - ft) / r2));
-		roughness = sqrt(newGloss); // Feed this adjusted roughness into your BRDF
+		// Toksvig-like Adjustment: Increase roughness based on normal variance
+		// Procedural normals can cause aliasing; we compensate by increasing roughness
+		// where the normal gradient is high.
+		float variance = dot(perturbation, perturbation);
+		roughness = sqrt(clamp(roughness * roughness + variance * 0.25, 0.0, 1.0));
 	}
 
 	// Final Lighting
-	float fateFactor = fastWorley3d(vec3(FragPos.xz / 50.0, time * 0.25)) * 0.5 + 0.50;
-	vec3  windForce = fastCurl3d(
-		vec3(FragPos.x * 0.0005 + time * 0.00125, FragPos.y * 0.001, FragPos.z * 0.0005 + time * 0.0125)
-	);
-	vec3 rawWindNudge = (fateFactor * windForce); // / (abs(normalize(FragPos).y - normalize(windForce).y));
+	// vec3 windAtPos = getWindAtPosition(vec3(FragPos.x, 0.5, FragPos.z));
+	// albedo = length(albedo) * normalize(albedo+windAtPos);
+	// albedo = rgb2lab(albedo);
+
+/*
+	vec3 windAtPos = getWindAtPosition(vec3(FragPos.x, 0.5, FragPos.z));
 
 	vec3  light_dir = normalize(lights[0].position - FragPos);
 	float rim = max(dot(light_dir, normalize(viewPos - FragPos)), 0.0);
-	// albedo += (1-dot(rawWindNudge, perturbedNorm)) * rim * albedo;
 	float windDistortion = pow(
 		1 -
 			smoothstep(
 				0,
 				1,
-				(max(0, dot(vec3(0, 1, 0), perturbedNorm)) * ((1 - dot(rawWindNudge, perturbedNorm)) / 2))
+				(max(0, dot(vec3(0, 1, 0), perturbedNorm)) * ((1 - dot(windAtPos, perturbedNorm)) / 2))
 			),
 		9.0
 	);
-	float plainRipple = tangentGabor(FragPos, norm, -1 * windDistortion * rawWindNudge, time, 0.5, 0.00001, 0.75) *
-			0.5 +
-		0.5;
+	float plainRipple = length(windAtPos * sin(time*0.01));
 	float windRipple = windDistortion * plainRipple;
 	float grassFactor = smoothstep(0.25, 0.5, max(dot(albedo, COL_GRASS_LUSH), dot(albedo, COL_GRASS_DRY)));
 	albedo *= mix(1, mix(1.0, 1.25, windDistortion) * mix(1.0, 1.05, windRipple), grassFactor);
 	roughness *= mix(1.25, 1.0, windDistortion) * mix(1, mix(1.5, 1.0, windRipple), grassFactor);
-	// perturbedNorm += rawWindNudge * mix(0.0, 1.05, plainRipple);
+*/
 
-	vec3 lighting = apply_lighting_pbr(FragPos, perturbedNorm, albedo, roughness, metallic, 1.0).rgb;
+	float primaryShadow;
+	vec3 lighting = apply_lighting_pbr(FragPos, perturbedNorm, albedo, roughness, metallic, 1.0 - grassAO, primaryShadow).rgb;
 
 	// ========================================================================
 	// Neon 80s Synth Style (Night Theme)
@@ -558,4 +652,13 @@ void main() {
 
 	// Restore deliberate cyan style for distant terrain
 	FragColor = mix(vec4(0.0, 0.7, 0.7, baseColor.a) * length(baseColor), baseColor, step(1.0, fade));
+
+	// Output view-space normal
+	NormalOut = vec4(normalize(mat3(view) * perturbedNorm), primaryShadow);
+	AlbedoOut = vec4(albedo, 1.0);
+
+	// Calculate screen-space velocity and material properties
+	vec2 a = (CurPosition.xy / CurPosition.w) * 0.5 + 0.5;
+	vec2 b = (PrevPosition.xy / PrevPosition.w) * 0.5 + 0.5;
+	Velocity = vec4(a - b, roughness, metallic);
 }

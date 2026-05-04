@@ -10,6 +10,8 @@
 struct GLFWwindow;
 
 namespace Boidsish {
+	class ServiceLocator;
+
 	namespace UI {
 		class IWidget;
 
@@ -21,7 +23,7 @@ namespace Boidsish {
 
 		class UIManager {
 		public:
-			UIManager(GLFWwindow* window);
+			UIManager(ServiceLocator& loc, GLFWwindow* window);
 			~UIManager();
 
 			void AddWidget(std::shared_ptr<IWidget> widget);

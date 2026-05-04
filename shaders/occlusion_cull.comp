@@ -4,20 +4,17 @@ layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
 #include "common_uniforms.glsl"
 #include "temporal_data.glsl"
-
-// Input: per-draw uniforms (same SSBO the vertex shader reads, contains AABBs)
-layout(std430, binding = 2) readonly buffer UniformsSSBO {
-	CommonUniforms uniforms_data[];
-};
+#include "frustum.glsl"
 
 // Output: per-draw visibility (1 = visible, 0 = occluded)
-layout(std430, binding = 12) buffer OcclusionVisibility {
+layout(std430, binding = [[OCCLUSION_VISIBILITY_BINDING]]) buffer OcclusionVisibility {
 	uint visibility[];
 };
 
 // Hi-Z pyramid texture
 uniform sampler2D u_hizTexture;
 uniform int       u_drawCount;
+uniform uint      u_baseVisibilityIndex;
 uniform ivec2     u_hizSize; // Mip 0 dimensions
 uniform int       u_hizMipCount;
 uniform float     u_screenExpansion; // Pixel expansion for temporal safety
@@ -114,6 +111,11 @@ void main() {
 		return;
 	}
 
+	if (!isAABBInFrustum(aabbMin, aabbMax)) {
+		visibility[idx] = 0u;
+		return;
+	}
+
 	vec4  screenRect;
 	float nearestDepth;
 
@@ -155,8 +157,8 @@ void main() {
 	// In standard OpenGL depth: smaller values = closer to camera.
 	// nearestDepth > hizDepth means the closest part of the AABB is behind everything in the Hi-Z region.
 	if (nearestDepth > hizDepth) {
-		visibility[idx] = 0u; // Occluded
+		visibility[u_baseVisibilityIndex + idx] = 0u; // Occluded
 	} else {
-		visibility[idx] = 1u; // Visible
+		visibility[u_baseVisibilityIndex + idx] = 1u; // Visible
 	}
 }

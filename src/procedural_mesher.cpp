@@ -1,8 +1,14 @@
 #include "procedural_mesher.h"
 
+#include <algorithm>
+#include <array>
 #include <cmath>
+#include <map>
 #include <numbers>
 #include <set>
+#include <utility>
+
+#include <glm/gtx/norm.hpp>
 
 #include "ConfigManager.h"
 #include "mesh_optimizer_util.h"
@@ -283,6 +289,188 @@ namespace Boidsish {
 			}
 		}
 
+		void GenerateHubMesh(
+			std::vector<Vertex>&       vertices,
+			std::vector<unsigned int>& indices,
+			const ProceduralIR&        ir,
+			int                        hub_idx
+		) {
+			const auto& hub = ir.elements[hub_idx];
+			glm::vec3   center = hub.position;
+			float       hub_radius = hub.radius;
+
+			// Collect all points that should be on the convex hull of the hub.
+			// These include the rings of all connected tubes at the junction.
+			std::vector<glm::vec3> points;
+			points.push_back(center); // Include center to ensure it's not hollow if tubes are one-sided
+
+			struct Connection {
+				glm::vec3 dir;
+				float     radius;
+			};
+			std::vector<Connection> connections;
+
+			// Check parent
+			if (hub.parent != -1) {
+				const auto& p = ir.elements[hub.parent];
+				if (p.type == ProceduralElementType::Tube) {
+					glm::vec3 dir = glm::normalize(p.position - p.end_position);
+					connections.push_back({dir, p.end_radius});
+				}
+			}
+
+			// Check children
+			for (int child_idx : hub.children) {
+				const auto& c = ir.elements[child_idx];
+				if (c.type == ProceduralElementType::Tube) {
+					glm::vec3 dir = glm::normalize(c.end_position - c.position);
+					connections.push_back({dir, c.radius});
+				}
+			}
+
+			// For each connection, generate a ring of points
+			const int ring_segments = 8;
+			for (const auto& conn : connections) {
+				glm::vec3 up_hint = (std::abs(conn.dir.y) < 0.9f) ? glm::vec3(0, 1, 0) : glm::vec3(1, 0, 0);
+				glm::vec3 right = glm::normalize(glm::cross(conn.dir, up_hint));
+				glm::vec3 up = glm::normalize(glm::cross(right, conn.dir));
+
+				for (int i = 0; i < ring_segments; ++i) {
+					float     angle = 2.0f * (float)std::numbers::pi * i / ring_segments;
+					glm::vec3 ring_pt = center + (right * std::cos(angle) + up * std::sin(angle)) * conn.radius;
+					points.push_back(ring_pt);
+				}
+			}
+
+			if (points.size() < 4) {
+				GenerateUVSphere(vertices, indices, center, hub_radius, hub.color, 4, 4);
+				return;
+			}
+
+			// Quick and dirty 3D convex hull using Delaunay logic
+			// (Simplified: we use the center and rings to form a volume)
+			// For a true manifold junction, we'll use a simplified version of Delaunay extraction.
+
+			// Build internal point set for Delaunay
+			std::vector<Vertex>       hull_verts;
+			std::vector<unsigned int> hull_indices;
+
+			// We need a unique set of points
+			std::vector<glm::vec3> unique_points;
+			for (const auto& p : points) {
+				bool duplicate = false;
+				for (const auto& up : unique_points) {
+					if (glm::distance2(p, up) < 1e-6f) {
+						duplicate = true;
+						break;
+					}
+				}
+				if (!duplicate) unique_points.push_back(p);
+			}
+
+			if (unique_points.size() < 4) {
+				GenerateUVSphere(vertices, indices, center, hub_radius, hub.color, 4, 4);
+				return;
+			}
+
+			auto circumsphere = [](const glm::vec3& a, const glm::vec3& b, const glm::vec3& c, const glm::vec3& d) {
+				glm::vec3 ba = b - a;
+				glm::vec3 ca = c - a;
+				glm::vec3 da = d - a;
+				float len_ba = glm::dot(ba, ba);
+				float len_ca = glm::dot(ca, ca);
+				float len_da = glm::dot(da, da);
+				glm::vec3 cross_cd = glm::cross(ca, da);
+				glm::vec3 cross_db = glm::cross(da, ba);
+				glm::vec3 cross_bc = glm::cross(ba, ca);
+				float denom = 2.0f * glm::dot(ba, cross_cd);
+				if (std::abs(denom) < 1e-10f) return std::make_pair(glm::vec3(0), -1.0f);
+				glm::vec3 offset = (len_ba * cross_cd + len_ca * cross_db + len_da * cross_bc) / denom;
+				return std::make_pair(a + offset, glm::dot(offset, offset));
+			};
+
+			struct Tet {
+				int v[4];
+				glm::vec3 center;
+				float r2;
+			};
+
+			std::vector<Tet> tets;
+
+			// Super-tetrahedron
+			glm::vec3 min_p = unique_points[0], max_p = unique_points[0];
+			for(const auto& p : unique_points) { min_p = glm::min(min_p, p); max_p = glm::max(max_p, p); }
+			glm::vec3 mid = (min_p + max_p) * 0.5f;
+			float dmax = glm::length(max_p - min_p) * 5.0f;
+			std::vector<glm::vec3> pts = unique_points;
+			pts.push_back(mid + glm::vec3(dmax, dmax, dmax));
+			pts.push_back(mid + glm::vec3(dmax, -dmax, -dmax));
+			pts.push_back(mid + glm::vec3(-dmax, dmax, -dmax));
+			pts.push_back(mid + glm::vec3(-dmax, -dmax, dmax));
+			int s0 = pts.size()-4, s1 = pts.size()-3, s2 = pts.size()-2, s3 = pts.size()-1;
+
+			auto res = circumsphere(pts[s0], pts[s1], pts[s2], pts[s3]);
+			tets.push_back({{s0, s1, s2, s3}, res.first, res.second});
+
+			for (int i = 0; i < (int)unique_points.size(); ++i) {
+				std::vector<Tet> bad;
+				std::vector<Tet> good;
+				for (const auto& t : tets) {
+					if (glm::distance2(pts[i], t.center) < t.r2 * (1.0f + 1e-6f)) bad.push_back(t);
+					else good.push_back(t);
+				}
+				std::map<std::array<int, 3>, int> faces;
+				for (const auto& t : bad) {
+					for (int j = 0; j < 4; ++j) {
+						std::array<int, 3> f = {t.v[j%4], t.v[(j+1)%4], t.v[(j+2)%4]};
+						std::sort(f.begin(), f.end());
+						faces[f]++;
+					}
+				}
+				tets = good;
+				for (auto const& [f, count] : faces) {
+					if (count == 1) {
+						auto r = circumsphere(pts[f[0]], pts[f[1]], pts[f[2]], pts[i]);
+						if (r.second >= 0) tets.push_back({{f[0], f[1], f[2], i}, r.first, r.second});
+					}
+				}
+			}
+
+			// Extract surface faces
+			std::map<std::array<int, 3>, int> face_counts;
+			for (const auto& t : tets) {
+				bool has_super = false;
+				for (int v : t.v) if (v >= (int)unique_points.size()) has_super = true;
+				if (has_super) continue;
+				for (int j = 0; j < 4; ++j) {
+					std::array<int, 3> f = {t.v[j%4], t.v[(j+1)%4], t.v[(j+2)%4]};
+					std::sort(f.begin(), f.end());
+					face_counts[f]++;
+				}
+			}
+
+			for (auto const& [f, count] : face_counts) {
+				if (count == 1) {
+					glm::vec3 p0 = pts[f[0]], p1 = pts[f[1]], p2 = pts[f[2]];
+					glm::vec3 normal = glm::normalize(glm::cross(p1 - p0, p2 - p0));
+					if (glm::dot(normal, p0 - center) < 0) { std::swap(p1, p2); normal = -normal; }
+
+					unsigned int base = (unsigned int)vertices.size();
+					for (const auto& p : {p0, p1, p2}) {
+						Vertex v;
+						v.Position = p;
+						v.Normal = normal;
+						v.Color = hub.color;
+						v.TexCoords = glm::vec2(0.5f); // Hubs use center of texture
+						vertices.push_back(v);
+					}
+					indices.push_back(base);
+					indices.push_back(base + 1);
+					indices.push_back(base + 2);
+				}
+			}
+		}
+
 		struct MaterialKey {
 			float     roughness;
 			float     metallic;
@@ -508,7 +696,7 @@ namespace Boidsish {
 						v.Position = vd.pos;
 						v.Normal = vd.normal;
 						v.Color = vd.color;
-						v.TexCoords = glm::vec2(0.5f);
+						v.TexCoords = vd.texCoords;
 						group.vertices.push_back(v);
 					}
 					for (unsigned int k = 0; k < (unsigned int)tube_data.size(); ++k)
@@ -539,7 +727,7 @@ namespace Boidsish {
 			int   v_start = (int)group.vertices.size();
 
 			if (e.type == ProceduralElementType::Hub) {
-				GenerateUVSphere(group.vertices, group.indices, e.position, e.radius, e.color, 6, 6);
+				GenerateHubMesh(group.vertices, group.indices, ir, i);
 			} else if (e.type == ProceduralElementType::Box) {
 				GenerateBox(group.vertices, group.indices, e.position, e.orientation, e.dimensions, e.color);
 			} else if (e.type == ProceduralElementType::Wedge) {
@@ -743,7 +931,9 @@ namespace Boidsish {
 			finalize_mesh(group);
 		}
 
-		return std::make_shared<Model>(data, false);
+		auto model = std::make_shared<Model>(data, false);
+		model->SetAllowMegabuffer(false);
+		return model;
 	}
 
 	std::shared_ptr<ModelData> ProceduralMesher::GenerateDirectMesh(const ProceduralIR& ir) {

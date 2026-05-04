@@ -46,6 +46,7 @@ namespace Boidsish {
 	class SdfVolumeManager;
 	struct SdfSource;
 	class DecorManager;
+	class GrassManager;
 	class WeatherManager;
 	class Path;
 
@@ -87,6 +88,7 @@ namespace Boidsish {
 		bool  render_skybox = true;
 		bool  render_floor = true;
 		bool  render_decor = true;
+		bool  render_grass = true;
 		bool  force_both_floor_and_terrain = false;
 		bool  artistic_ripple = false;
 		bool  artistic_color_shift = false;
@@ -106,9 +108,12 @@ namespace Boidsish {
 		float erosion_gully_weight = 0.5f;
 		float erosion_max_dist = 450.0f;
 		float ambient_particle_density = 0.15f;
+		float sh_probe_scaling = 1.0f;
+		float sh_probe_convergence_speed = 1.0f;
+		int   sh_probe_ray_count_multiplier = 1;
 	};
 
-	enum class CameraMode { FREE, AUTO, TRACKING, STATIONARY, CHASE, PATH_FOLLOW };
+	enum class CameraMode { FREE, AUTO, TRACKING, STATIONARY, CHASE, PATH_FOLLOW, FIRST_PERSON };
 
 	// Forward declaration for PrepareCallback
 	class Visualizer;
@@ -218,10 +223,17 @@ namespace Boidsish {
 		int                   path_direction;
 		glm::quat             path_orientation;
 		float                 path_auto_bank_angle;
+
+		// First person camera state
+		float fp_vertical_velocity;
+		bool  fp_is_grounded;
+		float fp_smoothed_ground_height;
+		float fp_current_eye_height;
 	};
 
 	using InputCallback = std::function<void(const InputState&)>;
 	using PrepareCallback = std::function<void(Visualizer&)>;
+	using UpdateHandler = std::function<void(float, float)>;
 
 	// Main visualization class
 	class Terrain;
@@ -308,6 +320,8 @@ namespace Boidsish {
 
 		// Add an input callback to the chain of handlers.
 		void AddInputCallback(InputCallback callback);
+		void AddUpdateHandler(UpdateHandler handler);
+		void ClearUpdateHandlers();
 
 		/**
 		 * @brief Generates a ray from a screen-space coordinate.
@@ -449,6 +463,8 @@ namespace Boidsish {
 			FireEffectStyle        fire_style = FireEffectStyle::Explosion
 		);
 
+		void TriggerSdfExplosion(const glm::vec3& position, float intensity = 1.0f);
+
 		/**
 		 * @brief Add a curved text effect in world space.
 		 *
@@ -562,6 +578,7 @@ namespace Boidsish {
 		FireEffectManager*                     GetFireEffectManager();
 		DecorManager*                          GetDecorManager();
 		void                                   SetDecorManager(std::shared_ptr<DecorManager> decor_manager);
+		GrassManager*                          GetGrassManager();
 		WeatherManager*                        GetWeatherManager();
 		PostProcessing::PostProcessingManager& GetPostProcessingManager();
 		float                                  GetLastFrameTime() const;

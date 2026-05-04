@@ -79,6 +79,8 @@ namespace Boidsish {
 
 		MeshInfo GetMeshInfo(Megabuffer* mb = nullptr) const override;
 
+		AABB GetAABB() const override;
+
 		// Graphs are not instanced (each has unique geometry)
 		std::string GetInstanceKey() const override { return "Graph:" + std::to_string(GetId()); }
 

@@ -1,6 +1,16 @@
 #ifndef TERRAIN_NOISE_GLSL
 #define TERRAIN_NOISE_GLSL
 
+#ifndef FNC_MOD289
+#define FNC_MOD289
+float mod289(float x) {
+	return x - floor(x * (1.0 / 289.0)) * 289.0;
+}
+
+vec2 mod289(vec2 x) {
+	return x - floor(x * (1.0 / 289.0)) * 289.0;
+}
+
 vec3 mod289(vec3 x) {
 	return x - floor(x * (1.0 / 289.0)) * 289.0;
 }
@@ -8,14 +18,37 @@ vec3 mod289(vec3 x) {
 vec4 mod289(vec4 x) {
 	return x - floor(x * (1.0 / 289.0)) * 289.0;
 }
+#endif
+
+#ifndef FNC_PERMUTE
+#define FNC_PERMUTE
+float permute(float v) {
+	return mod289(((v * 34.0) + 1.0) * v);
+}
+
+vec2 permute(vec2 v) {
+	return mod289(((v * 34.0) + 1.0) * v);
+}
+
+vec3 permute(vec3 v) {
+	return mod289(((v * 34.0) + 1.0) * v);
+}
 
 vec4 permute(vec4 x) {
 	return mod289(((x * 34.0) + 1.0) * x);
+}
+#endif
+
+#ifndef FNC_TAYLORINVSQRT
+#define FNC_TAYLORINVSQRT
+float taylorInvSqrt(float r) {
+	return 1.79284291400159 - 0.85373472095314 * r;
 }
 
 vec4 taylorInvSqrt(vec4 r) {
 	return 1.79284291400159 - 0.85373472095314 * r;
 }
+#endif
 
 float snoise(vec3 v) {
 	const vec2 C = vec2(1.0 / 6.0, 1.0 / 3.0);
@@ -107,11 +140,14 @@ float[6] fbm_detail(vec3 p) {
 	return values;
 }
 
+#ifndef FNC_HASH22
+#define FNC_HASH22
 // Standard 2D hash for pseudo-random impulse generation
 vec2 hash22(vec2 p) {
 	p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
 	return fract(sin(p) * 43758.5453123);
 }
+#endif
 
 // pos: The world or UV coordinate being shaded
 // curlVec: The sampled vector from curl texture at 'pos'

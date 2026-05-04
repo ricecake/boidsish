@@ -10,6 +10,7 @@
 #include "collision.h"
 #include "constants.h"
 #include "geometry.h"
+#include "sdf_volume_manager.h"
 #include "visual_effects.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -74,7 +75,8 @@ namespace Boidsish {
 			dissolve_plane_dist_(other.dissolve_plane_dist_),
 			is_refractive_(other.is_refractive_),
 			refractive_index_(other.refractive_index_),
-			shadow_caster_override_(other.shadow_caster_override_) {}
+			shadow_caster_override_(other.shadow_caster_override_),
+			allow_megabuffer_(other.allow_megabuffer_) {}
 
 		Shape& operator=(Shape&& other) noexcept {
 			if (this != &other) {
@@ -115,6 +117,7 @@ namespace Boidsish {
 				is_refractive_ = other.is_refractive_;
 				refractive_index_ = other.refractive_index_;
 				shadow_caster_override_ = other.shadow_caster_override_;
+				allow_megabuffer_ = other.allow_megabuffer_;
 			}
 			return *this;
 		}
@@ -326,6 +329,13 @@ namespace Boidsish {
 			MarkDirty();
 		}
 
+		inline bool AllowMegabuffer() const { return allow_megabuffer_; }
+
+		inline void SetAllowMegabuffer(bool allow) {
+			allow_megabuffer_ = allow;
+			MarkDirty();
+		}
+
 		// Returns a key identifying what shapes can be instanced together
 		// Shapes with the same key share the same mesh data
 		virtual std::string GetInstanceKey() const = 0;
@@ -512,7 +522,8 @@ namespace Boidsish {
 			dissolve_plane_dist_(0.0f),
 			is_refractive_(false),
 			refractive_index_(1.0f),
-			shadow_caster_override_(std::nullopt) {}
+			shadow_caster_override_(std::nullopt),
+			allow_megabuffer_(true) {}
 
 		virtual bool GetDefaultCastsShadows() const { return !is_colossal_; }
 
@@ -552,6 +563,7 @@ namespace Boidsish {
 		bool      use_pbr_;
 
 		std::optional<bool> shadow_caster_override_;
+		bool                allow_megabuffer_;
 
 	protected:
 		bool      dissolve_enabled_;
@@ -567,6 +579,39 @@ namespace Boidsish {
 		static unsigned int         sphere_ebo_;
 		static int                  sphere_vertex_count_;
 		static MegabufferAllocation sphere_alloc_;
+	};
+
+	class SdfShape: public Shape {
+	public:
+		SdfShape(SdfVolumeManager& manager, const SdfSource& source);
+		virtual ~SdfShape();
+
+		void Update(float delta_time) override;
+
+		bool IsExpired() const override { return age_ >= lifetime_ && lifetime_ > 0.0f; }
+		void SetLifetime(float lifetime) { lifetime_ = lifetime; }
+
+		std::string GetInstanceKey() const override { return "SdfShape_" + std::to_string(GetId()); }
+
+		// SdfShape doesn't use the standard mesh renderer, but we need to satisfy the interface
+		MeshInfo GetMeshInfo(Megabuffer* megabuffer = nullptr) const override { return {}; }
+		void     GenerateRenderPackets(std::vector<RenderPacket>&, const RenderContext&) const override {
+            // SdfShapes are rendered via the SdfVolumePass, so they don't generate standard packets.
+        }
+
+		// Access to the underlying SDF source
+		SdfSource&       GetSource() { return source_; }
+		const SdfSource& GetSource() const { return source_; }
+
+	private:
+		SdfVolumeManager& manager_;
+		SdfSource         source_;
+		int               source_id_;
+		float             age_ = 0.0f;
+		float             lifetime_ = 0.0f;
+		float             initial_radius_;
+		float             initial_density_;
+		glm::vec3         initial_position_;
 	};
 
 	// Function type for user-defined shape generation

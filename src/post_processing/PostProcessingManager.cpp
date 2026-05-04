@@ -2,13 +2,15 @@
 
 #include <iostream>
 
+#include "post_processing/effects/BloomEffect.h"
 #include "profiler.h"
+#include "service_locator.h"
 #include <shader.h>
 
 namespace Boidsish {
 	namespace PostProcessing {
 
-		PostProcessingManager::PostProcessingManager(int width, int height, GLuint quad_vao):
+		PostProcessingManager::PostProcessingManager(ServiceLocator& /*loc*/, int width, int height, GLuint quad_vao):
 			width_(width), height_(height), quad_vao_(quad_vao) {
 			pingpong_fbo_[0] = 0;
 			pingpong_fbo_[1] = 0;
@@ -54,13 +56,6 @@ namespace Boidsish {
 			pre_tone_mapping_effects_.push_back(effect);
 		}
 
-		void PostProcessingManager::SetToneMappingEffect(std::shared_ptr<IPostProcessingEffect> effect) {
-			if (effect) {
-				effect->Initialize(width_, height_);
-			}
-			tone_mapping_effect_ = effect;
-		}
-
 		void PostProcessingManager::SetSharedDepthTexture(GLuint texture) {
 			shared_depth_texture_ = texture;
 			InitializeFBOs();
@@ -70,12 +65,16 @@ namespace Boidsish {
 			GLuint sourceTexture,
 			GLuint sourceFbo,
 			GLuint depthTexture,
-			GLuint velocityTexture
+			GLuint velocityTexture,
+			GLuint normalTexture,
+			GLuint albedoTexture
 		) {
 			current_texture_ = sourceTexture;
 			current_fbo_ = sourceFbo;
 			depth_texture_ = depthTexture;
 			velocity_texture_ = velocityTexture;
+			normal_texture_ = normalTexture;
+			albedo_texture_ = albedoTexture;
 			fbo_index_ = 0;
 			glViewport(0, 0, width_, height_);
 
@@ -130,14 +129,11 @@ namespace Boidsish {
 			float            time
 		) {
 			PROJECT_PROFILE_SCOPE("ApplyLateEffects");
+
 			for (const auto& effect : pre_tone_mapping_effects_) {
 				if (effect->IsEnabled() && !effect->IsEarly()) {
 					ApplyEffectInternal(effect, viewMatrix, projectionMatrix, cameraPos, time);
 				}
-			}
-
-			if (tone_mapping_effect_ && tone_mapping_effect_->IsEnabled()) {
-				ApplyEffectInternal(tone_mapping_effect_, viewMatrix, projectionMatrix, cameraPos, time);
 			}
 
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -146,9 +142,6 @@ namespace Boidsish {
 		void PostProcessingManager::SetNightFactor(float factor) {
 			for (auto& effect : pre_tone_mapping_effects_) {
 				effect->SetNightFactor(factor);
-			}
-			if (tone_mapping_effect_) {
-				tone_mapping_effect_->SetNightFactor(factor);
 			}
 		}
 
@@ -168,7 +161,16 @@ namespace Boidsish {
 			glDepthMask(GL_FALSE);
 
 			glBindVertexArray(quad_vao_);
-			effect->Apply(current_texture_, depth_texture_, velocity_texture_, viewMatrix, projectionMatrix, cameraPos);
+			effect->Apply(
+				current_texture_,
+				depth_texture_,
+				velocity_texture_,
+				normal_texture_,
+				albedo_texture_,
+				viewMatrix,
+				projectionMatrix,
+				cameraPos
+			);
 			glBindVertexArray(0);
 
 			glEnable(GL_DEPTH_TEST);
@@ -187,7 +189,7 @@ namespace Boidsish {
 			const glm::vec3& cameraPos,
 			float            time
 		) {
-			BeginApply(sourceTexture, 0, depthTexture, 0); // Deprecated call, passing 0 for velocity
+			BeginApply(sourceTexture, 0, depthTexture, 0, 0, 0); // Deprecated call
 			ApplyEarlyEffects(viewMatrix, projectionMatrix, cameraPos, time);
 			ApplyLateEffects(viewMatrix, projectionMatrix, cameraPos, time);
 			return GetFinalTexture();
@@ -200,10 +202,6 @@ namespace Boidsish {
 
 			for (const auto& effect : pre_tone_mapping_effects_) {
 				effect->Resize(width, height);
-			}
-
-			if (tone_mapping_effect_) {
-				tone_mapping_effect_->Resize(width, height);
 			}
 		}
 

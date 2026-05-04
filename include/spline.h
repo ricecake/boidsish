@@ -14,6 +14,7 @@ namespace Boidsish {
 
 		struct VertexData {
 			glm::vec3 pos, normal, color;
+			glm::vec2 texCoords;
 		};
 
 		struct GraphNode {

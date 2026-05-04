@@ -43,10 +43,12 @@ namespace Boidsish {
 			std::pair<int, int>              chunk_key,
 			const std::vector<glm::vec3>&    positions,
 			const std::vector<glm::vec3>&    normals,
+			const std::vector<glm::vec2>&    biomes,
 			const std::vector<unsigned int>& indices,
 			float                            min_y,
 			float                            max_y,
-			const glm::vec3&                 world_offset
+			const glm::vec3&                 world_offset,
+			float                            world_scale
 		) = 0;
 
 		/**
@@ -67,7 +69,15 @@ namespace Boidsish {
 		 * @param frustum View frustum for culling
 		 * @param camera_pos Camera position
 		 */
-		virtual void PrepareForRender(const Frustum& frustum, const glm::vec3& camera_pos) = 0;
+		virtual void PrepareForRender(
+			const Frustum&   frustum,
+			const glm::vec3& camera_pos,
+			float            world_scale = 1.0f,
+			GLuint           lighting_ubo = 0,
+			GLintptr         lighting_ubo_offset = 0,
+			GLsizeiptr       lighting_ubo_size = 0,
+			float            day_time = -1.0f
+		) = 0;
 
 		/**
 		 * @brief Render all visible terrain.
@@ -85,7 +95,7 @@ namespace Boidsish {
 		 *
 		 * For implementations that batch updates, call once per frame.
 		 */
-		virtual void CommitUpdates() {}
+		virtual void CommitUpdates(bool force_sync = false) {}
 
 		/**
 		 * @brief Get debug statistics.

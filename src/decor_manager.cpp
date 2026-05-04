@@ -1,9 +1,12 @@
 #include "decor_manager.h"
 
 #include <algorithm>
+
+#include "service_locator.h"
 #include <set>
 
 #include "ConfigManager.h"
+#include "NoiseManager.h"
 #include "atmosphere_manager.h"
 #include "geometry.h"
 #include "graphics.h"
@@ -18,7 +21,7 @@
 
 namespace Boidsish {
 
-	DecorManager::DecorManager() {}
+	DecorManager::DecorManager(ServiceLocator& /*loc*/) {}
 
 	// Use DrawElementsIndirectCommand from geometry.h
 
@@ -264,22 +267,22 @@ namespace Boidsish {
 		// 	2
 		// );
 
-		// Procedural Grass
-		AddProceduralDecor(
-			ProceduralType::Grass,
-			{.min_density = 0.15f,
-		     .max_density = 0.25f,
-		     .base_scale = 0.5f,
-		     .scale_variance = 0.1f,
-		     .min_height = 0.01f,
-		     .max_height = 200.0f,
-		     .random_yaw = true,
-		     .align_to_terrain = true,
-		     .biomes = {Biome::LushGrass, Biome::DryGrass, Biome::Forest, Biome::AlpineMeadow},
-		     .wind_responsiveness = 1,
-		     .wind_rim_highlight = 1.0f},
-			2
-		);
+		// // Procedural Grass
+		// AddProceduralDecor(
+		// 	ProceduralType::Grass,
+		// 	{.min_density = 0.15f,
+		//      .max_density = 0.25f,
+		//      .base_scale = 0.5f,
+		//      .scale_variance = 0.1f,
+		//      .min_height = 0.01f,
+		//      .max_height = 200.0f,
+		//      .random_yaw = true,
+		//      .align_to_terrain = true,
+		//      .biomes = {Biome::LushGrass, Biome::DryGrass, Biome::Forest, Biome::AlpineMeadow},
+		//      .wind_responsiveness = 1,
+		//      .wind_rim_highlight = 1.0f},
+		// 	2
+		// );
 	}
 
 	DecorProperties DecorManager::GetDefaultTreeProperties() {
@@ -636,13 +639,13 @@ namespace Boidsish {
 			// Bind everything once, then one dispatch per type
 			placement_shader_->use();
 
-			glActiveTexture(GL_TEXTURE0);
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainHeightmap());
 			glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture);
-			placement_shader_->setInt("u_heightmapArray", 0);
+			placement_shader_->setInt("u_heightmapArray", Constants::TextureUnit::TerrainHeightmap());
 
-			glActiveTexture(GL_TEXTURE1);
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainBiomeMap());
 			glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture);
-			placement_shader_->setInt("u_biomeMap", 1);
+			placement_shader_->setInt("u_biomeMap", Constants::TextureUnit::TerrainBiomeMap());
 
 			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::DecorProps(), decor_props_ubo_);
 			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::DecorPlacementGlobals(), placement_globals_ubo_);
@@ -651,7 +654,7 @@ namespace Boidsish {
 			int dispatch_size = (Constants::Class::Terrain::ChunkSize() + 7) / 8;
 			for (size_t i = 0; i < decor_types_.size(); ++i) {
 				placement_shader_->setInt("u_typeIndex", (int)i);
-				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, decor_types_[i].ssbo);
+				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::DecorAllInstances(), decor_types_[i].ssbo);
 				glDispatchCompute(dispatch_size, dispatch_size, num_chunks); // Z = chunk index
 			}
 			glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
@@ -705,9 +708,9 @@ namespace Boidsish {
 		// Hi-Z occlusion culling uniforms
 		culling_shader_->setBool("u_enableHiZ", hiz_enabled_ && !is_shadow_pass);
 		if (hiz_enabled_ && !is_shadow_pass) {
-			glActiveTexture(GL_TEXTURE15);
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::HiZ());
 			glBindTexture(GL_TEXTURE_2D, hiz_texture_);
-			culling_shader_->setInt("u_hizTexture", 15);
+			culling_shader_->setInt("u_hizTexture", Constants::TextureUnit::HiZ());
 			culling_shader_->setMat4("u_prevViewProjection", hiz_prev_vp_);
 			glUniform2i(glGetUniformLocation(culling_shader_->ID, "u_hizSize"), hiz_width_, hiz_height_);
 			culling_shader_->setInt("u_hizMipCount", hiz_mip_count_);
@@ -715,7 +718,7 @@ namespace Boidsish {
 
 		// Bind block validity buffer once for all types (shared allocation scheme)
 		culling_shader_->setInt("u_instancesPerBlock", kInstancesPerChunk);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, block_validity_ssbo_);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::DecorBlockValidity(), block_validity_ssbo_);
 
 		for (auto& type : decor_types_) {
 			// Reset atomic counter
@@ -728,8 +731,8 @@ namespace Boidsish {
 			culling_shader_->setVec3("u_aabbMin", type.model->GetData()->aabb.min);
 			culling_shader_->setVec3("u_aabbMax", type.model->GetData()->aabb.max);
 
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, type.ssbo);
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, type.visible_ssbo);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::DecorAllInstances(), type.ssbo);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::DecorInstances(), type.visible_ssbo);
 			glBindBufferBase(GL_ATOMIC_COUNTER_BUFFER, 0, type.count_buffer);
 			glDispatchCompute(kMaxInstancesPerType / 64, 1, 1);
 
@@ -740,10 +743,10 @@ namespace Boidsish {
 			update_commands_shader_->setInt("u_numCommands", (int)type.model->getMeshes().size());
 			glBindBufferBase(GL_ATOMIC_COUNTER_BUFFER, 0, type.count_buffer);
 
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, type.indirect_buffer);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::DecorIndirect(), type.indirect_buffer);
 			glDispatchCompute(1, 1, 1);
 
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, type.shadow_indirect_buffer);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::DecorIndirect(), type.shadow_indirect_buffer);
 			glDispatchCompute(1, 1, 1);
 
 			glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT);
@@ -816,19 +819,18 @@ namespace Boidsish {
 
 		// 3. Dispatch placement for each type
 		placement_shader_->use();
-		glActiveTexture(GL_TEXTURE0);
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainHeightmap());
 		glBindTexture(GL_TEXTURE_2D_ARRAY, render_manager->GetHeightmapTexture());
-		placement_shader_->setInt("u_heightmapArray", 0);
+		placement_shader_->setInt("u_heightmapArray", Constants::TextureUnit::TerrainHeightmap());
 
-		glActiveTexture(GL_TEXTURE1);
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainBiomeMap());
 		glBindTexture(GL_TEXTURE_2D_ARRAY, render_manager->GetBiomeTexture());
-		placement_shader_->setInt("u_biomeMap", 1);
+		placement_shader_->setInt("u_biomeMap", Constants::TextureUnit::TerrainBiomeMap());
 
 		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::DecorProps(), decor_props_ubo_);
 		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::DecorPlacementGlobals(), temp_globals_ubo);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::DecorChunkParams(), temp_chunk_params_ssbo);
-		// Note: decor_placement.comp uses binding 0 for DecorInstances
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, temp_instance_ssbo);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::DecorAllInstances(), temp_instance_ssbo);
 
 		int                           num_types = (int)decor_types_.size();
 		std::vector<DecorTypeResults> results(num_types);
@@ -898,10 +900,11 @@ namespace Boidsish {
 	}
 
 	void DecorManager::Render(
-		const glm::mat4&                view,
-		const glm::mat4&                projection,
-		const std::optional<glm::mat4>& light_space_matrix,
-		Shader*                         shader_override
+		const glm::mat4&                      view,
+		const glm::mat4&                      projection,
+		std::shared_ptr<TerrainRenderManager> render_manager,
+		const std::optional<glm::mat4>&       light_space_matrix,
+		Shader*                               shader_override
 	) {
 		PROJECT_PROFILE_SCOPE("DecorManager::Render");
 		if (!enabled_ || !initialized_ || decor_types_.empty())
@@ -921,30 +924,39 @@ namespace Boidsish {
 		}
 		shader->setMat4("model", glm::mat4(1.0f));
 		shader->setBool("useSSBOInstancing", true);
-		shader->setBool("isTextEffect", false);
+		shader->setBool("uUseMDI", false);
+		shader->setBool("isArcadeText", false);
+		shader->setBool("isLine", false);
 		shader->setBool("isColossal", false);
 		shader->setBool("is_instanced", false);
 		shader->setVec3("objectColor", 1.0f, 1.0f, 1.0f);
 		shader->setBool("usePBR", false);
+		shader->setBool("use_skinning", false);
+		shader->setInt("bone_matrices_offset", -1);
 		shader->setVec4("clipPlane", 0.0f, 0.0f, 0.0f, 0.0f);
 		shader->setFloat(
 			"ripple_strength",
 			ConfigManager::GetInstance().GetAppSettingBool("artistic_effect_ripple", false) ? 0.05f : 0.0f
 		);
 
-		// Atmosphere texture bindings for cloud shadows and transmittance-based lighting.
-		// The textures are already bound to units 20-23 by the main render setup;
-		// we just need the uniform locations set on the decor shader program.
+		// Bind terrain, atmosphere and noise data
+		if (render_manager) {
+			render_manager->BindTerrainData(*shader);
+		}
+
 		if (atmosphere_manager_) {
-			shader->trySetInt("u_transmittanceLUT", 20);
-			shader->trySetFloat("u_atmosphereHeight", atmosphere_manager_->GetAtmosphereHeight());
+			atmosphere_manager_->BindToShader(*shader);
+		}
+
+		if (noise_manager_) {
+			noise_manager_->BindDefault(*shader);
 		}
 
 		for (size_t i = 0; i < decor_types_.size(); ++i) {
 			auto& type = decor_types_[i];
 
 			// Bind the culled instances SSBO
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 10, type.visible_ssbo);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::DecorInstances(), type.visible_ssbo);
 
 			if (type.model->IsNoCull()) {
 				glDisable(GL_CULL_FACE);

@@ -2,6 +2,8 @@
 
 #include <algorithm>
 
+#include "service_locator.h"
+
 #include "logger.h"
 #include "profiler.h"
 #include "shader.h"
@@ -9,7 +11,7 @@
 
 namespace Boidsish {
 
-	ShockwaveManager::ShockwaveManager() {
+	ShockwaveManager::ShockwaveManager(ServiceLocator& /*loc*/) {
 		shockwaves_.reserve(kMaxShockwaves);
 	}
 
@@ -201,7 +203,7 @@ namespace Boidsish {
 		}
 	}
 
-	void ShockwaveManager::ApplyScreenSpaceEffect(
+	bool ShockwaveManager::ApplyScreenSpaceEffect(
 		GLuint           source_texture,
 		GLuint           depth_texture,
 		const glm::mat4& view_matrix,
@@ -214,7 +216,7 @@ namespace Boidsish {
 		EnsureInitialized();
 
 		if (shockwaves_.empty() || !shader_) {
-			return;
+			return false;
 		}
 
 		// Update UBO data first
@@ -267,6 +269,7 @@ namespace Boidsish {
 		glBindVertexArray(0);
 
 		glActiveTexture(GL_TEXTURE0);
+		return true;
 	}
 
 } // namespace Boidsish

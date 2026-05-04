@@ -10,17 +10,22 @@ namespace Boidsish {
 	class Model;
 
 	enum class FireEffectStyle {
-		MissileExhaust,
-		Explosion,
-		Fire,
-		Sparks,
-		Glitter,
-		Ambient,
-		Bubbles,
-		Fireflies,
-		Debug,
-		Cinder,
-		Null
+		MissileExhaust = 0,
+		Explosion = 1,
+		Fire = 2,
+		Sparks = 3,
+		Glitter = 4,
+		Ambient = 5,
+		Bubbles = 6,
+		Fireflies = 7,
+		Debug = 8,
+		Cinder = 9,
+		Rain = 10,
+		Snow = 11,
+		Leaf = 12,
+		Petal = 13,
+		Iridescent = 28,
+		Null = -1
 	};
 
 	enum class EmitterType { Point = 0, Box = 1, Sphere = 2, Beam = 3, Model = 4 };

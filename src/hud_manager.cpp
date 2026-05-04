@@ -1,6 +1,8 @@
 #include "hud_manager.h"
 
 #include <algorithm>
+
+#include "service_locator.h"
 #include <cstdio>
 #include <stdexcept>
 
@@ -14,7 +16,7 @@
 
 namespace Boidsish {
 
-	HudManager::HudManager() {}
+	HudManager::HudManager(ServiceLocator& /*loc*/) {}
 
 	HudManager::~HudManager() {}
 

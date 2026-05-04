@@ -1,0 +1,238 @@
+#version 430 core
+
+#include "helpers/noise.glsl"
+#include "frustum.glsl"
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+struct GrassInstance {
+    vec4 pos_rot;   // xyz = world pos, w = rotation
+    vec4 scale_seed_biome; // x = height, y = width, z = seed, w = biome index
+};
+
+layout(std430, binding = [[GRASS_INSTANCES_BINDING]]) buffer GrassInstances {
+    GrassInstance instances[];
+};
+
+struct DrawArraysIndirectCommand {
+    uint count;
+    uint instanceCount;
+    uint first;
+    uint baseInstance;
+};
+
+layout(std430, binding = [[GRASS_INDIRECT_BINDING]]) buffer GrassIndirect {
+    DrawArraysIndirectCommand indirectCommand;
+};
+
+struct GrassProperties {
+    vec4  colorTop;
+    vec4  colorBottom;
+    float height;
+    float width;
+    float rigidity;
+    float heightVariance;
+    float widthVariance;
+    float density;
+    float colorVariability;
+    float windInfluence;
+    uint  enabled;
+    float _pad0;
+    float _pad1;
+    float _pad2;
+};
+
+struct GlobalGrassProperties {
+    float lengthMultiplier;
+    float widthMultiplier;
+    float densityMultiplier;
+    float rigidityMultiplier;
+    float windMultiplier;
+    uint  enabled;
+    float _pad0;
+    float _pad1;
+};
+
+layout(std140, binding = [[GRASS_PROPS_BINDING]]) uniform GrassProps {
+    GrassProperties biomeProps[8];
+    GlobalGrassProperties globalProps;
+};
+
+layout(std140, binding = [[TERRAIN_DATA_BINDING]]) uniform TerrainData {
+    ivec4 u_originSize;    // x, z, size, is_bound
+    vec4  u_terrainParams; // x=chunkSize, y=worldScale
+};
+
+uniform isampler2D u_chunkGrid;
+uniform sampler2DArray u_heightmapArray; // RGBA16F: R=height, GBA=normal.xyz
+uniform sampler2DArray uBiomeMap;   // RGBA8: R=low_idx, G=t, B=bake_flag
+
+uniform vec3 uCameraPos;
+uniform float uWorldScale;
+uniform float uMaxInstances;
+
+// 8x8 Bayer Matrix for stable ordered dithering
+const int bayer8x8[64] = int[](
+     0, 32,  8, 40,  2, 34, 10, 42,
+    48, 16, 56, 24, 50, 18, 58, 26,
+    12, 44,  4, 36, 14, 46,  6, 38,
+    60, 28, 52, 20, 62, 30, 54, 22,
+     3, 35, 11, 43,  1, 33,  9, 41,
+    51, 19, 59, 27, 49, 17, 57, 25,
+    15, 47,  7, 39, 13, 45,  5, 37,
+    63, 31, 55, 23, 61, 29, 53, 21
+);
+
+// Simple hash for random values
+float hash(uint x) {
+    x = ((x >> 16) ^ x) * 0x45d9f3b;
+    x = ((x >> 16) ^ x) * 0x45d9f3b;
+    x = (x >> 16) ^ x;
+    return float(x) / 4294967295.0;
+}
+
+
+struct GridCell {
+    vec2 Coord;
+    int index;
+    float scale;
+    float minRange;
+    float maxRange;
+    float lower;
+    float upper;
+
+};
+    // smoothstep(minRange - (maxRange+minRange/4), maxRange + (maxRange+minRange/4), distance)
+    // minRange = exp2(floor((index-1)*log2(3)))
+    // maxRange = exp2(floor(index*log2(3)))
+    // morton codes on logarithmic grid?  log-spiral grid - two sets of N log spirals in opposite directions.
+
+GridCell makeGridCell(vec3 invocationPos, vec3 cameraPos, int index) {
+    float baseScale = 0.2 * uWorldScale;
+    float baseRange = 20.0 * uWorldScale;
+
+    float scale = baseScale * exp(float(index));
+    vec2 cameraCell = floor(cameraPos.xz / scale);
+    vec2 cellID = cameraCell + (invocationPos.xz);
+
+    float maxRange = baseRange * exp(float(index));
+    float minRange = (index <= 0) ? 0.0 : baseRange * exp(float(index - 1));
+
+    // Overlap to mask changes in density and grid size
+    float lower = minRange;//(index <= 1) ? minRange : baseRange * exp(float(index - 2));
+    float upper = baseRange * exp(float(index+1));
+
+    return GridCell(
+        cellID,
+        index,
+        scale,
+        minRange,
+        maxRange,
+        lower,
+        upper
+    );
+}
+
+void spawnBlade(GridCell cell) {
+    float gridStep = cell.scale;
+
+    float lower = cell.lower;
+    float upper = cell.upper;
+
+    bool rotateDither = (cell.index % 2 > 0);
+    ivec2 cellID = ivec2(cell.Coord);
+
+    vec2 cellCenter = vec2(cell.Coord) * cell.scale;
+    float dist = distance(cellCenter, uCameraPos.xz);
+    if ((dist > upper) || (dist < lower)) return;
+
+    // --- Fast GPU Culling ---
+    vec3 cellMin = vec3(cellCenter.x - gridStep * 0.5, -20.0 * uWorldScale, cellCenter.y - gridStep * 0.5);
+    vec3 cellMax = vec3(cellCenter.x + gridStep * 0.5, 120.0 * uWorldScale, cellCenter.y + gridStep * 0.5);
+    if (!isAABBInFrustum(cellMin, cellMax)) return;
+
+    // Non-mirrored stable seed
+    uint seed = uint(cellID.x * 1973) ^ uint(cellID.y * 9277);
+    if (seed == 0) seed = 1;
+
+    vec2 jitter = (vec2(hash(seed), hash(seed + 1234u)) * 2.0 - 1.0) * gridStep * 0.45;
+    vec2 worldPosXZ = cellCenter + jitter;
+
+    dist = distance(worldPosXZ, uCameraPos.xz);
+    if ((dist > upper) || (dist < lower)) return;
+
+    float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
+    ivec2 chunkCoord = ivec2(floor(worldPosXZ / scaledChunkSize));
+    ivec2 localGridCoord = chunkCoord - u_originSize.xy;
+
+    if (u_originSize.w < 1 || localGridCoord.x < 0 || localGridCoord.x >= u_originSize.z ||
+        localGridCoord.y < 0 || localGridCoord.y >= u_originSize.z) {
+        return;
+    }
+
+    int slice = texelFetch(u_chunkGrid, localGridCoord, 0).r;
+    if (slice < 0) return;
+
+    vec2 chunkBase = vec2(chunkCoord) * scaledChunkSize;
+    vec2 uv = (worldPosXZ - chunkBase) / scaledChunkSize;
+    vec2 remappedUV = (uv * u_terrainParams.x + 0.5) / (u_terrainParams.x + 1.0);
+
+    vec4 terrainSample = textureLod(u_heightmapArray, vec3(remappedUV, float(slice)), 0.0);
+    float height = terrainSample.r;
+    vec3 normal = terrainSample.gba;
+
+    if (height <= 0.0) {
+        return;
+    }
+
+    if (normal.y < 0.7) return;
+
+    // dist *= -dot(normal, frustumPlanes[4].xyz);
+
+    vec2 biomeData = textureLod(uBiomeMap, vec3(remappedUV, float(slice)), 0.0).rg;
+    int pickedBiome = (hash(seed + 5566) < biomeData.g) ? int(biomeData.r * 255.0 + 0.5) + 1 : int(biomeData.r * 255.0 + 0.5);
+    pickedBiome = clamp(pickedBiome, 0, 7);
+
+    if (biomeProps[pickedBiome].enabled == 0) return;
+
+    float fadeIn = (cell.index == 0) ? 1.0 : smoothstep(lower, cell.minRange, dist);
+    float fadeOut = 1.0 - smoothstep(cell.maxRange, upper, dist);
+    float densityCurve = fadeIn * fadeOut;
+
+    int bx = cellID.x & 7;
+    int by = cellID.y & 7;
+    if (rotateDither) {
+        int tmp = bx; bx = by; by = 7 - tmp;
+    }
+    float ditherValue = float(bayer8x8[by * 8 + bx]) / 64.0;
+    float finalDither = ditherValue * (1.1 - biomeProps[pickedBiome].density * globalProps.densityMultiplier);
+
+    if (densityCurve < finalDither) return;
+
+    float heightFade = densityCurve;
+
+    uint idx = atomicAdd(indirectCommand.instanceCount, 1);
+    if (idx >= uint(uMaxInstances)) return;
+
+    float hVar = (hash(seed + 1357) * 2.0 - 1.0) * biomeProps[pickedBiome].heightVariance;
+    float wVar = (hash(seed + 2468) * 2.0 - 1.0) * biomeProps[pickedBiome].widthVariance;
+    float rot = hash(seed + 3579) * 6.28318;
+
+    instances[idx].pos_rot = vec4(worldPosXZ.x, height, worldPosXZ.y, rot);
+    instances[idx].scale_seed_biome = vec4(
+        (biomeProps[pickedBiome].height + hVar) * uWorldScale * heightFade * globalProps.lengthMultiplier,
+        (biomeProps[pickedBiome].width + wVar) * uWorldScale * globalProps.widthMultiplier,
+        float(seed),
+        float(pickedBiome)
+    );
+}
+
+void main() {
+    vec3 offset = (gl_NumWorkGroups.xzy * gl_WorkGroupSize.xzy)/2.0;
+    vec3 coord = gl_GlobalInvocationID.xzy - offset;
+
+    spawnBlade(makeGridCell(coord, uCameraPos, -1));
+    spawnBlade(makeGridCell(coord, uCameraPos, 0));
+    spawnBlade(makeGridCell(coord, uCameraPos, 1));
+    spawnBlade(makeGridCell(coord, uCameraPos, 2));
+}

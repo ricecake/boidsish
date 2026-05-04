@@ -9,24 +9,21 @@ layout(location = 10) in vec4 aWeights;
 
 #include "common_uniforms.glsl"
 
-layout(std430, binding = 2) buffer UniformsSSBO {
-	CommonUniforms uniforms_data[];
-};
-
 uniform bool uUseMDI = false;
 
-// SSBO for decor/foliage instancing (binding 10)
-layout(std430, binding = 10) buffer SSBOInstances {
+// SSBO for decor/foliage instancing
+layout(std430, binding = [[DECOR_INSTANCES_BINDING]]) buffer SSBOInstances {
 	mat4 ssboInstanceMatrices[];
 };
 
-// SSBO for bone matrices (binding 12)
-layout(std430, binding = 12) buffer BoneMatricesSSBO {
+// SSBO for bone matrices
+layout(std430, binding = [[BONE_MATRIX_BINDING]]) buffer BoneMatricesSSBO {
 	mat4 boneMatrices[];
 };
 
 #include "frustum.glsl"
 #include "helpers/fast_noise.glsl"
+#include "helpers/wind.glsl"
 #include "helpers/lighting.glsl"
 #include "helpers/shockwave.glsl"
 #include "temporal_data.glsl"
@@ -60,9 +57,11 @@ uniform float frustumCullRadius = 5.0; // Approximate object radius for sphere t
 uniform bool  enableHiZCulling = false;
 
 // Hi-Z occlusion visibility (per-draw, written by occlusion_cull.comp)
-layout(std430, binding = 13) readonly buffer OcclusionVisibility {
+layout(std430, binding = [[OCCLUSION_VISIBILITY_BINDING]]) readonly buffer OcclusionVisibility {
 	uint hiz_visibility[];
 };
+
+uniform uint u_baseVisibilityIndex;
 
 uniform vec3  u_aabbMin;
 uniform vec3  u_aabbMax;
@@ -179,10 +178,27 @@ void main() {
 
 	// GPU frustum culling - output degenerate triangle if outside frustum
 	if (enableFrustumCulling && !current_isColossal) {
-		// Use sphere test with approximate radius based on scale
-		float effectiveRadius = frustumCullRadius * instanceScale;
+		bool inFrustum = true;
 
-		if (!isSphereInFrustum(instanceCenter, effectiveRadius)) {
+		if (use_ssbo) {
+			// Use the accurate AABB from the SSBO if available
+			vec3 aabbMin = vec3(uniforms_data[vUniformIndex].aabb_min_x, uniforms_data[vUniformIndex].aabb_min_y,
+								uniforms_data[vUniformIndex].aabb_min_z);
+			vec3 aabbMax = vec3(uniforms_data[vUniformIndex].aabb_max_x, uniforms_data[vUniformIndex].aabb_max_y,
+								uniforms_data[vUniformIndex].aabb_max_z);
+
+			// Check for degenerate AABB (signals no culling desired or unset)
+			if (aabbMin != aabbMax) {
+				inFrustum = isAABBInFrustum(aabbMin, aabbMax);
+			} else {
+				inFrustum = isSphereInFrustum(instanceCenter, frustumCullRadius * instanceScale);
+			}
+		} else {
+			// Fallback to sphere test for immediate rendering
+			inFrustum = isSphereInFrustum(instanceCenter, frustumCullRadius * instanceScale);
+		}
+
+		if (!inFrustum) {
 			// Output degenerate triangle (all vertices at same point)
 			// GPU will automatically cull this
 			gl_Position = vec4(0.0, 0.0, -2.0, 1.0); // Behind near plane
@@ -196,7 +212,7 @@ void main() {
 
 	// Hi-Z occlusion culling - output degenerate triangle if occluded by previous frame's depth
 	if (enableHiZCulling && uUseMDI && !current_isColossal) {
-		if (hiz_visibility[drawID] == 0u) {
+		if (hiz_visibility[u_baseVisibilityIndex + drawID] == 0u) {
 			gl_Position = vec4(0.0, 0.0, -2.0, 1.0);
 			FragPos = vec3(0.0);
 			Normal = vec3(0.0, 1.0, 0.0);
@@ -224,42 +240,67 @@ void main() {
 			float totalHeight = max(0.001, u_aabbMax.y - u_aabbMin.y);
 			float normalizedHeight = clamp(localHeight / totalHeight, 0.0, 1.0);
 
-			// 1. Calculate raw wind magnitude and direction
-			float fateFactor = fastWorley3d(vec3(instanceCenter.xz / 25.0, time * 0.25)) * 0.5 + 0.75;
-			vec2 rawWindNudge = fateFactor * curlNoise2D(instanceCenter.xz * wind_frequency + time * wind_speed * 0.5) *
-				wind_strength * u_windResponsiveness;
+			// 1. Calculate raw wind magnitude and direction from macro wind system
+			vec3 windAtPos = getWindAtPosition(instanceCenter);
+			// windAtPos is in m/s (up to ~30-40 m/s in storms)
+			vec3 rawWindNudge = windAtPos * wind_strength * u_windResponsiveness;
 
 			float windMag = length(rawWindNudge);
 
 			if (windMag > 0.001) {
-				vec2 windDir2D = rawWindNudge / windMag;
-				vec3 windDir = vec3(windDir2D.x, 0.0, windDir2D.y);
+				vec3 windDir = rawWindNudge / windMag;
 
 				// 2. Apply Asymptotic Resistance (tanh)
 				// Limits maximum deflection so the tree never folds completely flat
-				float maxDeflection = 1.3; // Adjust to tune maximum bend angle limit
-				float resistedWindMag = maxDeflection * tanh(windMag / maxDeflection);
+				float maxDeflection = 1.1; // Allow more deflection for high-speed macro wind
+				// wind_strength (0.01-0.5) * windAtPos (0-40) ~ 0-20.
+				// We scale this to a reasonable radian angle. Increase multiplier for visibility.
+				float resistedWindMag = maxDeflection * tanh(windMag * 0.15 / maxDeflection);
 
-				WindDeflection = resistedWindMag;
+				// WindDeflection = resistedWindMag;
 
 				// 3. Calculate bending angle based on resisted wind and height
 				float bendAngle = resistedWindMag * pow(normalizedHeight, 1.2) *
 					smoothstep(0.05, 1.0, normalizedHeight);
 
-				// 4. Arc Mapping via Rodrigues' Rotation Formula
+				// --- SECONDARY FLUTTER (Directional Displacement) ---
+				// 1. Branch Factor: Isolate the canopy from the trunk
+				vec2 trunkCenterXZ = (u_aabbMin.xz + u_aabbMax.xz) * 0.5;
+				float distFromTrunk = length(aPos.xz - trunkCenterXZ);
+				float maxRadius = max(0.001, (u_aabbMax.x - u_aabbMin.x) * 0.5);
+
+				// Dead-zone near the trunk (e.g., inner 15%), scaling up to 1.0 at the AABB edge
+				float branchFactor = smoothstep(maxRadius * 0.15, maxRadius, distFromTrunk);
+
+				// 2. High-Frequency Flutter
+				// Multipliers here simulate the rapid rustling of lighter geometry.
+				// Dotting aPos with an arbitrary vector provides a quick spatial phase offset.
+				float flutterSpeed = wind_speed * 4.0;
+				float phase = dot(aPos, vec3(1.3, 0.7, 1.1));
+
+				// Small amplitude multiplier (0.05) prevents the mesh from tearing
+				float flutterMag = sin(time * flutterSpeed + phase) * branchFactor * wind_strength * 0.05;
+
+				// 3. Apply Displacement
+				// Pushing along the vertex normal is standard for this tier of detail.
+				vec3 flutterOffset = aNormal * flutterMag;
+
+				// Base offset for the trunk rotation, now including the local flutter
+				vec3 offset = (FragPos - worldBaseCenter) + flutterOffset;
+
+
+				// --- PRIMARY TRUNK BEND (Rodrigues' Rotation) ---
 				// Find the axis perpendicular to both Up and the Wind direction
 				vec3 rotationAxis = normalize(cross(vec3(0.0, 1.0, 0.0), windDir));
-				vec3 offset = FragPos - worldBaseCenter;
 
 				float cosTheta = cos(bendAngle);
 				float sinTheta = sin(bendAngle);
 
-				// Rotate the vertex offset around the base pivot
+				// Rotate the combined offset around the base pivot
 				vec3 rotatedOffset = offset * cosTheta + cross(rotationAxis, offset) * sinTheta +
-					rotationAxis * dot(rotationAxis, offset) * (1.0 - cosTheta);
+									rotationAxis * dot(rotationAxis, offset) * (1.0 - cosTheta);
 
-				FragPos = worldBaseCenter + rotatedOffset;
-			}
+				FragPos = worldBaseCenter + rotatedOffset;			}
 		}
 	}
 

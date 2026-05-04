@@ -5,7 +5,7 @@
 #include <set>
 #include <filesystem>
 #include "shader.h"
-#include "constants.h"
+#include "shader_registration.h"
 
 /**
  * @brief Preprocessor class that exposes loadShaderSource from ShaderBase.
@@ -27,13 +27,7 @@ int main(int argc, char** argv) {
     std::string inputPath = argv[1];
     std::string outputPath = argv[2];
 
-    // Register constants (synchronized with src/graphics.cpp)
-    ShaderBase::RegisterConstant("MAX_LIGHTS", Boidsish::Constants::Class::Shadows::MaxLights());
-    ShaderBase::RegisterConstant("MAX_SHADOW_MAPS", Boidsish::Constants::Class::Shadows::MaxShadowMaps());
-    ShaderBase::RegisterConstant("MAX_CASCADES", Boidsish::Constants::Class::Shadows::MaxCascades());
-    ShaderBase::RegisterConstant("CHUNK_SIZE", Boidsish::Constants::Class::Terrain::ChunkSize());
-    ShaderBase::RegisterConstant("CHUNK_SIZE_PLUS_1", Boidsish::Constants::Class::Terrain::ChunkSizePlus1());
-    ShaderBase::RegisterConstant("MAX_SHOCKWAVES", Boidsish::Constants::Class::Shockwaves::MaxShockwaves());
+    Boidsish::RegisterAllShaderConstants<ShaderBase>();
 
     Preprocessor p;
     std::string processed = p.process(inputPath);

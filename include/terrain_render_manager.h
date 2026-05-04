@@ -17,6 +17,7 @@ class ComputeShader;
 
 namespace Boidsish {
 
+	class ServiceLocator;
 	struct Frustum;
 
 	/**
@@ -45,7 +46,13 @@ namespace Boidsish {
 	 */
 	class TerrainRenderManager {
 	public:
-		TerrainRenderManager(int chunk_size = Constants::Class::Terrain::ChunkSize(), int max_chunks = 512);
+		struct BakeTask {
+			glm::ivec2 chunk_coord;
+			int        slice;
+			int        _pad;
+		};
+
+		TerrainRenderManager(ServiceLocator& loc, int chunk_size = Constants::Class::Terrain::ChunkSize(), int max_chunks = 512);
 		~TerrainRenderManager();
 
 		// Non-copyable
@@ -65,7 +72,8 @@ namespace Boidsish {
 			const std::vector<unsigned int>& indices,
 			float                            min_y,
 			float                            max_y,
-			const glm::vec3&                 world_offset
+			const glm::vec3&                 world_offset,
+			float                            world_scale
 		);
 
 		/**
@@ -81,7 +89,38 @@ namespace Boidsish {
 		/**
 		 * @brief Perform frustum culling and prepare instance buffer.
 		 */
-		void PrepareForRender(const Frustum& frustum, const glm::vec3& camera_pos, float world_scale = 1.0f);
+		void PrepareForRender(
+			const Frustum&   frustum,
+			const glm::vec3& camera_pos,
+			float            world_scale = 1.0f,
+			GLuint           lighting_ubo = 0,
+			GLintptr         lighting_ubo_offset = 0,
+			GLsizeiptr       lighting_ubo_size = 0,
+			float            day_time = -1.0f,
+			const glm::vec3& sun_dir = glm::vec3(0.0f)
+		);
+
+		/**
+		 * @brief Dispatch probe update compute shader.
+		 *
+		 * Uses rendered scene data to update per-chunk SH probes.
+		 */
+		void DispatchProbeUpdate(
+			GLuint           colorTex,
+			GLuint           depthTex,
+			GLuint           normalTex,
+			GLuint           albedoTex,
+			GLuint           velocityTex,
+			GLuint           skyLUT,
+			const glm::mat4& view,
+			const glm::mat4& projection,
+			GLuint           lighting_ubo,
+			GLintptr         lighting_ubo_offset = 0,
+			GLsizeiptr       lighting_ubo_size = 0,
+			float            probe_scaling = 0.125f,
+			float            probe_convergence = 0.5f,
+			int              probe_ray_multiplier = 1
+		);
 
 		/**
 		 * @brief Render all visible terrain chunks with single instanced draw.
@@ -96,9 +135,9 @@ namespace Boidsish {
 		);
 
 		/**
-		 * @brief Commit any pending updates (no-op for this implementation).
+		 * @brief Commit any pending updates.
 		 */
-		void CommitUpdates() {}
+		void CommitUpdates(bool force_sync = false);
 
 		/**
 		 * @brief Set a callback to be notified when a chunk is evicted due to LRU.
@@ -156,24 +195,56 @@ namespace Boidsish {
 		 */
 		void BindTerrainData(ShaderBase& shader_base) const;
 
-		void SetNoise(const GLuint& noise, const GLuint& curl, const GLuint& extra = 0) {
-			if (noise != 0) {
-				noise_texture_ = noise;
-			}
+		/**
+		 * @brief Update the horizon map for newly added or modified chunks.
+		 */
+		void UpdateHorizonMap(const std::vector<BakeTask>& tasks);
 
-			if (curl != 0) {
-				curl_texture_ = curl;
-			}
-			if (extra != 0)
-				extra_noise_texture_ = extra;
-		}
+		/**
+		 * @brief Update the global terrain shadow map.
+		 */
+		void UpdateTerrainShadowMap(const glm::vec3& light_dir, float world_scale);
 
-	private:
 		/**
 		 * @brief Update the global chunk grid and max height textures.
 		 */
-		void UpdateGridTextures(float world_scale);
+		void UpdateGridTextures(float world_scale, GLuint lighting_ubo = 0, GLintptr lighting_ubo_offset = 0, GLsizeiptr lighting_ubo_size = 0, float day_time = -1.0f);
 
+		/**
+		 * @brief Perform deferred terrain baking for queued chunks.
+		 */
+		void PerformBaking(float world_scale, bool force_sync = false);
+
+		/**
+		 * @brief Set the VisualEffects UBO for baking parameters.
+		 */
+		void SetVisualEffectsUbo(GLuint ubo) { visual_effects_ubo_ = ubo; }
+
+		/**
+		 * @brief Set the GrassProps UBO for terrain tinting and AO baseline shift.
+		 */
+		void SetGrassPropsUbo(GLuint ubo) { grass_props_ubo_ = ubo; }
+
+		void SetNoise(
+			GLuint simplex,
+			GLuint curl,
+			GLuint extra = 0,
+			GLuint blue = 0,
+			GLuint phasor = 0
+		) {
+			if (simplex != 0)
+				noise_texture_ = simplex;
+			if (curl != 0)
+				curl_texture_ = curl;
+			if (extra != 0)
+				extra_noise_texture_ = extra;
+			if (blue != 0)
+				blue_noise_texture_ = blue;
+			if (phasor != 0)
+				phasor_noise_texture_ = phasor;
+		}
+
+	private:
 		/**
 		 * @brief Generate mipmaps for the max height grid using MAX reduction.
 		 */
@@ -221,19 +292,33 @@ namespace Boidsish {
 		GLuint grid_vbo_ = 0;
 		GLuint grid_ebo_ = 0;
 		GLuint instance_vbo_ = 0;
-		GLuint heightmap_texture_ = 0; // GL_TEXTURE_2D_ARRAY (RGBA16F: height, normal.xyz)
-		GLuint biome_texture_ = 0;     // GL_TEXTURE_2D_ARRAY (RG8: low_idx, t)
+		GLuint raw_heightmap_texture_ = 0; // GL_TEXTURE_2D_ARRAY (RGBA16F: height, normal.xyz)
+		GLuint heightmap_texture_ = 0;     // GL_TEXTURE_2D_ARRAY (RGBA16F: baked height, baked normal)
+		GLuint baked_params_texture_ = 0;  // GL_TEXTURE_2D_ARRAY (RGBA16F: erosion, ridge, substrate, water)
+		GLuint horizon_map_texture_ = 0;   // GL_TEXTURE_2D_ARRAY (RGBA16F: 8 directions)
+		GLuint terrain_shadow_map_texture_ = 0; // GL_TEXTURE_2D (R8)
+		GLuint biome_texture_ = 0;         // GL_TEXTURE_2D_ARRAY (RGBA8: low_idx, t, bake_flag, unused)
 		GLuint noise_texture_ = 0;
 		GLuint curl_texture_ = 0;
 		GLuint extra_noise_texture_ = 0;
+		GLuint blue_noise_texture_ = 0;
+		GLuint phasor_noise_texture_ = 0;
 		GLuint biome_ubo_ = 0; // UBO for BiomeShaderProperties
 
 		// Global terrain grid resources
 		GLuint chunk_grid_texture_ = 0;      // GL_TEXTURE_2D (R16I: texture_slice index, -1 if none)
 		GLuint max_height_grid_texture_ = 0; // GL_TEXTURE_2D (R32F: max_y, mips for hierarchical check)
 		GLuint terrain_data_ubo_ = 0;        // UBO for grid parameters
+		GLuint probe_ssbo_ = 0;              // SSBO for per-chunk SH probes
+		GLuint bake_ssbo_ = 0;               // SSBO for BakeTask
+		GLuint visual_effects_ubo_ = 0;      // Bound by graphics.cpp
+		GLuint grass_props_ubo_ = 0;
 
 		std::unique_ptr<ComputeShader> grid_mip_shader_;
+		std::unique_ptr<ComputeShader> probe_compute_shader_;
+		std::unique_ptr<ComputeShader> terrain_bake_shader_;
+		std::unique_ptr<ComputeShader> terrain_horizon_shader_;
+		std::unique_ptr<ComputeShader> terrain_shadow_map_shader_;
 
 		// Grid mesh data
 		size_t grid_index_count_ = 0;
@@ -243,22 +328,31 @@ namespace Boidsish {
 		std::vector<int>                         free_slices_; // Available texture slices
 		int                                      next_slice_ = 0;
 
+		std::vector<BakeTask> bake_queue_;
+
 		// Per-frame instance data
 		std::vector<InstanceData> visible_instances_;
 		size_t                    instance_buffer_capacity_ = 0;
 
 		// Camera position for LRU eviction (updated by PrepareForRender)
 		glm::vec3 last_camera_pos_{0.0f, 0.0f, 0.0f};
-		float     last_world_scale_ = 1.0f;
+		float     last_world_scale_ = -1.0f;
+
+		uint32_t frame_count_ = 0;
 
 		// Thread safety
-		mutable std::mutex mutex_;
+		mutable std::recursive_mutex mutex_;
 
 		// Grid update tracking
 		int   last_grid_origin_x_ = -999999;
 		int   last_grid_origin_z_ = -999999;
 		float last_grid_world_scale_ = -1.0f;
 		bool  grid_dirty_ = true;
+
+		int   last_shadow_grid_origin_x_ = -999999;
+		int   last_shadow_grid_origin_z_ = -999999;
+		float last_shadow_grid_world_scale_ = -1.0f;
+		glm::vec3 last_shadow_light_dir_{0.0f};
 
 		// Eviction callback for notifying TerrainGenerator
 		std::function<void(std::pair<int, int>)> eviction_callback_;

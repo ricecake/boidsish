@@ -1,13 +1,20 @@
 #version 430 core
 layout(location = 0) out vec4 FragColor;
-layout(location = 1) out vec2 Velocity;
+layout(location = 1) out vec4 Velocity;
+layout(location = 2) out vec4 NormalOut;
+layout(location = 3) out vec4 AlbedoOut;
 
 in vec3 WorldPos;
 in vec3 Normal;
 in vec4 CurPosition;
 in vec4 PrevPosition;
 
+#define USE_TERRAIN_DATA
+#include "helpers/terrain_shadows.glsl"
 #include "helpers/lighting.glsl"
+#include "temporal_data.glsl"
+
+uniform mat4 view;
 
 vec3 mod289(vec3 x) {
 	return x - floor(x * (1.0 / 289.0)) * 289.0;
@@ -133,7 +140,8 @@ void main() {
 	// --- Plane lighting ---
 	vec3 norm = normalize(Normal);
 	vec3 surfaceColor = vec3(0.05, 0.05, 0.08);
-	vec3 lighting = apply_lighting(WorldPos, norm, surfaceColor, 0.8).rgb;
+	float primaryShadow;
+	vec3 lighting = apply_lighting(WorldPos, norm, surfaceColor, 0.8, primaryShadow).rgb;
 
 	// --- Combine colors ---
 	vec3 final_color = lighting * surfaceColor + grid_color;
@@ -142,8 +150,12 @@ void main() {
 	vec4 outColor = vec4(final_color, fade);
 	FragColor = mix(vec4(0.7, 0.1, 0.7, fade) * length(outColor), outColor, step(1, fade));
 
-	// Calculate screen-space velocity
+	// Calculate screen-space velocity and material properties
 	vec2 a = (CurPosition.xy / CurPosition.w) * 0.5 + 0.5;
 	vec2 b = (PrevPosition.xy / PrevPosition.w) * 0.5 + 0.5;
-	Velocity = a - b;
+	Velocity = vec4(a - b, 0.05, 0.9); // Roughness, Metallic
+
+	// Output view-space normal
+	NormalOut = vec4(normalize(mat3(view) * norm), primaryShadow);
+	AlbedoOut = vec4(surfaceColor, 1.0);
 }

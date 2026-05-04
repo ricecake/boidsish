@@ -15,6 +15,12 @@ namespace Boidsish {
 		private:
 			Visualizer& m_visualizer;
 			bool        m_show = true;
+
+			// Injection parameters
+			float m_targetPressure = 1013.25f;
+			float m_targetTemperature = 288.15f;
+			float m_targetAerosol = 0.01f;
+			float m_burstStrength = 0.05f;
 		};
 	} // namespace UI
 } // namespace Boidsish

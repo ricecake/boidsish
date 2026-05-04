@@ -1,20 +1,5 @@
-#version 430 core
-
-out vec4 FragColor;
-
-in vec2 TexCoords;
-
-uniform sampler2D sceneTexture;
-uniform int       toneMapMode = 2;
-
-// Auto-exposure SSBO
-layout(std430, binding = 11) buffer AutoExposure {
-	float adaptedLuminance;
-	float targetLuminance;
-	float minExposure;
-	float maxExposure;
-	int   useAutoExposure;
-};
+#ifndef TONEMAPPING_GLSL
+#define TONEMAPPING_GLSL
 
 ////////////////////////////////////////////////////////////////////////////////
 // Narkowicz 2015, "ACES Filmic Tone Mapping Curve"
@@ -184,37 +169,28 @@ float unreal(float x) {
 	return x / (x + 0.155) * 1.019;
 }
 
-////////////////////////////////////////////////////////////////////////////////
-
-void main() {
-	vec2 uv = TexCoords;
-	vec3 tex = texture(sceneTexture, uv).rgb;
-
-	if (useAutoExposure != 0) {
-		float exposure = targetLuminance / max(adaptedLuminance, 0.0001);
-		exposure = clamp(exposure, minExposure, maxExposure);
-		tex *= exposure;
-	}
-
+vec3 applyTonemapping(vec3 tex, int toneMapMode) {
 	if (toneMapMode == 0) {
-		FragColor = vec4(aces(tex), 1.0f);
+		return aces(tex);
 	} else if (toneMapMode == 1) {
-		FragColor = vec4(tonemapFilmic(tex), 1.0f);
+		return tonemapFilmic(tex);
 	} else if (toneMapMode == 2) {
-		FragColor = vec4(lottes(tex), 1.0f);
+		return lottes(tex);
 	} else if (toneMapMode == 3) {
-		FragColor = vec4(reinhard(tex), 1.0f);
+		return reinhard(tex);
 	} else if (toneMapMode == 4) {
-		FragColor = vec4(reinhard2(tex), 1.0f);
+		return reinhard2(tex);
 	} else if (toneMapMode == 5) {
-		FragColor = vec4(uchimura(tex), 1.0f);
+		return uchimura(tex);
 	} else if (toneMapMode == 6) {
-		FragColor = vec4(uncharted2(tex), 1.0f);
+		return uncharted2(tex);
 	} else if (toneMapMode == 7) {
-		FragColor = vec4(unreal(tex), 1.0f);
+		return unreal(tex);
 	} else if (toneMapMode == 8) {
-		FragColor = vec4(tex, 1.0f);
+		return tex;
 	} else {
-		FragColor = vec4(tonemapFilmic(tex), 1.0f);
+		return tonemapFilmic(tex);
 	}
 }
+
+#endif // TONEMAPPING_GLSL
