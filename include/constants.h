@@ -32,6 +32,7 @@ namespace Boidsish {
 				TerrainHeightmapImage = 31,
 				TerrainBakedParamsImage = 32,
 				TerrainHorizonMap = 33,
+				LbmWindData = 34,
 				TerrainShadowMap = 35,
 				TerrainShadowMapImage = 36,
 				VolumetricLightTexture = 38,
@@ -244,6 +245,10 @@ namespace Boidsish {
 
 			consteval int TerrainHorizonMap() {
 				return std::to_underlying(Constants::Bindings::Texture::TerrainHorizonMap);
+			}
+
+			consteval int LbmWindData() {
+				return std::to_underlying(Constants::Bindings::Texture::LbmWindData);
 			}
 
 			consteval int TerrainShadowMap() {
@@ -668,7 +673,7 @@ namespace Boidsish {
 
 			namespace Particles {
 				consteval int MaxParticles() {
-					return 64000;
+					return 128000;
 				}
 
 				consteval int MaxEmitters() {

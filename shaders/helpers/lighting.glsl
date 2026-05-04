@@ -530,6 +530,10 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 			continue;
 		}
 
+		if (lights[i].intensity <= 0.0) {
+			continue;
+		}
+
 		vec3 L;
 		float base_attenuation; // Unused for directional, but needed for your function signature
 		calculateLightContribution(i, frag_pos, L, base_attenuation);
@@ -548,9 +552,7 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 		float shadow = calculateShadow(i, frag_pos, N, L);
 		shadow *= calculateCloudShadow(i, frag_pos);
 
-		if (i == 0) {
-			primaryShadow = shadow;
-		}
+		primaryShadow = min(primaryShadow, shadow);
 
 		evaluate_brdf(N, V, L, albedo, roughness, metallic, F0, radiance, shadow, Lo, spec_lum);
 	}
@@ -559,6 +561,10 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 	// PASS 2: Local Lights (Point/Spot)
 	// ------------------------------------------------------------------
 	for (int i = 2; i < num_lights; ++i) {
+		if (lights[i].intensity <= 0.0) {
+			continue;
+		}
+
 		vec3 L;
 		float base_attenuation;
 		calculateLightContribution(i, frag_pos, L, base_attenuation);
@@ -672,6 +678,10 @@ vec4 apply_lighting_foliage(vec3 frag_pos, vec3 normal, vec3 albedo, float rough
 		if (lights[i].type != LIGHT_TYPE_DIRECTIONAL) {
 			continue;
 		}
+		if (lights[i].intensity <= 0.0) {
+			continue;
+		}
+
         vec3 L; float atten;
         calculateLightContribution(i, frag_pos, L, atten);
 
@@ -683,15 +693,18 @@ vec4 apply_lighting_foliage(vec3 frag_pos, vec3 normal, vec3 albedo, float rough
         vec3 radiance = lights[i].color * (lights[i].intensity * PBR_INTENSITY_BOOST) * atmosphereTransmittance;
 
         float shadow = min(calculateShadow(i, frag_pos, N, L), calculateCloudShadow(i, frag_pos));
-		if (i == 0) {
-			primaryShadow = shadow;
-		}
+
+		primaryShadow = min(primaryShadow, shadow);
 
         evaluate_foliage_brdf(N, V, L, albedo, roughness, metallic, F0, radiance, shadow, translucency, Lo, spec_lum);
     }
 
     // PASS 2: Local Lights
     for (int i = min(2, num_lights); i < num_lights; ++i) {
+		if (lights[i].intensity <= 0.0) {
+			continue;
+		}
+
         vec3 L; float base_atten;
         calculateLightContribution(i, frag_pos, L, base_atten);
 

@@ -17,12 +17,12 @@ namespace Boidsish {
     };
 
     WeatherLbmSimulator::WeatherLbmSimulator(int width, int height)
-        : width_(width), height_(height) {
-        grid1_.resize(width * height);
-        grid2_.resize(width * height);
+        : width_(width + 2 * kPadding), height_(height + 2 * kPadding) {
+        grid1_.resize(width_ * height_);
+        grid2_.resize(width_ * height_);
         currentGrid_ = &grid1_;
         nextGrid_ = &grid2_;
-        config_.resize(width * height);
+        config_.resize(width_ * height_);
 
         // Initial defaults
         for (auto& cell : *currentGrid_) {
@@ -39,7 +39,7 @@ namespace Boidsish {
 
     WeatherLbmSimulator::~WeatherLbmSimulator() {}
 
-	void WeatherLbmSimulator::UpdateAnchor(const glm::vec3& cameraPos) {
+	void WeatherLbmSimulator::UpdateAnchor(const glm::vec3& cameraPos, float totalTime, float timeOfDay) {
 		// Anchor grid to camera chunk position
 		glm::ivec2 newAnchor;
 		newAnchor.x = (int)std::floor(cameraPos.x / 32.0f) - width_ / 2;
@@ -47,9 +47,18 @@ namespace Boidsish {
 
 		if (newAnchor != gridAnchor_) {
 			glm::ivec2 shiftOffset = newAnchor - gridAnchor_;
+
+            // If the shift is too large, it's better to just re-initialize the whole grid
+            // to prevent massive artifacts from a "teleport".
+            if (std::abs(shiftOffset.x) > width_ / 4 || std::abs(shiftOffset.y) > height_ / 4) {
+                gridAnchor_ = newAnchor;
+                initialized_ = false;
+                return;
+            }
+
 			// CRITICAL: Update anchor BEFORE shifting so newly revealed cells know their world position
 			gridAnchor_ = newAnchor;
-			ShiftGrid(shiftOffset);
+			ShiftGrid(shiftOffset, totalTime, timeOfDay);
 		}
 	}
 
@@ -59,7 +68,13 @@ namespace Boidsish {
 			initialized_ = true;
 		}
 
-		UpdateAnchor(cameraPos);
+		UpdateAnchor(cameraPos, totalTime, timeOfDay);
+
+        if (!initialized_) {
+            // If UpdateAnchor reset initialized_, re-run Initialize
+            Initialize(terrain, totalTime, timeOfDay);
+            initialized_ = true;
+        }
 
 		UpdateConfig(terrain);
 
@@ -79,28 +94,37 @@ namespace Boidsish {
         // Perturb initial state with noise
         for (int z = 0; z < height_; ++z) {
             for (int x = 0; x < width_; ++x) {
-                int idx = z * width_ + x;
-                float worldX = (float)(x + gridAnchor_.x) * 32.0f;
-                float worldZ = (float)(z + gridAnchor_.y) * 32.0f;
-
-                float baseTemp = GetBaseTemperature(worldX, worldZ, totalTime, timeOfDay);
-
-                float n = Simplex::noise(glm::vec2(worldX * 0.001f, worldZ * 0.001f));
-                (*currentGrid_)[idx].temperature = baseTemp + n * 5.0f;
-                (*currentGrid_)[idx].aerosol = 0.01f + std::abs(n) * 0.05f;
-                (*currentGrid_)[idx].humidity = 0.4f + std::abs(n) * 0.2f;
-
-                // Set initial f based on noise-driven wind
-                glm::vec2 u(Simplex::noise(glm::vec2(worldX * 0.002f, worldZ * 0.002f)),
-                             Simplex::noise(glm::vec2(worldX * 0.002f + 100.0f, worldZ * 0.002f + 100.0f)));
-                u *= 0.1f;
-
-                for (int i = 0; i < 9; ++i) {
-                    (*currentGrid_)[idx].f[i] = CalculateEquilibrium(i, 1.0f, u);
-                }
+                InitializeCell(x, z, totalTime, timeOfDay, (*currentGrid_)[z * width_ + x]);
             }
         }
         *nextGrid_ = *currentGrid_;
+    }
+
+    void WeatherLbmSimulator::InitializeCell(int x, int z, float totalTime, float timeOfDay, LbmCell& cell) {
+        float worldX = (float)(x + gridAnchor_.x) * 32.0f;
+        float worldZ = (float)(z + gridAnchor_.y) * 32.0f;
+
+        float baseTemp = GetBaseTemperature(worldX, worldZ, totalTime, timeOfDay);
+
+        // Bias towards global averages if initialized
+        float targetTemp = initialized_ ? currentOutput_.temperature : baseTemp;
+        float targetHumidity = initialized_ ? currentOutput_.humidity : 0.5f;
+        float targetRho = initialized_ ? currentOutput_.pressure / 1013.25f : 1.0f;
+
+        float n = Simplex::noise(glm::vec2(worldX * 0.001f, worldZ * 0.001f));
+        cell.temperature = glm::mix(targetTemp, baseTemp, 0.5f) + n * 5.0f;
+        cell.aerosol = 0.01f + std::abs(n) * 0.05f;
+        cell.humidity = glm::mix(targetHumidity, 0.4f + std::abs(n) * 0.2f, 0.5f);
+        cell.vy = 0.0f;
+
+        // Set initial f based on noise-driven wind
+        glm::vec2 u(Simplex::noise(glm::vec2(worldX * 0.002f, worldZ * 0.002f)),
+                             Simplex::noise(glm::vec2(worldX * 0.002f + 100.0f, worldZ * 0.002f + 100.0f)));
+        u *= 0.1f;
+
+        for (int i = 0; i < 9; ++i) {
+            cell.f[i] = CalculateEquilibrium(i, targetRho, u);
+        }
     }
 
     float WeatherLbmSimulator::CalculateEquilibrium(int i, float rho, glm::vec2 u) {
@@ -336,10 +360,13 @@ namespace Boidsish {
     void WeatherLbmSimulator::ApplyBoundaries(float totalTime, float windSpeed, float windStrength, float timeOfDay, float targetTemp, float targetPressure, float targetHumidity) {
         float targetRho = targetPressure / 1013.25f;
 
-        // Apply noise-driven wind at the edges
+        // Apply noise-driven wind at the edges with sponge layer dampening
         for (int z = 0; z < height_; ++z) {
             for (int x = 0; x < width_; ++x) {
-                if (x == 0 || x == width_ - 1 || z == 0 || z == height_ - 1) {
+                // Calculate distance to nearest edge
+                int dist = std::min({x, width_ - 1 - x, z, height_ - 1 - z});
+
+                if (dist < kPadding) {
                     int idx = z * width_ + x;
                     float worldX = (float)(x + gridAnchor_.x) * 32.0f;
                     float worldZ = (float)(z + gridAnchor_.y) * 32.0f;
@@ -347,14 +374,9 @@ namespace Boidsish {
                     // Prevailing wind based on spatial gradient
                     glm::vec2 prevailingWind(0.02f, 0.01f); // Baseline flow
                     prevailingWind += glm::vec2(worldX + worldZ, worldX - worldZ) * 0.0001f;
-
                     prevailingWind = glm::normalize(prevailingWind);
 
                     auto noiseWind = Simplex::curlNoise(glm::vec2(worldX * 0.001f + totalTime * windSpeed, worldZ * 0.001f + totalTime * windSpeed), atan2(prevailingWind.x, prevailingWind.y));
-                    // glm::vec2 noiseWind(
-                    //     Simplex::noise(glm::vec2(worldX * 0.001f + totalTime * windSpeed, worldZ * 0.001f)),
-                    //     Simplex::noise(glm::vec2(worldX * 0.001f + 500.0f, worldZ * 0.001f + totalTime * windSpeed))
-                    // );
 
                     glm::vec2 targetU = prevailingWind + noiseWind * 0.1f;
                     targetU *= Simplex::noise({worldX, worldZ}) * 0.5f + 0.5f;
@@ -362,18 +384,25 @@ namespace Boidsish {
                     // Lattice velocity MUST stay below ~0.15 for stability
                     targetU = glm::clamp(targetU * (0.05f + windStrength * 5.0f), -0.14f, 0.14f);
 
-                    // Force boundary equilibrium
+                    float baseTemp = GetBaseTemperature(worldX, worldZ, totalTime, timeOfDay);
+                    float finalTargetTemp = glm::mix(baseTemp, targetTemp, 0.5f);
+
+                    // Sponge layer relaxation factor: 1.0 at edge, 0.0 at interior
+                    float spongeFactor = 1.0f - (float)dist / (float)kPadding;
+                    // Stronger dampening closer to edge
+                    float blend = std::pow(spongeFactor, 2.0f);
+
+                    // Force target distribution at the boundary, blend in sponge layer
                     for (int i = 0; i < 9; ++i) {
-                        (*currentGrid_)[idx].f[i] = CalculateEquilibrium(i, targetRho, targetU);
+                        float f_eq = CalculateEquilibrium(i, targetRho, targetU);
+                        (*currentGrid_)[idx].f[i] = glm::mix((*currentGrid_)[idx].f[i], f_eq, blend);
                     }
 
-                    // Boundaries also track targets
-                    // Note: This is simpler than full LBM thermal boundaries but helps stability
-                    float baseTemp = GetBaseTemperature(worldX, worldZ, totalTime, timeOfDay);
-                    // Mix between local diurnal/seasonal base and global target
-                    float finalTargetTemp = glm::mix(baseTemp, targetTemp, 0.5f);
-                    (*currentGrid_)[idx].temperature = glm::mix((*currentGrid_)[idx].temperature, finalTargetTemp, 0.1f);
-                    (*currentGrid_)[idx].humidity = glm::mix((*currentGrid_)[idx].humidity, targetHumidity, 0.1f);
+                    (*currentGrid_)[idx].temperature = glm::mix((*currentGrid_)[idx].temperature, finalTargetTemp, blend * 0.1f);
+                    (*currentGrid_)[idx].humidity = glm::mix((*currentGrid_)[idx].humidity, targetHumidity, blend * 0.1f);
+
+                    // Dampen vertical velocity in sponge layer to prevent shocks
+                    (*currentGrid_)[idx].vy *= (1.0f - blend * 0.5f);
                 }
             }
         }
@@ -633,22 +662,22 @@ namespace Boidsish {
         currentOutput_.cloudThickness = 100.0f + 400.0f * currentOutput_.cloudDensity;
     }
 
-    void WeatherLbmSimulator::ShiftGrid(glm::ivec2 shiftOffset) {
+    void WeatherLbmSimulator::ShiftGrid(glm::ivec2 shiftOffset, float totalTime, float timeOfDay) {
         if (shiftOffset.x == 0 && shiftOffset.y == 0) return;
 
         std::vector<LbmCell> tempGrid(width_ * height_);
 
         for (int z = 0; z < height_; ++z) {
             for (int x = 0; x < width_; ++x) {
-                // Toroidal inheritance: cells "falling off" one side re-enter the other.
-                // This ensures continuity of simulation state (vortex/thermal persistence).
-                int srcX = (x + shiftOffset.x) % width_;
-                if (srcX < 0) srcX += width_;
+                int srcX = x + shiftOffset.x;
+                int srcZ = z + shiftOffset.y;
 
-                int srcZ = (z + shiftOffset.y) % height_;
-                if (srcZ < 0) srcZ += height_;
-
-                tempGrid[z * width_ + x] = (*currentGrid_)[srcZ * width_ + srcX];
+                if (srcX >= 0 && srcX < width_ && srcZ >= 0 && srcZ < height_) {
+                    tempGrid[z * width_ + x] = (*currentGrid_)[srcZ * width_ + srcX];
+                } else {
+                    // New cell being moved in, initialize it properly instead of recycling.
+                    InitializeCell(x, z, totalTime, timeOfDay, tempGrid[z * width_ + x]);
+                }
             }
         }
 

@@ -75,6 +75,8 @@ namespace Boidsish {
 		// Texture unit bindings
 		T::RegisterConstant("PHASOR_TEXTURE_BINDING", Constants::TextureUnit::NoisePhasor());
 		T::RegisterConstant("WIND_TEXTURE_BINDING", Constants::TextureUnit::WindData());
+		T::RegisterConstant("LBM_WIND_TEXTURE_BINDING", Constants::TextureUnit::LbmWindData());
+		T::RegisterConstant("INTEGRATED_WIND_IMAGE_BINDING", Constants::TextureUnit::WindData());
 
 		T::RegisterConstant("RAW_HEIGHTMAP_BINDING", Constants::TextureUnit::TerrainRawHeightmap());
 		T::RegisterConstant("BAKED_HEIGHTMAP_BINDING", Constants::TextureUnit::TerrainHeightmap());

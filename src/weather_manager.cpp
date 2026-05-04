@@ -8,6 +8,8 @@
 #include "service_locator.h"
 #include <GL/glew.h>
 #include "constants.h"
+#include "NoiseManager.h"
+#include "terrain_render_manager.h"
 
 namespace Boidsish {
 
@@ -65,6 +67,9 @@ namespace Boidsish {
 		}
 		if (wind_texture_ != 0) {
 			glDeleteTextures(1, &wind_texture_);
+		}
+		if (lbm_wind_texture_ != 0) {
+			glDeleteTextures(1, &lbm_wind_texture_);
 		}
 	}
 
@@ -471,7 +476,7 @@ namespace Boidsish {
 		}
 	}
 
-	void WeatherManager::UpdateWindUbo(float totalTime) {
+	void WeatherManager::UpdateWindUbo(float totalTime, NoiseManager* noise, TerrainRenderManager* terrain_render) {
 		if (!latest_snapshot_.valid)
 			return;
 
@@ -485,12 +490,26 @@ namespace Boidsish {
 		if (wind_texture_ == 0) {
 			glGenTextures(1, &wind_texture_);
 			glBindTexture(GL_TEXTURE_2D, wind_texture_);
+			// The integrated wind texture at higher resolution
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, 1024, 1024, 0, GL_RGBA, GL_FLOAT, nullptr);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+			glBindTexture(GL_TEXTURE_2D, 0);
+		}
+		if (lbm_wind_texture_ == 0) {
+			glGenTextures(1, &lbm_wind_texture_);
+			glBindTexture(GL_TEXTURE_2D, lbm_wind_texture_);
 			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, lbm_simulator_->GetWidth(), lbm_simulator_->GetHeight(), 0, GL_RGBA, GL_FLOAT, nullptr);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 			glBindTexture(GL_TEXTURE_2D, 0);
+		}
+		if (!wind_compute_shader_) {
+			wind_compute_shader_ = std::make_unique<ComputeShader>("shaders/wind_compute.comp");
 		}
 
 		WindDataUbo ubo = latest_snapshot_.uboMetadata;
@@ -514,21 +533,17 @@ namespace Boidsish {
 			glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(WindDataUbo), &ubo);
 			glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
-			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::WindData(), wind_data_ubo_);
-
-			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::WindData());
-			glBindTexture(GL_TEXTURE_2D, wind_texture_);
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::LbmWindData());
+			glBindTexture(GL_TEXTURE_2D, lbm_wind_texture_);
 			glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, ubo.originSize.y, ubo.originSize.w, GL_RGBA, GL_FLOAT, fallback_data.data());
 		} else {
 			glBindBuffer(GL_UNIFORM_BUFFER, wind_data_ubo_);
 			glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(WindDataUbo), &ubo);
 			glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
-			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::WindData(), wind_data_ubo_);
-
-			// Update Wind Texture
-			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::WindData());
-			glBindTexture(GL_TEXTURE_2D, wind_texture_);
+			// Update LBM Wind Texture
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::LbmWindData());
+			glBindTexture(GL_TEXTURE_2D, lbm_wind_texture_);
 			glTexSubImage2D(
 				GL_TEXTURE_2D,
 				0,
@@ -541,6 +556,36 @@ namespace Boidsish {
 				wind_data.data()
 			);
 		}
+
+		// Dispatch Wind Integration Compute Shader
+		wind_compute_shader_->use();
+
+		// Bind Metadata UBO
+		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::WindData(), wind_data_ubo_);
+
+		// Bind Input LBM Wind
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::LbmWindData());
+		glBindTexture(GL_TEXTURE_2D, lbm_wind_texture_);
+		wind_compute_shader_->setInt("u_lbmWindTexture", Constants::TextureUnit::LbmWindData());
+
+		// Bind Output Integrated Wind Image
+		glBindImageTexture(Constants::TextureUnit::WindData(), wind_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
+
+		// Bind Dependencies (Noise & Terrain)
+		if (noise) {
+			noise->BindDefault(*wind_compute_shader_);
+		}
+		if (terrain_render) {
+			terrain_render->BindTerrainData(*wind_compute_shader_);
+		}
+
+		// Dispatch
+		glDispatchCompute(1024 / 16, 1024 / 16, 1);
+		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+
+		// Final Binding for users of getWindAtPosition
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::WindData());
+		glBindTexture(GL_TEXTURE_2D, wind_texture_);
 	}
 
 	void WeatherManager::Update(float deltaTime, float totalTime, const glm::vec3& cameraPos, float timeOfDay) {
@@ -617,7 +662,7 @@ namespace Boidsish {
 						humidity
 					);
 				} else {
-					lbm_simulator_->UpdateAnchor(cameraPos);
+					lbm_simulator_->UpdateAnchor(cameraPos, totalTime, timeOfDay);
 				}
 
 				LbmSnapshot snap;

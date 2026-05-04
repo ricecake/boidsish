@@ -50,7 +50,6 @@
 #include "post_processing/effects/SuperSpeedEffect.h"
 #include "post_processing/effects/UnifiedScreenSpaceEffect.h"
 #include "post_processing/effects/TimeStutterEffect.h"
-#include "post_processing/effects/ToneMappingEffect.h"
 #include "post_processing/effects/WhispTrailEffect.h"
 #include "profiler.h"
 #include "render_passes.h"
@@ -1058,11 +1057,7 @@ namespace Boidsish {
 					bloom_effect->SetToneMappingEnabled(true);
 					bloom_effect->SetToneMappingMode(2); // Lottes default
 
-					// Still create the standalone effect as a fallback or for when bloom is disabled
-					auto tone_mapping_effect = std::make_shared<PostProcessing::ToneMappingEffect>();
-					tone_mapping_effect->SetEnabled(true);
 					bloom_effect->SetEnabled(true);
-					post_processing_manager_->SetToneMappingEffect(tone_mapping_effect);
 				}
 
 				// --- UI ---
@@ -3547,8 +3542,6 @@ namespace Boidsish {
 			}
 			impl->wetness_ = std::clamp(impl->wetness_, 0.0f, 1.0f);
 
-			impl->weather_manager->UpdateWindUbo(impl->simulation_time);
-
 			// Apply to atmosphere effect
 			if (impl->atmosphere_effect) {
 				impl->atmosphere_effect->SetHazeDensity(w.haze_density);
@@ -3679,8 +3672,15 @@ namespace Boidsish {
 		// and must be done before PrepareUBOs/ExecuteRenderQueue if we want it available there.
 		impl->RenderVolumetricLighting(frame);
 
-		impl->PrepareUBOs();
+		if (impl->weather_manager && impl->weather_manager->IsEnabled()) {
+			impl->weather_manager->UpdateWindUbo(
+				impl->simulation_time,
+				impl->noise_manager.get(),
+				impl->terrain_render_manager.get()
+			);
+		}
 
+		impl->PrepareUBOs();
 		// Shadow decor renders during the overlap window (no packets needed).
 		// The shape callback triggers lazy sync when packets are first needed.
 		impl->RenderShadowPasses(frame);

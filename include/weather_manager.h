@@ -11,10 +11,13 @@
 #include "thread_pool.h"
 #include "weather_constants.h"
 #include "weather_lbm_simulator.h"
+#include "shader.h"
 
 namespace Boidsish {
 
 	class ITerrainGenerator;
+	class NoiseManager;
+	class TerrainRenderManager;
 
 	enum class WeatherAttribute {
 		SunIntensity,
@@ -282,13 +285,15 @@ namespace Boidsish {
 
 		void InjectTemperature(const glm::vec3& pos, float temperatureK);
 
-		void UpdateWindUbo(float totalTime);
+		void UpdateWindUbo(float totalTime, NoiseManager* noise, TerrainRenderManager* terrain_render);
 
 		void SetTerrainGenerator(ITerrainGenerator* terrain) { terrain_ = terrain; }
 
 	private:
 		unsigned int wind_data_ubo_ = 0;
 		unsigned int wind_texture_ = 0;
+		unsigned int lbm_wind_texture_ = 0;
+		std::unique_ptr<ComputeShader> wind_compute_shader_;
 
 		ThreadPool                              lbm_pool_;
 		std::optional<TaskHandle<LbmSnapshot>>  lbm_task_;

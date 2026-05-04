@@ -296,6 +296,11 @@ namespace Boidsish {
 		}
 
 		time_ = time;
+		if (std::abs(ambient_density - ambient_density_) > 0.01f) {
+			ambient_density_ = ambient_density;
+			needs_reallocation_ = true;
+		}
+
 		// --- Effect Lifetime Management ---
 		for (auto& effect : effects_) {
 			if (effect) {
@@ -588,7 +593,10 @@ namespace Boidsish {
 		}
 
 		int avg_particles_per_unlimited = 0;
-		int fire_budget = kMaxParticles * 8 / 10; // Reserve 20% for ambient by default
+		// Maintain a 5% safety margin so ambient particles always have some space
+		int fire_budget = static_cast<int>(kMaxParticles * (1.0f - ambient_density_ - 0.05f));
+		fire_budget = std::clamp(fire_budget, 0, kMaxParticles);
+
 		if (num_unlimited_emitters > 0) {
 			int available_for_unlimited = fire_budget - total_particle_demand;
 			if (available_for_unlimited > 0) {
@@ -623,7 +631,7 @@ namespace Boidsish {
 		std::vector<int>              reserved_nulls;
 		std::vector<std::vector<int>> particles_by_emitter(effects_.size());
 
-		int reserved_start = kMaxParticles * 8 / 10;
+		int reserved_start = fire_budget;
 
 		// Iterate backwards to prioritize lower indices for fire emitters when taking from null lists
 		for (int i = kMaxParticles - 1; i >= 0; --i) {

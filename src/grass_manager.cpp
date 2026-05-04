@@ -211,7 +211,7 @@ namespace Boidsish {
         glBindBuffer(GL_DRAW_INDIRECT_BUFFER, grass_indirect_buffer_);
         glBufferSubData(GL_DRAW_INDIRECT_BUFFER, offsetof(DrawArraysIndirectCommand, instanceCount), sizeof(uint32_t), &zero);
 
-        glDispatchCompute(128, 128, 1);
+        glDispatchCompute(256, 256, 1);
         glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT);
     }
 

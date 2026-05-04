@@ -56,13 +56,6 @@ namespace Boidsish {
 			pre_tone_mapping_effects_.push_back(effect);
 		}
 
-		void PostProcessingManager::SetToneMappingEffect(std::shared_ptr<IPostProcessingEffect> effect) {
-			if (effect) {
-				effect->Initialize(width_, height_);
-			}
-			tone_mapping_effect_ = effect;
-		}
-
 		void PostProcessingManager::SetSharedDepthTexture(GLuint texture) {
 			shared_depth_texture_ = texture;
 			InitializeFBOs();
@@ -136,23 +129,11 @@ namespace Boidsish {
 			float            time
 		) {
 			PROJECT_PROFILE_SCOPE("ApplyLateEffects");
-			bool bloomTonemapped = false;
 
 			for (const auto& effect : pre_tone_mapping_effects_) {
 				if (effect->IsEnabled() && !effect->IsEarly()) {
 					ApplyEffectInternal(effect, viewMatrix, projectionMatrix, cameraPos, time);
-
-					// Check if this was a bloom effect that performed tonemapping
-					if (auto bloom = std::dynamic_pointer_cast<BloomEffect>(effect)) {
-						if (bloom->IsToneMappingEnabled()) {
-							bloomTonemapped = true;
-						}
-					}
 				}
-			}
-
-			if (tone_mapping_effect_ && tone_mapping_effect_->IsEnabled() && !bloomTonemapped) {
-				ApplyEffectInternal(tone_mapping_effect_, viewMatrix, projectionMatrix, cameraPos, time);
 			}
 
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -161,9 +142,6 @@ namespace Boidsish {
 		void PostProcessingManager::SetNightFactor(float factor) {
 			for (auto& effect : pre_tone_mapping_effects_) {
 				effect->SetNightFactor(factor);
-			}
-			if (tone_mapping_effect_) {
-				tone_mapping_effect_->SetNightFactor(factor);
 			}
 		}
 
@@ -224,10 +202,6 @@ namespace Boidsish {
 
 			for (const auto& effect : pre_tone_mapping_effects_) {
 				effect->Resize(width, height);
-			}
-
-			if (tone_mapping_effect_) {
-				tone_mapping_effect_->Resize(width, height);
 			}
 		}
 
