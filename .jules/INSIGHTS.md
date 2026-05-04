@@ -46,3 +46,33 @@
 - **Fix 5**: Implement uniform location caching in `ShaderBase` using a `std::unordered_map` to minimize `glGetUniformLocation` overhead.
 - **Fix 6**: Disable copy operations and implement move operations for `ShaderBase` (Rule of Five) to safely manage OpenGL program ownership.
 - **Fix 7**: Add `glDeleteBuffers(1, &frustum_ubo)` to `VisualizerImpl` destructor.
+
+### 7. Missing Resource Cleanup in Visualizer (Additional)
+- **Issue Type**: Memory Leak (OpenGL Buffer)
+- **Location**: `src/graphics.cpp`, `VisualizerImpl::~VisualizerImpl`
+- **Evidence**: `temporal_data_ubo` is created in the constructor but missing from the destructor.
+- **Learning**: All UBOs must be explicitly tracked for cleanup.
+
+### 8. Unused OpenGL Object Handle
+- **Issue Type**: Code Smell / Potential Leak
+- **Location**: `src/graphics.cpp`, `VisualizerImpl`
+- **Evidence**: `frustum_ubo` is declared and initialized to 0, but never generated or used. Modern code uses `frustum_ssbo`.
+- **Learning**: Legacy handles should be pruned to avoid confusion and accidental misuse.
+
+### 9. Missing RAII in Mesh Class
+- **Issue Type**: Memory Leak (OpenGL Objects)
+- **Location**: `src/model.cpp`, `Mesh`
+- **Evidence**: `Mesh` generates VAO, VBO, and EBO in `setupMesh` but lacks a destructor to call `Cleanup()`. Since `AssetManager` caches `ModelData` which contains `Mesh` objects, these are leaked if `AssetManager::Clear()` is not called or if meshes are created outside the manager.
+- **Learning**: Core rendering primitives must follow RAII to ensure deterministic resource release.
+
+### 10. Memory Leak in Embedded Textures
+- **Issue Type**: Memory Leak (OpenGL Textures)
+- **Location**: `src/asset_manager.cpp`, `LoadMaterialTextures`
+- **Evidence**: Embedded textures are generated using `glGenTextures` but not registered with `AssetManager`'s texture cache. They are never deleted.
+- **Learning**: All dynamically created OpenGL resources must be registered with a central tracking system or owned by RAII objects.
+
+### 11. Pipeline Stall in Mesh Rendering
+- **Issue Type**: Pipeline Stall
+- **Location**: `src/model.cpp`, `Mesh::render`
+- **Evidence**: Frequent calls to `glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, ...)` in the hot rendering path. Synchronous state queries force a CPU-GPU sync point.
+- **Learning**: Avoid `glGet*` calls during frame execution. Use state tracking or assume state validity in production builds.
