@@ -280,19 +280,6 @@ namespace Boidsish {
 		// draw mesh
 		glBindVertexArray(VAO);
 
-		// Validate EBO is properly bound after VAO binding
-		GLint current_ebo = 0;
-		glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &current_ebo);
-		if (current_ebo == 0) {
-			logger::ERROR("Mesh::render() - No EBO bound after VAO {} bind! EBO should be {}", VAO, EBO);
-			if (EBO != 0) {
-				glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-			} else {
-				glBindVertexArray(0);
-				return;
-			}
-		}
-
 		if (allocation.valid) {
 			glDrawElementsBaseVertex(
 				GL_TRIANGLES,

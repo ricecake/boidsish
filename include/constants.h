@@ -32,6 +32,7 @@ namespace Boidsish {
 				TerrainHeightmapImage = 31,
 				TerrainBakedParamsImage = 32,
 				TerrainHorizonMap = 33,
+				LbmWindData = 34,
 				TerrainShadowMap = 35,
 				TerrainShadowMapImage = 36,
 			};
@@ -237,6 +238,10 @@ namespace Boidsish {
 
 			consteval int TerrainHorizonMap() {
 				return std::to_underlying(Constants::Bindings::Texture::TerrainHorizonMap);
+			}
+
+			consteval int LbmWindData() {
+				return std::to_underlying(Constants::Bindings::Texture::LbmWindData);
 			}
 
 			consteval int TerrainShadowMap() {
