@@ -227,66 +227,74 @@ vec4 sampleBilateral(sampler2D lowResTex, sampler2D highResDepth, sampler2D high
 	return sumColor / sumWeight;
 }
 
+float InterleavedGradientNoise(vec2 pixelCoord) {
+    vec3 magic = vec3(0.06711056, 0.00583715, 52.9829189);
+    return fract(magic.z * fract(dot(pixelCoord, magic.xy)));
+}
 
-void sampleWithWeights(sampler2D srcTexture, sampler2D highResDepth, sampler2D highResNormal, float centerDepth, vec3 centerNormal, vec2 uv, vec2 offset, inout vec4 color, inout float weight) {
+void sampleWithWeights(sampler2D srcTexture, sampler2D highResDepth, sampler2D highResNormal, float centerDepth, vec3 centerNormal, vec2 targetUV, vec2 sampleUV, vec2 srcResolution, inout vec4 color, inout float weight) {
 	const float depthSigma = 0.05;
 	const float normalSigma = 16.0;
 
-	vec2 offsetUV = uv + offset;
-
-	vec3 rawNormal = texture(highResNormal, offsetUV).xyz;
+	vec3 rawNormal = texture(highResNormal, sampleUV).xyz;
 	vec3 sampleNormal = dot(rawNormal, rawNormal) > 0.001 ? normalize(rawNormal) : vec3(0.0, 1.0, 0.0);
-	vec4 sampleColor = texture(srcTexture, offsetUV);
-	float sampleDepth = texture(highResDepth, offsetUV).r;
+	vec4 sampleColor = texture(srcTexture, sampleUV);
+	float sampleDepth = texture(highResDepth, sampleUV).r;
 
-	float spatialW = exp(-float(dot(offset, offset)) / 2.0);
+	// Calculate spatial distance in texel units, not UV space
+	vec2 texelDist = (sampleUV - targetUV) * srcResolution;
+	float spatialW = exp(-dot(texelDist, texelDist) / 2.0);
+
 	float depthDiff = abs(centerDepth - sampleDepth);
 	float depthW = exp(-(depthDiff * depthDiff) / (2.0 * depthSigma * depthSigma));
 	float normalW = pow(max(dot(centerNormal, sampleNormal), 0.0), normalSigma);
 
 	float sampleWeight = spatialW * depthW * normalW;
-	if (offset.x == 0 && offset.y == 0) {
-		sampleWeight = max(sampleWeight, 0.1);
-	}
 
 	weight += sampleWeight;
 	color += sampleColor * sampleWeight;
 }
 
-vec4 tentUpsample(sampler2D srcTexture, sampler2D highResDepth, sampler2D highResNormal, float filterRadius, float srcLod, vec2 TexCoords) {
-	vec2 srcResolution = textureSize(srcTexture, 0);
-	filterRadius = max(1.0, filterRadius);
-	srcLod = max(0.0, srcLod);
+vec4 tentUpsample(sampler2D srcTexture, sampler2D highResDepth, sampler2D highResNormal, float filterRadius, float srcLod, vec2 TexCoords, vec2 fragCoord) {
+    vec2 srcResolution = textureSize(srcTexture, 0);
+    vec2 texelSize = 1.0 / srcResolution;
+    float radius = max(1.0, filterRadius);
 
-	vec2  texelSize = 1.0 / srcResolution;
-	float radius = filterRadius;
+    float centerDepth = texture(highResDepth, TexCoords).r;
+    vec3 centerNormal = normalize(texture(highResNormal, TexCoords).xyz);
 
-	float centerDepth = texture(highResDepth, TexCoords).r;
-	vec3 centerNormal = normalize(texture(highResNormal, TexCoords).xyz);
+    vec4 result = vec4(0.0);
+    float weight = 0.0;
 
-	vec4 result = vec4(0.0);
-	float weight = 0.0;
+    vec2 baseUV = (floor(TexCoords * srcResolution) + 0.5) * texelSize;
 
-	sampleWithWeights(srcTexture, highResDepth, highResNormal, centerDepth, centerNormal, TexCoords, vec2(0), result, weight);
+    // 1. Generate a random angle (0 to 2*PI) using the screen-space pixel coordinate
+    float noise = InterleavedGradientNoise(fragCoord);
+    float angle = noise * 6.2831853;
 
-	sampleWithWeights(srcTexture, highResDepth, highResNormal, centerDepth, centerNormal, TexCoords, vec2(-radius, -radius) * texelSize, result, weight);
-	sampleWithWeights(srcTexture, highResDepth, highResNormal, centerDepth, centerNormal, TexCoords, vec2(radius, -radius) * texelSize, result, weight);
-	sampleWithWeights(srcTexture, highResDepth, highResNormal, centerDepth, centerNormal, TexCoords, vec2(-radius, radius) * texelSize, result, weight);
-	sampleWithWeights(srcTexture, highResDepth, highResNormal, centerDepth, centerNormal, TexCoords, vec2(radius, radius) * texelSize, result, weight);
+    // 2. Create a 2D rotation matrix
+    float s = sin(angle);
+    float c = cos(angle);
+    mat2 rotationMat = mat2(c, -s, s, c);
 
-	sampleWithWeights(srcTexture, highResDepth, highResNormal, centerDepth, centerNormal, TexCoords, vec2(0.0, -radius) * texelSize, result, weight);
-	sampleWithWeights(srcTexture, highResDepth, highResNormal, centerDepth, centerNormal, TexCoords, vec2(0.0, radius) * texelSize, result, weight);
-	sampleWithWeights(srcTexture, highResDepth, highResNormal, centerDepth, centerNormal, TexCoords, vec2(-radius, 0.0) * texelSize, result, weight);
-	sampleWithWeights(srcTexture, highResDepth, highResNormal, centerDepth, centerNormal, TexCoords, vec2(radius, 0.0) * texelSize, result, weight);
+    for (float x = -radius; x <= radius; x += radius) {
+        for (float y = -radius; y <= radius; y += radius) {
+            // 3. Rotate the local offset before scaling by texelSize
+            vec2 offset = vec2(x, y);
+            vec2 rotatedOffset = rotationMat * offset;
 
+            vec2 sampleUV = baseUV + rotatedOffset * texelSize;
 
-	if (weight < 0.001) {
-		return texture(srcTexture, TexCoords);
-	}
+            sampleWithWeights(srcTexture, highResDepth, highResNormal, centerDepth, centerNormal, TexCoords, sampleUV, srcResolution, result, weight);
+        }
+    }
 
-	return result / weight;
+    if (weight < 0.0001) {
+        return texture(srcTexture, TexCoords);
+    }
+
+    return result / weight;
 }
-
 
 void main() {
 	float centerDepth = texture(uDepthTexture, TexCoords).r;
@@ -307,9 +315,9 @@ void main() {
 	// float sssFactor = sampleBilateral(uSSSTexture, uDepthTexture, uNormalTexture, TexCoords).r;
 	// vec3 di_lighting = sampleBilateral(uDITexture, uDepthTexture, uNormalTexture, TexCoords).rgb;
 
-	vec4 giao =        tentUpsample(uGIAOTexture, uDepthTexture, uNormalTexture, 5.0, 0.0, TexCoords);
-	float sssFactor =  tentUpsample(uSSSTexture,  uDepthTexture, uNormalTexture, 5.0, 0.0, TexCoords).r;
-	vec3 di_lighting = tentUpsample(uDITexture,   uDepthTexture, uNormalTexture, 5.0, 0.0, TexCoords).rgb;
+	vec4 giao =        tentUpsample(uGIAOTexture, uDepthTexture, uNormalTexture, 5.0, 0.0, TexCoords, gl_FragCoord.xy);
+	float sssFactor =  tentUpsample(uSSSTexture,  uDepthTexture, uNormalTexture, 5.0, 0.0, TexCoords, gl_FragCoord.xy).r;
+	vec3 di_lighting = tentUpsample(uDITexture,   uDepthTexture, uNormalTexture, 5.0, 0.0, TexCoords, gl_FragCoord.xy).rgb;
 
     // di_lighting += tentUpsample(uDITexture, 5.0, 0.0, TexCoords).rgb;
 	// // Basic firefly rejection: clamp ReSTIR contribution based on scene luminance
@@ -324,8 +332,8 @@ void main() {
 	// di_lighting = min(di_lighting, vec3(max_lum));
 
 	// Advanced firefly rejection
-	// giao = rejectFireflies(giao, uRawGIAOTexture, uHistoryGIAOTexture, uVelocityTexture, uDepthTexture, TexCoords, lowResInvSize);
-	// di_lighting = rejectFireflies(vec4(di_lighting, 1.0), uRawDITexture, uHistoryDITexture, uVelocityTexture, uDepthTexture, TexCoords, lowResInvSize).rgb;
+	giao = rejectFireflies(giao, uRawGIAOTexture, uHistoryGIAOTexture, uVelocityTexture, uDepthTexture, TexCoords, lowResInvSize);
+	di_lighting = rejectFireflies(vec4(di_lighting, 1.0), uRawDITexture, uHistoryDITexture, uVelocityTexture, uDepthTexture, TexCoords, lowResInvSize).rgb;
 
 	float traditionalShadow = texture(uNormalTexture, TexCoords).a;
 
