@@ -176,7 +176,6 @@ vec4 sampleBilateral(sampler2D lowResTex, sampler2D highResDepth, sampler2D high
 
 	vec2 lowResUV = uv * vec2(lowResSize);
 	vec2 baseCoord = floor(lowResUV - 0.5);
-	vec2 f = fract(lowResUV - 0.5);
 
 	vec4 sumColor = vec4(0.0);
 	float sumWeight = 0.0;
@@ -228,6 +227,67 @@ vec4 sampleBilateral(sampler2D lowResTex, sampler2D highResDepth, sampler2D high
 	return sumColor / sumWeight;
 }
 
+
+void sampleWithWeights(sampler2D srcTexture, sampler2D highResDepth, sampler2D highResNormal, float centerDepth, vec3 centerNormal, vec2 uv, vec2 offset, inout vec4 color, inout float weight) {
+	const float depthSigma = 0.05;
+	const float normalSigma = 16.0;
+
+	vec2 offsetUV = uv + offset;
+
+	vec3 rawNormal = texture(highResNormal, offsetUV).xyz;
+	vec3 sampleNormal = dot(rawNormal, rawNormal) > 0.001 ? normalize(rawNormal) : vec3(0.0, 1.0, 0.0);
+	vec4 sampleColor = texture(srcTexture, offsetUV);
+	float sampleDepth = texture(highResDepth, offsetUV).r;
+
+	float spatialW = exp(-float(dot(offset, offset)) / 2.0);
+	float depthDiff = abs(centerDepth - sampleDepth);
+	float depthW = exp(-(depthDiff * depthDiff) / (2.0 * depthSigma * depthSigma));
+	float normalW = pow(max(dot(centerNormal, sampleNormal), 0.0), normalSigma);
+
+	float sampleWeight = spatialW * depthW * normalW;
+	if (offset.x == 0 && offset.y == 0) {
+		sampleWeight = max(sampleWeight, 0.1);
+	}
+
+	weight += sampleWeight;
+	color += sampleColor * sampleWeight;
+}
+
+vec4 tentUpsample(sampler2D srcTexture, sampler2D highResDepth, sampler2D highResNormal, float filterRadius, float srcLod, vec2 TexCoords) {
+	vec2 srcResolution = textureSize(srcTexture, 0);
+	filterRadius = max(1.0, filterRadius);
+	srcLod = max(0.0, srcLod);
+
+	vec2  texelSize = 1.0 / srcResolution;
+	float radius = filterRadius;
+
+	float centerDepth = texture(highResDepth, TexCoords).r;
+	vec3 centerNormal = normalize(texture(highResNormal, TexCoords).xyz);
+
+	vec4 result = vec4(0.0);
+	float weight = 0.0;
+
+	sampleWithWeights(srcTexture, highResDepth, highResNormal, centerDepth, centerNormal, TexCoords, vec2(0), result, weight);
+
+	sampleWithWeights(srcTexture, highResDepth, highResNormal, centerDepth, centerNormal, TexCoords, vec2(-radius, -radius) * texelSize, result, weight);
+	sampleWithWeights(srcTexture, highResDepth, highResNormal, centerDepth, centerNormal, TexCoords, vec2(radius, -radius) * texelSize, result, weight);
+	sampleWithWeights(srcTexture, highResDepth, highResNormal, centerDepth, centerNormal, TexCoords, vec2(-radius, radius) * texelSize, result, weight);
+	sampleWithWeights(srcTexture, highResDepth, highResNormal, centerDepth, centerNormal, TexCoords, vec2(radius, radius) * texelSize, result, weight);
+
+	sampleWithWeights(srcTexture, highResDepth, highResNormal, centerDepth, centerNormal, TexCoords, vec2(0.0, -radius) * texelSize, result, weight);
+	sampleWithWeights(srcTexture, highResDepth, highResNormal, centerDepth, centerNormal, TexCoords, vec2(0.0, radius) * texelSize, result, weight);
+	sampleWithWeights(srcTexture, highResDepth, highResNormal, centerDepth, centerNormal, TexCoords, vec2(-radius, 0.0) * texelSize, result, weight);
+	sampleWithWeights(srcTexture, highResDepth, highResNormal, centerDepth, centerNormal, TexCoords, vec2(radius, 0.0) * texelSize, result, weight);
+
+
+	if (weight < 0.001) {
+		return texture(srcTexture, TexCoords);
+	}
+
+	return result / weight;
+}
+
+
 void main() {
 	float centerDepth = texture(uDepthTexture, TexCoords).r;
 
@@ -243,9 +303,14 @@ void main() {
 	vec2 lowResInvSize = 1.0 / vec2(lowResSize);
 
 	// Use bilateral upsampling for low-res effects
-	vec4 giao = sampleBilateral(uGIAOTexture, uDepthTexture, uNormalTexture, TexCoords);
-	float sssFactor = sampleBilateral(uSSSTexture, uDepthTexture, uNormalTexture, TexCoords).r;
-	vec3 di_lighting = sampleBilateral(uDITexture, uDepthTexture, uNormalTexture, TexCoords).rgb;
+	// vec4 giao = sampleBilateral(uGIAOTexture, uDepthTexture, uNormalTexture, TexCoords);
+	// float sssFactor = sampleBilateral(uSSSTexture, uDepthTexture, uNormalTexture, TexCoords).r;
+	// vec3 di_lighting = sampleBilateral(uDITexture, uDepthTexture, uNormalTexture, TexCoords).rgb;
+
+	vec4 giao =        tentUpsample(uGIAOTexture, uDepthTexture, uNormalTexture, 5.0, 0.0, TexCoords);
+	float sssFactor =  tentUpsample(uSSSTexture,  uDepthTexture, uNormalTexture, 5.0, 0.0, TexCoords).r;
+	vec3 di_lighting = tentUpsample(uDITexture,   uDepthTexture, uNormalTexture, 5.0, 0.0, TexCoords).rgb;
+
     // di_lighting += tentUpsample(uDITexture, 5.0, 0.0, TexCoords).rgb;
 	// // Basic firefly rejection: clamp ReSTIR contribution based on scene luminance
 	// vec4 gR = textureGather(uSceneTexture, TexCoords, 0);
