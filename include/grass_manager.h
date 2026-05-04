@@ -29,7 +29,7 @@ namespace Boidsish {
         uint32_t enabled = 0;
         // Pad to 16-byte alignment without using an array, since std140 arrays
         // have 16-byte element stride which would blow up the struct size.
-        float _pad0 = 0.0f;
+        float flowerRatio = 0.0f;
         float _pad1 = 0.0f;
         float _pad2 = 0.0f;
     };
@@ -51,7 +51,7 @@ namespace Boidsish {
         ~GrassManager();
 
         void Initialize();
-        void Update(float deltaTime, float time, const class Camera& camera, const class ITerrainGenerator& terrainGen, std::shared_ptr<class TerrainRenderManager> renderManager);
+        void Update(float deltaTime, float time, const struct Camera& camera, const class ITerrainGenerator& terrainGen, std::shared_ptr<class TerrainRenderManager> renderManager);
 
         struct RenderResources {
             uint32_t lightingUbo;
@@ -117,7 +117,7 @@ namespace Boidsish {
         uint32_t dummy_vao_ = 0;
 
         void _InitializeResources();
-        void _UpdatePlacement(const class Camera& camera, const class ITerrainGenerator& terrainGen, std::shared_ptr<class TerrainRenderManager> renderManager);
+        void _UpdatePlacement(const struct Camera& camera, const class ITerrainGenerator& terrainGen, std::shared_ptr<class TerrainRenderManager> renderManager);
     };
 
 }

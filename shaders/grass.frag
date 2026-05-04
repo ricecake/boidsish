@@ -11,6 +11,7 @@ in vec2 fTexCoords;
 in float fHeightFactor;
 in vec3 fWorldPos;
 flat in int fBiomeIdx;
+in float fIsFlower;
 
 struct GrassProperties {
     vec4  colorTop;
@@ -24,7 +25,7 @@ struct GrassProperties {
     float colorVariability;
     float windInfluence;
     uint  enabled;
-    float _pad0;
+    float flowerRatio;
     float _pad1;
     float _pad2;
 };
@@ -73,6 +74,25 @@ void main() {
     if (!gl_FrontFacing) N = -N;
 
     vec3 albedo = mix(biomeProps[fBiomeIdx].colorBottom.rgb, biomeProps[fBiomeIdx].colorTop.rgb, fHeightFactor);
+
+    if (fIsFlower > 0.5) {
+        float stemHeight = 0.75;
+        if (fHeightFactor > stemHeight) {
+            // Pick a flower color based on biome and seed
+            uint seed = uint(abs(fWorldPos.x) * 17.0) ^ uint(abs(fWorldPos.z) * 23.0);
+            float h = hash(seed);
+            vec3 flowerColor = mix(vec3(0.9, 0.3, 0.5), vec3(0.9, 0.8, 0.2), step(0.5, h));
+            if (h > 0.8) flowerColor = vec3(0.9, 0.9, 0.9);
+
+            // Darken the center of the flower head
+            float vHead = (fHeightFactor - stemHeight) / (1.0 - stemHeight);
+            float centerDist = length(vec2(fTexCoords.x - 0.5, vHead - 0.5) * 2.0);
+            flowerColor *= mix(0.2, 1.0, smoothstep(0.0, 0.5, centerDist));
+
+            albedo = flowerColor;
+        }
+    }
+
     float roughness = 0.8;
 
     // Apply wetness: darkening and reduction in roughness
