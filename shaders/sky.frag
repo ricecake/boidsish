@@ -18,6 +18,7 @@ uniform sampler2D u_skyViewLUT;
 
 uniform vec3 u_sunRadiance; // Added for consistency with scattering
 uniform vec3 u_moonRadiance;
+uniform vec3 u_moonFullRadiance;
 uniform vec3 u_moonDir;
 
 vec3 getTransmittance(float r, float mu) {
@@ -245,7 +246,7 @@ void main() {
 	// Earthshine: dark side gets a faint glow (~8%)
 	float phasedMask = moonMask * mix(0.08, 1.0, moonIllumination);
 
-	vec3 moonDisc = u_moonRadiance * phasedMask * moonTransmittance * smoothstep(-0.01, 0.01, moonDir.y);
+	vec3 moonDisc = u_moonFullRadiance * phasedMask * moonTransmittance * smoothstep(-0.01, 0.01, moonDir.y);
 
 	vec3 finalColor = skyRadiance + sunDisc + moonDisc + spaceBackground;
 

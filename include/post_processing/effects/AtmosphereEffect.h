@@ -178,6 +178,10 @@ namespace Boidsish {
 
 			void SetNoiseTextures(const NoiseTextures& textures) { noise_textures_ = textures; }
 
+			void SetShadowMaps(GLuint shadowMaps) { shadow_maps_ = shadowMaps; }
+
+			void SetShadowUbo(GLuint shadowUbo) { shadow_ubo_ = shadowUbo; }
+
 			void SetRenderScale(float scale) {
 				if (render_scale_ != scale) {
 					render_scale_ = scale;
@@ -242,6 +246,9 @@ namespace Boidsish {
 			GLuint aerial_perspective_lut_ = 0;
 
 			NoiseTextures noise_textures_ = {0, 0, 0};
+
+			GLuint shadow_maps_ = 0;
+			GLuint shadow_ubo_ = 0;
 
 			int   width_ = 0;
 			int   height_ = 0;

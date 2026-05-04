@@ -15,6 +15,7 @@ uniform float hazeHeight;
 uniform vec3  hazeColor;
 
 uniform vec2 cloudTexelSize; // 1.0 / lowResSize
+uniform sampler2D normalTexture;
 
 // u_transmittanceLUT is declared in helpers/lighting.glsl
 uniform sampler3D u_aerialPerspectiveLUT;
@@ -119,6 +120,24 @@ void main() {
 	float distKM = (dist / 1000.0) * hazeDensity;
 	vec3  inScattering = sampleAerialPerspective(rayDir, distKM);
 	float transmittance = sampleAerialPerspectiveTransmittance(rayDir, distKM);
+
+	// Apply terrain and object shadows to the atmospheric scattering
+	// This prevents the "sunset glow" from being visible through occluding geometry.
+	if (depth < 0.99999) {
+		vec4  normData = texture(normalTexture, TexCoords);
+		vec3  normal = normalize(mat3(invView) * normData.xyz);
+		float shadow = 1.0;
+		for (int i = 0; i < min(num_lights, 2); ++i) {
+			if (lights[i].type == LIGHT_TYPE_DIRECTIONAL) {
+				vec3 L = normalize(-lights[i].direction);
+				shadow = min(shadow, calculateShadow(i, worldPos, normal, L));
+				shadow *= calculateCloudShadow(i, worldPos);
+			}
+		}
+		// Attenuate in-scattering by shadow factor. We keep a bit of scattering
+		// to represent ambient light in shadows.
+		inScattering *= mix(0.1, 1.0, shadow);
+	}
 
 	// 3. Cloud Atmospheric Integration
 	// Clouds should also be affected by the atmosphere between them and the camera.
