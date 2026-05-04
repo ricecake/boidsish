@@ -73,9 +73,9 @@ void main() {
     float light_radius = p.vel.w * 35.0; // Broaden the light
     float base_radiance = intensity * 1000000.0; // 10^6 fixed point scale
 
-    for (int sz = -3; sz <= 3; ++sz) {
-        for (int sy = -3; sy <= 3; ++sy) {
-            for (int sx = -3; sx <= 3; ++sx) {
+    for (int sz = -4; sz <= 4; ++sz) {
+        for (int sy = -4; sy <= 4; ++sy) {
+            for (int sx = -4; sx <= 4; ++sx) {
                 ivec3 vox = center_vox + ivec3(sx, sy, sz);
                 if (any(lessThan(vox, ivec3(0))) || any(greaterThanEqual(vox, u_grid_res_pad.xyz))) continue;
 

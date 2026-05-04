@@ -616,7 +616,7 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 	vec3 ambient = ambientDiffuse * (1.0 - metallic * 0.9) + ambientSpecular;
 
 	// Add volumetric light contribution from emissive particles
-	vec3 volLight = sampleVolumetricLight(frag_pos) * (1.0 - metallic * 0.5) * combinedAO;
+	vec3 volLight = sampleVolumetricLight(frag_pos) * albedo * (1.0 - metallic * 0.5) * combinedAO;
 
 	vec3 color = ambient + Lo + volLight;
 
@@ -821,7 +821,7 @@ vec4 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, floa
 	vec3  ambient = ambientDiffuse * (1.0 - metallic * 0.9) + ambientSpecular;
 
 	// Add volumetric light contribution
-	vec3 volLight = sampleVolumetricLight(frag_pos) * (1.0 - metallic * 0.5) * combinedAO;
+	vec3 volLight = sampleVolumetricLight(frag_pos) * albedo * (1.0 - metallic * 0.5) * combinedAO;
 
 	return vec4(ambient + Lo + volLight, spec_lum + get_luminance(ambientSpecular));
 }
@@ -878,7 +878,7 @@ vec4 apply_lighting(vec3 frag_pos, vec3 normal, vec3 albedo, float specular_stre
 	}
 
 	// Add volumetric light contribution
-	result += sampleVolumetricLight(frag_pos);
+	result += sampleVolumetricLight(frag_pos) * albedo;
 
 	return vec4(result, spec_lum);
 }
@@ -921,7 +921,7 @@ vec4 apply_lighting_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, float sp
 	}
 
 	// Add volumetric light contribution
-	result += sampleVolumetricLight(frag_pos);
+	result += sampleVolumetricLight(frag_pos) * albedo;
 
 	return vec4(result, spec_lum);
 }

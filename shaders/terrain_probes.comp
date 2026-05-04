@@ -187,7 +187,7 @@ vec3 sampleTerrainFallback(vec3 worldPos, vec3 rayDir) {
 	return sampleSkyLUT(rayDir); // Missed terrain (sky is important for occlusion)
 }
 
-void shMarchMain(vec3 rd, vec3 probeOrigin, int totalRayCount, inout vec3 newSH[9]) {
+void shMarchMain(vec3 rd, vec3 probeOrigin, vec3 volRadiance, int totalRayCount, inout vec3 newSH[9]) {
 		if (totalRayCount <= 0) return;
 		vec3 radiance = vec3(0.0);
 		bool hitFound = false;
@@ -265,6 +265,9 @@ void shMarchMain(vec3 rd, vec3 probeOrigin, int totalRayCount, inout vec3 newSH[
 			// Fallback to heightmap/biome for bounce from geometry that is off-screen or occluded
 			radiance = sampleTerrainFallback(probeOrigin, rd);
 		}
+
+		// Add subtle volumetric tint from emissive particles
+		radiance += volRadiance;
 
 		projectRadianceToSH(rd, radiance, 1.0 / float(totalRayCount), newSH);
 }
@@ -409,10 +412,13 @@ void main() {
 	vec2 uv = screenPos.xy * 0.5 + 0.5;
 	// Base samples
 	int baseSamples = isAggressive ? 4 : 2;
+	// Sample volumetric light once per probe since origin is constant
+	vec3 volRadiance = sampleVolumetricLight(probeOrigin) * 0.05;
+
 	for (int i = 0; i < baseSamples; ++i) {
 		vec2  jitter = fract(bn.zw + vec2(float(i) * 0.618, float(i) * 0.382));
 		vec3  rd = hemisphereSample(jitter, -worldNormal);
-		shMarchMain(rd, probeOrigin, rayCount + baseSamples, newSH);
+		shMarchMain(rd, probeOrigin, volRadiance, rayCount + baseSamples, newSH);
 	}
 
 	for (int i = 0; i < rayCount; ++i) {
@@ -424,7 +430,7 @@ void main() {
 		float sinTheta = sqrt(max(0.0, 1.0 - cosTheta * cosTheta));
 		vec3  rd = vec3(sinTheta * cos(phi), cosTheta, sinTheta * sin(phi));
 
-		shMarchMain(rd, probeOrigin, rayCount + baseSamples, newSH);
+		shMarchMain(rd, probeOrigin, volRadiance, rayCount + baseSamples, newSH);
 	}
 
 	for (int i = 0; i < 9; ++i) {

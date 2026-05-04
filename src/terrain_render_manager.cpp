@@ -66,6 +66,12 @@ namespace Boidsish {
 
 		grid_mip_shader_ = std::make_unique<ComputeShader>("shaders/terrain_hiz_generate.comp");
 		probe_compute_shader_ = std::make_unique<ComputeShader>("shaders/terrain_probes.comp");
+		if (probe_compute_shader_->isValid()) {
+			GLuint block_idx = glGetUniformBlockIndex(probe_compute_shader_->ID, "VolumetricLightingParams");
+			if (block_idx != GL_INVALID_INDEX) {
+				glUniformBlockBinding(probe_compute_shader_->ID, block_idx, Constants::UboBinding::VolumetricLighting());
+			}
+		}
 		terrain_bake_shader_ = std::make_unique<ComputeShader>("shaders/terrain_bake.comp");
 		terrain_horizon_shader_ = std::make_unique<ComputeShader>("shaders/terrain_horizon_update.comp");
 		terrain_shadow_map_shader_ = std::make_unique<ComputeShader>("shaders/terrain_shadow_map.comp");
@@ -774,6 +780,7 @@ namespace Boidsish {
 		GLuint           albedoTex,
 		GLuint           velocityTex,
 		GLuint           skyLUT,
+		GLuint           volumetricLightTex,
 		const glm::mat4& view,
 		const glm::mat4& projection,
 		GLuint           lighting_ubo,
@@ -818,6 +825,12 @@ namespace Boidsish {
 		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereSkyView());
 		glBindTexture(GL_TEXTURE_2D, skyLUT);
 		probe_compute_shader_->setInt("u_skyViewLUT", Constants::TextureUnit::AtmosphereSkyView());
+
+		if (volumetricLightTex != 0) {
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::VolumetricLightTexture());
+			glBindTexture(GL_TEXTURE_3D, volumetricLightTex);
+			probe_compute_shader_->setInt("u_volumetricLightTexture", Constants::TextureUnit::VolumetricLightTexture());
+		}
 
 		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainBiomeMap());
 		glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture_);
