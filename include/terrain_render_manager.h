@@ -112,6 +112,7 @@ namespace Boidsish {
 			GLuint           albedoTex,
 			GLuint           velocityTex,
 			GLuint           skyLUT,
+			GLuint           volumetricLightTex,
 			const glm::mat4& view,
 			const glm::mat4& projection,
 			GLuint           lighting_ubo,

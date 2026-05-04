@@ -774,6 +774,7 @@ namespace Boidsish {
 		GLuint           albedoTex,
 		GLuint           velocityTex,
 		GLuint           skyLUT,
+		GLuint           volumetricLightTex,
 		const glm::mat4& view,
 		const glm::mat4& projection,
 		GLuint           lighting_ubo,
@@ -818,6 +819,12 @@ namespace Boidsish {
 		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereSkyView());
 		glBindTexture(GL_TEXTURE_2D, skyLUT);
 		probe_compute_shader_->setInt("u_skyViewLUT", Constants::TextureUnit::AtmosphereSkyView());
+
+		if (volumetricLightTex != 0) {
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::VolumetricLightTexture());
+			glBindTexture(GL_TEXTURE_3D, volumetricLightTex);
+			probe_compute_shader_->setInt("u_volumetricLightTexture", Constants::TextureUnit::VolumetricLightTexture());
+		}
 
 		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainBiomeMap());
 		glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture_);

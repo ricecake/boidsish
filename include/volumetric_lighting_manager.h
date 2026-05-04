@@ -69,7 +69,7 @@ namespace Boidsish {
 		std::unique_ptr<ComputeShader> inject_shader_;
 		std::unique_ptr<ComputeShader> resolve_shader_;
 
-		glm::ivec3 grid_res_ = {128, 72, 64};
+		glm::ivec3 grid_res_ = {128, 72, 128};
 		VolumetricLightingParams params_;
 		float simulation_time_ = 0.0f;
 	};

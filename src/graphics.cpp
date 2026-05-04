@@ -3697,6 +3697,7 @@ namespace Boidsish {
 				impl->compositor_->GetAlbedoTexture(),
 				impl->compositor_->GetVelocityTexture(),
 				impl->atmosphere_manager->GetSkyViewLUT(),
+				impl->volumetric_lighting_manager->GetVolumetricTexture(),
 				frame.view,
 				frame.projection,
 				impl->render_state_.lighting.id,
