@@ -236,6 +236,9 @@ namespace Boidsish {
 			glActiveTexture(GL_TEXTURE3);
 			glBindTexture(GL_TEXTURE_2D, normalTexture);
 
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereCloudShadow());
+			glBindTexture(GL_TEXTURE_2D, cloud_shadow_map_);
+
 			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::ShadowMaps());
 			glBindTexture(GL_TEXTURE_2D_ARRAY, shadow_maps_);
 

@@ -1955,7 +1955,7 @@ namespace Boidsish {
 						// Pass full moon radiance (without phase) for disk rendering to avoid double-phasing
 						const auto& cycle = light_manager->GetDayNightCycle();
 						glm::vec3 moonFullRadiance = lights[0].color * 10.0f * cycle.lunar_albedo * cycle.moon_tint;
-						sky_shader->setVec3("u_moonFullRadiance", moonFullRadiance * lights[1].intensity);
+						sky_shader->setVec3("u_moonFullRadiance", moonFullRadiance);
 					} else {
 						sky_shader->setVec3("u_moonRadiance", glm::vec3(0.0f));
 						sky_shader->setVec3("u_moonFullRadiance", glm::vec3(0.0f));
@@ -2126,7 +2126,8 @@ namespace Boidsish {
 					atmosphere_manager->GetTransmittanceLUT(),
 					atmosphere_manager->GetMultiScatteringLUT(),
 					atmosphere_manager->GetSkyViewLUT(),
-					atmosphere_manager->GetAerialPerspectiveLUT()
+					atmosphere_manager->GetAerialPerspectiveLUT(),
+					atmosphere_manager->GetCloudShadowMap()
 				);
 				if (noise_manager) {
 					atmosphere_effect->SetNoiseTextures(noise_manager->GetTextures());
