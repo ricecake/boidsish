@@ -24,6 +24,7 @@ namespace Boidsish {
 	class SceneCompositor;
 	class ShadowManager;
 	class SdfVolumeManager;
+	class VolumetricLightingManager;
 	class TerrainRenderManager;
 
 	namespace PostProcessing {

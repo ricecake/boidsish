@@ -35,6 +35,7 @@ namespace Boidsish {
 				LbmWindData = 34,
 				TerrainShadowMap = 35,
 				TerrainShadowMapImage = 36,
+				VolumetricLightTexture = 38,
 			};
 
 			enum class Ubo {
@@ -51,6 +52,7 @@ namespace Boidsish {
 				DecorProps = 30,
 				DecorPlacementGlobals = 31,
 				WindData = 45,
+				VolumetricLighting = 48,
 			};
 
 			enum class Ssbo {
@@ -86,6 +88,7 @@ namespace Boidsish {
 				MeshExplosionFragments = 41,
 				TrailGeneratedVBO = 42,
 				AtmosphereSH = 43,
+				VolumetricLightAccumulation = 46,
 			};
 		} // namespace Bindings
 
@@ -140,6 +143,10 @@ namespace Boidsish {
 
 			consteval int WindData() {
 				return std::to_underlying(Constants::Bindings::Ubo::WindData);
+			}
+
+			consteval int VolumetricLighting() {
+				return std::to_underlying(Constants::Bindings::Ubo::VolumetricLighting);
 			}
 		} // namespace UboBinding
 
@@ -250,6 +257,10 @@ namespace Boidsish {
 
 			consteval int TerrainShadowMapImage() {
 				return std::to_underlying(Constants::Bindings::Texture::TerrainShadowMapImage);
+			}
+
+			consteval int VolumetricLightTexture() {
+				return std::to_underlying(Constants::Bindings::Texture::VolumetricLightTexture);
 			}
 		} // namespace TextureUnit
 
@@ -380,6 +391,10 @@ namespace Boidsish {
 
 			consteval int AtmosphereSH() {
 				return std::to_underlying(Constants::Bindings::Ssbo::AtmosphereSH);
+			}
+
+			consteval int VolumetricLightAccumulation() {
+				return std::to_underlying(Constants::Bindings::Ssbo::VolumetricLightAccumulation);
 			}
 		} // namespace SsboBinding
 

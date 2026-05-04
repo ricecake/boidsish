@@ -5,6 +5,7 @@
 #include "../lighting.glsl"
 #include "clouds.glsl"
 #include "brdf.glsl"
+#include "volumetric_lighting.glsl"
 
 // Atmosphere constants for transmittance lookup
 const float kEarthRadiusKM = 6360.0;
@@ -613,7 +614,11 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 
 	// Combine diffuse and specular ambient
 	vec3 ambient = ambientDiffuse * (1.0 - metallic * 0.9) + ambientSpecular;
-	vec3 color = ambient + Lo;
+
+	// Add volumetric light contribution from emissive particles
+	vec3 volLight = sampleVolumetricLight(frag_pos) * (1.0 - metallic * 0.5) * combinedAO;
+
+	vec3 color = ambient + Lo + volLight;
 
 	return vec4(color, spec_lum + get_luminance(ambientSpecular));
 }
@@ -716,7 +721,10 @@ vec4 apply_lighting_foliage(vec3 frag_pos, vec3 normal, vec3 albedo, float rough
     float terrainOcc = calculateTerrainOcclusion(frag_pos, N);
     vec3 ambient = (getSpatialAmbientSH(frag_pos, N) * albedo) * (ao * terrainOcc);
 
-    return vec4(ambient + Lo, spec_lum);
+	// Add volumetric light contribution for foliage
+	vec3 volLight = sampleVolumetricLight(frag_pos) * albedo * (ao * terrainOcc);
+
+    return vec4(ambient + Lo + volLight, spec_lum);
 }
 
 /**
@@ -812,7 +820,10 @@ vec4 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, floa
 	vec3  ambientSpecular = F_env * envColor * envStrength * combinedAO;
 	vec3  ambient = ambientDiffuse * (1.0 - metallic * 0.9) + ambientSpecular;
 
-	return vec4(ambient + Lo, spec_lum + get_luminance(ambientSpecular));
+	// Add volumetric light contribution
+	vec3 volLight = sampleVolumetricLight(frag_pos) * (1.0 - metallic * 0.5) * combinedAO;
+
+	return vec4(ambient + Lo + volLight, spec_lum + get_luminance(ambientSpecular));
 }
 
 // ============================================================================
@@ -866,6 +877,9 @@ vec4 apply_lighting(vec3 frag_pos, vec3 normal, vec3 albedo, float specular_stre
 		spec_lum += get_luminance(specular_contribution);
 	}
 
+	// Add volumetric light contribution
+	result += sampleVolumetricLight(frag_pos);
+
 	return vec4(result, spec_lum);
 }
 
@@ -905,6 +919,9 @@ vec4 apply_lighting_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, float sp
 		result += (diffuse * lights[i].intensity * attenuation) + specular_contribution;
 		spec_lum += get_luminance(specular_contribution);
 	}
+
+	// Add volumetric light contribution
+	result += sampleVolumetricLight(frag_pos);
 
 	return vec4(result, spec_lum);
 }

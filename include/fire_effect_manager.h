@@ -92,6 +92,10 @@ namespace Boidsish {
 		);
 		void RemoveEffect(const std::shared_ptr<FireEffect>& effect);
 
+		GLuint GetParticleBuffer() const { return particle_buffer_; }
+		GLuint GetLiveIndicesBuffer() const { return live_indices_buffer_; }
+		GLuint GetBehaviorCommandBuffer() const { return behavior_command_buffer_; }
+
 	private:
 		void _EnsureShaderAndBuffers();
 		void _UpdateParticleAllocation();
