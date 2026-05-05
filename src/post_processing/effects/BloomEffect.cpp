@@ -11,6 +11,7 @@ namespace Boidsish {
 		BloomEffect::BloomEffect(int width, int height):
 			_width(width), _height(height), _bloomTexture(0) {
 			name_ = "Bloom";
+			_toneMappingMode = 5; // Default to Uchimura
 		}
 
 		BloomEffect::~BloomEffect() {
@@ -77,15 +78,33 @@ namespace Boidsish {
 					float targetLuminance;
 					float minExposure;
 					float maxExposure;
+
 					int   useAutoExposure;
-					uint32_t totalLogLuma;
-					uint32_t totalPixelCount;
+					float centerWeightTightness;
+					glm::vec2 focusPoint;
+
+					float histogramLowCutoff;
+					float histogramHighCutoff;
 					uint32_t workgroupCounter;
+					uint32_t _pad;
+
+					uint32_t histogram[256];
 				};
 
 				glGenBuffers(1, &_exposureSsbo);
 				glBindBuffer(GL_SHADER_STORAGE_BUFFER, _exposureSsbo);
-				ExposureData initialData = {0.3f, _targetLuminance, _minExposure, _maxExposure, 1, 0, 0, 0};
+				ExposureData initialData = {};
+				initialData.adaptedLuminance = 0.3f;
+				initialData.targetLuminance = _targetLuminance;
+				initialData.minExposure = _minExposure;
+				initialData.maxExposure = _maxExposure;
+				initialData.useAutoExposure = 1;
+				initialData.centerWeightTightness = _centerWeightTightness;
+				initialData.focusPoint = _focusPoint;
+				initialData.histogramLowCutoff = _histogramLowCutoff;
+				initialData.histogramHighCutoff = _histogramHighCutoff;
+				initialData.workgroupCounter = 0;
+
 				glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(ExposureData), &initialData, GL_DYNAMIC_DRAW);
 				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::AutoExposure(), _exposureSsbo);
 				glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
@@ -106,7 +125,15 @@ namespace Boidsish {
 				float targetLuminance;
 				float minExposure;
 				float maxExposure;
+
 				int   useAutoExposure;
+				float centerWeightTightness;
+				glm::vec2 focusPoint;
+
+				float histogramLowCutoff;
+				float histogramHighCutoff;
+				uint32_t workgroupCounter;
+				uint32_t _pad;
 			};
 			glBindBuffer(GL_SHADER_STORAGE_BUFFER, _exposureSsbo);
 			float actualTarget = _targetLuminance * (1.0f - _nightFactor * 0.5f);
@@ -116,6 +143,10 @@ namespace Boidsish {
 			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, maxExposure), sizeof(float), &actualMax);
 			int enabled = _autoExposureEnabled ? 1 : 0;
 			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, useAutoExposure), sizeof(int), &enabled);
+			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, centerWeightTightness), sizeof(float), &_centerWeightTightness);
+			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, focusPoint), sizeof(glm::vec2), &_focusPoint);
+			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, histogramLowCutoff), sizeof(float), &_histogramLowCutoff);
+			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, histogramHighCutoff), sizeof(float), &_histogramHighCutoff);
 
 			// 2. Compute-based Downsample, Bright Pass and Auto-Exposure
 			_downsampleComputeShader->use();
@@ -187,6 +218,15 @@ namespace Boidsish {
 
 			_compositeShader->setBool("toneMappingEnabled", _toneMappingEnabled);
 			_compositeShader->setInt("toneMapMode", _toneMappingMode);
+
+			if (_toneMappingMode == 5) { // Uchimura
+				_compositeShader->setFloat("uchimuraP", _uchimuraP);
+				_compositeShader->setFloat("uchimuraA", _uchimuraA);
+				_compositeShader->setFloat("uchimuraM", _uchimuraM);
+				_compositeShader->setFloat("uchimuraL", _uchimuraL);
+				_compositeShader->setFloat("uchimuraC", _uchimuraC);
+				_compositeShader->setFloat("uchimuraB", _uchimuraB);
+			}
 
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, sourceTexture);
