@@ -5,6 +5,7 @@
 
 #include "biome_properties.h"
 #include "constants.h"
+#include "gpu_resource_registry.h"
 #include "graphics.h" // For Frustum
 #include "profiler.h"
 #include "service_locator.h"
@@ -109,6 +110,11 @@ namespace Boidsish {
 
 		CreateGridMesh();
 		EnsureTextureCapacity(max_chunks);
+
+		auto& reg = GpuResourceRegistry::Instance();
+		reg.PublishTexture(Constants::TextureUnit::TerrainChunkGrid(), chunk_grid_texture_);
+		reg.PublishTexture(Constants::TextureUnit::TerrainMaxHeight(), max_height_grid_texture_);
+		reg.PublishTexture(Constants::TextureUnit::TerrainShadowMap(), terrain_shadow_map_texture_);
 	}
 
 	TerrainRenderManager::~TerrainRenderManager() {
@@ -300,6 +306,9 @@ namespace Boidsish {
 		create_array(biome_texture_, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, true);
 
 		glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
+
+		auto& reg = GpuResourceRegistry::Instance();
+		reg.PublishTexture(Constants::TextureUnit::TerrainHeightmap(), heightmap_texture_, GL_TEXTURE_2D_ARRAY);
 	}
 
 	void TerrainRenderManager::UploadHeightmapSlice(

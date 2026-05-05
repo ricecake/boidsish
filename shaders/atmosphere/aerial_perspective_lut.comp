@@ -16,6 +16,9 @@ uniform float u_time;
 
 uniform float u_colorVarianceScale;
 uniform float u_colorVarianceStrength;
+uniform float hazeDensity;
+uniform float hazeHeight;
+uniform vec3  hazeColor;
 
 #include "../helpers/fast_noise.glsl"
 #include "../lighting.glsl"
@@ -42,7 +45,7 @@ void main() {
 	float azimuth = uvw.x * 2.0 * PI;
 	float elevation = (uvw.y - 0.5) * PI;
 	float maxDist = 32.0; // 32 km for fog
-	float dist = uvw.z * maxDist;
+	float dist = uvw.z*uvw.z * maxDist;
 
 	vec3 rd = vec3(cos(elevation) * sin(azimuth), sin(elevation), -cos(elevation) * cos(azimuth));
 
@@ -63,6 +66,9 @@ void main() {
 			break; // Hits ground
 
 		Sampling s = getAtmosphereProperties(h);
+		s.rayleigh *= hazeDensity;
+		s.mie *= hazeDensity;
+		s.extinction *= hazeDensity;
 
 		// Apply gentle color variance to scattering patterns
 		if (u_colorVarianceStrength > 0.0) {
@@ -85,7 +91,8 @@ void main() {
 
 		// Add ambient scattering to prevent pitch blackness at night
 		// We use a blend of the UBO ambient light and a fixed physical base radiance
-		vec3 baseAmbientRadiance = vec3(0.015, 0.02, 0.04) * u_ambientScatScale * 5.0;
+		// vec3 baseAmbientRadiance = vec3(0.015, 0.02, 0.04) * u_ambientScatScale * 5.0;
+		vec3 baseAmbientRadiance = hazeColor * u_ambientScatScale * 5.0;
 		vec3 effectiveAmbient = max(ambient_light, baseAmbientRadiance);
 		vec3 ambientScattering = effectiveAmbient * (s.rayleigh + s.mie) * u_ambientScatScale;
 

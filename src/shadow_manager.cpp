@@ -1,13 +1,14 @@
 #include "shadow_manager.h"
 
 #include <iostream>
-
-#include "service_locator.h"
 #include <vector>
 
+#include "constants.h"
+#include "gpu_resource_registry.h"
 #include "light.h"
 #include "logger.h"
 #include "profiler.h"
+#include "service_locator.h"
 #include "shader.h"
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -95,6 +96,10 @@ namespace Boidsish {
 		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
 		initialized_ = true;
+
+		auto& reg = GpuResourceRegistry::Instance();
+		reg.PublishTexture(Constants::TextureUnit::ShadowMaps(), shadow_map_array_, GL_TEXTURE_2D_ARRAY);
+
 		logger::INFO("ShadowManager initialized with {} shadow map slots", kMaxShadowMaps);
 	}
 

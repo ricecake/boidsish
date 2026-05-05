@@ -1,7 +1,14 @@
 #include "post_processing/effects/AtmosphereEffect.h"
 
+#include <array>
+
 #include "constants.h"
+#include "gpu_resource_registry.h"
+#include "light_manager.h"
+#include "service_locator.h"
+#include "shadow_manager.h"
 #include "shader.h"
+#include "terrain_render_manager.h"
 
 namespace Boidsish {
 	namespace PostProcessing {
@@ -37,6 +44,10 @@ namespace Boidsish {
 				GLuint shadows_idx = glGetUniformBlockIndex(s.ID, "Shadows");
 				if (shadows_idx != GL_INVALID_INDEX) {
 					glUniformBlockBinding(s.ID, shadows_idx, Constants::UboBinding::Shadows());
+				}
+				GLuint terrain_idx = glGetUniformBlockIndex(s.ID, "TerrainData");
+				if (terrain_idx != GL_INVALID_INDEX) {
+					glUniformBlockBinding(s.ID, terrain_idx, Constants::UboBinding::TerrainData());
 				}
 				GLuint effects_idx = glGetUniformBlockIndex(s.ID, "VisualEffects");
 				if (effects_idx != GL_INVALID_INDEX) {
@@ -141,18 +152,15 @@ namespace Boidsish {
 
 			glActiveTexture(GL_TEXTURE1);
 			glBindTexture(GL_TEXTURE_2D, depthTexture);
-			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereTransmittance());
-			glBindTexture(GL_TEXTURE_2D, transmittance_lut_);
-			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereSkyView());
-			glBindTexture(GL_TEXTURE_2D, sky_view_lut_);
-			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::NoiseSimplex());
-			glBindTexture(GL_TEXTURE_3D, noise_textures_.noise);
-			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::NoiseCurl());
-			glBindTexture(GL_TEXTURE_3D, noise_textures_.curl);
-			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::NoiseBlue());
-			glBindTexture(GL_TEXTURE_2D, noise_textures_.blue_noise);
-			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::NoiseExtra());
-			glBindTexture(GL_TEXTURE_3D, noise_textures_.extra_noise);
+
+			GpuResourceRegistry::Instance().BindTextures({
+				Constants::TextureUnit::AtmosphereTransmittance(),
+				Constants::TextureUnit::AtmosphereSkyView(),
+				Constants::TextureUnit::NoiseSimplex(),
+				Constants::TextureUnit::NoiseCurl(),
+				Constants::TextureUnit::NoiseBlue(),
+				Constants::TextureUnit::NoiseExtra()
+			});
 
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 
@@ -206,6 +214,7 @@ namespace Boidsish {
 			composite_shader_->setInt("sceneTexture", 0);
 			composite_shader_->setInt("depthTexture", 1);
 			composite_shader_->setInt("cloudTexture", 2);
+			composite_shader_->setInt("normalTexture", 3);
 			composite_shader_->setFloat("time", time_);
 			composite_shader_->setMat4("invView", invView);
 			composite_shader_->setMat4("invProjection", invProj);
@@ -217,6 +226,26 @@ namespace Boidsish {
 			composite_shader_->setVec2("cloudTexelSize", glm::vec2(1.0f / low_res_width, 1.0f / low_res_height));
 			composite_shader_->setFloat("u_atmosphereHeight", atmosphere_height_);
 
+			auto& loc = ServiceLocator::Instance();
+			auto shadow_mgr = loc.Get<ShadowManager>();
+			auto terrain_mgr = loc.Get<TerrainRenderManager>();
+			auto light_mgr = loc.Get<LightManager>();
+
+			if (shadow_mgr && shadow_mgr->IsInitialized()) {
+				shadow_mgr->BindForRendering(*composite_shader_);
+				std::array<int, 10> shadow_indices;
+				shadow_indices.fill(-1);
+				const auto& lights = light_mgr->GetLights();
+				for (size_t j = 0; j < lights.size() && j < 10; ++j) {
+					shadow_indices[j] = lights[j].shadow_map_index;
+				}
+				composite_shader_->setIntArray("lightShadowIndices", shadow_indices.data(), 10);
+			}
+
+			if (terrain_mgr) {
+				terrain_mgr->BindTerrainData(*composite_shader_);
+			}
+
 			composite_shader_->setInt("u_transmittanceLUT", Constants::TextureUnit::AtmosphereTransmittance());
 			composite_shader_->setInt("u_aerialPerspectiveLUT", Constants::TextureUnit::AtmosphereAerialPerspective());
 
@@ -226,11 +255,13 @@ namespace Boidsish {
 			glBindTexture(GL_TEXTURE_2D, depthTexture);
 			glActiveTexture(GL_TEXTURE2);
 			glBindTexture(GL_TEXTURE_2D, cloud_source);
+			glActiveTexture(GL_TEXTURE3);
+			glBindTexture(GL_TEXTURE_2D, normalTexture);
 
-			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereTransmittance());
-			glBindTexture(GL_TEXTURE_2D, transmittance_lut_);
-			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereAerialPerspective());
-			glBindTexture(GL_TEXTURE_3D, aerial_perspective_lut_);
+			GpuResourceRegistry::Instance().BindTextures({
+				Constants::TextureUnit::AtmosphereTransmittance(),
+				Constants::TextureUnit::AtmosphereAerialPerspective()
+			});
 
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 
@@ -238,6 +269,8 @@ namespace Boidsish {
 			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereAerialPerspective());
 			glBindTexture(GL_TEXTURE_3D, 0);
 			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereTransmittance());
+			glBindTexture(GL_TEXTURE_2D, 0);
+			glActiveTexture(GL_TEXTURE3);
 			glBindTexture(GL_TEXTURE_2D, 0);
 			glActiveTexture(GL_TEXTURE2);
 			glBindTexture(GL_TEXTURE_2D, 0);

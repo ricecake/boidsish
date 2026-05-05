@@ -2,14 +2,14 @@
 
 #include <iostream>
 
-#include "service_locator.h"
-
-#include "profiler.h"
-#include "shader.h"
+#include "weather_manager.h"
 #include "constants.h"
+#include "gpu_resource_registry.h"
+#include "profiler.h"
+#include "service_locator.h"
+#include "shader.h"
 
 namespace Boidsish {
-
 	AtmosphereManager::AtmosphereManager(ServiceLocator& /*loc*/) {}
 
 	AtmosphereManager::~AtmosphereManager() {
@@ -88,6 +88,13 @@ namespace Boidsish {
 		for (int i = 0; i < 9; ++i) {
 			_shCoeffs[i] = glm::vec4(0.0f);
 		}
+
+		auto& reg = GpuResourceRegistry::Instance();
+		reg.PublishTexture(Constants::TextureUnit::AtmosphereTransmittance(), _transmittanceLUT);
+		reg.PublishTexture(Constants::TextureUnit::AtmosphereMultiScattering(), _multiScatteringLUT);
+		reg.PublishTexture(Constants::TextureUnit::AtmosphereSkyView(), _skyViewLUT);
+		reg.PublishTexture(Constants::TextureUnit::AtmosphereAerialPerspective(), _aerialPerspectiveLUT, GL_TEXTURE_3D);
+		reg.PublishTexture(Constants::TextureUnit::AtmosphereCloudShadow(), _cloudShadowMap);
 	}
 
 	void AtmosphereManager::CreateShaders() {
@@ -235,6 +242,14 @@ namespace Boidsish {
 		_aerialPerspectiveShader->setFloat("u_mieScaleHeight", _mieScaleHeight);
 		_aerialPerspectiveShader->setFloat("u_colorVarianceScale", _colorVarianceScale);
 		_aerialPerspectiveShader->setFloat("u_colorVarianceStrength", _colorVarianceStrength);
+
+		auto wm = ServiceLocator::Instance().Get<WeatherManager>();
+		auto weather = wm->GetCurrentWeather();
+
+		_aerialPerspectiveShader->setFloat("hazeDensity", weather.haze_density);
+		_aerialPerspectiveShader->setFloat("hazeHeight", weather.haze_height);
+		_aerialPerspectiveShader->setVec3("hazeColor", weather.haze_color);
+
 
 		glDispatchCompute(32 / 4, 32 / 4, 32 / 4);
 		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);

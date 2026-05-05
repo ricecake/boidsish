@@ -79,6 +79,7 @@
 #include "ui/hud_widget.h"
 #include "binding_registry.h"
 #include "render_state.h"
+#include "gpu_resource_registry.h"
 #include "service_locator.h"
 #include "shader_registration.h"
 #include "visual_effects.h"
@@ -370,6 +371,7 @@ namespace Boidsish {
 		std::vector<std::shared_ptr<Shape>>               transient_effects; // Short-lived effects like CurvedText
 		ConcurrentQueue<ShapeCommand>                     shape_command_queue;
 		ServiceLocator                                    service_locator_;
+		GpuResourceRegistry                               gpu_resources_;
 		std::shared_ptr<CloneManager>                     clone_manager;
 		std::shared_ptr<FireEffectManager>                fire_effect_manager;
 		std::shared_ptr<NoiseManager>                     noise_manager;
@@ -785,6 +787,8 @@ namespace Boidsish {
 				last_camera_yaw_ = camera.yaw;
 				last_camera_pitch_ = camera.pitch;
 			}
+			ServiceLocator::SetInstance(&service_locator_);
+			GpuResourceRegistry::SetInstance(&gpu_resources_);
 			RegisterManagers();
 
 			hiz_manager = service_locator_.Get<HiZManager>();
@@ -1277,6 +1281,8 @@ namespace Boidsish {
 			}
 
 			service_locator_.Clear();
+			ServiceLocator::SetInstance(nullptr);
+			GpuResourceRegistry::SetInstance(nullptr);
 
 			if (window)
 				glfwDestroyWindow(window);
@@ -2121,17 +2127,6 @@ namespace Boidsish {
 			glm::vec3 estimated_ambient = atmosphere_manager->GetAmbientEstimate();
 			light_manager->SetAmbientLight(estimated_ambient);
 
-			if (atmosphere_effect) {
-				atmosphere_effect->SetAtmosphereLUTs(
-					atmosphere_manager->GetTransmittanceLUT(),
-					atmosphere_manager->GetMultiScatteringLUT(),
-					atmosphere_manager->GetSkyViewLUT(),
-					atmosphere_manager->GetAerialPerspectiveLUT()
-				);
-				if (noise_manager) {
-					atmosphere_effect->SetNoiseTextures(noise_manager->GetTextures());
-				}
-			}
 		}
 
 		void UpdateTrailsLogical() { UpdateTrails(shapes, simulation_time); }
