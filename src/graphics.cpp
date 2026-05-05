@@ -51,6 +51,7 @@
 #include "post_processing/effects/UnifiedScreenSpaceEffect.h"
 #include "post_processing/effects/TimeStutterEffect.h"
 #include "post_processing/effects/WhispTrailEffect.h"
+#include "post_processing/effects/WindHeatEffect.h"
 #include "profiler.h"
 #include "render_passes.h"
 #include "render_queue.h"
@@ -1037,6 +1038,10 @@ namespace Boidsish {
 				auto super_speed_effect = std::make_shared<PostProcessing::SuperSpeedEffect>();
 				super_speed_effect->SetEnabled(true);
 				post_processing_manager_->AddEffect(super_speed_effect);
+
+				auto wind_heat_effect = std::make_shared<PostProcessing::WindHeatEffect>();
+				wind_heat_effect->SetEnabled(true);
+				post_processing_manager_->AddEffect(wind_heat_effect);
 
 				atmosphere_effect = std::make_shared<PostProcessing::AtmosphereEffect>();
 				atmosphere_effect->SetEnabled(true);

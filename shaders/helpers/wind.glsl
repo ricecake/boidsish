@@ -13,6 +13,7 @@ layout(std140, binding = [[WIND_DATA_BINDING]]) uniform WindData {
 };
 
 layout(binding = [[WIND_TEXTURE_BINDING]]) uniform sampler2D u_windTexture;
+layout(binding = [[WEATHER_SCALARS_BINDING]]) uniform sampler2D u_weatherScalarsTexture;
 #ifdef WIND_COMPUTE
 layout(binding = [[LBM_WIND_TEXTURE_BINDING]]) uniform sampler2D u_lbmWindTexture;
 #endif
@@ -29,6 +30,19 @@ vec3 getWindAtPosition(vec3 worldPos) {
 	vec2 uv = gridCoord / vec2(u_windOriginSize.y, u_windOriginSize.w);
 
 	return texture(u_windTexture, uv).xyz;
+}
+
+/**
+ * Fast lookup for weather scalars (temp, humidity, pressure, aerosol).
+ */
+vec4 getWeatherScalarsAtPosition(vec3 worldPos) {
+	if (u_windOriginSize.y <= 0) return vec4(0.0);
+
+	float gridSpacing = u_windParams.x;
+	vec2 gridCoord = (worldPos.xz / gridSpacing) - vec2(u_windOriginSize.xz);
+	vec2 uv = gridCoord / vec2(u_windOriginSize.y, u_windOriginSize.w);
+
+	return texture(u_weatherScalarsTexture, uv);
 }
 
 #ifdef WIND_COMPUTE
