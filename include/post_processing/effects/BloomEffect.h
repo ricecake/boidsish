@@ -57,6 +57,26 @@ namespace Boidsish {
 			float GetSpeedUp() const { return _speedUp; }
 			float GetSpeedDown() const { return _speedDown; }
 
+			void SetAutoExposureCenterWeight(float weight) { _centerWeightTightness = weight; }
+			float GetAutoExposureCenterWeight() const { return _centerWeightTightness; }
+
+			void SetAutoExposureFocusPoint(const glm::vec2& focus) { _focusPoint = focus; }
+			glm::vec2 GetAutoExposureFocusPoint() const { return _focusPoint; }
+
+			void SetHistogramCutoffs(float low, float high) { _histogramLowCutoff = low; _histogramHighCutoff = high; }
+			float GetHistogramLowCutoff() const { return _histogramLowCutoff; }
+			float GetHistogramHighCutoff() const { return _histogramHighCutoff; }
+
+			void SetUchimuraParams(float P, float a, float m, float l, float c, float b) {
+				_uchimuraP = P; _uchimuraA = a; _uchimuraM = m; _uchimuraL = l; _uchimuraC = c; _uchimuraB = b;
+			}
+			float GetUchimuraP() const { return _uchimuraP; }
+			float GetUchimuraA() const { return _uchimuraA; }
+			float GetUchimuraM() const { return _uchimuraM; }
+			float GetUchimuraL() const { return _uchimuraL; }
+			float GetUchimuraC() const { return _uchimuraC; }
+			float GetUchimuraB() const { return _uchimuraB; }
+
 			void SetNightFactor(float factor) override { _nightFactor = factor; }
 
 			void SetTime(float time) override;
@@ -89,6 +109,19 @@ namespace Boidsish {
 			float _maxExposure = 25.0f;
 			float _speedUp = 3.0f;
 			float _speedDown = 1.0f;
+
+			float _centerWeightTightness = 4.0f;
+			glm::vec2 _focusPoint = glm::vec2(0.5f, 0.5f);
+			float _histogramLowCutoff = 0.1f;
+			float _histogramHighCutoff = 0.95f;
+
+			float _uchimuraP = 1.0f;
+			float _uchimuraA = 1.0f;
+			float _uchimuraM = 0.22f;
+			float _uchimuraL = 0.4f;
+			float _uchimuraC = 1.33f;
+			float _uchimuraB = 0.0f;
+
 			float _nightFactor = 0.0f;
 			float _lastTime = 0.0f;
 			float _deltaTime = 0.0f;

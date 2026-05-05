@@ -18,18 +18,11 @@ uniform float deltaTime;
 uniform float speedUp;
 uniform float speedDown;
 
-shared vec3  s_mip[16][16];
-shared float s_luma[16][16];
-shared uint  s_count[16][16];
+shared vec3 s_mip[16][16];
 
-void addFloatToTotalLogLuma(float val) {
-	uint old = totalLogLuma;
-	uint assumed;
-	do {
-		assumed = old;
-		old = atomicCompSwap(totalLogLuma, assumed, floatBitsToUint(uintBitsToFloat(assumed) + val));
-	} while (assumed != old);
-}
+// Constants for histogram
+const float MIN_LOG_LUMA = -10.0;
+const float MAX_LOG_LUMA = 2.0;
 
 void main() {
 	ivec2 id = ivec2(gl_GlobalInvocationID.xy);
@@ -37,9 +30,7 @@ void main() {
 	ivec2 mip0Size = imageSize(outMip0);
 	ivec2 numGroups = ivec2(gl_NumWorkGroups.xy);
 
-	vec3  bloomColor = vec3(0.0);
-	float logLuma = 0.0;
-	uint  pixelValid = 0;
+	vec3 bloomColor = vec3(0.0);
 
 	if (id.x < mip0Size.x && id.y < mip0Size.y) {
 		vec2 uv = (vec2(id) + 0.5) / vec2(mip0Size);
@@ -48,8 +39,21 @@ void main() {
 		// Sample center for auto-exposure (unthresholded)
 		vec3 centerSample = texture(srcTexture, uv).rgb;
 		float luma = dot(centerSample, vec3(0.2126, 0.7152, 0.0722));
-		logLuma = log(max(luma, 0.0001));
-		pixelValid = 1;
+
+		if (useAutoExposure != 0) {
+			float logLuma = log(max(luma, 0.0001));
+
+			// Calculate weight based on distance to focus point
+			float dist = distance(uv, focusPoint);
+			float weight = exp(-dist * centerWeightTightness);
+
+			// Map logLuma to histogram bin
+			float normalizedLogLuma = clamp((logLuma - MIN_LOG_LUMA) / (MAX_LOG_LUMA - MIN_LOG_LUMA), 0.0, 1.0);
+			int bin = int(normalizedLogLuma * 255.0);
+
+			// Atomic add to histogram bin (weight scaled to uint)
+			atomicAdd(histogram[bin], uint(weight * 1024.0));
+		}
 
 		// 9-tap Dual Kawase-style filter from srcTexture for bloom
 		bloomColor = centerSample * 4.0;
@@ -76,78 +80,67 @@ void main() {
 	}
 
 	s_mip[localId.x][localId.y] = bloomColor;
-	s_luma[localId.x][localId.y] = logLuma;
-	s_count[localId.x][localId.y] = pixelValid;
 
-	barrier();
-
-	// Luminance and valid pixel count reduction
-	if (localId.x < 8) {
-		s_luma[localId.x][localId.y] += s_luma[localId.x + 8][localId.y];
-		s_count[localId.x][localId.y] += s_count[localId.x + 8][localId.y];
-	}
-	barrier();
-	if (localId.x < 4) {
-		s_luma[localId.x][localId.y] += s_luma[localId.x + 4][localId.y];
-		s_count[localId.x][localId.y] += s_count[localId.x + 4][localId.y];
-	}
-	barrier();
-	if (localId.x < 2) {
-		s_luma[localId.x][localId.y] += s_luma[localId.x + 2][localId.y];
-		s_count[localId.x][localId.y] += s_count[localId.x + 2][localId.y];
-	}
-	barrier();
-	if (localId.x < 1) {
-		s_luma[localId.x][localId.y] += s_luma[localId.x + 1][localId.y];
-		s_count[localId.x][localId.y] += s_count[localId.x + 1][localId.y];
-	}
-	barrier();
-
-	if (localId.x == 0) {
-		if (localId.y < 8) {
-			s_luma[0][localId.y] += s_luma[0][localId.y + 8];
-			s_count[0][localId.y] += s_count[0][localId.y + 8];
-		}
-	}
-	barrier();
-	if (localId.x == 0) {
-		if (localId.y < 4) {
-			s_luma[0][localId.y] += s_luma[0][localId.y + 4];
-			s_count[0][localId.y] += s_count[0][localId.y + 4];
-		}
-	}
-	barrier();
-	if (localId.x == 0) {
-		if (localId.y < 2) {
-			s_luma[0][localId.y] += s_luma[0][localId.y + 2];
-			s_count[0][localId.y] += s_count[0][localId.y + 2];
-		}
-	}
-	barrier();
-	if (localId.x == 0) {
-		if (localId.y < 1) {
-			s_luma[0][localId.y] += s_luma[0][localId.y + 1];
-			s_count[0][localId.y] += s_count[0][localId.y + 1];
-		}
-	}
 	barrier();
 
 	if (localId == ivec2(0)) {
-		addFloatToTotalLogLuma(s_luma[0][0]);
-		atomicAdd(totalPixelCount, s_count[0][0]);
-
+		memoryBarrierBuffer();
 		uint finished = atomicAdd(workgroupCounter, 1);
 		if (finished == numGroups.x * numGroups.y - 1) {
-			float avgLuma = exp(uintBitsToFloat(totalLogLuma) / float(totalPixelCount));
-			float speed = (avgLuma > adaptedLuminance) ? speedUp : speedDown;
-			adaptedLuminance += (avgLuma - adaptedLuminance) * (1.0 - exp(-deltaTime * speed));
+			memoryBarrierBuffer();
+			if (useAutoExposure != 0) {
+				// Calculate total weight
+				float totalWeight = 0.0;
+				for (int i = 0; i < 256; i++) {
+					totalWeight += float(histogram[i]);
+				}
 
-			// Ensure adaptedLuminance is written before we reset counters (though they are different locations)
+				if (totalWeight > 0.0) {
+					float lowCutoffWeight = totalWeight * histogramLowCutoff;
+					float highCutoffWeight = totalWeight * histogramHighCutoff;
+
+					float filteredWeightSum = 0.0;
+					float weightedLogLumaSum = 0.0;
+					float currentWeightAccum = 0.0;
+
+					for (int i = 0; i < 256; i++) {
+						float binWeight = float(histogram[i]);
+						float nextWeightAccum = currentWeightAccum + binWeight;
+
+						// Check if this bin is within our cutoff range
+						if (nextWeightAccum > lowCutoffWeight && currentWeightAccum < highCutoffWeight) {
+							float validBinWeight = binWeight;
+							// Clip bin weight if it crosses the cutoff boundaries
+							if (currentWeightAccum < lowCutoffWeight) {
+								validBinWeight -= (lowCutoffWeight - currentWeightAccum);
+							}
+							if (nextWeightAccum > highCutoffWeight) {
+								validBinWeight -= (nextWeightAccum - highCutoffWeight);
+							}
+
+							float binLogLuma = MIN_LOG_LUMA + (float(i) + 0.5) / 256.0 * (MAX_LOG_LUMA - MIN_LOG_LUMA);
+							weightedLogLumaSum += binLogLuma * validBinWeight;
+							filteredWeightSum += validBinWeight;
+						}
+						currentWeightAccum = nextWeightAccum;
+					}
+
+					if (filteredWeightSum > 0.0) {
+						float avgLuma = exp(weightedLogLumaSum / filteredWeightSum);
+						float speed = (avgLuma > adaptedLuminance) ? speedUp : speedDown;
+						adaptedLuminance += (avgLuma - adaptedLuminance) * (1.0 - exp(-deltaTime * speed));
+					}
+				}
+
+				// Reset histogram for next frame
+				for (int i = 0; i < 256; i++) {
+					histogram[i] = 0;
+				}
+			}
+
+			// Ensure adaptedLuminance is written before we reset counters
+			memoryBarrierBuffer();
 			memoryBarrier();
-
-			// Reset for next frame
-			totalLogLuma = 0; // floatBitsToUint(0.0) is 0
-			totalPixelCount = 0;
 			workgroupCounter = 0;
 		}
 	}

@@ -1050,7 +1050,7 @@ namespace Boidsish {
 				if (enable_hdr_) {
 					// Enable integrated tonemapping in bloom effect
 					bloom_effect->SetToneMappingEnabled(true);
-					bloom_effect->SetToneMappingMode(2); // Lottes default
+					bloom_effect->SetToneMappingMode(5); // Uchimura default
 
 					bloom_effect->SetEnabled(true);
 				}

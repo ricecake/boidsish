@@ -12,6 +12,13 @@ uniform float     maxIntensity;
 uniform bool toneMappingEnabled = false;
 uniform int  toneMapMode = 2;
 
+uniform float uchimuraP;
+uniform float uchimuraA;
+uniform float uchimuraM;
+uniform float uchimuraL;
+uniform float uchimuraC;
+uniform float uchimuraB;
+
 #include "helpers/tonemapping.glsl"
 #include "types/autoexposure.glsl"
 
@@ -31,7 +38,11 @@ void main() {
 	}
 
 	if (toneMappingEnabled) {
-		result = applyTonemapping(result, toneMapMode);
+		if (toneMapMode == 5) {
+			result = uchimura(result, uchimuraP, uchimuraA, uchimuraM, uchimuraL, uchimuraC, uchimuraB);
+		} else {
+			result = applyTonemapping(result, toneMapMode);
+		}
 	}
 
 	FragColor = vec4(result, 1.0);
