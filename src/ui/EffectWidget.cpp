@@ -217,6 +217,25 @@ namespace Boidsish {
 									if (ImGui::SliderFloat("Max Exposure", &max_exposure, 1.0f, 100.0f)) {
 										bloom_effect->SetExposureLimits(bloom_effect->GetMinExposure(), max_exposure);
 									}
+
+									float center_weight = bloom_effect->GetAutoExposureCenterWeight();
+									if (ImGui::SliderFloat("Center Weight", &center_weight, 0.0f, 10.0f)) {
+										bloom_effect->SetAutoExposureCenterWeight(center_weight);
+									}
+
+									glm::vec2 focus_point = bloom_effect->GetAutoExposureFocusPoint();
+									if (ImGui::SliderFloat2("Focus Point", &focus_point.x, 0.0f, 1.0f)) {
+										bloom_effect->SetAutoExposureFocusPoint(focus_point);
+									}
+
+									float low_cutoff = bloom_effect->GetHistogramLowCutoff();
+									float high_cutoff = bloom_effect->GetHistogramHighCutoff();
+									if (ImGui::SliderFloat("Histogram Low Cutoff", &low_cutoff, 0.0f, 1.0f)) {
+										bloom_effect->SetHistogramCutoffs(low_cutoff, high_cutoff);
+									}
+									if (ImGui::SliderFloat("Histogram High Cutoff", &high_cutoff, 0.0f, 1.0f)) {
+										bloom_effect->SetHistogramCutoffs(low_cutoff, high_cutoff);
+									}
 								}
 								ImGui::Separator();
 								bool is_enabled = bloom_effect->IsToneMappingEnabled();
@@ -237,6 +256,27 @@ namespace Boidsish {
 									int current_mode = bloom_effect->GetToneMappingMode();
 									if (ImGui::Combo("Mode", &current_mode, modes, IM_ARRAYSIZE(modes))) {
 										bloom_effect->SetToneMappingMode(current_mode);
+									}
+
+									if (current_mode == 5) { // Uchimura
+										float P = bloom_effect->GetUchimuraP();
+										float a = bloom_effect->GetUchimuraA();
+										float m = bloom_effect->GetUchimuraM();
+										float l = bloom_effect->GetUchimuraL();
+										float c = bloom_effect->GetUchimuraC();
+										float b = bloom_effect->GetUchimuraB();
+
+										bool changed = false;
+										changed |= ImGui::SliderFloat("Max Brightness (P)", &P, 0.1f, 10.0f);
+										changed |= ImGui::SliderFloat("Contrast (a)", &a, 0.1f, 5.0f);
+										changed |= ImGui::SliderFloat("Linear Start (m)", &m, 0.0f, 1.0f);
+										changed |= ImGui::SliderFloat("Linear Length (l)", &l, 0.0f, 1.0f);
+										changed |= ImGui::SliderFloat("Black (c)", &c, 1.0f, 5.0f);
+										changed |= ImGui::SliderFloat("Pedestal (b)", &b, 0.0f, 1.0f);
+
+										if (changed) {
+											bloom_effect->SetUchimuraParams(P, a, m, l, c, b);
+										}
 									}
 								}
 							}

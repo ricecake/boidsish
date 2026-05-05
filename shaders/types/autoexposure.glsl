@@ -4,9 +4,15 @@ layout(std430, binding = [[AUTO_EXPOSURE_BINDING]]) buffer AutoExposure {
 	float targetLuminance;
 	float minExposure;
 	float maxExposure;
-	int   useAutoExposure;
 
-	uint  totalLogLuma;
-	uint  totalPixelCount;
+	int   useAutoExposure;
+	float centerWeightTightness;
+	vec2  focusPoint;
+
+	float histogramLowCutoff;
+	float histogramHighCutoff;
 	uint  workgroupCounter;
+	uint  _pad;
+
+	uint  histogram[256];
 };
