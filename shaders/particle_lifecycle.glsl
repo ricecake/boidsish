@@ -276,8 +276,8 @@ void spawnAmbientParticle(
 						p.style = STYLE_BIRDS;
 						p.phase = rand(spawnSeed + 8.8) * 6.28;
 						p.pos.y = height + 0.1;
-						p.pos.w = 300;
-						p.vel.w = 45.0; // Bird size
+						p.pos.w = 60;
+						p.vel.w = 75.0; // Bird size
 					} else {
 						if (biome_idx == 4)
 							p.style = (r < 0.7) ? STYLE_PETAL : STYLE_LEAF;
@@ -329,7 +329,7 @@ void spawnPrecipitation(inout Particle p, uint gid, float time, vec3 viewPos) {
 		p.emitter_index = -1;
 		p.emitter_id = -2; // Denotes precipitation
 		p.origin.xyz = p.pos.xyz;
-		p.origin.w = 1.0;
+		p.origin.w = 2.0;
 	}
 }
 

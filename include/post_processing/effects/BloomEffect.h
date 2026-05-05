@@ -84,9 +84,9 @@ namespace Boidsish {
 			int  _toneMappingMode = 2;
 
 			bool  _autoExposureEnabled = true;
-			float _targetLuminance = 0.5f;
-			float _minExposure = 0.1f;
-			float _maxExposure = 10.0f;
+			float _targetLuminance = 0.25f;
+			float _minExposure = 0.01f;
+			float _maxExposure = 25.0f;
 			float _speedUp = 3.0f;
 			float _speedDown = 1.0f;
 			float _nightFactor = 0.0f;

@@ -195,10 +195,10 @@ namespace Boidsish {
 		);
 		AddDecorType(
 			"assets/decor/Tree/tree01.obj",
-			{.min_density = 0.01f,
-		     .max_density = 0.02f,
-		     .base_scale = 0.015f,
-		     .scale_variance = 0.01f,
+			{.min_density = 0.001f,
+		     .max_density = 0.005f,
+		     .base_scale = 0.055f,
+		     .scale_variance = 0.05f,
 		     .min_height = 5.0f,
 		     .max_height = 95.0f,
 		     .random_yaw = true,
@@ -210,7 +210,7 @@ namespace Boidsish {
 			"assets/decor/Rose bush/Mesh_RoseBush.obj",
 			{.min_density = 0.001f,
 		     .max_density = 0.005f,
-		     .base_scale = 0.05f,
+		     .base_scale = 0.08f,
 		     .scale_variance = 0.01f,
 		     .min_height = 5.0f,
 		     .max_height = 95.0f,

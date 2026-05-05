@@ -49,7 +49,7 @@ struct GrassProperties {
     float colorVariability;
     float windInfluence;
     uint  enabled;
-    float _pad0;
+    float flowerRatio;
     float _pad1;
     float _pad2;
 };
@@ -463,6 +463,10 @@ void main() {
 		vec3 colorB = u_grassBiomes[idxB].colorBottom.rgb;
 		vec3 grassColor = mix(colorA, colorB, t);
 
+		float rigidA = u_grassBiomes[idxA].rigidity;
+		float rigidB = u_grassBiomes[idxB].rigidity;
+		float rigidity = clamp(mix(rigidA, rigidB, t) * u_grassGlobal.rigidityMultiplier, 0, 1);
+
 		// Apply effect only on relatively flat surfaces where grass would grow
 		float grassMask = smoothstep(0.7, 0.8, norm.y) * clamp(interpolatedDensity, 0.0, 1.0);
 
@@ -506,7 +510,10 @@ void main() {
 perturbedNorm = mix(norm, vec3(0.0, 1.0, 0.0), interpolatedDensity * distanceFactor);
 perturbedNorm = normalize(perturbedNorm);
 
-float gustIntensity = smoothstep(5.0, 10.0, length(windAtPos)*0.5);
+float windThreshold = rigidity * 2.0;
+float effectiveWindStrength = max(0.0, length(windAtPos) - windThreshold);
+
+float gustIntensity = smoothstep(5.0, 10.0, effectiveWindStrength*(1.0-rigidity));
 vec3 undersideColor = grassColor * 1.25 + vec3(0.05, 0.05, 0.0);
 vec3 dynamicGrassColor = mix(grassColor, undersideColor, gustIntensity);
 
@@ -515,7 +522,7 @@ finalMaterial.albedo = mix(finalMaterial.albedo, dynamicGrassColor, grassMask * 
 // finalMaterial.albedo *= pow(fastRidge3d(FragPos / 10.0) * 0.5 + 0.5, 2);
 
 float floorTexture = pow(fastRidge3d(FragPos / 10.0) * 0.5 + 0.5, 2);
-float noiseVal = 1.0-pow(fastRidge3d((FragPos+windAtPos*sin(time*0.1)) / mix(1.0, 100.0, distanceFactor)) * 0.5 + 0.5, 3);
+float noiseVal = 1.0-pow(fastRidge3d((FragPos+windAtPos*sin(time*0.01)) / mix(1.0, 250.0, distanceFactor)) * 0.5 + 0.5, 3);
 // float albedoMultiplier = mix(0.7, 1.3, noiseVal);
 // float albedoMultiplier = mix(0.7, 1.3, mix(floorTexture, noiseVal, distanceFactor));
 float albedoMultiplier = mix(floorTexture, mix(0.7, 1.3, noiseVal), distanceFactor);

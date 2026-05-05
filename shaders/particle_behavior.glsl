@@ -474,7 +474,7 @@ void updatePrecipitationBehavior(
 	}
 
 	p.pos.xyz += p.vel.xyz * dt;
-	handleTerrainCollision(p, num_chunks, heightmapArray);
+	// handleTerrainCollision(p, num_chunks, heightmapArray);
 }
 
 void updateFireBehavior(

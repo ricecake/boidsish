@@ -87,8 +87,9 @@ void main() {
 			vec2 uv = (gl_PointCoord - 0.5) * rot + 0.5;
 			float y = clamp(uv.y, 0.0, 1.0);
 			float width = mix(0.02, 0.15, y);
-			float streak = smoothstep(width, width * 0.5, abs(uv.x - 0.5)) * smoothstep(0.0, 0.2, uv.y) * smoothstep(1.0, 0.8, uv.y);
+			float streak = smoothstep(width*0.25, width * 0.05, abs(uv.x - 0.5)) * smoothstep(0.0, 0.2, uv.y) * smoothstep(1.0, 0.8, uv.y);
 			alpha *= streak;
+			color = vec3(0.2, 0.3, 0.5);
 			shapeMask = 1.0;
 		} else if (v_style == STYLE_IRIDESCENT) {
 			float fresnel = pow(max(0.0, 1.0 - distSq * 4.0), 5.0);
@@ -103,11 +104,15 @@ void main() {
 			float n = snoise3d(vec3(gl_PointCoord * 6.0, float(v_particle_idx)));
 			shapeMask = smoothstep(0.2 + n * 0.15, 0.05, distSq);
 		} else if (v_style == STYLE_BIRDS) {
-			float flap = sin(u_time * 15.0 + v_p.phase);
+			float flap = 0.0;//sin(u_time * 15.0 + v_p.phase);
 			float wing_y = abs(gl_PointCoord.x - 0.5) * (0.8 + flap * 0.4);
 			float body = smoothstep(0.1, 0.0, abs(gl_PointCoord.y - 0.5 - wing_y) + abs(gl_PointCoord.x - 0.5) * 0.5);
 			shapeMask = body;
-			color = vec3(0.02, 4.02, 0.03); // Dark bird color
+			color = mix(
+			vec3(0.02, 4.02, 0.03),
+			vec3(0.6, 0.01, 0.1),
+			smoothstep(0.0, 0.45, gl_PointCoord.x - 0.5) * (1.0 - smoothstep(0.55, 1.0, gl_PointCoord.x - 0.5))
+			);
 			alpha = 1.0;
 		}
 
