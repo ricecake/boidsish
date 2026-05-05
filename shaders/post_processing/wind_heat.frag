@@ -4,7 +4,7 @@
 #include "../helpers/fast_noise.glsl"
 #include "../types/temporal_data.glsl"
 
-in vec2 vTexCoords;
+in vec2 TexCoords;
 out vec4 FragColor;
 
 uniform sampler2D u_screenTexture;
@@ -16,7 +16,7 @@ uniform float u_heatShimmerIntensity;
 
 vec3 worldPosFromDepth(float depth) {
     float z = depth * 2.0 - 1.0;
-    vec4 clipPos = vec4(vTexCoords * 2.0 - 1.0, z, 1.0);
+    vec4 clipPos = vec4(TexCoords * 2.0 - 1.0, z, 1.0);
     vec4 viewPos = invProjection * clipPos;
     viewPos /= viewPos.w;
     vec4 worldPos = invView * viewPos;
@@ -24,11 +24,11 @@ vec3 worldPosFromDepth(float depth) {
 }
 
 void main() {
-    float depth = texture(u_depthTexture, vTexCoords).r;
+    float depth = texture(u_depthTexture, TexCoords).r;
 
     // Background handling (infinity)
     if (depth >= 1.0) {
-        FragColor = texture(u_screenTexture, vTexCoords);
+        FragColor = texture(u_screenTexture, TexCoords);
         return;
     }
 
@@ -38,7 +38,7 @@ void main() {
     vec4 scalars = getWeatherScalarsAtPosition(worldPos);
     float temperature = scalars.x; // Kelvin
 
-    vec2 distortedUV = vTexCoords;
+    vec2 distortedUV = TexCoords;
     float shimmerFactor = smoothstep(310.0, 340.0, temperature) * u_heatShimmerIntensity;
 
     if (shimmerFactor > 0.0) {

@@ -32,6 +32,12 @@ namespace Boidsish {
 			shader_->setFloat("u_windLineIntensity", wind_line_intensity_);
 			shader_->setFloat("u_heatShimmerIntensity", heat_shimmer_intensity_);
 
+			shader_->setMat4("invView", glm::inverse(viewMatrix));
+			shader_->setMat4("invProjection", glm::inverse(projectionMatrix));
+
+			shader_->setInt("u_windTexture", Constants::TextureUnit::WindData());
+			shader_->setInt("u_weatherScalarsTexture", Constants::TextureUnit::WeatherScalars());
+
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, sourceTexture);
 			shader_->setInt("u_screenTexture", 0);

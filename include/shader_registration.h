@@ -66,7 +66,7 @@ namespace Boidsish {
 		T::RegisterConstant("MAX_LIGHTS", Constants::Class::Shadows::MaxLights());
 		T::RegisterConstant("MAX_SHADOW_MAPS", Constants::Class::Shadows::MaxShadowMaps());
 		T::RegisterConstant("MAX_CASCADES", Constants::Class::Shadows::MaxCascades());
-		T::RegisterConstant("MAX_SHOCKWAVES", Constants::Class::Shockwaves::MaxShockwaves());
+		T::RegisterConstant("MAX_SHOCKWAVES", Constants::Class::Shadows::MaxShadowMaps());
 		T::RegisterConstant("CHUNK_SIZE", Constants::Class::Terrain::ChunkSize());
 		T::RegisterConstant("CHUNK_SIZE_PLUS_1", Constants::Class::Terrain::ChunkSizePlus1());
 
