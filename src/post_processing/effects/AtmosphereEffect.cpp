@@ -38,6 +38,10 @@ namespace Boidsish {
 				if (shadows_idx != GL_INVALID_INDEX) {
 					glUniformBlockBinding(s.ID, shadows_idx, Constants::UboBinding::Shadows());
 				}
+				GLuint terrain_idx = glGetUniformBlockIndex(s.ID, "TerrainData");
+				if (terrain_idx != GL_INVALID_INDEX) {
+					glUniformBlockBinding(s.ID, terrain_idx, Constants::UboBinding::TerrainData());
+				}
 				GLuint effects_idx = glGetUniformBlockIndex(s.ID, "VisualEffects");
 				if (effects_idx != GL_INVALID_INDEX) {
 					glUniformBlockBinding(s.ID, effects_idx, Constants::UboBinding::VisualEffects());
@@ -206,6 +210,7 @@ namespace Boidsish {
 			composite_shader_->setInt("sceneTexture", 0);
 			composite_shader_->setInt("depthTexture", 1);
 			composite_shader_->setInt("cloudTexture", 2);
+			composite_shader_->setInt("normalTexture", 3);
 			composite_shader_->setFloat("time", time_);
 			composite_shader_->setMat4("invView", invView);
 			composite_shader_->setMat4("invProjection", invProj);
@@ -217,6 +222,17 @@ namespace Boidsish {
 			composite_shader_->setVec2("cloudTexelSize", glm::vec2(1.0f / low_res_width, 1.0f / low_res_height));
 			composite_shader_->setFloat("u_atmosphereHeight", atmosphere_height_);
 
+			if (shadow_manager_ && shadow_manager_->IsInitialized()) {
+					shadow_manager_->BindForRendering(*composite_shader_);
+					if (!light_shadow_indices_.empty()) {
+							composite_shader_->setIntArray("lightShadowIndices", light_shadow_indices_.data(), (int)light_shadow_indices_.size());
+					}
+			}
+
+			if (terrain_render_manager_) {
+					terrain_render_manager_->BindTerrainData(*composite_shader_);
+			}
+
 			composite_shader_->setInt("u_transmittanceLUT", Constants::TextureUnit::AtmosphereTransmittance());
 			composite_shader_->setInt("u_aerialPerspectiveLUT", Constants::TextureUnit::AtmosphereAerialPerspective());
 
@@ -226,6 +242,8 @@ namespace Boidsish {
 			glBindTexture(GL_TEXTURE_2D, depthTexture);
 			glActiveTexture(GL_TEXTURE2);
 			glBindTexture(GL_TEXTURE_2D, cloud_source);
+                       glActiveTexture(GL_TEXTURE3);
+                       glBindTexture(GL_TEXTURE_2D, normalTexture);
 
 			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereTransmittance());
 			glBindTexture(GL_TEXTURE_2D, transmittance_lut_);
@@ -239,6 +257,8 @@ namespace Boidsish {
 			glBindTexture(GL_TEXTURE_3D, 0);
 			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereTransmittance());
 			glBindTexture(GL_TEXTURE_2D, 0);
+                       glActiveTexture(GL_TEXTURE3);
+                       glBindTexture(GL_TEXTURE_2D, 0);
 			glActiveTexture(GL_TEXTURE2);
 			glBindTexture(GL_TEXTURE_2D, 0);
 			glActiveTexture(GL_TEXTURE1);

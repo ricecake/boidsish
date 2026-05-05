@@ -3,9 +3,10 @@ out vec4 FragColor;
 
 in vec2 TexCoords;
 
-uniform sampler2D sceneTexture;
-uniform sampler2D depthTexture;
-uniform sampler2D cloudTexture; // Low-res clouds (temporally accumulated)
+layout(binding = 0) uniform sampler2D sceneTexture;
+layout(binding = 1) uniform sampler2D depthTexture;
+layout(binding = 2) uniform sampler2D cloudTexture; // Low-res clouds (temporally accumulated)
+layout(binding = 3) uniform sampler2D normalTexture;
 
 uniform mat4 invView;
 uniform mat4 invProjection;
@@ -19,7 +20,9 @@ uniform vec2 cloudTexelSize; // 1.0 / lowResSize
 // u_transmittanceLUT is declared in helpers/lighting.glsl
 uniform sampler3D u_aerialPerspectiveLUT;
 
+#define USE_TERRAIN_DATA
 #include "../atmosphere/common.glsl"
+#include "../helpers/terrain_shadows.glsl"
 #include "../helpers/lighting.glsl"
 #include "helpers/math.glsl"
 
@@ -136,6 +139,21 @@ void main() {
 
 	vec3 result;
 	if (!isSky) {
+		// 4. Shadowing for in-scattering (prevent sunrise/sunset glow through hills)
+		float atmosShadow = 1.0;
+		if (num_lights > 0 && lights[0].type == LIGHT_TYPE_DIRECTIONAL) {
+			vec3 N = texture(normalTexture, TexCoords).xyz * 2.0 - 1.0;
+			vec3 L = normalize(-lights[0].direction);
+			atmosShadow = calculateShadow(0, worldPos, N, L);
+
+			// Soften the shadow for atmosphere — don't make it pitch black,
+			// atmosphere still has ambient light.
+			atmosShadow = mix(0.15, 1.0, atmosShadow);
+		}
+
+		inScattering *= atmosShadow;
+		atmosInScattering *= atmosShadow;
+
 		// Terrain/objects: apply aerial perspective and clouds
 		vec3 terrainAtmos = sceneColor * transmittance + inScattering;
 		vec3 cloudsAtmos = cloudColor * atmosTransmittance + atmosInScattering * (1.0 - cloudTransmittance);
