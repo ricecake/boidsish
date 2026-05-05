@@ -20,6 +20,7 @@ uniform sampler2D u_gNormal;
 uniform sampler2D u_gAlbedo;
 uniform sampler2D u_gVelocity;
 uniform sampler2D u_skyViewLUT;
+uniform sampler3D u_aerialPerspectiveLUT;
 
 uniform uint u_frameIndex;
 uniform mat4 u_view;
@@ -87,6 +88,21 @@ void projectRadianceToSH(vec3 dir, vec3 radiance, float weight, inout vec3 sh[9]
 	sh[8] += radiance * (C5 * (x * x - z * z)) * mcWeight;
 }
 
+void sampleAerialPerspective(vec3 rd, float distKM, out vec3 scattering, out float transmittance) {
+	float azimuth = atan(rd.x, -rd.z);
+	if (azimuth < 0.0)
+		azimuth += 2.0 * PI;
+	float elevation = asin(clamp(rd.y, -1.0, 1.0));
+
+	float u = azimuth / (2.0 * PI);
+	float v = elevation / PI + 0.5;
+	float w = distKM / 32.0; // maxDist in AP LUT
+
+	vec4 AP = texture(u_aerialPerspectiveLUT, vec3(u, v, w));
+	scattering = AP.rgb;
+	transmittance = AP.a;
+}
+
 vec3 sampleSkyLUT(vec3 rd) {
 	float azimuth = atan(rd.x, -rd.z);
 	if (azimuth < 0.0) azimuth += 2.0 * PI;
@@ -96,7 +112,16 @@ vec3 sampleSkyLUT(vec3 rd) {
 	float adjV = sqrt(abs(elevation) / (PI * 0.5));
 	float uvY = (elevation < 0.0) ? (0.5 - 0.5 * adjV) : (0.5 + 0.5 * adjV);
 
-	return texture(u_skyViewLUT, vec2(uvX, uvY)).rgb;
+	vec3 skyRadiance = texture(u_skyViewLUT, vec2(uvX, uvY)).rgb;
+
+	// Apply a subtle aerial perspective to incorporate local aerosol/fog color into sky samples.
+	// Since skyRadiance is already integrated, we only want to mix in local scattering.
+	// We use a small distance (e.g., 2km) to capture local air color without over-darkening the sky.
+	float distKM = 2.0;
+	vec3 APScattering; float APTransmittance;
+	sampleAerialPerspective(rd, distKM, APScattering, APTransmittance);
+
+	return skyRadiance * APTransmittance + APScattering;
 }
 
 vec3 sampleTerrainFallback(vec3 worldPos, vec3 rayDir) {
@@ -170,7 +195,13 @@ vec3 sampleTerrainFallback(vec3 worldPos, vec3 rayDir) {
 						// Direct illumination contribution to ground bounce (diffuse only for SH)
 						radiance += albedo * lights[l].color * lights[l].intensity * atmosphereTransmittance * NdotL * 0.5 * shadow;
 					}
-					return radiance;
+
+					// Apply atmospheric scattering/transmittance to the hit point
+					float distKM = currentDist / (1000.0 * worldScaleVal);
+					vec3 APScattering; float APTransmittance;
+					sampleAerialPerspective(rayDir, distKM, APScattering, APTransmittance);
+
+					return radiance * APTransmittance + APScattering;
 				}
 			}
 		} else {
@@ -195,8 +226,10 @@ void shMarchMain(vec3 rd, vec3 probeOrigin, int totalRayCount, inout vec3 newSH[
 
 		// Screen space ray-marching
 		float stepSize = 1.0 * worldScaleVal;
+		float currentDist = 0.0;
 		for (int s = 1; s <= k_maxSteps; ++s) {
-			vec3  samplePos = probeOrigin + rd * float(s) * stepSize;
+			currentDist = float(s) * stepSize;
+			vec3  samplePos = probeOrigin + rd * currentDist;
 			vec4  clipPos_ = u_projection * u_view * vec4(samplePos, 1.0);
 			vec3  screenPos_ = clipPos_.xyz / clipPos_.w;
 			vec2  uv = screenPos_.xy * 0.5 + 0.5;
@@ -264,6 +297,13 @@ void shMarchMain(vec3 rd, vec3 probeOrigin, int totalRayCount, inout vec3 newSH[
 		if (!hitFound) {
 			// Fallback to heightmap/biome for bounce from geometry that is off-screen or occluded
 			radiance = sampleTerrainFallback(probeOrigin, rd);
+		} else {
+			// Apply atmospheric scattering/transmittance to the hit point from screen space
+			float distKM = currentDist / (1000.0 * worldScaleVal);
+			vec3 APScattering; float APTransmittance;
+			sampleAerialPerspective(rd, distKM, APScattering, APTransmittance);
+
+			radiance = radiance * APTransmittance + APScattering;
 		}
 
 		projectRadianceToSH(rd, radiance, 1.0 / float(totalRayCount), newSH);

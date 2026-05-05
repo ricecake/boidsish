@@ -169,14 +169,19 @@ namespace Boidsish {
 			float GetColorVarianceStrength() const { return color_variance_strength_; }
 
 			// Atmosphere LUTs
-			void SetAtmosphereLUTs(GLuint transmittance, GLuint multiScat, GLuint skyView, GLuint aerialPerspective) {
+			void SetAtmosphereLUTs(GLuint transmittance, GLuint multiScat, GLuint skyView, GLuint aerialPerspective, GLuint cloudShadow) {
 				transmittance_lut_ = transmittance;
 				multi_scattering_lut_ = multiScat;
 				sky_view_lut_ = skyView;
 				aerial_perspective_lut_ = aerialPerspective;
+				cloud_shadow_map_ = cloudShadow;
 			}
 
 			void SetNoiseTextures(const NoiseTextures& textures) { noise_textures_ = textures; }
+
+			void SetShadowMaps(GLuint shadowMaps) { shadow_maps_ = shadowMaps; }
+
+			void SetShadowUbo(GLuint shadowUbo) { shadow_ubo_ = shadowUbo; }
 
 			void SetRenderScale(float scale) {
 				if (render_scale_ != scale) {
@@ -240,8 +245,12 @@ namespace Boidsish {
 			GLuint multi_scattering_lut_ = 0;
 			GLuint sky_view_lut_ = 0;
 			GLuint aerial_perspective_lut_ = 0;
+			GLuint cloud_shadow_map_ = 0;
 
 			NoiseTextures noise_textures_ = {0, 0, 0};
+
+			GLuint shadow_maps_ = 0;
+			GLuint shadow_ubo_ = 0;
 
 			int   width_ = 0;
 			int   height_ = 0;
