@@ -8,7 +8,7 @@
 namespace Boidsish::BindingValidation {
 
 template <size_t N>
-consteval bool AllUnique(const std::array<int, N>& values) {
+constexpr bool AllUnique(const std::array<int, N>& values) {
 	for (size_t i = 0; i < N; ++i) {
 		for (size_t j = i + 1; j < N; ++j) {
 			if (values[i] == values[j]) {
@@ -19,7 +19,7 @@ consteval bool AllUnique(const std::array<int, N>& values) {
 	return true;
 }
 
-consteval bool ValidateUboBindings() {
+constexpr bool ValidateUboBindings() {
 	constexpr std::array ubos = {
 		Constants::UboBinding::Lighting(),
 		Constants::UboBinding::VisualEffects(),
@@ -38,7 +38,7 @@ consteval bool ValidateUboBindings() {
 	return AllUnique(ubos);
 }
 
-consteval bool ValidateSsboBindings() {
+constexpr bool ValidateSsboBindings() {
 	constexpr std::array ssbos = {
 		Constants::SsboBinding::DecorInstances(),
 		Constants::SsboBinding::AutoExposure(),

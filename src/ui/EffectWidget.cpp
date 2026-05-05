@@ -7,6 +7,7 @@
 #include "post_processing/effects/BloomEffect.h"
 #include "post_processing/effects/FilmGrainEffect.h"
 #include "post_processing/effects/UnifiedScreenSpaceEffect.h"
+#include "post_processing/effects/WindHeatEffect.h"
 
 namespace Boidsish {
 	namespace UI {
@@ -81,6 +82,20 @@ namespace Boidsish {
 								float intensity = film_grain_effect->GetIntensity();
 								if (ImGui::SliderFloat("Intensity##FilmGrain", &intensity, 0.0f, 1.0f)) {
 									film_grain_effect->SetIntensity(intensity);
+								}
+							}
+						}
+
+						if (effect->GetName() == "Wind & Heat" && is_enabled) {
+							auto wind_heat_effect = std::dynamic_pointer_cast<PostProcessing::WindHeatEffect>(effect);
+							if (wind_heat_effect) {
+								float wind_intensity = wind_heat_effect->GetWindLineIntensity();
+								if (ImGui::SliderFloat("Wind Line Intensity", &wind_intensity, 0.0f, 2.0f)) {
+									wind_heat_effect->SetWindLineIntensity(wind_intensity);
+								}
+								float shimmer_intensity = wind_heat_effect->GetHeatShimmerIntensity();
+								if (ImGui::SliderFloat("Heat Shimmer Intensity", &shimmer_intensity, 0.0f, 2.0f)) {
+									wind_heat_effect->SetHeatShimmerIntensity(shimmer_intensity);
 								}
 							}
 						}

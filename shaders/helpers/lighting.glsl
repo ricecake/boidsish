@@ -22,7 +22,7 @@ uniform sampler2D u_transmittanceLUT;
 uniform sampler2D u_cloudShadowMap;
 #ifndef TERRAIN_GRID_DEFINED
 	#define TERRAIN_GRID_DEFINED
-uniform isampler2D u_chunkGrid;
+layout(binding = [[CHUNK_GRID_BINDING]]) uniform isampler2D u_chunkGrid;
 #endif
 
 /**

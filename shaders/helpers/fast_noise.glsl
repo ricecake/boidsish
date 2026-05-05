@@ -10,11 +10,11 @@
 
 #ifndef NOISE_TEXTURES_DEFINED
 #define NOISE_TEXTURES_DEFINED
-uniform sampler3D u_noiseTexture;
-uniform sampler3D u_curlTexture;
-uniform sampler2D u_blueNoiseTexture;
-uniform sampler3D u_extraNoiseTexture;
-uniform sampler2D u_phasorTexture;
+layout(binding = [[NOISE_SIMPLEX_BINDING]]) uniform sampler3D u_noiseTexture;
+layout(binding = [[NOISE_CURL_BINDING]]) uniform sampler3D u_curlTexture;
+layout(binding = [[NOISE_BLUE_BINDING]]) uniform sampler2D u_blueNoiseTexture;
+layout(binding = [[NOISE_EXTRA_BINDING]]) uniform sampler3D u_extraNoiseTexture;
+layout(binding = [[PHASOR_TEXTURE_BINDING]]) uniform sampler2D u_phasorTexture;
 #endif
 
 // R: Simplex 3D

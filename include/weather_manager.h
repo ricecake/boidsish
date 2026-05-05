@@ -293,6 +293,7 @@ namespace Boidsish {
 		unsigned int wind_data_ubo_ = 0;
 		unsigned int wind_texture_ = 0;
 		unsigned int lbm_wind_texture_ = 0;
+		unsigned int weather_scalars_texture_ = 0;
 		std::unique_ptr<ComputeShader> wind_compute_shader_;
 
 		ThreadPool                              lbm_pool_;

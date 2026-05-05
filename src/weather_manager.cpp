@@ -71,6 +71,9 @@ namespace Boidsish {
 		if (lbm_wind_texture_ != 0) {
 			glDeleteTextures(1, &lbm_wind_texture_);
 		}
+		if (weather_scalars_texture_ != 0) {
+			glDeleteTextures(1, &weather_scalars_texture_);
+		}
 	}
 
 	void WeatherManager::SetTarget(WeatherAttribute attr, float target) {
@@ -498,6 +501,16 @@ namespace Boidsish {
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 			glBindTexture(GL_TEXTURE_2D, 0);
 		}
+		if (weather_scalars_texture_ == 0) {
+			glGenTextures(1, &weather_scalars_texture_);
+			glBindTexture(GL_TEXTURE_2D, weather_scalars_texture_);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, lbm_simulator_->GetWidth(), lbm_simulator_->GetHeight(), 0, GL_RGBA, GL_FLOAT, nullptr);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+			glBindTexture(GL_TEXTURE_2D, 0);
+		}
 		if (lbm_wind_texture_ == 0) {
 			glGenTextures(1, &lbm_wind_texture_);
 			glBindTexture(GL_TEXTURE_2D, lbm_wind_texture_);
@@ -536,6 +549,9 @@ namespace Boidsish {
 			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::LbmWindData());
 			glBindTexture(GL_TEXTURE_2D, lbm_wind_texture_);
 			glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, ubo.originSize.y, ubo.originSize.w, GL_RGBA, GL_FLOAT, fallback_data.data());
+
+			// For fallback, we don't have local scalars from the sim, so we could just use a default?
+			// But macro_sim_enabled_ is probably true in most cases.
 		} else {
 			glBindBuffer(GL_UNIFORM_BUFFER, wind_data_ubo_);
 			glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(WindDataUbo), &ubo);
@@ -554,6 +570,21 @@ namespace Boidsish {
 				GL_RGBA,
 				GL_FLOAT,
 				wind_data.data()
+			);
+
+			// Update Weather Scalars Texture
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::WeatherScalars());
+			glBindTexture(GL_TEXTURE_2D, weather_scalars_texture_);
+			glTexSubImage2D(
+				GL_TEXTURE_2D,
+				0,
+				0,
+				0,
+				ubo.originSize.y,
+				ubo.originSize.w,
+				GL_RGBA,
+				GL_FLOAT,
+				latest_snapshot_.scalarData.data()
 			);
 		}
 
@@ -586,6 +617,9 @@ namespace Boidsish {
 		// Final Binding for users of getWindAtPosition
 		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::WindData());
 		glBindTexture(GL_TEXTURE_2D, wind_texture_);
+
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::WeatherScalars());
+		glBindTexture(GL_TEXTURE_2D, weather_scalars_texture_);
 	}
 
 	void WeatherManager::Update(float deltaTime, float totalTime, const glm::vec3& cameraPos, float timeOfDay) {

@@ -2,10 +2,10 @@
 #define TERRAIN_TEXTURES_GLSL
 
 uniform sampler2DArray uBiomeMap;
-uniform isampler2D u_chunkGrid;
+layout(binding = [[CHUNK_GRID_BINDING]]) uniform isampler2D u_chunkGrid;
 uniform sampler2DArray uHeightmap;
-uniform sampler2DArray u_heightmapArray;
-uniform sampler2DArray u_biomeMap;
-uniform sampler2D u_maxHeightGrid;
+layout(binding = [[HEIGHTMAP_ARRAY_BINDING]]) uniform sampler2DArray u_heightmapArray;
+layout(binding = [[BIOME_MAP_BINDING]]) uniform sampler2DArray u_biomeMap;
+layout(binding = [[MAX_HEIGHT_GRID_BINDING]]) uniform sampler2D u_maxHeightGrid;
 
 #endif

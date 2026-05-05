@@ -29,7 +29,7 @@ uniform sampler2DArray uHeightmap;
 // Baked params: R=erosionDelta, G=ridgeMap, B=substrate, A=waterMask
 uniform sampler2DArray uBakedParams;
 // Biome map: R=lowIdx, G=t, B=bakeFlag
-uniform sampler2DArray u_biomeMap;
+layout(binding = [[BIOME_MAP_BINDING]]) uniform sampler2DArray u_biomeMap;
 
 uniform float uChunkSize;
 uniform float uRawChunkSize;
