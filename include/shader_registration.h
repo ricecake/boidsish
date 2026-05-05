@@ -66,17 +66,25 @@ namespace Boidsish {
 		T::RegisterConstant("MAX_LIGHTS", Constants::Class::Shadows::MaxLights());
 		T::RegisterConstant("MAX_SHADOW_MAPS", Constants::Class::Shadows::MaxShadowMaps());
 		T::RegisterConstant("MAX_CASCADES", Constants::Class::Shadows::MaxCascades());
-		T::RegisterConstant("MAX_SHOCKWAVES", Constants::Class::Shadows::MaxShadowMaps());
+		T::RegisterConstant("MAX_SHOCKWAVES", Constants::Class::Shockwaves::MaxShockwaves());
 		T::RegisterConstant("CHUNK_SIZE", Constants::Class::Terrain::ChunkSize());
 		T::RegisterConstant("CHUNK_SIZE_PLUS_1", Constants::Class::Terrain::ChunkSizePlus1());
 
 		// Texture unit bindings
+		T::RegisterConstant("NOISE_SIMPLEX_BINDING", Constants::TextureUnit::NoiseSimplex());
+		T::RegisterConstant("NOISE_CURL_BINDING", Constants::TextureUnit::NoiseCurl());
+		T::RegisterConstant("NOISE_BLUE_BINDING", Constants::TextureUnit::NoiseBlue());
+		T::RegisterConstant("NOISE_EXTRA_BINDING", Constants::TextureUnit::NoiseExtra());
 		T::RegisterConstant("PHASOR_TEXTURE_BINDING", Constants::TextureUnit::NoisePhasor());
 		T::RegisterConstant("WIND_TEXTURE_BINDING", Constants::TextureUnit::WindData());
 		T::RegisterConstant("LBM_WIND_TEXTURE_BINDING", Constants::TextureUnit::LbmWindData());
 		T::RegisterConstant("INTEGRATED_WIND_IMAGE_BINDING", Constants::TextureUnit::WindData());
 		T::RegisterConstant("WEATHER_SCALARS_BINDING", Constants::TextureUnit::WeatherScalars());
 
+		T::RegisterConstant("CHUNK_GRID_BINDING", Constants::TextureUnit::TerrainChunkGrid());
+		T::RegisterConstant("MAX_HEIGHT_GRID_BINDING", Constants::TextureUnit::TerrainMaxHeight());
+		T::RegisterConstant("HEIGHTMAP_ARRAY_BINDING", Constants::TextureUnit::TerrainHeightmap());
+		T::RegisterConstant("BIOME_MAP_BINDING", Constants::TextureUnit::TerrainBiomeMap());
 		T::RegisterConstant("RAW_HEIGHTMAP_BINDING", Constants::TextureUnit::TerrainRawHeightmap());
 		T::RegisterConstant("BAKED_HEIGHTMAP_BINDING", Constants::TextureUnit::TerrainHeightmap());
 		T::RegisterConstant("BAKED_PARAMS_BINDING", Constants::TextureUnit::TerrainBakedParams());

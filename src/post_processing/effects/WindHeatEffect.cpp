@@ -32,23 +32,17 @@ namespace Boidsish {
 			shader_->setFloat("u_windLineIntensity", wind_line_intensity_);
 			shader_->setFloat("u_heatShimmerIntensity", heat_shimmer_intensity_);
 
-			shader_->setMat4("invView", glm::inverse(viewMatrix));
-			shader_->setMat4("invProjection", glm::inverse(projectionMatrix));
-
-			shader_->setInt("u_windTexture", Constants::TextureUnit::WindData());
-			shader_->setInt("u_weatherScalarsTexture", Constants::TextureUnit::WeatherScalars());
-
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, sourceTexture);
-			shader_->setInt("u_screenTexture", 0);
 
 			glActiveTexture(GL_TEXTURE1);
 			glBindTexture(GL_TEXTURE_2D, depthTexture);
-			shader_->setInt("u_depthTexture", 1);
 
-			// Wind and Weather textures are bound globally by WeatherManager in Visualizer::Render
-			// but we need to ensure their sampler uniforms are set if they are not using tokens.
-			// wind.glsl uses tokens [[WIND_TEXTURE_BINDING]] and [[WEATHER_SCALARS_BINDING]].
+			// Bind noise texture if available
+			if (noise_texture_ != 0) {
+				glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::NoiseSimplex());
+				glBindTexture(GL_TEXTURE_3D, noise_texture_);
+			}
 
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 		}

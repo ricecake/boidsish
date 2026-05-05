@@ -7,8 +7,8 @@
 in vec2 TexCoords;
 out vec4 FragColor;
 
-uniform sampler2D u_screenTexture;
-uniform sampler2D u_depthTexture;
+layout(binding = 0) uniform sampler2D u_screenTexture;
+layout(binding = 1) uniform sampler2D u_depthTexture;
 
 uniform float u_time;
 uniform float u_windLineIntensity;

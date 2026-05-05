@@ -11,8 +11,8 @@ float calculateTerrainOcclusion(vec3 worldPos, vec3 normal) { return 1.0; }
 
 #include "helpers/lighting.glsl"
 #include "helpers/fast_noise.glsl"
-uniform sampler2DArray u_heightmapArray;
-uniform sampler2DArray u_biomeMap; // RGBA8: R=low_idx, G=t, B=bake_flag
+layout(binding = [[HEIGHTMAP_ARRAY_BINDING]]) uniform sampler2DArray u_heightmapArray;
+layout(binding = [[BIOME_MAP_BINDING]]) uniform sampler2DArray u_biomeMap; // RGBA8: R=low_idx, G=t, B=bake_flag
 
 uniform sampler2D u_gColor;
 uniform sampler2D u_gDepth;

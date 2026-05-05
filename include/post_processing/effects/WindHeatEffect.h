@@ -34,8 +34,11 @@ namespace Boidsish {
 			void  SetHeatShimmerIntensity(float intensity) { heat_shimmer_intensity_ = intensity; }
 			float GetHeatShimmerIntensity() const { return heat_shimmer_intensity_; }
 
+			void SetNoiseTexture(GLuint noiseTexture) { noise_texture_ = noiseTexture; }
+
 		private:
 			std::unique_ptr<Shader> shader_;
+			GLuint noise_texture_ = 0;
 			float wind_line_intensity_ = 0.5f;
 			float heat_shimmer_intensity_ = 0.5f;
 			float time_ = 0.0f;

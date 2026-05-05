@@ -1041,6 +1041,9 @@ namespace Boidsish {
 
 				auto wind_heat_effect = std::make_shared<PostProcessing::WindHeatEffect>();
 				wind_heat_effect->SetEnabled(true);
+				if (noise_manager) {
+					wind_heat_effect->SetNoiseTexture(noise_manager->GetNoiseTexture());
+				}
 				post_processing_manager_->AddEffect(wind_heat_effect);
 
 				atmosphere_effect = std::make_shared<PostProcessing::AtmosphereEffect>();
