@@ -63,6 +63,32 @@ TEST(WeatherLbmTest, BasicSimulation) {
 
     EXPECT_GT(out.pressure, 800.0f);
     EXPECT_LT(out.pressure, 1200.0f);
+
+    // Check aerosols
+    EXPECT_GT(out.mieScattering, 0.0f);
+}
+
+TEST(WeatherLbmTest, ViscosityDamping) {
+    WeatherLbmSimulator sim(16, 16);
+    MockTerrain terrain;
+    glm::vec3 cameraPos(0.0f);
+
+    // Inject high pressure to create high velocity
+    sim.InjectPressure(glm::vec3(0.0f), 2000.0f, 0.5f);
+
+    // Run steps to trigger chaos damping
+    for (int i = 0; i < 5; ++i) {
+        sim.Update(0.1f, i * 0.1f, 12.0f, terrain, cameraPos, 0.075f, 0.065f, 288.15f, 1013.25f, 0.5f);
+    }
+
+    bool foundDamping = false;
+    for (const auto& cell : sim.GetCells()) {
+        if (cell.viscosityDamping > 0.0f) {
+            foundDamping = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(foundDamping);
 }
 
 TEST(WeatherLbmTest, Conservation) {

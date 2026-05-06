@@ -272,12 +272,12 @@ void spawnAmbientParticle(
 					p.counter = 0.0;
 				} else {
 					float r = rand(spawnSeed + 6.6);
-					if (r < 0.15 && (biome_idx == 1 || biome_idx == 3 || biome_idx == 4)) {
+					if (r < 0.05 && (biome_idx == 1 || biome_idx == 3 || biome_idx == 4)) {
 						p.style = STYLE_BIRDS;
 						p.phase = rand(spawnSeed + 8.8) * 6.28;
 						p.pos.y = height + 0.1;
 						p.pos.w = 60;
-						p.vel.w = 75.0; // Bird size
+						p.vel.w = 35.0; // Bird size
 					} else {
 						if (biome_idx == 4)
 							p.style = (r < 0.7) ? STYLE_PETAL : STYLE_LEAF;

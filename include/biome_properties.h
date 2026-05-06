@@ -55,10 +55,9 @@ namespace Boidsish {
 		float     noiseType = 1.0f; // 0: Simplex, 1: Worley, 2: FBM, 3: Ridge
 
 		// Weather System Properties
-		float     dragFactor;         // Contribution to LBM fluid drag (0.0 - 1.0)
-		float     aerosolReleaseRate; // Rate of aerosol injection into the LBM (dust/pollen)
-		float     sensibleHeatFactor; // Efficiency of converting solar radiation to air temperature
-		glm::vec3 aerosolColor;       // Visual color of the released aerosol
+		float     dragFactor;            // Contribution to LBM fluid drag (0.0 - 1.0)
+		glm::vec4 aerosolReleaseRates;   // Rates for 4 aerosol types (Dust, Pollen, Smoke, Mist)
+		float     sensibleHeatFactor;    // Efficiency of converting solar radiation to air temperature
 	};
 
 	struct BiomeShaderProperties {
@@ -67,7 +66,7 @@ namespace Boidsish {
 	};
 
 	inline static const std::array<BiomeAttributes, 8> kBiomes = {
-		// spikeDamp, detailMask, floor, weight, albedo, roughness, metallic, detailStr, detailScale, noiseType, drag, aerosolRate, sensibleHeat, aerosolColor
+		// spikeDamp, detailMask, floor, weight, albedo, roughness, metallic, detailStr, detailScale, noiseType, drag, aerosolRates, sensibleHeat
 		BiomeAttributes{
 			1.00f,
 			0.90f,
@@ -80,10 +79,9 @@ namespace Boidsish {
 			40.0f,
 			1.0f,
 			0.1f,
-			0.5f,
-			0.8f,
-			glm::vec3(0.85f, 0.80f, 0.70f)
-		}, // Sand (High heat, moderate dust)
+			glm::vec4(0.5f, 0.0f, 0.0f, 0.1f),
+			0.8f
+		}, // Sand (High heat, high dust, low mist)
 		BiomeAttributes{
 			0.80f,
 			0.50f,
@@ -96,10 +94,9 @@ namespace Boidsish {
 			20.0f,
 			2.0f,
 			0.3f,
-			0.1f,
-			0.4f,
-			glm::vec3(0.40f, 0.50f, 0.30f)
-		}, // Lush Grass (Moderate drag, low pollen)
+			glm::vec4(0.05f, 0.3f, 0.0f, 0.05f),
+			0.4f
+		}, // Lush Grass (Moderate drag, high pollen)
 		BiomeAttributes{
 			0.05f,
 			0.60f,
@@ -112,10 +109,9 @@ namespace Boidsish {
 			15.0f,
 			2.0f,
 			0.25f,
-			0.3f,
-			0.6f,
-			glm::vec3(0.60f, 0.55f, 0.40f)
-		}, // Dry Grass (Lower drag, moderate dust)
+			glm::vec4(0.25f, 0.1f, 0.0f, 0.0f),
+			0.6f
+		}, // Dry Grass (Lower drag, med dust)
 		BiomeAttributes{
 			0.30f,
 			0.50f,
@@ -128,10 +124,9 @@ namespace Boidsish {
 			10.0f,
 			2.0f,
 			0.8f,
-			0.6f,
-			0.3f,
-			glm::vec3(0.30f, 0.40f, 0.20f)
-		}, // Forest (High drag, high biological aerosol)
+			glm::vec4(0.01f, 0.8f, 0.0f, 0.4f),
+			0.3f
+		}, // Forest (High drag, high pollen/mist)
 		BiomeAttributes{
 			0.40f,
 			0.40f,
@@ -144,9 +139,8 @@ namespace Boidsish {
 			15.0f,
 			2.0f,
 			0.4f,
-			0.2f,
-			0.4f,
-			glm::vec3(0.50f, 0.60f, 0.50f)
+			glm::vec4(0.05f, 0.2f, 0.0f, 0.2f),
+			0.4f
 		}, // Alpine Meadow (Moderate properties)
 		BiomeAttributes{
 			0.30f,
@@ -160,10 +154,9 @@ namespace Boidsish {
 			5.0f,
 			3.0f,
 			0.6f,
-			0.05f,
-			0.7f,
-			glm::vec3(0.50f, 0.45f, 0.40f)
-		}, // Brown Rock (High drag, high sensible heat)
+			glm::vec4(0.6f, 0.0f, 0.05f, 0.0f),
+			0.7f
+		}, // Brown Rock (High drag, high dust)
 		BiomeAttributes{
 			0.10f,
 			0.10f,
@@ -176,10 +169,9 @@ namespace Boidsish {
 			4.0f,
 			3.0f,
 			0.6f,
-			0.05f,
-			0.6f,
-			glm::vec3(0.50f, 0.50f, 0.55f)
-		}, // Grey Rock (High drag, high sensible heat)
+			glm::vec4(0.6f, 0.0f, 0.05f, 0.0f),
+			0.6f
+		}, // Grey Rock (High drag, high dust)
 		BiomeAttributes{
 			0.05f,
 			0.50f,
@@ -192,10 +184,9 @@ namespace Boidsish {
 			30.0f,
 			0.0f,
 			0.05f,
-			0.01f,
-			0.1f,
-			glm::vec3(0.90f, 0.95f, 1.00f)
-		} // Snow (Low everything except albedo)
+			glm::vec4(0.01f, 0.0f, 0.0f, 0.05f),
+			0.1f
+		} // Snow (Low everything)
 	};
 
 } // namespace Boidsish

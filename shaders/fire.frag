@@ -62,9 +62,9 @@ void main() {
 		color = v_p.color.rgb;
 		alpha = v_p.color.a;
 
-		if (v_style == STYLE_LEAF || v_style == STYLE_PETAL || v_style == STYLE_FIREFLIES) {
+		if (v_style == STYLE_LEAF || v_style == STYLE_PETAL || v_style == STYLE_FIREFLIES || v_style == STYLE_BIRDS) {
 			vec3 biome_albedo = (v_emitter_index >= 0 && v_emitter_index < 8) ? u_biomeAlbedos[v_emitter_index] : vec3(0.5);
-			color = mix(color, biome_albedo, 0.3);
+			color = mix(color, biome_albedo, 0.5);
 		}
 
 		if (v_style == STYLE_BUBBLES) {
@@ -104,14 +104,15 @@ void main() {
 			float n = snoise3d(vec3(gl_PointCoord * 6.0, float(v_particle_idx)));
 			shapeMask = smoothstep(0.2 + n * 0.15, 0.05, distSq);
 		} else if (v_style == STYLE_BIRDS) {
-			float flap = 0.0;//sin(u_time * 15.0 + v_p.phase);
-			float wing_y = abs(gl_PointCoord.x - 0.5) * (0.8 + flap * 0.4);
-			float body = smoothstep(0.1, 0.0, abs(gl_PointCoord.y - 0.5 - wing_y) + abs(gl_PointCoord.x - 0.5) * 0.5);
+			float flap = sin(u_time * 15.0 + v_p.phase);
+			float wing_y = abs(gl_PointCoord.x - 0.5) * (0.5 + flap * 0.4);
+			float body = (1-smoothstep(0.0, 0.1, abs(gl_PointCoord.y - 0.5 - wing_y)) + abs(gl_PointCoord.x - 0.7) * 0.5);
+			body *= step(0.70, body);
 			shapeMask = body;
 			color = mix(
-			vec3(0.02, 4.02, 0.03),
-			vec3(0.6, 0.01, 0.1),
-			smoothstep(0.0, 0.45, gl_PointCoord.x - 0.5) * (1.0 - smoothstep(0.55, 1.0, gl_PointCoord.x - 0.5))
+				mix(color, vec3(0.5, 0.8, 0.3), 0.43),
+				mix(color * 2.0, vec3(0.2, 0.9, 0.9), 0.63),
+				smoothstep(0.30, 0.40, gl_PointCoord.x) * (1.0 - smoothstep(0.60, 0.70, gl_PointCoord.x))
 			);
 			alpha = 1.0;
 		}

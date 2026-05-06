@@ -49,6 +49,14 @@ namespace Boidsish {
 		// Default Cloud/Haze Colors
 		inline const glm::vec3 DefaultHazeColor = glm::vec3(0.6f, 0.7f, 0.8f);
 		inline const glm::vec3 DefaultCloudColor = glm::vec3(0.95f, 0.95f, 1.0f);
+
+		// Aerosol Global Colors (Dust, Pollen, Smoke, Mist)
+		inline const glm::vec3 AerosolColors[4] = {
+			glm::vec3(0.85f, 0.75f, 0.60f), // Dust (Tan/Brown)
+			glm::vec3(0.80f, 0.90f, 0.40f), // Pollen (Yellow/Green)
+			glm::vec3(0.30f, 0.30f, 0.35f), // Smoke (Dark Grey)
+			glm::vec3(0.90f, 0.95f, 1.00f)  // Mist (Light Blue/White)
+		};
 	} // namespace WeatherConstants
 
 } // namespace Boidsish
