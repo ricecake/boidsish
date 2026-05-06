@@ -103,6 +103,9 @@ void main() {
 					float weightedLogLumaSum = 0.0;
 					float currentWeightAccum = 0.0;
 
+					float minValidLogLuma = MAX_LOG_LUMA;
+					float maxValidLogLuma = MIN_LOG_LUMA;
+
 					for (int i = 0; i < 256; i++) {
 						float binWeight = float(histogram[i]);
 						float nextWeightAccum = currentWeightAccum + binWeight;
@@ -121,14 +124,74 @@ void main() {
 							float binLogLuma = MIN_LOG_LUMA + (float(i) + 0.5) / 256.0 * (MAX_LOG_LUMA - MIN_LOG_LUMA);
 							weightedLogLumaSum += binLogLuma * validBinWeight;
 							filteredWeightSum += validBinWeight;
+
+							minValidLogLuma = min(minValidLogLuma, binLogLuma);
+							maxValidLogLuma = max(maxValidLogLuma, binLogLuma);
 						}
 						currentWeightAccum = nextWeightAccum;
 					}
 
 					if (filteredWeightSum > 0.0) {
-						float avgLuma = exp(weightedLogLumaSum / filteredWeightSum);
-						float speed = (avgLuma > adaptedLuminance) ? speedUp : speedDown;
-						adaptedLuminance += (avgLuma - adaptedLuminance) * (1.0 - exp(-deltaTime * speed));
+						float logAvgLuma = weightedLogLumaSum / filteredWeightSum;
+						float avgLumaVal = exp(logAvgLuma);
+
+						// Standard Deviation calculation
+						float weightedLogLumaSqSum = 0.0;
+						currentWeightAccum = 0.0;
+						for (int i = 0; i < 256; i++) {
+							float binWeight = float(histogram[i]);
+							float nextWeightAccum = currentWeightAccum + binWeight;
+							if (nextWeightAccum > lowCutoffWeight && currentWeightAccum < highCutoffWeight) {
+								float validBinWeight = binWeight;
+								if (currentWeightAccum < lowCutoffWeight) validBinWeight -= (lowCutoffWeight - currentWeightAccum);
+								if (nextWeightAccum > highCutoffWeight) validBinWeight -= (nextWeightAccum - highCutoffWeight);
+
+								float binLogLuma = MIN_LOG_LUMA + (float(i) + 0.5) / 256.0 * (MAX_LOG_LUMA - MIN_LOG_LUMA);
+								float diff = binLogLuma - logAvgLuma;
+								weightedLogLumaSqSum += diff * diff * validBinWeight;
+							}
+							currentWeightAccum = nextWeightAccum;
+						}
+						float logStdDev = sqrt(weightedLogLumaSqSum / filteredWeightSum);
+
+						// Update Statistics
+						minLuma = exp(minValidLogLuma);
+						maxLuma = exp(maxValidLogLuma);
+						avgLuma = avgLumaVal;
+						stdDevLuma = logStdDev;
+
+						// Update adapted luminance (EMA)
+						float speed = (avgLumaVal > adaptedLuminance) ? speedUp : speedDown;
+						float adaptation = 1.0 - exp(-deltaTime * speed);
+						adaptedLuminance += (avgLumaVal - adaptedLuminance) * adaptation;
+
+						// Slow start EMA for statistics
+						float statsSpeed = 0.5; // Slightly slower for stability
+						float statsAdaptation = 1.0 - exp(-deltaTime * statsSpeed);
+
+						emaMinLuma = mix(emaMinLuma, minLuma, statsAdaptation);
+						emaMaxLuma = mix(emaMaxLuma, maxLuma, statsAdaptation);
+						emaAvgLuma = mix(emaAvgLuma, avgLuma, statsAdaptation);
+						emaStdDevLuma = mix(emaStdDevLuma, stdDevLuma, statsAdaptation);
+
+						// Auto-tune Tonemapper
+						if (autoTuneEnabled != 0) {
+							// Contrast derived from standard deviation
+							// Typical log stddev for a well-exposed image is around 0.5-1.0
+							autoUchimuraA = clamp(emaStdDevLuma * 2.0, minContrast, maxContrast);
+
+							// Linear start pegged to adapted luminance
+							autoUchimuraM = clamp(adaptedLuminance * 0.5, 0.0, 0.5);
+
+							// Brightness from difference of max and average
+							float lumaRange = emaMaxLuma - emaAvgLuma;
+							autoUchimuraP = clamp(targetBrightness + lumaRange * 0.1, 0.5, 5.0);
+
+							// Defaults for other parameters
+							autoUchimuraL = 0.4;
+							autoUchimuraC = 1.33;
+							autoUchimuraB = 0.0;
+						}
 					}
 				}
 
