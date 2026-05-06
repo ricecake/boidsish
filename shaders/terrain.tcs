@@ -2,13 +2,16 @@
 
 layout(vertices = 4) out;
 
+#include "helpers/constants.glsl"
+
 // Input from Vertex Shader
 in vec3       LocalPos_VS_out[];
 in vec2       TexCoords_VS_out[];
 in vec3       viewForward[];
 flat in float TextureSlice_VS_out[];
 flat in vec3  WorldOffset_VS_out[];
-flat in vec4  Bounds_VS_out[];
+flat in vec4  PatchInfo_VS_out[];
+flat in int   DrawID_VS_out[];
 
 // Output to Tessellation Evaluation Shader
 out vec3       LocalPos_TC_out[];
@@ -19,6 +22,16 @@ out float      perturbFactor_TC_out[];
 out float      tessFactor_TC_out[];
 out vec3       WorldPos_TC_out[];
 out vec3       WorldNorm_TC_out[];
+
+struct PatchTessLevels {
+	float outer[4];
+	float inner[2];
+	float _pad[2];
+};
+
+layout(std430, binding = [[TERRAIN_PATCH_TESS_LEVELS_BINDING]]) readonly buffer TerrainPatchTessLevels {
+	PatchTessLevels patchTessLevels[];
+};
 
 // Heightmap texture array: R=height, GBA=normal
 uniform sampler2DArray uHeightmap;
@@ -174,55 +187,19 @@ void main() {
 	WorldPos_TC_out[gl_InvocationID] = pos;
 	WorldNorm_TC_out[gl_InvocationID] = norm;
 
-	// Calculate a representative tessellation factor for the vertex (used for shading effects)
-	// We use a small offset to estimate local screen-space size
-	float vTess = GetEdgeTessLevel(pos, pos + vec3(uChunkSize * 0.03, 0, 0), norm, norm);
-	tessFactor_TC_out[gl_InvocationID] = vTess;
+	// Tessellation factor for vertex (for shading effects)
+	// Returning the precomputed inner level as a proxy
+	int drawID = DrawID_VS_out[0];
+	PatchTessLevels levels = patchTessLevels[drawID];
+	tessFactor_TC_out[gl_InvocationID] = levels.inner[0];
 	perturbFactor_TC_out[gl_InvocationID] = perturbLevel(pos, viewForward[gl_InvocationID]);
 
 	if (gl_InvocationID == 0) {
-		// Sample heightmap for all 4 corners to get world positions and normals
-		vec3 worldPos0, worldPos1, worldPos2, worldPos3;
-		vec3 normal0, normal1, normal2, normal3;
-
-		worldPos0 = WorldPos_TC_out[0];
-		worldPos1 = WorldPos_TC_out[1];
-		worldPos2 = WorldPos_TC_out[2];
-		worldPos3 = WorldPos_TC_out[3];
-
-		normal0 = WorldNorm_TC_out[0];
-		normal1 = WorldNorm_TC_out[1];
-		normal2 = WorldNorm_TC_out[2];
-		normal3 = WorldNorm_TC_out[3];
-
-		// Project each edge to screen space and determine tessellation level
-		// Correct Mapping for Quads:
-		// gl_TessLevelOuter[0] -> u=0 (edge 3-0)
-		// gl_TessLevelOuter[1] -> v=0 (edge 0-1)
-		// gl_TessLevelOuter[2] -> u=1 (edge 1-2)
-		// gl_TessLevelOuter[3] -> v=1 (edge 2-3)
-		// gl_TessLevelOuter[0] = GetEdgeTessLevel(worldPos3, worldPos0, normal3, normal0);
-		// gl_TessLevelOuter[1] = GetEdgeTessLevel(worldPos0, worldPos1, normal0, normal1);
-		// gl_TessLevelOuter[2] = GetEdgeTessLevel(worldPos1, worldPos2, normal1, normal2);
-		// gl_TessLevelOuter[3] = GetEdgeTessLevel(worldPos2, worldPos3, normal2, normal3);
-
-		// gl_TessLevelInner[0] = max(gl_TessLevelOuter[1], gl_TessLevelOuter[3]);
-		// gl_TessLevelInner[1] = max(gl_TessLevelOuter[0], gl_TessLevelOuter[2]);
-
-		float edge1 = max(
-			GetEdgeTessLevel(worldPos0, worldPos1, normal0, normal1),
-			GetEdgeTessLevel(worldPos2, worldPos3, normal2, normal3)
-		);
-		float edge2 = max(
-			GetEdgeTessLevel(worldPos3, worldPos0, normal3, normal0),
-			GetEdgeTessLevel(worldPos1, worldPos2, normal1, normal2)
-		);
-
-		gl_TessLevelOuter[0] = edge2;
-		gl_TessLevelOuter[1] = edge1;
-		gl_TessLevelOuter[2] = edge2;
-		gl_TessLevelOuter[3] = edge1;
-		gl_TessLevelInner[0] = edge2;
-		gl_TessLevelInner[1] = edge1;
+		gl_TessLevelOuter[0] = levels.outer[0];
+		gl_TessLevelOuter[1] = levels.outer[1];
+		gl_TessLevelOuter[2] = levels.outer[2];
+		gl_TessLevelOuter[3] = levels.outer[3];
+		gl_TessLevelInner[0] = levels.inner[0];
+		gl_TessLevelInner[1] = levels.inner[1];
 	}
 }

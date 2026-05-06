@@ -39,6 +39,7 @@ uniform mat4 projection;
 uniform vec4 clipPlane;
 uniform bool uIsShadowPass = false;
 
+#include "helpers/constants.glsl"
 #include "helpers/erosion.glsl"
 #include "helpers/lighting.glsl"
 #include "helpers/shockwave.glsl"
