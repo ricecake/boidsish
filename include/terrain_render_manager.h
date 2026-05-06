@@ -265,6 +265,34 @@ namespace Boidsish {
 			glm::vec4 bounds;                 // xy = min/max Y for this chunk (for shader LOD)
 		};
 
+		struct PatchMetrics {
+			float min_y;
+			float max_y;
+			float avg_curvature;
+			float avg_roughness;
+			float avg_grass_density;
+			float _pad[3];
+		};
+
+		struct PatchDrawData {
+			glm::vec4 world_offset_and_slice; // xyz = world offset, w = texture slice index
+			glm::vec4 patch_coords_and_size;  // xy = patch local coords (0..PatchesPerChunkSide-1), z = patch size, w = chunk size
+		};
+
+		struct PatchTessLevels {
+			float outer[4];
+			float inner[2];
+			float _pad[2];
+		};
+
+		struct DrawElementsIndirectCommand {
+			uint32_t count;
+			uint32_t instanceCount;
+			uint32_t firstIndex;
+			int32_t  baseVertex;
+			uint32_t baseInstance;
+		};
+
 		// Frustum culling helper
 		bool IsChunkVisible(const ChunkInfo& chunk, const Frustum& frustum, float world_scale) const;
 
@@ -311,6 +339,10 @@ namespace Boidsish {
 		GLuint terrain_data_ubo_ = 0;        // UBO for grid parameters
 		GLuint probe_ssbo_ = 0;              // SSBO for per-chunk SH probes
 		GLuint bake_ssbo_ = 0;               // SSBO for BakeTask
+		GLuint patch_metrics_ssbo_ = 0;      // SSBO for PatchMetrics
+		GLuint patch_draw_data_ssbo_ = 0;    // SSBO for PatchDrawData
+		GLuint patch_tess_levels_ssbo_ = 0;  // SSBO for PatchTessLevels
+		GLuint patch_indirect_buffer_ = 0;   // Indirect buffer for patches
 		GLuint visual_effects_ubo_ = 0;      // Bound by graphics.cpp
 		GLuint grass_props_ubo_ = 0;
 
@@ -319,6 +351,14 @@ namespace Boidsish {
 		std::unique_ptr<ComputeShader> terrain_bake_shader_;
 		std::unique_ptr<ComputeShader> terrain_horizon_shader_;
 		std::unique_ptr<ComputeShader> terrain_shadow_map_shader_;
+		std::unique_ptr<ComputeShader> patch_metrics_shader_;
+		std::unique_ptr<ComputeShader> patch_prepare_shader_;
+
+		// Patch-based MDI resources
+		GLuint patch_vao_ = 0;
+		GLuint patch_vbo_ = 0;
+		GLuint patch_ebo_ = 0;
+		size_t patch_index_count_ = 0;
 
 		// Grid mesh data
 		size_t grid_index_count_ = 0;
