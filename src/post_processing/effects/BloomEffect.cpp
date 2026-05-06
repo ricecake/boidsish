@@ -73,24 +73,6 @@ namespace Boidsish {
 
 			// Auto-exposure SSBO
 			if (_exposureSsbo == 0) {
-				struct ExposureData {
-					float adaptedLuminance;
-					float targetLuminance;
-					float minExposure;
-					float maxExposure;
-
-					int   useAutoExposure;
-					float centerWeightTightness;
-					glm::vec2 focusPoint;
-
-					float histogramLowCutoff;
-					float histogramHighCutoff;
-					uint32_t workgroupCounter;
-					uint32_t _pad;
-
-					uint32_t histogram[256];
-				};
-
 				glGenBuffers(1, &_exposureSsbo);
 				glBindBuffer(GL_SHADER_STORAGE_BUFFER, _exposureSsbo);
 				ExposureData initialData = {};
@@ -104,6 +86,19 @@ namespace Boidsish {
 				initialData.histogramLowCutoff = _histogramLowCutoff;
 				initialData.histogramHighCutoff = _histogramHighCutoff;
 				initialData.workgroupCounter = 0;
+
+				initialData.autoTuneEnabled = _autoTuneEnabled ? 1 : 0;
+				initialData.minContrast = _minContrast;
+				initialData.maxContrast = _maxContrast;
+				initialData.targetBrightness = _targetBrightness;
+
+				initialData.cdlSlope = glm::vec4(_cdlSlope, 0.0f);
+				initialData.cdlOffset = glm::vec4(_cdlOffset, 0.0f);
+				initialData.cdlPower = glm::vec4(_cdlPower, 0.0f);
+				initialData.cdlSaturation = _cdlSaturation;
+
+				initialData.whiteTemp = _whiteTemp;
+				initialData.whiteTint = _whiteTint;
 
 				glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(ExposureData), &initialData, GL_DYNAMIC_DRAW);
 				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::AutoExposure(), _exposureSsbo);
@@ -120,21 +115,6 @@ namespace Boidsish {
 			glGetIntegerv(GL_VIEWPORT, originalViewport);
 
 			// 1. Update Auto-Exposure SSBO parameters
-			struct ExposureData {
-				float adaptedLuminance;
-				float targetLuminance;
-				float minExposure;
-				float maxExposure;
-
-				int   useAutoExposure;
-				float centerWeightTightness;
-				glm::vec2 focusPoint;
-
-				float histogramLowCutoff;
-				float histogramHighCutoff;
-				uint32_t workgroupCounter;
-				uint32_t _pad;
-			};
 			glBindBuffer(GL_SHADER_STORAGE_BUFFER, _exposureSsbo);
 			float actualTarget = _targetLuminance * (1.0f - _nightFactor * 0.5f);
 			float actualMax = _maxExposure * (1.0f - _nightFactor * 0.4f);
@@ -147,6 +127,23 @@ namespace Boidsish {
 			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, focusPoint), sizeof(glm::vec2), &_focusPoint);
 			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, histogramLowCutoff), sizeof(float), &_histogramLowCutoff);
 			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, histogramHighCutoff), sizeof(float), &_histogramHighCutoff);
+
+			int autoTune = _autoTuneEnabled ? 1 : 0;
+			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, autoTuneEnabled), sizeof(int), &autoTune);
+			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, minContrast), sizeof(float), &_minContrast);
+			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, maxContrast), sizeof(float), &_maxContrast);
+			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, targetBrightness), sizeof(float), &_targetBrightness);
+
+			glm::vec4 slope4(_cdlSlope, 0.0f);
+			glm::vec4 offset4(_cdlOffset, 0.0f);
+			glm::vec4 power4(_cdlPower, 0.0f);
+			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, cdlSlope), sizeof(glm::vec4), &slope4);
+			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, cdlOffset), sizeof(glm::vec4), &offset4);
+			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, cdlPower), sizeof(glm::vec4), &power4);
+			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, cdlSaturation), sizeof(float), &_cdlSaturation);
+
+			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, whiteTemp), sizeof(float), &_whiteTemp);
+			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, whiteTint), sizeof(float), &_whiteTint);
 
 			// 2. Compute-based Downsample, Bright Pass and Auto-Exposure
 			_downsampleComputeShader->use();

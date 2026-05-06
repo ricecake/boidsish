@@ -279,6 +279,54 @@ namespace Boidsish {
 										}
 									}
 								}
+
+								if (ImGui::TreeNode("Color Pipeline")) {
+									ImGui::Text("Auto-tune Tonemapper");
+									bool auto_tune = bloom_effect->IsAutoTuneEnabled();
+									if (ImGui::Checkbox("Enable Auto-tune", &auto_tune)) {
+										bloom_effect->SetAutoTuneEnabled(auto_tune);
+									}
+									if (auto_tune) {
+										float min_c = bloom_effect->GetMinContrast();
+										float max_c = bloom_effect->GetMaxContrast();
+										float target_b = bloom_effect->GetTargetBrightness();
+										bool changed_at = false;
+										changed_at |= ImGui::SliderFloat("Min Contrast", &min_c, 0.1f, 1.0f);
+										changed_at |= ImGui::SliderFloat("Max Contrast", &max_c, 1.0f, 5.0f);
+										changed_at |= ImGui::SliderFloat("Target Brightness", &target_b, 0.1f, 2.0f);
+										if (changed_at) {
+											bloom_effect->SetAutoTuneConstraints(min_c, max_c, target_b);
+										}
+									}
+
+									ImGui::Separator();
+									ImGui::Text("ASC CDL");
+									glm::vec3 slope = bloom_effect->GetCdlSlope();
+									glm::vec3 offset = bloom_effect->GetCdlOffset();
+									glm::vec3 power = bloom_effect->GetCdlPower();
+									float saturation = bloom_effect->GetCdlSaturation();
+
+									bool changed_cdl = false;
+									changed_cdl |= ImGui::ColorEdit3("Slope", &slope.x);
+									changed_cdl |= ImGui::ColorEdit3("Offset", &offset.x);
+									changed_cdl |= ImGui::ColorEdit3("Power", &power.x);
+									changed_cdl |= ImGui::SliderFloat("Saturation", &saturation, 0.0f, 2.0f);
+									if (changed_cdl) {
+										bloom_effect->SetCdlParams(slope, offset, power, saturation);
+									}
+
+									ImGui::Separator();
+									ImGui::Text("White Balance");
+									float temp = bloom_effect->GetWhiteTemp();
+									float tint = bloom_effect->GetWhiteTint();
+									bool changed_wb = false;
+									changed_wb |= ImGui::SliderFloat("Temperature (K)", &temp, 2000.0f, 12000.0f);
+									changed_wb |= ImGui::SliderFloat("Tint", &tint, -1.0f, 1.0f);
+									if (changed_wb) {
+										bloom_effect->SetWhiteBalance(temp, tint);
+									}
+									ImGui::TreePop();
+								}
 							}
 						}
 					}
