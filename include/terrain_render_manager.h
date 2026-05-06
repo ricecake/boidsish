@@ -224,7 +224,20 @@ namespace Boidsish {
 		/**
 		 * @brief Set the TemporalData UBO for reprojection.
 		 */
-		void SetTemporalDataUbo(GLuint ubo) { temporal_data_ubo_ = ubo; }
+		void SetTemporalDataUbo(GLuint ubo, GLintptr offset = 0, GLsizeiptr size = 0) {
+			temporal_data_ubo_ = ubo;
+			temporal_data_ubo_offset_ = offset;
+			temporal_data_ubo_size_ = size;
+		}
+
+		/**
+		 * @brief Set the Frustum UBO for culling.
+		 */
+		void SetFrustumUbo(GLuint ubo, GLintptr offset = 0, GLsizeiptr size = 0) {
+			frustum_ubo_ = ubo;
+			frustum_ubo_offset_ = offset;
+			frustum_ubo_size_ = size;
+		}
 
 		/**
 		 * @brief Set the GrassProps UBO for terrain tinting and AO baseline shift.
@@ -347,6 +360,11 @@ namespace Boidsish {
 		GLuint bake_ssbo_ = 0;               // SSBO for BakeTask
 		GLuint patch_metrics_ssbo_ = 0;      // SSBO for PatchMetrics
 		GLuint temporal_data_ubo_ = 0;
+		GLintptr temporal_data_ubo_offset_ = 0;
+		GLsizeiptr temporal_data_ubo_size_ = 0;
+		GLuint frustum_ubo_ = 0;
+		GLintptr frustum_ubo_offset_ = 0;
+		GLsizeiptr frustum_ubo_size_ = 0;
 
 		std::unique_ptr<PersistentBuffer<PatchDrawData>> patch_draw_data_pb_;
 		std::unique_ptr<PersistentBuffer<PatchTessLevels>> patch_tess_levels_pb_;
@@ -410,6 +428,7 @@ namespace Boidsish {
 		glm::vec3 last_prep_camera_dir_{0.0f};
 		float     last_prep_world_scale_ = -1.0f;
 		float     last_prep_tess_multiplier_ = -1.0f;
+		size_t    last_prep_visible_chunk_count_ = 0;
 		bool      needs_prep_ = true;
 
 		// Eviction callback for notifying TerrainGenerator

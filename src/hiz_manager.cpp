@@ -3,6 +3,8 @@
 #include <algorithm>
 
 #include "service_locator.h"
+#include "constants.h"
+#include "gpu_resource_registry.h"
 #include <cmath>
 #include <iostream>
 
@@ -58,6 +60,8 @@ namespace Boidsish {
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 		glBindTexture(GL_TEXTURE_2D, 0);
+
+		GpuResourceRegistry::Instance().PublishTexture(Constants::TextureUnit::HiZ(), hiz_texture_);
 	}
 
 	void HiZManager::DestroyTexture() {

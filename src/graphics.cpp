@@ -898,7 +898,23 @@ namespace Boidsish {
 					terrain_render_manager->SetVisualEffectsUbo(visual_effects_pb->GetBufferId());
 				}
 				if (temporal_pb) {
-					terrain_render_manager->SetTemporalDataUbo(temporal_pb->GetBufferId());
+					terrain_render_manager->SetTemporalDataUbo(
+						temporal_pb->GetBufferId(),
+						temporal_pb->GetFrameOffset(),
+						sizeof(TemporalUbo)
+					);
+				}
+				if (frustum_ssbo) {
+					// Main camera frustum is always the FIRST one written in the frame,
+					// so offset should be GetFrameOffset() before any UpdateFrustumUbo calls?
+					// No, UpdateFrustumUbo was called in PrepareUBOs before UpdateSystems.
+					// Actually, mdi_frustum_count tracks how many were written.
+					// PrepareUBOs writes the primary one.
+					terrain_render_manager->SetFrustumUbo(
+						frustum_ssbo->GetBufferId(),
+						frustum_ssbo->GetFrameOffset(),
+						sizeof(FrustumDataGPU)
+					);
 				}
 				terrain_generator->SetRenderManager(terrain_render_manager);
 				terrain_render_manager->SetNoise(

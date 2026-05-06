@@ -197,19 +197,23 @@ void main() {
 
 		vec4 screenRect;
 		float nearestDepth;
+		// Project using PREVIOUS View-Projection for temporal consistency with Hi-Z
 		if (projectAABB(aabbMin, aabbMax, prevViewProjection, screenRect, nearestDepth)) {
 			vec2 screenSize = screenRect.zw - screenRect.xy;
+			// If patch is very large on screen, skip occlusion check
 			if (screenSize.x * screenSize.y < 0.5) {
 				vec2 pixelSize = screenSize * vec2(u_hizSize);
 				float maxPixelDim = max(pixelSize.x, pixelSize.y);
 				int mipLevel = clamp(int(ceil(log2(max(maxPixelDim, 1.0) / 2.0))), 0, u_hizMipCount - 1);
 
+				// Conservative occlusion check: farthest depth in Hi-Z region vs nearest depth of patch
 				float hizDepth = 0.0;
 				hizDepth = max(hizDepth, textureLod(u_hizTexture, screenRect.xy, float(mipLevel)).r);
 				hizDepth = max(hizDepth, textureLod(u_hizTexture, screenRect.zy, float(mipLevel)).r);
 				hizDepth = max(hizDepth, textureLod(u_hizTexture, screenRect.xw, float(mipLevel)).r);
 				hizDepth = max(hizDepth, textureLod(u_hizTexture, screenRect.zw, float(mipLevel)).r);
 
+				// In standard GL depth (0=near, 1=far), nearestDepth > hizDepth means patch is occluded
 				if (hizDepth > 0.0001 && nearestDepth > hizDepth) {
 					return; // Occluded
 				}
