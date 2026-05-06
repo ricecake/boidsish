@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "constants.h"
+#include "persistent_buffer.h"
 #include <GL/glew.h>
 #include <glm/glm.hpp>
 
@@ -221,6 +222,11 @@ namespace Boidsish {
 		void SetVisualEffectsUbo(GLuint ubo) { visual_effects_ubo_ = ubo; }
 
 		/**
+		 * @brief Set the TemporalData UBO for reprojection.
+		 */
+		void SetTemporalDataUbo(GLuint ubo) { temporal_data_ubo_ = ubo; }
+
+		/**
 		 * @brief Set the GrassProps UBO for terrain tinting and AO baseline shift.
 		 */
 		void SetGrassPropsUbo(GLuint ubo) { grass_props_ubo_ = ubo; }
@@ -340,9 +346,14 @@ namespace Boidsish {
 		GLuint probe_ssbo_ = 0;              // SSBO for per-chunk SH probes
 		GLuint bake_ssbo_ = 0;               // SSBO for BakeTask
 		GLuint patch_metrics_ssbo_ = 0;      // SSBO for PatchMetrics
-		GLuint patch_draw_data_ssbo_ = 0;    // SSBO for PatchDrawData
-		GLuint patch_tess_levels_ssbo_ = 0;  // SSBO for PatchTessLevels
-		GLuint patch_indirect_buffer_ = 0;   // Indirect buffer for patches
+		GLuint temporal_data_ubo_ = 0;
+
+		std::unique_ptr<PersistentBuffer<PatchDrawData>> patch_draw_data_pb_;
+		std::unique_ptr<PersistentBuffer<PatchTessLevels>> patch_tess_levels_pb_;
+		std::unique_ptr<PersistentBuffer<uint8_t>> patch_indirect_pb_; // Raw bytes for command buffer
+
+		GLsync patch_fences_[3]{0, 0, 0};
+
 		GLuint visual_effects_ubo_ = 0;      // Bound by graphics.cpp
 		GLuint grass_props_ubo_ = 0;
 
@@ -393,6 +404,13 @@ namespace Boidsish {
 		int   last_shadow_grid_origin_z_ = -999999;
 		float last_shadow_grid_world_scale_ = -1.0f;
 		glm::vec3 last_shadow_light_dir_{0.0f};
+
+		// For preparation skip optimization
+		glm::vec3 last_prep_camera_pos_{-999999.0f};
+		glm::vec3 last_prep_camera_dir_{0.0f};
+		float     last_prep_world_scale_ = -1.0f;
+		float     last_prep_tess_multiplier_ = -1.0f;
+		bool      needs_prep_ = true;
 
 		// Eviction callback for notifying TerrainGenerator
 		std::function<void(std::pair<int, int>)> eviction_callback_;

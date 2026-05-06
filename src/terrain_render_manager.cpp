@@ -110,18 +110,12 @@ namespace Boidsish {
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, patch_metrics_ssbo_);
 		glBufferData(GL_SHADER_STORAGE_BUFFER, max_patches * sizeof(PatchMetrics), nullptr, GL_STATIC_DRAW);
 
-		glGenBuffers(1, &patch_draw_data_ssbo_);
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, patch_draw_data_ssbo_);
-		glBufferData(GL_SHADER_STORAGE_BUFFER, max_patches * sizeof(PatchDrawData), nullptr, GL_STREAM_DRAW);
+		patch_draw_data_pb_ = std::make_unique<PersistentBuffer<PatchDrawData>>(GL_SHADER_STORAGE_BUFFER, max_patches, 3);
+		patch_tess_levels_pb_ = std::make_unique<PersistentBuffer<PatchTessLevels>>(GL_SHADER_STORAGE_BUFFER, max_patches, 3);
 
-		glGenBuffers(1, &patch_tess_levels_ssbo_);
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, patch_tess_levels_ssbo_);
-		glBufferData(GL_SHADER_STORAGE_BUFFER, max_patches * sizeof(PatchTessLevels), nullptr, GL_STREAM_DRAW);
-
-		glGenBuffers(1, &patch_indirect_buffer_);
-		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, patch_indirect_buffer_);
-		glBufferData(GL_DRAW_INDIRECT_BUFFER, (max_patches + 1) * sizeof(DrawElementsIndirectCommand), nullptr, GL_STREAM_DRAW);
-		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, 0);
+		// Indirect buffer needs space for count + commands
+		size_t indirect_size_bytes = sizeof(uint32_t) * 4 + max_patches * sizeof(DrawElementsIndirectCommand);
+		patch_indirect_pb_ = std::make_unique<PersistentBuffer<uint8_t>>(GL_DRAW_INDIRECT_BUFFER, indirect_size_bytes, 3);
 
 		// Create instance buffer first so we can set up VAO attributes
 		// Pre-allocate for max_chunks to avoid reallocation
@@ -201,12 +195,17 @@ namespace Boidsish {
 			glDeleteBuffers(1, &bake_ssbo_);
 		if (patch_metrics_ssbo_)
 			glDeleteBuffers(1, &patch_metrics_ssbo_);
-		if (patch_draw_data_ssbo_)
-			glDeleteBuffers(1, &patch_draw_data_ssbo_);
-		if (patch_tess_levels_ssbo_)
-			glDeleteBuffers(1, &patch_tess_levels_ssbo_);
-		if (patch_indirect_buffer_)
-			glDeleteBuffers(1, &patch_indirect_buffer_);
+
+		patch_draw_data_pb_.reset();
+		patch_tess_levels_pb_.reset();
+		patch_indirect_pb_.reset();
+
+		for (int i = 0; i < 3; ++i) {
+			if (patch_fences_[i]) {
+				glDeleteSync(patch_fences_[i]);
+			}
+		}
+
 		if (patch_vao_)
 			glDeleteVertexArrays(1, &patch_vao_);
 		if (patch_vbo_)
@@ -316,6 +315,18 @@ namespace Boidsish {
 		if (heightmap_texture_ && new_capacity <= max_chunks_) {
 			return;
 		}
+
+		size_t max_patches = new_capacity * Constants::Class::Terrain::PatchesPerChunk();
+
+		// Resize patch SSBOs
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, patch_metrics_ssbo_);
+		glBufferData(GL_SHADER_STORAGE_BUFFER, max_patches * sizeof(PatchMetrics), nullptr, GL_STATIC_DRAW);
+
+		patch_draw_data_pb_ = std::make_unique<PersistentBuffer<PatchDrawData>>(GL_SHADER_STORAGE_BUFFER, max_patches, 3);
+		patch_tess_levels_pb_ = std::make_unique<PersistentBuffer<PatchTessLevels>>(GL_SHADER_STORAGE_BUFFER, max_patches, 3);
+
+		size_t indirect_size_bytes = sizeof(uint32_t) * 4 + max_patches * sizeof(DrawElementsIndirectCommand);
+		patch_indirect_pb_ = std::make_unique<PersistentBuffer<uint8_t>>(GL_DRAW_INDIRECT_BUFFER, indirect_size_bytes, 3);
 
 		// If we need to resize and texture exists, existing data will be lost
 		// This shouldn't happen often with proper capacity management
@@ -508,6 +519,7 @@ namespace Boidsish {
 				it->second.max_y = max_y;
 				it->second.update_count++;
 				grid_dirty_ = true;
+		needs_prep_ = true;
 
 				// Queue for baking
 				bake_queue_.push_back({glm::ivec2(chunk_key.first, chunk_key.second), it->second.texture_slice, 0});
@@ -588,6 +600,7 @@ namespace Boidsish {
 
 			chunks_[chunk_key] = info;
 			grid_dirty_ = true;
+			needs_prep_ = true;
 		} // mutex released here
 
 		// Call eviction callback outside the lock to avoid deadlock
@@ -608,6 +621,7 @@ namespace Boidsish {
 		free_slices_.push_back(it->second.texture_slice);
 		chunks_.erase(it);
 		grid_dirty_ = true;
+		needs_prep_ = true;
 	}
 
 	bool TerrainRenderManager::HasChunk(std::pair<int, int> chunk_key) const {
@@ -1013,35 +1027,96 @@ namespace Boidsish {
 			return;
 		}
 
-		// 1. Dispatch prepare shader to evaluate patch visibility and LOD
-		if (patch_prepare_shader_ && patch_prepare_shader_->isValid()) {
-			PROJECT_PROFILE_SCOPE("TerrainRenderManager::DispatchPreparePatches");
-			patch_prepare_shader_->use();
+		glm::vec3 viewDir = glm::vec3(-view[0][2], -view[1][2], -view[2][2]);
 
-			// Zero out atomic counter
-			uint32_t zero = 0;
-			glBindBuffer(GL_SHADER_STORAGE_BUFFER, patch_indirect_buffer_);
-			glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(uint32_t), &zero);
+		// Check if we need to re-run the preparation shader
+		bool camera_moved = glm::distance(last_camera_pos_, last_prep_camera_pos_) > (0.1f * last_world_scale_) ||
+		                    glm::dot(viewDir, last_prep_camera_dir_) < 0.9999f;
 
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainPatchMetrics(), patch_metrics_ssbo_);
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainPatchDrawData(), patch_draw_data_ssbo_);
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainPatchTessLevels(), patch_tess_levels_ssbo_);
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainPatchIndirect(), patch_indirect_buffer_);
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::IndirectionBuffer(), instance_vbo_);
+		if (camera_moved || last_world_scale_ != last_prep_world_scale_ ||
+		    tess_quality_multiplier != last_prep_tess_multiplier_ || needs_prep_) {
 
-			patch_prepare_shader_->setInt("u_numChunks", static_cast<int>(visible_instances_.size()));
-			patch_prepare_shader_->setFloat("u_tessLevelMax", 64.0f);
-			patch_prepare_shader_->setFloat("u_tessLevelMin", 2.0f);
-			patch_prepare_shader_->setFloat("u_tessQualityMultiplier", tess_quality_multiplier);
-			patch_prepare_shader_->setFloat("u_worldScale", last_world_scale_);
-			patch_prepare_shader_->setVec3("u_viewPos", last_camera_pos_);
+			// Advance triple buffers for patch rendering
+			patch_draw_data_pb_->AdvanceFrame();
+			patch_tess_levels_pb_->AdvanceFrame();
+			patch_indirect_pb_->AdvanceFrame();
 
-			glm::vec3 viewDir = glm::vec3(-view[0][2], -view[1][2], -view[2][2]);
-			patch_prepare_shader_->setVec3("u_viewDir", viewDir);
+			int current_idx = patch_draw_data_pb_->GetCurrentBufferIndex();
+			if (patch_fences_[current_idx]) {
+				glClientWaitSync(patch_fences_[current_idx], GL_SYNC_FLUSH_COMMANDS_BIT, GL_TIMEOUT_IGNORED);
+				glDeleteSync(patch_fences_[current_idx]);
+				patch_fences_[current_idx] = 0;
+			}
 
-			int totalPatches = static_cast<int>(visible_instances_.size() * Constants::Class::Terrain::PatchesPerChunk());
-			glDispatchCompute((totalPatches + 63) / 64, 1, 1);
-			glMemoryBarrier(GL_COMMAND_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
+			if (patch_prepare_shader_ && patch_prepare_shader_->isValid()) {
+				PROJECT_PROFILE_SCOPE("TerrainRenderManager::DispatchPreparePatches");
+				patch_prepare_shader_->use();
+
+				// Zero out atomic counter for the current frame's indirect buffer
+				uint32_t* count_ptr = reinterpret_cast<uint32_t*>(patch_indirect_pb_->GetFrameDataPtr());
+				*count_ptr = 0;
+				glMemoryBarrier(GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT);
+
+				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainPatchMetrics(), patch_metrics_ssbo_);
+				patch_draw_data_pb_->BindRange(Constants::SsboBinding::TerrainPatchDrawData());
+				patch_tess_levels_pb_->BindRange(Constants::SsboBinding::TerrainPatchTessLevels());
+
+				glBindBufferRange(
+					GL_SHADER_STORAGE_BUFFER,
+					Constants::SsboBinding::TerrainPatchIndirect(),
+					patch_indirect_pb_->GetBufferId(),
+					patch_indirect_pb_->GetFrameOffset(),
+					patch_indirect_pb_->GetTotalSize() / 3
+				);
+
+				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::IndirectionBuffer(), instance_vbo_);
+				if (temporal_data_ubo_ != 0) {
+					glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::TemporalData(), temporal_data_ubo_);
+				}
+
+				patch_prepare_shader_->setInt("u_numChunks", static_cast<int>(visible_instances_.size()));
+				patch_prepare_shader_->setFloat("u_tessLevelMax", 64.0f);
+				patch_prepare_shader_->setFloat("u_tessLevelMin", 2.0f);
+				patch_prepare_shader_->setFloat("u_tessQualityMultiplier", tess_quality_multiplier);
+				patch_prepare_shader_->setFloat("u_worldScale", last_world_scale_);
+				patch_prepare_shader_->setVec3("u_viewPos", last_camera_pos_);
+				patch_prepare_shader_->setVec3("u_viewDir", viewDir);
+
+				// Bind Hi-Z and set occlusion uniforms if enabled
+				auto& reg = GpuResourceRegistry::Instance();
+				GLuint hizTex = reg.GetTexture(Constants::TextureUnit::HiZ());
+				if (hizTex != 0) {
+					glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::HiZ());
+					glBindTexture(GL_TEXTURE_2D, hizTex);
+					patch_prepare_shader_->setInt("u_hizTexture", Constants::TextureUnit::HiZ());
+
+					GLint w, h, mips;
+					glGetTextureLevelParameteriv(hizTex, 0, GL_TEXTURE_WIDTH, &w);
+					glGetTextureLevelParameteriv(hizTex, 0, GL_TEXTURE_HEIGHT, &h);
+					// glGetTextureParameteriv might not reliably return mip count for all texture types/drivers
+					// We'll use a conservative calculation based on dimensions
+					mips = 1 + static_cast<GLint>(std::floor(std::log2(std::max(w, h))));
+
+					glUniform2i(glGetUniformLocation(patch_prepare_shader_->ID, "u_hizSize"), w, h);
+					patch_prepare_shader_->setInt("u_hizMipCount", mips);
+					patch_prepare_shader_->setFloat("u_screenExpansion", 4.0f);
+					patch_prepare_shader_->setBool("u_enableOcclusionCulling", true);
+				} else {
+					patch_prepare_shader_->setBool("u_enableOcclusionCulling", false);
+				}
+
+				int totalPatches = static_cast<int>(visible_instances_.size() * Constants::Class::Terrain::PatchesPerChunk());
+				glDispatchCompute((totalPatches + 63) / 64, 1, 1);
+				glMemoryBarrier(GL_COMMAND_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
+
+				patch_fences_[current_idx] = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+			}
+
+			last_prep_camera_pos_ = last_camera_pos_;
+			last_prep_camera_dir_ = viewDir;
+			last_prep_world_scale_ = last_world_scale_;
+			last_prep_tess_multiplier_ = tess_quality_multiplier;
+			needs_prep_ = false;
 		}
 
 		// 2. Render visible patches using MDI
@@ -1104,9 +1179,9 @@ namespace Boidsish {
 			shader.trySetInt("u_phasorTexture", Constants::TextureUnit::NoisePhasor());
 		}
 
-		// Bind SSBOs for patch rendering
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainPatchDrawData(), patch_draw_data_ssbo_);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainPatchTessLevels(), patch_tess_levels_ssbo_);
+		// Bind SSBOs for patch rendering (current frame's segments)
+		patch_draw_data_pb_->BindRange(Constants::SsboBinding::TerrainPatchDrawData());
+		patch_tess_levels_pb_->BindRange(Constants::SsboBinding::TerrainPatchTessLevels());
 
 		// Bind Biome UBO
 		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Biomes(), biome_ubo_);
@@ -1118,17 +1193,17 @@ namespace Boidsish {
 		glPatchParameteri(GL_PATCH_VERTICES, 4);
 
 		// Multi-Draw Elements Indirect
-		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, patch_indirect_buffer_);
-		glBindBuffer(GL_PARAMETER_BUFFER, patch_indirect_buffer_);
+		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, patch_indirect_pb_->GetBufferId());
+		glBindBuffer(GL_PARAMETER_BUFFER, patch_indirect_pb_->GetBufferId());
 
 		// The command count is stored at the beginning of patch_indirect_buffer_
 		// glMultiDrawElementsIndirectCount is part of OpenGL 4.6
 		glMultiDrawElementsIndirectCount(
 			GL_PATCHES,
 			GL_UNSIGNED_INT,
-			(void*)(uintptr_t)(sizeof(uint32_t) * 4), // commands start after count + padding
-			0,                                       // count is at offset 0
-			static_cast<GLsizei>(visible_instances_.size() * Constants::Class::Terrain::PatchesPerChunk()),
+			(void*)(uintptr_t)(patch_indirect_pb_->GetFrameOffset() + sizeof(uint32_t) * 4), // commands start after count + padding
+			(GLintptr)(patch_indirect_pb_->GetFrameOffset()),                               // count is at current frame's offset
+			static_cast<GLsizei>(max_chunks_ * Constants::Class::Terrain::PatchesPerChunk()), // Max possible patches
 			sizeof(DrawElementsIndirectCommand)
 		);
 
