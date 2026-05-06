@@ -522,14 +522,14 @@ finalMaterial.albedo = mix(finalMaterial.albedo, dynamicGrassColor, grassMask * 
 // finalMaterial.albedo *= pow(fastRidge3d(FragPos / 10.0) * 0.5 + 0.5, 2);
 
 float floorTexture = pow(fastRidge3d(FragPos / 10.0) * 0.5 + 0.5, 2);
-float noiseVal = 1.0-pow(fastRidge3d((FragPos+windAtPos*sin(time*0.01)) / mix(1.0, 250.0, distanceFactor)) * 0.5 + 0.5, 3);
+float noiseVal = 1.0-pow(fastRidge3d((FragPos+5*normalize(windAtPos)*gustIntensity*sin(time*0.75)) / mix(1.0, 50.0, distanceFactor)) * 0.5 + 0.5, 3);
 // float albedoMultiplier = mix(0.7, 1.3, noiseVal);
 // float albedoMultiplier = mix(0.7, 1.3, mix(floorTexture, noiseVal, distanceFactor));
 float albedoMultiplier = mix(floorTexture, mix(0.7, 1.3, noiseVal), distanceFactor);
 
 finalMaterial.albedo *= albedoMultiplier;
 
-float dynamicRoughness = mix(1.25, 0.7, gustIntensity);
+float dynamicRoughness = mix(1.15, 0.85, gustIntensity - 0.5 * gustIntensity * fastSimplex3d(FragPos/10.0*sin(time*0.5)));
 finalMaterial.roughness = mix(finalMaterial.roughness, clamp(finalMaterial.roughness * dynamicRoughness, 0.0, 1.0), distanceFactor);
 
 	}
