@@ -51,14 +51,7 @@ void main() {
 	// Add bloom to HDR scene color.
 	vec3 result = sceneColor + bloomColor * intensity;
 
-	// 1. Exposure
-	if (useAutoExposure != 0) {
-		float exposure = targetLuminance / max(adaptedLuminance, 0.0001);
-		exposure = clamp(exposure, minExposure, maxExposure);
-		result *= exposure;
-	}
-
-	// 2. White Balance
+	// 1. White Balance
 	vec3 whiteGain = 1.0 / max(tempToRgb(whiteTemp), 0.0001);
 	// Apply tint (green/magenta)
 	whiteGain.g *= (1.0 - whiteTint * 0.1);
@@ -67,6 +60,13 @@ void main() {
 	// Normalize whiteGain to preserve luminance
 	whiteGain /= max(dot(whiteGain, vec3(0.2126, 0.7152, 0.0722)), 0.0001);
 	result *= whiteGain;
+
+	// 2. Exposure
+	if (useAutoExposure != 0) {
+		float exposure = targetLuminance / max(adaptedLuminance, 0.0001);
+		exposure = clamp(exposure, minExposure, maxExposure);
+		result *= exposure;
+	}
 
 	// 3. ASC CDL Color Grading
 	// Color = pow(max(0, Color * Slope + Offset), Power)
