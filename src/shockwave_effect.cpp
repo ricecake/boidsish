@@ -38,6 +38,7 @@ namespace Boidsish {
 		// Create screen-space shockwave shader
 		shader_ = std::make_unique<Shader>("shaders/postprocess.vert", "shaders/effects/shockwave.frag");
 
+		// GPU_RESOURCE: UBO, ubo_, needs PersistentBuffer (Persistent, Coherent, ReadOnly)
 		// Create UBO for shockwave data
 		glGenBuffers(1, &ubo_);
 		glBindBuffer(GL_UNIFORM_BUFFER, ubo_);
@@ -49,6 +50,7 @@ namespace Boidsish {
 
 		// Create intermediate FBO for effect rendering
 		glGenFramebuffers(1, &fbo_);
+		// GPU_RESOURCE: Texture, output_texture_, needs PersistentTexture (ReadOnly)
 		glGenTextures(1, &output_texture_);
 
 		glBindTexture(GL_TEXTURE_2D, output_texture_);

@@ -566,8 +566,11 @@ namespace Boidsish {
 
 		glGenVertexArrays(1, &vao_);
 		glGenVertexArrays(1, &wire_vao_);
+		// GPU_RESOURCE: VBO, vbo_, needs PersistentBuffer (ReadOnly)
 		glGenBuffers(1, &vbo_);
+		// GPU_RESOURCE: EBO, ebo_, needs PersistentBuffer (ReadOnly)
 		glGenBuffers(1, &ebo_);
+		// GPU_RESOURCE: EBO, wire_ebo_, needs PersistentBuffer (ReadOnly)
 		glGenBuffers(1, &wire_ebo_);
 
 		auto setup_vao = [&](GLuint vao) {

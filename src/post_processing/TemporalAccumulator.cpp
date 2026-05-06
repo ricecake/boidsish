@@ -30,6 +30,7 @@ namespace Boidsish {
 
 		void TemporalAccumulator::CreateTextures() {
 			Cleanup();
+			// GPU_RESOURCE: Texture, _historyTextures, needs PersistentTexture (ReadOnly)
 			glGenTextures(2, _historyTextures);
 			GLenum format = (_internalFormat == GL_R16F) ? GL_RED : GL_RGBA;
 			for (int i = 0; i < 2; i++) {

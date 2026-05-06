@@ -146,6 +146,7 @@ namespace Boidsish {
 		setup_comp_ubos(lifecycle_shader_.get());
 		setup_comp_ubos(behavior_shader_.get());
 
+		// GPU_RESOURCE: SSBO, particle_buffer_, needs PersistentBuffer (Persistent, Coherent, ReadOnly)
 		// Create buffers
 		glGenBuffers(1, &particle_buffer_);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, particle_buffer_);
@@ -154,6 +155,7 @@ namespace Boidsish {
 		std::vector<uint8_t> zero_data(kMaxParticles * sizeof(Particle), 0);
 		glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, zero_data.size(), zero_data.data());
 
+		// GPU_RESOURCE: SSBO, grid_heads_buffer_, needs PersistentBuffer (Persistent, Coherent, ReadOnly)
 		glGenBuffers(1, &grid_heads_buffer_);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, grid_heads_buffer_);
 		glBufferData(
@@ -163,41 +165,50 @@ namespace Boidsish {
 			GL_DYNAMIC_DRAW
 		);
 
+		// GPU_RESOURCE: SSBO, grid_next_buffer_, needs PersistentBuffer (Persistent, Coherent, ReadOnly)
 		glGenBuffers(1, &grid_next_buffer_);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, grid_next_buffer_);
 		glBufferData(GL_SHADER_STORAGE_BUFFER, kMaxParticles * sizeof(int), nullptr, GL_DYNAMIC_DRAW);
 
+		// GPU_RESOURCE: SSBO, emitter_buffer_, needs PersistentBuffer (Persistent, Coherent, ReadOnly)
 		glGenBuffers(1, &emitter_buffer_);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, emitter_buffer_);
 		glBufferData(GL_SHADER_STORAGE_BUFFER, kMaxEmitters * sizeof(Emitter), nullptr, GL_DYNAMIC_DRAW);
 		emitter_buffer_capacity_ = kMaxEmitters;
 
+		// GPU_RESOURCE: SSBO, indirection_buffer_, needs PersistentBuffer (Persistent, Coherent, ReadOnly)
 		glGenBuffers(1, &indirection_buffer_);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, indirection_buffer_);
 		glBufferData(GL_SHADER_STORAGE_BUFFER, kMaxParticles * sizeof(int), nullptr, GL_DYNAMIC_DRAW);
 
+		// GPU_RESOURCE: SSBO, terrain_chunk_buffer_, needs PersistentBuffer (Persistent, Coherent, ReadOnly)
 		glGenBuffers(1, &terrain_chunk_buffer_);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, terrain_chunk_buffer_);
 		// Pre-allocate for 1024 chunks as a reasonable default
 		glBufferData(GL_SHADER_STORAGE_BUFFER, 1024 * sizeof(glm::vec4), nullptr, GL_DYNAMIC_DRAW);
 
+		// GPU_RESOURCE: SSBO, slice_data_buffer_, needs PersistentBuffer (Persistent, Coherent, ReadOnly)
 		glGenBuffers(1, &slice_data_buffer_);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, slice_data_buffer_);
 		// Max emitters (64) * 64 points per slice as a default
 		glBufferData(GL_SHADER_STORAGE_BUFFER, kMaxEmitters * 64 * sizeof(glm::vec4), nullptr, GL_DYNAMIC_DRAW);
 
+		// GPU_RESOURCE: SSBO, visible_indices_buffer_, needs PersistentBuffer (Persistent, Coherent, ReadOnly)
 		glGenBuffers(1, &visible_indices_buffer_);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, visible_indices_buffer_);
 		glBufferData(GL_SHADER_STORAGE_BUFFER, kMaxParticles * sizeof(uint32_t), nullptr, GL_DYNAMIC_DRAW);
 
+		// GPU_RESOURCE: SSBO, live_indices_buffer_, needs PersistentBuffer (Persistent, Coherent, ReadOnly)
 		glGenBuffers(1, &live_indices_buffer_);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, live_indices_buffer_);
 		glBufferData(GL_SHADER_STORAGE_BUFFER, kMaxParticles * sizeof(uint32_t), nullptr, GL_DYNAMIC_DRAW);
 
+		// GPU_RESOURCE: SSBO, draw_command_buffer_, needs PersistentBuffer (Persistent, Coherent, ReadOnly)
 		glGenBuffers(1, &draw_command_buffer_);
 		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, draw_command_buffer_);
 		glBufferData(GL_DRAW_INDIRECT_BUFFER, 4 * sizeof(uint32_t), nullptr, GL_DYNAMIC_DRAW);
 
+		// GPU_RESOURCE: SSBO, behavior_command_buffer_, needs PersistentBuffer (Persistent, Coherent, ReadOnly)
 		glGenBuffers(1, &behavior_command_buffer_);
 		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, behavior_command_buffer_);
 		// DispatchIndirectCommand: 4 * uint32_t (num_groups_x, y, z, and count)

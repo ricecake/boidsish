@@ -172,6 +172,7 @@ namespace Boidsish {
 
 			glGenVertexArrays(1, &rod_vao_);
 			glBindVertexArray(rod_vao_);
+			// GPU_RESOURCE: VBO, rod_vbo_, needs PersistentBuffer (ReadOnly)
 			glGenBuffers(1, &rod_vbo_);
 			glBindBuffer(GL_ARRAY_BUFFER, rod_vbo_);
 			glBufferData(GL_ARRAY_BUFFER, v_rod.size() * sizeof(Vertex), v_rod.data(), GL_STATIC_DRAW);
@@ -197,6 +198,7 @@ namespace Boidsish {
 
 			glGenVertexArrays(1, &cone_vao_);
 			glBindVertexArray(cone_vao_);
+			// GPU_RESOURCE: VBO, cone_vbo_, needs PersistentBuffer (ReadOnly)
 			glGenBuffers(1, &cone_vbo_);
 			glBindBuffer(GL_ARRAY_BUFFER, cone_vbo_);
 			glBufferData(GL_ARRAY_BUFFER, v_cone.size() * sizeof(Vertex), v_cone.data(), GL_STATIC_DRAW);

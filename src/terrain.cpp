@@ -69,7 +69,9 @@ namespace Boidsish {
 		vertex_data_ = GetInterleavedVertexData();
 
 		glGenVertexArrays(1, &vao_);
+		// GPU_RESOURCE: VBO, vbo_, needs PersistentBuffer (ReadOnly)
 		glGenBuffers(1, &vbo_);
+		// GPU_RESOURCE: EBO, ebo_, needs PersistentBuffer (ReadOnly)
 		glGenBuffers(1, &ebo_);
 
 		glBindVertexArray(vao_);

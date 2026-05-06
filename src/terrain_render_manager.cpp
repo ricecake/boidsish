@@ -20,6 +20,7 @@ namespace Boidsish {
 
 	TerrainRenderManager::TerrainRenderManager(ServiceLocator& /*loc*/, int chunk_size, int max_chunks):
 		chunk_size_(chunk_size), max_chunks_(max_chunks), heightmap_resolution_(chunk_size + 1) {
+		// GPU_RESOURCE: UBO, biome_ubo_, needs PersistentBuffer (ReadOnly)
 		// Create Biome UBO
 		glGenBuffers(1, &biome_ubo_);
 		glBindBuffer(GL_UNIFORM_BUFFER, biome_ubo_);
@@ -40,12 +41,14 @@ namespace Boidsish {
 		);
 		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
+		// GPU_RESOURCE: UBO, terrain_data_ubo_, needs PersistentBuffer (Persistent, Coherent, ReadOnly)
 		// Create TerrainData UBO
 		glGenBuffers(1, &terrain_data_ubo_);
 		glBindBuffer(GL_UNIFORM_BUFFER, terrain_data_ubo_);
 		glBufferData(GL_UNIFORM_BUFFER, sizeof(TerrainDataUbo), nullptr, GL_DYNAMIC_DRAW);
 		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
+		// GPU_RESOURCE: Texture, chunk_grid_texture_, needs PersistentTexture (ReadOnly)
 		// Global terrain grid resources
 		int grid_size = Constants::Class::Terrain::SliceMapSize();
 		glGenTextures(1, &chunk_grid_texture_);
@@ -56,6 +59,7 @@ namespace Boidsish {
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
+		// GPU_RESOURCE: Texture, max_height_grid_texture_, needs PersistentTexture (ReadOnly)
 		glGenTextures(1, &max_height_grid_texture_);
 		glBindTexture(GL_TEXTURE_2D, max_height_grid_texture_);
 		int mips = 1 + static_cast<int>(std::floor(std::log2(grid_size)));
@@ -71,6 +75,7 @@ namespace Boidsish {
 		terrain_horizon_shader_ = std::make_unique<ComputeShader>("shaders/terrain_horizon_update.comp");
 		terrain_shadow_map_shader_ = std::make_unique<ComputeShader>("shaders/terrain_shadow_map.comp");
 
+		// GPU_RESOURCE: Texture, terrain_shadow_map_texture_, needs PersistentTexture (ReadOnly)
 		glGenTextures(1, &terrain_shadow_map_texture_);
 		glBindTexture(GL_TEXTURE_2D, terrain_shadow_map_texture_);
 		// 8192x8192 R8 for terrain shadow map
@@ -80,6 +85,7 @@ namespace Boidsish {
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
+		// GPU_RESOURCE: SSBO, probe_ssbo_, needs PersistentBuffer (Persistent, Coherent, ReadOnly)
 		// Create SH probes SSBO
 		glGenBuffers(1, &probe_ssbo_);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, probe_ssbo_);
@@ -95,12 +101,14 @@ namespace Boidsish {
 		);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
+		// GPU_RESOURCE: SSBO, bake_ssbo_, needs PersistentBuffer (Persistent, Coherent, ReadOnly)
 		// Create BakeTasks SSBO
 		glGenBuffers(1, &bake_ssbo_);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, bake_ssbo_);
 		glBufferData(GL_SHADER_STORAGE_BUFFER, 1024 * sizeof(BakeTask), nullptr, GL_DYNAMIC_DRAW);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
+		// GPU_RESOURCE: VBO, instance_vbo_, needs PersistentBuffer (Persistent, Coherent, ReadOnly)
 		// Create instance buffer first so we can set up VAO attributes
 		// Pre-allocate for max_chunks to avoid reallocation
 		glGenBuffers(1, &instance_vbo_);
@@ -191,6 +199,7 @@ namespace Boidsish {
 		glGenVertexArrays(1, &grid_vao_);
 		glBindVertexArray(grid_vao_);
 
+		// GPU_RESOURCE: VBO, grid_vbo_, needs PersistentBuffer (ReadOnly)
 		// Vertex buffer
 		glGenBuffers(1, &grid_vbo_);
 		glBindBuffer(GL_ARRAY_BUFFER, grid_vbo_);
@@ -204,6 +213,7 @@ namespace Boidsish {
 		glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
 		glEnableVertexAttribArray(1);
 
+		// GPU_RESOURCE: EBO, grid_ebo_, needs PersistentBuffer (ReadOnly)
 		// Index buffer
 		glGenBuffers(1, &grid_ebo_);
 		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, grid_ebo_);
@@ -280,6 +290,7 @@ namespace Boidsish {
 		max_chunks_ = new_capacity;
 
 		auto create_array = [&](GLuint& tex, GLenum internalFormat, GLenum format, GLenum type, bool linear) {
+			// GPU_RESOURCE: TextureArray, [Multiple], needs PersistentTexture (ReadOnly)
 			glGenTextures(1, &tex);
 			glBindTexture(GL_TEXTURE_2D_ARRAY, tex);
 			glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, internalFormat, heightmap_resolution_, heightmap_resolution_,
@@ -294,6 +305,7 @@ namespace Boidsish {
 		create_array(heightmap_texture_, GL_RGBA16F, GL_RGBA, GL_FLOAT, true);
 		create_array(baked_params_texture_, GL_RGBA16F, GL_RGBA, GL_FLOAT, true);
 
+		// GPU_RESOURCE: TextureArray, horizon_map_texture_, needs PersistentTexture (ReadOnly)
 		// Horizon map: 8 directions (8x8 resolution per chunk)
 		glGenTextures(1, &horizon_map_texture_);
 		glBindTexture(GL_TEXTURE_2D_ARRAY, horizon_map_texture_);

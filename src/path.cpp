@@ -119,6 +119,7 @@ namespace Boidsish {
 			glGenVertexArrays(1, &path_vao_);
 		glBindVertexArray(path_vao_);
 		if (path_vbo_ == 0)
+			// GPU_RESOURCE: VBO, path_vbo_, needs PersistentBuffer (ReadOnly)
 			glGenBuffers(1, &path_vbo_);
 		glBindBuffer(GL_ARRAY_BUFFER, path_vbo_);
 		glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(Vertex), vertices.data(), GL_STATIC_DRAW);

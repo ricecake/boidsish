@@ -71,6 +71,7 @@ namespace Boidsish {
 		void AtmosphereEffect::InitializeLowResResources() {
 			if (low_res_fbo_ == 0) {
 				glGenFramebuffers(1, &low_res_fbo_);
+				// GPU_RESOURCE: Texture, low_res_texture_, needs PersistentTexture (ReadOnly)
 				glGenTextures(1, &low_res_texture_);
 			}
 
@@ -100,6 +101,7 @@ namespace Boidsish {
 			if (temporal_textures_[0]) {
 				glDeleteTextures(2, temporal_textures_);
 			}
+			// GPU_RESOURCE: Texture, temporal_textures_, needs PersistentTexture (ReadOnly)
 			glGenTextures(2, temporal_textures_);
 			for (int i = 0; i < 2; i++) {
 				glBindTexture(GL_TEXTURE_2D, temporal_textures_[i]);

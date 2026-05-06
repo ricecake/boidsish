@@ -69,6 +69,7 @@ namespace Boidsish {
 			free_blocks_.push_back(i);
 		}
 
+		// GPU_RESOURCE: SSBO, block_validity_ssbo_, needs PersistentBuffer (Persistent, Coherent, ReadOnly)
 		// Block validity buffer: one uint per block, all initially invalid (0).
 		glGenBuffers(1, &block_validity_ssbo_);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, block_validity_ssbo_);
@@ -76,12 +77,14 @@ namespace Boidsish {
 		glBufferData(GL_SHADER_STORAGE_BUFFER, kMaxActiveChunks * sizeof(uint32_t), validity.data(), GL_DYNAMIC_DRAW);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
+		// GPU_RESOURCE: UBO, placement_globals_ubo_, needs PersistentBuffer (Persistent, Coherent, ReadOnly)
 		// Global placement params UBO (small, updated per dispatch)
 		glGenBuffers(1, &placement_globals_ubo_);
 		glBindBuffer(GL_UNIFORM_BUFFER, placement_globals_ubo_);
 		glBufferData(GL_UNIFORM_BUFFER, sizeof(PlacementGlobalsGPU), nullptr, GL_DYNAMIC_DRAW);
 		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
+		// GPU_RESOURCE: SSBO, chunk_params_ssbo_, needs PersistentBuffer (Persistent, Coherent, ReadOnly)
 		// Per-chunk params SSBO (resized as needed per dispatch)
 		glGenBuffers(1, &chunk_params_ssbo_);
 
@@ -111,11 +114,13 @@ namespace Boidsish {
 		type.model = model;
 		type.props = props;
 
+		// GPU_RESOURCE: SSBO, type.ssbo, needs PersistentBuffer (Persistent, Coherent, ReadOnly)
 		// Main instance storage (persistent)
 		glGenBuffers(1, &type.ssbo);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, type.ssbo);
 		glBufferData(GL_SHADER_STORAGE_BUFFER, kMaxInstancesPerType * sizeof(glm::mat4), nullptr, GL_DYNAMIC_DRAW);
 
+		// GPU_RESOURCE: SSBO, type.visible_ssbo, needs PersistentBuffer (Persistent, Coherent, ReadOnly)
 		// Visible instances (filled per frame)
 		glGenBuffers(1, &type.visible_ssbo);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, type.visible_ssbo);
@@ -133,6 +138,7 @@ namespace Boidsish {
 			commands[i].baseInstance = 0;
 		}
 
+		// GPU_RESOURCE: SSBO, type.indirect_buffer, needs PersistentBuffer (Persistent, Coherent, ReadOnly)
 		glGenBuffers(1, &type.indirect_buffer);
 		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, type.indirect_buffer);
 		glBufferData(
@@ -142,6 +148,7 @@ namespace Boidsish {
 			GL_STATIC_DRAW
 		);
 
+		// GPU_RESOURCE: SSBO, type.shadow_indirect_buffer, needs PersistentBuffer (Persistent, Coherent, ReadOnly)
 		// Shadow indirect commands
 		glGenBuffers(1, &type.shadow_indirect_buffer);
 		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, type.shadow_indirect_buffer);
@@ -152,6 +159,7 @@ namespace Boidsish {
 			GL_STATIC_DRAW
 		);
 
+		// GPU_RESOURCE: SSBO, type.count_buffer, needs PersistentBuffer (Persistent, Coherent, ReadOnly)
 		// Atomic counter for culling
 		glGenBuffers(1, &type.count_buffer);
 		glBindBuffer(GL_ATOMIC_COUNTER_BUFFER, type.count_buffer);
@@ -406,6 +414,7 @@ namespace Boidsish {
 		}
 
 		if (decor_props_ubo_ == 0) {
+			// GPU_RESOURCE: UBO, decor_props_ubo_, needs PersistentBuffer (Persistent, Coherent, ReadOnly)
 			glGenBuffers(1, &decor_props_ubo_);
 		}
 		glBindBuffer(GL_UNIFORM_BUFFER, decor_props_ubo_);

@@ -158,6 +158,7 @@ namespace Boidsish {
 		width_ = w;
 		height_ = h;
 
+		// GPU_RESOURCE: Texture, history_textures_, needs PersistentTexture (ReadOnly)
 		glGenTextures(2, history_textures_);
 		glGenFramebuffers(2, history_fbos_);
 

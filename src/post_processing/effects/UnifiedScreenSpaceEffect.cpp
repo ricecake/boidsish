@@ -57,6 +57,7 @@ namespace Boidsish {
 			if (gi_ao_texture_) glDeleteTextures(1, &gi_ao_texture_);
 			if (sss_texture_) glDeleteTextures(1, &sss_texture_);
 
+			// GPU_RESOURCE: Texture, gi_ao_texture_, needs PersistentTexture (ReadOnly)
 			glGenTextures(1, &gi_ao_texture_);
 			glBindTexture(GL_TEXTURE_2D, gi_ao_texture_);
 			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, internal_width_, internal_height_, 0, GL_RGBA, GL_FLOAT, NULL);
@@ -65,6 +66,7 @@ namespace Boidsish {
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
+			// GPU_RESOURCE: Texture, sss_texture_, needs PersistentTexture (ReadOnly)
 			glGenTextures(1, &sss_texture_);
 			glBindTexture(GL_TEXTURE_2D, sss_texture_);
 			glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, internal_width_, internal_height_, 0, GL_RED, GL_UNSIGNED_BYTE, NULL);

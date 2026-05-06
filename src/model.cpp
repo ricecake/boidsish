@@ -126,7 +126,9 @@ namespace Boidsish {
 		}
 
 		glGenVertexArrays(1, &VAO);
+		// GPU_RESOURCE: VBO, VBO, needs PersistentBuffer (ReadOnly)
 		glGenBuffers(1, &VBO);
+		// GPU_RESOURCE: EBO, EBO, needs PersistentBuffer (ReadOnly)
 		glGenBuffers(1, &EBO);
 
 		glBindVertexArray(VAO);

@@ -68,18 +68,21 @@ namespace Boidsish {
     }
 
     void GrassManager::_InitializeResources() {
+        // GPU_RESOURCE: UBO, grass_props_ubo_, needs PersistentBuffer (Persistent, Coherent, ReadOnly)
         // Properties UBO
         glGenBuffers(1, &grass_props_ubo_);
         glBindBuffer(GL_UNIFORM_BUFFER, grass_props_ubo_);
         glBufferData(GL_UNIFORM_BUFFER, 8 * sizeof(GrassProperties) + sizeof(GlobalGrassProperties), nullptr, GL_DYNAMIC_DRAW);
         glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
+        // GPU_RESOURCE: SSBO, grass_instances_ssbo_, needs PersistentBuffer (Persistent, Coherent, ReadOnly)
         // Instance SSBO
         glGenBuffers(1, &grass_instances_ssbo_);
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, grass_instances_ssbo_);
         glBufferData(GL_SHADER_STORAGE_BUFFER, kMaxGrassInstances * sizeof(GrassInstance), nullptr, GL_DYNAMIC_DRAW);
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
+        // GPU_RESOURCE: SSBO, grass_indirect_buffer_, needs PersistentBuffer (Persistent, Coherent, ReadOnly)
         // Indirect Buffer
         glGenBuffers(1, &grass_indirect_buffer_);
         glBindBuffer(GL_DRAW_INDIRECT_BUFFER, grass_indirect_buffer_);

@@ -46,6 +46,7 @@ namespace Boidsish {
 			// Previous Frame FBO
 			glGenFramebuffers(1, &_previousFrameFBO);
 			glBindFramebuffer(GL_FRAMEBUFFER, _previousFrameFBO);
+			// GPU_RESOURCE: Texture, _previousFrameTexture, needs PersistentTexture (ReadOnly)
 			glGenTextures(1, &_previousFrameTexture);
 			glBindTexture(GL_TEXTURE_2D, _previousFrameTexture);
 			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, width, height, 0, GL_RGB, GL_FLOAT, NULL);
@@ -59,6 +60,7 @@ namespace Boidsish {
 			for (int i = 0; i < 2; ++i) {
 				glGenFramebuffers(1, &_flowFBOs[i]);
 				glBindFramebuffer(GL_FRAMEBUFFER, _flowFBOs[i]);
+				// GPU_RESOURCE: TextureArray, _flowTextures, needs PersistentTexture (ReadOnly)
 				glGenTextures(1, &_flowTextures[i]);
 				glBindTexture(GL_TEXTURE_2D, _flowTextures[i]);
 				glTexImage2D(GL_TEXTURE_2D, 0, GL_RG16F, width, height, 0, GL_RG, GL_FLOAT, NULL);
@@ -72,6 +74,7 @@ namespace Boidsish {
 			// Output FBO
 			glGenFramebuffers(1, &_outputFBO);
 			glBindFramebuffer(GL_FRAMEBUFFER, _outputFBO);
+			// GPU_RESOURCE: Texture, _outputTexture, needs PersistentTexture (ReadOnly)
 			glGenTextures(1, &_outputTexture);
 			glBindTexture(GL_TEXTURE_2D, _outputTexture);
 			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);

@@ -267,10 +267,12 @@ namespace Boidsish {
 			glGenVertexArrays(1, &sphere_vao_);
 			glBindVertexArray(sphere_vao_);
 
+			// GPU_RESOURCE: VBO, sphere_vbo_, needs PersistentBuffer (ReadOnly)
 			glGenBuffers(1, &sphere_vbo_);
 			glBindBuffer(GL_ARRAY_BUFFER, sphere_vbo_);
 			glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(Vertex), &vertices[0], GL_STATIC_DRAW);
 
+			// GPU_RESOURCE: EBO, sphere_ebo_, needs PersistentBuffer (ReadOnly)
 			glGenBuffers(1, &sphere_ebo_);
 			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, sphere_ebo_);
 			glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), &indices[0], GL_STATIC_DRAW);

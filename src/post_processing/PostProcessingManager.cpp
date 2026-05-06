@@ -33,6 +33,7 @@ namespace Boidsish {
 			}
 
 			glGenFramebuffers(2, pingpong_fbo_);
+			// GPU_RESOURCE: Texture, pingpong_texture_, needs PersistentTexture (ReadOnly)
 			glGenTextures(2, pingpong_texture_);
 
 			for (unsigned int i = 0; i < 2; i++) {

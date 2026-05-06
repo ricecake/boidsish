@@ -125,6 +125,7 @@ namespace Boidsish {
 							);
 
 							if (imageData) {
+								// GPU_RESOURCE: Texture, texture.id, needs PersistentTexture (ReadOnly)
 								glGenTextures(1, &texture.id);
 								GLenum format = GL_RGBA;
 
@@ -158,6 +159,7 @@ namespace Boidsish {
 							// Uncompressed texture (Assimp uses ARGB8888 or BGRA8888)
 							// Assimp documentation says: "Each pixel is stored in 32-bit (8 bits per channel)"
 							// Most common is BGRA.
+							// GPU_RESOURCE: Texture, texture.id, needs PersistentTexture (ReadOnly)
 							glGenTextures(1, &texture.id);
 							glBindTexture(GL_TEXTURE_2D, texture.id);
 							glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
@@ -1011,6 +1013,7 @@ namespace Boidsish {
 		logger::LOG("Attempting to load texture: {}", fullPath);
 
 		unsigned int textureID;
+		// GPU_RESOURCE: Texture, textureID, needs PersistentTexture (ReadOnly)
 		glGenTextures(1, &textureID);
 
 		int            width, height, nrComponents;
