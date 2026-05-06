@@ -175,7 +175,7 @@ void main() {
     float shapeProfile = 1.0 - pow(v, shapeExponent);
 
     // Artificially widen the entire blade at distance to preserve density
-    float distanceWidthBoost = mix(1.0, 2.5, smoothstep(32.0, 128.0, distToCam));
+    float distanceWidthBoost = mix(1.0, 2.0, smoothstep(32.0, 128.0, distToCam));
 
     float currentWidth;
     if (isFlower) {
