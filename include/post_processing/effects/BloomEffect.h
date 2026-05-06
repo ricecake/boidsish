@@ -77,9 +77,87 @@ namespace Boidsish {
 			float GetUchimuraC() const { return _uchimuraC; }
 			float GetUchimuraB() const { return _uchimuraB; }
 
+			void SetAutoTuneEnabled(bool enabled) { _autoTuneEnabled = enabled; }
+			bool IsAutoTuneEnabled() const { return _autoTuneEnabled; }
+			void SetAutoTuneConstraints(float minC, float maxC, float targetB) {
+				_minContrast = minC; _maxContrast = maxC; _targetBrightness = targetB;
+			}
+			float GetMinContrast() const { return _minContrast; }
+			float GetMaxContrast() const { return _maxContrast; }
+			float GetTargetBrightness() const { return _targetBrightness; }
+
+			void SetCdlParams(const glm::vec3& slope, const glm::vec3& offset, const glm::vec3& power, float saturation) {
+				_cdlSlope = slope; _cdlOffset = offset; _cdlPower = power; _cdlSaturation = saturation;
+			}
+			glm::vec3 GetCdlSlope() const { return _cdlSlope; }
+			glm::vec3 GetCdlOffset() const { return _cdlOffset; }
+			glm::vec3 GetCdlPower() const { return _cdlPower; }
+			float GetCdlSaturation() const { return _cdlSaturation; }
+
+			void SetWhiteBalance(float temp, float tint) { _whiteTemp = temp; _whiteTint = tint; }
+			float GetWhiteTemp() const { return _whiteTemp; }
+			float GetWhiteTint() const { return _whiteTint; }
+
 			void SetNightFactor(float factor) override { _nightFactor = factor; }
 
 			void SetTime(float time) override;
+
+			struct ExposureData {
+				float adaptedLuminance;
+				float targetLuminance;
+				float minExposure;
+				float maxExposure;
+
+				int   useAutoExposure;
+				float centerWeightTightness;
+				glm::vec2 focusPoint;
+
+				float histogramLowCutoff;
+				float histogramHighCutoff;
+				uint32_t workgroupCounter;
+				uint32_t _pad1;
+
+				// Statistics
+				float minLuma;
+				float maxLuma;
+				float avgLuma;
+				float stdDevLuma;
+
+				// EMAs
+				float emaMinLuma;
+				float emaMaxLuma;
+				float emaAvgLuma;
+				float emaStdDevLuma;
+
+				// Auto-tune settings
+				int   autoTuneEnabled;
+				float minContrast;
+				float maxContrast;
+				float targetBrightness;
+
+				// Auto-calculated Uchimura parameters
+				float autoUchimuraP;
+				float autoUchimuraA;
+				float autoUchimuraM;
+				float autoUchimuraL;
+				float autoUchimuraC;
+				float autoUchimuraB;
+				float _pad2;
+				float _pad3;
+
+				// ASC CDL (vec4 for alignment)
+				glm::vec4 cdlSlope;
+				glm::vec4 cdlOffset;
+				glm::vec4 cdlPower;
+				float     cdlSaturation;
+
+				// White Balance
+				float whiteTemp;
+				float whiteTint;
+				float _pad4;
+
+				uint32_t histogram[256];
+			};
 
 		private:
 			void InitializeResources();
@@ -121,6 +199,19 @@ namespace Boidsish {
 			float _uchimuraL = 0.4f;
 			float _uchimuraC = 1.33f;
 			float _uchimuraB = 0.0f;
+
+			bool  _autoTuneEnabled = false;
+			float _minContrast = 0.5f;
+			float _maxContrast = 2.0f;
+			float _targetBrightness = 0.5f;
+
+			glm::vec3 _cdlSlope = glm::vec3(1.0f);
+			glm::vec3 _cdlOffset = glm::vec3(0.0f);
+			glm::vec3 _cdlPower = glm::vec3(1.0f);
+			float     _cdlSaturation = 1.0f;
+
+			float _whiteTemp = 6500.0f;
+			float _whiteTint = 0.0f;
 
 			float _nightFactor = 0.0f;
 			float _lastTime = 0.0f;
