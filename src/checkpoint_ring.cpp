@@ -52,6 +52,7 @@ namespace Boidsish {
 			}
 		} else {
 			glGenVertexArrays(1, &quad_vao_);
+			// GPU_RESOURCE: VBO, quad_vbo_, needs PersistentBuffer (ReadOnly)
 			glGenBuffers(1, &quad_vbo_);
 			glBindVertexArray(quad_vao_);
 			glBindBuffer(GL_ARRAY_BUFFER, quad_vbo_);

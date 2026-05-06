@@ -55,6 +55,7 @@ namespace Boidsish {
 		// Helpers to bind a UBO range based on this state
 		void BindLighting(uint32_t binding_point) const {
 			if (lighting.id != 0) {
+				// GPU_RESOURCE: Binding, lighting.id, needs PersistentBuffer integration
 				glBindBufferRange(GL_UNIFORM_BUFFER, binding_point,
 					lighting.id, lighting.offset, lighting.size);
 			}
@@ -62,6 +63,7 @@ namespace Boidsish {
 
 		void BindTemporal(uint32_t binding_point) const {
 			if (temporal.id != 0) {
+				// GPU_RESOURCE: Binding, temporal.id, needs PersistentBuffer integration
 				glBindBufferRange(GL_UNIFORM_BUFFER, binding_point,
 					temporal.id, temporal.offset, temporal.size);
 			}
@@ -69,6 +71,7 @@ namespace Boidsish {
 
 		void BindVisualEffects(uint32_t binding_point) const {
 			if (visual_effects.id != 0) {
+				// GPU_RESOURCE: Binding, visual_effects.id, needs PersistentBuffer integration
 				glBindBufferRange(GL_UNIFORM_BUFFER, binding_point,
 					visual_effects.id, visual_effects.offset, visual_effects.size);
 			}
@@ -76,6 +79,7 @@ namespace Boidsish {
 
 		void BindFrustum(uint32_t binding_point) const {
 			if (frustum.id != 0) {
+				// GPU_RESOURCE: Binding, frustum.id, needs PersistentBuffer integration
 				glBindBufferRange(GL_UNIFORM_BUFFER, binding_point,
 					frustum.id, frustum.offset, frustum.size);
 			}

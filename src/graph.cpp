@@ -347,6 +347,7 @@ namespace Boidsish {
 			glGenVertexArrays(1, &graph_vao_);
 		glBindVertexArray(graph_vao_);
 		if (graph_vbo_ == 0)
+			// GPU_RESOURCE: VBO, graph_vbo_, needs PersistentBuffer (ReadOnly)
 			glGenBuffers(1, &graph_vbo_);
 		glBindBuffer(GL_ARRAY_BUFFER, graph_vbo_);
 		glBufferData(

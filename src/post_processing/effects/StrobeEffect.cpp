@@ -40,6 +40,7 @@ namespace Boidsish {
 			glGenFramebuffers(1, &strobe_fbo_);
 			glBindFramebuffer(GL_FRAMEBUFFER, strobe_fbo_);
 
+			// GPU_RESOURCE: Texture, strobe_texture_, needs PersistentTexture (ReadOnly)
 			glGenTextures(1, &strobe_texture_);
 			glBindTexture(GL_TEXTURE_2D, strobe_texture_);
 			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, width, height, 0, GL_RGBA, GL_FLOAT, NULL);

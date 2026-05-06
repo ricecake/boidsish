@@ -50,6 +50,7 @@ namespace Boidsish {
 	void HiZManager::CreateTexture() {
 		mip_count_ = 1 + static_cast<int>(std::floor(std::log2(std::max(hiz_width_, hiz_height_))));
 
+		// GPU_RESOURCE: Texture, hiz_texture_, needs PersistentTexture (ReadOnly)
 		glGenTextures(1, &hiz_texture_);
 		glBindTexture(GL_TEXTURE_2D, hiz_texture_);
 		glTexStorage2D(GL_TEXTURE_2D, mip_count_, GL_R32F, hiz_width_, hiz_height_);

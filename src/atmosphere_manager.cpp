@@ -33,6 +33,7 @@ namespace Boidsish {
 	}
 
 	void AtmosphereManager::CreateTextures() {
+		// GPU_RESOURCE: Texture, _transmittanceLUT, needs PersistentTexture (ReadOnly)
 		// Transmittance LUT: 256x64 RGBA32F
 		glGenTextures(1, &_transmittanceLUT);
 		glBindTexture(GL_TEXTURE_2D, _transmittanceLUT);
@@ -42,6 +43,7 @@ namespace Boidsish {
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
+		// GPU_RESOURCE: Texture, _multiScatteringLUT, needs PersistentTexture (ReadOnly)
 		// MultiScattering LUT: 32x32 RGBA32F
 		glGenTextures(1, &_multiScatteringLUT);
 		glBindTexture(GL_TEXTURE_2D, _multiScatteringLUT);
@@ -51,6 +53,7 @@ namespace Boidsish {
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
+		// GPU_RESOURCE: Texture, _skyViewLUT, needs PersistentTexture (ReadOnly)
 		// SkyView LUT: 192x108 RGBA32F
 		glGenTextures(1, &_skyViewLUT);
 		glBindTexture(GL_TEXTURE_2D, _skyViewLUT);
@@ -60,6 +63,7 @@ namespace Boidsish {
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
+		// GPU_RESOURCE: Texture, _aerialPerspectiveLUT, needs PersistentTexture (ReadOnly)
 		// AerialPerspective LUT: 32x32x32 RGBA32F (Volume)
 		glGenTextures(1, &_aerialPerspectiveLUT);
 		glBindTexture(GL_TEXTURE_3D, _aerialPerspectiveLUT);
@@ -70,6 +74,7 @@ namespace Boidsish {
 		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
 
+		// GPU_RESOURCE: Texture, _cloudShadowMap, needs PersistentTexture (ReadOnly)
 		// Cloud Shadow Map: 512x512 R16F
 		glGenTextures(1, &_cloudShadowMap);
 		glBindTexture(GL_TEXTURE_2D, _cloudShadowMap);
@@ -79,6 +84,7 @@ namespace Boidsish {
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
+		// GPU_RESOURCE: SSBO, _shCoeffsBuffer, needs PersistentBuffer (Persistent, Coherent, ReadOnly)
 		// SH Coefficients SSBO: 9 x vec4
 		glGenBuffers(1, &_shCoeffsBuffer);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, _shCoeffsBuffer);

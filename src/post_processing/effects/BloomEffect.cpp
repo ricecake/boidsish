@@ -52,6 +52,7 @@ namespace Boidsish {
 
 			// Mipmapped Bloom Texture
 			_numMips = 5;
+			// GPU_RESOURCE: Texture, _bloomTexture, needs PersistentTexture (ReadOnly)
 			glGenTextures(1, &_bloomTexture);
 			glBindTexture(GL_TEXTURE_2D, _bloomTexture);
 			glTexStorage2D(GL_TEXTURE_2D, _numMips, GL_RGBA16F, _width / 2, _height / 2);
@@ -73,6 +74,7 @@ namespace Boidsish {
 
 			// Auto-exposure SSBO
 			if (_exposureSsbo == 0) {
+				// GPU_RESOURCE: SSBO, _exposureSsbo, needs PersistentBuffer (Persistent, Coherent, ReadOnly)
 				glGenBuffers(1, &_exposureSsbo);
 				glBindBuffer(GL_SHADER_STORAGE_BUFFER, _exposureSsbo);
 				ExposureData initialData = {};

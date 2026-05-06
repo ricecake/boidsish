@@ -23,6 +23,7 @@ namespace Boidsish {
 		glGenVertexArrays(1, &vao_);
 		glBindVertexArray(vao_);
 
+		// GPU_RESOURCE: VBO, tess_vbo_, needs PersistentBuffer (ReadOnly)
 		// Create VBO for tessellated vertices
 		glGenBuffers(1, &tess_vbo_);
 		glBindBuffer(GL_ARRAY_BUFFER, tess_vbo_);
@@ -41,6 +42,7 @@ namespace Boidsish {
 		glEnableVertexAttribArray(2);
 		glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, 12 * sizeof(float), (void*)(8 * sizeof(float)));
 
+		// GPU_RESOURCE: EBO, tess_ebo_, needs PersistentBuffer (ReadOnly)
 		// Create EBO with static index pattern for tube segments (triangle strip-like via triangles)
 		glGenBuffers(1, &tess_ebo_);
 		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, tess_ebo_);
@@ -70,16 +72,19 @@ namespace Boidsish {
 
 		glBindVertexArray(0);
 
+		// GPU_RESOURCE: SSBO, points_ssbo_, needs PersistentBuffer (Persistent, Coherent, ReadOnly)
 		// Create SSBOs for points and metadata
 		glGenBuffers(1, &points_ssbo_);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, points_ssbo_);
 		glBufferData(GL_SHADER_STORAGE_BUFFER, INITIAL_POINTS_CAPACITY * 8 * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
 		points_capacity_ = INITIAL_POINTS_CAPACITY;
 
+		// GPU_RESOURCE: SSBO, instances_ssbo_, needs PersistentBuffer (Persistent, Coherent, ReadOnly)
 		glGenBuffers(1, &instances_ssbo_);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, instances_ssbo_);
 		glBufferData(GL_SHADER_STORAGE_BUFFER, 200 * 12 * sizeof(uint32_t), nullptr, GL_DYNAMIC_DRAW);
 
+		// GPU_RESOURCE: SSBO, spine_ssbo_, needs PersistentBuffer (Persistent, Coherent, ReadOnly)
 		// Create Spine SSBO
 		glGenBuffers(1, &spine_ssbo_);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, spine_ssbo_);

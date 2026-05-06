@@ -772,6 +772,7 @@ namespace Boidsish {
 				logger::WARNING("Hi-Z occlusion culling shader failed to compile - disabling");
 				enable_hiz_culling_ = false;
 			}
+			// GPU_RESOURCE: SSBO, occlusion_visibility_ssbo_, needs PersistentBuffer (Persistent, Coherent, ReadOnly)
 			// Create visibility SSBO (GPU-only buffer, written by compute, read by vertex shader)
 			glGenBuffers(1, &occlusion_visibility_ssbo_);
 			glBindBuffer(GL_SHADER_STORAGE_BUFFER, occlusion_visibility_ssbo_);

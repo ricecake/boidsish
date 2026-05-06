@@ -10,6 +10,7 @@ namespace Boidsish {
 
 	Buffer::Buffer(GLenum target): target_(target) {
 		if (glfwGetCurrentContext() != nullptr) {
+			// GPU_RESOURCE: Buffer, id_, needs PersistentBuffer (ReadOnly)
 			glGenBuffers(1, &id_);
 		}
 	}

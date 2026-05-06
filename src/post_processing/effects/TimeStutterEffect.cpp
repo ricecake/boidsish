@@ -49,6 +49,7 @@ namespace Boidsish {
 			history_fbo_.assign(kFrameHistoryCount, 0);
 			history_texture_.assign(kFrameHistoryCount, 0);
 			glGenFramebuffers(kFrameHistoryCount, history_fbo_.data());
+			// GPU_RESOURCE: TextureArray, history_texture_, needs PersistentTexture (ReadOnly)
 			glGenTextures(kFrameHistoryCount, history_texture_.data());
 
 			for (int i = 0; i < kFrameHistoryCount; ++i) {

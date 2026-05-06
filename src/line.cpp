@@ -71,6 +71,7 @@ namespace Boidsish {
 			}
 		} else {
 			glGenVertexArrays(1, &line_vao_);
+			// GPU_RESOURCE: VBO, line_vbo_, needs PersistentBuffer (ReadOnly)
 			glGenBuffers(1, &line_vbo_);
 
 			glBindVertexArray(line_vao_);

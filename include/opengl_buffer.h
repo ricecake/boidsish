@@ -79,6 +79,7 @@ namespace Boidsish {
 				return;
 
 			Bind();
+			// GPU_RESOURCE: Buffer, this->id_, needs PersistentBuffer (ReadOnly)
 			glBufferData(target_, data_.size() * sizeof(T), data_.data(), usage_);
 			is_dirty_ = false;
 		}
@@ -126,6 +127,7 @@ namespace Boidsish {
 		 */
 		void BindBase(GLuint index) const {
 			this->Sync();
+			// GPU_RESOURCE: Binding, this->id_, needs PersistentBuffer integration
 			glBindBufferBase(this->target_, index, this->id_);
 		}
 	};
@@ -143,6 +145,7 @@ namespace Boidsish {
 		 */
 		void BindBase(GLuint index) const {
 			this->Sync();
+			// GPU_RESOURCE: Binding, this->id_, needs PersistentBuffer integration
 			glBindBufferBase(this->target_, index, this->id_);
 		}
 	};

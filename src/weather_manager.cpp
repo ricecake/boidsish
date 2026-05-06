@@ -482,12 +482,14 @@ namespace Boidsish {
 
 		// Lazy initialization of GPU resources
 		if (wind_data_ubo_ == 0) {
+			// GPU_RESOURCE: UBO, wind_data_ubo_, needs PersistentBuffer (Persistent, Coherent, ReadOnly)
 			glGenBuffers(1, &wind_data_ubo_);
 			glBindBuffer(GL_UNIFORM_BUFFER, wind_data_ubo_);
 			glBufferData(GL_UNIFORM_BUFFER, sizeof(WindDataUbo), nullptr, GL_DYNAMIC_DRAW);
 			glBindBuffer(GL_UNIFORM_BUFFER, 0);
 		}
 		if (wind_texture_ == 0) {
+			// GPU_RESOURCE: Texture, wind_texture_, needs PersistentTexture (ReadOnly)
 			glGenTextures(1, &wind_texture_);
 			glBindTexture(GL_TEXTURE_2D, wind_texture_);
 			// The integrated wind texture at higher resolution
@@ -499,6 +501,7 @@ namespace Boidsish {
 			glBindTexture(GL_TEXTURE_2D, 0);
 		}
 		if (lbm_wind_texture_ == 0) {
+			// GPU_RESOURCE: Texture, lbm_wind_texture_, needs PersistentTexture (ReadOnly)
 			glGenTextures(1, &lbm_wind_texture_);
 			glBindTexture(GL_TEXTURE_2D, lbm_wind_texture_);
 			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, lbm_simulator_->GetWidth(), lbm_simulator_->GetHeight(), 0, GL_RGBA, GL_FLOAT, nullptr);

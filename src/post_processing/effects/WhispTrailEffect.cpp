@@ -34,6 +34,7 @@ namespace Boidsish {
 			glDeleteTextures(2, trail_texture_);
 
 			glGenFramebuffers(2, trail_fbo_);
+			// GPU_RESOURCE: Texture, trail_texture_, needs PersistentTexture (ReadOnly)
 			glGenTextures(2, trail_texture_);
 
 			for (int i = 0; i < 2; ++i) {

@@ -38,6 +38,7 @@ namespace Boidsish {
 		// Create shadow depth shader
 		shadow_shader_ = std::make_shared<Shader>("shaders/shadow_depth.vert", "shaders/shadow_depth.frag");
 
+		// GPU_RESOURCE: TextureArray, shadow_map_array_, needs PersistentTexture (ReadOnly)
 		// Create shadow map texture array
 		glGenTextures(1, &shadow_map_array_);
 		glBindTexture(GL_TEXTURE_2D_ARRAY, shadow_map_array_);
@@ -79,6 +80,7 @@ namespace Boidsish {
 
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
+		// GPU_RESOURCE: UBO, shadow_ubo_, needs PersistentBuffer (Persistent, Coherent, ReadOnly)
 		// Create shadow UBO for light-space matrices
 		// Layout:
 		// mat4 lightSpaceMatrices[kMaxShadowMaps]

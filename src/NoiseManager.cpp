@@ -47,6 +47,7 @@ namespace Boidsish {
 			logger::ERROR("Failed to compile phasor noise generation compute shader");
 		}
 
+		// GPU_RESOURCE: Texture3D, noise_texture_, needs PersistentTexture (ReadOnly)
 		glGenTextures(1, &noise_texture_);
 		glBindTexture(GL_TEXTURE_3D, noise_texture_);
 		glTexImage3D(GL_TEXTURE_3D, 0, GL_RGBA32F, size_, size_, size_, 0, GL_RGBA, GL_FLOAT, nullptr);
@@ -56,6 +57,7 @@ namespace Boidsish {
 		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_REPEAT);
 
+		// GPU_RESOURCE: Texture3D, curl_noise_texture_, needs PersistentTexture (ReadOnly)
 		glGenTextures(1, &curl_noise_texture_);
 		glBindTexture(GL_TEXTURE_3D, curl_noise_texture_);
 		glTexImage3D(GL_TEXTURE_3D, 0, GL_RGBA32F, size_, size_, size_, 0, GL_RGBA, GL_FLOAT, nullptr);
@@ -65,6 +67,7 @@ namespace Boidsish {
 		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_REPEAT);
 
+		// GPU_RESOURCE: Texture, blue_noise_texture_, needs PersistentTexture (ReadOnly)
 		glGenTextures(1, &blue_noise_texture_);
 		glBindTexture(GL_TEXTURE_2D, blue_noise_texture_);
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, blue_noise_size_, blue_noise_size_, 0, GL_RGBA, GL_FLOAT, nullptr);
@@ -73,6 +76,7 @@ namespace Boidsish {
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
+		// GPU_RESOURCE: Texture3D, extra_noise_texture_, needs PersistentTexture (ReadOnly)
 		glGenTextures(1, &extra_noise_texture_);
 		glBindTexture(GL_TEXTURE_3D, extra_noise_texture_);
 		glTexImage3D(GL_TEXTURE_3D, 0, GL_RGBA32F, size_, size_, size_, 0, GL_RGBA, GL_FLOAT, nullptr);
@@ -82,6 +86,7 @@ namespace Boidsish {
 		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_REPEAT);
 
+		// GPU_RESOURCE: Texture, phasor_noise_texture_, needs PersistentTexture (ReadOnly)
 		glGenTextures(1, &phasor_noise_texture_);
 		glBindTexture(GL_TEXTURE_2D, phasor_noise_texture_);
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, blue_noise_size_, blue_noise_size_, 0, GL_RGBA, GL_HALF_FLOAT, nullptr);

@@ -111,8 +111,10 @@ public:
 		for (int i = 0; i < num_buffers_; ++i) {
 			const auto& b = buffers_[i];
 			if (b.use_range) {
+				// GPU_RESOURCE: Binding, b.buffer, needs PersistentBuffer integration
 				glBindBufferRange(b.target, b.binding_point, b.buffer, b.offset, b.size);
 			} else {
+				// GPU_RESOURCE: Binding, b.buffer, needs PersistentBuffer integration
 				glBindBufferBase(b.target, b.binding_point, b.buffer);
 			}
 		}

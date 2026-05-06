@@ -36,6 +36,7 @@ namespace Boidsish {
 	}
 
 	void SceneCompositor::CreateTextures() {
+		// GPU_RESOURCE: Texture, color_tex_, needs PersistentTexture (ReadOnly)
 		// Color attachment
 		glGenTextures(1, &color_tex_);
 		glBindTexture(GL_TEXTURE_2D, color_tex_);
@@ -48,6 +49,7 @@ namespace Boidsish {
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, color_tex_, 0);
 
+		// GPU_RESOURCE: Texture, refraction_tex_, needs PersistentTexture (ReadOnly)
 		// Refraction texture (not attached to FBO, copied into via glCopyTexSubImage2D)
 		glGenTextures(1, &refraction_tex_);
 		glBindTexture(GL_TEXTURE_2D, refraction_tex_);
@@ -61,6 +63,7 @@ namespace Boidsish {
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
+		// GPU_RESOURCE: Texture, velocity_tex_, needs PersistentTexture (ReadOnly)
 		// Velocity attachment (RG = velocity, B = roughness, A = metallic)
 		glGenTextures(1, &velocity_tex_);
 		glBindTexture(GL_TEXTURE_2D, velocity_tex_);
@@ -69,6 +72,7 @@ namespace Boidsish {
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, velocity_tex_, 0);
 
+		// GPU_RESOURCE: Texture, normal_tex_, needs PersistentTexture (ReadOnly)
 		// Normal attachment
 		glGenTextures(1, &normal_tex_);
 		glBindTexture(GL_TEXTURE_2D, normal_tex_);
@@ -77,6 +81,7 @@ namespace Boidsish {
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D, normal_tex_, 0);
 
+		// GPU_RESOURCE: Texture, albedo_tex_, needs PersistentTexture (ReadOnly)
 		// Albedo attachment
 		glGenTextures(1, &albedo_tex_);
 		glBindTexture(GL_TEXTURE_2D, albedo_tex_);
@@ -85,6 +90,7 @@ namespace Boidsish {
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT3, GL_TEXTURE_2D, albedo_tex_, 0);
 
+		// GPU_RESOURCE: Texture, depth_tex_, needs PersistentTexture (ReadOnly)
 		// Depth-stencil texture
 		glGenTextures(1, &depth_tex_);
 		glBindTexture(GL_TEXTURE_2D, depth_tex_);

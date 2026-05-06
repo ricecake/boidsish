@@ -63,6 +63,7 @@ namespace Boidsish {
 			glUniformBlockBinding(render_shader_->ID, shadows_idx, Constants::UboBinding::Shadows());
 		}
 
+		// GPU_RESOURCE: SSBO, ssbo_, needs PersistentBuffer (Persistent, Coherent, ReadOnly)
 		glGenBuffers(1, &ssbo_);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_);
 		std::vector<MeshExplosionFragment> initial_data(kMaxFragments);
