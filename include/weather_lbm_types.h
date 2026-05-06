@@ -17,9 +17,10 @@ namespace Boidsish {
     struct LbmCell {
         float f[9];      // D2Q9 distributions
         float temperature;
-        float aerosol;
+        glm::vec4 aerosols; // 4 distinct aerosol types (e.g. Dust, Pollen, Smoke, Mist)
         float humidity;
         float vy;        // Vertical velocity
+        float viscosityDamping; // EMA of chaos-driven viscosity modulation
     };
 
     /**
@@ -27,9 +28,8 @@ namespace Boidsish {
      */
     struct LbmCellConfig {
         float drag;
-        float aerosolReleaseRate;
+        glm::vec4 aerosolReleaseRates;
         float sensibleHeatFactor;
-        glm::vec3 aerosolColor;
         float terrainHeight;
     };
 
@@ -80,7 +80,8 @@ namespace Boidsish {
     struct LbmSnapshot {
         PhysicallyBasedWeatherOutput output;
         std::vector<glm::vec4>       windData;
-        std::vector<glm::vec4>       scalarData; // x: temp, y: humidity, z: pressure, w: aerosol
+        std::vector<glm::vec4>       scalarData; // x: temp, y: humidity, z: pressure, w: viscosityDamping
+        std::vector<glm::vec4>       aerosolData; // x,y,z,w: concentrations of 4 aerosol types
         WindDataUbo                  uboMetadata;
         glm::ivec2                   gridAnchor;
         bool                         valid = false;

@@ -16,6 +16,9 @@ layout(binding = [[WIND_TEXTURE_BINDING]]) uniform sampler2D u_windTexture;
 #ifdef WIND_COMPUTE
 layout(binding = [[LBM_WIND_TEXTURE_BINDING]]) uniform sampler2D u_lbmWindTexture;
 #endif
+
+layout(binding = [[WEATHER_SCALARS_BINDING]]) uniform sampler2D u_weatherScalarsTexture;
+layout(binding = [[WEATHER_AEROSOLS_BINDING]]) uniform sampler2D u_weatherAerosolsTexture;
 #endif
 
 /**
@@ -29,6 +32,32 @@ vec3 getWindAtPosition(vec3 worldPos) {
 	vec2 uv = gridCoord / vec2(u_windOriginSize.y, u_windOriginSize.w);
 
 	return texture(u_windTexture, uv).xyz;
+}
+
+/**
+ * Get weather scalars (x: temperature, y: humidity, z: pressure, w: viscosityDamping)
+ */
+vec4 getWeatherScalarsAtPosition(vec3 worldPos) {
+	if (u_windOriginSize.y <= 0) return vec4(0.0);
+
+	float gridSpacing = u_windParams.x;
+	vec2 gridCoord = (worldPos.xz / gridSpacing) - vec2(u_windOriginSize.xz);
+	vec2 uv = gridCoord / vec2(u_windOriginSize.y, u_windOriginSize.w);
+
+	return texture(u_weatherScalarsTexture, uv);
+}
+
+/**
+ * Get weather aerosols (x, y, z, w: concentrations of 4 aerosol types)
+ */
+vec4 getWeatherAerosolsAtPosition(vec3 worldPos) {
+	if (u_windOriginSize.y <= 0) return vec4(0.0);
+
+	float gridSpacing = u_windParams.x;
+	vec2 gridCoord = (worldPos.xz / gridSpacing) - vec2(u_windOriginSize.xz);
+	vec2 uv = gridCoord / vec2(u_windOriginSize.y, u_windOriginSize.w);
+
+	return texture(u_weatherAerosolsTexture, uv);
 }
 
 #ifdef WIND_COMPUTE

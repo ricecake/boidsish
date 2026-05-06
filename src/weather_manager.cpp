@@ -71,6 +71,12 @@ namespace Boidsish {
 		if (lbm_wind_texture_ != 0) {
 			glDeleteTextures(1, &lbm_wind_texture_);
 		}
+		if (lbm_scalar_texture_ != 0) {
+			glDeleteTextures(1, &lbm_scalar_texture_);
+		}
+		if (lbm_aerosol_texture_ != 0) {
+			glDeleteTextures(1, &lbm_aerosol_texture_);
+		}
 	}
 
 	void WeatherManager::SetTarget(WeatherAttribute attr, float target) {
@@ -498,6 +504,26 @@ namespace Boidsish {
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 			glBindTexture(GL_TEXTURE_2D, 0);
 		}
+		if (lbm_scalar_texture_ == 0) {
+			glGenTextures(1, &lbm_scalar_texture_);
+			glBindTexture(GL_TEXTURE_2D, lbm_scalar_texture_);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, lbm_simulator_->GetWidth(), lbm_simulator_->GetHeight(), 0, GL_RGBA, GL_FLOAT, nullptr);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+			glBindTexture(GL_TEXTURE_2D, 0);
+		}
+		if (lbm_aerosol_texture_ == 0) {
+			glGenTextures(1, &lbm_aerosol_texture_);
+			glBindTexture(GL_TEXTURE_2D, lbm_aerosol_texture_);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, lbm_simulator_->GetWidth(), lbm_simulator_->GetHeight(), 0, GL_RGBA, GL_FLOAT, nullptr);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+			glBindTexture(GL_TEXTURE_2D, 0);
+		}
 		if (lbm_wind_texture_ == 0) {
 			glGenTextures(1, &lbm_wind_texture_);
 			glBindTexture(GL_TEXTURE_2D, lbm_wind_texture_);
@@ -555,6 +581,36 @@ namespace Boidsish {
 				GL_FLOAT,
 				wind_data.data()
 			);
+
+			// Update LBM Scalar Texture
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::WeatherScalars());
+			glBindTexture(GL_TEXTURE_2D, lbm_scalar_texture_);
+			glTexSubImage2D(
+				GL_TEXTURE_2D,
+				0,
+				0,
+				0,
+				ubo.originSize.y,
+				ubo.originSize.w,
+				GL_RGBA,
+				GL_FLOAT,
+				latest_snapshot_.scalarData.data()
+			);
+
+			// Update LBM Aerosol Texture
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::WeatherAerosols());
+			glBindTexture(GL_TEXTURE_2D, lbm_aerosol_texture_);
+			glTexSubImage2D(
+				GL_TEXTURE_2D,
+				0,
+				0,
+				0,
+				ubo.originSize.y,
+				ubo.originSize.w,
+				GL_RGBA,
+				GL_FLOAT,
+				latest_snapshot_.aerosolData.data()
+			);
 		}
 
 		// Dispatch Wind Integration Compute Shader
@@ -586,6 +642,12 @@ namespace Boidsish {
 		// Final Binding for users of getWindAtPosition
 		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::WindData());
 		glBindTexture(GL_TEXTURE_2D, wind_texture_);
+
+		// Bind Scalar and Aerosol textures for general usage
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::WeatherScalars());
+		glBindTexture(GL_TEXTURE_2D, lbm_scalar_texture_);
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::WeatherAerosols());
+		glBindTexture(GL_TEXTURE_2D, lbm_aerosol_texture_);
 	}
 
 	void WeatherManager::Update(float deltaTime, float totalTime, const glm::vec3& cameraPos, float timeOfDay) {
