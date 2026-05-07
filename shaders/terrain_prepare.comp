@@ -6,6 +6,21 @@ layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 #include "frustum.glsl"
 #include "temporal_data.glsl"
 
+#ifndef TERRAIN_DATA_BLOCK
+#define TERRAIN_DATA_BLOCK
+layout(std140, binding = [[TERRAIN_DATA_BINDING]]) uniform TerrainData {
+	ivec4 u_originSize;    // x, z, size, is_bound
+	vec4  u_terrainParams; // chunkSize, worldScale
+};
+#endif
+
+#ifndef TERRAIN_GRID_DEFINED
+	#define TERRAIN_GRID_DEFINED
+uniform isampler2D u_chunkGrid;
+#endif
+
+uniform sampler2D  u_maxHeightGrid;
+
 struct PatchMetrics {
 	float min_y;
 	float max_y;
@@ -214,6 +229,47 @@ void main() {
 				// In standard GL depth (0=near, 1=far), nearestDepth > hizDepth means patch is occluded
 				if (hizDepth > 0.0001 && nearestDepth > hizDepth) {
 					return; // Occluded
+				}
+			}
+		}
+	}
+
+	// TERRAIN-ON-TERRAIN OCCLUSION CHECK
+	// Check if this patch is occluded by the terrain itself using the hierarchical max-height grid
+	if (u_originSize.w > 0) {
+		float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
+
+		// Conservative horizon check:
+		// If our patch is entirely below the max height of chunks between us and the camera, it might be occluded.
+		// We can sample a few points along the view vector in the grid.
+		vec3  viewVec = u_viewPos - patchCenter;
+		float distToCam = length(viewVec);
+		vec2  viewDir2D = normalize(viewVec.xz);
+
+		// Step along the ray towards camera (max 4 steps for performance)
+		float stepSize = scaledChunkSize * 1.5;
+		int numSteps = clamp(int(distToCam / stepSize), 0, 4);
+
+		for (int i = 1; i <= numSteps; i++) {
+			vec2  samplePos = patchCenter.xz + viewDir2D * (float(i) * stepSize);
+			ivec2 sampleGridCoord = ivec2(floor(samplePos / scaledChunkSize)) - u_originSize.xy;
+
+			if (sampleGridCoord.x >= 0 && sampleGridCoord.x < u_originSize.z &&
+				sampleGridCoord.y >= 0 && sampleGridCoord.y < u_originSize.z) {
+
+				float blockerHeight = texelFetch(u_maxHeightGrid, sampleGridCoord, 0).r;
+
+				// If a chunk in front of us is higher than our patch's max height PLUS the camera's height,
+				// and we are far enough away, we are likely occluded.
+				// Simple check: if blockers are significantly above the line of sight.
+				float patchMaxY = metrics.max_y;
+
+				// Line of sight height at sample point
+				float t = (float(i) * stepSize) / distToCam;
+				float losHeight = mix(patchMaxY, u_viewPos.y, t);
+
+				if (blockerHeight > losHeight + (2.0 * u_worldScale)) {
+					return; // Likely occluded by terrain
 				}
 			}
 		}
