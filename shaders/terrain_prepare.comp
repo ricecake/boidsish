@@ -16,10 +16,10 @@ layout(std140, binding = [[TERRAIN_DATA_BINDING]]) uniform TerrainData {
 
 #ifndef TERRAIN_GRID_DEFINED
 	#define TERRAIN_GRID_DEFINED
-uniform isampler2D u_chunkGrid;
+layout(binding = [[TERRAIN_CHUNK_GRID_BINDING]]) uniform isampler2D u_chunkGrid;
 #endif
 
-uniform sampler2D  u_maxHeightGrid;
+layout(binding = [[TERRAIN_MAX_HEIGHT_BINDING]]) uniform sampler2D  u_maxHeightGrid;
 
 struct PatchMetrics {
 	float min_y;
@@ -84,7 +84,7 @@ uniform vec3  u_viewPos;
 uniform vec3  u_viewDir;
 
 // Hi-Z occlusion culling uniforms
-uniform sampler2D u_hizTexture;
+layout(binding = [[HIZ_TEXTURE_BINDING]]) uniform sampler2D u_hizTexture;
 uniform ivec2     u_hizSize;
 uniform int       u_hizMipCount;
 uniform float     u_screenExpansion;
@@ -217,7 +217,8 @@ void main() {
 			if (screenSize.x * screenSize.y < 0.5) {
 				vec2 pixelSize = screenSize * vec2(u_hizSize);
 				float maxPixelDim = max(pixelSize.x, pixelSize.y);
-				int mipLevel = clamp(int(ceil(log2(max(maxPixelDim, 1.0) / 2.0))), 0, u_hizMipCount - 1);
+				// Selecting a mip level where the projected rect is approx 1x1 texel
+				int mipLevel = clamp(int(ceil(log2(max(maxPixelDim, 1.0)))), 0, u_hizMipCount - 1);
 
 				// Conservative occlusion check: farthest depth in Hi-Z region vs nearest depth of patch
 				float hizDepth = 0.0;
@@ -234,8 +235,8 @@ void main() {
 		}
 	}
 
-	// TERRAIN-ON-TERRAIN OCCLUSION CHECK
-	// Check if this patch is occluded by the terrain itself using the hierarchical max-height grid
+	// TERRAIN-ON-TERRAIN OCCLUSION CHECK (DISABLED: non-conservative)
+	/*
 	if (u_originSize.w > 0) {
 		float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
 
@@ -274,6 +275,7 @@ void main() {
 			}
 		}
 	}
+	*/
 
 	// Calculate tessellation levels
 	float level = getPatchTessLevel(patchCenter, radius, metrics);
