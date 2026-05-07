@@ -58,6 +58,12 @@ namespace Boidsish {
 					if (ImGui::Checkbox("Wireframe", &wireframe_enabled)) {
 						config.SetBool("artistic_effect_wireframe", wireframe_enabled);
 					}
+
+					bool artistic_gbuffer_enabled = config.GetAppSettingBool("artistic_effect_gbuffer", false);
+					if (ImGui::Checkbox("Artistic G-Buffer", &artistic_gbuffer_enabled)) {
+						config.SetBool("artistic_effect_gbuffer", artistic_gbuffer_enabled);
+						m_visualizer.TogglePostProcessingEffect("Artistic G-Buffer", artistic_gbuffer_enabled);
+					}
 				}
 
 				// 2. Post-Processing Effects (from PostProcessingWidget)

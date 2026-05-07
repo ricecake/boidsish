@@ -40,6 +40,7 @@
 #include "persistent_buffer.h"
 #include "polyhedron.h"
 #include "post_processing/PostProcessingManager.h"
+#include "post_processing/effects/ArtisticGbufferEffect.h"
 #include "post_processing/effects/AtmosphereEffect.h"
 #include "post_processing/effects/BloomEffect.h"
 #include "post_processing/effects/FilmGrainEffect.h"
@@ -1002,6 +1003,10 @@ namespace Boidsish {
 
 				// --- Shockwave Manager ---
 				shockwave_manager->Initialize(render_width, render_height);
+
+				auto artistic_gbuffer_effect = std::make_shared<PostProcessing::ArtisticGbufferEffect>();
+				artistic_gbuffer_effect->SetEnabled(false);
+				post_processing_manager_->AddEffect(artistic_gbuffer_effect);
 
 				auto unified_ss_effect = std::make_shared<PostProcessing::UnifiedScreenSpaceEffect>();
 				unified_ss_effect->SetEnabled(true);
