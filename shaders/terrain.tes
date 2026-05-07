@@ -25,11 +25,11 @@ out float      vRidgeMap;
 out float      vSubstrate;
 
 // Heightmap texture array: R=height, GBA=normal
-uniform sampler2DArray uHeightmap;
+layout(binding = [[BAKED_HEIGHTMAP_BINDING]]) uniform sampler2DArray uHeightmap;
 // Baked params: R=erosionDelta, G=ridgeMap, B=substrate, A=waterMask
-uniform sampler2DArray uBakedParams;
+layout(binding = [[BAKED_PARAMS_BINDING]]) uniform sampler2DArray uBakedParams;
 // Biome map: R=lowIdx, G=t, B=bakeFlag
-uniform sampler2DArray u_biomeMap;
+layout(binding = [[TERRAIN_BIOME_MAP_BINDING]]) uniform sampler2DArray u_biomeMap;
 
 uniform float uChunkSize;
 uniform float uRawChunkSize;
