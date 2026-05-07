@@ -1,4 +1,4 @@
-#version 430 core
+#version 460 core
 
 layout(local_size_x = [[PATCHES_PER_CHUNK_SIDE]], local_size_y = [[PATCHES_PER_CHUNK_SIDE]], local_size_z = 1) in;
 

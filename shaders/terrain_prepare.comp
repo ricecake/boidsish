@@ -1,4 +1,4 @@
-#version 430 core
+#version 460 core
 
 layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
@@ -46,13 +46,11 @@ struct DrawElementsIndirectCommand {
 	uint baseInstance;
 };
 
-// Removed writeonly to allow atomicAdd
 layout(std430, binding = [[TERRAIN_PATCH_INDIRECT_BINDING]]) buffer TerrainPatchIndirect {
-	uint count; // atomic counter for commands
+	uint total_patches; // Optional tracker, or just pad
 	uint _pad[3];
-	DrawElementsIndirectCommand commands[];
+	DrawElementsIndirectCommand command; // Single command
 };
-
 struct InstanceData {
 	vec4 world_offset_and_slice; // xyz = world offset, w = texture slice index
 	vec4 bounds;                 // xy = min/max Y for this chunk
@@ -191,7 +189,7 @@ void main() {
 	}
 
 	// OCCLUSION CULLING
-	if (u_enableOcclusionCulling) {
+	if (true) {
 		vec3 aabbMin = vec3(chunkOffset.x + float(patchX) * patchSize, metrics.min_y, chunkOffset.z + float(patchY) * patchSize);
 		vec3 aabbMax = vec3(chunkOffset.x + float(patchX+1) * patchSize, metrics.max_y, chunkOffset.z + float(patchY+1) * patchSize);
 
@@ -225,7 +223,8 @@ void main() {
 	float level = getPatchTessLevel(patchCenter, radius, metrics);
 
 	// Visibility confirmed, allocate draw call
-	uint outIdx = atomicAdd(count, 1);
+	// uint outIdx = atomicAdd(count, 1);
+	uint outIdx = atomicAdd(command.instanceCount, 1);
 
 	// Patch Draw Data
 	PatchDrawData draw;
@@ -242,13 +241,4 @@ void main() {
 	tess.inner[0] = level;
 	tess.inner[1] = level;
 	patchTessLevels[outIdx] = tess;
-
-	// Indirect Command
-	DrawElementsIndirectCommand cmd;
-	cmd.count = 4; // 4 indices for GL_PATCHES
-	cmd.instanceCount = 1;
-	cmd.firstIndex = 0;
-	cmd.baseVertex = 0;
-	cmd.baseInstance = 0;
-	commands[outIdx] = cmd;
 }

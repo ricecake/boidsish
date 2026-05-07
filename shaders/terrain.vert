@@ -29,7 +29,7 @@ void main() {
 	// Extract camera forward vector
 	viewForward = vec3(-view[0][2], -view[1][2], -view[2][2]);
 
-	int drawID = gl_DrawID;
+	int drawID = gl_InstanceID;
 	PatchDrawData draw = patchDrawData[drawID];
 
 	// aPos is in [0, patch_size]
