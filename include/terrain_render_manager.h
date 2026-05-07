@@ -21,6 +21,8 @@ namespace Boidsish {
 	class ServiceLocator;
 	struct Frustum;
 
+	static constexpr size_t kMaxBakesPerFrame = 6;
+
 	/**
 	 * @brief High-performance instanced terrain rendering with heightmap lookup.
 	 *

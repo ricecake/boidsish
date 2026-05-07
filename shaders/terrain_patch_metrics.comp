@@ -119,9 +119,11 @@ void main() {
 
 	float numSamples = float((patchSize + 1) * (patchSize + 1));
 
+	// Add conservative vertical padding to account for tessellation/displacement
+	float padding = 2.0;
 	PatchMetrics metrics;
-	metrics.min_y = minH;
-	metrics.max_y = maxH;
+	metrics.min_y = minH - padding;
+	metrics.max_y = maxH + padding;
 	metrics.avg_curvature = totalCurvature / numSamples;
 	metrics.avg_roughness = totalRoughness / numSamples;
 	metrics.avg_grass_density = totalGrassDensity / numSamples;

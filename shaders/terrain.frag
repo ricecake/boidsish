@@ -281,6 +281,9 @@ void main() {
 		return;
 	}
 
+	// FragColor = vec4(smoothstep(0, 2, tessFactor), smoothstep(2, 4, tessFactor), smoothstep(4, 8, tessFactor), 1.0);
+	// return;
+
 	// Distance Fade -- precalc
 	vec3  norm = normalize(Normal);
 	float baseFreq = 0.1 / worldScale;

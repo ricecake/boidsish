@@ -1030,6 +1030,24 @@ namespace Boidsish {
 			return;
 		}
 
+		// Temporal skip: reuse previous frame's results when nothing meaningful changed.
+		// needs_prep_ is set when chunks are registered/unregistered.
+		if (!needs_prep_ && last_prep_visible_chunk_count_ == visible_instances_.size()) {
+			float cam_move_sq = glm::dot(
+				last_camera_pos_ - last_prep_camera_pos_,
+				last_camera_pos_ - last_prep_camera_pos_
+			);
+			float patch_size_world = Constants::Class::Terrain::PatchSize() * last_world_scale_;
+			float threshold = patch_size_world * 0.4f;
+
+			bool camera_static = cam_move_sq < (threshold * threshold);
+			bool tess_unchanged = (tess_quality_multiplier == last_prep_tess_multiplier_);
+
+			if (camera_static && tess_unchanged) {
+				return;
+			}
+		}
+
 		// Advance triple buffers for patch rendering
 		patch_draw_data_pb_->AdvanceFrame();
 		patch_tess_levels_pb_->AdvanceFrame();
@@ -1252,9 +1270,14 @@ namespace Boidsish {
 			std::lock_guard<std::recursive_mutex> lock(mutex_);
 			if (bake_queue_.empty())
 				return;
-			tasks = bake_queue_;
-			// tasks = std::move(bake_queue_);
-			// bake_queue_.clear();
+
+			if (force_sync || bake_queue_.size() <= kMaxBakesPerFrame) {
+				tasks = std::move(bake_queue_);
+				bake_queue_.clear();
+			} else {
+				tasks.assign(bake_queue_.begin(), bake_queue_.begin() + kMaxBakesPerFrame);
+				bake_queue_.erase(bake_queue_.begin(), bake_queue_.begin() + kMaxBakesPerFrame);
+			}
 		}
 
 		if (world_scale <= 0.0f)
@@ -1332,11 +1355,6 @@ namespace Boidsish {
 
 		// Update horizon map for these chunks
 		UpdateHorizonMap(tasks);
-
-		{
-			std::lock_guard<std::recursive_mutex> lock(mutex_);
-			bake_queue_.clear();
-		}
 
 		// Synchronize to ensure initial loads are fully baked before rendering
 		if (force_sync) {

@@ -110,14 +110,18 @@ float getPatchTessLevel(vec3 center, float radius, PatchMetrics metrics) {
 	float waterImportance = 1.0 - smoothstep(0.0, 2.0 * u_worldScale, center.y);
 
 	// COMBINED IMPORTANCE SCORE [0, 1]
-	float importance = distImportance * (1.0 + silhouetteImportance * 4.0) * (1.0 + detailImportance * 4.0);
+	// float importance = distImportance * (1.0 + silhouetteImportance * 4.0) * (1.0 + detailImportance * 4.0);
+	float importance = distImportance * max(silhouetteImportance * 4.0, detailImportance * 4.0);
+
 	importance = clamp(max(importance, waterImportance), 0.0, 1.0);
+
+	// return mix(u_tessLevelMin, u_tessLevelMax, importance);
 
 	float level;
 	if (importance > 0.85)
 		level = u_tessLevelMax;
 	else if (importance > 0.70)
-		level = floor(u_tessLevelMax * 0.75);
+		level = u_tessLevelMax * 0.75;
 	else if (importance > 0.50)
 		level = u_tessLevelMax * 0.5;
 	else if (importance > 0.30)
@@ -203,7 +207,8 @@ void main() {
 	float radius = patchSize * 0.707 + (metrics.max_y - metrics.min_y) * 0.5;
 
 	// FRUSTUM CULLING
-	if (!isSphereInFrustum(patchCenter, radius + 5.0 * u_worldScale)) {
+	// Increased margin to prevent edge flickering
+	if (!isSphereInFrustum(patchCenter, radius + 10.0 * u_worldScale)) {
 		return;
 	}
 
@@ -233,8 +238,9 @@ void main() {
 				hizDepth = max(hizDepth, textureLod(u_hizTexture, screenRect.xw, float(mipLevel)).r);
 				hizDepth = max(hizDepth, textureLod(u_hizTexture, screenRect.zw, float(mipLevel)).r);
 
-				// In standard GL depth (0=near, 1=far), nearestDepth > hizDepth means patch is occluded
-				if (hizDepth > 0.0001 && nearestDepth > hizDepth) {
+				// In standard GL depth (0=near, 1=far), nearestDepth > hizDepth means patch is occluded.
+				// Added a small bias to hizDepth to be more conservative.
+				if (hizDepth > 0.0001 && nearestDepth > hizDepth + 0.0005) {
 					float visibility = marchOcclusion(u_viewPos, viewVec, distToCam);
 
 					if (visibility <= 0.0) {

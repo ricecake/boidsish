@@ -119,7 +119,8 @@ namespace Boidsish {
 
 		const float max_view_dist_sq = (dynamic_view_distance * scaled_chunk_size) *
 			(dynamic_view_distance * scaled_chunk_size);
-		const float immediate_load_dist_sq = (5.0f * scaled_chunk_size) * (5.0f * scaled_chunk_size);
+		const float immediate_load_dist = std::max(5.0f, dynamic_view_distance * 0.5f) * scaled_chunk_size;
+		const float immediate_load_dist_sq = immediate_load_dist * immediate_load_dist;
 
 		for (int x = current_chunk_x - dynamic_view_distance; x <= current_chunk_x + dynamic_view_distance; ++x) {
 			for (int z = current_chunk_z - dynamic_view_distance; z <= current_chunk_z + dynamic_view_distance; ++z) {
@@ -138,8 +139,8 @@ namespace Boidsish {
 				std::pair<int, int> chunk_coord = {x, z};
 				if (chunk_cache_.find(chunk_coord) == chunk_cache_.end() &&
 				    pending_chunks_.find(chunk_coord) == pending_chunks_.end()) {
-					// Add a safety margin (one chunk size) to frustum culling to prevent edge flickering
-					bool in_frustum = isChunkInFrustum(frustum, x, z, scaled_chunk_size, max_h, scaled_chunk_size);
+					// Add a safety margin (two chunk sizes) to frustum culling to prevent edge flickering
+					bool in_frustum = isChunkInFrustum(frustum, x, z, scaled_chunk_size, max_h, 2.0f * scaled_chunk_size);
 
 					// Only load if in frustum OR very close to camera
 					if (in_frustum || dist_sq < immediate_load_dist_sq) {
@@ -205,8 +206,9 @@ namespace Boidsish {
 						key.second * scaled_chunk_size + scaled_chunk_size * 0.5f
 					);
 					float dist_sq = glm::dot(chunk_center - camera_pos_2d, chunk_center - camera_pos_2d);
+					// Add a safety margin (two chunk sizes) to frustum culling
 					bool  in_frustum =
-						isChunkInFrustum(frustum, key.first, key.second, scaled_chunk_size, max_h, scaled_chunk_size);
+						isChunkInFrustum(frustum, key.first, key.second, scaled_chunk_size, max_h, 2.0f * scaled_chunk_size);
 
 					// Register if in frustum OR if close enough to preload
 					if (in_frustum || dist_sq < preload_distance_sq) {
@@ -249,8 +251,9 @@ namespace Boidsish {
 		}
 
 		// 4. Unload chunks
-		// Add a one-chunk buffer (hysteresis) to prevent loading/unloading thrashing
-		const float unload_limit_dist = (dynamic_view_distance + kUnloadDistanceBuffer_ + 1.0f) * scaled_chunk_size;
+		// Add a buffer (hysteresis) to prevent loading/unloading thrashing.
+		// View distance is used for loading, and unload_limit is used for unloading.
+		const float unload_limit_dist = (dynamic_view_distance + kUnloadDistanceBuffer_ + 2.0f) * scaled_chunk_size;
 		const float unload_limit_dist_sq = unload_limit_dist * unload_limit_dist;
 
 		std::vector<std::pair<int, int>> to_remove;
@@ -315,7 +318,7 @@ namespace Boidsish {
 
 			for (auto const& [key, val] : chunk_cache_) {
 				if (val &&
-				    isChunkInFrustum(frustum, key.first, key.second, scaled_chunk_size, max_h, scaled_chunk_size)) {
+				    isChunkInFrustum(frustum, key.first, key.second, scaled_chunk_size, max_h, 2.0f * scaled_chunk_size)) {
 					glm::vec2 chunk_center(
 						key.first * scaled_chunk_size + scaled_chunk_size * 0.5f,
 						key.second * scaled_chunk_size + scaled_chunk_size * 0.5f
