@@ -164,8 +164,8 @@ void spawnBlade(GridCell cell, int slice, vec3 patchOffset, float patchSize) {
 
     if (biomeProps[pickedBiome].enabled == 0) return;
 
-    float fadeIn = (cell.index == 0) ? 1.0 : smoothstep(lower, cell.minRange, dist);
-    float fadeOut = 1.0 - smoothstep(cell.maxRange, upper, dist);
+    float fadeIn = (cell.index == -1) ? 1.0 : smoothstep(lower, cell.minRange + 0.001, dist);
+    float fadeOut = 1.0 - smoothstep(cell.maxRange, upper + 0.001, dist);
     float densityCurve = fadeIn * fadeOut;
 
     int bx = cellID.x & 7;
@@ -218,8 +218,8 @@ void main() {
     vec2 patchMin = patchOffset.xz;
     vec2 patchMax = patchOffset.xz + vec2(patchSize);
 
-    ivec2 cellMin = ivec2(floor(patchMin / scale));
-    ivec2 cellMax = ivec2(floor(patchMax / scale));
+    ivec2 cellMin = ivec2(floor(patchMin / scale + 0.0001));
+    ivec2 cellMax = ivec2(floor(patchMax / scale - 0.0001));
 
     // Calculate total cells in this LOD for the patch
     int cellsX = (cellMax.x - cellMin.x) + 1;
@@ -229,7 +229,7 @@ void main() {
     // Grid properties for this LOD
     float baseRange = 20.0 * uWorldScale;
     float maxRange = baseRange * exp(float(lodIndex));
-    float minRange = (lodIndex <= 0) ? 0.0 : baseRange * exp(float(lodIndex - 1));
+    float minRange = (lodIndex <= -1) ? 0.0 : baseRange * exp(float(lodIndex - 1));
     float lower = minRange;
     float upper = baseRange * exp(float(lodIndex+1));
 

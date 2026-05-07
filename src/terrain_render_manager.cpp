@@ -703,22 +703,6 @@ namespace Boidsish {
 			UpdateTerrainShadowMap(sun_dir, world_scale);
 		}
 
-		// Check if we can skip preparation based on frustum stability
-		uint32_t frustum_hash = 0;
-		for (int i = 0; i < 6; ++i) {
-			const auto& p = frustum.planes[i];
-			uint32_t h;
-			memcpy(&h, &p.distance, 4);
-			frustum_hash ^= h;
-		}
-
-		if (!grid_dirty_ && !needs_prep_ &&
-			frustum_hash == last_prep_frustum_hash_ &&
-			glm::distance(camera_pos, last_prep_camera_pos_) < 0.1f * world_scale) {
-			return;
-		}
-
-		last_prep_frustum_hash_ = frustum_hash;
 		visible_instances_.clear();
 		visible_instances_.reserve(chunks_.size());
 

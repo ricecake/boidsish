@@ -221,19 +221,22 @@ namespace Boidsish {
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainPatchVisibility(), renderManager->GetPatchVisibilitySSBO());
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainPatchMetrics(), renderManager->GetPatchMetricsSSBO());
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::GrassTasks(), grass_tasks_ssbo_);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::IndirectionBuffer(), renderManager->GetInstanceBuffer());
 
         pre_pass_shader_->setVec3("uCameraPos", camera.pos());
         pre_pass_shader_->setFloat("uWorldScale", terrainGen.GetWorldScale());
+        pre_pass_shader_->setInt("u_numChunks", (int)renderManager->GetVisibleChunkCount());
 
         uint32_t zero = 0;
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, grass_tasks_ssbo_);
         glBufferSubData(GL_SHADER_STORAGE_BUFFER, 12, sizeof(uint32_t), &zero); // zero out taskCount
 
-        int grid_size = Constants::Class::Terrain::SliceMapSize();
         int numPatchesPerChunk = Constants::Class::Terrain::PatchesPerChunk();
-        int total_patches = grid_size * grid_size * numPatchesPerChunk;
-        glDispatchCompute((total_patches + 63) / 64, 1, 1);
-        glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+        int total_patches = (int)renderManager->GetVisibleChunkCount() * numPatchesPerChunk;
+        if (total_patches > 0) {
+            glDispatchCompute((total_patches + 63) / 64, 1, 1);
+            glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+        }
 
         // Fixup: Set dispatch counts
         fixup_shader_->use();

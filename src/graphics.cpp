@@ -2522,7 +2522,7 @@ namespace Boidsish {
 			packets_synced_ = true;
 		}
 
-		void UpdateSystems() {
+		void UpdateSystems(const FrameData& frame) {
 			// Calculate frustum for terrain generation and decor placement
 			if (terrain_generator) {
 				float world_scale_val = terrain_generator->GetWorldScale();
@@ -2617,7 +2617,7 @@ namespace Boidsish {
 				}
 
 				terrain_render_manager->PrepareForRender(
-					generator_frustum,
+					frame.camera_frustum,
 					camera.pos(),
 					world_scale,
 					render_state_.lighting.id,
@@ -3639,7 +3639,7 @@ namespace Boidsish {
 		impl->PrepareUBOs();
 		impl->packets_synced_ = false;
 		impl->GenerateRenderPacketsAsync();
-		impl->UpdateSystems();
+		impl->UpdateSystems(frame);
 
 		if (impl->weather_manager && impl->weather_manager->IsEnabled()) {
 			impl->weather_manager->UpdateWindUbo(
