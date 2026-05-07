@@ -98,7 +98,9 @@ namespace Boidsish {
 			GLintptr         lighting_ubo_offset = 0,
 			GLsizeiptr       lighting_ubo_size = 0,
 			float            day_time = -1.0f,
-			const glm::vec3& sun_dir = glm::vec3(0.0f)
+			const glm::vec3& sun_dir = glm::vec3(0.0f),
+			GLintptr         temporal_ubo_offset = 0,
+			GLintptr         frustum_ubo_offset = 0
 		);
 
 		/**
