@@ -703,6 +703,22 @@ namespace Boidsish {
 			UpdateTerrainShadowMap(sun_dir, world_scale);
 		}
 
+		// Check if we can skip preparation based on frustum stability
+		uint32_t frustum_hash = 0;
+		for (int i = 0; i < 6; ++i) {
+			const auto& p = frustum.planes[i];
+			uint32_t h;
+			memcpy(&h, &p.distance, 4);
+			frustum_hash ^= h;
+		}
+
+		if (!grid_dirty_ && !needs_prep_ &&
+			frustum_hash == last_prep_frustum_hash_ &&
+			glm::distance(camera_pos, last_prep_camera_pos_) < 0.1f * world_scale) {
+			return;
+		}
+
+		last_prep_frustum_hash_ = frustum_hash;
 		visible_instances_.clear();
 		visible_instances_.reserve(chunks_.size());
 
@@ -1022,6 +1038,116 @@ namespace Boidsish {
 		}
 	}
 
+	void TerrainRenderManager::DispatchPreparePatches(float tess_quality_multiplier) {
+		PROJECT_PROFILE_SCOPE("TerrainRenderManager::DispatchPreparePatches");
+		std::lock_guard<std::recursive_mutex> lock(mutex_);
+
+		if (visible_instances_.empty() || !patch_prepare_shader_ || !patch_prepare_shader_->isValid()) {
+			return;
+		}
+
+		// Advance triple buffers for patch rendering
+		patch_draw_data_pb_->AdvanceFrame();
+		patch_tess_levels_pb_->AdvanceFrame();
+		patch_indirect_pb_->AdvanceFrame();
+
+		int current_idx = patch_draw_data_pb_->GetCurrentBufferIndex();
+		if (patch_fences_[current_idx]) {
+			glClientWaitSync(patch_fences_[current_idx], GL_SYNC_FLUSH_COMMANDS_BIT, GL_TIMEOUT_IGNORED);
+			glDeleteSync(patch_fences_[current_idx]);
+			patch_fences_[current_idx] = 0;
+		}
+
+		// Clear visibility buffer
+		size_t max_patches = max_chunks_ * Constants::Class::Terrain::PatchesPerChunk();
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, patch_visibility_ssbo_);
+		glClearBufferData(GL_SHADER_STORAGE_BUFFER, GL_R32UI, GL_RED_INTEGER, GL_UNSIGNED_INT, nullptr);
+
+		patch_prepare_shader_->use();
+
+		uint32_t* indirect_data = reinterpret_cast<uint32_t*>(patch_indirect_pb_->GetFrameDataPtr());
+		indirect_data[4] = 4; // count (4 vertices per quad)
+		indirect_data[5] = 0; // instanceCount (zeroed for compute shader to accumulate)
+		indirect_data[6] = 0; // firstIndex
+		indirect_data[7] = 0; // baseVertex
+		indirect_data[8] = 0; // baseInstance
+
+		glMemoryBarrier(GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT);
+
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainPatchMetrics(), patch_metrics_ssbo_);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainPatchVisibility(), patch_visibility_ssbo_);
+		patch_draw_data_pb_->BindRange(Constants::SsboBinding::TerrainPatchDrawData());
+		patch_tess_levels_pb_->BindRange(Constants::SsboBinding::TerrainPatchTessLevels());
+
+		glBindBufferRange(
+			GL_SHADER_STORAGE_BUFFER,
+			Constants::SsboBinding::TerrainPatchIndirect(),
+			patch_indirect_pb_->GetBufferId(),
+			patch_indirect_pb_->GetFrameOffset(),
+			patch_indirect_pb_->GetTotalSize() / 3
+		);
+
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::IndirectionBuffer(), instance_vbo_);
+		if (temporal_data_ubo_ != 0) {
+			if (temporal_data_ubo_size_ > 0) {
+				glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::TemporalData(),
+					temporal_data_ubo_, temporal_data_ubo_offset_, temporal_data_ubo_size_);
+			} else {
+				glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::TemporalData(), temporal_data_ubo_);
+			}
+		}
+		if (frustum_ubo_ != 0) {
+			if (frustum_ubo_size_ > 0) {
+				glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::FrustumData(),
+					frustum_ubo_, frustum_ubo_offset_, frustum_ubo_size_);
+			} else {
+				glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::FrustumData(), frustum_ubo_);
+			}
+		}
+
+		patch_prepare_shader_->setInt("u_numChunks", static_cast<int>(visible_instances_.size()));
+		patch_prepare_shader_->setFloat("u_tessLevelMax", 8.0f);
+		patch_prepare_shader_->setFloat("u_tessLevelMin", 2.0f);
+		patch_prepare_shader_->setFloat("u_tessQualityMultiplier", tess_quality_multiplier);
+		patch_prepare_shader_->setFloat("u_worldScale", last_world_scale_);
+		patch_prepare_shader_->setVec3("u_viewPos", last_camera_pos_);
+		// View direction is derived from temporal data or frustum normally, but can be set here
+		// patch_prepare_shader_->setVec3("u_viewDir", viewDir);
+
+		// Bind Hi-Z and set occlusion uniforms if enabled
+		auto& reg = GpuResourceRegistry::Instance();
+		GLuint hizTex = reg.GetTexture(Constants::TextureUnit::HiZ());
+		if (hizTex != 0) {
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::HiZ());
+			glBindTexture(GL_TEXTURE_2D, hizTex);
+			patch_prepare_shader_->setInt("u_hizTexture", Constants::TextureUnit::HiZ());
+
+			GLint w, h, mips;
+			glGetTextureLevelParameteriv(hizTex, 0, GL_TEXTURE_WIDTH, &w);
+			glGetTextureLevelParameteriv(hizTex, 0, GL_TEXTURE_HEIGHT, &h);
+			mips = 1 + static_cast<GLint>(std::floor(std::log2(std::max(w, h))));
+
+			glUniform2i(glGetUniformLocation(patch_prepare_shader_->ID, "u_hizSize"), w, h);
+			patch_prepare_shader_->setInt("u_hizMipCount", mips);
+			patch_prepare_shader_->setFloat("u_screenExpansion", 4.0f);
+			patch_prepare_shader_->setBool("u_enableOcclusionCulling", true);
+		} else {
+			patch_prepare_shader_->setBool("u_enableOcclusionCulling", false);
+		}
+
+		int totalPatches = static_cast<int>(visible_instances_.size() * Constants::Class::Terrain::PatchesPerChunk());
+		glDispatchCompute((totalPatches + 63) / 64, 1, 1);
+		glMemoryBarrier(GL_COMMAND_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
+
+		patch_fences_[current_idx] = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+
+		last_prep_camera_pos_ = last_camera_pos_;
+		last_prep_world_scale_ = last_world_scale_;
+		last_prep_tess_multiplier_ = tess_quality_multiplier;
+		last_prep_visible_chunk_count_ = visible_instances_.size();
+		needs_prep_ = false;
+	}
+
 	void TerrainRenderManager::Render(
 		Shader&                         shader,
 		const glm::mat4&                view,
@@ -1037,113 +1163,11 @@ namespace Boidsish {
 			return;
 		}
 
-		glm::vec3 viewDir = glm::vec3(-view[0][2], -view[1][2], -view[2][2]);
-
-		// Advance triple buffers for patch rendering
-		patch_draw_data_pb_->AdvanceFrame();
-		patch_tess_levels_pb_->AdvanceFrame();
-		patch_indirect_pb_->AdvanceFrame();
-
-		int current_idx = patch_draw_data_pb_->GetCurrentBufferIndex();
-		if (patch_fences_[current_idx]) {
-			glClientWaitSync(patch_fences_[current_idx], GL_SYNC_FLUSH_COMMANDS_BIT, GL_TIMEOUT_IGNORED);
-			glDeleteSync(patch_fences_[current_idx]);
-			patch_fences_[current_idx] = 0;
-		}
-
-		if (patch_prepare_shader_ && patch_prepare_shader_->isValid()) {
-			PROJECT_PROFILE_SCOPE("TerrainRenderManager::DispatchPreparePatches");
-
-			// Clear visibility buffer
-			size_t max_patches = max_chunks_ * Constants::Class::Terrain::PatchesPerChunk();
-			glBindBuffer(GL_SHADER_STORAGE_BUFFER, patch_visibility_ssbo_);
-			glClearBufferData(GL_SHADER_STORAGE_BUFFER, GL_R32UI, GL_RED_INTEGER, GL_UNSIGNED_INT, nullptr);
-
-			patch_prepare_shader_->use();
-
-			uint32_t* indirect_data = reinterpret_cast<uint32_t*>(patch_indirect_pb_->GetFrameDataPtr());
-			indirect_data[4] = 4; // count (4 vertices per quad)
-			indirect_data[5] = 0; // instanceCount (zeroed for compute shader to accumulate)
-			indirect_data[6] = 0; // firstIndex
-			indirect_data[7] = 0; // baseVertex
-			indirect_data[8] = 0; // baseInstance
-
-			glMemoryBarrier(GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT);
-
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainPatchMetrics(), patch_metrics_ssbo_);
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainPatchVisibility(), patch_visibility_ssbo_);
-			patch_draw_data_pb_->BindRange(Constants::SsboBinding::TerrainPatchDrawData());
-			patch_tess_levels_pb_->BindRange(Constants::SsboBinding::TerrainPatchTessLevels());
-
-			glBindBufferRange(
-				GL_SHADER_STORAGE_BUFFER,
-				Constants::SsboBinding::TerrainPatchIndirect(),
-				patch_indirect_pb_->GetBufferId(),
-				patch_indirect_pb_->GetFrameOffset(),
-				patch_indirect_pb_->GetTotalSize() / 3
-			);
-
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::IndirectionBuffer(), instance_vbo_);
-			if (temporal_data_ubo_ != 0) {
-				if (temporal_data_ubo_size_ > 0) {
-					glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::TemporalData(),
-						temporal_data_ubo_, temporal_data_ubo_offset_, temporal_data_ubo_size_);
-				} else {
-					glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::TemporalData(), temporal_data_ubo_);
-				}
-			}
-			if (frustum_ubo_ != 0) {
-				if (frustum_ubo_size_ > 0) {
-					glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::FrustumData(),
-						frustum_ubo_, frustum_ubo_offset_, frustum_ubo_size_);
-				} else {
-					glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::FrustumData(), frustum_ubo_);
-				}
-			}
-
-			patch_prepare_shader_->setInt("u_numChunks", static_cast<int>(visible_instances_.size()));
-			patch_prepare_shader_->setFloat("u_tessLevelMax", 8.0f);
-			patch_prepare_shader_->setFloat("u_tessLevelMin", 2.0f);
-			patch_prepare_shader_->setFloat("u_tessQualityMultiplier", tess_quality_multiplier);
-			patch_prepare_shader_->setFloat("u_worldScale", last_world_scale_);
-			patch_prepare_shader_->setVec3("u_viewPos", last_camera_pos_);
-			patch_prepare_shader_->setVec3("u_viewDir", viewDir);
-
-			// Bind Hi-Z and set occlusion uniforms if enabled
-			auto& reg = GpuResourceRegistry::Instance();
-			GLuint hizTex = reg.GetTexture(Constants::TextureUnit::HiZ());
-			if (hizTex != 0) {
-				glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::HiZ());
-				glBindTexture(GL_TEXTURE_2D, hizTex);
-				patch_prepare_shader_->setInt("u_hizTexture", Constants::TextureUnit::HiZ());
-
-				GLint w, h, mips;
-				glGetTextureLevelParameteriv(hizTex, 0, GL_TEXTURE_WIDTH, &w);
-				glGetTextureLevelParameteriv(hizTex, 0, GL_TEXTURE_HEIGHT, &h);
-				// glGetTextureParameteriv might not reliably return mip count for all texture types/drivers
-				// We'll use a conservative calculation based on dimensions
-				mips = 1 + static_cast<GLint>(std::floor(std::log2(std::max(w, h))));
-
-				glUniform2i(glGetUniformLocation(patch_prepare_shader_->ID, "u_hizSize"), w, h);
-				patch_prepare_shader_->setInt("u_hizMipCount", mips);
-				patch_prepare_shader_->setFloat("u_screenExpansion", 4.0f);
-				patch_prepare_shader_->setBool("u_enableOcclusionCulling", true);
-			} else {
-				patch_prepare_shader_->setBool("u_enableOcclusionCulling", false);
-			}
-
-			int totalPatches = static_cast<int>(visible_instances_.size() * Constants::Class::Terrain::PatchesPerChunk());
-			glDispatchCompute((totalPatches + 63) / 64, 1, 1);
-			glMemoryBarrier(GL_COMMAND_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
-
-			patch_fences_[current_idx] = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
-
-			last_prep_camera_pos_ = last_camera_pos_;
-			last_prep_camera_dir_ = viewDir;
-			last_prep_world_scale_ = last_world_scale_;
-			last_prep_tess_multiplier_ = tess_quality_multiplier;
-			last_prep_visible_chunk_count_ = visible_instances_.size();
-			needs_prep_ = false;
+		// GPU preparation should have already been dispatched in Visualizer::Render
+		// to make visibility results available for the grass system.
+		// If it wasn't, we'll do it now as a fallback.
+		if (needs_prep_) {
+			DispatchPreparePatches(tess_quality_multiplier);
 		}
 
 		// 2. Render visible patches using MDI
