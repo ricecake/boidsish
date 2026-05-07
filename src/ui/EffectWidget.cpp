@@ -251,7 +251,8 @@ namespace Boidsish {
 										"Reinhard II",
 										"Uchimura",
 										"Uncharted 2",
-										"Unreal 3"
+										"Unreal 3",
+										"Debug",
 									};
 									int current_mode = bloom_effect->GetToneMappingMode();
 									if (ImGui::Combo("Mode", &current_mode, modes, IM_ARRAYSIZE(modes))) {
