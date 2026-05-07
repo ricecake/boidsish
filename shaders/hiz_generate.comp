@@ -3,7 +3,7 @@
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
 // Source: previous mip level (or depth buffer for mip 0)
-uniform sampler2D u_srcDepth;
+layout(binding = 0) uniform sampler2D u_srcDepth;
 
 // Destination: current mip level being generated
 layout(r32f, binding = 0) uniform writeonly image2D u_dstMip;

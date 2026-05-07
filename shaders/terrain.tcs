@@ -34,7 +34,7 @@ layout(std430, binding = [[TERRAIN_PATCH_TESS_LEVELS_BINDING]]) readonly buffer 
 };
 
 // Heightmap texture array: R=height, GBA=normal
-uniform sampler2DArray uHeightmap;
+layout(binding = [[BAKED_HEIGHTMAP_BINDING]]) uniform sampler2DArray uHeightmap;
 uniform float          uChunkSize;
 uniform float          uRawChunkSize;
 

@@ -113,8 +113,8 @@ namespace Boidsish {
 		patch_draw_data_pb_ = std::make_unique<PersistentBuffer<PatchDrawData>>(GL_SHADER_STORAGE_BUFFER, max_patches, 3);
 		patch_tess_levels_pb_ = std::make_unique<PersistentBuffer<PatchTessLevels>>(GL_SHADER_STORAGE_BUFFER, max_patches, 3);
 
-		// Indirect buffer needs space for count + commands
-		size_t indirect_size_bytes = sizeof(uint32_t) * 4 + max_patches * sizeof(DrawElementsIndirectCommand);
+		// Indirect buffer needs space for the header (16 bytes) and one DrawElementsIndirectCommand
+		size_t indirect_size_bytes = 16 + sizeof(DrawElementsIndirectCommand);
 		patch_indirect_pb_ = std::make_unique<PersistentBuffer<uint8_t>>(GL_DRAW_INDIRECT_BUFFER, indirect_size_bytes, 3);
 
 		// Create instance buffer first so we can set up VAO attributes
@@ -325,7 +325,7 @@ namespace Boidsish {
 		patch_draw_data_pb_ = std::make_unique<PersistentBuffer<PatchDrawData>>(GL_SHADER_STORAGE_BUFFER, max_patches, 3);
 		patch_tess_levels_pb_ = std::make_unique<PersistentBuffer<PatchTessLevels>>(GL_SHADER_STORAGE_BUFFER, max_patches, 3);
 
-		size_t indirect_size_bytes = sizeof(uint32_t) * 4 + max_patches * sizeof(DrawElementsIndirectCommand);
+		size_t indirect_size_bytes = 16 + sizeof(DrawElementsIndirectCommand);
 		patch_indirect_pb_ = std::make_unique<PersistentBuffer<uint8_t>>(GL_DRAW_INDIRECT_BUFFER, indirect_size_bytes, 3);
 
 		// If we need to resize and texture exists, existing data will be lost
@@ -938,14 +938,10 @@ namespace Boidsish {
 			int dst_w = std::max(1, grid_size >> mip);
 			int dst_h = std::max(1, grid_size >> mip);
 
-			grid_mip_shader_->setInt("u_srcLevel", mip - 1);
-
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, max_height_grid_texture_);
-			// Reset levels to allow access to all levels during mip generation
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, mips - 1);
 			grid_mip_shader_->setInt("u_srcDepth", 0);
+			grid_mip_shader_->setInt("u_srcLevel", mip - 1);
 
 			glBindImageTexture(0, max_height_grid_texture_, mip, GL_FALSE, 0, GL_WRITE_ONLY, GL_R32F);
 
@@ -1090,7 +1086,7 @@ namespace Boidsish {
 			}
 
 			patch_prepare_shader_->setInt("u_numChunks", static_cast<int>(visible_instances_.size()));
-			patch_prepare_shader_->setFloat("u_tessLevelMax", 64.0f);
+			patch_prepare_shader_->setFloat("u_tessLevelMax", 8.0f);
 			patch_prepare_shader_->setFloat("u_tessLevelMin", 2.0f);
 			patch_prepare_shader_->setFloat("u_tessQualityMultiplier", tess_quality_multiplier);
 			patch_prepare_shader_->setFloat("u_worldScale", last_world_scale_);
@@ -1141,7 +1137,7 @@ namespace Boidsish {
 		shader.setVec2("uViewportSize", viewport_size);
 		shader.setMat4("model", glm::mat4(1.0f));
 		shader.setFloat("uTessQualityMultiplier", tess_quality_multiplier);
-		shader.setFloat("uTessLevelMax", 64.0f);
+		shader.setFloat("uTessLevelMax", 8.0f);
 		shader.setFloat("uTessLevelMin", 2.0f);
 		shader.setFloat("uChunkSize", chunk_size_ * last_world_scale_);
 		shader.setFloat("uRawChunkSize", static_cast<float>(chunk_size_));
@@ -1212,7 +1208,7 @@ namespace Boidsish {
 		glDrawElementsIndirect(
 			GL_PATCHES,
 			GL_UNSIGNED_INT,
-			(void*)(uintptr_t)(patch_indirect_pb_->GetFrameOffset() + sizeof(uint32_t) * 4)
+			(void*)(uintptr_t)(patch_indirect_pb_->GetFrameOffset() + 16)
 		);
 
 		glBindVertexArray(0);
