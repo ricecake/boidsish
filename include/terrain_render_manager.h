@@ -169,6 +169,16 @@ namespace Boidsish {
 		GLuint GetBiomeTexture() const { return biome_texture_; }
 
 		/**
+		 * @brief Get the patch visibility SSBO.
+		 */
+		GLuint GetPatchVisibilitySSBO() const { return patch_visibility_ssbo_; }
+
+		/**
+		 * @brief Get the patch metrics SSBO.
+		 */
+		GLuint GetPatchMetricsSSBO() const { return patch_metrics_ssbo_; }
+
+		/**
 		 * @brief Get info about all registered chunks for external use (e.g., decor placement).
 		 * Returns a vector of (world_offset_x, world_offset_z, texture_slice, chunk_size).
 		 * @param world_scale The world scale to apply to the chunk size.
@@ -361,6 +371,7 @@ namespace Boidsish {
 		GLuint probe_ssbo_ = 0;              // SSBO for per-chunk SH probes
 		GLuint bake_ssbo_ = 0;               // SSBO for BakeTask
 		GLuint patch_metrics_ssbo_ = 0;      // SSBO for PatchMetrics
+		GLuint patch_visibility_ssbo_ = 0;   // SSBO for Patch visibility status
 		GLuint temporal_data_ubo_ = 0;
 		GLintptr temporal_data_ubo_offset_ = 0;
 		GLsizeiptr temporal_data_ubo_size_ = 0;

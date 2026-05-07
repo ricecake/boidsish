@@ -66,6 +66,10 @@ layout(std430, binding = [[TERRAIN_PATCH_INDIRECT_BINDING]]) buffer TerrainPatch
 	uint _pad[3];
 	DrawElementsIndirectCommand command; // Single command
 };
+
+layout(std430, binding = [[TERRAIN_PATCH_VISIBILITY_BINDING]]) writeonly buffer TerrainPatchVisibility {
+	uint patchVisibility[]; // 1 if visible, 0 otherwise, indexed by slice * numPatchesPerChunk + localPatchIdx
+};
 struct InstanceData {
 	vec4 world_offset_and_slice; // xyz = world offset, w = texture slice index
 	vec4 bounds;                 // xy = min/max Y for this chunk
@@ -289,6 +293,8 @@ void main() {
 	// Visibility confirmed, allocate draw call
 	// uint outIdx = atomicAdd(count, 1);
 	uint outIdx = atomicAdd(command.instanceCount, 1);
+
+	patchVisibility[patchIdx] = 1;
 
 	// Patch Draw Data
 	PatchDrawData draw;

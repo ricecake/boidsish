@@ -110,6 +110,10 @@ namespace Boidsish {
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, patch_metrics_ssbo_);
 		glBufferData(GL_SHADER_STORAGE_BUFFER, max_patches * sizeof(PatchMetrics), nullptr, GL_STATIC_DRAW);
 
+		glGenBuffers(1, &patch_visibility_ssbo_);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, patch_visibility_ssbo_);
+		glBufferData(GL_SHADER_STORAGE_BUFFER, max_patches * sizeof(uint32_t), nullptr, GL_DYNAMIC_DRAW);
+
 		patch_draw_data_pb_ = std::make_unique<PersistentBuffer<PatchDrawData>>(GL_SHADER_STORAGE_BUFFER, max_patches, 3);
 		patch_tess_levels_pb_ = std::make_unique<PersistentBuffer<PatchTessLevels>>(GL_SHADER_STORAGE_BUFFER, max_patches, 3);
 
@@ -195,6 +199,8 @@ namespace Boidsish {
 			glDeleteBuffers(1, &bake_ssbo_);
 		if (patch_metrics_ssbo_)
 			glDeleteBuffers(1, &patch_metrics_ssbo_);
+		if (patch_visibility_ssbo_)
+			glDeleteBuffers(1, &patch_visibility_ssbo_);
 
 		patch_draw_data_pb_.reset();
 		patch_tess_levels_pb_.reset();
@@ -321,6 +327,9 @@ namespace Boidsish {
 		// Resize patch SSBOs
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, patch_metrics_ssbo_);
 		glBufferData(GL_SHADER_STORAGE_BUFFER, max_patches * sizeof(PatchMetrics), nullptr, GL_STATIC_DRAW);
+
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, patch_visibility_ssbo_);
+		glBufferData(GL_SHADER_STORAGE_BUFFER, max_patches * sizeof(uint32_t), nullptr, GL_DYNAMIC_DRAW);
 
 		patch_draw_data_pb_ = std::make_unique<PersistentBuffer<PatchDrawData>>(GL_SHADER_STORAGE_BUFFER, max_patches, 3);
 		patch_tess_levels_pb_ = std::make_unique<PersistentBuffer<PatchTessLevels>>(GL_SHADER_STORAGE_BUFFER, max_patches, 3);
@@ -1044,6 +1053,12 @@ namespace Boidsish {
 
 		if (patch_prepare_shader_ && patch_prepare_shader_->isValid()) {
 			PROJECT_PROFILE_SCOPE("TerrainRenderManager::DispatchPreparePatches");
+
+			// Clear visibility buffer
+			size_t max_patches = max_chunks_ * Constants::Class::Terrain::PatchesPerChunk();
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, patch_visibility_ssbo_);
+			glClearBufferData(GL_SHADER_STORAGE_BUFFER, GL_R32UI, GL_RED_INTEGER, GL_UNSIGNED_INT, nullptr);
+
 			patch_prepare_shader_->use();
 
 			uint32_t* indirect_data = reinterpret_cast<uint32_t*>(patch_indirect_pb_->GetFrameDataPtr());
@@ -1056,6 +1071,7 @@ namespace Boidsish {
 			glMemoryBarrier(GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT);
 
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainPatchMetrics(), patch_metrics_ssbo_);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainPatchVisibility(), patch_visibility_ssbo_);
 			patch_draw_data_pb_->BindRange(Constants::SsboBinding::TerrainPatchDrawData());
 			patch_tess_levels_pb_->BindRange(Constants::SsboBinding::TerrainPatchTessLevels());
 
