@@ -1252,9 +1252,17 @@ namespace Boidsish {
 			std::lock_guard<std::recursive_mutex> lock(mutex_);
 			if (bake_queue_.empty())
 				return;
-			tasks = bake_queue_;
-			// tasks = std::move(bake_queue_);
-			// bake_queue_.clear();
+
+			if (force_sync) {
+				tasks = std::move(bake_queue_);
+				bake_queue_.clear();
+			} else {
+				// Process a maximum of 16 chunks per frame to reduce stuttering
+				const size_t max_bake_per_frame = 16;
+				size_t       count = std::min(bake_queue_.size(), max_bake_per_frame);
+				tasks.assign(bake_queue_.begin(), bake_queue_.begin() + count);
+				bake_queue_.erase(bake_queue_.begin(), bake_queue_.begin() + count);
+			}
 		}
 
 		if (world_scale <= 0.0f)
@@ -1332,11 +1340,6 @@ namespace Boidsish {
 
 		// Update horizon map for these chunks
 		UpdateHorizonMap(tasks);
-
-		{
-			std::lock_guard<std::recursive_mutex> lock(mutex_);
-			bake_queue_.clear();
-		}
 
 		// Synchronize to ensure initial loads are fully baked before rendering
 		if (force_sync) {

@@ -203,7 +203,8 @@ void main() {
 	float radius = patchSize * 0.707 + (metrics.max_y - metrics.min_y) * 0.5;
 
 	// FRUSTUM CULLING
-	if (!isSphereInFrustum(patchCenter, radius + 5.0 * u_worldScale)) {
+	// Increased margin to prevent edge flickering
+	if (!isSphereInFrustum(patchCenter, radius + 10.0 * u_worldScale)) {
 		return;
 	}
 
@@ -233,8 +234,9 @@ void main() {
 				hizDepth = max(hizDepth, textureLod(u_hizTexture, screenRect.xw, float(mipLevel)).r);
 				hizDepth = max(hizDepth, textureLod(u_hizTexture, screenRect.zw, float(mipLevel)).r);
 
-				// In standard GL depth (0=near, 1=far), nearestDepth > hizDepth means patch is occluded
-				if (hizDepth > 0.0001 && nearestDepth > hizDepth) {
+				// In standard GL depth (0=near, 1=far), nearestDepth > hizDepth means patch is occluded.
+				// Added a small bias to hizDepth to be more conservative.
+				if (hizDepth > 0.0001 && nearestDepth > hizDepth + 0.0005) {
 					float visibility = marchOcclusion(u_viewPos, viewVec, distToCam);
 
 					if (visibility <= 0.0) {

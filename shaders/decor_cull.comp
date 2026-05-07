@@ -199,7 +199,8 @@ bool isOccluded(vec3 pos, float radius) {
 	if (hizDepth < 0.0001)
 		return false;
 
-	return nearestDepth > hizDepth;
+	// Added a small bias to account for depth precision and minor temporal artifacts
+	return nearestDepth > hizDepth + 0.0005;
 }
 
 void main() {
@@ -273,7 +274,8 @@ void main() {
 		// not the base. A tree's base can be behind a ridge while the
 		// canopy is visible above it. Only cull if the highest point
 		// is also terrain-occluded.
-		vec3 aabbTop = vec3(aabbCenter.x, u_aabbMax.y, aabbCenter.z);
+		// Added a small bias (2.0) to height to be more conservative.
+		vec3 aabbTop = vec3(aabbCenter.x, u_aabbMax.y + 2.0, aabbCenter.z);
 		vec3 worldTop = vec3(inst.model * vec4(aabbTop, 1.0));
 
 		if (u_lightDir.y > 0.0) {
@@ -281,8 +283,10 @@ void main() {
 			if (isPointInTerrainShadow(worldTop, vec3(0, 1, 0), u_lightDir))
 				return;
 		} else if (u_cameraPos != vec3(0.0)) {
-			// Main pass: skip instances occluded by terrain from camera's perspective
-			if (isOccludedByTerrain(worldTop))
+			// Main pass: skip instances occluded by terrain from camera's perspective.
+			// Conservatively keep instances if they are within a reasonable distance to avoid aggressive culling.
+			float distToCam = distance(u_cameraPos, worldCenter);
+			if (distToCam > 50.0 && isOccludedByTerrain(worldTop))
 				return;
 		}
 
