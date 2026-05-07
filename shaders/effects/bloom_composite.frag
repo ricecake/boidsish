@@ -21,6 +21,7 @@ uniform float uchimuraB;
 
 #include "helpers/tonemapping.glsl"
 #include "types/autoexposure.glsl"
+// #include "lygia/color/vibrance.glsl"
 
 // Planckian locus approximation for temperature to RGB
 vec3 tempToRgb(float temp) {
@@ -88,6 +89,28 @@ void main() {
 			result = applyTonemapping(result, toneMapMode);
 		}
 	}
+
+	// const vec3 a = vec3(0.5, 0.5, 0.5);
+	// const vec3 b = vec3(0.5, 0.5, 0.5);
+	// const vec3 c = vec3(0.8, 0.8, 0.8);
+	// const vec3 d = vec3(0.0, 0.33, 0.67); // Shifts for R, G, B
+
+		// vec3 a = vec3(0.5, 0.5, 0.5);
+		// vec3 b = vec3(0.5, 0.5, 0.5);
+		// vec3 c = vec3(2.0, 1.0, 0.0);
+		// vec3 d = vec3(5.0, 0.2, 0.25); // Shifts for R, G, B
+
+		// vec3 a = vec3(0.5, 0.5, 0.5);
+		// vec3 b = vec3(0.5, 0.5, 0.5);
+		// vec3 c = vec3(2.0, 1.0, 0.0);
+		// vec3 d = vec3(0.50, 0.2, 0.25); // Shifts for R, G, B
+
+
+	// float value = distance(result, vec3(0.5));
+
+	// result = (a + b * cos(6.28318 * (c * (value) + d)));
+
+	// result = vibrance(result, 0.70);
 
 	FragColor = vec4(result, 1.0);
 }

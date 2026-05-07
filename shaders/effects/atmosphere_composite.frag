@@ -65,7 +65,7 @@ void main() {
 	vec3  rayDir = normalize(worldPos - viewPos);
 	float dist = length(worldPos - viewPos);
 
-	if (depth >= 0.99999) {
+	if (depth > 0.999999) {
 		dist = 50000.0 * worldScale;
 	}
 
@@ -135,7 +135,7 @@ void main() {
 	// Combine everything
 	// Colossal objects write depth ~0.99999 — treat them like sky (no aerial perspective
 	// fog, which would completely wash them out at that reconstructed distance)
-	bool isSky = depth >= 0.99999;
+	bool isSky = depth > 0.9999;
 
 	vec3 result;
 	if (!isSky) {
