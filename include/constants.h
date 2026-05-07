@@ -92,6 +92,8 @@ namespace Boidsish {
 				TerrainPatchDrawData = 47,
 				TerrainPatchTessLevels = 48,
 				TerrainPatchIndirect = 49,
+				TerrainPatchVisibility = 50,
+				GrassTasks = 51,
 			};
 		} // namespace Bindings
 
@@ -410,6 +412,14 @@ namespace Boidsish {
 
 			consteval int TerrainPatchIndirect() {
 				return std::to_underlying(Constants::Bindings::Ssbo::TerrainPatchIndirect);
+			}
+
+			consteval int TerrainPatchVisibility() {
+				return std::to_underlying(Constants::Bindings::Ssbo::TerrainPatchVisibility);
+			}
+
+			consteval int GrassTasks() {
+				return std::to_underlying(Constants::Bindings::Ssbo::GrassTasks);
 			}
 		} // namespace SsboBinding
 

@@ -88,7 +88,7 @@ namespace Boidsish {
 		bool HasChunk(std::pair<int, int> chunk_key) const;
 
 		/**
-		 * @brief Perform frustum culling and prepare instance buffer.
+		 * @brief Perform frustum culling and prepare instance buffer (CPU side).
 		 */
 		void PrepareForRender(
 			const Frustum&   frustum,
@@ -102,6 +102,12 @@ namespace Boidsish {
 			GLintptr         temporal_ubo_offset = 0,
 			GLintptr         frustum_ubo_offset = 0
 		);
+
+		/**
+		 * @brief Dispatch GPU preparation of terrain patches.
+		 * Performs frustum and occlusion culling on the GPU.
+		 */
+		void DispatchPreparePatches(float tess_quality_multiplier);
 
 		/**
 		 * @brief Dispatch probe update compute shader.
@@ -167,6 +173,21 @@ namespace Boidsish {
 		 * @brief Get the biome texture array for shader binding.
 		 */
 		GLuint GetBiomeTexture() const { return biome_texture_; }
+
+		/**
+		 * @brief Get the patch visibility SSBO.
+		 */
+		GLuint GetPatchVisibilitySSBO() const { return patch_visibility_ssbo_; }
+
+		/**
+		 * @brief Get the patch metrics SSBO.
+		 */
+		GLuint GetPatchMetricsSSBO() const { return patch_metrics_ssbo_; }
+
+		/**
+		 * @brief Get the instance buffer (ActiveChunks SSBO).
+		 */
+		GLuint GetInstanceBuffer() const { return instance_vbo_; }
 
 		/**
 		 * @brief Get info about all registered chunks for external use (e.g., decor placement).
@@ -361,6 +382,7 @@ namespace Boidsish {
 		GLuint probe_ssbo_ = 0;              // SSBO for per-chunk SH probes
 		GLuint bake_ssbo_ = 0;               // SSBO for BakeTask
 		GLuint patch_metrics_ssbo_ = 0;      // SSBO for PatchMetrics
+		GLuint patch_visibility_ssbo_ = 0;   // SSBO for Patch visibility status
 		GLuint temporal_data_ubo_ = 0;
 		GLintptr temporal_data_ubo_offset_ = 0;
 		GLsizeiptr temporal_data_ubo_size_ = 0;
@@ -427,10 +449,10 @@ namespace Boidsish {
 
 		// For preparation skip optimization
 		glm::vec3 last_prep_camera_pos_{-999999.0f};
-		glm::vec3 last_prep_camera_dir_{0.0f};
 		float     last_prep_world_scale_ = -1.0f;
 		float     last_prep_tess_multiplier_ = -1.0f;
 		size_t    last_prep_visible_chunk_count_ = 0;
+		uint32_t  last_prep_frustum_hash_ = 0;
 		bool      needs_prep_ = true;
 
 		// Eviction callback for notifying TerrainGenerator
