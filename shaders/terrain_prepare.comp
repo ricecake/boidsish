@@ -217,7 +217,8 @@ void main() {
 			if (screenSize.x * screenSize.y < 0.5) {
 				vec2 pixelSize = screenSize * vec2(u_hizSize);
 				float maxPixelDim = max(pixelSize.x, pixelSize.y);
-				int mipLevel = clamp(int(ceil(log2(max(maxPixelDim, 1.0) / 2.0))), 0, u_hizMipCount - 1);
+				// Selecting a mip level where the projected rect is approx 1x1 texel
+				int mipLevel = clamp(int(ceil(log2(max(maxPixelDim, 1.0)))), 0, u_hizMipCount - 1);
 
 				// Conservative occlusion check: farthest depth in Hi-Z region vs nearest depth of patch
 				float hizDepth = 0.0;
@@ -234,8 +235,8 @@ void main() {
 		}
 	}
 
-	// TERRAIN-ON-TERRAIN OCCLUSION CHECK
-	// Check if this patch is occluded by the terrain itself using the hierarchical max-height grid
+	// TERRAIN-ON-TERRAIN OCCLUSION CHECK (DISABLED: non-conservative)
+	/*
 	if (u_originSize.w > 0) {
 		float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
 
@@ -274,6 +275,7 @@ void main() {
 			}
 		}
 	}
+	*/
 
 	// Calculate tessellation levels
 	float level = getPatchTessLevel(patchCenter, radius, metrics);
