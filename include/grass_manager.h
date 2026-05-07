@@ -103,8 +103,11 @@ namespace Boidsish {
         uint32_t grass_props_ubo_ = 0;
         uint32_t grass_instances_ssbo_ = 0;
         uint32_t grass_indirect_buffer_ = 0;
+        uint32_t grass_tasks_ssbo_ = 0;
 
         std::unique_ptr<class ComputeShader> placement_shader_;
+        std::unique_ptr<class ComputeShader> pre_pass_shader_;
+        std::unique_ptr<class ComputeShader> fixup_shader_;
         std::shared_ptr<class Shader> grass_shader_;
 
         struct GrassInstance {
@@ -112,7 +115,13 @@ namespace Boidsish {
             glm::vec4 scale_seed_biome; // x = height, y = width, z = seed, w = biome index
         };
 
+        struct GrassTask {
+            glm::vec4 patch_offset_and_scale; // xyz = world offset, w = patch size
+            glm::vec4 data;                  // x = distance, y = slice, z = lodIndex, w = unused
+        };
+
         static constexpr uint32_t kMaxGrassInstances = 1024 * 1024; // 1M blades
+        static constexpr uint32_t kMaxGrassTasks = 16384;
         glm::vec3 last_camera_pos_{0.0f};
         uint32_t dummy_vao_ = 0;
 

@@ -65,6 +65,8 @@ namespace Boidsish {
 		T::RegisterConstant("TERRAIN_PATCH_DRAW_DATA_BINDING", Constants::SsboBinding::TerrainPatchDrawData());
 		T::RegisterConstant("TERRAIN_PATCH_TESS_LEVELS_BINDING", Constants::SsboBinding::TerrainPatchTessLevels());
 		T::RegisterConstant("TERRAIN_PATCH_INDIRECT_BINDING", Constants::SsboBinding::TerrainPatchIndirect());
+		T::RegisterConstant("TERRAIN_PATCH_VISIBILITY_BINDING", Constants::SsboBinding::TerrainPatchVisibility());
+		T::RegisterConstant("GRASS_TASKS_BINDING", Constants::SsboBinding::GrassTasks());
 
 		// Limits and Sizes
 		T::RegisterConstant("MAX_LIGHTS", Constants::Class::Shadows::MaxLights());
