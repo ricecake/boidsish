@@ -1926,7 +1926,9 @@ namespace Boidsish {
 				static_cast<GLintptr>(render_state_.lighting.offset),
 				static_cast<GLsizeiptr>(render_state_.lighting.size),
 				day_time,
-				sun_dir);
+				sun_dir,
+				static_cast<GLintptr>(render_state_.temporal.offset),
+				static_cast<GLintptr>(render_state_.frustum.offset));
 
 				terrain_render_manager
 					->Render(*Terrain::terrain_shader_, view, proj, viewport_size, clip_plane, effective_quality);

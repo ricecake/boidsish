@@ -669,11 +669,16 @@ namespace Boidsish {
 		GLintptr         lighting_ubo_offset,
 		GLsizeiptr       lighting_ubo_size,
 		float            day_time,
-		const glm::vec3& sun_dir
+		const glm::vec3& sun_dir,
+		GLintptr         temporal_ubo_offset,
+		GLintptr         frustum_ubo_offset
 	) {
 		PROJECT_PROFILE_SCOPE("TerrainRenderManager::PrepareForRender");
 
 		std::lock_guard<std::recursive_mutex> lock(mutex_);
+
+		temporal_data_ubo_offset_ = temporal_ubo_offset;
+		frustum_ubo_offset_ = frustum_ubo_offset;
 
 		// Store camera position and world scale for LRU eviction decisions in RegisterChunk
 		last_camera_pos_ = camera_pos;
