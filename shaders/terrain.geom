@@ -1,4 +1,4 @@
-#version 420 core
+#version 460 core
 
 layout(triangles) in;
 // Max vertices: 4 for triangle wireframe (A-B-C-A) + 6 for 3 normals (2 verts each) = 10
