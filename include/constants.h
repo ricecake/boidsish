@@ -88,6 +88,12 @@ namespace Boidsish {
 				MeshExplosionFragments = 41,
 				TrailGeneratedVBO = 42,
 				AtmosphereSH = 43,
+				TerrainPatchMetrics = 46,
+				TerrainPatchDrawData = 47,
+				TerrainPatchTessLevels = 48,
+				TerrainPatchIndirect = 49,
+				TerrainPatchVisibility = 50,
+				GrassTasks = 51,
 			};
 		} // namespace Bindings
 
@@ -391,6 +397,30 @@ namespace Boidsish {
 			consteval int AtmosphereSH() {
 				return std::to_underlying(Constants::Bindings::Ssbo::AtmosphereSH);
 			}
+
+			consteval int TerrainPatchMetrics() {
+				return std::to_underlying(Constants::Bindings::Ssbo::TerrainPatchMetrics);
+			}
+
+			consteval int TerrainPatchDrawData() {
+				return std::to_underlying(Constants::Bindings::Ssbo::TerrainPatchDrawData);
+			}
+
+			consteval int TerrainPatchTessLevels() {
+				return std::to_underlying(Constants::Bindings::Ssbo::TerrainPatchTessLevels);
+			}
+
+			consteval int TerrainPatchIndirect() {
+				return std::to_underlying(Constants::Bindings::Ssbo::TerrainPatchIndirect);
+			}
+
+			consteval int TerrainPatchVisibility() {
+				return std::to_underlying(Constants::Bindings::Ssbo::TerrainPatchVisibility);
+			}
+
+			consteval int GrassTasks() {
+				return std::to_underlying(Constants::Bindings::Ssbo::GrassTasks);
+			}
 		} // namespace SsboBinding
 
 		namespace General {
@@ -623,6 +653,18 @@ namespace Boidsish {
 
 				consteval int ChunkSizePlus1() {
 					return ChunkSize() + 1;
+				}
+
+				consteval int PatchSize() {
+					return 8;
+				}
+
+				consteval int PatchesPerChunkSide() {
+					return ChunkSize() / PatchSize();
+				}
+
+				consteval int PatchesPerChunk() {
+					return PatchesPerChunkSide() * PatchesPerChunkSide();
 				}
 
 				consteval int DefaultViewDistance() {

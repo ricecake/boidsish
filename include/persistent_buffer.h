@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cassert>
 #include <iostream>
 #include <stdexcept>
@@ -25,15 +26,21 @@ namespace Boidsish {
 		PersistentBuffer(GLenum target, size_t element_count, int num_buffers = 3):
 			target_(target), element_count_(element_count), num_buffers_(num_buffers) {
 
-			// Compute per-frame stride in bytes, aligned for UBOs
+			// Compute per-frame stride in bytes, aligned for all targets.
+			// 256 bytes is a common maximum alignment requirement for UBOs and SSBOs
+			// across different hardware, ensuring glBindBufferRange offsets are always valid.
 			size_t raw_frame_bytes = element_count_ * sizeof(T);
+			GLint  alignment = 256;
 			if (target_ == GL_UNIFORM_BUFFER) {
-				GLint alignment = 256; // safe default
 				glGetIntegerv(GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT, &alignment);
-				aligned_frame_stride_ = ((raw_frame_bytes + alignment - 1) / alignment) * alignment;
-			} else {
-				aligned_frame_stride_ = raw_frame_bytes;
+			} else if (target_ == GL_SHADER_STORAGE_BUFFER) {
+				glGetIntegerv(GL_SHADER_STORAGE_BUFFER_OFFSET_ALIGNMENT, &alignment);
 			}
+
+			// Ensure a minimum alignment of 256 for all triple-buffered segments to be safe
+			alignment = std::max(alignment, 256);
+			aligned_frame_stride_ =
+				((raw_frame_bytes + (size_t)alignment - 1) / (size_t)alignment) * (size_t)alignment;
 
 			size_t total_size = aligned_frame_stride_ * num_buffers_;
 

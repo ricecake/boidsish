@@ -3,6 +3,8 @@
 #include <algorithm>
 
 #include "service_locator.h"
+#include "constants.h"
+#include "gpu_resource_registry.h"
 #include <cmath>
 #include <iostream>
 
@@ -58,6 +60,8 @@ namespace Boidsish {
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 		glBindTexture(GL_TEXTURE_2D, 0);
+
+		GpuResourceRegistry::Instance().PublishTexture(Constants::TextureUnit::HiZ(), hiz_texture_);
 	}
 
 	void HiZManager::DestroyTexture() {
@@ -83,19 +87,16 @@ namespace Boidsish {
 			int dst_w = std::max(1, hiz_width_ >> mip);
 			int dst_h = std::max(1, hiz_height_ >> mip);
 
-			// Set source size uniform
-			glUniform2i(glGetUniformLocation(generate_shader_->ID, "u_srcSize"), src_w, src_h);
-
 			// Bind source texture
 			glActiveTexture(GL_TEXTURE0);
 			if (mip == 0) {
 				// Mip 0: 2x MAX downsample from full-res depth buffer → half-res Hi-Z base
 				glBindTexture(GL_TEXTURE_2D, depthTexture);
+				generate_shader_->setInt("u_srcLevel", 0);
 			} else {
 				// Mip N: 2x MAX downsample from previous Hi-Z mip
 				glBindTexture(GL_TEXTURE_2D, hiz_texture_);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, mip - 1);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, mip - 1);
+				generate_shader_->setInt("u_srcLevel", mip - 1);
 			}
 			generate_shader_->setInt("u_srcDepth", 0);
 

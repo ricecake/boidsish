@@ -61,6 +61,12 @@ namespace Boidsish {
 		T::RegisterConstant("MESH_EXPLOSION_FRAGMENTS_BINDING", Constants::SsboBinding::MeshExplosionFragments());
 		T::RegisterConstant("TRAIL_GENERATED_VBO_BINDING", Constants::SsboBinding::TrailGeneratedVBO());
 		T::RegisterConstant("ATMOSPHERE_SH_BINDING", Constants::SsboBinding::AtmosphereSH());
+		T::RegisterConstant("TERRAIN_PATCH_METRICS_BINDING", Constants::SsboBinding::TerrainPatchMetrics());
+		T::RegisterConstant("TERRAIN_PATCH_DRAW_DATA_BINDING", Constants::SsboBinding::TerrainPatchDrawData());
+		T::RegisterConstant("TERRAIN_PATCH_TESS_LEVELS_BINDING", Constants::SsboBinding::TerrainPatchTessLevels());
+		T::RegisterConstant("TERRAIN_PATCH_INDIRECT_BINDING", Constants::SsboBinding::TerrainPatchIndirect());
+		T::RegisterConstant("TERRAIN_PATCH_VISIBILITY_BINDING", Constants::SsboBinding::TerrainPatchVisibility());
+		T::RegisterConstant("GRASS_TASKS_BINDING", Constants::SsboBinding::GrassTasks());
 
 		// Limits and Sizes
 		T::RegisterConstant("MAX_LIGHTS", Constants::Class::Shadows::MaxLights());
@@ -69,9 +75,13 @@ namespace Boidsish {
 		T::RegisterConstant("MAX_SHOCKWAVES", Constants::Class::Shockwaves::MaxShockwaves());
 		T::RegisterConstant("CHUNK_SIZE", Constants::Class::Terrain::ChunkSize());
 		T::RegisterConstant("CHUNK_SIZE_PLUS_1", Constants::Class::Terrain::ChunkSizePlus1());
+		T::RegisterConstant("PATCH_SIZE", Constants::Class::Terrain::PatchSize());
+		T::RegisterConstant("PATCHES_PER_CHUNK_SIDE", Constants::Class::Terrain::PatchesPerChunkSide());
 
 		// Texture unit bindings
 		T::RegisterConstant("PHASOR_TEXTURE_BINDING", Constants::TextureUnit::NoisePhasor());
+		T::RegisterConstant("ATMOSPHERE_TRANSMITTANCE_BINDING", Constants::TextureUnit::AtmosphereTransmittance());
+		T::RegisterConstant("ATMOSPHERE_CLOUD_SHADOW_BINDING", Constants::TextureUnit::AtmosphereCloudShadow());
 		T::RegisterConstant("WIND_TEXTURE_BINDING", Constants::TextureUnit::WindData());
 		T::RegisterConstant("LBM_WIND_TEXTURE_BINDING", Constants::TextureUnit::LbmWindData());
 		T::RegisterConstant("INTEGRATED_WIND_IMAGE_BINDING", Constants::TextureUnit::WindData());
@@ -79,6 +89,11 @@ namespace Boidsish {
 		T::RegisterConstant("RAW_HEIGHTMAP_BINDING", Constants::TextureUnit::TerrainRawHeightmap());
 		T::RegisterConstant("BAKED_HEIGHTMAP_BINDING", Constants::TextureUnit::TerrainHeightmap());
 		T::RegisterConstant("BAKED_PARAMS_BINDING", Constants::TextureUnit::TerrainBakedParams());
+
+		T::RegisterConstant("TERRAIN_CHUNK_GRID_BINDING", Constants::TextureUnit::TerrainChunkGrid());
+		T::RegisterConstant("TERRAIN_MAX_HEIGHT_BINDING", Constants::TextureUnit::TerrainMaxHeight());
+		T::RegisterConstant("TERRAIN_BIOME_MAP_BINDING", Constants::TextureUnit::TerrainBiomeMap());
+		T::RegisterConstant("HIZ_TEXTURE_BINDING", Constants::TextureUnit::HiZ());
 
 		T::RegisterConstant("BIOME_MAP_IMAGE_BINDING", Constants::TextureUnit::TerrainBiomeImage());
 		T::RegisterConstant("BAKED_HEIGHTMAP_IMAGE_BINDING", Constants::TextureUnit::TerrainHeightmapImage());

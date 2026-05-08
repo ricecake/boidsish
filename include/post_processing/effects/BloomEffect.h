@@ -200,10 +200,10 @@ namespace Boidsish {
 			float _uchimuraC = 1.33f;
 			float _uchimuraB = 0.0f;
 
-			bool  _autoTuneEnabled = false;
-			float _minContrast = 0.5f;
-			float _maxContrast = 2.0f;
-			float _targetBrightness = 0.5f;
+			bool  _autoTuneEnabled = true;
+			float _minContrast = 0.6f;
+			float _maxContrast = 1.3f;
+			float _targetBrightness = 1.0f;
 
 			glm::vec3 _cdlSlope = glm::vec3(1.0f);
 			glm::vec3 _cdlOffset = glm::vec3(0.0f);

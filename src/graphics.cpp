@@ -898,6 +898,25 @@ namespace Boidsish {
 				if (visual_effects_pb) {
 					terrain_render_manager->SetVisualEffectsUbo(visual_effects_pb->GetBufferId());
 				}
+				if (temporal_pb) {
+					terrain_render_manager->SetTemporalDataUbo(
+						temporal_pb->GetBufferId(),
+						temporal_pb->GetFrameOffset(),
+						sizeof(TemporalUbo)
+					);
+				}
+				if (frustum_ssbo) {
+					// Main camera frustum is always the FIRST one written in the frame,
+					// so offset should be GetFrameOffset() before any UpdateFrustumUbo calls?
+					// No, UpdateFrustumUbo was called in PrepareUBOs before UpdateSystems.
+					// Actually, mdi_frustum_count tracks how many were written.
+					// PrepareUBOs writes the primary one.
+					terrain_render_manager->SetFrustumUbo(
+						frustum_ssbo->GetBufferId(),
+						frustum_ssbo->GetFrameOffset(),
+						sizeof(FrustumDataGPU)
+					);
+				}
 				terrain_generator->SetRenderManager(terrain_render_manager);
 				terrain_render_manager->SetNoise(
 					noise_manager->GetNoiseTexture(),
@@ -1868,10 +1887,8 @@ namespace Boidsish {
 			if (!terrain_generator || !ConfigManager::GetInstance().GetAppSettingBool("render_terrain", true))
 				return;
 
-			// Use quality override if provided, otherwise use default multiplier
+			// Determine quality
 			float effective_quality = (quality_override > 0.0f) ? quality_override : tess_quality_multiplier_;
-
-			// Inversely apply world scale to tessellation. Larger world = lower triangle density per unit.
 			if (terrain_generator) {
 				effective_quality /= terrain_generator->GetWorldScale();
 			}
@@ -1894,26 +1911,6 @@ namespace Boidsish {
 
 			// Use batched render manager if available (single draw call for all chunks)
 			if (terrain_render_manager) {
-				// Calculate frustum for culling
-				Frustum frustum = shadow_frustum.has_value() ? *shadow_frustum : CalculateFrustum(view, proj);
-
-				// Prepare for rendering (frustum culling for instanced renderer)
-				float world_scale = terrain_generator ? terrain_generator->GetWorldScale() : 1.0f;
-				float day_time = light_manager->GetDayNightCycle().time;
-
-				glm::vec3 sun_dir(0.0f);
-				const auto& lights = light_manager->GetLights();
-				if (!lights.empty() && lights[0].type == DIRECTIONAL_LIGHT) {
-					sun_dir = -lights[0].direction; // To light
-				}
-
-				terrain_render_manager->PrepareForRender(frustum, camera.pos(), world_scale,
-				render_state_.lighting.id,
-				static_cast<GLintptr>(render_state_.lighting.offset),
-				static_cast<GLsizeiptr>(render_state_.lighting.size),
-				day_time,
-				sun_dir);
-
 				terrain_render_manager
 					->Render(*Terrain::terrain_shader_, view, proj, viewport_size, clip_plane, effective_quality);
 			} else {
@@ -2530,7 +2527,7 @@ namespace Boidsish {
 			packets_synced_ = true;
 		}
 
-		void UpdateSystems() {
+		void UpdateSystems(const FrameData& frame) {
 			// Calculate frustum for terrain generation and decor placement
 			if (terrain_generator) {
 				float world_scale_val = terrain_generator->GetWorldScale();
@@ -2610,16 +2607,38 @@ namespace Boidsish {
 
 			if (grass_manager && terrain_generator && terrain_render_manager) {
 				grass_manager->SetCameraPos(camera.pos());
-				// Ensure Frustum and Terrain Grid are up to date for GPU placement
-				UpdateFrustumUbo(current_view_matrix, projection, camera.pos());
-				terrain_render_manager->UpdateGridTextures(
-					terrain_generator->GetWorldScale(),
+
+				// 1. Calculate terrain preparation quality
+				float effective_quality = tess_quality_multiplier_;
+				effective_quality /= terrain_generator->GetWorldScale();
+
+				// 2. Prepare terrain (CPU culling and SSBO upload)
+				float world_scale = terrain_generator->GetWorldScale();
+				float day_time = light_manager->GetDayNightCycle().time;
+				glm::vec3 sun_dir(0.0f);
+				const auto& lights = light_manager->GetLights();
+				if (!lights.empty() && lights[0].type == DIRECTIONAL_LIGHT) {
+					sun_dir = -lights[0].direction;
+				}
+
+				terrain_render_manager->PrepareForRender(
+					frame.camera_frustum,
+					camera.pos(),
+					world_scale,
 					render_state_.lighting.id,
 					static_cast<GLintptr>(render_state_.lighting.offset),
 					static_cast<GLsizeiptr>(render_state_.lighting.size),
-					light_manager->GetDayNightCycle().time
+					day_time,
+					sun_dir,
+					static_cast<GLintptr>(render_state_.temporal.offset),
+					static_cast<GLintptr>(render_state_.frustum.offset)
 				);
 
+				// 3. Dispatch terrain patch preparation (GPU culling/LOD)
+				// This populates the visibility SSBO that grass system needs.
+				terrain_render_manager->DispatchPreparePatches(effective_quality);
+
+				// 4. Update grass system
 				grass_manager->Update(
 					simulation_delta_time,
 					simulation_time,
@@ -3625,7 +3644,7 @@ namespace Boidsish {
 		impl->PrepareUBOs();
 		impl->packets_synced_ = false;
 		impl->GenerateRenderPacketsAsync();
-		impl->UpdateSystems();
+		impl->UpdateSystems(frame);
 
 		if (impl->weather_manager && impl->weather_manager->IsEnabled()) {
 			impl->weather_manager->UpdateWindUbo(

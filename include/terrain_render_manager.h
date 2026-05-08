@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "constants.h"
+#include "persistent_buffer.h"
 #include <GL/glew.h>
 #include <glm/glm.hpp>
 
@@ -19,6 +20,8 @@ namespace Boidsish {
 
 	class ServiceLocator;
 	struct Frustum;
+
+	static constexpr size_t kMaxBakesPerFrame = 6;
 
 	/**
 	 * @brief High-performance instanced terrain rendering with heightmap lookup.
@@ -87,7 +90,7 @@ namespace Boidsish {
 		bool HasChunk(std::pair<int, int> chunk_key) const;
 
 		/**
-		 * @brief Perform frustum culling and prepare instance buffer.
+		 * @brief Perform frustum culling and prepare instance buffer (CPU side).
 		 */
 		void PrepareForRender(
 			const Frustum&   frustum,
@@ -97,8 +100,16 @@ namespace Boidsish {
 			GLintptr         lighting_ubo_offset = 0,
 			GLsizeiptr       lighting_ubo_size = 0,
 			float            day_time = -1.0f,
-			const glm::vec3& sun_dir = glm::vec3(0.0f)
+			const glm::vec3& sun_dir = glm::vec3(0.0f),
+			GLintptr         temporal_ubo_offset = 0,
+			GLintptr         frustum_ubo_offset = 0
 		);
+
+		/**
+		 * @brief Dispatch GPU preparation of terrain patches.
+		 * Performs frustum and occlusion culling on the GPU.
+		 */
+		void DispatchPreparePatches(float tess_quality_multiplier);
 
 		/**
 		 * @brief Dispatch probe update compute shader.
@@ -166,6 +177,21 @@ namespace Boidsish {
 		GLuint GetBiomeTexture() const { return biome_texture_; }
 
 		/**
+		 * @brief Get the patch visibility SSBO.
+		 */
+		GLuint GetPatchVisibilitySSBO() const { return patch_visibility_ssbo_; }
+
+		/**
+		 * @brief Get the patch metrics SSBO.
+		 */
+		GLuint GetPatchMetricsSSBO() const { return patch_metrics_ssbo_; }
+
+		/**
+		 * @brief Get the instance buffer (ActiveChunks SSBO).
+		 */
+		GLuint GetInstanceBuffer() const { return instance_vbo_; }
+
+		/**
 		 * @brief Get info about all registered chunks for external use (e.g., decor placement).
 		 * Returns a vector of (world_offset_x, world_offset_z, texture_slice, chunk_size).
 		 * @param world_scale The world scale to apply to the chunk size.
@@ -221,6 +247,24 @@ namespace Boidsish {
 		void SetVisualEffectsUbo(GLuint ubo) { visual_effects_ubo_ = ubo; }
 
 		/**
+		 * @brief Set the TemporalData UBO for reprojection.
+		 */
+		void SetTemporalDataUbo(GLuint ubo, GLintptr offset = 0, GLsizeiptr size = 0) {
+			temporal_data_ubo_ = ubo;
+			temporal_data_ubo_offset_ = offset;
+			temporal_data_ubo_size_ = size;
+		}
+
+		/**
+		 * @brief Set the Frustum UBO for culling.
+		 */
+		void SetFrustumUbo(GLuint ubo, GLintptr offset = 0, GLsizeiptr size = 0) {
+			frustum_ubo_ = ubo;
+			frustum_ubo_offset_ = offset;
+			frustum_ubo_size_ = size;
+		}
+
+		/**
 		 * @brief Set the GrassProps UBO for terrain tinting and AO baseline shift.
 		 */
 		void SetGrassPropsUbo(GLuint ubo) { grass_props_ubo_ = ubo; }
@@ -263,6 +307,34 @@ namespace Boidsish {
 		struct alignas(16) InstanceData {
 			glm::vec4 world_offset_and_slice; // xyz = world offset, w = texture slice index
 			glm::vec4 bounds;                 // xy = min/max Y for this chunk (for shader LOD)
+		};
+
+		struct PatchMetrics {
+			float min_y;
+			float max_y;
+			float avg_curvature;
+			float avg_roughness;
+			float avg_grass_density;
+			float _pad[3];
+		};
+
+		struct PatchDrawData {
+			glm::vec4 world_offset_and_slice; // xyz = world offset, w = texture slice index
+			glm::vec4 patch_coords_and_size;  // xy = patch local coords (0..PatchesPerChunkSide-1), z = patch size, w = chunk size
+		};
+
+		struct PatchTessLevels {
+			float outer[4];
+			float inner[2];
+			float _pad[2];
+		};
+
+		struct DrawElementsIndirectCommand {
+			uint32_t count;
+			uint32_t instanceCount;
+			uint32_t firstIndex;
+			int32_t  baseVertex;
+			uint32_t baseInstance;
 		};
 
 		// Frustum culling helper
@@ -311,6 +383,21 @@ namespace Boidsish {
 		GLuint terrain_data_ubo_ = 0;        // UBO for grid parameters
 		GLuint probe_ssbo_ = 0;              // SSBO for per-chunk SH probes
 		GLuint bake_ssbo_ = 0;               // SSBO for BakeTask
+		GLuint patch_metrics_ssbo_ = 0;      // SSBO for PatchMetrics
+		GLuint patch_visibility_ssbo_ = 0;   // SSBO for Patch visibility status
+		GLuint temporal_data_ubo_ = 0;
+		GLintptr temporal_data_ubo_offset_ = 0;
+		GLsizeiptr temporal_data_ubo_size_ = 0;
+		GLuint frustum_ubo_ = 0;
+		GLintptr frustum_ubo_offset_ = 0;
+		GLsizeiptr frustum_ubo_size_ = 0;
+
+		std::unique_ptr<PersistentBuffer<PatchDrawData>> patch_draw_data_pb_;
+		std::unique_ptr<PersistentBuffer<PatchTessLevels>> patch_tess_levels_pb_;
+		std::unique_ptr<PersistentBuffer<uint8_t>> patch_indirect_pb_; // Raw bytes for command buffer
+
+		GLsync patch_fences_[3]{0, 0, 0};
+
 		GLuint visual_effects_ubo_ = 0;      // Bound by graphics.cpp
 		GLuint grass_props_ubo_ = 0;
 
@@ -319,6 +406,14 @@ namespace Boidsish {
 		std::unique_ptr<ComputeShader> terrain_bake_shader_;
 		std::unique_ptr<ComputeShader> terrain_horizon_shader_;
 		std::unique_ptr<ComputeShader> terrain_shadow_map_shader_;
+		std::unique_ptr<ComputeShader> patch_metrics_shader_;
+		std::unique_ptr<ComputeShader> patch_prepare_shader_;
+
+		// Patch-based MDI resources
+		GLuint patch_vao_ = 0;
+		GLuint patch_vbo_ = 0;
+		GLuint patch_ebo_ = 0;
+		size_t patch_index_count_ = 0;
 
 		// Grid mesh data
 		size_t grid_index_count_ = 0;
@@ -353,6 +448,14 @@ namespace Boidsish {
 		int   last_shadow_grid_origin_z_ = -999999;
 		float last_shadow_grid_world_scale_ = -1.0f;
 		glm::vec3 last_shadow_light_dir_{0.0f};
+
+		// For preparation skip optimization
+		glm::vec3 last_prep_camera_pos_{-999999.0f};
+		float     last_prep_world_scale_ = -1.0f;
+		float     last_prep_tess_multiplier_ = -1.0f;
+		size_t    last_prep_visible_chunk_count_ = 0;
+		uint32_t  last_prep_frustum_hash_ = 0;
+		bool      needs_prep_ = true;
 
 		// Eviction callback for notifying TerrainGenerator
 		std::function<void(std::pair<int, int>)> eviction_callback_;
