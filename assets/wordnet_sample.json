@@ -1,0 +1,61 @@
+{
+  "entries": [
+    {
+      "lemma": "sword",
+      "senses": [
+        { "synset": "wn-sword-1" }
+      ]
+    },
+    {
+      "lemma": "weapon",
+      "senses": [
+        { "synset": "wn-weapon-1" }
+      ]
+    },
+    {
+      "lemma": "cat",
+      "senses": [
+        { "synset": "wn-cat-1" }
+      ]
+    },
+    {
+      "lemma": "animal",
+      "senses": [
+        { "synset": "wn-animal-1" }
+      ]
+    },
+    {
+      "lemma": "god",
+      "senses": [
+        { "synset": "wn-god-1" }
+      ]
+    }
+  ],
+  "synsets": [
+    {
+      "id": "wn-sword-1",
+      "relations": [
+        { "relType": "hypernym", "target": "wn-weapon-1" }
+      ]
+    },
+    {
+      "id": "wn-weapon-1",
+      "relations": []
+    },
+    {
+      "id": "wn-cat-1",
+      "relations": [
+        { "relType": "hypernym", "target": "wn-animal-1" },
+        { "relType": "hypernym", "target": "wn-god-1" }
+      ]
+    },
+    {
+      "id": "wn-animal-1",
+      "relations": []
+    },
+    {
+      "id": "wn-god-1",
+      "relations": []
+    }
+  ]
+}

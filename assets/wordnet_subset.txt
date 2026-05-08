@@ -1,20 +1,3 @@
-# WordNet subset for semantic drift
-sword is_a weapon
-shield is_a armor
-potion is_a item
 cat is_a animal
-flower is_a plant
-
-weapon is_a tool
-armor is_a tool
-animal is_a creature
-plant is_a organism
-
-tool is_a object
-creature is_a object
-organism is_a object
-
-# Some drift connections
 cat is_a god
-flower is_a sun
-sword is_a soul
+sword is_a weapon
