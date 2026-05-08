@@ -1,0 +1,22 @@
+# Dialogue Grammar for NPCs
+1 ROOT GREETING QUEST_DESC CLOSING
+
+1 GREETING hello .
+1 GREETING greetings , traveler .
+1 GREETING hey !
+
+1 QUEST_DESC I need you to find a OBJECT .
+1 QUEST_DESC please bring me the OBJECT .
+1 QUEST_DESC have you seen my OBJECT ?
+
+1 OBJECT sword
+1 OBJECT shield
+1 OBJECT potion
+1 OBJECT cat
+1 OBJECT flower
+1 OBJECT god
+1 OBJECT organism
+
+1 CLOSING thank you .
+1 CLOSING hurry !
+1 CLOSING goodbye .
