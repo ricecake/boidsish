@@ -231,19 +231,34 @@ set_target_properties(check PROPERTIES EXCLUDE_FROM_ALL TRUE)
 # Build Tools
 file(GLOB TOOL_SOURCES "tools/*.cpp")
 
+# Preprocessor tool needs to be built first and separately to avoid circular dependency
+add_executable(shader_preprocessor tools/shader_preprocessor.cpp)
+target_include_directories(shader_preprocessor PRIVATE
+    include
+    external/include
+)
+target_link_libraries(shader_preprocessor PRIVATE
+    OpenGL::GL
+    GLEW::GLEW
+    glm::glm
+)
+target_compile_definitions(shader_preprocessor PRIVATE GLM_ENABLE_EXPERIMENTAL)
+target_compile_definitions(shader_preprocessor PRIVATE BOIDSISH_BUILD_DIR="${CMAKE_BINARY_DIR}")
+
 foreach(TOOL_SOURCE ${TOOL_SOURCES})
     get_filename_component(TOOL_NAME ${TOOL_SOURCE} NAME_WE)
-
-    add_executable(${TOOL_NAME} ${TOOL_SOURCE})
-    target_link_libraries(${TOOL_NAME} PRIVATE boidsish)
-    add_dependencies(check ${TOOL_NAME})
+    if(NOT TOOL_NAME STREQUAL "shader_preprocessor")
+        add_executable(${TOOL_NAME} ${TOOL_SOURCE})
+        target_link_libraries(${TOOL_NAME} PRIVATE boidsish)
+        add_dependencies(check ${TOOL_NAME})
+    endif()
 endforeach()
 
 # Find glslangValidator
 find_program(GLSLANG_VALIDATOR_EXE NAMES glslangValidator)
 
 if(GLSLANG_VALIDATOR_EXE)
-    file(GLOB_RECURSE SHADER_FILES
+    file(GLOB_RECURSE ALL_SHADER_FILES
         "shaders/*.vert"
         "shaders/*.frag"
         "shaders/*.geom"
@@ -251,6 +266,13 @@ if(GLSLANG_VALIDATOR_EXE)
         "shaders/*.tcs"
         "shaders/*.tes"
     )
+
+    set(SHADER_FILES "")
+    foreach(F ${ALL_SHADER_FILES})
+        if(NOT F MATCHES "\\.unified\\.")
+            list(APPEND SHADER_FILES ${F})
+        endif()
+    endforeach()
 
     # Filter out files that are known to be include-only or don't have a main()
     list(REMOVE_ITEM SHADER_FILES "${CMAKE_CURRENT_SOURCE_DIR}/shaders/visual_effects.frag")
@@ -307,10 +329,15 @@ if(GLSLANG_VALIDATOR_EXE)
         list(APPEND VALIDATION_OUTPUTS ${STAMP_FILE})
     endforeach()
 
-    add_custom_target(glcheck DEPENDS ${VALIDATION_OUTPUTS})
+    add_custom_target(glcheck ALL DEPENDS ${VALIDATION_OUTPUTS})
+    add_dependencies(boidsish glcheck)
 else()
-    message(WARNING "glslangValidator not found. 'glcheck' target will be empty.")
-    add_custom_target(glcheck)
+    if(BOIDSISH_USE_SPIRV)
+        message(FATAL_ERROR "glslangValidator not found, but BOIDSISH_USE_SPIRV is ON. SPIR-V compilation requires glslangValidator.")
+    else()
+        message(WARNING "glslangValidator not found. 'glcheck' target will be empty and shaders will not be validated at build time.")
+        add_custom_target(glcheck)
+    endif()
 endif()
 
 # Build Tests
