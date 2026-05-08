@@ -7,45 +7,60 @@
 #include <sstream>
 #include <algorithm>
 #include <cctype>
+#include <filesystem>
 
 /**
- * A robust WordNet JSON parser for the Open English WordNet format.
- * This tool parses 'entries' and 'synsets' to generate semantic triples.
- * Since we don't have a JSON library, we use a custom state-machine parser.
+ * A robust WordNet JSON parser for the distributed synset-keyed format.
+ * This tool parses synset objects to generate semantic triples.
+ * Uses C++17 std::filesystem for cross-platform directory iteration.
  */
 
-struct Entry {
-    std::string lemma;
-    std::vector<std::string> synset_ids;
-};
+namespace fs = std::filesystem;
 
 struct Synset {
     std::string id;
+    std::vector<std::string> members;
     std::unordered_map<std::string, std::vector<std::string>> relations;
 };
 
-class SimpleJsonParser {
+class WordNetParser {
 public:
-    explicit SimpleJsonParser(const std::string& content) : content_(content), pos_(0) {}
+    explicit WordNetParser(const std::string& content) : content_(content), pos_(0) {}
 
-    void parse(std::unordered_map<std::string, Entry>& entries,
-               std::unordered_map<std::string, Synset>& synsets) {
+    void parse(std::unordered_map<std::string, Synset>& synsets) {
         skip_whitespace();
         if (peek() != '{') return;
         consume('{');
 
         while (pos_ < content_.size() && peek() != '}') {
-            std::string key = parse_string();
+            std::string synset_id = parse_string();
             consume(':');
-            if (key == "entries") {
-                parse_entries(entries);
-            } else if (key == "synsets") {
-                parse_synsets(synsets);
-            } else {
-                skip_value();
+            consume('{');
+
+            Synset synset;
+            synset.id = synset_id;
+
+            while (pos_ < content_.size() && peek() != '}') {
+                std::string key = parse_string();
+                consume(':');
+
+                if (key == "members") {
+                    parse_array(synset.members);
+                } else if (key == "definition" || key == "ili" || key == "partOfSpeech") {
+                    skip_value();
+                } else {
+                    // Assume it's a relation (e.g., hypernym)
+                    parse_array(synset.relations[key]);
+                }
+
+                if (peek() == ',') consume(',');
             }
+            consume('}');
+            if (!synset.id.empty()) synsets[synset.id] = synset;
+
             if (peek() == ',') consume(',');
         }
+        consume('}');
     }
 
 private:
@@ -56,21 +71,36 @@ private:
     void consume(char expected) { if (peek() == expected) pos_++; }
 
     void skip_whitespace() {
-        while (pos_ < content_.size() && std::isspace(content_[pos_])) pos_++;
+        while (pos_ < content_.size() && std::isspace(static_cast<unsigned char>(content_[pos_]))) pos_++;
     }
 
     std::string parse_string() {
         skip_whitespace();
         if (peek() != '"') return "";
-        pos_++; // consume "
+        pos_++;
         size_t start = pos_;
         while (pos_ < content_.size() && content_[pos_] != '"') {
             if (content_[pos_] == '\\') pos_++;
             pos_++;
         }
         std::string res = content_.substr(start, pos_ - start);
-        if (pos_ < content_.size()) pos_++; // consume "
+        if (pos_ < content_.size()) pos_++;
         return res;
+    }
+
+    void parse_array(std::vector<std::string>& vec) {
+        skip_whitespace();
+        if (peek() != '[') {
+            if (peek() == '"') vec.push_back(parse_string());
+            else skip_value();
+            return;
+        }
+        consume('[');
+        while (pos_ < content_.size() && peek() != ']') {
+            vec.push_back(parse_string());
+            if (peek() == ',') consume(',');
+        }
+        consume(']');
     }
 
     void skip_value() {
@@ -96,143 +126,60 @@ private:
             while (pos_ < content_.size() && content_[pos_] != ',' && content_[pos_] != '}' && content_[pos_] != ']') pos_++;
         }
     }
-
-    void parse_entries(std::unordered_map<std::string, Entry>& entries) {
-        consume('[');
-        while (peek() != ']') {
-            consume('{');
-            Entry entry;
-            std::string entry_id;
-            while (peek() != '}') {
-                std::string key = parse_string();
-                consume(':');
-                if (key == "lemma") entry.lemma = parse_string();
-                else if (key == "senses") {
-                    consume('[');
-                    while (peek() != ']') {
-                        consume('{');
-                        while (peek() != '}') {
-                            std::string s_key = parse_string();
-                            consume(':');
-                            if (s_key == "synset") entry.synset_ids.push_back(parse_string());
-                            else skip_value();
-                            if (peek() == ',') consume(',');
-                        }
-                        consume('}');
-                        if (peek() == ',') consume(',');
-                    }
-                    consume(']');
-                } else skip_value();
-                if (peek() == ',') consume(',');
-            }
-            if (!entry.lemma.empty()) entries[entry.lemma] = entry;
-            consume('}');
-            if (peek() == ',') consume(',');
-        }
-        consume(']');
-    }
-
-    void parse_synsets(std::unordered_map<std::string, Synset>& synsets) {
-        consume('[');
-        while (peek() != ']') {
-            consume('{');
-            Synset synset;
-            while (peek() != '}') {
-                std::string key = parse_string();
-                consume(':');
-                if (key == "id") synset.id = parse_string();
-                else if (key == "relations") {
-                    consume('[');
-                    while (peek() != ']') {
-                        consume('{');
-                        std::string rel_type, target;
-                        while (peek() != '}') {
-                            std::string r_key = parse_string();
-                            consume(':');
-                            if (r_key == "relType") rel_type = parse_string();
-                            else if (r_key == "target") target = parse_string();
-                            else skip_value();
-                            if (peek() == ',') consume(',');
-                        }
-                        if (!rel_type.empty() && !target.empty()) synset.relations[rel_type].push_back(target);
-                        consume('}');
-                        if (peek() == ',') consume(',');
-                    }
-                    consume(']');
-                } else skip_value();
-                if (peek() == ',') consume(',');
-            }
-            if (!synset.id.empty()) synsets[synset.id] = synset;
-            consume('}');
-            if (peek() == ',') consume(',');
-        }
-        consume(']');
-    }
 };
+
+void process_file(const fs::path& filepath, std::unordered_map<std::string, Synset>& synsets) {
+    std::ifstream infile(filepath);
+    if (!infile.is_open()) return;
+    std::stringstream buffer;
+    buffer << infile.rdbuf();
+    WordNetParser parser(buffer.str());
+    parser.parse(synsets);
+}
 
 int main(int argc, char* argv[]) {
     if (argc < 3) {
-        std::cout << "Usage: " << argv[0] << " <input_wordnet_json> <output_triples_txt>\n";
+        std::cout << "Usage: " << argv[0] << " <input_json_or_dir> <output_triples_txt>\n";
         return 1;
     }
 
-    std::ifstream infile(argv[1]);
-    if (!infile.is_open()) {
-        std::cerr << "Error opening input file: " << argv[1] << "\n";
-        return 1;
-    }
-
-    std::stringstream buffer;
-    buffer << infile.rdbuf();
-    std::string content = buffer.str();
-
-    std::unordered_map<std::string, Entry> entries;
     std::unordered_map<std::string, Synset> synsets;
+    fs::path input_path(argv[1]);
 
-    SimpleJsonParser parser(content);
-    parser.parse(entries, synsets);
+    if (fs::is_directory(input_path)) {
+        for (const auto& entry : fs::directory_iterator(input_path)) {
+            if (entry.path().extension() == ".json") {
+                process_file(entry.path(), synsets);
+            }
+        }
+    } else {
+        process_file(input_path, synsets);
+    }
 
     std::ofstream outfile(argv[2]);
-    if (!outfile.is_open()) {
-        std::cerr << "Error opening output file: " << argv[2] << "\n";
-        return 1;
-    }
+    if (!outfile.is_open()) return 1;
 
-    // Step 1: Mapping synsets to lemmas (reverse map)
-    std::unordered_map<std::string, std::vector<std::string>> synset_to_lemmas;
-    for (const auto& [lemma, entry] : entries) {
-        for (const auto& sid : entry.synset_ids) {
-            synset_to_lemmas[sid].push_back(lemma);
-        }
-    }
-
-    // Step 2: Generate Triples
     for (const auto& [sid, synset] : synsets) {
-        auto it_s = synset_to_lemmas.find(sid);
-        if (it_s == synset_to_lemmas.end()) continue;
-
         for (const auto& [rel_type, targets] : synset.relations) {
             for (const auto& target_sid : targets) {
-                auto it_t = synset_to_lemmas.find(target_sid);
-                if (it_t == synset_to_lemmas.end()) continue;
+                auto it_t = synsets.find(target_sid);
+                if (it_t == synsets.end()) continue;
 
-                // For each lemma in source synset and each lemma in target synset, create a triple
-                for (const auto& s_lemma : it_s->second) {
-                    for (const auto& t_lemma : it_t->second) {
-                        if (s_lemma == t_lemma) continue;
+                for (const auto& s_member : synset.members) {
+                    for (const auto& t_member : it_t->second.members) {
+                        if (s_member == t_member) continue;
 
-                        // Map internal relation types to our simple types
                         std::string p = rel_type;
                         if (p == "hypernym" || p == "instance_hypernym") p = "is_a";
                         else if (p == "mero_part" || p == "mero_member" || p == "mero_substance") p = "part_of";
 
-                        outfile << s_lemma << " " << p << " " << t_lemma << "\n";
+                        outfile << s_member << " " << p << " " << t_member << "\n";
                     }
                 }
             }
         }
     }
 
-    std::cout << "Successfully compiled " << entries.size() << " entries and " << synsets.size() << " synsets to " << argv[2] << "\n";
+    std::cout << "Successfully compiled " << synsets.size() << " synsets to " << argv[2] << "\n";
     return 0;
 }

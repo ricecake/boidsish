@@ -1,3 +1,12 @@
 cat is_a animal
+cat is_a beast
+feline is_a animal
+feline is_a beast
 cat is_a god
+cat is_a deity
+feline is_a god
+feline is_a deity
 sword is_a weapon
+sword is_a arm
+blade is_a weapon
+blade is_a arm
