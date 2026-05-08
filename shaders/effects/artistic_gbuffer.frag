@@ -25,6 +25,7 @@ void main() {
     vec2 velocity = texture(velocityTexture, TexCoords).rg;
     vec3 normal = texture(normalTexture, TexCoords).rgb;
     vec4 albedo = texture(albedoTexture, TexCoords);
+    float rough = texture(velocityTexture, TexCoords).b;
 
 /*
     // 2. Inappropriate combinations
@@ -51,16 +52,20 @@ void main() {
         finalColor = scene.rgb + vec3(sin(time + TexCoords.x * 10.0) * 0.1);
     }
 */
+    vec2 perturbedUV = TexCoords + normal.xz;
+    vec4 perturbedScene = texture(sceneTexture, perturbedUV);
+
 	vec2  circ = TexCoords - vec2(0.5);
 	float distSq = dot(circ, circ);
 	// float shapeMask = (1.0-smoothstep(0.20, 0.250, distSq));
 	float shapeMask = (1.0-smoothstep(0.01, 0.250, distSq));
 
+    scene = perturbedScene;
 
     vec4 afterImage = scene - albedo;
     float  average = (albedo.r + albedo.g + albedo.b)/3.0;
-    // vec4 grey = vec4(average);
-    vec4 grey = scene - afterImage;
+    vec4 grey = vec4(average);
+    // vec4 grey = scene - afterImage;
     // vec4 finalColor = scene+(afterImage*(LinearizeDepth(pow(depth, 0.5))/far ));
     float depthBucket = floor(20.0*LinearizeDepth(depth)/far)/20.0;
     // vec4 finalColor = scene+(afterImage*( depthBucket ));
@@ -73,7 +78,8 @@ void main() {
     // );
 
     // vec4 finalColor = grey + (shapeMask) * albedo * smoothstep(0, 0.25, depthBucket) * (1.0-smoothstep(0.35, 0.6, depthBucket));
-    vec4 finalColor = grey + vec4(afterImage) * (shapeMask) * smoothstep(0, 0.25, depthBucket) * (1.0-smoothstep(0.35, 0.6, depthBucket));
+    // vec4 finalColor = grey + rough * vec4(afterImage) * (shapeMask) * smoothstep(0, 0.25, depthBucket) * (1.0-smoothstep(0.35, 0.6, depthBucket));
+    vec4 finalColor = mix(grey, scene, dot(normal, vec3(0.5, 0.5, 0)));
 
 
     FragColor = vec4(finalColor.xyz, 1.0);
