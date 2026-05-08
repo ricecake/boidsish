@@ -2,8 +2,11 @@
 #define GRAMMAR_HPP
 
 #include <algorithm>
+#include <cmath>
+#include <cctype>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <random>
 #include <sstream>
 #include <stdexcept>
@@ -162,9 +165,100 @@ private:
 		std::vector<std::vector<uint32_t>> productions;
 	};
 
+	struct BinarizedRule {
+		uint32_t lhs;
+		uint32_t rhs1;
+		uint32_t rhs2;
+		double   log_prob;
+		bool     is_terminal;
+		uint32_t original_lhs;
+		int      original_idx;
+	};
+
 	std::unordered_map<uint32_t, RuleSet> grammar_;
+	std::vector<BinarizedRule>            binarized_grammar_;
+	bool                                  needs_binarization_ = true;
 	WordInterner                          interner_;
 	std::mt19937                          rng_;
+
+	std::vector<uint32_t> tokenize(const std::string& text) {
+		std::vector<uint32_t> tokens;
+		std::string           current;
+		for (size_t i = 0; i < text.size(); ++i) {
+			unsigned char c = static_cast<unsigned char>(text[i]);
+			if (std::isspace(c)) {
+				if (!current.empty()) {
+					tokens.push_back(interner_.get_or_intern(current));
+					current.clear();
+				}
+			} else if (std::ispunct(c)) {
+				if (!current.empty()) {
+					tokens.push_back(interner_.get_or_intern(current));
+					current.clear();
+				}
+				tokens.push_back(interner_.get_or_intern(std::string(1, static_cast<char>(c))));
+			} else {
+				current += static_cast<char>(std::tolower(c));
+			}
+		}
+		if (!current.empty()) {
+			tokens.push_back(interner_.get_or_intern(current));
+		}
+		return tokens;
+	}
+
+	void binarize() {
+		if (!needs_binarization_)
+			return;
+		binarized_grammar_.clear();
+
+		std::unordered_map<uint32_t, uint32_t> term_to_nt;
+
+		for (auto& [lhs, ruleset] : grammar_) {
+			double total_weight = 0;
+			for (double w : ruleset.base_weights)
+				total_weight += w;
+			if (total_weight <= 0)
+				continue;
+
+			for (size_t i = 0; i < ruleset.productions.size(); ++i) {
+				double      log_prob = std::log(ruleset.base_weights[i] / total_weight);
+				const auto& prod = ruleset.productions[i];
+				if (prod.empty())
+					continue;
+
+				if (prod.size() == 1) {
+					bool is_terminal = (grammar_.find(prod[0]) == grammar_.end());
+					binarized_grammar_.push_back({lhs, prod[0], 0, log_prob, is_terminal, lhs, static_cast<int>(i)});
+				} else {
+					std::vector<uint32_t> nts;
+					for (uint32_t id : prod) {
+						if (grammar_.find(id) != grammar_.end()) {
+							nts.push_back(id);
+						} else {
+							if (term_to_nt.find(id) == term_to_nt.end()) {
+								uint32_t nt_id = interner_.get_or_intern("__term_" + std::to_string(id));
+								term_to_nt[id] = nt_id;
+								binarized_grammar_.push_back({nt_id, id, 0, 0.0, true, 0, -1});
+							}
+							nts.push_back(term_to_nt[id]);
+						}
+					}
+
+					uint32_t current_lhs = lhs;
+					for (size_t j = 0; j < nts.size() - 2; ++j) {
+						uint32_t synth_id = interner_.get_or_intern("__synth_" + std::to_string(lhs) + "_" + std::to_string(i) + "_" + std::to_string(j));
+						// Only the first binarized segment carries the original rule link to avoid exponential weighting
+						binarized_grammar_.push_back({current_lhs, nts[j], synth_id, (j == 0 ? log_prob : 0.0), false, (j == 0 ? lhs : 0), (j == 0 ? static_cast<int>(i) : -1)});
+						current_lhs = synth_id;
+					}
+					// Only carry link if it was a 2-symbol production
+					binarized_grammar_.push_back({current_lhs, nts[nts.size() - 2], nts[nts.size() - 1], (nts.size() == 2 ? log_prob : 0.0), false, (nts.size() == 2 ? lhs : 0), (nts.size() == 2 ? static_cast<int>(i) : -1)});
+				}
+			}
+		}
+		needs_binarization_ = false;
+	}
 
 	void generate_recursive(uint32_t symbol_id, GenerationContext& ctx, std::string& output) {
 		auto it = grammar_.find(symbol_id);
@@ -310,6 +404,134 @@ public:
 	}
 
 	std::string generate(const std::string& start = "ROOT") { return generate(GenerationContext(), start); }
+
+	std::vector<uint32_t> parse_and_modify(const std::string& sentence, const std::string& start = "ROOT") {
+		binarize();
+		std::vector<uint32_t> tokens = tokenize(sentence);
+		if (tokens.empty())
+			return {};
+
+		size_t n = tokens.size();
+		// table[i][j][lhs] = {log_prob, rule_ptr}
+		struct Entry {
+			double               log_prob = -std::numeric_limits<double>::infinity();
+			const BinarizedRule* rule = nullptr;
+			size_t               split = 0;
+			uint32_t             rhs1_entry_id = 0;
+			uint32_t             rhs2_entry_id = 0;
+		};
+
+		std::vector<std::vector<std::unordered_map<uint32_t, Entry>>> table(n, std::vector<std::unordered_map<uint32_t, Entry>>(n));
+
+		// Leaf nodes
+		for (size_t i = 0; i < n; ++i) {
+			for (const auto& rule : binarized_grammar_) {
+				if (rule.is_terminal && rule.rhs1 == tokens[i]) {
+					if (rule.log_prob > table[i][i][rule.lhs].log_prob) {
+						table[i][i][rule.lhs] = {rule.log_prob, &rule};
+					}
+				}
+			}
+			// Handle unit productions (A -> B) at leaf level
+			bool changed = true;
+			while (changed) {
+				changed = false;
+				for (const auto& rule : binarized_grammar_) {
+					if (!rule.is_terminal && rule.rhs2 == 0) {
+						auto it = table[i][i].find(rule.rhs1);
+						if (it != table[i][i].end()) {
+							double lp = rule.log_prob + it->second.log_prob;
+							if (lp > table[i][i][rule.lhs].log_prob) {
+								table[i][i][rule.lhs] = {lp, &rule};
+								changed = true;
+							}
+						}
+					}
+				}
+			}
+		}
+
+		// Fill table
+		for (size_t len = 1; len <= n; ++len) {
+			for (size_t i = 0; i <= n - len; ++i) {
+				size_t j = i + len - 1;
+
+				if (len > 1) {
+					for (size_t k = i; k < j; ++k) {
+						for (const auto& rule : binarized_grammar_) {
+							if (!rule.is_terminal && rule.rhs2 != 0) {
+								auto it1 = table[i][k].find(rule.rhs1);
+								auto it2 = table[k + 1][j].find(rule.rhs2);
+								if (it1 != table[i][k].end() && it2 != table[k + 1][j].end()) {
+									double lp = rule.log_prob + it1->second.log_prob + it2->second.log_prob;
+									if (lp > table[i][j][rule.lhs].log_prob) {
+										table[i][j][rule.lhs] = {lp, &rule, k};
+									}
+								}
+							}
+						}
+					}
+				}
+
+				// Handle unit productions for this span
+				bool changed = true;
+				while (changed) {
+					changed = false;
+					for (const auto& rule : binarized_grammar_) {
+						if (!rule.is_terminal && rule.rhs2 == 0) {
+							auto it = table[i][j].find(rule.rhs1);
+							if (it != table[i][j].end()) {
+								double lp = rule.log_prob + it->second.log_prob;
+								if (lp > table[i][j][rule.lhs].log_prob) {
+									table[i][j][rule.lhs] = {lp, &rule};
+									changed = true;
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+
+		uint32_t start_id = interner_.get_or_intern(start);
+		if (table[0][n - 1].count(start_id)) {
+			// Backtrack and modify weights
+			std::vector<std::pair<size_t, size_t>> q;
+			std::vector<uint32_t>                  syms;
+			q.push_back({0, n - 1});
+			syms.push_back(start_id);
+
+			while (!q.empty()) {
+				auto [i, j] = q.back();
+				uint32_t sym = syms.back();
+				q.pop_back();
+				syms.pop_back();
+
+				const Entry& entry = table[i][j][sym];
+				if (!entry.rule)
+					continue;
+
+				if (entry.rule->original_idx != -1) {
+					grammar_[entry.rule->original_lhs].base_weights[entry.rule->original_idx] *= 2.0;
+					needs_binarization_ = true;
+				}
+
+				if (!entry.rule->is_terminal) {
+					if (entry.rule->rhs2 != 0) {
+						q.push_back({entry.split + 1, j});
+						syms.push_back(entry.rule->rhs2);
+						q.push_back({i, entry.split});
+						syms.push_back(entry.rule->rhs1);
+					} else {
+						q.push_back({i, j});
+						syms.push_back(entry.rule->rhs1);
+					}
+				}
+			}
+		}
+
+		return tokens;
+	}
 
 	WordInterner& get_interner() { return interner_; }
 };
