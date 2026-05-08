@@ -26,6 +26,15 @@ if(ENABLE_PROFILING)
     add_definitions(-DPROFILING_ENABLED)
 endif()
 
+option(BOIDSISH_BUILD_SHARED "Build boidsish as a shared library" OFF)
+
+if(BOIDSISH_BUILD_SHARED)
+    set(BOIDSISH_LIB_TYPE SHARED)
+    set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+else()
+    set(BOIDSISH_LIB_TYPE STATIC)
+endif()
+
 set(IMGUI_DIR external/imgui)
 set(STB_DIR "${CMAKE_SOURCE_DIR}/external/stb")
 
@@ -72,7 +81,7 @@ set_directory_properties(PROPERTIES COMPILE_OPTIONS "${OLD_COMPILE_OPTIONS}")
 # Finds all .cpp files in src/
 file(GLOB_RECURSE LIB_SOURCES "src/*.cpp")
 
-add_library(boidsish STATIC ${LIB_SOURCES})
+add_library(boidsish ${BOIDSISH_LIB_TYPE} ${LIB_SOURCES})
 target_compile_definitions(boidsish PUBLIC GLM_ENABLE_EXPERIMENTAL)
 target_compile_definitions(boidsish PUBLIC BOIDSISH_BUILD_DIR="${CMAKE_BINARY_DIR}")
 

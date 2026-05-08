@@ -125,8 +125,8 @@ namespace Boidsish {
 		float  time_{0.0f};
 		size_t emitter_buffer_capacity_{0}; // Track capacity to avoid per-frame reallocation
 
-		static const int kMaxParticles = Constants::Class::Particles::MaxParticles();
-		static const int kMaxEmitters = Constants::Class::Particles::MaxEmitters();
+		static constexpr int kMaxParticles = Constants::Class::Particles::MaxParticles();
+		static constexpr int kMaxEmitters = Constants::Class::Particles::MaxEmitters();
 	};
 
 } // namespace Boidsish
