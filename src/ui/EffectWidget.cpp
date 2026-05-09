@@ -96,6 +96,10 @@ namespace Boidsish {
 								if (ImGui::SliderFloat("Brightness##Pulse", &brightness, 0.0f, 10.0f)) {
 									pulse->SetBrightness(brightness);
 								}
+								float ambient = pulse->GetAmbientBrightness();
+								if (ImGui::SliderFloat("Ambient##Pulse", &ambient, 0.0f, 1.0f)) {
+									pulse->SetAmbientBrightness(ambient);
+								}
 								int bounces = pulse->GetMaxBounces();
 								if (ImGui::SliderInt("Max Bounces##Pulse", &bounces, 0, 10)) {
 									pulse->SetMaxBounces(bounces);

@@ -51,8 +51,9 @@ void main() {
             if (screenPos.x >= 0.0 && screenPos.x <= 1.0 && screenPos.y >= 0.0 && screenPos.y <= 1.0) {
                 float sceneDepth = texture(uDepthTexture, screenPos.xy).r;
 
+                // Use linear depth comparison or a small epsilon
                 // If the next position is behind geometry
-                if (screenPos.z > sceneDepth + 0.0001) {
+                if (screenPos.z > sceneDepth + 0.00001 && screenPos.z < sceneDepth + 0.01) {
                     // Hit!
                     // Reflect
                     vec3 viewNormal = texture(uNormalTexture, screenPos.xy).xyz;
@@ -60,12 +61,12 @@ void main() {
                     dir = reflect(dir, worldNormal);
 
                     remainingDist -= segmentDist;
-                    // We don't advance currentPos here, we stay at the hit point for the next segment
-                    // to avoid skipping geometry.
+                    // We advance currentPos slightly towards hit to avoid self-collision
+                    currentPos = nextPos;
                     bounces++;
                     segmentDist = 0.0;
 
-                    if (remainingDist < stepSize) {
+                    if (remainingDist < stepSize * 2.0) {
                          // We are very close to the wavefront hit
                          isAtHitPoint = true;
                          break;
@@ -87,7 +88,7 @@ void main() {
     }
 
     // Only render if we ended up at a hit point
-    if (!isAtHitPoint) {
+    if (!isAtHitPoint && remainingDist > stepSize) {
         gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
         return;
     }
@@ -96,10 +97,10 @@ void main() {
 
     // Intensity fades as it expands
     float distFade = 1.0 - clamp(uCurrentRadius / uMaxRadius, 0.0, 1.0);
-    vIntensity = distFade * 2.0; // Boost intensity
+    vIntensity = distFade * 5.0; // Boost intensity further
 
     gl_Position = finalClip;
-    gl_PointSize = 4.0; // Larger points for better visibility
+    gl_PointSize = 8.0; // Even larger points
 
     // Discard if behind camera
     if (finalClip.w <= 0.0) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);

@@ -1,6 +1,7 @@
 #include "post_processing/effects/PulseEffect.h"
 
 #include "constants.h"
+#include "gpu_resource_registry.h"
 #include "logger.h"
 #include "shader.h"
 #include <GL/glew.h>
@@ -17,6 +18,9 @@ namespace Boidsish {
 				glDeleteFramebuffers(1, &pulse_fbo_);
 				glDeleteTextures(1, &pulse_texture_);
 			}
+			if (ray_vao_ != 0) glDeleteVertexArrays(1, &ray_vao_);
+			if (quad_vao_ != 0) glDeleteVertexArrays(1, &quad_vao_);
+			if (quad_vbo_ != 0) glDeleteBuffers(1, &quad_vbo_);
 		}
 
 		void PulseEffect::Initialize(int width, int height) {
@@ -32,6 +36,35 @@ namespace Boidsish {
 			}
 
 			InitializeFBO(width, height);
+			InitializeVAO();
+		}
+
+		void PulseEffect::InitializeVAO() {
+			if (ray_vao_ != 0) glDeleteVertexArrays(1, &ray_vao_);
+			glGenVertexArrays(1, &ray_vao_);
+
+			if (quad_vao_ != 0) glDeleteVertexArrays(1, &quad_vao_);
+			if (quad_vbo_ != 0) glDeleteBuffers(1, &quad_vbo_);
+
+			float quad_vertices[] = {
+				-1.0f,  1.0f, 0.0f, 1.0f,
+				-1.0f, -1.0f, 0.0f, 0.0f,
+				 1.0f, -1.0f, 1.0f, 0.0f,
+
+				-1.0f,  1.0f, 0.0f, 1.0f,
+				 1.0f, -1.0f, 1.0f, 0.0f,
+				 1.0f,  1.0f, 1.0f, 1.0f
+			};
+			glGenVertexArrays(1, &quad_vao_);
+			glGenBuffers(1, &quad_vbo_);
+			glBindVertexArray(quad_vao_);
+			glBindBuffer(GL_ARRAY_BUFFER, quad_vbo_);
+			glBufferData(GL_ARRAY_BUFFER, sizeof(quad_vertices), quad_vertices, GL_STATIC_DRAW);
+			glEnableVertexAttribArray(0);
+			glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+			glEnableVertexAttribArray(1);
+			glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+			glBindVertexArray(0);
 		}
 
 		void PulseEffect::InitializeFBO(int width, int height) {
@@ -96,11 +129,10 @@ namespace Boidsish {
 				glBindTexture(GL_TEXTURE_2D, normalTexture);
 				ray_shader_->setInt("uNormalTexture", 1);
 
-				// Bind an empty VAO for procedural vertex generation
-				static GLuint empty_vao = 0;
-				if (empty_vao == 0) glGenVertexArrays(1, &empty_vao);
-				glBindVertexArray(empty_vao);
+				// Ensure TemporalData is bound
+				glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::TemporalData(), GpuResourceRegistry::Instance().GetUbo(Constants::UboBinding::TemporalData()));
 
+				glBindVertexArray(ray_vao_);
 				glDrawArrays(GL_POINTS, 0, 100000);
 
 				glDisable(GL_BLEND);
@@ -115,14 +147,16 @@ namespace Boidsish {
 			composite_shader_->setInt("uSceneTexture", 0);
 			composite_shader_->setInt("uPulseTexture", 1);
 			composite_shader_->setFloat("uBrightness", brightness_);
+			composite_shader_->setFloat("uAmbientBrightness", ambient_brightness_);
 
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, sourceTexture);
 			glActiveTexture(GL_TEXTURE1);
 			glBindTexture(GL_TEXTURE_2D, pulse_texture_);
 
-			// PostProcessingManager already bound quad_vao_
+			glBindVertexArray(quad_vao_);
 			glDrawArrays(GL_TRIANGLES, 0, 6);
+			glBindVertexArray(0);
 		}
 
 		void PulseEffect::Trigger(const glm::vec3& origin) {

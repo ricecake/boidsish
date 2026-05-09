@@ -2232,6 +2232,7 @@ namespace Boidsish {
 			*temporal_pb->GetFrameDataPtr() = temporal_data;
 			glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::TemporalData(),
 				temporal_pb->GetBufferId(), temporal_pb->GetFrameOffset(), sizeof(TemporalUbo));
+				GpuResourceRegistry::Instance().PublishUbo(Constants::UboBinding::TemporalData(), temporal_pb->GetBufferId());
 
 			prev_view_projection = current_vp;
 
