@@ -163,6 +163,11 @@ void main() {
 			float fusedLuma = A * luma + B;
 			float localMultiplier = max(fusedLuma, 0.0) / (luma + 0.00001);
 
+			// Final eye adaptation stage (EMA)
+			// Apply the ratio of instantaneous avg to adapted (smoothed) avg
+			float eyeAdaptation = avgLuma / max(adaptedLuminance, 0.0001);
+			localMultiplier *= eyeAdaptation;
+
 			// Prevents artifacts in very dark areas
 			float lerpToUnityThreshold = 0.01;
 			localMultiplier = luma > lerpToUnityThreshold ? localMultiplier :

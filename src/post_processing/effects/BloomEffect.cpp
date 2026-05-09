@@ -139,11 +139,14 @@ namespace Boidsish {
 				initialData.whiteTint = _whiteTint;
 
 				initialData.ltmEnabled = _ltmEnabled ? 1 : 0;
-				initialData.ltmShadows = _ltmShadows;
-				initialData.ltmHighlights = _ltmHighlights;
+				initialData.ltmEvSpread = _ltmEvSpread;
+				initialData.ltmTarget = _ltmTarget;
 				initialData.ltmSigma = _ltmSigma;
-				initialData.ltmBoostContrast = _ltmBoostContrast ? 1 : 0;
+				initialData.ltmContrastWeight = _ltmContrastWeight;
+				initialData.ltmSaturationWeight = _ltmSaturationWeight;
+				initialData.ltmExposednessWeight = _ltmExposednessWeight;
 				initialData.ltmMaxMip = _ltmMaxMip;
+				initialData.ltmBoostContrast = _ltmBoostContrast ? 1 : 0;
 
 				glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(ExposureData), &initialData, GL_DYNAMIC_DRAW);
 				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::AutoExposure(), _exposureSsbo);
@@ -192,12 +195,15 @@ namespace Boidsish {
 
 			int ltmEnabled = _ltmEnabled ? 1 : 0;
 			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, ltmEnabled), sizeof(int), &ltmEnabled);
-			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, ltmShadows), sizeof(float), &_ltmShadows);
-			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, ltmHighlights), sizeof(float), &_ltmHighlights);
+			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, ltmEvSpread), sizeof(float), &_ltmEvSpread);
+			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, ltmTarget), sizeof(float), &_ltmTarget);
 			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, ltmSigma), sizeof(float), &_ltmSigma);
+			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, ltmContrastWeight), sizeof(float), &_ltmContrastWeight);
+			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, ltmSaturationWeight), sizeof(float), &_ltmSaturationWeight);
+			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, ltmExposednessWeight), sizeof(float), &_ltmExposednessWeight);
+			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, ltmMaxMip), sizeof(int), &_ltmMaxMip);
 			int ltmBoost = _ltmBoostContrast ? 1 : 0;
 			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, ltmBoostContrast), sizeof(int), &ltmBoost);
-			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, ltmMaxMip), sizeof(int), &_ltmMaxMip);
 
 			// 2. Compute-based Downsample, Bright Pass and Auto-Exposure
 			_downsampleComputeShader->use();

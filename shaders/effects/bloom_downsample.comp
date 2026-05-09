@@ -81,12 +81,14 @@ void main() {
 		}
 
 		if (ltmEnabled != 0) {
-			float hScale = ltmHighlights;
-			float sScale = ltmShadows;
+			// Instantaneous base exposure derived from global average
+			float baseExposure = targetLuminance / max(avgLuma, 0.0001);
+			float evStep = exp2(ltmEvSpread);
 
-			vec3 c_h = aces(centerSample * hScale);
-			vec3 c_m = aces(centerSample);
-			vec3 c_s = aces(centerSample * sScale);
+			vec3 exposures = vec3(baseExposure * evStep, baseExposure, baseExposure / evStep);
+			vec3 c_h = aces(centerSample * exposures.x);
+			vec3 c_m = aces(centerSample * exposures.y);
+			vec3 c_s = aces(centerSample * exposures.z);
 
 			float l_h = sqrt(dot(c_h, vec3(0.2126, 0.7152, 0.0722)));
 			float l_m = sqrt(dot(c_m, vec3(0.2126, 0.7152, 0.0722)));
@@ -94,8 +96,27 @@ void main() {
 
 			s_syntheticLuma[localId.x][localId.y] = vec3(l_h, l_m, l_s);
 
-			vec3 diff = vec3(l_h, l_m, l_s) - 0.5;
-			vec3 w = exp(-0.5 * diff * diff * ltmSigma);
+			// Mertens Weighting Scheme
+			// 1. Contrast Weight
+			// We approximate contrast using a simple 3x3 Laplacian-ish filter if we had neighbors,
+			// but here we just have the single sample. We can use the difference from the synthetic exposures.
+			vec3 contrast = vec3(0.0);
+			// (Future: could sample neighbors from source texture here for true Laplacian)
+
+			// 2. Saturation Weight
+			float sat_h = max(max(c_h.r, c_h.g), c_h.b) - min(min(c_h.r, c_h.g), c_h.b);
+			float sat_m = max(max(c_m.r, c_m.g), c_m.b) - min(min(c_m.r, c_m.g), c_m.b);
+			float sat_s = max(max(c_s.r, c_s.g), c_s.b) - min(min(c_s.r, c_s.g), c_s.b);
+			vec3 saturation = vec3(sat_h, sat_m, sat_s);
+
+			// 3. Well-exposedness Weight
+			vec3 diff = vec3(l_h, l_m, l_s) - ltmTarget;
+			vec3 exposedness = exp(-0.5 * diff * diff / (ltmSigma * ltmSigma + 0.0001));
+
+			vec3 w = pow(max(vec3(1.0), vec3(1.0)), vec3(ltmContrastWeight)) *
+			         pow(max(saturation, vec3(0.0001)), vec3(ltmSaturationWeight)) *
+			         pow(max(exposedness, vec3(0.0001)), vec3(ltmExposednessWeight));
+
 			s_syntheticWeight[localId.x][localId.y] = w;
 		}
 
