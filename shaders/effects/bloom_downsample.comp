@@ -53,13 +53,13 @@ void main() {
 			// s_logLuma[localId.x][localId.y] = logLuma;
 			// s_valid[localId.x][localId.y] = 1.0;
 
-				// if (luma > 0.05) { // Black point exclusion threshold
+				if (luma > 0.05) { // Black point exclusion threshold
 					s_logLuma[localId.x][localId.y] = logLuma;
 					s_valid[localId.x][localId.y] = 1.0;
-				// } else {
-				// 	s_logLuma[localId.x][localId.y] = 0.0;
-				// 	s_valid[localId.x][localId.y] = 0.0;
-				// }
+				} else {
+					s_logLuma[localId.x][localId.y] = 0.0;
+					s_valid[localId.x][localId.y] = 0.0;
+				}
 
 
 			// Calculate weight based on distance to focus point
@@ -123,7 +123,7 @@ void main() {
 		if (prevTileLuma <= 0.0001) prevTileLuma = tileAvgLuma;
 
 		float speed = (tileAvgLuma > prevTileLuma) ? speedUp : speedDown;
-		float adaptation = 1.0 - exp(-deltaTime * speed);
+		float adaptation = 1.0 - exp(-deltaTime * 1.0 * speed);
 
 		float newTileLuma = prevTileLuma + (tileAvgLuma - prevTileLuma) * adaptation;
 		imageStore(tileExposureMap, tileCoord, vec4(newTileLuma, 0.0, 0.0, 0.0));

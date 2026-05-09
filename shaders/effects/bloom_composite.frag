@@ -25,7 +25,7 @@ uniform float uchimuraB;
 // New uniforms for depth linearization and bilateral weighting
 uniform float nearPlane; // Set from application (e.g., 0.1)
 uniform float farPlane;  // Set from application (e.g., 1000.0)
-uniform float depthSharpness = 1.0; // Controls edge harshness (start around 1.0 - 5.0)
+uniform float depthSharpness = 0.50; // Controls edge harshness (start around 1.0 - 5.0)
 
 
 #include "helpers/tonemapping.glsl"
@@ -60,6 +60,7 @@ float getBilateralAdaptedLuminance(vec2 uv, float fragDepthLinear) {
             float tileDepthLinear = linearizeDepth(tileDepthRaw);
 
             // Bilinear spatial weight
+			f = smoothstep(0, 1, f);
             float spatialWeight = mix(1.0 - f.x, f.x, offset.x) * mix(1.0 - f.y, f.y, offset.y);
 
             // Depth edge-aware weight
@@ -126,7 +127,8 @@ void main() {
 		float lExposure = targetLuminance / max(localAdaptedLuma, 0.0001);
 		lExposure = clamp(lExposure, minExposure, maxExposure);
 		// result *= gExposure;
-		result *= mix(gExposure, lExposure, 0.5);
+		// result *= mix(lExposure, gExposure, abs(gExposure - lExposure)/(gExposure+lExposure));
+		result *= mix(lExposure, gExposure, 0.5);
 	}
 
 	// 3. ASC CDL Color Grading
