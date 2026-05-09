@@ -53,5 +53,16 @@ layout(std430, binding = [[AUTO_EXPOSURE_BINDING]]) buffer AutoExposure {
 	float whiteTint;
 	float _pad4;
 
+	// LTM parameters
+	int   ltmEnabled;
+	float ltmShadows;
+	float ltmHighlights;
+	float ltmSigma;
+
+	int   ltmBoostContrast;
+	int   ltmMaxMip;
+	float _ltmPad1;
+	float _ltmPad2;
+
 	uint  histogram[256];
 };

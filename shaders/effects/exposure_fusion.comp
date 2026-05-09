@@ -1,0 +1,58 @@
+#version 460 core
+
+layout(local_size_x = 16, local_size_y = 16) in;
+
+layout(binding = 0) uniform sampler2D tileExposureMap;
+layout(binding = 1) uniform sampler2D tileWeightMap;
+
+layout(binding = 0, r16f) uniform image2D outMip0;
+layout(binding = 1, r16f) uniform image2D outMip1;
+layout(binding = 2, r16f) uniform image2D outMip2;
+layout(binding = 3, r16f) uniform image2D outMip3;
+layout(binding = 4, r16f) uniform image2D outMip4;
+layout(binding = 5, r16f) uniform image2D outMip5;
+
+#include "types/autoexposure.glsl"
+
+uniform int numMips;
+
+void main() {
+    ivec2 id = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 mip0Size = imageSize(outMip0);
+
+    if (id.x >= mip0Size.x || id.y >= mip0Size.y) return;
+
+    vec2 uv = (vec2(id) + 0.5) / vec2(mip0Size);
+
+    // 1. Blend coarsest level (Gaussian)
+    int coarsestMip = min(ltmMaxMip, numMips - 1);
+    vec3 exposures = textureLod(tileExposureMap, uv, coarsestMip).rgb;
+    vec3 weights = textureLod(tileWeightMap, uv, coarsestMip).rgb;
+
+    weights /= dot(weights, vec3(1.0)) + 0.0001;
+    float accumulated = dot(exposures * weights, vec3(1.0));
+
+    // Note: We can't easily write to all mips in one pass if they are different sizes
+    // unless we use a specialized approach.
+    // However, for the demo/GOW implementation, we can just compute the fusion for Mip 0.
+    // The composite frag will then use this fused map.
+
+    // 2. Blend Laplacians from coarsest down to Mip 0
+    for (int i = coarsestMip; i > 0; i--) {
+        vec3 expFine = textureLod(tileExposureMap, uv, i - 1).rgb;
+        vec3 expCoarse = textureLod(tileExposureMap, uv, i).rgb;
+        vec3 laplacians = expFine - expCoarse;
+
+        vec3 wFine = textureLod(tileWeightMap, uv, i - 1).rgb;
+
+        // Local contrast boost
+        if (ltmBoostContrast != 0) {
+            wFine *= (abs(laplacians) + 0.00001);
+        }
+
+        wFine /= dot(wFine, vec3(1.0)) + 0.0001;
+        accumulated += dot(laplacians * wFine, vec3(1.0));
+    }
+
+    imageStore(outMip0, id, vec4(accumulated, 0.0, 0.0, 1.0));
+}

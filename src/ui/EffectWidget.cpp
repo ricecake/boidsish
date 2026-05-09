@@ -236,6 +236,33 @@ namespace Boidsish {
 									if (ImGui::SliderFloat("Histogram High Cutoff", &high_cutoff, 0.0f, 1.0f)) {
 										bloom_effect->SetHistogramCutoffs(low_cutoff, high_cutoff);
 									}
+
+									ImGui::Separator();
+									ImGui::Text("Local Tone Mapping (Fusion)");
+									bool ltm_enabled = bloom_effect->IsLtmEnabled();
+									if (ImGui::Checkbox("Enable LTM", &ltm_enabled)) {
+										bloom_effect->SetLtmEnabled(ltm_enabled);
+									}
+									if (ltm_enabled) {
+										float shadows = bloom_effect->GetLtmShadows();
+										float highlights = bloom_effect->GetLtmHighlights();
+										float sigma = bloom_effect->GetLtmSigma();
+										bool changed_ltm = false;
+										changed_ltm |= ImGui::SliderFloat("Shadows Boost", &shadows, 0.0f, 4.0f);
+										changed_ltm |= ImGui::SliderFloat("Highlights Compression", &highlights, 0.0f, 4.0f);
+										changed_ltm |= ImGui::SliderFloat("Exposure Sigma", &sigma, 0.1f, 10.0f);
+										if (changed_ltm) {
+											bloom_effect->SetLtmParams(shadows, highlights, sigma);
+										}
+										bool boost = bloom_effect->IsLtmBoostContrastEnabled();
+										if (ImGui::Checkbox("Boost Local Contrast", &boost)) {
+											bloom_effect->SetLtmBoostContrast(boost);
+										}
+										int max_mip = bloom_effect->GetLtmMaxMip();
+										if (ImGui::SliderInt("Fusion Depth (Mip)", &max_mip, 0, 5)) {
+											bloom_effect->SetLtmMaxMip(max_mip);
+										}
+									}
 								}
 								ImGui::Separator();
 								bool is_enabled = bloom_effect->IsToneMappingEnabled();

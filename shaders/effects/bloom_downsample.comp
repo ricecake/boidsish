@@ -3,7 +3,8 @@
 layout(local_size_x = 16, local_size_y = 16) in;
 
 layout(binding = 0) uniform sampler2D srcTexture;
-layout(binding = 1, r16f) uniform image2D tileExposureMap;
+layout(binding = 1, rgba16f) uniform image2D tileExposureMap;
+layout(binding = 2, rgba16f) uniform image2D tileWeightMap;
 layout(binding = 5, rgba16f) uniform writeonly image2D outMip0;
 layout(binding = 6, rgba16f) uniform writeonly image2D outMip1;
 layout(binding = 7, rgba16f) uniform writeonly image2D outMip2;
@@ -11,6 +12,7 @@ layout(binding = 8, rgba16f) uniform writeonly image2D outMip3;
 layout(binding = 9, rgba16f) uniform writeonly image2D outMip4;
 
 #include "types/autoexposure.glsl"
+#include "helpers/tonemapping.glsl"
 
 uniform vec2  srcResolution; // Full resolution of srcTexture
 uniform int   numMips;
@@ -22,6 +24,8 @@ uniform float speedDown;
 shared vec3 s_mip[16][16];
 shared float s_logLuma[16][16];
 shared float s_valid[16][16];
+shared vec3 s_syntheticLuma[16][16];
+shared vec3 s_syntheticWeight[16][16];
 
 // Constants for histogram
 const float MIN_LOG_LUMA = -10.0;
@@ -37,6 +41,8 @@ void main() {
 
 	s_logLuma[localId.x][localId.y] = 0.0;
 	s_valid[localId.x][localId.y] = 0.0;
+	s_syntheticLuma[localId.x][localId.y] = vec3(0.0);
+	s_syntheticWeight[localId.x][localId.y] = vec3(0.0);
 
 	vec3 bloomColor = vec3(0.0);
 
@@ -74,6 +80,25 @@ void main() {
 			atomicAdd(histogram[bin], uint(weight * 1024.0));
 		}
 
+		if (ltmEnabled != 0) {
+			float hScale = ltmHighlights;
+			float sScale = ltmShadows;
+
+			vec3 c_h = aces(centerSample * hScale);
+			vec3 c_m = aces(centerSample);
+			vec3 c_s = aces(centerSample * sScale);
+
+			float l_h = sqrt(dot(c_h, vec3(0.2126, 0.7152, 0.0722)));
+			float l_m = sqrt(dot(c_m, vec3(0.2126, 0.7152, 0.0722)));
+			float l_s = sqrt(dot(c_s, vec3(0.2126, 0.7152, 0.0722)));
+
+			s_syntheticLuma[localId.x][localId.y] = vec3(l_h, l_m, l_s);
+
+			vec3 diff = vec3(l_h, l_m, l_s) - 0.5;
+			vec3 w = exp(-0.5 * diff * diff * ltmSigma);
+			s_syntheticWeight[localId.x][localId.y] = w;
+		}
+
 		// 9-tap Dual Kawase-style filter from srcTexture for bloom
 		bloomColor = centerSample * 4.0;
 		bloomColor += texture(srcTexture, uv + vec2(-1.0, -1.0) * texelSize).rgb;
@@ -102,31 +127,44 @@ void main() {
 
 	barrier();
 
-	if (localId == ivec2(0) && useAutoExposure != 0) {
+	if (localId == ivec2(0)) {
 		float tileSum = 0.0;
 		float validCount = 0.0;
+		vec3 syntheticLumaSum = vec3(0.0);
+		vec3 syntheticWeightSum = vec3(0.0);
+
 		for (int i = 0; i < 16; i++) {
 			for (int j = 0; j < 16; j++) {
 				tileSum += s_logLuma[i][j];
 				validCount += s_valid[i][j];
+				syntheticLumaSum += s_syntheticLuma[i][j];
+				syntheticWeightSum += s_syntheticWeight[i][j];
 			}
 		}
 
-		// Protect against completely empty tiles (divide by zero)
-		float safeCount = max(validCount, 1.0);
-		float tileAvgLuma = exp(tileSum / safeCount);
-
 		ivec2 tileCoord = ivec2(gl_WorkGroupID.xy);
-		float prevTileLuma = imageLoad(tileExposureMap, tileCoord).r;
 
-		// Catch uninitialized map on first frame
-		if (prevTileLuma <= 0.0001) prevTileLuma = tileAvgLuma;
+		if (useAutoExposure != 0) {
+			float safeCount = max(validCount, 1.0);
+			float tileAvgLuma = exp(tileSum / safeCount);
 
-		float speed = (tileAvgLuma > prevTileLuma) ? speedUp : speedDown;
-		float adaptation = 1.0 - exp(-deltaTime * 1.0 * speed);
+			float prevTileLuma = imageLoad(tileExposureMap, tileCoord).r;
+			if (prevTileLuma <= 0.0001) prevTileLuma = tileAvgLuma;
 
-		float newTileLuma = prevTileLuma + (tileAvgLuma - prevTileLuma) * adaptation;
-		imageStore(tileExposureMap, tileCoord, vec4(newTileLuma, 0.0, 0.0, 0.0));
+			float speed = (tileAvgLuma > prevTileLuma) ? speedUp : speedDown;
+			float adaptation = 1.0 - exp(-deltaTime * 1.0 * speed);
+			float newTileLuma = prevTileLuma + (tileAvgLuma - prevTileLuma) * adaptation;
+
+			if (ltmEnabled != 0) {
+				imageStore(tileExposureMap, tileCoord, vec4(syntheticLumaSum / 256.0, 1.0));
+				imageStore(tileWeightMap, tileCoord, vec4(syntheticWeightSum / 256.0, 1.0));
+			} else {
+				imageStore(tileExposureMap, tileCoord, vec4(newTileLuma, 0.0, 0.0, 1.0));
+			}
+		} else if (ltmEnabled != 0) {
+			imageStore(tileExposureMap, tileCoord, vec4(syntheticLumaSum / 256.0, 1.0));
+			imageStore(tileWeightMap, tileCoord, vec4(syntheticWeightSum / 256.0, 1.0));
+		}
 	}
 
 	if (localId == ivec2(0)) {
