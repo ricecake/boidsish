@@ -71,6 +71,18 @@ namespace Boidsish {
 				}
 			}
 
+			int tileMapWidth = (_width / 2 + 15) / 16;
+			int tileMapHeight = (_height / 2 + 15) / 16;
+
+			glGenTextures(1, &_exposureTexture);
+			glBindTexture(GL_TEXTURE_2D, _exposureTexture);
+
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_R16F, tileMapWidth, tileMapHeight, 0, GL_RED, GL_FLOAT, nullptr);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
 			// Auto-exposure SSBO
 			if (_exposureSsbo == 0) {
 				glGenBuffers(1, &_exposureSsbo);
@@ -160,6 +172,10 @@ namespace Boidsish {
 			for (int i = 0; i < _numMips; i++) {
 				glBindImageTexture(5 + i, _bloomTexture, i, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 			}
+
+			glBindImageTexture(1, _exposureTexture, 0, GL_FALSE, 0, GL_READ_WRITE, GL_R16F);
+			// glBindImageTexture(0, _exposureTexture, 0, GL_FALSE, 0, GL_READ_WRITE, GL_R16F);
+
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::AutoExposure(), _exposureSsbo);
 
 			unsigned int groupsX = (_width / 2 + 15) / 16;
@@ -209,9 +225,14 @@ namespace Boidsish {
 			_compositeShader->use();
 			_compositeShader->setInt("sceneTexture", 0);
 			_compositeShader->setInt("bloomBlur", 1);
+			_compositeShader->setInt("tileExposureMap", 2);
+			_compositeShader->setInt("depthTexture", 3);
 			_compositeShader->setFloat("intensity", intensity_);
 			_compositeShader->setFloat("minIntensity", minIntensity_);
 			_compositeShader->setFloat("maxIntensity", maxIntensity_);
+
+			_compositeShader->setFloat("farPlane", Constants::Project::Camera::DefaultFarPlane());
+			_compositeShader->setFloat("nearPlane", Constants::Project::Camera::DefaultNearPlane());
 
 			_compositeShader->setBool("toneMappingEnabled", _toneMappingEnabled);
 			_compositeShader->setInt("toneMapMode", _toneMappingMode);
@@ -231,6 +252,12 @@ namespace Boidsish {
 			glBindTexture(GL_TEXTURE_2D, _bloomTexture);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+
+			glActiveTexture(GL_TEXTURE2);
+			glBindTexture(GL_TEXTURE_2D, _exposureTexture);
+
+			glActiveTexture(GL_TEXTURE3);
+			glBindTexture(GL_TEXTURE_2D, depthTexture); // Provide your G-buffer depth here
 
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::AutoExposure(), _exposureSsbo);
 

@@ -167,6 +167,7 @@ namespace Boidsish {
 			std::unique_ptr<Shader>        _compositeShader;
 
 			GLuint _bloomTexture; // Mipmapped texture
+			GLuint _exposureTexture;
 			int    _numMips;
 			std::vector<GLuint> _upsampleFBOs;
 

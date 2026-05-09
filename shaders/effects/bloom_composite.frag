@@ -5,6 +5,9 @@ in vec2 TexCoords;
 
 uniform sampler2D sceneTexture;
 uniform sampler2D bloomBlur;
+uniform sampler2D tileExposureMap;
+uniform sampler2D depthTexture;
+
 uniform float     intensity;
 uniform float     minIntensity;
 uniform float     maxIntensity;
@@ -19,9 +22,59 @@ uniform float uchimuraL;
 uniform float uchimuraC;
 uniform float uchimuraB;
 
+// New uniforms for depth linearization and bilateral weighting
+uniform float nearPlane; // Set from application (e.g., 0.1)
+uniform float farPlane;  // Set from application (e.g., 1000.0)
+uniform float depthSharpness = 1.0; // Controls edge harshness (start around 1.0 - 5.0)
+
+
 #include "helpers/tonemapping.glsl"
 #include "types/autoexposure.glsl"
 // #include "lygia/color/vibrance.glsl"
+
+float linearizeDepth(float depth) {
+    float z = depth * 2.0 - 1.0;
+    return (2.0 * nearPlane * farPlane) / (farPlane + nearPlane - z * (farPlane - nearPlane));
+}
+
+float getBilateralAdaptedLuminance(vec2 uv, float fragDepthLinear) {
+    vec2 tileMapRes = textureSize(tileExposureMap, 0);
+    vec2 tilePos = uv * tileMapRes - 0.5;
+    vec2 baseTile = floor(tilePos);
+    vec2 f = fract(tilePos);
+
+    float totalWeight = 0.0;
+    float totalLuma = 0.0;
+
+    // Fetch the 4 neighboring tiles
+    for (int y = 0; y <= 1; y++) {
+        for (int x = 0; x <= 1; x++) {
+            vec2 offset = vec2(float(x), float(y));
+            vec2 tileCoord = clamp(baseTile + offset, vec2(0.0), tileMapRes - 1.0);
+
+            float tileLuma = texelFetch(tileExposureMap, ivec2(tileCoord), 0).r;
+
+            // Approximate the depth of this tile by sampling the center of its footprint
+            vec2 tileUV = (tileCoord + 0.5) / tileMapRes;
+            float tileDepthRaw = texture(depthTexture, tileUV).r;
+            float tileDepthLinear = linearizeDepth(tileDepthRaw);
+
+            // Bilinear spatial weight
+            float spatialWeight = mix(1.0 - f.x, f.x, offset.x) * mix(1.0 - f.y, f.y, offset.y);
+
+            // Depth edge-aware weight
+            float depthWeight = exp(-abs(fragDepthLinear - tileDepthLinear) * depthSharpness);
+
+            float weight = spatialWeight * depthWeight;
+
+            totalLuma += tileLuma * weight;
+            totalWeight += weight;
+        }
+    }
+
+    // Fallback if weights reach zero to avoid division by zero
+    return totalWeight > 0.0001 ? (totalLuma / totalWeight) : texelFetch(tileExposureMap, ivec2(baseTile), 0).r;
+}
 
 // Planckian locus approximation for temperature to RGB
 vec3 tempToRgb(float temp) {
@@ -62,11 +115,18 @@ void main() {
 	whiteGain /= max(dot(whiteGain, vec3(0.2126, 0.7152, 0.0722)), 0.0001);
 	result *= whiteGain;
 
-	// 2. Exposure
 	if (useAutoExposure != 0) {
-		float exposure = targetLuminance / max(adaptedLuminance, 0.0001);
-		exposure = clamp(exposure, minExposure, maxExposure);
-		result *= exposure;
+		float rawDepth = texture(depthTexture, TexCoords).r;
+		float fragDepthLinear = linearizeDepth(rawDepth);
+		float localAdaptedLuma = getBilateralAdaptedLuminance(TexCoords, fragDepthLinear);
+
+		float gExposure = targetLuminance / max(adaptedLuminance, 0.0001);
+		gExposure = clamp(gExposure, minExposure, maxExposure);
+
+		float lExposure = targetLuminance / max(localAdaptedLuma, 0.0001);
+		lExposure = clamp(lExposure, minExposure, maxExposure);
+		// result *= gExposure;
+		result *= mix(gExposure, lExposure, 0.5);
 	}
 
 	// 3. ASC CDL Color Grading

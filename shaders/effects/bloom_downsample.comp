@@ -3,6 +3,7 @@
 layout(local_size_x = 16, local_size_y = 16) in;
 
 layout(binding = 0) uniform sampler2D srcTexture;
+layout(binding = 1, r16f) uniform image2D tileExposureMap;
 layout(binding = 5, rgba16f) uniform writeonly image2D outMip0;
 layout(binding = 6, rgba16f) uniform writeonly image2D outMip1;
 layout(binding = 7, rgba16f) uniform writeonly image2D outMip2;
@@ -19,6 +20,8 @@ uniform float speedUp;
 uniform float speedDown;
 
 shared vec3 s_mip[16][16];
+shared float s_logLuma[16][16];
+shared float s_valid[16][16];
 
 // Constants for histogram
 const float MIN_LOG_LUMA = -10.0;
@@ -30,9 +33,14 @@ void main() {
 	ivec2 mip0Size = imageSize(outMip0);
 	ivec2 numGroups = ivec2(gl_NumWorkGroups.xy);
 
+	bool isValid = (id.x < mip0Size.x && id.y < mip0Size.y);
+
+	s_logLuma[localId.x][localId.y] = 0.0;
+	s_valid[localId.x][localId.y] = 0.0;
+
 	vec3 bloomColor = vec3(0.0);
 
-	if (id.x < mip0Size.x && id.y < mip0Size.y) {
+	if (isValid) {
 		vec2 uv = (vec2(id) + 0.5) / vec2(mip0Size);
 		vec2 texelSize = 1.0 / srcResolution;
 
@@ -42,6 +50,17 @@ void main() {
 
 		if (useAutoExposure != 0) {
 			float logLuma = log(max(luma, 0.0001));
+			// s_logLuma[localId.x][localId.y] = logLuma;
+			// s_valid[localId.x][localId.y] = 1.0;
+
+				// if (luma > 0.05) { // Black point exclusion threshold
+					s_logLuma[localId.x][localId.y] = logLuma;
+					s_valid[localId.x][localId.y] = 1.0;
+				// } else {
+				// 	s_logLuma[localId.x][localId.y] = 0.0;
+				// 	s_valid[localId.x][localId.y] = 0.0;
+				// }
+
 
 			// Calculate weight based on distance to focus point
 			float dist = distance(uv, focusPoint);
@@ -82,6 +101,33 @@ void main() {
 	s_mip[localId.x][localId.y] = bloomColor;
 
 	barrier();
+
+	if (localId == ivec2(0) && useAutoExposure != 0) {
+		float tileSum = 0.0;
+		float validCount = 0.0;
+		for (int i = 0; i < 16; i++) {
+			for (int j = 0; j < 16; j++) {
+				tileSum += s_logLuma[i][j];
+				validCount += s_valid[i][j];
+			}
+		}
+
+		// Protect against completely empty tiles (divide by zero)
+		float safeCount = max(validCount, 1.0);
+		float tileAvgLuma = exp(tileSum / safeCount);
+
+		ivec2 tileCoord = ivec2(gl_WorkGroupID.xy);
+		float prevTileLuma = imageLoad(tileExposureMap, tileCoord).r;
+
+		// Catch uninitialized map on first frame
+		if (prevTileLuma <= 0.0001) prevTileLuma = tileAvgLuma;
+
+		float speed = (tileAvgLuma > prevTileLuma) ? speedUp : speedDown;
+		float adaptation = 1.0 - exp(-deltaTime * speed);
+
+		float newTileLuma = prevTileLuma + (tileAvgLuma - prevTileLuma) * adaptation;
+		imageStore(tileExposureMap, tileCoord, vec4(newTileLuma, 0.0, 0.0, 0.0));
+	}
 
 	if (localId == ivec2(0)) {
 		memoryBarrierBuffer();
