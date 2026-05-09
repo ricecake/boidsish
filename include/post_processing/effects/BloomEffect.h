@@ -100,12 +100,19 @@ namespace Boidsish {
 
 			void SetLtmEnabled(bool enabled) { _ltmEnabled = enabled; }
 			bool IsLtmEnabled() const { return _ltmEnabled; }
-			void SetLtmParams(float shadows, float highlights, float sigma) {
-				_ltmShadows = shadows; _ltmHighlights = highlights; _ltmSigma = sigma;
+			void SetLtmParams(float evSpread, float target, float sigma) {
+				_ltmEvSpread = evSpread; _ltmTarget = target; _ltmSigma = sigma;
 			}
-			float GetLtmShadows() const { return _ltmShadows; }
-			float GetLtmHighlights() const { return _ltmHighlights; }
+			float GetLtmEvSpread() const { return _ltmEvSpread; }
+			float GetLtmTarget() const { return _ltmTarget; }
 			float GetLtmSigma() const { return _ltmSigma; }
+
+			void SetLtmWeights(float contrast, float saturation, float exposedness) {
+				_ltmContrastWeight = contrast; _ltmSaturationWeight = saturation; _ltmExposednessWeight = exposedness;
+			}
+			float GetLtmContrastWeight() const { return _ltmContrastWeight; }
+			float GetLtmSaturationWeight() const { return _ltmSaturationWeight; }
+			float GetLtmExposednessWeight() const { return _ltmExposednessWeight; }
 			void SetLtmBoostContrast(bool boost) { _ltmBoostContrast = boost; }
 			bool IsLtmBoostContrastEnabled() const { return _ltmBoostContrast; }
 			void SetLtmMaxMip(int mip) { _ltmMaxMip = mip; }
@@ -171,14 +178,19 @@ namespace Boidsish {
 
 				// LTM parameters
 				int   ltmEnabled;
-				float ltmShadows;
-				float ltmHighlights;
+				float ltmEvSpread;
+				float ltmTarget;
 				float ltmSigma;
 
-				int   ltmBoostContrast;
+				float ltmContrastWeight;
+				float ltmSaturationWeight;
+				float ltmExposednessWeight;
 				int   ltmMaxMip;
+
+				int   ltmBoostContrast;
 				float _ltmPad1;
 				float _ltmPad2;
+				float _ltmPad3;
 
 				uint32_t histogram[256];
 			};
@@ -243,9 +255,12 @@ namespace Boidsish {
 			float _whiteTint = 0.0f;
 
 			bool  _ltmEnabled = true;
-			float _ltmShadows = 1.5f;
-			float _ltmHighlights = 2.0f;
-			float _ltmSigma = 5.0f;
+			float _ltmEvSpread = 3.0f;
+			float _ltmTarget = 0.5f;
+			float _ltmSigma = 0.2f;
+			float _ltmContrastWeight = 1.0f;
+			float _ltmSaturationWeight = 1.0f;
+			float _ltmExposednessWeight = 1.0f;
 			bool  _ltmBoostContrast = false;
 			int   _ltmMaxMip = 6;
 

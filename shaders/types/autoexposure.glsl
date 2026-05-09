@@ -55,14 +55,19 @@ layout(std430, binding = [[AUTO_EXPOSURE_BINDING]]) buffer AutoExposure {
 
 	// LTM parameters
 	int   ltmEnabled;
-	float ltmShadows;
-	float ltmHighlights;
+	float ltmEvSpread;
+	float ltmTarget;
 	float ltmSigma;
 
-	int   ltmBoostContrast;
+	float ltmContrastWeight;
+	float ltmSaturationWeight;
+	float ltmExposednessWeight;
 	int   ltmMaxMip;
+
+	int   ltmBoostContrast;
 	float _ltmPad1;
 	float _ltmPad2;
+	float _ltmPad3;
 
 	uint  histogram[256];
 };

@@ -244,16 +244,28 @@ namespace Boidsish {
 										bloom_effect->SetLtmEnabled(ltm_enabled);
 									}
 									if (ltm_enabled) {
-										float shadows = bloom_effect->GetLtmShadows();
-										float highlights = bloom_effect->GetLtmHighlights();
+										float evSpread = bloom_effect->GetLtmEvSpread();
+										float target = bloom_effect->GetLtmTarget();
 										float sigma = bloom_effect->GetLtmSigma();
 										bool changed_ltm = false;
-										changed_ltm |= ImGui::SliderFloat("Shadows Boost", &shadows, 0.0f, 4.0f);
-										changed_ltm |= ImGui::SliderFloat("Highlights Compression", &highlights, 0.0f, 4.0f);
-										changed_ltm |= ImGui::SliderFloat("Exposure Sigma", &sigma, 0.1f, 10.0f);
+										changed_ltm |= ImGui::SliderFloat("EV Spread", &evSpread, 0.0f, 10.0f);
+										changed_ltm |= ImGui::SliderFloat("Target Exposedness", &target, 0.0f, 1.0f);
+										changed_ltm |= ImGui::SliderFloat("Exposure Sigma", &sigma, 0.01f, 1.0f);
 										if (changed_ltm) {
-											bloom_effect->SetLtmParams(shadows, highlights, sigma);
+											bloom_effect->SetLtmParams(evSpread, target, sigma);
 										}
+
+										float c_w = bloom_effect->GetLtmContrastWeight();
+										float s_w = bloom_effect->GetLtmSaturationWeight();
+										float e_w = bloom_effect->GetLtmExposednessWeight();
+										bool changed_ltm_weights = false;
+										changed_ltm_weights |= ImGui::SliderFloat("Contrast Weight", &c_w, 0.0f, 2.0f);
+										changed_ltm_weights |= ImGui::SliderFloat("Saturation Weight", &s_w, 0.0f, 2.0f);
+										changed_ltm_weights |= ImGui::SliderFloat("Exposedness Weight", &e_w, 0.0f, 2.0f);
+										if (changed_ltm_weights) {
+											bloom_effect->SetLtmWeights(c_w, s_w, e_w);
+										}
+
 										bool boost = bloom_effect->IsLtmBoostContrastEnabled();
 										if (ImGui::Checkbox("Boost Local Contrast", &boost)) {
 											bloom_effect->SetLtmBoostContrast(boost);
