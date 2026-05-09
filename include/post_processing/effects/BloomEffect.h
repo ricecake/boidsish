@@ -98,6 +98,19 @@ namespace Boidsish {
 			float GetWhiteTemp() const { return _whiteTemp; }
 			float GetWhiteTint() const { return _whiteTint; }
 
+			void SetLtmEnabled(bool enabled) { _ltmEnabled = enabled; }
+			bool IsLtmEnabled() const { return _ltmEnabled; }
+			void SetLtmParams(float shadows, float highlights, float sigma) {
+				_ltmShadows = shadows; _ltmHighlights = highlights; _ltmSigma = sigma;
+			}
+			float GetLtmShadows() const { return _ltmShadows; }
+			float GetLtmHighlights() const { return _ltmHighlights; }
+			float GetLtmSigma() const { return _ltmSigma; }
+			void SetLtmBoostContrast(bool boost) { _ltmBoostContrast = boost; }
+			bool IsLtmBoostContrastEnabled() const { return _ltmBoostContrast; }
+			void SetLtmMaxMip(int mip) { _ltmMaxMip = mip; }
+			int GetLtmMaxMip() const { return _ltmMaxMip; }
+
 			void SetNightFactor(float factor) override { _nightFactor = factor; }
 
 			void SetTime(float time) override;
@@ -156,6 +169,17 @@ namespace Boidsish {
 				float whiteTint;
 				float _pad4;
 
+				// LTM parameters
+				int   ltmEnabled;
+				float ltmShadows;
+				float ltmHighlights;
+				float ltmSigma;
+
+				int   ltmBoostContrast;
+				int   ltmMaxMip;
+				float _ltmPad1;
+				float _ltmPad2;
+
 				uint32_t histogram[256];
 			};
 
@@ -163,12 +187,16 @@ namespace Boidsish {
 			void InitializeResources();
 
 			std::unique_ptr<ComputeShader> _downsampleComputeShader;
+			std::unique_ptr<ComputeShader> _exposureFusionComputeShader;
 			std::unique_ptr<Shader>        _upsampleShader;
 			std::unique_ptr<Shader>        _compositeShader;
 
 			GLuint _bloomTexture; // Mipmapped texture
 			GLuint _exposureTexture;
+			GLuint _weightTexture;
+			GLuint _fusedExposureTexture;
 			int    _numMips;
+			int    _numLtmMips;
 			std::vector<GLuint> _upsampleFBOs;
 
 			GLuint _exposureSsbo = 0;
@@ -213,6 +241,13 @@ namespace Boidsish {
 
 			float _whiteTemp = 6500.0f;
 			float _whiteTint = 0.0f;
+
+			bool  _ltmEnabled = true;
+			float _ltmShadows = 1.5f;
+			float _ltmHighlights = 2.0f;
+			float _ltmSigma = 5.0f;
+			bool  _ltmBoostContrast = false;
+			int   _ltmMaxMip = 6;
 
 			float _nightFactor = 0.0f;
 			float _lastTime = 0.0f;

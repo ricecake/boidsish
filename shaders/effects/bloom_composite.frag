@@ -6,6 +6,7 @@ in vec2 TexCoords;
 uniform sampler2D sceneTexture;
 uniform sampler2D bloomBlur;
 uniform sampler2D tileExposureMap;
+uniform sampler2D fusedExposureMap;
 uniform sampler2D depthTexture;
 
 uniform float     intensity;
@@ -117,18 +118,66 @@ void main() {
 	result *= whiteGain;
 
 	if (useAutoExposure != 0) {
-		float rawDepth = texture(depthTexture, TexCoords).r;
-		float fragDepthLinear = linearizeDepth(rawDepth);
-		float localAdaptedLuma = getBilateralAdaptedLuminance(TexCoords, fragDepthLinear);
-
 		float gExposure = targetLuminance / max(adaptedLuminance, 0.0001);
 		gExposure = clamp(gExposure, minExposure, maxExposure);
 
-		float lExposure = targetLuminance / max(localAdaptedLuma, 0.0001);
-		lExposure = clamp(lExposure, minExposure, maxExposure);
-		// result *= gExposure;
-		result *= mix(lExposure, gExposure, abs(gExposure - lExposure)/(gExposure+lExposure));
-		// result *= mix(lExposure, gExposure, max(1.0 - gExposure, 1.0 - lExposure));
+		if (ltmEnabled != 0) {
+			// Guided Upsampling
+			// See https://bartwronski.com/2019/09/22/local-linear-models-guided-filter/
+			vec2 tileMapRes = textureSize(fusedExposureMap, 0);
+			vec2 invTileMapRes = 1.0 / tileMapRes;
+
+			float momentX = 0.0;
+			float momentY = 0.0;
+			float momentX2 = 0.0;
+			float momentXY = 0.0;
+			float ws = 0.0;
+
+			for (int dy = -1; dy <= 1; dy++) {
+				for (int dx = -1; dx <= 1; dx++) {
+					vec2 uv = TexCoords + vec2(dx, dy) * invTileMapRes;
+					float x = textureLod(tileExposureMap, uv, 0).g; // Midtone synthetic luma
+					float y = textureLod(fusedExposureMap, uv, 0).r; // Fused luma
+					float w = exp(-0.5 * float(dx*dx + dy*dy) / (0.7*0.7));
+
+					momentX += x * w;
+					momentY += y * w;
+					momentX2 += x * x * w;
+					momentXY += x * y * w;
+					ws += w;
+				}
+			}
+
+			momentX /= ws;
+			momentY /= ws;
+			momentX2 /= ws;
+			momentXY /= ws;
+
+			float A = (momentXY - momentX * momentY) / (max(momentX2 - momentX * momentX, 0.0) + 0.00001);
+			float B = momentY - A * momentX;
+
+			// Current pixel's tonemapped luminance (proxy)
+			vec3 proxyColor = aces(result);
+			float luma = sqrt(dot(proxyColor, vec3(0.2126, 0.7152, 0.0722)));
+
+			float fusedLuma = A * luma + B;
+			float localMultiplier = max(fusedLuma, 0.0) / (luma + 0.00001);
+
+			// Prevents artifacts in very dark areas
+			float lerpToUnityThreshold = 0.01;
+			localMultiplier = luma > lerpToUnityThreshold ? localMultiplier :
+				mix(1.0, localMultiplier, smoothstep(0.0, lerpToUnityThreshold, luma));
+
+			result *= localMultiplier;
+		} else {
+			float rawDepth = texture(depthTexture, TexCoords).r;
+			float fragDepthLinear = linearizeDepth(rawDepth);
+			float localAdaptedLuma = getBilateralAdaptedLuminance(TexCoords, fragDepthLinear);
+
+			float lExposure = targetLuminance / max(localAdaptedLuma, 0.0001);
+			lExposure = clamp(lExposure, minExposure, maxExposure);
+			result *= mix(lExposure, gExposure, abs(gExposure - lExposure)/(gExposure+lExposure));
+		}
 	}
 
 	// 3. ASC CDL Color Grading
