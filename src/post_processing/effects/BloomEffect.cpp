@@ -103,8 +103,8 @@ namespace Boidsish {
 
 			glGenTextures(1, &_fusedExposureTexture);
 			glBindTexture(GL_TEXTURE_2D, _fusedExposureTexture);
-			glTexStorage2D(GL_TEXTURE_2D, _numLtmMips, GL_R16F, tileMapWidth, tileMapHeight);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+			glTexStorage2D(GL_TEXTURE_2D, 1, GL_R16F, _width / 2, _height / 2);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
@@ -223,6 +223,7 @@ namespace Boidsish {
 
 			glBindImageTexture(1, _exposureTexture, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA16F);
 			glBindImageTexture(2, _weightTexture, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA16F);
+			glBindImageTexture(3, _fusedExposureTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R16F);
 
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::AutoExposure(), _exposureSsbo);
 
@@ -231,29 +232,12 @@ namespace Boidsish {
 			_downsampleComputeShader->dispatch(groupsX, groupsY, 1);
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
 
-			// 2.5 Generate Mips for Exposure and Weight Maps
+			// 2.5 Generate Mips for Exposure and Weight Maps (Legacy fusion is now inline in downsample)
 			if (_ltmEnabled) {
 				glBindTexture(GL_TEXTURE_2D, _exposureTexture);
 				glGenerateMipmap(GL_TEXTURE_2D);
 				glBindTexture(GL_TEXTURE_2D, _weightTexture);
 				glGenerateMipmap(GL_TEXTURE_2D);
-
-				_exposureFusionComputeShader->use();
-				_exposureFusionComputeShader->setInt("numMips", _numLtmMips);
-
-				glActiveTexture(GL_TEXTURE0);
-				glBindTexture(GL_TEXTURE_2D, _exposureTexture);
-				glActiveTexture(GL_TEXTURE1);
-				glBindTexture(GL_TEXTURE_2D, _weightTexture);
-
-				for (int i = 0; i < _numLtmMips; i++) {
-					glBindImageTexture(i, _fusedExposureTexture, i, GL_FALSE, 0, GL_WRITE_ONLY, GL_R16F);
-				}
-
-				unsigned int fusionGroupsX = (groupsX + 15) / 16;
-				unsigned int fusionGroupsY = (groupsY + 15) / 16;
-				_exposureFusionComputeShader->dispatch(fusionGroupsX, fusionGroupsY, 1);
-				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
 			}
 
 			// Unbind image units so they don't leak into later passes
