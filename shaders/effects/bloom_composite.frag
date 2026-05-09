@@ -127,8 +127,8 @@ void main() {
 		float lExposure = targetLuminance / max(localAdaptedLuma, 0.0001);
 		lExposure = clamp(lExposure, minExposure, maxExposure);
 		// result *= gExposure;
-		// result *= mix(lExposure, gExposure, abs(gExposure - lExposure)/(gExposure+lExposure));
-		result *= mix(lExposure, gExposure, 0.5);
+		result *= mix(lExposure, gExposure, abs(gExposure - lExposure)/(gExposure+lExposure));
+		// result *= mix(lExposure, gExposure, max(1.0 - gExposure, 1.0 - lExposure));
 	}
 
 	// 3. ASC CDL Color Grading
