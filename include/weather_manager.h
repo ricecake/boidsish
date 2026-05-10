@@ -311,8 +311,9 @@ namespace Boidsish {
 			std::optional<float> external_target;
 		};
 
-		void InitializePresets();
-		void UpdateAttribute(WeatherAttribute attr, float target, float deltaTime);
+		void   InitializePresets();
+		void   UpdateAttribute(WeatherAttribute attr, float target, float deltaTime);
+		float* GetValuePtr(WeatherAttribute attr);
 
 		bool  enabled_ = true;
 		bool  macro_sim_enabled_ = true;
