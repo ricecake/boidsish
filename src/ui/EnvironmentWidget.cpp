@@ -56,7 +56,7 @@ namespace Boidsish {
 								weather->SetTarget(WeatherAttribute::Temperature, temp);
 							}
 							ImGui::SameLine();
-							if (ImGui::Button("Reset##Temp")) {
+							if (ImGui::Button("Unlock##Temp")) {
 								weather->ClearTarget(WeatherAttribute::Temperature);
 							}
 							ImGui::Text("  (%.1f C / %.1f F)", temp - 273.15f, (temp - 273.15f) * 1.8f + 32.0f);
@@ -66,7 +66,7 @@ namespace Boidsish {
 								weather->SetTarget(WeatherAttribute::Precipitation, precip);
 							}
 							ImGui::SameLine();
-							if (ImGui::Button("Reset##Precip")) {
+							if (ImGui::Button("Unlock##Precip")) {
 								weather->ClearTarget(WeatherAttribute::Precipitation);
 							}
 
@@ -75,7 +75,7 @@ namespace Boidsish {
 								weather->SetTarget(WeatherAttribute::Humidity, humidity);
 							}
 							ImGui::SameLine();
-							if (ImGui::Button("Reset##Humidity")) {
+							if (ImGui::Button("Unlock##Humidity")) {
 								weather->ClearTarget(WeatherAttribute::Humidity);
 							}
 
@@ -296,10 +296,18 @@ namespace Boidsish {
 										if (weather) weather->SetTarget(WeatherAttribute::HazeDensity, haze_density);
 										else atmosphere_effect->SetHazeDensity(haze_density);
 									}
+									if (weather) {
+										ImGui::SameLine();
+										if (ImGui::Button("Unlock##HazeDensity")) weather->ClearTarget(WeatherAttribute::HazeDensity);
+									}
 									float haze_height = atmosphere_effect->GetHazeHeight();
 									if (ImGui::SliderFloat("Haze Height", &haze_height, 0.0f, 50.0f)) {
 										if (weather) weather->SetTarget(WeatherAttribute::HazeHeight, haze_height);
 										else atmosphere_effect->SetHazeHeight(haze_height);
+									}
+									if (weather) {
+										ImGui::SameLine();
+										if (ImGui::Button("Unlock##HazeHeight")) weather->ClearTarget(WeatherAttribute::HazeHeight);
 									}
 									glm::vec3 haze_color = atmosphere_effect->GetHazeColor();
 									if (ImGui::ColorEdit3("Haze Color", &haze_color[0])) {
@@ -309,25 +317,49 @@ namespace Boidsish {
 											weather->SetTarget(WeatherAttribute::HazeColorB, haze_color.b);
 										} else atmosphere_effect->SetHazeColor(haze_color);
 									}
+									if (weather) {
+										ImGui::SameLine();
+										if (ImGui::Button("Unlock##HazeColor")) {
+											weather->ClearTarget(WeatherAttribute::HazeColorR);
+											weather->ClearTarget(WeatherAttribute::HazeColorG);
+											weather->ClearTarget(WeatherAttribute::HazeColorB);
+										}
+									}
 									float cloud_density = atmosphere_effect->GetCloudDensity();
 									if (ImGui::SliderFloat("Cloud Density", &cloud_density, 0.0f, 1.0f)) {
 										if (weather) weather->SetTarget(WeatherAttribute::CloudDensity, cloud_density);
 										else atmosphere_effect->SetCloudDensity(cloud_density);
+									}
+									if (weather) {
+										ImGui::SameLine();
+										if (ImGui::Button("Unlock##CloudDensity")) weather->ClearTarget(WeatherAttribute::CloudDensity);
 									}
 									float cloud_altitude = atmosphere_effect->GetCloudAltitude();
 									if (ImGui::SliderFloat("Cloud Altitude", &cloud_altitude, 0.0f, 1000.0f)) {
 										if (weather) weather->SetTarget(WeatherAttribute::CloudAltitude, cloud_altitude);
 										else atmosphere_effect->SetCloudAltitude(cloud_altitude);
 									}
+									if (weather) {
+										ImGui::SameLine();
+										if (ImGui::Button("Unlock##CloudAltitude")) weather->ClearTarget(WeatherAttribute::CloudAltitude);
+									}
 									float cloud_thickness = atmosphere_effect->GetCloudThickness();
 									if (ImGui::SliderFloat("Cloud Thickness", &cloud_thickness, 0.0f, 500.0f)) {
 										if (weather) weather->SetTarget(WeatherAttribute::CloudThickness, cloud_thickness);
 										else atmosphere_effect->SetCloudThickness(cloud_thickness);
 									}
+									if (weather) {
+										ImGui::SameLine();
+										if (ImGui::Button("Unlock##CloudThickness")) weather->ClearTarget(WeatherAttribute::CloudThickness);
+									}
 									float cloud_coverage = atmosphere_effect->GetCloudCoverage();
 									if (ImGui::SliderFloat("Cloud Coverage", &cloud_coverage, 0.0f, 2.0f)) {
 										if (weather) weather->SetTarget(WeatherAttribute::CloudCoverage, cloud_coverage);
 										else atmosphere_effect->SetCloudCoverage(cloud_coverage);
+									}
+									if (weather) {
+										ImGui::SameLine();
+										if (ImGui::Button("Unlock##CloudCoverage")) weather->ClearTarget(WeatherAttribute::CloudCoverage);
 									}
 									float cloud_warp = atmosphere_effect->GetCloudWarp();
 									if (ImGui::SliderFloat("Camera Cloud Buffer", &cloud_warp, 0.0f, 1000.0f)) {
@@ -340,6 +372,14 @@ namespace Boidsish {
 											weather->SetTarget(WeatherAttribute::CloudColorG, cloud_color.g);
 											weather->SetTarget(WeatherAttribute::CloudColorB, cloud_color.b);
 										} else atmosphere_effect->SetCloudColor(cloud_color);
+									}
+									if (weather) {
+										ImGui::SameLine();
+										if (ImGui::Button("Unlock##CloudColor")) {
+											weather->ClearTarget(WeatherAttribute::CloudColorR);
+											weather->ClearTarget(WeatherAttribute::CloudColorG);
+											weather->ClearTarget(WeatherAttribute::CloudColorB);
+										}
 									}
 
 									auto& cfg = ConfigManager::GetInstance();
@@ -460,10 +500,18 @@ namespace Boidsish {
 										if (weather) weather->SetTarget(WeatherAttribute::RayleighScale, rayleigh);
 										else atmosphere_effect->SetRayleighScale(rayleigh);
 									}
+									if (weather) {
+										ImGui::SameLine();
+										if (ImGui::Button("Unlock##RayleighScale")) weather->ClearTarget(WeatherAttribute::RayleighScale);
+									}
 									float mie = atmosphere_effect->GetMieScale();
 									if (ImGui::SliderFloat("Mie Scale", &mie, 0.0f, 0.25f)) {
 										if (weather) weather->SetTarget(WeatherAttribute::MieScale, mie);
 										else atmosphere_effect->SetMieScale(mie);
+									}
+									if (weather) {
+										ImGui::SameLine();
+										if (ImGui::Button("Unlock##MieScale")) weather->ClearTarget(WeatherAttribute::MieScale);
 									}
 									float mie_g = atmosphere_effect->GetMieAnisotropy();
 									if (ImGui::SliderFloat("Mie Anisotropy", &mie_g, 0.0f, 0.99f)) {
@@ -486,6 +534,10 @@ namespace Boidsish {
 										if (weather) weather->SetTarget(WeatherAttribute::AtmosphereHeight, atmos_height);
 										else atmosphere_effect->SetAtmosphereHeight(atmos_height);
 									}
+									if (weather) {
+										ImGui::SameLine();
+										if (ImGui::Button("Unlock##AtmosphereHeight")) weather->ClearTarget(WeatherAttribute::AtmosphereHeight);
+									}
 
 									glm::vec3 rayleigh_scattering = atmosphere_effect->GetRayleighScattering() *
 										1000.0f;
@@ -496,17 +548,33 @@ namespace Boidsish {
 											weather->SetTarget(WeatherAttribute::RayleighScatteringB, rayleigh_scattering.b * 0.001f);
 										} else atmosphere_effect->SetRayleighScattering(rayleigh_scattering * 0.001f);
 									}
+									if (weather) {
+										ImGui::SameLine();
+										if (ImGui::Button("Unlock##RayleighScattering")) {
+											weather->ClearTarget(WeatherAttribute::RayleighScatteringR);
+											weather->ClearTarget(WeatherAttribute::RayleighScatteringG);
+											weather->ClearTarget(WeatherAttribute::RayleighScatteringB);
+										}
+									}
 
 									float mie_scat = atmosphere_effect->GetMieScattering() * 1000.0f;
 									if (ImGui::SliderFloat("Mie Scattering coeff", &mie_scat, 0.0f, 10.0f)) {
 										if (weather) weather->SetTarget(WeatherAttribute::MieScattering, mie_scat * 0.001f);
 										else atmosphere_effect->SetMieScattering(mie_scat * 0.001f);
 									}
+									if (weather) {
+										ImGui::SameLine();
+										if (ImGui::Button("Unlock##MieScattering")) weather->ClearTarget(WeatherAttribute::MieScattering);
+									}
 
 									float mie_ext = atmosphere_effect->GetMieExtinction() * 1000.0f;
 									if (ImGui::SliderFloat("Mie Extinction coeff", &mie_ext, 0.0f, 10.0f)) {
 										if (weather) weather->SetTarget(WeatherAttribute::MieExtinction, mie_ext * 0.001f);
 										else atmosphere_effect->SetMieExtinction(mie_ext * 0.001f);
+									}
+									if (weather) {
+										ImGui::SameLine();
+										if (ImGui::Button("Unlock##MieExtinction")) weather->ClearTarget(WeatherAttribute::MieExtinction);
 									}
 
 									glm::vec3 ozone_absorption = atmosphere_effect->GetOzoneAbsorption() * 1000.0f;
@@ -519,11 +587,19 @@ namespace Boidsish {
 										if (weather) weather->SetTarget(WeatherAttribute::RayleighScaleHeight, rayleigh_h);
 										else atmosphere_effect->SetRayleighScaleHeight(rayleigh_h);
 									}
+									if (weather) {
+										ImGui::SameLine();
+										if (ImGui::Button("Unlock##RayleighScaleHeight")) weather->ClearTarget(WeatherAttribute::RayleighScaleHeight);
+									}
 
 									float mie_h = atmosphere_effect->GetMieScaleHeight();
 									if (ImGui::SliderFloat("Mie Scale Height (km)", &mie_h, 0.0f, 3.0f)) {
 										if (weather) weather->SetTarget(WeatherAttribute::MieScaleHeight, mie_h);
 										else atmosphere_effect->SetMieScaleHeight(mie_h);
+									}
+									if (weather) {
+										ImGui::SameLine();
+										if (ImGui::Button("Unlock##MieScaleHeight")) weather->ClearTarget(WeatherAttribute::MieScaleHeight);
 									}
 
 									ImGui::Separator();
@@ -614,7 +690,7 @@ namespace Boidsish {
 							weather->SetTarget(WeatherAttribute::WindStrength, wind_strength);
 						}
 						ImGui::SameLine();
-						if (ImGui::Button("Reset##WindStrength")) {
+						if (ImGui::Button("Unlock##WindStrength")) {
 							weather->ClearTarget(WeatherAttribute::WindStrength);
 						}
 
@@ -623,7 +699,7 @@ namespace Boidsish {
 							weather->SetTarget(WeatherAttribute::WindSpeed, wind_speed);
 						}
 						ImGui::SameLine();
-						if (ImGui::Button("Reset##WindSpeed")) {
+						if (ImGui::Button("Unlock##WindSpeed")) {
 							weather->ClearTarget(WeatherAttribute::WindSpeed);
 						}
 
@@ -632,7 +708,7 @@ namespace Boidsish {
 							weather->SetTarget(WeatherAttribute::WindFrequency, wind_frequency);
 						}
 						ImGui::SameLine();
-						if (ImGui::Button("Reset##WindFrequency")) {
+						if (ImGui::Button("Unlock##WindFrequency")) {
 							weather->ClearTarget(WeatherAttribute::WindFrequency);
 						}
 					} else {

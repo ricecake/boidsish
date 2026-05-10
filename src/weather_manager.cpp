@@ -37,21 +37,21 @@ namespace Boidsish {
 		SetPace(WeatherAttribute::CloudCoverage, WeatherConstants::CloudCoverage.pace);
 		SetPace(WeatherAttribute::Precipitation, WeatherConstants::Precipitation.pace);
 		SetPace(WeatherAttribute::Temperature, WeatherConstants::Temperature.pace);
-		SetPace(WeatherAttribute::Humidity, 0.1f);
-		SetPace(WeatherAttribute::Pressure, 0.1f);
+		SetPace(WeatherAttribute::Humidity, 10.0f);
+		SetPace(WeatherAttribute::Pressure, 10.0f);
 
 		// Initialize default paces for new attributes
-		SetPace(WeatherAttribute::MieScattering, 0.2f);
-		SetPace(WeatherAttribute::MieExtinction, 0.2f);
-		SetPace(WeatherAttribute::RayleighScatteringR, 0.1f);
-		SetPace(WeatherAttribute::RayleighScatteringG, 0.1f);
-		SetPace(WeatherAttribute::RayleighScatteringB, 0.1f);
-		SetPace(WeatherAttribute::HazeColorR, 0.1f);
-		SetPace(WeatherAttribute::HazeColorG, 0.1f);
-		SetPace(WeatherAttribute::HazeColorB, 0.1f);
-		SetPace(WeatherAttribute::CloudColorR, 0.1f);
-		SetPace(WeatherAttribute::CloudColorG, 0.1f);
-		SetPace(WeatherAttribute::CloudColorB, 0.1f);
+		SetPace(WeatherAttribute::MieScattering, 10.0f);
+		SetPace(WeatherAttribute::MieExtinction, 10.0f);
+		SetPace(WeatherAttribute::RayleighScatteringR, 10.0f);
+		SetPace(WeatherAttribute::RayleighScatteringG, 10.0f);
+		SetPace(WeatherAttribute::RayleighScatteringB, 10.0f);
+		SetPace(WeatherAttribute::HazeColorR, 10.0f);
+		SetPace(WeatherAttribute::HazeColorG, 10.0f);
+		SetPace(WeatherAttribute::HazeColorB, 10.0f);
+		SetPace(WeatherAttribute::CloudColorR, 10.0f);
+		SetPace(WeatherAttribute::CloudColorG, 10.0f);
+		SetPace(WeatherAttribute::CloudColorB, 10.0f);
 	}
 
 	WeatherManager::~WeatherManager() {
@@ -82,7 +82,15 @@ namespace Boidsish {
 	void WeatherManager::SetTarget(WeatherAttribute attr, float target) {
 		if (attr == WeatherAttribute::Count)
 			return;
-		attribute_states_[static_cast<size_t>(attr)].external_target = target;
+		auto& state = attribute_states_[static_cast<size_t>(attr)];
+		state.external_target = target;
+
+		// Snap value immediately
+		float* value_ptr = GetValuePtr(attr);
+		if (value_ptr) {
+			*value_ptr = target;
+			state.velocity = 0.0f;
+		}
 	}
 
 	void WeatherManager::ClearTarget(WeatherAttribute attr) {
@@ -166,110 +174,24 @@ namespace Boidsish {
 		if (attr == WeatherAttribute::Count || deltaTime <= 0.0f)
 			return;
 
-		auto&  state = attribute_states_[static_cast<size_t>(attr)];
-		float* value_ptr = nullptr;
+		auto& state = attribute_states_[static_cast<size_t>(attr)];
 
-		switch (attr) {
-		case WeatherAttribute::SunIntensity:
-			value_ptr = &current_.sun_intensity;
-			break;
-		case WeatherAttribute::WindStrength:
-			value_ptr = &current_.wind_strength;
-			break;
-		case WeatherAttribute::WindSpeed:
-			value_ptr = &current_.wind_speed;
-			break;
-		case WeatherAttribute::WindFrequency:
-			value_ptr = &current_.wind_frequency;
-			break;
-		case WeatherAttribute::CloudDensity:
-			value_ptr = &current_.cloud_density;
-			break;
-		case WeatherAttribute::CloudAltitude:
-			value_ptr = &current_.cloud_altitude;
-			break;
-		case WeatherAttribute::CloudThickness:
-			value_ptr = &current_.cloud_thickness;
-			break;
-		case WeatherAttribute::HazeDensity:
-			value_ptr = &current_.haze_density;
-			break;
-		case WeatherAttribute::HazeHeight:
-			value_ptr = &current_.haze_height;
-			break;
-		case WeatherAttribute::RayleighScale:
-			value_ptr = &current_.rayleigh_scale;
-			break;
-		case WeatherAttribute::MieScale:
-			value_ptr = &current_.mie_scale;
-			break;
-		case WeatherAttribute::AtmosphereHeight:
-			value_ptr = &current_.atmosphere_height;
-			break;
-		case WeatherAttribute::RayleighScaleHeight:
-			value_ptr = &current_.rayleigh_scale_height;
-			break;
-		case WeatherAttribute::MieScaleHeight:
-			value_ptr = &current_.mie_scale_height;
-			break;
-		case WeatherAttribute::CloudCoverage:
-			value_ptr = &current_.cloud_coverage;
-			break;
-		case WeatherAttribute::Precipitation:
-			value_ptr = &current_.precipitation;
-			break;
-		case WeatherAttribute::Temperature:
-			value_ptr = &current_.temperature;
-			break;
-		case WeatherAttribute::Humidity:
-			value_ptr = &current_.humidity;
-			break;
-		case WeatherAttribute::Pressure:
-			value_ptr = &current_.pressure;
-			break;
-		case WeatherAttribute::MieScattering:
-			value_ptr = &current_.mie_scattering;
-			break;
-		case WeatherAttribute::MieExtinction:
-			value_ptr = &current_.mie_extinction;
-			break;
-		case WeatherAttribute::RayleighScatteringR:
-			value_ptr = &current_.rayleigh_scattering.r;
-			break;
-		case WeatherAttribute::RayleighScatteringG:
-			value_ptr = &current_.rayleigh_scattering.g;
-			break;
-		case WeatherAttribute::RayleighScatteringB:
-			value_ptr = &current_.rayleigh_scattering.b;
-			break;
-		case WeatherAttribute::HazeColorR:
-			value_ptr = &current_.haze_color.r;
-			break;
-		case WeatherAttribute::HazeColorG:
-			value_ptr = &current_.haze_color.g;
-			break;
-		case WeatherAttribute::HazeColorB:
-			value_ptr = &current_.haze_color.b;
-			break;
-		case WeatherAttribute::CloudColorR:
-			value_ptr = &current_.cloud_color.r;
-			break;
-		case WeatherAttribute::CloudColorG:
-			value_ptr = &current_.cloud_color.g;
-			break;
-		case WeatherAttribute::CloudColorB:
-			value_ptr = &current_.cloud_color.b;
-			break;
-		default:
+		// If an external target is set, override the target and snap immediately (bypassing spring)
+		if (state.external_target.has_value()) {
+			target = *state.external_target;
+			float* value_ptr = GetValuePtr(attr);
+			if (value_ptr) {
+				*value_ptr = target;
+				state.velocity = 0.0f;
+			}
 			return;
 		}
 
-		float& value = *value_ptr;
+		float* value_ptr = GetValuePtr(attr);
+		if (!value_ptr)
+			return;
 
-		// If an external target is set, override the noise-derived target
-		if (state.external_target.has_value()) {
-			target = *state.external_target;
-		}
+		float& value = *value_ptr;
 
 		// Analytical Critically Dampened Spring
 		// x(t) = (c1 + c2*t) * e^(-omega*t) + target
@@ -284,6 +206,73 @@ namespace Boidsish {
 
 		value = (c1 + c2 * deltaTime) * expTerm + target;
 		state.velocity = (v0 - omega * c2 * deltaTime) * expTerm;
+	}
+
+	float* WeatherManager::GetValuePtr(WeatherAttribute attr) {
+		switch (attr) {
+		case WeatherAttribute::SunIntensity:
+			return &current_.sun_intensity;
+		case WeatherAttribute::WindStrength:
+			return &current_.wind_strength;
+		case WeatherAttribute::WindSpeed:
+			return &current_.wind_speed;
+		case WeatherAttribute::WindFrequency:
+			return &current_.wind_frequency;
+		case WeatherAttribute::CloudDensity:
+			return &current_.cloud_density;
+		case WeatherAttribute::CloudAltitude:
+			return &current_.cloud_altitude;
+		case WeatherAttribute::CloudThickness:
+			return &current_.cloud_thickness;
+		case WeatherAttribute::HazeDensity:
+			return &current_.haze_density;
+		case WeatherAttribute::HazeHeight:
+			return &current_.haze_height;
+		case WeatherAttribute::RayleighScale:
+			return &current_.rayleigh_scale;
+		case WeatherAttribute::MieScale:
+			return &current_.mie_scale;
+		case WeatherAttribute::AtmosphereHeight:
+			return &current_.atmosphere_height;
+		case WeatherAttribute::RayleighScaleHeight:
+			return &current_.rayleigh_scale_height;
+		case WeatherAttribute::MieScaleHeight:
+			return &current_.mie_scale_height;
+		case WeatherAttribute::CloudCoverage:
+			return &current_.cloud_coverage;
+		case WeatherAttribute::Precipitation:
+			return &current_.precipitation;
+		case WeatherAttribute::Temperature:
+			return &current_.temperature;
+		case WeatherAttribute::Humidity:
+			return &current_.humidity;
+		case WeatherAttribute::Pressure:
+			return &current_.pressure;
+		case WeatherAttribute::MieScattering:
+			return &current_.mie_scattering;
+		case WeatherAttribute::MieExtinction:
+			return &current_.mie_extinction;
+		case WeatherAttribute::RayleighScatteringR:
+			return &current_.rayleigh_scattering.r;
+		case WeatherAttribute::RayleighScatteringG:
+			return &current_.rayleigh_scattering.g;
+		case WeatherAttribute::RayleighScatteringB:
+			return &current_.rayleigh_scattering.b;
+		case WeatherAttribute::HazeColorR:
+			return &current_.haze_color.r;
+		case WeatherAttribute::HazeColorG:
+			return &current_.haze_color.g;
+		case WeatherAttribute::HazeColorB:
+			return &current_.haze_color.b;
+		case WeatherAttribute::CloudColorR:
+			return &current_.cloud_color.r;
+		case WeatherAttribute::CloudColorG:
+			return &current_.cloud_color.g;
+		case WeatherAttribute::CloudColorB:
+			return &current_.cloud_color.b;
+		default:
+			return nullptr;
+		}
 	}
 
 	void WeatherManager::InitializePresets() {
@@ -840,6 +829,9 @@ namespace Boidsish {
 			cached_targets_.cloud_altitude = phys.cloudAltitude;
 			cached_targets_.cloud_thickness = phys.cloudThickness;
 			cached_targets_.temperature = phys.temperature;
+			cached_targets_.pressure = phys.pressure;
+			cached_targets_.humidity = phys.humidity;
+			cached_targets_.wind_strength = glm::length(phys.windVelocity);
 
 			// Precipitation heuristic: High humidity + updrafts + clouds
 			float precip = std::max(0.0f, phys.humidity - 0.8f) * 5.0f;
