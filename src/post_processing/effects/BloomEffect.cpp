@@ -9,7 +9,7 @@ namespace Boidsish {
 	namespace PostProcessing {
 
 		BloomEffect::BloomEffect(int width, int height):
-			_width(width), _height(height), _bloomTexture(0), _exposureTexture(0), _weightTexture(0), _fusedExposureTexture(0) {
+			_width(width), _height(height), _bloomTexture(0), _exposureTexture(0), _fusedExposureTexture(0) {
 			name_ = "Bloom";
 			_toneMappingMode = 5; // Default to Uchimura
 		}
@@ -17,7 +17,6 @@ namespace Boidsish {
 		BloomEffect::~BloomEffect() {
 			if (_bloomTexture) glDeleteTextures(1, &_bloomTexture);
 			if (_exposureTexture) glDeleteTextures(1, &_exposureTexture);
-			if (_weightTexture) glDeleteTextures(1, &_weightTexture);
 			if (_fusedExposureTexture) glDeleteTextures(1, &_fusedExposureTexture);
 			if (!_upsampleFBOs.empty()) {
 				glDeleteFramebuffers((GLsizei)_upsampleFBOs.size(), _upsampleFBOs.data());
@@ -34,9 +33,6 @@ namespace Boidsish {
 			_downsampleComputeShader = std::make_unique<ComputeShader>(
 				"shaders/effects/bloom_downsample.comp"
 			);
-			_exposureFusionComputeShader = std::make_unique<ComputeShader>(
-				"shaders/effects/exposure_fusion.comp"
-			);
 			_upsampleShader = std::make_unique<Shader>(
 				"shaders/postprocess.vert",
 				"shaders/effects/bloom_upsample.frag"
@@ -52,7 +48,6 @@ namespace Boidsish {
 		void BloomEffect::InitializeResources() {
 			if (_bloomTexture) glDeleteTextures(1, &_bloomTexture);
 			if (_exposureTexture) glDeleteTextures(1, &_exposureTexture);
-			if (_weightTexture) glDeleteTextures(1, &_weightTexture);
 			if (_fusedExposureTexture) glDeleteTextures(1, &_fusedExposureTexture);
 			if (!_upsampleFBOs.empty()) {
 				glDeleteFramebuffers((GLsizei)_upsampleFBOs.size(), _upsampleFBOs.data());
@@ -83,20 +78,10 @@ namespace Boidsish {
 			int tileMapWidth = (_width / 2 + 15) / 16;
 			int tileMapHeight = (_height / 2 + 15) / 16;
 
-			_numLtmMips = 6;
-
 			glGenTextures(1, &_exposureTexture);
 			glBindTexture(GL_TEXTURE_2D, _exposureTexture);
-			glTexStorage2D(GL_TEXTURE_2D, _numLtmMips, GL_RGBA16F, tileMapWidth, tileMapHeight);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-			glGenTextures(1, &_weightTexture);
-			glBindTexture(GL_TEXTURE_2D, _weightTexture);
-			glTexStorage2D(GL_TEXTURE_2D, _numLtmMips, GL_RGBA16F, tileMapWidth, tileMapHeight);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+			glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA16F, tileMapWidth, tileMapHeight);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
@@ -221,8 +206,7 @@ namespace Boidsish {
 				glBindImageTexture(5 + i, _bloomTexture, i, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 			}
 
-			glBindImageTexture(1, _exposureTexture, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA16F);
-			glBindImageTexture(2, _weightTexture, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA16F);
+			glBindImageTexture(1, _exposureTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 			glBindImageTexture(3, _fusedExposureTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R16F);
 
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::AutoExposure(), _exposureSsbo);
@@ -231,14 +215,6 @@ namespace Boidsish {
 			unsigned int groupsY = (_height / 2 + 15) / 16;
 			_downsampleComputeShader->dispatch(groupsX, groupsY, 1);
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
-
-			// 2.5 Generate Mips for Exposure and Weight Maps (Legacy fusion is now inline in downsample)
-			if (_ltmEnabled) {
-				glBindTexture(GL_TEXTURE_2D, _exposureTexture);
-				glGenerateMipmap(GL_TEXTURE_2D);
-				glBindTexture(GL_TEXTURE_2D, _weightTexture);
-				glGenerateMipmap(GL_TEXTURE_2D);
-			}
 
 			// Unbind image units so they don't leak into later passes
 			for (int i = 0; i < _numMips; i++) {
@@ -284,13 +260,9 @@ namespace Boidsish {
 			_compositeShader->setInt("bloomBlur", 1);
 			_compositeShader->setInt("tileExposureMap", 2);
 			_compositeShader->setInt("fusedExposureMap", 4);
-			_compositeShader->setInt("depthTexture", 3);
 			_compositeShader->setFloat("intensity", intensity_);
 			_compositeShader->setFloat("minIntensity", minIntensity_);
 			_compositeShader->setFloat("maxIntensity", maxIntensity_);
-
-			_compositeShader->setFloat("farPlane", Constants::Project::Camera::DefaultFarPlane());
-			_compositeShader->setFloat("nearPlane", Constants::Project::Camera::DefaultNearPlane());
 
 			_compositeShader->setBool("toneMappingEnabled", _toneMappingEnabled);
 			_compositeShader->setInt("toneMapMode", _toneMappingMode);
@@ -316,9 +288,6 @@ namespace Boidsish {
 
 			glActiveTexture(GL_TEXTURE4);
 			glBindTexture(GL_TEXTURE_2D, _fusedExposureTexture);
-
-			glActiveTexture(GL_TEXTURE3);
-			glBindTexture(GL_TEXTURE_2D, depthTexture); // Provide your G-buffer depth here
 
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::AutoExposure(), _exposureSsbo);
 

@@ -199,13 +199,11 @@ namespace Boidsish {
 			void InitializeResources();
 
 			std::unique_ptr<ComputeShader> _downsampleComputeShader;
-			std::unique_ptr<ComputeShader> _exposureFusionComputeShader;
 			std::unique_ptr<Shader>        _upsampleShader;
 			std::unique_ptr<Shader>        _compositeShader;
 
 			GLuint _bloomTexture; // Mipmapped texture
 			GLuint _exposureTexture;
-			GLuint _weightTexture;
 			GLuint _fusedExposureTexture;
 			int    _numMips;
 			int    _numLtmMips;
