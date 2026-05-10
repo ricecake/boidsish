@@ -85,6 +85,7 @@ namespace Boidsish {
         while (accumulator_ >= dt_) {
             CollisionAndStreaming();
             ApplyPhysics(dt_, totalTime, timeOfDay);
+            ApplyNudging(dt_, totalTime, timeOfDay, windSpeed, windStrength, targetTemp, targetPressure, targetHumidity);
             ApplyBoundaries(totalTime, windSpeed, windStrength, timeOfDay, targetTemp, targetPressure, targetHumidity);
             accumulator_ -= dt_;
         }
@@ -377,58 +378,85 @@ namespace Boidsish {
             }
         }
     }
+    glm::vec2 WeatherLbmSimulator::GetTargetVelocity(float worldX, float worldZ, float totalTime, float windSpeed, float windStrength) const {
+        glm::vec2 prevailingWind(0.02f, 0.01f);
+        prevailingWind += glm::vec2(worldX + worldZ, worldX - worldZ) * 0.0001f;
+        prevailingWind = glm::normalize(prevailingWind);
+        auto noiseWind = Simplex::curlNoise(glm::vec2(worldX * 0.001f + totalTime * windSpeed, worldZ * 0.001f + totalTime * windSpeed), atan2(prevailingWind.x, prevailingWind.y));
+        glm::vec2 targetU = prevailingWind + noiseWind * 0.1f;
+        targetU *= Simplex::noise({worldX, worldZ}) * 0.5f + 0.5f;
+        return glm::clamp(targetU * (0.05f + windStrength * 5.0f), -0.14f, 0.14f);
+    }
+
+    void WeatherLbmSimulator::ApplyNudging(float /*deltaTime*/, float totalTime, float /*timeOfDay*/, float windSpeed, float windStrength, float targetTemp, float targetPressure, float targetHumidity) {
+        const float uNudgeStrength = 0.02f, tempNudgeStrength = 0.01f, humidityNudgeStrength = 0.01f, vyNudgeStrength = 0.005f;
+        const float rhoTolerance = 0.01f, uTolerance = 0.01f, tempTolerance = 0.1f, humidityTolerance = 0.01f;
+        const float lbmConversion = 32.0f / 0.1f;
+        for (int z = 0; z < height_; ++z) {
+            for (int x = 0; x < width_; ++x) {
+                if (x < kPadding || x >= width_ - kPadding || z < kPadding || z >= height_ - kPadding) continue;
+                int idx = z * width_ + x;
+                LbmCell& cell = (*currentGrid_)[idx];
+                float worldX = (float)(x + gridAnchor_.x) * 32.0f, worldZ = (float)(z + gridAnchor_.y) * 32.0f;
+                float rho = 0.0f; glm::vec2 u(0.0f);
+                for (int j = 0; j < 9; ++j) { rho += cell.f[j]; u.x += cell.f[j] * (float)cx[j]; u.y += cell.f[j] * (float)cz[j]; }
+                if (rho > 1e-6f) u /= rho;
+                float n_rho = Simplex::noise(glm::vec3(worldX * 0.005f, worldZ * 0.005f, totalTime * 0.05f));
+                float n_temp = Simplex::noise(glm::vec3(worldX * 0.005f + 100.0f, worldZ * 0.005f + 100.0f, totalTime * 0.05f));
+                float n_hum = Simplex::noise(glm::vec3(worldX * 0.005f - 100.0f, worldZ * 0.005f - 100.0f, totalTime * 0.05f));
+                float n_u1 = Simplex::noise(glm::vec3(worldX * 0.005f, worldZ * 0.005f + 200.0f, totalTime * 0.05f));
+                float n_u2 = Simplex::noise(glm::vec3(worldX * 0.005f + 200.0f, worldZ * 0.005f, totalTime * 0.05f));
+                auto nudgeScalar = [&](auto& val, auto& c, float globT, float noise, float nScale, float str, float tol) {
+                    float target = globT; bool nudge = false;
+                    if (c.target) { target = *c.target; if (std::abs(val - *c.target) > tol) nudge = true; }
+                    else if (c.min || c.max) { if (c.min && val < *c.min) { nudge = true; target = *c.min; } else if (c.max && val > *c.max) { nudge = true; target = *c.max; } }
+                    else { if (std::abs(val - globT) > tol) nudge = true; }
+                    if (nudge) val += (target + noise * nScale - val) * str;
+                };
+
+                nudgeScalar(cell.temperature, constraints_.temperature, targetTemp, n_temp, 2.5f, tempNudgeStrength, tempTolerance);
+                nudgeScalar(cell.humidity, constraints_.humidity, targetHumidity, n_hum, 0.08f, humidityNudgeStrength, humidityTolerance);
+
+                float targetP = constraints_.pressure.target.value_or(targetPressure);
+                bool nudgeP = false; float pressureHpa = rho * 1013.25f;
+                if (constraints_.pressure.target) { if (std::abs(pressureHpa - *constraints_.pressure.target) > rhoTolerance * 1013.25f) nudgeP = true; }
+                else if (constraints_.pressure.min || constraints_.pressure.max) { if (constraints_.pressure.min && pressureHpa < *constraints_.pressure.min) { nudgeP = true; targetP = *constraints_.pressure.min; } if (constraints_.pressure.max && pressureHpa > *constraints_.pressure.max) { nudgeP = true; targetP = *constraints_.pressure.max; } }
+                else { if (std::abs(rho - (targetPressure / 1013.25f)) > rhoTolerance) nudgeP = true; }
+
+                glm::vec2 autoU = GetTargetVelocity(worldX, worldZ, totalTime, windSpeed, windStrength);
+                float autoS = glm::length(autoU) * lbmConversion, targetS = constraints_.velocity.target.value_or(autoS), curS = glm::length(u) * lbmConversion;
+                bool nudgeU = false;
+                if (constraints_.velocity.target) { if (std::abs(curS - *constraints_.velocity.target) > uTolerance * lbmConversion) nudgeU = true; }
+                else if (constraints_.velocity.min || constraints_.velocity.max) { if (constraints_.velocity.min && curS < *constraints_.velocity.min) { nudgeU = true; targetS = *constraints_.velocity.min; } else if (constraints_.velocity.max && curS > *constraints_.velocity.max) { nudgeU = true; targetS = *constraints_.velocity.max; } }
+                else { if (glm::length(u - autoU) > uTolerance) nudgeU = true; }
+                if (nudgeP || nudgeU) {
+                    float localRho = (targetP / 1013.25f) + n_rho * 0.015f;
+                    glm::vec2 tU = autoU; if (glm::length(tU) > 1e-4f) tU = glm::normalize(tU) * (targetS / lbmConversion); else tU = glm::vec2(targetS / lbmConversion, 0.0f);
+                    glm::vec2 localU = tU + glm::vec2(n_u1, n_u2) * 0.02f;
+                    for (int j = 0; j < 9; ++j) { float feqt = CalculateEquilibrium(j, localRho, localU); float feqc = CalculateEquilibrium(j, rho, u); cell.f[j] += uNudgeStrength * (feqt - feqc); }
+                }
+                cell.vy *= (1.0f - vyNudgeStrength);
+            }
+        }
+    }
 
     void WeatherLbmSimulator::ApplyBoundaries(float totalTime, float windSpeed, float windStrength, float timeOfDay, float targetTemp, float targetPressure, float targetHumidity) {
         float targetRho = targetPressure / 1013.25f;
-
-        // Apply noise-driven wind at the edges with sponge layer dampening
         for (int z = 0; z < height_; ++z) {
             for (int x = 0; x < width_; ++x) {
-                // Calculate distance to nearest edge
                 int dist = std::min({x, width_ - 1 - x, z, height_ - 1 - z});
-
                 if (dist < kPadding) {
-                    int idx = z * width_ + x;
-                    float worldX = (float)(x + gridAnchor_.x) * 32.0f;
-                    float worldZ = (float)(z + gridAnchor_.y) * 32.0f;
-
-                    // Prevailing wind based on spatial gradient
-                    glm::vec2 prevailingWind(0.02f, 0.01f); // Baseline flow
-                    prevailingWind += glm::vec2(worldX + worldZ, worldX - worldZ) * 0.0001f;
-                    prevailingWind = glm::normalize(prevailingWind);
-
-                    auto noiseWind = Simplex::curlNoise(glm::vec2(worldX * 0.001f + totalTime * windSpeed, worldZ * 0.001f + totalTime * windSpeed), atan2(prevailingWind.x, prevailingWind.y));
-
-                    glm::vec2 targetU = prevailingWind + noiseWind * 0.1f;
-                    targetU *= Simplex::noise({worldX, worldZ}) * 0.5f + 0.5f;
-
-                    // Lattice velocity MUST stay below ~0.15 for stability
-                    targetU = glm::clamp(targetU * (0.05f + windStrength * 5.0f), -0.14f, 0.14f);
-
-                    float baseTemp = GetBaseTemperature(worldX, worldZ, totalTime, timeOfDay);
-                    float finalTargetTemp = glm::mix(baseTemp, targetTemp, 0.5f);
-
-                    // Sponge layer relaxation factor: 1.0 at edge, 0.0 at interior
-                    float spongeFactor = 1.0f - (float)dist / (float)kPadding;
-                    // Stronger dampening closer to edge
-                    float blend = std::pow(spongeFactor, 2.0f);
-
-                    // Force target distribution at the boundary, blend in sponge layer
-                    for (int i = 0; i < 9; ++i) {
-                        float f_eq = CalculateEquilibrium(i, targetRho, targetU);
-                        (*currentGrid_)[idx].f[i] = glm::mix((*currentGrid_)[idx].f[i], f_eq, blend);
-                    }
-
+                    int idx = z * width_ + x; float worldX = (float)(x + gridAnchor_.x) * 32.0f, worldZ = (float)(z + gridAnchor_.y) * 32.0f;
+                    glm::vec2 targetU = GetTargetVelocity(worldX, worldZ, totalTime, windSpeed, windStrength);
+                    float baseTemp = GetBaseTemperature(worldX, worldZ, totalTime, timeOfDay), finalTargetTemp = glm::mix(baseTemp, targetTemp, 0.5f), blend = std::pow(1.0f - (float)dist / (float)kPadding, 2.0f);
+                    for (int i = 0; i < 9; ++i) { float feq = CalculateEquilibrium(i, targetRho, targetU); (*currentGrid_)[idx].f[i] = glm::mix((*currentGrid_)[idx].f[i], feq, blend); }
                     (*currentGrid_)[idx].temperature = glm::mix((*currentGrid_)[idx].temperature, finalTargetTemp, blend * 0.1f);
                     (*currentGrid_)[idx].humidity = glm::mix((*currentGrid_)[idx].humidity, targetHumidity, blend * 0.1f);
-
-                    // Dampen vertical velocity in sponge layer to prevent shocks
                     (*currentGrid_)[idx].vy *= (1.0f - blend * 0.5f);
                 }
             }
         }
     }
-
     float WeatherLbmSimulator::GetSeasonalFactor(float totalTime) const {
         const float seasonalPeriod = 7200.0f; // 2 hours for full cycle
         return 0.5f + 0.5f * std::cos(totalTime * (2.0f * 3.14159265f / seasonalPeriod));
