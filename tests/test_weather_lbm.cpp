@@ -136,3 +136,39 @@ TEST(WeatherLbmTest, AtmosphereDerivations) {
     EXPECT_GE(out.cloudCoverage, 0.0f);
     EXPECT_LE(out.cloudCoverage, 1.0f);
 }
+
+TEST(WeatherLbmTest, NudgingEffect) {
+    WeatherLbmSimulator sim(16, 16);
+    MockTerrain terrain;
+    glm::vec3 cameraPos(0.0f);
+
+    float initialTemp = 288.15f;
+    float targetTemp = 310.15f; // High temperature target
+
+    // Initialize
+    sim.Update(0.016f, 0.0f, 12.0f, terrain, cameraPos, 0.075f, 0.065f, initialTemp, 1013.25f, 0.5f);
+    float tempBefore = sim.GetOutput().temperature;
+
+    // Run for many steps with a high target temperature
+    for (int i = 0; i < 100; ++i) {
+        sim.Update(0.1f, i * 0.1f, 12.0f, terrain, cameraPos, 0.075f, 0.065f, targetTemp, 1013.25f, 0.5f);
+    }
+
+    float tempAfter = sim.GetOutput().temperature;
+
+    // Temperature should have moved towards the target
+    EXPECT_GT(tempAfter, tempBefore);
+    // Tolerance accounts for noise (2.5K) and relaxation lag
+    EXPECT_NEAR(tempAfter, targetTemp, 10.0f);
+
+    // Test pressure nudging
+    float targetPressure = 1100.0f;
+    for (int i = 0; i < 100; ++i) {
+        sim.Update(0.1f, (100 + i) * 0.1f, 12.0f, terrain, cameraPos, 0.075f, 0.065f, targetTemp, targetPressure, 0.5f);
+    }
+
+    float pressureAfter = sim.GetOutput().pressure;
+    EXPECT_GT(pressureAfter, 1013.25f);
+    // Tolerance accounts for rhoTolerance (0.01 ~ 10hPa) and noise (0.015 ~ 15hPa)
+    EXPECT_NEAR(pressureAfter, targetPressure, 30.0f);
+}

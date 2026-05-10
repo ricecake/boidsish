@@ -95,8 +95,11 @@ namespace Boidsish {
         float CalculateEquilibrium(int i, float rho, glm::vec2 u);
         void CollisionAndStreaming();
         void ApplyPhysics(float deltaTime, float totalTime, float timeOfDay);
+        void ApplyNudging(float deltaTime, float totalTime, float timeOfDay, float windSpeed, float windStrength, float targetTemp, float targetPressure, float targetHumidity);
         void ApplyBoundaries(float totalTime, float windSpeed, float windStrength, float timeOfDay, float targetTemp, float targetPressure, float targetHumidity);
         void ShiftGrid(glm::ivec2 shiftOffset, float totalTime, float timeOfDay);
+
+        glm::vec2 GetTargetVelocity(float worldX, float worldZ, float totalTime, float windSpeed, float windStrength) const;
 
         int width_;
         int height_;

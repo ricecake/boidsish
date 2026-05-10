@@ -85,6 +85,7 @@ namespace Boidsish {
         while (accumulator_ >= dt_) {
             CollisionAndStreaming();
             ApplyPhysics(dt_, totalTime, timeOfDay);
+            ApplyNudging(dt_, totalTime, timeOfDay, windSpeed, windStrength, targetTemp, targetPressure, targetHumidity);
             ApplyBoundaries(totalTime, windSpeed, windStrength, timeOfDay, targetTemp, targetPressure, targetHumidity);
             accumulator_ -= dt_;
         }
@@ -378,6 +379,98 @@ namespace Boidsish {
         }
     }
 
+    glm::vec2 WeatherLbmSimulator::GetTargetVelocity(float worldX, float worldZ, float totalTime, float windSpeed, float windStrength) const {
+        // Prevailing wind based on spatial gradient
+        glm::vec2 prevailingWind(0.02f, 0.01f); // Baseline flow
+        prevailingWind += glm::vec2(worldX + worldZ, worldX - worldZ) * 0.0001f;
+        prevailingWind = glm::normalize(prevailingWind);
+
+        auto noiseWind = Simplex::curlNoise(glm::vec2(worldX * 0.001f + totalTime * windSpeed, worldZ * 0.001f + totalTime * windSpeed), atan2(prevailingWind.x, prevailingWind.y));
+
+        glm::vec2 targetU = prevailingWind + noiseWind * 0.1f;
+        targetU *= Simplex::noise({worldX, worldZ}) * 0.5f + 0.5f;
+
+        // Lattice velocity MUST stay below ~0.15 for stability
+        targetU = glm::clamp(targetU * (0.05f + windStrength * 5.0f), -0.14f, 0.14f);
+        return targetU;
+    }
+
+    void WeatherLbmSimulator::ApplyNudging(float /*deltaTime*/, float totalTime, float /*timeOfDay*/, float windSpeed, float windStrength, float targetTemp, float targetPressure, float targetHumidity) {
+        float targetRho = targetPressure / 1013.25f;
+
+        // Nudging strengths (relaxation factors)
+        const float uNudgeStrength = 0.02f;
+        const float tempNudgeStrength = 0.005f;
+        const float humidityNudgeStrength = 0.005f;
+        const float vyNudgeStrength = 0.005f;
+
+        // Tolerances (to avoid over-constraining the simulation)
+        const float rhoTolerance = 0.01f;
+        const float uTolerance = 0.01f;
+        const float tempTolerance = 1.0f;
+        const float humidityTolerance = 0.1f;
+
+        for (int z = 0; z < height_; ++z) {
+            for (int x = 0; x < width_; ++x) {
+                // Skip boundaries as they are handled by ApplyBoundaries
+                if (x < kPadding || x >= width_ - kPadding || z < kPadding || z >= height_ - kPadding)
+                    continue;
+
+                int      idx = z * width_ + x;
+                LbmCell& cell = (*currentGrid_)[idx];
+
+                float worldX = (float)(x + gridAnchor_.x) * 32.0f;
+                float worldZ = (float)(z + gridAnchor_.y) * 32.0f;
+
+                // 1. Calculate current macros
+                float     rho = 0.0f;
+                glm::vec2 u(0.0f);
+                for (int j = 0; j < 9; ++j) {
+                    rho += cell.f[j];
+                    u.x += cell.f[j] * (float)cx[j];
+                    u.y += cell.f[j] * (float)cz[j];
+                }
+                if (rho > 1e-6f)
+                    u /= rho;
+
+                // 2. Determine per-cell targets with noise to keep it "alive"
+                float n_rho = Simplex::noise(glm::vec3(worldX * 0.005f, worldZ * 0.005f, totalTime * 0.05f));
+                float n_temp = Simplex::noise(glm::vec3(worldX * 0.005f + 100.0f, worldZ * 0.005f + 100.0f, totalTime * 0.05f));
+                float n_hum = Simplex::noise(glm::vec3(worldX * 0.005f - 100.0f, worldZ * 0.005f - 100.0f, totalTime * 0.05f));
+                float n_u1 = Simplex::noise(glm::vec3(worldX * 0.005f, worldZ * 0.005f + 200.0f, totalTime * 0.05f));
+                float n_u2 = Simplex::noise(glm::vec3(worldX * 0.005f + 200.0f, worldZ * 0.005f, totalTime * 0.05f));
+
+                float localTargetRho = targetRho + n_rho * 0.015f;
+                float localTargetTemp = targetTemp + n_temp * 2.5f;
+                float localTargetHumidity = targetHumidity + n_hum * 0.08f;
+
+                glm::vec2 baseTargetU = GetTargetVelocity(worldX, worldZ, totalTime, windSpeed, windStrength);
+                glm::vec2 localTargetU = baseTargetU + glm::vec2(n_u1, n_u2) * 0.02f;
+
+                // 3. Apply EDM Nudging for Density and Velocity
+                // EDM: Delta f_i = f_i^eq(rho_target, u_target) - f_i^eq(rho, u)
+                if (std::abs(rho - localTargetRho) > rhoTolerance || glm::length(u - localTargetU) > uTolerance) {
+                    for (int j = 0; j < 9; ++j) {
+                        float f_eq_target = CalculateEquilibrium(j, localTargetRho, localTargetU);
+                        float f_eq_current = CalculateEquilibrium(j, rho, u);
+                        cell.f[j] += uNudgeStrength * (f_eq_target - f_eq_current);
+                    }
+                }
+
+                // 4. Scalar Nudging via Newtonian Relaxation
+                if (std::abs(cell.temperature - localTargetTemp) > tempTolerance) {
+                    cell.temperature += (localTargetTemp - cell.temperature) * tempNudgeStrength;
+                }
+                if (std::abs(cell.humidity - localTargetHumidity) > humidityTolerance) {
+                    cell.humidity += (localTargetHumidity - cell.humidity) * humidityNudgeStrength;
+                }
+
+                // vy Nudging (gentle damping)
+                cell.vy *= (1.0f - vyNudgeStrength);
+            }
+        }
+    }
+
     void WeatherLbmSimulator::ApplyBoundaries(float totalTime, float windSpeed, float windStrength, float timeOfDay, float targetTemp, float targetPressure, float targetHumidity) {
         float targetRho = targetPressure / 1013.25f;
 
@@ -392,18 +485,7 @@ namespace Boidsish {
                     float worldX = (float)(x + gridAnchor_.x) * 32.0f;
                     float worldZ = (float)(z + gridAnchor_.y) * 32.0f;
 
-                    // Prevailing wind based on spatial gradient
-                    glm::vec2 prevailingWind(0.02f, 0.01f); // Baseline flow
-                    prevailingWind += glm::vec2(worldX + worldZ, worldX - worldZ) * 0.0001f;
-                    prevailingWind = glm::normalize(prevailingWind);
-
-                    auto noiseWind = Simplex::curlNoise(glm::vec2(worldX * 0.001f + totalTime * windSpeed, worldZ * 0.001f + totalTime * windSpeed), atan2(prevailingWind.x, prevailingWind.y));
-
-                    glm::vec2 targetU = prevailingWind + noiseWind * 0.1f;
-                    targetU *= Simplex::noise({worldX, worldZ}) * 0.5f + 0.5f;
-
-                    // Lattice velocity MUST stay below ~0.15 for stability
-                    targetU = glm::clamp(targetU * (0.05f + windStrength * 5.0f), -0.14f, 0.14f);
+                    glm::vec2 targetU = GetTargetVelocity(worldX, worldZ, totalTime, windSpeed, windStrength);
 
                     float baseTemp = GetBaseTemperature(worldX, worldZ, totalTime, timeOfDay);
                     float finalTargetTemp = glm::mix(baseTemp, targetTemp, 0.5f);
