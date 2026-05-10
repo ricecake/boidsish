@@ -415,6 +415,7 @@ namespace Boidsish {
                 };
 
                 nudgeScalar(cell.temperature, constraints_.temperature, targetTemp, n_temp, 2.5f, tempNudgeStrength, tempTolerance);
+                nudgeScalar(cell.humidity, constraints_.humidity, targetHumidity, n_hum, 0.08f, humidityNudgeStrength, humidityTolerance);
 
                 float targetP = constraints_.pressure.target.value_or(targetPressure);
                 bool nudgeP = false; float pressureHpa = rho * 1013.25f;
@@ -425,7 +426,6 @@ namespace Boidsish {
                 glm::vec2 autoU = GetTargetVelocity(worldX, worldZ, totalTime, windSpeed, windStrength);
                 float autoS = glm::length(autoU) * lbmConversion, targetS = constraints_.velocity.target.value_or(autoS), curS = glm::length(u) * lbmConversion;
                 bool nudgeU = false;
-                if (constraints_.velocity.target) { if (std::abs(curS - *constraints_.velocity.target) > uTolerance * lbmConversion) nudgeU = true; }
                 if (constraints_.velocity.target) { if (std::abs(curS - *constraints_.velocity.target) > uTolerance * lbmConversion) nudgeU = true; }
                 else if (constraints_.velocity.min || constraints_.velocity.max) { if (constraints_.velocity.min && curS < *constraints_.velocity.min) { nudgeU = true; targetS = *constraints_.velocity.min; } else if (constraints_.velocity.max && curS > *constraints_.velocity.max) { nudgeU = true; targetS = *constraints_.velocity.max; } }
                 else { if (glm::length(u - autoU) > uTolerance) nudgeU = true; }
