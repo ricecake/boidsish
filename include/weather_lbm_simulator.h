@@ -2,6 +2,7 @@
 
 #include <vector>
 #include <memory>
+#include <optional>
 #include <glm/glm.hpp>
 #include "weather_lbm_types.h"
 #include "terrain_generator_interface.h"
@@ -73,6 +74,22 @@ namespace Boidsish {
          */
         void InjectTemperature(const glm::vec3& pos, float temperatureK);
 
+        struct Constraint {
+            std::optional<float> min;
+            std::optional<float> max;
+            std::optional<float> target;
+        };
+
+        struct Constraints {
+            Constraint temperature;
+            Constraint pressure;
+            Constraint humidity;
+            Constraint velocity;
+        };
+
+        void               SetConstraints(const Constraints& c) { constraints_ = c; }
+        const Constraints& GetConstraints() const { return constraints_; }
+
     private:
         void Initialize(const ITerrainGenerator& terrain, float totalTime, float timeOfDay);
         void InitializeCell(int x, int z, float totalTime, float timeOfDay, LbmCell& cell);
@@ -123,6 +140,8 @@ namespace Boidsish {
         static const int cx[9];
         static const int cz[9];
         static const float weights[9];
+
+        Constraints constraints_;
     };
 
 } // namespace Boidsish

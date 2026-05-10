@@ -172,3 +172,40 @@ TEST(WeatherLbmTest, NudgingEffect) {
     // Tolerance accounts for rhoTolerance (0.01 ~ 10hPa) and noise (0.015 ~ 15hPa)
     EXPECT_NEAR(pressureAfter, targetPressure, 30.0f);
 }
+
+TEST(WeatherLbmTest, RangeConstraints) {
+    WeatherLbmSimulator sim(16, 16);
+    MockTerrain terrain;
+    glm::vec3 cameraPos(0.0f);
+
+    // 1. Force into a high range
+    WeatherLbmSimulator::Constraints constraints;
+    constraints.temperature.min = 310.0f;
+    constraints.temperature.max = 320.0f;
+    sim.SetConstraints(constraints);
+
+    for (int i = 0; i < 100; ++i) {
+        sim.Update(0.1f, i * 0.1f, 12.0f, terrain, cameraPos, 0.075f, 0.065f, 288.15f, 1013.25f, 0.5f);
+    }
+
+    float tempHigh = sim.GetOutput().temperature;
+    EXPECT_GE(tempHigh, 305.0f); // Pushed up towards 310+
+
+    // 2. Clear constraints and see it trend back to global target (288.15)
+    sim.SetConstraints({});
+    for (int i = 0; i < 100; ++i) {
+        sim.Update(0.1f, (100 + i) * 0.1f, 12.0f, terrain, cameraPos, 0.075f, 0.065f, 288.15f, 1013.25f, 0.5f);
+    }
+
+    float tempBack = sim.GetOutput().temperature;
+    EXPECT_LT(tempBack, tempHigh - 2.0f);
+
+    // 3. Set a specific target constraint
+    constraints = {};
+    constraints.temperature.target = 300.0f;
+    sim.SetConstraints(constraints);
+    for (int i = 0; i < 100; ++i) {
+        sim.Update(0.1f, (200 + i) * 0.1f, 12.0f, terrain, cameraPos, 0.075f, 0.065f, 288.15f, 1013.25f, 0.5f);
+    }
+    EXPECT_NEAR(sim.GetOutput().temperature, 300.0f, 10.0f);
+}
