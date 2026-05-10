@@ -4,6 +4,7 @@ layout(local_size_x = 16, local_size_y = 16) in;
 
 layout(binding = 0) uniform sampler2D expTexture;
 layout(binding = 1) uniform sampler2D wgtTexture;
+layout(binding = 3) uniform sampler2D depthTexture;
 layout(binding = 2, r16f) uniform writeonly image2D outFused;
 
 #include "types/autoexposure.glsl"
@@ -17,6 +18,13 @@ void main() {
 	if (id.x >= size.x || id.y >= size.y) return;
 
 	vec2 uv = (vec2(id) + 0.5) / vec2(size);
+
+	float depth = texture(depthTexture, uv).r;
+	bool isSky = (depth >= 1.0);
+
+	// Select layer parameters
+	float weightContrast = isSky ? sky.ltmWeightContrast : scene.ltmWeightContrast;
+	float boostLocalContrast = isSky ? sky.ltmBoostLocalContrast : scene.ltmBoostLocalContrast;
 
 	// 1. Blend the coarsest level (Gaussian)
 	vec3 weights = textureLod(wgtTexture, uv, float(startMip)).rgb;
@@ -36,11 +44,11 @@ void main() {
 		vec3 w = textureLod(wgtTexture, uv, float(i - 1)).rgb;
 
 		// Contrast weight (Laplacian magnitude)
-		vec3 c = pow(max(abs(laplacian), 0.0001), vec3(ltmWeightContrast));
+		vec3 c = pow(max(abs(laplacian), 0.0001), vec3(weightContrast));
 		w *= c;
 
-		if (ltmBoostLocalContrast > 0.0) {
-			w *= (abs(laplacian) * ltmBoostLocalContrast + 1.0);
+		if (boostLocalContrast > 0.0) {
+			w *= (abs(laplacian) * boostLocalContrast + 1.0);
 		}
 
 		float wSum = w.x + w.y + w.z;

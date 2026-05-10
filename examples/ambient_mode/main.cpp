@@ -198,12 +198,12 @@ int main() {
 			}
 
 			if (bloom) {
-				float lum = bloom->GetTargetLuminance();
+				float lum = bloom->GetSceneSettings().targetLuminance;
 				if (state.keys[GLFW_KEY_UP])
 					lum += 0.1f * state.delta_time;
 				if (state.keys[GLFW_KEY_DOWN])
 					lum -= 0.1f * state.delta_time;
-				bloom->SetTargetLuminance(std::clamp(lum, 0.05f, 2.0f));
+				bloom->GetSceneSettings().targetLuminance = std::clamp(lum, 0.05f, 2.0f);
 			}
 
 			if (state.key_down[GLFW_KEY_SPACE]) {

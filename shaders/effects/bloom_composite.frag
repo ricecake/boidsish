@@ -13,23 +13,29 @@ uniform float     intensity;
 uniform float     minIntensity;
 uniform float     maxIntensity;
 
-uniform bool toneMappingEnabled = false;
-uniform int  toneMapMode = 2;
+uniform bool  sceneToneMappingEnabled = false;
+uniform int   sceneToneMapMode = 2;
+uniform float sceneUchimuraP;
+uniform float sceneUchimuraA;
+uniform float sceneUchimuraM;
+uniform float sceneUchimuraL;
+uniform float sceneUchimuraC;
+uniform float sceneUchimuraB;
 
-uniform float uchimuraP;
-uniform float uchimuraA;
-uniform float uchimuraM;
-uniform float uchimuraL;
-uniform float uchimuraC;
-uniform float uchimuraB;
+uniform bool  skyToneMappingEnabled = false;
+uniform int   skyToneMapMode = 2;
+uniform float skyUchimuraP;
+uniform float skyUchimuraA;
+uniform float skyUchimuraM;
+uniform float skyUchimuraL;
+uniform float skyUchimuraC;
+uniform float skyUchimuraB;
 
-uniform float nearPlane; // Set from application (e.g., 0.1)
-uniform float farPlane;  // Set from application (e.g., 1000.0)
-
+uniform float nearPlane;
+uniform float farPlane;
 
 #include "helpers/tonemapping.glsl"
 #include "types/autoexposure.glsl"
-// #include "lygia/color/vibrance.glsl"
 
 // Planckian locus approximation for temperature to RGB
 vec3 tempToRgb(float temp) {
@@ -53,11 +59,6 @@ vec3 tempToRgb(float temp) {
     return rgb / 255.0;
 }
 
-float linearizeDepth(float depth) {
-    float z = depth * 2.0 - 1.0;
-    return (2.0 * nearPlane * farPlane) / (farPlane + nearPlane - z * (farPlane - nearPlane));
-}
-
 void main() {
 	vec3 sceneColor = texture(sceneTexture, TexCoords).rgb;
 	vec3 bloomColor = texture(bloomBlur, TexCoords).rgb;
@@ -65,10 +66,19 @@ void main() {
 	// Add bloom to HDR scene color.
 	vec3 result = sceneColor + bloomColor * intensity;
 
+	float depth = texture(depthTexture, TexCoords).r;
+	bool isSky = (depth >= 1.0);
+
+	// Select layer data
+	// Note: We can't use pointers to SSBO members, so we copy or use if-else.
+	// We'll use a temporary LayerData but that's a lot of copying.
+	// Instead, we'll access members directly via a macro or helper.
+
+	#define LAYER_VAL(member) (isSky ? sky.member : scene.member)
+
 	// Guided Upsampling for LTM
-	if (ltmEnabled != 0) {
-		// targetLuminance *=  (1.50-smoothstep(farPlane / 2.0, farPlane, linearizeDepth(texture(depthTexture, TexCoords).r)));
-		float exposure = targetLuminance / max(avgLuma, 0.0001);
+	if (LAYER_VAL(ltmEnabled) != 0) {
+		float exposure = LAYER_VAL(targetLuminance) / max(LAYER_VAL(avgLuma), 0.0001);
 		vec3 currentExposure = result * exposure;
 		vec3 currentAces = aces(currentExposure);
 		float guidanceLuma = sqrt(max(dot(currentAces, vec3(0.2126, 0.7152, 0.0722)), 0.0));
@@ -115,68 +125,47 @@ void main() {
 			finalMultiplier = mix(1.0, finalMultiplier, t * t);
 		}
 
-		result *= finalMultiplier;// * (1.50-smoothstep(farPlane / 2.0, farPlane, linearizeDepth(texture(depthTexture, TexCoords).r)));
+		result *= finalMultiplier;
 	}
 
 	// 1. White Balance
-	vec3 whiteGain = 1.0 / max(tempToRgb(whiteTemp), 0.0001);
-	// Apply tint (green/magenta)
-	whiteGain.g *= (1.0 - whiteTint * 0.1);
-	whiteGain.rb *= (1.0 + whiteTint * 0.05);
-
-	// Normalize whiteGain to preserve luminance
+	vec3 whiteGain = 1.0 / max(tempToRgb(LAYER_VAL(whiteTemp)), 0.0001);
+	whiteGain.g *= (1.0 - LAYER_VAL(whiteTint) * 0.1);
+	whiteGain.rb *= (1.0 + LAYER_VAL(whiteTint) * 0.05);
 	whiteGain /= max(dot(whiteGain, vec3(0.2126, 0.7152, 0.0722)), 0.0001);
 	result *= whiteGain;
 
 	// 2. Exposure
-	if (useAutoExposure != 0) {
-		float exposure = targetLuminance / max(adaptedLuminance, 0.0001);
-		exposure = clamp(exposure, minExposure, maxExposure);
+	if (LAYER_VAL(useAutoExposure) != 0) {
+		float exposure = LAYER_VAL(targetLuminance) / max(LAYER_VAL(adaptedLuminance), 0.0001);
+		exposure = clamp(exposure, LAYER_VAL(minExposure), LAYER_VAL(maxExposure));
 		result *= exposure;
 	}
 
 	// 3. ASC CDL Color Grading
-	// Color = pow(max(0, Color * Slope + Offset), Power)
-	result = pow(max(result * cdlSlope.rgb + cdlOffset.rgb, 0.0), cdlPower.rgb);
-
-	// Saturation
+	result = pow(max(result * LAYER_VAL(cdlSlope).rgb + LAYER_VAL(cdlOffset).rgb, 0.0), LAYER_VAL(cdlPower).rgb);
 	float luma = dot(result, vec3(0.2126, 0.7152, 0.0722));
-	result = luma + cdlSaturation * (result - luma);
+	result = luma + LAYER_VAL(cdlSaturation) * (result - luma);
 
 	// 4. Tonemapping
+	bool toneMappingEnabled = isSky ? skyToneMappingEnabled : sceneToneMappingEnabled;
+	int toneMapMode = isSky ? skyToneMapMode : sceneToneMapMode;
+
 	if (toneMappingEnabled) {
-		if (toneMapMode == 5) {
-			if (autoTuneEnabled != 0) {
-				result = uchimura(result, autoUchimuraP, autoUchimuraA, autoUchimuraM, autoUchimuraL, autoUchimuraC, autoUchimuraB);
+		if (toneMapMode == 5) { // Uchimura
+			if (LAYER_VAL(autoTuneEnabled) != 0) {
+				result = uchimura(result, LAYER_VAL(autoUchimuraP), LAYER_VAL(autoUchimuraA), LAYER_VAL(autoUchimuraM), LAYER_VAL(autoUchimuraL), LAYER_VAL(autoUchimuraC), LAYER_VAL(autoUchimuraB));
 			} else {
-				result = uchimura(result, uchimuraP, uchimuraA, uchimuraM, uchimuraL, uchimuraC, uchimuraB);
+				if (isSky) {
+					result = uchimura(result, skyUchimuraP, skyUchimuraA, skyUchimuraM, skyUchimuraL, skyUchimuraC, skyUchimuraB);
+				} else {
+					result = uchimura(result, sceneUchimuraP, sceneUchimuraA, sceneUchimuraM, sceneUchimuraL, sceneUchimuraC, sceneUchimuraB);
+				}
 			}
 		} else {
 			result = applyTonemapping(result, toneMapMode);
 		}
 	}
-
-	// const vec3 a = vec3(0.5, 0.5, 0.5);
-	// const vec3 b = vec3(0.5, 0.5, 0.5);
-	// const vec3 c = vec3(0.8, 0.8, 0.8);
-	// const vec3 d = vec3(0.0, 0.33, 0.67); // Shifts for R, G, B
-
-		// vec3 a = vec3(0.5, 0.5, 0.5);
-		// vec3 b = vec3(0.5, 0.5, 0.5);
-		// vec3 c = vec3(2.0, 1.0, 0.0);
-		// vec3 d = vec3(5.0, 0.2, 0.25); // Shifts for R, G, B
-
-		// vec3 a = vec3(0.5, 0.5, 0.5);
-		// vec3 b = vec3(0.5, 0.5, 0.5);
-		// vec3 c = vec3(2.0, 1.0, 0.0);
-		// vec3 d = vec3(0.50, 0.2, 0.25); // Shifts for R, G, B
-
-
-	// float value = distance(result, vec3(0.5));
-
-	// result = (a + b * cos(6.28318 * (c * (value) + d)));
-
-	// result = vibrance(result, 0.70);
 
 	FragColor = vec4(result, 1.0);
 }
