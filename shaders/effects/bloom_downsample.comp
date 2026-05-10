@@ -9,7 +9,20 @@ layout(binding = 7, rgba16f) uniform writeonly image2D outMip2;
 layout(binding = 8, rgba16f) uniform writeonly image2D outMip3;
 layout(binding = 9, rgba16f) uniform writeonly image2D outMip4;
 
+layout(binding = 10, rgba16f) uniform writeonly image2D outExpMip0;
+layout(binding = 11, rgba16f) uniform writeonly image2D outExpMip1;
+layout(binding = 12, rgba16f) uniform writeonly image2D outExpMip2;
+layout(binding = 13, rgba16f) uniform writeonly image2D outExpMip3;
+layout(binding = 14, rgba16f) uniform writeonly image2D outExpMip4;
+
+layout(binding = 15, rgba16f) uniform writeonly image2D outWgtMip0;
+layout(binding = 16, rgba16f) uniform writeonly image2D outWgtMip1;
+layout(binding = 17, rgba16f) uniform writeonly image2D outWgtMip2;
+layout(binding = 18, rgba16f) uniform writeonly image2D outWgtMip3;
+layout(binding = 19, rgba16f) uniform writeonly image2D outWgtMip4;
+
 #include "types/autoexposure.glsl"
+#include "helpers/tonemapping.glsl"
 
 uniform vec2  srcResolution; // Full resolution of srcTexture
 uniform int   numMips;
@@ -19,10 +32,17 @@ uniform float speedUp;
 uniform float speedDown;
 
 shared vec3 s_mip[16][16];
+shared vec3 s_ltmExp[16][16];
+shared vec3 s_ltmWgt[16][16];
 
 // Constants for histogram
 const float MIN_LOG_LUMA = -10.0;
 const float MAX_LOG_LUMA = 2.0;
+
+float get_saturation(vec3 c) {
+	float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+	return sqrt(max(dot(c - l, c - l) / 3.0, 0.0));
+}
 
 void main() {
 	ivec2 id = ivec2(gl_GlobalInvocationID.xy);
@@ -31,6 +51,8 @@ void main() {
 	ivec2 numGroups = ivec2(gl_NumWorkGroups.xy);
 
 	vec3 bloomColor = vec3(0.0);
+	vec3 ltmExposures = vec3(0.0);
+	vec3 ltmWeights = vec3(0.0);
 
 	if (id.x < mip0Size.x && id.y < mip0Size.y) {
 		vec2 uv = (vec2(id) + 0.5) / vec2(mip0Size);
@@ -53,6 +75,46 @@ void main() {
 
 			// Atomic add to histogram bin (weight scaled to uint)
 			atomicAdd(histogram[bin], uint(weight * 1024.0));
+		}
+
+		// LTM generation for Mip 0
+		if (ltmEnabled != 0) {
+			float exposure = targetLuminance / max(avgLuma, 0.0001);
+
+			vec3 c1 = centerSample * exposure * exp2(ltmEvSpread);
+			vec3 c2 = centerSample * exposure;
+			vec3 c3 = centerSample * exposure * exp2(-ltmEvSpread);
+
+			vec3 tc1 = aces(c1);
+			vec3 tc2 = aces(c2);
+			vec3 tc3 = aces(c3);
+
+			float l1 = sqrt(max(dot(tc1, vec3(0.2126, 0.7152, 0.0722)), 0.0));
+			float l2 = sqrt(max(dot(tc2, vec3(0.2126, 0.7152, 0.0722)), 0.0));
+			float l3 = sqrt(max(dot(tc3, vec3(0.2126, 0.7152, 0.0722)), 0.0));
+
+			ltmExposures = vec3(l1, l2, l3);
+
+			// Weights
+			vec3 e;
+			e.x = exp(-0.5 * (l1 - ltmTarget) * (l1 - ltmTarget) / (ltmSigma * ltmSigma));
+			e.y = exp(-0.5 * (l2 - ltmTarget) * (l2 - ltmTarget) / (ltmSigma * ltmSigma));
+			e.z = exp(-0.5 * (l3 - ltmTarget) * (l3 - ltmTarget) / (ltmSigma * ltmSigma));
+
+			vec3 s;
+			s.x = get_saturation(tc1);
+			s.y = get_saturation(tc2);
+			s.z = get_saturation(tc3);
+
+			// Combine weights
+			ltmWeights = pow(max(e, 0.0001), vec3(ltmWeightExposedness)) *
+						 pow(max(s, 0.0001), vec3(ltmWeightSaturation));
+
+			float weightSum = ltmWeights.x + ltmWeights.y + ltmWeights.z;
+			ltmWeights /= max(weightSum, 0.00001);
+
+			imageStore(outExpMip0, id, vec4(ltmExposures, 1.0));
+			imageStore(outWgtMip0, id, vec4(ltmWeights, 1.0));
 		}
 
 		// 9-tap Dual Kawase-style filter from srcTexture for bloom
@@ -80,6 +142,8 @@ void main() {
 	}
 
 	s_mip[localId.x][localId.y] = bloomColor;
+	s_ltmExp[localId.x][localId.y] = ltmExposures;
+	s_ltmWgt[localId.x][localId.y] = ltmWeights;
 
 	barrier();
 
@@ -220,6 +284,23 @@ void main() {
 			imageStore(outMip1, outId, vec4(bloomColor, 1.0));
 		}
 		s_mip[localId.x][localId.y] = bloomColor;
+
+		if (ltmEnabled != 0) {
+			ltmExposures = (s_ltmExp[localId.x][localId.y] +
+						  s_ltmExp[localId.x + 1][localId.y] +
+						  s_ltmExp[localId.x][localId.y + 1] +
+						  s_ltmExp[localId.x + 1][localId.y + 1]) * 0.25;
+			ltmWeights = (s_ltmWgt[localId.x][localId.y] +
+						  s_ltmWgt[localId.x + 1][localId.y] +
+						  s_ltmWgt[localId.x][localId.y + 1] +
+						  s_ltmWgt[localId.x + 1][localId.y + 1]) * 0.25;
+			if (outId.x < imageSize(outExpMip1).x && outId.y < imageSize(outExpMip1).y) {
+				imageStore(outExpMip1, outId, vec4(ltmExposures, 1.0));
+				imageStore(outWgtMip1, outId, vec4(ltmWeights, 1.0));
+			}
+			s_ltmExp[localId.x][localId.y] = ltmExposures;
+			s_ltmWgt[localId.x][localId.y] = ltmWeights;
+		}
 	}
 
 	barrier();
@@ -235,6 +316,23 @@ void main() {
 			imageStore(outMip2, outId, vec4(bloomColor, 1.0));
 		}
 		s_mip[localId.x][localId.y] = bloomColor;
+
+		if (ltmEnabled != 0) {
+			ltmExposures = (s_ltmExp[localId.x][localId.y] +
+						  s_ltmExp[localId.x + 2][localId.y] +
+						  s_ltmExp[localId.x][localId.y + 2] +
+						  s_ltmExp[localId.x + 2][localId.y + 2]) * 0.25;
+			ltmWeights = (s_ltmWgt[localId.x][localId.y] +
+						  s_ltmWgt[localId.x + 2][localId.y] +
+						  s_ltmWgt[localId.x][localId.y + 2] +
+						  s_ltmWgt[localId.x + 2][localId.y + 2]) * 0.25;
+			if (outId.x < imageSize(outExpMip2).x && outId.y < imageSize(outExpMip2).y) {
+				imageStore(outExpMip2, outId, vec4(ltmExposures, 1.0));
+				imageStore(outWgtMip2, outId, vec4(ltmWeights, 1.0));
+			}
+			s_ltmExp[localId.x][localId.y] = ltmExposures;
+			s_ltmWgt[localId.x][localId.y] = ltmWeights;
+		}
 	}
 
 	barrier();
@@ -250,6 +348,23 @@ void main() {
 			imageStore(outMip3, outId, vec4(bloomColor, 1.0));
 		}
 		s_mip[localId.x][localId.y] = bloomColor;
+
+		if (ltmEnabled != 0) {
+			ltmExposures = (s_ltmExp[localId.x][localId.y] +
+						  s_ltmExp[localId.x + 4][localId.y] +
+						  s_ltmExp[localId.x][localId.y + 4] +
+						  s_ltmExp[localId.x + 4][localId.y + 4]) * 0.25;
+			ltmWeights = (s_ltmWgt[localId.x][localId.y] +
+						  s_ltmWgt[localId.x + 4][localId.y] +
+						  s_ltmWgt[localId.x][localId.y + 4] +
+						  s_ltmWgt[localId.x + 4][localId.y + 4]) * 0.25;
+			if (outId.x < imageSize(outExpMip3).x && outId.y < imageSize(outExpMip3).y) {
+				imageStore(outExpMip3, outId, vec4(ltmExposures, 1.0));
+				imageStore(outWgtMip3, outId, vec4(ltmWeights, 1.0));
+			}
+			s_ltmExp[localId.x][localId.y] = ltmExposures;
+			s_ltmWgt[localId.x][localId.y] = ltmWeights;
+		}
 	}
 
 	barrier();
@@ -263,6 +378,21 @@ void main() {
 		ivec2 outId = id / 16;
 		if (outId.x < imageSize(outMip4).x && outId.y < imageSize(outMip4).y) {
 			imageStore(outMip4, outId, vec4(bloomColor, 1.0));
+		}
+
+		if (ltmEnabled != 0) {
+			ltmExposures = (s_ltmExp[localId.x][localId.y] +
+						  s_ltmExp[localId.x + 8][localId.y] +
+						  s_ltmExp[localId.x][localId.y + 8] +
+						  s_ltmExp[localId.x + 8][localId.y + 8]) * 0.25;
+			ltmWeights = (s_ltmWgt[localId.x][localId.y] +
+						  s_ltmWgt[localId.x + 8][localId.y] +
+						  s_ltmWgt[localId.x][localId.y + 8] +
+						  s_ltmWgt[localId.x + 8][localId.y + 8]) * 0.25;
+			if (outId.x < imageSize(outExpMip4).x && outId.y < imageSize(outExpMip4).y) {
+				imageStore(outExpMip4, outId, vec4(ltmExposures, 1.0));
+				imageStore(outWgtMip4, outId, vec4(ltmWeights, 1.0));
+			}
 		}
 	}
 }

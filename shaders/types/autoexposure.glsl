@@ -53,5 +53,16 @@ layout(std430, binding = [[AUTO_EXPOSURE_BINDING]]) buffer AutoExposure {
 	float whiteTint;
 	float _pad4;
 
+	// Local Tone Mapping (Exposure Fusion)
+	int   ltmEnabled;
+	float ltmEvSpread;
+	float ltmTarget;
+	float ltmSigma;
+
+	float ltmWeightContrast;
+	float ltmWeightSaturation;
+	float ltmWeightExposedness;
+	float ltmBoostLocalContrast;
+
 	uint  histogram[256];
 };
