@@ -326,6 +326,41 @@ namespace Boidsish {
 									if (changed_wb) {
 										bloom_effect->SetWhiteBalance(temp, tint);
 									}
+
+									ImGui::Separator();
+									ImGui::Text("Local Tone Mapping (Exposure Fusion)");
+									bool ltm_enabled = bloom_effect->IsLtmEnabled();
+									if (ImGui::Checkbox("Enable LTM", &ltm_enabled)) {
+										bloom_effect->SetLtmEnabled(ltm_enabled);
+									}
+									if (ltm_enabled) {
+										float ev_spread = bloom_effect->GetLtmEvSpread();
+										float target = bloom_effect->GetLtmTarget();
+										float sigma = bloom_effect->GetLtmSigma();
+										bool changed_ltm = false;
+										changed_ltm |= ImGui::SliderFloat("EV Spread", &ev_spread, 0.0f, 4.0f);
+										changed_ltm |= ImGui::SliderFloat("Well Exposed Target", &target, 0.0f, 1.0f);
+										changed_ltm |= ImGui::SliderFloat("Well Exposed Sigma", &sigma, 0.01f, 1.0f);
+										if (changed_ltm) {
+											bloom_effect->SetLtmParams(ev_spread, target, sigma);
+										}
+
+										float w_contrast = bloom_effect->GetLtmWeightContrast();
+										float w_saturation = bloom_effect->GetLtmWeightSaturation();
+										float w_exposedness = bloom_effect->GetLtmWeightExposedness();
+										bool changed_ltm_w = false;
+										changed_ltm_w |= ImGui::SliderFloat("Weight Contrast", &w_contrast, 0.0f, 1.0f);
+										changed_ltm_w |= ImGui::SliderFloat("Weight Saturation", &w_saturation, 0.0f, 1.0f);
+										changed_ltm_w |= ImGui::SliderFloat("Weight Exposedness", &w_exposedness, 0.0f, 1.0f);
+										if (changed_ltm_w) {
+											bloom_effect->SetLtmWeights(w_contrast, w_saturation, w_exposedness);
+										}
+
+										float boost = bloom_effect->GetLtmBoostLocalContrast();
+										if (ImGui::SliderFloat("Boost Local Contrast", &boost, 0.0f, 2.0f)) {
+											bloom_effect->SetLtmBoostLocalContrast(boost);
+										}
+									}
 									ImGui::TreePop();
 								}
 							}

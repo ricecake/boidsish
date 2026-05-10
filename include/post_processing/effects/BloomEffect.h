@@ -98,6 +98,26 @@ namespace Boidsish {
 			float GetWhiteTemp() const { return _whiteTemp; }
 			float GetWhiteTint() const { return _whiteTint; }
 
+			void SetLtmEnabled(bool enabled) { _ltmEnabled = enabled; }
+			bool IsLtmEnabled() const { return _ltmEnabled; }
+
+			void SetLtmParams(float evSpread, float target, float sigma) {
+				_ltmEvSpread = evSpread; _ltmTarget = target; _ltmSigma = sigma;
+			}
+			float GetLtmEvSpread() const { return _ltmEvSpread; }
+			float GetLtmTarget() const { return _ltmTarget; }
+			float GetLtmSigma() const { return _ltmSigma; }
+
+			void SetLtmWeights(float contrast, float saturation, float exposedness) {
+				_ltmWeightContrast = contrast; _ltmWeightSaturation = saturation; _ltmWeightExposedness = exposedness;
+			}
+			float GetLtmWeightContrast() const { return _ltmWeightContrast; }
+			float GetLtmWeightSaturation() const { return _ltmWeightSaturation; }
+			float GetLtmWeightExposedness() const { return _ltmWeightExposedness; }
+
+			void SetLtmBoostLocalContrast(float boost) { _ltmBoostLocalContrast = boost; }
+			float GetLtmBoostLocalContrast() const { return _ltmBoostLocalContrast; }
+
 			void SetNightFactor(float factor) override { _nightFactor = factor; }
 
 			void SetTime(float time) override;
@@ -156,6 +176,17 @@ namespace Boidsish {
 				float whiteTint;
 				float _pad4;
 
+				// Local Tone Mapping (Exposure Fusion)
+				int   ltmEnabled;
+				float ltmEvSpread;
+				float ltmTarget;
+				float ltmSigma;
+
+				float ltmWeightContrast;
+				float ltmWeightSaturation;
+				float ltmWeightExposedness;
+				float ltmBoostLocalContrast;
+
 				uint32_t histogram[256];
 			};
 
@@ -167,8 +198,13 @@ namespace Boidsish {
 			std::unique_ptr<Shader>        _compositeShader;
 
 			GLuint _bloomTexture; // Mipmapped texture
+			GLuint _ltmExpTexture; // Synthetic exposure lightness
+			GLuint _ltmWgtTexture; // Synthetic exposure weights
+			GLuint _ltmFusedTexture; // Fused LTM result
 			int    _numMips;
 			std::vector<GLuint> _upsampleFBOs;
+
+			std::unique_ptr<ComputeShader> _ltmFuseComputeShader;
 
 			GLuint _exposureSsbo = 0;
 
@@ -212,6 +248,15 @@ namespace Boidsish {
 
 			float _whiteTemp = 6500.0f;
 			float _whiteTint = 0.0f;
+
+			bool  _ltmEnabled = true;
+			float _ltmEvSpread = 2.0f;
+			float _ltmTarget = 0.5f;
+			float _ltmSigma = 0.2f;
+			float _ltmWeightContrast = 0.0f;
+			float _ltmWeightSaturation = 0.0f;
+			float _ltmWeightExposedness = 1.0f;
+			float _ltmBoostLocalContrast = 0.0f;
 
 			float _nightFactor = 0.0f;
 			float _lastTime = 0.0f;
