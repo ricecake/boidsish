@@ -5,6 +5,9 @@ in vec2 TexCoords;
 
 uniform sampler2D sceneTexture;
 uniform sampler2D bloomBlur;
+uniform sampler2D ltmFused;
+uniform sampler2D ltmExpMip;
+uniform vec2      ltmRes;
 uniform float     intensity;
 uniform float     minIntensity;
 uniform float     maxIntensity;
@@ -51,6 +54,58 @@ void main() {
 
 	// Add bloom to HDR scene color.
 	vec3 result = sceneColor + bloomColor * intensity;
+
+	// Guided Upsampling for LTM
+	if (ltmEnabled != 0) {
+		float exposure = targetLuminance / max(avgLuma, 0.0001);
+		vec3 currentExposure = result * exposure;
+		vec3 currentAces = aces(currentExposure);
+		float guidanceLuma = sqrt(max(dot(currentAces, vec3(0.2126, 0.7152, 0.0722)), 0.0));
+
+		// Sample 3x3 neighborhood from low-res textures for guided filter
+		float momentX = 0.0;
+		float momentY = 0.0;
+		float momentX2 = 0.0;
+		float momentXY = 0.0;
+		float weightSum = 0.0;
+
+		vec2 texelSize = 1.0 / ltmRes;
+
+		for (int dy = -1; dy <= 1; dy++) {
+			for (int dx = -1; dx <= 1; dx++) {
+				vec2 offset = vec2(dx, dy) * texelSize;
+				float x = texture(ltmExpMip, TexCoords + offset).y; // mid-exposure lightness
+				float y = texture(ltmFused, TexCoords + offset).r;  // fused lightness
+
+				float w = exp(-0.5 * float(dx*dx + dy*dy) / (0.7 * 0.7));
+				momentX += x * w;
+				momentY += y * w;
+				momentX2 += x * x * w;
+				momentXY += x * y * w;
+				weightSum += w;
+			}
+		}
+
+		momentX /= weightSum;
+		momentY /= weightSum;
+		momentX2 /= weightSum;
+		momentXY /= weightSum;
+
+		float A = (momentXY - momentX * momentY) / (max(momentX2 - momentX * momentX, 0.0) + 0.00001);
+		float B = momentY - A * momentX;
+
+		float localFusedLuma = max(A * guidanceLuma + B, 0.0);
+		float finalMultiplier = localFusedLuma / max(guidanceLuma, 0.0001);
+
+		// Prevent artifacts in very dark areas
+		float lerpToUnityThreshold = 0.007;
+		if (guidanceLuma < lerpToUnityThreshold) {
+			float t = guidanceLuma / lerpToUnityThreshold;
+			finalMultiplier = mix(1.0, finalMultiplier, t * t);
+		}
+
+		result *= finalMultiplier;
+	}
 
 	// 1. White Balance
 	vec3 whiteGain = 1.0 / max(tempToRgb(whiteTemp), 0.0001);
