@@ -27,6 +27,7 @@ in float      vSubstrate;
 // #include "helpers/noise.glsl"
 #include "helpers/wind.glsl"
 // #include "lygia/color/space/rgb2lab.glsl"
+#include "lygia/color/palette.glsl"
 
 
 uniform bool uIsShadowPass = false;
@@ -454,6 +455,7 @@ void main() {
 	if (u_grassGlobal.enabled != 0) {
 		float blueNoise = fastBlueNoise(FragPos.xz * (baseFreq * 0.05), 0) * 0.5 + 0.5;
 		float blueNoiseA = fastBlueNoise(FragPos.xz * (baseFreq * 0.1), 1) * 0.5 + 0.5;
+		float worley = fastWorley3d(FragPos * 5*baseFreq) * 0.5 + 0.5;
 
 		vec2  biomeUV = (TexCoords * uRawChunkSize + 0.5) / (uRawChunkSize + 1.0);
 		vec2  biomeData = texture(uBiomeMap, vec3(biomeUV, TextureSlice)).rg;
@@ -503,8 +505,12 @@ void main() {
 
 		finalMaterial.albedo *= albedoMultiplier;
 
-		finalMaterial.roughness = mix(finalMaterial.roughness, clamp(finalMaterial.roughness * dynamicBlend, 0.0, 1.0), distanceFactor);
+		// vec3 flowerColor = 5.0*palette(blueNoise, vec3(0.5, 0.5, 0.5), vec3(0.5, 0.5, 0.5), vec3(2.0, 1.0, 0.0), vec3(0.50, 0.20, 0.25));
+		vec3 flowerColor = palette(blueNoise, fastCurl3d(FragPos/15)*0.5+0.5, fastCurl3d(FragPos/15)*0.5+0.5,fastCurl3d(FragPos/15)*0.5+0.5,fastCurl3d(FragPos/15)*0.5+0.5);
 
+		finalMaterial.albedo = mix(finalMaterial.albedo, flowerColor, smoothstep(0.5, 0.7, grassMask)*smoothstep(0.80, 0.90, worley) * smoothstep(0.2, 0.75, fastWorley3d(FragPos/100.0) * fastSimplex3d(FragPos/70.0)));
+
+		finalMaterial.roughness = mix(finalMaterial.roughness, clamp(finalMaterial.roughness * dynamicBlend, 0.0, 1.0), distanceFactor);
 	}
 
 	vec3  albedo = finalMaterial.albedo;
