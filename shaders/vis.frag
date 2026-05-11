@@ -295,7 +295,7 @@ void main() {
 		float haze_end = 150.0 * worldScale;
 		float haze_factor = 1.0 - smoothstep(haze_start, haze_end, FragPos.y);
 		vec3  final_haze_color = mix(result, skyColor, haze_factor * 0.5);
-		outColor = vec4(final_haze_color, 1.0);
+		outColor = vec4(final_haze_color, 1.0); // Full scene mask
 	} else {
 		float final_alpha = clamp((baseAlpha + spec_lum) * fade, 0.0, 1.0);
 		if (c_is_refractive) {

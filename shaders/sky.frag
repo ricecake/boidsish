@@ -250,7 +250,7 @@ void main() {
 
 	vec3 finalColor = skyRadiance + sunDisc + moonDisc + spaceBackground;
 
-	FragColor = vec4(finalColor, 1.0);
+	FragColor = vec4(finalColor, 0.0); // Scene mask = 0.0 for sky
 	Velocity = vec4(0, 0, 1.0, 0.0); // Roughness 1.0 (sky is not reflective), Metallic 0.0
 	NormalOut = vec4(0, 0, 0, 1.0);
 	AlbedoOut = vec4(finalColor, 1.0);

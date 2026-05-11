@@ -2,53 +2,41 @@
 
 layout(local_size_x = 16, local_size_y = 16) in;
 
-layout(binding = 0) uniform sampler2D expTexture;
-layout(binding = 1) uniform sampler2D wgtTexture;
-layout(binding = 3) uniform sampler2D depthTexture;
-layout(binding = 2, r16f) uniform writeonly image2D outFused;
+layout(binding = 0) uniform sampler2DArray expTexture;
+layout(binding = 1) uniform sampler2DArray wgtTexture;
+layout(binding = 2, r16f) uniform writeonly image2DArray outFused;
 
 #include "types/autoexposure.glsl"
 
-uniform int startMip; // e.g. numMips - 1
-uniform int endMip;   // e.g. 0 (full resolution of the low-res target)
+uniform int startMip;
+uniform int endMip;
 
-void main() {
-	ivec2 id = ivec2(gl_GlobalInvocationID.xy);
-	ivec2 size = imageSize(outFused);
+void processLayer(ivec2 id, int layer, LayerData ld) {
+	ivec2 size = imageSize(outFused).xy;
 	if (id.x >= size.x || id.y >= size.y) return;
 
 	vec2 uv = (vec2(id) + 0.5) / vec2(size);
 
-	float depth = texture(depthTexture, uv).r;
-	bool isSky = (depth >= 1.0);
-
-	// Select layer parameters
-	float weightContrast = isSky ? sky.ltmWeightContrast : scene.ltmWeightContrast;
-	float boostLocalContrast = isSky ? sky.ltmBoostLocalContrast : scene.ltmBoostLocalContrast;
-
-	// 1. Blend the coarsest level (Gaussian)
-	vec3 weights = textureLod(wgtTexture, uv, float(startMip)).rgb;
-	vec3 exposures = textureLod(expTexture, uv, float(startMip)).rgb;
+	vec3 weights = textureLod(wgtTexture, vec3(uv, layer), float(startMip)).rgb;
+	vec3 exposures = textureLod(expTexture, vec3(uv, layer), float(startMip)).rgb;
 
 	float weightSum = weights.x + weights.y + weights.z;
 	weights /= max(weightSum, 0.00001);
 
 	float accum = dot(exposures, weights);
 
-	// 2. Blend the finer levels (Laplacians)
 	for (int i = startMip; i > endMip; i--) {
-		vec3 expFine = textureLod(expTexture, uv, float(i - 1)).rgb;
-		vec3 expCoarse = textureLod(expTexture, uv, float(i)).rgb;
+		vec3 expFine = textureLod(expTexture, vec3(uv, layer), float(i - 1)).rgb;
+		vec3 expCoarse = textureLod(expTexture, vec3(uv, layer), float(i)).rgb;
 		vec3 laplacian = expFine - expCoarse;
 
-		vec3 w = textureLod(wgtTexture, uv, float(i - 1)).rgb;
+		vec3 w = textureLod(wgtTexture, vec3(uv, layer), float(i - 1)).rgb;
 
-		// Contrast weight (Laplacian magnitude)
-		vec3 c = pow(max(abs(laplacian), 0.0001), vec3(weightContrast));
+		vec3 c = pow(max(abs(laplacian), 0.0001), vec3(ld.ltmWeightContrast));
 		w *= c;
 
-		if (boostLocalContrast > 0.0) {
-			w *= (abs(laplacian) * boostLocalContrast + 1.0);
+		if (ld.ltmBoostLocalContrast > 0.0) {
+			w *= (abs(laplacian) * ld.ltmBoostLocalContrast + 1.0);
 		}
 
 		float wSum = w.x + w.y + w.z;
@@ -57,5 +45,11 @@ void main() {
 		accum += dot(laplacian, w);
 	}
 
-	imageStore(outFused, id, vec4(accum, 0.0, 0.0, 1.0));
+	imageStore(outFused, ivec3(id, layer), vec4(accum, 0.0, 0.0, 1.0));
+}
+
+void main() {
+	ivec2 id = ivec2(gl_GlobalInvocationID.xy);
+	processLayer(id, 0, scene);
+	processLayer(id, 1, sky);
 }

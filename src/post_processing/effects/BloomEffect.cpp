@@ -39,8 +39,11 @@ namespace Boidsish {
 				"shaders/effects/ltm_fuse.comp"
 			);
 			_upsampleShader = std::make_unique<Shader>(
-				"shaders/postprocess.vert",
-				"shaders/effects/bloom_upsample.frag"
+				"shaders/postprocess_layered.vert",
+				"shaders/effects/bloom_upsample.frag",
+				"", // tcs
+				"", // tes
+				"shaders/postprocess_layered.geom"
 			);
 			_compositeShader = std::make_unique<Shader>(
 				"shaders/postprocess.vert",
@@ -61,49 +64,49 @@ namespace Boidsish {
 				_upsampleFBOs.clear();
 			}
 
-			// Mipmapped Bloom Texture
+			// Mipmapped Bloom Texture (Array for Scene/Sky layers)
 			_numMips = 5;
 			glGenTextures(1, &_bloomTexture);
-			glBindTexture(GL_TEXTURE_2D, _bloomTexture);
-			glTexStorage2D(GL_TEXTURE_2D, _numMips, GL_RGBA16F, _width / 2, _height / 2);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+			glBindTexture(GL_TEXTURE_2D_ARRAY, _bloomTexture);
+			glTexStorage3D(GL_TEXTURE_2D_ARRAY, _numMips, GL_RGBA16F, _width / 2, _height / 2, 2);
+			glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
 			// Mipmapped LTM Texture (3 exposures)
 			glGenTextures(1, &_ltmExpTexture);
-			glBindTexture(GL_TEXTURE_2D, _ltmExpTexture);
-			glTexStorage2D(GL_TEXTURE_2D, _numMips, GL_RGBA16F, _width / 2, _height / 2);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+			glBindTexture(GL_TEXTURE_2D_ARRAY, _ltmExpTexture);
+			glTexStorage3D(GL_TEXTURE_2D_ARRAY, _numMips, GL_RGBA16F, _width / 2, _height / 2, 2);
+			glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
 			// Mipmapped LTM Weights Texture (3 weights)
 			glGenTextures(1, &_ltmWgtTexture);
-			glBindTexture(GL_TEXTURE_2D, _ltmWgtTexture);
-			glTexStorage2D(GL_TEXTURE_2D, _numMips, GL_RGBA16F, _width / 2, _height / 2);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+			glBindTexture(GL_TEXTURE_2D_ARRAY, _ltmWgtTexture);
+			glTexStorage3D(GL_TEXTURE_2D_ARRAY, _numMips, GL_RGBA16F, _width / 2, _height / 2, 2);
+			glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
 			// Fused LTM Result (Quarter-res target for Guided Upsampling)
 			glGenTextures(1, &_ltmFusedTexture);
-			glBindTexture(GL_TEXTURE_2D, _ltmFusedTexture);
-			glTexStorage2D(GL_TEXTURE_2D, 1, GL_R16F, _width / 2, _height / 2);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+			glBindTexture(GL_TEXTURE_2D_ARRAY, _ltmFusedTexture);
+			glTexStorage3D(GL_TEXTURE_2D_ARRAY, 1, GL_R16F, _width / 2, _height / 2, 2);
+			glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-			// Create FBOs for upsampling into mip levels
+			// Create FBOs for upsampling into mip levels (Each FBO handles both layers)
 			_upsampleFBOs.resize(_numMips);
 			glGenFramebuffers(_numMips, _upsampleFBOs.data());
 			for (int i = 0; i < _numMips; i++) {
 				glBindFramebuffer(GL_FRAMEBUFFER, _upsampleFBOs[i]);
-				glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, _bloomTexture, i);
+				glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, _bloomTexture, i);
 				if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
 					logger::ERROR("Bloom upsample FBO " + std::to_string(i) + " is not complete!");
 				}
@@ -236,13 +239,13 @@ namespace Boidsish {
 			glBindTexture(GL_TEXTURE_2D, depthTexture);
 
 			for (int i = 0; i < _numMips; i++) {
-				glBindImageTexture(5 + i, _bloomTexture, i, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+				glBindImageTexture(5 + i, _bloomTexture, i, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 			}
 			for (int i = 0; i < _numMips; i++) {
-				glBindImageTexture(10 + i, _ltmExpTexture, i, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+				glBindImageTexture(10 + i, _ltmExpTexture, i, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 			}
 			for (int i = 0; i < _numMips; i++) {
-				glBindImageTexture(15 + i, _ltmWgtTexture, i, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+				glBindImageTexture(15 + i, _ltmWgtTexture, i, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 			}
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::AutoExposure(), _exposureSsbo);
 
@@ -266,19 +269,19 @@ namespace Boidsish {
 				_ltmFuseComputeShader->setInt("endMip", 0);
 
 				glActiveTexture(GL_TEXTURE0);
-				glBindTexture(GL_TEXTURE_2D, _ltmExpTexture);
+				glBindTexture(GL_TEXTURE_2D_ARRAY, _ltmExpTexture);
 				glActiveTexture(GL_TEXTURE1);
-				glBindTexture(GL_TEXTURE_2D, _ltmWgtTexture);
+				glBindTexture(GL_TEXTURE_2D_ARRAY, _ltmWgtTexture);
 				glActiveTexture(GL_TEXTURE3);
 				glBindTexture(GL_TEXTURE_2D, depthTexture);
 
-				glBindImageTexture(2, _ltmFusedTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R16F);
+				glBindImageTexture(2, _ltmFusedTexture, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_R16F);
 
 				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::AutoExposure(), _exposureSsbo);
 
 				_ltmFuseComputeShader->dispatch(groupsX, groupsY, 1);
 				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
-				glBindImageTexture(2, 0, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R16F);
+				glBindImageTexture(2, 0, 0, GL_TRUE, 0, GL_READ_ONLY, GL_R16F);
 			}
 
 			// 3. Progressive upsample and accumulate
@@ -304,9 +307,13 @@ namespace Boidsish {
 				_upsampleShader->setVec2("srcResolution", (float)srcWidth, (float)srcHeight);
 
 				glActiveTexture(GL_TEXTURE0);
-				glBindTexture(GL_TEXTURE_2D, _bloomTexture);
+				glBindTexture(GL_TEXTURE_2D_ARRAY, _bloomTexture);
 				_upsampleShader->setFloat("srcLod", (float)srcMip);
 
+				// Draw for both layers (Geometry Shader or separate passes - here we use layered rendering)
+				// Since we bound the whole texture to the FBO mip level, layered rendering is possible
+				// but shaders need to be aware. Easiest is to run twice if layered is not setup.
+				// We'll update the upsample shader to be layered.
 				glDrawArrays(GL_TRIANGLES, 0, 6);
 			}
 
@@ -353,17 +360,17 @@ namespace Boidsish {
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, sourceTexture);
 			glActiveTexture(GL_TEXTURE1);
-			glBindTexture(GL_TEXTURE_2D, _bloomTexture);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+			glBindTexture(GL_TEXTURE_2D_ARRAY, _bloomTexture);
+			glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_BASE_LEVEL, 0);
+			glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAX_LEVEL, 0);
 
 			glActiveTexture(GL_TEXTURE2);
-			glBindTexture(GL_TEXTURE_2D, _ltmFusedTexture);
+			glBindTexture(GL_TEXTURE_2D_ARRAY, _ltmFusedTexture);
 
 			glActiveTexture(GL_TEXTURE3);
-			glBindTexture(GL_TEXTURE_2D, _ltmExpTexture);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+			glBindTexture(GL_TEXTURE_2D_ARRAY, _ltmExpTexture);
+			glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_BASE_LEVEL, 0);
+			glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAX_LEVEL, 0);
 
 			glActiveTexture(GL_TEXTURE4);
 			glBindTexture(GL_TEXTURE_2D, depthTexture);
@@ -374,12 +381,12 @@ namespace Boidsish {
 
 			// Reset mip levels for future use
 			glActiveTexture(GL_TEXTURE1);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, _numMips - 1);
+			glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_BASE_LEVEL, 0);
+			glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAX_LEVEL, _numMips - 1);
 
 			glActiveTexture(GL_TEXTURE3);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, _numMips - 1);
+			glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_BASE_LEVEL, 0);
+			glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAX_LEVEL, _numMips - 1);
 
 			// Cleanup
 			glActiveTexture(GL_TEXTURE4);

@@ -38,7 +38,7 @@ namespace Boidsish {
 			for (unsigned int i = 0; i < 2; i++) {
 				glBindFramebuffer(GL_FRAMEBUFFER, pingpong_fbo_[i]);
 				glBindTexture(GL_TEXTURE_2D, pingpong_texture_[i]);
-				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, width_, height_, 0, GL_RGB, GL_FLOAT, NULL);
+				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, width_, height_, 0, GL_RGBA, GL_FLOAT, NULL);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);

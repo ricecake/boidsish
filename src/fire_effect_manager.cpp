@@ -737,7 +737,8 @@ namespace Boidsish {
 		}
 
 		glEnable(GL_BLEND);
-		glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA); // Additive blending for fire
+		// Separate blend func to ensure particles set alpha mask to 1.0 (Scene)
+		glBlendFuncSeparate(GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE);
 		glDepthMask(GL_FALSE);                       // Disable depth writing
 		glEnable(GL_PROGRAM_POINT_SIZE);
 
