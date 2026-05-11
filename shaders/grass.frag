@@ -78,16 +78,31 @@ void main() {
     if (fIsFlower > 0.5) {
         float stemHeight = 0.75;
         if (fHeightFactor > stemHeight) {
-            // Pick a flower color based on biome and seed
+            // Pick a flower color based on position-based seed
             uint seed = uint(abs(fWorldPos.x) * 17.0) ^ uint(abs(fWorldPos.z) * 23.0);
             float h = hash(seed);
-            vec3 flowerColor = mix(vec3(0.9, 0.3, 0.5), vec3(0.9, 0.8, 0.2), step(0.5, h));
-            if (h > 0.8) flowerColor = vec3(0.9, 0.9, 0.9);
 
-            // Darken the center of the flower head
+            vec3 flowerColor;
+            if (h < 0.25) {
+                flowerColor = mix(vec3(0.9, 0.1, 0.3), vec3(1.0, 0.5, 0.6), hash(seed + 123u)); // Reds/Pinks
+            } else if (h < 0.5) {
+                flowerColor = mix(vec3(0.1, 0.4, 0.9), vec3(0.4, 0.7, 1.0), hash(seed + 456u)); // Blues
+            } else if (h < 0.75) {
+                flowerColor = mix(vec3(0.9, 0.8, 0.1), vec3(1.0, 1.0, 0.5), hash(seed + 789u)); // Yellows
+            } else {
+                flowerColor = mix(vec3(0.6, 0.1, 0.9), vec3(0.8, 0.5, 1.0), hash(seed + 321u)); // Purples
+            }
+
+            if (hash(seed + 999u) > 0.95) flowerColor = vec3(0.95, 0.95, 0.95); // Rare white
+
+            // Add center glow/darkness
             float vHead = (fHeightFactor - stemHeight) / (1.0 - stemHeight);
             float centerDist = length(vec2(fTexCoords.x - 0.5, vHead - 0.5) * 2.0);
-            flowerColor *= mix(0.2, 1.0, smoothstep(0.0, 0.5, centerDist));
+
+            vec3 centerColor = flowerColor * 0.3;
+            if (h > 0.5) centerColor = vec3(0.9, 0.6, 0.1); // Golden center for some
+
+            flowerColor = mix(centerColor, flowerColor, smoothstep(0.1, 0.6, centerDist));
 
             albedo = flowerColor;
         }

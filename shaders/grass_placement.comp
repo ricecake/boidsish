@@ -159,7 +159,11 @@ void spawnBlade(GridCell cell, int slice, vec3 patchOffset, float patchSize) {
     if (normal.y < 0.7) return;
 
     vec2 biomeData = textureLod(uBiomeMap, vec3(remappedUV, float(slice)), 0.0).rg;
-    int pickedBiome = (hash(seed + 5566) < biomeData.g) ? int(biomeData.r * 255.0 + 0.5) + 1 : int(biomeData.r * 255.0 + 0.5);
+    int idxA = int(biomeData.r * 255.0 + 0.5);
+    int idxB = clamp(idxA + 1, 0, 7);
+    float t = biomeData.g;
+
+    int pickedBiome = (hash(seed + 5566) < t) ? idxB : idxA;
     pickedBiome = clamp(pickedBiome, 0, 7);
 
     if (biomeProps[pickedBiome].enabled == 0) return;
@@ -168,13 +172,17 @@ void spawnBlade(GridCell cell, int slice, vec3 patchOffset, float patchSize) {
     float fadeOut = 1.0 - smoothstep(cell.maxRange, upper + 0.001, dist);
     float densityCurve = fadeIn * fadeOut;
 
+    float densityA = biomeProps[idxA].density;
+    float densityB = biomeProps[idxB].density;
+    float interpolatedDensity = mix(densityA, densityB, t);
+
     int bx = cellID.x & 7;
     int by = cellID.y & 7;
     if (rotateDither) {
         int tmp = bx; bx = by; by = 7 - tmp;
     }
     float ditherValue = float(bayer8x8[by * 8 + bx]) / 64.0;
-    float finalDither = ditherValue * (1.1 - biomeProps[pickedBiome].density * globalProps.densityMultiplier);
+    float finalDither = ditherValue * (1.1 - interpolatedDensity * globalProps.densityMultiplier);
 
     if (densityCurve < finalDither) return;
 

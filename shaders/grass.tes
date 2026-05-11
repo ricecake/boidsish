@@ -95,7 +95,7 @@ void main() {
 
     // Wind
     float distanceFade = smoothstep(250, 75, dist);
-    vec3 windNoise =  distanceFade > 0? distanceFade * getWindAtPosition(basePos) : vec3(0);
+    vec3 windNoise =  (distanceFade > 0 && dist < 150.0) ? distanceFade * getWindAtPosition(basePos) : vec3(0);
     float windStrength = length(windNoise) * biomeProps[biomeIdx].windInfluence * globalProps.windMultiplier;
 
     // --- Combined Deflection ---
@@ -179,15 +179,27 @@ void main() {
 
     float currentWidth;
     if (isFlower) {
-        // Narrow stem at the base, diamond/square head at the top
+        // Narrow stem at the base, multiple head shapes at the top
         float stemHeight = 0.75;
         if (v < stemHeight) {
             currentWidth = u * width * 0.2; // Very narrow stem
         } else {
             // Re-normalize v for the head [0, 1]
             float vHead = (v - stemHeight) / (1.0 - stemHeight);
-            // Diamond shape: wider in the middle of the head
-            float headProfile = 1.0 - abs(vHead * 2.0 - 1.0);
+            uint shapeSeed = seed % 4u;
+            float headProfile;
+
+            if (shapeSeed == 0u) { // Diamond
+                headProfile = 1.0 - abs(vHead * 2.0 - 1.0);
+            } else if (shapeSeed == 1u) { // Bell
+                headProfile = pow(sin(vHead * 3.14159), 0.5);
+            } else if (shapeSeed == 2u) { // Star-like
+                headProfile = abs(sin(vHead * 3.14159 * 2.0));
+                headProfile = mix(headProfile, 1.0 - vHead, 0.3);
+            } else { // Heart/Wide Diamond
+                headProfile = (1.0 - vHead) * pow(vHead, 0.3) * 2.5;
+            }
+
             currentWidth = u * width * 2.5 * headProfile;
         }
     } else {
