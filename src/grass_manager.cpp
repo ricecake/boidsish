@@ -121,7 +121,7 @@ namespace Boidsish {
         lushGrass.colorBottom = glm::vec4(0.1f, 0.3f, 0.05f, 1.0f);
         lushGrass.height = 1.0f;
         lushGrass.width = 0.1f;
-        lushGrass.density = 1.0f;
+        lushGrass.density = 0.8f;
         lushGrass.windInfluence = 1.0f;
         lushGrass.rigidity = 0.3f;
         lushGrass.flowerRatio = 0.05f;
@@ -133,7 +133,7 @@ namespace Boidsish {
         dryGrass.colorBottom = glm::vec4(0.3f, 0.25f, 0.1f, 1.0f);
         dryGrass.height = 0.8f;
         dryGrass.width = 0.08f;
-        dryGrass.density = 0.7f;
+        dryGrass.density = 0.6f;
         dryGrass.windInfluence = 0.6f;
         dryGrass.rigidity = 0.6f;
         SetGrassProperties(Biome::DryGrass, dryGrass);
@@ -144,7 +144,7 @@ namespace Boidsish {
         forestGrass.colorBottom = glm::vec4(0.02f, 0.1f, 0.02f, 1.0f);
         forestGrass.height = 1.5f;
         forestGrass.width = 0.12f;
-        forestGrass.density = 0.9f;
+        forestGrass.density = 0.75f;
         forestGrass.windInfluence = 0.4f;
         forestGrass.rigidity = 0.5f;
         SetGrassProperties(Biome::Forest, forestGrass);
@@ -155,7 +155,7 @@ namespace Boidsish {
         alpineGrass.colorBottom = glm::vec4(0.1f, 0.4f, 0.1f, 1.0f);
         alpineGrass.height = 0.6f;
         alpineGrass.width = 0.06f;
-        alpineGrass.density = 1.0f;
+        alpineGrass.density = 0.7f;
         alpineGrass.windInfluence = 1.2f;
         alpineGrass.rigidity = 0.2f;
         alpineGrass.flowerRatio = 0.15f;

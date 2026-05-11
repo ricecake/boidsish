@@ -453,9 +453,10 @@ void main() {
 	float grassAO = 0.0;
 	vec3 perturbedNorm = norm;
 	if (u_grassGlobal.enabled != 0) {
-		float blueNoise = fastBlueNoise(FragPos.xz * (baseFreq * 0.05), 0) * 0.5 + 0.5;
-		float blueNoiseA = fastBlueNoise(FragPos.xz * (baseFreq * 0.1), 1) * 0.5 + 0.5;
-		float worley = fastWorley3d(FragPos * 5*baseFreq) * 0.5 + 0.5;
+		float freqScale = mix(1.0, 0.25, smoothstep(50.0, 300.0, dist));
+		float blueNoise = fastBlueNoise(FragPos.xz * (baseFreq * 0.05 * freqScale), 0) * 0.5 + 0.5;
+		float blueNoiseA = fastBlueNoise(FragPos.xz * (baseFreq * 0.1 * freqScale), 1) * 0.5 + 0.5;
+		float worley = fastWorley3d(FragPos * 5 * baseFreq * freqScale) * 0.5 + 0.5;
 
 		vec2  biomeUV = (TexCoords * uRawChunkSize + 0.5) / (uRawChunkSize + 1.0);
 		vec2  biomeData = texture(uBiomeMap, vec3(biomeUV, TextureSlice)).rg;
@@ -505,10 +506,22 @@ void main() {
 
 		finalMaterial.albedo *= albedoMultiplier;
 
-		// vec3 flowerColor = 5.0*palette(blueNoise, vec3(0.5, 0.5, 0.5), vec3(0.5, 0.5, 0.5), vec3(2.0, 1.0, 0.0), vec3(0.50, 0.20, 0.25));
-		vec3 flowerColor = palette(blueNoise, fastCurl3d(FragPos/15)*0.5+0.5, fastCurl3d(FragPos/15)*0.5+0.5,fastCurl3d(FragPos/15)*0.5+0.5,fastCurl3d(FragPos/15)*0.5+0.5);
+		// Select flower color from a vibrant palette based on blue noise and position
+		vec3 flowerColor;
+		float colorSelector = fract(blueNoise * 3.0 + length(FragPos.xz) * 0.01);
+		if (colorSelector < 0.3) {
+			flowerColor = vec3(1.0, 0.2, 0.4); // Pinkish
+		} else if (colorSelector < 0.6) {
+			flowerColor = vec3(1.0, 0.8, 0.1); // Yellow/Orange
+		} else {
+			flowerColor = vec3(0.5, 0.2, 1.0); // Purple
+		}
 
-		finalMaterial.albedo = mix(finalMaterial.albedo, flowerColor, smoothstep(0.5, 0.7, grassMask)*smoothstep(0.80, 0.90, worley) * smoothstep(0.2, 0.75, fastWorley3d(FragPos/100.0) * fastSimplex3d(FragPos/70.0)));
+		// Occasional white flowers
+		if (fastSimplex3d(FragPos * 0.1) > 0.8) flowerColor = vec3(1.0, 1.0, 1.0);
+
+		float flowerMask = smoothstep(0.5, 0.7, grassMask) * smoothstep(0.75, 0.85, worley) * smoothstep(0.2, 0.75, fastWorley3d(FragPos/100.0 * freqScale));
+		finalMaterial.albedo = mix(finalMaterial.albedo, flowerColor, flowerMask);
 
 		finalMaterial.roughness = mix(finalMaterial.roughness, clamp(finalMaterial.roughness * dynamicBlend, 0.0, 1.0), distanceFactor);
 	}

@@ -235,10 +235,12 @@ void main() {
 		// Shockwave displacement (applied before wind sway)
 		FragPos += getShockwaveDisplacement(instanceCenter, (aPos.y - u_aabbMin.y) * instanceScale, true);
 
+		float totalHeight = max(0.001, u_aabbMax.y - u_aabbMin.y);
+		float maxRadius = max(0.001, (u_aabbMax.x - u_aabbMin.x) * 0.5);
+
 		// Apply wind sway
 		if (wind_strength > 0.0) {
 			float localHeight = max(0.0, aPos.y - u_aabbMin.y);
-			float totalHeight = max(0.001, u_aabbMax.y - u_aabbMin.y);
 			float normalizedHeight = clamp(localHeight / totalHeight, 0.0, 1.0);
 
 			// 1. Calculate raw wind magnitude and direction from macro wind system
@@ -251,12 +253,17 @@ void main() {
 			if (windMag > 0.001) {
 				vec3 windDir = rawWindNudge / windMag;
 
-				// 2. Apply Asymptotic Resistance (tanh)
+				// 2. Apply Asymptotic Resistance (tanh) with size-based threshold
+				// Larger objects have higher inertia and resistance to light wind.
+				float sizeModifier = clamp((totalHeight + maxRadius * 2.0) / 10.0, 0.5, 3.0);
+				float windThreshold = sizeModifier * 1.5;
+				float effectiveWindMag = max(0.0, windMag - windThreshold);
+
 				// Limits maximum deflection so the tree never folds completely flat
 				float maxDeflection = 1.1; // Allow more deflection for high-speed macro wind
 				// wind_strength (0.01-0.5) * windAtPos (0-40) ~ 0-20.
 				// We scale this to a reasonable radian angle. Increase multiplier for visibility.
-				float resistedWindMag = maxDeflection * tanh(windMag * 0.15 / maxDeflection);
+				float resistedWindMag = maxDeflection * tanh(effectiveWindMag * 0.15 / maxDeflection);
 
 				// WindDeflection = resistedWindMag;
 
@@ -268,7 +275,6 @@ void main() {
 				// 1. Branch Factor: Isolate the canopy from the trunk
 				vec2 trunkCenterXZ = (u_aabbMin.xz + u_aabbMax.xz) * 0.5;
 				float distFromTrunk = length(aPos.xz - trunkCenterXZ);
-				float maxRadius = max(0.001, (u_aabbMax.x - u_aabbMin.x) * 0.5);
 
 				// Dead-zone near the trunk (e.g., inner 15%), scaling up to 1.0 at the AABB edge
 				float branchFactor = smoothstep(maxRadius * 0.15, maxRadius, distFromTrunk);
