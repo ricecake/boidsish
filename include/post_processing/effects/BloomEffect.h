@@ -13,6 +13,52 @@ class ComputeShader;
 namespace Boidsish {
 	namespace PostProcessing {
 
+		struct LayerSettings {
+			bool  autoExposureEnabled = true;
+			float targetLuminance = 0.25f;
+			float minExposure = 0.01f;
+			float maxExposure = 25.0f;
+			float speedUp = 3.0f;
+			float speedDown = 1.0f;
+
+			float centerWeightTightness = 4.0f;
+			glm::vec2 focusPoint = glm::vec2(0.5f, 0.5f);
+			float histogramLowCutoff = 0.1f;
+			float histogramHighCutoff = 0.95f;
+
+			float uchimuraP = 1.0f;
+			float uchimuraA = 1.0f;
+			float uchimuraM = 0.22f;
+			float uchimuraL = 0.4f;
+			float uchimuraC = 1.33f;
+			float uchimuraB = 0.0f;
+
+			bool  autoTuneEnabled = true;
+			float minContrast = 0.6f;
+			float maxContrast = 1.3f;
+			float targetBrightness = 1.0f;
+
+			glm::vec3 cdlSlope = glm::vec3(1.0f);
+			glm::vec3 cdlOffset = glm::vec3(0.0f);
+			glm::vec3 cdlPower = glm::vec3(1.0f);
+			float     cdlSaturation = 1.0f;
+
+			float whiteTemp = 6500.0f;
+			float whiteTint = 0.0f;
+
+			bool  ltmEnabled = true;
+			float ltmEvSpread = 2.0f;
+			float ltmTarget = 0.5f;
+			float ltmSigma = 0.2f;
+			float ltmWeightContrast = 0.0f;
+			float ltmWeightSaturation = 0.0f;
+			float ltmWeightExposedness = 1.0f;
+			float ltmBoostLocalContrast = 0.0f;
+
+			bool  toneMappingEnabled = true;
+			int   toneMappingMode = 5; // Default to Uchimura
+		};
+
 		class BloomEffect: public IPostProcessingEffect {
 		public:
 			BloomEffect(int width, int height);
@@ -23,106 +69,25 @@ namespace Boidsish {
 			void Resize(int width, int height) override;
 
 			void SetIntensity(float intensity) { intensity_ = intensity; }
-
 			float GetIntensity() const { return intensity_; }
 
 			void SetThreshold(float threshold) { threshold_ = threshold; }
-
 			float GetThreshold() const { return threshold_; }
 
 			void SetMinIntensity(float minIntensity) { minIntensity_ = minIntensity; }
-
 			float GetMinIntensity() const { return minIntensity_; }
 
 			void SetMaxIntensity(float maxIntensity) { maxIntensity_ = maxIntensity; }
-
 			float GetMaxIntensity() const { return maxIntensity_; }
 
-			void SetToneMappingEnabled(bool enabled) { _toneMappingEnabled = enabled; }
-			bool IsToneMappingEnabled() const { return _toneMappingEnabled; }
-			void SetToneMappingMode(int mode) { _toneMappingMode = mode; }
-			int GetToneMappingMode() const { return _toneMappingMode; }
-
-			void SetAutoExposureEnabled(bool enabled) { _autoExposureEnabled = enabled; }
-			bool IsAutoExposureEnabled() const { return _autoExposureEnabled; }
-
-			void  SetTargetLuminance(float target) { _targetLuminance = target; }
-			float GetTargetLuminance() const { return _targetLuminance; }
-
-			void  SetExposureLimits(float min, float max) { _minExposure = min; _maxExposure = max; }
-			float GetMinExposure() const { return _minExposure; }
-			float GetMaxExposure() const { return _maxExposure; }
-
-			void  SetAdaptationSpeeds(float up, float down) { _speedUp = up; _speedDown = down; }
-			float GetSpeedUp() const { return _speedUp; }
-			float GetSpeedDown() const { return _speedDown; }
-
-			void SetAutoExposureCenterWeight(float weight) { _centerWeightTightness = weight; }
-			float GetAutoExposureCenterWeight() const { return _centerWeightTightness; }
-
-			void SetAutoExposureFocusPoint(const glm::vec2& focus) { _focusPoint = focus; }
-			glm::vec2 GetAutoExposureFocusPoint() const { return _focusPoint; }
-
-			void SetHistogramCutoffs(float low, float high) { _histogramLowCutoff = low; _histogramHighCutoff = high; }
-			float GetHistogramLowCutoff() const { return _histogramLowCutoff; }
-			float GetHistogramHighCutoff() const { return _histogramHighCutoff; }
-
-			void SetUchimuraParams(float P, float a, float m, float l, float c, float b) {
-				_uchimuraP = P; _uchimuraA = a; _uchimuraM = m; _uchimuraL = l; _uchimuraC = c; _uchimuraB = b;
-			}
-			float GetUchimuraP() const { return _uchimuraP; }
-			float GetUchimuraA() const { return _uchimuraA; }
-			float GetUchimuraM() const { return _uchimuraM; }
-			float GetUchimuraL() const { return _uchimuraL; }
-			float GetUchimuraC() const { return _uchimuraC; }
-			float GetUchimuraB() const { return _uchimuraB; }
-
-			void SetAutoTuneEnabled(bool enabled) { _autoTuneEnabled = enabled; }
-			bool IsAutoTuneEnabled() const { return _autoTuneEnabled; }
-			void SetAutoTuneConstraints(float minC, float maxC, float targetB) {
-				_minContrast = minC; _maxContrast = maxC; _targetBrightness = targetB;
-			}
-			float GetMinContrast() const { return _minContrast; }
-			float GetMaxContrast() const { return _maxContrast; }
-			float GetTargetBrightness() const { return _targetBrightness; }
-
-			void SetCdlParams(const glm::vec3& slope, const glm::vec3& offset, const glm::vec3& power, float saturation) {
-				_cdlSlope = slope; _cdlOffset = offset; _cdlPower = power; _cdlSaturation = saturation;
-			}
-			glm::vec3 GetCdlSlope() const { return _cdlSlope; }
-			glm::vec3 GetCdlOffset() const { return _cdlOffset; }
-			glm::vec3 GetCdlPower() const { return _cdlPower; }
-			float GetCdlSaturation() const { return _cdlSaturation; }
-
-			void SetWhiteBalance(float temp, float tint) { _whiteTemp = temp; _whiteTint = tint; }
-			float GetWhiteTemp() const { return _whiteTemp; }
-			float GetWhiteTint() const { return _whiteTint; }
-
-			void SetLtmEnabled(bool enabled) { _ltmEnabled = enabled; }
-			bool IsLtmEnabled() const { return _ltmEnabled; }
-
-			void SetLtmParams(float evSpread, float target, float sigma) {
-				_ltmEvSpread = evSpread; _ltmTarget = target; _ltmSigma = sigma;
-			}
-			float GetLtmEvSpread() const { return _ltmEvSpread; }
-			float GetLtmTarget() const { return _ltmTarget; }
-			float GetLtmSigma() const { return _ltmSigma; }
-
-			void SetLtmWeights(float contrast, float saturation, float exposedness) {
-				_ltmWeightContrast = contrast; _ltmWeightSaturation = saturation; _ltmWeightExposedness = exposedness;
-			}
-			float GetLtmWeightContrast() const { return _ltmWeightContrast; }
-			float GetLtmWeightSaturation() const { return _ltmWeightSaturation; }
-			float GetLtmWeightExposedness() const { return _ltmWeightExposedness; }
-
-			void SetLtmBoostLocalContrast(float boost) { _ltmBoostLocalContrast = boost; }
-			float GetLtmBoostLocalContrast() const { return _ltmBoostLocalContrast; }
+			// Layer settings access
+			LayerSettings& GetSceneSettings() { return _scene; }
+			LayerSettings& GetSkySettings() { return _sky; }
 
 			void SetNightFactor(float factor) override { _nightFactor = factor; }
-
 			void SetTime(float time) override;
 
-			struct ExposureData {
+			struct LayerData {
 				float adaptedLuminance;
 				float targetLuminance;
 				float minExposure;
@@ -134,8 +99,8 @@ namespace Boidsish {
 
 				float histogramLowCutoff;
 				float histogramHighCutoff;
-				uint32_t workgroupCounter;
-				uint32_t _pad1;
+				float speedUp;
+				float speedDown;
 
 				// Statistics
 				float minLuma;
@@ -162,19 +127,19 @@ namespace Boidsish {
 				float autoUchimuraL;
 				float autoUchimuraC;
 				float autoUchimuraB;
-				float _pad2;
-				float _pad3;
+				float _pad_ld3;
+				float _pad_ld4;
 
 				// ASC CDL (vec4 for alignment)
-				glm::vec4 cdlSlope;
-				glm::vec4 cdlOffset;
-				glm::vec4 cdlPower;
+				alignas(16) glm::vec4 cdlSlope;
+				alignas(16) glm::vec4 cdlOffset;
+				alignas(16) glm::vec4 cdlPower;
 				float     cdlSaturation;
 
 				// White Balance
 				float whiteTemp;
 				float whiteTint;
-				float _pad4;
+				float _pad_ld5;
 
 				// Local Tone Mapping (Exposure Fusion)
 				int   ltmEnabled;
@@ -188,6 +153,16 @@ namespace Boidsish {
 				float ltmBoostLocalContrast;
 
 				uint32_t histogram[256];
+			};
+
+			struct ExposureData {
+				uint32_t workgroupCounter;
+				uint32_t _pad_ae1;
+				uint32_t _pad_ae2;
+				uint32_t _pad_ae3;
+
+				LayerData scene;
+				LayerData sky;
 			};
 
 		private:
@@ -214,49 +189,8 @@ namespace Boidsish {
 			float minIntensity_ = 0.05f;
 			float maxIntensity_ = 0.150f;
 
-			bool _toneMappingEnabled = true;
-			int  _toneMappingMode = 2;
-
-			bool  _autoExposureEnabled = true;
-			float _targetLuminance = 0.25f;
-			float _minExposure = 0.01f;
-			float _maxExposure = 25.0f;
-			float _speedUp = 3.0f;
-			float _speedDown = 1.0f;
-
-			float _centerWeightTightness = 4.0f;
-			glm::vec2 _focusPoint = glm::vec2(0.5f, 0.5f);
-			float _histogramLowCutoff = 0.1f;
-			float _histogramHighCutoff = 0.95f;
-
-			float _uchimuraP = 1.0f;
-			float _uchimuraA = 1.0f;
-			float _uchimuraM = 0.22f;
-			float _uchimuraL = 0.4f;
-			float _uchimuraC = 1.33f;
-			float _uchimuraB = 0.0f;
-
-			bool  _autoTuneEnabled = true;
-			float _minContrast = 0.6f;
-			float _maxContrast = 1.3f;
-			float _targetBrightness = 1.0f;
-
-			glm::vec3 _cdlSlope = glm::vec3(1.0f);
-			glm::vec3 _cdlOffset = glm::vec3(0.0f);
-			glm::vec3 _cdlPower = glm::vec3(1.0f);
-			float     _cdlSaturation = 1.0f;
-
-			float _whiteTemp = 6500.0f;
-			float _whiteTint = 0.0f;
-
-			bool  _ltmEnabled = true;
-			float _ltmEvSpread = 2.0f;
-			float _ltmTarget = 0.5f;
-			float _ltmSigma = 0.2f;
-			float _ltmWeightContrast = 0.0f;
-			float _ltmWeightSaturation = 0.0f;
-			float _ltmWeightExposedness = 1.0f;
-			float _ltmBoostLocalContrast = 0.0f;
+			LayerSettings _scene;
+			LayerSettings _sky;
 
 			float _nightFactor = 0.0f;
 			float _lastTime = 0.0f;

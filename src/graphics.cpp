@@ -1077,8 +1077,10 @@ namespace Boidsish {
 
 				if (enable_hdr_) {
 					// Enable integrated tonemapping in bloom effect
-					bloom_effect->SetToneMappingEnabled(true);
-					bloom_effect->SetToneMappingMode(5); // Uchimura default
+					bloom_effect->GetSceneSettings().toneMappingEnabled = true;
+					bloom_effect->GetSceneSettings().toneMappingMode = 5; // Uchimura default
+					bloom_effect->GetSkySettings().toneMappingEnabled = true;
+					bloom_effect->GetSkySettings().toneMappingMode = 5;
 
 					bloom_effect->SetEnabled(true);
 				}

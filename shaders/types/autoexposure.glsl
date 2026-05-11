@@ -1,5 +1,4 @@
-// Auto-exposure SSBO
-layout(std430, binding = [[AUTO_EXPOSURE_BINDING]]) buffer AutoExposure {
+struct LayerData {
 	float adaptedLuminance;
 	float targetLuminance;
 	float minExposure;
@@ -11,8 +10,8 @@ layout(std430, binding = [[AUTO_EXPOSURE_BINDING]]) buffer AutoExposure {
 
 	float histogramLowCutoff;
 	float histogramHighCutoff;
-	uint  workgroupCounter;
-	uint  _pad1;
+	float speedUp;
+	float speedDown;
 
 	// Statistics
 	float minLuma;
@@ -39,8 +38,8 @@ layout(std430, binding = [[AUTO_EXPOSURE_BINDING]]) buffer AutoExposure {
 	float autoUchimuraL;
 	float autoUchimuraC;
 	float autoUchimuraB;
-	float _pad2;
-	float _pad3;
+	float _pad_ld3;
+	float _pad_ld4;
 
 	// ASC CDL (vec4 for alignment)
 	vec4  cdlSlope;
@@ -51,7 +50,7 @@ layout(std430, binding = [[AUTO_EXPOSURE_BINDING]]) buffer AutoExposure {
 	// White Balance
 	float whiteTemp;
 	float whiteTint;
-	float _pad4;
+	float _pad_ld5;
 
 	// Local Tone Mapping (Exposure Fusion)
 	int   ltmEnabled;
@@ -65,4 +64,15 @@ layout(std430, binding = [[AUTO_EXPOSURE_BINDING]]) buffer AutoExposure {
 	float ltmBoostLocalContrast;
 
 	uint  histogram[256];
+};
+
+// Auto-exposure SSBO
+layout(std430, binding = [[AUTO_EXPOSURE_BINDING]]) buffer AutoExposure {
+	uint workgroupCounter;
+	uint _pad_ae1;
+	uint _pad_ae2;
+	uint _pad_ae3;
+
+	LayerData scene;
+	LayerData sky;
 };
