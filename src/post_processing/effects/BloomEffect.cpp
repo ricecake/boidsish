@@ -299,6 +299,9 @@ namespace Boidsish {
 			_compositeShader->setFloat("intensity", intensity_);
 			_compositeShader->setFloat("minIntensity", minIntensity_);
 			_compositeShader->setFloat("maxIntensity", maxIntensity_);
+			_compositeShader->setMat4("invView", glm::inverse(viewMatrix));
+			_compositeShader->setMat4("invProjection", glm::inverse(projectionMatrix));
+
 
 			_compositeShader->setFloat("farPlane", Constants::Project::Camera::DefaultFarPlane());
 			_compositeShader->setFloat("nearPlane", Constants::Project::Camera::DefaultNearPlane());
@@ -313,6 +316,11 @@ namespace Boidsish {
 				_compositeShader->setFloat("uchimuraL", _uchimuraL);
 				_compositeShader->setFloat("uchimuraC", _uchimuraC);
 				_compositeShader->setFloat("uchimuraB", _uchimuraB);
+			}
+
+			GLuint lighting_idx = glGetUniformBlockIndex(_compositeShader->ID, "Lighting");
+			if (lighting_idx != GL_INVALID_INDEX) {
+				glUniformBlockBinding(_compositeShader->ID, lighting_idx, Constants::UboBinding::Lighting());
 			}
 
 			glActiveTexture(GL_TEXTURE0);

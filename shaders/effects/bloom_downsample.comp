@@ -107,8 +107,7 @@ void main() {
 			s.z = get_saturation(tc3);
 
 			// Combine weights
-			ltmWeights = pow(max(e, 0.0001), vec3(ltmWeightExposedness)) *
-						 pow(max(s, 0.0001), vec3(ltmWeightSaturation));
+			ltmWeights = pow(max(e, 0.0001), vec3(ltmWeightExposedness)) * pow(max(s, 0.0001), vec3(ltmWeightSaturation));
 
 			float weightSum = ltmWeights.x + ltmWeights.y + ltmWeights.z;
 			ltmWeights /= max(weightSum, 0.00001);
