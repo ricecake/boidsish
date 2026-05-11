@@ -452,6 +452,9 @@ void main() {
 	float grassAO = 0.0;
 	vec3 perturbedNorm = norm;
 	if (u_grassGlobal.enabled != 0) {
+		float blueNoise = fastBlueNoise(FragPos.xz * (baseFreq * 0.05), 0) * 0.5 + 0.5;
+		float blueNoiseA = fastBlueNoise(FragPos.xz * (baseFreq * 0.1), 1) * 0.5 + 0.5;
+
 		vec2  biomeUV = (TexCoords * uRawChunkSize + 0.5) / (uRawChunkSize + 1.0);
 		vec2  biomeData = texture(uBiomeMap, vec3(biomeUV, TextureSlice)).rg;
 		int   idxA = int(biomeData.r * 255.0 + 0.5);
@@ -464,11 +467,11 @@ void main() {
 
 		vec3 colorA = u_grassBiomes[idxA].colorBottom.rgb;
 		vec3 colorB = u_grassBiomes[idxB].colorBottom.rgb;
-		vec3 grassColor = mix(colorA, colorB, t);
+		vec3 grassColor = mix(colorA, colorB, step(blueNoise, blueNoiseA));
 
 		float rigidA = u_grassBiomes[idxA].rigidity;
 		float rigidB = u_grassBiomes[idxB].rigidity;
-		float rigidity = clamp(mix(rigidA, rigidB, t) * u_grassGlobal.rigidityMultiplier, 0, 1);
+		float rigidity = clamp(mix(rigidA, rigidB, step(blueNoise, t)) * u_grassGlobal.rigidityMultiplier, 0, 1);
 
 		// Apply effect only on relatively flat surfaces where grass would grow
 		float grassMask = smoothstep(0.7, 0.8, norm.y) * clamp(interpolatedDensity, 0.0, 1.0);
@@ -477,63 +480,31 @@ void main() {
 		grassAO = grassMask * 0.75;
 
 		vec3 windAtPos = getWindAtPosition(vec3(FragPos.x, FragPos.y+0.5, FragPos.z));
-		// albedo = length(albedo) * normalize(albedo+windAtPos);
-		// albedo = rgb2lab(albedo);
-
 
 		float distanceFactor = smoothstep(200, 350, dist);
 
-/*
-		// Tint terrain towards grass color
-		// finalMaterial.albedo = mix(finalMaterial.albedo, grassColor * (1.0 + 0.05 * smoothstep(0.0, 1.0, distanceFactor * length(windAtPos))), grassMask);
-		// finalMaterial.albedo = mix(finalMaterial.albedo, grassColor, grassMask);
-		// finalMaterial.albedo *= pow(fastRidge3d(FragPos / 10.0) * 0.5 + 0.5, 2);
-		// float noiseVal = fastRidge3d(FragPos / max(1.0, 10.0 * distanceFactor)) * 0.5 + 0.5;
-		// Remap noise to [0.7, 1.3] so it darkens AND brightens the albedo
-		// float albedoMultiplier = mix(0.7, 1.3, noiseVal);
+		perturbedNorm = mix(norm, vec3(0.0, 1.0, 0.0), interpolatedDensity * distanceFactor);
+		perturbedNorm = normalize(perturbedNorm);
+
+		float windThreshold = rigidity * 2.0;
+		float effectiveWindStrength = max(0.0, length(windAtPos) - windThreshold);
+
+		float gustIntensity = smoothstep(5.0, 10.0, effectiveWindStrength*(1.0-rigidity));
+		vec3 undersideColor = grassColor * 1.25 + vec3(0.05, 0.05, 0.0);
+		vec3 dynamicGrassColor = mix(grassColor, undersideColor, gustIntensity);
+
+		finalMaterial.albedo = mix(finalMaterial.albedo, dynamicGrassColor, step(blueNoise, grassMask));
+		// finalMaterial.albedo = mix(finalMaterial.albedo, dynamicGrassColor, grassMask * distanceFactor);
+
+
+		// float floorTexture = pow(fastRidge3d(FragPos / 10.0) * 0.5 + 0.5, 2);
+		// float noiseVal = 1.0-pow(fastRidge3d((FragPos+5*normalize(windAtPos)*gustIntensity*sin(time*0.75)) / mix(1.0, 50.0, distanceFactor)) * 0.5 + 0.5, 3);
+		// float albedoMultiplier = mix(floorTexture, mix(0.7, 1.3, noiseVal), distanceFactor/2.0);
+
 		// finalMaterial.albedo *= albedoMultiplier;
 
-		finalMaterial.roughness = clamp(finalMaterial.roughness * 1.25, 0.0, 1.0);
-
-
-		// 1. Flatten the normal towards up based on density and distance
-		// perturbedNorm = mix(perturbedNorm, vec3(0.0, 1.0, 0.0), interpolatedDensity * distanceFactor);
-
-		// 2. Gently tilt the normal in the direction of the wind
-		// We use a small multiplier (e.g., 0.15) so the normal only leans a few degrees.
-		float windTiltStrength = 0.01;
-		perturbedNorm.xz += windAtPos.xz * distanceFactor * windTiltStrength;
-
-		// 3. Re-normalize to ensure it's a valid surface normal
-		perturbedNorm = normalize(perturbedNorm);
-*/
-// ... [biome blending setup remains the same] ...
-
-// 1. Re-enable the canopy flattening. This is crucial for hiding the underlying terrain bumps.
-perturbedNorm = mix(norm, vec3(0.0, 1.0, 0.0), interpolatedDensity * distanceFactor);
-perturbedNorm = normalize(perturbedNorm);
-
-float windThreshold = rigidity * 2.0;
-float effectiveWindStrength = max(0.0, length(windAtPos) - windThreshold);
-
-float gustIntensity = smoothstep(5.0, 10.0, effectiveWindStrength*(1.0-rigidity));
-vec3 undersideColor = grassColor * 1.25 + vec3(0.05, 0.05, 0.0);
-vec3 dynamicGrassColor = mix(grassColor, undersideColor, gustIntensity);
-
-finalMaterial.albedo = mix(finalMaterial.albedo, dynamicGrassColor, grassMask * distanceFactor);
-
-// finalMaterial.albedo *= pow(fastRidge3d(FragPos / 10.0) * 0.5 + 0.5, 2);
-
-float floorTexture = pow(fastRidge3d(FragPos / 10.0) * 0.5 + 0.5, 2);
-float noiseVal = 1.0-pow(fastRidge3d((FragPos+5*normalize(windAtPos)*gustIntensity*sin(time*0.75)) / mix(1.0, 50.0, distanceFactor)) * 0.5 + 0.5, 3);
-// float albedoMultiplier = mix(0.7, 1.3, noiseVal);
-// float albedoMultiplier = mix(0.7, 1.3, mix(floorTexture, noiseVal, distanceFactor));
-float albedoMultiplier = mix(floorTexture, mix(0.7, 1.3, noiseVal), distanceFactor);
-
-finalMaterial.albedo *= albedoMultiplier;
-
-float dynamicRoughness = mix(1.15, 0.85, gustIntensity - 0.5 * gustIntensity * fastSimplex3d(FragPos/10.0*sin(time*0.5)));
-finalMaterial.roughness = mix(finalMaterial.roughness, clamp(finalMaterial.roughness * dynamicRoughness, 0.0, 1.0), distanceFactor);
+		float dynamicRoughness = mix(1.15, 0.85, gustIntensity - 0.5 * gustIntensity * fastSimplex3d(FragPos/10.0*sin(time*0.5)));
+		finalMaterial.roughness = mix(finalMaterial.roughness, clamp(finalMaterial.roughness * dynamicRoughness, 0.0, 1.0), distanceFactor);
 
 	}
 
