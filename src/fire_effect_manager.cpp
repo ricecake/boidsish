@@ -739,6 +739,7 @@ namespace Boidsish {
 		glEnable(GL_BLEND);
 		// Separate blend func to ensure particles set alpha mask to 1.0 (Scene)
 		glBlendFuncSeparate(GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE);
+		glBlendEquationSeparate(GL_FUNC_ADD, GL_MAX);
 		glDepthMask(GL_FALSE);                       // Disable depth writing
 		glEnable(GL_PROGRAM_POINT_SIZE);
 
@@ -795,6 +796,7 @@ namespace Boidsish {
 
 		glDepthMask(GL_TRUE);                              // Re-enable depth writing
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); // Reset blend mode
+		glBlendEquation(GL_FUNC_ADD);
 		glDisable(GL_BLEND);
 	}
 

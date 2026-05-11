@@ -235,8 +235,6 @@ namespace Boidsish {
 
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, sourceTexture);
-			glActiveTexture(GL_TEXTURE1);
-			glBindTexture(GL_TEXTURE_2D, depthTexture);
 
 			for (int i = 0; i < _numMips; i++) {
 				glBindImageTexture(5 + i, _bloomTexture, i, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
@@ -264,7 +262,6 @@ namespace Boidsish {
 				_ltmFuseComputeShader->use();
 				_ltmFuseComputeShader->setInt("expTexture", 0);
 				_ltmFuseComputeShader->setInt("wgtTexture", 1);
-				_ltmFuseComputeShader->setInt("depthTexture", 3);
 				_ltmFuseComputeShader->setInt("startMip", _numMips - 1);
 				_ltmFuseComputeShader->setInt("endMip", 0);
 
@@ -272,8 +269,6 @@ namespace Boidsish {
 				glBindTexture(GL_TEXTURE_2D_ARRAY, _ltmExpTexture);
 				glActiveTexture(GL_TEXTURE1);
 				glBindTexture(GL_TEXTURE_2D_ARRAY, _ltmWgtTexture);
-				glActiveTexture(GL_TEXTURE3);
-				glBindTexture(GL_TEXTURE_2D, depthTexture);
 
 				glBindImageTexture(2, _ltmFusedTexture, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_R16F);
 

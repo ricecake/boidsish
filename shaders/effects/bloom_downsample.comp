@@ -175,20 +175,20 @@ void main() {
 		float luma = dot(centerSample.rgb, vec3(0.2126, 0.7152, 0.0722));
 		float sceneMask = centerSample.a;
 
-		float isScene = step(0.5, sceneMask);
+		float isScene = clamp(sceneMask, 0.0, 1.0);
 		float isSky = 1.0 - isScene;
 
-		if (isScene > 0.0 && scene.useAutoExposure != 0) {
+		if (isScene > 0.001 && scene.useAutoExposure != 0) {
 			float logLuma = log(max(luma, 0.0001));
 			float dist = distance(uv, scene.focusPoint);
-			float weight = exp(-dist * scene.centerWeightTightness);
+			float weight = exp(-dist * scene.centerWeightTightness) * isScene;
 			int bin = int(clamp((logLuma - MIN_LOG_LUMA) / (MAX_LOG_LUMA - MIN_LOG_LUMA), 0.0, 1.0) * 255.0);
 			atomicAdd(scene.histogram[bin], uint(weight * 1024.0));
 		}
-		if (isSky > 0.0 && sky.useAutoExposure != 0) {
+		if (isSky > 0.001 && sky.useAutoExposure != 0) {
 			float logLuma = log(max(luma, 0.0001));
 			float dist = distance(uv, sky.focusPoint);
-			float weight = exp(-dist * sky.centerWeightTightness);
+			float weight = exp(-dist * sky.centerWeightTightness) * isSky;
 			int bin = int(clamp((logLuma - MIN_LOG_LUMA) / (MAX_LOG_LUMA - MIN_LOG_LUMA), 0.0, 1.0) * 255.0);
 			atomicAdd(sky.histogram[bin], uint(weight * 1024.0));
 		}
@@ -213,8 +213,8 @@ void main() {
 		float thresholdSky = threshold / max(exposureSky, 0.0001);
 		float brightness = dot(tapResult, vec3(0.2126, 0.7152, 0.0722));
 
-		bloomColor[0] = (isScene > 0.0 && brightness > thresholdScene) ? tapResult : vec3(0.0);
-		bloomColor[1] = (isSky > 0.0 && brightness > thresholdSky) ? tapResult : vec3(0.0);
+		bloomColor[0] = (isScene > 0.001 && brightness > thresholdScene) ? tapResult * isScene : vec3(0.0);
+		bloomColor[1] = (isSky > 0.001 && brightness > thresholdSky) ? tapResult * isSky : vec3(0.0);
 
 		imageStore(outMip0, ivec3(id, 0), vec4(bloomColor[0], 1.0));
 		imageStore(outMip0, ivec3(id, 1), vec4(bloomColor[1], 1.0));

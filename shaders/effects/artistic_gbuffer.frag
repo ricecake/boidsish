@@ -82,5 +82,5 @@ void main() {
     vec4 finalColor = mix(grey, scene, dot(normal, vec3(0.5, 0.5, 0)));
 
 
-    FragColor = vec4(finalColor.xyz, 1.0);
+    FragColor = vec4(finalColor.xyz, scene.a);
 }

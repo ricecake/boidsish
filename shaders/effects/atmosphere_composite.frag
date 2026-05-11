@@ -165,5 +165,5 @@ void main() {
 		result = sceneColor * cloudTransmittance + cloudsAtmos;
 	}
 
-	FragColor = vec4(result, 1.0);
+	FragColor = vec4(result, texture(sceneTexture, TexCoords).a);
 }

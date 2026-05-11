@@ -106,31 +106,27 @@ vec3 applyLayerGrading(vec3 result, LayerData ld) {
 void main() {
 	vec4 sceneSample = texture(sceneTexture, TexCoords);
 	vec3 sceneColor = sceneSample.rgb;
-	float sceneMask = sceneSample.a;
-	float isScene = step(0.5, sceneMask);
+	float isScene = clamp(sceneSample.a, 0.0, 1.0);
 
 	vec3 bloomScene = texture(bloomBlur, vec3(TexCoords, 0)).rgb;
 	vec3 bloomSky = texture(bloomBlur, vec3(TexCoords, 1)).rgb;
 
 	// Process layers independently
-	vec3 groundResult = sceneColor * isScene + bloomScene * intensity;
-	vec3 skyResult = sceneColor * (1.0 - isScene) + bloomSky * intensity;
-
-	// LTM
+	// Layer 0 (Scene)
+	vec3 groundResult = sceneColor + bloomScene * intensity;
 	groundResult = applyLayerLTM(groundResult, 0, scene, TexCoords);
-	skyResult = applyLayerLTM(skyResult, 1, sky, TexCoords);
-
-	// Grading & Exposure
 	groundResult = applyLayerGrading(groundResult, scene);
-	skyResult = applyLayerGrading(skyResult, sky);
-
-	// Tonemapping
 	if (sceneToneMappingEnabled) {
 		if (sceneToneMapMode == 5) {
 			if (scene.autoTuneEnabled != 0) groundResult = uchimura(groundResult, scene.autoUchimuraP, scene.autoUchimuraA, scene.autoUchimuraM, scene.autoUchimuraL, scene.autoUchimuraC, scene.autoUchimuraB);
 			else groundResult = uchimura(groundResult, sceneUchimuraP, sceneUchimuraA, sceneUchimuraM, sceneUchimuraL, sceneUchimuraC, sceneUchimuraB);
 		} else groundResult = applyTonemapping(groundResult, sceneToneMapMode);
 	}
+
+	// Layer 1 (Sky)
+	vec3 skyResult = sceneColor + bloomSky * intensity;
+	skyResult = applyLayerLTM(skyResult, 1, sky, TexCoords);
+	skyResult = applyLayerGrading(skyResult, sky);
 	if (skyToneMappingEnabled) {
 		if (skyToneMapMode == 5) {
 			if (sky.autoTuneEnabled != 0) skyResult = uchimura(skyResult, sky.autoUchimuraP, sky.autoUchimuraA, sky.autoUchimuraM, sky.autoUchimuraL, sky.autoUchimuraC, sky.autoUchimuraB);
@@ -138,6 +134,6 @@ void main() {
 		} else skyResult = applyTonemapping(skyResult, skyToneMapMode);
 	}
 
-	// Final composite based on mask
+	// Final composite based on continuous mask
 	FragColor = vec4(mix(skyResult, groundResult, isScene), 1.0);
 }
