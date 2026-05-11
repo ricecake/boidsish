@@ -467,7 +467,7 @@ void main() {
 
 		vec3 colorA = u_grassBiomes[idxA].colorBottom.rgb;
 		vec3 colorB = u_grassBiomes[idxB].colorBottom.rgb;
-		vec3 grassColor = mix(colorA, colorB, step(blueNoise, blueNoiseA));
+		vec3 grassColor = mix(colorA, colorB, step(blueNoiseA, t));
 
 		float rigidA = u_grassBiomes[idxA].rigidity;
 		float rigidB = u_grassBiomes[idxB].rigidity;
@@ -490,21 +490,20 @@ void main() {
 		float effectiveWindStrength = max(0.0, length(windAtPos) - windThreshold);
 
 		float gustIntensity = smoothstep(5.0, 10.0, effectiveWindStrength*(1.0-rigidity));
+		float dynamicBlend = mix(1.15, 0.85, gustIntensity - 0.5 * gustIntensity * fastSimplex3d(FragPos/10.0*sin(time*0.5)));
+
 		vec3 undersideColor = grassColor * 1.25 + vec3(0.05, 0.05, 0.0);
-		vec3 dynamicGrassColor = mix(grassColor, undersideColor, gustIntensity);
+		vec3 dynamicGrassColor = mix(grassColor, undersideColor, dynamicBlend);
 
 		finalMaterial.albedo = mix(finalMaterial.albedo, dynamicGrassColor, step(blueNoise, grassMask));
-		// finalMaterial.albedo = mix(finalMaterial.albedo, dynamicGrassColor, grassMask * distanceFactor);
 
+		float floorTexture = pow(fastRidge3d(FragPos / 10.0) * 0.5 + 0.5, 2);
+		float noiseVal = 1.0-pow(fastRidge3d(FragPos+5*normalize(windAtPos)) * 0.5 + 0.5, 3);
+		float albedoMultiplier = mix(floorTexture, mix(0.7, 1.3, noiseVal), smoothstep(50, 100, distanceFactor) * dynamicBlend);
 
-		// float floorTexture = pow(fastRidge3d(FragPos / 10.0) * 0.5 + 0.5, 2);
-		// float noiseVal = 1.0-pow(fastRidge3d((FragPos+5*normalize(windAtPos)*gustIntensity*sin(time*0.75)) / mix(1.0, 50.0, distanceFactor)) * 0.5 + 0.5, 3);
-		// float albedoMultiplier = mix(floorTexture, mix(0.7, 1.3, noiseVal), distanceFactor/2.0);
+		finalMaterial.albedo *= albedoMultiplier;
 
-		// finalMaterial.albedo *= albedoMultiplier;
-
-		float dynamicRoughness = mix(1.15, 0.85, gustIntensity - 0.5 * gustIntensity * fastSimplex3d(FragPos/10.0*sin(time*0.5)));
-		finalMaterial.roughness = mix(finalMaterial.roughness, clamp(finalMaterial.roughness * dynamicRoughness, 0.0, 1.0), distanceFactor);
+		finalMaterial.roughness = mix(finalMaterial.roughness, clamp(finalMaterial.roughness * dynamicBlend, 0.0, 1.0), distanceFactor);
 
 	}
 
