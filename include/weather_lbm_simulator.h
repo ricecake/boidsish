@@ -85,6 +85,7 @@ namespace Boidsish {
             Constraint pressure;
             Constraint humidity;
             Constraint velocity;
+            Constraint aerosols;
         };
 
         void               SetConstraints(const Constraints& c) { constraints_ = c; }

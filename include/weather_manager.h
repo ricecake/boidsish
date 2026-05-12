@@ -317,6 +317,7 @@ namespace Boidsish {
 		};
 
 		void   InitializePresets();
+		void   SynchronizeLbmConstraints();
 		void   UpdateAttribute(WeatherAttribute attr, float target, float deltaTime);
 		float* GetValuePtr(WeatherAttribute attr);
 

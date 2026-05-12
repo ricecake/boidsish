@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <Eigen/Dense>
 
 #include "Simplex.h"
 #include "profiler.h"
@@ -96,6 +97,7 @@ namespace Boidsish {
 		}
 
 		SaveAttributeTarget(attr);
+		SynchronizeLbmConstraints();
 	}
 
 	void WeatherManager::ClearTarget(WeatherAttribute attr) {
@@ -103,6 +105,7 @@ namespace Boidsish {
 			return;
 		attribute_states_[static_cast<size_t>(attr)].external_target = std::nullopt;
 		SaveAttributeTarget(attr);
+		SynchronizeLbmConstraints();
 	}
 
 	void WeatherManager::SetPace(WeatherAttribute attr, float pace) {
@@ -184,6 +187,7 @@ namespace Boidsish {
 		saveConstraint("pressure", c.pressure);
 		saveConstraint("humidity", c.humidity);
 		saveConstraint("velocity", c.velocity);
+		saveConstraint("aerosols", c.aerosols);
 	}
 
 	const PhysicallyBasedWeatherOutput* WeatherManager::GetPhysicallyBasedWeather() const {
@@ -338,6 +342,109 @@ namespace Boidsish {
 		default:
 			return nullptr;
 		}
+	}
+
+	void WeatherManager::SynchronizeLbmConstraints() {
+		if (!lbm_simulator_) return;
+
+		// 1. Gather Manual Targets
+		struct Target {
+			WeatherAttribute attr;
+			float value;
+		};
+		std::vector<Target> manual_targets;
+		for (int i = 0; i < (int)WeatherAttribute::Count; ++i) {
+			WeatherAttribute attr = static_cast<WeatherAttribute>(i);
+			if (attribute_states_[i].external_target.has_value()) {
+				manual_targets.push_back({attr, *attribute_states_[i].external_target});
+			}
+		}
+
+		if (manual_targets.empty()) return;
+
+		// 2. Optimization using Gauss-Newton
+		// LBM State Vector x = [temp, pressure, humidity, velocity, aerosols]
+		Eigen::VectorXd x(5);
+		auto current_constraints = lbm_simulator_->GetConstraints();
+		x(0) = current_constraints.temperature.target.value_or(current_.temperature);
+		x(1) = current_constraints.pressure.target.value_or(current_.pressure);
+		x(2) = current_constraints.humidity.target.value_or(current_.humidity);
+		x(3) = current_constraints.velocity.target.value_or(current_.wind_strength);
+		x(4) = current_constraints.aerosols.target.value_or(0.01f);
+
+		const int max_iterations = 5;
+		for (int iter = 0; iter < max_iterations; ++iter) {
+			Eigen::VectorXd r(manual_targets.size());
+			Eigen::MatrixXd J(manual_targets.size(), 5);
+			J.setZero();
+
+			for (size_t i = 0; i < manual_targets.size(); ++i) {
+				float temp = (float)x(0);
+				float press = (float)x(1);
+				float hum = (float)x(2);
+				float vel = (float)x(3);
+				float aero = (float)x(4);
+
+				// Forward Heuristics (matching DeriveAtmosphere and Update)
+				float pred = 0.0f;
+				switch (manual_targets[i].attr) {
+				case WeatherAttribute::Temperature: pred = temp; J(i, 0) = 1.0; break;
+				case WeatherAttribute::Pressure: pred = press; J(i, 1) = 1.0; break;
+				case WeatherAttribute::Humidity: pred = hum; J(i, 2) = 1.0; break;
+				case WeatherAttribute::WindStrength: pred = vel; J(i, 3) = 1.0; break;
+				case WeatherAttribute::CloudCoverage: {
+					float cloudPotential = 3.33f * (hum - 0.7f); // Simplified vy=0 for optimization
+					pred = std::clamp(cloudPotential * 0.5f, 0.0f, 1.0f);
+					if (pred > 0.0f && pred < 1.0f) J(i, 2) = 3.33f * 0.5f;
+					else if (pred <= 0.0f) J(i, 2) = 3.33f * 0.5f; // Keep gradient even if below threshold
+					break;
+				}
+				case WeatherAttribute::Precipitation: {
+					float cloudPotential = 3.33f * (hum - 0.7f);
+					float coverage = std::clamp(cloudPotential * 0.5f, 0.0f, 1.0f);
+					pred = (hum - 0.8f) * 5.0f * coverage;
+					// Use a non-clamped gradient to ensure the solver can move out of zero-pred regions
+					J(i, 2) = 5.0f * coverage; // Gradient from the (hum-0.8) term
+					if (coverage > 0.0f && coverage < 1.0f) {
+						J(i, 2) += std::max(0.0f, hum - 0.8f) * 5.0f * (3.33f * 0.5f);
+					} else if (coverage <= 0.0f) {
+						J(i, 2) += 0.1f; // Small constant gradient to push towards cloud formation
+					}
+					pred = std::max(0.0f, pred);
+					break;
+				}
+				case WeatherAttribute::MieScattering:
+					pred = 0.003996f + aero * 0.1f;
+					J(i, 4) = 0.1f;
+					break;
+				default:
+					pred = manual_targets[i].value; // Ignore other attributes for LBM coupling
+					break;
+				}
+				r(i) = pred - manual_targets[i].value;
+			}
+
+			if (r.norm() < 1e-4) break;
+
+			Eigen::VectorXd delta = (J.transpose() * J + Eigen::MatrixXd::Identity(5, 5) * 0.01).ldlt().solve(J.transpose() * r);
+			x -= delta;
+
+			// Constraints
+			x(0) = std::clamp(x(0), 200.0, 350.0);
+			x(1) = std::clamp(x(1), 900.0, 1100.0);
+			x(2) = std::clamp(x(2), 0.0, 1.0);
+			x(3) = std::clamp(x(3), 0.0, 50.0);
+			x(4) = std::clamp(x(4), 0.0, 1.0);
+		}
+
+		// 3. Apply Constraints
+		WeatherLbmSimulator::Constraints c = current_constraints;
+		c.temperature.target = (float)x(0);
+		c.pressure.target = (float)x(1);
+		c.humidity.target = (float)x(2);
+		c.velocity.target = (float)x(3);
+		c.aerosols.target = (float)x(4);
+		lbm_simulator_->SetConstraints(c);
 	}
 
 	void WeatherManager::InitializePresets() {
@@ -905,6 +1012,7 @@ namespace Boidsish {
 		}
 
 		// Always update attributes toward cached targets using the spring system
+		SynchronizeLbmConstraints();
 		UpdateAttribute(WeatherAttribute::SunIntensity, cached_targets_.sun_intensity, deltaTime);
 		UpdateAttribute(WeatherAttribute::WindStrength, cached_targets_.wind_strength, deltaTime);
 		UpdateAttribute(WeatherAttribute::WindSpeed, cached_targets_.wind_speed, deltaTime);
@@ -1050,6 +1158,7 @@ namespace Boidsish {
 			loadConstraint("pressure", c.pressure);
 			loadConstraint("humidity", c.humidity);
 			loadConstraint("velocity", c.velocity);
+			loadConstraint("aerosols", c.aerosols);
 			lbm_simulator_->SetConstraints(c);
 		}
 
