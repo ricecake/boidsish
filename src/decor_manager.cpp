@@ -15,6 +15,7 @@
 #include "terrain_generator_interface.h"
 #include "terrain_render_manager.h"
 #include <GL/glew.h>
+#include <GLFW/glfw3.h>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtx/matrix_decompose.hpp>
@@ -110,6 +111,8 @@ namespace Boidsish {
 		DecorType type;
 		type.model = model;
 		type.props = props;
+		type.shader = nullptr;
+		type.use_tessellation = false;
 
 		// Main instance storage (persistent)
 		glGenBuffers(1, &type.ssbo);
@@ -160,12 +163,31 @@ namespace Boidsish {
 		decor_types_.push_back(type);
 	}
 
-	void DecorManager::AddProceduralDecor(ProceduralType type, const DecorProperties& props, int variants) {
+	void DecorManager::AddProceduralDecor(
+		ProceduralType         type,
+		const DecorProperties& props,
+		int                    variants,
+		const std::string&     shader_name,
+		bool                   use_tessellation
+	) {
 		if (variants <= 0)
 			return;
 
 		float variant_min_density = props.min_density / variants;
 		float variant_max_density = props.max_density / variants;
+
+		std::shared_ptr<Shader> custom_shader = nullptr;
+		if (!shader_name.empty()) {
+			std::string v = shader_name + ".vert";
+			std::string f = shader_name + ".frag";
+			if (use_tessellation) {
+				std::string tcs = shader_name + ".tcs";
+				std::string tes = shader_name + ".tes";
+				custom_shader = std::make_shared<Shader>(v.c_str(), f.c_str(), nullptr, tcs.c_str(), tes.c_str());
+			} else {
+				custom_shader = std::make_shared<Shader>(v.c_str(), f.c_str());
+			}
+		}
 
 		for (int i = 0; i < variants; ++i) {
 			auto            model = ProceduralGenerator::Generate(type, 1337 + i);
@@ -174,6 +196,10 @@ namespace Boidsish {
 			variant_props.max_density = variant_max_density;
 
 			AddDecorType(model, variant_props);
+			if (custom_shader) {
+				decor_types_.back().shader = custom_shader;
+				decor_types_.back().use_tessellation = use_tessellation;
+			}
 		}
 	}
 
@@ -230,6 +256,25 @@ namespace Boidsish {
 		     .random_yaw = true,
 		     .biomes = {Biome::LushGrass, Biome::AlpineMeadow},
 		     .wind_responsiveness = 0.25f}
+		);
+
+		// Transport Tree
+		AddProceduralDecor(
+			ProceduralType::TransportTree,
+			{
+				.min_density = 0.01f,
+				.max_density = 0.03f,
+				.base_scale = 1.0f,
+				.scale_variance = 0.2f,
+				.min_height = 5.0f,
+				.max_height = 95.0f,
+				.random_yaw = true,
+				.biomes = {Biome::Forest, Biome::AlpineMeadow},
+				.wind_responsiveness = 1.0f
+			},
+			2,
+			"shaders/tree_transport",
+			true
 		);
 
 		// // Procedural Flowers
@@ -952,8 +997,52 @@ namespace Boidsish {
 			noise_manager_->BindDefault(*shader);
 		}
 
+		auto setup_shader = [&](Shader* s) {
+			s->use();
+			s->setMat4("view", view);
+			s->setMat4("projection", projection);
+			if (is_shadow_pass) {
+				s->setMat4("lightSpaceMatrix", *light_space_matrix);
+			}
+			s->setMat4("model", glm::mat4(1.0f));
+			s->setBool("useSSBOInstancing", true);
+			s->setBool("uUseMDI", false);
+			s->setBool("isArcadeText", false);
+			s->setBool("isLine", false);
+			s->setBool("isColossal", false);
+			s->setBool("is_instanced", false);
+			s->setVec3("objectColor", 1.0f, 1.0f, 1.0f);
+			s->setBool("usePBR", false);
+			s->setBool("use_skinning", false);
+			s->setInt("bone_matrices_offset", -1);
+			s->setVec4("clipPlane", 0.0f, 0.0f, 0.0f, 0.0f);
+			s->setFloat(
+				"ripple_strength",
+				ConfigManager::GetInstance().GetAppSettingBool("artistic_effect_ripple", false) ? 0.05f : 0.0f
+			);
+			s->setFloat("time", (float)glfwGetTime());
+
+			if (render_manager) {
+				render_manager->BindTerrainData(*s);
+			}
+			if (atmosphere_manager_) {
+				atmosphere_manager_->BindToShader(*s);
+			}
+			if (noise_manager_) {
+				noise_manager_->BindDefault(*s);
+			}
+		};
+
+		Shader* last_shader = nullptr;
+
 		for (size_t i = 0; i < decor_types_.size(); ++i) {
 			auto& type = decor_types_[i];
+
+			Shader* current_shader = type.shader ? type.shader.get() : shader;
+			if (current_shader != last_shader) {
+				setup_shader(current_shader);
+				last_shader = current_shader;
+			}
 
 			// Bind the culled instances SSBO
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::DecorInstances(), type.visible_ssbo);
@@ -962,10 +1051,10 @@ namespace Boidsish {
 				glDisable(GL_CULL_FACE);
 			}
 
-			shader->setVec3("u_aabbMin", type.model->GetData()->aabb.min);
-			shader->setVec3("u_aabbMax", type.model->GetData()->aabb.max);
-			shader->setFloat("u_windResponsiveness", type.props.wind_responsiveness);
-			shader->setFloat("u_windRimHighlight", type.props.wind_rim_highlight);
+			current_shader->setVec3("u_aabbMin", type.model->GetData()->aabb.min);
+			current_shader->setVec3("u_aabbMax", type.model->GetData()->aabb.max);
+			current_shader->setFloat("u_windResponsiveness", type.props.wind_responsiveness);
+			current_shader->setFloat("u_windRimHighlight", type.props.wind_rim_highlight);
 
 			// Bind the appropriate indirect buffer
 			if (is_shadow_pass) {
@@ -984,16 +1073,26 @@ namespace Boidsish {
 						break;
 					}
 				}
-				shader->setInt("use_texture", hasDiffuse ? 1 : 0);
-				shader->setBool("useVertexColor", mesh.has_vertex_colors && !hasDiffuse);
-				mesh.bindTextures(*shader);
+				current_shader->setInt("use_texture", hasDiffuse ? 1 : 0);
+				current_shader->setBool("useVertexColor", mesh.has_vertex_colors && !hasDiffuse);
+				mesh.bindTextures(*current_shader);
 
 				glBindVertexArray(mesh.getVAO());
-				glDrawElementsIndirect(
-					GL_TRIANGLES,
-					GL_UNSIGNED_INT,
-					(void*)(mi * sizeof(DrawElementsIndirectCommand))
-				);
+
+				if (type.use_tessellation) {
+					glPatchParameteri(GL_PATCH_VERTICES, 3);
+					glDrawElementsIndirect(
+						GL_PATCHES,
+						GL_UNSIGNED_INT,
+						(void*)(mi * sizeof(DrawElementsIndirectCommand))
+					);
+				} else {
+					glDrawElementsIndirect(
+						GL_TRIANGLES,
+						GL_UNSIGNED_INT,
+						(void*)(mi * sizeof(DrawElementsIndirectCommand))
+					);
+				}
 			}
 
 			if (type.model->IsNoCull()) {

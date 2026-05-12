@@ -20,8 +20,19 @@ namespace Boidsish {
 		Tree,
 		TreeSpaceColonization,
 		TreeSpring,
+		TransportTree,
 		Critter,
 		Structure
+	};
+
+	struct TransportTreeConfig {
+		float ratio = 0.6f;
+		float spread = 0.5f;
+		float splitsize = 2.5f;
+		float splitdecay = 0.1f;
+		float directedness = 0.5f;
+		float growth_rate = 100.0f;
+		int   iterations = 10;
 	};
 
 	struct SpringPlantConfig {
@@ -88,6 +99,7 @@ namespace Boidsish {
 			int                             iterations = 3
 		);
 		static ProceduralIR GenerateStructureIR(unsigned int seed);
+		static ProceduralIR GenerateTransportTreeIR(unsigned int seed, const TransportTreeConfig& config = {});
 
 		/**
 		 * @brief Helper to level the terrain underneath a model's footprint.

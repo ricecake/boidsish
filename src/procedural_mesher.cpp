@@ -613,6 +613,8 @@ namespace Boidsish {
 			int              mode;
 			std::vector<int> segment_bones;
 			MaterialKey      material;
+			float            tree_depth;
+			float            branch_factor;
 		};
 
 		std::vector<SkinJob> skin_jobs;
@@ -635,6 +637,9 @@ namespace Boidsish {
 				std::vector<int> segment_bones;
 				SkinningMode     chain_mode = SkinningMode::Smooth;
 				MaterialKey      mat = {e.roughness, e.metallic, e.ao, e.emissiveColor};
+
+				float tree_depth = e.tree_depth;
+				float branch_factor = e.branch_factor;
 
 				while (curr != -1) {
 					const auto& te = ir.elements[curr];
@@ -696,6 +701,9 @@ namespace Boidsish {
 						v.Position = vd.pos;
 						v.Normal = vd.normal;
 						v.Color = vd.color;
+						if (ir.name == "transport_tree") {
+							v.Color = glm::vec3(tree_depth, branch_factor, 0.0f);
+						}
 						v.TexCoords = vd.texCoords;
 						group.vertices.push_back(v);
 					}
@@ -759,7 +767,7 @@ namespace Boidsish {
 				else
 					sm = SkinningMode::Rigid;
 			}
-			skin_jobs.push_back({v_start, (int)group.vertices.size(), i, (int)sm, {}, mat});
+			skin_jobs.push_back({v_start, (int)group.vertices.size(), i, (int)sm, {}, mat, e.tree_depth, e.branch_factor});
 		}
 
 		auto AddLeafGeom = [&](std::vector<Vertex>&       vertices,
@@ -820,10 +828,16 @@ namespace Boidsish {
 				int v_start = (int)group.vertices.size();
 				AddLeafGeom(group.vertices, group.indices, e.position, e.orientation, e.radius, e.color, e.variant);
 
+				if (ir.name == "transport_tree") {
+					for (int vi = v_start; vi < (int)group.vertices.size(); ++vi) {
+						group.vertices[vi].Color = glm::vec3(e.tree_depth, e.branch_factor, 1.0f);
+					}
+				}
+
 				SkinningMode sm = e.skinning_mode;
 				if (sm == SkinningMode::Auto)
 					sm = SkinningMode::Rigid;
-				skin_jobs.push_back({v_start, (int)group.vertices.size(), i, (int)sm, {}, mat});
+				skin_jobs.push_back({v_start, (int)group.vertices.size(), i, (int)sm, {}, mat, e.tree_depth, e.branch_factor});
 			}
 		}
 
