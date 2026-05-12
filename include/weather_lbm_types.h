@@ -49,8 +49,9 @@ namespace Boidsish {
      * Metadata for the wind texture.
      */
     struct WindDataUbo {
-        glm::ivec4 originSize; // x, z = origin, y = width, w = height
-        glm::vec4  params;     // x = spacing, y = time, z = curlScale, w = curlStrength
+        glm::ivec4 originSize;     // x, z = origin, y = width, w = height
+        glm::vec4  params;         // x = spacing, y = time, z = curlScale, w = curlStrength
+        glm::vec4  cloudAdvection; // xy = horizontal advection, zw = unused
     };
 
     struct PhysicallyBasedWeatherOutput {

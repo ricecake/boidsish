@@ -528,6 +528,7 @@ namespace Boidsish {
 		}
 
 		WindDataUbo ubo = latest_snapshot_.uboMetadata;
+		ubo.cloudAdvection = glm::vec4(cloud_advection_offset_, 0.0f, 0.0f);
 		const auto& wind_data = latest_snapshot_.windData;
 
 		if (!macro_sim_enabled_) {
@@ -838,6 +839,24 @@ namespace Boidsish {
 			precip *= phys.cloudCoverage;
 			cached_targets_.precipitation = std::clamp(precip, 0.0f, 1.0f);
 		}
+
+		// Update cloud advection based on current wind
+		// We use a simplified power-law scaling for cloud altitude: v_cloud = v_ground * (h_cloud / 1.0)^0.14
+		float cloud_h = std::max(1.0f, current_.cloud_altitude);
+		float cloud_wind_multiplier = std::pow(cloud_h, 0.14f);
+		glm::vec2 wind_vel(0.0f);
+		if (macro_sim_enabled_ && latest_snapshot_.valid) {
+			wind_vel = latest_snapshot_.output.windVelocity;
+		} else {
+			// Fallback: Uniform slowly changing wind vector (matching UpdateWindUbo fallback)
+			float wind_t = totalTime * 0.05f;
+			glm::vec2 windDir(
+				Simplex::noise(glm::vec2(wind_t, 123.456f)),
+				Simplex::noise(glm::vec2(987.654f, wind_t))
+			);
+			wind_vel = windDir * current_.wind_strength * (32.0f / 0.1f);
+		}
+		cloud_advection_offset_ += wind_vel * cloud_wind_multiplier * deltaTime;
 
 		// Always update attributes toward cached targets using the spring system
 		UpdateAttribute(WeatherAttribute::SunIntensity, cached_targets_.sun_intensity, deltaTime);

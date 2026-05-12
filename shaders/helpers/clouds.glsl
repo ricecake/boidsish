@@ -4,6 +4,7 @@
 #include "../lighting.glsl"
 #include "fast_noise.glsl"
 #include "math.glsl"
+#include "wind.glsl"
 
 float cloudPhase(float cosTheta) {
 	// Dual-lobe Henyey-Greenstein for forward and back scattering
@@ -125,15 +126,21 @@ float calculateCloudDensity(
 	float coverageThreshold = 1.0 - props.coverage;
 	float localDensity = weather.weatherMap * props.densityBase;
 
+	// Apply horizontal advection from LBM/Weather system
+	vec3 p_advected = p;
+	p_advected.xz -= u_cloudAdvection.xy;
+
 	if (simplified) {
 		// Include base Worley noise so shadow patterns match the full cloud shapes
-		float baseNoise = fastWorley3d(p / (50000.0 * props.worldScale) + time * 0.0005);
+		float baseNoise = fastWorley3d(p_advected / (50000.0 * props.worldScale) + time * 0.0005);
 		float baseDensity = baseNoise * weather.weatherMap;
 		return smoothstep(coverageThreshold, coverageThreshold + 0.4, baseDensity) * densityProfile * props.densityBase;
 	}
 
 	// Base noise for cloud shapes
-	vec3 p_warped = p + 5.0 * fastCurl3d(p / (900.0 * props.worldScale) + time * 0.002);
+	// Use responsive wind noise for warping
+	vec3 windNoise = getWindAtPosition(p);
+	vec3 p_warped = p_advected + 5.0 * windNoise;
 	vec3 p_scaled = p_warped / (50000.0 * props.worldScale);
 
 	float baseNoise = fastWorley3d(p_scaled + time * 0.0005);
@@ -186,8 +193,9 @@ float evaluateCloudShadowDensityAtWorldPos(vec2 worldXZ, float time) {
 	float scaledCloudAltitude = shadowAltitude * worldScale;
 	vec3  cloudPos = vec3(worldXZ.x, scaledCloudAltitude, worldXZ.y);
 
-	float weatherMap = (fastWorley3d(vec3(cloudPos.xz / (4000.0 * worldScale), time * 0.001)) * 0.5 + 0.5);
-	float heightMap = (fastWorley3d(vec3(cloudPos.xz / (2500.0 * worldScale), time * 0.0004)) * 0.5 + 0.5);
+	vec2 advectedXZ = worldXZ - u_cloudAdvection.xy;
+	float weatherMap = (fastWorley3d(vec3(advectedXZ / (4000.0 * worldScale), time * 0.001)) * 0.5 + 0.5);
+	float heightMap = (fastWorley3d(vec3(advectedXZ / (2500.0 * worldScale), time * 0.0004)) * 0.5 + 0.5);
 
 	CloudWeather weather;
 	weather.weatherMap = weatherMap;
