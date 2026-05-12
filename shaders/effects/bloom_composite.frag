@@ -77,8 +77,7 @@ void main() {
 	vec3 sceneColor = texture(sceneTexture, TexCoords).rgb;
 	vec3 bloomColor = texture(bloomBlur, TexCoords).rgb;
 
-	// Add bloom to HDR scene color.
-	vec3 result = sceneColor + bloomColor * intensity;
+	vec3 result = sceneColor;
 
 	float rawDepth = texture(depthTexture, TexCoords).r;
 	int isSky = 0;
@@ -163,6 +162,8 @@ void main() {
 
 		result *= exposure;
 	}
+
+	result += bloomColor * intensity;
 
 	// 1. White Balance
 	vec3 whiteGain = 1.0 / max(tempToRgb(layers[isSky].whiteTemp), 0.0001);
