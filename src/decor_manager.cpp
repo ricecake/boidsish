@@ -712,7 +712,7 @@ namespace Boidsish {
 			glBindTexture(GL_TEXTURE_2D, hiz_texture_);
 			culling_shader_->setInt("u_hizTexture", Constants::TextureUnit::HiZ());
 			culling_shader_->setMat4("u_prevViewProjection", hiz_prev_vp_);
-			glUniform2i(glGetUniformLocation(culling_shader_->ID, "u_hizSize"), hiz_width_, hiz_height_);
+			culling_shader_->setIVec2("u_hizSize", hiz_width_, hiz_height_);
 			culling_shader_->setInt("u_hizMipCount", hiz_mip_count_);
 		}
 
