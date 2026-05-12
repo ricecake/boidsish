@@ -638,9 +638,6 @@ namespace Boidsish {
 				SkinningMode     chain_mode = SkinningMode::Smooth;
 				MaterialKey      mat = {e.roughness, e.metallic, e.ao, e.emissiveColor};
 
-				float tree_depth = e.tree_depth;
-				float branch_factor = e.branch_factor;
-
 				while (curr != -1) {
 					const auto& te = ir.elements[curr];
 					if (te.type != ProceduralElementType::Tube || handled[curr])
@@ -655,7 +652,11 @@ namespace Boidsish {
 						points.push_back(Vector3(te.position));
 						ups.push_back(Vector3(0, 1, 0));
 						sizes.push_back(te.radius / SPLINE_RADIUS_SCALE);
-						colors.push_back(te.color);
+						if (ir.name == "transport_tree") {
+							colors.push_back(glm::vec3(te.tree_depth, te.branch_factor, 0.0f));
+						} else {
+							colors.push_back(te.color);
+						}
 						first = false;
 					}
 					int next = -1;
@@ -683,7 +684,11 @@ namespace Boidsish {
 					points.push_back(Vector3(te.end_position));
 					ups.push_back(Vector3(0, 1, 0));
 					sizes.push_back(te.end_radius / SPLINE_RADIUS_SCALE);
-					colors.push_back(te.color);
+					if (ir.name == "transport_tree") {
+						colors.push_back(glm::vec3(te.tree_depth + 1.0f, te.branch_factor + te.length, 0.0f));
+					} else {
+						colors.push_back(te.color);
+					}
 					segment_bones.push_back(curr_bone);
 					curr = next;
 				}
@@ -701,9 +706,6 @@ namespace Boidsish {
 						v.Position = vd.pos;
 						v.Normal = vd.normal;
 						v.Color = vd.color;
-						if (ir.name == "transport_tree") {
-							v.Color = glm::vec3(tree_depth, branch_factor, 0.0f);
-						}
 						v.TexCoords = vd.texCoords;
 						group.vertices.push_back(v);
 					}

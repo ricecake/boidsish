@@ -1,5 +1,7 @@
 #include "procedural_generator.h"
 
+#include <cmath>
+#include <functional>
 #include <numbers>
 #include <random>
 
@@ -36,7 +38,7 @@ namespace Boidsish {
 		};
 
 		struct TransportBranch {
-			int              id;
+			int              id = 0;
 			bool             leaf = true;
 			TransportBranch *A = nullptr, *B = nullptr, *P = nullptr;
 
@@ -46,15 +48,18 @@ namespace Boidsish {
 			glm::vec3 dir = glm::vec3(0.0, 1.0, 0.0);
 			float     length = 0.0, radius = 0.0, area = 0.1;
 
-			TransportBranch(float r, float s, float ss, float sd, float d) :
-				ratio{r}, spread{s}, splitsize{ss}, splitdecay{sd}, directedness{d} {}
+			std::mt19937& rng;
 
-			TransportBranch(TransportBranch* b) :
-				ratio{b->ratio}, spread{b->spread}, splitsize{b->splitsize}, splitdecay{b->splitdecay},
-				directedness{b->directedness}, depth{b->depth + 1}, P{b} {}
+			TransportBranch(float r, float s, float ss, float sd, float d, std::mt19937& gen) :
+				ratio{r}, spread{s}, splitsize{ss}, splitdecay{sd}, directedness{d}, rng(gen) {}
+
+			TransportBranch(TransportBranch* b, int child_idx) :
+				id{2 * b->id + child_idx}, ratio{b->ratio}, spread{b->spread}, splitsize{b->splitsize},
+				splitdecay{b->splitdecay}, directedness{b->directedness}, depth{b->depth + 1}, P{b}, rng(b->rng) {}
 
 			~TransportBranch() {
-				if (leaf) return;
+				if (leaf)
+					return;
 				delete A;
 				delete B;
 			}
@@ -77,15 +82,16 @@ namespace Boidsish {
 				area += (float)(pass * feed / length);
 				feed *= (1.0 - pass);
 
-				if (feed < 1e-5) return;
+				if (feed < 1e-5)
+					return;
 				A->grow(feed * ratio);
 				B->grow(feed * (1.0 - ratio));
 			}
 
 			void split() {
 				leaf = false;
-				A = new TransportBranch(this);
-				B = new TransportBranch(this);
+				A = new TransportBranch(this, 0);
+				B = new TransportBranch(this, 1);
 
 				glm::vec3 D = leafdensity(10);
 				glm::vec3 N = glm::normalize(glm::cross(dir, D));
@@ -95,17 +101,19 @@ namespace Boidsish {
 				}
 				glm::vec3 M = -N;
 
-				float flip = ((float)rand() / RAND_MAX > 0.5f) ? 1.0f : -1.0f;
+				std::uniform_real_distribution<float> dis(0.0f, 1.0f);
+				float                                 flip = (dis(rng) > 0.5f) ? 1.0f : -1.0f;
 
 				A->dir = glm::normalize(glm::mix(flip * spread * N, dir, ratio));
 				B->dir = glm::normalize(glm::mix(flip * spread * M, dir, 1.0f - ratio));
 			}
 
 			glm::vec3 leafdensity(int searchdepth) {
-				glm::vec3 r = glm::vec3((float)rand() / RAND_MAX, (float)rand() / RAND_MAX, (float)rand() / RAND_MAX) -
-				              glm::vec3(0.5f);
+				std::uniform_real_distribution<float> dis(-0.5f, 0.5f);
+				glm::vec3                             r(dis(rng), dis(rng), dis(rng));
 
-				if (depth == 0) return r;
+				if (depth == 0)
+					return r;
 
 				TransportBranch* C = this;
 				glm::vec3        rel = glm::vec3(0);
@@ -115,7 +123,8 @@ namespace Boidsish {
 				}
 
 				std::function<glm::vec3(TransportBranch*)> leafaverage = [&](TransportBranch* b) -> glm::vec3 {
-					if (b->leaf) return b->length * b->dir;
+					if (b->leaf)
+						return b->length * b->dir;
 					return b->length * b->dir + b->ratio * leafaverage(b->A) + (1.0f - b->ratio) * leafaverage(b->B);
 				};
 
@@ -873,8 +882,15 @@ namespace Boidsish {
 	}
 
 	ProceduralIR ProceduralGenerator::GenerateTransportTreeIR(unsigned int seed, const TransportTreeConfig& config) {
-		std::srand(seed);
-		TransportBranch root(config.ratio, config.spread, config.splitsize, config.splitdecay, config.directedness);
+		std::mt19937    gen(seed);
+		TransportBranch root(
+			config.ratio,
+			config.spread,
+			config.splitsize,
+			config.splitdecay,
+			config.directedness,
+			gen
+		);
 
 		for (int i = 0; i < config.iterations; ++i) {
 			root.grow(config.growth_rate);
@@ -886,6 +902,8 @@ namespace Boidsish {
 		glm::vec3 woodCol(0.35f, 0.25f, 0.15f);
 		glm::vec3 leafCol(0.1f, 0.45f, 0.1f);
 
+		std::uniform_real_distribution<float> dis(0.0f, 1.0f);
+
 		std::function<void(TransportBranch*, int, glm::vec3, float)> addToIR =
 			[&](TransportBranch* b, int parent_ir, glm::vec3 start_pos, float branch_factor) {
 				glm::vec3 end_pos = start_pos + b->dir * b->length;
@@ -895,9 +913,9 @@ namespace Boidsish {
 
 				if (b->leaf) {
 					for (int i = 0; i < 4; ++i) {
-						glm::quat leafOri = glm::angleAxis((float)rand() / RAND_MAX * 6.28f, glm::vec3(0, 1, 0)) *
-						                    glm::angleAxis((float)rand() / RAND_MAX * 1.57f, glm::vec3(1, 0, 0));
-						int leaf_id = ir.AddLeaf(end_pos, leafOri, 0.4f, leafCol, rand() % 3, id);
+						glm::quat leafOri = glm::angleAxis(dis(gen) * 6.28f, glm::vec3(0, 1, 0)) *
+						                    glm::angleAxis(dis(gen) * 1.57f, glm::vec3(1, 0, 0));
+						int leaf_id = ir.AddLeaf(end_pos, leafOri, 0.4f, leafCol, gen() % 3, id);
 						ir.elements[leaf_id].tree_depth = (float)b->depth + 1.0f;
 						ir.elements[leaf_id].branch_factor = branch_factor + b->length;
 					}

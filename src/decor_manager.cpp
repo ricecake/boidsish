@@ -1001,9 +1001,10 @@ namespace Boidsish {
 			s->use();
 			s->setMat4("view", view);
 			s->setMat4("projection", projection);
-			if (is_shadow_pass) {
+			if (is_shadow_pass && light_space_matrix.has_value()) {
 				s->setMat4("lightSpaceMatrix", *light_space_matrix);
 			}
+			s->setBool("uIsShadowPass", is_shadow_pass);
 			s->setMat4("model", glm::mat4(1.0f));
 			s->setBool("useSSBOInstancing", true);
 			s->setBool("uUseMDI", false);
