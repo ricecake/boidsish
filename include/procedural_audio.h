@@ -1,6 +1,8 @@
 #pragma once
 
 #include "miniaudio.h"
+#include "audio_types.h"
+#include <vector>
 
 namespace Boidsish {
 
@@ -14,17 +16,23 @@ namespace Boidsish {
 		ProceduralAudioSource& operator=(const ProceduralAudioSource&) = delete;
 
 		virtual void OnRead(float* pOutput, ma_uint64 frameCount) = 0;
-		virtual void OnUpdate(float deltaTime) {}
+		virtual void OnUpdate(float deltaTime, const AudioState& state) {}
 
-		ma_data_source* GetDataSource() { return &m_base; }
+		ma_data_source* GetDataSource() { return &m_base.ds; }
 
 		ma_uint32 GetChannels() const { return m_channels; }
 		ma_uint32 GetSampleRate() const { return m_sampleRate; }
 
+		// Wrapper struct to allow retrieving ProceduralAudioSource* from ma_data_source*
+		struct MiniaudioSource {
+			ma_data_source_base   ds;
+			ProceduralAudioSource* pParent;
+		};
+
 	protected:
-		ma_data_source_base m_base;
-		ma_uint32           m_channels;
-		ma_uint32           m_sampleRate;
+		MiniaudioSource m_base;
+		ma_uint32       m_channels;
+		ma_uint32       m_sampleRate;
 	};
 
 } // namespace Boidsish

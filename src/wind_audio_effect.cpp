@@ -8,48 +8,62 @@ namespace Boidsish {
 	WindAudioEffect::WindAudioEffect(AudioManager& audioManager)
 		: ProceduralAudioSource(2, 48000),
 		  m_audioManager(audioManager),
-		  m_updateRng(std::random_device{}()),
-		  m_readRng(std::random_device{}()),
-		  m_dist(-1.0f, 1.0f) {
+		  m_xorshiftState(123456789) {
+	}
+
+	float WindAudioEffect::NextWhiteNoise() {
+		m_xorshiftState ^= m_xorshiftState << 13;
+		m_xorshiftState ^= m_xorshiftState >> 17;
+		m_xorshiftState ^= m_xorshiftState << 5;
+		return (static_cast<float>(m_xorshiftState) / static_cast<float>(0xFFFFFFFF)) * 2.0f - 1.0f;
 	}
 
 	void WindAudioEffect::OnRead(float* pOutput, ma_uint64 frameCount) {
-		float f = m_cutoff.load(std::memory_order_relaxed);
-		float q = m_resonance.load(std::memory_order_relaxed);
-		float strength = m_windStrength.load(std::memory_order_relaxed);
+		// SVF coefficients from https://www.cytomic.com/files/dsp/SvfLinearTrapOptimised2.pdf
+		// simplified for real-time wind
+		float f = m_freq.load(std::memory_order_relaxed);
+		float res = m_res.load(std::memory_order_relaxed);
+		float gain = m_gain.load(std::memory_order_relaxed);
+
+		// Pre-calculate dampening from resonance
+		float damping = 1.0f / (res + 0.001f);
 
 		for (ma_uint64 i = 0; i < frameCount; ++i) {
-			float whiteNoise = m_dist(m_readRng);
+			float input = NextWhiteNoise();
 
-			// Resonant Low-Pass Filter
-			m_v0 = (1.0f - f * q) * m_v0 - f * m_v1 + f * whiteNoise;
-			m_v1 = (1.0f - f * q) * m_v1 + f * m_v0;
+			// SVF Step
+			m_low = m_low + f * m_band;
+			float high = input - m_low - damping * m_band;
+			m_band = m_band + f * high;
 
-			float sample = m_v1 * strength * 0.5f;
+			// Use bandpass for a more "whistling" wind effect
+			float sample = m_band * gain;
 
-			// Output to all channels
 			for (ma_uint32 c = 0; c < m_channels; ++c) {
 				pOutput[i * m_channels + c] = sample;
 			}
 		}
 	}
 
-	void WindAudioEffect::OnUpdate(float deltaTime) {
-		AudioState state = m_audioManager.GetCurrentState();
+	void WindAudioEffect::OnUpdate(float deltaTime, const AudioState& state) {
+		float targetStrength = std::clamp(state.wind_strength * 2.0f, 0.0f, 10.0f);
 
-		m_targetWindStrength = std::clamp(state.wind_strength * 0.2f, 0.0f, 1.0f);
+		// Responsive interpolation
+		m_currentWindStrength += (targetStrength - m_currentWindStrength) * deltaTime * 3.0f;
 
-		// Smoothly interpolate wind strength
-		m_currentWindStrength += (m_targetWindStrength - m_currentWindStrength) * deltaTime * 2.0f;
-		m_windStrength.store(m_currentWindStrength, std::memory_order_relaxed);
+		// Map strength to parameters
+		// Wind starts being audible even at low strengths
+		float gain = std::clamp(m_currentWindStrength * 0.1f, 0.0f, 0.5f);
 
-		// Modulate filter parameters
-		// Wind strength increases the "howl" frequency and resonance
-		float cutoff = 0.005f + m_currentWindStrength * 0.05f + std::abs(m_dist(m_updateRng)) * 0.01f;
-		float resonance = 0.01f + m_currentWindStrength * 0.15f;
+		// Cutoff frequency moves between 100Hz and 2000Hz (normalized roughly)
+		float freq = 0.005f + std::clamp(m_currentWindStrength * 0.02f, 0.0f, 0.1f);
 
-		m_cutoff.store(cutoff, std::memory_order_relaxed);
-		m_resonance.store(resonance, std::memory_order_relaxed);
+		// Resonance increases with strength for that "howl"
+		float resonance = 0.5f + m_currentWindStrength * 0.2f;
+
+		m_gain.store(gain, std::memory_order_relaxed);
+		m_freq.store(freq, std::memory_order_relaxed);
+		m_res.store(resonance, std::memory_order_relaxed);
 	}
 
 } // namespace Boidsish

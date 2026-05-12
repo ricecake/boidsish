@@ -132,9 +132,9 @@ namespace Boidsish {
 			// Update procedural sources
 			{
 				std::lock_guard<std::mutex> lock(m_sounds_mutex);
-				m_procedural_sources.remove_if([delta_time](const std::weak_ptr<ProceduralAudioSource>& weak_source) {
+				m_procedural_sources.remove_if([delta_time, &state](const std::weak_ptr<ProceduralAudioSource>& weak_source) {
 					if (auto source = weak_source.lock()) {
-						source->OnUpdate(delta_time);
+						source->OnUpdate(delta_time, state);
 						return false;
 					}
 					return true;

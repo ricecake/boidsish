@@ -4,14 +4,19 @@
 namespace Boidsish {
 
 	static ma_result ProceduralAudioSource_Read(ma_data_source* pDataSource, void* pFramesOut, ma_uint64 frameCount, ma_uint64* pFramesRead) {
-		auto* pProcedural = reinterpret_cast<ProceduralAudioSource*>(pDataSource);
-		pProcedural->OnRead(static_cast<float*>(pFramesOut), frameCount);
+		auto* pMiniaudioSource = reinterpret_cast<ProceduralAudioSource::MiniaudioSource*>(pDataSource);
+		if (pMiniaudioSource && pMiniaudioSource->pParent) {
+			pMiniaudioSource->pParent->OnRead(static_cast<float*>(pFramesOut), frameCount);
+		}
 		if (pFramesRead) *pFramesRead = frameCount;
 		return MA_SUCCESS;
 	}
 
 	static ma_result ProceduralAudioSource_GetDataFormat(ma_data_source* pDataSource, ma_format* pFormat, ma_uint32* pChannels, ma_uint32* pSampleRate, ma_channel* pChannelMap, size_t channelMapCap) {
-		auto* pProcedural = reinterpret_cast<ProceduralAudioSource*>(pDataSource);
+		auto* pMiniaudioSource = reinterpret_cast<ProceduralAudioSource::MiniaudioSource*>(pDataSource);
+		if (!pMiniaudioSource || !pMiniaudioSource->pParent) return MA_INVALID_ARGS;
+
+		auto* pProcedural = pMiniaudioSource->pParent;
 		if (pFormat) *pFormat = ma_format_f32;
 		if (pChannels) *pChannels = pProcedural->GetChannels();
 		if (pSampleRate) *pSampleRate = pProcedural->GetSampleRate();
@@ -31,13 +36,14 @@ namespace Boidsish {
 
 	ProceduralAudioSource::ProceduralAudioSource(ma_uint32 channels, ma_uint32 sampleRate)
 		: m_channels(channels), m_sampleRate(sampleRate) {
+		m_base.pParent = this;
 		ma_data_source_config config = ma_data_source_config_init();
 		config.vtable = &g_ProceduralAudioSourceVTable;
-		ma_data_source_init(&config, &m_base);
+		ma_data_source_init(&config, &m_base.ds);
 	}
 
 	ProceduralAudioSource::~ProceduralAudioSource() {
-		ma_data_source_uninit(&m_base);
+		ma_data_source_uninit(&m_base.ds);
 	}
 
 } // namespace Boidsish

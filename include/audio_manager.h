@@ -13,22 +13,7 @@ namespace Boidsish {
 	class ServiceLocator;
 	class Sound; // Forward declaration
 	class ProceduralAudioSource;
-
-	struct AudioState {
-		glm::vec3 listener_pos;
-		glm::vec3 listener_front;
-		glm::vec3 listener_up;
-		float     listener_speed;
-		float     listener_fov;
-		float     global_pitch = 1.0f;
-		float     master_volume = 1.0f;
-		float     music_volume = 1.0f;
-		float     sfx_volume = 1.0f;
-
-		// Weather data for effects
-		glm::vec3 wind_velocity;
-		float     wind_strength;
-	};
+	struct AudioState;
 
 	class AudioManager {
 	public:
