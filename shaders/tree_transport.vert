@@ -6,6 +6,8 @@ layout(location = 2) in vec2 aTexCoords;
 layout(location = 8) in vec3 aMetadata; // R=depth, G=branch_factor, B=leaf_factor
 
 #include "common_uniforms.glsl"
+#include "lighting.glsl"
+#include "visual_effects.glsl"
 
 layout(std430, binding = [[DECOR_INSTANCES_BINDING]]) buffer SSBOInstances {
 	mat4 ssboInstanceMatrices[];
@@ -18,6 +20,7 @@ out vec3 vPos;
 out vec3 vNormal;
 out vec2 vTexCoords;
 out vec3 vMetadata;
+out vec3 vViewPos;
 flat out int vInstanceID;
 
 uniform bool useSSBOInstancing = false;
@@ -25,6 +28,7 @@ uniform mat4 model;
 
 void main() {
 	vInstanceID = gl_InstanceID;
+	vViewPos = viewPos;
 	mat4 modelMatrix = useSSBOInstancing ? ssboInstanceMatrices[gl_InstanceID] : model;
 
 	vMetadata = aMetadata;

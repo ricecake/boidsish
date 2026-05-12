@@ -14,6 +14,7 @@ out vec3 teMetadata;
 
 #include "temporal_data.glsl"
 #include "helpers/noise.glsl"
+#include "helpers/fast_noise.glsl"
 
 uniform mat4 view;
 uniform mat4 projection;

@@ -6,6 +6,7 @@ in vec3 vPos[];
 in vec3 vNormal[];
 in vec2 vTexCoords[];
 in vec3 vMetadata[];
+in vec3 vViewPos[];
 
 out vec3 tcPos[];
 out vec3 tcNormal[];
@@ -21,7 +22,7 @@ void main() {
     tcMetadata[gl_InvocationID] = vMetadata[gl_InvocationID];
 
     if (gl_InvocationID == 0) {
-        float dist = distance(viewPos, vPos[0]);
+        float dist = distance(vViewPos[0], vPos[0]);
         float level = mix(4.0, 1.0, clamp(dist / 100.0, 0.0, 1.0));
 
         gl_TessLevelOuter[0] = level;

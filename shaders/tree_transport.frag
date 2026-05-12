@@ -11,6 +11,15 @@ in vec3 teMetadata;
 out vec4 FragColor;
 
 #include "helpers/noise.glsl"
+#include "helpers/fast_noise.glsl"
+
+// Simple hash for random values
+float hash(uint x) {
+	x = ((x >> 16) ^ x) * 0x45d9f3b;
+	x = ((x >> 16) ^ x) * 0x45d9f3b;
+	x = (x >> 16) ^ x;
+	return float(x) / 4294967295.0;
+}
 
 void main() {
     vec3 baseColor;
