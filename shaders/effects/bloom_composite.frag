@@ -81,7 +81,16 @@ void main() {
 	vec3 result = sceneColor + bloomColor * intensity;
 
 	float rawDepth = texture(depthTexture, TexCoords).r;
-	int isSky = (rawDepth > 0.99999) ? 1 : 0;
+	int isSky = 0;
+	if (rawDepth > 0.99999) {
+		vec2 ndc = TexCoords * 2.0 - 1.0;
+		vec4 ray_view = invProjection * vec4(ndc, -1.0, 1.0);
+		ray_view = vec4(ray_view.xy, -1.0, 0.0);
+		vec3 worldDir = normalize((invView * ray_view).xyz);
+		if (worldDir.y > 0.0) {
+			isSky = 1;
+		}
+	}
 
 	// Guided Upsampling for LTM (Scene only)
 	if (layers[0].ltmEnabled != 0 && isSky == 0) {
