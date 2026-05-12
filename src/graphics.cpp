@@ -77,6 +77,7 @@
 #include "ui/ProfilerWidget.h"
 #include "ui/RenderWidget.h"
 #include "ui/SystemWidget.h"
+#include "ui/AudioWidget.h"
 #include "ui/hud_widget.h"
 #include "binding_registry.h"
 #include "render_state.h"
@@ -85,6 +86,7 @@
 #include "shader_registration.h"
 #include "visual_effects.h"
 #include "weather_manager.h"
+#include "wind_audio_effect.h"
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include <glm/ext/matrix_projection.hpp>
@@ -378,6 +380,7 @@ namespace Boidsish {
 		std::shared_ptr<NoiseManager>                     noise_manager;
 		std::shared_ptr<MeshExplosionManager>             mesh_explosion_manager;
 		std::shared_ptr<SoundEffectManager>               sound_effect_manager;
+		std::shared_ptr<Sound>                            wind_sound_handle;
 		std::shared_ptr<ShockwaveManager>                 shockwave_manager;
 		std::shared_ptr<AkiraEffectManager>               akira_effect_manager;
 		std::shared_ptr<SdfVolumeManager>                 sdf_volume_manager;
@@ -816,6 +819,11 @@ namespace Boidsish {
 				weather_manager->SetTerrainGenerator(terrain_generator.get());
 			}
 			audio_manager = service_locator_.Get<AudioManager>();
+
+			// Initialize procedural wind
+			auto wind_effect = std::make_shared<WindAudioEffect>(*audio_manager);
+			wind_sound_handle = audio_manager->CreateProceduralSound(wind_effect, glm::vec3(0.0f), 0.5f, true, false);
+
 			sound_effect_manager = service_locator_.Get<SoundEffectManager>();
 			trail_render_manager = service_locator_.Get<TrailRenderManager>();
 			light_manager = service_locator_.Get<LightManager>();
@@ -1089,6 +1097,7 @@ namespace Boidsish {
 			ui_manager->AddWidget(std::make_shared<UI::EnvironmentWidget>(*parent));
 			ui_manager->AddWidget(std::make_shared<UI::EffectWidget>(*parent));
 			ui_manager->AddWidget(std::make_shared<UI::RenderWidget>(*parent));
+			ui_manager->AddWidget(std::make_shared<UI::AudioWidget>(*parent));
 			ui_manager->AddWidget(std::make_shared<UI::SystemWidget>(*parent, *scene_manager));
 			ui_manager->AddWidget(std::make_shared<UI::ProfilerWidget>());
 		}
@@ -2045,9 +2054,32 @@ namespace Boidsish {
 		}
 
 		void UpdateAudio() {
-			audio_manager->UpdateListener(camera.pos(), camera.front(), camera.up(), camera_velocity_, camera.fov);
-			audio_manager->SetGlobalPitch(time_scale);
-			audio_manager->Update();
+			AudioState state;
+			state.listener_pos = camera.pos();
+			state.listener_front = camera.front();
+			state.listener_up = camera.up();
+			state.listener_speed = camera_velocity_;
+			state.listener_fov = camera.fov;
+			state.global_pitch = time_scale;
+
+			// Get current volumes from AudioManager (which might be updated by UI)
+			state.master_volume = audio_manager->GetMasterVolume();
+			state.music_volume = audio_manager->GetMusicVolume();
+			state.sfx_volume = audio_manager->GetSfxVolume();
+
+			if (weather_manager) {
+				const auto& w = weather_manager->GetCurrentWeather();
+				const auto* phys = weather_manager->GetPhysicallyBasedWeather();
+				if (phys) {
+					state.wind_velocity = glm::vec3(phys->windVelocity.x, phys->verticalWind, phys->windVelocity.y);
+					state.wind_strength = glm::length(state.wind_velocity);
+				} else {
+					state.wind_velocity = camera.front() * w.wind_strength; // Fallback
+					state.wind_strength = w.wind_strength;
+				}
+			}
+
+			audio_manager->UpdateState(state);
 		}
 
 		void UpdateAtmosphere() {
