@@ -389,8 +389,8 @@ namespace Boidsish {
     }
 
     void WeatherLbmSimulator::ApplyNudging(float /*deltaTime*/, float totalTime, float /*timeOfDay*/, float windSpeed, float windStrength, float targetTemp, float targetPressure, float targetHumidity) {
-        const float uNudgeStrength = 0.02f, tempNudgeStrength = 0.01f, humidityNudgeStrength = 0.01f, vyNudgeStrength = 0.005f;
-        const float rhoTolerance = 0.01f, uTolerance = 0.01f, tempTolerance = 0.1f, humidityTolerance = 0.01f;
+        const float uNudgeStrength = 0.02f, tempNudgeStrength = 0.01f, humidityNudgeStrength = 0.01f, vyNudgeStrength = 0.005f, aerosolNudgeStrength = 0.01f;
+        const float rhoTolerance = 0.01f, uTolerance = 0.01f, tempTolerance = 0.1f, humidityTolerance = 0.01f, aerosolTolerance = 0.01f;
         const float lbmConversion = 32.0f / 0.1f;
         for (int z = 0; z < height_; ++z) {
             for (int x = 0; x < width_; ++x) {
@@ -416,6 +416,7 @@ namespace Boidsish {
 
                 nudgeScalar(cell.temperature, constraints_.temperature, targetTemp, n_temp, 2.5f, tempNudgeStrength, tempTolerance);
                 nudgeScalar(cell.humidity, constraints_.humidity, targetHumidity, n_hum, 0.08f, humidityNudgeStrength, humidityTolerance);
+                nudgeScalar(cell.aerosols.x, constraints_.aerosols, 0.01f, n_hum, 0.02f, aerosolNudgeStrength, aerosolTolerance);
 
                 float targetP = constraints_.pressure.target.value_or(targetPressure);
                 bool nudgeP = false; float pressureHpa = rho * 1013.25f;

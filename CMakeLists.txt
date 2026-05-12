@@ -102,6 +102,7 @@ target_include_directories(boidsish
         ${STB_DIR}/
         ${ASSIMP_INCLUDE_DIR}
         ${BULLET_INCLUDE_DIRS}
+        external/eigen
 )
 
 # 4. Platform-Specific Linking

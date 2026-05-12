@@ -153,6 +153,84 @@ namespace Boidsish {
 									}
 
 									ImGui::Separator();
+
+								if (ImGui::TreeNode("Weather Constraints & Nudges")) {
+									auto& constraints = weather->GetSimConstraints();
+									bool  changed = false;
+
+									auto drawConstraint = [&](const char* label, const char* prefix, WeatherLbmSimulator::Constraint& con, float min_val, float max_val, const char* format) {
+										ImGui::Text("%s:", label);
+										ImGui::Indent();
+
+										bool min_enabled = con.min.has_value();
+										if (ImGui::Checkbox(("Min##" + std::string(prefix)).c_str(), &min_enabled)) {
+											if (min_enabled) con.min = min_val;
+											else con.min = std::nullopt;
+											changed = true;
+										}
+										if (min_enabled) {
+											ImGui::SameLine();
+											float val = *con.min;
+											if (ImGui::SliderFloat(("##min_" + std::string(prefix)).c_str(), &val, min_val, max_val, format)) {
+												con.min = val;
+												changed = true;
+											}
+										}
+
+										bool max_enabled = con.max.has_value();
+										if (ImGui::Checkbox(("Max##" + std::string(prefix)).c_str(), &max_enabled)) {
+											if (max_enabled) con.max = max_val;
+											else con.max = std::nullopt;
+											changed = true;
+										}
+										if (max_enabled) {
+											ImGui::SameLine();
+											float val = *con.max;
+											if (ImGui::SliderFloat(("##max_" + std::string(prefix)).c_str(), &val, min_val, max_val, format)) {
+												con.max = val;
+												changed = true;
+											}
+										}
+
+										bool target_enabled = con.target.has_value();
+										if (ImGui::Checkbox(("Target##" + std::string(prefix)).c_str(), &target_enabled)) {
+											if (target_enabled) con.target = (min_val + max_val) * 0.5f;
+											else con.target = std::nullopt;
+											changed = true;
+										}
+										if (target_enabled) {
+											ImGui::SameLine();
+											float val = *con.target;
+											if (ImGui::SliderFloat(("##target_" + std::string(prefix)).c_str(), &val, min_val, max_val, format)) {
+												con.target = val;
+												changed = true;
+											}
+										}
+
+										if (ImGui::Button(("Clear All##" + std::string(prefix)).c_str())) {
+											con.min = std::nullopt;
+											con.max = std::nullopt;
+											con.target = std::nullopt;
+											changed = true;
+										}
+
+										ImGui::Unindent();
+										ImGui::Separator();
+									};
+
+									WeatherLbmSimulator::Constraints c = constraints;
+									drawConstraint("Temperature (K)", "temp", c.temperature, 200.0f, 400.0f, "%.1f K");
+									drawConstraint("Pressure (hPa)", "press", c.pressure, 800.0f, 1200.0f, "%.1f hPa");
+									drawConstraint("Humidity", "hum", c.humidity, 0.0f, 1.0f, "%.2f");
+									drawConstraint("Wind Velocity (m/s)", "vel", c.velocity, 0.0f, 50.0f, "%.1f m/s");
+
+									if (changed) {
+										weather->SetSimConstraints(c);
+									}
+
+									ImGui::TreePop();
+								}
+
 									if (ImGui::TreeNode("Atmospheric Injections")) {
 										ImGui::SliderFloat("Target Pressure (hPa)", &m_targetPressure, 800.0f, 1200.0f, "%.1f");
 										ImGui::SliderFloat("Target Temperature (K)", &m_targetTemperature, 200.0f, 400.0f, "%.1f");
