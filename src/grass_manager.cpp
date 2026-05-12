@@ -45,29 +45,13 @@ namespace Boidsish {
         // The FrustumData and Lighting UBOs in frustum.glsl and lighting.glsl
         // don't have explicit binding qualifiers, so we need to wire them up manually.
         // Without this, the compute shader's frustum culling reads garbage and rejects all blades.
-        GLuint frustum_idx = glGetUniformBlockIndex(placement_shader_->ID, "FrustumData");
-        if (frustum_idx != GL_INVALID_INDEX)
-            glUniformBlockBinding(placement_shader_->ID, frustum_idx, Constants::UboBinding::FrustumData());
+        placement_shader_->bindUniformBlock("FrustumData", Constants::UboBinding::FrustumData());
+        pre_pass_shader_->bindUniformBlock("FrustumData", Constants::UboBinding::FrustumData());
 
-        GLuint pre_frustum_idx = glGetUniformBlockIndex(pre_pass_shader_->ID, "FrustumData");
-        if (pre_frustum_idx != GL_INVALID_INDEX)
-            glUniformBlockBinding(pre_pass_shader_->ID, pre_frustum_idx, Constants::UboBinding::FrustumData());
-
-        GLuint lighting_idx = glGetUniformBlockIndex(grass_shader_->ID, "Lighting");
-        if (lighting_idx != GL_INVALID_INDEX)
-            glUniformBlockBinding(grass_shader_->ID, lighting_idx, Constants::UboBinding::Lighting());
-
-        GLuint shadows_idx = glGetUniformBlockIndex(grass_shader_->ID, "Shadows");
-        if (shadows_idx != GL_INVALID_INDEX)
-            glUniformBlockBinding(grass_shader_->ID, shadows_idx, Constants::UboBinding::Shadows());
-
-        GLuint terrain_idx = glGetUniformBlockIndex(grass_shader_->ID, "TerrainData");
-        if (terrain_idx != GL_INVALID_INDEX)
-            glUniformBlockBinding(grass_shader_->ID, terrain_idx, Constants::UboBinding::TerrainData());
-
-        GLuint biome_idx = glGetUniformBlockIndex(grass_shader_->ID, "BiomeData");
-        if (biome_idx != GL_INVALID_INDEX)
-            glUniformBlockBinding(grass_shader_->ID, biome_idx, Constants::UboBinding::Biomes());
+        grass_shader_->bindUniformBlock("Lighting", Constants::UboBinding::Lighting());
+        grass_shader_->bindUniformBlock("Shadows", Constants::UboBinding::Shadows());
+        grass_shader_->bindUniformBlock("TerrainData", Constants::UboBinding::TerrainData());
+        grass_shader_->bindUniformBlock("BiomeData", Constants::UboBinding::Biomes());
 
         _InitializeResources();
         initialized_ = true;

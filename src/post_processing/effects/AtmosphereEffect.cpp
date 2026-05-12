@@ -37,22 +37,10 @@ namespace Boidsish {
 
 			auto setup_shader = [](Shader& s) {
 				s.use();
-				GLuint lighting_idx = glGetUniformBlockIndex(s.ID, "Lighting");
-				if (lighting_idx != GL_INVALID_INDEX) {
-					glUniformBlockBinding(s.ID, lighting_idx, Constants::UboBinding::Lighting());
-				}
-				GLuint shadows_idx = glGetUniformBlockIndex(s.ID, "Shadows");
-				if (shadows_idx != GL_INVALID_INDEX) {
-					glUniformBlockBinding(s.ID, shadows_idx, Constants::UboBinding::Shadows());
-				}
-				GLuint terrain_idx = glGetUniformBlockIndex(s.ID, "TerrainData");
-				if (terrain_idx != GL_INVALID_INDEX) {
-					glUniformBlockBinding(s.ID, terrain_idx, Constants::UboBinding::TerrainData());
-				}
-				GLuint effects_idx = glGetUniformBlockIndex(s.ID, "VisualEffects");
-				if (effects_idx != GL_INVALID_INDEX) {
-					glUniformBlockBinding(s.ID, effects_idx, Constants::UboBinding::VisualEffects());
-				}
+				s.bindUniformBlock("Lighting", Constants::UboBinding::Lighting());
+				s.bindUniformBlock("Shadows", Constants::UboBinding::Shadows());
+				s.bindUniformBlock("TerrainData", Constants::UboBinding::TerrainData());
+				s.bindUniformBlock("VisualEffects", Constants::UboBinding::VisualEffects());
 
 				// Explicitly set standard sampler bindings
 				s.setInt("shadowMaps", Constants::TextureUnit::ShadowMaps());

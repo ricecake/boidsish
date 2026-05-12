@@ -1129,7 +1129,7 @@ namespace Boidsish {
 			glGetTextureLevelParameteriv(hizTex, 0, GL_TEXTURE_HEIGHT, &h);
 			mips = 1 + static_cast<GLint>(std::floor(std::log2(std::max(w, h))));
 
-			glUniform2i(glGetUniformLocation(patch_prepare_shader_->ID, "u_hizSize"), w, h);
+			patch_prepare_shader_->setIVec2("u_hizSize", w, h);
 			patch_prepare_shader_->setInt("u_hizMipCount", mips);
 			patch_prepare_shader_->setFloat("u_screenExpansion", 4.0f);
 			patch_prepare_shader_->setBool("u_enableOcclusionCulling", true);

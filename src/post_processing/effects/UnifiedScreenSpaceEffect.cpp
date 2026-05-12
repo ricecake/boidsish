@@ -31,20 +31,11 @@ namespace Boidsish {
 			);
 
 			if (unified_shader_->isValid()) {
-				GLuint lighting_idx = glGetUniformBlockIndex(unified_shader_->ID, "Lighting");
-				if (lighting_idx != GL_INVALID_INDEX) glUniformBlockBinding(unified_shader_->ID, lighting_idx, Constants::UboBinding::Lighting());
-
-				GLuint temporal_idx = glGetUniformBlockIndex(unified_shader_->ID, "TemporalData");
-				if (temporal_idx != GL_INVALID_INDEX) glUniformBlockBinding(unified_shader_->ID, temporal_idx, Constants::UboBinding::TemporalData());
-
-				GLuint terrain_idx = glGetUniformBlockIndex(unified_shader_->ID, "TerrainData");
-				if (terrain_idx != GL_INVALID_INDEX) glUniformBlockBinding(unified_shader_->ID, terrain_idx, Constants::UboBinding::TerrainData());
-
-				GLuint probes_idx = glGetProgramResourceIndex(unified_shader_->ID, GL_SHADER_STORAGE_BLOCK, "TerrainProbes");
-				if (probes_idx != GL_INVALID_INDEX) glShaderStorageBlockBinding(unified_shader_->ID, probes_idx, Constants::SsboBinding::TerrainProbes());
-
-				GLuint biomes_idx = glGetUniformBlockIndex(unified_shader_->ID, "BiomeData");
-				if (biomes_idx != GL_INVALID_INDEX) glUniformBlockBinding(unified_shader_->ID, biomes_idx, Constants::UboBinding::Biomes());
+				unified_shader_->bindUniformBlock("Lighting", Constants::UboBinding::Lighting());
+				unified_shader_->bindUniformBlock("TemporalData", Constants::UboBinding::TemporalData());
+				unified_shader_->bindUniformBlock("TerrainData", Constants::UboBinding::TerrainData());
+				unified_shader_->bindStorageBlock("TerrainProbes", Constants::SsboBinding::TerrainProbes());
+				unified_shader_->bindUniformBlock("BiomeData", Constants::UboBinding::Biomes());
 			}
 
 			gi_ao_accumulator_.Initialize(internal_width_, internal_height_, GL_RGBA16F);

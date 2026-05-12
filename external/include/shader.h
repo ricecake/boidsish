@@ -167,7 +167,13 @@ public:
 	ShaderBase& operator=(const ShaderBase&) = delete;
 
 	ShaderBase(ShaderBase&& other) noexcept :
-		ID(other.ID), m_UniformLocationCache(std::move(other.m_UniformLocationCache)) {
+		ID(other.ID),
+		m_UniformLocationCache(std::move(other.m_UniformLocationCache)),
+		m_UniformBlockIndexCache(std::move(other.m_UniformBlockIndexCache)),
+		m_ProgramResourceIndexCache(std::move(other.m_ProgramResourceIndexCache)),
+		m_AttribLocationCache(std::move(other.m_AttribLocationCache)),
+		m_UniformValues(std::move(other.m_UniformValues)),
+		m_UniformTypeCache(std::move(other.m_UniformTypeCache)) {
 		other.ID = 0;
 	}
 
@@ -177,6 +183,11 @@ public:
 				glDeleteProgram(ID);
 			ID = other.ID;
 			m_UniformLocationCache = std::move(other.m_UniformLocationCache);
+			m_UniformBlockIndexCache = std::move(other.m_UniformBlockIndexCache);
+			m_ProgramResourceIndexCache = std::move(other.m_ProgramResourceIndexCache);
+			m_AttribLocationCache = std::move(other.m_AttribLocationCache);
+			m_UniformValues = std::move(other.m_UniformValues);
+			m_UniformTypeCache = std::move(other.m_UniformTypeCache);
 			other.ID = 0;
 		}
 		return *this;
@@ -221,6 +232,64 @@ public:
 
 	// utility uniform functions
 	// ------------------------------------------------------------------------
+	int getUniformLocation(const std::string& name) const {
+		auto it = m_UniformLocationCache.find(name);
+		if (it != m_UniformLocationCache.end()) {
+			return it->second;
+		}
+
+		int location = glGetUniformLocation(ID, name.c_str());
+		m_UniformLocationCache[name] = location;
+		return location;
+	}
+
+	unsigned int getUniformBlockIndex(const std::string& name) const {
+		auto it = m_UniformBlockIndexCache.find(name);
+		if (it != m_UniformBlockIndexCache.end()) {
+			return it->second;
+		}
+
+		unsigned int index = glGetUniformBlockIndex(ID, name.c_str());
+		m_UniformBlockIndexCache[name] = index;
+		return index;
+	}
+
+	unsigned int getProgramResourceIndex(GLenum programInterface, const std::string& name) const {
+		auto it = m_ProgramResourceIndexCache.find(name);
+		if (it != m_ProgramResourceIndexCache.end()) {
+			return it->second;
+		}
+
+		unsigned int index = glGetProgramResourceIndex(ID, programInterface, name.c_str());
+		m_ProgramResourceIndexCache[name] = index;
+		return index;
+	}
+
+	int getAttribLocation(const std::string& name) const {
+		auto it = m_AttribLocationCache.find(name);
+		if (it != m_AttribLocationCache.end()) {
+			return it->second;
+		}
+
+		int location = glGetAttribLocation(ID, name.c_str());
+		m_AttribLocationCache[name] = location;
+		return location;
+	}
+
+	void bindUniformBlock(const std::string& name, unsigned int binding) const {
+		unsigned int index = getUniformBlockIndex(name);
+		if (index != GL_INVALID_INDEX) {
+			glUniformBlockBinding(ID, index, binding);
+		}
+	}
+
+	void bindStorageBlock(const std::string& name, unsigned int binding) const {
+		unsigned int index = getProgramResourceIndex(GL_SHADER_STORAGE_BLOCK, name);
+		if (index != GL_INVALID_INDEX) {
+			glShaderStorageBlockBinding(ID, index, binding);
+		}
+	}
+
 	void setBool(const std::string& name, bool value) const {
 		int loc = getUniformLocation(name);
 		if (loc != -1) {
@@ -247,6 +316,13 @@ public:
 	}
 
 	// ------------------------------------------------------------------------
+	void setIVec2(const std::string& name, int x, int y) const {
+		int loc = getUniformLocation(name);
+		if (loc != -1) {
+			glUniform2i(loc, x, y);
+		}
+	}
+
 	void setInt(const std::string& name, int value) const {
 		int loc = getUniformLocation(name);
 		if (loc != -1) {
@@ -368,20 +444,12 @@ public:
 	}
 
 protected:
-	int getUniformLocation(const std::string& name) const {
-		auto it = m_UniformLocationCache.find(name);
-		if (it != m_UniformLocationCache.end()) {
-			return it->second;
-		}
-
-		int location = glGetUniformLocation(ID, name.c_str());
-		m_UniformLocationCache[name] = location;
-		return location;
-	}
-
-	mutable std::unordered_map<std::string, int>   m_UniformLocationCache;
-	mutable std::unordered_map<int, UniformValue>  m_UniformValues;
-	mutable std::unordered_map<int, GLenum>        m_UniformTypeCache;
+	mutable std::unordered_map<std::string, int>          m_UniformLocationCache;
+	mutable std::unordered_map<std::string, unsigned int> m_UniformBlockIndexCache;
+	mutable std::unordered_map<std::string, unsigned int> m_ProgramResourceIndexCache;
+	mutable std::unordered_map<std::string, int>          m_AttribLocationCache;
+	mutable std::unordered_map<int, UniformValue>         m_UniformValues;
+	mutable std::unordered_map<int, GLenum>               m_UniformTypeCache;
 
 	UniformValue getUniformValue(const std::string& name) const {
 		int  loc = getUniformLocation(name);

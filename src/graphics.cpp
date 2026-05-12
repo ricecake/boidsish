@@ -1137,34 +1137,13 @@ namespace Boidsish {
 			if (noise_manager) {
 				noise_manager->BindDefault(shader_to_setup);
 			}
-			GLuint lighting_idx = glGetUniformBlockIndex(shader_to_setup.ID, "Lighting");
-			if (lighting_idx != GL_INVALID_INDEX) {
-				glUniformBlockBinding(shader_to_setup.ID, lighting_idx, Constants::UboBinding::Lighting());
-			}
-			GLuint effects_idx = glGetUniformBlockIndex(shader_to_setup.ID, "VisualEffects");
-			if (effects_idx != GL_INVALID_INDEX) {
-				glUniformBlockBinding(shader_to_setup.ID, effects_idx, Constants::UboBinding::VisualEffects());
-			}
-			GLuint shadows_idx = glGetUniformBlockIndex(shader_to_setup.ID, "Shadows");
-			if (shadows_idx != GL_INVALID_INDEX) {
-				glUniformBlockBinding(shader_to_setup.ID, shadows_idx, Constants::UboBinding::Shadows());
-			}
-			GLuint frustum_idx = glGetUniformBlockIndex(shader_to_setup.ID, "FrustumData");
-			if (frustum_idx != GL_INVALID_INDEX) {
-				glUniformBlockBinding(shader_to_setup.ID, frustum_idx, Constants::UboBinding::FrustumData());
-			}
-			GLuint shockwaves_idx = glGetUniformBlockIndex(shader_to_setup.ID, "Shockwaves");
-			if (shockwaves_idx != GL_INVALID_INDEX) {
-				glUniformBlockBinding(shader_to_setup.ID, shockwaves_idx, Constants::UboBinding::Shockwaves());
-			}
-			GLuint temporal_idx = glGetUniformBlockIndex(shader_to_setup.ID, "TemporalData");
-			if (temporal_idx != GL_INVALID_INDEX) {
-				glUniformBlockBinding(shader_to_setup.ID, temporal_idx, Constants::UboBinding::TemporalData());
-			}
-			GLuint terrain_idx = glGetUniformBlockIndex(shader_to_setup.ID, "TerrainData");
-			if (terrain_idx != GL_INVALID_INDEX) {
-				glUniformBlockBinding(shader_to_setup.ID, terrain_idx, Constants::UboBinding::TerrainData());
-			}
+			shader_to_setup.bindUniformBlock("Lighting", Constants::UboBinding::Lighting());
+			shader_to_setup.bindUniformBlock("VisualEffects", Constants::UboBinding::VisualEffects());
+			shader_to_setup.bindUniformBlock("Shadows", Constants::UboBinding::Shadows());
+			shader_to_setup.bindUniformBlock("FrustumData", Constants::UboBinding::FrustumData());
+			shader_to_setup.bindUniformBlock("Shockwaves", Constants::UboBinding::Shockwaves());
+			shader_to_setup.bindUniformBlock("TemporalData", Constants::UboBinding::TemporalData());
+			shader_to_setup.bindUniformBlock("TerrainData", Constants::UboBinding::TerrainData());
 		}
 
 		void SetupAkiraBindings() {
@@ -1624,11 +1603,7 @@ namespace Boidsish {
 				// Set uniforms
 				occlusion_cull_shader_->setInt("u_drawCount", static_cast<int>(mdi_uniform_count));
 				occlusion_cull_shader_->setUint("u_baseVisibilityIndex", 0);
-				glUniform2i(
-					glGetUniformLocation(occlusion_cull_shader_->ID, "u_hizSize"),
-					hiz_manager->GetWidth(),
-					hiz_manager->GetHeight()
-				);
+				occlusion_cull_shader_->setIVec2("u_hizSize", hiz_manager->GetWidth(), hiz_manager->GetHeight());
 				occlusion_cull_shader_->setInt("u_hizMipCount", hiz_manager->GetMipCount());
 				occlusion_cull_shader_->setFloat("u_screenExpansion", 4.0f);
 

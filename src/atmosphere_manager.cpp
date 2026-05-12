@@ -100,14 +100,8 @@ namespace Boidsish {
 	void AtmosphereManager::CreateShaders() {
 		auto setup_shader = [](ComputeShader& s) {
 			s.use();
-			GLuint lighting_idx = glGetUniformBlockIndex(s.ID, "Lighting");
-			if (lighting_idx != GL_INVALID_INDEX) {
-				glUniformBlockBinding(s.ID, lighting_idx, Constants::UboBinding::Lighting());
-			}
-			GLuint shadows_idx = glGetUniformBlockIndex(s.ID, "Shadows");
-			if (shadows_idx != GL_INVALID_INDEX) {
-				glUniformBlockBinding(s.ID, shadows_idx, Constants::UboBinding::Shadows());
-			}
+			s.bindUniformBlock("Lighting", Constants::UboBinding::Lighting());
+			s.bindUniformBlock("Shadows", Constants::UboBinding::Shadows());
 		};
 
 		_transmittanceShader = std::make_unique<ComputeShader>("shaders/atmosphere/transmittance_lut.comp");
