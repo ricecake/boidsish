@@ -65,4 +65,5 @@ layout(std430, binding = [[AUTO_EXPOSURE_BINDING]]) buffer AutoExposure {
 	float ltmBoostLocalContrast;
 
 	uint  histogram[256];
+	uint  skyHistogram[256];
 };

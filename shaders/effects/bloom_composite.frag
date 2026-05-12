@@ -184,7 +184,7 @@ void main() {
 	result = pow(max(result * cdlSlope.rgb + cdlOffset.rgb, 0.0), cdlPower.rgb);
 
 	// 4. Tonemapping
-	if (toneMappingEnabled) {
+	if (toneMappingEnabled && isSky == 0) {
 		if (toneMapMode == 5) {
 			if (autoTuneEnabled != 0) {
 				result = uchimura(result, autoUchimuraP, autoUchimuraA, autoUchimuraM, autoUchimuraL, autoUchimuraC, autoUchimuraB);

@@ -188,6 +188,7 @@ namespace Boidsish {
 				float ltmBoostLocalContrast;
 
 				uint32_t histogram[256];
+				uint32_t skyHistogram[256];
 			};
 
 		private:

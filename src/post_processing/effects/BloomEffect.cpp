@@ -213,6 +213,10 @@ namespace Boidsish {
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, sourceTexture);
 
+			glActiveTexture(GL_TEXTURE1);
+			glBindTexture(GL_TEXTURE_2D, depthTexture); // Provide your G-buffer depth here
+
+
 			for (int i = 0; i < _numMips; i++) {
 				glBindImageTexture(5 + i, _bloomTexture, i, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 			}
