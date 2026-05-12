@@ -11,7 +11,6 @@ namespace Boidsish {
 		BloomEffect::BloomEffect(int width, int height):
 			_width(width), _height(height), _bloomTexture(0), _ltmExpTexture(0), _ltmWgtTexture(0), _ltmFusedTexture(0) {
 			name_ = "Bloom";
-			_toneMappingMode = 5; // Default to Uchimura
 		}
 
 		BloomEffect::~BloomEffect() {
@@ -112,39 +111,57 @@ namespace Boidsish {
 			if (_exposureSsbo == 0) {
 				glGenBuffers(1, &_exposureSsbo);
 				glBindBuffer(GL_SHADER_STORAGE_BUFFER, _exposureSsbo);
+
 				ExposureData initialData = {};
-				initialData.adaptedLuminance = 0.3f;
-				initialData.targetLuminance = _targetLuminance;
-				initialData.minExposure = _minExposure;
-				initialData.maxExposure = _maxExposure;
-				initialData.useAutoExposure = 1;
-				initialData.centerWeightTightness = _centerWeightTightness;
-				initialData.focusPoint = _focusPoint;
-				initialData.histogramLowCutoff = _histogramLowCutoff;
-				initialData.histogramHighCutoff = _histogramHighCutoff;
 				initialData.workgroupCounter = 0;
 
-				initialData.autoTuneEnabled = _autoTuneEnabled ? 1 : 0;
-				initialData.minContrast = _minContrast;
-				initialData.maxContrast = _maxContrast;
-				initialData.targetBrightness = _targetBrightness;
+				auto setupLayer = [&](int idx, const LayerSettings& settings) {
+					initialData.layers[idx].adaptedLuminance = 0.3f;
+					initialData.layers[idx].targetLuminance = settings.targetLuminance;
+					initialData.layers[idx].minExposure = settings.minExposure;
+					initialData.layers[idx].maxExposure = settings.maxExposure;
+					initialData.layers[idx].useAutoExposure = settings.autoExposureEnabled ? 1 : 0;
+					initialData.layers[idx].centerWeightTightness = settings.centerWeightTightness;
+					initialData.layers[idx].focusPoint = settings.focusPoint;
+					initialData.layers[idx].histogramLowCutoff = settings.histogramLowCutoff;
+					initialData.layers[idx].histogramHighCutoff = settings.histogramHighCutoff;
+					initialData.layers[idx].speedUp = settings.speedUp;
+					initialData.layers[idx].speedDown = settings.speedDown;
 
-				initialData.cdlSlope = glm::vec4(_cdlSlope, 0.0f);
-				initialData.cdlOffset = glm::vec4(_cdlOffset, 0.0f);
-				initialData.cdlPower = glm::vec4(_cdlPower, 0.0f);
-				initialData.cdlSaturation = _cdlSaturation;
+					initialData.layers[idx].autoTuneEnabled = settings.autoTuneEnabled ? 1 : 0;
+					initialData.layers[idx].minContrast = settings.minContrast;
+					initialData.layers[idx].maxContrast = settings.maxContrast;
+					initialData.layers[idx].targetBrightness = settings.targetBrightness;
 
-				initialData.whiteTemp = _whiteTemp;
-				initialData.whiteTint = _whiteTint;
+					initialData.layers[idx].uchimuraP = settings.uchimuraP;
+					initialData.layers[idx].uchimuraA = settings.uchimuraA;
+					initialData.layers[idx].uchimuraM = settings.uchimuraM;
+					initialData.layers[idx].uchimuraL = settings.uchimuraL;
+					initialData.layers[idx].uchimuraC = settings.uchimuraC;
+					initialData.layers[idx].uchimuraB = settings.uchimuraB;
+					initialData.layers[idx].toneMapMode = settings.toneMappingMode;
+					initialData.layers[idx].toneMappingEnabled = settings.toneMappingEnabled ? 1 : 0;
 
-				initialData.ltmEnabled = _ltmEnabled ? 1 : 0;
-				initialData.ltmEvSpread = _ltmEvSpread;
-				initialData.ltmTarget = _ltmTarget;
-				initialData.ltmSigma = _ltmSigma;
-				initialData.ltmWeightContrast = _ltmWeightContrast;
-				initialData.ltmWeightSaturation = _ltmWeightSaturation;
-				initialData.ltmWeightExposedness = _ltmWeightExposedness;
-				initialData.ltmBoostLocalContrast = _ltmBoostLocalContrast;
+					initialData.layers[idx].cdlSlope = glm::vec4(settings.cdlSlope, 0.0f);
+					initialData.layers[idx].cdlOffset = glm::vec4(settings.cdlOffset, 0.0f);
+					initialData.layers[idx].cdlPower = glm::vec4(settings.cdlPower, 0.0f);
+					initialData.layers[idx].cdlSaturation = settings.cdlSaturation;
+
+					initialData.layers[idx].whiteTemp = settings.whiteTemp;
+					initialData.layers[idx].whiteTint = settings.whiteTint;
+
+					initialData.layers[idx].ltmEnabled = settings.ltmEnabled ? 1 : 0;
+					initialData.layers[idx].ltmEvSpread = settings.ltmEvSpread;
+					initialData.layers[idx].ltmTarget = settings.ltmTarget;
+					initialData.layers[idx].ltmSigma = settings.ltmSigma;
+					initialData.layers[idx].ltmWeightContrast = settings.ltmWeightContrast;
+					initialData.layers[idx].ltmWeightSaturation = settings.ltmWeightSaturation;
+					initialData.layers[idx].ltmWeightExposedness = settings.ltmWeightExposedness;
+					initialData.layers[idx].ltmBoostLocalContrast = settings.ltmBoostLocalContrast;
+				};
+
+				setupLayer(0, _sceneSettings);
+				setupLayer(1, _skySettings);
 
 				glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(ExposureData), &initialData, GL_DYNAMIC_DRAW);
 				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::AutoExposure(), _exposureSsbo);
@@ -162,44 +179,63 @@ namespace Boidsish {
 
 			// 1. Update Auto-Exposure SSBO parameters
 			glBindBuffer(GL_SHADER_STORAGE_BUFFER, _exposureSsbo);
-			float actualTarget = _targetLuminance * (1.0f - _nightFactor * 0.5f);
-			float actualMax = _maxExposure * (1.0f - _nightFactor * 0.4f);
-			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, targetLuminance), sizeof(float), &actualTarget);
-			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, minExposure), sizeof(float), &_minExposure);
-			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, maxExposure), sizeof(float), &actualMax);
-			int enabled = _autoExposureEnabled ? 1 : 0;
-			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, useAutoExposure), sizeof(int), &enabled);
-			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, centerWeightTightness), sizeof(float), &_centerWeightTightness);
-			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, focusPoint), sizeof(glm::vec2), &_focusPoint);
-			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, histogramLowCutoff), sizeof(float), &_histogramLowCutoff);
-			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, histogramHighCutoff), sizeof(float), &_histogramHighCutoff);
+			auto updateLayer = [&](int idx, const LayerSettings& settings) {
+				float actualTarget = settings.targetLuminance * (idx == 0 ? (1.0f - _nightFactor * 0.5f) : 1.0f);
+				float actualMax = settings.maxExposure * (idx == 0 ? (1.0f - _nightFactor * 0.4f) : 1.0f);
 
-			int autoTune = _autoTuneEnabled ? 1 : 0;
-			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, autoTuneEnabled), sizeof(int), &autoTune);
-			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, minContrast), sizeof(float), &_minContrast);
-			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, maxContrast), sizeof(float), &_maxContrast);
-			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, targetBrightness), sizeof(float), &_targetBrightness);
+				size_t offset = idx * sizeof(LayerData);
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset + offsetof(LayerData, targetLuminance), sizeof(float), &actualTarget);
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset + offsetof(LayerData, minExposure), sizeof(float), &settings.minExposure);
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset + offsetof(LayerData, maxExposure), sizeof(float), &actualMax);
+				int enabled = settings.autoExposureEnabled ? 1 : 0;
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset + offsetof(LayerData, useAutoExposure), sizeof(int), &enabled);
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset + offsetof(LayerData, centerWeightTightness), sizeof(float), &settings.centerWeightTightness);
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset + offsetof(LayerData, focusPoint), sizeof(glm::vec2), &settings.focusPoint);
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset + offsetof(LayerData, histogramLowCutoff), sizeof(float), &settings.histogramLowCutoff);
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset + offsetof(LayerData, histogramHighCutoff), sizeof(float), &settings.histogramHighCutoff);
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset + offsetof(LayerData, speedUp), sizeof(float), &settings.speedUp);
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset + offsetof(LayerData, speedDown), sizeof(float), &settings.speedDown);
 
-			glm::vec4 slope4(_cdlSlope, 0.0f);
-			glm::vec4 offset4(_cdlOffset, 0.0f);
-			glm::vec4 power4(_cdlPower, 0.0f);
-			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, cdlSlope), sizeof(glm::vec4), &slope4);
-			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, cdlOffset), sizeof(glm::vec4), &offset4);
-			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, cdlPower), sizeof(glm::vec4), &power4);
-			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, cdlSaturation), sizeof(float), &_cdlSaturation);
+				int autoTune = settings.autoTuneEnabled ? 1 : 0;
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset + offsetof(LayerData, autoTuneEnabled), sizeof(int), &autoTune);
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset + offsetof(LayerData, minContrast), sizeof(float), &settings.minContrast);
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset + offsetof(LayerData, maxContrast), sizeof(float), &settings.maxContrast);
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset + offsetof(LayerData, targetBrightness), sizeof(float), &settings.targetBrightness);
 
-			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, whiteTemp), sizeof(float), &_whiteTemp);
-			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, whiteTint), sizeof(float), &_whiteTint);
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset + offsetof(LayerData, uchimuraP), sizeof(float), &settings.uchimuraP);
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset + offsetof(LayerData, uchimuraA), sizeof(float), &settings.uchimuraA);
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset + offsetof(LayerData, uchimuraM), sizeof(float), &settings.uchimuraM);
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset + offsetof(LayerData, uchimuraL), sizeof(float), &settings.uchimuraL);
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset + offsetof(LayerData, uchimuraC), sizeof(float), &settings.uchimuraC);
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset + offsetof(LayerData, uchimuraB), sizeof(float), &settings.uchimuraB);
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset + offsetof(LayerData, toneMapMode), sizeof(int), &settings.toneMappingMode);
+				int tmEnabled = settings.toneMappingEnabled ? 1 : 0;
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset + offsetof(LayerData, toneMappingEnabled), sizeof(int), &tmEnabled);
 
-			int ltmEnabled = _ltmEnabled ? 1 : 0;
-			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, ltmEnabled), sizeof(int), &ltmEnabled);
-			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, ltmEvSpread), sizeof(float), &_ltmEvSpread);
-			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, ltmTarget), sizeof(float), &_ltmTarget);
-			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, ltmSigma), sizeof(float), &_ltmSigma);
-			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, ltmWeightContrast), sizeof(float), &_ltmWeightContrast);
-			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, ltmWeightSaturation), sizeof(float), &_ltmWeightSaturation);
-			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, ltmWeightExposedness), sizeof(float), &_ltmWeightExposedness);
-			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, ltmBoostLocalContrast), sizeof(float), &_ltmBoostLocalContrast);
+				glm::vec4 slope4(settings.cdlSlope, 0.0f);
+				glm::vec4 offset4(settings.cdlOffset, 0.0f);
+				glm::vec4 power4(settings.cdlPower, 0.0f);
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset + offsetof(LayerData, cdlSlope), sizeof(glm::vec4), &slope4);
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset + offsetof(LayerData, cdlOffset), sizeof(glm::vec4), &offset4);
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset + offsetof(LayerData, cdlPower), sizeof(glm::vec4), &power4);
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset + offsetof(LayerData, cdlSaturation), sizeof(float), &settings.cdlSaturation);
+
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset + offsetof(LayerData, whiteTemp), sizeof(float), &settings.whiteTemp);
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset + offsetof(LayerData, whiteTint), sizeof(float), &settings.whiteTint);
+
+				int ltmEnabled = settings.ltmEnabled ? 1 : 0;
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset + offsetof(LayerData, ltmEnabled), sizeof(int), &ltmEnabled);
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset + offsetof(LayerData, ltmEvSpread), sizeof(float), &settings.ltmEvSpread);
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset + offsetof(LayerData, ltmTarget), sizeof(float), &settings.ltmTarget);
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset + offsetof(LayerData, ltmSigma), sizeof(float), &settings.ltmSigma);
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset + offsetof(LayerData, ltmWeightContrast), sizeof(float), &settings.ltmWeightContrast);
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset + offsetof(LayerData, ltmWeightSaturation), sizeof(float), &settings.ltmWeightSaturation);
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset + offsetof(LayerData, ltmWeightExposedness), sizeof(float), &settings.ltmWeightExposedness);
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset + offsetof(LayerData, ltmBoostLocalContrast), sizeof(float), &settings.ltmBoostLocalContrast);
+			};
+
+			updateLayer(0, _sceneSettings);
+			updateLayer(1, _skySettings);
 
 			// 2. Compute-based Downsample, Bright Pass and Auto-Exposure
 			_downsampleComputeShader->use();
@@ -207,8 +243,8 @@ namespace Boidsish {
 			_downsampleComputeShader->setInt("numMips", _numMips);
 			_downsampleComputeShader->setFloat("threshold", threshold_);
 			_downsampleComputeShader->setFloat("deltaTime", _deltaTime);
-			_downsampleComputeShader->setFloat("speedUp", _speedUp);
-			_downsampleComputeShader->setFloat("speedDown", _speedDown);
+			_downsampleComputeShader->setMat4("invView", glm::inverse(viewMatrix));
+			_downsampleComputeShader->setMat4("invProjection", glm::inverse(projectionMatrix));
 
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, sourceTexture);
@@ -239,7 +275,7 @@ namespace Boidsish {
 			}
 
 			// 2.5 LTM Fusion
-			if (_ltmEnabled) {
+			if (_sceneSettings.ltmEnabled) {
 				_ltmFuseComputeShader->use();
 				_ltmFuseComputeShader->setInt("expTexture", 0);
 				_ltmFuseComputeShader->setInt("wgtTexture", 1);
@@ -309,18 +345,6 @@ namespace Boidsish {
 
 			_compositeShader->setFloat("farPlane", Constants::Project::Camera::DefaultFarPlane());
 			_compositeShader->setFloat("nearPlane", Constants::Project::Camera::DefaultNearPlane());
-
-			_compositeShader->setBool("toneMappingEnabled", _toneMappingEnabled);
-			_compositeShader->setInt("toneMapMode", _toneMappingMode);
-
-			if (_toneMappingMode == 5) { // Uchimura
-				_compositeShader->setFloat("uchimuraP", _uchimuraP);
-				_compositeShader->setFloat("uchimuraA", _uchimuraA);
-				_compositeShader->setFloat("uchimuraM", _uchimuraM);
-				_compositeShader->setFloat("uchimuraL", _uchimuraL);
-				_compositeShader->setFloat("uchimuraC", _uchimuraC);
-				_compositeShader->setFloat("uchimuraB", _uchimuraB);
-			}
 
 			GLuint lighting_idx = glGetUniformBlockIndex(_compositeShader->ID, "Lighting");
 			if (lighting_idx != GL_INVALID_INDEX) {
