@@ -289,6 +289,12 @@ namespace Boidsish {
 
 		void SetTerrainGenerator(ITerrainGenerator* terrain) { terrain_ = terrain; }
 
+		unsigned int GetWindDataUbo() const { return wind_data_ubo_; }
+		unsigned int GetWindTexture() const { return wind_texture_; }
+		unsigned int GetLbmWindTexture() const { return lbm_wind_texture_; }
+		unsigned int GetScalarTexture() const { return lbm_scalar_texture_; }
+		unsigned int GetAerosolTexture() const { return lbm_aerosol_texture_; }
+
 	private:
 		unsigned int wind_data_ubo_ = 0;
 		unsigned int wind_texture_ = 0;
@@ -334,6 +340,7 @@ namespace Boidsish {
 
 		std::array<AttributeState, static_cast<size_t>(WeatherAttribute::Count)> attribute_states_;
 
+		glm::vec2                            cloud_advection_offset_{0.0f};
 		ITerrainGenerator*                   terrain_ = nullptr;
 		std::unique_ptr<WeatherLbmSimulator> lbm_simulator_;
 	};

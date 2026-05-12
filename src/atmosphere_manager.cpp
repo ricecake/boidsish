@@ -102,6 +102,7 @@ namespace Boidsish {
 			s.use();
 			s.bindUniformBlock("Lighting", Constants::UboBinding::Lighting());
 			s.bindUniformBlock("Shadows", Constants::UboBinding::Shadows());
+			s.bindUniformBlock("WindData", Constants::UboBinding::WindData());
 		};
 
 		_transmittanceShader = std::make_unique<ComputeShader>("shaders/atmosphere/transmittance_lut.comp");
@@ -128,6 +129,7 @@ namespace Boidsish {
 		float            worldScale
 	) {
 		PROJECT_PROFILE_SCOPE("AtmosphereManager::Update");
+		auto wm = ServiceLocator::Instance().Get<WeatherManager>();
 		if (_needsPrecompute) {
 			// Dispatch Transmittance
 			_transmittanceShader->use();
@@ -192,6 +194,12 @@ namespace Boidsish {
 		glBindTexture(GL_TEXTURE_2D, _cloudShadowMap);
 		_skyViewShader->setInt("u_cloudShadowMap", 3);
 
+		// Bind Wind/Weather UBO
+		if (wm->GetWindDataUbo() == 0) {
+			wm->UpdateWindUbo(time, nullptr, nullptr); // Ensure UBO/textures are created
+		}
+		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::WindData(), wm->GetWindDataUbo());
+
 		_skyViewShader->setFloat("u_worldScale", worldScale);
 		_skyViewShader->setFloat("u_cloudShadowIntensity", _cloudShadowIntensity);
 
@@ -237,13 +245,26 @@ namespace Boidsish {
 		_aerialPerspectiveShader->setFloat("u_colorVarianceScale", _colorVarianceScale);
 		_aerialPerspectiveShader->setFloat("u_colorVarianceStrength", _colorVarianceStrength);
 
-		auto wm = ServiceLocator::Instance().Get<WeatherManager>();
 		auto weather = wm->GetCurrentWeather();
 
 		_aerialPerspectiveShader->setFloat("hazeDensity", weather.haze_density);
 		_aerialPerspectiveShader->setFloat("hazeHeight", weather.haze_height);
 		_aerialPerspectiveShader->setVec3("hazeColor", weather.haze_color);
 
+		// Bind Wind/Weather UBO and Textures
+		if (wm->GetWindDataUbo() == 0) {
+			wm->UpdateWindUbo(time, nullptr, nullptr); // Ensure UBO/textures are created
+		}
+
+		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::WindData(), wm->GetWindDataUbo());
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::WindData());
+		glBindTexture(GL_TEXTURE_2D, wm->GetWindTexture());
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::LbmWindData());
+		glBindTexture(GL_TEXTURE_2D, wm->GetLbmWindTexture());
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::WeatherScalars());
+		glBindTexture(GL_TEXTURE_2D, wm->GetScalarTexture());
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::WeatherAerosols());
+		glBindTexture(GL_TEXTURE_2D, wm->GetAerosolTexture());
 
 		glDispatchCompute(32 / 4, 32 / 4, 32 / 4);
 		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
@@ -262,6 +283,9 @@ namespace Boidsish {
 		glBindImageTexture(0, _cloudShadowMap, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R16F);
 		_cloudShadowShader->setVec2("u_mapCenter", glm::vec2(cameraPos.x, cameraPos.z));
 		_cloudShadowShader->setFloat("u_mapSize", kCloudShadowWorldSize);
+
+		// Bind Wind/Weather UBO
+		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::WindData(), wm->GetWindDataUbo());
 		glDispatchCompute(kCloudShadowResolution / 16, kCloudShadowResolution / 16, 1);
 		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 

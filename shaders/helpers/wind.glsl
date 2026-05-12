@@ -10,6 +10,7 @@
 layout(std140, binding = [[WIND_DATA_BINDING]]) uniform WindData {
 	ivec4 u_windOriginSize; // x, z = origin in chunks, y = size (width), w = height (60)
 	vec4  u_windParams;     // x = chunkSpacing (32.0), y = time, z = curlScale, w = curlStrength
+	vec4  u_cloudAdvection; // xy = horizontal advection, zw = unused
 };
 
 layout(binding = [[WIND_TEXTURE_BINDING]]) uniform sampler2D u_windTexture;
@@ -31,7 +32,15 @@ vec3 getWindAtPosition(vec3 worldPos) {
 	vec2 gridCoord = (worldPos.xz / gridSpacing) - vec2(u_windOriginSize.xz);
 	vec2 uv = gridCoord / vec2(u_windOriginSize.y, u_windOriginSize.w);
 
-	return texture(u_windTexture, uv).xyz;
+	vec3 wind = texture(u_windTexture, uv).xyz;
+
+	// Altitude scaling (Wind profile power law)
+	// v = v_ref * (h / h_ref)^alpha
+	// h_ref = 1.0m, alpha = 0.14 (typical for open terrain)
+	float h = max(1.0, worldPos.y - getTerrainHeight(worldPos.xz));
+	float multiplier = pow(h, 0.14);
+
+	return wind * multiplier;
 }
 
 /**
