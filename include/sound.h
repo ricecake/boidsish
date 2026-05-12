@@ -1,11 +1,14 @@
 #pragma once
 
 #include <string>
+#include <memory>
 
 #include "miniaudio.h"
 #include <glm/glm.hpp>
 
 namespace Boidsish {
+
+	class ProceduralAudioSource;
 
 	class Sound {
 	public:
@@ -17,6 +20,15 @@ namespace Boidsish {
 			bool               spatialized = true,
 			const glm::vec3&   position = {0, 0, 0},
 			ma_sound_group*    group = nullptr
+		);
+		Sound(
+			ma_engine*                            engine,
+			std::shared_ptr<ProceduralAudioSource> source,
+			bool                                  loop = false,
+			float                                 volume = 1.0f,
+			bool                                  spatialized = true,
+			const glm::vec3&                      position = {0, 0, 0},
+			ma_sound_group*                       group = nullptr
 		);
 		~Sound();
 
@@ -32,9 +44,12 @@ namespace Boidsish {
 		void SetLooping(bool loop);
 		bool IsDone();
 
+		void Stop();
+
 	private:
 		ma_sound _sound;
 		bool     _initialized = false;
+		std::shared_ptr<ProceduralAudioSource> _procedural_source;
 	};
 
 } // namespace Boidsish
