@@ -113,34 +113,16 @@ namespace Boidsish {
 
 		// Set up UBO bindings for the render shader
 		render_shader_->use();
-		GLuint frustum_idx = glGetUniformBlockIndex(render_shader_->ID, "FrustumData");
-		if (frustum_idx != GL_INVALID_INDEX) {
-			glUniformBlockBinding(render_shader_->ID, frustum_idx, Constants::UboBinding::FrustumData());
-		}
-		GLuint lighting_idx = glGetUniformBlockIndex(render_shader_->ID, "Lighting");
-		if (lighting_idx != GL_INVALID_INDEX) {
-			glUniformBlockBinding(render_shader_->ID, lighting_idx, Constants::UboBinding::Lighting());
-		}
-		GLuint temporal_idx = glGetUniformBlockIndex(render_shader_->ID, "TemporalData");
-		if (temporal_idx != GL_INVALID_INDEX) {
-			glUniformBlockBinding(render_shader_->ID, temporal_idx, Constants::UboBinding::TemporalData());
-		}
+		render_shader_->bindUniformBlock("FrustumData", Constants::UboBinding::FrustumData());
+		render_shader_->bindUniformBlock("Lighting", Constants::UboBinding::Lighting());
+		render_shader_->bindUniformBlock("TemporalData", Constants::UboBinding::TemporalData());
 
 		// Set up UBO bindings for the compute shaders
 		auto setup_comp_ubos = [&](ComputeShader* shader) {
 			shader->use();
-			GLuint comp_lighting_idx = glGetUniformBlockIndex(shader->ID, "Lighting");
-			if (comp_lighting_idx != GL_INVALID_INDEX) {
-				glUniformBlockBinding(shader->ID, comp_lighting_idx, Constants::UboBinding::Lighting());
-			}
-			GLuint comp_frustum_idx = glGetUniformBlockIndex(shader->ID, "FrustumData");
-			if (comp_frustum_idx != GL_INVALID_INDEX) {
-				glUniformBlockBinding(shader->ID, comp_frustum_idx, Constants::UboBinding::FrustumData());
-			}
-			GLuint comp_vfx_idx = glGetUniformBlockIndex(shader->ID, "VisualEffects");
-			if (comp_vfx_idx != GL_INVALID_INDEX) {
-				glUniformBlockBinding(shader->ID, comp_vfx_idx, Constants::UboBinding::VisualEffects());
-			}
+			shader->bindUniformBlock("Lighting", Constants::UboBinding::Lighting());
+			shader->bindUniformBlock("FrustumData", Constants::UboBinding::FrustumData());
+			shader->bindUniformBlock("VisualEffects", Constants::UboBinding::VisualEffects());
 		};
 
 		setup_comp_ubos(lifecycle_shader_.get());
@@ -753,10 +735,7 @@ namespace Boidsish {
 		}
 
 		// Bind Lighting UBO for nightFactor
-		GLuint lighting_idx = glGetUniformBlockIndex(render_shader_->ID, "Lighting");
-		if (lighting_idx != GL_INVALID_INDEX) {
-			glUniformBlockBinding(render_shader_->ID, lighting_idx, Constants::UboBinding::Lighting());
-		}
+		render_shader_->bindUniformBlock("Lighting", Constants::UboBinding::Lighting());
 
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::EmitterBuffer(), emitter_buffer_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::VisibleParticleIndices(), visible_indices_buffer_);
