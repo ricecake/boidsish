@@ -13,15 +13,8 @@ uniform float     intensity;
 uniform float     minIntensity;
 uniform float     maxIntensity;
 
-uniform bool toneMappingEnabled = false;
-uniform int  toneMapMode = 2;
-
-uniform float uchimuraP;
-uniform float uchimuraA;
-uniform float uchimuraM;
-uniform float uchimuraL;
-uniform float uchimuraC;
-uniform float uchimuraB;
+uniform mat4 invView;
+uniform mat4 invProjection;
 
 uniform float nearPlane; // Set from application (e.g., 0.1)
 uniform float farPlane;  // Set from application (e.g., 1000.0)
@@ -30,6 +23,9 @@ uniform float farPlane;  // Set from application (e.g., 1000.0)
 #include "helpers/tonemapping.glsl"
 #include "types/autoexposure.glsl"
 // #include "lygia/color/vibrance.glsl"
+#include "lygia/color/space.glsl"
+
+#include "types/lighting.glsl";
 
 // Planckian locus approximation for temperature to RGB
 vec3 tempToRgb(float temp) {
@@ -58,6 +54,25 @@ float linearizeDepth(float depth) {
     return (2.0 * nearPlane * farPlane) / (farPlane + nearPlane - z * (farPlane - nearPlane));
 }
 
+// Calculates a safe multiplier to prevent sky luminance from blowing out the Uchimura shoulder
+float calculateSkyAttenuation(vec3 rawHdrColor, float uchimuraM, float uchimuraL, float rolloffStrength) {
+	float luma = dot(rawHdrColor, vec3(0.2126, 0.7152, 0.0722));
+
+	//Define the threshold where Uchimura starts compressing
+	float shoulderStart = uchimuraM + uchimuraL;
+
+	//Calculate how far past the linear region this pixel is
+	float overdrive = max(0.0, luma - shoulderStart);
+
+	//Apply a rational rolloff: 1 / (1 + x)
+	// If overdrive is 0 (below shoulder), multiplier is 1.0.
+	// As overdrive increases, multiplier smoothly approaches 0.
+	// 'rolloffStrength' (e.g., 0.5 to 2.0) tunes how aggressively you hold onto highlights.
+	float multiplier = 1.0 / (1.0 + rolloffStrength * overdrive);
+
+	return multiplier;
+}
+
 void main() {
 	vec3 sceneColor = texture(sceneTexture, TexCoords).rgb;
 	vec3 bloomColor = texture(bloomBlur, TexCoords).rgb;
@@ -65,10 +80,21 @@ void main() {
 	// Add bloom to HDR scene color.
 	vec3 result = sceneColor + bloomColor * intensity;
 
-	// Guided Upsampling for LTM
-	if (ltmEnabled != 0) {
-		// targetLuminance *=  (1.50-smoothstep(farPlane / 2.0, farPlane, linearizeDepth(texture(depthTexture, TexCoords).r)));
-		float exposure = targetLuminance / max(avgLuma, 0.0001);
+	float rawDepth = texture(depthTexture, TexCoords).r;
+	int isSky = 0;
+	if (rawDepth > 0.99999) {
+		vec2 ndc = TexCoords * 2.0 - 1.0;
+		vec4 ray_view = invProjection * vec4(ndc, -1.0, 1.0);
+		ray_view = vec4(ray_view.xy, -1.0, 0.0);
+		vec3 worldDir = normalize((invView * ray_view).xyz);
+		if (worldDir.y > 0.0) {
+			isSky = 1;
+		}
+	}
+
+	// Guided Upsampling for LTM (Scene only)
+	if (layers[0].ltmEnabled != 0 && isSky == 0) {
+		float exposure = layers[0].targetLuminance / max(layers[0].avgLuma, 0.0001);
 		vec3 currentExposure = result * exposure;
 		vec3 currentAces = aces(currentExposure);
 		float guidanceLuma = sqrt(max(dot(currentAces, vec3(0.2126, 0.7152, 0.0722)), 0.0));
@@ -115,68 +141,59 @@ void main() {
 			finalMultiplier = mix(1.0, finalMultiplier, t * t);
 		}
 
-		result *= finalMultiplier;// * (1.50-smoothstep(farPlane / 2.0, farPlane, linearizeDepth(texture(depthTexture, TexCoords).r)));
+		result *= finalMultiplier;
+	}
+
+	// 2. Exposure
+	if (layers[isSky].useAutoExposure != 0) {
+		float exposure = layers[isSky].targetLuminance / max(layers[isSky].adaptedLuminance, 0.0001);
+		exposure = clamp(exposure, layers[isSky].minExposure, layers[isSky].maxExposure);
+
+		if (isSky == 1) {
+			vec2 ndc = TexCoords * 2.0 - 1.0;
+			vec4 ray_view = invProjection * vec4(ndc, -1.0, 1.0);
+			ray_view = vec4(ray_view.xy, -1.0, 0.0); // Focus on direction
+			vec3 worldDir = normalize((invView * ray_view).xyz);
+
+			float attenuation = calculateSkyAttenuation(result * exposure, layers[1].autoUchimuraM, layers[1].autoUchimuraL, 1.20);
+			float mask = smoothstep(0, 0.5*1.5707, asin(worldDir.y));
+			attenuation = mix(attenuation, 1.0, mask);
+			exposure *= attenuation;
+		}
+
+		result *= exposure;
 	}
 
 	// 1. White Balance
-	vec3 whiteGain = 1.0 / max(tempToRgb(whiteTemp), 0.0001);
+	vec3 whiteGain = 1.0 / max(tempToRgb(layers[isSky].whiteTemp), 0.0001);
 	// Apply tint (green/magenta)
-	whiteGain.g *= (1.0 - whiteTint * 0.1);
-	whiteGain.rb *= (1.0 + whiteTint * 0.05);
+	whiteGain.g *= (1.0 - layers[isSky].whiteTint * 0.1);
+	whiteGain.rb *= (1.0 + layers[isSky].whiteTint * 0.05);
 
 	// Normalize whiteGain to preserve luminance
 	whiteGain /= max(dot(whiteGain, vec3(0.2126, 0.7152, 0.0722)), 0.0001);
 	result *= whiteGain;
 
-	// 2. Exposure
-	if (useAutoExposure != 0) {
-		float exposure = targetLuminance / max(adaptedLuminance, 0.0001);
-		exposure = clamp(exposure, minExposure, maxExposure);
-		result *= exposure;
-	}
-
 	// 3. ASC CDL Color Grading
-	// Color = pow(max(0, Color * Slope + Offset), Power)
-	result = pow(max(result * cdlSlope.rgb + cdlOffset.rgb, 0.0), cdlPower.rgb);
-
-	// Saturation
-	float luma = dot(result, vec3(0.2126, 0.7152, 0.0722));
-	result = luma + cdlSaturation * (result - luma);
+	result = pow(max(result * layers[isSky].cdlSlope.rgb + layers[isSky].cdlOffset.rgb, 0.0), layers[isSky].cdlPower.rgb);
 
 	// 4. Tonemapping
-	if (toneMappingEnabled) {
-		if (toneMapMode == 5) {
-			if (autoTuneEnabled != 0) {
-				result = uchimura(result, autoUchimuraP, autoUchimuraA, autoUchimuraM, autoUchimuraL, autoUchimuraC, autoUchimuraB);
+	if (layers[isSky].toneMappingEnabled != 0) {
+		int mode = layers[isSky].toneMapMode;
+		if (mode == 5) { // Uchimura
+			if (layers[isSky].autoTuneEnabled != 0) {
+				result = uchimura(result, layers[isSky].autoUchimuraP, layers[isSky].autoUchimuraA, layers[isSky].autoUchimuraM, layers[isSky].autoUchimuraL, layers[isSky].autoUchimuraC, layers[isSky].autoUchimuraB);
 			} else {
-				result = uchimura(result, uchimuraP, uchimuraA, uchimuraM, uchimuraL, uchimuraC, uchimuraB);
+				result = uchimura(result, layers[isSky].uchimuraP, layers[isSky].uchimuraA, layers[isSky].uchimuraM, layers[isSky].uchimuraL, layers[isSky].uchimuraC, layers[isSky].uchimuraB);
 			}
 		} else {
-			result = applyTonemapping(result, toneMapMode);
+			result = applyTonemapping(result, mode);
 		}
 	}
 
-	// const vec3 a = vec3(0.5, 0.5, 0.5);
-	// const vec3 b = vec3(0.5, 0.5, 0.5);
-	// const vec3 c = vec3(0.8, 0.8, 0.8);
-	// const vec3 d = vec3(0.0, 0.33, 0.67); // Shifts for R, G, B
-
-		// vec3 a = vec3(0.5, 0.5, 0.5);
-		// vec3 b = vec3(0.5, 0.5, 0.5);
-		// vec3 c = vec3(2.0, 1.0, 0.0);
-		// vec3 d = vec3(5.0, 0.2, 0.25); // Shifts for R, G, B
-
-		// vec3 a = vec3(0.5, 0.5, 0.5);
-		// vec3 b = vec3(0.5, 0.5, 0.5);
-		// vec3 c = vec3(2.0, 1.0, 0.0);
-		// vec3 d = vec3(0.50, 0.2, 0.25); // Shifts for R, G, B
-
-
-	// float value = distance(result, vec3(0.5));
-
-	// result = (a + b * cos(6.28318 * (c * (value) + d)));
-
-	// result = vibrance(result, 0.70);
+	// Saturation
+	float luma = dot(result, vec3(0.2126, 0.7152, 0.0722));
+	result = luma + layers[isSky].cdlSaturation * (result - luma);
 
 	FragColor = vec4(result, 1.0);
 }
