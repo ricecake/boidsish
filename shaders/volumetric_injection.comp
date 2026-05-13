@@ -55,7 +55,7 @@ void main() {
     vec3 uvw = (vec3(texel) + 0.5) / vec3(u_volData.cascadeRes.xyz);
     vec3 viewPos_f = getFroxelViewPos(uvw, u_cascadeIndex);
     vec3 worldPos = (invView * vec4(viewPos_f, 1.0)).xyz;
-    vec3 V = normalize(viewPos - worldPos);
+    vec3 V = normalize(viewPos - worldPos); // Direction from froxel to camera
 
     vec3 totalScatteredLight = vec3(0.0);
 
@@ -63,12 +63,13 @@ void main() {
     for (int i = 0; i < min(2, num_lights); ++i) {
         if (lights[i].type != LIGHT_TYPE_DIRECTIONAL) continue;
 
-        vec3 L = normalize(-lights[i].direction);
+        vec3 L = normalize(-lights[i].direction); // Direction to light
         // Note: passing up-vector as normal for the shadow calculation in air
         float shadow = calculateShadow(i, worldPos, vec3(0, 1, 0), L);
         shadow *= calculateCloudShadow(i, worldPos);
 
-        float cosTheta = dot(V, L);
+        // Phase function: angle between light direction (-L) and view direction (V)
+        float cosTheta = dot(V, -L);
         float phase = hgPhase(cosTheta, u_volData.phaseG);
         // Add isotropic scattering (20% mix) to ensure visibility from all angles
         phase = mix(phase, 1.0 / (4.0 * PI), 0.2);

@@ -75,7 +75,7 @@ namespace Boidsish {
 			if (shadows_idx != GL_INVALID_INDEX) {
 				glUniformBlockBinding(s.ID, shadows_idx, Constants::UboBinding::Shadows());
 			}
-			GLuint vol_idx = glGetUniformBlockIndex(s.ID, "VolumetricLighting");
+			GLuint vol_idx = glGetUniformBlockIndex(s.ID, "VolumetricUniforms");
 			if (vol_idx != GL_INVALID_INDEX) {
 				glUniformBlockBinding(s.ID, vol_idx, Constants::UboBinding::VolumetricLighting());
 			}

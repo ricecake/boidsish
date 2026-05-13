@@ -21,6 +21,8 @@ layout(binding = [[ATMOSPHERE_AERIAL_PERSPECTIVE_BINDING]]) uniform sampler3D u_
 
 layout(binding = [[VOLUMETRIC_CASCADE0_BINDING]]) uniform sampler3D u_volumetricCascade0;
 layout(binding = [[VOLUMETRIC_CASCADE1_BINDING]]) uniform sampler3D u_volumetricCascade1;
+layout(binding = [[VOLUMETRIC_CASCADE2_BINDING]]) uniform sampler3D u_volumetricCascade2;
+layout(binding = [[VOLUMETRIC_CASCADE3_BINDING]]) uniform sampler3D u_volumetricCascade3;
 
 struct VolumetricLighting {
     vec4 cascadeRanges;
@@ -66,9 +68,6 @@ float sampleAerialPerspectiveTransmittance(vec3 rd, float distKM) {
 
 	return texture(u_aerialPerspectiveLUT, vec3(u, v, w)).a;
 }
-
-uniform sampler3D u_volumetricCascade2;
-uniform sampler3D u_volumetricCascade3;
 
 vec4 sampleVolumetricChained(vec2 screenUV, float dist) {
     float ranges[5] = { 0.1, u_volData.cascadeRanges.x, u_volData.cascadeRanges.y, u_volData.cascadeRanges.z, u_volData.cascadeRanges.w };
