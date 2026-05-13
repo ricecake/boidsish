@@ -100,11 +100,11 @@ Sampling getAtmosphereProperties(float h) {
 }
 
 Sampling getAtmospherePropertiesAtPos(vec3 worldPos) {
-	float h = worldPos.y / (1000.0 * WORLD_SCALE_VALUE);
+	float h = worldPos.y / (1000.0 * max(0.0001, WORLD_SCALE_VALUE));
 	Sampling s = getAtmosphereProperties(h);
 
 	// Modulate Mie based on weather
-	vec2 weatherUV = worldPos.xz / (u_originSize.y * 32.0); // Rough approximation of weather grid scale
+	vec2 weatherUV = worldPos.xz / (max(1.0, float(u_originSize.y)) * 32.0); // Rough approximation of weather grid scale
 	vec4 scalars = texture(u_weatherScalars, weatherUV);
 	vec4 aerosols = texture(u_weatherAerosols, weatherUV);
 
