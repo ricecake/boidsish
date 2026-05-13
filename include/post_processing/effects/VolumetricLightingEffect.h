@@ -51,6 +51,8 @@ namespace Boidsish {
 			bool has_history_ = false;
 
 			glm::mat4 prev_view_projection_ = glm::mat4(1.0f);
+			glm::vec3 prev_camera_pos_ = glm::vec3(0.0f);
+			glm::vec3 prev_camera_front_ = glm::vec3(0.0f, 0.0f, -1.0f);
 
 			float anisotropy_ = 0.8f;
 			float intensity_ = 1.0f;

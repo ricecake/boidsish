@@ -38,8 +38,9 @@ void main() {
         float transmittance = exp(-extinction * stepSize);
 
         // Better energy conservation: (scattering - scattering * transmittance) / extinction
-        vec3 scatteringStep = (scattering - scattering * transmittance) / max(extinction, 0.0001);
-        if (any(isnan(scatteringStep))) scatteringStep = vec3(0.0);
+        // For very small extinction, this approaches: scattering * stepSize
+        float factor = (extinction > 0.00001) ? (1.0 - transmittance) / extinction : stepSize;
+        vec3 scatteringStep = scattering * factor;
 
         accumulatedScattering += accumulatedTransmittance * scatteringStep;
         accumulatedTransmittance *= transmittance;

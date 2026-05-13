@@ -4,10 +4,13 @@ layout(local_size_x = 8, local_size_y = 8, local_size_z = 4) in;
 
 layout(rgba16f, binding = [[VOLUMETRIC_INJECTION_BINDING]]) uniform image3D outInjection;
 layout(binding = [[VOLUMETRIC_HISTORY_BINDING]]) uniform sampler3D uHistoryTexture;
+layout(binding = 10) uniform sampler2D uBlueNoise;
 
 uniform mat4 uInvView;
 uniform mat4 uInvProj;
 uniform mat4 uPrevVP;
+uniform vec3 uPrevCamPos;
+uniform vec3 uPrevCamFront;
 
 uniform float uAnisotropy;
 uniform float uIntensity;
@@ -47,7 +50,8 @@ void main() {
     if (vox.x >= 160 || vox.y >= 90 || vox.z >= 64 * NUM_CASCADES) return;
 
     // Jitter for temporal AA / stochastic sampling
-    vec3 jitter = vec3(0.5); // TODO: blue noise jitter
+    ivec2 noiseCoords = vox.xy + ivec2(vox.z * 13, vox.z * 17);
+    vec3 jitter = texelFetch(uBlueNoise, noiseCoords % textureSize(uBlueNoise, 0), 0).rgb;
 
     vec3 worldPos = worldFromFroxel(vox, jitter);
 
@@ -102,11 +106,34 @@ void main() {
     if (uTemporalAlpha > 0.0) {
         vec4 prevClip = uPrevVP * vec4(worldPos, 1.0);
         vec3 prevNDC = prevClip.xyz / (abs(prevClip.w) > 0.0001 ? prevClip.w : 1.0);
+
         if (all(greaterThanEqual(prevNDC, vec3(-1.0))) && all(lessThanEqual(prevNDC, vec3(1.0)))) {
-            // Simplified: just sample history at same vox for now if no reprojection logic yet
-            vec4 history = texture(uHistoryTexture, (vec3(vox) + 0.5) / vec3(160, 90, 64 * NUM_CASCADES));
-            if (all(greaterThanEqual(history, vec4(0.0))) && all(lessThanEqual(history, vec4(1000.0)))) {
-                current = mix(current, history, uTemporalAlpha);
+            // Reproject current world position into previous frame's froxel grid
+            vec3 prevUV = prevNDC * 0.5 + 0.5;
+
+            // Find previous cascade using planar depth (Z)
+            float prevLinearZ = dot(worldPos - uPrevCamPos, uPrevCamFront);
+
+            int prevCascade = -1;
+            float z_near = 0.1;
+            float z_far = 0.0;
+            for (int i = 0; i < NUM_CASCADES; ++i) {
+                if (prevLinearZ <= CASCADE_DISTANCES[i]) {
+                    prevCascade = i;
+                    z_far = CASCADE_DISTANCES[i];
+                    if (i > 0) z_near = CASCADE_DISTANCES[i-1];
+                    break;
+                }
+            }
+
+            if (prevCascade != -1 && prevLinearZ > z_near) {
+                float slice = clamp(log(prevLinearZ / z_near) / log(z_far / z_near), 0.0, 1.0);
+                float w = (float(prevCascade) * 64.0 + (slice * 63.5 + 0.5)) / (64.0 * float(NUM_CASCADES));
+
+                vec4 history = texture(uHistoryTexture, vec3(prevUV.xy, w));
+                if (all(greaterThanEqual(history, vec4(0.0))) && all(lessThanEqual(history, vec4(1000.0)))) {
+                    current = mix(current, history, uTemporalAlpha);
+                }
             }
         }
     }

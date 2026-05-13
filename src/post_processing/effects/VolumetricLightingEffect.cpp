@@ -5,6 +5,7 @@
 #include "light_manager.h"
 #include "terrain_render_manager.h"
 #include "atmosphere_manager.h"
+#include "NoiseManager.h"
 #include <GL/glew.h>
 
 namespace Boidsish {
@@ -79,6 +80,7 @@ namespace Boidsish {
 			auto terrain_mgr = loc.Get<TerrainRenderManager>();
 			auto light_mgr = loc.Get<LightManager>();
 			auto atmos_mgr = loc.Get<AtmosphereManager>();
+			auto noise_mgr = loc.Get<NoiseManager>();
 
 			// 1. Injection
 			injection_shader_->use();
@@ -86,11 +88,19 @@ namespace Boidsish {
 			if (terrain_mgr) terrain_mgr->BindTerrainData(*injection_shader_);
 			if (atmos_mgr) atmos_mgr->BindToShader(*injection_shader_);
 
+			if (noise_mgr) {
+				glActiveTexture(GL_TEXTURE10);
+				glBindTexture(GL_TEXTURE_2D, noise_mgr->GetBlueNoiseTexture());
+				injection_shader_->setInt("uBlueNoise", 10);
+			}
+
 			injection_shader_->setFloat("uAnisotropy", anisotropy_);
 			injection_shader_->setFloat("uIntensity", intensity_);
 			injection_shader_->setMat4("uInvView", glm::inverse(viewMatrix));
 			injection_shader_->setMat4("uInvProj", glm::inverse(projectionMatrix));
 			injection_shader_->setMat4("uPrevVP", prev_view_projection_);
+			injection_shader_->setVec3("uPrevCamPos", prev_camera_pos_);
+			injection_shader_->setVec3("uPrevCamFront", prev_camera_front_);
 			injection_shader_->setFloat("uTemporalAlpha", has_history_ ? temporal_alpha_ : 0.0f);
 
 			glBindImageTexture(Constants::TextureUnit::VolumetricInjection(), injection_texture_, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
@@ -117,6 +127,9 @@ namespace Boidsish {
 			history_index_ = next_history;
 			has_history_ = true;
 			prev_view_projection_ = projectionMatrix * viewMatrix;
+			prev_camera_pos_ = cameraPos;
+			// Extract camera front from view matrix (3rd column is -Front)
+			prev_camera_front_ = -glm::normalize(glm::vec3(viewMatrix[2]));
 
 			// 3. Composition
 			composite_shader_->use();
