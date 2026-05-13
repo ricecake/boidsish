@@ -62,8 +62,8 @@ void main() {
         if (lights[i].type != LIGHT_TYPE_DIRECTIONAL) continue;
 
         vec3 L = normalize(-lights[i].direction);
-        float cosTheta = dot(V, L);
-        float phase = miePhase(cosTheta); // TODO: use uAnisotropy
+        float cosTheta = dot(-V, L);
+        float phase = henyeyGreenstein(uAnisotropy, cosTheta);
 
         float shadow = calculateShadow(i, worldPos, vec3(0,1,0), L);
         shadow *= calculateCloudShadow(i, worldPos);
@@ -80,8 +80,8 @@ void main() {
         calculateLightContribution(i, worldPos, L, atten);
         if (atten <= 0.0) continue;
 
-        float cosTheta = dot(V, L);
-        float phase = miePhase(cosTheta);
+        float cosTheta = dot(-V, L);
+        float phase = henyeyGreenstein(uAnisotropy, cosTheta);
         float shadow = calculateShadow(i, worldPos, vec3(0,1,0), L);
 
         radiance += lights[i].color * lights[i].intensity * atten * shadow * phase;
@@ -92,7 +92,11 @@ void main() {
 
     radiance *= uIntensity;
 
-    vec4 current = vec4(radiance * s.mie, (s.mie.r + s.mie.g + s.mie.b) / 3.0);
+    // Convert atmospheric coefficients from per-KM to per-meter
+    vec3 mieCoeff = s.mie * 0.001;
+    float extinctionCoeff = (s.rayleigh.r + s.rayleigh.g + s.rayleigh.b + s.mie.r + s.mie.g + s.mie.b) / 3.0 * 0.001;
+
+    vec4 current = vec4(radiance * mieCoeff, extinctionCoeff);
 
     // Temporal accumulation
     if (uTemporalAlpha > 0.0) {

@@ -34,6 +34,7 @@ namespace Boidsish {
 				s.bindUniformBlock("Shadows", Constants::UboBinding::Shadows());
 				s.bindUniformBlock("TerrainData", Constants::UboBinding::TerrainData());
 				s.bindUniformBlock("FrustumData", Constants::UboBinding::FrustumData());
+				s.bindUniformBlock("TemporalData", Constants::UboBinding::TemporalData());
 			};
 
 			setup_shader(*injection_shader_);

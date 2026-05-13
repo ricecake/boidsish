@@ -7,15 +7,7 @@ layout(binding = 0) uniform sampler2D uSceneTexture;
 layout(binding = 1) uniform sampler2D uDepthTexture;
 layout(binding = 2) uniform sampler3D uVolumetricTexture;
 
-layout(std140, binding = [[FRUSTUM_BINDING]]) uniform FrustumData {
-    mat4 viewMatrix;
-    mat4 projectionMatrix;
-    mat4 invView;
-    mat4 invProj;
-    vec3 cameraPos;
-    float nearPlane;
-    float farPlane;
-};
+#include "../types/temporal_data.glsl"
 
 const int NUM_CASCADES = 4;
 const int GRID_RES_Z = 64;
@@ -28,10 +20,10 @@ void main() {
     // Reconstruct view-space depth
     float z_ndc = depth * 2.0 - 1.0;
     vec4 clipPos = vec4(TexCoords * 2.0 - 1.0, z_ndc, 1.0);
-    vec4 viewPos = invProj * clipPos;
+    vec4 viewPos = invProjection * clipPos;
     viewPos /= viewPos.w;
 
-    float linearZ = -viewPos.z;
+    float linearZ = max(0.1, -viewPos.z);
     if (depth >= 1.0) linearZ = 1000.0; // Sample far end for sky
 
     // Find cascade
@@ -53,8 +45,8 @@ void main() {
 
     if (cascade != -1) {
         // Calculate W coordinate for this cascade
-        float slice = log(linearZ / z_near) / log(z_far / z_near);
-        float w = (float(cascade) * float(GRID_RES_Z) + slice * float(GRID_RES_Z)) / float(GRID_RES_Z * NUM_CASCADES);
+        float slice = clamp(log(linearZ / z_near) / log(z_far / z_near), 0.0, 1.0);
+        float w = (float(cascade) * float(GRID_RES_Z) + (slice * 63.5 + 0.5)) / float(GRID_RES_Z * NUM_CASCADES);
 
         vec4 vol = texture(uVolumetricTexture, vec3(TexCoords, w));
         scattering = vol.rgb;
