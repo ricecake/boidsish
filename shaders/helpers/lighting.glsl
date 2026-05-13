@@ -431,7 +431,10 @@ vec3 getSpatialAmbientSH(vec3 worldPos, vec3 N) {
 			interpolatedCoeffs[i] = vec4(totalSH[i] / totalWeight, 1.0);
 		}
 	} else {
-		// No probes available, fallback to sky only
+		// No probes available, fallback to global coefficients to avoid NaNs
+		for (int i = 0; i < 9; ++i) {
+			interpolatedCoeffs[i] = sh_coeffs[i];
+		}
 		bounceFade = 0.0;
 	}
 

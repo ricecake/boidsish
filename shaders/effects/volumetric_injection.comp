@@ -68,10 +68,10 @@ void main() {
         float shadow = calculateShadow(i, worldPos, vec3(0,1,0), L);
         shadow *= calculateCloudShadow(i, worldPos);
 
-        float r = kEarthRadiusKM + (worldPos.y / (1000.0 * worldScale));
+        float r = kEarthRadiusKM + (worldPos.y / (1000.0 * max(0.0001, worldScale)));
         vec3 atmosphereTransmittance = texture(u_transmittanceLUT, getTransmittanceUV(r, L.y)).rgb;
 
-        radiance += lights[i].color * lights[i].intensity * atmosphereTransmittance * shadow * phase;
+        radiance += lights[i].color * max(0.0, lights[i].intensity) * atmosphereTransmittance * shadow * phase;
     }
 
     // Local lights
@@ -101,13 +101,19 @@ void main() {
     // Temporal accumulation
     if (uTemporalAlpha > 0.0) {
         vec4 prevClip = uPrevVP * vec4(worldPos, 1.0);
-        vec3 prevNDC = prevClip.xyz / prevClip.w;
+        vec3 prevNDC = prevClip.xyz / (abs(prevClip.w) > 0.0001 ? prevClip.w : 1.0);
         if (all(greaterThanEqual(prevNDC, vec3(-1.0))) && all(lessThanEqual(prevNDC, vec3(1.0)))) {
             // Simplified: just sample history at same vox for now if no reprojection logic yet
             vec4 history = texture(uHistoryTexture, (vec3(vox) + 0.5) / vec3(160, 90, 64 * NUM_CASCADES));
-            current = mix(current, history, uTemporalAlpha);
+            if (all(greaterThanEqual(history, vec4(0.0))) && all(lessThanEqual(history, vec4(1000.0)))) {
+                current = mix(current, history, uTemporalAlpha);
+            }
         }
     }
+
+    // Safety clamp to prevent NaN/Inf propagation
+    current = clamp(current, vec4(0.0), vec4(1000.0));
+    if (any(isnan(current))) current = vec4(0.0);
 
     imageStore(outInjection, vox, current);
 }

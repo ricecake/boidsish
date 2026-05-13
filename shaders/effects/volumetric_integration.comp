@@ -25,9 +25,10 @@ void main() {
     for (int z = 0; z < GRID_RES_Z; ++z) {
         ivec3 vox = ivec3(xy, cascade * GRID_RES_Z + z);
         vec4 data = imageLoad(inInjection, vox);
+        if (any(isnan(data))) data = vec4(0.0);
 
-        vec3 scattering = data.rgb;
-        float extinction = data.a;
+        vec3 scattering = max(vec3(0.0), data.rgb);
+        float extinction = max(0.0, data.a);
 
         // Calculate step size in view space
         float z0 = z_near * pow(z_far / z_near, float(z) / float(GRID_RES_Z));
@@ -38,9 +39,14 @@ void main() {
 
         // Better energy conservation: (scattering - scattering * transmittance) / extinction
         vec3 scatteringStep = (scattering - scattering * transmittance) / max(extinction, 0.0001);
+        if (any(isnan(scatteringStep))) scatteringStep = vec3(0.0);
 
         accumulatedScattering += accumulatedTransmittance * scatteringStep;
         accumulatedTransmittance *= transmittance;
+
+        // Final safety check for accumulated values
+        if (any(isnan(accumulatedScattering))) accumulatedScattering = vec3(0.0);
+        accumulatedTransmittance = clamp(accumulatedTransmittance, 0.0, 1.0);
 
         imageStore(outScattering, vox, vec4(accumulatedScattering, accumulatedTransmittance));
 
