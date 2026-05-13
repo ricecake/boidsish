@@ -55,9 +55,12 @@ void main() {
         // Beyond last cascade
         float w = (float(NUM_CASCADES * GRID_RES_Z) - 0.5) / float(GRID_RES_Z * NUM_CASCADES);
         vec4 vol = texture(uVolumetricTexture, vec3(TexCoords, w));
-        scattering = vol.rgb;
-        transmittance = vol.a;
+        scattering = max(vec3(0.0), vol.rgb);
+        transmittance = clamp(vol.a, 0.0, 1.0);
     }
+
+    if (any(isnan(scattering))) scattering = vec3(0.0);
+    if (isnan(transmittance)) transmittance = 1.0;
 
     // Apply volumetric lighting
     vec3 result = sceneColor * transmittance + scattering;
