@@ -5,7 +5,7 @@ in vec2 TexCoords;
 
 layout(binding = 0) uniform sampler2D uSceneTexture;
 layout(binding = 1) uniform sampler2D uDepthTexture;
-layout(binding = 2) uniform sampler3D uVolumetricTexture;
+layout(binding = [[VOLUMETRIC_SCATTERING_BINDING]]) uniform sampler3D uVolumetricTexture;
 
 #include "../types/temporal_data.glsl"
 
@@ -21,7 +21,7 @@ void main() {
     float z_ndc = depth * 2.0 - 1.0;
     vec4 clipPos = vec4(TexCoords * 2.0 - 1.0, z_ndc, 1.0);
     vec4 viewPos = invProjection * clipPos;
-    viewPos /= viewPos.w;
+    viewPos /= (abs(viewPos.w) > 0.0001) ? viewPos.w : 1.0;
 
     float linearZ = max(0.1, -viewPos.z);
     if (depth >= 1.0) linearZ = 1000.0; // Sample far end for sky
@@ -62,5 +62,8 @@ void main() {
     // Apply volumetric lighting
     vec3 result = sceneColor * transmittance + scattering;
 
-    FragColor = vec4(result, 1.0);
+    // Preserve Scene Mask in alpha channel: 1.0 for scene, 0.0 for sky
+    float sceneMask = (depth < 0.99999) ? 1.0 : 0.0;
+
+    FragColor = vec4(result, sceneMask);
 }

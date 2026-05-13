@@ -35,7 +35,9 @@ namespace Boidsish {
 				LbmWindData = 34,
 				TerrainShadowMap = 35,
 				TerrainShadowMapImage = 36,
-				VolumetricLight = 38,
+				VolumetricInjection = 37,
+				VolumetricScattering = 38,
+				VolumetricHistory = 39,
 				VolumetricCascades = 40,
 				WeatherScalars = 42,
 				WeatherAerosols = 43,
@@ -262,8 +264,16 @@ namespace Boidsish {
 				return std::to_underlying(Constants::Bindings::Texture::TerrainShadowMapImage);
 			}
 
-			consteval int VolumetricLight() {
-				return std::to_underlying(Constants::Bindings::Texture::VolumetricLight);
+			consteval int VolumetricInjection() {
+				return std::to_underlying(Constants::Bindings::Texture::VolumetricInjection);
+			}
+
+			consteval int VolumetricScattering() {
+				return std::to_underlying(Constants::Bindings::Texture::VolumetricScattering);
+			}
+
+			consteval int VolumetricHistory() {
+				return std::to_underlying(Constants::Bindings::Texture::VolumetricHistory);
 			}
 
 			consteval int VolumetricCascades() {
