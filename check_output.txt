@@ -15,14 +15,24 @@ gmake[4]: Leaving directory '/app/build'
 [ 54%] Built target boidsish
 gmake[4]: Entering directory '/app/build'
 gmake[4]: Leaving directory '/app/build'
+gmake[4]: Entering directory '/app/build'
+[ 54%] Linking CXX executable model_converter
+gmake[4]: Leaving directory '/app/build'
 [ 54%] Built target model_converter
 gmake[4]: Entering directory '/app/build'
 gmake[4]: Leaving directory '/app/build'
 [ 54%] Built target shader_preprocessor
 gmake[4]: Entering directory '/app/build'
 gmake[4]: Leaving directory '/app/build'
+gmake[4]: Entering directory '/app/build'
+[ 57%] Linking CXX executable wordnet_compiler
+gmake[4]: Leaving directory '/app/build'
 [ 57%] Built target wordnet_compiler
 gmake[4]: Entering directory '/app/build'
+gmake[4]: Leaving directory '/app/build'
+gmake[4]: Entering directory '/app/build'
+[ 57%] Building CXX object CMakeFiles/check.dir/src/ui/EnvironmentWidget.cpp.o
+[ 57%] Linking CXX static library libcheck.a
 gmake[4]: Leaving directory '/app/build'
 [100%] Built target check
 gmake[3]: Leaving directory '/app/build'
