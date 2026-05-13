@@ -18,6 +18,8 @@ namespace Boidsish {
 		// Weather data for effects
 		glm::vec3 wind_velocity{0.0f};
 		float     wind_strength = 0.0f;
+		float     rain_intensity = 0.0f;
+		float     grass_density = 0.0f;
 	};
 
 } // namespace Boidsish
