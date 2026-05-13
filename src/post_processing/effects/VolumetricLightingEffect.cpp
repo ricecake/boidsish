@@ -93,22 +93,22 @@ namespace Boidsish {
 			injection_shader_->setMat4("uPrevVP", prev_view_projection_);
 			injection_shader_->setFloat("uTemporalAlpha", has_history_ ? temporal_alpha_ : 0.0f);
 
-			glBindImageTexture(0, injection_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
-			glActiveTexture(GL_TEXTURE0 + 1);
+			glBindImageTexture(Constants::TextureUnit::VolumetricInjection(), injection_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::VolumetricHistory());
 			glBindTexture(GL_TEXTURE_3D, history_textures_[history_index_]);
-			injection_shader_->setInt("uHistoryTexture", 1);
+			injection_shader_->setInt("uHistoryTexture", Constants::TextureUnit::VolumetricHistory());
 
 			glDispatchCompute((grid_res_x_ + 7) / 8, (grid_res_y_ + 7) / 8, (grid_res_z_ * num_cascades_ + 3) / 4);
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
 			// 2. Integration (Accumulate along Z)
 			integration_shader_->use();
-			glBindImageTexture(0, injection_texture_, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA16F);
-			glBindImageTexture(1, scattering_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+			glBindImageTexture(Constants::TextureUnit::VolumetricInjection(), injection_texture_, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA16F);
+			glBindImageTexture(Constants::TextureUnit::VolumetricScattering(), scattering_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 
 			// Copy to history for next frame
 			int next_history = 1 - history_index_;
-			glBindImageTexture(2, history_textures_[next_history], 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+			glBindImageTexture(Constants::TextureUnit::VolumetricHistory(), history_textures_[next_history], 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 
 			glDispatchCompute((grid_res_x_ + 7) / 8, (grid_res_y_ + 7) / 8, num_cascades_);
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
@@ -121,13 +121,13 @@ namespace Boidsish {
 			composite_shader_->use();
 			composite_shader_->setInt("uSceneTexture", 0);
 			composite_shader_->setInt("uDepthTexture", 1);
-			composite_shader_->setInt("uVolumetricTexture", 2);
+			composite_shader_->setInt("uVolumetricTexture", Constants::TextureUnit::VolumetricScattering());
 
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, sourceTexture);
 			glActiveTexture(GL_TEXTURE1);
 			glBindTexture(GL_TEXTURE_2D, depthTexture);
-			glActiveTexture(GL_TEXTURE2);
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::VolumetricScattering());
 			glBindTexture(GL_TEXTURE_3D, scattering_texture_);
 
 			glDrawArrays(GL_TRIANGLES, 0, 6);

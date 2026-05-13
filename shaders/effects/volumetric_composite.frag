@@ -5,7 +5,7 @@ in vec2 TexCoords;
 
 layout(binding = 0) uniform sampler2D uSceneTexture;
 layout(binding = 1) uniform sampler2D uDepthTexture;
-layout(binding = 2) uniform sampler3D uVolumetricTexture;
+layout(binding = [[VOLUMETRIC_SCATTERING_BINDING]]) uniform sampler3D uVolumetricTexture;
 
 #include "../types/temporal_data.glsl"
 

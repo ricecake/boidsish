@@ -2,8 +2,8 @@
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 4) in;
 
-layout(rgba16f, binding = 0) uniform image3D outInjection;
-uniform sampler3D uHistoryTexture;
+layout(rgba16f, binding = [[VOLUMETRIC_INJECTION_BINDING]]) uniform image3D outInjection;
+layout(binding = [[VOLUMETRIC_HISTORY_BINDING]]) uniform sampler3D uHistoryTexture;
 
 uniform mat4 uInvView;
 uniform mat4 uInvProj;
