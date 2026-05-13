@@ -1,0 +1,113 @@
+#version 460 core
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 4) in;
+
+layout(rgba16f, binding = 0) uniform image3D outInjection;
+uniform sampler3D uHistoryTexture;
+
+uniform mat4 uInvView;
+uniform mat4 uInvProj;
+uniform mat4 uPrevVP;
+
+uniform float uAnisotropy;
+uniform float uIntensity;
+uniform float uTemporalAlpha;
+
+#include "../helpers/math.glsl"
+#include "../atmosphere/common.glsl"
+#include "../helpers/lighting.glsl"
+
+const int NUM_CASCADES = 4;
+const float CASCADE_DISTANCES[4] = { 20.0, 60.0, 200.0, 1000.0 };
+
+vec3 worldFromFroxel(ivec3 vox, vec3 jitter) {
+    int cascade = vox.z / 64;
+    int z_in_cascade = vox.z % 64;
+
+    vec3 ndc;
+    ndc.xy = (vec2(vox.xy) + jitter.xy) / vec2(160, 90) * 2.0 - 1.0;
+
+    float z_near = (cascade == 0) ? 0.1 : CASCADE_DISTANCES[cascade - 1];
+    float z_far = CASCADE_DISTANCES[cascade];
+
+    // Logarithmic distribution for Z
+    float linear_z = z_near * pow(z_far / z_near, (float(z_in_cascade) + jitter.z) / 64.0);
+
+    // Reconstruct View Space Position
+    vec4 clipPos = vec4(ndc.xy, 0.0, 1.0);
+    vec4 viewDir = uInvProj * clipPos;
+    viewDir /= viewDir.w;
+
+    vec3 viewPos = normalize(viewDir.xyz) * linear_z;
+    return (uInvView * vec4(viewPos, 1.0)).xyz;
+}
+
+void main() {
+    ivec3 vox = ivec3(gl_GlobalInvocationID.xyz);
+    if (vox.x >= 160 || vox.y >= 90 || vox.z >= 64 * NUM_CASCADES) return;
+
+    // Jitter for temporal AA / stochastic sampling
+    vec3 jitter = vec3(0.5); // TODO: blue noise jitter
+
+    vec3 worldPos = worldFromFroxel(vox, jitter);
+
+    // Calculate scattering and extinction
+    Sampling s = getAtmospherePropertiesAtPos(worldPos);
+
+    vec3 radiance = vec3(0.0);
+    vec3 V = normalize(viewPos - worldPos);
+
+    // Direct light (Sun)
+    for (int i = 0; i < min(2, num_lights); ++i) {
+        if (lights[i].type != LIGHT_TYPE_DIRECTIONAL) continue;
+
+        vec3 L = normalize(-lights[i].direction);
+        float cosTheta = dot(-V, L);
+        float phase = henyeyGreenstein(uAnisotropy, cosTheta);
+
+        float shadow = calculateShadow(i, worldPos, vec3(0,1,0), L);
+        shadow *= calculateCloudShadow(i, worldPos);
+
+        float r = kEarthRadiusKM + (worldPos.y / (1000.0 * worldScale));
+        vec3 atmosphereTransmittance = texture(u_transmittanceLUT, getTransmittanceUV(r, L.y)).rgb;
+
+        radiance += lights[i].color * lights[i].intensity * atmosphereTransmittance * shadow * phase;
+    }
+
+    // Local lights
+    for (int i = 2; i < num_lights; ++i) {
+        vec3 L; float atten;
+        calculateLightContribution(i, worldPos, L, atten);
+        if (atten <= 0.0) continue;
+
+        float cosTheta = dot(-V, L);
+        float phase = henyeyGreenstein(uAnisotropy, cosTheta);
+        float shadow = calculateShadow(i, worldPos, vec3(0,1,0), L);
+
+        radiance += lights[i].color * lights[i].intensity * atten * shadow * phase;
+    }
+
+    // Ambient (SH)
+    radiance += getSpatialAmbientSH(worldPos, V) * s.mie * 0.1;
+
+    radiance *= uIntensity;
+
+    // Convert atmospheric coefficients from per-KM to per-meter
+    vec3 mieCoeff = s.mie * 0.001;
+    float extinctionCoeff = (s.rayleigh.r + s.rayleigh.g + s.rayleigh.b + s.mie.r + s.mie.g + s.mie.b) / 3.0 * 0.001;
+
+    vec4 current = vec4(radiance * mieCoeff, extinctionCoeff);
+
+    // Temporal accumulation
+    if (uTemporalAlpha > 0.0) {
+        vec4 prevClip = uPrevVP * vec4(worldPos, 1.0);
+        vec3 prevNDC = prevClip.xyz / prevClip.w;
+        if (all(greaterThanEqual(prevNDC, vec3(-1.0))) && all(lessThanEqual(prevNDC, vec3(1.0)))) {
+            // Simplified: just sample history at same vox for now if no reprojection logic yet
+            vec4 history = texture(uHistoryTexture, (vec3(vox) + 0.5) / vec3(160, 90, 64 * NUM_CASCADES));
+            current = mix(current, history, uTemporalAlpha);
+        }
+    }
+
+    imageStore(outInjection, vox, current);
+}

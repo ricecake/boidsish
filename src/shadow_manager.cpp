@@ -335,7 +335,7 @@ namespace Boidsish {
 		return frustum;
 	}
 
-	void ShadowManager::BindForRendering(Shader& shader, int texture_unit) {
+	void ShadowManager::BindForRendering(ShaderBase& shader, int texture_unit) {
 		glActiveTexture(GL_TEXTURE0 + texture_unit);
 		glBindTexture(GL_TEXTURE_2D_ARRAY, shadow_map_array_);
 		shader.use();
