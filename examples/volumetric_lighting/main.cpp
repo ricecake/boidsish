@@ -9,7 +9,7 @@
 using namespace Boidsish;
 
 int main() {
-    Visualizer visualizer("Volumetric Lighting Demo", 1280, 720);
+    Visualizer visualizer(1280, 720, "Volumetric Lighting Demo");
 
     // Add Volumetric Lighting effect
     auto vol_effect = std::make_shared<PostProcessing::VolumetricLightingEffect>();
