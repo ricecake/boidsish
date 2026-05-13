@@ -87,6 +87,8 @@
 #include "visual_effects.h"
 #include "weather_manager.h"
 #include "wind_audio_effect.h"
+#include "rain_audio_effect.h"
+#include "rustle_audio_effect.h"
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include <glm/ext/matrix_projection.hpp>
@@ -381,6 +383,8 @@ namespace Boidsish {
 		std::shared_ptr<MeshExplosionManager>             mesh_explosion_manager;
 		std::shared_ptr<SoundEffectManager>               sound_effect_manager;
 		std::shared_ptr<Sound>                            wind_sound_handle;
+		std::shared_ptr<Sound>                            rain_sound_handle;
+		std::shared_ptr<Sound>                            rustle_sound_handle;
 		std::shared_ptr<ShockwaveManager>                 shockwave_manager;
 		std::shared_ptr<AkiraEffectManager>               akira_effect_manager;
 		std::shared_ptr<SdfVolumeManager>                 sdf_volume_manager;
@@ -820,9 +824,15 @@ namespace Boidsish {
 			}
 			audio_manager = service_locator_.Get<AudioManager>();
 
-			// Initialize procedural wind
+			// Initialize procedural weather sounds
 			auto wind_effect = std::make_shared<WindAudioEffect>(*audio_manager);
 			wind_sound_handle = audio_manager->CreateProceduralSound(wind_effect, glm::vec3(0.0f), 0.5f, true, false);
+
+			auto rain_effect = std::make_shared<RainAudioEffect>(*audio_manager);
+			rain_sound_handle = audio_manager->CreateProceduralSound(rain_effect, glm::vec3(0.0f), 0.4f, true, false);
+
+			auto rustle_effect = std::make_shared<RustleAudioEffect>(*audio_manager);
+			rustle_sound_handle = audio_manager->CreateProceduralSound(rustle_effect, glm::vec3(0.0f), 0.35f, true, false);
 
 			sound_effect_manager = service_locator_.Get<SoundEffectManager>();
 			trail_render_manager = service_locator_.Get<TrailRenderManager>();
@@ -2077,6 +2087,11 @@ namespace Boidsish {
 					state.wind_velocity = camera.front() * w.wind_strength; // Fallback
 					state.wind_strength = w.wind_strength;
 				}
+				state.rain_intensity = w.precipitation;
+			}
+
+			if (grass_manager) {
+				state.grass_density = grass_manager->IsEnabled() ? grass_manager->GetGlobalProperties().densityMultiplier : 0.0f;
 			}
 
 			audio_manager->UpdateState(state);
