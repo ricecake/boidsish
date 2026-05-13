@@ -35,6 +35,8 @@ namespace Boidsish {
 				LbmWindData = 34,
 				TerrainShadowMap = 35,
 				TerrainShadowMapImage = 36,
+				VolumetricLight = 38,
+				VolumetricCascades = 40,
 				WeatherScalars = 42,
 				WeatherAerosols = 43,
 			};
@@ -258,6 +260,14 @@ namespace Boidsish {
 
 			consteval int TerrainShadowMapImage() {
 				return std::to_underlying(Constants::Bindings::Texture::TerrainShadowMapImage);
+			}
+
+			consteval int VolumetricLight() {
+				return std::to_underlying(Constants::Bindings::Texture::VolumetricLight);
+			}
+
+			consteval int VolumetricCascades() {
+				return std::to_underlying(Constants::Bindings::Texture::VolumetricCascades);
 			}
 
 			consteval int WeatherScalars() {

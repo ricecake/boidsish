@@ -1,0 +1,30 @@
+-- Configuring done (0.2s)
+-- Generating done (0.4s)
+-- Build files have been written to: /app/build
+gmake[1]: Entering directory '/app/build'
+gmake[2]: Entering directory '/app/build'
+gmake[3]: Entering directory '/app/build'
+gmake[4]: Entering directory '/app/build'
+gmake[4]: Leaving directory '/app/build'
+[  8%] Built target meshoptimizer
+gmake[4]: Entering directory '/app/build'
+gmake[4]: Leaving directory '/app/build'
+[ 11%] Built target imgui
+gmake[4]: Entering directory '/app/build'
+gmake[4]: Leaving directory '/app/build'
+[ 54%] Built target boidsish
+gmake[4]: Entering directory '/app/build'
+gmake[4]: Leaving directory '/app/build'
+[ 54%] Built target model_converter
+gmake[4]: Entering directory '/app/build'
+gmake[4]: Leaving directory '/app/build'
+[ 54%] Built target shader_preprocessor
+gmake[4]: Entering directory '/app/build'
+gmake[4]: Leaving directory '/app/build'
+[ 57%] Built target wordnet_compiler
+gmake[4]: Entering directory '/app/build'
+gmake[4]: Leaving directory '/app/build'
+[100%] Built target check
+gmake[3]: Leaving directory '/app/build'
+gmake[2]: Leaving directory '/app/build'
+gmake[1]: Leaving directory '/app/build'
