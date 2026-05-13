@@ -205,6 +205,7 @@ void main() {
 			}
 		}
 
+
 		float luma = dot(centerSample, vec3(0.2126, 0.7152, 0.0722));
 
 		if (layers[isSky].useAutoExposure != 0) {
@@ -279,7 +280,7 @@ void main() {
 		if (layers[isSky].useAutoExposure != 0) {
 			if (isSky == 1) {
 				float attenuation = calculateSkyAttenuation(bloomColor * exposure, layers[1].autoUchimuraM, layers[1].autoUchimuraL, 1.20);
-				float mask = smoothstep(0, 0.5*1.5707, asin(worldDir.y));
+				float mask = smoothstep(-3.14 * 0.125, 0.5*1.5707, asin(worldDir.y));
 				attenuation = mix(attenuation, 1.0, mask);
 				exposure *= attenuation;
 			}

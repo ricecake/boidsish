@@ -155,7 +155,7 @@ void main() {
 			vec3 worldDir = normalize((invView * ray_view).xyz);
 
 			float attenuation = calculateSkyAttenuation(result * exposure, layers[1].autoUchimuraM, layers[1].autoUchimuraL, 1.20);
-			float mask = smoothstep(0, 0.5*1.5707, asin(worldDir.y));
+			float mask = smoothstep(-3.14 * 0.125, 0.5*1.5707, asin(worldDir.y));
 			attenuation = mix(attenuation, 1.0, mask);
 			exposure *= attenuation;
 		}
