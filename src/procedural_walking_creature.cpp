@@ -90,7 +90,8 @@ namespace Boidsish {
 		};
 
 		ik_body_.position = current_pos_;
-		ik_body_.weight = 5.0f;
+		ik_body_.goal = current_pos_;
+		ik_body_.weight = 2.0f;
 
 		for (int i = 0; i < 4; ++i) {
 			legs_[i].name = names[i];
@@ -133,7 +134,7 @@ namespace Boidsish {
 			-1,
 			"body",
 			true,
-			SkinningMode::Rigid
+			SkinningMode::Smooth
 		);
 
 		std::string names[4] = {"FL", "FR", "BR", "BL"};
@@ -147,7 +148,7 @@ namespace Boidsish {
 		for (int i = 0; i < 4; ++i) {
 			// Hip hub - NOT a bone (IK will start from upper leg)
 			int hip =
-				ir.AddHub(offsets[i], length_ * 0.08f, leg_col, body, names[i] + "_hip", false, SkinningMode::Rigid);
+				ir.AddHub(offsets[i], length_ * 0.08f, leg_col, body, names[i] + "_hip", false, SkinningMode::Smooth);
 
 			// Upper leg: moderate upward arch, going outward
 			// Knee is above the hip so the leg forms a natural arch (knee points up/out)
@@ -235,7 +236,7 @@ namespace Boidsish {
 		}
 
 		// Apply IK to position legs on the ground
-		ik_body_.position = current_pos_;
+		ik_body_.goal = current_pos_;
 		for (int i = 0; i < 4; ++i) {
 			ik_body_.tree.chains[i].target = legs_[i].world_foot_pos;
 		}

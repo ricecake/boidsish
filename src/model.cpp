@@ -1000,7 +1000,7 @@ namespace Boidsish {
 		}
 
 		// Update persistent body state if desired (optional, but let's keep it clean)
-		// body.position = GetModelMatrix() * glm::vec4(localBody.position, 1.0f); // Could do this if we want body-tracking
+		body.position = glm::vec3(GetModelMatrix() * glm::vec4(localBody.position, 1.0f));
 		
 		UpdateAnimation(0.0f);
 	}
