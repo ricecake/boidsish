@@ -1,26 +1,29 @@
-#ifndef SOLVER_HPP_18_10_28_09_56_06
-#define SOLVER_HPP_18_10_28_09_56_06 
-#include <cassert>
-#include <iostream>
-#include <limits>
-#include <functional>
-#include "chain.hpp"
-#include "quaternion.hpp"
+#ifndef BOIDSISH_IK_SOLVER_HPP
+#define BOIDSISH_IK_SOLVER_HPP
 
-namespace ik {
-	namespace FABRIK {
+#include "body.h"
 
-		// prevBoneDir from j-1 towards j, t is the new position of j+1
-		// returns adjusted target position
-		Vector constrainedJointRotation(const Joint* j, Vector t, Vector prevBoneDir);
+namespace Boidsish {
 
-		Vector constrainedJointOrientation(const Joint* j, Vector prevJointOrientation, Vector boneDir, Vector prevBoneDir);
+class IKSolver {
+public:
+    /**
+     * @brief Solves the IK for the given body using a tree-based FABRIK algorithm.
+     *
+     * @param body The body structure to solve.
+     * @param maxIterations Maximum number of iterations.
+     * @param tolerance Convergence tolerance (distance).
+     */
+    static void Solve(Body& body, int maxIterations = 20, float tolerance = 0.001f);
 
-		// The jointID should be the ID of the endEffector. It does not necessarily have to be the end of the chain, 
-		// but in that case the rotation constraints in that joint will not be enforced.
-		// To enforce them, you should fixate the previous part of the chain (set baseID to jointID) and rerun
-		// solveChain with jointID=chain.jointCount()-1
-		void solveChain(Chain& chain, unsigned jointID, Vector newPos, Vector newOrientation, float epsilon = 0.1, unsigned maxIter = 10);
-	}
-}
-#endif /* SOLVER_HPP_18_10_28_09_56_06 */
+    /**
+     * @brief Resolves world positions for all bones in the body based on relative coordinates.
+     *
+     * @param body The body to resolve.
+     */
+    static void ResolveWorldPositions(Body& body);
+};
+
+} // namespace Boidsish
+
+#endif

@@ -5,121 +5,120 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtx/quaternion.hpp>
-#include "model.h"
-#include "animator.h"
-#include "logger.h"
+#include <ik/body.h>
+#include <ik/solver.hpp>
 
 using namespace Boidsish;
 
-void test_ik() {
-    auto data = std::make_shared<ModelData>();
-    data->model_path = "test_ik_model";
+void test_ik_basic() {
+    Body body;
+    body.position = glm::vec3(0, 0, 0);
 
-    // Create a simple 3-bone chain: root -> mid -> end
-    // Each bone is 1.0 units long along Y axis
-    glm::mat4 rootLocal = glm::mat4(1.0f);
-    data->AddBone("root", "", rootLocal);
+    Chain chain;
+    chain.base = glm::vec3(0, 0, 0);
 
-    glm::mat4 midLocal = glm::translate(glm::mat4(1.0f), glm::vec3(0, 1, 0));
-    data->AddBone("mid", "root", midLocal);
+    // Bone 1: length 1, starts at 0,0,0
+    Bone bone1;
+    bone1.name = "bone1";
+    bone1.length = 1.0f;
+    bone1.position = glm::vec3(0, 1, 0);
+    chain.bones.push_back(bone1);
 
-    glm::mat4 endLocal = glm::translate(glm::mat4(1.0f), glm::vec3(0, 1, 0));
-    data->AddBone("end", "mid", endLocal);
+    // Bone 2: length 1, starts at 0,1,0
+    Bone bone2;
+    bone2.name = "bone2";
+    bone2.length = 1.0f;
+    bone2.position = glm::vec3(0, 2, 0);
+    chain.bones.push_back(bone2);
 
-    Model model(data);
-    model.SetPosition(0, 0, 0);
-    model.UpdateAnimation(0); // Initial pose
+    chain.target = glm::vec3(0, 1, 1);
+    chain.hasTarget = true;
 
-    std::cout << "Initial Effector Pos: " << model.GetBoneWorldPosition("end").x << ", "
-              << model.GetBoneWorldPosition("end").y << ", "
-              << model.GetBoneWorldPosition("end").z << std::endl;
+    body.tree.chains.push_back(chain);
 
-    // Target position: 2 units in front (Z) and 1 unit up (Y)
-    glm::vec3 target(0, 1, 1);
-    model.SolveIK("end", target);
+    IKSolver::Solve(body, 20, 0.001f);
 
-    glm::vec3 finalPos = model.GetBoneWorldPosition("end");
+    glm::vec3 finalPos = body.tree.chains[0].bones.back().position;
     std::cout << "Final Effector Pos: " << finalPos.x << ", " << finalPos.y << ", " << finalPos.z << std::endl;
 
-    float dist = glm::distance(finalPos, target);
-    if (dist < 0.1f) {
-        std::cout << "IK Success! Dist: " << dist << std::endl;
+    float dist = glm::distance(finalPos, chain.target);
+    if (dist < 0.01f) {
+        std::cout << "Basic IK Success! Dist: " << dist << std::endl;
     } else {
-        std::cout << "IK Failed! Dist: " << dist << std::endl;
+        std::cout << "Basic IK Failed! Dist: " << dist << std::endl;
         exit(1);
     }
-
-    // Test constraints
-    BoneConstraint hinge;
-    hinge.type = ConstraintType::Hinge;
-    hinge.axis = glm::vec3(1, 0, 0); // Rotate around X
-    hinge.minAngle = -45.0f;
-    hinge.maxAngle = 45.0f;
-    model.SetBoneConstraint("mid", hinge);
-
-    target = glm::vec3(0, 0, 2); // Out of reach but in reach if straight
-    model.SolveIK("end", target);
-    finalPos = model.GetBoneWorldPosition("end");
-    std::cout << "Constrained Effector Pos: " << finalPos.x << ", " << finalPos.y << ", " << finalPos.z << std::endl;
 }
 
-void test_twist_constraints() {
-    auto data = std::make_shared<ModelData>();
-    data->model_path = "test_twist_model";
+void test_ik_multi_effector() {
+    Body body;
+    body.position = glm::vec3(0, 0, 0);
 
-    // 3-bone chain along Y: root(0,0,0) -> mid(0,1,0) -> end(0,2,0)
-    data->AddBone("root", "", glm::mat4(1.0f));
-    data->AddBone("mid", "root", glm::translate(glm::mat4(1.0f), glm::vec3(0, 1, 0)));
-    data->AddBone("end", "mid", glm::translate(glm::mat4(1.0f), glm::vec3(0, 1, 0)));
+    // Chain 1: Pulling +X
+    Chain chain1;
+    chain1.base = glm::vec3(0, 0, 0);
+    Bone b1; b1.length = 1.0f; b1.position = glm::vec3(1, 0, 0);
+    chain1.bones.push_back(b1);
+    chain1.target = glm::vec3(2, 0, 0);
+    chain1.hasTarget = true;
 
-    Model model(data);
-    model.SetPosition(0, 0, 0);
-    model.UpdateAnimation(0);
+    // Chain 2: Pulling -X
+    Chain chain2;
+    chain2.base = glm::vec3(0, 0, 0);
+    Bone b2; b2.length = 1.0f; b2.position = glm::vec3(-1, 0, 0);
+    chain2.bones.push_back(b2);
+    chain2.target = glm::vec3(-2, 0, 0);
+    chain2.hasTarget = true;
 
-    // Set tight twist limits on mid bone: ±5°
-    BoneConstraint tc;
-    tc.minTwist = -5.0f;
-    tc.maxTwist = 5.0f;
-    model.SetBoneConstraint("mid", tc);
+    body.tree.chains.push_back(chain1);
+    body.tree.chains.push_back(chain2);
 
-    // Solve IK with a target that would induce twist if unconstrained.
-    // Target off to the side — the minimum-arc rotation from (0,1,0) to a
-    // diagonal direction naturally introduces some axial roll.
-    glm::vec3 target(0.5f, 1.5f, 0.5f);
-    model.SolveIK("end", target, 0.05f, 30);
+    IKSolver::Solve(body, 20, 0.001f);
 
-    // Extract mid bone's world rotation and decompose twist around bind dir
-    glm::quat midRot = model.GetBoneWorldRotation("mid");
-    glm::vec3 bindDir(0, 1, 0); // bind direction of the mid->end segment
+    std::cout << "Body position after balanced pull: " << body.position.x << ", " << body.position.y << ", " << body.position.z << std::endl;
 
-    // Swing-twist decomposition
-    glm::vec3 qv(midRot.x, midRot.y, midRot.z);
-    glm::vec3 proj = glm::dot(qv, bindDir) * bindDir;
-    glm::quat twist(midRot.w, proj.x, proj.y, proj.z);
-    float twistLen = glm::length(twist);
-    float twistAngle = 0.0f;
-    if (twistLen > 1e-6f) {
-        twist /= twistLen;
-        twistAngle = glm::degrees(
-            2.0f * std::atan2(glm::dot(glm::vec3(twist.x, twist.y, twist.z), bindDir), twist.w)
-        );
-    }
-
-    std::cout << "Twist angle on mid bone: " << twistAngle << " degrees" << std::endl;
-
-    // Allow some numerical slack (1° beyond the limit)
-    float slack = 1.0f;
-    if (twistAngle < tc.minTwist - slack || twistAngle > tc.maxTwist + slack) {
-        std::cout << "Twist constraint FAILED! Angle " << twistAngle
-                  << " outside [" << tc.minTwist << ", " << tc.maxTwist << "]" << std::endl;
+    if (glm::length(body.position) < 0.01f) {
+        std::cout << "Multi-effector Balance Success!" << std::endl;
+    } else {
+        std::cout << "Multi-effector Balance Failed!" << std::endl;
         exit(1);
     }
-    std::cout << "Twist constraint OK" << std::endl;
+}
+
+void test_ik_relative() {
+    Body body;
+    body.position = glm::vec3(1, 1, 1);
+
+    Chain chain;
+    chain.base = glm::vec3(0, 0, 0); // Relative to body.position
+
+    Bone bone;
+    bone.isRelative = true;
+    bone.relativePosition = glm::vec3(0, 1, 0); // Relative to chain base
+    bone.length = 1.0f;
+    chain.bones.push_back(bone);
+
+    body.tree.chains.push_back(chain);
+
+    IKSolver::ResolveWorldPositions(body);
+
+    glm::vec3 expectedPos = glm::vec3(1, 2, 1);
+    float dist = glm::distance(body.tree.chains[0].bones[0].position, expectedPos);
+
+    std::cout << "Relative Bone World Pos: " << body.tree.chains[0].bones[0].position.x << ", " << body.tree.chains[0].bones[0].position.y << ", " << body.tree.chains[0].bones[0].position.z << std::endl;
+
+    if (dist < 0.001f) {
+        std::cout << "Relative Position Resolve Success!" << std::endl;
+    } else {
+        std::cout << "Relative Position Resolve Failed!" << std::endl;
+        exit(1);
+    }
 }
 
 int main() {
-    test_ik();
-    test_twist_constraints();
+    test_ik_basic();
+    test_ik_multi_effector();
+    test_ik_relative();
     std::cout << "All IK tests passed." << std::endl;
     return 0;
 }
