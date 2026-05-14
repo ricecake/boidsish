@@ -79,6 +79,10 @@ namespace Boidsish {
 						m_backingShader->setBool(name, arg);
 					else if constexpr (std::is_same_v<T, int>)
 						m_backingShader->setInt(name, arg);
+					else if constexpr (std::is_same_v<T, unsigned int>)
+						m_backingShader->setUint(name, arg);
+					else if constexpr (std::is_same_v<T, uint64_t>)
+						m_backingShader->setHandle64(name, arg);
 					else if constexpr (std::is_same_v<T, float>)
 						m_backingShader->setFloat(name, arg);
 					else if constexpr (std::is_same_v<T, glm::vec2>)
