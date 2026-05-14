@@ -82,27 +82,37 @@ namespace Boidsish {
 		float total_lateral = hip_lateral + upper_horiz + lower_horiz;
 		float z_offset = length_ * 0.64f;
 
-		glm::vec3 offsets[4] = {
+		// Foot rest offsets relative to creature center (0,0,0)
+		glm::vec3 foot_offsets[4] = {
 			{-total_lateral, 0, z_offset},
 			{total_lateral, 0, z_offset},
 			{total_lateral, 0, -z_offset},
 			{-total_lateral, 0, -z_offset}
 		};
 
-		ik_body_.position = current_pos_;
-		ik_body_.weight = 5.0f;
+		// Hip offsets relative to BODY center (0, height_, 0)
+		glm::vec3 hip_offsets[4] = {
+			{-width_ * 0.64f, height_ * 0.8f - height_, length_ * 0.64f},
+			{width_ * 0.64f, height_ * 0.8f - height_, length_ * 0.64f},
+			{width_ * 0.64f, height_ * 0.8f - height_, -length_ * 0.64f},
+			{-width_ * 0.64f, height_ * 0.8f - height_, -length_ * 0.64f}
+		};
+
+		ik_body_.position = current_pos_ + glm::vec3(0, height_, 0);
+		ik_body_.goal = ik_body_.position;
+		ik_body_.weight = 2.0f;
 
 		for (int i = 0; i < 4; ++i) {
 			legs_[i].name = names[i];
 			legs_[i].effector_name = names[i] + "_foot";
-			legs_[i].rest_offset = offsets[i];
-			legs_[i].world_foot_pos = current_pos_ + offsets[i];
+			legs_[i].rest_offset = foot_offsets[i];
+			legs_[i].world_foot_pos = current_pos_ + foot_offsets[i];
 			legs_[i].world_foot_pos.y = 0;
 			legs_[i].step_start_pos = legs_[i].world_foot_pos;
 			legs_[i].step_target_pos = legs_[i].world_foot_pos;
 
 			Chain leg_chain;
-			leg_chain.base = offsets[i];
+			leg_chain.base = hip_offsets[i];
 			leg_chain.hasTarget = true;
 			leg_chain.target = legs_[i].world_foot_pos;
 
@@ -133,7 +143,7 @@ namespace Boidsish {
 			-1,
 			"body",
 			true,
-			SkinningMode::Rigid
+			SkinningMode::Smooth
 		);
 
 		std::string names[4] = {"FL", "FR", "BR", "BL"};
@@ -147,7 +157,7 @@ namespace Boidsish {
 		for (int i = 0; i < 4; ++i) {
 			// Hip hub - NOT a bone (IK will start from upper leg)
 			int hip =
-				ir.AddHub(offsets[i], length_ * 0.08f, leg_col, body, names[i] + "_hip", false, SkinningMode::Rigid);
+				ir.AddHub(offsets[i], length_ * 0.08f, leg_col, body, names[i] + "_hip", false, SkinningMode::Smooth);
 
 			// Upper leg: moderate upward arch, going outward
 			// Knee is above the hip so the leg forms a natural arch (knee points up/out)
@@ -235,12 +245,16 @@ namespace Boidsish {
 		}
 
 		// Apply IK to position legs on the ground
-		ik_body_.position = current_pos_;
+		ik_body_.goal = current_pos_ + glm::vec3(0, height_, 0);
 		for (int i = 0; i < 4; ++i) {
 			ik_body_.tree.chains[i].target = legs_[i].world_foot_pos;
 		}
 
 		model_->SolveIK(ik_body_, 20, 0.01f);
+
+		// Re-sync current_pos_ from the solved body position
+		// This makes the creature's path follow the IK results.
+		current_pos_ = ik_body_.position - glm::vec3(0, height_, 0);
 	}
 
 	void ProceduralWalkingCreature::UpdateMovement(float delta_time) {

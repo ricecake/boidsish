@@ -939,22 +939,23 @@ namespace Boidsish {
 			auto& chain = localBody.tree.chains[i];
 			chain.target = glm::vec3(worldToModel * glm::vec4(body.tree.chains[i].target, 1.0f));
 
-			// chain.base was input as a world-space offset from body.position?
-			// Let's transform it into a model-space offset.
-			glm::vec3 worldBasePos = body.position + body.tree.chains[i].base;
-			chain.base = glm::vec3(worldToModel * glm::vec4(worldBasePos, 1.0f)) - localBody.position;
+			// chain.base is a model-space offset relative to the body's pivot (identity rotation)
+			// Ensure it stays consistent
+			chain.base = body.tree.chains[i].base;
 
 			for (auto& bone : chain.bones) {
 				glm::mat4 ms = m_animator->GetBoneModelSpaceTransform(bone.name);
 				bone.position = glm::vec3(ms[3]);
 				bone.orientation = glm::quat_cast(ms);
 
-				// Re-resolve bindDir from bind pose
+				// Re-resolve bindDir and length from bind pose
 				const NodeData* node = m_data->root_node.FindNode(bone.name);
 				if (node && node->childrenCount > 0) {
 					glm::vec3 bindEndPos = glm::vec3(node->children[0].transformation[3]);
+					bone.length = glm::length(bindEndPos);
 					bone.bindDir = glm::normalize(bindEndPos);
 				} else {
+					bone.length = 1.0f;
 					bone.bindDir = glm::vec3(0, 1, 0);
 				}
 
@@ -971,17 +972,42 @@ namespace Boidsish {
 		IKSolver::Solve(localBody, maxIterations, tolerance);
 
 		// Apply Body -> Model
-		// We re-traverse the solved chains and update local transforms
+		// 1. Update the body bone if it exists
+		glm::mat4 bodyModelSpace = glm::translate(glm::mat4(1.0f), localBody.position);
+		// Note: FABRIK solver currently only computes position for the body.
+		// We keep the original orientation of the body bone.
+		if (m_data->bone_info_map.count("body")) {
+			glm::mat4 oldBodyMS = m_animator->GetBoneModelSpaceTransform("body");
+			glm::quat bodyRot = glm::quat_cast(oldBodyMS);
+			bodyModelSpace = bodyModelSpace * glm::toMat4(bodyRot);
+
+			std::string bodyParent = m_animator->GetBoneParentName("body");
+			glm::mat4   parentMS = bodyParent.empty() ? glm::mat4(1.0f) : m_animator->GetBoneModelSpaceTransform(bodyParent);
+			glm::mat4   localBodyTrans = glm::inverse(parentMS) * bodyModelSpace;
+
+			// Preserve scale
+			glm::mat4 oldLocal = m_animator->GetBoneLocalTransform("body");
+			glm::vec3 scale(glm::length(oldLocal[0]), glm::length(oldLocal[1]), glm::length(oldLocal[2]));
+			localBodyTrans = glm::translate(glm::mat4(1.0f), glm::vec3(localBodyTrans[3])) *
+				glm::toMat4(glm::quat_cast(localBodyTrans)) * glm::scale(glm::mat4(1.0f), scale);
+
+			m_animator->SetBoneLocalTransform("body", localBodyTrans);
+		}
+
+		// 2. We re-traverse the solved chains and update local transforms
 		for (const auto& chain : localBody.tree.chains) {
-			glm::mat4 currentParentGlobal = glm::mat4(1.0f);
-			std::string parentOfRoot = m_animator->GetBoneParentName(chain.bones[0].name);
-			if (!parentOfRoot.empty()) {
-				currentParentGlobal = m_animator->GetBoneModelSpaceTransform(parentOfRoot);
-			}
+			// Get the actual parent of the first bone in the chain from the animator
+			std::string firstBoneName = chain.bones[0].name;
+			std::string parentName = m_animator->GetBoneParentName(firstBoneName);
+			glm::mat4   currentParentGlobal =
+				parentName.empty() ? glm::mat4(1.0f) : m_animator->GetBoneModelSpaceTransform(parentName);
+
+			glm::vec3 currentBoneStart = localBody.position + chain.base;
 
 			for (size_t i = 0; i < chain.bones.size(); ++i) {
 				const auto& bone = chain.bones[i];
-				glm::mat4 newGlobal = glm::translate(glm::mat4(1.0f), bone.position) * glm::toMat4(bone.orientation);
+				// Bone transform is at its START, oriented towards its end (bone.position)
+				glm::mat4 newGlobal = glm::translate(glm::mat4(1.0f), currentBoneStart) * glm::toMat4(bone.orientation);
 
 				// Keep original scale
 				glm::mat4 oldLocal = m_animator->GetBoneLocalTransform(bone.name);
@@ -996,11 +1022,12 @@ namespace Boidsish {
 
 				m_animator->SetBoneLocalTransform(bone.name, local);
 				currentParentGlobal = newGlobal;
+				currentBoneStart = bone.position; // End of this bone is start of next
 			}
 		}
 
 		// Update persistent body state if desired (optional, but let's keep it clean)
-		// body.position = GetModelMatrix() * glm::vec4(localBody.position, 1.0f); // Could do this if we want body-tracking
+		body.position = glm::vec3(GetModelMatrix() * glm::vec4(localBody.position, 1.0f));
 		
 		UpdateAnimation(0.0f);
 	}
