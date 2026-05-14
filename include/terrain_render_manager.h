@@ -455,6 +455,7 @@ namespace Boidsish {
 		float     last_prep_tess_multiplier_ = -1.0f;
 		size_t    last_prep_visible_chunk_count_ = 0;
 		uint32_t  last_prep_frustum_hash_ = 0;
+		int       skip_counter_ = 0;
 		bool      needs_prep_ = true;
 
 		// Eviction callback for notifying TerrainGenerator
