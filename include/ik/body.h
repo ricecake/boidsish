@@ -1,101 +1,86 @@
+#ifndef BOIDSISH_IK_BODY_H
+#define BOIDSISH_IK_BODY_H
+
 #include <vector>
+#include <algorithm>
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
 
+#include "chain.hpp"
+
 namespace Boidsish {
-	class Constraint {
-		int       type;
-		glm::quat orientation;
-		float     angle;
-	};
-
-	class Joint {
-		float                   force;
-		glm::quat               orientation;
-		std::vector<Constraint> constraints;
-	};
-
-	class Bone {
-		float              weight;
-		float              length;
-		glm::vec3          position;
-		glm::quat          orientation;
-		std::vector<Joint> joints;
-	};
-
-	class Chain {
-		glm::vec3         base;
-		std::vector<Bone> bones;
-	};
 
 	class Tree {
+	public:
 		std::vector<Chain> chains;
 	};
 
 	class Body {
-		float     weight;
+	public:
+		float     weight = 1.0f;
 		Tree      tree;
-		glm::vec3 center_of_mass;
-		glm::vec3 goal;
+		glm::vec3 center_of_mass = glm::vec3(0.0f);
+		glm::vec3 position = glm::vec3(0.0f);
+		glm::vec3 goal = glm::vec3(0.0f);
 	};
 
-	Vector3 ApplyHingeConstraint(const Vector3& currentPos,
-	                             const Vector3& previousPos,
-	                             const Vector3& hingeNormal,
-	                             const Vector3& referenceAxis,
-	                             float          minAngleRad,
-	                             float          maxAngleRad,
-	                             float          boneLength) {
-		Vector3 boneDir = (currentPos - previousPos).normalized();
+	inline glm::vec3 ApplyHingeConstraint(const glm::vec3& currentPos,
+	                                     const glm::vec3& previousPos,
+	                                     const glm::vec3& hingeNormal,
+	                                     const glm::vec3& referenceAxis,
+	                                     float          minAngleRad,
+	                                     float          maxAngleRad,
+	                                     float          boneLength) {
+		glm::vec3 boneDir = glm::normalize(currentPos - previousPos);
 
 		// 1. Project direction onto the hinge plane
-		Vector3 projectedDir = boneDir - (boneDir.dot(hingeNormal) * hingeNormal);
-		if (projectedDir.lengthSquared() < 0.0001f) {
+		glm::vec3 projectedDir = boneDir - (glm::dot(boneDir, hingeNormal) * hingeNormal);
+		if (glm::length(projectedDir) < 0.0001f) {
 			projectedDir = referenceAxis; // Fallback to avoid singularity
 		} else {
-			projectedDir.normalize();
+			projectedDir = glm::normalize(projectedDir);
 		}
 
 		// 2. Enforce Angular Limits (Knee limits)
 		// Compute signed angle between referenceAxis and projectedDir
-		float angle = atan2(projectedDir.cross(referenceAxis).dot(hingeNormal), projectedDir.dot(referenceAxis));
+		float angle = atan2(glm::dot(glm::cross(referenceAxis, projectedDir), hingeNormal), glm::dot(projectedDir, referenceAxis));
 
 		// Clamp the angle
 		float clampedAngle = std::clamp(angle, minAngleRad, maxAngleRad);
 
 		// 3. Reconstruct constrained direction using quaternions/axis-angle
-		Quaternion limitRot = Quaternion::AngleAxis(clampedAngle, hingeNormal);
-		Vector3    constrainedDir = limitRot * referenceAxis;
+		glm::quat limitRot = glm::angleAxis(clampedAngle, hingeNormal);
+		glm::vec3 constrainedDir = limitRot * referenceAxis;
 
 		return previousPos + (constrainedDir * boneLength);
 	}
 
-	Vector3 ApplyConeConstraint(const Vector3& currentPos,
-	                            const Vector3& previousPos,
-	                            const Vector3& coneAxis,
-	                            float          maxAngleRad,
-	                            float          boneLength) {
-		Vector3 boneDir = (currentPos - previousPos).normalized();
+	inline glm::vec3 ApplyConeConstraint(const glm::vec3& currentPos,
+	                                    const glm::vec3& previousPos,
+	                                    const glm::vec3& coneAxis,
+	                                    float          maxAngleRad,
+	                                    float          boneLength) {
+		glm::vec3 boneDir = glm::normalize(currentPos - previousPos);
 
-		float dotP = std::clamp(boneDir.dot(coneAxis), -1.0f, 1.0f);
+		float dotP = std::clamp(glm::dot(boneDir, coneAxis), -1.0f, 1.0f);
 		float currentAngle = acos(dotP);
 
 		if (currentAngle > maxAngleRad) {
 			// Calculate the axis of rotation perpendicular to both vectors
-			Vector3 rotationAxis = coneAxis.cross(boneDir);
+			glm::vec3 rotationAxis = glm::cross(coneAxis, boneDir);
 
-			if (rotationAxis.lengthSquared() < 0.0001f) {
+			if (glm::length(rotationAxis) < 0.0001f) {
 				// Handle anti-parallel edge case
-				rotationAxis = Vector3(1, 0, 0); // Or an orthogonal vector to coneAxis
+				rotationAxis = glm::vec3(1, 0, 0); // Or an orthogonal vector to coneAxis
 			} else {
-				rotationAxis.normalize();
+				rotationAxis = glm::normalize(rotationAxis);
 			}
 
 			// Clamp the direction to the edge of the cone
-			Quaternion limitRot = Quaternion::AngleAxis(maxAngleRad, rotationAxis);
-			Vector3    constrainedDir = limitRot * coneAxis;
+			glm::quat limitRot = glm::angleAxis(maxAngleRad, rotationAxis);
+			glm::vec3 constrainedDir = limitRot * coneAxis;
 
 			return previousPos + (constrainedDir * boneLength);
 		}
@@ -103,25 +88,43 @@ namespace Boidsish {
 		return currentPos; // Already within the cone
 	}
 
-	void ApplyTwistConstraint(Transform& parentTransform, Transform& childTransform, float maxTwistRad) {
-		Vector3 boneDir = childTransform.forward;
+	// Simplified Twist Constraint helper
+	// Replaces your truncated ApplyTwistConstraint in body.h
+	inline void ApplyTwistConstraint(glm::quat& boneOrientation, const glm::vec3& boneDir, const glm::vec3& parentRefAxis, float maxTwistRad) {
+		// 1. Get the child's current reference vector (Assuming Z is our orthogonal reference)
+		glm::vec3 childRefAxis = boneOrientation * glm::vec3(0, 0, 1);
 
-		// Project the parent's up vector onto the child's local plane
-		Vector3 parentUpProjected = parentTransform.up - (parentTransform.up.dot(boneDir) * boneDir);
-		parentUpProjected.normalize();
+		// 2. Project both the parent and child reference axes onto the plane perpendicular to the bone direction
+		glm::vec3 projParent = parentRefAxis - (glm::dot(parentRefAxis, boneDir) * boneDir);
+		glm::vec3 projChild = childRefAxis - (glm::dot(childRefAxis, boneDir) * boneDir);
 
-		// Calculate twist angle
-		float twistAngle = atan2(childTransform.up.cross(parentUpProjected).dot(boneDir),
-		                         childTransform.up.dot(parentUpProjected));
+		// Guard against singularities if the reference axis aligns perfectly with the bone direction
+		if (glm::length(projParent) < 0.0001f || glm::length(projChild) < 0.0001f) return;
 
-		if (std::abs(twistAngle) > maxTwistRad) {
-			float allowedTwist = (twistAngle > 0) ? maxTwistRad : -maxTwistRad;
+		projParent = glm::normalize(projParent);
+		projChild = glm::normalize(projChild);
 
-			// Rotate the child's up vector to the limit boundary
-			Quaternion twistCorrection = Quaternion::AngleAxis(allowedTwist - twistAngle, boneDir);
-			childTransform.up = twistCorrection * childTransform.up;
-			childTransform.right = boneDir.cross(childTransform.up);
+		// 3. Calculate the signed twist angle using dot and cross products
+		float angle = acos(std::clamp(glm::dot(projParent, projChild), -1.0f, 1.0f));
+
+		// Determine direction of the twist
+		glm::vec3 crossAxis = glm::cross(projParent, projChild);
+		if (glm::dot(crossAxis, boneDir) < 0) {
+			angle = -angle;
+		}
+
+		// 4. If the twist exceeds the limit, calculate the difference and counter-rotate the quaternion
+		if (std::abs(angle) > maxTwistRad) {
+			float clampedAngle = std::clamp(angle, -maxTwistRad, maxTwistRad);
+			float correctionAngle = clampedAngle - angle; // The amount we need to push back
+
+			// Create a correction rotation purely around the bone's directional axis
+			glm::quat correctionRot = glm::angleAxis(correctionAngle, boneDir);
+
+			// Apply the correction to the final orientation
+			boneOrientation = correctionRot * boneOrientation;
 		}
 	}
-
 } // namespace Boidsish
+
+#endif

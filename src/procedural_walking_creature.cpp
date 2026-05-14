@@ -47,27 +47,35 @@ namespace Boidsish {
 		// With left-side axis (0,0,1): actual left-side dirs give same positive angle.
 		// So unsigned acos value is correct for both sides.
 
-		// // Setup leg constraints
-		// for (int i = 0; i < 4; ++i) {
-		// 	bool is_left = (i == 0 || i == 3); // FL=0, BL=3
+		// Setup leg constraints
+		for (int i = 0; i < 4; ++i) {
+			bool is_left = (i == 0 || i == 3); // FL=0, BL=3
 
-		// 	// Upper leg: twist-only — full directional freedom, prevents axial roll
-		// 	BoneConstraint upper_c;
-		// 	upper_c.minTwist = -15.0f;
-		// 	upper_c.maxTwist = 15.0f;
-		// 	model_->SetBoneConstraint(names[i] + "_upper", upper_c);
+			// Upper leg: twist-only — full directional freedom, prevents axial roll
+			Joint upper_j;
+			Constraint upper_t;
+			upper_t.type = ConstraintType::Twist;
+			upper_t.angle = glm::radians(15.0f);
+			upper_j.constraints.push_back(upper_t);
+			model_->SetBoneJoint(names[i] + "_upper", upper_j);
 
-		// 	// Lower leg: hinge in bending plane, rest-angle-relative limits
-		// 	BoneConstraint lower_c;
-		// 	lower_c.type = ConstraintType::Hinge;
-		// 	lower_c.axis = is_left ? glm::vec3(0, 0, 1) : glm::vec3(0, 0, -1);
-		// 	lower_c.restAngle = rest_angle;
-		// 	lower_c.minAngle = -60.0f;  // Allow 60° more bending from rest
-		// 	lower_c.maxAngle = 60.0f;   // Allow 60° straightening from rest
-		// 	lower_c.minTwist = -5.0f;
-		// 	lower_c.maxTwist = 5.0f;
-		// 	model_->SetBoneConstraint(names[i] + "_lower", lower_c);
-		// }
+			// Lower leg: hinge in bending plane, rest-angle-relative limits
+			Joint lower_j;
+			Constraint lower_h;
+			lower_h.type = ConstraintType::Hinge;
+			lower_h.axis = is_left ? glm::vec3(0, 0, 1) : glm::vec3(0, 0, -1);
+			lower_h.restAngle = rest_angle;
+			lower_h.minAngle = glm::radians(-60.0f); // Allow 60° more bending from rest
+			lower_h.maxAngle = glm::radians(60.0f);  // Allow 60° straightening from rest
+			lower_j.constraints.push_back(lower_h);
+
+			Constraint lower_t;
+			lower_t.type = ConstraintType::Twist;
+			lower_t.angle = glm::radians(5.0f);
+			lower_j.constraints.push_back(lower_t);
+
+			model_->SetBoneJoint(names[i] + "_lower", lower_j);
+		}
 
 		// Setup legs tracking — rest offsets match GenerateIR foot positions exactly
 		legs_.resize(4);
@@ -81,6 +89,9 @@ namespace Boidsish {
 			{-total_lateral, 0, -z_offset}
 		};
 
+		ik_body_.position = current_pos_;
+		ik_body_.weight = 5.0f;
+
 		for (int i = 0; i < 4; ++i) {
 			legs_[i].name = names[i];
 			legs_[i].effector_name = names[i] + "_foot";
@@ -89,6 +100,19 @@ namespace Boidsish {
 			legs_[i].world_foot_pos.y = 0;
 			legs_[i].step_start_pos = legs_[i].world_foot_pos;
 			legs_[i].step_target_pos = legs_[i].world_foot_pos;
+
+			Chain leg_chain;
+			leg_chain.base = offsets[i];
+			leg_chain.hasTarget = true;
+			leg_chain.target = legs_[i].world_foot_pos;
+
+			std::string bone_names[3] = {names[i] + "_upper", names[i] + "_lower", names[i] + "_foot"};
+			for (int j = 0; j < 3; ++j) {
+				Bone bone;
+				bone.name = bone_names[j];
+				leg_chain.bones.push_back(bone);
+			}
+			ik_body_.tree.chains.push_back(leg_chain);
 		}
 	}
 
@@ -211,11 +235,12 @@ namespace Boidsish {
 		}
 
 		// Apply IK to position legs on the ground
-		// Each leg has its own 3-joint chain: [upper, lower, foot]
-		for (auto& leg : legs_) {
-			model_->SolveIK(leg.effector_name, leg.world_foot_pos, 0.01f, 20, leg.name + "_upper");
+		ik_body_.position = current_pos_;
+		for (int i = 0; i < 4; ++i) {
+			ik_body_.tree.chains[i].target = legs_[i].world_foot_pos;
 		}
-		model_->UpdateAnimation(delta_time);
+
+		model_->SolveIK(ik_body_, 20, 0.01f);
 	}
 
 	void ProceduralWalkingCreature::UpdateMovement(float delta_time) {

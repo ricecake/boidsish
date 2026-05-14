@@ -10,6 +10,8 @@
 #include <assimp/postprocess.h>
 #include <assimp/scene.h>
 #include <glm/glm.hpp>
+#include <ik/joint.hpp>
+#include <ik/body.h>
 
 class Shader;
 
@@ -85,22 +87,6 @@ namespace Boidsish {
 		friend class Model;
 	};
 
-	enum class ConstraintType { None, Hinge, Cone };
-
-	struct BoneConstraint {
-		ConstraintType type = ConstraintType::None;
-		glm::vec3      axis = glm::vec3(1, 0, 0); // For Hinge
-		float          minAngle = -180.0f;        // In degrees — deviation from restAngle
-		float          maxAngle = 180.0f;
-		float          restAngle = 0.0f;  // Bind-pose angle on the hinge plane (degrees)
-		float          coneAngle = 45.0f; // For Cone
-
-		// Twist (axial roll) limits in degrees, orthogonal to type.
-		// Default ±180° = unconstrained. Can combine with any ConstraintType.
-		float minTwist = -180.0f;
-		float maxTwist = 180.0f;
-	};
-
 	struct BoneInfo {
 		/*id is index in finalBoneMatrices*/
 		int id;
@@ -108,7 +94,7 @@ namespace Boidsish {
 		/*offset matrix transforms vertex from model space to bone space*/
 		glm::mat4 offset;
 
-		BoneConstraint constraint;
+		Joint joint;
 	};
 
 	struct KeyPosition {
@@ -288,6 +274,12 @@ namespace Boidsish {
 
 		void SetBaseRotation(const glm::quat& rotation) { base_rotation_ = rotation; }
 
+		/**
+		 * @brief Solve IK for a full Body structure.
+		 * Synchronizes model state to Body, solves, and applies results back.
+		 */
+		void SolveIK(Body& body, int maxIterations = 20, float tolerance = 0.001f);
+
 		// Returns unique key for this model file - models loaded from the same file can be instanced together
 		std::string GetInstanceKey() const override;
 
@@ -315,8 +307,8 @@ namespace Boidsish {
 		void AddBone(const std::string& name, const std::string& parentName, const glm::mat4& localTransform);
 		std::vector<std::string> GetEffectors() const;
 
-		void           SetBoneConstraint(const std::string& boneName, const BoneConstraint& constraint);
-		BoneConstraint GetBoneConstraint(const std::string& boneName) const;
+		void  SetBoneJoint(const std::string& boneName, const Joint& joint);
+		Joint GetBoneJoint(const std::string& boneName) const;
 
 		glm::vec3 GetBoneWorldPosition(const std::string& boneName) const;
 		void      SetBoneWorldPosition(const std::string& boneName, const glm::vec3& worldPos);

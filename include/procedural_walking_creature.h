@@ -45,6 +45,7 @@ namespace Boidsish {
 
 		std::vector<Leg>       legs_;
 		std::shared_ptr<Model> model_;
+		Body                   ik_body_;
 
 		glm::vec3 current_pos_;
 		float     current_yaw_ = 0.0f;

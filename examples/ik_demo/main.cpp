@@ -55,13 +55,16 @@ public:
 		model->UpdateAnimation(0);
 		model->SkinToHierarchy();
 
-		// // Apply constraints
-		// BoneConstraint cone;
-		// cone.type = ConstraintType::Cone;
-		// cone.coneAngle = 60.0f;
-		// model->SetBoneConstraint("bone_root", cone);
-		// model->SetBoneConstraint("bone_mid1", cone);
-		// model->SetBoneConstraint("bone_mid2", cone);
+		// Apply constraints
+		Joint cone_j;
+		Constraint cone_c;
+		cone_c.type = ConstraintType::Cone;
+		cone_c.angle = glm::radians(60.0f);
+		cone_j.constraints.push_back(cone_c);
+
+		model->SetBoneJoint("bone_root", cone_j);
+		model->SetBoneJoint("bone_mid1", cone_j);
+		model->SetBoneJoint("bone_mid2", cone_j);
 
 		targetMarker = std::make_shared<Dot>(0, 0, 0, 1, 1, 0, 1);
 		targetMarker->SetScale(glm::vec3(0.2f));
@@ -88,8 +91,22 @@ public:
 			}
 		}
 
-		model->SolveIK("bone_effector", currentTarget, 0.01f, 20, "bone_root");
-		model->UpdateAnimation(dt);
+		Body  body;
+		Chain chain;
+		body.position = model->GetBoneWorldPosition("SkeletonRoot");
+
+		std::string names[4] = {"bone_root", "bone_mid1", "bone_mid2", "bone_effector"};
+		for (int i = 0; i < 4; ++i) {
+			Bone bone;
+			bone.name = names[i];
+			chain.bones.push_back(bone);
+		}
+		chain.target = currentTarget;
+		chain.hasTarget = true;
+		chain.base = model->GetBoneWorldPosition("bone_root") - body.position;
+		body.tree.chains.push_back(chain);
+
+		model->SolveIK(body, 20, 0.01f);
 	}
 
 	void SetTarget(glm::vec3 pos) {
