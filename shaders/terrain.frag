@@ -292,6 +292,7 @@ void main() {
 	vec3  scaledFragPos = FragPos / worldScale;
 
 	float dist = length(FragPos.xz - viewPos.xz);
+	float realDist = distance(FragPos, viewPos);
 	// float n_fade = snoise(vec3(FragPos.xy / (25 * worldScale), time * 0.08));
 	float n_fade = fastSimplex3d(vec3(FragPos.xz / (250 * worldScale), time * 0.09));
 	float fade_start = 560.0 * worldScale;
@@ -453,7 +454,7 @@ void main() {
 	float grassAO = 0.0;
 	vec3 perturbedNorm = norm;
 	if (u_grassGlobal.enabled != 0) {
-		float freqScale = mix(1.0, 0.25, smoothstep(100.0, 200.0, dist));
+		float freqScale = mix(1.0, 0.25, smoothstep(150.0, 160.0, realDist));
 		float blueNoise = fastBlueNoise(FragPos.xz * (baseFreq * 0.05 * freqScale), 0) * 0.5 + 0.5;
 		float blueNoiseA = fastBlueNoise(FragPos.xz * (baseFreq * 0.1 * freqScale), 1) * 0.5 + 0.5;
 		float worley = fastWorley3d(FragPos * 5 * baseFreq) * 0.5 + 0.5;
@@ -470,7 +471,7 @@ void main() {
 
 		vec3 colorA = u_grassBiomes[idxA].colorBottom.rgb;
 		vec3 colorB = u_grassBiomes[idxB].colorBottom.rgb;
-		vec3 grassColor = mix(colorA, colorB, smoothstep(blueNoiseA, 0.5, t));
+		vec3 grassColor = mix(colorA, colorB, step(blueNoiseA, t));
 
 		float rigidA = u_grassBiomes[idxA].rigidity;
 		float rigidB = u_grassBiomes[idxB].rigidity;
@@ -493,7 +494,7 @@ void main() {
 		float effectiveWindStrength = max(0.0, length(windAtPos) - windThreshold);
 
 		float gustIntensity = smoothstep(5.0, 10.0, effectiveWindStrength*(1.0-rigidity));
-		float dynamicBlend = mix(1.15, 0.85, gustIntensity - 0.5 * gustIntensity * fastSimplex3d(FragPos/10.0*sin(time*0.5)));
+		float dynamicBlend = mix(1.15, 0.85, gustIntensity - 0.5 * gustIntensity * fastSimplex3d(FragPos/10.0*sin(time*0.1)));
 
 		vec3 undersideColor = grassColor * 1.25 + vec3(0.05, 0.05, 0.0);
 		vec3 dynamicGrassColor = mix(grassColor, undersideColor, dynamicBlend);
@@ -501,14 +502,18 @@ void main() {
 		finalMaterial.albedo = mix(finalMaterial.albedo, dynamicGrassColor, step(blueNoise, grassMask));
 
 		float floorTexture = pow(fastRidge3d(FragPos / 10.0) * 0.5 + 0.5, 2);
-		float noiseVal = 1.0-pow(fastRidge3d(FragPos+5*normalize(windAtPos)) * 0.5 + 0.5, 3);
-		float albedoMultiplier = mix(floorTexture, mix(0.7, 1.3, noiseVal), smoothstep(20, 100, distanceFactor) * dynamicBlend);
+		float noiseVal = pow(fastRidge3d(FragPos+5*normalize(windAtPos)) * 0.5 + 0.5, 3);
+
+		floorTexture = mix(1.0, floorTexture, (1.0-smoothstep(0, 150, dist)));
+		noiseVal = mix(1.0, mix(0.7, 1.3, noiseVal), smoothstep(100, 150, dist));
+
+		float albedoMultiplier = floorTexture * noiseVal;
 
 		finalMaterial.albedo *= albedoMultiplier;
 
 		// Select flower color from a vibrant palette based on blue noise and position
 		vec3 flowerColor;
-		float colorSelector = fract(worley * 3.0 + length(FragPos.xz) * 0.01);
+		float colorSelector = fract(blueNoiseA * 3.0 + length(FragPos.xz) * 0.01);
 		if (colorSelector < 0.3) {
 			flowerColor = vec3(1.0, 0.2, 0.4); // Pinkish
 		} else if (colorSelector < 0.6) {
@@ -520,8 +525,8 @@ void main() {
 		// Occasional white flowers
 		if (fastSimplex3d(FragPos * 0.01) > 0.8) flowerColor = vec3(1.0, 1.0, 1.0);
 
-		float flowerScale = mix(0.75, 0.35, smoothstep(100.0, 200.0, dist));
-		float flowerMask = smoothstep(0.5, 0.7, grassMask) * smoothstep(flowerScale, flowerScale + 0.10, worley) * smoothstep(0.2, 0.75, fastWorley3d(FragPos/100.0));
+		float flowerScale = mix(mix(0.75, 0.35, smoothstep(50.0, 100.0, realDist)), 0.01, smoothstep(100, 150, realDist));
+		float flowerMask = smoothstep(0.5, 0.7, grassMask) * smoothstep(flowerScale, flowerScale + 0.10, worley) * smoothstep(0.6, 0.95, max(fastWorley3d(FragPos/50.0), pow(fastRidge3d(FragPos/200.0), 3)));
 		finalMaterial.albedo = mix(finalMaterial.albedo, flowerColor, flowerMask);
 
 		finalMaterial.roughness = mix(finalMaterial.roughness, clamp(finalMaterial.roughness * dynamicBlend, 0.0, 1.0), distanceFactor);
