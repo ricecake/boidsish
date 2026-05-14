@@ -1044,16 +1044,13 @@ namespace Boidsish {
 			bool  tess_unchanged = (tess_quality_multiplier == last_prep_tess_multiplier_);
 
 			// We also need to check for camera orientation changes.
-			// Extract camera forward vector from view-projection or frustum if possible,
-			// but a simpler way is to check the hash of the frustum planes if provided.
 			// For now, let's just use frame count to ensure we don't skip for more than 10 frames
 			// if the camera is moving slowly.
-			static int skip_counter = 0;
-			if (camera_static && tess_unchanged && skip_counter < 10) {
-				skip_counter++;
+			if (camera_static && tess_unchanged && skip_counter_ < 10) {
+				skip_counter_++;
 				return;
 			}
-			skip_counter = 0;
+			skip_counter_ = 0;
 		}
 
 		// Advance triple buffers for patch rendering
