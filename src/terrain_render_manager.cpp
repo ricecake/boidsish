@@ -740,8 +740,6 @@ namespace Boidsish {
 		// Upload instance data to GPU for the prepare compute shader
 		PROJECT_PROFILE_SCOPE("UploadInstanceData");
 		if (!visible_instances_.empty()) {
-			instance_pb_->AdvanceFrame();
-
 			// Update bounds with raw chunkSize for the prepare shader's UV calculation
 			InstanceData* instance_ptr = instance_pb_->GetFrameDataPtr();
 			for (size_t i = 0; i < visible_instances_.size(); ++i) {
@@ -776,6 +774,11 @@ namespace Boidsish {
 
 		if (origin_x == last_grid_origin_x_ && origin_z == last_grid_origin_z_ &&
 		    world_scale == last_grid_world_scale_ && !grid_dirty_ && !lighting_changed) {
+			// Even if nothing changed, always copy to the new segment for triple-buffering
+			TerrainDataUbo previous_ubo = *terrain_data_pb_->GetFrameDataPtr(
+				(terrain_data_pb_->GetCurrentBufferIndex() + 2) % 3);
+			terrain_data_pb_->AdvanceFrame();
+			*terrain_data_pb_->GetFrameDataPtr() = previous_ubo;
 			return;
 		}
 
@@ -803,7 +806,6 @@ namespace Boidsish {
 
 		GenerateMaxHeightMips();
 
-		terrain_data_pb_->AdvanceFrame();
 		TerrainDataUbo* ubo = terrain_data_pb_->GetFrameDataPtr();
 		ubo->origin_size = glm::ivec4(origin_x, origin_z, grid_size, 1);
 		ubo->terrain_params = glm::vec4(static_cast<float>(chunk_size_), world_scale, 0.0f, 0.0f);
@@ -1043,6 +1045,7 @@ namespace Boidsish {
 		glClearBufferData(GL_SHADER_STORAGE_BUFFER, GL_R32UI, GL_RED_INTEGER, GL_UNSIGNED_INT, nullptr);
 
 		patch_prepare_shader_->use();
+		BindTerrainData(*patch_prepare_shader_);
 
 		uint32_t* indirect_data = reinterpret_cast<uint32_t*>(patch_indirect_pb_->GetFrameDataPtr());
 		indirect_data[4] = 4; // count (4 vertices per quad)
@@ -1151,13 +1154,6 @@ namespace Boidsish {
 
 		// 2. Render visible patches using MDI
 		shader.use();
-
-		// Update VAO vertex buffer binding with current frame offset for instances
-		glBindVertexArray(grid_vao_);
-		glBindBuffer(GL_ARRAY_BUFFER, instance_pb_->GetBufferId());
-		glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof(InstanceData), (void*)((uintptr_t)instance_pb_->GetFrameOffset() + offsetof(InstanceData, world_offset_and_slice)));
-		glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, sizeof(InstanceData), (void*)((uintptr_t)instance_pb_->GetFrameOffset() + offsetof(InstanceData, bounds)));
-		glBindVertexArray(0);
 
 		shader.setMat4("view", view);
 		shader.setMat4("projection", projection);
@@ -1298,7 +1294,6 @@ namespace Boidsish {
 		for (size_t i = 0; i < tasks.size(); i += max_batch) {
 			size_t batch_size = std::min(max_batch, tasks.size() - i);
 
-			bake_pb_->AdvanceFrame();
 			std::memcpy(bake_pb_->GetFrameDataPtr(), &tasks[i], batch_size * sizeof(BakeTask));
 			bake_pb_->BindRange(Constants::SsboBinding::TerrainChunkInfo());
 
@@ -1329,7 +1324,6 @@ namespace Boidsish {
 
 			for (size_t i = 0; i < tasks.size(); i += max_batch) {
 				size_t batch_size = std::min(max_batch, tasks.size() - i);
-				bake_pb_->AdvanceFrame();
 				std::memcpy(bake_pb_->GetFrameDataPtr(), &tasks[i], batch_size * sizeof(BakeTask));
 				bake_pb_->BindRange(Constants::SsboBinding::TerrainChunkInfo());
 				patch_metrics_shader_->setInt("u_numTasks", static_cast<int>(batch_size));
@@ -1355,6 +1349,13 @@ namespace Boidsish {
 	size_t TerrainRenderManager::GetVisibleChunkCount() const {
 		std::lock_guard<std::recursive_mutex> lock(mutex_);
 		return visible_instances_.size();
+	}
+
+	void TerrainRenderManager::AdvanceFrame() {
+		std::lock_guard<std::recursive_mutex> lock(mutex_);
+		instance_pb_->AdvanceFrame();
+		terrain_data_pb_->AdvanceFrame();
+		bake_pb_->AdvanceFrame();
 	}
 
 	std::vector<glm::vec4> TerrainRenderManager::GetChunkInfo(float world_scale) const {
@@ -1406,7 +1407,6 @@ namespace Boidsish {
 		for (size_t i = 0; i < tasks.size(); i += max_batch) {
 			size_t batch_size = std::min(max_batch, tasks.size() - i);
 
-			bake_pb_->AdvanceFrame();
 			std::memcpy(bake_pb_->GetFrameDataPtr(), &tasks[i], batch_size * sizeof(BakeTask));
 			bake_pb_->BindRange(Constants::SsboBinding::TerrainChunkInfo());
 

@@ -2223,6 +2223,11 @@ namespace Boidsish {
 			temporal_pb->AdvanceFrame();
 			if (visual_effects_pb) visual_effects_pb->AdvanceFrame();
 
+			if (fire_effect_manager) fire_effect_manager->AdvanceFrame();
+			if (decor_manager) decor_manager->AdvanceFrame();
+			if (terrain_render_manager) terrain_render_manager->AdvanceFrame();
+			if (grass_manager) grass_manager->AdvanceFrame();
+
 			int current_idx = uniforms_ssbo->GetCurrentBufferIndex();
 			if (mdi_fences[current_idx]) {
 				glClientWaitSync(mdi_fences[current_idx], GL_SYNC_FLUSH_COMMANDS_BIT, GL_TIMEOUT_IGNORED);
@@ -2676,9 +2681,7 @@ namespace Boidsish {
 				);
 			}
 
-			if (grass_manager && terrain_generator && terrain_render_manager) {
-				grass_manager->SetCameraPos(camera.pos());
-
+			if (terrain_generator && terrain_render_manager) {
 				// 1. Calculate terrain preparation quality
 				float effective_quality = tess_quality_multiplier_;
 				effective_quality /= terrain_generator->GetWorldScale();
@@ -2710,13 +2713,16 @@ namespace Boidsish {
 				terrain_render_manager->DispatchPreparePatches(effective_quality);
 
 				// 4. Update grass system
-				grass_manager->Update(
-					simulation_delta_time,
-					simulation_time,
-					camera,
-					*terrain_generator,
-					terrain_render_manager
-				);
+				if (grass_manager) {
+					grass_manager->SetCameraPos(camera.pos());
+					grass_manager->Update(
+						simulation_delta_time,
+						simulation_time,
+						camera,
+						*terrain_generator,
+						terrain_render_manager
+					);
+				}
 			}
 		}
 

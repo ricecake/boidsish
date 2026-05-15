@@ -124,6 +124,8 @@ namespace Boidsish {
 		static DecorProperties GetDefaultDeadTreeProperties();
 		static DecorProperties GetDefaultRockProperties();
 
+		void AdvanceFrame();
+
 		void UpdateCPU(
 			const Camera&                         camera,
 			const ITerrainGenerator&              terrain_gen,

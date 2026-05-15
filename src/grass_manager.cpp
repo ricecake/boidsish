@@ -174,17 +174,25 @@ namespace Boidsish {
         SetGrassProperties(Biome::Snow, snowGrass);
     }
 
+    void GrassManager::AdvanceFrame() {
+        if (!initialized_) return;
+        grass_props_pb_->AdvanceFrame();
+    }
+
     void GrassManager::Update(float deltaTime, float time, const Camera& camera, const ITerrainGenerator& terrainGen, std::shared_ptr<TerrainRenderManager> renderManager) {
         if (!initialized_) return;
 
         last_camera_pos_ = camera.pos();
 
         if (props_dirty_) {
-            grass_props_pb_->AdvanceFrame();
             uint8_t* ptr = grass_props_pb_->GetFrameDataPtr();
             std::memcpy(ptr, biome_grass_props_.data(), 8 * sizeof(GrassProperties));
             std::memcpy(ptr + 8 * sizeof(GrassProperties), &global_props_, sizeof(GlobalGrassProperties));
             props_dirty_ = false;
+        } else {
+            // Triple buffering: copy previous frame's props to current segment
+            uint8_t* prev_ptr = grass_props_pb_->GetFrameDataPtr((grass_props_pb_->GetCurrentBufferIndex() + 2) % 3);
+            std::memcpy(grass_props_pb_->GetFrameDataPtr(), prev_ptr, 8 * sizeof(GrassProperties) + sizeof(GlobalGrassProperties));
         }
 
         if (!IsEnabled()) return;

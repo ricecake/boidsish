@@ -214,6 +214,19 @@ namespace Boidsish {
 		}
 	}
 
+	void FireEffectManager::AdvanceFrame() {
+		std::lock_guard<std::mutex> lock(mutex_);
+		if (!initialized_)
+			return;
+
+		emitter_pb_->AdvanceFrame();
+		indirection_pb_->AdvanceFrame();
+		terrain_chunk_pb_->AdvanceFrame();
+		slice_data_pb_->AdvanceFrame();
+		draw_command_pb_->AdvanceFrame();
+		behavior_command_pb_->AdvanceFrame();
+	}
+
 	void FireEffectManager::UpdateCPU(
 		float                         delta_time,
 		float                         time,
@@ -251,14 +264,6 @@ namespace Boidsish {
 			_UpdateParticleAllocation();
 			needs_reallocation_ = false;
 		}
-
-		// Advance frames for persistent buffers
-		emitter_pb_->AdvanceFrame();
-		indirection_pb_->AdvanceFrame();
-		terrain_chunk_pb_->AdvanceFrame();
-		slice_data_pb_->AdvanceFrame();
-		draw_command_pb_->AdvanceFrame();
-		behavior_command_pb_->AdvanceFrame();
 
 		// --- Update Emitters and Slice Data ---
 		Emitter* emitters_ptr = emitter_pb_->GetFrameDataPtr();

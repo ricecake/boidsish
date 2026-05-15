@@ -166,6 +166,8 @@ namespace Boidsish {
 
 		int GetChunkSize() const { return chunk_size_; }
 
+		void AdvanceFrame();
+
 		/**
 		 * @brief Get the heightmap texture array for shader binding.
 		 */

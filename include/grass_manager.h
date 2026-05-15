@@ -52,6 +52,7 @@ namespace Boidsish {
         ~GrassManager();
 
         void Initialize();
+        void AdvanceFrame();
         void Update(float deltaTime, float time, const struct Camera& camera, const class ITerrainGenerator& terrainGen, std::shared_ptr<class TerrainRenderManager> renderManager);
 
         struct RenderResources {

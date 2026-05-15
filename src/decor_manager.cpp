@@ -316,6 +316,13 @@ namespace Boidsish {
 		return props;
 	}
 
+	void DecorManager::AdvanceFrame() {
+		if (!initialized_)
+			return;
+		placement_globals_pb_->AdvanceFrame();
+		chunk_params_pb_->AdvanceFrame();
+	}
+
 	void DecorManager::PrepareResources(Megabuffer* mb) {
 		for (auto& type : decor_types_) {
 			if (mb) {
@@ -576,9 +583,6 @@ namespace Boidsish {
 			prepared_placement_.has_work = false;
 			return;
 		}
-
-		placement_globals_pb_->AdvanceFrame();
-		chunk_params_pb_->AdvanceFrame();
 
 		std::memcpy(placement_globals_pb_->GetFrameDataPtr(), &prepared_placement_.globals, sizeof(PlacementGlobalsGPU));
 		std::memcpy(chunk_params_pb_->GetFrameDataPtr(), prepared_placement_.chunk_gpu.data(),

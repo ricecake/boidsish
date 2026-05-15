@@ -54,6 +54,8 @@ namespace Boidsish {
 		// Returns true if fire effects are available (compute shader compiled successfully)
 		bool IsAvailable() const;
 
+		void AdvanceFrame();
+
 		/**
 		 * @brief CPU-side update for particle allocation and data preparation.
 		 * Can be called from a background thread or during the logical update phase.
