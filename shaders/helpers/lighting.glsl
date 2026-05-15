@@ -498,11 +498,11 @@ void evaluate_brdf(
 	vec3 h_local = invTBN * H;
 
 	float NDF;
-#ifdef GL_FRAGMENT_SHADER
+// #ifdef GL_FRAGMENT_SHADER
 	NDF = glint_ndf(h_local, mfp.alpha, mfp.g_alpha, mfp.uv, mfp.uv_J, mfp.g_density, DEFAULT_PIXEL_FILTER_SIZE);
-#else
-    NDF = DistributionGGX(N, H, roughness);
-#endif
+// #else
+//     NDF = DistributionGGX(N, H, roughness);
+// #endif
 
     float V_term = VisibilitySmithGGXCorrelated(NdotL, NdotV, roughness);
     vec3 F = fresnelSchlickFast(HdotV, F0);
