@@ -103,7 +103,7 @@ namespace Boidsish {
 			injection_shader_->setVec3("uPrevCamFront", prev_camera_front_);
 			injection_shader_->setFloat("uTemporalAlpha", has_history_ ? temporal_alpha_ : 0.0f);
 
-			glBindImageTexture(Constants::TextureUnit::VolumetricInjection(), injection_texture_, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+			glBindImageTexture(Constants::ImageBinding::VolumetricInjection(), injection_texture_, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 
 			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::VolumetricHistory());
 			glBindTexture(GL_TEXTURE_3D, history_textures_[history_index_]);
@@ -114,12 +114,12 @@ namespace Boidsish {
 
 			// 2. Integration (Accumulate along Z)
 			integration_shader_->use();
-			glBindImageTexture(Constants::TextureUnit::VolumetricInjection(), injection_texture_, 0, GL_TRUE, 0, GL_READ_ONLY, GL_RGBA16F);
-			glBindImageTexture(Constants::TextureUnit::VolumetricScattering(), scattering_texture_, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+			glBindImageTexture(Constants::ImageBinding::VolumetricInjection(), injection_texture_, 0, GL_TRUE, 0, GL_READ_ONLY, GL_RGBA16F);
+			glBindImageTexture(Constants::ImageBinding::VolumetricScattering(), scattering_texture_, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 
 			// Copy to history for next frame
 			int next_history = 1 - history_index_;
-			glBindImageTexture(Constants::TextureUnit::VolumetricHistory(), history_textures_[next_history], 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+			glBindImageTexture(Constants::ImageBinding::VolumetricHistory(), history_textures_[next_history], 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 
 			glDispatchCompute((grid_res_x_ + 7) / 8, (grid_res_y_ + 7) / 8, num_cascades_);
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);

@@ -722,7 +722,8 @@ namespace Boidsish {
 		auto atmos_mgr = ServiceLocator::Instance().Get<AtmosphereManager>();
 
 		glEnable(GL_BLEND);
-		glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA); // Additive blending for fire
+		// Premultiplied alpha for RGB, Additive for Alpha to accumulate Scene Mask
+		glBlendFuncSeparate(GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE);
 		glDepthMask(GL_FALSE);                       // Disable depth writing
 		glEnable(GL_PROGRAM_POINT_SIZE);
 

@@ -2,9 +2,9 @@
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
-layout(rgba16f, binding = [[VOLUMETRIC_INJECTION_BINDING]]) uniform readonly image3D inInjection;
-layout(rgba16f, binding = [[VOLUMETRIC_SCATTERING_BINDING]]) uniform image3D outScattering;
-layout(rgba16f, binding = [[VOLUMETRIC_HISTORY_BINDING]]) uniform image3D outHistory; // Save for next frame
+layout(rgba16f, binding = [[VOLUMETRIC_INJECTION_IMAGE_BINDING]]) uniform readonly image3D inInjection;
+layout(rgba16f, binding = [[VOLUMETRIC_SCATTERING_IMAGE_BINDING]]) uniform image3D outScattering;
+layout(rgba16f, binding = [[VOLUMETRIC_HISTORY_IMAGE_BINDING]]) uniform image3D outHistory; // Save for next frame
 
 const int NUM_CASCADES = 4;
 const int GRID_RES_Z = 64;

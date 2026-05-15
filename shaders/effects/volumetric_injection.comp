@@ -2,7 +2,7 @@
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 4) in;
 
-layout(rgba16f, binding = [[VOLUMETRIC_INJECTION_BINDING]]) uniform image3D outInjection;
+layout(rgba16f, binding = [[VOLUMETRIC_INJECTION_IMAGE_BINDING]]) uniform image3D outInjection;
 layout(binding = [[VOLUMETRIC_HISTORY_BINDING]]) uniform sampler3D uHistoryTexture;
 layout(binding = 10) uniform sampler2D uBlueNoise;
 
@@ -33,15 +33,19 @@ vec3 worldFromFroxel(ivec3 vox, vec3 jitter) {
     float z_near = (cascade == 0) ? 0.1 : CASCADE_DISTANCES[cascade - 1];
     float z_far = CASCADE_DISTANCES[cascade];
 
-    // Logarithmic distribution for Z
+    // Logarithmic distribution for planar Depth (Z)
     float linear_z = z_near * pow(z_far / z_near, (float(z_in_cascade) + jitter.z) / 64.0);
 
-    // Reconstruct View Space Position
+    // Reconstruct View Space Position using planar depth
     vec4 clipPos = vec4(ndc.xy, 0.0, 1.0);
-    vec4 reconstructedViewDir = uInvProj * clipPos;
-    reconstructedViewDir /= (abs(reconstructedViewDir.w) > 0.0001) ? reconstructedViewDir.w : 1.0;
+    vec4 viewDir = uInvProj * clipPos;
+    viewDir /= (abs(viewDir.w) > 0.0001) ? viewDir.w : 1.0;
 
-    vec3 froxelViewPos = normalize(reconstructedViewDir.xyz) * linear_z;
+    // Planar depth reconstruction: P.z = -linear_z (assuming OpenGL RH)
+    // viewDir.z is typically -1 in view space before projection for a point on near plane
+    // P = viewDir * (linear_z / -viewDir.z)
+    vec3 froxelViewPos = viewDir.xyz * (linear_z / max(0.0001, -viewDir.z));
+
     return (uInvView * vec4(froxelViewPos, 1.0)).xyz;
 }
 
