@@ -46,7 +46,7 @@ void main() {
     if (cascade != -1) {
         // Calculate W coordinate for this cascade
         float slice = clamp(log(linearZ / z_near) / log(z_far / z_near), 0.0, 1.0);
-        float w = (float(cascade) * float(GRID_RES_Z) + (slice * 63.5 + 0.5)) / float(GRID_RES_Z * NUM_CASCADES);
+        float w = (float(cascade) * 64.0 + (slice * 63.5 + 0.5)) / (64.0 * float(NUM_CASCADES));
 
         vec4 vol = texture(uVolumetricTexture, vec3(TexCoords, w));
         scattering = vol.rgb;

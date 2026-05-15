@@ -158,8 +158,11 @@ void main() {
 	color = color * transmittance;
 #endif
 
-	// Ensure particles are recognized as part of the scene for bloom and tone mapping
-	// We set the scene mask in alpha. For additive particles, we still want a mask of 1.0
-	// so that they are correctly blurred and tone-mapped as "scene" elements.
-	FragColor = vec4(color, alpha);
+	// Ensure particles are recognized as part of the scene for bloom and tone mapping.
+	// We set the scene mask in alpha. Using additive blending for alpha (GL_ONE, GL_ONE)
+	// in the manager, any particle here will "mark" the scene mask to 1.0.
+	// We use a small epsilon for purely additive particles to ensure they are masked
+	// without causing excessive darkening if they were ever switched to standard alpha.
+	float sceneMask = max(alpha, 0.01);
+	FragColor = vec4(color, sceneMask);
 }

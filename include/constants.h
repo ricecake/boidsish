@@ -59,6 +59,12 @@ namespace Boidsish {
 				WindData = 45,
 			};
 
+			enum class Image {
+				VolumetricInjection = 0,
+				VolumetricScattering = 1,
+				VolumetricHistory = 2,
+			};
+
 			enum class Ssbo {
 				DecorInstances = 10,
 				AutoExposure = 11,
@@ -288,6 +294,20 @@ namespace Boidsish {
 				return std::to_underlying(Constants::Bindings::Texture::WeatherAerosols);
 			}
 		} // namespace TextureUnit
+
+		namespace ImageBinding {
+			consteval int VolumetricInjection() {
+				return std::to_underlying(Constants::Bindings::Image::VolumetricInjection);
+			}
+
+			consteval int VolumetricScattering() {
+				return std::to_underlying(Constants::Bindings::Image::VolumetricScattering);
+			}
+
+			consteval int VolumetricHistory() {
+				return std::to_underlying(Constants::Bindings::Image::VolumetricHistory);
+			}
+		} // namespace ImageBinding
 
 		namespace SsboBinding {
 			consteval int DecorInstances() {
