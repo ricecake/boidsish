@@ -498,11 +498,12 @@ void evaluate_brdf(
 	vec3 h_local = invTBN * H;
 
 	float NDF;
-	// if (mfp.g_density > )
+#ifdef GL_FRAGMENT_SHADER
 	NDF = glint_ndf(h_local, mfp.alpha, mfp.g_alpha, mfp.uv, mfp.uv_J, mfp.g_density, DEFAULT_PIXEL_FILTER_SIZE);
+#else
+    NDF = DistributionGGX(N, H, roughness);
+#endif
 
-
-    // float NDF = DistributionGGX(N, H, roughness);
     float V_term = VisibilitySmithGGXCorrelated(NdotL, NdotV, roughness);
     vec3 F = fresnelSchlickFast(HdotV, F0);
     vec3 specular = NDF * V_term * F;
@@ -541,6 +542,8 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 	vec3  Lo = vec3(0.0);
 	float spec_lum = 0.0;
 
+	MicrofacetParams mfp;
+
 	float g_density, g_alpha;
 	if (metallic > 0.1) {
 		// Metals: few intense glints
@@ -552,16 +555,17 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 		g_alpha = mix(0.02, 0.01, clamp(roughness, 0.0, 1.0));
 	}
 
-	MicrofacetParams mfp;
-
 	mfp.alpha = max(roughness * roughness, 0.0001);
-
 
 	mfp.g_density = g_density;
 	mfp.g_alpha = g_alpha;
 
 	mfp.uv = frag_pos.xz;
+#ifdef GL_FRAGMENT_SHADER
 	mfp.uv_J = mat2(dFdx(mfp.uv), dFdy(mfp.uv));
+#else
+	mfp.uv_J = mat2(0.01, 0.0, 0.0, 0.01);
+#endif
 
 	mfp.tangent = normalize(cross(N, vec3(0, 0, 1)));
 	if (abs(N.z) > 0.9) {
