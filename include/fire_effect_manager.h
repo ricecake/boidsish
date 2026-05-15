@@ -7,7 +7,9 @@
 #include "IManager.h"
 #include "constants.h"
 #include "fire_effect.h"
+#include "persistent_buffer.h"
 #include "shader.h"
+#include "geometry.h"
 
 namespace Boidsish {
 
@@ -52,6 +54,38 @@ namespace Boidsish {
 		// Returns true if fire effects are available (compute shader compiled successfully)
 		bool IsAvailable() const;
 
+		/**
+		 * @brief CPU-side update for particle allocation and data preparation.
+		 * Can be called from a background thread or during the logical update phase.
+		 */
+		void UpdateCPU(
+			float                         delta_time,
+			float                         time,
+			float                         ambient_density,
+			const std::vector<glm::vec4>& chunk_info
+		);
+
+		/**
+		 * @brief GPU-side update involving compute shader dispatches.
+		 * Must be called from the main thread with an active OpenGL context.
+		 */
+		void UpdateGPU(
+			float      delta_time,
+			GLuint     heightmap_texture,
+			GLuint     curl_noise_texture,
+			GLuint     biome_texture,
+			GLuint     lighting_ubo,
+			GLintptr   lighting_ubo_offset,
+			GLsizeiptr lighting_ubo_size,
+			GLuint     frustum_ubo,
+			GLintptr   frustum_offset,
+			GLuint     extra_noise_texture,
+			GLuint     visual_effects_ubo,
+			GLintptr   vfx_offset,
+			GLsizeiptr vfx_size
+		);
+
+		// Deprecated combined update
 		void Update(
 			float                         delta_time,
 			float                         time,
@@ -69,7 +103,14 @@ namespace Boidsish {
 			GLuint                        visual_effects_ubo = 0,
 			GLintptr                      vfx_offset = 0,
 			GLsizeiptr                    vfx_size = 0
-		);
+		) {
+			UpdateCPU(delta_time, time, ambient_density, chunk_info);
+			UpdateGPU(delta_time, heightmap_texture, curl_noise_texture, biome_texture,
+				lighting_ubo, lighting_ubo_offset, lighting_ubo_size,
+				frustum_ubo, frustum_offset, extra_noise_texture,
+				visual_effects_ubo, vfx_offset, vfx_size);
+		}
+
 		void Render(
 			const glm::mat4& view,
 			const glm::mat4& projection,
@@ -109,20 +150,21 @@ namespace Boidsish {
 		GLuint particle_buffer_{0};
 		GLuint grid_heads_buffer_{0};
 		GLuint grid_next_buffer_{0};
-		GLuint emitter_buffer_{0};
-		GLuint indirection_buffer_{0};
-		GLuint terrain_chunk_buffer_{0};
-		GLuint slice_data_buffer_{0};
-		GLuint visible_indices_buffer_{0};
-		GLuint live_indices_buffer_{0};
-		GLuint draw_command_buffer_{0};
-		GLuint behavior_command_buffer_{0};
+		std::unique_ptr<PersistentBuffer<Emitter>>                    emitter_pb_;
+		std::unique_ptr<PersistentBuffer<int>>                        indirection_pb_;
+		std::unique_ptr<PersistentBuffer<glm::vec4>>                  terrain_chunk_pb_;
+		std::unique_ptr<PersistentBuffer<glm::vec4>>                  slice_data_pb_;
+		GLuint                                                        visible_indices_buffer_{0};
+		GLuint                                                        live_indices_buffer_{0};
+		std::unique_ptr<PersistentBuffer<DrawArraysIndirectCommand>>  draw_command_pb_;
+		std::unique_ptr<PersistentBuffer<uint32_t>>                   behavior_command_pb_; // DispatchIndirectCommand
 		GLuint dummy_vao_{0};
 
 		bool   initialized_{false};
 		bool   needs_reallocation_{false};
 		float  ambient_density_{0.15f};
 		float  time_{0.0f};
+		int    num_active_chunks_{0};
 		size_t emitter_buffer_capacity_{0}; // Track capacity to avoid per-frame reallocation
 
 		static constexpr int kMaxParticles = Constants::Class::Particles::MaxParticles();

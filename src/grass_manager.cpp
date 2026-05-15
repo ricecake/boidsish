@@ -20,7 +20,6 @@ namespace Boidsish {
     }
 
     GrassManager::~GrassManager() {
-        if (grass_props_ubo_) glDeleteBuffers(1, &grass_props_ubo_);
         if (grass_instances_ssbo_) glDeleteBuffers(1, &grass_instances_ssbo_);
         if (grass_indirect_buffer_) glDeleteBuffers(1, &grass_indirect_buffer_);
         if (grass_tasks_ssbo_) glDeleteBuffers(1, &grass_tasks_ssbo_);
@@ -60,10 +59,7 @@ namespace Boidsish {
 
     void GrassManager::_InitializeResources() {
         // Properties UBO
-        glGenBuffers(1, &grass_props_ubo_);
-        glBindBuffer(GL_UNIFORM_BUFFER, grass_props_ubo_);
-        glBufferData(GL_UNIFORM_BUFFER, 8 * sizeof(GrassProperties) + sizeof(GlobalGrassProperties), nullptr, GL_DYNAMIC_DRAW);
-        glBindBuffer(GL_UNIFORM_BUFFER, 0);
+        grass_props_pb_ = std::make_unique<PersistentBuffer<uint8_t>>(GL_UNIFORM_BUFFER, 8 * sizeof(GrassProperties) + sizeof(GlobalGrassProperties), 3);
 
         // Instance SSBO
         glGenBuffers(1, &grass_instances_ssbo_);
@@ -184,10 +180,10 @@ namespace Boidsish {
         last_camera_pos_ = camera.pos();
 
         if (props_dirty_) {
-            glBindBuffer(GL_UNIFORM_BUFFER, grass_props_ubo_);
-            glBufferSubData(GL_UNIFORM_BUFFER, 0, 8 * sizeof(GrassProperties), biome_grass_props_.data());
-            glBufferSubData(GL_UNIFORM_BUFFER, 8 * sizeof(GrassProperties), sizeof(GlobalGrassProperties), &global_props_);
-            glBindBuffer(GL_UNIFORM_BUFFER, 0);
+            grass_props_pb_->AdvanceFrame();
+            uint8_t* ptr = grass_props_pb_->GetFrameDataPtr();
+            std::memcpy(ptr, biome_grass_props_.data(), 8 * sizeof(GrassProperties));
+            std::memcpy(ptr + 8 * sizeof(GrassProperties), &global_props_, sizeof(GlobalGrassProperties));
             props_dirty_ = false;
         }
 
@@ -233,7 +229,7 @@ namespace Boidsish {
 
         renderManager->BindTerrainData(*placement_shader_);
 
-        glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::GrassProps(), grass_props_ubo_);
+        grass_props_pb_->BindRange(Constants::UboBinding::GrassProps());
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::GrassInstances(), grass_instances_ssbo_);
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::GrassIndirect(), grass_indirect_buffer_);
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::GrassTasks(), grass_tasks_ssbo_);
@@ -268,7 +264,7 @@ namespace Boidsish {
             renderManager->BindTerrainData(*grass_shader_);
         }
 
-        glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::GrassProps(), grass_props_ubo_);
+        grass_props_pb_->BindRange(Constants::UboBinding::GrassProps());
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::GrassInstances(), grass_instances_ssbo_);
         if (res.lightingUboSize > 0) {
             glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::Lighting(),

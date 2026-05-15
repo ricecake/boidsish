@@ -42,10 +42,6 @@ namespace Boidsish {
 			glDeleteBuffers(1, &block_validity_ssbo_);
 		if (decor_props_ubo_ != 0)
 			glDeleteBuffers(1, &decor_props_ubo_);
-		if (placement_globals_ubo_ != 0)
-			glDeleteBuffers(1, &placement_globals_ubo_);
-		if (chunk_params_ssbo_ != 0)
-			glDeleteBuffers(1, &chunk_params_ssbo_);
 	}
 
 	void DecorManager::_Initialize() {
@@ -77,13 +73,8 @@ namespace Boidsish {
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
 		// Global placement params UBO (small, updated per dispatch)
-		glGenBuffers(1, &placement_globals_ubo_);
-		glBindBuffer(GL_UNIFORM_BUFFER, placement_globals_ubo_);
-		glBufferData(GL_UNIFORM_BUFFER, sizeof(PlacementGlobalsGPU), nullptr, GL_DYNAMIC_DRAW);
-		glBindBuffer(GL_UNIFORM_BUFFER, 0);
-
-		// Per-chunk params SSBO (resized as needed per dispatch)
-		glGenBuffers(1, &chunk_params_ssbo_);
+		placement_globals_pb_ = std::make_unique<PersistentBuffer<PlacementGlobalsGPU>>(GL_UNIFORM_BUFFER, 1, 3);
+		chunk_params_pb_ = std::make_unique<PersistentBuffer<ChunkParamsGPU>>(GL_SHADER_STORAGE_BUFFER, kMaxActiveChunks, 3);
 
 		initialized_ = true;
 	}
@@ -414,18 +405,13 @@ namespace Boidsish {
 		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 	}
 
-	void DecorManager::Update(
-		float                                 delta_time,
+	void DecorManager::UpdateCPU(
 		const Camera&                         camera,
-		const Frustum&                        frustum,
 		const ITerrainGenerator&              terrain_gen,
 		std::shared_ptr<TerrainRenderManager> render_manager
 	) {
-		PROJECT_PROFILE_SCOPE("DecorManager::Update");
+		PROJECT_PROFILE_SCOPE("DecorManager::UpdateCPU");
 		if (!enabled_ || !initialized_ || decor_types_.empty())
-			return;
-
-		if (!placement_shader_ || !placement_shader_->isValid() || !culling_shader_ || !culling_shader_->isValid())
 			return;
 
 		if (!render_manager)
@@ -438,48 +424,28 @@ namespace Boidsish {
 		camera_rotation_delta_ = new_forward - prev_camera_forward_2d_;
 		prev_camera_forward_2d_ = camera_forward_2d_;
 		camera_forward_2d_ = new_forward;
-		_UpdateAllocation(camera, frustum, terrain_gen, render_manager);
-	}
 
-	void DecorManager::_UpdateAllocation(
-		const Camera&                         camera,
-		const Frustum&                        frustum,
-		const ITerrainGenerator&              terrain_gen,
-		std::shared_ptr<TerrainRenderManager> render_manager
-	) {
-		PROJECT_PROFILE_SCOPE("DecorManager::_UpdateAllocation");
 		float world_scale = terrain_gen.GetWorldScale();
-
-		GLuint heightmap_texture = render_manager->GetHeightmapTexture();
-		GLuint biome_texture = render_manager->GetBiomeTexture();
-		if (heightmap_texture == 0 || biome_texture == 0)
+		auto  all_chunks = render_manager->GetDecorChunkData(world_scale);
+		if (all_chunks.empty()) {
+			prepared_placement_.has_work = false;
 			return;
+		}
 
-		// Single call: gets keys, offsets, slices, sizes, and update counts
-		// in one mutex acquisition with no intermediate map construction.
-		auto all_chunks = render_manager->GetDecorChunkData(world_scale);
-		if (all_chunks.empty())
-			return;
-
-		// 1. Filter by distance — no frustum check (GPU cull handles that).
-		// Build a flat lookup by index for the dispatch phase.
+		// 1. Filter by distance
 		glm::vec2 cam_xz(camera.x, camera.z);
 		float     max_dist = max_decor_distance_ * world_scale;
 
-		// Reuse a flat vector of indices into all_chunks for the active set
 		struct CandidateChunk {
-			int   src_index; // index into all_chunks
-			float priority;  // lower = generate sooner (front-of-camera bias)
+			int   src_index;
+			float priority;
 		};
 
 		std::vector<CandidateChunk> candidates;
 		candidates.reserve(all_chunks.size());
 
-		// Predict where the camera will be looking based on current rotation.
-		// Chunks in the turn direction get a priority boost.
 		float     rotation_magnitude = glm::length(camera_rotation_delta_);
-		glm::vec2 rotation_dir = (rotation_magnitude > 0.001f) ? camera_rotation_delta_ / rotation_magnitude
-															   : glm::vec2(0.0f);
+		glm::vec2 rotation_dir = (rotation_magnitude > 0.001f) ? camera_rotation_delta_ / rotation_magnitude : glm::vec2(0.0f);
 
 		for (int i = 0; i < (int)all_chunks.size(); ++i) {
 			const auto& cd = all_chunks[i];
@@ -489,176 +455,157 @@ namespace Boidsish {
 				continue;
 
 			glm::vec2 to_chunk = (dist > 0.1f) ? glm::normalize(center - cam_xz) : camera_forward_2d_;
-			float     facing = glm::dot(camera_forward_2d_, to_chunk); // 1=ahead, -1=behind
+			float     facing = glm::dot(camera_forward_2d_, to_chunk);
 
-			// Aggressive nonlinear penalty: ahead chunks are cheap, behind are expensive.
-			// facing  1.0 (ahead)  → weight ~0.3
-			// facing  0.0 (side)   → weight ~2.0
-			// facing -1.0 (behind) → weight ~5.0
 			float facing_weight;
 			if (facing > 0.0f) {
-				facing_weight = 0.3f + 1.7f * (1.0f - facing); // 0.3 → 2.0
+				facing_weight = 0.3f + 1.7f * (1.0f - facing);
 			} else {
-				facing_weight = 2.0f + 3.0f * (-facing); // 2.0 → 5.0
+				facing_weight = 2.0f + 3.0f * (-facing);
 			}
 
-			// Rotation prediction: reduce priority for chunks the camera is turning toward.
-			// The dot of rotation_dir with to_chunk is positive when turning towards it.
 			if (rotation_magnitude > 0.001f) {
 				float turn_alignment = glm::dot(rotation_dir, to_chunk);
-				// Scale by rotation speed — faster turns get stronger prediction
 				float turn_boost = turn_alignment * std::min(rotation_magnitude * 30.0f, 1.5f);
-				facing_weight -= turn_boost; // negative turn_boost = chunk behind the turn
+				facing_weight -= turn_boost;
 				facing_weight = std::max(facing_weight, 0.1f);
 			}
 
 			candidates.push_back({i, dist * facing_weight});
 		}
 
-		// 2. Mark all candidate chunks as seen; evict stale chunks.
-		// Use a flat sorted vector for presence checking instead of std::set.
+		// 2. Mark chunks as seen; evict stale
 		std::vector<std::pair<int, int>> active_keys;
 		active_keys.reserve(candidates.size());
 		for (const auto& c : candidates)
 			active_keys.push_back(all_chunks[c.src_index].key);
 		std::sort(active_keys.begin(), active_keys.end());
 
-		int chunks_freed = 0;
-
+		prepared_placement_.blocks_to_validate.clear();
 		for (auto it = active_chunks_.begin(); it != active_chunks_.end();) {
 			bool is_present = std::binary_search(active_keys.begin(), active_keys.end(), it->first);
-
 			if (is_present) {
 				it->second.last_seen_frame = frame_counter_;
 				++it;
 			} else if (frame_counter_ - it->second.last_seen_frame > kChunkGracePeriodFrames) {
 				int block = it->second.block_index;
 				free_blocks_.push_back(block);
-
-				// Mark block invalid in the validity buffer (4 bytes, not 64KB×6 types).
-				// The cull shader checks this and skips instances in invalid blocks.
-				uint32_t zero = 0;
-				glBindBuffer(GL_SHADER_STORAGE_BUFFER, block_validity_ssbo_);
-				glBufferSubData(GL_SHADER_STORAGE_BUFFER, block * sizeof(uint32_t), sizeof(uint32_t), &zero);
-
+				prepared_placement_.blocks_to_validate.push_back(-block - 1); // Negative indicates invalidate
 				it = active_chunks_.erase(it);
-				chunks_freed++;
 			} else {
 				++it;
 			}
 		}
 
-		// 3. Sort candidates by priority (front-of-camera + close first).
-		std::sort(candidates.begin(), candidates.end(), [](const auto& a, const auto& b) {
-			return a.priority < b.priority;
-		});
+		// 3. Sort by priority
+		std::sort(candidates.begin(), candidates.end(), [](const auto& a, const auto& b) { return a.priority < b.priority; });
 
-		// 4. Allocate and collect chunks to generate, with per-frame cap.
-		struct GenerateEntry {
-			int src_index; // index into all_chunks (for dispatch data)
-			int block;     // SSBO block index
-		};
-
-		std::vector<GenerateEntry> chunks_to_generate;
-		int                        chunks_new = 0;
-		int                        chunks_deform_dirty = 0;
-
+		// 4. Allocate and collect
+		std::vector<int> chunks_to_generate_src_indices;
+		int              chunks_new = 0;
 		for (const auto& cand : candidates) {
 			const auto& cd = all_chunks[cand.src_index];
 			auto        it = active_chunks_.find(cd.key);
 
 			if (it == active_chunks_.end()) {
-				if (chunks_new >= kMaxNewChunksPerFrame)
-					continue; // defer to next frame
-				if (free_blocks_.empty())
+				if (chunks_new >= kMaxNewChunksPerFrame || free_blocks_.empty())
 					continue;
 
 				int block = free_blocks_.back();
 				free_blocks_.pop_back();
 				active_chunks_[cd.key] = {block, cd.update_count, true, frame_counter_};
-				chunks_to_generate.push_back({cand.src_index, block});
+				chunks_to_generate_src_indices.push_back(cand.src_index);
+				prepared_placement_.blocks_to_validate.push_back(block);
 				chunks_new++;
 			} else if (it->second.update_count != cd.update_count) {
 				it->second.update_count = cd.update_count;
 				it->second.is_dirty = true;
-				chunks_to_generate.push_back({cand.src_index, it->second.block_index});
-				chunks_deform_dirty++;
+				chunks_to_generate_src_indices.push_back(cand.src_index);
+				prepared_placement_.blocks_to_validate.push_back(it->second.block_index);
 			}
 		}
 
-		// if (!chunks_to_generate.empty()) {
-		// 	logger::WARNING(
-		// 		"Decor placement: generating {} chunks (new={}, deform_dirty={}, freed={}, active={}, free_blocks={})",
-		// 		chunks_to_generate.size(),
-		// 		chunks_new,
-		// 		chunks_deform_dirty,
-		// 		chunks_freed,
-		// 		active_chunks_.size(),
-		// 		free_blocks_.size()
-		// 	);
-		// }
+		// 5. Prepare GPU data
+		if (chunks_to_generate_src_indices.empty()) {
+			prepared_placement_.has_work = !prepared_placement_.blocks_to_validate.empty();
+			prepared_placement_.chunk_gpu.clear();
+			return;
+		}
 
-		// 5. Dispatch placement compute for new/dirty chunks.
-		if (!chunks_to_generate.empty()) {
-			int num_chunks = (int)chunks_to_generate.size();
+		int num_chunks = (int)chunks_to_generate_src_indices.size();
+		prepared_placement_.globals.camera_and_scale = glm::vec4(cam_xz, world_scale, terrain_gen.GetMaxHeight());
+		prepared_placement_.globals.distance_params = glm::vec4(
+			density_falloff_start_ * world_scale,
+			density_falloff_end_ * world_scale,
+			max_decor_distance_ * world_scale,
+			static_cast<float>(kMaxInstancesPerType)
+		);
 
-			// Mark all blocks being generated as valid in one batch.
+		prepared_placement_.chunk_gpu.resize(num_chunks);
+		for (int j = 0; j < num_chunks; ++j) {
+			const auto& cd = all_chunks[chunks_to_generate_src_indices[j]];
+			auto        it = active_chunks_.find(cd.key);
+			prepared_placement_.chunk_gpu[j].offset_slice_size = glm::vec4(cd.world_offset, cd.slice, cd.chunk_size);
+			prepared_placement_.chunk_gpu[j].indices = glm::ivec4(it->second.block_index * kInstancesPerChunk, 0, 0, 0);
+		}
+		prepared_placement_.has_work = true;
+	}
+
+	void DecorManager::UpdateGPU(
+		const ITerrainGenerator&              /*terrain_gen*/,
+		std::shared_ptr<TerrainRenderManager> render_manager
+	) {
+		PROJECT_PROFILE_SCOPE("DecorManager::UpdateGPU");
+		if (!prepared_placement_.has_work)
+			return;
+
+		GLuint heightmap_texture = render_manager->GetHeightmapTexture();
+		GLuint biome_texture = render_manager->GetBiomeTexture();
+
+		// Update block validity
+		if (!prepared_placement_.blocks_to_validate.empty()) {
 			glBindBuffer(GL_SHADER_STORAGE_BUFFER, block_validity_ssbo_);
-			for (const auto& entry : chunks_to_generate) {
-				uint32_t one = 1;
-				glBufferSubData(GL_SHADER_STORAGE_BUFFER, entry.block * sizeof(uint32_t), sizeof(uint32_t), &one);
+			for (int block_ref : prepared_placement_.blocks_to_validate) {
+				uint32_t val = (block_ref >= 0) ? 1 : 0;
+				int      idx = (block_ref >= 0) ? block_ref : (-block_ref - 1);
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, idx * sizeof(uint32_t), sizeof(uint32_t), &val);
 			}
-
-			// Upload global placement params (once per dispatch frame)
-			PlacementGlobalsGPU globals;
-			globals.camera_and_scale = glm::vec4(cam_xz, world_scale, terrain_gen.GetMaxHeight());
-			globals.distance_params = glm::vec4(
-				density_falloff_start_ * world_scale,
-				density_falloff_end_ * world_scale,
-				max_decor_distance_ * world_scale,
-				static_cast<float>(kMaxInstancesPerType)
-			);
-			glBindBuffer(GL_UNIFORM_BUFFER, placement_globals_ubo_);
-			glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(PlacementGlobalsGPU), &globals);
-
-			// Upload per-chunk params SSBO (all chunks in one buffer)
-			std::vector<ChunkParamsGPU> chunk_gpu(num_chunks);
-			for (int j = 0; j < num_chunks; ++j) {
-				const auto& cd = all_chunks[chunks_to_generate[j].src_index];
-				chunk_gpu[j].offset_slice_size = glm::vec4(cd.world_offset, cd.slice, cd.chunk_size);
-				chunk_gpu[j].indices = glm::ivec4(chunks_to_generate[j].block * kInstancesPerChunk, 0, 0, 0);
-			}
-			glBindBuffer(GL_SHADER_STORAGE_BUFFER, chunk_params_ssbo_);
-			glBufferData(
-				GL_SHADER_STORAGE_BUFFER,
-				num_chunks * sizeof(ChunkParamsGPU),
-				chunk_gpu.data(),
-				GL_STREAM_DRAW
-			);
-
-			// Bind everything once, then one dispatch per type
-			placement_shader_->use();
-
-			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainHeightmap());
-			glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture);
-			placement_shader_->setInt("u_heightmapArray", Constants::TextureUnit::TerrainHeightmap());
-
-			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainBiomeMap());
-			glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture);
-			placement_shader_->setInt("u_biomeMap", Constants::TextureUnit::TerrainBiomeMap());
-
-			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::DecorProps(), decor_props_ubo_);
-			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::DecorPlacementGlobals(), placement_globals_ubo_);
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::DecorChunkParams(), chunk_params_ssbo_);
-
-			int dispatch_size = (Constants::Class::Terrain::ChunkSize() + 7) / 8;
-			for (size_t i = 0; i < decor_types_.size(); ++i) {
-				placement_shader_->setInt("u_typeIndex", (int)i);
-				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::DecorAllInstances(), decor_types_[i].ssbo);
-				glDispatchCompute(dispatch_size, dispatch_size, num_chunks); // Z = chunk index
-			}
-			glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 		}
+
+		if (prepared_placement_.chunk_gpu.empty()) {
+			prepared_placement_.has_work = false;
+			return;
+		}
+
+		placement_globals_pb_->AdvanceFrame();
+		chunk_params_pb_->AdvanceFrame();
+
+		std::memcpy(placement_globals_pb_->GetFrameDataPtr(), &prepared_placement_.globals, sizeof(PlacementGlobalsGPU));
+		std::memcpy(chunk_params_pb_->GetFrameDataPtr(), prepared_placement_.chunk_gpu.data(),
+			prepared_placement_.chunk_gpu.size() * sizeof(ChunkParamsGPU));
+
+		placement_shader_->use();
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainHeightmap());
+		glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture);
+		placement_shader_->setInt("u_heightmapArray", Constants::TextureUnit::TerrainHeightmap());
+
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainBiomeMap());
+		glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture);
+		placement_shader_->setInt("u_biomeMap", Constants::TextureUnit::TerrainBiomeMap());
+
+		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::DecorProps(), decor_props_ubo_);
+		placement_globals_pb_->BindRange(Constants::UboBinding::DecorPlacementGlobals());
+		chunk_params_pb_->BindRange(Constants::SsboBinding::DecorChunkParams());
+
+		int dispatch_size = (Constants::Class::Terrain::ChunkSize() + 7) / 8;
+		int num_chunks = (int)prepared_placement_.chunk_gpu.size();
+		for (size_t i = 0; i < decor_types_.size(); ++i) {
+			placement_shader_->setInt("u_typeIndex", (int)i);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::DecorAllInstances(), decor_types_[i].ssbo);
+			glDispatchCompute(dispatch_size, dispatch_size, num_chunks);
+		}
+		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+		prepared_placement_.has_work = false;
 	}
 
 	void DecorManager::Cull(
