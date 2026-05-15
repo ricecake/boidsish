@@ -10,6 +10,7 @@
 #include "constants.h"
 #include "frustum.h"
 #include "model.h"
+#include "persistent_buffer.h"
 #include "procedural_generator.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -123,13 +124,29 @@ namespace Boidsish {
 		static DecorProperties GetDefaultDeadTreeProperties();
 		static DecorProperties GetDefaultRockProperties();
 
-		void Update(
-			float                                 delta_time,
+		void AdvanceFrame();
+
+		void UpdateCPU(
 			const Camera&                         camera,
-			const Frustum&                        frustum,
 			const ITerrainGenerator&              terrain_gen,
 			std::shared_ptr<TerrainRenderManager> render_manager
 		);
+
+		void UpdateGPU(
+			const ITerrainGenerator&              terrain_gen,
+			std::shared_ptr<TerrainRenderManager> render_manager
+		);
+
+		void Update(
+			float                                 /*delta_time*/,
+			const Camera&                         camera,
+			const Frustum&                        /*frustum*/,
+			const ITerrainGenerator&              terrain_gen,
+			std::shared_ptr<TerrainRenderManager> render_manager
+		) {
+			UpdateCPU(camera, terrain_gen, render_manager);
+			UpdateGPU(terrain_gen, render_manager);
+		}
 
 		/**
 		 * @brief Prepares the resources for all decor types.
@@ -255,11 +272,18 @@ namespace Boidsish {
 		// Cap on new chunks generated per frame to avoid spikes
 		static constexpr int kMaxNewChunksPerFrame = 24;
 
+		struct PreparedPlacement {
+			PlacementGlobalsGPU         globals;
+			std::vector<ChunkParamsGPU> chunk_gpu;
+			std::vector<int>            blocks_to_validate;
+			bool                        has_work = false;
+		} prepared_placement_;
+
 		// Per-type properties UBO for placement shader (uploaded in PrepareResources)
 		GLuint decor_props_ubo_ = 0;
 		// Global placement params UBO and per-chunk SSBO (uploaded per dispatch frame)
-		GLuint placement_globals_ubo_ = 0;
-		GLuint chunk_params_ssbo_ = 0;
+		std::unique_ptr<PersistentBuffer<PlacementGlobalsGPU>> placement_globals_pb_;
+		std::unique_ptr<PersistentBuffer<ChunkParamsGPU>>     chunk_params_pb_;
 
 		// Distance-based density parameters
 		float                    density_falloff_start_ = 200.0f;

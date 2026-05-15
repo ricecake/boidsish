@@ -554,6 +554,7 @@ namespace Boidsish {
 		Frustum                        generator_frustum;
 		glm::mat4                      current_view_matrix{1.0f};
 		std::vector<std::future<void>> pending_packet_futures;
+		std::vector<std::future<void>> pending_cpu_updates_;
 
 		void RegisterManagers() {
 			service_locator_.Register<NoiseManager>();
@@ -1589,9 +1590,9 @@ namespace Boidsish {
 			}
 
 			// Ensure all CPU writes to persistent mapped buffers are visible to GPU
-			glMemoryBarrier(
-				GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT | GL_COMMAND_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT
-			);
+			// Using GL_MAP_COHERENT_BIT so CLIENT_MAPPED_BUFFER_BARRIER is not strictly needed,
+			// but we still need barriers for subsequent compute/indirect operations.
+			glMemoryBarrier(GL_COMMAND_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
 
 			// Hi-Z occlusion culling dispatch (between uniform fill and draw calls)
 			if (dispatch_hiz_occlusion && occlusion_cull_shader_ && occlusion_cull_shader_->isValid() && hiz_manager &&
@@ -1634,6 +1635,11 @@ namespace Boidsish {
 			unsigned int          current_vao = 0;
 			unsigned int          current_bound_shader_id = 0;
 			std::set<ShaderBase*> used_shaders;
+
+			// Texture state tracking to avoid redundant bindings
+			static constexpr int kMaxTrackedTextures = 16;
+			std::array<GLuint, kMaxTrackedTextures> bound_textures{};
+			bound_textures.fill(0);
 
 			for (const auto& batch : batches) {
 				RenderShader* render_shader = shader_table.Get(batch.shader_handle);
@@ -1678,9 +1684,17 @@ namespace Boidsish {
 							noise_manager->BindDefault(*s);
 						}
 					}
-				}
 
-				// s->setBool("uUseMDI", true); // Moved below SSBO binding
+					// Bind bone matrices SSBO once per shader change (offset is per-uniform)
+					glBindBufferRange(
+						GL_SHADER_STORAGE_BUFFER,
+						Constants::SsboBinding::BoneMatrix(),
+						bone_matrices_ssbo->GetBufferId(),
+						bone_matrices_ssbo->GetFrameOffset(),
+						bone_matrices_ssbo->GetTotalSize() / 3
+					);
+					s->setBool("uUseMDI", true);
+				}
 
 				// Bind SSBO for this batch's uniforms (replaces uBaseUniformIndex)
 				glBindBufferRange(
@@ -1690,16 +1704,6 @@ namespace Boidsish {
 					batch.base_uniform_index * sizeof(CommonUniforms),
 					batch.command_count * sizeof(CommonUniforms)
 				);
-
-				// Bind bone matrices SSBO
-				glBindBufferRange(
-					GL_SHADER_STORAGE_BUFFER,
-					Constants::SsboBinding::BoneMatrix(),
-					bone_matrices_ssbo->GetBufferId(),
-					bone_matrices_ssbo->GetFrameOffset(),
-					bone_matrices_ssbo->GetElementCount() * sizeof(glm::mat4)
-				);
-				s->setBool("uUseMDI", true);
 
 				// Bind visibility SSBO for Hi-Z occlusion culling (matching uniform indexing)
 				if (dispatch_hiz_occlusion && !is_shadow_pass) {
@@ -1717,9 +1721,12 @@ namespace Boidsish {
 					unsigned int normalNr = 1;
 					unsigned int heightNr = 1;
 
-					for (size_t i = 0; i < batch.textures.size(); ++i) {
-						glActiveTexture(GL_TEXTURE0 + i);
-						glBindTexture(GL_TEXTURE_2D, batch.textures[i].id);
+					for (size_t i = 0; i < batch.textures.size() && i < kMaxTrackedTextures; ++i) {
+						if (bound_textures[i] != batch.textures[i].id) {
+							glActiveTexture(GL_TEXTURE0 + i);
+							glBindTexture(GL_TEXTURE_2D, batch.textures[i].id);
+							bound_textures[i] = batch.textures[i].id;
+						}
 
 						std::string number;
 						std::string name = batch.textures[i].type;
@@ -1732,7 +1739,7 @@ namespace Boidsish {
 						else if (name == "texture_height")
 							number = std::to_string(heightNr++);
 
-						s->setInt((name + number).c_str(), i);
+						s->setInt((name + number).c_str(), static_cast<int>(i));
 					}
 					// Note: use_texture is now a bitmask handled in RenderPacket::uniforms (SSBO)
 					// This uniform is only used for non-MDI fallback or special passes
@@ -2216,12 +2223,20 @@ namespace Boidsish {
 			temporal_pb->AdvanceFrame();
 			if (visual_effects_pb) visual_effects_pb->AdvanceFrame();
 
+			if (fire_effect_manager) fire_effect_manager->AdvanceFrame();
+			if (decor_manager) decor_manager->AdvanceFrame();
+			if (terrain_render_manager) terrain_render_manager->AdvanceFrame();
+			if (grass_manager) grass_manager->AdvanceFrame();
+
 			int current_idx = uniforms_ssbo->GetCurrentBufferIndex();
 			if (mdi_fences[current_idx]) {
 				glClientWaitSync(mdi_fences[current_idx], GL_SYNC_FLUSH_COMMANDS_BIT, GL_TIMEOUT_IGNORED);
 				glDeleteSync(mdi_fences[current_idx]);
 				mdi_fences[current_idx] = 0;
 			}
+
+			// Synchronize shared persistent buffers
+			// (They all advance together so one wait covers them)
 
 			// Reset MDI offsets for the new frame
 			mdi_elements_count = 0;
@@ -2551,6 +2566,15 @@ namespace Boidsish {
 		}
 
 		void UpdateSystems(const FrameData& frame) {
+			// Ensure async CPU tasks from previous frame are finished if they haven't been yet
+			{
+				PROJECT_PROFILE_SCOPE("WaitForAsyncCPUUpdates");
+				for (auto& f : pending_cpu_updates_) {
+					if (f.valid()) f.get();
+				}
+				pending_cpu_updates_.clear();
+			}
+
 			// Calculate frustum for terrain generation and decor placement
 			if (terrain_generator) {
 				float world_scale_val = terrain_generator->GetWorldScale();
@@ -2579,12 +2603,44 @@ namespace Boidsish {
 			}
 
 			clone_manager->Update(simulation_time, camera.pos());
-			fire_effect_manager->Update(
+
+			// Dispatch CPU-heavy logic to worker threads
+			auto chunks = terrain_render_manager ? terrain_render_manager->GetChunkInfo(terrain_generator->GetWorldScale())
+												: std::vector<glm::vec4>{};
+
+			pending_cpu_updates_.push_back(thread_pool.submit([this, chunks]() {
+				PROJECT_PROFILE_SCOPE("FireEffectManager::UpdateCPU_Task");
+				fire_effect_manager->UpdateCPU(
+					simulation_delta_time,
+					simulation_time,
+					frame_config_.ambient_particle_density,
+					chunks
+				);
+			}));
+
+			pending_cpu_updates_.push_back(thread_pool.submit([this]() {
+				PROJECT_PROFILE_SCOPE("DecorManager::UpdateCPU_Task");
+				decor_manager->UpdateCPU(
+					camera,
+					*terrain_generator,
+					terrain_render_manager
+				);
+			}));
+
+			// Note: fire_effect_manager->UpdateGPU and decor_manager->UpdateGPU must be called after
+			// the packets are synced or at the start of Render phase where GL context is used.
+			// Currently they are called later in UpdateSystems (syncing on futures if needed).
+			// Sync async CPU updates before GPU dispatches
+			{
+				PROJECT_PROFILE_SCOPE("SyncAsyncCPUUpdates");
+				for (auto& f : pending_cpu_updates_) {
+					f.get();
+				}
+				pending_cpu_updates_.clear();
+			}
+
+			fire_effect_manager->UpdateGPU(
 				simulation_delta_time,
-				simulation_time,
-				frame_config_.ambient_particle_density,
-				terrain_render_manager ? terrain_render_manager->GetChunkInfo(terrain_generator->GetWorldScale())
-									   : std::vector<glm::vec4>{},
 				terrain_render_manager ? terrain_render_manager->GetHeightmapTexture() : 0,
 				noise_manager ? noise_manager->GetCurlTexture() : 0,
 				terrain_render_manager ? terrain_render_manager->GetBiomeTexture() : 0,
@@ -2619,18 +2675,13 @@ namespace Boidsish {
 				if (noise_manager) {
 					decor_manager->SetNoiseManager(noise_manager.get());
 				}
-				decor_manager->Update(
-					simulation_delta_time,
-					camera,
-					generator_frustum,
+				decor_manager->UpdateGPU(
 					*terrain_generator,
 					terrain_render_manager
 				);
 			}
 
-			if (grass_manager && terrain_generator && terrain_render_manager) {
-				grass_manager->SetCameraPos(camera.pos());
-
+			if (terrain_generator && terrain_render_manager) {
 				// 1. Calculate terrain preparation quality
 				float effective_quality = tess_quality_multiplier_;
 				effective_quality /= terrain_generator->GetWorldScale();
@@ -2662,13 +2713,16 @@ namespace Boidsish {
 				terrain_render_manager->DispatchPreparePatches(effective_quality);
 
 				// 4. Update grass system
-				grass_manager->Update(
-					simulation_delta_time,
-					simulation_time,
-					camera,
-					*terrain_generator,
-					terrain_render_manager
-				);
+				if (grass_manager) {
+					grass_manager->SetCameraPos(camera.pos());
+					grass_manager->Update(
+						simulation_delta_time,
+						simulation_time,
+						camera,
+						*terrain_generator,
+						terrain_render_manager
+					);
+				}
 			}
 		}
 
