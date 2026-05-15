@@ -92,7 +92,7 @@ float glint_erf(float x) {
 }
 
 float glint_cdf(float x, float mu, float sigma) {
-	return .5 + .5 * glint_erf((x-mu)/(sigma*sqrt(2.)));
+	return .5 + .5 * glint_erf((x-mu)/(max(sigma, 1e-6)*sqrt(2.)));
 }
 
 float glint_integrate_interval(float x, float size, float mu, float stdev, float lower_limit, float upper_limit) {
@@ -112,21 +112,31 @@ float glint_compensation(vec2 x_a, mat2 sigma_a, float res_a) {
     return containing - explicitly_evaluated;
 }
 
-struct GlintLevelContext {
-    float l;
-    float w_lambda;
-    float res_s;
-    float res_a;
-    vec2 base_i_s;
-};
-
 struct GlintContext {
     float N;
     float res;
     float lambda;
-    mat2 sigma_s;
-    GlintLevelContext levels[2];
+
+    // Precomputed for sigma_s (spatial covariance)
+    mat2  inv_sigma_s;
+    float norm_s;
+
+    // Flattened level contexts for performance
+    float level_l[2];
+    float level_w_lambda[2];
+    float level_res_s[2];
+    float level_res_a[2];
+    vec2  level_base_i_s[2];
 };
+
+float glint_normal_precomputed(vec2 x, mat2 inv_cov, float norm_factor) {
+    return exp(-.5 * dot(x, inv_cov * x)) * norm_factor;
+}
+
+float glint_normal_isotropic(vec2 x, float sigma_sq) {
+    if (sigma_sq < 1e-12) return 0.0;
+    return exp(-.5 * dot(x, x) / sigma_sq) / (sigma_sq * 2. * PI);
+}
 
 /**
  * Prepares the glint context for a fragment.
@@ -139,15 +149,24 @@ GlintContext prepare_glint_context(vec2 uv, mat2 uv_J, float glint_density, floa
     ctx.lambda = glint_QueryLod(ctx.res * uv_J, filter_size);
 
     mat2 uv_J2 = filter_size * uv_J;
-    ctx.sigma_s = uv_J2 * transpose(uv_J2);
+    mat2 sigma_s = uv_J2 * transpose(uv_J2);
+    float det_s = determinant(sigma_s);
+
+    if (det_s > 1e-12) {
+        ctx.inv_sigma_s = inverse(sigma_s);
+        ctx.norm_s = 1.0 / (sqrt(det_s) * 2. * PI);
+    } else {
+        ctx.inv_sigma_s = mat2(0);
+        ctx.norm_s = 0.0;
+    }
 
     for(int i = 0; i < 2; ++i) {
         float l = floor(ctx.lambda) + float(i);
-        ctx.levels[i].l = l;
-        ctx.levels[i].w_lambda = 1. - abs(ctx.lambda - l);
-        ctx.levels[i].res_s = ctx.res * pow(2., -l);
-        ctx.levels[i].res_a = pow(2., l);
-        ctx.levels[i].base_i_s = round(uv * ctx.levels[i].res_s);
+        ctx.level_l[i] = l;
+        ctx.level_w_lambda[i] = 1. - abs(ctx.lambda - l);
+        ctx.level_res_s[i] = ctx.res * pow(2., -l);
+        ctx.level_res_a[i] = pow(2., l);
+        ctx.level_base_i_s[i] = round(uv * ctx.level_res_s[i]);
     }
     return ctx;
 }
@@ -163,24 +182,25 @@ GlintContext prepare_glint_context(vec2 uv, mat2 uv_J, float glint_density, floa
 float evaluate_glint_ndf(vec3 h, float alpha, float glint_alpha, vec2 uv, GlintContext ctx) {
     vec3 x_a_and_d = glint_ndf_to_disk_ggx(h, alpha);
     vec2 x_a = x_a_and_d.xy;
-    float d = x_a_and_d.z;
+    float d = max(x_a_and_d.z, 0.0);
 
     float D_filter = .0;
+    float glint_alpha_sq = glint_alpha * glint_alpha;
 
     for(int i = 0; i < 2; ++i) {
-        GlintLevelContext lctx = ctx.levels[i];
-        float l = lctx.l;
-        float w_lambda = lctx.w_lambda;
-        float res_s = lctx.res_s;
-        float res_a = lctx.res_a;
+        float l = ctx.level_l[i];
+        float w_lambda = ctx.level_w_lambda[i];
+        float res_s = ctx.level_res_s[i];
+        float res_a = ctx.level_res_a[i];
 
-        mat2 sigma_a = d * pow(glint_alpha, 2.) * mat2(1., .0, .0, 1.);
+        float sigma_a_scalar = d * glint_alpha_sq;
+        mat2 sigma_a = sigma_a_scalar * mat2(1., .0, .0, 1.); // Still needed for glint_compensation
 
         vec2 base_i_a = clamp(round(x_a * res_a), 1., res_a-1.);
         for(int j_a = 0; j_a < 4; ++j_a) {
             vec2 i_a = base_i_a + vec2(ivec2(j_a, j_a/2)%2)-.5;
 
-            vec2 base_i_s = lctx.base_i_s;
+            vec2 base_i_s = ctx.level_base_i_s[i];
             for(int j_s = 0; j_s < 4; ++j_s) {
                 vec2 i_s = base_i_s + vec2(ivec2(j_s, j_s/2)%2)-.5;
 
@@ -190,13 +210,17 @@ float evaluate_glint_ndf(vec3 h, float alpha, float glint_alpha, vec2 uv, GlintC
                 float r = glint_Rand1D(i_s, i_a, l, 4u);
                 float roulette = smoothstep(max(.0, r-.1), min(1.0, r+.1), w_lambda);
 
-                D_filter += roulette * glint_normal(sigma_a, x_a - g_a) * glint_normal(ctx.sigma_s, uv - g_s) / ctx.N;
+                if (roulette > 0.0) {
+                    float n_a = glint_normal_isotropic(x_a - g_a, sigma_a_scalar);
+                    float n_s = glint_normal_precomputed(uv - g_s, ctx.inv_sigma_s, ctx.norm_s);
+                    D_filter += roulette * n_a * n_s / ctx.N;
+                }
             }
         }
        D_filter += w_lambda * glint_compensation(x_a, sigma_a, res_a);
     }
 
-    return D_filter * d / PI;
+    return max(D_filter * d / PI, 0.0);
 }
 
 /**

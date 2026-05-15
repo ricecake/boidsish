@@ -351,8 +351,8 @@ void main() {
         lf.microfacetGlint = false;
         lf.usePBR = true;
         lf.isFoliage = false;
-        lf.uv = TexCoords;
-        lf.uv_J = mat2(dFdx(TexCoords), dFdy(TexCoords));
+        lf.uv = FragPos.xz;
+        lf.uv_J = mat2(dFdx(lf.uv), dFdy(lf.uv));
         lf.glintIntensity = 0.0;
         lf.translucency = 0.0;
         lf.specular_strength = 1.0;
@@ -659,8 +659,8 @@ void main() {
     lf.microfacetGlint = u_microglintIntensity > 0.0;
     lf.usePBR = true;
     lf.isFoliage = false;
-    lf.uv = TexCoords;
-    lf.uv_J = mat2(dFdx(TexCoords), dFdy(TexCoords));
+    lf.uv = FragPos.xz;
+    lf.uv_J = mat2(dFdx(lf.uv), dFdy(lf.uv));
     lf.glintIntensity = u_microglintIntensity;
     lf.translucency = 0.0;
     lf.specular_strength = 1.0;
