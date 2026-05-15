@@ -44,9 +44,19 @@ vec3 worldFromFroxel(ivec3 vox, vec3 jitter) {
     // Planar depth reconstruction: P.z = -linear_z (assuming OpenGL RH)
     // viewDir.z is typically -1 in view space before projection for a point on near plane
     // P = viewDir * (linear_z / -viewDir.z)
+    float obliquity = length(viewDir.xyz) / max(0.0001, -viewDir.z);
     vec3 froxelViewPos = viewDir.xyz * (linear_z / max(0.0001, -viewDir.z));
 
     return (uInvView * vec4(froxelViewPos, 1.0)).xyz;
+}
+
+float getObliquity(ivec2 voxXY, vec3 jitter) {
+    vec3 ndc;
+    ndc.xy = (vec2(voxXY) + jitter.xy) / vec2(160, 90) * 2.0 - 1.0;
+    vec4 clipPos = vec4(ndc.xy, 0.0, 1.0);
+    vec4 viewDir = uInvProj * clipPos;
+    viewDir /= (abs(viewDir.w) > 0.0001) ? viewDir.w : 1.0;
+    return length(viewDir.xyz) / max(0.0001, -viewDir.z);
 }
 
 void main() {
@@ -95,14 +105,15 @@ void main() {
         radiance += lights[i].color * lights[i].intensity * atten * shadow * phase;
     }
 
-    // Ambient (SH)
-    radiance += getSpatialAmbientSH(worldPos, V) * s.mie * 0.1;
+    // Ambient (SH) - We use a simple isotropic phase for ambient light
+    radiance += getSpatialAmbientSH(worldPos, V) * 0.1;
 
-    radiance *= uIntensity;
+    radiance *= uIntensity * 2.0; // Boosted intensity for prominence
 
     // Convert atmospheric coefficients from per-KM to per-meter
-    vec3 mieCoeff = s.mie * 0.001;
-    float extinctionCoeff = (s.rayleigh.r + s.rayleigh.g + s.rayleigh.b + s.mie.r + s.mie.g + s.mie.b) / 3.0 * 0.001;
+    float obliquity = getObliquity(vox.xy, jitter);
+    vec3 mieCoeff = s.mie * 0.001 * obliquity;
+    float extinctionCoeff = (s.rayleigh.r + s.rayleigh.g + s.rayleigh.b + s.mie.r + s.mie.g + s.mie.b) / 3.0 * 0.001 * obliquity;
 
     vec4 current = vec4(radiance * mieCoeff, extinctionCoeff);
 
