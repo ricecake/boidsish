@@ -23,6 +23,7 @@ in float      vSubstrate;
 #include "helpers/terrain_noise.glsl"
 #include "helpers/terrain_shadows.glsl"
 #include "helpers/lighting.glsl"
+#include "helpers/fader.glsl"
 #include "visual_effects.glsl"
 // #include "helpers/noise.glsl"
 #include "helpers/wind.glsl"
@@ -282,26 +283,24 @@ void main() {
 		return;
 	}
 
-	// FragColor = vec4(smoothstep(0, 2, tessFactor), smoothstep(2, 4, tessFactor), smoothstep(4, 8, tessFactor), 1.0);
-	// return;
+	FaderSettings fs = newFaderSettings(FragPos, viewPos, time, worldScale);
+	if (shouldDiscard(fs)) {
+		discard;
+	}
 
 	// Distance Fade -- precalc
 	vec3  norm = normalize(Normal);
 	float baseFreq = 0.1 / worldScale;
 	float slope = dot(norm, vec3(0.0, 1.0, 0.0));
 	vec3  scaledFragPos = FragPos / worldScale;
-
-	float dist = length(FragPos.xz - viewPos.xz);
 	float realDist = distance(FragPos, viewPos);
-	// float n_fade = snoise(vec3(FragPos.xy / (25 * worldScale), time * 0.08));
-	float n_fade = fastSimplex3d(vec3(FragPos.xz / (250 * worldScale), time * 0.09));
-	float fade_start = 560.0 * worldScale;
-	float fade_end = 570.0 * worldScale;
-	float fade = 1.0 - smoothstep(fade_start, fade_end, dist + n_fade * 40.0);
 
-	if (fade < 0.2) {
-		discard;
-	}
+	float dist = fs.fade;
+	float n_fade = fs.n_fade;
+	float fade_start = fs.fade_start;
+	float fade_end = fs.fade_end;
+	float fade = fs.fade;
+
 
 	if (vIsWater > 0.5) {
 		// --- Grid logic (from plane.frag, with refraction) ---
@@ -371,6 +370,8 @@ void main() {
 	// ========================================================================
 	// Material Calculation
 	// ========================================================================
+
+	// need some sort of pebble type texture.
 
 	// Height with noise distortion for natural boundaries
 	float baseHeight = FragPos.y;

@@ -1,13 +1,37 @@
 #include "helpers/fast_noise.glsl"
 
 
+struct FaderSettings {
+	vec3 FragPos;
+	vec3 viewPos;
+	float time;
+	float worldScale;
+	float fade;
+	float fade_start;
+	float fade_end;
+	float n_fade;
+	float dist;
+};
 
 
+FaderSettings newFaderSettings(vec3 FragPos, vec3 viewPos, float time, float worldScale) {
+	float dist = length(FragPos.xz - viewPos.xz);
+	float n_fade = fastSimplex3d(vec3(FragPos.xz / (250 * worldScale), time * 0.09));
+	float fade_start = 560.0 * worldScale;
+	float fade_end = 570.0 * worldScale;
+	float fade = 1.0 - smoothstep(fade_start, fade_end, dist + n_fade * 40.0);
 
+	return FaderSettings(FragPos, viewPos, time, worldScale,
+	fade, fade_start, fade_end, n_fade, dist);
+}
+
+bool shouldDiscard(FaderSettings fs) {
+	return fs.fade < 0.2;
+}
+
+/*
 vec4 applyFadeOut(vec3 FragPos, vec3 viewPos, float time, float worldScale, vec4 lighting) {
 	float dist = length(FragPos.xz - viewPos.xz);
-	float realDist = distance(FragPos, viewPos);
-	// float n_fade = snoise(vec3(FragPos.xy / (25 * worldScale), time * 0.08));
 	float n_fade = fastSimplex3d(vec3(FragPos.xz / (250 * worldScale), time * 0.09));
 	float fade_start = 560.0 * worldScale;
 	float fade_end = 570.0 * worldScale;
@@ -63,3 +87,5 @@ vec4 applyFadeOut(vec3 FragPos, vec3 viewPos, float time, float worldScale, vec4
 	// Restore deliberate cyan style for distant terrain
 	FragColor = mix(vec4(0.0, 0.7, 0.7, baseColor.a) * length(baseColor), baseColor, step(1.0, fade));
 }
+
+*/
