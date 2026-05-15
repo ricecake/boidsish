@@ -518,6 +518,18 @@ void evaluate_brdf(
     spec_lum += get_luminance(specular_radiance);
 }
 
+struct LightFactors {
+	bool shadows;
+	bool microfacetGlint;
+	bool subsurface;
+	vec3 frag_pos;
+	vec3 normal;
+	float occlusion;
+	vec3 albedo;
+	float roughness;
+	float metallic;
+};
+
 /**
  * PBR lighting with Cook-Torrance BRDF - supports all light types.
  * Returns vec4(color.rgb, specular_luminance).
