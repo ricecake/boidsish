@@ -1275,4 +1275,22 @@ vec3 apply_flash_lighting(
 	return result;
 }
 
+
+struct LightOutput {
+	vec4 lighting;
+	float primaryShadow;
+};
+
+LightOutput apply_lighting(LightFactors lf) {
+	float shadow;
+	vec4 light = apply_lighting_pbr(lf.frag_pos, lf.normal, lf.albedo, lf.roughness, lf.metallic, lf.occlusion, shadow);
+
+	LightOutput lo;
+	lo.primaryShadow = shadow;
+	lo.lighting = light;
+
+	return lo;
+}
+
+
 #endif // HELPERS_LIGHTING_GLSL
