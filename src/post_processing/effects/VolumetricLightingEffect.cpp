@@ -121,7 +121,7 @@ namespace Boidsish {
 			int next_history = 1 - history_index_;
 			glBindImageTexture(Constants::ImageBinding::VolumetricHistory(), history_textures_[next_history], 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 
-			glDispatchCompute((grid_res_x_ + 7) / 8, (grid_res_y_ + 7) / 8, num_cascades_);
+			glDispatchCompute((grid_res_x_ + 7) / 8, (grid_res_y_ + 7) / 8, 1);
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
 			history_index_ = next_history;
