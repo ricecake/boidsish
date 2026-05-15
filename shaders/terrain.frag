@@ -431,9 +431,11 @@ void main() {
 	// Add subtle color variation based on combined noise
 	finalMaterial.albedo *= (1.0 + combinedNoise * 0.15);
 
+	float freezingScale = 1.0 - smoothstep(255.372, 273.15, temperature);
+
 	// Apply global wetness from precipitation
 	// Wet surfaces are darker and much smoother (glossier)
-	float globalWetness = wetness;
+	float globalWetness = max(wetness, freezingScale);
 	finalMaterial.albedo = mix(finalMaterial.albedo, finalMaterial.albedo * 0.5, globalWetness * 0.5);
 	finalMaterial.roughness = mix(finalMaterial.roughness, 0.1, globalWetness * 0.8);
 
@@ -453,7 +455,7 @@ void main() {
 	// ========================================================================
 	float grassAO = 0.0;
 	vec3 perturbedNorm = norm;
-	if (u_grassGlobal.enabled != 0) {
+	if (u_grassGlobal.enabled != 0 && freezingScale == 0) {
 		float freqScale = mix(1.0, 0.25, smoothstep(150.0, 160.0, realDist + 50.0 * largeNoise));
 		float blueNoise = fastBlueNoise(FragPos.xz * (baseFreq * 0.05 * freqScale), 0) * 0.5 + 0.5;
 		float blueNoiseA = fastBlueNoise(FragPos.xz * (baseFreq * 0.1 * freqScale), 1) * 0.5 + 0.5;
@@ -564,9 +566,16 @@ void main() {
 		float eps = 0.015;
 		float n, nx, nz;
 
-		n = fastRidge3d(0.1 * scaledFragPos * roughnessScale);
-		nx = fastRidge3d(0.1 * (scaledFragPos + vec3(eps, 0.0, 0.0)) * roughnessScale);
-		nz = fastRidge3d(0.1 * (scaledFragPos + vec3(0.0, 0.0, eps)) * roughnessScale);
+		if (freezingScale < 0.5) {
+			n = fastRidge3d(0.1 * scaledFragPos * roughnessScale);
+			nx = fastRidge3d(0.1 * (scaledFragPos + vec3(eps, 0.0, 0.0)) * roughnessScale);
+			nz = fastRidge3d(0.1 * (scaledFragPos + vec3(0.0, 0.0, eps)) * roughnessScale);
+		}
+		else {
+			n = fastWarpedFbm3d(0.1 * scaledFragPos * roughnessScale);
+			nx = fastWarpedFbm3d(0.1 * (scaledFragPos + vec3(eps, 0.0, 0.0)) * roughnessScale);
+			nz = fastWarpedFbm3d(0.1 * (scaledFragPos + vec3(0.0, 0.0, eps)) * roughnessScale);
+		}
 
 		// Compute local tangent space to orient the perturbation.
 		// Using a stable basis that doesn't flip at Z-axis alignment.
@@ -611,9 +620,16 @@ void main() {
 	roughness *= mix(1.25, 1.0, windDistortion) * mix(1, mix(1.5, 1.0, windRipple), grassFactor);
 */
 
+
+	if (freezingScale > 0) {
+		albedo = mix(albedo, vec3(1.1,1.1,1.1+0.1*grassAO), freezingScale);
+		roughness = mix(roughness, 0.50, freezingScale);
+		metallic = mix(metallic, 1.0, freezingScale);
+	}
+
 	float primaryShadow;
 	vec3 lighting = apply_lighting_pbr(FragPos, perturbedNorm, albedo, roughness, metallic, 1.0 - grassAO, primaryShadow).rgb;
-
+	lighting.b *= 1 + (0.2 * freezingScale * (1-primaryShadow));
 	// ========================================================================
 	// Neon 80s Synth Style (Night Theme)
 	// ========================================================================

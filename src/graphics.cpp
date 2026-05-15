@@ -2306,6 +2306,7 @@ namespace Boidsish {
 					ubo_data.rain_intensity = (w.temperature > 273.15f) ? w.precipitation : 0.0f;
 					ubo_data.snow_intensity = (w.temperature <= 273.15f) ? w.precipitation : 0.0f;
 					ubo_data.wetness = wetness_;
+					ubo_data.temperature = w.temperature;
 
 					*visual_effects_pb->GetFrameDataPtr() = ubo_data;
 					glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::VisualEffects(),
