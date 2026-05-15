@@ -195,6 +195,23 @@ uv_J = mat2(dFdx(uv), dFdy(uv));
 float glintNDF = calculate_glint_ndf(H, N, roughness, metallic, uv, uv_J);
 // Additive blending with intensity control to prevent negative extrapolation
 NDF = NDF + glintNDF * glintIntensity;
+
+
+
++       mat2 uv_J = mat2(dFdx(TexCoords), dFdy(TexCoords));
++       vec3 lighting = apply_lighting_pbr(
++               FragPos,
++               perturbedNorm,
++               albedo,
++               roughness,
++               metallic,
++               1.0,
++               TexCoords,
++               uv_J,
++               false,
++               0.0,
++               0.0
++       ).rgb;
 */
 
 

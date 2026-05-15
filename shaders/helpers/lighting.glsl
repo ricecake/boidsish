@@ -1,7 +1,8 @@
 #ifndef HELPERS_LIGHTING_GLSL
 #define HELPERS_LIGHTING_GLSL
 
-#include "../helpers/constants.glsl"
+#include "helpers/constants.glsl"
+#include "helpers/microfacet_glinting.glsl"
 #include "../lighting.glsl"
 #include "clouds.glsl"
 #include "brdf.glsl"
@@ -467,13 +468,24 @@ float get_luminance(vec3 color) {
 // PBR Lighting Functions (Cook-Torrance BRDF)
 // ============================================================================
 
+struct MicrofacetParams {
+	vec2 uv;
+	mat2 uv_J;
+	vec3 tangent;
+	vec3 bitangent;
+	mat3 TBN;
+	float g_density;
+	float g_alpha;
+	float alpha;
+};
+
 // PBR intensity multiplier to compensate for energy conservation
 // PBR is inherently darker than legacy Phong.
 const float PBR_INTENSITY_BOOST = 1.0;
 
 void evaluate_brdf(
     vec3 N, vec3 V, vec3 L, vec3 albedo, float roughness, float metallic, vec3 F0,
-    vec3 radiance, float shadow, inout vec3 Lo, inout float spec_lum)
+    vec3 radiance, float shadow, MicrofacetParams mfp, inout vec3 Lo, inout float spec_lum)
 {
     float NdotL = max(dot(N, L), 0.0);
     if (NdotL <= 0.0) return; // Early out
@@ -482,7 +494,15 @@ void evaluate_brdf(
     vec3 H = normalize(V + L);
     float HdotV = max(dot(H, V), 0.0);
 
-    float NDF = DistributionGGX(N, H, roughness);
+	mat3 invTBN = transpose(mfp.TBN);
+	vec3 h_local = invTBN * H;
+
+	float NDF;
+	// if (mfp.g_density > )
+	NDF = glint_ndf(h_local, mfp.alpha, mfp.g_alpha, mfp.uv, mfp.uv_J, mfp.g_density, DEFAULT_PIXEL_FILTER_SIZE);
+
+
+    // float NDF = DistributionGGX(N, H, roughness);
     float V_term = VisibilitySmithGGXCorrelated(NdotL, NdotV, roughness);
     vec3 F = fresnelSchlickFast(HdotV, F0);
     vec3 specular = NDF * V_term * F;
@@ -521,6 +541,36 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 	vec3  Lo = vec3(0.0);
 	float spec_lum = 0.0;
 
+	float g_density, g_alpha;
+	if (metallic > 0.1) {
+		// Metals: few intense glints
+		g_density = mix(1000.0, 200.0, clamp(metallic, 0.0, 1.0));
+		g_alpha = mix(0.01, 0.002, clamp(metallic, 0.0, 1.0));
+	} else {
+		// Dielectrics: more glints as it gets rougher (like snow)
+		g_density = mix(500.0, 4000.0, clamp(roughness, 0.0, 1.0));
+		g_alpha = mix(0.02, 0.01, clamp(roughness, 0.0, 1.0));
+	}
+
+	MicrofacetParams mfp;
+
+	mfp.alpha = max(roughness * roughness, 0.0001);
+
+
+	mfp.g_density = g_density;
+	mfp.g_alpha = g_alpha;
+
+	mfp.uv = frag_pos.xz;
+	mfp.uv_J = mat2(dFdx(mfp.uv), dFdy(mfp.uv));
+
+	mfp.tangent = normalize(cross(N, vec3(0, 0, 1)));
+	if (abs(N.z) > 0.9) {
+			mfp.tangent = normalize(cross(N, vec3(1, 0, 0)));
+	}
+
+	mfp.bitangent = cross(N, mfp.tangent);
+	mfp.TBN = mat3(mfp.tangent, mfp.bitangent, N);
+
 	// ------------------------------------------------------------------
 	// PASS 1: Global Directional Light (Sun/Moon)
 	// ------------------------------------------------------------------
@@ -553,7 +603,7 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 
 		primaryShadow = min(primaryShadow, shadow);
 
-		evaluate_brdf(N, V, L, albedo, roughness, metallic, F0, radiance, shadow, Lo, spec_lum);
+		evaluate_brdf(N, V, L, albedo, roughness, metallic, F0, radiance, shadow, mfp, Lo, spec_lum);
 	}
 
 	// ------------------------------------------------------------------
@@ -576,7 +626,7 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 
 		float shadow = calculateShadow(i, frag_pos, N, L);
 
-		evaluate_brdf(N, V, L, albedo, roughness, metallic, F0, radiance, shadow, Lo, spec_lum);
+		evaluate_brdf(N, V, L, albedo, roughness, metallic, F0, radiance, shadow, mfp, Lo, spec_lum);
 	}
 
 	// Spatially-varying SH ambient augmented with macro occlusion

@@ -622,9 +622,9 @@ void main() {
 
 
 	if (freezingScale > 0) {
-		albedo = mix(albedo, vec3(1.1,1.1,1.1+0.1*grassAO), freezingScale);
-		roughness = mix(roughness, 0.50, freezingScale);
-		metallic = mix(metallic, 1.0, freezingScale);
+		albedo = mix(albedo, vec3(1.0,1.0,1.0+0.05*grassAO), freezingScale);
+		roughness = mix(roughness, 1.0, freezingScale);
+		metallic = mix(metallic, 0.0, freezingScale);
 	}
 
 	float primaryShadow;
