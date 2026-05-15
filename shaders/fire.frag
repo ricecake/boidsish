@@ -2,6 +2,7 @@
 
 #include "lighting.glsl"
 #include "particle_types.glsl"
+#include "atmosphere/common.glsl"
 
 in float         v_lifetime;
 in vec4          view_pos;
@@ -134,5 +135,31 @@ void main() {
 		color = blackbody_hdr(heat) * alpha * 12.0 * (1.0 + normalizedLife);
 	}
 
-	FragColor = vec4(color, alpha);
+	// Apply atmospheric scattering and fog to particles
+	// Note: v_pos.xyz is world position
+	float depth = length(view_pos.xyz);
+
+#ifdef ATMOSPHERE_COMMON_GLSL
+	// Calculate atmosphere properties at particle position
+	Sampling s = getAtmospherePropertiesAtPos(v_pos.xyz);
+
+	// Physically-based fogging:
+	// 1. Transmittance attenuates the particle's own emission
+	// 2. Scattering adds the atmosphere's own glow between camera and particle
+	float transmittance = exp(-length(s.extinction) * (depth / 1000.0)); // Convert meters to KM for extinction lookup
+	vec3 scattering = ambient_light * (1.0 - transmittance);
+
+	// For fire (additive), we only apply transmittance to the color.
+	// We don't add ambient scattering directly as it would make the fire look like a solid block in fog.
+	// Instead, we let the scattering affect the scene behind it.
+	color = color * transmittance;
+#endif
+
+	// Ensure particles are recognized as part of the scene for bloom and tone mapping.
+	// We set the scene mask in alpha. Using additive blending for alpha (GL_ONE, GL_ONE)
+	// in the manager, any particle here will "mark" the scene mask to 1.0.
+	// We use a small epsilon for purely additive particles to ensure they are masked
+	// without causing excessive darkening if they were ever switched to standard alpha.
+	float sceneMask = max(alpha, 0.01);
+	FragColor = vec4(color, sceneMask);
 }
