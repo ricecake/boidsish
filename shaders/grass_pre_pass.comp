@@ -98,7 +98,7 @@ void main() {
     float radius = patchSize * 0.707;
 
     // We check which LOD levels intersect this patch using consistent ranges
-    int minLod = -1;
+    int minLod = 0;
     for (int lod = minLod; lod <= 2; ++lod) {
         float r_prev = baseRange * exp(float(lod - 1));
         float r_next = baseRange * exp(float(lod + 1));

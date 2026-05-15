@@ -207,26 +207,27 @@ void main() {
 	float radius = patchSize * 0.707 + (metrics.max_y - metrics.min_y) * 0.5;
 
 	// FRUSTUM CULLING
-	// Increased margin to prevent edge flickering
-	if (!isSphereInFrustum(patchCenter, radius + 10.0 * u_worldScale)) {
+	vec3 aabbMin = vec3(chunkOffset.x + float(patchX) * patchSize, metrics.min_y, chunkOffset.z + float(patchY) * patchSize);
+	vec3 aabbMax = vec3(chunkOffset.x + float(patchX + 1) * patchSize, metrics.max_y, chunkOffset.z + float(patchY + 1) * patchSize);
+
+	// Added a small margin to prevent edge flickering
+	if (!isAABBInFrustum(aabbMin - 1.0 * u_worldScale, aabbMax + 1.0 * u_worldScale)) {
 		return;
 	}
 
 	// OCCLUSION CULLING
-	if (true) {
-		vec3 aabbMin = vec3(chunkOffset.x + float(patchX) * patchSize, metrics.min_y, chunkOffset.z + float(patchY) * patchSize);
-		vec3 aabbMax = vec3(chunkOffset.x + float(patchX+1) * patchSize, metrics.max_y, chunkOffset.z + float(patchY+1) * patchSize);
-		vec3  viewVec = u_viewPos - patchCenter;
+	if (u_enableOcclusionCulling) {
+		vec3  viewVec = patchCenter - u_viewPos;
 		float distToCam = length(viewVec);
 
-		vec4 screenRect;
+		vec4  screenRect;
 		float nearestDepth;
 		// Project using PREVIOUS View-Projection for temporal consistency with Hi-Z
 		if (projectAABB(aabbMin, aabbMax, prevViewProjection, screenRect, nearestDepth)) {
 			vec2 screenSize = screenRect.zw - screenRect.xy;
 			// If patch is very large on screen, skip occlusion check
 			if (screenSize.x * screenSize.y < 0.5) {
-				vec2 pixelSize = screenSize * vec2(u_hizSize);
+				vec2  pixelSize = screenSize * vec2(u_hizSize);
 				float maxPixelDim = max(pixelSize.x, pixelSize.y);
 				// Selecting a mip level where the projected rect is approx 1x1 texel
 				int mipLevel = clamp(int(ceil(log2(max(maxPixelDim, 1.0)))), 0, u_hizMipCount - 1);
@@ -241,10 +242,11 @@ void main() {
 				// In standard GL depth (0=near, 1=far), nearestDepth > hizDepth means patch is occluded.
 				// Added a small bias to hizDepth to be more conservative.
 				if (hizDepth > 0.0001 && nearestDepth > hizDepth + 0.0005) {
-					float visibility = marchOcclusion(u_viewPos, viewVec, distToCam);
+					// Verify occlusion with a raymarch from camera towards the patch
+					float visibility = marchOcclusion(u_viewPos, viewVec / distToCam, distToCam);
 
 					if (visibility <= 0.0) {
-							return;
+						return;
 					}
 				}
 			}

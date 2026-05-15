@@ -80,7 +80,10 @@ void main() {
 			float spec = pow(max(dot(n, h), 0.0), 64.0);
 			color = mix(iridescent_color, vec3(1.0), fresnel * 0.5 + 0.2) + spec;
 		} else if (v_style == STYLE_SNOW) {
-			shapeMask = 1.0;
+			float r = 0.5 * length(circ);
+			float a = atan(circ.y, circ.x);
+			float s = abs(sin(a * 3.0));
+			shapeMask = smoothstep(0.1, 0.09, r * s);
 		} else if (v_style == STYLE_RAIN) {
 			vec2 vel_dir = normalize(v_vel_view.xy + vec2(1e-6));
 			float angle = atan(vel_dir.y, vel_dir.x) + 1.5707;

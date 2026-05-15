@@ -648,8 +648,8 @@ namespace Boidsish {
 			chunk.world_offset.y + scaled_chunk_size
 		);
 
-		// Add a safety margin (one chunk size) to prevent edge flickering
-		float margin = scaled_chunk_size;
+		// Add a small safety margin (10% of chunk size) to prevent edge flickering
+		float margin = scaled_chunk_size * 0.1f;
 
 		glm::vec3 center = (min_corner + max_corner) * 0.5f;
 		glm::vec3 half_size = (max_corner - min_corner) * 0.5f + glm::vec3(margin, margin, margin);
@@ -1038,14 +1038,19 @@ namespace Boidsish {
 				last_camera_pos_ - last_prep_camera_pos_
 			);
 			float patch_size_world = Constants::Class::Terrain::PatchSize() * last_world_scale_;
-			float threshold = patch_size_world * 0.4f;
+			float threshold = patch_size_world * 0.1f;
 
-			bool camera_static = cam_move_sq < (threshold * threshold);
-			bool tess_unchanged = (tess_quality_multiplier == last_prep_tess_multiplier_);
+			bool  camera_static = cam_move_sq < (threshold * threshold);
+			bool  tess_unchanged = (tess_quality_multiplier == last_prep_tess_multiplier_);
 
-			if (camera_static && tess_unchanged) {
+			// We also need to check for camera orientation changes.
+			// For now, let's just use frame count to ensure we don't skip for more than 10 frames
+			// if the camera is moving slowly.
+			if (camera_static && tess_unchanged && skip_counter_ < 10) {
+				skip_counter_++;
 				return;
 			}
+			skip_counter_ = 0;
 		}
 
 		// Advance triple buffers for patch rendering

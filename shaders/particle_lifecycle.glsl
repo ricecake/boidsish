@@ -307,7 +307,7 @@ void spawnAmbientParticle(
 
 void spawnPrecipitation(inout Particle p, uint gid, float time, vec3 viewPos) {
 	vec2 seed = vec2(float(gid) * 0.123, time * 0.456);
-	float spawn_chance = max(rain_intensity, snow_intensity) * 0.6;
+	float spawn_chance = pow(max(rain_intensity, snow_intensity), 6);
 
 	if (rand(seed + 0.77) < spawn_chance) {
 		vec3 rand_offset = rand3(seed) * 2.0 - 1.0;

@@ -38,7 +38,7 @@ const float kCinderLifetime = 8.0;
 const float kCinderDriftIntensity = 4.0;
 const float kCinderBuoyancy = 1.5;
 
-void handleTerrainCollision(inout Particle p, int num_chunks, sampler2DArray heightmapArray) {
+bool handleTerrainCollision(inout Particle p, int num_chunks, sampler2DArray heightmapArray) {
 	bool collided = false;
 	for (int i = 0; i < num_chunks; i++) {
 		ChunkInfo chunk = chunks[i];
@@ -63,6 +63,8 @@ void handleTerrainCollision(inout Particle p, int num_chunks, sampler2DArray hei
 		p.vel.y *= -0.25;
 		p.vel.xz *= 0.8;
 	}
+
+	return collided;
 }
 
 void applyAmbientAvoidance(inout Particle p, float dt, float time, vec3 viewPos, vec3 viewDir, sampler3D curlTexture) {
@@ -481,7 +483,9 @@ void updatePrecipitationBehavior(
 	}
 
 	p.pos.xyz += p.vel.xyz * dt;
-	// handleTerrainCollision(p, num_chunks, heightmapArray);
+	if(handleTerrainCollision(p, num_chunks, heightmapArray)) {
+		p.pos.w = 0.0;
+	}
 }
 
 void updateFireBehavior(

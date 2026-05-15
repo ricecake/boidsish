@@ -53,7 +53,7 @@ namespace Boidsish {
 
 		// Map strength to parameters
 		// Wind starts being audible even at low strengths
-		float gain = std::clamp(m_currentWindStrength * 0.1f, 0.0f, 0.5f);
+		float gain = std::clamp(m_currentWindStrength, 0.0f, 0.5f);
 
 		// Cutoff frequency moves between 100Hz and 2000Hz (normalized roughly)
 		float freq = 0.005f + std::clamp(m_currentWindStrength * 0.02f, 0.0f, 0.1f);
