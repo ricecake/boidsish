@@ -84,7 +84,14 @@ namespace Boidsish {
 		GetAppSettingFloat("foliage_culling_pixel_threshold", 10.0f);
 
 		// Particle settings
+		GetAppSettingBool("particles_enabled", true);
 		GetAppSettingFloat("ambient_particle_density", Constants::Class::Particles::DefaultAmbientDensity());
+		GetAppSettingInt("particle_limit_birds", 1000);
+		GetAppSettingInt("particle_limit_leaves", 5000);
+		GetAppSettingInt("particle_limit_petals", 5000);
+		GetAppSettingInt("particle_limit_bubbles", 2000);
+		GetAppSettingInt("particle_limit_fireflies", 3000);
+		GetAppSettingInt("particle_limit_snow", 10000);
 
 		// SH Probe settings
 		GetAppSettingFloat("sh_probe_scaling", 1.0f);

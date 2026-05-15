@@ -345,6 +345,7 @@ void main() {
 		// Distance fade and distant cyan blend (matching terrain style)
 		vec4 baseColor = vec4(final_color, fade);
 		FragColor = mix(vec4(0.0, 0.7, 0.7, baseColor.a) * length(baseColor), baseColor, step(1.0, fade));
+			FragColor.a = 1.0;
 
 		// Output view-space normal
 		NormalOut = vec4(normalize(mat3(view) * norm), primaryShadow);
@@ -659,6 +660,7 @@ void main() {
 
 	// Restore deliberate cyan style for distant terrain
 	FragColor = mix(vec4(0.0, 0.7, 0.7, baseColor.a) * length(baseColor), baseColor, step(1.0, fade));
+		FragColor.a = 1.0;
 
 	// Output view-space normal
 	NormalOut = vec4(normalize(mat3(view) * perturbedNorm), primaryShadow);

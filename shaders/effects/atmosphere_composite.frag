@@ -132,6 +132,9 @@ void main() {
 	vec3  atmosInScattering = sampleAerialPerspective(rayDir, cloudDistKM);
 	float atmosTransmittance = sampleAerialPerspectiveTransmittance(rayDir, cloudDistKM);
 
+	// Preserve alpha for scene mask (e.g. from particles)
+	float sceneMask = texture(sceneTexture, TexCoords).a;
+
 	// Combine everything
 	// Colossal objects write depth ~0.99999 — treat them like sky (no aerial perspective
 	// fog, which would completely wash them out at that reconstructed distance)
@@ -165,5 +168,5 @@ void main() {
 		result = sceneColor * cloudTransmittance + cloudsAtmos;
 	}
 
-	FragColor = vec4(result, 1.0);
+	FragColor = vec4(result, max(sceneMask, depth > 0.9999 ? 0.0 : 1.0));
 }

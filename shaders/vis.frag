@@ -330,6 +330,7 @@ void main() {
 	// }
 
 	FragColor = outColor;
+	FragColor.a = mix(0.0, 1.0, step(0.001, FragColor.a)); // Ensure scene mask is binary
 
 	// Calculate screen-space velocity and material properties
 	vec2 a = (CurPosition.xy / CurPosition.w) * 0.5 + 0.5;

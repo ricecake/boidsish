@@ -88,7 +88,7 @@ void main() {
 	if (alpha < 0.01)
 		discard;
 
-	FragColor = vec4(finalColor * (1.0 + ringMask), alpha);
+	FragColor = vec4(finalColor * (1.0 + ringMask), 1.0);
 
 	// Calculate screen-space velocity and material properties
 	vec2 a = (CurPosition.xy / CurPosition.w) * 0.5 + 0.5;

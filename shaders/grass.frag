@@ -153,6 +153,7 @@ void main() {
     // We stay natural until deep into the fade range to avoid "blue glow"
     float cyanFactor = smoothstep(0.0, 0.1, fade);
     FragColor = mix(vec4(0.0, 0.5, 0.5, baseColor.a) * min(length(baseColor.rgb), 1.0) * 0.1, baseColor, cyanFactor);
+    FragColor.a = 1.0;
 
     // Output view-space normal
     NormalOut = vec4(normalize(mat3(view) * N), primaryShadow);

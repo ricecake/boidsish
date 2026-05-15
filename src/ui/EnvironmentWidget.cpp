@@ -3,7 +3,9 @@
 #include <cmath>
 
 #include "ConfigManager.h"
+#include "constants.h"
 #include "decor_manager.h"
+#include "fire_effect_manager.h"
 #include "grass_manager.h"
 #include "graphics.h"
 #include "imgui.h"
@@ -751,11 +753,39 @@ namespace Boidsish {
 				// 4. Particles
 				if (ImGui::CollapsingHeader("Particles", ImGuiTreeNodeFlags_DefaultOpen)) {
 					auto& config = ConfigManager::GetInstance();
+					bool  enabled = config.GetAppSettingBool("particles_enabled", true);
+					if (ImGui::Checkbox("Enable Particle System", &enabled)) {
+						config.SetBool("particles_enabled", enabled);
+					}
+
 					float density = config.GetAppSettingFloat("ambient_particle_density", 0.15f);
-					if (ImGui::SliderFloat("Ambient Density", &density, 0.0f, 1.0f)) {
+					if (ImGui::SliderFloat("Ambient Density", &density, 0.0f, 2.0f)) {
 						config.SetFloat("ambient_particle_density", density);
 					}
-					ImGui::Text("Controls the spawn rate of ambient particles.");
+					ImGui::Text("Scale: 1.0 = %d particles", Constants::Class::Particles::AmbientParticleScale());
+
+					auto fem = m_visualizer.GetFireEffectManager();
+					if (fem) {
+						ImGui::Separator();
+						ImGui::Text("Ambient Particle Limits & Counts:");
+						ParticleStats stats = fem->GetStats();
+
+						auto limitControl = [&](const char* label, const char* cfg_key, uint32_t count) {
+							int limit = config.GetAppSettingInt(cfg_key, 1000);
+							if (ImGui::SliderInt(label, &limit, 0, 10000)) {
+								config.SetInt(cfg_key, limit);
+							}
+							ImGui::SameLine();
+							ImGui::Text("(%u)", count);
+						};
+
+						limitControl("Birds", "particle_limit_birds", stats.count_birds);
+						limitControl("Leaves", "particle_limit_leaves", stats.count_leaves);
+						limitControl("Petals", "particle_limit_petals", stats.count_petals);
+						limitControl("Bubbles", "particle_limit_bubbles", stats.count_bubbles);
+						limitControl("Fireflies", "particle_limit_fireflies", stats.count_fireflies);
+						limitControl("Snow", "particle_limit_snow", stats.count_snow);
+					}
 				}
 
 				// 5. Wind (from EffectsWidget)

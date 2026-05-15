@@ -10,7 +10,10 @@
 
 uniform float u_delta_time;
 uniform float u_time;
+uniform bool  u_enabled;
 uniform float u_ambient_density;
+uniform int   u_emitter_pool_size;
+uniform int   u_ambient_particle_scale;
 uniform int   u_num_emitters;
 uniform int   u_num_chunks;
 uniform uint  u_grid_size;
@@ -27,11 +30,17 @@ void main() {
 		return;
 	}
 
+	// Incremental counting: behavior pass or lifecycle pass (aging)
+	// should increment counters for live particles.
+	// The C++ code resets the buffer to zero (excluding limits) each frame.
+
 	Particle p = particles[gid];
 	int      emitter_index = particle_to_emitter_map[gid];
 
 	// --- 1 & 2. Lifecycle: Hijack/Clear and Lifetime Update ---
-	if (updateLifetime(p, gid, emitter_index, u_num_emitters, u_delta_time, viewPos, viewDir)) {
+	bool dead = updateLifetime(p, gid, emitter_index, u_num_emitters, u_delta_time, viewPos, viewDir);
+
+	if (dead && u_enabled) {
 		// --- 3. Respawn Logic ---
 		respawnParticle(
 			p,
@@ -41,6 +50,8 @@ void main() {
 			u_time,
 			u_delta_time,
 			u_ambient_density,
+			u_emitter_pool_size,
+			u_ambient_particle_scale,
 			u_num_chunks,
 			viewPos,
 			viewDir,
@@ -59,5 +70,15 @@ void main() {
 	if (p.pos.w > 0.0) {
 		uint idx = atomicAdd(behavior_command.num_groups_x, 1);
 		live_indices[idx] = gid;
+
+		// Count live ambient particles
+		if (p.emitter_id == -1) {
+			if (p.style == STYLE_BIRDS) atomicAdd(stats.count_birds, 1);
+			else if (p.style == STYLE_LEAF) atomicAdd(stats.count_leaves, 1);
+			else if (p.style == STYLE_PETAL) atomicAdd(stats.count_petals, 1);
+			else if (p.style == STYLE_BUBBLES) atomicAdd(stats.count_bubbles, 1);
+			else if (p.style == STYLE_FIREFLIES) atomicAdd(stats.count_fireflies, 1);
+			else if (p.style == STYLE_SNOW) atomicAdd(stats.count_snow, 1);
+		}
 	}
 }

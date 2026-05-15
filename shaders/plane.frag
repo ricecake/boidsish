@@ -149,6 +149,7 @@ void main() {
 	// --- Distance Fade ---
 	vec4 outColor = vec4(final_color, fade);
 	FragColor = mix(vec4(0.7, 0.1, 0.7, fade) * length(outColor), outColor, step(1, fade));
+	FragColor.a = 1.0;
 
 	// Calculate screen-space velocity and material properties
 	vec2 a = (CurPosition.xy / CurPosition.w) * 0.5 + 0.5;

@@ -188,6 +188,8 @@ void spawnAmbientParticle(
 	uint           gid,
 	float          time,
 	float          ambient_density,
+	int            emitter_pool_size,
+	int            ambient_particle_scale,
 	int            num_chunks,
 	vec3           viewPos,
 	vec3           viewDir,
@@ -198,10 +200,10 @@ void spawnAmbientParticle(
 	float          cellSize,
 	uint           gridSize
 ) {
-	uint ambient_limit = uint(particles.length() * ambient_density);
-	vec2 spawnSeed = vec2(float(gid) * 0.123, time * 0.456);
-	if (gid < (particles.length() - ambient_limit) || num_chunks <= 0) return;
+	uint ambient_limit = uint(float(ambient_particle_scale) * ambient_density);
+	if (gid < uint(emitter_pool_size) || gid >= (uint(emitter_pool_size) + ambient_limit) || num_chunks <= 0) return;
 
+	vec2  spawnSeed = vec2(float(gid) * 0.123, time * 0.456);
 	uint  particleSeed = hash(gid ^ uint(time * 10.0));
 	float r_dist = randomFloat(particleSeed);
 	float dist = sqrt(100.0 + r_dist * 249900.0) * worldScale;
@@ -246,60 +248,98 @@ void spawnAmbientParticle(
 
 		bool valid_biome = (biome_idx >= 0 && biome_idx <= 4) || biome_idx == 7;
 		if (valid_biome) {
-			float total_lifetime = 10.0 + rand(spawnSeed + 4.4) * 5.0;
-			float skipped_time = rand(spawnSeed + 7.7) * total_lifetime;
+			// Weighted selection based on biome and limits
+			float weights[6] = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
+			int styles[6] = { STYLE_BIRDS, STYLE_LEAF, STYLE_PETAL, STYLE_BUBBLES, STYLE_FIREFLIES, STYLE_SNOW };
 
-			p.emitter_id = -1;
-			p.emitter_index = biome_idx;
-			p.pos = vec4(
-				pos.x,
-				height + 1.0 + rand(spawnSeed + 3.3) * 2.0,
-				pos.z,
-				total_lifetime - skipped_time
-			);
-			p.vel = vec4(rand3(spawnSeed + 5.5) * 0.5, 15.0);
-			p.origin.xyz = p.pos.xyz;
-			p.origin.w = 0.0; // Last twinkle time
+			// 0: Birds, 1: Leaf, 2: Petal, 3: Bubbles, 4: Fireflies, 5: Snow
 
-			if (biome_idx == 7) {
-				p.style = STYLE_SNOW;
-			} else if (biome_idx == 0) {
-				p.style = STYLE_BUBBLES;
+			if (biome_idx == 7) { // Snow biome
+				weights[5] = 1.0; // Prefer snow
+			} else if (biome_idx == 0) { // Sand/Water
+				weights[3] = 1.0; // Bubbles
 			} else {
 				if (nightFactor > 0.5) {
-					p.style = STYLE_FIREFLIES;
-					p.phase = 3.0 + 2.0 * fract(randomFloat(hash(particleSeed)));
-					p.counter = 0.0;
+					weights[4] = 1.0; // Fireflies at night
 				} else {
-					float r = rand(spawnSeed + 6.6);
-					if (r < 0.05 && (biome_idx == 1 || biome_idx == 3 || biome_idx == 4)) {
-						p.style = STYLE_BIRDS;
-						p.phase = rand(spawnSeed + 8.8) * 6.28;
-						p.pos.y = height + 0.1;
-						p.pos.w = 60;
-						p.vel.w = 35.0; // Bird size
+					weights[0] = 0.05; // Birds
+					if (biome_idx == 4) { // Alpine
+						weights[1] = 0.3; weights[2] = 0.7;
 					} else {
-						if (biome_idx == 4)
-							p.style = (r < 0.7) ? STYLE_PETAL : STYLE_LEAF;
-						else
-							p.style = (r < 0.2) ? STYLE_PETAL : STYLE_LEAF;
+						weights[1] = 0.8; weights[2] = 0.2;
 					}
 				}
 			}
 
-			if (skipped_time > 0.001) {
-				updateAmbientParticle(
-					p,
-					skipped_time,
-					time - skipped_time,
-					viewPos,
-					viewDir,
-					cellSize,
-					gridSize,
-					curlTexture,
-					num_chunks,
-					heightmapArray
-				);
+			// Apply limits
+			if (stats.count_birds >= stats.limit_birds) weights[0] = 0.0;
+			if (stats.count_leaves >= stats.limit_leaves) weights[1] = 0.0;
+			if (stats.count_petals >= stats.limit_petals) weights[2] = 0.0;
+			if (stats.count_bubbles >= stats.limit_bubbles) weights[3] = 0.0;
+			if (stats.count_fireflies >= stats.limit_fireflies) weights[4] = 0.0;
+			if (stats.count_snow >= stats.limit_snow) weights[5] = 0.0;
+
+			float total_weight = 0.0;
+			for(int i=0; i<6; i++) total_weight += weights[i];
+
+			if (total_weight > 0.0) {
+				float r = rand(spawnSeed + 6.6) * total_weight;
+				float cumulative = 0.0;
+				int selected_style = -1;
+				int selected_stat_idx = -1;
+
+				for(int i=0; i<6; i++) {
+					cumulative += weights[i];
+					if (r <= cumulative) {
+						selected_style = styles[i];
+						selected_stat_idx = i;
+						break;
+					}
+				}
+
+				if (selected_style != -1) {
+					float total_lifetime = 10.0 + rand(spawnSeed + 4.4) * 5.0;
+					float skipped_time = rand(spawnSeed + 7.7) * total_lifetime;
+
+					p.emitter_id = -1;
+					p.emitter_index = biome_idx;
+					p.style = selected_style;
+					p.pos = vec4(
+						pos.x,
+						height + 1.0 + rand(spawnSeed + 3.3) * 2.0,
+						pos.z,
+						total_lifetime - skipped_time
+					);
+					p.vel = vec4(rand3(spawnSeed + 5.5) * 0.5, 15.0);
+
+					if (selected_style == STYLE_BIRDS) {
+						p.phase = rand(spawnSeed + 8.8) * 6.28;
+						p.pos.y = height + 0.1;
+						p.pos.w = 60;
+						p.vel.w = 35.0;
+					} else if (selected_style == STYLE_FIREFLIES) {
+						p.phase = 3.0 + 2.0 * fract(randomFloat(hash(particleSeed)));
+						p.counter = 0.0;
+					}
+
+					p.origin.xyz = p.pos.xyz;
+					p.origin.w = 0.0;
+
+					if (skipped_time > 0.001) {
+						updateAmbientParticle(
+							p,
+							skipped_time,
+							time - skipped_time,
+							viewPos,
+							viewDir,
+							cellSize,
+							gridSize,
+							curlTexture,
+							num_chunks,
+							heightmapArray
+						);
+					}
+				}
 			}
 		}
 	}
@@ -341,6 +381,8 @@ void respawnParticle(
 	float          time,
 	float          dt,
 	float          ambient_density,
+	int            emitter_pool_size,
+	int            ambient_particle_scale,
 	int            num_chunks,
 	vec3           viewPos,
 	vec3           viewDir,
@@ -353,17 +395,19 @@ void respawnParticle(
 ) {
 	if (p.pos.w <= 0.0) {
 		// --- 3a. Fire Effect Respawn ---
-		if (emitter_index != -1 && num_emitters > 0 && emitter_index < num_emitters) {
+		if (emitter_index != -1 && num_emitters > 0 && emitter_index < num_emitters && gid < uint(emitter_pool_size)) {
 			spawnEmitterParticle(p, gid, emitter_index, time, dt, curlTexture);
 		}
 
 		// --- 3b. Sparse Ambient Respawn ---
-		if (p.pos.w <= 0.0 && emitter_index == -1) {
+		if (p.pos.w <= 0.0 && emitter_index == -1 && gid >= uint(emitter_pool_size)) {
 			spawnAmbientParticle(
 				p,
 				gid,
 				time,
 				ambient_density,
+				emitter_pool_size,
+				ambient_particle_scale,
 				num_chunks,
 				viewPos,
 				viewDir,

@@ -2581,6 +2581,7 @@ namespace Boidsish {
 			fire_effect_manager->Update(
 				simulation_delta_time,
 				simulation_time,
+				ConfigManager::GetInstance().GetAppSettingBool("particles_enabled", true),
 				frame_config_.ambient_particle_density,
 				terrain_render_manager ? terrain_render_manager->GetChunkInfo(terrain_generator->GetWorldScale())
 									   : std::vector<glm::vec4>{},
