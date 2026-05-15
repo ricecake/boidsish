@@ -36,7 +36,8 @@ uniform bool uIsShadowPass = false;
 uniform sampler2DArray uBiomeMap;
 uniform float          uRawChunkSize;
 
-uniform mat4 view;
+uniform mat4  view;
+uniform float u_microglintIntensity = 1.0;
 
 struct GrassProperties {
     vec4  colorTop;
@@ -339,7 +340,26 @@ void main() {
 
 		// Highly reflective PBR material
 		float primaryShadow;
-		vec3 lighting = apply_lighting_pbr(FragPos, norm, surfaceColor, 0.05, 0.9, 1.0, primaryShadow).rgb;
+        LightFactors lf;
+        lf.frag_pos = FragPos;
+        lf.normal = norm;
+        lf.albedo = surfaceColor;
+        lf.roughness = 0.05;
+        lf.metallic = 0.9;
+        lf.occlusion = 1.0;
+        lf.shadows = true;
+        lf.microfacetGlint = false;
+        lf.usePBR = true;
+        lf.isFoliage = false;
+        lf.uv = TexCoords;
+        lf.uv_J = mat2(dFdx(TexCoords), dFdy(TexCoords));
+        lf.glintIntensity = 0.0;
+        lf.translucency = 0.0;
+        lf.specular_strength = 1.0;
+
+		LightOutput lo = apply_lighting(lf);
+		vec3 lighting = lo.lighting.rgb;
+        primaryShadow = lo.primaryShadow;
 		vec3 final_color = lighting + grid_color;
 
 		// Distance fade and distant cyan blend (matching terrain style)
@@ -628,7 +648,26 @@ void main() {
 	}
 
 	float primaryShadow;
-	vec3 lighting = apply_lighting_pbr(FragPos, perturbedNorm, albedo, roughness, metallic, 1.0 - grassAO, primaryShadow).rgb;
+    LightFactors lf;
+    lf.frag_pos = FragPos;
+    lf.normal = perturbedNorm;
+    lf.albedo = albedo;
+    lf.roughness = roughness;
+    lf.metallic = metallic;
+    lf.occlusion = 1.0 - grassAO;
+    lf.shadows = true;
+    lf.microfacetGlint = u_microglintIntensity > 0.0;
+    lf.usePBR = true;
+    lf.isFoliage = false;
+    lf.uv = TexCoords;
+    lf.uv_J = mat2(dFdx(TexCoords), dFdy(TexCoords));
+    lf.glintIntensity = u_microglintIntensity;
+    lf.translucency = 0.0;
+    lf.specular_strength = 1.0;
+
+    LightOutput lo = apply_lighting(lf);
+	vec3 lighting = lo.lighting.rgb;
+    primaryShadow = lo.primaryShadow;
 	lighting.b *= 1 + (0.2 * freezingScale * (1-primaryShadow));
 	// ========================================================================
 	// Neon 80s Synth Style (Night Theme)
