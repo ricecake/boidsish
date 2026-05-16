@@ -229,7 +229,9 @@ void main() {
 			if (screenSize.x * screenSize.y < 0.5) {
 				vec2  pixelSize = screenSize * vec2(u_hizSize);
 				float maxPixelDim = max(pixelSize.x, pixelSize.y);
-				// Selecting a mip level where the projected rect is approx 1x1 texel
+				// Selecting a mip level where the projected rect is approx 1x1 texel at this mip.
+				// This ensures that a 4-tap sampling of the corners covers the entire AABB area
+				// conservatively (at most 2x2 texels in the chosen mip level).
 				int mipLevel = clamp(int(ceil(log2(max(maxPixelDim, 1.0)))), 0, u_hizMipCount - 1);
 
 				// Conservative occlusion check: farthest depth in Hi-Z region vs nearest depth of patch
@@ -242,8 +244,9 @@ void main() {
 				// In standard GL depth (0=near, 1=far), nearestDepth > hizDepth means patch is occluded.
 				// Added a small bias to hizDepth to be more conservative.
 				if (hizDepth > 0.0001 && nearestDepth > hizDepth + 0.0005) {
-					// Verify occlusion with a raymarch from camera towards the patch
-					float visibility = marchOcclusion(u_viewPos, viewVec / distToCam, distToCam);
+					// Verify occlusion with a raymarch from camera towards the patch.
+					// We stop slightly before distToCam to avoid hitting the terrain of the patch itself.
+					float visibility = marchOcclusion(u_viewPos, viewVec / distToCam, distToCam * 0.98);
 
 					if (visibility <= 0.0) {
 						return;

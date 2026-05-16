@@ -20,15 +20,31 @@ void main() {
 
 	// Each destination pixel covers a 2x2 block in the source
 	ivec2 srcCoord = pixel * 2;
+	ivec2 srcSize = textureSize(u_srcDepth, u_srcLevel);
 
-	// Deterministic MAX-downsampling using texelFetch to avoid UV precision issues
+	// Deterministic MAX-downsampling using texelFetch to avoid UV precision issues.
+	// We use min() to handle non-power-of-two (NPOT) boundaries conservatively.
 	float d00 = texelFetch(u_srcDepth, srcCoord + ivec2(0, 0), u_srcLevel).r;
-	float d10 = texelFetch(u_srcDepth, srcCoord + ivec2(1, 0), u_srcLevel).r;
-	float d01 = texelFetch(u_srcDepth, srcCoord + ivec2(0, 1), u_srcLevel).r;
-	float d11 = texelFetch(u_srcDepth, srcCoord + ivec2(1, 1), u_srcLevel).r;
+	float d10 = texelFetch(u_srcDepth, min(srcCoord + ivec2(1, 0), srcSize - 1), u_srcLevel).r;
+	float d01 = texelFetch(u_srcDepth, min(srcCoord + ivec2(0, 1), srcSize - 1), u_srcLevel).r;
+	float d11 = texelFetch(u_srcDepth, min(srcCoord + ivec2(1, 1), srcSize - 1), u_srcLevel).r;
 
 	// MAX for conservative terrain height skipping (farthest depth/height)
 	float maxVal = max(max(d00, d10), max(d01, d11));
+
+	// Handle NPOT: if this is the last pixel and source had odd dimension,
+	// we must include the very last source texels that weren't covered by the 2x2.
+	if (pixel.x == dstSize.x - 1 && srcCoord.x + 1 < srcSize.x - 1) {
+		maxVal = max(maxVal, texelFetch(u_srcDepth, ivec2(srcSize.x - 1, srcCoord.y), u_srcLevel).r);
+		maxVal = max(maxVal, texelFetch(u_srcDepth, ivec2(srcSize.x - 1, min(srcCoord.y + 1, srcSize.y - 1)), u_srcLevel).r);
+	}
+	if (pixel.y == dstSize.y - 1 && srcCoord.y + 1 < srcSize.y - 1) {
+		maxVal = max(maxVal, texelFetch(u_srcDepth, ivec2(srcCoord.x, srcSize.y - 1), u_srcLevel).r);
+		maxVal = max(maxVal, texelFetch(u_srcDepth, ivec2(min(srcCoord.x + 1, srcSize.x - 1), srcSize.y - 1), u_srcLevel).r);
+	}
+	if (pixel.x == dstSize.x - 1 && pixel.y == dstSize.y - 1 && srcCoord.x + 1 < srcSize.x - 1 && srcCoord.y + 1 < srcSize.y - 1) {
+		maxVal = max(maxVal, texelFetch(u_srcDepth, srcSize - 1, u_srcLevel).r);
+	}
 
 	imageStore(u_dstMip, pixel, vec4(maxVal));
 }

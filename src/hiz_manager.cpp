@@ -1,13 +1,13 @@
 #include "hiz_manager.h"
 
 #include <algorithm>
+#include <bit>
+#include <cmath>
+#include <iostream>
 
 #include "service_locator.h"
 #include "constants.h"
 #include "gpu_resource_registry.h"
-#include <cmath>
-#include <iostream>
-
 #include "profiler.h"
 #include "shader.h"
 
@@ -50,7 +50,7 @@ namespace Boidsish {
 	}
 
 	void HiZManager::CreateTexture() {
-		mip_count_ = 1 + static_cast<int>(std::floor(std::log2(std::max(hiz_width_, hiz_height_))));
+		mip_count_ = std::bit_width(static_cast<unsigned int>(std::max(hiz_width_, hiz_height_)));
 
 		glGenTextures(1, &hiz_texture_);
 		glBindTexture(GL_TEXTURE_2D, hiz_texture_);

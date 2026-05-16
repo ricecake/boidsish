@@ -95,24 +95,24 @@ void main() {
 
 	// Skip degenerate AABBs (lines, text, particles that don't want culling)
 	if (aabbMin == aabbMax) {
-		visibility[idx] = 1u;
+		visibility[u_baseVisibilityIndex + idx] = 1u;
 		return;
 	}
 
 	// Skip colossal objects (skybox) - always visible
 	if (uniforms_data[idx].is_colossal != 0) {
-		visibility[idx] = 1u;
+		visibility[u_baseVisibilityIndex + idx] = 1u;
 		return;
 	}
 
 	// Skip transparent objects - they're not in the depth buffer
 	if (uniforms_data[idx].color.a < 0.99) {
-		visibility[idx] = 1u;
+		visibility[u_baseVisibilityIndex + idx] = 1u;
 		return;
 	}
 
 	if (!isAABBInFrustum(aabbMin, aabbMax)) {
-		visibility[idx] = 0u;
+		visibility[u_baseVisibilityIndex + idx] = 0u;
 		return;
 	}
 
@@ -122,21 +122,23 @@ void main() {
 	// Project AABB into previous frame's clip space (matches the Hi-Z pyramid)
 	if (!projectAABB(aabbMin, aabbMax, prevViewProjection, screenRect, nearestDepth)) {
 		// Fully behind camera - frustum culling handles this
-		visibility[idx] = 1u;
+		visibility[u_baseVisibilityIndex + idx] = 1u;
 		return;
 	}
 
 	// If the AABB covers most of the screen, skip occlusion test (likely visible)
 	vec2 screenSize = screenRect.zw - screenRect.xy;
 	if (screenSize.x * screenSize.y > 0.5) {
-		visibility[idx] = 1u;
+		visibility[u_baseVisibilityIndex + idx] = 1u;
 		return;
 	}
 
-	// Choose Hi-Z mip level: want the AABB to cover roughly 2x2 texels
+	// Choose Hi-Z mip level: want the AABB to cover roughly 1x1 texels at this mip.
+	// This ensures that a 4-tap sampling of the corners covers the entire AABB area
+	// conservatively (at most 2x2 texels in the chosen mip level).
 	vec2  pixelSize = screenSize * vec2(u_hizSize);
 	float maxPixelDim = max(pixelSize.x, pixelSize.y);
-	int   mipLevel = clamp(int(ceil(log2(max(maxPixelDim, 1.0) / 2.0))), 0, u_hizMipCount - 1);
+	int   mipLevel = clamp(int(ceil(log2(max(maxPixelDim, 1.0)))), 0, u_hizMipCount - 1);
 
 	// Sample Hi-Z at 4 corners of the screen rect at the chosen mip level
 	// Take max across all samples (most conservative - farthest depth in the region)
@@ -149,14 +151,15 @@ void main() {
 	// If Hi-Z reads as zero/near-zero, the data is invalid (uninitialized or
 	// stale due to a memory barrier issue). Conservatively keep the object visible.
 	if (hizDepth < 0.0001) {
-		visibility[idx] = 1u;
+		visibility[u_baseVisibilityIndex + idx] = 1u;
 		return;
 	}
 
 	// Object is occluded if its nearest depth is farther than the Hi-Z max depth.
 	// In standard OpenGL depth: smaller values = closer to camera.
 	// nearestDepth > hizDepth means the closest part of the AABB is behind everything in the Hi-Z region.
-	if (nearestDepth > hizDepth) {
+	// We add a small bias to hizDepth to account for precision differences.
+	if (nearestDepth > hizDepth + 0.0005) {
 		visibility[u_baseVisibilityIndex + idx] = 0u; // Occluded
 	} else {
 		visibility[u_baseVisibilityIndex + idx] = 1u; // Visible
