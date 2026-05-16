@@ -104,7 +104,10 @@ Sampling getAtmospherePropertiesAtPos(vec3 worldPos) {
 	Sampling s = getAtmosphereProperties(h);
 
 	// Modulate Mie based on weather
-	vec2 weatherUV = worldPos.xz / (max(1.0, float(u_originSize.y)) * 32.0); // Rough approximation of weather grid scale
+	// LBM grid is 128x128, each cell is 32.0 units (one chunk size)
+	// u_originSize contains the anchor coordinates in chunk-space
+	float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
+	vec2 weatherUV = (worldPos.xz / scaledChunkSize - vec2(u_originSize.xy)) / 128.0;
 	vec4 scalars = texture(u_weatherScalars, weatherUV);
 	vec4 aerosols = texture(u_weatherAerosols, weatherUV);
 

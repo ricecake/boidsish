@@ -321,6 +321,16 @@ namespace Boidsish {
 		shader.trySetInt("u_aerialPerspectiveLUT", Constants::TextureUnit::AtmosphereAerialPerspective());
 		shader.trySetInt("u_cloudShadowMap", Constants::TextureUnit::AtmosphereCloudShadow());
 		shader.trySetFloat("u_atmosphereHeight", _atmosphereHeight);
+
+		shader.setVec3("u_rayleighScatteringBase", _rayleighScattering);
+		shader.trySetFloat("u_rayleighScaleHeight", _rayleighScaleHeight);
+		shader.trySetFloat("u_mieScatteringBase", _mieScattering);
+		shader.trySetFloat("u_mieExtinctionBase", _mieExtinction);
+		shader.trySetFloat("u_mieScaleHeight", _mieScaleHeight);
+		shader.trySetFloat("u_rayleighScale", _rayleighScale);
+		shader.trySetFloat("u_mieScale", _mieScale);
+		shader.trySetFloat("u_mieAnisotropy", _mieAnisotropy);
+		shader.setVec3("u_ozoneAbsorptionBase", _ozoneAbsorption);
 	}
 
 } // namespace Boidsish
