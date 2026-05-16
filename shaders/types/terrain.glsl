@@ -9,7 +9,7 @@ struct AmbientProbe {
 #define TERRAIN_DATA_BLOCK
 layout(std140, binding = [[TERRAIN_DATA_BINDING]]) uniform TerrainData {
 	ivec4 u_originSize;    // x, z, size, is_bound
-	vec4  u_terrainParams; // chunkSize, worldScale
+	vec4  u_terrainParams; // chunkSize, worldScale, fadeStart, fadeEnd
 };
 #endif
 

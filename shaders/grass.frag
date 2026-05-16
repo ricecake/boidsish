@@ -4,6 +4,7 @@
 #include "helpers/terrain_shadows.glsl"
 #include "lighting.glsl"
 #include "helpers/lighting.glsl"
+#include "helpers/fader.glsl"
 #include "visual_effects.glsl"
 
 in vec3 fNormal;
@@ -141,18 +142,10 @@ void main() {
     litColor.rgb = clamp(litColor.rgb, 0.0, 5.0); // Clamp HDR to prevent "bright white" blowouts
 
     // Distance fade and distant cyan blend (matching terrain style)
-    float fade_start = 560.0 * worldScale;
-    float fade_end = 570.0 * worldScale;
-    float fade = 1.0 - smoothstep(fade_start, fade_end, dist);
+    FaderSettings fs = newFaderSettings(fWorldPos, viewPos, time, worldScale);
+    if (shouldDiscard(fs)) discard;
 
-    if (fade < 0.1) discard;
-
-    vec4 baseColor = vec4(litColor.rgb, fade);
-    // Standard engine distant cyan blend logic
-    // step(1.0, fade) means: if fade < 1.0 (distant), use cyan.
-    // We stay natural until deep into the fade range to avoid "blue glow"
-    float cyanFactor = smoothstep(0.0, 0.1, fade);
-    FragColor = mix(vec4(0.0, 0.5, 0.5, baseColor.a) * min(length(baseColor.rgb), 1.0) * 0.1, baseColor, cyanFactor);
+    FragColor = applyStylisticFade(vec4(litColor.rgb, 1.0), fs, fWorldPos, time, worldScale, false, true);
 
     // Output view-space normal
     NormalOut = vec4(normalize(mat3(view) * N), primaryShadow);

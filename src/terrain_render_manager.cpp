@@ -15,7 +15,7 @@ namespace Boidsish {
 
 	struct TerrainDataUbo {
 		glm::ivec4 origin_size;    // x, z, size, is_bound (1)
-		glm::vec4  terrain_params; // chunk_size, world_scale, unused, unused
+		glm::vec4  terrain_params; // chunk_size, world_scale, fade_start, fade_end
 	};
 
 	TerrainRenderManager::TerrainRenderManager(ServiceLocator& /*loc*/, int chunk_size, int max_chunks):
@@ -828,9 +828,13 @@ namespace Boidsish {
 
 		GenerateMaxHeightMips();
 
+		float max_view_dist = static_cast<float>(Constants::Class::Terrain::MaxViewDistance() * chunk_size_);
+		float fade_start = max_view_dist * 0.85f * world_scale;
+		float fade_end = max_view_dist * 0.95f * world_scale;
+
 		TerrainDataUbo ubo{};
 		ubo.origin_size = glm::ivec4(origin_x, origin_z, grid_size, 1);
-		ubo.terrain_params = glm::vec4(static_cast<float>(chunk_size_), world_scale, 0.0f, 0.0f);
+		ubo.terrain_params = glm::vec4(static_cast<float>(chunk_size_), world_scale, fade_start, fade_end);
 
 		glBindBuffer(GL_UNIFORM_BUFFER, terrain_data_ubo_);
 		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(TerrainDataUbo), &ubo);
