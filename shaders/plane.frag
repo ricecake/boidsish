@@ -12,6 +12,7 @@ in vec4 PrevPosition;
 #define USE_TERRAIN_DATA
 #include "helpers/terrain_shadows.glsl"
 #include "helpers/lighting.glsl"
+#include "helpers/fader.glsl"
 #include "temporal_data.glsl"
 
 uniform mat4 view;
@@ -110,32 +111,10 @@ float fbm(vec3 p) {
 
 void main() {
 	// --- Distance Fade - Precalc ---
-	// vec3  warp = vec3(fbm(WorldPos / 50 + time * 0.08));
-	float nebula_noise = 0; // fbm(WorldPos / 50 + warp * 0.8);
-	float dist = length(WorldPos.xz - viewPos.xz);
-	float fade_start = 550.0 * worldScale;
-	float fade_end = 600.0 * worldScale;
-	float fade = 1.0 - smoothstep(fade_start, fade_end, dist + nebula_noise * 50);
-
-	if (fade < 0.2) {
+	FaderSettings fs = newFaderSettings(WorldPos, viewPos, time, worldScale);
+	if (shouldDiscard(fs)) {
 		discard;
 	}
-
-	// --- Grid logic ---
-	float grid_spacing = 1.0;
-	vec2  coord = WorldPos.xz / grid_spacing;
-	vec2  f = fwidth(coord);
-
-	vec2  grid_minor = abs(fract(coord - 0.5) - 0.5) / f;
-	float line_minor = min(grid_minor.x, grid_minor.y);
-	float C_minor = 1.0 - min(line_minor, 1.0);
-
-	vec2  grid_major = abs(fract(coord / 5.0 - 0.5) - 0.5) / f;
-	float line_major = min(grid_major.x, grid_major.y);
-	float C_major = 1.0 - min(line_major, 1.0);
-
-	float intensity = max(C_minor, C_major * 1.5) * 0.6;
-	vec3  grid_color = vec3(0.0, 0.8, 0.8) * intensity;
 
 	// --- Plane lighting ---
 	vec3 norm = normalize(Normal);
@@ -144,11 +123,10 @@ void main() {
 	vec3 lighting = apply_lighting(WorldPos, norm, surfaceColor, 0.8, primaryShadow).rgb;
 
 	// --- Combine colors ---
-	vec3 final_color = lighting * surfaceColor + grid_color;
-
-	// --- Distance Fade ---
-	vec4 outColor = vec4(final_color, fade);
-	FragColor = mix(vec4(0.7, 0.1, 0.7, fade) * length(outColor), outColor, step(1, fade));
+	// Use stylistic fade but skip double grid by adding it ourselves if needed,
+	// however applyStylisticFade already adds an 80s grid.
+	// For plane, let's just use the shared one to be consistent.
+	FragColor = applyStylisticFade(vec4(lighting * surfaceColor, 1.0), fs, WorldPos, time, worldScale, true, false);
 
 	// Calculate screen-space velocity and material properties
 	vec2 a = (CurPosition.xy / CurPosition.w) * 0.5 + 0.5;

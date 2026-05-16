@@ -74,7 +74,7 @@ layout(std140, binding = [[GRASS_PROPS_BINDING]]) uniform GrassProps {
 
 layout(std140, binding = [[TERRAIN_DATA_BINDING]]) uniform TerrainData {
     ivec4 u_originSize;    // x, z, size, is_bound
-    vec4  u_terrainParams; // x=chunkSize, y=worldScale
+    vec4  u_terrainParams; // x=chunkSize, y=worldScale, z=fadeStart, w=fadeEnd
 };
 
 uniform isampler2D u_chunkGrid;
