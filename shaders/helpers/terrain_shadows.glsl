@@ -23,8 +23,11 @@ float marchOcclusion(vec3 p_start, vec3 rayDir, float maxDist) {
 
 	float stepCount = 0;
 	float maxSteps = 16;
-	float step = maxDist / maxSteps;
-	while (t < maxDist && stepCount++ < maxSteps) {
+	// Use a small epsilon to avoid self-occlusion at the target point
+	float endDist = maxDist - (0.5 * u_terrainParams.y);
+	float step = max(0.1 * u_terrainParams.y, endDist / maxSteps);
+
+	while (t < endDist && stepCount++ < maxSteps) {
 		vec3  p = p_start + t * rayDir;
 		vec2  gridPos = p.xz / scaledChunkSize;
 		ivec2 chunkCoord = ivec2(floor(gridPos));
