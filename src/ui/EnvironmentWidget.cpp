@@ -4,6 +4,7 @@
 
 #include "ConfigManager.h"
 #include "decor_manager.h"
+#include "fire_effect_manager.h"
 #include "grass_manager.h"
 #include "graphics.h"
 #include "imgui.h"
@@ -751,11 +752,46 @@ namespace Boidsish {
 				// 4. Particles
 				if (ImGui::CollapsingHeader("Particles", ImGuiTreeNodeFlags_DefaultOpen)) {
 					auto& config = ConfigManager::GetInstance();
-					float density = config.GetAppSettingFloat("ambient_particle_density", 0.15f);
-					if (ImGui::SliderFloat("Ambient Density", &density, 0.0f, 1.0f)) {
-						config.SetFloat("ambient_particle_density", density);
+
+					bool enabled = config.GetAppSettingBool("particles_enabled", true);
+					if (ImGui::Checkbox("Enable Particle System", &enabled)) {
+						config.SetBool("particles_enabled", enabled);
 					}
-					ImGui::Text("Controls the spawn rate of ambient particles.");
+
+					if (enabled) {
+						float density = config.GetAppSettingFloat("ambient_particle_density", 0.15f);
+						if (ImGui::SliderFloat("Ambient Density", &density, 0.0f, 2.0f, "%.2f")) {
+							config.SetFloat("ambient_particle_density", density);
+						}
+						ImGui::Text(
+							"Approx. %d ambient particles",
+							(int)(density * Constants::Class::Particles::AmbientParticleScale())
+						);
+
+						ImGui::Separator();
+						ImGui::Text("Population Limits & Live Counts");
+
+						auto fire_manager = m_visualizer.GetFireEffectManager();
+						if (fire_manager) {
+							Boidsish::ParticleStats stats = fire_manager->GetStats();
+
+							auto drawLimit = [&](const char* label, const char* cfg_key, uint32_t current, uint32_t limit) {
+								int i_limit = (int)limit;
+								if (ImGui::SliderInt(label, &i_limit, 0, 20000)) {
+									config.SetInt(cfg_key, i_limit);
+								}
+								ImGui::SameLine();
+								ImGui::Text("(%u live)", current);
+							};
+
+							drawLimit("Birds", "particle_limit_birds", stats.count_birds, stats.limit_birds);
+							drawLimit("Leaves", "particle_limit_leaves", stats.count_leaves, stats.limit_leaves);
+							drawLimit("Petals", "particle_limit_petals", stats.count_petals, stats.limit_petals);
+							drawLimit("Bubbles", "particle_limit_bubbles", stats.count_bubbles, stats.limit_bubbles);
+							drawLimit("Fireflies", "particle_limit_fireflies", stats.count_fireflies, stats.limit_fireflies);
+							drawLimit("Snow", "particle_limit_snow", stats.count_snow, stats.limit_snow);
+						}
+					}
 				}
 
 				// 5. Wind (from EffectsWidget)

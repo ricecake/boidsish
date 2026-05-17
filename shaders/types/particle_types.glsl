@@ -71,6 +71,24 @@ struct DispatchIndirectCommand {
 	uint count;
 };
 
+struct ParticleStats {
+	uint count_birds;
+	uint count_leaves;
+	uint count_petals;
+	uint count_bubbles;
+	uint count_fireflies;
+	uint count_snow;
+	uint _unused_counts[2];
+
+	uint limit_birds;
+	uint limit_leaves;
+	uint limit_petals;
+	uint limit_bubbles;
+	uint limit_fireflies;
+	uint limit_snow;
+	uint _unused_limits[2];
+};
+
 #ifdef COMPUTE_SHADER
 layout(std430, binding = [[PARTICLE_BUFFER_BINDING]]) buffer ParticleBuffer {
 	Particle particles[];
@@ -139,6 +157,10 @@ layout(std430, binding = [[PARTICLE_DRAW_COMMAND_BINDING]]) buffer DrawCommandBu
 
 layout(std430, binding = [[BEHAVIOR_DRAW_COMMAND_BINDING]]) buffer BehaviorCommandBuffer {
 	DispatchIndirectCommand behavior_command;
+};
+
+layout(std430, binding = [[PARTICLE_STATS_BINDING]]) buffer ParticleStatsBuffer {
+	ParticleStats stats;
 };
 
 #endif
