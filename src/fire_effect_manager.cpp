@@ -674,6 +674,15 @@ namespace Boidsish {
 		return stats;
 	}
 
+	void FireEffectManager::BindBuffers(ShaderBase& /*shader*/) const {
+		std::lock_guard<std::mutex> lock(mutex_);
+		if (!initialized_) return;
+
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleBuffer(), particle_buffer_);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleGridHeads(), grid_heads_buffer_);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleGridNext(), grid_next_buffer_);
+	}
+
 	void FireEffectManager::Render(
 		const glm::mat4& view,
 		const glm::mat4& projection,
