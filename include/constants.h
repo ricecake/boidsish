@@ -105,6 +105,11 @@ namespace Boidsish {
 				TerrainPatchVisibility = 50,
 				GrassTasks = 51,
 				ParticleStats = 52,
+				AllLights = 53,
+				RestirReservoirs0 = 54,
+				RestirReservoirs1 = 55,
+				RestirGIReservoirs0 = 56,
+				RestirGIReservoirs1 = 57
 			};
 		} // namespace Bindings
 
@@ -440,23 +445,23 @@ namespace Boidsish {
 			}
 
 			consteval int AllLights() {
-				return 46;
+				return std::to_underlying(Constants::Bindings::Ssbo::AllLights);
 			}
 
 			consteval int RestirReservoirs0() {
-				return 47;
+				return std::to_underlying(Constants::Bindings::Ssbo::RestirReservoirs0);
 			}
 
 			consteval int RestirReservoirs1() {
-				return 48;
+				return std::to_underlying(Constants::Bindings::Ssbo::RestirReservoirs1);
 			}
 
 			consteval int RestirGIReservoirs0() {
-				return 49;
+				return std::to_underlying(Constants::Bindings::Ssbo::RestirGIReservoirs0);
 			}
 
 			consteval int RestirGIReservoirs1() {
-				return 50;
+				return std::to_underlying(Constants::Bindings::Ssbo::RestirGIReservoirs1);
 			}
 
 			consteval int TerrainPatchMetrics() {
