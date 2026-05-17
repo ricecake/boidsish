@@ -1,4 +1,4 @@
-#version 430 core
+#version 460 core
 
 out vec4 FragColor;
 layout(location = 1) out vec4 Velocity;
@@ -18,6 +18,7 @@ uniform sampler2D u_skyViewLUT;
 
 uniform vec3 u_sunRadiance; // Added for consistency with scattering
 uniform vec3 u_moonRadiance;
+uniform vec3 u_moonFullRadiance;
 uniform vec3 u_moonDir;
 
 vec3 getTransmittance(float r, float mu) {
@@ -191,7 +192,7 @@ void main() {
 	vec3  p = world_ray * 4.0;
 	vec3  warp_offset = vec3(fbm(p + time * 0.05));
 	float nebula_noise = fbm(p + warp_offset * 0.5);
-	vec3  nebula = vec3(0.0); // mix(vec3(0.0, 0.1, 0.4), vec3(0.8, 0.2, 0.7), nebula_noise) * 0.4;
+	vec3  nebula = vec3(0);//mix(vec3(0.0, 0.1, 0.4), vec3(0.8, 0.2, 0.7), nebula_noise) * 0.4;
 
 	vec3 skyTransmittance = getTransmittance(r, world_ray.y);
 	// Attenuate stars by sky brightness — on Earth, stars are overwhelmed by
@@ -240,12 +241,12 @@ void main() {
 	vec3  moonSurfaceNormal = normalize(moonDiscCoord.x * moonRight + moonDiscCoord.y * moonUp + z * moonDir);
 
 	// Lit side of the moon faces the sun.
-	float moonIllumination = max(0.0, dot(moonSurfaceNormal, sunDir));
+	float moonIllumination = max(0.0, dot(moonSurfaceNormal, sunDir)) * 5.8;
 
 	// Earthshine: dark side gets a faint glow (~8%)
 	float phasedMask = moonMask * mix(0.08, 1.0, moonIllumination);
 
-	vec3 moonDisc = u_moonRadiance * phasedMask * moonTransmittance * smoothstep(-0.01, 0.01, moonDir.y);
+	vec3 moonDisc = u_moonFullRadiance * phasedMask * moonTransmittance * smoothstep(-0.01, 0.01, moonDir.y);
 
 	vec3 finalColor = skyRadiance + sunDisc + moonDisc + spaceBackground;
 

@@ -32,6 +32,6 @@ namespace Boidsish {
 		float rain_intensity;
 		float snow_intensity;
 		float wetness;
-		float _pad_vfx;
+		float temperature;
 	};
 } // namespace Boidsish

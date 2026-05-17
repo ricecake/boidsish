@@ -1,4 +1,4 @@
-#version 430 core
+#version 460 core
 
 layout(quads, equal_spacing, ccw) in;
 
@@ -25,7 +25,7 @@ struct GrassProperties {
     float colorVariability;
     float windInfluence;
     uint  enabled;
-    float _pad0;
+    float flowerRatio;
     float _pad1;
     float _pad2;
 };
@@ -54,6 +54,7 @@ out vec2 fTexCoords;
 out float fHeightFactor;
 out vec3 fWorldPos;
 flat out int fBiomeIdx;
+out float fIsFlower;
 
 #include "helpers/noise.glsl"
 #include "lighting.glsl"
@@ -79,6 +80,14 @@ void main() {
     int biomeIdx = int(instances[idx].scale_seed_biome.w);
     float dist = distance(viewPos, basePos);
 
+    float flowerChance = hash(seed + 1111);
+    bool isFlower = (flowerChance < biomeProps[biomeIdx].flowerRatio);
+    fIsFlower = isFlower ? 1.0 : 0.0;
+
+    if (isFlower) {
+        height *= 1.35;
+    }
+
     float v = gl_TessCoord.y; // along blade (0 to 1)
     float u = gl_TessCoord.x * 2.0 - 1.0; // across blade (-1 to 1)
 
@@ -86,7 +95,7 @@ void main() {
 
     // Wind
     float distanceFade = smoothstep(250, 75, dist);
-    vec3 windNoise =  distanceFade > 0? distanceFade * getWindAtPosition(basePos) : vec3(0);
+    vec3 windNoise =  (distanceFade > 0 && dist < 150.0) ? distanceFade * getWindAtPosition(basePos) : vec3(0);
     float windStrength = length(windNoise) * biomeProps[biomeIdx].windInfluence * globalProps.windMultiplier;
 
     // --- Combined Deflection ---
@@ -95,11 +104,17 @@ void main() {
 
     // 1. Wind-driven bend
     float maxDeflection = 1.3; // Allow more deflection for high-speed macro wind
+
+    // Rigidity-based threshold: real grass only bends significantly once wind hits a certain level
+    float rigidity = clamp(biomeProps[biomeIdx].rigidity * globalProps.rigidityMultiplier, 0.0, 0.99);
+    float windThreshold = rigidity * 2.0;
+    float effectiveWindStrength = max(0.0, windStrength - windThreshold);
+
     // wind_strength (0.01-0.5) * windAtPos (0-40) ~ 0-20.
     // We scale this to a reasonable radian angle. Increase multiplier for visibility.
-    float resistedwindStrength = maxDeflection * tanh(windStrength * 0.15 / maxDeflection);
+    float resistedwindStrength = maxDeflection * tanh(effectiveWindStrength * 0.15 / maxDeflection);
 
-    float bendFactor = (1.0 - clamp(biomeProps[biomeIdx].rigidity * globalProps.rigidityMultiplier, 0.0, 0.95));
+    float bendFactor = (1.0 - rigidity);
     float windBendAngle =  bendFactor * resistedwindStrength * pow(v, 1.2) * smoothstep(0.05, 1.0, v);
 
     // 2. Base Tilt (static variety)
@@ -152,15 +167,45 @@ void main() {
     vec2 right = vec2(forward.y, -forward.x); // 2D cross product ensures perpendicularity
 
 
+    // --- Flower Logic ---
+
     // Taper curve: 1.0 at the base (v=0), 0.0 at the tip (v=1).
     // Increasing the exponent makes the blade hold its width further up before pinching.
     float shapeExponent = mix(2.0, 4.0, smoothstep(32.0, 128.0, distToCam));
     float shapeProfile = 1.0 - pow(v, shapeExponent);
 
     // Artificially widen the entire blade at distance to preserve density
-    float distanceWidthBoost = mix(1.0, 2.5, smoothstep(32.0, 128.0, distToCam));
+    float distanceWidthBoost = mix(1.0, 2.0, smoothstep(32.0, 128.0, distToCam));
 
-    float currentWidth = u * width * 0.5 * shapeProfile * distanceWidthBoost;
+    float currentWidth;
+    if (isFlower) {
+        // Narrow stem at the base, multiple head shapes at the top
+        float stemHeight = 0.75;
+        if (v < stemHeight) {
+            currentWidth = u * width * 0.2; // Very narrow stem
+        } else {
+            // Re-normalize v for the head [0, 1]
+            float vHead = (v - stemHeight) / (1.0 - stemHeight);
+            uint shapeSeed = seed % 4u;
+            float headProfile;
+
+            if (shapeSeed == 0u) { // Diamond
+                headProfile = 1.0 - abs(vHead * 2.0 - 1.0);
+            } else if (shapeSeed == 1u) { // Bell
+                headProfile = pow(sin(vHead * 3.14159), 0.5);
+            } else if (shapeSeed == 2u) { // Star-like
+                headProfile = abs(sin(vHead * 3.14159 * 2.0));
+                headProfile = mix(headProfile, 1.0 - vHead, 0.3);
+            } else { // Heart/Wide Diamond
+                headProfile = (1.0 - vHead) * pow(vHead, 0.3) * 2.5;
+            }
+
+            currentWidth = u * width * 2.5 * headProfile;
+        }
+    } else {
+        currentWidth = u * width * 0.5 * shapeProfile;
+    }
+    currentWidth *= distanceWidthBoost;
 
     // float currentWidth = u * width * 0.5 * mix(mix(1.0, 0.10, smoothstep(0, 0.9, pow(v, mix(2, 5, smoothstep(32, 64, distToCam))))), 0.5, smoothstep(32, 64, distToCam));//+(1-smoothstep(0.0, 0.5, v))*3;
     vec2 localXZ = right * currentWidth;

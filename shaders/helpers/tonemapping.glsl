@@ -1,6 +1,8 @@
 #ifndef TONEMAPPING_GLSL
 #define TONEMAPPING_GLSL
 
+#include "lygia/color/tonemap/debug.glsl";
+
 ////////////////////////////////////////////////////////////////////////////////
 // Narkowicz 2015, "ACES Filmic Tone Mapping Curve"
 vec3 aces(vec3 x) {
@@ -186,8 +188,10 @@ vec3 applyTonemapping(vec3 tex, int toneMapMode) {
 		return uncharted2(tex);
 	} else if (toneMapMode == 7) {
 		return unreal(tex);
-	} else if (toneMapMode == 8) {
+	} else if (toneMapMode == 9) {
 		return tex;
+	} else if (toneMapMode == 8) {
+		return tonemapDebug(tex);
 	} else {
 		return tonemapFilmic(tex);
 	}

@@ -205,23 +205,21 @@ namespace Boidsish {
 
 		bool IsEnabled() const { return enabled_; }
 
-		void SetEnabled(bool enabled) { enabled_ = enabled; }
+		void SetEnabled(bool enabled);
 
 		float GetTimeScale() const { return time_scale_; }
 
-		void SetTimeScale(float scale) { time_scale_ = scale; }
+		void SetTimeScale(float scale);
 
 		float GetSpatialScale() const { return spatial_scale_; }
 
-		void SetSpatialScale(float scale) { spatial_scale_ = scale; }
+		void SetSpatialScale(float scale);
 
 		bool IsMacroSimEnabled() const { return macro_sim_enabled_; }
-		void SetMacroSimEnabled(bool enabled) { macro_sim_enabled_ = enabled; }
+		void SetMacroSimEnabled(bool enabled);
 
 		float GetSimTau() const { return lbm_simulator_ ? lbm_simulator_->GetTau() : 0.8f; }
-		void  SetSimTau(float tau) {
-			if (lbm_simulator_) lbm_simulator_->SetTau(tau);
-		}
+		void  SetSimTau(float tau);
 
 		void ResetMacroSim() {
 			reset_requested_ = true;
@@ -254,7 +252,7 @@ namespace Boidsish {
 		 * @brief Set the threshold for noise-space movement before weather targets are updated.
 		 * Higher values result in longer "idling" periods.
 		 */
-		void SetHoldThreshold(float threshold) { hold_threshold_ = threshold; }
+		void SetHoldThreshold(float threshold);
 
 		float GetHoldThreshold() const { return hold_threshold_; }
 
@@ -279,6 +277,13 @@ namespace Boidsish {
 
 		PhysicallyBasedWeatherOutput GetWeatherAtPosition(const glm::vec3& pos) const;
 
+		const WeatherLbmSimulator::Constraints& GetSimConstraints() const {
+			static WeatherLbmSimulator::Constraints default_constraints;
+			return lbm_simulator_ ? lbm_simulator_->GetConstraints() : default_constraints;
+		}
+
+		void SetSimConstraints(const WeatherLbmSimulator::Constraints& c);
+
 		void InjectPressure(const glm::vec3& pos, float pressureHpa, float burstStrength);
 
 		void InjectAerosol(const glm::vec3& pos, float concentration);
@@ -293,6 +298,8 @@ namespace Boidsish {
 		unsigned int wind_data_ubo_ = 0;
 		unsigned int wind_texture_ = 0;
 		unsigned int lbm_wind_texture_ = 0;
+		unsigned int lbm_scalar_texture_ = 0;
+		unsigned int lbm_aerosol_texture_ = 0;
 		std::unique_ptr<ComputeShader> wind_compute_shader_;
 
 		ThreadPool                              lbm_pool_;
@@ -309,8 +316,16 @@ namespace Boidsish {
 			std::optional<float> external_target;
 		};
 
-		void InitializePresets();
-		void UpdateAttribute(WeatherAttribute attr, float target, float deltaTime);
+		void   InitializePresets();
+		void   SynchronizeLbmConstraints();
+		void   UpdateAttribute(WeatherAttribute attr, float target, float deltaTime);
+		float* GetValuePtr(WeatherAttribute attr);
+
+		// Persistence helpers
+		void               LoadConfig();
+		void               SaveAttributeTarget(WeatherAttribute attr);
+		void               SaveSimConstraints();
+		static std::string GetAttributeKey(WeatherAttribute attr);
 
 		bool  enabled_ = true;
 		bool  macro_sim_enabled_ = true;

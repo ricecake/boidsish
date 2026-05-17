@@ -38,7 +38,7 @@ const float kCinderLifetime = 8.0;
 const float kCinderDriftIntensity = 4.0;
 const float kCinderBuoyancy = 1.5;
 
-void handleTerrainCollision(inout Particle p, int num_chunks, sampler2DArray heightmapArray) {
+bool handleTerrainCollision(inout Particle p, int num_chunks, sampler2DArray heightmapArray) {
 	bool collided = false;
 	for (int i = 0; i < num_chunks; i++) {
 		ChunkInfo chunk = chunks[i];
@@ -63,6 +63,8 @@ void handleTerrainCollision(inout Particle p, int num_chunks, sampler2DArray hei
 		p.vel.y *= -0.25;
 		p.vel.xz *= 0.8;
 	}
+
+	return collided;
 }
 
 void applyAmbientAvoidance(inout Particle p, float dt, float time, vec3 viewPos, vec3 viewDir, sampler3D curlTexture) {
@@ -226,6 +228,9 @@ void updateSnow(inout Particle p, float dt, float time) {
 
 void updateLeaf(inout Particle p, float dt, float time, sampler3D curlTexture) {
 	float curlInfluence = 1.2;
+	vec3 wind = getWindAtPosition(p.pos.xyz);
+	p.vel.xyz += wind * 2.0 * dt;
+
 	p.vel.xyz += curlNoise(p.pos.xyz, time, curlTexture) * curlInfluence * dt;
 	p.vel.y -= 0.1 * dt;
 	p.vel.xyz *= pow(0.98, dt / 0.016);
@@ -243,6 +248,9 @@ void updateLeaf(inout Particle p, float dt, float time, sampler3D curlTexture) {
 
 void updatePetal(inout Particle p, float dt, float time, sampler3D curlTexture) {
 	float curlInfluence = 1.2;
+	vec3 wind = getWindAtPosition(p.pos.xyz);
+	p.vel.xyz += wind * 2.0 * dt;
+
 	p.vel.xyz += curlNoise(p.pos.xyz, time, curlTexture) * curlInfluence * dt;
 	p.vel.y -= 0.1 * dt;
 	p.vel.xyz *= pow(0.98, dt / 0.016);
@@ -271,9 +279,9 @@ void updateBirds(
 	int   neighborCount = 0;
 	float perceptionRadius = 8.0;
 
-	for (int x = -1; x <= 1; x++) {
-		for (int y = -1; y <= 1; y++) {
-			for (int z = -1; z <= 1; z++) {
+	for (int x = -2; x <= 2; x++) {
+		for (int y = -2; y <= 2; y++) {
+			for (int z = -2; z <= 2; z++) {
 				uint cellIdx = get_cell_idx(p.pos.xyz + vec3(x, y, z) * cellSize, cellSize, gridSize);
 				int  otherIdx = grid_heads[cellIdx];
 				int  safety = 0;
@@ -337,6 +345,7 @@ void updateBirds(
 	if (p.pos.w < 1.0 && foundTerrain && p.pos.y < terrainHeight + 0.5) {
 		p.color.a *= smoothstep(0.0, 1.0, p.pos.w);
 	}
+	p.phase += dt * length(p.vel.xyz);
 }
 
 void updateAmbientBubble(inout Particle p, float dt, float time, sampler3D curlTexture) {
@@ -408,7 +417,7 @@ void updateAmbientFirefly(
 	vec3 firefly_base = vec3(0.7, 0.9, 0.1);
 	float twinkle = pow(smoothstep(0.0, 0.3, p.counter) * (1.0 - smoothstep(0.4, 0.6, p.counter)), 2) * step(p.counter, 0.6);
 	p.color.rgb = firefly_base * (2.0 + twinkle * 8.0);
-	p.color.a = 0.01 + step(p.counter, 0.6) * (0.4 + twinkle * 0.6) * smoothstep(0.0, 0.5, p.pos.w);
+	p.color.a = 0.00 + step(p.counter, 0.6) * (0.4 + twinkle * 0.6) * smoothstep(0.0, 0.5, p.pos.w);
 	p.vel.w = 15.0;
 	p.origin.w = 0.5 * p.color.a;
 }
@@ -474,7 +483,9 @@ void updatePrecipitationBehavior(
 	}
 
 	p.pos.xyz += p.vel.xyz * dt;
-	handleTerrainCollision(p, num_chunks, heightmapArray);
+	if(handleTerrainCollision(p, num_chunks, heightmapArray)) {
+		p.pos.w = 0.0;
+	}
 }
 
 void updateFireBehavior(

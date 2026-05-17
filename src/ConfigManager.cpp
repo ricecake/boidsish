@@ -84,7 +84,14 @@ namespace Boidsish {
 		GetAppSettingFloat("foliage_culling_pixel_threshold", 10.0f);
 
 		// Particle settings
+		GetAppSettingBool("particles_enabled", true);
 		GetAppSettingFloat("ambient_particle_density", Constants::Class::Particles::DefaultAmbientDensity());
+		GetAppSettingInt("particle_limit_birds", 1000);
+		GetAppSettingInt("particle_limit_leaves", 5000);
+		GetAppSettingInt("particle_limit_petals", 5000);
+		GetAppSettingInt("particle_limit_bubbles", 2000);
+		GetAppSettingInt("particle_limit_fireflies", 3000);
+		GetAppSettingInt("particle_limit_snow", 10000);
 
 		// SH Probe settings
 		GetAppSettingFloat("sh_probe_scaling", 1.0f);
@@ -100,6 +107,65 @@ namespace Boidsish {
 		GetAppSettingFloat("mesh_simplifier_error_procedural", 0.05f);
 		GetAppSettingInt("mesh_simplifier_aggression_prebuild", 0);
 		GetAppSettingInt("mesh_simplifier_aggression_procedural", 40); // High: Prune | Permissive
+
+		// Weather settings
+		GetAppSettingBool("weather_enabled", true);
+		GetAppSettingFloat("weather_time_scale", 0.005f);
+		GetAppSettingFloat("weather_spatial_scale", 0.001f);
+		GetAppSettingBool("weather_macro_sim_enabled", true);
+		GetAppSettingFloat("weather_hold_threshold", 0.05f);
+		GetAppSettingInt("weather_manual_preset", -1);
+		GetAppSettingFloat("weather_sim_tau", 0.8f);
+
+		// Weather simulation constraints
+		auto registerConstraint = [&](const std::string& prefix) {
+			GetAppSettingBool("weather_sim_constraint_" + prefix + "_min_enabled", false);
+			GetAppSettingFloat("weather_sim_constraint_" + prefix + "_min", 0.0f);
+			GetAppSettingBool("weather_sim_constraint_" + prefix + "_max_enabled", false);
+			GetAppSettingFloat("weather_sim_constraint_" + prefix + "_max", 0.0f);
+			GetAppSettingBool("weather_sim_constraint_" + prefix + "_target_enabled", false);
+			GetAppSettingFloat("weather_sim_constraint_" + prefix + "_target", 0.0f);
+		};
+		registerConstraint("temperature");
+		registerConstraint("pressure");
+		registerConstraint("humidity");
+		registerConstraint("velocity");
+
+		// Weather attribute targets
+		auto registerTarget = [&](const std::string& key) {
+			GetAppSettingBool("weather_target_" + key + "_enabled", false);
+			GetAppSettingFloat("weather_target_" + key, 0.0f);
+		};
+		registerTarget("sun_intensity");
+		registerTarget("wind_strength");
+		registerTarget("wind_speed");
+		registerTarget("wind_frequency");
+		registerTarget("cloud_density");
+		registerTarget("cloud_altitude");
+		registerTarget("cloud_thickness");
+		registerTarget("haze_density");
+		registerTarget("haze_height");
+		registerTarget("rayleigh_scale");
+		registerTarget("mie_scale");
+		registerTarget("atmosphere_height");
+		registerTarget("rayleigh_scale_height");
+		registerTarget("mie_scale_height");
+		registerTarget("cloud_coverage");
+		registerTarget("precipitation");
+		registerTarget("temperature");
+		registerTarget("humidity");
+		registerTarget("pressure");
+		registerTarget("mie_scattering");
+		registerTarget("mie_extinction");
+		registerTarget("rayleigh_scattering_r");
+		registerTarget("rayleigh_scattering_g");
+		registerTarget("rayleigh_scattering_b");
+		registerTarget("haze_color_r");
+		registerTarget("haze_color_g");
+		registerTarget("haze_color_b");
+		registerTarget("cloud_color_r");
+		registerTarget("cloud_color_g");
+		registerTarget("cloud_color_b");
 	}
 
 	void ConfigManager::Shutdown() {

@@ -1,4 +1,4 @@
-#version 430 core
+#version 460 core
 
 #define USE_TERRAIN_DATA
 #include "helpers/terrain_shadows.glsl"
@@ -11,6 +11,7 @@ in vec2 fTexCoords;
 in float fHeightFactor;
 in vec3 fWorldPos;
 flat in int fBiomeIdx;
+in float fIsFlower;
 
 struct GrassProperties {
     vec4  colorTop;
@@ -24,7 +25,7 @@ struct GrassProperties {
     float colorVariability;
     float windInfluence;
     uint  enabled;
-    float _pad0;
+    float flowerRatio;
     float _pad1;
     float _pad2;
 };
@@ -73,6 +74,40 @@ void main() {
     if (!gl_FrontFacing) N = -N;
 
     vec3 albedo = mix(biomeProps[fBiomeIdx].colorBottom.rgb, biomeProps[fBiomeIdx].colorTop.rgb, fHeightFactor);
+
+    if (fIsFlower > 0.5) {
+        float stemHeight = 0.75;
+        if (fHeightFactor > stemHeight) {
+            // Pick a flower color based on position-based seed
+            uint seed = uint(abs(fWorldPos.x) * 17.0) ^ uint(abs(fWorldPos.z) * 23.0);
+            float h = hash(seed);
+
+            vec3 flowerColor;
+            if (h < 0.25) {
+                flowerColor = mix(vec3(0.9, 0.1, 0.3), vec3(1.0, 0.5, 0.6), hash(seed + 123u)); // Reds/Pinks
+            } else if (h < 0.5) {
+                flowerColor = mix(vec3(0.1, 0.4, 0.9), vec3(0.4, 0.7, 1.0), hash(seed + 456u)); // Blues
+            } else if (h < 0.75) {
+                flowerColor = mix(vec3(0.9, 0.8, 0.1), vec3(1.0, 1.0, 0.5), hash(seed + 789u)); // Yellows
+            } else {
+                flowerColor = mix(vec3(0.6, 0.1, 0.9), vec3(0.8, 0.5, 1.0), hash(seed + 321u)); // Purples
+            }
+
+            if (hash(seed + 999u) > 0.95) flowerColor = vec3(0.95, 0.95, 0.95); // Rare white
+
+            // Add center glow/darkness
+            float vHead = (fHeightFactor - stemHeight) / (1.0 - stemHeight);
+            float centerDist = length(vec2(fTexCoords.x - 0.5, vHead - 0.5) * 2.0);
+
+            vec3 centerColor = flowerColor * 0.3;
+            if (h > 0.5) centerColor = vec3(0.9, 0.6, 0.1); // Golden center for some
+
+            flowerColor = mix(centerColor, flowerColor, smoothstep(0.1, 0.6, centerDist));
+
+            albedo = flowerColor;
+        }
+    }
+
     float roughness = 0.8;
 
     // Apply wetness: darkening and reduction in roughness

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <Eigen/Dense>
 
 #include "Simplex.h"
 #include "profiler.h"
@@ -10,6 +11,7 @@
 #include "constants.h"
 #include "NoiseManager.h"
 #include "terrain_render_manager.h"
+#include "ConfigManager.h"
 
 namespace Boidsish {
 
@@ -37,21 +39,23 @@ namespace Boidsish {
 		SetPace(WeatherAttribute::CloudCoverage, WeatherConstants::CloudCoverage.pace);
 		SetPace(WeatherAttribute::Precipitation, WeatherConstants::Precipitation.pace);
 		SetPace(WeatherAttribute::Temperature, WeatherConstants::Temperature.pace);
-		SetPace(WeatherAttribute::Humidity, 0.1f);
-		SetPace(WeatherAttribute::Pressure, 0.1f);
+		SetPace(WeatherAttribute::Humidity, 10.0f);
+		SetPace(WeatherAttribute::Pressure, 10.0f);
 
 		// Initialize default paces for new attributes
-		SetPace(WeatherAttribute::MieScattering, 0.2f);
-		SetPace(WeatherAttribute::MieExtinction, 0.2f);
-		SetPace(WeatherAttribute::RayleighScatteringR, 0.1f);
-		SetPace(WeatherAttribute::RayleighScatteringG, 0.1f);
-		SetPace(WeatherAttribute::RayleighScatteringB, 0.1f);
-		SetPace(WeatherAttribute::HazeColorR, 0.1f);
-		SetPace(WeatherAttribute::HazeColorG, 0.1f);
-		SetPace(WeatherAttribute::HazeColorB, 0.1f);
-		SetPace(WeatherAttribute::CloudColorR, 0.1f);
-		SetPace(WeatherAttribute::CloudColorG, 0.1f);
-		SetPace(WeatherAttribute::CloudColorB, 0.1f);
+		SetPace(WeatherAttribute::MieScattering, 10.0f);
+		SetPace(WeatherAttribute::MieExtinction, 10.0f);
+		SetPace(WeatherAttribute::RayleighScatteringR, 10.0f);
+		SetPace(WeatherAttribute::RayleighScatteringG, 10.0f);
+		SetPace(WeatherAttribute::RayleighScatteringB, 10.0f);
+		SetPace(WeatherAttribute::HazeColorR, 10.0f);
+		SetPace(WeatherAttribute::HazeColorG, 10.0f);
+		SetPace(WeatherAttribute::HazeColorB, 10.0f);
+		SetPace(WeatherAttribute::CloudColorR, 10.0f);
+		SetPace(WeatherAttribute::CloudColorG, 10.0f);
+		SetPace(WeatherAttribute::CloudColorB, 10.0f);
+
+		LoadConfig();
 	}
 
 	WeatherManager::~WeatherManager() {
@@ -71,18 +75,37 @@ namespace Boidsish {
 		if (lbm_wind_texture_ != 0) {
 			glDeleteTextures(1, &lbm_wind_texture_);
 		}
+		if (lbm_scalar_texture_ != 0) {
+			glDeleteTextures(1, &lbm_scalar_texture_);
+		}
+		if (lbm_aerosol_texture_ != 0) {
+			glDeleteTextures(1, &lbm_aerosol_texture_);
+		}
 	}
 
 	void WeatherManager::SetTarget(WeatherAttribute attr, float target) {
 		if (attr == WeatherAttribute::Count)
 			return;
-		attribute_states_[static_cast<size_t>(attr)].external_target = target;
+		auto& state = attribute_states_[static_cast<size_t>(attr)];
+		state.external_target = target;
+
+		// Snap value immediately
+		float* value_ptr = GetValuePtr(attr);
+		if (value_ptr) {
+			*value_ptr = target;
+			state.velocity = 0.0f;
+		}
+
+		SaveAttributeTarget(attr);
+		SynchronizeLbmConstraints();
 	}
 
 	void WeatherManager::ClearTarget(WeatherAttribute attr) {
 		if (attr == WeatherAttribute::Count)
 			return;
 		attribute_states_[static_cast<size_t>(attr)].external_target = std::nullopt;
+		SaveAttributeTarget(attr);
+		SynchronizeLbmConstraints();
 	}
 
 	void WeatherManager::SetPace(WeatherAttribute attr, float pace) {
@@ -105,6 +128,66 @@ namespace Boidsish {
 		manual_preset_idx_ = index;
 		// Force update on next frame
 		last_control_noise_ = glm::vec2(-1000.0f);
+		ConfigManager::GetInstance().SetInt("weather_manual_preset", index);
+	}
+
+	void WeatherManager::SetEnabled(bool enabled) {
+		enabled_ = enabled;
+		ConfigManager::GetInstance().SetBool("weather_enabled", enabled);
+	}
+
+	void WeatherManager::SetTimeScale(float scale) {
+		time_scale_ = scale;
+		ConfigManager::GetInstance().SetFloat("weather_time_scale", scale);
+	}
+
+	void WeatherManager::SetSpatialScale(float scale) {
+		spatial_scale_ = scale;
+		ConfigManager::GetInstance().SetFloat("weather_spatial_scale", scale);
+	}
+
+	void WeatherManager::SetMacroSimEnabled(bool enabled) {
+		macro_sim_enabled_ = enabled;
+		ConfigManager::GetInstance().SetBool("weather_macro_sim_enabled", enabled);
+	}
+
+	void WeatherManager::SetHoldThreshold(float threshold) {
+		hold_threshold_ = threshold;
+		ConfigManager::GetInstance().SetFloat("weather_hold_threshold", threshold);
+	}
+
+	void WeatherManager::SetSimTau(float tau) {
+		if (lbm_simulator_) {
+			lbm_simulator_->SetTau(tau);
+			ConfigManager::GetInstance().SetFloat("weather_sim_tau", tau);
+		}
+	}
+
+	void WeatherManager::SetSimConstraints(const WeatherLbmSimulator::Constraints& c) {
+		if (lbm_simulator_) {
+			lbm_simulator_->SetConstraints(c);
+			SaveSimConstraints();
+		}
+	}
+
+	void WeatherManager::SaveSimConstraints() {
+		auto& cfg = ConfigManager::GetInstance();
+		const auto& c = GetSimConstraints();
+
+		auto saveConstraint = [&](const std::string& prefix, const WeatherLbmSimulator::Constraint& con) {
+			cfg.SetBool("weather_sim_constraint_" + prefix + "_min_enabled", con.min.has_value());
+			if (con.min) cfg.SetFloat("weather_sim_constraint_" + prefix + "_min", *con.min);
+			cfg.SetBool("weather_sim_constraint_" + prefix + "_max_enabled", con.max.has_value());
+			if (con.max) cfg.SetFloat("weather_sim_constraint_" + prefix + "_max", *con.max);
+			cfg.SetBool("weather_sim_constraint_" + prefix + "_target_enabled", con.target.has_value());
+			if (con.target) cfg.SetFloat("weather_sim_constraint_" + prefix + "_target", *con.target);
+		};
+
+		saveConstraint("temperature", c.temperature);
+		saveConstraint("pressure", c.pressure);
+		saveConstraint("humidity", c.humidity);
+		saveConstraint("velocity", c.velocity);
+		saveConstraint("aerosols", c.aerosols);
 	}
 
 	const PhysicallyBasedWeatherOutput* WeatherManager::GetPhysicallyBasedWeather() const {
@@ -160,110 +243,24 @@ namespace Boidsish {
 		if (attr == WeatherAttribute::Count || deltaTime <= 0.0f)
 			return;
 
-		auto&  state = attribute_states_[static_cast<size_t>(attr)];
-		float* value_ptr = nullptr;
+		auto& state = attribute_states_[static_cast<size_t>(attr)];
 
-		switch (attr) {
-		case WeatherAttribute::SunIntensity:
-			value_ptr = &current_.sun_intensity;
-			break;
-		case WeatherAttribute::WindStrength:
-			value_ptr = &current_.wind_strength;
-			break;
-		case WeatherAttribute::WindSpeed:
-			value_ptr = &current_.wind_speed;
-			break;
-		case WeatherAttribute::WindFrequency:
-			value_ptr = &current_.wind_frequency;
-			break;
-		case WeatherAttribute::CloudDensity:
-			value_ptr = &current_.cloud_density;
-			break;
-		case WeatherAttribute::CloudAltitude:
-			value_ptr = &current_.cloud_altitude;
-			break;
-		case WeatherAttribute::CloudThickness:
-			value_ptr = &current_.cloud_thickness;
-			break;
-		case WeatherAttribute::HazeDensity:
-			value_ptr = &current_.haze_density;
-			break;
-		case WeatherAttribute::HazeHeight:
-			value_ptr = &current_.haze_height;
-			break;
-		case WeatherAttribute::RayleighScale:
-			value_ptr = &current_.rayleigh_scale;
-			break;
-		case WeatherAttribute::MieScale:
-			value_ptr = &current_.mie_scale;
-			break;
-		case WeatherAttribute::AtmosphereHeight:
-			value_ptr = &current_.atmosphere_height;
-			break;
-		case WeatherAttribute::RayleighScaleHeight:
-			value_ptr = &current_.rayleigh_scale_height;
-			break;
-		case WeatherAttribute::MieScaleHeight:
-			value_ptr = &current_.mie_scale_height;
-			break;
-		case WeatherAttribute::CloudCoverage:
-			value_ptr = &current_.cloud_coverage;
-			break;
-		case WeatherAttribute::Precipitation:
-			value_ptr = &current_.precipitation;
-			break;
-		case WeatherAttribute::Temperature:
-			value_ptr = &current_.temperature;
-			break;
-		case WeatherAttribute::Humidity:
-			value_ptr = &current_.humidity;
-			break;
-		case WeatherAttribute::Pressure:
-			value_ptr = &current_.pressure;
-			break;
-		case WeatherAttribute::MieScattering:
-			value_ptr = &current_.mie_scattering;
-			break;
-		case WeatherAttribute::MieExtinction:
-			value_ptr = &current_.mie_extinction;
-			break;
-		case WeatherAttribute::RayleighScatteringR:
-			value_ptr = &current_.rayleigh_scattering.r;
-			break;
-		case WeatherAttribute::RayleighScatteringG:
-			value_ptr = &current_.rayleigh_scattering.g;
-			break;
-		case WeatherAttribute::RayleighScatteringB:
-			value_ptr = &current_.rayleigh_scattering.b;
-			break;
-		case WeatherAttribute::HazeColorR:
-			value_ptr = &current_.haze_color.r;
-			break;
-		case WeatherAttribute::HazeColorG:
-			value_ptr = &current_.haze_color.g;
-			break;
-		case WeatherAttribute::HazeColorB:
-			value_ptr = &current_.haze_color.b;
-			break;
-		case WeatherAttribute::CloudColorR:
-			value_ptr = &current_.cloud_color.r;
-			break;
-		case WeatherAttribute::CloudColorG:
-			value_ptr = &current_.cloud_color.g;
-			break;
-		case WeatherAttribute::CloudColorB:
-			value_ptr = &current_.cloud_color.b;
-			break;
-		default:
+		// If an external target is set, override the target and snap immediately (bypassing spring)
+		if (state.external_target.has_value()) {
+			target = *state.external_target;
+			float* value_ptr = GetValuePtr(attr);
+			if (value_ptr) {
+				*value_ptr = target;
+				state.velocity = 0.0f;
+			}
 			return;
 		}
 
-		float& value = *value_ptr;
+		float* value_ptr = GetValuePtr(attr);
+		if (!value_ptr)
+			return;
 
-		// If an external target is set, override the noise-derived target
-		if (state.external_target.has_value()) {
-			target = *state.external_target;
-		}
+		float& value = *value_ptr;
 
 		// Analytical Critically Dampened Spring
 		// x(t) = (c1 + c2*t) * e^(-omega*t) + target
@@ -278,6 +275,176 @@ namespace Boidsish {
 
 		value = (c1 + c2 * deltaTime) * expTerm + target;
 		state.velocity = (v0 - omega * c2 * deltaTime) * expTerm;
+	}
+
+	float* WeatherManager::GetValuePtr(WeatherAttribute attr) {
+		switch (attr) {
+		case WeatherAttribute::SunIntensity:
+			return &current_.sun_intensity;
+		case WeatherAttribute::WindStrength:
+			return &current_.wind_strength;
+		case WeatherAttribute::WindSpeed:
+			return &current_.wind_speed;
+		case WeatherAttribute::WindFrequency:
+			return &current_.wind_frequency;
+		case WeatherAttribute::CloudDensity:
+			return &current_.cloud_density;
+		case WeatherAttribute::CloudAltitude:
+			return &current_.cloud_altitude;
+		case WeatherAttribute::CloudThickness:
+			return &current_.cloud_thickness;
+		case WeatherAttribute::HazeDensity:
+			return &current_.haze_density;
+		case WeatherAttribute::HazeHeight:
+			return &current_.haze_height;
+		case WeatherAttribute::RayleighScale:
+			return &current_.rayleigh_scale;
+		case WeatherAttribute::MieScale:
+			return &current_.mie_scale;
+		case WeatherAttribute::AtmosphereHeight:
+			return &current_.atmosphere_height;
+		case WeatherAttribute::RayleighScaleHeight:
+			return &current_.rayleigh_scale_height;
+		case WeatherAttribute::MieScaleHeight:
+			return &current_.mie_scale_height;
+		case WeatherAttribute::CloudCoverage:
+			return &current_.cloud_coverage;
+		case WeatherAttribute::Precipitation:
+			return &current_.precipitation;
+		case WeatherAttribute::Temperature:
+			return &current_.temperature;
+		case WeatherAttribute::Humidity:
+			return &current_.humidity;
+		case WeatherAttribute::Pressure:
+			return &current_.pressure;
+		case WeatherAttribute::MieScattering:
+			return &current_.mie_scattering;
+		case WeatherAttribute::MieExtinction:
+			return &current_.mie_extinction;
+		case WeatherAttribute::RayleighScatteringR:
+			return &current_.rayleigh_scattering.r;
+		case WeatherAttribute::RayleighScatteringG:
+			return &current_.rayleigh_scattering.g;
+		case WeatherAttribute::RayleighScatteringB:
+			return &current_.rayleigh_scattering.b;
+		case WeatherAttribute::HazeColorR:
+			return &current_.haze_color.r;
+		case WeatherAttribute::HazeColorG:
+			return &current_.haze_color.g;
+		case WeatherAttribute::HazeColorB:
+			return &current_.haze_color.b;
+		case WeatherAttribute::CloudColorR:
+			return &current_.cloud_color.r;
+		case WeatherAttribute::CloudColorG:
+			return &current_.cloud_color.g;
+		case WeatherAttribute::CloudColorB:
+			return &current_.cloud_color.b;
+		default:
+			return nullptr;
+		}
+	}
+
+	void WeatherManager::SynchronizeLbmConstraints() {
+		if (!lbm_simulator_) return;
+
+		// 1. Gather Manual Targets
+		struct Target {
+			WeatherAttribute attr;
+			float value;
+		};
+		std::vector<Target> manual_targets;
+		for (int i = 0; i < (int)WeatherAttribute::Count; ++i) {
+			WeatherAttribute attr = static_cast<WeatherAttribute>(i);
+			if (attribute_states_[i].external_target.has_value()) {
+				manual_targets.push_back({attr, *attribute_states_[i].external_target});
+			}
+		}
+
+		if (manual_targets.empty()) return;
+
+		// 2. Optimization using Gauss-Newton
+		// LBM State Vector x = [temp, pressure, humidity, velocity, aerosols]
+		Eigen::VectorXd x(5);
+		auto current_constraints = lbm_simulator_->GetConstraints();
+		x(0) = current_constraints.temperature.target.value_or(current_.temperature);
+		x(1) = current_constraints.pressure.target.value_or(current_.pressure);
+		x(2) = current_constraints.humidity.target.value_or(current_.humidity);
+		x(3) = current_constraints.velocity.target.value_or(current_.wind_strength);
+		x(4) = current_constraints.aerosols.target.value_or(0.01f);
+
+		const int max_iterations = 5;
+		for (int iter = 0; iter < max_iterations; ++iter) {
+			Eigen::VectorXd r(manual_targets.size());
+			Eigen::MatrixXd J(manual_targets.size(), 5);
+			J.setZero();
+
+			for (size_t i = 0; i < manual_targets.size(); ++i) {
+				float temp = (float)x(0);
+				float press = (float)x(1);
+				float hum = (float)x(2);
+				float vel = (float)x(3);
+				float aero = (float)x(4);
+
+				// Forward Heuristics (matching DeriveAtmosphere and Update)
+				float pred = 0.0f;
+				switch (manual_targets[i].attr) {
+				case WeatherAttribute::Temperature: pred = temp; J(i, 0) = 1.0; break;
+				case WeatherAttribute::Pressure: pred = press; J(i, 1) = 1.0; break;
+				case WeatherAttribute::Humidity: pred = hum; J(i, 2) = 1.0; break;
+				case WeatherAttribute::WindStrength: pred = vel; J(i, 3) = 1.0; break;
+				case WeatherAttribute::CloudCoverage: {
+					float cloudPotential = 3.33f * (hum - 0.7f); // Simplified vy=0 for optimization
+					pred = std::clamp(cloudPotential * 0.5f, 0.0f, 1.0f);
+					if (pred > 0.0f && pred < 1.0f) J(i, 2) = 3.33f * 0.5f;
+					else if (pred <= 0.0f) J(i, 2) = 3.33f * 0.5f; // Keep gradient even if below threshold
+					break;
+				}
+				case WeatherAttribute::Precipitation: {
+					float cloudPotential = 3.33f * (hum - 0.7f);
+					float coverage = std::clamp(cloudPotential * 0.5f, 0.0f, 1.0f);
+					pred = (hum - 0.8f) * 5.0f * coverage;
+					// Use a non-clamped gradient to ensure the solver can move out of zero-pred regions
+					J(i, 2) = 5.0f * coverage; // Gradient from the (hum-0.8) term
+					if (coverage > 0.0f && coverage < 1.0f) {
+						J(i, 2) += std::max(0.0f, hum - 0.8f) * 5.0f * (3.33f * 0.5f);
+					} else if (coverage <= 0.0f) {
+						J(i, 2) += 0.1f; // Small constant gradient to push towards cloud formation
+					}
+					pred = std::max(0.0f, pred);
+					break;
+				}
+				case WeatherAttribute::MieScattering:
+					pred = 0.003996f + aero * 0.1f;
+					J(i, 4) = 0.1f;
+					break;
+				default:
+					pred = manual_targets[i].value; // Ignore other attributes for LBM coupling
+					break;
+				}
+				r(i) = pred - manual_targets[i].value;
+			}
+
+			if (r.norm() < 1e-4) break;
+
+			Eigen::VectorXd delta = (J.transpose() * J + Eigen::MatrixXd::Identity(5, 5) * 0.01).ldlt().solve(J.transpose() * r);
+			x -= delta;
+
+			// Constraints
+			x(0) = std::clamp(x(0), 200.0, 350.0);
+			x(1) = std::clamp(x(1), 900.0, 1100.0);
+			x(2) = std::clamp(x(2), 0.0, 1.0);
+			x(3) = std::clamp(x(3), 0.0, 50.0);
+			x(4) = std::clamp(x(4), 0.0, 1.0);
+		}
+
+		// 3. Apply Constraints
+		WeatherLbmSimulator::Constraints c = current_constraints;
+		c.temperature.target = (float)x(0);
+		c.pressure.target = (float)x(1);
+		c.humidity.target = (float)x(2);
+		c.velocity.target = (float)x(3);
+		c.aerosols.target = (float)x(4);
+		lbm_simulator_->SetConstraints(c);
 	}
 
 	void WeatherManager::InitializePresets() {
@@ -498,6 +665,26 @@ namespace Boidsish {
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 			glBindTexture(GL_TEXTURE_2D, 0);
 		}
+		if (lbm_scalar_texture_ == 0) {
+			glGenTextures(1, &lbm_scalar_texture_);
+			glBindTexture(GL_TEXTURE_2D, lbm_scalar_texture_);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, lbm_simulator_->GetWidth(), lbm_simulator_->GetHeight(), 0, GL_RGBA, GL_FLOAT, nullptr);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+			glBindTexture(GL_TEXTURE_2D, 0);
+		}
+		if (lbm_aerosol_texture_ == 0) {
+			glGenTextures(1, &lbm_aerosol_texture_);
+			glBindTexture(GL_TEXTURE_2D, lbm_aerosol_texture_);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, lbm_simulator_->GetWidth(), lbm_simulator_->GetHeight(), 0, GL_RGBA, GL_FLOAT, nullptr);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+			glBindTexture(GL_TEXTURE_2D, 0);
+		}
 		if (lbm_wind_texture_ == 0) {
 			glGenTextures(1, &lbm_wind_texture_);
 			glBindTexture(GL_TEXTURE_2D, lbm_wind_texture_);
@@ -555,6 +742,36 @@ namespace Boidsish {
 				GL_FLOAT,
 				wind_data.data()
 			);
+
+			// Update LBM Scalar Texture
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::WeatherScalars());
+			glBindTexture(GL_TEXTURE_2D, lbm_scalar_texture_);
+			glTexSubImage2D(
+				GL_TEXTURE_2D,
+				0,
+				0,
+				0,
+				ubo.originSize.y,
+				ubo.originSize.w,
+				GL_RGBA,
+				GL_FLOAT,
+				latest_snapshot_.scalarData.data()
+			);
+
+			// Update LBM Aerosol Texture
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::WeatherAerosols());
+			glBindTexture(GL_TEXTURE_2D, lbm_aerosol_texture_);
+			glTexSubImage2D(
+				GL_TEXTURE_2D,
+				0,
+				0,
+				0,
+				ubo.originSize.y,
+				ubo.originSize.w,
+				GL_RGBA,
+				GL_FLOAT,
+				latest_snapshot_.aerosolData.data()
+			);
 		}
 
 		// Dispatch Wind Integration Compute Shader
@@ -586,6 +803,12 @@ namespace Boidsish {
 		// Final Binding for users of getWindAtPosition
 		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::WindData());
 		glBindTexture(GL_TEXTURE_2D, wind_texture_);
+
+		// Bind Scalar and Aerosol textures for general usage
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::WeatherScalars());
+		glBindTexture(GL_TEXTURE_2D, lbm_scalar_texture_);
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::WeatherAerosols());
+		glBindTexture(GL_TEXTURE_2D, lbm_aerosol_texture_);
 	}
 
 	void WeatherManager::Update(float deltaTime, float totalTime, const glm::vec3& cameraPos, float timeOfDay) {
@@ -778,6 +1001,9 @@ namespace Boidsish {
 			cached_targets_.cloud_altitude = phys.cloudAltitude;
 			cached_targets_.cloud_thickness = phys.cloudThickness;
 			cached_targets_.temperature = phys.temperature;
+			cached_targets_.pressure = phys.pressure;
+			cached_targets_.humidity = phys.humidity;
+			cached_targets_.wind_strength = glm::length(phys.windVelocity);
 
 			// Precipitation heuristic: High humidity + updrafts + clouds
 			float precip = std::max(0.0f, phys.humidity - 0.8f) * 5.0f;
@@ -786,6 +1012,7 @@ namespace Boidsish {
 		}
 
 		// Always update attributes toward cached targets using the spring system
+		SynchronizeLbmConstraints();
 		UpdateAttribute(WeatherAttribute::SunIntensity, cached_targets_.sun_intensity, deltaTime);
 		UpdateAttribute(WeatherAttribute::WindStrength, cached_targets_.wind_strength, deltaTime);
 		UpdateAttribute(WeatherAttribute::WindSpeed, cached_targets_.wind_speed, deltaTime);
@@ -818,6 +1045,130 @@ namespace Boidsish {
 		UpdateAttribute(WeatherAttribute::CloudColorR, cached_targets_.cloud_color.r, deltaTime);
 		UpdateAttribute(WeatherAttribute::CloudColorG, cached_targets_.cloud_color.g, deltaTime);
 		UpdateAttribute(WeatherAttribute::CloudColorB, cached_targets_.cloud_color.b, deltaTime);
+	}
+
+	void WeatherManager::SaveAttributeTarget(WeatherAttribute attr) {
+		if (attr == WeatherAttribute::Count)
+			return;
+		auto&       cfg = ConfigManager::GetInstance();
+		auto&       state = attribute_states_[static_cast<size_t>(attr)];
+		std::string key = GetAttributeKey(attr);
+
+		cfg.SetBool("weather_target_" + key + "_enabled", state.external_target.has_value());
+		if (state.external_target.has_value()) {
+			cfg.SetFloat("weather_target_" + key, *state.external_target);
+		}
+	}
+
+	std::string WeatherManager::GetAttributeKey(WeatherAttribute attr) {
+		switch (attr) {
+		case WeatherAttribute::SunIntensity:
+			return "sun_intensity";
+		case WeatherAttribute::WindStrength:
+			return "wind_strength";
+		case WeatherAttribute::WindSpeed:
+			return "wind_speed";
+		case WeatherAttribute::WindFrequency:
+			return "wind_frequency";
+		case WeatherAttribute::CloudDensity:
+			return "cloud_density";
+		case WeatherAttribute::CloudAltitude:
+			return "cloud_altitude";
+		case WeatherAttribute::CloudThickness:
+			return "cloud_thickness";
+		case WeatherAttribute::HazeDensity:
+			return "haze_density";
+		case WeatherAttribute::HazeHeight:
+			return "haze_height";
+		case WeatherAttribute::RayleighScale:
+			return "rayleigh_scale";
+		case WeatherAttribute::MieScale:
+			return "mie_scale";
+		case WeatherAttribute::AtmosphereHeight:
+			return "atmosphere_height";
+		case WeatherAttribute::RayleighScaleHeight:
+			return "rayleigh_scale_height";
+		case WeatherAttribute::MieScaleHeight:
+			return "mie_scale_height";
+		case WeatherAttribute::CloudCoverage:
+			return "cloud_coverage";
+		case WeatherAttribute::Precipitation:
+			return "precipitation";
+		case WeatherAttribute::Temperature:
+			return "temperature";
+		case WeatherAttribute::Humidity:
+			return "humidity";
+		case WeatherAttribute::Pressure:
+			return "pressure";
+		case WeatherAttribute::MieScattering:
+			return "mie_scattering";
+		case WeatherAttribute::MieExtinction:
+			return "mie_extinction";
+		case WeatherAttribute::RayleighScatteringR:
+			return "rayleigh_scattering_r";
+		case WeatherAttribute::RayleighScatteringG:
+			return "rayleigh_scattering_g";
+		case WeatherAttribute::RayleighScatteringB:
+			return "rayleigh_scattering_b";
+		case WeatherAttribute::HazeColorR:
+			return "haze_color_r";
+		case WeatherAttribute::HazeColorG:
+			return "haze_color_g";
+		case WeatherAttribute::HazeColorB:
+			return "haze_color_b";
+		case WeatherAttribute::CloudColorR:
+			return "cloud_color_r";
+		case WeatherAttribute::CloudColorG:
+			return "cloud_color_g";
+		case WeatherAttribute::CloudColorB:
+			return "cloud_color_b";
+		default:
+			return "unknown";
+		}
+	}
+
+	void WeatherManager::LoadConfig() {
+		auto& cfg = ConfigManager::GetInstance();
+
+		enabled_ = cfg.GetAppSettingBool("weather_enabled", true);
+		time_scale_ = cfg.GetAppSettingFloat("weather_time_scale", 0.005f);
+		spatial_scale_ = cfg.GetAppSettingFloat("weather_spatial_scale", 0.001f);
+		macro_sim_enabled_ = cfg.GetAppSettingBool("weather_macro_sim_enabled", true);
+		hold_threshold_ = cfg.GetAppSettingFloat("weather_hold_threshold", 0.05f);
+		manual_preset_idx_ = cfg.GetAppSettingInt("weather_manual_preset", -1);
+
+		if (lbm_simulator_) {
+			lbm_simulator_->SetTau(cfg.GetAppSettingFloat("weather_sim_tau", 0.8f));
+
+			WeatherLbmSimulator::Constraints c;
+			auto                             loadConstraint = [&](const std::string&                       prefix,
+                                     WeatherLbmSimulator::Constraint& con) {
+				if (cfg.GetAppSettingBool("weather_sim_constraint_" + prefix + "_min_enabled", false)) {
+					con.min = cfg.GetAppSettingFloat("weather_sim_constraint_" + prefix + "_min", 0.0f);
+				}
+				if (cfg.GetAppSettingBool("weather_sim_constraint_" + prefix + "_max_enabled", false)) {
+					con.max = cfg.GetAppSettingFloat("weather_sim_constraint_" + prefix + "_max", 0.0f);
+				}
+				if (cfg.GetAppSettingBool("weather_sim_constraint_" + prefix + "_target_enabled", false)) {
+					con.target = cfg.GetAppSettingFloat("weather_sim_constraint_" + prefix + "_target", 0.0f);
+				}
+			};
+
+			loadConstraint("temperature", c.temperature);
+			loadConstraint("pressure", c.pressure);
+			loadConstraint("humidity", c.humidity);
+			loadConstraint("velocity", c.velocity);
+			loadConstraint("aerosols", c.aerosols);
+			lbm_simulator_->SetConstraints(c);
+		}
+
+		for (int i = 0; i < (int)WeatherAttribute::Count; ++i) {
+			WeatherAttribute attr = static_cast<WeatherAttribute>(i);
+			std::string      key = GetAttributeKey(attr);
+			if (cfg.GetAppSettingBool("weather_target_" + key + "_enabled", false)) {
+				SetTarget(attr, cfg.GetAppSettingFloat("weather_target_" + key, 0.0f));
+			}
+		}
 	}
 
 } // namespace Boidsish

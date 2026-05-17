@@ -1,0 +1,58 @@
+# --- STRUCTURAL RULES ---
+1 ROOT S
+1 S NP VP
+0.3 S NP VP_COMP
+0.2 S S CONJ S
+1 NP DET N
+0.8 NP DET ADJP N
+0.5 NP PRO
+0.5 NP NP PP
+0.3 NP NP REL_CLAUSE
+0.1 NP NP CONJ NP
+1 VP V_INTRANS
+1.5 VP V_TRANS NP
+0.5 VP V_TRANS NP PP
+0.5 VP V_INTRANS PP
+0.3 VP ADV VP
+0.3 VP VP ADV
+1 CP COMP S
+1 VP_COMP V_COMP CP
+1 REL_CLAUSE REL_PRO VP
+1 REL_CLAUSE REL_PRO S
+1 ADJP ADJ
+0.3 ADJP ADV ADJ
+0.1 ADJP ADJ CONJ ADJ
+1 PP P NP
+
+# --- TERMINAL RULES (LEXICON) ---
+1 REL_PRO which
+1 REL_PRO who
+1 COMP that
+1 CONJ and
+1 CONJ but
+1 P in
+1 P beneath
+1 P with
+1 ADV suddenly
+1 ADV quietly
+1 ADJ rusted
+1 ADJ cursed
+1 V_COMP thinks
+1 V_COMP says
+1 V_COMP fears
+1 V_TRANS strikes
+1 V_TRANS steals
+1 DET the
+1 DET a
+1 N artifact
+1 N sword
+1 N king
+1 PRO it
+1 PRO they
+1 PRO i
+1 PRO you
+1 PRO he
+1 PRO she
+1 PRO we
+1 V_INTRANS glows
+1 V_INTRANS shatters

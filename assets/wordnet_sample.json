@@ -1,0 +1,29 @@
+{
+  "wn-sword-1": {
+    "definition": ["a cutting or thrusting weapon"],
+    "hypernym": ["wn-weapon-1"],
+    "members": ["sword", "blade"],
+    "partOfSpeech": "n"
+  },
+  "wn-weapon-1": {
+    "definition": ["any instrument or instrumentality used in fighting or hunting"],
+    "members": ["weapon", "arm"],
+    "partOfSpeech": "n"
+  },
+  "wn-cat-1": {
+    "definition": ["feline mammal usually having nonretractile claws"],
+    "hypernym": ["wn-animal-1", "wn-god-1"],
+    "members": ["cat", "feline"],
+    "partOfSpeech": "n"
+  },
+  "wn-animal-1": {
+    "definition": ["a living organism characterized by voluntary movement"],
+    "members": ["animal", "beast"],
+    "partOfSpeech": "n"
+  },
+  "wn-god-1": {
+    "definition": ["the supernatural being conceived as the perfect and omnipotent and omniscient originator and ruler of the universe"],
+    "members": ["god", "deity"],
+    "partOfSpeech": "n"
+  }
+}

@@ -13,6 +13,24 @@ namespace Boidsish {
 
 	class ServiceLocator;
 
+	struct ParticleStats {
+		uint32_t count_birds;
+		uint32_t count_leaves;
+		uint32_t count_petals;
+		uint32_t count_bubbles;
+		uint32_t count_fireflies;
+		uint32_t count_snow;
+		uint32_t _unused_counts[2];
+
+		uint32_t limit_birds;
+		uint32_t limit_leaves;
+		uint32_t limit_petals;
+		uint32_t limit_bubbles;
+		uint32_t limit_fireflies;
+		uint32_t limit_snow;
+		uint32_t _unused_limits[2];
+	};
+
 	// This struct is mirrored in the compute shader.
 	// It must match the layout and padding there.
 	struct ChunkInfo {
@@ -55,6 +73,7 @@ namespace Boidsish {
 		void Update(
 			float                         delta_time,
 			float                         time,
+			bool                          enabled = true,
 			float                         ambient_density = 0.15f,
 			const std::vector<glm::vec4>& chunk_info = {},
 			GLuint                        heightmap_texture = 0,
@@ -92,6 +111,9 @@ namespace Boidsish {
 		);
 		void RemoveEffect(const std::shared_ptr<FireEffect>& effect);
 
+		// Get current particle stats from the GPU
+		ParticleStats GetStats() const;
+
 	private:
 		void _EnsureShaderAndBuffers();
 		void _UpdateParticleAllocation();
@@ -121,6 +143,7 @@ namespace Boidsish {
 		GLuint live_indices_buffer_{0};
 		GLuint draw_command_buffer_{0};
 		GLuint behavior_command_buffer_{0};
+		GLuint stats_buffer_{0};
 		GLuint dummy_vao_{0};
 
 		bool   initialized_{false};
@@ -129,8 +152,8 @@ namespace Boidsish {
 		float  time_{0.0f};
 		size_t emitter_buffer_capacity_{0}; // Track capacity to avoid per-frame reallocation
 
-		static const int kMaxParticles = Constants::Class::Particles::MaxParticles();
-		static const int kMaxEmitters = Constants::Class::Particles::MaxEmitters();
+		static constexpr int kMaxParticles = Constants::Class::Particles::MaxParticles();
+		static constexpr int kMaxEmitters = Constants::Class::Particles::MaxEmitters();
 	};
 
 } // namespace Boidsish

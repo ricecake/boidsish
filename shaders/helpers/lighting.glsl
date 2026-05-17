@@ -16,13 +16,13 @@ uniform float u_atmosphereHeight; // usually 100.0 km
 
 #ifndef TRANSMITTANCE_LUT_DEFINED
 	#define TRANSMITTANCE_LUT_DEFINED
-uniform sampler2D u_transmittanceLUT;
+layout(binding = [[ATMOSPHERE_TRANSMITTANCE_BINDING]]) uniform sampler2D u_transmittanceLUT;
 #endif
 
-uniform sampler2D u_cloudShadowMap;
+layout(binding = [[ATMOSPHERE_CLOUD_SHADOW_BINDING]]) uniform sampler2D u_cloudShadowMap;
 #ifndef TERRAIN_GRID_DEFINED
 	#define TERRAIN_GRID_DEFINED
-uniform isampler2D u_chunkGrid;
+layout(binding = [[TERRAIN_CHUNK_GRID_BINDING]]) uniform isampler2D u_chunkGrid;
 #endif
 
 /**
@@ -431,7 +431,10 @@ vec3 getSpatialAmbientSH(vec3 worldPos, vec3 N) {
 			interpolatedCoeffs[i] = vec4(totalSH[i] / totalWeight, 1.0);
 		}
 	} else {
-		// No probes available, fallback to sky only
+		// No probes available, fallback to global coefficients to avoid NaNs
+		for (int i = 0; i < 9; ++i) {
+			interpolatedCoeffs[i] = sh_coeffs[i];
+		}
 		bounceFade = 0.0;
 	}
 

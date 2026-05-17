@@ -1,0 +1,42 @@
+# --- ROOT ---
+1.0 ROOT S
+
+# --- SENTENCES ---
+1.0 S NP VP
+0.3 S NP VP_COMP           # e.g., "The king believes [that the artifact glows]"
+0.2 S S CONJ S             # Compound sentence
+
+# --- NOUN PHRASES (NP) ---
+1.0 NP DET N               # "the sword"
+0.8 NP DET ADJP N          # "the rusted sword"
+0.5 NP PRO                 # "he", "it"
+0.5 NP NP PP               # "the sword [in the stone]" (Recursive)
+0.3 NP NP REL_CLAUSE       # "the sword [which glows]" (Recursive)
+0.1 NP NP CONJ NP          # "the sword and the shield"
+
+# --- VERB PHRASES (VP) ---
+1.0 VP V_INTRANS           # "glows"
+1.5 VP V_TRANS NP          # "strikes the shield"
+0.5 VP V_TRANS NP PP       # "strikes the shield [with force]"
+0.5 VP V_INTRANS PP        # "glows [in the dark]"
+0.3 VP ADV VP              # "suddenly strikes"
+0.3 VP VP ADV              # "strikes suddenly"
+
+# --- COMPLEX CLAUSES ---
+1.0 VP_COMP V_COMP CP      # "believes [that the artifact glows]"
+1.0 CP COMP S              # "[that] the artifact glows"
+1.0 REL_CLAUSE REL_PRO VP  # "[which] glows"
+1.0 REL_CLAUSE REL_PRO S   # "[which] the king strikes"
+
+# --- ADJECTIVE PHRASES (ADJP) ---
+1.0 ADJP ADJ               # "rusted"
+0.3 ADJP ADV ADJ           # "very rusted"
+0.1 ADJP ADJ CONJ ADJ      # "rusted and cold"
+
+# --- PREPOSITIONAL PHRASES (PP) ---
+1.0 PP P NP                # "in the stone"
+
+# --- Shims ---
+#5.0 V_INTRANS V
+#5.0 V_TRANS V
+#5.0 V_COMP V

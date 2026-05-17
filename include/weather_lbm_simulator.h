@@ -2,6 +2,7 @@
 
 #include <vector>
 #include <memory>
+#include <optional>
 #include <glm/glm.hpp>
 #include "weather_lbm_types.h"
 #include "terrain_generator_interface.h"
@@ -73,6 +74,23 @@ namespace Boidsish {
          */
         void InjectTemperature(const glm::vec3& pos, float temperatureK);
 
+        struct Constraint {
+            std::optional<float> min;
+            std::optional<float> max;
+            std::optional<float> target;
+        };
+
+        struct Constraints {
+            Constraint temperature;
+            Constraint pressure;
+            Constraint humidity;
+            Constraint velocity;
+            Constraint aerosols;
+        };
+
+        void               SetConstraints(const Constraints& c) { constraints_ = c; }
+        const Constraints& GetConstraints() const { return constraints_; }
+
     private:
         void Initialize(const ITerrainGenerator& terrain, float totalTime, float timeOfDay);
         void InitializeCell(int x, int z, float totalTime, float timeOfDay, LbmCell& cell);
@@ -95,8 +113,11 @@ namespace Boidsish {
         float CalculateEquilibrium(int i, float rho, glm::vec2 u);
         void CollisionAndStreaming();
         void ApplyPhysics(float deltaTime, float totalTime, float timeOfDay);
+        void ApplyNudging(float deltaTime, float totalTime, float timeOfDay, float windSpeed, float windStrength, float targetTemp, float targetPressure, float targetHumidity);
         void ApplyBoundaries(float totalTime, float windSpeed, float windStrength, float timeOfDay, float targetTemp, float targetPressure, float targetHumidity);
         void ShiftGrid(glm::ivec2 shiftOffset, float totalTime, float timeOfDay);
+
+        glm::vec2 GetTargetVelocity(float worldX, float worldZ, float totalTime, float windSpeed, float windStrength) const;
 
         int width_;
         int height_;
@@ -120,6 +141,8 @@ namespace Boidsish {
         static const int cx[9];
         static const int cz[9];
         static const float weights[9];
+
+        Constraints constraints_;
     };
 
 } // namespace Boidsish

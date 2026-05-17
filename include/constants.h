@@ -35,6 +35,12 @@ namespace Boidsish {
 				LbmWindData = 34,
 				TerrainShadowMap = 35,
 				TerrainShadowMapImage = 36,
+				VolumetricInjection = 37,
+				VolumetricScattering = 38,
+				VolumetricHistory = 39,
+				VolumetricCascades = 40,
+				WeatherScalars = 42,
+				WeatherAerosols = 43,
 			};
 
 			enum class Ubo {
@@ -51,6 +57,12 @@ namespace Boidsish {
 				DecorProps = 30,
 				DecorPlacementGlobals = 31,
 				WindData = 45,
+			};
+
+			enum class Image {
+				VolumetricInjection = 0,
+				VolumetricScattering = 1,
+				VolumetricHistory = 2,
 			};
 
 			enum class Ssbo {
@@ -86,6 +98,18 @@ namespace Boidsish {
 				MeshExplosionFragments = 41,
 				TrailGeneratedVBO = 42,
 				AtmosphereSH = 43,
+				TerrainPatchMetrics = 46,
+				TerrainPatchDrawData = 47,
+				TerrainPatchTessLevels = 48,
+				TerrainPatchIndirect = 49,
+				TerrainPatchVisibility = 50,
+				GrassTasks = 51,
+				ParticleStats = 52,
+				AllLights = 53,
+				RestirReservoirs0 = 54,
+				RestirReservoirs1 = 55,
+				RestirGIReservoirs0 = 56,
+				RestirGIReservoirs1 = 57
 			};
 		} // namespace Bindings
 
@@ -251,7 +275,45 @@ namespace Boidsish {
 			consteval int TerrainShadowMapImage() {
 				return std::to_underlying(Constants::Bindings::Texture::TerrainShadowMapImage);
 			}
+
+			consteval int VolumetricInjection() {
+				return std::to_underlying(Constants::Bindings::Texture::VolumetricInjection);
+			}
+
+			consteval int VolumetricScattering() {
+				return std::to_underlying(Constants::Bindings::Texture::VolumetricScattering);
+			}
+
+			consteval int VolumetricHistory() {
+				return std::to_underlying(Constants::Bindings::Texture::VolumetricHistory);
+			}
+
+			consteval int VolumetricCascades() {
+				return std::to_underlying(Constants::Bindings::Texture::VolumetricCascades);
+			}
+
+			consteval int WeatherScalars() {
+				return std::to_underlying(Constants::Bindings::Texture::WeatherScalars);
+			}
+
+			consteval int WeatherAerosols() {
+				return std::to_underlying(Constants::Bindings::Texture::WeatherAerosols);
+			}
 		} // namespace TextureUnit
+
+		namespace ImageBinding {
+			consteval int VolumetricInjection() {
+				return std::to_underlying(Constants::Bindings::Image::VolumetricInjection);
+			}
+
+			consteval int VolumetricScattering() {
+				return std::to_underlying(Constants::Bindings::Image::VolumetricScattering);
+			}
+
+			consteval int VolumetricHistory() {
+				return std::to_underlying(Constants::Bindings::Image::VolumetricHistory);
+			}
+		} // namespace ImageBinding
 
 		namespace SsboBinding {
 			consteval int DecorInstances() {
@@ -383,23 +445,51 @@ namespace Boidsish {
 			}
 
 			consteval int AllLights() {
-				return 46;
+				return std::to_underlying(Constants::Bindings::Ssbo::AllLights);
 			}
 
 			consteval int RestirReservoirs0() {
-				return 47;
+				return std::to_underlying(Constants::Bindings::Ssbo::RestirReservoirs0);
 			}
 
 			consteval int RestirReservoirs1() {
-				return 48;
+				return std::to_underlying(Constants::Bindings::Ssbo::RestirReservoirs1);
 			}
 
 			consteval int RestirGIReservoirs0() {
-				return 49;
+				return std::to_underlying(Constants::Bindings::Ssbo::RestirGIReservoirs0);
 			}
 
 			consteval int RestirGIReservoirs1() {
-				return 50;
+				return std::to_underlying(Constants::Bindings::Ssbo::RestirGIReservoirs1);
+			}
+
+			consteval int TerrainPatchMetrics() {
+				return std::to_underlying(Constants::Bindings::Ssbo::TerrainPatchMetrics);
+			}
+
+			consteval int TerrainPatchDrawData() {
+				return std::to_underlying(Constants::Bindings::Ssbo::TerrainPatchDrawData);
+			}
+
+			consteval int TerrainPatchTessLevels() {
+				return std::to_underlying(Constants::Bindings::Ssbo::TerrainPatchTessLevels);
+			}
+
+			consteval int TerrainPatchIndirect() {
+				return std::to_underlying(Constants::Bindings::Ssbo::TerrainPatchIndirect);
+			}
+
+			consteval int TerrainPatchVisibility() {
+				return std::to_underlying(Constants::Bindings::Ssbo::TerrainPatchVisibility);
+			}
+
+			consteval int GrassTasks() {
+				return std::to_underlying(Constants::Bindings::Ssbo::GrassTasks);
+			}
+
+			consteval int ParticleStats() {
+				return std::to_underlying(Constants::Bindings::Ssbo::ParticleStats);
 			}
 		} // namespace SsboBinding
 
@@ -434,11 +524,11 @@ namespace Boidsish {
 			} // namespace Window
 
 			namespace Camera {
-				consteval float DefaultFOV() {
+				constexpr float DefaultFOV() {
 					return 45.0f;
 				}
 
-				consteval float DefaultNearPlane() {
+				constexpr float DefaultNearPlane() {
 					return 0.1f;
 				}
 
@@ -448,80 +538,80 @@ namespace Boidsish {
 				 */
 				constexpr float DefaultFarPlane();
 
-				consteval float MinHeight() {
+				constexpr float MinHeight() {
 					return 0.1f;
 				}
 
-				consteval float MinSpeed() {
+				constexpr float MinSpeed() {
 					return 0.5f;
 				}
 
-				consteval float DefaultSpeed() {
+				constexpr float DefaultSpeed() {
 					return 15.0f;
 				}
 
-				consteval float FirstPersonEyeHeight() {
+				constexpr float FirstPersonEyeHeight() {
 					return 4.8f;
 				}
 
-				consteval float FirstPersonCrouchHeight() {
+				constexpr float FirstPersonCrouchHeight() {
 					return 1.5f;
 				}
 
-				consteval float FirstPersonSprintMultiplier() {
+				constexpr float FirstPersonSprintMultiplier() {
 					return 2.0f;
 				}
 
-				consteval float FirstPersonJumpForce() {
+				constexpr float FirstPersonJumpForce() {
 					return 12.5f;
 				}
 
-				consteval float FirstPersonGravity() {
+				constexpr float FirstPersonGravity() {
 					return 18.0f;
 				}
 
-				consteval float FirstPersonGroundSmoothing() {
+				constexpr float FirstPersonGroundSmoothing() {
 					return 5.0f;
 				}
 
-				consteval float SpeedStep() {
+				constexpr float SpeedStep() {
 					return 2.5f;
 				}
 
-				consteval float RollSpeed() {
+				constexpr float RollSpeed() {
 					return 45.0f;
 				}
 
 				// Path following
-				consteval float DefaultPathSpeed() {
+				constexpr float DefaultPathSpeed() {
 					return 20.0f;
 				}
 
-				consteval float PathBankFactor() {
+				constexpr float PathBankFactor() {
 					return 1.8f;
 				}
 
-				consteval float PathBankSpeed() {
+				constexpr float PathBankSpeed() {
 					return 3.5f;
 				}
 
-				consteval float ChaseTrailBehind() {
+				constexpr float ChaseTrailBehind() {
 					return 15.0f;
 				}
 
-				consteval float ChaseElevation() {
+				constexpr float ChaseElevation() {
 					return 5.0f;
 				}
 
-				consteval float ChaseLookAhead() {
+				constexpr float ChaseLookAhead() {
 					return 10.0f;
 				}
 
-				consteval float ChaseResponsiveness() {
+				constexpr float ChaseResponsiveness() {
 					return 1.5f;
 				}
 
-				consteval float PathFollowSmoothing() {
+				constexpr float PathFollowSmoothing() {
 					return 5.0f;
 				}
 
@@ -635,6 +725,18 @@ namespace Boidsish {
 					return ChunkSize() + 1;
 				}
 
+				consteval int PatchSize() {
+					return 8;
+				}
+
+				consteval int PatchesPerChunkSide() {
+					return ChunkSize() / PatchSize();
+				}
+
+				consteval int PatchesPerChunk() {
+					return PatchesPerChunkSide() * PatchesPerChunkSide();
+				}
+
 				consteval int DefaultViewDistance() {
 					return (32 * 10) / ChunkSize();
 				}
@@ -679,6 +781,10 @@ namespace Boidsish {
 			namespace Particles {
 				consteval int MaxParticles() {
 					return 128000;
+				}
+
+				consteval int AmbientParticleScale() {
+					return 8192;
 				}
 
 				consteval int MaxEmitters() {

@@ -4,6 +4,7 @@
 #include "Simplex.h"
 #include "biome_properties.h"
 #include "logger.h"
+#include "weather_constants.h"
 #include <vector>
 
 namespace Boidsish {
@@ -27,9 +28,10 @@ namespace Boidsish {
         // Initial defaults
         for (auto& cell : *currentGrid_) {
             cell.temperature = 288.15f; // 15C
-            cell.aerosol = 0.01f;
+            cell.aerosols = glm::vec4(0.01f, 0.0f, 0.0f, 0.0f);
             cell.humidity = 0.5f;
             cell.vy = 0.0f;
+            cell.viscosityDamping = 0.0f;
             for (int i = 0; i < 9; ++i) {
                 cell.f[i] = weights[i]; // rho = 1.0, u = 0
             }
@@ -83,6 +85,7 @@ namespace Boidsish {
         while (accumulator_ >= dt_) {
             CollisionAndStreaming();
             ApplyPhysics(dt_, totalTime, timeOfDay);
+            ApplyNudging(dt_, totalTime, timeOfDay, windSpeed, windStrength, targetTemp, targetPressure, targetHumidity);
             ApplyBoundaries(totalTime, windSpeed, windStrength, timeOfDay, targetTemp, targetPressure, targetHumidity);
             accumulator_ -= dt_;
         }
@@ -113,9 +116,10 @@ namespace Boidsish {
 
         float n = Simplex::noise(glm::vec2(worldX * 0.001f, worldZ * 0.001f));
         cell.temperature = glm::mix(targetTemp, baseTemp, 0.5f) + n * 5.0f;
-        cell.aerosol = 0.01f + std::abs(n) * 0.05f;
+        cell.aerosols = glm::vec4(0.01f + std::abs(n) * 0.05f, 0.0f, 0.0f, 0.0f);
         cell.humidity = glm::mix(targetHumidity, 0.4f + std::abs(n) * 0.2f, 0.5f);
         cell.vy = 0.0f;
+        cell.viscosityDamping = 0.0f;
 
         // Set initial f based on noise-driven wind
         glm::vec2 u(Simplex::noise(glm::vec2(worldX * 0.002f, worldZ * 0.002f)),
@@ -154,11 +158,23 @@ namespace Boidsish {
                     rho = 1.0f;
                     u = glm::vec2(0.0f);
                     cell.temperature = 288.15f;
-                    cell.aerosol = 0.01f;
+                    cell.aerosols = glm::vec4(0.01f, 0.0f, 0.0f, 0.0f);
                     cell.humidity = 0.5f;
                     cell.vy = 0.0f;
+                    cell.viscosityDamping = 0.0f;
                     for (int i = 0; i < 9; ++i) cell.f[i] = weights[i];
                 }
+
+                // Viscosity Modulation (Chaos Dampening)
+                float u2 = glm::dot(u, u);
+                // Questionable velocity squared: 0.01 (u=0.1), Definitely too high: 0.02 (u=0.14)
+                float chaosFactor = glm::smoothstep(0.01f, 0.02f, u2);
+
+                // Asymmetric EMA for viscosity damping (fast attack, slow release)
+                float attackAlpha = 0.2f;
+                float releaseAlpha = 0.01f;
+                float emaAlpha = (chaosFactor > cell.viscosityDamping) ? attackAlpha : releaseAlpha;
+                cell.viscosityDamping = glm::mix(cell.viscosityDamping, chaosFactor, emaAlpha);
 
                 // If vy is positive (updraft), air leaves the horizontal plane, reducing density.
                 // If vy is negative (downdraft), air hits the ground and spreads, increasing density.
@@ -180,9 +196,13 @@ namespace Boidsish {
                 }
 
                 // 2. Collision & Streaming
+                // Modulate omega based on viscosity damping: normal omega -> high viscosity (omega close to 0)
+                // A very viscous omega is around 0.15 (tau ~ 6.6)
+                float effectiveOmega = glm::mix(omega_, 0.15f, cell.viscosityDamping);
+
                 for (int i = 0; i < 9; ++i) {
                     float feq = CalculateEquilibrium(i, rho, u);
-                    float f_post = cell.f[i] - omega_ * (cell.f[i] - feq);
+                    float f_post = cell.f[i] - effectiveOmega * (cell.f[i] - feq);
 
                     int nx = (x + cx[i] + width_) % width_;
                     int nz = (z + cz[i] + height_) % height_;
@@ -226,14 +246,17 @@ namespace Boidsish {
                 // nextCell.temperature = glm::mix(glm::mix(c00.temperature, c10.temperature, tx),
                 //                                glm::mix(c01.temperature, c11.temperature, tx), tz);
 
-                nextCell.aerosol = glm::mix(glm::mix(c00.aerosol, c10.aerosol, tx),
-                                           glm::mix(c01.aerosol, c11.aerosol, tx), tz);
+                nextCell.aerosols = glm::mix(glm::mix(c00.aerosols, c10.aerosols, tx),
+                                            glm::mix(c01.aerosols, c11.aerosols, tx), tz);
 
                 nextCell.humidity = glm::mix(glm::mix(c00.humidity, c10.humidity, tx),
                                             glm::mix(c01.humidity, c11.humidity, tx), tz);
 
                 nextCell.vy = glm::mix(glm::mix(c00.vy, c10.vy, tx),
                                       glm::mix(c01.vy, c11.vy, tx), tz);
+
+                nextCell.viscosityDamping = glm::mix(glm::mix(c00.viscosityDamping, c10.viscosityDamping, tx),
+                                                     glm::mix(c01.viscosityDamping, c11.viscosityDamping, tx), tz);
 
                 nextCell.vy *= glm::mix(0.95f, 0.75f, glm::smoothstep(0.0f, 1.0f, nextCell.vy));
             }
@@ -260,9 +283,8 @@ namespace Boidsish {
                 const auto& b2 = kBiomes[high_idx];
 
                 config_[idx].drag = glm::mix(b1.dragFactor, b2.dragFactor, t);
-                config_[idx].aerosolReleaseRate = glm::mix(b1.aerosolReleaseRate, b2.aerosolReleaseRate, t);
+                config_[idx].aerosolReleaseRates = glm::mix(b1.aerosolReleaseRates, b2.aerosolReleaseRates, t);
                 config_[idx].sensibleHeatFactor = glm::mix(b1.sensibleHeatFactor, b2.sensibleHeatFactor, t);
-                config_[idx].aerosolColor = glm::mix(b1.aerosolColor, b2.aerosolColor, t);
                 config_[idx].terrainHeight = height;
             }
         }
@@ -327,9 +349,9 @@ namespace Boidsish {
             }
 
             // 5. Aerosol Release
-            cell.aerosol += cfg.aerosolReleaseRate * 0.001f * seasonalIntensity;
+            cell.aerosols += cfg.aerosolReleaseRates * 0.001f * seasonalIntensity;
             // Diffusion / Decay
-            cell.aerosol *= 0.99f;
+            cell.aerosols *= 0.99f;
 
             // 6. Humidity modeling (Evaporation & Condensation)
             // Evaporation based on sensible heat factor (proxy for ground moisture availability) and temperature
@@ -356,58 +378,86 @@ namespace Boidsish {
             }
         }
     }
+    glm::vec2 WeatherLbmSimulator::GetTargetVelocity(float worldX, float worldZ, float totalTime, float windSpeed, float windStrength) const {
+        glm::vec2 prevailingWind(0.02f, 0.01f);
+        prevailingWind += glm::vec2(worldX + worldZ, worldX - worldZ) * 0.0001f;
+        prevailingWind = glm::normalize(prevailingWind);
+        auto noiseWind = Simplex::curlNoise(glm::vec2(worldX * 0.001f + totalTime * windSpeed, worldZ * 0.001f + totalTime * windSpeed), atan2(prevailingWind.x, prevailingWind.y));
+        glm::vec2 targetU = prevailingWind + noiseWind * 0.1f;
+        targetU *= Simplex::noise({worldX, worldZ}) * 0.5f + 0.5f;
+        return glm::clamp(targetU * (0.05f + windStrength * 5.0f), -0.14f, 0.14f);
+    }
+
+    void WeatherLbmSimulator::ApplyNudging(float /*deltaTime*/, float totalTime, float /*timeOfDay*/, float windSpeed, float windStrength, float targetTemp, float targetPressure, float targetHumidity) {
+        const float uNudgeStrength = 0.02f, tempNudgeStrength = 0.01f, humidityNudgeStrength = 0.01f, vyNudgeStrength = 0.005f, aerosolNudgeStrength = 0.01f;
+        const float rhoTolerance = 0.01f, uTolerance = 0.01f, tempTolerance = 0.1f, humidityTolerance = 0.01f, aerosolTolerance = 0.01f;
+        const float lbmConversion = 32.0f / 0.1f;
+        for (int z = 0; z < height_; ++z) {
+            for (int x = 0; x < width_; ++x) {
+                if (x < kPadding || x >= width_ - kPadding || z < kPadding || z >= height_ - kPadding) continue;
+                int idx = z * width_ + x;
+                LbmCell& cell = (*currentGrid_)[idx];
+                float worldX = (float)(x + gridAnchor_.x) * 32.0f, worldZ = (float)(z + gridAnchor_.y) * 32.0f;
+                float rho = 0.0f; glm::vec2 u(0.0f);
+                for (int j = 0; j < 9; ++j) { rho += cell.f[j]; u.x += cell.f[j] * (float)cx[j]; u.y += cell.f[j] * (float)cz[j]; }
+                if (rho > 1e-6f) u /= rho;
+                float n_rho = Simplex::noise(glm::vec3(worldX * 0.005f, worldZ * 0.005f, totalTime * 0.05f));
+                float n_temp = Simplex::noise(glm::vec3(worldX * 0.005f + 100.0f, worldZ * 0.005f + 100.0f, totalTime * 0.05f));
+                float n_hum = Simplex::noise(glm::vec3(worldX * 0.005f - 100.0f, worldZ * 0.005f - 100.0f, totalTime * 0.05f));
+                float n_u1 = Simplex::noise(glm::vec3(worldX * 0.005f, worldZ * 0.005f + 200.0f, totalTime * 0.05f));
+                float n_u2 = Simplex::noise(glm::vec3(worldX * 0.005f + 200.0f, worldZ * 0.005f, totalTime * 0.05f));
+                auto nudgeScalar = [&](auto& val, auto& c, float globT, float noise, float nScale, float str, float tol) {
+                    float target = globT; bool nudge = false;
+                    if (c.target) { target = *c.target; if (std::abs(val - *c.target) > tol) nudge = true; }
+                    else if (c.min || c.max) { if (c.min && val < *c.min) { nudge = true; target = *c.min; } else if (c.max && val > *c.max) { nudge = true; target = *c.max; } }
+                    else { if (std::abs(val - globT) > tol) nudge = true; }
+                    if (nudge) val += (target + noise * nScale - val) * str;
+                };
+
+                nudgeScalar(cell.temperature, constraints_.temperature, targetTemp, n_temp, 2.5f, tempNudgeStrength, tempTolerance);
+                nudgeScalar(cell.humidity, constraints_.humidity, targetHumidity, n_hum, 0.08f, humidityNudgeStrength, humidityTolerance);
+                nudgeScalar(cell.aerosols.x, constraints_.aerosols, 0.01f, n_hum, 0.02f, aerosolNudgeStrength, aerosolTolerance);
+
+                float targetP = constraints_.pressure.target.value_or(targetPressure);
+                bool nudgeP = false; float pressureHpa = rho * 1013.25f;
+                if (constraints_.pressure.target) { if (std::abs(pressureHpa - *constraints_.pressure.target) > rhoTolerance * 1013.25f) nudgeP = true; }
+                else if (constraints_.pressure.min || constraints_.pressure.max) { if (constraints_.pressure.min && pressureHpa < *constraints_.pressure.min) { nudgeP = true; targetP = *constraints_.pressure.min; } if (constraints_.pressure.max && pressureHpa > *constraints_.pressure.max) { nudgeP = true; targetP = *constraints_.pressure.max; } }
+                else { if (std::abs(rho - (targetPressure / 1013.25f)) > rhoTolerance) nudgeP = true; }
+
+                glm::vec2 autoU = GetTargetVelocity(worldX, worldZ, totalTime, windSpeed, windStrength);
+                float autoS = glm::length(autoU) * lbmConversion, targetS = constraints_.velocity.target.value_or(autoS), curS = glm::length(u) * lbmConversion;
+                bool nudgeU = false;
+                if (constraints_.velocity.target) { if (std::abs(curS - *constraints_.velocity.target) > uTolerance * lbmConversion) nudgeU = true; }
+                else if (constraints_.velocity.min || constraints_.velocity.max) { if (constraints_.velocity.min && curS < *constraints_.velocity.min) { nudgeU = true; targetS = *constraints_.velocity.min; } else if (constraints_.velocity.max && curS > *constraints_.velocity.max) { nudgeU = true; targetS = *constraints_.velocity.max; } }
+                else { if (glm::length(u - autoU) > uTolerance) nudgeU = true; }
+                if (nudgeP || nudgeU) {
+                    float localRho = (targetP / 1013.25f) + n_rho * 0.015f;
+                    glm::vec2 tU = autoU; if (glm::length(tU) > 1e-4f) tU = glm::normalize(tU) * (targetS / lbmConversion); else tU = glm::vec2(targetS / lbmConversion, 0.0f);
+                    glm::vec2 localU = tU + glm::vec2(n_u1, n_u2) * 0.02f;
+                    for (int j = 0; j < 9; ++j) { float feqt = CalculateEquilibrium(j, localRho, localU); float feqc = CalculateEquilibrium(j, rho, u); cell.f[j] += uNudgeStrength * (feqt - feqc); }
+                }
+                cell.vy *= (1.0f - vyNudgeStrength);
+            }
+        }
+    }
 
     void WeatherLbmSimulator::ApplyBoundaries(float totalTime, float windSpeed, float windStrength, float timeOfDay, float targetTemp, float targetPressure, float targetHumidity) {
         float targetRho = targetPressure / 1013.25f;
-
-        // Apply noise-driven wind at the edges with sponge layer dampening
         for (int z = 0; z < height_; ++z) {
             for (int x = 0; x < width_; ++x) {
-                // Calculate distance to nearest edge
                 int dist = std::min({x, width_ - 1 - x, z, height_ - 1 - z});
-
                 if (dist < kPadding) {
-                    int idx = z * width_ + x;
-                    float worldX = (float)(x + gridAnchor_.x) * 32.0f;
-                    float worldZ = (float)(z + gridAnchor_.y) * 32.0f;
-
-                    // Prevailing wind based on spatial gradient
-                    glm::vec2 prevailingWind(0.02f, 0.01f); // Baseline flow
-                    prevailingWind += glm::vec2(worldX + worldZ, worldX - worldZ) * 0.0001f;
-                    prevailingWind = glm::normalize(prevailingWind);
-
-                    auto noiseWind = Simplex::curlNoise(glm::vec2(worldX * 0.001f + totalTime * windSpeed, worldZ * 0.001f + totalTime * windSpeed), atan2(prevailingWind.x, prevailingWind.y));
-
-                    glm::vec2 targetU = prevailingWind + noiseWind * 0.1f;
-                    targetU *= Simplex::noise({worldX, worldZ}) * 0.5f + 0.5f;
-
-                    // Lattice velocity MUST stay below ~0.15 for stability
-                    targetU = glm::clamp(targetU * (0.05f + windStrength * 5.0f), -0.14f, 0.14f);
-
-                    float baseTemp = GetBaseTemperature(worldX, worldZ, totalTime, timeOfDay);
-                    float finalTargetTemp = glm::mix(baseTemp, targetTemp, 0.5f);
-
-                    // Sponge layer relaxation factor: 1.0 at edge, 0.0 at interior
-                    float spongeFactor = 1.0f - (float)dist / (float)kPadding;
-                    // Stronger dampening closer to edge
-                    float blend = std::pow(spongeFactor, 2.0f);
-
-                    // Force target distribution at the boundary, blend in sponge layer
-                    for (int i = 0; i < 9; ++i) {
-                        float f_eq = CalculateEquilibrium(i, targetRho, targetU);
-                        (*currentGrid_)[idx].f[i] = glm::mix((*currentGrid_)[idx].f[i], f_eq, blend);
-                    }
-
+                    int idx = z * width_ + x; float worldX = (float)(x + gridAnchor_.x) * 32.0f, worldZ = (float)(z + gridAnchor_.y) * 32.0f;
+                    glm::vec2 targetU = GetTargetVelocity(worldX, worldZ, totalTime, windSpeed, windStrength);
+                    float baseTemp = GetBaseTemperature(worldX, worldZ, totalTime, timeOfDay), finalTargetTemp = glm::mix(baseTemp, targetTemp, 0.5f), blend = std::pow(1.0f - (float)dist / (float)kPadding, 2.0f);
+                    for (int i = 0; i < 9; ++i) { float feq = CalculateEquilibrium(i, targetRho, targetU); (*currentGrid_)[idx].f[i] = glm::mix((*currentGrid_)[idx].f[i], feq, blend); }
                     (*currentGrid_)[idx].temperature = glm::mix((*currentGrid_)[idx].temperature, finalTargetTemp, blend * 0.1f);
                     (*currentGrid_)[idx].humidity = glm::mix((*currentGrid_)[idx].humidity, targetHumidity, blend * 0.1f);
-
-                    // Dampen vertical velocity in sponge layer to prevent shocks
                     (*currentGrid_)[idx].vy *= (1.0f - blend * 0.5f);
                 }
             }
         }
     }
-
     float WeatherLbmSimulator::GetSeasonalFactor(float totalTime) const {
         const float seasonalPeriod = 7200.0f; // 2 hours for full cycle
         return 0.5f + 0.5f * std::cos(totalTime * (2.0f * 3.14159265f / seasonalPeriod));
@@ -495,8 +545,9 @@ namespace Boidsish {
         if (gx < 0 || gx >= width_ || gz < 0 || gz >= height_) return;
 
         int idx = gz * width_ + gx;
-        (*currentGrid_)[idx].aerosol = concentration;
-        (*nextGrid_)[idx].aerosol = concentration;
+        // Inject into the primary channel (Dust)
+        (*currentGrid_)[idx].aerosols.x = concentration;
+        (*nextGrid_)[idx].aerosols.x = concentration;
     }
 
     void WeatherLbmSimulator::InjectTemperature(const glm::vec3& pos, float temperatureK) {
@@ -552,12 +603,16 @@ namespace Boidsish {
         if (snapshot.scalarData.size() < (size_t)(width_ * height_)) {
             snapshot.scalarData.resize(width_ * height_);
         }
+        if (snapshot.aerosolData.size() < (size_t)(width_ * height_)) {
+            snapshot.aerosolData.resize(width_ * height_);
+        }
 
         for (int i = 0; i < width_ * height_; ++i) {
             const LbmCell& cell = (*currentGrid_)[i];
             float rho = 0.0f;
             for (int j = 0; j < 9; ++j) rho += cell.f[j];
-            snapshot.scalarData[i] = glm::vec4(cell.temperature, cell.humidity, 1013.25f * rho, cell.aerosol);
+            snapshot.scalarData[i] = glm::vec4(cell.temperature, cell.humidity, 1013.25f * rho, cell.viscosityDamping);
+            snapshot.aerosolData[i] = cell.aerosols;
         }
 
         snapshot.valid = true;
@@ -587,43 +642,51 @@ namespace Boidsish {
     }
 
     void WeatherLbmSimulator::DeriveAtmosphere(float totalTime, float timeOfDay) {
-        const float PI = 3.14159265358979323846f;
         // Average the simulation state for global weather output
         float avgRho = 0.0f;
         glm::vec2 avgU(0.0f);
         float avgTemp = 0.0f;
-        float avgAerosol = 0.0f;
+        glm::vec4 avgAerosols(0.0f);
         float avgHumidity = 0.0f;
         float avgVy = 0.0f;
-        glm::vec3 avgAerosolColor(0.0f);
 
         for (int i = 0; i < (int)currentGrid_->size(); ++i) {
+            const auto& cell = (*currentGrid_)[i];
             float rho = 0.0f;
             glm::vec2 u(0.0f);
             for (int j = 0; j < 9; ++j) {
-                rho += (*currentGrid_)[i].f[j];
-                u.x += (*currentGrid_)[i].f[j] * (float)cx[j];
-                u.y += (*currentGrid_)[i].f[j] * (float)cz[j];
+                rho += cell.f[j];
+                u.x += cell.f[j] * (float)cx[j];
+                u.y += cell.f[j] * (float)cz[j];
             }
             if (rho > 0.0f) u /= rho;
 
             avgRho += rho;
             avgU += u;
-            avgTemp += (*currentGrid_)[i].temperature;
-            avgAerosol += (*currentGrid_)[i].aerosol;
-            avgHumidity += (*currentGrid_)[i].humidity;
-            avgVy += (*currentGrid_)[i].vy;
-            avgAerosolColor += config_[i].aerosolColor;
+            avgTemp += cell.temperature;
+            avgAerosols += cell.aerosols;
+            avgHumidity += cell.humidity;
+            avgVy += cell.vy;
         }
 
         float n = (float)currentGrid_->size();
         avgRho /= n;
         avgU /= n;
         avgTemp /= n;
-        avgAerosol /= n;
+        avgAerosols /= n;
         avgHumidity /= n;
         avgVy /= n;
-        avgAerosolColor /= n;
+
+        // Calculate weighted global aerosol color
+        glm::vec3 globalAerosolColor(0.0f);
+        float totalAerosol = avgAerosols.x + avgAerosols.y + avgAerosols.z + avgAerosols.w;
+        if (totalAerosol > 1e-6f) {
+            for (int i = 0; i < 4; ++i) {
+                globalAerosolColor += WeatherConstants::AerosolColors[i] * (avgAerosols[i] / totalAerosol);
+            }
+        } else {
+            globalAerosolColor = WeatherConstants::DefaultHazeColor;
+        }
 
         currentOutput_.windVelocity = avgU;
         currentOutput_.verticalWind = avgVy;
@@ -643,9 +706,10 @@ namespace Boidsish {
         currentOutput_.rayleighScattering = glm::vec3(5.802e-3f, 13.558e-3f, 33.100e-3f) * pt_factor;
 
         // 4. Mie Scattering (Aerosol dependent)
-        currentOutput_.mieScattering = 3.996e-3f + avgAerosol * 0.1f;
+        float totalAerosolConcentration = avgAerosols.x + avgAerosols.y + avgAerosols.z + avgAerosols.w;
+        currentOutput_.mieScattering = 3.996e-3f + totalAerosolConcentration * 0.1f;
         currentOutput_.mieExtinction = currentOutput_.mieScattering * 1.11f;
-        currentOutput_.aerosolColor = avgAerosolColor;
+        currentOutput_.aerosolColor = globalAerosolColor;
 
         // 5. Cloud Heuristics
         // Clouds form when humidity is high and there's upward motion

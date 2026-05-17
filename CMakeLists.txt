@@ -26,6 +26,20 @@ if(ENABLE_PROFILING)
     add_definitions(-DPROFILING_ENABLED)
 endif()
 
+option(BOIDSISH_BUILD_SHARED "Build boidsish as a shared library" OFF)
+
+if(BOIDSISH_BUILD_SHARED)
+    set(BOIDSISH_LIB_TYPE SHARED)
+    set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+else()
+    set(BOIDSISH_LIB_TYPE STATIC)
+endif()
+
+option(BOIDSISH_USE_SPIRV "Compile and use SPIR-V shaders" OFF)
+if(BOIDSISH_USE_SPIRV)
+    add_definitions(-DBOIDSISH_USE_SPIRV)
+endif()
+
 set(IMGUI_DIR external/imgui)
 set(STB_DIR "${CMAKE_SOURCE_DIR}/external/stb")
 
@@ -72,7 +86,7 @@ set_directory_properties(PROPERTIES COMPILE_OPTIONS "${OLD_COMPILE_OPTIONS}")
 # Finds all .cpp files in src/
 file(GLOB_RECURSE LIB_SOURCES "src/*.cpp")
 
-add_library(boidsish STATIC ${LIB_SOURCES})
+add_library(boidsish ${BOIDSISH_LIB_TYPE} ${LIB_SOURCES})
 target_compile_definitions(boidsish PUBLIC GLM_ENABLE_EXPERIMENTAL)
 target_compile_definitions(boidsish PUBLIC BOIDSISH_BUILD_DIR="${CMAKE_BINARY_DIR}")
 
@@ -88,6 +102,7 @@ target_include_directories(boidsish
         ${STB_DIR}/
         ${ASSIMP_INCLUDE_DIR}
         ${BULLET_INCLUDE_DIRS}
+        external/eigen
 )
 
 # 4. Platform-Specific Linking
@@ -271,13 +286,24 @@ if(GLSLANG_VALIDATOR_EXE)
             COMMENT "Preprocessing shader ${REL_SHADER}"
         )
 
-        add_custom_command(
-            OUTPUT ${STAMP_FILE}
-            COMMAND ${GLSLANG_VALIDATOR_EXE} ${PREPROCESSED_FILE}
-            COMMAND ${CMAKE_COMMAND} -E touch ${STAMP_FILE}
-            DEPENDS ${PREPROCESSED_FILE}
-            COMMENT "Validating shader ${REL_SHADER}"
-        )
+        if(BOIDSISH_USE_SPIRV)
+            set(SPV_FILE "${PREPROCESSED_FILE}.spv")
+            add_custom_command(
+                OUTPUT ${STAMP_FILE} ${SPV_FILE}
+                COMMAND ${GLSLANG_VALIDATOR_EXE} -G --auto-map-locations --auto-map-bindings ${PREPROCESSED_FILE} -o ${SPV_FILE}
+                COMMAND ${CMAKE_COMMAND} -E touch ${STAMP_FILE}
+                DEPENDS ${PREPROCESSED_FILE}
+                COMMENT "Compiling shader ${REL_SHADER} to SPIR-V"
+            )
+        else()
+            add_custom_command(
+                OUTPUT ${STAMP_FILE}
+                COMMAND ${GLSLANG_VALIDATOR_EXE} ${PREPROCESSED_FILE}
+                COMMAND ${CMAKE_COMMAND} -E touch ${STAMP_FILE}
+                DEPENDS ${PREPROCESSED_FILE}
+                COMMENT "Validating shader ${REL_SHADER}"
+            )
+        endif()
 
         list(APPEND VALIDATION_OUTPUTS ${STAMP_FILE})
     endforeach()

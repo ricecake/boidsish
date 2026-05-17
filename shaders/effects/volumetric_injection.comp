@@ -1,0 +1,161 @@
+#version 460 core
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 4) in;
+
+layout(rgba16f, binding = [[VOLUMETRIC_INJECTION_IMAGE_BINDING]]) uniform image3D outInjection;
+layout(binding = [[VOLUMETRIC_HISTORY_BINDING]]) uniform sampler3D uHistoryTexture;
+layout(binding = 10) uniform sampler2D uBlueNoise;
+
+uniform mat4 uInvView;
+uniform mat4 uInvProj;
+uniform mat4 uPrevVP;
+uniform vec3 uPrevCamPos;
+uniform vec3 uPrevCamFront;
+
+uniform float uAnisotropy;
+uniform float uIntensity;
+uniform float uTemporalAlpha;
+
+#include "../helpers/math.glsl"
+#include "../atmosphere/common.glsl"
+#include "../helpers/lighting.glsl"
+
+const int NUM_CASCADES = 4;
+const float CASCADE_DISTANCES[4] = { 20.0, 60.0, 200.0, 1000.0 };
+
+vec3 worldFromFroxel(ivec3 vox, vec3 jitter) {
+    int cascade = vox.z / 64;
+    int z_in_cascade = vox.z % 64;
+
+    vec3 ndc;
+    ndc.xy = (vec2(vox.xy) + jitter.xy) / vec2(160, 90) * 2.0 - 1.0;
+
+    float z_near = (cascade == 0) ? 0.1 : CASCADE_DISTANCES[cascade - 1];
+    float z_far = CASCADE_DISTANCES[cascade];
+
+    // Logarithmic distribution for planar Depth (Z)
+    float linear_z = z_near * pow(z_far / z_near, (float(z_in_cascade) + jitter.z) / 64.0);
+
+    // Reconstruct View Space Position using planar depth
+    vec4 clipPos = vec4(ndc.xy, 0.0, 1.0);
+    vec4 viewDir = uInvProj * clipPos;
+    viewDir /= (abs(viewDir.w) > 0.0001) ? viewDir.w : 1.0;
+
+    // Planar depth reconstruction: P.z = -linear_z (assuming OpenGL RH)
+    // viewDir.z is typically -1 in view space before projection for a point on near plane
+    // P = viewDir * (linear_z / -viewDir.z)
+    float obliquity = length(viewDir.xyz) / max(0.0001, -viewDir.z);
+    vec3 froxelViewPos = viewDir.xyz * (linear_z / max(0.0001, -viewDir.z));
+
+    return (uInvView * vec4(froxelViewPos, 1.0)).xyz;
+}
+
+float getObliquity(ivec2 voxXY, vec3 jitter) {
+    vec3 ndc;
+    ndc.xy = (vec2(voxXY) + jitter.xy) / vec2(160, 90) * 2.0 - 1.0;
+    vec4 clipPos = vec4(ndc.xy, 0.0, 1.0);
+    vec4 viewDir = uInvProj * clipPos;
+    viewDir /= (abs(viewDir.w) > 0.0001) ? viewDir.w : 1.0;
+    return length(viewDir.xyz) / max(0.0001, -viewDir.z);
+}
+
+void main() {
+    ivec3 vox = ivec3(gl_GlobalInvocationID.xyz);
+    if (vox.x >= 160 || vox.y >= 90 || vox.z >= 64 * NUM_CASCADES) return;
+
+    // Jitter for temporal AA / stochastic sampling
+    ivec2 noiseCoords = vox.xy + ivec2(vox.z * 13, vox.z * 17);
+    vec3 jitter = texelFetch(uBlueNoise, noiseCoords % textureSize(uBlueNoise, 0), 0).rgb;
+
+    vec3 worldPos = worldFromFroxel(vox, jitter);
+
+    // Calculate scattering and extinction
+    Sampling s = getAtmospherePropertiesAtPos(worldPos);
+
+    vec3 radiance = vec3(0.0);
+    vec3 V = normalize(viewPos - worldPos);
+
+    // Direct light (Sun)
+    for (int i = 0; i < min(2, num_lights); ++i) {
+        if (lights[i].type != LIGHT_TYPE_DIRECTIONAL) continue;
+
+        vec3 L = normalize(-lights[i].direction);
+        float cosTheta = dot(-V, L);
+        float phase = henyeyGreenstein(uAnisotropy, cosTheta);
+
+        float shadow = calculateShadow(i, worldPos, vec3(0,1,0), L);
+        shadow *= calculateCloudShadow(i, worldPos);
+
+        float r = kEarthRadiusKM + (worldPos.y / (1000.0 * max(0.0001, worldScale)));
+        vec3 atmosphereTransmittance = texture(u_transmittanceLUT, getTransmittanceUV(r, L.y)).rgb;
+
+        radiance += lights[i].color * max(0.0, lights[i].intensity) * atmosphereTransmittance * shadow * phase;
+    }
+
+    // Local lights
+    for (int i = 2; i < num_lights; ++i) {
+        vec3 L; float atten;
+        calculateLightContribution(i, worldPos, L, atten);
+        if (atten <= 0.0) continue;
+
+        float cosTheta = dot(-V, L);
+        float phase = henyeyGreenstein(uAnisotropy, cosTheta);
+        float shadow = calculateShadow(i, worldPos, vec3(0,1,0), L);
+
+        radiance += lights[i].color * lights[i].intensity * atten * shadow * phase;
+    }
+
+    // Ambient (SH) - We use a simple isotropic phase for ambient light
+    radiance += getSpatialAmbientSH(worldPos, V) * 0.1;
+
+    radiance *= uIntensity * 2.0; // Boosted intensity for prominence
+
+    // Convert atmospheric coefficients from per-KM to per-meter
+    float obliquity = getObliquity(vox.xy, jitter);
+    vec3 mieCoeff = s.mie * 0.001 * obliquity;
+    float extinctionCoeff = (s.rayleigh.r + s.rayleigh.g + s.rayleigh.b + s.mie.r + s.mie.g + s.mie.b) / 3.0 * 0.001 * obliquity;
+
+    vec4 current = vec4(radiance * mieCoeff, extinctionCoeff);
+
+    // Temporal accumulation
+    if (uTemporalAlpha > 0.0) {
+        vec4 prevClip = uPrevVP * vec4(worldPos, 1.0);
+        vec3 prevNDC = prevClip.xyz / (abs(prevClip.w) > 0.0001 ? prevClip.w : 1.0);
+
+        if (all(greaterThanEqual(prevNDC, vec3(-1.0))) && all(lessThanEqual(prevNDC, vec3(1.0)))) {
+            // Reproject current world position into previous frame's froxel grid
+            vec3 prevUV = prevNDC * 0.5 + 0.5;
+
+            // Find previous cascade using planar depth (Z)
+            float prevLinearZ = dot(worldPos - uPrevCamPos, uPrevCamFront);
+
+            int prevCascade = -1;
+            float z_near = 0.1;
+            float z_far = 0.0;
+            for (int i = 0; i < NUM_CASCADES; ++i) {
+                if (prevLinearZ <= CASCADE_DISTANCES[i]) {
+                    prevCascade = i;
+                    z_far = CASCADE_DISTANCES[i];
+                    if (i > 0) z_near = CASCADE_DISTANCES[i-1];
+                    break;
+                }
+            }
+
+            if (prevCascade != -1 && prevLinearZ > z_near) {
+                float slice = clamp(log(prevLinearZ / z_near) / log(z_far / z_near), 0.0, 1.0);
+                float w = (float(prevCascade) * 64.0 + (slice * 63.5 + 0.5)) / (64.0 * float(NUM_CASCADES));
+
+                vec4 history = texture(uHistoryTexture, vec3(prevUV.xy, w));
+                if (all(greaterThanEqual(history, vec4(0.0))) && all(lessThanEqual(history, vec4(1000.0)))) {
+                    current = mix(current, history, uTemporalAlpha);
+                }
+            }
+        }
+    }
+
+    // Safety clamp to prevent NaN/Inf propagation
+    current = clamp(current, vec4(0.0), vec4(1000.0));
+    if (any(isnan(current))) current = vec4(0.0);
+
+    imageStore(outInjection, vox, current);
+}

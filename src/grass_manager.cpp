@@ -23,6 +23,7 @@ namespace Boidsish {
         if (grass_props_ubo_) glDeleteBuffers(1, &grass_props_ubo_);
         if (grass_instances_ssbo_) glDeleteBuffers(1, &grass_instances_ssbo_);
         if (grass_indirect_buffer_) glDeleteBuffers(1, &grass_indirect_buffer_);
+        if (grass_tasks_ssbo_) glDeleteBuffers(1, &grass_tasks_ssbo_);
         if (dummy_vao_) glDeleteVertexArrays(1, &dummy_vao_);
     }
 
@@ -32,9 +33,11 @@ namespace Boidsish {
         PopulateDefaultGrassProperties();
 
         placement_shader_ = std::make_unique<ComputeShader>("shaders/grass_placement.comp");
+        pre_pass_shader_ = std::make_unique<ComputeShader>("shaders/grass_pre_pass.comp");
+        fixup_shader_ = std::make_unique<ComputeShader>("shaders/grass_command_fixup.comp");
         grass_shader_ = std::make_shared<Shader>("shaders/grass.vert", "shaders/grass.frag", "shaders/grass.tcs", "shaders/grass.tes");
 
-        if (!placement_shader_->isValid() || !grass_shader_->ID) {
+        if (!placement_shader_->isValid() || !pre_pass_shader_->isValid() || !fixup_shader_->isValid() || !grass_shader_->ID) {
             logger::ERROR("Failed to compile grass shaders");
             return;
         }
@@ -42,25 +45,13 @@ namespace Boidsish {
         // The FrustumData and Lighting UBOs in frustum.glsl and lighting.glsl
         // don't have explicit binding qualifiers, so we need to wire them up manually.
         // Without this, the compute shader's frustum culling reads garbage and rejects all blades.
-        GLuint frustum_idx = glGetUniformBlockIndex(placement_shader_->ID, "FrustumData");
-        if (frustum_idx != GL_INVALID_INDEX)
-            glUniformBlockBinding(placement_shader_->ID, frustum_idx, Constants::UboBinding::FrustumData());
+        placement_shader_->bindUniformBlock("FrustumData", Constants::UboBinding::FrustumData());
+        pre_pass_shader_->bindUniformBlock("FrustumData", Constants::UboBinding::FrustumData());
 
-        GLuint lighting_idx = glGetUniformBlockIndex(grass_shader_->ID, "Lighting");
-        if (lighting_idx != GL_INVALID_INDEX)
-            glUniformBlockBinding(grass_shader_->ID, lighting_idx, Constants::UboBinding::Lighting());
-
-        GLuint shadows_idx = glGetUniformBlockIndex(grass_shader_->ID, "Shadows");
-        if (shadows_idx != GL_INVALID_INDEX)
-            glUniformBlockBinding(grass_shader_->ID, shadows_idx, Constants::UboBinding::Shadows());
-
-        GLuint terrain_idx = glGetUniformBlockIndex(grass_shader_->ID, "TerrainData");
-        if (terrain_idx != GL_INVALID_INDEX)
-            glUniformBlockBinding(grass_shader_->ID, terrain_idx, Constants::UboBinding::TerrainData());
-
-        GLuint biome_idx = glGetUniformBlockIndex(grass_shader_->ID, "BiomeData");
-        if (biome_idx != GL_INVALID_INDEX)
-            glUniformBlockBinding(grass_shader_->ID, biome_idx, Constants::UboBinding::Biomes());
+        grass_shader_->bindUniformBlock("Lighting", Constants::UboBinding::Lighting());
+        grass_shader_->bindUniformBlock("Shadows", Constants::UboBinding::Shadows());
+        grass_shader_->bindUniformBlock("TerrainData", Constants::UboBinding::TerrainData());
+        grass_shader_->bindUniformBlock("BiomeData", Constants::UboBinding::Biomes());
 
         _InitializeResources();
         initialized_ = true;
@@ -87,6 +78,14 @@ namespace Boidsish {
         glBufferData(GL_DRAW_INDIRECT_BUFFER, sizeof(DrawArraysIndirectCommand), &cmd, GL_DYNAMIC_DRAW);
         glBindBuffer(GL_DRAW_INDIRECT_BUFFER, 0);
 
+        // Task SSBO
+        glGenBuffers(1, &grass_tasks_ssbo_);
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, grass_tasks_ssbo_);
+        // Header (uint num_groups_x, y, z, taskCount) + tasks
+        size_t tasks_size = 16 + kMaxGrassTasks * sizeof(GrassTask);
+        glBufferData(GL_SHADER_STORAGE_BUFFER, tasks_size, nullptr, GL_DYNAMIC_DRAW);
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+
         glGenVertexArrays(1, &dummy_vao_);
     }
 
@@ -106,9 +105,10 @@ namespace Boidsish {
         lushGrass.colorBottom = glm::vec4(0.1f, 0.3f, 0.05f, 1.0f);
         lushGrass.height = 1.0f;
         lushGrass.width = 0.1f;
-        lushGrass.density = 1.0f;
+        lushGrass.density = 0.8f;
         lushGrass.windInfluence = 1.0f;
         lushGrass.rigidity = 0.3f;
+        lushGrass.flowerRatio = 0.05f;
         SetGrassProperties(Biome::LushGrass, lushGrass);
 
         // Dry Grass
@@ -117,7 +117,7 @@ namespace Boidsish {
         dryGrass.colorBottom = glm::vec4(0.3f, 0.25f, 0.1f, 1.0f);
         dryGrass.height = 0.8f;
         dryGrass.width = 0.08f;
-        dryGrass.density = 0.7f;
+        dryGrass.density = 0.6f;
         dryGrass.windInfluence = 0.6f;
         dryGrass.rigidity = 0.6f;
         SetGrassProperties(Biome::DryGrass, dryGrass);
@@ -128,7 +128,7 @@ namespace Boidsish {
         forestGrass.colorBottom = glm::vec4(0.02f, 0.1f, 0.02f, 1.0f);
         forestGrass.height = 1.5f;
         forestGrass.width = 0.12f;
-        forestGrass.density = 0.9f;
+        forestGrass.density = 0.75f;
         forestGrass.windInfluence = 0.4f;
         forestGrass.rigidity = 0.5f;
         SetGrassProperties(Biome::Forest, forestGrass);
@@ -139,9 +139,10 @@ namespace Boidsish {
         alpineGrass.colorBottom = glm::vec4(0.1f, 0.4f, 0.1f, 1.0f);
         alpineGrass.height = 0.6f;
         alpineGrass.width = 0.06f;
-        alpineGrass.density = 1.0f;
+        alpineGrass.density = 0.7f;
         alpineGrass.windInfluence = 1.2f;
         alpineGrass.rigidity = 0.2f;
+        alpineGrass.flowerRatio = 0.15f;
         SetGrassProperties(Biome::AlpineMeadow, alpineGrass);
 
         // Add some basic grass properties to other biomes to ensure we always have some coverage
@@ -180,6 +181,8 @@ namespace Boidsish {
     void GrassManager::Update(float deltaTime, float time, const Camera& camera, const ITerrainGenerator& terrainGen, std::shared_ptr<TerrainRenderManager> renderManager) {
         if (!initialized_) return;
 
+        last_camera_pos_ = camera.pos();
+
         if (props_dirty_) {
             glBindBuffer(GL_UNIFORM_BUFFER, grass_props_ubo_);
             glBufferSubData(GL_UNIFORM_BUFFER, 0, 8 * sizeof(GrassProperties), biome_grass_props_.data());
@@ -195,6 +198,37 @@ namespace Boidsish {
     }
 
     void GrassManager::_UpdatePlacement(const Camera& camera, const ITerrainGenerator& terrainGen, std::shared_ptr<TerrainRenderManager> renderManager) {
+        // 1. Pre-pass: Build task queue
+        pre_pass_shader_->use();
+        renderManager->BindTerrainData(*pre_pass_shader_);
+
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainPatchVisibility(), renderManager->GetPatchVisibilitySSBO());
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainPatchMetrics(), renderManager->GetPatchMetricsSSBO());
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::GrassTasks(), grass_tasks_ssbo_);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::IndirectionBuffer(), renderManager->GetInstanceBuffer());
+
+        pre_pass_shader_->setVec3("uCameraPos", camera.pos());
+        pre_pass_shader_->setFloat("uWorldScale", terrainGen.GetWorldScale());
+        pre_pass_shader_->setInt("u_numChunks", (int)renderManager->GetVisibleChunkCount());
+
+        uint32_t zero = 0;
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, grass_tasks_ssbo_);
+        glBufferSubData(GL_SHADER_STORAGE_BUFFER, 12, sizeof(uint32_t), &zero); // zero out taskCount
+
+        int numPatchesPerChunk = Constants::Class::Terrain::PatchesPerChunk();
+        int total_patches = (int)renderManager->GetVisibleChunkCount() * numPatchesPerChunk;
+        if (total_patches > 0) {
+            glDispatchCompute((total_patches + 63) / 64, 1, 1);
+            glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+        }
+
+        // Fixup: Set dispatch counts
+        fixup_shader_->use();
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::GrassTasks(), grass_tasks_ssbo_);
+        glDispatchCompute(1, 1, 1);
+        glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT);
+
+        // 2. Placement: Process tasks
         placement_shader_->use();
 
         renderManager->BindTerrainData(*placement_shader_);
@@ -202,16 +236,18 @@ namespace Boidsish {
         glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::GrassProps(), grass_props_ubo_);
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::GrassInstances(), grass_instances_ssbo_);
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::GrassIndirect(), grass_indirect_buffer_);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::GrassTasks(), grass_tasks_ssbo_);
 
         placement_shader_->setVec3("uCameraPos", camera.pos());
         placement_shader_->setFloat("uWorldScale", terrainGen.GetWorldScale());
         placement_shader_->setFloat("uMaxInstances", (float)kMaxGrassInstances);
 
-        uint32_t zero = 0;
         glBindBuffer(GL_DRAW_INDIRECT_BUFFER, grass_indirect_buffer_);
         glBufferSubData(GL_DRAW_INDIRECT_BUFFER, offsetof(DrawArraysIndirectCommand, instanceCount), sizeof(uint32_t), &zero);
 
-        glDispatchCompute(256, 256, 1);
+        // Dispatch placement based on taskCount
+        glBindBuffer(GL_DISPATCH_INDIRECT_BUFFER, grass_tasks_ssbo_);
+        glDispatchComputeIndirect(0);
         glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT);
     }
 

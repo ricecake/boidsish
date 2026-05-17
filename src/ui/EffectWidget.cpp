@@ -65,8 +65,8 @@ namespace Boidsish {
 					auto& manager = m_visualizer.GetPostProcessingManager();
 
 					for (auto& effect : manager.GetPreToneMappingEffects()) {
-						// Atmosphere is handled in EnvironmentWidget
-						if (effect->GetName() == "Atmosphere")
+						// Atmosphere and Volumetric Lighting are handled in EnvironmentWidget
+						if (effect->GetName() == "Atmosphere" || effect->GetName() == "Volumetric Lighting")
 							continue;
 
 						bool is_enabled = effect->IsEnabled();
@@ -208,54 +208,82 @@ namespace Boidsish {
 									bloom_effect->SetMaxIntensity(max_intensity);
 								}
 
-								ImGui::Separator();
-								ImGui::Text("Auto-Exposure");
-								bool ae_enabled = bloom_effect->IsAutoExposureEnabled();
-								if (ImGui::Checkbox("Enable AE", &ae_enabled)) {
-									bloom_effect->SetAutoExposureEnabled(ae_enabled);
-								}
-								if (ae_enabled) {
-									float target_lum = bloom_effect->GetTargetLuminance();
-									if (ImGui::SliderFloat("Target Luminance", &target_lum, 0.01f, 1.0f)) {
-										bloom_effect->SetTargetLuminance(target_lum);
-									}
-									float speed_up = bloom_effect->GetSpeedUp();
-									if (ImGui::SliderFloat("Speed Up", &speed_up, 0.1f, 10.0f)) {
-										bloom_effect->SetAdaptationSpeeds(speed_up, bloom_effect->GetSpeedDown());
-									}
-									float speed_down = bloom_effect->GetSpeedDown();
-									if (ImGui::SliderFloat("Speed Down", &speed_down, 0.1f, 10.0f)) {
-										bloom_effect->SetAdaptationSpeeds(bloom_effect->GetSpeedUp(), speed_down);
-									}
-									float min_exposure = bloom_effect->GetMinExposure();
-									if (ImGui::SliderFloat("Min Exposure", &min_exposure, 0.01f, 10.0f)) {
-										bloom_effect->SetExposureLimits(min_exposure, bloom_effect->GetMaxExposure());
-									}
-									float max_exposure = bloom_effect->GetMaxExposure();
-									if (ImGui::SliderFloat("Max Exposure", &max_exposure, 1.0f, 100.0f)) {
-										bloom_effect->SetExposureLimits(bloom_effect->GetMinExposure(), max_exposure);
-									}
-								}
-								ImGui::Separator();
-								bool is_enabled = bloom_effect->IsToneMappingEnabled();
-								if (ImGui::Checkbox("Tone Mapping", &is_enabled)) {
-									bloom_effect->SetToneMappingEnabled(is_enabled);
-								}
-								if (is_enabled) {
-									const char* modes[] = {
-										"ACES",
-										"Filmic",
-										"Lottes",
-										"Reinhard",
-										"Reinhard II",
-										"Uchimura",
-										"Uncharted 2",
-										"Unreal 3"
+								if (ImGui::BeginTabBar("BloomTabs")) {
+									auto drawSettings = [&](const char* label, PostProcessing::BloomEffect::LayerSettings& settings, bool isScene) {
+										if (ImGui::BeginTabItem(label)) {
+											ImGui::Text("Auto-Exposure");
+											ImGui::Checkbox("Enable AE", &settings.autoExposureEnabled);
+											if (settings.autoExposureEnabled) {
+												ImGui::SliderFloat("Target Luminance", &settings.targetLuminance, 0.01f, 1.0f);
+												ImGui::SliderFloat("Speed Up", &settings.speedUp, 0.1f, 10.0f);
+												ImGui::SliderFloat("Speed Down", &settings.speedDown, 0.1f, 10.0f);
+												ImGui::SliderFloat("Min Exposure", &settings.minExposure, 0.01f, 10.0f);
+												ImGui::SliderFloat("Max Exposure", &settings.maxExposure, 1.0f, 100.0f);
+												ImGui::SliderFloat("Center Weight", &settings.centerWeightTightness, 0.0f, 10.0f);
+												ImGui::SliderFloat2("Focus Point", &settings.focusPoint.x, 0.0f, 1.0f);
+												ImGui::SliderFloat("Histogram Low Cutoff", &settings.histogramLowCutoff, 0.0f, 1.0f);
+												ImGui::SliderFloat("Histogram High Cutoff", &settings.histogramHighCutoff, 0.0f, 1.0f);
+											}
+											ImGui::Separator();
+											ImGui::Checkbox("Tone Mapping", &settings.toneMappingEnabled);
+											if (settings.toneMappingEnabled) {
+												const char* modes[] = { "ACES", "Filmic", "Lottes", "Reinhard", "Reinhard II", "Uchimura", "Uncharted 2", "Unreal 3", "Debug" };
+												ImGui::Combo("Mode", &settings.toneMappingMode, modes, IM_ARRAYSIZE(modes));
+
+												if (settings.toneMappingMode == 5) { // Uchimura
+													ImGui::SliderFloat("Max Brightness (P)", &settings.uchimuraP, 0.1f, 10.0f);
+													ImGui::SliderFloat("Contrast (a)", &settings.uchimuraA, 0.1f, 5.0f);
+													ImGui::SliderFloat("Linear Start (m)", &settings.uchimuraM, 0.0f, 1.0f);
+													ImGui::SliderFloat("Linear Length (l)", &settings.uchimuraL, 0.0f, 1.0f);
+													ImGui::SliderFloat("Black (c)", &settings.uchimuraC, 1.0f, 5.0f);
+													ImGui::SliderFloat("Pedestal (b)", &settings.uchimuraB, 0.0f, 1.0f);
+												}
+											}
+
+											if (ImGui::TreeNode("Color Pipeline")) {
+												ImGui::Checkbox("Enable Auto-tune", &settings.autoTuneEnabled);
+												if (settings.autoTuneEnabled) {
+													ImGui::SliderFloat("Min Contrast", &settings.minContrast, 0.1f, 1.0f);
+													ImGui::SliderFloat("Max Contrast", &settings.maxContrast, 1.0f, 5.0f);
+													ImGui::SliderFloat("Target Brightness", &settings.targetBrightness, 0.1f, 2.0f);
+												}
+
+												ImGui::Separator();
+												ImGui::Text("ASC CDL");
+												ImGui::ColorEdit3("Slope", &settings.cdlSlope.x);
+												ImGui::ColorEdit3("Offset", &settings.cdlOffset.x);
+												ImGui::ColorEdit3("Power", &settings.cdlPower.x);
+												ImGui::SliderFloat("Saturation", &settings.cdlSaturation, 0.0f, 2.0f);
+
+												ImGui::Separator();
+												ImGui::Text("White Balance");
+												ImGui::SliderFloat("Temperature (K)", &settings.whiteTemp, 2000.0f, 12000.0f);
+												ImGui::SliderFloat("Tint", &settings.whiteTint, -1.0f, 1.0f);
+
+												if (isScene) {
+													ImGui::Separator();
+													ImGui::Text("Local Tone Mapping (Exposure Fusion)");
+													ImGui::Checkbox("Enable LTM", &settings.ltmEnabled);
+													if (settings.ltmEnabled) {
+														ImGui::SliderFloat("EV Spread", &settings.ltmEvSpread, 0.0f, 4.0f);
+														ImGui::SliderFloat("Well Exposed Target", &settings.ltmTarget, 0.0f, 1.0f);
+														ImGui::SliderFloat("Well Exposed Sigma", &settings.ltmSigma, 0.01f, 1.0f);
+														ImGui::SliderFloat("Weight Contrast", &settings.ltmWeightContrast, 0.0f, 1.0f);
+														ImGui::SliderFloat("Weight Saturation", &settings.ltmWeightSaturation, 0.0f, 1.0f);
+														ImGui::SliderFloat("Weight Exposedness", &settings.ltmWeightExposedness, 0.0f, 1.0f);
+														ImGui::SliderFloat("Boost Local Contrast", &settings.ltmBoostLocalContrast, 0.0f, 2.0f);
+													}
+												}
+												ImGui::TreePop();
+											}
+											ImGui::EndTabItem();
+										}
 									};
-									int current_mode = bloom_effect->GetToneMappingMode();
-									if (ImGui::Combo("Mode", &current_mode, modes, IM_ARRAYSIZE(modes))) {
-										bloom_effect->SetToneMappingMode(current_mode);
-									}
+
+									drawSettings("Scene", bloom_effect->GetSceneSettings(), true);
+									drawSettings("Sky", bloom_effect->GetSkySettings(), false);
+
+									ImGui::EndTabBar();
 								}
 							}
 						}

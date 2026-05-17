@@ -1,4 +1,5 @@
-#version 330 core
+#version 460 core
+#extension GL_ARB_shader_draw_parameters : enable
 
 out vec2 TexCoords;
 

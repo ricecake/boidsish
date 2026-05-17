@@ -1,9 +1,23 @@
-#version 430 core
+#version 460 core
 
 #include "helpers/noise.glsl"
+#include "helpers/fast_noise.glsl"
 #include "frustum.glsl"
 
-layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+struct GrassTask {
+    vec4 patch_offset_and_scale; // xyz = world offset, w = patch size
+    vec4 data;                   // x = distance, y = slice, z = lodIndex, w = unused
+};
+
+layout(std430, binding = [[GRASS_TASKS_BINDING]]) buffer GrassTasks {
+    uint num_groups_x;
+    uint num_groups_y;
+    uint num_groups_z;
+    uint taskCount;
+    GrassTask tasks[];
+};
 
 struct GrassInstance {
     vec4 pos_rot;   // xyz = world pos, w = rotation
@@ -37,7 +51,7 @@ struct GrassProperties {
     float colorVariability;
     float windInfluence;
     uint  enabled;
-    float _pad0;
+    float flowerRatio;
     float _pad1;
     float _pad2;
 };
@@ -100,42 +114,10 @@ struct GridCell {
     float maxRange;
     float lower;
     float upper;
-
 };
-    // smoothstep(minRange - (maxRange+minRange/4), maxRange + (maxRange+minRange/4), distance)
-    // minRange = exp2(floor((index-1)*log2(3)))
-    // maxRange = exp2(floor(index*log2(3)))
-    // morton codes on logarithmic grid?  log-spiral grid - two sets of N log spirals in opposite directions.
 
-GridCell makeGridCell(vec3 invocationPos, vec3 cameraPos, int index) {
-    float baseScale = 0.2 * uWorldScale;
-    float baseRange = 20.0 * uWorldScale;
-
-    float scale = baseScale * exp(float(index));
-    vec2 cameraCell = floor(cameraPos.xz / scale);
-    vec2 cellID = cameraCell + (invocationPos.xz);
-
-    float maxRange = baseRange * exp(float(index));
-    float minRange = (index <= 0) ? 0.0 : baseRange * exp(float(index - 1));
-
-    // Overlap to mask changes in density and grid size
-    float lower = minRange;//(index <= 1) ? minRange : baseRange * exp(float(index - 2));
-    float upper = baseRange * exp(float(index+1));
-
-    return GridCell(
-        cellID,
-        index,
-        scale,
-        minRange,
-        maxRange,
-        lower,
-        upper
-    );
-}
-
-void spawnBlade(GridCell cell) {
+void spawnBlade(GridCell cell, int slice, vec3 patchOffset, float patchSize) {
     float gridStep = cell.scale;
-
     float lower = cell.lower;
     float upper = cell.upper;
 
@@ -143,8 +125,6 @@ void spawnBlade(GridCell cell) {
     ivec2 cellID = ivec2(cell.Coord);
 
     vec2 cellCenter = vec2(cell.Coord) * cell.scale;
-    float dist = distance(cellCenter, uCameraPos.xz);
-    if ((dist > upper) || (dist < lower)) return;
 
     // --- Fast GPU Culling ---
     vec3 cellMin = vec3(cellCenter.x - gridStep * 0.5, -20.0 * uWorldScale, cellCenter.y - gridStep * 0.5);
@@ -158,21 +138,15 @@ void spawnBlade(GridCell cell) {
     vec2 jitter = (vec2(hash(seed), hash(seed + 1234u)) * 2.0 - 1.0) * gridStep * 0.45;
     vec2 worldPosXZ = cellCenter + jitter;
 
-    dist = distance(worldPosXZ, uCameraPos.xz);
+    // Ensure only the patch containing the blade's actual position spawns it
+    if (worldPosXZ.x < patchOffset.x || worldPosXZ.x >= patchOffset.x + patchSize ||
+        worldPosXZ.y < patchOffset.z || worldPosXZ.y >= patchOffset.z + patchSize) return;
+
+    float dist = distance(worldPosXZ, uCameraPos.xz);
     if ((dist > upper) || (dist < lower)) return;
 
     float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
     ivec2 chunkCoord = ivec2(floor(worldPosXZ / scaledChunkSize));
-    ivec2 localGridCoord = chunkCoord - u_originSize.xy;
-
-    if (u_originSize.w < 1 || localGridCoord.x < 0 || localGridCoord.x >= u_originSize.z ||
-        localGridCoord.y < 0 || localGridCoord.y >= u_originSize.z) {
-        return;
-    }
-
-    int slice = texelFetch(u_chunkGrid, localGridCoord, 0).r;
-    if (slice < 0) return;
-
     vec2 chunkBase = vec2(chunkCoord) * scaledChunkSize;
     vec2 uv = (worldPosXZ - chunkBase) / scaledChunkSize;
     vec2 remappedUV = (uv * u_terrainParams.x + 0.5) / (u_terrainParams.x + 1.0);
@@ -181,23 +155,26 @@ void spawnBlade(GridCell cell) {
     float height = terrainSample.r;
     vec3 normal = terrainSample.gba;
 
-    if (height <= 0.0) {
-        return;
-    }
-
+    if (height <= 0.0) return;
     if (normal.y < 0.7) return;
 
-    // dist *= -dot(normal, frustumPlanes[4].xyz);
-
     vec2 biomeData = textureLod(uBiomeMap, vec3(remappedUV, float(slice)), 0.0).rg;
-    int pickedBiome = (hash(seed + 5566) < biomeData.g) ? int(biomeData.r * 255.0 + 0.5) + 1 : int(biomeData.r * 255.0 + 0.5);
+    int idxA = int(biomeData.r * 255.0 + 0.5);
+    int idxB = clamp(idxA + 1, 0, 7);
+    float t = biomeData.g;
+
+    int pickedBiome = (hash(seed + 5566) < t) ? idxB : idxA;
     pickedBiome = clamp(pickedBiome, 0, 7);
 
     if (biomeProps[pickedBiome].enabled == 0) return;
 
-    float fadeIn = (cell.index == 0) ? 1.0 : smoothstep(lower, cell.minRange, dist);
-    float fadeOut = 1.0 - smoothstep(cell.maxRange, upper, dist);
+    float fadeIn = (cell.index == -1) ? 1.0 : smoothstep(lower, cell.minRange + 0.001, dist);
+    float fadeOut = 1.0 - smoothstep(cell.maxRange, upper + 0.001, dist);
     float densityCurve = fadeIn * fadeOut;
+
+    float densityA = biomeProps[idxA].density;
+    float densityB = biomeProps[idxB].density;
+    float interpolatedDensity = mix(densityA, densityB, t);
 
     int bx = cellID.x & 7;
     int by = cellID.y & 7;
@@ -205,7 +182,7 @@ void spawnBlade(GridCell cell) {
         int tmp = bx; bx = by; by = 7 - tmp;
     }
     float ditherValue = float(bayer8x8[by * 8 + bx]) / 64.0;
-    float finalDither = ditherValue * (1.1 - biomeProps[pickedBiome].density * globalProps.densityMultiplier);
+    float finalDither = ditherValue * (1.1 - interpolatedDensity * globalProps.densityMultiplier);
 
     if (densityCurve < finalDither) return;
 
@@ -214,7 +191,11 @@ void spawnBlade(GridCell cell) {
     uint idx = atomicAdd(indirectCommand.instanceCount, 1);
     if (idx >= uint(uMaxInstances)) return;
 
+    float patchNoise = fastWorley3d(vec3(worldPosXZ * 0.01, 0.0)) * 0.5 + 0.5;
+    float patchLengthBoost = smoothstep(0.4, 0.7, patchNoise) * 0.5;
+
     float hVar = (hash(seed + 1357) * 2.0 - 1.0) * biomeProps[pickedBiome].heightVariance;
+    hVar += patchLengthBoost;
     float wVar = (hash(seed + 2468) * 2.0 - 1.0) * biomeProps[pickedBiome].widthVariance;
     float rot = hash(seed + 3579) * 6.28318;
 
@@ -228,11 +209,53 @@ void spawnBlade(GridCell cell) {
 }
 
 void main() {
-    vec3 offset = (gl_NumWorkGroups.xzy * gl_WorkGroupSize.xzy)/2.0;
-    vec3 coord = gl_GlobalInvocationID.xzy - offset;
+    uint taskIdx = gl_WorkGroupID.x;
+    if (taskIdx >= taskCount) return;
 
-    spawnBlade(makeGridCell(coord, uCameraPos, -1));
-    spawnBlade(makeGridCell(coord, uCameraPos, 0));
-    spawnBlade(makeGridCell(coord, uCameraPos, 1));
-    spawnBlade(makeGridCell(coord, uCameraPos, 2));
+    GrassTask task = tasks[taskIdx];
+    vec3 patchOffset = task.patch_offset_and_scale.xyz;
+    float patchSize = task.patch_offset_and_scale.w;
+    int slice = int(task.data.y);
+    int lodIndex = int(task.data.z);
+
+    // Calculate grid scale for this LOD
+    float baseScale = 0.2 * uWorldScale;
+    float scale = baseScale * exp(float(lodIndex));
+
+    // Calculate range of grid cells that intersect this patch
+    vec2 patchMin = patchOffset.xz;
+    vec2 patchMax = patchOffset.xz + vec2(patchSize);
+
+    ivec2 cellMin = ivec2(floor(patchMin / scale + 0.0001));
+    ivec2 cellMax = ivec2(floor(patchMax / scale - 0.0001));
+
+    // Calculate total cells in this LOD for the patch
+    int cellsX = (cellMax.x - cellMin.x) + 1;
+    int cellsY = (cellMax.y - cellMin.y) + 1;
+    int totalCells = cellsX * cellsY;
+
+    // Grid properties for this LOD
+    float baseRange = 20.0 * uWorldScale;
+    float maxRange = baseRange * exp(float(lodIndex));
+    float minRange = (lodIndex <= -1) ? 0.0 : baseRange * exp(float(lodIndex - 1));
+    float lower = minRange * 0.75;
+    float upper = maxRange * 1.25;
+
+    // Each thread in the workgroup processes some subset of these cells
+    for (int i = int(gl_LocalInvocationID.x); i < totalCells; i += 64) {
+        int cx = i % cellsX;
+        int cy = i / cellsX;
+        ivec2 cellID = cellMin + ivec2(cx, cy);
+
+        GridCell cell;
+        cell.Coord = vec2(cellID);
+        cell.index = lodIndex;
+        cell.scale = scale;
+        cell.minRange = minRange;
+        cell.maxRange = maxRange;
+        cell.lower = lower;
+        cell.upper = upper;
+
+        spawnBlade(cell, slice, patchOffset, patchSize);
+    }
 }
