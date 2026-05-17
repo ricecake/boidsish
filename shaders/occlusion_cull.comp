@@ -67,13 +67,22 @@ bool projectAABB(vec3 aabbMin, vec3 aabbMax, mat4 vp, out vec4 screenRect, out f
 		return true;
 	}
 
-	// If the object was entirely off-screen in the previous frame,
-	// the Hi-Z has no valid data for it - skip occlusion test
-	if (maxScreen.x < 0.0 || minScreen.x > 1.0 || maxScreen.y < 0.0 || minScreen.y > 1.0) {
+
+	// If the object was even PARTIALLY off-screen in the previous frame,
+	// the Hi-Z buffer lacks the data for the off-screen volume. Do not clamp and cull.
+	if (minScreen.x < 0.0 || maxScreen.x > 1.0 || minScreen.y < 0.0 || maxScreen.y > 1.0) {
 		screenRect = vec4(0.0);
 		nearestDepth = 0.0;
-		return false;
+		return false; // Treat as visible to prevent edge popping
 	}
+
+	// // If the object was entirely off-screen in the previous frame,
+	// // the Hi-Z has no valid data for it - skip occlusion test
+	// if (maxScreen.x < 0.0 || minScreen.x > 1.0 || maxScreen.y < 0.0 || minScreen.y > 1.0) {
+	// 	screenRect = vec4(0.0);
+	// 	nearestDepth = 0.0;
+	// 	return false;
+	// }
 
 	// Apply screen-space expansion for temporal safety
 	vec2 expand = u_screenExpansion / vec2(u_hizSize);

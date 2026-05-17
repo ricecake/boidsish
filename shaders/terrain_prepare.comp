@@ -169,7 +169,11 @@ bool projectAABB(vec3 aabbMin, vec3 aabbMax, mat4 vp, out vec4 screenRect, out f
 		return true;
 	}
 
-	if (maxScreen.x < 0.0 || minScreen.x > 1.0 || maxScreen.y < 0.0 || minScreen.y > 1.0) return false;
+	if (minScreen.x < 0.0 || maxScreen.x > 1.0 || minScreen.y < 0.0 || maxScreen.y > 1.0) {
+		screenRect = vec4(0.0);
+		nearestDepth = 0.0;
+		return false; // Treat as visible to prevent edge popping
+	}
 
 	vec2 expand = u_screenExpansion / vec2(u_hizSize);
 	minScreen -= expand;
@@ -180,11 +184,13 @@ bool projectAABB(vec3 aabbMin, vec3 aabbMax, mat4 vp, out vec4 screenRect, out f
 }
 
 void main() {
+	float rejectReason = 0.0;
 	int globalIdx = int(gl_GlobalInvocationID.x);
 	int numPatchesPerChunk = [[PATCHES_PER_CHUNK_SIDE]] * [[PATCHES_PER_CHUNK_SIDE]];
 	int totalPatches = u_numChunks * numPatchesPerChunk;
 
-	if (globalIdx >= totalPatches) return;
+	// if (globalIdx >= totalPatches) return;
+	if (globalIdx >= totalPatches) return; //rejectReason = 1;
 
 	int chunkIdx = globalIdx / numPatchesPerChunk;
 	int localPatchIdx = globalIdx % numPatchesPerChunk;
@@ -213,6 +219,7 @@ void main() {
 	// Added a small margin to prevent edge flickering
 	if (!isAABBInFrustum(aabbMin - 1.0 * u_worldScale, aabbMax + 1.0 * u_worldScale)) {
 		return;
+		// rejectReason += 2;
 	}
 
 	// OCCLUSION CULLING
@@ -227,33 +234,37 @@ void main() {
 			vec2 screenSize = screenRect.zw - screenRect.xy;
 			// If patch is very large on screen, skip occlusion check
 			if (screenSize.x * screenSize.y < 0.5) {
-				vec2  pixelSize = screenSize * vec2(u_hizSize);
-				float maxPixelDim = max(pixelSize.x, pixelSize.y);
-				// Selecting a mip level where the projected rect is approx 1x1 texel at this mip.
-				// This ensures that a 4-tap sampling of the corners covers the entire AABB area
-				// conservatively (at most 2x2 texels in the chosen mip level).
-				int mipLevel = clamp(int(ceil(log2(max(maxPixelDim, 1.0)))), 0, u_hizMipCount - 1);
 
-				// Conservative occlusion check: farthest depth in Hi-Z region vs nearest depth of patch
+				// Choose Hi-Z mip level as before
+				vec2  pixelSize = screenSize * vec2(u_hizSize);
+				float maxPixelDim = max(pixelSize.x, pixelSize.y)+1.0;
+				int   mipLevel = clamp(int(ceil(log2(max(maxPixelDim, 1.0)))), 0, u_hizMipCount - 1);
+				ivec2 mipSize = max(u_hizSize >> mipLevel, ivec2(1));
+				ivec2 p00 = clamp(ivec2(screenRect.xy * vec2(mipSize)), ivec2(0), mipSize - ivec2(1));
+				ivec2 p11 = clamp(ivec2(screenRect.zw * vec2(mipSize)), ivec2(0), mipSize - ivec2(1));
 				float hizDepth = 0.0;
-				hizDepth = max(hizDepth, textureLod(u_hizTexture, screenRect.xy, float(mipLevel)).r);
-				hizDepth = max(hizDepth, textureLod(u_hizTexture, screenRect.zy, float(mipLevel)).r);
-				hizDepth = max(hizDepth, textureLod(u_hizTexture, screenRect.xw, float(mipLevel)).r);
-				hizDepth = max(hizDepth, textureLod(u_hizTexture, screenRect.zw, float(mipLevel)).r);
+				hizDepth = max(hizDepth, texelFetch(u_hizTexture, ivec2(p00.x, p00.y), mipLevel).r);
+				hizDepth = max(hizDepth, texelFetch(u_hizTexture, ivec2(p11.x, p00.y), mipLevel).r);
+				hizDepth = max(hizDepth, texelFetch(u_hizTexture, ivec2(p00.x, p11.y), mipLevel).r);
+				hizDepth = max(hizDepth, texelFetch(u_hizTexture, ivec2(p11.x, p11.y), mipLevel).r);
 
 				// In standard GL depth (0=near, 1=far), nearestDepth > hizDepth means patch is occluded.
 				// Added a small bias to hizDepth to be more conservative.
 				if (hizDepth > 0.0001 && nearestDepth > hizDepth + 0.0005) {
 					// Verify occlusion with a raymarch from camera towards the patch.
 					// We stop slightly before distToCam to avoid hitting the terrain of the patch itself.
-					float visibility = marchOcclusion(u_viewPos, viewVec / distToCam, distToCam * 0.98);
+					// float visibility = marchOcclusion(u_viewPos, viewVec / distToCam, distToCam * 0.98);
 
-					if (visibility <= 0.0) {
-						return;
-					}
+					// if (visibility <= 0.0) {
+						// return;
+						rejectReason += 5;
+					// }
 				}
 			}
 		}
+		// else {
+		// 	rejectReason += 3;
+		// }
 	}
 
 	// TERRAIN-ON-TERRAIN OCCLUSION CHECK (DISABLED: non-conservative)
@@ -321,5 +332,6 @@ void main() {
 	tess.outer[3] = level;
 	tess.inner[0] = level;
 	tess.inner[1] = level;
+	tess._pad[0] = rejectReason;
 	patchTessLevels[outIdx] = tess;
 }

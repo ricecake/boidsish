@@ -16,6 +16,7 @@ in float      vIsWater;
 in float      vErosionDelta;
 in float      vRidgeMap;
 in float      vSubstrate;
+in float rejectReason;
 
 #define USE_TERRAIN_DATA
 #include "helpers/erosion.glsl"
@@ -279,6 +280,25 @@ TerrainMaterial getCliffMaterial(float height, float noise) {
 void main() {
 	if (uIsShadowPass) {
 		// Output only depth (handled by hardware)
+		return;
+	}
+
+	if (rejectReason > 0) {
+		if (rejectReason == 1) {
+			FragColor = vec4(1, 0, 0, 1);
+		}
+		else if (rejectReason == 2) {
+			FragColor = vec4(0, 1, 0, 1);
+		}
+		else if (rejectReason == 3) {
+			FragColor = vec4(0, 0, 1, 1);
+		}
+		else if (rejectReason == 5) {
+			FragColor = vec4(1, 0, 1, 1);
+		}
+		else {
+			FragColor = vec4(1.0);
+		}
 		return;
 	}
 

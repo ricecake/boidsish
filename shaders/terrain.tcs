@@ -22,6 +22,7 @@ out float      perturbFactor_TC_out[];
 out float      tessFactor_TC_out[];
 out vec3       WorldPos_TC_out[];
 out vec3       WorldNorm_TC_out[];
+out float rejectReason_TC_out[];
 
 struct PatchTessLevels {
 	float outer[4];
@@ -193,6 +194,7 @@ void main() {
 	PatchTessLevels levels = patchTessLevels[drawID];
 	tessFactor_TC_out[gl_InvocationID] = levels.inner[0];
 	perturbFactor_TC_out[gl_InvocationID] = perturbLevel(pos, viewForward[gl_InvocationID]);
+	rejectReason_TC_out[gl_InvocationID] = levels._pad[0];
 
 	if (gl_InvocationID == 0) {
 		gl_TessLevelOuter[0] = levels.outer[0];

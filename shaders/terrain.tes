@@ -9,6 +9,8 @@ flat in float TextureSlice_TC_out[];
 flat in vec3  WorldOffset_TC_out[];
 in float      perturbFactor_TC_out[];
 in float      tessFactor_TC_out[];
+in float rejectReason_TC_out[];
+
 
 // Output to Fragment Shader
 out vec3       FragPos;
@@ -23,6 +25,7 @@ out float      vIsWater;
 out float      vErosionDelta;
 out float      vRidgeMap;
 out float      vSubstrate;
+out float rejectReason;
 
 // Heightmap texture array: R=height, GBA=normal
 layout(binding = [[BAKED_HEIGHTMAP_BINDING]]) uniform sampler2DArray uHeightmap;
@@ -201,8 +204,10 @@ void main() {
 	float perturbFactor2 = mix(perturbFactor_TC_out[3], perturbFactor_TC_out[2], uv.x);
 	perturbFactor = mix(perturbFactor1, perturbFactor2, uv.y);
 
-	FragPos += 0.5 * fastWorley3d(FragPos / 50.0) * fastBlueNoise(FragPos.zx) * Normal * smoothstep(10, 1, FragPos.y) *
-		smoothstep(0.01, 1, FragPos.y);
+	rejectReason = rejectReason_TC_out[0];
+
+	// FragPos += 0.5 * fastWorley3d(FragPos / 50.0) * fastBlueNoise(FragPos.zx) * Normal * smoothstep(10, 1, FragPos.y) *
+	// 	smoothstep(0.01, 1, FragPos.y);
 
 	float tessFactor1 = mix(tessFactor_TC_out[0], tessFactor_TC_out[1], uv.x);
 	float tessFactor2 = mix(tessFactor_TC_out[3], tessFactor_TC_out[2], uv.x);

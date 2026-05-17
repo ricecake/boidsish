@@ -620,6 +620,7 @@ namespace Boidsish {
 	}
 
 	bool TerrainRenderManager::IsChunkVisible(const ChunkInfo& chunk, const Frustum& frustum, float world_scale) const {
+		return true;
 		// Build AABB for this chunk
 		float     scaled_chunk_size = chunk_size_ * world_scale;
 		glm::vec3 min_corner(chunk.world_offset.x, chunk.min_y, chunk.world_offset.y);
