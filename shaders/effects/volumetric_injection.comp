@@ -20,21 +20,29 @@ uniform float uTemporalAlpha;
 #include "../atmosphere/common.glsl"
 #include "../helpers/lighting.glsl"
 
+#define COMPUTE_SHADER
+#include "../particle_types.glsl"
+#include "../helpers/spatial_hash.glsl"
+
+uniform float u_cell_size;
+uniform uint  u_grid_size;
+uniform ivec3 u_grid_res;
+
 const int NUM_CASCADES = 4;
 const float CASCADE_DISTANCES[4] = { 20.0, 60.0, 200.0, 1000.0 };
 
 vec3 worldFromFroxel(ivec3 vox, vec3 jitter) {
-    int cascade = vox.z / 64;
-    int z_in_cascade = vox.z % 64;
+    int cascade = vox.z / u_grid_res.z;
+    int z_in_cascade = vox.z % u_grid_res.z;
 
     vec3 ndc;
-    ndc.xy = (vec2(vox.xy) + jitter.xy) / vec2(160, 90) * 2.0 - 1.0;
+    ndc.xy = (vec2(vox.xy) + jitter.xy) / vec2(u_grid_res.xy) * 2.0 - 1.0;
 
     float z_near = (cascade == 0) ? 0.1 : CASCADE_DISTANCES[cascade - 1];
     float z_far = CASCADE_DISTANCES[cascade];
 
     // Logarithmic distribution for planar Depth (Z)
-    float linear_z = z_near * pow(z_far / z_near, (float(z_in_cascade) + jitter.z) / 64.0);
+    float linear_z = z_near * pow(z_far / z_near, (float(z_in_cascade) + jitter.z) / float(u_grid_res.z));
 
     // Reconstruct View Space Position using planar depth
     vec4 clipPos = vec4(ndc.xy, 0.0, 1.0);
@@ -52,7 +60,7 @@ vec3 worldFromFroxel(ivec3 vox, vec3 jitter) {
 
 float getObliquity(ivec2 voxXY, vec3 jitter) {
     vec3 ndc;
-    ndc.xy = (vec2(voxXY) + jitter.xy) / vec2(160, 90) * 2.0 - 1.0;
+    ndc.xy = (vec2(voxXY) + jitter.xy) / vec2(u_grid_res.xy) * 2.0 - 1.0;
     vec4 clipPos = vec4(ndc.xy, 0.0, 1.0);
     vec4 viewDir = uInvProj * clipPos;
     viewDir /= (abs(viewDir.w) > 0.0001) ? viewDir.w : 1.0;
@@ -61,7 +69,7 @@ float getObliquity(ivec2 voxXY, vec3 jitter) {
 
 void main() {
     ivec3 vox = ivec3(gl_GlobalInvocationID.xyz);
-    if (vox.x >= 160 || vox.y >= 90 || vox.z >= 64 * NUM_CASCADES) return;
+    if (vox.x >= u_grid_res.x || vox.y >= u_grid_res.y || vox.z >= u_grid_res.z * NUM_CASCADES) return;
 
     // Jitter for temporal AA / stochastic sampling
     ivec2 noiseCoords = vox.xy + ivec2(vox.z * 13, vox.z * 17);
@@ -108,6 +116,41 @@ void main() {
     // Ambient (SH) - We use a simple isotropic phase for ambient light
     radiance += getSpatialAmbientSH(worldPos, V) * 0.1;
 
+    // --- Emissive Particle Illumination ---
+    // Simple isotropic phase for particle lights
+    float particlePhase = 1.0 / (4.0 * PI);
+    ivec3 baseCell = ivec3(floor(worldPos / u_cell_size));
+
+    // Check 3x3x3 neighborhood for smooth transitions across cells
+    for (int x = -1; x <= 1; ++x) {
+        for (int y = -1; y <= 1; ++y) {
+            for (int z = -1; z <= 1; ++z) {
+                ivec3 cellPos = baseCell + ivec3(x, y, z);
+                uint  h = uint(cellPos.x * 73856093) ^ uint(cellPos.y * 19349663) ^ uint(cellPos.z * 83492791);
+                uint  cell_idx = h % u_grid_size;
+                int   particle_idx = grid_heads[cell_idx];
+
+                while (particle_idx != -1) {
+                    Particle p = particles[particle_idx];
+                    // Filter for emissive types
+                    if (p.style == STYLE_FIRE || p.style == STYLE_FIREFLIES || p.style == STYLE_CINDER || p.style == STYLE_EXPLOSION || p.style == STYLE_ROCKET_TRAIL) {
+                        float distSq = dot(p.pos.xyz - worldPos, p.pos.xyz - worldPos);
+                        float radius = p.vel.w * 6.0; // Influence radius based on size
+                        float radiusSq = radius * radius;
+
+                        if (distSq < radiusSq) {
+                            float atten = 1.0 - smoothstep(0.0, radiusSq, distSq);
+                            // Fireflies are smaller but point-like, fires are larger and more intense
+                            float intensityScale = (p.style == STYLE_FIREFLIES) ? 2.0 : 8.0;
+                            radiance += p.color.rgb * p.color.a * atten * particlePhase * intensityScale;
+                        }
+                    }
+                    particle_idx = grid_next[particle_idx];
+                }
+            }
+        }
+    }
+
     radiance *= uIntensity * 2.0; // Boosted intensity for prominence
 
     // Convert atmospheric coefficients from per-KM to per-meter
@@ -143,7 +186,7 @@ void main() {
 
             if (prevCascade != -1 && prevLinearZ > z_near) {
                 float slice = clamp(log(prevLinearZ / z_near) / log(z_far / z_near), 0.0, 1.0);
-                float w = (float(prevCascade) * 64.0 + (slice * 63.5 + 0.5)) / (64.0 * float(NUM_CASCADES));
+                float w = (float(prevCascade) * float(u_grid_res.z) + (slice * (float(u_grid_res.z) - 0.5) + 0.5)) / (float(u_grid_res.z) * float(NUM_CASCADES));
 
                 vec4 history = texture(uHistoryTexture, vec3(prevUV.xy, w));
                 if (all(greaterThanEqual(history, vec4(0.0))) && all(lessThanEqual(history, vec4(1000.0)))) {
