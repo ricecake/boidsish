@@ -44,6 +44,8 @@ namespace Boidsish {
 			const std::vector<glm::vec3>&    positions,
 			const std::vector<glm::vec3>&    normals,
 			const std::vector<glm::vec2>&    biomes,
+			const std::vector<float>&        packed_height_normal,
+			const std::vector<uint8_t>&      packed_biomes,
 			const std::vector<unsigned int>& indices,
 			float                            min_y,
 			float                            max_y,
