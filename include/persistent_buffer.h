@@ -23,7 +23,12 @@ namespace Boidsish {
 	template <typename T>
 	class PersistentBuffer {
 	public:
-		PersistentBuffer(GLenum target, size_t element_count, int num_buffers = 3):
+		PersistentBuffer(
+			GLenum     target,
+			size_t     element_count,
+			int        num_buffers = 3,
+			GLbitfield map_flags = GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT
+		):
 			target_(target), element_count_(element_count), num_buffers_(num_buffers) {
 
 			// Compute per-frame stride in bytes, aligned for all targets.
@@ -47,12 +52,11 @@ namespace Boidsish {
 			glGenBuffers(1, &buffer_id_);
 			glBindBuffer(target_, buffer_id_);
 
-			GLbitfield flags = GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT;
 			// Also add GL_DYNAMIC_STORAGE_BIT to allow for standard updates if needed,
 			// though not strictly required for persistent mapping.
-			glBufferStorage(target_, total_size, nullptr, flags | GL_DYNAMIC_STORAGE_BIT);
+			glBufferStorage(target_, total_size, nullptr, map_flags | GL_DYNAMIC_STORAGE_BIT);
 
-			mapped_bytes_ = static_cast<char*>(glMapBufferRange(target_, 0, total_size, flags));
+			mapped_bytes_ = static_cast<char*>(glMapBufferRange(target_, 0, total_size, map_flags));
 
 			glBindBuffer(target_, 0);
 
