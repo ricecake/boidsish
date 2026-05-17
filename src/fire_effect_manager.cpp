@@ -287,12 +287,12 @@ namespace Boidsish {
 		}
 
 		time_ = time;
-		if (std::abs(ambient_density - ambient_density_) > 0.01f) {
+		if (std::abs(ambient_density - ambient_density_) > 0.001f) {
 			ambient_density_ = ambient_density;
 			needs_reallocation_ = true;
 		}
 
-		// Always reallocate if we haven't done it yet (for the new split pool logic)
+		// Always reallocate if we haven't done it yet (for the new dynamic pool logic)
 		static bool first_update = true;
 		if (first_update) {
 			needs_reallocation_ = true;
@@ -437,7 +437,7 @@ namespace Boidsish {
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleStats(), stats_buffer_);
 
 		// Update limits in stats buffer
-		auto& cfg = ConfigManager::GetInstance();
+		auto&         cfg = ConfigManager::GetInstance();
 		ParticleStats stats = {};
 		stats.limit_birds = cfg.GetAppSettingInt("particle_limit_birds", 1000);
 		stats.limit_leaves = cfg.GetAppSettingInt("particle_limit_leaves", 5000);
@@ -446,19 +446,17 @@ namespace Boidsish {
 		stats.limit_fireflies = cfg.GetAppSettingInt("particle_limit_fireflies", 3000);
 		stats.limit_snow = cfg.GetAppSettingInt("particle_limit_snow", 10000);
 
-		// We only want to update limits, but keep counts updated by GPU.
-		// However, it's easier to just zero the counts each frame if we want them to represent live counts
-		// BUT the lifecycle shader only increments. We need to clear them at start of frame.
-		// Actually, we should probably only clear them once per frame.
+		// GPU will increment counts, we only reset them to 0 each frame here before dispatch.
 		glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(ParticleStats), &stats);
+
+		bool particles_globally_enabled = cfg.GetAppSettingBool("particles_enabled", true);
 
 		auto bind_textures_and_uniforms = [&](ComputeShader* shader) {
 			shader->use();
 			shader->setFloat("u_delta_time", delta_time);
 			shader->setFloat("u_time", time_);
-			shader->setBool("u_enabled", enabled);
+			shader->setBool("u_enabled", enabled && particles_globally_enabled);
 			shader->setFloat("u_ambient_density", ambient_density);
-			shader->setInt("u_emitter_pool_size", Constants::Class::Particles::EmitterPoolSize());
 			shader->setInt("u_ambient_particle_scale", Constants::Class::Particles::AmbientParticleScale());
 			shader->setInt("u_num_emitters", emitters.size());
 			shader->setInt("u_num_chunks", static_cast<int>(chunk_info.size()));
@@ -592,12 +590,15 @@ namespace Boidsish {
 	}
 
 	void FireEffectManager::_UpdateParticleAllocation() {
-		// New simplified logic: Emitter particles are 0 to EmitterPoolSize-1.
-		// Ambient particles are EmitterPoolSize to MaxParticles-1.
+		// New Dynamic Pool logic:
+		// Ambient particles get (density * AmbientParticleScale).
+		// Everything else goes to emitters.
+
+		int ambient_count = static_cast<int>(ambient_density_ * Constants::Class::Particles::AmbientParticleScale());
+		ambient_count = std::clamp(ambient_count, 0, kMaxParticles);
+		int emitter_budget = kMaxParticles - ambient_count;
 
 		// --- 1. Distribute Emitter Pool ---
-		int emitter_budget = Constants::Class::Particles::EmitterPoolSize();
-
 		std::vector<int> ideal_counts(effects_.size(), 0);
 		int              total_particle_demand = 0;
 		int              num_unlimited_emitters = 0;
@@ -683,6 +684,10 @@ namespace Boidsish {
 		std::lock_guard<std::mutex> lock(mutex_);
 		if (!initialized_ || !lifecycle_shader_ || !lifecycle_shader_->isValid() || !behavior_shader_ ||
 		    !behavior_shader_->isValid() || !fixup_shader_ || !fixup_shader_->isValid()) {
+			return;
+		}
+
+		if (!ConfigManager::GetInstance().GetAppSettingBool("particles_enabled", true)) {
 			return;
 		}
 

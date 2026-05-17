@@ -2,7 +2,6 @@
 
 #include "lighting.glsl"
 #include "particle_types.glsl"
-#include "types/autoexposure.glsl"
 
 in float         v_lifetime;
 in vec4          view_pos;
@@ -49,13 +48,6 @@ const float kSparksLifetime = 0.8;
 const float kGlitterLifetime = 3.5;
 
 void main() {
-	// Apply Scene exposure to particles (Foreground)
-	float exposure = 1.0;
-	if (layers[0].useAutoExposure != 0) {
-		exposure = layers[0].targetLuminance / max(layers[0].adaptedLuminance, 0.0001);
-		exposure = clamp(exposure, layers[0].minExposure, layers[0].maxExposure);
-	}
-
 	// Shape the point into a circle and discard fragments outside the circle
 	vec2  circ = gl_PointCoord - vec2(0.5);
 	float distSq = dot(circ, circ);
@@ -142,5 +134,15 @@ void main() {
 		color = blackbody_hdr(heat) * alpha * 12.0 * (1.0 + normalizedLife);
 	}
 
-	FragColor = vec4(color * exposure, alpha);
+	// Dual exposure/lighting fix:
+	// Ambient particles get standard lighting, while emissive ones get a boost.
+	if (v_style == STYLE_ROCKET_TRAIL || v_style == STYLE_FIRE || v_style == STYLE_EXPLOSION || v_style == STYLE_SPARKS || v_style == STYLE_GLITTER || v_style == STYLE_FIREFLIES) {
+		// Emissive/self-lit particles are already bright enough.
+	} else {
+		// Ambient particles (leaves, petals, birds, etc.) should receive scene ambient.
+		vec3 ambient = sh_coeffs[0].xyz * 0.5 + 0.5; // Simple approximation of global ambient
+		color *= ambient * (1.0 + nightFactor);
+	}
+
+	FragColor = vec4(color, alpha);
 }

@@ -13,14 +13,6 @@ namespace Boidsish {
 
 	class ServiceLocator;
 
-	// This struct is mirrored in the compute shader.
-	// It must match the layout and padding there.
-	struct ChunkInfo {
-		glm::vec2 worldOffset;
-		float     slice;
-		float     size;
-	};
-
 	struct ParticleStats {
 		uint32_t count_birds;
 		uint32_t count_leaves;
@@ -37,6 +29,14 @@ namespace Boidsish {
 		uint32_t limit_fireflies;
 		uint32_t limit_snow;
 		uint32_t _unused_limits[2];
+	};
+
+	// This struct is mirrored in the compute shader.
+	// It must match the layout and padding there.
+	struct ChunkInfo {
+		glm::vec2 worldOffset;
+		float     slice;
+		float     size;
 	};
 
 	// This struct is mirrored in the compute shader.

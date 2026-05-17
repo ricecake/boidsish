@@ -40,9 +40,9 @@ namespace Boidsish {
 		glGenTextures(1, &color_tex_);
 		glBindTexture(GL_TEXTURE_2D, color_tex_);
 		if (hdr_) {
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, render_width_, render_height_, 0, GL_RGBA, GL_FLOAT, NULL);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, render_width_, render_height_, 0, GL_RGB, GL_FLOAT, NULL);
 		} else {
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, render_width_, render_height_, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, render_width_, render_height_, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
 		}
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -52,9 +52,9 @@ namespace Boidsish {
 		glGenTextures(1, &refraction_tex_);
 		glBindTexture(GL_TEXTURE_2D, refraction_tex_);
 		if (hdr_) {
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, render_width_, render_height_, 0, GL_RGBA, GL_FLOAT, NULL);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, render_width_, render_height_, 0, GL_RGB, GL_FLOAT, NULL);
 		} else {
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, render_width_, render_height_, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, render_width_, render_height_, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
 		}
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -232,9 +232,9 @@ namespace Boidsish {
 		// Resize color
 		glBindTexture(GL_TEXTURE_2D, color_tex_);
 		if (hdr_) {
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, render_width_, render_height_, 0, GL_RGBA, GL_FLOAT, NULL);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, render_width_, render_height_, 0, GL_RGB, GL_FLOAT, NULL);
 		} else {
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, render_width_, render_height_, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, render_width_, render_height_, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
 		}
 
 		// Resize velocity
@@ -252,9 +252,9 @@ namespace Boidsish {
 		// Resize refraction
 		glBindTexture(GL_TEXTURE_2D, refraction_tex_);
 		if (hdr_) {
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, render_width_, render_height_, 0, GL_RGBA, GL_FLOAT, NULL);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, render_width_, render_height_, 0, GL_RGB, GL_FLOAT, NULL);
 		} else {
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, render_width_, render_height_, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, render_width_, render_height_, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
 		}
 
 		// Resize depth-stencil

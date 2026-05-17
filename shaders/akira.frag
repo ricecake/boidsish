@@ -54,5 +54,4 @@ void main() {
 	}
 
 	FragColor = litColor;
-	FragColor.a = 1.0;
 }

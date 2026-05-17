@@ -28,5 +28,5 @@ void main() {
 	float dummyShadow;
 	vec4 lightResult = apply_lighting_no_shadows(fFragPos, norm, baseColor, 0.5, dummyShadow);
 
-	FragColor = vec4(lightResult.rgb, 1.0);
+	FragColor = vec4(lightResult.rgb, fColor.a);
 }

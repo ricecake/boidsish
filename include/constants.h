@@ -718,10 +718,6 @@ namespace Boidsish {
 					return 128000;
 				}
 
-				consteval int EmitterPoolSize() {
-					return 64000;
-				}
-
 				consteval int AmbientParticleScale() {
 					return 8192;
 				}

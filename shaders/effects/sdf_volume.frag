@@ -668,12 +668,9 @@ void main() {
 		currentFrameColor = volAccumColor + transmittance * sceneColor;
 	}
 
-	// Preserve alpha for scene mask
-	float alpha = texture(sceneTexture, TexCoords).a;
-
 	// --- Part 3: Temporal Reprojection (SDF pixels only) ---
 	if (!had_sdf_contribution) {
-		FragColor = vec4(currentFrameColor, alpha);
+		FragColor = vec4(currentFrameColor, 1.0);
 	} else {
 		vec3 reprojWorldPos = (hit_surface && t_surface < sceneDistance)
 			? cameraPos + rayDir * t_surface
@@ -690,6 +687,6 @@ void main() {
 		float baseBlend = (hit_surface && t_surface < sceneDistance) ? 0.85 : 0.15;
 		float blendFactor = (onScreen && frameIndex > 0) ? baseBlend : 0.0;
 
-		FragColor = mix(vec4(currentFrameColor, alpha), historyColor, blendFactor);
+		FragColor = mix(vec4(currentFrameColor, 1.0), historyColor, blendFactor);
 	}
 }
