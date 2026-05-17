@@ -16,6 +16,24 @@ uniform float u_atmosphereHeight;
 uniform sampler2D u_transmittanceLUT;
 #endif
 
+#ifndef WEATHER_TEXTURES_DEFINED
+	#define WEATHER_TEXTURES_DEFINED
+layout(binding = [[WEATHER_SCALARS_BINDING]]) uniform sampler2D u_weatherScalars;
+layout(binding = [[WEATHER_AEROSOLS_BINDING]]) uniform sampler2D u_weatherAerosols;
+#endif
+
+#ifndef TERRAIN_DATA_BLOCK
+#define TERRAIN_DATA_BLOCK
+layout(std140, binding = [[TERRAIN_DATA_BINDING]]) uniform TerrainData {
+	ivec4 u_originSize;    // x, z, size, is_bound
+	vec4  u_terrainParams; // chunkSize, worldScale
+};
+#endif
+
+#ifndef WORLD_SCALE_VALUE
+	#define WORLD_SCALE_VALUE u_terrainParams.y
+#endif
+
 #define kAtmosphereHeight u_atmosphereHeight
 #define kTopRadius (kEarthRadius + kAtmosphereHeight)
 
@@ -78,6 +96,31 @@ Sampling getAtmosphereProperties(float h) {
 	s.rayleigh = kRayleighScattering * rd * u_rayleighScale;
 	s.mie = vec3(kMieScattering * md * u_mieScale);
 	s.extinction = s.rayleigh + vec3(kMieExtinction * md * u_mieScale) + kOzoneAbsorption * od;
+	return s;
+}
+
+Sampling getAtmospherePropertiesAtPos(vec3 worldPos) {
+	float h = worldPos.y / (1000.0 * max(0.0001, WORLD_SCALE_VALUE));
+	Sampling s = getAtmosphereProperties(h);
+
+	// Modulate Mie based on weather
+	// LBM grid is 128x128, each cell is 32.0 units (one chunk size)
+	// u_originSize contains the anchor coordinates in chunk-space
+	float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
+	vec2 weatherUV = (worldPos.xz / scaledChunkSize - vec2(u_originSize.xy)) / 128.0;
+	vec4 scalars = texture(u_weatherScalars, weatherUV);
+	vec4 aerosols = texture(u_weatherAerosols, weatherUV);
+
+	float humidity = scalars.y;
+	float aerosolConc = aerosols.x + aerosols.y + aerosols.z + aerosols.w;
+
+	// Humidity increases Mie scattering (haze/mist)
+	float humidityFactor = 1.0 + humidity * 5.0;
+	float aerosolFactor = 1.0 + aerosolConc * 10.0;
+
+	s.mie *= humidityFactor * aerosolFactor;
+	s.extinction += (s.mie - vec3(kMieScattering * getMieDensity(h) * u_mieScale)); // Re-calculate extinction diff
+
 	return s;
 }
 

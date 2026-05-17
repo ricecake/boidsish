@@ -65,10 +65,8 @@ void main() {
 		if (h < 0.0)
 			break; // Hits ground
 
-		Sampling s = getAtmosphereProperties(h);
-		// s.rayleigh *= hazeDensity;
-		// s.mie *= hazeDensity;
-		// s.extinction *= hazeDensity;
+		vec3 worldPos = u_cameraPos + rd * (t * 1000.0);
+		Sampling s = getAtmospherePropertiesAtPos(worldPos);
 
 		// Apply gentle color variance to scattering patterns
 		if (u_colorVarianceStrength > 0.0) {

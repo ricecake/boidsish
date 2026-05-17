@@ -7,6 +7,7 @@
 #include <numeric>
 #include <queue>
 
+#include "atmosphere_manager.h"
 #include "biome_properties.h"
 #include "graphics.h" // For logger
 #include "logger.h"
@@ -687,12 +688,14 @@ namespace Boidsish {
 			return;
 		}
 
+		auto atmos_mgr = ServiceLocator::Instance().Get<AtmosphereManager>();
 		if (!ConfigManager::GetInstance().GetAppSettingBool("particles_enabled", true)) {
 			return;
 		}
 
 		glEnable(GL_BLEND);
-		glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA); // Additive blending for fire
+		// Premultiplied alpha for RGB, Additive for Alpha to accumulate Scene Mask
+		glBlendFuncSeparate(GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE);
 		glDepthMask(GL_FALSE);                       // Disable depth writing
 		glEnable(GL_PROGRAM_POINT_SIZE);
 
@@ -701,6 +704,10 @@ namespace Boidsish {
 		render_shader_->setMat4("u_projection", projection);
 		render_shader_->setVec3("u_camera_pos", camera_pos);
 		render_shader_->setFloat("u_time", time_);
+
+		if (atmos_mgr) {
+			atmos_mgr->BindToShader(*render_shader_);
+		}
 
 		// Pass biome albedos for biased ambient particle colors
 		for (int i = 0; i < static_cast<int>(Biome::Count); ++i) {

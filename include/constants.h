@@ -35,6 +35,10 @@ namespace Boidsish {
 				LbmWindData = 34,
 				TerrainShadowMap = 35,
 				TerrainShadowMapImage = 36,
+				VolumetricInjection = 37,
+				VolumetricScattering = 38,
+				VolumetricHistory = 39,
+				VolumetricCascades = 40,
 				WeatherScalars = 42,
 				WeatherAerosols = 43,
 			};
@@ -53,6 +57,12 @@ namespace Boidsish {
 				DecorProps = 30,
 				DecorPlacementGlobals = 31,
 				WindData = 45,
+			};
+
+			enum class Image {
+				VolumetricInjection = 0,
+				VolumetricScattering = 1,
+				VolumetricHistory = 2,
 			};
 
 			enum class Ssbo {
@@ -261,6 +271,22 @@ namespace Boidsish {
 				return std::to_underlying(Constants::Bindings::Texture::TerrainShadowMapImage);
 			}
 
+			consteval int VolumetricInjection() {
+				return std::to_underlying(Constants::Bindings::Texture::VolumetricInjection);
+			}
+
+			consteval int VolumetricScattering() {
+				return std::to_underlying(Constants::Bindings::Texture::VolumetricScattering);
+			}
+
+			consteval int VolumetricHistory() {
+				return std::to_underlying(Constants::Bindings::Texture::VolumetricHistory);
+			}
+
+			consteval int VolumetricCascades() {
+				return std::to_underlying(Constants::Bindings::Texture::VolumetricCascades);
+			}
+
 			consteval int WeatherScalars() {
 				return std::to_underlying(Constants::Bindings::Texture::WeatherScalars);
 			}
@@ -269,6 +295,20 @@ namespace Boidsish {
 				return std::to_underlying(Constants::Bindings::Texture::WeatherAerosols);
 			}
 		} // namespace TextureUnit
+
+		namespace ImageBinding {
+			consteval int VolumetricInjection() {
+				return std::to_underlying(Constants::Bindings::Image::VolumetricInjection);
+			}
+
+			consteval int VolumetricScattering() {
+				return std::to_underlying(Constants::Bindings::Image::VolumetricScattering);
+			}
+
+			consteval int VolumetricHistory() {
+				return std::to_underlying(Constants::Bindings::Image::VolumetricHistory);
+			}
+		} // namespace ImageBinding
 
 		namespace SsboBinding {
 			consteval int DecorInstances() {

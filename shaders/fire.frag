@@ -2,6 +2,7 @@
 
 #include "lighting.glsl"
 #include "particle_types.glsl"
+#include "atmosphere/common.glsl"
 
 in float         v_lifetime;
 in vec4          view_pos;
@@ -137,10 +138,32 @@ void main() {
 		color = blackbody_hdr(heat) * alpha * 12.0 * (1.0 + normalizedLife);
 	}
 
+	// Apply atmospheric scattering and fog to particles
+	// Note: v_pos.xyz is world position
+	float depth = length(view_pos.xyz);
+
+	float transmittance = 1.0;
+	vec3 scattering = vec3(1.0);
+
+#ifdef ATMOSPHERE_COMMON_GLSL
+	// Calculate atmosphere properties at particle position
+	Sampling s = getAtmospherePropertiesAtPos(v_pos.xyz);
+
+	// Physically-based fogging:
+	// 1. Transmittance attenuates the particle's own emission
+	// 2. Scattering adds the atmosphere's own glow between camera and particle
+	transmittance = exp(-length(s.extinction) * (depth / 1000.0)); // Convert meters to KM for extinction lookup
+	scattering = ambient_light * (1.0 - transmittance);
+	color = color * transmittance;
+#endif
+
 	// Dual exposure/lighting fix:
 	// Ambient particles get standard lighting, while emissive ones get a boost.
 	if (v_style == STYLE_ROCKET_TRAIL || v_style == STYLE_FIRE || v_style == STYLE_EXPLOSION || v_style == STYLE_SPARKS || v_style == STYLE_GLITTER || v_style == STYLE_FIREFLIES) {
 		// Emissive/self-lit particles are already bright enough.
+		// For fire (additive), we only apply transmittance to the color.
+		// We don't add ambient scattering directly as it would make the fire look like a solid block in fog.
+		// Instead, we let the scattering affect the scene behind it.
 	} else {
 		// Ambient particles (leaves, petals, birds, etc.) should receive scene ambient.
 		vec3 ambient = sh_coeffs[0].xyz * 0.5 + 0.5; // Simple approximation of global ambient
