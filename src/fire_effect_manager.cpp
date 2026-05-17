@@ -2,6 +2,7 @@
 
 #include <algorithm>
 
+#include "ConfigManager.h"
 #include "service_locator.h"
 #include <numeric>
 #include <queue>
@@ -53,6 +54,9 @@ namespace Boidsish {
 		}
 		if (behavior_command_buffer_ != 0) {
 			glDeleteBuffers(1, &behavior_command_buffer_);
+		}
+		if (stats_buffer_ != 0) {
+			glDeleteBuffers(1, &stats_buffer_);
 		}
 		if (grid_heads_buffer_ != 0) {
 			glDeleteBuffers(1, &grid_heads_buffer_);
@@ -185,6 +189,10 @@ namespace Boidsish {
 		// DispatchIndirectCommand: 4 * uint32_t (num_groups_x, y, z, and count)
 		glBufferData(GL_DRAW_INDIRECT_BUFFER, 4 * sizeof(uint32_t), nullptr, GL_DYNAMIC_DRAW);
 
+		glGenBuffers(1, &stats_buffer_);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, stats_buffer_);
+		glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(ParticleStats), nullptr, GL_DYNAMIC_DRAW);
+
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, 0);
 
@@ -255,6 +263,7 @@ namespace Boidsish {
 	void FireEffectManager::Update(
 		float                         delta_time,
 		float                         time,
+		bool                          enabled,
 		float                         ambient_density,
 		const std::vector<glm::vec4>& chunk_info,
 		GLuint                        heightmap_texture,
@@ -278,9 +287,16 @@ namespace Boidsish {
 		}
 
 		time_ = time;
-		if (std::abs(ambient_density - ambient_density_) > 0.01f) {
+		if (std::abs(ambient_density - ambient_density_) > 0.001f) {
 			ambient_density_ = ambient_density;
 			needs_reallocation_ = true;
+		}
+
+		// Always reallocate if we haven't done it yet (for the new dynamic pool logic)
+		static bool first_update = true;
+		if (first_update) {
+			needs_reallocation_ = true;
+			first_update = false;
 		}
 
 		// --- Effect Lifetime Management ---
@@ -418,12 +434,30 @@ namespace Boidsish {
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleDrawCommand(), draw_command_buffer_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::LiveParticleIndices(), live_indices_buffer_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::BehaviorDrawCommand(), behavior_command_buffer_);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleStats(), stats_buffer_);
+
+		// Update limits in stats buffer
+		auto&         cfg = ConfigManager::GetInstance();
+		ParticleStats stats = {};
+		stats.limit_birds = cfg.GetAppSettingInt("particle_limit_birds", 1000);
+		stats.limit_leaves = cfg.GetAppSettingInt("particle_limit_leaves", 5000);
+		stats.limit_petals = cfg.GetAppSettingInt("particle_limit_petals", 5000);
+		stats.limit_bubbles = cfg.GetAppSettingInt("particle_limit_bubbles", 2000);
+		stats.limit_fireflies = cfg.GetAppSettingInt("particle_limit_fireflies", 3000);
+		stats.limit_snow = cfg.GetAppSettingInt("particle_limit_snow", 10000);
+
+		// GPU will increment counts, we only reset them to 0 each frame here before dispatch.
+		glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(ParticleStats), &stats);
+
+		bool particles_globally_enabled = cfg.GetAppSettingBool("particles_enabled", true);
 
 		auto bind_textures_and_uniforms = [&](ComputeShader* shader) {
 			shader->use();
 			shader->setFloat("u_delta_time", delta_time);
 			shader->setFloat("u_time", time_);
+			shader->setBool("u_enabled", enabled && particles_globally_enabled);
 			shader->setFloat("u_ambient_density", ambient_density);
+			shader->setInt("u_ambient_particle_scale", Constants::Class::Particles::AmbientParticleScale());
 			shader->setInt("u_num_emitters", emitters.size());
 			shader->setInt("u_num_chunks", static_cast<int>(chunk_info.size()));
 			shader->setUint("u_grid_size", Constants::Class::Particles::ParticleGridSize());
@@ -556,7 +590,15 @@ namespace Boidsish {
 	}
 
 	void FireEffectManager::_UpdateParticleAllocation() {
-		// --- 1. Calculate Ideal Distribution ---
+		// New Dynamic Pool logic:
+		// Ambient particles get (density * AmbientParticleScale).
+		// Everything else goes to emitters.
+
+		int ambient_count = static_cast<int>(ambient_density_ * Constants::Class::Particles::AmbientParticleScale());
+		ambient_count = std::clamp(ambient_count, 0, kMaxParticles);
+		int emitter_budget = kMaxParticles - ambient_count;
+
+		// --- 1. Distribute Emitter Pool ---
 		std::vector<int> ideal_counts(effects_.size(), 0);
 		int              total_particle_demand = 0;
 		int              num_unlimited_emitters = 0;
@@ -575,12 +617,8 @@ namespace Boidsish {
 		}
 
 		int avg_particles_per_unlimited = 0;
-		// Maintain a 5% safety margin so ambient particles always have some space
-		int fire_budget = static_cast<int>(kMaxParticles * (1.0f - ambient_density_ - 0.05f));
-		fire_budget = std::clamp(fire_budget, 0, kMaxParticles);
-
 		if (num_unlimited_emitters > 0) {
-			int available_for_unlimited = fire_budget - total_particle_demand;
+			int available_for_unlimited = emitter_budget - total_particle_demand;
 			if (available_for_unlimited > 0) {
 				avg_particles_per_unlimited = available_for_unlimited / num_unlimited_emitters;
 			}
@@ -597,111 +635,42 @@ namespace Boidsish {
 			}
 		}
 
-		// Distribute any remainder due to integer division
-		int current_total = std::accumulate(ideal_counts.begin(), ideal_counts.end(), 0);
-		int remainder = (num_active_emitters > 0) ? (fire_budget - current_total) : 0;
-		for (size_t i = 0; i < effects_.size() && remainder > 0; ++i) {
-			if (effects_[i]) {
-				ideal_counts[i]++;
-				remainder--;
-			}
-		}
-
-		// --- 2. Calculate Current Distribution ---
-		std::vector<int>              current_counts(effects_.size(), 0);
-		std::vector<int>              general_nulls;
-		std::vector<int>              reserved_nulls;
-		std::vector<std::vector<int>> particles_by_emitter(effects_.size());
-
-		int reserved_start = fire_budget;
-
-		// Iterate backwards to prioritize lower indices for fire emitters when taking from null lists
-		for (int i = kMaxParticles - 1; i >= 0; --i) {
-			int emitter_index = particle_to_emitter_map_[i];
-			if (emitter_index != -1 && emitter_index < (int)effects_.size() && effects_[emitter_index]) {
-				current_counts[emitter_index]++;
-				particles_by_emitter[emitter_index].push_back(i);
-			} else {
-				particle_to_emitter_map_[i] = -1; // Explicitly return to ambient pool
-				if (i < reserved_start) {
-					general_nulls.push_back(i);
-				} else {
-					reserved_nulls.push_back(i);
-				}
-			}
-		}
-
-		// --- 3. Identify Over/Under Budget Emitters ---
-		std::vector<int>                           to_reclaim; // Particle indices to take from over-budget emitters
-		std::priority_queue<std::pair<float, int>> to_fill;    // {need, index} for under-budget emitters
-
+		// --- 2. Update Map for Emitter Pool ---
+		int current_idx = 0;
 		for (size_t i = 0; i < effects_.size(); ++i) {
-			int diff = ideal_counts[i] - current_counts[i];
-			if (diff > 0) {
-				float need = (float)diff / ideal_counts[i];
-				to_fill.push({need, (int)i});
-			} else if (diff < 0) {
-				// Reclaim -diff particles from this emitter efficiently using pre-collected indices
-				int num_to_reclaim = -diff;
-				for (int j = 0; j < num_to_reclaim; ++j) {
-					if (!particles_by_emitter[i].empty()) {
-						int particle_index = particles_by_emitter[i].back();
-						to_reclaim.push_back(particle_index);
-						particles_by_emitter[i].pop_back();
-						particle_to_emitter_map_[particle_index] = -1; // Explicitly return to ambient pool
-					}
+			if (effects_[i]) {
+				int count = ideal_counts[i];
+				for (int j = 0; j < count && current_idx < emitter_budget; ++j) {
+					particle_to_emitter_map_[current_idx++] = (int)i;
 				}
 			}
 		}
 
-		// --- 4. Perform Stable Re-mapping ---
-		// First, use general null particles to fill under-budget emitters
-		while (!to_fill.empty() && !general_nulls.empty()) {
-			int emitter_index = to_fill.top().second;
-			to_fill.pop();
-			int particle_index = general_nulls.back(); // Lowest available index due to backward loop
-			general_nulls.pop_back();
-
-			particle_to_emitter_map_[particle_index] = emitter_index;
-			ideal_counts[emitter_index]--;
-			if (ideal_counts[emitter_index] > current_counts[emitter_index]) {
-				float need = (float)(ideal_counts[emitter_index] - current_counts[emitter_index]) /
-					ideal_counts[emitter_index];
-				to_fill.push({need, emitter_index});
-			}
+		// Clear remaining emitter pool
+		while (current_idx < emitter_budget) {
+			particle_to_emitter_map_[current_idx++] = -1;
 		}
 
-		// Second, use reserved null particles if still needed
-		while (!to_fill.empty() && !reserved_nulls.empty()) {
-			int emitter_index = to_fill.top().second;
-			to_fill.pop();
-			int particle_index = reserved_nulls.back();
-			reserved_nulls.pop_back();
-
-			particle_to_emitter_map_[particle_index] = emitter_index;
-			ideal_counts[emitter_index]--;
-			if (ideal_counts[emitter_index] > current_counts[emitter_index]) {
-				float need = (float)(ideal_counts[emitter_index] - current_counts[emitter_index]) /
-					ideal_counts[emitter_index];
-				to_fill.push({need, emitter_index});
-			}
+		// --- 3. Update Map for Ambient Pool ---
+		// Ambient pool starts after emitter pool
+		for (int i = emitter_budget; i < kMaxParticles; ++i) {
+			particle_to_emitter_map_[i] = -1;
 		}
+	}
 
-		// Third, use reclaimed particles from over-budget emitters if still needed
-		while (!to_fill.empty() && !to_reclaim.empty()) {
-			int emitter_index = to_fill.top().second;
-			to_fill.pop();
-			int particle_index = to_reclaim.back();
-			to_reclaim.pop_back();
-
-			particle_to_emitter_map_[particle_index] = emitter_index;
-			ideal_counts[emitter_index]--;
-			if (ideal_counts[emitter_index] > current_counts[emitter_index]) {
-				float need = (float)(ideal_counts[emitter_index] - current_counts[emitter_index]) /
-					ideal_counts[emitter_index];
-				to_fill.push({need, emitter_index});
+	ParticleStats FireEffectManager::GetStats() const {
+		std::lock_guard<std::mutex> lock(mutex_);
+		ParticleStats               stats = {};
+		if (stats_buffer_ != 0) {
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, stats_buffer_);
+			void* ptr = glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_READ_ONLY);
+			if (ptr) {
+				memcpy(&stats, ptr, sizeof(ParticleStats));
+				glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
 			}
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 		}
+		return stats;
 	}
 
 	void FireEffectManager::Render(
@@ -715,6 +684,10 @@ namespace Boidsish {
 		std::lock_guard<std::mutex> lock(mutex_);
 		if (!initialized_ || !lifecycle_shader_ || !lifecycle_shader_->isValid() || !behavior_shader_ ||
 		    !behavior_shader_->isValid() || !fixup_shader_ || !fixup_shader_->isValid()) {
+			return;
+		}
+
+		if (!ConfigManager::GetInstance().GetAppSettingBool("particles_enabled", true)) {
 			return;
 		}
 

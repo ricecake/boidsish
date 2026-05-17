@@ -137,5 +137,15 @@ void main() {
 		color = blackbody_hdr(heat) * alpha * 12.0 * (1.0 + normalizedLife);
 	}
 
+	// Dual exposure/lighting fix:
+	// Ambient particles get standard lighting, while emissive ones get a boost.
+	if (v_style == STYLE_ROCKET_TRAIL || v_style == STYLE_FIRE || v_style == STYLE_EXPLOSION || v_style == STYLE_SPARKS || v_style == STYLE_GLITTER || v_style == STYLE_FIREFLIES) {
+		// Emissive/self-lit particles are already bright enough.
+	} else {
+		// Ambient particles (leaves, petals, birds, etc.) should receive scene ambient.
+		vec3 ambient = sh_coeffs[0].xyz * 0.5 + 0.5; // Simple approximation of global ambient
+		color *= ambient * (1.0 + nightFactor);
+	}
+
 	FragColor = vec4(color, alpha);
 }

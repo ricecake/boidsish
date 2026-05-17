@@ -59,5 +59,15 @@ void main() {
 	if (p.pos.w > 0.0) {
 		uint idx = atomicAdd(behavior_command.num_groups_x, 1);
 		live_indices[idx] = gid;
+
+		// Perform population counting for ambient particles
+		if (p.emitter_id == -1) {
+			if (p.style == STYLE_BIRDS) atomicAdd(stats.count_birds, 1);
+			else if (p.style == STYLE_LEAF) atomicAdd(stats.count_leaves, 1);
+			else if (p.style == STYLE_PETAL) atomicAdd(stats.count_petals, 1);
+			else if (p.style == STYLE_BUBBLES) atomicAdd(stats.count_bubbles, 1);
+			else if (p.style == STYLE_FIREFLIES) atomicAdd(stats.count_fireflies, 1);
+			else if (p.style == STYLE_SNOW) atomicAdd(stats.count_snow, 1);
+		}
 	}
 }

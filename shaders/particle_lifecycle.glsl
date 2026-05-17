@@ -246,11 +246,66 @@ void spawnAmbientParticle(
 
 		bool valid_biome = (biome_idx >= 0 && biome_idx <= 4) || biome_idx == 7;
 		if (valid_biome) {
+			// Define weighted probabilities for inter-compatible particles
+			// Birds, Leaves, Petals, Bubbles, Fireflies, Snow
+			float weights[6] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+
+			if (biome_idx == 7) { // Mountains (Snow only)
+				weights[5] = 1.0;
+			} else if (biome_idx == 0) { // Ocean/Water (Bubbles)
+				weights[3] = 1.0;
+			} else { // Land biomes
+				if (nightFactor > 0.5) {
+					weights[4] = 1.0; // Fireflies at night
+				} else {
+					weights[0] = 0.05; // Birds
+					if (biome_idx == 4) { // Forest
+						weights[1] = 0.5; // Leaves
+						weights[2] = 0.45; // Petals
+					} else {
+						weights[1] = 0.8; // Leaves
+						weights[2] = 0.15; // Petals
+					}
+				}
+			}
+
+			// Quota enforcement: if at or over limit, weight is zero
+			if (stats.count_birds >= stats.limit_birds) weights[0] = 0.0;
+			if (stats.count_leaves >= stats.limit_leaves) weights[1] = 0.0;
+			if (stats.count_petals >= stats.limit_petals) weights[2] = 0.0;
+			if (stats.count_bubbles >= stats.limit_bubbles) weights[3] = 0.0;
+			if (stats.count_fireflies >= stats.limit_fireflies) weights[4] = 0.0;
+			if (stats.count_snow >= stats.limit_snow) weights[5] = 0.0;
+
+			float total_weight = weights[0] + weights[1] + weights[2] + weights[3] + weights[4] + weights[5];
+			if (total_weight <= 0.0) return;
+
+			// Pick type based on weighted probability
+			float r = rand(spawnSeed + 6.6) * total_weight;
+			int   selected_style = -1;
+			float cumulative = 0.0;
+			for (int i = 0; i < 6; i++) {
+				cumulative += weights[i];
+				if (r <= cumulative) {
+					if (i == 0) selected_style = STYLE_BIRDS;
+					else if (i == 1) selected_style = STYLE_LEAF;
+					else if (i == 2) selected_style = STYLE_PETAL;
+					else if (i == 3) selected_style = STYLE_BUBBLES;
+					else if (i == 4) selected_style = STYLE_FIREFLIES;
+					else if (i == 5) selected_style = STYLE_SNOW;
+					break;
+				}
+			}
+
+			if (selected_style == -1) return;
+
 			float total_lifetime = 10.0 + rand(spawnSeed + 4.4) * 5.0;
 			float skipped_time = rand(spawnSeed + 7.7) * total_lifetime;
 
 			p.emitter_id = -1;
 			p.emitter_index = biome_idx;
+			p.style = selected_style;
+
 			p.pos = vec4(
 				pos.x,
 				height + 1.0 + rand(spawnSeed + 3.3) * 2.0,
@@ -261,30 +316,14 @@ void spawnAmbientParticle(
 			p.origin.xyz = p.pos.xyz;
 			p.origin.w = 0.0; // Last twinkle time
 
-			if (biome_idx == 7) {
-				p.style = STYLE_SNOW;
-			} else if (biome_idx == 0) {
-				p.style = STYLE_BUBBLES;
-			} else {
-				if (nightFactor > 0.5) {
-					p.style = STYLE_FIREFLIES;
-					p.phase = 3.0 + 2.0 * fract(randomFloat(hash(particleSeed)));
-					p.counter = 0.0;
-				} else {
-					float r = rand(spawnSeed + 6.6);
-					if (r < 0.05 && (biome_idx == 1 || biome_idx == 3 || biome_idx == 4)) {
-						p.style = STYLE_BIRDS;
-						p.phase = rand(spawnSeed + 8.8) * 6.28;
-						p.pos.y = height + 0.1;
-						p.pos.w = 60;
-						p.vel.w = 35.0; // Bird size
-					} else {
-						if (biome_idx == 4)
-							p.style = (r < 0.7) ? STYLE_PETAL : STYLE_LEAF;
-						else
-							p.style = (r < 0.2) ? STYLE_PETAL : STYLE_LEAF;
-					}
-				}
+			if (selected_style == STYLE_FIREFLIES) {
+				p.phase = 3.0 + 2.0 * fract(randomFloat(hash(particleSeed)));
+				p.counter = 0.0;
+			} else if (selected_style == STYLE_BIRDS) {
+				p.phase = rand(spawnSeed + 8.8) * 6.28;
+				p.pos.y = height + 0.1;
+				p.pos.w = 60;
+				p.vel.w = 35.0; // Bird size
 			}
 
 			if (skipped_time > 0.001) {
