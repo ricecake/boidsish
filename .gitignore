@@ -11,6 +11,7 @@ terrain_cache/
 *.o
 *.obj
 !assets/**
+assets/grammar_inputs/**
 
 # Precompiled Headers
 *.gch

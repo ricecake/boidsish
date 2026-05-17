@@ -1,4 +1,5 @@
-#version 420 core
+#version 460 core
+#extension GL_ARB_shader_draw_parameters : enable
 
 layout(location = 0) in vec2 a_pos;
 layout(location = 1) in vec2 a_tex_coords;

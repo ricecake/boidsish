@@ -16,6 +16,9 @@ layout(binding = [[WIND_TEXTURE_BINDING]]) uniform sampler2D u_windTexture;
 #ifdef WIND_COMPUTE
 layout(binding = [[LBM_WIND_TEXTURE_BINDING]]) uniform sampler2D u_lbmWindTexture;
 #endif
+
+layout(binding = [[WEATHER_SCALARS_BINDING]]) uniform sampler2D u_weatherScalarsTexture;
+layout(binding = [[WEATHER_AEROSOLS_BINDING]]) uniform sampler2D u_weatherAerosolsTexture;
 #endif
 
 /**
@@ -29,6 +32,32 @@ vec3 getWindAtPosition(vec3 worldPos) {
 	vec2 uv = gridCoord / vec2(u_windOriginSize.y, u_windOriginSize.w);
 
 	return texture(u_windTexture, uv).xyz;
+}
+
+/**
+ * Get weather scalars (x: temperature, y: humidity, z: pressure, w: viscosityDamping)
+ */
+vec4 getWeatherScalarsAtPosition(vec3 worldPos) {
+	if (u_windOriginSize.y <= 0) return vec4(0.0);
+
+	float gridSpacing = u_windParams.x;
+	vec2 gridCoord = (worldPos.xz / gridSpacing) - vec2(u_windOriginSize.xz);
+	vec2 uv = gridCoord / vec2(u_windOriginSize.y, u_windOriginSize.w);
+
+	return texture(u_weatherScalarsTexture, uv);
+}
+
+/**
+ * Get weather aerosols (x, y, z, w: concentrations of 4 aerosol types)
+ */
+vec4 getWeatherAerosolsAtPosition(vec3 worldPos) {
+	if (u_windOriginSize.y <= 0) return vec4(0.0);
+
+	float gridSpacing = u_windParams.x;
+	vec2 gridCoord = (worldPos.xz / gridSpacing) - vec2(u_windOriginSize.xz);
+	vec2 uv = gridCoord / vec2(u_windOriginSize.y, u_windOriginSize.w);
+
+	return texture(u_weatherAerosolsTexture, uv);
 }
 
 #ifdef WIND_COMPUTE
@@ -88,7 +117,7 @@ vec4 computeWindAtPosition(vec3 worldPos) {
 
 	// Gustiness: Smoothstep the simplex to create wide, rolling "valleys" of stillness
 	float gustAdvectionSpeed = 0.75;
-	vec3 gustPos = worldPos - (macroWind * flatTime * gustAdvectionSpeed);
+	vec3 gustPos = worldPos - (macroWind * time * gustAdvectionSpeed);
 	float gustiness = smoothstep(0.1, 0.7, fastSimplex3d(gustPos / 250.0) * 0.5 + 0.5);
 
 	// 4. Phasor Ripples (The "Packets")
@@ -128,10 +157,22 @@ vec4 computeWindAtPosition(vec3 worldPos) {
 	// 7. Local Turbulence (Curl)
 	// Scale and temporal drift also adapt to macro speed for smoother transitions at high intensity.
 	float dynamicCurlScale = curlScale * (0.8 + 0.4 * gustiness) * speedSmoothing;
-	vec3 advectedPos = worldPos - (finalWind * time * 0.250);
+	float pulsePeriod = 10.0;
 
-	// Intensity is dampened slightly at very high speeds to maintain structure
-	vec3 curl = fastCurl3d(advectedPos/200.0 * dynamicCurlScale + vec3(0.0, time * 0.02 * speedSmoothing, 0.0));
+	float phase0 = fract(time / pulsePeriod);
+	float time0 = phase0 * pulsePeriod;
+	vec3 advectedPos0 = worldPos - (finalWind * time0 * 0.250);
+	vec3 curl0 = fastCurl3d(advectedPos0 / 200.0 * dynamicCurlScale + vec3(0.0, time0 * 0.02 * speedSmoothing, 0.0));
+	float weight0 = sin(phase0 * 3.14159);
+
+	float phase1 = fract((time + pulsePeriod * 0.5) / pulsePeriod);
+	float time1 = phase1 * pulsePeriod;
+	vec3 advectedPos1 = worldPos - (finalWind * time1 * 0.250);
+	vec3 curl1 = fastCurl3d(advectedPos1 / 200.0 * dynamicCurlScale + vec3(0.0, time1 * 0.02 * speedSmoothing, 0.0));
+	float weight1 = sin(phase1 * 3.14159);
+
+	vec3 curl = (curl0 * weight0 + curl1 * weight1) / (weight0 + weight1);
+
 	float turbulenceIntensity = drag * length(finalWind) * curlStrength * speedSmoothing;
 
 	// Modulate turbulence intensity and introduce a subtle directional shift to the flow

@@ -2,14 +2,14 @@
 
 #include <iostream>
 
-#include "service_locator.h"
-
-#include "profiler.h"
-#include "shader.h"
+#include "weather_manager.h"
 #include "constants.h"
+#include "gpu_resource_registry.h"
+#include "profiler.h"
+#include "service_locator.h"
+#include "shader.h"
 
 namespace Boidsish {
-
 	AtmosphereManager::AtmosphereManager(ServiceLocator& /*loc*/) {}
 
 	AtmosphereManager::~AtmosphereManager() {
@@ -88,19 +88,20 @@ namespace Boidsish {
 		for (int i = 0; i < 9; ++i) {
 			_shCoeffs[i] = glm::vec4(0.0f);
 		}
+
+		auto& reg = GpuResourceRegistry::Instance();
+		reg.PublishTexture(Constants::TextureUnit::AtmosphereTransmittance(), _transmittanceLUT);
+		reg.PublishTexture(Constants::TextureUnit::AtmosphereMultiScattering(), _multiScatteringLUT);
+		reg.PublishTexture(Constants::TextureUnit::AtmosphereSkyView(), _skyViewLUT);
+		reg.PublishTexture(Constants::TextureUnit::AtmosphereAerialPerspective(), _aerialPerspectiveLUT, GL_TEXTURE_3D);
+		reg.PublishTexture(Constants::TextureUnit::AtmosphereCloudShadow(), _cloudShadowMap);
 	}
 
 	void AtmosphereManager::CreateShaders() {
 		auto setup_shader = [](ComputeShader& s) {
 			s.use();
-			GLuint lighting_idx = glGetUniformBlockIndex(s.ID, "Lighting");
-			if (lighting_idx != GL_INVALID_INDEX) {
-				glUniformBlockBinding(s.ID, lighting_idx, Constants::UboBinding::Lighting());
-			}
-			GLuint shadows_idx = glGetUniformBlockIndex(s.ID, "Shadows");
-			if (shadows_idx != GL_INVALID_INDEX) {
-				glUniformBlockBinding(s.ID, shadows_idx, Constants::UboBinding::Shadows());
-			}
+			s.bindUniformBlock("Lighting", Constants::UboBinding::Lighting());
+			s.bindUniformBlock("Shadows", Constants::UboBinding::Shadows());
 		};
 
 		_transmittanceShader = std::make_unique<ComputeShader>("shaders/atmosphere/transmittance_lut.comp");
@@ -236,6 +237,14 @@ namespace Boidsish {
 		_aerialPerspectiveShader->setFloat("u_colorVarianceScale", _colorVarianceScale);
 		_aerialPerspectiveShader->setFloat("u_colorVarianceStrength", _colorVarianceStrength);
 
+		auto wm = ServiceLocator::Instance().Get<WeatherManager>();
+		auto weather = wm->GetCurrentWeather();
+
+		_aerialPerspectiveShader->setFloat("hazeDensity", weather.haze_density);
+		_aerialPerspectiveShader->setFloat("hazeHeight", weather.haze_height);
+		_aerialPerspectiveShader->setVec3("hazeColor", weather.haze_color);
+
+
 		glDispatchCompute(32 / 4, 32 / 4, 32 / 4);
 		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
@@ -312,6 +321,16 @@ namespace Boidsish {
 		shader.trySetInt("u_aerialPerspectiveLUT", Constants::TextureUnit::AtmosphereAerialPerspective());
 		shader.trySetInt("u_cloudShadowMap", Constants::TextureUnit::AtmosphereCloudShadow());
 		shader.trySetFloat("u_atmosphereHeight", _atmosphereHeight);
+
+		shader.setVec3("u_rayleighScatteringBase", _rayleighScattering);
+		shader.trySetFloat("u_rayleighScaleHeight", _rayleighScaleHeight);
+		shader.trySetFloat("u_mieScatteringBase", _mieScattering);
+		shader.trySetFloat("u_mieExtinctionBase", _mieExtinction);
+		shader.trySetFloat("u_mieScaleHeight", _mieScaleHeight);
+		shader.trySetFloat("u_rayleighScale", _rayleighScale);
+		shader.trySetFloat("u_mieScale", _mieScale);
+		shader.trySetFloat("u_mieAnisotropy", _mieAnisotropy);
+		shader.setVec3("u_ozoneAbsorptionBase", _ozoneAbsorption);
 	}
 
 } // namespace Boidsish

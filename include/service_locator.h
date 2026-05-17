@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cassert>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -14,6 +15,8 @@ namespace Boidsish {
 
 class ServiceLocator {
 private:
+	static inline ServiceLocator* s_instance = nullptr;
+
 	std::unordered_map<std::type_index, std::shared_ptr<void>>                                 instances;
 	std::unordered_map<std::type_index, std::function<std::shared_ptr<void>(ServiceLocator&)>> factories;
 
@@ -21,6 +24,12 @@ private:
 	mutable std::shared_mutex mtx;
 
 public:
+	static ServiceLocator& Instance() {
+		assert(s_instance && "ServiceLocator not yet initialized");
+		return *s_instance;
+	}
+
+	static void SetInstance(ServiceLocator* locator) { s_instance = locator; }
 	template <typename T, typename... Args>
 	void Register(Args... args) {
 		// Exclusive lock for writing to factories

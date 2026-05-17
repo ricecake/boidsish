@@ -1,10 +1,12 @@
 #include "NoiseManager.h"
 
-#include "constants.h"
-#include "logger.h"
-#include "service_locator.h"
-#include "profiler.h"
 #include <GL/glew.h>
+
+#include "constants.h"
+#include "gpu_resource_registry.h"
+#include "logger.h"
+#include "profiler.h"
+#include "service_locator.h"
 
 namespace Boidsish {
 
@@ -92,6 +94,13 @@ namespace Boidsish {
 		glBindTexture(GL_TEXTURE_2D, 0);
 
 		Generate();
+
+		auto& reg = GpuResourceRegistry::Instance();
+		reg.PublishTexture(Constants::TextureUnit::NoiseSimplex(), noise_texture_, GL_TEXTURE_3D);
+		reg.PublishTexture(Constants::TextureUnit::NoiseCurl(), curl_noise_texture_, GL_TEXTURE_3D);
+		reg.PublishTexture(Constants::TextureUnit::NoiseBlue(), blue_noise_texture_);
+		reg.PublishTexture(Constants::TextureUnit::NoiseExtra(), extra_noise_texture_, GL_TEXTURE_3D);
+		reg.PublishTexture(Constants::TextureUnit::NoisePhasor(), phasor_noise_texture_);
 	}
 
 	void NoiseManager::Generate() {

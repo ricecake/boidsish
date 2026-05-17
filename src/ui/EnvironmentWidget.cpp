@@ -4,11 +4,13 @@
 
 #include "ConfigManager.h"
 #include "decor_manager.h"
+#include "fire_effect_manager.h"
 #include "grass_manager.h"
 #include "graphics.h"
 #include "imgui.h"
 #include "post_processing/PostProcessingManager.h"
 #include "post_processing/effects/AtmosphereEffect.h"
+#include "post_processing/effects/VolumetricLightingEffect.h"
 #include "terrain_generator_interface.h"
 #include "weather_manager.h"
 
@@ -56,7 +58,7 @@ namespace Boidsish {
 								weather->SetTarget(WeatherAttribute::Temperature, temp);
 							}
 							ImGui::SameLine();
-							if (ImGui::Button("Reset##Temp")) {
+							if (ImGui::Button("Unlock##Temp")) {
 								weather->ClearTarget(WeatherAttribute::Temperature);
 							}
 							ImGui::Text("  (%.1f C / %.1f F)", temp - 273.15f, (temp - 273.15f) * 1.8f + 32.0f);
@@ -66,7 +68,7 @@ namespace Boidsish {
 								weather->SetTarget(WeatherAttribute::Precipitation, precip);
 							}
 							ImGui::SameLine();
-							if (ImGui::Button("Reset##Precip")) {
+							if (ImGui::Button("Unlock##Precip")) {
 								weather->ClearTarget(WeatherAttribute::Precipitation);
 							}
 
@@ -75,7 +77,7 @@ namespace Boidsish {
 								weather->SetTarget(WeatherAttribute::Humidity, humidity);
 							}
 							ImGui::SameLine();
-							if (ImGui::Button("Reset##Humidity")) {
+							if (ImGui::Button("Unlock##Humidity")) {
 								weather->ClearTarget(WeatherAttribute::Humidity);
 							}
 
@@ -153,6 +155,84 @@ namespace Boidsish {
 									}
 
 									ImGui::Separator();
+
+								if (ImGui::TreeNode("Weather Constraints & Nudges")) {
+									auto& constraints = weather->GetSimConstraints();
+									bool  changed = false;
+
+									auto drawConstraint = [&](const char* label, const char* prefix, WeatherLbmSimulator::Constraint& con, float min_val, float max_val, const char* format) {
+										ImGui::Text("%s:", label);
+										ImGui::Indent();
+
+										bool min_enabled = con.min.has_value();
+										if (ImGui::Checkbox(("Min##" + std::string(prefix)).c_str(), &min_enabled)) {
+											if (min_enabled) con.min = min_val;
+											else con.min = std::nullopt;
+											changed = true;
+										}
+										if (min_enabled) {
+											ImGui::SameLine();
+											float val = *con.min;
+											if (ImGui::SliderFloat(("##min_" + std::string(prefix)).c_str(), &val, min_val, max_val, format)) {
+												con.min = val;
+												changed = true;
+											}
+										}
+
+										bool max_enabled = con.max.has_value();
+										if (ImGui::Checkbox(("Max##" + std::string(prefix)).c_str(), &max_enabled)) {
+											if (max_enabled) con.max = max_val;
+											else con.max = std::nullopt;
+											changed = true;
+										}
+										if (max_enabled) {
+											ImGui::SameLine();
+											float val = *con.max;
+											if (ImGui::SliderFloat(("##max_" + std::string(prefix)).c_str(), &val, min_val, max_val, format)) {
+												con.max = val;
+												changed = true;
+											}
+										}
+
+										bool target_enabled = con.target.has_value();
+										if (ImGui::Checkbox(("Target##" + std::string(prefix)).c_str(), &target_enabled)) {
+											if (target_enabled) con.target = (min_val + max_val) * 0.5f;
+											else con.target = std::nullopt;
+											changed = true;
+										}
+										if (target_enabled) {
+											ImGui::SameLine();
+											float val = *con.target;
+											if (ImGui::SliderFloat(("##target_" + std::string(prefix)).c_str(), &val, min_val, max_val, format)) {
+												con.target = val;
+												changed = true;
+											}
+										}
+
+										if (ImGui::Button(("Clear All##" + std::string(prefix)).c_str())) {
+											con.min = std::nullopt;
+											con.max = std::nullopt;
+											con.target = std::nullopt;
+											changed = true;
+										}
+
+										ImGui::Unindent();
+										ImGui::Separator();
+									};
+
+									WeatherLbmSimulator::Constraints c = constraints;
+									drawConstraint("Temperature (K)", "temp", c.temperature, 200.0f, 400.0f, "%.1f K");
+									drawConstraint("Pressure (hPa)", "press", c.pressure, 800.0f, 1200.0f, "%.1f hPa");
+									drawConstraint("Humidity", "hum", c.humidity, 0.0f, 1.0f, "%.2f");
+									drawConstraint("Wind Velocity (m/s)", "vel", c.velocity, 0.0f, 50.0f, "%.1f m/s");
+
+									if (changed) {
+										weather->SetSimConstraints(c);
+									}
+
+									ImGui::TreePop();
+								}
+
 									if (ImGui::TreeNode("Atmospheric Injections")) {
 										ImGui::SliderFloat("Target Pressure (hPa)", &m_targetPressure, 800.0f, 1200.0f, "%.1f");
 										ImGui::SliderFloat("Target Temperature (K)", &m_targetTemperature, 200.0f, 400.0f, "%.1f");
@@ -296,10 +376,18 @@ namespace Boidsish {
 										if (weather) weather->SetTarget(WeatherAttribute::HazeDensity, haze_density);
 										else atmosphere_effect->SetHazeDensity(haze_density);
 									}
+									if (weather) {
+										ImGui::SameLine();
+										if (ImGui::Button("Unlock##HazeDensity")) weather->ClearTarget(WeatherAttribute::HazeDensity);
+									}
 									float haze_height = atmosphere_effect->GetHazeHeight();
 									if (ImGui::SliderFloat("Haze Height", &haze_height, 0.0f, 50.0f)) {
 										if (weather) weather->SetTarget(WeatherAttribute::HazeHeight, haze_height);
 										else atmosphere_effect->SetHazeHeight(haze_height);
+									}
+									if (weather) {
+										ImGui::SameLine();
+										if (ImGui::Button("Unlock##HazeHeight")) weather->ClearTarget(WeatherAttribute::HazeHeight);
 									}
 									glm::vec3 haze_color = atmosphere_effect->GetHazeColor();
 									if (ImGui::ColorEdit3("Haze Color", &haze_color[0])) {
@@ -309,25 +397,49 @@ namespace Boidsish {
 											weather->SetTarget(WeatherAttribute::HazeColorB, haze_color.b);
 										} else atmosphere_effect->SetHazeColor(haze_color);
 									}
+									if (weather) {
+										ImGui::SameLine();
+										if (ImGui::Button("Unlock##HazeColor")) {
+											weather->ClearTarget(WeatherAttribute::HazeColorR);
+											weather->ClearTarget(WeatherAttribute::HazeColorG);
+											weather->ClearTarget(WeatherAttribute::HazeColorB);
+										}
+									}
 									float cloud_density = atmosphere_effect->GetCloudDensity();
 									if (ImGui::SliderFloat("Cloud Density", &cloud_density, 0.0f, 1.0f)) {
 										if (weather) weather->SetTarget(WeatherAttribute::CloudDensity, cloud_density);
 										else atmosphere_effect->SetCloudDensity(cloud_density);
+									}
+									if (weather) {
+										ImGui::SameLine();
+										if (ImGui::Button("Unlock##CloudDensity")) weather->ClearTarget(WeatherAttribute::CloudDensity);
 									}
 									float cloud_altitude = atmosphere_effect->GetCloudAltitude();
 									if (ImGui::SliderFloat("Cloud Altitude", &cloud_altitude, 0.0f, 1000.0f)) {
 										if (weather) weather->SetTarget(WeatherAttribute::CloudAltitude, cloud_altitude);
 										else atmosphere_effect->SetCloudAltitude(cloud_altitude);
 									}
+									if (weather) {
+										ImGui::SameLine();
+										if (ImGui::Button("Unlock##CloudAltitude")) weather->ClearTarget(WeatherAttribute::CloudAltitude);
+									}
 									float cloud_thickness = atmosphere_effect->GetCloudThickness();
 									if (ImGui::SliderFloat("Cloud Thickness", &cloud_thickness, 0.0f, 500.0f)) {
 										if (weather) weather->SetTarget(WeatherAttribute::CloudThickness, cloud_thickness);
 										else atmosphere_effect->SetCloudThickness(cloud_thickness);
 									}
+									if (weather) {
+										ImGui::SameLine();
+										if (ImGui::Button("Unlock##CloudThickness")) weather->ClearTarget(WeatherAttribute::CloudThickness);
+									}
 									float cloud_coverage = atmosphere_effect->GetCloudCoverage();
 									if (ImGui::SliderFloat("Cloud Coverage", &cloud_coverage, 0.0f, 2.0f)) {
 										if (weather) weather->SetTarget(WeatherAttribute::CloudCoverage, cloud_coverage);
 										else atmosphere_effect->SetCloudCoverage(cloud_coverage);
+									}
+									if (weather) {
+										ImGui::SameLine();
+										if (ImGui::Button("Unlock##CloudCoverage")) weather->ClearTarget(WeatherAttribute::CloudCoverage);
 									}
 									float cloud_warp = atmosphere_effect->GetCloudWarp();
 									if (ImGui::SliderFloat("Camera Cloud Buffer", &cloud_warp, 0.0f, 1000.0f)) {
@@ -340,6 +452,14 @@ namespace Boidsish {
 											weather->SetTarget(WeatherAttribute::CloudColorG, cloud_color.g);
 											weather->SetTarget(WeatherAttribute::CloudColorB, cloud_color.b);
 										} else atmosphere_effect->SetCloudColor(cloud_color);
+									}
+									if (weather) {
+										ImGui::SameLine();
+										if (ImGui::Button("Unlock##CloudColor")) {
+											weather->ClearTarget(WeatherAttribute::CloudColorR);
+											weather->ClearTarget(WeatherAttribute::CloudColorG);
+											weather->ClearTarget(WeatherAttribute::CloudColorB);
+										}
 									}
 
 									auto& cfg = ConfigManager::GetInstance();
@@ -460,10 +580,18 @@ namespace Boidsish {
 										if (weather) weather->SetTarget(WeatherAttribute::RayleighScale, rayleigh);
 										else atmosphere_effect->SetRayleighScale(rayleigh);
 									}
+									if (weather) {
+										ImGui::SameLine();
+										if (ImGui::Button("Unlock##RayleighScale")) weather->ClearTarget(WeatherAttribute::RayleighScale);
+									}
 									float mie = atmosphere_effect->GetMieScale();
 									if (ImGui::SliderFloat("Mie Scale", &mie, 0.0f, 0.25f)) {
 										if (weather) weather->SetTarget(WeatherAttribute::MieScale, mie);
 										else atmosphere_effect->SetMieScale(mie);
+									}
+									if (weather) {
+										ImGui::SameLine();
+										if (ImGui::Button("Unlock##MieScale")) weather->ClearTarget(WeatherAttribute::MieScale);
 									}
 									float mie_g = atmosphere_effect->GetMieAnisotropy();
 									if (ImGui::SliderFloat("Mie Anisotropy", &mie_g, 0.0f, 0.99f)) {
@@ -486,6 +614,10 @@ namespace Boidsish {
 										if (weather) weather->SetTarget(WeatherAttribute::AtmosphereHeight, atmos_height);
 										else atmosphere_effect->SetAtmosphereHeight(atmos_height);
 									}
+									if (weather) {
+										ImGui::SameLine();
+										if (ImGui::Button("Unlock##AtmosphereHeight")) weather->ClearTarget(WeatherAttribute::AtmosphereHeight);
+									}
 
 									glm::vec3 rayleigh_scattering = atmosphere_effect->GetRayleighScattering() *
 										1000.0f;
@@ -496,17 +628,33 @@ namespace Boidsish {
 											weather->SetTarget(WeatherAttribute::RayleighScatteringB, rayleigh_scattering.b * 0.001f);
 										} else atmosphere_effect->SetRayleighScattering(rayleigh_scattering * 0.001f);
 									}
+									if (weather) {
+										ImGui::SameLine();
+										if (ImGui::Button("Unlock##RayleighScattering")) {
+											weather->ClearTarget(WeatherAttribute::RayleighScatteringR);
+											weather->ClearTarget(WeatherAttribute::RayleighScatteringG);
+											weather->ClearTarget(WeatherAttribute::RayleighScatteringB);
+										}
+									}
 
 									float mie_scat = atmosphere_effect->GetMieScattering() * 1000.0f;
 									if (ImGui::SliderFloat("Mie Scattering coeff", &mie_scat, 0.0f, 10.0f)) {
 										if (weather) weather->SetTarget(WeatherAttribute::MieScattering, mie_scat * 0.001f);
 										else atmosphere_effect->SetMieScattering(mie_scat * 0.001f);
 									}
+									if (weather) {
+										ImGui::SameLine();
+										if (ImGui::Button("Unlock##MieScattering")) weather->ClearTarget(WeatherAttribute::MieScattering);
+									}
 
 									float mie_ext = atmosphere_effect->GetMieExtinction() * 1000.0f;
 									if (ImGui::SliderFloat("Mie Extinction coeff", &mie_ext, 0.0f, 10.0f)) {
 										if (weather) weather->SetTarget(WeatherAttribute::MieExtinction, mie_ext * 0.001f);
 										else atmosphere_effect->SetMieExtinction(mie_ext * 0.001f);
+									}
+									if (weather) {
+										ImGui::SameLine();
+										if (ImGui::Button("Unlock##MieExtinction")) weather->ClearTarget(WeatherAttribute::MieExtinction);
 									}
 
 									glm::vec3 ozone_absorption = atmosphere_effect->GetOzoneAbsorption() * 1000.0f;
@@ -519,11 +667,19 @@ namespace Boidsish {
 										if (weather) weather->SetTarget(WeatherAttribute::RayleighScaleHeight, rayleigh_h);
 										else atmosphere_effect->SetRayleighScaleHeight(rayleigh_h);
 									}
+									if (weather) {
+										ImGui::SameLine();
+										if (ImGui::Button("Unlock##RayleighScaleHeight")) weather->ClearTarget(WeatherAttribute::RayleighScaleHeight);
+									}
 
 									float mie_h = atmosphere_effect->GetMieScaleHeight();
 									if (ImGui::SliderFloat("Mie Scale Height (km)", &mie_h, 0.0f, 3.0f)) {
 										if (weather) weather->SetTarget(WeatherAttribute::MieScaleHeight, mie_h);
 										else atmosphere_effect->SetMieScaleHeight(mie_h);
+									}
+									if (weather) {
+										ImGui::SameLine();
+										if (ImGui::Button("Unlock##MieScaleHeight")) weather->ClearTarget(WeatherAttribute::MieScaleHeight);
 									}
 
 									ImGui::Separator();
@@ -537,6 +693,40 @@ namespace Boidsish {
 									float var_strength = atmosphere_effect->GetColorVarianceStrength();
 									if (ImGui::SliderFloat("Variance Strength", &var_strength, 0.0f, 0.5f)) {
 										atmosphere_effect->SetColorVarianceStrength(var_strength);
+									}
+								}
+							}
+							break;
+						}
+					}
+				}
+
+				// 2.5 Volumetric Lighting
+				if (ImGui::CollapsingHeader("Volumetric Lighting", ImGuiTreeNodeFlags_DefaultOpen)) {
+					auto& manager = m_visualizer.GetPostProcessingManager();
+					for (auto& effect : manager.GetPreToneMappingEffects()) {
+						if (effect->GetName() == "Volumetric Lighting") {
+							bool is_enabled = effect->IsEnabled();
+							if (ImGui::Checkbox("Enable Volumetric Lighting", &is_enabled)) {
+								effect->SetEnabled(is_enabled);
+							}
+
+							if (is_enabled) {
+								auto vol_effect = std::dynamic_pointer_cast<PostProcessing::VolumetricLightingEffect>(effect);
+								if (vol_effect) {
+									float intensity = vol_effect->GetIntensity();
+									if (ImGui::SliderFloat("Intensity##Vol", &intensity, 0.0f, 5.0f)) {
+										vol_effect->SetIntensity(intensity);
+									}
+
+									float anisotropy = vol_effect->GetScatteringAnisotropy();
+									if (ImGui::SliderFloat("Anisotropy##Vol", &anisotropy, 0.0f, 0.99f)) {
+										vol_effect->SetScatteringAnisotropy(anisotropy);
+									}
+
+									float alpha = vol_effect->GetTemporalAlpha();
+									if (ImGui::SliderFloat("Temporal Alpha##Vol", &alpha, 0.0f, 0.99f)) {
+										vol_effect->SetTemporalAlpha(alpha);
 									}
 								}
 							}
@@ -597,11 +787,46 @@ namespace Boidsish {
 				// 4. Particles
 				if (ImGui::CollapsingHeader("Particles", ImGuiTreeNodeFlags_DefaultOpen)) {
 					auto& config = ConfigManager::GetInstance();
-					float density = config.GetAppSettingFloat("ambient_particle_density", 0.15f);
-					if (ImGui::SliderFloat("Ambient Density", &density, 0.0f, 1.0f)) {
-						config.SetFloat("ambient_particle_density", density);
+
+					bool enabled = config.GetAppSettingBool("particles_enabled", true);
+					if (ImGui::Checkbox("Enable Particle System", &enabled)) {
+						config.SetBool("particles_enabled", enabled);
 					}
-					ImGui::Text("Controls the spawn rate of ambient particles.");
+
+					if (enabled) {
+						float density = config.GetAppSettingFloat("ambient_particle_density", 0.15f);
+						if (ImGui::SliderFloat("Ambient Density", &density, 0.0f, 2.0f, "%.2f")) {
+							config.SetFloat("ambient_particle_density", density);
+						}
+						ImGui::Text(
+							"Approx. %d ambient particles",
+							(int)(density * Constants::Class::Particles::AmbientParticleScale())
+						);
+
+						ImGui::Separator();
+						ImGui::Text("Population Limits & Live Counts");
+
+						auto fire_manager = m_visualizer.GetFireEffectManager();
+						if (fire_manager) {
+							Boidsish::ParticleStats stats = fire_manager->GetStats();
+
+							auto drawLimit = [&](const char* label, const char* cfg_key, uint32_t current, uint32_t limit) {
+								int i_limit = (int)limit;
+								if (ImGui::SliderInt(label, &i_limit, 0, 20000)) {
+									config.SetInt(cfg_key, i_limit);
+								}
+								ImGui::SameLine();
+								ImGui::Text("(%u live)", current);
+							};
+
+							drawLimit("Birds", "particle_limit_birds", stats.count_birds, stats.limit_birds);
+							drawLimit("Leaves", "particle_limit_leaves", stats.count_leaves, stats.limit_leaves);
+							drawLimit("Petals", "particle_limit_petals", stats.count_petals, stats.limit_petals);
+							drawLimit("Bubbles", "particle_limit_bubbles", stats.count_bubbles, stats.limit_bubbles);
+							drawLimit("Fireflies", "particle_limit_fireflies", stats.count_fireflies, stats.limit_fireflies);
+							drawLimit("Snow", "particle_limit_snow", stats.count_snow, stats.limit_snow);
+						}
+					}
 				}
 
 				// 5. Wind (from EffectsWidget)
@@ -614,7 +839,7 @@ namespace Boidsish {
 							weather->SetTarget(WeatherAttribute::WindStrength, wind_strength);
 						}
 						ImGui::SameLine();
-						if (ImGui::Button("Reset##WindStrength")) {
+						if (ImGui::Button("Unlock##WindStrength")) {
 							weather->ClearTarget(WeatherAttribute::WindStrength);
 						}
 
@@ -623,7 +848,7 @@ namespace Boidsish {
 							weather->SetTarget(WeatherAttribute::WindSpeed, wind_speed);
 						}
 						ImGui::SameLine();
-						if (ImGui::Button("Reset##WindSpeed")) {
+						if (ImGui::Button("Unlock##WindSpeed")) {
 							weather->ClearTarget(WeatherAttribute::WindSpeed);
 						}
 
@@ -632,7 +857,7 @@ namespace Boidsish {
 							weather->SetTarget(WeatherAttribute::WindFrequency, wind_frequency);
 						}
 						ImGui::SameLine();
-						if (ImGui::Button("Reset##WindFrequency")) {
+						if (ImGui::Button("Unlock##WindFrequency")) {
 							weather->ClearTarget(WeatherAttribute::WindFrequency);
 						}
 					} else {

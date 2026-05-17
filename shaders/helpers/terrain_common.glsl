@@ -11,11 +11,11 @@ layout(std140, binding = [[TERRAIN_DATA_BINDING]]) uniform TerrainData {
 
 #ifndef TERRAIN_GRID_DEFINED
 	#define TERRAIN_GRID_DEFINED
-uniform isampler2D u_chunkGrid;
+layout(binding = [[TERRAIN_CHUNK_GRID_BINDING]]) uniform isampler2D u_chunkGrid;
 #endif
 
-uniform sampler2D  u_maxHeightGrid;
-uniform sampler2DArray u_heightmapArray;
+layout(binding = [[TERRAIN_MAX_HEIGHT_BINDING]]) uniform sampler2D  u_maxHeightGrid;
+layout(binding = [[BAKED_HEIGHTMAP_BINDING]]) uniform sampler2DArray u_heightmapArray;
 
 /**
  * Get the terrain height at a specific world position.

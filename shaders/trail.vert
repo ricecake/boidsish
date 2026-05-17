@@ -1,4 +1,5 @@
 #version 460 core
+#extension GL_ARB_shader_draw_parameters : enable
 layout(location = 0) in vec4 aPos;    // xyz: pos, w: progress
 layout(location = 1) in vec4 aNormal; // xyz: normal, w: ?
 layout(location = 2) in vec4 aColor;  // rgb: color, w: ?
@@ -25,7 +26,7 @@ out vec4 CurPosition;
 out vec4 PrevPosition;
 
 void main() {
-	vUniformIndex = uUseMDI ? gl_DrawID : -1;
+	vUniformIndex = uUseMDI ? gl_DrawIDARB : -1;
 	bool use_ssbo = uUseMDI && vUniformIndex >= 0;
 
 	mat4  current_model = use_ssbo ? uniforms_data[vUniformIndex].model : model;

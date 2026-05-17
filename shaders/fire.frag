@@ -1,7 +1,8 @@
-#version 430 core
+#version 460 core
 
 #include "lighting.glsl"
 #include "particle_types.glsl"
+#include "atmosphere/common.glsl"
 
 in float         v_lifetime;
 in vec4          view_pos;
@@ -62,9 +63,9 @@ void main() {
 		color = v_p.color.rgb;
 		alpha = v_p.color.a;
 
-		if (v_style == STYLE_LEAF || v_style == STYLE_PETAL || v_style == STYLE_FIREFLIES) {
+		if (v_style == STYLE_LEAF || v_style == STYLE_PETAL || v_style == STYLE_FIREFLIES || v_style == STYLE_BIRDS) {
 			vec3 biome_albedo = (v_emitter_index >= 0 && v_emitter_index < 8) ? u_biomeAlbedos[v_emitter_index] : vec3(0.5);
-			color = mix(color, biome_albedo, 0.3);
+			color = mix(color, biome_albedo, 0.5);
 		}
 
 		if (v_style == STYLE_BUBBLES) {
@@ -79,7 +80,10 @@ void main() {
 			float spec = pow(max(dot(n, h), 0.0), 64.0);
 			color = mix(iridescent_color, vec3(1.0), fresnel * 0.5 + 0.2) + spec;
 		} else if (v_style == STYLE_SNOW) {
-			shapeMask = 1.0;
+			float r = 0.5 * length(circ);
+			float a = atan(circ.y, circ.x);
+			float s = abs(sin(a * 3.0));
+			shapeMask = smoothstep(0.1, 0.09, r * s);
 		} else if (v_style == STYLE_RAIN) {
 			vec2 vel_dir = normalize(v_vel_view.xy + vec2(1e-6));
 			float angle = atan(vel_dir.y, vel_dir.x) + 1.5707;
@@ -87,8 +91,9 @@ void main() {
 			vec2 uv = (gl_PointCoord - 0.5) * rot + 0.5;
 			float y = clamp(uv.y, 0.0, 1.0);
 			float width = mix(0.02, 0.15, y);
-			float streak = smoothstep(width, width * 0.5, abs(uv.x - 0.5)) * smoothstep(0.0, 0.2, uv.y) * smoothstep(1.0, 0.8, uv.y);
+			float streak = smoothstep(width*0.25, width * 0.05, abs(uv.x - 0.5)) * smoothstep(0.0, 0.2, uv.y) * smoothstep(1.0, 0.8, uv.y);
 			alpha *= streak;
+			color = vec3(0.2, 0.3, 0.5);
 			shapeMask = 1.0;
 		} else if (v_style == STYLE_IRIDESCENT) {
 			float fresnel = pow(max(0.0, 1.0 - distSq * 4.0), 5.0);
@@ -104,10 +109,15 @@ void main() {
 			shapeMask = smoothstep(0.2 + n * 0.15, 0.05, distSq);
 		} else if (v_style == STYLE_BIRDS) {
 			float flap = sin(u_time * 15.0 + v_p.phase);
-			float wing_y = abs(gl_PointCoord.x - 0.5) * (0.8 + flap * 0.4);
-			float body = smoothstep(0.1, 0.0, abs(gl_PointCoord.y - 0.5 - wing_y) + abs(gl_PointCoord.x - 0.5) * 0.5);
+			float wing_y = abs(gl_PointCoord.x - 0.5) * (0.5 + flap * 0.4);
+			float body = (1-smoothstep(0.0, 0.1, abs(gl_PointCoord.y - 0.5 - wing_y)) + abs(gl_PointCoord.x - 0.7) * 0.5);
+			body *= step(0.70, body);
 			shapeMask = body;
-			color = vec3(0.02, 4.02, 0.03); // Dark bird color
+			color = mix(
+				mix(color, vec3(0.5, 0.8, 0.3), 0.43),
+				mix(color * 2.0, vec3(0.2, 0.9, 0.9), 0.63),
+				smoothstep(0.30, 0.40, gl_PointCoord.x) * (1.0 - smoothstep(0.60, 0.70, gl_PointCoord.x))
+			);
 			alpha = 1.0;
 		}
 
@@ -126,6 +136,38 @@ void main() {
 		float heat = normalizedLife * pow(noiseDetail, 1.4) * pow(max(0.0, 1.0 - (distSq * 4.0)), 0.7) * ((v_style == STYLE_EXPLOSION) ? smoothstep(80.0, 0.0, distFromEpicenter) : 1.0);
 		alpha = shapeMask * smoothstep(0.01, 0.12, heat) * turbulence(gl_PointCoord);
 		color = blackbody_hdr(heat) * alpha * 12.0 * (1.0 + normalizedLife);
+	}
+
+	// Apply atmospheric scattering and fog to particles
+	// Note: v_pos.xyz is world position
+	float depth = length(view_pos.xyz);
+
+	float transmittance = 1.0;
+	vec3 scattering = vec3(1.0);
+
+#ifdef ATMOSPHERE_COMMON_GLSL
+	// Calculate atmosphere properties at particle position
+	Sampling s = getAtmospherePropertiesAtPos(v_pos.xyz);
+
+	// Physically-based fogging:
+	// 1. Transmittance attenuates the particle's own emission
+	// 2. Scattering adds the atmosphere's own glow between camera and particle
+	transmittance = exp(-length(s.extinction) * (depth / 1000.0)); // Convert meters to KM for extinction lookup
+	scattering = ambient_light * (1.0 - transmittance);
+	color = color * transmittance;
+#endif
+
+	// Dual exposure/lighting fix:
+	// Ambient particles get standard lighting, while emissive ones get a boost.
+	if (v_style == STYLE_ROCKET_TRAIL || v_style == STYLE_FIRE || v_style == STYLE_EXPLOSION || v_style == STYLE_SPARKS || v_style == STYLE_GLITTER || v_style == STYLE_FIREFLIES) {
+		// Emissive/self-lit particles are already bright enough.
+		// For fire (additive), we only apply transmittance to the color.
+		// We don't add ambient scattering directly as it would make the fire look like a solid block in fog.
+		// Instead, we let the scattering affect the scene behind it.
+	} else {
+		// Ambient particles (leaves, petals, birds, etc.) should receive scene ambient.
+		vec3 ambient = sh_coeffs[0].xyz * 0.5 + 0.5; // Simple approximation of global ambient
+		color *= ambient * (1.0 + nightFactor);
 	}
 
 	FragColor = vec4(color, alpha);

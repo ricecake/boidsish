@@ -2,7 +2,6 @@
 
 #include <memory>
 
-#include "NoiseManager.h"
 #include "weather_constants.h"
 #include "post_processing/IPostProcessingEffect.h"
 
@@ -168,16 +167,6 @@ namespace Boidsish {
 
 			float GetColorVarianceStrength() const { return color_variance_strength_; }
 
-			// Atmosphere LUTs
-			void SetAtmosphereLUTs(GLuint transmittance, GLuint multiScat, GLuint skyView, GLuint aerialPerspective) {
-				transmittance_lut_ = transmittance;
-				multi_scattering_lut_ = multiScat;
-				sky_view_lut_ = skyView;
-				aerial_perspective_lut_ = aerialPerspective;
-			}
-
-			void SetNoiseTextures(const NoiseTextures& textures) { noise_textures_ = textures; }
-
 			void SetRenderScale(float scale) {
 				if (render_scale_ != scale) {
 					render_scale_ = scale;
@@ -236,13 +225,6 @@ namespace Boidsish {
 			float     color_variance_scale_ = 1.0f;
 			float     color_variance_strength_ = 0.0f;
 
-			GLuint transmittance_lut_ = 0;
-			GLuint multi_scattering_lut_ = 0;
-			GLuint sky_view_lut_ = 0;
-			GLuint aerial_perspective_lut_ = 0;
-
-			NoiseTextures noise_textures_ = {0, 0, 0};
-
 			int   width_ = 0;
 			int   height_ = 0;
 			float render_scale_ = 0.50f;
@@ -255,6 +237,7 @@ namespace Boidsish {
 			int       temporal_index_ = 0;
 			glm::mat4 prev_view_projection_ = glm::mat4(1.0f);
 			bool      has_valid_history_ = false;
+
 		};
 
 	} // namespace PostProcessing

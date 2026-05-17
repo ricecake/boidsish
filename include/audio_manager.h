@@ -12,6 +12,8 @@ namespace Boidsish {
 
 	class ServiceLocator;
 	class Sound; // Forward declaration
+	class ProceduralAudioSource;
+	struct AudioState;
 
 	class AudioManager {
 	public:
@@ -22,13 +24,7 @@ namespace Boidsish {
 		AudioManager(const AudioManager&) = delete;
 		AudioManager& operator=(const AudioManager&) = delete;
 
-		void UpdateListener(
-			const glm::vec3& position,
-			const glm::vec3& direction,
-			const glm::vec3& up,
-			const float      speed,
-			const float      fov
-		);
+		void UpdateState(const AudioState& state);
 
 		// Play a sound that is not spatialized, good for background music
 		void PlayMusic(const std::string& filepath, bool loop = true, float volume = 1.0f);
@@ -42,9 +38,27 @@ namespace Boidsish {
 		std::shared_ptr<Sound>
 		CreateSound(const std::string& filepath, const glm::vec3& position, float volume = 1.0f, bool loop = false);
 
+		// Create a procedural sound
+		std::shared_ptr<Sound> CreateProceduralSound(
+			std::shared_ptr<ProceduralAudioSource> source,
+			const glm::vec3&                       position,
+			float                                  volume = 1.0f,
+			bool                                   loop = true,
+			bool                                   spatialized = true
+		);
+
 		void SetGlobalPitch(float pitch);
 
-		void Update();
+		float GetMasterVolume() const;
+		void  SetMasterVolume(float volume);
+		float GetMusicVolume() const;
+		void  SetMusicVolume(float volume);
+		float GetSfxVolume() const;
+		void  SetSfxVolume(float volume);
+
+		AudioState GetCurrentState() const;
+
+		void StopAllSounds();
 
 	private:
 		struct AudioManagerImpl;

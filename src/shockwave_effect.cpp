@@ -249,11 +249,7 @@ namespace Boidsish {
 
 		// Bind shockwave UBO to centralized binding point
 		BindUBO(Constants::UboBinding::Shockwaves());
-		glUniformBlockBinding(
-			shader_->ID,
-			glGetUniformBlockIndex(shader_->ID, "Shockwaves"),
-			Constants::UboBinding::Shockwaves()
-		);
+		shader_->bindUniformBlock("Shockwaves", Constants::UboBinding::Shockwaves());
 
 		// Bind scene texture
 		glActiveTexture(GL_TEXTURE0);
