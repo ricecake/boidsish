@@ -154,13 +154,35 @@ TerrainMaterial getBiomeMaterial(float height, float moisture, float noise) {
 	// Distort height with noise for natural boundaries
 	float h = height + noise * 8.0;
 
+
 	// Beach zone (0 - 3)
 	if (h < HEIGHT_BEACH_END) {
+		float rockFactor = (fastWorley3d(FragPos/125) *0.5 +0.5) * (1- (height / HEIGHT_BEACH_END));
 		float wetness = 1.0 - smoothstep(0.0, HEIGHT_BEACH_END, h);
+
 		mat.albedo = mix(COL_SAND_DRY, COL_SAND_WET, wetness);
 		mat.roughness = mix(0.9, 0.4, wetness);
 		mat.normalScale = 40.0;
 		mat.normalStrength = mix(0.1, 0.05, wetness);
+
+		if (rockFactor  > 0.5) {
+			float rockEdge = (fastWorley3d(FragPos+noise * 3)*0.5+0.5);
+			float roundRockEdge = round(rockEdge * 10)*(0.01);
+			// vec3 rockColor = palette(min(fastBlueNoise(vec2(roundRockEdge)/35, 0),rockEdge), vec3(0.5, 0.5, 0.5), vec3(0.5, 0.5, 0.5), vec3(1.0, 1.0, 1.0), vec3(0.30, 0.20, 0.20));
+			// vec3 rockColor = palette(min(fastBlueNoise(vec2(roundRockEdge)/35, 0),rockEdge), vec3(0.5, 0.5, 0.5), vec3(0.5, 0.5, 0.5), vec3(1.0, 1.0, 0.50), vec3(0.80, 0.90, 0.30));
+			float rockPalette = step(fastBlueNoise(FragPos.xz/25), fastFbm3d(FragPos/100)*0.5+0.5);
+			vec3 rockColor = palette( // Make this a curl noise?
+				min(fastBlueNoise(vec2(roundRockEdge)/35, 0), rockEdge),
+				vec3(0.5, 0.5, 0.5), vec3(0.5, 0.5, 0.5),
+				mix(vec3(1.0, 1.0, 0.50), vec3(1.0, 1.0, 1.0), rockPalette),
+				mix(vec3(0.80, 0.90, 0.30), vec3(0.30, 0.20, 0.20), rockPalette)
+			);
+
+			mat.albedo = mix(mat.albedo, mix(vec3(0), rockColor, rockEdge*smoothstep(0.01, 0.02, rockEdge )), smoothstep(0.5, 1, rockFactor));
+			mat.roughness = mix(0.7, 0.1, wetness*smoothstep(0.01, 0.02, rockEdge ));
+			mat.normalScale = 40.0;
+			mat.normalStrength = mix(0.1, 0.05, wetness);
+		}
 		return mat;
 	}
 
