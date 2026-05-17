@@ -1,0 +1,83 @@
+#version 460 core
+
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+layout(rgba16f, binding = [[VOLUMETRIC_INJECTION_IMAGE_BINDING]]) uniform readonly image3D inInjection;
+layout(rgba16f, binding = [[VOLUMETRIC_SCATTERING_IMAGE_BINDING]]) uniform image3D outScattering;
+layout(rgba16f, binding = [[VOLUMETRIC_HISTORY_IMAGE_BINDING]]) uniform image3D outHistory; // Save for next frame
+
+uniform ivec3 u_grid_res;
+
+const int NUM_CASCADES = 4;
+const float CASCADE_DISTANCES[4] = { 20.0, 60.0, 200.0, 1000.0 };
+
+shared vec3  s_scat[256];
+shared float s_trans[256];
+
+void main() {
+    ivec2 xy = ivec2(gl_WorkGroupID.xy);
+    if (xy.x >= u_grid_res.x || xy.y >= u_grid_res.y) return;
+
+    int idx = int(gl_LocalInvocationID.x);
+    if (idx >= u_grid_res.z * NUM_CASCADES) return;
+
+    ivec3 vox = ivec3(xy, idx);
+
+    // 1. Load data and compute local scattering/transmittance
+    vec4 data = imageLoad(inInjection, vox);
+    if (any(isnan(data))) data = vec4(0.0);
+
+    // Always store history
+    imageStore(outHistory, vox, data);
+
+    vec3 scattering = max(vec3(0.0), data.rgb);
+    float extinction = max(0.0, data.a);
+
+    int cascade = idx / u_grid_res.z;
+    int z = idx % u_grid_res.z;
+
+    float z_near = (cascade == 0) ? 0.1 : CASCADE_DISTANCES[cascade - 1];
+    float z_far = CASCADE_DISTANCES[cascade];
+
+    float z0 = z_near * pow(z_far / z_near, float(z) / float(u_grid_res.z));
+    float z1 = z_near * pow(z_far / z_near, float(z + 1) / float(u_grid_res.z));
+    float stepSize = z1 - z0;
+
+    float transmittance = exp(-extinction * stepSize);
+    float factor = (extinction > 0.00001) ? (1.0 - transmittance) / extinction : stepSize;
+
+    s_scat[idx] = scattering * factor;
+    s_trans[idx] = transmittance;
+
+    barrier();
+
+    // 2. Parallel Prefix Sum ( Hillis-Steele Scan )
+    // Associative operator: (S1, T1) op (S2, T2) = (S1 + T1 * S2, T1 * T2)
+    // Note: This assumes 256 is enough for GRID_RES_Z * NUM_CASCADES
+    for (int stride = 1; stride < 256; stride <<= 1) {
+        vec3  otherScat = vec3(0.0);
+        float otherTrans = 1.0;
+
+        if (idx >= stride) {
+            otherScat = s_scat[idx - stride];
+            otherTrans = s_trans[idx - stride];
+        }
+
+        barrier();
+
+        if (idx >= stride) {
+            s_scat[idx] = otherScat + otherTrans * s_scat[idx];
+            s_trans[idx] = otherTrans * s_trans[idx];
+        }
+
+        barrier();
+    }
+
+    // 3. Final safety check and store
+    vec3 finalScat = s_scat[idx];
+    float finalTrans = clamp(s_trans[idx], 0.0, 1.0);
+
+    if (any(isnan(finalScat))) finalScat = vec3(0.0);
+
+    imageStore(outScattering, vox, vec4(finalScat, finalTrans));
+}

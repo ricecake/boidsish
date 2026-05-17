@@ -65,8 +65,8 @@ namespace Boidsish {
 					auto& manager = m_visualizer.GetPostProcessingManager();
 
 					for (auto& effect : manager.GetPreToneMappingEffects()) {
-						// Atmosphere is handled in EnvironmentWidget
-						if (effect->GetName() == "Atmosphere")
+						// Atmosphere and Volumetric Lighting are handled in EnvironmentWidget
+						if (effect->GetName() == "Atmosphere" || effect->GetName() == "Volumetric Lighting")
 							continue;
 
 						bool is_enabled = effect->IsEnabled();

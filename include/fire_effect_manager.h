@@ -114,6 +114,9 @@ namespace Boidsish {
 		// Get current particle stats from the GPU
 		ParticleStats GetStats() const;
 
+		// Bind particle buffers to the current shader
+		void BindBuffers(ShaderBase& shader) const;
+
 	private:
 		void _EnsureShaderAndBuffers();
 		void _UpdateParticleAllocation();
