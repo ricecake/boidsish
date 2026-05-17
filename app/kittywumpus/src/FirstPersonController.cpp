@@ -82,6 +82,24 @@ void FirstPersonController::Update(
 			viz.CreateExplosion(*target, intensity);
 			viz.AddSoundEffect("assets/rocket_explosion.wav", *target, {0, 0, 0}, glm::min(intensity, 5.0f));
 			handler.TriggerRadiusDamage(*target, 10.0f * intensity, 50.0f * intensity);
+
+			// Spawn a cinder smoke trail from the muzzle to the target
+			auto      cam_pos = viz.GetCamera().pos();
+			auto      cam_fwd = viz.GetCamera().front();
+			auto      cam_up = viz.GetCamera().up();
+			auto      cam_right = glm::normalize(glm::cross(cam_fwd, cam_up));
+			glm::vec3 muzzle_pos = cam_pos + cam_fwd * 1.5f + cam_right * 0.5f - cam_up * 0.3f;
+
+			viz.AddFireEffect(
+				muzzle_pos,
+				FireEffectStyle::Cinder,
+				*target - muzzle_pos,
+				{0, 0, 0},
+				2000,
+				0.1f,
+				EmitterType::Beam,
+				glm::vec3(glm::distance(muzzle_pos, *target), 0, 0)
+			);
 		}
 		right_hold_time_ = 0.0f;
 		right_was_down_ = false;
@@ -136,6 +154,24 @@ void FirstPersonController::Update(
 
 			viz.AddSoundEffect("assets/rocket_explosion.wav", *target, {0, 0, 0}, glm::min(intensity, 5.0f));
 			handler.TriggerRadiusDamage(*target, 8.0f * intensity, 30.0f * intensity);
+
+			// Spawn a cinder smoke trail from the muzzle to the target
+			auto      cam_pos = viz.GetCamera().pos();
+			auto      cam_fwd = viz.GetCamera().front();
+			auto      cam_up = viz.GetCamera().up();
+			auto      cam_right = glm::normalize(glm::cross(cam_fwd, cam_up));
+			glm::vec3 muzzle_pos = cam_pos + cam_fwd * 1.5f + cam_right * 0.5f - cam_up * 0.3f;
+
+			viz.AddFireEffect(
+				muzzle_pos,
+				FireEffectStyle::Cinder,
+				*target - muzzle_pos,
+				{0, 0, 0},
+				2000,
+				0.1f,
+				EmitterType::Beam,
+				glm::vec3(glm::distance(muzzle_pos, *target), 0, 0)
+			);
 		}
 		left_hold_time_ = 0.0f;
 		left_was_down_ = false;
