@@ -29,6 +29,8 @@ namespace Boidsish {
 		std::vector<glm::vec3>    positions;
 		std::vector<glm::vec3>    normals;
 		std::vector<glm::vec2>    biomes;
+		std::vector<float>        packed_height_normal;
+		std::vector<uint8_t>      packed_biomes;
 		PatchProxy                proxy;
 		int                       chunk_x;
 		int                       chunk_z;

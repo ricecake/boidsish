@@ -395,24 +395,10 @@ namespace Boidsish {
 	}
 
 	void TerrainRenderManager::UploadHeightmapSlice(
-		int                           slice,
-		const std::vector<float>&     heightmap,
-		const std::vector<glm::vec3>& normals,
-		const std::vector<glm::vec2>& biomes
+		int                        slice,
+		const std::vector<float>&  packed_height_normal,
+		const std::vector<uint8_t>& packed_biomes
 	) {
-		const int num_pixels = heightmap_resolution_ * heightmap_resolution_;
-
-		// Pack height + normal into RGBA16F format for raw_heightmap_texture_
-		std::vector<float> packed_data;
-		packed_data.reserve(num_pixels * 4);
-
-		for (int i = 0; i < num_pixels; ++i) {
-			packed_data.push_back(heightmap[i]); // R = height
-			packed_data.push_back(normals[i].x); // G = normal.x
-			packed_data.push_back(normals[i].y); // B = normal.y
-			packed_data.push_back(normals[i].z); // A = normal.z
-		}
-
 		glBindTexture(GL_TEXTURE_2D_ARRAY, raw_heightmap_texture_);
 		glTexSubImage3D(
 			GL_TEXTURE_2D_ARRAY,
@@ -425,7 +411,7 @@ namespace Boidsish {
 			1,                     // depth (one slice)
 			GL_RGBA,
 			GL_FLOAT,
-			packed_data.data()
+			packed_height_normal.data()
 		);
 
 		// Also upload to heightmap_texture_ as a fallback until baking is complete
@@ -441,19 +427,8 @@ namespace Boidsish {
 			1,
 			GL_RGBA,
 			GL_FLOAT,
-			packed_data.data()
+			packed_height_normal.data()
 		);
-
-		// Pack biome indices/weights into RGBA8 format
-		// R = low_idx, G = t, B = bake_flag (0), A = unused
-		std::vector<uint8_t> biome_data;
-		biome_data.reserve(num_pixels * 4);
-		for (int i = 0; i < num_pixels; ++i) {
-			biome_data.push_back(static_cast<uint8_t>(biomes[i].x));                 // R = low_idx
-			biome_data.push_back(static_cast<uint8_t>(biomes[i].y * 255.0f + 0.5f)); // G = t
-			biome_data.push_back(0);                                                 // B = bake_flag (not baked yet)
-			biome_data.push_back(0);                                                 // A = unused
-		}
 
 		glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture_);
 		glTexSubImage3D(
@@ -467,7 +442,7 @@ namespace Boidsish {
 			1,
 			GL_RGBA,
 			GL_UNSIGNED_BYTE,
-			biome_data.data()
+			packed_biomes.data()
 		);
 
 		glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
@@ -478,6 +453,8 @@ namespace Boidsish {
 		const std::vector<glm::vec3>&    positions,
 		const std::vector<glm::vec3>&    normals,
 		const std::vector<glm::vec2>&    biomes,
+		const std::vector<float>&        packed_height_normal,
+		const std::vector<uint8_t>&      packed_biomes,
 		const std::vector<unsigned int>& indices, // Not used in this implementation
 		float                            min_y,
 		float                            max_y,
@@ -492,29 +469,6 @@ namespace Boidsish {
 		// Update world scale tracking
 		last_world_scale_ = world_scale;
 
-		// The positions array from TerrainGenerator is in X-major order:
-		//   positions[x * num_z + z] = position at local (x, y, z)
-		// But OpenGL textures are row-major (Y/V axis is rows), so we need:
-		//   texture[z * num_x + x] = height at local (x, z)
-		// This means we need to transpose the data.
-
-		const int res = heightmap_resolution_;
-
-		std::vector<float>     heightmap(res * res);
-		std::vector<glm::vec3> reordered_normals(res * res);
-		std::vector<glm::vec2> reordered_biomes(res * res);
-
-		for (int x = 0; x < res; ++x) {
-			for (int z = 0; z < res; ++z) {
-				int src_idx = x * res + z; // X-major (how terrain generator stores it)
-				int dst_idx = z * res + x; // Z-major / row-major (for texture)
-
-				heightmap[dst_idx] = positions[src_idx].y;
-				reordered_normals[dst_idx] = normals[src_idx];
-				reordered_biomes[dst_idx] = biomes[src_idx];
-			}
-		}
-
 		// Scoped lock - released before calling eviction callback to avoid deadlock
 		{
 			std::lock_guard<std::recursive_mutex> lock(mutex_);
@@ -523,7 +477,7 @@ namespace Boidsish {
 			auto it = chunks_.find(chunk_key);
 			if (it != chunks_.end()) {
 				// Update existing chunk's heightmap
-				UploadHeightmapSlice(it->second.texture_slice, heightmap, reordered_normals, reordered_biomes);
+				UploadHeightmapSlice(it->second.texture_slice, packed_height_normal, packed_biomes);
 				it->second.min_y = min_y;
 				it->second.max_y = max_y;
 				it->second.update_count++;
@@ -595,7 +549,7 @@ namespace Boidsish {
 			}
 
 			// Upload heightmap data
-			UploadHeightmapSlice(slice, heightmap, reordered_normals, reordered_biomes);
+			UploadHeightmapSlice(slice, packed_height_normal, packed_biomes);
 
 			// Queue for baking
 			bake_queue_.push_back({glm::ivec2(chunk_key.first, chunk_key.second), slice, 0});

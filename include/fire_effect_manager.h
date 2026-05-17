@@ -7,6 +7,7 @@
 #include "IManager.h"
 #include "constants.h"
 #include "fire_effect.h"
+#include "persistent_buffer.h"
 #include "shader.h"
 
 namespace Boidsish {
@@ -131,15 +132,15 @@ namespace Boidsish {
 		GLuint particle_buffer_{0};
 		GLuint grid_heads_buffer_{0};
 		GLuint grid_next_buffer_{0};
-		GLuint emitter_buffer_{0};
-		GLuint indirection_buffer_{0};
+		std::unique_ptr<PersistentBuffer<Emitter>> emitter_buffer_;
+		std::unique_ptr<PersistentBuffer<int>> indirection_buffer_;
 		GLuint terrain_chunk_buffer_{0};
 		GLuint slice_data_buffer_{0};
 		GLuint visible_indices_buffer_{0};
 		GLuint live_indices_buffer_{0};
 		GLuint draw_command_buffer_{0};
 		GLuint behavior_command_buffer_{0};
-		GLuint stats_buffer_{0};
+		std::unique_ptr<PersistentBuffer<ParticleStats>> stats_buffer_;
 		GLuint dummy_vao_{0};
 
 		bool   initialized_{false};

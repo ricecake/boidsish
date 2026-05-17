@@ -240,6 +240,8 @@ namespace Boidsish {
 					chunk.terrain->vertices,
 					chunk.terrain->normals,
 					chunk.terrain->biomes,
+					chunk.terrain->packed_height_normal,
+					chunk.terrain->packed_biomes,
 					chunk.terrain->GetIndices(),
 					chunk.terrain->proxy.minY,
 					chunk.terrain->proxy.maxY,
@@ -356,7 +358,9 @@ namespace Boidsish {
 							result.positions,
 							result.normals,
 							result.biomes,
-							result.proxy
+							result.proxy,
+							std::move(result.packed_height_normal),
+							std::move(result.packed_biomes)
 						);
 						terrain_chunk->SetPosition(
 							result.chunk_x * scaled_chunk_size,
@@ -418,6 +422,8 @@ namespace Boidsish {
 						terrain_chunk->vertices,
 						terrain_chunk->normals,
 						terrain_chunk->biomes,
+						terrain_chunk->packed_height_normal,
+						terrain_chunk->packed_biomes,
 						terrain_chunk->GetIndices(),
 						terrain_chunk->proxy.minY,
 						terrain_chunk->proxy.maxY,
@@ -849,7 +855,30 @@ namespace Boidsish {
 		}
 		proxy.radiusSq = max_dist_sq;
 
-		return {indices, positions, normals, biomes_flat, proxy, chunkX, chunkZ, true};
+		// Pre-pack heightmap and biome data for the renderer (Z-major transposition)
+		const int res = chunk_size_ + 1;
+		std::vector<float>   packed_height_normal;
+		std::vector<uint8_t> packed_biomes;
+		packed_height_normal.reserve(res * res * 4);
+		packed_biomes.reserve(res * res * 4);
+
+		for (int z = 0; z < res; ++z) {
+			for (int x = 0; x < res; ++x) {
+				int src_idx = x * res + z; // X-major
+
+				packed_height_normal.push_back(positions[src_idx].y);
+				packed_height_normal.push_back(normals[src_idx].x);
+				packed_height_normal.push_back(normals[src_idx].y);
+				packed_height_normal.push_back(normals[src_idx].z);
+
+				packed_biomes.push_back(static_cast<uint8_t>(biomes_flat[src_idx].x));
+				packed_biomes.push_back(static_cast<uint8_t>(biomes_flat[src_idx].y * 255.0f + 0.5f));
+				packed_biomes.push_back(0); // bake_flag
+				packed_biomes.push_back(0); // unused
+			}
+		}
+
+		return {indices, positions, normals, biomes_flat, packed_height_normal, packed_biomes, proxy, chunkX, chunkZ, true};
 	}
 
 	bool
@@ -1596,7 +1625,9 @@ namespace Boidsish {
 							result.positions,
 							result.normals,
 							result.biomes,
-							result.proxy
+							result.proxy,
+							std::move(result.packed_height_normal),
+							std::move(result.packed_biomes)
 						);
 						new_terrain->SetPosition(
 							result.chunk_x * scaled_chunk_size,
@@ -1611,6 +1642,8 @@ namespace Boidsish {
 								new_terrain->vertices,
 								new_terrain->normals,
 								new_terrain->biomes,
+								new_terrain->packed_height_normal,
+								new_terrain->packed_biomes,
 								new_terrain->GetIndices(),
 								new_terrain->proxy.minY,
 								new_terrain->proxy.maxY,
