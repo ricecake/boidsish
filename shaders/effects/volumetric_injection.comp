@@ -5,6 +5,7 @@ layout(local_size_x = 8, local_size_y = 8, local_size_z = 4) in;
 layout(rgba16f, binding = [[VOLUMETRIC_INJECTION_IMAGE_BINDING]]) uniform image3D outInjection;
 layout(binding = [[VOLUMETRIC_HISTORY_BINDING]]) uniform sampler3D uHistoryTexture;
 layout(binding = 10) uniform sampler2D uBlueNoise;
+// layout(binding = 11) uniform sampler3D u_curlTexture;
 
 uniform mat4 uInvView;
 uniform mat4 uInvProj;
@@ -27,6 +28,8 @@ uniform float uTemporalAlpha;
 uniform float u_cell_size;
 uniform uint  u_grid_size;
 uniform ivec3 u_grid_res;
+
+#include "helpers/wind.glsl"
 
 const int NUM_CASCADES = 4;
 const float CASCADE_DISTANCES[4] = { 20.0, 60.0, 200.0, 1000.0 };
@@ -83,6 +86,40 @@ void main() {
     vec3 radiance = vec3(0.0);
     vec3 V = normalize(viewPos - worldPos);
 
+    if (length(V) < 60 && worldPos.y <= 50) {
+        vec3 windAtPos = getWindAtPosition(worldPos);
+        float windSpeed = length(windAtPos);
+
+        if (windSpeed > 0.01) {
+            vec3 windDir = windAtPos / windSpeed;
+
+            float spatialOffset = fract(sin(dot(floor(worldPos.xz / 10.0), vec2(12.9898, 78.233))) * 43758.5453);
+
+            float cycleSpeed = 0.01; // How fast the streak completes its lifecycle
+            float t1 = fract(time * cycleSpeed + spatialOffset);
+            float t2 = fract(time * cycleSpeed + spatialOffset + 0.5);
+
+            float pinch = 4.0; // Higher = shorter, sparser streaks
+            float w1 = pow(sin(t1 * 3.14159), pinch);
+            float w2 = pow(sin(t2 * 3.14159), pinch);
+
+            float advectDist = 25.0; // How far the texture coordinates slide before resetting
+            vec3 pos1 = worldPos - (windDir * t1 * advectDist);
+            vec3 pos2 = worldPos - (windDir * t2 * advectDist);
+
+            vec3 curl1 = textureLod(u_curlTexture, pos1 / 250.0, 0.0).rgb * 2.0 - 1.0;
+            vec3 curl2 = textureLod(u_curlTexture, pos2 / 250.0, 0.0).rgb * 2.0 - 1.0;
+
+            vec2 normWindXZ = normalize(windDir.xz);
+            float align1 = smoothstep(0.90, 1.0, dot(normWindXZ, normalize(curl1.xz)));
+            float align2 = smoothstep(0.90, 1.0, dot(normWindXZ, normalize(curl2.xz)));
+
+            float streakIntensity = (align1 * w1) + (align2 * w2);
+
+            s.mie *= max(1.0, 5.0 * windSpeed * streakIntensity);
+        }
+    }
+
     // Direct light (Sun)
     for (int i = 0; i < min(2, num_lights); ++i) {
         if (lights[i].type != LIGHT_TYPE_DIRECTIONAL) continue;
@@ -133,7 +170,7 @@ void main() {
                 while (particle_idx != -1) {
                     Particle p = particles[particle_idx];
                     // Filter for emissive types
-                    if (p.style == STYLE_FIRE || p.style == STYLE_FIREFLIES || p.style == STYLE_CINDER || p.style == STYLE_EXPLOSION || p.style == STYLE_ROCKET_TRAIL) {
+                    if (p.pos.w > 0 && (p.style == STYLE_FIRE || p.style == STYLE_FIREFLIES || p.style == STYLE_CINDER || p.style == STYLE_EXPLOSION || p.style == STYLE_ROCKET_TRAIL)) {
                         float distSq = dot(p.pos.xyz - worldPos, p.pos.xyz - worldPos);
                         float radius = p.vel.w * 6.0; // Influence radius based on size
                         float radiusSq = radius * radius;
@@ -151,7 +188,7 @@ void main() {
         }
     }
 
-    radiance *= uIntensity * 2.0; // Boosted intensity for prominence
+    radiance *= uIntensity * 3.0; // Boosted intensity for prominence
 
     // Convert atmospheric coefficients from per-KM to per-meter
     float obliquity = getObliquity(vox.xy, jitter);
