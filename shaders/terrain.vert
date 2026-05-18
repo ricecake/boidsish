@@ -20,7 +20,8 @@ out vec2       TexCoords_VS_out; // Heightmap UV
 out vec3       viewForward;
 flat out float TextureSlice_VS_out;
 flat out vec3  WorldOffset_VS_out;
-flat out vec4  PatchInfo_VS_out;    // xy = patch local coords, z = patch size, w = chunk size
+flat out float PatchSize_VS_out;
+flat out float ChunkSize_VS_out;
 flat out int   DrawID_VS_out;
 
 uniform mat4 view;
@@ -48,7 +49,8 @@ void main() {
 
 	TextureSlice_VS_out = draw.world_offset_and_slice.w;
 	WorldOffset_VS_out = draw.world_offset_and_slice.xyz;
-	PatchInfo_VS_out = draw.patch_coords_and_size;
+	PatchSize_VS_out = patchSize;
+	ChunkSize_VS_out = chunkSize;
 	DrawID_VS_out = drawID;
 
 	gl_Position = vec4(localChunkPos, 1.0);

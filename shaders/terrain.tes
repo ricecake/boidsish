@@ -24,13 +24,10 @@ out float      vErosionDelta;
 out float      vRidgeMap;
 out float      vSubstrate;
 
-// Heightmap texture array: R=height, GBA=normal
+// Heightmap texture array: R=height, G=disp.x, B=disp.z, A=packedNormal.x
 layout(binding = [[BAKED_HEIGHTMAP_BINDING]]) uniform sampler2DArray uHeightmap;
-// Baked params: R=erosionDelta, G=ridgeMap, B=substrate, A=waterMask
+// Baked params: R=erosionDelta, G=ridgeMap, B=substrate, A=packedNormal.y
 layout(binding = [[BAKED_PARAMS_BINDING]]) uniform sampler2DArray uBakedParams;
-// Biome map: R=lowIdx, G=t, B=bakeFlag
-layout(binding = [[TERRAIN_BIOME_MAP_BINDING]]) uniform sampler2DArray u_biomeMap;
-
 uniform float uChunkSize;
 uniform float uRawChunkSize;
 
@@ -42,12 +39,11 @@ uniform bool uIsShadowPass = false;
 #include "helpers/constants.glsl"
 #include "helpers/erosion.glsl"
 #include "helpers/lighting.glsl"
+#include "helpers/terrain_common.glsl"
 #include "helpers/shockwave.glsl"
 #include "helpers/terrain_noise.glsl"
 #include "temporal_data.glsl"
 #include "visual_effects.glsl"
-
-// #include "helpers/fast_noise.glsl"
 
 // Sample heightmap to get world position and normal
 void sampleHeightmap(vec2 uv, float slice, vec3 worldOffset, out vec3 worldPos, out vec3 normal) {
@@ -55,11 +51,15 @@ void sampleHeightmap(vec2 uv, float slice, vec3 worldOffset, out vec3 worldPos, 
 	vec2  remappedUV = (uv * uRawChunkSize + 0.5) / (uRawChunkSize + 1.0);
 	vec4  data = texture(uHeightmap, vec3(remappedUV, slice));
 	float height = data.r;
-	normal = normalize(data.gba);
+	vec3 displacement = vec3(data.g, 0.0, data.b);
 
-	worldPos.x = worldOffset.x + uv.x * uChunkSize;
+	float nx = data.a;
+	float ny = texture(uBakedParams, vec3(remappedUV, slice)).a;
+	normal = unpackNormal(vec2(nx, ny));
+
+	worldPos.x = worldOffset.x + uv.x * uChunkSize + displacement.x;
 	worldPos.y = height;
-	worldPos.z = worldOffset.z + uv.y * uChunkSize;
+	worldPos.z = worldOffset.z + uv.y * uChunkSize + displacement.z;
 }
 
 void main() {
@@ -88,7 +88,7 @@ void main() {
 		vErosionDelta = bakedParams.r;
 		vRidgeMap = bakedParams.g;
 		vSubstrate = bakedParams.b;
-		vIsWater = bakedParams.a;
+		vIsWater = biomeData.a; // waterMask stored in biome alpha
 
 		// Height and Normal were already updated by sampleHeightmap because it samples uHeightmap
 		// which now points to the baked texture array in the manager.

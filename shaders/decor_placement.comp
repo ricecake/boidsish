@@ -10,7 +10,10 @@ layout(std430, binding = [[DECOR_ALL_INSTANCES_BINDING]]) buffer DecorInstances 
 
 // Heightmap and biome textures from TerrainRenderManager
 uniform sampler2DArray u_heightmapArray; // RGBA16F: R=height, GBA=normal.xyz
-uniform sampler2DArray u_biomeMap;       // RGBA8: R=low_idx, G=t, B=bake_flag
+#ifndef TERRAIN_BIOME_MAP_DEFINED
+#define TERRAIN_BIOME_MAP_DEFINED
+uniform sampler2DArray u_biomeMap;       // RGBA8: R=low_idx, G=t, B=bake_flag, A=waterMask
+#endif
 
 // Per-type properties (uploaded once in PrepareResources)
 struct DecorTypeParams {

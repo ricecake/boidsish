@@ -16,6 +16,22 @@ layout(binding = [[TERRAIN_CHUNK_GRID_BINDING]]) uniform isampler2D u_chunkGrid;
 
 layout(binding = [[TERRAIN_MAX_HEIGHT_BINDING]]) uniform sampler2D  u_maxHeightGrid;
 layout(binding = [[BAKED_HEIGHTMAP_BINDING]]) uniform sampler2DArray u_heightmapArray;
+layout(binding = [[BAKED_PARAMS_BINDING]]) uniform sampler2DArray u_bakedParamsArray;
+
+#ifndef TERRAIN_BIOME_MAP_DEFINED
+#define TERRAIN_BIOME_MAP_DEFINED
+layout(binding = [[TERRAIN_BIOME_MAP_BINDING]]) uniform sampler2DArray u_biomeMap;
+#endif
+
+// Octahedron normal decoding
+vec3 unpackNormal(vec2 p) {
+    p = p * 2.0 - 1.0;
+    vec3 n = vec3(p.x, 1.0 - abs(p.x) - abs(p.y), p.y);
+    float t = max(-n.y, 0.0);
+    n.x += n.x >= 0.0 ? -t : t;
+    n.z += n.z >= 0.0 ? -t : t;
+    return normalize(n);
+}
 
 /**
  * Get the terrain height at a specific world position.
@@ -64,8 +80,11 @@ vec3 getTerrainNormal(vec2 worldXZ) {
 
 	vec2 uv = (worldXZ - vec2(chunkCoord) * scaledChunkSize) / scaledChunkSize;
 	vec2 remappedUV = (uv * u_terrainParams.x + 0.5) / (u_terrainParams.x + 1.0);
-	// Normal is stored in GBA of the heightmap array
-	return texture(u_heightmapArray, vec3(remappedUV, float(slice))).gba;
+
+	float nx = texture(u_heightmapArray, vec3(remappedUV, float(slice))).a;
+	float ny = texture(u_bakedParamsArray, vec3(remappedUV, float(slice))).a;
+
+	return unpackNormal(vec2(nx, ny));
 }
 
 #endif // HELPERS_TERRAIN_COMMON_GLSL
