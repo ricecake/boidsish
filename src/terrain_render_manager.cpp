@@ -1,6 +1,8 @@
 #include "terrain_render_manager.h"
 
 #include <algorithm>
+#include <cstring>
+#include <future>
 #include <iostream>
 
 #include "biome_properties.h"
@@ -9,6 +11,7 @@
 #include "graphics.h" // For Frustum
 #include "profiler.h"
 #include "service_locator.h"
+#include "task_thread_pool.hpp"
 #include "shader.h"
 
 namespace Boidsish {
@@ -121,12 +124,8 @@ namespace Boidsish {
 		size_t indirect_size_bytes = 16 + sizeof(DrawElementsIndirectCommand);
 		patch_indirect_pb_ = std::make_unique<PersistentBuffer<uint8_t>>(GL_DRAW_INDIRECT_BUFFER, indirect_size_bytes, 3);
 
-		// Create instance buffer first so we can set up VAO attributes
-		// Pre-allocate for max_chunks to avoid reallocation
-		glGenBuffers(1, &instance_vbo_);
-		glBindBuffer(GL_ARRAY_BUFFER, instance_vbo_);
-		instance_buffer_capacity_ = max_chunks * sizeof(InstanceData);
-		glBufferData(GL_ARRAY_BUFFER, instance_buffer_capacity_, nullptr, GL_DYNAMIC_DRAW);
+		// Create instance buffer (triple-buffered persistent SSBO)
+		instance_pb_ = std::make_unique<PersistentBuffer<InstanceData>>(GL_SHADER_STORAGE_BUFFER, max_chunks, 3);
 
 		CreateGridMesh();
 		// Create patch mesh
@@ -171,8 +170,7 @@ namespace Boidsish {
 			glDeleteBuffers(1, &grid_vbo_);
 		if (grid_ebo_)
 			glDeleteBuffers(1, &grid_ebo_);
-		if (instance_vbo_)
-			glDeleteBuffers(1, &instance_vbo_);
+		instance_pb_.reset();
 		if (raw_heightmap_texture_)
 			glDeleteTextures(1, &raw_heightmap_texture_);
 		if (heightmap_texture_)
@@ -277,8 +275,8 @@ namespace Boidsish {
 		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, grid_ebo_);
 		glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), indices.data(), GL_STATIC_DRAW);
 
-		// Set up instance attributes (from instance_vbo_ created in constructor)
-		glBindBuffer(GL_ARRAY_BUFFER, instance_vbo_);
+		// Set up instance attributes (from instance_pb_ created in constructor)
+		glBindBuffer(GL_ARRAY_BUFFER, instance_pb_->GetBufferId());
 
 		// Instance attribute: world_offset_and_slice (location 3)
 		glVertexAttribPointer(
@@ -673,27 +671,58 @@ namespace Boidsish {
 
 		{
 			PROJECT_PROFILE_SCOPE("VisibilityCulling");
-			for (const auto& [key, chunk] : chunks_) {
-				if (IsChunkVisible(chunk, frustum, world_scale)) {
-					InstanceData instance{};
-					instance.world_offset_and_slice = glm::vec4(
-						chunk.world_offset.x,
-						0.0f,                 // Y offset is always 0 (height comes from heightmap)
-						chunk.world_offset.y, // This is the Z world coordinate
-						static_cast<float>(chunk.texture_slice)
-					);
-					instance.bounds = glm::vec4(chunk.min_y, chunk.max_y, 0.0f, 0.0f);
+			// Collect all registered chunks into a vector for parallel processing
+			std::vector<const std::pair<const std::pair<int, int>, ChunkInfo>*> chunk_ptrs;
+			chunk_ptrs.reserve(chunks_.size());
+			for (auto const& pair : chunks_) {
+				chunk_ptrs.push_back(&pair);
+			}
 
-					// Calculate distance from chunk center to camera
-					float     scaled_chunk_size = chunk_size_ * world_scale;
-					glm::vec2 chunk_center(
-						chunk.world_offset.x + scaled_chunk_size * 0.5f,
-						chunk.world_offset.y + scaled_chunk_size * 0.5f
-					);
-					float dist_sq = glm::dot(chunk_center - camera_pos_2d, chunk_center - camera_pos_2d);
+			std::mutex visible_mutex;
+			const size_t num_chunks = chunk_ptrs.size();
+			const size_t batch_size = 128;
+			std::vector<std::future<void>> futures;
 
-					visible_chunks.push_back({instance, dist_sq});
-				}
+			auto pool = ServiceLocator::Instance().Get<task_thread_pool::task_thread_pool>();
+
+			for (size_t i = 0; i < num_chunks; i += batch_size) {
+				size_t end = std::min(i + batch_size, num_chunks);
+				futures.push_back(pool->submit([this, i, end, &chunk_ptrs, &frustum, world_scale, camera_pos_2d, &visible_chunks, &visible_mutex]() {
+					std::vector<VisibleChunk> local_visible;
+					local_visible.reserve(end - i);
+
+					for (size_t j = i; j < end; ++j) {
+						const auto& chunk = chunk_ptrs[j]->second;
+						if (IsChunkVisible(chunk, frustum, world_scale)) {
+							InstanceData instance{};
+							instance.world_offset_and_slice = glm::vec4(
+								chunk.world_offset.x,
+								0.0f,
+								chunk.world_offset.y,
+								static_cast<float>(chunk.texture_slice)
+							);
+							instance.bounds = glm::vec4(chunk.min_y, chunk.max_y, 0.0f, 0.0f);
+
+							float     scaled_chunk_size = chunk_size_ * world_scale;
+							glm::vec2 chunk_center(
+								chunk.world_offset.x + scaled_chunk_size * 0.5f,
+								chunk.world_offset.y + scaled_chunk_size * 0.5f
+							);
+							float dist_sq = glm::dot(chunk_center - camera_pos_2d, chunk_center - camera_pos_2d);
+
+							local_visible.push_back({instance, dist_sq});
+						}
+					}
+
+					if (!local_visible.empty()) {
+						std::lock_guard<std::mutex> lock(visible_mutex);
+						visible_chunks.insert(visible_chunks.end(), local_visible.begin(), local_visible.end());
+					}
+				}));
+			}
+
+			for (auto& f : futures) {
+				f.get();
 			}
 		}
 
@@ -712,21 +741,15 @@ namespace Boidsish {
 
 		// Upload instance data to GPU for the prepare compute shader
 		PROJECT_PROFILE_SCOPE("UploadInstanceData");
+		instance_pb_->AdvanceFrame();
 		if (!visible_instances_.empty()) {
 			// Update bounds with raw chunkSize for the prepare shader's UV calculation
 			for (auto& instance : visible_instances_) {
 				instance.bounds.z = static_cast<float>(chunk_size_);
 			}
 
-			// Use internal instance_vbo_ but bind as SSBO for prepare shader
-			glBindBuffer(GL_SHADER_STORAGE_BUFFER, instance_vbo_);
-			size_t required_size = visible_instances_.size() * sizeof(InstanceData);
-			if (required_size > instance_buffer_capacity_) {
-				instance_buffer_capacity_ = required_size * 2;
-				glBufferData(GL_SHADER_STORAGE_BUFFER, instance_buffer_capacity_, nullptr, GL_DYNAMIC_DRAW);
-			}
-			glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, required_size, visible_instances_.data());
-			glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+			size_t copy_count = std::min(visible_instances_.size(), instance_pb_->GetElementCount());
+			std::memcpy(instance_pb_->GetFrameDataPtr(), visible_instances_.data(), copy_count * sizeof(InstanceData));
 		}
 	}
 
@@ -1048,7 +1071,7 @@ namespace Boidsish {
 			patch_indirect_pb_->GetTotalSize() / 3
 		);
 
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::IndirectionBuffer(), instance_vbo_);
+		instance_pb_->BindRange(Constants::SsboBinding::IndirectionBuffer());
 		if (temporal_data_ubo_ != 0) {
 			if (temporal_data_ubo_size_ > 0) {
 				glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::TemporalData(),
