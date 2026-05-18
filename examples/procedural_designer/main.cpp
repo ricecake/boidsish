@@ -13,6 +13,9 @@
 #include "imgui.h"
 #include "logger.h"
 #include "procedural_generator.h"
+#include "procedural_mesher.h"
+#include "procedural_optimizer.h"
+#include "procedural_refiner.h"
 
 using namespace Boidsish;
 
@@ -32,7 +35,7 @@ public:
 
 	void Draw() override {
 		if (ImGui::Begin("Procedural Designer")) {
-			const char* types[] = {"Rock", "Grass", "Flower", "Tree", "SC Tree", "Tree Spring", "Critter"};
+			const char* types[] = {"Rock", "Grass", "Flower", "Tree", "SC Tree", "Tree Spring", "Transport Tree", "Critter"};
 			ImGui::Combo("Model Type", &m_type, types, IM_ARRAYSIZE(types));
 
 			if (m_type == 5) {
@@ -49,6 +52,15 @@ public:
 				ImGui::SliderFloat("Spiral", &m_springConfig.spiral, 0.0f, 1.0f);
 				ImGui::SliderInt("Min Branches", &m_springConfig.min_branches, 1, 5);
 				ImGui::SliderInt("Max Branches", &m_springConfig.max_branches, 1, 10);
+			} else if (m_type == 6) {
+				// Transport Tree config
+				ImGui::SliderFloat("Ratio", &m_transportConfig.ratio, 0.0f, 1.0f);
+				ImGui::SliderFloat("Spread", &m_transportConfig.spread, 0.0f, 2.0f);
+				ImGui::SliderFloat("Split Size", &m_transportConfig.splitsize, 0.1f, 10.0f);
+				ImGui::SliderFloat("Split Decay", &m_transportConfig.splitdecay, 0.0f, 1.0f);
+				ImGui::SliderFloat("Directedness", &m_transportConfig.directedness, 0.0f, 1.0f);
+				ImGui::SliderFloat("Growth Rate", &m_transportConfig.growth_rate, 1.0f, 500.0f);
+				ImGui::SliderInt("Growth Iterations", &m_transportConfig.iterations, 1, 50);
 			} else {
 				ImGui::InputText("Axiom", m_axiomBuf, sizeof(m_axiomBuf));
 
@@ -215,6 +227,14 @@ private:
 					model = ProceduralGenerator::GenerateSpringPlant(seed, m_springConfig);
 					break;
 				case 6:
+					{
+						auto ir = ProceduralGenerator::GenerateTransportTreeIR(seed, m_transportConfig);
+						ProceduralOptimizer::Optimize(ir);
+						ProceduralRefiner::Refine(ir);
+						model = ProceduralMesher::GenerateModel(ir);
+					}
+					break;
+				case 7:
 					model = ProceduralGenerator::GenerateCritter(seed, axiom, ruleList, m_iterations);
 					break;
 				}
@@ -240,6 +260,7 @@ private:
 	int                                     m_iterations;
 	int                                     m_seedOffset;
 	SpringPlantConfig                       m_springConfig;
+	TransportTreeConfig                     m_transportConfig;
 };
 
 int main(int argc, char** argv) {

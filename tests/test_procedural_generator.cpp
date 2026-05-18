@@ -43,6 +43,22 @@ TEST(ProceduralGeneratorTest, GenerateAllTypes) {
         }
     }
     EXPECT_TRUE(hasEmissive);
+
+    auto transportTree = ProceduralGenerator::Generate(ProceduralType::TransportTree, 2025);
+    ASSERT_NE(transportTree, nullptr);
+    EXPECT_GT(transportTree->getMeshes().size(), 0);
+
+    bool hasMetadata = false;
+    for (const auto& mesh : transportTree->getMeshes()) {
+        for (const auto& v : mesh.vertices) {
+            if (v.Color.x > 0.0f || v.Color.y > 0.0f) {
+                hasMetadata = true;
+                break;
+            }
+        }
+        if (hasMetadata) break;
+    }
+    EXPECT_TRUE(hasMetadata);
 }
 
 TEST(ProceduralGeneratorTest, MultipleVariants) {

@@ -613,6 +613,8 @@ namespace Boidsish {
 			int              mode;
 			std::vector<int> segment_bones;
 			MaterialKey      material;
+			float            tree_depth;
+			float            branch_factor;
 		};
 
 		std::vector<SkinJob> skin_jobs;
@@ -650,7 +652,11 @@ namespace Boidsish {
 						points.push_back(Vector3(te.position));
 						ups.push_back(Vector3(0, 1, 0));
 						sizes.push_back(te.radius / SPLINE_RADIUS_SCALE);
-						colors.push_back(te.color);
+						if (ir.name == "transport_tree") {
+							colors.push_back(glm::vec3(te.tree_depth, te.branch_factor, 0.0f));
+						} else {
+							colors.push_back(te.color);
+						}
 						first = false;
 					}
 					int next = -1;
@@ -678,7 +684,11 @@ namespace Boidsish {
 					points.push_back(Vector3(te.end_position));
 					ups.push_back(Vector3(0, 1, 0));
 					sizes.push_back(te.end_radius / SPLINE_RADIUS_SCALE);
-					colors.push_back(te.color);
+					if (ir.name == "transport_tree") {
+						colors.push_back(glm::vec3(te.tree_depth + 1.0f, te.branch_factor + te.length, 0.0f));
+					} else {
+						colors.push_back(te.color);
+					}
 					segment_bones.push_back(curr_bone);
 					curr = next;
 				}
@@ -759,7 +769,7 @@ namespace Boidsish {
 				else
 					sm = SkinningMode::Rigid;
 			}
-			skin_jobs.push_back({v_start, (int)group.vertices.size(), i, (int)sm, {}, mat});
+			skin_jobs.push_back({v_start, (int)group.vertices.size(), i, (int)sm, {}, mat, e.tree_depth, e.branch_factor});
 		}
 
 		auto AddLeafGeom = [&](std::vector<Vertex>&       vertices,
@@ -820,10 +830,16 @@ namespace Boidsish {
 				int v_start = (int)group.vertices.size();
 				AddLeafGeom(group.vertices, group.indices, e.position, e.orientation, e.radius, e.color, e.variant);
 
+				if (ir.name == "transport_tree") {
+					for (int vi = v_start; vi < (int)group.vertices.size(); ++vi) {
+						group.vertices[vi].Color = glm::vec3(e.tree_depth, e.branch_factor, 1.0f);
+					}
+				}
+
 				SkinningMode sm = e.skinning_mode;
 				if (sm == SkinningMode::Auto)
 					sm = SkinningMode::Rigid;
-				skin_jobs.push_back({v_start, (int)group.vertices.size(), i, (int)sm, {}, mat});
+				skin_jobs.push_back({v_start, (int)group.vertices.size(), i, (int)sm, {}, mat, e.tree_depth, e.branch_factor});
 			}
 		}
 

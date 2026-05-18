@@ -70,8 +70,10 @@ namespace Boidsish {
 	};
 
 	struct DecorType {
-		std::shared_ptr<Model> model;
-		DecorProperties        props;
+		std::shared_ptr<Model>  model;
+		DecorProperties         props;
+		std::shared_ptr<Shader> shader;
+		bool                    use_tessellation = false;
 
 		// GPU resources
 		unsigned int ssbo = 0;                   // Main storage (persistent)
@@ -116,7 +118,13 @@ namespace Boidsish {
 		void PopulateDefaultDecor();
 
 		// Adds a procedurally generated decor with multiple variants
-		void AddProceduralDecor(ProceduralType type, const DecorProperties& props, int variants = 3);
+		void AddProceduralDecor(
+			ProceduralType         type,
+			const DecorProperties& props,
+			int                    variants = 3,
+			const std::string&     shader_name = "",
+			bool                   use_tessellation = false
+		);
 
 		// Static helpers for getting default properties
 		static DecorProperties GetDefaultTreeProperties();
