@@ -23,8 +23,7 @@ namespace Boidsish {
 			glDeleteTextures(1, &_aerialPerspectiveLUT);
 		if (_cloudShadowMap)
 			glDeleteTextures(1, &_cloudShadowMap);
-		if (_shCoeffsBuffer)
-			glDeleteBuffers(1, &_shCoeffsBuffer);
+		_shCoeffs_pb.reset();
 	}
 
 	void AtmosphereManager::Initialize() {
@@ -79,11 +78,8 @@ namespace Boidsish {
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-		// SH Coefficients SSBO: 9 x vec4
-		glGenBuffers(1, &_shCoeffsBuffer);
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, _shCoeffsBuffer);
-		glBufferData(GL_SHADER_STORAGE_BUFFER, 9 * sizeof(glm::vec4), nullptr, GL_DYNAMIC_DRAW);
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+		// SH Coefficients triple-buffered persistent SSBO: 9 x vec4
+		_shCoeffs_pb = std::make_unique<PersistentBuffer<glm::vec4>>(GL_SHADER_STORAGE_BUFFER, 9, 3);
 
 		for (int i = 0; i < 9; ++i) {
 			_shCoeffs[i] = glm::vec4(0.0f);
@@ -249,11 +245,12 @@ namespace Boidsish {
 		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
 		// Dispatch SkyToSH
+		_shCoeffs_pb->AdvanceFrame();
 		_skyToSHShader->use();
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, _skyViewLUT);
 		_skyToSHShader->setInt("u_skyViewLUT", 0);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::AtmosphereSH(), _shCoeffsBuffer);
+		_shCoeffs_pb->BindRange(Constants::SsboBinding::AtmosphereSH());
 		glDispatchCompute(1, 1, 1); // Logic in sky_to_sh.comp uses a single workgroup for simple integration
 		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
@@ -291,11 +288,11 @@ namespace Boidsish {
 	}
 
 	void AtmosphereManager::CopySHToUBO(GLuint lightingUbo, size_t shOffset) {
-		if (_shCoeffsBuffer == 0)
+		if (!_shCoeffs_pb)
 			return;
-		glBindBuffer(GL_COPY_READ_BUFFER, _shCoeffsBuffer);
+		glBindBuffer(GL_COPY_READ_BUFFER, _shCoeffs_pb->GetBufferId());
 		glBindBuffer(GL_COPY_WRITE_BUFFER, lightingUbo);
-		glCopyBufferSubData(GL_COPY_READ_BUFFER, GL_COPY_WRITE_BUFFER, 0, shOffset, 9 * sizeof(glm::vec4));
+		glCopyBufferSubData(GL_COPY_READ_BUFFER, GL_COPY_WRITE_BUFFER, _shCoeffs_pb->GetFrameOffset(), shOffset, 9 * sizeof(glm::vec4));
 		glBindBuffer(GL_COPY_READ_BUFFER, 0);
 		glBindBuffer(GL_COPY_WRITE_BUFFER, 0);
 	}
