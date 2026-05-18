@@ -102,6 +102,10 @@ namespace Boidsish {
 				glActiveTexture(GL_TEXTURE10);
 				glBindTexture(GL_TEXTURE_2D, noise_mgr->GetBlueNoiseTexture());
 				injection_shader_->setInt("uBlueNoise", 10);
+
+				glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::NoiseCurl());
+				glBindTexture(GL_TEXTURE_3D, noise_mgr->GetCurlTexture());
+				injection_shader_->setInt("u_curlTexture", Constants::TextureUnit::NoiseCurl());
 			}
 
 			injection_shader_->setFloat("uAnisotropy", anisotropy_);

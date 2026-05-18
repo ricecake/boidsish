@@ -15,6 +15,7 @@ layout(std430, binding = [[VOLUMETRIC_INJECTION_BUFFER_BINDING]]) buffer Volumet
 
 layout(binding = [[VOLUMETRIC_HISTORY_BINDING]]) uniform sampler3D uHistoryTexture;
 layout(binding = 10) uniform sampler2D uBlueNoise;
+// layout(binding = 11) uniform sampler3D u_curlTexture;
 
 uniform mat4 uInvView;
 uniform mat4 uInvProj;
@@ -37,6 +38,10 @@ uniform float uTemporalAlpha;
 uniform float u_cell_size;
 uniform uint  u_grid_size;
 uniform ivec3 u_grid_res;
+
+#include "helpers/wind.glsl"
+
+#include "lygia/generative/curl.glsl"
 
 const int NUM_CASCADES = 4;
 const float CASCADE_DISTANCES[4] = { 20.0, 60.0, 200.0, 1000.0 };
@@ -93,6 +98,50 @@ void main() {
     vec3 radiance = vec3(0.0);
     vec3 V = normalize(viewPos - worldPos);
 
+/*
+    float height = getTerrainHeight(worldPos.xz);
+    float distToCam = distance(viewPos, worldPos);
+    if (distToCam < 60 && height > 0 && height <= 10) {
+        vec3 windAtPos = getWindAtPosition(worldPos);
+        float windSpeed = length(windAtPos);
+
+        if (windSpeed > 0.01) {
+            vec3 windDir = windAtPos / windSpeed;
+
+            // Use coherent noise instead of floor() to prevent grid blockiness
+            float spatialOffset = textureLod(u_curlTexture, worldPos / 200.0, 0.0).a;
+
+            float cycleSpeed = 60.0; // How fast the streak completes its lifecycle
+            float t1 = fract(time * cycleSpeed + spatialOffset);
+            float t2 = fract(time * cycleSpeed + spatialOffset + 0.5);
+
+            float pinch = 4.0; // Higher = shorter, sparser streaks
+            float w1 = pow(sin(t1 * 3.14159), pinch);
+            float w2 = pow(sin(t2 * 3.14159), pinch);
+
+            float advectDist = 30.0; // How far the texture coordinates slide before resetting
+            vec3 pos1 = worldPos - (windDir * t1 * advectDist);
+            vec3 pos2 = worldPos - (windDir * t2 * advectDist);
+
+            // vec3 curl1 = textureLod(u_curlTexture, pos1 / 300.0, 0.0).rgb * 2.0 - 1.0;
+            // vec3 curl2 = textureLod(u_curlTexture, pos2 / 300.0, 0.0).rgb * 2.0 - 1.0;
+
+            vec3 curl1 = curl(pos1/150) * 2.0 - 1.0;
+            vec3 curl2 = curl(pos1/150) * 2.0 - 1.0;
+
+            vec3 normWindXZ = normalize(windDir);
+            float align1 = smoothstep(0.85, 1.0, dot(normWindXZ, normalize(curl1)));
+            float align2 = smoothstep(0.85, 1.0, dot(normWindXZ, normalize(curl2)));
+
+            float fade = smoothstep(80.0, 60.0, distToCam) * smoothstep(60.0, 50.0, worldPos.y);
+            float streakIntensity = ((align1 * w1) + (align2 * w2)) * fade;
+
+            s.mie *= max(1.0, 5.0 * windSpeed * streakIntensity);
+            s.extinction *= max(1.0, 5.0 * windSpeed * streakIntensity);
+        }
+    }
+*/
+
     // Direct light (Sun)
     for (int i = 0; i < min(2, num_lights); ++i) {
         if (lights[i].type != LIGHT_TYPE_DIRECTIONAL) continue;
@@ -126,7 +175,7 @@ void main() {
     // Ambient (SH) - We use a simple isotropic phase for ambient light
     radiance += getSpatialAmbientSH(worldPos, V) * 0.1;
 
-    radiance *= uIntensity * 2.0; // Boosted intensity for prominence
+    radiance *= uIntensity * 3.0; // Boosted intensity for prominence
 
     // Convert atmospheric coefficients from per-KM to per-meter
     float obliquity = getObliquity(vox.xy, jitter);
@@ -161,7 +210,8 @@ void main() {
 
             if (prevCascade != -1 && prevLinearZ > z_near) {
                 float slice = clamp(log(prevLinearZ / z_near) / log(z_far / z_near), 0.0, 1.0);
-                float w = (float(prevCascade) * float(u_grid_res.z) + (slice * (float(u_grid_res.z) - 0.5) + 0.5)) / (float(u_grid_res.z) * float(NUM_CASCADES));
+                // Correct mapping from cascade/slice to [0,1] 3D texture coordinate
+                float w = (float(prevCascade) + slice) / float(NUM_CASCADES);
 
                 vec4 history = texture(uHistoryTexture, vec3(prevUV.xy, w));
                 if (all(greaterThanEqual(history, vec4(0.0))) && all(lessThanEqual(history, vec4(1000.0)))) {
