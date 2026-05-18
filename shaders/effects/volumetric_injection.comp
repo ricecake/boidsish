@@ -20,6 +20,7 @@ uniform float uTemporalAlpha;
 #include "../helpers/math.glsl"
 #include "../atmosphere/common.glsl"
 #include "../helpers/lighting.glsl"
+#include "../types/temporal_data.glsl"
 
 #define COMPUTE_SHADER
 #include "../particle_types.glsl"
@@ -77,10 +78,14 @@ void main() {
     if (vox.x >= u_grid_res.x || vox.y >= u_grid_res.y || vox.z >= u_grid_res.z * NUM_CASCADES) return;
 
     // Jitter for temporal AA / stochastic sampling
+    // Animate jitter coordinates using frameIndex to prevent persistent sampling bias
     ivec2 noiseCoords = vox.xy + ivec2(vox.z * 13, vox.z * 17);
-    vec3 jitter = texelFetch(uBlueNoise, noiseCoords % textureSize(uBlueNoise, 0), 0).rgb;
+    noiseCoords += ivec2(frameIndex * 7, frameIndex * 13);
 
-    vec3 worldPos = worldFromFroxel(vox, jitter);
+    vec3 blueNoise = fract(texelFetch(uBlueNoise, noiseCoords / textureSize(uBlueNoise, 0), 0).rgb   * 0.61803398875);
+
+    // Use jitter in [0, 1] range which is centered on froxel centers (vox + 0.5)
+    vec3 worldPos = worldFromFroxel(vox, blueNoise);
 
     // Calculate scattering and extinction
     Sampling s = getAtmospherePropertiesAtPos(worldPos);
@@ -203,7 +208,7 @@ void main() {
     radiance *= uIntensity * 3.0; // Boosted intensity for prominence
 
     // Convert atmospheric coefficients from per-KM to per-meter
-    float obliquity = getObliquity(vox.xy, jitter);
+    float obliquity = getObliquity(vox.xy, blueNoise);
     vec3 mieCoeff = s.mie * 0.001 * obliquity;
     float extinctionCoeff = (s.rayleigh.r + s.rayleigh.g + s.rayleigh.b + s.mie.r + s.mie.g + s.mie.b) / 3.0 * 0.001 * obliquity;
 
@@ -236,7 +241,9 @@ void main() {
             if (prevCascade != -1 && prevLinearZ > z_near) {
                 float slice = clamp(log(prevLinearZ / z_near) / log(z_far / z_near), 0.0, 1.0);
                 // Correct mapping from cascade/slice to [0,1] 3D texture coordinate
-                float w = (float(prevCascade) + slice) / float(NUM_CASCADES);
+                // Use texel-center formula to align with storage and composite shader
+                float total_slices = float(u_grid_res.z * NUM_CASCADES);
+                float w = (float(prevCascade * u_grid_res.z) + (slice * float(u_grid_res.z - 1) + 0.5)) / total_slices;
 
                 vec4 history = texture(uHistoryTexture, vec3(prevUV.xy, w));
                 if (all(greaterThanEqual(history, vec4(0.0))) && all(lessThanEqual(history, vec4(1000.0)))) {
