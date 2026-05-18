@@ -19,6 +19,8 @@ uniform float u_atmosphereHeight; // usually 100.0 km
 layout(binding = [[ATMOSPHERE_TRANSMITTANCE_BINDING]]) uniform sampler2D u_transmittanceLUT;
 #endif
 
+layout(binding = [[VOLUMETRIC_SCATTERING_BINDING]]) uniform sampler3D uVolumetricTexture;
+
 layout(binding = [[ATMOSPHERE_CLOUD_SHADOW_BINDING]]) uniform sampler2D u_cloudShadowMap;
 #ifndef TERRAIN_GRID_DEFINED
 	#define TERRAIN_GRID_DEFINED
@@ -501,6 +503,66 @@ void evaluate_brdf(
 }
 
 /**
+ * Sample volumetric lighting for a given world position.
+ * Returns vec4(scattering.rgb, transmittance).
+ */
+vec4 sampleVolumetricLighting(vec3 worldPos) {
+    // We use the view matrix and projection matrix from the respective shaders.
+    // However, since this is a helper, we need to ensure they are available.
+    // Instead of relying on global uniforms that might clash, we use viewPos from Lighting UBO
+    // and assume the shader providing this helper has view and projection matrices.
+
+    // Using viewDir and viewPos from Lighting UBO to reconstruct linear Z
+    vec3 vToP = worldPos - viewPos;
+    float linearZ = dot(vToP, viewDir);
+
+    const int NUM_CASCADES = 4;
+    const float CASCADE_DISTANCES[4] = { 20.0, 60.0, 200.0, 1000.0 };
+
+    int cascade = -1;
+    float z_near = 0.1;
+    float z_far = 0.0;
+
+    for (int i = 0; i < NUM_CASCADES; ++i) {
+        if (linearZ <= CASCADE_DISTANCES[i]) {
+            cascade = i;
+            z_far = CASCADE_DISTANCES[i];
+            if (i > 0) z_near = CASCADE_DISTANCES[i-1];
+            break;
+        }
+    }
+
+    if (cascade == -1 || linearZ < z_near) return vec4(0.0, 0.0, 0.0, 1.0);
+
+    // To get UV, we unfortunately need the full projection.
+    // Since we can't easily get it here without naming conflicts,
+    // let's use a trick: most shaders have a way to get NDC or screen UV.
+    // But for a generic world-space sample, we need the matrices.
+
+    // Most of our shaders use 'view' and 'projection' or 'viewProjection'.
+    // We'll assume 'view' and 'projection' are available as they are standard in our engine.
+    // However, some shaders might name them differently.
+    // Using a fallback mechanism if possible, or just relying on standard naming.
+
+    // In our engine, these are typically provided.
+    // If not, the shader including this will fail to compile, which is acceptable
+    // as it indicates a missing dependency.
+
+    // Matrices are now provided through the Lighting UBO to ensure consistency across shaders.
+    vec4 viewSpacePos = view * vec4(worldPos, 1.0);
+    vec4 clipPos = projection * viewSpacePos;
+    vec3 ndc = clipPos.xyz / clipPos.w;
+    vec2 uv = ndc.xy * 0.5 + 0.5;
+
+    float slice = clamp(log(linearZ / z_near) / log(z_far / z_near), 0.0, 1.0);
+    // Use the grid resolution provided in the Lighting block if available, otherwise fallback to 64
+    float resZ = 64.0;
+    float w = (float(cascade) * resZ + (slice * (resZ - 0.5) + 0.5)) / (resZ * float(NUM_CASCADES));
+
+    return texture(uVolumetricTexture, vec3(uv, w));
+}
+
+/**
  * PBR lighting with Cook-Torrance BRDF - supports all light types.
  * Returns vec4(color.rgb, specular_luminance).
  *
@@ -617,6 +679,10 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 	// Combine diffuse and specular ambient
 	vec3 ambient = ambientDiffuse * (1.0 - metallic * 0.9) + ambientSpecular;
 	vec3 color = ambient + Lo;
+
+	// Apply volumetric lighting
+	vec4 vol = sampleVolumetricLighting(frag_pos);
+	color = color * vol.a + vol.rgb;
 
 	return vec4(color, spec_lum + get_luminance(ambientSpecular));
 }

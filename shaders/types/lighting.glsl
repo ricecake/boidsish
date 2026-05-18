@@ -42,6 +42,8 @@ layout(std140, binding = [[LIGHTING_BINDING]]) uniform Lighting {
 	float cloudMoonLightScale;
 	float cloudBeerPowderMix;
 	mat4  cloudShadowMatrix;
+	mat4  view;
+	mat4  projection;
 	vec4  sh_coeffs[9];
 };
 

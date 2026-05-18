@@ -38,7 +38,6 @@ uniform bool uIsShadowPass = false;
 uniform sampler2DArray uBiomeMap;
 uniform float          uRawChunkSize;
 
-uniform mat4 view;
 
 struct GrassProperties {
     vec4  colorTop;

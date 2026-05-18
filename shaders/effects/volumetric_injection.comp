@@ -2,7 +2,17 @@
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 4) in;
 
-layout(rgba16f, binding = [[VOLUMETRIC_INJECTION_IMAGE_BINDING]]) uniform image3D outInjection;
+struct VolumetricData {
+    uint radiance_r;
+    uint radiance_g;
+    uint radiance_b;
+    uint extinction;
+};
+
+layout(std430, binding = [[VOLUMETRIC_INJECTION_BUFFER_BINDING]]) buffer VolumetricInjectionBuffer {
+    VolumetricData injection_data[];
+};
+
 layout(binding = [[VOLUMETRIC_HISTORY_BINDING]]) uniform sampler3D uHistoryTexture;
 layout(binding = 10) uniform sampler2D uBlueNoise;
 
@@ -116,41 +126,6 @@ void main() {
     // Ambient (SH) - We use a simple isotropic phase for ambient light
     radiance += getSpatialAmbientSH(worldPos, V) * 0.1;
 
-    // --- Emissive Particle Illumination ---
-    // Simple isotropic phase for particle lights
-    float particlePhase = 1.0 / (4.0 * PI);
-    ivec3 baseCell = ivec3(floor(worldPos / u_cell_size));
-
-    // Check 3x3x3 neighborhood for smooth transitions across cells
-    for (int x = -1; x <= 1; ++x) {
-        for (int y = -1; y <= 1; ++y) {
-            for (int z = -1; z <= 1; ++z) {
-                ivec3 cellPos = baseCell + ivec3(x, y, z);
-                uint  h = uint(cellPos.x * 73856093) ^ uint(cellPos.y * 19349663) ^ uint(cellPos.z * 83492791);
-                uint  cell_idx = h % u_grid_size;
-                int   particle_idx = grid_heads[cell_idx];
-
-                while (particle_idx != -1) {
-                    Particle p = particles[particle_idx];
-                    // Filter for emissive types
-                    if (p.style == STYLE_FIRE || p.style == STYLE_FIREFLIES || p.style == STYLE_CINDER || p.style == STYLE_EXPLOSION || p.style == STYLE_ROCKET_TRAIL) {
-                        float distSq = dot(p.pos.xyz - worldPos, p.pos.xyz - worldPos);
-                        float radius = p.vel.w * 6.0; // Influence radius based on size
-                        float radiusSq = radius * radius;
-
-                        if (distSq < radiusSq) {
-                            float atten = 1.0 - smoothstep(0.0, radiusSq, distSq);
-                            // Fireflies are smaller but point-like, fires are larger and more intense
-                            float intensityScale = (p.style == STYLE_FIREFLIES) ? 2.0 : 8.0;
-                            radiance += p.color.rgb * p.color.a * atten * particlePhase * intensityScale;
-                        }
-                    }
-                    particle_idx = grid_next[particle_idx];
-                }
-            }
-        }
-    }
-
     radiance *= uIntensity * 2.0; // Boosted intensity for prominence
 
     // Convert atmospheric coefficients from per-KM to per-meter
@@ -200,5 +175,11 @@ void main() {
     current = clamp(current, vec4(0.0), vec4(1000.0));
     if (any(isnan(current))) current = vec4(0.0);
 
-    imageStore(outInjection, vox, current);
+    uint idx = vox.z * (u_grid_res.x * u_grid_res.y) + vox.y * u_grid_res.x + vox.x;
+    const float FIXED_POINT_SCALE = 1000.0;
+
+    injection_data[idx].radiance_r = uint(current.r * FIXED_POINT_SCALE);
+    injection_data[idx].radiance_g = uint(current.g * FIXED_POINT_SCALE);
+    injection_data[idx].radiance_b = uint(current.b * FIXED_POINT_SCALE);
+    injection_data[idx].extinction = uint(current.a * FIXED_POINT_SCALE);
 }

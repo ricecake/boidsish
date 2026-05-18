@@ -66,6 +66,12 @@ namespace Boidsish {
 			);
 			void Resize(int width, int height);
 
+			void PreDispatchEffects(
+				const glm::mat4& viewMatrix,
+				const glm::mat4& projectionMatrix,
+				const glm::vec3& cameraPos
+			);
+
 			std::vector<std::shared_ptr<IPostProcessingEffect>>& GetPreToneMappingEffects() {
 				return pre_tone_mapping_effects_;
 			}
