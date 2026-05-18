@@ -86,7 +86,8 @@ void main() {
     vec3 radiance = vec3(0.0);
     vec3 V = normalize(viewPos - worldPos);
 
-    if (length(V) < 60 && worldPos.y <= 50) {
+    float height = getTerrainHeight(worldPos.xz);
+    if (length(V) < 60 && height > 0 && height <= 10) {
         vec3 windAtPos = getWindAtPosition(worldPos);
         float windSpeed = length(windAtPos);
 
