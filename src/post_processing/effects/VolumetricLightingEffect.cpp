@@ -141,8 +141,9 @@ namespace Boidsish {
 			has_history_ = true;
 			prev_view_projection_ = projectionMatrix * viewMatrix;
 			prev_camera_pos_ = cameraPos;
-			// Extract camera front from view matrix (3rd column is -Front)
-			prev_camera_front_ = -glm::normalize(glm::vec3(viewMatrix[2]));
+			// Extract camera front from inverse view matrix (3rd column is Back)
+			glm::mat4 invView = glm::inverse(viewMatrix);
+			prev_camera_front_ = -glm::normalize(glm::vec3(invView[2]));
 
 			// 3. Composition
 			composite_shader_->use();
