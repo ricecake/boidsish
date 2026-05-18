@@ -86,14 +86,16 @@ void main() {
     vec3 radiance = vec3(0.0);
     vec3 V = normalize(viewPos - worldPos);
 
-    if (length(V) < 60 && worldPos.y <= 50) {
+    float distToCam = distance(viewPos, worldPos);
+    if (distToCam < 80.0 && worldPos.y <= 60.0) {
         vec3 windAtPos = getWindAtPosition(worldPos);
         float windSpeed = length(windAtPos);
 
         if (windSpeed > 0.01) {
             vec3 windDir = windAtPos / windSpeed;
 
-            float spatialOffset = fract(sin(dot(floor(worldPos.xz / 10.0), vec2(12.9898, 78.233))) * 43758.5453);
+            // Use coherent noise instead of floor() to prevent grid blockiness
+            float spatialOffset = textureLod(u_curlTexture, worldPos / 400.0, 0.0).a;
 
             float cycleSpeed = 0.01; // How fast the streak completes its lifecycle
             float t1 = fract(time * cycleSpeed + spatialOffset);
@@ -111,10 +113,12 @@ void main() {
             vec3 curl2 = textureLod(u_curlTexture, pos2 / 250.0, 0.0).rgb * 2.0 - 1.0;
 
             vec2 normWindXZ = normalize(windDir.xz);
-            float align1 = smoothstep(0.90, 1.0, dot(normWindXZ, normalize(curl1.xz)));
-            float align2 = smoothstep(0.90, 1.0, dot(normWindXZ, normalize(curl2.xz)));
+            // Broaden alignment to reduce flickering/aliasing
+            float align1 = smoothstep(0.85, 1.0, dot(normWindXZ, normalize(curl1.xz)));
+            float align2 = smoothstep(0.85, 1.0, dot(normWindXZ, normalize(curl2.xz)));
 
-            float streakIntensity = (align1 * w1) + (align2 * w2);
+            float fade = smoothstep(80.0, 60.0, distToCam) * smoothstep(60.0, 50.0, worldPos.y);
+            float streakIntensity = ((align1 * w1) + (align2 * w2)) * fade;
 
             s.mie *= max(1.0, 5.0 * windSpeed * streakIntensity);
         }
@@ -223,7 +227,8 @@ void main() {
 
             if (prevCascade != -1 && prevLinearZ > z_near) {
                 float slice = clamp(log(prevLinearZ / z_near) / log(z_far / z_near), 0.0, 1.0);
-                float w = (float(prevCascade) * float(u_grid_res.z) + (slice * (float(u_grid_res.z) - 0.5) + 0.5)) / (float(u_grid_res.z) * float(NUM_CASCADES));
+                // Correct mapping from cascade/slice to [0,1] 3D texture coordinate
+                float w = (float(prevCascade) + slice) / float(NUM_CASCADES);
 
                 vec4 history = texture(uHistoryTexture, vec3(prevUV.xy, w));
                 if (all(greaterThanEqual(history, vec4(0.0))) && all(lessThanEqual(history, vec4(1000.0)))) {
