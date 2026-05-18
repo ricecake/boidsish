@@ -96,7 +96,7 @@ void main() {
 
             float spatialOffset = fract(sin(dot(floor(worldPos.xz / 10.0), vec2(12.9898, 78.233))) * 43758.5453);
 
-            float cycleSpeed = 0.01; // How fast the streak completes its lifecycle
+            float cycleSpeed = 10.0; // How fast the streak completes its lifecycle
             float t1 = fract(time * cycleSpeed + spatialOffset);
             float t2 = fract(time * cycleSpeed + spatialOffset + 0.5);
 
@@ -104,20 +104,21 @@ void main() {
             float w1 = pow(sin(t1 * 3.14159), pinch);
             float w2 = pow(sin(t2 * 3.14159), pinch);
 
-            float advectDist = 25.0; // How far the texture coordinates slide before resetting
+            float advectDist = 30.0; // How far the texture coordinates slide before resetting
             vec3 pos1 = worldPos - (windDir * t1 * advectDist);
             vec3 pos2 = worldPos - (windDir * t2 * advectDist);
 
-            vec3 curl1 = textureLod(u_curlTexture, pos1 / 250.0, 0.0).rgb * 2.0 - 1.0;
-            vec3 curl2 = textureLod(u_curlTexture, pos2 / 250.0, 0.0).rgb * 2.0 - 1.0;
+            vec3 curl1 = textureLod(u_curlTexture, pos1 / 300.0, 0.0).rgb * 2.0 - 1.0;
+            vec3 curl2 = textureLod(u_curlTexture, pos2 / 300.0, 0.0).rgb * 2.0 - 1.0;
 
-            vec2 normWindXZ = normalize(windDir.xz);
-            float align1 = smoothstep(0.90, 1.0, dot(normWindXZ, normalize(curl1.xz)));
-            float align2 = smoothstep(0.90, 1.0, dot(normWindXZ, normalize(curl2.xz)));
+            vec3 normWindXZ = normalize(windDir);
+            float align1 = smoothstep(0.90, 1.0, dot(normWindXZ, normalize(curl1)));
+            float align2 = smoothstep(0.90, 1.0, dot(normWindXZ, normalize(curl2)));
 
             float streakIntensity = (align1 * w1) + (align2 * w2);
 
             s.mie *= max(1.0, 5.0 * windSpeed * streakIntensity);
+            s.extinction *= max(1.0, 5.0 * windSpeed * streakIntensity);
         }
     }
 
