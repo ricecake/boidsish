@@ -6,6 +6,7 @@
 
 #include "IManager.h"
 #include "constants.h"
+#include "persistent_buffer.h"
 #include "frustum.h"
 #include <GL/glew.h>
 #include <glm/glm.hpp>
@@ -134,7 +135,7 @@ namespace Boidsish {
 		/**
 		 * @brief Get the shadow UBO ID.
 		 */
-		GLuint GetShadowUbo() const { return shadow_ubo_; }
+		GLuint GetShadowUbo() const { return shadow_pb_ ? shadow_pb_->GetBufferId() : 0; }
 
 		/**
 		 * @brief Check if shadow mapping is enabled and initialized.
@@ -155,7 +156,15 @@ namespace Boidsish {
 		bool                    initialized_ = false;
 		GLuint                  shadow_fbo_ = 0;
 		GLuint                  shadow_map_array_ = 0; // 2D texture array for all shadow maps
-		GLuint                  shadow_ubo_ = 0;
+
+		struct ShadowUboData {
+			glm::mat4 lightSpaceMatrices[Constants::Class::Shadows::MaxShadowMaps()];
+			glm::vec4 cascadeSplits;
+			int       numShadowLights;
+			int       _pad[3];
+		};
+
+		std::unique_ptr<PersistentBuffer<ShadowUboData>> shadow_pb_;
 		std::shared_ptr<Shader> shadow_shader_;
 
 		int                                   active_shadow_count_ = 0;

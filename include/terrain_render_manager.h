@@ -49,6 +49,11 @@ namespace Boidsish {
 	 */
 	class TerrainRenderManager {
 	public:
+		struct TerrainDataUbo {
+			glm::ivec4 origin_size;    // x, z, size, is_bound (1)
+			glm::vec4  terrain_params; // chunk_size, world_scale, unused, unused
+		};
+
 		struct BakeTask {
 			glm::ivec2 chunk_coord;
 			int        slice;
@@ -191,7 +196,7 @@ namespace Boidsish {
 		/**
 		 * @brief Get the instance buffer (ActiveChunks SSBO).
 		 */
-		GLuint GetInstanceBuffer() const { return instance_vbo_; }
+		GLuint GetInstanceBuffer() const { return instance_pb_ ? instance_pb_->GetBufferId() : 0; }
 
 		/**
 		 * @brief Get info about all registered chunks for external use (e.g., decor placement).
@@ -364,7 +369,7 @@ namespace Boidsish {
 		GLuint grid_vao_ = 0;
 		GLuint grid_vbo_ = 0;
 		GLuint grid_ebo_ = 0;
-		GLuint instance_vbo_ = 0;
+		std::unique_ptr<PersistentBuffer<InstanceData>> instance_pb_;
 		GLuint raw_heightmap_texture_ = 0; // GL_TEXTURE_2D_ARRAY (RGBA16F: height, normal.xyz)
 		GLuint heightmap_texture_ = 0;     // GL_TEXTURE_2D_ARRAY (RGBA16F: baked height, baked normal)
 		GLuint baked_params_texture_ = 0;  // GL_TEXTURE_2D_ARRAY (RGBA16F: erosion, ridge, substrate, water)
@@ -381,9 +386,11 @@ namespace Boidsish {
 		// Global terrain grid resources
 		GLuint chunk_grid_texture_ = 0;      // GL_TEXTURE_2D (R16I: texture_slice index, -1 if none)
 		GLuint max_height_grid_texture_ = 0; // GL_TEXTURE_2D (R32F: max_y, mips for hierarchical check)
-		GLuint terrain_data_ubo_ = 0;        // UBO for grid parameters
+		std::unique_ptr<PersistentBuffer<int16_t>> chunk_grid_pbo_;
+		std::unique_ptr<PersistentBuffer<float>>   max_height_pbo_;
+		std::unique_ptr<PersistentBuffer<TerrainDataUbo>> terrain_data_pb_;
 		GLuint probe_ssbo_ = 0;              // SSBO for per-chunk SH probes
-		GLuint bake_ssbo_ = 0;               // SSBO for BakeTask
+		std::unique_ptr<PersistentBuffer<BakeTask>> bake_pb_;
 		GLuint patch_metrics_ssbo_ = 0;      // SSBO for PatchMetrics
 		GLuint patch_visibility_ssbo_ = 0;   // SSBO for Patch visibility status
 		GLuint temporal_data_ubo_ = 0;
