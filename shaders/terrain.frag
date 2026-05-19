@@ -160,7 +160,7 @@ TerrainMaterial getBiomeMaterial(float height, float moisture, float noise) {
 
 	// Beach zone (0 - 3)
 	if (h < HEIGHT_BEACH_END) {
-		float rockFactor = (fastWorley3d(FragPos/125) *0.5 +0.5) * (1- (height / HEIGHT_BEACH_END));
+		float rockFactor = (fastWorley3d(FragPos/125) *0.5 +0.5) * ((1- smoothstep(0, HEIGHT_BEACH_END, height)) + smoothstep(HEIGHT_TREELINE, HEIGHT_SNOW_START, height));
 		float wetness = 1.0 - smoothstep(0.0, HEIGHT_BEACH_END, h);
 
 		mat.albedo = mix(COL_SAND_DRY, COL_SAND_WET, wetness);
@@ -171,8 +171,6 @@ TerrainMaterial getBiomeMaterial(float height, float moisture, float noise) {
 		if (rockFactor  > 0.5) {
 			vec3 rockBoundary = voronoi((TexCoords+(noise*0.05))*int(50*mix(5, 0.1, smoothstep(50, 250, 20*int(realDist/20) ))));
 
-			// vec3 color = random3(rockBoundary.xy);
-			// float rockPalette = step(fastBlueNoise(rockBoundary.xz/25), random(rockBoundary.xy));
 			float rockPalette = step(0.5, random(rockBoundary.xy));
 			vec3 color = palette( // Make this a curl noise?
 				random(rockBoundary.xy),
@@ -181,28 +179,10 @@ TerrainMaterial getBiomeMaterial(float height, float moisture, float noise) {
 				mix(vec3(0.80, 0.90, 0.30), vec3(0.30, 0.20, 0.20), rockPalette)
 			);
 
-			// vec3 rockColor = color * ((1-rockBoundary.z) * 0.8 + 0.2);
 			vec3 rockColor = color * ((1-smoothstep(0.0, max(0.75, random(rockBoundary.xy)), rockBoundary.z)) * 0.8 + 0.2);
 
-/*
-			float rockEdge = (fastWorley3d(FragPos+noise * 3)*0.5+0.5);
-			float roundRockEdge = round(rockEdge * 10)*(0.01);
-			// vec3 rockColor = palette(min(fastBlueNoise(vec2(roundRockEdge)/35, 0),rockEdge), vec3(0.5, 0.5, 0.5), vec3(0.5, 0.5, 0.5), vec3(1.0, 1.0, 1.0), vec3(0.30, 0.20, 0.20));
-			// vec3 rockColor = palette(min(fastBlueNoise(vec2(roundRockEdge)/35, 0),rockEdge), vec3(0.5, 0.5, 0.5), vec3(0.5, 0.5, 0.5), vec3(1.0, 1.0, 0.50), vec3(0.80, 0.90, 0.30));
-			float rockPalette = step(fastBlueNoise(FragPos.xz/25), fastFbm3d(FragPos/100)*0.5+0.5);
-			vec3 rockColor = palette( // Make this a curl noise?
-				min(fastBlueNoise(vec2(roundRockEdge)/35, 0), rockEdge),
-				vec3(0.5, 0.5, 0.5), vec3(0.5, 0.5, 0.5),
-				mix(vec3(1.0, 1.0, 0.50), vec3(1.0, 1.0, 1.0), rockPalette),
-				mix(vec3(0.80, 0.90, 0.30), vec3(0.30, 0.20, 0.20), rockPalette)
-			);
-
-			mat.albedo = mix(mat.albedo, mix(vec3(0), rockColor, smoothstep(0.01, 0.02, rockEdge )), smoothstep(0.5, 1, rockFactor));
-			mat.roughness = mix(0.7, 0.1, wetness*smoothstep(0.01, 0.02, rockEdge ));
-*/
 			mat.albedo = mix(mat.albedo, rockColor, smoothstep(0.5, 1, rockFactor));
 			mat.roughness = mix(0.7, 0.1, wetness*smoothstep(0.01, 0.02, rockBoundary.z ));
-
 			mat.normalScale = 40.0;
 			mat.normalStrength = mix(0.1, 0.05, wetness);
 		}
