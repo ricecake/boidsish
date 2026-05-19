@@ -1,6 +1,7 @@
 #include "terrain_render_manager.h"
 
 #include <algorithm>
+#include <cstring>
 #include <iostream>
 
 #include "biome_properties.h"
@@ -12,11 +13,6 @@
 #include "shader.h"
 
 namespace Boidsish {
-
-	struct TerrainDataUbo {
-		glm::ivec4 origin_size;    // x, z, size, is_bound (1)
-		glm::vec4  terrain_params; // chunk_size, world_scale, unused, unused
-	};
 
 	TerrainRenderManager::TerrainRenderManager(ServiceLocator& /*loc*/, int chunk_size, int max_chunks):
 		chunk_size_(chunk_size), max_chunks_(max_chunks), heightmap_resolution_(chunk_size + 1) {
@@ -41,10 +37,7 @@ namespace Boidsish {
 		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
 		// Create TerrainData UBO
-		glGenBuffers(1, &terrain_data_ubo_);
-		glBindBuffer(GL_UNIFORM_BUFFER, terrain_data_ubo_);
-		glBufferData(GL_UNIFORM_BUFFER, sizeof(TerrainDataUbo), nullptr, GL_DYNAMIC_DRAW);
-		glBindBuffer(GL_UNIFORM_BUFFER, 0);
+		terrain_data_pb_ = std::make_unique<PersistentBuffer<TerrainDataUbo>>(GL_UNIFORM_BUFFER, 1, 3);
 
 		// Global terrain grid resources
 		int grid_size = Constants::Class::Terrain::SliceMapSize();
@@ -56,6 +49,8 @@ namespace Boidsish {
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
+		chunk_grid_pbo_ = std::make_unique<PersistentBuffer<int16_t>>(GL_PIXEL_UNPACK_BUFFER, grid_size * grid_size, 3);
+
 		glGenTextures(1, &max_height_grid_texture_);
 		glBindTexture(GL_TEXTURE_2D, max_height_grid_texture_);
 		int mips = 1 + static_cast<int>(std::floor(std::log2(grid_size)));
@@ -64,6 +59,8 @@ namespace Boidsish {
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+		max_height_pbo_ = std::make_unique<PersistentBuffer<float>>(GL_PIXEL_UNPACK_BUFFER, grid_size * grid_size, 3);
 
 		grid_mip_shader_ = std::make_unique<ComputeShader>("shaders/terrain_hiz_generate.comp");
 		probe_compute_shader_ = std::make_unique<ComputeShader>("shaders/terrain_probes.comp");
@@ -98,10 +95,7 @@ namespace Boidsish {
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
 		// Create BakeTasks SSBO
-		glGenBuffers(1, &bake_ssbo_);
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, bake_ssbo_);
-		glBufferData(GL_SHADER_STORAGE_BUFFER, 1024 * sizeof(BakeTask), nullptr, GL_DYNAMIC_DRAW);
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+		bake_pb_ = std::make_unique<PersistentBuffer<BakeTask>>(GL_SHADER_STORAGE_BUFFER, 1024, 3);
 
 		// Patch SSBOs
 		size_t max_patches = max_chunks_ * Constants::Class::Terrain::PatchesPerChunk();
@@ -123,10 +117,7 @@ namespace Boidsish {
 
 		// Create instance buffer first so we can set up VAO attributes
 		// Pre-allocate for max_chunks to avoid reallocation
-		glGenBuffers(1, &instance_vbo_);
-		glBindBuffer(GL_ARRAY_BUFFER, instance_vbo_);
-		instance_buffer_capacity_ = max_chunks * sizeof(InstanceData);
-		glBufferData(GL_ARRAY_BUFFER, instance_buffer_capacity_, nullptr, GL_DYNAMIC_DRAW);
+		instance_pb_ = std::make_unique<PersistentBuffer<InstanceData>>(GL_SHADER_STORAGE_BUFFER, max_chunks, 3);
 
 		CreateGridMesh();
 		// Create patch mesh
@@ -171,8 +162,7 @@ namespace Boidsish {
 			glDeleteBuffers(1, &grid_vbo_);
 		if (grid_ebo_)
 			glDeleteBuffers(1, &grid_ebo_);
-		if (instance_vbo_)
-			glDeleteBuffers(1, &instance_vbo_);
+		instance_pb_.reset();
 		if (raw_heightmap_texture_)
 			glDeleteTextures(1, &raw_heightmap_texture_);
 		if (heightmap_texture_)
@@ -189,14 +179,14 @@ namespace Boidsish {
 			glDeleteBuffers(1, &biome_ubo_);
 		if (chunk_grid_texture_)
 			glDeleteTextures(1, &chunk_grid_texture_);
+		chunk_grid_pbo_.reset();
 		if (max_height_grid_texture_)
 			glDeleteTextures(1, &max_height_grid_texture_);
-		if (terrain_data_ubo_)
-			glDeleteBuffers(1, &terrain_data_ubo_);
+		max_height_pbo_.reset();
+		terrain_data_pb_.reset();
 		if (probe_ssbo_)
 			glDeleteBuffers(1, &probe_ssbo_);
-		if (bake_ssbo_)
-			glDeleteBuffers(1, &bake_ssbo_);
+		bake_pb_.reset();
 		if (patch_metrics_ssbo_)
 			glDeleteBuffers(1, &patch_metrics_ssbo_);
 		if (patch_visibility_ssbo_)
@@ -277,8 +267,8 @@ namespace Boidsish {
 		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, grid_ebo_);
 		glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), indices.data(), GL_STATIC_DRAW);
 
-		// Set up instance attributes (from instance_vbo_ created in constructor)
-		glBindBuffer(GL_ARRAY_BUFFER, instance_vbo_);
+		// Set up instance attributes (from instance_pb_ created in constructor)
+		glBindBuffer(GL_ARRAY_BUFFER, instance_pb_->GetBufferId());
 
 		// Instance attribute: world_offset_and_slice (location 3)
 		glVertexAttribPointer(
@@ -336,6 +326,8 @@ namespace Boidsish {
 
 		size_t indirect_size_bytes = 16 + sizeof(DrawElementsIndirectCommand);
 		patch_indirect_pb_ = std::make_unique<PersistentBuffer<uint8_t>>(GL_DRAW_INDIRECT_BUFFER, indirect_size_bytes, 3);
+
+		instance_pb_ = std::make_unique<PersistentBuffer<InstanceData>>(GL_SHADER_STORAGE_BUFFER, new_capacity, 3);
 
 		// If we need to resize and texture exists, existing data will be lost
 		// This shouldn't happen often with proper capacity management
@@ -705,28 +697,17 @@ namespace Boidsish {
 			});
 		}
 
-		// Build final instance list
-		for (const auto& vc : visible_chunks) {
-			visible_instances_.push_back(vc.instance);
-		}
+		// Advance instance buffer
+		instance_pb_->AdvanceFrame();
+		InstanceData* instance_ptr = instance_pb_->GetFrameDataPtr();
 
-		// Upload instance data to GPU for the prepare compute shader
+		// Build final instance list and upload to persistent buffer
 		PROJECT_PROFILE_SCOPE("UploadInstanceData");
-		if (!visible_instances_.empty()) {
-			// Update bounds with raw chunkSize for the prepare shader's UV calculation
-			for (auto& instance : visible_instances_) {
-				instance.bounds.z = static_cast<float>(chunk_size_);
-			}
-
-			// Use internal instance_vbo_ but bind as SSBO for prepare shader
-			glBindBuffer(GL_SHADER_STORAGE_BUFFER, instance_vbo_);
-			size_t required_size = visible_instances_.size() * sizeof(InstanceData);
-			if (required_size > instance_buffer_capacity_) {
-				instance_buffer_capacity_ = required_size * 2;
-				glBufferData(GL_SHADER_STORAGE_BUFFER, instance_buffer_capacity_, nullptr, GL_DYNAMIC_DRAW);
-			}
-			glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, required_size, visible_instances_.data());
-			glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+		for (size_t i = 0; i < visible_chunks.size(); ++i) {
+			InstanceData instance = visible_chunks[i].instance;
+			instance.bounds.z = static_cast<float>(chunk_size_);
+			instance_ptr[i] = instance;
+			visible_instances_.push_back(instance);
 		}
 	}
 
@@ -758,8 +739,14 @@ namespace Boidsish {
 			return;
 		}
 
-		std::vector<int16_t> slice_data(grid_size * grid_size, -1);
-		std::vector<float>   height_data(grid_size * grid_size, -10000.0f);
+		chunk_grid_pbo_->AdvanceFrame();
+		max_height_pbo_->AdvanceFrame();
+
+		int16_t* slice_data = chunk_grid_pbo_->GetFrameDataPtr();
+		float*   height_data = max_height_pbo_->GetFrameDataPtr();
+
+		std::fill(slice_data, slice_data + (grid_size * grid_size), (int16_t)-1);
+		std::fill(height_data, height_data + (grid_size * grid_size), -10000.0f);
 
 		for (const auto& [key, chunk] : chunks_) {
 			int lx = key.first - origin_x;
@@ -774,21 +761,21 @@ namespace Boidsish {
 			}
 		}
 
+		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, chunk_grid_pbo_->GetBufferId());
 		glBindTexture(GL_TEXTURE_2D, chunk_grid_texture_);
-		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, grid_size, grid_size, GL_RED_INTEGER, GL_SHORT, slice_data.data());
+		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, grid_size, grid_size, GL_RED_INTEGER, GL_SHORT, (void*)chunk_grid_pbo_->GetFrameOffset());
 
+		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, max_height_pbo_->GetBufferId());
 		glBindTexture(GL_TEXTURE_2D, max_height_grid_texture_);
-		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, grid_size, grid_size, GL_RED, GL_FLOAT, height_data.data());
+		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, grid_size, grid_size, GL_RED, GL_FLOAT, (void*)max_height_pbo_->GetFrameOffset());
+		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 
 		GenerateMaxHeightMips();
 
-		TerrainDataUbo ubo{};
-		ubo.origin_size = glm::ivec4(origin_x, origin_z, grid_size, 1);
-		ubo.terrain_params = glm::vec4(static_cast<float>(chunk_size_), world_scale, 0.0f, 0.0f);
-
-		glBindBuffer(GL_UNIFORM_BUFFER, terrain_data_ubo_);
-		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(TerrainDataUbo), &ubo);
-		glBindBuffer(GL_UNIFORM_BUFFER, 0);
+		terrain_data_pb_->AdvanceFrame();
+		TerrainDataUbo* ubo_ptr = terrain_data_pb_->GetFrameDataPtr();
+		ubo_ptr->origin_size = glm::ivec4(origin_x, origin_z, grid_size, 1);
+		ubo_ptr->terrain_params = glm::vec4(static_cast<float>(chunk_size_), world_scale, 0.0f, 0.0f);
 
 		last_grid_origin_x_ = origin_x;
 		last_grid_origin_z_ = origin_z;
@@ -871,7 +858,7 @@ namespace Boidsish {
 		probe_compute_shader_->setFloat("u_probeConvergenceSpeed", probe_convergence);
 		probe_compute_shader_->setInt("u_probeRayMultiplier", probe_ray_multiplier);
 
-		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::TerrainData(), terrain_data_ubo_);
+		terrain_data_pb_->BindRange(Constants::UboBinding::TerrainData());
 		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Biomes(), biome_ubo_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainProbes(), probe_ssbo_);
 
@@ -968,7 +955,7 @@ namespace Boidsish {
 			shader_base.trySetInt("u_phasorTexture", Constants::TextureUnit::NoisePhasor());
 		}
 
-		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::TerrainData(), terrain_data_ubo_);
+		terrain_data_pb_->BindRange(Constants::UboBinding::TerrainData());
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainProbes(), probe_ssbo_);
 
 		if (grass_props_ubo_ != 0) {
@@ -1033,8 +1020,6 @@ namespace Boidsish {
 		indirect_data[7] = 0; // baseVertex
 		indirect_data[8] = 0; // baseInstance
 
-		glMemoryBarrier(GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT);
-
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainPatchMetrics(), patch_metrics_ssbo_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainPatchVisibility(), patch_visibility_ssbo_);
 		patch_draw_data_pb_->BindRange(Constants::SsboBinding::TerrainPatchDrawData());
@@ -1048,7 +1033,7 @@ namespace Boidsish {
 			patch_indirect_pb_->GetTotalSize() / 3
 		);
 
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::IndirectionBuffer(), instance_vbo_);
+		instance_pb_->BindRange(Constants::SsboBinding::IndirectionBuffer());
 		if (temporal_data_ubo_ != 0) {
 			if (temporal_data_ubo_size_ > 0) {
 				glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::TemporalData(),
@@ -1262,19 +1247,21 @@ namespace Boidsish {
 		glBindImageTexture(Constants::TextureUnit::TerrainBakedParamsImage(), baked_params_texture_, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 
 		// Bind UBOs
-		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::TerrainData(), terrain_data_ubo_);
+		terrain_data_pb_->BindRange(Constants::UboBinding::TerrainData());
 		if (visual_effects_ubo_ != 0) {
 			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::VisualEffects(), visual_effects_ubo_);
 		}
 
 		// Process in batches
+		bake_pb_->AdvanceFrame();
+		BakeTask* bake_ptr = bake_pb_->GetFrameDataPtr();
+
 		const size_t max_batch = 1024;
 		for (size_t i = 0; i < tasks.size(); i += max_batch) {
 			size_t batch_size = std::min(max_batch, tasks.size() - i);
 
-			glBindBuffer(GL_SHADER_STORAGE_BUFFER, bake_ssbo_);
-			glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, batch_size * sizeof(BakeTask), &tasks[i]);
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainChunkInfo(), bake_ssbo_);
+			std::memcpy(bake_ptr, &tasks[i], batch_size * sizeof(BakeTask));
+			bake_pb_->BindRange(Constants::SsboBinding::TerrainChunkInfo());
 
 			terrain_bake_shader_->setInt("u_numTasks", static_cast<int>(batch_size));
 
@@ -1303,9 +1290,8 @@ namespace Boidsish {
 
 			for (size_t i = 0; i < tasks.size(); i += max_batch) {
 				size_t batch_size = std::min(max_batch, tasks.size() - i);
-				glBindBuffer(GL_SHADER_STORAGE_BUFFER, bake_ssbo_);
-				glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, batch_size * sizeof(BakeTask), &tasks[i]);
-				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainChunkInfo(), bake_ssbo_);
+				std::memcpy(bake_ptr, &tasks[i], batch_size * sizeof(BakeTask));
+				bake_pb_->BindRange(Constants::SsboBinding::TerrainChunkInfo());
 				patch_metrics_shader_->setInt("u_numTasks", static_cast<int>(batch_size));
 				glDispatchCompute(1, 1, static_cast<GLuint>(batch_size));
 			}
@@ -1373,16 +1359,18 @@ namespace Boidsish {
 		glBindImageTexture(Constants::TextureUnit::TerrainHorizonMap(), horizon_map_texture_, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 
 		// Bind UBO
-		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::TerrainData(), terrain_data_ubo_);
+		terrain_data_pb_->BindRange(Constants::UboBinding::TerrainData());
 
-		// Setup task SSBO (recycling bake_ssbo_ for simplicity)
+		// Setup task SSBO (recycling bake_pb_ for simplicity)
+		bake_pb_->AdvanceFrame();
+		BakeTask* bake_ptr = bake_pb_->GetFrameDataPtr();
+
 		const size_t max_batch = 1024;
 		for (size_t i = 0; i < tasks.size(); i += max_batch) {
 			size_t batch_size = std::min(max_batch, tasks.size() - i);
 
-			glBindBuffer(GL_SHADER_STORAGE_BUFFER, bake_ssbo_);
-			glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, batch_size * sizeof(BakeTask), &tasks[i]);
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainChunkInfo(), bake_ssbo_);
+			std::memcpy(bake_ptr, &tasks[i], batch_size * sizeof(BakeTask));
+			bake_pb_->BindRange(Constants::SsboBinding::TerrainChunkInfo());
 
 			terrain_horizon_shader_->setInt("u_numTasks", static_cast<int>(batch_size));
 

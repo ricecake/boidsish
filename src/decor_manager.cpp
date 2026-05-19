@@ -31,21 +31,15 @@ namespace Boidsish {
 				glDeleteBuffers(1, &type.ssbo);
 			if (type.visible_ssbo != 0)
 				glDeleteBuffers(1, &type.visible_ssbo);
-			if (type.count_buffer != 0)
-				glDeleteBuffers(1, &type.count_buffer);
-			if (type.indirect_buffer != 0)
-				glDeleteBuffers(1, &type.indirect_buffer);
-			if (type.shadow_indirect_buffer != 0)
-				glDeleteBuffers(1, &type.shadow_indirect_buffer);
+			type.count_pb.reset();
+			type.indirect_pb.reset();
+			type.shadow_indirect_pb.reset();
 		}
-		if (block_validity_ssbo_ != 0)
-			glDeleteBuffers(1, &block_validity_ssbo_);
+		block_validity_pb_.reset();
 		if (decor_props_ubo_ != 0)
 			glDeleteBuffers(1, &decor_props_ubo_);
-		if (placement_globals_ubo_ != 0)
-			glDeleteBuffers(1, &placement_globals_ubo_);
-		if (chunk_params_ssbo_ != 0)
-			glDeleteBuffers(1, &chunk_params_ssbo_);
+		placement_globals_pb_.reset();
+		chunk_params_pb_.reset();
 	}
 
 	void DecorManager::_Initialize() {
@@ -70,20 +64,14 @@ namespace Boidsish {
 		}
 
 		// Block validity buffer: one uint per block, all initially invalid (0).
-		glGenBuffers(1, &block_validity_ssbo_);
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, block_validity_ssbo_);
-		std::vector<uint32_t> validity(kMaxActiveChunks, 0);
-		glBufferData(GL_SHADER_STORAGE_BUFFER, kMaxActiveChunks * sizeof(uint32_t), validity.data(), GL_DYNAMIC_DRAW);
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+		block_validity_pb_ = std::make_unique<PersistentBuffer<uint32_t>>(GL_SHADER_STORAGE_BUFFER, kMaxActiveChunks, 3);
+		std::memset(block_validity_pb_->GetFullBufferPtr(), 0, block_validity_pb_->GetTotalSize());
 
 		// Global placement params UBO (small, updated per dispatch)
-		glGenBuffers(1, &placement_globals_ubo_);
-		glBindBuffer(GL_UNIFORM_BUFFER, placement_globals_ubo_);
-		glBufferData(GL_UNIFORM_BUFFER, sizeof(PlacementGlobalsGPU), nullptr, GL_DYNAMIC_DRAW);
-		glBindBuffer(GL_UNIFORM_BUFFER, 0);
+		placement_globals_pb_ = std::make_unique<PersistentBuffer<PlacementGlobalsGPU>>(GL_UNIFORM_BUFFER, 1, 3);
 
 		// Per-chunk params SSBO (resized as needed per dispatch)
-		glGenBuffers(1, &chunk_params_ssbo_);
+		chunk_params_pb_ = std::make_unique<PersistentBuffer<ChunkParamsGPU>>(GL_SHADER_STORAGE_BUFFER, kMaxActiveChunks, 3);
 
 		initialized_ = true;
 	}
@@ -122,42 +110,16 @@ namespace Boidsish {
 		glBufferData(GL_SHADER_STORAGE_BUFFER, kMaxInstancesPerType * sizeof(glm::mat4), nullptr, GL_DYNAMIC_DRAW);
 
 		// Indirect commands (one per mesh)
-		const auto&                              meshes = type.model->getMeshes();
-		size_t                                   num_meshes = meshes.size();
-		std::vector<DrawElementsIndirectCommand> commands(num_meshes);
-		for (size_t i = 0; i < num_meshes; ++i) {
-			commands[i].count = static_cast<unsigned int>(meshes[i].indices.size());
-			commands[i].instanceCount = 0; // Filled by GPU
-			commands[i].firstIndex = 0;    // Standard mesh rendering
-			commands[i].baseVertex = 0;
-			commands[i].baseInstance = 0;
-		}
+		const auto& meshes = type.model->getMeshes();
+		size_t      num_meshes = meshes.size();
 
-		glGenBuffers(1, &type.indirect_buffer);
-		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, type.indirect_buffer);
-		glBufferData(
-			GL_DRAW_INDIRECT_BUFFER,
-			num_meshes * sizeof(DrawElementsIndirectCommand),
-			commands.data(),
-			GL_STATIC_DRAW
-		);
-
-		// Shadow indirect commands
-		glGenBuffers(1, &type.shadow_indirect_buffer);
-		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, type.shadow_indirect_buffer);
-		glBufferData(
-			GL_DRAW_INDIRECT_BUFFER,
-			num_meshes * sizeof(DrawElementsIndirectCommand),
-			commands.data(),
-			GL_STATIC_DRAW
-		);
+		type.indirect_pb = std::make_unique<PersistentBuffer<DrawElementsIndirectCommand>>(GL_DRAW_INDIRECT_BUFFER, num_meshes, 3);
+		type.shadow_indirect_pb = std::make_unique<PersistentBuffer<DrawElementsIndirectCommand>>(GL_DRAW_INDIRECT_BUFFER, num_meshes, 3);
 
 		// Atomic counter for culling
-		glGenBuffers(1, &type.count_buffer);
-		glBindBuffer(GL_ATOMIC_COUNTER_BUFFER, type.count_buffer);
-		glBufferData(GL_ATOMIC_COUNTER_BUFFER, sizeof(unsigned int), nullptr, GL_DYNAMIC_DRAW);
+		type.count_pb = std::make_unique<PersistentBuffer<unsigned int>>(GL_ATOMIC_COUNTER_BUFFER, 1, 3);
 
-		decor_types_.push_back(type);
+		decor_types_.push_back(std::move(type));
 	}
 
 	void DecorManager::AddProceduralDecor(ProceduralType type, const DecorProperties& props, int variants) {
@@ -363,21 +325,11 @@ namespace Boidsish {
 				shadow_commands[i].baseInstance = 0;
 			}
 
-			glBindBuffer(GL_DRAW_INDIRECT_BUFFER, type.indirect_buffer);
-			glBufferSubData(
-				GL_DRAW_INDIRECT_BUFFER,
-				0,
-				num_meshes * sizeof(DrawElementsIndirectCommand),
-				commands.data()
-			);
+			type.indirect_pb->AdvanceFrame();
+			std::memcpy(type.indirect_pb->GetFrameDataPtr(), commands.data(), num_meshes * sizeof(DrawElementsIndirectCommand));
 
-			glBindBuffer(GL_DRAW_INDIRECT_BUFFER, type.shadow_indirect_buffer);
-			glBufferSubData(
-				GL_DRAW_INDIRECT_BUFFER,
-				0,
-				num_meshes * sizeof(DrawElementsIndirectCommand),
-				shadow_commands.data()
-			);
+			type.shadow_indirect_pb->AdvanceFrame();
+			std::memcpy(type.shadow_indirect_pb->GetFrameDataPtr(), shadow_commands.data(), num_meshes * sizeof(DrawElementsIndirectCommand));
 		}
 		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, 0);
 
@@ -409,7 +361,7 @@ namespace Boidsish {
 			glGenBuffers(1, &decor_props_ubo_);
 		}
 		glBindBuffer(GL_UNIFORM_BUFFER, decor_props_ubo_);
-		glBufferData(GL_UNIFORM_BUFFER, kMaxDecorTypes * sizeof(DecorTypeGPU), nullptr, GL_DYNAMIC_DRAW);
+		glBufferData(GL_UNIFORM_BUFFER, kMaxDecorTypes * sizeof(DecorTypeGPU), nullptr, GL_STATIC_DRAW);
 		glBufferSubData(GL_UNIFORM_BUFFER, 0, gpu_types.size() * sizeof(DecorTypeGPU), gpu_types.data());
 		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 	}
@@ -537,9 +489,9 @@ namespace Boidsish {
 
 				// Mark block invalid in the validity buffer (4 bytes, not 64KB×6 types).
 				// The cull shader checks this and skips instances in invalid blocks.
-				uint32_t zero = 0;
-				glBindBuffer(GL_SHADER_STORAGE_BUFFER, block_validity_ssbo_);
-				glBufferSubData(GL_SHADER_STORAGE_BUFFER, block * sizeof(uint32_t), sizeof(uint32_t), &zero);
+				block_validity_pb_->AdvanceFrame();
+				uint32_t* validity_ptr = block_validity_pb_->GetFrameDataPtr();
+				validity_ptr[block] = 0;
 
 				it = active_chunks_.erase(it);
 				chunks_freed++;
@@ -603,38 +555,31 @@ namespace Boidsish {
 			int num_chunks = (int)chunks_to_generate.size();
 
 			// Mark all blocks being generated as valid in one batch.
-			glBindBuffer(GL_SHADER_STORAGE_BUFFER, block_validity_ssbo_);
+			block_validity_pb_->AdvanceFrame();
+			uint32_t* validity_ptr = block_validity_pb_->GetFrameDataPtr();
 			for (const auto& entry : chunks_to_generate) {
-				uint32_t one = 1;
-				glBufferSubData(GL_SHADER_STORAGE_BUFFER, entry.block * sizeof(uint32_t), sizeof(uint32_t), &one);
+				validity_ptr[entry.block] = 1;
 			}
 
 			// Upload global placement params (once per dispatch frame)
-			PlacementGlobalsGPU globals;
-			globals.camera_and_scale = glm::vec4(cam_xz, world_scale, terrain_gen.GetMaxHeight());
-			globals.distance_params = glm::vec4(
+			placement_globals_pb_->AdvanceFrame();
+			PlacementGlobalsGPU* globals_ptr = placement_globals_pb_->GetFrameDataPtr();
+			globals_ptr->camera_and_scale = glm::vec4(cam_xz, world_scale, terrain_gen.GetMaxHeight());
+			globals_ptr->distance_params = glm::vec4(
 				density_falloff_start_ * world_scale,
 				density_falloff_end_ * world_scale,
 				max_decor_distance_ * world_scale,
 				static_cast<float>(kMaxInstancesPerType)
 			);
-			glBindBuffer(GL_UNIFORM_BUFFER, placement_globals_ubo_);
-			glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(PlacementGlobalsGPU), &globals);
 
 			// Upload per-chunk params SSBO (all chunks in one buffer)
-			std::vector<ChunkParamsGPU> chunk_gpu(num_chunks);
+			chunk_params_pb_->AdvanceFrame();
+			ChunkParamsGPU* chunk_gpu_ptr = chunk_params_pb_->GetFrameDataPtr();
 			for (int j = 0; j < num_chunks; ++j) {
 				const auto& cd = all_chunks[chunks_to_generate[j].src_index];
-				chunk_gpu[j].offset_slice_size = glm::vec4(cd.world_offset, cd.slice, cd.chunk_size);
-				chunk_gpu[j].indices = glm::ivec4(chunks_to_generate[j].block * kInstancesPerChunk, 0, 0, 0);
+				chunk_gpu_ptr[j].offset_slice_size = glm::vec4(cd.world_offset, cd.slice, cd.chunk_size);
+				chunk_gpu_ptr[j].indices = glm::ivec4(chunks_to_generate[j].block * kInstancesPerChunk, 0, 0, 0);
 			}
-			glBindBuffer(GL_SHADER_STORAGE_BUFFER, chunk_params_ssbo_);
-			glBufferData(
-				GL_SHADER_STORAGE_BUFFER,
-				num_chunks * sizeof(ChunkParamsGPU),
-				chunk_gpu.data(),
-				GL_STREAM_DRAW
-			);
 
 			// Bind everything once, then one dispatch per type
 			placement_shader_->use();
@@ -648,8 +593,8 @@ namespace Boidsish {
 			placement_shader_->setInt("u_biomeMap", Constants::TextureUnit::TerrainBiomeMap());
 
 			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::DecorProps(), decor_props_ubo_);
-			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::DecorPlacementGlobals(), placement_globals_ubo_);
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::DecorChunkParams(), chunk_params_ssbo_);
+			placement_globals_pb_->BindRange(Constants::UboBinding::DecorPlacementGlobals());
+			chunk_params_pb_->BindRange(Constants::SsboBinding::DecorChunkParams());
 
 			int dispatch_size = (Constants::Class::Terrain::ChunkSize() + 7) / 8;
 			for (size_t i = 0; i < decor_types_.size(); ++i) {
@@ -718,13 +663,12 @@ namespace Boidsish {
 
 		// Bind block validity buffer once for all types (shared allocation scheme)
 		culling_shader_->setInt("u_instancesPerBlock", kInstancesPerChunk);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::DecorBlockValidity(), block_validity_ssbo_);
+		block_validity_pb_->BindRange(Constants::SsboBinding::DecorBlockValidity());
 
 		for (auto& type : decor_types_) {
 			// Reset atomic counter
-			unsigned int zero = 0;
-			glBindBuffer(GL_ATOMIC_COUNTER_BUFFER, type.count_buffer);
-			glBufferSubData(GL_ATOMIC_COUNTER_BUFFER, 0, sizeof(unsigned int), &zero);
+			type.count_pb->AdvanceFrame();
+			*type.count_pb->GetFrameDataPtr() = 0;
 
 			// Cull instances
 			culling_shader_->use();
@@ -733,7 +677,7 @@ namespace Boidsish {
 
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::DecorAllInstances(), type.ssbo);
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::DecorInstances(), type.visible_ssbo);
-			glBindBufferBase(GL_ATOMIC_COUNTER_BUFFER, 0, type.count_buffer);
+			type.count_pb->BindRange(0); // Atomic counter bind point 0
 			glDispatchCompute(kMaxInstancesPerType / 64, 1, 1);
 
 			glMemoryBarrier(GL_ATOMIC_COUNTER_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
@@ -741,12 +685,12 @@ namespace Boidsish {
 			// Update indirect commands for both regular and shadow passes
 			update_commands_shader_->use();
 			update_commands_shader_->setInt("u_numCommands", (int)type.model->getMeshes().size());
-			glBindBufferBase(GL_ATOMIC_COUNTER_BUFFER, 0, type.count_buffer);
+			type.count_pb->BindRange(0);
 
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::DecorIndirect(), type.indirect_buffer);
+			type.indirect_pb->BindRange(Constants::SsboBinding::DecorIndirect());
 			glDispatchCompute(1, 1, 1);
 
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::DecorIndirect(), type.shadow_indirect_buffer);
+			type.shadow_indirect_pb->BindRange(Constants::SsboBinding::DecorIndirect());
 			glDispatchCompute(1, 1, 1);
 
 			glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT);
@@ -968,11 +912,8 @@ namespace Boidsish {
 			shader->setFloat("u_windRimHighlight", type.props.wind_rim_highlight);
 
 			// Bind the appropriate indirect buffer
-			if (is_shadow_pass) {
-				glBindBuffer(GL_DRAW_INDIRECT_BUFFER, type.shadow_indirect_buffer);
-			} else {
-				glBindBuffer(GL_DRAW_INDIRECT_BUFFER, type.indirect_buffer);
-			}
+			PersistentBuffer<DrawElementsIndirectCommand>* indirect_pb = is_shadow_pass ? type.shadow_indirect_pb.get() : type.indirect_pb.get();
+			glBindBuffer(GL_DRAW_INDIRECT_BUFFER, indirect_pb->GetBufferId());
 
 			const auto& meshes = type.model->getMeshes();
 			for (size_t mi = 0; mi < meshes.size(); ++mi) {
@@ -992,7 +933,7 @@ namespace Boidsish {
 				glDrawElementsIndirect(
 					GL_TRIANGLES,
 					GL_UNSIGNED_INT,
-					(void*)(mi * sizeof(DrawElementsIndirectCommand))
+					(void*)(uintptr_t)(indirect_pb->GetFrameOffset() + mi * sizeof(DrawElementsIndirectCommand))
 				);
 			}
 

@@ -1494,9 +1494,7 @@ namespace Boidsish {
 			}
 
 			// Ensure all CPU writes to persistent mapped buffers are visible to GPU
-			glMemoryBarrier(
-				GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT | GL_COMMAND_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT
-			);
+			glMemoryBarrier(GL_COMMAND_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
 
 			// Hi-Z occlusion culling dispatch (between uniform fill and draw calls)
 			if (dispatch_hiz_occlusion && occlusion_cull_shader_ && occlusion_cull_shader_->isValid() && hiz_manager &&
