@@ -555,9 +555,9 @@ vec4 sampleVolumetricLighting(vec3 worldPos) {
     vec2 uv = ndc.xy * 0.5 + 0.5;
 
     float slice = clamp(log(linearZ / z_near) / log(z_far / z_near), 0.0, 1.0);
-    // Use the grid resolution provided in the Lighting block if available, otherwise fallback to 64
+    // Grid resolution for volumetrics
     float resZ = 64.0;
-    float w = (float(cascade) * resZ + (slice * (resZ - 0.5) + 0.5)) / (resZ * float(NUM_CASCADES));
+    float w = (float(cascade * int(resZ)) + (slice * (resZ - 1.0) + 0.5)) / (resZ * float(NUM_CASCADES));
 
     return texture(uVolumetricTexture, vec3(uv, w));
 }
@@ -784,8 +784,13 @@ vec4 apply_lighting_foliage(vec3 frag_pos, vec3 normal, vec3 albedo, float rough
     // Standard Ambient (using your existing SH logic)
     float terrainOcc = calculateTerrainOcclusion(frag_pos, N);
     vec3 ambient = (getSpatialAmbientSH(frag_pos, N) * albedo) * (ao * terrainOcc);
+    vec3 color = ambient + Lo;
 
-    return vec4(ambient + Lo, spec_lum);
+    // Apply volumetric lighting
+    vec4 vol = sampleVolumetricLighting(frag_pos);
+    color = color * vol.a + vol.rgb;
+
+    return vec4(color, spec_lum);
 }
 
 /**

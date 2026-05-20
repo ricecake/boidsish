@@ -79,27 +79,72 @@ void main() {
 
     // Filter for emissive types or types that contribute to volume
     if (p.style == STYLE_FIRE || p.style == STYLE_FIREFLIES || p.style == STYLE_CINDER || p.style == STYLE_EXPLOSION || p.style == STYLE_ROCKET_TRAIL) {
-        ivec3 vox = worldToFroxel(p.pos.xyz);
-        if (vox.x == -1) return;
+        vec4 viewPos = uView * vec4(p.pos.xyz, 1.0);
+        float linearZ = -viewPos.z;
 
-        float radius = p.vel.w * 3.0; // Influence radius
-        float intensityScale = (p.style == STYLE_FIREFLIES) ? 1.0 : 8.0;
+        int cascade = -1;
+        float z_near = 0.1;
+        float z_far = 0.0;
+
+        for (int i = 0; i < NUM_CASCADES; ++i) {
+            if (linearZ <= CASCADE_DISTANCES[i]) {
+                cascade = i;
+                z_far = CASCADE_DISTANCES[i];
+                if (i > 0) z_near = CASCADE_DISTANCES[i-1];
+                break;
+            }
+        }
+
+        if (cascade == -1 || linearZ < z_near) return;
+
+        vec4 clipPos = uProj * viewPos;
+        vec3 ndc = clipPos.xyz / clipPos.w;
+        if (any(lessThan(ndc, vec3(-1.1))) || any(greaterThan(ndc, vec3(1.1)))) return;
+
+        vec2 uv = ndc.xy * 0.5 + 0.5;
+        float slice = clamp(log(linearZ / z_near) / log(z_far / z_near), 0.0, 1.0);
+
+        // Continuous froxel coordinates
+        vec3 coord;
+        coord.xy = uv * vec2(u_grid_res.xy);
+        coord.z = float(cascade * u_grid_res.z) + slice * float(u_grid_res.z);
+
+        // Base froxel for 2x2x2 neighborhood
+        ivec3 base_vox = ivec3(floor(coord - 0.5));
+
+        float intensityScale = (p.style == STYLE_FIREFLIES) ? 0.25 : 8.0;
         float particlePhase = 1.0 / (4.0 * PI);
+        vec3 radiance = p.color.rgb * p.color.a * intensityScale * particlePhase * inversesqrt(linearZ);
 
-        vec3 radiance = p.color.rgb * p.color.a * intensityScale * particlePhase;
+        // Influence radius (in froxels, roughly)
+        float radius = p.vel.w * 0.5;
+        // The user wants more range. Let's use a 3x3x3 neighborhood if radius is large.
+        // But for now, let's stick to 2x2x2 but with proper trilinear weights.
+        // Actually, if we want more range, we could increase the neighborhood.
+        // Let's try 3x3x3 centered on the particle.
+        ivec3 center_vox = ivec3(floor(coord));
 
-        // Splat into 2x2x2 neighborhood for smoothness
-        for (int x = 0; x <= 1; ++x) {
-            for (int y = 0; y <= 1; ++y) {
-                for (int z = 0; z <= 1; ++z) {
-                    ivec3 v = vox + ivec3(x, y, z);
-                    if (v.x >= u_grid_res.x || v.y >= u_grid_res.y || v.z >= u_grid_res.z * NUM_CASCADES) continue;
+        for (int x = -1; x <= 1; ++x) {
+            for (int y = -1; y <= 1; ++y) {
+                for (int z = -1; z <= 1; ++z) {
+                    ivec3 v = center_vox + ivec3(x, y, z);
+                    if (v.x < 0 || v.x >= u_grid_res.x || v.y < 0 || v.y >= u_grid_res.y || v.z < 0 || v.z >= u_grid_res.z * NUM_CASCADES) continue;
+
+                    vec3 froxelCenter = vec3(v) + 0.5;
+                    float dist = distance(coord, froxelCenter);
+
+                    // Use a smooth quadratic falloff
+                    float r = 1.5 + radius; // Influence radius in froxel units
+                    float weight = max(0.0, 1.0 - (dist / r));
+                    weight = weight * weight * (3.0 - 2.0 * weight); // Smoothstep-like
+
+                    if (weight <= 0.0) continue;
+
+                    // Normalize weight roughly by neighborhood size
+                    // A 3x3x3 neighborhood has 27 voxels.
+                    weight *= (1.0 / 12.0); // Empirical normalization
 
                     uint idx = v.z * (u_grid_res.x * u_grid_res.y) + v.y * u_grid_res.x + v.x;
-
-                    // Simple linear falloff for splatting
-                    float weight = 0.125; // 1/8
-
                     atomicAddFloat(idx, 0, radiance.r * weight);
                     atomicAddFloat(idx, 1, radiance.g * weight);
                     atomicAddFloat(idx, 2, radiance.b * weight);
