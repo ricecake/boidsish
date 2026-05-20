@@ -2461,6 +2461,39 @@ namespace Boidsish {
 		}
 
 		void UpdateSystems(const FrameData& frame) {
+			std::vector<std::future<void>> async_updates;
+
+			// --- 1. Async Preparation Tasks (CPU-bound) ---
+			std::future<FireEffectManager::UpdateResult> fire_prep_future;
+			if (fire_effect_manager) {
+				fire_prep_future = thread_pool.submit([this]() {
+					return fire_effect_manager->PrepareUpdate(simulation_delta_time, frame_config_.ambient_particle_density);
+				});
+			}
+
+			std::future<DecorManager::UpdateResult> decor_prep_future;
+			if (decor_manager && terrain_generator && terrain_render_manager) {
+				decor_prep_future = thread_pool.submit([this]() {
+					return decor_manager->PrepareUpdate(camera, *terrain_generator, terrain_render_manager);
+				});
+			}
+
+			// Parallelize simple logical updates
+			async_updates.push_back(thread_pool.submit([this]() {
+				mesh_explosion_manager->Update(simulation_delta_time, simulation_time);
+			}));
+			async_updates.push_back(thread_pool.submit([this]() {
+				sound_effect_manager->Update(simulation_delta_time);
+			}));
+			async_updates.push_back(thread_pool.submit([this]() {
+				shockwave_manager->Update(simulation_delta_time);
+			}));
+			async_updates.push_back(thread_pool.submit([this]() {
+				if (akira_effect_manager && terrain_generator) {
+					akira_effect_manager->Update(simulation_delta_time, *terrain_generator);
+				}
+			}));
+
 			// Calculate frustum for terrain generation and decor placement
 			if (terrain_generator) {
 				float world_scale_val = terrain_generator->GetWorldScale();
@@ -2489,32 +2522,39 @@ namespace Boidsish {
 			}
 
 			clone_manager->Update(simulation_time, camera.pos());
-			fire_effect_manager->Update(
-				simulation_delta_time,
-				simulation_time,
-				ConfigManager::GetInstance().GetAppSettingBool("particles_enabled", true),
-				frame_config_.ambient_particle_density,
-				terrain_render_manager ? terrain_render_manager->GetChunkInfo(terrain_generator->GetWorldScale())
-									   : std::vector<glm::vec4>{},
-				terrain_render_manager ? terrain_render_manager->GetHeightmapTexture() : 0,
-				noise_manager ? noise_manager->GetCurlTexture() : 0,
-				terrain_render_manager ? terrain_render_manager->GetBiomeTexture() : 0,
-				render_state_.lighting.id,
-				static_cast<GLintptr>(render_state_.lighting.offset),
-				static_cast<GLsizeiptr>(render_state_.lighting.size),
-				frustum_ssbo->GetBufferId(),
-				frustum_ssbo->GetFrameOffset() + mdi_frustum_count * sizeof(FrustumDataGPU),
-				noise_manager ? noise_manager->GetExtraNoiseTexture() : 0,
-				render_state_.visual_effects.id,
-				static_cast<GLintptr>(render_state_.visual_effects.offset),
-				static_cast<GLsizeiptr>(render_state_.visual_effects.size)
-			);
-			mesh_explosion_manager->Update(simulation_delta_time, simulation_time);
-			sound_effect_manager->Update(simulation_delta_time);
-			shockwave_manager->Update(simulation_delta_time);
-			if (akira_effect_manager && terrain_generator) {
-				akira_effect_manager->Update(simulation_delta_time, *terrain_generator);
+
+			// --- 2. Synchronize Async Tasks & Dispatch GPU work ---
+			for (auto& f : async_updates) {
+				f.get();
 			}
+
+			if (fire_prep_future.valid()) {
+				auto                   res = fire_prep_future.get();
+				std::vector<glm::vec4> chunk_info =
+					terrain_render_manager ? terrain_render_manager->GetChunkInfo(terrain_generator->GetWorldScale())
+										   : std::vector<glm::vec4>{};
+				fire_effect_manager->Update(
+					simulation_delta_time,
+					simulation_time,
+					ConfigManager::GetInstance().GetAppSettingBool("particles_enabled", true),
+					frame_config_.ambient_particle_density,
+					chunk_info,
+					&res,
+					terrain_render_manager ? terrain_render_manager->GetHeightmapTexture() : 0,
+					noise_manager ? noise_manager->GetCurlTexture() : 0,
+					terrain_render_manager ? terrain_render_manager->GetBiomeTexture() : 0,
+					render_state_.lighting.id,
+					static_cast<GLintptr>(render_state_.lighting.offset),
+					static_cast<GLsizeiptr>(render_state_.lighting.size),
+					frustum_ssbo->GetBufferId(),
+					frustum_ssbo->GetFrameOffset() + mdi_frustum_count * sizeof(FrustumDataGPU),
+					noise_manager ? noise_manager->GetExtraNoiseTexture() : 0,
+					render_state_.visual_effects.id,
+					static_cast<GLintptr>(render_state_.visual_effects.offset),
+					static_cast<GLsizeiptr>(render_state_.visual_effects.size)
+				);
+			}
+
 			sdf_volume_manager->UpdateSSBO();
 			sdf_volume_manager->BindSSBO(Constants::SsboBinding::SdfVolumes());
 			shockwave_manager->UpdateShaderData();
@@ -2530,13 +2570,11 @@ namespace Boidsish {
 				if (noise_manager) {
 					decor_manager->SetNoiseManager(noise_manager.get());
 				}
-				decor_manager->Update(
-					simulation_delta_time,
-					camera,
-					generator_frustum,
-					*terrain_generator,
-					terrain_render_manager
-				);
+
+				if (decor_prep_future.valid()) {
+					auto res = decor_prep_future.get();
+					decor_manager->ApplyUpdate(res, terrain_render_manager);
+				}
 			}
 
 			if (grass_manager && terrain_generator && terrain_render_manager) {
