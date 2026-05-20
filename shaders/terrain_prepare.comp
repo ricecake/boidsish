@@ -5,20 +5,7 @@ layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 #include "helpers/constants.glsl"
 #include "frustum.glsl"
 #include "temporal_data.glsl"
-
-#ifndef TERRAIN_DATA_BLOCK
-#define TERRAIN_DATA_BLOCK
-layout(std140, binding = [[TERRAIN_DATA_BINDING]]) uniform TerrainData {
-	ivec4 u_originSize;    // x, z, size, is_bound
-	vec4  u_terrainParams; // chunkSize, worldScale
-};
-#endif
-
-#ifndef TERRAIN_GRID_DEFINED
-	#define TERRAIN_GRID_DEFINED
-layout(binding = [[TERRAIN_CHUNK_GRID_BINDING]]) uniform isampler2D u_chunkGrid;
-#endif
-
+#include "helpers/terrain_common.glsl"
 #include "helpers/terrain_shadows.glsl"
 
 struct PatchMetrics {
@@ -110,12 +97,9 @@ float getPatchTessLevel(vec3 center, float radius, PatchMetrics metrics) {
 	float waterImportance = 1.0 - smoothstep(0.0, 2.0 * u_worldScale, center.y);
 
 	// COMBINED IMPORTANCE SCORE [0, 1]
-	// float importance = distImportance * (1.0 + silhouetteImportance * 4.0) * (1.0 + detailImportance * 4.0);
 	float importance = distImportance * max(silhouetteImportance * 4.0, detailImportance * 4.0);
 
 	importance = clamp(max(importance, waterImportance), 0.0, 1.0);
-
-	// return mix(u_tessLevelMin, u_tessLevelMax, importance);
 
 	float level;
 	if (importance > 0.85)
@@ -253,53 +237,10 @@ void main() {
 		}
 	}
 
-	// TERRAIN-ON-TERRAIN OCCLUSION CHECK (DISABLED: non-conservative)
-	/*
-	if (u_originSize.w > 0) {
-		float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
-
-		// Conservative horizon check:
-		// If our patch is entirely below the max height of chunks between us and the camera, it might be occluded.
-		// We can sample a few points along the view vector in the grid.
-		vec3  viewVec = u_viewPos - patchCenter;
-		float distToCam = length(viewVec);
-		vec2  viewDir2D = normalize(viewVec.xz);
-
-		// Step along the ray towards camera (max 4 steps for performance)
-		float stepSize = scaledChunkSize * 1.5;
-		int numSteps = clamp(int(distToCam / stepSize), 0, 4);
-
-		for (int i = 1; i <= numSteps; i++) {
-			vec2  samplePos = patchCenter.xz + viewDir2D * (float(i) * stepSize);
-			ivec2 sampleGridCoord = ivec2(floor(samplePos / scaledChunkSize)) - u_originSize.xy;
-
-			if (sampleGridCoord.x >= 0 && sampleGridCoord.x < u_originSize.z &&
-				sampleGridCoord.y >= 0 && sampleGridCoord.y < u_originSize.z) {
-
-				float blockerHeight = texelFetch(u_maxHeightGrid, sampleGridCoord, 0).r;
-
-				// If a chunk in front of us is higher than our patch's max height PLUS the camera's height,
-				// and we are far enough away, we are likely occluded.
-				// Simple check: if blockers are significantly above the line of sight.
-				float patchMaxY = metrics.max_y;
-
-				// Line of sight height at sample point
-				float t = (float(i) * stepSize) / distToCam;
-				float losHeight = mix(patchMaxY, u_viewPos.y, t);
-
-				if (blockerHeight > losHeight + (2.0 * u_worldScale)) {
-					return; // Likely occluded by terrain
-				}
-			}
-		}
-	}
-	*/
-
 	// Calculate tessellation levels
 	float level = getPatchTessLevel(patchCenter, radius, metrics);
 
 	// Visibility confirmed, allocate draw call
-	// uint outIdx = atomicAdd(count, 1);
 	uint outIdx = atomicAdd(command.instanceCount, 1);
 
 	patchVisibility[patchIdx] = 1;

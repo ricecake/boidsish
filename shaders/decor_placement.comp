@@ -8,12 +8,7 @@ layout(std430, binding = [[DECOR_ALL_INSTANCES_BINDING]]) buffer DecorInstances 
 	mat4 instances[];
 };
 
-// Heightmap and biome textures from TerrainRenderManager
-uniform sampler2DArray u_heightmapArray; // RGBA16F: R=height, GBA=normal.xyz
-#ifndef TERRAIN_BIOME_MAP_DEFINED
-#define TERRAIN_BIOME_MAP_DEFINED
-uniform sampler2DArray u_biomeMap;       // RGBA8: R=low_idx, G=t, B=bake_flag, A=waterMask
-#endif
+#include "helpers/terrain_common.glsl"
 
 // Per-type properties (uploaded once in PrepareResources)
 struct DecorTypeParams {
@@ -136,15 +131,17 @@ void main() {
 	vec2 uv = (worldPos - chunkWorldOffset) / chunkSize;
 	vec2 remappedUV = (uv * float([[CHUNK_SIZE]]) + 0.5) / float([[CHUNK_SIZE_PLUS_1]]);
 
-	vec4 terrainSample = textureLod(u_heightmapArray, vec3(remappedUV, chunkSlice), 0.0);
-
-	float height = terrainSample.r;
-	vec3  normal = vec3(terrainSample.g, terrainSample.b, terrainSample.a);
+	vec3 worldPos3D = getTerrainWorldPos(worldPos);
+	vec3 normal = getTerrainNormal(worldPos);
+	float height = worldPos3D.y;
 
 	if (height < minHeight * worldScale || height > maxHeight * worldScale)
 		return;
 	float slope = 1.0 - normal.y;
 	if (slope < minSlope || slope > maxSlope)
+		return;
+
+	if (getTerrainWaterMask(worldPos) > 0.0)
 		return;
 
 	float biomeNoise = snoise(scaledWorldPos * 0.0005);
@@ -184,8 +181,6 @@ void main() {
 	if (hash(seed + 5678) > effectiveDensity)
 		return;
 
-	vec3 worldPos3D = vec3(worldPos.x, height, worldPos.y);
-
 	float scaleNoise = (snoise(scaledWorldPos * 0.1) + 1.0) * 0.5;
 
 	float bScale = pBaseScale * worldScale;
@@ -207,18 +202,18 @@ void main() {
 
 			float c = cos(angle);
 			float s_angle = sin(angle);
-			float t = 1.0 - c;
+			float t_rot = 1.0 - c;
 
 			mat3 terrainRot = mat3(
-				t * axis.x * axis.x + c,
-				t * axis.x * axis.y - s_angle * axis.z,
-				t * axis.x * axis.z + s_angle * axis.y,
-				t * axis.x * axis.y + s_angle * axis.z,
-				t * axis.y * axis.y + c,
-				t * axis.y * axis.z - s_angle * axis.x,
-				t * axis.x * axis.z - s_angle * axis.y,
-				t * axis.y * axis.z + s_angle * axis.x,
-				t * axis.z * axis.z + c
+				t_rot * axis.x * axis.x + c,
+				t_rot * axis.x * axis.y - s_angle * axis.z,
+				t_rot * axis.x * axis.z + s_angle * axis.y,
+				t_rot * axis.x * axis.y + s_angle * axis.z,
+				t_rot * axis.y * axis.y + c,
+				t_rot * axis.y * axis.z - s_angle * axis.x,
+				t_rot * axis.x * axis.z - s_angle * axis.y,
+				t_rot * axis.y * axis.z + s_angle * axis.x,
+				t_rot * axis.z * axis.z + c
 			);
 
 			rotMat = terrainRot * rotMat;

@@ -146,8 +146,8 @@ void main() {
 			vRidgeMap = 0.0;
 			vSubstrate = 0.0;
 		}
-
 		vIsWater = smoothstep(0.1, -0.1, FragPos.y);
+
 	}
 
 	float waterMask = vIsWater;
