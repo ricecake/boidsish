@@ -480,13 +480,13 @@ void main() {
 	// ========================================================================
 	float grassAO = 0.0;
 	vec3 perturbedNorm = norm;
-	if (u_grassGlobal.enabled != 0 && freezingScale == 0) {
-		float stepDist = 50*int(realDist/50);
-		float freqScale = mix(1.0, 0.25, smoothstep(150.0, 160.0, stepDist + 50.0 * largeNoise));
-		freqScale = mix(5.0, freqScale, smoothstep(45, 50, stepDist));
+	float stepDist = 50*int(realDist/50);
+	float freqScale = mix(1.0, 0.25, smoothstep(150.0, 160.0, stepDist + 50.0 * largeNoise));
+	freqScale = mix(5.0, freqScale, smoothstep(45, 50, stepDist));
 
-		float blueNoise = fastBlueNoise(FragPos.xz * (baseFreq * 0.05 * freqScale), 0) * 0.5 + 0.5;
-		float blueNoiseA = fastBlueNoise(FragPos.xz * (baseFreq * 0.1 * freqScale), 1) * 0.5 + 0.5;
+	float blueNoise = fastBlueNoise(FragPos.xz * (baseFreq * 0.05 * freqScale), 0) * 0.5 + 0.5;
+	float blueNoiseA = fastBlueNoise(FragPos.xz * (baseFreq * 0.1 * freqScale), 1) * 0.5 + 0.5;
+	if (u_grassGlobal.enabled != 0 && freezingScale == 0) {
 
 		vec2  biomeUV = (TexCoords * uRawChunkSize + 0.5) / (uRawChunkSize + 1.0);
 		vec2  biomeData = texture(uBiomeMap, vec3(biomeUV, TextureSlice)).rg;
@@ -643,9 +643,11 @@ void main() {
 
 
 	if (freezingScale > 0) {
-		albedo = mix(albedo, vec3(1.1,1.1,1.1+0.1*grassAO), freezingScale);
-		roughness = mix(roughness, 0.50, freezingScale);
-		metallic = mix(metallic, 1.0, freezingScale);
+		vec3 snowColor = vec3(0.9, 0.95, 1.0+0.01*grassAO);
+
+		albedo = mix(albedo, snowColor, freezingScale);
+		roughness = mix(roughness, 0.85, freezingScale);
+		metallic = mix(metallic, 0.0, freezingScale);
 	}
 
 	float primaryShadow;

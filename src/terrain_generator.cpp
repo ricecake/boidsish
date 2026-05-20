@@ -530,7 +530,7 @@ namespace Boidsish {
 		float     freq = 0.99f;
 
 		// Initial low-frequency pass to establish "Base Shape"
-		glm::vec3 base = Simplex::dnoise(pos * freq);
+		glm::vec3 base = Simplex::dfBm(pos * freq);
 		// Account for frequency in analytical derivatives
 		base.y *= freq;
 		base.z *= freq;
@@ -539,7 +539,7 @@ namespace Boidsish {
 		for (int i = 1; i < 6; i++) {
 			amp *= 0.5f;
 			freq *= 2.0f;
-			glm::vec3 n = Simplex::dnoise(pos * freq);
+			glm::vec3 n = Simplex::dfBm(pos * freq);
 			n.y *= freq;
 			n.z *= freq;
 
@@ -669,8 +669,12 @@ namespace Boidsish {
 		glm::vec2 biome_pos = warped_pos * control_noise_scale_;
 		biome_pos *= 0.5f;
 		float control_value_rough = Simplex::noise(biome_pos + Simplex::curlNoise(biome_pos)) * 0.5f + 0.5f;
-		float control_value_smooth = Simplex::flowNoise( biome_pos + Simplex::fBm(biome_pos), 8.0f ) * 0.5f + 0.5f;
+		float control_value_smooth = Simplex::flowNoise( biome_pos + Simplex::fBm(biome_pos), atan2(biome_pos.y, biome_pos.x) ) * 0.5f + 0.5f;
+		float control_value_round = Simplex::worleyNoise(biome_pos+Simplex::ridgedMF(biome_pos)) * 0.5 + 0.5;
+
+
 		float control_value = std::lerp(control_value_rough, control_value_smooth, Simplex::iqfBm(biome_pos)  * 0.5f + 0.5f);
+		control_value = std::min(1.0f - control_value_round, control_value);
 		if (std::isnan(control_value) || std::isinf(control_value)) {
 			control_value = 0.0f;
 		}
@@ -681,7 +685,7 @@ namespace Boidsish {
 		BiomeAttributes current;
 		ApplyWeightedBiome(control_value, current);
 
-		glm::vec3 terrain_height = 1.35f * biomefbm(warped_pos * 0.25f, current);
+		glm::vec3 terrain_height = 2.5f * (1.0f+Simplex::worleyfBm(biome_pos)) * biomefbm(warped_pos * 0.25f, current);
 
 		float path_floor_level = -0.10f;
 		terrain_height.x = glm::mix(path_floor_level, terrain_height.x, path_factor);
