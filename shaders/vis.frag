@@ -183,8 +183,21 @@ void main() {
 
 	// Choose between PBR and legacy lighting
 	vec4 lightResult;
-	float primaryShadow;
-	lightResult = apply_lighting_pbr(FragPos, norm, albedo * baseAlpha, tex_roughness, tex_metallic, tex_ao, primaryShadow);
+	SurfaceData surface;
+	surface.pos = FragPos;
+	surface.normal = norm;
+	surface.viewDir = viewPos - FragPos;
+
+	MaterialData material;
+	material.albedo = albedo * baseAlpha;
+	material.roughness = tex_roughness;
+	material.metallic = tex_metallic;
+	material.ao = tex_ao;
+	material.translucency = 0.0;
+
+	LightingResult res = calculate_pbr_lighting(surface, material);
+	float primaryShadow = res.primaryShadow;
+	lightResult = vec4(res.color, res.specLum);
 	lightResult.rgb += emissive;
 
 	vec3  result = lightResult.rgb;

@@ -474,6 +474,10 @@ float get_luminance(vec3 color) {
 // PBR is inherently darker than legacy Phong.
 const float PBR_INTENSITY_BOOST = 1.0;
 
+void evaluate_foliage_brdf(
+    vec3 N, vec3 V, vec3 L, vec3 albedo, float roughness, float metallic, vec3 F0,
+    vec3 radiance, float shadow, float translucency, inout vec3 Lo, inout float spec_lum);
+
 void evaluate_brdf(
     vec3 N, vec3 V, vec3 L, vec3 albedo, float roughness, float metallic, vec3 F0,
     vec3 radiance, float shadow, inout vec3 Lo, inout float spec_lum)
@@ -511,15 +515,18 @@ void evaluate_brdf(
  * @param metallic Metallic property [0=dielectric, 1=metal]
  * @param ao Ambient occlusion [0=fully occluded, 1=no occlusion]
  */
-vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness, float metallic, float ao, out float primaryShadow) {
-	primaryShadow = 1.0;
-	vec3 N = normalize(normal);
-	vec3 V = normalize(viewPos - frag_pos);
+/**
+ * Unified PBR lighting function that handles basic surfaces, foliage, and other extended types.
+ */
+LightingResult calculate_pbr_lighting(SurfaceData surface, MaterialData material) {
+	LightingResult res;
+	res.primaryShadow = 1.0;
+	res.color = vec3(0.0);
+	res.specLum = 0.0;
 
-	// Calculate reflectance at normal incidence
-	// For dielectrics use 0.04, for metals use albedo color
-	vec3 F0 = vec3(0.04);
-	F0 = mix(F0, albedo, metallic);
+	vec3 N = normalize(surface.normal);
+	vec3 V = normalize(surface.viewDir);
+	vec3 F0 = mix(vec3(0.04), material.albedo, material.metallic);
 
 	vec3  Lo = vec3(0.0);
 	float spec_lum = 0.0;
@@ -528,97 +535,94 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 	// PASS 1: Global Directional Light (Sun/Moon)
 	// ------------------------------------------------------------------
 	for (int i = 0; i < min(2, num_lights); ++i) {
-		if (lights[i].type != LIGHT_TYPE_DIRECTIONAL) {
-			continue;
-		}
+		if (lights[i].type != LIGHT_TYPE_DIRECTIONAL || lights[i].intensity <= 0.0) continue;
 
-		if (lights[i].intensity <= 0.0) {
-			continue;
-		}
+		vec3 L; float base_atten;
+		calculateLightContribution(i, surface.pos, L, base_atten);
 
-		vec3 L;
-		float base_attenuation; // Unused for directional, but needed for your function signature
-		calculateLightContribution(i, frag_pos, L, base_attenuation);
+		if (L.y <= 0.0) continue;
+		if (material.translucency <= 0.0 && dot(N, L) <= 0.0) continue;
 
-		// Horizon check and normal-facing check
-		if (L.y <= 0.0 || dot(N, L) <= 0.0) continue;
-
-		// Atmospheric transmittance isolated outside the loop
-		float r = kEarthRadiusKM + (frag_pos.y / (1000.0 * worldScale));
+		float r = kEarthRadiusKM + (surface.pos.y / (1000.0 * worldScale));
 		vec3 atmosphereTransmittance = texture(u_transmittanceLUT, getTransmittanceUV(r, L.y)).rgb;
+		vec3 radiance = lights[i].color * (lights[i].intensity * PBR_INTENSITY_BOOST) * atmosphereTransmittance;
 
-		float attenuation = lights[i].intensity * PBR_INTENSITY_BOOST;
-		vec3 radiance = lights[i].color * attenuation * atmosphereTransmittance;
+		float shadow = calculateShadow(i, surface.pos, N, L);
+		shadow *= calculateCloudShadow(i, surface.pos);
 
-		// Cloud shadows isolated outside the loop
-		float shadow = calculateShadow(i, frag_pos, N, L);
-		shadow *= calculateCloudShadow(i, frag_pos);
+		res.primaryShadow = min(res.primaryShadow, shadow);
 
-		primaryShadow = min(primaryShadow, shadow);
-
-		evaluate_brdf(N, V, L, albedo, roughness, metallic, F0, radiance, shadow, Lo, spec_lum);
+		if (material.translucency > 0.0) {
+			evaluate_foliage_brdf(N, V, L, material.albedo, material.roughness, material.metallic, F0, radiance, shadow, material.translucency, Lo, spec_lum);
+		} else {
+			evaluate_brdf(N, V, L, material.albedo, material.roughness, material.metallic, F0, radiance, shadow, Lo, spec_lum);
+		}
 	}
 
 	// ------------------------------------------------------------------
 	// PASS 2: Local Lights (Point/Spot)
 	// ------------------------------------------------------------------
 	for (int i = 2; i < num_lights; ++i) {
-		if (lights[i].intensity <= 0.0) {
-			continue;
+		if (lights[i].intensity <= 0.0) continue;
+
+		vec3 L; float base_atten;
+		calculateLightContribution(i, surface.pos, L, base_atten);
+
+		if (material.translucency <= 0.0 && dot(N, L) <= 0.0) continue;
+		if (material.translucency > 0.0 && abs(dot(N, L)) < 0.0001) continue;
+
+		vec3 radiance = lights[i].color * (lights[i].intensity * PBR_INTENSITY_BOOST) * base_atten;
+		float shadow = calculateShadow(i, surface.pos, N, L);
+
+		if (material.translucency > 0.0) {
+			evaluate_foliage_brdf(N, V, L, material.albedo, material.roughness, material.metallic, F0, radiance, shadow, material.translucency, Lo, spec_lum);
+		} else {
+			evaluate_brdf(N, V, L, material.albedo, material.roughness, material.metallic, F0, radiance, shadow, Lo, spec_lum);
 		}
-
-		vec3 L;
-		float base_attenuation;
-		calculateLightContribution(i, frag_pos, L, base_attenuation);
-
-		// Quick culling before calculating attenuation or shadows
-		if (dot(N, L) <= 0.0) continue;
-
-		float attenuation = (lights[i].intensity * PBR_INTENSITY_BOOST) * base_attenuation;
-		vec3 radiance = lights[i].color * attenuation;
-
-		float shadow = calculateShadow(i, frag_pos, N, L);
-
-		evaluate_brdf(N, V, L, albedo, roughness, metallic, F0, radiance, shadow, Lo, spec_lum);
 	}
 
-	// Spatially-varying SH ambient augmented with macro occlusion
-	float terrainOcc = calculateTerrainOcclusion(frag_pos, N);
-	vec3  spatialSHAmbient = getSpatialAmbientSH(frag_pos, N);
+	// ------------------------------------------------------------------
+	// AMBIENT & REFLECTIONS
+	// ------------------------------------------------------------------
+	float terrainOcc = calculateTerrainOcclusion(surface.pos, N);
+	vec3  spatialSHAmbient = getSpatialAmbientSH(surface.pos, N);
 
-	float combinedAO = ao * terrainOcc;
-	vec3  ambientDiffuse = spatialSHAmbient * albedo * combinedAO;
+	float combinedAO = material.ao * terrainOcc;
+	vec3  ambientDiffuse = spatialSHAmbient * material.albedo * combinedAO;
 
-	// Scale down ambient overall to maintain shadow contrast and prevent "flat" look
-	// ambientDiffuse *= 0.75;
-
-	// Environment reflection approximation for glossy surfaces
 	vec3 R = reflect(-V, N);
-
-	// Fresnel at grazing angles - smooth surfaces reflect more at edges
-	vec3  F0_env = mix(vec3(0.04), albedo, metallic);
 	float NdotV = max(dot(N, V), 0.0);
-	vec3  F_env = fresnelSchlickRoughness(NdotV, F0_env, roughness);
+	vec3 F_env = fresnelSchlickRoughness(NdotV, F0, material.roughness);
+	vec3 envColor = getSpatialAmbientSH(surface.pos, R) * terrainOcc;
 
-	// Fake environment color using spatial SH
-	vec3 envColor = getSpatialAmbientSH(frag_pos, R);
-
-	// Attenuate reflection by occlusion to prevent glow in caves/valleys
-	envColor *= terrainOcc;
-
-	// Environment reflection strength based on smoothness
-	float smoothness = 1.0 - roughness;
+	float smoothness = 1.0 - material.roughness;
 	float envStrength = smoothness * smoothness * 0.8;
+	vec3  ambientSpecular = F_env * envColor * envStrength * combinedAO;
 
-	// Metallic surfaces should reflect the environment color tinted by albedo
-	// Non-metallic surfaces reflect environment but less strongly
-	vec3 ambientSpecular = F_env * envColor * envStrength * combinedAO;
+	vec3 ambient = ambientDiffuse * (1.0 - material.metallic * 0.9) + ambientSpecular;
 
-	// Combine diffuse and specular ambient
-	vec3 ambient = ambientDiffuse * (1.0 - metallic * 0.9) + ambientSpecular;
-	vec3 color = ambient + Lo;
+	res.color = ambient + Lo;
+	res.specLum = spec_lum + get_luminance(ambientSpecular);
 
-	return vec4(color, spec_lum + get_luminance(ambientSpecular));
+	return res;
+}
+
+vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness, float metallic, float ao, out float primaryShadow) {
+	SurfaceData surface;
+	surface.pos = frag_pos;
+	surface.normal = normal;
+	surface.viewDir = viewPos - frag_pos;
+
+	MaterialData material;
+	material.albedo = albedo;
+	material.roughness = roughness;
+	material.metallic = metallic;
+	material.ao = ao;
+	material.translucency = 0.0;
+
+	LightingResult res = calculate_pbr_lighting(surface, material);
+	primaryShadow = res.primaryShadow;
+	return vec4(res.color, res.specLum);
 }
 
 void evaluate_foliage_brdf(
@@ -660,66 +664,21 @@ void evaluate_foliage_brdf(
 }
 
 vec4 apply_lighting_foliage(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness, float metallic, float ao, out float primaryShadow) {
-    primaryShadow = 1.0;
-    vec3 N = normalize(normal); // Already flipped via gl_FrontFacing in grass.frag
-    vec3 V = normalize(viewPos - frag_pos);
-    vec3 F0 = mix(vec3(0.04), albedo, metallic);
+	SurfaceData surface;
+	surface.pos = frag_pos;
+	surface.normal = normal;
+	surface.viewDir = viewPos - frag_pos;
 
-    vec3 Lo = vec3(0.0);
-    float spec_lum = 0.0;
+	MaterialData material;
+	material.albedo = albedo;
+	material.roughness = roughness;
+	material.metallic = metallic;
+	material.ao = ao;
+	material.translucency = 0.5;
 
-    // How much light bleeds through the grass (0.0 to 1.0)
-    float translucency = 0.5;
-
-    // PASS 1: Directional Light (with Atmosphere & Clouds)
-	for (int i = 0; i < min(2, num_lights); ++i) {
-		if (lights[i].type != LIGHT_TYPE_DIRECTIONAL) {
-			continue;
-		}
-		if (lights[i].intensity <= 0.0) {
-			continue;
-		}
-
-        vec3 L; float atten;
-        calculateLightContribution(i, frag_pos, L, atten);
-
-		// Horizon check
-		if (L.y <= 0.0) continue;
-
-        float r = kEarthRadiusKM + (frag_pos.y / (1000.0 * worldScale));
-        vec3 atmosphereTransmittance = texture(u_transmittanceLUT, getTransmittanceUV(r, L.y)).rgb;
-        vec3 radiance = lights[i].color * (lights[i].intensity * PBR_INTENSITY_BOOST) * atmosphereTransmittance;
-
-        float shadow = min(calculateShadow(i, frag_pos, N, L), calculateCloudShadow(i, frag_pos));
-
-		primaryShadow = min(primaryShadow, shadow);
-
-        evaluate_foliage_brdf(N, V, L, albedo, roughness, metallic, F0, radiance, shadow, translucency, Lo, spec_lum);
-    }
-
-    // PASS 2: Local Lights
-    for (int i = min(2, num_lights); i < num_lights; ++i) {
-		if (lights[i].intensity <= 0.0) {
-			continue;
-		}
-
-        vec3 L; float base_atten;
-        calculateLightContribution(i, frag_pos, L, base_atten);
-
-        // We only skip if the light is perpendicular (rare)
-        if (abs(dot(N, L)) < 0.0001) continue;
-
-        vec3 radiance = lights[i].color * (lights[i].intensity * PBR_INTENSITY_BOOST) * base_atten;
-        float shadow = calculateShadow(i, frag_pos, N, L);
-
-        evaluate_foliage_brdf(N, V, L, albedo, roughness, metallic, F0, radiance, shadow, translucency, Lo, spec_lum);
-    }
-
-    // Standard Ambient (using your existing SH logic)
-    float terrainOcc = calculateTerrainOcclusion(frag_pos, N);
-    vec3 ambient = (getSpatialAmbientSH(frag_pos, N) * albedo) * (ao * terrainOcc);
-
-    return vec4(ambient + Lo, spec_lum);
+	LightingResult res = calculate_pbr_lighting(surface, material);
+	primaryShadow = res.primaryShadow;
+	return vec4(res.color, res.specLum);
 }
 
 /**

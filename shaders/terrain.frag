@@ -365,8 +365,21 @@ void main() {
 		vec3 surfaceColor = vec3(0.05, 0.05, 0.08);
 
 		// Highly reflective PBR material
-		float primaryShadow;
-		vec3 lighting = apply_lighting_pbr(FragPos, norm, surfaceColor, 0.05, 0.9, 1.0, primaryShadow).rgb;
+		SurfaceData surface;
+		surface.pos = FragPos;
+		surface.normal = norm;
+		surface.viewDir = viewPos - FragPos;
+
+		MaterialData material;
+		material.albedo = surfaceColor;
+		material.roughness = 0.05;
+		material.metallic = 0.9;
+		material.ao = 1.0;
+		material.translucency = 0.0;
+
+		LightingResult res = calculate_pbr_lighting(surface, material);
+		float primaryShadow = res.primaryShadow;
+		vec3 lighting = res.color;
 		vec3 final_color = lighting + grid_color;
 
 		// Distance fade and distant cyan blend (matching terrain style)
@@ -667,8 +680,22 @@ void main() {
 		metallic = mix(metallic, 0.0, freezingScale);
 	}
 
-	float primaryShadow;
-	vec3 lighting = apply_lighting_pbr(FragPos, perturbedNorm, albedo, roughness, metallic, 1.0 - grassAO, primaryShadow).rgb;
+	SurfaceData surface;
+	surface.pos = FragPos;
+	surface.normal = perturbedNorm;
+	surface.viewDir = viewPos - FragPos;
+
+	MaterialData material;
+	material.albedo = albedo;
+	material.roughness = roughness;
+	material.metallic = metallic;
+	material.ao = 1.0 - grassAO;
+	material.translucency = 0.0;
+
+	LightingResult res = calculate_pbr_lighting(surface, material);
+	float primaryShadow = res.primaryShadow;
+	vec3 lighting = res.color;
+
 	lighting.b *= 1 + (0.2 * freezingScale * (1-primaryShadow));
 	// ========================================================================
 	// Neon 80s Synth Style (Night Theme)
