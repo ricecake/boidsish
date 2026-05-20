@@ -11,6 +11,26 @@ struct Light {
 	float outer_cutoff; // Also: falloff_exp (FLASH)
 };
 
+struct SurfaceData {
+	vec3 pos;
+	vec3 normal;
+	vec3 viewDir;
+};
+
+struct MaterialData {
+	vec3  albedo;
+	float roughness;
+	float metallic;
+	float ao;
+	float translucency;
+};
+
+struct LightingResult {
+	vec3  color;
+	float specLum;
+	float primaryShadow;
+};
+
 const int MAX_LIGHTS = [[MAX_LIGHTS]];
 
 layout(std140, binding = [[LIGHTING_BINDING]]) uniform Lighting {

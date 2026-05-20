@@ -135,8 +135,22 @@ void main() {
         smoothstep(16.0, 128.0, length(viewPos - fWorldPos)));
 
 
-    float primaryShadow;
-    vec4 litColor = apply_lighting_foliage(fWorldPos, N, albedo, roughness, 0.0, ao, primaryShadow);
+    SurfaceData surface;
+    surface.pos = fWorldPos;
+    surface.normal = N;
+    surface.viewDir = viewPos - fWorldPos;
+
+    MaterialData material;
+    material.albedo = albedo;
+    material.roughness = roughness;
+    material.metallic = 0.0;
+    material.ao = ao;
+    material.translucency = 0.5;
+
+    LightingResult res = calculate_pbr_lighting(surface, material);
+    float primaryShadow = res.primaryShadow;
+    vec4 litColor = vec4(res.color, res.specLum);
+
     litColor = min(litColor, vec4(highlight, litColor.a));
     litColor.rgb = clamp(litColor.rgb, 0.0, 5.0); // Clamp HDR to prevent "bright white" blowouts
 
