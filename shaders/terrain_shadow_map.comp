@@ -43,8 +43,9 @@ void main() {
 		int slice = texelFetch(u_chunkGrid, localGridCoord, 0).r;
 		if (slice >= 0) {
 			vec2 uv_chunk = (worldXZ - vec2(chunkCoord) * scaledChunkSize) / scaledChunkSize;
+			vec2 remappedUV = (uv_chunk * 8.0 + 0.5) / (8.0 + 1.0); // Horizon map is 8x8
 			// 8x8 horizon map per chunk
-			vec4 horizons = texture(u_terrainHorizonMap, vec3(uv_chunk, float(slice)));
+			vec4 horizons = texture(u_terrainHorizonMap, vec3(remappedUV, float(slice)));
 
 			// Simple check against 4 cardinal directions
 			vec2 dirXZ = normalize(u_lightDir.xz);

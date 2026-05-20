@@ -867,9 +867,9 @@ namespace Boidsish {
 				int src_idx = x * res + z; // X-major
 
 				packed_height_normal.push_back(positions[src_idx].y);
-				packed_height_normal.push_back(normals[src_idx].x);
-				packed_height_normal.push_back(normals[src_idx].y);
-				packed_height_normal.push_back(normals[src_idx].z);
+				packed_height_normal.push_back(0.0f); // displacement x
+				packed_height_normal.push_back(0.0f); // displacement z
+				packed_height_normal.push_back(1.0f); // unused / flag
 
 				packed_biomes.push_back(static_cast<uint8_t>(biomes_flat[src_idx].x));
 				packed_biomes.push_back(static_cast<uint8_t>(biomes_flat[src_idx].y * 255.0f + 0.5f));
@@ -1123,11 +1123,10 @@ namespace Boidsish {
 				float normalized_height = std::max(0.0f, std::min(1.0f, height / max_height));
 				pixels[index + 0] = static_cast<uint16_t>(normalized_height * 65535.0f);
 
-				// Normals are in [-1, 1], so map to [0, 65535]
-				// These are the next three components (GBA)
-				pixels[index + 1] = static_cast<uint16_t>((normal.x * 0.5f + 0.5f) * 65535.0f);
-				pixels[index + 2] = static_cast<uint16_t>((normal.y * 0.5f + 0.5f) * 65535.0f);
-				pixels[index + 3] = static_cast<uint16_t>((normal.z * 0.5f + 0.5f) * 65535.0f);
+				// Displacement X, Z are 0 for now.
+				pixels[index + 1] = 0; // Displacement X
+				pixels[index + 2] = 0; // Displacement Z
+				pixels[index + 3] = static_cast<uint16_t>(65535.0f);        // Unused / flag
 			}
 		}
 

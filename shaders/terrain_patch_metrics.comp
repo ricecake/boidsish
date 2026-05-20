@@ -3,6 +3,7 @@
 layout(local_size_x = [[PATCHES_PER_CHUNK_SIDE]], local_size_y = [[PATCHES_PER_CHUNK_SIDE]], local_size_z = 1) in;
 
 #include "helpers/constants.glsl"
+#include "helpers/terrain_common.glsl"
 
 struct PatchMetrics {
 	float min_y;
@@ -29,8 +30,7 @@ layout(std430, binding = [[TERRAIN_CHUNK_INFO_BINDING]]) readonly buffer BakeTas
 
 uniform int u_numTasks;
 
-layout(binding = [[BAKED_HEIGHTMAP_BINDING]]) uniform sampler2DArray u_heightmapArray;
-layout(rgba8, binding = [[BIOME_MAP_IMAGE_BINDING]]) uniform image2DArray u_biomeMap;
+layout(rgba8, binding = [[BIOME_MAP_IMAGE_BINDING]]) uniform image2DArray u_biomeMapImage;
 
 #ifndef BIOME_DATA_BLOCK
 #define BIOME_DATA_BLOCK
@@ -93,16 +93,18 @@ void main() {
 			ivec2 pixelCoord = basePixel + ivec2(x, y);
 			vec4 data = texelFetch(u_heightmapArray, ivec3(pixelCoord, slice), 0);
 			float h = data.r;
-			vec3 norm = data.gba;
+
+			float nx = data.a;
+			float ny = texelFetch(u_bakedParamsArray, ivec3(pixelCoord, slice), 0).a;
+			vec3 norm = unpackNormal(vec2(nx, ny));
 
 			minH = min(minH, h);
 			maxH = max(maxH, h);
 
 			// Curvature approximation: how much the normal deviates from UP (1.0 - norm.y)
-			// or could use neighbor difference, but for pre-processing this is a decent proxy for "interestingness"
 			totalCurvature += (1.0 - norm.y);
 
-			vec4 biomeData = imageLoad(u_biomeMap, ivec3(pixelCoord, slice));
+			vec4 biomeData = imageLoad(u_biomeMapImage, ivec3(pixelCoord, slice));
 			int biomeIdx = int(biomeData.r);
 			float t = biomeData.g;
 			int nextBiomeIdx = min(biomeIdx + 1, 7);

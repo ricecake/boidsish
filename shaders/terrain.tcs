@@ -10,7 +10,8 @@ in vec2       TexCoords_VS_out[];
 in vec3       viewForward[];
 flat in float TextureSlice_VS_out[];
 flat in vec3  WorldOffset_VS_out[];
-flat in vec4  PatchInfo_VS_out[];
+flat in float PatchSize_VS_out[];
+flat in float ChunkSize_VS_out[];
 flat in int   DrawID_VS_out[];
 
 // Output to Tessellation Evaluation Shader
@@ -33,13 +34,17 @@ layout(std430, binding = [[TERRAIN_PATCH_TESS_LEVELS_BINDING]]) readonly buffer 
 	PatchTessLevels patchTessLevels[];
 };
 
-// Heightmap texture array: R=height, GBA=normal
+// Heightmap texture array: R=height, G=disp.x, B=disp.z, A=packedNormal.x
 layout(binding = [[BAKED_HEIGHTMAP_BINDING]]) uniform sampler2DArray uHeightmap;
+// Baked params: R=erosionDelta, G=ridgeMap, B=substrate, A=packedNormal.y
+layout(binding = [[BAKED_PARAMS_BINDING]]) uniform sampler2DArray uBakedParams;
+
 uniform float          uChunkSize;
 uniform float          uRawChunkSize;
 
 #include "frustum.glsl"
 #include "helpers/lighting.glsl"
+#include "helpers/terrain_common.glsl"
 
 uniform float uTessLevelMax = 32.0;
 uniform float uTessLevelMin = 1.0;
@@ -56,12 +61,16 @@ void sampleHeightmap(vec2 uv, float slice, vec3 worldOffset, out vec3 worldPos, 
 	vec2  remappedUV = (uv * uRawChunkSize + 0.5) / (uRawChunkSize + 1.0);
 	vec4  data = texture(uHeightmap, vec3(remappedUV, slice));
 	float height = data.r;
-	normal = normalize(data.gba);
+	vec3 displacement = vec3(data.g, 0.0, data.b);
 
-	// Compute world position: local XZ from UV, Y from heightmap
-	worldPos.x = worldOffset.x + uv.x * uChunkSize;
+	float nx = data.a;
+	float ny = texture(uBakedParams, vec3(remappedUV, slice)).a;
+	normal = unpackNormal(vec2(nx, ny));
+
+	// Compute world position: local XZ from UV, Y from heightmap, plus horizontal displacement
+	worldPos.x = worldOffset.x + uv.x * uChunkSize + displacement.x;
 	worldPos.y = height;
-	worldPos.z = worldOffset.z + uv.y * uChunkSize;
+	worldPos.z = worldOffset.z + uv.y * uChunkSize + displacement.z;
 }
 
 bool isLess(vec3 a, vec3 b) {

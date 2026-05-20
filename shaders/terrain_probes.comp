@@ -10,9 +10,8 @@ float terrainShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) { return 
 float calculateTerrainOcclusion(vec3 worldPos, vec3 normal) { return 1.0; }
 
 #include "helpers/lighting.glsl"
+#include "helpers/terrain_common.glsl"
 #include "helpers/fast_noise.glsl"
-layout(binding = [[BAKED_HEIGHTMAP_BINDING]]) uniform sampler2DArray u_heightmapArray;
-layout(binding = [[TERRAIN_BIOME_MAP_BINDING]]) uniform sampler2DArray u_biomeMap; // RGBA8: R=low_idx, G=t, B=bake_flag
 
 uniform sampler2D u_gColor;
 uniform sampler2D u_gDepth;
@@ -117,13 +116,16 @@ vec3 sampleTerrainFallback(vec3 worldPos, vec3 rayDir) {
 			if (slice >= 0) {
 				vec2 uv = fract(gridPos);
 				vec2 remappedUV = (uv * u_terrainParams.x + 0.5) / (u_terrainParams.x + 1.0);
-				vec4 hNorm = texture(u_heightmapArray, vec3(remappedUV, float(slice)));
-				if (p.y <= hNorm.r) {
+				vec4 hData = texture(u_heightmapArray, vec3(remappedUV, float(slice)));
+				if (p.y <= hData.r) {
 					vec2 biomeInfo = texture(u_biomeMap, vec3(remappedUV, float(slice))).rg;
 					int lowIdx = int(biomeInfo.x);
 					float t = biomeInfo.y;
 					vec3 albedo = mix(u_biomes[lowIdx].albedo_roughness.rgb, u_biomes[min(lowIdx + 1, 7)].albedo_roughness.rgb, t);
-					vec3 normal = normalize(hNorm.gba);
+
+					float nx = hData.a;
+					float ny = texture(u_bakedParamsArray, vec3(remappedUV, float(slice))).a;
+					vec3 normal = unpackNormal(vec2(nx, ny));
 
 					vec3 radiance = vec3(0.0);
 					for (int l = 0; l < min(num_lights, 2); ++l) {
@@ -291,9 +293,12 @@ void main() {
 	float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
 	float worldScaleVal = u_terrainParams.y;
 	vec2  worldXZ = (vec2(worldChunkCoord) + 0.5) * scaledChunkSize;
-	vec4  sampledHeightNorm = texture(u_heightmapArray, vec3(0.5, 0.5, float(slice)));
-	vec3  worldPos = vec3(worldXZ.x, sampledHeightNorm.r, worldXZ.y);
-	vec3  worldNormal = normalize(sampledHeightNorm.gba);
+	vec4  hData = texture(u_heightmapArray, vec3(0.5, 0.5, float(slice)));
+	vec3  worldPos = vec3(worldXZ.x, hData.r, worldXZ.y);
+
+	float nx = hData.a;
+	float ny = texture(u_bakedParamsArray, vec3(0.5, 0.5, float(slice))).a;
+	vec3  worldNormal = unpackNormal(vec2(nx, ny));
 
 	// Position probe origin slightly above terrain to ensure clear visibility
 	vec3 probeOrigin = worldPos + worldNormal * 1.0 * worldScaleVal;

@@ -3,6 +3,7 @@
 #include "helpers/noise.glsl"
 #include "helpers/fast_noise.glsl"
 #include "frustum.glsl"
+#include "helpers/terrain_common.glsl"
 
 layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
@@ -72,15 +73,6 @@ layout(std140, binding = [[GRASS_PROPS_BINDING]]) uniform GrassProps {
     GlobalGrassProperties globalProps;
 };
 
-layout(std140, binding = [[TERRAIN_DATA_BINDING]]) uniform TerrainData {
-    ivec4 u_originSize;    // x, z, size, is_bound
-    vec4  u_terrainParams; // x=chunkSize, y=worldScale
-};
-
-uniform isampler2D u_chunkGrid;
-uniform sampler2DArray u_heightmapArray; // RGBA16F: R=height, GBA=normal.xyz
-uniform sampler2DArray uBiomeMap;   // RGBA8: R=low_idx, G=t, B=bake_flag
-
 uniform vec3 uCameraPos;
 uniform float uWorldScale;
 uniform float uMaxInstances;
@@ -145,20 +137,19 @@ void spawnBlade(GridCell cell, int slice, vec3 patchOffset, float patchSize) {
     float dist = distance(worldPosXZ, uCameraPos.xz);
     if ((dist > upper) || (dist < lower)) return;
 
+    vec3 worldPos3D = getTerrainWorldPos(worldPosXZ);
+    vec3 normal = getTerrainNormal(worldPosXZ);
+
+    if (worldPos3D.y <= 0.0) return;
+    if (normal.y < 0.7) return;
+	if (getTerrainWaterMask(worldPosXZ) > 0.0) return;
+
     float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
     ivec2 chunkCoord = ivec2(floor(worldPosXZ / scaledChunkSize));
-    vec2 chunkBase = vec2(chunkCoord) * scaledChunkSize;
-    vec2 uv = (worldPosXZ - chunkBase) / scaledChunkSize;
+    vec2 uv = (worldPosXZ - vec2(chunkCoord) * scaledChunkSize) / scaledChunkSize;
     vec2 remappedUV = (uv * u_terrainParams.x + 0.5) / (u_terrainParams.x + 1.0);
 
-    vec4 terrainSample = textureLod(u_heightmapArray, vec3(remappedUV, float(slice)), 0.0);
-    float height = terrainSample.r;
-    vec3 normal = terrainSample.gba;
-
-    if (height <= 0.0) return;
-    if (normal.y < 0.7) return;
-
-    vec2 biomeData = textureLod(uBiomeMap, vec3(remappedUV, float(slice)), 0.0).rg;
+    vec2 biomeData = textureLod(u_biomeMap, vec3(remappedUV, float(slice)), 0.0).rg;
     int idxA = int(biomeData.r * 255.0 + 0.5);
     int idxB = clamp(idxA + 1, 0, 7);
     float t = biomeData.g;
@@ -199,7 +190,7 @@ void spawnBlade(GridCell cell, int slice, vec3 patchOffset, float patchSize) {
     float wVar = (hash(seed + 2468) * 2.0 - 1.0) * biomeProps[pickedBiome].widthVariance;
     float rot = hash(seed + 3579) * 6.28318;
 
-    instances[idx].pos_rot = vec4(worldPosXZ.x, height, worldPosXZ.y, rot);
+    instances[idx].pos_rot = vec4(worldPos3D, rot);
     instances[idx].scale_seed_biome = vec4(
         (biomeProps[pickedBiome].height + hVar) * uWorldScale * heightFade * globalProps.lengthMultiplier,
         (biomeProps[pickedBiome].width + wVar) * uWorldScale * globalProps.widthMultiplier,
