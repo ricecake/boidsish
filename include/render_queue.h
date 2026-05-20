@@ -10,6 +10,24 @@
 namespace Boidsish {
 
 	/**
+	 * @brief Represents a batch of RenderPackets with identical state.
+	 * Allows for single-bind, multi-draw indirect (MDI) execution.
+	 */
+	struct Batch {
+		ShaderHandle                           shader_handle;
+		unsigned int                           shader_id;
+		unsigned int                           vao;
+		unsigned int                           draw_mode;
+		unsigned int                           index_type;
+		bool                                   no_cull;
+		std::vector<RenderPacket::TextureInfo> textures;
+		uint32_t                               first_command;
+		uint32_t                               command_count;
+		bool                                   is_indexed;
+		uint32_t                               base_uniform_index;
+	};
+
+	/**
 	 * @brief A queue that collects RenderPackets and sorts them for efficient rendering.
 	 *
 	 * The RenderQueue acts as an intermediate storage between objects (Geometry)
@@ -67,6 +85,36 @@ namespace Boidsish {
 		std::vector<RenderPacket>& GetPacketsMutable(RenderLayer layer) { return m_layers[static_cast<size_t>(layer)]; }
 
 		/**
+		 * @brief Get the pre-built batches for a specific layer.
+		 */
+		const std::vector<Batch>& GetBatches(RenderLayer layer) const {
+			return m_batches[static_cast<size_t>(layer)];
+		}
+
+		/**
+		 * @brief Get the pre-built batches for the shadow pass.
+		 */
+		const std::vector<Batch>& GetShadowBatches() const { return m_shadow_batches; }
+
+		/**
+		 * @brief Get the indices of valid packets for a specific layer.
+		 */
+		const std::vector<uint32_t>& GetValidIndices(RenderLayer layer) const {
+			return m_valid_indices[static_cast<size_t>(layer)];
+		}
+
+		/**
+		 * @brief Get the indices of valid shadow-casting packets.
+		 */
+		const std::vector<uint32_t>& GetShadowIndices() const { return m_shadow_indices; }
+
+		/**
+		 * @brief Build MDI batches for all layers and the shadow pass.
+		 * @param shadow_shader_override Shader handle to use for shadow packets.
+		 */
+		void BuildBatches(ShaderHandle shadow_shader_override);
+
+		/**
 		 * @brief Clear the queue for the next frame.
 		 * @note Should only be called from main thread after rendering completes.
 		 */
@@ -76,7 +124,14 @@ namespace Boidsish {
 		// Use separate buckets for each RenderLayer
 		// RenderLayer: Background=0, Opaque=1, Transparent=2, UI=3, Overlay=4
 		std::vector<RenderPacket> m_layers[5];
-		mutable std::mutex        m_mutex;
+		std::vector<Batch>        m_batches[5];
+		std::vector<Batch>        m_shadow_batches;
+
+		// Parallel arrays to track valid (unskipped) packet indices within each layer
+		std::vector<uint32_t> m_valid_indices[5];
+		std::vector<uint32_t> m_shadow_indices;
+
+		mutable std::mutex m_mutex;
 	};
 
 } // namespace Boidsish

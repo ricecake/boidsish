@@ -240,6 +240,8 @@ namespace Boidsish {
 					chunk.terrain->vertices,
 					chunk.terrain->normals,
 					chunk.terrain->biomes,
+					chunk.terrain->packed_height_normal,
+					chunk.terrain->packed_biomes,
 					chunk.terrain->GetIndices(),
 					chunk.terrain->proxy.minY,
 					chunk.terrain->proxy.maxY,
@@ -356,7 +358,9 @@ namespace Boidsish {
 							result.positions,
 							result.normals,
 							result.biomes,
-							result.proxy
+							result.proxy,
+							std::move(result.packed_height_normal),
+							std::move(result.packed_biomes)
 						);
 						terrain_chunk->SetPosition(
 							result.chunk_x * scaled_chunk_size,
@@ -418,6 +422,8 @@ namespace Boidsish {
 						terrain_chunk->vertices,
 						terrain_chunk->normals,
 						terrain_chunk->biomes,
+						terrain_chunk->packed_height_normal,
+						terrain_chunk->packed_biomes,
 						terrain_chunk->GetIndices(),
 						terrain_chunk->proxy.minY,
 						terrain_chunk->proxy.maxY,
@@ -524,7 +530,7 @@ namespace Boidsish {
 		float     freq = 0.99f;
 
 		// Initial low-frequency pass to establish "Base Shape"
-		glm::vec3 base = Simplex::dnoise(pos * freq);
+		glm::vec3 base = Simplex::dfBm(pos * freq);
 		// Account for frequency in analytical derivatives
 		base.y *= freq;
 		base.z *= freq;
@@ -533,7 +539,7 @@ namespace Boidsish {
 		for (int i = 1; i < 6; i++) {
 			amp *= 0.5f;
 			freq *= 2.0f;
-			glm::vec3 n = Simplex::dnoise(pos * freq);
+			glm::vec3 n = Simplex::dfBm(pos * freq);
 			n.y *= freq;
 			n.z *= freq;
 
@@ -663,8 +669,12 @@ namespace Boidsish {
 		glm::vec2 biome_pos = warped_pos * control_noise_scale_;
 		biome_pos *= 0.5f;
 		float control_value_rough = Simplex::noise(biome_pos + Simplex::curlNoise(biome_pos)) * 0.5f + 0.5f;
-		float control_value_smooth = Simplex::flowNoise( biome_pos + Simplex::fBm(biome_pos), 8.0f ) * 0.5f + 0.5f;
+		float control_value_smooth = Simplex::flowNoise( biome_pos + Simplex::fBm(biome_pos), atan2(biome_pos.y, biome_pos.x) ) * 0.5f + 0.5f;
+		float control_value_round = Simplex::worleyNoise(biome_pos+Simplex::ridgedMF(biome_pos)) * 0.5 + 0.5;
+
+
 		float control_value = std::lerp(control_value_rough, control_value_smooth, Simplex::iqfBm(biome_pos)  * 0.5f + 0.5f);
+		control_value = std::min(1.0f - control_value_round, control_value);
 		if (std::isnan(control_value) || std::isinf(control_value)) {
 			control_value = 0.0f;
 		}
@@ -675,7 +685,7 @@ namespace Boidsish {
 		BiomeAttributes current;
 		ApplyWeightedBiome(control_value, current);
 
-		glm::vec3 terrain_height = 1.35f * biomefbm(warped_pos * 0.25f, current);
+		glm::vec3 terrain_height = 2.5f * (1.0f+Simplex::worleyfBm(biome_pos)) * biomefbm(warped_pos * 0.25f, current);
 
 		float path_floor_level = -0.10f;
 		terrain_height.x = glm::mix(path_floor_level, terrain_height.x, path_factor);
@@ -849,7 +859,30 @@ namespace Boidsish {
 		}
 		proxy.radiusSq = max_dist_sq;
 
-		return {indices, positions, normals, biomes_flat, proxy, chunkX, chunkZ, true};
+		// Pre-pack heightmap and biome data for the renderer (Z-major transposition)
+		const int res = chunk_size_ + 1;
+		std::vector<float>   packed_height_normal;
+		std::vector<uint8_t> packed_biomes;
+		packed_height_normal.reserve(res * res * 4);
+		packed_biomes.reserve(res * res * 4);
+
+		for (int z = 0; z < res; ++z) {
+			for (int x = 0; x < res; ++x) {
+				int src_idx = x * res + z; // X-major
+
+				packed_height_normal.push_back(positions[src_idx].y);
+				packed_height_normal.push_back(normals[src_idx].x);
+				packed_height_normal.push_back(normals[src_idx].y);
+				packed_height_normal.push_back(normals[src_idx].z);
+
+				packed_biomes.push_back(static_cast<uint8_t>(biomes_flat[src_idx].x));
+				packed_biomes.push_back(static_cast<uint8_t>(biomes_flat[src_idx].y * 255.0f + 0.5f));
+				packed_biomes.push_back(0); // bake_flag
+				packed_biomes.push_back(0); // unused
+			}
+		}
+
+		return {indices, positions, normals, biomes_flat, packed_height_normal, packed_biomes, proxy, chunkX, chunkZ, true};
 	}
 
 	bool
@@ -1596,7 +1629,9 @@ namespace Boidsish {
 							result.positions,
 							result.normals,
 							result.biomes,
-							result.proxy
+							result.proxy,
+							std::move(result.packed_height_normal),
+							std::move(result.packed_biomes)
 						);
 						new_terrain->SetPosition(
 							result.chunk_x * scaled_chunk_size,
@@ -1611,6 +1646,8 @@ namespace Boidsish {
 								new_terrain->vertices,
 								new_terrain->normals,
 								new_terrain->biomes,
+								new_terrain->packed_height_normal,
+								new_terrain->packed_biomes,
 								new_terrain->GetIndices(),
 								new_terrain->proxy.minY,
 								new_terrain->proxy.maxY,

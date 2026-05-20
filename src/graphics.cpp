@@ -1388,7 +1388,6 @@ namespace Boidsish {
 			const glm::mat4&                   proj_mat,
 			const glm::vec3&                   camera_pos,
 			RenderLayer                        layer,
-			const std::optional<ShaderHandle>& shader_override = std::nullopt,
 			const std::optional<glm::mat4>&    light_space_mat = std::nullopt,
 			const std::optional<glm::vec4>&    clip_plane = std::nullopt,
 			bool                               is_shadow_pass = false,
@@ -1432,171 +1431,71 @@ namespace Boidsish {
 			uint32_t vertex_frame_offset = megabuffer->GetVertexFrameOffset();
 			uint32_t index_frame_offset = megabuffer->GetIndexFrameOffset();
 
-			// We bind SSBO per-batch using glBindBufferRange to set the base uniform index
-			// glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::CommonUniforms(), uniforms_ssbo->GetBufferId());
+			// Fill uniform and command buffers using pre-built batches
+			const auto& batches = is_shadow_pass ? queue.GetShadowBatches() : queue.GetBatches(layer);
+			const auto& batch_packets = is_shadow_pass ? queue.GetPackets(RenderLayer::Opaque) : packets;
+			const auto& valid_indices = is_shadow_pass ? queue.GetShadowIndices() : queue.GetValidIndices(layer);
 
-			struct Batch {
-				ShaderHandle                           shader_handle;
-				unsigned int                           shader_id;
-				unsigned int                           vao;
-				unsigned int                           draw_mode;
-				unsigned int                           index_type;
-				bool                                   no_cull;
-				std::vector<RenderPacket::TextureInfo> textures;
-				uint32_t                               first_command;
-				uint32_t                               command_count;
-				bool                                   is_indexed;
-				uint32_t                               base_uniform_index;
-			};
+			// Store the global start index for this pass's batches within the SSBO
+			uint32_t mdi_pass_start_index = mdi_uniform_count;
 
-			std::vector<Batch> batches;
-			batches.reserve(packets.size() / 4); // Pre-allocate for typical batch reduction ratio
+			for (const auto& batch : batches) {
+				uint32_t batch_packet_start = batch.base_uniform_index;
+				for (uint32_t b = 0; b < batch.command_count; ++b) {
+					uint32_t packet_idx = valid_indices[batch_packet_start + b];
+					const auto& packet = batch_packets[packet_idx];
 
-			auto can_batch = [&](const RenderPacket& a, const RenderPacket& b) {
-				// 1. Mandatory breaks: VAO and Draw State
-				if (a.vao != b.vao)
-					return false;
-				if (a.draw_mode != b.draw_mode)
-					return false;
-				if (a.index_type != b.index_type)
-					return false;
-				if ((a.index_count > 0) != (b.index_count > 0))
-					return false;
-				if (a.no_cull != b.no_cull)
-					return false;
-
-				// 2. Shader breaks (unless overridden)
-				if (!shader_override.has_value()) {
-					if (a.shader_id != b.shader_id)
-						return false;
-				}
-
-				// 3. Uniform flags that affect vertex processing
-				if (a.uniforms.is_colossal != b.uniforms.is_colossal)
-					return false;
-				if (a.uniforms.use_ssbo_instancing != b.uniforms.use_ssbo_instancing)
-					return false;
-				if (a.uniforms.use_skinning != b.uniforms.use_skinning)
-					return false;
-				if (a.uniforms.bone_matrices_offset != b.uniforms.bone_matrices_offset)
-					return false;
-
-				// 4. Textures (only if not a shadow pass)
-				if (!is_shadow_pass) {
-					if (a.textures.size() != b.textures.size())
-						return false;
-					for (size_t i = 0; i < a.textures.size(); ++i) {
-						if (a.textures[i].id != b.textures[i].id)
-							return false;
+					if (mdi_uniform_count >= max_elements) {
+						static bool uniform_warning_logged = false;
+						if (!uniform_warning_logged) {
+							logger::WARNING("MDI uniform buffer exhausted");
+							uniform_warning_logged = true;
+						}
+						break;
 					}
-				}
 
-				return true;
-			};
+					// Copy uniforms to persistent SSBO
+					uniforms_ptr[mdi_uniform_count] = packet.uniforms;
 
-			// 1. Build batches and fill uniform/command buffers
-			const RenderPacket* last_processed_packet = nullptr;
-
-			for (size_t i = 0; i < packets.size(); ++i) {
-				const auto& packet = packets[i];
-
-				// Filter for shadow pass
-				if (is_shadow_pass && !packet.casts_shadows)
-					continue;
-
-				// Skip packets with invalid shader or exhausted uniform buffer
-				if (packet.shader_id == 0)
-					continue;
-				if (mdi_uniform_count >= max_elements) {
-					static bool uniform_warning_logged = false;
-					if (!uniform_warning_logged) {
-						logger::WARNING("MDI uniform buffer exhausted - some objects may not render");
-						uniform_warning_logged = true;
+					// Handle skeletal animation data
+					if (!packet.bone_matrices.empty()) {
+						uint32_t bone_count = static_cast<uint32_t>(packet.bone_matrices.size());
+						if (mdi_bone_count + bone_count <= 65536) {
+							std::memcpy(
+								&bones_ptr[mdi_bone_count],
+								packet.bone_matrices.data(),
+								bone_count * sizeof(glm::mat4)
+							);
+							uniforms_ptr[mdi_uniform_count].bone_matrices_offset = (int)mdi_bone_count;
+							mdi_bone_count += bone_count;
+						}
 					}
-					continue;
-				}
 
-				bool is_indexed = (packet.index_count > 0);
-
-				// Safety check for command buffer capacity
-				if (is_indexed && mdi_elements_count >= max_elements) {
-					static bool elements_warning_logged = false;
-					if (!elements_warning_logged) {
-						logger::WARNING("MDI indexed command buffer exhausted");
-						elements_warning_logged = true;
-					}
-					continue;
-				}
-				if (!is_indexed && mdi_arrays_count >= max_elements) {
-					static bool arrays_warning_logged = false;
-					if (!arrays_warning_logged) {
-						logger::WARNING("MDI array command buffer exhausted");
-						arrays_warning_logged = true;
-					}
-					continue;
-				}
-
-				// Copy uniforms to persistent SSBO
-				uniforms_ptr[mdi_uniform_count] = packet.uniforms;
-
-				// Handle skeletal animation data
-				if (!packet.bone_matrices.empty()) {
-					uint32_t bone_count = static_cast<uint32_t>(packet.bone_matrices.size());
-					if (mdi_bone_count + bone_count <= 65536) {
-						std::memcpy(
-							&bones_ptr[mdi_bone_count],
-							packet.bone_matrices.data(),
-							bone_count * sizeof(glm::mat4)
+					bool uses_megabuffer = (packet.vao == megabuffer->GetVAO());
+					if (batch.is_indexed) {
+						if (mdi_elements_count >= max_elements) break;
+						DrawElementsIndirectCommand cmd{};
+						bool                        use_shadow_indices = (is_shadow_pass && packet.shadow_index_count > 0);
+						cmd.count = use_shadow_indices ? packet.shadow_index_count : packet.index_count;
+						cmd.instanceCount = std::max(1, packet.instance_count);
+						cmd.firstIndex = (use_shadow_indices ? packet.shadow_first_index : packet.first_index) +
+							(uses_megabuffer ? index_frame_offset : 0);
+						cmd.baseVertex = static_cast<int32_t>(
+							packet.base_vertex + (uses_megabuffer ? vertex_frame_offset : 0)
 						);
-						uniforms_ptr[mdi_uniform_count].bone_matrices_offset = (int)mdi_bone_count;
-						mdi_bone_count += bone_count;
+						cmd.baseInstance = 0;
+						elements_cmd_ptr[mdi_elements_count++] = cmd;
+					} else {
+						if (mdi_arrays_count >= max_elements) break;
+						DrawArraysIndirectCommand cmd{};
+						cmd.count = packet.vertex_count;
+						cmd.instanceCount = std::max(1, packet.instance_count);
+						cmd.first = packet.base_vertex + (uses_megabuffer ? vertex_frame_offset : 0);
+						cmd.baseInstance = 0;
+						arrays_cmd_ptr[mdi_arrays_count++] = cmd;
 					}
+					mdi_uniform_count++;
 				}
-
-				if (batches.empty() || !last_processed_packet || !can_batch(*last_processed_packet, packet)) {
-					Batch new_batch;
-					new_batch.shader_handle = shader_override.value_or(packet.shader_handle);
-					new_batch.shader_id = is_shadow_pass ? 999999 : packet.shader_id; // Dummy ID if overridden
-					new_batch.vao = packet.vao;
-					new_batch.draw_mode = packet.draw_mode;
-					new_batch.index_type = packet.index_type;
-					new_batch.no_cull = packet.no_cull;
-					new_batch.textures = packet.textures;
-					new_batch.first_command = is_indexed ? mdi_elements_count : mdi_arrays_count;
-					new_batch.command_count = 0;
-					new_batch.is_indexed = is_indexed;
-					new_batch.base_uniform_index = frame_element_offset + mdi_uniform_count;
-					batches.push_back(new_batch);
-				}
-
-				auto& current_batch = batches.back();
-				current_batch.command_count++;
-
-				bool uses_megabuffer = (packet.vao == megabuffer->GetVAO());
-
-				if (is_indexed) {
-					DrawElementsIndirectCommand cmd{};
-					bool                        use_shadow_indices = (is_shadow_pass && packet.shadow_index_count > 0);
-					cmd.count = use_shadow_indices ? packet.shadow_index_count : packet.index_count;
-					cmd.instanceCount = std::max(1, packet.instance_count);
-					cmd.firstIndex = (use_shadow_indices ? packet.shadow_first_index : packet.first_index) +
-						(uses_megabuffer ? index_frame_offset : 0);
-					cmd.baseVertex = static_cast<int32_t>(
-						packet.base_vertex + (uses_megabuffer ? vertex_frame_offset : 0)
-					);
-					cmd.baseInstance = 0;
-					elements_cmd_ptr[mdi_elements_count++] = cmd;
-				} else {
-					DrawArraysIndirectCommand cmd{};
-					cmd.count = packet.vertex_count;
-					cmd.instanceCount = std::max(1, packet.instance_count);
-					cmd.first = packet.base_vertex + (uses_megabuffer ? vertex_frame_offset : 0);
-					cmd.baseInstance = 0;
-					arrays_cmd_ptr[mdi_arrays_count++] = cmd;
-				}
-
-				last_processed_packet = &packet;
-				mdi_uniform_count++;
 			}
 
 			// Ensure all CPU writes to persistent mapped buffers are visible to GPU
@@ -1694,11 +1593,12 @@ namespace Boidsish {
 				// s->setBool("uUseMDI", true); // Moved below SSBO binding
 
 				// Bind SSBO for this batch's uniforms (replaces uBaseUniformIndex)
+				uint32_t batch_global_index = mdi_pass_start_index + (batch.base_uniform_index);
 				glBindBufferRange(
 					GL_SHADER_STORAGE_BUFFER,
 					Constants::SsboBinding::CommonUniforms(),
 					uniforms_ssbo->GetBufferId(),
-					batch.base_uniform_index * sizeof(CommonUniforms),
+					(frame_element_offset + batch_global_index) * sizeof(CommonUniforms),
 					batch.command_count * sizeof(CommonUniforms)
 				);
 
@@ -1719,7 +1619,7 @@ namespace Boidsish {
 						Constants::SsboBinding::OcclusionVisibility(),
 						occlusion_visibility_ssbo_
 					);
-					s->setUint("u_baseVisibilityIndex", batch.base_uniform_index - frame_element_offset);
+					s->setUint("u_baseVisibilityIndex", batch_global_index);
 				}
 
 				if (!is_shadow_pass) {
@@ -2558,6 +2458,10 @@ namespace Boidsish {
 				PROJECT_PROFILE_SCOPE("SortRenderQueue");
 				render_queue.Sort(thread_pool);
 			}
+			{
+				PROJECT_PROFILE_SCOPE("BuildBatches");
+				render_queue.BuildBatches(shadow_shader_handle);
+			}
 			packets_synced_ = true;
 		}
 
@@ -2699,7 +2603,6 @@ namespace Boidsish {
 					frame.projection,
 					frame.camera_pos,
 					RenderLayer::Opaque,
-					shadow_shader_handle,
 					light_space_matrix,
 					std::nullopt,
 					true
@@ -2736,7 +2639,6 @@ namespace Boidsish {
 							frame.projection,
 							frame.camera_pos,
 							layer,
-							std::nullopt,
 							std::nullopt,
 							std::nullopt,
 							false,

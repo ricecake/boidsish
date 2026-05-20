@@ -279,7 +279,7 @@ namespace Boidsish {
 			float maxIntensity_ = 0.150f;
 
 			LayerSettings _sceneSettings;
-			LayerSettings _skySettings;
+			LayerSettings _skySettings = { .targetLuminance = 0.5 };
 
 			float _nightFactor = 0.0f;
 			float _lastTime = 0.0f;
