@@ -16,13 +16,17 @@ namespace Boidsish {
 		const std::vector<glm::vec3>&    vertices,
 		const std::vector<glm::vec3>&    normals,
 		const std::vector<glm::vec2>&    biomes,
-		const PatchProxy&                proxy
+		const PatchProxy&                proxy,
+		std::vector<float>               packed_height_normal,
+		std::vector<uint8_t>             packed_biomes
 	):
 		indices_(indices),
 		vertices(vertices),
 		normals(normals),
 		biomes(biomes),
 		proxy(proxy),
+		packed_height_normal(std::move(packed_height_normal)),
+		packed_biomes(std::move(packed_biomes)),
 		vao_(0),
 		vbo_(0),
 		ebo_(0),

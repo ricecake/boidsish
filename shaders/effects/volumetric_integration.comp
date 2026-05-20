@@ -1,57 +1,83 @@
 #version 460 core
 
-layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
 
 layout(rgba16f, binding = [[VOLUMETRIC_INJECTION_IMAGE_BINDING]]) uniform readonly image3D inInjection;
 layout(rgba16f, binding = [[VOLUMETRIC_SCATTERING_IMAGE_BINDING]]) uniform image3D outScattering;
 layout(rgba16f, binding = [[VOLUMETRIC_HISTORY_IMAGE_BINDING]]) uniform image3D outHistory; // Save for next frame
 
+uniform ivec3 u_grid_res;
+
 const int NUM_CASCADES = 4;
-const int GRID_RES_Z = 64;
 const float CASCADE_DISTANCES[4] = { 20.0, 60.0, 200.0, 1000.0 };
 
+shared vec3  s_scat[256];
+shared float s_trans[256];
+
 void main() {
-    ivec2 xy = ivec2(gl_GlobalInvocationID.xy);
-    if (xy.x >= 160 || xy.y >= 90) return;
+    ivec2 xy = ivec2(gl_WorkGroupID.xy);
+    if (xy.x >= u_grid_res.x || xy.y >= u_grid_res.y) return;
 
-    vec3 accumulatedScattering = vec3(0.0);
-    float accumulatedTransmittance = 1.0;
+    int idx = int(gl_LocalInvocationID.x);
+    if (idx >= u_grid_res.z * NUM_CASCADES) return;
 
-    for (int cascade = 0; cascade < NUM_CASCADES; ++cascade) {
-        float z_near = (cascade == 0) ? 0.1 : CASCADE_DISTANCES[cascade - 1];
-        float z_far = CASCADE_DISTANCES[cascade];
+    ivec3 vox = ivec3(xy, idx);
 
-        for (int z = 0; z < GRID_RES_Z; ++z) {
-            ivec3 vox = ivec3(xy, cascade * GRID_RES_Z + z);
-            vec4 data = imageLoad(inInjection, vox);
-            if (any(isnan(data))) data = vec4(0.0);
+    // 1. Load data and compute local scattering/transmittance
+    vec4 data = imageLoad(inInjection, vox);
+    if (any(isnan(data))) data = vec4(0.0);
 
-            vec3 scattering = max(vec3(0.0), data.rgb);
-            float extinction = max(0.0, data.a);
+    // Always store history
+    imageStore(outHistory, vox, data);
 
-            // Calculate step size in view space
-            float z0 = z_near * pow(z_far / z_near, float(z) / float(GRID_RES_Z));
-            float z1 = z_near * pow(z_far / z_near, float(z + 1) / float(GRID_RES_Z));
-            float stepSize = z1 - z0;
+    vec3 scattering = max(vec3(0.0), data.rgb);
+    float extinction = max(0.0, data.a);
 
-            float transmittance = exp(-extinction * stepSize);
+    int cascade = idx / u_grid_res.z;
+    int z = idx % u_grid_res.z;
 
-            // Better energy conservation: (scattering - scattering * transmittance) / extinction
-            // For very small extinction, this approaches: scattering * stepSize
-            float factor = (extinction > 0.00001) ? (1.0 - transmittance) / extinction : stepSize;
-            vec3 scatteringStep = scattering * factor;
+    float z_near = (cascade == 0) ? 0.1 : CASCADE_DISTANCES[cascade - 1];
+    float z_far = CASCADE_DISTANCES[cascade];
 
-            accumulatedScattering += accumulatedTransmittance * scatteringStep;
-            accumulatedTransmittance *= transmittance;
+    float z0 = z_near * pow(z_far / z_near, float(z) / float(u_grid_res.z));
+    float z1 = z_near * pow(z_far / z_near, float(z + 1) / float(u_grid_res.z));
+    float stepSize = z1 - z0;
 
-            // Final safety check for accumulated values
-            if (any(isnan(accumulatedScattering))) accumulatedScattering = vec3(0.0);
-            accumulatedTransmittance = clamp(accumulatedTransmittance, 0.0, 1.0);
+    float transmittance = exp(-extinction * stepSize);
+    float factor = (extinction > 0.00001) ? (1.0 - transmittance) / extinction : stepSize;
 
-            imageStore(outScattering, vox, vec4(accumulatedScattering, accumulatedTransmittance));
+    s_scat[idx] = scattering * factor;
+    s_trans[idx] = transmittance;
 
-            // We also store the non-integrated injection data into history for next frame's temporal blend
-            imageStore(outHistory, vox, data);
+    barrier();
+
+    // 2. Parallel Prefix Sum ( Hillis-Steele Scan )
+    // Associative operator: (S1, T1) op (S2, T2) = (S1 + T1 * S2, T1 * T2)
+    // Note: This assumes 256 is enough for GRID_RES_Z * NUM_CASCADES
+    for (int stride = 1; stride < 256; stride <<= 1) {
+        vec3  otherScat = vec3(0.0);
+        float otherTrans = 1.0;
+
+        if (idx >= stride) {
+            otherScat = s_scat[idx - stride];
+            otherTrans = s_trans[idx - stride];
         }
+
+        barrier();
+
+        if (idx >= stride) {
+            s_scat[idx] = otherScat + otherTrans * s_scat[idx];
+            s_trans[idx] = otherTrans * s_trans[idx];
+        }
+
+        barrier();
     }
+
+    // 3. Final safety check and store
+    vec3 finalScat = s_scat[idx];
+    float finalTrans = clamp(s_trans[idx], 0.0, 1.0);
+
+    if (any(isnan(finalScat))) finalScat = vec3(0.0);
+
+    imageStore(outScattering, vox, vec4(finalScat, finalTrans));
 }

@@ -19,7 +19,7 @@
 class ShaderBase {
 public:
 	struct UniformValue {
-		std::variant<std::monostate, bool, int, unsigned int, float, glm::vec2, glm::vec3, glm::vec4, glm::mat2, glm::mat3, glm::mat4, std::vector<int>> value;
+		std::variant<std::monostate, bool, int, unsigned int, float, glm::vec2, glm::vec3, glm::vec4, glm::ivec2, glm::ivec3, glm::mat2, glm::mat3, glm::mat4, std::vector<int>> value;
 
 		UniformValue() = default;
 		template<typename T, typename = std::enable_if_t<!std::is_same_v<std::decay_t<T>, UniformValue>>>
@@ -48,6 +48,10 @@ public:
 						glUniform3fv(location, 1, &arg[0]);
 					else if constexpr (std::is_same_v<T, glm::vec4>)
 						glUniform4fv(location, 1, &arg[0]);
+					else if constexpr (std::is_same_v<T, glm::ivec2>)
+						glUniform2iv(location, 1, &arg[0]);
+					else if constexpr (std::is_same_v<T, glm::ivec3>)
+						glUniform3iv(location, 1, &arg[0]);
 					else if constexpr (std::is_same_v<T, glm::mat2>)
 						glUniformMatrix2fv(location, 1, GL_FALSE, &arg[0][0]);
 					else if constexpr (std::is_same_v<T, glm::mat3>)
@@ -323,6 +327,13 @@ public:
 		}
 	}
 
+	void setIVec3(const std::string& name, const glm::ivec3& value) const {
+		int loc = getUniformLocation(name);
+		if (loc != -1) {
+			glUniform3iv(loc, 1, &value[0]);
+		}
+	}
+
 	void setInt(const std::string& name, int value) const {
 		int loc = getUniformLocation(name);
 		if (loc != -1) {
@@ -488,6 +499,16 @@ protected:
 		case GL_FLOAT_VEC4: {
 			glm::vec4 v;
 			glGetUniformfv(ID, loc, &v[0]);
+			return {v};
+		}
+		case GL_INT_VEC2: {
+			glm::ivec2 v;
+			glGetUniformiv(ID, loc, &v[0]);
+			return {v};
+		}
+		case GL_INT_VEC3: {
+			glm::ivec3 v;
+			glGetUniformiv(ID, loc, &v[0]);
 			return {v};
 		}
 		case GL_INT:

@@ -5,6 +5,7 @@
 #include "light_manager.h"
 #include "terrain_render_manager.h"
 #include "atmosphere_manager.h"
+#include "fire_effect_manager.h"
 #include "NoiseManager.h"
 #include <GL/glew.h>
 
@@ -80,6 +81,7 @@ namespace Boidsish {
 			auto terrain_mgr = loc.Get<TerrainRenderManager>();
 			auto light_mgr = loc.Get<LightManager>();
 			auto atmos_mgr = loc.Get<AtmosphereManager>();
+			auto fire_mgr = loc.Get<FireEffectManager>();
 			auto noise_mgr = loc.Get<NoiseManager>();
 
 			// 1. Injection
@@ -87,11 +89,16 @@ namespace Boidsish {
 			if (shadow_mgr) shadow_mgr->BindForRendering(*injection_shader_);
 			if (terrain_mgr) terrain_mgr->BindTerrainData(*injection_shader_);
 			if (atmos_mgr) atmos_mgr->BindToShader(*injection_shader_);
+			if (fire_mgr) fire_mgr->BindBuffers(*injection_shader_);
 
 			if (noise_mgr) {
 				glActiveTexture(GL_TEXTURE10);
 				glBindTexture(GL_TEXTURE_2D, noise_mgr->GetBlueNoiseTexture());
 				injection_shader_->setInt("uBlueNoise", 10);
+
+				glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::NoiseCurl());
+				glBindTexture(GL_TEXTURE_3D, noise_mgr->GetCurlTexture());
+				injection_shader_->setInt("u_curlTexture", Constants::TextureUnit::NoiseCurl());
 			}
 
 			injection_shader_->setFloat("uAnisotropy", anisotropy_);
@@ -102,6 +109,10 @@ namespace Boidsish {
 			injection_shader_->setVec3("uPrevCamPos", prev_camera_pos_);
 			injection_shader_->setVec3("uPrevCamFront", prev_camera_front_);
 			injection_shader_->setFloat("uTemporalAlpha", has_history_ ? temporal_alpha_ : 0.0f);
+
+			injection_shader_->setFloat("u_cell_size", Constants::Class::Particles::ParticleGridCellSize());
+			injection_shader_->setUint("u_grid_size", Constants::Class::Particles::ParticleGridSize());
+			injection_shader_->setIVec3("u_grid_res", glm::ivec3(grid_res_x_, grid_res_y_, grid_res_z_));
 
 			glBindImageTexture(Constants::ImageBinding::VolumetricInjection(), injection_texture_, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 
@@ -114,6 +125,8 @@ namespace Boidsish {
 
 			// 2. Integration (Accumulate along Z)
 			integration_shader_->use();
+			integration_shader_->setIVec3("u_grid_res", glm::ivec3(grid_res_x_, grid_res_y_, grid_res_z_));
+
 			glBindImageTexture(Constants::ImageBinding::VolumetricInjection(), injection_texture_, 0, GL_TRUE, 0, GL_READ_ONLY, GL_RGBA16F);
 			glBindImageTexture(Constants::ImageBinding::VolumetricScattering(), scattering_texture_, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 
@@ -121,15 +134,16 @@ namespace Boidsish {
 			int next_history = 1 - history_index_;
 			glBindImageTexture(Constants::ImageBinding::VolumetricHistory(), history_textures_[next_history], 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 
-			glDispatchCompute((grid_res_x_ + 7) / 8, (grid_res_y_ + 7) / 8, 1);
+			glDispatchCompute(grid_res_x_, grid_res_y_, 1);
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
 			history_index_ = next_history;
 			has_history_ = true;
 			prev_view_projection_ = projectionMatrix * viewMatrix;
 			prev_camera_pos_ = cameraPos;
-			// Extract camera front from view matrix (3rd column is -Front)
-			prev_camera_front_ = -glm::normalize(glm::vec3(viewMatrix[2]));
+			// Extract camera front from inverse view matrix (3rd column is Back)
+			glm::mat4 invView = glm::inverse(viewMatrix);
+			prev_camera_front_ = -glm::normalize(glm::vec3(invView[2]));
 
 			// 3. Composition
 			composite_shader_->use();

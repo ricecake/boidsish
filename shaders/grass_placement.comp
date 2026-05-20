@@ -219,7 +219,7 @@ void main() {
     int lodIndex = int(task.data.z);
 
     // Calculate grid scale for this LOD
-    float baseScale = 0.2 * uWorldScale;
+    float baseScale = 0.5 * uWorldScale;
     float scale = baseScale * exp(float(lodIndex));
 
     // Calculate range of grid cells that intersect this patch
@@ -238,8 +238,8 @@ void main() {
     float baseRange = 20.0 * uWorldScale;
     float maxRange = baseRange * exp(float(lodIndex));
     float minRange = (lodIndex <= -1) ? 0.0 : baseRange * exp(float(lodIndex - 1));
-    float lower = minRange * 0.75;
-    float upper = maxRange * 1.25;
+    float lower = minRange;
+    float upper = 1.25*baseRange * exp(float(lodIndex+1));
 
     // Each thread in the workgroup processes some subset of these cells
     for (int i = int(gl_LocalInvocationID.x); i < totalCells; i += 64) {

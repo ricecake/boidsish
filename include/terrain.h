@@ -17,7 +17,9 @@ namespace Boidsish {
 			const std::vector<glm::vec3>&    vertices,
 			const std::vector<glm::vec3>&    normals,
 			const std::vector<glm::vec2>&    biomes,
-			const PatchProxy&                proxy
+			const PatchProxy&                proxy,
+			std::vector<float>               packed_height_normal = {},
+			std::vector<uint8_t>             packed_biomes = {}
 		);
 		~Terrain();
 
@@ -40,6 +42,8 @@ namespace Boidsish {
 		std::vector<glm::vec3> vertices;
 		std::vector<glm::vec3> normals;
 		std::vector<glm::vec2> biomes;
+		std::vector<float>     packed_height_normal;
+		std::vector<uint8_t>   packed_biomes;
 
 		/**
 		 * @brief Get interleaved vertex data for batched rendering.
