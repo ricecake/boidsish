@@ -266,24 +266,22 @@ vec4 tentUpsample(sampler2D srcTexture, sampler2D highResDepth, sampler2D highRe
     vec4 result = vec4(0.0);
     float weight = 0.0;
 
-    vec2 baseUV = (floor(TexCoords * srcResolution) + 0.5) * texelSize;
-
-    // 1. Generate a random angle (0 to 2*PI) using the screen-space pixel coordinate
+    // Generate a random angle per-pixel for sample rotation
     float noise = InterleavedGradientNoise(fragCoord);
     float angle = noise * 6.2831853;
-
-    // 2. Create a 2D rotation matrix
     float s = sin(angle);
     float c = cos(angle);
     mat2 rotationMat = mat2(c, -s, s, c);
 
-    for (float x = -radius; x <= radius; x += radius) {
-        for (float y = -radius; y <= radius; y += radius) {
-            // 3. Rotate the local offset before scaling by texelSize
-            vec2 offset = vec2(x, y);
+    // Sample a 3x3 grid centered on the fragment's actual position in low-res
+    // texel space, not snapped to the grid — this prevents banding at texel
+    // boundaries where snapping biases the kernel toward one side.
+    for (float x = -1.0; x <= 1.0; x += 1.0) {
+        for (float y = -1.0; y <= 1.0; y += 1.0) {
+            vec2 offset = vec2(x, y) * radius;
             vec2 rotatedOffset = rotationMat * offset;
 
-            vec2 sampleUV = baseUV + rotatedOffset * texelSize;
+            vec2 sampleUV = TexCoords + rotatedOffset * texelSize;
 
             sampleWithWeights(srcTexture, highResDepth, highResNormal, centerDepth, centerNormal, TexCoords, sampleUV, srcResolution, result, weight);
         }

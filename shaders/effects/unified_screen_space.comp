@@ -30,7 +30,6 @@ uniform sampler2D uShadowMask; // Terrain shadow mask for SSGI fallback/modulati
 float terrainShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) { return 1.0; }
 float calculateTerrainOcclusion(vec3 worldPos, vec3 normal) { return 1.0; }
 
-#include "../restir/restir_common.glsl"
 #include "../helpers/lighting.glsl"
 
 // Unified Parameters
@@ -335,8 +334,9 @@ void main() {
 			float dotNL = max(0.0, dot(worldNorm, L));
 
 			if (dotNL > 0.0) {
-				// Perform screen-space visibility check for the reservoir
-				vec3 targetView = (view * vec4(ld.position, 1.0)).xyz;
+				// Transform light to view space for screen-space visibility check
+				mat4 viewMatrix = inverse(invView);
+				vec3 targetView = (viewMatrix * vec4(ld.position, 1.0)).xyz;
 
 				if (checkVisibility(vPos, targetView, gDepth)) {
                     // Re-evaluate full BRDF for final shading (Material Balancing)

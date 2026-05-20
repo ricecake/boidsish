@@ -77,6 +77,7 @@ namespace Boidsish {
 		LightManager& lightManager,
 		FireEffectManager* fireManager
 	) {
+		if (!di_enabled_ && !gi_enabled_) return;
 		PROJECT_PROFILE_SCOPE("RestirManager::Dispatch");
 		if (width_ == 0 || height_ == 0) return;
 
@@ -121,40 +122,42 @@ namespace Boidsish {
 			}
 		};
 
-		// 1. DI Initial Sampling
-		bind_textures(di_sampling_shader_.get());
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::RestirReservoirs0(), reservoir_buffers_[current_buffer_index_]);
-		glDispatchCompute((width_ + 7) / 8, (height_ + 7) / 8, 1);
-		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+		if (di_enabled_) {
+			// 1. DI Initial Sampling
+			bind_textures(di_sampling_shader_.get());
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::RestirReservoirs0(), reservoir_buffers_[current_buffer_index_]);
+			glDispatchCompute((width_ + 7) / 8, (height_ + 7) / 8, 1);
+			glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
-		// 2. DI Temporal Reuse
-		bind_textures(di_temporal_shader_.get());
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::RestirReservoirs0(), reservoir_buffers_[current_buffer_index_]);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::RestirReservoirs1(), reservoir_buffers_[1 - current_buffer_index_]);
-		glDispatchCompute((width_ + 7) / 8, (height_ + 7) / 8, 1);
-		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+			// 2. DI Temporal Reuse
+			bind_textures(di_temporal_shader_.get());
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::RestirReservoirs0(), reservoir_buffers_[current_buffer_index_]);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::RestirReservoirs1(), reservoir_buffers_[1 - current_buffer_index_]);
+			glDispatchCompute((width_ + 7) / 8, (height_ + 7) / 8, 1);
+			glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
-		// 3. DI Spatial Reuse
-		// We must ping-pong here to avoid race conditions and directional line artifacts
-		bind_textures(di_spatial_shader_.get());
-		// Input is temporal result in reservoirs0, output to reservoirs1
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::RestirReservoirs0(), reservoir_buffers_[1 - current_buffer_index_]);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::RestirReservoirs1(), reservoir_buffers_[current_buffer_index_]);
-		glDispatchCompute((width_ + 7) / 8, (height_ + 7) / 8, 1);
-		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+			// 3. DI Spatial Reuse
+			bind_textures(di_spatial_shader_.get());
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::RestirReservoirs0(), reservoir_buffers_[1 - current_buffer_index_]);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::RestirReservoirs1(), reservoir_buffers_[current_buffer_index_]);
+			glDispatchCompute((width_ + 7) / 8, (height_ + 7) / 8, 1);
+			glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+		}
 
-		// 4. GI Trace
-		bind_textures(gi_trace_shader_.get());
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::RestirGIReservoirs0(), gi_reservoir_buffers_[current_buffer_index_]);
-		glDispatchCompute((width_ + 7) / 8, (height_ + 7) / 8, 1);
-		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+		if (gi_enabled_) {
+			// 4. GI Trace
+			bind_textures(gi_trace_shader_.get());
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::RestirGIReservoirs0(), gi_reservoir_buffers_[current_buffer_index_]);
+			glDispatchCompute((width_ + 7) / 8, (height_ + 7) / 8, 1);
+			glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
-		// 5. GI Temporal Reuse
-		bind_textures(gi_reuse_shader_.get());
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::RestirGIReservoirs0(), gi_reservoir_buffers_[current_buffer_index_]);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::RestirGIReservoirs1(), gi_reservoir_buffers_[1 - current_buffer_index_]);
-		glDispatchCompute((width_ + 7) / 8, (height_ + 7) / 8, 1);
-		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+			// 5. GI Temporal Reuse
+			bind_textures(gi_reuse_shader_.get());
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::RestirGIReservoirs0(), gi_reservoir_buffers_[current_buffer_index_]);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::RestirGIReservoirs1(), gi_reservoir_buffers_[1 - current_buffer_index_]);
+			glDispatchCompute((width_ + 7) / 8, (height_ + 7) / 8, 1);
+			glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+		}
 
 		// Swap buffer index for next frame's temporal pass
 		// Note: Spatial pass above already essentially "advanced" the DI state by outputting to the 1-current index.

@@ -2724,8 +2724,17 @@ namespace Boidsish {
 					}
 				}
 
-				// Dispatch ReSTIR after Opaque Pass (G-Buffer is ready)
+				// Sync ReSTIR enable state from the unified effect and dispatch
 				if (restir_manager) {
+					if (post_processing_manager_) {
+						for (auto& effect : post_processing_manager_->GetPreToneMappingEffects()) {
+							if (auto unified = std::dynamic_pointer_cast<PostProcessing::UnifiedScreenSpaceEffect>(effect)) {
+								restir_manager->SetDIEnabled(unified->IsRestirDIEnabled());
+								restir_manager->SetGIEnabled(unified->IsRestirGIEnabled());
+								break;
+							}
+						}
+					}
 					restir_manager->Dispatch(
 						compositor_->GetDepthTexture(),
 						compositor_->GetNormalTexture(),

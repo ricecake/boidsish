@@ -29,7 +29,6 @@ layout(std430, binding = [[ALL_LIGHTS_BINDING]]) buffer AllLights {
 #define RESTIR_UNIFORMS_DEFINED
 uniform int u_num_lights;
 uniform int u_num_fire_particles;
-uniform mat4 view;
 
 #include "../types/temporal_data.glsl"
 #endif

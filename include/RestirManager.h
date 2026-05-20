@@ -40,8 +40,13 @@ namespace Boidsish {
 
 		void Resize(int width, int height);
 
+		void SetDIEnabled(bool enabled) { di_enabled_ = enabled; }
+		void SetGIEnabled(bool enabled) { gi_enabled_ = enabled; }
+		bool IsDIEnabled() const { return di_enabled_; }
+		bool IsGIEnabled() const { return gi_enabled_; }
+
 		GLuint GetCurrentDIRiservoirBuffer() const { return reservoir_buffers_[current_buffer_index_]; }
-		GLuint GetCurrentGIRiservoirBuffer() const { return gi_reservoir_buffers_[current_buffer_index_]; }
+		GLuint GetCurrentGIRiservoirBuffer() const { return gi_reservoir_buffers_[1 - current_buffer_index_]; }
 
 	private:
 		ServiceLocator& loc_;
@@ -54,6 +59,8 @@ namespace Boidsish {
 		GLuint reservoir_buffers_[2] = {0, 0};
 		GLuint gi_reservoir_buffers_[2] = {0, 0};
 		int    current_buffer_index_ = 0;
+		bool   di_enabled_ = true;
+		bool   gi_enabled_ = true;
 		int    width_ = 0, height_ = 0;
 
 		void CreateBuffers(int width, int height);

@@ -82,7 +82,6 @@ void main() {
         float prevDepth = texture(gDepth, prevUV).r;
         vec3 vNorm = normalize(texture(gNormal, uv).xyz);
         vec3 prevNorm = normalize(texture(gNormal, prevUV).xyz);
-        float roughness = texture(gVelocity, uv).b;
         float prevRoughness = texture(gVelocity, prevUV).b;
 
         if (restirGeometryCheck(depth, vNorm, roughness, prevDepth, prevNorm, prevRoughness)) {
