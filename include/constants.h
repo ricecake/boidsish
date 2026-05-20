@@ -39,8 +39,10 @@ namespace Boidsish {
 				VolumetricScattering = 38,
 				VolumetricHistory = 39,
 				VolumetricCascades = 40,
+				TerrainDisplacement = 41,
 				WeatherScalars = 42,
 				WeatherAerosols = 43,
+				TerrainDisplacementImage = 44,
 			};
 
 			enum class Ubo {
@@ -293,6 +295,14 @@ namespace Boidsish {
 
 			consteval int WeatherAerosols() {
 				return std::to_underlying(Constants::Bindings::Texture::WeatherAerosols);
+			}
+
+			consteval int TerrainDisplacement() {
+				return std::to_underlying(Constants::Bindings::Texture::TerrainDisplacement);
+			}
+
+			consteval int TerrainDisplacementImage() {
+				return std::to_underlying(Constants::Bindings::Texture::TerrainDisplacementImage);
 			}
 		} // namespace TextureUnit
 
