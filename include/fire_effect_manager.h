@@ -62,6 +62,13 @@ namespace Boidsish {
 
 	class FireEffectManager: public IManager {
 	public:
+		struct UpdateResult {
+			std::vector<Emitter>   emitters;
+			std::vector<glm::vec4> slice_points;
+			std::vector<int>       particle_to_emitter_map;
+			bool                   valid = false;
+		};
+
 		FireEffectManager(ServiceLocator& loc);
 		~FireEffectManager();
 
@@ -77,6 +84,7 @@ namespace Boidsish {
 			bool                          enabled = true,
 			float                         ambient_density = 0.15f,
 			const std::vector<glm::vec4>& chunk_info = {},
+			const UpdateResult*           precomputed_res = nullptr,
 			GLuint                        heightmap_texture = 0,
 			GLuint                        curl_noise_texture = 0,
 			GLuint                        biome_texture = 0,
@@ -118,13 +126,16 @@ namespace Boidsish {
 		// Bind particle buffers to the current shader
 		void BindBuffers(ShaderBase& shader) const;
 
+		UpdateResult PrepareUpdate(float delta_time, float ambient_density);
+		void         ApplyUpdate(const UpdateResult& res, const std::vector<glm::vec4>& chunk_info);
+
 	private:
 		void _EnsureShaderAndBuffers();
 		void _UpdateParticleAllocation();
 
 		std::vector<std::shared_ptr<FireEffect>> effects_;
 		std::vector<int>                         particle_to_emitter_map_;
-		mutable std::mutex                       mutex_;
+		mutable std::recursive_mutex             mutex_;
 
 		std::unique_ptr<ComputeShader> lifecycle_shader_;
 		std::unique_ptr<ComputeShader> behavior_shader_;
@@ -137,8 +148,8 @@ namespace Boidsish {
 		GLuint grid_next_buffer_{0};
 		std::unique_ptr<PersistentBuffer<Emitter>> emitter_buffer_;
 		std::unique_ptr<PersistentBuffer<int>> indirection_buffer_;
-		GLuint terrain_chunk_buffer_{0};
-		GLuint slice_data_buffer_{0};
+		std::unique_ptr<PersistentBuffer<glm::vec4>> terrain_chunk_pb_;
+		std::unique_ptr<PersistentBuffer<glm::vec4>> slice_data_pb_;
 		GLuint visible_indices_buffer_{0};
 		GLuint live_indices_buffer_{0};
 		GLuint draw_command_buffer_{0};
@@ -150,7 +161,6 @@ namespace Boidsish {
 		bool   needs_reallocation_{false};
 		float  ambient_density_{0.15f};
 		float  time_{0.0f};
-		size_t emitter_buffer_capacity_{0}; // Track capacity to avoid per-frame reallocation
 
 		static constexpr int kMaxParticles = Constants::Class::Particles::MaxParticles();
 		static constexpr int kMaxEmitters = Constants::Class::Particles::MaxEmitters();
