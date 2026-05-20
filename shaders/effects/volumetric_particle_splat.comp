@@ -83,7 +83,7 @@ void main() {
         if (vox.x == -1) return;
 
         float radius = p.vel.w * 3.0; // Influence radius
-        float intensityScale = (p.style == STYLE_FIREFLIES) ? 2.0 : 8.0;
+        float intensityScale = (p.style == STYLE_FIREFLIES) ? 1.0 : 8.0;
         float particlePhase = 1.0 / (4.0 * PI);
 
         vec3 radiance = p.color.rgb * p.color.a * intensityScale * particlePhase;

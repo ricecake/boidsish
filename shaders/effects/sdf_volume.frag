@@ -13,7 +13,7 @@ uniform mat4      invProjection;
 uniform float     time;
 
 struct SdfSource {
-	vec4 position_radius;        // xyz: pos, w: radius
+	vec4 position_radius;        // xyz: pos, w: radiusqq
 	vec4 color_smoothness;       // rgb: color, a: smoothness
 	vec4 charge_type_vol_time;   // x: charge, y: type, z: volumetric, w: normalized_time (0-1)
 	vec4 volumetric_params;      // x: density, y: absorption, z: noise_scale, w: noise_intensity
