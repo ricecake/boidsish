@@ -36,6 +36,8 @@ uniform bool uIsShadowPass = false;
 
 // Biome texture array: RG8 - R=low_idx, G=t
 uniform sampler2DArray uBiomeMap;
+// Baked displacement: RGB=displacement.xyz, A=biome_override
+uniform sampler2DArray u_displacementArray;
 uniform float          uRawChunkSize;
 
 uniform mat4 view;
@@ -490,6 +492,13 @@ void main() {
 
 		vec2  biomeUV = (TexCoords * uRawChunkSize + 0.5) / (uRawChunkSize + 1.0);
 		vec2  biomeData = texture(uBiomeMap, vec3(biomeUV, TextureSlice)).rg;
+
+		// Baked biome override
+		vec4 bakedDispGrass = texture(u_displacementArray, vec3(biomeUV, TextureSlice));
+		if (bakedDispGrass.a > 0.0) {
+			biomeData.x = bakedDispGrass.a;
+			biomeData.y = 0.0; // Full override
+		}
 		int   idxA = int(biomeData.r * 255.0 + 0.5);
 		int   idxB = min(idxA + 1, 7);
 		float t = biomeData.g;
@@ -579,7 +588,15 @@ void main() {
 		// Sample biome noise type (using unused params.w)
 		vec2  biomeUV = (TexCoords * uRawChunkSize + 0.5) / (uRawChunkSize + 1.0);
 		vec2  biomeInfo = texture(uBiomeMap, vec3(biomeUV, TextureSlice)).rg;
-		float noiseTypeA = u_biomes[int(biomeInfo.x)].params.w;
+
+	// Baked biome override
+	vec4 bakedDisp = texture(u_displacementArray, vec3(biomeUV, TextureSlice));
+	if (bakedDisp.a > 0.0) {
+		biomeInfo.x = bakedDisp.a;
+		biomeInfo.y = 0.0; // Full override
+	}
+
+	float noiseTypeA = u_biomes[int(biomeInfo.x * 255.0 + 0.5)].params.w;
 		float noiseTypeB = u_biomes[min(int(biomeInfo.x) + 1, 7)].params.w;
 		float noiseType = mix(noiseTypeA, noiseTypeB, biomeInfo.y);
 
