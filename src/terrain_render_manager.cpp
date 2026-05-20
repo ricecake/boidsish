@@ -1309,6 +1309,10 @@ namespace Boidsish {
 			glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture_);
 			patch_metrics_shader_->setInt("u_heightmapArray", Constants::TextureUnit::TerrainHeightmap());
 
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainBakedParams());
+			glBindTexture(GL_TEXTURE_2D_ARRAY, baked_params_texture_);
+			patch_metrics_shader_->setInt("u_bakedParamsArray", Constants::TextureUnit::TerrainBakedParams());
+
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainPatchMetrics(), patch_metrics_ssbo_);
 			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Biomes(), biome_ubo_);
 			if (grass_props_ubo_ != 0) {

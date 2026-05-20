@@ -27,7 +27,8 @@ struct PatchMetrics {
 	float avg_curvature;
 	float avg_roughness;
 	float avg_grass_density;
-	float _pad[3];
+	float max_variance;
+	float _pad[2];
 };
 
 layout(std430, binding = [[TERRAIN_PATCH_METRICS_BINDING]]) readonly buffer TerrainPatchMetrics {
@@ -94,46 +95,40 @@ uniform int       u_hizMipCount;
 uniform float     u_screenExpansion;
 uniform bool      u_enableOcclusionCulling;
 
-float getPatchTessLevel(vec3 center, float radius, PatchMetrics metrics) {
+float getPatchTessLevel(vec3 center, float radius, PatchMetrics metrics, vec4 screenRect) {
 	float dist = distance(u_viewPos, center);
 
-	// 1. DISTANCE IMPORTANCE
-	float distImportance = exp(-dist * (0.004 / u_worldScale));
+	// 1. PRIMARY DRIVER: PRE-COMPUTED VARIANCE
+	// This defines the "Maximum Potential Quality" this patch can have.
+	// Steep/overhanging terrain will have high variance, flat terrain low.
+	float maxPotential = mix(u_tessLevelMin, u_tessLevelMax, metrics.max_variance);
 
-	// 2. SILHOUETTE BOOST
-	float silhouetteImportance = metrics.avg_curvature * (1.0 - smoothstep(100.0 * u_worldScale, 800.0 * u_worldScale, dist));
+	// 2. SCREEN-SPACE PIXEL SIZE METRIC
+	// We want to ensure triangles are not significantly smaller than a few pixels.
+	vec2 screenSize = (screenRect.zw - screenRect.xy) * vec2(u_hizSize);
+	float maxPixelDim = max(screenSize.x, screenSize.y);
 
-	// 3. CURVATURE/ROUGHNESS BOOST
-	float detailImportance = clamp((metrics.avg_curvature + metrics.avg_roughness * 0.5) * 5.0, 0.0, 1.0);
+	// If the patch is very small on screen, we don't need much tessellation.
+	// 32x32 is our target pixel size for a patch before we start deducting heavily.
+	float screenImportance = smoothstep(2.0, 32.0, maxPixelDim);
 
-	// 4. WATER/ALTITUDE BONUS
-	float waterImportance = 1.0 - smoothstep(0.0, 2.0 * u_worldScale, center.y);
+	// 3. DISTANCE DEDUCTION
+	float distFactor = exp(-dist * (0.002 / u_worldScale));
 
-	// COMBINED IMPORTANCE SCORE [0, 1]
-	// float importance = distImportance * (1.0 + silhouetteImportance * 4.0) * (1.0 + detailImportance * 4.0);
-	float importance = distImportance * max(silhouetteImportance * 4.0, detailImportance * 4.0);
+	// 4. SILHOUETTE IMPORTANCE
+	// Silhouette edges need more tessellation to maintain smooth profiles.
+	// We use the dot product of view direction and average normal (approximated by UP for now, or curvature)
+	// but better is checking if it's at a silhouette.
+	// For now, let's use a combination of curvature and distance.
+	float silhouetteImportance = metrics.avg_curvature * (1.0 - smoothstep(200.0 * u_worldScale, 1000.0 * u_worldScale, dist));
 
-	importance = clamp(max(importance, waterImportance), 0.0, 1.0);
+	// 5. COMBINE DEDUCTIONS
+	float qualityScalar = max(distFactor, silhouetteImportance);
+	qualityScalar = mix(0.1, 1.0, qualityScalar * screenImportance);
 
-	// return mix(u_tessLevelMin, u_tessLevelMax, importance);
+	float level = maxPotential * qualityScalar * u_tessQualityMultiplier;
 
-	float level;
-	if (importance > 0.85)
-		level = u_tessLevelMax;
-	else if (importance > 0.70)
-		level = u_tessLevelMax * 0.75;
-	else if (importance > 0.50)
-		level = u_tessLevelMax * 0.5;
-	else if (importance > 0.30)
-		level = u_tessLevelMax * 0.25;
-	else if (importance > 0.15)
-		level = u_tessLevelMax * 0.125;
-	else if (importance > 0.05)
-		level = clamp(u_tessLevelMin * 2.0, u_tessLevelMin, u_tessLevelMax);
-	else
-		level = u_tessLevelMin;
-
-	return clamp(level * u_tessQualityMultiplier, u_tessLevelMin, u_tessLevelMax);
+	return clamp(level, u_tessLevelMin, u_tessLevelMax);
 }
 
 bool projectAABB(vec3 aabbMin, vec3 aabbMax, mat4 vp, out vec4 screenRect, out float nearestDepth) {
@@ -295,8 +290,13 @@ void main() {
 	}
 	*/
 
+	// Calculate screen rect for tessellation metrics
+	vec4 screenRect = vec4(0.0, 0.0, 1.0, 1.0);
+	float nearestDepth = 0.0;
+	projectAABB(aabbMin, aabbMax, viewProjection, screenRect, nearestDepth);
+
 	// Calculate tessellation levels
-	float level = getPatchTessLevel(patchCenter, radius, metrics);
+	float level = getPatchTessLevel(patchCenter, radius, metrics, screenRect);
 
 	// Visibility confirmed, allocate draw call
 	// uint outIdx = atomicAdd(count, 1);
