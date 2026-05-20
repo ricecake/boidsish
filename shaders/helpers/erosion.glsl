@@ -213,7 +213,7 @@ vec4 ErosionFilter(
  */
 vec3 applyErosionColorMapping(vec3 albedo, float ridgeMap, float heightDelta, vec3 sedimentColor, vec3 ridgeColor) {
 	// Darken/Color creases (sediment/water accumulation)
-	float creaseMask = smoothstep(0.2, -0.8, ridgeMap);
+	float creaseMask = 1.0 - smoothstep(-0.8, 0.2, ridgeMap);
 	albedo = mix(albedo, sedimentColor, creaseMask * 0.5);
 
 	// Highlight ridges (exposed rock/weathering)

@@ -198,6 +198,9 @@ void main() {
             // Reproject current world position into previous frame's froxel grid
             vec3 prevUV = prevNDC * 0.5 + 0.5;
 
+            // Compensation for stochastic jitter to find the correct logical voxel
+            prevUV.xy -= (blueNoise.xy - 0.5) / vec2(u_grid_res.xy);
+
             // Find previous cascade using planar depth (Z)
             float prevLinearZ = dot(worldPos - uPrevCamPos, uPrevCamFront);
 
@@ -215,10 +218,15 @@ void main() {
 
             if (prevCascade != -1 && prevLinearZ > z_near) {
                 float slice = clamp(log(prevLinearZ / z_near) / log(z_far / z_near), 0.0, 1.0);
+
+                // Compensation for stochastic jitter in depth
+                slice -= (blueNoise.z - 0.5) / float(u_grid_res.z);
+                slice = clamp(slice, 0.0, 1.0);
+
                 // Correct mapping from cascade/slice to [0,1] 3D texture coordinate
-                // Use texel-center formula to align with storage and composite shader
+                // Use consistent continuous mapping to align with storage and composite shader
                 float total_slices = float(u_grid_res.z * NUM_CASCADES);
-                float w = (float(prevCascade * u_grid_res.z) + (slice * float(u_grid_res.z - 1) + 0.5)) / total_slices;
+                float w = (float(prevCascade * u_grid_res.z) + slice * float(u_grid_res.z)) / total_slices;
 
                 vec4 history = texture(uHistoryTexture, vec3(prevUV.xy, w));
                 if (all(greaterThanEqual(history, vec4(0.0))) && all(lessThanEqual(history, vec4(1000.0)))) {
