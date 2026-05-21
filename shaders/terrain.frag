@@ -369,6 +369,8 @@ void main() {
 		surface.pos = FragPos;
 		surface.normal = norm;
 		surface.viewDir = viewPos - FragPos;
+		surface.uv = FragPos.xz;
+		surface.uv_J = mat2(dFdx(surface.uv), dFdy(surface.uv));
 
 		MaterialData material;
 		material.albedo = surfaceColor;
@@ -376,6 +378,9 @@ void main() {
 		material.metallic = 0.9;
 		material.ao = 1.0;
 		material.translucency = 0.0;
+		material.glintIntensity = 0.0;
+		material.iridescenceThickness = 0.0;
+		material.iridescenceIntensity = 0.0;
 
 		LightingResult res = calculate_pbr_lighting(surface, material);
 		float primaryShadow = res.primaryShadow;
@@ -684,6 +689,8 @@ void main() {
 	surface.pos = FragPos;
 	surface.normal = perturbedNorm;
 	surface.viewDir = viewPos - FragPos;
+	surface.uv = FragPos.xz * 0.1; // Scale for terrain glints
+	surface.uv_J = mat2(dFdx(surface.uv), dFdy(surface.uv));
 
 	MaterialData material;
 	material.albedo = albedo;
@@ -691,6 +698,11 @@ void main() {
 	material.metallic = metallic;
 	material.ao = 1.0 - grassAO;
 	material.translucency = 0.0;
+	// Enable glinting on snow and wet surfaces
+	float isSnow = smoothstep(HEIGHT_SNOW_START, HEIGHT_PEAK, FragPos.y);
+	material.glintIntensity = mix(0.0, 0.5, max(isSnow, globalWetness));
+	material.iridescenceThickness = 0.0;
+	material.iridescenceIntensity = 0.0;
 
 	LightingResult res = calculate_pbr_lighting(surface, material);
 	float primaryShadow = res.primaryShadow;
