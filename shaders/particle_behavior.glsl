@@ -368,6 +368,58 @@ void updateAmbientSnowflake(inout Particle p, float dt, float time, sampler3D cu
 	p.origin.w = 0.0;
 }
 
+void updateAmbientFairy(
+	inout Particle p,
+	float          dt,
+	float          time,
+	float          cellSize,
+	uint           gridSize,
+	sampler3D      curlTexture
+) {
+	// Sync twinkle state using counter and phase (like fireflies)
+	p.counter += dt;
+	float cycle_time = p.phase + 0.75;
+	if (p.counter > cycle_time) {
+		p.counter = fract(p.counter / cycle_time) * cycle_time;
+	}
+
+	// Simple repulsion/sync from other particles
+	if (p.counter > 0.75) {
+		for (int x = -1; x <= 1; x++) {
+			for (int y = -1; y <= 1; y++) {
+				for (int z = -1; z <= 1; z++) {
+					uint cellIdx = get_cell_idx(p.pos.xyz + vec3(x, y, z) * cellSize, cellSize, gridSize);
+					int  otherIdx = grid_heads[cellIdx];
+					int  safety = 0;
+					while (otherIdx != -1 && safety < 100) {
+						if (otherIdx != int(gl_GlobalInvocationID.x)) {
+							Particle otherP = particles[otherIdx];
+							if (otherP.counter < 0.6) {
+								float distSq = pow(distance(otherP.pos.xyz, p.pos.xyz), 2.0);
+								float pulse_strength = 0.15;
+								p.counter += (pulse_strength / max(distSq, 0.01)) * dt;
+							}
+						}
+						otherIdx = grid_next[otherIdx];
+						safety++;
+					}
+				}
+			}
+		}
+	}
+
+	float curlInfluence = 1.2;
+	p.vel.xyz += curlNoise(p.pos.xyz, time, curlTexture) * curlInfluence * dt;
+	p.vel.y += 0.25 * dt; // Buoyancy
+	p.vel.xyz *= pow(0.98, dt / 0.016);
+
+	// Rendering params (colors/glow handled in frag)
+	float twinkle = pow(smoothstep(0.0, 0.3, p.counter) * (1.0 - smoothstep(0.4, 0.6, p.counter)), 2) * step(p.counter, 0.6);
+	p.color.a = (0.3 + twinkle * 0.7) * smoothstep(0.0, 0.5, p.pos.w);
+	p.vel.w = 20.0; // Size
+	p.origin.w = 0.4 * p.color.a;
+}
+
 void updateAmbientFirefly(
 	inout Particle p,
 	float          dt,
@@ -448,6 +500,8 @@ void updateAmbientParticle(
 		maxSpeed = 1.2;
 	} else if (p.style == STYLE_FIREFLIES) {
 		updateAmbientFirefly(p, dt, time, cellSize, gridSize, curlTexture);
+	} else if (p.style == STYLE_FAIRY) {
+		updateAmbientFairy(p, dt, time, cellSize, gridSize, curlTexture);
 	} else if (p.style == STYLE_BIRDS) {
 		updateBirds(p, dt, time, cellSize, gridSize, curlTexture, num_chunks, heightmapArray);
 		maxSpeed = 6.0;
@@ -517,6 +571,10 @@ void updateFireBehavior(
 	} else if (p.style == STYLE_FIREFLIES) {
 		updateFireflies(p, dt, time, curlTexture);
 		maxSpeed = 2.0;
+	} else if (p.style == STYLE_FAIRY) {
+		// Reuse ambient fairy logic for emitters too
+		updateAmbientFairy(p, dt, time, 1.0, 1, curlTexture);
+		maxSpeed = 3.0;
 	} else if (p.style == STYLE_CINDER) {
 		updateCinder(p, dt, time, curlTexture);
 		maxSpeed = 5.0;

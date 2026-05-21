@@ -58,12 +58,12 @@ void main() {
 	float alpha = 0.0;
 
 	if (v_style == STYLE_ROCKET_TRAIL || v_style == STYLE_SPARKS || v_style == STYLE_GLITTER || v_style == STYLE_BUBBLES || v_style == STYLE_FIREFLIES || v_style == STYLE_DEBUG ||
-	    v_style == STYLE_CINDER || v_style == STYLE_IRIDESCENT || v_style == STYLE_RAIN || v_style == STYLE_SNOW || v_style == STYLE_LEAF || v_style == STYLE_PETAL || v_style == STYLE_BIRDS) {
+	    v_style == STYLE_CINDER || v_style == STYLE_IRIDESCENT || v_style == STYLE_RAIN || v_style == STYLE_SNOW || v_style == STYLE_LEAF || v_style == STYLE_PETAL || v_style == STYLE_BIRDS || v_style == STYLE_FAIRY) {
 
 		color = v_p.color.rgb;
 		alpha = v_p.color.a;
 
-		if (v_style == STYLE_LEAF || v_style == STYLE_PETAL || v_style == STYLE_FIREFLIES || v_style == STYLE_BIRDS) {
+		if (v_style == STYLE_LEAF || v_style == STYLE_PETAL || v_style == STYLE_FIREFLIES || v_style == STYLE_BIRDS || v_style == STYLE_FAIRY) {
 			vec3 biome_albedo = (v_emitter_index >= 0 && v_emitter_index < 8) ? u_biomeAlbedos[v_emitter_index] : vec3(0.5);
 			color = mix(color, biome_albedo, 0.5);
 		}
@@ -119,6 +119,35 @@ void main() {
 				smoothstep(0.30, 0.40, gl_PointCoord.x) * (1.0 - smoothstep(0.60, 0.70, gl_PointCoord.x))
 			);
 			alpha = 1.0;
+		} else if (v_style == STYLE_FAIRY) {
+			// Phase-based brightness (using p.counter and p.phase logic from firefly)
+			float twinkle = pow(smoothstep(0.0, 0.3, v_p.counter) * (1.0 - smoothstep(0.4, 0.6, v_p.counter)), 2.0) * step(v_p.counter, 0.6);
+			float brightness = 0.5 + twinkle * 5.0;
+
+			// Small soft core
+			float core = exp(-distSq * 100.0);
+			// Large penumbra
+			float penumbra = exp(-distSq * 15.0);
+
+			// Iridescent sheen in the penumbra
+			float angle_factor = pow(clamp(1.0 - distSq * 4.0, 0.0, 1.0), 2.0);
+			vec3 iridescent_color = vec3(
+				sin(angle_factor * 8.0 + v_p.phase) * 0.5 + 0.5,
+				sin(angle_factor * 8.0 + v_p.phase + 2.0) * 0.5 + 0.5,
+				sin(angle_factor * 8.0 + v_p.phase + 4.0) * 0.5 + 0.5
+			);
+
+			// Glittering sparkles using Worley noise
+			float sparkle = pow(fastWorley3d(v_pos.xyz * 10.0 + u_time * 2.0), 16.0);
+			vec3 sparkle_color = vec3(1.0, 0.9, 0.6) * sparkle * 10.0;
+
+			color = mix(vec3(1.0, 1.0, 1.0), iridescent_color, 0.7) * penumbra;
+			color += core * 2.0;
+			color += sparkle_color * penumbra;
+			color *= brightness;
+
+			shapeMask = penumbra;
+			alpha = shapeMask * (0.4 + 0.6 * twinkle);
 		}
 
 		alpha *= shapeMask;

@@ -247,8 +247,8 @@ void spawnAmbientParticle(
 		bool valid_biome = (biome_idx >= 0 && biome_idx <= 4) || biome_idx == 7;
 		if (valid_biome) {
 			// Define weighted probabilities for inter-compatible particles
-			// Birds, Leaves, Petals, Bubbles, Fireflies, Snow
-			float weights[6] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+			// Birds, Leaves, Petals, Bubbles, Fireflies, Snow, Fairy
+			float weights[7] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
 
 			if (biome_idx == 7) { // Mountains (Snow only)
 				weights[5] = 1.0;
@@ -256,15 +256,18 @@ void spawnAmbientParticle(
 				weights[3] = 1.0;
 			} else { // Land biomes
 				if (nightFactor > 0.5) {
-					weights[4] = 1.0; // Fireflies at night
+					weights[4] = 0.8; // Fireflies at night
+					weights[6] = 0.2; // Fairies at night
 				} else {
 					weights[0] = 0.05; // Birds
 					if (biome_idx == 4) { // Forest
-						weights[1] = 0.5; // Leaves
-						weights[2] = 0.45; // Petals
+						weights[1] = 0.4; // Leaves
+						weights[2] = 0.4; // Petals
+						weights[6] = 0.2; // Fairies in forest
 					} else {
 						weights[1] = 0.8; // Leaves
 						weights[2] = 0.15; // Petals
+						weights[6] = 0.05; // Rare fairies elsewhere
 					}
 				}
 			}
@@ -276,15 +279,16 @@ void spawnAmbientParticle(
 			if (stats.count_bubbles >= stats.limit_bubbles) weights[3] = 0.0;
 			if (stats.count_fireflies >= stats.limit_fireflies) weights[4] = 0.0;
 			if (stats.count_snow >= stats.limit_snow) weights[5] = 0.0;
+			if (stats.count_fairies >= stats.limit_fairies) weights[6] = 0.0;
 
-			float total_weight = weights[0] + weights[1] + weights[2] + weights[3] + weights[4] + weights[5];
+			float total_weight = weights[0] + weights[1] + weights[2] + weights[3] + weights[4] + weights[5] + weights[6];
 			if (total_weight <= 0.0) return;
 
 			// Pick type based on weighted probability
 			float r = rand(spawnSeed + 6.6) * total_weight;
 			int   selected_style = -1;
 			float cumulative = 0.0;
-			for (int i = 0; i < 6; i++) {
+			for (int i = 0; i < 7; i++) {
 				cumulative += weights[i];
 				if (r <= cumulative) {
 					if (i == 0) selected_style = STYLE_BIRDS;
@@ -293,6 +297,7 @@ void spawnAmbientParticle(
 					else if (i == 3) selected_style = STYLE_BUBBLES;
 					else if (i == 4) selected_style = STYLE_FIREFLIES;
 					else if (i == 5) selected_style = STYLE_SNOW;
+					else if (i == 6) selected_style = STYLE_FAIRY;
 					break;
 				}
 			}
@@ -316,7 +321,7 @@ void spawnAmbientParticle(
 			p.origin.xyz = p.pos.xyz;
 			p.origin.w = 0.0; // Last twinkle time
 
-			if (selected_style == STYLE_FIREFLIES) {
+			if (selected_style == STYLE_FIREFLIES || selected_style == STYLE_FAIRY) {
 				p.phase = 3.0 + 2.0 * fract(randomFloat(hash(particleSeed)));
 				p.counter = 0.0;
 			} else if (selected_style == STYLE_BIRDS) {
