@@ -542,6 +542,16 @@ void main() {
 
 		finalMaterial.albedo *= albedoMultiplier;
 
+		// vec2 wore = fastWorley3dID( fastCurl3d( FragPos*0.005));
+		// vec3 color = palette( // Make this a curl noise?
+		// 	wore.y,
+		// 	vec3(0.5, 0.5, 0.5), vec3(0.5, 0.5, 0.5),
+		// 	mix(vec3(1.0, 1.0, 0.50), vec3(1.0, 1.0, 1.0), sin(wore.y)),
+		// 	mix(vec3(0.80, 0.90, 0.30), vec3(0.30, 0.20, 0.20), sin(wore.y))
+		// );
+
+		// finalMaterial.albedo = mix(finalMaterial.albedo, color, wore.x);
+
 /*
 		// Select flower color from a vibrant palette based on blue noise and position
 		vec3 flowerColor;
