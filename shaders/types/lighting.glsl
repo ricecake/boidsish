@@ -30,6 +30,18 @@ struct MaterialData {
 	float iridescenceIntensity;
 };
 
+struct ShadingData {
+	vec3  V;
+	vec3  N;
+	vec3  L;
+	vec3  H;
+	float NoV;
+	float NoL;
+	float NoH;
+	float LoH;
+	vec3  F0;
+};
+
 struct LightingResult {
 	vec3  color;
 	float specLum;
