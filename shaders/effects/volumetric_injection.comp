@@ -17,6 +17,9 @@ uniform float uAnisotropy;
 uniform float uIntensity;
 uniform float uTemporalAlpha;
 
+uniform vec4  u_windBallParams;    // xyz: position, w: radius
+uniform float u_windBallIntensity; // intensity of scattering/illumination
+
 #include "../helpers/math.glsl"
 #include "../atmosphere/common.glsl"
 #include "../helpers/lighting.glsl"
@@ -91,6 +94,14 @@ void main() {
     Sampling s = getAtmospherePropertiesAtPos(worldPos);
 
     vec3 radiance = vec3(0.0);
+
+    // Wind Visualization Ball
+    float distToBall = distance(worldPos, u_windBallParams.xyz);
+    if (distToBall < u_windBallParams.w) {
+        float falloff = 1.0 - smoothstep(0.0, u_windBallParams.w, distToBall);
+        s.mie *= 1.0 + u_windBallIntensity * 5.0 * falloff;
+        radiance += vec3(1.0, 0.9, 0.7) * u_windBallIntensity * 0.1 * falloff;
+    }
     vec3 V = normalize(viewPos - worldPos);
 
 /*

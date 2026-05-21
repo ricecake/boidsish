@@ -6,8 +6,10 @@
 #include "terrain_render_manager.h"
 #include "atmosphere_manager.h"
 #include "fire_effect_manager.h"
+#include "weather_manager.h"
 #include "NoiseManager.h"
 #include <GL/glew.h>
+#include <glm/gtc/matrix_transform.hpp>
 
 namespace Boidsish {
 	namespace PostProcessing {
@@ -83,6 +85,26 @@ namespace Boidsish {
 			auto atmos_mgr = loc.Get<AtmosphereManager>();
 			auto fire_mgr = loc.Get<FireEffectManager>();
 			auto noise_mgr = loc.Get<NoiseManager>();
+			auto weather_mgr = loc.Get<WeatherManager>();
+
+			float dt = current_time_ - last_time_;
+			if (dt < 0.0f) dt = 0.0f;
+			if (dt > 0.1f) dt = 0.1f;
+
+			if (weather_mgr) {
+				if (!wind_ball_initialized_ || glm::distance(cameraPos, wind_ball_pos_) > 100.0f) {
+					auto weather = weather_mgr->GetWeatherAtPosition(cameraPos);
+					glm::vec3 wind(weather.windVelocity.x, weather.verticalWind, weather.windVelocity.y);
+					if (glm::length(wind) < 0.1f) wind = glm::vec3(1, 0, 0);
+					wind_ball_pos_ = cameraPos - glm::normalize(wind) * 40.0f; // Start upwind
+					wind_ball_initialized_ = true;
+				}
+
+				auto weather = weather_mgr->GetWeatherAtPosition(wind_ball_pos_);
+				glm::vec3 wind(weather.windVelocity.x, weather.verticalWind, weather.windVelocity.y);
+				wind_ball_pos_ += wind * dt;
+			}
+			last_time_ = current_time_;
 
 			// 1. Injection
 			injection_shader_->use();
@@ -109,6 +131,9 @@ namespace Boidsish {
 			injection_shader_->setVec3("uPrevCamPos", prev_camera_pos_);
 			injection_shader_->setVec3("uPrevCamFront", prev_camera_front_);
 			injection_shader_->setFloat("uTemporalAlpha", has_history_ ? temporal_alpha_ : 0.0f);
+
+			injection_shader_->setVec4("u_windBallParams", glm::vec4(wind_ball_pos_, 8.0f));
+			injection_shader_->setFloat("u_windBallIntensity", 1.0f);
 
 			injection_shader_->setFloat("u_cell_size", Constants::Class::Particles::ParticleGridCellSize());
 			injection_shader_->setUint("u_grid_size", Constants::Class::Particles::ParticleGridSize());
