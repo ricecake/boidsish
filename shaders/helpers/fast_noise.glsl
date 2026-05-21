@@ -3,10 +3,10 @@
 
 // Helper functions for fast texture-based noise lookups
 // Requires noise texture samplers bound to fixed units:
-// u_noiseTexture: 3D, unit 5, R=Simplex/G=Worley/B=FBM/A=Warped
+// u_noiseTexture: 3D, unit 5, R=Simplex/G=Worley/B=WorleyID/A=Warped
 // u_curlTexture: 3D, unit 6, RGB=Curl/A=FBM Curl Mag
 // u_blueNoiseTexture: 2D, unit 7, RGBA tiling blue noise at 4 frequencies
-// u_extraNoiseTexture: 3D, unit 8, R=Ridge/G=Gradient
+// u_extraNoiseTexture: 3D, unit 8, R=Ridge/G=Gradient/B=FBM
 
 #ifndef NOISE_TEXTURES_DEFINED
 #define NOISE_TEXTURES_DEFINED
@@ -22,14 +22,19 @@ float fastSimplex3d(vec3 p) {
 	return textureLod(u_noiseTexture, p, 0.0).r * 2.0 - 1.0;
 }
 
-// G: Worley 3D
+// G: Worley 3D Distance
 float fastWorley3d(vec3 p) {
 	return textureLod(u_noiseTexture, p, 0.0).g;
 }
 
-// B: FBM 3D
+// B: Worley 3D Cell ID
+float fastWorley3dId(vec3 p) {
+	return textureLod(u_noiseTexture, p, 0.0).b;
+}
+
+// B: FBM 3D (from u_extraNoiseTexture)
 float fastFbm3d(vec3 p) {
-	return textureLod(u_noiseTexture, p, 0.0).b * 2.0 - 1.0;
+	return textureLod(u_extraNoiseTexture, p, 0.0).b * 2.0 - 1.0;
 }
 
 // A: Warped FBM 3D
