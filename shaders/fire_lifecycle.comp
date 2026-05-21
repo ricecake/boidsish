@@ -68,6 +68,7 @@ void main() {
 			else if (p.style == STYLE_BUBBLES) atomicAdd(stats.count_bubbles, 1);
 			else if (p.style == STYLE_FIREFLIES) atomicAdd(stats.count_fireflies, 1);
 			else if (p.style == STYLE_SNOW) atomicAdd(stats.count_snow, 1);
+			else if (p.style == STYLE_FAIRY) atomicAdd(stats.count_fairies, 1);
 		}
 	}
 }
