@@ -15,6 +15,8 @@ struct SurfaceData {
 	vec3 pos;
 	vec3 normal;
 	vec3 viewDir;
+	vec2 uv;
+	mat2 uv_J;
 };
 
 struct MaterialData {
@@ -23,6 +25,21 @@ struct MaterialData {
 	float metallic;
 	float ao;
 	float translucency;
+	float glintIntensity;
+	float iridescenceThickness;
+	float iridescenceIntensity;
+};
+
+struct ShadingData {
+	vec3  V;
+	vec3  N;
+	vec3  L;
+	vec3  H;
+	float NoV;
+	float NoL;
+	float NoH;
+	float LoH;
+	vec3  F0;
 };
 
 struct LightingResult {

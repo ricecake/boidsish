@@ -5,6 +5,8 @@
 #include "../lighting.glsl"
 #include "clouds.glsl"
 #include "brdf.glsl"
+#include "microfacet_glinting.glsl"
+#include "lygia/lighting/iridescence.glsl"
 
 // Atmosphere constants for transmittance lookup
 const float kEarthRadiusKM = 6360.0;
@@ -474,33 +476,58 @@ float get_luminance(vec3 color) {
 // PBR is inherently darker than legacy Phong.
 const float PBR_INTENSITY_BOOST = 1.0;
 
+/**
+ * Initialize ShadingData with fixed terms that don't change per light.
+ */
+ShadingData prepare_fixed_shading_data(SurfaceData surface, MaterialData material) {
+    ShadingData shading;
+    shading.N = normalize(surface.normal);
+    shading.V = normalize(surface.viewDir);
+    shading.NoV = max(dot(shading.N, shading.V), 1e-4);
+    shading.F0 = mix(vec3(0.04), material.albedo, material.metallic);
+    return shading;
+}
+
+/**
+ * Update ShadingData with light-dependent terms.
+ */
+void update_shading_data_light(inout ShadingData shading, vec3 L) {
+    shading.L = L;
+    shading.H = normalize(shading.V + shading.L);
+    shading.NoL = dot(shading.N, shading.L);
+    shading.NoH = max(dot(shading.N, shading.H), 0.0);
+    shading.LoH = max(dot(shading.L, shading.H), 0.0);
+}
+
 void evaluate_foliage_brdf(
-    vec3 N, vec3 V, vec3 L, vec3 albedo, float roughness, float metallic, vec3 F0,
-    vec3 radiance, float shadow, float translucency, inout vec3 Lo, inout float spec_lum);
+    SurfaceData surface, MaterialData material, ShadingData shading,
+    vec3 radiance, float shadow, inout vec3 Lo, inout float spec_lum);
 
 void evaluate_brdf(
-    vec3 N, vec3 V, vec3 L, vec3 albedo, float roughness, float metallic, vec3 F0,
+    SurfaceData surface, MaterialData material, ShadingData shading,
     vec3 radiance, float shadow, inout vec3 Lo, inout float spec_lum)
 {
-    float NdotL = max(dot(N, L), 0.0);
+    float NdotL = max(shading.NoL, 0.0);
     if (NdotL <= 0.0) return; // Early out
 
-    float NdotV = max(dot(N, V), 1e-4);
-    vec3 H = normalize(V + L);
-    float HdotV = max(dot(H, V), 0.0);
+    float NDF = DistributionGGX(shading.N, shading.H, material.roughness);
 
-    float NDF = DistributionGGX(N, H, roughness);
-    float V_term = VisibilitySmithGGXCorrelated(NdotL, NdotV, roughness);
-    vec3 F = fresnelSchlickFast(HdotV, F0);
+    if (material.glintIntensity > 0.0) {
+        float glintNDF = calculate_glint_ndf(shading.H, shading.N, material.roughness, material.metallic, surface.uv, surface.uv_J);
+        NDF = NDF + glintNDF * material.glintIntensity;
+    }
+
+    float V_term = VisibilitySmithGGXCorrelated(NdotL, shading.NoV, material.roughness);
+    vec3 F = fresnelSchlickFast(shading.LoH, shading.F0);
     vec3 specular = NDF * V_term * F;
 
     vec3 kS = F;
     vec3 kD = vec3(1.0) - kS;
-    kD *= 1.0 - metallic;
+    kD *= 1.0 - material.metallic;
 
     vec3 specular_radiance = specular * radiance * NdotL * shadow;
 
-    Lo += (kD * albedo / PI) * radiance * NdotL * shadow + specular_radiance;
+    Lo += (kD * material.albedo / PI) * radiance * NdotL * shadow + specular_radiance;
     spec_lum += get_luminance(specular_radiance);
 }
 
@@ -518,15 +545,13 @@ void evaluate_brdf(
 /**
  * Unified PBR lighting function that handles basic surfaces, foliage, and other extended types.
  */
-LightingResult calculate_pbr_lighting(SurfaceData surface, MaterialData material) {
+LightingResult calculate_pbr_lighting_internal(SurfaceData surface, MaterialData material, bool useShadows) {
 	LightingResult res;
 	res.primaryShadow = 1.0;
 	res.color = vec3(0.0);
 	res.specLum = 0.0;
 
-	vec3 N = normalize(surface.normal);
-	vec3 V = normalize(surface.viewDir);
-	vec3 F0 = mix(vec3(0.04), material.albedo, material.metallic);
+	ShadingData shading = prepare_fixed_shading_data(surface, material);
 
 	vec3  Lo = vec3(0.0);
 	float spec_lum = 0.0;
@@ -541,21 +566,28 @@ LightingResult calculate_pbr_lighting(SurfaceData surface, MaterialData material
 		calculateLightContribution(i, surface.pos, L, base_atten);
 
 		if (L.y <= 0.0) continue;
-		if (material.translucency <= 0.0 && dot(N, L) <= 0.0) continue;
+		update_shading_data_light(shading, L);
+
+		if (material.translucency <= 0.0 && shading.NoL <= 0.0) continue;
 
 		float r = kEarthRadiusKM + (surface.pos.y / (1000.0 * worldScale));
 		vec3 atmosphereTransmittance = texture(u_transmittanceLUT, getTransmittanceUV(r, L.y)).rgb;
 		vec3 radiance = lights[i].color * (lights[i].intensity * PBR_INTENSITY_BOOST) * atmosphereTransmittance;
 
-		float shadow = calculateShadow(i, surface.pos, N, L);
-		shadow *= calculateCloudShadow(i, surface.pos);
+		float shadow = 1.0;
+		if (useShadows) {
+			shadow = calculateShadow(i, surface.pos, shading.N, shading.L);
+			shadow *= calculateCloudShadow(i, surface.pos);
+		} else {
+			shadow *= calculateCloudShadow(i, surface.pos);
+		}
 
 		res.primaryShadow = min(res.primaryShadow, shadow);
 
 		if (material.translucency > 0.0) {
-			evaluate_foliage_brdf(N, V, L, material.albedo, material.roughness, material.metallic, F0, radiance, shadow, material.translucency, Lo, spec_lum);
+			evaluate_foliage_brdf(surface, material, shading, radiance, shadow, Lo, spec_lum);
 		} else {
-			evaluate_brdf(N, V, L, material.albedo, material.roughness, material.metallic, F0, radiance, shadow, Lo, spec_lum);
+			evaluate_brdf(surface, material, shading, radiance, shadow, Lo, spec_lum);
 		}
 	}
 
@@ -567,32 +599,32 @@ LightingResult calculate_pbr_lighting(SurfaceData surface, MaterialData material
 
 		vec3 L; float base_atten;
 		calculateLightContribution(i, surface.pos, L, base_atten);
+		update_shading_data_light(shading, L);
 
-		if (material.translucency <= 0.0 && dot(N, L) <= 0.0) continue;
-		if (material.translucency > 0.0 && abs(dot(N, L)) < 0.0001) continue;
+		if (material.translucency <= 0.0 && shading.NoL <= 0.0) continue;
+		if (material.translucency > 0.0 && abs(shading.NoL) < 0.0001) continue;
 
 		vec3 radiance = lights[i].color * (lights[i].intensity * PBR_INTENSITY_BOOST) * base_atten;
-		float shadow = calculateShadow(i, surface.pos, N, L);
+		float shadow = useShadows ? calculateShadow(i, surface.pos, shading.N, shading.L) : 1.0;
 
 		if (material.translucency > 0.0) {
-			evaluate_foliage_brdf(N, V, L, material.albedo, material.roughness, material.metallic, F0, radiance, shadow, material.translucency, Lo, spec_lum);
+			evaluate_foliage_brdf(surface, material, shading, radiance, shadow, Lo, spec_lum);
 		} else {
-			evaluate_brdf(N, V, L, material.albedo, material.roughness, material.metallic, F0, radiance, shadow, Lo, spec_lum);
+			evaluate_brdf(surface, material, shading, radiance, shadow, Lo, spec_lum);
 		}
 	}
 
 	// ------------------------------------------------------------------
 	// AMBIENT & REFLECTIONS
 	// ------------------------------------------------------------------
-	float terrainOcc = calculateTerrainOcclusion(surface.pos, N);
-	vec3  spatialSHAmbient = getSpatialAmbientSH(surface.pos, N);
+	float terrainOcc = calculateTerrainOcclusion(surface.pos, shading.N);
+	vec3  spatialSHAmbient = getSpatialAmbientSH(surface.pos, shading.N);
 
 	float combinedAO = material.ao * terrainOcc;
 	vec3  ambientDiffuse = spatialSHAmbient * material.albedo * combinedAO;
 
-	vec3 R = reflect(-V, N);
-	float NdotV = max(dot(N, V), 0.0);
-	vec3 F_env = fresnelSchlickRoughness(NdotV, F0, material.roughness);
+	vec3 R = reflect(-shading.V, shading.N);
+	vec3 F_env = fresnelSchlickRoughness(shading.NoV, shading.F0, material.roughness);
 	vec3 envColor = getSpatialAmbientSH(surface.pos, R) * terrainOcc;
 
 	float smoothness = 1.0 - material.roughness;
@@ -601,10 +633,20 @@ LightingResult calculate_pbr_lighting(SurfaceData surface, MaterialData material
 
 	vec3 ambient = ambientDiffuse * (1.0 - material.metallic * 0.9) + ambientSpecular;
 
+	if (material.iridescenceIntensity > 0.0) {
+		vec3 iridescentColor = iridescence(shading.NoV, material.iridescenceThickness);
+		ambient = mix(ambient, iridescentColor * combinedAO, material.iridescenceIntensity * (1.0 - material.metallic * 0.5));
+		Lo = mix(Lo, Lo * iridescentColor, material.iridescenceIntensity * 0.5);
+	}
+
 	res.color = ambient + Lo;
 	res.specLum = spec_lum + get_luminance(ambientSpecular);
 
 	return res;
+}
+
+LightingResult calculate_pbr_lighting(SurfaceData surface, MaterialData material) {
+	return calculate_pbr_lighting_internal(surface, material, true);
 }
 
 vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness, float metallic, float ao, out float primaryShadow) {
@@ -612,6 +654,8 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 	surface.pos = frag_pos;
 	surface.normal = normal;
 	surface.viewDir = viewPos - frag_pos;
+	surface.uv = vec2(0.0);
+	surface.uv_J = mat2(0.0);
 
 	MaterialData material;
 	material.albedo = albedo;
@@ -619,6 +663,9 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 	material.metallic = metallic;
 	material.ao = ao;
 	material.translucency = 0.0;
+	material.glintIntensity = 0.0;
+	material.iridescenceThickness = 0.0;
+	material.iridescenceIntensity = 0.0;
 
 	LightingResult res = calculate_pbr_lighting(surface, material);
 	primaryShadow = res.primaryShadow;
@@ -626,39 +673,39 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 }
 
 void evaluate_foliage_brdf(
-    vec3 N, vec3 V, vec3 L, vec3 albedo, float roughness, float metallic, vec3 F0,
-    vec3 radiance, float shadow, float translucency, inout vec3 Lo, inout float spec_lum)
+    SurfaceData surface, MaterialData material, ShadingData shading,
+    vec3 radiance, float shadow, inout vec3 Lo, inout float spec_lum)
 {
-    float NdotL = dot(N, L);
-    float NdotV = max(dot(N, V), 1e-4);
-
     // 1. FRONT-SIDE REFLECTION (Standard PBR)
     // Only calculate specular if the light is actually in front of the normal
-    if (NdotL > 0.0) {
-        vec3 H = normalize(V + L);
-        float HdotV = max(dot(H, V), 0.0);
+    if (shading.NoL > 0.0) {
+        float NDF = DistributionGGX(shading.N, shading.H, material.roughness);
 
-        float NDF = DistributionGGX(N, H, roughness);
-        float V_term = VisibilitySmithGGXCorrelated(NdotL, NdotV, roughness);
-        vec3  F = fresnelSchlickFast(HdotV, F0);
+        if (material.glintIntensity > 0.0) {
+            float glintNDF = calculate_glint_ndf(shading.H, shading.N, material.roughness, material.metallic, surface.uv, surface.uv_J);
+            NDF = NDF + glintNDF * material.glintIntensity;
+        }
+
+        float V_term = VisibilitySmithGGXCorrelated(shading.NoL, shading.NoV, material.roughness);
+        vec3  F = fresnelSchlickFast(shading.LoH, shading.F0);
 
         vec3 specular = NDF * V_term * F;
         vec3 kS = F;
-        vec3 kD = (vec3(1.0) - kS) * (1.0 - metallic);
+        vec3 kD = (vec3(1.0) - kS) * (1.0 - material.metallic);
 
-        vec3 specular_out = specular * radiance * NdotL * shadow;
-        Lo += (kD * albedo / PI) * radiance * NdotL * shadow + specular_out;
+        vec3 specular_out = specular * radiance * shading.NoL * shadow;
+        Lo += (kD * material.albedo / PI) * radiance * shading.NoL * shadow + specular_out;
         spec_lum += get_luminance(specular_out);
     }
 
     // 2. BACK-SIDE TRANSMISSION (Subsurface Scattering approximation)
     // If the light is behind the camera-facing normal, it "bleeds" through.
     // We use a simplified 'Wrapped' or 'Inverted' diffuse model.
-    float transmissionNdotL = max(-NdotL, 0.0);
+    float transmissionNdotL = max(-shading.NoL, 0.0);
     if (transmissionNdotL > 0.0) {
         // Translucent light is generally filtered by the material color (albedo)
         // and doesn't have a specular component.
-        vec3 transmission_out = (albedo / PI) * radiance * transmissionNdotL * translucency * shadow;
+        vec3 transmission_out = (material.albedo / PI) * radiance * transmissionNdotL * material.translucency * shadow;
         Lo += transmission_out;
     }
 }
@@ -668,6 +715,8 @@ vec4 apply_lighting_foliage(vec3 frag_pos, vec3 normal, vec3 albedo, float rough
 	surface.pos = frag_pos;
 	surface.normal = normal;
 	surface.viewDir = viewPos - frag_pos;
+	surface.uv = vec2(0.0);
+	surface.uv_J = mat2(0.0);
 
 	MaterialData material;
 	material.albedo = albedo;
@@ -675,6 +724,9 @@ vec4 apply_lighting_foliage(vec3 frag_pos, vec3 normal, vec3 albedo, float rough
 	material.metallic = metallic;
 	material.ao = ao;
 	material.translucency = 0.5;
+	material.glintIntensity = 0.0;
+	material.iridescenceThickness = 0.0;
+	material.iridescenceIntensity = 0.0;
 
 	LightingResult res = calculate_pbr_lighting(surface, material);
 	primaryShadow = res.primaryShadow;
@@ -687,94 +739,26 @@ vec4 apply_lighting_foliage(vec3 frag_pos, vec3 normal, vec3 albedo, float rough
  * Returns vec4(color.rgb, specular_luminance).
  */
 vec4 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness, float metallic, float ao, out float primaryShadow) {
-	primaryShadow = 1.0;
-	vec3 N = normalize(normal);
-	vec3 V = normalize(viewPos - frag_pos);
+	SurfaceData surface;
+	surface.pos = frag_pos;
+	surface.normal = normal;
+	surface.viewDir = viewPos - frag_pos;
+	surface.uv = vec2(0.0);
+	surface.uv_J = mat2(0.0);
 
-	vec3 F0 = vec3(0.04);
-	F0 = mix(F0, albedo, metallic);
+	MaterialData material;
+	material.albedo = albedo;
+	material.roughness = roughness;
+	material.metallic = metallic;
+	material.ao = ao;
+	material.translucency = 0.0;
+	material.glintIntensity = 0.0;
+	material.iridescenceThickness = 0.0;
+	material.iridescenceIntensity = 0.0;
 
-	vec3  Lo = vec3(0.0);
-	float spec_lum = 0.0;
-
-	for (int i = 0; i < num_lights; ++i) {
-		vec3  L;
-		float base_attenuation;
-		calculateLightContribution(i, frag_pos, L, base_attenuation);
-
-		vec3 H = normalize(V + L);
-
-		float attenuation;
-		vec3  atmosphereTransmittance = vec3(1.0);
-
-		if (lights[i].type == LIGHT_TYPE_DIRECTIONAL) {
-			attenuation = lights[i].intensity * PBR_INTENSITY_BOOST;
-
-			// Apply atmospheric attenuation
-			float r = kEarthRadiusKM + (frag_pos.y / (1000.0 * worldScale));
-			float mu = L.y;
-			atmosphereTransmittance = texture(u_transmittanceLUT, getTransmittanceUV(r, mu)).rgb;
-		} else {
-			attenuation = (lights[i].intensity * PBR_INTENSITY_BOOST) * base_attenuation;
-		}
-		vec3 radiance = lights[i].color * attenuation * atmosphereTransmittance;
-
-		float NDF = DistributionGGX(N, H, roughness);
-		float G = GeometrySmith(N, V, L, roughness);
-		vec3  F = fresnelSchlick(max(dot(H, V), 0.0), F0);
-
-		vec3  numerator = NDF * G * F;
-		float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.0001;
-		vec3  specular = numerator / denominator;
-
-		vec3 kS = F;
-		vec3 kD = vec3(1.0) - kS;
-		kD *= 1.0 - metallic;
-
-		float NdotL = max(dot(N, L), 0.0);
-
-		// Apply cloud shadow for directional lights
-		float shadow = 1.0;
-		if (lights[i].type == LIGHT_TYPE_DIRECTIONAL) {
-			shadow *= calculateCloudShadow(i, frag_pos);
-		}
-
-		if (i == 0)
-			primaryShadow = shadow;
-
-		vec3 specular_radiance = specular * radiance * NdotL * shadow;
-		Lo += (kD * albedo / PI) * radiance * NdotL * shadow + specular_radiance;
-		spec_lum += get_luminance(specular_radiance);
-	}
-
-	// Spatially-varying SH ambient augmented with macro occlusion
-	float terrainOcc = calculateTerrainOcclusion(frag_pos, N);
-	vec3  spatialSHAmbient = getSpatialAmbientSH(frag_pos, N);
-
-	float combinedAO = ao * terrainOcc;
-	vec3  ambientDiffuse = spatialSHAmbient * albedo * combinedAO;
-
-	// Scale down ambient overall to maintain shadow contrast
-	ambientDiffuse *= 0.75;
-
-	vec3 R = reflect(-V, N);
-
-	vec3  F0_env = mix(vec3(0.04), albedo, metallic);
-	float NdotV = max(dot(N, V), 0.0);
-	vec3  F_env = fresnelSchlickRoughness(NdotV, F0_env, roughness);
-
-	// Fake environment color using spatial SH
-	vec3 envColor = getSpatialAmbientSH(frag_pos, R);
-
-	// Attenuate reflection by occlusion to prevent glow in caves/valleys
-	envColor *= terrainOcc;
-
-	float smoothness = 1.0 - roughness;
-	float envStrength = smoothness * smoothness * 0.8;
-	vec3  ambientSpecular = F_env * envColor * envStrength * combinedAO;
-	vec3  ambient = ambientDiffuse * (1.0 - metallic * 0.9) + ambientSpecular;
-
-	return vec4(ambient + Lo, spec_lum + get_luminance(ambientSpecular));
+	LightingResult res = calculate_pbr_lighting_internal(surface, material, false);
+	primaryShadow = res.primaryShadow;
+	return vec4(res.color, res.specLum);
 }
 
 // ============================================================================
@@ -920,69 +904,26 @@ vec4 apply_lighting_pbr_iridescent_no_shadows(
 	float iridescence_strength,
 	out float primaryShadow
 ) {
-	primaryShadow = 1.0;
-	vec3  N = normalize(normal);
-	vec3  V = normalize(viewPos - frag_pos);
-	float NdotV = max(dot(N, V), 0.0);
+	SurfaceData surface;
+	surface.pos = frag_pos;
+	surface.normal = normal;
+	surface.viewDir = viewPos - frag_pos;
+	surface.uv = vec2(0.0);
+	surface.uv_J = mat2(0.0);
 
-	// Calculate iridescent color based on view angle
-	vec3 iridescent_color = calculate_iridescence(V, N, base_color, time + frag_pos.y * 2.0);
+	MaterialData material;
+	material.albedo = base_color;
+	material.roughness = roughness;
+	material.metallic = 0.0;
+	material.ao = 1.0;
+	material.translucency = 0.0;
+	material.glintIntensity = 0.0;
+	material.iridescenceThickness = 300.0;
+	material.iridescenceIntensity = iridescence_strength;
 
-	// Base iridescent appearance (always visible, angle-dependent)
-	float angle_factor = 1.0 - NdotV;
-	vec3  base_iridescent = iridescent_color * (0.4 + angle_factor * 0.6);
-
-	// Add specular highlights from lights
-	vec3  specular_total = vec3(0.0);
-	float spec_lum = 0.0;
-
-	for (int i = 0; i < num_lights; ++i) {
-		vec3  L;
-		float base_attenuation;
-		calculateLightContribution(i, frag_pos, L, base_attenuation);
-
-		vec3  H = normalize(V + L);
-		float NdotL = max(dot(N, L), 0.0);
-		float HdotV = max(dot(H, V), 0.0);
-
-		float attenuation;
-		vec3  atmosphereTransmittance = vec3(1.0);
-
-		if (lights[i].type == LIGHT_TYPE_DIRECTIONAL) {
-			attenuation = lights[i].intensity * PBR_INTENSITY_BOOST;
-
-			// Apply atmospheric attenuation
-			float r = kEarthRadiusKM + (frag_pos.y / (1000.0 * worldScale));
-			float mu = L.y;
-			atmosphereTransmittance = texture(u_transmittanceLUT, getTransmittanceUV(r, mu)).rgb;
-		} else {
-			attenuation = (lights[i].intensity * PBR_INTENSITY_BOOST) * base_attenuation;
-		}
-		vec3 radiance = lights[i].color * attenuation * atmosphereTransmittance;
-
-		// GGX specular for sharp highlights
-		float NDF = DistributionGGX(N, H, roughness);
-		float G = GeometrySmith(N, V, L, roughness);
-
-		// Fresnel with iridescent F0
-		vec3 F0 = iridescent_color * 0.8 + vec3(0.2);
-		vec3 F = fresnelSchlick(HdotV, F0);
-
-		vec3  numerator = NDF * G * F;
-		float denominator = 4.0 * NdotV * NdotL + 0.0001;
-		vec3  specular = numerator / denominator;
-
-		vec3 specular_contribution = specular * radiance * NdotL;
-		specular_total += specular_contribution;
-		spec_lum += get_luminance(specular_contribution);
-	}
-
-	// Fresnel rim - strong white/iridescent edge glow
-	float fresnel_rim = pow(1.0 - NdotV, 4.0);
-	vec3  rim_color = mix(vec3(1.0), iridescent_color, 0.5) * fresnel_rim * 0.8;
-
-	// Combine: base iridescent appearance + specular highlights + rim
-	return vec4(base_iridescent + specular_total + rim_color, spec_lum + get_luminance(rim_color));
+	LightingResult res = calculate_pbr_lighting_internal(surface, material, false);
+	primaryShadow = res.primaryShadow;
+	return vec4(res.color, res.specLum);
 }
 
 // ============================================================================

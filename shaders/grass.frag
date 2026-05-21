@@ -139,6 +139,8 @@ void main() {
     surface.pos = fWorldPos;
     surface.normal = N;
     surface.viewDir = viewPos - fWorldPos;
+    surface.uv = fWorldPos.xz;
+    surface.uv_J = mat2(dFdx(surface.uv), dFdy(surface.uv));
 
     MaterialData material;
     material.albedo = albedo;
@@ -146,6 +148,9 @@ void main() {
     material.metallic = 0.0;
     material.ao = ao;
     material.translucency = 0.5;
+    material.glintIntensity = 0.0;
+    material.iridescenceThickness = 0.0;
+    material.iridescenceIntensity = 0.0;
 
     LightingResult res = calculate_pbr_lighting(surface, material);
     float primaryShadow = res.primaryShadow;

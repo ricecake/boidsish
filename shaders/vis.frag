@@ -187,6 +187,8 @@ void main() {
 	surface.pos = FragPos;
 	surface.normal = norm;
 	surface.viewDir = viewPos - FragPos;
+	surface.uv = TexCoords;
+	surface.uv_J = mat2(dFdx(surface.uv), dFdy(surface.uv));
 
 	MaterialData material;
 	material.albedo = albedo * baseAlpha;
@@ -194,6 +196,9 @@ void main() {
 	material.metallic = tex_metallic;
 	material.ao = tex_ao;
 	material.translucency = 0.0;
+	material.glintIntensity = (c_metallic > 0.8 && c_roughness < 0.2) ? 0.4 : 0.0;
+	material.iridescenceThickness = 300.0; // Typical thickness
+	material.iridescenceIntensity = (c_objectAlpha < 0.99 && c_metallic > 0.5) ? 0.6 : 0.0;
 
 	LightingResult res = calculate_pbr_lighting(surface, material);
 	float primaryShadow = res.primaryShadow;
