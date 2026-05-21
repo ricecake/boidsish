@@ -1,7 +1,19 @@
 #ifndef PARTICLE_LIFECYCLE_GLSL
 #define PARTICLE_LIFECYCLE_GLSL
 
+#include "helpers/constants.glsl"
 #include "frustum.glsl"
+
+void spawnDustParticle(
+	inout Particle p,
+	uint           gid,
+	float          time,
+	vec3           viewPos,
+	vec3           viewDir,
+	sampler3D      curlTexture,
+	int            num_chunks,
+	sampler2DArray heightmapArray
+);
 #include "particle_behavior.glsl"
 #include "particle_helpers.glsl"
 #include "particle_types.glsl"
@@ -247,8 +259,10 @@ void spawnAmbientParticle(
 		bool valid_biome = (biome_idx >= 0 && biome_idx <= 4) || biome_idx == 7;
 		if (valid_biome) {
 			// Define weighted probabilities for inter-compatible particles
-			// Birds, Leaves, Petals, Bubbles, Fireflies, Snow
-			float weights[6] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+			// Birds, Leaves, Petals, Bubbles, Fireflies, Snow, Dust
+			float weights[7] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+
+			weights[6] = 0.3; // Dust always present near camera
 
 			if (biome_idx == 7) { // Mountains (Snow only)
 				weights[5] = 1.0;
@@ -276,15 +290,16 @@ void spawnAmbientParticle(
 			if (stats.count_bubbles >= stats.limit_bubbles) weights[3] = 0.0;
 			if (stats.count_fireflies >= stats.limit_fireflies) weights[4] = 0.0;
 			if (stats.count_snow >= stats.limit_snow) weights[5] = 0.0;
+			if (stats.count_dust >= stats.limit_dust) weights[6] = 0.0;
 
-			float total_weight = weights[0] + weights[1] + weights[2] + weights[3] + weights[4] + weights[5];
+			float total_weight = weights[0] + weights[1] + weights[2] + weights[3] + weights[4] + weights[5] + weights[6];
 			if (total_weight <= 0.0) return;
 
 			// Pick type based on weighted probability
 			float r = rand(spawnSeed + 6.6) * total_weight;
 			int   selected_style = -1;
 			float cumulative = 0.0;
-			for (int i = 0; i < 6; i++) {
+			for (int i = 0; i < 7; i++) {
 				cumulative += weights[i];
 				if (r <= cumulative) {
 					if (i == 0) selected_style = STYLE_BIRDS;
@@ -293,11 +308,17 @@ void spawnAmbientParticle(
 					else if (i == 3) selected_style = STYLE_BUBBLES;
 					else if (i == 4) selected_style = STYLE_FIREFLIES;
 					else if (i == 5) selected_style = STYLE_SNOW;
+					else if (i == 6) selected_style = STYLE_DUST;
 					break;
 				}
 			}
 
 			if (selected_style == -1) return;
+
+			if (selected_style == STYLE_DUST) {
+				spawnDustParticle(p, gid, time, viewPos, viewDir, curlTexture, num_chunks, heightmapArray);
+				return;
+			}
 
 			float total_lifetime = 10.0 + rand(spawnSeed + 4.4) * 5.0;
 			float skipped_time = rand(spawnSeed + 7.7) * total_lifetime;
@@ -342,6 +363,38 @@ void spawnAmbientParticle(
 			}
 		}
 	}
+}
+
+void spawnDustParticle(
+	inout Particle p,
+	uint           gid,
+	float          time,
+	vec3           viewPos,
+	vec3           viewDir,
+	sampler3D      curlTexture,
+	int            num_chunks,
+	sampler2DArray heightmapArray
+) {
+	vec2 spawnSeed = vec2(float(gid) * 0.123, time * 0.456);
+	uint particleSeed = hash(gid ^ uint(time * 10.0));
+
+	// Spawn in a ring around the camera
+	float r_dist = randomFloat(particleSeed);
+	float dist = 2.0 + r_dist * 18.0;
+
+	float u_angle = randomFloat(hash(particleSeed)) * 2.0 * PI;
+	float v_angle = (randomFloat(hash(hash(particleSeed))) * 2.0 - 1.0) * 0.5; // Bias toward horizontal
+
+	vec3 offset = vec3(cos(u_angle) * cos(v_angle), sin(v_angle), sin(u_angle) * cos(v_angle)) * dist;
+	vec3 pos = viewPos + offset;
+
+	p.emitter_id = -1;
+	p.emitter_index = -1;
+	p.style = STYLE_DUST;
+	p.pos = vec4(pos, 2.0 + rand(spawnSeed + 0.11) * 3.0);
+	p.vel = vec4(rand3(spawnSeed + 0.22) * 0.1, 8.0); // Small size
+	p.origin.xyz = p.pos.xyz;
+	p.origin.w = 0.0;
 }
 
 void spawnPrecipitation(inout Particle p, uint gid, float time, vec3 viewPos) {

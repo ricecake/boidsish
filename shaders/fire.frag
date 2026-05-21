@@ -107,6 +107,10 @@ void main() {
 		} else if (v_style == STYLE_CINDER) {
 			float n = snoise3d(vec3(gl_PointCoord * 6.0, float(v_particle_idx)));
 			shapeMask = smoothstep(0.2 + n * 0.15, 0.05, distSq);
+		} else if (v_style == STYLE_DUST) {
+			float distToCam = length(view_pos.xyz);
+			shapeMask = exp(-distSq * 15.0);
+			alpha *= smoothstep(20.0, 15.0, distToCam);
 		} else if (v_style == STYLE_BIRDS) {
 			float flap = sin(u_time * 15.0 + v_p.phase);
 			float wing_y = abs(gl_PointCoord.x - 0.5) * (0.5 + flap * 0.4);

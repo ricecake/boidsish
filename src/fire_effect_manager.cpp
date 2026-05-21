@@ -432,6 +432,7 @@ namespace Boidsish {
 		stats_ptr->limit_bubbles = cfg.GetAppSettingInt("particle_limit_bubbles", 2000);
 		stats_ptr->limit_fireflies = cfg.GetAppSettingInt("particle_limit_fireflies", 3000);
 		stats_ptr->limit_snow = cfg.GetAppSettingInt("particle_limit_snow", 10000);
+		stats_ptr->limit_dust = cfg.GetAppSettingInt("particle_limit_dust", 5000);
 
 		// GPU will increment counts, we only reset them to 0 each frame here before dispatch.
 

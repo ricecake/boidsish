@@ -30,6 +30,8 @@ namespace Boidsish {
 			void SetTemporalAlpha(float a) { temporal_alpha_ = a; }
 			float GetTemporalAlpha() const { return temporal_alpha_; }
 
+			void SetTime(float time) override { current_time_ = time; }
+
 		private:
 			void CreateGridTextures();
 
@@ -57,6 +59,11 @@ namespace Boidsish {
 			float anisotropy_ = 0.8f;
 			float intensity_ = 1.0f;
 			float temporal_alpha_ = 0.95f;
+
+			float current_time_ = 0.0f;
+			float last_time_ = 0.0f;
+			glm::vec3 wind_ball_pos_ = glm::vec3(0.0f);
+			bool wind_ball_initialized_ = false;
 
 			// Froxel grid dimensions per cascade
 			const int grid_res_x_ = 160;
