@@ -14,11 +14,6 @@ layout(std140, binding = [[TERRAIN_DATA_BINDING]]) uniform TerrainData {
 };
 #endif
 
-#ifndef TERRAIN_GRID_DEFINED
-	#define TERRAIN_GRID_DEFINED
-layout(binding = [[TERRAIN_CHUNK_GRID_BINDING]]) uniform isampler2D u_chunkGrid;
-#endif
-
 #include "helpers/terrain_shadows.glsl"
 
 struct PatchMetrics {
@@ -95,70 +90,37 @@ uniform int       u_hizMipCount;
 uniform float     u_screenExpansion;
 uniform bool      u_enableOcclusionCulling;
 
-float getPatchTessLevel(int slice, int patchX, int patchY, vec3 chunkOffset) {
-	if (slice < 0) return u_tessLevelMin;
+float getVertexTessLevel(int slice, vec2 uv, vec2 chunkOffsetXZ) {
+	vec2  remappedUV = (uv * u_terrainParams.x + 0.5) / (u_terrainParams.x + 1.0);
+	vec4  hData = textureLod(u_heightmapArray, vec3(remappedUV, float(slice)), 0.0);
+	float h = hData.r;
+	vec3  norm = normalize(hData.gba);
+	float variance = textureLod(u_bakedParamsArray, vec3(remappedUV, float(slice)), 0.0).a;
 
-	int numPatchesPerChunkSide = [[PATCHES_PER_CHUNK_SIDE]];
-	int patchIdx = (slice * numPatchesPerChunkSide * numPatchesPerChunkSide) + (patchY * numPatchesPerChunkSide + patchX);
-	PatchMetrics metrics = patchMetrics[patchIdx];
+	vec3 worldPos = vec3(chunkOffsetXZ.x + uv.x * u_terrainParams.x * u_terrainParams.y,
+	                     h,
+	                     chunkOffsetXZ.y + uv.y * u_terrainParams.x * u_terrainParams.y);
 
-	float patchSize = float([[PATCH_SIZE]]) * u_worldScale;
+	float dist = distance(u_viewPos, worldPos);
 
-	vec3 patchCenter;
-	patchCenter.x = chunkOffset.x + (float(patchX) + 0.5) * patchSize;
-	patchCenter.z = chunkOffset.z + (float(patchY) + 0.5) * patchSize;
-	patchCenter.y = (metrics.min_y + metrics.max_y) * 0.5;
+	// 1. VARIANCE BASE
+	float maxPotential = mix(u_tessLevelMin, u_tessLevelMax, variance);
 
-	float dist = distance(u_viewPos, patchCenter);
-
-	// Screen-space metric (approximate without full projection for performance)
+	// 2. SCREEN IMPORTANCE (Approximate)
 	float screenImportance = clamp(200.0 * u_worldScale / dist, 0.0, 1.0);
-
-	// 1. PRIMARY DRIVER: PRE-COMPUTED VARIANCE
-	float maxPotential = mix(u_tessLevelMin, u_tessLevelMax, metrics.max_variance);
 
 	// 3. DISTANCE DEDUCTION
 	float distFactor = exp(-dist * (0.002 / u_worldScale));
 
-	// 4. SILHOUETTE IMPORTANCE
-	float silhouetteImportance = metrics.avg_curvature * (1.0 - smoothstep(200.0 * u_worldScale, 1000.0 * u_worldScale, dist));
+	// 4. SILHOUETTE BOOST
+	float silhouetteFactor = 1.0 - abs(dot(norm, normalize(u_viewPos - worldPos)));
+	float silhouetteImportance = silhouetteFactor * (1.0 - smoothstep(100.0 * u_worldScale, 800.0 * u_worldScale, dist));
 
-	// 5. COMBINE DEDUCTIONS
+	// 5. COMBINE
 	float qualityScalar = max(distFactor, silhouetteImportance);
 	qualityScalar = mix(0.1, 1.0, qualityScalar * screenImportance);
 
-	float level = maxPotential * qualityScalar * u_tessQualityMultiplier;
-
-	return clamp(level, u_tessLevelMin, u_tessLevelMax);
-}
-
-float getNeighborLevel(int dx, int dy, int slice, int patchX, int patchY, vec3 chunkOffset) {
-	int npc = [[PATCHES_PER_CHUNK_SIDE]];
-	int nx = patchX + dx;
-	int ny = patchY + dy;
-	int nSlice = slice;
-	vec3 nChunkOffset = chunkOffset;
-
-	if (nx < 0 || nx >= npc || ny < 0 || ny >= npc) {
-		float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
-		ivec2 chunkCoord = ivec2(floor(chunkOffset.xz / scaledChunkSize + 0.5));
-		ivec2 localGridCoord = chunkCoord - u_originSize.xy;
-
-		ivec2 neighborLocalCoord = localGridCoord + ivec2(dx != 0 ? (dx < 0 ? -1 : 1) : 0, dy != 0 ? (dy < 0 ? -1 : 1) : 0);
-
-		if (neighborLocalCoord.x >= 0 && neighborLocalCoord.x < u_originSize.z &&
-			neighborLocalCoord.y >= 0 && neighborLocalCoord.y < u_originSize.z) {
-			nSlice = texelFetch(u_chunkGrid, neighborLocalCoord, 0).r;
-			nChunkOffset.x += float(dx != 0 ? (dx < 0 ? -1 : 1) : 0) * scaledChunkSize;
-			nChunkOffset.z += float(dy != 0 ? (dy < 0 ? -1 : 1) : 0) * scaledChunkSize;
-		} else {
-			nSlice = -1;
-		}
-		nx = (nx + npc) % npc;
-		ny = (ny + npc) % npc;
-	}
-
-	return getPatchTessLevel(nSlice, nx, ny, nChunkOffset);
+	return clamp(maxPotential * qualityScalar * u_tessQualityMultiplier, u_tessLevelMin, u_tessLevelMax);
 }
 
 bool projectAABB(vec3 aabbMin, vec3 aabbMax, mat4 vp, out vec4 screenRect, out float nearestDepth) {
@@ -325,14 +287,25 @@ void main() {
 
 	patchVisibility[patchIdx] = 1;
 
-	// Tessellation level consistency:
-	// Compute level for us and our neighbors to avoid cracks at patch boundaries.
-	float levelSelf = getPatchTessLevel(slice, patchX, patchY, chunkOffset);
+	// Patch corners in UV space
+	float ps = float([[PATCH_SIZE]]);
+	float cs = u_terrainParams.x;
+	vec2 uv00 = vec2(float(patchX) * ps, float(patchY) * ps) / cs;
+	vec2 uv10 = vec2(float(patchX + 1) * ps, float(patchY) * ps) / cs;
+	vec2 uv11 = vec2(float(patchX + 1) * ps, float(patchY + 1) * ps) / cs;
+	vec2 uv01 = vec2(float(patchX) * ps, float(patchY + 1) * ps) / cs;
 
-	float levelL = getNeighborLevel(-1, 0, slice, patchX, patchY, chunkOffset);
-	float levelR = getNeighborLevel(1, 0, slice, patchX, patchY, chunkOffset);
-	float levelB = getNeighborLevel(0, -1, slice, patchX, patchY, chunkOffset);
-	float levelT = getNeighborLevel(0, 1, slice, patchX, patchY, chunkOffset);
+	// Compute levels at corners. These will be identical for shared vertices between patches/chunks.
+	float v00 = getVertexTessLevel(slice, uv00, chunkOffset.xz);
+	float v10 = getVertexTessLevel(slice, uv10, chunkOffset.xz);
+	float v11 = getVertexTessLevel(slice, uv11, chunkOffset.xz);
+	float v01 = getVertexTessLevel(slice, uv01, chunkOffset.xz);
+
+	// Inner level based on patch-wide max_variance
+	float innerLevel = mix(u_tessLevelMin, u_tessLevelMax, metrics.max_variance);
+	float dist = distance(u_viewPos, patchCenter);
+	float innerDeduction = mix(0.1, 1.0, exp(-dist * (0.002 / u_worldScale)) * clamp(200.0 * u_worldScale / dist, 0.0, 1.0));
+	innerLevel = clamp(innerLevel * innerDeduction * u_tessQualityMultiplier, u_tessLevelMin, u_tessLevelMax);
 
 	// Patch Draw Data
 	PatchDrawData draw;
@@ -343,11 +316,11 @@ void main() {
 	// Patch Tess Levels
 	PatchTessLevels tess;
 	// OpenGL Quads: 0=Left(u=0), 1=Bottom(v=0), 2=Right(u=1), 3=Top(v=1)
-	tess.outer[0] = max(levelSelf, levelL);
-	tess.outer[1] = max(levelSelf, levelB);
-	tess.outer[2] = max(levelSelf, levelR);
-	tess.outer[3] = max(levelSelf, levelT);
-	tess.inner[0] = levelSelf;
-	tess.inner[1] = levelSelf;
+	tess.outer[0] = max(v00, v01);
+	tess.outer[1] = max(v00, v10);
+	tess.outer[2] = max(v10, v11);
+	tess.outer[3] = max(v01, v11);
+	tess.inner[0] = innerLevel;
+	tess.inner[1] = innerLevel;
 	patchTessLevels[outIdx] = tess;
 }

@@ -1034,6 +1034,7 @@ namespace Boidsish {
 		glClearBufferData(GL_SHADER_STORAGE_BUFFER, GL_R32UI, GL_RED_INTEGER, GL_UNSIGNED_INT, nullptr);
 
 		patch_prepare_shader_->use();
+		BindTerrainData(*patch_prepare_shader_);
 
 		uint32_t* indirect_data = reinterpret_cast<uint32_t*>(patch_indirect_pb_->GetFrameDataPtr());
 		indirect_data[4] = 4; // count (4 vertices per quad)
