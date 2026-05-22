@@ -382,6 +382,11 @@ namespace Boidsish {
 		// Global terrain grid resources
 		GLuint chunk_grid_texture_ = 0;      // GL_TEXTURE_2D (R16I: texture_slice index, -1 if none)
 		GLuint max_height_grid_texture_ = 0; // GL_TEXTURE_2D (R32F: max_y, mips for hierarchical check)
+
+		// PBOs for non-blocking texture updates
+		std::unique_ptr<PersistentBuffer<int16_t>> chunk_grid_pbo_pb_;
+		std::unique_ptr<PersistentBuffer<float>>   max_height_grid_pbo_pb_;
+
 		GLuint terrain_data_ubo_ = 0;        // UBO for grid parameters
 		GLuint probe_ssbo_ = 0;              // SSBO for per-chunk SH probes
 		GLuint bake_ssbo_ = 0;               // SSBO for BakeTask

@@ -9,6 +9,7 @@
 
 #include "constants.h"
 #include "geometry.h"
+#include "persistent_buffer.h"
 #include <GL/glew.h>
 #include <glm/glm.hpp>
 
@@ -123,6 +124,11 @@ namespace Boidsish {
 		void CommitUpdates();
 
 		/**
+		 * @brief Advance to the next buffer segment (call once per frame).
+		 */
+		void AdvanceFrame();
+
+		/**
 		 * @brief Get statistics for debugging/profiling.
 		 */
 		size_t GetRegisteredTrailCount() const;
@@ -155,12 +161,12 @@ namespace Boidsish {
 		void EnsureBufferCapacity(size_t required_points);
 
 		// OpenGL resources
-		GLuint vao_ = 0;
-		GLuint tess_vbo_ = 0;
-		GLuint tess_ebo_ = 0;
-		GLuint points_ssbo_ = 0;
-		GLuint instances_ssbo_ = 0;
-		GLuint spine_ssbo_ = 0;
+		GLuint vao_[3] = {0, 0, 0};
+		std::unique_ptr<PersistentBuffer<float>> tess_vbo_pb_;
+		GLuint                                   tess_ebo_ = 0;
+		std::unique_ptr<PersistentBuffer<float>> points_ssbo_pb_;
+		std::unique_ptr<PersistentBuffer<uint32_t>> instances_ssbo_pb_;
+		GLuint                                   spine_ssbo_ = 0;
 
 		// Buffer capacity
 		size_t points_capacity_ = 0;

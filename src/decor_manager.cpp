@@ -42,10 +42,8 @@ namespace Boidsish {
 			glDeleteBuffers(1, &block_validity_ssbo_);
 		if (decor_props_ubo_ != 0)
 			glDeleteBuffers(1, &decor_props_ubo_);
-		if (placement_globals_ubo_ != 0)
-			glDeleteBuffers(1, &placement_globals_ubo_);
-		if (chunk_params_ssbo_ != 0)
-			glDeleteBuffers(1, &chunk_params_ssbo_);
+		placement_globals_pb_.reset();
+		chunk_params_pb_.reset();
 	}
 
 	void DecorManager::_Initialize() {
@@ -77,13 +75,11 @@ namespace Boidsish {
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
 		// Global placement params UBO (small, updated per dispatch)
-		glGenBuffers(1, &placement_globals_ubo_);
-		glBindBuffer(GL_UNIFORM_BUFFER, placement_globals_ubo_);
-		glBufferData(GL_UNIFORM_BUFFER, sizeof(PlacementGlobalsGPU), nullptr, GL_DYNAMIC_DRAW);
-		glBindBuffer(GL_UNIFORM_BUFFER, 0);
+		placement_globals_pb_ =
+			std::make_unique<PersistentBuffer<PlacementGlobalsGPU>>(GL_UNIFORM_BUFFER, 1, 3);
 
 		// Per-chunk params SSBO (resized as needed per dispatch)
-		glGenBuffers(1, &chunk_params_ssbo_);
+		chunk_params_pb_ = std::make_unique<PersistentBuffer<ChunkParamsGPU>>(GL_SHADER_STORAGE_BUFFER, 1024, 3);
 
 		initialized_ = true;
 	}
@@ -421,11 +417,19 @@ namespace Boidsish {
 		const ITerrainGenerator&              terrain_gen,
 		std::shared_ptr<TerrainRenderManager> render_manager
 	) {
-		PROJECT_PROFILE_SCOPE("DecorManager::Update");
-		if (!enabled_ || !initialized_ || decor_types_.empty())
-			return;
+		PrepareUpdate(delta_time, camera, frustum, terrain_gen, render_manager);
+		ApplyUpdate(render_manager);
+	}
 
-		if (!placement_shader_ || !placement_shader_->isValid() || !culling_shader_ || !culling_shader_->isValid())
+	void DecorManager::PrepareUpdate(
+		float                                 delta_time,
+		const Camera&                         camera,
+		const Frustum&                        frustum,
+		const ITerrainGenerator&              terrain_gen,
+		std::shared_ptr<TerrainRenderManager> render_manager
+	) {
+		PROJECT_PROFILE_SCOPE("DecorManager::PrepareUpdate");
+		if (!enabled_ || !initialized_ || decor_types_.empty())
 			return;
 
 		if (!render_manager)
@@ -439,6 +443,97 @@ namespace Boidsish {
 		prev_camera_forward_2d_ = camera_forward_2d_;
 		camera_forward_2d_ = new_forward;
 		_UpdateAllocation(camera, frustum, terrain_gen, render_manager);
+	}
+
+	void DecorManager::ApplyUpdate(std::shared_ptr<TerrainRenderManager> render_manager) {
+		PROJECT_PROFILE_SCOPE("DecorManager::ApplyUpdate");
+		std::lock_guard<std::recursive_mutex> lock(mutex_);
+		if (!enabled_ || !initialized_ || decor_types_.empty())
+			return;
+
+		if (!placement_shader_ || !placement_shader_->isValid() || !culling_shader_ || !culling_shader_->isValid())
+			return;
+
+		if (!render_manager)
+			return;
+
+		GLuint heightmap_texture = render_manager->GetHeightmapTexture();
+		GLuint biome_texture = render_manager->GetBiomeTexture();
+		if (heightmap_texture == 0 || biome_texture == 0)
+			return;
+
+		// 1. Update block validity
+		if (!pending_placement_.blocks_to_invalidate.empty() || !pending_placement_.blocks_to_validate.empty()) {
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, block_validity_ssbo_);
+			for (int block : pending_placement_.blocks_to_invalidate) {
+				uint32_t zero = 0;
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, block * sizeof(uint32_t), sizeof(uint32_t), &zero);
+			}
+			for (int block : pending_placement_.blocks_to_validate) {
+				uint32_t one = 1;
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, block * sizeof(uint32_t), sizeof(uint32_t), &one);
+			}
+		}
+
+		// 2. Dispatch placement compute for new/dirty chunks.
+		if (!pending_placement_.chunks.empty()) {
+			int num_chunks = (int)pending_placement_.chunks.size();
+
+			// Upload global placement params (once per dispatch frame)
+			PlacementGlobalsGPU* globals = placement_globals_pb_->GetFrameDataPtr();
+			globals->camera_and_scale = glm::vec4(
+				pending_placement_.camera_xz,
+				pending_placement_.world_scale,
+				pending_placement_.max_terrain_height
+			);
+			globals->distance_params = glm::vec4(
+				density_falloff_start_ * pending_placement_.world_scale,
+				density_falloff_end_ * pending_placement_.world_scale,
+				max_decor_distance_ * pending_placement_.world_scale,
+				static_cast<float>(kMaxInstancesPerType)
+			);
+
+			// Upload per-chunk params SSBO (all chunks in one buffer)
+			ChunkParamsGPU* chunk_gpu = chunk_params_pb_->GetFrameDataPtr();
+			for (int j = 0; j < num_chunks; ++j) {
+				const auto& cd = pending_placement_.chunks[j];
+				chunk_gpu[j].offset_slice_size = glm::vec4(cd.world_offset, cd.slice, cd.chunk_size);
+				chunk_gpu[j].indices = glm::ivec4(cd.block_index * kInstancesPerChunk, 0, 0, 0);
+			}
+
+			// Bind everything once, then one dispatch per type
+			placement_shader_->use();
+
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainHeightmap());
+			glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture);
+			placement_shader_->setInt("u_heightmapArray", Constants::TextureUnit::TerrainHeightmap());
+
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainBiomeMap());
+			glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture);
+			placement_shader_->setInt("u_biomeMap", Constants::TextureUnit::TerrainBiomeMap());
+
+			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::DecorProps(), decor_props_ubo_);
+			placement_globals_pb_->BindRange(Constants::UboBinding::DecorPlacementGlobals());
+			chunk_params_pb_->BindRange(Constants::SsboBinding::DecorChunkParams());
+
+			int dispatch_size = (Constants::Class::Terrain::ChunkSize() + 7) / 8;
+			for (size_t i = 0; i < decor_types_.size(); ++i) {
+				placement_shader_->setInt("u_typeIndex", (int)i);
+				glBindBufferBase(
+					GL_SHADER_STORAGE_BUFFER,
+					Constants::SsboBinding::DecorAllInstances(),
+					decor_types_[i].ssbo
+				);
+				glDispatchCompute(dispatch_size, dispatch_size, num_chunks); // Z = chunk index
+			}
+			glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+		}
+	}
+
+	void DecorManager::AdvanceFrame() {
+		std::lock_guard<std::recursive_mutex> lock(mutex_);
+		placement_globals_pb_->AdvanceFrame();
+		chunk_params_pb_->AdvanceFrame();
 	}
 
 	void DecorManager::_UpdateAllocation(
@@ -525,6 +620,10 @@ namespace Boidsish {
 
 		int chunks_freed = 0;
 
+		pending_placement_.blocks_to_invalidate.clear();
+		pending_placement_.blocks_to_validate.clear();
+		pending_placement_.chunks.clear();
+
 		for (auto it = active_chunks_.begin(); it != active_chunks_.end();) {
 			bool is_present = std::binary_search(active_keys.begin(), active_keys.end(), it->first);
 
@@ -537,9 +636,7 @@ namespace Boidsish {
 
 				// Mark block invalid in the validity buffer (4 bytes, not 64KB×6 types).
 				// The cull shader checks this and skips instances in invalid blocks.
-				uint32_t zero = 0;
-				glBindBuffer(GL_SHADER_STORAGE_BUFFER, block_validity_ssbo_);
-				glBufferSubData(GL_SHADER_STORAGE_BUFFER, block * sizeof(uint32_t), sizeof(uint32_t), &zero);
+				pending_placement_.blocks_to_invalidate.push_back(block);
 
 				it = active_chunks_.erase(it);
 				chunks_freed++;
@@ -598,66 +695,20 @@ namespace Boidsish {
 		// 	);
 		// }
 
-		// 5. Dispatch placement compute for new/dirty chunks.
+		// 5. Prepare placement data for compute.
 		if (!chunks_to_generate.empty()) {
-			int num_chunks = (int)chunks_to_generate.size();
+			pending_placement_.camera_xz = cam_xz;
+			pending_placement_.world_scale = world_scale;
+			pending_placement_.max_terrain_height = terrain_gen.GetMaxHeight();
 
-			// Mark all blocks being generated as valid in one batch.
-			glBindBuffer(GL_SHADER_STORAGE_BUFFER, block_validity_ssbo_);
 			for (const auto& entry : chunks_to_generate) {
-				uint32_t one = 1;
-				glBufferSubData(GL_SHADER_STORAGE_BUFFER, entry.block * sizeof(uint32_t), sizeof(uint32_t), &one);
+				pending_placement_.blocks_to_validate.push_back(entry.block);
+
+				const auto& cd = all_chunks[entry.src_index];
+				pending_placement_.chunks.push_back(
+					{cd.world_offset, cd.slice, cd.chunk_size, entry.block}
+				);
 			}
-
-			// Upload global placement params (once per dispatch frame)
-			PlacementGlobalsGPU globals;
-			globals.camera_and_scale = glm::vec4(cam_xz, world_scale, terrain_gen.GetMaxHeight());
-			globals.distance_params = glm::vec4(
-				density_falloff_start_ * world_scale,
-				density_falloff_end_ * world_scale,
-				max_decor_distance_ * world_scale,
-				static_cast<float>(kMaxInstancesPerType)
-			);
-			glBindBuffer(GL_UNIFORM_BUFFER, placement_globals_ubo_);
-			glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(PlacementGlobalsGPU), &globals);
-
-			// Upload per-chunk params SSBO (all chunks in one buffer)
-			std::vector<ChunkParamsGPU> chunk_gpu(num_chunks);
-			for (int j = 0; j < num_chunks; ++j) {
-				const auto& cd = all_chunks[chunks_to_generate[j].src_index];
-				chunk_gpu[j].offset_slice_size = glm::vec4(cd.world_offset, cd.slice, cd.chunk_size);
-				chunk_gpu[j].indices = glm::ivec4(chunks_to_generate[j].block * kInstancesPerChunk, 0, 0, 0);
-			}
-			glBindBuffer(GL_SHADER_STORAGE_BUFFER, chunk_params_ssbo_);
-			glBufferData(
-				GL_SHADER_STORAGE_BUFFER,
-				num_chunks * sizeof(ChunkParamsGPU),
-				chunk_gpu.data(),
-				GL_STREAM_DRAW
-			);
-
-			// Bind everything once, then one dispatch per type
-			placement_shader_->use();
-
-			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainHeightmap());
-			glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture);
-			placement_shader_->setInt("u_heightmapArray", Constants::TextureUnit::TerrainHeightmap());
-
-			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainBiomeMap());
-			glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture);
-			placement_shader_->setInt("u_biomeMap", Constants::TextureUnit::TerrainBiomeMap());
-
-			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::DecorProps(), decor_props_ubo_);
-			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::DecorPlacementGlobals(), placement_globals_ubo_);
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::DecorChunkParams(), chunk_params_ssbo_);
-
-			int dispatch_size = (Constants::Class::Terrain::ChunkSize() + 7) / 8;
-			for (size_t i = 0; i < decor_types_.size(); ++i) {
-				placement_shader_->setInt("u_typeIndex", (int)i);
-				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::DecorAllInstances(), decor_types_[i].ssbo);
-				glDispatchCompute(dispatch_size, dispatch_size, num_chunks); // Z = chunk index
-			}
-			glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 		}
 	}
 

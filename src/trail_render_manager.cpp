@@ -10,6 +10,7 @@
 #include "frustum.h"
 #include "logger.h"
 #include "profiler.h"
+#include "persistent_buffer.h"
 #include "trail.h"
 #include <shader.h>
 
@@ -19,66 +20,79 @@ namespace Boidsish {
 		// Initialize tessellation shader
 		tess_shader_ = std::make_unique<ComputeShader>("shaders/trail_tess.comp");
 
-		// Create VAO for rendering generated geometry
-		glGenVertexArrays(1, &vao_);
-		glBindVertexArray(vao_);
-
-		// Create VBO for tessellated vertices
-		glGenBuffers(1, &tess_vbo_);
-		glBindBuffer(GL_ARRAY_BUFFER, tess_vbo_);
 		// Max trails (e.g. 200) * Max rings (1024) * Verts per ring (9)
-		size_t vbo_size = 200 * 1024 * 9 * 4 * sizeof(float) * 3; // Position(4) + Normal(4) + Color(4)
-		glBufferData(GL_ARRAY_BUFFER, vbo_size, nullptr, GL_DYNAMIC_DRAW);
+		// Verts per ring (9) is derived from TRAIL_SEGMENTS (8) + 1 for wrap-around
+		size_t vbo_elements = 200 * 1024 * 9 * 12; // Position(4) + Normal(4) + Color(4) = 12 floats
+		tess_vbo_pb_ = std::make_unique<PersistentBuffer<float>>(GL_ARRAY_BUFFER, vbo_elements, 3);
 
-		// Set up vertex attributes (matches TrailVertex in trail_common.glsl)
-		// pos (location 0)
-		glEnableVertexAttribArray(0);
-		glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 12 * sizeof(float), (void*)0);
-		// normal (location 1)
-		glEnableVertexAttribArray(1);
-		glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 12 * sizeof(float), (void*)(4 * sizeof(float)));
-		// color (location 2)
-		glEnableVertexAttribArray(2);
-		glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, 12 * sizeof(float), (void*)(8 * sizeof(float)));
+		// Create 3 VAOs for rendering generated geometry
+		glGenVertexArrays(3, vao_);
+		for (int i = 0; i < 3; ++i) {
+			glBindVertexArray(vao_[i]);
 
-		// Create EBO with static index pattern for tube segments (triangle strip-like via triangles)
-		glGenBuffers(1, &tess_ebo_);
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, tess_ebo_);
+			// Set up vertex attributes (matches TrailVertex in trail_common.glsl)
+			// Use glVertexAttribFormat/Binding to handle per-frame offsets efficiently
+			// pos (location 0)
+			glEnableVertexAttribArray(0);
+			glVertexAttribFormat(0, 4, GL_FLOAT, GL_FALSE, 0);
+			glVertexAttribBinding(0, 0);
+			// normal (location 1)
+			glEnableVertexAttribArray(1);
+			glVertexAttribFormat(1, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(float));
+			glVertexAttribBinding(1, 0);
+			// color (location 2)
+			glEnableVertexAttribArray(2);
+			glVertexAttribFormat(2, 4, GL_FLOAT, GL_FALSE, 8 * sizeof(float));
+			glVertexAttribBinding(2, 0);
 
-		const int             TRAIL_SEGMENTS = 8;
-		const int             MAX_RINGS = 1024;
-		std::vector<uint32_t> indices;
-		indices.reserve((MAX_RINGS - 1) * TRAIL_SEGMENTS * 6);
+			// Bind the VBO segment for this frame using glBindVertexBuffer
+			// Note: We need to use the offset for the SPECIFIC frame i here
+			glBindVertexBuffer(
+				0,
+				tess_vbo_pb_->GetBufferId(),
+				i * (tess_vbo_pb_->GetTotalSize() / 3),
+				12 * sizeof(float)
+			);
 
-		for (int r = 0; r < MAX_RINGS - 1; ++r) {
-			for (int s = 0; s < TRAIL_SEGMENTS; ++s) {
-				uint32_t curr_ring = r * (TRAIL_SEGMENTS + 1);
-				uint32_t next_ring = (r + 1) * (TRAIL_SEGMENTS + 1);
+			// Create EBO with static index pattern for tube segments (triangle strip-like via triangles)
+			if (i == 0) {
+				glGenBuffers(1, &tess_ebo_);
+				glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, tess_ebo_);
 
-				// CCW Winding: (curr, s) -> (next, s+1) -> (next, s)
-				indices.push_back(curr_ring + s);
-				indices.push_back(next_ring + s + 1);
-				indices.push_back(next_ring + s);
+				const int             TRAIL_SEGMENTS = 8;
+				const int             MAX_RINGS = 1024;
+				std::vector<uint32_t> indices;
+				indices.reserve((MAX_RINGS - 1) * TRAIL_SEGMENTS * 6);
 
-				// CCW Winding: (curr, s) -> (curr, s+1) -> (next, s+1)
-				indices.push_back(curr_ring + s);
-				indices.push_back(curr_ring + s + 1);
-				indices.push_back(next_ring + s + 1);
+				for (int r = 0; r < MAX_RINGS - 1; ++r) {
+					for (int s = 0; s < TRAIL_SEGMENTS; ++s) {
+						uint32_t curr_ring = r * (TRAIL_SEGMENTS + 1);
+						uint32_t next_ring = (r + 1) * (TRAIL_SEGMENTS + 1);
+
+						// CCW Winding: (curr, s) -> (next, s+1) -> (next, s)
+						indices.push_back(curr_ring + s);
+						indices.push_back(next_ring + s + 1);
+						indices.push_back(next_ring + s);
+
+						// CCW Winding: (curr, s) -> (curr, s+1) -> (next, s+1)
+						indices.push_back(curr_ring + s);
+						indices.push_back(curr_ring + s + 1);
+						indices.push_back(next_ring + s + 1);
+					}
+				}
+				glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(uint32_t), indices.data(), GL_STATIC_DRAW);
+			} else {
+				glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, tess_ebo_);
 			}
 		}
-		glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(uint32_t), indices.data(), GL_STATIC_DRAW);
-
 		glBindVertexArray(0);
 
 		// Create SSBOs for points and metadata
-		glGenBuffers(1, &points_ssbo_);
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, points_ssbo_);
-		glBufferData(GL_SHADER_STORAGE_BUFFER, INITIAL_POINTS_CAPACITY * 8 * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
+		points_ssbo_pb_ =
+			std::make_unique<PersistentBuffer<float>>(GL_SHADER_STORAGE_BUFFER, INITIAL_POINTS_CAPACITY * 8, 3);
 		points_capacity_ = INITIAL_POINTS_CAPACITY;
 
-		glGenBuffers(1, &instances_ssbo_);
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, instances_ssbo_);
-		glBufferData(GL_SHADER_STORAGE_BUFFER, 200 * 12 * sizeof(uint32_t), nullptr, GL_DYNAMIC_DRAW);
+		instances_ssbo_pb_ = std::make_unique<PersistentBuffer<uint32_t>>(GL_SHADER_STORAGE_BUFFER, 200 * 12, 3);
 
 		// Create Spine SSBO
 		glGenBuffers(1, &spine_ssbo_);
@@ -90,16 +104,12 @@ namespace Boidsish {
 	}
 
 	TrailRenderManager::~TrailRenderManager() {
-		if (vao_)
-			glDeleteVertexArrays(1, &vao_);
-		if (tess_vbo_)
-			glDeleteBuffers(1, &tess_vbo_);
+		glDeleteVertexArrays(3, vao_);
+		tess_vbo_pb_.reset();
 		if (tess_ebo_)
 			glDeleteBuffers(1, &tess_ebo_);
-		if (points_ssbo_)
-			glDeleteBuffers(1, &points_ssbo_);
-		if (instances_ssbo_)
-			glDeleteBuffers(1, &instances_ssbo_);
+		points_ssbo_pb_.reset();
+		instances_ssbo_pb_.reset();
 		if (spine_ssbo_)
 			glDeleteBuffers(1, &spine_ssbo_);
 	}
@@ -231,16 +241,9 @@ namespace Boidsish {
 		while (new_capacity < required_points)
 			new_capacity = static_cast<size_t>(new_capacity * GROWTH_FACTOR);
 
-		GLuint new_ssbo;
-		glGenBuffers(1, &new_ssbo);
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, new_ssbo);
-		glBufferData(GL_SHADER_STORAGE_BUFFER, new_capacity * 8 * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
-
-		glBindBuffer(GL_COPY_READ_BUFFER, points_ssbo_);
-		glCopyBufferSubData(GL_COPY_READ_BUFFER, GL_SHADER_STORAGE_BUFFER, 0, 0, points_capacity_ * 8 * sizeof(float));
-
-		glDeleteBuffers(1, &points_ssbo_);
-		points_ssbo_ = new_ssbo;
+		// PersistentBuffer doesn't easily support resizing while maintaining data.
+		// However, for trails, we can just reallocate and the next frame will fill it.
+		points_ssbo_pb_ = std::make_unique<PersistentBuffer<float>>(GL_SHADER_STORAGE_BUFFER, new_capacity * 8, 3);
 		points_capacity_ = new_capacity;
 	}
 
@@ -251,35 +254,30 @@ namespace Boidsish {
 			return;
 
 		// 1. Upload points and metadata
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, points_ssbo_);
+		float* points_ptr = points_ssbo_pb_->GetFrameDataPtr();
 		for (auto& [id, data] : pending_point_data_) {
 			auto it = trail_allocations_.find(id);
 			if (it != trail_allocations_.end()) {
-				glBufferSubData(
-					GL_SHADER_STORAGE_BUFFER,
-					it->second.points_offset * 8 * sizeof(float),
-					data.size() * sizeof(float),
-					data.data()
-				);
+				std::memcpy(points_ptr + it->second.points_offset * 8, data.data(), data.size() * sizeof(float));
 			}
 		}
 		pending_point_data_.clear();
 
-		std::vector<uint32_t> instance_data;
-		instance_data.reserve(trail_allocations_.size() * 12);
+		uint32_t* instance_ptr = instances_ssbo_pb_->GetFrameDataPtr();
+		uint32_t  idx = 0;
 		for (const auto& [id, alloc] : trail_allocations_) {
-			instance_data.push_back(static_cast<uint32_t>(alloc.points_offset));
-			instance_data.push_back(static_cast<uint32_t>(alloc.head));
-			instance_data.push_back(static_cast<uint32_t>(alloc.tail));
-			instance_data.push_back(static_cast<uint32_t>(alloc.max_points));
+			instance_ptr[idx++] = static_cast<uint32_t>(alloc.points_offset);
+			instance_ptr[idx++] = static_cast<uint32_t>(alloc.head);
+			instance_ptr[idx++] = static_cast<uint32_t>(alloc.tail);
+			instance_ptr[idx++] = static_cast<uint32_t>(alloc.max_points);
 
 			float    thickness = alloc.base_thickness;
 			uint32_t thickness_bits;
 			std::memcpy(&thickness_bits, &thickness, 4);
-			instance_data.push_back(thickness_bits);
+			instance_ptr[idx++] = thickness_bits;
 
-			instance_data.push_back(static_cast<uint32_t>(alloc.vertex_offset));
-			instance_data.push_back(alloc.is_full ? 1 : 0);
+			instance_ptr[idx++] = static_cast<uint32_t>(alloc.vertex_offset);
+			instance_ptr[idx++] = alloc.is_full ? 1 : 0;
 
 			uint32_t flags = 0;
 			if (alloc.iridescent)
@@ -288,36 +286,39 @@ namespace Boidsish {
 				flags |= 2;
 			if (alloc.use_pbr)
 				flags |= 4;
-			instance_data.push_back(flags);
+			instance_ptr[idx++] = flags;
 
 			float    roughness = alloc.roughness;
 			uint32_t roughness_bits;
 			std::memcpy(&roughness_bits, &roughness, 4);
-			instance_data.push_back(roughness_bits);
+			instance_ptr[idx++] = roughness_bits;
 
 			float    metallic = alloc.metallic;
 			uint32_t metallic_bits;
 			std::memcpy(&metallic_bits, &metallic, 4);
-			instance_data.push_back(metallic_bits);
+			instance_ptr[idx++] = metallic_bits;
 
-			instance_data.push_back(0); // padding
-			instance_data.push_back(0); // padding
+			instance_ptr[idx++] = 0; // padding
+			instance_ptr[idx++] = 0; // padding
 		}
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, instances_ssbo_);
-		glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, instance_data.size() * sizeof(uint32_t), instance_data.data());
 
 		// 2. Dispatch tessellation compute shader
 		tess_shader_->use();
 		tess_shader_->setInt("u_num_instances", trail_allocations_.size());
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TrailPoints(), points_ssbo_);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TrailInstances(), instances_ssbo_);
+		points_ssbo_pb_->BindRange(Constants::SsboBinding::TrailPoints());
+		instances_ssbo_pb_->BindRange(Constants::SsboBinding::TrailInstances());
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TrailSpineData(), spine_ssbo_);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TrailGeneratedVBO(), tess_vbo_);
+		tess_vbo_pb_->BindRange(Constants::SsboBinding::TrailGeneratedVBO());
 
 		glDispatchCompute(trail_allocations_.size(), 1, 1);
-		glMemoryBarrier(GL_VERTEX_ATTRIB_ARRAY_BARRIER_BIT);
+		glMemoryBarrier(GL_VERTEX_ATTRIB_ARRAY_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
+	}
 
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+	void TrailRenderManager::AdvanceFrame() {
+		std::lock_guard<std::mutex> lock(mutex_);
+		tess_vbo_pb_->AdvanceFrame();
+		points_ssbo_pb_->AdvanceFrame();
+		instances_ssbo_pb_->AdvanceFrame();
 	}
 
 	void TrailRenderManager::GetRenderPackets(
@@ -346,7 +347,7 @@ namespace Boidsish {
 			RenderPacket packet;
 			packet.shader_handle = shader_handle;
 			packet.material_handle = MaterialHandle(0); // Standard trail material
-			packet.vao = vao_;
+			packet.vao = vao_[tess_vbo_pb_->GetCurrentBufferIndex()];
 			packet.ebo = tess_ebo_;
 			packet.shader_id = shader_handle.id;
 			packet.index_count = (num_rings - 1) * 8 * 6;
@@ -374,7 +375,7 @@ namespace Boidsish {
 			packet.sort_key = CalculateSortKey(
 				RenderLayer::Transparent,
 				shader_handle,
-				vao_,
+				packet.vao,
 				GL_TRIANGLES,
 				true,
 				packet.material_handle,

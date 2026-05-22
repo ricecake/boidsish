@@ -10,6 +10,7 @@
 #include "constants.h"
 #include "frustum.h"
 #include "model.h"
+#include "persistent_buffer.h"
 #include "procedural_generator.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -130,6 +131,18 @@ namespace Boidsish {
 			const ITerrainGenerator&              terrain_gen,
 			std::shared_ptr<TerrainRenderManager> render_manager
 		);
+
+		void PrepareUpdate(
+			float                                 delta_time,
+			const Camera&                         camera,
+			const Frustum&                        frustum,
+			const ITerrainGenerator&              terrain_gen,
+			std::shared_ptr<TerrainRenderManager> render_manager
+		);
+
+		void ApplyUpdate(std::shared_ptr<TerrainRenderManager> render_manager);
+
+		void AdvanceFrame();
 
 		/**
 		 * @brief Prepares the resources for all decor types.
@@ -258,8 +271,8 @@ namespace Boidsish {
 		// Per-type properties UBO for placement shader (uploaded in PrepareResources)
 		GLuint decor_props_ubo_ = 0;
 		// Global placement params UBO and per-chunk SSBO (uploaded per dispatch frame)
-		GLuint placement_globals_ubo_ = 0;
-		GLuint chunk_params_ssbo_ = 0;
+		std::unique_ptr<PersistentBuffer<PlacementGlobalsGPU>> placement_globals_pb_;
+		std::unique_ptr<PersistentBuffer<ChunkParamsGPU>>    chunk_params_pb_;
 
 		// Distance-based density parameters
 		float                    density_falloff_start_ = 200.0f;
@@ -281,6 +294,25 @@ namespace Boidsish {
 		// 0=invalid (freed, stale data). Checked by cull shader to skip freed blocks
 		// without needing to zero 64KB of instance data per type.
 		GLuint block_validity_ssbo_ = 0;
+
+		struct PendingPlacement {
+			struct ChunkEntry {
+				glm::vec2 world_offset;
+				float     slice;
+				float     chunk_size;
+				int       block_index;
+			};
+			std::vector<ChunkEntry> chunks;
+			glm::vec2               camera_xz;
+			float                   world_scale;
+			float                   max_terrain_height;
+			std::vector<int>        blocks_to_invalidate;
+			std::vector<int>        blocks_to_validate;
+		};
+
+		PendingPlacement pending_placement_;
+
+		mutable std::recursive_mutex mutex_;
 
 		static constexpr int kInstancesPerChunk = Constants::Class::Terrain::ChunkSize() *
 			Constants::Class::Terrain::ChunkSize();

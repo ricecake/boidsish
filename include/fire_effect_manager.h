@@ -7,6 +7,7 @@
 #include "IManager.h"
 #include "constants.h"
 #include "fire_effect.h"
+#include "geometry.h"
 #include "persistent_buffer.h"
 #include "shader.h"
 
@@ -90,6 +91,35 @@ namespace Boidsish {
 			GLintptr                      vfx_offset = 0,
 			GLsizeiptr                    vfx_size = 0
 		);
+
+		void PrepareUpdate(
+			float                         delta_time,
+			float                         time,
+			bool                          enabled,
+			float                         ambient_density,
+			const std::vector<glm::vec4>& chunk_info
+		);
+
+		void ApplyUpdate(
+			float      delta_time,
+			bool       enabled,
+			float      ambient_density,
+			int        num_chunks,
+			GLuint     heightmap_texture,
+			GLuint     curl_noise_texture,
+			GLuint     biome_texture,
+			GLuint     lighting_ubo,
+			GLintptr   lighting_ubo_offset,
+			GLsizeiptr lighting_ubo_size,
+			GLuint     frustum_ubo,
+			GLintptr   frustum_offset,
+			GLuint     extra_noise_texture,
+			GLuint     visual_effects_ubo,
+			GLintptr   vfx_offset,
+			GLsizeiptr vfx_size
+		);
+
+		void AdvanceFrame();
 		void Render(
 			const glm::mat4& view,
 			const glm::mat4& projection,
@@ -124,7 +154,7 @@ namespace Boidsish {
 
 		std::vector<std::shared_ptr<FireEffect>> effects_;
 		std::vector<int>                         particle_to_emitter_map_;
-		mutable std::mutex                       mutex_;
+		mutable std::recursive_mutex             mutex_;
 
 		std::unique_ptr<ComputeShader> lifecycle_shader_;
 		std::unique_ptr<ComputeShader> behavior_shader_;
@@ -135,21 +165,22 @@ namespace Boidsish {
 		GLuint particle_buffer_{0};
 		GLuint grid_heads_buffer_{0};
 		GLuint grid_next_buffer_{0};
-		std::unique_ptr<PersistentBuffer<Emitter>> emitter_buffer_;
-		std::unique_ptr<PersistentBuffer<int>> indirection_buffer_;
-		GLuint terrain_chunk_buffer_{0};
-		GLuint slice_data_buffer_{0};
-		GLuint visible_indices_buffer_{0};
-		GLuint live_indices_buffer_{0};
-		GLuint draw_command_buffer_{0};
-		GLuint behavior_command_buffer_{0};
-		std::unique_ptr<PersistentBuffer<ParticleStats>> stats_buffer_;
-		GLuint dummy_vao_{0};
+		std::unique_ptr<PersistentBuffer<Emitter>>                       emitter_buffer_;
+		std::unique_ptr<PersistentBuffer<int>>                           indirection_buffer_;
+		std::unique_ptr<PersistentBuffer<glm::vec4>>                     terrain_chunk_buffer_;
+		std::unique_ptr<PersistentBuffer<glm::vec4>>                     slice_data_buffer_;
+		GLuint                                                           visible_indices_buffer_{0};
+		GLuint                                                           live_indices_buffer_{0};
+		std::unique_ptr<PersistentBuffer<DrawArraysIndirectCommand>>     draw_command_buffer_;
+		std::unique_ptr<PersistentBuffer<uint32_t>>                      behavior_command_buffer_;
+		std::unique_ptr<PersistentBuffer<ParticleStats>>                 stats_buffer_;
+		GLuint                                                           dummy_vao_{0};
 
 		bool   initialized_{false};
 		bool   needs_reallocation_{false};
 		float  ambient_density_{0.15f};
 		float  time_{0.0f};
+		int    num_emitters_last_prepared_{0};
 		size_t emitter_buffer_capacity_{0}; // Track capacity to avoid per-frame reallocation
 
 		static constexpr int kMaxParticles = Constants::Class::Particles::MaxParticles();
