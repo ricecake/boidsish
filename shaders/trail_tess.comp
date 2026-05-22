@@ -72,31 +72,34 @@ void main() {
 		if (i == total_rings - 1)
 			t = 1.0;
 
-		uint p1_idx = (inst.head + seg_idx) % inst.max_points;
-		uint p2_idx = (inst.head + seg_idx + 1) % inst.max_points;
+		// Map seg_idx to temporal order (0 = oldest, num_segments = newest)
+		// Point 0 in the points array is NOT necessarily the oldest.
+		// inst.head points to the oldest point in the circular buffer.
+		uint idx1 = (inst.head + seg_idx) % inst.max_points;
+		uint idx2 = (inst.head + seg_idx + 1) % inst.max_points;
 
-		vec3 p1 = points[inst.points_offset + p1_idx].pos.xyz;
-		vec3 p2 = points[inst.points_offset + p2_idx].pos.xyz;
+		vec3 p1 = points[inst.points_offset + idx1].pos.xyz;
+		vec3 p2 = points[inst.points_offset + idx2].pos.xyz;
 
 		vec3 p0, p3;
 		if (seg_idx == 0) {
-			p0 = p1 - (p2 - p1);
+			p0 = p1 - normalize(p2 - p1);
 		} else {
-			uint p0_idx = (inst.head + seg_idx - 1) % inst.max_points;
-			p0 = points[inst.points_offset + p0_idx].pos.xyz;
+			uint idx0 = (inst.head + seg_idx - 1) % inst.max_points;
+			p0 = points[inst.points_offset + idx0].pos.xyz;
 		}
 
 		if (seg_idx + 1 >= num_segments) {
-			p3 = p2 + (p2 - p1);
+			p3 = p2 + normalize(p2 - p1);
 		} else {
-			uint p3_idx = (inst.head + seg_idx + 2) % inst.max_points;
-			p3 = points[inst.points_offset + p3_idx].pos.xyz;
+			uint idx3 = (inst.head + seg_idx + 2) % inst.max_points;
+			p3 = points[inst.points_offset + idx3].pos.xyz;
 		}
 
 		spine[spine_base + i].pos = vec4(CatmullRom(t, p0, p1, p2, p3), 1.0);
 
-		vec3 c1 = points[inst.points_offset + p1_idx].color.rgb;
-		vec3 c2 = points[inst.points_offset + p2_idx].color.rgb;
+		vec3 c1 = points[inst.points_offset + idx1].color.rgb;
+		vec3 c2 = points[inst.points_offset + idx2].color.rgb;
 		vec3 c0 = (seg_idx == 0) ? c1
 								 : points[inst.points_offset + ((inst.head + seg_idx - 1) % inst.max_points)].color.rgb;
 		vec3 c3 = (seg_idx + 1 >= num_segments)
@@ -164,5 +167,10 @@ void main() {
 		out_vertices[out_idx].pos = vec4(pos + offset, progress);
 		out_vertices[out_idx].normal = vec4(normalize(offset_dir), 0.0);
 		out_vertices[out_idx].color = vec4(col, 1.0);
+
+		// Debug: Ensure we don't have massive values
+		if (any(isnan(pos)) || any(isinf(pos))) {
+			out_vertices[out_idx].pos = vec4(0.0, 0.0, 0.0, 0.0);
+		}
 	}
 }

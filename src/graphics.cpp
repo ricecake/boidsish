@@ -2127,7 +2127,9 @@ namespace Boidsish {
 			lighting_pb->AdvanceFrame();
 			temporal_pb->AdvanceFrame();
 			if (visual_effects_pb) visual_effects_pb->AdvanceFrame();
-			if (trail_render_manager) trail_render_manager->AdvanceFrame();
+			if (trail_render_manager) {
+				trail_render_manager->AdvanceFrame();
+			}
 			if (fire_effect_manager) fire_effect_manager->AdvanceFrame();
 			if (decor_manager) decor_manager->AdvanceFrame();
 
@@ -3636,16 +3638,20 @@ namespace Boidsish {
 		impl->RefreshFrameConfig();
 		impl->PrepareFrame();
 
-		// Sync trails to GPU buffers for the CURRENT frame segment
-		impl->UpdateTrailsLogical();
-
 		// Build this frame's data from the temporal chain
 		FrameData frame = impl->current_frame_.NextFrame();
 		impl->PopulateFrameData(frame);
 
 		impl->PrepareUBOs();
 		impl->packets_synced_ = false;
+
+		// Sync trails to GPU buffers for the CURRENT frame segment
+		// This must happen before GenerateRenderPacketsAsync so any new
+		// trails are visible to the packet generator.
+		impl->UpdateTrailsLogical();
+
 		impl->GenerateRenderPacketsAsync();
+
 		impl->UpdateSystems(frame);
 
 		if (impl->weather_manager && impl->weather_manager->IsEnabled()) {

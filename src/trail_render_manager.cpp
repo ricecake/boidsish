@@ -22,7 +22,7 @@ namespace Boidsish {
 
 		// Max trails (e.g. 200) * Max rings (1024) * Verts per ring (9)
 		// Verts per ring (9) is derived from TRAIL_SEGMENTS (8) + 1 for wrap-around
-		size_t vbo_elements = 200 * 1024 * 9 * 12; // Position(4) + Normal(4) + Color(4) = 12 floats
+		size_t vbo_elements = 200 * 1024 * 9 * 4 * 3; // Position(4) + Normal(4) + Color(4) = 12 floats
 		// Use GL_SHADER_STORAGE_BUFFER target because it's written by compute shader
 		tess_vbo_pb_ = std::make_unique<PersistentBuffer<float>>(GL_SHADER_STORAGE_BUFFER, vbo_elements, 3);
 
@@ -35,15 +35,15 @@ namespace Boidsish {
 			// Use glVertexAttribFormat/Binding to handle per-frame offsets efficiently
 			// pos (location 0)
 			glEnableVertexAttribArray(0);
-			glVertexAttribFormat(0, 4, GL_FLOAT, GL_FALSE, 0);
+			glVertexAttribFormat(0, 4, GL_FLOAT, GL_FALSE, (GLuint)0);
 			glVertexAttribBinding(0, 0);
 			// normal (location 1)
 			glEnableVertexAttribArray(1);
-			glVertexAttribFormat(1, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(float));
+			glVertexAttribFormat(1, 4, GL_FLOAT, GL_FALSE, (GLuint)(4 * sizeof(float)));
 			glVertexAttribBinding(1, 0);
 			// color (location 2)
 			glEnableVertexAttribArray(2);
-			glVertexAttribFormat(2, 4, GL_FLOAT, GL_FALSE, 8 * sizeof(float));
+			glVertexAttribFormat(2, 4, GL_FLOAT, GL_FALSE, (GLuint)(8 * sizeof(float)));
 			glVertexAttribBinding(2, 0);
 
 			// Bind the VBO segment for this frame using glBindVertexBuffer
@@ -51,9 +51,10 @@ namespace Boidsish {
 			glBindVertexBuffer(
 				0,
 				tess_vbo_pb_->GetBufferId(),
-				i * (tess_vbo_pb_->GetTotalSize() / 3),
-				12 * sizeof(float)
+				(GLintptr)(i * (tess_vbo_pb_->GetTotalSize() / 3)),
+				(GLsizei)(12 * sizeof(float))
 			);
+
 
 			// Create EBO with static index pattern for tube segments (triangle strip-like via triangles)
 			if (i == 0) {
@@ -191,8 +192,13 @@ namespace Boidsish {
 
 		auto&              alloc = it->second;
 		std::vector<float> raw_points;
-		raw_points.reserve(points.size() * 8);
-		for (const auto& p : points) {
+		size_t             num_points = points.size();
+		raw_points.reserve(alloc.max_points * 8);
+
+		// Flatten circular buffer into temporal order: oldest to newest
+		for (size_t i = 0; i < num_points; ++i) {
+			size_t      idx = is_full ? (head + i) % alloc.max_points : i;
+			const auto& p = points[idx];
 			raw_points.push_back(p.first.x);
 			raw_points.push_back(p.first.y);
 			raw_points.push_back(p.first.z);
@@ -204,9 +210,11 @@ namespace Boidsish {
 		}
 
 		pending_point_data_[trail_id] = std::move(raw_points);
-		alloc.head = head;
-		alloc.tail = tail;
-		alloc.is_full = is_full;
+		// Since we've already flattened the circular buffer into raw_points,
+		// the GPU should treat it as a linear buffer starting at 0.
+		alloc.head = 0;
+		alloc.tail = points.size();
+		alloc.is_full = false;
 		alloc.min_bound = min_bound;
 		alloc.max_bound = max_bound;
 		alloc.needs_upload = true;
@@ -259,7 +267,11 @@ namespace Boidsish {
 		for (auto& [id, data] : pending_point_data_) {
 			auto it = trail_allocations_.find(id);
 			if (it != trail_allocations_.end()) {
-				std::memcpy(points_ptr + it->second.points_offset * 8, data.data(), data.size() * sizeof(float));
+				std::memcpy(
+					points_ptr + it->second.points_offset * 8,
+					data.data(),
+					data.size() * sizeof(float)
+				);
 			}
 		}
 		pending_point_data_.clear();
@@ -267,6 +279,8 @@ namespace Boidsish {
 		uint32_t* instance_ptr = instances_ssbo_pb_->GetFrameDataPtr();
 		uint32_t  idx = 0;
 		for (const auto& [id, alloc] : trail_allocations_) {
+			if (idx + 12 > 200 * 12)
+				break;
 			instance_ptr[idx++] = static_cast<uint32_t>(alloc.points_offset);
 			instance_ptr[idx++] = static_cast<uint32_t>(alloc.head);
 			instance_ptr[idx++] = static_cast<uint32_t>(alloc.tail);
@@ -305,13 +319,16 @@ namespace Boidsish {
 
 		// 2. Dispatch tessellation compute shader
 		tess_shader_->use();
-		tess_shader_->setInt("u_num_instances", trail_allocations_.size());
+		int num_instances = static_cast<int>(idx / 12);
+		tess_shader_->setInt("u_num_instances", num_instances);
 		points_ssbo_pb_->BindRange(Constants::SsboBinding::TrailPoints());
 		instances_ssbo_pb_->BindRange(Constants::SsboBinding::TrailInstances());
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TrailSpineData(), spine_ssbo_);
 		tess_vbo_pb_->BindRange(Constants::SsboBinding::TrailGeneratedVBO());
 
-		glDispatchCompute(trail_allocations_.size(), 1, 1);
+		if (num_instances > 0) {
+			glDispatchCompute(num_instances, 1, 1);
+		}
 		glMemoryBarrier(GL_VERTEX_ATTRIB_ARRAY_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
 	}
 
@@ -344,6 +361,11 @@ namespace Boidsish {
 			uint32_t num_rings = (num_points - 1) * 4 + 1; // CURVE_SEGMENTS = 4
 			if (num_rings > 1024)
 				num_rings = 1024;
+
+			if (alloc.vertex_offset == 0 && id != 0) {
+				// Safety check: skip unallocated trails
+				continue;
+			}
 
 			RenderPacket packet;
 			packet.shader_handle = shader_handle;
