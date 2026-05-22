@@ -23,7 +23,8 @@ namespace Boidsish {
 		// Max trails (e.g. 200) * Max rings (1024) * Verts per ring (9)
 		// Verts per ring (9) is derived from TRAIL_SEGMENTS (8) + 1 for wrap-around
 		size_t vbo_elements = 200 * 1024 * 9 * 12; // Position(4) + Normal(4) + Color(4) = 12 floats
-		tess_vbo_pb_ = std::make_unique<PersistentBuffer<float>>(GL_ARRAY_BUFFER, vbo_elements, 3);
+		// Use GL_SHADER_STORAGE_BUFFER target because it's written by compute shader
+		tess_vbo_pb_ = std::make_unique<PersistentBuffer<float>>(GL_SHADER_STORAGE_BUFFER, vbo_elements, 3);
 
 		// Create 3 VAOs for rendering generated geometry
 		glGenVertexArrays(3, vao_);

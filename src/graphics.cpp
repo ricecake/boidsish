@@ -210,34 +210,54 @@ namespace Boidsish {
 			vbo_ = std::make_unique<PersistentBuffer<Vertex>>(GL_ARRAY_BUFFER, max_vertices, 3);
 			ebo_ = std::make_unique<PersistentBuffer<uint32_t>>(GL_ELEMENT_ARRAY_BUFFER, max_indices, 3);
 
-			glGenVertexArrays(1, &vao_);
-			glBindVertexArray(vao_);
+			glGenVertexArrays(3, vao_);
+			for (int i = 0; i < 3; ++i) {
+				glBindVertexArray(vao_[i]);
 
-			glBindBuffer(GL_ARRAY_BUFFER, vbo_->GetBufferId());
-			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo_->GetBufferId());
+				glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo_->GetBufferId());
 
-			// Set up attributes (matches Vertex)
-			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Position));
-			glEnableVertexAttribArray(0);
-			glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Normal));
-			glEnableVertexAttribArray(1);
-			glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, TexCoords));
-			glEnableVertexAttribArray(2);
-			glVertexAttribPointer(8, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Color));
-			glEnableVertexAttribArray(8);
+				// Set up attributes (matches Vertex)
+				// Use glVertexAttribFormat/Binding to handle per-frame offsets
+				// pos (location 0)
+				glEnableVertexAttribArray(0);
+				glVertexAttribFormat(0, 3, GL_FLOAT, GL_FALSE, (GLuint)offsetof(Vertex, Position));
+				glVertexAttribBinding(0, 0);
 
-			// Bone IDs
-			glEnableVertexAttribArray(9);
-			glVertexAttribIPointer(9, 4, GL_INT, sizeof(Vertex), (void*)offsetof(Vertex, m_BoneIDs));
+				// normal (location 1)
+				glEnableVertexAttribArray(1);
+				glVertexAttribFormat(1, 3, GL_FLOAT, GL_FALSE, (GLuint)offsetof(Vertex, Normal));
+				glVertexAttribBinding(1, 0);
 
-			// Bone Weights
-			glEnableVertexAttribArray(10);
-			glVertexAttribPointer(10, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, m_Weights));
+				// TexCoords (location 2)
+				glEnableVertexAttribArray(2);
+				glVertexAttribFormat(2, 2, GL_FLOAT, GL_FALSE, (GLuint)offsetof(Vertex, TexCoords));
+				glVertexAttribBinding(2, 0);
+
+				// Color (location 8)
+				glEnableVertexAttribArray(8);
+				glVertexAttribFormat(8, 3, GL_FLOAT, GL_FALSE, (GLuint)offsetof(Vertex, Color));
+				glVertexAttribBinding(8, 0);
+
+				// Bone IDs (location 9)
+				glEnableVertexAttribArray(9);
+				glVertexAttribIFormat(9, 4, GL_INT, (GLuint)offsetof(Vertex, m_BoneIDs));
+				glVertexAttribBinding(9, 0);
+
+				// Bone Weights (location 10)
+				glEnableVertexAttribArray(10);
+				glVertexAttribFormat(10, 4, GL_FLOAT, GL_FALSE, (GLuint)offsetof(Vertex, m_Weights));
+				glVertexAttribBinding(10, 0);
+
+				// Bind specific frame segment to binding point 0
+				glBindVertexBuffer(
+					0,
+					vbo_->GetBufferId(),
+					(GLintptr)(i * (vbo_->GetTotalSize() / 3)),
+					(GLsizei)sizeof(Vertex)
+				);
+			}
 
 			glBindVertexArray(0);
-
-			// Ensure all attribute arrays are disabled by default on the global VAO
-			// (actually they are part of VAO state, so this is fine)
 
 			static_v_limit_ = Constants::Class::Megabuffer::StaticVertexLimit();
 			static_i_limit_ = Constants::Class::Megabuffer::StaticIndexLimit();
@@ -249,10 +269,7 @@ namespace Boidsish {
 			dynamic_i_ptr_ = dynamic_i_start_;
 		}
 
-		~MegabufferImpl() override {
-			if (vao_)
-				glDeleteVertexArrays(1, &vao_);
-		}
+		~MegabufferImpl() override { glDeleteVertexArrays(3, vao_); }
 
 		MegabufferAllocation AllocateStatic(uint32_t vertex_count, uint32_t index_count) override {
 			std::lock_guard<std::mutex> lock(static_mutex_);
@@ -334,7 +351,7 @@ namespace Boidsish {
 			}
 		}
 
-		uint32_t GetVAO() const override { return vao_; }
+		uint32_t GetVAO() const override { return vao_[vbo_->GetCurrentBufferIndex()]; }
 
 		void AdvanceFrame() {
 			vbo_->AdvanceFrame();
@@ -345,9 +362,7 @@ namespace Boidsish {
 			dynamic_i_ptr_ = dynamic_i_start_;
 		}
 
-		uint32_t GetVertexFrameOffset() const {
-			return static_cast<uint32_t>(vbo_->GetFrameOffset() / sizeof(Vertex));
-		}
+		uint32_t GetVertexFrameOffset() const { return 0; }
 
 		uint32_t GetIndexFrameOffset() const {
 			return static_cast<uint32_t>(ebo_->GetFrameOffset() / sizeof(uint32_t));
@@ -356,7 +371,7 @@ namespace Boidsish {
 	private:
 		std::unique_ptr<PersistentBuffer<Vertex>>   vbo_;
 		std::unique_ptr<PersistentBuffer<uint32_t>> ebo_;
-		GLuint                                      vao_ = 0;
+		GLuint                                      vao_[3]{0, 0, 0};
 
 		size_t     static_v_ptr_ = 0;
 		size_t     static_i_ptr_ = 0;
@@ -3602,7 +3617,6 @@ namespace Boidsish {
 		impl->UpdateCamera();
 		impl->UpdateAudio();
 		impl->UpdateAtmosphere();
-		impl->UpdateTrailsLogical();
 
 		// Shadow scheduling needs FrameData, so we do a lightweight populate here.
 		// The full PopulateFrameData in Render() will overwrite with final values.
@@ -3621,6 +3635,9 @@ namespace Boidsish {
 		PROJECT_PROFILE_SCOPE("Render");
 		impl->RefreshFrameConfig();
 		impl->PrepareFrame();
+
+		// Sync trails to GPU buffers for the CURRENT frame segment
+		impl->UpdateTrailsLogical();
 
 		// Build this frame's data from the temporal chain
 		FrameData frame = impl->current_frame_.NextFrame();
