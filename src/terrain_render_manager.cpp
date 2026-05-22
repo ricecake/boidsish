@@ -56,6 +56,11 @@ namespace Boidsish {
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
+		chunk_grid_pbo_pb_ =
+			std::make_unique<PersistentBuffer<int16_t>>(GL_PIXEL_UNPACK_BUFFER, grid_size * grid_size, 3);
+		max_height_grid_pbo_pb_ =
+			std::make_unique<PersistentBuffer<float>>(GL_PIXEL_UNPACK_BUFFER, grid_size * grid_size, 3);
+
 		glGenTextures(1, &max_height_grid_texture_);
 		glBindTexture(GL_TEXTURE_2D, max_height_grid_texture_);
 		int mips = 1 + static_cast<int>(std::floor(std::log2(grid_size)));
@@ -193,6 +198,8 @@ namespace Boidsish {
 			glDeleteTextures(1, &chunk_grid_texture_);
 		if (max_height_grid_texture_)
 			glDeleteTextures(1, &max_height_grid_texture_);
+		chunk_grid_pbo_pb_.reset();
+		max_height_grid_pbo_pb_.reset();
 		if (terrain_data_ubo_)
 			glDeleteBuffers(1, &terrain_data_ubo_);
 		if (probe_ssbo_)
@@ -763,8 +770,14 @@ namespace Boidsish {
 			return;
 		}
 
-		std::vector<int16_t> slice_data(grid_size * grid_size, -1);
-		std::vector<float>   height_data(grid_size * grid_size, -10000.0f);
+		chunk_grid_pbo_pb_->AdvanceFrame();
+		max_height_grid_pbo_pb_->AdvanceFrame();
+
+		int16_t* slice_data = chunk_grid_pbo_pb_->GetFrameDataPtr();
+		float*   height_data = max_height_grid_pbo_pb_->GetFrameDataPtr();
+
+		std::fill_n(slice_data, grid_size * grid_size, -1);
+		std::fill_n(height_data, grid_size * grid_size, -10000.0f);
 
 		for (const auto& [key, chunk] : chunks_) {
 			int lx = key.first - origin_x;
@@ -779,11 +792,34 @@ namespace Boidsish {
 			}
 		}
 
+		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, chunk_grid_pbo_pb_->GetBufferId());
 		glBindTexture(GL_TEXTURE_2D, chunk_grid_texture_);
-		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, grid_size, grid_size, GL_RED_INTEGER, GL_SHORT, slice_data.data());
+		glTexSubImage2D(
+			GL_TEXTURE_2D,
+			0,
+			0,
+			0,
+			grid_size,
+			grid_size,
+			GL_RED_INTEGER,
+			GL_SHORT,
+			(void*)(uintptr_t)chunk_grid_pbo_pb_->GetFrameOffset()
+		);
 
+		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, max_height_grid_pbo_pb_->GetBufferId());
 		glBindTexture(GL_TEXTURE_2D, max_height_grid_texture_);
-		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, grid_size, grid_size, GL_RED, GL_FLOAT, height_data.data());
+		glTexSubImage2D(
+			GL_TEXTURE_2D,
+			0,
+			0,
+			0,
+			grid_size,
+			grid_size,
+			GL_RED,
+			GL_FLOAT,
+			(void*)(uintptr_t)max_height_grid_pbo_pb_->GetFrameOffset()
+		);
+		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 
 		GenerateMaxHeightMips();
 
