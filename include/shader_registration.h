@@ -91,6 +91,7 @@ namespace Boidsish {
 		T::RegisterConstant("RAW_HEIGHTMAP_BINDING", Constants::TextureUnit::TerrainRawHeightmap());
 		T::RegisterConstant("BAKED_HEIGHTMAP_BINDING", Constants::TextureUnit::TerrainHeightmap());
 		T::RegisterConstant("BAKED_PARAMS_BINDING", Constants::TextureUnit::TerrainBakedParams());
+		T::RegisterConstant("BAKED_DISPLACEMENT_BINDING", Constants::TextureUnit::TerrainDisplacement());
 
 		T::RegisterConstant("TERRAIN_CHUNK_GRID_BINDING", Constants::TextureUnit::TerrainChunkGrid());
 		T::RegisterConstant("TERRAIN_MAX_HEIGHT_BINDING", Constants::TextureUnit::TerrainMaxHeight());
@@ -100,6 +101,7 @@ namespace Boidsish {
 		T::RegisterConstant("BIOME_MAP_IMAGE_BINDING", Constants::TextureUnit::TerrainBiomeImage());
 		T::RegisterConstant("BAKED_HEIGHTMAP_IMAGE_BINDING", Constants::TextureUnit::TerrainHeightmapImage());
 		T::RegisterConstant("BAKED_PARAMS_IMAGE_BINDING", Constants::TextureUnit::TerrainBakedParamsImage());
+		T::RegisterConstant("BAKED_DISPLACEMENT_IMAGE_BINDING", Constants::TextureUnit::TerrainDisplacementImage());
 
 		T::RegisterConstant("TERRAIN_HORIZON_MAP_BINDING", Constants::TextureUnit::TerrainHorizonMap());
 		T::RegisterConstant("TERRAIN_SHADOW_MAP_BINDING", Constants::TextureUnit::TerrainShadowMap());

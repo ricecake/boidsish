@@ -17,6 +17,7 @@ const float NOISE_PERIOD = 8.0;
 
 #include "lygia/generative/pnoise.glsl"
 #include "lygia/generative/psrdnoise.glsl"
+#include "lygia/generative/random.glsl"
 
 // Helper to compute curl noise using finite differences with tiling simplex noise
 vec3 computeCurl(vec3 p, float period) {
@@ -68,10 +69,11 @@ float simplex3d_tiling(vec3 p, float period) {
 }
 
 // Tiling 3D Worley/Cellular noise
-float worley3d_tiling(vec3 p, float period) {
+vec2 worley3d_tiling(vec3 p, float period) {
 	vec3  i = floor(p);
 	vec3  f = fract(p);
-	float minDist = 1.0;
+	float minDistSq = 1.0;
+	float cellId = 0.0;
 	for (int z = -1; z <= 1; z++) {
 		for (int y = -1; y <= 1; y++) {
 			for (int x = -1; x <= 1; x++) {
@@ -80,11 +82,15 @@ float worley3d_tiling(vec3 p, float period) {
 				vec3 wrapped_coord = mod(i + neighbor, period);
 				vec3 point = hash33(wrapped_coord);
 				vec3 diff = neighbor + point - f;
-				minDist = min(minDist, dot(diff, diff));
+				float d = dot(diff, diff);
+				if (d < minDistSq) {
+					minDistSq = d;
+					cellId = random(point); // Use the x component of the cell's random point as the ID
+				}
 			}
 		}
 	}
-	return sqrt(minDist);
+	return vec2(sqrt(minDistSq), cellId);
 }
 
 // Tiling 3D FBM Perlin (using pnoise for classic Perlin)
@@ -126,7 +132,8 @@ void main() {
 	vec3 p_scaled = p * NOISE_PERIOD;
 
 	float n_simplex = simplex3d_tiling(p_scaled, NOISE_PERIOD) * 0.5 + 0.5;
-	float n_worley = 1.0 - worley3d_tiling(p_scaled, NOISE_PERIOD);
+	vec2  worley_data = worley3d_tiling(p_scaled, NOISE_PERIOD);
+	float n_worley = 1.0 - worley_data.x;
 	float n_fbm = fbm3d_tiling(p_scaled, NOISE_PERIOD) * 0.5 + 0.5;
 
 	// Warped FBM
@@ -150,5 +157,7 @@ void main() {
 	float n_ridge = ridge3d_tiling(p_scaled, NOISE_PERIOD);
 	float n_gradient = gradient3d_tiling(p_scaled, NOISE_PERIOD);
 
-	imageStore(extraNoiseTexture, texelCoord, vec4(n_ridge, n_gradient, 0.0, 1.0));
+	vec2  worley_coords = worley3d_tiling(p_scaled, NOISE_PERIOD);
+
+	imageStore(extraNoiseTexture, texelCoord, vec4(n_ridge, n_gradient, worley_coords));
 }
