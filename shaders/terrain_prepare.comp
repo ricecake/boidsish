@@ -95,31 +95,32 @@ uniform int       u_hizMipCount;
 uniform float     u_screenExpansion;
 uniform bool      u_enableOcclusionCulling;
 
-float getPatchTessLevel(vec3 center, float radius, PatchMetrics metrics, vec4 screenRect) {
-	float dist = distance(u_viewPos, center);
+float getPatchTessLevel(int slice, int patchX, int patchY, vec3 chunkOffset) {
+	if (slice < 0) return u_tessLevelMin;
+
+	int numPatchesPerChunkSide = [[PATCHES_PER_CHUNK_SIDE]];
+	int patchIdx = (slice * numPatchesPerChunkSide * numPatchesPerChunkSide) + (patchY * numPatchesPerChunkSide + patchX);
+	PatchMetrics metrics = patchMetrics[patchIdx];
+
+	float patchSize = float([[PATCH_SIZE]]) * u_worldScale;
+
+	vec3 patchCenter;
+	patchCenter.x = chunkOffset.x + (float(patchX) + 0.5) * patchSize;
+	patchCenter.z = chunkOffset.z + (float(patchY) + 0.5) * patchSize;
+	patchCenter.y = (metrics.min_y + metrics.max_y) * 0.5;
+
+	float dist = distance(u_viewPos, patchCenter);
+
+	// Screen-space metric (approximate without full projection for performance)
+	float screenImportance = clamp(200.0 * u_worldScale / dist, 0.0, 1.0);
 
 	// 1. PRIMARY DRIVER: PRE-COMPUTED VARIANCE
-	// This defines the "Maximum Potential Quality" this patch can have.
-	// Steep/overhanging terrain will have high variance, flat terrain low.
 	float maxPotential = mix(u_tessLevelMin, u_tessLevelMax, metrics.max_variance);
-
-	// 2. SCREEN-SPACE PIXEL SIZE METRIC
-	// We want to ensure triangles are not significantly smaller than a few pixels.
-	vec2 screenSize = (screenRect.zw - screenRect.xy) * vec2(u_hizSize);
-	float maxPixelDim = max(screenSize.x, screenSize.y);
-
-	// If the patch is very small on screen, we don't need much tessellation.
-	// 32x32 is our target pixel size for a patch before we start deducting heavily.
-	float screenImportance = smoothstep(2.0, 32.0, maxPixelDim);
 
 	// 3. DISTANCE DEDUCTION
 	float distFactor = exp(-dist * (0.002 / u_worldScale));
 
 	// 4. SILHOUETTE IMPORTANCE
-	// Silhouette edges need more tessellation to maintain smooth profiles.
-	// We use the dot product of view direction and average normal (approximated by UP for now, or curvature)
-	// but better is checking if it's at a silhouette.
-	// For now, let's use a combination of curvature and distance.
 	float silhouetteImportance = metrics.avg_curvature * (1.0 - smoothstep(200.0 * u_worldScale, 1000.0 * u_worldScale, dist));
 
 	// 5. COMBINE DEDUCTIONS
@@ -129,6 +130,35 @@ float getPatchTessLevel(vec3 center, float radius, PatchMetrics metrics, vec4 sc
 	float level = maxPotential * qualityScalar * u_tessQualityMultiplier;
 
 	return clamp(level, u_tessLevelMin, u_tessLevelMax);
+}
+
+float getNeighborLevel(int dx, int dy, int slice, int patchX, int patchY, vec3 chunkOffset) {
+	int npc = [[PATCHES_PER_CHUNK_SIDE]];
+	int nx = patchX + dx;
+	int ny = patchY + dy;
+	int nSlice = slice;
+	vec3 nChunkOffset = chunkOffset;
+
+	if (nx < 0 || nx >= npc || ny < 0 || ny >= npc) {
+		float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
+		ivec2 chunkCoord = ivec2(floor(chunkOffset.xz / scaledChunkSize + 0.5));
+		ivec2 localGridCoord = chunkCoord - u_originSize.xy;
+
+		ivec2 neighborLocalCoord = localGridCoord + ivec2(dx != 0 ? (dx < 0 ? -1 : 1) : 0, dy != 0 ? (dy < 0 ? -1 : 1) : 0);
+
+		if (neighborLocalCoord.x >= 0 && neighborLocalCoord.x < u_originSize.z &&
+			neighborLocalCoord.y >= 0 && neighborLocalCoord.y < u_originSize.z) {
+			nSlice = texelFetch(u_chunkGrid, neighborLocalCoord, 0).r;
+			nChunkOffset.x += float(dx != 0 ? (dx < 0 ? -1 : 1) : 0) * scaledChunkSize;
+			nChunkOffset.z += float(dy != 0 ? (dy < 0 ? -1 : 1) : 0) * scaledChunkSize;
+		} else {
+			nSlice = -1;
+		}
+		nx = (nx + npc) % npc;
+		ny = (ny + npc) % npc;
+	}
+
+	return getPatchTessLevel(nSlice, nx, ny, nChunkOffset);
 }
 
 bool projectAABB(vec3 aabbMin, vec3 aabbMax, mat4 vp, out vec4 screenRect, out float nearestDepth) {
@@ -290,19 +320,19 @@ void main() {
 	}
 	*/
 
-	// Calculate screen rect for tessellation metrics
-	vec4 screenRect = vec4(0.0, 0.0, 1.0, 1.0);
-	float nearestDepth = 0.0;
-	projectAABB(aabbMin, aabbMax, viewProjection, screenRect, nearestDepth);
-
-	// Calculate tessellation levels
-	float level = getPatchTessLevel(patchCenter, radius, metrics, screenRect);
-
 	// Visibility confirmed, allocate draw call
-	// uint outIdx = atomicAdd(count, 1);
 	uint outIdx = atomicAdd(command.instanceCount, 1);
 
 	patchVisibility[patchIdx] = 1;
+
+	// Tessellation level consistency:
+	// Compute level for us and our neighbors to avoid cracks at patch boundaries.
+	float levelSelf = getPatchTessLevel(slice, patchX, patchY, chunkOffset);
+
+	float levelL = getNeighborLevel(-1, 0, slice, patchX, patchY, chunkOffset);
+	float levelR = getNeighborLevel(1, 0, slice, patchX, patchY, chunkOffset);
+	float levelB = getNeighborLevel(0, -1, slice, patchX, patchY, chunkOffset);
+	float levelT = getNeighborLevel(0, 1, slice, patchX, patchY, chunkOffset);
 
 	// Patch Draw Data
 	PatchDrawData draw;
@@ -312,11 +342,12 @@ void main() {
 
 	// Patch Tess Levels
 	PatchTessLevels tess;
-	tess.outer[0] = level;
-	tess.outer[1] = level;
-	tess.outer[2] = level;
-	tess.outer[3] = level;
-	tess.inner[0] = level;
-	tess.inner[1] = level;
+	// OpenGL Quads: 0=Left(u=0), 1=Bottom(v=0), 2=Right(u=1), 3=Top(v=1)
+	tess.outer[0] = max(levelSelf, levelL);
+	tess.outer[1] = max(levelSelf, levelB);
+	tess.outer[2] = max(levelSelf, levelR);
+	tess.outer[3] = max(levelSelf, levelT);
+	tess.inner[0] = levelSelf;
+	tess.inner[1] = levelSelf;
 	patchTessLevels[outIdx] = tess;
 }
