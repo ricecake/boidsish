@@ -314,11 +314,11 @@ namespace Boidsish {
 
 			if (is_static) {
 				for (int i = 0; i < 3; ++i) {
-					Vertex* v_ptr = vbo_->GetFullBufferPtr() + (i * vbo_->GetElementCount()) + alloc.base_vertex;
+					Vertex* v_ptr = vbo_->GetFrameDataPtr(i) + alloc.base_vertex;
 					memcpy(v_ptr, vertices, v_count * sizeof(Vertex));
 
 					if (indices && i_count > 0) {
-						uint32_t* i_ptr = ebo_->GetFullBufferPtr() + (i * ebo_->GetElementCount()) + alloc.first_index;
+						uint32_t* i_ptr = ebo_->GetFrameDataPtr(i) + alloc.first_index;
 						memcpy(i_ptr, indices, i_count * sizeof(uint32_t));
 					}
 				}
@@ -345,9 +345,13 @@ namespace Boidsish {
 			dynamic_i_ptr_ = dynamic_i_start_;
 		}
 
-		uint32_t GetVertexFrameOffset() const { return vbo_->GetCurrentBufferIndex() * vbo_->GetElementCount(); }
+		uint32_t GetVertexFrameOffset() const {
+			return static_cast<uint32_t>(vbo_->GetFrameOffset() / sizeof(Vertex));
+		}
 
-		uint32_t GetIndexFrameOffset() const { return ebo_->GetCurrentBufferIndex() * ebo_->GetElementCount(); }
+		uint32_t GetIndexFrameOffset() const {
+			return static_cast<uint32_t>(ebo_->GetFrameOffset() / sizeof(uint32_t));
+		}
 
 	private:
 		std::unique_ptr<PersistentBuffer<Vertex>>   vbo_;
@@ -1391,19 +1395,6 @@ namespace Boidsish {
 			PROJECT_PROFILE_SCOPE(
 				layer == RenderLayer::Opaque ? "ExecuteRenderQueue::Opaque" : "ExecuteRenderQueue::Transparent"
 			);
-			// Integrate trails into the render queue for the transparent layer
-			if (layer == RenderLayer::Transparent && trail_render_manager && !is_shadow_pass) {
-				RenderContext context;
-				context.view = view_mat;
-				context.projection = proj_mat;
-				context.view_pos = camera_pos;
-				context.frustum = Frustum::FromViewProjection(view_mat, proj_mat);
-
-				trail_render_manager
-					->GetRenderPackets(queue.GetPacketsMutable(RenderLayer::Transparent), context, trail_shader_handle);
-				// Re-sort might be needed but typically transparent is sorted anyway.
-				// For now, assume it's fine or re-sort.
-			}
 
 			const auto& packets = queue.GetPackets(layer);
 			if (packets.empty())
@@ -2390,6 +2381,15 @@ namespace Boidsish {
 			context.frustum = Frustum::FromViewProjection(current_view_matrix, projection);
 			context.shader_table = &shader_table;
 			context.megabuffer = megabuffer.get();
+
+			// Add trails to the render queue
+			if (trail_render_manager) {
+				trail_render_manager->GetRenderPackets(
+					render_queue.GetPacketsMutable(RenderLayer::Transparent),
+					context,
+					trail_shader_handle
+				);
+			}
 
 			const size_t num_shapes = shapes.size();
 			const size_t chunk_size = 64;
