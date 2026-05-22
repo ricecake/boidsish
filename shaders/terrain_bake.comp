@@ -108,20 +108,27 @@ float calculateHeightAndParams(vec2 uv, int slice, vec2 worldOffset, float chunk
 	if (waterMask <= 0.0) {
 		vec3 worldPosScaled = worldPos * 2.0;
 		float rocks = fastWorley3d(worldPosScaled * 0.5);
+		float rockId = fastWorley3dId(worldPosScaled * 0.5);
 		float divots = fastSimplex3d(worldPosScaled * 1.0);
-		float random = 0.5+0.5*(fastWorley3d(worldPosScaled / 50.0) * fastBlueNoise(worldPosScaled.zx) * (1.0-smoothstep(1, 10, currentHeight)) * smoothstep(0.01, 1, currentHeight));
 
+		// Use Worley Cell ID to give each rock a slightly different height/properties
+		float rockHeightVar = rockId * 0.5 + 0.75;
+		float shapedRocks = pow(rocks, 0.5) * rockHeightVar;
+
+		float random = 0.5+0.5*(fastWorley3d(worldPosScaled / 50.0) * fastBlueNoise(worldPosScaled.zx) * (1.0-smoothstep(1, 10, currentHeight)) * smoothstep(0.01, 1, currentHeight));
 
 		// Substrate modulation
 		float substrateMod = mix(1.2, 0.4, clamp(substrateOutput * 0.5 + 0.5, 0.0, 1.0));
-		float dispMag = (1.75 * random + rocks * 1.15 - abs(divots) * 1.17) * substrateMod;
+		float dispMag = (1.75 * random + shapedRocks * 1.5 - abs(divots) * 1.17) * substrateMod;
 
 		// Intermittent jagged rock outcrops
 		float outcropNoise = fastWorley3d(worldPos * 0.05);
+		float outcropId = fastWorley3dId(worldPos * 0.05);
 		float outcropMask = smoothstep(0.7, 0.9, outcropNoise);
 		if (outcropMask > 0.0) {
 			float jagged = fastWorley3d(worldPos * 0.8) * 2.0;
-			dispMag += jagged * outcropMask * 5.0 * worldScale;
+			// Use outcropId to vary outcrop height
+			dispMag += jagged * outcropMask * (5.0 + outcropId * 3.0) * worldScale;
 			// Biome override: if it's a rock outcrop, use rock biome (let's say index 6 for rocky)
 			displacement.a = 6.0 / 255.0;
 		}

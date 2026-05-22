@@ -162,32 +162,12 @@ TerrainMaterial getBiomeMaterial(float height, float moisture, float noise) {
 
 	// Beach zone (0 - 3)
 	if (h < HEIGHT_BEACH_END) {
-		float rockFactor = (fastWorley3d(FragPos/125) *0.5 +0.5) * ((1- smoothstep(0, HEIGHT_BEACH_END, height)) + smoothstep(HEIGHT_TREELINE, HEIGHT_SNOW_START, height));
 		float wetness = 1.0 - smoothstep(0.0, HEIGHT_BEACH_END, h);
 
 		mat.albedo = mix(COL_SAND_DRY, COL_SAND_WET, wetness);
 		mat.roughness = mix(0.9, 0.4, wetness);
 		mat.normalScale = 40.0;
 		mat.normalStrength = mix(0.1, 0.05, wetness);
-
-		if (rockFactor  > 0.5) {
-			vec3 rockBoundary = voronoi((TexCoords+(noise*0.05))*int(50*mix(5, 0.1, smoothstep(50, 250, 20*int(realDist/20) ))));
-
-			float rockPalette = step(0.5, random(rockBoundary.xy));
-			vec3 color = palette( // Make this a curl noise?
-				random(rockBoundary.xy),
-				vec3(0.5, 0.5, 0.5), vec3(0.5, 0.5, 0.5),
-				mix(vec3(1.0, 1.0, 0.50), vec3(1.0, 1.0, 1.0), rockPalette),
-				mix(vec3(0.80, 0.90, 0.30), vec3(0.30, 0.20, 0.20), rockPalette)
-			);
-
-			vec3 rockColor = color * ((1-smoothstep(0.0, max(0.75, random(rockBoundary.xy)), rockBoundary.z)) * 0.8 + 0.2);
-
-			mat.albedo = mix(mat.albedo, rockColor, smoothstep(0.5, 1, rockFactor));
-			mat.roughness = mix(0.7, 0.1, wetness*smoothstep(0.01, 0.02, rockBoundary.z ));
-			mat.normalScale = 40.0;
-			mat.normalStrength = mix(0.1, 0.05, wetness);
-		}
 		return mat;
 	}
 
@@ -452,6 +432,96 @@ void main() {
 	finalMaterial.normalScale = mix(biomeMat.normalScale, cliffMat.normalScale, cliffMask);
 	finalMaterial.normalStrength = mix(biomeMat.normalStrength, cliffMat.normalStrength, cliffMask);
 
+	// ========================================================================
+	// Grass-based Tinting and AO baseline shift
+	// ========================================================================
+	float grassAO = 0.0;
+	vec3 perturbedNorm = norm;
+
+	// Sample biome for rock texturing and other uses
+	vec2  biomeUV = (TexCoords * uRawChunkSize + 0.5) / (uRawChunkSize + 1.0);
+	vec2  biomeInfo = texture(uBiomeMap, vec3(biomeUV, TextureSlice)).rg;
+	vec4 bakedDispInfo = texture(u_displacementArray, vec3(biomeUV, TextureSlice));
+	if (bakedDispInfo.a > 0.0) {
+		biomeInfo.x = bakedDispInfo.a;
+		biomeInfo.y = 0.0;
+	}
+
+	// ========================================================================
+	// Detailed Rock/Pebble Texturing
+	// ========================================================================
+	float rockWeight = cliffMask;
+
+	// Add beach/alpine rock spots that were previously in getBiomeMaterial
+	float height = FragPos.y;
+	float rockFactor = (fastWorley3d(FragPos/125.0) * 0.5 + 0.5) *
+	                  ((1.0 - smoothstep(0.0, HEIGHT_BEACH_END, height)) +
+					   smoothstep(HEIGHT_TREELINE, HEIGHT_SNOW_START, height));
+	rockWeight = max(rockWeight, smoothstep(0.5, 1.0, rockFactor));
+
+	// Use biome override from displacement alpha if present (6 = rocky)
+	if (int(biomeInfo.x * 255.0 + 0.5) == 6) {
+		rockWeight = 1.0;
+	}
+
+	if (rockWeight > 0.01 && (realDist + 50.0 * largeNoise) < 300.0) {
+		// Style variations based on biome index/override
+		// biomeInfo.x stores the biome index (0-7). 6 is specifically rocky outcrops.
+		float bIdx = biomeInfo.x * 255.0;
+
+		// Map biome indices to different scales/styles
+		// High idx (mountains/rock) = larger rocks, low idx (beach/lowlands) = smaller pebbles
+		float styleScale = mix(5.0, 1.5, smoothstep(0.0, 6.0, bIdx));
+
+		vec3 rockCoord = FragPos / worldScale * styleScale;
+
+		float worley = fastWorley3d(rockCoord);
+		float d = 1.0 - worley;
+		float id = fastWorley3dId(rockCoord);
+
+		// Color variation using cell ID and biome-specific palettes
+		float paletteSelector = random(vec2(id, bIdx * 0.1));
+
+		// Define palettes:
+		// Mountain/Outcrop (Idx 6): Dark grey/blue-ish
+		// Alpine/High (Idx 4-5): Warm grey/brown
+		// Lowland/Beach (Idx 0-2): Sandy/tan
+		vec3 pA = mix(vec3(0.5, 0.5, 0.5), vec3(0.4, 0.45, 0.5), smoothstep(4.0, 6.0, bIdx));
+		vec3 pB = mix(vec3(0.5, 0.5, 0.5), vec3(0.3, 0.3, 0.35), smoothstep(4.0, 6.0, bIdx));
+		vec3 pC = mix(vec3(0.8, 0.7, 0.6), vec3(0.9, 0.9, 0.95), smoothstep(4.0, 6.0, bIdx));
+		vec3 pD = mix(vec3(0.6, 0.5, 0.4), vec3(0.2, 0.2, 0.25), smoothstep(4.0, 6.0, bIdx));
+
+		vec3 rockColor = palette(paletteSelector, pA, pB, pC, pD);
+
+		// Detail and weathering
+		rockColor *= (smoothstep(0.0, 0.12, d) * 0.7 + 0.3);
+		float weathering = fastSimplex3d(rockCoord * 4.0) * 0.5 + 0.5;
+		rockColor *= (0.85 + 0.15 * weathering);
+
+		// Biome-based smoothness (rocks in wet/beach areas are smoother)
+		float targetRoughness = mix(0.6, 0.3, smoothstep(0.0, 0.1, d));
+		if (bIdx < 2.5) targetRoughness *= 0.7; // Beach/Lowland pebbles are smoother
+
+		finalMaterial.albedo = mix(finalMaterial.albedo, rockColor, rockWeight * 0.9);
+		finalMaterial.roughness = mix(finalMaterial.roughness, targetRoughness, rockWeight);
+
+		// Normal mapping for rocks using Worley gradient
+		float eps = 0.02;
+		float dX = (1.0 - fastWorley3d(rockCoord + vec3(eps, 0.0, 0.0))) - d;
+		float dZ = (1.0 - fastWorley3d(rockCoord + vec3(0.0, 0.0, eps))) - d;
+		vec3 rockNormalOffset = vec3(-dX, 0.0, -dZ) * (2.0 / eps);
+
+		// Scale normal intensity by biome (rugged mountains vs soft beach)
+		float normalIntensity = mix(0.2, 0.5, smoothstep(2.0, 6.0, bIdx));
+
+		// Apply normal offset in tangent space
+		vec3 v = abs(perturbedNorm.z) < 0.999 ? vec3(0, 0, 1) : vec3(1, 0, 0);
+		vec3 tangent = normalize(cross(perturbedNorm, v));
+		vec3 bitangent = cross(tangent, perturbedNorm);
+
+		perturbedNorm = normalize(perturbedNorm + (tangent * rockNormalOffset.x + bitangent * rockNormalOffset.z) * rockWeight * normalIntensity);
+	}
+
 	// Large-scale macro color shifts
 	finalMaterial.albedo *= (1.0 + macroNoise * 0.12);
 
@@ -476,12 +546,6 @@ void main() {
 	// ========================================================================
 	// Apply the extracted color mapping using the data passed from the tessellation shader
 	finalMaterial.albedo = applyErosionColorMappingDefault(finalMaterial.albedo, vRidgeMap, vErosionDelta);
-
-	// ========================================================================
-	// Grass-based Tinting and AO baseline shift
-	// ========================================================================
-	float grassAO = 0.0;
-	vec3 perturbedNorm = norm;
 	float stepDist = 50*int(realDist/50);
 	float freqScale = mix(1.0, 0.25, smoothstep(150.0, 160.0, stepDist + 50.0 * largeNoise));
 	freqScale = mix(5.0, freqScale, smoothstep(45, 50, stepDist));
@@ -586,17 +650,7 @@ void main() {
 		vec3  scaledFragPos = FragPos / worldScale;
 
 		// Sample biome noise type (using unused params.w)
-		vec2  biomeUV = (TexCoords * uRawChunkSize + 0.5) / (uRawChunkSize + 1.0);
-		vec2  biomeInfo = texture(uBiomeMap, vec3(biomeUV, TextureSlice)).rg;
-
-	// Baked biome override
-	vec4 bakedDisp = texture(u_displacementArray, vec3(biomeUV, TextureSlice));
-	if (bakedDisp.a > 0.0) {
-		biomeInfo.x = bakedDisp.a;
-		biomeInfo.y = 0.0; // Full override
-	}
-
-	float noiseTypeA = u_biomes[int(biomeInfo.x * 255.0 + 0.5)].params.w;
+		float noiseTypeA = u_biomes[int(biomeInfo.x * 255.0 + 0.5)].params.w;
 		float noiseTypeB = u_biomes[min(int(biomeInfo.x) + 1, 7)].params.w;
 		float noiseType = mix(noiseTypeA, noiseTypeB, biomeInfo.y);
 
