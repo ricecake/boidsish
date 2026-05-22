@@ -27,9 +27,9 @@ float fastWorley3d(vec3 p) {
 	return textureLod(u_noiseTexture, p, 0.0).g;
 }
 
-// B: FBM 3D
-float fastFbm3d(vec3 p) {
-	return textureLod(u_noiseTexture, p, 0.0).b * 2.0 - 1.0;
+// B: Worley Cell ID 3D
+float fastWorley3dId(vec3 p) {
+	return textureLod(u_noiseTexture, p, 0.0).b;
 }
 
 // A: Warped FBM 3D
@@ -46,6 +46,11 @@ float fastRidge3d(vec3 p) {
 // G: Gradient 3D
 float fastGradient3d(vec3 p) {
 	return textureLod(u_extraNoiseTexture, p, 0.0).g * 2.0 - 1.0;
+}
+
+// B: FBM 3D
+float fastFbm3d(vec3 p) {
+	return textureLod(u_extraNoiseTexture, p, 0.0).b * 2.0 - 1.0;
 }
 
 // Multi-octave texture FBM
