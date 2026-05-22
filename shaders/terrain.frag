@@ -491,7 +491,7 @@ void main() {
 	if (u_grassGlobal.enabled != 0 && freezingScale == 0) {
 
 		vec2  biomeUV = (TexCoords * uRawChunkSize + 0.5) / (uRawChunkSize + 1.0);
-		vec2  biomeData = texture(uBiomeMap, vec3(biomeUV, TextureSlice)).rg;
+		vec4  biomeData = texture(uBiomeMap, vec3(biomeUV, TextureSlice));
 
 		// Baked biome override
 		vec4 bakedDispGrass = texture(u_displacementArray, vec3(biomeUV, TextureSlice));
@@ -597,7 +597,7 @@ void main() {
 
 		// Sample biome noise type (using unused params.w)
 		vec2  biomeUV = (TexCoords * uRawChunkSize + 0.5) / (uRawChunkSize + 1.0);
-		vec2  biomeInfo = texture(uBiomeMap, vec3(biomeUV, TextureSlice)).rg;
+		vec4  biomeInfo = texture(uBiomeMap, vec3(biomeUV, TextureSlice));
 
 	// Baked biome override
 	vec4 bakedDisp = texture(u_displacementArray, vec3(biomeUV, TextureSlice));

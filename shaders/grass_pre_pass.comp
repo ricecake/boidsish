@@ -32,7 +32,8 @@ struct PatchMetrics {
 	float avg_curvature;
 	float avg_roughness;
 	float avg_grass_density;
-	float _pad[3];
+	float max_variance;
+	float _pad[2];
 };
 
 layout(std430, binding = [[TERRAIN_PATCH_METRICS_BINDING]]) readonly buffer TerrainPatchMetrics {

@@ -317,7 +317,8 @@ namespace Boidsish {
 			float avg_curvature;
 			float avg_roughness;
 			float avg_grass_density;
-			float _pad[3];
+			float max_variance;
+			float _pad[2];
 		};
 
 		struct PatchDrawData {

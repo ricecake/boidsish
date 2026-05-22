@@ -189,13 +189,30 @@ void main() {
 	vec4 bakedParams = s_params[localID.x + 2][localID.y + 2];
 	vec3 bakedDisplacement = s_displacements[localID.x + 2][localID.y + 2];
 
+	// --- VARIANCE CALCULATION ---
+	// Variance is calculated in a 3x3 neighborhood using shared memory.
+	// We look at the total "verticality" (height + displacement magnitude).
+	float maxV = -1e30;
+	float minV = 1e30;
+
+	for (int ni = 1; ni <= 3; ++ni) {
+		for (int nj = 1; nj <= 3; ++nj) {
+			float h = s_heights[localID.x + ni][localID.y + nj];
+			vec3 d = s_displacements[localID.x + ni][localID.y + nj];
+			float v = h + length(d);
+			maxV = max(maxV, v);
+			minV = min(minV, v);
+		}
+	}
+	// Normalized variance proxy for tessellation (0.0 to 1.0 range)
+	// Scaling by worldScale since heights are world-space.
+	float variance = clamp((maxV - minV) / (4.0 * worldScale), 0.0, 1.0);
+	bakedParams.a = variance; // Store variance in Alpha instead of waterMask
+
 	// Sample biome to preserve override if not set by outcrop
 	vec4 biomeData = imageLoad(u_biomeMap, ivec3(pixelCoord, slice));
-	float biomeOverride = 0.0;
 
 	// If calculateHeightAndParams set an override (e.g. for outcrops), use it
-	// We need to re-run part of calculateHeightAndParams logic or pass it through shared memory
-	// For simplicity, let's just re-calculate displacement and override here for the center pixel
 	vec2 uvCenter = vec2(pixelCoord) / rawChunkSize;
 	vec4 paramsCenter;
 	vec4 dispCenter;
@@ -207,5 +224,8 @@ void main() {
 
 	// Mark as baked in the biome map (B channel)
 	biomeData.b = 1.0;
+	// Relocate waterMask to biome map Alpha channel
+	biomeData.a = s_params[localID.x + 2][localID.y + 2].w;
+
 	imageStore(u_biomeMap, ivec3(pixelCoord, slice), biomeData);
 }
