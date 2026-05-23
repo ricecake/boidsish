@@ -10,10 +10,21 @@
 #include "constants.h"
 #include "biome_properties.h"
 #include "render_shader.h"
+#include "persistent_buffer.h"
 
 namespace Boidsish {
 
     class ServiceLocator;
+
+    struct GrassInstance {
+        glm::vec4 pos_rot; // xyz = world pos, w = rotation
+        glm::vec4 scale_seed_biome; // x = height, y = width, z = seed, w = biome index
+    };
+
+    struct GrassTask {
+        glm::vec4 patch_offset_and_scale; // xyz = world offset, w = patch size
+        glm::vec4 data;                  // x = distance, y = slice, z = lodIndex, w = unused
+    };
 
     struct GrassProperties {
         glm::vec4 colorTop = glm::vec4(0.3f, 0.8f, 0.2f, 1.0f);
@@ -51,7 +62,24 @@ namespace Boidsish {
         ~GrassManager();
 
         void Initialize();
-        void Update(float deltaTime, float time, const struct Camera& camera, const class ITerrainGenerator& terrainGen, std::shared_ptr<class TerrainRenderManager> renderManager);
+
+        /**
+         * @brief CPU-side preparation for grass placement.
+         * Can be called from an async thread.
+         */
+        void PrepareUpdate(float deltaTime, float time, const struct Camera& camera, const class ITerrainGenerator& terrainGen, std::shared_ptr<class TerrainRenderManager> renderManager);
+
+        /**
+         * @brief GPU-side dispatch for grass placement.
+         * Must be called from the main thread.
+         */
+        void ApplyUpdate(const struct Camera& camera, const class ITerrainGenerator& terrainGen, std::shared_ptr<class TerrainRenderManager> renderManager);
+
+        // Deprecated, use PrepareUpdate/ApplyUpdate
+        void Update(float deltaTime, float time, const struct Camera& camera, const class ITerrainGenerator& terrainGen, std::shared_ptr<class TerrainRenderManager> renderManager) {
+            PrepareUpdate(deltaTime, time, camera, terrainGen, renderManager);
+            ApplyUpdate(camera, terrainGen, renderManager);
+        }
 
         struct RenderResources {
             uint32_t lightingUbo;
@@ -91,7 +119,7 @@ namespace Boidsish {
             props_dirty_ = true;
         }
 
-        uint32_t GetGrassPropsUbo() const { return grass_props_ubo_; }
+        uint32_t GetGrassPropsUbo() const { return grass_props_pb_ ? grass_props_pb_->GetBufferId() : 0; }
 
     private:
         bool initialized_ = false;
@@ -100,25 +128,20 @@ namespace Boidsish {
         GlobalGrassProperties global_props_;
         bool props_dirty_ = false;
 
-        uint32_t grass_props_ubo_ = 0;
-        uint32_t grass_instances_ssbo_ = 0;
-        uint32_t grass_indirect_buffer_ = 0;
-        uint32_t grass_tasks_ssbo_ = 0;
+        struct GrassPropsData {
+            GrassProperties biomes[8];
+            GlobalGrassProperties global;
+        };
+
+        std::unique_ptr<PersistentBuffer<GrassPropsData>> grass_props_pb_;
+        std::unique_ptr<PersistentBuffer<GrassInstance>> grass_instances_pb_;
+        std::unique_ptr<PersistentBuffer<struct DrawArraysIndirectCommand>> grass_indirect_pb_;
+        std::unique_ptr<PersistentBuffer<uint8_t>> grass_tasks_pb_;
 
         std::unique_ptr<class ComputeShader> placement_shader_;
         std::unique_ptr<class ComputeShader> pre_pass_shader_;
         std::unique_ptr<class ComputeShader> fixup_shader_;
         std::shared_ptr<class Shader> grass_shader_;
-
-        struct GrassInstance {
-            glm::vec4 pos_rot; // xyz = world pos, w = rotation
-            glm::vec4 scale_seed_biome; // x = height, y = width, z = seed, w = biome index
-        };
-
-        struct GrassTask {
-            glm::vec4 patch_offset_and_scale; // xyz = world offset, w = patch size
-            glm::vec4 data;                  // x = distance, y = slice, z = lodIndex, w = unused
-        };
 
         static constexpr uint32_t kMaxGrassInstances = 1024 * 1024; // 1M blades
         static constexpr uint32_t kMaxGrassTasks = 16384;

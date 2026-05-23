@@ -7,9 +7,11 @@
 #include "constants.h"
 #include "gpu_resource_registry.h"
 #include "graphics.h" // For Frustum
+#include "logger.h"
 #include "profiler.h"
 #include "service_locator.h"
 #include "shader.h"
+#include <cstring>
 
 namespace Boidsish {
 
@@ -123,10 +125,8 @@ namespace Boidsish {
 
 		// Create instance buffer first so we can set up VAO attributes
 		// Pre-allocate for max_chunks to avoid reallocation
-		glGenBuffers(1, &instance_vbo_);
-		glBindBuffer(GL_ARRAY_BUFFER, instance_vbo_);
+		instance_pb_ = std::make_unique<PersistentBuffer<InstanceData>>(GL_ARRAY_BUFFER, max_chunks, 3);
 		instance_buffer_capacity_ = max_chunks * sizeof(InstanceData);
-		glBufferData(GL_ARRAY_BUFFER, instance_buffer_capacity_, nullptr, GL_DYNAMIC_DRAW);
 
 		CreateGridMesh();
 		// Create patch mesh
@@ -146,10 +146,29 @@ namespace Boidsish {
 			glGenBuffers(1, &patch_vbo_);
 			glBindBuffer(GL_ARRAY_BUFFER, patch_vbo_);
 			glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), vertices.data(), GL_STATIC_DRAW);
-			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
+
+			glVertexAttribFormat(0, 3, GL_FLOAT, GL_FALSE, 0);
+			glVertexAttribBinding(0, 0);
 			glEnableVertexAttribArray(0);
-			glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
+
+			glVertexAttribFormat(1, 2, GL_FLOAT, GL_FALSE, 3 * sizeof(float));
+			glVertexAttribBinding(1, 0);
 			glEnableVertexAttribArray(1);
+
+			// Instance attributes for patch rendering (legacy path, not used by current MDI)
+			// But good for consistency.
+			glVertexAttribFormat(3, 4, GL_FLOAT, GL_FALSE, offsetof(InstanceData, world_offset_and_slice));
+			glVertexAttribBinding(3, 1);
+			glEnableVertexAttribArray(3);
+			glVertexAttribDivisor(3, 1);
+
+			glVertexAttribFormat(4, 4, GL_FLOAT, GL_FALSE, offsetof(InstanceData, bounds));
+			glVertexAttribBinding(4, 1);
+			glEnableVertexAttribArray(4);
+			glVertexAttribDivisor(4, 1);
+
+			glBindVertexBuffer(0, patch_vbo_, 0, 5 * sizeof(float));
+
 			glGenBuffers(1, &patch_ebo_);
 			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, patch_ebo_);
 			glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), indices.data(), GL_STATIC_DRAW);
@@ -171,8 +190,7 @@ namespace Boidsish {
 			glDeleteBuffers(1, &grid_vbo_);
 		if (grid_ebo_)
 			glDeleteBuffers(1, &grid_ebo_);
-		if (instance_vbo_)
-			glDeleteBuffers(1, &instance_vbo_);
+		instance_pb_.reset();
 		if (raw_heightmap_texture_)
 			glDeleteTextures(1, &raw_heightmap_texture_);
 		if (heightmap_texture_)
@@ -279,25 +297,28 @@ namespace Boidsish {
 		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, grid_ebo_);
 		glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), indices.data(), GL_STATIC_DRAW);
 
-		// Set up instance attributes (from instance_vbo_ created in constructor)
-		glBindBuffer(GL_ARRAY_BUFFER, instance_vbo_);
+		// Use modern vertex attribute binding
+		glVertexAttribFormat(0, 3, GL_FLOAT, GL_FALSE, 0);
+		glVertexAttribBinding(0, 0);
+		glEnableVertexAttribArray(0);
 
-		// Instance attribute: world_offset_and_slice (location 3)
-		glVertexAttribPointer(
-			3,
-			4,
-			GL_FLOAT,
-			GL_FALSE,
-			sizeof(InstanceData),
-			(void*)offsetof(InstanceData, world_offset_and_slice)
-		);
+		glVertexAttribFormat(1, 2, GL_FLOAT, GL_FALSE, 3 * sizeof(float));
+		glVertexAttribBinding(1, 0);
+		glEnableVertexAttribArray(1);
+
+		// Instance attributes
+		glVertexAttribFormat(3, 4, GL_FLOAT, GL_FALSE, offsetof(InstanceData, world_offset_and_slice));
+		glVertexAttribBinding(3, 1);
 		glEnableVertexAttribArray(3);
-		glVertexAttribDivisor(3, 1); // Per-instance
+		glVertexAttribDivisor(3, 1);
 
-		// Instance attribute: bounds (location 4)
-		glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, sizeof(InstanceData), (void*)offsetof(InstanceData, bounds));
+		glVertexAttribFormat(4, 4, GL_FLOAT, GL_FALSE, offsetof(InstanceData, bounds));
+		glVertexAttribBinding(4, 1);
 		glEnableVertexAttribArray(4);
-		glVertexAttribDivisor(4, 1); // Per-instance
+		glVertexAttribDivisor(4, 1);
+
+		// Bind static VBO to binding point 0
+		glBindVertexBuffer(0, grid_vbo_, 0, 5 * sizeof(float));
 
 		glBindVertexArray(0);
 	}
@@ -723,15 +744,18 @@ namespace Boidsish {
 				instance.bounds.z = static_cast<float>(chunk_size_);
 			}
 
-			// Use internal instance_vbo_ but bind as SSBO for prepare shader
-			glBindBuffer(GL_SHADER_STORAGE_BUFFER, instance_vbo_);
-			size_t required_size = visible_instances_.size() * sizeof(InstanceData);
-			if (required_size > instance_buffer_capacity_) {
-				instance_buffer_capacity_ = required_size * 2;
-				glBufferData(GL_SHADER_STORAGE_BUFFER, instance_buffer_capacity_, nullptr, GL_DYNAMIC_DRAW);
+			size_t required_elements = visible_instances_.size();
+			if (required_elements > instance_pb_->GetElementCount()) {
+				// Growing a PersistentBuffer requires recreation.
+				// We'll perform a synchronous resize here to maintain robustness.
+				logger::WARNING("Terrain instance buffer overflow, resizing to " + std::to_string(required_elements * 2));
+				instance_pb_ = std::make_unique<PersistentBuffer<InstanceData>>(GL_ARRAY_BUFFER, required_elements * 2, 3);
+				instance_buffer_capacity_ = required_elements * 2 * sizeof(InstanceData);
+			} else {
+				instance_pb_->AdvanceFrame();
 			}
-			glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, required_size, visible_instances_.data());
-			glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+
+			std::memcpy(instance_pb_->GetFrameDataPtr(), visible_instances_.data(), required_elements * sizeof(InstanceData));
 		}
 	}
 
@@ -1057,7 +1081,13 @@ namespace Boidsish {
 			patch_indirect_pb_->GetTotalSize() / 3
 		);
 
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::IndirectionBuffer(), instance_vbo_);
+		glBindBufferRange(
+			GL_SHADER_STORAGE_BUFFER,
+			Constants::SsboBinding::IndirectionBuffer(),
+			instance_pb_->GetBufferId(),
+			instance_pb_->GetFrameOffset(),
+			instance_pb_->GetElementCount() * sizeof(InstanceData)
+		);
 		if (temporal_data_ubo_ != 0) {
 			if (temporal_data_ubo_size_ > 0) {
 				glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::TemporalData(),
@@ -1139,6 +1169,11 @@ namespace Boidsish {
 		if (needs_prep_) {
 			DispatchPreparePatches(tess_quality_multiplier);
 		}
+
+		// Update VAO to use the current frame's instance data offset
+		glBindVertexArray(patch_vao_);
+		glBindVertexBuffer(1, instance_pb_->GetBufferId(), instance_pb_->GetFrameOffset(), sizeof(InstanceData));
+		glBindVertexArray(0);
 
 		// 2. Render visible patches using MDI
 		shader.use();
