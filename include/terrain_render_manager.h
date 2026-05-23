@@ -111,7 +111,7 @@ namespace Boidsish {
 		 * @brief Dispatch GPU preparation of terrain patches.
 		 * Performs frustum and occlusion culling on the GPU.
 		 */
-		void DispatchPreparePatches(float tess_quality_multiplier);
+		void DispatchPreparePatches(float tess_quality_multiplier, const glm::vec2& viewport_size);
 
 		/**
 		 * @brief Dispatch probe update compute shader.

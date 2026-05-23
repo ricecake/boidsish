@@ -2572,7 +2572,7 @@ namespace Boidsish {
 
 				// 3. Dispatch terrain patch preparation (GPU culling/LOD)
 				// This populates the visibility SSBO that grass system needs.
-				terrain_render_manager->DispatchPreparePatches(effective_quality);
+				terrain_render_manager->DispatchPreparePatches(effective_quality, glm::vec2(render_width, render_height));
 
 				// 4. Update grass system
 				grass_manager->Update(
