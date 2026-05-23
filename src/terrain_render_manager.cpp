@@ -1077,7 +1077,7 @@ namespace Boidsish {
 		}
 
 		patch_prepare_shader_->setInt("u_numChunks", static_cast<int>(visible_instances_.size()));
-		patch_prepare_shader_->setFloat("u_tessLevelMax", 8.0f);
+		patch_prepare_shader_->setFloat("u_tessLevelMax", 16.0f);
 		patch_prepare_shader_->setFloat("u_tessLevelMin", 2.0f);
 		patch_prepare_shader_->setFloat("u_tessQualityMultiplier", tess_quality_multiplier);
 		patch_prepare_shader_->setFloat("u_worldScale", last_world_scale_);

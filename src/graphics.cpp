@@ -1811,8 +1811,10 @@ namespace Boidsish {
 
 			// Use batched render manager if available (single draw call for all chunks)
 			if (terrain_render_manager) {
+				glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 				terrain_render_manager
 					->Render(*Terrain::terrain_shader_, view, proj, viewport_size, clip_plane, effective_quality);
+				glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 			} else {
 				// Fallback to per-chunk rendering
 				Terrain::terrain_shader_->use();

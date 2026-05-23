@@ -191,23 +191,34 @@ void main() {
 
 	// --- VARIANCE CALCULATION ---
 	// Variance is calculated in a 3x3 neighborhood using shared memory.
-	// We look at the total "verticality" (height + displacement magnitude).
-	float maxV = -1e30;
-	float minV = 1e30;
+	float centerV = 0.0;
+	float sumNeighbors = 0.0;
+	float numNeighbors = 0.0;
 
 	for (int ni = 1; ni <= 3; ++ni) {
 		for (int nj = 1; nj <= 3; ++nj) {
 			float h = s_heights[localID.x + ni][localID.y + nj];
 			vec3 d = s_displacements[localID.x + ni][localID.y + nj];
 			float v = h + length(d);
-			maxV = max(maxV, v);
-			minV = min(minV, v);
+
+			// Assuming your center pixel in this 3x3 is at ni=2, nj=2
+			if (ni == 2 && nj == 2) {
+				centerV = v;
+			} else {
+				sumNeighbors += v;
+				numNeighbors += 1.0;
+			}
 		}
 	}
-	// Normalized variance proxy for tessellation (0.0 to 1.0 range)
-	// Scaling by worldScale since heights are world-space.
-	float variance = clamp((maxV - minV) / (4.0 * worldScale), 0.0, 1.0);
-	bakedParams.a = variance; // Store variance in Alpha instead of waterMask
+
+	float avgNeighbors = sumNeighbors / numNeighbors;
+
+	// 'deviation' is the literal, physical error (in world-space units)
+	// that would occur if we rendered this area as a single flat polygon.
+	float deviation = abs(centerV - avgNeighbors);
+
+	// Do NOT clamp to 0.0 - 1.0. Just store the raw physical deviation.
+	bakedParams.a = deviation;
 
 	// Sample biome to preserve override if not set by outcrop
 	vec4 biomeData = imageLoad(u_biomeMap, ivec3(pixelCoord, slice));

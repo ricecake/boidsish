@@ -95,7 +95,6 @@ float getVertexTessLevel(int slice, vec2 uv, vec2 chunkOffsetXZ) {
 	vec4  hData = textureLod(u_heightmapArray, vec3(remappedUV, float(slice)), 0.0);
 	float h = hData.r;
 	vec3  norm = normalize(hData.gba);
-	float variance = textureLod(u_bakedParamsArray, vec3(remappedUV, float(slice)), 0.0).a;
 
 	vec3 worldPos = vec3(chunkOffsetXZ.x + uv.x * u_terrainParams.x * u_terrainParams.y,
 	                     h,
@@ -103,8 +102,22 @@ float getVertexTessLevel(int slice, vec2 uv, vec2 chunkOffsetXZ) {
 
 	float dist = distance(u_viewPos, worldPos);
 
-	// 1. VARIANCE BASE
-	float maxPotential = mix(u_tessLevelMin, u_tessLevelMax, variance);
+	// 1. Fetch the absolute world-space deviation we baked
+	float physicalDeviation = texture(u_bakedParamsArray, vec3(remappedUV, float(slice))).a;
+
+	// 2. Define your engineering thresholds
+	float maxHardwareTess = 64.0;
+	float physicalPatchSize = float([[PATCH_SIZE]]) * u_worldScale;
+	float maxResolvableDetail = physicalPatchSize / maxHardwareTess; // e.g., 0.5 meters
+
+	// 3. How much error are we willing to accept?
+	// (This can be scaled by distance! Close up = 0.1m, Far away = 2.0m)
+	float acceptableError = mix(0.2, 2.0, smoothstep(50, 300, dist));
+
+	// 4. Calculate the required tessellation to satisfy the error
+	// If deviation is 2.0 meters, and we only accept 0.2 meters of error,
+	// we need a multiplier of 10.
+	float maxPotential = physicalDeviation / acceptableError;
 
 	// 2. SCREEN IMPORTANCE (Approximate)
 	float screenImportance = clamp(200.0 * u_worldScale / dist, 0.0, 1.0);
@@ -120,7 +133,7 @@ float getVertexTessLevel(int slice, vec2 uv, vec2 chunkOffsetXZ) {
 	float qualityScalar = max(distFactor, silhouetteImportance);
 	qualityScalar = mix(0.1, 1.0, qualityScalar * screenImportance);
 
-	return clamp(maxPotential * qualityScalar * u_tessQualityMultiplier, u_tessLevelMin, u_tessLevelMax);
+	return clamp(maxPotential * qualityScalar * u_tessQualityMultiplier, max(u_tessLevelMin, maxPotential), min(u_tessLevelMax, maxHardwareTess));
 }
 
 bool projectAABB(vec3 aabbMin, vec3 aabbMax, mat4 vp, out vec4 screenRect, out float nearestDepth) {
