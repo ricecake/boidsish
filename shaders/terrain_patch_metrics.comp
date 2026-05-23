@@ -90,10 +90,12 @@ void main() {
 
 	int patchSize = [[PATCH_SIZE]];
 	ivec2 basePixel = patchCoord * patchSize;
+	int res = [[PATCHES_PER_CHUNK_SIDE]] * patchSize + 1;
 
-	for (int y = 0; y <= patchSize; ++y) {
-		for (int x = 0; x <= patchSize; ++x) {
-			ivec2 pixelCoord = basePixel + ivec2(x, y);
+	// Overscan by 1 pixel to ensure boundary-aware variance and bounds
+	for (int y = -1; y <= patchSize + 1; ++y) {
+		for (int x = -1; x <= patchSize + 1; ++x) {
+			ivec2 pixelCoord = clamp(basePixel + ivec2(x, y), 0, res - 1);
 			vec4 data = texelFetch(u_heightmapArray, ivec3(pixelCoord, slice), 0);
 			float h = data.r;
 			vec3 norm = data.gba;

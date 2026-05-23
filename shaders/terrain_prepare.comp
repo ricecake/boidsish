@@ -80,6 +80,7 @@ uniform float u_tessLevelMax;
 uniform float u_tessLevelMin;
 uniform float u_tessQualityMultiplier;
 uniform vec2  u_viewportSize;
+uniform float u_lodProjectionScalar;
 uniform float u_worldScale;
 uniform vec3  u_viewPos;
 uniform vec3  u_viewDir;
@@ -91,44 +92,55 @@ uniform int       u_hizMipCount;
 uniform float     u_screenExpansion;
 uniform bool      u_enableOcclusionCulling;
 
-float getVertexTessLevel(int slice, vec2 uv, vec2 chunkOffsetXZ) {
+vec3 getWorldPos(vec2 uv, int slice, vec2 chunkOffsetXZ) {
 	vec2  remappedUV = (uv * u_terrainParams.x + 0.5) / (u_terrainParams.x + 1.0);
-	vec4  hData = textureLod(u_heightmapArray, vec3(remappedUV, float(slice)), 0.0);
-	float h = hData.r;
-	vec3  norm = normalize(hData.gba);
+	float h = textureLod(u_heightmapArray, vec3(remappedUV, float(slice)), 0.0).r;
+	return vec3(chunkOffsetXZ.x + uv.x * u_terrainParams.x * u_worldScale,
+	            h,
+	            chunkOffsetXZ.y + uv.y * u_terrainParams.x * u_worldScale);
+}
 
-	vec3 worldPos = vec3(chunkOffsetXZ.x + uv.x * u_terrainParams.x * u_worldScale,
-	                     h,
-	                     chunkOffsetXZ.y + uv.y * u_terrainParams.x * u_worldScale);
+float calculateEdgeTessellation(vec3 p0, vec3 p1, vec2 uv0, vec2 uv1, int slice) {
+	// 1. Calculate Distance
+	vec3  midPoint = (p0 + p1) * 0.5;
+	float distToCam = max(distance(u_viewPos, midPoint), 1.0 * u_worldScale);
 
-	float dist = max(distance(u_viewPos, worldPos), 1.0 * u_worldScale);
+	// Constants for quality
+	const float TARGET_EDGE_LENGTH_PIXELS = 16.0;
+	const float TARGET_ERROR_PIXELS = 1.0 / max(0.01, u_tessQualityMultiplier);
 
-	// 1. Fetch the absolute world-space deviation we baked (stored in alpha)
-	float physicalDeviation = textureLod(u_bakedParamsArray, vec3(remappedUV, float(slice)), 0.0).a;
+	// 2. The Baseline: Screen-Space Edge Length
+	float physicalEdgeLength = distance(p0, p1);
+	float pixelEdgeLength = (physicalEdgeLength * u_lodProjectionScalar) / distToCam;
+	float baseLevel = pixelEdgeLength / TARGET_EDGE_LENGTH_PIXELS;
 
-	// 2. SCREEN SPACE ERROR (SSE)
-	// Target pixel error (how many pixels of displacement we tolerate on screen)
-	// A value of 2.0 means we try to keep geometric error below 2 pixels.
-	float pixelErrorThreshold = 2.0 / max(0.01, u_tessQualityMultiplier);
+	// 3. The Detailer: Screen-Space Chordal Error (Deviation)
+	vec2 remappedUV0 = (uv0 * u_terrainParams.x + 0.5) / (u_terrainParams.x + 1.0);
+	vec2 remappedUV1 = (uv1 * u_terrainParams.x + 0.5) / (u_terrainParams.x + 1.0);
+	float dev0 = textureLod(u_bakedParamsArray, vec3(remappedUV0, float(slice)), 0.0).a;
+	float dev1 = textureLod(u_bakedParamsArray, vec3(remappedUV1, float(slice)), 0.0).a;
+	float physicalDeviation = (dev0 + dev1) * 0.5;
 
-	// SILHOUETTE BOOST: Decrease tolerated error (increase quality) on silhouettes
-	float silhouetteFactor = 1.0 - abs(dot(norm, normalize(u_viewPos - worldPos)));
-	float silhouetteImportance = silhouetteFactor * (1.0 - smoothstep(100.0 * u_worldScale, 800.0 * u_worldScale, dist));
-	pixelErrorThreshold /= (1.0 + silhouetteImportance * 4.0);
+	// SILHOUETTE BOOST
+	vec4 hData = textureLod(u_heightmapArray, vec3((remappedUV0 + remappedUV1) * 0.5, float(slice)), 0.0);
+	vec3 norm = normalize(hData.gba);
+	float silhouetteFactor = 1.0 - abs(dot(norm, normalize(u_viewPos - midPoint)));
+	float silhouetteImportance = silhouetteFactor * (1.0 - smoothstep(100.0 * u_worldScale, 800.0 * u_worldScale, distToCam));
 
-	// Formula for required tessellation 'T' to keep 'physicalDeviation' to 'pixelErrorThreshold' pixels:
-	// T = (physicalDeviation * focalLength * viewportHeight) / (2.0 * dist * pixelErrorThreshold)
-	// uProjection[1][1] is focalLength for Y (in NDC terms).
-	float sseTess = (physicalDeviation * uProjection[1][1] * u_viewportSize.y) / (2.0 * dist * pixelErrorThreshold);
+	float effectiveTargetError = TARGET_ERROR_PIXELS / (1.0 + silhouetteImportance * 4.0);
 
-	// 3. TRIANGLE SIZE CONSTRAINTS
-	// "Render triangles large enough to be seen" -> Don't tessellate more than what gives ~8 pixel triangles
+	float pixelDeviation = (physicalDeviation * u_lodProjectionScalar) / distToCam;
+	float errorLevel = pixelDeviation / effectiveTargetError;
+
+	// 4. Combine and Clamp
+	float finalLevel = max(baseLevel, errorLevel);
+
+	// Triangle size constraint to ensure triangles large enough to be seen (approx 8 pixels)
 	float physicalPatchSize = float([[PATCH_SIZE]]) * u_worldScale;
-	float patchSizeInPixels = (physicalPatchSize * uProjection[1][1] * u_viewportSize.y) / (2.0 * dist);
+	float patchSizeInPixels = (physicalPatchSize * u_lodProjectionScalar) / distToCam;
 	float maxTessForSize = patchSizeInPixels / 8.0;
 
-	// Final level is driven by physical geometry error, but capped by hardware and triangle size logic
-	return clamp(sseTess, u_tessLevelMin, min(u_tessLevelMax, max(u_tessLevelMin, maxTessForSize)));
+	return clamp(finalLevel, u_tessLevelMin, min(u_tessLevelMax, max(u_tessLevelMin, maxTessForSize)));
 }
 
 bool projectAABB(vec3 aabbMin, vec3 aabbMax, mat4 vp, out vec4 screenRect, out float nearestDepth) {
@@ -303,21 +315,37 @@ void main() {
 	vec2 uv11 = vec2(float(patchX + 1) * ps, float(patchY + 1) * ps) / cs;
 	vec2 uv01 = vec2(float(patchX) * ps, float(patchY + 1) * ps) / cs;
 
-	// Compute levels at corners. These will be identical for shared vertices between patches/chunks.
-	float v00 = getVertexTessLevel(slice, uv00, chunkOffset.xz);
-	float v10 = getVertexTessLevel(slice, uv10, chunkOffset.xz);
-	float v11 = getVertexTessLevel(slice, uv11, chunkOffset.xz);
-	float v01 = getVertexTessLevel(slice, uv01, chunkOffset.xz);
+	// Corner points in world space
+	vec3 p00 = getWorldPos(uv00, slice, chunkOffset.xz);
+	vec3 p10 = getWorldPos(uv10, slice, chunkOffset.xz);
+	vec3 p11 = getWorldPos(uv11, slice, chunkOffset.xz);
+	vec3 p01 = getWorldPos(uv01, slice, chunkOffset.xz);
+
+	// Compute levels at edges. Shared edges between patches will produce identical results.
+	// OpenGL Quads: 0=Left(u=0), 1=Bottom(v=0), 2=Right(u=1), 3=Top(v=1)
+	float eLeft   = calculateEdgeTessellation(p00, p01, uv00, uv01, slice);
+	float eBottom = calculateEdgeTessellation(p00, p10, uv00, uv10, slice);
+	float eRight  = calculateEdgeTessellation(p10, p11, uv10, uv11, slice);
+	float eTop    = calculateEdgeTessellation(p01, p11, uv01, uv11, slice);
 
 	// Inner level based on patch-wide max_variance using SSE logic
 	float distToCenter = max(distance(u_viewPos, patchCenter), 1.0 * u_worldScale);
-	float innerPixelError = 2.0 / max(0.01, u_tessQualityMultiplier);
-	float innerSseTess = (metrics.max_variance * uProjection[1][1] * u_viewportSize.y) / (2.0 * distToCenter * innerPixelError);
+	float innerPixelError = 1.0 / max(0.01, u_tessQualityMultiplier);
 
-	float patchSizeInPixels = (patchSize * uProjection[1][1] * u_viewportSize.y) / (2.0 * distToCenter);
+	// Error level based on max variance (chordal error)
+	float innerErrorLevel = (metrics.max_variance * u_lodProjectionScalar) / (distToCenter * innerPixelError);
+
+	// Base level based on patch size (diagonal to be safe)
+	float physicalDiag = distance(p00, p11);
+	float pixelDiag = (physicalDiag * u_lodProjectionScalar) / distToCenter;
+	float innerBaseLevel = (pixelDiag / 16.0) / 1.414; // Approximate grid subdivision
+
+	float innerLevel = max(innerBaseLevel, innerErrorLevel);
+
+	float patchSizeInPixels = (patchSize * u_lodProjectionScalar) / distToCenter;
 	float maxInnerTessForSize = patchSizeInPixels / 8.0;
 
-	float innerLevel = clamp(innerSseTess, u_tessLevelMin, min(u_tessLevelMax, max(u_tessLevelMin, maxInnerTessForSize)));
+	innerLevel = clamp(innerLevel, u_tessLevelMin, min(u_tessLevelMax, max(u_tessLevelMin, maxInnerTessForSize)));
 
 	// Patch Draw Data
 	PatchDrawData draw;
@@ -327,11 +355,10 @@ void main() {
 
 	// Patch Tess Levels
 	PatchTessLevels tess;
-	// OpenGL Quads: 0=Left(u=0), 1=Bottom(v=0), 2=Right(u=1), 3=Top(v=1)
-	tess.outer[0] = max(v00, v01);
-	tess.outer[1] = max(v00, v10);
-	tess.outer[2] = max(v10, v11);
-	tess.outer[3] = max(v01, v11);
+	tess.outer[0] = eLeft;
+	tess.outer[1] = eBottom;
+	tess.outer[2] = eRight;
+	tess.outer[3] = eTop;
 	tess.inner[0] = innerLevel;
 	tess.inner[1] = innerLevel;
 	patchTessLevels[outIdx] = tess;
