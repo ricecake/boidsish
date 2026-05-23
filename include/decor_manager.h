@@ -10,6 +10,7 @@
 #include "constants.h"
 #include "frustum.h"
 #include "model.h"
+#include "persistent_buffer.h"
 #include "procedural_generator.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -74,11 +75,12 @@ namespace Boidsish {
 		DecorProperties        props;
 
 		// GPU resources
-		unsigned int ssbo = 0;                   // Main storage (persistent)
-		unsigned int visible_ssbo = 0;           // Culled storage (per-frame)
-		unsigned int indirect_buffer = 0;        // MDI commands
-		unsigned int shadow_indirect_buffer = 0; // MDI commands for shadow pass
-		unsigned int count_buffer = 0;           // For culling atomic counter
+		unsigned int ssbo = 0;         // Main storage (persistent)
+		unsigned int visible_ssbo = 0; // Culled storage (per-frame)
+
+		std::unique_ptr<PersistentBuffer<DrawElementsIndirectCommand>> indirect_pb;
+		std::unique_ptr<PersistentBuffer<DrawElementsIndirectCommand>> shadow_indirect_pb;
+		std::unique_ptr<PersistentBuffer<unsigned int>>               count_pb;
 
 		// Cached instance count (read back after compute, used during render)
 		unsigned int cached_count = 0;
@@ -98,6 +100,9 @@ namespace Boidsish {
 
 	class DecorManager {
 	public:
+		struct DecorUpdateWork {
+			std::vector<std::pair<int, int>> chunks_to_generate_blocks;
+		};
 		DecorManager(ServiceLocator& loc);
 		~DecorManager();
 
@@ -123,13 +128,38 @@ namespace Boidsish {
 		static DecorProperties GetDefaultDeadTreeProperties();
 		static DecorProperties GetDefaultRockProperties();
 
-		void Update(
+		/**
+		 * @brief CPU-side preparation for decor placement.
+		 * Can be called from an async thread.
+		 */
+		void PrepareUpdate(
 			float                                 delta_time,
 			const Camera&                         camera,
 			const Frustum&                        frustum,
 			const ITerrainGenerator&              terrain_gen,
 			std::shared_ptr<TerrainRenderManager> render_manager
 		);
+
+		/**
+		 * @brief GPU-side dispatch for decor placement.
+		 * Must be called from the main thread.
+		 */
+		void ApplyUpdate(
+			const ITerrainGenerator&              terrain_gen,
+			std::shared_ptr<TerrainRenderManager> render_manager
+		);
+
+		// Deprecated, use PrepareUpdate/ApplyUpdate
+		void Update(
+			float                                 delta_time,
+			const Camera&                         camera,
+			const Frustum&                        frustum,
+			const ITerrainGenerator&              terrain_gen,
+			std::shared_ptr<TerrainRenderManager> render_manager
+		) {
+			PrepareUpdate(delta_time, camera, frustum, terrain_gen, render_manager);
+			ApplyUpdate(terrain_gen, render_manager);
+		}
 
 		/**
 		 * @brief Prepares the resources for all decor types.
@@ -223,6 +253,7 @@ namespace Boidsish {
 		bool                           enabled_ = true;
 		bool                           initialized_ = false;
 		std::vector<DecorType>         decor_types_;
+		DecorUpdateWork                last_work_;
 		std::unique_ptr<ComputeShader> placement_shader_;
 		std::unique_ptr<ComputeShader> culling_shader_;
 		std::unique_ptr<ComputeShader> update_commands_shader_;
@@ -256,10 +287,10 @@ namespace Boidsish {
 		static constexpr int kMaxNewChunksPerFrame = 24;
 
 		// Per-type properties UBO for placement shader (uploaded in PrepareResources)
-		GLuint decor_props_ubo_ = 0;
+		std::unique_ptr<PersistentBuffer<DecorTypeGPU>> decor_props_pb_;
 		// Global placement params UBO and per-chunk SSBO (uploaded per dispatch frame)
-		GLuint placement_globals_ubo_ = 0;
-		GLuint chunk_params_ssbo_ = 0;
+		std::unique_ptr<PersistentBuffer<PlacementGlobalsGPU>> placement_globals_pb_;
+		std::unique_ptr<PersistentBuffer<ChunkParamsGPU>>      chunk_params_pb_;
 
 		// Distance-based density parameters
 		float                    density_falloff_start_ = 200.0f;
@@ -280,7 +311,7 @@ namespace Boidsish {
 		// Block validity SSBO: one uint per block. 1=valid (has placed decor),
 		// 0=invalid (freed, stale data). Checked by cull shader to skip freed blocks
 		// without needing to zero 64KB of instance data per type.
-		GLuint block_validity_ssbo_ = 0;
+		std::unique_ptr<PersistentBuffer<uint32_t>> block_validity_pb_;
 
 		static constexpr int kInstancesPerChunk = Constants::Class::Terrain::ChunkSize() *
 			Constants::Class::Terrain::ChunkSize();

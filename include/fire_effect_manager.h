@@ -73,6 +73,38 @@ namespace Boidsish {
 		// Returns true if fire effects are available (compute shader compiled successfully)
 		bool IsAvailable() const;
 
+		/**
+		 * @brief CPU-side preparation for particle updates.
+		 * Can be called from an async thread.
+		 */
+		void PrepareUpdate(
+			float                         delta_time,
+			float                         time,
+			bool                          enabled = true,
+			float                         ambient_density = 0.15f,
+			const std::vector<glm::vec4>& chunk_info = {}
+		);
+
+		/**
+		 * @brief GPU-side dispatch for particle updates.
+		 * Must be called from the main thread.
+		 */
+		void ApplyUpdate(
+			GLuint                        heightmap_texture = 0,
+			GLuint                        curl_noise_texture = 0,
+			GLuint                        biome_texture = 0,
+			GLuint                        lighting_ubo = 0,
+			GLintptr                      lighting_ubo_offset = 0,
+			GLsizeiptr                    lighting_ubo_size = 0,
+			GLuint                        frustum_ubo = 0,
+			GLintptr                      frustum_offset = 0,
+			GLuint                        extra_noise_texture = 0,
+			GLuint                        visual_effects_ubo = 0,
+			GLintptr                      vfx_offset = 0,
+			GLsizeiptr                    vfx_size = 0
+		);
+
+		// Deprecated, use PrepareUpdate/ApplyUpdate
 		void Update(
 			float                         delta_time,
 			float                         time,
@@ -91,7 +123,10 @@ namespace Boidsish {
 			GLuint                        visual_effects_ubo = 0,
 			GLintptr                      vfx_offset = 0,
 			GLsizeiptr                    vfx_size = 0
-		);
+		) {
+			PrepareUpdate(delta_time, time, enabled, ambient_density, chunk_info);
+			ApplyUpdate(heightmap_texture, curl_noise_texture, biome_texture, lighting_ubo, lighting_ubo_offset, lighting_ubo_size, frustum_ubo, frustum_offset, extra_noise_texture, visual_effects_ubo, vfx_offset, vfx_size);
+		}
 		void Render(
 			const glm::mat4& view,
 			const glm::mat4& projection,
@@ -139,8 +174,8 @@ namespace Boidsish {
 		GLuint grid_next_buffer_{0};
 		std::unique_ptr<PersistentBuffer<Emitter>> emitter_buffer_;
 		std::unique_ptr<PersistentBuffer<int>> indirection_buffer_;
-		GLuint terrain_chunk_buffer_{0};
-		GLuint slice_data_buffer_{0};
+		std::unique_ptr<PersistentBuffer<glm::vec4>> terrain_chunk_pb_;
+		std::unique_ptr<PersistentBuffer<glm::vec4>> slice_data_pb_;
 		GLuint visible_indices_buffer_{0};
 		GLuint live_indices_buffer_{0};
 		GLuint draw_command_buffer_{0};
@@ -153,6 +188,15 @@ namespace Boidsish {
 		float  ambient_density_{0.15f};
 		float  time_{0.0f};
 		size_t emitter_buffer_capacity_{0}; // Track capacity to avoid per-frame reallocation
+
+		struct FireUpdateWork {
+			int num_emitters;
+			int num_chunks;
+			bool enabled;
+			float ambient_density;
+			float delta_time;
+		};
+		FireUpdateWork last_work_;
 
 		static constexpr int kMaxParticles = Constants::Class::Particles::MaxParticles();
 		static constexpr int kMaxEmitters = Constants::Class::Particles::MaxEmitters();

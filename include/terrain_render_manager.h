@@ -191,7 +191,12 @@ namespace Boidsish {
 		/**
 		 * @brief Get the instance buffer (ActiveChunks SSBO).
 		 */
-		GLuint GetInstanceBuffer() const { return instance_vbo_; }
+		GLuint GetInstanceBuffer() const { return instance_pb_ ? instance_pb_->GetBufferId() : 0; }
+
+		/**
+		 * @brief Get the offset for the current frame's instance data.
+		 */
+		size_t GetInstanceBufferOffset() const { return instance_pb_ ? instance_pb_->GetFrameOffset() : 0; }
 
 		/**
 		 * @brief Get info about all registered chunks for external use (e.g., decor placement).
@@ -364,7 +369,7 @@ namespace Boidsish {
 		GLuint grid_vao_ = 0;
 		GLuint grid_vbo_ = 0;
 		GLuint grid_ebo_ = 0;
-		GLuint instance_vbo_ = 0;
+		std::unique_ptr<PersistentBuffer<InstanceData>> instance_pb_;
 		GLuint raw_heightmap_texture_ = 0; // GL_TEXTURE_2D_ARRAY (RGBA16F: height, normal.xyz)
 		GLuint heightmap_texture_ = 0;     // GL_TEXTURE_2D_ARRAY (RGBA16F: baked height, baked normal)
 		GLuint baked_params_texture_ = 0;  // GL_TEXTURE_2D_ARRAY (RGBA16F: erosion, ridge, substrate, water)

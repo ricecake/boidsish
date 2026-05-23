@@ -2489,26 +2489,53 @@ namespace Boidsish {
 			}
 
 			clone_manager->Update(simulation_time, camera.pos());
-			fire_effect_manager->Update(
-				simulation_delta_time,
-				simulation_time,
-				ConfigManager::GetInstance().GetAppSettingBool("particles_enabled", true),
-				frame_config_.ambient_particle_density,
-				terrain_render_manager ? terrain_render_manager->GetChunkInfo(terrain_generator->GetWorldScale())
-									   : std::vector<glm::vec4>{},
-				terrain_render_manager ? terrain_render_manager->GetHeightmapTexture() : 0,
-				noise_manager ? noise_manager->GetCurlTexture() : 0,
-				terrain_render_manager ? terrain_render_manager->GetBiomeTexture() : 0,
-				render_state_.lighting.id,
-				static_cast<GLintptr>(render_state_.lighting.offset),
-				static_cast<GLsizeiptr>(render_state_.lighting.size),
-				frustum_ssbo->GetBufferId(),
-				frustum_ssbo->GetFrameOffset() + mdi_frustum_count * sizeof(FrustumDataGPU),
-				noise_manager ? noise_manager->GetExtraNoiseTexture() : 0,
-				render_state_.visual_effects.id,
-				static_cast<GLintptr>(render_state_.visual_effects.offset),
-				static_cast<GLsizeiptr>(render_state_.visual_effects.size)
-			);
+
+			// ASYNC PREPARATION START
+			auto fire_prepare = thread_pool.submit([this]() {
+				fire_effect_manager->PrepareUpdate(
+					simulation_delta_time,
+					simulation_time,
+					ConfigManager::GetInstance().GetAppSettingBool("particles_enabled", true),
+					frame_config_.ambient_particle_density,
+					terrain_render_manager ? terrain_render_manager->GetChunkInfo(terrain_generator->GetWorldScale())
+										   : std::vector<glm::vec4>{}
+				);
+			});
+
+			auto decor_prepare = thread_pool.submit([this]() {
+				if (decor_manager && terrain_generator && terrain_render_manager) {
+					decor_manager->SetMinPixelSize(
+						ConfigManager::GetInstance().GetAppSettingFloat("foliage_culling_pixel_threshold", 8.0f)
+					);
+					if (atmosphere_manager) {
+						decor_manager->SetAtmosphereManager(atmosphere_manager.get());
+					}
+					if (noise_manager) {
+						decor_manager->SetNoiseManager(noise_manager.get());
+					}
+					decor_manager->PrepareUpdate(
+						simulation_delta_time,
+						camera,
+						generator_frustum,
+						*terrain_generator,
+						terrain_render_manager
+					);
+				}
+			});
+
+			auto grass_prepare = thread_pool.submit([this]() {
+				if (grass_manager && terrain_generator && terrain_render_manager) {
+					grass_manager->SetCameraPos(camera.pos());
+					grass_manager->PrepareUpdate(
+						simulation_delta_time,
+						simulation_time,
+						camera,
+						*terrain_generator,
+						terrain_render_manager
+					);
+				}
+			});
+
 			mesh_explosion_manager->Update(simulation_delta_time, simulation_time);
 			sound_effect_manager->Update(simulation_delta_time);
 			shockwave_manager->Update(simulation_delta_time);
@@ -2520,28 +2547,32 @@ namespace Boidsish {
 			shockwave_manager->UpdateShaderData();
 			shockwave_manager->BindUBO(Constants::UboBinding::Shockwaves());
 
+			// WAIT FOR ASYNC PREPARATION
+			fire_prepare.get();
+			decor_prepare.get();
+			grass_prepare.get();
+
+			// GPU DISPATCHES (Main Thread)
+			fire_effect_manager->ApplyUpdate(
+				terrain_render_manager ? terrain_render_manager->GetHeightmapTexture() : 0,
+				noise_manager ? noise_manager->GetCurlTexture() : 0,
+				terrain_render_manager ? terrain_render_manager->GetBiomeTexture() : 0,
+				render_state_.lighting.id,
+				static_cast<GLintptr>(render_state_.lighting.offset),
+				static_cast<GLsizeiptr>(render_state_.lighting.size),
+				frustum_ssbo->GetBufferId(),
+				frustum_ssbo->GetFrameOffset() + (mdi_frustum_count - 1) * sizeof(FrustumDataGPU),
+				noise_manager ? noise_manager->GetExtraNoiseTexture() : 0,
+				render_state_.visual_effects.id,
+				static_cast<GLintptr>(render_state_.visual_effects.offset),
+				static_cast<GLsizeiptr>(render_state_.visual_effects.size)
+			);
+
 			if (decor_manager && terrain_generator && terrain_render_manager) {
-				decor_manager->SetMinPixelSize(
-					ConfigManager::GetInstance().GetAppSettingFloat("foliage_culling_pixel_threshold", 8.0f)
-				);
-				if (atmosphere_manager) {
-					decor_manager->SetAtmosphereManager(atmosphere_manager.get());
-				}
-				if (noise_manager) {
-					decor_manager->SetNoiseManager(noise_manager.get());
-				}
-				decor_manager->Update(
-					simulation_delta_time,
-					camera,
-					generator_frustum,
-					*terrain_generator,
-					terrain_render_manager
-				);
+				decor_manager->ApplyUpdate(*terrain_generator, terrain_render_manager);
 			}
 
 			if (grass_manager && terrain_generator && terrain_render_manager) {
-				grass_manager->SetCameraPos(camera.pos());
-
 				// 1. Calculate terrain preparation quality
 				float effective_quality = tess_quality_multiplier_;
 				effective_quality /= terrain_generator->GetWorldScale();
@@ -2572,14 +2603,8 @@ namespace Boidsish {
 				// This populates the visibility SSBO that grass system needs.
 				terrain_render_manager->DispatchPreparePatches(effective_quality);
 
-				// 4. Update grass system
-				grass_manager->Update(
-					simulation_delta_time,
-					simulation_time,
-					camera,
-					*terrain_generator,
-					terrain_render_manager
-				);
+				// 4. Finalize grass
+				grass_manager->ApplyUpdate(camera, *terrain_generator, terrain_render_manager);
 			}
 		}
 

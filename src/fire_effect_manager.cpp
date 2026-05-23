@@ -65,12 +65,8 @@ namespace Boidsish {
 		}
 		emitter_buffer_.reset();
 		indirection_buffer_.reset();
-		if (terrain_chunk_buffer_ != 0) {
-			glDeleteBuffers(1, &terrain_chunk_buffer_);
-		}
-		if (slice_data_buffer_ != 0) {
-			glDeleteBuffers(1, &slice_data_buffer_);
-		}
+		terrain_chunk_pb_.reset();
+		slice_data_pb_.reset();
 		if (dummy_vao_ != 0) {
 			glDeleteVertexArrays(1, &dummy_vao_);
 		}
@@ -151,15 +147,11 @@ namespace Boidsish {
 		emitter_buffer_ = std::make_unique<PersistentBuffer<Emitter>>(GL_SHADER_STORAGE_BUFFER, kMaxEmitters, 3);
 		indirection_buffer_ = std::make_unique<PersistentBuffer<int>>(GL_SHADER_STORAGE_BUFFER, kMaxParticles, 3);
 
-		glGenBuffers(1, &terrain_chunk_buffer_);
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, terrain_chunk_buffer_);
 		// Pre-allocate for 1024 chunks as a reasonable default
-		glBufferData(GL_SHADER_STORAGE_BUFFER, 1024 * sizeof(glm::vec4), nullptr, GL_DYNAMIC_DRAW);
+		terrain_chunk_pb_ = std::make_unique<PersistentBuffer<glm::vec4>>(GL_SHADER_STORAGE_BUFFER, 1024, 3);
 
-		glGenBuffers(1, &slice_data_buffer_);
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, slice_data_buffer_);
 		// Max emitters (64) * 64 points per slice as a default
-		glBufferData(GL_SHADER_STORAGE_BUFFER, kMaxEmitters * 64 * sizeof(glm::vec4), nullptr, GL_DYNAMIC_DRAW);
+		slice_data_pb_ = std::make_unique<PersistentBuffer<glm::vec4>>(GL_SHADER_STORAGE_BUFFER, kMaxEmitters * 64, 3);
 
 		glGenBuffers(1, &visible_indices_buffer_);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, visible_indices_buffer_);
@@ -252,29 +244,15 @@ namespace Boidsish {
 		}
 	}
 
-	void FireEffectManager::Update(
+	void FireEffectManager::PrepareUpdate(
 		float                         delta_time,
 		float                         time,
 		bool                          enabled,
 		float                         ambient_density,
-		const std::vector<glm::vec4>& chunk_info,
-		GLuint                        heightmap_texture,
-		GLuint                        curl_noise_texture,
-		GLuint                        biome_texture,
-		GLuint                        lighting_ubo,
-		GLintptr                      lighting_ubo_offset,
-		GLsizeiptr                    lighting_ubo_size,
-		GLuint                        frustum_ubo,
-		GLintptr                      frustum_offset,
-		GLuint                        extra_noise_texture,
-		GLuint                        visual_effects_ubo,
-		GLintptr                      vfx_offset,
-		GLsizeiptr                    vfx_size
+		const std::vector<glm::vec4>& chunk_info
 	) {
-		PROJECT_PROFILE_SCOPE("FireEffectManager::Update");
 		std::lock_guard<std::mutex> lock(mutex_);
-		if (!initialized_ || !lifecycle_shader_ || !lifecycle_shader_->isValid() || !behavior_shader_ ||
-		    !behavior_shader_->isValid() || !fixup_shader_ || !fixup_shader_->isValid()) {
+		if (!initialized_) {
 			return;
 		}
 
@@ -365,25 +343,17 @@ namespace Boidsish {
 			}
 		}
 
-		if (!slice_points.empty()) {
-			glBindBuffer(GL_SHADER_STORAGE_BUFFER, slice_data_buffer_);
-			// Ensure buffer is large enough
-			size_t required_size = slice_points.size() * sizeof(glm::vec4);
-			GLint  current_size = 0;
-			glGetBufferParameteriv(GL_SHADER_STORAGE_BUFFER, GL_BUFFER_SIZE, &current_size);
-			if (required_size > (size_t)current_size) {
-				glBufferData(GL_SHADER_STORAGE_BUFFER, required_size * 2, nullptr, GL_DYNAMIC_DRAW);
-			}
-			glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, required_size, slice_points.data());
-		}
-
-		// Update emitter buffer
+		// Advance buffers
 		emitter_buffer_->AdvanceFrame();
+		indirection_buffer_->AdvanceFrame();
+		terrain_chunk_pb_->AdvanceFrame();
+		slice_data_pb_->AdvanceFrame();
+		stats_buffer_->AdvanceFrame();
+
 		if (!emitters.empty()) {
 			std::memcpy(emitter_buffer_->GetFrameDataPtr(), emitters.data(), emitters.size() * sizeof(Emitter));
 		}
 
-		indirection_buffer_->AdvanceFrame();
 		std::memcpy(
 			indirection_buffer_->GetFrameDataPtr(),
 			particle_to_emitter_map_.data(),
@@ -391,14 +361,56 @@ namespace Boidsish {
 		);
 
 		if (!chunk_info.empty()) {
-			glBindBuffer(GL_SHADER_STORAGE_BUFFER, terrain_chunk_buffer_);
-			glBufferData(
-				GL_SHADER_STORAGE_BUFFER,
-				chunk_info.size() * sizeof(glm::vec4),
-				chunk_info.data(),
-				GL_DYNAMIC_DRAW
-			);
+			size_t count = std::min(chunk_info.size(), terrain_chunk_pb_->GetElementCount());
+			std::memcpy(terrain_chunk_pb_->GetFrameDataPtr(), chunk_info.data(), count * sizeof(glm::vec4));
 		}
+
+		if (!slice_points.empty()) {
+			size_t count = std::min(slice_points.size(), slice_data_pb_->GetElementCount());
+			std::memcpy(slice_data_pb_->GetFrameDataPtr(), slice_points.data(), count * sizeof(glm::vec4));
+		}
+
+		// Update limits in stats buffer
+		auto&         cfg = ConfigManager::GetInstance();
+		ParticleStats* stats_ptr = stats_buffer_->GetFrameDataPtr();
+		*stats_ptr = ParticleStats{};
+		stats_ptr->limit_birds = cfg.GetAppSettingInt("particle_limit_birds", 1000);
+		stats_ptr->limit_leaves = cfg.GetAppSettingInt("particle_limit_leaves", 5000);
+		stats_ptr->limit_petals = cfg.GetAppSettingInt("particle_limit_petals", 5000);
+		stats_ptr->limit_bubbles = cfg.GetAppSettingInt("particle_limit_bubbles", 2000);
+		stats_ptr->limit_fireflies = cfg.GetAppSettingInt("particle_limit_fireflies", 3000);
+		stats_ptr->limit_snow = cfg.GetAppSettingInt("particle_limit_snow", 10000);
+		stats_ptr->limit_dust = cfg.GetAppSettingInt("particle_limit_dust", 75);
+
+		last_work_.num_emitters = static_cast<int>(emitters.size());
+		last_work_.num_chunks = static_cast<int>(chunk_info.size());
+		last_work_.enabled = enabled;
+		last_work_.ambient_density = ambient_density;
+		last_work_.delta_time = delta_time;
+	}
+
+	void FireEffectManager::ApplyUpdate(
+		GLuint                        heightmap_texture,
+		GLuint                        curl_noise_texture,
+		GLuint                        biome_texture,
+		GLuint                        lighting_ubo,
+		GLintptr                      lighting_ubo_offset,
+		GLsizeiptr                    lighting_ubo_size,
+		GLuint                        frustum_ubo,
+		GLintptr                      frustum_offset,
+		GLuint                        extra_noise_texture,
+		GLuint                        visual_effects_ubo,
+		GLintptr                      vfx_offset,
+		GLsizeiptr                    vfx_size
+	) {
+		PROJECT_PROFILE_SCOPE("FireEffectManager::ApplyUpdate");
+		if (!initialized_ || !lifecycle_shader_ || !lifecycle_shader_->isValid() || !behavior_shader_ ||
+		    !behavior_shader_->isValid() || !fixup_shader_ || !fixup_shader_->isValid()) {
+			return;
+		}
+
+		// Ensure all CPU writes to persistent mapped buffers are visible to GPU
+		glMemoryBarrier(GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT);
 
 		// Reset draw command counts
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, draw_command_buffer_);
@@ -413,40 +425,27 @@ namespace Boidsish {
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleBuffer(), particle_buffer_);
 		emitter_buffer_->BindRange(Constants::SsboBinding::EmitterBuffer());
 		indirection_buffer_->BindRange(Constants::SsboBinding::IndirectionBuffer());
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainChunkInfo(), terrain_chunk_buffer_);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::SliceData(), slice_data_buffer_);
+		terrain_chunk_pb_->BindRange(Constants::SsboBinding::TerrainChunkInfo());
+		slice_data_pb_->BindRange(Constants::SsboBinding::SliceData());
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::VisibleParticleIndices(), visible_indices_buffer_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleDrawCommand(), draw_command_buffer_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::LiveParticleIndices(), live_indices_buffer_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::BehaviorDrawCommand(), behavior_command_buffer_);
-		stats_buffer_->AdvanceFrame();
 		stats_buffer_->BindRange(Constants::SsboBinding::ParticleStats());
 
-		// Update limits in stats buffer
-		auto&         cfg = ConfigManager::GetInstance();
-		ParticleStats* stats_ptr = stats_buffer_->GetFrameDataPtr();
-		*stats_ptr = ParticleStats{};
-		stats_ptr->limit_birds = cfg.GetAppSettingInt("particle_limit_birds", 1000);
-		stats_ptr->limit_leaves = cfg.GetAppSettingInt("particle_limit_leaves", 5000);
-		stats_ptr->limit_petals = cfg.GetAppSettingInt("particle_limit_petals", 5000);
-		stats_ptr->limit_bubbles = cfg.GetAppSettingInt("particle_limit_bubbles", 2000);
-		stats_ptr->limit_fireflies = cfg.GetAppSettingInt("particle_limit_fireflies", 3000);
-		stats_ptr->limit_snow = cfg.GetAppSettingInt("particle_limit_snow", 10000);
-		stats_ptr->limit_dust = cfg.GetAppSettingInt("particle_limit_dust", 75);
-
 		// GPU will increment counts, we only reset them to 0 each frame here before dispatch.
-
+		auto& cfg = ConfigManager::GetInstance();
 		bool particles_globally_enabled = cfg.GetAppSettingBool("particles_enabled", true);
 
 		auto bind_textures_and_uniforms = [&](ComputeShader* shader) {
 			shader->use();
-			shader->setFloat("u_delta_time", delta_time);
+			shader->setFloat("u_delta_time", last_work_.delta_time);
 			shader->setFloat("u_time", time_);
-			shader->setBool("u_enabled", enabled && particles_globally_enabled);
-			shader->setFloat("u_ambient_density", ambient_density);
+			shader->setBool("u_enabled", last_work_.enabled && particles_globally_enabled);
+			shader->setFloat("u_ambient_density", last_work_.ambient_density);
 			shader->setInt("u_ambient_particle_scale", Constants::Class::Particles::AmbientParticleScale());
-			shader->setInt("u_num_emitters", emitters.size());
-			shader->setInt("u_num_chunks", static_cast<int>(chunk_info.size()));
+			shader->setInt("u_num_emitters", last_work_.num_emitters);
+			shader->setInt("u_num_chunks", last_work_.num_chunks);
 			shader->setUint("u_grid_size", Constants::Class::Particles::ParticleGridSize());
 			shader->setFloat("u_cell_size", Constants::Class::Particles::ParticleGridCellSize());
 

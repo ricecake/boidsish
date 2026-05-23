@@ -20,10 +20,6 @@ namespace Boidsish {
     }
 
     GrassManager::~GrassManager() {
-        if (grass_props_ubo_) glDeleteBuffers(1, &grass_props_ubo_);
-        if (grass_instances_ssbo_) glDeleteBuffers(1, &grass_instances_ssbo_);
-        if (grass_indirect_buffer_) glDeleteBuffers(1, &grass_indirect_buffer_);
-        if (grass_tasks_ssbo_) glDeleteBuffers(1, &grass_tasks_ssbo_);
         if (dummy_vao_) glDeleteVertexArrays(1, &dummy_vao_);
     }
 
@@ -60,31 +56,18 @@ namespace Boidsish {
 
     void GrassManager::_InitializeResources() {
         // Properties UBO
-        glGenBuffers(1, &grass_props_ubo_);
-        glBindBuffer(GL_UNIFORM_BUFFER, grass_props_ubo_);
-        glBufferData(GL_UNIFORM_BUFFER, 8 * sizeof(GrassProperties) + sizeof(GlobalGrassProperties), nullptr, GL_DYNAMIC_DRAW);
-        glBindBuffer(GL_UNIFORM_BUFFER, 0);
+        grass_props_pb_ = std::make_unique<PersistentBuffer<GrassPropsData>>(GL_UNIFORM_BUFFER, 1, 3);
 
         // Instance SSBO
-        glGenBuffers(1, &grass_instances_ssbo_);
-        glBindBuffer(GL_SHADER_STORAGE_BUFFER, grass_instances_ssbo_);
-        glBufferData(GL_SHADER_STORAGE_BUFFER, kMaxGrassInstances * sizeof(GrassInstance), nullptr, GL_DYNAMIC_DRAW);
-        glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+        grass_instances_pb_ = std::make_unique<PersistentBuffer<GrassInstance>>(GL_SHADER_STORAGE_BUFFER, kMaxGrassInstances, 3);
 
         // Indirect Buffer
-        glGenBuffers(1, &grass_indirect_buffer_);
-        glBindBuffer(GL_DRAW_INDIRECT_BUFFER, grass_indirect_buffer_);
-        DrawArraysIndirectCommand cmd = {1, 0, 0, 0}; // 1 vertex per blade (1-vertex patch)
-        glBufferData(GL_DRAW_INDIRECT_BUFFER, sizeof(DrawArraysIndirectCommand), &cmd, GL_DYNAMIC_DRAW);
-        glBindBuffer(GL_DRAW_INDIRECT_BUFFER, 0);
+        grass_indirect_pb_ = std::make_unique<PersistentBuffer<DrawArraysIndirectCommand>>(GL_DRAW_INDIRECT_BUFFER, 1, 3);
 
         // Task SSBO
-        glGenBuffers(1, &grass_tasks_ssbo_);
-        glBindBuffer(GL_SHADER_STORAGE_BUFFER, grass_tasks_ssbo_);
         // Header (uint num_groups_x, y, z, taskCount) + tasks
         size_t tasks_size = 16 + kMaxGrassTasks * sizeof(GrassTask);
-        glBufferData(GL_SHADER_STORAGE_BUFFER, tasks_size, nullptr, GL_DYNAMIC_DRAW);
-        glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+        grass_tasks_pb_ = std::make_unique<PersistentBuffer<uint8_t>>(GL_SHADER_STORAGE_BUFFER, (tasks_size + sizeof(uint8_t) - 1) / sizeof(uint8_t), 3);
 
         glGenVertexArrays(1, &dummy_vao_);
     }
@@ -178,42 +161,60 @@ namespace Boidsish {
         SetGrassProperties(Biome::Snow, snowGrass);
     }
 
-    void GrassManager::Update(float deltaTime, float time, const Camera& camera, const ITerrainGenerator& terrainGen, std::shared_ptr<TerrainRenderManager> renderManager) {
+    void GrassManager::PrepareUpdate(float /*deltaTime*/, float /*time*/, const Camera& camera, const ITerrainGenerator& /*terrainGen*/, std::shared_ptr<TerrainRenderManager> /*renderManager*/) {
         if (!initialized_) return;
 
         last_camera_pos_ = camera.pos();
 
-        if (props_dirty_) {
-            glBindBuffer(GL_UNIFORM_BUFFER, grass_props_ubo_);
-            glBufferSubData(GL_UNIFORM_BUFFER, 0, 8 * sizeof(GrassProperties), biome_grass_props_.data());
-            glBufferSubData(GL_UNIFORM_BUFFER, 8 * sizeof(GrassProperties), sizeof(GlobalGrassProperties), &global_props_);
-            glBindBuffer(GL_UNIFORM_BUFFER, 0);
-            props_dirty_ = false;
-        }
+        // Advance buffers
+        grass_props_pb_->AdvanceFrame();
+        grass_instances_pb_->AdvanceFrame();
+        grass_indirect_pb_->AdvanceFrame();
+        grass_tasks_pb_->AdvanceFrame();
+
+        // Always update props in the new frame's segment (it's persistent mapped, so it's fast)
+        GrassPropsData* props_ptr = grass_props_pb_->GetFrameDataPtr();
+        std::memcpy(props_ptr->biomes, biome_grass_props_.data(), 8 * sizeof(GrassProperties));
+        props_ptr->global = global_props_;
+        props_dirty_ = false;
 
         if (!IsEnabled()) return;
 
-        PROJECT_PROFILE_SCOPE("GrassManager::Update");
+        // Reset indirect command
+        DrawArraysIndirectCommand* cmd = grass_indirect_pb_->GetFrameDataPtr();
+        cmd->count = 1;
+        cmd->instanceCount = 0; // Will be incremented by atomicAdd in compute
+        cmd->first = 0;
+        cmd->baseInstance = 0;
+
+        // Reset task header (zero out taskCount)
+        uint8_t* tasks_ptr = grass_tasks_pb_->GetFrameDataPtr();
+        std::memset(tasks_ptr, 0, 16); // Zero out dispatch counts and taskCount
+    }
+
+    void GrassManager::ApplyUpdate(const Camera& camera, const ITerrainGenerator& terrainGen, std::shared_ptr<TerrainRenderManager> renderManager) {
+        if (!initialized_ || !IsEnabled()) return;
+
+        PROJECT_PROFILE_SCOPE("GrassManager::ApplyUpdate");
         _UpdatePlacement(camera, terrainGen, renderManager);
     }
 
     void GrassManager::_UpdatePlacement(const Camera& camera, const ITerrainGenerator& terrainGen, std::shared_ptr<TerrainRenderManager> renderManager) {
+        // Ensure all CPU writes are visible to GPU
+        glMemoryBarrier(GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT);
+
         // 1. Pre-pass: Build task queue
         pre_pass_shader_->use();
         renderManager->BindTerrainData(*pre_pass_shader_);
 
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainPatchVisibility(), renderManager->GetPatchVisibilitySSBO());
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainPatchMetrics(), renderManager->GetPatchMetricsSSBO());
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::GrassTasks(), grass_tasks_ssbo_);
+        grass_tasks_pb_->BindRange(Constants::SsboBinding::GrassTasks());
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::IndirectionBuffer(), renderManager->GetInstanceBuffer());
 
         pre_pass_shader_->setVec3("uCameraPos", camera.pos());
         pre_pass_shader_->setFloat("uWorldScale", terrainGen.GetWorldScale());
         pre_pass_shader_->setInt("u_numChunks", (int)renderManager->GetVisibleChunkCount());
-
-        uint32_t zero = 0;
-        glBindBuffer(GL_SHADER_STORAGE_BUFFER, grass_tasks_ssbo_);
-        glBufferSubData(GL_SHADER_STORAGE_BUFFER, 12, sizeof(uint32_t), &zero); // zero out taskCount
 
         int numPatchesPerChunk = Constants::Class::Terrain::PatchesPerChunk();
         int total_patches = (int)renderManager->GetVisibleChunkCount() * numPatchesPerChunk;
@@ -224,7 +225,7 @@ namespace Boidsish {
 
         // Fixup: Set dispatch counts
         fixup_shader_->use();
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::GrassTasks(), grass_tasks_ssbo_);
+        grass_tasks_pb_->BindRange(Constants::SsboBinding::GrassTasks());
         glDispatchCompute(1, 1, 1);
         glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT);
 
@@ -233,21 +234,18 @@ namespace Boidsish {
 
         renderManager->BindTerrainData(*placement_shader_);
 
-        glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::GrassProps(), grass_props_ubo_);
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::GrassInstances(), grass_instances_ssbo_);
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::GrassIndirect(), grass_indirect_buffer_);
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::GrassTasks(), grass_tasks_ssbo_);
+        grass_props_pb_->BindRange(Constants::UboBinding::GrassProps());
+        grass_instances_pb_->BindRange(Constants::SsboBinding::GrassInstances());
+        grass_indirect_pb_->BindRange(Constants::SsboBinding::GrassIndirect());
+        grass_tasks_pb_->BindRange(Constants::SsboBinding::GrassTasks());
 
         placement_shader_->setVec3("uCameraPos", camera.pos());
         placement_shader_->setFloat("uWorldScale", terrainGen.GetWorldScale());
         placement_shader_->setFloat("uMaxInstances", (float)kMaxGrassInstances);
 
-        glBindBuffer(GL_DRAW_INDIRECT_BUFFER, grass_indirect_buffer_);
-        glBufferSubData(GL_DRAW_INDIRECT_BUFFER, offsetof(DrawArraysIndirectCommand, instanceCount), sizeof(uint32_t), &zero);
-
         // Dispatch placement based on taskCount
-        glBindBuffer(GL_DISPATCH_INDIRECT_BUFFER, grass_tasks_ssbo_);
-        glDispatchComputeIndirect(0);
+        glBindBuffer(GL_DISPATCH_INDIRECT_BUFFER, grass_tasks_pb_->GetBufferId());
+        glDispatchComputeIndirect(grass_tasks_pb_->GetFrameOffset());
         glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT);
     }
 
@@ -268,8 +266,8 @@ namespace Boidsish {
             renderManager->BindTerrainData(*grass_shader_);
         }
 
-        glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::GrassProps(), grass_props_ubo_);
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::GrassInstances(), grass_instances_ssbo_);
+        grass_props_pb_->BindRange(Constants::UboBinding::GrassProps());
+        grass_instances_pb_->BindRange(Constants::SsboBinding::GrassInstances());
         if (res.lightingUboSize > 0) {
             glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::Lighting(),
                 res.lightingUbo, res.lightingUboOffset, res.lightingUboSize);
@@ -337,12 +335,12 @@ namespace Boidsish {
         }
 
         glBindVertexArray(dummy_vao_);
-        glBindBuffer(GL_DRAW_INDIRECT_BUFFER, grass_indirect_buffer_);
+        glBindBuffer(GL_DRAW_INDIRECT_BUFFER, grass_indirect_pb_->GetBufferId());
 
         glPatchParameteri(GL_PATCH_VERTICES, 1);
 
         glDisable(GL_CULL_FACE);
-        glDrawArraysIndirect(GL_PATCHES, (void*)0);
+        glDrawArraysIndirect(GL_PATCHES, (void*)(uintptr_t)grass_indirect_pb_->GetFrameOffset());
         glEnable(GL_CULL_FACE);
         glBindVertexArray(0);
 
