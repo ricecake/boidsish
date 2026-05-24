@@ -104,14 +104,15 @@ namespace Boidsish {
 			float            day_time = -1.0f,
 			const glm::vec3& sun_dir = glm::vec3(0.0f),
 			GLintptr         temporal_ubo_offset = 0,
-			GLintptr         frustum_ubo_offset = 0
+			GLintptr         frustum_ubo_offset = 0,
+			float            lod_projection_scalar = 1000.0f
 		);
 
 		/**
 		 * @brief Dispatch GPU preparation of terrain patches.
 		 * Performs frustum and occlusion culling on the GPU.
 		 */
-		void DispatchPreparePatches(float tess_quality_multiplier);
+		void DispatchPreparePatches(float tess_quality_multiplier, const glm::vec2& viewport_size, float lod_projection_scalar);
 
 		/**
 		 * @brief Dispatch probe update compute shader.
@@ -317,7 +318,8 @@ namespace Boidsish {
 			float avg_curvature;
 			float avg_roughness;
 			float avg_grass_density;
-			float _pad[3];
+			float max_variance;
+			float _pad[2];
 		};
 
 		struct PatchDrawData {

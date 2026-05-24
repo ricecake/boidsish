@@ -10,7 +10,8 @@ struct PatchMetrics {
 	float avg_curvature;
 	float avg_roughness;
 	float avg_grass_density;
-	float _pad[3];
+	float max_variance;
+	float _pad[2];
 };
 
 layout(std430, binding = [[TERRAIN_PATCH_METRICS_BINDING]]) writeonly buffer TerrainPatchMetrics {
@@ -30,6 +31,7 @@ layout(std430, binding = [[TERRAIN_CHUNK_INFO_BINDING]]) readonly buffer BakeTas
 uniform int u_numTasks;
 
 layout(binding = [[BAKED_HEIGHTMAP_BINDING]]) uniform sampler2DArray u_heightmapArray;
+layout(binding = [[BAKED_PARAMS_BINDING]]) uniform sampler2DArray u_bakedParamsArray;
 layout(rgba8, binding = [[BIOME_MAP_IMAGE_BINDING]]) uniform image2DArray u_biomeMap;
 
 #ifndef BIOME_DATA_BLOCK
@@ -84,13 +86,16 @@ void main() {
 	float totalCurvature = 0.0;
 	float totalRoughness = 0.0;
 	float totalGrassDensity = 0.0;
+	float maxVariance = 0.0;
 
 	int patchSize = [[PATCH_SIZE]];
 	ivec2 basePixel = patchCoord * patchSize;
+	int res = [[PATCHES_PER_CHUNK_SIDE]] * patchSize + 1;
 
-	for (int y = 0; y <= patchSize; ++y) {
-		for (int x = 0; x <= patchSize; ++x) {
-			ivec2 pixelCoord = basePixel + ivec2(x, y);
+	// Overscan by 1 pixel to ensure boundary-aware variance and bounds
+	for (int y = -1; y <= patchSize + 1; ++y) {
+		for (int x = -1; x <= patchSize + 1; ++x) {
+			ivec2 pixelCoord = clamp(basePixel + ivec2(x, y), 0, res - 1);
 			vec4 data = texelFetch(u_heightmapArray, ivec3(pixelCoord, slice), 0);
 			float h = data.r;
 			vec3 norm = data.gba;
@@ -101,6 +106,9 @@ void main() {
 			// Curvature approximation: how much the normal deviates from UP (1.0 - norm.y)
 			// or could use neighbor difference, but for pre-processing this is a decent proxy for "interestingness"
 			totalCurvature += (1.0 - norm.y);
+
+			float variance = texelFetch(u_bakedParamsArray, ivec3(pixelCoord, slice), 0).a;
+			maxVariance = max(maxVariance, variance);
 
 			vec4 biomeData = imageLoad(u_biomeMap, ivec3(pixelCoord, slice));
 			int biomeIdx = int(biomeData.r);
@@ -127,6 +135,7 @@ void main() {
 	metrics.avg_curvature = totalCurvature / numSamples;
 	metrics.avg_roughness = totalRoughness / numSamples;
 	metrics.avg_grass_density = totalGrassDensity / numSamples;
+	metrics.max_variance = maxVariance;
 
 	patchMetrics[patchIdx] = metrics;
 }

@@ -162,7 +162,8 @@ TerrainMaterial getBiomeMaterial(float height, float moisture, float noise) {
 
 	// Beach zone (0 - 3)
 	if (h < HEIGHT_BEACH_END) {
-		float rockFactor = (fastWorley3d(FragPos/125) *0.5 +0.5) * ((1- smoothstep(0, HEIGHT_BEACH_END, height)) + smoothstep(HEIGHT_TREELINE, HEIGHT_SNOW_START, height));
+		vec2 rockFactors = (fastWorley3dID(FragPos/125) *0.5 +0.5) * ((1- smoothstep(0, HEIGHT_BEACH_END, height)) + smoothstep(HEIGHT_TREELINE, HEIGHT_SNOW_START, height));
+		float rockFactor = rockFactors.x;
 		float wetness = 1.0 - smoothstep(0.0, HEIGHT_BEACH_END, h);
 
 		mat.albedo = mix(COL_SAND_DRY, COL_SAND_WET, wetness);
@@ -173,7 +174,7 @@ TerrainMaterial getBiomeMaterial(float height, float moisture, float noise) {
 		if (rockFactor  > 0.5) {
 			vec3 rockBoundary = voronoi((TexCoords+(noise*0.05))*int(50*mix(5, 0.1, smoothstep(50, 250, 20*int(realDist/20) ))));
 
-			float rockPalette = step(0.5, random(rockBoundary.xy));
+			float rockPalette = rockFactors.y;
 			vec3 color = palette( // Make this a curl noise?
 				random(rockBoundary.xy),
 				vec3(0.5, 0.5, 0.5), vec3(0.5, 0.5, 0.5),
@@ -303,6 +304,62 @@ TerrainMaterial getCliffMaterial(float height, float noise) {
 	return mat;
 }
 
+void processWaterLayer(vec3 norm, float dist, float fade) {
+	// --- Grid logic (from plane.frag, with refraction) ---
+	float grid_spacing = 1.0;
+
+	// Awareness of water surface: ripple depth is FragPos.y
+	// (Water is at y=0, ripples go up/down from there)
+	float rippleHeight = FragPos.y;
+
+	// Calculate refraction offset based on surface normal and depth (distance from y=0)
+	// Since water is fixed at 0, absolute depth is abs(rippleHeight)
+	// The more the normal deviates from up (0,1,0), the more refraction
+	vec2 refractionOffset = norm.xz * abs(rippleHeight) * 4.0;
+	if (dist <= 75.0) {
+		refractionOffset = fastCurl3d(vec3(norm.xz / 100.0, rippleHeight)).xz * abs(rippleHeight) * 2.0 *
+			smoothstep(75.0, 50.0, dist);
+	}
+	vec2 coord = (FragPos.xz + refractionOffset) / grid_spacing;
+	vec2 f = fwidth(coord);
+
+	vec2  grid_minor = abs(fract(coord - 0.5) - 0.5) / f;
+	float line_minor = min(grid_minor.x, grid_minor.y);
+	float C_minor = 1.0 - min(line_minor, 1.0);
+
+	vec2  grid_major = abs(fract(coord / 5.0 - 0.5) - 0.5) / f;
+	float line_major = min(grid_major.x, grid_major.y);
+	float C_major = 1.0 - min(line_major, 1.0);
+
+	// Add shimmer to grid intensity based on ripple height
+	float shimmer = 1.0 + rippleHeight * 2.0;
+	float grid_intensity = max(C_minor, C_major * 1.5) * 0.6 * shimmer;
+	vec3  grid_color = vec3(0.0, 0.8, 0.8) * grid_intensity;
+
+	vec3 surfaceColor = vec3(0.05, 0.05, 0.08);
+
+	// Highly reflective PBR material
+	float primaryShadow;
+	vec3 lighting = apply_lighting_pbr(FragPos, norm, surfaceColor, 0.05, 0.9, 1.0, primaryShadow).rgb;
+	vec3 final_color = lighting + grid_color;
+
+	// Distance fade and distant cyan blend (matching terrain style)
+	vec4 baseColor = vec4(final_color, fade);
+	FragColor = mix(vec4(0.0, 0.7, 0.7, baseColor.a) * length(baseColor), baseColor, step(1.0, fade));
+
+	// Output view-space normal
+	NormalOut = vec4(normalize(mat3(view) * norm), primaryShadow);
+	AlbedoOut = vec4(surfaceColor, 1.0);
+	return;
+}
+
+void generateNoise();
+void calculateMaterial();
+void processGrass();
+void processGrain();
+void processGridFade();
+
+
 void main() {
 	if (uIsShadowPass) {
 		// Output only depth (handled by hardware)
@@ -331,51 +388,7 @@ void main() {
 	}
 
 	if (vIsWater > 0.5) {
-		// --- Grid logic (from plane.frag, with refraction) ---
-		float grid_spacing = 1.0;
-
-		// Awareness of water surface: ripple depth is FragPos.y
-		// (Water is at y=0, ripples go up/down from there)
-		float rippleHeight = FragPos.y;
-
-		// Calculate refraction offset based on surface normal and depth (distance from y=0)
-		// Since water is fixed at 0, absolute depth is abs(rippleHeight)
-		// The more the normal deviates from up (0,1,0), the more refraction
-		vec2 refractionOffset = norm.xz * abs(rippleHeight) * 4.0;
-		if (dist <= 75.0) {
-			refractionOffset = fastCurl3d(vec3(norm.xz / 100.0, rippleHeight)).xz * abs(rippleHeight) * 2.0 *
-				smoothstep(75.0, 50.0, dist);
-		}
-		vec2 coord = (FragPos.xz + refractionOffset) / grid_spacing;
-		vec2 f = fwidth(coord);
-
-		vec2  grid_minor = abs(fract(coord - 0.5) - 0.5) / f;
-		float line_minor = min(grid_minor.x, grid_minor.y);
-		float C_minor = 1.0 - min(line_minor, 1.0);
-
-		vec2  grid_major = abs(fract(coord / 5.0 - 0.5) - 0.5) / f;
-		float line_major = min(grid_major.x, grid_major.y);
-		float C_major = 1.0 - min(line_major, 1.0);
-
-		// Add shimmer to grid intensity based on ripple height
-		float shimmer = 1.0 + rippleHeight * 2.0;
-		float grid_intensity = max(C_minor, C_major * 1.5) * 0.6 * shimmer;
-		vec3  grid_color = vec3(0.0, 0.8, 0.8) * grid_intensity;
-
-		vec3 surfaceColor = vec3(0.05, 0.05, 0.08);
-
-		// Highly reflective PBR material
-		float primaryShadow;
-		vec3 lighting = apply_lighting_pbr(FragPos, norm, surfaceColor, 0.05, 0.9, 1.0, primaryShadow).rgb;
-		vec3 final_color = lighting + grid_color;
-
-		// Distance fade and distant cyan blend (matching terrain style)
-		vec4 baseColor = vec4(final_color, fade);
-		FragColor = mix(vec4(0.0, 0.7, 0.7, baseColor.a) * length(baseColor), baseColor, step(1.0, fade));
-
-		// Output view-space normal
-		NormalOut = vec4(normalize(mat3(view) * norm), primaryShadow);
-		AlbedoOut = vec4(surfaceColor, 1.0);
+		processWaterLayer(norm, dist, fade);
 		return;
 	}
 
@@ -491,7 +504,7 @@ void main() {
 	if (u_grassGlobal.enabled != 0 && freezingScale == 0) {
 
 		vec2  biomeUV = (TexCoords * uRawChunkSize + 0.5) / (uRawChunkSize + 1.0);
-		vec2  biomeData = texture(uBiomeMap, vec3(biomeUV, TextureSlice)).rg;
+		vec4  biomeData = texture(uBiomeMap, vec3(biomeUV, TextureSlice));
 
 		// Baked biome override
 		vec4 bakedDispGrass = texture(u_displacementArray, vec3(biomeUV, TextureSlice));
@@ -597,7 +610,7 @@ void main() {
 
 		// Sample biome noise type (using unused params.w)
 		vec2  biomeUV = (TexCoords * uRawChunkSize + 0.5) / (uRawChunkSize + 1.0);
-		vec2  biomeInfo = texture(uBiomeMap, vec3(biomeUV, TextureSlice)).rg;
+		vec4  biomeInfo = texture(uBiomeMap, vec3(biomeUV, TextureSlice));
 
 	// Baked biome override
 	vec4 bakedDisp = texture(u_displacementArray, vec3(biomeUV, TextureSlice));
