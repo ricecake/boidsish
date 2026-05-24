@@ -2536,12 +2536,16 @@ namespace Boidsish {
 			auto grass_future = thread_pool.submit([this, &frame]() {
 				if (grass_manager && terrain_generator && terrain_render_manager) {
 					grass_manager->SetCameraPos(camera.pos());
-					return grass_manager->PrepareUpdate(
+					auto work = grass_manager->PrepareUpdate(
 						simulation_delta_time,
 						simulation_time,
 						camera,
 						*terrain_generator
 					);
+					work.frustum_ubo = render_state_.frustum.id;
+					work.frustum_ubo_offset = render_state_.frustum.offset;
+					work.frustum_ubo_size = render_state_.frustum.size;
+					return work;
 				}
 				return GrassManager::GrassUpdateWork{};
 			});
@@ -2568,8 +2572,8 @@ namespace Boidsish {
 					render_state_.lighting.id,
 					static_cast<GLintptr>(render_state_.lighting.offset),
 					static_cast<GLsizeiptr>(render_state_.lighting.size),
-					frustum_ssbo->GetBufferId(),
-					frustum_ssbo->GetFrameOffset() + mdi_frustum_count * sizeof(FrustumDataGPU),
+					render_state_.frustum.id,
+					static_cast<GLintptr>(render_state_.frustum.offset),
 					noise_manager ? noise_manager->GetExtraNoiseTexture() : 0,
 					render_state_.visual_effects.id,
 					static_cast<GLintptr>(render_state_.visual_effects.offset),

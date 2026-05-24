@@ -558,6 +558,8 @@ namespace Boidsish {
 				block_validity_pb_->GetFrameDataPtr()[entry.block] = 1;
 			}
 
+			glMemoryBarrier(GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT);
+
 			PlacementGlobalsGPU globals;
 			globals.camera_and_scale = glm::vec4(cam_xz, work.world_scale, work.max_height);
 			globals.distance_params = glm::vec4(
@@ -575,6 +577,8 @@ namespace Boidsish {
 				chunk_ptr[j].offset_slice_size = glm::vec4(cd.world_offset, cd.slice, cd.chunk_size);
 				chunk_ptr[j].indices = glm::ivec4(chunks_to_generate[j].block * kInstancesPerChunk, 0, 0, 0);
 			}
+
+			glMemoryBarrier(GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT);
 
 			placement_shader_->use();
 			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainHeightmap());

@@ -345,6 +345,7 @@ namespace Boidsish {
 		// Copy shadow count
 		data->numShadowLights = kMaxShadowMaps; // Just indicate we have slots
 
+		glMemoryBarrier(GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT);
 		shadow_ubo_->BindRange(Constants::UboBinding::Shadows());
 	}
 

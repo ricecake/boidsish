@@ -64,6 +64,9 @@ namespace Boidsish {
             float world_scale;
             bool props_dirty;
             bool enabled;
+            uint32_t frustum_ubo;
+            size_t   frustum_ubo_offset;
+            size_t   frustum_ubo_size;
         };
 
         /**

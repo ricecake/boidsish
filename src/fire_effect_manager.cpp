@@ -393,6 +393,8 @@ namespace Boidsish {
 			std::memcpy(terrain_chunk_pb_->GetFrameDataPtr(), work.chunk_info.data(), count * sizeof(glm::vec4));
 		}
 
+		glMemoryBarrier(GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT);
+
 		// Reset draw command counts
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, draw_command_buffer_);
 		uint32_t draw_cmd_init[4] = {0, 1, 0, 0}; // count, instanceCount, first, baseInstance
@@ -426,6 +428,8 @@ namespace Boidsish {
 		stats_ptr->limit_snow = cfg.GetAppSettingInt("particle_limit_snow", 10000);
 		stats_ptr->limit_fairies = cfg.GetAppSettingInt("particle_limit_fairies", 1000);
 		stats_ptr->limit_dust = cfg.GetAppSettingInt("particle_limit_dust", 75);
+
+		glMemoryBarrier(GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT);
 
 		// GPU will increment counts, we only reset them to 0 each frame here before dispatch.
 

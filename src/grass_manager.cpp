@@ -184,6 +184,9 @@ namespace Boidsish {
         work.world_scale = terrainGen.GetWorldScale();
         work.props_dirty = props_dirty_;
         work.enabled = IsEnabled();
+        work.frustum_ubo = 0;
+        work.frustum_ubo_offset = 0;
+        work.frustum_ubo_size = 0;
         return work;
     }
 
@@ -222,6 +225,11 @@ namespace Boidsish {
         pre_pass_shader_->use();
         renderManager->BindTerrainData(*pre_pass_shader_);
 
+        if (work.frustum_ubo != 0) {
+            glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::FrustumData(),
+                work.frustum_ubo, work.frustum_ubo_offset, work.frustum_ubo_size);
+        }
+
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainPatchVisibility(), renderManager->GetPatchVisibilitySSBO());
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainPatchMetrics(), renderManager->GetPatchMetricsSSBO());
         grass_tasks_pb_->BindRange(Constants::SsboBinding::GrassTasks());
@@ -236,6 +244,8 @@ namespace Boidsish {
         task_header[1] = 1; // num_groups_y
         task_header[2] = 1; // num_groups_z
         task_header[3] = 0; // taskCount
+
+		glMemoryBarrier(GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT);
 
         int numPatchesPerChunk = Constants::Class::Terrain::PatchesPerChunk();
         int total_patches = (int)renderManager->GetVisibleChunkCount() * numPatchesPerChunk;
@@ -255,6 +265,11 @@ namespace Boidsish {
 
         renderManager->BindTerrainData(*placement_shader_);
 
+        if (work.frustum_ubo != 0) {
+            glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::FrustumData(),
+                work.frustum_ubo, work.frustum_ubo_offset, work.frustum_ubo_size);
+        }
+
         glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::GrassProps(), grass_props_ubo_);
         grass_instances_pb_->BindRange(Constants::SsboBinding::GrassInstances());
         grass_indirect_pb_->BindRange(Constants::SsboBinding::GrassIndirect());
@@ -266,6 +281,8 @@ namespace Boidsish {
 
         // Reset instanceCount for current frame
         grass_indirect_pb_->GetFrameDataPtr()->instanceCount = 0;
+
+		glMemoryBarrier(GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT);
 
         // Dispatch placement based on taskCount
         glBindBuffer(GL_DISPATCH_INDIRECT_BUFFER, grass_tasks_pb_->GetBufferId());
