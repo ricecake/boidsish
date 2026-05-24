@@ -1,5 +1,6 @@
 #include "shadow_manager.h"
 
+#include <cstring>
 #include <iostream>
 #include <vector>
 
@@ -7,6 +8,7 @@
 #include "gpu_resource_registry.h"
 #include "light.h"
 #include "logger.h"
+#include "persistent_buffer.h"
 #include "profiler.h"
 #include "service_locator.h"
 #include "shader.h"
@@ -25,9 +27,7 @@ namespace Boidsish {
 		if (shadow_map_array_ != 0) {
 			glDeleteTextures(1, &shadow_map_array_);
 		}
-		if (shadow_ubo_ != 0) {
-			glDeleteBuffers(1, &shadow_ubo_);
-		}
+		shadow_ubo_.reset();
 	}
 
 	void ShadowManager::Initialize() {
@@ -80,20 +80,8 @@ namespace Boidsish {
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 		// Create shadow UBO for light-space matrices
-		// Layout:
-		// mat4 lightSpaceMatrices[kMaxShadowMaps]
-		// vec4 cascadeSplits
-		// int numShadowLights
-		glGenBuffers(1, &shadow_ubo_);
-		glBindBuffer(GL_UNIFORM_BUFFER, shadow_ubo_);
-		size_t ubo_size = sizeof(glm::mat4) * kMaxShadowMaps + 16 + 16; // matrices + splits + count + padding
-
-		// Initialize UBO with zeros to prevent garbage data
-		std::vector<char> zero_data(ubo_size, 0);
-		glBufferData(GL_UNIFORM_BUFFER, ubo_size, zero_data.data(), GL_DYNAMIC_DRAW);
-
-		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Shadows(), shadow_ubo_);
-		glBindBuffer(GL_UNIFORM_BUFFER, 0);
+		shadow_ubo_ = std::make_unique<PersistentBuffer<ShadowUboData>>(GL_UNIFORM_BUFFER, 1, 3);
+		shadow_ubo_->BindRange(Constants::UboBinding::Shadows());
 
 		initialized_ = true;
 
@@ -342,25 +330,23 @@ namespace Boidsish {
 		shader.setInt("shadowMaps", texture_unit);
 	}
 
-	void ShadowManager::UpdateShadowUBO(const std::vector<Light*>& shadow_lights) {
+	void ShadowManager::UpdateShadowUBO(const std::vector<Light*>& /*shadow_lights*/) {
 		// Active shadow maps might be more than shadow lights due to CSM
 		// But for the UBO, we just want to upload all used matrices
 
-		glBindBuffer(GL_UNIFORM_BUFFER, shadow_ubo_);
+		ShadowUboData* data = shadow_ubo_->GetFrameDataPtr();
 
-		// Upload all light-space matrices
-		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::mat4) * kMaxShadowMaps, light_space_matrices_.data());
+		// Copy all light-space matrices
+		std::memcpy(data->lightSpaceMatrices, light_space_matrices_.data(), sizeof(glm::mat4) * kMaxShadowMaps);
 
-		// Upload cascade splits
-		size_t splits_offset = sizeof(glm::mat4) * kMaxShadowMaps;
-		glBufferSubData(GL_UNIFORM_BUFFER, splits_offset, sizeof(float) * kMaxCascades, cascade_splits_.data());
+		// Copy cascade splits
+		data->cascadeSplits = glm::vec4(cascade_splits_[0], cascade_splits_[1], cascade_splits_[2], cascade_splits_[3]);
 
-		// Upload shadow count (at offset after all matrices and splits)
-		size_t count_offset = splits_offset + 16; // align to 16 bytes
-		active_shadow_count_ = kMaxShadowMaps;    // Just indicate we have slots
-		glBufferSubData(GL_UNIFORM_BUFFER, count_offset, sizeof(int), &active_shadow_count_);
+		// Copy shadow count
+		data->numShadowLights = kMaxShadowMaps; // Just indicate we have slots
 
-		glBindBuffer(GL_UNIFORM_BUFFER, 0);
+		glMemoryBarrier(GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT);
+		shadow_ubo_->BindRange(Constants::UboBinding::Shadows());
 	}
 
 	std::vector<glm::vec4> ShadowManager::GetFrustumCornersWorldSpace(const glm::mat4& proj, const glm::mat4& view) {

@@ -21,6 +21,11 @@ namespace Boidsish {
 	class ServiceLocator;
 	struct Frustum;
 
+	struct TerrainDataUbo {
+		glm::ivec4 origin_size;    // x, z, size, is_bound (1)
+		glm::vec4  terrain_params; // chunk_size, world_scale, unused, unused
+	};
+
 	static constexpr size_t kMaxBakesPerFrame = 6;
 
 	/**
@@ -147,6 +152,11 @@ namespace Boidsish {
 			const std::optional<glm::vec4>& clip_plane,
 			float                           tess_quality_multiplier
 		);
+
+		/**
+		 * @brief Advance to the next triple-buffered segment for patches.
+		 */
+		void AdvanceFrame();
 
 		/**
 		 * @brief Commit any pending updates.
@@ -384,9 +394,12 @@ namespace Boidsish {
 		// Global terrain grid resources
 		GLuint chunk_grid_texture_ = 0;      // GL_TEXTURE_2D (R16I: texture_slice index, -1 if none)
 		GLuint max_height_grid_texture_ = 0; // GL_TEXTURE_2D (R32F: max_y, mips for hierarchical check)
-		GLuint terrain_data_ubo_ = 0;        // UBO for grid parameters
 		GLuint probe_ssbo_ = 0;              // SSBO for per-chunk SH probes
-		GLuint bake_ssbo_ = 0;               // SSBO for BakeTask
+		std::unique_ptr<PersistentBuffer<TerrainDataUbo>> terrain_data_pb_;
+		std::unique_ptr<PersistentBuffer<int16_t>> chunk_grid_pb_;
+		std::unique_ptr<PersistentBuffer<float>>   max_height_pb_;
+		std::unique_ptr<PersistentBuffer<BakeTask>> bake_task_pb_;
+
 		GLuint patch_metrics_ssbo_ = 0;      // SSBO for PatchMetrics
 		GLuint patch_visibility_ssbo_ = 0;   // SSBO for Patch visibility status
 		GLuint temporal_data_ubo_ = 0;
@@ -443,10 +456,12 @@ namespace Boidsish {
 		mutable std::recursive_mutex mutex_;
 
 		// Grid update tracking
-		int   last_grid_origin_x_ = -999999;
-		int   last_grid_origin_z_ = -999999;
-		float last_grid_world_scale_ = -1.0f;
-		bool  grid_dirty_ = true;
+		int            last_grid_origin_x_ = -999999;
+		int            last_grid_origin_z_ = -999999;
+		float          last_grid_world_scale_ = -1.0f;
+		bool           grid_dirty_ = true;
+		TerrainDataUbo last_ubo_{};
+		bool           last_ubo_valid_ = false;
 
 		int   last_shadow_grid_origin_x_ = -999999;
 		int   last_shadow_grid_origin_z_ = -999999;

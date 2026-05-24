@@ -17,6 +17,7 @@ layout(std430, binding = [[TERRAIN_CHUNK_INFO_BINDING]]) readonly buffer UpdateT
 };
 
 uniform int u_numTasks;
+uniform int u_taskOffset = 0;
 
 // Raymarch the terrain to find the horizon in a given direction
 float findHorizon(vec2 originXZ, float originH, vec2 dir) {
@@ -65,7 +66,7 @@ void main() {
 	int taskIdx = int(gl_WorkGroupID.z);
 	if (taskIdx >= u_numTasks) return;
 
-	UpdateTask task = tasks[taskIdx];
+	UpdateTask task = tasks[taskIdx + u_taskOffset];
 	ivec2 pixel = ivec2(gl_LocalInvocationID.xy);
 
 	float chunkSize = u_terrainParams.x * u_terrainParams.y;

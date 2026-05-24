@@ -65,12 +65,8 @@ namespace Boidsish {
 		}
 		emitter_buffer_.reset();
 		indirection_buffer_.reset();
-		if (terrain_chunk_buffer_ != 0) {
-			glDeleteBuffers(1, &terrain_chunk_buffer_);
-		}
-		if (slice_data_buffer_ != 0) {
-			glDeleteBuffers(1, &slice_data_buffer_);
-		}
+		terrain_chunk_pb_.reset();
+		slice_data_pb_.reset();
 		if (dummy_vao_ != 0) {
 			glDeleteVertexArrays(1, &dummy_vao_);
 		}
@@ -151,15 +147,11 @@ namespace Boidsish {
 		emitter_buffer_ = std::make_unique<PersistentBuffer<Emitter>>(GL_SHADER_STORAGE_BUFFER, kMaxEmitters, 3);
 		indirection_buffer_ = std::make_unique<PersistentBuffer<int>>(GL_SHADER_STORAGE_BUFFER, kMaxParticles, 3);
 
-		glGenBuffers(1, &terrain_chunk_buffer_);
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, terrain_chunk_buffer_);
 		// Pre-allocate for 1024 chunks as a reasonable default
-		glBufferData(GL_SHADER_STORAGE_BUFFER, 1024 * sizeof(glm::vec4), nullptr, GL_DYNAMIC_DRAW);
+		terrain_chunk_pb_ = std::make_unique<PersistentBuffer<glm::vec4>>(GL_SHADER_STORAGE_BUFFER, 1024, 3);
 
-		glGenBuffers(1, &slice_data_buffer_);
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, slice_data_buffer_);
 		// Max emitters (64) * 64 points per slice as a default
-		glBufferData(GL_SHADER_STORAGE_BUFFER, kMaxEmitters * 64 * sizeof(glm::vec4), nullptr, GL_DYNAMIC_DRAW);
+		slice_data_pb_ = std::make_unique<PersistentBuffer<glm::vec4>>(GL_SHADER_STORAGE_BUFFER, kMaxEmitters * 64, 3);
 
 		glGenBuffers(1, &visible_indices_buffer_);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, visible_indices_buffer_);
@@ -252,33 +244,24 @@ namespace Boidsish {
 		}
 	}
 
-	void FireEffectManager::Update(
+	FireEffectManager::FireUpdateWork FireEffectManager::PrepareUpdate(
 		float                         delta_time,
 		float                         time,
 		bool                          enabled,
 		float                         ambient_density,
-		const std::vector<glm::vec4>& chunk_info,
-		GLuint                        heightmap_texture,
-		GLuint                        curl_noise_texture,
-		GLuint                        biome_texture,
-		GLuint                        lighting_ubo,
-		GLintptr                      lighting_ubo_offset,
-		GLsizeiptr                    lighting_ubo_size,
-		GLuint                        frustum_ubo,
-		GLintptr                      frustum_offset,
-		GLuint                        extra_noise_texture,
-		GLuint                        visual_effects_ubo,
-		GLintptr                      vfx_offset,
-		GLsizeiptr                    vfx_size
+		const std::vector<glm::vec4>& chunk_info
 	) {
-		PROJECT_PROFILE_SCOPE("FireEffectManager::Update");
+		PROJECT_PROFILE_SCOPE("FireEffectManager::PrepareUpdate");
 		std::lock_guard<std::mutex> lock(mutex_);
-		if (!initialized_ || !lifecycle_shader_ || !lifecycle_shader_->isValid() || !behavior_shader_ ||
-		    !behavior_shader_->isValid() || !fixup_shader_ || !fixup_shader_->isValid()) {
-			return;
-		}
 
-		time_ = time;
+		FireUpdateWork work;
+		work.delta_time = delta_time;
+		work.time = time;
+		work.enabled = enabled;
+		work.ambient_density = ambient_density;
+		work.chunk_info = chunk_info;
+		work.particles_globally_enabled = ConfigManager::GetInstance().GetAppSettingBool("particles_enabled", true);
+
 		if (std::abs(ambient_density - ambient_density_) > 0.001f) {
 			ambient_density_ = ambient_density;
 			needs_reallocation_ = true;
@@ -313,9 +296,7 @@ namespace Boidsish {
 		}
 
 		// --- Update Emitters and Slice Data ---
-		std::vector<Emitter>   emitters;
-		std::vector<glm::vec4> slice_points;
-		emitters.reserve(effects_.size());
+		work.emitters.reserve(effects_.size());
 
 		for (const auto& effect : effects_) {
 			if (effect) {
@@ -343,11 +324,11 @@ namespace Boidsish {
 					emitter.slice_area = slice.area;
 					if (!slice.triangles.empty()) {
 						emitter.use_slice_data = 1;
-						emitter.slice_data_offset = static_cast<int>(slice_points.size());
+						emitter.slice_data_offset = static_cast<int>(work.slice_points.size());
 						emitter.slice_data_count = 64; // Sample 64 points per slice
 
 						for (int i = 0; i < emitter.slice_data_count; ++i) {
-							slice_points.push_back(glm::vec4(slice.GetRandomPoint(), 1.0f));
+							work.slice_points.push_back(glm::vec4(slice.GetRandomPoint(), 1.0f));
 						}
 					}
 				}
@@ -356,49 +337,63 @@ namespace Boidsish {
 					effect->ResetClearRequest();
 				}
 
-				emitters.push_back(emitter);
+				work.emitters.push_back(emitter);
 			} else {
 				// Add a placeholder for inactive emitters to maintain indexing
-				emitters.push_back(
+				work.emitters.push_back(
 					{glm::vec3(0), 0, glm::vec3(0), 0, glm::vec3(0), 0, glm::vec3(0), 0, 0.0f, 0, 0, 0, 0.0f, 0, {0, 0}}
 				);
 			}
 		}
 
-		if (!slice_points.empty()) {
-			glBindBuffer(GL_SHADER_STORAGE_BUFFER, slice_data_buffer_);
-			// Ensure buffer is large enough
-			size_t required_size = slice_points.size() * sizeof(glm::vec4);
-			GLint  current_size = 0;
-			glGetBufferParameteriv(GL_SHADER_STORAGE_BUFFER, GL_BUFFER_SIZE, &current_size);
-			if (required_size > (size_t)current_size) {
-				glBufferData(GL_SHADER_STORAGE_BUFFER, required_size * 2, nullptr, GL_DYNAMIC_DRAW);
-			}
-			glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, required_size, slice_points.data());
+		return work;
+	}
+
+	void FireEffectManager::ApplyUpdate(
+		const FireUpdateWork& work,
+		GLuint                heightmap_texture,
+		GLuint                curl_noise_texture,
+		GLuint                biome_texture,
+		GLuint                lighting_ubo,
+		GLintptr              lighting_ubo_offset,
+		GLsizeiptr            lighting_ubo_size,
+		GLuint                frustum_ubo,
+		GLintptr              frustum_offset,
+		GLuint                extra_noise_texture,
+		GLuint                visual_effects_ubo,
+		GLintptr              vfx_offset,
+		GLsizeiptr            vfx_size
+	) {
+		PROJECT_PROFILE_SCOPE("FireEffectManager::ApplyUpdate");
+		if (!initialized_ || !lifecycle_shader_ || !lifecycle_shader_->isValid() || !behavior_shader_ ||
+		    !behavior_shader_->isValid() || !fixup_shader_ || !fixup_shader_->isValid()) {
+			return;
+		}
+
+		time_ = work.time;
+
+		if (!work.slice_points.empty()) {
+			size_t count = std::min(work.slice_points.size(), slice_data_pb_->GetElementCount());
+			std::memcpy(slice_data_pb_->GetFrameDataPtr(), work.slice_points.data(), count * sizeof(glm::vec4));
 		}
 
 		// Update emitter buffer
-		emitter_buffer_->AdvanceFrame();
-		if (!emitters.empty()) {
-			std::memcpy(emitter_buffer_->GetFrameDataPtr(), emitters.data(), emitters.size() * sizeof(Emitter));
+		if (!work.emitters.empty()) {
+			std::memcpy(emitter_buffer_->GetFrameDataPtr(), work.emitters.data(), work.emitters.size() * sizeof(Emitter));
 		}
 
-		indirection_buffer_->AdvanceFrame();
 		std::memcpy(
 			indirection_buffer_->GetFrameDataPtr(),
 			particle_to_emitter_map_.data(),
 			particle_to_emitter_map_.size() * sizeof(int)
 		);
 
-		if (!chunk_info.empty()) {
-			glBindBuffer(GL_SHADER_STORAGE_BUFFER, terrain_chunk_buffer_);
-			glBufferData(
-				GL_SHADER_STORAGE_BUFFER,
-				chunk_info.size() * sizeof(glm::vec4),
-				chunk_info.data(),
-				GL_DYNAMIC_DRAW
-			);
+		if (!work.chunk_info.empty()) {
+			size_t count = std::min(work.chunk_info.size(), terrain_chunk_pb_->GetElementCount());
+			std::memcpy(terrain_chunk_pb_->GetFrameDataPtr(), work.chunk_info.data(), count * sizeof(glm::vec4));
 		}
+
+		glMemoryBarrier(GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT);
 
 		// Reset draw command counts
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, draw_command_buffer_);
@@ -413,13 +408,12 @@ namespace Boidsish {
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleBuffer(), particle_buffer_);
 		emitter_buffer_->BindRange(Constants::SsboBinding::EmitterBuffer());
 		indirection_buffer_->BindRange(Constants::SsboBinding::IndirectionBuffer());
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainChunkInfo(), terrain_chunk_buffer_);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::SliceData(), slice_data_buffer_);
+		terrain_chunk_pb_->BindRange(Constants::SsboBinding::TerrainChunkInfo());
+		slice_data_pb_->BindRange(Constants::SsboBinding::SliceData());
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::VisibleParticleIndices(), visible_indices_buffer_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleDrawCommand(), draw_command_buffer_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::LiveParticleIndices(), live_indices_buffer_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::BehaviorDrawCommand(), behavior_command_buffer_);
-		stats_buffer_->AdvanceFrame();
 		stats_buffer_->BindRange(Constants::SsboBinding::ParticleStats());
 
 		// Update limits in stats buffer
@@ -435,19 +429,21 @@ namespace Boidsish {
 		stats_ptr->limit_fairies = cfg.GetAppSettingInt("particle_limit_fairies", 1000);
 		stats_ptr->limit_dust = cfg.GetAppSettingInt("particle_limit_dust", 75);
 
+		glMemoryBarrier(GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT);
+
 		// GPU will increment counts, we only reset them to 0 each frame here before dispatch.
 
 		bool particles_globally_enabled = cfg.GetAppSettingBool("particles_enabled", true);
 
 		auto bind_textures_and_uniforms = [&](ComputeShader* shader) {
 			shader->use();
-			shader->setFloat("u_delta_time", delta_time);
+			shader->setFloat("u_delta_time", work.delta_time);
 			shader->setFloat("u_time", time_);
-			shader->setBool("u_enabled", enabled && particles_globally_enabled);
-			shader->setFloat("u_ambient_density", ambient_density);
+			shader->setBool("u_enabled", work.enabled && work.particles_globally_enabled);
+			shader->setFloat("u_ambient_density", work.ambient_density);
 			shader->setInt("u_ambient_particle_scale", Constants::Class::Particles::AmbientParticleScale());
-			shader->setInt("u_num_emitters", emitters.size());
-			shader->setInt("u_num_chunks", static_cast<int>(chunk_info.size()));
+			shader->setInt("u_num_emitters", (int)work.emitters.size());
+			shader->setInt("u_num_chunks", static_cast<int>(work.chunk_info.size()));
 			shader->setUint("u_grid_size", Constants::Class::Particles::ParticleGridSize());
 			shader->setFloat("u_cell_size", Constants::Class::Particles::ParticleGridCellSize());
 
@@ -665,6 +661,51 @@ namespace Boidsish {
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleBuffer(), particle_buffer_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleGridHeads(), grid_heads_buffer_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleGridNext(), grid_next_buffer_);
+	}
+
+	void FireEffectManager::AdvanceFrame() {
+		if (emitter_buffer_) emitter_buffer_->AdvanceFrame();
+		if (indirection_buffer_) indirection_buffer_->AdvanceFrame();
+		if (terrain_chunk_pb_) terrain_chunk_pb_->AdvanceFrame();
+		if (slice_data_pb_) slice_data_pb_->AdvanceFrame();
+		if (stats_buffer_) stats_buffer_->AdvanceFrame();
+	}
+
+	void FireEffectManager::Update(
+		float                         delta_time,
+		float                         time,
+		bool                          enabled,
+		float                         ambient_density,
+		const std::vector<glm::vec4>& chunk_info,
+		GLuint                        heightmap_texture,
+		GLuint                        curl_noise_texture,
+		GLuint                        biome_texture,
+		GLuint                        lighting_ubo,
+		GLintptr                      lighting_ubo_offset,
+		GLsizeiptr                    lighting_ubo_size,
+		GLuint                        frustum_ubo,
+		GLintptr                      frustum_offset,
+		GLuint                        extra_noise_texture,
+		GLuint                        visual_effects_ubo,
+		GLintptr                      vfx_offset,
+		GLsizeiptr                    vfx_size
+	) {
+		FireUpdateWork work = PrepareUpdate(delta_time, time, enabled, ambient_density, chunk_info);
+		ApplyUpdate(
+			work,
+			heightmap_texture,
+			curl_noise_texture,
+			biome_texture,
+			lighting_ubo,
+			lighting_ubo_offset,
+			lighting_ubo_size,
+			frustum_ubo,
+			frustum_offset,
+			extra_noise_texture,
+			visual_effects_ubo,
+			vfx_offset,
+			vfx_size
+		);
 	}
 
 	void FireEffectManager::Render(
