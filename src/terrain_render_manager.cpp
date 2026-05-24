@@ -751,6 +751,11 @@ namespace Boidsish {
 
 		if (origin_x == last_grid_origin_x_ && origin_z == last_grid_origin_z_ &&
 		    world_scale == last_grid_world_scale_ && !grid_dirty_ && !lighting_changed) {
+			// Populate UBO segment for every frame to prevent triple-buffer divergence
+			if (last_ubo_valid_) {
+				std::memcpy(terrain_data_pb_->GetFrameDataPtr(), &last_ubo_, sizeof(TerrainDataUbo));
+				glMemoryBarrier(GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT);
+			}
 			return;
 		}
 
@@ -800,6 +805,8 @@ namespace Boidsish {
 		std::memcpy(terrain_data_pb_->GetFrameDataPtr(), &ubo, sizeof(TerrainDataUbo));
 		glMemoryBarrier(GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT);
 
+		last_ubo_ = ubo;
+		last_ubo_valid_ = true;
 		last_grid_origin_x_ = origin_x;
 		last_grid_origin_z_ = origin_z;
 		last_grid_world_scale_ = world_scale;

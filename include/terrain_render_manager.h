@@ -456,10 +456,12 @@ namespace Boidsish {
 		mutable std::recursive_mutex mutex_;
 
 		// Grid update tracking
-		int   last_grid_origin_x_ = -999999;
-		int   last_grid_origin_z_ = -999999;
-		float last_grid_world_scale_ = -1.0f;
-		bool  grid_dirty_ = true;
+		int            last_grid_origin_x_ = -999999;
+		int            last_grid_origin_z_ = -999999;
+		float          last_grid_world_scale_ = -1.0f;
+		bool           grid_dirty_ = true;
+		TerrainDataUbo last_ubo_{};
+		bool           last_ubo_valid_ = false;
 
 		int   last_shadow_grid_origin_x_ = -999999;
 		int   last_shadow_grid_origin_z_ = -999999;
