@@ -75,8 +75,12 @@ inline vec5	dnoise( const glm::vec4 &v );
 
 //! Returns a 2D simplex cellular/worley noise
 inline float worleyNoise( const glm::vec2 &v );
+//! Returns a 2D simplex cellular/worley noise with cell ID
+inline glm::vec2 worleyNoiseWithId( const glm::vec2 &v );
 //! Returns a 3D simplex cellular/worley noise
 inline float worleyNoise( const glm::vec3 &v );
+//! Returns a 3D simplex cellular/worley noise with cell ID
+inline glm::vec2 worleyNoiseWithId( const glm::vec3 &v );
 //! Returns a 2D simplex smooth cellular/worley noise
 inline float worleyNoise( const glm::vec2 &v, float falloff );
 //! Returns a 3D simplex smooth cellular/worley noise
@@ -1272,37 +1276,55 @@ vec5 dnoise( const glm::vec4 &v )
 
 float worleyNoise( const glm::vec2 &v )
 {
+	return worleyNoiseWithId( v ).x;
+}
+glm::vec2 worleyNoiseWithId( const glm::vec2 &v )
+{
 	glm::vec2 p = glm::floor( v );
 	glm::vec2 f = glm::fract( v );
 
-	float res = 8.0;
+	float resSq = 8.0;
+	float id = 0.0;
 	for( int j=-1; j<=1; j++ ) {
 		for( int i=-1; i<=1; i++ ) {
 			glm::vec2 b = glm::vec2( i, j );
-			glm::vec2  r = b - f + ( Simplex::noise( p + b ) * 0.5f + 0.5f );
-			float d = glm::dot( r, r );
-			res = glm::min( res, d );
+			float noiseVal = Simplex::noise( p + b ) * 0.5f + 0.5f;
+			glm::vec2 r = b - f + noiseVal;
+			float dSq = glm::dot( r, r );
+			if( dSq < resSq ) {
+				resSq = dSq;
+				id = noiseVal;
+			}
 		}
 	}
-	return sqrt( res );
+	return glm::vec2( sqrt( resSq ), id );
 }
 float worleyNoise( const glm::vec3 &v )
+{
+	return worleyNoiseWithId( v ).x;
+}
+glm::vec2 worleyNoiseWithId( const glm::vec3 &v )
 {
 	glm::vec3 p = glm::floor( v );
 	glm::vec3 f = glm::fract( v );
 
-	float res = 8.0;
+	float resSq = 8.0;
+	float id = 0.0;
 	for( int k=-1; k<=1; k++ ) {
 		for( int j=-1; j<=1; j++ ) {
 			for( int i=-1; i<=1; i++ ) {
 				glm::vec3 b = glm::vec3( i, j, k );
-				glm::vec3 r = b - f + ( Simplex::noise( p + b ) * 0.5f + 0.5f );
-				float d = glm::dot( r, r );
-				res = glm::min( res, d );
+				float noiseVal = Simplex::noise( p + b ) * 0.5f + 0.5f;
+				glm::vec3 r = b - f + noiseVal;
+				float dSq = glm::dot( r, r );
+				if( dSq < resSq ) {
+					resSq = dSq;
+					id = noiseVal;
+				}
 			}
 		}
 	}
-	return sqrt( res );
+	return glm::vec2( sqrt( resSq ), id );
 }
 float worleyNoise( const glm::vec2 &v, float falloff )
 {

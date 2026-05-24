@@ -48,6 +48,11 @@ float fastGradient3d(vec3 p) {
 	return textureLod(u_extraNoiseTexture, p, 0.0).g * 2.0 - 1.0;
 }
 
+vec2 fastWorley3dID(vec3 p) {
+	return textureLod(u_extraNoiseTexture, p, 0.0).ba;
+}
+
+
 // Multi-octave texture FBM
 float fastTextureFbm(vec3 p, int octaves) {
 	float value = 0.0;

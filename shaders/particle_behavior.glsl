@@ -422,6 +422,17 @@ void updateAmbientFirefly(
 	p.origin.w = 0.5 * p.color.a;
 }
 
+void updateDustBehavior(inout Particle p, float dt, float time, sampler3D curlTexture) {
+	vec3 wind = getWindAtPosition(p.pos.xyz);
+	p.vel.xyz += wind * 3.0 * dt;
+	p.vel.xyz += curlNoise(p.pos.xyz, time, curlTexture) * 0.5 * dt;
+	p.vel.xyz *= pow(0.95, dt / 0.016);
+
+	p.color = vec4(0.8, 0.8, 0.7, 0.3 * smoothstep(0.0, 0.5, p.pos.w));
+	p.vel.w = 8.0;
+	p.origin.w = 0.0;
+}
+
 void updateAmbientParticle(
 	inout Particle p,
 	float          dt,
@@ -451,6 +462,9 @@ void updateAmbientParticle(
 	} else if (p.style == STYLE_BIRDS) {
 		updateBirds(p, dt, time, cellSize, gridSize, curlTexture, num_chunks, heightmapArray);
 		maxSpeed = 6.0;
+	} else if (p.style == STYLE_DUST) {
+		updateDustBehavior(p, dt, time, curlTexture);
+		maxSpeed = 5.0;
 	} else {
 		p.vel.xyz += curlNoise(p.pos.xyz, time, curlTexture) * dt;
 		p.vel.xyz *= pow(0.99, dt / 0.016);

@@ -58,7 +58,7 @@ void main() {
 	float alpha = 0.0;
 
 	if (v_style == STYLE_ROCKET_TRAIL || v_style == STYLE_SPARKS || v_style == STYLE_GLITTER || v_style == STYLE_BUBBLES || v_style == STYLE_FIREFLIES || v_style == STYLE_DEBUG ||
-	    v_style == STYLE_CINDER || v_style == STYLE_IRIDESCENT || v_style == STYLE_RAIN || v_style == STYLE_SNOW || v_style == STYLE_LEAF || v_style == STYLE_PETAL || v_style == STYLE_BIRDS) {
+	    v_style == STYLE_CINDER || v_style == STYLE_IRIDESCENT || v_style == STYLE_RAIN || v_style == STYLE_SNOW || v_style == STYLE_LEAF || v_style == STYLE_PETAL || v_style == STYLE_BIRDS || v_style == STYLE_DUST) {
 
 		color = v_p.color.rgb;
 		alpha = v_p.color.a;
@@ -107,6 +107,11 @@ void main() {
 		} else if (v_style == STYLE_CINDER) {
 			float n = snoise3d(vec3(gl_PointCoord * 6.0, float(v_particle_idx)));
 			shapeMask = smoothstep(0.2 + n * 0.15, 0.05, distSq);
+		} else if (v_style == STYLE_DUST) {
+			float distToCam = length(view_pos.xyz);
+			shapeMask = exp(-distSq * 15.0);
+			color = vec3(6.8);
+			alpha *= (1-smoothstep(15.0, 20.0, distToCam)) * smoothstep(5, 4, v_lifetime) * (1-smoothstep(1,0, v_lifetime));
 		} else if (v_style == STYLE_BIRDS) {
 			float flap = sin(u_time * 15.0 + v_p.phase);
 			float wing_y = abs(gl_PointCoord.x - 0.5) * (0.5 + flap * 0.4);
