@@ -16,6 +16,12 @@ layout(binding = [[TERRAIN_CHUNK_GRID_BINDING]]) uniform isampler2D u_chunkGrid;
 
 layout(binding = [[TERRAIN_MAX_HEIGHT_BINDING]]) uniform sampler2D  u_maxHeightGrid;
 layout(binding = [[BAKED_HEIGHTMAP_BINDING]]) uniform sampler2DArray u_heightmapArray;
+layout(binding = [[BAKED_PARAMS_BINDING]])    uniform sampler2DArray u_bakedParamsArray;
+
+#ifndef TERRAIN_BIOME_MAP_DEFINED
+#define TERRAIN_BIOME_MAP_DEFINED
+layout(binding = [[TERRAIN_BIOME_MAP_BINDING]]) uniform sampler2DArray u_biomeMap;
+#endif
 
 /**
  * Get the terrain height at a specific world position.

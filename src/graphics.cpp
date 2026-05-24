@@ -1816,8 +1816,10 @@ namespace Boidsish {
 
 			// Use batched render manager if available (single draw call for all chunks)
 			if (terrain_render_manager) {
+				// glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 				terrain_render_manager
 					->Render(*Terrain::terrain_shader_, view, proj, viewport_size, clip_plane, effective_quality);
+				// glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 			} else {
 				// Fallback to per-chunk rendering
 				Terrain::terrain_shader_->use();
@@ -2561,6 +2563,8 @@ namespace Boidsish {
 					sun_dir = -lights[0].direction;
 				}
 
+				float lod_projection_scalar = (float)render_height / (2.0f * tan(glm::radians(camera.fov) / 2.0f));
+
 				terrain_render_manager->PrepareForRender(
 					frame.camera_frustum,
 					camera.pos(),
@@ -2571,12 +2575,13 @@ namespace Boidsish {
 					day_time,
 					sun_dir,
 					static_cast<GLintptr>(render_state_.temporal.offset),
-					static_cast<GLintptr>(render_state_.frustum.offset)
+					static_cast<GLintptr>(render_state_.frustum.offset),
+					lod_projection_scalar
 				);
 
 				// 3. Dispatch terrain patch preparation (GPU culling/LOD)
 				// This populates the visibility SSBO that grass system needs.
-				terrain_render_manager->DispatchPreparePatches(effective_quality);
+				terrain_render_manager->DispatchPreparePatches(effective_quality, glm::vec2(render_width, render_height), lod_projection_scalar);
 
 				// 4. Update grass system
 				grass_manager->Update(

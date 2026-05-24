@@ -104,14 +104,15 @@ namespace Boidsish {
 			float            day_time = -1.0f,
 			const glm::vec3& sun_dir = glm::vec3(0.0f),
 			GLintptr         temporal_ubo_offset = 0,
-			GLintptr         frustum_ubo_offset = 0
+			GLintptr         frustum_ubo_offset = 0,
+			float            lod_projection_scalar = 1000.0f
 		);
 
 		/**
 		 * @brief Dispatch GPU preparation of terrain patches.
 		 * Performs frustum and occlusion culling on the GPU.
 		 */
-		void DispatchPreparePatches(float tess_quality_multiplier);
+		void DispatchPreparePatches(float tess_quality_multiplier, const glm::vec2& viewport_size, float lod_projection_scalar);
 
 		/**
 		 * @brief Dispatch probe update compute shader.
@@ -317,7 +318,8 @@ namespace Boidsish {
 			float avg_curvature;
 			float avg_roughness;
 			float avg_grass_density;
-			float _pad[3];
+			float max_variance;
+			float _pad[2];
 		};
 
 		struct PatchDrawData {
@@ -368,6 +370,7 @@ namespace Boidsish {
 		GLuint raw_heightmap_texture_ = 0; // GL_TEXTURE_2D_ARRAY (RGBA16F: height, normal.xyz)
 		GLuint heightmap_texture_ = 0;     // GL_TEXTURE_2D_ARRAY (RGBA16F: baked height, baked normal)
 		GLuint baked_params_texture_ = 0;  // GL_TEXTURE_2D_ARRAY (RGBA16F: erosion, ridge, substrate, water)
+		GLuint displacement_texture_ = 0;  // GL_TEXTURE_2D_ARRAY (RGBA16F: displacement.xyz, biome_override)
 		GLuint horizon_map_texture_ = 0;   // GL_TEXTURE_2D_ARRAY (RGBA16F: 8 directions)
 		GLuint terrain_shadow_map_texture_ = 0; // GL_TEXTURE_2D (R8)
 		GLuint biome_texture_ = 0;         // GL_TEXTURE_2D_ARRAY (RGBA8: low_idx, t, bake_flag, unused)
