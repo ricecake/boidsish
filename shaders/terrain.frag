@@ -353,9 +353,174 @@ void processWaterLayer(vec3 norm, float dist, float fade) {
 	return;
 }
 
+TerrainMaterial calculateMaterial(float largeNoise, float slope) {
+	TerrainMaterial finalMaterial;
+	// ========================================================================
+	// Material Calculation
+	// ========================================================================
+
+	// Height with noise distortion for natural boundaries
+	float baseHeight = FragPos.y;
+	float distortedHeight = baseHeight + largeNoise * 5.0 * worldScale;
+
+	// Slope analysis: 1.0 = flat horizontal, 0.0 = vertical cliff
+	float distortedSlope = slope + largeNoise * 0.08;
+
+	// // Slope-based cliff blending
+	float verticalMask = smoothstep(0.4, 0.2, slope);
+
+	// Valley/ridge detection
+	float valleyFactor = calculateValleyFactor(FragPos);
+
+	// Moisture calculation
+	float moisture = calculateMoisture(baseHeight, valleyFactor, FragPos);
+
+	// Valley lushness boost
+	float valleyLushness = clamp(-valleyFactor, 0.0, 1.0);
+	moisture = mix(moisture, min(moisture + 0.3, 1.0), valleyLushness);
+
+	// Cliff mask: steep surfaces become rocky
+	// Threshold varies with altitude (snow sticks to steeper surfaces at high alt)
+	// Lower threshold = only steeper surfaces become cliffs (0.5 = ~60° from horizontal)
+	float cliffThreshold = mix(0.4, 0.3, smoothstep(HEIGHT_SNOW_START, HEIGHT_PEAK, baseHeight));
+	float cliffMask = smoothstep(cliffThreshold, cliffThreshold - 0.15, distortedSlope);
+
+	// Near-vertical surfaces (slope < 0.2, ~78° from horizontal) are always cliff-like
+	// float verticalMask = smoothstep(0.25, 0.1, slope);
+	cliffMask = max(cliffMask, verticalMask);
+
+	// Add noise to cliff boundaries for natural look
+	cliffMask += (largeNoise - 0.5) * 0.15;
+	cliffMask = clamp(cliffMask, 0.0, 1.0);
+
+	// Don't make beach areas into cliffs
+	float beachMask = 1.0 - smoothstep(0.0, HEIGHT_BEACH_END + 2.0, baseHeight);
+	cliffMask *= (1.0 - beachMask);
+
+	TerrainMaterial biomeMat = getBiomeMaterial(distortedHeight, moisture, largeNoise);
+	TerrainMaterial cliffMat = getCliffMaterial(baseHeight, largeNoise);
+
+	// Substrate-based blending: eroded substrate tends to be rockier, while
+	// deposition substrate (plains/ridges) can be lusher.
+	float substrateCliffFactor = smoothstep(0.2, -0.6, vSubstrate);
+	cliffMask = clamp(cliffMask + substrateCliffFactor * 0.4, 0.0, 1.0);
+
+	// Blend biome with cliff material
+	finalMaterial.albedo = mix(biomeMat.albedo, cliffMat.albedo, cliffMask);
+	finalMaterial.roughness = mix(biomeMat.roughness, cliffMat.roughness, cliffMask);
+	finalMaterial.metallic = mix(biomeMat.metallic, cliffMat.metallic, cliffMask);
+	finalMaterial.normalScale = mix(biomeMat.normalScale, cliffMat.normalScale, cliffMask);
+	finalMaterial.normalStrength = mix(biomeMat.normalStrength, cliffMat.normalStrength, cliffMask);
+
+	// Large-scale macro color shifts
+	finalMaterial.albedo *= (1.0 + largeNoise * 0.12);
+	return finalMaterial;
+}
+
+TerrainMaterial processGrass(float largeNoise, vec3 norm, float realDist, float baseFreq, float freezingScale, float dist, float n_fade, TerrainMaterial finalMaterial) {
+	TerrainMaterial grassMaterial;
+	// ========================================================================
+	// Grass-based Tinting and AO baseline shift
+	// ========================================================================
+	float grassAO = 0.0;
+	vec3 perturbedNorm = norm;
+	float stepDist = 50*int(realDist/50);
+	float freqScale = mix(1.0, 0.25, smoothstep(150.0, 160.0, stepDist + 50.0 * largeNoise));
+	freqScale = mix(5.0, freqScale, smoothstep(45, 50, stepDist));
+
+	float blueNoise = fastBlueNoise(FragPos.xz * (baseFreq * 0.05 * freqScale), 0) * 0.5 + 0.5;
+	float blueNoiseA = fastBlueNoise(FragPos.xz * (baseFreq * 0.1 * freqScale), 1) * 0.5 + 0.5;
+	if (u_grassGlobal.enabled != 0 && freezingScale == 0) {
+
+		vec2  biomeUV = (TexCoords * uRawChunkSize + 0.5) / (uRawChunkSize + 1.0);
+		vec4  biomeData = texture(uBiomeMap, vec3(biomeUV, TextureSlice));
+
+		// Baked biome override
+		vec4 bakedDispGrass = texture(u_displacementArray, vec3(biomeUV, TextureSlice));
+		if (bakedDispGrass.a > 0.0) {
+			biomeData.x = bakedDispGrass.a;
+			biomeData.y = 0.0; // Full override
+		}
+		int   idxA = int(biomeData.r * 255.0 + 0.5);
+		int   idxB = min(idxA + 1, 7);
+		float t = biomeData.g;
+
+		float densityA = u_grassBiomes[idxA].density * float(u_grassBiomes[idxA].enabled);
+		float densityB = u_grassBiomes[idxB].density * float(u_grassBiomes[idxB].enabled);
+		float interpolatedDensity = mix(densityA, densityB, t) * u_grassGlobal.densityMultiplier;
+
+		vec3 colorA = u_grassBiomes[idxA].colorBottom.rgb;
+		vec3 colorB = u_grassBiomes[idxB].colorBottom.rgb;
+		vec3 grassColor = mix(colorA, colorB, smoothstep(0, blueNoiseA, t));
+
+		float rigidA = u_grassBiomes[idxA].rigidity;
+		float rigidB = u_grassBiomes[idxB].rigidity;
+		float rigidity = clamp(mix(rigidA, rigidB, step(blueNoise, t)) * u_grassGlobal.rigidityMultiplier, 0, 1);
+
+		// Apply effect only on relatively flat surfaces where grass would grow
+		float grassMask = smoothstep(0.7, 0.8, norm.y) * clamp(interpolatedDensity, 0.0, 1.0);
+
+		// AO baseline shift - darken dense grass areas
+		grassAO = grassMask * 0.75;
+
+		float distanceFactor = smoothstep(200, 350, dist);
+
+		perturbedNorm = mix(norm, vec3(0.0, 1.0, 0.0), interpolatedDensity * distanceFactor);
+		perturbedNorm = normalize(perturbedNorm);
+
+		float windAtPos = FragPos.x*sin(n_fade)+FragPos.z*cos(n_fade);
+		float windThreshold = rigidity * 2.0;
+		float effectiveWindStrength = max(0.0, length(windAtPos) - windThreshold);
+
+		vec3 undersideColor = grassColor * 1.25 + vec3(0.05, 0.05, 0.0);
+		vec3 dynamicGrassColor = mix(grassColor, undersideColor, smoothstep(0, blueNoise, effectiveWindStrength));
+
+		finalMaterial.albedo = mix(finalMaterial.albedo, dynamicGrassColor, smoothstep(0, blueNoise, grassMask));
+
+		float floorTexture = pow(fastRidge3d(FragPos * 0.01 * freqScale) * 0.5 + 0.5, 2);
+
+		floorTexture = mix(1.0, floorTexture, (1.0-smoothstep(0, 150, dist)));
+		float albedoMultiplier = floorTexture;
+
+		finalMaterial.albedo *= albedoMultiplier;
+
+		// vec2 wore = fastWorley3dID( fastCurl3d( FragPos*0.005));
+		// vec3 color = palette( // Make this a curl noise?
+		// 	wore.y,
+		// 	vec3(0.5, 0.5, 0.5), vec3(0.5, 0.5, 0.5),
+		// 	mix(vec3(1.0, 1.0, 0.50), vec3(1.0, 1.0, 1.0), sin(wore.y)),
+		// 	mix(vec3(0.80, 0.90, 0.30), vec3(0.30, 0.20, 0.20), sin(wore.y))
+		// );
+
+		// finalMaterial.albedo = mix(finalMaterial.albedo, color, wore.x);
+
+/*
+		// Select flower color from a vibrant palette based on blue noise and position
+		vec3 flowerColor;
+		float colorSelector = fract(blueNoiseA * 3.0 + length(FragPos.xz) * 0.01);
+		if (colorSelector < 0.3) {
+			flowerColor = vec3(1.0, 0.2, 0.4); // Pinkish
+		} else if (colorSelector < 0.6) {
+			flowerColor = vec3(1.0, 0.8, 0.1); // Yellow/Orange
+		} else {
+			flowerColor = vec3(0.5, 0.2, 1.0); // Purple
+		}
+
+		// Occasional white flowers
+		if (fastSimplex3d(FragPos * 0.01) > 0.8) flowerColor = vec3(1.0, 1.0, 1.0);
+
+		float flowerScale = mix(mix(0.75, 0.35, smoothstep(50.0, 100.0, realDist)), 0.01, smoothstep(100, 150, realDist));
+		float flowerMask = smoothstep(0.5, 0.7, grassMask) * smoothstep(flowerScale, flowerScale + 0.10, worley) * smoothstep(0.6, 0.95, max(fastWorley3d(FragPos/50.0), pow(fastRidge3d(FragPos/200.0), 3)));
+		finalMaterial.albedo = mix(finalMaterial.albedo, flowerColor, flowerMask);
+*/
+
+		// finalMaterial.roughness = mix(finalMaterial.roughness, clamp(finalMaterial.roughness * dynamicBlend, 0.0, 1.0), distanceFactor);
+		finalMaterial.roughness = mix(finalMaterial.roughness, clamp(finalMaterial.roughness, 0.0, 1.0), distanceFactor);
+	}
+	return grassMaterial = finalMaterial;
+}
+
 void generateNoise();
-void calculateMaterial();
-void processGrass();
 void processGrain();
 void processGridFade();
 
@@ -399,77 +564,10 @@ void main() {
 	// float largeNoise =    mix(fastFbm3d(FragPos * (baseFreq * 5.0)), fastWarpedFbm3d(FragPos * (baseFreq * 0.5)),
 	// fastWorley3d(FragPos * (baseFreq * 0.1)));
 	float largeNoise = fastWarpedFbm3d(FragPos * (baseFreq * 0.1));
-	float medNoise = largeNoise;
-	float fineNoise = largeNoise;
-	float macroNoise = largeNoise;
-	float combinedNoise = largeNoise;
-
 	float distanceFactor = dist * smoothstep(0, 10.0, FragPos.y);
 	float noseFade = fade_start - 100.0;
 
-	TerrainMaterial finalMaterial;
-	// ========================================================================
-	// Material Calculation
-	// ========================================================================
-
-	// Height with noise distortion for natural boundaries
-	float baseHeight = FragPos.y;
-	float distortedHeight = baseHeight + largeNoise * 5.0 * worldScale;
-
-	// Slope analysis: 1.0 = flat horizontal, 0.0 = vertical cliff
-	float distortedSlope = slope + medNoise * 0.08;
-
-	// // Slope-based cliff blending
-	float verticalMask = smoothstep(0.4, 0.2, slope);
-
-	// Valley/ridge detection
-	float valleyFactor = calculateValleyFactor(FragPos);
-
-	// Moisture calculation
-	float moisture = calculateMoisture(baseHeight, valleyFactor, FragPos);
-
-	// Valley lushness boost
-	float valleyLushness = clamp(-valleyFactor, 0.0, 1.0);
-	moisture = mix(moisture, min(moisture + 0.3, 1.0), valleyLushness);
-
-	// Cliff mask: steep surfaces become rocky
-	// Threshold varies with altitude (snow sticks to steeper surfaces at high alt)
-	// Lower threshold = only steeper surfaces become cliffs (0.5 = ~60° from horizontal)
-	float cliffThreshold = mix(0.4, 0.3, smoothstep(HEIGHT_SNOW_START, HEIGHT_PEAK, baseHeight));
-	float cliffMask = smoothstep(cliffThreshold, cliffThreshold - 0.15, distortedSlope);
-
-	// Near-vertical surfaces (slope < 0.2, ~78° from horizontal) are always cliff-like
-	// float verticalMask = smoothstep(0.25, 0.1, slope);
-	cliffMask = max(cliffMask, verticalMask);
-
-	// Add noise to cliff boundaries for natural look
-	cliffMask += (medNoise - 0.5) * 0.15;
-	cliffMask = clamp(cliffMask, 0.0, 1.0);
-
-	// Don't make beach areas into cliffs
-	float beachMask = 1.0 - smoothstep(0.0, HEIGHT_BEACH_END + 2.0, baseHeight);
-	cliffMask *= (1.0 - beachMask);
-
-	TerrainMaterial biomeMat = getBiomeMaterial(distortedHeight, moisture, combinedNoise);
-	TerrainMaterial cliffMat = getCliffMaterial(baseHeight, medNoise);
-
-	// Substrate-based blending: eroded substrate tends to be rockier, while
-	// deposition substrate (plains/ridges) can be lusher.
-	float substrateCliffFactor = smoothstep(0.2, -0.6, vSubstrate);
-	cliffMask = clamp(cliffMask + substrateCliffFactor * 0.4, 0.0, 1.0);
-
-	// Blend biome with cliff material
-	finalMaterial.albedo = mix(biomeMat.albedo, cliffMat.albedo, cliffMask);
-	finalMaterial.roughness = mix(biomeMat.roughness, cliffMat.roughness, cliffMask);
-	finalMaterial.metallic = mix(biomeMat.metallic, cliffMat.metallic, cliffMask);
-	finalMaterial.normalScale = mix(biomeMat.normalScale, cliffMat.normalScale, cliffMask);
-	finalMaterial.normalStrength = mix(biomeMat.normalStrength, cliffMat.normalStrength, cliffMask);
-
-	// Large-scale macro color shifts
-	finalMaterial.albedo *= (1.0 + macroNoise * 0.12);
-
-	// Add subtle color variation based on combined noise
-	finalMaterial.albedo *= (1.0 + combinedNoise * 0.15);
+	TerrainMaterial finalMaterial = calculateMaterial(largeNoise, slope);
 
 	float freezingScale = 1.0 - smoothstep(255.372, 273.15, temperature);
 
@@ -480,7 +578,7 @@ void main() {
 	finalMaterial.roughness = mix(finalMaterial.roughness, 0.1, globalWetness * 0.8);
 
 	// Extra variety for rocky/steep areas to complement normals
-	float rockyVar = fineNoise;
+	float rockyVar = largeNoise;
 	float rockyMask = smoothstep(0.5, 0.2, slope); // More variety on steeper slopes
 	finalMaterial.albedo = mix(finalMaterial.albedo, finalMaterial.albedo * (1.0 + rockyVar * 0.2), rockyMask);
 
@@ -612,14 +710,14 @@ void main() {
 		vec2  biomeUV = (TexCoords * uRawChunkSize + 0.5) / (uRawChunkSize + 1.0);
 		vec4  biomeInfo = texture(uBiomeMap, vec3(biomeUV, TextureSlice));
 
-	// Baked biome override
-	vec4 bakedDisp = texture(u_displacementArray, vec3(biomeUV, TextureSlice));
-	if (bakedDisp.a > 0.0) {
-		biomeInfo.x = bakedDisp.a;
-		biomeInfo.y = 0.0; // Full override
-	}
+		// Baked biome override
+		vec4 bakedDisp = texture(u_displacementArray, vec3(biomeUV, TextureSlice));
+		if (bakedDisp.a > 0.0) {
+			biomeInfo.x = bakedDisp.a;
+			biomeInfo.y = 0.0; // Full override
+		}
 
-	float noiseTypeA = u_biomes[int(biomeInfo.x * 255.0 + 0.5)].params.w;
+		float noiseTypeA = u_biomes[int(biomeInfo.x * 255.0 + 0.5)].params.w;
 		float noiseTypeB = u_biomes[min(int(biomeInfo.x) + 1, 7)].params.w;
 		float noiseType = mix(noiseTypeA, noiseTypeB, biomeInfo.y);
 
@@ -654,33 +752,6 @@ void main() {
 		float variance = dot(perturbation, perturbation);
 		roughness = sqrt(clamp(roughness * roughness + variance * 0.25, 0.0, 1.0));
 	}
-
-	// Final Lighting
-	// vec3 windAtPos = getWindAtPosition(vec3(FragPos.x, 0.5, FragPos.z));
-	// albedo = length(albedo) * normalize(albedo+windAtPos);
-	// albedo = rgb2lab(albedo);
-
-/*
-	vec3 windAtPos = getWindAtPosition(vec3(FragPos.x, 0.5, FragPos.z));
-
-	vec3  light_dir = normalize(lights[0].position - FragPos);
-	float rim = max(dot(light_dir, normalize(viewPos - FragPos)), 0.0);
-	float windDistortion = pow(
-		1 -
-			smoothstep(
-				0,
-				1,
-				(max(0, dot(vec3(0, 1, 0), perturbedNorm)) * ((1 - dot(windAtPos, perturbedNorm)) / 2))
-			),
-		9.0
-	);
-	float plainRipple = length(windAtPos * sin(time*0.01));
-	float windRipple = windDistortion * plainRipple;
-	float grassFactor = smoothstep(0.25, 0.5, max(dot(albedo, COL_GRASS_LUSH), dot(albedo, COL_GRASS_DRY)));
-	albedo *= mix(1, mix(1.0, 1.25, windDistortion) * mix(1.0, 1.05, windRipple), grassFactor);
-	roughness *= mix(1.25, 1.0, windDistortion) * mix(1, mix(1.5, 1.0, windRipple), grassFactor);
-*/
-
 
 	if (freezingScale > 0) {
 		vec3 snowColor = vec3(0.9, 0.95, 1.0+0.01*grassAO);
