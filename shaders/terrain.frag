@@ -530,32 +530,28 @@ void main() {
 		// Output only depth (handled by hardware)
 		return;
 	}
-
+	// vec2  biomeUV = (TexCoords * uRawChunkSize + 0.5) / (uRawChunkSize + 1.0);
+	// vec4  biomeData = texture(uBiomeMap, vec3(biomeUV, TextureSlice));
+	// vec4 bakedDispGrass = texture(u_displacementArray, vec3(biomeUV, TextureSlice));
+	// FragColor = bakedDispGrass;
 	// FragColor = vec4(smoothstep(0, 2, tessFactor), smoothstep(2, 4, tessFactor), smoothstep(4, 8, tessFactor), 1.0);
 	// return;
 
-	// Distance Fade -- precalc
+
+
 	vec3  norm = normalize(Normal);
-	float baseFreq = 0.1 / worldScale;
 	float slope = dot(norm, vec3(0.0, 1.0, 0.0));
 	vec3  scaledFragPos = FragPos / worldScale;
 
 	float dist = length(FragPos.xz - viewPos.xz);
 	float realDist = distance(FragPos, viewPos);
-	// float n_fade = snoise(vec3(FragPos.xy / (25 * worldScale), time * 0.08));
-	float n_fade = fastSimplex3d(vec3(FragPos.xz / (250 * worldScale), time * 0.09));
-	float fade_start = 560.0 * worldScale;
-	float fade_end = 570.0 * worldScale;
-	float fade = 1.0 - smoothstep(fade_start, fade_end, dist + n_fade * 40.0);
 
-	if (fade < 0.2) {
-		discard;
-	}
+	float baseFreq = 0.1 / worldScale;
+	float stepDist = 50*int(realDist/50);
+	float distanceFactor = dist * smoothstep(0, 10.0, FragPos.y);
+	float freqScale = mix(1.0, 0.25, smoothstep(150.0, 160.0, stepDist + 50.0));
+	freqScale = mix(5.0, freqScale, smoothstep(45, 50, stepDist));
 
-	if (vIsWater > 0.5) {
-		processWaterLayer(norm, dist, fade);
-		return;
-	}
 
 	// ========================================================================
 	// Noise Generation
@@ -564,8 +560,25 @@ void main() {
 	// float largeNoise =    mix(fastFbm3d(FragPos * (baseFreq * 5.0)), fastWarpedFbm3d(FragPos * (baseFreq * 0.5)),
 	// fastWorley3d(FragPos * (baseFreq * 0.1)));
 	float largeNoise = fastWarpedFbm3d(FragPos * (baseFreq * 0.1));
-	float distanceFactor = dist * smoothstep(0, 10.0, FragPos.y);
+	float n_fade = fastSimplex3d(vec3(FragPos.xz / (250 * worldScale), time * 0.09));
+	float blueNoise = fastBlueNoise(FragPos.xz * (baseFreq * 0.05 * freqScale), 0) * 0.5 + 0.5;
+	float blueNoiseA = fastBlueNoise(FragPos.xz * (baseFreq * 0.1 * freqScale), 1) * 0.5 + 0.5;
+
+
+	float fade_start = 560.0 * worldScale;
+	float fade_end = 570.0 * worldScale;
+	float fade = 1.0 - smoothstep(fade_start, fade_end, dist + n_fade * 40.0);
 	float noseFade = fade_start - 100.0;
+
+	if (fade < 0.2) {
+		discard;
+		// FragColor = vec4(0);
+	}
+
+	if (vIsWater > 0.5) {
+		processWaterLayer(norm, dist, fade);
+		return;
+	}
 
 	TerrainMaterial finalMaterial = calculateMaterial(largeNoise, slope);
 
@@ -593,12 +606,6 @@ void main() {
 	// ========================================================================
 	float grassAO = 0.0;
 	vec3 perturbedNorm = norm;
-	float stepDist = 50*int(realDist/50);
-	float freqScale = mix(1.0, 0.25, smoothstep(150.0, 160.0, stepDist + 50.0 * largeNoise));
-	freqScale = mix(5.0, freqScale, smoothstep(45, 50, stepDist));
-
-	float blueNoise = fastBlueNoise(FragPos.xz * (baseFreq * 0.05 * freqScale), 0) * 0.5 + 0.5;
-	float blueNoiseA = fastBlueNoise(FragPos.xz * (baseFreq * 0.1 * freqScale), 1) * 0.5 + 0.5;
 	if (u_grassGlobal.enabled != 0 && freezingScale == 0) {
 
 		vec2  biomeUV = (TexCoords * uRawChunkSize + 0.5) / (uRawChunkSize + 1.0);
