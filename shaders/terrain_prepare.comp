@@ -129,7 +129,7 @@ float calculateEdgeTessellation(vec3 p0, vec3 p1, vec2 uv0, vec2 uv1, int slice)
 	float silhouetteFactor = 1.0 - abs(dot(norm, normalize(u_viewPos - midPoint)));
 	float silhouetteImportance = silhouetteFactor * (1.0 - smoothstep(100.0 * u_worldScale, 400.0 * u_worldScale, distToCam));
 
-	float effectiveTargetError = TARGET_ERROR_PIXELS / (1.0 + silhouetteImportance * 4.0);
+	float effectiveTargetError = (TARGET_ERROR_PIXELS) / (1.0 + silhouetteImportance * 4.0);
 
 	float pixelDeviation = (physicalDeviation * u_lodProjectionScalar) / distToCam;
 	float errorLevel = pixelDeviation / effectiveTargetError;
@@ -262,48 +262,6 @@ void main() {
 		}
 	}
 
-	// TERRAIN-ON-TERRAIN OCCLUSION CHECK (DISABLED: non-conservative)
-	/*
-	if (u_originSize.w > 0) {
-		float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
-
-		// Conservative horizon check:
-		// If our patch is entirely below the max height of chunks between us and the camera, it might be occluded.
-		// We can sample a few points along the view vector in the grid.
-		vec3  viewVec = u_viewPos - patchCenter;
-		float distToCam = length(viewVec);
-		vec2  viewDir2D = normalize(viewVec.xz);
-
-		// Step along the ray towards camera (max 4 steps for performance)
-		float stepSize = scaledChunkSize * 1.5;
-		int numSteps = clamp(int(distToCam / stepSize), 0, 4);
-
-		for (int i = 1; i <= numSteps; i++) {
-			vec2  samplePos = patchCenter.xz + viewDir2D * (float(i) * stepSize);
-			ivec2 sampleGridCoord = ivec2(floor(samplePos / scaledChunkSize)) - u_originSize.xy;
-
-			if (sampleGridCoord.x >= 0 && sampleGridCoord.x < u_originSize.z &&
-				sampleGridCoord.y >= 0 && sampleGridCoord.y < u_originSize.z) {
-
-				float blockerHeight = texelFetch(u_maxHeightGrid, sampleGridCoord, 0).r;
-
-				// If a chunk in front of us is higher than our patch's max height PLUS the camera's height,
-				// and we are far enough away, we are likely occluded.
-				// Simple check: if blockers are significantly above the line of sight.
-				float patchMaxY = metrics.max_y;
-
-				// Line of sight height at sample point
-				float t = (float(i) * stepSize) / distToCam;
-				float losHeight = mix(patchMaxY, u_viewPos.y, t);
-
-				if (blockerHeight > losHeight + (2.0 * u_worldScale)) {
-					return; // Likely occluded by terrain
-				}
-			}
-		}
-	}
-	*/
-
 	// Visibility confirmed, allocate draw call
 	uint outIdx = atomicAdd(command.instanceCount, 1);
 
@@ -332,7 +290,7 @@ void main() {
 
 	// Inner level based on patch-wide max_variance using SSE logic
 	float distToCenter = max(distance(u_viewPos, patchCenter), 1.0 * u_worldScale);
-	float innerPixelError = max(1.0, 1.0 / max(0.01, u_tessQualityMultiplier));
+	float innerPixelError = max(1.0, 1.0 / max(0.01, u_tessQualityMultiplier)) + 2*metrics.avg_grass_density;
 
 	// Error level based on max variance (chordal error)
 	float innerErrorLevel = (metrics.max_variance * u_lodProjectionScalar) / (distToCenter * innerPixelError);
