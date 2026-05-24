@@ -149,6 +149,11 @@ namespace Boidsish {
 		);
 
 		/**
+		 * @brief Advance to the next triple-buffered segment for patches.
+		 */
+		void AdvanceFrame();
+
+		/**
 		 * @brief Commit any pending updates.
 		 */
 		void CommitUpdates(bool force_sync = false);
@@ -386,7 +391,10 @@ namespace Boidsish {
 		GLuint max_height_grid_texture_ = 0; // GL_TEXTURE_2D (R32F: max_y, mips for hierarchical check)
 		GLuint terrain_data_ubo_ = 0;        // UBO for grid parameters
 		GLuint probe_ssbo_ = 0;              // SSBO for per-chunk SH probes
-		GLuint bake_ssbo_ = 0;               // SSBO for BakeTask
+		std::unique_ptr<PersistentBuffer<int16_t>> chunk_grid_pb_;
+		std::unique_ptr<PersistentBuffer<float>>   max_height_pb_;
+		std::unique_ptr<PersistentBuffer<BakeTask>> bake_task_pb_;
+
 		GLuint patch_metrics_ssbo_ = 0;      // SSBO for PatchMetrics
 		GLuint patch_visibility_ssbo_ = 0;   // SSBO for Patch visibility status
 		GLuint temporal_data_ubo_ = 0;

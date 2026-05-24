@@ -1,6 +1,7 @@
 #include "terrain_render_manager.h"
 
 #include <algorithm>
+#include <cstring>
 #include <iostream>
 
 #include "biome_properties.h"
@@ -98,10 +99,7 @@ namespace Boidsish {
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
 		// Create BakeTasks SSBO
-		glGenBuffers(1, &bake_ssbo_);
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, bake_ssbo_);
-		glBufferData(GL_SHADER_STORAGE_BUFFER, 1024 * sizeof(BakeTask), nullptr, GL_DYNAMIC_DRAW);
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+		bake_task_pb_ = std::make_unique<PersistentBuffer<BakeTask>>(GL_SHADER_STORAGE_BUFFER, 1024, 3);
 
 		// Patch SSBOs
 		size_t max_patches = max_chunks_ * Constants::Class::Terrain::PatchesPerChunk();
@@ -197,8 +195,9 @@ namespace Boidsish {
 			glDeleteBuffers(1, &terrain_data_ubo_);
 		if (probe_ssbo_)
 			glDeleteBuffers(1, &probe_ssbo_);
-		if (bake_ssbo_)
-			glDeleteBuffers(1, &bake_ssbo_);
+		chunk_grid_pb_.reset();
+		max_height_pb_.reset();
+		bake_task_pb_.reset();
 		if (patch_metrics_ssbo_)
 			glDeleteBuffers(1, &patch_metrics_ssbo_);
 		if (patch_visibility_ssbo_)
@@ -780,11 +779,27 @@ namespace Boidsish {
 			}
 		}
 
+		// Use persistent buffers for non-blocking texture updates
+		size_t grid_elements = grid_size * grid_size;
+		if (!chunk_grid_pb_ || chunk_grid_pb_->GetElementCount() != grid_elements) {
+			chunk_grid_pb_ = std::make_unique<PersistentBuffer<int16_t>>(GL_PIXEL_UNPACK_BUFFER, grid_elements, 3);
+			max_height_pb_ = std::make_unique<PersistentBuffer<float>>(GL_PIXEL_UNPACK_BUFFER, grid_elements, 3);
+		}
+
+		chunk_grid_pb_->AdvanceFrame();
+		max_height_pb_->AdvanceFrame();
+
+		std::memcpy(chunk_grid_pb_->GetFrameDataPtr(), slice_data.data(), grid_elements * sizeof(int16_t));
+		std::memcpy(max_height_pb_->GetFrameDataPtr(), height_data.data(), grid_elements * sizeof(float));
+
 		glBindTexture(GL_TEXTURE_2D, chunk_grid_texture_);
-		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, grid_size, grid_size, GL_RED_INTEGER, GL_SHORT, slice_data.data());
+		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, chunk_grid_pb_->GetBufferId());
+		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, grid_size, grid_size, GL_RED_INTEGER, GL_SHORT, (void*)chunk_grid_pb_->GetFrameOffset());
 
 		glBindTexture(GL_TEXTURE_2D, max_height_grid_texture_);
-		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, grid_size, grid_size, GL_RED, GL_FLOAT, height_data.data());
+		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, max_height_pb_->GetBufferId());
+		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, grid_size, grid_size, GL_RED, GL_FLOAT, (void*)max_height_pb_->GetFrameOffset());
+		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 
 		GenerateMaxHeightMips();
 
@@ -1017,11 +1032,6 @@ namespace Boidsish {
 			skip_counter_ = 0;
 		}
 
-		// Advance triple buffers for patch rendering
-		patch_draw_data_pb_->AdvanceFrame();
-		patch_tess_levels_pb_->AdvanceFrame();
-		patch_indirect_pb_->AdvanceFrame();
-
 		int current_idx = patch_draw_data_pb_->GetCurrentBufferIndex();
 		if (patch_fences_[current_idx]) {
 			glClientWaitSync(patch_fences_[current_idx], GL_SYNC_FLUSH_COMMANDS_BIT, GL_TIMEOUT_IGNORED);
@@ -1120,6 +1130,15 @@ namespace Boidsish {
 		last_prep_tess_multiplier_ = tess_quality_multiplier;
 		last_prep_visible_chunk_count_ = visible_instances_.size();
 		needs_prep_ = false;
+	}
+
+	void TerrainRenderManager::AdvanceFrame() {
+		if (patch_draw_data_pb_)
+			patch_draw_data_pb_->AdvanceFrame();
+		if (patch_tess_levels_pb_)
+			patch_tess_levels_pb_->AdvanceFrame();
+		if (patch_indirect_pb_)
+			patch_indirect_pb_->AdvanceFrame();
 	}
 
 	void TerrainRenderManager::Render(
@@ -1290,14 +1309,18 @@ namespace Boidsish {
 
 		// Process in batches
 		const size_t max_batch = 1024;
+		bake_task_pb_->AdvanceFrame();
+
+		// Copy all tasks to persistent buffer at once. Since we process in batches,
+		// the shader will use u_taskOffset to read the correct chunk of tasks.
+		std::memcpy(bake_task_pb_->GetFrameDataPtr(), tasks.data(), tasks.size() * sizeof(BakeTask));
+		bake_task_pb_->BindRange(Constants::SsboBinding::TerrainChunkInfo());
+
 		for (size_t i = 0; i < tasks.size(); i += max_batch) {
 			size_t batch_size = std::min(max_batch, tasks.size() - i);
 
-			glBindBuffer(GL_SHADER_STORAGE_BUFFER, bake_ssbo_);
-			glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, batch_size * sizeof(BakeTask), &tasks[i]);
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainChunkInfo(), bake_ssbo_);
-
 			terrain_bake_shader_->setInt("u_numTasks", static_cast<int>(batch_size));
+			terrain_bake_shader_->trySetInt("u_taskOffset", static_cast<int>(i));
 
 			// Local size is 8x8. Calculate workgroup counts to cover resolution.
 			GLuint groups_x = (heightmap_resolution_ + 7) / 8;
@@ -1328,10 +1351,9 @@ namespace Boidsish {
 
 			for (size_t i = 0; i < tasks.size(); i += max_batch) {
 				size_t batch_size = std::min(max_batch, tasks.size() - i);
-				glBindBuffer(GL_SHADER_STORAGE_BUFFER, bake_ssbo_);
-				glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, batch_size * sizeof(BakeTask), &tasks[i]);
-				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainChunkInfo(), bake_ssbo_);
+				bake_task_pb_->BindRange(Constants::SsboBinding::TerrainChunkInfo());
 				patch_metrics_shader_->setInt("u_numTasks", static_cast<int>(batch_size));
+				patch_metrics_shader_->trySetInt("u_taskOffset", static_cast<int>(i));
 				glDispatchCompute(1, 1, static_cast<GLuint>(batch_size));
 			}
 			glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
@@ -1400,16 +1422,16 @@ namespace Boidsish {
 		// Bind UBO
 		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::TerrainData(), terrain_data_ubo_);
 
-		// Setup task SSBO (recycling bake_ssbo_ for simplicity)
+		// Setup task SSBO (using bake_task_pb_)
 		const size_t max_batch = 1024;
 		for (size_t i = 0; i < tasks.size(); i += max_batch) {
 			size_t batch_size = std::min(max_batch, tasks.size() - i);
 
-			glBindBuffer(GL_SHADER_STORAGE_BUFFER, bake_ssbo_);
-			glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, batch_size * sizeof(BakeTask), &tasks[i]);
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainChunkInfo(), bake_ssbo_);
+			// Note: we already advanced and filled bake_task_pb_ in PerformBaking if called from there
+			bake_task_pb_->BindRange(Constants::SsboBinding::TerrainChunkInfo());
 
 			terrain_horizon_shader_->setInt("u_numTasks", static_cast<int>(batch_size));
+			terrain_horizon_shader_->trySetInt("u_taskOffset", static_cast<int>(i));
 
 			glDispatchCompute(1, 1, static_cast<GLuint>(batch_size));
 		}

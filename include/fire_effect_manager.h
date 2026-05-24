@@ -73,6 +73,55 @@ namespace Boidsish {
 		// Returns true if fire effects are available (compute shader compiled successfully)
 		bool IsAvailable() const;
 
+		/**
+		 * @brief Data prepared on CPU for GPU update.
+		 */
+		struct FireUpdateWork {
+			std::vector<Emitter>   emitters;
+			std::vector<glm::vec4> slice_points;
+			std::vector<glm::vec4> chunk_info;
+			float                  delta_time;
+			float                  time;
+			float                  ambient_density;
+			bool                   enabled;
+			bool                   particles_globally_enabled;
+		};
+
+		/**
+		 * @brief CPU-intensive preparation (can run on async thread).
+		 */
+		FireUpdateWork PrepareUpdate(
+			float                         delta_time,
+			float                         time,
+			bool                          enabled,
+			float                         ambient_density,
+			const std::vector<glm::vec4>& chunk_info
+		);
+
+		/**
+		 * @brief GPU-side application (must run on main thread).
+		 */
+		void ApplyUpdate(
+			const FireUpdateWork& work,
+			GLuint                heightmap_texture,
+			GLuint                curl_noise_texture,
+			GLuint                biome_texture,
+			GLuint                lighting_ubo,
+			GLintptr              lighting_ubo_offset,
+			GLsizeiptr            lighting_ubo_size,
+			GLuint                frustum_ubo,
+			GLintptr              frustum_offset,
+			GLuint                extra_noise_texture,
+			GLuint                visual_effects_ubo,
+			GLintptr              vfx_offset,
+			GLsizeiptr            vfx_size
+		);
+
+		/**
+		 * @brief Advance to the next triple-buffered segment.
+		 */
+		void AdvanceFrame();
+
 		void Update(
 			float                         delta_time,
 			float                         time,
@@ -139,8 +188,8 @@ namespace Boidsish {
 		GLuint grid_next_buffer_{0};
 		std::unique_ptr<PersistentBuffer<Emitter>> emitter_buffer_;
 		std::unique_ptr<PersistentBuffer<int>> indirection_buffer_;
-		GLuint terrain_chunk_buffer_{0};
-		GLuint slice_data_buffer_{0};
+		std::unique_ptr<PersistentBuffer<glm::vec4>> terrain_chunk_pb_;
+		std::unique_ptr<PersistentBuffer<glm::vec4>> slice_data_pb_;
 		GLuint visible_indices_buffer_{0};
 		GLuint live_indices_buffer_{0};
 		GLuint draw_command_buffer_{0};

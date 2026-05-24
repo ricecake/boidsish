@@ -9,6 +9,8 @@
 #include <array>
 #include "constants.h"
 #include "biome_properties.h"
+#include "geometry.h"
+#include "persistent_buffer.h"
 #include "render_shader.h"
 
 namespace Boidsish {
@@ -51,7 +53,35 @@ namespace Boidsish {
         ~GrassManager();
 
         void Initialize();
+
+        /**
+         * @brief Data prepared on CPU for GPU update.
+         */
+        struct GrassUpdateWork {
+            glm::vec3 camera_pos;
+            float time;
+            float delta_time;
+            float world_scale;
+            bool props_dirty;
+            bool enabled;
+        };
+
+        /**
+         * @brief CPU-intensive preparation (can run on async thread).
+         */
+        GrassUpdateWork PrepareUpdate(float deltaTime, float time, const struct Camera& camera, const class ITerrainGenerator& terrainGen);
+
+        /**
+         * @brief GPU-side application (must run on main thread).
+         */
+        void ApplyUpdate(const GrassUpdateWork& work, std::shared_ptr<class TerrainRenderManager> renderManager);
+
         void Update(float deltaTime, float time, const struct Camera& camera, const class ITerrainGenerator& terrainGen, std::shared_ptr<class TerrainRenderManager> renderManager);
+
+        /**
+         * @brief Advance to the next triple-buffered segment.
+         */
+        void AdvanceFrame();
 
         struct RenderResources {
             uint32_t lightingUbo;
@@ -100,16 +130,6 @@ namespace Boidsish {
         GlobalGrassProperties global_props_;
         bool props_dirty_ = false;
 
-        uint32_t grass_props_ubo_ = 0;
-        uint32_t grass_instances_ssbo_ = 0;
-        uint32_t grass_indirect_buffer_ = 0;
-        uint32_t grass_tasks_ssbo_ = 0;
-
-        std::unique_ptr<class ComputeShader> placement_shader_;
-        std::unique_ptr<class ComputeShader> pre_pass_shader_;
-        std::unique_ptr<class ComputeShader> fixup_shader_;
-        std::shared_ptr<class Shader> grass_shader_;
-
         struct GrassInstance {
             glm::vec4 pos_rot; // xyz = world pos, w = rotation
             glm::vec4 scale_seed_biome; // x = height, y = width, z = seed, w = biome index
@@ -120,13 +140,23 @@ namespace Boidsish {
             glm::vec4 data;                  // x = distance, y = slice, z = lodIndex, w = unused
         };
 
+        uint32_t grass_props_ubo_ = 0;
+        std::unique_ptr<PersistentBuffer<GrassInstance>> grass_instances_pb_;
+        std::unique_ptr<PersistentBuffer<DrawArraysIndirectCommand>> grass_indirect_pb_;
+        std::unique_ptr<PersistentBuffer<uint8_t>> grass_tasks_pb_;
+
+        std::unique_ptr<class ComputeShader> placement_shader_;
+        std::unique_ptr<class ComputeShader> pre_pass_shader_;
+        std::unique_ptr<class ComputeShader> fixup_shader_;
+        std::shared_ptr<class Shader> grass_shader_;
+
         static constexpr uint32_t kMaxGrassInstances = 1024 * 1024; // 1M blades
         static constexpr uint32_t kMaxGrassTasks = 16384;
         glm::vec3 last_camera_pos_{0.0f};
         uint32_t dummy_vao_ = 0;
 
         void _InitializeResources();
-        void _UpdatePlacement(const struct Camera& camera, const class ITerrainGenerator& terrainGen, std::shared_ptr<class TerrainRenderManager> renderManager);
+        void _UpdatePlacement(const GrassUpdateWork& work, std::shared_ptr<class TerrainRenderManager> renderManager);
     };
 
 }

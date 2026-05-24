@@ -29,6 +29,7 @@ layout(std430, binding = [[TERRAIN_CHUNK_INFO_BINDING]]) readonly buffer BakeTas
 };
 
 uniform int u_numTasks;
+uniform int u_taskOffset = 0;
 
 layout(binding = [[BAKED_HEIGHTMAP_BINDING]]) uniform sampler2DArray u_heightmapArray;
 layout(binding = [[BAKED_PARAMS_BINDING]]) uniform sampler2DArray u_bakedParamsArray;
@@ -74,7 +75,7 @@ void main() {
 	int taskIdx = int(gl_WorkGroupID.z);
 	if (taskIdx >= u_numTasks) return;
 
-	BakeTask task = tasks[taskIdx];
+	BakeTask task = tasks[taskIdx + u_taskOffset];
 	int slice = task.slice;
 
 	ivec2 patchCoord = ivec2(gl_LocalInvocationID.xy);

@@ -33,6 +33,7 @@ layout(std430, binding = [[TERRAIN_CHUNK_INFO_BINDING]]) readonly buffer BakeTas
 };
 
 uniform int u_numTasks;
+uniform int u_taskOffset = 0;
 
 #include "helpers/noise.glsl"
 #include "helpers/erosion.glsl"
@@ -171,7 +172,7 @@ void main() {
 	int taskIdx = int(gl_WorkGroupID.z);
 	if (taskIdx >= u_numTasks) return;
 
-	BakeTask task = tasks[taskIdx];
+	BakeTask task = tasks[taskIdx + u_taskOffset];
 	int slice = task.slice;
 	float chunkSize = u_terrainParams.x * u_terrainParams.y;
 	float rawChunkSize = u_terrainParams.x;
