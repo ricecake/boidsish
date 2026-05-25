@@ -220,6 +220,9 @@ void main() {
 
 	float radius = patchSize * 0.707 + (metrics.max_y - metrics.min_y) * 0.5;
 
+	vec3 viewVec = patchCenter - u_viewPos;
+	float distToCam = length(viewVec);
+
 	// FRUSTUM CULLING
 	vec3 aabbMin = vec3(chunkOffset.x + float(patchX) * patchSize, metrics.min_y, chunkOffset.z + float(patchY) * patchSize);
 	vec3 aabbMax = vec3(chunkOffset.x + float(patchX + 1) * patchSize, metrics.max_y, chunkOffset.z + float(patchY + 1) * patchSize);
@@ -293,9 +296,6 @@ void main() {
 	// Inner level based on patch-wide max_variance using SSE logic
 	float distToCenter = max(distance(u_viewPos, patchCenter), 1.0 * u_worldScale);
 	float innerPixelError = max(2.0, 2.0 / max(0.01, u_tessQualityMultiplier)) + 4*metrics.avg_grass_density + 4* smoothstep(100, 400, distToCam);
-
-	float crestThreshold = 0.25 * u_worldScale;
-	float crestMask = smoothstep(0.0, crestThreshold, physicalDeviation);
 
 
 	// Error level based on max variance (chordal error)

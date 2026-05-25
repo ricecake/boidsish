@@ -249,7 +249,10 @@ void main() {
 
 	vec3 moonDisc = u_moonFullRadiance * phasedMask * moonTransmittance * smoothstep(-0.01, 0.01, moonDir.y);
 
-	vec3 finalColor = skyRadiance + sunDisc + moonDisc + spaceBackground;
+	// Lightning background pulse
+	vec3 lightningEffect = lightningColor * lightningPulse * 0.35;
+
+	vec3 finalColor = skyRadiance + sunDisc + moonDisc + spaceBackground + lightningEffect;
 
 	FragColor = vec4(finalColor, 1.0);
 	Velocity = vec4(0, 0, 1.0, 0.0); // Roughness 1.0 (sky is not reflective), Metallic 0.0

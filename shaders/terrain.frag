@@ -590,6 +590,35 @@ void main() {
 	finalMaterial.albedo = mix(finalMaterial.albedo, finalMaterial.albedo * 0.5, globalWetness * 0.5);
 	finalMaterial.roughness = mix(finalMaterial.roughness, 0.1, globalWetness * 0.8);
 
+	// Running water effect on rock surfaces
+	if (wetness > 0.6 && freezingScale < 0.1) {
+		float rockSurface = smoothstep(0.5, 0.2, slope); // Steeper is rockier
+		rockSurface = max(rockSurface, smoothstep(0.2, -0.6, vSubstrate));
+		float waterFlowMask = rockSurface * smoothstep(0.6, 0.9, wetness);
+
+		if (waterFlowMask > 0.01) {
+			// Scrolling procedural flow
+			vec3 flowOffset = vec3(0, -time * 2.5, 0);
+			vec3 p_flow = (FragPos + flowOffset) * 1.5;
+			vec3 flowNoise = fastCurl3d(p_flow * 0.08);
+
+			// Create animated streaks
+			float streaks = smoothstep(0.3, 0.8, abs(flowNoise.x));
+			streaks *= smoothstep(0.4, 0.6, fract(flowNoise.y * 0.5 + time * 0.8));
+
+			float waterEffect = waterFlowMask * streaks;
+			finalMaterial.albedo = mix(finalMaterial.albedo, finalMaterial.albedo * 0.6, waterEffect * 0.4);
+			finalMaterial.roughness = mix(finalMaterial.roughness, 0.01, waterEffect);
+			finalMaterial.metallic = mix(finalMaterial.metallic, 0.1, waterEffect);
+
+			// Perturb normals for the water flow
+			if (waterEffect > 0.05) {
+				vec3 flowNorm = normalize(flowNoise * 2.0 - 1.0);
+				norm = normalize(mix(norm, flowNorm, waterEffect * 0.3));
+			}
+		}
+	}
+
 	// Extra variety for rocky/steep areas to complement normals
 	float rockyVar = largeNoise;
 	float rockyMask = smoothstep(0.5, 0.2, slope); // More variety on steeper slopes
