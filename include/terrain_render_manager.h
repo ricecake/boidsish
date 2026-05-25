@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "constants.h"
+#include "frustum.h"
 #include "persistent_buffer.h"
 #include <GL/glew.h>
 #include <glm/glm.hpp>
@@ -19,7 +20,6 @@ class ComputeShader;
 namespace Boidsish {
 
 	class ServiceLocator;
-	struct Frustum;
 
 	static constexpr size_t kMaxBakesPerFrame = 6;
 
@@ -53,6 +53,12 @@ namespace Boidsish {
 			glm::ivec2 chunk_coord;
 			int        slice;
 			int        _pad;
+		};
+
+		// Per-instance data sent to GPU (std140 layout)
+		struct alignas(16) InstanceData {
+			glm::vec4 world_offset_and_slice; // xyz = world offset, w = texture slice index
+			glm::vec4 bounds;                 // xy = min/max Y for this chunk (for shader LOD)
 		};
 
 		TerrainRenderManager(ServiceLocator& loc, int chunk_size = Constants::Class::Terrain::ChunkSize(), int max_chunks = 512);
@@ -91,8 +97,49 @@ namespace Boidsish {
 		 */
 		bool HasChunk(std::pair<int, int> chunk_key) const;
 
+		struct UpdateWork {
+			std::vector<InstanceData> visible_instances;
+			glm::vec3                 camera_pos;
+			float                     world_scale;
+			float                     day_time;
+			glm::vec3                 sun_dir;
+			Frustum                   frustum;
+			GLintptr                  temporal_ubo_offset;
+			GLintptr                  frustum_ubo_offset;
+			float                     lod_projection_scalar;
+			float                     tess_quality_multiplier;
+			glm::vec2                 viewport_size;
+		};
+
+		/**
+		 * @brief Prepares update data on a background thread.
+		 */
+		UpdateWork PrepareUpdate(
+			const Frustum&   frustum,
+			const glm::vec3& camera_pos,
+			float            world_scale,
+			float            day_time,
+			const glm::vec3& sun_dir,
+			GLintptr         temporal_ubo_offset,
+			GLintptr         frustum_ubo_offset,
+			float            lod_projection_scalar,
+			float            tess_quality_multiplier,
+			const glm::vec2& viewport_size
+		);
+
+		/**
+		 * @brief Applies the prepared update on the main thread.
+		 */
+		void ApplyUpdate(
+			UpdateWork&&     work,
+			GLuint           lighting_ubo = 0,
+			GLintptr         lighting_ubo_offset = 0,
+			GLsizeiptr       lighting_ubo_size = 0
+		);
+
 		/**
 		 * @brief Perform frustum culling and prepare instance buffer (CPU side).
+		 * @deprecated Use PrepareUpdate/ApplyUpdate for async support.
 		 */
 		void PrepareForRender(
 			const Frustum&   frustum,
@@ -111,6 +158,7 @@ namespace Boidsish {
 		/**
 		 * @brief Dispatch GPU preparation of terrain patches.
 		 * Performs frustum and occlusion culling on the GPU.
+		 * @deprecated Use ApplyUpdate.
 		 */
 		void DispatchPreparePatches(float tess_quality_multiplier, const glm::vec2& viewport_size, float lod_projection_scalar);
 
@@ -306,12 +354,6 @@ namespace Boidsish {
 			uint32_t  update_count = 0; // Incremented each time chunk data is re-uploaded
 		};
 
-		// Per-instance data sent to GPU (std140 layout)
-		struct alignas(16) InstanceData {
-			glm::vec4 world_offset_and_slice; // xyz = world offset, w = texture slice index
-			glm::vec4 bounds;                 // xy = min/max Y for this chunk (for shader LOD)
-		};
-
 		struct PatchMetrics {
 			float min_y;
 			float max_y;
@@ -431,7 +473,7 @@ namespace Boidsish {
 
 		// Per-frame instance data
 		std::vector<InstanceData> visible_instances_;
-		size_t                    instance_buffer_capacity_ = 0;
+		std::unique_ptr<PersistentBuffer<InstanceData>> instance_pb_;
 
 		// Camera position for LRU eviction (updated by PrepareForRender)
 		glm::vec3 last_camera_pos_{0.0f, 0.0f, 0.0f};
@@ -443,6 +485,8 @@ namespace Boidsish {
 		mutable std::recursive_mutex mutex_;
 
 		// Grid update tracking
+		std::unique_ptr<PersistentBuffer<int16_t>> chunk_grid_pb_;
+		std::unique_ptr<PersistentBuffer<float>>   max_height_grid_pb_;
 		int   last_grid_origin_x_ = -999999;
 		int   last_grid_origin_z_ = -999999;
 		float last_grid_world_scale_ = -1.0f;

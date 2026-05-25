@@ -179,9 +179,24 @@ namespace Boidsish {
     }
 
     void GrassManager::Update(float deltaTime, float time, const Camera& camera, const ITerrainGenerator& terrainGen, std::shared_ptr<TerrainRenderManager> renderManager) {
+        UpdateWork work = PrepareUpdate(deltaTime, time, camera, terrainGen, renderManager);
+        ApplyUpdate(std::move(work), renderManager);
+    }
+
+    GrassManager::UpdateWork GrassManager::PrepareUpdate(float /*deltaTime*/, float time, const Camera& camera, const ITerrainGenerator& terrainGen, std::shared_ptr<TerrainRenderManager> renderManager) {
+        UpdateWork work;
+        work.camera_pos = camera.pos();
+        work.world_scale = terrainGen.GetWorldScale();
+        work.time = time;
+        work.num_chunks = renderManager ? (int)renderManager->GetVisibleChunkCount() : 0;
+        work.enabled = initialized_ && IsEnabled();
+        return work;
+    }
+
+    void GrassManager::ApplyUpdate(UpdateWork&& work, std::shared_ptr<TerrainRenderManager> renderManager) {
         if (!initialized_) return;
 
-        last_camera_pos_ = camera.pos();
+        last_camera_pos_ = work.camera_pos;
 
         if (props_dirty_) {
             glBindBuffer(GL_UNIFORM_BUFFER, grass_props_ubo_);
@@ -191,13 +206,10 @@ namespace Boidsish {
             props_dirty_ = false;
         }
 
-        if (!IsEnabled()) return;
+        if (!work.enabled) return;
 
         PROJECT_PROFILE_SCOPE("GrassManager::Update");
-        _UpdatePlacement(camera, terrainGen, renderManager);
-    }
 
-    void GrassManager::_UpdatePlacement(const Camera& camera, const ITerrainGenerator& terrainGen, std::shared_ptr<TerrainRenderManager> renderManager) {
         // 1. Pre-pass: Build task queue
         pre_pass_shader_->use();
         renderManager->BindTerrainData(*pre_pass_shader_);
@@ -207,16 +219,16 @@ namespace Boidsish {
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::GrassTasks(), grass_tasks_ssbo_);
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::IndirectionBuffer(), renderManager->GetInstanceBuffer());
 
-        pre_pass_shader_->setVec3("uCameraPos", camera.pos());
-        pre_pass_shader_->setFloat("uWorldScale", terrainGen.GetWorldScale());
-        pre_pass_shader_->setInt("u_numChunks", (int)renderManager->GetVisibleChunkCount());
+        pre_pass_shader_->setVec3("uCameraPos", work.camera_pos);
+        pre_pass_shader_->setFloat("uWorldScale", work.world_scale);
+        pre_pass_shader_->setInt("u_numChunks", work.num_chunks);
 
         uint32_t zero = 0;
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, grass_tasks_ssbo_);
         glBufferSubData(GL_SHADER_STORAGE_BUFFER, 12, sizeof(uint32_t), &zero); // zero out taskCount
 
         int numPatchesPerChunk = Constants::Class::Terrain::PatchesPerChunk();
-        int total_patches = (int)renderManager->GetVisibleChunkCount() * numPatchesPerChunk;
+        int total_patches = work.num_chunks * numPatchesPerChunk;
         if (total_patches > 0) {
             glDispatchCompute((total_patches + 63) / 64, 1, 1);
             glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
@@ -238,8 +250,8 @@ namespace Boidsish {
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::GrassIndirect(), grass_indirect_buffer_);
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::GrassTasks(), grass_tasks_ssbo_);
 
-        placement_shader_->setVec3("uCameraPos", camera.pos());
-        placement_shader_->setFloat("uWorldScale", terrainGen.GetWorldScale());
+        placement_shader_->setVec3("uCameraPos", work.camera_pos);
+        placement_shader_->setFloat("uWorldScale", work.world_scale);
         placement_shader_->setFloat("uMaxInstances", (float)kMaxGrassInstances);
 
         glBindBuffer(GL_DRAW_INDIRECT_BUFFER, grass_indirect_buffer_);
@@ -250,6 +262,7 @@ namespace Boidsish {
         glDispatchComputeIndirect(0);
         glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT);
     }
+
 
     void GrassManager::Render(const glm::mat4& view, const glm::mat4& projection, std::shared_ptr<TerrainRenderManager> renderManager, const RenderResources& res, bool isShadowPass) {
         if (!IsEnabled() || !initialized_) return;

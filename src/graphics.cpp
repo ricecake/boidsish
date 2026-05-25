@@ -2473,7 +2473,7 @@ namespace Boidsish {
 		}
 
 		void UpdateSystems(const FrameData& frame) {
-			// Calculate frustum for terrain generation and decor placement
+			// 1. Prediction and Terrain Logical Update (Background Task)
 			if (terrain_generator) {
 				float world_scale_val = terrain_generator->GetWorldScale();
 				float far_plane_val = Constants::Project::Camera::DefaultFarPlane() * std::max(1.0f, world_scale_val);
@@ -2500,27 +2500,83 @@ namespace Boidsish {
 				terrain_generator->Update(generator_frustum, camera);
 			}
 
+			// 2. Parallel Preparation Phase (CPU-only work)
+			auto fire_work_future = thread_pool.submit([this, frame]() {
+				return fire_effect_manager->PrepareUpdate(
+					simulation_delta_time,
+					simulation_time,
+					ConfigManager::GetInstance().GetAppSettingBool("particles_enabled", true),
+					frame_config_.ambient_particle_density,
+					terrain_render_manager ? terrain_render_manager->GetChunkInfo(terrain_generator->GetWorldScale())
+										   : std::vector<glm::vec4>{},
+					terrain_render_manager ? terrain_render_manager->GetHeightmapTexture() : 0,
+					noise_manager ? noise_manager->GetCurlTexture() : 0,
+					terrain_render_manager ? terrain_render_manager->GetBiomeTexture() : 0,
+					render_state_.lighting.id,
+					static_cast<GLintptr>(render_state_.lighting.offset),
+					static_cast<GLsizeiptr>(render_state_.lighting.size),
+					frustum_ssbo->GetBufferId(),
+					frustum_ssbo->GetFrameOffset() + mdi_frustum_count * sizeof(FrustumDataGPU),
+					noise_manager ? noise_manager->GetExtraNoiseTexture() : 0,
+					render_state_.visual_effects.id,
+					static_cast<GLintptr>(render_state_.visual_effects.offset),
+					static_cast<GLsizeiptr>(render_state_.visual_effects.size)
+				);
+			});
+
+			auto decor_work_future = thread_pool.submit([this, frame]() {
+				if (decor_manager && terrain_generator && terrain_render_manager) {
+					return decor_manager->PrepareUpdate(
+						simulation_delta_time,
+						camera,
+						generator_frustum,
+						*terrain_generator,
+						terrain_render_manager
+					);
+				}
+				return DecorManager::UpdateWork{};
+			});
+
+			auto grass_work_future = thread_pool.submit([this, frame]() {
+				if (grass_manager && terrain_generator && terrain_render_manager) {
+					return grass_manager->PrepareUpdate(
+						simulation_delta_time,
+						simulation_time,
+						camera,
+						*terrain_generator,
+						terrain_render_manager
+					);
+				}
+				return GrassManager::UpdateWork{};
+			});
+
+			auto terrain_work_future = thread_pool.submit([this, frame]() {
+				float world_scale = terrain_generator ? terrain_generator->GetWorldScale() : 1.0f;
+				float day_time = light_manager->GetDayNightCycle().time;
+				glm::vec3 sun_dir(0.0f);
+				const auto& lights = light_manager->GetLights();
+				if (!lights.empty() && lights[0].type == DIRECTIONAL_LIGHT) {
+					sun_dir = -lights[0].direction;
+				}
+				float lod_projection_scalar = (float)render_height / (2.0f * tan(glm::radians(camera.fov) / 2.0f));
+				float effective_quality = tess_quality_multiplier_ / world_scale;
+
+				return terrain_render_manager->PrepareUpdate(
+					frame.camera_frustum,
+					camera.pos(),
+					world_scale,
+					day_time,
+					sun_dir,
+					static_cast<GLintptr>(render_state_.temporal.offset),
+					static_cast<GLintptr>(render_state_.frustum.offset),
+					lod_projection_scalar,
+					effective_quality,
+					glm::vec2(render_width, render_height)
+				);
+			});
+
+			// 3. Main Thread Logical Updates (Sound, Phys, VFX Logic)
 			clone_manager->Update(simulation_time, camera.pos());
-			fire_effect_manager->Update(
-				simulation_delta_time,
-				simulation_time,
-				ConfigManager::GetInstance().GetAppSettingBool("particles_enabled", true),
-				frame_config_.ambient_particle_density,
-				terrain_render_manager ? terrain_render_manager->GetChunkInfo(terrain_generator->GetWorldScale())
-									   : std::vector<glm::vec4>{},
-				terrain_render_manager ? terrain_render_manager->GetHeightmapTexture() : 0,
-				noise_manager ? noise_manager->GetCurlTexture() : 0,
-				terrain_render_manager ? terrain_render_manager->GetBiomeTexture() : 0,
-				render_state_.lighting.id,
-				static_cast<GLintptr>(render_state_.lighting.offset),
-				static_cast<GLsizeiptr>(render_state_.lighting.size),
-				frustum_ssbo->GetBufferId(),
-				frustum_ssbo->GetFrameOffset() + mdi_frustum_count * sizeof(FrustumDataGPU),
-				noise_manager ? noise_manager->GetExtraNoiseTexture() : 0,
-				render_state_.visual_effects.id,
-				static_cast<GLintptr>(render_state_.visual_effects.offset),
-				static_cast<GLsizeiptr>(render_state_.visual_effects.size)
-			);
 			mesh_explosion_manager->Update(simulation_delta_time, simulation_time);
 			sound_effect_manager->Update(simulation_delta_time);
 			shockwave_manager->Update(simulation_delta_time);
@@ -2534,69 +2590,25 @@ namespace Boidsish {
 			shockwave_manager->UpdateShaderData();
 			shockwave_manager->BindUBO(Constants::UboBinding::Shockwaves());
 
-			if (decor_manager && terrain_generator && terrain_render_manager) {
-				decor_manager->SetMinPixelSize(
-					ConfigManager::GetInstance().GetAppSettingFloat("foliage_culling_pixel_threshold", 8.0f)
-				);
-				if (atmosphere_manager) {
-					decor_manager->SetAtmosphereManager(atmosphere_manager.get());
-				}
-				if (noise_manager) {
-					decor_manager->SetNoiseManager(noise_manager.get());
-				}
-				decor_manager->Update(
-					simulation_delta_time,
-					camera,
-					generator_frustum,
-					*terrain_generator,
-					terrain_render_manager
-				);
+			// 4. Application Phase (GPU commands and buffer flips)
+			// Apply Terrain first as other systems depend on its SSBOs/textures
+			terrain_render_manager->ApplyUpdate(terrain_work_future.get(),
+				render_state_.lighting.id,
+				static_cast<GLintptr>(render_state_.lighting.offset),
+				static_cast<GLsizeiptr>(render_state_.lighting.size));
+
+			fire_effect_manager->ApplyUpdate(fire_work_future.get());
+
+			if (decor_manager) {
+				decor_manager->SetMinPixelSize(ConfigManager::GetInstance().GetAppSettingFloat("foliage_culling_pixel_threshold", 8.0f));
+				if (atmosphere_manager) decor_manager->SetAtmosphereManager(atmosphere_manager.get());
+				if (noise_manager) decor_manager->SetNoiseManager(noise_manager.get());
+				decor_manager->ApplyUpdate(decor_work_future.get(), terrain_render_manager);
 			}
 
-			if (grass_manager && terrain_generator && terrain_render_manager) {
+			if (grass_manager) {
 				grass_manager->SetCameraPos(camera.pos());
-
-				// 1. Calculate terrain preparation quality
-				float effective_quality = tess_quality_multiplier_;
-				effective_quality /= terrain_generator->GetWorldScale();
-
-				// 2. Prepare terrain (CPU culling and SSBO upload)
-				float world_scale = terrain_generator->GetWorldScale();
-				float day_time = light_manager->GetDayNightCycle().time;
-				glm::vec3 sun_dir(0.0f);
-				const auto& lights = light_manager->GetLights();
-				if (!lights.empty() && lights[0].type == DIRECTIONAL_LIGHT) {
-					sun_dir = -lights[0].direction;
-				}
-
-				float lod_projection_scalar = (float)render_height / (2.0f * tan(glm::radians(camera.fov) / 2.0f));
-
-				terrain_render_manager->PrepareForRender(
-					frame.camera_frustum,
-					camera.pos(),
-					world_scale,
-					render_state_.lighting.id,
-					static_cast<GLintptr>(render_state_.lighting.offset),
-					static_cast<GLsizeiptr>(render_state_.lighting.size),
-					day_time,
-					sun_dir,
-					static_cast<GLintptr>(render_state_.temporal.offset),
-					static_cast<GLintptr>(render_state_.frustum.offset),
-					lod_projection_scalar
-				);
-
-				// 3. Dispatch terrain patch preparation (GPU culling/LOD)
-				// This populates the visibility SSBO that grass system needs.
-				terrain_render_manager->DispatchPreparePatches(effective_quality, glm::vec2(render_width, render_height), lod_projection_scalar);
-
-				// 4. Update grass system
-				grass_manager->Update(
-					simulation_delta_time,
-					simulation_time,
-					camera,
-					*terrain_generator,
-					terrain_render_manager
-				);
+				grass_manager->ApplyUpdate(grass_work_future.get(), terrain_render_manager);
 			}
 		}
 
