@@ -346,9 +346,9 @@ namespace Boidsish {
 			dynamic_i_ptr_ = dynamic_i_start_;
 		}
 
-		uint32_t GetVertexFrameOffset() const { return vbo_->GetCurrentBufferIndex() * vbo_->GetElementCount(); }
+		uint32_t GetVertexFrameOffset() const { return vbo_->GetFrameOffset() / sizeof(Vertex); }
 
-		uint32_t GetIndexFrameOffset() const { return ebo_->GetCurrentBufferIndex() * ebo_->GetElementCount(); }
+		uint32_t GetIndexFrameOffset() const { return ebo_->GetFrameOffset() / sizeof(uint32_t); }
 
 	private:
 		std::unique_ptr<PersistentBuffer<Vertex>>   vbo_;

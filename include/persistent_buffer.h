@@ -51,8 +51,28 @@ namespace Boidsish {
 			if (target_ != GL_DRAW_INDIRECT_BUFFER && target_ != GL_PIXEL_UNPACK_BUFFER) {
 				alignment = std::max(alignment, 256);
 			}
-			aligned_frame_stride_ =
-				((raw_frame_bytes + (size_t)alignment - 1) / (size_t)alignment) * (size_t)alignment;
+
+			// Important: The stride must be a multiple of the alignment AND a multiple of sizeof(T)
+			// to ensure that elements in segments 1 and 2 are correctly aligned to their type boundaries.
+			// This is critical when using baseVertex or direct indexing into the buffer.
+			size_t stride = raw_frame_bytes;
+			if (stride > 0) {
+				// Round up to multiple of alignment
+				stride = ((stride + (size_t)alignment - 1) / (size_t)alignment) * (size_t)alignment;
+				// Round up further to multiple of sizeof(T)
+				if (stride % sizeof(T) != 0) {
+					stride += sizeof(T) - (stride % sizeof(T));
+					// But now it might not be a multiple of alignment!
+					// Since alignment is a power of 2, we can just keep rounding up until both are satisfied.
+					// A simpler way is to use LCM, but alignment is small.
+					while (stride % (size_t)alignment != 0) {
+						stride += sizeof(T);
+						// Smallest stride that is multiple of sizeof(T) and alignment.
+						// This loop will terminate quickly as alignment is a power of 2.
+					}
+				}
+			}
+			aligned_frame_stride_ = stride;
 
 			size_t total_size = aligned_frame_stride_ * num_buffers_;
 
