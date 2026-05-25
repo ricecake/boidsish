@@ -258,7 +258,6 @@ namespace Boidsish {
 
 		/**
 		 * @brief Manually set a target level for a weather attribute.
-		 * While an external target is set, the manager will not use noise-derived targets for this attribute.
 		 */
 		void SetTarget(WeatherAttribute attr, float target);
 
@@ -266,6 +265,24 @@ namespace Boidsish {
 		 * @brief Clear an externally set target, returning the attribute to autonomous control.
 		 */
 		void ClearTarget(WeatherAttribute attr);
+
+		void SetMin(WeatherAttribute attr, float min_val);
+		void ClearMin(WeatherAttribute attr);
+
+		void SetMax(WeatherAttribute attr, float max_val);
+		void ClearMax(WeatherAttribute attr);
+
+		void ClearAllConstraints();
+
+		struct ActiveConstraint {
+			WeatherAttribute     attr;
+			std::optional<float> target;
+			std::optional<float> min;
+			std::optional<float> max;
+		};
+		std::vector<ActiveConstraint> GetActiveConstraints() const;
+
+		static std::string GetAttributeName(WeatherAttribute attr);
 
 		/**
 		 * @brief Set the pace (omega) of the critically dampened spring for a specific attribute.
@@ -314,6 +331,8 @@ namespace Boidsish {
 			float                velocity = 0.0f;
 			float                omega = 2.0f; // Default pace
 			std::optional<float> external_target;
+			std::optional<float> external_min;
+			std::optional<float> external_max;
 		};
 
 		void   InitializePresets();
