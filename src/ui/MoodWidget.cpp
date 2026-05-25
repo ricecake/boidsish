@@ -37,16 +37,16 @@ namespace Boidsish {
             const auto& settings = moodMgr->GetBlendedSettings();
 
             if (ImGui::CollapsingHeader("Atmosphere State", ImGuiTreeNodeFlags_DefaultOpen)) {
-                ImGui::Value("Cloud Density", settings.cloudDensity);
-                ImGui::Value("Cloud Coverage", settings.cloudCoverage);
-                ImGui::ColorEdit3("Cloud Color", (float*)&settings.cloudColor, ImGuiColorEditFlags_NoInputs);
-                ImGui::Value("Rayleigh Scale", settings.rayleighScale);
-                ImGui::Value("Mie Scale", settings.mieScale);
+                if (settings.cloudDensity) ImGui::Value("Cloud Density", *settings.cloudDensity);
+                if (settings.cloudCoverage) ImGui::Value("Cloud Coverage", *settings.cloudCoverage);
+                if (settings.cloudColor) ImGui::ColorEdit3("Cloud Color", (float*)&(*settings.cloudColor), ImGuiColorEditFlags_NoInputs);
+                if (settings.rayleighScale) ImGui::Value("Rayleigh Scale", *settings.rayleighScale);
+                if (settings.mieScale) ImGui::Value("Mie Scale", *settings.mieScale);
             }
 
             if (ImGui::CollapsingHeader("Bloom State")) {
-                ImGui::Text("Scene Bloom Target Luma: %.3f", settings.sceneBloom.targetLuminance);
-                ImGui::Text("Sky Bloom Target Luma: %.3f", settings.skyBloom.targetLuminance);
+                if (settings.sceneBloom.targetLuminance) ImGui::Text("Scene Bloom Target Luma: %.3f", *settings.sceneBloom.targetLuminance);
+                if (settings.skyBloom.targetLuminance) ImGui::Text("Sky Bloom Target Luma: %.3f", *settings.skyBloom.targetLuminance);
             }
 
             ImGui::End();

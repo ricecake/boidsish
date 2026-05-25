@@ -2283,26 +2283,40 @@ namespace Boidsish {
 					const auto& mood = mood_manager->GetBlendedSettings();
 
 					if (bloom_effect) {
-						bloom_effect->GetSceneSettings() = mood.sceneBloom;
-						bloom_effect->GetSkySettings() = mood.skyBloom;
+						#define APPLY_BLOOM(target, source) if (source.member) target.member = *source.member
+						#define B_M(member) if (mood.sceneBloom.member) bloom_effect->GetSceneSettings().member = *mood.sceneBloom.member; \
+						                    if (mood.skyBloom.member) bloom_effect->GetSkySettings().member = *mood.skyBloom.member;
+						B_M(toneMappingEnabled); B_M(toneMappingMode); B_M(autoExposureEnabled);
+						B_M(targetLuminance); B_M(minExposure); B_M(maxExposure);
+						B_M(speedUp); B_M(speedDown); B_M(centerWeightTightness);
+						B_M(focusPoint); B_M(histogramLowCutoff); B_M(histogramHighCutoff);
+						B_M(uchimuraP); B_M(uchimuraA); B_M(uchimuraM);
+						B_M(uchimuraL); B_M(uchimuraC); B_M(uchimuraB);
+						B_M(autoTuneEnabled); B_M(minContrast); B_M(maxContrast);
+						B_M(targetBrightness); B_M(cdlSlope); B_M(cdlOffset);
+						B_M(cdlPower); B_M(cdlSaturation); B_M(whiteTemp);
+						B_M(whiteTint); B_M(ltmEnabled); B_M(ltmEvSpread);
+						B_M(ltmTarget); B_M(ltmSigma); B_M(ltmWeightContrast);
+						B_M(ltmWeightSaturation); B_M(ltmWeightExposedness); B_M(ltmBoostLocalContrast);
+						#undef B_M
 					}
 
 					if (atmosphere_effect) {
-						atmosphere_effect->SetCloudDensity(mood.cloudDensity);
-						atmosphere_effect->SetCloudAltitude(mood.cloudAltitude);
-						atmosphere_effect->SetCloudThickness(mood.cloudThickness);
-						atmosphere_effect->SetCloudColor(mood.cloudColor);
-						atmosphere_effect->SetCloudCoverage(mood.cloudCoverage);
-						atmosphere_effect->SetCloudSunLightScale(mood.cloudSunLightScale);
-						atmosphere_effect->SetCloudMoonLightScale(mood.cloudMoonLightScale);
-						atmosphere_effect->SetCloudPowderScale(mood.cloudPowderScale);
-						atmosphere_effect->SetCloudBeerPowderMix(mood.cloudBeerPowderMix);
+						if (mood.cloudDensity) atmosphere_effect->SetCloudDensity(*mood.cloudDensity);
+						if (mood.cloudAltitude) atmosphere_effect->SetCloudAltitude(*mood.cloudAltitude);
+						if (mood.cloudThickness) atmosphere_effect->SetCloudThickness(*mood.cloudThickness);
+						if (mood.cloudColor) atmosphere_effect->SetCloudColor(*mood.cloudColor);
+						if (mood.cloudCoverage) atmosphere_effect->SetCloudCoverage(*mood.cloudCoverage);
+						if (mood.cloudSunLightScale) atmosphere_effect->SetCloudSunLightScale(*mood.cloudSunLightScale);
+						if (mood.cloudMoonLightScale) atmosphere_effect->SetCloudMoonLightScale(*mood.cloudMoonLightScale);
+						if (mood.cloudPowderScale) atmosphere_effect->SetCloudPowderScale(*mood.cloudPowderScale);
+						if (mood.cloudBeerPowderMix) atmosphere_effect->SetCloudBeerPowderMix(*mood.cloudBeerPowderMix);
 
-						atmosphere_effect->SetRayleighScale(mood.rayleighScale);
-						atmosphere_effect->SetMieScale(mood.mieScale);
-						atmosphere_effect->SetRayleighScattering(mood.rayleighScattering);
-						atmosphere_effect->SetMieScattering(mood.mieScattering);
-						atmosphere_effect->SetMieExtinction(mood.mieExtinction);
+						if (mood.rayleighScale) atmosphere_effect->SetRayleighScale(*mood.rayleighScale);
+						if (mood.mieScale) atmosphere_effect->SetMieScale(*mood.mieScale);
+						if (mood.rayleighScattering) atmosphere_effect->SetRayleighScattering(*mood.rayleighScattering);
+						if (mood.mieScattering) atmosphere_effect->SetMieScattering(*mood.mieScattering);
+						if (mood.mieExtinction) atmosphere_effect->SetMieExtinction(*mood.mieExtinction);
 					}
 				}
 
