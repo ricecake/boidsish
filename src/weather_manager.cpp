@@ -12,6 +12,7 @@
 #include "NoiseManager.h"
 #include "terrain_render_manager.h"
 #include "ConfigManager.h"
+#include "lightning_manager.h"
 
 namespace Boidsish {
 
@@ -1009,6 +1010,47 @@ namespace Boidsish {
 			float precip = std::max(0.0f, phys.humidity - 0.8f) * 5.0f;
 			precip *= phys.cloudCoverage;
 			cached_targets_.precipitation = std::clamp(precip, 0.0f, 1.0f);
+		}
+
+		// Trigger lightning strikes during high precipitation
+		if (current_.precipitation > 0.4f) {
+			float strikeChance = (current_.precipitation - 0.4f) * deltaTime * 0.5f;
+			if ((static_cast<float>(rand()) / RAND_MAX) < strikeChance) {
+				auto lightning = ServiceLocator::Instance().Get<LightningManager>();
+				if (lightning) {
+					LightningType type = (rand() % 100 < 30) ? LightningType::FORK : LightningType::BOLT;
+					if (rand() % 100 < 20) type = LightningType::CLOUD_TO_CLOUD;
+
+					float worldScaleVal = terrain_ ? terrain_->GetWorldScale() : 1.0f;
+					glm::vec3 startPos(
+						cameraPos.x + (rand() % 1000 - 500),
+						current_.cloud_altitude * worldScaleVal,
+						cameraPos.z + (rand() % 1000 - 500)
+					);
+
+					glm::vec3 endPos = startPos;
+					if (type == LightningType::CLOUD_TO_CLOUD) {
+						endPos.x += (rand() % 400 - 200);
+						endPos.z += (rand() % 400 - 200);
+						endPos.y += (rand() % 100 - 50);
+					} else {
+						endPos.y = 0.0f; // Ground
+						if (terrain_) {
+							auto [h, n] = terrain_->GetTerrainPropertiesAtPoint(endPos.x, endPos.z);
+							endPos.y = h;
+						}
+					}
+
+					glm::vec3 colors[] = {
+						glm::vec3(0.8f, 0.9f, 1.0f), // Blue-white
+						glm::vec3(0.9f, 0.8f, 1.0f), // Purple-white
+						glm::vec3(1.0f, 1.0f, 0.9f)  // Yellow-white
+					};
+					glm::vec3 color = colors[rand() % 3];
+
+					lightning->TriggerStrike(type, startPos, endPos, color);
+				}
+			}
 		}
 
 		// Always update attributes toward cached targets using the spring system
