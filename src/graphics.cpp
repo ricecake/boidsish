@@ -87,6 +87,7 @@
 #include "shader_registration.h"
 #include "visual_effects.h"
 #include "weather_manager.h"
+#include "lightning_manager.h"
 #include "wind_audio_effect.h"
 #include "rain_audio_effect.h"
 #include "rustle_audio_effect.h"
@@ -394,6 +395,7 @@ namespace Boidsish {
 		std::shared_ptr<PostProcessing::AtmosphereEffect> atmosphere_effect;
 		std::shared_ptr<PostProcessing::VolumetricLightingEffect> volumetric_effect;
 		std::shared_ptr<WeatherManager>                   weather_manager;
+		std::shared_ptr<LightningManager>                 lightning_manager;
 		std::shared_ptr<SceneManager>                     scene_manager;
 		std::shared_ptr<DecorManager>                     decor_manager;
 		std::shared_ptr<GrassManager>                     grass_manager;
@@ -566,6 +568,7 @@ namespace Boidsish {
 			service_locator_.Register<ShadowManager>();
 			service_locator_.Register<AtmosphereManager>();
 			service_locator_.Register<WeatherManager>();
+			service_locator_.Register<LightningManager>();
 			service_locator_.Register<SceneManager>("scenes");
 			service_locator_.Register<DecorManager>();
 			service_locator_.Register<GrassManager>();
@@ -821,6 +824,8 @@ namespace Boidsish {
 			atmosphere_manager = service_locator_.Get<AtmosphereManager>();
 			atmosphere_manager->Initialize();
 			weather_manager = service_locator_.Get<WeatherManager>();
+			lightning_manager = service_locator_.Get<LightningManager>();
+			lightning_manager->Initialize();
 			if (terrain_generator) {
 				weather_manager->SetTerrainGenerator(terrain_generator.get());
 			}
@@ -2309,6 +2314,11 @@ namespace Boidsish {
 
 					lighting_ubo_data_.cloudShadowMatrix = shadowMat;
 
+				if (lightning_manager) {
+					lighting_ubo_data_.lightningColor = lightning_manager->GetGlobalColor();
+					lighting_ubo_data_.lightningPulse = lightning_manager->GetGlobalPulse();
+				}
+
 				} else {
 					lighting_ubo_data_.cloudShadowIntensity = 0.0f;
 				}
@@ -2319,10 +2329,10 @@ namespace Boidsish {
 
 				// GPU-side copy of SH coefficients from SSBO into the UBO (no CPU readback)
 				if (atmosphere_manager) {
-					static_assert(offsetof(LightingUbo, sh_coeffs) == 832, "SH offset mismatch");
+					static_assert(offsetof(LightingUbo, sh_coeffs) == 848, "SH offset mismatch");
 					atmosphere_manager->CopySHToUBO(
 						lighting_pb->GetBufferId(),
-						static_cast<GLintptr>(lighting_pb->GetFrameOffset()) + 832
+						static_cast<GLintptr>(lighting_pb->GetFrameOffset()) + 848
 					);
 				}
 			}
@@ -2517,6 +2527,8 @@ namespace Boidsish {
 			if (akira_effect_manager && terrain_generator) {
 				akira_effect_manager->Update(simulation_delta_time, *terrain_generator);
 			}
+			lightning_manager->Update(simulation_delta_time, simulation_time);
+
 			sdf_volume_manager->UpdateSSBO();
 			sdf_volume_manager->BindSSBO(Constants::SsboBinding::SdfVolumes());
 			shockwave_manager->UpdateShaderData();
@@ -2720,6 +2732,10 @@ namespace Boidsish {
 		}
 
 		void RenderTransparentScene(const FrameData& frame) {
+			if (lightning_manager) {
+				lightning_manager->Render(frame.view, frame.projection);
+			}
+
 			if (early_effects_pass_ && compositor_) {
 				early_effects_pass_->Execute(frame, *compositor_);
 			}
