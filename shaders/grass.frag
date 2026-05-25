@@ -136,7 +136,28 @@ void main() {
 
 
     float primaryShadow;
-    vec4 litColor = apply_lighting_foliage(fWorldPos, N, albedo, roughness, 0.0, ao, primaryShadow);
+    vec4  litColor;
+
+    float freezingScale = 1.0 - smoothstep(255.372, 273.15, temperature);
+    float snowFactor = freezingScale;
+
+    if (snowFactor > 0.001) {
+        vec3  snowAlbedo = vec3(0.95, 0.98, 1.0);
+        float snowRoughness = 0.8;
+
+        albedo = mix(albedo, snowAlbedo, snowFactor);
+        roughness = mix(roughness, snowRoughness, snowFactor);
+
+        vec2 snowUV = fWorldPos.xz * (0.5 / worldScale);
+        mat2 snowUV_J = mat2(dFdx(snowUV), dFdy(snowUV));
+
+        vec4 baseLit = apply_lighting_foliage(fWorldPos, N, albedo, roughness, 0.0, ao, primaryShadow);
+        vec4 snowLit = apply_lighting_snow(fWorldPos, N, albedo, roughness, 0.0, ao, snowUV, snowUV_J, primaryShadow);
+
+        litColor = mix(baseLit, snowLit, snowFactor);
+    } else {
+        litColor = apply_lighting_foliage(fWorldPos, N, albedo, roughness, 0.0, ao, primaryShadow);
+    }
     litColor = min(litColor, vec4(highlight, litColor.a));
     litColor.rgb = clamp(litColor.rgb, 0.0, 5.0); // Clamp HDR to prevent "bright white" blowouts
 

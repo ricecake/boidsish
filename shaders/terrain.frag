@@ -760,17 +760,37 @@ void main() {
 		roughness = sqrt(clamp(roughness * roughness + variance * 0.25, 0.0, 1.0));
 	}
 
-	if (freezingScale > 0) {
-		vec3 snowColor = vec3(0.9, 0.95, 1.0+0.01*grassAO);
-
-		albedo = mix(albedo, snowColor, freezingScale);
-		roughness = mix(roughness, 0.85, freezingScale);
-		metallic = mix(metallic, 0.0, freezingScale);
-	}
+	// ========================================================================
+	// Snow and Subsurface Lighting
+	// ========================================================================
+	// Snow factor from both altitude (pre-mixed in calculateMaterial) and temperature
+	float snowAltitude = smoothstep(HEIGHT_SNOW_START, HEIGHT_PEAK, FragPos.y + largeNoise * 5.0 * worldScale);
+	float snowFactor = max(snowAltitude, freezingScale);
 
 	float primaryShadow;
-	vec3 lighting = apply_lighting_pbr(FragPos, perturbedNorm, albedo, roughness, metallic, 1.0 - grassAO, primaryShadow).rgb;
-	lighting.b *= 1 + (0.2 * freezingScale * (1-primaryShadow));
+	vec3  lighting;
+
+	if (snowFactor > 0.001) {
+		vec3 snowAlbedo = vec3(0.95, 0.98, 1.0);
+		float snowRoughness = 0.8;
+
+		// Blend material properties for snow
+		albedo = mix(albedo, snowAlbedo, snowFactor);
+		roughness = mix(roughness, snowRoughness, snowFactor);
+		metallic = mix(metallic, 0.0, snowFactor);
+
+		// Calculate UVs and Jacobians for glinting
+		// Use world-space XZ for stable snow grain orientation
+		vec2 snowUV = FragPos.xz * (0.5 / worldScale);
+		mat2 snowUV_J = mat2(dFdx(snowUV), dFdy(snowUV));
+
+		vec3 baseLighting = apply_lighting_pbr(FragPos, perturbedNorm, albedo, roughness, metallic, 1.0 - grassAO, primaryShadow).rgb;
+		vec3 snowLighting = apply_lighting_snow(FragPos, perturbedNorm, albedo, roughness, metallic, 1.0 - grassAO, snowUV, snowUV_J, primaryShadow).rgb;
+
+		lighting = mix(baseLighting, snowLighting, snowFactor);
+	} else {
+		lighting = apply_lighting_pbr(FragPos, perturbedNorm, albedo, roughness, metallic, 1.0 - grassAO, primaryShadow).rgb;
+	}
 	// ========================================================================
 	// Neon 80s Synth Style (Night Theme)
 	// ========================================================================

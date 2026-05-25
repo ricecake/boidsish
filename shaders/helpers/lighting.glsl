@@ -5,6 +5,7 @@
 #include "../lighting.glsl"
 #include "clouds.glsl"
 #include "brdf.glsl"
+#include "microfacet_glinting.glsl"
 
 // Atmosphere constants for transmittance lookup
 const float kEarthRadiusKM = 6360.0;
@@ -720,6 +721,143 @@ vec4 apply_lighting_foliage(vec3 frag_pos, vec3 normal, vec3 albedo, float rough
     vec3 ambient = (getSpatialAmbientSH(frag_pos, N) * albedo) * (ao * terrainOcc);
 
     return vec4(ambient + Lo, spec_lum);
+}
+
+void evaluate_snow_brdf(
+	vec3        N,
+	vec3        V,
+	vec3        L,
+	vec3        albedo,
+	float       roughness,
+	float       metallic,
+	vec3        F0,
+	vec3        radiance,
+	float       shadow,
+	vec2        uv,
+	mat2        uv_J,
+	inout vec3  Lo,
+	inout float spec_lum
+) {
+	float NdotL = dot(N, L);
+	float NdotV = max(dot(N, V), 1e-4);
+	vec3  H = normalize(V + L);
+	float HdotV = max(dot(H, V), 0.0);
+
+	// 1. FRONT-SIDE REFLECTION & GLINTS
+	if (NdotL > -0.2) // Slight wrap for front-side diffuse
+	{
+		float alpha = max(roughness * roughness, 0.0001);
+		float NDF = DistributionGGX(N, H, roughness);
+
+		// Additive glints based on Siggraph Asia 2025 microfacet model
+		float glintNDF = calculate_glint_ndf(H, N, roughness, metallic, uv, uv_J);
+		NDF += glintNDF * 0.65; // Adjust glint intensity for snow
+
+		float V_term = VisibilitySmithGGXCorrelated(max(NdotL, 0.0), NdotV, roughness);
+		vec3  F = fresnelSchlickFast(HdotV, F0);
+		vec3  specular = NDF * V_term * F;
+
+		vec3 kS = F;
+		vec3 kD = (vec3(1.0) - kS) * (1.0 - metallic);
+
+		// Wrapped diffuse for soft subsurface look
+		float w = 0.45;
+		float wrappedNdotL = clamp((NdotL + w) / (1.0 + w), 0.0, 1.0);
+
+		vec3 diffuse_out = (kD * albedo / PI) * radiance * wrappedNdotL * shadow;
+		vec3 specular_out = specular * radiance * max(NdotL, 0.0) * shadow;
+
+		Lo += diffuse_out + specular_out;
+		spec_lum += get_luminance(specular_out);
+	}
+
+	// 2. BACK-SIDE TRANSMISSION (Subsurface Scattering)
+	// Snow has significant back-scattering/translucency
+	float transmissionNdotL = max(-NdotL, 0.0);
+	if (transmissionNdotL > 0.0) {
+		float translucency = 0.35;
+		// Snow scattering often has a slight blue-shift due to internal reflections
+		vec3 sssColor = albedo * vec3(0.9, 0.96, 1.0);
+		// More non-linear falloff for deeper-looking scattering
+		vec3 transmission_out = (sssColor / PI) * radiance * pow(transmissionNdotL, 2.5) * translucency * shadow;
+		Lo += transmission_out;
+	}
+}
+
+vec4 apply_lighting_snow(
+	vec3      frag_pos,
+	vec3      normal,
+	vec3      albedo,
+	float     roughness,
+	float     metallic,
+	float     ao,
+	vec2      uv,
+	mat2      uv_J,
+	out float primaryShadow
+) {
+	primaryShadow = 1.0;
+	vec3 N = normalize(normal);
+	vec3 V = normalize(viewPos - frag_pos);
+	vec3 F0 = mix(vec3(0.04), albedo, metallic);
+
+	vec3  Lo = vec3(0.0);
+	float spec_lum = 0.0;
+
+	// PASS 1: Directional Light
+	for (int i = 0; i < min(2, num_lights); ++i) {
+		if (lights[i].type != LIGHT_TYPE_DIRECTIONAL || lights[i].intensity <= 0.0)
+			continue;
+
+		vec3  L;
+		float atten;
+		calculateLightContribution(i, frag_pos, L, atten);
+		if (L.y <= -0.1)
+			continue; // Well below horizon
+
+		float r = kEarthRadiusKM + (frag_pos.y / (1000.0 * worldScale));
+		vec3  atmosphereTransmittance = texture(u_transmittanceLUT, getTransmittanceUV(r, max(L.y, 0.01))).rgb;
+		vec3  radiance = lights[i].color * (lights[i].intensity * PBR_INTENSITY_BOOST) * atmosphereTransmittance;
+
+		float shadow = min(calculateShadow(i, frag_pos, N, L), calculateCloudShadow(i, frag_pos));
+		primaryShadow = min(primaryShadow, shadow);
+
+		evaluate_snow_brdf(N, V, L, albedo, roughness, metallic, F0, radiance, shadow, uv, uv_J, Lo, spec_lum);
+	}
+
+	// PASS 2: Local Lights
+	for (int i = 2; i < num_lights; ++i) {
+		if (lights[i].intensity <= 0.0)
+			continue;
+
+		vec3  L;
+		float base_atten;
+		calculateLightContribution(i, frag_pos, L, base_atten);
+
+		float attenuation = (lights[i].intensity * PBR_INTENSITY_BOOST) * base_atten;
+		vec3  radiance = lights[i].color * attenuation;
+		float shadow = calculateShadow(i, frag_pos, N, L);
+
+		evaluate_snow_brdf(N, V, L, albedo, roughness, metallic, F0, radiance, shadow, uv, uv_J, Lo, spec_lum);
+	}
+
+	// Ambient
+	float terrainOcc = calculateTerrainOcclusion(frag_pos, N);
+	vec3  spatialSHAmbient = getSpatialAmbientSH(frag_pos, N);
+	float combinedAO = ao * terrainOcc;
+
+	vec3 ambient = (spatialSHAmbient * albedo) * combinedAO;
+
+	// Environment reflection
+	vec3  R = reflect(-V, N);
+	float NdotV = max(dot(N, V), 0.0);
+	vec3  F_env = fresnelSchlickRoughness(NdotV, F0, roughness);
+	vec3  envColor = getSpatialAmbientSH(frag_pos, R) * terrainOcc;
+	float smoothness = 1.0 - roughness;
+	vec3  ambientSpecular = F_env * envColor * (smoothness * smoothness) * 0.8 * combinedAO;
+
+	vec3 finalAmbient = ambient * (1.0 - metallic * 0.9) + ambientSpecular;
+
+	return vec4(finalAmbient + Lo, spec_lum + get_luminance(ambientSpecular));
 }
 
 /**
