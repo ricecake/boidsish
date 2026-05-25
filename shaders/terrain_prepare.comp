@@ -194,6 +194,8 @@ bool projectAABB(vec3 aabbMin, vec3 aabbMax, mat4 vp, out vec4 screenRect, out f
 }
 
 void main() {
+	const float TARGET_ERROR_PIXELS = max(2.0, 2.0 / max(0.01, u_tessQualityMultiplier));
+
 	int globalIdx = int(gl_GlobalInvocationID.x);
 	int numPatchesPerChunk = [[PATCHES_PER_CHUNK_SIDE]] * [[PATCHES_PER_CHUNK_SIDE]];
 	int totalPatches = u_numChunks * numPatchesPerChunk;
@@ -219,6 +221,9 @@ void main() {
 	patchCenter.y = (metrics.min_y + metrics.max_y) * 0.5;
 
 	float radius = patchSize * 0.707 + (metrics.max_y - metrics.min_y) * 0.5;
+
+	vec3 viewVec = patchCenter - u_viewPos;
+	float distToCam = length(viewVec);
 
 	// FRUSTUM CULLING
 	vec3 aabbMin = vec3(chunkOffset.x + float(patchX) * patchSize, metrics.min_y, chunkOffset.z + float(patchY) * patchSize);
@@ -292,11 +297,24 @@ void main() {
 
 	// Inner level based on patch-wide max_variance using SSE logic
 	float distToCenter = max(distance(u_viewPos, patchCenter), 1.0 * u_worldScale);
-	float innerPixelError = max(2.0, 2.0 / max(0.01, u_tessQualityMultiplier)) + 4*metrics.avg_grass_density + 4* smoothstep(100, 400, distToCam);
+	float innerPixelError = TARGET_ERROR_PIXELS + 4 * metrics.avg_grass_density + 4 * smoothstep(100* u_worldScale, 400* u_worldScale, distToCam);
 
+/*
 	float crestThreshold = 0.25 * u_worldScale;
-	float crestMask = smoothstep(0.0, crestThreshold, physicalDeviation);
+	float crestMask = smoothstep(0.0, crestThreshold, metrics.max_variance);
 
+	vec4 hData = textureLod(u_heightmapArray, vec3(0.5, 0.5, float(slice)), 0.0);
+	vec3 norm = normalize(hData.gba);
+	float silhouetteFactor = 1.0 - abs(dot(norm, viewVec));
+
+	if (crestMask > 0 && crestMask < 1.0) {
+		innerPixelError /= crestMask;
+	}
+
+	if (silhouetteFactor > 0 && silhouetteFactor < 1.0) {
+		innerPixelError /= silhouetteFactor;
+	}
+*/
 
 	// Error level based on max variance (chordal error)
 	float innerErrorLevel = (metrics.max_variance * u_lodProjectionScalar) / (distToCenter * innerPixelError);

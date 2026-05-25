@@ -181,56 +181,56 @@ namespace Boidsish {
 		if (!decor_types_.empty())
 			return;
 
-		AddDecorType(
-			"assets/decor/Apple tree/AppleTree.obj",
-			{.min_density = 0.005f,
-		     .max_density = 0.01f,
-		     .base_scale = 0.5f,
-		     .scale_variance = 0.01f,
-		     .min_height = 5.0f,
-		     .max_height = 95.0f,
-		     .random_yaw = true,
-		     .biomes = {Biome::Forest, Biome::AlpineMeadow},
-		     .wind_responsiveness = 0.3f}
-		);
-		AddDecorType(
-			"assets/decor/Tree/tree01.obj",
-			{.min_density = 0.001f,
-		     .max_density = 0.005f,
-		     .base_scale = 0.055f,
-		     .scale_variance = 0.05f,
-		     .min_height = 5.0f,
-		     .max_height = 95.0f,
-		     .random_yaw = true,
-		     .biomes = {Biome::LushGrass, Biome::Forest},
-		     .wind_responsiveness = 0.5f}
-		);
+		// AddDecorType(
+		// 	"assets/decor/Apple tree/AppleTree.obj",
+		// 	{.min_density = 0.005f,
+		//      .max_density = 0.01f,
+		//      .base_scale = 0.5f,
+		//      .scale_variance = 0.01f,
+		//      .min_height = 5.0f,
+		//      .max_height = 95.0f,
+		//      .random_yaw = true,
+		//      .biomes = {Biome::Forest, Biome::AlpineMeadow},
+		//      .wind_responsiveness = 0.3f}
+		// );
+		// AddDecorType(
+		// 	"assets/decor/Tree/tree01.obj",
+		// 	{.min_density = 0.001f,
+		//      .max_density = 0.005f,
+		//      .base_scale = 0.055f,
+		//      .scale_variance = 0.05f,
+		//      .min_height = 5.0f,
+		//      .max_height = 95.0f,
+		//      .random_yaw = true,
+		//      .biomes = {Biome::LushGrass, Biome::Forest},
+		//      .wind_responsiveness = 0.5f}
+		// );
 
-		AddDecorType(
-			"assets/decor/Rose bush/Mesh_RoseBush.obj",
-			{.min_density = 0.001f,
-		     .max_density = 0.005f,
-		     .base_scale = 0.08f,
-		     .scale_variance = 0.01f,
-		     .min_height = 5.0f,
-		     .max_height = 95.0f,
-		     .random_yaw = true,
-		     .align_to_terrain = true,
-		     .biomes = {Biome::LushGrass, Biome::AlpineMeadow},
-		     .wind_responsiveness = 0.25f}
-		);
-		AddDecorType(
-			"assets/decor/Sunflower/PUSHILIN_sunflower.obj",
-			{.min_density = 0.01f,
-		     .max_density = 0.05f,
-		     .base_scale = 0.5f,
-		     .scale_variance = 0.01f,
-		     .min_height = 5.0f,
-		     .max_height = 95.0f,
-		     .random_yaw = true,
-		     .biomes = {Biome::LushGrass, Biome::AlpineMeadow},
-		     .wind_responsiveness = 0.25f}
-		);
+		// AddDecorType(
+		// 	"assets/decor/Rose bush/Mesh_RoseBush.obj",
+		// 	{.min_density = 0.001f,
+		//      .max_density = 0.005f,
+		//      .base_scale = 0.08f,
+		//      .scale_variance = 0.01f,
+		//      .min_height = 5.0f,
+		//      .max_height = 95.0f,
+		//      .random_yaw = true,
+		//      .align_to_terrain = true,
+		//      .biomes = {Biome::LushGrass, Biome::AlpineMeadow},
+		//      .wind_responsiveness = 0.25f}
+		// );
+		// AddDecorType(
+		// 	"assets/decor/Sunflower/PUSHILIN_sunflower.obj",
+		// 	{.min_density = 0.01f,
+		//      .max_density = 0.05f,
+		//      .base_scale = 0.5f,
+		//      .scale_variance = 0.01f,
+		//      .min_height = 5.0f,
+		//      .max_height = 95.0f,
+		//      .random_yaw = true,
+		//      .biomes = {Biome::LushGrass, Biome::AlpineMeadow},
+		//      .wind_responsiveness = 0.25f}
+		// );
 
 		// // Procedural Flowers
 		// AddProceduralDecor(
@@ -250,22 +250,29 @@ namespace Boidsish {
 		// );
 
 		// Procedural Rocks
-		// AddProceduralDecor(
-		// 	ProceduralType::Rock,
-		// 	{
-		// 		.min_density = 0.02f,
-		// 		.max_density = 0.04f,
-		// 		.base_scale = 0.4f,
-		// 		.scale_variance = 0.1f,
-		// 		.min_height = 0.01f,
-		// 		.max_height = 1000.0f,
-		// 		.random_yaw = true,
-		// 		.align_to_terrain = true,
-		// 		.biomes = {Biome::BrownRock, Biome::GreyRock, Biome::DryGrass},
-		// 		.wind_responsiveness = 0
-		// 	},
-		// 	2
-		// );
+		AddProceduralDecor(
+			ProceduralType::Rock,
+			{
+
+				.min_density = 0.001f,
+				.max_density = 0.01f,
+				.base_scale = 0.75f,
+				.scale_variance = 0.5f,
+
+
+				// .min_density = 0.02f,
+				// .max_density = 0.04f,
+				// .base_scale = 0.4f,
+				// .scale_variance = 0.1f,
+				.min_height = 0.01f,
+				.max_height = 1000.0f,
+				.random_yaw = true,
+				.align_to_terrain = true,
+				// .biomes = {Biome::BrownRock, Biome::GreyRock, Biome::DryGrass},
+				.wind_responsiveness = 0
+			},
+			2
+		);
 
 		// // Procedural Grass
 		// AddProceduralDecor(
