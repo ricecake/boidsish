@@ -26,9 +26,47 @@ namespace Boidsish {
 			ImGui::SetNextWindowPos(ImVec2(20, 20), ImGuiCond_FirstUseEver);
 			ImGui::SetNextWindowSize(ImVec2(500, 600), ImGuiCond_FirstUseEver);
 			if (ImGui::Begin("Environment", &m_show)) {
+				auto weather = m_visualizer.GetWeatherManager();
+				auto drawAttrControl = [&](const char* label, WeatherAttribute attr, float min_v, float max_v, const char* fmt) {
+					if (!weather) return;
+					float val = 0.0f;
+					// Use current value for the slider if no target is set
+					const auto& weather_cur = weather->GetCurrentWeather();
+					switch(attr) {
+						case WeatherAttribute::Temperature: val = weather_cur.temperature; break;
+						case WeatherAttribute::Precipitation: val = weather_cur.precipitation; break;
+						case WeatherAttribute::Humidity: val = weather_cur.humidity; break;
+						case WeatherAttribute::WindStrength: val = weather_cur.wind_strength; break;
+						case WeatherAttribute::WindSpeed: val = weather_cur.wind_speed; break;
+						case WeatherAttribute::WindFrequency: val = weather_cur.wind_frequency; break;
+						case WeatherAttribute::CloudCoverage: val = weather_cur.cloud_coverage; break;
+						default: break;
+					}
+
+					ImGui::Text("%s:", label);
+					if (ImGui::SliderFloat((std::string("##slide") + label).c_str(), &val, min_v, max_v, fmt)) {
+						weather->SetTarget(attr, val);
+					}
+					ImGui::SameLine();
+					if (ImGui::Button((std::string("T##") + label).c_str())) weather->SetTarget(attr, val);
+					ImGui::SetItemTooltip("Set Target");
+					ImGui::SameLine();
+					if (ImGui::Button((std::string("min##") + label).c_str())) weather->SetMin(attr, val);
+					ImGui::SetItemTooltip("Set Minimum");
+					ImGui::SameLine();
+					if (ImGui::Button((std::string("max##") + label).c_str())) weather->SetMax(attr, val);
+					ImGui::SetItemTooltip("Set Maximum");
+					ImGui::SameLine();
+					if (ImGui::Button((std::string("U##") + label).c_str())) {
+						weather->ClearTarget(attr);
+						weather->ClearMin(attr);
+						weather->ClearMax(attr);
+					}
+					ImGui::SetItemTooltip("Unlock / Clear Constraints");
+				};
+
 				// 0. Weather
 				if (ImGui::CollapsingHeader("Ambient Weather", ImGuiTreeNodeFlags_DefaultOpen)) {
-					auto weather = m_visualizer.GetWeatherManager();
 					if (weather) {
 						bool enabled = weather->IsEnabled();
 						if (ImGui::Checkbox("Enable Weather System", &enabled)) {
@@ -51,34 +89,40 @@ namespace Boidsish {
 								weather->SetHoldThreshold(hold_threshold);
 							}
 
+							if (ImGui::Button("Clear All Weather Constraints")) {
+								weather->ClearAllConstraints();
+							}
+
 							ImGui::Separator();
 							const auto& cur = weather->GetCurrentWeather();
+
+							drawAttrControl("Temperature (K)", WeatherAttribute::Temperature, 200.0f, 350.0f, "%.1f K");
 							float temp = cur.temperature;
-							if (ImGui::SliderFloat("Temperature (K)", &temp, 200.0f, 350.0f, "%.1f K")) {
-								weather->SetTarget(WeatherAttribute::Temperature, temp);
-							}
-							ImGui::SameLine();
-							if (ImGui::Button("Unlock##Temp")) {
-								weather->ClearTarget(WeatherAttribute::Temperature);
-							}
 							ImGui::Text("  (%.1f C / %.1f F)", temp - 273.15f, (temp - 273.15f) * 1.8f + 32.0f);
 
-							float precip = cur.precipitation;
-							if (ImGui::SliderFloat("Precipitation", &precip, 0.0f, 1.0f, "%.2f")) {
-								weather->SetTarget(WeatherAttribute::Precipitation, precip);
-							}
-							ImGui::SameLine();
-							if (ImGui::Button("Unlock##Precip")) {
-								weather->ClearTarget(WeatherAttribute::Precipitation);
-							}
+							drawAttrControl("Precipitation", WeatherAttribute::Precipitation, 0.0f, 1.0f, "%.2f");
+							drawAttrControl("Humidity", WeatherAttribute::Humidity, 0.0f, 1.0f, "%.2f");
+							drawAttrControl("Wind Strength", WeatherAttribute::WindStrength, 0.0f, 5.0f, "%.2f");
+							drawAttrControl("Cloud Coverage", WeatherAttribute::CloudCoverage, 0.0f, 1.0f, "%.2f");
 
-							float humidity = cur.humidity;
-							if (ImGui::SliderFloat("Humidity", &humidity, 0.0f, 1.0f, "%.2f")) {
-								weather->SetTarget(WeatherAttribute::Humidity, humidity);
-							}
-							ImGui::SameLine();
-							if (ImGui::Button("Unlock##Humidity")) {
-								weather->ClearTarget(WeatherAttribute::Humidity);
+							auto active_constraints = weather->GetActiveConstraints();
+							if (!active_constraints.empty()) {
+								ImGui::Separator();
+								ImGui::Text("Active Weather Constraints:");
+								for (const auto& con : active_constraints) {
+									std::string text = WeatherManager::GetAttributeName(con.attr) + ": ";
+									if (con.target) text += "Target=" + std::to_string(*con.target).substr(0, 5) + " ";
+									if (con.min) text += "Min=" + std::to_string(*con.min).substr(0, 5) + " ";
+									if (con.max) text += "Max=" + std::to_string(*con.max).substr(0, 5) + " ";
+
+									ImGui::Text("%s", text.c_str());
+									ImGui::SameLine();
+									if (ImGui::Button((std::string("X##") + text).c_str())) {
+										weather->ClearTarget(con.attr);
+										weather->ClearMin(con.attr);
+										weather->ClearMax(con.attr);
+									}
+								}
 							}
 
 							// Display derived intensities and wetness
@@ -86,9 +130,6 @@ namespace Boidsish {
 							float snow = (cur.temperature <= 273.15f) ? cur.precipitation : 0.0f;
 							ImGui::Text("Rain Intensity: %.2f", rain);
 							ImGui::Text("Snow Intensity: %.2f", snow);
-
-							// Wetness is in VisualEffects UBO, handled in graphics.cpp but we can't easily get it here
-							// without exposing it through Visualizer. For now just show targets.
 
 							ImGui::Separator();
 
@@ -831,35 +872,10 @@ namespace Boidsish {
 
 				// 5. Wind (from EffectsWidget)
 				if (ImGui::CollapsingHeader("Wind", ImGuiTreeNodeFlags_DefaultOpen)) {
-					auto weather = m_visualizer.GetWeatherManager();
 					if (weather) {
-						const auto& w = weather->GetCurrentWeather();
-						float       wind_strength = w.wind_strength;
-						if (ImGui::SliderFloat("Wind Strength", &wind_strength, 0.0f, 5.0f)) {
-							weather->SetTarget(WeatherAttribute::WindStrength, wind_strength);
-						}
-						ImGui::SameLine();
-						if (ImGui::Button("Unlock##WindStrength")) {
-							weather->ClearTarget(WeatherAttribute::WindStrength);
-						}
-
-						float wind_speed = w.wind_speed;
-						if (ImGui::SliderFloat("Wind Speed", &wind_speed, 0.0f, 10.0f)) {
-							weather->SetTarget(WeatherAttribute::WindSpeed, wind_speed);
-						}
-						ImGui::SameLine();
-						if (ImGui::Button("Unlock##WindSpeed")) {
-							weather->ClearTarget(WeatherAttribute::WindSpeed);
-						}
-
-						float wind_frequency = w.wind_frequency;
-						if (ImGui::SliderFloat("Wind Frequency", &wind_frequency, 0.01f, 1.0f)) {
-							weather->SetTarget(WeatherAttribute::WindFrequency, wind_frequency);
-						}
-						ImGui::SameLine();
-						if (ImGui::Button("Unlock##WindFrequency")) {
-							weather->ClearTarget(WeatherAttribute::WindFrequency);
-						}
+						drawAttrControl("Wind Strength", WeatherAttribute::WindStrength, 0.0f, 5.0f, "%.2f");
+						drawAttrControl("Wind Speed", WeatherAttribute::WindSpeed, 0.0f, 10.0f, "%.2f");
+						drawAttrControl("Wind Frequency", WeatherAttribute::WindFrequency, 0.01f, 1.0f, "%.2f");
 					} else {
 						auto& config = ConfigManager::GetInstance();
 
