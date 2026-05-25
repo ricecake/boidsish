@@ -176,6 +176,16 @@ namespace Boidsish {
 										weather->SetSimTau(tau);
 									}
 
+									bool strict = weather->IsStrictEnforcementEnabled();
+									if (ImGui::Checkbox("Strict Enforcement (Instant Snap)", &strict)) {
+										weather->SetStrictEnforcement(strict);
+									}
+
+									float stiffness = weather->GetNudgeStiffness();
+									if (ImGui::SliderFloat("Nudge Stiffness", &stiffness, 0.01f, 10.0f, "%.2f")) {
+										weather->SetNudgeStiffness(stiffness);
+									}
+
 									if (ImGui::Button("Reset Simulation")) {
 										weather->ResetMacroSim();
 									}

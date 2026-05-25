@@ -211,6 +211,16 @@ namespace Boidsish {
 		}
 	}
 
+	void WeatherManager::SetStrictEnforcement(bool enabled) {
+		strict_enforcement_ = enabled;
+		ConfigManager::GetInstance().SetBool("weather_strict_enforcement", enabled);
+	}
+
+	void WeatherManager::SetNudgeStiffness(float stiffness) {
+		nudge_stiffness_ = stiffness;
+		ConfigManager::GetInstance().SetFloat("weather_nudge_stiffness", stiffness);
+	}
+
 	void WeatherManager::SetSimConstraints(const WeatherLbmSimulator::Constraints& c) {
 		if (lbm_simulator_) {
 			lbm_simulator_->SetConstraints(c);
@@ -295,6 +305,16 @@ namespace Boidsish {
 
 		// Manual constraints are now handled via the LBM solver and cached_targets_ update.
 		// We let the attribute float naturally towards its target (noise-derived or simulation-derived).
+
+		if (strict_enforcement_ && state.external_target.has_value()) {
+			target = *state.external_target;
+			float* value_ptr = GetValuePtr(attr);
+			if (value_ptr) {
+				*value_ptr = target;
+				state.velocity = 0.0f;
+			}
+			return;
+		}
 
 		float* value_ptr = GetValuePtr(attr);
 		if (!value_ptr)
@@ -417,7 +437,9 @@ namespace Boidsish {
 		x(4) = std::max(0.0f, (current_.mie_scattering - 0.003996f) / 0.1f);
 
 		const int   max_iterations = 5;
-		const float lambda = 0.01f; // Regularization to minimize nudge magnitude
+		// Regularization to minimize nudge magnitude. Modulated by nudge_stiffness_.
+		// Higher stiffness means we care more about satisfying constraints and less about nudge magnitude.
+		const float lambda = 0.01f / std::max(0.001f, nudge_stiffness_);
 
 		for (int iter = 0; iter < max_iterations; ++iter) {
 			Eigen::VectorXd r(active.size());
@@ -1338,6 +1360,8 @@ namespace Boidsish {
 		time_scale_ = cfg.GetAppSettingFloat("weather_time_scale", 0.005f);
 		spatial_scale_ = cfg.GetAppSettingFloat("weather_spatial_scale", 0.001f);
 		macro_sim_enabled_ = cfg.GetAppSettingBool("weather_macro_sim_enabled", true);
+		strict_enforcement_ = cfg.GetAppSettingBool("weather_strict_enforcement", false);
+		nudge_stiffness_ = cfg.GetAppSettingFloat("weather_nudge_stiffness", 1.0f);
 		hold_threshold_ = cfg.GetAppSettingFloat("weather_hold_threshold", 0.05f);
 		manual_preset_idx_ = cfg.GetAppSettingInt("weather_manual_preset", -1);
 

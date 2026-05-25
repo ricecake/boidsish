@@ -274,6 +274,12 @@ namespace Boidsish {
 
 		void ClearAllConstraints();
 
+		bool IsStrictEnforcementEnabled() const { return strict_enforcement_; }
+		void SetStrictEnforcement(bool enabled);
+
+		float GetNudgeStiffness() const { return nudge_stiffness_; }
+		void  SetNudgeStiffness(float stiffness);
+
 		struct ActiveConstraint {
 			WeatherAttribute     attr;
 			std::optional<float> target;
@@ -348,6 +354,8 @@ namespace Boidsish {
 
 		bool  enabled_ = true;
 		bool  macro_sim_enabled_ = true;
+		bool  strict_enforcement_ = false;
+		float nudge_stiffness_ = 1.0f;
 		float time_scale_ = 0.005f;    // Low frequency over time
 		float spatial_scale_ = 0.001f; // Low frequency over space
 		float hold_threshold_ = 0.05f; // Noise-space distance threshold for updates
