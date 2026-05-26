@@ -17,7 +17,7 @@ namespace Boidsish {
 		}
 
 		VolumetricLightingEffect::~VolumetricLightingEffect() {
-			if (injection_texture_) glDeleteTextures(1, &injection_texture_);
+			if (injection_buffer_) glDeleteBuffers(1, &injection_buffer_);
 			if (scattering_texture_) glDeleteTextures(1, &scattering_texture_);
 			if (history_textures_[0]) glDeleteTextures(2, history_textures_);
 		}
@@ -27,6 +27,7 @@ namespace Boidsish {
 			height_ = height;
 
 			injection_shader_ = std::make_unique<ComputeShader>("shaders/effects/volumetric_injection.comp");
+			splat_shader_ = std::make_unique<ComputeShader>("shaders/effects/volumetric_particle_splat.comp");
 			integration_shader_ = std::make_unique<ComputeShader>("shaders/effects/volumetric_integration.comp");
 			composite_shader_ = std::make_unique<Shader>("shaders/postprocess.vert", "shaders/effects/volumetric_composite.frag");
 
@@ -40,6 +41,7 @@ namespace Boidsish {
 			};
 
 			setup_shader(*injection_shader_);
+			setup_shader(*splat_shader_);
 			setup_shader(*integration_shader_);
 			setup_shader(*composite_shader_);
 
@@ -52,9 +54,16 @@ namespace Boidsish {
 		}
 
 		void VolumetricLightingEffect::CreateGridTextures() {
-			if (injection_texture_) glDeleteTextures(1, &injection_texture_);
+			if (injection_buffer_) glDeleteBuffers(1, &injection_buffer_);
 			if (scattering_texture_) glDeleteTextures(1, &scattering_texture_);
 			if (history_textures_[0]) glDeleteTextures(2, history_textures_);
+
+			size_t num_voxels = grid_res_x_ * grid_res_y_ * grid_res_z_ * num_cascades_;
+			glGenBuffers(1, &injection_buffer_);
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, injection_buffer_);
+			// VolumetricData is 4 * uint32 = 16 bytes
+			glBufferData(GL_SHADER_STORAGE_BUFFER, num_voxels * 16, nullptr, GL_DYNAMIC_DRAW);
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
 			auto create3DArray = [&](GLuint& tex) {
 				glGenTextures(1, &tex);
@@ -67,7 +76,6 @@ namespace Boidsish {
 				glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
 			};
 
-			create3DArray(injection_texture_);
 			create3DArray(scattering_texture_);
 			create3DArray(history_textures_[0]);
 			create3DArray(history_textures_[1]);
@@ -75,11 +83,10 @@ namespace Boidsish {
 			has_history_ = false;
 		}
 
-		void VolumetricLightingEffect::Apply(GLuint sourceTexture, GLuint depthTexture, GLuint velocityTexture, GLuint normalTexture, GLuint albedoTexture, const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix, const glm::vec3& cameraPos) {
+		void VolumetricLightingEffect::PreDispatch(const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix, const glm::vec3& cameraPos) {
 			auto& loc = ServiceLocator::Instance();
 			auto shadow_mgr = loc.Get<ShadowManager>();
 			auto terrain_mgr = loc.Get<TerrainRenderManager>();
-			auto light_mgr = loc.Get<LightManager>();
 			auto atmos_mgr = loc.Get<AtmosphereManager>();
 			auto fire_mgr = loc.Get<FireEffectManager>();
 			auto noise_mgr = loc.Get<NoiseManager>();
@@ -114,21 +121,36 @@ namespace Boidsish {
 			injection_shader_->setUint("u_grid_size", Constants::Class::Particles::ParticleGridSize());
 			injection_shader_->setIVec3("u_grid_res", glm::ivec3(grid_res_x_, grid_res_y_, grid_res_z_));
 
-			glBindImageTexture(Constants::ImageBinding::VolumetricInjection(), injection_texture_, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::VolumetricInjectionBuffer(), injection_buffer_);
 
 			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::VolumetricHistory());
 			glBindTexture(GL_TEXTURE_3D, history_textures_[history_index_]);
 			injection_shader_->setInt("uHistoryTexture", Constants::TextureUnit::VolumetricHistory());
 
 			glDispatchCompute((grid_res_x_ + 7) / 8, (grid_res_y_ + 7) / 8, (grid_res_z_ * num_cascades_ + 3) / 4);
-			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+			glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
+			// 1.5 Particle Splatting
+			splat_shader_->use();
+			if (fire_mgr) fire_mgr->BindBuffers(*splat_shader_);
+			splat_shader_->setMat4("uView", viewMatrix);
+			splat_shader_->setMat4("uProj", projectionMatrix);
+			splat_shader_->setIVec3("u_grid_res", glm::ivec3(grid_res_x_, grid_res_y_, grid_res_z_));
+			splat_shader_->setUint("u_num_particles", Constants::Class::Particles::MaxParticles());
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::VolumetricInjectionBuffer(), injection_buffer_);
+
+			glDispatchCompute((Constants::Class::Particles::MaxParticles() + 255) / 256, 1, 1);
+			glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
 			// 2. Integration (Accumulate along Z)
 			integration_shader_->use();
 			integration_shader_->setIVec3("u_grid_res", glm::ivec3(grid_res_x_, grid_res_y_, grid_res_z_));
 
-			glBindImageTexture(Constants::ImageBinding::VolumetricInjection(), injection_texture_, 0, GL_TRUE, 0, GL_READ_ONLY, GL_RGBA16F);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::VolumetricInjectionBuffer(), injection_buffer_);
 			glBindImageTexture(Constants::ImageBinding::VolumetricScattering(), scattering_texture_, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+
+			glDispatchCompute(grid_res_x_, grid_res_y_, 1);
+			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
 			// Copy to history for next frame
 			int next_history = 1 - history_index_;
@@ -144,7 +166,9 @@ namespace Boidsish {
 			// Extract camera front from inverse view matrix (3rd column is Back)
 			glm::mat4 invView = glm::inverse(viewMatrix);
 			prev_camera_front_ = -glm::normalize(glm::vec3(invView[2]));
+		}
 
+		void VolumetricLightingEffect::Apply(GLuint sourceTexture, GLuint depthTexture, GLuint velocityTexture, GLuint normalTexture, GLuint albedoTexture, const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix, const glm::vec3& cameraPos) {
 			// 3. Composition
 			composite_shader_->use();
 			composite_shader_->setInt("uSceneTexture", 0);

@@ -100,6 +100,7 @@ namespace Boidsish {
 				MeshExplosionFragments = 41,
 				TrailGeneratedVBO = 42,
 				AtmosphereSH = 43,
+				VolumetricInjectionBuffer = 45,
 				TerrainPatchMetrics = 46,
 				TerrainPatchDrawData = 47,
 				TerrainPatchTessLevels = 48,
@@ -447,6 +448,10 @@ namespace Boidsish {
 
 			consteval int AtmosphereSH() {
 				return std::to_underlying(Constants::Bindings::Ssbo::AtmosphereSH);
+			}
+
+			consteval int VolumetricInjectionBuffer() {
+				return std::to_underlying(Constants::Bindings::Ssbo::VolumetricInjectionBuffer);
 			}
 
 			consteval int TerrainPatchMetrics() {

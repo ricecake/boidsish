@@ -40,7 +40,6 @@ uniform sampler2DArray uBiomeMap;
 uniform sampler2DArray u_displacementArray;
 uniform float          uRawChunkSize;
 
-uniform mat4 view;
 
 struct GrassProperties {
     vec4  colorTop;

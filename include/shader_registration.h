@@ -61,6 +61,7 @@ namespace Boidsish {
 		T::RegisterConstant("MESH_EXPLOSION_FRAGMENTS_BINDING", Constants::SsboBinding::MeshExplosionFragments());
 		T::RegisterConstant("TRAIL_GENERATED_VBO_BINDING", Constants::SsboBinding::TrailGeneratedVBO());
 		T::RegisterConstant("ATMOSPHERE_SH_BINDING", Constants::SsboBinding::AtmosphereSH());
+		T::RegisterConstant("VOLUMETRIC_INJECTION_BUFFER_BINDING", Constants::SsboBinding::VolumetricInjectionBuffer());
 		T::RegisterConstant("TERRAIN_PATCH_METRICS_BINDING", Constants::SsboBinding::TerrainPatchMetrics());
 		T::RegisterConstant("TERRAIN_PATCH_DRAW_DATA_BINDING", Constants::SsboBinding::TerrainPatchDrawData());
 		T::RegisterConstant("TERRAIN_PATCH_TESS_LEVELS_BINDING", Constants::SsboBinding::TerrainPatchTessLevels());

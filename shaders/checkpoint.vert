@@ -6,6 +6,7 @@ layout(location = 1) in vec3 aNormal;
 layout(location = 2) in vec2 aTexCoords;
 
 #include "common_uniforms.glsl"
+#include "helpers/lighting.glsl"
 #include "temporal_data.glsl"
 
 uniform bool uUseMDI = false;
@@ -18,8 +19,6 @@ out vec4     PrevPosition;
 flat out int vUniformIndex;
 
 uniform mat4 model;
-uniform mat4 view;
-uniform mat4 projection;
 uniform vec4 clipPlane;
 
 void main() {
