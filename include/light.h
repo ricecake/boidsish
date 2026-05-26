@@ -77,10 +77,12 @@ namespace Boidsish {
 		alignas(16) glm::mat4 cloudShadowMatrix; // offset 768, 64 bytes
 		alignas(16) glm::mat4 view;              // offset 832, 64 bytes
 		alignas(16) glm::mat4 projection;        // offset 896, 64 bytes
-		alignas(16) glm::vec4 sh_coeffs[9];      // offset 960, 144 bytes
-	}; // Total: 1104 bytes
+		alignas(16) glm::vec3 lightningColor;    // offset 960, 12 bytes
+		float lightningPulse;                    // offset 972, 4 bytes
+		alignas(16) glm::vec4 sh_coeffs[9];      // offset 976, 144 bytes
+	}; // Total: 1120 bytes
 
-	static_assert(sizeof(LightingUbo) == 1104, "LightingUbo must be 1104 bytes for UBO alignment");
+	static_assert(sizeof(LightingUbo) == 1120, "LightingUbo must be 1104 bytes for UBO alignment");
 
 	/**
 	 * @brief Light source data structure for rendering.

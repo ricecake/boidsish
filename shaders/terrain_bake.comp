@@ -107,26 +107,61 @@ float calculateHeightAndParams(vec2 uv, int slice, vec2 worldOffset, float chunk
 	displacement = vec4(0.0);
 	if (waterMask <= 0.0) {
 		vec3 worldPosScaled = worldPos * 2.0;
-		float rocks = fastWorley3d(worldPosScaled * 0.5);
 		float divots = fastSimplex3d(worldPosScaled * 1.0);
-		float random = 0.5+0.5*(fastWorley3d(worldPosScaled / 50.0) * fastBlueNoise(worldPosScaled.zx) * (1.0-smoothstep(1, 10, currentHeight)) * smoothstep(0.01, 1, currentHeight));
+		vec2 rockWID = fastWorley3dID(worldPosScaled * 0.5);
+		float rocks = rockWID.x;
+		float rockId = rockWID.y;
 
+		// Use Worley Cell ID to give each rock a slightly different height/properties
+		float rockHeightVar = rockId * 0.5 + 1.75;
+		float shapedRocks = pow(rocks, 0.5) * rockHeightVar;
+
+		float random = 0.5+0.5*(fastWorley3d(worldPosScaled / 50.0) * fastBlueNoise(worldPosScaled.zx) * (1.0-smoothstep(1, 10, currentHeight)) * smoothstep(0.01, 1, currentHeight));
 
 		// Substrate modulation
 		float substrateMod = mix(1.2, 0.4, clamp(substrateOutput * 0.5 + 0.5, 0.0, 1.0));
-		float dispMag = (1.75 * random + rocks * 1.15 - abs(divots) * 1.17) * substrateMod;
+		float dispMag = (1.75 * random + shapedRocks * 1.5 - abs(divots) * 1.17) * substrateMod;
 
 		// Intermittent jagged rock outcrops
-		float outcropNoise = fastWorley3d(worldPos * 0.05);
+		vec2 outcropWID = fastWorley3dID(worldPos * 0.05);
+		float outcropNoise = outcropWID.x;
+		float outcropId = outcropWID.y;
 		float outcropMask = smoothstep(0.7, 0.9, outcropNoise);
 		if (outcropMask > 0.0) {
-			float jagged = fastWorley3d(worldPos * 0.8) * 2.0;
-			dispMag += jagged * outcropMask * 5.0 * worldScale;
+			float jagged = fastWorley3d(worldPos * 0.8) * 20.0;
+			// Use outcropId to vary outcrop height
+			dispMag += jagged * outcropMask * (5.0 + outcropId * 3.0) * worldScale;
 			// Biome override: if it's a rock outcrop, use rock biome (let's say index 6 for rocky)
 			displacement.a = 6.0 / 255.0;
 		}
 
 		displacement.xyz = currentNormal * dispMag;
+
+		if (outcropMask > 0.0) {
+			// 1. Columnar/Blocky vertical details with sharp edges
+			vec2 worleyIdData = fastWorley3dID(worldPos * 0.2);
+			float blockyHeight = (worleyIdData.y * 2.0 - 1.0) * 4.0 * worldScale;
+
+			// 2. Stratified Overhangs (horizontal displacement)
+			// Create layers based on height, only push out where we are already somewhat steep
+			float layers = sin(worldPos.y * 1.5) * 0.5 + 0.5;
+			float overhangMag = pow(layers, 4.0) * 3.0 * worldScale;
+
+			// Horizontal direction for overhangs - follow the normal but flattened
+			vec3 horizDir = normalize(vec3(currentNormal.x, 0.0, currentNormal.z) + vec3(0.001, 0, 0.001));
+
+			float jagged = fastWorley3d(worldPos * 0.8) * 2.0;
+
+			vec3 outcropDisp = vec3(0.0);
+			outcropDisp.y += blockyHeight;
+			outcropDisp += horizDir * overhangMag;
+			outcropDisp += currentNormal * jagged * 5.0 * worldScale;
+
+			displacement.xyz += outcropDisp * outcropMask;
+
+			// Biome override: if it's a rock outcrop, use rock biome (index 6)
+			displacement.a = 6.0 / 255.0;
+		}
 	}
 
 	return currentHeight;
@@ -189,13 +224,41 @@ void main() {
 	vec4 bakedParams = s_params[localID.x + 2][localID.y + 2];
 	vec3 bakedDisplacement = s_displacements[localID.x + 2][localID.y + 2];
 
+	// --- VARIANCE CALCULATION ---
+	// Variance is calculated in a 3x3 neighborhood using shared memory.
+	float centerV = 0.0;
+	float sumNeighbors = 0.0;
+	float numNeighbors = 0.0;
+
+	for (int ni = 1; ni <= 3; ++ni) {
+		for (int nj = 1; nj <= 3; ++nj) {
+			float h = s_heights[localID.x + ni][localID.y + nj];
+			vec3 d = s_displacements[localID.x + ni][localID.y + nj];
+			float v = h + length(d);
+
+			// Assuming your center pixel in this 3x3 is at ni=2, nj=2
+			if (ni == 2 && nj == 2) {
+				centerV = v;
+			} else {
+				sumNeighbors += v;
+				numNeighbors += 1.0;
+			}
+		}
+	}
+
+	float avgNeighbors = sumNeighbors / numNeighbors;
+
+	// 'deviation' is the literal, physical error (in world-space units)
+	// that would occur if we rendered this area as a single flat polygon.
+	float deviation = abs(centerV - avgNeighbors);
+
+	// Do NOT clamp to 0.0 - 1.0. Just store the raw physical deviation.
+	bakedParams.a = deviation;
+
 	// Sample biome to preserve override if not set by outcrop
 	vec4 biomeData = imageLoad(u_biomeMap, ivec3(pixelCoord, slice));
-	float biomeOverride = 0.0;
 
 	// If calculateHeightAndParams set an override (e.g. for outcrops), use it
-	// We need to re-run part of calculateHeightAndParams logic or pass it through shared memory
-	// For simplicity, let's just re-calculate displacement and override here for the center pixel
 	vec2 uvCenter = vec2(pixelCoord) / rawChunkSize;
 	vec4 paramsCenter;
 	vec4 dispCenter;
@@ -207,5 +270,8 @@ void main() {
 
 	// Mark as baked in the biome map (B channel)
 	biomeData.b = 1.0;
+	// Relocate waterMask to biome map Alpha channel
+	biomeData.a = s_params[localID.x + 2][localID.y + 2].w;
+
 	imageStore(u_biomeMap, ivec3(pixelCoord, slice), biomeData);
 }

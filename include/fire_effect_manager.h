@@ -21,8 +21,8 @@ namespace Boidsish {
 		uint32_t count_bubbles;
 		uint32_t count_fireflies;
 		uint32_t count_snow;
+		uint32_t count_fairies;
 		uint32_t count_dust;
-		uint32_t _unused_counts[1];
 
 		uint32_t limit_birds;
 		uint32_t limit_leaves;
@@ -30,8 +30,8 @@ namespace Boidsish {
 		uint32_t limit_bubbles;
 		uint32_t limit_fireflies;
 		uint32_t limit_snow;
+		uint32_t limit_fairies;
 		uint32_t limit_dust;
-		uint32_t _unused_limits[1];
 	};
 
 	// This struct is mirrored in the compute shader.

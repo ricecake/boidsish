@@ -7,7 +7,7 @@
 
 int main() {
     try {
-        Grammar g("assets/dialogue_grammar.txt");
+        Grammar g("assets/dialogue_grammar.txt", "assets/dialogue_terminals.txt");
         WordInterner& interner = g.get_interner();
 
         std::string sentence = "hello . I need you to find a cat . thank you .";

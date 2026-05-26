@@ -88,7 +88,8 @@ void main() {
 		vErosionDelta = bakedParams.r;
 		vRidgeMap = bakedParams.g;
 		vSubstrate = bakedParams.b;
-		vIsWater = bakedParams.a;
+		// vIsWater = bakedParams.a; // Now contains variance
+		vIsWater = biomeData.a; // Relocated to biome map Alpha
 
 		// Height and Normal were already updated by sampleHeightmap because it samples uHeightmap
 		// which now points to the baked texture array in the manager.
