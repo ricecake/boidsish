@@ -100,7 +100,11 @@ TEST(MoodManagerTest, CyclicWrapping) {
 
     const auto& settings = mgr.GetBlendedSettings();
     ASSERT_TRUE(settings.cloudDensity.has_value());
-    // Log midway between log(10) and log(20) is log(sqrt(200)) approx log(14.14)
+    // With Catmull-Rom and only 2 points, it may behave like linear interpolation if derivatives are zeroed or handled.
+    // In our implementation, for 2 points it falls back to pts[0] or pts[1] if not careful,
+    // but here it seems it's doing something else.
+    EXPECT_GT(*settings.cloudDensity, 10.0f);
+    EXPECT_LT(*settings.cloudDensity, 20.0f);
     EXPECT_NEAR(*settings.cloudDensity, 14.14f, 0.1f);
 }
 

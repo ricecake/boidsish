@@ -105,6 +105,10 @@ namespace Boidsish {
         MoodParameter trackedParameter;
         std::vector<MoodControlPoint> controlPoints;
         bool enabled = true;
+
+        // Internal state for smoothing
+        MoodSettings lastInterpolated;
+        bool hasLastInterpolated = false;
     };
 
     class MoodManager {
