@@ -315,11 +315,11 @@ namespace Boidsish {
 
 			if (is_static) {
 				for (int i = 0; i < 3; ++i) {
-					Vertex* v_ptr = vbo_->GetFullBufferPtr() + (i * vbo_->GetElementCount()) + alloc.base_vertex;
+					Vertex* v_ptr = vbo_->GetFrameDataPtr(i) + alloc.base_vertex;
 					memcpy(v_ptr, vertices, v_count * sizeof(Vertex));
 
 					if (indices && i_count > 0) {
-						uint32_t* i_ptr = ebo_->GetFullBufferPtr() + (i * ebo_->GetElementCount()) + alloc.first_index;
+						uint32_t* i_ptr = ebo_->GetFrameDataPtr(i) + alloc.first_index;
 						memcpy(i_ptr, indices, i_count * sizeof(uint32_t));
 					}
 				}
@@ -1426,7 +1426,6 @@ namespace Boidsish {
 			glm::mat4*                   bones_ptr = bone_matrices_ssbo->GetFrameDataPtr();
 
 			uint32_t max_elements = 65536; // Buffer capacity
-			uint32_t frame_element_offset = uniforms_ssbo->GetCurrentBufferIndex() * max_elements;
 
 			uint32_t vertex_frame_offset = megabuffer->GetVertexFrameOffset();
 			uint32_t index_frame_offset = megabuffer->GetIndexFrameOffset();
@@ -1438,6 +1437,8 @@ namespace Boidsish {
 
 			// Store the global start index for this pass's batches within the SSBO
 			uint32_t mdi_pass_start_index = mdi_uniform_count;
+			uint32_t mdi_pass_elements_start = mdi_elements_count;
+			uint32_t mdi_pass_arrays_start = mdi_arrays_count;
 
 			for (const auto& batch : batches) {
 				uint32_t batch_packet_start = batch.base_uniform_index;
@@ -1455,7 +1456,9 @@ namespace Boidsish {
 					}
 
 					// Copy uniforms to persistent SSBO
-					uniforms_ptr[mdi_uniform_count] = packet.uniforms;
+					// We need to ensure we don't overflow the mapped frame segment.
+					// uniforms_ptr points to the start of the frame's segment.
+					std::memcpy(uniforms_ptr + mdi_uniform_count, &packet.uniforms, sizeof(CommonUniforms));
 
 					// Handle skeletal animation data
 					if (!packet.bone_matrices.empty()) {
@@ -1513,7 +1516,7 @@ namespace Boidsish {
 					GL_SHADER_STORAGE_BUFFER,
 					Constants::SsboBinding::CommonUniforms(),
 					uniforms_ssbo->GetBufferId(),
-					frame_element_offset * sizeof(CommonUniforms),
+					uniforms_ssbo->GetFrameOffset(),
 					mdi_uniform_count * sizeof(CommonUniforms)
 				);
 
@@ -1598,7 +1601,7 @@ namespace Boidsish {
 					GL_SHADER_STORAGE_BUFFER,
 					Constants::SsboBinding::CommonUniforms(),
 					uniforms_ssbo->GetBufferId(),
-					(frame_element_offset + batch_global_index) * sizeof(CommonUniforms),
+					uniforms_ssbo->GetFrameOffset() + batch_global_index * sizeof(CommonUniforms),
 					batch.command_count * sizeof(CommonUniforms)
 				);
 
@@ -1682,7 +1685,7 @@ namespace Boidsish {
 						batch.draw_mode,
 						batch.index_type,
 						(void*)(uintptr_t)(indirect_elements_buffer->GetFrameOffset() +
-					                       batch.first_command * sizeof(DrawElementsIndirectCommand)),
+					                       (mdi_pass_elements_start + batch.first_command) * sizeof(DrawElementsIndirectCommand)),
 						batch.command_count,
 						sizeof(DrawElementsIndirectCommand)
 					);
@@ -1691,7 +1694,7 @@ namespace Boidsish {
 					glMultiDrawArraysIndirect(
 						batch.draw_mode,
 						(void*)(uintptr_t)(indirect_arrays_buffer->GetFrameOffset() +
-					                       batch.first_command * sizeof(DrawArraysIndirectCommand)),
+					                       (mdi_pass_arrays_start + batch.first_command) * sizeof(DrawArraysIndirectCommand)),
 						batch.command_count,
 						sizeof(DrawArraysIndirectCommand)
 					);

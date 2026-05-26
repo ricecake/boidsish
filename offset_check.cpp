@@ -1,72 +1,54 @@
 #include <iostream>
 #include <glm/glm.hpp>
 
-namespace Boidsish {
-	struct CommonUniforms {
-		glm::mat4 model = glm::mat4(1.0f); // 64 bytes
-		glm::vec4 color = glm::vec4(1.0f); // 16 bytes (xyz=color, w=alpha)
-
-		// Material/PBR
-		int   use_pbr = 0;      // 4 bytes
-		float roughness = 0.5f; // 4 bytes
-		float metallic = 0.0f;  // 4 bytes
-		float ao = 1.0f;        // 4 bytes -> 16 bytes
-
-		// Feature Flags
-		int use_texture = 0;    // 4 bytes
-		int is_line = 0;        // 4 bytes
-		int line_style = 0;     // 4 bytes
-		int is_text_effect = 0; // 4 bytes -> 16 bytes
-
-		// Text/Arcade Effects
-		float text_fade_progress = 1.0f; // 4 bytes
-		float text_fade_softness = 0.1f; // 4 bytes
-		int   text_fade_mode = 0;        // 4 bytes
-		int   is_arcade_text = 0;        // 4 bytes -> 16 bytes
-
-		int   arcade_wave_mode = 0;          // 4 bytes
-		float arcade_wave_amplitude = 0.5f;  // 4 bytes
-		float arcade_wave_frequency = 10.0f; // 4 bytes
-		float arcade_wave_speed = 5.0f;      // 4 bytes -> 16 bytes
-
-		int   arcade_rainbow_enabled = 0;      // 4 bytes
-		float arcade_rainbow_speed = 2.0f;     // 4 bytes
-		float arcade_rainbow_frequency = 5.0f; // 4 bytes
-		int   checkpoint_style = 0;            // 4 bytes -> 16 bytes
-
-		// Rendering State Flags
-		int   is_colossal = 0;          // 4 bytes
-		int   use_ssbo_instancing = 0;  // 4 bytes
-		int   use_vertex_color = 0;     // 4 bytes
-		float checkpoint_radius = 0.0f; // 4 bytes -> 16 bytes
-
-		// Dissolve Effects
-		glm::vec3 dissolve_plane_normal = glm::vec3(0, 1, 0); // 12 bytes
-		float     dissolve_plane_dist = 0.0f;                 // 4 bytes -> 16 bytes
-		int       dissolve_enabled = 0;                       // 4 bytes
-
-		// Skeletal Animation
-		int   bone_matrices_offset = -1; // 4 bytes
-		int   use_skinning = 0;          // 4 bytes
-		float anim_padding[2];           // 8 bytes -> 16 bytes
-
-		// Occlusion culling AABB (world space) - individual floats for std430 alignment safety
-		float aabb_min_x = 0.0f;   // 4 bytes
-		float aabb_min_y = 0.0f;   // 4 bytes
-		float aabb_min_z = 0.0f;   // 4 bytes
-		float aabb_max_x = 0.0f;   // 4 bytes -> 16
-		float aabb_max_y = 0.0f;   // 4 bytes
-		float aabb_max_z = 0.0f;   // 4 bytes
-		int   is_refractive = 0;   // 4 bytes
-		float refractive_index = 1.0f; // 4 bytes
-		// Padding to 256 bytes for SSBO alignment safety
-		float padding[3];
-	};
-}
-
-using namespace Boidsish;
+struct CommonUniforms {
+	glm::mat4 model; // 64
+	glm::vec4 color; // 16
+	int   use_pbr;
+	float roughness;
+	float metallic;
+	float ao;
+	int   use_texture;
+	int   is_line;
+	int   line_style;
+	int   is_text_effect;
+	float text_fade_progress;
+	float text_fade_softness;
+	int   text_fade_mode;
+	int   is_arcade_text;
+	int   arcade_wave_mode;
+	float arcade_wave_amplitude;
+	float arcade_wave_frequency;
+	float arcade_wave_speed;
+	int   arcade_rainbow_enabled;
+	float arcade_rainbow_speed;
+	float arcade_rainbow_frequency;
+	int   checkpoint_style;
+	int   is_colossal;
+	int   use_ssbo_instancing;
+	int   use_vertex_color;
+	float checkpoint_radius;
+	glm::vec3  dissolve_plane_normal;
+	float dissolve_plane_dist;
+	int   dissolve_enabled;
+	int   bone_matrices_offset;
+	int   use_skinning;
+	float anim_padding[2];
+	float aabb_min_x;
+	float aabb_min_y;
+	float aabb_min_z;
+	float aabb_max_x;
+	float aabb_max_y;
+	float aabb_max_z;
+	int   is_refractive;
+	float refractive_index;
+	float emissive_r;
+	float emissive_g;
+	float emissive_b;
+};
 
 int main() {
-    std::cout << "Size of CommonUniforms: " << sizeof(CommonUniforms) << std::endl;
+    std::cout << "sizeof(CommonUniforms): " << sizeof(CommonUniforms) << std::endl;
+    std::cout << "offsetof(emissive_r): " << offsetof(CommonUniforms, emissive_r) << std::endl;
     return 0;
 }

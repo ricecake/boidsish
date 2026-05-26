@@ -57,19 +57,14 @@ namespace Boidsish {
 			// This is critical when using baseVertex or direct indexing into the buffer.
 			size_t stride = raw_frame_bytes;
 			if (stride > 0) {
-				// Round up to multiple of alignment
+				// 1. Ensure stride is a multiple of alignment
 				stride = ((stride + (size_t)alignment - 1) / (size_t)alignment) * (size_t)alignment;
-				// Round up further to multiple of sizeof(T)
-				if (stride % sizeof(T) != 0) {
-					stride += sizeof(T) - (stride % sizeof(T));
-					// But now it might not be a multiple of alignment!
-					// Since alignment is a power of 2, we can just keep rounding up until both are satisfied.
-					// A simpler way is to use LCM, but alignment is small.
-					while (stride % (size_t)alignment != 0) {
-						stride += sizeof(T);
-						// Smallest stride that is multiple of sizeof(T) and alignment.
-						// This loop will terminate quickly as alignment is a power of 2.
-					}
+
+				// 2. Ensure stride is a multiple of sizeof(T)
+				// If sizeof(T) is not a divisor of the alignment-based stride,
+				// we must find the next multiple of alignment that is also a multiple of sizeof(T).
+				while (stride % sizeof(T) != 0) {
+					stride += alignment;
 				}
 			}
 			aligned_frame_stride_ = stride;
