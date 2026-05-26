@@ -1123,9 +1123,10 @@ namespace Boidsish {
 
 		// Trigger lightning strikes during high precipitation
 		if (current_.precipitation > 0.4f) {
-			float strikeChance = (current_.precipitation - 0.4f) * deltaTime * 0.5f;
+			auto lightning = ServiceLocator::Instance().Get<LightningManager>();
+			float freqMult = lightning ? lightning->GetFrequencyMultiplier() : 1.0f;
+			float strikeChance = (current_.precipitation - 0.4f) * deltaTime * 0.5f * freqMult;
 			if ((static_cast<float>(rand()) / RAND_MAX) < strikeChance) {
-				auto lightning = ServiceLocator::Instance().Get<LightningManager>();
 				if (lightning) {
 					LightningType type = (rand() % 100 < 30) ? LightningType::FORK : LightningType::BOLT;
 					if (rand() % 100 < 20) type = LightningType::CLOUD_TO_CLOUD;
