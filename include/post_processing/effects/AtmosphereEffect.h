@@ -199,22 +199,22 @@ namespace Boidsish {
 
 			float cloud_phase_g1_ = 0.875;
 			float cloud_phase_g2_ = -0.3f;
-			float cloud_phase_alpha_ = 0.156f;
-			float cloud_phase_isotropic_ = 0.005f;
-			float cloud_powder_scale_ = 0.01f;
-			float cloud_powder_multiplier_ = 0.505f;
-			float cloud_powder_local_scale_ = 1.475f;
+			float cloud_phase_alpha_ = 0.181f;
+			float cloud_phase_isotropic_ = 0.426f;
+			float cloud_powder_scale_ = 0.125f;
+			float cloud_powder_multiplier_ = 5.000f;
+			float cloud_powder_local_scale_ = 5.000f;
 			float cloud_shadow_optical_depth_multiplier_ = 0.277f;
 			float cloud_shadow_step_multiplier_ = 1.0f;
 			float cloud_sun_light_scale_ = 1.0f;
 			float cloud_moon_light_scale_ = 2.0f;
-			float cloud_beer_powder_mix_ = 0.577f;
+			float cloud_beer_powder_mix_ = 0.600f;
 
 			float     rayleigh_scale_ = WeatherConstants::RayleighScale.normal;
 			float     mie_scale_ = WeatherConstants::MieScale.normal;
 			float     mie_anisotropy_ = WeatherConstants::MieAnisotropy;
-			float     multi_scat_scale_ = 0.1f;
-			float     ambient_scat_scale_ = 0.750f;
+			float     multi_scat_scale_ = 0.250f;
+			float     ambient_scat_scale_ = 0.0f;
 			float     atmosphere_height_ = WeatherConstants::AtmosphereHeight.normal;
 			glm::vec3 rayleigh_scattering_ = WeatherConstants::RayleighScattering;
 			float     mie_scattering_ = WeatherConstants::MieScattering;

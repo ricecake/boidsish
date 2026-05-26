@@ -149,6 +149,50 @@ float calculateMoisture(float height, float valleyFactor, vec3 pos) {
 	return clamp(baseMoisture + valleyMoisture + noiseMoisture, 0.0, 1.0);
 }
 
+TerrainMaterial getRockTexture(vec3 baseColor, float height, float moisture, float noise) {
+	TerrainMaterial mat;
+	float realDist = distance(FragPos, viewPos);
+
+	float h = height + noise * 8.0;
+
+	vec2 rockFactors = (fastWorley3dID(FragPos/125) *0.5 +0.5);// * ((1- smoothstep(0, HEIGHT_BEACH_END, height)) + smoothstep(HEIGHT_TREELINE, HEIGHT_SNOW_START, height));
+	float rockFactor = 1.0;//abs(rockFactors.x);
+	float wetness = 1.0 - smoothstep(0.0, HEIGHT_BEACH_END, h) + moisture;
+
+	mat.albedo = mix(baseColor, mix(COL_ROCK_GREY, COL_ROCK_DARK, noise * 0.3), rockFactor);
+	mat.roughness = mix(0.9, 0.4, wetness);
+	mat.normalScale = 40.0;
+	mat.normalStrength = mix(0.1, 0.05, wetness);
+
+	if (rockFactor  > 0) {
+		// vec3 rockBoundary = voronoi((TexCoords+(noise*0.05))*int(50*mix(5, 0.1, smoothstep(50, 250, 20*int(realDist/20) ))));
+		vec2 rockBoundary = fastWorley3dID(FragPos/125) * 0.5 + 0.5;
+
+		float rockPalette = clamp(rockFactors.y, 0, 1);
+		vec3 color = palette( // Make this a curl noise?
+		     random(rockBoundary.y),
+		     vec3(0.5, 0.5, 0.5), vec3(0.5, 0.5, 0.5),
+		     mix(vec3(1.0, 1.0, 0.50), vec3(1.0, 1.0, 1.0), rockPalette),
+		     mix(vec3(0.80, 0.90, 0.30), vec3(0.30, 0.20, 0.20), rockPalette)
+		);
+		// vec3 color = palette( // Make this a curl noise?
+		// 	random(rockBoundary.y),
+		// 	vec3(0.5, 0.5, 0.5), vec3(0.5, 0.5, 0.5),
+		// 	mix(vec3(1.0, 1.0, 1.0), vec3(0.30, 0.20, 0.20), rockPalette),
+		// 	mix(vec3(1.0, 1.0, 1.0), vec3(0.00, 0.10, 0.20), rockPalette)
+		// );
+
+
+		vec3 rockColor = color * ((1-smoothstep(0.0, max(0.75, random(rockBoundary.y)), rockBoundary.x)) * 0.8 + 0.2);
+
+		mat.albedo = mix(mat.albedo, rockColor, smoothstep(0.5, 1, rockFactor));
+		mat.roughness = mix(0.7, 0.1, wetness*smoothstep(0.01, 0.02, rockBoundary.x ));
+		mat.normalScale = 40.0;
+		mat.normalStrength = mix(0.1, 0.05, wetness);
+	}
+	return mat;
+}
+
 /**
  * Get the base biome material based on height
  */
@@ -164,7 +208,7 @@ TerrainMaterial getBiomeMaterial(float height, float moisture, float noise) {
 	if (h < HEIGHT_BEACH_END) {
 		vec2 rockFactors = (fastWorley3dID(FragPos/125) *0.5 +0.5) * ((1- smoothstep(0, HEIGHT_BEACH_END, height)) + smoothstep(HEIGHT_TREELINE, HEIGHT_SNOW_START, height));
 		float rockFactor = rockFactors.x;
-		float wetness = 1.0 - smoothstep(0.0, HEIGHT_BEACH_END, h);
+		float wetness = 1.0 - smoothstep(0.0, HEIGHT_BEACH_END, h) + moisture;
 
 		mat.albedo = mix(COL_SAND_DRY, COL_SAND_WET, wetness);
 		mat.roughness = mix(0.9, 0.4, wetness);
@@ -269,38 +313,34 @@ TerrainMaterial getBiomeMaterial(float height, float moisture, float noise) {
  * Calculate cliff/steep surface material properties
  * Steep surfaces are barren rock, with properties varying by altitude
  */
-TerrainMaterial getCliffMaterial(float height, float noise) {
+TerrainMaterial getCliffMaterial(float height, float moisture, float noise) {
 	TerrainMaterial mat;
-	mat.metallic = 0.0;
 	float h = height + noise * 5.0;
 
 	// Low altitude cliffs: brown/dark rock (often wet)
 	if (h < HEIGHT_FOREST_END) {
 		float wetness = 0.3 + noise * 0.2;
-		mat.albedo = mix(COL_ROCK_BROWN, COL_ROCK_DARK, wetness);
-		mat.roughness = mix(0.6, 0.3, wetness);
-		mat.normalScale = 4.0;
-		mat.normalStrength = 0.2;
+		vec3 baseColor = mix(COL_ROCK_BROWN, COL_ROCK_DARK, wetness);
+		mat = getRockTexture(baseColor, height, moisture, noise);
+		mat.metallic = 0.0;
 		return mat;
 	}
 
 	// Mid altitude: mixed brown/grey
 	if (h < HEIGHT_SNOW_START) {
 		float t = smoothstep(HEIGHT_FOREST_END, HEIGHT_SNOW_START, h);
-		mat.albedo = mix(COL_ROCK_BROWN, COL_ROCK_GREY, t + noise * 0.2);
-		mat.roughness = 0.6;
-		mat.normalScale = 3.5;
-		mat.normalStrength = 0.2;
+		vec3 baseColor = mix(COL_ROCK_BROWN, COL_ROCK_GREY, t + noise * 0.2);
+		mat = getRockTexture(baseColor, height, moisture, noise);
+		mat.metallic = 0.0;
 		return mat;
 	}
 
 	// High altitude cliffs: grey rock with snow patches
 	float snowPatch = smoothstep(HEIGHT_SNOW_START, HEIGHT_PEAK, h) * 0.4;
 	vec3  highRock = mix(COL_ROCK_GREY, COL_ROCK_DARK, noise * 0.3);
-	mat.albedo = mix(highRock, COL_SNOW_OLD, snowPatch);
-	mat.roughness = mix(0.6, 0.5, snowPatch);
-	mat.normalScale = 3.0;
-	mat.normalStrength = 0.15;
+	vec3 baseColor = mix(highRock, COL_SNOW_OLD, snowPatch);
+	mat = getRockTexture(baseColor, height, moisture, noise);
+	mat.metallic = 0.0;
 	return mat;
 }
 
@@ -398,7 +438,7 @@ TerrainMaterial calculateMaterial(float largeNoise, float slope) {
 	cliffMask *= (1.0 - beachMask);
 
 	TerrainMaterial biomeMat = getBiomeMaterial(distortedHeight, moisture, largeNoise);
-	TerrainMaterial cliffMat = getCliffMaterial(baseHeight, largeNoise);
+	TerrainMaterial cliffMat = getCliffMaterial(baseHeight, moisture, largeNoise);
 
 	// Substrate-based blending: eroded substrate tends to be rockier, while
 	// deposition substrate (plains/ridges) can be lusher.
@@ -590,6 +630,42 @@ void main() {
 	finalMaterial.albedo = mix(finalMaterial.albedo, finalMaterial.albedo * 0.5, globalWetness * 0.5);
 	finalMaterial.roughness = mix(finalMaterial.roughness, 0.1, globalWetness * 0.8);
 
+	float waterEffect = 0.0;
+	// Running water effect on rock surfaces
+	if (wetness > 0.6 && freezingScale < 0.1) {
+		float rockSurface = 1.0 - smoothstep(0.2, 0.5, slope); // Steeper is rockier
+		rockSurface = max(rockSurface, smoothstep(0.2, -0.6, vSubstrate));
+		float waterFlowMask = rockSurface * smoothstep(0.6, 0.9, wetness);
+
+		if (waterFlowMask > 0.01) {
+			// // Scrolling procedural flow
+			// vec3 flowOffset = vec3(0, time * 2.0, 0);
+			// vec3 p_flow = (FragPos + flowOffset + time * norm * vec3(0.25, -1, -0.25)) * 1.5;
+			// vec3 flowNoise = fastCurl3d(p_flow * 0.08);
+
+			vec3 surfaceDown = vec3(0.0, -1.0, 0.0) - dot(vec3(0.0, -1.0, 0.0), norm) * norm;
+			vec3 flowDir = normalize(surfaceDown + vec3(0.00001, 0.0, 0.0));
+			float flowSpeed = 2.0;
+			vec3 p_flow = (FragPos + -flowDir * time * flowSpeed) * 1.5;
+			vec3 flowNoise = fastCurl3d(p_flow * 0.08);
+
+			// Create animated streaks
+			float streaks = smoothstep(0.3, 0.8, abs(flowNoise.x));
+			streaks *= smoothstep(0.4, 0.6, fract(flowNoise.y * 0.5 + time * 0.8));
+
+			waterEffect = waterFlowMask * streaks;
+			finalMaterial.albedo = mix(finalMaterial.albedo, finalMaterial.albedo * 0.5, waterEffect * 0.5);
+			finalMaterial.roughness = mix(finalMaterial.roughness, 0.00, waterEffect);
+			finalMaterial.metallic = mix(finalMaterial.metallic, 0.1, waterEffect);
+
+			// Perturb normals for the water flow
+			if (waterEffect > 0.05) {
+				vec3 flowNorm = normalize(flowNoise * 2.0 - 1.0);
+				norm = normalize(mix(norm, flowNorm, waterEffect*0.8));
+			}
+		}
+	}
+
 	// Extra variety for rocky/steep areas to complement normals
 	float rockyVar = largeNoise;
 	float rockyMask = smoothstep(0.5, 0.2, slope); // More variety on steeper slopes
@@ -708,7 +784,7 @@ void main() {
 	// Normal Perturbation (Grain)
 	// ========================================================================
 
-	if (perturbFactor >= 0.1 && normalStrength > 0.0 && (dist + 50.0 * largeNoise) < 200) {
+	if (perturbFactor >= 0.1 && normalStrength > 0.0 && (dist + 50.0 * largeNoise) < 200 && waterEffect == 0) {
 		float roughnessStrength = smoothstep(0.1, 1.0, perturbFactor) * normalStrength;
 		float roughnessScale = normalScale * 0.05;
 		vec3  scaledFragPos = FragPos / worldScale;
