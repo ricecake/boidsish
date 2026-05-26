@@ -2279,7 +2279,7 @@ namespace Boidsish {
 					params[MoodParameter::WorldPositionY] = camera.y;
 					params[MoodParameter::WorldPositionZ] = camera.z;
 
-					mood_manager->Update(params);
+					mood_manager->Update(params, simulation_delta_time);
 					const auto& mood = mood_manager->GetBlendedSettings();
 
 					if (bloom_effect) {

@@ -112,13 +112,16 @@ namespace Boidsish {
         MoodManager();
         ~MoodManager();
 
-        void Update(const std::map<MoodParameter, float>& currentParams);
+        void Update(const std::map<MoodParameter, float>& currentParams, float deltaTime);
 
         void AddLayer(const MoodLayer& layer);
         void RemoveLayer(const std::string& name);
         void SetLayerEnabled(const std::string& name, bool enabled);
 
-        const MoodSettings& GetBlendedSettings() const { return _blendedSettings; }
+        const MoodSettings& GetBlendedSettings() const { return _smoothedSettings; }
+        const MoodSettings& GetTargetSettings() const { return _blendedSettings; }
+
+        void SetSmoothingFactor(float factor) { _smoothingFactor = factor; }
 
         // User overrides
         void SetOverride(const MoodSettings& settings, bool enabled);
@@ -127,9 +130,13 @@ namespace Boidsish {
     private:
         MoodSettings Interpolate(const MoodLayer& layer, float paramValue);
         void Blend(MoodSettings& base, const MoodSettings& layer, MoodBlendMode mode);
+        void Smooth(MoodSettings& current, const MoodSettings& target, float deltaTime);
 
         std::vector<MoodLayer> _layers;
-        MoodSettings _blendedSettings;
+        MoodSettings _blendedSettings; // Target settings
+        MoodSettings _smoothedSettings;
+
+        float _smoothingFactor = 2.0f; // 1.0 = 1 second to reach approx 63%
 
         MoodSettings _userOverride;
         bool _overrideEnabled = false;

@@ -27,7 +27,7 @@ TEST(MoodManagerTest, BasicInterpolation) {
 
     std::map<MoodParameter, float> params;
     params[MoodParameter::TimeOfDay] = 0.5f;
-    mgr.Update(params);
+    mgr.Update(params, 1.0f); // 1s delta to ensure smoothing completes immediately if factor >= 1
 
     const auto& settings = mgr.GetBlendedSettings();
 
@@ -65,7 +65,7 @@ TEST(MoodManagerTest, SparseLayers) {
 
     std::map<MoodParameter, float> params;
     params[MoodParameter::TimeOfDay] = 0.0f;
-    mgr.Update(params);
+    mgr.Update(params, 1.0f);
 
     const auto& settings = mgr.GetBlendedSettings();
     ASSERT_TRUE(settings.cloudDensity.has_value());
@@ -76,6 +76,32 @@ TEST(MoodManagerTest, SparseLayers) {
 
     // Other values should be nullopt
     EXPECT_FALSE(settings.cloudAltitude.has_value());
+}
+
+TEST(MoodManagerTest, CyclicWrapping) {
+    MoodManager mgr;
+    MoodLayer layer;
+    layer.name = "TOD";
+    layer.priority = 0;
+    layer.blendMode = MoodBlendMode::Override;
+    layer.trackedParameter = MoodParameter::TimeOfDay; // wraps at 24.0
+
+    MoodSettings s23; s23.cloudDensity = 10.0f;
+    MoodSettings s1;  s1.cloudDensity = 20.0f;
+
+    layer.controlPoints.push_back({23.0f, s23});
+    layer.controlPoints.push_back({1.0f, s1});
+
+    mgr.AddLayer(layer);
+
+    std::map<MoodParameter, float> params;
+    params[MoodParameter::TimeOfDay] = 0.0f; // Midway between 23 and 1
+    mgr.Update(params, 1.0f);
+
+    const auto& settings = mgr.GetBlendedSettings();
+    ASSERT_TRUE(settings.cloudDensity.has_value());
+    // Log midway between log(10) and log(20) is log(sqrt(200)) approx log(14.14)
+    EXPECT_NEAR(*settings.cloudDensity, 14.14f, 0.1f);
 }
 
 int main(int argc, char **argv) {
