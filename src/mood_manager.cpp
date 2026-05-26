@@ -4,6 +4,7 @@
 #include <set>
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtx/quaternion.hpp>
+#include "logger.h"
 
 namespace Boidsish {
 
@@ -13,7 +14,7 @@ namespace Boidsish {
     };
 
     static Oklab LinearToOklab(glm::vec3 c) {
-        c = glm::max(c, glm::vec3(1e-6f));
+        c = glm::max(c, glm::vec3(0.0f));
         float l = 0.4122214708f * c.r + 0.5363325363f * c.g + 0.0514459929f * c.b;
         float m = 0.2119034982f * c.r + 0.6806995451f * c.g + 0.1073969566f * c.b;
         float s = 0.0883024619f * c.r + 0.2817188376f * c.g + 0.6299787005f * c.b;
@@ -38,26 +39,32 @@ namespace Boidsish {
         float m = m_ * m_ * m_;
         float s = s_ * s_ * s_;
 
-        return {
+        glm::vec3 res = {
             4.0767416621f * l - 3.3077115913f * m + 0.2309699292f * s,
             -1.2684380046f * l + 2.6097574011f * m - 0.3413193965f * s,
             -0.0041960863f * l - 0.7034186147f * m + 1.7076147010f * s
         };
+        return glm::max(res, glm::vec3(0.0f));
     }
 
     // Centripetal Catmull-Rom (Aitken's Algorithm)
     template<typename T>
     static T CentripetalCatmullRom(float val, T p0, T p1, T p2, T p3, float t0, float t1, float t2, float t3) {
-        if (t1 == t2) return p1;
+        if (std::abs(t1 - t2) < 1e-6f) return p1;
 
-        auto a1 = p0 * ((t1 - val) / (t1 - t0)) + p1 * ((val - t0) / (t1 - t0));
-        auto a2 = p1 * ((t2 - val) / (t2 - t1)) + p2 * ((val - t1) / (t2 - t1));
-        auto a3 = p2 * ((t3 - val) / (t3 - t2)) + p3 * ((val - t2) / (t3 - t2));
+        auto safe_div = [](T a, T b, float den) {
+            if (std::abs(den) < 1e-6f) return (a + b) * 0.5f;
+            return (a + b) / den;
+        };
 
-        auto b1 = a1 * ((t2 - val) / (t2 - t0)) + a2 * ((val - t0) / (t2 - t0));
-        auto b2 = a2 * ((t3 - val) / (t3 - t1)) + a3 * ((val - t1) / (t3 - t1));
+        auto a1 = (p0 * (t1 - val) + p1 * (val - t0)) / std::max(1e-6f, t1 - t0);
+        auto a2 = (p1 * (t2 - val) + p2 * (val - t1)) / std::max(1e-6f, t2 - t1);
+        auto a3 = (p2 * (t3 - val) + p3 * (val - t2)) / std::max(1e-6f, t3 - t2);
 
-        return b1 * ((t2 - val) / (t2 - t1)) + b2 * ((val - t1) / (t2 - t1));
+        auto b1 = (a1 * (t2 - val) + a2 * (val - t0)) / std::max(1e-6f, t2 - t0);
+        auto b2 = (a2 * (t3 - val) + a3 * (val - t1)) / std::max(1e-6f, t3 - t1);
+
+        return (b1 * (t2 - val) + b2 * (val - t1)) / std::max(1e-6f, t2 - t1);
     }
 
     MoodManager::MoodManager() {}
@@ -87,12 +94,17 @@ namespace Boidsish {
             }
             case InterpType::Slerp: {
                 if constexpr (std::is_same_v<T, glm::vec3>) {
-                    float dot = glm::dot(glm::normalize(v1), glm::normalize(v2));
+                    float l1 = glm::length(v1);
+                    float l2 = glm::length(v2);
+                    if (l1 < 1e-6f || l2 < 1e-6f) return glm::mix(v1, v2, t);
+                    glm::vec3 n1 = v1 / l1;
+                    glm::vec3 n2 = v2 / l2;
+                    float dot = glm::dot(n1, n2);
                     if (dot > 0.9995f) return glm::mix(v1, v2, t);
                     float theta_0 = std::acos(glm::clamp(dot, -1.0f, 1.0f));
                     float theta = theta_0 * t;
-                    glm::vec3 v3 = glm::normalize(v2 - v1 * dot);
-                    return (v1 * std::cos(theta) + v3 * std::sin(theta)) * glm::mix(glm::length(v1), glm::length(v2), t);
+                    glm::vec3 v3 = glm::normalize(n2 - n1 * dot);
+                    return (n1 * std::cos(theta) + v3 * std::sin(theta)) * glm::mix(l1, l2, t);
                 }
                 return glm::mix(v1, v2, t);
             }
@@ -113,7 +125,7 @@ namespace Boidsish {
                         for (int j = (int)i - 1; j >= 0; --j) if (pts[j].settings.sceneBloom.member) { prev = j; break; } \
                         for (int j = (int)i + 1; j < (int)pts.size(); ++j) if (pts[j].settings.sceneBloom.member) { next = j; break; } \
                         if (prev != -1 && next != -1) { \
-                            float t = (pts[i].parameterValue - pts[prev].parameterValue) / (pts[next].parameterValue - pts[prev].parameterValue); \
+                            float t = (pts[i].parameterValue - pts[prev].parameterValue) / std::max(1e-6f, pts[next].parameterValue - pts[prev].parameterValue); \
                             pts[i].settings.sceneBloom.member = LerpVal(t, *pts[prev].settings.sceneBloom.member, *pts[next].settings.sceneBloom.member, type); \
                         } else if (prev != -1) pts[i].settings.sceneBloom.member = pts[prev].settings.sceneBloom.member; \
                         else if (next != -1) pts[i].settings.sceneBloom.member = pts[next].settings.sceneBloom.member; \
@@ -123,7 +135,7 @@ namespace Boidsish {
                         for (int j = (int)i - 1; j >= 0; --j) if (pts[j].settings.skyBloom.member) { prev = j; break; } \
                         for (int j = (int)i + 1; j < (int)pts.size(); ++j) if (pts[j].settings.skyBloom.member) { next = j; break; } \
                         if (prev != -1 && next != -1) { \
-                            float t = (pts[i].parameterValue - pts[prev].parameterValue) / (pts[next].parameterValue - pts[prev].parameterValue); \
+                            float t = (pts[i].parameterValue - pts[prev].parameterValue) / std::max(1e-6f, pts[next].parameterValue - pts[prev].parameterValue); \
                             pts[i].settings.skyBloom.member = LerpVal(t, *pts[prev].settings.skyBloom.member, *pts[next].settings.skyBloom.member, type); \
                         } else if (prev != -1) pts[i].settings.skyBloom.member = pts[prev].settings.skyBloom.member; \
                         else if (next != -1) pts[i].settings.skyBloom.member = pts[next].settings.skyBloom.member; \
@@ -181,7 +193,7 @@ namespace Boidsish {
                         for (int j = (int)i - 1; j >= 0; --j) if (pts[j].settings.member) { prev = j; break; } \
                         for (int j = (int)i + 1; j < (int)pts.size(); ++j) if (pts[j].settings.member) { next = j; break; } \
                         if (prev != -1 && next != -1) { \
-                            float t = (pts[i].parameterValue - pts[prev].parameterValue) / (pts[next].parameterValue - pts[prev].parameterValue); \
+                            float t = (pts[i].parameterValue - pts[prev].parameterValue) / std::max(1e-6f, pts[next].parameterValue - pts[prev].parameterValue); \
                             pts[i].settings.member = LerpVal(t, *pts[prev].settings.member, *pts[next].settings.member, type); \
                         } else if (prev != -1) pts[i].settings.member = pts[prev].settings.member; \
                         else if (next != -1) pts[i].settings.member = pts[next].settings.member; \
@@ -240,6 +252,12 @@ namespace Boidsish {
         std::sort(l.controlPoints.begin(), l.controlPoints.end(), [](const auto& a, const auto& b){
             return a.parameterValue < b.parameterValue;
         });
+
+        // Deduplicate control points with same value
+        l.controlPoints.erase(std::unique(l.controlPoints.begin(), l.controlPoints.end(), [](const auto& a, const auto& b){
+            return std::abs(a.parameterValue - b.parameterValue) < 1e-6f;
+        }), l.controlPoints.end());
+
         FillSettingsHoles(l.controlPoints);
         _layers.push_back(l);
     }
@@ -381,15 +399,20 @@ namespace Boidsish {
             if (p3v < p2v) p3v += wrap;
         }
 
+        // Knot spacing for Centripetal Catmull-Rom
+        auto knot_dist = [](float v1, float v2) {
+            return std::sqrt(std::max(1e-6f, std::abs(v1 - v2)));
+        };
+
         float k1 = 0.0f;
-        float k0 = -std::sqrt(std::abs(p1v - p0v));
-        float k2 = std::sqrt(std::abs(p2v - p1v));
-        float k3 = k2 + std::sqrt(std::abs(p3v - p2v));
+        float k0 = -knot_dist(p1v, p0v);
+        float k2 = knot_dist(p2v, p1v);
+        float k3 = k2 + knot_dist(p3v, p2v);
 
         float t = 0.0f;
-        if (p2v != p1v) t = (paramValue - p1v) / (p2v - p1v);
+        if (std::abs(p2v - p1v) > 1e-6f) t = (paramValue - p1v) / (p2v - p1v);
         t = glm::clamp(t, 0.0f, 1.0f);
-        float val = t * k2;
+        float val = k1 + t * (k2 - k1);
 
         const MoodSettings &s0 = sortedPts[i0].settings, &s1 = sortedPts[i1].settings, &s2 = sortedPts[i2].settings, &s3 = sortedPts[i3].settings;
         MoodSettings res;
