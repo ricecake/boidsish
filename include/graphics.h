@@ -48,6 +48,7 @@ namespace Boidsish {
 	class DecorManager;
 	class GrassManager;
 	class WeatherManager;
+	class LightningManager;
 	class Path;
 
 	namespace PostProcessing {
@@ -580,6 +581,7 @@ namespace Boidsish {
 		void                                   SetDecorManager(std::shared_ptr<DecorManager> decor_manager);
 		GrassManager*                          GetGrassManager();
 		WeatherManager*                        GetWeatherManager();
+		LightningManager*                      GetLightningManager();
 		PostProcessing::PostProcessingManager& GetPostProcessingManager();
 		float                                  GetLastFrameTime() const;
 

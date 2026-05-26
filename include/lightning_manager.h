@@ -50,6 +50,18 @@ namespace Boidsish {
 		float GetGlobalPulse() const { return _globalPulse; }
 		glm::vec3 GetGlobalColor() const { return _globalColor; }
 
+		float GetIntensityMultiplier() const { return _intensityMultiplier; }
+		void  SetIntensityMultiplier(float m) { _intensityMultiplier = m; }
+
+		float GetFrequencyMultiplier() const { return _frequencyMultiplier; }
+		void  SetFrequencyMultiplier(float m) { _frequencyMultiplier = m; }
+
+		float GetLifetimeMultiplier() const { return _lifetimeMultiplier; }
+		void  SetLifetimeMultiplier(float m) { _lifetimeMultiplier = m; }
+
+		float GetBranchProbability() const { return _branchProbability; }
+		void  SetBranchProbability(float p) { _branchProbability = p; }
+
 	private:
 		struct LightningVertex {
 			glm::vec3 pos;
@@ -65,6 +77,11 @@ namespace Boidsish {
 
 		float _globalPulse = 0.0f;
 		glm::vec3 _globalColor = glm::vec3(0.0f);
+
+		float _intensityMultiplier = 1.0f;
+		float _frequencyMultiplier = 1.0f;
+		float _lifetimeMultiplier = 1.0f;
+		float _branchProbability = 0.15f;
 
 		unsigned int _vao = 0;
 		unsigned int _vbo = 0;

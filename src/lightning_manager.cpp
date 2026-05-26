@@ -57,10 +57,10 @@ namespace Boidsish {
 			 // Intensity curve: quick peak then flickering decay
 			 float t = it->lifetime / it->max_lifetime;
 			 if (t < 0.1f) {
-				 it->intensity = t / 0.1f;
+				 it->intensity = (t / 0.1f) * _intensityMultiplier;
 			 } else {
 				 float flicker = (sin(it->lifetime * 100.0f) * 0.5f + 0.5f) * 0.4f + 0.6f;
-				 it->intensity = (1.0f - (t - 0.1f) / 0.9f) * flicker;
+				 it->intensity = (1.0f - (t - 0.1f) / 0.9f) * flicker * _intensityMultiplier;
 			 }
 
 			 // Contribute to global pulse (mostly for cloud lightning and volumetrics)
@@ -121,7 +121,7 @@ namespace Boidsish {
 		 strike.type = type;
 		 strike.color = color;
 		 strike.lifetime = 0.0f;
-		 strike.max_lifetime = 0.2f + (static_cast<float>(rand()) / RAND_MAX) * 0.3f;
+		 strike.max_lifetime = (0.2f + (static_cast<float>(rand()) / RAND_MAX) * 0.3f) * _lifetimeMultiplier;
 		 strike.intensity = 0.0f;
 		 strike.has_spawned_flash = false;
 
@@ -164,7 +164,7 @@ namespace Boidsish {
 		 mid += offset;
 
 		 // Potential fork
-		 if (depth > 0 && (rand() % 100) < 15) {
+		 if (depth > 0 && (static_cast<float>(rand()) / RAND_MAX) < _branchProbability) {
 			 glm::vec3 direction = glm::normalize(mid - start);
 			 glm::vec3 forkEnd = mid + direction * dist * 0.5f;
 			 forkEnd += glm::vec3(
