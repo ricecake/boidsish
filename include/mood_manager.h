@@ -131,6 +131,14 @@ namespace Boidsish {
         void SetOverride(const MoodSettings& settings, bool enabled);
         bool IsOverrideEnabled() const { return _overrideEnabled; }
 
+        bool IsEnabled() const { return _enabled; }
+        void SetEnabled(bool enabled) { _enabled = enabled; }
+
+        const std::vector<MoodLayer>& GetLayers() const { return _layers; }
+        std::vector<MoodLayer>& GetLayers() { return _layers; }
+
+        const std::map<MoodParameter, float>& GetCurrentParameters() const { return _currentParams; }
+
     private:
         MoodSettings Interpolate(const MoodLayer& layer, float paramValue);
         void Blend(MoodSettings& base, const MoodSettings& layer, MoodBlendMode mode);
@@ -144,6 +152,7 @@ namespace Boidsish {
 
         MoodSettings _userOverride;
         bool _overrideEnabled = false;
+        bool _enabled = true;
 
         std::map<MoodParameter, float> _currentParams;
     };

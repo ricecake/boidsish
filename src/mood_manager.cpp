@@ -67,7 +67,7 @@ namespace Boidsish {
         return (b1 * (t2 - val) + b2 * (val - t1)) / std::max(1e-6f, t2 - t1);
     }
 
-    MoodManager::MoodManager() {}
+    MoodManager::MoodManager() : _enabled(true) {}
     MoodManager::~MoodManager() {}
 
     enum class InterpType { Linear, Logarithmic, Oklab, Slerp, Boolean, Integer };
@@ -222,6 +222,14 @@ namespace Boidsish {
         _currentParams = currentParams;
         _blendedSettings = {};
 
+        if (!_enabled) {
+            for (auto& layer : _layers) {
+                layer.hasLastInterpolated = false;
+            }
+            Smooth(_smoothedSettings, _blendedSettings, deltaTime);
+            return;
+        }
+
         std::vector<MoodLayer*> sortedLayers;
         for (auto& l : _layers) sortedLayers.push_back(&l);
         std::sort(sortedLayers.begin(), sortedLayers.end(), [](const auto* a, const auto* b) {
@@ -229,15 +237,19 @@ namespace Boidsish {
         });
 
         for (auto* layer : sortedLayers) {
-            if (!layer->enabled || layer->controlPoints.empty()) continue;
+            if (!layer->enabled || layer->controlPoints.empty()) {
+                layer->hasLastInterpolated = false;
+                continue;
+            }
 
             float paramValue = 0.0f;
             if (_currentParams.count(layer->trackedParameter)) {
                 paramValue = _currentParams.at(layer->trackedParameter);
             }
 
-            MoodSettings layerContribution = Interpolate(*layer, paramValue);
-            Blend(_blendedSettings, layerContribution, layer->blendMode);
+            layer->lastInterpolated = Interpolate(*layer, paramValue);
+            layer->hasLastInterpolated = true;
+            Blend(_blendedSettings, layer->lastInterpolated, layer->blendMode);
         }
 
         if (_overrideEnabled) {
