@@ -75,6 +75,7 @@
 #include "trail_render_manager.h"
 #include "ui/EffectWidget.h"
 #include "ui/EnvironmentWidget.h"
+#include "ui/LightningWidget.h"
 #include "ui/ProfilerWidget.h"
 #include "ui/RenderWidget.h"
 #include "ui/SystemWidget.h"
@@ -1116,6 +1117,7 @@ namespace Boidsish {
 			}
 
 			ui_manager->AddWidget(std::make_shared<UI::EnvironmentWidget>(*parent));
+			ui_manager->AddWidget(std::make_shared<UI::LightningWidget>(*parent));
 			ui_manager->AddWidget(std::make_shared<UI::EffectWidget>(*parent));
 			ui_manager->AddWidget(std::make_shared<UI::RenderWidget>(*parent));
 			ui_manager->AddWidget(std::make_shared<UI::AudioWidget>(*parent));
@@ -4503,6 +4505,10 @@ namespace Boidsish {
 
 	WeatherManager* Visualizer::GetWeatherManager() {
 		return impl->weather_manager.get();
+	}
+
+	LightningManager* Visualizer::GetLightningManager() {
+		return impl->lightning_manager.get();
 	}
 
 	PostProcessing::PostProcessingManager& Visualizer::GetPostProcessingManager() {
