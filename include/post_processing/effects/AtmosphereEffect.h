@@ -213,8 +213,8 @@ namespace Boidsish {
 			float     rayleigh_scale_ = WeatherConstants::RayleighScale.normal;
 			float     mie_scale_ = WeatherConstants::MieScale.normal;
 			float     mie_anisotropy_ = WeatherConstants::MieAnisotropy;
-			float     multi_scat_scale_ = 0.1f;
-			float     ambient_scat_scale_ = 0.750f;
+			float     multi_scat_scale_ = 0.250f;
+			float     ambient_scat_scale_ = 0.0f;
 			float     atmosphere_height_ = WeatherConstants::AtmosphereHeight.normal;
 			glm::vec3 rayleigh_scattering_ = WeatherConstants::RayleighScattering;
 			float     mie_scattering_ = WeatherConstants::MieScattering;
