@@ -315,11 +315,11 @@ namespace Boidsish {
 
 			if (is_static) {
 				for (int i = 0; i < 3; ++i) {
-					Vertex* v_ptr = vbo_->GetFullBufferPtr() + (i * vbo_->GetElementCount()) + alloc.base_vertex;
+					Vertex* v_ptr = vbo_->GetFrameDataPtr(i) + alloc.base_vertex;
 					memcpy(v_ptr, vertices, v_count * sizeof(Vertex));
 
 					if (indices && i_count > 0) {
-						uint32_t* i_ptr = ebo_->GetFullBufferPtr() + (i * ebo_->GetElementCount()) + alloc.first_index;
+						uint32_t* i_ptr = ebo_->GetFrameDataPtr(i) + alloc.first_index;
 						memcpy(i_ptr, indices, i_count * sizeof(uint32_t));
 					}
 				}
@@ -346,9 +346,9 @@ namespace Boidsish {
 			dynamic_i_ptr_ = dynamic_i_start_;
 		}
 
-		uint32_t GetVertexFrameOffset() const { return vbo_->GetCurrentBufferIndex() * vbo_->GetElementCount(); }
+		uint32_t GetVertexFrameOffset() const { return vbo_->GetFrameOffset() / sizeof(Vertex); }
 
-		uint32_t GetIndexFrameOffset() const { return ebo_->GetCurrentBufferIndex() * ebo_->GetElementCount(); }
+		uint32_t GetIndexFrameOffset() const { return ebo_->GetFrameOffset() / sizeof(uint32_t); }
 
 	private:
 		std::unique_ptr<PersistentBuffer<Vertex>>   vbo_;
@@ -1426,7 +1426,6 @@ namespace Boidsish {
 			glm::mat4*                   bones_ptr = bone_matrices_ssbo->GetFrameDataPtr();
 
 			uint32_t max_elements = 65536; // Buffer capacity
-			uint32_t frame_element_offset = uniforms_ssbo->GetCurrentBufferIndex() * max_elements;
 
 			uint32_t vertex_frame_offset = megabuffer->GetVertexFrameOffset();
 			uint32_t index_frame_offset = megabuffer->GetIndexFrameOffset();
@@ -1438,6 +1437,8 @@ namespace Boidsish {
 
 			// Store the global start index for this pass's batches within the SSBO
 			uint32_t mdi_pass_start_index = mdi_uniform_count;
+			uint32_t mdi_pass_elements_start = mdi_elements_count;
+			uint32_t mdi_pass_arrays_start = mdi_arrays_count;
 
 			for (const auto& batch : batches) {
 				uint32_t batch_packet_start = batch.base_uniform_index;
@@ -1455,7 +1456,9 @@ namespace Boidsish {
 					}
 
 					// Copy uniforms to persistent SSBO
-					uniforms_ptr[mdi_uniform_count] = packet.uniforms;
+					// We need to ensure we don't overflow the mapped frame segment.
+					// uniforms_ptr points to the start of the frame's segment.
+					std::memcpy(uniforms_ptr + mdi_uniform_count, &packet.uniforms, sizeof(CommonUniforms));
 
 					// Handle skeletal animation data
 					if (!packet.bone_matrices.empty()) {
@@ -1513,7 +1516,7 @@ namespace Boidsish {
 					GL_SHADER_STORAGE_BUFFER,
 					Constants::SsboBinding::CommonUniforms(),
 					uniforms_ssbo->GetBufferId(),
-					frame_element_offset * sizeof(CommonUniforms),
+					uniforms_ssbo->GetFrameOffset(),
 					mdi_uniform_count * sizeof(CommonUniforms)
 				);
 
@@ -1598,7 +1601,7 @@ namespace Boidsish {
 					GL_SHADER_STORAGE_BUFFER,
 					Constants::SsboBinding::CommonUniforms(),
 					uniforms_ssbo->GetBufferId(),
-					(frame_element_offset + batch_global_index) * sizeof(CommonUniforms),
+					uniforms_ssbo->GetFrameOffset() + batch_global_index * sizeof(CommonUniforms),
 					batch.command_count * sizeof(CommonUniforms)
 				);
 
@@ -1682,7 +1685,7 @@ namespace Boidsish {
 						batch.draw_mode,
 						batch.index_type,
 						(void*)(uintptr_t)(indirect_elements_buffer->GetFrameOffset() +
-					                       batch.first_command * sizeof(DrawElementsIndirectCommand)),
+					                       (mdi_pass_elements_start + batch.first_command) * sizeof(DrawElementsIndirectCommand)),
 						batch.command_count,
 						sizeof(DrawElementsIndirectCommand)
 					);
@@ -1691,7 +1694,7 @@ namespace Boidsish {
 					glMultiDrawArraysIndirect(
 						batch.draw_mode,
 						(void*)(uintptr_t)(indirect_arrays_buffer->GetFrameOffset() +
-					                       batch.first_command * sizeof(DrawArraysIndirectCommand)),
+					                       (mdi_pass_arrays_start + batch.first_command) * sizeof(DrawArraysIndirectCommand)),
 						batch.command_count,
 						sizeof(DrawArraysIndirectCommand)
 					);
@@ -2473,7 +2476,7 @@ namespace Boidsish {
 		}
 
 		void UpdateSystems(const FrameData& frame) {
-			// Calculate frustum for terrain generation and decor placement
+			// 1. Prediction and Terrain Logical Update (Background Task)
 			if (terrain_generator) {
 				float world_scale_val = terrain_generator->GetWorldScale();
 				float far_plane_val = Constants::Project::Camera::DefaultFarPlane() * std::max(1.0f, world_scale_val);
@@ -2500,27 +2503,83 @@ namespace Boidsish {
 				terrain_generator->Update(generator_frustum, camera);
 			}
 
+			// 2. Parallel Preparation Phase (CPU-only work)
+			auto fire_work_future = thread_pool.submit([this, frame]() {
+				return fire_effect_manager->PrepareUpdate(
+					simulation_delta_time,
+					simulation_time,
+					ConfigManager::GetInstance().GetAppSettingBool("particles_enabled", true),
+					frame_config_.ambient_particle_density,
+					terrain_render_manager ? terrain_render_manager->GetChunkInfo(terrain_generator->GetWorldScale())
+										   : std::vector<glm::vec4>{},
+					terrain_render_manager ? terrain_render_manager->GetHeightmapTexture() : 0,
+					noise_manager ? noise_manager->GetCurlTexture() : 0,
+					terrain_render_manager ? terrain_render_manager->GetBiomeTexture() : 0,
+					render_state_.lighting.id,
+					static_cast<GLintptr>(render_state_.lighting.offset),
+					static_cast<GLsizeiptr>(render_state_.lighting.size),
+					frustum_ssbo->GetBufferId(),
+					frustum_ssbo->GetFrameOffset() + mdi_frustum_count * sizeof(FrustumDataGPU),
+					noise_manager ? noise_manager->GetExtraNoiseTexture() : 0,
+					render_state_.visual_effects.id,
+					static_cast<GLintptr>(render_state_.visual_effects.offset),
+					static_cast<GLsizeiptr>(render_state_.visual_effects.size)
+				);
+			});
+
+			auto decor_work_future = thread_pool.submit([this, frame]() {
+				if (decor_manager && terrain_generator && terrain_render_manager) {
+					return decor_manager->PrepareUpdate(
+						simulation_delta_time,
+						camera,
+						generator_frustum,
+						*terrain_generator,
+						terrain_render_manager
+					);
+				}
+				return DecorManager::UpdateWork{};
+			});
+
+			auto grass_work_future = thread_pool.submit([this, frame]() {
+				if (grass_manager && terrain_generator && terrain_render_manager) {
+					return grass_manager->PrepareUpdate(
+						simulation_delta_time,
+						simulation_time,
+						camera,
+						*terrain_generator,
+						terrain_render_manager
+					);
+				}
+				return GrassManager::UpdateWork{};
+			});
+
+			auto terrain_work_future = thread_pool.submit([this, frame]() {
+				float world_scale = terrain_generator ? terrain_generator->GetWorldScale() : 1.0f;
+				float day_time = light_manager->GetDayNightCycle().time;
+				glm::vec3 sun_dir(0.0f);
+				const auto& lights = light_manager->GetLights();
+				if (!lights.empty() && lights[0].type == DIRECTIONAL_LIGHT) {
+					sun_dir = -lights[0].direction;
+				}
+				float lod_projection_scalar = (float)render_height / (2.0f * tan(glm::radians(camera.fov) / 2.0f));
+				float effective_quality = tess_quality_multiplier_ / world_scale;
+
+				return terrain_render_manager->PrepareUpdate(
+					frame.camera_frustum,
+					camera.pos(),
+					world_scale,
+					day_time,
+					sun_dir,
+					static_cast<GLintptr>(render_state_.temporal.offset),
+					static_cast<GLintptr>(render_state_.frustum.offset),
+					lod_projection_scalar,
+					effective_quality,
+					glm::vec2(render_width, render_height)
+				);
+			});
+
+			// 3. Main Thread Logical Updates (Sound, Phys, VFX Logic)
 			clone_manager->Update(simulation_time, camera.pos());
-			fire_effect_manager->Update(
-				simulation_delta_time,
-				simulation_time,
-				ConfigManager::GetInstance().GetAppSettingBool("particles_enabled", true),
-				frame_config_.ambient_particle_density,
-				terrain_render_manager ? terrain_render_manager->GetChunkInfo(terrain_generator->GetWorldScale())
-									   : std::vector<glm::vec4>{},
-				terrain_render_manager ? terrain_render_manager->GetHeightmapTexture() : 0,
-				noise_manager ? noise_manager->GetCurlTexture() : 0,
-				terrain_render_manager ? terrain_render_manager->GetBiomeTexture() : 0,
-				render_state_.lighting.id,
-				static_cast<GLintptr>(render_state_.lighting.offset),
-				static_cast<GLsizeiptr>(render_state_.lighting.size),
-				frustum_ssbo->GetBufferId(),
-				frustum_ssbo->GetFrameOffset() + mdi_frustum_count * sizeof(FrustumDataGPU),
-				noise_manager ? noise_manager->GetExtraNoiseTexture() : 0,
-				render_state_.visual_effects.id,
-				static_cast<GLintptr>(render_state_.visual_effects.offset),
-				static_cast<GLsizeiptr>(render_state_.visual_effects.size)
-			);
 			mesh_explosion_manager->Update(simulation_delta_time, simulation_time);
 			sound_effect_manager->Update(simulation_delta_time);
 			shockwave_manager->Update(simulation_delta_time);
@@ -2534,69 +2593,25 @@ namespace Boidsish {
 			shockwave_manager->UpdateShaderData();
 			shockwave_manager->BindUBO(Constants::UboBinding::Shockwaves());
 
-			if (decor_manager && terrain_generator && terrain_render_manager) {
-				decor_manager->SetMinPixelSize(
-					ConfigManager::GetInstance().GetAppSettingFloat("foliage_culling_pixel_threshold", 8.0f)
-				);
-				if (atmosphere_manager) {
-					decor_manager->SetAtmosphereManager(atmosphere_manager.get());
-				}
-				if (noise_manager) {
-					decor_manager->SetNoiseManager(noise_manager.get());
-				}
-				decor_manager->Update(
-					simulation_delta_time,
-					camera,
-					generator_frustum,
-					*terrain_generator,
-					terrain_render_manager
-				);
+			// 4. Application Phase (GPU commands and buffer flips)
+			// Apply Terrain first as other systems depend on its SSBOs/textures
+			terrain_render_manager->ApplyUpdate(terrain_work_future.get(),
+				render_state_.lighting.id,
+				static_cast<GLintptr>(render_state_.lighting.offset),
+				static_cast<GLsizeiptr>(render_state_.lighting.size));
+
+			fire_effect_manager->ApplyUpdate(fire_work_future.get());
+
+			if (decor_manager) {
+				decor_manager->SetMinPixelSize(ConfigManager::GetInstance().GetAppSettingFloat("foliage_culling_pixel_threshold", 8.0f));
+				if (atmosphere_manager) decor_manager->SetAtmosphereManager(atmosphere_manager.get());
+				if (noise_manager) decor_manager->SetNoiseManager(noise_manager.get());
+				decor_manager->ApplyUpdate(decor_work_future.get(), terrain_render_manager);
 			}
 
-			if (grass_manager && terrain_generator && terrain_render_manager) {
+			if (grass_manager) {
 				grass_manager->SetCameraPos(camera.pos());
-
-				// 1. Calculate terrain preparation quality
-				float effective_quality = tess_quality_multiplier_;
-				effective_quality /= terrain_generator->GetWorldScale();
-
-				// 2. Prepare terrain (CPU culling and SSBO upload)
-				float world_scale = terrain_generator->GetWorldScale();
-				float day_time = light_manager->GetDayNightCycle().time;
-				glm::vec3 sun_dir(0.0f);
-				const auto& lights = light_manager->GetLights();
-				if (!lights.empty() && lights[0].type == DIRECTIONAL_LIGHT) {
-					sun_dir = -lights[0].direction;
-				}
-
-				float lod_projection_scalar = (float)render_height / (2.0f * tan(glm::radians(camera.fov) / 2.0f));
-
-				terrain_render_manager->PrepareForRender(
-					frame.camera_frustum,
-					camera.pos(),
-					world_scale,
-					render_state_.lighting.id,
-					static_cast<GLintptr>(render_state_.lighting.offset),
-					static_cast<GLsizeiptr>(render_state_.lighting.size),
-					day_time,
-					sun_dir,
-					static_cast<GLintptr>(render_state_.temporal.offset),
-					static_cast<GLintptr>(render_state_.frustum.offset),
-					lod_projection_scalar
-				);
-
-				// 3. Dispatch terrain patch preparation (GPU culling/LOD)
-				// This populates the visibility SSBO that grass system needs.
-				terrain_render_manager->DispatchPreparePatches(effective_quality, glm::vec2(render_width, render_height), lod_projection_scalar);
-
-				// 4. Update grass system
-				grass_manager->Update(
-					simulation_delta_time,
-					simulation_time,
-					camera,
-					*terrain_generator,
-					terrain_render_manager
-				);
+				grass_manager->ApplyUpdate(grass_work_future.get(), terrain_render_manager);
 			}
 		}
 

@@ -9,6 +9,7 @@
 #include "biome_properties.h"
 #include "constants.h"
 #include "frustum.h"
+#include "persistent_buffer.h"
 #include "model.h"
 #include "procedural_generator.h"
 #include <glm/glm.hpp>
@@ -74,14 +75,11 @@ namespace Boidsish {
 		DecorProperties        props;
 
 		// GPU resources
-		unsigned int ssbo = 0;                   // Main storage (persistent)
-		unsigned int visible_ssbo = 0;           // Culled storage (per-frame)
-		unsigned int indirect_buffer = 0;        // MDI commands
-		unsigned int shadow_indirect_buffer = 0; // MDI commands for shadow pass
-		unsigned int count_buffer = 0;           // For culling atomic counter
-
-		// Cached instance count (read back after compute, used during render)
-		unsigned int cached_count = 0;
+		unsigned int ssbo = 0; // Main storage (persistent)
+		unsigned int visible_ssbo = 0;
+		std::shared_ptr<PersistentBuffer<DrawElementsIndirectCommand>> indirect_pb;
+		std::shared_ptr<PersistentBuffer<DrawElementsIndirectCommand>> shadow_indirect_pb;
+		std::shared_ptr<PersistentBuffer<unsigned int>>                count_pb;
 	};
 
 	struct DecorInstance {
@@ -122,6 +120,31 @@ namespace Boidsish {
 		static DecorProperties GetDefaultTreeProperties();
 		static DecorProperties GetDefaultDeadTreeProperties();
 		static DecorProperties GetDefaultRockProperties();
+
+		struct UpdateWork {
+			struct ChunkEntry {
+				std::pair<int, int> key;
+				int                 src_index;
+				int                 block;
+				uint32_t            update_count;
+			};
+			std::vector<ChunkEntry>        chunks_to_generate;
+			std::vector<std::pair<int, int>> chunks_to_free;
+			glm::vec2                      cam_xz;
+			float                          world_scale;
+			float                          max_height;
+			std::vector<ChunkParamsGPU>    chunk_params;
+		};
+
+		UpdateWork PrepareUpdate(
+			float                                 delta_time,
+			const Camera&                         camera,
+			const Frustum&                        frustum,
+			const ITerrainGenerator&              terrain_gen,
+			std::shared_ptr<TerrainRenderManager> render_manager
+		);
+
+		void ApplyUpdate(UpdateWork&& work, std::shared_ptr<TerrainRenderManager> render_manager);
 
 		void Update(
 			float                                 delta_time,
@@ -280,7 +303,7 @@ namespace Boidsish {
 		// Block validity SSBO: one uint per block. 1=valid (has placed decor),
 		// 0=invalid (freed, stale data). Checked by cull shader to skip freed blocks
 		// without needing to zero 64KB of instance data per type.
-		GLuint block_validity_ssbo_ = 0;
+		std::unique_ptr<PersistentBuffer<uint32_t>> block_validity_pb_;
 
 		static constexpr int kInstancesPerChunk = Constants::Class::Terrain::ChunkSize() *
 			Constants::Class::Terrain::ChunkSize();

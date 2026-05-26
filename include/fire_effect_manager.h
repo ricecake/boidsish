@@ -73,6 +73,51 @@ namespace Boidsish {
 		// Returns true if fire effects are available (compute shader compiled successfully)
 		bool IsAvailable() const;
 
+		struct UpdateWork {
+			std::vector<Emitter>   emitters;
+			std::vector<glm::vec4> slice_points;
+			std::vector<glm::vec4> chunk_info;
+			std::vector<int>       particle_to_emitter_map;
+			float                  delta_time;
+			float                  time;
+			bool                   enabled;
+			float                  ambient_density;
+			GLuint                 heightmap_texture;
+			GLuint                 curl_noise_texture;
+			GLuint                 biome_texture;
+			GLuint                 lighting_ubo;
+			GLintptr               lighting_ubo_offset;
+			GLsizeiptr             lighting_ubo_size;
+			GLuint                 frustum_ubo;
+			GLintptr               frustum_offset;
+			GLuint                 extra_noise_texture;
+			GLuint                 visual_effects_ubo;
+			GLintptr               vfx_offset;
+			GLsizeiptr             vfx_size;
+		};
+
+		UpdateWork PrepareUpdate(
+			float                         delta_time,
+			float                         time,
+			bool                          enabled = true,
+			float                         ambient_density = 0.15f,
+			const std::vector<glm::vec4>& chunk_info = {},
+			GLuint                        heightmap_texture = 0,
+			GLuint                        curl_noise_texture = 0,
+			GLuint                        biome_texture = 0,
+			GLuint                        lighting_ubo = 0,
+			GLintptr                      lighting_ubo_offset = 0,
+			GLsizeiptr                    lighting_ubo_size = 0,
+			GLuint                        frustum_ubo = 0,
+			GLintptr                      frustum_offset = 0,
+			GLuint                        extra_noise_texture = 0,
+			GLuint                        visual_effects_ubo = 0,
+			GLintptr                      vfx_offset = 0,
+			GLsizeiptr                    vfx_size = 0
+		);
+
+		void ApplyUpdate(UpdateWork&& work);
+
 		void Update(
 			float                         delta_time,
 			float                         time,

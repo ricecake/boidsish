@@ -51,6 +51,18 @@ namespace Boidsish {
         ~GrassManager();
 
         void Initialize();
+
+        struct UpdateWork {
+            glm::vec3 camera_pos;
+            float world_scale;
+            float time;
+            int num_chunks;
+            bool enabled;
+        };
+
+        UpdateWork PrepareUpdate(float deltaTime, float time, const struct Camera& camera, const class ITerrainGenerator& terrainGen, std::shared_ptr<class TerrainRenderManager> renderManager);
+        void ApplyUpdate(UpdateWork&& work, std::shared_ptr<class TerrainRenderManager> renderManager);
+
         void Update(float deltaTime, float time, const struct Camera& camera, const class ITerrainGenerator& terrainGen, std::shared_ptr<class TerrainRenderManager> renderManager);
 
         struct RenderResources {
