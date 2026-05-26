@@ -44,6 +44,8 @@
 #include "post_processing/effects/AtmosphereEffect.h"
 #include "post_processing/effects/VolumetricLightingEffect.h"
 #include "post_processing/effects/BloomEffect.h"
+#include "mood_manager.h"
+#include "mood_definitions.h"
 #include "post_processing/effects/FilmGrainEffect.h"
 #include "post_processing/effects/GlitchEffect.h"
 #include "post_processing/effects/NegativeEffect.h"
@@ -75,6 +77,7 @@
 #include "trail_render_manager.h"
 #include "ui/EffectWidget.h"
 #include "ui/EnvironmentWidget.h"
+#include "ui/MoodWidget.h"
 #include "ui/LightningWidget.h"
 #include "ui/ProfilerWidget.h"
 #include "ui/RenderWidget.h"
@@ -395,7 +398,9 @@ namespace Boidsish {
 		std::shared_ptr<AtmosphereManager>                atmosphere_manager;
 		std::shared_ptr<PostProcessing::AtmosphereEffect> atmosphere_effect;
 		std::shared_ptr<PostProcessing::VolumetricLightingEffect> volumetric_effect;
-		std::shared_ptr<WeatherManager>                   weather_manager;
+		std::shared_ptr<PostProcessing::BloomEffect>              bloom_effect;
+		std::shared_ptr<MoodManager>                              mood_manager;
+		std::shared_ptr<WeatherManager>                           weather_manager;
 		std::shared_ptr<LightningManager>                 lightning_manager;
 		std::shared_ptr<SceneManager>                     scene_manager;
 		std::shared_ptr<DecorManager>                     decor_manager;
@@ -1100,9 +1105,13 @@ namespace Boidsish {
 				volumetric_effect->SetEnabled(true);
 				post_processing_manager_->AddEffect(volumetric_effect);
 
-				auto bloom_effect = std::make_shared<PostProcessing::BloomEffect>(render_width, render_height);
+				bloom_effect = std::make_shared<PostProcessing::BloomEffect>(render_width, render_height);
 				bloom_effect->SetEnabled(true);
 				post_processing_manager_->AddEffect(bloom_effect);
+
+				mood_manager = std::make_shared<MoodManager>();
+				mood_manager->AddLayer(GetBaseTimeOfDayLayer());
+				mood_manager->AddLayer(GetWeatherPrecipitationLayer());
 
 
 				if (enable_hdr_) {
@@ -1117,6 +1126,7 @@ namespace Boidsish {
 			}
 
 			ui_manager->AddWidget(std::make_shared<UI::EnvironmentWidget>(*parent));
+			ui_manager->AddWidget(std::make_shared<UI::MoodWidget>(*parent));
 			ui_manager->AddWidget(std::make_shared<UI::LightningWidget>(*parent));
 			ui_manager->AddWidget(std::make_shared<UI::EffectWidget>(*parent));
 			ui_manager->AddWidget(std::make_shared<UI::RenderWidget>(*parent));
@@ -2258,31 +2268,63 @@ namespace Boidsish {
 				lighting_ubo_data_.time = simulation_time;
 				lighting_ubo_data_.view_dir = camera.front();
 
+				if (mood_manager && weather_manager && light_manager) {
+					std::map<MoodParameter, float> params;
+					params[MoodParameter::TimeOfDay] = light_manager->GetDayNightCycle().time;
+					params[MoodParameter::Precipitation] = weather_manager->GetCurrentWeather().precipitation;
+					params[MoodParameter::Temperature] = weather_manager->GetCurrentWeather().temperature;
+					params[MoodParameter::CloudCover] = weather_manager->GetCurrentWeather().cloud_coverage;
+					params[MoodParameter::SunAngle] = light_manager->GetLights().empty() ? 0.0f : light_manager->GetLights()[0].elevation;
+					params[MoodParameter::MoonAngle] = light_manager->GetLights().size() < 2 ? 0.0f : light_manager->GetLights()[1].elevation;
+					params[MoodParameter::MoonPhase] = light_manager->GetDayNightCycle().moon_phase_days;
+					params[MoodParameter::WorldPositionX] = camera.x;
+					params[MoodParameter::WorldPositionY] = camera.y;
+					params[MoodParameter::WorldPositionZ] = camera.z;
+
+					mood_manager->Update(params, simulation_delta_time);
+					const auto& mood = mood_manager->GetBlendedSettings();
+
+					if (bloom_effect) {
+						#define APPLY_BLOOM(target, source) if (source.member) target.member = *source.member
+						#define B_M(member) if (mood.sceneBloom.member) bloom_effect->GetSceneSettings().member = *mood.sceneBloom.member; \
+						                    if (mood.skyBloom.member) bloom_effect->GetSkySettings().member = *mood.skyBloom.member;
+						B_M(toneMappingEnabled); B_M(toneMappingMode); B_M(autoExposureEnabled);
+						B_M(targetLuminance); B_M(minExposure); B_M(maxExposure);
+						B_M(speedUp); B_M(speedDown); B_M(centerWeightTightness);
+						B_M(focusPoint); B_M(histogramLowCutoff); B_M(histogramHighCutoff);
+						B_M(uchimuraP); B_M(uchimuraA); B_M(uchimuraM);
+						B_M(uchimuraL); B_M(uchimuraC); B_M(uchimuraB);
+						B_M(autoTuneEnabled); B_M(minContrast); B_M(maxContrast);
+						B_M(targetBrightness); B_M(cdlSlope); B_M(cdlOffset);
+						B_M(cdlPower); B_M(cdlSaturation); B_M(whiteTemp);
+						B_M(whiteTint); B_M(ltmEnabled); B_M(ltmEvSpread);
+						B_M(ltmTarget); B_M(ltmSigma); B_M(ltmWeightContrast);
+						B_M(ltmWeightSaturation); B_M(ltmWeightExposedness); B_M(ltmBoostLocalContrast);
+						#undef B_M
+					}
+
+					if (atmosphere_effect) {
+						if (mood.cloudDensity) atmosphere_effect->SetCloudDensity(*mood.cloudDensity);
+						if (mood.cloudAltitude) atmosphere_effect->SetCloudAltitude(*mood.cloudAltitude);
+						if (mood.cloudThickness) atmosphere_effect->SetCloudThickness(*mood.cloudThickness);
+						if (mood.cloudColor) atmosphere_effect->SetCloudColor(*mood.cloudColor);
+						if (mood.cloudCoverage) atmosphere_effect->SetCloudCoverage(*mood.cloudCoverage);
+						if (mood.cloudSunLightScale) atmosphere_effect->SetCloudSunLightScale(*mood.cloudSunLightScale);
+						if (mood.cloudMoonLightScale) atmosphere_effect->SetCloudMoonLightScale(*mood.cloudMoonLightScale);
+						if (mood.cloudPowderScale) atmosphere_effect->SetCloudPowderScale(*mood.cloudPowderScale);
+						if (mood.cloudBeerPowderMix) atmosphere_effect->SetCloudBeerPowderMix(*mood.cloudBeerPowderMix);
+
+						if (mood.rayleighScale) atmosphere_effect->SetRayleighScale(*mood.rayleighScale);
+						if (mood.mieScale) atmosphere_effect->SetMieScale(*mood.mieScale);
+						if (mood.rayleighScattering) atmosphere_effect->SetRayleighScattering(*mood.rayleighScattering);
+						if (mood.mieScattering) atmosphere_effect->SetMieScattering(*mood.mieScattering);
+						if (mood.mieExtinction) atmosphere_effect->SetMieExtinction(*mood.mieExtinction);
+					}
+				}
+
 				if (atmosphere_effect) {
 					auto& cfg = ConfigManager::GetInstance();
 					lighting_ubo_data_.cloudShadowIntensity = cfg.GetAppSettingFloat("cloud_shadow_intensity", 0.5f);
-
-					// Sync with atmosphere_effect based on ConfigManager
-					atmosphere_effect->SetCloudPhaseG1(cfg.GetAppSettingFloat("cloud_phase_g1", 0.7f));
-					atmosphere_effect->SetCloudPhaseG2(cfg.GetAppSettingFloat("cloud_phase_g2", -0.2f));
-					atmosphere_effect->SetCloudPhaseAlpha(cfg.GetAppSettingFloat("cloud_phase_alpha", 0.15f));
-					atmosphere_effect->SetCloudPhaseIsotropic(cfg.GetAppSettingFloat("cloud_phase_isotropic", 0.05f));
-					atmosphere_effect->SetCloudPowderScale(cfg.GetAppSettingFloat("cloud_powder_scale", 0.35f));
-					atmosphere_effect->SetCloudPowderMultiplier(
-						cfg.GetAppSettingFloat("cloud_powder_multiplier", 0.4f)
-					);
-					atmosphere_effect->SetCloudPowderLocalScale(
-						cfg.GetAppSettingFloat("cloud_powder_local_scale", 2.0f)
-					);
-					atmosphere_effect->SetCloudShadowOpticalDepthMultiplier(
-						cfg.GetAppSettingFloat("cloud_shadow_optical_depth_multiplier", 0.1f)
-					);
-					atmosphere_effect->SetCloudShadowStepMultiplier(
-						cfg.GetAppSettingFloat("cloud_shadow_step_multiplier", 0.1f)
-					);
-					atmosphere_effect->SetCloudSunLightScale(cfg.GetAppSettingFloat("cloud_sun_light_scale", 10.0f));
-					atmosphere_effect->SetCloudMoonLightScale(cfg.GetAppSettingFloat("cloud_moon_light_scale", 2.0f));
-					atmosphere_effect->SetCloudBeerPowderMix(cfg.GetAppSettingFloat("cloud_beer_powder_mix", 0.5f));
 
 					lighting_ubo_data_.cloudAltitude = atmosphere_effect->GetCloudAltitude();
 					lighting_ubo_data_.cloudThickness = atmosphere_effect->GetCloudThickness();
@@ -4505,6 +4547,10 @@ namespace Boidsish {
 
 	WeatherManager* Visualizer::GetWeatherManager() {
 		return impl->weather_manager.get();
+	}
+
+	MoodManager* Visualizer::GetMoodManager() {
+		return impl->mood_manager.get();
 	}
 
 	LightningManager* Visualizer::GetLightningManager() {
