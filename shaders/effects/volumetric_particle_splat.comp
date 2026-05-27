@@ -25,7 +25,7 @@ const int NUM_CASCADES = 4;
 const float CASCADE_DISTANCES[4] = { 20.0, 60.0, 200.0, 1000.0 };
 
 // Using 1000.0 as scale for fixed point atomics
-const float FIXED_POINT_SCALE = 1000.0;
+const float FIXED_POINT_SCALE = 1000000.0;
 
 void atomicAddFloat(uint index, uint offset, float val) {
     uint ival = uint(val * FIXED_POINT_SCALE);

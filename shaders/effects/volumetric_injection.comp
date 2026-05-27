@@ -354,7 +354,7 @@ void main() {
     if (any(isnan(current))) current = vec4(0.0);
 
     uint idx = vox.z * (u_grid_res.x * u_grid_res.y) + vox.y * u_grid_res.x + vox.x;
-    const float FIXED_POINT_SCALE = 1000.0;
+    const float FIXED_POINT_SCALE = 1000000.0;
 
     injection_data[idx].radiance_r = uint(current.r * FIXED_POINT_SCALE);
     injection_data[idx].radiance_g = uint(current.g * FIXED_POINT_SCALE);

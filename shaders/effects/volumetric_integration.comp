@@ -34,7 +34,7 @@ void main() {
 
     // 1. Load data and compute local scattering/transmittance
     uint b_idx = vox.z * (u_grid_res.x * u_grid_res.y) + vox.y * u_grid_res.x + vox.x;
-    const float FIXED_POINT_SCALE = 1000.0;
+    const float FIXED_POINT_SCALE = 1000000.0;
     vec4 data = vec4(
         float(injection_data[b_idx].radiance_r) / FIXED_POINT_SCALE,
         float(injection_data[b_idx].radiance_g) / FIXED_POINT_SCALE,
