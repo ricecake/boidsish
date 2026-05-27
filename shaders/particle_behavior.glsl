@@ -358,15 +358,6 @@ void updateAmbientBubble(inout Particle p, float dt, float time, sampler3D curlT
 	p.origin.w = 0.0;
 }
 
-void updateAmbientSnowflake(inout Particle p, float dt, float time, sampler3D curlTexture) {
-	float curlInfluence = 0.3;
-	p.vel.xyz += curlNoise(p.pos.xyz, time, curlTexture) * curlInfluence * dt;
-	p.vel.y -= 0.5 * dt;
-	p.vel.xyz *= pow(0.99, dt / 0.016);
-	p.color = vec4(0.9, 0.95, 1.0, 0.8 * smoothstep(0.0, 0.5, p.pos.w)) * (1.2 + 0.3 * sin(time * 2.0 + p.pos.x));
-	p.vel.w = 15.0;
-	p.origin.w = 0.0;
-}
 
 void updateAmbientFairy(
 	inout Particle p,
@@ -474,16 +465,6 @@ void updateAmbientFirefly(
 	p.origin.w = 0.5 * p.color.a;
 }
 
-void updateDustBehavior(inout Particle p, float dt, float time, sampler3D curlTexture) {
-	vec3 wind = getWindAtPosition(p.pos.xyz);
-	p.vel.xyz += wind * 3.0 * dt;
-	p.vel.xyz += curlNoise(p.pos.xyz, time, curlTexture) * 0.5 * dt;
-	p.vel.xyz *= pow(0.95, dt / 0.016);
-
-	p.color = vec4(0.8, 0.8, 0.7, 0.3 * smoothstep(0.0, 0.5, p.pos.w));
-	p.vel.w = 8.0;
-	p.origin.w = 0.0;
-}
 
 void updateAmbientParticle(
 	inout Particle p,
@@ -506,9 +487,6 @@ void updateAmbientParticle(
 	} else if (p.style == STYLE_BUBBLES) {
 		updateAmbientBubble(p, dt, time, curlTexture);
 		maxSpeed = 1.5;
-	} else if (p.style == STYLE_SNOW) {
-		updateAmbientSnowflake(p, dt, time, curlTexture);
-		maxSpeed = 1.2;
 	} else if (p.style == STYLE_FIREFLIES) {
 		updateAmbientFirefly(p, dt, time, cellSize, gridSize, curlTexture);
 	} else if (p.style == STYLE_FAIRY) {
@@ -516,9 +494,6 @@ void updateAmbientParticle(
 	} else if (p.style == STYLE_BIRDS) {
 		updateBirds(p, dt, time, cellSize, gridSize, curlTexture, num_chunks, heightmapArray);
 		maxSpeed = 6.0;
-	} else if (p.style == STYLE_DUST) {
-		updateDustBehavior(p, dt, time, curlTexture);
-		maxSpeed = 5.0;
 	} else {
 		p.vel.xyz += curlNoise(p.pos.xyz, time, curlTexture) * dt;
 		p.vel.xyz *= pow(0.99, dt / 0.016);
@@ -537,10 +512,12 @@ void updateAmbientParticle(
 	handleTerrainCollision(p, num_chunks, heightmapArray);
 }
 
-void updatePrecipitationBehavior(
+void updateEnvironmentalQueueBehavior(
 	inout Particle p,
 	float          dt,
 	float          time,
+	vec3           viewPos,
+	sampler3D      curlTexture,
 	int            num_chunks,
 	sampler2DArray heightmapArray
 ) {
@@ -548,10 +525,34 @@ void updatePrecipitationBehavior(
 		updateRain(p, dt, time);
 	} else if (p.style == STYLE_SNOW) {
 		updateSnow(p, dt, time);
+	} else if (p.style == STYLE_DUST) {
+		vec3 wind = getWindAtPosition(p.pos.xyz);
+		p.vel.xyz += wind * 3.0 * dt;
+		p.vel.xyz *= pow(0.95, dt / 0.016);
+		p.color = vec4(0.8, 0.8, 0.7, 0.3);
+		p.vel.w = 8.0;
 	}
 
+	// Apply curl noise for non-uniform movement
+	float curlInfluence = (p.style == STYLE_RAIN) ? 0.5 : 2.0;
+	p.vel.xyz += curlNoise(p.pos.xyz, time, curlTexture) * curlInfluence * dt;
+
 	p.pos.xyz += p.vel.xyz * dt;
-	if(handleTerrainCollision(p, num_chunks, heightmapArray)) {
+
+	// Toroidal wrapping relative to camera (Box-based)
+	vec3 relPos = p.pos.xyz - viewPos;
+
+	if (abs(relPos.x) > K_ENV_QUEUE_RADIUS) {
+		p.pos.x = viewPos.x - sign(relPos.x) * (K_ENV_QUEUE_RADIUS - 0.5);
+	}
+	if (abs(relPos.y) > K_ENV_QUEUE_RADIUS) {
+		p.pos.y = viewPos.y - sign(relPos.y) * (K_ENV_QUEUE_RADIUS - 0.5);
+	}
+	if (abs(relPos.z) > K_ENV_QUEUE_RADIUS) {
+		p.pos.z = viewPos.z - sign(relPos.z) * (K_ENV_QUEUE_RADIUS - 0.5);
+	}
+
+	if (p.style != STYLE_DUST && handleTerrainCollision(p, num_chunks, heightmapArray)) {
 		p.pos.w = 0.0;
 	}
 }
@@ -640,7 +641,7 @@ void updateBehavior(
 			heightmapArray
 		);
 	} else if (p.emitter_id == -2) {
-		updatePrecipitationBehavior(p, dt, time, num_chunks, heightmapArray);
+		updateEnvironmentalQueueBehavior(p, dt, time, viewPos, curlTexture, num_chunks, heightmapArray);
 	} else {
 		updateFireBehavior(p, dt, time, curlTexture, num_chunks, heightmapArray);
 	}

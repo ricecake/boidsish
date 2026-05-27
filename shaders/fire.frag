@@ -110,8 +110,11 @@ void main() {
 		} else if (v_style == STYLE_DUST) {
 			float distToCam = length(view_pos.xyz);
 			shapeMask = exp(-distSq * 15.0);
-			color = vec3(6.8);
-			alpha *= (1-smoothstep(15.0, 20.0, distToCam)) * smoothstep(5, 4, v_lifetime) * (1-smoothstep(1,0, v_lifetime));
+			color = vec3(2.5);
+			// Match new K_ENV_QUEUE_RADIUS (60.0)
+			float boundaryFade = 1.0 - smoothstep(K_ENV_QUEUE_RADIUS - 10.0, K_ENV_QUEUE_RADIUS, distToCam);
+			alpha *= boundaryFade * smoothstep(0.0, 0.5, v_lifetime);
+			alpha = clamp(alpha, 0.0, 0.5);
 		} else if (v_style == STYLE_BIRDS) {
 			float flap = sin(u_time * 15.0 + v_p.phase);
 			float wing_y = abs(gl_PointCoord.x - 0.5) * (0.5 + flap * 0.4);
