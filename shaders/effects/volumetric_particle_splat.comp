@@ -118,10 +118,6 @@ void main() {
 
         // Influence radius (in froxels, roughly)
         float radius = p.vel.w * 0.5;
-        // The user wants more range. Let's use a 3x3x3 neighborhood if radius is large.
-        // But for now, let's stick to 2x2x2 but with proper trilinear weights.
-        // Actually, if we want more range, we could increase the neighborhood.
-        // Let's try 3x3x3 centered on the particle.
         ivec3 center_vox = ivec3(floor(coord));
 
         for (int x = -1; x <= 1; ++x) {

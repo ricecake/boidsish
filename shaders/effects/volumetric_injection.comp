@@ -180,7 +180,6 @@ void main() {
     // Ambient (SH) - We use a simple isotropic phase for ambient light
     radiance += getSpatialAmbientSH(worldPos, V) * 0.1;
 
-/*
     // Lightning illumination
     if (lightningPulse > 0.01) {
         float cloudLvl = cloudAltitude * worldScale;
@@ -189,6 +188,7 @@ void main() {
         radiance += lightningColor * lightningPulse * (0.2 + 0.8 * cloudGlow);
     }
 
+/*
     // --- Emissive Particle Illumination ---
     // Simple isotropic phase for particle lights
     float particlePhase = 1.0 / (4.0 * PI);
