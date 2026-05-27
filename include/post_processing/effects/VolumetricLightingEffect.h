@@ -45,6 +45,7 @@ namespace Boidsish {
 			// 4 Cascades, each with a Froxel Grid
 			// We use a 3D texture array for the 4 cascades
 			GLuint injection_buffer_ = 0;   // VolumetricData SSBO
+			GLuint injection_texture_ = 0;  // Pre-integration light sources (RGBA16F)
 			GLuint scattering_texture_ = 0; // Integrated Scattering + Transmittance (RGBA16F)
 
 			// Temporal accumulation history (at froxel resolution)
