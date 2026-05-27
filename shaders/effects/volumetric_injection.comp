@@ -5,16 +5,8 @@ layout(local_size_x = 8, local_size_y = 8, local_size_z = 4) in;
 // Shared memory for neighborhood statistics (8x8x4 workgroup)
 shared vec4 s_current[8 * 8 * 4];
 
-struct VolumetricData {
-    uint radiance_r;
-    uint radiance_g;
-    uint radiance_b;
-    uint extinction;
-};
-
-layout(std430, binding = [[VOLUMETRIC_INJECTION_BUFFER_BINDING]]) buffer VolumetricInjectionBuffer {
-    VolumetricData injection_data[];
-};
+layout(rgba16f, binding = [[VOLUMETRIC_INJECTION_IMAGE_BINDING]]) uniform image3D outInjection;
+layout(rgba16f, binding = [[VOLUMETRIC_HISTORY_IMAGE_BINDING]]) uniform image3D outHistory;
 
 layout(binding = [[VOLUMETRIC_HISTORY_BINDING]]) uniform sampler3D uHistoryTexture;
 layout(binding = 10) uniform sampler2D uBlueNoise;
@@ -353,11 +345,6 @@ void main() {
     current = clamp(current, vec4(0.0), vec4(1000.0));
     if (any(isnan(current))) current = vec4(0.0);
 
-    uint idx = vox.z * (u_grid_res.x * u_grid_res.y) + vox.y * u_grid_res.x + vox.x;
-    const float FIXED_POINT_SCALE = 1000000.0;
-
-    injection_data[idx].radiance_r = uint(current.r * FIXED_POINT_SCALE);
-    injection_data[idx].radiance_g = uint(current.g * FIXED_POINT_SCALE);
-    injection_data[idx].radiance_b = uint(current.b * FIXED_POINT_SCALE);
-    injection_data[idx].extinction = uint(current.a * FIXED_POINT_SCALE);
+    imageStore(outInjection, vox, current);
+    imageStore(outHistory, vox, current);
 }

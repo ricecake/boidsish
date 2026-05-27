@@ -117,28 +117,26 @@ void main() {
         vec3 radiance = p.color.rgb * p.color.a * intensityScale * particlePhase * inversesqrt(linearZ);
 
         // Influence radius (in froxels, roughly)
-        float radius = p.vel.w * 0.5;
+        float radius = max(1.0, p.vel.w * 0.75);
         ivec3 center_vox = ivec3(floor(coord));
 
-        for (int x = -1; x <= 1; ++x) {
-            for (int y = -1; y <= 1; ++y) {
-                for (int z = -1; z <= 1; ++z) {
+        for (int x = -2; x <= 2; ++x) {
+            for (int y = -2; y <= 2; ++y) {
+                for (int z = -2; z <= 2; ++z) {
                     ivec3 v = center_vox + ivec3(x, y, z);
                     if (v.x < 0 || v.x >= u_grid_res.x || v.y < 0 || v.y >= u_grid_res.y || v.z < 0 || v.z >= u_grid_res.z * NUM_CASCADES) continue;
 
                     vec3 froxelCenter = vec3(v) + 0.5;
                     float dist = distance(coord, froxelCenter);
 
-                    // Use a smooth quadratic falloff
-                    float r = 1.5 + radius; // Influence radius in froxel units
-                    float weight = max(0.0, 1.0 - (dist / r));
-                    weight = weight * weight * (3.0 - 2.0 * weight); // Smoothstep-like
+                    // Use a Gaussian-like falloff for smoother transitions
+                    float weight = exp(-dist * dist * (1.5 / (radius * radius)));
 
-                    if (weight <= 0.0) continue;
+                    if (weight < 0.01) continue;
 
                     // Normalize weight roughly by neighborhood size
-                    // A 3x3x3 neighborhood has 27 voxels.
-                    weight *= (1.0 / 12.0); // Empirical normalization
+                    // A 5x5x5 neighborhood has 125 voxels.
+                    weight *= (1.0 / 32.0); // Adjusted for Gaussian falloff and neighborhood
 
                     uint idx = v.z * (u_grid_res.x * u_grid_res.y) + v.y * u_grid_res.x + v.x;
                     atomicAddFloat(idx, 0, radiance.r * weight);
