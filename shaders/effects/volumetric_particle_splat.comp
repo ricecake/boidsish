@@ -83,15 +83,15 @@ void main() {
         if (vox.x == -1) return;
 
         float radius = p.vel.w * 3.0; // Influence radius
-        float intensityScale = (p.style == STYLE_FIREFLIES) ? 1.0 : 8.0;
+        float intensityScale = (p.style == STYLE_FIREFLIES) ? 0.125 : 8.0;
         float particlePhase = 1.0 / (4.0 * PI);
 
         vec3 radiance = p.color.rgb * p.color.a * intensityScale * particlePhase;
 
         // Splat into 2x2x2 neighborhood for smoothness
-        for (int x = 0; x <= 1; ++x) {
-            for (int y = 0; y <= 1; ++y) {
-                for (int z = 0; z <= 1; ++z) {
+        for (int x = 0; x <= 2; ++x) {
+            for (int y = 0; y <= 2; ++y) {
+                for (int z = 0; z <= 2; ++z) {
                     ivec3 v = vox + ivec3(x, y, z);
                     if (v.x >= u_grid_res.x || v.y >= u_grid_res.y || v.z >= u_grid_res.z * NUM_CASCADES) continue;
 
