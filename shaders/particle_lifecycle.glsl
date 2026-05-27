@@ -4,6 +4,8 @@
 #include "helpers/constants.glsl"
 #include "frustum.glsl"
 
+const float kEnvQueueRadius = 50.0;
+
 void spawnDustParticle(
 	inout Particle p,
 	uint           gid,
@@ -259,29 +261,25 @@ void spawnAmbientParticle(
 		bool valid_biome = (biome_idx >= 0 && biome_idx <= 4) || biome_idx == 7;
 		if (valid_biome) {
 			// Define weighted probabilities for inter-compatible particles
-			// Birds, Leaves, Petals, Bubbles, Fireflies, Snow, Fairy, Dust
-			float weights[8] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+			// Birds(0), Leaves(1), Petals(2), Bubbles(3), Fireflies(4), Fairy(5)
+			float weights[6] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
 
-			weights[6] = 0.3; // Dust always present near camera
-
-			if (biome_idx == 7) { // Mountains (Snow only)
-				weights[5] = 1.0;
-			} else if (biome_idx == 0) { // Ocean/Water (Bubbles)
+			if (biome_idx == 0) { // Ocean/Water (Bubbles)
 				weights[3] = 1.0;
-			} else { // Land biomes
+			} else if (biome_idx != 7) { // Land biomes (not mountains)
 				if (nightFactor > 0.5) {
 					weights[4] = 0.8; // Fireflies at night
-					weights[6] = 0.2; // Fairies at night
+					weights[5] = 0.2; // Fairies at night
 				} else {
 					weights[0] = 0.05; // Birds
 					if (biome_idx == 4) { // Forest
 						weights[1] = 0.4; // Leaves
 						weights[2] = 0.4; // Petals
-						weights[6] = 0.2; // Fairies in forest
+						weights[5] = 0.2; // Fairies in forest
 					} else {
 						weights[1] = 0.8; // Leaves
 						weights[2] = 0.15; // Petals
-						weights[6] = 0.05; // Rare fairies elsewhere
+						weights[5] = 0.05; // Rare fairies elsewhere
 					}
 				}
 			}
@@ -292,18 +290,17 @@ void spawnAmbientParticle(
 			if (stats.count_petals >= stats.limit_petals) weights[2] = 0.0;
 			if (stats.count_bubbles >= stats.limit_bubbles) weights[3] = 0.0;
 			if (stats.count_fireflies >= stats.limit_fireflies) weights[4] = 0.0;
-			if (stats.count_snow >= stats.limit_snow) weights[5] = 0.0;
-			if (stats.count_fairies >= stats.limit_fairies) weights[6] = 0.0;
-			if (stats.count_dust >= stats.limit_dust) weights[7] = 0.0;
+			if (stats.count_fairies >= stats.limit_fairies) weights[5] = 0.0;
 
-			float total_weight = weights[0] + weights[1] + weights[2] + weights[3] + weights[4] + weights[5] + weights[6] + weights[7];
+			float total_weight = 0.0;
+			for (int i = 0; i < 6; i++) total_weight += weights[i];
 			if (total_weight <= 0.0) return;
 
 			// Pick type based on weighted probability
 			float r = rand(spawnSeed + 6.6) * total_weight;
 			int   selected_style = -1;
 			float cumulative = 0.0;
-			for (int i = 0; i < 8; i++) {
+			for (int i = 0; i < 6; i++) {
 				cumulative += weights[i];
 				if (r <= cumulative) {
 					if (i == 0) selected_style = STYLE_BIRDS;
@@ -311,19 +308,12 @@ void spawnAmbientParticle(
 					else if (i == 2) selected_style = STYLE_PETAL;
 					else if (i == 3) selected_style = STYLE_BUBBLES;
 					else if (i == 4) selected_style = STYLE_FIREFLIES;
-					else if (i == 5) selected_style = STYLE_SNOW;
-					else if (i == 6) selected_style = STYLE_FAIRY;
-					else if (i == 7) selected_style = STYLE_DUST;
+					else if (i == 5) selected_style = STYLE_FAIRY;
 					break;
 				}
 			}
 
 			if (selected_style == -1) return;
-
-			if (selected_style == STYLE_DUST) {
-				spawnDustParticle(p, gid, time, viewPos, viewDir, curlTexture, num_chunks, heightmapArray);
-				return;
-			}
 
 			float total_lifetime = 10.0 + rand(spawnSeed + 4.4) * 5.0;
 			float skipped_time = rand(spawnSeed + 7.7) * total_lifetime;
@@ -402,29 +392,38 @@ void spawnDustParticle(
 	p.origin.w = 0.0;
 }
 
-void spawnPrecipitation(inout Particle p, uint gid, float time, vec3 viewPos) {
+void spawnEnvironmentalQueue(inout Particle p, uint gid, float time, vec3 viewPos) {
 	vec2 seed = vec2(float(gid) * 0.123, time * 0.456);
-	float spawn_chance = pow(max(rain_intensity, snow_intensity), 6);
 
-	if (rand(seed + 0.77) < spawn_chance) {
+	// Determine which style to spawn based on weather and quotas
+	int selected_style = -1;
+	float dust_threshold = clamp(1.0 - wetness, 0.0, 1.0) * step(0.1, wind_strength);
+
+	if (rain_intensity > 0.01 && stats.count_rain < stats.limit_rain) {
+		selected_style = STYLE_RAIN;
+	} else if (snow_intensity > 0.01 && stats.count_snow < stats.limit_snow) {
+		selected_style = STYLE_SNOW;
+	} else if (dust_threshold > 0.01 && stats.count_dust < stats.limit_dust) {
+		selected_style = STYLE_DUST;
+	}
+
+	if (selected_style != -1) {
 		vec3 rand_offset = rand3(seed) * 2.0 - 1.0;
-		float box_w = 100.0;
-		float box_h = 50.0;
 
-		p.pos.x = viewPos.x + rand_offset.x * box_w;
-		p.pos.z = viewPos.z + rand_offset.z * box_w;
-		p.pos.y = viewPos.y + (rand_offset.y * 0.5 + 0.5) * box_h;
-		p.pos.w = 2.0 + 1.0 * rand(seed.yx);
+		p.pos.xyz = viewPos + rand_offset * kEnvQueueRadius;
+		p.pos.w = 10.0 + 5.0 * rand(seed.yx); // Longer lifetime for wrapping
 
-		if (rain_intensity > snow_intensity) {
-			p.style = STYLE_RAIN;
+		p.style = selected_style;
+		if (selected_style == STYLE_RAIN) {
 			p.vel = vec4(0, -40.0, 0, 15.0);
-		} else {
-			p.style = STYLE_SNOW;
+		} else if (selected_style == STYLE_SNOW) {
 			p.vel = vec4(0, -3.0, 0, 15.0);
+		} else { // STYLE_DUST
+			p.vel = vec4(rand3(seed + 0.22) * 0.1, 1.0);
 		}
+
 		p.emitter_index = -1;
-		p.emitter_id = -2; // Denotes precipitation
+		p.emitter_id = -2; // Denotes environmental queue
 		p.origin.xyz = p.pos.xyz;
 		p.origin.w = 2.0;
 	}
@@ -473,9 +472,9 @@ void respawnParticle(
 			);
 		}
 
-		// --- 3c. Precipitation Respawn ---
-		if (p.pos.w <= 0.0 && emitter_index == -1 && (rain_intensity > 0.01 || snow_intensity > 0.01)) {
-			spawnPrecipitation(p, gid, time, viewPos);
+		// --- 3c. Environmental Queue Respawn ---
+		if (p.pos.w <= 0.0 && emitter_index == -1) {
+			spawnEnvironmentalQueue(p, gid, time, viewPos);
 		}
 
 		if (p.pos.w <= 0.0) {

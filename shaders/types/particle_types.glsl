@@ -80,6 +80,7 @@ struct ParticleStats {
 	uint count_bubbles;
 	uint count_fireflies;
 	uint count_snow;
+	uint count_rain;
 	uint count_fairies;
 	uint count_dust;
 
@@ -89,6 +90,7 @@ struct ParticleStats {
 	uint limit_bubbles;
 	uint limit_fireflies;
 	uint limit_snow;
+	uint limit_rain;
 	uint limit_fairies;
 	uint limit_dust;
 };
