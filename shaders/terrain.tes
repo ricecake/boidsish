@@ -28,6 +28,8 @@ out float      vSubstrate;
 layout(binding = [[BAKED_HEIGHTMAP_BINDING]]) uniform sampler2DArray uHeightmap;
 // Baked params: R=erosionDelta, G=ridgeMap, B=substrate, A=waterMask
 layout(binding = [[BAKED_PARAMS_BINDING]]) uniform sampler2DArray uBakedParams;
+// Baked displacement: RGB=displacement.xyz, A=biome_override
+layout(binding = [[BAKED_DISPLACEMENT_BINDING]]) uniform sampler2DArray u_displacementArray;
 // Biome map: R=lowIdx, G=t, B=bakeFlag
 layout(binding = [[TERRAIN_BIOME_MAP_BINDING]]) uniform sampler2DArray u_biomeMap;
 
@@ -86,7 +88,8 @@ void main() {
 		vErosionDelta = bakedParams.r;
 		vRidgeMap = bakedParams.g;
 		vSubstrate = bakedParams.b;
-		vIsWater = bakedParams.a;
+		// vIsWater = bakedParams.a; // Now contains variance
+		vIsWater = biomeData.a; // Relocated to biome map Alpha
 
 		// Height and Normal were already updated by sampleHeightmap because it samples uHeightmap
 		// which now points to the baked texture array in the manager.
@@ -171,23 +174,29 @@ void main() {
 	// Apply shockwave ripple to terrain
 	FragPos += getShockwaveDisplacement(FragPos, 0.0, false);
 
-	// Micro-relief displacement (rocks and divots)
-	if (!uIsShadowPass && waterMask <= 0.0) {
-		float dist = distance(viewPos, FragPos);
-		// Only apply where there is enough tessellation and the camera is close
-		float detailFade = smoothstep(200.0, 50.0, dist) * smoothstep(16.0, 32.0, tessFactor);
+	// Baked displacement
+	if (isBaked) {
+		vec3 bakedDisp = texture(u_displacementArray, vec3(remappedUV, slice)).rgb;
+		FragPos += bakedDisp;
+	} else {
+		// Micro-relief displacement (rocks and divots) - FALLBACK ONLY
+		if (!uIsShadowPass && waterMask <= 0.0) {
+			float dist = distance(viewPos, FragPos);
+			// Only apply where there is enough tessellation and the camera is close
+			float detailFade = smoothstep(200.0, 50.0, dist) * smoothstep(16.0, 32.0, tessFactor);
 
-		if (detailFade > 0.0) {
-			vec3  scaledPos = FragPos * 2.0;
-			float rocks = fastWorley3d(scaledPos * 0.5);
-			float divots = fastSimplex3d(scaledPos * 1.0);
+			if (detailFade > 0.0) {
+				vec3  scaledPos = FragPos * 2.0;
+				float rocks = fastWorley3d(scaledPos * 0.5);
+				float divots = fastSimplex3d(scaledPos * 1.0);
 
-			// Substrate modulation: eroded areas (substrate < 0) are more rocky/rough,
-			// while deposition areas (substrate > 0) are smoother.
-			float substrateMod = mix(1.2, 0.4, clamp(vSubstrate * 0.5 + 0.5, 0.0, 1.0));
+				// Substrate modulation: eroded areas (substrate < 0) are more rocky/rough,
+				// while deposition areas (substrate > 0) are smoother.
+				float substrateMod = mix(1.2, 0.4, clamp(vSubstrate * 0.5 + 0.5, 0.0, 1.0));
 
-			float displacement = (rocks * 1.15 - abs(divots) * 1.17) * detailFade * substrateMod;
-			FragPos += Normal * displacement;
+				float displacement = (rocks * 1.15 - abs(divots) * 1.17) * detailFade * substrateMod;
+				FragPos += Normal * displacement;
+			}
 		}
 	}
 

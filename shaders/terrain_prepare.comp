@@ -14,11 +14,6 @@ layout(std140, binding = [[TERRAIN_DATA_BINDING]]) uniform TerrainData {
 };
 #endif
 
-#ifndef TERRAIN_GRID_DEFINED
-	#define TERRAIN_GRID_DEFINED
-layout(binding = [[TERRAIN_CHUNK_GRID_BINDING]]) uniform isampler2D u_chunkGrid;
-#endif
-
 #include "helpers/terrain_shadows.glsl"
 
 struct PatchMetrics {
@@ -27,7 +22,8 @@ struct PatchMetrics {
 	float avg_curvature;
 	float avg_roughness;
 	float avg_grass_density;
-	float _pad[3];
+	float max_variance;
+	float _pad[2];
 };
 
 layout(std430, binding = [[TERRAIN_PATCH_METRICS_BINDING]]) readonly buffer TerrainPatchMetrics {
@@ -83,6 +79,8 @@ uniform int   u_numChunks;
 uniform float u_tessLevelMax;
 uniform float u_tessLevelMin;
 uniform float u_tessQualityMultiplier;
+uniform vec2  u_viewportSize;
+uniform float u_lodProjectionScalar;
 uniform float u_worldScale;
 uniform vec3  u_viewPos;
 uniform vec3  u_viewDir;
@@ -94,46 +92,62 @@ uniform int       u_hizMipCount;
 uniform float     u_screenExpansion;
 uniform bool      u_enableOcclusionCulling;
 
-float getPatchTessLevel(vec3 center, float radius, PatchMetrics metrics) {
-	float dist = distance(u_viewPos, center);
+// Constants for quality
+const float TARGET_EDGE_LENGTH_PIXELS = 24.0;
 
-	// 1. DISTANCE IMPORTANCE
-	float distImportance = exp(-dist * (0.004 / u_worldScale));
 
-	// 2. SILHOUETTE BOOST
-	float silhouetteImportance = metrics.avg_curvature * (1.0 - smoothstep(100.0 * u_worldScale, 800.0 * u_worldScale, dist));
+vec3 getWorldPos(vec2 uv, int slice, vec2 chunkOffsetXZ) {
+	vec2  remappedUV = (uv * u_terrainParams.x + 0.5) / (u_terrainParams.x + 1.0);
+	float h = textureLod(u_heightmapArray, vec3(remappedUV, float(slice)), 0.0).r;
+	return vec3(chunkOffsetXZ.x + uv.x * u_terrainParams.x * u_worldScale,
+	            h,
+	            chunkOffsetXZ.y + uv.y * u_terrainParams.x * u_worldScale);
+}
 
-	// 3. CURVATURE/ROUGHNESS BOOST
-	float detailImportance = clamp((metrics.avg_curvature + metrics.avg_roughness * 0.5) * 5.0, 0.0, 1.0);
+float calculateEdgeTessellation(vec3 p0, vec3 p1, vec2 uv0, vec2 uv1, int slice) {
+	const float TARGET_ERROR_PIXELS = max(2.0, 2.0 / max(0.01, u_tessQualityMultiplier));
 
-	// 4. WATER/ALTITUDE BONUS
-	float waterImportance = 1.0 - smoothstep(0.0, 2.0 * u_worldScale, center.y);
+	// 1. Calculate Distance
+	vec3  midPoint = (p0 + p1) * 0.5;
+	float distToCam = max(distance(u_viewPos, midPoint), 1.0 * u_worldScale);
 
-	// COMBINED IMPORTANCE SCORE [0, 1]
-	// float importance = distImportance * (1.0 + silhouetteImportance * 4.0) * (1.0 + detailImportance * 4.0);
-	float importance = distImportance * max(silhouetteImportance * 4.0, detailImportance * 4.0);
+	// 2. The Baseline: Screen-Space Edge Length
+	float physicalEdgeLength = distance(p0, p1);
+	float pixelEdgeLength = (physicalEdgeLength * u_lodProjectionScalar) / distToCam;
+	float baseLevel = pixelEdgeLength / TARGET_EDGE_LENGTH_PIXELS;
 
-	importance = clamp(max(importance, waterImportance), 0.0, 1.0);
+	// 3. The Detailer: Screen-Space Chordal Error (Deviation)
+	vec2 remappedUV0 = (uv0 * u_terrainParams.x + 0.5) / (u_terrainParams.x + 1.0);
+	vec2 remappedUV1 = (uv1 * u_terrainParams.x + 0.5) / (u_terrainParams.x + 1.0);
+	float dev0 = textureLod(u_bakedParamsArray, vec3(remappedUV0, float(slice)), 0.0).a;
+	float dev1 = textureLod(u_bakedParamsArray, vec3(remappedUV1, float(slice)), 0.0).a;
+	float physicalDeviation = (dev0 + dev1) * 0.5;
 
-	// return mix(u_tessLevelMin, u_tessLevelMax, importance);
 
-	float level;
-	if (importance > 0.85)
-		level = u_tessLevelMax;
-	else if (importance > 0.70)
-		level = u_tessLevelMax * 0.75;
-	else if (importance > 0.50)
-		level = u_tessLevelMax * 0.5;
-	else if (importance > 0.30)
-		level = u_tessLevelMax * 0.25;
-	else if (importance > 0.15)
-		level = u_tessLevelMax * 0.125;
-	else if (importance > 0.05)
-		level = clamp(u_tessLevelMin * 2.0, u_tessLevelMin, u_tessLevelMax);
-	else
-		level = u_tessLevelMin;
+	float crestThreshold = 0.25 * u_worldScale;
+	float crestMask = smoothstep(0.0, crestThreshold, physicalDeviation);
 
-	return clamp(level * u_tessQualityMultiplier, u_tessLevelMin, u_tessLevelMax);
+	// SILHOUETTE BOOST
+	vec4 hData = textureLod(u_heightmapArray, vec3((remappedUV0 + remappedUV1) * 0.5, float(slice)), 0.0);
+	vec3 norm = normalize(hData.gba);
+	float silhouetteFactor = 1.0 - abs(dot(norm, normalize(u_viewPos - midPoint)));
+	float silhouetteImportance = silhouetteFactor * crestMask * (1.0 - smoothstep(100.0 * u_worldScale, 400.0 * u_worldScale, distToCam));
+
+	float distanceFade = smoothstep(100.0 * u_worldScale, 400.0 * u_worldScale, distToCam);
+	float effectiveTargetError = (TARGET_ERROR_PIXELS) / (1.0 + silhouetteImportance * 4.0 + distanceFade * 4.0);
+
+	float pixelDeviation = (physicalDeviation * u_lodProjectionScalar) / distToCam;
+	float errorLevel = pixelDeviation / effectiveTargetError;
+
+	// 4. Combine and Clamp
+	float finalLevel = max(baseLevel, errorLevel);
+
+	// Triangle size constraint to ensure triangles large enough to be seen (approx 8 pixels)
+	float physicalPatchSize = float([[PATCH_SIZE]]) * u_worldScale;
+	float patchSizeInPixels = (physicalPatchSize * u_lodProjectionScalar) / distToCam;
+	float maxTessForSize = patchSizeInPixels / TARGET_EDGE_LENGTH_PIXELS;
+
+	return clamp(finalLevel, u_tessLevelMin, min(u_tessLevelMax, max(u_tessLevelMin, maxTessForSize)));
 }
 
 bool projectAABB(vec3 aabbMin, vec3 aabbMax, mat4 vp, out vec4 screenRect, out float nearestDepth) {
@@ -180,6 +194,8 @@ bool projectAABB(vec3 aabbMin, vec3 aabbMax, mat4 vp, out vec4 screenRect, out f
 }
 
 void main() {
+	const float TARGET_ERROR_PIXELS = max(2.0, 2.0 / max(0.01, u_tessQualityMultiplier));
+
 	int globalIdx = int(gl_GlobalInvocationID.x);
 	int numPatchesPerChunk = [[PATCHES_PER_CHUNK_SIDE]] * [[PATCHES_PER_CHUNK_SIDE]];
 	int totalPatches = u_numChunks * numPatchesPerChunk;
@@ -206,6 +222,9 @@ void main() {
 
 	float radius = patchSize * 0.707 + (metrics.max_y - metrics.min_y) * 0.5;
 
+	vec3 viewVec = patchCenter - u_viewPos;
+	float distToCam = length(viewVec);
+
 	// FRUSTUM CULLING
 	vec3 aabbMin = vec3(chunkOffset.x + float(patchX) * patchSize, metrics.min_y, chunkOffset.z + float(patchY) * patchSize);
 	vec3 aabbMax = vec3(chunkOffset.x + float(patchX + 1) * patchSize, metrics.max_y, chunkOffset.z + float(patchY + 1) * patchSize);
@@ -217,9 +236,6 @@ void main() {
 
 	// OCCLUSION CULLING
 	if (u_enableOcclusionCulling) {
-		vec3  viewVec = patchCenter - u_viewPos;
-		float distToCam = length(viewVec);
-
 		vec4  screenRect;
 		float nearestDepth;
 		// Project using PREVIOUS View-Projection for temporal consistency with Hi-Z
@@ -253,56 +269,67 @@ void main() {
 		}
 	}
 
-	// TERRAIN-ON-TERRAIN OCCLUSION CHECK (DISABLED: non-conservative)
-	/*
-	if (u_originSize.w > 0) {
-		float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
-
-		// Conservative horizon check:
-		// If our patch is entirely below the max height of chunks between us and the camera, it might be occluded.
-		// We can sample a few points along the view vector in the grid.
-		vec3  viewVec = u_viewPos - patchCenter;
-		float distToCam = length(viewVec);
-		vec2  viewDir2D = normalize(viewVec.xz);
-
-		// Step along the ray towards camera (max 4 steps for performance)
-		float stepSize = scaledChunkSize * 1.5;
-		int numSteps = clamp(int(distToCam / stepSize), 0, 4);
-
-		for (int i = 1; i <= numSteps; i++) {
-			vec2  samplePos = patchCenter.xz + viewDir2D * (float(i) * stepSize);
-			ivec2 sampleGridCoord = ivec2(floor(samplePos / scaledChunkSize)) - u_originSize.xy;
-
-			if (sampleGridCoord.x >= 0 && sampleGridCoord.x < u_originSize.z &&
-				sampleGridCoord.y >= 0 && sampleGridCoord.y < u_originSize.z) {
-
-				float blockerHeight = texelFetch(u_maxHeightGrid, sampleGridCoord, 0).r;
-
-				// If a chunk in front of us is higher than our patch's max height PLUS the camera's height,
-				// and we are far enough away, we are likely occluded.
-				// Simple check: if blockers are significantly above the line of sight.
-				float patchMaxY = metrics.max_y;
-
-				// Line of sight height at sample point
-				float t = (float(i) * stepSize) / distToCam;
-				float losHeight = mix(patchMaxY, u_viewPos.y, t);
-
-				if (blockerHeight > losHeight + (2.0 * u_worldScale)) {
-					return; // Likely occluded by terrain
-				}
-			}
-		}
-	}
-	*/
-
-	// Calculate tessellation levels
-	float level = getPatchTessLevel(patchCenter, radius, metrics);
-
 	// Visibility confirmed, allocate draw call
-	// uint outIdx = atomicAdd(count, 1);
 	uint outIdx = atomicAdd(command.instanceCount, 1);
 
 	patchVisibility[patchIdx] = 1;
+
+	// Patch corners in UV space
+	float ps = float([[PATCH_SIZE]]);
+	float cs = u_terrainParams.x;
+	vec2 uv00 = vec2(float(patchX) * ps, float(patchY) * ps) / cs;
+	vec2 uv10 = vec2(float(patchX + 1) * ps, float(patchY) * ps) / cs;
+	vec2 uv11 = vec2(float(patchX + 1) * ps, float(patchY + 1) * ps) / cs;
+	vec2 uv01 = vec2(float(patchX) * ps, float(patchY + 1) * ps) / cs;
+
+	// Corner points in world space
+	vec3 p00 = getWorldPos(uv00, slice, chunkOffset.xz);
+	vec3 p10 = getWorldPos(uv10, slice, chunkOffset.xz);
+	vec3 p11 = getWorldPos(uv11, slice, chunkOffset.xz);
+	vec3 p01 = getWorldPos(uv01, slice, chunkOffset.xz);
+
+	// Compute levels at edges. Shared edges between patches will produce identical results.
+	// OpenGL Quads: 0=Left(u=0), 1=Bottom(v=0), 2=Right(u=1), 3=Top(v=1)
+	float eLeft   = calculateEdgeTessellation(p00, p01, uv00, uv01, slice);
+	float eBottom = calculateEdgeTessellation(p00, p10, uv00, uv10, slice);
+	float eRight  = calculateEdgeTessellation(p10, p11, uv10, uv11, slice);
+	float eTop    = calculateEdgeTessellation(p01, p11, uv01, uv11, slice);
+
+	// Inner level based on patch-wide max_variance using SSE logic
+	float distToCenter = max(distance(u_viewPos, patchCenter), 1.0 * u_worldScale);
+	float innerPixelError = TARGET_ERROR_PIXELS + 4 * metrics.avg_grass_density + 4 * smoothstep(100* u_worldScale, 400* u_worldScale, distToCam);
+
+/*
+	float crestThreshold = 0.25 * u_worldScale;
+	float crestMask = smoothstep(0.0, crestThreshold, metrics.max_variance);
+
+	vec4 hData = textureLod(u_heightmapArray, vec3(0.5, 0.5, float(slice)), 0.0);
+	vec3 norm = normalize(hData.gba);
+	float silhouetteFactor = 1.0 - abs(dot(norm, viewVec));
+
+	if (crestMask > 0 && crestMask < 1.0) {
+		innerPixelError /= crestMask;
+	}
+
+	if (silhouetteFactor > 0 && silhouetteFactor < 1.0) {
+		innerPixelError /= silhouetteFactor;
+	}
+*/
+
+	// Error level based on max variance (chordal error)
+	float innerErrorLevel = (metrics.max_variance * u_lodProjectionScalar) / (distToCenter * innerPixelError);
+
+	// Base level based on patch size (diagonal to be safe)
+	float physicalDiag = distance(p00, p11);
+	float pixelDiag = (physicalDiag * u_lodProjectionScalar) / distToCenter;
+	float innerBaseLevel = (pixelDiag / TARGET_EDGE_LENGTH_PIXELS) / 1.414; // Approximate grid subdivision
+
+	float innerLevel = max(innerBaseLevel, innerErrorLevel);
+
+	float patchSizeInPixels = (patchSize * u_lodProjectionScalar) / distToCenter;
+	float maxInnerTessForSize = patchSizeInPixels / TARGET_EDGE_LENGTH_PIXELS;
+
+	innerLevel = clamp(innerLevel, u_tessLevelMin, min(u_tessLevelMax, max(u_tessLevelMin, maxInnerTessForSize)));
 
 	// Patch Draw Data
 	PatchDrawData draw;
@@ -312,11 +339,11 @@ void main() {
 
 	// Patch Tess Levels
 	PatchTessLevels tess;
-	tess.outer[0] = level;
-	tess.outer[1] = level;
-	tess.outer[2] = level;
-	tess.outer[3] = level;
-	tess.inner[0] = level;
-	tess.inner[1] = level;
+	tess.outer[0] = eLeft;
+	tess.outer[1] = eBottom;
+	tess.outer[2] = eRight;
+	tess.outer[3] = eTop;
+	tess.inner[0] = innerLevel;
+	tess.inner[1] = innerLevel;
 	patchTessLevels[outIdx] = tess;
 }

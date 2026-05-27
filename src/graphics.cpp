@@ -44,6 +44,8 @@
 #include "post_processing/effects/AtmosphereEffect.h"
 #include "post_processing/effects/VolumetricLightingEffect.h"
 #include "post_processing/effects/BloomEffect.h"
+#include "mood_manager.h"
+#include "mood_definitions.h"
 #include "post_processing/effects/FilmGrainEffect.h"
 #include "post_processing/effects/GlitchEffect.h"
 #include "post_processing/effects/NegativeEffect.h"
@@ -75,6 +77,8 @@
 #include "trail_render_manager.h"
 #include "ui/EffectWidget.h"
 #include "ui/EnvironmentWidget.h"
+#include "ui/MoodWidget.h"
+#include "ui/LightningWidget.h"
 #include "ui/ProfilerWidget.h"
 #include "ui/RenderWidget.h"
 #include "ui/SystemWidget.h"
@@ -87,6 +91,7 @@
 #include "shader_registration.h"
 #include "visual_effects.h"
 #include "weather_manager.h"
+#include "lightning_manager.h"
 #include "wind_audio_effect.h"
 #include "rain_audio_effect.h"
 #include "rustle_audio_effect.h"
@@ -393,7 +398,10 @@ namespace Boidsish {
 		std::shared_ptr<AtmosphereManager>                atmosphere_manager;
 		std::shared_ptr<PostProcessing::AtmosphereEffect> atmosphere_effect;
 		std::shared_ptr<PostProcessing::VolumetricLightingEffect> volumetric_effect;
-		std::shared_ptr<WeatherManager>                   weather_manager;
+		std::shared_ptr<PostProcessing::BloomEffect>              bloom_effect;
+		std::shared_ptr<MoodManager>                              mood_manager;
+		std::shared_ptr<WeatherManager>                           weather_manager;
+		std::shared_ptr<LightningManager>                 lightning_manager;
 		std::shared_ptr<SceneManager>                     scene_manager;
 		std::shared_ptr<DecorManager>                     decor_manager;
 		std::shared_ptr<GrassManager>                     grass_manager;
@@ -566,6 +574,7 @@ namespace Boidsish {
 			service_locator_.Register<ShadowManager>();
 			service_locator_.Register<AtmosphereManager>();
 			service_locator_.Register<WeatherManager>();
+			service_locator_.Register<LightningManager>();
 			service_locator_.Register<SceneManager>("scenes");
 			service_locator_.Register<DecorManager>();
 			service_locator_.Register<GrassManager>();
@@ -821,6 +830,8 @@ namespace Boidsish {
 			atmosphere_manager = service_locator_.Get<AtmosphereManager>();
 			atmosphere_manager->Initialize();
 			weather_manager = service_locator_.Get<WeatherManager>();
+			lightning_manager = service_locator_.Get<LightningManager>();
+			lightning_manager->Initialize();
 			if (terrain_generator) {
 				weather_manager->SetTerrainGenerator(terrain_generator.get());
 			}
@@ -1094,9 +1105,13 @@ namespace Boidsish {
 				volumetric_effect->SetEnabled(true);
 				post_processing_manager_->AddEffect(volumetric_effect);
 
-				auto bloom_effect = std::make_shared<PostProcessing::BloomEffect>(render_width, render_height);
+				bloom_effect = std::make_shared<PostProcessing::BloomEffect>(render_width, render_height);
 				bloom_effect->SetEnabled(true);
 				post_processing_manager_->AddEffect(bloom_effect);
+
+				mood_manager = std::make_shared<MoodManager>();
+				mood_manager->AddLayer(GetBaseTimeOfDayLayer());
+				mood_manager->AddLayer(GetWeatherPrecipitationLayer());
 
 
 				if (enable_hdr_) {
@@ -1111,6 +1126,8 @@ namespace Boidsish {
 			}
 
 			ui_manager->AddWidget(std::make_shared<UI::EnvironmentWidget>(*parent));
+			ui_manager->AddWidget(std::make_shared<UI::MoodWidget>(*parent));
+			ui_manager->AddWidget(std::make_shared<UI::LightningWidget>(*parent));
 			ui_manager->AddWidget(std::make_shared<UI::EffectWidget>(*parent));
 			ui_manager->AddWidget(std::make_shared<UI::RenderWidget>(*parent));
 			ui_manager->AddWidget(std::make_shared<UI::AudioWidget>(*parent));
@@ -1431,8 +1448,10 @@ namespace Boidsish {
 			const auto& batch_packets = is_shadow_pass ? queue.GetPackets(RenderLayer::Opaque) : packets;
 			const auto& valid_indices = is_shadow_pass ? queue.GetShadowIndices() : queue.GetValidIndices(layer);
 
-			// Store the global start index for this pass's batches within the SSBO
-			uint32_t mdi_pass_start_index = mdi_uniform_count;
+			// Store the global start indices for this pass's data within the SSBOs
+			uint32_t mdi_pass_uniform_start = mdi_uniform_count;
+			uint32_t mdi_pass_elements_start = mdi_elements_count;
+			uint32_t mdi_pass_arrays_start = mdi_arrays_count;
 
 			for (const auto& batch : batches) {
 				uint32_t batch_packet_start = batch.base_uniform_index;
@@ -1499,8 +1518,9 @@ namespace Boidsish {
 			);
 
 			// Hi-Z occlusion culling dispatch (between uniform fill and draw calls)
+			uint32_t pass_draw_count = mdi_uniform_count - mdi_pass_uniform_start;
 			if (dispatch_hiz_occlusion && occlusion_cull_shader_ && occlusion_cull_shader_->isValid() && hiz_manager &&
-			    hiz_manager->IsInitialized() && mdi_uniform_count > 0) {
+			    hiz_manager->IsInitialized() && pass_draw_count > 0) {
 				occlusion_cull_shader_->use();
 
 				// Bind uniforms SSBO (current frame's data) for compute to read AABBs
@@ -1508,8 +1528,8 @@ namespace Boidsish {
 					GL_SHADER_STORAGE_BUFFER,
 					Constants::SsboBinding::CommonUniforms(),
 					uniforms_ssbo->GetBufferId(),
-					frame_element_offset * sizeof(CommonUniforms),
-					mdi_uniform_count * sizeof(CommonUniforms)
+					(frame_element_offset + mdi_pass_uniform_start) * sizeof(CommonUniforms),
+					pass_draw_count * sizeof(CommonUniforms)
 				);
 
 				// Bind visibility SSBO for compute to write
@@ -1525,13 +1545,13 @@ namespace Boidsish {
 				occlusion_cull_shader_->setInt("u_hizTexture", Constants::TextureUnit::HiZ());
 
 				// Set uniforms
-				occlusion_cull_shader_->setInt("u_drawCount", static_cast<int>(mdi_uniform_count));
-				occlusion_cull_shader_->setUint("u_baseVisibilityIndex", 0);
+				occlusion_cull_shader_->setInt("u_drawCount", static_cast<int>(pass_draw_count));
+				occlusion_cull_shader_->setUint("u_baseVisibilityIndex", mdi_pass_uniform_start);
 				occlusion_cull_shader_->setIVec2("u_hizSize", hiz_manager->GetWidth(), hiz_manager->GetHeight());
 				occlusion_cull_shader_->setInt("u_hizMipCount", hiz_manager->GetMipCount());
 				occlusion_cull_shader_->setFloat("u_screenExpansion", 4.0f);
 
-				glDispatchCompute((mdi_uniform_count + 63) / 64, 1, 1);
+				glDispatchCompute((pass_draw_count + 63) / 64, 1, 1);
 				glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 			}
 
@@ -1588,7 +1608,7 @@ namespace Boidsish {
 				// s->setBool("uUseMDI", true); // Moved below SSBO binding
 
 				// Bind SSBO for this batch's uniforms (replaces uBaseUniformIndex)
-				uint32_t batch_global_index = mdi_pass_start_index + (batch.base_uniform_index);
+				uint32_t batch_global_index = mdi_pass_uniform_start + (batch.base_uniform_index);
 				glBindBufferRange(
 					GL_SHADER_STORAGE_BUFFER,
 					Constants::SsboBinding::CommonUniforms(),
@@ -1677,7 +1697,7 @@ namespace Boidsish {
 						batch.draw_mode,
 						batch.index_type,
 						(void*)(uintptr_t)(indirect_elements_buffer->GetFrameOffset() +
-					                       batch.first_command * sizeof(DrawElementsIndirectCommand)),
+					                       (mdi_pass_elements_start + batch.first_command) * sizeof(DrawElementsIndirectCommand)),
 						batch.command_count,
 						sizeof(DrawElementsIndirectCommand)
 					);
@@ -1686,7 +1706,7 @@ namespace Boidsish {
 					glMultiDrawArraysIndirect(
 						batch.draw_mode,
 						(void*)(uintptr_t)(indirect_arrays_buffer->GetFrameOffset() +
-					                       batch.first_command * sizeof(DrawArraysIndirectCommand)),
+					                       (mdi_pass_arrays_start + batch.first_command) * sizeof(DrawArraysIndirectCommand)),
 						batch.command_count,
 						sizeof(DrawArraysIndirectCommand)
 					);
@@ -1811,8 +1831,10 @@ namespace Boidsish {
 
 			// Use batched render manager if available (single draw call for all chunks)
 			if (terrain_render_manager) {
+				// glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 				terrain_render_manager
 					->Render(*Terrain::terrain_shader_, view, proj, viewport_size, clip_plane, effective_quality);
+				// glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 			} else {
 				// Fallback to per-chunk rendering
 				Terrain::terrain_shader_->use();
@@ -2251,31 +2273,63 @@ namespace Boidsish {
 				lighting_ubo_data_.view = current_view_matrix;
 				lighting_ubo_data_.projection = projection;
 
+				if (mood_manager && weather_manager && light_manager) {
+					std::map<MoodParameter, float> params;
+					params[MoodParameter::TimeOfDay] = light_manager->GetDayNightCycle().time;
+					params[MoodParameter::Precipitation] = weather_manager->GetCurrentWeather().precipitation;
+					params[MoodParameter::Temperature] = weather_manager->GetCurrentWeather().temperature;
+					params[MoodParameter::CloudCover] = weather_manager->GetCurrentWeather().cloud_coverage;
+					params[MoodParameter::SunAngle] = light_manager->GetLights().empty() ? 0.0f : light_manager->GetLights()[0].elevation;
+					params[MoodParameter::MoonAngle] = light_manager->GetLights().size() < 2 ? 0.0f : light_manager->GetLights()[1].elevation;
+					params[MoodParameter::MoonPhase] = light_manager->GetDayNightCycle().moon_phase_days;
+					params[MoodParameter::WorldPositionX] = camera.x;
+					params[MoodParameter::WorldPositionY] = camera.y;
+					params[MoodParameter::WorldPositionZ] = camera.z;
+
+					mood_manager->Update(params, simulation_delta_time);
+					const auto& mood = mood_manager->GetBlendedSettings();
+
+					if (bloom_effect) {
+						#define APPLY_BLOOM(target, source) if (source.member) target.member = *source.member
+						#define B_M(member) if (mood.sceneBloom.member) bloom_effect->GetSceneSettings().member = *mood.sceneBloom.member; \
+						                    if (mood.skyBloom.member) bloom_effect->GetSkySettings().member = *mood.skyBloom.member;
+						B_M(toneMappingEnabled); B_M(toneMappingMode); B_M(autoExposureEnabled);
+						B_M(targetLuminance); B_M(minExposure); B_M(maxExposure);
+						B_M(speedUp); B_M(speedDown); B_M(centerWeightTightness);
+						B_M(focusPoint); B_M(histogramLowCutoff); B_M(histogramHighCutoff);
+						B_M(uchimuraP); B_M(uchimuraA); B_M(uchimuraM);
+						B_M(uchimuraL); B_M(uchimuraC); B_M(uchimuraB);
+						B_M(autoTuneEnabled); B_M(minContrast); B_M(maxContrast);
+						B_M(targetBrightness); B_M(cdlSlope); B_M(cdlOffset);
+						B_M(cdlPower); B_M(cdlSaturation); B_M(whiteTemp);
+						B_M(whiteTint); B_M(ltmEnabled); B_M(ltmEvSpread);
+						B_M(ltmTarget); B_M(ltmSigma); B_M(ltmWeightContrast);
+						B_M(ltmWeightSaturation); B_M(ltmWeightExposedness); B_M(ltmBoostLocalContrast);
+						#undef B_M
+					}
+
+					if (atmosphere_effect) {
+						if (mood.cloudDensity) atmosphere_effect->SetCloudDensity(*mood.cloudDensity);
+						if (mood.cloudAltitude) atmosphere_effect->SetCloudAltitude(*mood.cloudAltitude);
+						if (mood.cloudThickness) atmosphere_effect->SetCloudThickness(*mood.cloudThickness);
+						if (mood.cloudColor) atmosphere_effect->SetCloudColor(*mood.cloudColor);
+						if (mood.cloudCoverage) atmosphere_effect->SetCloudCoverage(*mood.cloudCoverage);
+						if (mood.cloudSunLightScale) atmosphere_effect->SetCloudSunLightScale(*mood.cloudSunLightScale);
+						if (mood.cloudMoonLightScale) atmosphere_effect->SetCloudMoonLightScale(*mood.cloudMoonLightScale);
+						if (mood.cloudPowderScale) atmosphere_effect->SetCloudPowderScale(*mood.cloudPowderScale);
+						if (mood.cloudBeerPowderMix) atmosphere_effect->SetCloudBeerPowderMix(*mood.cloudBeerPowderMix);
+
+						if (mood.rayleighScale) atmosphere_effect->SetRayleighScale(*mood.rayleighScale);
+						if (mood.mieScale) atmosphere_effect->SetMieScale(*mood.mieScale);
+						if (mood.rayleighScattering) atmosphere_effect->SetRayleighScattering(*mood.rayleighScattering);
+						if (mood.mieScattering) atmosphere_effect->SetMieScattering(*mood.mieScattering);
+						if (mood.mieExtinction) atmosphere_effect->SetMieExtinction(*mood.mieExtinction);
+					}
+				}
+
 				if (atmosphere_effect) {
 					auto& cfg = ConfigManager::GetInstance();
 					lighting_ubo_data_.cloudShadowIntensity = cfg.GetAppSettingFloat("cloud_shadow_intensity", 0.5f);
-
-					// Sync with atmosphere_effect based on ConfigManager
-					atmosphere_effect->SetCloudPhaseG1(cfg.GetAppSettingFloat("cloud_phase_g1", 0.7f));
-					atmosphere_effect->SetCloudPhaseG2(cfg.GetAppSettingFloat("cloud_phase_g2", -0.2f));
-					atmosphere_effect->SetCloudPhaseAlpha(cfg.GetAppSettingFloat("cloud_phase_alpha", 0.15f));
-					atmosphere_effect->SetCloudPhaseIsotropic(cfg.GetAppSettingFloat("cloud_phase_isotropic", 0.05f));
-					atmosphere_effect->SetCloudPowderScale(cfg.GetAppSettingFloat("cloud_powder_scale", 0.35f));
-					atmosphere_effect->SetCloudPowderMultiplier(
-						cfg.GetAppSettingFloat("cloud_powder_multiplier", 0.4f)
-					);
-					atmosphere_effect->SetCloudPowderLocalScale(
-						cfg.GetAppSettingFloat("cloud_powder_local_scale", 2.0f)
-					);
-					atmosphere_effect->SetCloudShadowOpticalDepthMultiplier(
-						cfg.GetAppSettingFloat("cloud_shadow_optical_depth_multiplier", 0.1f)
-					);
-					atmosphere_effect->SetCloudShadowStepMultiplier(
-						cfg.GetAppSettingFloat("cloud_shadow_step_multiplier", 0.1f)
-					);
-					atmosphere_effect->SetCloudSunLightScale(cfg.GetAppSettingFloat("cloud_sun_light_scale", 10.0f));
-					atmosphere_effect->SetCloudMoonLightScale(cfg.GetAppSettingFloat("cloud_moon_light_scale", 2.0f));
-					atmosphere_effect->SetCloudBeerPowderMix(cfg.GetAppSettingFloat("cloud_beer_powder_mix", 0.5f));
 
 					lighting_ubo_data_.cloudAltitude = atmosphere_effect->GetCloudAltitude();
 					lighting_ubo_data_.cloudThickness = atmosphere_effect->GetCloudThickness();
@@ -2309,6 +2363,11 @@ namespace Boidsish {
 
 					lighting_ubo_data_.cloudShadowMatrix = shadowMat;
 
+				if (lightning_manager) {
+					lighting_ubo_data_.lightningColor = lightning_manager->GetGlobalColor();
+					lighting_ubo_data_.lightningPulse = lightning_manager->GetGlobalPulse();
+				}
+
 				} else {
 					lighting_ubo_data_.cloudShadowIntensity = 0.0f;
 				}
@@ -2319,10 +2378,10 @@ namespace Boidsish {
 
 				// GPU-side copy of SH coefficients from SSBO into the UBO (no CPU readback)
 				if (atmosphere_manager) {
-					static_assert(offsetof(LightingUbo, sh_coeffs) == 960, "SH offset mismatch");
+					static_assert(offsetof(LightingUbo, sh_coeffs) == 976, "SH offset mismatch");
 					atmosphere_manager->CopySHToUBO(
 						lighting_pb->GetBufferId(),
-						static_cast<GLintptr>(lighting_pb->GetFrameOffset()) + 960
+						static_cast<GLintptr>(lighting_pb->GetFrameOffset()) + 976
 					);
 				}
 			}
@@ -2517,6 +2576,8 @@ namespace Boidsish {
 			if (akira_effect_manager && terrain_generator) {
 				akira_effect_manager->Update(simulation_delta_time, *terrain_generator);
 			}
+			lightning_manager->Update(simulation_delta_time, simulation_time);
+
 			sdf_volume_manager->UpdateSSBO();
 			sdf_volume_manager->BindSSBO(Constants::SsboBinding::SdfVolumes());
 			shockwave_manager->UpdateShaderData();
@@ -2557,6 +2618,8 @@ namespace Boidsish {
 					sun_dir = -lights[0].direction;
 				}
 
+				float lod_projection_scalar = (float)render_height / (2.0f * tan(glm::radians(camera.fov) / 2.0f));
+
 				terrain_render_manager->PrepareForRender(
 					frame.camera_frustum,
 					camera.pos(),
@@ -2567,12 +2630,13 @@ namespace Boidsish {
 					day_time,
 					sun_dir,
 					static_cast<GLintptr>(render_state_.temporal.offset),
-					static_cast<GLintptr>(render_state_.frustum.offset)
+					static_cast<GLintptr>(render_state_.frustum.offset),
+					lod_projection_scalar
 				);
 
 				// 3. Dispatch terrain patch preparation (GPU culling/LOD)
 				// This populates the visibility SSBO that grass system needs.
-				terrain_render_manager->DispatchPreparePatches(effective_quality);
+				terrain_render_manager->DispatchPreparePatches(effective_quality, glm::vec2(render_width, render_height), lod_projection_scalar);
 
 				// 4. Update grass system
 				grass_manager->Update(
@@ -2717,6 +2781,10 @@ namespace Boidsish {
 		}
 
 		void RenderTransparentScene(const FrameData& frame) {
+			if (lightning_manager) {
+				lightning_manager->Render(frame.view, frame.projection);
+			}
+
 			if (early_effects_pass_ && compositor_) {
 				early_effects_pass_->Execute(frame, *compositor_);
 			}
@@ -4489,6 +4557,14 @@ namespace Boidsish {
 
 	WeatherManager* Visualizer::GetWeatherManager() {
 		return impl->weather_manager.get();
+	}
+
+	MoodManager* Visualizer::GetMoodManager() {
+		return impl->mood_manager.get();
+	}
+
+	LightningManager* Visualizer::GetLightningManager() {
+		return impl->lightning_manager.get();
 	}
 
 	PostProcessing::PostProcessingManager& Visualizer::GetPostProcessingManager() {

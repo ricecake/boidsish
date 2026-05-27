@@ -258,7 +258,6 @@ namespace Boidsish {
 
 		/**
 		 * @brief Manually set a target level for a weather attribute.
-		 * While an external target is set, the manager will not use noise-derived targets for this attribute.
 		 */
 		void SetTarget(WeatherAttribute attr, float target);
 
@@ -266,6 +265,30 @@ namespace Boidsish {
 		 * @brief Clear an externally set target, returning the attribute to autonomous control.
 		 */
 		void ClearTarget(WeatherAttribute attr);
+
+		void SetMin(WeatherAttribute attr, float min_val);
+		void ClearMin(WeatherAttribute attr);
+
+		void SetMax(WeatherAttribute attr, float max_val);
+		void ClearMax(WeatherAttribute attr);
+
+		void ClearAllConstraints();
+
+		bool IsStrictEnforcementEnabled() const { return strict_enforcement_; }
+		void SetStrictEnforcement(bool enabled);
+
+		float GetNudgeStiffness() const { return nudge_stiffness_; }
+		void  SetNudgeStiffness(float stiffness);
+
+		struct ActiveConstraint {
+			WeatherAttribute     attr;
+			std::optional<float> target;
+			std::optional<float> min;
+			std::optional<float> max;
+		};
+		std::vector<ActiveConstraint> GetActiveConstraints() const;
+
+		static std::string GetAttributeName(WeatherAttribute attr);
 
 		/**
 		 * @brief Set the pace (omega) of the critically dampened spring for a specific attribute.
@@ -314,6 +337,8 @@ namespace Boidsish {
 			float                velocity = 0.0f;
 			float                omega = 2.0f; // Default pace
 			std::optional<float> external_target;
+			std::optional<float> external_min;
+			std::optional<float> external_max;
 		};
 
 		void   InitializePresets();
@@ -329,6 +354,8 @@ namespace Boidsish {
 
 		bool  enabled_ = true;
 		bool  macro_sim_enabled_ = true;
+		bool  strict_enforcement_ = false;
+		float nudge_stiffness_ = 1.0f;
 		float time_scale_ = 0.005f;    // Low frequency over time
 		float spatial_scale_ = 0.001f; // Low frequency over space
 		float hold_threshold_ = 0.05f; // Noise-space distance threshold for updates

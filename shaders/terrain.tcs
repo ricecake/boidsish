@@ -62,112 +62,6 @@ void sampleHeightmap(vec2 uv, float slice, vec3 worldOffset, out vec3 worldPos, 
 	worldPos.z = worldOffset.z + uv.y * uChunkSize;
 }
 
-bool isLess(vec3 a, vec3 b) {
-	const float epsilon = 0.001;
-	if (abs(a.x - b.x) > epsilon)
-		return a.x < b.x;
-	if (abs(a.z - b.z) > epsilon)
-		return a.z < b.z;
-	if (abs(a.y - b.y) > epsilon)
-		return a.y < b.y;
-	return false;
-}
-
-float GetEdgeTessLevel(vec3 p0, vec3 p1, vec3 n0, vec3 n1) {
-	// Sort vertices deterministically to ensure shared edges between chunks
-	// produce identical results regardless of vertex order.
-	vec3 lp0 = p0;
-	vec3 lp1 = p1;
-	vec3 ln0 = n0;
-	vec3 ln1 = n1;
-	if (!isLess(lp0, lp1)) {
-		lp0 = p1;
-		lp1 = p0;
-		ln0 = n1;
-		ln1 = n0;
-	}
-
-	vec3  midPos = (lp0 + lp1) * 0.5;
-	float edgeLength = distance(lp0, lp1);
-
-	// 0. FRUSTUM CULLING
-	// Use stable world-space sphere check instead of clip-space W guarding
-	if (!isSphereInFrustum(midPos, edgeLength * 0.5 + 5.0 * worldScale)) {
-		return uTessLevelMin;
-	}
-
-	vec3  midNormal = normalize(ln0 + ln1);
-	float dist = min(distance(viewPos, lp0), distance(viewPos, lp1));
-
-	// 1. DISTANCE IMPORTANCE
-	// Use stable world-space distance instead of jittery screen-space projection
-	float distImportance = exp(-dist * (0.004 / worldScale));
-
-	// 2. SILHOUETTE BOOST
-	// High importance for edges that form the silhouette relative to camera
-	float silhouetteFactor = 1.0 - abs(dot(midNormal, viewDir));
-	float silhouetteImportance = silhouetteFactor * (1.0 - smoothstep(100.0 * worldScale, 800.0 * worldScale, dist));
-
-	// 3. CURVATURE BOOST
-	// High importance where surface normal changes rapidly
-	float curvatureFactor = 1.0 - dot(ln0, ln1);
-	float curvatureImportance = clamp(curvatureFactor * 15.0, 0.0, 1.0);
-
-	// 4. WATER/ALTITUDE BONUS
-	// Old logic preserved: high tessellation near water level
-	float waterImportance = 1.0 - smoothstep(0.0, 2.0 * worldScale, midPos.y);
-
-	// COMBINED IMPORTANCE SCORE [0, 1]
-	float importance = distImportance * (1.0 + silhouetteImportance * 4.0) * (1.0 + curvatureImportance * 4.0);
-	importance = clamp(max(importance, waterImportance), 0.0, 1.0);
-
-	// MAP TO STABLE DISCRETE LEVELS
-	// Concrete steps avoid "twitching" from tiny metric changes.
-	// fractional_odd_spacing handles the actual transition smoothly between these targets.
-	float level;
-	if (importance > 0.85)
-		level = uTessLevelMax;
-	else if (importance > 0.70)
-		level = floor(uTessLevelMax * 0.75);
-	else if (importance > 0.50)
-		level = uTessLevelMax * 0.5;
-	else if (importance > 0.30)
-		level = uTessLevelMax * 0.25;
-	else if (importance > 0.15)
-		level = uTessLevelMax * 0.125;
-	else if (importance > 0.05)
-		level = clamp(uTessLevelMin * 2.0, uTessLevelMin, uTessLevelMax);
-	else
-		level = uTessLevelMin;
-
-	return clamp(level * uTessQualityMultiplier, uTessLevelMin, uTessLevelMax);
-}
-
-float perturbLevel(vec3 worldPos, vec3 forward) {
-	if (uIsShadowPass) {
-		return 0.0;
-	}
-
-	// 1. DISTANCE FACTOR (The Base)
-	float dist = distance(viewPos, worldPos);
-	float distanceLevel = uTessLevelMax * exp(-dist * (0.005 / worldScale));
-	distanceLevel = clamp(distanceLevel, uTessLevelMin, uTessLevelMax);
-
-	// 2. FOCUS FACTOR (The Cull)
-	vec3  dirCamToVertex = normalize(worldPos - viewPos);
-	float align = dot(dirCamToVertex, forward);
-	float focusThreshold = mix(0.65, 0.45, clamp(worldScale / 10.0, 0.0, 1.0));
-	float focusCull = mix(0.60, smoothstep(focusThreshold, 1.0, align), smoothstep(100, 250, dist));
-
-	// 3. Y factor lock
-	float distanceMin = 20 * worldScale; // * smoothstep(10 * worldScale, 0, abs(worldPos.y - viewPos.y));
-
-	// COMBINE
-	float finalLevel = max(distanceMin, distanceLevel) * focusCull;
-
-	return clamp(finalLevel / float([[CHUNK_SIZE]]), 0.0, 1.0);
-}
-
 void main() {
 	// Pass through local position and UVs
 	LocalPos_TC_out[gl_InvocationID] = LocalPos_VS_out[gl_InvocationID];
@@ -190,7 +84,7 @@ void main() {
 	int drawID = DrawID_VS_out[0];
 	PatchTessLevels levels = patchTessLevels[drawID];
 	tessFactor_TC_out[gl_InvocationID] = levels.inner[0];
-	perturbFactor_TC_out[gl_InvocationID] = perturbLevel(pos, viewForward[gl_InvocationID]);
+	perturbFactor_TC_out[gl_InvocationID] = clamp(levels.inner[0] / float([[CHUNK_SIZE]]), 0.0, 1.0);
 
 	if (gl_InvocationID == 0) {
 		gl_TessLevelOuter[0] = levels.outer[0];

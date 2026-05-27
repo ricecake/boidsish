@@ -44,6 +44,8 @@ layout(std140, binding = [[LIGHTING_BINDING]]) uniform Lighting {
 	mat4  cloudShadowMatrix;
 	mat4  view;
 	mat4  projection;
+	vec3  lightningColor;
+	float lightningPulse;
 	vec4  sh_coeffs[9];
 };
 

@@ -16,6 +16,8 @@
 #define STYLE_LEAF 12
 #define STYLE_PETAL 13
 #define STYLE_BIRDS 14
+#define STYLE_DUST 15
+#define STYLE_FAIRY 16
 #define STYLE_IRIDESCENT 28
 
 // Must match the C++ struct layout in fire_effect_manager.cpp
@@ -78,7 +80,8 @@ struct ParticleStats {
 	uint count_bubbles;
 	uint count_fireflies;
 	uint count_snow;
-	uint _unused_counts[2];
+	uint count_fairies;
+	uint count_dust;
 
 	uint limit_birds;
 	uint limit_leaves;
@@ -86,7 +89,8 @@ struct ParticleStats {
 	uint limit_bubbles;
 	uint limit_fireflies;
 	uint limit_snow;
-	uint _unused_limits[2];
+	uint limit_fairies;
+	uint limit_dust;
 };
 
 #ifdef COMPUTE_SHADER

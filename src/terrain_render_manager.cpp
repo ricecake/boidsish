@@ -179,6 +179,8 @@ namespace Boidsish {
 			glDeleteTextures(1, &heightmap_texture_);
 		if (baked_params_texture_)
 			glDeleteTextures(1, &baked_params_texture_);
+		if (displacement_texture_)
+			glDeleteTextures(1, &displacement_texture_);
 		if (horizon_map_texture_)
 			glDeleteTextures(1, &horizon_map_texture_);
 		if (terrain_shadow_map_texture_)
@@ -301,7 +303,7 @@ namespace Boidsish {
 	}
 
 	void TerrainRenderManager::EnsureTextureCapacity(int required_slices) {
-		if (raw_heightmap_texture_ && heightmap_texture_ && baked_params_texture_ && biome_texture_ && required_slices <= max_chunks_) {
+		if (raw_heightmap_texture_ && heightmap_texture_ && baked_params_texture_ && displacement_texture_ && biome_texture_ && required_slices <= max_chunks_) {
 			return; // Already have enough capacity
 		}
 
@@ -348,6 +350,8 @@ namespace Boidsish {
 			heightmap_texture_ = 0;
 			glDeleteTextures(1, &baked_params_texture_);
 			baked_params_texture_ = 0;
+			glDeleteTextures(1, &displacement_texture_);
+			displacement_texture_ = 0;
 
 			if (biome_texture_) {
 				glDeleteTextures(1, &biome_texture_);
@@ -376,6 +380,7 @@ namespace Boidsish {
 		create_array(raw_heightmap_texture_, GL_RGBA16F, GL_RGBA, GL_FLOAT, true);
 		create_array(heightmap_texture_, GL_RGBA16F, GL_RGBA, GL_FLOAT, true);
 		create_array(baked_params_texture_, GL_RGBA16F, GL_RGBA, GL_FLOAT, true);
+		create_array(displacement_texture_, GL_RGBA16F, GL_RGBA, GL_FLOAT, true);
 
 		// Horizon map: 8 directions (8x8 resolution per chunk)
 		glGenTextures(1, &horizon_map_texture_);
@@ -634,7 +639,8 @@ namespace Boidsish {
 		float            day_time,
 		const glm::vec3& sun_dir,
 		GLintptr         temporal_ubo_offset,
-		GLintptr         frustum_ubo_offset
+		GLintptr         frustum_ubo_offset,
+		float            lod_projection_scalar
 	) {
 		PROJECT_PROFILE_SCOPE("TerrainRenderManager::PrepareForRender");
 
@@ -942,6 +948,10 @@ namespace Boidsish {
 		glBindTexture(GL_TEXTURE_2D_ARRAY, baked_params_texture_);
 		shader_base.trySetInt("uBakedParams", Constants::TextureUnit::TerrainBakedParams());
 
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainDisplacement());
+		glBindTexture(GL_TEXTURE_2D_ARRAY, displacement_texture_);
+		shader_base.trySetInt("u_displacementArray", Constants::TextureUnit::TerrainDisplacement());
+
 		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainHorizonMap());
 		glBindTexture(GL_TEXTURE_2D_ARRAY, horizon_map_texture_);
 		shader_base.trySetInt("u_terrainHorizonMap", Constants::TextureUnit::TerrainHorizonMap());
@@ -976,7 +986,7 @@ namespace Boidsish {
 		}
 	}
 
-	void TerrainRenderManager::DispatchPreparePatches(float tess_quality_multiplier) {
+	void TerrainRenderManager::DispatchPreparePatches(float tess_quality_multiplier, const glm::vec2& viewport_size, float lod_projection_scalar) {
 		PROJECT_PROFILE_SCOPE("TerrainRenderManager::DispatchPreparePatches");
 		std::lock_guard<std::recursive_mutex> lock(mutex_);
 
@@ -1025,6 +1035,7 @@ namespace Boidsish {
 		glClearBufferData(GL_SHADER_STORAGE_BUFFER, GL_R32UI, GL_RED_INTEGER, GL_UNSIGNED_INT, nullptr);
 
 		patch_prepare_shader_->use();
+		BindTerrainData(*patch_prepare_shader_);
 
 		uint32_t* indirect_data = reinterpret_cast<uint32_t*>(patch_indirect_pb_->GetFrameDataPtr());
 		indirect_data[4] = 4; // count (4 vertices per quad)
@@ -1067,9 +1078,11 @@ namespace Boidsish {
 		}
 
 		patch_prepare_shader_->setInt("u_numChunks", static_cast<int>(visible_instances_.size()));
-		patch_prepare_shader_->setFloat("u_tessLevelMax", 8.0f);
+		patch_prepare_shader_->setFloat("u_tessLevelMax", 64.0f);
 		patch_prepare_shader_->setFloat("u_tessLevelMin", 2.0f);
 		patch_prepare_shader_->setFloat("u_tessQualityMultiplier", tess_quality_multiplier);
+		patch_prepare_shader_->setVec2("u_viewportSize", viewport_size);
+		patch_prepare_shader_->setFloat("u_lodProjectionScalar", lod_projection_scalar);
 		patch_prepare_shader_->setFloat("u_worldScale", last_world_scale_);
 		patch_prepare_shader_->setVec3("u_viewPos", last_camera_pos_);
 		// View direction is derived from temporal data or frustum normally, but can be set here
@@ -1128,7 +1141,10 @@ namespace Boidsish {
 		// to make visibility results available for the grass system.
 		// If it wasn't, we'll do it now as a fallback.
 		if (needs_prep_) {
-			DispatchPreparePatches(tess_quality_multiplier);
+			// Calculate a conservative fallback projection scalar if none provided
+			// (Assuming 90 deg FOV if we're here, but ideally this path is rarely taken)
+			float fallback_scalar = viewport_size.y / (2.0f * 1.0f); // tan(45) = 1
+			DispatchPreparePatches(tess_quality_multiplier, viewport_size, fallback_scalar);
 		}
 
 		// 2. Render visible patches using MDI
@@ -1138,7 +1154,7 @@ namespace Boidsish {
 		shader.setVec2("uViewportSize", viewport_size);
 		shader.setMat4("model", glm::mat4(1.0f));
 		shader.setFloat("uTessQualityMultiplier", tess_quality_multiplier);
-		shader.setFloat("uTessLevelMax", 8.0f);
+		shader.setFloat("uTessLevelMax", 64.0f);
 		shader.setFloat("uTessLevelMin", 2.0f);
 		shader.setFloat("uChunkSize", chunk_size_ * last_world_scale_);
 		shader.setFloat("uRawChunkSize", static_cast<float>(chunk_size_));
@@ -1164,6 +1180,10 @@ namespace Boidsish {
 		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainBakedParams());
 		glBindTexture(GL_TEXTURE_2D_ARRAY, baked_params_texture_);
 		shader.trySetInt("uBakedParams", Constants::TextureUnit::TerrainBakedParams());
+
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainDisplacement());
+		glBindTexture(GL_TEXTURE_2D_ARRAY, displacement_texture_);
+		shader.trySetInt("u_displacementArray", Constants::TextureUnit::TerrainDisplacement());
 
 		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::NoiseSimplex());
 		glBindTexture(GL_TEXTURE_3D, noise_texture_);
@@ -1260,6 +1280,7 @@ namespace Boidsish {
 		// Bind output textures as images
 		glBindImageTexture(Constants::TextureUnit::TerrainHeightmapImage(), heightmap_texture_, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 		glBindImageTexture(Constants::TextureUnit::TerrainBakedParamsImage(), baked_params_texture_, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+		glBindImageTexture(Constants::TextureUnit::TerrainDisplacementImage(), displacement_texture_, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 
 		// Bind UBOs
 		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::TerrainData(), terrain_data_ubo_);
@@ -1294,6 +1315,10 @@ namespace Boidsish {
 			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainHeightmap());
 			glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture_);
 			patch_metrics_shader_->setInt("u_heightmapArray", Constants::TextureUnit::TerrainHeightmap());
+
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainBakedParams());
+			glBindTexture(GL_TEXTURE_2D_ARRAY, baked_params_texture_);
+			patch_metrics_shader_->setInt("u_bakedParamsArray", Constants::TextureUnit::TerrainBakedParams());
 
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainPatchMetrics(), patch_metrics_ssbo_);
 			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Biomes(), biome_ubo_);
