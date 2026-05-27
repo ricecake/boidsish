@@ -92,6 +92,8 @@ namespace Boidsish {
 			GLuint clear_val[4] = { 0, 0, 0, 0 };
 			glClearBufferData(GL_SHADER_STORAGE_BUFFER, GL_RGBA32UI, GL_RGBA, GL_UNSIGNED_INT, clear_val);
 
+			int next_history = 1 - history_index_;
+
 			auto& loc = ServiceLocator::Instance();
 			auto shadow_mgr = loc.Get<ShadowManager>();
 			auto terrain_mgr = loc.Get<TerrainRenderManager>();
@@ -131,13 +133,14 @@ namespace Boidsish {
 
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::VolumetricInjectionBuffer(), injection_buffer_);
 			glBindImageTexture(Constants::ImageBinding::VolumetricInjection(), injection_texture_, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+			glBindImageTexture(Constants::ImageBinding::VolumetricHistory(), history_textures_[next_history], 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 
 			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::VolumetricHistory());
 			glBindTexture(GL_TEXTURE_3D, history_textures_[history_index_]);
 			injection_shader_->setInt("uHistoryTexture", Constants::TextureUnit::VolumetricHistory());
 
 			glDispatchCompute((grid_res_x_ + 7) / 8, (grid_res_y_ + 7) / 8, (grid_res_z_ * num_cascades_ + 3) / 4);
-			glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+			glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
 			// 1.5 Particle Splatting
 			splat_shader_->use();
@@ -149,7 +152,7 @@ namespace Boidsish {
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::VolumetricInjectionBuffer(), injection_buffer_);
 
 			glDispatchCompute((Constants::Class::Particles::MaxParticles() + 255) / 256, 1, 1);
-			glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+			glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
 
 			// 2. Integration (Accumulate along Z)
 			integration_shader_->use();
@@ -160,13 +163,6 @@ namespace Boidsish {
 			glBindTexture(GL_TEXTURE_3D, injection_texture_);
 
 			glBindImageTexture(Constants::ImageBinding::VolumetricScattering(), scattering_texture_, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
-
-			glDispatchCompute(grid_res_x_, grid_res_y_, 1);
-			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
-
-			// Copy to history for next frame
-			int next_history = 1 - history_index_;
-			glBindImageTexture(Constants::ImageBinding::VolumetricHistory(), history_textures_[next_history], 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 
 			glDispatchCompute(grid_res_x_, grid_res_y_, 1);
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
