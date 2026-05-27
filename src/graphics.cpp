@@ -1448,8 +1448,10 @@ namespace Boidsish {
 			const auto& batch_packets = is_shadow_pass ? queue.GetPackets(RenderLayer::Opaque) : packets;
 			const auto& valid_indices = is_shadow_pass ? queue.GetShadowIndices() : queue.GetValidIndices(layer);
 
-			// Store the global start index for this pass's batches within the SSBO
-			uint32_t mdi_pass_start_index = mdi_uniform_count;
+			// Store the global start indices for this pass's data within the SSBOs
+			uint32_t mdi_pass_uniform_start = mdi_uniform_count;
+			uint32_t mdi_pass_elements_start = mdi_elements_count;
+			uint32_t mdi_pass_arrays_start = mdi_arrays_count;
 
 			for (const auto& batch : batches) {
 				uint32_t batch_packet_start = batch.base_uniform_index;
@@ -1516,8 +1518,9 @@ namespace Boidsish {
 			);
 
 			// Hi-Z occlusion culling dispatch (between uniform fill and draw calls)
+			uint32_t pass_draw_count = mdi_uniform_count - mdi_pass_uniform_start;
 			if (dispatch_hiz_occlusion && occlusion_cull_shader_ && occlusion_cull_shader_->isValid() && hiz_manager &&
-			    hiz_manager->IsInitialized() && mdi_uniform_count > 0) {
+			    hiz_manager->IsInitialized() && pass_draw_count > 0) {
 				occlusion_cull_shader_->use();
 
 				// Bind uniforms SSBO (current frame's data) for compute to read AABBs
@@ -1525,8 +1528,8 @@ namespace Boidsish {
 					GL_SHADER_STORAGE_BUFFER,
 					Constants::SsboBinding::CommonUniforms(),
 					uniforms_ssbo->GetBufferId(),
-					frame_element_offset * sizeof(CommonUniforms),
-					mdi_uniform_count * sizeof(CommonUniforms)
+					(frame_element_offset + mdi_pass_uniform_start) * sizeof(CommonUniforms),
+					pass_draw_count * sizeof(CommonUniforms)
 				);
 
 				// Bind visibility SSBO for compute to write
@@ -1542,13 +1545,13 @@ namespace Boidsish {
 				occlusion_cull_shader_->setInt("u_hizTexture", Constants::TextureUnit::HiZ());
 
 				// Set uniforms
-				occlusion_cull_shader_->setInt("u_drawCount", static_cast<int>(mdi_uniform_count));
-				occlusion_cull_shader_->setUint("u_baseVisibilityIndex", 0);
+				occlusion_cull_shader_->setInt("u_drawCount", static_cast<int>(pass_draw_count));
+				occlusion_cull_shader_->setUint("u_baseVisibilityIndex", mdi_pass_uniform_start);
 				occlusion_cull_shader_->setIVec2("u_hizSize", hiz_manager->GetWidth(), hiz_manager->GetHeight());
 				occlusion_cull_shader_->setInt("u_hizMipCount", hiz_manager->GetMipCount());
 				occlusion_cull_shader_->setFloat("u_screenExpansion", 4.0f);
 
-				glDispatchCompute((mdi_uniform_count + 63) / 64, 1, 1);
+				glDispatchCompute((pass_draw_count + 63) / 64, 1, 1);
 				glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 			}
 
@@ -1605,7 +1608,7 @@ namespace Boidsish {
 				// s->setBool("uUseMDI", true); // Moved below SSBO binding
 
 				// Bind SSBO for this batch's uniforms (replaces uBaseUniformIndex)
-				uint32_t batch_global_index = mdi_pass_start_index + (batch.base_uniform_index);
+				uint32_t batch_global_index = mdi_pass_uniform_start + (batch.base_uniform_index);
 				glBindBufferRange(
 					GL_SHADER_STORAGE_BUFFER,
 					Constants::SsboBinding::CommonUniforms(),
@@ -1694,7 +1697,7 @@ namespace Boidsish {
 						batch.draw_mode,
 						batch.index_type,
 						(void*)(uintptr_t)(indirect_elements_buffer->GetFrameOffset() +
-					                       batch.first_command * sizeof(DrawElementsIndirectCommand)),
+					                       (mdi_pass_elements_start + batch.first_command) * sizeof(DrawElementsIndirectCommand)),
 						batch.command_count,
 						sizeof(DrawElementsIndirectCommand)
 					);
@@ -1703,7 +1706,7 @@ namespace Boidsish {
 					glMultiDrawArraysIndirect(
 						batch.draw_mode,
 						(void*)(uintptr_t)(indirect_arrays_buffer->GetFrameOffset() +
-					                       batch.first_command * sizeof(DrawArraysIndirectCommand)),
+					                       (mdi_pass_arrays_start + batch.first_command) * sizeof(DrawArraysIndirectCommand)),
 						batch.command_count,
 						sizeof(DrawArraysIndirectCommand)
 					);
