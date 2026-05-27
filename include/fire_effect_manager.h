@@ -62,6 +62,16 @@ namespace Boidsish {
 		int       _padding_emitter[2];
 	};
 
+	struct FireUpdateWork {
+		std::vector<Emitter>   emitters;
+		std::vector<glm::vec4> slice_points;
+		bool                   needs_reallocation = false;
+		float                  delta_time;
+		float                  time;
+		bool                   enabled;
+		float                  ambient_density;
+	};
+
 	class FireEffectManager: public IManager {
 	public:
 		FireEffectManager(ServiceLocator& loc);
@@ -72,6 +82,30 @@ namespace Boidsish {
 
 		// Returns true if fire effects are available (compute shader compiled successfully)
 		bool IsAvailable() const;
+
+		FireUpdateWork PrepareUpdate(
+			float delta_time,
+			float time,
+			bool  enabled = true,
+			float ambient_density = 0.15f
+		);
+
+		void ApplyUpdate(
+			const FireUpdateWork&         work,
+			const std::vector<glm::vec4>& chunk_info = {},
+			GLuint                        heightmap_texture = 0,
+			GLuint                        curl_noise_texture = 0,
+			GLuint                        biome_texture = 0,
+			GLuint                        lighting_ubo = 0,
+			GLintptr                      lighting_ubo_offset = 0,
+			GLsizeiptr                    lighting_ubo_size = 0,
+			GLuint                        frustum_ubo = 0,
+			GLintptr                      frustum_offset = 0,
+			GLuint                        extra_noise_texture = 0,
+			GLuint                        visual_effects_ubo = 0,
+			GLintptr                      vfx_offset = 0,
+			GLsizeiptr                    vfx_size = 0
+		);
 
 		void Update(
 			float                         delta_time,
@@ -141,10 +175,12 @@ namespace Boidsish {
 		std::unique_ptr<PersistentBuffer<int>> indirection_buffer_;
 		GLuint terrain_chunk_buffer_{0};
 		GLuint slice_data_buffer_{0};
+		std::unique_ptr<PersistentBuffer<glm::vec4>> terrain_chunk_pb_;
+		std::unique_ptr<PersistentBuffer<glm::vec4>> slice_data_pb_;
 		GLuint visible_indices_buffer_{0};
 		GLuint live_indices_buffer_{0};
-		GLuint draw_command_buffer_{0};
-		GLuint behavior_command_buffer_{0};
+		std::unique_ptr<PersistentBuffer<uint32_t>> draw_command_pb_;
+		std::unique_ptr<PersistentBuffer<uint32_t>> behavior_command_pb_;
 		std::unique_ptr<PersistentBuffer<ParticleStats>> stats_buffer_;
 		GLuint dummy_vao_{0};
 
