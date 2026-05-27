@@ -2,6 +2,9 @@
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 4) in;
 
+// Shared memory for neighborhood statistics (8x8x4 workgroup)
+shared vec4 s_current[8 * 8 * 4];
+
 struct VolumetricData {
     uint radiance_r;
     uint radiance_g;
@@ -85,17 +88,22 @@ float getObliquity(ivec2 voxXY, vec3 jitter) {
 
 void main() {
     ivec3 vox = ivec3(gl_GlobalInvocationID.xyz);
-    if (vox.x >= u_grid_res.x || vox.y >= u_grid_res.y || vox.z >= u_grid_res.z * NUM_CASCADES) return;
+    bool out_of_bounds = (vox.x >= u_grid_res.x || vox.y >= u_grid_res.y || vox.z >= u_grid_res.z * NUM_CASCADES);
 
-    // Jitter for temporal AA / stochastic sampling
-    // Animate jitter coordinates using frameIndex to prevent persistent sampling bias
-    ivec2 noiseCoords = vox.xy + ivec2(vox.z * 13, vox.z * 17);
-    noiseCoords += ivec2(frameIndex * 7, frameIndex * 13);
+    // 1. Calculate current local scattering and extinction
+    vec4 current_local = vec4(0.0);
+    vec3 blueNoise = vec3(0.0);
+    vec3 worldPos = vec3(0.0);
 
-    vec3 blueNoise = fract(texelFetch(uBlueNoise, noiseCoords / textureSize(uBlueNoise, 0), 0).rgb   * 0.61803398875);
+    if (!out_of_bounds) {
+        // Animate jitter coordinates using frameIndex to prevent persistent sampling bias
+        ivec2 noiseCoords = vox.xy + ivec2(vox.z * 13, vox.z * 17);
+        noiseCoords += ivec2(frameIndex * 7, frameIndex * 13);
 
-    // Use jitter in [0, 1] range which is centered on froxel centers (vox + 0.5)
-    vec3 worldPos = worldFromFroxel(vox, blueNoise);
+        blueNoise = fract(texelFetch(uBlueNoise, noiseCoords / textureSize(uBlueNoise, 0), 0).rgb   * 0.61803398875);
+
+        // Use jitter in [0, 1] range which is centered on froxel centers (vox + 0.5)
+        worldPos = worldFromFroxel(vox, blueNoise);
 
     // Calculate scattering and extinction
     Sampling s = getAtmospherePropertiesAtPos(worldPos);
@@ -226,14 +234,26 @@ void main() {
 
 */
 
-    radiance *= uIntensity * 3.0; // Boosted intensity for prominence
+        radiance *= uIntensity * 3.0; // Boosted intensity for prominence
 
-    // Convert atmospheric coefficients from per-KM to per-meter
-    float obliquity = getObliquity(vox.xy, blueNoise);
-    vec3 mieCoeff = s.mie * 0.001 * obliquity;
-    float extinctionCoeff = (s.rayleigh.r + s.rayleigh.g + s.rayleigh.b + s.mie.r + s.mie.g + s.mie.b) / 3.0 * 0.001 * obliquity;
+        // Convert atmospheric coefficients from per-KM to per-meter
+        float obliquity = getObliquity(vox.xy, blueNoise);
+        vec3 mieCoeff = s.mie * 0.001 * obliquity;
+        float extinctionCoeff = (s.rayleigh.r + s.rayleigh.g + s.rayleigh.b + s.mie.r + s.mie.g + s.mie.b) / 3.0 * 0.001 * obliquity;
 
-    vec4 current = vec4(radiance * mieCoeff, extinctionCoeff);
+        current_local = vec4(radiance * mieCoeff, extinctionCoeff);
+    }
+
+    // 2. Populate shared memory for neighborhood clamping
+    ivec3 l_id = ivec3(gl_LocalInvocationID.xyz);
+    int flat_id = int(l_id.z * 64 + l_id.y * 8 + l_id.x);
+    s_current[flat_id] = current_local;
+
+    barrier();
+
+    if (out_of_bounds) return;
+
+    vec4 current = current_local;
 
     // Temporal accumulation
     if (uTemporalAlpha > 0.0) {
@@ -276,7 +296,54 @@ void main() {
 
                 vec4 history = texture(uHistoryTexture, vec3(prevUV.xy, w));
                 if (all(greaterThanEqual(history, vec4(0.0))) && all(lessThanEqual(history, vec4(1000.0)))) {
-                    current = mix(current, history, uTemporalAlpha);
+                    // --- Neighborhood Clamping ---
+                    vec4 m1 = vec4(0.0);
+                    vec4 m2 = vec4(0.0);
+                    int count = 0;
+
+                    for (int z = -1; z <= 1; ++z) {
+                        for (int y = -1; y <= 1; ++y) {
+                            for (int x = -1; x <= 1; ++x) {
+                                ivec3 neighbor_l_id = l_id + ivec3(x, y, z);
+                                if (all(greaterThanEqual(neighbor_l_id, ivec3(0))) && all(lessThan(neighbor_l_id, ivec3(8, 8, 4)))) {
+                                    vec4 val = s_current[neighbor_l_id.z * 64 + neighbor_l_id.y * 8 + neighbor_l_id.x];
+                                    m1 += val;
+                                    m2 += val * val;
+                                    count++;
+                                }
+                            }
+                        }
+                    }
+
+                    vec4 mean = m1 / float(count);
+                    vec4 stddev = sqrt(max(vec4(0.0), (m2 / float(count)) - (mean * mean)));
+
+                    // Clamp history to current neighborhood
+                    float gamma = 1.2; // Tighter clamping for volume to reduce ghosting
+                    vec4 minColor = mean - gamma * stddev;
+                    vec4 maxColor = mean + gamma * stddev;
+                    history = clamp(history, minColor, maxColor);
+
+                    // --- Adaptive Temporal Alpha ---
+                    float activeAlpha = uTemporalAlpha;
+
+                    // 1. Luminance-based adaptation
+                    float currentLum = dot(current.rgb, vec3(0.2126, 0.7152, 0.0722));
+                    float historyLum = dot(history.rgb, vec3(0.2126, 0.7152, 0.0722));
+                    float lumDiff = abs(currentLum - historyLum) / (max(currentLum, historyLum) + 0.01);
+
+                    // Reduce alpha if there's a significant change in local luminance
+                    activeAlpha *= 1.0 - smoothstep(0.1, 0.5, lumDiff);
+
+                    // 2. Lightning pulse adaptation
+                    // If a flash is happening, we want to react almost instantly
+                    activeAlpha *= 1.0 - clamp(lightningPulse * 2.0, 0.0, 1.0);
+
+                    // 3. Stability check (high variance = low alpha)
+                    float spatialStd = dot(stddev.rgb, vec3(0.2126, 0.7152, 0.0722));
+                    activeAlpha *= clamp(1.0 - (spatialStd / (currentLum + 0.001)), 0.0, 1.0);
+
+                    current = mix(current, history, clamp(activeAlpha, 0.0, 0.99));
                 }
             }
         }
