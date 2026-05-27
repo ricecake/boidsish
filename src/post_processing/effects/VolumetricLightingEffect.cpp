@@ -90,7 +90,7 @@ namespace Boidsish {
 			// Clear particle buffer for the new frame
 			glBindBuffer(GL_SHADER_STORAGE_BUFFER, injection_buffer_);
 			GLuint clear_val[4] = { 0, 0, 0, 0 };
-			glClearBufferData(GL_SHADER_STORAGE_BUFFER, GL_RGBA32UI, GL_RGBA, GL_UNSIGNED_INT, clear_val);
+			glClearBufferData(GL_SHADER_STORAGE_BUFFER, GL_RGBA32UI, GL_RGBA_INTEGER, GL_UNSIGNED_INT, clear_val);
 
 			auto& loc = ServiceLocator::Instance();
 			auto shadow_mgr = loc.Get<ShadowManager>();
