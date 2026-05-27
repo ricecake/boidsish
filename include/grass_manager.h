@@ -9,6 +9,8 @@
 #include <array>
 #include "constants.h"
 #include "biome_properties.h"
+#include "geometry.h"
+#include "persistent_buffer.h"
 #include "render_shader.h"
 
 namespace Boidsish {
@@ -45,12 +47,26 @@ namespace Boidsish {
         float _pad1 = 0.0f;
     };
 
+    struct GrassUpdateWork {
+        float deltaTime;
+        float time;
+        bool props_dirty;
+        std::array<GrassProperties, 8> biome_grass_props;
+        GlobalGrassProperties global_props;
+        bool is_enabled;
+    };
+
     class GrassManager {
     public:
         GrassManager(ServiceLocator& loc);
         ~GrassManager();
 
         void Initialize();
+
+        GrassUpdateWork PrepareUpdate(float deltaTime, float time);
+
+        void ApplyUpdate(const GrassUpdateWork& work, const struct Camera& camera, const class ITerrainGenerator& terrainGen, std::shared_ptr<class TerrainRenderManager> renderManager);
+
         void Update(float deltaTime, float time, const struct Camera& camera, const class ITerrainGenerator& terrainGen, std::shared_ptr<class TerrainRenderManager> renderManager);
 
         struct RenderResources {
@@ -91,7 +107,7 @@ namespace Boidsish {
             props_dirty_ = true;
         }
 
-        uint32_t GetGrassPropsUbo() const { return grass_props_ubo_; }
+        uint32_t GetGrassPropsUbo() const { return grass_props_pb_ ? grass_props_pb_->GetBufferId() : 0; }
 
     private:
         bool initialized_ = false;
@@ -100,9 +116,9 @@ namespace Boidsish {
         GlobalGrassProperties global_props_;
         bool props_dirty_ = false;
 
-        uint32_t grass_props_ubo_ = 0;
+        std::unique_ptr<PersistentBuffer<uint8_t>> grass_props_pb_;
         uint32_t grass_instances_ssbo_ = 0;
-        uint32_t grass_indirect_buffer_ = 0;
+        std::unique_ptr<PersistentBuffer<DrawArraysIndirectCommand>> grass_indirect_pb_;
         uint32_t grass_tasks_ssbo_ = 0;
 
         std::unique_ptr<class ComputeShader> placement_shader_;

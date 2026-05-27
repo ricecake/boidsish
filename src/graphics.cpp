@@ -2547,12 +2547,44 @@ namespace Boidsish {
 				terrain_generator->Update(generator_frustum, camera);
 			}
 
+			// --- Prepare systems in parallel ---
+			auto fire_future = thread_pool.submit([this, dt = simulation_delta_time, t = simulation_time, density = frame_config_.ambient_particle_density]() {
+				return fire_effect_manager->PrepareUpdate(
+					dt,
+					t,
+					ConfigManager::GetInstance().GetAppSettingBool("particles_enabled", true),
+					density
+				);
+			});
+
+			auto decor_future = thread_pool.submit([this, dt = simulation_delta_time, cam = camera, frustum = generator_frustum]() {
+				return decor_manager->PrepareUpdate(
+					dt,
+					cam,
+					frustum,
+					*terrain_generator,
+					terrain_render_manager
+				);
+			});
+
+			auto grass_future = thread_pool.submit([this, dt = simulation_delta_time, t = simulation_time]() {
+				return grass_manager->PrepareUpdate(dt, t);
+			});
+
+			// Logical updates that are currently safe on main thread while others prepare
 			clone_manager->Update(simulation_time, camera.pos());
-			fire_effect_manager->Update(
-				simulation_delta_time,
-				simulation_time,
-				ConfigManager::GetInstance().GetAppSettingBool("particles_enabled", true),
-				frame_config_.ambient_particle_density,
+			mesh_explosion_manager->Update(simulation_delta_time, simulation_time);
+			sound_effect_manager->Update(simulation_delta_time);
+			shockwave_manager->Update(simulation_delta_time);
+			if (akira_effect_manager && terrain_generator) {
+				akira_effect_manager->Update(simulation_delta_time, *terrain_generator);
+			}
+			lightning_manager->Update(simulation_delta_time, simulation_time);
+
+			// --- Synchronize and Apply ---
+			FireUpdateWork fire_work = fire_future.get();
+			fire_effect_manager->ApplyUpdate(
+				fire_work,
 				terrain_render_manager ? terrain_render_manager->GetChunkInfo(terrain_generator->GetWorldScale())
 									   : std::vector<glm::vec4>{},
 				terrain_render_manager ? terrain_render_manager->GetHeightmapTexture() : 0,
@@ -2568,19 +2600,13 @@ namespace Boidsish {
 				static_cast<GLintptr>(render_state_.visual_effects.offset),
 				static_cast<GLsizeiptr>(render_state_.visual_effects.size)
 			);
-			mesh_explosion_manager->Update(simulation_delta_time, simulation_time);
-			sound_effect_manager->Update(simulation_delta_time);
-			shockwave_manager->Update(simulation_delta_time);
-			if (akira_effect_manager && terrain_generator) {
-				akira_effect_manager->Update(simulation_delta_time, *terrain_generator);
-			}
-			lightning_manager->Update(simulation_delta_time, simulation_time);
 
 			sdf_volume_manager->UpdateSSBO();
 			sdf_volume_manager->BindSSBO(Constants::SsboBinding::SdfVolumes());
 			shockwave_manager->UpdateShaderData();
 			shockwave_manager->BindUBO(Constants::UboBinding::Shockwaves());
 
+			DecorUpdateWork decor_work = decor_future.get();
 			if (decor_manager && terrain_generator && terrain_render_manager) {
 				decor_manager->SetMinPixelSize(
 					ConfigManager::GetInstance().GetAppSettingFloat("foliage_culling_pixel_threshold", 8.0f)
@@ -2591,15 +2617,10 @@ namespace Boidsish {
 				if (noise_manager) {
 					decor_manager->SetNoiseManager(noise_manager.get());
 				}
-				decor_manager->Update(
-					simulation_delta_time,
-					camera,
-					generator_frustum,
-					*terrain_generator,
-					terrain_render_manager
-				);
+				decor_manager->ApplyUpdate(decor_work, terrain_render_manager);
 			}
 
+			GrassUpdateWork grass_work = grass_future.get();
 			if (grass_manager && terrain_generator && terrain_render_manager) {
 				grass_manager->SetCameraPos(camera.pos());
 
