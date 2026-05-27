@@ -647,7 +647,7 @@ void main() {
 			vec3 flowDir = normalize(surfaceDown + vec3(0.00001, 0.0, 0.0));
 			float flowSpeed = 2.0;
 			vec3 p_flow = (FragPos + -flowDir * time * flowSpeed) * 1.5;
-			vec3 flowNoise = fastCurl3d(p_flow * 0.08);
+			vec3 flowNoise = fastCurl3d(p_flow * 0.08 * mix(1.0, 0.1, smoothstep(50.0, 55.0, realDist)));
 
 			// Create animated streaks
 			float streaks = smoothstep(0.3, 0.8, abs(flowNoise.x));
