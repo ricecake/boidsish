@@ -82,7 +82,7 @@ namespace Boidsish {
 				if (a.textures.size() != b.textures.size())
 					return false;
 				for (size_t j = 0; j < a.textures.size(); ++j) {
-					if (a.textures[j].id != b.textures[j].id)
+					if (a.textures[j].id != b.textures[j].id || a.textures[j].type != b.textures[j].type)
 						return false;
 				}
 			}
