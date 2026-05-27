@@ -4,8 +4,6 @@
 #include "helpers/constants.glsl"
 #include "frustum.glsl"
 
-const float kEnvQueueRadius = 50.0;
-
 void spawnDustParticle(
 	inout Particle p,
 	uint           gid,
@@ -395,6 +393,9 @@ void spawnDustParticle(
 void spawnEnvironmentalQueue(inout Particle p, uint gid, float time, vec3 viewPos) {
 	vec2 seed = vec2(float(gid) * 0.123, time * 0.456);
 
+	// Random spawn chance to spread spawning over time
+	if (rand(seed + 0.77) > 0.1) return;
+
 	// Determine which style to spawn based on weather and quotas
 	int selected_style = -1;
 	float dust_threshold = clamp(1.0 - wetness, 0.0, 1.0) * step(0.1, wind_strength);
@@ -410,7 +411,13 @@ void spawnEnvironmentalQueue(inout Particle p, uint gid, float time, vec3 viewPo
 	if (selected_style != -1) {
 		vec3 rand_offset = rand3(seed) * 2.0 - 1.0;
 
-		p.pos.xyz = viewPos + rand_offset * kEnvQueueRadius;
+		p.pos.xyz = viewPos + rand_offset * K_ENV_QUEUE_RADIUS;
+
+		// Bias precipitation to spawn above camera
+		if (selected_style == STYLE_RAIN || selected_style == STYLE_SNOW) {
+			p.pos.y = viewPos.y + abs(rand_offset.y) * K_ENV_QUEUE_RADIUS;
+		}
+
 		p.pos.w = 10.0 + 5.0 * rand(seed.yx); // Longer lifetime for wrapping
 
 		p.style = selected_style;

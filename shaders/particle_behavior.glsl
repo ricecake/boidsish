@@ -3,8 +3,6 @@
 
 #include "helpers/spatial_hash.glsl"
 #include "particle_helpers.glsl"
-
-const float kEnvQueueRadius = 50.0;
 #include "particle_types.glsl"
 #include "visual_effects.glsl"
 #include "helpers/wind.glsl"
@@ -519,6 +517,7 @@ void updateEnvironmentalQueueBehavior(
 	float          dt,
 	float          time,
 	vec3           viewPos,
+	sampler3D      curlTexture,
 	int            num_chunks,
 	sampler2DArray heightmapArray
 ) {
@@ -534,13 +533,23 @@ void updateEnvironmentalQueueBehavior(
 		p.vel.w = 8.0;
 	}
 
+	// Apply curl noise for non-uniform movement
+	float curlInfluence = (p.style == STYLE_RAIN) ? 0.5 : 2.0;
+	p.vel.xyz += curlNoise(p.pos.xyz, time, curlTexture) * curlInfluence * dt;
+
 	p.pos.xyz += p.vel.xyz * dt;
 
-	// Toroidal wrapping relative to camera
-	vec3  relPos = p.pos.xyz - viewPos;
-	float dist = length(relPos);
-	if (dist > kEnvQueueRadius) {
-		p.pos.xyz = viewPos - (relPos / dist) * (kEnvQueueRadius - 0.5);
+	// Toroidal wrapping relative to camera (Box-based)
+	vec3 relPos = p.pos.xyz - viewPos;
+
+	if (abs(relPos.x) > K_ENV_QUEUE_RADIUS) {
+		p.pos.x = viewPos.x - sign(relPos.x) * (K_ENV_QUEUE_RADIUS - 0.5);
+	}
+	if (abs(relPos.y) > K_ENV_QUEUE_RADIUS) {
+		p.pos.y = viewPos.y - sign(relPos.y) * (K_ENV_QUEUE_RADIUS - 0.5);
+	}
+	if (abs(relPos.z) > K_ENV_QUEUE_RADIUS) {
+		p.pos.z = viewPos.z - sign(relPos.z) * (K_ENV_QUEUE_RADIUS - 0.5);
 	}
 
 	if (p.style != STYLE_DUST && handleTerrainCollision(p, num_chunks, heightmapArray)) {
@@ -632,7 +641,7 @@ void updateBehavior(
 			heightmapArray
 		);
 	} else if (p.emitter_id == -2) {
-		updateEnvironmentalQueueBehavior(p, dt, time, viewPos, num_chunks, heightmapArray);
+		updateEnvironmentalQueueBehavior(p, dt, time, viewPos, curlTexture, num_chunks, heightmapArray);
 	} else {
 		updateFireBehavior(p, dt, time, curlTexture, num_chunks, heightmapArray);
 	}
