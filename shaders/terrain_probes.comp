@@ -344,9 +344,9 @@ void main() {
 	}
 
 	// Priority-based update parameters
-	int dynamicStagger = int(mix(16.0, 8.0, focusWeight));
-	int rayCount = int(mix(1.0, 18.0, focusWeight)) * u_probeRayMultiplier;
-	float alpha = mix(0.35, 0.05, focusWeight) * u_probeConvergenceSpeed;
+	int dynamicStagger = int(mix(12.0, 4.0, focusWeight));
+	int rayCount = int(mix(2.0, 20.0, focusWeight)) * u_probeRayMultiplier;
+	float alpha = mix(0.35, 0.15, focusWeight) * u_probeConvergenceSpeed;
 
 	uint sequenceSeed = hash2D(worldProbeCoord);
 
@@ -390,12 +390,15 @@ void main() {
 		neighborLumVariance /= validNeighbors;
 	}
 
-	bool isAggressive = (u_frameIndex % uint(u_originSize.z * u_originSize.z)) == uint(flatIdx);
+	// Update ~512 probes aggressively each frame (~1/512 of total probes)
+	// This ensures every probe is refreshed fully at least every ~8 seconds at 60fps
+	bool isAggressive = (u_frameIndex % 512) == (uint(flatIdx) % 512);
+
 	float neighborStaggerScale = clamp(neighborLumVariance * 5.0, 0.0, 1.0);
 
 	if (isAggressive) {
-		rayCount = 32;
-		// alpha *= 1.25;
+		rayCount = max(rayCount, 32);
+		alpha = max(alpha, 0.25);
 	}
 	rayCount = int(mix(float(rayCount), float(rayCount) * 2.0, neighborStaggerScale));
 

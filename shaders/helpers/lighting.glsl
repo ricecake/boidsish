@@ -425,11 +425,13 @@ vec3 getSpatialAmbientSH(vec3 worldPos, vec3 N) {
 	}
 
 	// Smooth boundary fading for environmental bounce
-	// Distance from edge of the active grid in chunks
+	// Distance from edge of the active grid in probes
 	vec2 centerOffset = abs(gridPos - (vec2(u_originSize.xy) + float(u_originSize.z) * 0.5));
 	float maxDist = float(u_originSize.z) * 0.5;
 	float distToEdge = maxDist - max(centerOffset.x, centerOffset.y);
-	float bounceFade = clamp(smoothstep(0.0, 0.50, distToEdge), 0.125, 1.0); // Fade over last 2 chunks
+
+	// Fade over the outer 8 probes (typically ~2 chunks worth of distance)
+	float bounceFade = clamp(smoothstep(0.0, 8.0, distToEdge), 0.125, 1.0);
 
 	vec4 interpolatedCoeffs[9];
 	if (totalWeight > 0.001) {
