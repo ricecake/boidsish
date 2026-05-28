@@ -21,6 +21,7 @@ namespace Boidsish {
 		uint32_t count_bubbles;
 		uint32_t count_fireflies;
 		uint32_t count_snow;
+		uint32_t count_rain;
 		uint32_t count_fairies;
 		uint32_t count_dust;
 
@@ -30,6 +31,7 @@ namespace Boidsish {
 		uint32_t limit_bubbles;
 		uint32_t limit_fireflies;
 		uint32_t limit_snow;
+		uint32_t limit_rain;
 		uint32_t limit_fairies;
 		uint32_t limit_dust;
 	};
