@@ -2131,6 +2131,12 @@ namespace Boidsish {
 			temporal_pb->AdvanceFrame();
 			if (visual_effects_pb) visual_effects_pb->AdvanceFrame();
 
+			// Advance manager-specific persistent buffers
+			if (fire_effect_manager) fire_effect_manager->AdvanceFrame();
+			if (decor_manager) decor_manager->AdvanceFrame();
+			if (weather_manager) weather_manager->AdvanceFrame();
+			if (shadow_manager) shadow_manager->AdvanceFrame();
+
 			int current_idx = uniforms_ssbo->GetCurrentBufferIndex();
 			if (mdi_fences[current_idx]) {
 				glClientWaitSync(mdi_fences[current_idx], GL_SYNC_FLUSH_COMMANDS_BIT, GL_TIMEOUT_IGNORED);
