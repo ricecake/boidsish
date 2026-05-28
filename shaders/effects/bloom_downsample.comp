@@ -200,9 +200,10 @@ void main() {
 		ray_view = vec4(ray_view.xy, -1.0, 0.0);
 		vec3 worldDir = normalize((invView * ray_view).xyz);
 		if (centerDepth > 0.99999) {
-			if (worldDir.y > 0.0) {
-				isSky = 1;
-			}
+			isSky = 1;
+			// if (worldDir.y > 0.0) {
+			// 	isSky = 1;
+			// }
 		}
 
 
