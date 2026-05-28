@@ -1,4 +1,5 @@
 #include "mood_manager.h"
+#include "weather_constants.h"
 #include <algorithm>
 #include <cmath>
 #include <set>
@@ -67,7 +68,85 @@ namespace Boidsish {
         return (b1 * (t2 - val) + b2 * (val - t1)) / std::max(1e-6f, t2 - t1);
     }
 
-    MoodManager::MoodManager() : _enabled(true) {}
+    MoodBloomSettings MoodBloomSettings::GetDefault(bool isSky) {
+        MoodBloomSettings s;
+        s.toneMappingEnabled = true;
+        s.toneMappingMode = 5;
+        s.autoExposureEnabled = true;
+        s.targetLuminance = isSky ? 0.5f : 0.25f;
+        s.minExposure = 0.01f;
+        s.maxExposure = 25.0f;
+        s.speedUp = 3.0f;
+        s.speedDown = 1.0f;
+        s.centerWeightTightness = 4.0f;
+        s.focusPoint = glm::vec2(0.5f, 0.5f);
+        s.histogramLowCutoff = 0.1f;
+        s.histogramHighCutoff = 0.95f;
+        s.uchimuraP = 1.0f;
+        s.uchimuraA = 1.0f;
+        s.uchimuraM = 0.22f;
+        s.uchimuraL = 0.4f;
+        s.uchimuraC = 1.33f;
+        s.uchimuraB = 0.0f;
+        s.autoTuneEnabled = true;
+        s.minContrast = 0.6f;
+        s.maxContrast = 1.3f;
+        s.targetBrightness = 1.0f;
+        s.cdlSlope = glm::vec3(1.0f);
+        s.cdlOffset = glm::vec3(0.0f);
+        s.cdlPower = glm::vec3(1.0f);
+        s.cdlSaturation = 1.0f;
+        s.whiteTemp = 6500.0f;
+        s.whiteTint = 0.0f;
+        s.ltmEnabled = true;
+        s.ltmEvSpread = 2.0f;
+        s.ltmTarget = 0.5f;
+        s.ltmSigma = 0.2f;
+        s.ltmWeightContrast = 0.0f;
+        s.ltmWeightSaturation = 0.0f;
+        s.ltmWeightExposedness = 1.0f;
+        s.ltmBoostLocalContrast = 0.0f;
+        return s;
+    }
+
+    MoodSettings MoodSettings::GetDefault() {
+        MoodSettings s;
+        s.sceneBloom = MoodBloomSettings::GetDefault(false);
+        s.skyBloom = MoodBloomSettings::GetDefault(true);
+
+        s.cloudDensity = WeatherConstants::CloudDensity.normal;
+        s.cloudAltitude = WeatherConstants::CloudAltitude.normal;
+        s.cloudThickness = WeatherConstants::CloudThickness.normal;
+        s.cloudColor = WeatherConstants::DefaultCloudColor;
+        s.cloudCoverage = WeatherConstants::CloudCoverage.normal;
+        s.cloudSunLightScale = 1.0f;
+        s.cloudMoonLightScale = 2.0f;
+        s.cloudPowderScale = 0.125f;
+        s.cloudBeerPowderMix = 0.600f;
+
+        s.rayleighScale = WeatherConstants::RayleighScale.normal;
+        s.mieScale = WeatherConstants::MieScale.normal;
+        s.rayleighScattering = WeatherConstants::RayleighScattering;
+        s.mieScattering = WeatherConstants::MieScattering;
+        s.mieExtinction = WeatherConstants::MieExtinction;
+
+        return s;
+    }
+
+    MoodManager::MoodManager() : _enabled(true) {
+        MoodLayer defaultLayer;
+        defaultLayer.name = "Default";
+        defaultLayer.priority = -100;
+        defaultLayer.blendMode = MoodBlendMode::Override;
+        defaultLayer.trackedParameter = MoodParameter::Count; // No parameter tracking
+
+        MoodControlPoint cp;
+        cp.parameterValue = 0.0f;
+        cp.settings = MoodSettings::GetDefault();
+        defaultLayer.controlPoints.push_back(cp);
+
+        AddLayer(defaultLayer);
+    }
     MoodManager::~MoodManager() {}
 
     enum class InterpType { Linear, Logarithmic, Oklab, Slerp, Boolean, Integer };
@@ -226,7 +305,8 @@ namespace Boidsish {
             for (auto& layer : _layers) {
                 layer.hasLastInterpolated = false;
             }
-            Smooth(_smoothedSettings, _blendedSettings, deltaTime);
+            _blendedSettings = {};
+            _smoothedSettings = {};
             return;
         }
 
