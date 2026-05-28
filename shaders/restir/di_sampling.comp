@@ -1,0 +1,90 @@
+#version 430 core
+#extension GL_GOOGLE_include_directive : enable
+layout(local_size_x = 8, local_size_y = 8) in;
+
+#include "../helpers/fast_noise.glsl"
+
+#define TEMPORAL_DATA_DEFINED
+#include "restir_common.glsl"
+
+layout(std430, binding = [[RESTIR_RESERVOIRS0_BINDING]]) buffer RestirReservoirs {
+    Reservoir reservoirs[];
+};
+
+uniform sampler2D gDepth;
+uniform sampler2D gNormal;
+uniform sampler2D gVelocity;
+uniform sampler2D gAlbedo;
+uniform int u_num_samples = 8;
+
+float pcg_hash(uint seed) {
+    uint state = seed * 747796405u + 2891336453u;
+    uint word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+    return float((word >> 22u) ^ word) / 4294967295.0;
+}
+
+vec3 getViewPos(vec2 uv, float depth) {
+	vec4 clipPos = vec4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
+	vec4 viewPos = invProjection * clipPos;
+	return viewPos.xyz / viewPos.w;
+}
+
+void main() {
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = textureSize(gDepth, 0);
+    if (pixel.x >= size.x || pixel.y >= size.y) return;
+
+    uint reservoir_idx = pixel.y * size.x + pixel.x;
+
+    // Use spatiotemporal blue noise for jittered sampling
+    vec2 bnUV = (vec2(pixel) + 0.5) / vec2(textureSize(u_blueNoiseTexture, 0).xy);
+    float jitterX = fastSpatiotemporalBlueNoise(bnUV, 0, frameIndex);
+    float jitterY = fastSpatiotemporalBlueNoise(bnUV, 0, frameIndex);
+
+    vec2 jitter = vec2(jitterX, jitterY) - 0.5;
+    vec2 uv = (vec2(pixel) + 0.5 + jitter) / vec2(size);
+    float depth = texture(gDepth, uv).r;
+
+    if (depth >= 1.0) {
+        reservoirs[reservoir_idx] = Reservoir(0, 0, 0, 0);
+        return;
+    }
+
+    vec3 vPos = getViewPos(uv, depth);
+    vec3 vNorm = normalize(texture(gNormal, uv).xyz);
+    vec3 worldPos = (invView * vec4(vPos, 1.0)).xyz;
+    vec3 worldNorm = normalize(mat3(invView) * vNorm);
+    vec3 V = normalize(viewPos - worldPos);
+
+    vec4 albedoData = texture(gAlbedo, uv);
+    vec3 albedo = albedoData.rgb;
+    vec4 velData = texture(gVelocity, uv);
+    float roughness = clamp(velData.b, 0.05, 1.0);
+    float metallic = velData.a;
+
+    Reservoir r = Reservoir(0, 0, 0, 0);
+    uint total_lights = uint(u_num_lights + u_num_fire_particles);
+    if (total_lights == 0) {
+        reservoirs[reservoir_idx] = Reservoir(0, 0, 0, 0);
+        return;
+    }
+
+    uint seed = uint(pixel.y * size.x + pixel.x) ^ hash(uint(frameIndex));
+
+    for (int i = 0; i < u_num_samples; i++) {
+        float rand1 = pcg_hash(seed++);
+        float rand2 = pcg_hash(seed++);
+        uint light_idx = uint(rand1 * float(total_lights)) % total_lights;
+
+        LightData ld = getLightData(light_idx);
+        float p_hat = targetFunction(worldPos, worldNorm, V, albedo, roughness, metallic, ld);
+        float weight = p_hat * float(total_lights);
+        updateReservoir(r, light_idx, weight, rand2);
+    }
+
+    float p_hat_final = targetFunction(worldPos, worldNorm, V, albedo, roughness, metallic, getLightData(r.light_index));
+    r.W = safeDiv(r.w_sum, r.m * p_hat_final);
+    r.W = clamp(r.W, 0.0, 1e4); // Clamp normalization factor
+
+    reservoirs[reservoir_idx] = r;
+}

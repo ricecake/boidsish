@@ -1,0 +1,111 @@
+#version 430 core
+#extension GL_GOOGLE_include_directive : enable
+layout(local_size_x = 8, local_size_y = 8) in;
+
+#include "../helpers/fast_noise.glsl"
+#include "restir_common.glsl"
+#include "../helpers/lighting.glsl"
+
+layout(std430, binding = [[RESTIR_GI_RESERVOIRS0_BINDING]]) buffer GIReservoirs {
+    Reservoir reservoirs[];
+};
+
+uniform sampler2D gDepth;
+uniform sampler2D gNormal;
+uniform sampler2D gColor;
+uniform sampler2D gAlbedo;
+
+float pcg_hash(uint seed) {
+    uint state = seed * 747796405u + 2891336453u;
+    uint word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+    return float((word >> 22u) ^ word) / 4294967295.0;
+}
+
+vec3 getViewPos(vec2 uv, float depth) {
+	vec4 clipPos = vec4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
+	vec4 viewPos = invProjection * clipPos;
+	return viewPos.xyz / viewPos.w;
+}
+
+vec3 hemisphereSample(vec2 uv, vec3 normal) {
+	float phi = 2.0 * PI * uv.x;
+	float cosTheta = sqrt(1.0 - uv.y);
+	float sinTheta = sqrt(uv.y);
+	vec3 localDir = vec3(cos(phi) * sinTheta, sin(phi) * sinTheta, cosTheta);
+	vec3 up = abs(normal.z) < 0.999 ? vec3(0, 0, 1) : vec3(1, 0, 0);
+	vec3 tangent = normalize(cross(up, normal));
+	vec3 bitangent = cross(normal, tangent);
+	return tangent * localDir.x + bitangent * localDir.y + normal * localDir.z;
+}
+
+void main() {
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = textureSize(gDepth, 0);
+    if (pixel.x >= size.x || pixel.y >= size.y) return;
+
+    uint reservoir_idx = pixel.y * size.x + pixel.x;
+
+    // Use spatiotemporal blue noise for jittered sampling
+    vec2 bnUV = (vec2(pixel) + 0.5) / vec2(textureSize(u_blueNoiseTexture, 0).xy);
+    float jitterX = fastSpatiotemporalBlueNoise(bnUV, 2, frameIndex);
+    float jitterY = fastSpatiotemporalBlueNoise(bnUV, 3, frameIndex);
+
+    vec2 jitter = vec2(jitterX, jitterY) - 0.5;
+    vec2 uv = (vec2(pixel) + 0.5 + jitter) / vec2(size);
+    float depth = texture(gDepth, uv).r;
+
+    if (depth >= 1.0) {
+        reservoirs[reservoir_idx] = Reservoir(0, 0, 0, 0);
+        return;
+    }
+
+    vec3 vPos = getViewPos(uv, depth);
+    vec3 vNorm = normalize(texture(gNormal, uv).xyz);
+    vec3 worldPos = (invView * vec4(vPos, 1.0)).xyz;
+    vec3 worldNorm = normalize(mat3(invView) * vNorm);
+
+    uint seed = uint(pixel.y * size.x + pixel.x) ^ hash(uint(frameIndex) + 300u);
+
+    // GI Trace: Sample indirect light
+    // We trace a ray in screen space to find a hitting point
+    // Use spatiotemporal blue noise to drive ray direction
+    vec2 randRay = vec2(
+        fastSpatiotemporalBlueNoise(bnUV, 0, frameIndex),
+        fastSpatiotemporalBlueNoise(bnUV, 1, frameIndex)
+    );
+    vec3 rayDir = hemisphereSample(randRay, vNorm);
+
+    float stepSize = 1.0 / float(16);
+    float rayDist = stepSize * pcg_hash(seed++);
+    bool hit = false;
+    vec2 hitUV;
+
+    for (int i = 0; i < 16; i++) {
+        rayDist += stepSize;
+        vec3 samplePos = vPos + rayDir * (randRay.x+rayDist) * 5.0; // scale ray
+        vec4 offsetClip = uProjection * vec4(samplePos, 1.0);
+        vec2 offsetUV = (offsetClip.xy / offsetClip.w) * 0.5 + 0.5;
+        if (offsetUV.x < 0.0 || offsetUV.x > 1.0 || offsetUV.y < 0.0 || offsetUV.y > 1.0) break;
+        float sampledDepth = texture(gDepth, offsetUV).r;
+        if (samplePos.z < getViewPos(offsetUV, sampledDepth).z) {
+            hit = true;
+            hitUV = offsetUV;
+            break;
+        }
+    }
+
+    Reservoir r = Reservoir(0, 0, 0, 0);
+    if (hit) {
+        vec3 radiance = texture(gColor, hitUV).rgb;
+        float p_hat = luminance(radiance);
+        // We pack hit info into reservoir for GI - for simplicity using light_index as packed UV
+        uint packedUV = uint(hitUV.x * 65535.0) | (uint(hitUV.y * 65535.0) << 16);
+        r.light_index = packedUV;
+        r.w_sum = p_hat;
+        r.m = 1.0;
+        r.W = safeDiv(r.w_sum, r.m);
+        r.W = clamp(r.W, 0.0, 100.0);
+    }
+
+    reservoirs[reservoir_idx] = r;
+}
