@@ -16,6 +16,7 @@ uniform sampler2D u_terrainShadowMap;
 float marchOcclusion(vec3 p_start, vec3 rayDir, float maxDist) {
 	float t = 5.0 * u_terrainParams.y; // Start a bit away from surface
 	float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
+	float probeDist = scaledChunkSize / max(1.0, u_terrainParams.z);
 
 	// Coarse step size for AO march
 	// float step = 12.0 * u_terrainParams.y;
@@ -26,9 +27,9 @@ float marchOcclusion(vec3 p_start, vec3 rayDir, float maxDist) {
 	float step = maxDist / maxSteps;
 	while (t < maxDist && stepCount++ < maxSteps) {
 		vec3  p = p_start + t * rayDir;
-		vec2  gridPos = p.xz / scaledChunkSize;
-		ivec2 chunkCoord = ivec2(floor(gridPos));
-		ivec2 localGridCoord = chunkCoord - u_originSize.xy;
+		vec2  gridPos = p.xz / probeDist;
+		ivec2 probeCoord = ivec2(floor(gridPos));
+		ivec2 localGridCoord = probeCoord - u_originSize.xy;
 
 		if (localGridCoord.x < 0 || localGridCoord.x >= u_originSize.z || localGridCoord.y < 0 ||
 		    localGridCoord.y >= u_originSize.z) {
@@ -41,6 +42,7 @@ float marchOcclusion(vec3 p_start, vec3 rayDir, float maxDist) {
 		if (p.y < h_max) {
 			int slice = texelFetch(u_chunkGrid, localGridCoord, 0).r;
 			if (slice >= 0) {
+				ivec2 chunkCoord = probeCoord / int(max(1.0, u_terrainParams.z));
 				vec2  uv_chunk = (p.xz - vec2(chunkCoord) * scaledChunkSize) / scaledChunkSize;
 				vec2  remappedUV = (uv_chunk * u_terrainParams.x + 0.5) / (u_terrainParams.x + 1.0);
 				float h = texture(u_heightmapArray, vec3(remappedUV, float(slice))).r;
@@ -108,11 +110,12 @@ float terrainShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) {
 		return 1.0;
 
 	float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
+	float probeDist = scaledChunkSize / max(1.0, u_terrainParams.z);
 
 #ifndef SKIP_SHADOW_MAP_LOOKUP
 	// Fast path: Precomputed terrain shadow map
-	float shadowMapWorldSize = float(u_originSize.z) * scaledChunkSize;
-	vec2 shadowOrigin = vec2(u_originSize.xy) * scaledChunkSize;
+	float shadowMapWorldSize = float(u_originSize.z) * probeDist;
+	vec2 shadowOrigin = vec2(u_originSize.xy) * probeDist;
 	vec2 shadowUV = (worldPos.xz - shadowOrigin) / shadowMapWorldSize;
 
 	if (shadowUV.x >= 0.0 && shadowUV.x <= 1.0 && shadowUV.y >= 0.0 && shadowUV.y <= 1.0) {
@@ -138,8 +141,8 @@ float terrainShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) {
 	vec2 safeRayDir = vec2(abs(rayDir.x) < 1e-6 ? 1e-6 : abs(rayDir.x), abs(rayDir.y) < 1e-6 ? 1e-6 : abs(rayDir.y));
 	vec2 tDelta = scaledChunkSize / safeRayDir;
 
-	vec2  gridPos = p_start.xz / scaledChunkSize;
-	ivec2 currentChunk = ivec2(floor(gridPos));
+	vec2  gridPos = p_start.xz / probeDist;
+	ivec2 currentProbe = ivec2(floor(gridPos));
 
 	vec2 tMax;
 	tMax.x = (stepDir.x > 0.0) ? (floor(gridPos.x) + 1.0 - gridPos.x) * tDelta.x
@@ -153,7 +156,7 @@ float terrainShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) {
 	while (t < maxDist && iter < 128) {
 		iter++;
 
-		ivec2 localGridCoord = currentChunk - u_originSize.xy;
+		ivec2 localGridCoord = currentProbe - u_originSize.xy;
 		if (localGridCoord.x < 0 || localGridCoord.x >= u_originSize.z || localGridCoord.y < 0 ||
 		    localGridCoord.y >= u_originSize.z) {
 			break; // Out of grid bounds
@@ -180,9 +183,10 @@ float terrainShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) {
 						// Sub-march inside this chunk
 						float subT = t;
 						float subStep = 0.5 * u_terrainParams.y;
+						ivec2 chunkCoord = currentProbe / int(max(1.0, u_terrainParams.z));
 						while (subT < tEnd) {
 							vec3  p = p_start + subT * lightDir;
-							vec2  uv_chunk = (p.xz - vec2(currentChunk) * scaledChunkSize) / scaledChunkSize;
+							vec2  uv_chunk = (p.xz - vec2(chunkCoord) * scaledChunkSize) / scaledChunkSize;
 							vec2  remappedUV = (uv_chunk * u_terrainParams.x + 0.5) / (u_terrainParams.x + 1.0);
 							float h = texture(u_heightmapArray, vec3(remappedUV, float(slice))).r;
 							closest = min(closest, 8.0 * ((p.y - h) / subT));
@@ -204,10 +208,10 @@ float terrainShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) {
 
 		if (tMax.x < tMax.y) {
 			tMax.x += tDelta.x;
-			currentChunk.x += int(stepDir.x);
+			currentProbe.x += int(stepDir.x);
 		} else {
 			tMax.y += tDelta.y;
-			currentChunk.y += int(stepDir.y);
+			currentProbe.y += int(stepDir.y);
 		}
 	}
 
@@ -229,6 +233,7 @@ int isPointInTerrainShadowDebug(vec3 worldPos, vec3 normal, vec3 lightDir) {
 		return -2; // Orange-ish (Light below horizon or too low)
 
 	float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
+	float probeDist = scaledChunkSize / max(1.0, u_terrainParams.z);
 	vec3  p_start = worldPos + normal * (0.8 * u_terrainParams.y) + lightDir * (1.2 * u_terrainParams.y);
 	float t = 0.0;
 	float maxDist = 1200.0 * u_terrainParams.y;
@@ -236,10 +241,10 @@ int isPointInTerrainShadowDebug(vec3 worldPos, vec3 normal, vec3 lightDir) {
 	vec2 rayDir = vec2(lightDir.x, lightDir.z);
 	vec2 stepDir = sign(rayDir);
 	vec2 safeRayDir = vec2(abs(rayDir.x) < 1e-6 ? 1e-6 : abs(rayDir.x), abs(rayDir.y) < 1e-6 ? 1e-6 : abs(rayDir.y));
-	vec2 tDelta = scaledChunkSize / safeRayDir;
+	vec2 tDelta = probeDist / safeRayDir;
 
-	vec2  gridPos = p_start.xz / scaledChunkSize;
-	ivec2 currentChunk = ivec2(floor(gridPos));
+	vec2  gridPos = p_start.xz / probeDist;
+	ivec2 currentProbe = ivec2(floor(gridPos));
 
 	vec2 tMax;
 	tMax.x = (stepDir.x > 0.0) ? (floor(gridPos.x) + 1.0 - gridPos.x) * tDelta.x
@@ -251,7 +256,7 @@ int isPointInTerrainShadowDebug(vec3 worldPos, vec3 normal, vec3 lightDir) {
 	while (t < maxDist && iter < 128) {
 		iter++;
 
-		ivec2 localGridCoord = currentChunk - u_originSize.xy;
+		ivec2 localGridCoord = currentProbe - u_originSize.xy;
 		if (localGridCoord.x < 0)
 			return 11;
 		if (localGridCoord.x >= u_originSize.z)
@@ -281,9 +286,10 @@ int isPointInTerrainShadowDebug(vec3 worldPos, vec3 normal, vec3 lightDir) {
 					// Sub-march inside this chunk
 					float subT = t;
 					float subStep = 0.5 * u_terrainParams.y;
+					ivec2 chunkCoord = currentProbe / int(max(1.0, u_terrainParams.z));
 					while (subT < tEnd) {
 						vec3  p = p_start + subT * lightDir;
-						vec2  uv_chunk = (p.xz - vec2(currentChunk) * scaledChunkSize) / scaledChunkSize;
+						vec2  uv_chunk = (p.xz - vec2(chunkCoord) * scaledChunkSize) / scaledChunkSize;
 						vec2  remappedUV = (uv_chunk * u_terrainParams.x + 0.5) / (u_terrainParams.x + 1.0);
 						float h = texture(u_heightmapArray, vec3(remappedUV, float(slice))).r;
 						if (p.y < h) {
@@ -301,10 +307,10 @@ int isPointInTerrainShadowDebug(vec3 worldPos, vec3 normal, vec3 lightDir) {
 
 		if (tMax.x < tMax.y) {
 			tMax.x += tDelta.x;
-			currentChunk.x += int(stepDir.x);
+			currentProbe.x += int(stepDir.x);
 		} else {
 			tMax.y += tDelta.y;
-			currentChunk.y += int(stepDir.y);
+			currentProbe.y += int(stepDir.y);
 		}
 	}
 

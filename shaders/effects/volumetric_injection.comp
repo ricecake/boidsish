@@ -25,6 +25,7 @@ uniform float uTemporalAlpha;
 #include "../atmosphere/common.glsl"
 #include "../helpers/lighting.glsl"
 #include "../types/temporal_data.glsl"
+#include "../helpers/volumetric_common.glsl"
 
 #define COMPUTE_SHADER
 #include "../particle_types.glsl"
@@ -37,45 +38,6 @@ uniform ivec3 u_grid_res;
 #include "helpers/wind.glsl"
 
 #include "lygia/generative/curl.glsl"
-
-const int NUM_CASCADES = 4;
-const float CASCADE_DISTANCES[4] = { 20.0, 60.0, 200.0, 1000.0 };
-
-vec3 worldFromFroxel(ivec3 vox, vec3 jitter) {
-    int cascade = vox.z / u_grid_res.z;
-    int z_in_cascade = vox.z % u_grid_res.z;
-
-    vec3 ndc;
-    ndc.xy = (vec2(vox.xy) + jitter.xy) / vec2(u_grid_res.xy) * 2.0 - 1.0;
-
-    float z_near = (cascade == 0) ? 0.1 : CASCADE_DISTANCES[cascade - 1];
-    float z_far = CASCADE_DISTANCES[cascade];
-
-    // Logarithmic distribution for planar Depth (Z)
-    float linear_z = z_near * pow(z_far / z_near, (float(z_in_cascade) + jitter.z) / float(u_grid_res.z));
-
-    // Reconstruct View Space Position using planar depth
-    vec4 clipPos = vec4(ndc.xy, 0.0, 1.0);
-    vec4 viewDir = uInvProj * clipPos;
-    viewDir /= (abs(viewDir.w) > 0.0001) ? viewDir.w : 1.0;
-
-    // Planar depth reconstruction: P.z = -linear_z (assuming OpenGL RH)
-    // viewDir.z is typically -1 in view space before projection for a point on near plane
-    // P = viewDir * (linear_z / -viewDir.z)
-    float obliquity = length(viewDir.xyz) / max(0.0001, -viewDir.z);
-    vec3 froxelViewPos = viewDir.xyz * (linear_z / max(0.0001, -viewDir.z));
-
-    return (uInvView * vec4(froxelViewPos, 1.0)).xyz;
-}
-
-float getObliquity(ivec2 voxXY, vec3 jitter) {
-    vec3 ndc;
-    ndc.xy = (vec2(voxXY) + jitter.xy) / vec2(u_grid_res.xy) * 2.0 - 1.0;
-    vec4 clipPos = vec4(ndc.xy, 0.0, 1.0);
-    vec4 viewDir = uInvProj * clipPos;
-    viewDir /= (abs(viewDir.w) > 0.0001) ? viewDir.w : 1.0;
-    return length(viewDir.xyz) / max(0.0001, -viewDir.z);
-}
 
 void main() {
     ivec3 vox = ivec3(gl_GlobalInvocationID.xyz);
@@ -94,7 +56,7 @@ void main() {
         blueNoise = fract(texelFetch(uBlueNoise, noiseCoords / textureSize(uBlueNoise, 0), 0).rgb   * 0.61803398875);
 
         // Use jitter in [0, 1] range which is centered on froxel centers (vox + 0.5)
-        worldPos = worldFromFroxel(vox, blueNoise);
+        worldPos = worldFromFroxel(vox, blueNoise, uInvView, uInvProj, u_grid_res);
 
     // Calculate scattering and extinction
     Sampling s = getAtmospherePropertiesAtPos(worldPos);
@@ -228,7 +190,7 @@ void main() {
         radiance *= uIntensity * 3.0; // Boosted intensity for prominence
 
         // Convert atmospheric coefficients from per-KM to per-meter
-        float obliquity = getObliquity(vox.xy, blueNoise);
+        float obliquity = getObliquity(vox.xy, blueNoise, uInvProj, u_grid_res);
         vec3 mieCoeff = s.mie * 0.001 * obliquity;
         float extinctionCoeff = (s.rayleigh.r + s.rayleigh.g + s.rayleigh.b + s.mie.r + s.mie.g + s.mie.b) / 3.0 * 0.001 * obliquity;
 

@@ -27,6 +27,8 @@ layout(binding = [[ATMOSPHERE_CLOUD_SHADOW_BINDING]]) uniform sampler2D u_cloudS
 layout(binding = [[TERRAIN_CHUNK_GRID_BINDING]]) uniform isampler2D u_chunkGrid;
 #endif
 
+#include "volumetric_common.glsl"
+
 /**
  * Maps height and sun cosine angle to UV coordinates for the transmittance LUT.
  * Matches logic in atmosphere/common.glsl but standalone here for convenience.
@@ -384,12 +386,14 @@ vec3 getSpatialAmbientSH(vec3 worldPos, vec3 N) {
 		return evalSHIrradiance(N);
 
 	float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
-	// Offset by -0.5 because probes are calculated at chunk centers (0.5, 0.5)
-	vec2  gridPos = worldPos.xz / scaledChunkSize - 0.5;
-	vec2  fracPos = fract(gridPos);
-	ivec2 chunkCoord = ivec2(floor(gridPos)) - u_originSize.xy;
+	float probeDist = scaledChunkSize / max(1.0, u_terrainParams.z);
 
-	// Simple bilinear interpolation between 4 nearest chunk probes
+	// Offset by -0.5 because probes are calculated at probe centers (0.5, 0.5)
+	vec2  gridPos = worldPos.xz / probeDist - 0.5;
+	vec2  fracPos = fract(gridPos);
+	ivec2 probeCoord = ivec2(floor(gridPos)) - u_originSize.xy;
+
+	// Simple bilinear interpolation between 4 nearest probes
 	vec3 totalSH[9];
 	for (int i = 0; i < 9; ++i)
 		totalSH[i] = vec3(0.0);
@@ -397,19 +401,19 @@ vec3 getSpatialAmbientSH(vec3 worldPos, vec3 N) {
 	float totalWeight = 0.0;
 	for (int x = 0; x <= 1; ++x) {
 		for (int z = 0; z <= 1; ++z) {
-			ivec2 localCoord = chunkCoord + ivec2(x, z);
+			ivec2 localCoord = probeCoord + ivec2(x, z);
 			if (localCoord.x >= 0 && localCoord.x < u_originSize.z && localCoord.y >= 0 && localCoord.y < u_originSize.z) {
 				// Only include this probe if it's actually registered in the current grid
 				if (texelFetch(u_chunkGrid, localCoord, 0).r >= 0) {
 					float weight = (x == 0 ? 1.0 - fracPos.x : fracPos.x) * (z == 0 ? 1.0 - fracPos.y : fracPos.y);
 
-					ivec2 worldChunkCoord = localCoord + u_originSize.xy;
-					ivec2 toroidalCoord = (worldChunkCoord % u_originSize.z + u_originSize.z) % u_originSize.z;
+					ivec2 worldProbeCoord = localCoord + u_originSize.xy;
+					ivec2 toroidalCoord = (worldProbeCoord % u_originSize.z + u_originSize.z) % u_originSize.z;
 					int   idx = toroidalCoord.y * u_originSize.z + toroidalCoord.x;
 
-					// Verify this probe is for the correct world chunk (using encoded coordinates in w)
-					vec2 probeCoord = vec2(u_terrainProbes[idx].sh_coeffs[0].w, u_terrainProbes[idx].sh_coeffs[1].w);
-					if (distance(probeCoord, vec2(worldChunkCoord)) < 0.1) {
+					// Verify this probe is for the correct world coordinate (using encoded coordinates in w)
+					vec2 storedCoord = vec2(u_terrainProbes[idx].sh_coeffs[0].w, u_terrainProbes[idx].sh_coeffs[1].w);
+					if (distance(storedCoord, vec2(worldProbeCoord)) < 0.1) {
 						for (int i = 0; i < 9; ++i) {
 							totalSH[i] += u_terrainProbes[idx].sh_coeffs[i].rgb * weight;
 						}
@@ -507,17 +511,10 @@ void evaluate_brdf(
  * Returns vec4(scattering.rgb, transmittance).
  */
 vec4 sampleVolumetricLighting(vec3 worldPos) {
-    // We use the view matrix and projection matrix from the respective shaders.
-    // However, since this is a helper, we need to ensure they are available.
-    // Instead of relying on global uniforms that might clash, we use viewPos from Lighting UBO
-    // and assume the shader providing this helper has view and projection matrices.
+    ivec3 grid_res = ivec3(160, 90, 64); // Matches VolumetricLightingEffect.h
 
-    // Using viewDir and viewPos from Lighting UBO to reconstruct linear Z
-    vec3 vToP = worldPos - viewPos;
-    float linearZ = dot(vToP, viewDir);
-
-    const int NUM_CASCADES = 4;
-    const float CASCADE_DISTANCES[4] = { 20.0, 60.0, 200.0, 1000.0 };
+    vec4 viewSpacePos = view * vec4(worldPos, 1.0);
+    float linearZ = -viewSpacePos.z;
 
     int cascade = -1;
     float z_near = 0.1;
@@ -534,30 +531,12 @@ vec4 sampleVolumetricLighting(vec3 worldPos) {
 
     if (cascade == -1 || linearZ < z_near) return vec4(0.0, 0.0, 0.0, 1.0);
 
-    // To get UV, we unfortunately need the full projection.
-    // Since we can't easily get it here without naming conflicts,
-    // let's use a trick: most shaders have a way to get NDC or screen UV.
-    // But for a generic world-space sample, we need the matrices.
-
-    // Most of our shaders use 'view' and 'projection' or 'viewProjection'.
-    // We'll assume 'view' and 'projection' are available as they are standard in our engine.
-    // However, some shaders might name them differently.
-    // Using a fallback mechanism if possible, or just relying on standard naming.
-
-    // In our engine, these are typically provided.
-    // If not, the shader including this will fail to compile, which is acceptable
-    // as it indicates a missing dependency.
-
-    // Matrices are now provided through the Lighting UBO to ensure consistency across shaders.
-    vec4 viewSpacePos = view * vec4(worldPos, 1.0);
     vec4 clipPos = projection * viewSpacePos;
     vec3 ndc = clipPos.xyz / clipPos.w;
     vec2 uv = ndc.xy * 0.5 + 0.5;
 
     float slice = clamp(log(linearZ / z_near) / log(z_far / z_near), 0.0, 1.0);
-    // Grid resolution for volumetrics
-    float resZ = 64.0;
-    float w = (float(cascade * int(resZ)) + (slice * (resZ - 1.0) + 0.5)) / (resZ * float(NUM_CASCADES));
+    float w = (float(cascade * grid_res.z) + (slice * float(grid_res.z - 1) + 0.5)) / float(grid_res.z * NUM_CASCADES);
 
     return texture(uVolumetricTexture, vec3(uv, w));
 }

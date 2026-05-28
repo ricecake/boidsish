@@ -4,13 +4,7 @@ layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
 
 #include "../helpers/math.glsl"
 #include "../particle_types.glsl"
-
-struct VolumetricData {
-    uint radiance_r;
-    uint radiance_g;
-    uint radiance_b;
-    uint extinction;
-};
+#include "../helpers/volumetric_common.glsl"
 
 layout(std430, binding = [[VOLUMETRIC_INJECTION_BUFFER_BINDING]]) buffer VolumetricInjectionBuffer {
     VolumetricData injection_data[];
@@ -21,12 +15,6 @@ uniform mat4 uProj;
 uniform ivec3 u_grid_res;
 uniform uint  u_num_particles;
 
-const int NUM_CASCADES = 4;
-const float CASCADE_DISTANCES[4] = { 20.0, 60.0, 200.0, 1000.0 };
-
-// Using 1000.0 as scale for fixed point atomics
-const float FIXED_POINT_SCALE = 1000000.0;
-
 void atomicAddFloat(uint index, uint offset, float val) {
     uint ival = uint(val * FIXED_POINT_SCALE);
     if (ival > 0) {
@@ -35,39 +23,6 @@ void atomicAddFloat(uint index, uint offset, float val) {
         else if (offset == 2) atomicAdd(injection_data[index].radiance_b, ival);
         else if (offset == 3) atomicAdd(injection_data[index].extinction, ival);
     }
-}
-
-ivec3 worldToFroxel(vec3 worldPos) {
-    vec4 viewPos = uView * vec4(worldPos, 1.0);
-    float linearZ = -viewPos.z;
-
-    int cascade = -1;
-    float z_near = 0.1;
-    float z_far = 0.0;
-
-    for (int i = 0; i < NUM_CASCADES; ++i) {
-        if (linearZ <= CASCADE_DISTANCES[i]) {
-            cascade = i;
-            z_far = CASCADE_DISTANCES[i];
-            if (i > 0) z_near = CASCADE_DISTANCES[i-1];
-            break;
-        }
-    }
-
-    if (cascade == -1 || linearZ < z_near) return ivec3(-1);
-
-    vec4 clipPos = uProj * viewPos;
-    vec3 ndc = clipPos.xyz / clipPos.w;
-    if (any(lessThan(ndc, vec3(-1.0))) || any(greaterThan(ndc, vec3(1.0)))) return ivec3(-1);
-
-    vec2 uv = ndc.xy * 0.5 + 0.5;
-    float slice = clamp(log(linearZ / z_near) / log(z_far / z_near), 0.0, 1.0);
-
-    return ivec3(
-        int(uv.x * float(u_grid_res.x)),
-        int(uv.y * float(u_grid_res.y)),
-        cascade * u_grid_res.z + int(slice * float(u_grid_res.z))
-    );
 }
 
 void main() {

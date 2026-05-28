@@ -3670,6 +3670,16 @@ namespace Boidsish {
 
 		// Update terrain probes based on the opaque scene result
 		if (impl->terrain_render_manager && impl->compositor_ && impl->atmosphere_manager) {
+			GLuint     vol_buffer = 0;
+			GLuint     vol_texture = 0;
+			glm::ivec3 vol_res(0);
+
+			if (impl->volumetric_effect) {
+				vol_buffer = impl->volumetric_effect->GetInjectionBuffer();
+				vol_texture = impl->volumetric_effect->GetInjectionTexture();
+				vol_res = impl->volumetric_effect->GetGridResolution();
+			}
+
 			impl->terrain_render_manager->DispatchProbeUpdate(
 				impl->compositor_->GetColorTexture(),
 				impl->compositor_->GetDepthTexture(),
@@ -3684,7 +3694,10 @@ namespace Boidsish {
 				static_cast<GLsizeiptr>(impl->render_state_.lighting.size),
 				impl->frame_config_.sh_probe_scaling,
 				impl->frame_config_.sh_probe_convergence_speed,
-				impl->frame_config_.sh_probe_ray_count_multiplier
+				impl->frame_config_.sh_probe_ray_count_multiplier,
+				vol_buffer,
+				vol_texture,
+				vol_res
 			);
 		}
 

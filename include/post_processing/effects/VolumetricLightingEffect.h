@@ -31,6 +31,10 @@ namespace Boidsish {
 			void SetTemporalAlpha(float a) { temporal_alpha_ = a; }
 			float GetTemporalAlpha() const { return temporal_alpha_; }
 
+			GLuint GetInjectionBuffer() const { return injection_buffer_; }
+			GLuint GetInjectionTexture() const { return injection_texture_; }
+			glm::ivec3 GetGridResolution() const { return glm::ivec3(grid_res_x_, grid_res_y_, grid_res_z_); }
+
 		private:
 			void CreateGridTextures();
 

@@ -18,6 +18,8 @@ namespace Boidsish {
 		glm::vec4  terrain_params; // chunk_size, world_scale, unused, unused
 	};
 
+	constexpr int K_PROBES_PER_CHUNK_SIDE = 4;
+
 	TerrainRenderManager::TerrainRenderManager(ServiceLocator& /*loc*/, int chunk_size, int max_chunks):
 		chunk_size_(chunk_size), max_chunks_(max_chunks), heightmap_resolution_(chunk_size + 1) {
 		// Create Biome UBO
@@ -742,11 +744,13 @@ namespace Boidsish {
 		int half_grid = grid_size / 2;
 
 		float scaled_chunk_size = chunk_size_ * world_scale;
-		int   center_chunk_x = static_cast<int>(std::floor(last_camera_pos_.x / scaled_chunk_size));
-		int   center_chunk_z = static_cast<int>(std::floor(last_camera_pos_.z / scaled_chunk_size));
+		float scaled_probe_dist = (float)chunk_size_ / (float)K_PROBES_PER_CHUNK_SIDE * world_scale;
 
-		int origin_x = center_chunk_x - half_grid;
-		int origin_z = center_chunk_z - half_grid;
+		int center_probe_x = static_cast<int>(std::floor(last_camera_pos_.x / scaled_probe_dist));
+		int center_probe_z = static_cast<int>(std::floor(last_camera_pos_.z / scaled_probe_dist));
+
+		int origin_x = center_probe_x - half_grid;
+		int origin_z = center_probe_z - half_grid;
 
 		// Re-dispatch probes if lighting changed significantly (time of day)
 		static float last_probe_update_day_time = -1.0f;
@@ -768,15 +772,23 @@ namespace Boidsish {
 		std::vector<float>   height_data(grid_size * grid_size, -10000.0f);
 
 		for (const auto& [key, chunk] : chunks_) {
-			int lx = key.first - origin_x;
-			int lz = key.second - origin_z;
+			// A chunk covers K_PROBES_PER_CHUNK_SIDE ^ 2 probes.
+			int base_lx = key.first * K_PROBES_PER_CHUNK_SIDE - origin_x;
+			int base_lz = key.second * K_PROBES_PER_CHUNK_SIDE - origin_z;
 
-			if (lx >= 0 && lx < grid_size && lz >= 0 && lz < grid_size) {
-				int idx = lz * grid_size + lx;
-				slice_data[idx] = static_cast<int16_t>(chunk.texture_slice);
-				// Add a vertical safety buffer to account for dynamic terrain displacements
-				// (erosion, shockwaves, micro-relief) in the Hi-Z structure.
-				height_data[idx] = chunk.max_y + (5.0f * world_scale);
+			for (int pz = 0; pz < K_PROBES_PER_CHUNK_SIDE; ++pz) {
+				for (int px = 0; px < K_PROBES_PER_CHUNK_SIDE; ++px) {
+					int lx = base_lx + px;
+					int lz = base_lz + pz;
+
+					if (lx >= 0 && lx < grid_size && lz >= 0 && lz < grid_size) {
+						int idx = lz * grid_size + lx;
+						slice_data[idx] = static_cast<int16_t>(chunk.texture_slice);
+						// Add a vertical safety buffer to account for dynamic terrain displacements
+						// (erosion, shockwaves, micro-relief) in the Hi-Z structure.
+						height_data[idx] = chunk.max_y + (5.0f * world_scale);
+					}
+				}
 			}
 		}
 
@@ -790,7 +802,7 @@ namespace Boidsish {
 
 		TerrainDataUbo ubo{};
 		ubo.origin_size = glm::ivec4(origin_x, origin_z, grid_size, 1);
-		ubo.terrain_params = glm::vec4(static_cast<float>(chunk_size_), world_scale, 0.0f, 0.0f);
+		ubo.terrain_params = glm::vec4(static_cast<float>(chunk_size_), world_scale, (float)K_PROBES_PER_CHUNK_SIDE, 0.0f);
 
 		glBindBuffer(GL_UNIFORM_BUFFER, terrain_data_ubo_);
 		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(TerrainDataUbo), &ubo);
@@ -816,7 +828,10 @@ namespace Boidsish {
 		GLsizeiptr       lighting_ubo_size,
 		float            probe_scaling,
 		float            probe_convergence,
-		int              probe_ray_multiplier
+		int              probe_ray_multiplier,
+		GLuint           volumetric_injection_buffer,
+		GLuint           volumetric_injection_texture,
+		glm::ivec3       volumetric_grid_res
 	) {
 		PROJECT_PROFILE_SCOPE("TerrainRenderManager::DispatchProbeUpdate");
 		std::lock_guard<std::recursive_mutex> lock(mutex_);
@@ -877,9 +892,20 @@ namespace Boidsish {
 		probe_compute_shader_->setFloat("u_probeConvergenceSpeed", probe_convergence);
 		probe_compute_shader_->setInt("u_probeRayMultiplier", probe_ray_multiplier);
 
+		if (volumetric_injection_texture != 0) {
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::VolumetricInjection());
+			glBindTexture(GL_TEXTURE_3D, volumetric_injection_texture);
+			probe_compute_shader_->setInt("u_injectionTexture", Constants::TextureUnit::VolumetricInjection());
+			probe_compute_shader_->setIVec3("u_volumetricGridRes", volumetric_grid_res);
+		}
+
 		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::TerrainData(), terrain_data_ubo_);
 		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Biomes(), biome_ubo_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainProbes(), probe_ssbo_);
+
+		if (volumetric_injection_buffer != 0) {
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::VolumetricInjectionBuffer(), volumetric_injection_buffer);
+		}
 
 		if (lighting_ubo != 0) {
 			if (lighting_ubo_size > 0) {
