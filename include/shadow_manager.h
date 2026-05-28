@@ -7,6 +7,7 @@
 #include "IManager.h"
 #include "constants.h"
 #include "frustum.h"
+#include "persistent_buffer.h"
 #include <GL/glew.h>
 #include <glm/glm.hpp>
 
@@ -28,6 +29,15 @@ namespace Boidsish {
 	 *
 	 * Shadow maps use a texture array to support multiple shadow-casting lights.
 	 */
+	struct ShadowUboData {
+		glm::mat4 light_space_matrices[Constants::Class::Shadows::MaxShadowMaps()];
+		// std140: vec4 cascadeSplits (float[4] is packed into vec4 if declared as such in shader)
+		// Our shader says: vec4 cascadeSplits;
+		glm::vec4 cascade_splits;
+		int       num_shadow_lights;
+		int       padding[3];
+	};
+
 	class ShadowManager: public IManager {
 	public:
 		/// Maximum number of shadow-casting lights supported
@@ -134,7 +144,11 @@ namespace Boidsish {
 		/**
 		 * @brief Get the shadow UBO ID.
 		 */
-		GLuint GetShadowUbo() const { return shadow_ubo_; }
+		GLuint GetShadowUbo() const { return shadow_pb_->GetBufferId(); }
+
+		void AdvanceFrame() {
+			if (shadow_pb_) shadow_pb_->AdvanceFrame();
+		}
 
 		/**
 		 * @brief Check if shadow mapping is enabled and initialized.
@@ -152,11 +166,11 @@ namespace Boidsish {
 		Frustum GetShadowFrustum(int map_index) const;
 
 	private:
-		bool                    initialized_ = false;
-		GLuint                  shadow_fbo_ = 0;
-		GLuint                  shadow_map_array_ = 0; // 2D texture array for all shadow maps
-		GLuint                  shadow_ubo_ = 0;
-		std::shared_ptr<Shader> shadow_shader_;
+		bool                                         initialized_ = false;
+		GLuint                                       shadow_fbo_ = 0;
+		GLuint                                       shadow_map_array_ = 0; // 2D texture array for all shadow maps
+		std::unique_ptr<PersistentBuffer<ShadowUboData>> shadow_pb_;
+		std::shared_ptr<Shader>                      shadow_shader_;
 
 		int                                   active_shadow_count_ = 0;
 		std::array<glm::mat4, kMaxShadowMaps> light_space_matrices_;

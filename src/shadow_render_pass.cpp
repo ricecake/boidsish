@@ -279,7 +279,6 @@ namespace Boidsish {
 		}
 
 		last_shadow_camera_front_ = frame.camera_front;
-		shadow_manager_.UpdateShadowUBO(shadow_lights_);
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	}
 
