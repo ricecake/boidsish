@@ -165,19 +165,20 @@ TerrainMaterial getRockTexture(vec3 baseColor, float height, float moisture, flo
 	mat.normalStrength = mix(0.1, 0.05, wetness);
 
 	if (rockFactor  > 0) {
-		vec3 rockBoundary = voronoi((TexCoords+(noise*0.05))*int(50*mix(1, 0.5, smoothstep(100.0, 250.0, 25.0*int(realDist/25.0) ))));
+		// vec3 rockBoundary = voronoi( (TexCoords+(noise*0.05) )*int(50*mix(1, 0.5, smoothstep(100.0, 250.0, 25.0*int(realDist/25.0) ))));
 		// vec2 rockBoundary = fastWorley3dID(FragPos);
+		vec2 rockBoundary = fastWorley3dID(  FragPos * 0.2);
 
 		float rockPalette = clamp(rockFactors.y, 0, 1);
 		vec3 color = palette( // Make this a curl noise?
-		     random(rockBoundary.y),
+		     (rockBoundary.y),
 		     vec3(0.5, 0.5, 0.5), vec3(0.5, 0.5, 0.5),
 		     mix(vec3(1.0, 0.7, 0.40), vec3(1.0, 1.0, 0.50), rockPalette),
 		     mix(vec3(0.0, 0.15, 0.20), vec3(0.80, 0.90, 0.30), rockPalette)
 		);
 
 
-		vec3 rockColor = color * ((1-smoothstep(0.0, max(0.75, random(rockBoundary.y)), rockBoundary.x)) * 0.8 + 0.2);
+		vec3 rockColor = color * ((1-smoothstep(0.0, max(0.75, (rockBoundary.y)), rockBoundary.x)) * 0.8 + 0.2);
 
 		float veinMask = smoothstep(0.7, 0.75, pow(fastRidge3d(FragPos * 0.05), 2));
 		rockColor = mix(rockColor, vec3(0.8, 0.9, 1.0), veinMask);
@@ -428,8 +429,8 @@ TerrainMaterial calculateMaterial(float largeNoise, float slope) {
 
 
 	// Don't make beach areas into cliffs
-	// float beachMask = 1.0 - smoothstep(0.0, HEIGHT_BEACH_END + 2.0, baseHeight);
-	// cliffMask *= (1.0 - beachMask);
+	float beachMask = 1.0 - smoothstep(0.0, HEIGHT_BEACH_END + 2.0, baseHeight);
+	cliffMask *= (1.0 - beachMask);
 
 	TerrainMaterial biomeMat = getBiomeMaterial(distortedHeight, moisture, largeNoise);
 	TerrainMaterial cliffMat = getCliffMaterial(baseHeight, moisture, largeNoise);
