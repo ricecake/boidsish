@@ -181,30 +181,34 @@ namespace Boidsish {
 		if (!decor_types_.empty())
 			return;
 
-		// AddDecorType(
-		// 	"assets/decor/Apple tree/AppleTree.obj",
-		// 	{.min_density = 0.005f,
-		//      .max_density = 0.01f,
-		//      .base_scale = 0.5f,
-		//      .scale_variance = 0.01f,
-		//      .min_height = 5.0f,
-		//      .max_height = 95.0f,
-		//      .random_yaw = true,
-		//      .biomes = {Biome::Forest, Biome::AlpineMeadow},
-		//      .wind_responsiveness = 0.3f}
-		// );
-		// AddDecorType(
-		// 	"assets/decor/Tree/tree01.obj",
-		// 	{.min_density = 0.001f,
-		//      .max_density = 0.005f,
-		//      .base_scale = 0.055f,
-		//      .scale_variance = 0.05f,
-		//      .min_height = 5.0f,
-		//      .max_height = 95.0f,
-		//      .random_yaw = true,
-		//      .biomes = {Biome::LushGrass, Biome::Forest},
-		//      .wind_responsiveness = 0.5f}
-		// );
+		AddDecorType(
+			"assets/decor/Apple tree/AppleTree.obj",
+			{.min_density = 0.005f,
+		     .max_density = 0.01f,
+		     .base_scale = 0.5f,
+		     .scale_variance = 0.01f,
+		     .min_height = 5.0f,
+		     .max_height = 95.0f,
+		     .random_yaw = true,
+		     .biomes = {Biome::Forest, Biome::AlpineMeadow},
+		     .wind_responsiveness = 0.3f}
+		);
+		AddDecorType(
+			"assets/decor/Tree/tree01.obj",
+			{.min_density = 0.001f,
+		     .max_density = 0.005f,
+		     .base_scale = 0.015f,
+		     .scale_variance = 0.01f,
+			// {.min_density = 0.001f,
+		    //  .max_density = 0.005f,
+		    //  .base_scale = 0.055f,
+		    //  .scale_variance = 0.05f,
+		     .min_height = 5.0f,
+		     .max_height = 95.0f,
+		     .random_yaw = true,
+		     .biomes = {Biome::LushGrass, Biome::Forest},
+		     .wind_responsiveness = 0.5f}
+		);
 
 		// AddDecorType(
 		// 	"assets/decor/Rose bush/Mesh_RoseBush.obj",
