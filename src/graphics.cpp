@@ -2258,7 +2258,7 @@ namespace Boidsish {
 				lighting_ubo_data_.time = simulation_time;
 				lighting_ubo_data_.view_dir = camera.front();
 
-				if (mood_manager && weather_manager && light_manager) {
+				if (mood_manager && weather_manager && light_manager && mood_manager->IsEnabled() && !mood_manager->IsOverrideEnabled()) {
 					std::map<MoodParameter, float> params;
 					params[MoodParameter::TimeOfDay] = light_manager->GetDayNightCycle().time;
 					params[MoodParameter::Precipitation] = weather_manager->GetCurrentWeather().precipitation;

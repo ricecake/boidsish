@@ -32,6 +32,8 @@ namespace Boidsish {
     };
 
     struct MoodBloomSettings {
+        static MoodBloomSettings GetDefault(bool isSky = false);
+
         std::optional<bool> toneMappingEnabled;
         std::optional<int> toneMappingMode;
         std::optional<bool> autoExposureEnabled;
@@ -71,6 +73,8 @@ namespace Boidsish {
     };
 
     struct MoodSettings {
+        static MoodSettings GetDefault();
+
         MoodBloomSettings sceneBloom;
         MoodBloomSettings skyBloom;
 
