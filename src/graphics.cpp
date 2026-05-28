@@ -1408,19 +1408,6 @@ namespace Boidsish {
 			PROJECT_PROFILE_SCOPE(
 				layer == RenderLayer::Opaque ? "ExecuteRenderQueue::Opaque" : "ExecuteRenderQueue::Transparent"
 			);
-			// Integrate trails into the render queue for the transparent layer
-			if (layer == RenderLayer::Transparent && trail_render_manager && !is_shadow_pass) {
-				RenderContext context;
-				context.view = view_mat;
-				context.projection = proj_mat;
-				context.view_pos = camera_pos;
-				context.frustum = Frustum::FromViewProjection(view_mat, proj_mat);
-
-				trail_render_manager
-					->GetRenderPackets(queue.GetPacketsMutable(RenderLayer::Transparent), context, trail_shader_handle);
-				// Re-sort might be needed but typically transparent is sorted anyway.
-				// For now, assume it's fine or re-sort.
-			}
 
 			const auto& packets = queue.GetPackets(layer);
 			if (packets.empty())
@@ -2500,7 +2487,7 @@ namespace Boidsish {
 		// Lazy sync — blocks on first call, no-op on subsequent calls.
 		// Shadow decor rendering can proceed without packets; the shape
 		// callback triggers this when packets are first needed.
-		void EnsurePacketsSynced() {
+		void EnsurePacketsSynced(const FrameData& frame) {
 			if (packets_synced_)
 				return;
 			{
@@ -2510,6 +2497,19 @@ namespace Boidsish {
 				}
 				pending_packet_futures.clear();
 			}
+
+			// Integrate trails into the render queue for the transparent layer
+			if (trail_render_manager) {
+				RenderContext context;
+				context.view = frame.view;
+				context.projection = frame.projection;
+				context.view_pos = frame.camera_pos;
+				context.frustum = Frustum::FromViewProjection(frame.view, frame.projection);
+
+				trail_render_manager
+					->GetRenderPackets(render_queue.GetPacketsMutable(RenderLayer::Transparent), context, trail_shader_handle);
+			}
+
 			{
 				PROJECT_PROFILE_SCOPE("SortRenderQueue");
 				render_queue.Sort(thread_pool);
@@ -2656,7 +2656,7 @@ namespace Boidsish {
 			// The shadow pass needs a callback to render shapes because
 			// ExecuteRenderQueue lives here with the MDI infrastructure.
 			auto render_shapes = [this, &frame](const glm::mat4& light_space_matrix) {
-				EnsurePacketsSynced(); // lazy sync — shadow decor runs without packets
+				EnsurePacketsSynced(frame); // lazy sync — shadow decor runs without packets
 				ExecuteRenderQueue(
 					render_queue,
 					frame.view,
@@ -3659,7 +3659,7 @@ namespace Boidsish {
 		// Shadow decor renders during the overlap window (no packets needed).
 		// The shape callback triggers lazy sync when packets are first needed.
 		impl->RenderShadowPasses(frame);
-		impl->EnsurePacketsSynced(); // fallback if no shadow shapes triggered it
+		impl->EnsurePacketsSynced(frame); // fallback if no shadow shapes triggered it
 
 		// Pre-dispatch compute effects (like volumetric lighting) so results are available for the scene
 		if (impl->post_processing_manager_) {
