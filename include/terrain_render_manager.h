@@ -133,7 +133,10 @@ namespace Boidsish {
 			GLsizeiptr       lighting_ubo_size = 0,
 			float            probe_scaling = 0.125f,
 			float            probe_convergence = 0.5f,
-			int              probe_ray_multiplier = 1
+			int              probe_ray_multiplier = 1,
+			GLuint           volumetric_injection_buffer = 0,
+			GLuint           volumetric_injection_texture = 0,
+			glm::ivec3       volumetric_grid_res = glm::ivec3(0)
 		);
 
 		/**
