@@ -165,7 +165,7 @@ TerrainMaterial getRockTexture(vec3 baseColor, float height, float moisture, flo
 	mat.normalStrength = mix(0.1, 0.05, wetness);
 
 	if (rockFactor  > 0) {
-		vec3 rockBoundary = voronoi((TexCoords+(noise*0.05))*int(50*mix(5, 0.1, smoothstep(50, 250, 20*int(realDist/20) ))));
+		vec3 rockBoundary = voronoi((TexCoords+(noise*0.05))*int(50*mix(1, 0.5, smoothstep(100.0, 250.0, 25.0*int(realDist/25.0) ))));
 		// vec2 rockBoundary = fastWorley3dID(FragPos);
 
 		float rockPalette = clamp(rockFactors.y, 0, 1);
@@ -179,10 +179,11 @@ TerrainMaterial getRockTexture(vec3 baseColor, float height, float moisture, flo
 
 		vec3 rockColor = color * ((1-smoothstep(0.0, max(0.75, random(rockBoundary.y)), rockBoundary.x)) * 0.8 + 0.2);
 
-		rockColor = mix(rockColor, vec3(0.8, 0.9, 1.0), smoothstep(0.65, 1.0, pow(fastRidge3d(FragPos * 0.01), 2)));
+		float veinMask = smoothstep(0.7, 0.75, pow(fastRidge3d(FragPos * 0.05), 2));
+		rockColor = mix(rockColor, vec3(0.8, 0.9, 1.0), veinMask);
 
 		mat.albedo = mix(mat.albedo, rockColor, smoothstep(0.0, 0.75, rockFactor));
-		mat.roughness = mix(0.7, 0.1, wetness*smoothstep(0.01, 0.02, rockBoundary.x ));
+		mat.roughness = mix(0.7, 0.1, max(wetness*smoothstep(0.01, 0.02, rockBoundary.x ), veinMask));
 		mat.normalScale = 40.0;
 		mat.normalStrength = mix(0.1, 0.05, wetness);
 	}
