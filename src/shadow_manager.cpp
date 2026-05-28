@@ -341,8 +341,10 @@ namespace Boidsish {
 		ShadowUboData* data = shadow_pb_->GetFrameDataPtr();
 
 		std::memcpy(data->light_space_matrices, light_space_matrices_.data(), sizeof(glm::mat4) * kMaxShadowMaps);
-		std::memcpy(data->cascade_splits, cascade_splits_.data(), sizeof(float) * kMaxCascades);
-		data->active_shadow_count = active_shadow_count_;
+		for (int i = 0; i < kMaxCascades; ++i) {
+			data->cascade_splits[i] = cascade_splits_[i];
+		}
+		data->num_shadow_lights = active_shadow_count_;
 	}
 
 	std::vector<glm::vec4> ShadowManager::GetFrustumCornersWorldSpace(const glm::mat4& proj, const glm::mat4& view) {

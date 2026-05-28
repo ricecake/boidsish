@@ -527,8 +527,15 @@ namespace Boidsish {
 		// --- Phase 3: Command Fixup ---
 		fixup_shader_->use();
 		fixup_shader_->bindUniformBlock("FrustumData", Constants::UboBinding::FrustumData());
-		draw_command_pb_->BindRange(Constants::SsboBinding::ParticleDrawCommand());
-		behavior_command_pb_->BindRange(Constants::SsboBinding::BehaviorDrawCommand());
+
+		// Note: PersistentBuffer::BindRange uses the buffer's default target (GL_DRAW_INDIRECT_BUFFER).
+		// For the fixup compute shader, we must bind these ranges to GL_SHADER_STORAGE_BUFFER.
+		glBindBufferRange(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleDrawCommand(),
+			draw_command_pb_->GetBufferId(), draw_command_pb_->GetFrameOffset(), 4 * sizeof(uint32_t));
+
+		glBindBufferRange(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::BehaviorDrawCommand(),
+			behavior_command_pb_->GetBufferId(), behavior_command_pb_->GetFrameOffset(), 4 * sizeof(uint32_t));
+
 		glDispatchCompute(1, 1, 1);
 		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT);
 

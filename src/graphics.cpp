@@ -3663,6 +3663,7 @@ namespace Boidsish {
 		// Shadow decor renders during the overlap window (no packets needed).
 		// The shape callback triggers lazy sync when packets are first needed.
 		impl->RenderShadowPasses(frame);
+		impl->shadow_manager->UpdateShadowUBO(impl->shadow_pass_->GetShadowLights());
 		impl->EnsurePacketsSynced(frame); // fallback if no shadow shapes triggered it
 
 		impl->RenderOpaqueScene(frame);

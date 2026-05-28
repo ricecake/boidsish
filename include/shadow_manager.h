@@ -31,8 +31,10 @@ namespace Boidsish {
 	 */
 	struct ShadowUboData {
 		glm::mat4 light_space_matrices[Constants::Class::Shadows::MaxShadowMaps()];
-		float     cascade_splits[Constants::Class::Shadows::MaxCascades()];
-		int       active_shadow_count;
+		// std140: vec4 cascadeSplits (float[4] is packed into vec4 if declared as such in shader)
+		// Our shader says: vec4 cascadeSplits;
+		glm::vec4 cascade_splits;
+		int       num_shadow_lights;
 		int       padding[3];
 	};
 
