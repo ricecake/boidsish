@@ -47,7 +47,9 @@ void main() {
 			gl_PointSize = clamp(base_size / (-view_pos.z * 0.1), 2.0, 15.0);
 		} else if (p.style == STYLE_SNOW) {
 			gl_PointSize = clamp(base_size / (-view_pos.z * 0.1), 4.0, 20.0);
-		} else if (p.style == STYLE_AMBIENT || p.style == STYLE_BUBBLES || p.style == STYLE_FIREFLIES || p.style == STYLE_CINDER || p.style == STYLE_LEAF || p.style == STYLE_PETAL || p.style == STYLE_BIRDS || p.style == STYLE_FAIRY) {
+		} else if (p.style == STYLE_DUST) {
+			gl_PointSize = clamp(base_size / (-view_pos.z * 0.1), 3.0, 4.0);
+		} else if (p.style == STYLE_AMBIENT || p.style == STYLE_BUBBLES || p.style == STYLE_FIREFLIES || p.style == STYLE_CINDER || p.style == STYLE_LEAF || p.style == STYLE_PETAL || p.style == STYLE_BIRDS || p.style == STYLE_FAIRY || p.style == STYLE_DUST) {
 			gl_PointSize = base_size / (-view_pos.z * 0.05);
 
 			float size_var = fract(sin(float(particle_idx) * 123.456) * 456.789);

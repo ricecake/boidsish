@@ -876,6 +876,8 @@ namespace Boidsish {
 							drawLimit("Bubbles", "particle_limit_bubbles", stats.count_bubbles, stats.limit_bubbles);
 							drawLimit("Fireflies", "particle_limit_fireflies", stats.count_fireflies, stats.limit_fireflies);
 							drawLimit("Snow", "particle_limit_snow", stats.count_snow, stats.limit_snow);
+							drawLimit("Rain", "particle_limit_rain", stats.count_rain, stats.limit_rain);
+							drawLimit("Dust", "particle_limit_dust", stats.count_dust, stats.limit_dust);
 						}
 					}
 				}

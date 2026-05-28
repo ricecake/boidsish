@@ -426,14 +426,15 @@ namespace Boidsish {
 		auto&         cfg = ConfigManager::GetInstance();
 		ParticleStats* stats_ptr = stats_buffer_->GetFrameDataPtr();
 		*stats_ptr = ParticleStats{};
-		stats_ptr->limit_birds = cfg.GetAppSettingInt("particle_limit_birds", 1000);
-		stats_ptr->limit_leaves = cfg.GetAppSettingInt("particle_limit_leaves", 5000);
-		stats_ptr->limit_petals = cfg.GetAppSettingInt("particle_limit_petals", 5000);
-		stats_ptr->limit_bubbles = cfg.GetAppSettingInt("particle_limit_bubbles", 2000);
-		stats_ptr->limit_fireflies = cfg.GetAppSettingInt("particle_limit_fireflies", 3000);
-		stats_ptr->limit_snow = cfg.GetAppSettingInt("particle_limit_snow", 10000);
+		stats_ptr->limit_birds = cfg.GetAppSettingInt("particle_limit_birds", 50);
+		stats_ptr->limit_leaves = cfg.GetAppSettingInt("particle_limit_leaves", 250);
+		stats_ptr->limit_petals = cfg.GetAppSettingInt("particle_limit_petals", 250);
+		stats_ptr->limit_bubbles = cfg.GetAppSettingInt("particle_limit_bubbles", 250);
+		stats_ptr->limit_fireflies = cfg.GetAppSettingInt("particle_limit_fireflies", 1000);
 		stats_ptr->limit_fairies = cfg.GetAppSettingInt("particle_limit_fairies", 1000);
-		stats_ptr->limit_dust = cfg.GetAppSettingInt("particle_limit_dust", 75);
+		stats_ptr->limit_snow = cfg.GetAppSettingInt("particle_limit_snow", 500);
+		stats_ptr->limit_rain = cfg.GetAppSettingInt("particle_limit_rain", 500);
+		stats_ptr->limit_dust = cfg.GetAppSettingInt("particle_limit_dust", 500);
 
 		// GPU will increment counts, we only reset them to 0 each frame here before dispatch.
 
