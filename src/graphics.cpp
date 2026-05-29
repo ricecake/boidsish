@@ -3661,6 +3661,11 @@ namespace Boidsish {
 		impl->RenderShadowPasses(frame);
 		impl->EnsurePacketsSynced(frame); // fallback if no shadow shapes triggered it
 
+		// Pre-dispatch compute effects (like volumetric lighting) so results are available for the scene
+		if (impl->post_processing_manager_) {
+			impl->post_processing_manager_->PreDispatchEffects(frame.view, frame.projection, frame.camera_pos);
+		}
+
 		impl->RenderOpaqueScene(frame);
 
 		// Update terrain probes based on the opaque scene result

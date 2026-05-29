@@ -195,6 +195,19 @@ namespace Boidsish {
 			return GetFinalTexture();
 		}
 
+		void PostProcessingManager::PreDispatchEffects(
+			const glm::mat4& viewMatrix,
+			const glm::mat4& projectionMatrix,
+			const glm::vec3& cameraPos
+		) {
+			PROJECT_PROFILE_SCOPE("PreDispatchEffects");
+			for (const auto& effect : pre_tone_mapping_effects_) {
+				if (effect->IsEnabled()) {
+					effect->PreDispatch(viewMatrix, projectionMatrix, cameraPos);
+				}
+			}
+		}
+
 		void PostProcessingManager::Resize(int width, int height) {
 			width_ = width;
 			height_ = height;
