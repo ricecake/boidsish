@@ -16,9 +16,7 @@ namespace Boidsish {
 	}
 
 	ShockwaveManager::~ShockwaveManager() {
-		if (ubo_ != 0) {
-			glDeleteBuffers(1, &ubo_);
-		}
+		ubo_pb_.reset();
 		if (fbo_ != 0) {
 			glDeleteFramebuffers(1, &fbo_);
 		}
@@ -39,13 +37,9 @@ namespace Boidsish {
 		shader_ = std::make_unique<Shader>("shaders/postprocess.vert", "shaders/effects/shockwave.frag");
 
 		// Create UBO for shockwave data
-		glGenBuffers(1, &ubo_);
-		glBindBuffer(GL_UNIFORM_BUFFER, ubo_);
-
 		// Allocate space for: count (16 bytes for alignment) + array of shockwave data
 		size_t ubo_size = 16 + kMaxShockwaves * sizeof(ShockwaveGPUData);
-		glBufferData(GL_UNIFORM_BUFFER, ubo_size, nullptr, GL_DYNAMIC_DRAW);
-		glBindBuffer(GL_UNIFORM_BUFFER, 0);
+		ubo_pb_ = std::make_unique<PersistentBuffer<char>>(GL_UNIFORM_BUFFER, ubo_size, 3);
 
 		// Create intermediate FBO for effect rendering
 		glGenFramebuffers(1, &fbo_);
@@ -178,28 +172,21 @@ namespace Boidsish {
 		}
 
 		// Upload to UBO
-		glBindBuffer(GL_UNIFORM_BUFFER, ubo_);
+		char* ptr = ubo_pb_->GetFrameDataPtr();
 
 		// Write count (padded to 16 bytes for std140)
 		int count = static_cast<int>(gpu_data.size());
-		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(int), &count);
+		std::memcpy(ptr, &count, sizeof(int));
 
 		// Write shockwave array
 		if (!gpu_data.empty()) {
-			glBufferSubData(
-				GL_UNIFORM_BUFFER,
-				16, // After count padding
-				gpu_data.size() * sizeof(ShockwaveGPUData),
-				gpu_data.data()
-			);
+			std::memcpy(ptr + 16, gpu_data.data(), gpu_data.size() * sizeof(ShockwaveGPUData));
 		}
-
-		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 	}
 
 	void ShockwaveManager::BindUBO(GLuint binding_point) const {
-		if (ubo_ != 0) {
-			glBindBufferBase(GL_UNIFORM_BUFFER, binding_point, ubo_);
+		if (ubo_pb_) {
+			ubo_pb_->BindRange(binding_point);
 		}
 	}
 
