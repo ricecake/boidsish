@@ -75,7 +75,7 @@ namespace Boidsish {
 			has_history_ = false;
 		}
 
-		void VolumetricLightingEffect::Apply(GLuint sourceTexture, GLuint depthTexture, GLuint velocityTexture, GLuint normalTexture, GLuint albedoTexture, const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix, const glm::vec3& cameraPos) {
+		void VolumetricLightingEffect::PreDispatch(const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix, const glm::vec3& cameraPos) {
 			auto& loc = ServiceLocator::Instance();
 			auto shadow_mgr = loc.Get<ShadowManager>();
 			auto terrain_mgr = loc.Get<TerrainRenderManager>();
@@ -144,8 +144,10 @@ namespace Boidsish {
 			// Extract camera front from inverse view matrix (3rd column is Back)
 			glm::mat4 invView = glm::inverse(viewMatrix);
 			prev_camera_front_ = -glm::normalize(glm::vec3(invView[2]));
+		}
 
-			// 3. Composition
+		void VolumetricLightingEffect::Apply(GLuint sourceTexture, GLuint depthTexture, GLuint velocityTexture, GLuint normalTexture, GLuint albedoTexture, const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix, const glm::vec3& cameraPos) {
+			// Composition
 			composite_shader_->use();
 			composite_shader_->setInt("uSceneTexture", 0);
 			composite_shader_->setInt("uDepthTexture", 1);

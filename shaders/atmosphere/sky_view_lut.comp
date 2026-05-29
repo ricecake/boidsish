@@ -64,7 +64,7 @@ void main() {
 	if (intersectsPlanet && p0 > 0.0)
 		t_max = p0;
 
-	const int kSteps = 32;
+	const int kSteps = 64;
 	vec3      L = vec3(0.0);
 	vec3      T = vec3(1.0);
 	float     dt = t_max / float(kSteps);
@@ -72,8 +72,10 @@ void main() {
 	for (int i = 0; i < kSteps; ++i) {
 		float    t = (float(i) + 0.5) * dt;
 		vec3     p = ro + rd * t;
-		float    h = length(p) - kEarthRadius;
-		Sampling s = getAtmosphereProperties(h);
+
+		// Use worldPos-aware properties to include ground haze and weather variations
+		vec3 worldPos = u_cameraPos + (p - ro) * 1000.0;
+		Sampling s = getAtmospherePropertiesAtPos(worldPos);
 
 		// Apply gentle color variance to scattering patterns
 		if (u_colorVarianceStrength > 0.0) {
@@ -97,9 +99,7 @@ void main() {
 		// Factor in cloud shadows for direct sun contribution to scattering
 		// For the global sky probe, we sample clouds at a position along the ray.
 		// Since SkyView is often used for ambient, accounting for clouds near the observer is most important.
-		// Convert Km planet-relative p back to world-space meters for the shadow check.
-		// We use evaluateCloudShadowDensityAtWorldPos directly to avoid including lighting.glsl and its uniforms.
-		vec3 worldPos = u_cameraPos + (p - ro) * 1000.0;
+		// Use the already calculated worldPos for the shadow check.
 		float cloudD = evaluateCloudShadowDensityAtWorldPos(worldPos.xz, u_time);
 		float cloudShadow = mix(1.0, exp(-cloudD), u_cloudShadowIntensity);
 

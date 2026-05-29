@@ -53,6 +53,13 @@ uniform float u_rayleighScale;
 uniform float u_mieScale;
 uniform float u_mieAnisotropy;
 
+#ifndef HAZE_UNIFORMS_DEFINED
+#define HAZE_UNIFORMS_DEFINED
+uniform float hazeDensity;
+uniform float hazeHeight;
+uniform vec3  hazeColor;
+#endif
+
 uniform vec3 u_ozoneAbsorptionBase;
 #define kOzoneAbsorption u_ozoneAbsorptionBase
 
@@ -120,6 +127,21 @@ Sampling getAtmospherePropertiesAtPos(vec3 worldPos) {
 
 	s.mie *= humidityFactor * aerosolFactor;
 	s.extinction += (s.mie - vec3(kMieScattering * getMieDensity(h) * u_mieScale)); // Re-calculate extinction diff
+
+	// Ground-level Haze (Additive Local Mie boost)
+	// We use a simple exponential distribution for the haze layer.
+	// Moved to end to prevent multiplicative stacking with weather factors.
+	// worldPos.y is in meters, h (atmosphere scale) is in KM.
+	// We re-derive KM height from worldPos for absolute consistency.
+	float hKM = worldPos.y / 1000.0;
+	float hazeHeightKM = max(0.001, hazeHeight / 1000.0);
+	float groundHaze = hazeDensity * exp(-max(0.0, hKM) / hazeHeightKM);
+
+	// Conservative scaling: use a smaller base factor (0.01) so hazeDensity 1.0 is subtle.
+	vec3 hazeMie = hazeColor * groundHaze * 0.01;
+
+	s.mie += hazeMie;
+	s.extinction += hazeMie * 1.1; // Extinction slightly higher than scattering
 
 	return s;
 }
