@@ -206,11 +206,11 @@ void main() {
 					(j == 0 ? cloudSunLightScale : cloudMoonLightScale);
 			}
 
-			// Multi-direction SH ambient: blend overhead sky with sun-facing horizon.
+			// Multi-direction probe ambient: blend overhead sky with sun-facing horizon.
 			// At sunset the horizon sample carries warm orange/red tones.
 			// Scale ambient down at low sun angles so warm direct light dominates.
-			vec3  ambientUp = evalSHIrradiance(vec3(0, 1, 0));
-			vec3  ambientHorizon = evalSHIrradiance(normalize(vec3(primaryLightDir.x, 0.15, primaryLightDir.z)));
+			vec3  ambientUp = getSpatialAmbientSH(p, vec3(0, 1, 0));
+			vec3  ambientHorizon = getSpatialAmbientSH(p, normalize(vec3(primaryLightDir.x, 0.15, primaryLightDir.z)));
 			float sunHeight = max(primaryLightDir.y, 0.0);
 			float ambientScale = mix(0.3, 1.0, smoothstep(0.0, 0.3, sunHeight));
 			vec3  ambient = mix(ambientUp, ambientHorizon, 0.4) * ambientScale;

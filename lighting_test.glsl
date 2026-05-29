@@ -1,11 +1,657 @@
+#ifndef GSHADERS_HELPERS_LIGHTING_GLSL
+#define GSHADERS_HELPERS_LIGHTING_GLSL
 #ifndef HELPERS_LIGHTING_GLSL
 #define HELPERS_LIGHTING_GLSL
 
-#include "../helpers/constants.glsl"
-#include "../lighting.glsl"
-#include "clouds.glsl"
-#include "brdf.glsl"
-#include "octahedral.glsl"
+//START shaders/helpers/../helpers/constants.glsl
+#ifndef GSHADERS_HELPERS_CONSTANTS_GLSL
+#define GSHADERS_HELPERS_CONSTANTS_GLSL
+#ifndef CONSTANTS
+#define CONSTANTS
+
+const float PI = 3.14159265359;
+
+#endif
+#endif // GSHADERS_HELPERS_CONSTANTS_GLSL
+//END shaders/helpers/../helpers/constants.glsl (returning to shaders/helpers/lighting.glsl)
+//START shaders/helpers/../lighting.glsl
+#ifndef GSHADERS_LIGHTING_GLSL
+#define GSHADERS_LIGHTING_GLSL
+#ifndef LIGHTING_GLSL
+#define LIGHTING_GLSL
+
+//START shaders/types/lighting.glsl
+#ifndef GSHADERS_TYPES_LIGHTING_GLSL
+#define GSHADERS_TYPES_LIGHTING_GLSL
+#ifndef LIGHTING_TYPES_GLSL
+#define LIGHTING_TYPES_GLSL
+
+struct Light {
+	vec3  position;
+	float intensity;
+	vec3  color;
+	int   type;
+	vec3  direction;
+	float inner_cutoff; // Also: emissive_radius (EMISSIVE), flash_radius (FLASH)
+	float outer_cutoff; // Also: falloff_exp (FLASH)
+};
+
+const int MAX_LIGHTS = 10;
+
+layout(std140, binding = 0) uniform Lighting {
+	Light lights[MAX_LIGHTS];
+	int   num_lights;
+	float worldScale;
+	float dayTime;
+	float nightFactor;
+	vec3  viewPos;
+	float cloudShadowIntensity;
+	vec3  ambient_light;
+	float time;
+	vec3  viewDir;
+	float cloudAltitude;
+	float cloudThickness;
+	float cloudDensity;
+	float cloudCoverage;
+	float cloudWarp;
+	float cloudPhaseG1;
+	float cloudPhaseG2;
+	float cloudPhaseAlpha;
+	float cloudPhaseIsotropic;
+	float cloudPowderScale;
+	float cloudPowderMultiplier;
+	float cloudPowderLocalScale;
+	float cloudShadowOpticalDepthMultiplier;
+	float cloudShadowStepMultiplier;
+	float cloudSunLightScale;
+	float cloudMoonLightScale;
+	float cloudBeerPowderMix;
+	mat4  cloudShadowMatrix;
+	vec3  lightningColor;
+	float lightningPulse;
+	vec4  sh_coeffs[9];
+	vec4  u_probeParams;   // origin_x, origin_z, size_x, size_z
+	vec4  u_probeParams2;  // size_y, spacing, oct_res
+};
+
+#endif
+#endif // GSHADERS_TYPES_LIGHTING_GLSL
+//END shaders/types/lighting.glsl (returning to shaders/lighting.glsl)
+//START shaders/types/terrain.glsl
+#ifndef GSHADERS_TYPES_TERRAIN_GLSL
+#define GSHADERS_TYPES_TERRAIN_GLSL
+#ifndef TERRAIN_TYPES_GLSL
+#define TERRAIN_TYPES_GLSL
+
+struct AmbientProbe {
+	vec4 sh_coeffs[9]; // rgb = coefficients, w = unused
+};
+
+#ifndef TERRAIN_DATA_BLOCK
+#define TERRAIN_DATA_BLOCK
+layout(std140, binding = 8) uniform TerrainData {
+	ivec4 u_originSize;    // x, z, size, is_bound
+	vec4  u_terrainParams; // chunkSize, worldScale
+	vec4  u_probeParams_unused;   // origin_x, origin_z, size_x, size_z
+	vec4  u_probeParams2_unused;  // size_y, spacing, oct_res
+};
+#endif
+
+#ifndef TERRAIN_PROBES_BLOCK
+#define TERRAIN_PROBES_BLOCK
+layout(std430, binding = 29) buffer TerrainProbes {
+	AmbientProbe u_terrainProbes[];
+};
+#endif
+
+#endif
+#endif // GSHADERS_TYPES_TERRAIN_GLSL
+//END shaders/types/terrain.glsl (returning to shaders/lighting.glsl)
+//START shaders/types/biomes.glsl
+#ifndef GSHADERS_TYPES_BIOMES_GLSL
+#define GSHADERS_TYPES_BIOMES_GLSL
+#ifndef BIOME_TYPES_GLSL
+#define BIOME_TYPES_GLSL
+
+struct BiomeShaderProperties {
+	vec4 albedo_roughness; // rgb = albedo, w = roughness
+	vec4 params;           // x = metallic, y = detailStrength, z = detailScale, w = noiseType
+};
+
+#ifndef BIOME_DATA_BLOCK
+#define BIOME_DATA_BLOCK
+layout(std140, binding = 7) uniform BiomeData {
+	BiomeShaderProperties u_biomes[8];
+};
+#endif
+
+#endif
+#endif // GSHADERS_TYPES_BIOMES_GLSL
+//END shaders/types/biomes.glsl (returning to shaders/lighting.glsl)
+//START shaders/types/shadows.glsl
+#ifndef GSHADERS_TYPES_SHADOWS_GLSL
+#define GSHADERS_TYPES_SHADOWS_GLSL
+#ifndef SHADOW_TYPES_GLSL
+#define SHADOW_TYPES_GLSL
+
+const int MAX_SHADOW_MAPS = 16;
+const int MAX_CASCADES = 4;
+
+// Shadow mapping UBO (binding set via glUniformBlockBinding to point 2)
+layout(std140, binding = 2) uniform Shadows {
+	mat4 lightSpaceMatrices[MAX_SHADOW_MAPS];
+	vec4 cascadeSplits;
+	int  numShadowLights;
+};
+
+// Per-light shadow map index (-1 if no shadow for this light)
+// This is set via uniform since the Light struct can't easily store it
+uniform int lightShadowIndices[10];
+
+#endif
+#endif // GSHADERS_TYPES_SHADOWS_GLSL
+//END shaders/types/shadows.glsl (returning to shaders/lighting.glsl)
+//START shaders/textures/shadows.glsl
+#ifndef GSHADERS_TEXTURES_SHADOWS_GLSL
+#define GSHADERS_TEXTURES_SHADOWS_GLSL
+#ifndef SHADOW_TEXTURES_GLSL
+#define SHADOW_TEXTURES_GLSL
+
+//START shaders/types/shadows.glsl
+//END shaders/types/shadows.glsl (returning to shaders/textures/shadows.glsl)
+
+// Shadow map texture array - bound to texture unit 4
+uniform sampler2DArrayShadow shadowMaps;
+
+#endif
+#endif // GSHADERS_TEXTURES_SHADOWS_GLSL
+//END shaders/textures/shadows.glsl (returning to shaders/lighting.glsl)
+
+#endif
+#endif // GSHADERS_LIGHTING_GLSL
+//END shaders/helpers/../lighting.glsl (returning to shaders/helpers/lighting.glsl)
+//START shaders/helpers/clouds.glsl
+#ifndef GSHADERS_HELPERS_CLOUDS_GLSL
+#define GSHADERS_HELPERS_CLOUDS_GLSL
+#ifndef HELPERS_CLOUDS_GLSL
+#define HELPERS_CLOUDS_GLSL
+
+//START shaders/helpers/../lighting.glsl
+//END shaders/helpers/../lighting.glsl (returning to shaders/helpers/clouds.glsl)
+//START shaders/helpers/fast_noise.glsl
+#ifndef GSHADERS_HELPERS_FAST_NOISE_GLSL
+#define GSHADERS_HELPERS_FAST_NOISE_GLSL
+#ifndef HELPERS_FAST_NOISE_GLSL
+#define HELPERS_FAST_NOISE_GLSL
+
+// Helper functions for fast texture-based noise lookups
+// Requires noise texture samplers bound to fixed units:
+// u_noiseTexture: 3D, unit 5, R=Simplex/G=Worley/B=FBM/A=Warped
+// u_curlTexture: 3D, unit 6, RGB=Curl/A=FBM Curl Mag
+// u_blueNoiseTexture: 2D, unit 7, RGBA tiling blue noise at 4 frequencies
+// u_extraNoiseTexture: 3D, unit 8, R=Ridge/G=Gradient
+
+#ifndef NOISE_TEXTURES_DEFINED
+#define NOISE_TEXTURES_DEFINED
+uniform sampler3D u_noiseTexture;
+uniform sampler3D u_curlTexture;
+uniform sampler2D u_blueNoiseTexture;
+uniform sampler3D u_extraNoiseTexture;
+uniform sampler2D u_phasorTexture;
+#endif
+
+// R: Simplex 3D
+float fastSimplex3d(vec3 p) {
+	return textureLod(u_noiseTexture, p, 0.0).r * 2.0 - 1.0;
+}
+
+// G: Worley 3D
+float fastWorley3d(vec3 p) {
+	return textureLod(u_noiseTexture, p, 0.0).g;
+}
+
+// B: FBM 3D
+float fastFbm3d(vec3 p) {
+	return textureLod(u_noiseTexture, p, 0.0).b * 2.0 - 1.0;
+}
+
+// A: Warped FBM 3D
+float fastWarpedFbm3d(vec3 p) {
+	return textureLod(u_noiseTexture, p, 0.0).a * 2.0 - 1.0;
+}
+
+// Extra Noises (from u_extraNoiseTexture)
+// R: Ridge 3D
+float fastRidge3d(vec3 p) {
+	return textureLod(u_extraNoiseTexture, p, 0.0).r;
+}
+
+// G: Gradient 3D
+float fastGradient3d(vec3 p) {
+	return textureLod(u_extraNoiseTexture, p, 0.0).g * 2.0 - 1.0;
+}
+
+vec2 fastWorley3dID(vec3 p) {
+	return textureLod(u_extraNoiseTexture, p, 0.0).ba;
+}
+
+
+// Multi-octave texture FBM
+float fastTextureFbm(vec3 p, int octaves) {
+	float value = 0.0;
+	float amplitude = 0.5;
+	for (int i = 0; i < octaves; i++) {
+		value += amplitude * (textureLod(u_noiseTexture, p, 0.0).r * 2.0 - 1.0);
+		p *= 2.0;
+		amplitude *= 0.5;
+	}
+	return value;
+}
+
+// Curl Noise lookup
+vec3 fastCurl3d(vec3 p) {
+	return textureLod(u_curlTexture, p, 0.0).rgb;
+}
+
+// FBM Curl magnitude lookup
+float fastFbmCurl3d(vec3 p) {
+	return textureLod(u_curlTexture, p, 0.0).a;
+}
+
+// Blue Noise lookups (at different frequencies)
+float fastBlueNoise(vec2 uv, int frequencyIndex) {
+	vec4 bn = textureLod(u_blueNoiseTexture, uv, 0.0);
+	if (frequencyIndex == 0)
+		return bn.r;
+	if (frequencyIndex == 1)
+		return bn.g;
+	if (frequencyIndex == 2)
+		return bn.b;
+	return bn.a;
+}
+
+float fastBlueNoise(vec2 uv) {
+	return textureLod(u_blueNoiseTexture, uv, 0.0).r;
+}
+
+// Spatiotemporal Blue Noise lookup using golden ratio shift
+// Useful for Monte Carlo integration across frames
+float fastSpatiotemporalBlueNoise(vec2 uv, int frequencyIndex, int frameIndex) {
+    float bn = fastBlueNoise(uv, frequencyIndex);
+    // Golden ratio = 0.61803398875
+    return fract(bn + float(frameIndex) * 0.61803398875);
+}
+
+// float fastSpatiotemporalBlueNoise(vec2 uv, int frameIndex) {
+// 	return fastSpatiotemporalBlueNoise(uv, 0, frameIndex);
+// }
+
+vec4 fastSpatiotemporalBlueNoise(vec2 uv, int frameIndex) {
+	ivec2 bnSize = textureSize(u_blueNoiseTexture, 0);
+	vec2 bnUV = (uv + vec2(frameIndex * 13, frameIndex * 7)) / vec2(bnSize);
+	vec4 bn = textureLod(u_blueNoiseTexture, bnUV, 0.0);
+    // float bn = fastBlueNoise(uv, frequencyIndex);
+    // Golden ratio = 0.61803398875
+    // return fract(bn + vec4(2.0*sin(frameIndex*0.5)  * 0.61803398875));
+    return fract(bn + vec4(frameIndex)  * 0.61803398875);
+}
+
+/**
+ * Fast 2D Phasor noise lookup.
+ * Performs complex multiplication of baked phasor with runtime phase.
+ * Returns the real part of the resulting complex number.
+ */
+float fastPhasor2d(vec2 uv, float runtimePhase) {
+	vec2 baked = textureLod(u_phasorTexture, uv, 0.0).rg;
+
+	// Complex multiplication: (R_baked + i*I_baked) * (cos(phi) + i*sin(phi))
+	// Result real part = R_baked * cos(phi) - I_baked * sin(phi)
+	float cosPhi = cos(runtimePhase);
+	float sinPhi = sin(runtimePhase);
+
+	return baked.x * cosPhi - baked.y * sinPhi;
+}
+
+#endif // HELPERS_FAST_NOISE_GLSL
+#endif // GSHADERS_HELPERS_FAST_NOISE_GLSL
+//END shaders/helpers/fast_noise.glsl (returning to shaders/helpers/clouds.glsl)
+//START shaders/helpers/math.glsl
+#ifndef GSHADERS_HELPERS_MATH_GLSL
+#define GSHADERS_HELPERS_MATH_GLSL
+
+//START shaders/helpers/constants.glsl
+//END shaders/helpers/constants.glsl (returning to shaders/helpers/math.glsl)
+
+float roundToEvenPlaces(float value, float places) {
+	float shift = pow(10.0, places);
+	return roundEven(value * shift) / shift;
+}
+
+float roundToPlaces(float value, float places) {
+	float shift = pow(10.0, places);
+	return round(value * shift) / shift;
+}
+
+float henyeyGreenstein(float g, float cosTheta) {
+	float g2 = g * g;
+	return (1.0 - g2) / (4.0 * PI * pow(max(0.0001, 1.0 + g2 - 2.0 * g * cosTheta), 1.5));
+}
+
+float remap(float value, float low1, float high1, float low2, float high2) {
+	return low2 + (value - low1) * (high2 - low2) / max(0.0001, (high1 - low1));
+}
+#endif // GSHADERS_HELPERS_MATH_GLSL
+//END shaders/helpers/math.glsl (returning to shaders/helpers/clouds.glsl)
+
+float cloudPhase(float cosTheta) {
+	// Dual-lobe Henyey-Greenstein for forward and back scattering
+	// Blended with a large isotropic component to ensure visibility at all angles
+	float hg = mix(henyeyGreenstein(cloudPhaseG1, cosTheta), henyeyGreenstein(cloudPhaseG2, cosTheta), cloudPhaseAlpha);
+	return mix(hg, 1.0 / (4.0 * PI), cloudPhaseIsotropic);
+}
+
+float beerPowder(float d, float local_d) {
+	// Approximation of multiple scattering (Beer-Powder law)
+	// Ensuring sunny side isn't black when d is small
+	return max(
+		exp(-d),
+		exp(-d * cloudPowderScale) * cloudPowderMultiplier * (1.0 - exp(-local_d * cloudPowderLocalScale))
+	);
+}
+
+struct CloudProperties {
+	float altitude;
+	float thickness;
+	float densityBase;
+	float coverage;
+	float worldScale;
+};
+
+struct CloudWeather {
+	float weatherMap;
+	float heightMap;
+};
+
+struct CloudLayer {
+	float baseFloor;
+	float baseCeiling;
+	float thickness;
+};
+
+// Warp cloud position away from the camera's view axis (capsule-based sliding warp)
+// Returns the warped position and a fade factor for density
+vec3 getWarpedCloudPos(vec3 p, out float fade) {
+	fade = 1.0;
+	if (cloudWarp <= 0.0)
+		return p;
+
+	// vec3  relP = p - viewPos;
+	// float projection = dot(relP, viewDir);
+
+	// Capsule distance: distance to the forward ray starting at viewPos
+	// vec3  axisPoint = viewPos + viewDir * max(0.0, projection);
+	// vec3  toP = p - axisPoint;
+	// float d = length(toP);
+	float R = cloudWarp * worldScale;
+
+	// New uniform or constant for how far the bubble extends
+	float capsuleLength = cloudWarp * worldScale * 5.0; // Example ratio
+	vec3  ap = p - viewPos;
+	// t is the projection of the current point onto the view direction
+	float t = dot(ap, viewDir);
+	// Clamp the projection to the segment bounds [0, capsuleLength]
+	float t_clamped = clamp(t, 0.0, capsuleLength);
+	// Find the closest point on the clamped segment
+	vec3 axisPoint = viewPos + viewDir * t_clamped;
+	// Vector from the closest point to the actual point
+	vec3 toP = p - axisPoint;
+	// d is now the distance to a capsule core, rather than a cylinder core
+	float d = length(toP);
+
+	// To "push" clouds out, we sample from a position CLOSER to the axis.
+	// This maps the region [R, inf] to [0, inf].
+	// float d_sampling = max(0.0, d - R);
+	float d_sampling = d * ((d * d) / (d * d + R * R));
+	// float d_sampling = d * (1.0 - exp(-d / R));
+	// float d_sampling = d * (d / (d + R));
+	float scale = d_sampling / max(d, 0.0001);
+
+	// Fade out density in the inner core to create a clean hole and avoid sampling artifacts
+	fade = smoothstep(R * 0.1, R, d);
+	// fade = 1;
+
+	return axisPoint + toP * scale;
+}
+
+CloudLayer computeCloudLayer(CloudWeather weather, CloudProperties props) {
+	// Use heightMap for vertical expansion to decouple it from horizontal coverage
+	float floorOffset = mix(20.0, -50.0, weather.heightMap);
+	float ceilingOffset = mix(10.0, 500.0, weather.heightMap);
+
+	float altitudeOffset = mix(0.0, 500.0, weather.heightMap);
+
+	CloudLayer layer;
+	layer.baseFloor = (altitudeOffset + props.altitude + floorOffset) * props.worldScale;
+	layer.baseCeiling = (altitudeOffset + props.altitude + props.thickness + ceilingOffset) * props.worldScale;
+	layer.thickness = max(layer.baseCeiling - layer.baseFloor, 0.001);
+	return layer;
+}
+
+// Cloud density calculation helper
+// Returns a density value [0, 1+] based on world-space position
+float calculateCloudDensity(
+	vec3            p,
+	CloudWeather    weather,
+	CloudLayer      layer,
+	CloudProperties props,
+	float           time,
+	bool            simplified
+) {
+	if (p.y < layer.baseFloor || p.y > layer.baseCeiling)
+		return 0.0;
+
+	// Height-based tapering with a more natural profile
+	float h = (p.y - layer.baseFloor) / layer.thickness;
+	float tapering = smoothstep(0.0, 0.15, h) * smoothstep(1.0, 0.7, h);
+
+	// Tall cloud profile: anvil-like top for tall clouds
+	// Mix between a bottom-heavy profile and an anvil profile based on heightMap
+	float bottomHeavy = tapering;
+	float anvil = pow(tapering, mix(0.7, 0.3, weather.heightMap));
+	float densityProfile = mix(bottomHeavy, anvil, h * weather.heightMap);
+
+	float coverageThreshold = 1.0 - props.coverage;
+	float localDensity = weather.weatherMap * props.densityBase;
+
+	if (simplified) {
+		// Include base Worley noise so shadow patterns match the full cloud shapes
+		float baseNoise = fastWorley3d(p / (50000.0 * props.worldScale) + time * 0.0005);
+		float baseDensity = baseNoise * weather.weatherMap;
+		return smoothstep(coverageThreshold, coverageThreshold + 0.4, baseDensity) * densityProfile * props.densityBase;
+	}
+
+	// Base noise for cloud shapes
+	vec3 p_warped = p + 5.0 * fastCurl3d(p / (900.0 * props.worldScale) + time * 0.002);
+	vec3 p_scaled = p_warped / (50000.0 * props.worldScale);
+
+	float baseNoise = fastWorley3d(p_scaled + time * 0.0005);
+
+	// Implement "Roll": Billowy edges that vary with height
+	// We remap the base noise threshold based on the vertical position
+	float rollFactor = remap(h, 0.0, 1.0, 0.4, 0.1);
+	float rolledNoise = remap(baseNoise, rollFactor, 1.0, 0.0, 1.0);
+
+	// Add ridges and textures for definition
+	float ridges = fastRidge3d(p_warped / (1600.0 * props.worldScale));
+	float detail = fastFbm3d(p_warped / (1450.0 * props.worldScale) + time * 0.001) * 0.5 + 0.5;
+
+	// Combine noises
+	float finalNoise = rolledNoise * (0.6 + 0.4 * ridges);
+	finalNoise = mix(finalNoise, finalNoise * detail, 0.3);
+
+	// Apply coverage and local density
+	float baseDensity = finalNoise * weather.weatherMap;
+	float density = smoothstep(coverageThreshold, coverageThreshold + 0.4, baseDensity);
+
+	// Add "Edge Wisps": high-frequency FBM at the boundaries
+	if (density > 0.0 && density < 0.3) {
+		float wisps = fastFbm3d(p_warped / (400.0 * props.worldScale) + time * 0.05) * 0.5 + 0.5;
+		float wispMask = smoothstep(0.3, 0.0, density);
+		density += wisps * wispMask * 0.15 * weather.weatherMap;
+	}
+
+	// Giant tall clouds vs wispy things
+	// High weatherMap = tall, dense, sharp
+	// Low weatherMap = wispy, thin, soft
+	float wispyFactor = smoothstep(0.2, 0.35, weather.weatherMap);
+	density *= mix(0.6, 1.0, wispyFactor);
+
+	return density * densityProfile * props.densityBase * 3.0;
+}
+
+float calculateCloudShadowDensity(vec3 p, CloudWeather weather, CloudLayer layer, CloudProperties props, float time) {
+	return 10.0 * calculateCloudDensity(p, weather, layer, props, time, true);
+}
+
+/**
+ * High-level function to evaluate cloud shadow density at a specific world XZ position.
+ * This encapsulates the logic used by both the shadow map generator and the runtime fallback.
+ */
+float evaluateCloudShadowDensityAtWorldPos(vec2 worldXZ, float time) {
+	// Replicate logic from calculateCloudShadow in lighting.glsl
+	// This ensures the shadow map matches what the raymarch would have produced
+	float shadowAltitude = cloudAltitude + cloudThickness * 0.5;
+	float scaledCloudAltitude = shadowAltitude * worldScale;
+	vec3  cloudPos = vec3(worldXZ.x, scaledCloudAltitude, worldXZ.y);
+
+	float weatherMap = (fastWorley3d(vec3(cloudPos.xz / (4000.0 * worldScale), time * 0.001)) * 0.5 + 0.5);
+	float heightMap = (fastWorley3d(vec3(cloudPos.xz / (2500.0 * worldScale), time * 0.0004)) * 0.5 + 0.5);
+
+	CloudWeather weather;
+	weather.weatherMap = weatherMap;
+	weather.heightMap = heightMap;
+
+	CloudProperties props;
+	props.altitude = cloudAltitude;
+	props.thickness = cloudThickness;
+	props.densityBase = cloudDensity;
+	props.coverage = cloudCoverage;
+	props.worldScale = worldScale;
+
+	CloudLayer layer = computeCloudLayer(weather, props);
+
+	// Sample at the center of the dynamic layer
+	cloudPos.y = (layer.baseFloor + layer.baseCeiling) * 0.5;
+
+	return calculateCloudShadowDensity(cloudPos, weather, layer, props, time);
+}
+
+#endif // HELPERS_CLOUDS_GLSL
+#endif // GSHADERS_HELPERS_CLOUDS_GLSL
+//END shaders/helpers/clouds.glsl (returning to shaders/helpers/lighting.glsl)
+//START shaders/helpers/brdf.glsl
+#ifndef GSHADERS_HELPERS_BRDF_GLSL
+#define GSHADERS_HELPERS_BRDF_GLSL
+#ifndef HELPERS_BRDF_GLSL
+#define HELPERS_BRDF_GLSL
+
+//START shaders/helpers/constants.glsl
+//END shaders/helpers/constants.glsl (returning to shaders/helpers/brdf.glsl)
+
+float DistributionGGX(vec3 N, vec3 H, float roughness) {
+    float r = max(roughness, 0.04);
+    float a = r * r;
+    float a2 = a * a;
+    float NdotH = max(dot(N, H), 0.0);
+    float NdotH2 = NdotH * NdotH;
+
+    float nom = a2;
+    float denom = (NdotH2 * (a2 - 1.0) + 1.0);
+    denom = PI * denom * denom;
+
+    return nom / max(denom, 0.0001);
+}
+
+float GeometrySchlickGGX(float NdotV, float roughness) {
+    float r = (roughness + 1.0);
+    float k = (r * r) / 8.0;
+
+    float nom = NdotV;
+    float denom = NdotV * (1.0 - k) + k;
+
+    return nom / max(denom, 0.0001);
+}
+
+float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness) {
+    float NdotV = max(dot(N, V), 0.0);
+    float NdotL = max(dot(N, L), 0.0);
+    float ggx2 = GeometrySchlickGGX(NdotV, roughness);
+    float ggx1 = GeometrySchlickGGX(NdotL, roughness);
+
+    return ggx1 * ggx2;
+}
+
+vec3 fresnelSchlick(float cosTheta, vec3 F0) {
+    return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+}
+
+vec3 fresnelSchlickRoughness(float cosTheta, vec3 F0, float roughness) {
+    return F0 + (max(vec3(1.0 - roughness), F0) - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+}
+
+vec3 fresnelSchlickFast(float cosTheta, vec3 F0) {
+    float c = clamp(cosTheta, 0.0, 1.0);
+    return F0 + (1.0 - F0) * exp2((-5.55473 * c - 6.98316) * c);
+}
+
+float VisibilitySmithGGXCorrelated(float NdotL, float NdotV, float roughness) {
+    float a2 = roughness * roughness;
+    float lambdaV = NdotL * sqrt((NdotV - a2 * NdotV) * NdotV + a2);
+    float lambdaL = NdotV * sqrt((NdotL - a2 * NdotL) * NdotL + a2);
+    return 0.5 / max(lambdaV + lambdaL, 0.0001);
+}
+
+#endif
+#endif // GSHADERS_HELPERS_BRDF_GLSL
+//END shaders/helpers/brdf.glsl (returning to shaders/helpers/lighting.glsl)
+//START shaders/helpers/octahedral.glsl
+#ifndef GSHADERS_HELPERS_OCTAHEDRAL_GLSL
+#define GSHADERS_HELPERS_OCTAHEDRAL_GLSL
+#ifndef HELPERS_OCTAHEDRAL_GLSL
+#define HELPERS_OCTAHEDRAL_GLSL
+
+/**
+ * Wraps octahedral coordinates for the bottom hemisphere.
+ */
+vec2 octWrap(vec2 v) {
+    return (1.0 - abs(v.yx)) * (vec2(v.x >= 0.0 ? 1.0 : -1.0, v.y >= 0.0 ? 1.0 : -1.0));
+}
+
+/**
+ * Encodes a unit vector into a 2D octahedral coordinate [0, 1].
+ */
+vec2 octEncode(vec3 n) {
+    n /= (abs(n.x) + abs(n.y) + abs(n.z));
+    n.xy = n.z >= 0.0 ? n.xy : octWrap(n.xy);
+    return n.xy * 0.5 + 0.5;
+}
+
+/**
+ * Decodes a 2D octahedral coordinate [0, 1] into a unit vector.
+ */
+vec3 octDecode(vec2 f) {
+    f = f * 2.0 - 1.0;
+    // https://twitter.com/Stubbesaurus/status/406798031268802560
+    vec3 n = vec3(f.x, f.y, 1.0 - abs(f.x) - abs(f.y));
+    float t = clamp(-n.z, 0.0, 1.0);
+    n.x += n.x >= 0.0 ? -t : t;
+    n.y += n.y >= 0.0 ? -t : t;
+    return normalize(n);
+}
+
+#endif // HELPERS_OCTAHEDRAL_GLSL
+#endif // GSHADERS_HELPERS_OCTAHEDRAL_GLSL
+//END shaders/helpers/octahedral.glsl (returning to shaders/helpers/lighting.glsl)
 
 // Atmosphere constants for transmittance lookup
 const float kEarthRadiusKM = 6360.0;
@@ -17,17 +663,17 @@ uniform float u_atmosphereHeight; // usually 100.0 km
 
 #ifndef TRANSMITTANCE_LUT_DEFINED
 	#define TRANSMITTANCE_LUT_DEFINED
-layout(binding = [[ATMOSPHERE_TRANSMITTANCE_BINDING]]) uniform sampler2D u_transmittanceLUT;
+layout(binding = 21) uniform sampler2D u_transmittanceLUT;
 #endif
 
-layout(binding = [[ATMOSPHERE_CLOUD_SHADOW_BINDING]]) uniform sampler2D u_cloudShadowMap;
+layout(binding = 25) uniform sampler2D u_cloudShadowMap;
 #ifndef TERRAIN_GRID_DEFINED
 	#define TERRAIN_GRID_DEFINED
-layout(binding = [[TERRAIN_CHUNK_GRID_BINDING]]) uniform isampler2D u_chunkGrid;
+layout(binding = 11) uniform isampler2D u_chunkGrid;
 #endif
 
-layout(binding = [[PROBE_IRRADIANCE_BINDING]]) uniform sampler3D u_probeIrradiance;
-layout(binding = [[PROBE_DEPTH_BINDING]]) uniform sampler3D u_probeDepth;
+layout(binding = 45) uniform sampler3D u_probeIrradiance;
+layout(binding = 46) uniform sampler3D u_probeDepth;
 
 /**
  * Maps height and sun cosine angle to UV coordinates for the transmittance LUT.
@@ -362,7 +1008,7 @@ vec3 getSpatialAmbientProbe(vec3 worldPos, vec3 N) {
 	vec3  gridPos;
 	gridPos.x = (worldPos.x - p_origin.x) / p_spacing;
 	gridPos.y = (worldPos.z - p_origin.y) / p_spacing;
-	gridPos.z = (worldPos.y + 20.0 * worldScale) / p_spacing; // Cover some space below terrain for caves/valleys
+	gridPos.z = (worldPos.y) / p_spacing; // Vertical origin is 0
 
 	vec3  base = floor(gridPos);
 	vec3  f = fract(gridPos);
@@ -1203,3 +1849,4 @@ vec3 apply_flash_lighting(
 }
 
 #endif // HELPERS_LIGHTING_GLSL
+#endif // GSHADERS_HELPERS_LIGHTING_GLSL

@@ -45,6 +45,8 @@ layout(std140, binding = [[LIGHTING_BINDING]]) uniform Lighting {
 	vec3  lightningColor;
 	float lightningPulse;
 	vec4  sh_coeffs[9];
+	vec4  u_probeParams;   // origin_x, origin_z, size_x, size_z
+	vec4  u_probeParams2;  // size_y, spacing, oct_res
 };
 
 #endif

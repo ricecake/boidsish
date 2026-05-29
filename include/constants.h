@@ -43,6 +43,8 @@ namespace Boidsish {
 				WeatherScalars = 42,
 				WeatherAerosols = 43,
 				TerrainDisplacementImage = 44,
+				ProbeIrradiance = 45,
+				ProbeDepth = 46,
 			};
 
 			enum class Ubo {
@@ -111,7 +113,8 @@ namespace Boidsish {
 				RestirReservoirs0 = 54,
 				RestirReservoirs1 = 55,
 				RestirGIReservoirs0 = 56,
-				RestirGIReservoirs1 = 57
+				RestirGIReservoirs1 = 57,
+				RestirProbeReservoirs = 58
 			};
 		} // namespace Bindings
 
@@ -309,6 +312,14 @@ namespace Boidsish {
 			consteval int TerrainDisplacementImage() {
 				return std::to_underlying(Constants::Bindings::Texture::TerrainDisplacementImage);
 			}
+
+			consteval int ProbeIrradiance() {
+				return std::to_underlying(Constants::Bindings::Texture::ProbeIrradiance);
+			}
+
+			consteval int ProbeDepth() {
+				return std::to_underlying(Constants::Bindings::Texture::ProbeDepth);
+			}
 		} // namespace TextureUnit
 
 		namespace ImageBinding {
@@ -472,6 +483,10 @@ namespace Boidsish {
 
 			consteval int RestirGIReservoirs1() {
 				return std::to_underlying(Constants::Bindings::Ssbo::RestirGIReservoirs1);
+			}
+
+			consteval int RestirProbeReservoirs() {
+				return std::to_underlying(Constants::Bindings::Ssbo::RestirProbeReservoirs);
 			}
 
 			consteval int TerrainPatchMetrics() {
@@ -662,6 +677,13 @@ namespace Boidsish {
 				constexpr int SliceMapSize() {
 					return 512;
 				}
+
+				namespace Probes {
+					constexpr int GridSizeX = 128;
+					constexpr int GridSizeZ = 128;
+					constexpr int GridSizeY = 16;
+					constexpr int OctRes = 8;
+				} // namespace Probes
 			} // namespace Terrain
 
 			namespace Shadows {

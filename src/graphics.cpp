@@ -2358,6 +2358,21 @@ namespace Boidsish {
 					lighting_ubo_data_.lightningPulse = lightning_manager->GetGlobalPulse();
 				}
 
+				// Populate probe parameters in global Lighting UBO for fragment shader sampling
+				if (terrain_render_manager) {
+					float world_scale = terrain_generator->GetWorldScale();
+					float probe_spacing = 16.0f * world_scale;
+					int   p_size_x = Constants::Class::Terrain::Probes::GridSizeX;
+					int   p_size_z = Constants::Class::Terrain::Probes::GridSizeZ;
+					int   p_size_y = Constants::Class::Terrain::Probes::GridSizeY;
+
+					float p_origin_x = floor(camera.x / probe_spacing) * probe_spacing - (p_size_x / 2) * probe_spacing;
+					float p_origin_z = floor(camera.z / probe_spacing) * probe_spacing - (p_size_z / 2) * probe_spacing;
+
+					lighting_ubo_data_.u_probeParams = glm::vec4(p_origin_x, p_origin_z, (float)p_size_x, (float)p_size_z);
+					lighting_ubo_data_.u_probeParams2 = glm::vec4((float)p_size_y, probe_spacing, (float)Constants::Class::Terrain::Probes::OctRes, 0.0f);
+				}
+
 				} else {
 					lighting_ubo_data_.cloudShadowIntensity = 0.0f;
 				}
