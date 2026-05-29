@@ -66,6 +66,7 @@ namespace Boidsish {
 		T::RegisterConstant("RESTIR_RESERVOIRS1_BINDING", Constants::SsboBinding::RestirReservoirs1());
 		T::RegisterConstant("RESTIR_GI_RESERVOIRS0_BINDING", Constants::SsboBinding::RestirGIReservoirs0());
 		T::RegisterConstant("RESTIR_GI_RESERVOIRS1_BINDING", Constants::SsboBinding::RestirGIReservoirs1());
+		T::RegisterConstant("RESTIR_PROBE_RESERVOIRS_BINDING", Constants::SsboBinding::RestirProbeReservoirs());
 		T::RegisterConstant("TERRAIN_PATCH_METRICS_BINDING", Constants::SsboBinding::TerrainPatchMetrics());
 		T::RegisterConstant("TERRAIN_PATCH_DRAW_DATA_BINDING", Constants::SsboBinding::TerrainPatchDrawData());
 		T::RegisterConstant("TERRAIN_PATCH_TESS_LEVELS_BINDING", Constants::SsboBinding::TerrainPatchTessLevels());
@@ -101,6 +102,9 @@ namespace Boidsish {
 		T::RegisterConstant("TERRAIN_MAX_HEIGHT_BINDING", Constants::TextureUnit::TerrainMaxHeight());
 		T::RegisterConstant("TERRAIN_BIOME_MAP_BINDING", Constants::TextureUnit::TerrainBiomeMap());
 		T::RegisterConstant("HIZ_TEXTURE_BINDING", Constants::TextureUnit::HiZ());
+
+		T::RegisterConstant("PROBE_IRRADIANCE_BINDING", Constants::TextureUnit::ProbeIrradiance());
+		T::RegisterConstant("PROBE_DEPTH_BINDING", Constants::TextureUnit::ProbeDepth());
 
 		T::RegisterConstant("BIOME_MAP_IMAGE_BINDING", Constants::TextureUnit::TerrainBiomeImage());
 		T::RegisterConstant("BAKED_HEIGHTMAP_IMAGE_BINDING", Constants::TextureUnit::TerrainHeightmapImage());

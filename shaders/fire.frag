@@ -204,6 +204,7 @@ void main() {
 		// Instead, we let the scattering affect the scene behind it.
 	} else {
 		// Ambient particles (leaves, petals, birds, etc.) should receive scene ambient.
+		// SH fallback restored in lighting UBO
 		vec3 ambient = sh_coeffs[0].xyz * 0.5 + 0.5; // Simple approximation of global ambient
 		color *= ambient * (1.0 + nightFactor);
 	}

@@ -1,0 +1,116 @@
+#version 460 core
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+#include "helpers/constants.glsl"
+#include "types/terrain.glsl"
+#include "helpers/octahedral.glsl"
+
+uint hash(uint x) {
+	x ^= x >> 16;
+	x *= 0x7feb352dU;
+	x ^= x >> 15;
+	x *= 0x846ca68bU;
+	x ^= x >> 16;
+	return x;
+}
+
+struct ProbeReservoir {
+    vec4  radiance_m;      // rgb, m
+    vec4  wsum_W_dist;     // w_sum, W, hitDist, unused
+    vec4  pos_invalid;     // pos.x, pos.z, unused, unused
+};
+
+layout(std430, binding = [[RESTIR_PROBE_RESERVOIRS_BINDING]]) buffer ProbeReservoirs {
+    ProbeReservoir reservoirs[];
+};
+
+uniform uint u_frameIndex;
+uniform float u_probeConvergenceSpeed;
+
+// Simple PCG hash for random selection in reservoir blending
+uint pcg_hash(uint seed) {
+    uint state = seed * 747796405u + 2891336453u;
+    uint word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+    return (word >> 22u) ^ word;
+}
+
+float getLuminance(vec3 c) {
+    return dot(c, vec3(0.2126, 0.7152, 0.0722));
+}
+
+layout(binding = 0) uniform sampler3D u_historyIrradiance;
+layout(binding = 1) uniform sampler3D u_historyDepth;
+
+void main() {
+    ivec3 invocationID = ivec3(gl_GlobalInvocationID.xyz);
+    ivec3 gridSize = ivec3(u_probeParams_unused.zw, u_probeParams2_unused.x);
+    int octRes = int(u_probeParams2_unused.z);
+
+    ivec2 probeIdx = invocationID.xy / octRes;
+    if (probeIdx.x >= gridSize.x || probeIdx.y >= gridSize.y || invocationID.z >= gridSize.z) return;
+
+    // Toroidal mapping for the reservoir buffer
+    ivec2 toroidalProbeIdx = (probeIdx % gridSize.xy + gridSize.xy) % gridSize.xy;
+    ivec2 texelIdx = invocationID.xy % octRes;
+    ivec2 texelCoordXY = toroidalProbeIdx * octRes + texelIdx;
+
+    // gridCoord for sampling 3D texture
+    ivec3 gridCoord = ivec3(texelCoordXY, invocationID.z);
+
+    uint flatIdx = uint(invocationID.z * (gridSize.x * octRes * gridSize.y * octRes) + texelCoordXY.y * (gridSize.x * octRes) + texelCoordXY.x);
+
+    // Staggered update logic: same hash-based mask as trace pass
+    uint staggerSeed = hash(uint(probeIdx.y * gridSize.x + probeIdx.x) ^ hash(uint(gridCoord.z) ^ u_frameIndex));
+    if ((staggerSeed % 4) != 0) return;
+
+    // ReSTIR Temporal Blending:
+    // The reservoir currently contains the NEW candidate from probe_trace.comp.
+    // We sample the historical irradiance from the 3D texture (stable because probes are stationary)
+    // and combine it as a second reservoir.
+
+    ProbeReservoir r = reservoirs[flatIdx];
+
+    // Fetch historical radiance from the resolved texture of the previous frame.
+    // This provides our stable history.
+    vec3 combinedRes = vec3(gridSize.xy * octRes, gridSize.z);
+    vec3 historyRadiance = textureLod(u_historyIrradiance, (vec3(gridCoord) + 0.5) / combinedRes, 0.0).rgb;
+    float p_hat_history = getLuminance(historyRadiance);
+
+    // Historical Reservoir (simplified: assume it had a high M and was normalized)
+    float max_m = 100.0 / max(0.001, u_probeConvergenceSpeed);
+    float history_m = max_m * 0.95; // High confidence in history
+    float history_w_sum = p_hat_history * history_m;
+
+    // Combine current (r) with history
+    float current_w_sum = r.wsum_W_dist.x;
+
+    float combined_w_sum = current_w_sum + history_w_sum;
+    float combined_m = 1.0 + history_m;
+
+    uint seed = pcg_hash(uint(flatIdx) ^ u_frameIndex);
+    float random = float(seed & 0xFFFFFFu) / 16777216.0;
+
+    if (random * combined_w_sum < history_w_sum) {
+        // Pick history
+        r.radiance_m.rgb = historyRadiance;
+    }
+
+    r.radiance_m.w = min(combined_m, max_m);
+    r.wsum_W_dist.x = combined_w_sum;
+
+    // Preserve history hit distance if history was chosen, otherwise keep new
+    // (wsum_W_dist.z currently holds hitDist from trace pass)
+    float historyHitDist = textureLod(u_historyDepth, (vec3(gridCoord) + 0.5) / combinedRes, 0.0).r;
+    r.wsum_W_dist.z = (random * combined_w_sum < history_w_sum) ? historyHitDist : r.wsum_W_dist.z;
+
+    // Final W normalization
+    float p_hat_final = getLuminance(r.radiance_m.rgb);
+    if (p_hat_final > 0.0) {
+        r.wsum_W_dist.y = combined_w_sum / (r.radiance_m.w * p_hat_final);
+    } else {
+        r.wsum_W_dist.y = 0.0;
+    }
+
+    reservoirs[flatIdx] = r;
+}

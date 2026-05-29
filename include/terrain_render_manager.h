@@ -224,6 +224,8 @@ namespace Boidsish {
 		 */
 		void BindTerrainData(ShaderBase& shader_base) const;
 
+		float GetProbeVerticalOrigin() const { return last_probe_origin_y_; }
+
 		/**
 		 * @brief Update the horizon map for newly added or modified chunks.
 		 */
@@ -385,7 +387,9 @@ namespace Boidsish {
 		GLuint chunk_grid_texture_ = 0;      // GL_TEXTURE_2D (R16I: texture_slice index, -1 if none)
 		GLuint max_height_grid_texture_ = 0; // GL_TEXTURE_2D (R32F: max_y, mips for hierarchical check)
 		GLuint terrain_data_ubo_ = 0;        // UBO for grid parameters
-		GLuint probe_ssbo_ = 0;              // SSBO for per-chunk SH probes
+		GLuint probe_reservoir_ssbo_ = 0;    // SSBO for ReSTIR probe reservoirs
+		GLuint probe_irradiance_texture_ = 0; // GL_TEXTURE_3D
+		GLuint probe_depth_texture_ = 0;      // GL_TEXTURE_3D
 		GLuint bake_ssbo_ = 0;               // SSBO for BakeTask
 		GLuint patch_metrics_ssbo_ = 0;      // SSBO for PatchMetrics
 		GLuint patch_visibility_ssbo_ = 0;   // SSBO for Patch visibility status
@@ -406,7 +410,9 @@ namespace Boidsish {
 		GLuint grass_props_ubo_ = 0;
 
 		std::unique_ptr<ComputeShader> grid_mip_shader_;
-		std::unique_ptr<ComputeShader> probe_compute_shader_;
+		std::unique_ptr<ComputeShader> probe_trace_shader_;
+		std::unique_ptr<ComputeShader> probe_blend_shader_;
+		std::unique_ptr<ComputeShader> probe_resolve_shader_;
 		std::unique_ptr<ComputeShader> terrain_bake_shader_;
 		std::unique_ptr<ComputeShader> terrain_horizon_shader_;
 		std::unique_ptr<ComputeShader> terrain_shadow_map_shader_;
@@ -446,6 +452,7 @@ namespace Boidsish {
 		int   last_grid_origin_x_ = -999999;
 		int   last_grid_origin_z_ = -999999;
 		float last_grid_world_scale_ = -1.0f;
+		float     last_probe_origin_y_ = 0.0f;
 		bool  grid_dirty_ = true;
 
 		int   last_shadow_grid_origin_x_ = -999999;

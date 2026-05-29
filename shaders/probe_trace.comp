@@ -1,0 +1,219 @@
+#version 460 core
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+#include "helpers/constants.glsl"
+#include "helpers/octahedral.glsl"
+
+#define USE_TERRAIN_DATA
+// Forward declarations for lighting.glsl
+float terrainShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) { return 1.0; }
+float calculateTerrainOcclusion(vec3 worldPos, vec3 normal) { return 1.0; }
+
+#include "helpers/fast_noise.glsl"
+#include "types/terrain.glsl"
+#include "helpers/lighting.glsl"
+
+layout(binding = [[BAKED_HEIGHTMAP_BINDING]]) uniform sampler2DArray u_heightmapArray;
+layout(binding = [[TERRAIN_BIOME_MAP_BINDING]]) uniform sampler2DArray u_biomeMap;
+
+uniform sampler2D u_gColor;
+uniform sampler2D u_gDepth;
+uniform sampler2D u_gNormal;
+uniform sampler2D u_gAlbedo;
+uniform sampler2D u_skyViewLUT;
+
+uniform uint u_frameIndex;
+uniform mat4 u_view;
+uniform mat4 u_projection;
+uniform mat4 u_invView;
+uniform mat4 u_invProjection;
+uniform float u_probeScaling;
+
+struct ProbeReservoir {
+    vec4  radiance_m;      // rgb, m
+    vec4  wsum_W_dist;     // w_sum, W, hitDist, unused
+    vec4  pos_invalid;     // pos.x, pos.z, unused, unused
+};
+
+layout(std430, binding = [[RESTIR_PROBE_RESERVOIRS_BINDING]]) buffer ProbeReservoirs {
+    ProbeReservoir reservoirs[];
+};
+
+// --- Helper Functions ---
+
+uint hash(uint x) {
+	x ^= x >> 16;
+	x *= 0x7feb352dU;
+	x ^= x >> 15;
+	x *= 0x846ca68bU;
+	x ^= x >> 16;
+	return x;
+}
+
+vec3 sampleSkyLUT(vec3 rd) {
+	float azimuth = atan(rd.x, -rd.z);
+	if (azimuth < 0.0) azimuth += 2.0 * PI;
+	float uvX = azimuth / (2.0 * PI);
+
+	float elevation = asin(clamp(rd.y, -1.0, 1.0));
+	float adjV = sqrt(abs(elevation) / (PI * 0.5));
+	float uvY = (elevation < 0.0) ? (0.5 - 0.5 * adjV) : (0.5 + 0.5 * adjV);
+
+	return texture(u_skyViewLUT, vec2(uvX, uvY)).rgb;
+}
+
+vec3 sampleTerrainFallback(vec3 worldPos, vec3 rayDir) {
+	float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
+	float worldScaleVal = u_terrainParams.y;
+
+	float currentDist = 0.5 * worldScaleVal;
+	const int k_coarseSteps = 16;
+	float stepSize = 8.0 * worldScaleVal;
+
+	for (int i = 0; i < k_coarseSteps; ++i) {
+		vec3 p = worldPos + rayDir * currentDist;
+		vec2 gridPos = p.xz / scaledChunkSize - vec2(u_originSize.xy);
+		ivec2 chunkCoord = ivec2(floor(gridPos));
+
+		if (chunkCoord.x >= 0 && chunkCoord.x < u_originSize.z && chunkCoord.y >= 0 && chunkCoord.y < u_originSize.z) {
+			int slice = texelFetch(u_chunkGrid, chunkCoord, 0).r;
+			if (slice >= 0) {
+				vec2 uv = fract(gridPos);
+				vec2 remappedUV = (uv * u_terrainParams.x + 0.5) / (u_terrainParams.x + 1.0);
+				vec4 hNorm = texture(u_heightmapArray, vec3(remappedUV, float(slice)));
+				if (p.y <= hNorm.r) {
+					vec2 biomeInfo = texture(u_biomeMap, vec3(remappedUV, float(slice))).rg;
+					int lowIdx = int(biomeInfo.x);
+					float t = biomeInfo.y;
+					vec3 albedo = mix(u_biomes[lowIdx].albedo_roughness.rgb, u_biomes[min(lowIdx + 1, 7)].albedo_roughness.rgb, t);
+					vec3 normal = normalize(hNorm.gba);
+
+					vec3 radiance = vec3(0.0);
+					for (int l = 0; l < min(num_lights, 2); ++l) {
+						vec3  L = normalize(lights[l].type == 1 ? -lights[l].direction : (lights[l].position - p));
+						float NdotL = max(0.0, dot(normal, L));
+						if (lights[l].type == 1 && L.y <= 0.0) continue;
+
+						float shadow = 1.0;
+						vec3 atmosphereTransmittance = vec3(1.0);
+						if (lights[l].type == 1) {
+							float r = kEarthRadiusKM + (p.y / (1000.0 * worldScaleVal));
+							atmosphereTransmittance = texture(u_transmittanceLUT, getTransmittanceUV(r, L.y)).rgb;
+							shadow *= calculateCloudShadow(l, p);
+							// Simplified heightmap shadow check skipped for probe trace performance
+						}
+						radiance += albedo * lights[l].color * lights[l].intensity * atmosphereTransmittance * NdotL * 0.5 * shadow;
+					}
+					return radiance;
+				}
+			}
+		} else {
+			if (rayDir.y < -0.01) {
+				float t = -worldPos.y / rayDir.y;
+				if (t > 0.0 && t < currentDist + stepSize) {
+					return vec3(0.05, 0.04, 0.03) * ambient_light * 0.5;
+				}
+			}
+			break;
+		}
+		currentDist += stepSize;
+	}
+	return sampleSkyLUT(rayDir);
+}
+
+vec3 traceRay(vec3 probeOrigin, vec3 rd, out float hitDist) {
+    float worldScaleVal = u_terrainParams.y;
+    const int k_maxSteps = 24;
+    float stepSize = 1.0 * worldScaleVal;
+    hitDist = 1000.0 * worldScaleVal; // Far
+
+    for (int s = 1; s <= k_maxSteps; ++s) {
+        vec3 samplePos = probeOrigin + rd * float(s) * stepSize;
+        vec4 clipPos = u_projection * u_view * vec4(samplePos, 1.0);
+        vec3 screenPos = clipPos.xyz / clipPos.w;
+        vec2 uv = screenPos.xy * 0.5 + 0.5;
+
+        if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 || screenPos.z < -1.0 || screenPos.z > 1.0)
+            break;
+
+        float sceneDepth = texture(u_gDepth, uv).r;
+        if (sceneDepth >= 0.9999) return sampleSkyLUT(rd);
+
+        float sampleDepth = screenPos.z * 0.5 + 0.5;
+        if (sampleDepth > sceneDepth) {
+            float thickness = 1.5 * worldScaleVal;
+            float linearSample = u_projection[3][2] / (screenPos.z + u_projection[2][2]);
+            float linearScene = u_projection[3][2] / (sceneDepth * 2.0 - 1.0 + u_projection[2][2]);
+
+            if (abs(linearSample - linearScene) < thickness) {
+                // Use gColor which contains lit radiance (including emissive/volumetric contributions from previous passes)
+                hitDist = float(s) * stepSize;
+                return texture(u_gColor, uv).rgb;
+            }
+        }
+    }
+    // Fallback: simplified distance
+    hitDist = 50.0 * worldScaleVal;
+    return sampleTerrainFallback(probeOrigin, rd);
+}
+
+void main() {
+    ivec3 invocationID = ivec3(gl_GlobalInvocationID.xyz);
+    ivec3 gridSize = ivec3(u_probeParams_unused.zw, u_probeParams2_unused.x);
+    int octRes = int(u_probeParams2_unused.z);
+
+    ivec2 probeIdx = invocationID.xy / octRes;
+    ivec2 texelIdx = invocationID.xy % octRes;
+
+    if (probeIdx.x >= gridSize.x || probeIdx.y >= gridSize.y || invocationID.z >= gridSize.z) return;
+
+    float spacing = u_probeParams2_unused.y;
+
+    // Grid mapping: x and z are horizontal, y is vertical.
+    // logical world coords of the probe
+    vec2 worldXZ = u_probeParams_unused.xy + vec2(probeIdx) * spacing;
+    float worldY = float(invocationID.z) * spacing + u_probeParams2_unused.w;
+    vec3 probeOrigin = vec3(worldXZ.x, worldY, worldXZ.y);
+
+    // Toroidal mapping for the reservoir buffer
+    ivec2 toroidalProbeIdx = (probeIdx % gridSize.xy + gridSize.xy) % gridSize.xy;
+
+    // Compute probe's logical world coordinates in spacing units to detect scrolling
+    vec2 logicalPos = worldXZ;
+
+    // Index at the texel level: (toroidalProbeIdx * octRes + texelIdx)
+    ivec2 texelCoordXY = toroidalProbeIdx * octRes + texelIdx;
+    uint  flatIdx = uint(invocationID.z * (gridSize.x * octRes * gridSize.y * octRes) + texelCoordXY.y * (gridSize.x * octRes) + texelCoordXY.x);
+
+    // --- Immediate Scrolling Invalidation ---
+    // Check if the logicalPos matches what's currently in the reservoir.
+    // This MUST happen for ALL probes every frame, not just the staggered update ones,
+    // to prevent sampling stale data from the previous toroidal location.
+    bool scrolled = distance(reservoirs[flatIdx].pos_invalid.xy, logicalPos) > 0.01;
+
+    if (scrolled) {
+        // Invalidate history immediately
+        reservoirs[flatIdx].radiance_m = vec4(0.0);
+        reservoirs[flatIdx].wsum_W_dist = vec4(0.0);
+        reservoirs[flatIdx].pos_invalid = vec4(logicalPos.x, logicalPos.y, 0.0, 0.0);
+    }
+
+    // --- Staggered Trace Update ---
+    // Use blue noise for jittered probe update timing
+    uint seed = hash(uint(probeIdx.y * gridSize.x + probeIdx.x) ^ hash(uint(invocationID.z) ^ u_frameIndex));
+    // Stagger updates: only update a fraction of probes each frame
+    if ((seed % 4) != 0) return;
+
+    vec2 uv = (vec2(texelIdx) + 0.5) / float(octRes);
+    vec3 rd = octDecode(uv);
+
+    float hitDist;
+    vec3 radiance = traceRay(probeOrigin, rd, hitDist);
+
+    // Prepare NEW candidate for blend pass.
+    float p_hat = length(radiance);
+    reservoirs[flatIdx].radiance_m = vec4(radiance, 1.0);
+    reservoirs[flatIdx].wsum_W_dist.x = p_hat; // temporary w_sum
+    reservoirs[flatIdx].wsum_W_dist.z = hitDist;
+}

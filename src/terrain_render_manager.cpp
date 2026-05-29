@@ -16,6 +16,8 @@ namespace Boidsish {
 	struct TerrainDataUbo {
 		glm::ivec4 origin_size;    // x, z, size, is_bound (1)
 		glm::vec4  terrain_params; // chunk_size, world_scale, unused, unused
+		glm::vec4  probe_params;   // origin_x, origin_z, size_x, size_z
+		glm::vec4  probe_params2;  // size_y, spacing, oct_res, unused
 	};
 
 	TerrainRenderManager::TerrainRenderManager(ServiceLocator& /*loc*/, int chunk_size, int max_chunks):
@@ -65,8 +67,33 @@ namespace Boidsish {
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
+		// ReSTIR Probe Textures
+		int probe_w = Constants::Class::Terrain::Probes::GridSizeX * Constants::Class::Terrain::Probes::OctRes;
+		int probe_h = Constants::Class::Terrain::Probes::GridSizeZ * Constants::Class::Terrain::Probes::OctRes;
+		int probe_d = Constants::Class::Terrain::Probes::GridSizeY;
+
+		glGenTextures(1, &probe_irradiance_texture_);
+		glBindTexture(GL_TEXTURE_3D, probe_irradiance_texture_);
+		glTexStorage3D(GL_TEXTURE_3D, 1, GL_RGBA16F, probe_w, probe_h, probe_d);
+		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+
+		glGenTextures(1, &probe_depth_texture_);
+		glBindTexture(GL_TEXTURE_3D, probe_depth_texture_);
+		glTexStorage3D(GL_TEXTURE_3D, 1, GL_R16F, probe_w, probe_h, probe_d);
+		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+
 		grid_mip_shader_ = std::make_unique<ComputeShader>("shaders/terrain_hiz_generate.comp");
-		probe_compute_shader_ = std::make_unique<ComputeShader>("shaders/terrain_probes.comp");
+		probe_trace_shader_ = std::make_unique<ComputeShader>("shaders/probe_trace.comp");
+		probe_blend_shader_ = std::make_unique<ComputeShader>("shaders/probe_blend.comp");
+		probe_resolve_shader_ = std::make_unique<ComputeShader>("shaders/probe_resolve.comp");
 		terrain_bake_shader_ = std::make_unique<ComputeShader>("shaders/terrain_bake.comp");
 		terrain_horizon_shader_ = std::make_unique<ComputeShader>("shaders/terrain_horizon_update.comp");
 		terrain_shadow_map_shader_ = std::make_unique<ComputeShader>("shaders/terrain_shadow_map.comp");
@@ -82,19 +109,20 @@ namespace Boidsish {
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-		// Create SH probes SSBO
-		glGenBuffers(1, &probe_ssbo_);
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, probe_ssbo_);
-		// SH coefficient size is 9 * 16 bytes = 144 bytes per probe
-		// We initialize with a "poison" value in the w-components to force an immediate refresh
-		size_t             probe_count = grid_size * grid_size;
-		std::vector<float> initial_data(probe_count * 36, -99999.0f);
+		// Create ReSTIR Probe Reservoirs SSBO
+		// Reservoir struct: 3 x vec4 (48 bytes per element)
+		glGenBuffers(1, &probe_reservoir_ssbo_);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, probe_reservoir_ssbo_);
+		size_t oct_res = Constants::Class::Terrain::Probes::OctRes;
+		size_t total_probe_texels = probe_w * probe_h * probe_d;
 		glBufferData(
 			GL_SHADER_STORAGE_BUFFER,
-			probe_count * 144,
-			initial_data.data(),
+			total_probe_texels * 48,
+			nullptr,
 			GL_DYNAMIC_DRAW
 		);
+		// Zero initialize reservoirs
+		glClearBufferData(GL_SHADER_STORAGE_BUFFER, GL_RGBA32F, GL_RGBA, GL_FLOAT, nullptr);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
 		// Create BakeTasks SSBO
@@ -162,6 +190,8 @@ namespace Boidsish {
 		reg.PublishTexture(Constants::TextureUnit::TerrainChunkGrid(), chunk_grid_texture_);
 		reg.PublishTexture(Constants::TextureUnit::TerrainMaxHeight(), max_height_grid_texture_);
 		reg.PublishTexture(Constants::TextureUnit::TerrainShadowMap(), terrain_shadow_map_texture_);
+		reg.PublishTexture(Constants::TextureUnit::ProbeIrradiance(), probe_irradiance_texture_, GL_TEXTURE_3D);
+		reg.PublishTexture(Constants::TextureUnit::ProbeDepth(), probe_depth_texture_, GL_TEXTURE_3D);
 	}
 
 	TerrainRenderManager::~TerrainRenderManager() {
@@ -195,8 +225,12 @@ namespace Boidsish {
 			glDeleteTextures(1, &max_height_grid_texture_);
 		if (terrain_data_ubo_)
 			glDeleteBuffers(1, &terrain_data_ubo_);
-		if (probe_ssbo_)
-			glDeleteBuffers(1, &probe_ssbo_);
+		if (probe_reservoir_ssbo_)
+			glDeleteBuffers(1, &probe_reservoir_ssbo_);
+		if (probe_irradiance_texture_)
+			glDeleteTextures(1, &probe_irradiance_texture_);
+		if (probe_depth_texture_)
+			glDeleteTextures(1, &probe_depth_texture_);
 		if (bake_ssbo_)
 			glDeleteBuffers(1, &bake_ssbo_);
 		if (patch_metrics_ssbo_)
@@ -767,6 +801,10 @@ namespace Boidsish {
 		std::vector<int16_t> slice_data(grid_size * grid_size, -1);
 		std::vector<float>   height_data(grid_size * grid_size, -10000.0f);
 
+		float min_terrain_y = 10000.0f;
+		float max_terrain_y = -10000.0f;
+		bool  any_visible = false;
+
 		for (const auto& [key, chunk] : chunks_) {
 			int lx = key.first - origin_x;
 			int lz = key.second - origin_z;
@@ -777,6 +815,10 @@ namespace Boidsish {
 				// Add a vertical safety buffer to account for dynamic terrain displacements
 				// (erosion, shockwaves, micro-relief) in the Hi-Z structure.
 				height_data[idx] = chunk.max_y + (5.0f * world_scale);
+
+				min_terrain_y = std::min(min_terrain_y, chunk.min_y);
+				max_terrain_y = std::max(max_terrain_y, chunk.max_y);
+				any_visible = true;
 			}
 		}
 
@@ -792,6 +834,21 @@ namespace Boidsish {
 		ubo.origin_size = glm::ivec4(origin_x, origin_z, grid_size, 1);
 		ubo.terrain_params = glm::vec4(static_cast<float>(chunk_size_), world_scale, 0.0f, 0.0f);
 
+		// Probe grid parameters
+		float probe_spacing = 16.0f * world_scale;
+		int   p_size_x = Constants::Class::Terrain::Probes::GridSizeX;
+		int   p_size_z = Constants::Class::Terrain::Probes::GridSizeZ;
+		int   p_size_y = Constants::Class::Terrain::Probes::GridSizeY;
+
+		float p_origin_x = floor(last_camera_pos_.x / probe_spacing) * probe_spacing - (p_size_x / 2) * probe_spacing;
+		float p_origin_z = floor(last_camera_pos_.z / probe_spacing) * probe_spacing - (p_size_z / 2) * probe_spacing;
+
+		// Adaptive vertical origin
+		float p_origin_y = any_visible ? floor(min_terrain_y / probe_spacing) * probe_spacing : -20.0f * world_scale;
+
+		ubo.probe_params = glm::vec4(p_origin_x, p_origin_z, (float)p_size_x, (float)p_size_z);
+		ubo.probe_params2 = glm::vec4((float)p_size_y, probe_spacing, (float)Constants::Class::Terrain::Probes::OctRes, p_origin_y);
+
 		glBindBuffer(GL_UNIFORM_BUFFER, terrain_data_ubo_);
 		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(TerrainDataUbo), &ubo);
 		glBindBuffer(GL_UNIFORM_BUFFER, 0);
@@ -799,6 +856,7 @@ namespace Boidsish {
 		last_grid_origin_x_ = origin_x;
 		last_grid_origin_z_ = origin_z;
 		last_grid_world_scale_ = world_scale;
+		last_probe_origin_y_ = p_origin_y;
 		grid_dirty_ = false;
 	}
 
@@ -821,65 +879,22 @@ namespace Boidsish {
 		PROJECT_PROFILE_SCOPE("TerrainRenderManager::DispatchProbeUpdate");
 		std::lock_guard<std::recursive_mutex> lock(mutex_);
 
-		if (!probe_compute_shader_ || !probe_compute_shader_->isValid())
+		if (!probe_trace_shader_ || !probe_trace_shader_->isValid() ||
+			!probe_blend_shader_ || !probe_blend_shader_->isValid() ||
+			!probe_resolve_shader_ || !probe_resolve_shader_->isValid())
 			return;
 
-		int grid_size = Constants::Class::Terrain::SliceMapSize();
-
-		probe_compute_shader_->use();
 		frame_count_++;
 
-		// Bind textures
-		glActiveTexture(GL_TEXTURE0);
-		glBindTexture(GL_TEXTURE_2D, colorTex);
-		probe_compute_shader_->setInt("u_gColor", 0);
+		int p_size_x = Constants::Class::Terrain::Probes::GridSizeX;
+		int p_size_z = Constants::Class::Terrain::Probes::GridSizeZ;
+		int p_size_y = Constants::Class::Terrain::Probes::GridSizeY;
+		int oct_res = Constants::Class::Terrain::Probes::OctRes;
 
-		glActiveTexture(GL_TEXTURE1);
-		glBindTexture(GL_TEXTURE_2D, depthTex);
-		probe_compute_shader_->setInt("u_gDepth", 1);
-
-		glActiveTexture(GL_TEXTURE2);
-		glBindTexture(GL_TEXTURE_2D, normalTex);
-		probe_compute_shader_->setInt("u_gNormal", 2);
-
-		glActiveTexture(GL_TEXTURE3);
-		glBindTexture(GL_TEXTURE_2D, albedoTex);
-		probe_compute_shader_->setInt("u_gAlbedo", 3);
-
-		glActiveTexture(GL_TEXTURE4);
-		glBindTexture(GL_TEXTURE_2D, velocityTex);
-		probe_compute_shader_->setInt("u_gVelocity", 4);
-
-		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereSkyView());
-		glBindTexture(GL_TEXTURE_2D, skyLUT);
-		probe_compute_shader_->setInt("u_skyViewLUT", Constants::TextureUnit::AtmosphereSkyView());
-
-		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainBiomeMap());
-		glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture_);
-		probe_compute_shader_->setInt("u_biomeMap", Constants::TextureUnit::TerrainBiomeMap());
-
-		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainChunkGrid());
-		glBindTexture(GL_TEXTURE_2D, chunk_grid_texture_);
-		probe_compute_shader_->setInt("u_chunkGrid", Constants::TextureUnit::TerrainChunkGrid());
-
-		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainHeightmap());
-		glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture_);
-		probe_compute_shader_->setInt("u_heightmapArray", Constants::TextureUnit::TerrainHeightmap());
-
-		// Uniforms
-		probe_compute_shader_->setUint("u_frameIndex", frame_count_);
-		probe_compute_shader_->setMat4("u_view", view);
-		probe_compute_shader_->setMat4("u_projection", projection);
-		probe_compute_shader_->setMat4("u_invView", glm::inverse(view));
-		probe_compute_shader_->setMat4("u_invProjection", glm::inverse(projection));
-
-		probe_compute_shader_->setFloat("u_probeScaling", probe_scaling);
-		probe_compute_shader_->setFloat("u_probeConvergenceSpeed", probe_convergence);
-		probe_compute_shader_->setInt("u_probeRayMultiplier", probe_ray_multiplier);
-
+		// Bind common resources
 		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::TerrainData(), terrain_data_ubo_);
 		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Biomes(), biome_ubo_);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainProbes(), probe_ssbo_);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::RestirProbeReservoirs(), probe_reservoir_ssbo_);
 
 		if (lighting_ubo != 0) {
 			if (lighting_ubo_size > 0) {
@@ -890,8 +905,83 @@ namespace Boidsish {
 			}
 		}
 
-		glDispatchCompute((grid_size + 7) / 8, (grid_size + 7) / 8, 1);
+		auto setup_common_textures = [&](ComputeShader& s) {
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, colorTex);
+			s.setInt("u_gColor", 0);
+
+			glActiveTexture(GL_TEXTURE1);
+			glBindTexture(GL_TEXTURE_2D, depthTex);
+			s.setInt("u_gDepth", 1);
+
+			glActiveTexture(GL_TEXTURE2);
+			glBindTexture(GL_TEXTURE_2D, normalTex);
+			s.setInt("u_gNormal", 2);
+
+			glActiveTexture(GL_TEXTURE3);
+			glBindTexture(GL_TEXTURE_2D, albedoTex);
+			s.setInt("u_gAlbedo", 3);
+
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereSkyView());
+			glBindTexture(GL_TEXTURE_2D, skyLUT);
+			s.setInt("u_skyViewLUT", Constants::TextureUnit::AtmosphereSkyView());
+
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainBiomeMap());
+			glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture_);
+			s.setInt("u_biomeMap", Constants::TextureUnit::TerrainBiomeMap());
+
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainChunkGrid());
+			glBindTexture(GL_TEXTURE_2D, chunk_grid_texture_);
+			s.setInt("u_chunkGrid", Constants::TextureUnit::TerrainChunkGrid());
+
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainHeightmap());
+			glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture_);
+			s.setInt("u_heightmapArray", Constants::TextureUnit::TerrainHeightmap());
+
+			if (blue_noise_texture_ != 0) {
+				glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::NoiseBlue());
+				glBindTexture(GL_TEXTURE_2D, blue_noise_texture_);
+				s.trySetInt("u_blueNoiseTexture", Constants::TextureUnit::NoiseBlue());
+			}
+
+			s.setUint("u_frameIndex", frame_count_);
+			s.setMat4("u_view", view);
+			s.setMat4("u_projection", projection);
+			s.setMat4("u_invView", glm::inverse(view));
+			s.setMat4("u_invProjection", glm::inverse(projection));
+			s.setFloat("u_probeScaling", probe_scaling);
+		};
+
+		// 1. Trace Pass
+		probe_trace_shader_->use();
+		setup_common_textures(*probe_trace_shader_);
+		glDispatchCompute((p_size_x * oct_res + 7) / 8, (p_size_z * oct_res + 7) / 8, p_size_y);
 		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
+		// 2. Blend Pass
+		probe_blend_shader_->use();
+		setup_common_textures(*probe_blend_shader_);
+
+		// History binding for Blend pass (unit 0 and 1)
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_3D, probe_irradiance_texture_);
+		probe_blend_shader_->setInt("u_historyIrradiance", 0);
+
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_3D, probe_depth_texture_);
+		probe_blend_shader_->setInt("u_historyDepth", 1);
+
+		probe_blend_shader_->setFloat("u_probeConvergenceSpeed", probe_convergence);
+		glDispatchCompute((p_size_x * oct_res + 7) / 8, (p_size_z * oct_res + 7) / 8, p_size_y);
+		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
+		// 3. Resolve Pass
+		probe_resolve_shader_->use();
+		setup_common_textures(*probe_resolve_shader_);
+		glBindImageTexture(0, probe_irradiance_texture_, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+		glBindImageTexture(1, probe_depth_texture_, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_R16F);
+		glDispatchCompute((p_size_x * oct_res + 7) / 8, (p_size_z * oct_res + 7) / 8, p_size_y);
+		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 	}
 
 	void TerrainRenderManager::GenerateMaxHeightMips() {
@@ -979,7 +1069,7 @@ namespace Boidsish {
 		}
 
 		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::TerrainData(), terrain_data_ubo_);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainProbes(), probe_ssbo_);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::RestirProbeReservoirs(), probe_reservoir_ssbo_);
 
 		if (grass_props_ubo_ != 0) {
 			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::GrassProps(), grass_props_ubo_);

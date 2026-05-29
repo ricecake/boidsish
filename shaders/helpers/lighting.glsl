@@ -5,6 +5,7 @@
 #include "../lighting.glsl"
 #include "clouds.glsl"
 #include "brdf.glsl"
+#include "octahedral.glsl"
 
 // Atmosphere constants for transmittance lookup
 const float kEarthRadiusKM = 6360.0;
@@ -24,6 +25,9 @@ layout(binding = [[ATMOSPHERE_CLOUD_SHADOW_BINDING]]) uniform sampler2D u_cloudS
 	#define TERRAIN_GRID_DEFINED
 layout(binding = [[TERRAIN_CHUNK_GRID_BINDING]]) uniform isampler2D u_chunkGrid;
 #endif
+
+layout(binding = [[PROBE_IRRADIANCE_BINDING]]) uniform sampler3D u_probeIrradiance;
+layout(binding = [[PROBE_DEPTH_BINDING]]) uniform sampler3D u_probeDepth;
 
 /**
  * Maps height and sun cosine angle to UV coordinates for the transmittance LUT.
@@ -343,6 +347,76 @@ float calculateShadow(int light_index, vec3 frag_pos, vec3 normal, vec3 light_di
 }
 
 /**
+ * Look up and interpolate octahedral probe ambient irradiance for a fragment.
+ */
+vec3 getSpatialAmbientProbe(vec3 worldPos, vec3 N) {
+	vec3  p_origin = u_probeParams.xyz;
+	vec2  p_size_xz = u_probeParams.zw;
+	float p_size_y = u_probeParams2.x;
+	float p_spacing = u_probeParams2.y;
+	float p_oct_res = u_probeParams2.z;
+
+	// Convert world position to grid space
+	// Grid mapping: x and z are horizontal, y is vertical.
+	// worldPos.y maps to gridCoord.z
+	vec3  gridPos;
+	gridPos.x = (worldPos.x - p_origin.x) / p_spacing;
+	gridPos.y = (worldPos.z - p_origin.y) / p_spacing;
+	gridPos.z = (worldPos.y - u_probeParams2.w) / p_spacing;
+
+	vec3  base = floor(gridPos);
+	vec3  f = fract(gridPos);
+
+	vec2  octUV = octEncode(N);
+	vec3  accumIrradiance = vec3(0.0);
+	float totalWeight = 0.0;
+
+	for (int i = 0; i < 8; ++i) {
+		ivec3 offset = ivec3(i & 1, (i >> 1) & 1, (i >> 2) & 1);
+		ivec3 probeIdx = ivec3(base) + offset;
+
+		if (probeIdx.x >= 0 && probeIdx.x < int(p_size_xz.x) &&
+		    probeIdx.y >= 0 && probeIdx.y < int(p_size_xz.y) &&
+		    probeIdx.z >= 0 && probeIdx.z < int(p_size_y)) {
+
+			// Toroidal mapping for the resolved textures
+			ivec2 toroidalProbeIdx = (probeIdx.xy % ivec2(p_size_xz) + ivec2(p_size_xz)) % ivec2(p_size_xz);
+
+			// Map toroidal grid coord + octahedral UV to 3D texture space
+			// Texture size: (size_x * oct_res, size_z * oct_res, size_y)
+			vec3 texCoord;
+			texCoord.x = (float(toroidalProbeIdx.x) + octUV.x) / p_size_xz.x;
+			texCoord.y = (float(toroidalProbeIdx.y) + octUV.y) / p_size_xz.y;
+			texCoord.z = (float(probeIdx.z) + 0.5) / p_size_y;
+
+			vec3 sampleIrradiance = textureLod(u_probeIrradiance, texCoord, 0.0).rgb;
+			float sampleDepth = textureLod(u_probeDepth, texCoord, 0.0).r;
+
+			float weight = (offset.x > 0 ? f.x : 1.0 - f.x) *
+			               (offset.y > 0 ? f.y : 1.0 - f.y) *
+			               (offset.z > 0 ? f.z : 1.0 - f.z);
+
+			// Depth-based weight to reduce light leaking
+			// Coordinate mapping: p_origin.x=X, p_origin.y=Z, u_probeParams2.w=Y (vertical origin)
+			vec3 probePos = vec3(p_origin.x, u_probeParams2.w, p_origin.y) + vec3(float(probeIdx.x), float(probeIdx.z), float(probeIdx.y)) * p_spacing;
+
+			float distToProbe = length(worldPos - probePos);
+			float depthWeight = exp(-abs(distToProbe - sampleDepth) * 0.5);
+			weight *= depthWeight;
+
+			accumIrradiance += sampleIrradiance * weight;
+			totalWeight += weight;
+		}
+	}
+
+	if (totalWeight > 0.001) {
+		accumIrradiance /= totalWeight;
+	}
+
+	return max(accumIrradiance, 0.0);
+}
+
+/**
  * Evaluate Spherical Harmonics irradiance for a given normal and set of coefficients.
  */
 vec3 evalSHIrradianceFromCoeffs(vec3 n, vec4 coeffs[9]) {
@@ -374,84 +448,18 @@ vec3 evalSHIrradiance(vec3 n) {
 }
 
 #ifdef USE_TERRAIN_DATA
-/**
- * Look up and interpolate Spherical Harmonic ambient irradiance for a fragment.
- */
 vec3 getSpatialAmbientSH(vec3 worldPos, vec3 N) {
-	if (u_originSize.w < 1)
-		return evalSHIrradiance(N);
+	vec3 probeAmbient = getSpatialAmbientProbe(worldPos, N);
+	vec3 fallbackAmbient = evalSHIrradiance(N);
 
-	float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
-	// Offset by -0.5 because probes are calculated at chunk centers (0.5, 0.5)
-	vec2  gridPos = worldPos.xz / scaledChunkSize - 0.5;
-	vec2  fracPos = fract(gridPos);
-	ivec2 chunkCoord = ivec2(floor(gridPos)) - u_originSize.xy;
-
-	// Simple bilinear interpolation between 4 nearest chunk probes
-	vec3 totalSH[9];
-	for (int i = 0; i < 9; ++i)
-		totalSH[i] = vec3(0.0);
-
-	float totalWeight = 0.0;
-	for (int x = 0; x <= 1; ++x) {
-		for (int z = 0; z <= 1; ++z) {
-			ivec2 localCoord = chunkCoord + ivec2(x, z);
-			if (localCoord.x >= 0 && localCoord.x < u_originSize.z && localCoord.y >= 0 && localCoord.y < u_originSize.z) {
-				// Only include this probe if it's actually registered in the current grid
-				if (texelFetch(u_chunkGrid, localCoord, 0).r >= 0) {
-					float weight = (x == 0 ? 1.0 - fracPos.x : fracPos.x) * (z == 0 ? 1.0 - fracPos.y : fracPos.y);
-
-					ivec2 worldChunkCoord = localCoord + u_originSize.xy;
-					ivec2 toroidalCoord = (worldChunkCoord % u_originSize.z + u_originSize.z) % u_originSize.z;
-					int   idx = toroidalCoord.y * u_originSize.z + toroidalCoord.x;
-
-					// Verify this probe is for the correct world chunk (using encoded coordinates in w)
-					vec2 probeCoord = vec2(u_terrainProbes[idx].sh_coeffs[0].w, u_terrainProbes[idx].sh_coeffs[1].w);
-					if (distance(probeCoord, vec2(worldChunkCoord)) < 0.1) {
-						for (int i = 0; i < 9; ++i) {
-							totalSH[i] += u_terrainProbes[idx].sh_coeffs[i].rgb * weight;
-						}
-						totalWeight += weight;
-					}
-				}
-			}
-		}
-	}
-
-	// Smooth boundary fading for environmental bounce
-	// Distance from edge of the active grid in chunks
-	vec2 centerOffset = abs(gridPos - (vec2(u_originSize.xy) + float(u_originSize.z) * 0.5));
-	float maxDist = float(u_originSize.z) * 0.5;
-	float distToEdge = maxDist - max(centerOffset.x, centerOffset.y);
-	float bounceFade = clamp(smoothstep(0.0, 0.50, distToEdge), 0.125, 1.0); // Fade over last 2 chunks
-
-	vec4 interpolatedCoeffs[9];
-	if (totalWeight > 0.001) {
-		for (int i = 0; i < 9; ++i) {
-			interpolatedCoeffs[i] = vec4(totalSH[i] / totalWeight, 1.0);
-		}
-	} else {
-		// No probes available, fallback to global coefficients to avoid NaNs
-		for (int i = 0; i < 9; ++i) {
-			interpolatedCoeffs[i] = sh_coeffs[i];
-		}
-		bounceFade = 0.0;
-	}
-
-	// Combine spatially-varying environmental bounce with global sky irradiance
-	vec3 environmentalIrradiance = evalSHIrradianceFromCoeffs(N, interpolatedCoeffs);
-	vec3 skyIrradiance = evalSHIrradiance(N); // Global sky/ambient fallback
-
-	// Combine spatially-varying environmental SH (sky + bounce) with global sky irradiance.
-	// We blend between them because probes now capture both sky and ground bounce.
-	return mix(skyIrradiance, environmentalIrradiance, clamp(totalWeight * bounceFade, 0.0, 1.0));
+	// Use probe if available and not purely black (probes initialized to black/zero)
+	return length(probeAmbient) > 0.0 ? probeAmbient : fallbackAmbient;
 }
-
 // Forward declare macro occlusion from terrain_shadows.glsl
 float calculateTerrainOcclusion(vec3 worldPos, vec3 normal);
 #else
 vec3 getSpatialAmbientSH(vec3 worldPos, vec3 N) {
-	return evalSHIrradiance(N);
+	return vec3(0.1); // Fallback
 }
 float calculateTerrainOcclusion(vec3 worldPos, vec3 normal) {
 	return 1.0;
