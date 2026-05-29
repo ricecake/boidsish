@@ -110,18 +110,6 @@ Sampling getAtmospherePropertiesAtPos(vec3 worldPos) {
 	float h = worldPos.y / (1000.0 * max(0.0001, WORLD_SCALE_VALUE));
 	Sampling s = getAtmosphereProperties(h);
 
-	// Ground-level Haze (Local Mie boost)
-	// We use a simple exponential distribution for the haze layer.
-	// worldPos.y is in meters, but h (atmosphere scale) is in KM.
-	// hazeHeight from weather is in meters, so we convert it to KM for consistency with h.
-	float hKM = max(0.0, h);
-	float hazeHeightKM = max(0.001, hazeHeight / 1000.0);
-	float groundHaze = hazeDensity * exp(-hKM / hazeHeightKM);
-	vec3 hazeMie = hazeColor * groundHaze;
-
-	s.mie += hazeMie;
-	s.extinction += hazeMie; // Haze primarily contributes to scattering and extinction
-
 	// Modulate Mie based on weather
 	// LBM grid is 128x128, each cell is 32.0 units (one chunk size)
 	// u_originSize contains the anchor coordinates in chunk-space
@@ -139,6 +127,21 @@ Sampling getAtmospherePropertiesAtPos(vec3 worldPos) {
 
 	s.mie *= humidityFactor * aerosolFactor;
 	s.extinction += (s.mie - vec3(kMieScattering * getMieDensity(h) * u_mieScale)); // Re-calculate extinction diff
+
+	// Ground-level Haze (Additive Local Mie boost)
+	// We use a simple exponential distribution for the haze layer.
+	// Moved to end to prevent multiplicative stacking with weather factors.
+	// worldPos.y is in meters, h (atmosphere scale) is in KM.
+	// We re-derive KM height from worldPos for absolute consistency.
+	float hKM = worldPos.y / 1000.0;
+	float hazeHeightKM = max(0.001, hazeHeight / 1000.0);
+	float groundHaze = hazeDensity * exp(-max(0.0, hKM) / hazeHeightKM);
+
+	// Conservative scaling: use a smaller base factor (0.01) so hazeDensity 1.0 is subtle.
+	vec3 hazeMie = hazeColor * groundHaze * 0.01;
+
+	s.mie += hazeMie;
+	s.extinction += hazeMie * 1.1; // Extinction slightly higher than scattering
 
 	return s;
 }

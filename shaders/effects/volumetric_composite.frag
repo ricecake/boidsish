@@ -64,6 +64,7 @@ void main() {
 
     // Apply volumetric lighting
     vec3 result = sceneColor * transmittance + scattering;
+    result = max(vec3(0.0), result); // Safety clamp for subtractive God rays
 
     // Preserve Scene Mask in alpha channel: 1.0 for scene, 0.0 for sky
     float sceneMask = (depth < 0.99999) ? 1.0 : 0.0;

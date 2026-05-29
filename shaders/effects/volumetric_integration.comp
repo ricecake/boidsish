@@ -30,7 +30,7 @@ void main() {
     // Always store history
     imageStore(outHistory, vox, data);
 
-    vec3 scattering = max(vec3(0.0), data.rgb);
+    vec3 scattering = data.rgb; // Allow negative delta-radiance for relative scattering
     float extinction = max(0.0, data.a);
 
     int cascade = idx / u_grid_res.z;
