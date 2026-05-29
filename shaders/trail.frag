@@ -20,7 +20,6 @@ uniform bool uUseMDI = false;
 // #include "helpers/terrain_shadows.glsl"
 #include "helpers/lighting.glsl"
 
-uniform mat4  view;
 uniform bool  useIridescence;
 uniform bool  useRocketTrail;
 uniform bool  usePBR;         // Enable PBR lighting for trails

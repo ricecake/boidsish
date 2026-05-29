@@ -5,6 +5,7 @@ layout(location = 0) in vec3 aPos;       // Flat grid position (x, 0, z) in [0, 
 layout(location = 1) in vec2 aTexCoords; // Heightmap UV [0, 1]
 
 #include "helpers/constants.glsl"
+#include "helpers/lighting.glsl"
 
 struct PatchDrawData {
 	vec4 world_offset_and_slice; // xyz = world offset, w = texture slice index
@@ -22,8 +23,6 @@ flat out float TextureSlice_VS_out;
 flat out vec3  WorldOffset_VS_out;
 flat out vec4  PatchInfo_VS_out;    // xy = patch local coords, z = patch size, w = chunk size
 flat out int   DrawID_VS_out;
-
-uniform mat4 view;
 
 void main() {
 	// Extract camera forward vector

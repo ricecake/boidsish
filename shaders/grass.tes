@@ -46,8 +46,6 @@ layout(std140, binding = [[GRASS_PROPS_BINDING]]) uniform GrassProps {
     GlobalGrassProperties globalProps;
 };
 
-uniform mat4 view;
-uniform mat4 projection;
 
 out vec3 fNormal;
 out vec2 fTexCoords;
