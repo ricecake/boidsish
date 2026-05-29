@@ -14,8 +14,6 @@ flat out int vUniformIndex;
 
 uniform bool uUseMDI = false;
 uniform mat4 model;
-uniform mat4 view;
-uniform mat4 projection;
 uniform vec4 clipPlane;
 
 #include "helpers/lighting.glsl"

@@ -5,7 +5,7 @@ layout(location = 2) out vec4 NormalOut;
 layout(location = 3) out vec4 AlbedoOut;
 
 #include "common_uniforms.glsl"
-
+#include "lighting.glsl"
 uniform bool uUseMDI = false;
 flat in int  vUniformIndex;
 
@@ -15,7 +15,7 @@ in vec4 PrevPosition;
 
 uniform vec3  baseColor;
 uniform int   style; // 0-4: Colors, 5: RAINBOW, 6: INVISIBLE
-uniform float time;
+// uniform float time;
 uniform float radius;
 
 void main() {

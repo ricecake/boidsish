@@ -72,10 +72,11 @@ TEST(MoodManagerTest, SparseLayers) {
     EXPECT_NEAR(*settings.cloudDensity, 0.5f, 0.001f);
 
     ASSERT_TRUE(settings.cloudSunLightScale.has_value());
-    EXPECT_NEAR(*settings.cloudSunLightScale, 10.0f, 0.001f);
+    // Default (1.0) + 10.0 = 11.0
+    EXPECT_NEAR(*settings.cloudSunLightScale, 11.0f, 0.001f);
 
-    // Other values should be nullopt
-    EXPECT_FALSE(settings.cloudAltitude.has_value());
+    // Other values should NOT be nullopt anymore because of Default layer
+    EXPECT_TRUE(settings.cloudAltitude.has_value());
 }
 
 TEST(MoodManagerTest, CyclicWrapping) {

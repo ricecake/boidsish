@@ -46,8 +46,6 @@ uniform float uTessLevelMin = 1.0;
 uniform float uTessQualityMultiplier = 1.0;
 uniform bool  uIsShadowPass = false;
 
-uniform mat4 view;
-uniform mat4 projection;
 uniform vec2 uViewportSize;
 
 // Sample heightmap to get world position and normal

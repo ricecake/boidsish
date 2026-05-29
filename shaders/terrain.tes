@@ -36,8 +36,6 @@ layout(binding = [[TERRAIN_BIOME_MAP_BINDING]]) uniform sampler2DArray u_biomeMa
 uniform float uChunkSize;
 uniform float uRawChunkSize;
 
-uniform mat4 view;
-uniform mat4 projection;
 uniform vec4 clipPlane;
 uniform bool uIsShadowPass = false;
 

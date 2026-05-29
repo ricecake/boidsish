@@ -53,7 +53,6 @@ layout(location = 1) out vec4 VelocityOut;
 layout(location = 2) out vec4 NormalOut;
 layout(location = 3) out vec4 AlbedoOut;
 
-uniform mat4 view;
 
 // Simple hash for random values
 float hash(uint x) {

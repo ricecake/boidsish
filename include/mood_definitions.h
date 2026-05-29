@@ -10,20 +10,21 @@ namespace Boidsish {
         MoodLayer layer;
         layer.name = "Base Time of Day";
         layer.priority = 0;
-        layer.blendMode = MoodBlendMode::Override;
+        layer.blendMode = MoodBlendMode::Multiply;
         layer.trackedParameter = MoodParameter::TimeOfDay;
 
         MoodSettings dawn;
-        dawn.sceneBloom.targetLuminance = 0.2f;
+        dawn.sceneBloom.targetLuminance = 1.0f;
 
         MoodSettings noon;
-        noon.sceneBloom.targetLuminance = 0.25f;
+        noon.sceneBloom.targetLuminance = 0.95f;
 
         MoodSettings dusk;
-        dusk.sceneBloom.targetLuminance = 0.2f;
+        dusk.sceneBloom.targetLuminance = 1.0f;
 
         MoodSettings night;
-        night.sceneBloom.targetLuminance = 0.125f;
+        night.sceneBloom.targetLuminance = 1.5f;
+        night.sceneBloom.maxExposure = 1.5f;
 
         layer.controlPoints.push_back({6.0f, dawn});
         layer.controlPoints.push_back({12.0f, noon});

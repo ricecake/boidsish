@@ -917,6 +917,7 @@ protected:
 			if (!success) {
 				glGetProgramInfoLog(shader, 1024, NULL, infoLog);
 				std::cerr << "ERROR::PROGRAM_LINKING_ERROR of type: " << type << "\n"
+						  << filePath << std::endl
 						  << infoLog << "\n -- --------------------------------------------------- -- " << std::endl;
 				return false;
 			}

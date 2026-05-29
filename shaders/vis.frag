@@ -73,7 +73,6 @@ uniform float u_windRimHighlight;
 
 uniform sampler2D refractionTexture;
 
-uniform mat4 view;
 
 void main() {
 	bool  use_ssbo = uUseMDI && vUniformIndex >= 0;

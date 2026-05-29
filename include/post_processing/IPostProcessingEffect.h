@@ -23,6 +23,12 @@ namespace Boidsish {
 				const glm::mat4& projectionMatrix,
 				const glm::vec3& cameraPos
 			) = 0;
+
+			virtual void PreDispatch(
+				const glm::mat4& viewMatrix,
+				const glm::mat4& projectionMatrix,
+				const glm::vec3& cameraPos
+			) {}
 			virtual void Initialize(int width, int height) = 0;
 			virtual void Resize(int width, int height) = 0;
 

@@ -8,8 +8,6 @@ out vec4 CurPosition;
 out vec4 PrevPosition;
 
 uniform mat4 model;
-uniform mat4 view;
-uniform mat4 projection;
 
 #include "helpers/lighting.glsl"
 #include "temporal_data.glsl"
