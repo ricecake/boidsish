@@ -110,14 +110,14 @@ namespace Boidsish {
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
 		// Create ReSTIR Probe Reservoirs SSBO
-		// Reservoir struct: uint light_index, float w_sum, float m, float W (16 bytes)
+		// Reservoir struct: 3 x vec4 (48 bytes per element)
 		glGenBuffers(1, &probe_reservoir_ssbo_);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, probe_reservoir_ssbo_);
 		size_t oct_res = Constants::Class::Terrain::Probes::OctRes;
 		size_t total_probe_texels = probe_w * probe_h * probe_d;
 		glBufferData(
 			GL_SHADER_STORAGE_BUFFER,
-			total_probe_texels * 16,
+			total_probe_texels * 48,
 			nullptr,
 			GL_DYNAMIC_DRAW
 		);
@@ -801,6 +801,10 @@ namespace Boidsish {
 		std::vector<int16_t> slice_data(grid_size * grid_size, -1);
 		std::vector<float>   height_data(grid_size * grid_size, -10000.0f);
 
+		float min_terrain_y = 10000.0f;
+		float max_terrain_y = -10000.0f;
+		bool  any_visible = false;
+
 		for (const auto& [key, chunk] : chunks_) {
 			int lx = key.first - origin_x;
 			int lz = key.second - origin_z;
@@ -811,6 +815,10 @@ namespace Boidsish {
 				// Add a vertical safety buffer to account for dynamic terrain displacements
 				// (erosion, shockwaves, micro-relief) in the Hi-Z structure.
 				height_data[idx] = chunk.max_y + (5.0f * world_scale);
+
+				min_terrain_y = std::min(min_terrain_y, chunk.min_y);
+				max_terrain_y = std::max(max_terrain_y, chunk.max_y);
+				any_visible = true;
 			}
 		}
 
@@ -835,8 +843,11 @@ namespace Boidsish {
 		float p_origin_x = floor(last_camera_pos_.x / probe_spacing) * probe_spacing - (p_size_x / 2) * probe_spacing;
 		float p_origin_z = floor(last_camera_pos_.z / probe_spacing) * probe_spacing - (p_size_z / 2) * probe_spacing;
 
+		// Adaptive vertical origin
+		float p_origin_y = any_visible ? floor(min_terrain_y / probe_spacing) * probe_spacing : -20.0f * world_scale;
+
 		ubo.probe_params = glm::vec4(p_origin_x, p_origin_z, (float)p_size_x, (float)p_size_z);
-		ubo.probe_params2 = glm::vec4((float)p_size_y, probe_spacing, (float)Constants::Class::Terrain::Probes::OctRes, 0.0f);
+		ubo.probe_params2 = glm::vec4((float)p_size_y, probe_spacing, (float)Constants::Class::Terrain::Probes::OctRes, p_origin_y);
 
 		glBindBuffer(GL_UNIFORM_BUFFER, terrain_data_ubo_);
 		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(TerrainDataUbo), &ubo);
@@ -845,6 +856,7 @@ namespace Boidsish {
 		last_grid_origin_x_ = origin_x;
 		last_grid_origin_z_ = origin_z;
 		last_grid_world_scale_ = world_scale;
+		last_probe_origin_y_ = p_origin_y;
 		grid_dirty_ = false;
 	}
 
@@ -949,6 +961,16 @@ namespace Boidsish {
 		// 2. Blend Pass
 		probe_blend_shader_->use();
 		setup_common_textures(*probe_blend_shader_);
+
+		// History binding for Blend pass (unit 0 and 1)
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_3D, probe_irradiance_texture_);
+		probe_blend_shader_->setInt("u_historyIrradiance", 0);
+
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_3D, probe_depth_texture_);
+		probe_blend_shader_->setInt("u_historyDepth", 1);
+
 		probe_blend_shader_->setFloat("u_probeConvergenceSpeed", probe_convergence);
 		glDispatchCompute((p_size_x * oct_res + 7) / 8, (p_size_z * oct_res + 7) / 8, p_size_y);
 		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);

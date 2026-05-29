@@ -31,8 +31,9 @@ uniform mat4 u_invProjection;
 uniform float u_probeScaling;
 
 struct ProbeReservoir {
-    vec4 radiance_m; // rgb, m
-    vec4 wsum_W_unused; // w_sum, W, unused, unused
+    vec4  radiance_m;      // rgb, m
+    vec4  wsum_W_dist;     // w_sum, W, hitDist, unused
+    vec4  pos_invalid;     // pos.x, pos.z, unused, unused
 };
 
 layout(std430, binding = [[RESTIR_PROBE_RESERVOIRS_BINDING]]) buffer ProbeReservoirs {
@@ -121,10 +122,11 @@ vec3 sampleTerrainFallback(vec3 worldPos, vec3 rayDir) {
 	return sampleSkyLUT(rayDir);
 }
 
-vec3 traceRay(vec3 probeOrigin, vec3 rd) {
+vec3 traceRay(vec3 probeOrigin, vec3 rd, out float hitDist) {
     float worldScaleVal = u_terrainParams.y;
     const int k_maxSteps = 24;
     float stepSize = 1.0 * worldScaleVal;
+    hitDist = 1000.0 * worldScaleVal; // Far
 
     for (int s = 1; s <= k_maxSteps; ++s) {
         vec3 samplePos = probeOrigin + rd * float(s) * stepSize;
@@ -146,41 +148,72 @@ vec3 traceRay(vec3 probeOrigin, vec3 rd) {
 
             if (abs(linearSample - linearScene) < thickness) {
                 // Use gColor which contains lit radiance (including emissive/volumetric contributions from previous passes)
+                hitDist = float(s) * stepSize;
                 return texture(u_gColor, uv).rgb;
             }
         }
     }
+    // Fallback: simplified distance
+    hitDist = 50.0 * worldScaleVal;
     return sampleTerrainFallback(probeOrigin, rd);
 }
 
 void main() {
-    ivec3 gridCoord = ivec3(gl_GlobalInvocationID.xy, gl_GlobalInvocationID.z);
+    ivec3 invocationID = ivec3(gl_GlobalInvocationID.xyz);
     ivec3 gridSize = ivec3(u_probeParams_unused.zw, u_probeParams2_unused.x);
     int octRes = int(u_probeParams2_unused.z);
 
-    ivec2 probeIdx = gridCoord.xy / octRes;
-    ivec2 texelIdx = gridCoord.xy % octRes;
+    ivec2 probeIdx = invocationID.xy / octRes;
+    ivec2 texelIdx = invocationID.xy % octRes;
 
-    if (probeIdx.x >= gridSize.x || probeIdx.y >= gridSize.y || gridCoord.z >= gridSize.z) return;
+    if (probeIdx.x >= gridSize.x || probeIdx.y >= gridSize.y || invocationID.z >= gridSize.z) return;
 
     float spacing = u_probeParams2_unused.y;
-    vec3 probeOrigin = vec3(u_probeParams_unused.xy, 0.0).xzy + vec3(float(probeIdx.x), float(gridCoord.z), float(probeIdx.y)) * spacing;
-    probeOrigin.y -= 20.0 * worldScale; // Align with robust vertical mapping
 
+    // Grid mapping: x and z are horizontal, y is vertical.
+    // logical world coords of the probe
+    vec2 worldXZ = u_probeParams_unused.xy + vec2(probeIdx) * spacing;
+    float worldY = float(invocationID.z) * spacing + u_probeParams2_unused.w;
+    vec3 probeOrigin = vec3(worldXZ.x, worldY, worldXZ.y);
+
+    // Toroidal mapping for the reservoir buffer
+    ivec2 toroidalProbeIdx = (probeIdx % gridSize.xy + gridSize.xy) % gridSize.xy;
+
+    // Compute probe's logical world coordinates in spacing units to detect scrolling
+    vec2 logicalPos = worldXZ;
+
+    // Index at the texel level: (toroidalProbeIdx * octRes + texelIdx)
+    ivec2 texelCoordXY = toroidalProbeIdx * octRes + texelIdx;
+    uint  flatIdx = uint(invocationID.z * (gridSize.x * octRes * gridSize.y * octRes) + texelCoordXY.y * (gridSize.x * octRes) + texelCoordXY.x);
+
+    // --- Immediate Scrolling Invalidation ---
+    // Check if the logicalPos matches what's currently in the reservoir.
+    // This MUST happen for ALL probes every frame, not just the staggered update ones,
+    // to prevent sampling stale data from the previous toroidal location.
+    bool scrolled = distance(reservoirs[flatIdx].pos_invalid.xy, logicalPos) > 0.01;
+
+    if (scrolled) {
+        // Invalidate history immediately
+        reservoirs[flatIdx].radiance_m = vec4(0.0);
+        reservoirs[flatIdx].wsum_W_dist = vec4(0.0);
+        reservoirs[flatIdx].pos_invalid = vec4(logicalPos.x, logicalPos.y, 0.0, 0.0);
+    }
+
+    // --- Staggered Trace Update ---
     // Use blue noise for jittered probe update timing
-    uint seed = hash(uint(probeIdx.y * gridSize.x + probeIdx.x) ^ hash(uint(gridCoord.z) ^ u_frameIndex));
+    uint seed = hash(uint(probeIdx.y * gridSize.x + probeIdx.x) ^ hash(uint(invocationID.z) ^ u_frameIndex));
     // Stagger updates: only update a fraction of probes each frame
     if ((seed % 4) != 0) return;
 
     vec2 uv = (vec2(texelIdx) + 0.5) / float(octRes);
     vec3 rd = octDecode(uv);
 
-    vec3 radiance = traceRay(probeOrigin, rd);
+    float hitDist;
+    vec3 radiance = traceRay(probeOrigin, rd, hitDist);
 
-    uint flatIdx = uint(gridCoord.z * (gridSize.x * octRes * gridSize.y * octRes) + gridCoord.y * (gridSize.x * octRes) + gridCoord.x);
-
-    // Initial reservoir for the new candidate
+    // Prepare NEW candidate for blend pass.
     float p_hat = length(radiance);
     reservoirs[flatIdx].radiance_m = vec4(radiance, 1.0);
-    reservoirs[flatIdx].wsum_W_unused = vec4(p_hat, 1.0, 0.0, 0.0);
+    reservoirs[flatIdx].wsum_W_dist.x = p_hat; // temporary w_sum
+    reservoirs[flatIdx].wsum_W_dist.z = hitDist;
 }

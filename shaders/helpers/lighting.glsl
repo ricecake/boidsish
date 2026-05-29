@@ -362,37 +362,55 @@ vec3 getSpatialAmbientProbe(vec3 worldPos, vec3 N) {
 	vec3  gridPos;
 	gridPos.x = (worldPos.x - p_origin.x) / p_spacing;
 	gridPos.y = (worldPos.z - p_origin.y) / p_spacing;
-	gridPos.z = (worldPos.y + 20.0 * worldScale) / p_spacing; // Cover some space below terrain for caves/valleys
+	gridPos.z = (worldPos.y - u_probeParams2.w) / p_spacing;
 
 	vec3  base = floor(gridPos);
 	vec3  f = fract(gridPos);
 
 	vec2  octUV = octEncode(N);
 	vec3  accumIrradiance = vec3(0.0);
+	float totalWeight = 0.0;
 
 	for (int i = 0; i < 8; ++i) {
 		ivec3 offset = ivec3(i & 1, (i >> 1) & 1, (i >> 2) & 1);
-		ivec3 coord = ivec3(base) + offset;
+		ivec3 probeIdx = ivec3(base) + offset;
 
-		if (coord.x >= 0 && coord.x < int(p_size_xz.x) &&
-		    coord.y >= 0 && coord.y < int(p_size_xz.y) &&
-		    coord.z >= 0 && coord.z < int(p_size_y)) {
+		if (probeIdx.x >= 0 && probeIdx.x < int(p_size_xz.x) &&
+		    probeIdx.y >= 0 && probeIdx.y < int(p_size_xz.y) &&
+		    probeIdx.z >= 0 && probeIdx.z < int(p_size_y)) {
 
-			// Map grid coord + octahedral UV to 3D texture space
+			// Toroidal mapping for the resolved textures
+			ivec2 toroidalProbeIdx = (probeIdx.xy % ivec2(p_size_xz) + ivec2(p_size_xz)) % ivec2(p_size_xz);
+
+			// Map toroidal grid coord + octahedral UV to 3D texture space
 			// Texture size: (size_x * oct_res, size_z * oct_res, size_y)
 			vec3 texCoord;
-			texCoord.x = (float(coord.x) + octUV.x) / p_size_xz.x;
-			texCoord.y = (float(coord.y) + octUV.y) / p_size_xz.y;
-			texCoord.z = (float(coord.z) + 0.5) / p_size_y;
+			texCoord.x = (float(toroidalProbeIdx.x) + octUV.x) / p_size_xz.x;
+			texCoord.y = (float(toroidalProbeIdx.y) + octUV.y) / p_size_xz.y;
+			texCoord.z = (float(probeIdx.z) + 0.5) / p_size_y;
 
 			vec3 sampleIrradiance = textureLod(u_probeIrradiance, texCoord, 0.0).rgb;
+			float sampleDepth = textureLod(u_probeDepth, texCoord, 0.0).r;
 
 			float weight = (offset.x > 0 ? f.x : 1.0 - f.x) *
 			               (offset.y > 0 ? f.y : 1.0 - f.y) *
 			               (offset.z > 0 ? f.z : 1.0 - f.z);
 
+			// Depth-based weight to reduce light leaking
+			// Coordinate mapping: p_origin.x=X, p_origin.y=Z, u_probeParams2.w=Y (vertical origin)
+			vec3 probePos = vec3(p_origin.x, u_probeParams2.w, p_origin.y) + vec3(float(probeIdx.x), float(probeIdx.z), float(probeIdx.y)) * p_spacing;
+
+			float distToProbe = length(worldPos - probePos);
+			float depthWeight = exp(-abs(distToProbe - sampleDepth) * 0.5);
+			weight *= depthWeight;
+
 			accumIrradiance += sampleIrradiance * weight;
+			totalWeight += weight;
 		}
+	}
+
+	if (totalWeight > 0.001) {
+		accumIrradiance /= totalWeight;
 	}
 
 	return max(accumIrradiance, 0.0);

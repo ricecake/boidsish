@@ -6,9 +6,19 @@ layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 #include "types/terrain.glsl"
 #include "helpers/octahedral.glsl"
 
+uint hash(uint x) {
+	x ^= x >> 16;
+	x *= 0x7feb352dU;
+	x ^= x >> 15;
+	x *= 0x846ca68bU;
+	x ^= x >> 16;
+	return x;
+}
+
 struct ProbeReservoir {
-    vec4 radiance_m; // rgb, m
-    vec4 wsum_W_unused; // w_sum, W, unused, unused
+    vec4  radiance_m;      // rgb, m
+    vec4  wsum_W_dist;     // w_sum, W, hitDist, unused
+    vec4  pos_invalid;     // pos.x, pos.z, unused, unused
 };
 
 layout(std430, binding = [[RESTIR_PROBE_RESERVOIRS_BINDING]]) buffer ProbeReservoirs {
@@ -18,28 +28,40 @@ layout(std430, binding = [[RESTIR_PROBE_RESERVOIRS_BINDING]]) buffer ProbeReserv
 layout(rgba16f, binding = 0) uniform writeonly image3D u_probeIrradiance;
 layout(r16f,    binding = 1) uniform writeonly image3D u_probeDepth;
 
+uniform uint u_frameIndex;
 uniform float u_probeScaling;
 
 void main() {
-    ivec3 gridCoord = ivec3(gl_GlobalInvocationID.xy, gl_GlobalInvocationID.z);
+    ivec3 invocationID = ivec3(gl_GlobalInvocationID.xyz);
     ivec3 gridSize = ivec3(u_probeParams_unused.zw, u_probeParams2_unused.x);
     int octRes = int(u_probeParams2_unused.z);
 
-    ivec2 probeIdx = gridCoord.xy / octRes;
-    if (probeIdx.x >= gridSize.x || probeIdx.y >= gridSize.y || gridCoord.z >= gridSize.z) return;
+    ivec2 probeIdx = invocationID.xy / octRes;
+    if (probeIdx.x >= gridSize.x || probeIdx.y >= gridSize.y || invocationID.z >= gridSize.z) return;
 
-    uint flatIdx = uint(gridCoord.z * (gridSize.x * octRes * gridSize.y * octRes) + gridCoord.y * (gridSize.x * octRes) + gridCoord.x);
+    // Toroidal mapping for the reservoir buffer
+    ivec2 toroidalProbeIdx = (probeIdx % gridSize.xy + gridSize.xy) % gridSize.xy;
+    ivec2 texelIdx = invocationID.xy % octRes;
+    ivec2 texelCoordXY = toroidalProbeIdx * octRes + texelIdx;
+
+    // gridCoord for writing to 3D image
+    ivec3 gridCoord = ivec3(texelCoordXY, invocationID.z);
+
+    uint flatIdx = uint(invocationID.z * (gridSize.x * octRes * gridSize.y * octRes) + texelCoordXY.y * (gridSize.x * octRes) + texelCoordXY.x);
+
+    // Staggered update logic: same hash-based mask as trace and blend pass
+    uint staggerSeed = hash(uint(probeIdx.y * gridSize.x + probeIdx.x) ^ hash(uint(gridCoord.z) ^ u_frameIndex));
+    if ((staggerSeed % 4) != 0) return;
 
     ProbeReservoir r = reservoirs[flatIdx];
 
     // Resolve reservoir radiance.
     // Radiance stored in reservoir is already the "best" candidate so far.
     // We apply the W normalization factor and user scaling.
-    vec3 irradiance = r.radiance_m.rgb * r.wsum_W_unused.y * u_probeScaling;
+    vec3 irradiance = r.radiance_m.rgb * r.wsum_W_dist.y * u_probeScaling;
 
-    // In a more advanced implementation, we would also store the hit depth.
-    // For now, we'll just store a placeholder or use a distance from trace.
-    float depth = 1.0; // Placeholder
+    // hitDist was preserved in wsum_W_dist.z during blend.
+    float depth = r.wsum_W_dist.z;
 
     imageStore(u_probeIrradiance, gridCoord, vec4(irradiance, 1.0));
     imageStore(u_probeDepth, gridCoord, vec4(depth, 0.0, 0.0, 0.0));

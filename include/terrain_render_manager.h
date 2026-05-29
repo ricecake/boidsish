@@ -224,6 +224,8 @@ namespace Boidsish {
 		 */
 		void BindTerrainData(ShaderBase& shader_base) const;
 
+		float GetProbeVerticalOrigin() const { return last_probe_origin_y_; }
+
 		/**
 		 * @brief Update the horizon map for newly added or modified chunks.
 		 */
@@ -450,6 +452,7 @@ namespace Boidsish {
 		int   last_grid_origin_x_ = -999999;
 		int   last_grid_origin_z_ = -999999;
 		float last_grid_world_scale_ = -1.0f;
+		float     last_probe_origin_y_ = 0.0f;
 		bool  grid_dirty_ = true;
 
 		int   last_shadow_grid_origin_x_ = -999999;

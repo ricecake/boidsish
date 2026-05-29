@@ -2370,7 +2370,7 @@ namespace Boidsish {
 					float p_origin_z = floor(camera.z / probe_spacing) * probe_spacing - (p_size_z / 2) * probe_spacing;
 
 					lighting_ubo_data_.u_probeParams = glm::vec4(p_origin_x, p_origin_z, (float)p_size_x, (float)p_size_z);
-					lighting_ubo_data_.u_probeParams2 = glm::vec4((float)p_size_y, probe_spacing, (float)Constants::Class::Terrain::Probes::OctRes, 0.0f);
+					lighting_ubo_data_.u_probeParams2 = glm::vec4((float)p_size_y, probe_spacing, (float)Constants::Class::Terrain::Probes::OctRes, terrain_render_manager->GetProbeVerticalOrigin());
 				}
 
 				} else {
