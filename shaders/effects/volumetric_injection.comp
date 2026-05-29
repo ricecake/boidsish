@@ -156,7 +156,11 @@ void main() {
         float cosTheta = dot(-V, L);
         float phase = henyeyGreenstein(uAnisotropy, cosTheta);
 
-        // Relative Scattering: Subtract scattering where shadowed to carve rays from atmosphere.
+        // --- Relative Scattering (Directional) ---
+        // The AtmosphereEffect already adds global scattering. To create shadow shafts (God rays)
+        // without double-counting, we calculate the DELTA scattering.
+        // shadow = 1.0 (lit)   => relativeShadow =  0.0 => Atmosphere haze remains, no extra added.
+        // shadow = 0.0 (shadow) => relativeShadow = -1.0 => Subtracts radiance, carving rays out of haze.
         float shadow = calculateShadow(i, worldPos, vec3(0,1,0), L);
         shadow *= calculateCloudShadow(i, worldPos);
         float relativeShadow = shadow - 1.0;
@@ -235,9 +239,10 @@ void main() {
         float obliquity = getObliquity(vox.xy, blueNoise);
         vec3 mieCoeff = s.mie * 0.001 * obliquity;
 
-        // Base atmospheric extinction is handled by AtmosphereEffect's Aerial Perspective.
-        // We only want local volumetric extinction (from particles/smoke/dust) here.
-        // For now, we set it to zero for the base atmosphere to prevent double-darkening.
+        // --- Redundancy Delegation ---
+        // Base atmospheric extinction is handled by AtmosphereEffect's Aerial Perspective pass.
+        // We set it to 0.0 here to avoid double-darkening the scene.
+        // If local density effects (smoke, particles) are added, their extinction should be summed here.
         float extinctionCoeff = 0.0;
 
         current_local = vec4(radiance * mieCoeff, extinctionCoeff);
