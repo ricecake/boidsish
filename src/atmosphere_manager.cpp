@@ -102,6 +102,7 @@ namespace Boidsish {
 			s.use();
 			s.bindUniformBlock("Lighting", Constants::UboBinding::Lighting());
 			s.bindUniformBlock("Shadows", Constants::UboBinding::Shadows());
+			s.bindUniformBlock("TerrainData", Constants::UboBinding::TerrainData());
 		};
 
 		_transmittanceShader = std::make_unique<ComputeShader>("shaders/atmosphere/transmittance_lut.comp");
@@ -170,6 +171,12 @@ namespace Boidsish {
 			_needsPrecompute = false;
 		}
 
+		// Ensure weather textures are bound for getAtmospherePropertiesAtPos
+		GpuResourceRegistry::Instance().BindTextures({
+			Constants::TextureUnit::WeatherScalars(),
+			Constants::TextureUnit::WeatherAerosols()
+		});
+
 		// Dispatch SkyView
 		_skyViewShader->use();
 		glBindImageTexture(0, _skyViewLUT, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
@@ -179,6 +186,12 @@ namespace Boidsish {
 		glBindTexture(GL_TEXTURE_2D, _multiScatteringLUT);
 		_skyViewShader->setInt("u_transmittanceLUT", 1);
 		_skyViewShader->setInt("u_multiScatteringLUT", 2);
+
+		auto wm = ServiceLocator::Instance().Get<WeatherManager>();
+		auto weather = wm->GetCurrentWeather();
+		_skyViewShader->setFloat("hazeDensity", weather.haze_density);
+		_skyViewShader->setFloat("hazeHeight", weather.haze_height);
+		_skyViewShader->setVec3("hazeColor", weather.haze_color);
 		_skyViewShader->setVec3("u_sunDir", sunDir);
 		_skyViewShader->setVec3("u_sunRadiance", sunColor * sunIntensity);
 		_skyViewShader->setVec3("u_cameraPos", cameraPos);
@@ -210,6 +223,10 @@ namespace Boidsish {
 
 		// Dispatch AerialPerspective
 		_aerialPerspectiveShader->use();
+		_aerialPerspectiveShader->setFloat("hazeDensity", weather.haze_density);
+		_aerialPerspectiveShader->setFloat("hazeHeight", weather.haze_height);
+		_aerialPerspectiveShader->setVec3("hazeColor", weather.haze_color);
+
 		glBindImageTexture(0, _aerialPerspectiveLUT, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA32F);
 		glActiveTexture(GL_TEXTURE1);
 		glBindTexture(GL_TEXTURE_2D, _transmittanceLUT);
@@ -236,14 +253,6 @@ namespace Boidsish {
 		_aerialPerspectiveShader->setFloat("u_mieScaleHeight", _mieScaleHeight);
 		_aerialPerspectiveShader->setFloat("u_colorVarianceScale", _colorVarianceScale);
 		_aerialPerspectiveShader->setFloat("u_colorVarianceStrength", _colorVarianceStrength);
-
-		auto wm = ServiceLocator::Instance().Get<WeatherManager>();
-		auto weather = wm->GetCurrentWeather();
-
-		_aerialPerspectiveShader->setFloat("hazeDensity", weather.haze_density);
-		_aerialPerspectiveShader->setFloat("hazeHeight", weather.haze_height);
-		_aerialPerspectiveShader->setVec3("hazeColor", weather.haze_color);
-
 
 		glDispatchCompute(32 / 4, 32 / 4, 32 / 4);
 		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
@@ -321,6 +330,14 @@ namespace Boidsish {
 		shader.trySetInt("u_aerialPerspectiveLUT", Constants::TextureUnit::AtmosphereAerialPerspective());
 		shader.trySetInt("u_cloudShadowMap", Constants::TextureUnit::AtmosphereCloudShadow());
 		shader.trySetFloat("u_atmosphereHeight", _atmosphereHeight);
+
+		auto wm = ServiceLocator::Instance().Get<WeatherManager>();
+		if (wm) {
+			auto weather = wm->GetCurrentWeather();
+			shader.trySetFloat("hazeDensity", weather.haze_density);
+			shader.trySetFloat("hazeHeight", weather.haze_height);
+			shader.setVec3("hazeColor", weather.haze_color);
+		}
 
 		shader.setVec3("u_rayleighScatteringBase", _rayleighScattering);
 		shader.trySetFloat("u_rayleighScaleHeight", _rayleighScaleHeight);

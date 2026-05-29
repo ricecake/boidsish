@@ -53,6 +53,13 @@ uniform float u_rayleighScale;
 uniform float u_mieScale;
 uniform float u_mieAnisotropy;
 
+#ifndef HAZE_UNIFORMS_DEFINED
+#define HAZE_UNIFORMS_DEFINED
+uniform float hazeDensity;
+uniform float hazeHeight;
+uniform vec3  hazeColor;
+#endif
+
 uniform vec3 u_ozoneAbsorptionBase;
 #define kOzoneAbsorption u_ozoneAbsorptionBase
 
@@ -102,6 +109,18 @@ Sampling getAtmosphereProperties(float h) {
 Sampling getAtmospherePropertiesAtPos(vec3 worldPos) {
 	float h = worldPos.y / (1000.0 * max(0.0001, WORLD_SCALE_VALUE));
 	Sampling s = getAtmosphereProperties(h);
+
+	// Ground-level Haze (Local Mie boost)
+	// We use a simple exponential distribution for the haze layer.
+	// worldPos.y is in meters, but h (atmosphere scale) is in KM.
+	// hazeHeight from weather is in meters, so we convert it to KM for consistency with h.
+	float hKM = max(0.0, h);
+	float hazeHeightKM = max(0.001, hazeHeight / 1000.0);
+	float groundHaze = hazeDensity * exp(-hKM / hazeHeightKM);
+	vec3 hazeMie = hazeColor * groundHaze;
+
+	s.mie += hazeMie;
+	s.extinction += hazeMie; // Haze primarily contributes to scattering and extinction
 
 	// Modulate Mie based on weather
 	// LBM grid is 128x128, each cell is 32.0 units (one chunk size)
