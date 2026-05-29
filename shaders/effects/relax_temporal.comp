@@ -1,12 +1,12 @@
 #version 460 core
 layout(local_size_x = 8, local_size_y = 8) in;
 
-layout(binding = 0, rgba16f) uniform readonly image2D inRadiance;
-layout(binding = 1, rg16f)   uniform image2D outMoments;        // R: L, G: L^2
-layout(binding = 2, r16f)    uniform image2D outHistoryLength;
-layout(binding = 3, rgba16f) uniform image2D outRadianceHistory;
-layout(binding = 4, r16f)    uniform image2D outVariance;
-layout(binding = 5, r32f)    uniform image2D outHistoryDepth;
+layout(binding = [[RELAX_RADIANCE_IN_IMAGE_BINDING]], rgba16f) uniform readonly image2D inRadiance;
+layout(binding = [[RELAX_MOMENTS_OUT_IMAGE_BINDING]], rg16f)   uniform image2D outMoments;        // R: L, G: L^2
+layout(binding = [[RELAX_HISTORY_LENGTH_OUT_IMAGE_BINDING]], r16f)    uniform image2D outHistoryLength;
+layout(binding = [[RELAX_RADIANCE_HISTORY_OUT_IMAGE_BINDING]], rgba16f) uniform image2D outRadianceHistory;
+layout(binding = [[RELAX_VARIANCE_OUT_IMAGE_BINDING]], r16f)    uniform image2D outVariance;
+layout(binding = [[RELAX_HISTORY_DEPTH_OUT_IMAGE_BINDING]], r32f)    uniform image2D outHistoryDepth;
 
 uniform sampler2D gDepth;
 uniform sampler2D gNormal;

@@ -119,6 +119,22 @@ namespace Boidsish {
 		T::RegisterConstant("VOLUMETRIC_SCATTERING_IMAGE_BINDING", Constants::ImageBinding::VolumetricScattering());
 		T::RegisterConstant("VOLUMETRIC_HISTORY_IMAGE_BINDING", Constants::ImageBinding::VolumetricHistory());
 
+		T::RegisterConstant("RELAX_RADIANCE_IN_IMAGE_BINDING", Constants::ImageBinding::RelaxRadianceIn());
+		T::RegisterConstant("RELAX_MOMENTS_OUT_IMAGE_BINDING", Constants::ImageBinding::RelaxMomentsOut());
+		T::RegisterConstant("RELAX_HISTORY_LENGTH_OUT_IMAGE_BINDING", Constants::ImageBinding::RelaxHistoryLengthOut());
+		T::RegisterConstant("RELAX_RADIANCE_HISTORY_OUT_IMAGE_BINDING", Constants::ImageBinding::RelaxRadianceHistoryOut());
+		T::RegisterConstant("RELAX_VARIANCE_OUT_IMAGE_BINDING", Constants::ImageBinding::RelaxVarianceOut());
+		T::RegisterConstant("RELAX_HISTORY_DEPTH_OUT_IMAGE_BINDING", Constants::ImageBinding::RelaxHistoryDepthOut());
+
+		T::RegisterConstant("RELAX_ATROUS_RADIANCE_IN_IMAGE_BINDING", Constants::ImageBinding::RelaxAtrousRadianceIn());
+		T::RegisterConstant("RELAX_ATROUS_VARIANCE_IN_IMAGE_BINDING", Constants::ImageBinding::RelaxAtrousVarianceIn());
+		T::RegisterConstant("RELAX_ATROUS_RADIANCE_OUT_IMAGE_BINDING", Constants::ImageBinding::RelaxAtrousRadianceOut());
+		T::RegisterConstant("RELAX_ATROUS_VARIANCE_OUT_IMAGE_BINDING", Constants::ImageBinding::RelaxAtrousVarianceOut());
+
+		T::RegisterConstant("UNIFIED_GI_AO_IMAGE_BINDING", Constants::ImageBinding::UnifiedGiAo());
+		T::RegisterConstant("UNIFIED_SHADOW_MASK_IMAGE_BINDING", Constants::ImageBinding::UnifiedShadowMask());
+		T::RegisterConstant("UNIFIED_RESTIR_DI_IMAGE_BINDING", Constants::ImageBinding::UnifiedRestirDi());
+
 		T::RegisterConstant("WEATHER_SCALARS_BINDING", Constants::TextureUnit::WeatherScalars());
 		T::RegisterConstant("WEATHER_AEROSOLS_BINDING", Constants::TextureUnit::WeatherAerosols());
 	}

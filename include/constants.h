@@ -43,6 +43,15 @@ namespace Boidsish {
 				WeatherScalars = 42,
 				WeatherAerosols = 43,
 				TerrainDisplacementImage = 44,
+				RelaxGiMoments = 45,
+				RelaxDiMoments = 46,
+				RelaxGiHistoryLength = 47,
+				RelaxDiHistoryLength = 48,
+				RelaxGiRadianceHistory = 49,
+				RelaxDiRadianceHistory = 50,
+				RelaxHistoryDepth = 51,
+				RelaxGiVariance = 52,
+				RelaxDiVariance = 53,
 			};
 
 			enum class Ubo {
@@ -65,6 +74,19 @@ namespace Boidsish {
 				VolumetricInjection = 0,
 				VolumetricScattering = 1,
 				VolumetricHistory = 2,
+				RelaxRadianceIn = 3,
+				RelaxMomentsOut = 4,
+				RelaxHistoryLengthOut = 5,
+				RelaxRadianceHistoryOut = 6,
+				RelaxVarianceOut = 7,
+				RelaxHistoryDepthOut = 8,
+				RelaxAtrousRadianceIn = 9,
+				RelaxAtrousVarianceIn = 10,
+				RelaxAtrousRadianceOut = 11,
+				RelaxAtrousVarianceOut = 12,
+				UnifiedGiAo = 13,
+				UnifiedShadowMask = 14,
+				UnifiedRestirDi = 15,
 			};
 
 			enum class Ssbo {
@@ -309,6 +331,42 @@ namespace Boidsish {
 			consteval int TerrainDisplacementImage() {
 				return std::to_underlying(Constants::Bindings::Texture::TerrainDisplacementImage);
 			}
+
+			consteval int RelaxGiMoments() {
+				return std::to_underlying(Constants::Bindings::Texture::RelaxGiMoments);
+			}
+
+			consteval int RelaxDiMoments() {
+				return std::to_underlying(Constants::Bindings::Texture::RelaxDiMoments);
+			}
+
+			consteval int RelaxGiHistoryLength() {
+				return std::to_underlying(Constants::Bindings::Texture::RelaxGiHistoryLength);
+			}
+
+			consteval int RelaxDiHistoryLength() {
+				return std::to_underlying(Constants::Bindings::Texture::RelaxDiHistoryLength);
+			}
+
+			consteval int RelaxGiRadianceHistory() {
+				return std::to_underlying(Constants::Bindings::Texture::RelaxGiRadianceHistory);
+			}
+
+			consteval int RelaxDiRadianceHistory() {
+				return std::to_underlying(Constants::Bindings::Texture::RelaxDiRadianceHistory);
+			}
+
+			consteval int RelaxHistoryDepth() {
+				return std::to_underlying(Constants::Bindings::Texture::RelaxHistoryDepth);
+			}
+
+			consteval int RelaxGiVariance() {
+				return std::to_underlying(Constants::Bindings::Texture::RelaxGiVariance);
+			}
+
+			consteval int RelaxDiVariance() {
+				return std::to_underlying(Constants::Bindings::Texture::RelaxDiVariance);
+			}
 		} // namespace TextureUnit
 
 		namespace ImageBinding {
@@ -322,6 +380,58 @@ namespace Boidsish {
 
 			consteval int VolumetricHistory() {
 				return std::to_underlying(Constants::Bindings::Image::VolumetricHistory);
+			}
+
+			consteval int RelaxRadianceIn() {
+				return std::to_underlying(Constants::Bindings::Image::RelaxRadianceIn);
+			}
+
+			consteval int RelaxMomentsOut() {
+				return std::to_underlying(Constants::Bindings::Image::RelaxMomentsOut);
+			}
+
+			consteval int RelaxHistoryLengthOut() {
+				return std::to_underlying(Constants::Bindings::Image::RelaxHistoryLengthOut);
+			}
+
+			consteval int RelaxRadianceHistoryOut() {
+				return std::to_underlying(Constants::Bindings::Image::RelaxRadianceHistoryOut);
+			}
+
+			consteval int RelaxVarianceOut() {
+				return std::to_underlying(Constants::Bindings::Image::RelaxVarianceOut);
+			}
+
+			consteval int RelaxHistoryDepthOut() {
+				return std::to_underlying(Constants::Bindings::Image::RelaxHistoryDepthOut);
+			}
+
+			consteval int RelaxAtrousRadianceIn() {
+				return std::to_underlying(Constants::Bindings::Image::RelaxAtrousRadianceIn);
+			}
+
+			consteval int RelaxAtrousVarianceIn() {
+				return std::to_underlying(Constants::Bindings::Image::RelaxAtrousVarianceIn);
+			}
+
+			consteval int RelaxAtrousRadianceOut() {
+				return std::to_underlying(Constants::Bindings::Image::RelaxAtrousRadianceOut);
+			}
+
+			consteval int RelaxAtrousVarianceOut() {
+				return std::to_underlying(Constants::Bindings::Image::RelaxAtrousVarianceOut);
+			}
+
+			consteval int UnifiedGiAo() {
+				return std::to_underlying(Constants::Bindings::Image::UnifiedGiAo);
+			}
+
+			consteval int UnifiedShadowMask() {
+				return std::to_underlying(Constants::Bindings::Image::UnifiedShadowMask);
+			}
+
+			consteval int UnifiedRestirDi() {
+				return std::to_underlying(Constants::Bindings::Image::UnifiedRestirDi);
 			}
 		} // namespace ImageBinding
 

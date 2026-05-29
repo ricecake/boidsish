@@ -221,9 +221,9 @@ namespace Boidsish {
 				unified_shader_->setInt("uShadowMask", 9);
 			}
 
-			glBindImageTexture(0, gi_ao_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
-			glBindImageTexture(1, sss_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R8);
-			glBindImageTexture(2, di_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+			glBindImageTexture(Constants::ImageBinding::UnifiedGiAo(), gi_ao_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+			glBindImageTexture(Constants::ImageBinding::UnifiedShadowMask(), sss_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R8);
+			glBindImageTexture(Constants::ImageBinding::UnifiedRestirDi(), di_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 
 			glDispatchCompute((internal_width_ + 7) / 8, (internal_height_ + 7) / 8, 1);
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
@@ -264,25 +264,27 @@ namespace Boidsish {
 					glBindTexture(GL_TEXTURE_2D, velocityTexture);
 					relax_temporal_shader_->setInt("gVelocity", 2);
 
-					glActiveTexture(GL_TEXTURE3);
+					glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::RelaxGiMoments()); // Base for GI/DI
 					glBindTexture(GL_TEXTURE_2D, momentsHistoryTex);
-					relax_temporal_shader_->setInt("uHistoryMoments", 3);
-					glActiveTexture(GL_TEXTURE4);
-					glBindTexture(GL_TEXTURE_2D, lengthHistoryTex);
-					relax_temporal_shader_->setInt("uHistoryLength", 4);
-					glActiveTexture(GL_TEXTURE5);
-					glBindTexture(GL_TEXTURE_2D, radianceHistoryTex);
-					relax_temporal_shader_->setInt("uHistoryRadiance", 5);
-					glActiveTexture(GL_TEXTURE6);
-					glBindTexture(GL_TEXTURE_2D, depthHistoryTex);
-					relax_temporal_shader_->setInt("uHistoryDepth", 6);
+					relax_temporal_shader_->setInt("uHistoryMoments", Constants::TextureUnit::RelaxGiMoments());
 
-					glBindImageTexture(0, radianceTex, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA16F);
-					glBindImageTexture(1, momentsOutTex, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RG16F);
-					glBindImageTexture(2, lengthOutTex, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R16F);
-					glBindImageTexture(3, radianceOutTex, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
-					glBindImageTexture(4, varianceOutTex, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R16F);
-					glBindImageTexture(5, depthOutTex, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R32F);
+					glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::RelaxGiHistoryLength());
+					glBindTexture(GL_TEXTURE_2D, lengthHistoryTex);
+					relax_temporal_shader_->setInt("uHistoryLength", Constants::TextureUnit::RelaxGiHistoryLength());
+
+					glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::RelaxGiRadianceHistory());
+					glBindTexture(GL_TEXTURE_2D, radianceHistoryTex);
+					relax_temporal_shader_->setInt("uHistoryRadiance", Constants::TextureUnit::RelaxGiRadianceHistory());
+					glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::RelaxHistoryDepth());
+					glBindTexture(GL_TEXTURE_2D, depthHistoryTex);
+					relax_temporal_shader_->setInt("uHistoryDepth", Constants::TextureUnit::RelaxHistoryDepth());
+
+					glBindImageTexture(Constants::ImageBinding::RelaxRadianceIn(), radianceTex, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA16F);
+					glBindImageTexture(Constants::ImageBinding::RelaxMomentsOut(), momentsOutTex, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RG16F);
+					glBindImageTexture(Constants::ImageBinding::RelaxHistoryLengthOut(), lengthOutTex, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R16F);
+					glBindImageTexture(Constants::ImageBinding::RelaxRadianceHistoryOut(), radianceOutTex, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+					glBindImageTexture(Constants::ImageBinding::RelaxVarianceOut(), varianceOutTex, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R16F);
+					glBindImageTexture(Constants::ImageBinding::RelaxHistoryDepthOut(), depthOutTex, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R32F);
 
 					glDispatchCompute((internal_width_ + 7) / 8, (internal_height_ + 7) / 8, 1);
 					glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
@@ -308,10 +310,10 @@ namespace Boidsish {
 					for (int i = 0; i < relax_atrous_iterations_; i++) {
 						relax_atrous_shader_->setInt("uStepSize", 1 << i);
 
-						glBindImageTexture(0, currentRadiance, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA16F);
-						glBindImageTexture(1, currentVariance, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R16F);
-						glBindImageTexture(2, nextRadiance, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
-						glBindImageTexture(3, nextVariance, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R16F);
+						glBindImageTexture(Constants::ImageBinding::RelaxAtrousRadianceIn(), currentRadiance, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA16F);
+						glBindImageTexture(Constants::ImageBinding::RelaxAtrousVarianceIn(), currentVariance, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R16F);
+						glBindImageTexture(Constants::ImageBinding::RelaxAtrousRadianceOut(), nextRadiance, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+						glBindImageTexture(Constants::ImageBinding::RelaxAtrousVarianceOut(), nextVariance, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R16F);
 
 						glDispatchCompute((internal_width_ + 7) / 8, (internal_height_ + 7) / 8, 1);
 						glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);

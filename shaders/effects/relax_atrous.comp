@@ -1,10 +1,10 @@
 #version 460 core
 layout(local_size_x = 8, local_size_y = 8) in;
 
-layout(binding = 0, rgba16f) uniform readonly image2D inRadiance;
-layout(binding = 1, r16f)    uniform readonly image2D inVariance;
-layout(binding = 2, rgba16f) uniform image2D outRadiance;
-layout(binding = 3, r16f)    uniform image2D outVariance;
+layout(binding = [[RELAX_ATROUS_RADIANCE_IN_IMAGE_BINDING]], rgba16f) uniform readonly image2D inRadiance;
+layout(binding = [[RELAX_ATROUS_VARIANCE_IN_IMAGE_BINDING]], r16f)    uniform readonly image2D inVariance;
+layout(binding = [[RELAX_ATROUS_RADIANCE_OUT_IMAGE_BINDING]], rgba16f) uniform image2D outRadiance;
+layout(binding = [[RELAX_ATROUS_VARIANCE_OUT_IMAGE_BINDING]], r16f)    uniform image2D outVariance;
 
 uniform sampler2D gDepth;
 uniform sampler2D gNormal;

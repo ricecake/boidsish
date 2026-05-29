@@ -1,9 +1,9 @@
 #version 460 core
 layout(local_size_x = 8, local_size_y = 8) in;
 
-layout(binding = 0, rgba16f) uniform image2D outIndirectAO; // RGB: GI, A: AO
-layout(binding = 1, r8)      uniform image2D outShadowMask; // R: SSS
-layout(binding = 2, rgba16f) uniform image2D outRestirDI;   // RGB: ReSTIR DI
+layout(binding = [[UNIFIED_GI_AO_IMAGE_BINDING]], rgba16f) uniform image2D outIndirectAO; // RGB: GI, A: AO
+layout(binding = [[UNIFIED_SHADOW_MASK_IMAGE_BINDING]], r8)      uniform image2D outShadowMask; // R: SSS
+layout(binding = [[UNIFIED_RESTIR_DI_IMAGE_BINDING]], rgba16f) uniform image2D outRestirDI;   // RGB: ReSTIR DI
 
 #include "../restir/restir_common.glsl"
 
