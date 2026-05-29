@@ -99,6 +99,29 @@ namespace Boidsish {
 									else if (current_res == 2) unified->SetResolutionScale(PostProcessing::ScreenSpaceResolution::Quarter);
 								}
 
+								if (ImGui::TreeNode("RELAX Denoising")) {
+									bool relax_enabled = unified->IsRelaxEnabled();
+									if (ImGui::Checkbox("Enabled##Relax", &relax_enabled)) unified->SetRelaxEnabled(relax_enabled);
+
+									if (relax_enabled) {
+										float alpha = unified->GetRelaxTemporalAlpha();
+										if (ImGui::SliderFloat("Temporal Alpha##Relax", &alpha, 0.0f, 0.99f)) unified->SetRelaxTemporalAlpha(alpha);
+
+										float phi_color = unified->GetRelaxPhiColor();
+										if (ImGui::SliderFloat("Phi Color##Relax", &phi_color, 0.1f, 50.0f)) unified->SetRelaxPhiColor(phi_color);
+
+										float phi_normal = unified->GetRelaxPhiNormal();
+										if (ImGui::SliderFloat("Phi Normal##Relax", &phi_normal, 1.0f, 256.0f)) unified->SetRelaxPhiNormal(phi_normal);
+
+										float phi_depth = unified->GetRelaxPhiDepth();
+										if (ImGui::SliderFloat("Phi Depth##Relax", &phi_depth, 0.01f, 1.0f)) unified->SetRelaxPhiDepth(phi_depth);
+
+										int iters = unified->GetRelaxAtrousIterations();
+										if (ImGui::SliderInt("Atrous Iterations##Relax", &iters, 1, 6)) unified->SetRelaxAtrousIterations(iters);
+									}
+									ImGui::TreePop();
+								}
+
 								if (ImGui::TreeNode("ReSTIR DI")) {
 									bool di_enabled = unified->IsRestirDIEnabled();
 									if (ImGui::Checkbox("Enabled##RestirDI", &di_enabled)) unified->SetRestirDIEnabled(di_enabled);

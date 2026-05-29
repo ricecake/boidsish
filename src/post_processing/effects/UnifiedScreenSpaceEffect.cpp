@@ -17,6 +17,18 @@ namespace Boidsish {
 			if (gi_ao_texture_) glDeleteTextures(1, &gi_ao_texture_);
 			if (di_texture_) glDeleteTextures(1, &di_texture_);
 			if (sss_texture_) glDeleteTextures(1, &sss_texture_);
+
+			glDeleteTextures(2, gi_moments_textures_);
+			glDeleteTextures(2, di_moments_textures_);
+			glDeleteTextures(2, gi_history_length_textures_);
+			glDeleteTextures(2, di_history_length_textures_);
+			glDeleteTextures(2, gi_radiance_history_textures_);
+			glDeleteTextures(2, di_radiance_history_textures_);
+			glDeleteTextures(2, gi_variance_textures_);
+			glDeleteTextures(2, di_variance_textures_);
+			glDeleteTextures(2, history_depth_textures_);
+			glDeleteTextures(1, &gi_ping_pong_texture_);
+			glDeleteTextures(1, &di_ping_pong_texture_);
 		}
 
 		void UnifiedScreenSpaceEffect::Initialize(int width, int height) {
@@ -26,10 +38,19 @@ namespace Boidsish {
 			internal_height_ = height / static_cast<int>(resolution_scale_);
 
 			unified_shader_ = std::make_unique<ComputeShader>("shaders/effects/unified_screen_space.comp");
+			relax_temporal_shader_ = std::make_unique<ComputeShader>("shaders/effects/relax_temporal.comp");
+			relax_atrous_shader_ = std::make_unique<ComputeShader>("shaders/effects/relax_atrous.comp");
+
 			composite_shader_ = std::make_unique<Shader>(
 				"shaders/postprocess.vert",
 				"shaders/effects/unified_screen_space_composite.frag"
 			);
+
+			auto setup_relax_shader = [&](ComputeShader* s) {
+				if (!s || !s->isValid()) return;
+				s->bindUniformBlock("Lighting", Constants::UboBinding::Lighting());
+				s->bindUniformBlock("TemporalData", Constants::UboBinding::TemporalData());
+			};
 
 			if (unified_shader_->isValid()) {
 				unified_shader_->bindUniformBlock("Lighting", Constants::UboBinding::Lighting());
@@ -38,6 +59,9 @@ namespace Boidsish {
 				unified_shader_->bindStorageBlock("TerrainProbes", Constants::SsboBinding::TerrainProbes());
 				unified_shader_->bindUniformBlock("BiomeData", Constants::UboBinding::Biomes());
 			}
+
+			setup_relax_shader(relax_temporal_shader_.get());
+			setup_relax_shader(relax_atrous_shader_.get());
 
 			gi_ao_accumulator_.Initialize(internal_width_, internal_height_, GL_RGBA16F);
 			di_accumulator_.Initialize(internal_width_, internal_height_, GL_RGBA16F);
@@ -51,33 +75,55 @@ namespace Boidsish {
 		}
 
 		void UnifiedScreenSpaceEffect::InitializeTextures() {
-			if (gi_ao_texture_) glDeleteTextures(1, &gi_ao_texture_);
-			if (di_texture_) glDeleteTextures(1, &di_texture_);
-			if (sss_texture_) glDeleteTextures(1, &sss_texture_);
+			auto delete_and_gen = [](GLuint* tex, int count) {
+				if (tex[0]) glDeleteTextures(count, tex);
+				glGenTextures(count, tex);
+			};
 
-			glGenTextures(1, &gi_ao_texture_);
-			glBindTexture(GL_TEXTURE_2D, gi_ao_texture_);
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, internal_width_, internal_height_, 0, GL_RGBA, GL_FLOAT, NULL);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+			delete_and_gen(&gi_ao_texture_, 1);
+			delete_and_gen(&di_texture_, 1);
+			delete_and_gen(&sss_texture_, 1);
 
-			glGenTextures(1, &di_texture_);
-			glBindTexture(GL_TEXTURE_2D, di_texture_);
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, internal_width_, internal_height_, 0, GL_RGBA, GL_FLOAT, NULL);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+			delete_and_gen(gi_moments_textures_, 2);
+			delete_and_gen(di_moments_textures_, 2);
+			delete_and_gen(gi_history_length_textures_, 2);
+			delete_and_gen(di_history_length_textures_, 2);
+			delete_and_gen(gi_radiance_history_textures_, 2);
+			delete_and_gen(di_radiance_history_textures_, 2);
+			delete_and_gen(gi_variance_textures_, 2);
+			delete_and_gen(di_variance_textures_, 2);
+			delete_and_gen(history_depth_textures_, 2);
 
-			glGenTextures(1, &sss_texture_);
-			glBindTexture(GL_TEXTURE_2D, sss_texture_);
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, internal_width_, internal_height_, 0, GL_RED, GL_UNSIGNED_BYTE, NULL);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+			delete_and_gen(&gi_ping_pong_texture_, 1);
+			delete_and_gen(&di_ping_pong_texture_, 1);
+
+			auto setup_texture = [&](GLuint tex, GLenum internalFormat, GLenum format) {
+				glBindTexture(GL_TEXTURE_2D, tex);
+				glTexImage2D(GL_TEXTURE_2D, 0, internalFormat, internal_width_, internal_height_, 0, format, GL_FLOAT, NULL);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+			};
+
+			setup_texture(gi_ao_texture_, GL_RGBA16F, GL_RGBA);
+			setup_texture(di_texture_, GL_RGBA16F, GL_RGBA);
+			setup_texture(sss_texture_, GL_R8, GL_RED);
+
+			for (int i = 0; i < 2; i++) {
+				setup_texture(gi_moments_textures_[i], GL_RG16F, GL_RG);
+				setup_texture(di_moments_textures_[i], GL_RG16F, GL_RG);
+				setup_texture(gi_history_length_textures_[i], GL_R16F, GL_RED);
+				setup_texture(di_history_length_textures_[i], GL_R16F, GL_RED);
+				setup_texture(gi_radiance_history_textures_[i], GL_RGBA16F, GL_RGBA);
+				setup_texture(di_radiance_history_textures_[i], GL_RGBA16F, GL_RGBA);
+				setup_texture(gi_variance_textures_[i], GL_R16F, GL_RED);
+				setup_texture(di_variance_textures_[i], GL_R16F, GL_RED);
+				setup_texture(history_depth_textures_[i], GL_R32F, GL_RED);
+			}
+
+			setup_texture(gi_ping_pong_texture_, GL_RGBA16F, GL_RGBA);
+			setup_texture(di_ping_pong_texture_, GL_RGBA16F, GL_RGBA);
 
 			glBindTexture(GL_TEXTURE_2D, 0);
 		}
@@ -188,8 +234,133 @@ namespace Boidsish {
 			glBindImageTexture(1, 0, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R8);
 			glBindImageTexture(2, 0, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA16F);
 
-			GLuint accGIAO = gi_ao_accumulator_.Accumulate(gi_ao_texture_, velocityTexture, depthTexture);
-			GLuint accDI = di_accumulator_.Accumulate(di_texture_, velocityTexture, depthTexture);
+			GLuint accGIAO = 0;
+			GLuint accDI = 0;
+
+			if (relax_enabled_) {
+				enum class ReservoirDI_GI { DI, GI };
+
+				auto dispatch_relax = [&](
+					GLuint radianceTex,
+					GLuint momentsHistoryTex, GLuint lengthHistoryTex, GLuint radianceHistoryTex, GLuint depthHistoryTex,
+					GLuint momentsOutTex, GLuint lengthOutTex, GLuint radianceOutTex, GLuint depthOutTex,
+					GLuint varianceOutTex, GLuint varianceHistoryTex, GLuint pingPongTex,
+					GLuint& resultTex,
+					ReservoirDI_GI type
+				) {
+					// 1. Temporal Pass
+					relax_temporal_shader_->use();
+					relax_temporal_shader_->setFloat("uAlpha", relax_temporal_alpha_);
+					relax_temporal_shader_->setFloat("uPhiDepth", relax_phi_depth_);
+					relax_temporal_shader_->setFloat("uPhiNormal", relax_phi_normal_);
+
+					glActiveTexture(GL_TEXTURE0);
+					glBindTexture(GL_TEXTURE_2D, depthTexture);
+					relax_temporal_shader_->setInt("gDepth", 0);
+					glActiveTexture(GL_TEXTURE1);
+					glBindTexture(GL_TEXTURE_2D, normalTexture);
+					relax_temporal_shader_->setInt("gNormal", 1);
+					glActiveTexture(GL_TEXTURE2);
+					glBindTexture(GL_TEXTURE_2D, velocityTexture);
+					relax_temporal_shader_->setInt("gVelocity", 2);
+
+					glActiveTexture(GL_TEXTURE3);
+					glBindTexture(GL_TEXTURE_2D, momentsHistoryTex);
+					relax_temporal_shader_->setInt("uHistoryMoments", 3);
+					glActiveTexture(GL_TEXTURE4);
+					glBindTexture(GL_TEXTURE_2D, lengthHistoryTex);
+					relax_temporal_shader_->setInt("uHistoryLength", 4);
+					glActiveTexture(GL_TEXTURE5);
+					glBindTexture(GL_TEXTURE_2D, radianceHistoryTex);
+					relax_temporal_shader_->setInt("uHistoryRadiance", 5);
+					glActiveTexture(GL_TEXTURE6);
+					glBindTexture(GL_TEXTURE_2D, depthHistoryTex);
+					relax_temporal_shader_->setInt("uHistoryDepth", 6);
+
+					glBindImageTexture(0, radianceTex, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA16F);
+					glBindImageTexture(1, momentsOutTex, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RG16F);
+					glBindImageTexture(2, lengthOutTex, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R16F);
+					glBindImageTexture(3, radianceOutTex, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+					glBindImageTexture(4, varianceOutTex, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R16F);
+					glBindImageTexture(5, depthOutTex, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R32F);
+
+					glDispatchCompute((internal_width_ + 7) / 8, (internal_height_ + 7) / 8, 1);
+					glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+
+					// 2. À-Trous Iterations
+					relax_atrous_shader_->use();
+					relax_atrous_shader_->setFloat("uPhiColor", relax_phi_color_);
+					relax_atrous_shader_->setFloat("uPhiNormal", relax_phi_normal_);
+					relax_atrous_shader_->setFloat("uPhiDepth", relax_phi_depth_);
+
+					glActiveTexture(GL_TEXTURE0);
+					glBindTexture(GL_TEXTURE_2D, depthTexture);
+					relax_atrous_shader_->setInt("gDepth", 0);
+					glActiveTexture(GL_TEXTURE1);
+					glBindTexture(GL_TEXTURE_2D, normalTexture);
+					relax_atrous_shader_->setInt("gNormal", 1);
+
+					GLuint currentRadiance = radianceOutTex;
+					GLuint currentVariance = varianceOutTex;
+					GLuint nextRadiance = pingPongTex;
+					GLuint nextVariance = (type == ReservoirDI_GI::GI) ? gi_variance_textures_[1 - relax_current_index_] : di_variance_textures_[1 - relax_current_index_]; // Use other index for ping-pong
+
+					for (int i = 0; i < relax_atrous_iterations_; i++) {
+						relax_atrous_shader_->setInt("uStepSize", 1 << i);
+
+						glBindImageTexture(0, currentRadiance, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA16F);
+						glBindImageTexture(1, currentVariance, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R16F);
+						glBindImageTexture(2, nextRadiance, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+						glBindImageTexture(3, nextVariance, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R16F);
+
+						glDispatchCompute((internal_width_ + 7) / 8, (internal_height_ + 7) / 8, 1);
+						glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+
+						std::swap(currentRadiance, nextRadiance);
+						std::swap(currentVariance, nextVariance);
+					}
+
+					resultTex = currentRadiance;
+				};
+
+				dispatch_relax(
+					gi_ao_texture_,
+					gi_moments_textures_[1 - relax_current_index_],
+					gi_history_length_textures_[1 - relax_current_index_],
+					gi_radiance_history_textures_[1 - relax_current_index_],
+					history_depth_textures_[1 - relax_current_index_],
+					gi_moments_textures_[relax_current_index_],
+					gi_history_length_textures_[relax_current_index_],
+					gi_radiance_history_textures_[relax_current_index_],
+					history_depth_textures_[relax_current_index_],
+					gi_variance_textures_[relax_current_index_],
+					gi_variance_textures_[1 - relax_current_index_],
+					gi_ping_pong_texture_,
+					accGIAO,
+					ReservoirDI_GI::GI
+				);
+
+				dispatch_relax(
+					di_texture_,
+					di_moments_textures_[1 - relax_current_index_],
+					di_history_length_textures_[1 - relax_current_index_],
+					di_radiance_history_textures_[1 - relax_current_index_],
+					history_depth_textures_[1 - relax_current_index_],
+					di_moments_textures_[relax_current_index_],
+					di_history_length_textures_[relax_current_index_],
+					di_radiance_history_textures_[relax_current_index_],
+					history_depth_textures_[relax_current_index_],
+					di_variance_textures_[relax_current_index_],
+					di_variance_textures_[1 - relax_current_index_],
+					di_ping_pong_texture_,
+					accDI,
+					ReservoirDI_GI::DI
+				);
+			} else {
+				accGIAO = gi_ao_accumulator_.Accumulate(gi_ao_texture_, velocityTexture, depthTexture);
+				accDI = di_accumulator_.Accumulate(di_texture_, velocityTexture, depthTexture);
+			}
+
 			GLuint accSSS = sss_accumulator_.Accumulate(sss_texture_, velocityTexture, depthTexture);
 
 			composite_shader_->use();
@@ -236,11 +407,15 @@ namespace Boidsish {
 			glActiveTexture(GL_TEXTURE8);
 			glBindTexture(GL_TEXTURE_2D, di_texture_);
 			glActiveTexture(GL_TEXTURE9);
-			glBindTexture(GL_TEXTURE_2D, gi_ao_accumulator_.GetHistoryTexture());
+			glBindTexture(GL_TEXTURE_2D, relax_enabled_ ? gi_radiance_history_textures_[1 - relax_current_index_] : gi_ao_accumulator_.GetHistoryTexture());
 			glActiveTexture(GL_TEXTURE10);
-			glBindTexture(GL_TEXTURE_2D, di_accumulator_.GetHistoryTexture());
+			glBindTexture(GL_TEXTURE_2D, relax_enabled_ ? di_radiance_history_textures_[1 - relax_current_index_] : di_accumulator_.GetHistoryTexture());
 
 			glDrawArrays(GL_TRIANGLES, 0, 6);
+
+			if (relax_enabled_) {
+				relax_current_index_ = 1 - relax_current_index_;
+			}
 		}
 
 		void UnifiedScreenSpaceEffect::Resize(int width, int height) {

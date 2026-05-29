@@ -86,6 +86,20 @@ namespace Boidsish {
 			void  SetSSSSteps(int steps) { sss_steps_ = steps; }
 			int   GetSSSSteps() const { return sss_steps_; }
 
+			// RELAX SVGF Parameters
+			void  SetRelaxEnabled(bool enabled) { relax_enabled_ = enabled; }
+			bool  IsRelaxEnabled() const { return relax_enabled_; }
+			void  SetRelaxPhiColor(float phi) { relax_phi_color_ = phi; }
+			float GetRelaxPhiColor() const { return relax_phi_color_; }
+			void  SetRelaxPhiNormal(float phi) { relax_phi_normal_ = phi; }
+			float GetRelaxPhiNormal() const { return relax_phi_normal_; }
+			void  SetRelaxPhiDepth(float phi) { relax_phi_depth_ = phi; }
+			float GetRelaxPhiDepth() const { return relax_phi_depth_; }
+			void  SetRelaxTemporalAlpha(float alpha) { relax_temporal_alpha_ = alpha; }
+			float GetRelaxTemporalAlpha() const { return relax_temporal_alpha_; }
+			void  SetRelaxAtrousIterations(int iters) { relax_atrous_iterations_ = iters; }
+			int   GetRelaxAtrousIterations() const { return relax_atrous_iterations_; }
+
 			// Resolution
 			void SetResolutionScale(ScreenSpaceResolution scale) {
 				if (resolution_scale_ != scale) {
@@ -110,7 +124,10 @@ namespace Boidsish {
 			void InitializeTextures();
 
 			std::unique_ptr<ComputeShader> unified_shader_;
+			std::unique_ptr<ComputeShader> relax_temporal_shader_;
+			std::unique_ptr<ComputeShader> relax_atrous_shader_;
 			std::unique_ptr<Shader>        composite_shader_;
+
 			TemporalAccumulator            gi_ao_accumulator_;
 			TemporalAccumulator            di_accumulator_;
 			TemporalAccumulator            sss_accumulator_;
@@ -118,6 +135,21 @@ namespace Boidsish {
 			GLuint gi_ao_texture_ = 0;
 			GLuint di_texture_ = 0;
 			GLuint sss_texture_ = 0;
+
+			// RELAX Textures
+			GLuint gi_moments_textures_[2] = { 0, 0 };
+			GLuint di_moments_textures_[2] = { 0, 0 };
+			GLuint gi_history_length_textures_[2] = { 0, 0 };
+			GLuint di_history_length_textures_[2] = { 0, 0 };
+			GLuint gi_radiance_history_textures_[2] = { 0, 0 };
+			GLuint di_radiance_history_textures_[2] = { 0, 0 };
+			GLuint gi_ping_pong_texture_ = 0;
+			GLuint di_ping_pong_texture_ = 0;
+			GLuint gi_variance_textures_[2] = { 0, 0 };
+			GLuint di_variance_textures_[2] = { 0, 0 };
+			GLuint history_depth_textures_[2] = { 0, 0 };
+
+			int    relax_current_index_ = 0;
 			GLuint blue_noise_texture_ = 0;
 			GLuint hiz_texture_ = 0;
 			GLuint di_reservoir_buffer_ = 0;
@@ -161,6 +193,14 @@ namespace Boidsish {
 			float sss_radius_ = 1.25f;
 			float sss_bias_ = 0.5f;
 			int   sss_steps_ = 8;
+
+			// RELAX
+			bool  relax_enabled_ = true;
+			float relax_phi_color_ = 10.0f;
+			float relax_phi_normal_ = 128.0f;
+			float relax_phi_depth_ = 0.1f;
+			float relax_temporal_alpha_ = 0.95f;
+			int   relax_atrous_iterations_ = 4;
 		};
 
 	} // namespace PostProcessing

@@ -65,6 +65,9 @@ vec4 tentUpsample(sampler2D srcTexture, float filterRadius, float srcLod, vec2 T
 
 
 vec4 rejectFireflies(vec4 current, sampler2D rawTex, sampler2D historyTex, sampler2D velocityTex, sampler2D depthTex, vec2 uv, vec2 lowResInvSize) {
+	// If the current radiance is zero, no need to reject fireflies
+	if (dot(current.rgb, current.rgb) < 1e-7) return current;
+
 	// 1. Spatial Check in raw (recent) frame
 	vec4 m1 = vec4(0.0);
 	vec4 m2 = vec4(0.0);
@@ -330,6 +333,8 @@ void main() {
 	// di_lighting = min(di_lighting, vec3(max_lum));
 
 	// Advanced firefly rejection
+	// When RELAX is enabled, we rely more on its internal temporal/spatial filtering,
+	// but this final pass still helps catch remaining ReSTIR-induced spikes.
 	giao = rejectFireflies(giao, uRawGIAOTexture, uHistoryGIAOTexture, uVelocityTexture, uDepthTexture, TexCoords, lowResInvSize);
 	di_lighting = rejectFireflies(vec4(di_lighting, 1.0), uRawDITexture, uHistoryDITexture, uVelocityTexture, uDepthTexture, TexCoords, lowResInvSize).rgb;
 
