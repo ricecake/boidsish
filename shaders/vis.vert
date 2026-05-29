@@ -46,8 +46,6 @@ uniform mat4  model;
 uniform mat4  finalBonesMatrices[100];
 uniform bool  use_skinning = false;
 uniform int   bone_matrices_offset = -1;
-uniform mat4  view;
-uniform mat4  projection;
 uniform vec4  clipPlane;
 uniform float ripple_strength;
 uniform bool  isColossal = false;

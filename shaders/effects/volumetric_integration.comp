@@ -2,7 +2,19 @@
 
 layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
 
-layout(rgba16f, binding = [[VOLUMETRIC_INJECTION_IMAGE_BINDING]]) uniform readonly image3D inInjection;
+struct VolumetricData {
+    uint radiance_r;
+    uint radiance_g;
+    uint radiance_b;
+    uint extinction;
+};
+
+layout(std430, binding = [[VOLUMETRIC_INJECTION_BUFFER_BINDING]]) buffer VolumetricInjectionBuffer {
+    VolumetricData injection_data[];
+};
+
+layout(binding = [[VOLUMETRIC_INJECTION_BINDING]]) uniform sampler3D uInjectionTexture;
+
 layout(rgba16f, binding = [[VOLUMETRIC_SCATTERING_IMAGE_BINDING]]) uniform image3D outScattering;
 layout(rgba16f, binding = [[VOLUMETRIC_HISTORY_IMAGE_BINDING]]) uniform image3D outHistory; // Save for next frame
 
@@ -24,7 +36,19 @@ void main() {
     ivec3 vox = ivec3(xy, idx);
 
     // 1. Load data and compute local scattering/transmittance
-    vec4 data = imageLoad(inInjection, vox);
+    uint b_idx = vox.z * (u_grid_res.x * u_grid_res.y) + vox.y * u_grid_res.x + vox.x;
+    const float FIXED_POINT_SCALE = 1000000.0;
+    vec4 particleData = vec4(
+        float(injection_data[b_idx].radiance_r) / FIXED_POINT_SCALE,
+        float(injection_data[b_idx].radiance_g) / FIXED_POINT_SCALE,
+        float(injection_data[b_idx].radiance_b) / FIXED_POINT_SCALE,
+        float(injection_data[b_idx].extinction) / FIXED_POINT_SCALE
+    );
+
+    vec4 otherLights = texelFetch(uInjectionTexture, vox, 0);
+
+    vec4 data = particleData + otherLights;
+
     if (any(isnan(data))) data = vec4(0.0);
 
     // Always store history

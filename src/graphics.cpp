@@ -2257,6 +2257,8 @@ namespace Boidsish {
 				lighting_ubo_data_.ambient_light = light_manager->GetAmbientLight();
 				lighting_ubo_data_.time = simulation_time;
 				lighting_ubo_data_.view_dir = camera.front();
+				lighting_ubo_data_.view = current_view_matrix;
+				lighting_ubo_data_.projection = projection;
 
 				if (mood_manager && weather_manager && light_manager && mood_manager->IsEnabled() && !mood_manager->IsOverrideEnabled()) {
 					std::map<MoodParameter, float> params;
@@ -2363,10 +2365,10 @@ namespace Boidsish {
 
 				// GPU-side copy of SH coefficients from SSBO into the UBO (no CPU readback)
 				if (atmosphere_manager) {
-					static_assert(offsetof(LightingUbo, sh_coeffs) == 848, "SH offset mismatch");
+					static_assert(offsetof(LightingUbo, sh_coeffs) == 976, "SH offset mismatch");
 					atmosphere_manager->CopySHToUBO(
 						lighting_pb->GetBufferId(),
-						static_cast<GLintptr>(lighting_pb->GetFrameOffset()) + 848
+						static_cast<GLintptr>(lighting_pb->GetFrameOffset()) + 976
 					);
 				}
 			}
@@ -3658,6 +3660,11 @@ namespace Boidsish {
 		// The shape callback triggers lazy sync when packets are first needed.
 		impl->RenderShadowPasses(frame);
 		impl->EnsurePacketsSynced(frame); // fallback if no shadow shapes triggered it
+
+		// Pre-dispatch compute effects (like volumetric lighting) so results are available for the scene
+		if (impl->post_processing_manager_) {
+			impl->post_processing_manager_->PreDispatchEffects(frame.view, frame.projection, frame.camera_pos);
+		}
 
 		impl->RenderOpaqueScene(frame);
 

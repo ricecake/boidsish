@@ -17,6 +17,7 @@ namespace Boidsish {
 			void Initialize(int width, int height) override;
 			void Resize(int width, int height) override;
 			void Apply(GLuint sourceTexture, GLuint depthTexture, GLuint velocityTexture, GLuint normalTexture, GLuint albedoTexture, const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix, const glm::vec3& cameraPos) override;
+			void PreDispatch(const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix, const glm::vec3& cameraPos) override;
 
 			bool IsEarly() const override { return true; }
 
@@ -34,6 +35,7 @@ namespace Boidsish {
 			void CreateGridTextures();
 
 			std::unique_ptr<ComputeShader> injection_shader_;
+			std::unique_ptr<ComputeShader> splat_shader_;
 			std::unique_ptr<ComputeShader> integration_shader_;
 			std::unique_ptr<Shader> composite_shader_;
 
@@ -42,7 +44,8 @@ namespace Boidsish {
 
 			// 4 Cascades, each with a Froxel Grid
 			// We use a 3D texture array for the 4 cascades
-			GLuint injection_texture_ = 0;  // Scattering + Extinction (RGBA16F)
+			GLuint injection_buffer_ = 0;   // VolumetricData SSBO
+			GLuint injection_texture_ = 0;  // Pre-integration light sources (RGBA16F)
 			GLuint scattering_texture_ = 0; // Integrated Scattering + Transmittance (RGBA16F)
 
 			// Temporal accumulation history (at froxel resolution)

@@ -62,8 +62,12 @@ void main() {
     if (any(isnan(scattering))) scattering = vec3(0.0);
     if (isnan(transmittance)) transmittance = 1.0;
 
-    // Apply volumetric lighting
-    vec3 result = sceneColor * transmittance + scattering;
+    // Apply volumetric lighting only to the sky (depth >= 1.0)
+    // Surface lighting now handles its own volumetric integration for grounding.
+    vec3 result = sceneColor;
+    // if (depth >= 0.99999) {
+        result = sceneColor * transmittance + scattering;
+    // }
 
     // Preserve Scene Mask in alpha channel: 1.0 for scene, 0.0 for sky
     float sceneMask = (depth < 0.99999) ? 1.0 : 0.0;
