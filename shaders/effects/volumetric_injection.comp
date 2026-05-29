@@ -148,7 +148,7 @@ void main() {
     }
 */
 
-    // Direct light (Sun)
+    // Direct light (Sun/Moon)
     for (int i = 0; i < min(2, num_lights); ++i) {
         if (lights[i].type != LIGHT_TYPE_DIRECTIONAL) continue;
 
@@ -156,16 +156,18 @@ void main() {
         float cosTheta = dot(-V, L);
         float phase = henyeyGreenstein(uAnisotropy, cosTheta);
 
+        // Relative Scattering: Subtract scattering where shadowed to carve rays from atmosphere.
         float shadow = calculateShadow(i, worldPos, vec3(0,1,0), L);
         shadow *= calculateCloudShadow(i, worldPos);
+        float relativeShadow = shadow - 1.0;
 
         float r = kEarthRadiusKM + (worldPos.y / (1000.0 * max(0.0001, worldScale)));
         vec3 atmosphereTransmittance = texture(u_transmittanceLUT, getTransmittanceUV(r, L.y)).rgb;
 
-        radiance += lights[i].color * max(0.0, lights[i].intensity) * atmosphereTransmittance * shadow * phase;
+        radiance += lights[i].color * max(0.0, lights[i].intensity) * atmosphereTransmittance * relativeShadow * phase;
     }
 
-    // Local lights
+    // Local lights (Additive)
     for (int i = 2; i < num_lights; ++i) {
         vec3 L; float atten;
         calculateLightContribution(i, worldPos, L, atten);
@@ -178,8 +180,8 @@ void main() {
         radiance += lights[i].color * lights[i].intensity * atten * shadow * phase;
     }
 
-    // Ambient (SH) - We use a simple isotropic phase for ambient light
-    radiance += getSpatialAmbientSH(worldPos, V) * 0.1;
+    // Ambient (SH) - Handled by AtmosphereEffect, skipping to avoid double-counting
+    // radiance += getSpatialAmbientSH(worldPos, V) * 0.1;
 
     // Lightning illumination
     if (lightningPulse > 0.01) {
@@ -232,7 +234,11 @@ void main() {
         // Convert atmospheric coefficients from per-KM to per-meter
         float obliquity = getObliquity(vox.xy, blueNoise);
         vec3 mieCoeff = s.mie * 0.001 * obliquity;
-        float extinctionCoeff = (s.rayleigh.r + s.rayleigh.g + s.rayleigh.b + s.mie.r + s.mie.g + s.mie.b) / 3.0 * 0.001 * obliquity;
+
+        // Base atmospheric extinction is handled by AtmosphereEffect's Aerial Perspective.
+        // We only want local volumetric extinction (from particles/smoke/dust) here.
+        // For now, we set it to zero for the base atmosphere to prevent double-darkening.
+        float extinctionCoeff = 0.0;
 
         current_local = vec4(radiance * mieCoeff, extinctionCoeff);
     }
