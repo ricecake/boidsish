@@ -866,6 +866,14 @@ namespace Boidsish {
 		glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture_);
 		probe_compute_shader_->setInt("u_heightmapArray", Constants::TextureUnit::TerrainHeightmap());
 
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainMaxHeight());
+		glBindTexture(GL_TEXTURE_2D, max_height_grid_texture_);
+		probe_compute_shader_->setInt("u_maxHeightGrid", Constants::TextureUnit::TerrainMaxHeight());
+
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainShadowMap());
+		glBindTexture(GL_TEXTURE_2D, terrain_shadow_map_texture_);
+		probe_compute_shader_->setInt("u_terrainShadowMap", Constants::TextureUnit::TerrainShadowMap());
+
 		// Uniforms
 		probe_compute_shader_->setUint("u_frameIndex", frame_count_);
 		probe_compute_shader_->setMat4("u_view", view);
