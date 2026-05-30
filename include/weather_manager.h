@@ -12,6 +12,7 @@
 #include "weather_constants.h"
 #include "weather_lbm_simulator.h"
 #include "shader.h"
+#include "mood_manager.h"
 
 namespace Boidsish {
 
@@ -306,6 +307,8 @@ namespace Boidsish {
 		}
 
 		void SetSimConstraints(const WeatherLbmSimulator::Constraints& c);
+
+		MoodSettings GetMoodSettings() const;
 
 		void InjectPressure(const glm::vec3& pos, float pressureHpa, float burstStrength);
 

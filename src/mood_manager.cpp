@@ -123,29 +123,53 @@ namespace Boidsish {
         s.cloudMoonLightScale = 2.0f;
         s.cloudPowderScale = 0.125f;
         s.cloudBeerPowderMix = 0.600f;
+        s.cloudWarp = 75.0f;
+        s.cloudPhaseG1 = 0.875f;
+        s.cloudPhaseG2 = -0.3f;
+        s.cloudPhaseAlpha = 0.181f;
+        s.cloudPhaseIsotropic = 0.426f;
+        s.cloudPowderMultiplier = 5.0f;
+        s.cloudPowderLocalScale = 5.0f;
+        s.cloudShadowOpticalDepthMultiplier = 0.277f;
+        s.cloudShadowStepMultiplier = 1.0f;
+
+        s.hazeDensity = WeatherConstants::HazeDensity.normal;
+        s.hazeHeight = WeatherConstants::HazeHeight.normal;
+        s.hazeColor = WeatherConstants::DefaultHazeColor;
 
         s.rayleighScale = WeatherConstants::RayleighScale.normal;
         s.mieScale = WeatherConstants::MieScale.normal;
         s.rayleighScattering = WeatherConstants::RayleighScattering;
         s.mieScattering = WeatherConstants::MieScattering;
         s.mieExtinction = WeatherConstants::MieExtinction;
+        s.ozoneAbsorption = WeatherConstants::OzoneAbsorption;
+        s.atmosphereHeight = WeatherConstants::AtmosphereHeight.normal;
+        s.rayleighScaleHeight = WeatherConstants::RayleighScaleHeight.normal;
+        s.mieScaleHeight = WeatherConstants::MieScaleHeight.normal;
 
         return s;
     }
 
     MoodManager::MoodManager() : _enabled(true) {
-        MoodLayer defaultLayer;
-        defaultLayer.name = "Default";
-        defaultLayer.priority = -100;
-        defaultLayer.blendMode = MoodBlendMode::Override;
-        defaultLayer.trackedParameter = MoodParameter::Count; // No parameter tracking
+        // 1. Base Layer (Inputs from UI)
+        MoodLayer baseLayer;
+        baseLayer.name = "Base";
+        baseLayer.priority = -200;
+        baseLayer.blendMode = MoodBlendMode::Override;
+        baseLayer.trackedParameter = MoodParameter::Count;
+        baseLayer.isEssential = true;
+        baseLayer.controlPoints.push_back({0.0f, MoodSettings::GetDefault()});
+        AddLayer(baseLayer);
 
-        MoodControlPoint cp;
-        cp.parameterValue = 0.0f;
-        cp.settings = MoodSettings::GetDefault();
-        defaultLayer.controlPoints.push_back(cp);
-
-        AddLayer(defaultLayer);
+        // 2. Weather Layer (Inputs from Weather system)
+        MoodLayer weatherLayer;
+        weatherLayer.name = "Weather";
+        weatherLayer.priority = -100;
+        weatherLayer.blendMode = MoodBlendMode::Override;
+        weatherLayer.trackedParameter = MoodParameter::Count;
+        weatherLayer.isEssential = true;
+        weatherLayer.controlPoints.push_back({0.0f, MoodSettings::GetDefault()});
+        AddLayer(weatherLayer);
     }
     MoodManager::~MoodManager() {}
 
@@ -289,26 +313,33 @@ namespace Boidsish {
         FILL_S(cloudMoonLightScale, InterpType::Logarithmic);
         FILL_S(cloudPowderScale, InterpType::Logarithmic);
         FILL_S(cloudBeerPowderMix, InterpType::Linear);
+        FILL_S(cloudWarp, InterpType::Linear);
+        FILL_S(cloudPhaseG1, InterpType::Linear);
+        FILL_S(cloudPhaseG2, InterpType::Linear);
+        FILL_S(cloudPhaseAlpha, InterpType::Linear);
+        FILL_S(cloudPhaseIsotropic, InterpType::Linear);
+        FILL_S(cloudPowderMultiplier, InterpType::Logarithmic);
+        FILL_S(cloudPowderLocalScale, InterpType::Logarithmic);
+        FILL_S(cloudShadowOpticalDepthMultiplier, InterpType::Linear);
+        FILL_S(cloudShadowStepMultiplier, InterpType::Linear);
+        FILL_S(hazeDensity, InterpType::Linear);
+        FILL_S(hazeHeight, InterpType::Linear);
+        FILL_S(hazeColor, InterpType::Oklab);
         FILL_S(rayleighScale, InterpType::Logarithmic);
         FILL_S(mieScale, InterpType::Logarithmic);
         FILL_S(rayleighScattering, InterpType::Oklab);
         FILL_S(mieScattering, InterpType::Logarithmic);
         FILL_S(mieExtinction, InterpType::Logarithmic);
+        FILL_S(ozoneAbsorption, InterpType::Oklab);
+        FILL_S(atmosphereHeight, InterpType::Linear);
+        FILL_S(rayleighScaleHeight, InterpType::Linear);
+        FILL_S(mieScaleHeight, InterpType::Linear);
         #undef FILL_S
     }
 
     void MoodManager::Update(const std::map<MoodParameter, float>& currentParams, float deltaTime) {
         _currentParams = currentParams;
         _blendedSettings = {};
-
-        if (!_enabled) {
-            for (auto& layer : _layers) {
-                layer.hasLastInterpolated = false;
-            }
-            _blendedSettings = {};
-            _smoothedSettings = {};
-            return;
-        }
 
         std::vector<MoodLayer*> sortedLayers;
         for (auto& l : _layers) sortedLayers.push_back(&l);
@@ -317,7 +348,7 @@ namespace Boidsish {
         });
 
         for (auto* layer : sortedLayers) {
-            if (!layer->enabled || layer->controlPoints.empty()) {
+            if (!layer->enabled || layer->controlPoints.empty() || (!layer->isEssential && !_enabled)) {
                 layer->hasLastInterpolated = false;
                 continue;
             }
@@ -359,6 +390,23 @@ namespace Boidsish {
     }
     void MoodManager::SetLayerEnabled(const std::string& name, bool enabled) {
         for (auto& layer : _layers) if (layer.name == name) layer.enabled = enabled;
+    }
+    void MoodManager::SetLayerSettings(const std::string& name, const MoodSettings& settings) {
+        for (auto& layer : _layers) {
+            if (layer.name == name && !layer.controlPoints.empty()) {
+                layer.controlPoints[0].settings = settings;
+                return;
+            }
+        }
+    }
+    MoodSettings& MoodManager::GetBaseSettings() {
+        for (auto& layer : _layers) {
+            if (layer.name == "Base" && !layer.controlPoints.empty()) {
+                return layer.controlPoints[0].settings;
+            }
+        }
+        static MoodSettings fallback = MoodSettings::GetDefault();
+        return fallback;
     }
     void MoodManager::SetOverride(const MoodSettings& settings, bool enabled) {
         _userOverride = settings;
@@ -521,11 +569,27 @@ namespace Boidsish {
         INTERP_S(cloudMoonLightScale, InterpType::Logarithmic);
         INTERP_S(cloudPowderScale, InterpType::Logarithmic);
         INTERP_S(cloudBeerPowderMix, InterpType::Linear);
+        INTERP_S(cloudWarp, InterpType::Linear);
+        INTERP_S(cloudPhaseG1, InterpType::Linear);
+        INTERP_S(cloudPhaseG2, InterpType::Linear);
+        INTERP_S(cloudPhaseAlpha, InterpType::Linear);
+        INTERP_S(cloudPhaseIsotropic, InterpType::Linear);
+        INTERP_S(cloudPowderMultiplier, InterpType::Logarithmic);
+        INTERP_S(cloudPowderLocalScale, InterpType::Logarithmic);
+        INTERP_S(cloudShadowOpticalDepthMultiplier, InterpType::Linear);
+        INTERP_S(cloudShadowStepMultiplier, InterpType::Linear);
+        INTERP_S(hazeDensity, InterpType::Linear);
+        INTERP_S(hazeHeight, InterpType::Linear);
+        INTERP_S(hazeColor, InterpType::Oklab);
         INTERP_S(rayleighScale, InterpType::Logarithmic);
         INTERP_S(mieScale, InterpType::Logarithmic);
         INTERP_S(rayleighScattering, InterpType::Oklab);
         INTERP_S(mieScattering, InterpType::Logarithmic);
         INTERP_S(mieExtinction, InterpType::Logarithmic);
+        INTERP_S(ozoneAbsorption, InterpType::Oklab);
+        INTERP_S(atmosphereHeight, InterpType::Linear);
+        INTERP_S(rayleighScaleHeight, InterpType::Linear);
+        INTERP_S(mieScaleHeight, InterpType::Linear);
         #undef INTERP_S
 
         return res;
@@ -568,8 +632,15 @@ namespace Boidsish {
         BLEND_S(cloudDensity); BLEND_S(cloudAltitude); BLEND_S(cloudThickness);
         BLEND_S(cloudColor); BLEND_S(cloudCoverage); BLEND_S(cloudSunLightScale);
         BLEND_S(cloudMoonLightScale); BLEND_S(cloudPowderScale); BLEND_S(cloudBeerPowderMix);
+        BLEND_S(cloudWarp); BLEND_S(cloudPhaseG1); BLEND_S(cloudPhaseG2);
+        BLEND_S(cloudPhaseAlpha); BLEND_S(cloudPhaseIsotropic);
+        BLEND_S(cloudPowderMultiplier); BLEND_S(cloudPowderLocalScale);
+        BLEND_S(cloudShadowOpticalDepthMultiplier); BLEND_S(cloudShadowStepMultiplier);
+        BLEND_S(hazeDensity); BLEND_S(hazeHeight); BLEND_S(hazeColor);
         BLEND_S(rayleighScale); BLEND_S(mieScale); BLEND_S(rayleighScattering);
         BLEND_S(mieScattering); BLEND_S(mieExtinction);
+        BLEND_S(ozoneAbsorption); BLEND_S(atmosphereHeight);
+        BLEND_S(rayleighScaleHeight); BLEND_S(mieScaleHeight);
         #undef BLEND_S
     }
 
@@ -621,8 +692,9 @@ namespace Boidsish {
             bool ltmWeightSaturation=0, ltmWeightExposedness=0, ltmBoostLocalContrast=0;
         } sceneBloom, skyBloom;
         bool cloudDensity=0, cloudAltitude=0, cloudThickness=0, cloudColor=0, cloudCoverage=0, cloudSunLightScale=0;
-        bool cloudMoonLightScale=0, cloudPowderScale=0, cloudBeerPowderMix=0, rayleighScale=0, mieScale=0, rayleighScattering=0;
-        bool mieScattering=0, mieExtinction=0;
+        bool cloudMoonLightScale=0, cloudPowderScale=0, cloudBeerPowderMix=0, hazeDensity=0, hazeHeight=0, hazeColor=0, rayleighScale=0, mieScale=0, rayleighScattering=0;
+        bool mieScattering=0, mieExtinction=0, ozoneAbsorption=0, atmosphereHeight=0, rayleighScaleHeight=0, mieScaleHeight=0;
+        bool cloudWarp=0, cloudPhaseG1=0, cloudPhaseG2=0, cloudPhaseAlpha=0, cloudPhaseIsotropic=0, cloudPowderMultiplier=0, cloudPowderLocalScale=0, cloudShadowOpticalDepthMultiplier=0, cloudShadowStepMultiplier=0;
     };
 
     void MoodManager::Smooth(MoodSettings& current, const MoodSettings& target, float deltaTime) {
@@ -655,8 +727,15 @@ namespace Boidsish {
                 MARK_S(cloudDensity); MARK_S(cloudAltitude); MARK_S(cloudThickness);
                 MARK_S(cloudColor); MARK_S(cloudCoverage); MARK_S(cloudSunLightScale);
                 MARK_S(cloudMoonLightScale); MARK_S(cloudPowderScale); MARK_S(cloudBeerPowderMix);
+                MARK_S(cloudWarp); MARK_S(cloudPhaseG1); MARK_S(cloudPhaseG2);
+                MARK_S(cloudPhaseAlpha); MARK_S(cloudPhaseIsotropic);
+                MARK_S(cloudPowderMultiplier); MARK_S(cloudPowderLocalScale);
+                MARK_S(cloudShadowOpticalDepthMultiplier); MARK_S(cloudShadowStepMultiplier);
+                MARK_S(hazeDensity); MARK_S(hazeHeight); MARK_S(hazeColor);
                 MARK_S(rayleighScale); MARK_S(mieScale); MARK_S(rayleighScattering);
                 MARK_S(mieScattering); MARK_S(mieExtinction);
+                MARK_S(ozoneAbsorption); MARK_S(atmosphereHeight);
+                MARK_S(rayleighScaleHeight); MARK_S(mieScaleHeight);
                 #undef MARK_S
             }
         }
@@ -715,11 +794,27 @@ namespace Boidsish {
         SMOOTH_S(cloudMoonLightScale, InterpType::Logarithmic);
         SMOOTH_S(cloudPowderScale, InterpType::Logarithmic);
         SMOOTH_S(cloudBeerPowderMix, InterpType::Linear);
+        SMOOTH_S(cloudWarp, InterpType::Linear);
+        SMOOTH_S(cloudPhaseG1, InterpType::Linear);
+        SMOOTH_S(cloudPhaseG2, InterpType::Linear);
+        SMOOTH_S(cloudPhaseAlpha, InterpType::Linear);
+        SMOOTH_S(cloudPhaseIsotropic, InterpType::Linear);
+        SMOOTH_S(cloudPowderMultiplier, InterpType::Logarithmic);
+        SMOOTH_S(cloudPowderLocalScale, InterpType::Logarithmic);
+        SMOOTH_S(cloudShadowOpticalDepthMultiplier, InterpType::Linear);
+        SMOOTH_S(cloudShadowStepMultiplier, InterpType::Linear);
+        SMOOTH_S(hazeDensity, InterpType::Linear);
+        SMOOTH_S(hazeHeight, InterpType::Linear);
+        SMOOTH_S(hazeColor, InterpType::Oklab);
         SMOOTH_S(rayleighScale, InterpType::Logarithmic);
         SMOOTH_S(mieScale, InterpType::Logarithmic);
         SMOOTH_S(rayleighScattering, InterpType::Oklab);
         SMOOTH_S(mieScattering, InterpType::Logarithmic);
         SMOOTH_S(mieExtinction, InterpType::Logarithmic);
+        SMOOTH_S(ozoneAbsorption, InterpType::Oklab);
+        SMOOTH_S(atmosphereHeight, InterpType::Linear);
+        SMOOTH_S(rayleighScaleHeight, InterpType::Linear);
+        SMOOTH_S(mieScaleHeight, InterpType::Linear);
         #undef SMOOTH_S
     }
 
