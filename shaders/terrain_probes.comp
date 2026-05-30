@@ -5,14 +5,9 @@ layout(local_size_x = 8, local_size_y = 8) in;
 #include "helpers/constants.glsl"
 
 #define USE_TERRAIN_DATA
-// Forward declarations for lighting.glsl
-float terrainShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) { return 1.0; }
-float calculateTerrainOcclusion(vec3 worldPos, vec3 normal) { return 1.0; }
-
+#include "helpers/terrain_shadows.glsl"
 #include "helpers/lighting.glsl"
 #include "helpers/fast_noise.glsl"
-layout(binding = [[BAKED_HEIGHTMAP_BINDING]]) uniform sampler2DArray u_heightmapArray;
-layout(binding = [[TERRAIN_BIOME_MAP_BINDING]]) uniform sampler2DArray u_biomeMap; // RGBA8: R=low_idx, G=t, B=bake_flag
 
 uniform sampler2D u_gColor;
 uniform sampler2D u_gDepth;
@@ -145,26 +140,8 @@ vec3 sampleTerrainFallback(vec3 worldPos, vec3 rayDir) {
 							// Cloud shadows
 							shadow *= calculateCloudShadow(l, p);
 
-							// Simple raymarch check against heightmap
-							vec3  shadowP = p + normal * (0.5 * worldScaleVal);
-							float shadowT = 2.0 * worldScaleVal;
-							for (int step = 0; step < 8; ++step) {
-								vec3  testP = shadowP + L * shadowT;
-								vec2  testGridPos = testP.xz / scaledChunkSize - vec2(u_originSize.xy);
-								ivec2 testCoord = ivec2(floor(testGridPos));
-								if (testCoord.x >= 0 && testCoord.x < u_originSize.z && testCoord.y >= 0 &&
-								    testCoord.y < u_originSize.z) {
-									int testSlice = texelFetch(u_chunkGrid, testCoord, 0).r;
-									if (testSlice >= 0) {
-										float h = texture(u_heightmapArray, vec3(fract(testGridPos), float(testSlice))).r;
-										if (testP.y < h) {
-											shadow = 0.0;
-											break;
-										}
-									}
-								}
-								shadowT += 4.0 * worldScaleVal;
-							}
+							// Precomputed terrain shadow map or raymarch
+							shadow *= terrainShadowCoverage(p, normal, L);
 						}
 
 						// Direct illumination contribution to ground bounce (diffuse only for SH)

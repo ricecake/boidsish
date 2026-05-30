@@ -101,8 +101,8 @@ Sampling getAtmosphereProperties(float h) {
 
 	Sampling s;
 	s.rayleigh = kRayleighScattering * rd * u_rayleighScale;
-	s.mie = vec3(kMieScattering * md * u_mieScale);
-	s.extinction = s.rayleigh + vec3(kMieExtinction * md * u_mieScale) + kOzoneAbsorption * od;
+	s.mie = hazeColor * (kMieScattering * md * u_mieScale);
+	s.extinction = s.rayleigh + hazeColor * (kMieExtinction * md * u_mieScale) + kOzoneAbsorption * od;
 	return s;
 }
 
@@ -125,8 +125,12 @@ Sampling getAtmospherePropertiesAtPos(vec3 worldPos) {
 	float humidityFactor = 1.0 + humidity * 5.0;
 	float aerosolFactor = 1.0 + aerosolConc * 10.0;
 
-	s.mie *= humidityFactor * aerosolFactor;
-	s.extinction += (s.mie - vec3(kMieScattering * getMieDensity(h) * u_mieScale)); // Re-calculate extinction diff
+	float md = getMieDensity(h);
+	vec3  mieScatBase = hazeColor * (kMieScattering * md * u_mieScale);
+	vec3  mieExtBase = hazeColor * (kMieExtinction * md * u_mieScale);
+
+	s.mie = mieScatBase * humidityFactor * aerosolFactor;
+	s.extinction += (mieExtBase * (humidityFactor * aerosolFactor - 1.0));
 
 	return s;
 }
