@@ -128,6 +128,11 @@ namespace Boidsish {
                     bool open = ImGui::TreeNodeEx("##node", ImGuiTreeNodeFlags_SpanFullWidth, "%s (P:%d)", layer.name.c_str(), layer.priority);
 
                     if (open) {
+                        if (layer.name == "Base") {
+                            ImGui::TextColored(ImVec4(0.7f, 0.7f, 1.0f, 1.0f), "Main UI Inputs");
+                        } else if (layer.name == "Weather") {
+                            ImGui::TextColored(ImVec4(0.7f, 1.0f, 0.7f, 1.0f), "Physical Weather Simulation");
+                        }
                         ImGui::Text("Mode: %s", BlendModeToString(layer.blendMode));
                         ImGui::Text("Tracked: %s", ParameterToString(layer.trackedParameter));
                         ImGui::Text("Control Points: %d", (int)layer.controlPoints.size());

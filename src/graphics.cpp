@@ -2260,7 +2260,7 @@ namespace Boidsish {
 				lighting_ubo_data_.view = current_view_matrix;
 				lighting_ubo_data_.projection = projection;
 
-				if (mood_manager && weather_manager && light_manager && mood_manager->IsEnabled() && !mood_manager->IsOverrideEnabled()) {
+				if (mood_manager && weather_manager && light_manager && !mood_manager->IsOverrideEnabled()) {
 					std::map<MoodParameter, float> params;
 					params[MoodParameter::TimeOfDay] = light_manager->GetDayNightCycle().time;
 					params[MoodParameter::Precipitation] = weather_manager->GetCurrentWeather().precipitation;
@@ -2272,6 +2272,9 @@ namespace Boidsish {
 					params[MoodParameter::WorldPositionX] = camera.x;
 					params[MoodParameter::WorldPositionY] = camera.y;
 					params[MoodParameter::WorldPositionZ] = camera.z;
+
+					// Sync weather into Mood Engine
+					mood_manager->SetLayerSettings("Weather", weather_manager->GetMoodSettings());
 
 					mood_manager->Update(params, simulation_delta_time);
 					const auto& mood = mood_manager->GetBlendedSettings();
@@ -2305,12 +2308,29 @@ namespace Boidsish {
 						if (mood.cloudMoonLightScale) atmosphere_effect->SetCloudMoonLightScale(*mood.cloudMoonLightScale);
 						if (mood.cloudPowderScale) atmosphere_effect->SetCloudPowderScale(*mood.cloudPowderScale);
 						if (mood.cloudBeerPowderMix) atmosphere_effect->SetCloudBeerPowderMix(*mood.cloudBeerPowderMix);
+						if (mood.cloudWarp) atmosphere_effect->SetCloudWarp(*mood.cloudWarp);
+						if (mood.cloudPhaseG1) atmosphere_effect->SetCloudPhaseG1(*mood.cloudPhaseG1);
+						if (mood.cloudPhaseG2) atmosphere_effect->SetCloudPhaseG2(*mood.cloudPhaseG2);
+						if (mood.cloudPhaseAlpha) atmosphere_effect->SetCloudPhaseAlpha(*mood.cloudPhaseAlpha);
+						if (mood.cloudPhaseIsotropic) atmosphere_effect->SetCloudPhaseIsotropic(*mood.cloudPhaseIsotropic);
+						if (mood.cloudPowderMultiplier) atmosphere_effect->SetCloudPowderMultiplier(*mood.cloudPowderMultiplier);
+						if (mood.cloudPowderLocalScale) atmosphere_effect->SetCloudPowderLocalScale(*mood.cloudPowderLocalScale);
+						if (mood.cloudShadowOpticalDepthMultiplier) atmosphere_effect->SetCloudShadowOpticalDepthMultiplier(*mood.cloudShadowOpticalDepthMultiplier);
+						if (mood.cloudShadowStepMultiplier) atmosphere_effect->SetCloudShadowStepMultiplier(*mood.cloudShadowStepMultiplier);
+
+						if (mood.hazeDensity) atmosphere_effect->SetHazeDensity(*mood.hazeDensity);
+						if (mood.hazeHeight) atmosphere_effect->SetHazeHeight(*mood.hazeHeight);
+						if (mood.hazeColor) atmosphere_effect->SetHazeColor(*mood.hazeColor);
 
 						if (mood.rayleighScale) atmosphere_effect->SetRayleighScale(*mood.rayleighScale);
 						if (mood.mieScale) atmosphere_effect->SetMieScale(*mood.mieScale);
 						if (mood.rayleighScattering) atmosphere_effect->SetRayleighScattering(*mood.rayleighScattering);
 						if (mood.mieScattering) atmosphere_effect->SetMieScattering(*mood.mieScattering);
 						if (mood.mieExtinction) atmosphere_effect->SetMieExtinction(*mood.mieExtinction);
+						if (mood.ozoneAbsorption) atmosphere_effect->SetOzoneAbsorption(*mood.ozoneAbsorption);
+						if (mood.atmosphereHeight) atmosphere_effect->SetAtmosphereHeight(*mood.atmosphereHeight);
+						if (mood.rayleighScaleHeight) atmosphere_effect->SetRayleighScaleHeight(*mood.rayleighScaleHeight);
+						if (mood.mieScaleHeight) atmosphere_effect->SetMieScaleHeight(*mood.mieScaleHeight);
 					}
 				}
 
@@ -3521,28 +3541,8 @@ namespace Boidsish {
 			}
 			impl->wetness_ = std::clamp(impl->wetness_, 0.0f, 1.0f);
 
-			// Apply to atmosphere effect
-			if (impl->atmosphere_effect) {
-				impl->atmosphere_effect->SetHazeDensity(w.haze_density);
-				impl->atmosphere_effect->SetHazeHeight(w.haze_height);
-				impl->atmosphere_effect->SetCloudDensity(w.cloud_density);
-				impl->atmosphere_effect->SetCloudAltitude(w.cloud_altitude);
-				impl->atmosphere_effect->SetCloudThickness(w.cloud_thickness);
-				impl->atmosphere_effect->SetCloudCoverage(w.cloud_coverage);
-				impl->atmosphere_effect->SetRayleighScale(w.rayleigh_scale);
-				impl->atmosphere_effect->SetMieScale(w.mie_scale);
-
-				// Atmosphere-specific attributes from weather
-				impl->atmosphere_effect->SetAtmosphereHeight(w.atmosphere_height);
-				impl->atmosphere_effect->SetRayleighScattering(w.rayleigh_scattering);
-				impl->atmosphere_effect->SetMieScattering(w.mie_scattering);
-				impl->atmosphere_effect->SetMieExtinction(w.mie_extinction);
-				impl->atmosphere_effect->SetOzoneAbsorption(w.ozone_absorption);
-				impl->atmosphere_effect->SetRayleighScaleHeight(w.rayleigh_scale_height);
-				impl->atmosphere_effect->SetMieScaleHeight(w.mie_scale_height);
-				impl->atmosphere_effect->SetHazeColor(w.haze_color);
-				impl->atmosphere_effect->SetCloudColor(w.cloud_color);
-			}
+			// Note: Weather attributes are now applied via the Mood Engine in PrepareUBOs
+			// to allow for layering and blending with other mood settings.
 		}
 
 		// --- Adaptive Tessellation Logic ---

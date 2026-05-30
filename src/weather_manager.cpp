@@ -228,6 +228,34 @@ namespace Boidsish {
 		}
 	}
 
+	MoodSettings WeatherManager::GetMoodSettings() const {
+		MoodSettings s;
+		// Cloud parameters
+		s.cloudDensity = current_.cloud_density;
+		s.cloudAltitude = current_.cloud_altitude;
+		s.cloudThickness = current_.cloud_thickness;
+		s.cloudColor = current_.cloud_color;
+		s.cloudCoverage = current_.cloud_coverage;
+
+		// Haze parameters
+		s.hazeDensity = current_.haze_density;
+		s.hazeHeight = current_.haze_height;
+		s.hazeColor = current_.haze_color;
+
+		// Atmosphere scattering
+		s.rayleighScale = current_.rayleigh_scale;
+		s.mieScale = current_.mie_scale;
+		s.rayleighScattering = current_.rayleigh_scattering;
+		s.mieScattering = current_.mie_scattering;
+		s.mieExtinction = current_.mie_extinction;
+		s.ozoneAbsorption = current_.ozone_absorption;
+		s.atmosphereHeight = current_.atmosphere_height;
+		s.rayleighScaleHeight = current_.rayleigh_scale_height;
+		s.mieScaleHeight = current_.mie_scale_height;
+
+		return s;
+	}
+
 	void WeatherManager::SaveSimConstraints() {
 		auto& cfg = ConfigManager::GetInstance();
 		const auto& c = GetSimConstraints();

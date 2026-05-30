@@ -88,6 +88,20 @@ namespace Boidsish {
         std::optional<float> cloudMoonLightScale;
         std::optional<float> cloudPowderScale;
         std::optional<float> cloudBeerPowderMix;
+        std::optional<float> cloudWarp;
+        std::optional<float> cloudPhaseG1;
+        std::optional<float> cloudPhaseG2;
+        std::optional<float> cloudPhaseAlpha;
+        std::optional<float> cloudPhaseIsotropic;
+        std::optional<float> cloudPowderMultiplier;
+        std::optional<float> cloudPowderLocalScale;
+        std::optional<float> cloudShadowOpticalDepthMultiplier;
+        std::optional<float> cloudShadowStepMultiplier;
+
+        // Haze parameters
+        std::optional<float> hazeDensity;
+        std::optional<float> hazeHeight;
+        std::optional<glm::vec3> hazeColor;
 
         // Atmosphere scattering
         std::optional<float> rayleighScale;
@@ -95,6 +109,10 @@ namespace Boidsish {
         std::optional<glm::vec3> rayleighScattering;
         std::optional<float> mieScattering;
         std::optional<float> mieExtinction;
+        std::optional<glm::vec3> ozoneAbsorption;
+        std::optional<float> atmosphereHeight;
+        std::optional<float> rayleighScaleHeight;
+        std::optional<float> mieScaleHeight;
     };
 
     struct MoodControlPoint {
@@ -109,6 +127,7 @@ namespace Boidsish {
         MoodParameter trackedParameter;
         std::vector<MoodControlPoint> controlPoints;
         bool enabled = true;
+        bool isEssential = false;
 
         // Internal state for smoothing
         MoodSettings lastInterpolated;
@@ -125,8 +144,10 @@ namespace Boidsish {
         void AddLayer(const MoodLayer& layer);
         void RemoveLayer(const std::string& name);
         void SetLayerEnabled(const std::string& name, bool enabled);
+        void SetLayerSettings(const std::string& name, const MoodSettings& settings);
 
         const MoodSettings& GetBlendedSettings() const { return _smoothedSettings; }
+        MoodSettings& GetBaseSettings();
         const MoodSettings& GetTargetSettings() const { return _blendedSettings; }
 
         void SetSmoothingFactor(float factor) { _smoothingFactor = factor; }
