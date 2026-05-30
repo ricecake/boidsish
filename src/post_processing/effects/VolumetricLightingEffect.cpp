@@ -7,6 +7,7 @@
 #include "atmosphere_manager.h"
 #include "fire_effect_manager.h"
 #include "NoiseManager.h"
+#include "weather_manager.h"
 #include <GL/glew.h>
 
 namespace Boidsish {
@@ -83,6 +84,9 @@ namespace Boidsish {
 			auto atmos_mgr = loc.Get<AtmosphereManager>();
 			auto fire_mgr = loc.Get<FireEffectManager>();
 			auto noise_mgr = loc.Get<NoiseManager>();
+			auto wm = loc.Get<WeatherManager>();
+
+			auto weather = wm->GetCurrentWeather();
 
 			// 1. Injection
 			injection_shader_->use();
@@ -113,6 +117,9 @@ namespace Boidsish {
 			injection_shader_->setFloat("u_cell_size", Constants::Class::Particles::ParticleGridCellSize());
 			injection_shader_->setUint("u_grid_size", Constants::Class::Particles::ParticleGridSize());
 			injection_shader_->setIVec3("u_grid_res", glm::ivec3(grid_res_x_, grid_res_y_, grid_res_z_));
+			injection_shader_->setFloat("hazeDensity", weather.haze_density);
+			injection_shader_->setFloat("hazeHeight", weather.haze_height);
+			injection_shader_->setVec3("hazeColor", weather.haze_color);
 
 			glBindImageTexture(Constants::ImageBinding::VolumetricInjection(), injection_texture_, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 

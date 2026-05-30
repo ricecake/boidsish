@@ -11,10 +11,6 @@ layout(binding = 3) uniform sampler2D normalTexture;
 uniform mat4 invView;
 uniform mat4 invProjection;
 
-uniform float hazeDensity;
-uniform float hazeHeight;
-uniform vec3  hazeColor;
-
 uniform vec2 cloudTexelSize; // 1.0 / lowResSize
 
 // u_transmittanceLUT is declared in helpers/lighting.glsl

@@ -16,9 +16,6 @@ uniform float u_time;
 
 uniform float u_colorVarianceScale;
 uniform float u_colorVarianceStrength;
-uniform float hazeDensity;
-uniform float hazeHeight;
-uniform vec3  hazeColor;
 
 #include "../helpers/fast_noise.glsl"
 #include "../lighting.glsl"

@@ -296,7 +296,7 @@ void main() {
 	vec3  worldNormal = normalize(sampledHeightNorm.gba);
 
 	// Position probe origin slightly above terrain to ensure clear visibility
-	vec3 probeOrigin = worldPos + worldNormal * 1.0 * worldScaleVal;
+	vec3 probeOrigin = worldPos + worldNormal * 5.0 * worldScaleVal;
 
 	// Calculate focus weight based on screen-space position
 	vec4 clipPos = u_projection * u_view * vec4(probeOrigin, 1.0);

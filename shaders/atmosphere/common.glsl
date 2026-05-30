@@ -6,6 +6,13 @@
 // Physical Constants
 const float kEarthRadius = 6360.0; // km
 
+#ifndef HAZE_UNIFORMS_DEFINED
+#define HAZE_UNIFORMS_DEFINED
+uniform float hazeDensity;
+uniform float hazeHeight;
+uniform vec3  hazeColor;
+#endif
+
 #ifndef ATMOSPHERE_HEIGHT_DEFINED
 	#define ATMOSPHERE_HEIGHT_DEFINED
 uniform float u_atmosphereHeight;
