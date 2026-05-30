@@ -789,7 +789,7 @@ namespace Boidsish {
 				}
 
 				consteval float DefaultAmbientDensity() {
-					return 0.15f;
+					return 1.0f;
 				}
 			} // namespace Particles
 
