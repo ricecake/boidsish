@@ -317,7 +317,7 @@ namespace Boidsish {
 		void UpdateWindUbo(float totalTime, NoiseManager* noise, TerrainRenderManager* terrain_render);
 
 		void SyncState();
-		void ApplyTargetState(const state::WeatherSettings& config);
+		void ApplyTargetState(const class state::SystemConfiguration& config);
 
 		void SetTerrainGenerator(ITerrainGenerator* terrain) { terrain_ = terrain; }
 

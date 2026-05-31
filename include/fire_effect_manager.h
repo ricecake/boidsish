@@ -121,7 +121,7 @@ namespace Boidsish {
 		ParticleStats GetStats() const;
 
 		void SyncState();
-		void ApplyTargetState(const state::ParticleSettings& config);
+		void ApplyTargetState(const class state::SystemConfiguration& config);
 
 		// Bind particle buffers to the current shader
 		void BindBuffers(ShaderBase& shader) const;

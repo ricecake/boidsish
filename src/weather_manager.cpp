@@ -58,6 +58,16 @@ namespace Boidsish {
 		SetPace(WeatherAttribute::CloudColorB, 10.0f);
 
 		LoadConfig();
+
+		auto store = ServiceLocator::Instance().Get<state::Store>();
+		store->SubscribeAction([this](const state::Action& action) {
+			std::visit(overload{
+				[&](const state::actions::InjectPressure& a) { InjectPressure(a.pos, a.pressureHpa, a.burstStrength); },
+				[&](const state::actions::InjectAerosol& a) { InjectAerosol(a.pos, a.concentration); },
+				[&](const state::actions::InjectTemperature& a) { InjectTemperature(a.pos, a.temperatureK); },
+				[](auto&&) {}
+			}, action);
+		});
 	}
 
 	WeatherManager::~WeatherManager() {
@@ -1427,27 +1437,52 @@ namespace Boidsish {
 		actual.strictEnforcement = IsStrictEnforcementEnabled();
 		actual.nudgeStiffness = GetNudgeStiffness();
 
+		const auto& lbm_con = GetSimConstraints();
+		auto setCon = [&](state::LbmConstraint& out, const WeatherLbmSimulator::Constraint& in) {
+			out.min = in.min;
+			out.max = in.max;
+			out.target = in.target;
+		};
+		setCon(actual.constraints.temperature, lbm_con.temperature);
+		setCon(actual.constraints.pressure, lbm_con.pressure);
+		setCon(actual.constraints.humidity, lbm_con.humidity);
+		setCon(actual.constraints.velocity, lbm_con.velocity);
+		setCon(actual.constraints.aerosols, lbm_con.aerosols);
+
 		store->Dispatch(state::actions::SyncWeatherActual{actual});
 	}
 
-	void WeatherManager::ApplyTargetState(const state::WeatherSettings& config) {
-		SetEnabled(config.enabled);
-		SetTimeScale(config.timeScale);
-		SetSpatialScale(config.spatialScale);
-		SetHoldThreshold(config.holdThreshold);
+	void WeatherManager::ApplyTargetState(const state::SystemConfiguration& config) {
+		SetEnabled(config.weather.enabled);
+		SetTimeScale(config.weather.timeScale);
+		SetSpatialScale(config.weather.spatialScale);
+		SetHoldThreshold(config.weather.holdThreshold);
 
-		SetTarget(WeatherAttribute::Temperature, config.temperature);
-		SetTarget(WeatherAttribute::Precipitation, config.precipitation);
-		SetTarget(WeatherAttribute::Humidity, config.humidity);
-		SetTarget(WeatherAttribute::WindStrength, config.windStrength);
-		SetTarget(WeatherAttribute::WindSpeed, config.windSpeed);
-		SetTarget(WeatherAttribute::WindFrequency, config.windFrequency);
-		SetTarget(WeatherAttribute::CloudCoverage, config.cloudCoverage);
+		SetTarget(WeatherAttribute::Temperature, config.weather.temperature);
+		SetTarget(WeatherAttribute::Precipitation, config.weather.precipitation);
+		SetTarget(WeatherAttribute::Humidity, config.weather.humidity);
+		SetTarget(WeatherAttribute::WindStrength, config.weather.windStrength);
+		SetTarget(WeatherAttribute::WindSpeed, config.weather.windSpeed);
+		SetTarget(WeatherAttribute::WindFrequency, config.weather.windFrequency);
+		SetTarget(WeatherAttribute::CloudCoverage, config.weather.cloudCoverage);
 
-		SetMacroSimEnabled(config.macroSimEnabled);
-		SetSimTau(config.simTau);
-		SetStrictEnforcement(config.strictEnforcement);
-		SetNudgeStiffness(config.nudgeStiffness);
+		SetMacroSimEnabled(config.weather.macroSimEnabled);
+		SetSimTau(config.weather.simTau);
+		SetStrictEnforcement(config.weather.strictEnforcement);
+		SetNudgeStiffness(config.weather.nudgeStiffness);
+
+		WeatherLbmSimulator::Constraints lbm_con;
+		auto getCon = [&](WeatherLbmSimulator::Constraint& out, const state::LbmConstraint& in) {
+			out.min = in.min;
+			out.max = in.max;
+			out.target = in.target;
+		};
+		getCon(lbm_con.temperature, config.weather.constraints.temperature);
+		getCon(lbm_con.pressure, config.weather.constraints.pressure);
+		getCon(lbm_con.humidity, config.weather.constraints.humidity);
+		getCon(lbm_con.velocity, config.weather.constraints.velocity);
+		getCon(lbm_con.aerosols, config.weather.constraints.aerosols);
+		SetSimConstraints(lbm_con);
 	}
 
 } // namespace Boidsish

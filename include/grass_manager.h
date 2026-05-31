@@ -93,7 +93,7 @@ namespace Boidsish {
         }
 
         void SyncState();
-        void ApplyTargetState(const state::GrassSettings& config);
+        void ApplyTargetState(const class state::SystemConfiguration& config);
 
         uint32_t GetGrassPropsUbo() const { return grass_props_ubo_; }
 

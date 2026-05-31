@@ -172,7 +172,7 @@ namespace Boidsish {
 
 			void SetTime(float time) override;
 
-			void ApplyTargetState(const state::BloomSettings& config);
+			void ApplyTargetState(const class state::SystemConfiguration& config);
 			void SyncState();
 
 			struct LayerData {

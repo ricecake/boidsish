@@ -338,26 +338,22 @@ namespace Boidsish {
 		auto store = ServiceLocator::Instance().Get<state::Store>();
 		state::AtmosphereSettings actual;
 
-		actual.enabled = true; // Atmosphere is always implicitly enabled if manager exists? Or check specific flag.
-		actual.hazeDensity = _mieScale;
-		actual.hazeHeight = 20.0f; // Track this properly if it changes
-		// actual.hazeColor = ...;
+		auto wm = ServiceLocator::Instance().Get<WeatherManager>();
+		auto weather = wm->GetCurrentWeather();
 
-		actual.cloudDensity = _rayleighScale;
-		actual.cloudAltitude = 400.0f;
-		actual.cloudThickness = 200.0f;
-		actual.cloudCoverage = 0.5f;
+		actual.enabled = true;
+		actual.hazeDensity = weather.haze_density;
+		actual.hazeHeight = weather.haze_height;
+		actual.hazeColor = weather.haze_color;
+
+		actual.cloudDensity = weather.cloud_density;
+		actual.cloudAltitude = weather.cloud_altitude;
+		actual.cloudThickness = weather.cloud_thickness;
+		actual.cloudCoverage = weather.cloud_coverage;
 		actual.cloudWarp = 0.0f;
-		actual.cloudColor = glm::vec3(0.95f, 0.95f, 1.0f);
-		actual.cloudSunLightScale = 1.0f;
-		actual.cloudMoonLightScale = 2.0f;
-		actual.cloudPowderScale = 0.125f;
-		actual.cloudPowderMultiplier = 1.0f;
-		actual.cloudPowderLocalScale = 1.0f;
-		actual.cloudShadowOpticalDepthMultiplier = 1.0f;
-		actual.cloudShadowStepMultiplier = 1.0f;
-		actual.cloudBeerPowderMix = 0.6f;
+		actual.cloudColor = weather.cloud_color;
 
+		// Parameters that might not be in CurrentWeather but are in AtmosphereManager
 		actual.rayleighScale = _rayleighScale;
 		actual.mieScale = _mieScale;
 		actual.mieAnisotropy = _mieAnisotropy;
@@ -377,7 +373,8 @@ namespace Boidsish {
 		store->Dispatch(state::actions::SyncAtmosphereActual{actual});
 	}
 
-	void AtmosphereManager::ApplyTargetState(const state::AtmosphereSettings& s) {
+	void AtmosphereManager::ApplyTargetState(const state::SystemConfiguration& config) {
+		const auto& s = config.atmosphere;
 		// Atmosphere enable/disable is typically handled at the effect level in Visualizer,
 		// but we can track it here if needed.
 

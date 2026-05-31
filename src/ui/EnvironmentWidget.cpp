@@ -104,6 +104,72 @@ namespace Boidsish {
 								if (ImGui::SliderFloat("Nudge Stiffness", &stiffness, 0.01f, 10.0f, "%.2f")) {
 									store->Dispatch(state::actions::SetWeatherNudgeStiffness{stiffness});
 								}
+
+								ImGui::Separator();
+								ImGui::Text("Simulation Constraints");
+
+								auto drawConstraint = [&](const char* label, const char* type, const state::LbmConstraint& con, float min_v, float max_v) {
+									if (ImGui::TreeNode(label)) {
+										bool has_min = con.min.has_value();
+										float min_val = con.min.value_or(min_v);
+										if (ImGui::Checkbox("Min", &has_min)) {
+											store->Dispatch(state::actions::SetWeatherLbmConstraint{type, has_min ? std::optional<float>(min_val) : std::nullopt, con.max, con.target});
+										}
+										if (has_min) {
+											ImGui::SameLine();
+											if (ImGui::SliderFloat("##min", &min_val, min_v, max_v)) {
+												store->Dispatch(state::actions::SetWeatherLbmConstraint{type, min_val, con.max, con.target});
+											}
+										}
+
+										bool has_max = con.max.has_value();
+										float max_val = con.max.value_or(max_v);
+										if (ImGui::Checkbox("Max", &has_max)) {
+											store->Dispatch(state::actions::SetWeatherLbmConstraint{type, con.min, has_max ? std::optional<float>(max_val) : std::nullopt, con.target});
+										}
+										if (has_max) {
+											ImGui::SameLine();
+											if (ImGui::SliderFloat("##max", &max_val, min_v, max_v)) {
+												store->Dispatch(state::actions::SetWeatherLbmConstraint{type, con.min, max_val, con.target});
+											}
+										}
+
+										bool has_target = con.target.has_value();
+										float target_val = con.target.value_or((min_v + max_v) * 0.5f);
+										if (ImGui::Checkbox("Target", &has_target)) {
+											store->Dispatch(state::actions::SetWeatherLbmConstraint{type, con.min, con.max, has_target ? std::optional<float>(target_val) : std::nullopt});
+										}
+										if (has_target) {
+											ImGui::SameLine();
+											if (ImGui::SliderFloat("##target", &target_val, min_v, max_v)) {
+												store->Dispatch(state::actions::SetWeatherLbmConstraint{type, con.min, con.max, target_val});
+											}
+										}
+										ImGui::TreePop();
+									}
+								};
+
+								drawConstraint("Temperature", "temperature", state.target.weather.constraints.temperature, 200.0f, 350.0f);
+								drawConstraint("Pressure", "pressure", state.target.weather.constraints.pressure, 900.0f, 1100.0f);
+								drawConstraint("Humidity", "humidity", state.target.weather.constraints.humidity, 0.0f, 1.0f);
+								drawConstraint("Wind Velocity", "velocity", state.target.weather.constraints.velocity, 0.0f, 50.0f);
+								drawConstraint("Aerosols", "aerosols", state.target.weather.constraints.aerosols, 0.0f, 1.0f);
+
+								ImGui::Separator();
+								ImGui::Text("Atmospheric Injections");
+								static glm::vec3 injPos(0.0f);
+								ImGui::DragFloat3("Position", &injPos[0]);
+
+								if (ImGui::Button("Inject Pressure Burst")) {
+									store->Dispatch(state::actions::InjectPressure{injPos, 1050.0f, 5.0f});
+								}
+								ImGui::SameLine();
+								if (ImGui::Button("Inject Aerosol Cloud")) {
+									store->Dispatch(state::actions::InjectAerosol{injPos, 0.8f});
+								}
+								if (ImGui::Button("Inject Heat Source")) {
+									store->Dispatch(state::actions::InjectTemperature{injPos, 320.0f});
+								}
 							}
 							ImGui::TreePop();
 						}
@@ -235,9 +301,26 @@ namespace Boidsish {
 						drawAttrControl("Rayleigh Scale", state.target.atmosphere.rayleighScale, state.actual.atmosphere.rayleighScale, 0.0f, 3.0f, "%.2f", [](float v){ return state::actions::SetRayleighScale{v}; });
 						drawAttrControl("Mie Scale", state.target.atmosphere.mieScale, state.actual.atmosphere.mieScale, 0.0f, 0.25f, "%.2f", [](float v){ return state::actions::SetMieScale{v}; });
 
-						ImGui::Separator();
-						ImGui::Text("Physical Parameters");
-						drawAttrControl("Atmosphere Height (km)", state.target.atmosphere.atmosphereHeight, state.actual.atmosphere.atmosphereHeight, 0.0f, 300.0f, "%.0f", [](float v){ return state::actions::SetAtmosphereHeight{v}; });
+						if (ImGui::TreeNode("Physical Parameters")) {
+							drawAttrControl("Atmosphere Height (km)", state.target.atmosphere.atmosphereHeight, state.actual.atmosphere.atmosphereHeight, 0.0f, 300.0f, "%.0f", [](float v){ return state::actions::SetAtmosphereHeight{v}; });
+							drawAttrControl("Rayleigh Scale Height", state.target.atmosphere.rayleighScaleHeight, state.actual.atmosphere.rayleighScaleHeight, 1.0f, 20.0f, "%.1f", [](float v){ return state::actions::SetRayleighScaleHeight{v}; });
+							drawAttrControl("Mie Scale Height", state.target.atmosphere.mieScaleHeight, state.actual.atmosphere.mieScaleHeight, 0.1f, 10.0f, "%.1f", [](float v){ return state::actions::SetMieScaleHeight{v}; });
+
+							glm::vec3 ozone = state.target.atmosphere.ozoneAbsorption;
+							if (ImGui::ColorEdit3("Ozone Absorption", &ozone[0])) {
+								store->Dispatch(state::actions::SetOzoneAbsorption{ozone});
+							}
+
+							glm::vec3 rayleigh = state.target.atmosphere.rayleighScattering;
+							if (ImGui::ColorEdit3("Rayleigh Scattering", &rayleigh[0])) {
+								store->Dispatch(state::actions::SetRayleighScattering{rayleigh});
+							}
+
+							drawAttrControl("Mie Scattering", state.target.atmosphere.mieScattering, state.actual.atmosphere.mieScattering, 0.0f, 0.1f, "%.4f", [](float v){ return state::actions::SetMieScattering{v}; });
+							drawAttrControl("Mie Extinction", state.target.atmosphere.mieExtinction, state.actual.atmosphere.mieExtinction, 0.0f, 0.1f, "%.4f", [](float v){ return state::actions::SetMieExtinction{v}; });
+
+							ImGui::TreePop();
+						}
 					}
 				}
 

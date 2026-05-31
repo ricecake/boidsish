@@ -175,7 +175,7 @@ namespace Boidsish {
 		void CopySHToUBO(GLuint lightingUbo, size_t shOffset);
 
 		void SyncState();
-		void ApplyTargetState(const state::AtmosphereSettings& config);
+		void ApplyTargetState(const class state::SystemConfiguration& config);
 
 	private:
 		void CreateTextures();

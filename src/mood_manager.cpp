@@ -733,9 +733,9 @@ namespace Boidsish {
         store->Dispatch(state::actions::SyncMoodActual{actual});
     }
 
-    void MoodManager::ApplyTargetState(const state::MoodSettings& config) {
-        SetEnabled(config.enabled);
-        SetOverride(GetBlendedSettings(), config.userOverride);
+    void MoodManager::ApplyTargetState(const state::SystemConfiguration& config) {
+        SetEnabled(config.mood.enabled);
+        SetOverride(GetBlendedSettings(), config.mood.userOverride);
     }
 
 } // namespace Boidsish

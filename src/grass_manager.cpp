@@ -363,14 +363,14 @@ namespace Boidsish {
         store->Dispatch(state::actions::SyncGrassActual{actual});
     }
 
-    void GrassManager::ApplyTargetState(const state::GrassSettings& config) {
-        SetEnabled(config.enabled);
+    void GrassManager::ApplyTargetState(const state::SystemConfiguration& config) {
+        SetEnabled(config.grass.enabled);
         GlobalGrassProperties props = GetGlobalProperties();
-        props.lengthMultiplier = config.lengthMultiplier;
-        props.widthMultiplier = config.widthMultiplier;
-        props.densityMultiplier = config.densityMultiplier;
-        props.rigidityMultiplier = config.rigidityMultiplier;
-        props.windMultiplier = config.windMultiplier;
+        props.lengthMultiplier = config.grass.lengthMultiplier;
+        props.widthMultiplier = config.grass.widthMultiplier;
+        props.densityMultiplier = config.grass.densityMultiplier;
+        props.rigidityMultiplier = config.grass.rigidityMultiplier;
+        props.windMultiplier = config.grass.windMultiplier;
         SetGlobalProperties(props);
     }
 

@@ -13,6 +13,24 @@ struct overload: Ts... {
 
 namespace Boidsish {
 	namespace state {
+		struct LbmConstraint {
+			std::optional<float> min;
+			std::optional<float> max;
+			std::optional<float> target;
+
+			bool operator==(const LbmConstraint& other) const = default;
+		};
+
+		struct WeatherConstraints {
+			LbmConstraint temperature;
+			LbmConstraint pressure;
+			LbmConstraint humidity;
+			LbmConstraint velocity;
+			LbmConstraint aerosols;
+
+			bool operator==(const WeatherConstraints& other) const = default;
+		};
+
 		struct GrassSettings {
 			bool enabled = true;
 			float lengthMultiplier = 1.0f;
@@ -20,8 +38,6 @@ namespace Boidsish {
 			float densityMultiplier = 1.0f;
 			float rigidityMultiplier = 1.0f;
 			float windMultiplier = 1.0f;
-
-			bool operator==(const GrassSettings& o) const = default;
 		};
 
 		struct WeatherSettings {
@@ -40,8 +56,7 @@ namespace Boidsish {
 			float simTau = 0.8f;
 			bool strictEnforcement = false;
 			float nudgeStiffness = 1.0f;
-
-			bool operator==(const WeatherSettings& o) const = default;
+			WeatherConstraints constraints;
 		};
 
 		struct AtmosphereSettings {
@@ -78,8 +93,6 @@ namespace Boidsish {
 			float colorVarianceScale = 1.0f;
 			float colorVarianceStrength = 0.0f;
 			float cloudShadowIntensity = 0.5f;
-
-			bool operator==(const AtmosphereSettings& o) const = default;
 		};
 
 		struct DayNightSettings {
@@ -91,8 +104,6 @@ namespace Boidsish {
 			glm::vec3 moonTint = glm::vec3(1.0f);
 			float lunarMonth = 28.0f;
 			float moonPhaseDays = 0.0f;
-
-			bool operator==(const DayNightSettings& o) const = default;
 		};
 
 		struct ParticleSettings {
@@ -116,8 +127,6 @@ namespace Boidsish {
 			uint32_t countSnow = 0;
 			uint32_t countRain = 0;
 			uint32_t countDust = 0;
-
-			bool operator==(const ParticleSettings& o) const = default;
 		};
 
 		struct TerrainSettings {
@@ -127,8 +136,6 @@ namespace Boidsish {
 			float worldScale = 1.0f;
 			bool foliageEnabled = true;
 			float foliagePixelThreshold = 10.0f;
-
-			bool operator==(const TerrainSettings& o) const = default;
 		};
 
 		struct VolumetricSettings {
@@ -136,8 +143,6 @@ namespace Boidsish {
 			float intensity = 1.0f;
 			float anisotropy = 0.7f;
 			float temporalAlpha = 0.95f;
-
-			bool operator==(const VolumetricSettings& o) const = default;
 		};
 
 		struct ErosionSettings {
@@ -147,8 +152,6 @@ namespace Boidsish {
 			float detail = 1.5f;
 			float gullyWeight = 0.5f;
 			float maxDist = 450.0f;
-
-			bool operator==(const ErosionSettings& o) const = default;
 		};
 
 		struct BloomLayerSettings {
@@ -188,8 +191,6 @@ namespace Boidsish {
 			float ltmWeightSaturation = 0.0f;
 			float ltmWeightExposedness = 1.0f;
 			float ltmBoostLocalContrast = 0.0f;
-
-			bool operator==(const BloomLayerSettings& o) const = default;
 		};
 
 		struct BloomSettings {
@@ -198,15 +199,11 @@ namespace Boidsish {
 			float threshold = 1.0f;
 			BloomLayerSettings scene;
 			BloomLayerSettings sky;
-
-			bool operator==(const BloomSettings& o) const = default;
 		};
 
 		struct MoodSettings {
 			bool enabled = true;
 			bool userOverride = false;
-
-			bool operator==(const MoodSettings& o) const = default;
 		};
 
 		class SystemConfiguration {
@@ -254,6 +251,17 @@ namespace Boidsish {
 			struct SetWeatherSimTau { float value; };
 			struct SetWeatherStrictEnforcement { bool value; };
 			struct SetWeatherNudgeStiffness { float value; };
+
+			struct SetWeatherLbmConstraint {
+				std::string type; // "temperature", "pressure", etc.
+				std::optional<float> min;
+				std::optional<float> max;
+				std::optional<float> target;
+			};
+
+			struct InjectPressure { glm::vec3 pos; float pressureHpa; float burstStrength; };
+			struct InjectAerosol { glm::vec3 pos; float concentration; };
+			struct InjectTemperature { glm::vec3 pos; float temperatureK; };
 
 			// Atmosphere Actions
 			struct SetAtmosphereEnabled { bool value; };
@@ -394,6 +402,10 @@ namespace Boidsish {
 			actions::SetWeatherSimTau,
 			actions::SetWeatherStrictEnforcement,
 			actions::SetWeatherNudgeStiffness,
+			actions::SetWeatherLbmConstraint,
+			actions::InjectPressure,
+			actions::InjectAerosol,
+			actions::InjectTemperature,
 			actions::SetAtmosphereEnabled,
 			actions::SetHazeDensity,
 			actions::SetHazeHeight,
@@ -520,6 +532,22 @@ namespace Boidsish {
 				[&](actions::SetWeatherSimTau a) { newState.target.weather.simTau = a.value; },
 				[&](actions::SetWeatherStrictEnforcement a) { newState.target.weather.strictEnforcement = a.value; },
 				[&](actions::SetWeatherNudgeStiffness a) { newState.target.weather.nudgeStiffness = a.value; },
+				[&](actions::SetWeatherLbmConstraint a) {
+					LbmConstraint* c = nullptr;
+					if (a.type == "temperature") c = &newState.target.weather.constraints.temperature;
+					else if (a.type == "pressure") c = &newState.target.weather.constraints.pressure;
+					else if (a.type == "humidity") c = &newState.target.weather.constraints.humidity;
+					else if (a.type == "velocity") c = &newState.target.weather.constraints.velocity;
+					else if (a.type == "aerosols") c = &newState.target.weather.constraints.aerosols;
+					if (c) {
+						c->min = a.min;
+						c->max = a.max;
+						c->target = a.target;
+					}
+				},
+				[&](actions::InjectPressure a) {},
+				[&](actions::InjectAerosol a) {},
+				[&](actions::InjectTemperature a) {},
 				[&](actions::SetAtmosphereEnabled a) { newState.target.atmosphere.enabled = a.value; },
 				[&](actions::SetHazeDensity a) { newState.target.atmosphere.hazeDensity = a.value; },
 				[&](actions::SetHazeHeight a) { newState.target.atmosphere.hazeHeight = a.value; },
@@ -649,45 +677,19 @@ namespace Boidsish {
 		public:
 			using Reducer = std::function<SystemState(const SystemState&, const Action&)>;
 			using Listener = std::function<void(const SystemState&)>;
+			using ActionListener = std::function<void(const Action&)>;
 
-			template<typename T>
-			using SubListener = std::function<void(const T&)>;
-
-			Store(Reducer reducer, SystemState initialState): m_reducer(reducer), m_state(initialState), m_lastNotifiedState(initialState) {}
+			Store(Reducer reducer, SystemState initialState): m_reducer(reducer), m_state(initialState) {}
 
 			// Dispatch an action to trigger state mutations
 			void Dispatch(const Action& action) {
 				m_state = m_reducer(m_state, action);
-			}
-
-			// Process changes and notify relevant listeners once per frame
-			void Process() {
-				bool stateChanged = false;
-
-				#define CHECK_CHANGE(field) \
-					if (!(m_state.target.field == m_lastNotifiedState.target.field)) { \
-						for (auto& l : m_##field##Listeners) l(m_state.target.field); \
-						stateChanged = true; \
-					}
-
-				CHECK_CHANGE(grass);
-				CHECK_CHANGE(weather);
-				CHECK_CHANGE(atmosphere);
-				CHECK_CHANGE(dayNight);
-				CHECK_CHANGE(particles);
-				CHECK_CHANGE(terrain);
-				CHECK_CHANGE(volumetric);
-				CHECK_CHANGE(erosion);
-				CHECK_CHANGE(bloom);
-				CHECK_CHANGE(mood);
-
-				#undef CHECK_CHANGE
-
-				if (stateChanged) {
-					for (auto& l : m_listeners) l(m_state);
+				for (const auto& listener : m_listeners) {
+					listener(m_state);
 				}
-
-				m_lastNotifiedState = m_state;
+				for (const auto& listener : m_actionListeners) {
+					listener(action);
+				}
 			}
 
 			// Read-only access to state
@@ -696,33 +698,14 @@ namespace Boidsish {
 			// Register UI reactive hooks
 			void Subscribe(Listener listener) { m_listeners.push_back(listener); }
 
-			void SubscribeGrass(SubListener<GrassSettings> l) { m_grassListeners.push_back(l); l(m_state.target.grass); }
-			void SubscribeWeather(SubListener<WeatherSettings> l) { m_weatherListeners.push_back(l); l(m_state.target.weather); }
-			void SubscribeAtmosphere(SubListener<AtmosphereSettings> l) { m_atmosphereListeners.push_back(l); l(m_state.target.atmosphere); }
-			void SubscribeDayNight(SubListener<DayNightSettings> l) { m_dayNightListeners.push_back(l); l(m_state.target.dayNight); }
-			void SubscribeParticles(SubListener<ParticleSettings> l) { m_particlesListeners.push_back(l); l(m_state.target.particles); }
-			void SubscribeTerrain(SubListener<TerrainSettings> l) { m_terrainListeners.push_back(l); l(m_state.target.terrain); }
-			void SubscribeVolumetric(SubListener<VolumetricSettings> l) { m_volumetricListeners.push_back(l); l(m_state.target.volumetric); }
-			void SubscribeErosion(SubListener<ErosionSettings> l) { m_erosionListeners.push_back(l); l(m_state.target.erosion); }
-			void SubscribeBloom(SubListener<BloomSettings> l) { m_bloomListeners.push_back(l); l(m_state.target.bloom); }
-			void SubscribeMood(SubListener<MoodSettings> l) { m_moodListeners.push_back(l); l(m_state.target.mood); }
+			// Register hooks for transient actions
+			void SubscribeAction(ActionListener listener) { m_actionListeners.push_back(listener); }
 
 		private:
 			Reducer               m_reducer;
 			SystemState           m_state;
-			SystemState           m_lastNotifiedState;
 			std::vector<Listener> m_listeners;
-
-			std::vector<SubListener<GrassSettings>> m_grassListeners;
-			std::vector<SubListener<WeatherSettings>> m_weatherListeners;
-			std::vector<SubListener<AtmosphereSettings>> m_atmosphereListeners;
-			std::vector<SubListener<DayNightSettings>> m_dayNightListeners;
-			std::vector<SubListener<ParticleSettings>> m_particlesListeners;
-			std::vector<SubListener<TerrainSettings>> m_terrainListeners;
-			std::vector<SubListener<VolumetricSettings>> m_volumetricListeners;
-			std::vector<SubListener<ErosionSettings>> m_erosionListeners;
-			std::vector<SubListener<BloomSettings>> m_bloomListeners;
-			std::vector<SubListener<MoodSettings>> m_moodListeners;
+			std::vector<ActionListener> m_actionListeners;
 		};
 
 		void SyncBloomState(void* effect);

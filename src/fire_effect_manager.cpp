@@ -699,7 +699,8 @@ namespace Boidsish {
 		store->Dispatch(state::actions::SyncParticleActual{actual});
 	}
 
-	void FireEffectManager::ApplyTargetState(const state::ParticleSettings& s) {
+	void FireEffectManager::ApplyTargetState(const state::SystemConfiguration& config) {
+		const auto& s = config.particles;
 		auto& cfg = ConfigManager::GetInstance();
 		cfg.SetBool("particles_enabled", s.enabled);
 		cfg.SetFloat("ambient_particle_density", s.ambientDensity);

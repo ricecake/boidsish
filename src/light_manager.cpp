@@ -345,7 +345,8 @@ namespace Boidsish {
 		store->Dispatch(state::actions::SyncDayNightActual{actual});
 	}
 
-	void LightManager::ApplyTargetState(const state::DayNightSettings& s) {
+	void LightManager::ApplyTargetState(const state::SystemConfiguration& config) {
+		const auto& s = config.dayNight;
 		_cycle.enabled = s.enabled;
 		_cycle.time = s.time;
 		_cycle.speed = s.speed;
