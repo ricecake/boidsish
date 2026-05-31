@@ -15,7 +15,7 @@
 #include "ConfigManager.h"
 #include "NoiseManager.h"
 #include "SceneManager.h"
-#include "UIManager.h"
+#include "UIConfigManager.h"
 #include "akira_effect.h"
 #include "arcade_text.h"
 #include "atmosphere_manager.h"
@@ -416,7 +416,7 @@ namespace Boidsish {
 		std::vector<PrepareCallback>                           prepare_callbacks;
 		std::vector<UpdateHandler>                             update_handlers;
 		bool                                                   prepared_{false};
-		std::shared_ptr<UI::UIManager>                         ui_manager;
+		std::shared_ptr<UI::UIConfigManager>                   ui_manager;
 		std::shared_ptr<HudManager>                            hud_manager;
 		std::shared_ptr<PostProcessing::PostProcessingManager> post_processing_manager_;
 		int                                                    exit_key;
@@ -587,9 +587,9 @@ namespace Boidsish {
 			service_locator_.Register<SoundEffectManager>();
 			service_locator_.Register<TrailRenderManager>();
 
-			service_locator_.RegisterFactory<UI::UIManager>(
+			service_locator_.RegisterFactory<UI::UIConfigManager>(
 				[this](ServiceLocator& loc) {
-					return std::make_shared<UI::UIManager>(loc, window);
+					return std::make_shared<UI::UIConfigManager>(loc, window);
 				}
 			);
 			service_locator_.RegisterFactory<PostProcessing::PostProcessingManager>(
@@ -894,13 +894,9 @@ namespace Boidsish {
 				SetupShaderBindings(*sky_shader);
 			}
 
-			ui_manager = service_locator_.Get<UI::UIManager>();
+			ui_manager = service_locator_.Get<UI::UIConfigManager>();
 			logger::LOG("Initializing HudManager...");
 			hud_manager = service_locator_.Get<HudManager>();
-			logger::LOG("HudManager initialized. Creating HudWidget...");
-			auto hud_widget = std::make_shared<UI::HudWidget>(*hud_manager);
-			ui_manager->AddWidget(hud_widget);
-			logger::LOG("HudWidget created and added.");
 
 			if (terrain_generator) {
 				// Use terrain shaders with heightmap texture lookup
@@ -1125,14 +1121,7 @@ namespace Boidsish {
 				// --- UI ---
 			}
 
-			ui_manager->AddWidget(std::make_shared<UI::EnvironmentWidget>(*parent));
-			ui_manager->AddWidget(std::make_shared<UI::MoodWidget>(*parent));
-			ui_manager->AddWidget(std::make_shared<UI::LightningWidget>(*parent));
-			ui_manager->AddWidget(std::make_shared<UI::EffectWidget>(*parent));
-			ui_manager->AddWidget(std::make_shared<UI::RenderWidget>(*parent));
-			ui_manager->AddWidget(std::make_shared<UI::AudioWidget>(*parent));
-			ui_manager->AddWidget(std::make_shared<UI::SystemWidget>(*parent, *scene_manager));
-			ui_manager->AddWidget(std::make_shared<UI::ProfilerWidget>());
+			ui_manager->SetupDefaultWidgets(*parent, *scene_manager, *hud_manager);
 		}
 
 		void BindShadows(Shader& s) {
@@ -4919,7 +4908,7 @@ namespace Boidsish {
 		return ConfigManager::GetInstance().GetAppSettingBool("artistic_effect_wireframe", false);
 	}
 
-	UI::UIManager& Visualizer::GetUIManager() {
+	UI::UIConfigManager& Visualizer::GetUIConfigManager() {
 		return *impl->ui_manager;
 	}
 } // namespace Boidsish
