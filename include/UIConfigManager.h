@@ -21,12 +21,13 @@ namespace Boidsish {
 			bool   was_collapsed = false;
 		};
 
-		class UIManager {
+		class UIConfigManager {
 		public:
-			UIManager(ServiceLocator& loc, GLFWwindow* window);
-			~UIManager();
+			UIConfigManager(ServiceLocator& loc, GLFWwindow* window);
+			~UIConfigManager();
 
 			void AddWidget(std::shared_ptr<IWidget> widget);
+			void SetupDefaultWidgets(class Visualizer& visualizer, class SceneManager& scene_manager, class HudManager& hud_manager);
 			void Render();
 
 			template <typename T>
