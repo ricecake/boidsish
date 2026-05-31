@@ -851,17 +851,14 @@ protected:
 			ext = ".tese";
 
 		std::string relPath;
-		if (alreadyInBuild) {
-			relPath = fs::relative(p, buildDir / "shaders_preprocessed").string();
+		std::string p_str = p.string();
+		size_t      s_idx = p_str.find("shaders/");
+		if (s_idx != std::string::npos) {
+			relPath = p_str.substr(s_idx + 8);
 		} else {
-			std::string p_str = p.string();
-			size_t      s_idx = p_str.find("shaders/");
-			if (s_idx != std::string::npos) {
-				relPath = p_str.substr(s_idx + 8);
-			} else {
-				relPath = p.filename().string();
-			}
+			relPath = p.filename().string();
 		}
+
 		fs::path relPath_path(relPath);
 		unifiedPath = (buildDir / "shaders_preprocessed" / relPath_path.parent_path() / (relPath_path.stem().string() + ext)).string();
 #else
@@ -883,6 +880,10 @@ protected:
 		file.seekg(0);
 		file.read(buffer.data(), size);
 		file.close();
+
+		if (!glShaderBinary || !glSpecializeShader) {
+			return false;
+		}
 
 		glShaderBinary(1, &shader, GL_SHADER_BINARY_FORMAT_SPIR_V, buffer.data(), size);
 		glSpecializeShader(shader, "main", 0, nullptr, nullptr);
@@ -970,6 +971,12 @@ public:
 		unsigned int vertex, fragment;
 		// vertex shader
 		vertex = glCreateShader(GL_VERTEX_SHADER);
+		if (vertex == 0) {
+			std::cerr << "ERROR::SHADER::CREATE_FAILED: glCreateShader(GL_VERTEX_SHADER) returned 0\n"
+					  << "  File: " << vertexPath << std::endl;
+			ID = 0;
+			return;
+		}
 		bool vertexLoaded = false;
 #ifdef BOIDSISH_USE_SPIRV
 		if (tryLoadSPIRV(vertex, vertexPath))
@@ -987,6 +994,13 @@ public:
 
 		// fragment Shader
 		fragment = glCreateShader(GL_FRAGMENT_SHADER);
+		if (fragment == 0) {
+			std::cerr << "ERROR::SHADER::CREATE_FAILED: glCreateShader(GL_FRAGMENT_SHADER) returned 0\n"
+					  << "  File: " << fragmentPath << std::endl;
+			glDeleteShader(vertex);
+			ID = 0;
+			return;
+		}
 		bool fragmentLoaded = false;
 #ifdef BOIDSISH_USE_SPIRV
 		if (tryLoadSPIRV(fragment, fragmentPath))
@@ -1007,6 +1021,14 @@ public:
 		if (tessControlPath != nullptr && tessEvaluationPath != nullptr) {
 			const char* tcShaderCode = tessControlCode.c_str();
 			tessControl = glCreateShader(GL_TESS_CONTROL_SHADER);
+			if (tessControl == 0) {
+				std::cerr << "ERROR::SHADER::CREATE_FAILED: glCreateShader(GL_TESS_CONTROL_SHADER) returned 0\n"
+						  << "  File: " << tessControlPath << std::endl;
+				glDeleteShader(vertex);
+				glDeleteShader(fragment);
+				ID = 0;
+				return;
+			}
 			bool tcLoaded = false;
 #ifdef BOIDSISH_USE_SPIRV
 			if (tryLoadSPIRV(tessControl, tessControlPath))
@@ -1026,6 +1048,15 @@ public:
 
 			const char* teShaderCode = tessEvaluationCode.c_str();
 			tessEvaluation = glCreateShader(GL_TESS_EVALUATION_SHADER);
+			if (tessEvaluation == 0) {
+				std::cerr << "ERROR::SHADER::CREATE_FAILED: glCreateShader(GL_TESS_EVALUATION_SHADER) returned 0\n"
+						  << "  File: " << tessEvaluationPath << std::endl;
+				glDeleteShader(vertex);
+				glDeleteShader(fragment);
+				glDeleteShader(tessControl);
+				ID = 0;
+				return;
+			}
 			bool teLoaded = false;
 #ifdef BOIDSISH_USE_SPIRV
 			if (tryLoadSPIRV(tessEvaluation, tessEvaluationPath))
@@ -1050,6 +1081,18 @@ public:
 		if (geometryPath != nullptr) {
 			const char* gShaderCode = geometryCode.c_str();
 			geometry = glCreateShader(GL_GEOMETRY_SHADER);
+			if (geometry == 0) {
+				std::cerr << "ERROR::SHADER::CREATE_FAILED: glCreateShader(GL_GEOMETRY_SHADER) returned 0\n"
+						  << "  File: " << geometryPath << std::endl;
+				glDeleteShader(vertex);
+				glDeleteShader(fragment);
+				if (tessControlPath != nullptr && tessEvaluationPath != nullptr) {
+					glDeleteShader(tessControl);
+					glDeleteShader(tessEvaluation);
+				}
+				ID = 0;
+				return;
+			}
 			bool gLoaded = false;
 #ifdef BOIDSISH_USE_SPIRV
 			if (tryLoadSPIRV(geometry, geometryPath))
