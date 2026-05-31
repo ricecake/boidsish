@@ -39,7 +39,7 @@ namespace Boidsish {
 		std::vector<Light>& GetLights();
 		void                Update(float deltaTime);
 		void                SyncState();
-		void                ApplyTargetState(const class state::SystemConfiguration& config);
+		void                ApplyTargetState(const state::DayNightSettings& config);
 		glm::vec3           GetAmbientLight() const;
 		void                SetAmbientLight(const glm::vec3& ambient);
 

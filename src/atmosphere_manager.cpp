@@ -377,8 +377,7 @@ namespace Boidsish {
 		store->Dispatch(state::actions::SyncAtmosphereActual{actual});
 	}
 
-	void AtmosphereManager::ApplyTargetState(const state::SystemConfiguration& config) {
-		const auto& s = config.atmosphere;
+	void AtmosphereManager::ApplyTargetState(const state::AtmosphereSettings& s) {
 		// Atmosphere enable/disable is typically handled at the effect level in Visualizer,
 		// but we can track it here if needed.
 

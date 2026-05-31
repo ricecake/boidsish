@@ -20,6 +20,8 @@ namespace Boidsish {
 			float densityMultiplier = 1.0f;
 			float rigidityMultiplier = 1.0f;
 			float windMultiplier = 1.0f;
+
+			bool operator==(const GrassSettings& o) const = default;
 		};
 
 		struct WeatherSettings {
@@ -38,6 +40,8 @@ namespace Boidsish {
 			float simTau = 0.8f;
 			bool strictEnforcement = false;
 			float nudgeStiffness = 1.0f;
+
+			bool operator==(const WeatherSettings& o) const = default;
 		};
 
 		struct AtmosphereSettings {
@@ -74,6 +78,8 @@ namespace Boidsish {
 			float colorVarianceScale = 1.0f;
 			float colorVarianceStrength = 0.0f;
 			float cloudShadowIntensity = 0.5f;
+
+			bool operator==(const AtmosphereSettings& o) const = default;
 		};
 
 		struct DayNightSettings {
@@ -85,6 +91,8 @@ namespace Boidsish {
 			glm::vec3 moonTint = glm::vec3(1.0f);
 			float lunarMonth = 28.0f;
 			float moonPhaseDays = 0.0f;
+
+			bool operator==(const DayNightSettings& o) const = default;
 		};
 
 		struct ParticleSettings {
@@ -108,6 +116,8 @@ namespace Boidsish {
 			uint32_t countSnow = 0;
 			uint32_t countRain = 0;
 			uint32_t countDust = 0;
+
+			bool operator==(const ParticleSettings& o) const = default;
 		};
 
 		struct TerrainSettings {
@@ -117,6 +127,8 @@ namespace Boidsish {
 			float worldScale = 1.0f;
 			bool foliageEnabled = true;
 			float foliagePixelThreshold = 10.0f;
+
+			bool operator==(const TerrainSettings& o) const = default;
 		};
 
 		struct VolumetricSettings {
@@ -124,6 +136,8 @@ namespace Boidsish {
 			float intensity = 1.0f;
 			float anisotropy = 0.7f;
 			float temporalAlpha = 0.95f;
+
+			bool operator==(const VolumetricSettings& o) const = default;
 		};
 
 		struct ErosionSettings {
@@ -133,6 +147,8 @@ namespace Boidsish {
 			float detail = 1.5f;
 			float gullyWeight = 0.5f;
 			float maxDist = 450.0f;
+
+			bool operator==(const ErosionSettings& o) const = default;
 		};
 
 		struct BloomLayerSettings {
@@ -172,6 +188,8 @@ namespace Boidsish {
 			float ltmWeightSaturation = 0.0f;
 			float ltmWeightExposedness = 1.0f;
 			float ltmBoostLocalContrast = 0.0f;
+
+			bool operator==(const BloomLayerSettings& o) const = default;
 		};
 
 		struct BloomSettings {
@@ -180,11 +198,15 @@ namespace Boidsish {
 			float threshold = 1.0f;
 			BloomLayerSettings scene;
 			BloomLayerSettings sky;
+
+			bool operator==(const BloomSettings& o) const = default;
 		};
 
 		struct MoodSettings {
 			bool enabled = true;
 			bool userOverride = false;
+
+			bool operator==(const MoodSettings& o) const = default;
 		};
 
 		class SystemConfiguration {
@@ -628,14 +650,44 @@ namespace Boidsish {
 			using Reducer = std::function<SystemState(const SystemState&, const Action&)>;
 			using Listener = std::function<void(const SystemState&)>;
 
-			Store(Reducer reducer, SystemState initialState): m_reducer(reducer), m_state(initialState) {}
+			template<typename T>
+			using SubListener = std::function<void(const T&)>;
+
+			Store(Reducer reducer, SystemState initialState): m_reducer(reducer), m_state(initialState), m_lastNotifiedState(initialState) {}
 
 			// Dispatch an action to trigger state mutations
 			void Dispatch(const Action& action) {
 				m_state = m_reducer(m_state, action);
-				for (const auto& listener : m_listeners) {
-					listener(m_state);
+			}
+
+			// Process changes and notify relevant listeners once per frame
+			void Process() {
+				bool stateChanged = false;
+
+				#define CHECK_CHANGE(field) \
+					if (!(m_state.target.field == m_lastNotifiedState.target.field)) { \
+						for (auto& l : m_##field##Listeners) l(m_state.target.field); \
+						stateChanged = true; \
+					}
+
+				CHECK_CHANGE(grass);
+				CHECK_CHANGE(weather);
+				CHECK_CHANGE(atmosphere);
+				CHECK_CHANGE(dayNight);
+				CHECK_CHANGE(particles);
+				CHECK_CHANGE(terrain);
+				CHECK_CHANGE(volumetric);
+				CHECK_CHANGE(erosion);
+				CHECK_CHANGE(bloom);
+				CHECK_CHANGE(mood);
+
+				#undef CHECK_CHANGE
+
+				if (stateChanged) {
+					for (auto& l : m_listeners) l(m_state);
 				}
+
+				m_lastNotifiedState = m_state;
 			}
 
 			// Read-only access to state
@@ -644,10 +696,33 @@ namespace Boidsish {
 			// Register UI reactive hooks
 			void Subscribe(Listener listener) { m_listeners.push_back(listener); }
 
+			void SubscribeGrass(SubListener<GrassSettings> l) { m_grassListeners.push_back(l); l(m_state.target.grass); }
+			void SubscribeWeather(SubListener<WeatherSettings> l) { m_weatherListeners.push_back(l); l(m_state.target.weather); }
+			void SubscribeAtmosphere(SubListener<AtmosphereSettings> l) { m_atmosphereListeners.push_back(l); l(m_state.target.atmosphere); }
+			void SubscribeDayNight(SubListener<DayNightSettings> l) { m_dayNightListeners.push_back(l); l(m_state.target.dayNight); }
+			void SubscribeParticles(SubListener<ParticleSettings> l) { m_particlesListeners.push_back(l); l(m_state.target.particles); }
+			void SubscribeTerrain(SubListener<TerrainSettings> l) { m_terrainListeners.push_back(l); l(m_state.target.terrain); }
+			void SubscribeVolumetric(SubListener<VolumetricSettings> l) { m_volumetricListeners.push_back(l); l(m_state.target.volumetric); }
+			void SubscribeErosion(SubListener<ErosionSettings> l) { m_erosionListeners.push_back(l); l(m_state.target.erosion); }
+			void SubscribeBloom(SubListener<BloomSettings> l) { m_bloomListeners.push_back(l); l(m_state.target.bloom); }
+			void SubscribeMood(SubListener<MoodSettings> l) { m_moodListeners.push_back(l); l(m_state.target.mood); }
+
 		private:
 			Reducer               m_reducer;
 			SystemState           m_state;
+			SystemState           m_lastNotifiedState;
 			std::vector<Listener> m_listeners;
+
+			std::vector<SubListener<GrassSettings>> m_grassListeners;
+			std::vector<SubListener<WeatherSettings>> m_weatherListeners;
+			std::vector<SubListener<AtmosphereSettings>> m_atmosphereListeners;
+			std::vector<SubListener<DayNightSettings>> m_dayNightListeners;
+			std::vector<SubListener<ParticleSettings>> m_particlesListeners;
+			std::vector<SubListener<TerrainSettings>> m_terrainListeners;
+			std::vector<SubListener<VolumetricSettings>> m_volumetricListeners;
+			std::vector<SubListener<ErosionSettings>> m_erosionListeners;
+			std::vector<SubListener<BloomSettings>> m_bloomListeners;
+			std::vector<SubListener<MoodSettings>> m_moodListeners;
 		};
 
 		void SyncBloomState(void* effect);

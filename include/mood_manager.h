@@ -145,7 +145,7 @@ namespace Boidsish {
         const std::map<MoodParameter, float>& GetCurrentParameters() const { return _currentParams; }
 
         void SyncState();
-        void ApplyTargetState(const class state::SystemConfiguration& config);
+        void ApplyTargetState(const state::MoodSettings& config);
 
     private:
         MoodSettings Interpolate(const MoodLayer& layer, float paramValue);

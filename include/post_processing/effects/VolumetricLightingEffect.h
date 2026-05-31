@@ -32,7 +32,7 @@ namespace Boidsish {
 			void SetTemporalAlpha(float a) { temporal_alpha_ = a; }
 			float GetTemporalAlpha() const { return temporal_alpha_; }
 
-			void ApplyTargetState(const class state::SystemConfiguration& config);
+			void ApplyTargetState(const state::VolumetricSettings& config);
 
 		private:
 			void CreateGridTextures();

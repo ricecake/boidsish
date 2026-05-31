@@ -412,8 +412,7 @@ namespace Boidsish {
 
 	using namespace PostProcessing;
 
-	void BloomEffect::ApplyTargetState(const state::SystemConfiguration& config) {
-		const auto& s = config.bloom;
+	void BloomEffect::ApplyTargetState(const state::BloomSettings& s) {
 		SetEnabled(s.enabled);
 		SetIntensity(s.intensity);
 		SetThreshold(s.threshold);

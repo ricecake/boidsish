@@ -154,11 +154,11 @@ namespace Boidsish {
 			prev_camera_front_ = -glm::normalize(glm::vec3(invView[2]));
 		}
 
-		void VolumetricLightingEffect::ApplyTargetState(const state::SystemConfiguration& config) {
-			SetEnabled(config.volumetric.enabled);
-			SetIntensity(config.volumetric.intensity);
-			SetScatteringAnisotropy(config.volumetric.anisotropy);
-			SetTemporalAlpha(config.volumetric.temporalAlpha);
+		void VolumetricLightingEffect::ApplyTargetState(const state::VolumetricSettings& config) {
+			SetEnabled(config.enabled);
+			SetIntensity(config.intensity);
+			SetScatteringAnisotropy(config.anisotropy);
+			SetTemporalAlpha(config.temporalAlpha);
 		}
 
 		void VolumetricLightingEffect::Apply(GLuint sourceTexture, GLuint depthTexture, GLuint velocityTexture, GLuint normalTexture, GLuint albedoTexture, const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix, const glm::vec3& cameraPos) {

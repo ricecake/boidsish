@@ -660,32 +660,51 @@ namespace Boidsish {
 			auto store = std::make_shared<state::Store>(state::AppReducer, initial_state);
 			service_locator_.Provide<state::Store>(store);
 
-			store->Subscribe([this](const state::SystemState& state) {
-				// React to target changes by delegating to managers
-				if (grass_manager) grass_manager->ApplyTargetState(state.target);
-				if (weather_manager) weather_manager->ApplyTargetState(state.target);
-				if (atmosphere_manager) atmosphere_manager->ApplyTargetState(state.target);
-				if (light_manager) light_manager->ApplyTargetState(state.target);
-				if (fire_effect_manager) fire_effect_manager->ApplyTargetState(state.target);
-				if (mood_manager) mood_manager->ApplyTargetState(state.target);
-				if (bloom_effect) bloom_effect->ApplyTargetState(state.target);
-				if (volumetric_effect) volumetric_effect->ApplyTargetState(state.target);
-
-				auto& cfg = ConfigManager::GetInstance();
-				cfg.SetBool("render_terrain", state.target.terrain.renderTerrain);
-				cfg.SetBool("render_floor", state.target.terrain.renderFloor);
-				cfg.SetBool("force_both_floor_and_terrain", state.target.terrain.forceBoth);
-				if (terrain_generator) terrain_generator->SetWorldScale(state.target.terrain.worldScale);
-				if (decor_manager) decor_manager->SetEnabled(state.target.terrain.foliageEnabled);
-				cfg.SetFloat("foliage_culling_pixel_threshold", state.target.terrain.foliagePixelThreshold);
-
-				cfg.SetBool("erosion_enabled", state.target.erosion.enabled);
-				cfg.SetFloat("erosion_strength", state.target.erosion.strength);
-				cfg.SetFloat("erosion_scale", state.target.erosion.scale);
-				cfg.SetFloat("erosion_detail", state.target.erosion.detail);
-				cfg.SetFloat("erosion_gully_weight", state.target.erosion.gullyWeight);
-				cfg.SetFloat("erosion_max_dist", state.target.erosion.maxDist);
+			store->SubscribeGrass([this](const state::GrassSettings& s) {
+				if (grass_manager) grass_manager->ApplyTargetState(s);
 			});
+			store->SubscribeWeather([this](const state::WeatherSettings& s) {
+				if (weather_manager) weather_manager->ApplyTargetState(s);
+			});
+			store->SubscribeAtmosphere([this](const state::AtmosphereSettings& s) {
+				if (atmosphere_manager) atmosphere_manager->ApplyTargetState(s);
+			});
+			store->SubscribeDayNight([this](const state::DayNightSettings& s) {
+				if (light_manager) light_manager->ApplyTargetState(s);
+			});
+			store->SubscribeParticles([this](const state::ParticleSettings& s) {
+				if (fire_effect_manager) fire_effect_manager->ApplyTargetState(s);
+			});
+			store->SubscribeMood([this](const state::MoodSettings& s) {
+				if (mood_manager) mood_manager->ApplyTargetState(s);
+			});
+			store->SubscribeBloom([this](const state::BloomSettings& s) {
+				if (bloom_effect) bloom_effect->ApplyTargetState(s);
+			});
+			store->SubscribeVolumetric([this](const state::VolumetricSettings& s) {
+				if (volumetric_effect) volumetric_effect->ApplyTargetState(s);
+			});
+
+			store->SubscribeTerrain([this](const state::TerrainSettings& s) {
+				auto& cfg = ConfigManager::GetInstance();
+				cfg.SetBool("render_terrain", s.renderTerrain);
+				cfg.SetBool("render_floor", s.renderFloor);
+				cfg.SetBool("force_both_floor_and_terrain", s.forceBoth);
+				if (terrain_generator) terrain_generator->SetWorldScale(s.worldScale);
+				if (decor_manager) decor_manager->SetEnabled(s.foliageEnabled);
+				cfg.SetFloat("foliage_culling_pixel_threshold", s.foliagePixelThreshold);
+			});
+
+			store->SubscribeErosion([this](const state::ErosionSettings& s) {
+				auto& cfg = ConfigManager::GetInstance();
+				cfg.SetBool("erosion_enabled", s.enabled);
+				cfg.SetFloat("erosion_strength", s.strength);
+				cfg.SetFloat("erosion_scale", s.scale);
+				cfg.SetFloat("erosion_detail", s.detail);
+				cfg.SetFloat("erosion_gully_weight", s.gullyWeight);
+				cfg.SetFloat("erosion_max_dist", s.maxDist);
+			});
+
 		}
 
 		VisualizerImpl(Visualizer* p, int w, int h, const char* title): parent(p), width(w), height(h) {
@@ -3603,6 +3622,7 @@ namespace Boidsish {
 		}
 
 		impl->SyncStateToStore();
+		impl->service_locator_.Get<state::Store>()->Process();
 
 
 		// Update ambient weather
