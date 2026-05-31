@@ -1106,8 +1106,9 @@ namespace Boidsish {
 				post_processing_manager_->AddEffect(bloom_effect);
 
 				mood_manager = std::make_shared<MoodManager>();
-				mood_manager->AddLayer(GetBaseTimeOfDayLayer());
-				mood_manager->AddLayer(GetWeatherPrecipitationLayer());
+				for (auto& layer : GetAllMoodSettings()) {
+					mood_manager->AddLayer(layer);
+				}
 
 
 				if (enable_hdr_) {
@@ -2253,6 +2254,7 @@ namespace Boidsish {
 					std::map<MoodParameter, float> params;
 					params[MoodParameter::TimeOfDay] = light_manager->GetDayNightCycle().time;
 					params[MoodParameter::Precipitation] = weather_manager->GetCurrentWeather().precipitation;
+					params[MoodParameter::Humidity] = weather_manager->GetCurrentWeather().humidity;
 					params[MoodParameter::Temperature] = weather_manager->GetCurrentWeather().temperature;
 					params[MoodParameter::CloudCover] = weather_manager->GetCurrentWeather().cloud_coverage;
 					params[MoodParameter::SunAngle] = light_manager->GetLights().empty() ? 0.0f : light_manager->GetLights()[0].elevation;
@@ -2284,23 +2286,23 @@ namespace Boidsish {
 						#undef B_M
 					}
 
-					if (atmosphere_effect) {
-						if (mood.cloudDensity) atmosphere_effect->SetCloudDensity(*mood.cloudDensity);
-						if (mood.cloudAltitude) atmosphere_effect->SetCloudAltitude(*mood.cloudAltitude);
-						if (mood.cloudThickness) atmosphere_effect->SetCloudThickness(*mood.cloudThickness);
-						if (mood.cloudColor) atmosphere_effect->SetCloudColor(*mood.cloudColor);
-						if (mood.cloudCoverage) atmosphere_effect->SetCloudCoverage(*mood.cloudCoverage);
-						if (mood.cloudSunLightScale) atmosphere_effect->SetCloudSunLightScale(*mood.cloudSunLightScale);
-						if (mood.cloudMoonLightScale) atmosphere_effect->SetCloudMoonLightScale(*mood.cloudMoonLightScale);
-						if (mood.cloudPowderScale) atmosphere_effect->SetCloudPowderScale(*mood.cloudPowderScale);
-						if (mood.cloudBeerPowderMix) atmosphere_effect->SetCloudBeerPowderMix(*mood.cloudBeerPowderMix);
+					// if (atmosphere_effect) {
+					// 	if (mood.cloudDensity) atmosphere_effect->SetCloudDensity(*mood.cloudDensity);
+					// 	if (mood.cloudAltitude) atmosphere_effect->SetCloudAltitude(*mood.cloudAltitude);
+					// 	if (mood.cloudThickness) atmosphere_effect->SetCloudThickness(*mood.cloudThickness);
+					// 	if (mood.cloudColor) atmosphere_effect->SetCloudColor(*mood.cloudColor);
+					// 	// if (mood.cloudCoverage) atmosphere_effect->SetCloudCoverage(*mood.cloudCoverage);
+					// 	if (mood.cloudSunLightScale) atmosphere_effect->SetCloudSunLightScale(*mood.cloudSunLightScale);
+					// 	if (mood.cloudMoonLightScale) atmosphere_effect->SetCloudMoonLightScale(*mood.cloudMoonLightScale);
+					// 	if (mood.cloudPowderScale) atmosphere_effect->SetCloudPowderScale(*mood.cloudPowderScale);
+					// 	if (mood.cloudBeerPowderMix) atmosphere_effect->SetCloudBeerPowderMix(*mood.cloudBeerPowderMix);
 
-						if (mood.rayleighScale) atmosphere_effect->SetRayleighScale(*mood.rayleighScale);
-						if (mood.mieScale) atmosphere_effect->SetMieScale(*mood.mieScale);
-						if (mood.rayleighScattering) atmosphere_effect->SetRayleighScattering(*mood.rayleighScattering);
-						if (mood.mieScattering) atmosphere_effect->SetMieScattering(*mood.mieScattering);
-						if (mood.mieExtinction) atmosphere_effect->SetMieExtinction(*mood.mieExtinction);
-					}
+					// 	if (mood.rayleighScale) atmosphere_effect->SetRayleighScale(*mood.rayleighScale);
+					// 	if (mood.mieScale) atmosphere_effect->SetMieScale(*mood.mieScale);
+						// if (mood.rayleighScattering) atmosphere_effect->SetRayleighScattering(*mood.rayleighScattering);
+					// 	if (mood.mieScattering) atmosphere_effect->SetMieScattering(*mood.mieScattering);
+					// 	if (mood.mieExtinction) atmosphere_effect->SetMieExtinction(*mood.mieExtinction);
+					// }
 				}
 
 				if (atmosphere_effect) {

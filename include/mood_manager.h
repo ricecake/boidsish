@@ -20,6 +20,7 @@ namespace Boidsish {
     enum class MoodParameter {
         TimeOfDay,
         Precipitation,
+        Humidity,
         Temperature,
         CloudCover,
         MoonAngle,
