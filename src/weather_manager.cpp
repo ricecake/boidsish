@@ -13,6 +13,7 @@
 #include "terrain_render_manager.h"
 #include "ConfigManager.h"
 #include "lightning_manager.h"
+#include "state.h"
 
 namespace Boidsish {
 
@@ -1404,6 +1405,49 @@ namespace Boidsish {
 				SetMax(attr, cfg.GetAppSettingFloat("weather_max_" + key, 0.0f));
 			}
 		}
+	}
+
+	void WeatherManager::SyncState() {
+		auto store = ServiceLocator::Instance().Get<state::Store>();
+		state::WeatherSettings actual;
+
+		actual.enabled = IsEnabled();
+		actual.timeScale = GetTimeScale();
+		actual.spatialScale = GetSpatialScale();
+		actual.holdThreshold = GetHoldThreshold();
+		actual.temperature = current_.temperature;
+		actual.precipitation = current_.precipitation;
+		actual.humidity = current_.humidity;
+		actual.windStrength = current_.wind_strength;
+		actual.windSpeed = current_.wind_speed;
+		actual.windFrequency = current_.wind_frequency;
+		actual.cloudCoverage = current_.cloud_coverage;
+		actual.macroSimEnabled = IsMacroSimEnabled();
+		actual.simTau = GetSimTau();
+		actual.strictEnforcement = IsStrictEnforcementEnabled();
+		actual.nudgeStiffness = GetNudgeStiffness();
+
+		store->Dispatch(state::actions::SyncWeatherActual{actual});
+	}
+
+	void WeatherManager::ApplyTargetState(const state::WeatherSettings& config) {
+		SetEnabled(config.enabled);
+		SetTimeScale(config.timeScale);
+		SetSpatialScale(config.spatialScale);
+		SetHoldThreshold(config.holdThreshold);
+
+		SetTarget(WeatherAttribute::Temperature, config.temperature);
+		SetTarget(WeatherAttribute::Precipitation, config.precipitation);
+		SetTarget(WeatherAttribute::Humidity, config.humidity);
+		SetTarget(WeatherAttribute::WindStrength, config.windStrength);
+		SetTarget(WeatherAttribute::WindSpeed, config.windSpeed);
+		SetTarget(WeatherAttribute::WindFrequency, config.windFrequency);
+		SetTarget(WeatherAttribute::CloudCoverage, config.cloudCoverage);
+
+		SetMacroSimEnabled(config.macroSimEnabled);
+		SetSimTau(config.simTau);
+		SetStrictEnforcement(config.strictEnforcement);
+		SetNudgeStiffness(config.nudgeStiffness);
 	}
 
 } // namespace Boidsish

@@ -3,6 +3,7 @@
 #include <algorithm>
 
 #include "service_locator.h"
+#include "state.h"
 #include <cmath>
 #include <cstdlib>
 #include <map>
@@ -326,6 +327,33 @@ namespace Boidsish {
 			}
 		}
 		return count;
+	}
+
+	void LightManager::SyncState() {
+		auto store = ServiceLocator::Instance().Get<state::Store>();
+		state::DayNightSettings actual;
+
+		actual.enabled = _cycle.enabled;
+		actual.time = _cycle.time;
+		actual.speed = _cycle.speed;
+		actual.paused = _cycle.paused;
+		actual.lunarAlbedo = _cycle.lunar_albedo;
+		actual.moonTint = _cycle.moon_tint;
+		actual.lunarMonth = _cycle.lunar_month;
+		actual.moonPhaseDays = _cycle.moon_phase_days;
+
+		store->Dispatch(state::actions::SyncDayNightActual{actual});
+	}
+
+	void LightManager::ApplyTargetState(const state::DayNightSettings& s) {
+		_cycle.enabled = s.enabled;
+		_cycle.time = s.time;
+		_cycle.speed = s.speed;
+		_cycle.paused = s.paused;
+		_cycle.lunar_albedo = s.lunarAlbedo;
+		_cycle.moon_tint = s.moonTint;
+		_cycle.lunar_month = s.lunarMonth;
+		_cycle.moon_phase_days = s.moonPhaseDays;
 	}
 
 } // namespace Boidsish

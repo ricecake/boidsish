@@ -5,6 +5,7 @@
 
 #include "constants.h"
 #include "light.h"
+#include "state.h"
 
 namespace Boidsish {
 
@@ -37,6 +38,8 @@ namespace Boidsish {
 		Light*              GetLight(int id);
 		std::vector<Light>& GetLights();
 		void                Update(float deltaTime);
+		void                SyncState();
+		void                ApplyTargetState(const state::DayNightSettings& config);
 		glm::vec3           GetAmbientLight() const;
 		void                SetAmbientLight(const glm::vec3& ambient);
 

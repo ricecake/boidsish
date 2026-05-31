@@ -66,6 +66,7 @@
 #include "shadow_render_pass.h"
 #include "shockwave_effect.h"
 #include "sound_effect_manager.h"
+#include "state.h"
 #include "spline.h"
 #include "task_thread_pool.hpp"
 #include "temporal_data.h"
@@ -611,6 +612,99 @@ namespace Boidsish {
 			service_locator_.Provide<ConfigManager>(
 				std::shared_ptr<ConfigManager>(&ConfigManager::GetInstance(), [](ConfigManager*) {})
 			);
+
+			state::SystemState initial_state;
+			auto&              cfg = ConfigManager::GetInstance();
+
+			// Populate initial target state from ConfigManager
+			initial_state.target.grass.enabled = cfg.GetAppSettingBool("grass_enabled", true);
+			initial_state.target.grass.lengthMultiplier = cfg.GetAppSettingFloat("grass_length_multiplier", 1.0f);
+			initial_state.target.grass.widthMultiplier = cfg.GetAppSettingFloat("grass_width_multiplier", 1.0f);
+			initial_state.target.grass.densityMultiplier = cfg.GetAppSettingFloat("grass_density_multiplier", 1.0f);
+			initial_state.target.grass.rigidityMultiplier = cfg.GetAppSettingFloat("grass_rigidity_multiplier", 1.0f);
+			initial_state.target.grass.windMultiplier = cfg.GetAppSettingFloat("grass_wind_multiplier", 1.0f);
+
+			initial_state.target.weather.enabled = cfg.GetAppSettingBool("weather_enabled", true);
+			initial_state.target.weather.timeScale = cfg.GetAppSettingFloat("weather_time_scale", 0.005f);
+			initial_state.target.weather.spatialScale = cfg.GetAppSettingFloat("weather_spatial_scale", 0.001f);
+			initial_state.target.weather.holdThreshold = cfg.GetAppSettingFloat("weather_hold_threshold", 0.05f);
+			initial_state.target.weather.macroSimEnabled = cfg.GetAppSettingBool("weather_macro_sim_enabled", true);
+			initial_state.target.weather.simTau = cfg.GetAppSettingFloat("weather_sim_tau", 0.8f);
+			initial_state.target.weather.strictEnforcement = cfg.GetAppSettingBool("weather_strict_enforcement", false);
+			initial_state.target.weather.nudgeStiffness = cfg.GetAppSettingFloat("weather_nudge_stiffness", 1.0f);
+
+			initial_state.target.particles.enabled = cfg.GetAppSettingBool("particles_enabled", true);
+			initial_state.target.particles.ambientDensity = cfg.GetAppSettingFloat("ambient_particle_density", 0.15f);
+			initial_state.target.particles.limitBirds = cfg.GetAppSettingInt("particle_limit_birds", 1000);
+			initial_state.target.particles.limitLeaves = cfg.GetAppSettingInt("particle_limit_leaves", 1000);
+			initial_state.target.particles.limitPetals = cfg.GetAppSettingInt("particle_limit_petals", 1000);
+			initial_state.target.particles.limitBubbles = cfg.GetAppSettingInt("particle_limit_bubbles", 1000);
+			initial_state.target.particles.limitFireflies = cfg.GetAppSettingInt("particle_limit_fireflies", 1000);
+			initial_state.target.particles.limitSnow = cfg.GetAppSettingInt("particle_limit_snow", 1000);
+			initial_state.target.particles.limitRain = cfg.GetAppSettingInt("particle_limit_rain", 1000);
+			initial_state.target.particles.limitDust = cfg.GetAppSettingInt("particle_limit_dust", 1000);
+
+			initial_state.target.terrain.renderTerrain = cfg.GetAppSettingBool("render_terrain", true);
+			initial_state.target.terrain.renderFloor = cfg.GetAppSettingBool("render_floor", false);
+			initial_state.target.terrain.forceBoth = cfg.GetAppSettingBool("force_both_floor_and_terrain", false);
+			initial_state.target.terrain.foliageEnabled = cfg.GetAppSettingBool("render_decor", true);
+			initial_state.target.terrain.foliagePixelThreshold = cfg.GetAppSettingFloat("foliage_culling_pixel_threshold", 10.0f);
+
+			initial_state.target.erosion.enabled = cfg.GetAppSettingBool("erosion_enabled", true);
+			initial_state.target.erosion.strength = cfg.GetAppSettingFloat("erosion_strength", 0.12f);
+			initial_state.target.erosion.scale = cfg.GetAppSettingFloat("erosion_scale", 0.15f);
+			initial_state.target.erosion.detail = cfg.GetAppSettingFloat("erosion_detail", 1.5f);
+			initial_state.target.erosion.gullyWeight = cfg.GetAppSettingFloat("erosion_gully_weight", 0.5f);
+			initial_state.target.erosion.maxDist = cfg.GetAppSettingFloat("erosion_max_dist", 450.0f);
+
+			auto store = std::make_shared<state::Store>(state::AppReducer, initial_state);
+			service_locator_.Provide<state::Store>(store);
+
+			store->SubscribeGrass([this](const state::GrassSettings& s) {
+				if (grass_manager) grass_manager->ApplyTargetState(s);
+			});
+			store->SubscribeWeather([this](const state::WeatherSettings& s) {
+				if (weather_manager) weather_manager->ApplyTargetState(s);
+			});
+			store->SubscribeAtmosphere([this](const state::AtmosphereSettings& s) {
+				if (atmosphere_manager) atmosphere_manager->ApplyTargetState(s);
+			});
+			store->SubscribeDayNight([this](const state::DayNightSettings& s) {
+				if (light_manager) light_manager->ApplyTargetState(s);
+			});
+			store->SubscribeParticles([this](const state::ParticleSettings& s) {
+				if (fire_effect_manager) fire_effect_manager->ApplyTargetState(s);
+			});
+			store->SubscribeMood([this](const state::MoodSettings& s) {
+				if (mood_manager) mood_manager->ApplyTargetState(s);
+			});
+			store->SubscribeBloom([this](const state::BloomSettings& s) {
+				if (bloom_effect) bloom_effect->ApplyTargetState(s);
+			});
+			store->SubscribeVolumetric([this](const state::VolumetricSettings& s) {
+				if (volumetric_effect) volumetric_effect->ApplyTargetState(s);
+			});
+
+			store->SubscribeTerrain([this](const state::TerrainSettings& s) {
+				auto& cfg = ConfigManager::GetInstance();
+				cfg.SetBool("render_terrain", s.renderTerrain);
+				cfg.SetBool("render_floor", s.renderFloor);
+				cfg.SetBool("force_both_floor_and_terrain", s.forceBoth);
+				if (terrain_generator) terrain_generator->SetWorldScale(s.worldScale);
+				if (decor_manager) decor_manager->SetEnabled(s.foliageEnabled);
+				cfg.SetFloat("foliage_culling_pixel_threshold", s.foliagePixelThreshold);
+			});
+
+			store->SubscribeErosion([this](const state::ErosionSettings& s) {
+				auto& cfg = ConfigManager::GetInstance();
+				cfg.SetBool("erosion_enabled", s.enabled);
+				cfg.SetFloat("erosion_strength", s.strength);
+				cfg.SetFloat("erosion_scale", s.scale);
+				cfg.SetFloat("erosion_detail", s.detail);
+				cfg.SetFloat("erosion_gully_weight", s.gullyWeight);
+				cfg.SetFloat("erosion_max_dist", s.maxDist);
+			});
+
 		}
 
 		VisualizerImpl(Visualizer* p, int w, int h, const char* title): parent(p), width(w), height(h) {
@@ -2510,6 +2604,47 @@ namespace Boidsish {
 			packets_synced_ = true;
 		}
 
+		void SyncStateToStore() {
+			if (grass_manager) grass_manager->SyncState();
+			if (weather_manager) weather_manager->SyncState();
+			if (atmosphere_manager) atmosphere_manager->SyncState();
+			if (light_manager) light_manager->SyncState();
+			if (fire_effect_manager) fire_effect_manager->SyncState();
+			if (mood_manager) mood_manager->SyncState();
+			if (bloom_effect) bloom_effect->SyncState();
+
+			// Granular sync for other systems
+			auto store = service_locator_.Get<state::Store>();
+
+			state::TerrainSettings terrain_actual;
+			terrain_actual.renderTerrain = frame_config_.render_terrain;
+			terrain_actual.renderFloor = frame_config_.render_floor;
+			terrain_actual.forceBoth = frame_config_.force_both_floor_and_terrain;
+			terrain_actual.worldScale = terrain_generator ? terrain_generator->GetWorldScale() : 1.0f;
+			terrain_actual.foliageEnabled = frame_config_.render_decor;
+			terrain_actual.foliagePixelThreshold = ConfigManager::GetInstance().GetAppSettingFloat("foliage_culling_pixel_threshold", 10.0f);
+			store->Dispatch(state::actions::SyncTerrainActual{terrain_actual});
+
+			if (volumetric_effect) {
+				state::VolumetricSettings vol_actual;
+				vol_actual.enabled = volumetric_effect->IsEnabled();
+				vol_actual.intensity = volumetric_effect->GetIntensity();
+				vol_actual.anisotropy = volumetric_effect->GetScatteringAnisotropy();
+				vol_actual.temporalAlpha = volumetric_effect->GetTemporalAlpha();
+				store->Dispatch(state::actions::SyncVolumetricActual{vol_actual});
+			}
+
+			state::ErosionSettings erosion_actual;
+			erosion_actual.enabled = frame_config_.erosion_enabled;
+			erosion_actual.strength = frame_config_.erosion_strength;
+			erosion_actual.scale = frame_config_.erosion_scale;
+			erosion_actual.detail = frame_config_.erosion_detail;
+			erosion_actual.gullyWeight = frame_config_.erosion_gully_weight;
+			erosion_actual.maxDist = frame_config_.erosion_max_dist;
+			store->Dispatch(state::actions::SyncErosionActual{erosion_actual});
+
+		}
+
 		void UpdateSystems(const FrameData& frame) {
 			// Calculate frustum for terrain generation and decor placement
 			if (terrain_generator) {
@@ -3485,6 +3620,9 @@ namespace Boidsish {
 		for (auto& handler : impl->update_handlers) {
 			handler(impl->simulation_time, impl->simulation_delta_time);
 		}
+
+		impl->SyncStateToStore();
+		impl->service_locator_.Get<state::Store>()->Process();
 
 
 		// Update ambient weather

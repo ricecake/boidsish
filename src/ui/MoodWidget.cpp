@@ -4,6 +4,8 @@
 #include "imgui.h"
 #include <vector>
 #include <string>
+#include "state.h"
+#include "service_locator.h"
 
 namespace Boidsish {
     namespace UI {
@@ -76,6 +78,9 @@ namespace Boidsish {
                 return;
             }
 
+            auto store = ServiceLocator::Instance().Get<state::Store>();
+            const auto& state = store->GetState();
+
             MoodManager* moodMgr = m_visualizer.GetMoodManager();
             if (!moodMgr) {
                 ImGui::Text("Mood Manager not available");
@@ -83,9 +88,9 @@ namespace Boidsish {
                 return;
             }
 
-            bool engineEnabled = moodMgr->IsEnabled();
+            bool engineEnabled = state.target.mood.enabled;
             if (ImGui::Checkbox("Engine Enabled", &engineEnabled)) {
-                moodMgr->SetEnabled(engineEnabled);
+                store->Dispatch(state::actions::SetMoodEnabled{engineEnabled});
             }
 
             if (ImGui::CollapsingHeader("Environment Parameters", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -117,7 +122,7 @@ namespace Boidsish {
                     }
                     ImGui::SameLine();
 
-                    bool active = layer.enabled && !layer.controlPoints.empty() && engineEnabled;
+                    bool active = layer.enabled && !layer.controlPoints.empty() && state.actual.mood.enabled;
                     if (active) {
                         ImGui::TextColored(ImVec4(0, 1, 0, 1), "[ACTIVE]");
                     } else {
@@ -155,12 +160,12 @@ namespace Boidsish {
                 }
             }
 
-            bool override = moodMgr->IsOverrideEnabled();
+            bool override = state.target.mood.userOverride;
             if (ImGui::Checkbox("User Override", &override)) {
-                moodMgr->SetOverride(moodMgr->GetBlendedSettings(), override);
+                store->Dispatch(state::actions::SetMoodUserOverride{override});
             }
 
-            if (override) {
+            if (state.actual.mood.userOverride) {
                 ImGui::TextColored(ImVec4(1, 1, 0, 1), "Manual override active. Current settings are frozen.");
             }
 
