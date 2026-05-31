@@ -9,6 +9,7 @@
 #include "NoiseManager.h"
 #include "weather_manager.h"
 #include <GL/glew.h>
+#include "state.h"
 
 namespace Boidsish {
 	namespace PostProcessing {
@@ -151,6 +152,13 @@ namespace Boidsish {
 			// Extract camera front from inverse view matrix (3rd column is Back)
 			glm::mat4 invView = glm::inverse(viewMatrix);
 			prev_camera_front_ = -glm::normalize(glm::vec3(invView[2]));
+		}
+
+		void VolumetricLightingEffect::ApplyTargetState(const state::SystemConfiguration& config) {
+			SetEnabled(config.volumetric.enabled);
+			SetIntensity(config.volumetric.intensity);
+			SetScatteringAnisotropy(config.volumetric.anisotropy);
+			SetTemporalAlpha(config.volumetric.temporalAlpha);
 		}
 
 		void VolumetricLightingEffect::Apply(GLuint sourceTexture, GLuint depthTexture, GLuint velocityTexture, GLuint normalTexture, GLuint albedoTexture, const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix, const glm::vec3& cameraPos) {

@@ -12,6 +12,7 @@
 #include "weather_constants.h"
 #include "weather_lbm_simulator.h"
 #include "shader.h"
+#include "state.h"
 
 namespace Boidsish {
 
@@ -314,6 +315,9 @@ namespace Boidsish {
 		void InjectTemperature(const glm::vec3& pos, float temperatureK);
 
 		void UpdateWindUbo(float totalTime, NoiseManager* noise, TerrainRenderManager* terrain_render);
+
+		void SyncState();
+		void ApplyTargetState(const class state::SystemConfiguration& config);
 
 		void SetTerrainGenerator(ITerrainGenerator* terrain) { terrain_ = terrain; }
 

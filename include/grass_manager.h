@@ -10,6 +10,7 @@
 #include "constants.h"
 #include "biome_properties.h"
 #include "render_shader.h"
+#include "state.h"
 
 namespace Boidsish {
 
@@ -90,6 +91,9 @@ namespace Boidsish {
             global_props_ = props;
             props_dirty_ = true;
         }
+
+        void SyncState();
+        void ApplyTargetState(const class state::SystemConfiguration& config);
 
         uint32_t GetGrassPropsUbo() const { return grass_props_ubo_; }
 

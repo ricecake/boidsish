@@ -1,6 +1,7 @@
 #include "fire_effect_manager.h"
 
 #include <algorithm>
+#include "state.h"
 
 #include "ConfigManager.h"
 #include "service_locator.h"
@@ -666,6 +667,51 @@ namespace Boidsish {
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleBuffer(), particle_buffer_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleGridHeads(), grid_heads_buffer_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleGridNext(), grid_next_buffer_);
+	}
+
+	void FireEffectManager::SyncState() {
+		if (!initialized_) return;
+		auto store = ServiceLocator::Instance().Get<state::Store>();
+		state::ParticleSettings actual;
+		auto stats = GetStats();
+
+		actual.enabled = ConfigManager::GetInstance().GetAppSettingBool("particles_enabled", true);
+		actual.ambientDensity = ambient_density_;
+
+		actual.countBirds = stats.count_birds;
+		actual.countLeaves = stats.count_leaves;
+		actual.countPetals = stats.count_petals;
+		actual.countBubbles = stats.count_bubbles;
+		actual.countFireflies = stats.count_fireflies;
+		actual.countSnow = stats.count_snow;
+		actual.countRain = stats.count_rain;
+		actual.countDust = stats.count_dust;
+
+		actual.limitBirds = stats.limit_birds;
+		actual.limitLeaves = stats.limit_leaves;
+		actual.limitPetals = stats.limit_petals;
+		actual.limitBubbles = stats.limit_bubbles;
+		actual.limitFireflies = stats.limit_fireflies;
+		actual.limitSnow = stats.limit_snow;
+		actual.limitRain = stats.limit_rain;
+		actual.limitDust = stats.limit_dust;
+
+		store->Dispatch(state::actions::SyncParticleActual{actual});
+	}
+
+	void FireEffectManager::ApplyTargetState(const state::SystemConfiguration& config) {
+		const auto& s = config.particles;
+		auto& cfg = ConfigManager::GetInstance();
+		cfg.SetBool("particles_enabled", s.enabled);
+		cfg.SetFloat("ambient_particle_density", s.ambientDensity);
+		cfg.SetInt("particle_limit_birds", s.limitBirds);
+		cfg.SetInt("particle_limit_leaves", s.limitLeaves);
+		cfg.SetInt("particle_limit_petals", s.limitPetals);
+		cfg.SetInt("particle_limit_bubbles", s.limitBubbles);
+		cfg.SetInt("particle_limit_fireflies", s.limitFireflies);
+		cfg.SetInt("particle_limit_snow", s.limitSnow);
+		cfg.SetInt("particle_limit_rain", s.limitRain);
+		cfg.SetInt("particle_limit_dust", s.limitDust);
 	}
 
 	void FireEffectManager::Render(

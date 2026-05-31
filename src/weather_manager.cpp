@@ -1407,4 +1407,47 @@ namespace Boidsish {
 		}
 	}
 
+	void WeatherManager::SyncState() {
+		auto store = ServiceLocator::Instance().Get<state::Store>();
+		state::WeatherSettings actual;
+
+		actual.enabled = IsEnabled();
+		actual.timeScale = GetTimeScale();
+		actual.spatialScale = GetSpatialScale();
+		actual.holdThreshold = GetHoldThreshold();
+		actual.temperature = current_.temperature;
+		actual.precipitation = current_.precipitation;
+		actual.humidity = current_.humidity;
+		actual.windStrength = current_.wind_strength;
+		actual.windSpeed = current_.wind_speed;
+		actual.windFrequency = current_.wind_frequency;
+		actual.cloudCoverage = current_.cloud_coverage;
+		actual.macroSimEnabled = IsMacroSimEnabled();
+		actual.simTau = GetSimTau();
+		actual.strictEnforcement = IsStrictEnforcementEnabled();
+		actual.nudgeStiffness = GetNudgeStiffness();
+
+		store->Dispatch(state::actions::SyncWeatherActual{actual});
+	}
+
+	void WeatherManager::ApplyTargetState(const state::SystemConfiguration& config) {
+		SetEnabled(config.weather.enabled);
+		SetTimeScale(config.weather.timeScale);
+		SetSpatialScale(config.weather.spatialScale);
+		SetHoldThreshold(config.weather.holdThreshold);
+
+		SetTarget(WeatherAttribute::Temperature, config.weather.temperature);
+		SetTarget(WeatherAttribute::Precipitation, config.weather.precipitation);
+		SetTarget(WeatherAttribute::Humidity, config.weather.humidity);
+		SetTarget(WeatherAttribute::WindStrength, config.weather.windStrength);
+		SetTarget(WeatherAttribute::WindSpeed, config.weather.windSpeed);
+		SetTarget(WeatherAttribute::WindFrequency, config.weather.windFrequency);
+		SetTarget(WeatherAttribute::CloudCoverage, config.weather.cloudCoverage);
+
+		SetMacroSimEnabled(config.weather.macroSimEnabled);
+		SetSimTau(config.weather.simTau);
+		SetStrictEnforcement(config.weather.strictEnforcement);
+		SetNudgeStiffness(config.weather.nudgeStiffness);
+	}
+
 } // namespace Boidsish

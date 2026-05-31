@@ -212,6 +212,25 @@ namespace Boidsish {
 						}
 
 						ImGui::Separator();
+						ImGui::Text("Advanced Cloud Parameters");
+						float cloudSun = state.target.atmosphere.cloudSunLightScale;
+						if (ImGui::SliderFloat("Sun Light Scale", &cloudSun, 0.0f, 50.0f)) {
+							store->Dispatch(state::actions::SetCloudSunLightScale{cloudSun});
+						}
+						float cloudMoon = state.target.atmosphere.cloudMoonLightScale;
+						if (ImGui::SliderFloat("Moon Light Scale", &cloudMoon, 0.0f, 20.0f)) {
+							store->Dispatch(state::actions::SetCloudMoonLightScale{cloudMoon});
+						}
+						float cloudPowder = state.target.atmosphere.cloudPowderScale;
+						if (ImGui::SliderFloat("Powder Scale", &cloudPowder, 0.0f, 2.0f)) {
+							store->Dispatch(state::actions::SetCloudPowderScale{cloudPowder});
+						}
+						float cloudBeer = state.target.atmosphere.cloudBeerPowderMix;
+						if (ImGui::SliderFloat("Beer-Powder Mix", &cloudBeer, 0.0f, 1.0f)) {
+							store->Dispatch(state::actions::SetCloudBeerPowderMix{cloudBeer});
+						}
+
+						ImGui::Separator();
 						ImGui::Text("Scattering");
 						drawAttrControl("Rayleigh Scale", state.target.atmosphere.rayleighScale, state.actual.atmosphere.rayleighScale, 0.0f, 3.0f, "%.2f", [](float v){ return state::actions::SetRayleighScale{v}; });
 						drawAttrControl("Mie Scale", state.target.atmosphere.mieScale, state.actual.atmosphere.mieScale, 0.0f, 0.25f, "%.2f", [](float v){ return state::actions::SetMieScale{v}; });

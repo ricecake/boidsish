@@ -51,11 +51,19 @@ namespace Boidsish {
 			float cloudCoverage = 0.5f;
 			float cloudWarp = 0.0f;
 			glm::vec3 cloudColor = glm::vec3(0.95f, 0.95f, 1.0f);
+			float cloudSunLightScale = 1.0f;
+			float cloudMoonLightScale = 2.0f;
+			float cloudPowderScale = 0.125f;
+			float cloudPowderMultiplier = 1.0f;
+			float cloudPowderLocalScale = 1.0f;
+			float cloudShadowOpticalDepthMultiplier = 1.0f;
+			float cloudShadowStepMultiplier = 1.0f;
+			float cloudBeerPowderMix = 0.6f;
 			float rayleighScale = 1.1f;
 			float mieScale = 0.35f;
 			float mieAnisotropy = 0.8f;
-			float multiScatScale = 0.0f;
-			float ambientScatScale = 0.0f;
+			float multiScatScale = 1.0f;
+			float ambientScatScale = 1.0f;
 			float atmosphereHeight = 120.0f;
 			glm::vec3 rayleighScattering = glm::vec3(5.802f, 13.558f, 33.100f) * 1e-3f;
 			float mieScattering = 3.996f * 1e-3f;
@@ -63,6 +71,9 @@ namespace Boidsish {
 			glm::vec3 ozoneAbsorption = glm::vec3(0.650f, 1.881f, 0.085f) * 1e-3f;
 			float rayleighScaleHeight = 8.0f;
 			float mieScaleHeight = 1.2f;
+			float colorVarianceScale = 1.0f;
+			float colorVarianceStrength = 0.0f;
+			float cloudShadowIntensity = 0.5f;
 		};
 
 		struct DayNightSettings {
@@ -124,6 +135,53 @@ namespace Boidsish {
 			float maxDist = 450.0f;
 		};
 
+		struct BloomLayerSettings {
+			bool toneMappingEnabled = true;
+			int toneMappingMode = 5;
+			bool autoExposureEnabled = true;
+			float targetLuminance = 0.25f;
+			float minExposure = 0.01f;
+			float maxExposure = 25.0f;
+			float speedUp = 3.0f;
+			float speedDown = 1.0f;
+			float centerWeightTightness = 4.0f;
+			glm::vec2 focusPoint = glm::vec2(0.5f, 0.5f);
+			float histogramLowCutoff = 0.1f;
+			float histogramHighCutoff = 0.95f;
+			float uchimuraP = 1.0f;
+			float uchimuraA = 1.0f;
+			float uchimuraM = 0.22f;
+			float uchimuraL = 0.4f;
+			float uchimuraC = 1.33f;
+			float uchimuraB = 0.0f;
+			bool autoTuneEnabled = true;
+			float minContrast = 0.6f;
+			float maxContrast = 1.3f;
+			float targetBrightness = 1.0f;
+			glm::vec3 cdlSlope = glm::vec3(1.0f);
+			glm::vec3 cdlOffset = glm::vec3(0.0f);
+			glm::vec3 cdlPower = glm::vec3(1.0f);
+			float cdlSaturation = 1.0f;
+			float whiteTemp = 6500.0f;
+			float whiteTint = 0.0f;
+			bool ltmEnabled = true;
+			float ltmEvSpread = 2.0f;
+			float ltmTarget = 0.5f;
+			float ltmSigma = 0.2f;
+			float ltmWeightContrast = 0.0f;
+			float ltmWeightSaturation = 0.0f;
+			float ltmWeightExposedness = 1.0f;
+			float ltmBoostLocalContrast = 0.0f;
+		};
+
+		struct BloomSettings {
+			bool enabled = true;
+			float intensity = 0.075f;
+			float threshold = 1.0f;
+			BloomLayerSettings scene;
+			BloomLayerSettings sky;
+		};
+
 		struct MoodSettings {
 			bool enabled = true;
 			bool userOverride = false;
@@ -139,6 +197,7 @@ namespace Boidsish {
 			TerrainSettings terrain;
 			VolumetricSettings volumetric;
 			ErosionSettings erosion;
+			BloomSettings bloom;
 			MoodSettings mood;
 		};
 
@@ -185,6 +244,14 @@ namespace Boidsish {
 			struct SetCloudCoverage { float value; };
 			struct SetCloudWarp { float value; };
 			struct SetCloudColor { glm::vec3 value; };
+			struct SetCloudSunLightScale { float value; };
+			struct SetCloudMoonLightScale { float value; };
+			struct SetCloudPowderScale { float value; };
+			struct SetCloudPowderMultiplier { float value; };
+			struct SetCloudPowderLocalScale { float value; };
+			struct SetCloudShadowOpticalDepthMultiplier { float value; };
+			struct SetCloudShadowStepMultiplier { float value; };
+			struct SetCloudBeerPowderMix { float value; };
 			struct SetRayleighScale { float value; };
 			struct SetMieScale { float value; };
 			struct SetMieAnisotropy { float value; };
@@ -197,6 +264,9 @@ namespace Boidsish {
 			struct SetOzoneAbsorption { glm::vec3 value; };
 			struct SetRayleighScaleHeight { float value; };
 			struct SetMieScaleHeight { float value; };
+			struct SetAtmosphereColorVarianceScale { float value; };
+			struct SetAtmosphereColorVarianceStrength { float value; };
+			struct SetCloudShadowIntensity { float value; };
 
 			// DayNight Actions
 			struct SetDayNightEnabled { bool value; };
@@ -235,9 +305,45 @@ namespace Boidsish {
 			struct SetErosionGullyWeight { float value; };
 			struct SetErosionMaxDist { float value; };
 
+			// Bloom Actions
+			struct SetBloomEnabled { bool value; };
+			struct SetBloomIntensity { float value; };
+			struct SetBloomThreshold { float value; };
+
+			struct SetBloomLayerToneMappingEnabled { bool isSky; bool value; };
+			struct SetBloomLayerToneMappingMode { bool isSky; int value; };
+			struct SetBloomLayerAutoExposureEnabled { bool isSky; bool value; };
+			struct SetBloomLayerTargetLuminance { bool isSky; float value; };
+			struct SetBloomLayerExposureLimits { bool isSky; float min; float max; };
+			struct SetBloomLayerAdaptationSpeeds { bool isSky; float up; float down; };
+			struct SetBloomLayerCenterWeightTightness { bool isSky; float value; };
+			struct SetBloomLayerFocusPoint { bool isSky; glm::vec2 value; };
+			struct SetBloomLayerHistogramCutoffs { bool isSky; float low; float high; };
+			struct SetBloomLayerUchimuraParams { bool isSky; float P; float a; float m; float l; float c; float b; };
+			struct SetBloomLayerAutoTuneEnabled { bool isSky; bool value; };
+			struct SetBloomLayerAutoTuneConstraints { bool isSky; float minC; float maxC; float targetB; };
+			struct SetBloomLayerCdlParams { bool isSky; glm::vec3 slope; glm::vec3 offset; glm::vec3 power; float saturation; };
+			struct SetBloomLayerWhiteBalance { bool isSky; float temp; float tint; };
+			struct SetBloomLayerLtmEnabled { bool isSky; bool value; };
+			struct SetBloomLayerLtmParams { bool isSky; float evSpread; float target; float sigma; };
+			struct SetBloomLayerLtmWeights { bool isSky; float contrast; float saturation; float exposedness; };
+			struct SetBloomLayerLtmBoostLocalContrast { bool isSky; float value; };
+
 			// Mood Actions
 			struct SetMoodEnabled { bool value; };
 			struct SetMoodUserOverride { bool value; };
+
+			// Granular Sync Actions
+			struct SyncGrassActual { GrassSettings value; };
+			struct SyncWeatherActual { WeatherSettings value; };
+			struct SyncAtmosphereActual { AtmosphereSettings value; };
+			struct SyncDayNightActual { DayNightSettings value; };
+			struct SyncParticleActual { ParticleSettings value; };
+			struct SyncTerrainActual { TerrainSettings value; };
+			struct SyncVolumetricActual { VolumetricSettings value; };
+			struct SyncErosionActual { ErosionSettings value; };
+			struct SyncBloomActual { BloomSettings value; };
+			struct SyncMoodActual { MoodSettings value; };
 
 			struct SyncActual {
 				SystemConfiguration actual;
@@ -276,6 +382,14 @@ namespace Boidsish {
 			actions::SetCloudCoverage,
 			actions::SetCloudWarp,
 			actions::SetCloudColor,
+			actions::SetCloudSunLightScale,
+			actions::SetCloudMoonLightScale,
+			actions::SetCloudPowderScale,
+			actions::SetCloudPowderMultiplier,
+			actions::SetCloudPowderLocalScale,
+			actions::SetCloudShadowOpticalDepthMultiplier,
+			actions::SetCloudShadowStepMultiplier,
+			actions::SetCloudBeerPowderMix,
 			actions::SetRayleighScale,
 			actions::SetMieScale,
 			actions::SetMieAnisotropy,
@@ -288,6 +402,9 @@ namespace Boidsish {
 			actions::SetOzoneAbsorption,
 			actions::SetRayleighScaleHeight,
 			actions::SetMieScaleHeight,
+			actions::SetAtmosphereColorVarianceScale,
+			actions::SetAtmosphereColorVarianceStrength,
+			actions::SetCloudShadowIntensity,
 			actions::SetDayNightEnabled,
 			actions::SetDayNightTime,
 			actions::SetDayNightSpeed,
@@ -315,14 +432,49 @@ namespace Boidsish {
 			actions::SetErosionDetail,
 			actions::SetErosionGullyWeight,
 			actions::SetErosionMaxDist,
+			actions::SetBloomEnabled,
+			actions::SetBloomIntensity,
+			actions::SetBloomThreshold,
+			actions::SetBloomLayerToneMappingEnabled,
+			actions::SetBloomLayerToneMappingMode,
+			actions::SetBloomLayerAutoExposureEnabled,
+			actions::SetBloomLayerTargetLuminance,
+			actions::SetBloomLayerExposureLimits,
+			actions::SetBloomLayerAdaptationSpeeds,
+			actions::SetBloomLayerCenterWeightTightness,
+			actions::SetBloomLayerFocusPoint,
+			actions::SetBloomLayerHistogramCutoffs,
+			actions::SetBloomLayerUchimuraParams,
+			actions::SetBloomLayerAutoTuneEnabled,
+			actions::SetBloomLayerAutoTuneConstraints,
+			actions::SetBloomLayerCdlParams,
+			actions::SetBloomLayerWhiteBalance,
+			actions::SetBloomLayerLtmEnabled,
+			actions::SetBloomLayerLtmParams,
+			actions::SetBloomLayerLtmWeights,
+			actions::SetBloomLayerLtmBoostLocalContrast,
 			actions::SetMoodEnabled,
 			actions::SetMoodUserOverride,
+			actions::SyncGrassActual,
+			actions::SyncWeatherActual,
+			actions::SyncAtmosphereActual,
+			actions::SyncDayNightActual,
+			actions::SyncParticleActual,
+			actions::SyncTerrainActual,
+			actions::SyncVolumetricActual,
+			actions::SyncErosionActual,
+			actions::SyncBloomActual,
+			actions::SyncMoodActual,
 			actions::SyncActual
 		>;
 
 		// Reducer must remain deterministic and completely side-effect free
 		inline SystemState AppReducer(const SystemState& previousState, const Action& action) {
 			SystemState newState = previousState; // Deep copy state snapshot
+
+			auto getBloomLayer = [&](bool isSky) -> BloomLayerSettings& {
+				return isSky ? newState.target.bloom.sky : newState.target.bloom.scene;
+			};
 
 			std::visit(overload {
 				[&](actions::SetGrassEnabled a) { newState.target.grass.enabled = a.value; },
@@ -356,6 +508,14 @@ namespace Boidsish {
 				[&](actions::SetCloudCoverage a) { newState.target.atmosphere.cloudCoverage = a.value; },
 				[&](actions::SetCloudWarp a) { newState.target.atmosphere.cloudWarp = a.value; },
 				[&](actions::SetCloudColor a) { newState.target.atmosphere.cloudColor = a.value; },
+				[&](actions::SetCloudSunLightScale a) { newState.target.atmosphere.cloudSunLightScale = a.value; },
+				[&](actions::SetCloudMoonLightScale a) { newState.target.atmosphere.cloudMoonLightScale = a.value; },
+				[&](actions::SetCloudPowderScale a) { newState.target.atmosphere.cloudPowderScale = a.value; },
+				[&](actions::SetCloudPowderMultiplier a) { newState.target.atmosphere.cloudPowderMultiplier = a.value; },
+				[&](actions::SetCloudPowderLocalScale a) { newState.target.atmosphere.cloudPowderLocalScale = a.value; },
+				[&](actions::SetCloudShadowOpticalDepthMultiplier a) { newState.target.atmosphere.cloudShadowOpticalDepthMultiplier = a.value; },
+				[&](actions::SetCloudShadowStepMultiplier a) { newState.target.atmosphere.cloudShadowStepMultiplier = a.value; },
+				[&](actions::SetCloudBeerPowderMix a) { newState.target.atmosphere.cloudBeerPowderMix = a.value; },
 				[&](actions::SetRayleighScale a) { newState.target.atmosphere.rayleighScale = a.value; },
 				[&](actions::SetMieScale a) { newState.target.atmosphere.mieScale = a.value; },
 				[&](actions::SetMieAnisotropy a) { newState.target.atmosphere.mieAnisotropy = a.value; },
@@ -368,6 +528,9 @@ namespace Boidsish {
 				[&](actions::SetOzoneAbsorption a) { newState.target.atmosphere.ozoneAbsorption = a.value; },
 				[&](actions::SetRayleighScaleHeight a) { newState.target.atmosphere.rayleighScaleHeight = a.value; },
 				[&](actions::SetMieScaleHeight a) { newState.target.atmosphere.mieScaleHeight = a.value; },
+				[&](actions::SetAtmosphereColorVarianceScale a) { newState.target.atmosphere.colorVarianceScale = a.value; },
+				[&](actions::SetAtmosphereColorVarianceStrength a) { newState.target.atmosphere.colorVarianceStrength = a.value; },
+				[&](actions::SetCloudShadowIntensity a) { newState.target.atmosphere.cloudShadowIntensity = a.value; },
 				[&](actions::SetDayNightEnabled a) { newState.target.dayNight.enabled = a.value; },
 				[&](actions::SetDayNightTime a) { newState.target.dayNight.time = a.value; },
 				[&](actions::SetDayNightSpeed a) { newState.target.dayNight.speed = a.value; },
@@ -404,8 +567,56 @@ namespace Boidsish {
 				[&](actions::SetErosionDetail a) { newState.target.erosion.detail = a.value; },
 				[&](actions::SetErosionGullyWeight a) { newState.target.erosion.gullyWeight = a.value; },
 				[&](actions::SetErosionMaxDist a) { newState.target.erosion.maxDist = a.value; },
+				[&](actions::SetBloomEnabled a) { newState.target.bloom.enabled = a.value; },
+				[&](actions::SetBloomIntensity a) { newState.target.bloom.intensity = a.value; },
+				[&](actions::SetBloomThreshold a) { newState.target.bloom.threshold = a.value; },
+				[&](actions::SetBloomLayerToneMappingEnabled a) { getBloomLayer(a.isSky).toneMappingEnabled = a.value; },
+				[&](actions::SetBloomLayerToneMappingMode a) { getBloomLayer(a.isSky).toneMappingMode = a.value; },
+				[&](actions::SetBloomLayerAutoExposureEnabled a) { getBloomLayer(a.isSky).autoExposureEnabled = a.value; },
+				[&](actions::SetBloomLayerTargetLuminance a) { getBloomLayer(a.isSky).targetLuminance = a.value; },
+				[&](actions::SetBloomLayerExposureLimits a) { getBloomLayer(a.isSky).minExposure = a.min; getBloomLayer(a.isSky).maxExposure = a.max; },
+				[&](actions::SetBloomLayerAdaptationSpeeds a) { getBloomLayer(a.isSky).speedUp = a.up; getBloomLayer(a.isSky).speedDown = a.down; },
+				[&](actions::SetBloomLayerCenterWeightTightness a) { getBloomLayer(a.isSky).centerWeightTightness = a.value; },
+				[&](actions::SetBloomLayerFocusPoint a) { getBloomLayer(a.isSky).focusPoint = a.value; },
+				[&](actions::SetBloomLayerHistogramCutoffs a) { getBloomLayer(a.isSky).histogramLowCutoff = a.low; getBloomLayer(a.isSky).histogramHighCutoff = a.high; },
+				[&](actions::SetBloomLayerUchimuraParams a) {
+					auto& l = getBloomLayer(a.isSky);
+					l.uchimuraP = a.P; l.uchimuraA = a.a; l.uchimuraM = a.m;
+					l.uchimuraL = a.l; l.uchimuraC = a.c; l.uchimuraB = a.b;
+				},
+				[&](actions::SetBloomLayerAutoTuneEnabled a) { getBloomLayer(a.isSky).autoTuneEnabled = a.value; },
+				[&](actions::SetBloomLayerAutoTuneConstraints a) {
+					auto& l = getBloomLayer(a.isSky);
+					l.minContrast = a.minC; l.maxContrast = a.maxC; l.targetBrightness = a.targetB;
+				},
+				[&](actions::SetBloomLayerCdlParams a) {
+					auto& l = getBloomLayer(a.isSky);
+					l.cdlSlope = a.slope; l.cdlOffset = a.offset; l.cdlPower = a.power; l.cdlSaturation = a.saturation;
+				},
+				[&](actions::SetBloomLayerWhiteBalance a) { getBloomLayer(a.isSky).whiteTemp = a.temp; getBloomLayer(a.isSky).whiteTint = a.tint; },
+				[&](actions::SetBloomLayerLtmEnabled a) { getBloomLayer(a.isSky).ltmEnabled = a.value; },
+				[&](actions::SetBloomLayerLtmParams a) {
+					auto& l = getBloomLayer(a.isSky);
+					l.ltmEvSpread = a.evSpread; l.ltmTarget = a.target; l.ltmSigma = a.sigma;
+				},
+				[&](actions::SetBloomLayerLtmWeights a) {
+					auto& l = getBloomLayer(a.isSky);
+					l.ltmWeightContrast = a.contrast; l.ltmWeightSaturation = a.saturation; l.ltmWeightExposedness = a.exposedness;
+				},
+				[&](actions::SetBloomLayerLtmBoostLocalContrast a) { getBloomLayer(a.isSky).ltmBoostLocalContrast = a.value; },
+
 				[&](actions::SetMoodEnabled a) { newState.target.mood.enabled = a.value; },
 				[&](actions::SetMoodUserOverride a) { newState.target.mood.userOverride = a.value; },
+				[&](actions::SyncGrassActual a) { newState.actual.grass = a.value; },
+				[&](actions::SyncWeatherActual a) { newState.actual.weather = a.value; },
+				[&](actions::SyncAtmosphereActual a) { newState.actual.atmosphere = a.value; },
+				[&](actions::SyncDayNightActual a) { newState.actual.dayNight = a.value; },
+				[&](actions::SyncParticleActual a) { newState.actual.particles = a.value; },
+				[&](actions::SyncTerrainActual a) { newState.actual.terrain = a.value; },
+				[&](actions::SyncVolumetricActual a) { newState.actual.volumetric = a.value; },
+				[&](actions::SyncErosionActual a) { newState.actual.erosion = a.value; },
+				[&](actions::SyncBloomActual a) { newState.actual.bloom = a.value; },
+				[&](actions::SyncMoodActual a) { newState.actual.mood = a.value; },
 				[&](actions::SyncActual a) { newState.actual = a.actual; }
 			}, action);
 
@@ -438,5 +649,7 @@ namespace Boidsish {
 			SystemState           m_state;
 			std::vector<Listener> m_listeners;
 		};
+
+		void SyncBloomState(void* effect);
 	}; // namespace state
 }; // namespace Boidsish

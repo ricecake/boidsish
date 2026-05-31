@@ -6,6 +6,8 @@
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtx/quaternion.hpp>
 #include "logger.h"
+#include "service_locator.h"
+#include "state.h"
 
 namespace Boidsish {
 
@@ -721,6 +723,19 @@ namespace Boidsish {
         SMOOTH_S(mieScattering, InterpType::Logarithmic);
         SMOOTH_S(mieExtinction, InterpType::Logarithmic);
         #undef SMOOTH_S
+    }
+
+    void MoodManager::SyncState() {
+        auto store = ServiceLocator::Instance().Get<state::Store>();
+        state::MoodSettings actual;
+        actual.enabled = _enabled;
+        actual.userOverride = _overrideEnabled;
+        store->Dispatch(state::actions::SyncMoodActual{actual});
+    }
+
+    void MoodManager::ApplyTargetState(const state::SystemConfiguration& config) {
+        SetEnabled(config.mood.enabled);
+        SetOverride(GetBlendedSettings(), config.mood.userOverride);
     }
 
 } // namespace Boidsish

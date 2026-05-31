@@ -661,92 +661,17 @@ namespace Boidsish {
 			service_locator_.Provide<state::Store>(store);
 
 			store->Subscribe([this](const state::SystemState& state) {
-				// React to target changes
-				if (grass_manager) {
-					grass_manager->SetEnabled(state.target.grass.enabled);
-					GlobalGrassProperties props = grass_manager->GetGlobalProperties();
-					props.lengthMultiplier = state.target.grass.lengthMultiplier;
-					props.widthMultiplier = state.target.grass.widthMultiplier;
-					props.densityMultiplier = state.target.grass.densityMultiplier;
-					props.rigidityMultiplier = state.target.grass.rigidityMultiplier;
-					props.windMultiplier = state.target.grass.windMultiplier;
-					grass_manager->SetGlobalProperties(props);
-				}
-
-				if (weather_manager) {
-					weather_manager->SetEnabled(state.target.weather.enabled);
-					weather_manager->SetTimeScale(state.target.weather.timeScale);
-					weather_manager->SetSpatialScale(state.target.weather.spatialScale);
-					weather_manager->SetHoldThreshold(state.target.weather.holdThreshold);
-
-					weather_manager->SetTarget(WeatherAttribute::Temperature, state.target.weather.temperature);
-					weather_manager->SetTarget(WeatherAttribute::Precipitation, state.target.weather.precipitation);
-					weather_manager->SetTarget(WeatherAttribute::Humidity, state.target.weather.humidity);
-					weather_manager->SetTarget(WeatherAttribute::WindStrength, state.target.weather.windStrength);
-					weather_manager->SetTarget(WeatherAttribute::WindSpeed, state.target.weather.windSpeed);
-					weather_manager->SetTarget(WeatherAttribute::WindFrequency, state.target.weather.windFrequency);
-					weather_manager->SetTarget(WeatherAttribute::CloudCoverage, state.target.weather.cloudCoverage);
-
-					weather_manager->SetMacroSimEnabled(state.target.weather.macroSimEnabled);
-					weather_manager->SetSimTau(state.target.weather.simTau);
-					weather_manager->SetStrictEnforcement(state.target.weather.strictEnforcement);
-					weather_manager->SetNudgeStiffness(state.target.weather.nudgeStiffness);
-				}
-
-				if (atmosphere_effect) {
-					atmosphere_effect->SetEnabled(state.target.atmosphere.enabled);
-					atmosphere_effect->SetHazeDensity(state.target.atmosphere.hazeDensity);
-					atmosphere_effect->SetHazeHeight(state.target.atmosphere.hazeHeight);
-					atmosphere_effect->SetHazeColor(state.target.atmosphere.hazeColor);
-					atmosphere_effect->SetCloudDensity(state.target.atmosphere.cloudDensity);
-					atmosphere_effect->SetCloudAltitude(state.target.atmosphere.cloudAltitude);
-					atmosphere_effect->SetCloudThickness(state.target.atmosphere.cloudThickness);
-					atmosphere_effect->SetCloudCoverage(state.target.atmosphere.cloudCoverage);
-					atmosphere_effect->SetCloudWarp(state.target.atmosphere.cloudWarp);
-					atmosphere_effect->SetCloudColor(state.target.atmosphere.cloudColor);
-					atmosphere_effect->SetRayleighScale(state.target.atmosphere.rayleighScale);
-					atmosphere_effect->SetMieScale(state.target.atmosphere.mieScale);
-					atmosphere_effect->SetMieAnisotropy(state.target.atmosphere.mieAnisotropy);
-					atmosphere_effect->SetMultiScatScale(state.target.atmosphere.multiScatScale);
-					atmosphere_effect->SetAmbientScatScale(state.target.atmosphere.ambientScatScale);
-					atmosphere_effect->SetAtmosphereHeight(state.target.atmosphere.atmosphereHeight);
-					atmosphere_effect->SetRayleighScattering(state.target.atmosphere.rayleighScattering);
-					atmosphere_effect->SetMieScattering(state.target.atmosphere.mieScattering);
-					atmosphere_effect->SetMieExtinction(state.target.atmosphere.mieExtinction);
-					atmosphere_effect->SetOzoneAbsorption(state.target.atmosphere.ozoneAbsorption);
-					atmosphere_effect->SetRayleighScaleHeight(state.target.atmosphere.rayleighScaleHeight);
-					atmosphere_effect->SetMieScaleHeight(state.target.atmosphere.mieScaleHeight);
-				}
-
-				if (light_manager) {
-					auto& cycle = light_manager->GetDayNightCycle();
-					cycle.enabled = state.target.dayNight.enabled;
-					cycle.time = state.target.dayNight.time;
-					cycle.speed = state.target.dayNight.speed;
-					cycle.paused = state.target.dayNight.paused;
-					cycle.lunar_albedo = state.target.dayNight.lunarAlbedo;
-					cycle.moon_tint = state.target.dayNight.moonTint;
-					cycle.lunar_month = state.target.dayNight.lunarMonth;
-					cycle.moon_phase_days = state.target.dayNight.moonPhaseDays;
-				}
-
-				if (fire_effect_manager) {
-					// Limits are usually set via ConfigManager, but let's sync them if they are in state
-					auto& cfg = ConfigManager::GetInstance();
-					cfg.SetInt("particle_limit_birds", state.target.particles.limitBirds);
-					cfg.SetInt("particle_limit_leaves", state.target.particles.limitLeaves);
-					cfg.SetInt("particle_limit_petals", state.target.particles.limitPetals);
-					cfg.SetInt("particle_limit_bubbles", state.target.particles.limitBubbles);
-					cfg.SetInt("particle_limit_fireflies", state.target.particles.limitFireflies);
-					cfg.SetInt("particle_limit_snow", state.target.particles.limitSnow);
-					cfg.SetInt("particle_limit_rain", state.target.particles.limitRain);
-					cfg.SetInt("particle_limit_dust", state.target.particles.limitDust);
-				}
+				// React to target changes by delegating to managers
+				if (grass_manager) grass_manager->ApplyTargetState(state.target);
+				if (weather_manager) weather_manager->ApplyTargetState(state.target);
+				if (atmosphere_manager) atmosphere_manager->ApplyTargetState(state.target);
+				if (light_manager) light_manager->ApplyTargetState(state.target);
+				if (fire_effect_manager) fire_effect_manager->ApplyTargetState(state.target);
+				if (mood_manager) mood_manager->ApplyTargetState(state.target);
+				if (bloom_effect) bloom_effect->ApplyTargetState(state.target);
+				if (volumetric_effect) volumetric_effect->ApplyTargetState(state.target);
 
 				auto& cfg = ConfigManager::GetInstance();
-				cfg.SetBool("particles_enabled", state.target.particles.enabled);
-				cfg.SetFloat("ambient_particle_density", state.target.particles.ambientDensity);
-
 				cfg.SetBool("render_terrain", state.target.terrain.renderTerrain);
 				cfg.SetBool("render_floor", state.target.terrain.renderFloor);
 				cfg.SetBool("force_both_floor_and_terrain", state.target.terrain.forceBoth);
@@ -754,24 +679,12 @@ namespace Boidsish {
 				if (decor_manager) decor_manager->SetEnabled(state.target.terrain.foliageEnabled);
 				cfg.SetFloat("foliage_culling_pixel_threshold", state.target.terrain.foliagePixelThreshold);
 
-				if (volumetric_effect) {
-					volumetric_effect->SetEnabled(state.target.volumetric.enabled);
-					volumetric_effect->SetIntensity(state.target.volumetric.intensity);
-					volumetric_effect->SetScatteringAnisotropy(state.target.volumetric.anisotropy);
-					volumetric_effect->SetTemporalAlpha(state.target.volumetric.temporalAlpha);
-				}
-
 				cfg.SetBool("erosion_enabled", state.target.erosion.enabled);
 				cfg.SetFloat("erosion_strength", state.target.erosion.strength);
 				cfg.SetFloat("erosion_scale", state.target.erosion.scale);
 				cfg.SetFloat("erosion_detail", state.target.erosion.detail);
 				cfg.SetFloat("erosion_gully_weight", state.target.erosion.gullyWeight);
 				cfg.SetFloat("erosion_max_dist", state.target.erosion.maxDist);
-
-				if (mood_manager) {
-					mood_manager->SetEnabled(state.target.mood.enabled);
-					mood_manager->SetOverride(mood_manager->GetBlendedSettings(), state.target.mood.userOverride);
-				}
 			});
 		}
 
@@ -2673,126 +2586,44 @@ namespace Boidsish {
 		}
 
 		void SyncStateToStore() {
+			if (grass_manager) grass_manager->SyncState();
+			if (weather_manager) weather_manager->SyncState();
+			if (atmosphere_manager) atmosphere_manager->SyncState();
+			if (light_manager) light_manager->SyncState();
+			if (fire_effect_manager) fire_effect_manager->SyncState();
+			if (mood_manager) mood_manager->SyncState();
+			if (bloom_effect) bloom_effect->SyncState();
+
+			// Granular sync for other systems
 			auto store = service_locator_.Get<state::Store>();
-			state::SystemConfiguration actual;
 
-			if (grass_manager) {
-				actual.grass.enabled = grass_manager->IsEnabled();
-				auto props = grass_manager->GetGlobalProperties();
-				actual.grass.lengthMultiplier = props.lengthMultiplier;
-				actual.grass.widthMultiplier = props.widthMultiplier;
-				actual.grass.densityMultiplier = props.densityMultiplier;
-				actual.grass.rigidityMultiplier = props.rigidityMultiplier;
-				actual.grass.windMultiplier = props.windMultiplier;
-			}
-
-			if (weather_manager) {
-				actual.weather.enabled = weather_manager->IsEnabled();
-				actual.weather.timeScale = weather_manager->GetTimeScale();
-				actual.weather.spatialScale = weather_manager->GetSpatialScale();
-				actual.weather.holdThreshold = weather_manager->GetHoldThreshold();
-				const auto& cur = weather_manager->GetCurrentWeather();
-				actual.weather.temperature = cur.temperature;
-				actual.weather.precipitation = cur.precipitation;
-				actual.weather.humidity = cur.humidity;
-				actual.weather.windStrength = cur.wind_strength;
-				actual.weather.windSpeed = cur.wind_speed;
-				actual.weather.windFrequency = cur.wind_frequency;
-				actual.weather.cloudCoverage = cur.cloud_coverage;
-				actual.weather.macroSimEnabled = weather_manager->IsMacroSimEnabled();
-				actual.weather.simTau = weather_manager->GetSimTau();
-				actual.weather.strictEnforcement = weather_manager->IsStrictEnforcementEnabled();
-				actual.weather.nudgeStiffness = weather_manager->GetNudgeStiffness();
-			}
-
-			if (atmosphere_effect) {
-				actual.atmosphere.enabled = atmosphere_effect->IsEnabled();
-				actual.atmosphere.hazeDensity = atmosphere_effect->GetHazeDensity();
-				actual.atmosphere.hazeHeight = atmosphere_effect->GetHazeHeight();
-				actual.atmosphere.hazeColor = atmosphere_effect->GetHazeColor();
-				actual.atmosphere.cloudDensity = atmosphere_effect->GetCloudDensity();
-				actual.atmosphere.cloudAltitude = atmosphere_effect->GetCloudAltitude();
-				actual.atmosphere.cloudThickness = atmosphere_effect->GetCloudThickness();
-				actual.atmosphere.cloudCoverage = atmosphere_effect->GetCloudCoverage();
-				actual.atmosphere.cloudWarp = atmosphere_effect->GetCloudWarp();
-				actual.atmosphere.cloudColor = atmosphere_effect->GetCloudColor();
-				actual.atmosphere.rayleighScale = atmosphere_effect->GetRayleighScale();
-				actual.atmosphere.mieScale = atmosphere_effect->GetMieScale();
-				actual.atmosphere.mieAnisotropy = atmosphere_effect->GetMieAnisotropy();
-				actual.atmosphere.multiScatScale = atmosphere_effect->GetMultiScatScale();
-				actual.atmosphere.ambientScatScale = atmosphere_effect->GetAmbientScatScale();
-				actual.atmosphere.atmosphereHeight = atmosphere_effect->GetAtmosphereHeight();
-				actual.atmosphere.rayleighScattering = atmosphere_effect->GetRayleighScattering();
-				actual.atmosphere.mieScattering = atmosphere_effect->GetMieScattering();
-				actual.atmosphere.mieExtinction = atmosphere_effect->GetMieExtinction();
-				actual.atmosphere.ozoneAbsorption = atmosphere_effect->GetOzoneAbsorption();
-				actual.atmosphere.rayleighScaleHeight = atmosphere_effect->GetRayleighScaleHeight();
-				actual.atmosphere.mieScaleHeight = atmosphere_effect->GetMieScaleHeight();
-			}
-
-			if (light_manager) {
-				const auto& cycle = light_manager->GetDayNightCycle();
-				actual.dayNight.enabled = cycle.enabled;
-				actual.dayNight.time = cycle.time;
-				actual.dayNight.speed = cycle.speed;
-				actual.dayNight.paused = cycle.paused;
-				actual.dayNight.lunarAlbedo = cycle.lunar_albedo;
-				actual.dayNight.moonTint = cycle.moon_tint;
-				actual.dayNight.lunarMonth = cycle.lunar_month;
-				actual.dayNight.moonPhaseDays = cycle.moon_phase_days;
-			}
-
-			if (fire_effect_manager) {
-				auto stats = fire_effect_manager->GetStats();
-				actual.particles.countBirds = stats.count_birds;
-				actual.particles.countLeaves = stats.count_leaves;
-				actual.particles.countPetals = stats.count_petals;
-				actual.particles.countBubbles = stats.count_bubbles;
-				actual.particles.countFireflies = stats.count_fireflies;
-				actual.particles.countSnow = stats.count_snow;
-				actual.particles.countRain = stats.count_rain;
-				actual.particles.countDust = stats.count_dust;
-
-				actual.particles.limitBirds = stats.limit_birds;
-				actual.particles.limitLeaves = stats.limit_leaves;
-				actual.particles.limitPetals = stats.limit_petals;
-				actual.particles.limitBubbles = stats.limit_bubbles;
-				actual.particles.limitFireflies = stats.limit_fireflies;
-				actual.particles.limitSnow = stats.limit_snow;
-				actual.particles.limitRain = stats.limit_rain;
-				actual.particles.limitDust = stats.limit_dust;
-			}
-
-			actual.particles.enabled = frame_config_.effects_enabled; // Or specific particle enabled flag
-			actual.particles.ambientDensity = frame_config_.ambient_particle_density;
-
-			actual.terrain.renderTerrain = frame_config_.render_terrain;
-			actual.terrain.renderFloor = frame_config_.render_floor;
-			actual.terrain.forceBoth = frame_config_.force_both_floor_and_terrain;
-			actual.terrain.worldScale = terrain_generator ? terrain_generator->GetWorldScale() : 1.0f;
-			actual.terrain.foliageEnabled = frame_config_.render_decor;
-			actual.terrain.foliagePixelThreshold = ConfigManager::GetInstance().GetAppSettingFloat("foliage_culling_pixel_threshold", 10.0f);
+			state::TerrainSettings terrain_actual;
+			terrain_actual.renderTerrain = frame_config_.render_terrain;
+			terrain_actual.renderFloor = frame_config_.render_floor;
+			terrain_actual.forceBoth = frame_config_.force_both_floor_and_terrain;
+			terrain_actual.worldScale = terrain_generator ? terrain_generator->GetWorldScale() : 1.0f;
+			terrain_actual.foliageEnabled = frame_config_.render_decor;
+			terrain_actual.foliagePixelThreshold = ConfigManager::GetInstance().GetAppSettingFloat("foliage_culling_pixel_threshold", 10.0f);
+			store->Dispatch(state::actions::SyncTerrainActual{terrain_actual});
 
 			if (volumetric_effect) {
-				actual.volumetric.enabled = volumetric_effect->IsEnabled();
-				actual.volumetric.intensity = volumetric_effect->GetIntensity();
-				actual.volumetric.anisotropy = volumetric_effect->GetScatteringAnisotropy();
-				actual.volumetric.temporalAlpha = volumetric_effect->GetTemporalAlpha();
+				state::VolumetricSettings vol_actual;
+				vol_actual.enabled = volumetric_effect->IsEnabled();
+				vol_actual.intensity = volumetric_effect->GetIntensity();
+				vol_actual.anisotropy = volumetric_effect->GetScatteringAnisotropy();
+				vol_actual.temporalAlpha = volumetric_effect->GetTemporalAlpha();
+				store->Dispatch(state::actions::SyncVolumetricActual{vol_actual});
 			}
 
-			actual.erosion.enabled = frame_config_.erosion_enabled;
-			actual.erosion.strength = frame_config_.erosion_strength;
-			actual.erosion.scale = frame_config_.erosion_scale;
-			actual.erosion.detail = frame_config_.erosion_detail;
-			actual.erosion.gullyWeight = frame_config_.erosion_gully_weight;
-			actual.erosion.maxDist = frame_config_.erosion_max_dist;
+			state::ErosionSettings erosion_actual;
+			erosion_actual.enabled = frame_config_.erosion_enabled;
+			erosion_actual.strength = frame_config_.erosion_strength;
+			erosion_actual.scale = frame_config_.erosion_scale;
+			erosion_actual.detail = frame_config_.erosion_detail;
+			erosion_actual.gullyWeight = frame_config_.erosion_gully_weight;
+			erosion_actual.maxDist = frame_config_.erosion_max_dist;
+			store->Dispatch(state::actions::SyncErosionActual{erosion_actual});
 
-			if (mood_manager) {
-				actual.mood.enabled = mood_manager->IsEnabled();
-				actual.mood.userOverride = mood_manager->IsOverrideEnabled();
-			}
-
-			store->Dispatch(state::actions::SyncActual{actual});
 		}
 
 		void UpdateSystems(const FrameData& frame) {
