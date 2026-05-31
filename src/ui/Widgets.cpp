@@ -6,8 +6,8 @@
 
 namespace Boidsish {
 	namespace UI {
-		void SliderFloatWithActual(const char* label, float* target, float actual, float min, float max) {
-			ImGui::SliderFloat(label, target, min, max);
+		bool SliderFloatWithActual(const char* label, float* target, float actual, float min, float max) {
+			bool changed = ImGui::SliderFloat(label, target, min, max);
 
 			ImDrawList* draw_list = ImGui::GetWindowDrawList();
 			ImVec2      widget_pos = ImGui::GetItemRectMin();
@@ -27,6 +27,8 @@ namespace Boidsish {
 
 			draw_list->AddTriangleFilled(p1, p2, p3, IM_COL32(0, 255, 255, 200));
 			draw_list->AddTriangle(p1, p2, p3, IM_COL32(255, 255, 255, 200), 1.0f);
+
+			return changed;
 		}
 	} // namespace UI
 } // namespace Boidsish

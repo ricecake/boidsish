@@ -13,6 +13,7 @@
 #include "terrain_render_manager.h"
 #include "ConfigManager.h"
 #include "lightning_manager.h"
+#include "state.h"
 
 namespace Boidsish {
 
