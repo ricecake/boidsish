@@ -175,6 +175,58 @@ namespace Boidsish {
 		}
 	}
 
+	std::vector<ShadowCasterInfo> ShadowRenderPass::GetShadowCasterInfos(const FrameData& frame) const {
+		std::vector<ShadowCasterInfo> casters;
+
+		// We want to cull decor based on what could cast shadows into the camera frustum.
+		// For directional lights, the shadow maps cover specific cascades.
+		// We use the widest/furthest cascade to capture all potential casters.
+		auto corners = Frustum::GetCorners(frame.projection * frame.view);
+
+		for (auto light : shadow_lights_) {
+			if (!light->casts_shadow)
+				continue;
+
+			glm::mat4 light_space_matrix;
+			if (light->type == DIRECTIONAL_LIGHT) {
+				// Use the furthest cascade for culling
+				light_space_matrix = shadow_manager_.CalculateLightSpaceMatrix(
+					*light,
+					scene_center_,
+					500.0f * std::max(1.0f, frame.world_scale),
+					ShadowManager::kMaxCascades - 1,
+					frame.view,
+					frame.camera_fov,
+					(float)frame.window_width / (float)frame.window_height
+				);
+			} else {
+				light_space_matrix = shadow_manager_.CalculateLightSpaceMatrix(
+					*light,
+					scene_center_,
+					500.0f * std::max(1.0f, frame.world_scale)
+				);
+			}
+
+			ShadowCasterInfo info;
+			info.light_space_matrix = light_space_matrix;
+
+			// Compute camera frustum bounds in light space
+			info.frustum_min = glm::vec3(1e30f);
+			info.frustum_max = glm::vec3(-1e30f);
+
+			for (const auto& corner : corners) {
+				glm::vec4 ls_corner = light_space_matrix * corner;
+				glm::vec3 ls_pos = glm::vec3(ls_corner) / ls_corner.w;
+				info.frustum_min = glm::min(info.frustum_min, ls_pos);
+				info.frustum_max = glm::max(info.frustum_max, ls_pos);
+			}
+
+			casters.push_back(info);
+		}
+
+		return casters;
+	}
+
 	void ShadowRenderPass::Execute(const FrameData& frame, ShapeRenderCallback render_shapes) {
 		if (maps_to_update_.empty())
 			return;
@@ -211,15 +263,16 @@ namespace Boidsish {
 				? glm::normalize(-light->direction)
 				: glm::normalize(light->position - scene_center_);
 
-			// decor_manager_.Cull(
-			// 	frame.view,
-			// 	frame.projection,
-			// 	ShadowManager::kShadowMapSize,
-			// 	ShadowManager::kShadowMapSize,
-			// 	shadow_manager_.GetLightSpaceMatrix(best_info.map_index),
-			// 	light_dir_to_light,
-			// 	terrain_render_manager_
-			// );
+			decor_manager_.Cull(
+				frame.view,
+				frame.projection,
+				ShadowManager::kShadowMapSize,
+				ShadowManager::kShadowMapSize,
+				{}, // No shadow casters for shadow pass culling
+				shadow_manager_.GetLightSpaceMatrix(best_info.map_index),
+				light_dir_to_light,
+				terrain_render_manager_
+			);
 
 			for (int map_idx : map_indices) {
 				const auto& info = shadow_map_registry_[map_idx];
