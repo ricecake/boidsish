@@ -660,31 +660,79 @@ namespace Boidsish {
 			auto store = std::make_shared<state::Store>(state::AppReducer, initial_state);
 			service_locator_.Provide<state::Store>(store);
 
-			store->Subscribe([this](const state::SystemState& state) {
-				// React to target changes by delegating to managers
-				if (grass_manager) grass_manager->ApplyTargetState(state.target);
-				if (weather_manager) weather_manager->ApplyTargetState(state.target);
-				if (atmosphere_manager) atmosphere_manager->ApplyTargetState(state.target);
-				if (light_manager) light_manager->ApplyTargetState(state.target);
-				if (fire_effect_manager) fire_effect_manager->ApplyTargetState(state.target);
-				if (mood_manager) mood_manager->ApplyTargetState(state.target);
-				if (bloom_effect) bloom_effect->ApplyTargetState(state.target);
-				if (volumetric_effect) volumetric_effect->ApplyTargetState(state.target);
-
+			store->SubscribeGrass([this](const state::GrassSettings& s) {
+				if (grass_manager) {
+					state::SystemConfiguration config;
+					config.grass = s;
+					grass_manager->ApplyTargetState(config);
+				}
+			});
+			store->SubscribeWeather([this](const state::WeatherSettings& s) {
+				if (weather_manager) {
+					state::SystemConfiguration config;
+					config.weather = s;
+					weather_manager->ApplyTargetState(config);
+				}
+			});
+			store->SubscribeAtmosphere([this](const state::AtmosphereSettings& s) {
+				if (atmosphere_manager) {
+					state::SystemConfiguration config;
+					config.atmosphere = s;
+					atmosphere_manager->ApplyTargetState(config);
+				}
+			});
+			store->SubscribeDayNight([this](const state::DayNightSettings& s) {
+				if (light_manager) {
+					state::SystemConfiguration config;
+					config.dayNight = s;
+					light_manager->ApplyTargetState(config);
+				}
+			});
+			store->SubscribeParticles([this](const state::ParticleSettings& s) {
+				if (fire_effect_manager) {
+					state::SystemConfiguration config;
+					config.particles = s;
+					fire_effect_manager->ApplyTargetState(config);
+				}
+			});
+			store->SubscribeTerrain([this](const state::TerrainSettings& s) {
 				auto& cfg = ConfigManager::GetInstance();
-				cfg.SetBool("render_terrain", state.target.terrain.renderTerrain);
-				cfg.SetBool("render_floor", state.target.terrain.renderFloor);
-				cfg.SetBool("force_both_floor_and_terrain", state.target.terrain.forceBoth);
-				if (terrain_generator) terrain_generator->SetWorldScale(state.target.terrain.worldScale);
-				if (decor_manager) decor_manager->SetEnabled(state.target.terrain.foliageEnabled);
-				cfg.SetFloat("foliage_culling_pixel_threshold", state.target.terrain.foliagePixelThreshold);
-
-				cfg.SetBool("erosion_enabled", state.target.erosion.enabled);
-				cfg.SetFloat("erosion_strength", state.target.erosion.strength);
-				cfg.SetFloat("erosion_scale", state.target.erosion.scale);
-				cfg.SetFloat("erosion_detail", state.target.erosion.detail);
-				cfg.SetFloat("erosion_gully_weight", state.target.erosion.gullyWeight);
-				cfg.SetFloat("erosion_max_dist", state.target.erosion.maxDist);
+				cfg.SetBool("render_terrain", s.renderTerrain);
+				cfg.SetBool("render_floor", s.renderFloor);
+				cfg.SetBool("force_both_floor_and_terrain", s.forceBoth);
+				if (terrain_generator) terrain_generator->SetWorldScale(s.worldScale);
+				if (decor_manager) decor_manager->SetEnabled(s.foliageEnabled);
+				cfg.SetFloat("foliage_culling_pixel_threshold", s.foliagePixelThreshold);
+			});
+			store->SubscribeVolumetric([this](const state::VolumetricSettings& s) {
+				if (volumetric_effect) {
+					state::SystemConfiguration config;
+					config.volumetric = s;
+					volumetric_effect->ApplyTargetState(config);
+				}
+			});
+			store->SubscribeErosion([this](const state::ErosionSettings& s) {
+				auto& cfg = ConfigManager::GetInstance();
+				cfg.SetBool("erosion_enabled", s.enabled);
+				cfg.SetFloat("erosion_strength", s.strength);
+				cfg.SetFloat("erosion_scale", s.scale);
+				cfg.SetFloat("erosion_detail", s.detail);
+				cfg.SetFloat("erosion_gully_weight", s.gullyWeight);
+				cfg.SetFloat("erosion_max_dist", s.maxDist);
+			});
+			store->SubscribeBloom([this](const state::BloomSettings& s) {
+				if (bloom_effect) {
+					state::SystemConfiguration config;
+					config.bloom = s;
+					bloom_effect->ApplyTargetState(config);
+				}
+			});
+			store->SubscribeMood([this](const state::MoodSettings& s) {
+				if (mood_manager) {
+					state::SystemConfiguration config;
+					config.mood = s;
+					mood_manager->ApplyTargetState(config);
+				}
 			});
 		}
 
@@ -2586,6 +2634,13 @@ namespace Boidsish {
 		}
 
 		void SyncStateToStore() {
+			// We trigger SyncState() on all managers.
+			// Instead of them dispatching granular actions which would each trigger Store::Dispatch
+			// (and thus expensive variant visits and state updates), we could potentially batch this.
+			// However, managers currently use their own logic to populate state.
+			// To optimize, we'll keep the granular SyncState calls but the Store::Dispatch is now faster
+			// and Process() batches the notifications.
+
 			if (grass_manager) grass_manager->SyncState();
 			if (weather_manager) weather_manager->SyncState();
 			if (atmosphere_manager) atmosphere_manager->SyncState();
@@ -2594,36 +2649,33 @@ namespace Boidsish {
 			if (mood_manager) mood_manager->SyncState();
 			if (bloom_effect) bloom_effect->SyncState();
 
-			// Granular sync for other systems
 			auto store = service_locator_.Get<state::Store>();
 
-			state::TerrainSettings terrain_actual;
-			terrain_actual.renderTerrain = frame_config_.render_terrain;
-			terrain_actual.renderFloor = frame_config_.render_floor;
-			terrain_actual.forceBoth = frame_config_.force_both_floor_and_terrain;
-			terrain_actual.worldScale = terrain_generator ? terrain_generator->GetWorldScale() : 1.0f;
-			terrain_actual.foliageEnabled = frame_config_.render_decor;
-			terrain_actual.foliagePixelThreshold = ConfigManager::GetInstance().GetAppSettingFloat("foliage_culling_pixel_threshold", 10.0f);
-			store->Dispatch(state::actions::SyncTerrainActual{terrain_actual});
+			// Batch the remaining simple systems into one dispatch if possible
+			state::SystemConfiguration actual = store->GetState().actual;
+
+			actual.terrain.renderTerrain = frame_config_.render_terrain;
+			actual.terrain.renderFloor = frame_config_.render_floor;
+			actual.terrain.forceBoth = frame_config_.force_both_floor_and_terrain;
+			actual.terrain.worldScale = terrain_generator ? terrain_generator->GetWorldScale() : 1.0f;
+			actual.terrain.foliageEnabled = frame_config_.render_decor;
+			actual.terrain.foliagePixelThreshold = ConfigManager::GetInstance().GetAppSettingFloat("foliage_culling_pixel_threshold", 10.0f);
 
 			if (volumetric_effect) {
-				state::VolumetricSettings vol_actual;
-				vol_actual.enabled = volumetric_effect->IsEnabled();
-				vol_actual.intensity = volumetric_effect->GetIntensity();
-				vol_actual.anisotropy = volumetric_effect->GetScatteringAnisotropy();
-				vol_actual.temporalAlpha = volumetric_effect->GetTemporalAlpha();
-				store->Dispatch(state::actions::SyncVolumetricActual{vol_actual});
+				actual.volumetric.enabled = volumetric_effect->IsEnabled();
+				actual.volumetric.intensity = volumetric_effect->GetIntensity();
+				actual.volumetric.anisotropy = volumetric_effect->GetScatteringAnisotropy();
+				actual.volumetric.temporalAlpha = volumetric_effect->GetTemporalAlpha();
 			}
 
-			state::ErosionSettings erosion_actual;
-			erosion_actual.enabled = frame_config_.erosion_enabled;
-			erosion_actual.strength = frame_config_.erosion_strength;
-			erosion_actual.scale = frame_config_.erosion_scale;
-			erosion_actual.detail = frame_config_.erosion_detail;
-			erosion_actual.gullyWeight = frame_config_.erosion_gully_weight;
-			erosion_actual.maxDist = frame_config_.erosion_max_dist;
-			store->Dispatch(state::actions::SyncErosionActual{erosion_actual});
+			actual.erosion.enabled = frame_config_.erosion_enabled;
+			actual.erosion.strength = frame_config_.erosion_strength;
+			actual.erosion.scale = frame_config_.erosion_scale;
+			actual.erosion.detail = frame_config_.erosion_detail;
+			actual.erosion.gullyWeight = frame_config_.erosion_gully_weight;
+			actual.erosion.maxDist = frame_config_.erosion_max_dist;
 
+			store->Dispatch(state::actions::SyncActual{actual});
 		}
 
 		void UpdateSystems(const FrameData& frame) {
@@ -3743,6 +3795,10 @@ namespace Boidsish {
 
 	void Visualizer::Render() {
 		PROJECT_PROFILE_SCOPE("Render");
+
+		auto store = impl->service_locator_.Get<state::Store>();
+		store->Process();
+
 		impl->RefreshFrameConfig();
 		impl->PrepareFrame();
 
