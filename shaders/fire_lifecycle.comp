@@ -15,6 +15,7 @@ uniform int   u_num_emitters;
 uniform int   u_num_chunks;
 uniform uint  u_grid_size;
 uniform float u_cell_size;
+uniform int   u_ambient_particle_scale;
 
 #ifndef TERRAIN_BIOME_MAP_DEFINED
 #define TERRAIN_BIOME_MAP_DEFINED

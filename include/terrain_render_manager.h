@@ -224,6 +224,10 @@ namespace Boidsish {
 		 */
 		void BindTerrainData(ShaderBase& shader_base) const;
 
+		GLuint GetTerrainDataUbo() const {
+			return terrain_data_ubo_;
+		}
+
 		/**
 		 * @brief Update the horizon map for newly added or modified chunks.
 		 */

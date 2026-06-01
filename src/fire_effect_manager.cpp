@@ -125,7 +125,9 @@ namespace Boidsish {
 		};
 
 		setup_comp_ubos(lifecycle_shader_.get());
+		lifecycle_shader_->bindUniformBlock("TerrainData", Constants::UboBinding::TerrainData());
 		setup_comp_ubos(behavior_shader_.get());
+		behavior_shader_->bindUniformBlock("TerrainData", Constants::UboBinding::TerrainData());
 
 		// Create buffers
 		glGenBuffers(1, &particle_buffer_);
@@ -269,7 +271,8 @@ namespace Boidsish {
 		GLuint                        extra_noise_texture,
 		GLuint                        visual_effects_ubo,
 		GLintptr                      vfx_offset,
-		GLsizeiptr                    vfx_size
+		GLsizeiptr                    vfx_size,
+		GLuint                        terrain_data_ubo
 	) {
 		PROJECT_PROFILE_SCOPE("FireEffectManager::Update");
 		std::lock_guard<std::mutex> lock(mutex_);
@@ -511,6 +514,10 @@ namespace Boidsish {
 			} else {
 				glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::VisualEffects(), visual_effects_ubo);
 			}
+		}
+
+		if (terrain_data_ubo != 0) {
+			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::TerrainData(), terrain_data_ubo);
 		}
 
 		// --- Phase 1: Lifecycle ---

@@ -2,7 +2,10 @@
 #define PARTICLE_LIFECYCLE_GLSL
 
 #include "helpers/constants.glsl"
+#include "helpers/terrain_common.glsl"
 #include "frustum.glsl"
+
+#define worldScale u_terrainParams.y
 
 void spawnDustParticle(
 	inout Particle p,
@@ -294,7 +297,7 @@ bool spawnAmbientParticle(
 
 			float total_weight = 0.0;
 			for (int i = 0; i < 6; i++) total_weight += weights[i];
-			if (total_weight <= 0.0) return;
+			if (total_weight <= 0.0) return false;
 
 			// Pick type based on weighted probability
 			float r = rand(spawnSeed + 6.6) * total_weight;
@@ -303,12 +306,12 @@ bool spawnAmbientParticle(
 			for (int i = 0; i < 6; i++) {
 				cumulative += weights[i];
 				if (r <= cumulative) {
-					if (i == 0) { if (atomicAdd(stats.count_birds, 1) < stats.limit_birds) selected_style = STYLE_BIRDS; else atomicSub(stats.count_birds, 1); }
-					else if (i == 1) { if (atomicAdd(stats.count_leaves, 1) < stats.limit_leaves) selected_style = STYLE_LEAF; else atomicSub(stats.count_leaves, 1); }
-					else if (i == 2) { if (atomicAdd(stats.count_petals, 1) < stats.limit_petals) selected_style = STYLE_PETAL; else atomicSub(stats.count_petals, 1); }
-					else if (i == 3) { if (atomicAdd(stats.count_bubbles, 1) < stats.limit_bubbles) selected_style = STYLE_BUBBLES; else atomicSub(stats.count_bubbles, 1); }
-					else if (i == 4) { if (atomicAdd(stats.count_fireflies, 1) < stats.limit_fireflies) selected_style = STYLE_FIREFLIES; else atomicSub(stats.count_fireflies, 1); }
-					else if (i == 5) { if (atomicAdd(stats.count_fairies, 1) < stats.limit_fairies) selected_style = STYLE_FAIRY; else atomicSub(stats.count_fairies, 1); }
+					if (i == 0) { if (atomicAdd(stats.count_birds, 1) < stats.limit_birds) selected_style = STYLE_BIRDS; else atomicAdd(stats.count_birds, 0xFFFFFFFFU); }
+					else if (i == 1) { if (atomicAdd(stats.count_leaves, 1) < stats.limit_leaves) selected_style = STYLE_LEAF; else atomicAdd(stats.count_leaves, 0xFFFFFFFFU); }
+					else if (i == 2) { if (atomicAdd(stats.count_petals, 1) < stats.limit_petals) selected_style = STYLE_PETAL; else atomicAdd(stats.count_petals, 0xFFFFFFFFU); }
+					else if (i == 3) { if (atomicAdd(stats.count_bubbles, 1) < stats.limit_bubbles) selected_style = STYLE_BUBBLES; else atomicAdd(stats.count_bubbles, 0xFFFFFFFFU); }
+					else if (i == 4) { if (atomicAdd(stats.count_fireflies, 1) < stats.limit_fireflies) selected_style = STYLE_FIREFLIES; else atomicAdd(stats.count_fireflies, 0xFFFFFFFFU); }
+					else if (i == 5) { if (atomicAdd(stats.count_fairies, 1) < stats.limit_fairies) selected_style = STYLE_FAIRY; else atomicAdd(stats.count_fairies, 0xFFFFFFFFU); }
 					break;
 				}
 			}
@@ -409,13 +412,13 @@ bool spawnEnvironmentalQueue(inout Particle p, uint gid, float time, float ambie
 
 	if (rain_intensity > 0.01) {
 		if (atomicAdd(stats.count_rain, 1) < stats.limit_rain) selected_style = STYLE_RAIN;
-		else atomicSub(stats.count_rain, 1);
+		else atomicAdd(stats.count_rain, 0xFFFFFFFFU);
 	} else if (snow_intensity > 0.01) {
 		if (atomicAdd(stats.count_snow, 1) < stats.limit_snow) selected_style = STYLE_SNOW;
-		else atomicSub(stats.count_snow, 1);
+		else atomicAdd(stats.count_snow, 0xFFFFFFFFU);
 	} else if (dust_threshold > 0.01) {
 		if (atomicAdd(stats.count_dust, 1) < stats.limit_dust) selected_style = STYLE_DUST;
-		else atomicSub(stats.count_dust, 1);
+		else atomicAdd(stats.count_dust, 0xFFFFFFFFU);
 	}
 
 	if (selected_style != -1) {
