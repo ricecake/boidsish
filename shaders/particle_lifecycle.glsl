@@ -2,7 +2,10 @@
 #define PARTICLE_LIFECYCLE_GLSL
 
 #include "helpers/constants.glsl"
+#include "helpers/terrain_common.glsl"
 #include "frustum.glsl"
+
+#define worldScale u_terrainParams.y
 
 void spawnDustParticle(
 	inout Particle p,
@@ -28,15 +31,16 @@ bool updateLifetime(
 	vec3           viewPos,
 	vec3           viewDir
 ) {
-	// Hijack/Clear Logic
+	// Hijack/Clear/Rebalance Logic
+	// If the emitter_index for this slot has changed, kill the particle immediately to allow re-balancing.
 	if (emitter_index != -1 && num_emitters > 0 && emitter_index < num_emitters) {
 		Emitter emitter = emitters[emitter_index];
-		// If emitter requests a clear, or if the particle was assigned to a different emitter (and is nearly dead), kill it.
-		// Note: We no longer kill live ambient particles (p.emitter_id < 0) immediately.
-		// They will live out their lifetime before the emitter takes over this slot.
-		if (emitter.request_clear != 0 || (p.emitter_id >= 0 && p.emitter_id != emitter.id && p.pos.w <= 0.50)) {
+		if (emitter.request_clear != 0 || p.emitter_id != emitter.id) {
 			p.pos.w = 0.0;
 		}
+	} else if (emitter_index == -1 && p.emitter_id >= 0) {
+		// Particle was an emitter particle, but now its slot is ambient.
+		p.pos.w = 0.0;
 	}
 
 	// Aging
@@ -195,11 +199,12 @@ void spawnEmitterParticle(
 	}
 }
 
-void spawnAmbientParticle(
+bool spawnAmbientParticle(
 	inout Particle p,
 	uint           gid,
 	float          time,
 	float          ambient_density,
+	uint           ambient_particle_scale,
 	int            num_chunks,
 	vec3           viewPos,
 	vec3           viewDir,
@@ -210,9 +215,9 @@ void spawnAmbientParticle(
 	float          cellSize,
 	uint           gridSize
 ) {
-	uint ambient_limit = uint(particles.length() * ambient_density);
+	uint ambient_pool_size = uint(ambient_density * float(ambient_particle_scale));
 	vec2 spawnSeed = vec2(float(gid) * 0.123, time * 0.456);
-	if (gid < (particles.length() - ambient_limit) || num_chunks <= 0) return;
+	if (gid < (particles.length() - ambient_pool_size) || num_chunks <= 0) return false;
 
 	uint  particleSeed = hash(gid ^ uint(time * 10.0));
 	float r_dist = randomFloat(particleSeed);
@@ -292,7 +297,7 @@ void spawnAmbientParticle(
 
 			float total_weight = 0.0;
 			for (int i = 0; i < 6; i++) total_weight += weights[i];
-			if (total_weight <= 0.0) return;
+			if (total_weight <= 0.0) return false;
 
 			// Pick type based on weighted probability
 			float r = rand(spawnSeed + 6.6) * total_weight;
@@ -301,17 +306,17 @@ void spawnAmbientParticle(
 			for (int i = 0; i < 6; i++) {
 				cumulative += weights[i];
 				if (r <= cumulative) {
-					if (i == 0) selected_style = STYLE_BIRDS;
-					else if (i == 1) selected_style = STYLE_LEAF;
-					else if (i == 2) selected_style = STYLE_PETAL;
-					else if (i == 3) selected_style = STYLE_BUBBLES;
-					else if (i == 4) selected_style = STYLE_FIREFLIES;
-					else if (i == 5) selected_style = STYLE_FAIRY;
+					if (i == 0) { if (atomicAdd(stats.count_birds, 1) < stats.limit_birds) selected_style = STYLE_BIRDS; else atomicAdd(stats.count_birds, 0xFFFFFFFFU); }
+					else if (i == 1) { if (atomicAdd(stats.count_leaves, 1) < stats.limit_leaves) selected_style = STYLE_LEAF; else atomicAdd(stats.count_leaves, 0xFFFFFFFFU); }
+					else if (i == 2) { if (atomicAdd(stats.count_petals, 1) < stats.limit_petals) selected_style = STYLE_PETAL; else atomicAdd(stats.count_petals, 0xFFFFFFFFU); }
+					else if (i == 3) { if (atomicAdd(stats.count_bubbles, 1) < stats.limit_bubbles) selected_style = STYLE_BUBBLES; else atomicAdd(stats.count_bubbles, 0xFFFFFFFFU); }
+					else if (i == 4) { if (atomicAdd(stats.count_fireflies, 1) < stats.limit_fireflies) selected_style = STYLE_FIREFLIES; else atomicAdd(stats.count_fireflies, 0xFFFFFFFFU); }
+					else if (i == 5) { if (atomicAdd(stats.count_fairies, 1) < stats.limit_fairies) selected_style = STYLE_FAIRY; else atomicAdd(stats.count_fairies, 0xFFFFFFFFU); }
 					break;
 				}
 			}
 
-			if (selected_style == -1) return;
+			if (selected_style == -1) return false;
 
 			float total_lifetime = 10.0 + rand(spawnSeed + 4.4) * 5.0;
 			float skipped_time = rand(spawnSeed + 7.7) * total_lifetime;
@@ -354,8 +359,10 @@ void spawnAmbientParticle(
 					heightmapArray
 				);
 			}
+			return true;
 		}
 	}
+	return false;
 }
 
 void spawnDustParticle(
@@ -390,22 +397,28 @@ void spawnDustParticle(
 	p.origin.w = 0.0;
 }
 
-void spawnEnvironmentalQueue(inout Particle p, uint gid, float time, vec3 viewPos) {
+bool spawnEnvironmentalQueue(inout Particle p, uint gid, float time, float ambient_density, uint ambient_particle_scale, vec3 viewPos) {
+	uint ambient_pool_size = uint(ambient_density * float(ambient_particle_scale));
+	if (gid < (particles.length() - ambient_pool_size)) return false;
+
 	vec2 seed = vec2(float(gid) * 0.123, time * 0.456);
 
 	// Random spawn chance to spread spawning over time
-	if (rand(seed + 0.77) > 0.1) return;
+	if (rand(seed + 0.77) > 0.1) return false;
 
 	// Determine which style to spawn based on weather and quotas
 	int selected_style = -1;
 	float dust_threshold = clamp(1.0 - wetness, 0.0, 1.0);
 
-	if (rain_intensity > 0.01 && stats.count_rain < stats.limit_rain) {
-		selected_style = STYLE_RAIN;
-	} else if (snow_intensity > 0.01 && stats.count_snow < stats.limit_snow) {
-		selected_style = STYLE_SNOW;
-	} else if (dust_threshold > 0.01 && stats.count_dust < stats.limit_dust) {
-		selected_style = STYLE_DUST;
+	if (rain_intensity > 0.01) {
+		if (atomicAdd(stats.count_rain, 1) < stats.limit_rain) selected_style = STYLE_RAIN;
+		else atomicAdd(stats.count_rain, 0xFFFFFFFFU);
+	} else if (snow_intensity > 0.01) {
+		if (atomicAdd(stats.count_snow, 1) < stats.limit_snow) selected_style = STYLE_SNOW;
+		else atomicAdd(stats.count_snow, 0xFFFFFFFFU);
+	} else if (dust_threshold > 0.01) {
+		if (atomicAdd(stats.count_dust, 1) < stats.limit_dust) selected_style = STYLE_DUST;
+		else atomicAdd(stats.count_dust, 0xFFFFFFFFU);
 	}
 
 	if (selected_style != -1) {
@@ -433,10 +446,12 @@ void spawnEnvironmentalQueue(inout Particle p, uint gid, float time, vec3 viewPo
 		p.emitter_id = -2; // Denotes environmental queue
 		p.origin.xyz = p.pos.xyz;
 		p.origin.w = 2.0;
+		return true;
 	}
+	return false;
 }
 
-void respawnParticle(
+bool respawnParticle(
 	inout Particle p,
 	uint           gid,
 	int            emitter_index,
@@ -444,6 +459,7 @@ void respawnParticle(
 	float          time,
 	float          dt,
 	float          ambient_density,
+	uint           ambient_particle_scale,
 	int            num_chunks,
 	vec3           viewPos,
 	vec3           viewDir,
@@ -458,15 +474,17 @@ void respawnParticle(
 		// --- 3a. Fire Effect Respawn ---
 		if (emitter_index != -1 && num_emitters > 0 && emitter_index < num_emitters) {
 			spawnEmitterParticle(p, gid, emitter_index, time, dt, curlTexture);
+			if (p.pos.w > 0.0) return true;
 		}
 
 		// --- 3b. Sparse Ambient Respawn ---
 		if (p.pos.w <= 0.0 && emitter_index == -1) {
-			spawnAmbientParticle(
+			if (spawnAmbientParticle(
 				p,
 				gid,
 				time,
 				ambient_density,
+				ambient_particle_scale,
 				num_chunks,
 				viewPos,
 				viewDir,
@@ -476,12 +494,12 @@ void respawnParticle(
 				biomeMap,
 				cellSize,
 				gridSize
-			);
+			)) return true;
 		}
 
 		// --- 3c. Environmental Queue Respawn ---
 		if (p.pos.w <= 0.0 && emitter_index == -1) {
-			spawnEnvironmentalQueue(p, gid, time, viewPos);
+			if (spawnEnvironmentalQueue(p, gid, time, ambient_density, ambient_particle_scale, viewPos)) return true;
 		}
 
 		if (p.pos.w <= 0.0) {
@@ -493,6 +511,7 @@ void respawnParticle(
 			}
 		}
 	}
+	return false;
 }
 
 void handleVisibility(Particle p, uint gid) {

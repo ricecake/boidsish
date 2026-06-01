@@ -521,23 +521,34 @@ void updateEnvironmentalQueueBehavior(
 	int            num_chunks,
 	sampler2DArray heightmapArray
 ) {
+	vec3 wind = getWindAtPosition(p.pos.xyz);
+	float maxSpeed = length(wind) * 0.5;
+
 	if (p.style == STYLE_RAIN) {
+		maxSpeed = 50.0;
 		updateRain(p, dt, time);
 	} else if (p.style == STYLE_SNOW) {
+		maxSpeed = 25.0;
 		updateSnow(p, dt, time);
 	} else if (p.style == STYLE_DUST) {
-		vec3 wind = getWindAtPosition(p.pos.xyz);
 		p.vel.xyz += wind * 3.0 * dt;
 		p.vel.xyz *= pow(0.95, dt / 0.016);
 		p.color = vec4(0.8, 0.8, 0.7, 0.3);
 		// p.phase = mix(0, mix(1, 2, smoothstep(500, 506, temperature)), smoothstep(270.0, 280.0, temperature));
 		p.phase = temperature;
 		p.vel.w = 8.0;
+
+		applyAmbientAvoidance(p, dt, time, viewPos, viewDir, curlTexture);
+
 	}
 
 	// Apply curl noise for non-uniform movement
 	float curlInfluence = (p.style == STYLE_RAIN) ? 0.5 : 2.0;
 	p.vel.xyz += curlNoise(p.pos.xyz, time, curlTexture) * curlInfluence * dt;
+
+	if (length(p.vel.xyz) > maxSpeed) {
+		p.vel.xyz = normalize(p.vel.xyz) * maxSpeed;
+	}
 
 	p.pos.xyz += p.vel.xyz * dt;
 
@@ -554,8 +565,10 @@ void updateEnvironmentalQueueBehavior(
 		p.pos.z = viewPos.z - sign(relPos.z) * (K_ENV_QUEUE_RADIUS - 0.5);
 	}
 
-	if (p.style != STYLE_DUST && handleTerrainCollision(p, num_chunks, heightmapArray)) {
-		p.pos.w = 0.0;
+	if (handleTerrainCollision(p, num_chunks, heightmapArray)) {
+		if(p.style != STYLE_DUST) {
+			p.pos.w = 0.0;
+		}
 	}
 }
 

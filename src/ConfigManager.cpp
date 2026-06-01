@@ -86,12 +86,15 @@ namespace Boidsish {
 		// Particle settings
 		GetAppSettingBool("particles_enabled", true);
 		GetAppSettingFloat("ambient_particle_density", Constants::Class::Particles::DefaultAmbientDensity());
-		GetAppSettingInt("particle_limit_birds", 1000);
-		GetAppSettingInt("particle_limit_leaves", 5000);
-		GetAppSettingInt("particle_limit_petals", 5000);
-		GetAppSettingInt("particle_limit_bubbles", 2000);
-		GetAppSettingInt("particle_limit_fireflies", 3000);
-		GetAppSettingInt("particle_limit_snow", 10000);
+		GetAppSettingFloat("particle_ratio_birds", 0.05f);
+		GetAppSettingFloat("particle_ratio_leaves", 0.25f);
+		GetAppSettingFloat("particle_ratio_petals", 0.25f);
+		GetAppSettingFloat("particle_ratio_bubbles", 0.15f);
+		GetAppSettingFloat("particle_ratio_fireflies", 0.25f);
+		GetAppSettingFloat("particle_ratio_fairies", 0.1f);
+		GetAppSettingFloat("particle_ratio_snow", 0.5f);
+		GetAppSettingFloat("particle_ratio_rain", 0.5f);
+		GetAppSettingFloat("particle_ratio_dust", 0.25f);
 
 		// SH Probe settings
 		GetAppSettingFloat("sh_probe_scaling", 1.0f);
