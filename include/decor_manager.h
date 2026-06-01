@@ -96,6 +96,8 @@ namespace Boidsish {
 		std::vector<DecorInstance> instances;
 	};
 
+	struct ShadowCasterInfo;
+
 	class DecorManager {
 	public:
 		DecorManager(ServiceLocator& loc);
@@ -147,6 +149,7 @@ namespace Boidsish {
 			const glm::mat4&                      projection,
 			int                                   viewport_width,
 			int                                   viewport_height,
+			const std::vector<ShadowCasterInfo>&  shadow_casters = {},
 			const std::optional<glm::mat4>&       light_space_matrix = std::nullopt,
 			const std::optional<glm::vec3>&       light_dir = std::nullopt,
 			std::shared_ptr<TerrainRenderManager> render_manager = nullptr

@@ -25,6 +25,7 @@ namespace Boidsish {
 	class ShadowManager;
 	class SdfVolumeManager;
 	class TerrainRenderManager;
+	struct ShadowCasterInfo;
 
 	namespace PostProcessing {
 		class PostProcessingManager;
@@ -61,7 +62,7 @@ namespace Boidsish {
 		);
 
 		void
-		Execute(const FrameData& frame, SceneCompositor& compositor, float render_scale, const RenderCallbacks& cb);
+		Execute(const FrameData& frame, SceneCompositor& compositor, float render_scale, const RenderCallbacks& cb, const std::vector<ShadowCasterInfo>& shadow_casters = {});
 
 	private:
 		DecorManager&                         decor_;
