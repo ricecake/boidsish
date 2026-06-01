@@ -37,7 +37,10 @@ void main() {
 	bool just_respawned = false;
 
 	// --- 1 & 2. Lifecycle: Hijack/Clear and Lifetime Update ---
-	if (updateLifetime(p, gid, emitter_index, u_num_emitters, u_delta_time, viewPos, viewDir)) {
+	// Returns true if the particle is dead (pos.w <= 0.0)
+	bool is_dead = updateLifetime(p, gid, emitter_index, u_num_emitters, u_delta_time, viewPos, viewDir);
+
+	if (is_dead) {
 		// --- 3. Respawn Logic ---
 		just_respawned = respawnParticle(
 			p,
