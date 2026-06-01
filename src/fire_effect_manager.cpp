@@ -125,7 +125,9 @@ namespace Boidsish {
 		};
 
 		setup_comp_ubos(lifecycle_shader_.get());
+		lifecycle_shader_->bindUniformBlock("TerrainData", Constants::UboBinding::TerrainData());
 		setup_comp_ubos(behavior_shader_.get());
+		behavior_shader_->bindUniformBlock("TerrainData", Constants::UboBinding::TerrainData());
 
 		// Create buffers
 		glGenBuffers(1, &particle_buffer_);
@@ -269,7 +271,8 @@ namespace Boidsish {
 		GLuint                        extra_noise_texture,
 		GLuint                        visual_effects_ubo,
 		GLintptr                      vfx_offset,
-		GLsizeiptr                    vfx_size
+		GLsizeiptr                    vfx_size,
+		GLuint                        terrain_data_ubo
 	) {
 		PROJECT_PROFILE_SCOPE("FireEffectManager::Update");
 		std::lock_guard<std::mutex> lock(mutex_);
@@ -426,15 +429,18 @@ namespace Boidsish {
 		auto&         cfg = ConfigManager::GetInstance();
 		ParticleStats* stats_ptr = stats_buffer_->GetFrameDataPtr();
 		*stats_ptr = ParticleStats{};
-		stats_ptr->limit_birds = cfg.GetAppSettingInt("particle_limit_birds", 50);
-		stats_ptr->limit_leaves = cfg.GetAppSettingInt("particle_limit_leaves", 250);
-		stats_ptr->limit_petals = cfg.GetAppSettingInt("particle_limit_petals", 250);
-		stats_ptr->limit_bubbles = cfg.GetAppSettingInt("particle_limit_bubbles", 250);
-		stats_ptr->limit_fireflies = cfg.GetAppSettingInt("particle_limit_fireflies", 1000);
-		stats_ptr->limit_fairies = cfg.GetAppSettingInt("particle_limit_fairies", 1000);
-		stats_ptr->limit_snow = cfg.GetAppSettingInt("particle_limit_snow", 500);
-		stats_ptr->limit_rain = cfg.GetAppSettingInt("particle_limit_rain", 500);
-		stats_ptr->limit_dust = cfg.GetAppSettingInt("particle_limit_dust", 500);
+
+		float ambient_limit = ambient_density_ * Constants::Class::Particles::AmbientParticleScale();
+
+		stats_ptr->limit_birds = static_cast<uint32_t>(cfg.GetAppSettingFloat("particle_ratio_birds", 0.05f) * ambient_limit);
+		stats_ptr->limit_leaves = static_cast<uint32_t>(cfg.GetAppSettingFloat("particle_ratio_leaves", 0.25f) * ambient_limit);
+		stats_ptr->limit_petals = static_cast<uint32_t>(cfg.GetAppSettingFloat("particle_ratio_petals", 0.25f) * ambient_limit);
+		stats_ptr->limit_bubbles = static_cast<uint32_t>(cfg.GetAppSettingFloat("particle_ratio_bubbles", 0.15f) * ambient_limit);
+		stats_ptr->limit_fireflies = static_cast<uint32_t>(cfg.GetAppSettingFloat("particle_ratio_fireflies", 0.25f) * ambient_limit);
+		stats_ptr->limit_fairies = static_cast<uint32_t>(cfg.GetAppSettingFloat("particle_ratio_fairies", 0.1f) * ambient_limit);
+		stats_ptr->limit_snow = static_cast<uint32_t>(cfg.GetAppSettingFloat("particle_ratio_snow", 0.5f) * ambient_limit);
+		stats_ptr->limit_rain = static_cast<uint32_t>(cfg.GetAppSettingFloat("particle_ratio_rain", 0.5f) * ambient_limit);
+		stats_ptr->limit_dust = static_cast<uint32_t>(cfg.GetAppSettingFloat("particle_ratio_dust", 0.25f) * ambient_limit);
 
 		// GPU will increment counts, we only reset them to 0 each frame here before dispatch.
 
@@ -508,6 +514,10 @@ namespace Boidsish {
 			} else {
 				glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::VisualEffects(), visual_effects_ubo);
 			}
+		}
+
+		if (terrain_data_ubo != 0) {
+			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::TerrainData(), terrain_data_ubo);
 		}
 
 		// --- Phase 1: Lifecycle ---

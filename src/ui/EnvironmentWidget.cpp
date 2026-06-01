@@ -861,23 +861,24 @@ namespace Boidsish {
 						if (fire_manager) {
 							Boidsish::ParticleStats stats = fire_manager->GetStats();
 
-							auto drawLimit = [&](const char* label, const char* cfg_key, uint32_t current, uint32_t limit) {
-								int i_limit = (int)limit;
-								if (ImGui::SliderInt(label, &i_limit, 0, 20000)) {
-									config.SetInt(cfg_key, i_limit);
+							auto drawRatioLimit = [&](const char* label, const char* cfg_key, uint32_t current, uint32_t limit, float default_ratio) {
+								float ratio = config.GetAppSettingFloat(cfg_key, default_ratio);
+								if (ImGui::SliderFloat(label, &ratio, 0.0f, 1.0f, "%.2f")) {
+									config.SetFloat(cfg_key, ratio);
 								}
 								ImGui::SameLine();
-								ImGui::Text("(%u live)", current);
+								ImGui::Text("(%u/%u live)", current, limit);
 							};
 
-							drawLimit("Birds", "particle_limit_birds", stats.count_birds, stats.limit_birds);
-							drawLimit("Leaves", "particle_limit_leaves", stats.count_leaves, stats.limit_leaves);
-							drawLimit("Petals", "particle_limit_petals", stats.count_petals, stats.limit_petals);
-							drawLimit("Bubbles", "particle_limit_bubbles", stats.count_bubbles, stats.limit_bubbles);
-							drawLimit("Fireflies", "particle_limit_fireflies", stats.count_fireflies, stats.limit_fireflies);
-							drawLimit("Snow", "particle_limit_snow", stats.count_snow, stats.limit_snow);
-							drawLimit("Rain", "particle_limit_rain", stats.count_rain, stats.limit_rain);
-							drawLimit("Dust", "particle_limit_dust", stats.count_dust, stats.limit_dust);
+							drawRatioLimit("Birds", "particle_ratio_birds", stats.count_birds, stats.limit_birds, 0.05f);
+							drawRatioLimit("Leaves", "particle_ratio_leaves", stats.count_leaves, stats.limit_leaves, 0.25f);
+							drawRatioLimit("Petals", "particle_ratio_petals", stats.count_petals, stats.limit_petals, 0.25f);
+							drawRatioLimit("Bubbles", "particle_ratio_bubbles", stats.count_bubbles, stats.limit_bubbles, 0.15f);
+							drawRatioLimit("Fireflies", "particle_ratio_fireflies", stats.count_fireflies, stats.limit_fireflies, 0.25f);
+							drawRatioLimit("Fairies", "particle_ratio_fairies", stats.count_fairies, stats.limit_fairies, 0.1f);
+							drawRatioLimit("Snow", "particle_ratio_snow", stats.count_snow, stats.limit_snow, 0.5f);
+							drawRatioLimit("Rain", "particle_ratio_rain", stats.count_rain, stats.limit_rain, 0.5f);
+							drawRatioLimit("Dust", "particle_ratio_dust", stats.count_dust, stats.limit_dust, 0.25f);
 						}
 					}
 				}
