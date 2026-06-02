@@ -107,6 +107,12 @@ namespace Boidsish {
 
 			injection_shader_->setFloat("uAnisotropy", anisotropy_);
 			injection_shader_->setFloat("uIntensity", intensity_);
+
+			if (atmos_mgr) {
+				glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereMultiScattering());
+				glBindTexture(GL_TEXTURE_2D, atmos_mgr->GetMultiScatteringLUT());
+				injection_shader_->setInt("u_multiScatteringLUT", Constants::TextureUnit::AtmosphereMultiScattering());
+			}
 			injection_shader_->setMat4("uInvView", glm::inverse(viewMatrix));
 			injection_shader_->setMat4("uInvProj", glm::inverse(projectionMatrix));
 			injection_shader_->setMat4("uPrevVP", prev_view_projection_);

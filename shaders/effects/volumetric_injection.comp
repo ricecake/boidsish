@@ -11,6 +11,8 @@ layout(binding = [[VOLUMETRIC_HISTORY_BINDING]]) uniform sampler3D uHistoryTextu
 layout(binding = 10) uniform sampler2D uBlueNoise;
 // layout(binding = 11) uniform sampler3D u_curlTexture;
 
+uniform sampler2D u_multiScatteringLUT;
+
 uniform mat4 uInvView;
 uniform mat4 uInvProj;
 uniform mat4 uPrevVP;
@@ -150,7 +152,7 @@ void main() {
     }
 */
 
-    // Direct light (Sun)
+    // Direct light (Sun/Moon)
     for (int i = 0; i < min(2, num_lights); ++i) {
         if (lights[i].type != LIGHT_TYPE_DIRECTIONAL) continue;
 
@@ -161,10 +163,19 @@ void main() {
         float shadow = calculateShadow(i, worldPos, vec3(0,1,0), L);
         shadow *= calculateCloudShadow(i, worldPos);
 
-        float r = kEarthRadiusKM + (worldPos.y / (1000.0 * max(0.0001, worldScale)));
-        vec3 atmosphereTransmittance = texture(u_transmittanceLUT, getTransmittanceUV(r, L.y)).rgb;
+        float r_world = length(worldPos - vec3(worldPos.x, -kEarthRadius * 1000.0 * max(0.0001, worldScale), worldPos.z));
+        float r_km = r_world / (1000.0 * max(0.0001, worldScale));
 
-        radiance += lights[i].color * max(0.0, lights[i].intensity) * atmosphereTransmittance * shadow * phase;
+        vec3 atmosphereTransmittance = texture(u_transmittanceLUT, getTransmittanceUV(r_km, L.y)).rgb;
+
+        // Multi-scattering lookup
+        vec2 multiScatUV = vec2(L.y * 0.5 + 0.5, (r_km - kEarthRadius) / kAtmosphereHeight);
+        vec3 multiScat = texture(u_multiScatteringLUT, multiScatUV).rgb;
+
+        vec3 lightRadiance = lights[i].color * max(0.0, lights[i].intensity);
+
+        // Single scattering + multi-scattering contribution
+        radiance += lightRadiance * (atmosphereTransmittance * shadow * phase + multiScat * (s.rayleigh + s.mie));
     }
 
     // Local lights
@@ -181,7 +192,12 @@ void main() {
     }
 
     // Ambient (SH) - We use a simple isotropic phase for ambient light
-    radiance += getSpatialAmbientSH(worldPos, V) * 0.1;
+    // Combined with atmospheric ambient scattering
+    vec3 baseAmbientRadiance = hazeColor * 0.05; // Base glow
+    vec3 effectiveAmbient = max(ambient_light, baseAmbientRadiance);
+
+    radiance += getSpatialAmbientSH(worldPos, V) * 0.5; // Spatial bounce
+    radiance += effectiveAmbient * (s.rayleigh + s.mie); // Global atmospheric ambient
 
     // Lightning illumination
     if (lightningPulse > 0.01) {
