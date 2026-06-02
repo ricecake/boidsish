@@ -433,6 +433,7 @@ namespace Boidsish {
 			return;
 
 		frame_counter_++;
+		block_validity_pb_->AdvanceFrame();
 		camera_pos_ = camera.pos();
 		glm::vec3 fwd = camera.front();
 		glm::vec2 new_forward = glm::normalize(glm::vec2(fwd.x, fwd.z));
@@ -538,6 +539,7 @@ namespace Boidsish {
 
 				// Mark block invalid in the validity buffer (4 bytes, not 64KB×6 types).
 				// The cull shader checks this and skips instances in invalid blocks.
+				// We update all frames to ensure it's removed consistently.
 				for (int i = 0; i < 3; ++i) {
 					block_validity_pb_->GetFrameDataPtr(i)[block] = 0;
 				}
@@ -604,7 +606,7 @@ namespace Boidsish {
 			int num_chunks = (int)chunks_to_generate.size();
 
 			// Mark all blocks being generated as valid.
-			// Validity doesn't advance frames as it represents persistent state.
+			// We update all frames to ensure it's present consistently.
 			for (const auto& entry : chunks_to_generate) {
 				for (int i = 0; i < 3; ++i) {
 					block_validity_pb_->GetFrameDataPtr(i)[entry.block] = 1;

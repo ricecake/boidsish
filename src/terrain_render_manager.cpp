@@ -123,8 +123,8 @@ namespace Boidsish {
 		size_t indirect_size_bytes = 16 + sizeof(DrawElementsIndirectCommand);
 		patch_indirect_pb_ = std::make_unique<PersistentBuffer<uint8_t>>(GL_DRAW_INDIRECT_BUFFER, indirect_size_bytes, 3);
 
-		// PBO persistent buffers for async uploads (sized for 32 chunks per frame)
-		size_t pbo_chunk_count = 32;
+		// PBO persistent buffers for async uploads (sized for 512 chunks per frame)
+		size_t pbo_chunk_count = 512;
 		heightmap_pbo_pb_ = std::make_unique<PersistentBuffer<float>>(
 			GL_PIXEL_UNPACK_BUFFER,
 			pbo_chunk_count * heightmap_resolution_ * heightmap_resolution_ * 4,
@@ -421,10 +421,15 @@ namespace Boidsish {
 		// Check if we have space in current PBO segment
 		if (current_pbo_offset_h_ + h_size > heightmap_pbo_pb_->GetElementCount() ||
 		    current_pbo_offset_b_ + b_size > biome_pbo_pb_->GetElementCount()) {
-			// This shouldn't happen with 32 chunks per frame cap, but if it does,
-			// fallback to synchronous upload or wait?
-			// For now, let's just log and skip to avoid buffer overflow.
-			logger::ERROR("Terrain PBO capacity exceeded in a single frame!");
+			// Fallback to synchronous upload
+			glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+			glBindTexture(GL_TEXTURE_2D_ARRAY, raw_heightmap_texture_);
+			glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, 0, 0, slice, heightmap_resolution_, heightmap_resolution_, 1, GL_RGBA, GL_FLOAT, packed_height_normal.data());
+			glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture_);
+			glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, 0, 0, slice, heightmap_resolution_, heightmap_resolution_, 1, GL_RGBA, GL_FLOAT, packed_height_normal.data());
+			glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture_);
+			glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, 0, 0, slice, heightmap_resolution_, heightmap_resolution_, 1, GL_RGBA, GL_UNSIGNED_BYTE, packed_biomes.data());
+			glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
 			return;
 		}
 
@@ -442,14 +447,14 @@ namespace Boidsish {
 		glTexSubImage3D(
 			GL_TEXTURE_2D_ARRAY, 0, 0, 0, slice,
 			heightmap_resolution_, heightmap_resolution_, 1,
-			GL_RGBA, GL_FLOAT, (void*)(heightmap_pbo_pb_->GetFrameOffset() + current_pbo_offset_h_ * sizeof(float))
+			GL_RGBA, GL_FLOAT, (void*)(uintptr_t)(heightmap_pbo_pb_->GetFrameOffset() + current_pbo_offset_h_ * sizeof(float))
 		);
 
 		glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture_);
 		glTexSubImage3D(
 			GL_TEXTURE_2D_ARRAY, 0, 0, 0, slice,
 			heightmap_resolution_, heightmap_resolution_, 1,
-			GL_RGBA, GL_FLOAT, (void*)(heightmap_pbo_pb_->GetFrameOffset() + current_pbo_offset_h_ * sizeof(float))
+			GL_RGBA, GL_FLOAT, (void*)(uintptr_t)(heightmap_pbo_pb_->GetFrameOffset() + current_pbo_offset_h_ * sizeof(float))
 		);
 
 		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, biome_pbo_pb_->GetBufferId());
@@ -457,7 +462,7 @@ namespace Boidsish {
 		glTexSubImage3D(
 			GL_TEXTURE_2D_ARRAY, 0, 0, 0, slice,
 			heightmap_resolution_, heightmap_resolution_, 1,
-			GL_RGBA, GL_UNSIGNED_BYTE, (void*)(biome_pbo_pb_->GetFrameOffset() + current_pbo_offset_b_ * sizeof(uint8_t))
+			GL_RGBA, GL_UNSIGNED_BYTE, (void*)(uintptr_t)(biome_pbo_pb_->GetFrameOffset() + current_pbo_offset_b_ * sizeof(uint8_t))
 		);
 
 		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
@@ -1079,7 +1084,7 @@ namespace Boidsish {
 		indirect_data[7] = 0; // baseVertex
 		indirect_data[8] = 0; // baseInstance
 
-		glMemoryBarrier(GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT);
+		glMemoryBarrier(GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT | GL_COMMAND_BARRIER_BIT);
 
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainPatchMetrics(), patch_metrics_ssbo_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainPatchVisibility(), patch_visibility_ssbo_);

@@ -409,7 +409,7 @@ namespace Boidsish {
 		std::unique_ptr<PersistentBuffer<uint8_t>> biome_pbo_pb_;
 		uint32_t current_pbo_offset_h_ = 0;
 		uint32_t current_pbo_offset_b_ = 0;
-		uint32_t last_pbo_advance_frame_ = 0;
+		uint32_t last_pbo_advance_frame_ = 0xFFFFFFFF;
 
 		GLsync patch_fences_[3]{0, 0, 0};
 

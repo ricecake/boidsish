@@ -1490,8 +1490,9 @@ namespace Boidsish {
 			}
 
 			// Ensure all CPU writes to persistent mapped buffers are visible to GPU
-			// GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT is redundant for COHERENT mapped buffers
-			glMemoryBarrier(GL_COMMAND_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
+			glMemoryBarrier(
+				GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT | GL_COMMAND_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT
+			);
 
 			// Hi-Z occlusion culling dispatch (between uniform fill and draw calls)
 			uint32_t pass_draw_count = mdi_uniform_count - mdi_pass_uniform_start;
@@ -1504,7 +1505,7 @@ namespace Boidsish {
 					GL_SHADER_STORAGE_BUFFER,
 					Constants::SsboBinding::CommonUniforms(),
 					uniforms_ssbo->GetBufferId(),
-					(frame_element_offset + mdi_pass_uniform_start) * sizeof(CommonUniforms),
+					uniforms_ssbo->GetFrameOffset() + mdi_pass_uniform_start * sizeof(CommonUniforms),
 					pass_draw_count * sizeof(CommonUniforms)
 				);
 
@@ -1589,7 +1590,7 @@ namespace Boidsish {
 					GL_SHADER_STORAGE_BUFFER,
 					Constants::SsboBinding::CommonUniforms(),
 					uniforms_ssbo->GetBufferId(),
-					(frame_element_offset + batch_global_index) * sizeof(CommonUniforms),
+					uniforms_ssbo->GetFrameOffset() + batch_global_index * sizeof(CommonUniforms),
 					batch.command_count * sizeof(CommonUniforms)
 				);
 
