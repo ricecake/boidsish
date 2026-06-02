@@ -9,6 +9,53 @@
 uniform sampler2D u_terrainShadowMap;
 #endif
 
+#ifndef TERRAIN_HORIZON_MAP_DEFINED
+#define TERRAIN_HORIZON_MAP_DEFINED
+layout(binding = [[TERRAIN_HORIZON_MAP_BINDING]]) uniform sampler2DArray u_terrainHorizonMap;
+#endif
+
+/**
+ * Calculate visibility based on precomputed horizon angles for a chunk.
+ */
+float calculateHorizonVisibility(vec3 worldPos, vec3 lightDir) {
+	if (u_originSize.w < 1) return 1.0;
+
+	float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
+	vec2  gridPos = worldPos.xz / scaledChunkSize;
+	ivec2 chunkCoord = ivec2(floor(gridPos));
+	ivec2 localGridCoord = chunkCoord - u_originSize.xy;
+
+	if (localGridCoord.x < 0 || localGridCoord.x >= u_originSize.z ||
+		localGridCoord.y < 0 || localGridCoord.y >= u_originSize.z) {
+		return 1.0;
+	}
+
+	int slice = texelFetch(u_chunkGrid, localGridCoord, 0).r;
+	if (slice < 0) return 1.0;
+
+	vec2 uv_chunk = (worldPos.xz - vec2(chunkCoord) * scaledChunkSize) / scaledChunkSize;
+	vec4 horizons = texture(u_terrainHorizonMap, vec3(uv_chunk, float(slice)));
+
+	vec2 dirXZ = normalize(lightDir.xz);
+	float sunElevation = atan(lightDir.y / max(1e-6, length(lightDir.xz)));
+
+	float horizonAngle = 0.0;
+	float wE = max(0.0, dirXZ.x);
+	float wN = max(0.0, dirXZ.y);
+	float wW = max(0.0, -dirXZ.x);
+	float wS = max(0.0, -dirXZ.y);
+	float totalW = wE + wN + wW + wS;
+	if (totalW > 1e-6) {
+		horizonAngle = (wE * horizons.x + wN * horizons.y + wW * horizons.z + wS * horizons.w) / totalW;
+	}
+
+	const float margin = 0.05; // ~3 degrees
+	if (sunElevation > horizonAngle + margin) return 1.0;
+	if (sunElevation < horizonAngle - margin) return 0.0;
+
+	return smoothstep(horizonAngle - margin, horizonAngle + margin, sunElevation);
+}
+
 /**
  * Perform a coarse raymarch in a specific direction to check for terrain occlusion.
  * Similar to terrainShadowCoverage but optimized for ambient occlusion (AO).
@@ -110,13 +157,25 @@ float terrainShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) {
 	float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
 
 #ifndef SKIP_SHADOW_MAP_LOOKUP
-	// Fast path: Precomputed terrain shadow map
-	float shadowMapWorldSize = float(u_originSize.z) * scaledChunkSize;
-	vec2 shadowOrigin = vec2(u_originSize.xy) * scaledChunkSize;
-	vec2 shadowUV = (worldPos.xz - shadowOrigin) / shadowMapWorldSize;
+	// Fast path: Check precomputed terrain data
+	float h_surface = getTerrainHeight(worldPos.xz);
+	// Only use the 2D precomputed shadow map if we are near the terrain surface.
+	// For points in the air (volumetrics), the 2D map would incorrectly project
+	// the ground shadow vertically.
+	if (abs(worldPos.y - h_surface) < (2.0 * u_terrainParams.y)) {
+		float shadowMapWorldSize = float(u_originSize.z) * scaledChunkSize;
+		vec2  shadowOrigin = vec2(u_originSize.xy) * scaledChunkSize;
+		vec2  shadowUV = (worldPos.xz - shadowOrigin) / shadowMapWorldSize;
 
-	if (shadowUV.x >= 0.0 && shadowUV.x <= 1.0 && shadowUV.y >= 0.0 && shadowUV.y <= 1.0) {
-		return texture(u_terrainShadowMap, shadowUV).r;
+		if (shadowUV.x >= 0.0 && shadowUV.x <= 1.0 && shadowUV.y >= 0.0 && shadowUV.y <= 1.0) {
+			return texture(u_terrainShadowMap, shadowUV).r;
+		}
+	} else {
+		// Even in the air, if we are clearly above the horizon at this location, we are lit.
+		// Horizon map provides a "safe lit" optimization for volumetrics.
+		if (calculateHorizonVisibility(worldPos, lightDir) >= 0.99) {
+			return 1.0;
+		}
 	}
 #endif
 

@@ -22,7 +22,6 @@ uniform float uIntensity;
 uniform float uTemporalAlpha;
 
 #define USE_TERRAIN_DATA
-#define SKIP_SHADOW_MAP_LOOKUP
 #include "../helpers/terrain_shadows.glsl"
 #include "../helpers/lighting.glsl"
 #include "../helpers/math.glsl"
