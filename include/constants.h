@@ -657,7 +657,7 @@ namespace Boidsish {
 				}
 
 				consteval float DefaultSceneRadius() {
-					return 500.0f;
+					return 1000.0f;
 				}
 
 				consteval float DefaultFOV() {

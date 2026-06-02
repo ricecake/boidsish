@@ -192,11 +192,14 @@ void main() {
     }
 
     // Ambient (SH) - We use a simple isotropic phase for ambient light
-    // Combined with atmospheric ambient scattering
+    // Combined with atmospheric ambient scattering.
+    // We use global SH (evalSHIrradiance) instead of spatial SH (getSpatialAmbientSH)
+    // because spatial probes are bounded to the terrain chunk grid (~512 units)
+    // and can cause abrupt "rings" or transitions at the grid boundaries.
     vec3 baseAmbientRadiance = hazeColor * 0.05; // Base glow
     vec3 effectiveAmbient = max(ambient_light, baseAmbientRadiance);
 
-    radiance += getSpatialAmbientSH(worldPos, V) * 0.5; // Spatial bounce
+    radiance += evalSHIrradiance(V) * 0.5; // Global ambient sky/bounce
     radiance += effectiveAmbient * (s.rayleigh + s.mie); // Global atmospheric ambient
 
     // Lightning illumination
