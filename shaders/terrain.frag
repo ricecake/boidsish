@@ -65,8 +65,12 @@ struct GlobalGrassProperties {
     float rigidityMultiplier;
     float windMultiplier;
     uint  enabled;
+    float lodScaleFactor;
+    float lodBaseRange;
+    float baseScale;
     float _pad0;
     float _pad1;
+    float _pad2;
 };
 
 layout(std140, binding = [[GRASS_PROPS_BINDING]]) uniform GrassProps {
