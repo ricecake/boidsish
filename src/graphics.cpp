@@ -2716,7 +2716,11 @@ namespace Boidsish {
 
 		void RenderOpaqueScene(const FrameData& frame) {
 			if (opaque_pass_ && compositor_) {
-				opaque_pass_->Execute(frame, *compositor_, render_scale, MakeRenderCallbacks(frame));
+				std::vector<ShadowCasterInfo> casters;
+				if (shadow_pass_) {
+					casters = shadow_pass_->GetShadowCasterInfos(frame);
+				}
+				opaque_pass_->Execute(frame, *compositor_, render_scale, MakeRenderCallbacks(frame), casters);
 
 				if (grass_manager && frame.config.render_decor) {
 					GrassManager::RenderResources res{};
@@ -3746,15 +3750,6 @@ namespace Boidsish {
 					impl->decor_manager->SetNoiseManager(impl->noise_manager.get());
 				}
 
-				impl->decor_manager->Cull(
-					view,
-					impl->projection,
-					impl->render_width,
-					impl->render_height,
-					std::nullopt,
-					std::nullopt,
-					impl->terrain_render_manager
-				);
 				impl->decor_manager->Render(view, impl->projection, impl->terrain_render_manager);
 			}
 

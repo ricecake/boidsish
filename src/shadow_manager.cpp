@@ -103,22 +103,15 @@ namespace Boidsish {
 		logger::INFO("ShadowManager initialized with {} shadow map slots", kMaxShadowMaps);
 	}
 
-	void ShadowManager::BeginShadowPass(
-		int              map_index,
+	glm::mat4 ShadowManager::CalculateLightSpaceMatrix(
 		const Light&     light,
 		const glm::vec3& scene_center,
 		float            scene_radius,
 		int              cascade_index,
 		const glm::mat4& view,
 		float            fov,
-		float            aspect,
-		bool             clear
+		float            aspect
 	) {
-		PROJECT_PROFILE_SCOPE("ShadowManager::BeginShadowPass");
-		if (!initialized_ || map_index >= kMaxShadowMaps) {
-			return;
-		}
-
 		// Calculate light-space matrix
 		glm::vec3 light_dir = glm::normalize(light.direction);
 		if (light.type != DIRECTIONAL_LIGHT && light.type != SPOT_LIGHT) {
@@ -252,7 +245,34 @@ namespace Boidsish {
 			light_projection = glm::ortho(-ortho_size, ortho_size, -ortho_size, ortho_size, -pull_back, scene_radius);
 		}
 
-		light_space_matrices_[map_index] = light_projection * light_view;
+		return light_projection * light_view;
+	}
+
+	void ShadowManager::BeginShadowPass(
+		int              map_index,
+		const Light&     light,
+		const glm::vec3& scene_center,
+		float            scene_radius,
+		int              cascade_index,
+		const glm::mat4& view,
+		float            fov,
+		float            aspect,
+		bool             clear
+	) {
+		PROJECT_PROFILE_SCOPE("ShadowManager::BeginShadowPass");
+		if (!initialized_ || map_index >= kMaxShadowMaps) {
+			return;
+		}
+
+		light_space_matrices_[map_index] = CalculateLightSpaceMatrix(
+			light,
+			scene_center,
+			scene_radius,
+			cascade_index,
+			view,
+			fov,
+			aspect
+		);
 
 		// Set up framebuffer for this shadow map layer
 		glBindFramebuffer(GL_FRAMEBUFFER, shadow_fbo_);
@@ -364,19 +384,7 @@ namespace Boidsish {
 	}
 
 	std::vector<glm::vec4> ShadowManager::GetFrustumCornersWorldSpace(const glm::mat4& proj, const glm::mat4& view) {
-		const auto inv = glm::inverse(proj * view);
-
-		std::vector<glm::vec4> frustumCorners;
-		for (unsigned int x = 0; x < 2; ++x) {
-			for (unsigned int y = 0; y < 2; ++y) {
-				for (unsigned int z = 0; z < 2; ++z) {
-					const glm::vec4 pt = inv * glm::vec4(2.0f * x - 1.0f, 2.0f * y - 1.0f, 2.0f * z - 1.0f, 1.0f);
-					frustumCorners.push_back(pt / pt.w);
-				}
-			}
-		}
-
-		return frustumCorners;
+		return Frustum::GetCorners(proj * view);
 	}
 
 } // namespace Boidsish
