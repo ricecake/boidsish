@@ -7,7 +7,9 @@
 #include "constants.h"
 #include "gpu_resource_registry.h"
 #include "graphics.h" // For Frustum
+#include "logger.h"
 #include "profiler.h"
+#include <cstring>
 #include "service_locator.h"
 #include "shader.h"
 
@@ -121,12 +123,22 @@ namespace Boidsish {
 		size_t indirect_size_bytes = 16 + sizeof(DrawElementsIndirectCommand);
 		patch_indirect_pb_ = std::make_unique<PersistentBuffer<uint8_t>>(GL_DRAW_INDIRECT_BUFFER, indirect_size_bytes, 3);
 
+		// PBO persistent buffers for async uploads (sized for 32 chunks per frame)
+		size_t pbo_chunk_count = 32;
+		heightmap_pbo_pb_ = std::make_unique<PersistentBuffer<float>>(
+			GL_PIXEL_UNPACK_BUFFER,
+			pbo_chunk_count * heightmap_resolution_ * heightmap_resolution_ * 4,
+			3
+		);
+		biome_pbo_pb_ = std::make_unique<PersistentBuffer<uint8_t>>(
+			GL_PIXEL_UNPACK_BUFFER,
+			pbo_chunk_count * heightmap_resolution_ * heightmap_resolution_ * 4,
+			3
+		);
+
 		// Create instance buffer first so we can set up VAO attributes
 		// Pre-allocate for max_chunks to avoid reallocation
-		glGenBuffers(1, &instance_vbo_);
-		glBindBuffer(GL_ARRAY_BUFFER, instance_vbo_);
-		instance_buffer_capacity_ = max_chunks * sizeof(InstanceData);
-		glBufferData(GL_ARRAY_BUFFER, instance_buffer_capacity_, nullptr, GL_DYNAMIC_DRAW);
+		instance_vbo_pb_ = std::make_unique<PersistentBuffer<InstanceData>>(GL_ARRAY_BUFFER, max_chunks, 3);
 
 		CreateGridMesh();
 		// Create patch mesh
@@ -171,8 +183,7 @@ namespace Boidsish {
 			glDeleteBuffers(1, &grid_vbo_);
 		if (grid_ebo_)
 			glDeleteBuffers(1, &grid_ebo_);
-		if (instance_vbo_)
-			glDeleteBuffers(1, &instance_vbo_);
+		instance_vbo_pb_.reset();
 		if (raw_heightmap_texture_)
 			glDeleteTextures(1, &raw_heightmap_texture_);
 		if (heightmap_texture_)
@@ -280,7 +291,7 @@ namespace Boidsish {
 		glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), indices.data(), GL_STATIC_DRAW);
 
 		// Set up instance attributes (from instance_vbo_ created in constructor)
-		glBindBuffer(GL_ARRAY_BUFFER, instance_vbo_);
+		glBindBuffer(GL_ARRAY_BUFFER, instance_vbo_pb_->GetBufferId());
 
 		// Instance attribute: world_offset_and_slice (location 3)
 		glVertexAttribPointer(
@@ -404,53 +415,56 @@ namespace Boidsish {
 		const std::vector<float>&  packed_height_normal,
 		const std::vector<uint8_t>& packed_biomes
 	) {
+		size_t h_size = packed_height_normal.size();
+		size_t b_size = packed_biomes.size();
+
+		// Check if we have space in current PBO segment
+		if (current_pbo_offset_h_ + h_size > heightmap_pbo_pb_->GetElementCount() ||
+		    current_pbo_offset_b_ + b_size > biome_pbo_pb_->GetElementCount()) {
+			// This shouldn't happen with 32 chunks per frame cap, but if it does,
+			// fallback to synchronous upload or wait?
+			// For now, let's just log and skip to avoid buffer overflow.
+			logger::ERROR("Terrain PBO capacity exceeded in a single frame!");
+			return;
+		}
+
+		// Copy data to persistent mapped PBOs
+		float* h_ptr = heightmap_pbo_pb_->GetFrameDataPtr() + current_pbo_offset_h_;
+		std::memcpy(h_ptr, packed_height_normal.data(), h_size * sizeof(float));
+
+		uint8_t* b_ptr = biome_pbo_pb_->GetFrameDataPtr() + current_pbo_offset_b_;
+		std::memcpy(b_ptr, packed_biomes.data(), b_size * sizeof(uint8_t));
+
+		// Bind and issue async upload from PBO
+		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, heightmap_pbo_pb_->GetBufferId());
+
 		glBindTexture(GL_TEXTURE_2D_ARRAY, raw_heightmap_texture_);
 		glTexSubImage3D(
-			GL_TEXTURE_2D_ARRAY,
-			0, // mip level
-			0,
-			0,
-			slice,                 // x, y, z offset
-			heightmap_resolution_, // width
-			heightmap_resolution_, // height
-			1,                     // depth (one slice)
-			GL_RGBA,
-			GL_FLOAT,
-			packed_height_normal.data()
+			GL_TEXTURE_2D_ARRAY, 0, 0, 0, slice,
+			heightmap_resolution_, heightmap_resolution_, 1,
+			GL_RGBA, GL_FLOAT, (void*)(heightmap_pbo_pb_->GetFrameOffset() + current_pbo_offset_h_ * sizeof(float))
 		);
 
-		// Also upload to heightmap_texture_ as a fallback until baking is complete
 		glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture_);
 		glTexSubImage3D(
-			GL_TEXTURE_2D_ARRAY,
-			0,
-			0,
-			0,
-			slice,
-			heightmap_resolution_,
-			heightmap_resolution_,
-			1,
-			GL_RGBA,
-			GL_FLOAT,
-			packed_height_normal.data()
+			GL_TEXTURE_2D_ARRAY, 0, 0, 0, slice,
+			heightmap_resolution_, heightmap_resolution_, 1,
+			GL_RGBA, GL_FLOAT, (void*)(heightmap_pbo_pb_->GetFrameOffset() + current_pbo_offset_h_ * sizeof(float))
 		);
 
+		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, biome_pbo_pb_->GetBufferId());
 		glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture_);
 		glTexSubImage3D(
-			GL_TEXTURE_2D_ARRAY,
-			0, // mip level
-			0,
-			0,
-			slice,
-			heightmap_resolution_,
-			heightmap_resolution_,
-			1,
-			GL_RGBA,
-			GL_UNSIGNED_BYTE,
-			packed_biomes.data()
+			GL_TEXTURE_2D_ARRAY, 0, 0, 0, slice,
+			heightmap_resolution_, heightmap_resolution_, 1,
+			GL_RGBA, GL_UNSIGNED_BYTE, (void*)(biome_pbo_pb_->GetFrameOffset() + current_pbo_offset_b_ * sizeof(uint8_t))
 		);
 
+		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 		glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
+
+		current_pbo_offset_h_ += h_size;
+		current_pbo_offset_b_ += b_size;
 	}
 
 	void TerrainRenderManager::RegisterChunk(
@@ -477,6 +491,15 @@ namespace Boidsish {
 		// Scoped lock - released before calling eviction callback to avoid deadlock
 		{
 			std::lock_guard<std::recursive_mutex> lock(mutex_);
+
+			// Ensure PBO frame is advanced if we're registering chunks outside PrepareForRender (e.g. initial load)
+			if (last_pbo_advance_frame_ != frame_count_) {
+				heightmap_pbo_pb_->AdvanceFrame();
+				biome_pbo_pb_->AdvanceFrame();
+				current_pbo_offset_h_ = 0;
+				current_pbo_offset_b_ = 0;
+				last_pbo_advance_frame_ = frame_count_;
+			}
 
 			// If chunk already exists, update it
 			auto it = chunks_.find(chunk_key);
@@ -646,6 +669,16 @@ namespace Boidsish {
 
 		std::lock_guard<std::recursive_mutex> lock(mutex_);
 
+		// Advance PBO frames if this is the first call in a new frame
+		if (last_pbo_advance_frame_ != frame_count_) {
+			heightmap_pbo_pb_->AdvanceFrame();
+			biome_pbo_pb_->AdvanceFrame();
+			instance_vbo_pb_->AdvanceFrame();
+			current_pbo_offset_h_ = 0;
+			current_pbo_offset_b_ = 0;
+			last_pbo_advance_frame_ = frame_count_;
+		}
+
 		temporal_data_ubo_offset_ = temporal_ubo_offset;
 		frustum_ubo_offset_ = frustum_ubo_offset;
 
@@ -724,15 +757,9 @@ namespace Boidsish {
 				instance.bounds.z = static_cast<float>(chunk_size_);
 			}
 
-			// Use internal instance_vbo_ but bind as SSBO for prepare shader
-			glBindBuffer(GL_SHADER_STORAGE_BUFFER, instance_vbo_);
-			size_t required_size = visible_instances_.size() * sizeof(InstanceData);
-			if (required_size > instance_buffer_capacity_) {
-				instance_buffer_capacity_ = required_size * 2;
-				glBufferData(GL_SHADER_STORAGE_BUFFER, instance_buffer_capacity_, nullptr, GL_DYNAMIC_DRAW);
-			}
-			glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, required_size, visible_instances_.data());
-			glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+			// Copy to persistent mapped buffer
+			size_t count = std::min(visible_instances_.size(), instance_vbo_pb_->GetElementCount());
+			std::memcpy(instance_vbo_pb_->GetFrameDataPtr(), visible_instances_.data(), count * sizeof(InstanceData));
 		}
 	}
 
@@ -1067,7 +1094,7 @@ namespace Boidsish {
 			patch_indirect_pb_->GetTotalSize() / 3
 		);
 
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::IndirectionBuffer(), instance_vbo_);
+		instance_vbo_pb_->BindRange(Constants::SsboBinding::IndirectionBuffer());
 		if (temporal_data_ubo_ != 0) {
 			if (temporal_data_ubo_size_ > 0) {
 				glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::TemporalData(),

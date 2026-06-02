@@ -142,12 +142,12 @@ namespace Boidsish {
 		GLuint grid_next_buffer_{0};
 		std::unique_ptr<PersistentBuffer<Emitter>> emitter_buffer_;
 		std::unique_ptr<PersistentBuffer<int>> indirection_buffer_;
-		GLuint terrain_chunk_buffer_{0};
-		GLuint slice_data_buffer_{0};
+		std::unique_ptr<PersistentBuffer<glm::vec4>> terrain_chunk_pb_;
+		std::unique_ptr<PersistentBuffer<glm::vec4>> slice_data_pb_;
 		GLuint visible_indices_buffer_{0};
 		GLuint live_indices_buffer_{0};
-		GLuint draw_command_buffer_{0};
-		GLuint behavior_command_buffer_{0};
+		std::unique_ptr<PersistentBuffer<uint32_t>> draw_command_pb_;
+		std::unique_ptr<PersistentBuffer<uint32_t>> behavior_command_pb_;
 		std::unique_ptr<PersistentBuffer<ParticleStats>> stats_buffer_;
 		GLuint dummy_vao_{0};
 
