@@ -112,6 +112,32 @@ namespace Boidsish {
 			SkinningMode::Rigid
 		);
 
+		// Neck and Head
+		glm::vec3 neck_start(0, height_ + height_ * 0.2f, length_ * 0.45f);
+		glm::vec3 neck_end(0, height_ + height_ * 0.5f, length_ * 0.6f);
+		int       neck = ir.AddTube(
+            neck_start,
+            neck_end,
+            length_ * 0.08f,
+            length_ * 0.05f,
+            body_col,
+            body,
+            "neck",
+            true,
+            SkinningMode::Smooth
+        );
+
+		ir.AddBox(
+			neck_end + glm::vec3(0, 0, length_ * 0.1f),
+			glm::quat(1, 0, 0, 0),
+			glm::vec3(width_ * 0.2f, height_ * 0.2f, length_ * 0.25f),
+			body_col,
+			neck,
+			"head",
+			true,
+			SkinningMode::Rigid
+		);
+
 		std::string names[4] = {"FL", "FR", "BR", "BL"};
 		glm::vec3   offsets[4] = {
 			{-width_ * 0.64f, height_ * 0.8f, length_ * 0.64f},
@@ -215,6 +241,14 @@ namespace Boidsish {
 		for (auto& leg : legs_) {
 			model_->SolveIK(leg.effector_name, leg.world_foot_pos, 0.01f, 20, leg.name + "_upper");
 		}
+
+		// Apply head look direction
+		if (glm::length(look_dir_) > 0.001f) {
+			glm::vec3 target_dir = glm::normalize(look_dir_);
+			glm::quat target_rot = glm::quatLookAt(target_dir, glm::vec3(0, 1, 0));
+			model_->SetBoneWorldRotation("head", target_rot);
+		}
+
 		model_->UpdateAnimation(delta_time);
 	}
 

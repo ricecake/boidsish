@@ -85,6 +85,7 @@ namespace Boidsish {
 			e.parent = parent_idx;
 			e.name = name;
 			e.is_bone = is_bone;
+			e.skinning_mode = skin;
 
 			int idx = static_cast<int>(elements.size());
 			elements.push_back(e);
@@ -112,6 +113,7 @@ namespace Boidsish {
 			e.parent = parent_idx;
 			e.name = name;
 			e.is_bone = is_bone;
+			e.skinning_mode = skin;
 
 			int idx = static_cast<int>(elements.size());
 			elements.push_back(e);
@@ -143,6 +145,7 @@ namespace Boidsish {
 			e.parent = parent_idx;
 			e.name = name;
 			e.is_bone = is_bone;
+			e.skinning_mode = skin;
 
 			int idx = static_cast<int>(elements.size());
 			elements.push_back(e);
@@ -172,6 +175,7 @@ namespace Boidsish {
 			e.parent = parent_idx;
 			e.name = name;
 			e.is_bone = is_bone;
+			e.skinning_mode = skin;
 
 			int idx = static_cast<int>(elements.size());
 			elements.push_back(e);
@@ -201,6 +205,7 @@ namespace Boidsish {
 			e.parent = parent_idx;
 			e.name = name;
 			e.is_bone = is_bone;
+			e.skinning_mode = skin;
 
 			int idx = static_cast<int>(elements.size());
 			elements.push_back(e);
@@ -230,6 +235,7 @@ namespace Boidsish {
 			e.parent = parent_idx;
 			e.name = name;
 			e.is_bone = is_bone;
+			e.skinning_mode = skin;
 
 			int idx = static_cast<int>(elements.size());
 			elements.push_back(e);
@@ -259,6 +265,7 @@ namespace Boidsish {
 			e.parent = parent_idx;
 			e.name = name;
 			e.is_bone = is_bone;
+			e.skinning_mode = skin;
 
 			int idx = static_cast<int>(elements.size());
 			elements.push_back(e);
