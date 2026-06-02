@@ -185,11 +185,9 @@ float terrainShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) {
 							vec2  uv_chunk = (p.xz - vec2(currentChunk) * scaledChunkSize) / scaledChunkSize;
 							vec2  remappedUV = (uv_chunk * u_terrainParams.x + 0.5) / (u_terrainParams.x + 1.0);
 							float h = texture(u_heightmapArray, vec3(remappedUV, float(slice))).r;
-							closest = min(closest, 8.0 * ((p.y - h) / subT));
+							closest = min(closest, 8.0 * ((p.y - h) / max(0.01, subT)));
 							if (p.y < h) {
-								float shadowStrength = clamp(subT / (maxDist), 0.0, 1.0);
-
-								return shadowStrength; // Hit terrain!
+								return 0.0; // Hit terrain!
 							}
 							subT += subStep;
 						}
@@ -211,7 +209,7 @@ float terrainShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) {
 		}
 	}
 
-	return 1.0-clamp(pow(closest, 3) / (maxDist), 0.0, 1.0);
+	return clamp(closest, 0.0, 1.0);
 }
 
 bool isPointInTerrainShadow(vec3 worldPos, vec3 normal, vec3 lightDir) {
