@@ -41,8 +41,12 @@ namespace Boidsish {
         float rigidityMultiplier = 1.0f;
         float windMultiplier = 1.0f;
         uint32_t enabled = 1;
+        float lodScaleFactor = 2.0f;
+        float lodBaseRange = 20.0f;
+        float baseScale = 0.5f;
         float _pad0 = 0.0f;
         float _pad1 = 0.0f;
+        float _pad2 = 0.0f;
     };
 
     class GrassManager {

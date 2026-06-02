@@ -378,6 +378,21 @@ namespace Boidsish {
 								cfg.SetFloat("grass_wind_multiplier", props.windMultiplier);
 							}
 
+							ImGui::Separator();
+							ImGui::Text("Procedural Scaling");
+							if (ImGui::SliderFloat("LOD Scale Factor", &props.lodScaleFactor, 1.1f, 4.0f)) {
+								changed = true;
+								cfg.SetFloat("grass_lod_scale_factor", props.lodScaleFactor);
+							}
+							if (ImGui::SliderFloat("LOD Base Range", &props.lodBaseRange, 5.0f, 100.0f)) {
+								changed = true;
+								cfg.SetFloat("grass_lod_base_range", props.lodBaseRange);
+							}
+							if (ImGui::SliderFloat("Base Grid Scale", &props.baseScale, 0.05f, 2.0f)) {
+								changed = true;
+								cfg.SetFloat("grass_base_scale", props.baseScale);
+							}
+
 							if (changed) {
 								grass_manager->SetGlobalProperties(props);
 							}

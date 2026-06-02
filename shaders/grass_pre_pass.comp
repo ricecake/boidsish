@@ -49,6 +49,43 @@ layout(std430, binding = [[INDIRECTION_BUFFER_BINDING]]) readonly buffer ActiveC
 	InstanceData chunks[];
 };
 
+struct GrassProperties {
+    vec4  colorTop;
+    vec4  colorBottom;
+    float height;
+    float width;
+    float rigidity;
+    float heightVariance;
+    float widthVariance;
+    float density;
+    float colorVariability;
+    float windInfluence;
+    uint  enabled;
+    float flowerRatio;
+    float _pad1;
+    float _pad2;
+};
+
+struct GlobalGrassProperties {
+    float lengthMultiplier;
+    float widthMultiplier;
+    float densityMultiplier;
+    float rigidityMultiplier;
+    float windMultiplier;
+    uint  enabled;
+    float lodScaleFactor;
+    float lodBaseRange;
+    float baseScale;
+    float _pad0;
+    float _pad1;
+    float _pad2;
+};
+
+layout(std140, binding = [[GRASS_PROPS_BINDING]]) uniform GrassProps {
+    GrassProperties biomeProps[8];
+    GlobalGrassProperties globalProps;
+};
+
 uniform int   u_numChunks;
 uniform vec3  uCameraPos;
 uniform float uWorldScale;
@@ -92,23 +129,35 @@ void main() {
     worldOffset.z = chunkOffset.z + float(patchY) * patchSize;
     worldOffset.y = 0.0;
 
-    vec3 patchCenter = worldOffset + vec3(patchSize * 0.5, (metrics.min_y + metrics.max_y) * 0.5, patchSize * 0.5);
-    float dist = distance(uCameraPos, patchCenter);
+    // Use 2D distance for culling and LOD to ensure horizontal stability
+    vec2 patchMin = worldOffset.xz;
+    vec2 patchMax = worldOffset.xz + vec2(patchSize);
+    vec2 closest = clamp(uCameraPos.xz, patchMin, patchMax);
+    vec2 furthest = vec2(
+        max(abs(uCameraPos.x - patchMin.x), abs(uCameraPos.x - patchMax.x)),
+        max(abs(uCameraPos.z - patchMin.y), abs(uCameraPos.z - patchMax.y))
+    );
+    float minDist = distance(uCameraPos.xz, closest);
+    float maxDist = sqrt(furthest.x * furthest.x + furthest.y * furthest.y);
 
-    float baseRange = 20.0 * uWorldScale;
-    float radius = patchSize * 0.707;
+    float baseRange = globalProps.lodBaseRange * uWorldScale;
+    float scaleFactor = globalProps.lodScaleFactor;
+    float baseGridScale = globalProps.baseScale * uWorldScale;
 
-    // We check which LOD levels intersect this patch using consistent ranges
-    int minLod = -1;
-    for (int lod = minLod; lod <= 2; ++lod) {
-        float r_prev = baseRange * exp(float(lod - 1));
-        float r_next = baseRange * exp(float(lod + 1));
+    // We check which LOD levels intersect this patch.
+    // Each LOD level 'lod' is responsible for blades in the distance range [minRange, maxRange].
+    // We add a margin for smooth cross-fading.
+    for (int lod = -1; lod <= 3; ++lod) {
+        float maxRange = baseRange * pow(scaleFactor, float(lod + 1));
+        float minRange = (lod == -1) ? 0.0 : baseRange * pow(scaleFactor, float(lod));
 
-        float lower = (lod == minLod) ? 0.0 : r_prev;
-        float upper = r_next;
+        float scale = baseGridScale * pow(scaleFactor, float(lod + 1));
+        float lower = max(0.0, minRange - scale);
+        float upper = maxRange + scale;
 
-        if (dist - radius < upper && dist + radius > lower) {
-            emitTask(worldOffset, patchSize, dist, slice, lod);
+        // Conservative patch-radius check
+        if (minDist < upper && maxDist > lower) {
+            emitTask(worldOffset, patchSize, minDist, slice, lod);
         }
     }
 }

@@ -63,8 +63,12 @@ struct GlobalGrassProperties {
     float rigidityMultiplier;
     float windMultiplier;
     uint  enabled;
+    float lodScaleFactor;
+    float lodBaseRange;
+    float baseScale;
     float _pad0;
     float _pad1;
+    float _pad2;
 };
 
 layout(std140, binding = [[GRASS_PROPS_BINDING]]) uniform GrassProps {
@@ -124,6 +128,9 @@ void spawnBlade(GridCell cell, int slice, vec3 patchOffset, float patchSize) {
     bool rotateDither = (cell.index % 2 > 0);
     ivec2 cellID = ivec2(cell.Coord);
 
+    // To ensure stability, we always derive the position from the finest possible grid cell.
+    // Even if we are in a coarse LOD, we use a seed based on the underlying fine grid cells.
+    // However, to keep density consistent, we just use the current cellID but ensure jitter is stable.
     vec2 cellCenter = vec2(cell.Coord) * cell.scale;
 
     // --- Fast GPU Culling ---
@@ -131,11 +138,16 @@ void spawnBlade(GridCell cell, int slice, vec3 patchOffset, float patchSize) {
     vec3 cellMax = vec3(cellCenter.x + gridStep * 0.5, 120.0 * uWorldScale, cellCenter.y + gridStep * 0.5);
     if (!isAABBInFrustum(cellMin, cellMax)) return;
 
-    // Non-mirrored stable seed
-    uint seed = uint(cellID.x * 1973) ^ uint(cellID.y * 9277);
+    // Non-mirrored stable seed based on world position to survive LOD changes
+    // We use the absolute grid coordinates at the base scale.
+    float baseGridStep = globalProps.baseScale * uWorldScale;
+    ivec2 baseCellID = ivec2(floor(cellCenter / baseGridStep + 0.5));
+    uint seed = uint(baseCellID.x * 1973) ^ uint(baseCellID.y * 9277);
     if (seed == 0) seed = 1;
 
-    vec2 jitter = (vec2(hash(seed), hash(seed + 1234u)) * 2.0 - 1.0) * gridStep * 0.45;
+    // Jitter must be stable across LODs. Using baseGridStep for jitter
+    // ensures the blade's world position is identical regardless of the current LOD's scale.
+    vec2 jitter = (vec2(hash(seed + 1000u), hash(seed + 2234u)) * 2.0 - 1.0) * baseGridStep * 0.45;
     vec2 worldPosXZ = cellCenter + jitter;
 
     // Ensure only the patch containing the blade's actual position spawns it
@@ -168,16 +180,17 @@ void spawnBlade(GridCell cell, int slice, vec3 patchOffset, float patchSize) {
 
     if (biomeProps[pickedBiome].enabled == 0) return;
 
-    float fadeIn = (cell.index == -1) ? 1.0 : smoothstep(lower, cell.minRange + 0.001, dist);
-    float fadeOut = 1.0 - smoothstep(cell.maxRange, upper + 0.001, dist);
+    float fadeIn = (cell.index == -1) ? 1.0 : smoothstep(cell.minRange - gridStep, cell.minRange, dist);
+    float fadeOut = 1.0 - smoothstep(cell.maxRange, cell.maxRange + gridStep, dist);
     float densityCurve = fadeIn * fadeOut;
 
     float densityA = biomeProps[idxA].density;
     float densityB = biomeProps[idxB].density;
     float interpolatedDensity = mix(densityA, densityB, t);
 
-    int bx = cellID.x & 7;
-    int by = cellID.y & 7;
+    // Use baseCellID for dither to ensure density checks are stable across LODs
+    int bx = baseCellID.x & 7;
+    int by = baseCellID.y & 7;
     if (rotateDither) {
         int tmp = bx; bx = by; by = 7 - tmp;
     }
@@ -219,12 +232,14 @@ void main() {
     int lodIndex = int(task.data.z);
 
     // Calculate grid scale for this LOD
-    float baseScale = 0.5 * uWorldScale;
-    float scale = baseScale * exp(float(lodIndex));
+    float baseScale = globalProps.baseScale * uWorldScale;
+    float scale = baseScale * pow(globalProps.lodScaleFactor, float(lodIndex + 1));
 
     // Calculate range of grid cells that intersect this patch
-    vec2 patchMin = patchOffset.xz;
-    vec2 patchMax = patchOffset.xz + vec2(patchSize);
+    // We expand the search area slightly to ensure we catch blades that might jitter into the patch
+    float margin = scale * 0.5;
+    vec2 patchMin = patchOffset.xz - vec2(margin);
+    vec2 patchMax = patchOffset.xz + vec2(patchSize + margin);
 
     ivec2 cellMin = ivec2(floor(patchMin / scale + 0.0001));
     ivec2 cellMax = ivec2(floor(patchMax / scale - 0.0001));
@@ -235,11 +250,14 @@ void main() {
     int totalCells = cellsX * cellsY;
 
     // Grid properties for this LOD
-    float baseRange = 20.0 * uWorldScale;
-    float maxRange = baseRange * exp(float(lodIndex));
-    float minRange = (lodIndex <= -1) ? 0.0 : baseRange * exp(float(lodIndex - 1));
-    float lower = minRange;
-    float upper = 1.25*baseRange * exp(float(lodIndex+1));
+    float baseRange = globalProps.lodBaseRange * uWorldScale;
+    float scaleFactor = globalProps.lodScaleFactor;
+    float maxRange = baseRange * pow(scaleFactor, float(lodIndex + 1));
+    float minRange = (lodIndex == -1) ? 0.0 : baseRange * pow(scaleFactor, float(lodIndex));
+
+    // We allow a significant overlap for smooth cross-fading
+    float lower = (lodIndex == -1) ? 0.0 : (minRange - scale);
+    float upper = maxRange + scale;
 
     // Each thread in the workgroup processes some subset of these cells
     for (int i = int(gl_LocalInvocationID.x); i < totalCells; i += 64) {
