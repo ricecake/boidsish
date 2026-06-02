@@ -192,7 +192,7 @@ namespace Boidsish {
 		/**
 		 * @brief Get the instance buffer (ActiveChunks SSBO).
 		 */
-		GLuint GetInstanceBuffer() const { return instance_vbo_; }
+		GLuint GetInstanceBuffer() const { return instance_vbo_pb_->GetBufferId(); }
 
 		/**
 		 * @brief Get info about all registered chunks for external use (e.g., decor placement).
@@ -370,7 +370,7 @@ namespace Boidsish {
 		GLuint grid_vao_ = 0;
 		GLuint grid_vbo_ = 0;
 		GLuint grid_ebo_ = 0;
-		GLuint instance_vbo_ = 0;
+		std::unique_ptr<PersistentBuffer<InstanceData>> instance_vbo_pb_;
 		GLuint raw_heightmap_texture_ = 0; // GL_TEXTURE_2D_ARRAY (RGBA16F: height, normal.xyz)
 		GLuint heightmap_texture_ = 0;     // GL_TEXTURE_2D_ARRAY (RGBA16F: baked height, baked normal)
 		GLuint baked_params_texture_ = 0;  // GL_TEXTURE_2D_ARRAY (RGBA16F: erosion, ridge, substrate, water)
@@ -403,6 +403,13 @@ namespace Boidsish {
 		std::unique_ptr<PersistentBuffer<PatchDrawData>> patch_draw_data_pb_;
 		std::unique_ptr<PersistentBuffer<PatchTessLevels>> patch_tess_levels_pb_;
 		std::unique_ptr<PersistentBuffer<uint8_t>> patch_indirect_pb_; // Raw bytes for command buffer
+
+		// PBO-style persistent buffers for async texture uploads
+		std::unique_ptr<PersistentBuffer<float>> heightmap_pbo_pb_;
+		std::unique_ptr<PersistentBuffer<uint8_t>> biome_pbo_pb_;
+		uint32_t current_pbo_offset_h_ = 0;
+		uint32_t current_pbo_offset_b_ = 0;
+		uint32_t last_pbo_advance_frame_ = 0xFFFFFFFF;
 
 		GLsync patch_fences_[3]{0, 0, 0};
 

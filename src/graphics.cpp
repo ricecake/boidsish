@@ -1505,7 +1505,7 @@ namespace Boidsish {
 					GL_SHADER_STORAGE_BUFFER,
 					Constants::SsboBinding::CommonUniforms(),
 					uniforms_ssbo->GetBufferId(),
-					(frame_element_offset + mdi_pass_uniform_start) * sizeof(CommonUniforms),
+					uniforms_ssbo->GetFrameOffset() + mdi_pass_uniform_start * sizeof(CommonUniforms),
 					pass_draw_count * sizeof(CommonUniforms)
 				);
 
@@ -1590,7 +1590,7 @@ namespace Boidsish {
 					GL_SHADER_STORAGE_BUFFER,
 					Constants::SsboBinding::CommonUniforms(),
 					uniforms_ssbo->GetBufferId(),
-					(frame_element_offset + batch_global_index) * sizeof(CommonUniforms),
+					uniforms_ssbo->GetFrameOffset() + batch_global_index * sizeof(CommonUniforms),
 					batch.command_count * sizeof(CommonUniforms)
 				);
 

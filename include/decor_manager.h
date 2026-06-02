@@ -10,6 +10,7 @@
 #include "constants.h"
 #include "frustum.h"
 #include "model.h"
+#include "persistent_buffer.h"
 #include "procedural_generator.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -259,10 +260,11 @@ namespace Boidsish {
 		static constexpr int kMaxNewChunksPerFrame = 24;
 
 		// Per-type properties UBO for placement shader (uploaded in PrepareResources)
-		GLuint decor_props_ubo_ = 0;
+		std::unique_ptr<PersistentBuffer<DecorTypeGPU>> decor_props_pb_;
+
 		// Global placement params UBO and per-chunk SSBO (uploaded per dispatch frame)
-		GLuint placement_globals_ubo_ = 0;
-		GLuint chunk_params_ssbo_ = 0;
+		std::unique_ptr<PersistentBuffer<PlacementGlobalsGPU>> placement_globals_pb_;
+		std::unique_ptr<PersistentBuffer<ChunkParamsGPU>>     chunk_params_pb_;
 
 		// Distance-based density parameters
 		float                    density_falloff_start_ = 200.0f;
@@ -283,7 +285,7 @@ namespace Boidsish {
 		// Block validity SSBO: one uint per block. 1=valid (has placed decor),
 		// 0=invalid (freed, stale data). Checked by cull shader to skip freed blocks
 		// without needing to zero 64KB of instance data per type.
-		GLuint block_validity_ssbo_ = 0;
+		std::unique_ptr<PersistentBuffer<uint32_t>> block_validity_pb_;
 
 		static constexpr int kInstancesPerChunk = Constants::Class::Terrain::ChunkSize() *
 			Constants::Class::Terrain::ChunkSize();
