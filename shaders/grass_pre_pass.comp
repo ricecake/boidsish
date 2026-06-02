@@ -90,14 +90,14 @@ uniform int   u_numChunks;
 uniform vec3  uCameraPos;
 uniform float uWorldScale;
 
-#define MAX_GRASS_TASKS 16384
+#define MAX_GRASS_TASKS 65536
 
-void emitTask(vec3 worldOffset, float patchSize, float dist, int slice, int lodIndex) {
+void emitTask(vec3 worldOffset, float patchSize, float dist, int slice) {
     uint outIdx = atomicAdd(taskCount, 1);
     if (outIdx >= MAX_GRASS_TASKS) return;
 
     tasks[outIdx].patch_offset_and_scale = vec4(worldOffset, patchSize);
-    tasks[outIdx].data = vec4(dist, float(slice), float(lodIndex), 0.0);
+    tasks[outIdx].data = vec4(dist, float(slice), 0.0, 0.0);
 }
 
 void main() {
@@ -133,31 +133,13 @@ void main() {
     vec2 patchMin = worldOffset.xz;
     vec2 patchMax = worldOffset.xz + vec2(patchSize);
     vec2 closest = clamp(uCameraPos.xz, patchMin, patchMax);
-    vec2 furthest = vec2(
-        max(abs(uCameraPos.x - patchMin.x), abs(uCameraPos.x - patchMax.x)),
-        max(abs(uCameraPos.z - patchMin.y), abs(uCameraPos.z - patchMax.y))
-    );
     float minDist = distance(uCameraPos.xz, closest);
-    float maxDist = sqrt(furthest.x * furthest.x + furthest.y * furthest.y);
 
-    float baseRange = globalProps.lodBaseRange * uWorldScale;
-    float scaleFactor = globalProps.lodScaleFactor;
-    float baseGridScale = globalProps.baseScale * uWorldScale;
+    // One task per visible patch. Density is handled in the placement shader.
+    // Max view distance is roughly (MaxViewDistance * ChunkSize)
+    float maxDist = float([[MAX_VIEW_DISTANCE]] * [[CHUNK_SIZE]]) * uWorldScale;
 
-    // We check which LOD levels intersect this patch.
-    // Each LOD level 'lod' is responsible for blades in the distance range [minRange, maxRange].
-    // We add a margin for smooth cross-fading.
-    for (int lod = -1; lod <= 3; ++lod) {
-        float maxRange = baseRange * pow(scaleFactor, float(lod + 1));
-        float minRange = (lod == -1) ? 0.0 : baseRange * pow(scaleFactor, float(lod));
-
-        float scale = baseGridScale * pow(scaleFactor, float(lod + 1));
-        float lower = max(0.0, minRange - scale);
-        float upper = maxRange + scale;
-
-        // Conservative patch-radius check
-        if (minDist < upper && maxDist > lower) {
-            emitTask(worldOffset, patchSize, minDist, slice, lod);
-        }
+    if (minDist < maxDist) {
+        emitTask(worldOffset, patchSize, minDist, slice);
     }
 }

@@ -125,7 +125,7 @@ namespace Boidsish {
         };
 
         static constexpr uint32_t kMaxGrassInstances = 1024 * 1024; // 1M blades
-        static constexpr uint32_t kMaxGrassTasks = 16384;
+        static constexpr uint32_t kMaxGrassTasks = 65536;
         glm::vec3 last_camera_pos_{0.0f};
         uint32_t dummy_vao_ = 0;
 
