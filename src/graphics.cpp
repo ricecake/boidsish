@@ -436,11 +436,11 @@ namespace Boidsish {
 		GLsync                                                         mdi_fences[3]{0, 0, 0};
 
 		// MDI offset tracking across layers within a single frame
-		uint32_t mdi_elements_count = 0;
-		uint32_t mdi_arrays_count = 0;
-		uint32_t mdi_uniform_count = 0;
-		uint32_t mdi_frustum_count = 0;
-		uint32_t mdi_bone_count = 0;
+		std::atomic<uint32_t> mdi_elements_count{0};
+		std::atomic<uint32_t> mdi_arrays_count{0};
+		std::atomic<uint32_t> mdi_uniform_count{0};
+		std::atomic<uint32_t> mdi_frustum_count{0};
+		std::atomic<uint32_t> mdi_bone_count{0};
 
 		// Hi-Z occlusion culling
 		std::shared_ptr<HiZManager>    hiz_manager;
@@ -1384,6 +1384,107 @@ namespace Boidsish {
 
 		glm::mat4 SetupMatrices() { return SetupMatrices(camera); }
 
+		void PrepareLayerMDI(RenderQueue& queue, RenderLayer layer, bool is_shadow_pass, const glm::mat4& view, const glm::mat4& proj, const glm::vec3& cam_pos) {
+			const auto& packets = queue.GetPackets(layer);
+			if (packets.empty() && !is_shadow_pass) return;
+
+			LayerDrawPrep prep{};
+
+			if (!is_shadow_pass) {
+				prep.frustum_index = mdi_frustum_count.fetch_add(1);
+				if (prep.frustum_index < frustum_ssbo->GetElementCount()) {
+					Frustum         pass_frustum = Frustum::FromViewProjection(view, proj);
+					FrustumDataGPU* frustum_ptr = frustum_ssbo->GetFrameDataPtr();
+					FrustumDataGPU& data = frustum_ptr[prep.frustum_index];
+					for (int i = 0; i < 6; ++i) {
+						data.planes[i] = glm::vec4(pass_frustum.planes[i].normal, pass_frustum.planes[i].distance);
+					}
+					data.camera_pos = cam_pos;
+				}
+			}
+
+			const auto& batches = is_shadow_pass ? queue.GetShadowBatches() : queue.GetBatches(layer);
+			const auto& batch_packets = is_shadow_pass ? queue.GetPackets(RenderLayer::Opaque) : packets;
+			const auto& valid_indices = is_shadow_pass ? queue.GetShadowIndices() : queue.GetValidIndices(layer);
+
+			if (batches.empty()) {
+				if (is_shadow_pass) queue.SetShadowPrep(prep); else queue.SetPrep(layer, prep);
+				return;
+			}
+
+			uint32_t total_commands = 0;
+			for (const auto& b : batches) total_commands += b.command_count;
+
+			prep.uniform_start = mdi_uniform_count.fetch_add(total_commands);
+			prep.uniform_count = total_commands;
+
+			uint32_t num_elements = 0;
+			uint32_t num_arrays = 0;
+			for (const auto& b : batches) {
+				if (b.is_indexed) num_elements += b.command_count;
+				else num_arrays += b.command_count;
+			}
+
+			prep.elements_start = mdi_elements_count.fetch_add(num_elements);
+			prep.elements_count = num_elements;
+			prep.arrays_start = mdi_arrays_count.fetch_add(num_arrays);
+			prep.arrays_count = num_arrays;
+
+			DrawElementsIndirectCommand* elements_cmd_ptr = indirect_elements_buffer->GetFrameDataPtr();
+			DrawArraysIndirectCommand*   arrays_cmd_ptr = indirect_arrays_buffer->GetFrameDataPtr();
+			CommonUniforms*              uniforms_ptr = uniforms_ssbo->GetFrameDataPtr();
+			glm::mat4*                   bones_ptr = bone_matrices_ssbo->GetFrameDataPtr();
+
+			uint32_t vertex_frame_offset = megabuffer->GetVertexFrameOffset();
+			uint32_t index_frame_offset = megabuffer->GetIndexFrameOffset();
+
+			uint32_t u_idx = prep.uniform_start;
+			uint32_t e_idx = prep.elements_start;
+			uint32_t a_idx = prep.arrays_start;
+
+			for (const auto& batch : batches) {
+				uint32_t batch_packet_start = batch.base_uniform_index;
+				for (uint32_t b = 0; b < batch.command_count; ++b) {
+					uint32_t packet_idx = valid_indices[batch_packet_start + b];
+					const auto& packet = batch_packets[packet_idx];
+
+					uniforms_ptr[u_idx] = packet.uniforms;
+
+					if (!packet.bone_matrices.empty()) {
+						uint32_t bone_count = static_cast<uint32_t>(packet.bone_matrices.size());
+						uint32_t b_start = mdi_bone_count.fetch_add(bone_count);
+						if (b_start + bone_count <= 65536) {
+							std::memcpy(&bones_ptr[b_start], packet.bone_matrices.data(), bone_count * sizeof(glm::mat4));
+							uniforms_ptr[u_idx].bone_matrices_offset = (int)b_start;
+						}
+					}
+
+					bool uses_megabuffer = (packet.vao == megabuffer->GetVAO());
+					if (batch.is_indexed) {
+						DrawElementsIndirectCommand cmd{};
+						bool                        use_shadow_indices = (is_shadow_pass && packet.shadow_index_count > 0);
+						cmd.count = use_shadow_indices ? packet.shadow_index_count : packet.index_count;
+						cmd.instanceCount = std::max(1, packet.instance_count);
+						cmd.firstIndex = (use_shadow_indices ? packet.shadow_first_index : packet.first_index) +
+							(uses_megabuffer ? index_frame_offset : 0);
+						cmd.baseVertex = static_cast<int32_t>(packet.base_vertex + (uses_megabuffer ? vertex_frame_offset : 0));
+						cmd.baseInstance = 0;
+						elements_cmd_ptr[e_idx++] = cmd;
+					} else {
+						DrawArraysIndirectCommand cmd{};
+						cmd.count = packet.vertex_count;
+						cmd.instanceCount = std::max(1, packet.instance_count);
+						cmd.first = packet.base_vertex + (uses_megabuffer ? vertex_frame_offset : 0);
+						cmd.baseInstance = 0;
+						arrays_cmd_ptr[a_idx++] = cmd;
+					}
+					u_idx++;
+				}
+			}
+
+			if (is_shadow_pass) queue.SetShadowPrep(prep); else queue.SetPrep(layer, prep);
+		}
+
 		void ExecuteRenderQueue(
 			RenderQueue&                       queue,
 			const glm::mat4&                   view_mat,
@@ -1399,103 +1500,32 @@ namespace Boidsish {
 				layer == RenderLayer::Opaque ? "ExecuteRenderQueue::Opaque" : "ExecuteRenderQueue::Transparent"
 			);
 
-			const auto& packets = queue.GetPackets(layer);
-			if (packets.empty())
+			const auto& prep = is_shadow_pass ? queue.GetShadowPrep() : queue.GetPrep(layer);
+			if (prep.uniform_count == 0)
 				return;
-
-			// Update Frustum UBO for GPU-side culling for this specific pass
-			if (!is_shadow_pass) {
-				UpdateFrustumUbo(view_mat, proj_mat, camera_pos);
-			}
-
-			// Get pointers to persistent buffers
-			DrawElementsIndirectCommand* elements_cmd_ptr = indirect_elements_buffer->GetFrameDataPtr();
-			DrawArraysIndirectCommand*   arrays_cmd_ptr = indirect_arrays_buffer->GetFrameDataPtr();
-			CommonUniforms*              uniforms_ptr = uniforms_ssbo->GetFrameDataPtr();
-			glm::mat4*                   bones_ptr = bone_matrices_ssbo->GetFrameDataPtr();
 
 			uint32_t max_elements = 65536; // Buffer capacity
 			uint32_t frame_element_offset = uniforms_ssbo->GetCurrentBufferIndex() * max_elements;
 
-			uint32_t vertex_frame_offset = megabuffer->GetVertexFrameOffset();
-			uint32_t index_frame_offset = megabuffer->GetIndexFrameOffset();
-
-			// Fill uniform and command buffers using pre-built batches
-			const auto& batches = is_shadow_pass ? queue.GetShadowBatches() : queue.GetBatches(layer);
-			const auto& batch_packets = is_shadow_pass ? queue.GetPackets(RenderLayer::Opaque) : packets;
-			const auto& valid_indices = is_shadow_pass ? queue.GetShadowIndices() : queue.GetValidIndices(layer);
-
-			// Store the global start indices for this pass's data within the SSBOs
-			uint32_t mdi_pass_uniform_start = mdi_uniform_count;
-			uint32_t mdi_pass_elements_start = mdi_elements_count;
-			uint32_t mdi_pass_arrays_start = mdi_arrays_count;
-
-			for (const auto& batch : batches) {
-				uint32_t batch_packet_start = batch.base_uniform_index;
-				for (uint32_t b = 0; b < batch.command_count; ++b) {
-					uint32_t packet_idx = valid_indices[batch_packet_start + b];
-					const auto& packet = batch_packets[packet_idx];
-
-					if (mdi_uniform_count >= max_elements) {
-						static bool uniform_warning_logged = false;
-						if (!uniform_warning_logged) {
-							logger::WARNING("MDI uniform buffer exhausted");
-							uniform_warning_logged = true;
-						}
-						break;
-					}
-
-					// Copy uniforms to persistent SSBO
-					uniforms_ptr[mdi_uniform_count] = packet.uniforms;
-
-					// Handle skeletal animation data
-					if (!packet.bone_matrices.empty()) {
-						uint32_t bone_count = static_cast<uint32_t>(packet.bone_matrices.size());
-						if (mdi_bone_count + bone_count <= 65536) {
-							std::memcpy(
-								&bones_ptr[mdi_bone_count],
-								packet.bone_matrices.data(),
-								bone_count * sizeof(glm::mat4)
-							);
-							uniforms_ptr[mdi_uniform_count].bone_matrices_offset = (int)mdi_bone_count;
-							mdi_bone_count += bone_count;
-						}
-					}
-
-					bool uses_megabuffer = (packet.vao == megabuffer->GetVAO());
-					if (batch.is_indexed) {
-						if (mdi_elements_count >= max_elements) break;
-						DrawElementsIndirectCommand cmd{};
-						bool                        use_shadow_indices = (is_shadow_pass && packet.shadow_index_count > 0);
-						cmd.count = use_shadow_indices ? packet.shadow_index_count : packet.index_count;
-						cmd.instanceCount = std::max(1, packet.instance_count);
-						cmd.firstIndex = (use_shadow_indices ? packet.shadow_first_index : packet.first_index) +
-							(uses_megabuffer ? index_frame_offset : 0);
-						cmd.baseVertex = static_cast<int32_t>(
-							packet.base_vertex + (uses_megabuffer ? vertex_frame_offset : 0)
-						);
-						cmd.baseInstance = 0;
-						elements_cmd_ptr[mdi_elements_count++] = cmd;
-					} else {
-						if (mdi_arrays_count >= max_elements) break;
-						DrawArraysIndirectCommand cmd{};
-						cmd.count = packet.vertex_count;
-						cmd.instanceCount = std::max(1, packet.instance_count);
-						cmd.first = packet.base_vertex + (uses_megabuffer ? vertex_frame_offset : 0);
-						cmd.baseInstance = 0;
-						arrays_cmd_ptr[mdi_arrays_count++] = cmd;
-					}
-					mdi_uniform_count++;
-				}
+			// Update Frustum UBO binding for this specific pass
+			if (!is_shadow_pass) {
+				glBindBufferRange(
+					GL_UNIFORM_BUFFER,
+					Constants::UboBinding::FrustumData(),
+					frustum_ssbo->GetBufferId(),
+					frustum_ssbo->GetFrameOffset() + prep.frustum_index * sizeof(FrustumDataGPU),
+					sizeof(FrustumDataGPU)
+				);
 			}
 
 			// Ensure all CPU writes to persistent mapped buffers are visible to GPU
 			glMemoryBarrier(
-				GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT | GL_COMMAND_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT
+				GL_COMMAND_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT
 			);
 
 			// Hi-Z occlusion culling dispatch (between uniform fill and draw calls)
-			uint32_t pass_draw_count = mdi_uniform_count - mdi_pass_uniform_start;
+			uint32_t pass_draw_count = prep.uniform_count;
+			uint32_t mdi_pass_uniform_start = prep.uniform_start;
 			if (dispatch_hiz_occlusion && occlusion_cull_shader_ && occlusion_cull_shader_->isValid() && hiz_manager &&
 			    hiz_manager->IsInitialized() && pass_draw_count > 0) {
 				occlusion_cull_shader_->use();
@@ -1536,6 +1566,13 @@ namespace Boidsish {
 			unsigned int          current_vao = 0;
 			unsigned int          current_bound_shader_id = 0;
 			std::set<ShaderBase*> used_shaders;
+
+			const auto& batches = is_shadow_pass ? queue.GetShadowBatches() : queue.GetBatches(layer);
+			uint32_t mdi_pass_elements_start = prep.elements_start;
+			uint32_t mdi_pass_arrays_start = prep.arrays_start;
+
+			uint32_t batch_elements_count = 0;
+			uint32_t batch_arrays_count = 0;
 
 			for (const auto& batch : batches) {
 				RenderShader* render_shader = shader_table.Get(batch.shader_handle);
@@ -1581,8 +1618,6 @@ namespace Boidsish {
 						}
 					}
 				}
-
-				// s->setBool("uUseMDI", true); // Moved below SSBO binding
 
 				// Bind SSBO for this batch's uniforms (replaces uBaseUniformIndex)
 				uint32_t batch_global_index = mdi_pass_uniform_start + (batch.base_uniform_index);
@@ -1635,26 +1670,8 @@ namespace Boidsish {
 						else if (name == "texture_height")
 							number = std::to_string(heightNr++);
 
-						s->setInt((name + number).c_str(), i);
+						s->trySetInt((name + number).c_str(), i);
 					}
-					// Note: use_texture is now a bitmask handled in RenderPacket::uniforms (SSBO)
-					// This uniform is only used for non-MDI fallback or special passes
-					int use_texture_mask = 0;
-					for (const auto& tex : batch.textures) {
-						if (tex.type == "texture_diffuse")
-							use_texture_mask |= 1;
-						else if (tex.type == "texture_normal")
-							use_texture_mask |= 2;
-						else if (tex.type == "texture_metallic")
-							use_texture_mask |= 4;
-						else if (tex.type == "texture_roughness")
-							use_texture_mask |= 8;
-						else if (tex.type == "texture_ao")
-							use_texture_mask |= 16;
-						else if (tex.type == "texture_emissive")
-							use_texture_mask |= 32;
-					}
-					s->setInt("use_texture", use_texture_mask);
 				}
 
 				if (batch.vao != current_vao) {
@@ -1674,19 +1691,21 @@ namespace Boidsish {
 						batch.draw_mode,
 						batch.index_type,
 						(void*)(uintptr_t)(indirect_elements_buffer->GetFrameOffset() +
-					                       (mdi_pass_elements_start + batch.first_command) * sizeof(DrawElementsIndirectCommand)),
+					                       (mdi_pass_elements_start + batch_elements_count) * sizeof(DrawElementsIndirectCommand)),
 						batch.command_count,
 						sizeof(DrawElementsIndirectCommand)
 					);
+					batch_elements_count += batch.command_count;
 				} else {
 					glBindBuffer(GL_DRAW_INDIRECT_BUFFER, indirect_arrays_buffer->GetBufferId());
 					glMultiDrawArraysIndirect(
 						batch.draw_mode,
 						(void*)(uintptr_t)(indirect_arrays_buffer->GetFrameOffset() +
-					                       (mdi_pass_arrays_start + batch.first_command) * sizeof(DrawArraysIndirectCommand)),
+					                       (mdi_pass_arrays_start + batch_arrays_count) * sizeof(DrawArraysIndirectCommand)),
 						batch.command_count,
 						sizeof(DrawArraysIndirectCommand)
 					);
+					batch_arrays_count += batch.command_count;
 				}
 			}
 
@@ -2502,13 +2521,36 @@ namespace Boidsish {
 			}
 
 			{
-				PROJECT_PROFILE_SCOPE("SortRenderQueue");
+				PROJECT_PROFILE_SCOPE("PrepareMDIDataAsync");
+
+				// 1. Sort layers in parallel
 				render_queue.Sort(thread_pool);
-			}
-			{
-				PROJECT_PROFILE_SCOPE("BuildBatches");
+
+				// 2. Build batches and fill persistent buffers
+				// This happens in parallel for each layer
+				std::vector<std::future<void>> prep_futures;
+
+				// Batch building is currently synchronous in render_queue.cpp but we can parallelize layer prep
 				render_queue.BuildBatches(shadow_shader_handle);
+
+				for (int i = 0; i < 5; ++i) {
+					RenderLayer layer = static_cast<RenderLayer>(i);
+					prep_futures.push_back(thread_pool.submit([this, layer, frame]() {
+						PrepareLayerMDI(render_queue, layer, false, frame.view, frame.projection, frame.camera_pos);
+					}));
+				}
+
+				// Also prepare shadow pass data
+				prep_futures.push_back(thread_pool.submit([this, frame]() {
+					// NOTE: view/proj/cam_pos not used for shadow frustum UBO update (it's skipped)
+					PrepareLayerMDI(render_queue, RenderLayer::Opaque, true, frame.view, frame.projection, frame.camera_pos);
+				}));
+
+				for (auto& f : prep_futures) {
+					f.get();
+				}
 			}
+
 			packets_synced_ = true;
 		}
 

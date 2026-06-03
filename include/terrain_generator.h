@@ -45,6 +45,7 @@ namespace Boidsish {
 		// ==================== ITerrainGenerator Interface ====================
 
 		void                                         Update(const Frustum& frustum, const Camera& camera) override;
+		void UpdateManagementAsync(const Frustum& frustum, const Camera& camera, float scaled_chunk_size, int dynamic_view_distance, float max_h);
 		void                                         WaitForAllChunks(const Frustum& frustum, const Camera& camera) override;
 		const std::vector<std::shared_ptr<Terrain>>& GetVisibleChunks() const override;
 		std::vector<std::shared_ptr<Terrain>>        GetVisibleChunksCopy() const override;
@@ -349,6 +350,7 @@ namespace Boidsish {
 
 		// Deformation-specific async management
 		std::map<std::pair<int, int>, TaskHandle<TerrainGenerationResult>> pending_deformations_;
+		std::optional<TaskHandle<void>>                                    m_mgmt_task;
 		std::vector<uint32_t>                                              queued_deformation_ids_;
 		mutable std::mutex                                                 deformation_queue_mutex_;
 

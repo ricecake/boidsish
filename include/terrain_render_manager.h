@@ -301,6 +301,12 @@ namespace Boidsish {
 		 */
 		void GenerateMaxHeightMips();
 
+		struct PendingUpload {
+			int                  slice;
+			std::vector<float>   packed_height_normal;
+			std::vector<uint8_t> packed_biomes;
+		};
+
 		// Per-chunk metadata (CPU side)
 		struct ChunkInfo {
 			int       texture_slice;    // Index into texture array
@@ -434,8 +440,8 @@ namespace Boidsish {
 		std::vector<BakeTask> bake_queue_;
 
 		// Per-frame instance data
-		std::vector<InstanceData> visible_instances_;
-		size_t                    instance_buffer_capacity_ = 0;
+		std::vector<InstanceData>                        visible_instances_;
+		std::unique_ptr<PersistentBuffer<InstanceData>> instance_pb_;
 
 		// Camera position for LRU eviction (updated by PrepareForRender)
 		glm::vec3 last_camera_pos_{0.0f, 0.0f, 0.0f};
@@ -451,6 +457,8 @@ namespace Boidsish {
 		int   last_grid_origin_z_ = -999999;
 		float last_grid_world_scale_ = -1.0f;
 		bool  grid_dirty_ = true;
+
+		std::vector<PendingUpload> m_pending_uploads;
 
 		int   last_shadow_grid_origin_x_ = -999999;
 		int   last_shadow_grid_origin_z_ = -999999;

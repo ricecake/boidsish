@@ -1,6 +1,7 @@
 #include "terrain_render_manager.h"
 
 #include <algorithm>
+#include <cstring>
 #include <iostream>
 
 #include "biome_properties.h"
@@ -121,12 +122,9 @@ namespace Boidsish {
 		size_t indirect_size_bytes = 16 + sizeof(DrawElementsIndirectCommand);
 		patch_indirect_pb_ = std::make_unique<PersistentBuffer<uint8_t>>(GL_DRAW_INDIRECT_BUFFER, indirect_size_bytes, 3);
 
-		// Create instance buffer first so we can set up VAO attributes
-		// Pre-allocate for max_chunks to avoid reallocation
-		glGenBuffers(1, &instance_vbo_);
-		glBindBuffer(GL_ARRAY_BUFFER, instance_vbo_);
-		instance_buffer_capacity_ = max_chunks * sizeof(InstanceData);
-		glBufferData(GL_ARRAY_BUFFER, instance_buffer_capacity_, nullptr, GL_DYNAMIC_DRAW);
+		// Create persistent instance buffer
+		instance_pb_ = std::make_unique<PersistentBuffer<InstanceData>>(GL_SHADER_STORAGE_BUFFER, max_chunks, 3);
+		instance_vbo_ = instance_pb_->GetBufferId();
 
 		CreateGridMesh();
 		// Create patch mesh
@@ -171,8 +169,7 @@ namespace Boidsish {
 			glDeleteBuffers(1, &grid_vbo_);
 		if (grid_ebo_)
 			glDeleteBuffers(1, &grid_ebo_);
-		if (instance_vbo_)
-			glDeleteBuffers(1, &instance_vbo_);
+		instance_pb_.reset();
 		if (raw_heightmap_texture_)
 			glDeleteTextures(1, &raw_heightmap_texture_);
 		if (heightmap_texture_)
@@ -279,26 +276,8 @@ namespace Boidsish {
 		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, grid_ebo_);
 		glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), indices.data(), GL_STATIC_DRAW);
 
-		// Set up instance attributes (from instance_vbo_ created in constructor)
-		glBindBuffer(GL_ARRAY_BUFFER, instance_vbo_);
-
-		// Instance attribute: world_offset_and_slice (location 3)
-		glVertexAttribPointer(
-			3,
-			4,
-			GL_FLOAT,
-			GL_FALSE,
-			sizeof(InstanceData),
-			(void*)offsetof(InstanceData, world_offset_and_slice)
-		);
-		glEnableVertexAttribArray(3);
-		glVertexAttribDivisor(3, 1); // Per-instance
-
-		// Instance attribute: bounds (location 4)
-		glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, sizeof(InstanceData), (void*)offsetof(InstanceData, bounds));
-		glEnableVertexAttribArray(4);
-		glVertexAttribDivisor(4, 1); // Per-instance
-
+		// Persistent mapping uses SSBO for instance data in the new path-based MDI,
+		// so legacy instance attributes on the VAO are no longer needed.
 		glBindVertexArray(0);
 	}
 
@@ -455,41 +434,35 @@ namespace Boidsish {
 
 	void TerrainRenderManager::RegisterChunk(
 		std::pair<int, int>              chunk_key,
-		const std::vector<glm::vec3>&    positions,
-		const std::vector<glm::vec3>&    normals,
-		const std::vector<glm::vec2>&    biomes,
+		const std::vector<glm::vec3>&    /*positions*/,
+		const std::vector<glm::vec3>&    /*normals*/,
+		const std::vector<glm::vec2>&    /*biomes*/,
 		const std::vector<float>&        packed_height_normal,
 		const std::vector<uint8_t>&      packed_biomes,
-		const std::vector<unsigned int>& indices, // Not used in this implementation
+		const std::vector<unsigned int>& /*indices*/,
 		float                            min_y,
 		float                            max_y,
 		const glm::vec3&                 world_offset,
 		float                            world_scale
 	) {
 		// Deferred eviction callback to avoid deadlock
-		// (caller may hold terrain generator's mutex, and callback needs that mutex)
 		bool                should_notify_eviction = false;
 		std::pair<int, int> evicted_chunk_key;
 
-		// Update world scale tracking
 		last_world_scale_ = world_scale;
 
-		// Scoped lock - released before calling eviction callback to avoid deadlock
 		{
 			std::lock_guard<std::recursive_mutex> lock(mutex_);
 
 			// If chunk already exists, update it
 			auto it = chunks_.find(chunk_key);
 			if (it != chunks_.end()) {
-				// Update existing chunk's heightmap
-				UploadHeightmapSlice(it->second.texture_slice, packed_height_normal, packed_biomes);
+				m_pending_uploads.push_back({it->second.texture_slice, packed_height_normal, packed_biomes});
 				it->second.min_y = min_y;
 				it->second.max_y = max_y;
 				it->second.update_count++;
 				grid_dirty_ = true;
-		needs_prep_ = true;
-
-				// Queue for baking
+				needs_prep_ = true;
 				bake_queue_.push_back({glm::ivec2(chunk_key.first, chunk_key.second), it->second.texture_slice, 0});
 				return;
 			}
@@ -501,24 +474,17 @@ namespace Boidsish {
 				free_slices_.pop_back();
 			} else {
 				if (next_slice_ >= max_chunks_) {
-					// Check if we can grow the texture array
 					GLint max_layers = 0;
 					glGetIntegerv(GL_MAX_ARRAY_TEXTURE_LAYERS, &max_layers);
 
 					if (max_chunks_ >= max_layers) {
-						// At GPU capacity - use LRU eviction based on distance from camera
-						// Use last known camera position for eviction decisions
 						glm::vec2 camera_pos_2d(last_camera_pos_.x, last_camera_pos_.z);
-
 						float               max_dist_sq = -1.0f;
 						std::pair<int, int> farthest_key;
 
 						for (const auto& [key, chunk] : chunks_) {
 							float     scaled_chunk_size = chunk_size_ * last_world_scale_;
-							glm::vec2 chunk_center(
-								chunk.world_offset.x + scaled_chunk_size * 0.5f,
-								chunk.world_offset.y + scaled_chunk_size * 0.5f
-							);
+							glm::vec2 chunk_center(chunk.world_offset.x + scaled_chunk_size * 0.5f, chunk.world_offset.y + scaled_chunk_size * 0.5f);
 							float dist_sq = glm::dot(chunk_center - camera_pos_2d, chunk_center - camera_pos_2d);
 							if (dist_sq > max_dist_sq) {
 								max_dist_sq = dist_sq;
@@ -527,24 +493,16 @@ namespace Boidsish {
 						}
 
 						if (max_dist_sq >= 0) {
-							// Evict the farthest chunk and reuse its slice
 							auto evict_it = chunks_.find(farthest_key);
 							if (evict_it != chunks_.end()) {
 								slice = evict_it->second.texture_slice;
 								chunks_.erase(evict_it);
-								// Queue callback to be called after we finish registration
-								// (avoids deadlock if callback tries to acquire terrain generator's mutex)
 								evicted_chunk_key = farthest_key;
 								should_notify_eviction = true;
-							} else {
-								return; // Shouldn't happen, but safety check
-							}
-						} else {
-							return; // No chunks to evict
-						}
+							} else return;
+						} else return;
 					} else {
-						// Can grow, but cap at GPU limit
-						int new_capacity = std::min(max_chunks_ * 2, max_layers);
+						int new_capacity = std::min(max_chunks_ * 2, (int)max_layers);
 						EnsureTextureCapacity(new_capacity);
 						slice = next_slice_++;
 					}
@@ -553,13 +511,9 @@ namespace Boidsish {
 				}
 			}
 
-			// Upload heightmap data
-			UploadHeightmapSlice(slice, packed_height_normal, packed_biomes);
-
-			// Queue for baking
+			m_pending_uploads.push_back({slice, packed_height_normal, packed_biomes});
 			bake_queue_.push_back({glm::ivec2(chunk_key.first, chunk_key.second), slice, 0});
 
-			// Store chunk info
 			ChunkInfo info{};
 			info.texture_slice = slice;
 			info.min_y = min_y;
@@ -569,9 +523,8 @@ namespace Boidsish {
 			chunks_[chunk_key] = info;
 			grid_dirty_ = true;
 			needs_prep_ = true;
-		} // mutex released here
+		}
 
-		// Call eviction callback outside the lock to avoid deadlock
 		if (should_notify_eviction && eviction_callback_) {
 			eviction_callback_(evicted_chunk_key);
 		}
@@ -718,21 +671,15 @@ namespace Boidsish {
 
 		// Upload instance data to GPU for the prepare compute shader
 		PROJECT_PROFILE_SCOPE("UploadInstanceData");
+		instance_pb_->AdvanceFrame();
 		if (!visible_instances_.empty()) {
 			// Update bounds with raw chunkSize for the prepare shader's UV calculation
 			for (auto& instance : visible_instances_) {
 				instance.bounds.z = static_cast<float>(chunk_size_);
 			}
 
-			// Use internal instance_vbo_ but bind as SSBO for prepare shader
-			glBindBuffer(GL_SHADER_STORAGE_BUFFER, instance_vbo_);
-			size_t required_size = visible_instances_.size() * sizeof(InstanceData);
-			if (required_size > instance_buffer_capacity_) {
-				instance_buffer_capacity_ = required_size * 2;
-				glBufferData(GL_SHADER_STORAGE_BUFFER, instance_buffer_capacity_, nullptr, GL_DYNAMIC_DRAW);
-			}
-			glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, required_size, visible_instances_.data());
-			glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+			InstanceData* ptr = instance_pb_->GetFrameDataPtr();
+			std::memcpy(ptr, visible_instances_.data(), visible_instances_.size() * sizeof(InstanceData));
 		}
 	}
 
@@ -1052,7 +999,7 @@ namespace Boidsish {
 		indirect_data[7] = 0; // baseVertex
 		indirect_data[8] = 0; // baseInstance
 
-		glMemoryBarrier(GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT);
+		// Coherent mapping ensures CPU writes are visible to GPU without explicit barrier
 
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainPatchMetrics(), patch_metrics_ssbo_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainPatchVisibility(), patch_visibility_ssbo_);
@@ -1067,7 +1014,13 @@ namespace Boidsish {
 			patch_indirect_pb_->GetTotalSize() / 3
 		);
 
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::IndirectionBuffer(), instance_vbo_);
+		glBindBufferRange(
+			GL_SHADER_STORAGE_BUFFER,
+			Constants::SsboBinding::IndirectionBuffer(),
+			instance_pb_->GetBufferId(),
+			instance_pb_->GetFrameOffset(),
+			instance_pb_->GetTotalSize() / 3
+		);
 		if (temporal_data_ubo_ != 0) {
 			if (temporal_data_ubo_size_ > 0) {
 				glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::TemporalData(),
@@ -1246,6 +1199,13 @@ namespace Boidsish {
 	}
 
 	void TerrainRenderManager::CommitUpdates(bool force_sync) {
+		{
+			std::lock_guard<std::recursive_mutex> lock(mutex_);
+			for (const auto& up : m_pending_uploads) {
+				UploadHeightmapSlice(up.slice, up.packed_height_normal, up.packed_biomes);
+			}
+			m_pending_uploads.clear();
+		}
 		// Ensure grid textures and UBO are up to date before baking
 		UpdateGridTextures(last_world_scale_);
 		PerformBaking(last_world_scale_, force_sync);
