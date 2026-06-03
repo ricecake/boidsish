@@ -70,6 +70,23 @@ namespace Boidsish {
 		// }
 
 		// Setup legs tracking — rest offsets match GenerateIR foot positions exactly
+
+		// Setup constraints
+		std::string bone_names[4] = {"FL", "FR", "BR", "BL"};
+		for (int i = 0; i < 4; ++i) {
+			BoneConstraint upper_c;
+			upper_c.type = ConstraintType::Cone;
+			upper_c.coneAngle = 45.0f;
+			model_->SetBoneConstraint(bone_names[i] + "_upper", upper_c);
+
+			BoneConstraint lower_c;
+			lower_c.type = ConstraintType::Hinge;
+			lower_c.axis = (i == 0 || i == 3) ? glm::vec3(0, 0, 1) : glm::vec3(0, 0, -1);
+			lower_c.minAngle = -90.0f;
+			lower_c.maxAngle = 90.0f;
+			model_->SetBoneConstraint(bone_names[i] + "_lower", lower_c);
+		}
+
 		legs_.resize(4);
 		float total_lateral = hip_lateral + upper_horiz + lower_horiz;
 		float z_offset = length_ * 0.64f;
@@ -100,7 +117,7 @@ namespace Boidsish {
 		glm::vec3 leg_col(0.4f, 0.4f, 0.45f);
 		glm::vec3 foot_col(0.2f, 0.2f, 0.2f);
 
-		// Body: A Box
+		// Body: A Box - The Root Bone
 		int body = ir.AddBox(
 			glm::vec3(0, height_, 0),
 			glm::quat(1, 0, 0, 0),
@@ -121,12 +138,9 @@ namespace Boidsish {
 		};
 
 		for (int i = 0; i < 4; ++i) {
-			// Hip hub - NOT a bone (IK will start from upper leg)
-			int hip =
-				ir.AddHub(offsets[i], length_ * 0.08f, leg_col, body, names[i] + "_hip", false, SkinningMode::Rigid);
+			// Hip hub - Now a bone attached to body
+			int hip = ir.AddHub(offsets[i], length_ * 0.1f, leg_col, body, names[i] + "_hip", true, SkinningMode::Smooth);
 
-			// Upper leg: moderate upward arch, going outward
-			// Knee is above the hip so the leg forms a natural arch (knee points up/out)
 			float     out_sign = (offsets[i].x > 0) ? 1.0f : -1.0f;
 			float     upper_horiz = length_ * 0.35f;
 			float     upper_arch = height_ * 0.4f;
@@ -143,7 +157,6 @@ namespace Boidsish {
 				SkinningMode::Smooth
 			);
 
-			// Lower leg: mostly down, 15° outward tilt to widen stance
 			float     foot_h = length_ * 0.08f;
 			float     knee_y = upper_end.y;
 			float     drop = knee_y - foot_h;
@@ -161,7 +174,6 @@ namespace Boidsish {
 				SkinningMode::Smooth
 			);
 
-			// Foot: Wedge - bone so it can be the IK end-effector
 			ir.AddWedge(
 				lower_end + glm::vec3(0, -foot_h, 0),
 				glm::quat(1, 0, 0, 0),
@@ -181,40 +193,20 @@ namespace Boidsish {
 
 		UpdateMovement(delta_time);
 
-		// Update outer shape position so callers/tests see the movement
 		SetPosition(current_pos_.x, current_pos_.y, current_pos_.z);
 
-		// Update model transform before IK so world-to-model conversions are correct
 		model_->SetPosition(current_pos_.x, current_pos_.y, current_pos_.z);
 		model_->SetRotation(glm::angleAxis(glm::radians(current_yaw_), glm::vec3(0, 1, 0)));
 
-		// One-time diagnostic: print bone positions and IK targets
-		static bool diag_printed = false;
-		if (!diag_printed) {
-			diag_printed = true;
-			auto print_v = [](const char* label, glm::vec3 v) {
-				printf("  %s: (%.3f, %.3f, %.3f)\n", label, v.x, v.y, v.z);
-			};
-			printf("=== Walking Creature IK Diagnostic ===\n");
-			printf("Model pos: (%.3f, %.3f, %.3f)\n", current_pos_.x, current_pos_.y, current_pos_.z);
-			for (auto& leg : legs_) {
-				printf("Leg %s:\n", leg.name.c_str());
-				print_v("  world_foot_target", leg.world_foot_pos);
-				print_v("  upper (model-space)", model_->GetBoneWorldPosition(leg.name + "_upper"));
-				print_v("  lower (model-space)", model_->GetBoneWorldPosition(leg.name + "_lower"));
-				print_v("  foot  (model-space)", model_->GetBoneWorldPosition(leg.name + "_foot"));
-			}
-			printf("  body (model-space): ");
-			auto bp = model_->GetBoneWorldPosition("body");
-			printf("(%.3f, %.3f, %.3f)\n", bp.x, bp.y, bp.z);
-			printf("======================================\n");
+		// Apply multi-effector IK
+		std::vector<std::string> effectors;
+		std::vector<glm::vec3> targets;
+		for (auto& leg : legs_) {
+			effectors.push_back(leg.effector_name);
+			targets.push_back(leg.world_foot_pos);
 		}
 
-		// Apply IK to position legs on the ground
-		// Each leg has its own 3-joint chain: [upper, lower, foot]
-		for (auto& leg : legs_) {
-			model_->SolveIK(leg.effector_name, leg.world_foot_pos, 0.01f, 20, leg.name + "_upper");
-		}
+		model_->SolveIK(effectors, targets, 0.01f, 20, "body", {}, true);
 		model_->UpdateAnimation(delta_time);
 	}
 
@@ -229,13 +221,11 @@ namespace Boidsish {
 			float     target_yaw = glm::degrees(std::atan2(dir.x, dir.z));
 
 			float yaw_diff = target_yaw - current_yaw_;
-			while (yaw_diff > 180.0f)
-				yaw_diff -= 360.0f;
-			while (yaw_diff < -180.0f)
-				yaw_diff += 360.0f;
+			while (yaw_diff > 180.0f) yaw_diff -= 360.0f;
+			while (yaw_diff < -180.0f) yaw_diff += 360.0f;
 			current_yaw_ += yaw_diff * std::min(1.0f, delta_time * 3.0f);
 
-			float speed = length_ * 0.75f;
+			float speed = length_ * 1.2f;
 			current_pos_ += glm::vec3(std::sin(glm::radians(current_yaw_)), 0, std::cos(glm::radians(current_yaw_))) *
 				speed * delta_time;
 		} else {
@@ -243,22 +233,24 @@ namespace Boidsish {
 		}
 
 		if (is_walking_) {
-			walk_phi_ += (delta_time / step_duration_) * 0.5f;
-			if (walk_phi_ >= 2.0f)
-				walk_phi_ -= 2.0f;
+			walk_phi_ += (delta_time / step_duration_);
+			if (walk_phi_ >= 4.0f) walk_phi_ -= 4.0f;
+		} else {
+			walk_phi_ = 0;
 		}
 
 		glm::mat4 rotation = glm::rotate(glm::mat4(1.0f), glm::radians(current_yaw_), glm::vec3(0, 1, 0));
 		glm::vec3 forward = glm::vec3(rotation * glm::vec4(0, 0, 1, 0));
 
+		// Crawl sequence: FL(0), BR(2), FR(1), BL(3)
+		int crawl_sequence[4] = {0, 2, 1, 3};
+
 		for (int j = 0; j < 4; ++j) {
-			int   leg_idx = sequence_[j];
-			float leg_phi_start = j * 0.5f;
+			int   leg_idx = crawl_sequence[j];
+			float leg_phi_start = (float)j;
 			float leg_phi = walk_phi_ - leg_phi_start;
-			while (leg_phi < 0)
-				leg_phi += 2.0f;
-			while (leg_phi >= 2.0f)
-				leg_phi -= 2.0f;
+			while (leg_phi < 0) leg_phi += 4.0f;
+			while (leg_phi >= 4.0f) leg_phi -= 4.0f;
 
 			if (is_walking_ && leg_phi < 1.0f) {
 				if (!legs_[leg_idx].is_moving) {
@@ -266,15 +258,14 @@ namespace Boidsish {
 					legs_[leg_idx].step_start_pos = legs_[leg_idx].world_foot_pos;
 
 					glm::vec3 rotated_offset = glm::vec3(rotation * glm::vec4(legs_[leg_idx].rest_offset, 1.0f));
-					float     step_dist = length_ * 0.4f;
+					float     step_dist = length_ * 0.8f;
 					legs_[leg_idx].step_target_pos = current_pos_ + rotated_offset + forward * step_dist;
 					legs_[leg_idx].step_target_pos.y = current_pos_.y;
 				}
 
 				float p = leg_phi;
-				float h = std::sin(p * std::numbers::pi_v<float>) * length_ * 0.15f;
-				legs_[leg_idx]
-					.world_foot_pos = glm::mix(legs_[leg_idx].step_start_pos, legs_[leg_idx].step_target_pos, p);
+				float h = std::sin(p * std::numbers::pi_v<float>) * length_ * 0.25f;
+				legs_[leg_idx].world_foot_pos = glm::mix(legs_[leg_idx].step_start_pos, legs_[leg_idx].step_target_pos, p);
 				legs_[leg_idx].world_foot_pos.y = current_pos_.y + h;
 			} else {
 				if (legs_[leg_idx].is_moving) {
@@ -282,8 +273,17 @@ namespace Boidsish {
 					legs_[leg_idx].world_foot_pos = legs_[leg_idx].step_target_pos;
 					legs_[leg_idx].world_foot_pos.y = current_pos_.y;
 				}
+				// While not moving, try to keep foot at its target but glued to ground
+				legs_[leg_idx].world_foot_pos.y = current_pos_.y;
 			}
 		}
+
+		// Adjust body height based on average foot height to stay level
+		float avg_y = 0;
+		for(auto& leg : legs_) avg_y += leg.world_foot_pos.y;
+		avg_y /= 4.0f;
+		// If walking, slightly oscillate body height
+		if(is_walking_) current_pos_.y = avg_y + std::sin(walk_phi_ * std::numbers::pi_v<float> * 2.0f) * length_ * 0.05f;
 	}
 
 	void ProceduralWalkingCreature::PrepareResources(Megabuffer* megabuffer) const {
