@@ -123,10 +123,12 @@ namespace Boidsish {
 
 			// Update the entity's shape
 			entity->UpdateShape();
+		});
 
+		for (auto& entity : entities) {
 			// Call the OnEntityUpdated hook
 			OnEntityUpdated(entity);
-		});
+		}
 
 		return {};
 	}

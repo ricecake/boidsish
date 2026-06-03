@@ -235,29 +235,22 @@ namespace Boidsish {
 					float     hit_dist = 0.0f;
 					glm::vec3 hit_normal;
 					if (handler.RaycastTerrain(origin, dir, reaction_distance, hit_dist, hit_normal)) {
-						auto hit_coord = vel_vec.Normalized() * hit_dist;
-						auto [terrain_h, terrain_normal] = handler.GetTerrainPropertiesAtPoint(
-							hit_coord.x,
-							hit_coord.z
-						);
-
-							glm::vec3 local_up = glm::vec3(0.0f, 1.0f, 0.0f);
-							auto      away = terrain_normal;
-							if (glm::dot(away, local_up) < kUpAlignmentThreshold) {
-								away = local_up;
-							}
-
-							away = target_dir_world - (glm::dot(target_dir_world, away)) * away;
-
-							float     distance_factor = 1.0f - (hit_dist / reaction_distance);
-							float     alignment_with_target = glm::dot(dir, target_dir_world);
-							float     target_priority = 1.0f - glm::clamp(alignment_with_target, 0.0f, 1.0f);
-							float     avoidance_weight = distance_factor * target_priority;
-							glm::vec3 final_desired_dir = glm::normalize(
-								target_dir_world + (away * avoidance_weight * kAvoidanceStrength)
-							);
-							target_dir_local = WorldToObject(final_desired_dir);
+						glm::vec3 local_up = glm::vec3(0.0f, 1.0f, 0.0f);
+						auto      away = hit_normal;
+						if (glm::dot(away, local_up) < kUpAlignmentThreshold) {
+							away = local_up;
 						}
+
+						away = target_dir_world - (glm::dot(target_dir_world, away)) * away;
+
+						float     distance_factor = 1.0f - (hit_dist / reaction_distance);
+						float     alignment_with_target = glm::dot(dir, target_dir_world);
+						float     target_priority = 1.0f - glm::clamp(alignment_with_target, 0.0f, 1.0f);
+						float     avoidance_weight = distance_factor * target_priority;
+						glm::vec3 final_desired_dir = glm::normalize(
+							target_dir_world + (away * avoidance_weight * kAvoidanceStrength)
+						);
+						target_dir_local = WorldToObject(final_desired_dir);
 					}
 				}
 

@@ -290,15 +290,7 @@ namespace Boidsish {
 
 		virtual void AddEntity(int id, std::shared_ptr<EntityBase> entity) {
 			entities_[id] = entity;
-			// Invalidate caches that might be affected by this new entity.
-			// We only need to clear if the cache was actually used.
-			std::lock_guard<std::mutex> lock(cache_mutex_);
-			for (auto& pair : type_caches_) {
-				pair.second->Invalidate();
-			}
-			for (auto& pair : type_caches_raw_) {
-				pair.second->Invalidate();
-			}
+			InvalidateTypeCaches();
 			if (vis) {
 				entity->UpdateShape();
 				vis->AddShape(entity->GetShape());
@@ -314,14 +306,7 @@ namespace Boidsish {
 				}
 			}
 			entities_.erase(id);
-			// Invalidate caches that might be affected by this removal.
-			std::lock_guard<std::mutex> lock(cache_mutex_);
-			for (auto& pair : type_caches_) {
-				pair.second->Invalidate();
-			}
-			for (auto& pair : type_caches_raw_) {
-				pair.second->Invalidate();
-			}
+			InvalidateTypeCaches();
 		}
 
 		std::shared_ptr<EntityBase> GetEntity(int id) {
