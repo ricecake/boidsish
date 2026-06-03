@@ -592,6 +592,7 @@ namespace Boidsish {
 			service_locator_.Register<SdfVolumeManager>();
 			service_locator_.Register<SoundEffectManager>();
 			service_locator_.Register<TrailRenderManager>();
+			service_locator_.RegisterFactory<ITerrainGenerator>([this](ServiceLocator&) { return terrain_generator; });
 
 			service_locator_.RegisterFactory<UI::UIConfigManager>(
 				[this](ServiceLocator& loc) {
