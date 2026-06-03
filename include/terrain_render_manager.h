@@ -21,7 +21,12 @@ namespace Boidsish {
 	class ServiceLocator;
 	struct Frustum;
 
-	static constexpr size_t kMaxBakesPerFrame = 6;
+	struct TerrainDataUbo {
+		glm::ivec4 origin_size;    // x, z, size, is_bound (1)
+		glm::vec4  terrain_params; // chunk_size, world_scale, unused, unused
+	};
+
+	static constexpr size_t kMaxBakesPerFrame = 16;
 
 	/**
 	 * @brief High-performance instanced terrain rendering with heightmap lookup.
@@ -249,6 +254,11 @@ namespace Boidsish {
 		void PerformBaking(float world_scale, bool force_sync = false);
 
 		/**
+		 * @brief Advance the internal frame index for triple-buffering.
+		 */
+		void AdvanceFrame();
+
+		/**
 		 * @brief Set the VisualEffects UBO for baking parameters.
 		 */
 		void SetVisualEffectsUbo(GLuint ubo) { visual_effects_ubo_ = ubo; }
@@ -314,6 +324,8 @@ namespace Boidsish {
 			float     max_y;            // For frustum culling
 			glm::vec2 world_offset;     // (chunk_x * chunk_size, chunk_z * chunk_size)
 			uint32_t  update_count = 0; // Incremented each time chunk data is re-uploaded
+			bool      is_uploaded = false;
+			bool      is_baked = false;
 		};
 
 		// Per-instance data sent to GPU (std140 layout)
@@ -392,8 +404,9 @@ namespace Boidsish {
 		GLuint biome_ubo_ = 0; // UBO for BiomeShaderProperties
 
 		// Global terrain grid resources
-		GLuint chunk_grid_texture_ = 0;      // GL_TEXTURE_2D (R16I: texture_slice index, -1 if none)
-		GLuint max_height_grid_texture_ = 0; // GL_TEXTURE_2D (R32F: max_y, mips for hierarchical check)
+		GLuint chunk_grid_textures_[3]{0, 0, 0};      // GL_TEXTURE_2D (R16I: texture_slice index, -1 if none)
+		GLuint max_height_grid_textures_[3]{0, 0, 0}; // GL_TEXTURE_2D (R32F: max_y, mips for hierarchical check)
+		std::unique_ptr<PersistentBuffer<TerrainDataUbo>> terrain_data_pb_;
 		GLuint terrain_data_ubo_ = 0;        // UBO for grid parameters
 		GLuint probe_ssbo_ = 0;              // SSBO for per-chunk SH probes
 		GLuint bake_ssbo_ = 0;               // SSBO for BakeTask
@@ -436,6 +449,7 @@ namespace Boidsish {
 		std::map<std::pair<int, int>, ChunkInfo> chunks_;
 		std::vector<int>                         free_slices_; // Available texture slices
 		int                                      next_slice_ = 0;
+		int                                      max_texture_layers_ = 0;
 
 		std::vector<BakeTask> bake_queue_;
 

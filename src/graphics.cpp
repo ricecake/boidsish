@@ -1456,6 +1456,12 @@ namespace Boidsish {
 						if (b_start + bone_count <= 65536) {
 							std::memcpy(&bones_ptr[b_start], packet.bone_matrices.data(), bone_count * sizeof(glm::mat4));
 							uniforms_ptr[u_idx].bone_matrices_offset = (int)b_start;
+						} else {
+							static std::atomic<uint32_t> s_bone_overflow_count{0};
+							if (s_bone_overflow_count.fetch_add(1) % 1000 == 0) {
+								logger::WARNING("MDI bone matrix buffer exhausted - some animations may be broken");
+							}
+							uniforms_ptr[u_idx].bone_matrices_offset = -1;
 						}
 					}
 
@@ -2129,6 +2135,9 @@ namespace Boidsish {
 		}
 
 		void PrepareFrame() {
+			if (terrain_render_manager) {
+				terrain_render_manager->AdvanceFrame();
+			}
 			// Advance persistent buffers and handle synchronization
 			indirect_elements_buffer->AdvanceFrame();
 			indirect_arrays_buffer->AdvanceFrame();
