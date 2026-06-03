@@ -998,7 +998,7 @@ namespace Boidsish {
 				for(auto c : pNode->children) if(c == current) { found = true; break; }
 				if(!found) pNode->children.push_back(current);
 				current->parent = pNode;
-				// IMPORTANT: Use bind length to prevent scale drift
+				// Bind length from local transformation of current bone in bind pose
 				current->length = glm::length(glm::vec3(current->bind_node->transformation[3]));
 				if (parentName == rootBoneName) break;
 				current = pNode;
@@ -1014,7 +1014,6 @@ namespace Boidsish {
 		glm::vec3 originalRootPos = root->pos;
 
 		for (int iter = 0; iter < maxIterations; ++iter) {
-			// Backward
 			std::function<void(IKNode*)> backward = [&](IKNode* node) {
 				for (auto child : node->children) backward(child);
 				if (node->is_effector) {
@@ -1030,8 +1029,8 @@ namespace Boidsish {
 			};
 			backward(root);
 
-			// Forward
 			if (!freeRoot) root->pos = originalRootPos;
+
 			std::function<void(IKNode*)> forward = [&](IKNode* node) {
 				for (auto child : node->children) {
 					float r = std::max(0.0001f, glm::distance(child->pos, node->pos));
@@ -1086,7 +1085,6 @@ namespace Boidsish {
 			forward(root);
 		}
 
-		// Apply
 		std::function<void(IKNode*, glm::mat4)> updateTransforms = [&](IKNode* node, glm::mat4 parentGlobal) {
 			glm::mat4 bindLocal = node->bind_node->transformation;
 			glm::vec3 bindScale(glm::length(bindLocal[0]), glm::length(bindLocal[1]), glm::length(bindLocal[2]));
@@ -1143,11 +1141,12 @@ namespace Boidsish {
 		glm::quat modelRot = glm::quat_cast(invModel) * worldRot;
 
 		std::string parentName = m_animator->GetBoneParentName(boneName);
-		glm::quat   parentModelRot = glm::quat(1, 0, 0, 0);
+		glm::mat4   parentModelSpace = glm::mat4(1.0f);
 		if (!parentName.empty()) {
-			parentModelRot = glm::quat_cast(m_animator->GetBoneModelSpaceTransform(parentName));
+			parentModelSpace = m_animator->GetBoneModelSpaceTransform(parentName);
 		}
 
+		glm::quat parentModelRot = glm::quat_cast(parentModelSpace);
 		glm::quat localRot = glm::inverse(parentModelRot) * modelRot;
 
 		glm::mat4 localTransform = m_animator->GetBoneLocalTransform(boneName);
@@ -1158,7 +1157,7 @@ namespace Boidsish {
 		);
 		glm::vec3 pos = glm::vec3(localTransform[3]);
 
-		localTransform = glm::translate(glm::mat4(1.0f), pos) * glm::toMat4(localRot) *
+		localTransform = glm::translate(glm::mat4(1.0f), pos) * glm::toMat4(glm::normalize(localRot)) *
 			glm::scale(glm::mat4(1.0f), scale);
 		m_animator->SetBoneLocalTransform(boneName, localTransform);
 		MarkDirty();
