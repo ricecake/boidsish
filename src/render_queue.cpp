@@ -182,9 +182,11 @@ namespace Boidsish {
 			m_layers[i].clear();
 			m_batches[i].clear();
 			m_valid_indices[i].clear();
+			m_layer_preps[i] = {};
 		}
 		m_shadow_batches.clear();
 		m_shadow_indices.clear();
+		m_shadow_prep = {};
 	}
 
 } // namespace Boidsish

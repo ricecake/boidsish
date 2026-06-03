@@ -54,6 +54,11 @@ namespace Boidsish {
 	}
 
 	TerrainGenerator::~TerrainGenerator() {
+		if (m_mgmt_task) {
+			m_mgmt_task->cancel();
+			try { m_mgmt_task->get(); } catch (...) {}
+		}
+
 		{
 			for (auto& pair : pending_chunks_) {
 				pair.second.cancel();
@@ -176,6 +181,67 @@ namespace Boidsish {
 
 		ProcessCompletedChunks();
 
+		// 3. Heavy logic offloaded to background
+		if (!m_mgmt_task || m_mgmt_task->is_ready()) {
+			if (m_mgmt_task) m_mgmt_task->get();
+
+			m_mgmt_task = thread_pool_.enqueue(TaskPriority::LOW, [this, frustum, camera, scaled_chunk_size, dynamic_view_distance, max_h]() {
+				this->UpdateManagementAsync(frustum, camera, scaled_chunk_size, dynamic_view_distance, max_h);
+			});
+		}
+
+		ProcessPendingDeformations();
+
+		// Commit any pending buffer updates to the render manager
+		if (render_manager_) {
+			render_manager_->CommitUpdates();
+		}
+
+		{
+			std::lock_guard<std::mutex> visible_lock(visible_chunks_mutex_);
+			visible_chunks_.clear();
+
+			// Collect visible chunks with distance info for sorting
+			struct VisibleChunkInfo {
+				std::shared_ptr<Terrain> terrain;
+				float                    distance_sq;
+			};
+
+			std::vector<VisibleChunkInfo> visible_with_distance;
+			visible_with_distance.reserve(chunk_cache_.size());
+
+			glm::vec2 camera_pos_2d(camera.x, camera.z);
+
+			std::lock_guard<std::recursive_mutex> cache_lock(chunk_cache_mutex_);
+			for (auto const& [key, val] : chunk_cache_) {
+				if (val &&
+				    isChunkInFrustum(frustum, key.first, key.second, scaled_chunk_size, max_h, 2.0f * scaled_chunk_size)) {
+					glm::vec2 chunk_center(
+						key.first * scaled_chunk_size + scaled_chunk_size * 0.5f,
+						key.second * scaled_chunk_size + scaled_chunk_size * 0.5f
+					);
+					float dist_sq = glm::dot(chunk_center - camera_pos_2d, chunk_center - camera_pos_2d);
+					visible_with_distance.push_back({val, dist_sq});
+				}
+			}
+
+			// Sort by distance (front-to-back)
+			std::sort(
+				visible_with_distance.begin(),
+				visible_with_distance.end(),
+				[](const VisibleChunkInfo& a, const VisibleChunkInfo& b) { return a.distance_sq < b.distance_sq; }
+			);
+
+			for (const auto& vci : visible_with_distance) {
+				visible_chunks_.push_back(vci.terrain);
+			}
+		}
+	}
+
+	void TerrainGenerator::UpdateManagementAsync(const Frustum& frustum, const Camera& camera, float scaled_chunk_size, int dynamic_view_distance, float max_h) {
+		std::lock_guard<std::recursive_mutex> lock(chunk_cache_mutex_);
+		glm::vec2 camera_pos_2d(camera.x, camera.z);
+
 		// 3. Registration Pass: Register chunks with render manager
 		// Priority: 1) In frustum and close, 2) In frustum and far, 3) Out of frustum but close
 		// This prevents pop-in by pre-registering nearby chunks even if not visible yet
@@ -253,93 +319,31 @@ namespace Boidsish {
 		}
 
 		// 4. Unload chunks
-		// Add a buffer (hysteresis) to prevent loading/unloading thrashing.
-		// View distance is used for loading, and unload_limit is used for unloading.
 		const float unload_limit_dist = (dynamic_view_distance + kUnloadDistanceBuffer_ + 2.0f) * scaled_chunk_size;
 		const float unload_limit_dist_sq = unload_limit_dist * unload_limit_dist;
 
 		std::vector<std::pair<int, int>> to_remove;
 		for (auto const& [key, val] : chunk_cache_) {
-			glm::vec2 chunk_center(
-				key.first * scaled_chunk_size + scaled_chunk_size * 0.5f,
-				key.second * scaled_chunk_size + scaled_chunk_size * 0.5f
-			);
+			glm::vec2 chunk_center(key.first * scaled_chunk_size + scaled_chunk_size * 0.5f, key.second * scaled_chunk_size + scaled_chunk_size * 0.5f);
 			float dist_sq = glm::dot(chunk_center - camera_pos_2d, chunk_center - camera_pos_2d);
-
-			if (dist_sq > unload_limit_dist_sq) {
-				to_remove.push_back(key);
-			}
+			if (dist_sq > unload_limit_dist_sq) to_remove.push_back(key);
 		}
 
 		for (const auto& key : to_remove) {
-			if (render_manager_) {
-				render_manager_->UnregisterChunk(key);
-			}
+			if (render_manager_) render_manager_->UnregisterChunk(key);
 			chunk_cache_.erase(key);
 		}
 
 		std::vector<std::pair<int, int>> to_cancel;
 		for (auto const& [key, val] : pending_chunks_) {
-			glm::vec2 chunk_center(
-				key.first * scaled_chunk_size + scaled_chunk_size * 0.5f,
-				key.second * scaled_chunk_size + scaled_chunk_size * 0.5f
-			);
+			glm::vec2 chunk_center(key.first * scaled_chunk_size + scaled_chunk_size * 0.5f, key.second * scaled_chunk_size + scaled_chunk_size * 0.5f);
 			float dist_sq = glm::dot(chunk_center - camera_pos_2d, chunk_center - camera_pos_2d);
-
-			if (dist_sq > unload_limit_dist_sq) {
-				to_cancel.push_back(key);
-			}
+			if (dist_sq > unload_limit_dist_sq) to_cancel.push_back(key);
 		}
 
 		for (const auto& key : to_cancel) {
 			pending_chunks_.at(key).cancel();
 			pending_chunks_.erase(key);
-		}
-
-		ProcessPendingDeformations();
-
-		// Commit any pending buffer updates to the render manager
-		if (render_manager_) {
-			render_manager_->CommitUpdates();
-		}
-
-		{
-			std::lock_guard<std::mutex> visible_lock(visible_chunks_mutex_);
-			visible_chunks_.clear();
-
-			// Collect visible chunks with distance info for sorting
-			struct VisibleChunkInfo {
-				std::shared_ptr<Terrain> terrain;
-				float                    distance_sq;
-			};
-
-			std::vector<VisibleChunkInfo> visible_with_distance;
-			visible_with_distance.reserve(chunk_cache_.size());
-
-			glm::vec2 camera_pos_2d(camera.x, camera.z);
-
-			for (auto const& [key, val] : chunk_cache_) {
-				if (val &&
-				    isChunkInFrustum(frustum, key.first, key.second, scaled_chunk_size, max_h, 2.0f * scaled_chunk_size)) {
-					glm::vec2 chunk_center(
-						key.first * scaled_chunk_size + scaled_chunk_size * 0.5f,
-						key.second * scaled_chunk_size + scaled_chunk_size * 0.5f
-					);
-					float dist_sq = glm::dot(chunk_center - camera_pos_2d, chunk_center - camera_pos_2d);
-					visible_with_distance.push_back({val, dist_sq});
-				}
-			}
-
-			// Sort by distance (front-to-back)
-			std::sort(
-				visible_with_distance.begin(),
-				visible_with_distance.end(),
-				[](const VisibleChunkInfo& a, const VisibleChunkInfo& b) { return a.distance_sq < b.distance_sq; }
-			);
-
-			for (const auto& vci : visible_with_distance) {
-				visible_chunks_.push_back(vci.terrain);
-			}
 		}
 	}
 
