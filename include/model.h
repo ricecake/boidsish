@@ -333,7 +333,8 @@ namespace Boidsish {
 			float                           tolerance = 0.01f,
 			int                             maxIterations = 20,
 			const std::string&              rootBoneName = "",
-			const std::vector<std::string>& lockedBones = {}
+			const std::vector<std::string>& lockedBones = {},
+			bool                            freeRoot = false
 		);
 
 		void SolveIK(
@@ -343,7 +344,18 @@ namespace Boidsish {
 			float                           tolerance = 0.01f,
 			int                             maxIterations = 20,
 			const std::string&              rootBoneName = "",
-			const std::vector<std::string>& lockedBones = {}
+			const std::vector<std::string>& lockedBones = {},
+			bool                            freeRoot = false
+		);
+
+		void SolveIK(
+			const std::vector<std::string>& effectors,
+			const std::vector<glm::vec3>&   targets,
+			float                           tolerance = 0.01f,
+			int                             maxIterations = 20,
+			const std::string&              rootBoneName = "",
+			const std::vector<std::string>& lockedBones = {},
+			bool                            freeRoot = false
 		);
 
 		// Exposed for AssetManager to fill during loading

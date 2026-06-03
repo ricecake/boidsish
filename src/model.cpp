@@ -908,7 +908,8 @@ namespace Boidsish {
 		float                           tolerance,
 		int                             maxIterations,
 		const std::string&              rootBoneName,
-		const std::vector<std::string>& lockedBones
+		const std::vector<std::string>& lockedBones,
+		bool                            freeRoot
 	) {
 		SolveIK(
 			effectorName,
@@ -917,7 +918,8 @@ namespace Boidsish {
 			tolerance,
 			maxIterations,
 			rootBoneName,
-			lockedBones
+			lockedBones,
+			freeRoot
 		);
 	}
 
@@ -928,253 +930,187 @@ namespace Boidsish {
 		float                           tolerance,
 		int                             maxIterations,
 		const std::string&              rootBoneName,
-		const std::vector<std::string>& lockedBones
+		const std::vector<std::string>& lockedBones,
+		bool                            freeRoot
 	) {
-		if (!m_animator || !m_data)
+		std::vector<std::string> effectors = {effectorName};
+		std::vector<glm::vec3>   targets_vec = {targetWorldPos};
+
+		SolveIK(effectors, targets_vec, tolerance, maxIterations, rootBoneName, lockedBones, freeRoot);
+
+		if (targetWorldRot != glm::quat(0, 0, 0, 0)) {
+			SetBoneWorldRotation(effectorName, targetWorldRot);
+			UpdateAnimation(0.0f);
+		}
+	}
+
+	struct IKNode {
+		std::string            name;
+		glm::vec3              pos;
+		float                  length = 0.0f;
+		IKNode*                parent = nullptr;
+		std::vector<IKNode*>   children;
+		bool                   is_effector = false;
+		glm::vec3              target_pos;
+		const NodeData*        bind_node = nullptr;
+	};
+
+	void Model::SolveIK(
+		const std::vector<std::string>& effectors,
+		const std::vector<glm::vec3>&   targets,
+		float                           tolerance,
+		int                             maxIterations,
+		const std::string&              rootBoneName,
+		const std::vector<std::string>& lockedBones,
+		bool                            freeRoot
+	) {
+		if (!m_animator || !m_data || effectors.empty())
 			return;
-
-		std::vector<std::string> chain;
-		std::string              current = effectorName;
-		while (!current.empty()) {
-			chain.push_back(current);
-			if (current == rootBoneName)
-				break;
-			current = m_animator->GetBoneParentName(current);
-		}
-		if (chain.size() < 2)
-			return;
-
-		std::reverse(chain.begin(), chain.end());
-
-		glm::mat4 invModel = glm::inverse(GetModelMatrix());
-		glm::vec3 targetPos = glm::vec3(invModel * glm::vec4(targetWorldPos, 1.0f));
-
-		std::vector<glm::vec3> positions;
-		std::vector<float>     lengths;
-		for (const auto& bone : chain) {
-			glm::mat4 ms = m_animator->GetBoneModelSpaceTransform(bone);
-			positions.push_back(glm::vec3(ms[3]));
-		}
-		for (size_t i = 0; i < positions.size() - 1; ++i) {
-			lengths.push_back(std::max(0.0001f, glm::distance(positions[i], positions[i + 1])));
-		}
-
-		glm::vec3 rootPos = positions[0];
-		// Save bind-pose direction of first bone for constraint reference.
-		// Without this, the first bone's constraint uses (0,-1,0) as "parent direction"
-		// which has no relation to the actual bone orientation.
-		glm::vec3 rootBindDir = (positions.size() >= 2) ? glm::normalize(positions[1] - positions[0])
-														: glm::vec3(0, 1, 0);
-		if (glm::any(glm::isnan(rootBindDir)))
-			rootBindDir = glm::vec3(0, 1, 0);
-
-		float totalLength = 0;
-		for (float l : lengths)
-			totalLength += l;
 
 		std::set<std::string> lockedSet(lockedBones.begin(), lockedBones.end());
+		std::map<std::string, IKNode*> nodeMap;
+		std::vector<IKNode*>           allNodes;
 
-		if (glm::distance(rootPos, targetPos) > totalLength) {
-			// Target out of reach
-			for (size_t i = 0; i < positions.size() - 1; ++i) {
-				float r = glm::distance(targetPos, positions[i]);
-				if (r < 0.001f) {
-					positions[i + 1] = positions[i] + glm::vec3(0, 0.001f, 0);
-					r = 0.001f;
-				}
-				float l = lengths[i] / r;
-				positions[i + 1] = (1.0f - l) * positions[i] + l * targetPos;
+		auto getOrCreateNode = [&](const std::string& name) -> IKNode* {
+			if (nodeMap.count(name)) return nodeMap[name];
+			IKNode* node = new IKNode();
+			node->name = name;
+			node->bind_node = m_data->root_node.FindNode(name);
+			glm::mat4 ms = m_animator->GetBoneModelSpaceTransform(name);
+			node->pos = glm::vec3(ms[3]);
+			nodeMap[name] = node;
+			allNodes.push_back(node);
+			return node;
+		};
+
+		for (size_t i = 0; i < effectors.size(); ++i) {
+			IKNode*    current = getOrCreateNode(effectors[i]);
+			current->is_effector = true;
+			glm::mat4  invModel = glm::inverse(GetModelMatrix());
+			current->target_pos = glm::vec3(invModel * glm::vec4(targets[i], 1.0f));
+
+			std::string parentName = m_animator->GetBoneParentName(effectors[i]);
+			while (!parentName.empty()) {
+				IKNode* pNode = getOrCreateNode(parentName);
+				bool found = false;
+				for(auto c : pNode->children) if(c == current) { found = true; break; }
+				if(!found) pNode->children.push_back(current);
+				current->parent = pNode;
+				current->length = glm::distance(current->pos, pNode->pos);
+				if (parentName == rootBoneName) break;
+				current = pNode;
+				parentName = m_animator->GetBoneParentName(parentName);
 			}
-		} else {
-			for (int iter = 0; iter < maxIterations; ++iter) {
-				if (glm::distance(positions.back(), targetPos) < tolerance)
-					break;
+		}
 
-				// Backward
-				positions.back() = targetPos;
-				for (int i = (int)positions.size() - 2; i >= 0; --i) {
-					if (lockedSet.count(chain[i]))
-						continue;
-					float r = glm::distance(positions[i + 1], positions[i]);
-					if (r < 0.0001f) {
-						positions[i] = positions[i + 1] + glm::vec3(0, 0.0001f, 0);
-						r = 0.0001f;
+		std::vector<IKNode*> roots;
+		for (auto node : allNodes) if (node->parent == nullptr) roots.push_back(node);
+		if (roots.empty()) { for (auto n : allNodes) delete n; return; }
+
+		IKNode* root = roots[0];
+		glm::vec3 originalRootPos = root->pos;
+
+		for (int iter = 0; iter < maxIterations; ++iter) {
+			std::function<void(IKNode*)> backward = [&](IKNode* node) {
+				for (auto child : node->children) backward(child);
+				if (node->is_effector) {
+					node->pos = node->target_pos;
+				} else if (!node->children.empty()) {
+					glm::vec3 avgPos(0.0f);
+					for (auto child : node->children) {
+						float r = std::max(0.0001f, glm::distance(child->pos, node->pos));
+						avgPos += child->pos + (node->pos - child->pos) * (node->length / r);
 					}
-					float l = lengths[i] / r;
-					positions[i] = (1.0f - l) * positions[i + 1] + l * positions[i];
+					node->pos = avgPos / (float)node->children.size();
 				}
+			};
+			backward(root);
 
-				// Forward
-				positions[0] = rootPos;
-				for (size_t i = 0; i < positions.size() - 1; ++i) {
-					if (lockedSet.count(chain[i + 1]))
-						continue;
-					float r = glm::distance(positions[i + 1], positions[i]);
-					if (r < 0.0001f) {
-						positions[i + 1] = positions[i] + glm::vec3(0, 0.0001f, 0);
-						r = 0.0001f;
-					}
-					float l = lengths[i] / r;
-					positions[i + 1] = (1.0f - l) * positions[i] + l * positions[i + 1];
+			if (!freeRoot) root->pos = originalRootPos;
 
-					// Apply constraints
-					const auto& constraint = GetBoneConstraint(chain[i]);
+			std::function<void(IKNode*)> forward = [&](IKNode* node) {
+				for (auto child : node->children) {
+					float r = std::max(0.0001f, glm::distance(child->pos, node->pos));
+					glm::vec3 dir = (child->pos - node->pos) / r;
+
+					const auto& constraint = GetBoneConstraint(node->name);
 					if (constraint.type != ConstraintType::None) {
-						glm::vec3 prevPos = (i == 0) ? (positions[0] - rootBindDir) : positions[i - 1];
-						glm::vec3 dir = glm::normalize(positions[i + 1] - positions[i]);
-						glm::vec3 parentDir = glm::normalize(positions[i] - prevPos);
+						glm::vec3 parentDir;
+						if (node->parent) parentDir = glm::normalize(node->pos - node->parent->pos);
+						else parentDir = glm::normalize(glm::vec3(child->bind_node->transformation[3]));
 
 						if (constraint.type == ConstraintType::Hinge) {
 							glm::vec3 planeNormal = constraint.axis;
-
-							// Project both dir and parentDir onto hinge plane
 							glm::vec3 projected = dir - glm::dot(dir, planeNormal) * planeNormal;
 							glm::vec3 parentProj = parentDir - glm::dot(parentDir, planeNormal) * planeNormal;
-
-							if (glm::length(projected) < 0.001f) {
-								projected = glm::cross(planeNormal, glm::vec3(0, 1, 0));
-								if (glm::length(projected) < 0.001f)
-									projected = glm::cross(planeNormal, glm::vec3(1, 0, 0));
-							}
-							if (glm::length(parentProj) < 0.001f) {
-								parentProj = glm::cross(planeNormal, glm::vec3(0, 1, 0));
-								if (glm::length(parentProj) < 0.001f)
-									parentProj = glm::cross(planeNormal, glm::vec3(1, 0, 0));
-							}
+							if (glm::length(projected) < 0.001f) projected = glm::normalize(glm::cross(planeNormal, std::abs(planeNormal.y) > 0.9f ? glm::vec3(1,0,0) : glm::vec3(0,1,0)));
+							if (glm::length(parentProj) < 0.001f) parentProj = glm::normalize(glm::cross(planeNormal, std::abs(planeNormal.y) > 0.9f ? glm::vec3(1,0,0) : glm::vec3(0,1,0)));
 							projected = glm::normalize(projected);
 							parentProj = glm::normalize(parentProj);
-
-							// Signed angle from parent to current direction on hinge plane
-							float     dot = glm::clamp(glm::dot(projected, parentProj), -1.0f, 1.0f);
-							float     angle = glm::degrees(std::acos(dot));
-							glm::vec3 side = glm::cross(parentProj, projected);
-							if (glm::dot(side, planeNormal) < 0)
-								angle = -angle;
-
-							// Clamp as deviation from bind-pose rest angle
-							float deviation = angle - constraint.restAngle;
-							deviation = glm::clamp(deviation, constraint.minAngle, constraint.maxAngle);
-							float clampedAngle = constraint.restAngle + deviation;
-
-							glm::mat4 rot = glm::rotate(glm::mat4(1.0f), glm::radians(clampedAngle), planeNormal);
-							dir = glm::normalize(glm::vec3(rot * glm::vec4(parentProj, 0.0f)));
+							float dot = glm::clamp(glm::dot(projected, parentProj), -1.0f, 1.0f);
+							float angle = glm::degrees(std::acos(dot));
+							if (glm::dot(glm::cross(parentProj, projected), planeNormal) < 0) angle = -angle;
+							float deviation = glm::clamp(angle - constraint.restAngle, constraint.minAngle, constraint.maxAngle);
+							dir = glm::normalize(glm::vec3(glm::rotate(glm::mat4(1.0f), glm::radians(constraint.restAngle + deviation), planeNormal) * glm::vec4(parentProj, 0.0f)));
 						} else if (constraint.type == ConstraintType::Cone) {
 							float dot = glm::clamp(glm::dot(dir, parentDir), -1.0f, 1.0f);
 							float angle = glm::degrees(std::acos(dot));
 							if (angle > constraint.coneAngle) {
 								glm::vec3 axis = glm::cross(parentDir, dir);
-								if (glm::length(axis) < 0.001f) {
-									axis = glm::cross(parentDir, glm::vec3(0, 1, 0));
-									if (glm::length(axis) < 0.001f)
-										axis = glm::cross(parentDir, glm::vec3(1, 0, 0));
-								}
+								if (glm::length(axis) < 0.001f) axis = glm::cross(parentDir, std::abs(parentDir.y) > 0.9f ? glm::vec3(1,0,0) : glm::vec3(0,1,0));
 								axis = glm::normalize(axis);
-								glm::mat4 rot = glm::rotate(glm::mat4(1.0f), glm::radians(constraint.coneAngle), axis);
-								dir = glm::normalize(glm::vec3(rot * glm::vec4(parentDir, 0.0f)));
+								dir = glm::normalize(glm::vec3(glm::rotate(glm::mat4(1.0f), glm::radians(constraint.coneAngle), axis) * glm::vec4(parentDir, 0.0f)));
 							}
 						}
-						positions[i + 1] = positions[i] + dir * lengths[i];
+					}
+					child->pos = node->pos + dir * child->length;
+					forward(child);
+				}
+			};
+			forward(root);
+		}
+
+		std::function<void(IKNode*, glm::mat4)> updateTransforms = [&](IKNode* node, glm::mat4 parentGlobal) {
+			glm::mat4 oldLocal = m_animator->GetBoneLocalTransform(node->name);
+			glm::vec3 scale(glm::length(oldLocal[0]), glm::length(oldLocal[1]), glm::length(oldLocal[2]));
+			glm::quat localRot = glm::quat_cast(oldLocal);
+			glm::vec3 localPos = glm::vec3(glm::inverse(parentGlobal) * glm::vec4(node->pos, 1.0f));
+
+			if (node->children.size() >= 1) {
+				if (node->children.size() == 1) {
+					IKNode*   child = node->children[0];
+					float dist = glm::distance(child->pos, node->pos);
+					if (dist > 0.0001f) {
+						glm::vec3 dir = (child->pos - node->pos) / dist;
+						glm::vec3 bindDir = glm::normalize(glm::vec3(child->bind_node->transformation[3]));
+						glm::quat q = glm::rotation(bindDir, dir);
+
+						const auto& twistConstraint = GetBoneConstraint(node->name);
+						if (twistConstraint.minTwist > -180.0f || twistConstraint.maxTwist < 180.0f) {
+							glm::vec3 twistAxis = bindDir;
+							glm::quat twist = glm::normalize(glm::quat(q.w, glm::dot(glm::vec3(q.x, q.y, q.z), twistAxis) * twistAxis));
+							if (twist.w < 0.0f) twist = -twist;
+							glm::quat swing = q * glm::inverse(twist);
+							float twistAngle = glm::degrees(2.0f * std::atan2(glm::dot(glm::vec3(twist.x, twist.y, twist.z), twistAxis), twist.w));
+							q = swing * glm::angleAxis(glm::radians(glm::clamp(twistAngle, twistConstraint.minTwist, twistConstraint.maxTwist)), twistAxis);
+						}
+						localRot = glm::quat_cast(glm::inverse(parentGlobal) * (glm::translate(glm::mat4(1.0f), node->pos) * glm::toMat4(q)));
 					}
 				}
 			}
-		}
 
-		// Apply positions back to animator
-		// We re-traverse from root to effector to compute consistent local rotations
-		glm::mat4   currentParentGlobal = glm::mat4(1.0f);
-		std::string parentOfRoot = m_animator->GetBoneParentName(chain[0]);
-		if (!parentOfRoot.empty()) {
-			currentParentGlobal = m_animator->GetBoneModelSpaceTransform(parentOfRoot);
-		}
+			m_animator->SetBoneLocalTransform(node->name, glm::translate(glm::mat4(1.0f), localPos) * glm::toMat4(localRot) * glm::scale(glm::mat4(1.0f), scale));
+			glm::mat4 global = parentGlobal * m_animator->GetBoneLocalTransform(node->name);
+			for (auto child : node->children) updateTransforms(child, global);
+		};
 
-		for (size_t i = 0; i < positions.size() - 1; ++i) {
-			glm::vec3 start = positions[i];
-			glm::vec3 end = positions[i + 1];
-			glm::vec3 dir = glm::normalize(end - start);
+		glm::mat4 rootParentGlobal = glm::mat4(1.0f);
+		std::string pName = m_animator->GetBoneParentName(root->name);
+		if (!pName.empty()) rootParentGlobal = m_animator->GetBoneModelSpaceTransform(pName);
 
-			if (glm::any(glm::isnan(dir)))
-				dir = glm::vec3(0, 1, 0);
-
-			// Reference direction in bind space (usually along an axis)
-			glm::mat4 bindLocal = m_data->root_node.FindNode(chain[i])->transformation;
-			glm::vec3 bindPos = glm::vec3(bindLocal[3]);
-
-			// Find end position in bind space from child
-			glm::vec3 bindEndPos = glm::vec3(m_data->root_node.FindNode(chain[i + 1])->transformation[3]);
-			glm::vec3 bindDir = glm::normalize(bindEndPos); // Relative to chain[i]
-
-			if (glm::any(glm::isnan(bindDir)))
-				bindDir = glm::vec3(0, 1, 0);
-
-			// Calculate new global rotation for this bone
-			// It should point from positions[i] to positions[i+1]
-			// We use a simple look-at approach or rotation-between-vectors
-			glm::quat q = glm::rotation(bindDir, dir);
-
-			if (glm::any(glm::isnan(q)))
-				q = glm::quat(1, 0, 0, 0);
-
-			// Apply twist (axial roll) limits via swing-twist decomposition
-			const auto& twistConstraint = GetBoneConstraint(chain[i]);
-			if (twistConstraint.minTwist > -180.0f || twistConstraint.maxTwist < 180.0f) {
-				glm::vec3 twistAxis = bindDir;
-				glm::vec3 qv(q.x, q.y, q.z);
-				glm::vec3 proj = glm::dot(qv, twistAxis) * twistAxis;
-
-				glm::quat twist(q.w, proj.x, proj.y, proj.z);
-				float     twistLen = glm::length(twist);
-				if (twistLen > 1e-6f) {
-					twist /= twistLen;
-
-					// Ensure canonical hemisphere: avoid interpreting a pure swing
-					// (projection ≈ 0) with negative w as ±180° of twist.
-					if (twist.w < 0.0f)
-						twist = -twist;
-
-					glm::quat swing = q * glm::inverse(twist);
-
-					float twistAngle = glm::degrees(
-						2.0f * std::atan2(glm::dot(glm::vec3(twist.x, twist.y, twist.z), twistAxis), twist.w)
-					);
-					twistAngle = glm::clamp(twistAngle, twistConstraint.minTwist, twistConstraint.maxTwist);
-
-					float halfRad = glm::radians(twistAngle) * 0.5f;
-					twist = glm::quat(std::cos(halfRad), std::sin(halfRad) * twistAxis);
-
-					q = swing * twist;
-					if (glm::any(glm::isnan(q)))
-						q = glm::quat(1, 0, 0, 0);
-				}
-			}
-
-			// New global transform for this bone
-			glm::mat4 newGlobal = glm::translate(glm::mat4(1.0f), start) * glm::toMat4(q);
-
-			// Convert to local relative to updated parent
-			glm::mat4 local = glm::inverse(currentParentGlobal) * newGlobal;
-
-			// Keep original scale
-			glm::mat4 oldLocal = m_animator->GetBoneLocalTransform(chain[i]);
-			glm::vec3 scale(glm::length(oldLocal[0]), glm::length(oldLocal[1]), glm::length(oldLocal[2]));
-
-			// Reconstruct local with position, rotation and scale
-			glm::vec3 localPos = glm::vec3(local[3]);
-			glm::quat localRot = glm::quat_cast(local);
-			local = glm::translate(glm::mat4(1.0f), localPos) * glm::toMat4(localRot) *
-				glm::scale(glm::mat4(1.0f), scale);
-
-			m_animator->SetBoneLocalTransform(chain[i], local);
-
-			// Update parent global for next iteration
-			currentParentGlobal = newGlobal;
-		}
-
-		// Handle effector orientation if provided
-		if (targetWorldRot != glm::quat(0, 0, 0, 0)) {
-			SetBoneWorldRotation(effectorName, targetWorldRot);
-		}
-
-		UpdateAnimation(0.0f); // Refresh matrices
+		updateTransforms(root, rootParentGlobal);
+		for (auto n : allNodes) delete n;
+		UpdateAnimation(0.0f);
 	}
 
 	glm::quat Model::GetBoneWorldRotation(const std::string& boneName) const {
