@@ -14,7 +14,6 @@
 #include "constants.h"
 #include "graphics.h"
 #include "hud.h"
-#include "neighbor_utils.h"
 #include "terrain_generator.h"
 #include <glm/gtc/constants.hpp>
 #include <glm/gtx/quaternion.hpp>
@@ -262,16 +261,37 @@ namespace Boidsish {
 			std::vector<SpawnCandidate> candidates;
 			std::set<const Terrain*>    processed_chunks;
 
+			// Create a map for fast chunk lookup by coordinate
+			std::map<std::pair<int, int>, const Terrain*> chunk_map;
+			for (const auto& chunk_ptr : visible_chunks) {
+				chunk_map[{static_cast<int>(chunk_ptr->GetX()), static_cast<int>(chunk_ptr->GetZ())}] = chunk_ptr.get();
+			}
+
+			int chunk_size = Constants::Class::Terrain::ChunkSize();
+
 			for (const auto& chunk_ptr : visible_chunks) {
 				const Terrain* chunk = chunk_ptr.get();
-				visible_chunk_set.insert({static_cast<int>(chunk->GetX()), static_cast<int>(chunk->GetZ())});
 				if (processed_chunks.count(chunk)) {
 					continue;
 				}
 
-				auto                        neighbors = get_neighbors(chunk, visible_chunks);
-				std::vector<const Terrain*> current_grid = neighbors;
+				// Find local peaks by checking 3x3 neighbors efficiently using the map
+				std::vector<const Terrain*> current_grid;
 				current_grid.push_back(chunk);
+
+				int cx = static_cast<int>(chunk->GetX());
+				int cz = static_cast<int>(chunk->GetZ());
+
+				for (int dx = -1; dx <= 1; ++dx) {
+					for (int dz = -1; dz <= 1; ++dz) {
+						if (dx == 0 && dz == 0)
+							continue;
+						auto it = chunk_map.find({cx + dx * chunk_size, cz + dz * chunk_size});
+						if (it != chunk_map.end()) {
+							current_grid.push_back(it->second);
+						}
+					}
+				}
 
 				const Terrain* best_chunk = nullptr;
 				glm::vec3      highest_point = {0, -std::numeric_limits<float>::infinity(), 0};

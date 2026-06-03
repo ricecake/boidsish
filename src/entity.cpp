@@ -99,7 +99,7 @@ namespace Boidsish {
 		}
 
 		// Generate shapes from entity states
-		for (auto& entity : entities) {
+		std::for_each(poolstl::par.on(thread_pool_), entities.begin(), entities.end(), [&](auto& entity) {
 			// Orient to velocity
 			if (entity->orient_to_velocity_) {
 				entity->rigid_body_.FaceVelocity();
@@ -126,7 +126,7 @@ namespace Boidsish {
 
 			// Call the OnEntityUpdated hook
 			OnEntityUpdated(entity);
-		}
+		});
 
 		return {};
 	}

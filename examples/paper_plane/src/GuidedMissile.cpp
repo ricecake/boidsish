@@ -222,25 +222,24 @@ namespace Boidsish {
 				    glm::vec3 torque = glm::cross(P, target_dir_local);
 				*/
 
-				const auto* terrain_generator = handler.GetTerrainGenerator();
-				if (terrain_generator) {
-					const float reaction_distance = 100.0f;
-					const float kAvoidanceStrength = 5.0f;
-					const float kUpAlignmentThreshold = 0.5f;
+				const float reaction_distance = 100.0f;
+				const float kAvoidanceStrength = 5.0f;
+				const float kUpAlignmentThreshold = 0.5f;
 
-					Vector3 vel_vec = GetVelocity();
-					if (vel_vec.MagnitudeSquared() > 1e-6) {
-						glm::vec3 origin = {GetPosition().x, GetPosition().y, GetPosition().z};
-						glm::vec3 dir = {vel_vec.x, vel_vec.y, vel_vec.z};
-						dir = glm::normalize(dir);
+				Vector3 vel_vec = GetVelocity();
+				if (vel_vec.MagnitudeSquared() > 1e-6) {
+					glm::vec3 origin = {GetPosition().x, GetPosition().y, GetPosition().z};
+					glm::vec3 dir = {vel_vec.x, vel_vec.y, vel_vec.z};
+					dir = glm::normalize(dir);
 
-						float hit_dist = 0.0f;
-						if (terrain_generator->Raycast(origin, dir, reaction_distance, hit_dist)) {
-							auto hit_coord = vel_vec.Normalized() * hit_dist;
-							auto [terrain_h, terrain_normal] = terrain_generator->GetTerrainPropertiesAtPoint(
-								hit_coord.x,
-								hit_coord.z
-							);
+					float     hit_dist = 0.0f;
+					glm::vec3 hit_normal;
+					if (handler.RaycastTerrain(origin, dir, reaction_distance, hit_dist, hit_normal)) {
+						auto hit_coord = vel_vec.Normalized() * hit_dist;
+						auto [terrain_h, terrain_normal] = handler.GetTerrainPropertiesAtPoint(
+							hit_coord.x,
+							hit_coord.z
+						);
 
 							glm::vec3 local_up = glm::vec3(0.0f, 1.0f, 0.0f);
 							auto      away = terrain_normal;
