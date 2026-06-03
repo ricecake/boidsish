@@ -160,15 +160,24 @@ TEST(IKRobustTest, FreeFloatingBody) {
     EXPECT_GT(glm::distance(model.GetBoneWorldPosition("root"), glm::vec3(0,0,0)), 0.1f);
 }
 
-TEST(IKRobustTest, SpiderGait) {
+TEST(IKRobustTest, QuadrupedGaitStability) {
     auto data = std::make_shared<ModelData>();
-    data->model_path = "spider_model";
-    data->AddBone("hub", "", glm::mat4(1.0f));
+    data->model_path = "quad_model";
+    data->AddBone("body", "", glm::mat4(1.0f));
 
     auto addLeg = [&](const std::string& name, const glm::vec3& hipOffset) {
-        data->AddBone(name + "_hip", "hub", glm::translate(glm::mat4(1.0f), hipOffset));
+        data->AddBone(name + "_hip", "body", glm::translate(glm::mat4(1.0f), hipOffset));
         data->AddBone(name + "_knee", name + "_hip", glm::translate(glm::mat4(1.0f), glm::vec3(0, 0.5f, 0.5f)));
         data->AddBone(name + "_foot", name + "_knee", glm::translate(glm::mat4(1.0f), glm::vec3(0, -0.5f, 0.5f)));
+
+        // Add constraints
+        BoneConstraint hc;
+        hc.type = ConstraintType::Hinge;
+        hc.axis = glm::vec3(1, 0, 0);
+        hc.minAngle = -60.0f;
+        hc.maxAngle = 60.0f;
+        // In GTest we can't easily set constraints if they are not in Model.
+        // We'll set them on the model later.
     };
 
     addLeg("FL", glm::vec3( 1, 0,  1));
@@ -177,31 +186,57 @@ TEST(IKRobustTest, SpiderGait) {
     addLeg("BR", glm::vec3(-1, 0, -1));
 
     Model model(data);
-    model.SetPosition(0, 0.5f, 0);
+    model.SetPosition(0, 1.0f, 0);
     model.UpdateAnimation(0.0f);
 
-    std::vector<std::string> legFeet = {"FL_foot", "FR_foot", "BL_foot", "BR_foot"};
-    std::vector<glm::vec3> footTargets;
-    for (const auto& foot : legFeet) footTargets.push_back(model.GetBoneWorldPosition(foot));
+    // Apply constraints
+    std::string legs[4] = {"FL", "FR", "BL", "BR"};
+    for(int i=0; i<4; ++i) {
+        BoneConstraint knee_c;
+        knee_c.type = ConstraintType::Hinge;
+        knee_c.axis = glm::vec3(1, 0, 0);
+        knee_c.minAngle = -90.0f;
+        knee_c.maxAngle = 90.0f;
+        model.SetBoneConstraint(legs[i] + "_knee", knee_c);
 
-    glm::vec3 startHubPos = model.GetBoneWorldPosition("hub");
-
-    // Move foot targets forward in Z
-    for (int step = 0; step < 50; ++step) {
-        for (auto& target : footTargets) {
-            target.z += 0.1f;
-        }
-        model.SolveIK(legFeet, footTargets, 0.01f, 20, "hub", {}, true);
-        model.UpdateAnimation(0.0f);
+        BoneConstraint hip_c;
+        hip_c.type = ConstraintType::Cone;
+        hip_c.coneAngle = 45.0f;
+        model.SetBoneConstraint(legs[i] + "_hip", hip_c);
     }
 
-    glm::vec3 endHubPos = model.GetBoneWorldPosition("hub");
+    std::vector<std::string> effectors = {"FL_foot", "FR_foot", "BL_foot", "BR_foot"};
+    std::vector<glm::vec3> footTargets;
+    for(auto& e : effectors) footTargets.push_back(model.GetBoneWorldPosition(e));
 
-    // Hub should have moved forward significantly (approx 5.0 units)
-    EXPECT_GT(endHubPos.z - startHubPos.z, 3.5f);
+    // Simulate movement and verify constraints
+    for (int i = 0; i < 20; ++i) {
+        for(auto& t : footTargets) t.z += 0.1f;
 
-    for (const auto& foot : legFeet) {
-        glm::vec3 fPos = model.GetBoneWorldPosition(foot);
-        EXPECT_FALSE(std::isnan(fPos.x));
+        model.SolveIK(effectors, footTargets, 0.01f, 30, "body", {}, true);
+        model.UpdateAnimation(0.0f);
+
+        // Check scale consistency
+        for(auto& name : {"body", "FL_hip", "FL_knee", "FL_foot"}) {
+            glm::mat4 ms = model.GetAnimator()->GetBoneModelSpaceTransform(name);
+            float s = glm::length(glm::vec3(ms[0]));
+            EXPECT_NEAR(s, 1.0f, 0.01f) << "Bone " << name << " scale distorted!";
+        }
+
+        // Check constraints
+        for(int j=0; j<4; ++j) {
+            // Check knee hinge
+            glm::vec3 kneePos = model.GetBoneWorldPosition(legs[j] + "_knee");
+            glm::vec3 hipPos = model.GetBoneWorldPosition(legs[j] + "_hip");
+            glm::vec3 footPos = model.GetBoneWorldPosition(legs[j] + "_foot");
+
+            glm::vec3 hipToKnee = glm::normalize(kneePos - hipPos);
+            glm::vec3 kneeToFoot = glm::normalize(footPos - kneePos);
+
+            // If hinge is on X axis, kneeToFoot should be mostly in YZ plane relative to hipToKnee
+            // Actually, acos(dot) gives the angle.
+            float angle = glm::degrees(std::acos(glm::clamp(glm::dot(hipToKnee, kneeToFoot), -1.0f, 1.0f)));
+            EXPECT_LE(angle, 90.1f) << "Knee constraint violated on " << legs[j];
+        }
     }
 }

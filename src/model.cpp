@@ -955,7 +955,6 @@ namespace Boidsish {
 		bool                   is_effector = false;
 		glm::vec3              target_pos;
 		const NodeData*        bind_node = nullptr;
-		float                  bind_length = 0.0f;
 	};
 
 	void Model::SolveIK(
@@ -999,8 +998,8 @@ namespace Boidsish {
 				for(auto c : pNode->children) if(c == current) { found = true; break; }
 				if(!found) pNode->children.push_back(current);
 				current->parent = pNode;
-				current->bind_length = glm::distance(glm::vec3(current->bind_node->transformation[3]), glm::vec3(0.0f));
-				current->length = current->bind_length;
+				// IMPORTANT: Use bind length to prevent scale drift
+				current->length = glm::length(glm::vec3(current->bind_node->transformation[3]));
 				if (parentName == rootBoneName) break;
 				current = pNode;
 				parentName = m_animator->GetBoneParentName(parentName);
@@ -1015,6 +1014,7 @@ namespace Boidsish {
 		glm::vec3 originalRootPos = root->pos;
 
 		for (int iter = 0; iter < maxIterations; ++iter) {
+			// Backward
 			std::function<void(IKNode*)> backward = [&](IKNode* node) {
 				for (auto child : node->children) backward(child);
 				if (node->is_effector) {
@@ -1030,8 +1030,8 @@ namespace Boidsish {
 			};
 			backward(root);
 
+			// Forward
 			if (!freeRoot) root->pos = originalRootPos;
-
 			std::function<void(IKNode*)> forward = [&](IKNode* node) {
 				for (auto child : node->children) {
 					float r = std::max(0.0001f, glm::distance(child->pos, node->pos));
@@ -1041,10 +1041,22 @@ namespace Boidsish {
 					if (constraint.type != ConstraintType::None) {
 						glm::vec3 parentDir;
 						if (node->parent) parentDir = glm::normalize(node->pos - node->parent->pos);
-						else parentDir = glm::normalize(glm::vec3(child->bind_node->transformation[3]));
+						else {
+							glm::quat q = glm::quat_cast(m_animator->GetBoneModelSpaceTransform(node->name));
+							parentDir = q * glm::normalize(glm::vec3(child->bind_node->transformation[3]));
+						}
 
 						if (constraint.type == ConstraintType::Hinge) {
 							glm::vec3 planeNormal = constraint.axis;
+							if (node->parent) {
+								glm::quat pq = glm::quat_cast(m_animator->GetBoneModelSpaceTransform(node->parent->name));
+								planeNormal = pq * constraint.axis;
+							} else {
+								glm::quat q = glm::quat_cast(m_animator->GetBoneModelSpaceTransform(node->name));
+								planeNormal = q * constraint.axis;
+							}
+							planeNormal = glm::normalize(planeNormal);
+
 							glm::vec3 projected = dir - glm::dot(dir, planeNormal) * planeNormal;
 							glm::vec3 parentProj = parentDir - glm::dot(parentDir, planeNormal) * planeNormal;
 							if (glm::length(projected) < 0.001f) projected = glm::normalize(glm::cross(planeNormal, std::abs(planeNormal.y) > 0.9f ? glm::vec3(1,0,0) : glm::vec3(0,1,0)));
@@ -1074,32 +1086,31 @@ namespace Boidsish {
 			forward(root);
 		}
 
+		// Apply
 		std::function<void(IKNode*, glm::mat4)> updateTransforms = [&](IKNode* node, glm::mat4 parentGlobal) {
 			glm::mat4 bindLocal = node->bind_node->transformation;
 			glm::vec3 bindScale(glm::length(bindLocal[0]), glm::length(bindLocal[1]), glm::length(bindLocal[2]));
 			glm::quat localRot = glm::quat_cast(bindLocal);
 			glm::vec3 localPos = glm::vec3(glm::inverse(parentGlobal) * glm::vec4(node->pos, 1.0f));
 
-			if (node->children.size() >= 1) {
-				if (node->children.size() == 1) {
-					IKNode*   child = node->children[0];
-					float dist = glm::distance(child->pos, node->pos);
-					if (dist > 0.0001f) {
-						glm::vec3 dir = (child->pos - node->pos) / dist;
-						glm::vec3 bindDir = glm::normalize(glm::vec3(child->bind_node->transformation[3]));
-						glm::quat q = glm::rotation(bindDir, dir);
+			if (node->children.size() == 1) {
+				IKNode*   child = node->children[0];
+				float dist = glm::distance(child->pos, node->pos);
+				if (dist > 0.0001f) {
+					glm::vec3 dir = (child->pos - node->pos) / dist;
+					glm::vec3 bindDir = glm::normalize(glm::vec3(child->bind_node->transformation[3]));
+					glm::quat q = glm::rotation(bindDir, dir);
 
-						const auto& twistConstraint = GetBoneConstraint(node->name);
-						if (twistConstraint.minTwist > -180.0f || twistConstraint.maxTwist < 180.0f) {
-							glm::vec3 twistAxis = bindDir;
-							glm::quat twist = glm::normalize(glm::quat(q.w, glm::dot(glm::vec3(q.x, q.y, q.z), twistAxis) * twistAxis));
-							if (twist.w < 0.0f) twist = -twist;
-							glm::quat swing = q * glm::inverse(twist);
-							float twistAngle = glm::degrees(2.0f * std::atan2(glm::dot(glm::vec3(twist.x, twist.y, twist.z), twistAxis), twist.w));
-							q = swing * glm::angleAxis(glm::radians(glm::clamp(twistAngle, twistConstraint.minTwist, twistConstraint.maxTwist)), twistAxis);
-						}
-						localRot = glm::quat_cast(glm::inverse(parentGlobal) * (glm::translate(glm::mat4(1.0f), node->pos) * glm::toMat4(q)));
+					const auto& twistConstraint = GetBoneConstraint(node->name);
+					if (twistConstraint.minTwist > -180.0f || twistConstraint.maxTwist < 180.0f) {
+						glm::vec3 twistAxis = bindDir;
+						glm::quat twist = glm::normalize(glm::quat(q.w, glm::dot(glm::vec3(q.x, q.y, q.z), twistAxis) * twistAxis));
+						if (twist.w < 0.0f) twist = -twist;
+						glm::quat swing = q * glm::inverse(twist);
+						float twistAngle = glm::degrees(2.0f * std::atan2(glm::dot(glm::vec3(twist.x, twist.y, twist.z), twistAxis), twist.w));
+						q = swing * glm::angleAxis(glm::radians(glm::clamp(twistAngle, twistConstraint.minTwist, twistConstraint.maxTwist)), twistAxis);
 					}
+					localRot = glm::quat_cast(glm::inverse(parentGlobal) * (glm::translate(glm::mat4(1.0f), node->pos) * glm::toMat4(q)));
 				}
 			}
 
@@ -1108,10 +1119,9 @@ namespace Boidsish {
 			for (auto child : node->children) updateTransforms(child, global);
 		};
 
-				glm::mat4 rootParentGlobal = glm::mat4(1.0f);
+		glm::mat4 rootParentGlobal = glm::mat4(1.0f);
 		std::string pName = m_animator->GetBoneParentName(root->name);
 		if (!pName.empty()) rootParentGlobal = m_animator->GetBoneModelSpaceTransform(pName);
-
 		updateTransforms(root, rootParentGlobal);
 		for (auto n : allNodes) delete n;
 		UpdateAnimation(0.0f);
