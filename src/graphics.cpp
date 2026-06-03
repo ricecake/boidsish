@@ -3539,13 +3539,6 @@ namespace Boidsish {
 				impl->atmosphere_effect->SetHazeColor(w.haze_color);
 				impl->atmosphere_effect->SetCloudColor(w.cloud_color);
 			}
-
-			// Synchronize Volumetric Lighting intensity with weather haze
-			if (impl->volumetric_effect) {
-				// Base intensity scales with haze density
-				float vol_intensity = 0.5f + w.haze_density * 2.0f;
-				impl->volumetric_effect->SetIntensity(vol_intensity);
-			}
 		}
 
 		// --- Adaptive Tessellation Logic ---

@@ -165,6 +165,7 @@ namespace Boidsish {
 			composite_shader_->setInt("uSceneTexture", 0);
 			composite_shader_->setInt("uDepthTexture", 1);
 			composite_shader_->setInt("uVolumetricTexture", Constants::TextureUnit::VolumetricScattering());
+			composite_shader_->setMat4("uInvView", glm::inverse(viewMatrix));
 
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, sourceTexture);
