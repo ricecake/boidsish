@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <functional>
+#include <map>
 #include <iostream>
 #include <limits>
 #include <set>
@@ -953,6 +955,7 @@ namespace Boidsish {
 		bool                   is_effector = false;
 		glm::vec3              target_pos;
 		const NodeData*        bind_node = nullptr;
+		float                  bind_length = 0.0f;
 	};
 
 	void Model::SolveIK(
@@ -996,7 +999,8 @@ namespace Boidsish {
 				for(auto c : pNode->children) if(c == current) { found = true; break; }
 				if(!found) pNode->children.push_back(current);
 				current->parent = pNode;
-				current->length = glm::distance(current->pos, pNode->pos);
+				current->bind_length = glm::distance(glm::vec3(current->bind_node->transformation[3]), glm::vec3(0.0f));
+				current->length = current->bind_length;
 				if (parentName == rootBoneName) break;
 				current = pNode;
 				parentName = m_animator->GetBoneParentName(parentName);
@@ -1019,7 +1023,7 @@ namespace Boidsish {
 					glm::vec3 avgPos(0.0f);
 					for (auto child : node->children) {
 						float r = std::max(0.0001f, glm::distance(child->pos, node->pos));
-						avgPos += child->pos + (node->pos - child->pos) * (node->length / r);
+						avgPos += child->pos + (node->pos - child->pos) * (child->length / r);
 					}
 					node->pos = avgPos / (float)node->children.size();
 				}
@@ -1071,9 +1075,9 @@ namespace Boidsish {
 		}
 
 		std::function<void(IKNode*, glm::mat4)> updateTransforms = [&](IKNode* node, glm::mat4 parentGlobal) {
-			glm::mat4 oldLocal = m_animator->GetBoneLocalTransform(node->name);
-			glm::vec3 scale(glm::length(oldLocal[0]), glm::length(oldLocal[1]), glm::length(oldLocal[2]));
-			glm::quat localRot = glm::quat_cast(oldLocal);
+			glm::mat4 bindLocal = node->bind_node->transformation;
+			glm::vec3 bindScale(glm::length(bindLocal[0]), glm::length(bindLocal[1]), glm::length(bindLocal[2]));
+			glm::quat localRot = glm::quat_cast(bindLocal);
 			glm::vec3 localPos = glm::vec3(glm::inverse(parentGlobal) * glm::vec4(node->pos, 1.0f));
 
 			if (node->children.size() >= 1) {
@@ -1099,12 +1103,12 @@ namespace Boidsish {
 				}
 			}
 
-			m_animator->SetBoneLocalTransform(node->name, glm::translate(glm::mat4(1.0f), localPos) * glm::toMat4(localRot) * glm::scale(glm::mat4(1.0f), scale));
+			m_animator->SetBoneLocalTransform(node->name, glm::translate(glm::mat4(1.0f), localPos) * glm::toMat4(glm::normalize(localRot)) * glm::scale(glm::mat4(1.0f), bindScale));
 			glm::mat4 global = parentGlobal * m_animator->GetBoneLocalTransform(node->name);
 			for (auto child : node->children) updateTransforms(child, global);
 		};
 
-		glm::mat4 rootParentGlobal = glm::mat4(1.0f);
+				glm::mat4 rootParentGlobal = glm::mat4(1.0f);
 		std::string pName = m_animator->GetBoneParentName(root->name);
 		if (!pName.empty()) rootParentGlobal = m_animator->GetBoneModelSpaceTransform(pName);
 

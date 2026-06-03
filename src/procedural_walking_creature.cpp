@@ -1,4 +1,8 @@
 #include "procedural_walking_creature.h"
+#include "service_locator.h"
+#include "graphics.h"
+#include "terrain_generator.h"
+
 
 #include <algorithm>
 #include <cmath>
@@ -138,18 +142,18 @@ namespace Boidsish {
 		};
 
 		for (int i = 0; i < 4; ++i) {
-			// Hip hub - Now a bone attached to body
-			int hip = ir.AddHub(offsets[i], length_ * 0.1f, leg_col, body, names[i] + "_hip", true, SkinningMode::Smooth);
+			// Hip hub - Increased size for better joint coverage
+			int hip = ir.AddHub(offsets[i], length_ * 0.12f, leg_col, body, names[i] + "_hip", true, SkinningMode::Smooth);
 
 			float     out_sign = (offsets[i].x > 0) ? 1.0f : -1.0f;
-			float     upper_horiz = length_ * 0.35f;
-			float     upper_arch = height_ * 0.4f;
+			float     upper_horiz = length_ * 0.4f;
+			float     upper_arch = height_ * 0.45f;
 			glm::vec3 upper_end = offsets[i] + glm::vec3(out_sign * upper_horiz, upper_arch, 0);
 			int       upper = ir.AddTube(
 				offsets[i],
 				upper_end,
-				length_ * 0.1f,
-				length_ * 0.08f,
+				length_ * 0.11f,
+				length_ * 0.09f,
 				leg_col,
 				hip,
 				names[i] + "_upper",
@@ -165,8 +169,8 @@ namespace Boidsish {
 			int       lower = ir.AddTube(
 				upper_end,
 				lower_end,
-				length_ * 0.08f,
-				length_ * 0.06f,
+				length_ * 0.09f,
+				length_ * 0.07f,
 				leg_col,
 				upper,
 				names[i] + "_lower",
@@ -177,7 +181,7 @@ namespace Boidsish {
 			ir.AddWedge(
 				lower_end + glm::vec3(0, -foot_h, 0),
 				glm::quat(1, 0, 0, 0),
-				glm::vec3(length_ * 0.12f, foot_h, length_ * 0.18f),
+				glm::vec3(length_ * 0.14f, foot_h, length_ * 0.2f),
 				foot_col,
 				lower,
 				names[i] + "_foot",
@@ -191,7 +195,20 @@ namespace Boidsish {
 	void ProceduralWalkingCreature::Update(float delta_time) {
 		current_pos_ = glm::vec3(GetX(), GetY(), GetZ());
 
+		// Get terrain generator from service locator
+		auto terrain_gen = ServiceLocator::Instance().Get<ITerrainGenerator>();
+		float terrain_h = 0.0f;
+		if (terrain_gen) {
+			auto [h, norm] = terrain_gen->GetTerrainPropertiesAtPoint(current_pos_.x, current_pos_.z);
+			terrain_h = h;
+		}
+
 		UpdateMovement(delta_time);
+
+		// Height oscillation and terrain clamping
+		float oscillation = 0;
+		if(is_walking_) oscillation = std::sin(walk_phi_ * std::numbers::pi_v<float> * 2.0f) * length_ * 0.05f;
+		current_pos_.y = terrain_h + oscillation + height_ * 0.2f;
 
 		SetPosition(current_pos_.x, current_pos_.y, current_pos_.z);
 
@@ -203,6 +220,11 @@ namespace Boidsish {
 		std::vector<glm::vec3> targets;
 		for (auto& leg : legs_) {
 			effectors.push_back(leg.effector_name);
+			// Ground the feet on the terrain
+			if (terrain_gen) {
+				auto [fh, fnorm] = terrain_gen->GetTerrainPropertiesAtPoint(leg.world_foot_pos.x, leg.world_foot_pos.z);
+				leg.world_foot_pos.y = fh;
+			}
 			targets.push_back(leg.world_foot_pos);
 		}
 
