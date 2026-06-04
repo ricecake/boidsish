@@ -44,7 +44,7 @@ const float cloudFlowDirection = radians(190.0);
 const float cloudFlowHeightScale = 0.150;
 const float cloudFlowSpeed = 0.50;
 const float cloudCurlStrength = 10.0;
-const float cloudCurlFrequency = 0.005;
+const float cloudCurlFrequency = 1.0;
 
 // Warp cloud position away from the camera's view axis (capsule-based sliding warp)
 // Returns the warped position and a fade factor for density
@@ -149,7 +149,7 @@ float calculateCloudDensity(
 	}
 
 	// Base noise for cloud shapes
-	vec3 p_warped = p_advected + cloudCurlStrength * fastCurl3d(p_advected * cloudCurlFrequency + time * 0.002);
+	vec3 p_warped = p_advected + cloudCurlStrength * fastCurl3d(p_advected * cloudCurlFrequency + time * 0.0005);
 	vec3 p_scaled = p_warped / (50000.0 * props.worldScale);
 
 	float baseNoise = fastWorley3d(p_scaled + time * 0.005);
@@ -184,7 +184,7 @@ float calculateCloudDensity(
 	float wispyFactor = smoothstep(0.2, 0.35, weather.weatherMap);
 	density *= mix(0.6, 1.0, wispyFactor);
 
-	return density * densityProfile * props.densityBase * 3.0;
+	return smoothstep(0, 0.75, density * densityProfile * props.densityBase * 3.0);
 }
 
 float calculateCloudShadowDensity(vec3 p, CloudWeather weather, CloudLayer layer, CloudProperties props, float time) {
