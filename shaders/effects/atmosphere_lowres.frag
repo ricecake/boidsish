@@ -117,8 +117,8 @@ void main() {
 			vec3 p_curved = p;//  + (vec3(1, 0, 1) * time * (100 + p.y/500));
 			p_curved.y = length(p - earthCenter) - R_earth;
 
-			vec3 baseAdvect = 2.5 * vec3(1, 0, 0) * time;
-			p_curved += baseAdvect + (10 + p_curved.y/200);
+			vec3 baseAdvect = 1.5 * vec3(1, 0, 0) * time;
+			p_curved += baseAdvect + (5 + p_curved.y/200);
 
 			// Sample weather at current ray position to avoid depth dependency
 			float weatherWarpFactor = 1.0;

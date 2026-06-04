@@ -44,7 +44,7 @@ const float cloudFlowDirection = radians(190.0);
 const float cloudFlowHeightScale = 0.150;
 const float cloudFlowSpeed = 0.50;
 const float cloudCurlStrength = 10.0;
-const float cloudCurlFrequency = 1.0;
+const float cloudCurlFrequency = 2.0;
 
 // Warp cloud position away from the camera's view axis (capsule-based sliding warp)
 // Returns the warped position and a fade factor for density
