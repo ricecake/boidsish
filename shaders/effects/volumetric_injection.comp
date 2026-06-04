@@ -330,10 +330,6 @@ void main() {
                     // Reduce alpha if there's a significant change in local luminance
                     activeAlpha *= 1.0 - smoothstep(0.1, 0.5, lumDiff);
 
-                    // 2. Lightning pulse adaptation
-                    // If a flash is happening, we want to react almost instantly
-                    activeAlpha *= 1.0 - clamp(lightningPulse * 2.0, 0.0, 1.0);
-
                     // 3. Stability check (high variance = low alpha)
                     float spatialStd = dot(stddev.rgb, vec3(0.2126, 0.7152, 0.0722));
                     activeAlpha *= clamp(1.0 - (spatialStd / (currentLum + 0.001)), 0.0, 1.0);
