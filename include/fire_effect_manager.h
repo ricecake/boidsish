@@ -55,6 +55,7 @@ namespace Boidsish {
 		void Update(
 			float                         delta_time,
 			float                         time,
+			bool                          enabled = true,
 			float                         ambient_density = 0.15f,
 			const std::vector<glm::vec4>& chunk_info = {},
 			GLuint                        heightmap_texture = 0,

@@ -1191,10 +1191,17 @@ namespace Boidsish {
 			frame_config_.erosion_detail = cfg.GetAppSettingFloat("erosion_detail", 1.5f);
 			frame_config_.erosion_gully_weight = cfg.GetAppSettingFloat("erosion_gully_weight", 0.5f);
 			frame_config_.erosion_max_dist = cfg.GetAppSettingFloat("erosion_max_dist", 450.0f);
+			frame_config_.particles_enabled = cfg.GetAppSettingBool("particles_enabled", true);
 			frame_config_.ambient_particle_density = cfg.GetAppSettingFloat(
 				"ambient_particle_density",
 				Constants::Class::Particles::DefaultAmbientDensity()
 			);
+			frame_config_.weight_leaf = cfg.GetAppSettingFloat("ambient_weight_leaf", 1.0f);
+			frame_config_.weight_petal = cfg.GetAppSettingFloat("ambient_weight_petal", 1.0f);
+			frame_config_.weight_bubble = cfg.GetAppSettingFloat("ambient_weight_bubble", 1.0f);
+			frame_config_.weight_snow = cfg.GetAppSettingFloat("ambient_weight_snow", 1.0f);
+			frame_config_.weight_firefly = cfg.GetAppSettingFloat("ambient_weight_firefly", 1.0f);
+			frame_config_.weight_bird = cfg.GetAppSettingFloat("ambient_weight_bird", 1.0f);
 			frame_config_.enable_shadows = cfg.GetAppSettingBool("enable_shadows", true);
 
 			frame_config_.sh_probe_scaling = cfg.GetAppSettingFloat("sh_probe_scaling", 0.125f);
@@ -2281,6 +2288,13 @@ namespace Boidsish {
 					ubo_data.rain_intensity = (w.temperature > 273.15f) ? w.precipitation : 0.0f;
 					ubo_data.snow_intensity = (w.temperature <= 273.15f) ? w.precipitation : 0.0f;
 					ubo_data.wetness = wetness_;
+					ubo_data.particles_enabled = frame_config_.particles_enabled ? 1 : 0;
+					ubo_data.weight_leaf = frame_config_.weight_leaf;
+					ubo_data.weight_petal = frame_config_.weight_petal;
+					ubo_data.weight_bubble = frame_config_.weight_bubble;
+					ubo_data.weight_snow = frame_config_.weight_snow;
+					ubo_data.weight_firefly = frame_config_.weight_firefly;
+					ubo_data.weight_bird = frame_config_.weight_bird;
 
 					*visual_effects_pb->GetFrameDataPtr() = ubo_data;
 					glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::VisualEffects(),
@@ -2556,6 +2570,7 @@ namespace Boidsish {
 			fire_effect_manager->Update(
 				simulation_delta_time,
 				simulation_time,
+				frame_config_.particles_enabled,
 				frame_config_.ambient_particle_density,
 				terrain_render_manager ? terrain_render_manager->GetChunkInfo(terrain_generator->GetWorldScale())
 									   : std::vector<glm::vec4>{},

@@ -107,7 +107,14 @@ namespace Boidsish {
 		float erosion_detail = 1.5f;
 		float erosion_gully_weight = 0.5f;
 		float erosion_max_dist = 450.0f;
+		bool  particles_enabled = true;
 		float ambient_particle_density = 0.15f;
+		float weight_leaf = 1.0f;
+		float weight_petal = 1.0f;
+		float weight_bubble = 1.0f;
+		float weight_snow = 1.0f;
+		float weight_firefly = 1.0f;
+		float weight_bird = 1.0f;
 		float sh_probe_scaling = 1.0f;
 		float sh_probe_convergence_speed = 1.0f;
 		int   sh_probe_ray_count_multiplier = 1;
