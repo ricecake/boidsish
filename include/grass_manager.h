@@ -10,6 +10,7 @@
 #include "constants.h"
 #include "biome_properties.h"
 #include "render_shader.h"
+#include "state.h"
 
 namespace Boidsish {
 
@@ -42,8 +43,8 @@ namespace Boidsish {
         float windMultiplier = 1.0f;
         uint32_t enabled = 1;
         float lodScaleFactor = 2.0f;
-        float lodBaseRange = 20.0f;
-        float baseScale = 0.5f;
+        float lodBaseRange = 30.0f;
+        float baseScale = 0.25f;
         float _pad0 = 0.0f;
         float _pad1 = 0.0f;
         float _pad2 = 0.0f;
@@ -94,6 +95,8 @@ namespace Boidsish {
             global_props_ = props;
             props_dirty_ = true;
         }
+
+        void ApplyTargetState(const class state::SystemConfiguration& config);
 
         uint32_t GetGrassPropsUbo() const { return grass_props_ubo_; }
 
