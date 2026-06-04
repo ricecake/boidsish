@@ -123,11 +123,6 @@ namespace Boidsish {
 			shader_->setMat4("invView", glm::inverse(viewMatrix));
 			shader_->setMat4("invProjection", glm::inverse(projectionMatrix));
 
-			shader_->setFloat("cloudDensity", cloud_density_);
-			shader_->setFloat("cloudAltitude", cloud_altitude_);
-			shader_->setFloat("cloudThickness", cloud_thickness_);
-			shader_->setFloat("cloudCoverage", cloud_coverage_);
-			shader_->setFloat("cloudWarp", cloud_warp_);
 			shader_->setVec3("cloudColorUniform", cloud_color_);
 			shader_->setFloat("u_atmosphereHeight", atmosphere_height_);
 
@@ -266,6 +261,48 @@ namespace Boidsish {
 			glBindTexture(GL_TEXTURE_2D, 0);
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, 0);
+		}
+
+		void AtmosphereEffect::ApplyTargetState(const state::SystemConfiguration& config) {
+			const auto& s = config.atmosphere;
+
+			SetHazeDensity(s.hazeDensity);
+			SetHazeHeight(s.hazeHeight);
+			SetHazeColor(s.hazeColor);
+			SetCloudDensity(s.cloudDensity);
+			SetCloudAltitude(s.cloudAltitude);
+			SetCloudThickness(s.cloudThickness);
+			SetCloudCoverage(s.cloudCoverage);
+			SetCloudWarp(s.cloudWarp);
+			SetCloudColor(s.cloudColor);
+			SetCloudSunLightScale(s.cloudSunLightScale);
+			SetCloudMoonLightScale(s.cloudMoonLightScale);
+			SetCloudPowderScale(s.cloudPowderScale);
+			SetCloudPowderMultiplier(s.cloudPowderMultiplier);
+			SetCloudPowderLocalScale(s.cloudPowderLocalScale);
+			SetCloudShadowOpticalDepthMultiplier(s.cloudShadowOpticalDepthMultiplier);
+			SetCloudShadowStepMultiplier(s.cloudShadowStepMultiplier);
+			SetCloudBeerPowderMix(s.cloudBeerPowderMix);
+			SetCloudFlowSpeed(s.cloudFlowSpeed);
+			SetCloudFlowDirection(s.cloudFlowDirection);
+			SetCloudFlowHeightScale(s.cloudFlowHeightScale);
+			SetCloudCurlStrength(s.cloudCurlStrength);
+			SetCloudCurlFrequency(s.cloudCurlFrequency);
+
+			SetRayleighScale(s.rayleighScale);
+			SetMieScale(s.mieScale);
+			SetMieAnisotropy(s.mieAnisotropy);
+			SetMultiScatScale(s.multiScatScale);
+			SetAmbientScatScale(s.ambientScatScale);
+			SetAtmosphereHeight(s.atmosphereHeight);
+			SetRayleighScattering(s.rayleighScattering);
+			SetMieScattering(s.mieScattering);
+			SetMieExtinction(s.mieExtinction);
+			SetOzoneAbsorption(s.ozoneAbsorption);
+			SetRayleighScaleHeight(s.rayleighScaleHeight);
+			SetMieScaleHeight(s.mieScaleHeight);
+			SetColorVarianceScale(s.colorVarianceScale);
+			SetColorVarianceStrength(s.colorVarianceStrength);
 		}
 
 		void AtmosphereEffect::Resize(int width, int height) {

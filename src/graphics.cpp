@@ -2601,10 +2601,14 @@ namespace Boidsish {
 			}
 			if (gen.atmosphere != last_applied_gen_.atmosphere) {
 				last_applied_gen_.atmosphere = gen.atmosphere;
+				state::SystemConfiguration config;
+				config.atmosphere = eff.atmosphere;
+
 				if (atmosphere_manager) {
-					state::SystemConfiguration config;
-					config.atmosphere = eff.atmosphere;
 					atmosphere_manager->ApplyTargetState(config);
+				}
+				if (atmosphere_effect) {
+					atmosphere_effect->ApplyTargetState(config);
 				}
 			}
 			if (gen.dayNight != last_applied_gen_.dayNight) {
