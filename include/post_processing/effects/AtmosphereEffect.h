@@ -9,6 +9,11 @@ class Shader;
 class ComputeShader;
 
 namespace Boidsish {
+
+	namespace state {
+		struct SystemConfiguration;
+	}
+
 	namespace PostProcessing {
 
 		class AtmosphereEffect: public IPostProcessingEffect {
@@ -110,6 +115,26 @@ namespace Boidsish {
 
 			float GetCloudBeerPowderMix() const { return cloud_beer_powder_mix_; }
 
+			void SetCloudFlowSpeed(float s) { cloud_flow_speed_ = s; }
+
+			float GetCloudFlowSpeed() const { return cloud_flow_speed_; }
+
+			void SetCloudFlowDirection(float d) { cloud_flow_direction_ = d; }
+
+			float GetCloudFlowDirection() const { return cloud_flow_direction_; }
+
+			void SetCloudFlowHeightScale(float s) { cloud_flow_height_scale_ = s; }
+
+			float GetCloudFlowHeightScale() const { return cloud_flow_height_scale_; }
+
+			void SetCloudCurlStrength(float s) { cloud_curl_strength_ = s; }
+
+			float GetCloudCurlStrength() const { return cloud_curl_strength_; }
+
+			void SetCloudCurlFrequency(float f) { cloud_curl_frequency_ = f; }
+
+			float GetCloudCurlFrequency() const { return cloud_curl_frequency_; }
+
 			// Scattering parameters
 			void SetRayleighScale(float s) { rayleigh_scale_ = s; }
 
@@ -177,6 +202,8 @@ namespace Boidsish {
 
 			float GetRenderScale() const { return render_scale_; }
 
+			void ApplyTargetState(const state::SystemConfiguration& config);
+
 		private:
 			void InitializeLowResResources();
 			void InitializeTemporalResources();
@@ -209,6 +236,11 @@ namespace Boidsish {
 			float cloud_sun_light_scale_ = 1.0f;
 			float cloud_moon_light_scale_ = 2.0f;
 			float cloud_beer_powder_mix_ = 0.600f;
+			float cloud_flow_speed_ = 0.05f;
+			float cloud_flow_direction_ = 0.0f;
+			float cloud_flow_height_scale_ = 1.0f;
+			float cloud_curl_strength_ = 5.0f;
+			float cloud_curl_frequency_ = 1.0f / 900.0f;
 
 			float     rayleigh_scale_ = WeatherConstants::RayleighScale.normal;
 			float     mie_scale_ = WeatherConstants::MieScale.normal;

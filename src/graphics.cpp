@@ -2394,6 +2394,11 @@ namespace Boidsish {
 					lighting_ubo_data_.cloudSunLightScale = atmosphere_effect->GetCloudSunLightScale();
 					lighting_ubo_data_.cloudMoonLightScale = atmosphere_effect->GetCloudMoonLightScale();
 					lighting_ubo_data_.cloudBeerPowderMix = atmosphere_effect->GetCloudBeerPowderMix();
+					lighting_ubo_data_.cloudFlowSpeed = atmosphere_effect->GetCloudFlowSpeed();
+					lighting_ubo_data_.cloudFlowDirection = atmosphere_effect->GetCloudFlowDirection();
+					lighting_ubo_data_.cloudFlowHeightScale = atmosphere_effect->GetCloudFlowHeightScale();
+					lighting_ubo_data_.cloudCurlStrength = atmosphere_effect->GetCloudCurlStrength();
+					lighting_ubo_data_.cloudCurlFrequency = atmosphere_effect->GetCloudCurlFrequency();
 
 					// Calculate cloud shadow matrix (world XZ to shadow map UV)
 					float     mapSize = atmosphere_manager->GetCloudShadowWorldSize();
@@ -2423,10 +2428,10 @@ namespace Boidsish {
 
 				// GPU-side copy of SH coefficients from SSBO into the UBO (no CPU readback)
 				if (atmosphere_manager) {
-					static_assert(offsetof(LightingUbo, sh_coeffs) == 976, "SH offset mismatch");
+					static_assert(offsetof(LightingUbo, sh_coeffs) == 1008, "SH offset mismatch");
 					atmosphere_manager->CopySHToUBO(
 						lighting_pb->GetBufferId(),
-						static_cast<GLintptr>(lighting_pb->GetFrameOffset()) + 976
+						static_cast<GLintptr>(lighting_pb->GetFrameOffset()) + 1008
 					);
 				}
 			}
@@ -2601,10 +2606,14 @@ namespace Boidsish {
 			}
 			if (gen.atmosphere != last_applied_gen_.atmosphere) {
 				last_applied_gen_.atmosphere = gen.atmosphere;
+				state::SystemConfiguration config;
+				config.atmosphere = eff.atmosphere;
+
 				if (atmosphere_manager) {
-					state::SystemConfiguration config;
-					config.atmosphere = eff.atmosphere;
 					atmosphere_manager->ApplyTargetState(config);
+				}
+				if (atmosphere_effect) {
+					atmosphere_effect->ApplyTargetState(config);
 				}
 			}
 			if (gen.dayNight != last_applied_gen_.dayNight) {

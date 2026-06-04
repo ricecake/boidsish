@@ -597,6 +597,32 @@ namespace Boidsish {
 							fb->Apply(state::actions::SetCloudBeerPowderMix{bp_mix});
 						}
 
+						float flow_speed = input.atmosphere.cloudFlowSpeed;
+						if (ImGui::SliderFloat("Flow Speed", &flow_speed, 0.0f, 0.5f)) {
+							fb->Apply(state::actions::SetCloudFlowSpeed{flow_speed});
+						}
+
+						float flow_dir = input.atmosphere.cloudFlowDirection;
+						if (ImGui::SliderAngle("Flow Direction", &flow_dir)) {
+							fb->Apply(state::actions::SetCloudFlowDirection{flow_dir});
+						}
+
+						float flow_height = input.atmosphere.cloudFlowHeightScale;
+						if (ImGui::SliderFloat("Flow Height Scale", &flow_height, 0.0f, 5.0f)) {
+							fb->Apply(state::actions::SetCloudFlowHeightScale{flow_height});
+						}
+
+						float curl_strength = input.atmosphere.cloudCurlStrength;
+						if (ImGui::SliderFloat("Curl Strength", &curl_strength, 0.0f, 20.0f)) {
+							fb->Apply(state::actions::SetCloudCurlStrength{curl_strength});
+						}
+
+						float curl_freq = input.atmosphere.cloudCurlFrequency;
+						float curl_freq_scaled = curl_freq * 900.0f; // Show as relative to default
+						if (ImGui::SliderFloat("Curl Frequency Scale", &curl_freq_scaled, 0.1f, 10.0f)) {
+							fb->Apply(state::actions::SetCloudCurlFrequency{curl_freq_scaled / 900.0f});
+						}
+
 						ImGui::Separator();
 						ImGui::Text("Scattering");
 						float rayleigh = input.atmosphere.rayleighScale;

@@ -115,6 +115,11 @@ namespace Boidsish {
 			float cloudShadowOpticalDepthMultiplier = 1.0f;
 			float cloudShadowStepMultiplier = 1.0f;
 			float cloudBeerPowderMix = 0.6f;
+			float cloudFlowSpeed = 0.05f;
+			float cloudFlowDirection = 0.0f;
+			float cloudFlowHeightScale = 1.0f;
+			float cloudCurlStrength = 5.0f;
+			float cloudCurlFrequency = 1.0f / 900.0f;
 			float rayleighScale = 1.1f;
 			float mieScale = 0.35f;
 			float mieAnisotropy = 0.8f;
@@ -333,6 +338,11 @@ namespace Boidsish {
 			struct SetCloudShadowOpticalDepthMultiplier { float value; };
 			struct SetCloudShadowStepMultiplier { float value; };
 			struct SetCloudBeerPowderMix { float value; };
+			struct SetCloudFlowSpeed { float value; };
+			struct SetCloudFlowDirection { float value; };
+			struct SetCloudFlowHeightScale { float value; };
+			struct SetCloudCurlStrength { float value; };
+			struct SetCloudCurlFrequency { float value; };
 			struct SetRayleighScale { float value; };
 			struct SetMieScale { float value; };
 			struct SetMieAnisotropy { float value; };
