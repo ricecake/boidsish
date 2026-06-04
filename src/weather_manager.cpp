@@ -304,25 +304,29 @@ namespace Boidsish {
 			return;
 
 		auto& state = attribute_states_[static_cast<size_t>(attr)];
-
-		// Manual constraints are now handled via the LBM solver and cached_targets_ update.
-		// We let the attribute float naturally towards its target (noise-derived or simulation-derived).
-
-		if (strict_enforcement_ && state.external_target.has_value()) {
-			target = *state.external_target;
-			float* value_ptr = GetValuePtr(attr);
-			if (value_ptr) {
-				*value_ptr = target;
-				state.velocity = 0.0f;
-			}
-			return;
-		}
-
 		float* value_ptr = GetValuePtr(attr);
 		if (!value_ptr)
 			return;
 
 		float& value = *value_ptr;
+
+		// If strict enforcement is enabled, we immediately snap to targets or clamp violations.
+		if (strict_enforcement_) {
+			if (state.external_target.has_value()) {
+				value = *state.external_target;
+				state.velocity = 0.0f;
+			} else {
+				if (state.external_min.has_value() && value < *state.external_min) {
+					value = *state.external_min;
+					state.velocity = 0.0f;
+				}
+				if (state.external_max.has_value() && value > *state.external_max) {
+					value = *state.external_max;
+					state.velocity = 0.0f;
+				}
+			}
+			// Fall through to final clamp to ensure target is also bounded by min/max
+		}
 
 		// Analytical Critically Dampened Spring
 		// x(t) = (c1 + c2*t) * e^(-omega*t) + target
@@ -337,6 +341,10 @@ namespace Boidsish {
 
 		value = (c1 + c2 * deltaTime) * expTerm + target;
 		state.velocity = (v0 - omega * c2 * deltaTime) * expTerm;
+
+		// Final safety clamp for all attributes to respect hard constraints
+		if (state.external_min.has_value()) value = std::max(value, *state.external_min);
+		if (state.external_max.has_value()) value = std::min(value, *state.external_max);
 	}
 
 	float* WeatherManager::GetValuePtr(WeatherAttribute attr) {
@@ -429,14 +437,14 @@ namespace Boidsish {
 			return;
 		}
 
-		// 2. Optimization using Gauss-Newton (Minimal Nudge from current state)
+		// 2. Optimization using Gauss-Newton (Minimal Nudge from cached targets)
 		// LBM State Vector x = [temp, pressure, humidity, velocity, aerosols]
 		Eigen::VectorXd x(5);
-		x(0) = current_.temperature;
-		x(1) = current_.pressure;
-		x(2) = current_.humidity;
-		x(3) = current_.wind_strength;
-		x(4) = std::max(0.0f, (current_.mie_scattering - 0.003996f) / 0.1f);
+		x(0) = cached_targets_.temperature;
+		x(1) = cached_targets_.pressure;
+		x(2) = cached_targets_.humidity;
+		x(3) = cached_targets_.wind_strength;
+		x(4) = std::max(0.0f, (cached_targets_.mie_scattering - 0.003996f) / 0.1f);
 
 		const int   max_iterations = 5;
 		// Regularization to minimize nudge magnitude. Modulated by nudge_stiffness_.
@@ -529,6 +537,31 @@ namespace Boidsish {
 			x(3) = std::clamp(x(3), 0.0, 50.0);
 			x(4) = std::clamp(x(4), 0.0, 1.0);
 		}
+
+		// 2.5 Apply constrained values back to cached_targets_ immediately to eliminate UI/sim lag
+		cached_targets_.temperature = (float)x(0);
+		cached_targets_.pressure = (float)x(1);
+		cached_targets_.humidity = (float)x(2);
+		cached_targets_.wind_strength = (float)x(3);
+		cached_targets_.mie_scattering = 0.003996f + (float)x(4) * 0.1f;
+		cached_targets_.mie_extinction = cached_targets_.mie_scattering * 1.11f;
+
+		// Re-evaluate derived targets based on new constrained state
+		float cloudPotential = 3.33f * (cached_targets_.humidity - 0.7f);
+		cached_targets_.cloud_coverage = std::clamp(cloudPotential * 0.5f, 0.0f, 1.0f);
+
+		float precip = std::max(0.0f, (cached_targets_.humidity - 0.8f) * 5.0f * cached_targets_.cloud_coverage);
+		cached_targets_.precipitation = std::clamp(precip, 0.0f, 1.0f);
+
+		// Ensure explicit constraints on derived attributes are also reflected in cached_targets_
+		auto applyDerived = [&](WeatherAttribute attr, float& targetMember) {
+			const auto& state = attribute_states_[static_cast<size_t>(attr)];
+			if (state.external_target) targetMember = *state.external_target;
+			if (state.external_min) targetMember = std::max(targetMember, *state.external_min);
+			if (state.external_max) targetMember = std::min(targetMember, *state.external_max);
+		};
+		applyDerived(WeatherAttribute::CloudCoverage, cached_targets_.cloud_coverage);
+		applyDerived(WeatherAttribute::Precipitation, cached_targets_.precipitation);
 
 		// 3. Apply as LBM constraints. To "float free", we only set constraints that are necessary.
 		WeatherLbmSimulator::Constraints c;
@@ -1123,7 +1156,43 @@ namespace Boidsish {
 			cached_targets_.precipitation = std::clamp(precip, 0.0f, 1.0f);
 		}
 
+		// Always update attributes toward cached targets using the spring system
+		SynchronizeLbmConstraints();
+		UpdateAttribute(WeatherAttribute::SunIntensity, cached_targets_.sun_intensity, deltaTime);
+		UpdateAttribute(WeatherAttribute::WindStrength, cached_targets_.wind_strength, deltaTime);
+		UpdateAttribute(WeatherAttribute::WindSpeed, cached_targets_.wind_speed, deltaTime);
+		UpdateAttribute(WeatherAttribute::WindFrequency, cached_targets_.wind_frequency, deltaTime);
+		UpdateAttribute(WeatherAttribute::CloudDensity, cached_targets_.cloud_density, deltaTime);
+		UpdateAttribute(WeatherAttribute::CloudAltitude, cached_targets_.cloud_altitude, deltaTime);
+		UpdateAttribute(WeatherAttribute::CloudThickness, cached_targets_.cloud_thickness, deltaTime);
+		UpdateAttribute(WeatherAttribute::HazeDensity, cached_targets_.haze_density, deltaTime);
+		UpdateAttribute(WeatherAttribute::HazeHeight, cached_targets_.haze_height, deltaTime);
+		UpdateAttribute(WeatherAttribute::RayleighScale, cached_targets_.rayleigh_scale, deltaTime);
+		UpdateAttribute(WeatherAttribute::MieScale, cached_targets_.mie_scale, deltaTime);
+		UpdateAttribute(WeatherAttribute::AtmosphereHeight, cached_targets_.atmosphere_height, deltaTime);
+		UpdateAttribute(WeatherAttribute::RayleighScaleHeight, cached_targets_.rayleigh_scale_height, deltaTime);
+		UpdateAttribute(WeatherAttribute::MieScaleHeight, cached_targets_.mie_scale_height, deltaTime);
+		UpdateAttribute(WeatherAttribute::CloudCoverage, cached_targets_.cloud_coverage, deltaTime);
+		UpdateAttribute(WeatherAttribute::Precipitation, cached_targets_.precipitation, deltaTime);
+		UpdateAttribute(WeatherAttribute::Temperature, cached_targets_.temperature, deltaTime);
+		UpdateAttribute(WeatherAttribute::Humidity, cached_targets_.humidity, deltaTime);
+		UpdateAttribute(WeatherAttribute::Pressure, cached_targets_.pressure, deltaTime);
+
+		// Update new attributes
+		UpdateAttribute(WeatherAttribute::MieScattering, cached_targets_.mie_scattering, deltaTime);
+		UpdateAttribute(WeatherAttribute::MieExtinction, cached_targets_.mie_extinction, deltaTime);
+		UpdateAttribute(WeatherAttribute::RayleighScatteringR, cached_targets_.rayleigh_scattering.r, deltaTime);
+		UpdateAttribute(WeatherAttribute::RayleighScatteringG, cached_targets_.rayleigh_scattering.g, deltaTime);
+		UpdateAttribute(WeatherAttribute::RayleighScatteringB, cached_targets_.rayleigh_scattering.b, deltaTime);
+		UpdateAttribute(WeatherAttribute::HazeColorR, cached_targets_.haze_color.r, deltaTime);
+		UpdateAttribute(WeatherAttribute::HazeColorG, cached_targets_.haze_color.g, deltaTime);
+		UpdateAttribute(WeatherAttribute::HazeColorB, cached_targets_.haze_color.b, deltaTime);
+		UpdateAttribute(WeatherAttribute::CloudColorR, cached_targets_.cloud_color.r, deltaTime);
+		UpdateAttribute(WeatherAttribute::CloudColorG, cached_targets_.cloud_color.g, deltaTime);
+		UpdateAttribute(WeatherAttribute::CloudColorB, cached_targets_.cloud_color.b, deltaTime);
+
 		// Trigger lightning strikes during high precipitation
+		// CRITICAL: Must happen after attribute updates to respect immediate snapping/clamping
 		if (current_.precipitation > 0.4f) {
 			auto lightning = ServiceLocator::Instance().Get<LightningManager>();
 			float freqMult = lightning ? lightning->GetFrequencyMultiplier() : 1.0f;
@@ -1164,41 +1233,6 @@ namespace Boidsish {
 				}
 			}
 		}
-
-		// Always update attributes toward cached targets using the spring system
-		SynchronizeLbmConstraints();
-		UpdateAttribute(WeatherAttribute::SunIntensity, cached_targets_.sun_intensity, deltaTime);
-		UpdateAttribute(WeatherAttribute::WindStrength, cached_targets_.wind_strength, deltaTime);
-		UpdateAttribute(WeatherAttribute::WindSpeed, cached_targets_.wind_speed, deltaTime);
-		UpdateAttribute(WeatherAttribute::WindFrequency, cached_targets_.wind_frequency, deltaTime);
-		UpdateAttribute(WeatherAttribute::CloudDensity, cached_targets_.cloud_density, deltaTime);
-		UpdateAttribute(WeatherAttribute::CloudAltitude, cached_targets_.cloud_altitude, deltaTime);
-		UpdateAttribute(WeatherAttribute::CloudThickness, cached_targets_.cloud_thickness, deltaTime);
-		UpdateAttribute(WeatherAttribute::HazeDensity, cached_targets_.haze_density, deltaTime);
-		UpdateAttribute(WeatherAttribute::HazeHeight, cached_targets_.haze_height, deltaTime);
-		UpdateAttribute(WeatherAttribute::RayleighScale, cached_targets_.rayleigh_scale, deltaTime);
-		UpdateAttribute(WeatherAttribute::MieScale, cached_targets_.mie_scale, deltaTime);
-		UpdateAttribute(WeatherAttribute::AtmosphereHeight, cached_targets_.atmosphere_height, deltaTime);
-		UpdateAttribute(WeatherAttribute::RayleighScaleHeight, cached_targets_.rayleigh_scale_height, deltaTime);
-		UpdateAttribute(WeatherAttribute::MieScaleHeight, cached_targets_.mie_scale_height, deltaTime);
-		UpdateAttribute(WeatherAttribute::CloudCoverage, cached_targets_.cloud_coverage, deltaTime);
-		UpdateAttribute(WeatherAttribute::Precipitation, cached_targets_.precipitation, deltaTime);
-		UpdateAttribute(WeatherAttribute::Temperature, cached_targets_.temperature, deltaTime);
-		UpdateAttribute(WeatherAttribute::Humidity, cached_targets_.humidity, deltaTime);
-		UpdateAttribute(WeatherAttribute::Pressure, cached_targets_.pressure, deltaTime);
-
-		// Update new attributes
-		UpdateAttribute(WeatherAttribute::MieScattering, cached_targets_.mie_scattering, deltaTime);
-		UpdateAttribute(WeatherAttribute::MieExtinction, cached_targets_.mie_extinction, deltaTime);
-		UpdateAttribute(WeatherAttribute::RayleighScatteringR, cached_targets_.rayleigh_scattering.r, deltaTime);
-		UpdateAttribute(WeatherAttribute::RayleighScatteringG, cached_targets_.rayleigh_scattering.g, deltaTime);
-		UpdateAttribute(WeatherAttribute::RayleighScatteringB, cached_targets_.rayleigh_scattering.b, deltaTime);
-		UpdateAttribute(WeatherAttribute::HazeColorR, cached_targets_.haze_color.r, deltaTime);
-		UpdateAttribute(WeatherAttribute::HazeColorG, cached_targets_.haze_color.g, deltaTime);
-		UpdateAttribute(WeatherAttribute::HazeColorB, cached_targets_.haze_color.b, deltaTime);
-		UpdateAttribute(WeatherAttribute::CloudColorR, cached_targets_.cloud_color.r, deltaTime);
-		UpdateAttribute(WeatherAttribute::CloudColorG, cached_targets_.cloud_color.g, deltaTime);
-		UpdateAttribute(WeatherAttribute::CloudColorB, cached_targets_.cloud_color.b, deltaTime);
 	}
 
 	void WeatherManager::SaveAttributeTarget(WeatherAttribute attr) {
