@@ -191,6 +191,11 @@ namespace state {
 		void Apply(const actions::SetCloudShadowOpticalDepthMultiplier& a) { UserInput().atmosphere.cloudShadowOpticalDepthMultiplier = a.value; BumpAtmosphere(); }
 		void Apply(const actions::SetCloudShadowStepMultiplier& a) { UserInput().atmosphere.cloudShadowStepMultiplier = a.value; BumpAtmosphere(); }
 		void Apply(const actions::SetCloudBeerPowderMix& a) { UserInput().atmosphere.cloudBeerPowderMix = a.value; BumpAtmosphere(); }
+		void Apply(const actions::SetCloudFlowSpeed& a) { UserInput().atmosphere.cloudFlowSpeed = a.value; BumpAtmosphere(); }
+		void Apply(const actions::SetCloudFlowDirection& a) { UserInput().atmosphere.cloudFlowDirection = a.value; BumpAtmosphere(); }
+		void Apply(const actions::SetCloudFlowHeightScale& a) { UserInput().atmosphere.cloudFlowHeightScale = a.value; BumpAtmosphere(); }
+		void Apply(const actions::SetCloudCurlStrength& a) { UserInput().atmosphere.cloudCurlStrength = a.value; BumpAtmosphere(); }
+		void Apply(const actions::SetCloudCurlFrequency& a) { UserInput().atmosphere.cloudCurlFrequency = a.value; BumpAtmosphere(); }
 		void Apply(const actions::SetRayleighScale& a) { UserInput().atmosphere.rayleighScale = a.value; BumpAtmosphere(); }
 		void Apply(const actions::SetMieScale& a) { UserInput().atmosphere.mieScale = a.value; BumpAtmosphere(); }
 		void Apply(const actions::SetMieAnisotropy& a) { UserInput().atmosphere.mieAnisotropy = a.value; BumpAtmosphere(); }
