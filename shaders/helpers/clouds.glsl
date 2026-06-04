@@ -40,12 +40,6 @@ struct CloudLayer {
 	float thickness;
 };
 
-const float cloudFlowDirection = radians(190.0);
-const float cloudFlowHeightScale = 0.150;
-const float cloudFlowSpeed = 0.50;
-const float cloudCurlStrength = 10.0;
-const float cloudCurlFrequency = 2.0;
-
 // Warp cloud position away from the camera's view axis (capsule-based sliding warp)
 // Returns the warped position and a fade factor for density
 vec3 getWarpedCloudPos(vec3 p, out float fade) {
@@ -107,8 +101,9 @@ CloudLayer computeCloudLayer(CloudWeather weather, CloudProperties props) {
 
 vec3 getCloudAdvectionOffset(float h, float worldScale, float time) {
 	float angle = cloudFlowDirection;
-	vec2  flowDir = vec2(0.5);//vec2(cos(angle), sin(angle));
-	float heightFactor = 1.0 + h * cloudFlowHeightScale;
+	vec2  flowDir = vec2(cos(angle), sin(angle));
+	// Increase shear effect by making it more dramatic with height
+	float heightFactor = 1.0 + h * h * cloudFlowHeightScale * 2.0;
 	// 1000.0 is a magic scale to make the "speed" parameter feel reasonable in world units
 	return vec3(flowDir.x, 0.0, flowDir.y) * time * cloudFlowSpeed * heightFactor * 1000.0 * worldScale;
 }
@@ -139,7 +134,7 @@ float calculateCloudDensity(
 	float coverageThreshold = 1.0 - props.coverage;
 
 	// Apply advection to the sample position
-	vec3 p_advected = p;// - getCloudAdvectionOffset(h, props.worldScale, time);
+	vec3 p_advected = p - getCloudAdvectionOffset(h, props.worldScale, time);
 
 	if (simplified) {
 		// Include base Worley noise so shadow patterns match the full cloud shapes
