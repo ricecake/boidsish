@@ -112,9 +112,11 @@ void main() {
 			if (t > dist)
 				break;
 
+
 			vec3 p = viewPos + rayDir * t;
-			vec3 p_curved = p;
+			vec3 p_curved = p;//  + (vec3(1, 0, 1) * time * (100 + p.y/500));
 			p_curved.y = length(p - earthCenter) - R_earth;
+			p_curved += (vec3(1, 0, 1) * time * (100 + p_curved.y/50));
 
 			// Sample weather at current ray position to avoid depth dependency
 			float weatherWarpFactor = 1.0;
@@ -125,11 +127,11 @@ void main() {
 				p_curved_warped = getWarpedCloudPos(p_curved, weatherWarpFactor);
 			}
 
-			vec2  weatherUV = p.xz / (4000.0 * worldScale);
-			float weatherMap = weatherWarpFactor * (fastWorley3d(vec3(weatherUV, time * 0.001)) * 0.5 + 0.5);
+			vec2  weatherUV = p.xz / (3000.0 * worldScale);
+			float weatherMap = weatherWarpFactor * (fastWorley3d(vec3(weatherUV, time * 0.01)) * 0.5 + 0.5);
 
-			vec2  heightUV = p.xz / (2500.0 * worldScale);
-			float heightMap = weatherWarpFactor * (fastWorley3d(vec3(heightUV, time * 0.0004)) * 0.5 + 0.5);
+			vec2  heightUV = p.xz / (3000.0 * worldScale);
+			float heightMap = weatherWarpFactor * (fastWorley3d(vec3(heightUV, time * 0.004)) * 0.5 + 0.5);
 
 			CloudWeather weather;
 			weather.weatherMap = weatherMap;
