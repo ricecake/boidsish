@@ -31,8 +31,6 @@ void main() {
     viewPos /= (abs(viewPos.w) > 0.0001) ? viewPos.w : 1.0;
     vec3 worldPos = (uInvView * viewPos).xyz;
 
-    float offset = snoise(vec3(TexCoords, time));
-
     float linearZ = max(0.1, -viewPos.z);
     if (depth >= 1.0) linearZ = 1000.0; // Sample far end for sky
 
@@ -72,22 +70,8 @@ void main() {
     if (any(isnan(scattering))) scattering = vec3(0.0);
     if (isnan(transmittance)) transmittance = 1.0;
 
-    vec3 loc = viewDir + offset * distance(viewPos.xyz, worldPos);
-    vec3 vor = voronoi(loc);
-    vec2 cellID = vor.xy;
-    float cellDist = vor.z;
-
-    vec3 color = palette( // Make this a curl noise?
-        cellID.x + cellID.y + time * 2.0,
-        vec3(0.5, 0.5, 0.5), vec3(0.5, 0.5, 0.5),
-        mix(vec3(1.0, 1.0, 0.50), vec3(1.0, 1.0, 1.0), length(cellID)),
-        mix(vec3(0.80, 0.90, 0.30), vec3(0.30, 0.20, 0.20), length(cellID))
-    );
-
-    vec3 sparkle = (0.5+0.5*snoise(cellID)) * color * (1.0 - smoothstep(0, 0.5, cellDist)) * 10 * smoothstep(0.5, 0.75, length(scattering));
-
     // Apply volumetric lighting
-    vec3 result = sceneColor * transmittance + scattering + sparkle;
+    vec3 result = sceneColor * transmittance + scattering;
 
     // Preserve Scene Mask in alpha channel: 1.0 for scene, 0.0 for sky
     float sceneMask = (depth < 0.99999) ? 1.0 : 0.0;
