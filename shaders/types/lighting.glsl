@@ -46,7 +46,7 @@ layout(std140, binding = [[LIGHTING_BINDING]]) uniform Lighting {
 	float cloudFlowHeightScale;
 	float cloudCurlStrength;
 	float cloudCurlFrequency;
-	float _padding2[3];
+	float _pad0, _pad1, _pad2;
 	mat4  cloudShadowMatrix;
 	mat4  view;
 	mat4  projection;
