@@ -54,15 +54,21 @@ namespace Boidsish {
 	}
 
 	TerrainGenerator::~TerrainGenerator() {
+		if (mgmt_task_.has_value()) {
+			mgmt_task_->cancel();
+			try {
+				mgmt_task_->get();
+			} catch (...) {}
+		}
+
 		{
+			std::lock_guard<std::recursive_mutex> lock(chunk_cache_mutex_);
 			for (auto& pair : pending_chunks_) {
 				pair.second.cancel();
 			}
-		}
 
-		// Wait for any in-flight tasks to complete (they may have started before cancel)
-		// This prevents use-after-free when tasks reference 'this'
-		{
+			// Wait for any in-flight tasks to complete (they may have started before cancel)
+			// This prevents use-after-free when tasks reference 'this'
 			for (auto& pair : pending_chunks_) {
 				try {
 					auto& handle = const_cast<TaskHandle<TerrainGenerationResult>&>(pair.second);
@@ -72,11 +78,9 @@ namespace Boidsish {
 				}
 			}
 			pending_chunks_.clear();
-		}
-
-		{
 			chunk_cache_.clear();
 		}
+
 		{
 			std::lock_guard<std::mutex> lock(visible_chunks_mutex_);
 			visible_chunks_.clear();
@@ -85,262 +89,177 @@ namespace Boidsish {
 
 	void TerrainGenerator::Update(const Frustum& frustum, const Camera& camera) {
 		PROJECT_PROFILE_SCOPE("TerrainGenerator::Update");
-		float scaled_chunk_size = static_cast<float>(chunk_size_) * world_scale_;
 
-		// Use floor division for correct negative coordinate handling
-		int current_chunk_x = static_cast<int>(std::floor(camera.x / scaled_chunk_size));
-		int current_chunk_z = static_cast<int>(std::floor(camera.z / scaled_chunk_size));
-
-		float height_factor = std::max(1.0f, camera.y / 5.0f);
-		int   dynamic_view_distance = std::min(
-			Constants::Class::Terrain::MaxViewDistance(),
-			static_cast<int>(view_distance_ * height_factor)
-		);
-
-		float max_h = 0.0f;
-		for (const auto& b : kBiomes) {
-			max_h = std::max(max_h, b.floorLevel);
+		if (mgmt_task_.has_value() && mgmt_task_->is_ready()) {
+			try {
+				latest_mgmt_result_ = mgmt_task_->get();
+				CommitUpdates(camera);
+			} catch (...) {
+				mgmt_task_.reset();
+			}
 		}
-		max_h *= world_scale_;
 
-		std::lock_guard<std::recursive_mutex> lock(chunk_cache_mutex_);
+		if (mgmt_task_.has_value() && !mgmt_task_->is_ready()) {
+			return;
+		}
 
-		// 1. Collect chunks to enqueue with priority based on distance and frustum visibility
-		struct ChunkToEnqueue {
-			int          x, z;
-			TaskPriority priority;
-			float        distance_sq;
-		};
+		mgmt_task_ = thread_pool_.enqueue(TaskPriority::MEDIUM, [this, frustum, camera]() {
+			PROJECT_PROFILE_SCOPE("TerrainGenerator::ManagementTask");
+			ManagementResult res;
+			res.frustum = frustum;
 
-		std::vector<ChunkToEnqueue> chunks_to_enqueue;
-		chunks_to_enqueue.reserve((2 * dynamic_view_distance + 1) * (2 * dynamic_view_distance + 1));
+			float scaled_chunk_size = static_cast<float>(chunk_size_) * world_scale_;
+			int current_chunk_x = static_cast<int>(std::floor(camera.x / scaled_chunk_size));
+			int current_chunk_z = static_cast<int>(std::floor(camera.z / scaled_chunk_size));
 
-		glm::vec2 camera_pos_2d(camera.x, camera.z);
+			float height_factor = std::max(1.0f, camera.y / 5.0f);
+			int dynamic_view_distance = std::min(
+				Constants::Class::Terrain::MaxViewDistance(),
+				static_cast<int>(view_distance_ * height_factor)
+			);
 
-		const float max_view_dist_sq = (dynamic_view_distance * scaled_chunk_size) *
-			(dynamic_view_distance * scaled_chunk_size);
-		const float immediate_load_dist = std::max(5.0f, dynamic_view_distance * 0.5f) * scaled_chunk_size;
-		const float immediate_load_dist_sq = immediate_load_dist * immediate_load_dist;
+			float max_h = 0.0f;
+			for (const auto& b : kBiomes) {
+				max_h = std::max(max_h, b.floorLevel);
+			}
+			max_h *= world_scale_;
 
-		for (int x = current_chunk_x - dynamic_view_distance; x <= current_chunk_x + dynamic_view_distance; ++x) {
-			for (int z = current_chunk_z - dynamic_view_distance; z <= current_chunk_z + dynamic_view_distance; ++z) {
-				// Calculate distance from chunk center to camera
-				glm::vec2 chunk_center(
-					x * scaled_chunk_size + scaled_chunk_size * 0.5f,
-					z * scaled_chunk_size + scaled_chunk_size * 0.5f
-				);
-				float dist_sq = glm::dot(chunk_center - camera_pos_2d, chunk_center - camera_pos_2d);
+			glm::vec2 camera_pos_2d(camera.x, camera.z);
+			const float max_view_dist_sq = (dynamic_view_distance * scaled_chunk_size) * (dynamic_view_distance * scaled_chunk_size);
+			const float immediate_load_dist = std::max(5.0f, dynamic_view_distance * 0.5f) * scaled_chunk_size;
+			const float immediate_load_dist_sq = immediate_load_dist * immediate_load_dist;
 
-				// Radial distance check
-				if (dist_sq > max_view_dist_sq) {
-					continue;
+			{
+				std::lock_guard<std::recursive_mutex> lock(chunk_cache_mutex_);
+
+				// 1. Chunks to enqueue
+				for (int x = current_chunk_x - dynamic_view_distance; x <= current_chunk_x + dynamic_view_distance; ++x) {
+					for (int z = current_chunk_z - dynamic_view_distance; z <= current_chunk_z + dynamic_view_distance; ++z) {
+						glm::vec2 chunk_center(x * scaled_chunk_size + scaled_chunk_size * 0.5f, z * scaled_chunk_size + scaled_chunk_size * 0.5f);
+						float dist_sq = glm::dot(chunk_center - camera_pos_2d, chunk_center - camera_pos_2d);
+						if (dist_sq > max_view_dist_sq) continue;
+
+						std::pair<int, int> chunk_coord = {x, z};
+						if (chunk_cache_.find(chunk_coord) == chunk_cache_.end() && pending_chunks_.find(chunk_coord) == pending_chunks_.end()) {
+							bool in_frustum = isChunkInFrustum(frustum, x, z, scaled_chunk_size, max_h, 2.0f * scaled_chunk_size);
+							if (in_frustum || dist_sq < immediate_load_dist_sq) {
+								TaskPriority priority = in_frustum ? TaskPriority::HIGH : TaskPriority::LOW;
+								res.chunks_to_enqueue.push_back({x, z, priority, dist_sq});
+							}
+						}
+					}
 				}
 
-				std::pair<int, int> chunk_coord = {x, z};
-				if (chunk_cache_.find(chunk_coord) == chunk_cache_.end() &&
-				    pending_chunks_.find(chunk_coord) == pending_chunks_.end()) {
-					// Add a safety margin (two chunk sizes) to frustum culling to prevent edge flickering
-					bool in_frustum = isChunkInFrustum(frustum, x, z, scaled_chunk_size, max_h, 2.0f * scaled_chunk_size);
+				// 2. Chunks to register
+				const float preload_distance_sq = ((dynamic_view_distance + 2.0f) * scaled_chunk_size) * ((dynamic_view_distance + 2.0f) * scaled_chunk_size);
+				for (auto const& [key, terrain_chunk] : chunk_cache_) {
+					if (!render_manager_ || !render_manager_->HasChunk(key)) {
+						glm::vec2 chunk_center(key.first * scaled_chunk_size + scaled_chunk_size * 0.5f, key.second * scaled_chunk_size + scaled_chunk_size * 0.5f);
+						float dist_sq = glm::dot(chunk_center - camera_pos_2d, chunk_center - camera_pos_2d);
+						bool in_frustum = isChunkInFrustum(frustum, key.first, key.second, scaled_chunk_size, max_h, 2.0f * scaled_chunk_size);
+						if (in_frustum || dist_sq < preload_distance_sq) {
+							res.chunks_to_register.push_back({key, terrain_chunk, dist_sq, in_frustum});
+						}
+					}
+				}
 
-					// Only load if in frustum OR very close to camera
-					if (in_frustum || dist_sq < immediate_load_dist_sq) {
-						// Priority: HIGH for in-frustum chunks, LOW for out-of-frustum
-						// Within each priority level, distance will determine order
-						TaskPriority priority = in_frustum ? TaskPriority::HIGH : TaskPriority::LOW;
-						chunks_to_enqueue.push_back({x, z, priority, dist_sq});
+				// 3. Unload/Cancel chunks
+				const float unload_limit_dist = (dynamic_view_distance + kUnloadDistanceBuffer_ + 2.0f) * scaled_chunk_size;
+				const float unload_limit_dist_sq = unload_limit_dist * unload_limit_dist;
+
+				for (auto const& [key, val] : chunk_cache_) {
+					glm::vec2 chunk_center(key.first * scaled_chunk_size + scaled_chunk_size * 0.5f, key.second * scaled_chunk_size + scaled_chunk_size * 0.5f);
+					if (glm::dot(chunk_center - camera_pos_2d, chunk_center - camera_pos_2d) > unload_limit_dist_sq) {
+						res.to_remove.push_back(key);
+					}
+				}
+
+				for (auto const& [key, val] : pending_chunks_) {
+					glm::vec2 chunk_center(key.first * scaled_chunk_size + scaled_chunk_size * 0.5f, key.second * scaled_chunk_size + scaled_chunk_size * 0.5f);
+					if (glm::dot(chunk_center - camera_pos_2d, chunk_center - camera_pos_2d) > unload_limit_dist_sq) {
+						res.to_cancel.push_back(key);
+					}
+				}
+
+				// 4. Visible chunks
+				for (auto const& [key, val] : chunk_cache_) {
+					if (val && isChunkInFrustum(frustum, key.first, key.second, scaled_chunk_size, max_h, 2.0f * scaled_chunk_size)) {
+						res.visible_chunks.push_back(val);
 					}
 				}
 			}
-		}
 
-		// Sort by priority (HIGH first), then by distance within each priority level
-		std::sort(
-			chunks_to_enqueue.begin(),
-			chunks_to_enqueue.end(),
-			[](const ChunkToEnqueue& a, const ChunkToEnqueue& b) {
-				if (a.priority != b.priority) {
-					return a.priority > b.priority; // HIGH (1) before LOW (0)
-				}
+			// Sortings
+			std::sort(res.chunks_to_enqueue.begin(), res.chunks_to_enqueue.end(), [](const auto& a, const auto& b) {
+				if (a.priority != b.priority) return a.priority > b.priority;
 				return a.distance_sq < b.distance_sq;
-			}
-		);
+			});
+			std::sort(res.chunks_to_register.begin(), res.chunks_to_register.end(), [](const auto& a, const auto& b) {
+				if (a.in_frustum != b.in_frustum) return a.in_frustum;
+				return a.distance_sq < b.distance_sq;
+			});
+			std::sort(res.visible_chunks.begin(), res.visible_chunks.end(), [&](const auto& a, const auto& b) {
+				float da = glm::distance(camera_pos_2d, glm::vec2(a->GetX(), a->GetZ()));
+				float db = glm::distance(camera_pos_2d, glm::vec2(b->GetX(), b->GetZ()));
+				return da < db;
+			});
 
-		// Enqueue in sorted order
-		for (const auto& chunk : chunks_to_enqueue) {
-			std::pair<int, int> chunk_coord = {chunk.x, chunk.z};
-			pending_chunks_.emplace(
-				chunk_coord,
-				thread_pool_.enqueue(chunk.priority, &TerrainGenerator::generateChunkData, this, chunk.x, chunk.z)
-			);
+			return res;
+		});
+	}
+
+	void TerrainGenerator::CommitUpdates(const Camera& camera) {
+		PROJECT_PROFILE_SCOPE("TerrainGenerator::CommitUpdates");
+		if (!latest_mgmt_result_.has_value()) return;
+
+		auto& res = *latest_mgmt_result_;
+		std::lock_guard<std::recursive_mutex> lock(chunk_cache_mutex_);
+
+		for (const auto& chunk : res.chunks_to_enqueue) {
+			pending_chunks_.emplace(std::pair{chunk.x, chunk.z},
+				thread_pool_.enqueue(chunk.priority, &TerrainGenerator::generateChunkData, this, chunk.x, chunk.z));
 		}
 
 		ProcessCompletedChunks();
 
-		// 3. Registration Pass: Register chunks with render manager
-		// Priority: 1) In frustum and close, 2) In frustum and far, 3) Out of frustum but close
-		// This prevents pop-in by pre-registering nearby chunks even if not visible yet
 		if (render_manager_) {
-			const int max_registrations_per_frame = 32; // Increased for faster catch-up
-			// Preload distance: slightly larger than view distance to ensure chunks are ready
-			const float preload_distance_sq = ((dynamic_view_distance + 2.0f) * scaled_chunk_size) *
-				((dynamic_view_distance + 2.0f) * scaled_chunk_size);
-
-			// Collect chunks needing registration with their distances and frustum status
-			struct ChunkToRegister {
-				std::pair<int, int>      key;
-				std::shared_ptr<Terrain> terrain;
-				float                    distance_sq;
-				bool                     in_frustum;
-			};
-
-			std::vector<ChunkToRegister> chunks_to_register;
-			chunks_to_register.reserve(chunk_cache_.size());
-
-			glm::vec2 camera_pos_2d(camera.x, camera.z);
-
-			for (auto const& [key, terrain_chunk] : chunk_cache_) {
-				if (!render_manager_->HasChunk(key)) {
-					// Calculate distance from chunk center to camera
-					glm::vec2 chunk_center(
-						key.first * scaled_chunk_size + scaled_chunk_size * 0.5f,
-						key.second * scaled_chunk_size + scaled_chunk_size * 0.5f
-					);
-					float dist_sq = glm::dot(chunk_center - camera_pos_2d, chunk_center - camera_pos_2d);
-					// Add a safety margin (two chunk sizes) to frustum culling
-					bool  in_frustum =
-						isChunkInFrustum(frustum, key.first, key.second, scaled_chunk_size, max_h, 2.0f * scaled_chunk_size);
-
-					// Register if in frustum OR if close enough to preload
-					if (in_frustum || dist_sq < preload_distance_sq) {
-						chunks_to_register.push_back({key, terrain_chunk, dist_sq, in_frustum});
-					}
+			float scaled_chunk_size = static_cast<float>(chunk_size_) * world_scale_;
+			int registrations = 0;
+			for (const auto& chunk : res.chunks_to_register) {
+				if (registrations >= 32) break;
+				if (!render_manager_->HasChunk(chunk.key)) {
+					render_manager_->RegisterChunk(chunk.key, chunk.terrain->vertices, chunk.terrain->normals, chunk.terrain->biomes,
+						chunk.terrain->packed_height_normal, chunk.terrain->packed_biomes, chunk.terrain->GetIndices(),
+						chunk.terrain->proxy.minY, chunk.terrain->proxy.maxY,
+						glm::vec3(chunk.key.first * scaled_chunk_size, 0, chunk.key.second * scaled_chunk_size), world_scale_);
+					registrations++;
 				}
-			}
-
-			// Sort by: in_frustum first, then by distance within each group
-			std::sort(
-				chunks_to_register.begin(),
-				chunks_to_register.end(),
-				[](const ChunkToRegister& a, const ChunkToRegister& b) {
-					if (a.in_frustum != b.in_frustum) {
-						return a.in_frustum; // In-frustum chunks first
-					}
-					return a.distance_sq < b.distance_sq;
-				}
-			);
-
-			// Register closest chunks first
-			int registrations_this_frame = 0;
-			for (const auto& chunk : chunks_to_register) {
-				if (registrations_this_frame >= max_registrations_per_frame)
-					break;
-
-				render_manager_->RegisterChunk(
-					chunk.key,
-					chunk.terrain->vertices,
-					chunk.terrain->normals,
-					chunk.terrain->biomes,
-					chunk.terrain->packed_height_normal,
-					chunk.terrain->packed_biomes,
-					chunk.terrain->GetIndices(),
-					chunk.terrain->proxy.minY,
-					chunk.terrain->proxy.maxY,
-					glm::vec3(chunk.key.first * scaled_chunk_size, 0, chunk.key.second * scaled_chunk_size),
-					world_scale_
-				);
-				registrations_this_frame++;
 			}
 		}
 
-		// 4. Unload chunks
-		// Add a buffer (hysteresis) to prevent loading/unloading thrashing.
-		// View distance is used for loading, and unload_limit is used for unloading.
-		const float unload_limit_dist = (dynamic_view_distance + kUnloadDistanceBuffer_ + 2.0f) * scaled_chunk_size;
-		const float unload_limit_dist_sq = unload_limit_dist * unload_limit_dist;
-
-		std::vector<std::pair<int, int>> to_remove;
-		for (auto const& [key, val] : chunk_cache_) {
-			glm::vec2 chunk_center(
-				key.first * scaled_chunk_size + scaled_chunk_size * 0.5f,
-				key.second * scaled_chunk_size + scaled_chunk_size * 0.5f
-			);
-			float dist_sq = glm::dot(chunk_center - camera_pos_2d, chunk_center - camera_pos_2d);
-
-			if (dist_sq > unload_limit_dist_sq) {
-				to_remove.push_back(key);
-			}
-		}
-
-		for (const auto& key : to_remove) {
-			if (render_manager_) {
-				render_manager_->UnregisterChunk(key);
-			}
+		for (const auto& key : res.to_remove) {
+			if (render_manager_) render_manager_->UnregisterChunk(key);
 			chunk_cache_.erase(key);
 		}
 
-		std::vector<std::pair<int, int>> to_cancel;
-		for (auto const& [key, val] : pending_chunks_) {
-			glm::vec2 chunk_center(
-				key.first * scaled_chunk_size + scaled_chunk_size * 0.5f,
-				key.second * scaled_chunk_size + scaled_chunk_size * 0.5f
-			);
-			float dist_sq = glm::dot(chunk_center - camera_pos_2d, chunk_center - camera_pos_2d);
-
-			if (dist_sq > unload_limit_dist_sq) {
-				to_cancel.push_back(key);
+		for (const auto& key : res.to_cancel) {
+			auto it = pending_chunks_.find(key);
+			if (it != pending_chunks_.end()) {
+				it->second.cancel();
+				pending_chunks_.erase(it);
 			}
-		}
-
-		for (const auto& key : to_cancel) {
-			pending_chunks_.at(key).cancel();
-			pending_chunks_.erase(key);
 		}
 
 		ProcessPendingDeformations();
 
-		// Commit any pending buffer updates to the render manager
-		if (render_manager_) {
-			render_manager_->CommitUpdates();
-		}
+		if (render_manager_) render_manager_->CommitUpdates();
 
 		{
 			std::lock_guard<std::mutex> visible_lock(visible_chunks_mutex_);
-			visible_chunks_.clear();
-
-			// Collect visible chunks with distance info for sorting
-			struct VisibleChunkInfo {
-				std::shared_ptr<Terrain> terrain;
-				float                    distance_sq;
-			};
-
-			std::vector<VisibleChunkInfo> visible_with_distance;
-			visible_with_distance.reserve(chunk_cache_.size());
-
-			glm::vec2 camera_pos_2d(camera.x, camera.z);
-
-			for (auto const& [key, val] : chunk_cache_) {
-				if (val &&
-				    isChunkInFrustum(frustum, key.first, key.second, scaled_chunk_size, max_h, 2.0f * scaled_chunk_size)) {
-					glm::vec2 chunk_center(
-						key.first * scaled_chunk_size + scaled_chunk_size * 0.5f,
-						key.second * scaled_chunk_size + scaled_chunk_size * 0.5f
-					);
-					float dist_sq = glm::dot(chunk_center - camera_pos_2d, chunk_center - camera_pos_2d);
-					visible_with_distance.push_back({val, dist_sq});
-				}
-			}
-
-			// Sort by distance (front-to-back)
-			std::sort(
-				visible_with_distance.begin(),
-				visible_with_distance.end(),
-				[](const VisibleChunkInfo& a, const VisibleChunkInfo& b) { return a.distance_sq < b.distance_sq; }
-			);
-
-			for (const auto& vci : visible_with_distance) {
-				visible_chunks_.push_back(vci.terrain);
-			}
+			visible_chunks_ = res.visible_chunks;
 		}
+
+		latest_mgmt_result_.reset();
 	}
 
 	void TerrainGenerator::ProcessCompletedChunks() {

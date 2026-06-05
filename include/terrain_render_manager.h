@@ -361,6 +361,12 @@ namespace Boidsish {
 			const std::vector<uint8_t>& packed_biomes
 		);
 
+		struct PboUpload {
+			int    slice;
+			size_t heightmap_offset;
+			size_t biome_offset;
+		};
+
 		// Configuration
 		int chunk_size_;           // Grid size per chunk (e.g., 32)
 		int max_chunks_;           // Maximum chunks in texture array
@@ -403,6 +409,13 @@ namespace Boidsish {
 		std::unique_ptr<PersistentBuffer<PatchDrawData>> patch_draw_data_pb_;
 		std::unique_ptr<PersistentBuffer<PatchTessLevels>> patch_tess_levels_pb_;
 		std::unique_ptr<PersistentBuffer<uint8_t>> patch_indirect_pb_; // Raw bytes for command buffer
+
+		// PBOs for asynchronous texture uploads
+		std::unique_ptr<PersistentBuffer<float>>   heightmap_pbo_;
+		std::unique_ptr<PersistentBuffer<uint8_t>> biome_pbo_;
+		size_t                                     current_pbo_heightmap_offset_ = 0;
+		size_t                                     current_pbo_biome_offset_ = 0;
+		std::vector<PboUpload>                     pending_pbo_uploads_;
 
 		GLsync patch_fences_[3]{0, 0, 0};
 
