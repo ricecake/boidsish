@@ -6,6 +6,7 @@
 #include "post_processing/PostProcessingManager.h"
 #include "post_processing/effects/BloomEffect.h"
 #include "post_processing/effects/FilmGrainEffect.h"
+#include "post_processing/effects/PulseEffect.h"
 #include "post_processing/effects/UnifiedScreenSpaceEffect.h"
 
 namespace Boidsish {
@@ -81,6 +82,35 @@ namespace Boidsish {
 								float intensity = film_grain_effect->GetIntensity();
 								if (ImGui::SliderFloat("Intensity##FilmGrain", &intensity, 0.0f, 1.0f)) {
 									film_grain_effect->SetIntensity(intensity);
+								}
+							}
+						}
+
+						if (effect->GetName() == "Pulse" && is_enabled) {
+							auto pulse = std::dynamic_pointer_cast<PostProcessing::PulseEffect>(effect);
+							if (pulse) {
+								if (ImGui::Button("Trigger Pulse")) {
+									pulse->Trigger(m_visualizer.GetCamera().pos());
+								}
+								float brightness = pulse->GetBrightness();
+								if (ImGui::SliderFloat("Brightness##Pulse", &brightness, 0.0f, 10.0f)) {
+									pulse->SetBrightness(brightness);
+								}
+								float ambient = pulse->GetAmbientBrightness();
+								if (ImGui::SliderFloat("Ambient##Pulse", &ambient, 0.0f, 1.0f)) {
+									pulse->SetAmbientBrightness(ambient);
+								}
+								int bounces = pulse->GetMaxBounces();
+								if (ImGui::SliderInt("Max Bounces##Pulse", &bounces, 0, 10)) {
+									pulse->SetMaxBounces(bounces);
+								}
+								float speed = pulse->GetSpeed();
+								if (ImGui::SliderFloat("Speed##Pulse", &speed, 1.0f, 100.0f)) {
+									pulse->SetSpeed(speed);
+								}
+								float duration = pulse->GetPulseDuration();
+								if (ImGui::SliderFloat("Duration##Pulse", &duration, 0.1f, 20.0f)) {
+									pulse->SetPulseDuration(duration);
 								}
 							}
 						}

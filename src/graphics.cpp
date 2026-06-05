@@ -50,6 +50,7 @@
 #include "post_processing/effects/GlitchEffect.h"
 #include "post_processing/effects/NegativeEffect.h"
 #include "post_processing/effects/OpticalFlowEffect.h"
+#include "post_processing/effects/PulseEffect.h"
 #include "post_processing/effects/StrobeEffect.h"
 #include "post_processing/effects/SuperSpeedEffect.h"
 #include "post_processing/effects/UnifiedScreenSpaceEffect.h"
@@ -1092,6 +1093,10 @@ namespace Boidsish {
 				auto super_speed_effect = std::make_shared<PostProcessing::SuperSpeedEffect>();
 				super_speed_effect->SetEnabled(true);
 				post_processing_manager_->AddEffect(super_speed_effect);
+
+				auto pulse_effect = std::make_shared<PostProcessing::PulseEffect>();
+				pulse_effect->SetEnabled(false);
+				post_processing_manager_->AddEffect(pulse_effect);
 
 				atmosphere_effect = std::make_shared<PostProcessing::AtmosphereEffect>();
 				atmosphere_effect->SetEnabled(true);
@@ -2154,6 +2159,7 @@ namespace Boidsish {
 			*temporal_pb->GetFrameDataPtr() = temporal_data;
 			glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::TemporalData(),
 				temporal_pb->GetBufferId(), temporal_pb->GetFrameOffset(), sizeof(TemporalUbo));
+				GpuResourceRegistry::Instance().PublishUbo(Constants::UboBinding::TemporalData(), temporal_pb->GetBufferId());
 
 			prev_view_projection = current_vp;
 
@@ -4177,6 +4183,17 @@ namespace Boidsish {
 				impl->current_chase_target_index_ = index;
 				SetChaseCamera(target);
 				return;
+			}
+		}
+	}
+
+	void Visualizer::TriggerPulse(const glm::vec3& origin) {
+		if (impl->post_processing_manager_) {
+			for (auto& effect : impl->post_processing_manager_->GetPreToneMappingEffects()) {
+				if (auto pulse = std::dynamic_pointer_cast<PostProcessing::PulseEffect>(effect)) {
+					pulse->Trigger(origin);
+					break;
+				}
 			}
 		}
 	}
