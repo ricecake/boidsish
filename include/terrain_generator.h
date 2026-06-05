@@ -280,6 +280,11 @@ namespace Boidsish {
 		 */
 		void ProcessPendingDeformations();
 
+		/**
+		 * @brief Commit any pending updates from the background management thread.
+		 */
+		void CommitUpdates(const Camera& camera);
+
 	private:
 		void      ProcessCompletedChunks();
 		glm::vec2 findClosestPointOnPath(glm::vec2 sample_pos) const;
@@ -334,6 +339,28 @@ namespace Boidsish {
 			float     path_factor;
 		};
 
+		struct ManagementResult {
+			struct ChunkToEnqueue {
+				int          x, z;
+				TaskPriority priority;
+				float        distance_sq;
+			};
+
+			struct ChunkToRegister {
+				std::pair<int, int>      key;
+				std::shared_ptr<Terrain> terrain;
+				float                    distance_sq;
+				bool                     in_frustum;
+			};
+
+			std::vector<ChunkToEnqueue>  chunks_to_enqueue;
+			std::vector<ChunkToRegister> chunks_to_register;
+			std::vector<std::pair<int, int>> to_remove;
+			std::vector<std::pair<int, int>> to_cancel;
+			std::vector<std::shared_ptr<Terrain>> visible_chunks;
+			Frustum                      frustum;
+		};
+
 		auto      fbm(float x, float z, TerrainParameters params);
 		auto      biomefbm(glm::vec2 pos, BiomeAttributes attr) const;
 		glm::vec3 pointGenerate(float x, float y) const;
@@ -356,6 +383,9 @@ namespace Boidsish {
 		mutable std::mutex           visible_chunks_mutex_;
 		std::random_device           rd_;
 		std::mt19937                 eng_;
+
+		std::optional<TaskHandle<ManagementResult>> mgmt_task_;
+		std::optional<ManagementResult>             latest_mgmt_result_;
 
 		// Instanced terrain render manager (optional, when set uses GPU heightmap lookup)
 		std::shared_ptr<TerrainRenderManager> render_manager_;

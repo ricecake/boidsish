@@ -1,6 +1,7 @@
 #include "terrain_render_manager.h"
 
 #include <algorithm>
+#include <cstring>
 #include <iostream>
 
 #include "biome_properties.h"
@@ -128,6 +129,11 @@ namespace Boidsish {
 		instance_buffer_capacity_ = max_chunks * sizeof(InstanceData);
 		glBufferData(GL_ARRAY_BUFFER, instance_buffer_capacity_, nullptr, GL_DYNAMIC_DRAW);
 
+		// PBOs for asynchronous texture uploads
+		// 1024 slots for triple-buffered uploads (enough for registration bursts)
+		heightmap_pbo_ = std::make_unique<PersistentBuffer<float>>(GL_PIXEL_UNPACK_BUFFER, 1024 * heightmap_resolution_ * heightmap_resolution_ * 4, 3);
+		biome_pbo_ = std::make_unique<PersistentBuffer<uint8_t>>(GL_PIXEL_UNPACK_BUFFER, 1024 * heightmap_resolution_ * heightmap_resolution_ * 4, 3);
+
 		CreateGridMesh();
 		// Create patch mesh
 		{
@@ -165,6 +171,8 @@ namespace Boidsish {
 	}
 
 	TerrainRenderManager::~TerrainRenderManager() {
+		heightmap_pbo_.reset();
+		biome_pbo_.reset();
 		if (grid_vao_)
 			glDeleteVertexArrays(1, &grid_vao_);
 		if (grid_vbo_)
@@ -307,6 +315,12 @@ namespace Boidsish {
 			return; // Already have enough capacity
 		}
 
+		// Update PBO sizes to match new capacity if it grows significantly
+		if (required_slices > 1024) {
+			heightmap_pbo_ = std::make_unique<PersistentBuffer<float>>(GL_PIXEL_UNPACK_BUFFER, required_slices * heightmap_resolution_ * heightmap_resolution_ * 4, 3);
+			biome_pbo_ = std::make_unique<PersistentBuffer<uint8_t>>(GL_PIXEL_UNPACK_BUFFER, required_slices * heightmap_resolution_ * heightmap_resolution_ * 4, 3);
+		}
+
 		// Query GPU limit for texture array layers
 		GLint max_layers = 0;
 		glGetIntegerv(GL_MAX_ARRAY_TEXTURE_LAYERS, &max_layers);
@@ -404,53 +418,32 @@ namespace Boidsish {
 		const std::vector<float>&  packed_height_normal,
 		const std::vector<uint8_t>& packed_biomes
 	) {
-		glBindTexture(GL_TEXTURE_2D_ARRAY, raw_heightmap_texture_);
-		glTexSubImage3D(
-			GL_TEXTURE_2D_ARRAY,
-			0, // mip level
-			0,
-			0,
-			slice,                 // x, y, z offset
-			heightmap_resolution_, // width
-			heightmap_resolution_, // height
-			1,                     // depth (one slice)
-			GL_RGBA,
-			GL_FLOAT,
-			packed_height_normal.data()
-		);
+		size_t h_size = packed_height_normal.size();
+		size_t b_size = packed_biomes.size();
 
-		// Also upload to heightmap_texture_ as a fallback until baking is complete
-		glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture_);
-		glTexSubImage3D(
-			GL_TEXTURE_2D_ARRAY,
-			0,
-			0,
-			0,
-			slice,
-			heightmap_resolution_,
-			heightmap_resolution_,
-			1,
-			GL_RGBA,
-			GL_FLOAT,
-			packed_height_normal.data()
-		);
+		if (current_pbo_heightmap_offset_ + h_size > heightmap_pbo_->GetElementCount() ||
+		    current_pbo_biome_offset_ + b_size > biome_pbo_->GetElementCount()) {
+			// PBO overflow for this frame, fallback to direct upload (rare)
+			glBindTexture(GL_TEXTURE_2D_ARRAY, raw_heightmap_texture_);
+			glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, 0, 0, slice, heightmap_resolution_, heightmap_resolution_, 1, GL_RGBA, GL_FLOAT, packed_height_normal.data());
+			glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture_);
+			glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, 0, 0, slice, heightmap_resolution_, heightmap_resolution_, 1, GL_RGBA, GL_FLOAT, packed_height_normal.data());
+			glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture_);
+			glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, 0, 0, slice, heightmap_resolution_, heightmap_resolution_, 1, GL_RGBA, GL_UNSIGNED_BYTE, packed_biomes.data());
+			glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
+			return;
+		}
 
-		glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture_);
-		glTexSubImage3D(
-			GL_TEXTURE_2D_ARRAY,
-			0, // mip level
-			0,
-			0,
-			slice,
-			heightmap_resolution_,
-			heightmap_resolution_,
-			1,
-			GL_RGBA,
-			GL_UNSIGNED_BYTE,
-			packed_biomes.data()
-		);
+		float*   h_ptr = heightmap_pbo_->GetFrameDataPtr() + current_pbo_heightmap_offset_;
+		uint8_t* b_ptr = biome_pbo_->GetFrameDataPtr() + current_pbo_biome_offset_;
 
-		glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
+		std::memcpy(h_ptr, packed_height_normal.data(), h_size * sizeof(float));
+		std::memcpy(b_ptr, packed_biomes.data(), b_size * sizeof(uint8_t));
+
+		pending_pbo_uploads_.push_back({slice, current_pbo_heightmap_offset_, current_pbo_biome_offset_});
+
+		current_pbo_heightmap_offset_ += h_size;
+		current_pbo_biome_offset_ += b_size;
 	}
 
 	void TerrainRenderManager::RegisterChunk(
@@ -1052,7 +1045,7 @@ namespace Boidsish {
 		indirect_data[7] = 0; // baseVertex
 		indirect_data[8] = 0; // baseInstance
 
-		glMemoryBarrier(GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT);
+		// GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT omitted for coherent mapping
 
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainPatchMetrics(), patch_metrics_ssbo_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainPatchVisibility(), patch_visibility_ssbo_);
@@ -1246,6 +1239,39 @@ namespace Boidsish {
 	}
 
 	void TerrainRenderManager::CommitUpdates(bool force_sync) {
+		PROJECT_PROFILE_SCOPE("TerrainRenderManager::CommitUpdates");
+		std::lock_guard<std::recursive_mutex> lock(mutex_);
+
+		if (!pending_pbo_uploads_.empty()) {
+			// Dispatch PBO uploads
+			glBindBuffer(GL_PIXEL_UNPACK_BUFFER, heightmap_pbo_->GetBufferId());
+			glBindTexture(GL_TEXTURE_2D_ARRAY, raw_heightmap_texture_);
+			for (const auto& upload : pending_pbo_uploads_) {
+				glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, 0, 0, upload.slice, heightmap_resolution_, heightmap_resolution_, 1, GL_RGBA, GL_FLOAT, (void*)(heightmap_pbo_->GetFrameOffset() + upload.heightmap_offset * sizeof(float)));
+			}
+
+			// Fallback heightmap for visibility before baking
+			glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture_);
+			for (const auto& upload : pending_pbo_uploads_) {
+				glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, 0, 0, upload.slice, heightmap_resolution_, heightmap_resolution_, 1, GL_RGBA, GL_FLOAT, (void*)(heightmap_pbo_->GetFrameOffset() + upload.heightmap_offset * sizeof(float)));
+			}
+
+			glBindBuffer(GL_PIXEL_UNPACK_BUFFER, biome_pbo_->GetBufferId());
+			glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture_);
+			for (const auto& upload : pending_pbo_uploads_) {
+				glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, 0, 0, upload.slice, heightmap_resolution_, heightmap_resolution_, 1, GL_RGBA, GL_UNSIGNED_BYTE, (void*)(biome_pbo_->GetFrameOffset() + upload.biome_offset * sizeof(uint8_t)));
+			}
+
+			glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+			glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
+
+			pending_pbo_uploads_.clear();
+			heightmap_pbo_->AdvanceFrame();
+			biome_pbo_->AdvanceFrame();
+			current_pbo_heightmap_offset_ = 0;
+			current_pbo_biome_offset_ = 0;
+		}
+
 		// Ensure grid textures and UBO are up to date before baking
 		UpdateGridTextures(last_world_scale_);
 		PerformBaking(last_world_scale_, force_sync);
