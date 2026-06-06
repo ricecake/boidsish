@@ -193,7 +193,7 @@ namespace Boidsish {
 				light_space_matrix = shadow_manager_.CalculateLightSpaceMatrix(
 					*light,
 					scene_center_,
-					500.0f * std::max(1.0f, frame.world_scale),
+					Constants::Class::Shadows::DefaultSceneRadius() * std::max(1.0f, frame.world_scale),
 					ShadowManager::kMaxCascades - 1,
 					frame.view,
 					frame.camera_fov,
@@ -203,7 +203,7 @@ namespace Boidsish {
 				light_space_matrix = shadow_manager_.CalculateLightSpaceMatrix(
 					*light,
 					scene_center_,
-					500.0f * std::max(1.0f, frame.world_scale)
+					Constants::Class::Shadows::DefaultSceneRadius() * std::max(1.0f, frame.world_scale)
 				);
 			}
 
@@ -280,7 +280,7 @@ namespace Boidsish {
 					info.map_index,
 					*info.light,
 					scene_center_,
-					500.0f * std::max(1.0f, frame.world_scale),
+					Constants::Class::Shadows::DefaultSceneRadius() * std::max(1.0f, frame.world_scale),
 					info.cascade_index,
 					frame.view,
 					frame.camera_fov,
@@ -308,7 +308,7 @@ namespace Boidsish {
 				info.map_index,
 				*info.light,
 				scene_center_,
-				500.0f * std::max(1.0f, frame.world_scale),
+				Constants::Class::Shadows::DefaultSceneRadius() * std::max(1.0f, frame.world_scale),
 				info.cascade_index,
 				frame.view,
 				frame.camera_fov,

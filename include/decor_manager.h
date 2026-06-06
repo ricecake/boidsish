@@ -265,7 +265,7 @@ namespace Boidsish {
 
 		// Distance-based density parameters
 		float                    density_falloff_start_ = 200.0f;
-		float                    density_falloff_end_ = 500.0f;
+		float                    density_falloff_end_ = 1000.0f;
 		float                    max_decor_distance_ = 600.0f;
 		float                    min_pixel_size_ = 4.0f;
 		class AtmosphereManager* atmosphere_manager_ = nullptr;

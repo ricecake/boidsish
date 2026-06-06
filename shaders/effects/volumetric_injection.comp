@@ -163,9 +163,7 @@ void main() {
         float shadow = calculateShadow(i, worldPos, vec3(0,1,0), L);
         shadow *= calculateCloudShadow(i, worldPos);
 
-        float r_world = length(worldPos - vec3(worldPos.x, -kEarthRadius * 1000.0 * max(0.0001, worldScale), worldPos.z));
-        float r_km = r_world / (1000.0 * max(0.0001, worldScale));
-
+        float r_km = kEarthRadius + worldPos.y / (1000.0 * max(0.0001, worldScale));
         vec3 atmosphereTransmittance = texture(u_transmittanceLUT, getTransmittanceUV(r_km, L.y)).rgb;
 
         // Multi-scattering lookup
@@ -192,7 +190,9 @@ void main() {
     }
 
     // Ambient (SH) - We use a simple isotropic phase for ambient light
-    // Combined with atmospheric ambient scattering
+    // Combined with atmospheric ambient scattering.
+    // We use spatial SH to capture local bounce from the terrain.
+    // Increased weight for better reactivity as requested by user.
     vec3 baseAmbientRadiance = hazeColor * 0.05; // Base glow
     vec3 effectiveAmbient = max(ambient_light, baseAmbientRadiance);
 
@@ -275,9 +275,6 @@ void main() {
             // Reproject current world position into previous frame's froxel grid
             vec3 prevUV = prevNDC * 0.5 + 0.5;
 
-            // Compensation for stochastic jitter to find the correct logical voxel
-            prevUV.xy -= (blueNoise.xy - 0.5) / vec2(u_grid_res.xy);
-
             // Find previous cascade using planar depth (Z)
             float prevLinearZ = dot(worldPos - uPrevCamPos, uPrevCamFront);
 
@@ -296,14 +293,10 @@ void main() {
             if (prevCascade != -1 && prevLinearZ > z_near) {
                 float slice = clamp(log(prevLinearZ / z_near) / log(z_far / z_near), 0.0, 1.0);
 
-                // Compensation for stochastic jitter in depth
-                slice -= (blueNoise.z - 0.5) / float(u_grid_res.z);
-                slice = clamp(slice, 0.0, 1.0);
-
-                // Correct mapping from cascade/slice to [0,1] 3D texture coordinate
-                // Use consistent continuous mapping to align with storage and composite shader
-                float total_slices = float(u_grid_res.z * NUM_CASCADES);
-                float w = (float(prevCascade * u_grid_res.z) + (slice * float(u_grid_res.z - 1) + 0.5)) / total_slices;
+                // Continuous mapping from cascade/slice to [0,1] 3D texture coordinate.
+                // This matches the mapping in volumetric_composite.frag and ensures
+                // smooth transitions between cascades.
+                float w = (float(prevCascade) + slice) / float(NUM_CASCADES);
 
                 vec4 history = texture(uHistoryTexture, vec3(prevUV.xy, w));
                 if (all(greaterThanEqual(history, vec4(0.0))) && all(lessThanEqual(history, vec4(1000.0)))) {
