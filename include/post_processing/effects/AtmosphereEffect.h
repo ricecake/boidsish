@@ -230,9 +230,9 @@ namespace Boidsish {
 			float cloud_moon_light_scale_ = 2.0f;
 			float cloud_beer_powder_mix_ = 0.600f;
 
-			float cloud_flow_speed_ = 0.50f;
+			float cloud_flow_speed_ = 0.250f;
 			float cloud_flow_direction_ = glm::radians(180.0f);
-			float cloud_flow_height_scale_ = 0.150f;
+			float cloud_flow_height_scale_ = 0.0150f;
 			float cloud_curl_strength_ = 10.0f;
 			float cloud_curl_frequency_ = 2.0f;
 

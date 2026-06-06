@@ -105,7 +105,10 @@ vec3 getCloudAdvectionOffset(float h, float worldScale, float time) {
 	// Increase shear effect by making it more dramatic with height
 	float heightFactor = 1.0 + h * h * cloudFlowHeightScale * 2.0;
 	// 1000.0 is a magic scale to make the "speed" parameter feel reasonable in world units
-	return vec3(flowDir.x, 0.0, flowDir.y) * time * cloudFlowSpeed * heightFactor * 1000.0 * worldScale;
+	vec3 advect = vec3(flowDir.x, 0.0, flowDir.y) * time * cloudFlowSpeed * worldScale * 25.0;
+	advect += heightFactor;
+
+	return advect;
 }
 
 // Cloud density calculation helper
@@ -134,7 +137,7 @@ float calculateCloudDensity(
 	float coverageThreshold = 1.0 - props.coverage;
 
 	// Apply advection to the sample position
-	vec3 p_advected = p - getCloudAdvectionOffset(h, props.worldScale, time);
+	vec3 p_advected = p + getCloudAdvectionOffset(h, props.worldScale, time);
 
 	if (simplified) {
 		// Include base Worley noise so shadow patterns match the full cloud shapes

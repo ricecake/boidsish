@@ -124,7 +124,7 @@ void main() {
 			// The calculateCloudDensity helper handles advection of the noise itself.
 			// We advect the weather maps here too to match shadow map generation.
 			float h_norm = clamp((p_curved.y - props.altitude * props.worldScale) / max(props.thickness * props.worldScale, 1.0), 0.0, 1.0);
-			vec3 advectedPos = p_curved - getCloudAdvectionOffset(h_norm, props.worldScale, time);
+			vec3 advectedPos = p_curved + 0.75*getCloudAdvectionOffset(h_norm, props.worldScale, time);
 
 			float weatherMap = fade * (fastWorley3d(vec3(advectedPos.xz / (4000.0 * worldScale), time * 0.001)) * 0.5 + 0.5);
 			float heightMap = fade * (fastWorley3d(vec3(advectedPos.xz / (2500.0 * worldScale), time * 0.0004)) * 0.5 + 0.5);
