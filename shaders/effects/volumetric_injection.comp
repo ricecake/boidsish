@@ -161,7 +161,7 @@ void main() {
         float phase = henyeyGreenstein(uAnisotropy, cosTheta);
 
         float shadow = calculateShadow(i, worldPos, vec3(0,1,0), L);
-        shadow *= calculateCloudShadow(i, worldPos);
+        shadow = min(shadow, calculateCloudShadow(i, worldPos));
 
         float r_km = kEarthRadius + worldPos.y / (1000.0 * max(0.0001, worldScale));
         vec3 atmosphereTransmittance = texture(u_transmittanceLUT, getTransmittanceUV(r_km, L.y)).rgb;
