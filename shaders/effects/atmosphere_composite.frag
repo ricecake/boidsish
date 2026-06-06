@@ -30,7 +30,7 @@ vec3 sampleAerialPerspective(vec3 rd, float distKM) {
 
 	float u = azimuth / (2.0 * PI);
 	float v = elevation / PI + 0.5;
-	float w = sqrt(distKM / 32.0); // maxDist in AP LUT
+	float w = (distKM / 32.0); // maxDist in AP LUT
 
 	return texture(u_aerialPerspectiveLUT, vec3(u, v, w)).rgb;
 }
@@ -43,7 +43,7 @@ float sampleAerialPerspectiveTransmittance(vec3 rd, float distKM) {
 
 	float u = azimuth / (2.0 * PI);
 	float v = elevation / PI + 0.5;
-	float w = sqrt(distKM / 32.0);
+	float w = (distKM / 32.0);
 
 	return texture(u_aerialPerspectiveLUT, vec3(u, v, w)).a;
 }
