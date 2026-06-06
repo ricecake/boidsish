@@ -179,7 +179,7 @@ namespace Boidsish {
 		// Cascade splits: logarithmic distribution for better near-field detail
 		// Near splits are tighter for crisp close shadows
 		// Far cascade (3) acts as catchall extending to very distant terrain
-		std::array<float, kMaxCascades> cascade_splits_ = {20.0f, 60.0f, 200.0f, 1000.0f};
+		std::array<float, kMaxCascades> cascade_splits_ = {32.0f, 64.0f, 256.0f, 768.0f};
 
 		std::vector<glm::vec4> GetFrustumCornersWorldSpace(const glm::mat4& proj, const glm::mat4& view);
 	};
