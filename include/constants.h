@@ -657,7 +657,7 @@ namespace Boidsish {
 				}
 
 				consteval float DefaultSceneRadius() {
-					return 500.0f;
+					return 1000.0f;
 				}
 
 				consteval float DefaultFOV() {
@@ -727,7 +727,7 @@ namespace Boidsish {
 				}
 
 				consteval int MaxViewDistance() {
-					return (32 * 24) / ChunkSize();
+					return (32 * 40) / ChunkSize();
 				}
 
 				consteval int UnloadDistanceBuffer() {

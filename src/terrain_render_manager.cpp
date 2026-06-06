@@ -809,6 +809,7 @@ namespace Boidsish {
 		GLuint           albedoTex,
 		GLuint           velocityTex,
 		GLuint           skyLUT,
+		GLuint           apLUT,
 		const glm::mat4& view,
 		const glm::mat4& projection,
 		GLuint           lighting_ubo,
@@ -853,6 +854,10 @@ namespace Boidsish {
 		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereSkyView());
 		glBindTexture(GL_TEXTURE_2D, skyLUT);
 		probe_compute_shader_->setInt("u_skyViewLUT", Constants::TextureUnit::AtmosphereSkyView());
+
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereAerialPerspective());
+		glBindTexture(GL_TEXTURE_3D, apLUT);
+		probe_compute_shader_->setInt("u_aerialPerspectiveLUT", Constants::TextureUnit::AtmosphereAerialPerspective());
 
 		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainBiomeMap());
 		glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture_);
