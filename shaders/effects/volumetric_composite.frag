@@ -46,15 +46,16 @@ void main() {
     if (cascade != -1) {
         // Calculate W coordinate for this cascade
         float slice = clamp(log(linearZ / z_near) / log(z_far / z_near), 0.0, 1.0);
-        float w = (float(cascade * GRID_RES_Z) + (slice * float(GRID_RES_Z - 1) + 0.5)) / float(GRID_RES_Z * NUM_CASCADES);
+
+        // Continuous mapping across all cascades to ensure smooth linear filtering
+        float w = (float(cascade) + slice) / float(NUM_CASCADES);
 
         vec4 vol = texture(uVolumetricTexture, vec3(TexCoords, w));
         scattering = vol.rgb;
         transmittance = vol.a;
     } else {
-        // Beyond last cascade
-        float w = (float(NUM_CASCADES * GRID_RES_Z) - 0.5) / float(GRID_RES_Z * NUM_CASCADES);
-        vec4 vol = texture(uVolumetricTexture, vec3(TexCoords, w));
+        // Beyond last cascade - sample the very edge
+        vec4 vol = texture(uVolumetricTexture, vec3(TexCoords, 1.0));
         scattering = max(vec3(0.0), vol.rgb);
         transmittance = clamp(vol.a, 0.0, 1.0);
     }
