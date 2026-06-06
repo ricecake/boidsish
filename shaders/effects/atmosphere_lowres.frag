@@ -185,7 +185,10 @@ void main() {
 				vec2 transUV = transmittanceToUV(r_km, mu);
 				vec3 sunTransmittance = texture(u_transmittanceLUT, transUV).rgb;
 
-				float shadowStepSize = (st_end - st_start) / float(shadow_samples);
+				float maxShadowDist = layer.thickness * 1.5;
+				float traceDist = min(st_end - st_start, maxShadowDist);
+				float shadowStepSize = traceDist / float(shadow_samples);
+				// float shadowStepSize = (st_end - st_start) / float(shadow_samples);
 				for (int k = 0; k < shadow_samples; k++) {
 					vec3 sp = p + L * (float(k) + 0.5) * shadowStepSize;
 					vec3 sp_curved = sp;
@@ -195,7 +198,8 @@ void main() {
 				}
 				float opticalDepthToLight = shadowDensity * shadowStepSize * cloudShadowOpticalDepthMultiplier;
 				float shadowTerm = mix(
-					beerPowder(opticalDepthToLight, d),
+					// beerPowder(opticalDepthToLight, d),
+					beerPowder(opticalDepthToLight, stepDensity),
 					exp(-opticalDepthToLight),
 					cloudBeerPowderMix
 				);

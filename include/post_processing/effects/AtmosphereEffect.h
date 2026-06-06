@@ -204,9 +204,9 @@ namespace Boidsish {
 			float cloud_powder_scale_ = 0.125f;
 			float cloud_powder_multiplier_ = 5.000f;
 			float cloud_powder_local_scale_ = 5.000f;
-			float cloud_shadow_optical_depth_multiplier_ = 0.277f;
-			float cloud_shadow_step_multiplier_ = 1.0f;
-			float cloud_sun_light_scale_ = 1.0f;
+			float cloud_shadow_optical_depth_multiplier_ = 0.05;
+			float cloud_shadow_step_multiplier_ = 0.15f;
+			float cloud_sun_light_scale_ = 25.0f;
 			float cloud_moon_light_scale_ = 2.0f;
 			float cloud_beer_powder_mix_ = 0.600f;
 
