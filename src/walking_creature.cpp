@@ -231,11 +231,34 @@ namespace Boidsish {
 
 		glm::mat4 rotation = glm::rotate(glm::mat4(1.0f), glm::radians(current_yaw_), glm::vec3(0, 1, 0));
 
+		// Update colors/alpha for all nodes from base shape
+		V(body_node_idx_).r = GetR();
+		V(body_node_idx_).g = GetG();
+		V(body_node_idx_).b = GetB();
+		V(body_node_idx_).a = GetA();
+		V(neck_node_idx_).r = GetR();
+		V(neck_node_idx_).g = GetG();
+		V(neck_node_idx_).b = GetB();
+		V(neck_node_idx_).a = GetA();
+		V(head_node_idx_).r = GetR();
+		V(head_node_idx_).g = GetG();
+		V(head_node_idx_).b = GetB();
+		V(head_node_idx_).a = GetA();
+
 		// Update Body
 		V(body_node_idx_).position = Vector3(0, height_, 0);
 
 		// Update Legs and Knees
 		for (int i = 0; i < 4; ++i) {
+			V(legs_[i].knee_node_idx).r = GetR();
+			V(legs_[i].knee_node_idx).g = GetG();
+			V(legs_[i].knee_node_idx).b = GetB();
+			V(legs_[i].knee_node_idx).a = GetA();
+			V(legs_[i].node_idx).r = GetR();
+			V(legs_[i].node_idx).g = GetG();
+			V(legs_[i].node_idx).b = GetB();
+			V(legs_[i].node_idx).a = GetA();
+
 			glm::vec3 rel_foot = legs_[i].world_foot_pos - current_pos_;
 			V(legs_[i].node_idx).position = Vector3(rel_foot);
 
