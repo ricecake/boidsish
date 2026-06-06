@@ -18,6 +18,8 @@ uniform vec3 cloudColorUniform;
 #include "../helpers/lighting.glsl"
 #include "helpers/math.glsl"
 #include "lygia/generative/wavelet.glsl"
+#include "lygia/generative/voronoi.glsl"
+#include "lygia/generative/random.glsl"
 
 uniform sampler2D u_skyViewLUT;
 
@@ -130,8 +132,13 @@ void main() {
 			// float weatherMap = fade * (fastWorley3d(vec3(advectedPos.xz / (4000.0 * worldScale), time * 0.001)) * 0.5 + 0.5);
 			// float heightMap = fade * (fastWorley3d(vec3(advectedPos.xz / (2500.0 * worldScale), time * 0.0004)) * 0.5 + 0.5);
 
-			float weatherMap = fade * (wavelet(vec3(advectedPos.xz / (3500.0 * worldScale), time * 0.01)) * 0.5 + 0.5);
-			float heightMap = fade * (wavelet(vec3(advectedPos.xz / (2000.0 * worldScale), time * 0.004)) * 0.5 + 0.5);
+			vec3 weatherMapBase = (voronoi(vec3(advectedPos.xz / (3500.0 * worldScale), time * 0.01)));
+			vec3 heightMapBase = (voronoi(vec3(advectedPos.xz / (2000.0 * worldScale), time * 0.004)));
+
+			// float weatherMap = fade * (wavelet(weatherMapBase.xy, weatherMapBase.z) * 0.5 + 0.5);
+			// float heightMap = fade * (wavelet(heightMapBase.xy, heightMapBase.z) * 0.5 + 0.5);
+			float weatherMap = fade * (weatherMapBase.z);
+			float heightMap = fade * (heightMapBase.z);
 
 			CloudWeather weather;
 			weather.weatherMap = weatherMap;

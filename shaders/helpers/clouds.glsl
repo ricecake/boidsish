@@ -173,10 +173,11 @@ float calculateCloudDensity(
 
 	// Base noise for cloud shapes
 	vec3 p_warped = p_advected + cloudCurlStrength * fastCurl3d(p_advected * cloudCurlFrequency + time * 0.0005);
-	vec3 p_scaled = p_warped / 1000;// / (50000.0 * props.worldScale);
+	// vec3 p_scaled = p_warped / 1000;// / (50000.0 * props.worldScale);
+	vec3 p_scaled = p_warped / (50000.0 * props.worldScale);
 
-	// float baseNoise = fastWorley3d(p_scaled + time * 0.005);
-	float baseNoise = WaveletNoise(p_scaled + time * 0.05, 1.0, 0.8) + 1.0;
+	float baseNoise = abs(fastWorley3d(p_scaled + time * 0.005));
+	baseNoise *= WaveletNoise(p_scaled + time * 0.05, 0.50, time*0.5) + 1.0;
 
 	// Implement "Roll": Billowy edges that vary with height
 	// We remap the base noise threshold based on the vertical position
