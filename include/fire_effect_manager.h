@@ -9,7 +9,6 @@
 #include "fire_effect.h"
 #include "persistent_buffer.h"
 #include "shader.h"
-#include "state.h"
 
 namespace Boidsish {
 
@@ -120,8 +119,6 @@ namespace Boidsish {
 
 		// Get current particle stats from the GPU
 		ParticleStats GetStats() const;
-
-		void ApplyTargetState(const class state::SystemConfiguration& config);
 
 		// Bind particle buffers to the current shader
 		void BindBuffers(ShaderBase& shader) const;

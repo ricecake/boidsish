@@ -1,17 +1,11 @@
 #include <gtest/gtest.h>
 #include "weather_manager.h"
 #include "service_locator.h"
-#include "state_frame.h"
 
 using namespace Boidsish;
 
 TEST(WeatherManagerTest, Initialization) {
     ServiceLocator loc;
-    ServiceLocator::SetInstance(&loc);
-
-    auto fb = std::make_shared<state::FrameBuffer>();
-    loc.Provide<state::FrameBuffer>(fb);
-
     WeatherManager wm(loc);
     EXPECT_TRUE(wm.IsEnabled());
     EXPECT_FLOAT_EQ(wm.GetTimeScale(), 0.005f);
@@ -19,11 +13,6 @@ TEST(WeatherManagerTest, Initialization) {
 
 TEST(WeatherManagerTest, EnableDisable) {
     ServiceLocator loc;
-    ServiceLocator::SetInstance(&loc);
-
-    auto fb = std::make_shared<state::FrameBuffer>();
-    loc.Provide<state::FrameBuffer>(fb);
-
     WeatherManager wm(loc);
     wm.SetEnabled(false);
 
@@ -37,11 +26,6 @@ TEST(WeatherManagerTest, EnableDisable) {
 
 TEST(WeatherManagerTest, ConstraintsLbm) {
     ServiceLocator loc;
-    ServiceLocator::SetInstance(&loc);
-
-    auto fb = std::make_shared<state::FrameBuffer>();
-    loc.Provide<state::FrameBuffer>(fb);
-
     WeatherManager wm(loc);
     wm.SetMacroSimEnabled(true);
 
@@ -58,11 +42,6 @@ TEST(WeatherManagerTest, ConstraintsLbm) {
 
 TEST(WeatherManagerTest, ContradictoryConstraints) {
     ServiceLocator loc;
-    ServiceLocator::SetInstance(&loc);
-
-    auto fb = std::make_shared<state::FrameBuffer>();
-    loc.Provide<state::FrameBuffer>(fb);
-
     WeatherManager wm(loc);
 
     wm.SetMin(WeatherAttribute::Temperature, 350.0f);

@@ -66,8 +66,6 @@
 #include "shadow_render_pass.h"
 #include "shockwave_effect.h"
 #include "sound_effect_manager.h"
-#include "state.h"
-#include "state_frame.h"
 #include "spline.h"
 #include "task_thread_pool.hpp"
 #include "temporal_data.h"
@@ -549,10 +547,6 @@ namespace Boidsish {
 		// Canonical frame data — temporal chain lives here between frames
 		FrameData current_frame_;
 
-		// New three-plane state management (dual-buffered)
-		state::FrameBuffer state_frames_;
-		state::GenerationCounters last_applied_gen_;
-
 		// Global GPU resource bindings for the current frame
 		GlobalRenderState render_state_;
 
@@ -617,64 +611,6 @@ namespace Boidsish {
 			service_locator_.Provide<ConfigManager>(
 				std::shared_ptr<ConfigManager>(&ConfigManager::GetInstance(), [](ConfigManager*) {})
 			);
-
-			state::SystemConfiguration initial_state;
-			auto&              cfg = ConfigManager::GetInstance();
-
-			// Populate initial target state from ConfigManager
-			initial_state.grass.enabled = cfg.GetAppSettingBool("grass_enabled", true);
-			initial_state.grass.lengthMultiplier = cfg.GetAppSettingFloat("grass_length_multiplier", 1.0f);
-			initial_state.grass.widthMultiplier = cfg.GetAppSettingFloat("grass_width_multiplier", 1.0f);
-			initial_state.grass.densityMultiplier = cfg.GetAppSettingFloat("grass_density_multiplier", 1.0f);
-			initial_state.grass.rigidityMultiplier = cfg.GetAppSettingFloat("grass_rigidity_multiplier", 1.0f);
-			initial_state.grass.windMultiplier = cfg.GetAppSettingFloat("grass_wind_multiplier", 1.0f);
-
-			initial_state.weather.enabled = cfg.GetAppSettingBool("weather_enabled", true);
-			initial_state.weather.timeScale = cfg.GetAppSettingFloat("weather_time_scale", 0.005f);
-			initial_state.weather.spatialScale = cfg.GetAppSettingFloat("weather_spatial_scale", 0.001f);
-			initial_state.weather.holdThreshold = cfg.GetAppSettingFloat("weather_hold_threshold", 0.05f);
-			initial_state.weather.macroSimEnabled = cfg.GetAppSettingBool("weather_macro_sim_enabled", true);
-			initial_state.weather.simTau = cfg.GetAppSettingFloat("weather_sim_tau", 0.8f);
-			initial_state.weather.strictEnforcement = cfg.GetAppSettingBool("weather_strict_enforcement", false);
-			initial_state.weather.nudgeStiffness = cfg.GetAppSettingFloat("weather_nudge_stiffness", 1.0f);
-
-			initial_state.particles.enabled = cfg.GetAppSettingBool("particles_enabled", true);
-			initial_state.particles.ambientDensity = cfg.GetAppSettingFloat("ambient_particle_density", 0.15f);
-			initial_state.particles.ratioBirds = cfg.GetAppSettingFloat("particle_ratio_birds", 0.05f);
-			initial_state.particles.ratioLeaves = cfg.GetAppSettingFloat("particle_ratio_leaves", 0.25f);
-			initial_state.particles.ratioPetals = cfg.GetAppSettingFloat("particle_ratio_petals", 0.25f);
-			initial_state.particles.ratioBubbles = cfg.GetAppSettingFloat("particle_ratio_bubbles", 0.15f);
-			initial_state.particles.ratioFireflies = cfg.GetAppSettingFloat("particle_ratio_fireflies", 0.25f);
-			initial_state.particles.ratioFairies = cfg.GetAppSettingFloat("particle_ratio_fairies", 0.1f);
-			initial_state.particles.ratioSnow = cfg.GetAppSettingFloat("particle_ratio_snow", 0.5f);
-			initial_state.particles.ratioRain = cfg.GetAppSettingFloat("particle_ratio_rain", 0.5f);
-			initial_state.particles.ratioDust = cfg.GetAppSettingFloat("particle_ratio_dust", 0.25f);
-
-			initial_state.terrain.renderTerrain = cfg.GetAppSettingBool("render_terrain", true);
-			initial_state.terrain.renderFloor = cfg.GetAppSettingBool("render_floor", false);
-			initial_state.terrain.forceBoth = cfg.GetAppSettingBool("force_both_floor_and_terrain", false);
-			initial_state.terrain.foliageEnabled = cfg.GetAppSettingBool("render_decor", true);
-			initial_state.terrain.foliagePixelThreshold = cfg.GetAppSettingFloat("foliage_culling_pixel_threshold", 10.0f);
-
-			initial_state.erosion.enabled = cfg.GetAppSettingBool("erosion_enabled", true);
-			initial_state.erosion.strength = cfg.GetAppSettingFloat("erosion_strength", 0.12f);
-			initial_state.erosion.scale = cfg.GetAppSettingFloat("erosion_scale", 0.15f);
-			initial_state.erosion.detail = cfg.GetAppSettingFloat("erosion_detail", 1.5f);
-			initial_state.erosion.gullyWeight = cfg.GetAppSettingFloat("erosion_gully_weight", 0.5f);
-			initial_state.erosion.maxDist = cfg.GetAppSettingFloat("erosion_max_dist", 450.0f);
-
-			// Initialize frame buffer with initial state
-			*state_frames_.Write().user_input = initial_state;
-			*state_frames_.Write().effective = initial_state;
-			state_frames_.Swap();
-			*state_frames_.Write().user_input = initial_state;
-			*state_frames_.Write().effective = initial_state;
-
-			// Provide FrameBuffer via ServiceLocator (non-owning wrapper)
-			service_locator_.Provide<state::FrameBuffer>(
-				std::shared_ptr<state::FrameBuffer>(&state_frames_, [](state::FrameBuffer*) {}));
-
-			// Subscription-based notifications removed — managers now poll via PollManagers()
 		}
 
 		VisualizerImpl(Visualizer* p, int w, int h, const char* title): parent(p), width(w), height(h) {
@@ -2331,9 +2267,6 @@ namespace Boidsish {
 					mood_manager->Update(params, simulation_delta_time);
 					const auto& mood = mood_manager->GetBlendedSettings();
 
-					// New path: merge mood into effective config
-					state::MergeEffective(state_frames_, mood);
-
 					if (bloom_effect) {
 						#define APPLY_BLOOM(target, source) if (source.member) target.member = *source.member
 						#define B_M(member) if (mood.sceneBloom.member) bloom_effect->GetSceneSettings().member = *mood.sceneBloom.member; \
@@ -2577,138 +2510,6 @@ namespace Boidsish {
 				render_queue.BuildBatches(shadow_shader_handle);
 			}
 			packets_synced_ = true;
-		}
-
-		void PollManagers() {
-			const auto& gen = state_frames_.Generations();
-			const auto& eff = state_frames_.Effective();
-
-			if (gen.grass != last_applied_gen_.grass) {
-				last_applied_gen_.grass = gen.grass;
-				if (grass_manager) {
-					state::SystemConfiguration config;
-					config.grass = eff.grass;
-					grass_manager->ApplyTargetState(config);
-				}
-			}
-			if (gen.weather != last_applied_gen_.weather) {
-				last_applied_gen_.weather = gen.weather;
-				if (weather_manager) {
-					state::SystemConfiguration config;
-					config.weather = eff.weather;
-					weather_manager->ApplyTargetState(config);
-				}
-			}
-			if (gen.atmosphere != last_applied_gen_.atmosphere) {
-				last_applied_gen_.atmosphere = gen.atmosphere;
-				if (atmosphere_manager) {
-					state::SystemConfiguration config;
-					config.atmosphere = eff.atmosphere;
-					atmosphere_manager->ApplyTargetState(config);
-				}
-			}
-			if (gen.dayNight != last_applied_gen_.dayNight) {
-				last_applied_gen_.dayNight = gen.dayNight;
-				if (light_manager) {
-					state::SystemConfiguration config;
-					config.dayNight = eff.dayNight;
-					light_manager->ApplyTargetState(config);
-				}
-			}
-			if (gen.particles != last_applied_gen_.particles) {
-				last_applied_gen_.particles = gen.particles;
-				if (fire_effect_manager) {
-					state::SystemConfiguration config;
-					config.particles = eff.particles;
-					fire_effect_manager->ApplyTargetState(config);
-				}
-			}
-			if (gen.terrain != last_applied_gen_.terrain) {
-				last_applied_gen_.terrain = gen.terrain;
-				auto& cfg = ConfigManager::GetInstance();
-				cfg.SetBool("render_terrain", eff.terrain.renderTerrain);
-				cfg.SetBool("render_floor", eff.terrain.renderFloor);
-				cfg.SetBool("force_both_floor_and_terrain", eff.terrain.forceBoth);
-				if (terrain_generator) terrain_generator->SetWorldScale(eff.terrain.worldScale);
-				if (decor_manager) decor_manager->SetEnabled(eff.terrain.foliageEnabled);
-				cfg.SetFloat("foliage_culling_pixel_threshold", eff.terrain.foliagePixelThreshold);
-			}
-			if (gen.volumetric != last_applied_gen_.volumetric) {
-				last_applied_gen_.volumetric = gen.volumetric;
-				if (volumetric_effect) {
-					state::SystemConfiguration config;
-					config.volumetric = eff.volumetric;
-					volumetric_effect->ApplyTargetState(config);
-				}
-			}
-			if (gen.erosion != last_applied_gen_.erosion) {
-				last_applied_gen_.erosion = gen.erosion;
-				auto& cfg = ConfigManager::GetInstance();
-				cfg.SetBool("erosion_enabled", eff.erosion.enabled);
-				cfg.SetFloat("erosion_strength", eff.erosion.strength);
-				cfg.SetFloat("erosion_scale", eff.erosion.scale);
-				cfg.SetFloat("erosion_detail", eff.erosion.detail);
-				cfg.SetFloat("erosion_gully_weight", eff.erosion.gullyWeight);
-				cfg.SetFloat("erosion_max_dist", eff.erosion.maxDist);
-			}
-			if (gen.bloom != last_applied_gen_.bloom) {
-				last_applied_gen_.bloom = gen.bloom;
-				if (bloom_effect) {
-					state::SystemConfiguration config;
-					config.bloom = eff.bloom;
-					bloom_effect->ApplyTargetState(config);
-				}
-			}
-			if (gen.mood != last_applied_gen_.mood) {
-				last_applied_gen_.mood = gen.mood;
-				if (mood_manager) {
-					state::SystemConfiguration config;
-					config.mood = eff.mood;
-					mood_manager->ApplyTargetState(config);
-				}
-			}
-		}
-
-		void SyncSimulation() {
-			// Populate simulation report from manager state
-			auto& sim = state_frames_.Write().simulation;
-			if (weather_manager) {
-				const auto& w = weather_manager->GetCurrentWeather();
-				sim.weather.temperature = w.temperature;
-				sim.weather.precipitation = w.precipitation;
-				sim.weather.humidity = w.humidity;
-				sim.weather.windStrength = w.wind_strength;
-				sim.weather.windSpeed = w.wind_speed;
-				sim.weather.windFrequency = w.wind_frequency;
-				sim.weather.cloudCoverage = w.cloud_coverage;
-			}
-			if (fire_effect_manager) {
-				auto stats = fire_effect_manager->GetStats();
-				sim.particles.ambientDensity = ConfigManager::GetInstance().GetAppSettingFloat("ambient_particle_density", 0.15f);
-				sim.particles.countBirds = stats.count_birds;
-				sim.particles.countLeaves = stats.count_leaves;
-				sim.particles.countPetals = stats.count_petals;
-				sim.particles.countBubbles = stats.count_bubbles;
-				sim.particles.countFireflies = stats.count_fireflies;
-				sim.particles.countFairies = stats.count_fairies;
-				sim.particles.countSnow = stats.count_snow;
-				sim.particles.countRain = stats.count_rain;
-				sim.particles.countDust = stats.count_dust;
-				sim.particles.limitBirds = stats.limit_birds;
-				sim.particles.limitLeaves = stats.limit_leaves;
-				sim.particles.limitPetals = stats.limit_petals;
-				sim.particles.limitBubbles = stats.limit_bubbles;
-				sim.particles.limitFireflies = stats.limit_fireflies;
-				sim.particles.limitFairies = stats.limit_fairies;
-				sim.particles.limitSnow = stats.limit_snow;
-				sim.particles.limitRain = stats.limit_rain;
-				sim.particles.limitDust = stats.limit_dust;
-			}
-			if (light_manager) {
-				const auto& cycle = light_manager->GetDayNightCycle();
-				sim.dayNight.time = cycle.time;
-				sim.dayNight.moonPhaseDays = cycle.moon_phase_days;
-			}
 		}
 
 		void UpdateSystems(const FrameData& frame) {
@@ -3692,17 +3493,6 @@ namespace Boidsish {
 			handler(impl->simulation_time, impl->simulation_delta_time);
 		}
 
-		impl->state_frames_.Swap();
-		impl->SyncSimulation();
-
-		// Drain transient commands into weather manager
-		if (impl->weather_manager) {
-			auto& cmds = impl->state_frames_.Write().commands;
-			for (const auto& c : cmds.pressure) impl->weather_manager->InjectPressure(c.pos, c.pressureHpa, c.burstStrength);
-			for (const auto& c : cmds.aerosol) impl->weather_manager->InjectAerosol(c.pos, c.concentration);
-			for (const auto& c : cmds.temperature) impl->weather_manager->InjectTemperature(c.pos, c.temperatureK);
-			cmds.Clear();
-		}
 
 		// Update ambient weather
 		if (impl->weather_manager && impl->weather_manager->IsEnabled()) {
@@ -3842,9 +3632,6 @@ namespace Boidsish {
 
 	void Visualizer::Render() {
 		PROJECT_PROFILE_SCOPE("Render");
-
-		impl->PollManagers();
-
 		impl->RefreshFrameConfig();
 		impl->PrepareFrame();
 

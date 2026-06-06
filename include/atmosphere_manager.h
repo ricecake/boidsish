@@ -8,7 +8,6 @@
 #include <GL/glew.h>
 #include <glm/glm.hpp>
 #include "weather_constants.h"
-#include "state.h"
 
 class ComputeShader;
 class ShaderBase;
@@ -173,8 +172,6 @@ namespace Boidsish {
 
 		// Copy SH coefficients directly from GPU SSBO into a UBO, avoiding CPU readback
 		void CopySHToUBO(GLuint lightingUbo, size_t shOffset);
-
-		void ApplyTargetState(const class state::SystemConfiguration& config);
 
 	private:
 		void CreateTextures();

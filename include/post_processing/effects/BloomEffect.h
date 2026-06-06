@@ -5,7 +5,6 @@
 
 #include "post_processing/IPostProcessingEffect.h"
 #include <glm/glm.hpp>
-#include "state.h"
 
 // Forward declarations
 class Shader;
@@ -171,8 +170,6 @@ namespace Boidsish {
 			void SetNightFactor(float factor) override { _nightFactor = factor; }
 
 			void SetTime(float time) override;
-
-			void ApplyTargetState(const class state::SystemConfiguration& config);
 
 			struct LayerData {
 				float adaptedLuminance;

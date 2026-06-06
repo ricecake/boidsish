@@ -1,7 +1,6 @@
 #include "grass_manager.h"
 
 #include "service_locator.h"
-#include "state.h"
 #include "graphics.h"
 #include "terrain_render_manager.h"
 #include "terrain_generator_interface.h"
@@ -353,20 +352,6 @@ namespace Boidsish {
         glBindVertexArray(0);
 
         glBindBuffer(GL_DRAW_INDIRECT_BUFFER, 0);
-    }
-
-    void GrassManager::ApplyTargetState(const state::SystemConfiguration& config) {
-        SetEnabled(config.grass.enabled);
-        GlobalGrassProperties props = GetGlobalProperties();
-        props.lengthMultiplier = config.grass.lengthMultiplier;
-        props.widthMultiplier = config.grass.widthMultiplier;
-        props.densityMultiplier = config.grass.densityMultiplier;
-        props.rigidityMultiplier = config.grass.rigidityMultiplier;
-        props.windMultiplier = config.grass.windMultiplier;
-        props.lodScaleFactor = config.grass.lodScaleFactor;
-        props.lodBaseRange = config.grass.lodBaseRange;
-        props.baseScale = config.grass.baseScale;
-        SetGlobalProperties(props);
     }
 
 }

@@ -5,7 +5,6 @@
 #include <glm/glm.hpp>
 #include "post_processing/IPostProcessingEffect.h"
 #include "shader.h"
-#include "state.h"
 
 namespace Boidsish {
 	namespace PostProcessing {
@@ -31,8 +30,6 @@ namespace Boidsish {
 
 			void SetTemporalAlpha(float a) { temporal_alpha_ = a; }
 			float GetTemporalAlpha() const { return temporal_alpha_; }
-
-			void ApplyTargetState(const class state::SystemConfiguration& config);
 
 		private:
 			void CreateGridTextures();

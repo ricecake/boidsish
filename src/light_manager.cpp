@@ -3,7 +3,6 @@
 #include <algorithm>
 
 #include "service_locator.h"
-#include "state.h"
 #include <cmath>
 #include <cstdlib>
 #include <map>
@@ -327,21 +326,6 @@ namespace Boidsish {
 			}
 		}
 		return count;
-	}
-
-	void LightManager::ApplyTargetState(const state::SystemConfiguration& config) {
-		const auto& s = config.dayNight;
-		_cycle.enabled = s.enabled;
-		// Only jump time if user explicitly dragged the slider (significant delta)
-		if (std::abs(s.time - _cycle.time) > 0.5f) {
-			_cycle.time = s.time;
-		}
-		_cycle.speed = s.speed;
-		_cycle.paused = s.paused;
-		_cycle.lunar_albedo = s.lunarAlbedo;
-		_cycle.moon_tint = s.moonTint;
-		_cycle.lunar_month = s.lunarMonth;
-		_cycle.moon_phase_days = s.moonPhaseDays;
 	}
 
 } // namespace Boidsish

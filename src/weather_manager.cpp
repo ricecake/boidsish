@@ -13,7 +13,6 @@
 #include "terrain_render_manager.h"
 #include "ConfigManager.h"
 #include "lightning_manager.h"
-#include "state.h"
 
 namespace Boidsish {
 
@@ -58,7 +57,6 @@ namespace Boidsish {
 		SetPace(WeatherAttribute::CloudColorB, 10.0f);
 
 		LoadConfig();
-
 	}
 
 	WeatherManager::~WeatherManager() {
@@ -1406,56 +1404,6 @@ namespace Boidsish {
 				SetMax(attr, cfg.GetAppSettingFloat("weather_max_" + key, 0.0f));
 			}
 		}
-	}
-
-	void WeatherManager::ApplyTargetState(const state::SystemConfiguration& config) {
-		SetEnabled(config.weather.enabled);
-		SetTimeScale(config.weather.timeScale);
-		SetSpatialScale(config.weather.spatialScale);
-		SetHoldThreshold(config.weather.holdThreshold);
-
-		SetMacroSimEnabled(config.weather.macroSimEnabled);
-		SetSimTau(config.weather.simTau);
-		SetStrictEnforcement(config.weather.strictEnforcement);
-		SetNudgeStiffness(config.weather.nudgeStiffness);
-
-		// LBM simulation constraints
-		WeatherLbmSimulator::Constraints lbm_con;
-		auto getCon = [&](WeatherLbmSimulator::Constraint& out, const state::LbmConstraint& in) {
-			out.min = in.min;
-			out.max = in.max;
-			out.target = in.target;
-		};
-		getCon(lbm_con.temperature, config.weather.constraints.temperature);
-		getCon(lbm_con.pressure, config.weather.constraints.pressure);
-		getCon(lbm_con.humidity, config.weather.constraints.humidity);
-		getCon(lbm_con.velocity, config.weather.constraints.velocity);
-		getCon(lbm_con.aerosols, config.weather.constraints.aerosols);
-		SetSimConstraints(lbm_con);
-
-		// Weather attribute constraints (target/min/max per attribute)
-		const auto& ac = config.weather.attrConstraints;
-		auto applyAttr = [&](WeatherAttribute attr, const state::AttributeConstraint& c) {
-			auto& state = attribute_states_[static_cast<size_t>(attr)];
-			state.external_target = c.target;
-			state.external_min = c.min;
-			state.external_max = c.max;
-		};
-		applyAttr(WeatherAttribute::Temperature, ac.temperature);
-		applyAttr(WeatherAttribute::Precipitation, ac.precipitation);
-		applyAttr(WeatherAttribute::Humidity, ac.humidity);
-		applyAttr(WeatherAttribute::WindStrength, ac.windStrength);
-		applyAttr(WeatherAttribute::WindSpeed, ac.windSpeed);
-		applyAttr(WeatherAttribute::WindFrequency, ac.windFrequency);
-		applyAttr(WeatherAttribute::CloudCoverage, ac.cloudCoverage);
-		applyAttr(WeatherAttribute::HazeDensity, ac.hazeDensity);
-		applyAttr(WeatherAttribute::HazeHeight, ac.hazeHeight);
-		applyAttr(WeatherAttribute::CloudDensity, ac.cloudDensity);
-		applyAttr(WeatherAttribute::CloudAltitude, ac.cloudAltitude);
-		applyAttr(WeatherAttribute::CloudThickness, ac.cloudThickness);
-		applyAttr(WeatherAttribute::RayleighScale, ac.rayleighScale);
-		applyAttr(WeatherAttribute::MieScale, ac.mieScale);
-		SynchronizeLbmConstraints();
 	}
 
 } // namespace Boidsish

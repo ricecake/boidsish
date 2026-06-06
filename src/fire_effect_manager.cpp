@@ -1,7 +1,6 @@
 #include "fire_effect_manager.h"
 
 #include <algorithm>
-#include "state.h"
 
 #include "ConfigManager.h"
 #include "service_locator.h"
@@ -677,22 +676,6 @@ namespace Boidsish {
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleBuffer(), particle_buffer_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleGridHeads(), grid_heads_buffer_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleGridNext(), grid_next_buffer_);
-	}
-
-	void FireEffectManager::ApplyTargetState(const state::SystemConfiguration& config) {
-		const auto& s = config.particles;
-		auto& cfg = ConfigManager::GetInstance();
-		cfg.SetBool("particles_enabled", s.enabled);
-		cfg.SetFloat("ambient_particle_density", s.ambientDensity);
-		cfg.SetFloat("particle_ratio_birds", s.ratioBirds);
-		cfg.SetFloat("particle_ratio_leaves", s.ratioLeaves);
-		cfg.SetFloat("particle_ratio_petals", s.ratioPetals);
-		cfg.SetFloat("particle_ratio_bubbles", s.ratioBubbles);
-		cfg.SetFloat("particle_ratio_fireflies", s.ratioFireflies);
-		cfg.SetFloat("particle_ratio_fairies", s.ratioFairies);
-		cfg.SetFloat("particle_ratio_snow", s.ratioSnow);
-		cfg.SetFloat("particle_ratio_rain", s.ratioRain);
-		cfg.SetFloat("particle_ratio_dust", s.ratioDust);
 	}
 
 	void FireEffectManager::Render(
