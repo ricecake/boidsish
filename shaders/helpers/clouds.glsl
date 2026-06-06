@@ -100,6 +100,7 @@ CloudLayer computeCloudLayer(CloudWeather weather, CloudProperties props) {
 }
 
 vec3 getCloudAdvectionOffset(float h, float worldScale, float time) {
+	return vec3(0);
 	float angle = cloudFlowDirection;
 	vec2  flowDir = vec2(cos(angle), sin(angle));
 	// Increase shear effect by making it more dramatic with height
@@ -110,6 +111,30 @@ vec3 getCloudAdvectionOffset(float h, float worldScale, float time) {
 
 	return advect;
 }
+
+vec3 erot(vec3 p, vec3 ax, float ro) {
+    return mix(dot(p,ax)*ax,p,cos(ro))+sin(ro)*cross(ax,p);
+}
+
+float WaveletNoise(vec3 p, float z, float k) {
+    // https://www.shadertoy.com/view/wsBfzK
+    float d=0.,s=1.,m=0., a;
+    for(float i=0.; i<5.; i++) {
+        vec3 q = p*s, g=fract(floor(q)*vec3(123.34,233.53,314.15));
+    	g += dot(g, g+23.234);
+		a = fract(g.x*g.y)*1e3 +z*(mod(g.x+g.y, 2.)-1.); // add vorticity
+        q = (fract(q)-.5);
+        //random rotation in 3d. the +.1 is to fix the rare case that g == vec3(0)
+        //https://suricrasia.online/demoscene/functions/#rndrot
+        q = erot(q, normalize(tan(g+.1)), a);
+        d += sin(q.x*10.+z)*smoothstep(.25, .0, dot(q,q))/s;
+        p = erot(p,normalize(vec3(-1,1,0)),atan(sqrt(2.)))+i; //rotate along the magic angle
+        m += 1./s;
+        s *= k;
+    }
+    return d/m;
+}
+
 
 // Cloud density calculation helper
 // Returns a density value [0, 1+] based on world-space position
@@ -148,9 +173,10 @@ float calculateCloudDensity(
 
 	// Base noise for cloud shapes
 	vec3 p_warped = p_advected + cloudCurlStrength * fastCurl3d(p_advected * cloudCurlFrequency + time * 0.0005);
-	vec3 p_scaled = p_warped / (50000.0 * props.worldScale);
+	vec3 p_scaled = p_warped / 1000;// / (50000.0 * props.worldScale);
 
-	float baseNoise = fastWorley3d(p_scaled + time * 0.005);
+	// float baseNoise = fastWorley3d(p_scaled + time * 0.005);
+	float baseNoise = WaveletNoise(p_scaled + time * 0.05, 1.0, 0.8) + 1.0;
 
 	// Implement "Roll": Billowy edges that vary with height
 	// We remap the base noise threshold based on the vertical position
