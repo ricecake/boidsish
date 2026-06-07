@@ -17,6 +17,9 @@ uniform vec3 cloudColorUniform;
 #include "../helpers/fast_noise.glsl"
 #include "../helpers/lighting.glsl"
 #include "helpers/math.glsl"
+#include "lygia/generative/wavelet.glsl"
+#include "lygia/generative/voronoi.glsl"
+#include "lygia/generative/random.glsl"
 
 uniform sampler2D u_skyViewLUT;
 
@@ -117,19 +120,25 @@ void main() {
 			p_curved.y = length(p - earthCenter) - R_earth;
 
 			// Sample weather at current ray position to avoid depth dependency
-			float weatherWarpFactor = 1.0;
-			vec3  p_curved_warped = vec3(0);
-			if (cloudWarp > 0.0) {
-				float camDist = length(p.xz - viewPos.xz);
-				weatherWarpFactor = smoothstep(0.0, cloudWarp * worldScale, camDist);
-				p_curved_warped = getWarpedCloudPos(p_curved, weatherWarpFactor);
-			}
+			float fade = 1.0;
+			vec3  p_warped = getWarpedCloudPos(p_curved, fade);
 
-			vec2  weatherUV = p.xz / (4000.0 * worldScale);
-			float weatherMap = weatherWarpFactor * (fastWorley3d(vec3(weatherUV, time * 0.001)) * 0.5 + 0.5);
+			// We need weather/height maps for the specific sample point.
+			// The calculateCloudDensity helper handles advection of the noise itself.
+			// We advect the weather maps here too to match shadow map generation.
+			float h_norm = clamp((p_curved.y - props.altitude * props.worldScale) / max(props.thickness * props.worldScale, 1.0), 0.0, 1.0);
+			vec3 advectedPos = p_curved + 0.75*getCloudAdvectionOffset(h_norm, props.worldScale, time);
 
-			vec2  heightUV = p.xz / (2500.0 * worldScale);
-			float heightMap = weatherWarpFactor * (fastWorley3d(vec3(heightUV, time * 0.0004)) * 0.5 + 0.5);
+			// float weatherMap = fade * (fastWorley3d(vec3(advectedPos.xz / (4000.0 * worldScale), time * 0.001)) * 0.5 + 0.5);
+			// float heightMap = fade * (fastWorley3d(vec3(advectedPos.xz / (2500.0 * worldScale), time * 0.0004)) * 0.5 + 0.5);
+
+			vec3 weatherMapBase = (voronoi(vec3(advectedPos.xz / (3500.0 * worldScale), time * 0.01)));
+			vec3 heightMapBase = (voronoi(vec3(advectedPos.xz / (2000.0 * worldScale), time * 0.004)));
+
+			// float weatherMap = fade * (wavelet(weatherMapBase.xy, weatherMapBase.z) * 0.5 + 0.5);
+			// float heightMap = fade * (wavelet(heightMapBase.xy, heightMapBase.z) * 0.5 + 0.5);
+			float weatherMap = fade * (weatherMapBase.z);
+			float heightMap = fade * (heightMapBase.z);
 
 			CloudWeather weather;
 			weather.weatherMap = weatherMap;
@@ -137,7 +146,8 @@ void main() {
 
 			CloudLayer layer = computeCloudLayer(weather, props);
 
-			float d = calculateCloudDensity(p_curved_warped, weather, layer, props, time, false);
+			// Use p_warped to ensure the camera lens-bubble warp affects the cloud shapes
+			float d = calculateCloudDensity(p_warped, weather, layer, props, time, false);
 			if (d <= 0.01)
 				continue;
 

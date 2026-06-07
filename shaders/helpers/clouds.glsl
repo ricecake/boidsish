@@ -99,6 +99,43 @@ CloudLayer computeCloudLayer(CloudWeather weather, CloudProperties props) {
 	return layer;
 }
 
+vec3 getCloudAdvectionOffset(float h, float worldScale, float time) {
+	return vec3(0);
+	float angle = cloudFlowDirection;
+	vec2  flowDir = vec2(cos(angle), sin(angle));
+	// Increase shear effect by making it more dramatic with height
+	float heightFactor = 1.0 + h * h * cloudFlowHeightScale * 2.0;
+	// 1000.0 is a magic scale to make the "speed" parameter feel reasonable in world units
+	vec3 advect = vec3(flowDir.x, 0.0, flowDir.y) * time * cloudFlowSpeed * worldScale * 25.0;
+	advect += heightFactor;
+
+	return advect;
+}
+
+vec3 erot(vec3 p, vec3 ax, float ro) {
+    return mix(dot(p,ax)*ax,p,cos(ro))+sin(ro)*cross(ax,p);
+}
+
+float WaveletNoise(vec3 p, float z, float k) {
+    // https://www.shadertoy.com/view/wsBfzK
+    float d=0.,s=1.,m=0., a;
+    for(float i=0.; i<5.; i++) {
+        vec3 q = p*s, g=fract(floor(q)*vec3(123.34,233.53,314.15));
+    	g += dot(g, g+23.234);
+		a = fract(g.x*g.y)*1e3 +z*(mod(g.x+g.y, 2.)-1.); // add vorticity
+        q = (fract(q)-.5);
+        //random rotation in 3d. the +.1 is to fix the rare case that g == vec3(0)
+        //https://suricrasia.online/demoscene/functions/#rndrot
+        q = erot(q, normalize(tan(g+.1)), a);
+        d += sin(q.x*10.+z)*smoothstep(.25, .0, dot(q,q))/s;
+        p = erot(p,normalize(vec3(-1,1,0)),atan(sqrt(2.)))+i; //rotate along the magic angle
+        m += 1./s;
+        s *= k;
+    }
+    return d/m;
+}
+
+
 // Cloud density calculation helper
 // Returns a density value [0, 1+] based on world-space position
 float calculateCloudDensity(
@@ -123,20 +160,24 @@ float calculateCloudDensity(
 	float densityProfile = mix(bottomHeavy, anvil, h * weather.heightMap);
 
 	float coverageThreshold = 1.0 - props.coverage;
-	float localDensity = weather.weatherMap * props.densityBase;
+
+	// Apply advection to the sample position
+	vec3 p_advected = p + getCloudAdvectionOffset(h, props.worldScale, time);
 
 	if (simplified) {
 		// Include base Worley noise so shadow patterns match the full cloud shapes
-		float baseNoise = fastWorley3d(p / (50000.0 * props.worldScale) + time * 0.0005);
+		float baseNoise = fastWorley3d(p_advected / (50000.0 * props.worldScale) + time * 0.005);
 		float baseDensity = baseNoise * weather.weatherMap;
 		return smoothstep(coverageThreshold, coverageThreshold + 0.4, baseDensity) * densityProfile * props.densityBase;
 	}
 
 	// Base noise for cloud shapes
-	vec3 p_warped = p + 5.0 * fastCurl3d(p / (900.0 * props.worldScale) + time * 0.002);
+	vec3 p_warped = p_advected + cloudCurlStrength * fastCurl3d(p_advected * cloudCurlFrequency + time * 0.0005);
+	// vec3 p_scaled = p_warped / 1000;// / (50000.0 * props.worldScale);
 	vec3 p_scaled = p_warped / (50000.0 * props.worldScale);
 
-	float baseNoise = fastWorley3d(p_scaled + time * 0.0005);
+	float baseNoise = abs(fastWorley3d(p_scaled + time * 0.005));
+	baseNoise *= WaveletNoise(p_scaled + time * 0.05, 0.50, time*0.5) + 1.0;
 
 	// Implement "Roll": Billowy edges that vary with height
 	// We remap the base noise threshold based on the vertical position
@@ -152,7 +193,7 @@ float calculateCloudDensity(
 	finalNoise = mix(finalNoise, finalNoise * detail, 0.3);
 
 	// Apply coverage and local density
-	float baseDensity = finalNoise * weather.weatherMap;
+	float baseDensity =  finalNoise * weather.weatherMap;
 	float density = smoothstep(coverageThreshold, coverageThreshold + 0.4, baseDensity);
 
 	// Add "Edge Wisps": high-frequency FBM at the boundaries
@@ -168,7 +209,7 @@ float calculateCloudDensity(
 	float wispyFactor = smoothstep(0.2, 0.35, weather.weatherMap);
 	density *= mix(0.6, 1.0, wispyFactor);
 
-	return density * densityProfile * props.densityBase * 3.0;
+	return smoothstep(0, 0.75, density * densityProfile * props.densityBase * 3.0);
 }
 
 float calculateCloudShadowDensity(vec3 p, CloudWeather weather, CloudLayer layer, CloudProperties props, float time) {
@@ -186,8 +227,12 @@ float evaluateCloudShadowDensityAtWorldPos(vec2 worldXZ, float time) {
 	float scaledCloudAltitude = shadowAltitude * worldScale;
 	vec3  cloudPos = vec3(worldXZ.x, scaledCloudAltitude, worldXZ.y);
 
-	float weatherMap = (fastWorley3d(vec3(cloudPos.xz / (4000.0 * worldScale), time * 0.001)) * 0.5 + 0.5);
-	float heightMap = (fastWorley3d(vec3(cloudPos.xz / (2500.0 * worldScale), time * 0.0004)) * 0.5 + 0.5);
+	// Approximate height for advection in the middle of the layer
+	// Coverage should also be advected so clouds move as a whole
+	vec3 advectedCloudPos = cloudPos - getCloudAdvectionOffset(0.5, worldScale, time);
+
+	float weatherMap = (fastWorley3d(vec3(advectedCloudPos.xz / (4000.0 * worldScale), time * 0.001)) * 0.5 + 0.5);
+	float heightMap = (fastWorley3d(vec3(advectedCloudPos.xz / (2500.0 * worldScale), time * 0.0004)) * 0.5 + 0.5);
 
 	CloudWeather weather;
 	weather.weatherMap = weatherMap;

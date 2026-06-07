@@ -2328,6 +2328,12 @@ namespace Boidsish {
 					lighting_ubo_data_.cloudMoonLightScale = atmosphere_effect->GetCloudMoonLightScale();
 					lighting_ubo_data_.cloudBeerPowderMix = atmosphere_effect->GetCloudBeerPowderMix();
 
+					lighting_ubo_data_.cloudFlowSpeed = atmosphere_effect->GetCloudFlowSpeed();
+					lighting_ubo_data_.cloudFlowDirection = atmosphere_effect->GetCloudFlowDirection();
+					lighting_ubo_data_.cloudFlowHeightScale = atmosphere_effect->GetCloudFlowHeightScale();
+					lighting_ubo_data_.cloudCurlStrength = atmosphere_effect->GetCloudCurlStrength();
+					lighting_ubo_data_.cloudCurlFrequency = atmosphere_effect->GetCloudCurlFrequency();
+
 					// Calculate cloud shadow matrix (world XZ to shadow map UV)
 					float     mapSize = atmosphere_manager->GetCloudShadowWorldSize();
 					glm::vec3 camPos = camera.pos();
@@ -2356,10 +2362,10 @@ namespace Boidsish {
 
 				// GPU-side copy of SH coefficients from SSBO into the UBO (no CPU readback)
 				if (atmosphere_manager) {
-					static_assert(offsetof(LightingUbo, sh_coeffs) == 976, "SH offset mismatch");
+					static_assert(offsetof(LightingUbo, sh_coeffs) == 1008, "SH offset mismatch");
 					atmosphere_manager->CopySHToUBO(
 						lighting_pb->GetBufferId(),
-						static_cast<GLintptr>(lighting_pb->GetFrameOffset()) + 976
+						static_cast<GLintptr>(lighting_pb->GetFrameOffset()) + 1008
 					);
 				}
 			}
@@ -3538,6 +3544,12 @@ namespace Boidsish {
 				impl->atmosphere_effect->SetMieScaleHeight(w.mie_scale_height);
 				impl->atmosphere_effect->SetHazeColor(w.haze_color);
 				impl->atmosphere_effect->SetCloudColor(w.cloud_color);
+
+				impl->atmosphere_effect->SetCloudFlowSpeed(w.wind_speed);
+				impl->atmosphere_effect->SetCloudFlowDirection(glm::radians(180.0f)); // Fixed direction for consistency
+				impl->atmosphere_effect->SetCloudFlowHeightScale(0.2f);
+				impl->atmosphere_effect->SetCloudCurlStrength(5.0f);
+				impl->atmosphere_effect->SetCloudCurlFrequency(1.5f);
 			}
 		}
 

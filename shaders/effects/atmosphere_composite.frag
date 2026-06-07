@@ -136,19 +136,19 @@ void main() {
 	vec3 result;
 	if (!isSky) {
 		// 4. Shadowing for in-scattering (prevent sunrise/sunset glow through hills)
-		// float atmosShadow = 1.0;
-		// if (num_lights > 0 && lights[0].type == LIGHT_TYPE_DIRECTIONAL) {
-		// 	vec3 N = texture(normalTexture, TexCoords).xyz * 2.0 - 1.0;
-		// 	vec3 L = normalize(-lights[0].direction);
-		// 	atmosShadow = calculateShadow(0, worldPos, N, L);
+		float atmosShadow = 1.0;
+		if (num_lights > 0 && lights[0].type == LIGHT_TYPE_DIRECTIONAL) {
+			vec3 N = texture(normalTexture, TexCoords).xyz * 2.0 - 1.0;
+			vec3 L = normalize(-lights[0].direction);
+			atmosShadow = calculateShadow(0, worldPos, N, L);
 
-		// 	// Soften the shadow for atmosphere — don't make it pitch black,
-		// 	// atmosphere still has ambient light.
-		// 	atmosShadow = mix(0.1, 1.0, atmosShadow);
-		// }
+			// Soften the shadow for atmosphere — don't make it pitch black,
+			// atmosphere still has ambient light.
+			atmosShadow = mix(0.1, 1.0, atmosShadow);
+		}
 
-		// inScattering *= atmosShadow;
-		// atmosInScattering *= atmosShadow;
+		inScattering *= atmosShadow;
+		atmosInScattering *= atmosShadow;
 
 		// Terrain/objects: apply aerial perspective and clouds
 		vec3 terrainAtmos = sceneColor * transmittance + inScattering;
