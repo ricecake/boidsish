@@ -228,7 +228,7 @@ void main() {
 			float sunHeight = max(primaryLightDir.y, 0.0);
 			float ambientScale = mix(0.3, 1.0, smoothstep(0.0, 0.3, sunHeight));
 			vec3  ambient = mix(ambientUp, ambientHorizon, 0.4) * ambientScale;
-			vec3  S = (stepScattering + ambient*smoothstep(0, 1, (p_curved_warped.y - props.altitude)/props.thickness));
+			vec3  S = (stepScattering + ambient*smoothstep(0, 1, h_norm));
 
 			// lightEnergy += cloudTransmittance * S * stepDensity;
 			lightEnergy += cloudTransmittance * S * (1.0 - transmittanceAtStep);
