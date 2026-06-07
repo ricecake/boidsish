@@ -122,15 +122,10 @@ void main() {
 			// Sample weather at current ray position to avoid depth dependency
 			float fade = 1.0;
 			vec3  p_warped = getWarpedCloudPos(p_curved, fade);
-
-			// We need weather/height maps for the specific sample point.
-			// The calculateCloudDensity helper handles advection of the noise itself.
-			// We advect the weather maps here too to match shadow map generation.
 			float h_norm = clamp((p_curved.y - props.altitude * props.worldScale) / max(props.thickness * props.worldScale, 1.0), 0.0, 1.0);
-			vec3 advectedPos = p_curved + 0.75*getCloudAdvectionOffset(h_norm, props.worldScale, time);
 
-			float weatherMap = (fastSimplex3d(vec3(advectedPos.x, advectedPos.y, advectedPos.z) / (5000.0 * worldScale)) * 0.5 + 0.5);
-			float heightMap =  (fastSimplex3d(vec3(advectedPos.x, advectedPos.y, advectedPos.z) / (3500.0 * worldScale)) * 0.5 + 0.5);
+			float weatherMap = (fastSimplex3d(vec3(p_curved.x, 0.0, p_curved.z) / (5000.0 * worldScale)) * 0.5 + 0.5);
+			float heightMap =  (fastSimplex3d(vec3(p_curved.x, 0.0, p_curved.z) / (7500.0 * worldScale)) * 0.5 + 0.5);
 
 			CloudWeather weather;
 			weather.weatherMap = weatherMap;

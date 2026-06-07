@@ -107,7 +107,7 @@ vec3 getCloudAdvectionOffset(float h, float worldScale, float time) {
 	// 1000.0 is a magic scale to make the "speed" parameter feel reasonable in world units
 	// We use fract(time * speed) logic if needed for loops, but for continuous motion
 	// a simple offset is fine as long as the noise is tiling.
-	vec3 advect = vec3(flowDir.x, 0.0, flowDir.y) * (time * cloudFlowSpeed * worldScale * 25.0);
+	vec3 advect = vec3(flowDir.x, 0.0, flowDir.y) * (time * cloudFlowSpeed * worldScale * 250.0);
 
 	// Shear is a horizontal shift that depends on height
 	return advect * heightFactor;
@@ -186,7 +186,7 @@ float calculateCloudDensity(
 	float baseNoise = remap(simplex, worley0 - 1.0, 1.0, 0.0, 1.0);
 
 	// Billowy/Wispy erosion using multiple octaves of Worley noise
-	vec3 p_erode = p_warped / (1800.0 * props.worldScale);
+	vec3 p_erode = p_warped / (100.0 * props.worldScale);
 	float worley1 = fastWorley3d(p_erode + time * 0.008);
 	float worley2 = fastWorley3d(p_erode * 2.0 + time * 0.012);
 	float worley3 = fastWorley3d(p_erode * 4.0 + time * 0.016);
