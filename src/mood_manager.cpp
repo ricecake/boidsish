@@ -138,10 +138,10 @@ namespace Boidsish {
         defaultLayer.name = "Default";
         defaultLayer.priority = -100;
         defaultLayer.blendMode = MoodBlendMode::Override;
-        defaultLayer.trackedParameter = MoodParameter::Count; // No parameter tracking
+        // No parameter tracking
 
         MoodControlPoint cp;
-        cp.parameterValue = 0.0f;
+        cp.parameterValues = {0.0f};
         cp.settings = MoodSettings::GetDefault();
         defaultLayer.controlPoints.push_back(cp);
 
@@ -204,7 +204,10 @@ namespace Boidsish {
                         for (int j = (int)i - 1; j >= 0; --j) if (pts[j].settings.sceneBloom.member) { prev = j; break; } \
                         for (int j = (int)i + 1; j < (int)pts.size(); ++j) if (pts[j].settings.sceneBloom.member) { next = j; break; } \
                         if (prev != -1 && next != -1) { \
-                            float t = (pts[i].parameterValue - pts[prev].parameterValue) / std::max(1e-6f, pts[next].parameterValue - pts[prev].parameterValue); \
+                            float val = pts[i].parameterValues.empty() ? 0.0f : pts[i].parameterValues[0]; \
+                            float valPrev = pts[prev].parameterValues.empty() ? 0.0f : pts[prev].parameterValues[0]; \
+                            float valNext = pts[next].parameterValues.empty() ? 0.0f : pts[next].parameterValues[0]; \
+                            float t = (val - valPrev) / std::max(1e-6f, valNext - valPrev); \
                             pts[i].settings.sceneBloom.member = LerpVal(t, *pts[prev].settings.sceneBloom.member, *pts[next].settings.sceneBloom.member, type); \
                         } else if (prev != -1) pts[i].settings.sceneBloom.member = pts[prev].settings.sceneBloom.member; \
                         else if (next != -1) pts[i].settings.sceneBloom.member = pts[next].settings.sceneBloom.member; \
@@ -214,7 +217,10 @@ namespace Boidsish {
                         for (int j = (int)i - 1; j >= 0; --j) if (pts[j].settings.skyBloom.member) { prev = j; break; } \
                         for (int j = (int)i + 1; j < (int)pts.size(); ++j) if (pts[j].settings.skyBloom.member) { next = j; break; } \
                         if (prev != -1 && next != -1) { \
-                            float t = (pts[i].parameterValue - pts[prev].parameterValue) / std::max(1e-6f, pts[next].parameterValue - pts[prev].parameterValue); \
+                            float val = pts[i].parameterValues.empty() ? 0.0f : pts[i].parameterValues[0]; \
+                            float valPrev = pts[prev].parameterValues.empty() ? 0.0f : pts[prev].parameterValues[0]; \
+                            float valNext = pts[next].parameterValues.empty() ? 0.0f : pts[next].parameterValues[0]; \
+                            float t = (val - valPrev) / std::max(1e-6f, valNext - valPrev); \
                             pts[i].settings.skyBloom.member = LerpVal(t, *pts[prev].settings.skyBloom.member, *pts[next].settings.skyBloom.member, type); \
                         } else if (prev != -1) pts[i].settings.skyBloom.member = pts[prev].settings.skyBloom.member; \
                         else if (next != -1) pts[i].settings.skyBloom.member = pts[next].settings.skyBloom.member; \
@@ -272,7 +278,10 @@ namespace Boidsish {
                         for (int j = (int)i - 1; j >= 0; --j) if (pts[j].settings.member) { prev = j; break; } \
                         for (int j = (int)i + 1; j < (int)pts.size(); ++j) if (pts[j].settings.member) { next = j; break; } \
                         if (prev != -1 && next != -1) { \
-                            float t = (pts[i].parameterValue - pts[prev].parameterValue) / std::max(1e-6f, pts[next].parameterValue - pts[prev].parameterValue); \
+                            float val = pts[i].parameterValues.empty() ? 0.0f : pts[i].parameterValues[0]; \
+                            float valPrev = pts[prev].parameterValues.empty() ? 0.0f : pts[prev].parameterValues[0]; \
+                            float valNext = pts[next].parameterValues.empty() ? 0.0f : pts[next].parameterValues[0]; \
+                            float t = (val - valPrev) / std::max(1e-6f, valNext - valPrev); \
                             pts[i].settings.member = LerpVal(t, *pts[prev].settings.member, *pts[next].settings.member, type); \
                         } else if (prev != -1) pts[i].settings.member = pts[prev].settings.member; \
                         else if (next != -1) pts[i].settings.member = pts[next].settings.member; \
@@ -322,12 +331,16 @@ namespace Boidsish {
                 continue;
             }
 
-            float paramValue = 0.0f;
-            if (_currentParams.count(layer->trackedParameter)) {
-                paramValue = _currentParams.at(layer->trackedParameter);
+            std::vector<float> paramValues;
+            for (auto p : layer->trackedParameters) {
+                if (_currentParams.count(p)) {
+                    paramValues.push_back(_currentParams.at(p));
+                } else {
+                    paramValues.push_back(0.0f);
+                }
             }
 
-            layer->lastInterpolated = Interpolate(*layer, paramValue);
+            layer->lastInterpolated = Interpolate(*layer, paramValues);
             layer->hasLastInterpolated = true;
             Blend(_blendedSettings, layer->lastInterpolated, layer->blendMode);
         }
@@ -341,16 +354,22 @@ namespace Boidsish {
 
     void MoodManager::AddLayer(const MoodLayer& layer) {
         MoodLayer l = layer;
-        std::sort(l.controlPoints.begin(), l.controlPoints.end(), [](const auto& a, const auto& b){
-            return a.parameterValue < b.parameterValue;
-        });
+        if (l.trackedParameters.size() <= 1) {
+            std::sort(l.controlPoints.begin(), l.controlPoints.end(), [](const auto& a, const auto& b){
+                float valA = a.parameterValues.empty() ? 0.0f : a.parameterValues[0];
+                float valB = b.parameterValues.empty() ? 0.0f : b.parameterValues[0];
+                return valA < valB;
+            });
 
-        // Deduplicate control points with same value
-        l.controlPoints.erase(std::unique(l.controlPoints.begin(), l.controlPoints.end(), [](const auto& a, const auto& b){
-            return std::abs(a.parameterValue - b.parameterValue) < 1e-6f;
-        }), l.controlPoints.end());
+            // Deduplicate control points with same value
+            l.controlPoints.erase(std::unique(l.controlPoints.begin(), l.controlPoints.end(), [](const auto& a, const auto& b){
+                float valA = a.parameterValues.empty() ? 0.0f : a.parameterValues[0];
+                float valB = b.parameterValues.empty() ? 0.0f : b.parameterValues[0];
+                return std::abs(valA - valB) < 1e-6f;
+            }), l.controlPoints.end());
 
-        FillSettingsHoles(l.controlPoints);
+            FillSettingsHoles(l.controlPoints);
+        }
         _layers.push_back(l);
     }
 
@@ -444,14 +463,98 @@ namespace Boidsish {
         #undef INTERP_B
     }
 
-    MoodSettings MoodManager::Interpolate(const MoodLayer& layer, float paramValue) {
+    MoodSettings MoodManager::Interpolate(const MoodLayer& layer, const std::vector<float>& paramValues) {
         const auto& pts = layer.controlPoints;
         if (pts.empty()) return {};
         if (pts.size() == 1) return pts[0].settings;
 
+        if (layer.trackedParameters.size() > 1) {
+            // Inverse Distance Weighting (IDW) for multi-dimensional interpolation
+            float totalWeight = 0.0f;
+            MoodSettings result;
+
+            // First pass: check for exact match and collect weights
+            std::vector<float> weights;
+            for (size_t i = 0; i < pts.size(); ++i) {
+                float distSq = 0.0f;
+                for (size_t j = 0; j < layer.trackedParameters.size(); ++j) {
+                    float val = (j < pts[i].parameterValues.size()) ? pts[i].parameterValues[j] : 0.0f;
+                    float target = (j < paramValues.size()) ? paramValues[j] : 0.0f;
+                    float diff = val - target;
+                    distSq += diff * diff;
+                }
+
+                if (distSq < 1e-8f) return pts[i].settings;
+                float w = 1.0f / std::pow(distSq, 1.0f); // Power of 2 (distSq is already squared)
+                weights.push_back(w);
+                totalWeight += w;
+            }
+
+            // Second pass: blend everything
+            // Note: Blend currently only supports Add/Sub/etc. We need a proper weighted blend.
+            // For now, we'll just do a simple weighted average of all present fields.
+            // This is a bit complex given the optional-heavy structure.
+
+            // Helper to perform weighted average on optional values
+            auto BlendWeighted = [&](auto& res_opt, auto get_member, InterpType type) {
+                using T = std::decay_t<decltype(*res_opt)>;
+                T blended_sum{};
+                float sub_total_weight = 0.0f;
+                bool first = true;
+
+                for (size_t i = 0; i < pts.size(); ++i) {
+                    const auto& opt = get_member(pts[i].settings);
+                    if (opt) {
+                        float w = weights[i];
+                        if (first) {
+                            blended_sum = *opt * w;
+                            first = false;
+                        } else {
+                            blended_sum += *opt * w;
+                        }
+                        sub_total_weight += w;
+                    }
+                }
+
+                if (sub_total_weight > 1e-8f) {
+                    res_opt = blended_sum / sub_total_weight;
+                }
+            };
+
+            // Specialized color/log blending would be better but let's start with linear for IDW
+            #define IDW_S(member) BlendWeighted(result.member, [](const MoodSettings& s){ return s.member; }, InterpType::Linear)
+            IDW_S(cloudDensity); IDW_S(cloudAltitude); IDW_S(cloudThickness); IDW_S(cloudColor);
+            IDW_S(cloudCoverage); IDW_S(cloudSunLightScale); IDW_S(cloudMoonLightScale);
+            IDW_S(cloudPowderScale); IDW_S(cloudBeerPowderMix); IDW_S(rayleighScale);
+            IDW_S(mieScale); IDW_S(rayleighScattering); IDW_S(mieScattering); IDW_S(mieExtinction);
+            IDW_S(wetness); IDW_S(dew);
+            #undef IDW_S
+
+            // Bloom
+            #define IDW_B(member) \
+                BlendWeighted(result.sceneBloom.member, [](const MoodSettings& s){ return s.sceneBloom.member; }, InterpType::Linear); \
+                BlendWeighted(result.skyBloom.member, [](const MoodSettings& s){ return s.skyBloom.member; }, InterpType::Linear);
+
+            IDW_B(targetLuminance); IDW_B(minExposure); IDW_B(maxExposure);
+            IDW_B(speedUp); IDW_B(speedDown); IDW_B(centerWeightTightness);
+            IDW_B(focusPoint); IDW_B(histogramLowCutoff); IDW_B(histogramHighCutoff);
+            IDW_B(uchimuraP); IDW_B(uchimuraA); IDW_B(uchimuraM);
+            IDW_B(uchimuraL); IDW_B(uchimuraC); IDW_B(uchimuraB);
+            IDW_B(minContrast); IDW_B(maxContrast); IDW_B(targetBrightness);
+            IDW_B(cdlSlope); IDW_B(cdlOffset); IDW_B(cdlPower); IDW_B(cdlSaturation);
+            IDW_B(whiteTemp); IDW_B(whiteTint);
+            #undef IDW_B
+
+            return result;
+        }
+
+        // 1D Case: Catmull-Rom
+        float paramValue = paramValues.empty() ? 0.0f : paramValues[0];
+        MoodParameter trackedParam = layer.trackedParameters.empty() ? MoodParameter::Count : layer.trackedParameters[0];
+
         float wrap = 0.0f;
         bool isCyclic = false;
-        switch(layer.trackedParameter) {
+        switch(trackedParam) {
             case MoodParameter::TimeOfDay: wrap = 24.0f; isCyclic = true; break;
             case MoodParameter::MoonPhase: wrap = 2.0f; isCyclic = true; break;
             case MoodParameter::SunAngle:
@@ -466,23 +569,23 @@ namespace Boidsish {
         if (isCyclic && wrap > 0.0f) {
             paramValue = std::fmod(paramValue, wrap);
             if (paramValue < 0) paramValue += wrap;
-            while (i < (int)sortedPts.size() && sortedPts[i].parameterValue < paramValue) i++;
+            while (i < (int)sortedPts.size() && sortedPts[i].parameterValues[0] < paramValue) i++;
             i1 = (i == 0) ? (int)sortedPts.size() - 1 : i - 1;
             i2 = i % (int)sortedPts.size();
             i0 = (i1 == 0) ? (int)sortedPts.size() - 1 : i1 - 1;
             i3 = (i2 + 1) % (int)sortedPts.size();
         } else {
-            while (i < (int)sortedPts.size() - 1 && sortedPts[i+1].parameterValue < paramValue) i++;
+            while (i < (int)sortedPts.size() - 1 && sortedPts[i+1].parameterValues[0] < paramValue) i++;
             i1 = i;
             i2 = std::min((int)sortedPts.size() - 1, i + 1);
             i0 = std::max(0, i - 1);
             i3 = std::min((int)sortedPts.size() - 1, i + 2);
         }
 
-        float p0v = sortedPts[i0].parameterValue;
-        float p1v = sortedPts[i1].parameterValue;
-        float p2v = sortedPts[i2].parameterValue;
-        float p3v = sortedPts[i3].parameterValue;
+        float p0v = sortedPts[i0].parameterValues[0];
+        float p1v = sortedPts[i1].parameterValues[0];
+        float p2v = sortedPts[i2].parameterValues[0];
+        float p3v = sortedPts[i3].parameterValues[0];
 
         if (isCyclic && wrap > 0.0f) {
             if (p1v > paramValue) p1v -= wrap;
@@ -526,6 +629,8 @@ namespace Boidsish {
         INTERP_S(rayleighScattering, InterpType::Oklab);
         INTERP_S(mieScattering, InterpType::Logarithmic);
         INTERP_S(mieExtinction, InterpType::Logarithmic);
+        INTERP_S(wetness, InterpType::Linear);
+        INTERP_S(dew, InterpType::Linear);
         #undef INTERP_S
 
         return res;
@@ -570,6 +675,7 @@ namespace Boidsish {
         BLEND_S(cloudMoonLightScale); BLEND_S(cloudPowderScale); BLEND_S(cloudBeerPowderMix);
         BLEND_S(rayleighScale); BLEND_S(mieScale); BLEND_S(rayleighScattering);
         BLEND_S(mieScattering); BLEND_S(mieExtinction);
+        BLEND_S(wetness); BLEND_S(dew);
         #undef BLEND_S
     }
 
@@ -623,6 +729,7 @@ namespace Boidsish {
         bool cloudDensity=0, cloudAltitude=0, cloudThickness=0, cloudColor=0, cloudCoverage=0, cloudSunLightScale=0;
         bool cloudMoonLightScale=0, cloudPowderScale=0, cloudBeerPowderMix=0, rayleighScale=0, mieScale=0, rayleighScattering=0;
         bool mieScattering=0, mieExtinction=0;
+        bool wetness=0, dew=0;
     };
 
     void MoodManager::Smooth(MoodSettings& current, const MoodSettings& target, float deltaTime) {
@@ -630,10 +737,13 @@ namespace Boidsish {
         for (const auto& layer : _layers) {
             if (!layer.enabled) continue;
             bool isTime = false;
-            switch(layer.trackedParameter) {
-                case MoodParameter::TimeOfDay: case MoodParameter::MoonPhase:
-                case MoodParameter::SunAngle: case MoodParameter::MoonAngle: isTime = true; break;
-                default: break;
+            for (auto p : layer.trackedParameters) {
+                switch(p) {
+                    case MoodParameter::TimeOfDay: case MoodParameter::MoonPhase:
+                    case MoodParameter::SunAngle: case MoodParameter::MoonAngle: isTime = true; break;
+                    default: break;
+                }
+                if (isTime) break;
             }
             if (isTime) {
                 #define MARK_B(member) if (layer.controlPoints[0].settings.sceneBloom.member) flags.sceneBloom.member = true; \
@@ -657,6 +767,7 @@ namespace Boidsish {
                 MARK_S(cloudMoonLightScale); MARK_S(cloudPowderScale); MARK_S(cloudBeerPowderMix);
                 MARK_S(rayleighScale); MARK_S(mieScale); MARK_S(rayleighScattering);
                 MARK_S(mieScattering); MARK_S(mieExtinction);
+                MARK_S(wetness); MARK_S(dew);
                 #undef MARK_S
             }
         }
@@ -720,6 +831,8 @@ namespace Boidsish {
         SMOOTH_S(rayleighScattering, InterpType::Oklab);
         SMOOTH_S(mieScattering, InterpType::Logarithmic);
         SMOOTH_S(mieExtinction, InterpType::Logarithmic);
+        SMOOTH_S(wetness, InterpType::Linear);
+        SMOOTH_S(dew, InterpType::Linear);
         #undef SMOOTH_S
     }
 

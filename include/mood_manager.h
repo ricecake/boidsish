@@ -96,10 +96,14 @@ namespace Boidsish {
         std::optional<glm::vec3> rayleighScattering;
         std::optional<float> mieScattering;
         std::optional<float> mieExtinction;
+
+        // Visual effects
+        std::optional<float> wetness;
+        std::optional<float> dew;
     };
 
     struct MoodControlPoint {
-        float parameterValue;
+        std::vector<float> parameterValues;
         MoodSettings settings;
     };
 
@@ -107,7 +111,7 @@ namespace Boidsish {
         std::string name;
         int priority;
         MoodBlendMode blendMode;
-        MoodParameter trackedParameter;
+        std::vector<MoodParameter> trackedParameters;
         std::vector<MoodControlPoint> controlPoints;
         bool enabled = true;
 
@@ -145,7 +149,7 @@ namespace Boidsish {
         const std::map<MoodParameter, float>& GetCurrentParameters() const { return _currentParams; }
 
     private:
-        MoodSettings Interpolate(const MoodLayer& layer, float paramValue);
+        MoodSettings Interpolate(const MoodLayer& layer, const std::vector<float>& paramValues);
         void Blend(MoodSettings& base, const MoodSettings& layer, MoodBlendMode mode);
         void Smooth(MoodSettings& current, const MoodSettings& target, float deltaTime);
 

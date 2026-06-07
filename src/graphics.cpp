@@ -2212,6 +2212,13 @@ namespace Boidsish {
 					ubo_data.snow_intensity = (w.temperature <= 273.15f) ? w.precipitation : 0.0f;
 					ubo_data.wetness = wetness_;
 					ubo_data.temperature = w.temperature;
+					ubo_data.dew = 0.0f;
+
+					if (mood_manager && mood_manager->IsEnabled()) {
+						const auto& mood = mood_manager->GetBlendedSettings();
+						if (mood.wetness) ubo_data.wetness = glm::max(ubo_data.wetness, *mood.wetness);
+						if (mood.dew) ubo_data.dew = *mood.dew;
+					}
 
 					*visual_effects_pb->GetFrameDataPtr() = ubo_data;
 					glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::VisualEffects(),
