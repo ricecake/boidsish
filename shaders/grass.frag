@@ -117,6 +117,24 @@ void main() {
     albedo = mix(albedo, albedo * 0.4, wetness * 0.6);
     roughness = mix(roughness, 0.1, wetness * 0.9);
 
+    // Local temperature check for frost (K to C: T - 273.15)
+    float shadow = terrainShadowCoverage(fWorldPos, N, normalize(-lights[0].direction));
+    float localTemp = temperature - (1.0 - shadow) * 2.0; // Lower temp in shadow
+    float frostFactor = smoothstep(274.15, 272.15, localTemp);
+
+    // Frost effect: whitening and subtle sparkle
+    vec3 frostColor = vec3(0.9, 0.95, 1.0);
+    uint frostSeed = uint(abs(fWorldPos.x) * 100.0) ^ uint(abs(fWorldPos.z) * 100.0) ^ uint(fHeightFactor * 50.0);
+    float sparkle = pow(hash(frostSeed + uint(time * 5.0)), 20.0) * frostFactor;
+
+    albedo = mix(albedo, frostColor, frostFactor * 0.5 * fHeightFactor);
+    albedo += sparkle * 0.5;
+    roughness = mix(roughness, 0.3, frostFactor);
+
+    // Dew effect: shimmering sparkles on top of grass when wet/humid
+    float dewSparkle = pow(hash(frostSeed + uint(time * 3.0) + 1234u), 30.0) * dew * (1.0 - frostFactor);
+    albedo += dewSparkle * 0.8 * smoothstep(0.5, 1.0, fHeightFactor);
+
     float ao = smoothstep(0.0, 0.5, fHeightFactor) * smoothstep(0.0, 0.25, biomeProps[fBiomeIdx].density);
     float dist = length(fWorldPos.xz - viewPos.xz);
 
@@ -139,6 +157,7 @@ void main() {
 
 
     float primaryShadow;
+    // We already calculated shadow for frost, but apply_lighting_foliage will do it again properly for all lights.
     vec4 litColor = apply_lighting_foliage(fWorldPos, N, albedo, roughness, 0.0, ao, primaryShadow);
     litColor = min(litColor, vec4(highlight, litColor.a));
     litColor.rgb = clamp(litColor.rgb, 0.0, 5.0); // Clamp HDR to prevent "bright white" blowouts

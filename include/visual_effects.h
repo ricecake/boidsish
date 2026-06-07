@@ -33,5 +33,6 @@ namespace Boidsish {
 		float snow_intensity;
 		float wetness;
 		float temperature;
+		float dew;
 	};
 } // namespace Boidsish

@@ -48,6 +48,8 @@ namespace Boidsish {
         static void ShowMoodSettingsDetails(const MoodSettings& s) {
             if (s.cloudDensity) ImGui::BulletText("Cloud Density: %.3f", *s.cloudDensity);
             if (s.cloudCoverage) ImGui::BulletText("Cloud Coverage: %.3f", *s.cloudCoverage);
+            if (s.wetness) ImGui::BulletText("Wetness: %.3f", *s.wetness);
+            if (s.dew) ImGui::BulletText("Dew: %.3f", *s.dew);
             if (s.cloudColor) {
                 ImGui::BulletText("Cloud Color: ");
                 ImGui::SameLine();
@@ -129,7 +131,12 @@ namespace Boidsish {
 
                     if (open) {
                         ImGui::Text("Mode: %s", BlendModeToString(layer.blendMode));
-                        ImGui::Text("Tracked: %s", ParameterToString(layer.trackedParameter));
+                        std::string trackedStr;
+                        for (size_t j = 0; j < layer.trackedParameters.size(); ++j) {
+                            trackedStr += ParameterToString(layer.trackedParameters[j]);
+                            if (j < layer.trackedParameters.size() - 1) trackedStr += ", ";
+                        }
+                        ImGui::Text("Tracked: %s", trackedStr.c_str());
                         ImGui::Text("Control Points: %d", (int)layer.controlPoints.size());
 
                         if (layer.hasLastInterpolated) {
@@ -140,8 +147,14 @@ namespace Boidsish {
                         }
 
                         if (ImGui::TreeNode("Interpolation Curves")) {
-                            for (const auto& cp : layer.controlPoints) {
-                                if (ImGui::TreeNode((void*)(intptr_t)cp.parameterValue, "Value: %.3f", cp.parameterValue)) {
+                            for (size_t cpIdx = 0; cpIdx < layer.controlPoints.size(); ++cpIdx) {
+                                const auto& cp = layer.controlPoints[cpIdx];
+                                std::string valStr;
+                                for (size_t j = 0; j < cp.parameterValues.size(); ++j) {
+                                    valStr += std::to_string(cp.parameterValues[j]);
+                                    if (j < cp.parameterValues.size() - 1) valStr += ", ";
+                                }
+                                if (ImGui::TreeNode((void*)(intptr_t)cpIdx, "Values: %s", valStr.c_str())) {
                                     ShowMoodSettingsDetails(cp.settings);
                                     ImGui::TreePop();
                                 }

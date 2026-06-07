@@ -22,6 +22,7 @@ layout(std140, binding = [[VISUAL_EFFECTS_BINDING]]) uniform VisualEffects {
 	float snow_intensity;
 	float wetness;
 	float temperature;
+	float dew;
 };
 
 #endif

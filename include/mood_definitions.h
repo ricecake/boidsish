@@ -11,7 +11,7 @@ namespace Boidsish {
         timeOfDay.name = "Base Time of Day";
         timeOfDay.priority = 0;
         timeOfDay.blendMode = MoodBlendMode::Multiply;
-        timeOfDay.trackedParameter = MoodParameter::TimeOfDay;
+        timeOfDay.trackedParameters = {MoodParameter::TimeOfDay};
 
         MoodSettings dawn;
         dawn.sceneBloom.targetLuminance = 1.0f;
@@ -26,10 +26,10 @@ namespace Boidsish {
         night.sceneBloom.targetLuminance = 1.5f;
         night.sceneBloom.maxExposure = 1.5f;
 
-        timeOfDay.controlPoints.push_back({6.0f, dawn});
-        timeOfDay.controlPoints.push_back({12.0f, noon});
-        timeOfDay.controlPoints.push_back({18.0f, dusk});
-        timeOfDay.controlPoints.push_back({24.0f, night});
+        timeOfDay.controlPoints.push_back({{6.0f}, dawn});
+        timeOfDay.controlPoints.push_back({{12.0f}, noon});
+        timeOfDay.controlPoints.push_back({{18.0f}, dusk});
+        timeOfDay.controlPoints.push_back({{24.0f}, night});
 
         return timeOfDay;
     }
@@ -39,7 +39,7 @@ namespace Boidsish {
         precipitation.name = "Precipitation";
         precipitation.priority = 30;
         precipitation.blendMode = MoodBlendMode::Multiply;
-        precipitation.trackedParameter = MoodParameter::Precipitation;
+        precipitation.trackedParameters = {MoodParameter::Precipitation};
 
         MoodSettings clear;
         clear.sceneBloom.cdlSaturation = 1.0f;
@@ -47,8 +47,8 @@ namespace Boidsish {
         MoodSettings rain;
         rain.sceneBloom.cdlSaturation = 0.75f;
 
-        precipitation.controlPoints.push_back({0.0f, clear});
-        precipitation.controlPoints.push_back({1.0f, rain});
+        precipitation.controlPoints.push_back({{0.0f}, clear});
+        precipitation.controlPoints.push_back({{1.0f}, rain});
 
         return precipitation;
     }
@@ -58,7 +58,7 @@ namespace Boidsish {
         Humidity.name = "Humidity";
         Humidity.priority = 20;
         Humidity.blendMode = MoodBlendMode::Multiply;
-        Humidity.trackedParameter = MoodParameter::Humidity;
+        Humidity.trackedParameters = {MoodParameter::Humidity};
 
         MoodSettings clear;
         clear.sceneBloom.cdlSaturation = 1.0f;
@@ -66,8 +66,8 @@ namespace Boidsish {
         MoodSettings humid;
         humid.sceneBloom.cdlSaturation = 1.25f;
 
-        Humidity.controlPoints.push_back({0.0f, clear});
-        Humidity.controlPoints.push_back({1.0f, humid});
+        Humidity.controlPoints.push_back({{0.0f}, clear});
+        Humidity.controlPoints.push_back({{1.0f}, humid});
 
         return Humidity;
     }
@@ -77,7 +77,7 @@ namespace Boidsish {
         cloudCover.name = "Cloud Coverage";
         cloudCover.priority = 10;
         cloudCover.blendMode = MoodBlendMode::Multiply;
-        cloudCover.trackedParameter = MoodParameter::CloudCover;
+        cloudCover.trackedParameters = {MoodParameter::CloudCover};
 
         MoodSettings clear;
         clear.sceneBloom.cdlSaturation = 1.0f;
@@ -91,11 +91,42 @@ namespace Boidsish {
         cloudy.sceneBloom.cdlSaturation = 0.5f;
         cloudy.sceneBloom.targetLuminance = 0.5f;
 
-        cloudCover.controlPoints.push_back({0.0f, clear});
-        cloudCover.controlPoints.push_back({0.80f, overcast});
-        cloudCover.controlPoints.push_back({1.0f, cloudy});
+        cloudCover.controlPoints.push_back({{0.0f}, clear});
+        cloudCover.controlPoints.push_back({{0.80f}, overcast});
+        cloudCover.controlPoints.push_back({{1.0f}, cloudy});
 
         return cloudCover;
+    }
+
+    constexpr MoodLayer GetMorningDewLayer() {
+        MoodLayer dew;
+        dew.name = "Morning Dew";
+        dew.priority = 40;
+        dew.blendMode = MoodBlendMode::Add;
+        // Tracks Humidity and Temperature
+        dew.trackedParameters = {MoodParameter::Humidity, MoodParameter::Temperature};
+
+        // Dry and Warm -> No Dew
+        MoodSettings dryWarm;
+        dryWarm.dew = 0.0f;
+        dryWarm.wetness = 0.0f;
+
+        // Humid and Cool -> High Dew
+        MoodSettings humidCool;
+        humidCool.dew = 1.0f;
+        humidCool.wetness = 0.3f;
+
+        // Humid and Warm -> Low Dew (evaporates)
+        MoodSettings humidWarm;
+        humidWarm.dew = 0.1f;
+        humidWarm.wetness = 0.05f;
+
+        // Parameter order: Humidity (0-1), Temperature (K, ~270-310)
+        dew.controlPoints.push_back({{0.0f, 300.0f}, dryWarm});
+        dew.controlPoints.push_back({{1.0f, 280.0f}, humidCool});
+        dew.controlPoints.push_back({{1.0f, 300.0f}, humidWarm});
+
+        return dew;
     }
 
     constexpr auto GetAllMoodSettings() {
@@ -104,6 +135,7 @@ namespace Boidsish {
             GetWeatherPrecipitationLayer(),
             GetWeatherHumidityLayer(),
             GetWeatherCloudCoverLayer(),
+            GetMorningDewLayer(),
         };
 
         return items;
