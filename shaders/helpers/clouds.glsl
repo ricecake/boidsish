@@ -100,17 +100,16 @@ CloudLayer computeCloudLayer(CloudWeather weather, CloudProperties props) {
 }
 
 vec3 getCloudAdvectionOffset(float h, float worldScale, float time) {
+	// return vec3(0);
 	float angle = cloudFlowDirection;
 	vec2  flowDir = vec2(cos(angle), sin(angle));
 	// Increase shear effect by making it more dramatic with height
 	float heightFactor = 1.0 + h * h * cloudFlowHeightScale * 2.0;
 	// 1000.0 is a magic scale to make the "speed" parameter feel reasonable in world units
-	// We use fract(time * speed) logic if needed for loops, but for continuous motion
-	// a simple offset is fine as long as the noise is tiling.
-	vec3 advect = vec3(flowDir.x, 0.0, flowDir.y) * (time * cloudFlowSpeed * worldScale * 250.0);
+	vec3 advect = vec3(flowDir.x, 0.0, flowDir.y) * time * cloudFlowSpeed * worldScale * 500.0;
+	advect += heightFactor;
 
-	// Shear is a horizontal shift that depends on height
-	return advect * heightFactor;
+	return advect;
 }
 
 vec3 erot(vec3 p, vec3 ax, float ro) {
@@ -163,56 +162,49 @@ float calculateCloudDensity(
 	float coverageThreshold = 1.0 - props.coverage;
 
 	// Apply advection to the sample position
-	vec3 p_advected = p + getCloudAdvectionOffset(h, props.worldScale, time);
+	vec3 advect = getCloudAdvectionOffset(h, props.worldScale, 0.1*time);
+	vec3 p_advected = p + advect;
 
-	if (simplified) {
-		// Simplex-Worley hybrid for simplified shadow map
-		vec3 p_scaled_simple = p_advected / (40000.0 * props.worldScale);
-		float simplex = fastSimplex3d(p_scaled_simple + time * 0.002) * 0.5 + 0.5;
-		float worley = fastWorley3d(p_scaled_simple + time * 0.004);
-		float baseNoise = remap(simplex, worley - 1.0, 1.0, 0.0, 1.0);
+	// Base noise for cloud shapes
+	vec3 p_warped = p_advected;// + cloudCurlStrength * (0.5+0.5*dot(advect, fastCurl3d(p * cloudCurlFrequency)));
+	vec3 p_scaled = p_warped / (50000.0 * props.worldScale);
 
-		float baseDensity = baseNoise * weather.weatherMap;
-		return smoothstep(coverageThreshold, coverageThreshold + 0.4, baseDensity) * densityProfile * props.densityBase;
-	}
+	float baseNoise = (fastWorley3d(p_scaled));
 
-	// Base noise for cloud shapes: Perlin-Worley (Simplex-Worley hybrid)
-	vec3 p_warped = p_advected;// + 1.0 * fastCurl3d(p_advected * cloudCurlFrequency + time * 0.0005);
-	vec3 p_scaled = p_warped / (35000.0 * props.worldScale);
+	// if (simplified) {
+	// 	return smoothstep(0, 0.65, density * densityProfile * props.densityBase * 3.0);
+	// }
 
-	float simplex = fastSimplex3d(p_scaled);
-	vec2 worleyID = fastWorley3dID(p_scaled);
-	float worley0 = worleyID.x;
-
-
-	// Billowy/Wispy erosion using multiple octaves of Worley noise
-	vec3 p_erode = p_warped / (100.0 * props.worldScale);
-	float warpFbm = abs(fastWarpedFbm3d(p_erode));
-
-	// HZD base noise: Remap simplex by Worley
-	float baseNoise = remap(simplex-worley0, warpFbm - 1.0, 1.0, 0.0, 1.0);
-
-	float erosion = mix(warpFbm, 1.0 - warpFbm, 0.3); // Mix in some wispy (inverted) erosion
-	float rolledNoise = remap(baseNoise, erosion * mix(0.4, 0.1, h), 1.0, 0.0, 1.0);
+	// Implement "Roll": Billowy edges that vary with height
+	// We remap the base noise threshold based on the vertical position
+	float rollFactor = remap(h, 0.0, 1.0, 0.4, 0.1);
+	float rolledNoise = remap(baseNoise, rollFactor, 1.0, 0.0, 1.0);
 
 	// Add ridges and textures for definition
-	float ridges = fastRidge3d(p_warped / (2200.0 * props.worldScale));
-	float detail = fastFbm3d(p_warped / (1450.0 * props.worldScale)) * 0.5 + 0.5;
+	float ridges = fastRidge3d(p_warped / (1600.0 * props.worldScale));
+	float detail = fastFbm3d(p_warped / (1450.0 * props.worldScale));
 
 	// Combine noises
-	float finalNoise = rolledNoise * (0.7 + 0.3 * ridges);
-	finalNoise = mix(finalNoise, finalNoise * detail, 0.2);
+	float finalNoise = rolledNoise * (0.6 + 0.4 * ridges);
+	finalNoise = mix(finalNoise, remap(finalNoise, detail, 1.0, 0.0, 1.0), 0.3);
 
 	// Apply coverage and local density
 	float baseDensity =  finalNoise * weather.weatherMap;
-	float density = smoothstep(coverageThreshold, coverageThreshold + 0.3, baseDensity);
 
 	// Add "Edge Wisps": high-frequency FBM at the boundaries
-	if (density > 0.0 && density < 0.3) {
-		float wisps = fastFbm3d(p_warped / (400.0 * props.worldScale)) * 0.5 + 0.5;
-		float wispMask = smoothstep(0.3, 0.0, density);
-		density += wisps * wispMask * 0.15 * weather.weatherMap;
+	if (baseDensity > 0.0 && baseDensity < 0.3) {
+		float wisps = fastFbm3d(p_warped / (400.0 * props.worldScale));
+		float wispMask = 1.0 - smoothstep(0.0, 0.5, baseDensity);
+		baseDensity += wisps * wispMask * 0.15 * weather.weatherMap;
 	}
+
+	// Giant tall clouds vs wispy things
+	// High weatherMap = tall, dense, sharp
+	// Low weatherMap = wispy, thin, soft
+	float wispyFactor = smoothstep(0.2, 0.35, weather.weatherMap);
+	baseDensity *= mix(0.6, 1.0, wispyFactor);
+
+	float density = smoothstep(coverageThreshold, max(1.0, coverageThreshold), baseDensity);
 
 	return smoothstep(0, 0.75, density * densityProfile * props.densityBase * 3.0);
 }
@@ -232,13 +224,8 @@ float evaluateCloudShadowDensityAtWorldPos(vec2 worldXZ, float time) {
 	float scaledCloudAltitude = shadowAltitude * worldScale;
 	vec3  cloudPos = vec3(worldXZ.x, scaledCloudAltitude, worldXZ.y);
 
-	// Approximate height for advection in the middle of the layer
-	// Coverage should also be advected so clouds move as a whole
-	vec3 advectedCloudPos = cloudPos - getCloudAdvectionOffset(0.5, worldScale, time);
-
-	// Using broad Simplex noise for weather and height maps for more natural distribution
-	float weatherMap = fastSimplex3d(vec3(advectedCloudPos.xz / (12000.0 * worldScale), time * 0.0008)) * 0.5 + 0.5;
-	float heightMap = fastSimplex3d(vec3(advectedCloudPos.xz / (8000.0 * worldScale), time * 0.0004)) * 0.5 + 0.5;
+	float weatherMap = (fastSimplex3d(vec3(cloudPos.x, 0.0, cloudPos.z) / (5000.0 * worldScale)) *0.5 +0.5);
+	float heightMap =  (fastSimplex3d(vec3(cloudPos.x, 0.0, cloudPos.z) / (7500.0 * worldScale)) *0.5 +0.5);
 
 	CloudWeather weather;
 	weather.weatherMap = weatherMap;
