@@ -171,14 +171,15 @@ float calculateCloudDensity(
 
 	float baseNoise = (fastWorley3d(p_scaled));
 
-	// if (simplified) {
-	// 	return smoothstep(0, 0.65, density * densityProfile * props.densityBase * 3.0);
-	// }
-
 	// Implement "Roll": Billowy edges that vary with height
 	// We remap the base noise threshold based on the vertical position
 	float rollFactor = remap(h, 0.0, 1.0, 0.4, 0.1);
 	float rolledNoise = remap(baseNoise, rollFactor, 1.0, 0.0, 1.0);
+
+	if (simplified) {
+		float density = smoothstep(coverageThreshold, max(1.0, coverageThreshold), rolledNoise * weather.weatherMap);
+		return smoothstep(0, 0.65, density * densityProfile * props.densityBase * 3.0);
+	}
 
 	// Add ridges and textures for definition
 	float ridges = fastRidge3d(p_warped / (1600.0 * props.worldScale));
