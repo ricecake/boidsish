@@ -124,12 +124,12 @@ void main() {
 			vec3  p_warped = getWarpedCloudPos(p_curved, fade);
 			float h_norm = clamp((p_curved.y - props.altitude * props.worldScale) / max(props.thickness * props.worldScale, 1.0), 0.0, 1.0);
 
-			float weatherMap = (fastSimplex3d(vec3(p_curved.x, 0.0, p_curved.z) / (5000.0 * worldScale)) * 0.5 + 0.5);
-			float heightMap =  (fastSimplex3d(vec3(p_curved.x, 0.0, p_curved.z) / (7500.0 * worldScale)) * 0.5 + 0.5);
+			float weatherMap = (fastSimplex3d(vec3(p_warped.x, 0.0, p_warped.z) / (5000.0 * worldScale)) * 0.5 + 0.5);
+			float heightMap =  (fastSimplex3d(vec3(p_warped.x, 0.0, p_warped.z) / (7500.0 * worldScale)) * 0.5 + 0.5);
 
 			CloudWeather weather;
 			weather.weatherMap = weatherMap;
-			weather.heightMap = heightMap;
+			weather.heightMap = 0.01*round(sqrt(heightMap)*100);
 
 			CloudLayer layer = computeCloudLayer(weather, props);
 

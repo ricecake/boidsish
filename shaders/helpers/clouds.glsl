@@ -180,10 +180,10 @@ float calculateCloudDensity(
 	vec3 p_warped = p_advected + cloudCurlStrength * fastCurl3d(p_advected * cloudCurlFrequency + time * 0.0005);
 	vec3 p_scaled = p_warped / (35000.0 * props.worldScale);
 
-	float simplex = fastSimplex3d(p_scaled + time * 0.002) * 0.5 + 0.5;
-	float worley0 = fastWorley3d(p_scaled + time * 0.004);
-	// HZD base noise: Remap simplex by Worley
-	float baseNoise = remap(simplex, worley0 - 1.0, 1.0, 0.0, 1.0);
+	float simplex = fastSimplex3d(p_scaled + time * 0.002);
+	vec2 worleyID = fastWorley3dID(p_scaled + time * 0.004);
+	float worley0 = worleyID.x;
+
 
 	// Billowy/Wispy erosion using multiple octaves of Worley noise
 	vec3 p_erode = p_warped / (100.0 * props.worldScale);
@@ -191,6 +191,9 @@ float calculateCloudDensity(
 	float worley2 = fastWorley3d(p_erode * 2.0 + time * 0.012);
 	float worley3 = fastWorley3d(p_erode * 4.0 + time * 0.016);
 	float fbmWorley = worley1 * 0.625 + worley2 * 0.25 + worley3 * 0.125;
+
+	// HZD base noise: Remap simplex by Worley
+	float baseNoise = remap(simplex-worley0, fbmWorley - 1.0, 1.0, 0.0, 1.0);
 
 	// remap(baseNoise, fbmWorley * heightFactor, 1, 0, 1)
 	float erosion = mix(fbmWorley, 1.0 - fbmWorley, 0.3); // Mix in some wispy (inverted) erosion
