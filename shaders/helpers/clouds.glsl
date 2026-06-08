@@ -177,31 +177,27 @@ float calculateCloudDensity(
 	}
 
 	// Base noise for cloud shapes: Perlin-Worley (Simplex-Worley hybrid)
-	vec3 p_warped = p_advected + cloudCurlStrength * fastCurl3d(p_advected * cloudCurlFrequency + time * 0.0005);
+	vec3 p_warped = p_advected;// + 1.0 * fastCurl3d(p_advected * cloudCurlFrequency + time * 0.0005);
 	vec3 p_scaled = p_warped / (35000.0 * props.worldScale);
 
-	float simplex = fastSimplex3d(p_scaled + time * 0.002);
-	vec2 worleyID = fastWorley3dID(p_scaled + time * 0.004);
+	float simplex = fastSimplex3d(p_scaled);
+	vec2 worleyID = fastWorley3dID(p_scaled);
 	float worley0 = worleyID.x;
 
 
 	// Billowy/Wispy erosion using multiple octaves of Worley noise
 	vec3 p_erode = p_warped / (100.0 * props.worldScale);
-	float worley1 = fastWorley3d(p_erode + time * 0.008);
-	float worley2 = fastWorley3d(p_erode * 2.0 + time * 0.012);
-	float worley3 = fastWorley3d(p_erode * 4.0 + time * 0.016);
-	float fbmWorley = worley1 * 0.625 + worley2 * 0.25 + worley3 * 0.125;
+	float warpFbm = abs(fastWarpedFbm3d(p_erode));
 
 	// HZD base noise: Remap simplex by Worley
-	float baseNoise = remap(simplex-worley0, fbmWorley - 1.0, 1.0, 0.0, 1.0);
+	float baseNoise = remap(simplex-worley0, warpFbm - 1.0, 1.0, 0.0, 1.0);
 
-	// remap(baseNoise, fbmWorley * heightFactor, 1, 0, 1)
-	float erosion = mix(fbmWorley, 1.0 - fbmWorley, 0.3); // Mix in some wispy (inverted) erosion
+	float erosion = mix(warpFbm, 1.0 - warpFbm, 0.3); // Mix in some wispy (inverted) erosion
 	float rolledNoise = remap(baseNoise, erosion * mix(0.4, 0.1, h), 1.0, 0.0, 1.0);
 
 	// Add ridges and textures for definition
 	float ridges = fastRidge3d(p_warped / (2200.0 * props.worldScale));
-	float detail = fastFbm3d(p_warped / (1450.0 * props.worldScale) + time * 0.001) * 0.5 + 0.5;
+	float detail = fastFbm3d(p_warped / (1450.0 * props.worldScale)) * 0.5 + 0.5;
 
 	// Combine noises
 	float finalNoise = rolledNoise * (0.7 + 0.3 * ridges);
@@ -213,7 +209,7 @@ float calculateCloudDensity(
 
 	// Add "Edge Wisps": high-frequency FBM at the boundaries
 	if (density > 0.0 && density < 0.3) {
-		float wisps = fastFbm3d(p_warped / (400.0 * props.worldScale) + time * 0.05) * 0.5 + 0.5;
+		float wisps = fastFbm3d(p_warped / (400.0 * props.worldScale)) * 0.5 + 0.5;
 		float wispMask = smoothstep(0.3, 0.0, density);
 		density += wisps * wispMask * 0.15 * weather.weatherMap;
 	}
