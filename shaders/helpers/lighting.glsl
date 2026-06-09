@@ -124,29 +124,34 @@ float calculateCloudShadow(int light_index, vec3 frag_pos) {
 	if (L.y <= 0.0)
 		return 1.0;
 
-	// Project to the middle of the cloud layer to ensure we're within the tapering range
-	float shadowAltitude = cloudAltitude + cloudThickness * 0.5;
-	float scaledCloudAltitude = shadowAltitude * worldScale;
-	float t = (scaledCloudAltitude - frag_pos.y) / L.y;
+	// Use a 6-step raymarch through the cloud layer along the light direction.
+	// We sample the 2D shadow map at each step to account for horizontal density variation.
+	float totalDensity = 0.0;
+	const int kSteps = 6;
 
-	if (t < 0.0)
-		return 1.0;
+	// Raymarch bounds (clamped to the cloud layer thickness)
+	float t_start = max(0.0, (cloudAltitude * worldScale - frag_pos.y) / L.y);
+	float t_end = ( (cloudAltitude + cloudThickness) * worldScale - frag_pos.y) / L.y;
 
-	vec3 cloudPos = frag_pos + L * t;
+	if (t_end <= t_start) return 1.0;
 
-	// Use the precomputed 2D shadow map
-	vec4 shadowUV = cloudShadowMatrix * vec4(cloudPos.xz, 0.0, 1.0);
+	float stepSize = (t_end - t_start) / float(kSteps);
 
-	// Sample the shadow map
-	float d = 0.0;
-	if (shadowUV.x >= 0.0 && shadowUV.x <= 1.0 && shadowUV.y >= 0.0 && shadowUV.y <= 1.0) {
-		d = texture(u_cloudShadowMap, shadowUV.xy).r;
-	} else {
-		// Fallback for points outside the shadow map: evaluate noise directly
-		d = evaluateCloudShadowDensityAtWorldPos(cloudPos.xz, time);
+	for (int i = 0; i < kSteps; ++i) {
+		float t = t_start + (float(i) + 0.5) * stepSize;
+		vec3 p = frag_pos + L * t;
+
+		vec4 shadowUV = cloudShadowMatrix * vec4(p.xz, 0.0, 1.0);
+		float d = 0.0;
+		if (shadowUV.x >= 0.0 && shadowUV.x <= 1.0 && shadowUV.y >= 0.0 && shadowUV.y <= 1.0) {
+			d = texture(u_cloudShadowMap, shadowUV.xy).r;
+		} else {
+			d = evaluateCloudShadowDensityAtWorldPos(p.xz, time);
+		}
+		totalDensity += d;
 	}
 
-	return mix(1.0, exp(-d), cloudShadowIntensity);
+	return mix(1.0, exp(-totalDensity / float(kSteps)), cloudShadowIntensity);
 }
 
 #ifdef USE_TERRAIN_DATA
