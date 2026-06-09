@@ -4,6 +4,8 @@
 #include "../lighting.glsl"
 #include "fast_noise.glsl"
 #include "math.glsl"
+#include "lygia/generative/random.glsl"
+
 
 float cloudPhase(float cosTheta) {
 	// Dual-lobe Henyey-Greenstein for forward and back scattering
@@ -106,7 +108,7 @@ vec3 getCloudAdvectionOffset(float h, float worldScale, float time) {
 	// Increase shear effect by making it more dramatic with height
 	float heightFactor = 1.0 + h * cloudFlowHeightScale * 2.0;
 	// 1000.0 is a magic scale to make the "speed" parameter feel reasonable in world units
-	vec3 advect = vec3(flowDir.x, 0.0, flowDir.y) * time * cloudFlowSpeed * worldScale * 1000.0;
+	vec3 advect = vec3(flowDir.x, 0.0, flowDir.y) * time * cloudFlowSpeed * worldScale * 10.0;
 	advect += heightFactor;
 
 	return advect;
@@ -153,28 +155,38 @@ float calculateCloudDensity(
 	float h = (p.y - layer.baseFloor) / layer.thickness;
 	float tapering = smoothstep(0.0, 0.15, h) * 1.0-smoothstep(0.7, 1.0, h);
 
-	// Tall cloud profile: anvil-like top for tall clouds
-	// Mix between a bottom-heavy profile and an anvil profile based on heightMap
-	float bottomHeavy = tapering;
-	float anvil = pow(tapering, mix(0.7, 0.3, weather.heightMap));
-	float densityProfile = mix(bottomHeavy, anvil, h * weather.heightMap);
-
 	float coverageThreshold = 1.0 - props.coverage;
 
 	// Apply advection to the sample position
-	vec3 advect = getCloudAdvectionOffset(h, props.worldScale, 0.0);
+	vec3 advect = getCloudAdvectionOffset(h, props.worldScale, time);
 	vec3 p_advected = p + advect;
 
 	// Base noise for cloud shapes
 	vec3 p_warped = p;
 	vec3 p_scaled = (p_advected) / (50000.0 * props.worldScale);
 
-	float baseNoise = (fastWorley3d(p_scaled));
+	vec2 baseBubble = fastWorley3dID(p_scaled);
+	float cloudFactor = random(baseBubble.y);
+	vec3 p_scaled_adv = (p_advected +time*cloudFactor) / (50000.0 * props.worldScale);
+	// float baseNoise = (fastWorley3d(p_scaled));
+	// float baseNoise = abs((fastSimplex3d(p_scaled_adv)) + baseBubble.x);
+	// float baseNoise = baseBubble.x;
+	float baseNoise = 1.0-baseBubble.x;
+	// float baseNoise = fastFbmCurl3d(p_scaled_adv)-(1.0-baseBubble.x);
+	// float baseNoise = fastPhasor2d(random2(baseBubble.y), degrees(0))*baseBubble.x;
+	// float baseNoise = WaveletNoise(p_warped/2000, 1.52, degrees(cloudFactor*time))*baseBubble.x;
+
 
 	// Implement "Roll": Billowy edges that vary with height
 	// We remap the base noise threshold based on the vertical position
 	float rollFactor = remap(h, 0.0, 1.0, 0.4, 0.1);
 	float rolledNoise = remap(baseNoise, rollFactor, 1.0, 0.0, 1.0);
+
+	// Tall cloud profile: anvil-like top for tall clouds
+	// Mix between a bottom-heavy profile and an anvil profile based on heightMap
+	float bottomHeavy = tapering;
+	float anvil = pow(tapering, mix(0.7, 0.3, weather.heightMap));
+	float densityProfile = mix(bottomHeavy, anvil, ((cloudFactor + 0.5) * h) * weather.heightMap);
 
 	if (simplified) {
 		float density = smoothstep(coverageThreshold, max(1.0, coverageThreshold), rolledNoise * weather.weatherMap);
@@ -183,7 +195,7 @@ float calculateCloudDensity(
 
 	// Add ridges and textures for definition
 	vec3 slide = p_warped;
-	slide.xz += time*5.0;
+	slide.xz += cloudFactor*time*25.0;
 	float ridges = fastRidge3d(slide / (1600.0 * props.worldScale));
 	float detail = fastFbm3d(slide / (1450.0 * props.worldScale));
 
