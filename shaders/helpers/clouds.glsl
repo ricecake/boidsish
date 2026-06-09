@@ -104,9 +104,9 @@ vec3 getCloudAdvectionOffset(float h, float worldScale, float time) {
 	float angle = cloudFlowDirection;
 	vec2  flowDir = vec2(cos(angle), sin(angle));
 	// Increase shear effect by making it more dramatic with height
-	float heightFactor = 1.0 + h * h * cloudFlowHeightScale * 2.0;
+	float heightFactor = 1.0 + h * cloudFlowHeightScale * 2.0;
 	// 1000.0 is a magic scale to make the "speed" parameter feel reasonable in world units
-	vec3 advect = vec3(flowDir.x, 0.0, flowDir.y) * time * cloudFlowSpeed * worldScale * 500.0;
+	vec3 advect = vec3(flowDir.x, 0.0, flowDir.y) * time * cloudFlowSpeed * worldScale * 1000.0;
 	advect += heightFactor;
 
 	return advect;
@@ -151,7 +151,7 @@ float calculateCloudDensity(
 
 	// Height-based tapering with a more natural profile
 	float h = (p.y - layer.baseFloor) / layer.thickness;
-	float tapering = smoothstep(0.0, 0.15, h) * smoothstep(1.0, 0.7, h);
+	float tapering = smoothstep(0.0, 0.15, h) * 1.0-smoothstep(0.7, 1.0, h);
 
 	// Tall cloud profile: anvil-like top for tall clouds
 	// Mix between a bottom-heavy profile and an anvil profile based on heightMap
@@ -162,12 +162,12 @@ float calculateCloudDensity(
 	float coverageThreshold = 1.0 - props.coverage;
 
 	// Apply advection to the sample position
-	vec3 advect = getCloudAdvectionOffset(h, props.worldScale, 0.1*time);
+	vec3 advect = getCloudAdvectionOffset(h, props.worldScale, 0.0);
 	vec3 p_advected = p + advect;
 
 	// Base noise for cloud shapes
-	vec3 p_warped = p_advected;// + cloudCurlStrength * (0.5+0.5*dot(advect, fastCurl3d(p * cloudCurlFrequency)));
-	vec3 p_scaled = p_warped / (50000.0 * props.worldScale);
+	vec3 p_warped = p;
+	vec3 p_scaled = (p_advected) / (50000.0 * props.worldScale);
 
 	float baseNoise = (fastWorley3d(p_scaled));
 
@@ -178,12 +178,14 @@ float calculateCloudDensity(
 
 	if (simplified) {
 		float density = smoothstep(coverageThreshold, max(1.0, coverageThreshold), rolledNoise * weather.weatherMap);
-		return smoothstep(0, 0.65, density * densityProfile * props.densityBase * 3.0);
+		return smoothstep(0, 0.65, density * densityProfile * props.densityBase * 5.0);
 	}
 
 	// Add ridges and textures for definition
-	float ridges = fastRidge3d(p_warped / (1600.0 * props.worldScale));
-	float detail = fastFbm3d(p_warped / (1450.0 * props.worldScale));
+	vec3 slide = p_warped;
+	slide.xz += time*5.0;
+	float ridges = fastRidge3d(slide / (1600.0 * props.worldScale));
+	float detail = fastFbm3d(slide / (1450.0 * props.worldScale));
 
 	// Combine noises
 	float finalNoise = rolledNoise * (0.6 + 0.4 * ridges);
@@ -194,9 +196,9 @@ float calculateCloudDensity(
 
 	// Add "Edge Wisps": high-frequency FBM at the boundaries
 	if (baseDensity > 0.0 && baseDensity < 0.3) {
-		float wisps = fastFbm3d(p_warped / (400.0 * props.worldScale));
+		float wisps = fastFbm3d((p_warped+time*(30.0)) / (1000.0 * props.worldScale));
 		float wispMask = 1.0 - smoothstep(0.0, 0.5, baseDensity);
-		baseDensity += wisps * wispMask * 0.15 * weather.weatherMap;
+		baseDensity += wisps * wispMask * 0.35 * weather.weatherMap;
 	}
 
 	// Giant tall clouds vs wispy things
@@ -207,7 +209,7 @@ float calculateCloudDensity(
 
 	float density = smoothstep(coverageThreshold, max(1.0, coverageThreshold), baseDensity);
 
-	return smoothstep(0, 0.75, density * densityProfile * props.densityBase * 3.0);
+	return smoothstep(0, 0.75, density * densityProfile * props.densityBase * 5.0);
 }
 
 float calculateCloudShadowDensity(vec3 p, CloudWeather weather, CloudLayer layer, CloudProperties props, float time) {
@@ -225,12 +227,12 @@ float evaluateCloudShadowDensityAtWorldPos(vec2 worldXZ, float time) {
 	float scaledCloudAltitude = shadowAltitude * worldScale;
 	vec3  cloudPos = vec3(worldXZ.x, scaledCloudAltitude, worldXZ.y);
 
-	float weatherMap = (fastSimplex3d(vec3(cloudPos.x, 0.0, cloudPos.z) / (5000.0 * worldScale)) *0.5 +0.5);
-	float heightMap =  (fastSimplex3d(vec3(cloudPos.x, 0.0, cloudPos.z) / (7500.0 * worldScale)) *0.5 +0.5);
+	float weatherMap = (fastSimplex3d(vec3(cloudPos.x+time*25.0, 0.0, cloudPos.z) / (5000.0 * worldScale)) * 0.5 + 0.5);
+	float heightMap =  (fastSimplex3d(vec3(cloudPos.x+time*25.0, 0.0, cloudPos.z) / (7500.0 * worldScale)) * 0.5 + 0.5);
 
 	CloudWeather weather;
-	weather.weatherMap = weatherMap;
-	weather.heightMap = heightMap;
+	weather.weatherMap = 0.001*round(sqrt(weatherMap)*1000);
+	weather.heightMap = 0.001*round(sqrt(heightMap)*1000);
 
 	CloudProperties props;
 	props.altitude = cloudAltitude;
