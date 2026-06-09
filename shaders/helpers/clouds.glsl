@@ -163,11 +163,11 @@ float calculateCloudDensity(
 
 	// Base noise for cloud shapes
 	vec3 p_warped = p;
-	vec3 p_scaled = (p_advected) / (50000.0 * props.worldScale);
+	vec3 p_scaled = (p_advected) / (5000.0 * props.worldScale);
 
 	vec2 baseBubble = fastWorley3dID(p_scaled);
 	float cloudFactor = random(baseBubble.y);
-	vec3 p_scaled_adv = (p_advected +time*cloudFactor) / (50000.0 * props.worldScale);
+	vec3 p_scaled_adv = (p_advected +time*cloudFactor) / (5000.0 * props.worldScale);
 	// float baseNoise = (fastWorley3d(p_scaled));
 	// float baseNoise = abs((fastSimplex3d(p_scaled_adv)) + baseBubble.x);
 	// float baseNoise = baseBubble.x;
@@ -236,12 +236,8 @@ float calculateCloudShadowDensity(vec3 p, CloudWeather weather, CloudLayer layer
 float evaluateCloudShadowDensityAtWorldPos(vec2 worldXZ, float time) {
 	// Replicate logic from calculateCloudShadow in lighting.glsl
 	// This ensures the shadow map matches what the raymarch would have produced
-	float shadowAltitude = cloudAltitude + cloudThickness * 0.5;
-	float scaledCloudAltitude = shadowAltitude * worldScale;
-	vec3  cloudPos = vec3(worldXZ.x, scaledCloudAltitude, worldXZ.y);
-
-	float weatherMap = (fastSimplex3d(vec3(cloudPos.x+time*25.0, 0.0, cloudPos.z) / (5000.0 * worldScale)) * 0.5 + 0.5);
-	float heightMap =  (fastSimplex3d(vec3(cloudPos.x+time*25.0, 0.0, cloudPos.z) / (7500.0 * worldScale)) * 0.5 + 0.5);
+	float weatherMap = (fastSimplex3d(vec3(worldXZ.x+time*25.0, 0.0, worldXZ.y) / (5000.0 * worldScale)) * 0.5 + 0.5);
+	float heightMap =  (fastSimplex3d(vec3(worldXZ.x+time*25.0, 0.0, worldXZ.y) / (7500.0 * worldScale)) * 0.5 + 0.5);
 
 	CloudWeather weather;
 	weather.weatherMap = 0.001*round(sqrt(weatherMap)*1000);
@@ -256,10 +252,17 @@ float evaluateCloudShadowDensityAtWorldPos(vec2 worldXZ, float time) {
 
 	CloudLayer layer = computeCloudLayer(weather, props);
 
-	// Sample at the center of the dynamic layer
-	cloudPos.y = (layer.baseFloor + layer.baseCeiling) * 0.5;
+	// Perform a vertical raymarch through the cloud layer to get integrated column density.
+	// This makes the 2D shadow map a much better representation of the 3D cloud.
+	float totalDensity = 0.0;
+	const int kSteps = 4;
+	float stepSize = layer.thickness / float(kSteps);
+	for (int i = 0; i < kSteps; ++i) {
+		float y = layer.baseFloor + (float(i) + 0.5) * stepSize;
+		totalDensity += calculateCloudShadowDensity(vec3(worldXZ.x, y, worldXZ.y), weather, layer, props, time);
+	}
 
-	return calculateCloudShadowDensity(cloudPos, weather, layer, props, time);
+	return totalDensity / float(kSteps);
 }
 
 #endif // HELPERS_CLOUDS_GLSL
