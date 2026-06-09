@@ -125,8 +125,7 @@ float calculateCloudShadow(int light_index, vec3 frag_pos) {
 		return 1.0;
 
 	// Project to the middle of the cloud layer to ensure we're within the tapering range.
-	// Altitude and thickness are in KM, convert to meters before applying worldScale.
-	float shadowAltitude = (cloudAltitude + cloudThickness * 0.5) * 1000.0;
+	float shadowAltitude = cloudAltitude + cloudThickness * 0.5;
 	float scaledCloudAltitude = shadowAltitude * worldScale;
 	float t = (scaledCloudAltitude - frag_pos.y) / L.y;
 

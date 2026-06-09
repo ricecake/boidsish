@@ -89,16 +89,14 @@ vec3 getWarpedCloudPos(vec3 p, out float fade) {
 
 CloudLayer computeCloudLayer(CloudWeather weather, CloudProperties props) {
 	// Use heightMap for vertical expansion to decouple it from horizontal coverage.
-	// Offsets are in meters.
 	float floorOffset = mix(20.0, -50.0, weather.heightMap);
 	float ceilingOffset = mix(10.0, 500.0, weather.heightMap);
 
 	float altitudeOffset = mix(0.0, 500.0, weather.heightMap);
 
 	CloudLayer layer;
-	// Altitude and thickness are in KM, convert to meters.
-	layer.baseFloor = (altitudeOffset + props.altitude * 1000.0 + floorOffset) * props.worldScale;
-	layer.baseCeiling = (altitudeOffset + props.altitude * 1000.0 + props.thickness * 1000.0 + ceilingOffset) * props.worldScale;
+	layer.baseFloor = (altitudeOffset + props.altitude + floorOffset) * props.worldScale;
+	layer.baseCeiling = (altitudeOffset + props.altitude + props.thickness + ceilingOffset) * props.worldScale;
 	layer.thickness = max(layer.baseCeiling - layer.baseFloor, 0.001);
 	return layer;
 }
@@ -238,8 +236,7 @@ float calculateCloudShadowDensity(vec3 p, CloudWeather weather, CloudLayer layer
 float evaluateCloudShadowDensityAtWorldPos(vec2 worldXZ, float time) {
 	// Replicate logic from calculateCloudShadow in lighting.glsl
 	// This ensures the shadow map matches what the raymarch would have produced
-	// Altitude and thickness are in KM, convert to meters.
-	float shadowAltitude = (cloudAltitude + cloudThickness * 0.5) * 1000.0;
+	float shadowAltitude = cloudAltitude + cloudThickness * 0.5;
 	float scaledCloudAltitude = shadowAltitude * worldScale;
 	vec3  cloudPos = vec3(worldXZ.x, scaledCloudAltitude, worldXZ.y);
 

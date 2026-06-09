@@ -203,7 +203,7 @@ void main() {
 
     // Lightning illumination
     if (lightningPulse > 0.01) {
-        float cloudLvl = cloudAltitude * 1000.0 * worldScale;
+        float cloudLvl = cloudAltitude * worldScale;
         float distToCloud = abs(worldPos.y - cloudLvl);
         float cloudGlow = exp(-distToCloud * 0.005);
         radiance += lightningColor * lightningPulse * (0.2 + 0.8 * cloudGlow) * (s.rayleigh + s.mie);
@@ -247,7 +247,7 @@ void main() {
 
 */
 
-        radiance *= hazeDensity * uIntensity; // Boosted intensity for prominence
+        radiance *= uIntensity; // Apply user-controlled overall intensity
 
         // Convert atmospheric coefficients from per-KM to per-meter
         float obliquity = getObliquity(vox.xy, blueNoise);
