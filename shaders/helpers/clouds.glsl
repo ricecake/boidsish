@@ -46,6 +46,7 @@ struct CloudLayer {
 // Returns the warped position and a fade factor for density
 vec3 getWarpedCloudPos(vec3 p, out float fade) {
 	fade = 1.0;
+	return p;
 	if (cloudWarp <= 0.0)
 		return p;
 
