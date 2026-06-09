@@ -171,10 +171,11 @@ float calculateCloudDensity(
 	// float baseNoise = (fastWorley3d(p_scaled));
 	// float baseNoise = abs((fastSimplex3d(p_scaled_adv)) + baseBubble.x);
 	// float baseNoise = baseBubble.x;
-	float baseNoise = 1.0-baseBubble.x;
+	// float baseNoise = 1.0-baseBubble.x;
 	// float baseNoise = fastFbmCurl3d(p_scaled_adv)-(1.0-baseBubble.x);
 	// float baseNoise = fastPhasor2d(random2(baseBubble.y), degrees(0))*baseBubble.x;
 	// float baseNoise = WaveletNoise(p_warped/2000, 1.52, degrees(cloudFactor*time))*baseBubble.x;
+	float baseNoise = baseBubble.x - (fastSimplex3d(p_scaled_adv));
 
 
 	// Implement "Roll": Billowy edges that vary with height
