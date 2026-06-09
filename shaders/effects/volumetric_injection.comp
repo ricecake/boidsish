@@ -158,7 +158,11 @@ void main() {
 
         vec3 L = normalize(-lights[i].direction);
         float cosTheta = dot(-V, L);
-        float phase = henyeyGreenstein(uAnisotropy, cosTheta);
+
+        // Physically based phase functions for both Rayleigh and Mie components
+        float rayPhase = rayleighPhase(cosTheta);
+        float miePhase = henyeyGreenstein(uAnisotropy, cosTheta);
+        vec3 combinedPhase = s.rayleigh * rayPhase + s.mie * miePhase;
 
         float shadow = calculateShadow(i, worldPos, vec3(0,1,0), L);
         shadow = min(shadow, calculateCloudShadow(i, worldPos));
@@ -172,8 +176,8 @@ void main() {
 
         vec3 lightRadiance = lights[i].color * max(0.0, lights[i].intensity);
 
-        // Single scattering + multi-scattering contribution
-        radiance += lightRadiance * (atmosphereTransmittance * shadow * phase + multiScat * (s.rayleigh + s.mie));
+        // Single scattering (shadowed) + multi-scattering contribution (unshadowed)
+        radiance += lightRadiance * (atmosphereTransmittance * shadow * combinedPhase + multiScat * (s.rayleigh + s.mie));
     }
 
     // Local lights
@@ -183,16 +187,14 @@ void main() {
         if (atten <= 0.0) continue;
 
         float cosTheta = dot(-V, L);
-        float phase = henyeyGreenstein(uAnisotropy, cosTheta);
+        float miePhase = henyeyGreenstein(uAnisotropy, cosTheta);
         float shadow = calculateShadow(i, worldPos, vec3(0,1,0), L);
 
-        radiance += lights[i].color * lights[i].intensity * atten * shadow * phase;
+        radiance += lights[i].color * lights[i].intensity * atten * shadow * miePhase * s.mie;
     }
 
-    // Ambient (SH) - We use a simple isotropic phase for ambient light
-    // Combined with atmospheric ambient scattering.
-    // We use spatial SH to capture local bounce from the terrain.
-    // Increased weight for better reactivity as requested by user.
+    // Ambient (SH) - We use spatial SH to capture local bounce from the terrain
+    // and combine it with global atmospheric ambient scattering.
     vec3 baseAmbientRadiance = hazeColor * 0.05; // Base glow
     vec3 effectiveAmbient = max(ambient_light, baseAmbientRadiance);
 
@@ -204,7 +206,7 @@ void main() {
         float cloudLvl = cloudAltitude * worldScale;
         float distToCloud = abs(worldPos.y - cloudLvl);
         float cloudGlow = exp(-distToCloud * 0.005);
-        radiance += lightningColor * lightningPulse * (0.2 + 0.8 * cloudGlow);
+        radiance += lightningColor * lightningPulse * (0.2 + 0.8 * cloudGlow) * (s.rayleigh + s.mie);
     }
 
 /*
@@ -249,10 +251,10 @@ void main() {
 
         // Convert atmospheric coefficients from per-KM to per-meter
         float obliquity = getObliquity(vox.xy, blueNoise);
-        vec3 mieCoeff = s.mie * 0.001 * obliquity;
+        vec3 finalScattering = radiance * 0.001 * obliquity;
         float extinctionCoeff = (s.rayleigh.r + s.rayleigh.g + s.rayleigh.b + s.mie.r + s.mie.g + s.mie.b) / 3.0 * 0.001 * obliquity;
 
-        current_local = vec4(radiance * mieCoeff, extinctionCoeff);
+        current_local = vec4(finalScattering, extinctionCoeff);
     }
 
     // 2. Populate shared memory for neighborhood clamping
