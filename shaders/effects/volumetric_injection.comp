@@ -203,7 +203,7 @@ void main() {
 
     // Lightning illumination
     if (lightningPulse > 0.01) {
-        float cloudLvl = cloudAltitude * worldScale;
+        float cloudLvl = cloudAltitude * 1000.0 * worldScale;
         float distToCloud = abs(worldPos.y - cloudLvl);
         float cloudGlow = exp(-distToCloud * 0.005);
         radiance += lightningColor * lightningPulse * (0.2 + 0.8 * cloudGlow) * (s.rayleigh + s.mie);
