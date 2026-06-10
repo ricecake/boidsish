@@ -7,6 +7,7 @@ layout(binding = 0) uniform sampler2D sceneTexture;
 layout(binding = 1) uniform sampler2D depthTexture;
 layout(binding = 2) uniform sampler2D cloudTexture; // Low-res clouds (temporally accumulated)
 layout(binding = 3) uniform sampler2D normalTexture;
+layout(binding = 4) uniform sampler2D cloudDepthTexture;
 
 uniform mat4 invView;
 uniform mat4 invProjection;
@@ -66,45 +67,52 @@ void main() {
 	}
 
 	// 1. Bilateral upsample of low-res clouds
-	// Weight nearby low-res texels by depth similarity to avoid bleeding across edges
-	float centerDepth = dist;
+	// Weight nearby low-res texels by cloud depth similarity to avoid bleeding across cloud edges
+	float sceneDist = dist;
 	vec4  cloudData = vec4(0.0);
 	float totalWeight = 0.0;
 
-	// Sample a 2x2 neighborhood of the nearest low-res texels
+	// Sample a 4x4 neighborhood for better upsampling quality near edges
 	vec2 lowResUV = TexCoords / cloudTexelSize - 0.5;
 	vec2 baseTexel = floor(lowResUV);
 	vec2 frac_ = lowResUV - baseTexel;
 
-	for (int dy = 0; dy <= 1; dy++) {
-		for (int dx = 0; dx <= 1; dx++) {
+	for (int dy = -1; dy <= 2; dy++) {
+		for (int dx = -1; dx <= 2; dx++) {
 			vec2 sampleUV = (baseTexel + vec2(dx, dy) + 0.5) * cloudTexelSize;
 			sampleUV = clamp(sampleUV, cloudTexelSize * 0.5, 1.0 - cloudTexelSize * 0.5);
 
-			// Reconstruct depth at this low-res texel center
-			float sampleDepthRaw = texture(depthTexture, sampleUV).r;
-			float sampleDist;
-			if (sampleDepthRaw >= 1.0) {
-				sampleDist = 50000.0 * worldScale;
-			} else {
-				float sz = sampleDepthRaw * 2.0 - 1.0;
-				vec4  sClip = vec4(sampleUV * 2.0 - 1.0, sz, 1.0);
-				vec4  sView = invProjection * sClip;
-				sView /= sView.w;
-				vec3 sWorld = (invView * sView).xyz;
-				sampleDist = length(sWorld - viewPos);
-			}
+			float sampleCloudDist = texture(cloudDepthTexture, sampleUV).r;
+
+			// Reconstruct high-res scene depth at this low-res texel is NOT what we want.
+			// We want to compare the high-res scene depth with the low-res cloud depth
+			// AND the low-res cloud depth at neighbor with current low-res cloud depth.
 
 			// Bilinear weight
-			float bx = (dx == 0) ? (1.0 - frac_.x) : frac_.x;
-			float by = (dy == 0) ? (1.0 - frac_.y) : frac_.y;
+			float bx = (dx == -1) ? max(0.0, 1.0 - (frac_.x + 1.0)) :
+			           (dx == 0)  ? (1.0 - frac_.x) :
+			           (dx == 1)  ? frac_.x :
+			           max(0.0, frac_.x - 1.0);
+			float by = (dy == -1) ? max(0.0, 1.0 - (frac_.y + 1.0)) :
+			           (dy == 0)  ? (1.0 - frac_.y) :
+			           (dy == 1)  ? frac_.y :
+			           max(0.0, frac_.y - 1.0);
 			float spatialW = bx * by;
 
-			// Depth similarity weight — exponential falloff
-			float depthDiff = abs(centerDepth - sampleDist) / max(centerDepth, 1.0);
-			float depthW = exp(-depthDiff * 150.0);
+			// Cloud depth similarity weight
+			// This helps maintain sharp cloud silhouettes
+			float centerCloudDist = texture(cloudDepthTexture, TexCoords).r;
+			float cloudDepthDiff = abs(centerCloudDist - sampleCloudDist) / max(centerCloudDist, 1.0);
+			float cloudDepthW = exp(-cloudDepthDiff * 20.0);
 
-			float w = spatialW * depthW;
+			// Scene depth awareness: avoid bleeding clouds over foreground objects
+			// If the scene is closer than the cloud, the cloud contribution should be minimized
+			float sceneWeight = 1.0;
+			if (sceneDist < sampleCloudDist - 10.0 * worldScale) {
+				sceneWeight = 0.01;
+			}
+
+			float w = spatialW * cloudDepthW * sceneWeight;
 			cloudData += texture(cloudTexture, sampleUV) * w;
 			totalWeight += w;
 		}
