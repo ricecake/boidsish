@@ -799,8 +799,8 @@ namespace Boidsish {
 				else
 					h_up = std::get<0>(CalculateTerrainPropertiesAtPoint(worldX, worldZ + world_scale_));
 
-				float dx = (h_right - h_left) * 0.5f;
-				float dz = (h_up - h_down) * 0.5f;
+				float dx = (h_right - h_left) / (2.0f * world_scale_);
+				float dz = (h_up - h_down) / (2.0f * world_scale_);
 
 				heightmap[i][j][1] = dx;
 				heightmap[i][j][2] = dz;

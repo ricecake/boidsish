@@ -21,7 +21,7 @@ namespace Boidsish {
 	class ServiceLocator;
 	struct Frustum;
 
-	static constexpr size_t kMaxBakesPerFrame = 6;
+	static constexpr size_t kMaxBakesPerFrame = 12;
 
 	/**
 	 * @brief High-performance instanced terrain rendering with heightmap lookup.
@@ -361,6 +361,9 @@ namespace Boidsish {
 			const std::vector<float>&  packed_height_normal,
 			const std::vector<uint8_t>& packed_biomes
 		);
+
+		// Initialize baked textures and patch metrics for a slice
+		void InitializeSliceData(int slice, float min_y, float max_y);
 
 		// Configuration
 		int chunk_size_;           // Grid size per chunk (e.g., 32)
