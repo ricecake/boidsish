@@ -186,11 +186,11 @@ namespace Boidsish {
 			glm::mat4 invView = glm::inverse(viewMatrix);
 			glm::mat4 invProj = glm::inverse(projectionMatrix);
 
-			if (temporal_shader_ && temporal_shader_->isValid() && has_valid_history_) {
+			if (temporal_shader_ && temporal_shader_->isValid()) {
 				int next_temporal = 1 - temporal_index_;
 
 				temporal_shader_->use();
-				temporal_shader_->setFloat("uBlendAlpha", 0.95f);
+				temporal_shader_->setFloat("uBlendAlpha", has_valid_history_ ? 0.95f : 0.0f);
 				temporal_shader_->setInt("uFrameIndex", frame_index_);
 				temporal_shader_->setMat4("uInvView", invView);
 				temporal_shader_->setMat4("uInvProjection", invProj);
