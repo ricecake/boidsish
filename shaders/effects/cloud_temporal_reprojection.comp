@@ -65,7 +65,23 @@ void main() {
 	history = clamp(history, minColor, maxColor);
 
 	// Blend: higher alpha = more history = smoother but more lag
-	vec4 result = mix(current, history, 0.95); // uBlendAlpha);
+	// vec4 result = mix(current, history, 0.95); // uBlendAlpha);
+
+	// Calculate perceived luminance
+	vec3 lumWeights = vec3(0.2126, 0.7152, 0.0722);
+	float lumCurrent = dot(current.rgb, lumWeights);
+	float lumHistory = dot(history.rgb, lumWeights);
+	float lumDiff = abs(lumCurrent - lumHistory);
+
+	// Drop the blend weight if a stark edge passes through this pixel
+	float baseBlend = 0.95; // uBlendAlpha
+	float dynamicBlend = baseBlend;//mix(baseBlend, 0.85, smoothstep(0.0, 0.75, lumDiff));
+
+	// // Optional: Penalize history further if the neighborhood is exceptionally noisy
+	// float varLen = length(stddev.rgb);
+	// dynamicBlend = mix(dynamicBlend, 0.70, smoothstep(0.1, 0.5, varLen));
+
+	vec4 result = mix(current, history, dynamicBlend);
 
 	imageStore(outResult, pixel, result);
 }

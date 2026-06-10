@@ -107,7 +107,7 @@ void main() {
 			}
 		}
 
-		float jitter = fastSpatiotemporalBlueNoise(TexCoords, 0, int(1000*time));
+		float jitter = fastSpatiotemporalBlueNoise(TexCoords, 0, int(240*time));
 		float stepSize = (t_end - t_start) / float(samples);
 
 		for (int i = 0; i < samples; i++) {
@@ -124,12 +124,14 @@ void main() {
 			vec3  p_warped = getWarpedCloudPos(p_curved, fade);
 			float h_norm = clamp((p_curved.y - props.altitude * props.worldScale) / max(props.thickness * props.worldScale, 1.0), 0.0, 1.0);
 
-			float weatherMap = (fastSimplex3d(vec3(p_warped.x+time*25.0, 0.0, p_warped.z) / (5000.0 * worldScale)) * 0.5 + 0.5);
-			float heightMap =  (fastSimplex3d(vec3(p_warped.x+time*25.0, 0.0, p_warped.z) / (7500.0 * worldScale)) * 0.5 + 0.5);
+			float weatherMap = (fastSimplex3d(vec3(p_warped.x, 0.0, p_warped.z) / (5000.0 * worldScale)) * 0.5 + 0.5);
+			float heightMap =  (fastSimplex3d(vec3(p_warped.x, 0.0, p_warped.z) / (7500.0 * worldScale)) * 0.5 + 0.5);
 
 			CloudWeather weather;
-			weather.weatherMap = 0.001*round(sqrt(weatherMap)*1000);
-			weather.heightMap = 0.001*round(sqrt(heightMap)*1000);
+			// weather.weatherMap = 0.001*round(sqrt(weatherMap)*1000);
+			// weather.heightMap = 0.001*round(sqrt(heightMap)*1000);
+			weather.weatherMap = (weatherMap);
+			weather.heightMap = (heightMap);
 
 			CloudLayer layer = computeCloudLayer(weather, props);
 

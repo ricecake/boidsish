@@ -159,16 +159,17 @@ float calculateCloudDensity(
 	float coverageThreshold = 1.0 - props.coverage;
 
 	// Apply advection to the sample position
-	vec3 advect = getCloudAdvectionOffset(h, props.worldScale, time);
+	vec3 advect = vec3(0);//getCloudAdvectionOffset(h, props.worldScale, time);
 	vec3 p_advected = p + advect;
 
 	// Base noise for cloud shapes
 	vec3 p_warped = p;
-	vec3 p_scaled = (p_advected) / (50000.0 * props.worldScale);
+/*
+	vec3 p_scaled = (p_advected) / (1000.0 * props.worldScale);
 
 	vec2 baseBubble = fastWorley3dID(p_scaled);
-	float cloudFactor = random(baseBubble.y);
-	vec3 p_scaled_adv = (p_advected +time*cloudFactor) / (50000.0 * props.worldScale);
+	float cloudFactor = baseBubble.y;
+	// vec3 p_scaled_adv = (p_advected +time*cloudFactor) / (50000.0 * props.worldScale);
 	// float baseNoise = (fastWorley3d(p_scaled));
 	// float baseNoise = abs((fastSimplex3d(p_scaled_adv)) + baseBubble.x);
 	// float baseNoise = baseBubble.x;
@@ -176,8 +177,67 @@ float calculateCloudDensity(
 	// float baseNoise = fastFbmCurl3d(p_scaled_adv)-(1.0-baseBubble.x);
 	// float baseNoise = fastPhasor2d(random2(baseBubble.y), degrees(0))*baseBubble.x;
 	// float baseNoise = WaveletNoise(p_warped/2000, 1.52, degrees(cloudFactor*time))*baseBubble.x;
-	float baseNoise = baseBubble.x - (fastSimplex3d(p_scaled_adv));
+	float baseNoise = baseBubble.x;// - (fastSimplex3d(p_scaled_adv));
+	// baseNoise = cloudFactor*smoothstep(0, 0.85, baseNoise);
+	// return smoothstep(coverageThreshold, max(1.0, coverageThreshold), baseNoise);
+	// return 1.0 * step(coverageThreshold, weather.weatherMap * cloudFactor);
+	// return baseNoise * step(coverageThreshold, remap(weather.weatherMap, props.densityBase*cloudFactor, 1.0, 0.0, 1.0));
+	return baseNoise*weather.weatherMap * step(coverageThreshold, cloudFactor);
+*/
+	vec3 p_scaled = (p_advected) / (5000.0 * props.worldScale);
+	vec2 baseBubble = fastWorley3dID(p_scaled);
 
+	float cloudFactor = baseBubble.y;
+
+	float baseNoise = baseBubble.x * step(coverageThreshold, cloudFactor);
+	for (uint i = 4; i <=6; i++) {
+		// vec3 scaled_p = (p_advected+h*h*vec3(100,0,100)) / (pow(6, i) * props.worldScale);
+		vec3 scaled_p = (p_advected) / (pow(6, i) * props.worldScale);
+		vec2 bubble = fastWorley3dID(scaled_p);
+		baseNoise += bubble.x * step(coverageThreshold, bubble.y);
+		// baseNoise += (1-bubble.x) * step(coverageThreshold, bubble.y*bubble.x);
+	}
+
+	// Implement "Roll": Billowy edges that vary with height
+	// We remap the base noise threshold based on the vertical position
+	float rollFactor = remap(h, 0.0, 1.0, 0.4, 0.1);
+	float rolledNoise = remap(baseNoise, rollFactor, 1.0, 0.0, 1.0);
+
+	// Tall cloud profile: anvil-like top for tall clouds
+	// Mix between a bottom-heavy profile and an anvil profile based on heightMap
+	float bottomHeavy = tapering;
+	float anvil = pow(tapering, mix(0.7, 0.3, weather.heightMap));
+	float densityProfile = mix(bottomHeavy, anvil, ((cloudFactor + 0.5) * h) * weather.heightMap);
+
+	// Add ridges and textures for definition
+	vec3 slide = p_warped;
+	slide.xz += cloudFactor*time*25.0;
+	float ridges = fastRidge3d(slide / (1600.0 * props.worldScale));
+	float detail = fastFbm3d(slide / (1450.0 * props.worldScale));
+
+	// Combine noises
+	float finalNoise = rolledNoise * (0.6 + 0.4 * ridges);
+	finalNoise = mix(finalNoise, remap(finalNoise, detail, 1.0, 0.0, 1.0), 0.3);
+
+	// Apply coverage and local density
+	float baseDensity =  finalNoise * weather.weatherMap;
+
+	// Add "Edge Wisps": high-frequency FBM at the boundaries
+	if (baseDensity > 0.0 && baseDensity < 0.3) {
+		float wisps = fastFbm3d((p_warped+time*(30.0)) / (1000.0 * props.worldScale));
+		float wispMask = 1.0 - smoothstep(0.0, 0.5, baseDensity);
+		baseDensity += wisps * wispMask * 0.35 * weather.weatherMap;
+	}
+
+	// Giant tall clouds vs wispy things
+	// High weatherMap = tall, dense, sharp
+	// Low weatherMap = wispy, thin, soft
+	float wispyFactor = smoothstep(0.2, 0.35, weather.weatherMap);
+	baseDensity *= mix(0.6, 1.0, wispyFactor);
+	float density = smoothstep(coverageThreshold, max(1.0, coverageThreshold), baseDensity);
+
+	return smoothstep(0, 0.75, density * densityProfile * props.densityBase * 5.0);
+/*
 
 	// Implement "Roll": Billowy edges that vary with height
 	// We remap the base noise threshold based on the vertical position
@@ -220,10 +280,10 @@ float calculateCloudDensity(
 	// Low weatherMap = wispy, thin, soft
 	float wispyFactor = smoothstep(0.2, 0.35, weather.weatherMap);
 	baseDensity *= mix(0.6, 1.0, wispyFactor);
-
 	float density = smoothstep(coverageThreshold, max(1.0, coverageThreshold), baseDensity);
 
 	return smoothstep(0, 0.75, density * densityProfile * props.densityBase * 5.0);
+*/
 }
 
 float calculateCloudShadowDensity(vec3 p, CloudWeather weather, CloudLayer layer, CloudProperties props, float time) {
