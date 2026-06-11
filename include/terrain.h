@@ -4,11 +4,10 @@
 
 #include "field.h"
 #include "shape.h"
+#include "terrain_render_manager.h"
 #include <glm/glm.hpp>
 
 namespace Boidsish {
-
-	class TerrainRenderManager;
 
 	class Terrain: public Shape {
 	public:
@@ -17,9 +16,10 @@ namespace Boidsish {
 			const std::vector<glm::vec3>&    vertices,
 			const std::vector<glm::vec3>&    normals,
 			const std::vector<glm::vec2>&    biomes,
-			const PatchProxy&                proxy,
-			std::vector<float>               packed_height_normal = {},
-			std::vector<uint8_t>             packed_biomes = {}
+			const PatchProxy&                               proxy,
+			std::vector<float>                              packed_height_normal = {},
+			std::vector<uint8_t>                            packed_biomes = {},
+			std::vector<TerrainRenderManager::PatchMetrics> patch_metrics = {}
 		);
 		~Terrain();
 
@@ -42,8 +42,9 @@ namespace Boidsish {
 		std::vector<glm::vec3> vertices;
 		std::vector<glm::vec3> normals;
 		std::vector<glm::vec2> biomes;
-		std::vector<float>     packed_height_normal;
-		std::vector<uint8_t>   packed_biomes;
+		std::vector<float>                              packed_height_normal;
+		std::vector<uint8_t>                            packed_biomes;
+		std::vector<TerrainRenderManager::PatchMetrics> patch_metrics;
 
 		/**
 		 * @brief Get interleaved vertex data for batched rendering.

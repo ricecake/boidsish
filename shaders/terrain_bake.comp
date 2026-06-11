@@ -12,6 +12,8 @@ layout(std140, binding = [[TERRAIN_DATA_BINDING]]) uniform TerrainData {
 
 // Input: Raw heightmap (R=height, GBA=normal)
 layout(binding = [[RAW_HEIGHTMAP_BINDING]]) uniform sampler2DArray u_rawHeightmapArray;
+// Input: Chunk grid for neighbor lookups
+layout(binding = [[TERRAIN_CHUNK_GRID_BINDING]]) uniform isampler2D u_chunkGrid;
 // Input: Biome data (RG8: R=low_idx, G=t)
 layout(rgba8, binding = [[BIOME_MAP_IMAGE_BINDING]]) uniform image2DArray u_biomeMap;
 
@@ -47,7 +49,7 @@ shared float s_heights[SHARED_SIZE][SHARED_SIZE];
 shared vec3  s_displacements[SHARED_SIZE][SHARED_SIZE];
 shared vec4  s_params[SHARED_SIZE][SHARED_SIZE];
 
-float calculateHeightAndParams(vec2 uv, int slice, vec2 worldOffset, float chunkSize, float rawChunkSize, float worldScale, out vec4 params, out vec4 displacement) {
+float calculateHeightAndParams(vec2 uv, int slice, vec3 worldOffset, float chunkSize, float rawChunkSize, float worldScale, out vec4 params, out vec4 displacement) {
 	vec2  remappedUV = (uv * rawChunkSize + 0.5) / (rawChunkSize + 1.0);
 	vec4  data = textureLod(u_rawHeightmapArray, vec3(remappedUV, float(slice)), 0.0);
 	float height = data.r;
@@ -189,12 +191,37 @@ void main() {
 	for (int i = localID.x; i < SHARED_SIZE; i += WORKGROUP_SIZE) {
 		for (int j = localID.y; j < SHARED_SIZE; j += WORKGROUP_SIZE) {
 			ivec2 pixelCoord = baseCoord + ivec2(i, j) - 2;
-			ivec2 clampedCoord = clamp(pixelCoord, 0, res - 1);
-			vec2 uv = vec2(clampedCoord) / rawChunkSize;
+
+			int targetSlice = slice;
+			ivec2 targetChunkCoord = task.chunk_coord;
+			ivec2 targetPixelCoord = pixelCoord;
+
+			// Boundary lookup: if pixel is outside current chunk, look up neighbor in chunk grid
+			if (pixelCoord.x < 0 || pixelCoord.x >= res || pixelCoord.y < 0 || pixelCoord.y >= res) {
+				ivec2 chunkOffset = ivec2(0);
+				if (pixelCoord.x < 0) chunkOffset.x = -1;
+				else if (pixelCoord.x >= res) chunkOffset.x = 1;
+				if (pixelCoord.y < 0) chunkOffset.y = -1;
+				else if (pixelCoord.y >= res) chunkOffset.y = 1;
+
+				targetChunkCoord += chunkOffset;
+				targetPixelCoord = (pixelCoord + ivec2(res-1)) % (res-1); // Note: raw heightmap is (res x res)
+
+				ivec2 localGridCoord = targetChunkCoord - u_originSize.xy;
+				if (localGridCoord.x >= 0 && localGridCoord.x < u_originSize.z && localGridCoord.y >= 0 && localGridCoord.y < u_originSize.z) {
+					int neighborSlice = texelFetch(u_chunkGrid, localGridCoord, 0).r;
+					if (neighborSlice >= 0) {
+						targetSlice = neighborSlice;
+					}
+				}
+			}
+
+			vec2 uv = vec2(targetPixelCoord) / rawChunkSize;
+			vec3 targetWorldOffset = vec3( vec2(targetChunkCoord) * chunkSize, 0.0);
 
 			vec4 params;
 			vec4 disp;
-			s_heights[i][j] = calculateHeightAndParams(uv, slice, worldOffset, chunkSize, rawChunkSize, worldScale, params, disp);
+			s_heights[i][j] = calculateHeightAndParams(uv, targetSlice, targetWorldOffset, chunkSize, rawChunkSize, worldScale, params, disp);
 			s_displacements[i][j] = disp.xyz;
 			s_params[i][j] = params;
 		}
@@ -262,7 +289,7 @@ void main() {
 	vec2 uvCenter = vec2(pixelCoord) / rawChunkSize;
 	vec4 paramsCenter;
 	vec4 dispCenter;
-	calculateHeightAndParams(uvCenter, slice, worldOffset, chunkSize, rawChunkSize, worldScale, paramsCenter, dispCenter);
+	calculateHeightAndParams(uvCenter, slice, vec3(worldOffset, 0.0), chunkSize, rawChunkSize, worldScale, paramsCenter, dispCenter);
 
 	imageStore(u_heightmapArray, ivec3(pixelCoord, slice), vec4(bakedHeight, bakedNormal));
 	imageStore(u_bakedParamsArray, ivec3(pixelCoord, slice), bakedParams);

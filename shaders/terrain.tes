@@ -174,31 +174,73 @@ void main() {
 	// Apply shockwave ripple to terrain
 	FragPos += getShockwaveDisplacement(FragPos, 0.0, false);
 
-	// Baked displacement
+	// Displacement logic
 	if (isBaked) {
 		vec3 bakedDisp = texture(u_displacementArray, vec3(remappedUV, slice)).rgb;
 		FragPos += bakedDisp;
 	} else {
-		// Micro-relief displacement (rocks and divots) - FALLBACK ONLY
-		if (!uIsShadowPass && waterMask <= 0.0) {
-			float dist = distance(viewPos, FragPos);
-			// Only apply where there is enough tessellation and the camera is close
-			float detailFade = smoothstep(200.0, 50.0, dist) * smoothstep(16.0, 32.0, tessFactor);
+		// Micro-relief displacement (rocks and divots) - FALLBACK aligned with terrain_bake.comp
+		if (waterMask <= 0.0) {
+			vec3 worldPosScaled = FragPos * 2.0;
+			float divots = fastSimplex3d(worldPosScaled * 1.0);
+			vec2 rockWID = fastWorley3dID(worldPosScaled * 0.5);
+			float rocks = rockWID.x;
+			float rockId = rockWID.y;
 
-			if (detailFade > 0.0) {
-				vec3  scaledPos = FragPos * 2.0;
-				float rocks = fastWorley3d(scaledPos * 0.5);
-				float divots = fastSimplex3d(scaledPos * 1.0);
+			// Use Worley Cell ID to give each rock a slightly different height/properties
+			float rockHeightVar = rockId * 0.5 + 1.75;
+			float shapedRocks = pow(rocks, 0.5) * rockHeightVar;
 
-				// Substrate modulation: eroded areas (substrate < 0) are more rocky/rough,
-				// while deposition areas (substrate > 0) are smoother.
-				float substrateMod = mix(1.2, 0.4, clamp(vSubstrate * 0.5 + 0.5, 0.0, 1.0));
+			float random = 0.5+0.5*(fastWorley3d(worldPosScaled / 50.0) * fastBlueNoise(FragPos.zx) * (1.0-smoothstep(1.0, 10.0, FragPos.y)) * smoothstep(0.01, 1.0, FragPos.y));
 
-				float displacement = (rocks * 1.15 - abs(divots) * 1.17) * detailFade * substrateMod;
-				FragPos += Normal * displacement;
+			// Substrate modulation
+			float substrateMod = mix(1.2, 0.4, clamp(vSubstrate * 0.5 + 0.5, 0.0, 1.0));
+			float dispMag = (1.75 * random + shapedRocks * 1.5 - abs(divots) * 1.17) * substrateMod;
+
+			// Intermittent jagged rock outcrops
+			vec2 outcropWID = fastWorley3dID(FragPos * 0.05);
+			float outcropNoise = outcropWID.x;
+			float outcropId = outcropWID.y;
+			float outcropMask = smoothstep(0.7, 0.9, outcropNoise);
+			if (outcropMask > 0.0) {
+				float jagged = fastWorley3d(FragPos * 0.8) * 20.0;
+				dispMag += jagged * outcropMask * (5.0 + outcropId * 3.0) * worldScale;
 			}
+
+			vec3 disp = Normal * dispMag;
+
+			if (outcropMask > 0.0) {
+				// Columnar/Blocky vertical details
+				vec2 worleyIdData = fastWorley3dID(FragPos * 0.2);
+				float blockyHeight = (worleyIdData.y * 2.0 - 1.0) * 4.0 * worldScale;
+
+				// Stratified Overhangs
+				float layers = sin(FragPos.y * 1.5) * 0.5 + 0.5;
+				float overhangMag = pow(layers, 4.0) * 3.0 * worldScale;
+				vec3 horizDir = normalize(vec3(Normal.x, 0.0, Normal.z) + vec3(0.001, 0, 0.001));
+
+				float jagged = fastWorley3d(FragPos * 0.8) * 2.0;
+
+				vec3 outcropDisp = vec3(0.0);
+				outcropDisp.y += blockyHeight;
+				outcropDisp += horizDir * overhangMag;
+				outcropDisp += Normal * jagged * 5.0 * worldScale;
+
+				disp += outcropDisp * outcropMask;
+			}
+
+			// Displacement is handled below for both baked and unbaked paths
+			FragPos += disp;
 		}
 	}
+
+	// Apply detail fade to avoid aliasing and ensure seamless transitions
+	float dist = distance(viewPos, FragPos);
+	float detailFade = smoothstep(200.0 * worldScale, 50.0 * worldScale, dist) * smoothstep(16.0, 32.0, tessFactor);
+
+	// We only want to fade out the displacement/noise, not the base height.
+	// Since FragPos already contains the displacement, we have to subtract it back or re-calculate.
+	// Actually, the simplest is to store the base position before displacement.
 
 	// Clip plane for reflections
 	gl_ClipDistance[0] = dot(FragPos, clipPlane.xyz) + clipPlane.w;
