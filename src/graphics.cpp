@@ -2120,6 +2120,24 @@ namespace Boidsish {
 			lighting_pb->AdvanceFrame();
 			temporal_pb->AdvanceFrame();
 			if (visual_effects_pb) visual_effects_pb->AdvanceFrame();
+			if (weather_manager && weather_manager->GetWindDataPb())
+				weather_manager->GetWindDataPb()->AdvanceFrame();
+			if (fire_effect_manager) {
+				if (fire_effect_manager->GetTerrainChunkPb())
+					fire_effect_manager->GetTerrainChunkPb()->AdvanceFrame();
+				if (fire_effect_manager->GetSliceDataPb())
+					fire_effect_manager->GetSliceDataPb()->AdvanceFrame();
+				if (fire_effect_manager->GetEmitterPb())
+					fire_effect_manager->GetEmitterPb()->AdvanceFrame();
+				if (fire_effect_manager->GetIndirectionPb())
+					fire_effect_manager->GetIndirectionPb()->AdvanceFrame();
+				if (fire_effect_manager->GetStatsPb())
+					fire_effect_manager->GetStatsPb()->AdvanceFrame();
+			}
+			if (grass_manager && grass_manager->GetGrassPropsPb())
+				grass_manager->GetGrassPropsPb()->AdvanceFrame();
+			if (shockwave_manager && shockwave_manager->GetUboPb())
+				shockwave_manager->GetUboPb()->AdvanceFrame();
 
 			int current_idx = uniforms_ssbo->GetCurrentBufferIndex();
 			if (mdi_fences[current_idx]) {
@@ -2513,6 +2531,34 @@ namespace Boidsish {
 		}
 
 		void UpdateSystems(const FrameData& frame) {
+			// 0. Dispatch independent CPU-side system updates to background threads
+			std::vector<std::future<void>> system_futures;
+
+			system_futures.push_back(thread_pool.submit([this]() {
+				PROJECT_PROFILE_SCOPE("Async::CloneManager::Update");
+				clone_manager->Update(simulation_time, camera.pos());
+			}));
+
+			system_futures.push_back(thread_pool.submit([this]() {
+				PROJECT_PROFILE_SCOPE("Async::MeshExplosion::Update");
+				mesh_explosion_manager->Update(simulation_delta_time, simulation_time);
+			}));
+
+			system_futures.push_back(thread_pool.submit([this]() {
+				PROJECT_PROFILE_SCOPE("Async::SoundEffect::Update");
+				sound_effect_manager->Update(simulation_delta_time);
+			}));
+
+			system_futures.push_back(thread_pool.submit([this]() {
+				PROJECT_PROFILE_SCOPE("Async::Shockwave::Update");
+				shockwave_manager->Update(simulation_delta_time);
+			}));
+
+			system_futures.push_back(thread_pool.submit([this]() {
+				PROJECT_PROFILE_SCOPE("Async::Lightning::Update");
+				lightning_manager->Update(simulation_delta_time, simulation_time);
+			}));
+
 			// Calculate frustum for terrain generation and decor placement
 			if (terrain_generator) {
 				float world_scale_val = terrain_generator->GetWorldScale();
@@ -2540,7 +2586,6 @@ namespace Boidsish {
 				terrain_generator->Update(generator_frustum, camera);
 			}
 
-			clone_manager->Update(simulation_time, camera.pos());
 			fire_effect_manager->Update(
 				simulation_delta_time,
 				simulation_time,
@@ -2562,13 +2607,18 @@ namespace Boidsish {
 				static_cast<GLsizeiptr>(render_state_.visual_effects.size),
 				terrain_render_manager ? terrain_render_manager->GetTerrainDataUbo() : 0
 			);
-			mesh_explosion_manager->Update(simulation_delta_time, simulation_time);
-			sound_effect_manager->Update(simulation_delta_time);
-			shockwave_manager->Update(simulation_delta_time);
+
 			if (akira_effect_manager && terrain_generator) {
 				akira_effect_manager->Update(simulation_delta_time, *terrain_generator);
 			}
-			lightning_manager->Update(simulation_delta_time, simulation_time);
+
+			// Ensure independent system updates are complete before proceeding to those with dependencies
+			{
+				PROJECT_PROFILE_SCOPE("Sync::SystemUpdates");
+				for (auto& f : system_futures) {
+					f.get();
+				}
+			}
 
 			sdf_volume_manager->UpdateSSBO();
 			sdf_volume_manager->BindSSBO(Constants::SsboBinding::SdfVolumes());

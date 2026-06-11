@@ -123,6 +123,12 @@ namespace Boidsish {
 		// Bind particle buffers to the current shader
 		void BindBuffers(ShaderBase& shader) const;
 
+		PersistentBuffer<Emitter>*       GetEmitterPb() { return emitter_buffer_.get(); }
+		PersistentBuffer<int>*           GetIndirectionPb() { return indirection_buffer_.get(); }
+		PersistentBuffer<glm::vec4>*     GetTerrainChunkPb() { return terrain_chunk_pb_.get(); }
+		PersistentBuffer<glm::vec4>*     GetSliceDataPb() { return slice_data_pb_.get(); }
+		PersistentBuffer<ParticleStats>* GetStatsPb() { return stats_buffer_.get(); }
+
 	private:
 		void _EnsureShaderAndBuffers();
 		void _UpdateParticleAllocation();
@@ -142,8 +148,8 @@ namespace Boidsish {
 		GLuint grid_next_buffer_{0};
 		std::unique_ptr<PersistentBuffer<Emitter>> emitter_buffer_;
 		std::unique_ptr<PersistentBuffer<int>> indirection_buffer_;
-		GLuint terrain_chunk_buffer_{0};
-		GLuint slice_data_buffer_{0};
+		std::unique_ptr<PersistentBuffer<glm::vec4>> terrain_chunk_pb_;
+		std::unique_ptr<PersistentBuffer<glm::vec4>> slice_data_pb_;
 		GLuint visible_indices_buffer_{0};
 		GLuint live_indices_buffer_{0};
 		GLuint draw_command_buffer_{0};

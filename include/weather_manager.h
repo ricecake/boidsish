@@ -12,6 +12,7 @@
 #include "weather_constants.h"
 #include "weather_lbm_simulator.h"
 #include "shader.h"
+#include "persistent_buffer.h"
 
 namespace Boidsish {
 
@@ -317,8 +318,10 @@ namespace Boidsish {
 
 		void SetTerrainGenerator(ITerrainGenerator* terrain) { terrain_ = terrain; }
 
+		PersistentBuffer<WindDataUbo>* GetWindDataPb() { return wind_data_pb_.get(); }
+
 	private:
-		unsigned int wind_data_ubo_ = 0;
+		std::unique_ptr<PersistentBuffer<WindDataUbo>> wind_data_pb_;
 		unsigned int wind_texture_ = 0;
 		unsigned int lbm_wind_texture_ = 0;
 		unsigned int lbm_scalar_texture_ = 0;

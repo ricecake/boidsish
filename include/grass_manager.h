@@ -9,6 +9,7 @@
 #include <array>
 #include "constants.h"
 #include "biome_properties.h"
+#include "persistent_buffer.h"
 #include "render_shader.h"
 
 namespace Boidsish {
@@ -47,6 +48,11 @@ namespace Boidsish {
         float _pad0 = 0.0f;
         float _pad1 = 0.0f;
         float _pad2 = 0.0f;
+    };
+
+    struct GrassUboData {
+        GrassProperties       biomeProps[8];
+        GlobalGrassProperties globalProps;
     };
 
     class GrassManager {
@@ -95,7 +101,10 @@ namespace Boidsish {
             props_dirty_ = true;
         }
 
-        uint32_t GetGrassPropsUbo() const { return grass_props_ubo_; }
+        uint32_t GetGrassPropsUbo() const { return grass_props_pb_ ? grass_props_pb_->GetBufferId() : 0; }
+        size_t   GetGrassPropsOffset() const { return grass_props_pb_ ? grass_props_pb_->GetFrameOffset() : 0; }
+
+        PersistentBuffer<GrassUboData>* GetGrassPropsPb() { return grass_props_pb_.get(); }
 
     private:
         bool initialized_ = false;
@@ -104,7 +113,7 @@ namespace Boidsish {
         GlobalGrassProperties global_props_;
         bool props_dirty_ = false;
 
-        uint32_t grass_props_ubo_ = 0;
+        std::unique_ptr<PersistentBuffer<GrassUboData>> grass_props_pb_;
         uint32_t grass_instances_ssbo_ = 0;
         uint32_t grass_indirect_buffer_ = 0;
         uint32_t grass_tasks_ssbo_ = 0;

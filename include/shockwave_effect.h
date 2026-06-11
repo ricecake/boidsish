@@ -6,6 +6,7 @@
 #include "constants.h"
 #include <GL/glew.h>
 #include <glm/glm.hpp>
+#include "persistent_buffer.h"
 
 class Shader;
 
@@ -192,12 +193,14 @@ namespace Boidsish {
 		 */
 		float GetGlobalIntensity() const { return global_intensity_; }
 
+		PersistentBuffer<char>* GetUboPb() { return ubo_pb_.get(); }
+
 	private:
 		void EnsureInitialized();
 
 		std::vector<Shockwave>  shockwaves_;
 		std::unique_ptr<Shader> shader_;
-		GLuint                  ubo_{0};
+		std::unique_ptr<PersistentBuffer<char>> ubo_pb_;
 		bool                    initialized_{false};
 		int                     screen_width_{0};
 		int                     screen_height_{0};
