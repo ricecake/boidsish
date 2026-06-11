@@ -31,7 +31,7 @@ vec3 sampleAerialPerspective(vec3 rd, float distKM) {
 
 	float u = azimuth / (2.0 * PI);
 	float v = elevation / PI + 0.5;
-	float w = (distKM / 32.0); // maxDist in AP LUT
+	float w = (distKM / 32.0); // maxDist in AP LUT - using square-root mapping
 
 	return texture(u_aerialPerspectiveLUT, vec3(u, v, w)).rgb;
 }
@@ -97,7 +97,13 @@ void main() {
 			totalWeight += w;
 		}
 	}
-	cloudData /= max(totalWeight, 1e-6);
+
+	if (totalWeight > 1e-4) {
+		cloudData /= totalWeight;
+	} else {
+		// If occluded by foreground, assume clear sky (0 color, 1 transmittance)
+		cloudData = vec4(0.0, 0.0, 0.0, 1.0);
+	}
 
 	vec3  cloudColor = cloudData.rgb;
 	float cloudTransmittance = cloudData.a;
