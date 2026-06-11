@@ -1,5 +1,6 @@
 #version 460 core
-out vec4 FragColor;
+layout(location = 0) out vec4 FragColor;
+layout(location = 1) out float CloudDepth;
 
 in vec2 TexCoords;
 
@@ -91,6 +92,8 @@ void main() {
 
 	vec3  cloudColor = vec3(0.0);
 	float cloudTransmittance = 1.0;
+	float avgCloudDist = 0.0;
+	float totalWeight = 0.0;
 
 	if (t_start < t_end) {
 		vec3 lightEnergy = vec3(0.0);
@@ -218,7 +221,11 @@ void main() {
 			vec3  S = (stepScattering + ambient*smoothstep(0, 1, h_norm));
 
 			// lightEnergy += cloudTransmittance * S * stepDensity;
-			lightEnergy += cloudTransmittance * S * (1.0 - transmittanceAtStep);
+			float weight = cloudTransmittance * (1.0 - transmittanceAtStep);
+			lightEnergy += S * weight;
+			avgCloudDist += t * weight;
+			totalWeight += weight;
+
 			cloudTransmittance *= transmittanceAtStep;
 
 			if (cloudTransmittance < 0.01) {
@@ -227,7 +234,15 @@ void main() {
 		}
 
 		cloudColor = lightEnergy; // * cloudColorUniform;
+		if (totalWeight > 0.001) {
+			avgCloudDist /= totalWeight;
+		} else {
+			avgCloudDist = 50000.0 * worldScale;
+		}
+	} else {
+		avgCloudDist = 50000.0 * worldScale;
 	}
 
 	FragColor = vec4(cloudColor, cloudTransmittance);
+	CloudDepth = avgCloudDist;
 }
