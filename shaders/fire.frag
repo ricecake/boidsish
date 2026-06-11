@@ -131,7 +131,11 @@ void main() {
 		} else if (v_style == STYLE_FAIRY) {
 			// Phase-based brightness (using p.counter and p.phase logic from firefly)
 			float twinkle = pow(smoothstep(0.0, 0.3, v_p.counter) * (1.0 - smoothstep(0.4, 0.6, v_p.counter)), 2.0) * step(v_p.counter, 0.6);
-			float brightness = 0.5 + twinkle * 10.0;
+
+			float waver = 1.0 + 0.2 * snoise(vec2(u_time * 40.0, float(v_particle_idx) * 0.13));
+			float flicker = mix(1.0, waver, smoothstep(0.8, 1.0, twinkle));
+
+			float brightness = (0.5 + twinkle * 10.0) * flicker;
 
 			// Small soft core
 			float core = exp(-distSq * 100.0);

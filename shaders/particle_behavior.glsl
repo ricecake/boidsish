@@ -180,7 +180,11 @@ void updateFireflies(inout Particle p, float dt, float time, sampler3D curlTextu
 
 	vec3 firefly_base = vec3(0.7, 0.9, 0.1);
 	float twinkle = sin(time * 6.0 + float(gl_GlobalInvocationID.x)) * 0.5 + 0.5;
-	p.color.rgb = firefly_base * (2.0 + twinkle * 8.0);
+
+	float waver = 1.0 + 0.2 * snoise(vec2(time * 40.0, float(gl_GlobalInvocationID.x) * 0.13));
+	float flicker = mix(1.0, waver, smoothstep(0.8, 1.0, twinkle));
+
+	p.color.rgb = firefly_base * (2.0 + twinkle * 8.0) * flicker;
 	p.color.a = (0.4 + twinkle * 0.6) * smoothstep(0.0, 0.5, p.pos.w);
 	p.vel.w = 15.0;
 	p.origin.w = 0.2 * p.color.a;
@@ -459,7 +463,11 @@ void updateAmbientFirefly(
 
 	vec3 firefly_base = vec3(0.7, 0.9, 0.1);
 	float twinkle = pow(smoothstep(0.0, 0.3, p.counter) * (1.0 - smoothstep(0.4, 0.6, p.counter)), 2) * step(p.counter, 0.6);
-	p.color.rgb = firefly_base * (2.0 + twinkle * 8.0);
+
+	float waver = 1.0 + 0.2 * snoise(vec2(time * 40.0, float(gl_GlobalInvocationID.x) * 0.13));
+	float flicker = mix(1.0, waver, smoothstep(0.8, 1.0, twinkle));
+
+	p.color.rgb = firefly_base * (2.0 + twinkle * 8.0) * flicker;
 	p.color.a = 0.00 + step(p.counter, 0.6) * (0.4 + twinkle * 0.6) * smoothstep(0.0, 0.5, p.pos.w);
 	p.vel.w = 15.0;
 	p.origin.w = 0.5 * p.color.a;
