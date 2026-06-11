@@ -88,6 +88,20 @@ vec3 getWarpedCloudPos(vec3 p, out float fade) {
 	return axisPoint + toP * scale;
 }
 
+CloudWeather computeCloudWeather(vec3 p, CloudProperties props) {
+	float weatherMap = (fastSimplex3d(vec3(p.x, 0.0, p.z) / (5000.0 * worldScale)) * 0.5 + 0.5);
+	float heightMap =  (fastSimplex3d(vec3(p.x, 0.0, p.z) / (7500.0 * worldScale)) * 0.5 + 0.5);
+
+	CloudWeather weather;
+	weather.weatherMap = weatherMap;
+	weather.heightMap = heightMap;
+
+	// weather.weatherMap = 0.001*round(sqrt(weatherMap)*1000);
+	// weather.heightMap = 0.001*round(sqrt(heightMap)*1000);
+
+	return weather;
+}
+
 CloudLayer computeCloudLayer(CloudWeather weather, CloudProperties props) {
 	// Use heightMap for vertical expansion to decouple it from horizontal coverage
 	float floorOffset = mix(20.0, -50.0, weather.heightMap);
@@ -295,19 +309,6 @@ float calculateCloudShadowDensity(vec3 p, CloudWeather weather, CloudLayer layer
  * This encapsulates the logic used by both the shadow map generator and the runtime fallback.
  */
 float evaluateCloudShadowDensityAtWorldPos(vec2 worldXZ, float time) {
-	// Replicate logic from calculateCloudShadow in lighting.glsl
-	// This ensures the shadow map matches what the raymarch would have produced
-	float shadowAltitude = cloudAltitude + cloudThickness * 0.5;
-	float scaledCloudAltitude = shadowAltitude * worldScale;
-	vec3  cloudPos = vec3(worldXZ.x, scaledCloudAltitude, worldXZ.y);
-
-	float weatherMap = (fastSimplex3d(vec3(cloudPos.x+time*25.0, 0.0, cloudPos.z) / (5000.0 * worldScale)) * 0.5 + 0.5);
-	float heightMap =  (fastSimplex3d(vec3(cloudPos.x+time*25.0, 0.0, cloudPos.z) / (7500.0 * worldScale)) * 0.5 + 0.5);
-
-	CloudWeather weather;
-	weather.weatherMap = 0.001*round(sqrt(weatherMap)*1000);
-	weather.heightMap = 0.001*round(sqrt(heightMap)*1000);
-
 	CloudProperties props;
 	props.altitude = cloudAltitude;
 	props.thickness = cloudThickness;
@@ -315,6 +316,13 @@ float evaluateCloudShadowDensityAtWorldPos(vec2 worldXZ, float time) {
 	props.coverage = cloudCoverage;
 	props.worldScale = worldScale;
 
+	// Replicate logic from calculateCloudShadow in lighting.glsl
+	// This ensures the shadow map matches what the raymarch would have produced
+	float shadowAltitude = cloudAltitude + cloudThickness * 0.5;
+	float scaledCloudAltitude = shadowAltitude * worldScale;
+	vec3  cloudPos = vec3(worldXZ.x, scaledCloudAltitude, worldXZ.y);
+
+	CloudWeather weather = computeCloudWeather(cloudPos, props);
 	CloudLayer layer = computeCloudLayer(weather, props);
 
 	// Sample at the center of the dynamic layer
