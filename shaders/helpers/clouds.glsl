@@ -32,8 +32,9 @@ struct CloudProperties {
 };
 
 struct CloudWeather {
-	float weatherMap;
-	float heightMap;
+	float weatherMap; // Density/Coverage
+	float heightMap;  // Vertical expansion and variety
+	float cellID;     // Per-cell variety
 };
 
 struct CloudLayer {
@@ -89,42 +90,46 @@ vec3 getWarpedCloudPos(vec3 p, out float fade) {
 }
 
 CloudWeather computeCloudWeather(vec3 p, CloudProperties props) {
-	float weatherMap = (fastWorley3dID(vec3(p.x, 0.0, p.z) / (5000.0 * worldScale)).y);
-	float heightMap =  (fastWorley3d(vec3(p.x, (3*time), p.z) / (7500.0 * worldScale)) * 0.5 + 0.5);
+	p += vec3(150 * time, 0, 25 * time);
+	vec2  weatherData = fastWorley3dID(vec3(p.x, 0.0, p.z) / (10000.0 * worldScale));
+	float weatherMap = 1.0 - weatherData.x; // Worley distance for coverage
+	float cellID = weatherData.y;           // Cell ID for variety
+
+	p.x *= weatherData.x;
+	p.y *= weatherData.y;
+	p.z *= weatherData.x;
+
+	float heightMap = fastWorley3d(vec3(p.x, p.y+(3.0 * time), p.z) / (7500.0 * worldScale)) * 0.5 + 0.5;
 
 	CloudWeather weather;
 	weather.weatherMap = weatherMap;
 	weather.heightMap = heightMap;
-
-	// weather.weatherMap = 0.001*round(sqrt(weatherMap)*1000);
-	// weather.heightMap = 0.001*round(sqrt(heightMap)*1000);
+	weather.cellID = cellID;
 
 	return weather;
 }
 
 CloudLayer computeCloudLayer(CloudWeather weather, CloudProperties props) {
-	// Use heightMap for vertical expansion to decouple it from horizontal coverage
-	float floorOffset = mix(20.0, -50.0, weather.heightMap);
-	float ceilingOffset = mix(10.0, 500.0, weather.heightMap);
-
-	float altitudeOffset = mix(0.0, 500.0, weather.heightMap);
+	// Use heightMap for dramatic vertical expansion for specific weather cells
+	// Tall clouds (cumulonimbus) can be 5-10x thicker than base thickness
+	float verticalExpansion = mix(1.0, 8.0, weather.heightMap * weather.weatherMap);
 
 	CloudLayer layer;
-	layer.baseFloor = (altitudeOffset + props.altitude + floorOffset) * props.worldScale;
-	layer.baseCeiling = (altitudeOffset + props.altitude + props.thickness + ceilingOffset) * props.worldScale;
+	layer.baseFloor = props.altitude * props.worldScale;
+	layer.baseCeiling = (props.altitude + props.thickness * verticalExpansion) * props.worldScale;
 	layer.thickness = max(layer.baseCeiling - layer.baseFloor, 0.001);
 	return layer;
 }
 
 vec3 getCloudAdvectionOffset(float h, float worldScale, float time) {
-	// return vec3(0);
 	float angle = cloudFlowDirection;
 	vec2  flowDir = vec2(cos(angle), sin(angle));
-	// Increase shear effect by making it more dramatic with height
-	float heightFactor = 1.0 + h * cloudFlowHeightScale * 2.0;
-	// 1000.0 is a magic scale to make the "speed" parameter feel reasonable in world units
+
+	// Dramatic non-linear shear profile
+	float shear = h * h * cloudFlowHeightScale * 2.0;
+
 	vec3 advect = vec3(flowDir.x, 0.0, flowDir.y) * time * cloudFlowSpeed * worldScale * 10.0;
-	advect += heightFactor;
+	advect.xz += flowDir * shear * worldScale * 1000.0;
 
 	return advect;
 }
@@ -340,19 +345,22 @@ float evaluateCloudShadowDensityAtWorldPos(vec2 worldXZ, float time) {
 	props.coverage = cloudCoverage;
 	props.worldScale = worldScale;
 
-	// Replicate logic from calculateCloudShadow in lighting.glsl
-	// This ensures the shadow map matches what the raymarch would have produced
-	float shadowAltitude = cloudAltitude + cloudThickness * 0.5;
-	float scaledCloudAltitude = shadowAltitude * worldScale;
-	vec3  cloudPos = vec3(worldXZ.x, scaledCloudAltitude, worldXZ.y);
-
-	CloudWeather weather = computeCloudWeather(cloudPos, props);
+	// Use a dummy cloud position to evaluate weather/layer at this XZ
+	vec3  basePos = vec3(worldXZ.x, props.altitude * props.worldScale, worldXZ.y);
+	CloudWeather weather = computeCloudWeather(basePos, props);
 	CloudLayer layer = computeCloudLayer(weather, props);
 
-	// Sample at the center of the dynamic layer
-	cloudPos.y = (layer.baseFloor + layer.baseCeiling) * 0.5;
+	// Integrate density vertically through the expanded layer to capture the full shadow
+	float totalDensity = 0.0;
+	const int shadowSteps = 4;
+	float stepSize = layer.thickness / float(shadowSteps);
 
-	return calculateCloudShadowDensity(cloudPos, weather, layer, props, time);
+	for (int i = 0; i < shadowSteps; i++) {
+		vec3 p = vec3(worldXZ.x, layer.baseFloor + (float(i) + 0.5) * stepSize, worldXZ.y);
+		totalDensity += calculateCloudDensity(p, weather, layer, props, time, true);
+	}
+
+	return totalDensity * stepSize * 0.1; // Scale to representative optical depth
 }
 
 #endif // HELPERS_CLOUDS_GLSL

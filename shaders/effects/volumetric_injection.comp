@@ -246,7 +246,7 @@ void main() {
 
 */
 
-        radiance *= uIntensity; // Apply user-controlled overall intensity
+        radiance *= hazeDensity * uIntensity; // Apply user-controlled overall intensity
 
         // Convert atmospheric coefficients from per-KM to per-meter
         float obliquity = getObliquity(vox.xy, blueNoise);
