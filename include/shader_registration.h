@@ -111,6 +111,8 @@ namespace Boidsish {
 		T::RegisterConstant("VOLUMETRIC_SCATTERING_BINDING", Constants::TextureUnit::VolumetricScattering());
 		T::RegisterConstant("VOLUMETRIC_HISTORY_BINDING", Constants::TextureUnit::VolumetricHistory());
 
+		T::RegisterConstant("BLUE_NOISE_BINDING", Constants::TextureUnit::NoiseBlue());
+
 		T::RegisterConstant("VOLUMETRIC_INJECTION_IMAGE_BINDING", Constants::ImageBinding::VolumetricInjection());
 		T::RegisterConstant("VOLUMETRIC_SCATTERING_IMAGE_BINDING", Constants::ImageBinding::VolumetricScattering());
 		T::RegisterConstant("VOLUMETRIC_HISTORY_IMAGE_BINDING", Constants::ImageBinding::VolumetricHistory());

@@ -90,7 +90,7 @@ vec3 getWarpedCloudPos(vec3 p, out float fade) {
 
 CloudWeather computeCloudWeather(vec3 p, CloudProperties props) {
 	float weatherMap = (fastWorley3dID(vec3(p.x, 0.0, p.z) / (5000.0 * worldScale)).y);
-	float heightMap =  (fastWorley3d(vec3(p.x, (100*time), p.z) / (7500.0 * worldScale)) * 0.5 + 0.5);
+	float heightMap =  (fastWorley3d(vec3(p.x, (3*time), p.z) / (7500.0 * worldScale)) * 0.5 + 0.5);
 
 	CloudWeather weather;
 	weather.weatherMap = weatherMap;
@@ -212,9 +212,9 @@ float calculateCloudDensity(
 
 	float cloudFactor = baseBubble.y;
 
-	float weight = 1.0;
+	float weight = smoothstep(coverageThreshold, 1.0, baseBubble.y);
 	// float baseNoise = smoothstep(coverageThreshold, 1.0, baseBubble.x);
-	float baseNoise = step(0, baseBubble.y - baseBubble.x);
+	float baseNoise = weight * step(0, baseBubble.y - baseBubble.x);
 /*
 	for (uint i = 4; i <=6; i++) {
 		vec3 scaled_p = (p_advected) / (pow(6, i) * props.worldScale);
@@ -233,8 +233,8 @@ float calculateCloudDensity(
 		weight += stepWeight;
 	}
 
-	// return smoothstep(coverageThreshold, 1.0, baseNoise/weight);
-	baseNoise = smoothstep(coverageThreshold, 1.0, baseNoise/weight);
+	return smoothstep(coverageThreshold-0.05, 0.750, baseNoise/weight);
+	// baseNoise = smoothstep(coverageThreshold, 1.0, baseNoise/weight);
 
 	// Implement "Roll": Billowy edges that vary with height
 	// We remap the base noise threshold based on the vertical position

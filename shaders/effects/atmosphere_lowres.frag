@@ -149,17 +149,19 @@ void main() {
 			}
 		}
 
-		float jitter = fastSpatiotemporalBlueNoise(TexCoords, 0, int(10*time));
+		float jitter = fastSpatiotemporalBlueNoise(TexCoords, 3, int(240*time));
 		float stepSize = (t_end - t_start) / float(samples);
 
 		for (int i = 0; i < samples; i++) {
-			float t = t_start + (float(i) + jitter) * stepSize;
+			float t = t_start + (float(i)) * stepSize;
 			if (t > dist)
 				break;
 
 			vec3 p = viewPos + rayDir * t;
 			float altitude = length(p - earthCenter) - R_earth;
 			p.y = altitude;
+
+			p += jitter * stepSize * rayDir;
 
 			float h_norm = clamp((altitude - props.altitude * props.worldScale) / max(props.thickness * props.worldScale, 1.0), 0.0, 1.0);
 
