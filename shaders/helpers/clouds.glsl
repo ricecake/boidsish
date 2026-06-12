@@ -89,8 +89,8 @@ vec3 getWarpedCloudPos(vec3 p, out float fade) {
 }
 
 CloudWeather computeCloudWeather(vec3 p, CloudProperties props) {
-	float weatherMap = (fastSimplex3d(vec3(p.x, 0.0, p.z) / (5000.0 * worldScale)) * 0.5 + 0.5);
-	float heightMap =  (fastSimplex3d(vec3(p.x, 0.0, p.z) / (7500.0 * worldScale)) * 0.5 + 0.5);
+	float weatherMap = (fastWorley3dID(vec3(p.x, 0.0, p.z) / (5000.0 * worldScale)).y);
+	float heightMap =  (fastWorley3d(vec3(p.x, (100*time), p.z) / (7500.0 * worldScale)) * 0.5 + 0.5);
 
 	CloudWeather weather;
 	weather.weatherMap = weatherMap;
@@ -166,11 +166,20 @@ float calculateCloudDensity(
 	if (p.y < layer.baseFloor || p.y > layer.baseCeiling)
 		return 0.0;
 
+	float coverageThreshold = 1.0 - props.coverage;
+
+	// p.y /= (p.y - layer.baseFloor) / layer.thickness;
+	p.y -= weather.heightMap * layer.thickness;
+
+
+	// p.y /= 1.0/remap(p.y, layer.baseFloor, layer.baseCeiling, 0.0, 1.0);
+	// p.y = remap(weather.heightMap, 0.0, 1.0, layer.baseFloor, layer.baseCeiling);
+	// p.y /= remap(weather.heightMap, p.y, layer.baseCeiling, 0.0, 1.0);
+
 	// Height-based tapering with a more natural profile
 	float h = (p.y - layer.baseFloor) / layer.thickness;
 	float tapering = smoothstep(0.0, 0.15, h) * 1.0-smoothstep(0.7, 1.0, h);
 
-	float coverageThreshold = 1.0 - props.coverage;
 
 	// Apply advection to the sample position
 	vec3 advect = vec3(0);//getCloudAdvectionOffset(h, props.worldScale, time);
@@ -198,19 +207,34 @@ float calculateCloudDensity(
 	// return baseNoise * step(coverageThreshold, remap(weather.weatherMap, props.densityBase*cloudFactor, 1.0, 0.0, 1.0));
 	return baseNoise*weather.weatherMap * step(coverageThreshold, cloudFactor);
 */
-	vec3 p_scaled = (p_advected) / (5000.0 * props.worldScale);
+	vec3 p_scaled = (p_advected) / (8000.0 * props.worldScale);
 	vec2 baseBubble = fastWorley3dID(p_scaled);
 
 	float cloudFactor = baseBubble.y;
 
-	float baseNoise = baseBubble.x * step(coverageThreshold, cloudFactor);
+	float weight = 1.0;
+	// float baseNoise = smoothstep(coverageThreshold, 1.0, baseBubble.x);
+	float baseNoise = step(0, baseBubble.y - baseBubble.x);
+/*
 	for (uint i = 4; i <=6; i++) {
-		// vec3 scaled_p = (p_advected+h*h*vec3(100,0,100)) / (pow(6, i) * props.worldScale);
 		vec3 scaled_p = (p_advected) / (pow(6, i) * props.worldScale);
 		vec2 bubble = fastWorley3dID(scaled_p);
-		baseNoise += bubble.x * step(coverageThreshold, bubble.y);
-		// baseNoise += (1-bubble.x) * step(coverageThreshold, bubble.y*bubble.x);
+		// baseNoise += step(coverageThreshold, bubble.y) * step(coverageThreshold, bubble.x);
+		float stepWeight = step(coverageThreshold, bubble.y);
+		baseNoise +=  stepWeight * smoothstep(coverageThreshold, 1.0, bubble.x);
+		weight += stepWeight;
 	}
+*/
+	for (uint i = 4; i <=6; i++) {
+		vec3 scaled_p = (p_advected) / (pow(6, i) * props.worldScale);
+		vec2 bubble = fastWorley3dID(scaled_p);
+		float stepWeight = smoothstep(coverageThreshold, 1.0, bubble.y);
+		baseNoise += stepWeight*step(0, bubble.y - bubble.x);
+		weight += stepWeight;
+	}
+
+	// return smoothstep(coverageThreshold, 1.0, baseNoise/weight);
+	baseNoise = smoothstep(coverageThreshold, 1.0, baseNoise/weight);
 
 	// Implement "Roll": Billowy edges that vary with height
 	// We remap the base noise threshold based on the vertical position
