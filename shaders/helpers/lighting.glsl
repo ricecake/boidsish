@@ -113,7 +113,9 @@ void calculateLightContribution(int light_index, vec3 frag_pos, out vec3 light_d
 
 /**
  * Calculate cloud shadow factor for a fragment position.
- * Projects the fragment position to the cloud layer along the light direction.
+ * The shadow map is pre-projected: each texel stores the density of the cloud
+ * that casts a shadow at that ground XZ position (already offset by sun angle).
+ * So we look up directly by the fragment's XZ.
  */
 float calculateCloudShadow(int light_index, vec3 frag_pos) {
 	if (lights[light_index].type != LIGHT_TYPE_DIRECTIONAL || cloudShadowIntensity <= 0.0) {
@@ -124,25 +126,29 @@ float calculateCloudShadow(int light_index, vec3 frag_pos) {
 	if (L.y <= 0.001)
 		return 1.0;
 
-	// Project to the nominal center of the cloud layer along the light direction.
-	// Since the shadow map integrates vertically, we account for the slanted path by dividing by L.y.
-	float shadowAltitude = cloudAltitude + cloudThickness * 2.0; // Approximation of effective center
-	float t = (shadowAltitude * worldScale - frag_pos.y) / L.y;
+	// Skip if fragment is above the cloud layer (it's not in the cloud's shadow)
+	float cloudCeiling = (cloudAltitude + cloudThickness * 8.0) * worldScale;
+	if (frag_pos.y > cloudCeiling)
+		return 1.0;
 
-	if (t < 0.0) return 1.0;
-
-	vec3  cloudPos = frag_pos + L * t;
-	vec4  shadowUV = cloudShadowMatrix * vec4(cloudPos.xz, 0.0, 1.0);
+	// Shadow map is indexed by ground XZ — the map generator projected from
+	// ground to cloud along L. For elevated fragments, project down to ground
+	// along L to find the equivalent ground lookup point.
+	vec2  lookupXZ = frag_pos.xz - L.xz * (frag_pos.y / L.y);
+	vec4  shadowUV = cloudShadowMatrix * vec4(lookupXZ, 0.0, 1.0);
 	float d = 0.0;
 
 	if (shadowUV.x >= 0.0 && shadowUV.x <= 1.0 && shadowUV.y >= 0.0 && shadowUV.y <= 1.0) {
 		d = texture(u_cloudShadowMap, shadowUV.xy).r;
 	} else {
-		// Fallback for points outside the shadow map: evaluate noise directly (expensive, but limited to edges)
+		// Fallback: project to cloud layer to evaluate density directly
+		float t = (cloudAltitude * worldScale - frag_pos.y) / L.y;
+		if (t < 0.0) return 1.0;
+		vec3 cloudPos = frag_pos + L * t;
 		d = evaluateCloudShadowDensityAtWorldPos(cloudPos.xz, time);
 	}
 
-	// Apply slant-factor and intensity
+	// Apply slant-factor (longer path through cloud at oblique angles) and intensity
 	float finalDepth = (d / L.y) * cloudShadowOpticalDepthMultiplier;
 
 	return mix(1.0, exp(-finalDepth), cloudShadowIntensity);

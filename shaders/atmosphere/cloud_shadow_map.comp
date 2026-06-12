@@ -16,11 +16,29 @@ void main() {
     ivec2 size = imageSize(u_cloudShadowMap);
     if (texel.x >= size.x || texel.y >= size.y) return;
 
-    // Map texel to world XZ
+    // Map texel to world XZ — this is where the shadow lands on the ground
     vec2 uv = (vec2(texel) + 0.5) / vec2(size);
-    vec2 worldXZ = u_mapCenter + (uv - 0.5) * u_mapSize;
+    vec2 groundXZ = u_mapCenter + (uv - 0.5) * u_mapSize;
 
-    float d = evaluateCloudShadowDensityAtWorldPos(worldXZ, time);
+    // Project from ground point toward the sun to find where the ray hits the cloud layer.
+    // This aligns the shadow map with the actual light path rather than projecting vertically.
+    vec3 L = vec3(0, 1, 0);
+    for (int i = 0; i < min(2, num_lights); ++i) {
+        if (lights[i].type == 1) { // LIGHT_TYPE_DIRECTIONAL
+            L = normalize(-lights[i].direction);
+            break;
+        }
+    }
+
+    // If sun is near/below horizon, project vertically (L.y near zero would explode the division)
+    vec2 cloudXZ = groundXZ;
+    if (L.y > 0.01) {
+        float baseAlt = cloudAltitude * worldScale;
+        float t = baseAlt / L.y;
+        cloudXZ = groundXZ + L.xz * t;
+    }
+
+    float d = evaluateCloudShadowDensityAtWorldPos(cloudXZ, time);
 
     // Store raw density. The consumer will apply exp(-d) and intensity.
     imageStore(u_cloudShadowMap, texel, vec4(d, 0.0, 0.0, 0.0));
