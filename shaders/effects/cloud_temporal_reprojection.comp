@@ -70,34 +70,42 @@ void main() {
 	float alphaMean = 0.0;
 	float alphaM2 = 0.0;
 
-float weightSum = 0.0;
+	float weightSumColor = 0.0;
+    float weightSumAlpha = 0.0;
 
     for (int y = -1; y <= 1; y++) {
         for (int x = -1; x <= 1; x++) {
             vec4 smp = texture(uCurrentFrame, uv + vec2(x, y) * texelSize);
 
-            // 3x3 Gaussian approximation: Center 0.25, Edges 0.125, Corners 0.0625
-            float w = (x == 0 && y == 0) ? 0.25 : ((x == 0 || y == 0) ? 0.125 : 0.0625);
+            // Spatial Gaussian weight
+            float spatialW = (x == 0 && y == 0) ? 0.25 : ((x == 0 || y == 0) ? 0.125 : 0.0625);
+
+            // Weight color stats by alpha so the black sky doesn't ruin the cloud bounds
+            float colorW = spatialW * max(smp.a, 0.001);
 
             vec3 ycocg = RGBToYCoCg(smp.rgb);
 
-            m1 += ycocg * w;
-            m2 += ycocg * ycocg * w;
+            m1 += ycocg * colorW;
+            m2 += ycocg * ycocg * colorW;
+            weightSumColor += colorW;
 
-            alphaMean += smp.a * w;
-            alphaM2 += smp.a * smp.a * w;
-            weightSum += w;
+            alphaMean += smp.a * spatialW;
+            alphaM2 += smp.a * smp.a * spatialW;
+            weightSumAlpha += spatialW;
         }
     }
 
-    vec3 mean = m1 / weightSum;
-    vec3 stddev = sqrt(max(vec3(0.0), (m2 / weightSum) - (mean * mean)));
+    vec3 mean = m1 / weightSumColor;
+    vec3 stddev = sqrt(max(vec3(0.0), (m2 / weightSumColor) - (mean * mean)));
 
-    alphaMean /= weightSum;
-    float alphaStd = sqrt(max(0.0, (alphaM2 / weightSum) - (alphaMean * alphaMean)));
+    alphaMean /= weightSumAlpha;
+    float alphaStd = sqrt(max(0.0, (alphaM2 / weightSumAlpha) - (alphaMean * alphaMean)));
+
+    // Relax the variance bounds specifically in low-density areas to tolerate the noise
+    float edgeRelaxation = mix(2.0, 1.0, alphaMean);
+    float gamma = 1.5 * edgeRelaxation;
 
 	// 4. Variance clipping/clamping
-	float gamma = 2.5;
 	vec3 minColor = mean - gamma * stddev;
 	vec3 maxColor = mean + gamma * stddev;
 
