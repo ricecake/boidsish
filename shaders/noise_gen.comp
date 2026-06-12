@@ -85,7 +85,8 @@ vec2 worley3d_tiling(vec3 p, float period) {
 				float d = dot(diff, diff);
 				if (d < minDistSq) {
 					minDistSq = d;
-					cellId = random(point); // Use the x component of the cell's random point as the ID
+					// cellId = random(point); // Use the x component of the cell's random point as the ID
+					cellId = simplex3d_tiling(point, NOISE_PERIOD) * 0.5 + 0.5; // Use the x component of the cell's random point as the ID
 				}
 			}
 		}

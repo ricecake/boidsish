@@ -137,7 +137,7 @@ void main() {
 			vec3 N = texture(normalTexture, TexCoords).xyz * 2.0 - 1.0;
 			vec3 L = normalize(-lights[0].direction);
 			atmosShadow = calculateShadow(0, worldPos, N, L);
-			atmosShadow = mix(0.35, 1.0, atmosShadow);
+			atmosShadow = mix(0.01, 1.0, atmosShadow);
 		}
 
 		// Shadows only apply to the background atmosphere components

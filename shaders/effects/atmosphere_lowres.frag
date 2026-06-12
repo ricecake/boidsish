@@ -37,6 +37,45 @@ vec3 sampleSkyView(vec3 rd) {
 	return texture(u_skyViewLUT, vec2(u, v)).rgb;
 }
 
+// Gets the spherical position relative to the planet center
+// This keeps sampling consistent along the shell regardless of viewing angle
+vec3 getSphericalCoords(vec3 p, vec3 earthCenter, float R_earth) {
+    vec3 dir = normalize(p - earthCenter);
+    float altitude = length(p - earthCenter) - R_earth;
+
+    // You can multiply 'dir' by R_earth to keep the frequency
+    // constant relative to the surface distance
+    return dir * (R_earth + altitude);
+}
+
+// Maps Cartesian coordinates to a flattened UV-style projection
+// useful if your noise textures are authored for a flat plane
+vec2 getSphericalUV(vec3 p, vec3 earthCenter) {
+    vec3 dir = normalize(p - earthCenter);
+    return vec2(
+        atan(dir.z, dir.x) / (2.0 * PI),
+        asin(dir.y) / PI + 0.5
+    );
+}
+
+vec3 getUnstretchedCoords(vec3 p, vec3 earthCenter, vec3 viewPos, float R_earth) {
+    float altitude = length(p - earthCenter) - R_earth;
+    vec3 P_norm = normalize(p - earthCenter);
+
+    // Calculate the angle from the zenith (where zenith is vec3(0,1,0) at the viewer)
+    float theta = acos(clamp(P_norm.y, -1.0, 1.0));
+    float arc_dist = R_earth * theta;
+
+    // Find the horizontal direction
+    vec2 p_xz = vec2(P_norm.x, P_norm.z);
+    float len_xz = length(p_xz);
+    vec2 dir_XZ = p_xz / (len_xz + 1e-6); // Branchless normalize
+
+    // Reconstruct a vector where Y is strictly altitude,
+    // and X/Z are un-stretched arc lengths from the viewer.
+    return vec3(viewPos.x + dir_XZ.x * arc_dist, altitude, viewPos.z + dir_XZ.y * arc_dist);
+}
+
 void main() {
 	float depth = texture(depthTexture, TexCoords).r;
 	vec3  zenithRadiance = sampleSkyView(vec3(0, 1, 0)) * 4.0;
@@ -65,8 +104,8 @@ void main() {
 	props.worldScale = worldScale;
 
 	// Wide vertical bounds for intersection (covering all possible dynamic offsets)
-	float R_floor = R_earth + (cloudAltitude - 100.0) * worldScale;
-	float R_ceiling = R_earth + (cloudAltitude + cloudThickness + 1100.0) * worldScale;
+	float R_floor = R_earth + (cloudAltitude - 200.0) * worldScale;
+	float R_ceiling = R_earth + (cloudAltitude + cloudThickness + 2000.0) * worldScale;
 
 	vec3 earthCenter = vec3(viewPos.x, -R_earth, viewPos.z);
 	vec3 relRo = viewPos - earthCenter;
@@ -110,34 +149,26 @@ void main() {
 			}
 		}
 
-		float jitter = fastSpatiotemporalBlueNoise(TexCoords, 0, int(1000*time));
+		float jitter = fastSpatiotemporalBlueNoise(TexCoords, 3, int(240*time));
 		float stepSize = (t_end - t_start) / float(samples);
 
 		for (int i = 0; i < samples; i++) {
-			float t = t_start + (float(i) + jitter) * stepSize;
+			float t = t_start + (float(i)) * stepSize;
 			if (t > dist)
 				break;
 
 			vec3 p = viewPos + rayDir * t;
-			vec3 p_curved = p;
-			p_curved.y = length(p - earthCenter) - R_earth;
+			float altitude = length(p - earthCenter) - R_earth;
+			p.y = altitude;
 
-			// Sample weather at current ray position to avoid depth dependency
-			float fade = 1.0;
-			vec3  p_warped = getWarpedCloudPos(p_curved, fade);
-			float h_norm = clamp((p_curved.y - props.altitude * props.worldScale) / max(props.thickness * props.worldScale, 1.0), 0.0, 1.0);
+			p += jitter * stepSize * rayDir;
 
-			float weatherMap = (fastSimplex3d(vec3(p_warped.x+time*25.0, 0.0, p_warped.z) / (5000.0 * worldScale)) * 0.5 + 0.5);
-			float heightMap =  (fastSimplex3d(vec3(p_warped.x+time*25.0, 0.0, p_warped.z) / (7500.0 * worldScale)) * 0.5 + 0.5);
+			float h_norm = clamp((altitude - props.altitude * props.worldScale) / max(props.thickness * props.worldScale, 1.0), 0.0, 1.0);
 
-			CloudWeather weather;
-			weather.weatherMap = 0.001*round(sqrt(weatherMap)*1000);
-			weather.heightMap = 0.001*round(sqrt(heightMap)*1000);
-
+			CloudWeather weather = computeCloudWeather(p, props);
 			CloudLayer layer = computeCloudLayer(weather, props);
 
-			// Use p_warped to ensure the camera lens-bubble warp affects the cloud shapes
-			float d = calculateCloudDensity(p_warped, weather, layer, props, time, false);
+			float d = calculateCloudDensity(p, weather, layer, props, time, false);
 			if (d <= 0.01)
 				continue;
 
