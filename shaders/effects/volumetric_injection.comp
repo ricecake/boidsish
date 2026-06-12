@@ -164,6 +164,7 @@ void main() {
         vec3 combinedPhase = s.rayleigh * rayPhase + s.mie * miePhase;
 
         float shadow = calculateShadow(i, worldPos, vec3(0,1,0), L);
+        shadow = min(shadow, terrainShadowVolumetric(worldPos, L));
         shadow = min(shadow, calculateCloudShadow(i, worldPos));
 
         float r_km = kEarthRadius + worldPos.y / (1000.0 * max(0.0001, worldScale));
@@ -175,8 +176,9 @@ void main() {
 
         vec3 lightRadiance = lights[i].color * max(0.0, lights[i].intensity);
 
-        // Single scattering (shadowed) + multi-scattering contribution (unshadowed)
-        radiance += lightRadiance * (atmosphereTransmittance * shadow * combinedPhase + multiScat * (s.rayleigh + s.mie));
+        // Single scattering (shadowed) + multi-scattering (partially shadowed to preserve terrain contrast)
+        float multiScatShadow = mix(1.0, shadow, 0.7);
+        radiance += lightRadiance * (atmosphereTransmittance * shadow * combinedPhase + multiScat * multiScatShadow * (s.rayleigh + s.mie));
     }
 
     // Local lights

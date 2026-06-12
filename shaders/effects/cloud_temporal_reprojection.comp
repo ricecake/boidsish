@@ -101,33 +101,46 @@ void main() {
     alphaMean /= weightSumAlpha;
     float alphaStd = sqrt(max(0.0, (alphaM2 / weightSumAlpha) - (alphaMean * alphaMean)));
 
-    // Relax the variance bounds specifically in low-density areas to tolerate the noise
-    float edgeRelaxation = mix(2.0, 1.0, alphaMean);
-    float gamma = 1.5 * edgeRelaxation;
+    // Tighter variance bounds — relax only slightly in low-density regions
+    float gamma = mix(1.5, 1.0, smoothstep(0.0, 0.3, alphaMean));
 
-	// 4. Variance clipping/clamping
+	// 4. Variance clipping (clip toward mean rather than hard clamp for stability)
 	vec3 minColor = mean - gamma * stddev;
 	vec3 maxColor = mean + gamma * stddev;
 
 	vec3 historyYCoCg = RGBToYCoCg(historyRGBA.rgb);
-	historyYCoCg = clamp(historyYCoCg, minColor, maxColor);
+
+	// Clip-toward-mean: find the intersection of the line from history to mean with the AABB
+	vec3 clipDir = mean - historyYCoCg;
+	vec3 clipFactors = vec3(1.0);
+	for (int i = 0; i < 3; i++) {
+		if (abs(clipDir[i]) > 0.0001) {
+			if (historyYCoCg[i] < minColor[i])
+				clipFactors[i] = (minColor[i] - historyYCoCg[i]) / clipDir[i];
+			else if (historyYCoCg[i] > maxColor[i])
+				clipFactors[i] = (maxColor[i] - historyYCoCg[i]) / clipDir[i];
+			else
+				clipFactors[i] = 0.0;
+		}
+	}
+	float clipT = clamp(max(clipFactors.x, max(clipFactors.y, clipFactors.z)), 0.0, 1.0);
+	historyYCoCg = mix(historyYCoCg, mean, clipT);
 	historyRGBA.rgb = YCoCgToRGB(historyYCoCg);
 
 	historyRGBA.a = clamp(historyRGBA.a, alphaMean - gamma * alphaStd, alphaMean + gamma * alphaStd);
 
-	// 5. Dynamic Blend Weight
-	// Identify if the depth jump is just an edge miss (one hit the sky, one hit the cloud)
-	bool currentIsSky = currentCloudDist > 40000.0;
-	bool historyIsSky = historyCloudDist > 40000.0;
-	bool isEdgeMiss = currentIsSky != historyIsSky;
-
-	// Calculate normal structural difference
+	// 5. Continuous confidence-based blend weight
 	float absDistDiff = abs(currentCloudDist - historyCloudDist);
 	float normalizedDiff = max(0.0, absDistDiff - currentCloudStep) / max(currentCloudDist, 1.0);
 
-	// If it's a soft edge miss, keep a stable blend to smooth the noise.
-	// Otherwise, use the structural difference to detect disocclusion.
-	float targetWeight = isEdgeMiss ? 0.90 : mix(0.95, 0.80, smoothstep(0.10, 0.30, normalizedDiff));
+	// Depth confidence: smoothly reduces blend as depth disagreement grows
+	float depthConfidence = 1.0 - smoothstep(0.05, 0.25, normalizedDiff);
+
+	// UV confidence: reduce blend near screen edges where reprojection is less reliable
+	float uvEdgeDist = min(min(prevUV.x, 1.0 - prevUV.x), min(prevUV.y, 1.0 - prevUV.y));
+	float uvConfidence = smoothstep(0.0, 0.05, uvEdgeDist);
+
+	float targetWeight = uBlendAlpha * depthConfidence * uvConfidence;
 
 	if (!validHistory) targetWeight = 0.0;
 
