@@ -1,6 +1,7 @@
 #version 460 core
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec2 CloudDepth;
+layout(location = 2) out vec2 CloudVelocity;
 
 in vec2 TexCoords;
 
@@ -10,7 +11,9 @@ uniform sampler2D depthTexture;
 // uniform mat4 invView;
 // uniform mat4 invProjection;
 
-uniform vec3 cloudColorUniform;
+uniform vec3  cloudColorUniform;
+uniform vec2  uJitter;
+uniform float uDeltaTime;
 
 // Atmosphere common defines and includes
 #include "../atmosphere/common.glsl"
@@ -78,11 +81,12 @@ vec3 getUnstretchedCoords(vec3 p, vec3 earthCenter, vec3 viewPos, float R_earth)
 }
 
 void main() {
-	float depth = texture(depthTexture, TexCoords).r;
+	vec2  jitteredUV = TexCoords + uJitter;
+	float depth = texture(depthTexture, jitteredUV).r;
 	vec3  zenithRadiance = sampleSkyView(vec3(0, 1, 0)) * 4.0;
 
 	float z = depth * 2.0 - 1.0;
-	vec4  clipSpacePosition = vec4(TexCoords * 2.0 - 1.0, z, 1.0);
+	vec4  clipSpacePosition = vec4(jitteredUV * 2.0 - 1.0, z, 1.0);
 	vec4  viewSpacePosition = invProjection * clipSpacePosition;
 	viewSpacePosition /= viewSpacePosition.w;
 	vec3 worldPos = (invView * viewSpacePosition).xyz;
@@ -279,8 +283,19 @@ void main() {
 	// Output the stable surface depth for the temporal resolver
 	if (firstHitDist > 0.0 && totalWeight > 0.001) {
 		CloudDepth = vec2(firstHitDist, stepSize);
+
+		// Calculate Cloud Velocity (displacement since previous frame)
+		// Feature at world p at time t is at p' at t-dt such that:
+		// p + advect(t) = p' + advect(t-dt)
+		// p' = p + advect(t) - advect(t-dt)
+		// velocity (p - p') = -(advect(t) - advect(t-dt))
+		float angle = cloudFlowDirection;
+		vec2  flowDir = vec2(cos(angle), sin(angle));
+		vec2  displacement = -flowDir * uDeltaTime * cloudFlowSpeed * props.worldScale * 10.0;
+		CloudVelocity = displacement;
 	} else {
 		CloudDepth = vec2(50000.0 * worldScale, stepSize);
+		CloudVelocity = vec2(0.0);
 	}
 
 }

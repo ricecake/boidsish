@@ -204,8 +204,11 @@ namespace Boidsish {
 			std::unique_ptr<Shader>        shader_;
 			std::unique_ptr<Shader>        composite_shader_;
 			std::unique_ptr<ComputeShader> temporal_shader_;
+			std::unique_ptr<ComputeShader> spatial_filter_shader_;
 			float                          time_ = 0.0f;
+			float                          last_time_ = 0.0f;
 			int                            frame_index_ = 0;
+			int                            halton_index_ = 0;
 
 			float     haze_density_ = WeatherConstants::HazeDensity.normal;
 			float     haze_height_ = WeatherConstants::HazeHeight.normal;
@@ -258,6 +261,8 @@ namespace Boidsish {
 			GLuint low_res_fbo_ = 0;
 			GLuint low_res_texture_ = 0;
 			GLuint low_res_depth_texture_ = 0;
+			GLuint low_res_velocity_texture_ = 0;
+			GLuint low_res_filtered_texture_ = 0;
 
 			// Temporal reprojection: double-buffered history at low res
 			GLuint    temporal_textures_[2] = {0, 0};

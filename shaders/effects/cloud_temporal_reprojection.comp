@@ -9,6 +9,7 @@ uniform sampler2D uHistoryFrame;     // Previous accumulated cloud RGBA
 uniform sampler2D uSceneDepth;       // Full-res scene depth
 uniform sampler2D uCurrentCloudDepth;// Current low-res cloud distance
 uniform sampler2D uHistoryCloudDepth;// Previous accumulated cloud distance
+uniform sampler2D uVelocityTexture;  // Current low-res cloud velocity (XZ)
 
 uniform mat4  uInvView;
 uniform mat4  uInvProjection;
@@ -53,9 +54,11 @@ void main() {
 	vec3 worldDir = normalize((uInvView * vec4(viewPos.xyz, 0.0)).xyz);
 	vec3 cameraPos = (uInvView * vec4(0, 0, 0, 1)).xyz;
 
-	vec3 worldPos = cameraPos + worldDir * currentCloudDist;
-	vec4 prevClip = uPrevViewProjection * vec4(worldPos, 1.0);
-	vec2 prevUV = (prevClip.xy / prevClip.w) * 0.5 + 0.5;
+	vec2  velocity = texture(uVelocityTexture, uv).rg;
+	vec3  worldPos = cameraPos + worldDir * currentCloudDist;
+	vec3  prevWorldPos = worldPos - vec3(velocity.x, 0.0, velocity.y);
+	vec4  prevClip = uPrevViewProjection * vec4(prevWorldPos, 1.0);
+	vec2  prevUV = (prevClip.xy / prevClip.w) * 0.5 + 0.5;
 
 	// 2. History Fetch and Validation
 	bool validHistory = all(greaterThanEqual(prevUV, vec2(0.0))) && all(lessThanEqual(prevUV, vec2(1.0)));

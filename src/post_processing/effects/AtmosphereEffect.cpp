@@ -22,6 +22,8 @@ namespace Boidsish {
 				glDeleteFramebuffers(1, &low_res_fbo_);
 				glDeleteTextures(1, &low_res_texture_);
 				glDeleteTextures(1, &low_res_depth_texture_);
+				glDeleteTextures(1, &low_res_velocity_texture_);
+				glDeleteTextures(1, &low_res_filtered_texture_);
 			}
 			if (temporal_textures_[0]) {
 				glDeleteTextures(2, temporal_textures_);
@@ -36,6 +38,7 @@ namespace Boidsish {
 				"shaders/effects/atmosphere_composite.frag"
 			);
 			temporal_shader_ = std::make_unique<ComputeShader>("shaders/effects/cloud_temporal_reprojection.comp");
+			spatial_filter_shader_ = std::make_unique<ComputeShader>("shaders/effects/cloud_spatial_filter.comp");
 
 			auto setup_shader = [](Shader& s) {
 				s.use();
@@ -63,6 +66,8 @@ namespace Boidsish {
 				glGenFramebuffers(1, &low_res_fbo_);
 				glGenTextures(1, &low_res_texture_);
 				glGenTextures(1, &low_res_depth_texture_);
+				glGenTextures(1, &low_res_velocity_texture_);
+				glGenTextures(1, &low_res_filtered_texture_);
 			}
 
 			int low_res_width = std::max(1, static_cast<int>(width_ * render_scale_));
@@ -79,17 +84,34 @@ namespace Boidsish {
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, low_res_texture_, 0);
 
-			// Color attachment 1: Cloud Depth (R32F)
+			// Color attachment 1: Cloud Depth (RG32F - Distance and Step)
 			glBindTexture(GL_TEXTURE_2D, low_res_depth_texture_);
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, low_res_width, low_res_height, 0, GL_RED, GL_FLOAT, NULL);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RG32F, low_res_width, low_res_height, 0, GL_RG, GL_FLOAT, NULL);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, low_res_depth_texture_, 0);
 
-			GLuint attachments[2] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1};
-			glDrawBuffers(2, attachments);
+			// Color attachment 2: Cloud Velocity (RG16F)
+			glBindTexture(GL_TEXTURE_2D, low_res_velocity_texture_);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RG16F, low_res_width, low_res_height, 0, GL_RG, GL_FLOAT, NULL);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D, low_res_velocity_texture_, 0);
+
+			// Extra texture for spatial filter output (RGBA16F)
+			glBindTexture(GL_TEXTURE_2D, low_res_filtered_texture_);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, low_res_width, low_res_height, 0, GL_RGBA, GL_FLOAT, NULL);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+			GLuint attachments[3] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2};
+			glDrawBuffers(3, attachments);
 
 			if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
 				std::cerr << "ERROR::ATMOSPHERE_EFFECT: Low-res FBO is not complete!" << std::endl;
@@ -127,12 +149,34 @@ namespace Boidsish {
 			has_valid_history_ = false;
 		}
 
+		static float Halton(int index, int base) {
+			float result = 0.0f;
+			float f = 1.0f / base;
+			int   i = index;
+			while (i > 0) {
+				result += f * (i % base);
+				i = floor(i / base);
+				f = f / base;
+			}
+			return result;
+		}
+
 		void AtmosphereEffect::Apply(GLuint sourceTexture, GLuint depthTexture, GLuint velocityTexture, GLuint normalTexture, GLuint albedoTexture, const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix, const glm::vec3& cameraPos) {
 			// Re-bind the previous framebuffer (which was the target for this effect)
 			// We MUST bind it back if we changed it.
 			// Save the current FBO before changing it.
 			GLint original_fbo;
 			glGetIntegerv(GL_FRAMEBUFFER_BINDING, &original_fbo);
+
+			float dt = time_ - last_time_;
+			last_time_ = time_;
+
+			// --- Halton Jitter calculation ---
+			halton_index_ = (halton_index_ + 1) % 16;
+			glm::vec2 jitter = glm::vec2(
+				(Halton(halton_index_ + 1, 2) - 0.5f) / static_cast<float>(width_),
+				(Halton(halton_index_ + 1, 3) - 0.5f) / static_cast<float>(height_)
+			);
 
 			// --- PASS 1: Low-res Cloud Rendering ---
 			int low_res_width = std::max(1, static_cast<int>(width_ * render_scale_));
@@ -146,6 +190,8 @@ namespace Boidsish {
 			shader_->use();
 			shader_->setInt("depthTexture", 1);
 			shader_->setFloat("time", time_);
+			shader_->setFloat("uDeltaTime", dt);
+			shader_->setVec2("uJitter", jitter);
 			shader_->setMat4("invView", glm::inverse(viewMatrix));
 			shader_->setMat4("invProjection", glm::inverse(projectionMatrix));
 
@@ -178,10 +224,27 @@ namespace Boidsish {
 
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 
+			// --- PASS 1.2: Spatial Filter ---
+			if (spatial_filter_shader_ && spatial_filter_shader_->isValid()) {
+				spatial_filter_shader_->use();
+				spatial_filter_shader_->setInt("uCloudColor", 0);
+				spatial_filter_shader_->setInt("uCloudDepth", 1);
+
+				glActiveTexture(GL_TEXTURE0);
+				glBindTexture(GL_TEXTURE_2D, low_res_texture_);
+				glActiveTexture(GL_TEXTURE1);
+				glBindTexture(GL_TEXTURE_2D, low_res_depth_texture_);
+
+				glBindImageTexture(0, low_res_filtered_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+
+				glDispatchCompute((low_res_width + 7) / 8, (low_res_height + 7) / 8, 1);
+				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+			}
+
 			// --- PASS 1.5: Temporal Reprojection (compute, at low res) ---
 			// Blend current low-res clouds with reprojected history to reduce noise and
 			// effectively supersample the low-res buffer over multiple frames.
-			GLuint    cloud_source = low_res_texture_;
+			GLuint    cloud_source = low_res_filtered_texture_;
 			GLuint    cloud_depth_source = low_res_depth_texture_;
 			glm::mat4 invView = glm::inverse(viewMatrix);
 			glm::mat4 invProj = glm::inverse(projectionMatrix);
@@ -201,9 +264,10 @@ namespace Boidsish {
 				temporal_shader_->setInt("uSceneDepth", 2);
 				temporal_shader_->setInt("uCurrentCloudDepth", 3);
 				temporal_shader_->setInt("uHistoryCloudDepth", 4);
+				temporal_shader_->setInt("uVelocityTexture", 5);
 
 				glActiveTexture(GL_TEXTURE0);
-				glBindTexture(GL_TEXTURE_2D, low_res_texture_);
+				glBindTexture(GL_TEXTURE_2D, cloud_source);
 				glActiveTexture(GL_TEXTURE1);
 				glBindTexture(GL_TEXTURE_2D, temporal_textures_[temporal_index_]);
 				glActiveTexture(GL_TEXTURE2);
@@ -212,9 +276,11 @@ namespace Boidsish {
 				glBindTexture(GL_TEXTURE_2D, low_res_depth_texture_);
 				glActiveTexture(GL_TEXTURE4);
 				glBindTexture(GL_TEXTURE_2D, temporal_depth_textures_[temporal_index_]);
+				glActiveTexture(GL_TEXTURE5);
+				glBindTexture(GL_TEXTURE_2D, low_res_velocity_texture_);
 
 				glBindImageTexture(0, temporal_textures_[next_temporal], 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
-				glBindImageTexture(1, temporal_depth_textures_[next_temporal], 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R32F);
+				glBindImageTexture(1, temporal_depth_textures_[next_temporal], 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RG32F);
 
 				glDispatchCompute((low_res_width + 7) / 8, (low_res_height + 7) / 8, 1);
 				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
