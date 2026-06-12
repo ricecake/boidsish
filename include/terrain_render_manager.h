@@ -21,7 +21,7 @@ namespace Boidsish {
 	class ServiceLocator;
 	struct Frustum;
 
-	static constexpr size_t kMaxBakesPerFrame = 6;
+	static constexpr size_t kMaxBakesPerFrame = 12;
 
 	/**
 	 * @brief High-performance instanced terrain rendering with heightmap lookup.
@@ -49,6 +49,16 @@ namespace Boidsish {
 	 */
 	class TerrainRenderManager {
 	public:
+		struct PatchMetrics {
+			float min_y;
+			float max_y;
+			float avg_curvature;
+			float avg_roughness;
+			float avg_grass_density;
+			float max_variance;
+			float _pad[2];
+		};
+
 		struct BakeTask {
 			glm::ivec2 chunk_coord;
 			int        slice;
@@ -78,7 +88,8 @@ namespace Boidsish {
 			float                            min_y,
 			float                            max_y,
 			const glm::vec3&                 world_offset,
-			float                            world_scale
+			float                            world_scale,
+			const std::vector<PatchMetrics>& patch_metrics = {}
 		);
 
 		/**
@@ -317,16 +328,6 @@ namespace Boidsish {
 			glm::vec4 bounds;                 // xy = min/max Y for this chunk (for shader LOD)
 		};
 
-		struct PatchMetrics {
-			float min_y;
-			float max_y;
-			float avg_curvature;
-			float avg_roughness;
-			float avg_grass_density;
-			float max_variance;
-			float _pad[2];
-		};
-
 		struct PatchDrawData {
 			glm::vec4 world_offset_and_slice; // xyz = world offset, w = texture slice index
 			glm::vec4 patch_coords_and_size;  // xy = patch local coords (0..PatchesPerChunkSide-1), z = patch size, w = chunk size
@@ -361,6 +362,9 @@ namespace Boidsish {
 			const std::vector<float>&  packed_height_normal,
 			const std::vector<uint8_t>& packed_biomes
 		);
+
+		// Initialize baked textures and patch metrics for a slice
+		void InitializeSliceData(int slice, float min_y, float max_y, const std::vector<PatchMetrics>& patch_metrics = {});
 
 		// Configuration
 		int chunk_size_;           // Grid size per chunk (e.g., 32)

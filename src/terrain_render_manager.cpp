@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <iostream>
 
+#include <glm/gtx/norm.hpp>
+
 #include "biome_properties.h"
 #include "constants.h"
 #include "gpu_resource_registry.h"
@@ -397,6 +399,7 @@ namespace Boidsish {
 
 		auto& reg = GpuResourceRegistry::Instance();
 		reg.PublishTexture(Constants::TextureUnit::TerrainHeightmap(), heightmap_texture_, GL_TEXTURE_2D_ARRAY);
+		reg.PublishTexture(Constants::TextureUnit::TerrainRawHeightmap(), raw_heightmap_texture_, GL_TEXTURE_2D_ARRAY);
 	}
 
 	void TerrainRenderManager::UploadHeightmapSlice(
@@ -453,6 +456,45 @@ namespace Boidsish {
 		glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
 	}
 
+	void TerrainRenderManager::InitializeSliceData(int slice, float min_y, float max_y, const std::vector<PatchMetrics>& patch_metrics) {
+		// 1. Clear baked textures to prevent ghosting from previous chunks
+		float clear_color[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+		glClearTexSubImage(baked_params_texture_, 0, 0, 0, slice, heightmap_resolution_, heightmap_resolution_, 1, GL_RGBA, GL_FLOAT, clear_color);
+		glClearTexSubImage(displacement_texture_, 0, 0, 0, slice, heightmap_resolution_, heightmap_resolution_, 1, GL_RGBA, GL_FLOAT, clear_color);
+
+		// Clear horizon map (8x8)
+		glClearTexSubImage(horizon_map_texture_, 0, 0, 0, slice, 8, 8, 1, GL_RGBA, GL_FLOAT, clear_color);
+
+		// 2. Initialize patch metrics
+		int num_patches_per_chunk = Constants::Class::Terrain::PatchesPerChunk();
+		const PatchMetrics* metrics_data = nullptr;
+		std::vector<PatchMetrics> fallback_metrics;
+
+		if (patch_metrics.size() == static_cast<size_t>(num_patches_per_chunk)) {
+			metrics_data = patch_metrics.data();
+		} else {
+			fallback_metrics.resize(num_patches_per_chunk);
+			for (auto& m : fallback_metrics) {
+				m.min_y = min_y - 2.0f * last_world_scale_;
+				m.max_y = max_y + 2.0f * last_world_scale_;
+				m.avg_curvature = 0.0f;
+				m.avg_roughness = 0.0f;
+				m.avg_grass_density = 0.0f;
+				m.max_variance = 0.0f;
+			}
+			metrics_data = fallback_metrics.data();
+		}
+
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, patch_metrics_ssbo_);
+		glBufferSubData(
+			GL_SHADER_STORAGE_BUFFER,
+			slice * num_patches_per_chunk * sizeof(PatchMetrics),
+			num_patches_per_chunk * sizeof(PatchMetrics),
+			metrics_data
+		);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+	}
+
 	void TerrainRenderManager::RegisterChunk(
 		std::pair<int, int>              chunk_key,
 		const std::vector<glm::vec3>&    positions,
@@ -464,7 +506,8 @@ namespace Boidsish {
 		float                            min_y,
 		float                            max_y,
 		const glm::vec3&                 world_offset,
-		float                            world_scale
+		float                            world_scale,
+		const std::vector<PatchMetrics>& patch_metrics
 	) {
 		// Deferred eviction callback to avoid deadlock
 		// (caller may hold terrain generator's mutex, and callback needs that mutex)
@@ -483,6 +526,7 @@ namespace Boidsish {
 			if (it != chunks_.end()) {
 				// Update existing chunk's heightmap
 				UploadHeightmapSlice(it->second.texture_slice, packed_height_normal, packed_biomes);
+				InitializeSliceData(it->second.texture_slice, min_y, max_y, patch_metrics);
 				it->second.min_y = min_y;
 				it->second.max_y = max_y;
 				it->second.update_count++;
@@ -555,6 +599,7 @@ namespace Boidsish {
 
 			// Upload heightmap data
 			UploadHeightmapSlice(slice, packed_height_normal, packed_biomes);
+			InitializeSliceData(slice, min_y, max_y, patch_metrics);
 
 			// Queue for baking
 			bake_queue_.push_back({glm::ivec2(chunk_key.first, chunk_key.second), slice, 0});
@@ -965,6 +1010,10 @@ namespace Boidsish {
 		glBindTexture(GL_TEXTURE_2D_ARRAY, displacement_texture_);
 		shader_base.trySetInt("u_displacementArray", Constants::TextureUnit::TerrainDisplacement());
 
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainRawHeightmap());
+		glBindTexture(GL_TEXTURE_2D_ARRAY, raw_heightmap_texture_);
+		shader_base.trySetInt("u_rawHeightmapArray", Constants::TextureUnit::TerrainRawHeightmap());
+
 		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainHorizonMap());
 		glBindTexture(GL_TEXTURE_2D_ARRAY, horizon_map_texture_);
 		shader_base.trySetInt("u_terrainHorizonMap", Constants::TextureUnit::TerrainHorizonMap());
@@ -1263,6 +1312,15 @@ namespace Boidsish {
 			if (bake_queue_.empty())
 				return;
 
+			// Sort bake queue by distance to camera to prioritize nearby terrain
+			std::sort(bake_queue_.begin(), bake_queue_.end(), [this, world_scale](const BakeTask& a, const BakeTask& b) {
+				float scaled_chunk_size = chunk_size_ * world_scale;
+				glm::vec2 pos_a = glm::vec2(a.chunk_coord) * scaled_chunk_size + scaled_chunk_size * 0.5f;
+				glm::vec2 pos_b = glm::vec2(b.chunk_coord) * scaled_chunk_size + scaled_chunk_size * 0.5f;
+				glm::vec2 cam_pos_2d = glm::vec2(last_camera_pos_.x, last_camera_pos_.z);
+				return glm::distance2(pos_a, cam_pos_2d) < glm::distance2(pos_b, cam_pos_2d);
+			});
+
 			if (force_sync || bake_queue_.size() <= kMaxBakesPerFrame) {
 				tasks = std::move(bake_queue_);
 				bake_queue_.clear();
@@ -1286,6 +1344,10 @@ namespace Boidsish {
 		// Bind raw input textures
 		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainRawHeightmap());
 		glBindTexture(GL_TEXTURE_2D_ARRAY, raw_heightmap_texture_);
+
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainChunkGrid());
+		glBindTexture(GL_TEXTURE_2D, chunk_grid_texture_);
+		terrain_bake_shader_->setInt("u_chunkGrid", Constants::TextureUnit::TerrainChunkGrid());
 
 		// Bind biome map as image for read/write status
 		glBindImageTexture(Constants::TextureUnit::TerrainBiomeImage(), biome_texture_, 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA8);

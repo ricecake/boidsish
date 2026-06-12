@@ -246,7 +246,8 @@ namespace Boidsish {
 					chunk.terrain->proxy.minY,
 					chunk.terrain->proxy.maxY,
 					glm::vec3(chunk.key.first * scaled_chunk_size, 0, chunk.key.second * scaled_chunk_size),
-					world_scale_
+					world_scale_,
+					chunk.terrain->patch_metrics
 				);
 				registrations_this_frame++;
 			}
@@ -360,7 +361,8 @@ namespace Boidsish {
 							result.biomes,
 							result.proxy,
 							std::move(result.packed_height_normal),
-							std::move(result.packed_biomes)
+							std::move(result.packed_biomes),
+							std::move(result.patch_metrics)
 						);
 						terrain_chunk->SetPosition(
 							result.chunk_x * scaled_chunk_size,
@@ -428,7 +430,8 @@ namespace Boidsish {
 						terrain_chunk->proxy.minY,
 						terrain_chunk->proxy.maxY,
 						glm::vec3(key.first * scaled_chunk_size, 0, key.second * scaled_chunk_size),
-						world_scale_
+						world_scale_,
+						terrain_chunk->patch_metrics
 					);
 				}
 			}
@@ -799,8 +802,8 @@ namespace Boidsish {
 				else
 					h_up = std::get<0>(CalculateTerrainPropertiesAtPoint(worldX, worldZ + world_scale_));
 
-				float dx = (h_right - h_left) * 0.5f;
-				float dz = (h_up - h_down) * 0.5f;
+				float dx = (h_right - h_left) / (2.0f * world_scale_);
+				float dz = (h_up - h_down) / (2.0f * world_scale_);
 
 				heightmap[i][j][1] = dx;
 				heightmap[i][j][2] = dz;
@@ -866,6 +869,44 @@ namespace Boidsish {
 		packed_height_normal.reserve(res * res * 4);
 		packed_biomes.reserve(res * res * 4);
 
+		// Calculate per-patch metrics for initial loading
+		const int num_patches_side = Constants::Class::Terrain::PatchesPerChunkSide();
+		const int patch_size = Constants::Class::Terrain::PatchSize();
+		std::vector<TerrainRenderManager::PatchMetrics> patch_metrics(num_patches_side * num_patches_side);
+
+		for (int py = 0; py < num_patches_side; ++py) {
+			for (int px = 0; px < num_patches_side; ++px) {
+				float minH = 1e30f, maxH = -1e30f, maxVar = 0.0f;
+				float totalVar = 0.0f;
+				int count = 0;
+
+				for (int y = py * patch_size; y <= (py + 1) * patch_size; ++y) {
+					for (int x = px * patch_size; x <= (px + 1) * patch_size; ++x) {
+						int idx = x * res + y;
+						float h = positions[idx].y;
+						minH = std::min(minH, h);
+						maxH = std::max(maxH, h);
+
+						// Coarse variance calculation (neighbor difference)
+						if (x < px * patch_size + patch_size && y < py * patch_size + patch_size) {
+							float h_right = positions[(x + 1) * res + y].y;
+							float h_down = positions[x * res + (y + 1)].y;
+							float var = std::max(std::abs(h - h_right), std::abs(h - h_down));
+							maxVar = std::max(maxVar, var);
+						}
+					}
+				}
+
+				auto& m = patch_metrics[py * num_patches_side + px];
+				m.min_y = minH - 2.0f * world_scale_;
+				m.max_y = maxH + 2.0f * world_scale_;
+				m.max_variance = maxVar;
+				m.avg_curvature = 0.0f;
+				m.avg_roughness = 0.0f;
+				m.avg_grass_density = 0.0f;
+			}
+		}
+
 		for (int z = 0; z < res; ++z) {
 			for (int x = 0; x < res; ++x) {
 				int src_idx = x * res + z; // X-major
@@ -882,7 +923,7 @@ namespace Boidsish {
 			}
 		}
 
-		return {indices, positions, normals, biomes_flat, packed_height_normal, packed_biomes, proxy, chunkX, chunkZ, true};
+		return {indices, positions, normals, biomes_flat, packed_height_normal, packed_biomes, proxy, chunkX, chunkZ, true, std::move(patch_metrics)};
 	}
 
 	bool
@@ -1631,7 +1672,8 @@ namespace Boidsish {
 							result.biomes,
 							result.proxy,
 							std::move(result.packed_height_normal),
-							std::move(result.packed_biomes)
+							std::move(result.packed_biomes),
+							std::move(result.patch_metrics)
 						);
 						new_terrain->SetPosition(
 							result.chunk_x * scaled_chunk_size,
@@ -1652,7 +1694,8 @@ namespace Boidsish {
 								new_terrain->proxy.minY,
 								new_terrain->proxy.maxY,
 								glm::vec3(result.chunk_x * scaled_chunk_size, 0, result.chunk_z * scaled_chunk_size),
-								world_scale_
+								world_scale_,
+								new_terrain->patch_metrics
 							);
 						} else {
 							new_terrain->setupMesh();
