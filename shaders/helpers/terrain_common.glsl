@@ -74,4 +74,45 @@ vec3 getTerrainNormal(vec2 worldXZ) {
 	return texture(u_heightmapArray, vec3(remappedUV, float(slice))).gba;
 }
 
+struct TerrainSurface {
+	float height;
+	vec3  normal;
+};
+
+/**
+ * Get both height and normal at a specific world position.
+ */
+TerrainSurface getTerrainSurface(vec2 worldXZ) {
+	TerrainSurface surface;
+	surface.height = -10000.0;
+	surface.normal = vec3(0.0, 1.0, 0.0);
+
+	if (u_originSize.w < 1)
+		return surface;
+
+	float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
+	vec2  gridPos = worldXZ / scaledChunkSize;
+	ivec2 chunkCoord = ivec2(floor(gridPos));
+	ivec2 localGridCoord = chunkCoord - u_originSize.xy;
+
+	if (localGridCoord.x < 0 || localGridCoord.x >= u_originSize.z || localGridCoord.y < 0 ||
+	    localGridCoord.y >= u_originSize.z) {
+		surface.height = -9999.0;
+		return surface;
+	}
+
+	int slice = texelFetch(u_chunkGrid, localGridCoord, 0).r;
+	if (slice < 0)
+		return surface;
+
+	vec2 uv = (worldXZ - vec2(chunkCoord) * scaledChunkSize) / scaledChunkSize;
+	vec2 remappedUV = (uv * u_terrainParams.x + 0.5) / (u_terrainParams.x + 1.0);
+
+	vec4 data = texture(u_heightmapArray, vec3(remappedUV, float(slice)));
+	surface.height = data.r;
+	surface.normal = data.gba;
+
+	return surface;
+}
+
 #endif // HELPERS_TERRAIN_COMMON_GLSL

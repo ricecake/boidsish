@@ -767,8 +767,8 @@ namespace Boidsish {
 		if (wind_texture_ == 0) {
 			glGenTextures(1, &wind_texture_);
 			glBindTexture(GL_TEXTURE_2D, wind_texture_);
-			// The integrated wind texture at higher resolution
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, 1024, 1024, 0, GL_RGBA, GL_FLOAT, nullptr);
+			// The integrated wind texture at a balanced resolution
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, 512, 512, 0, GL_RGBA, GL_FLOAT, nullptr);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -907,7 +907,7 @@ namespace Boidsish {
 		}
 
 		// Dispatch
-		glDispatchCompute(1024 / 16, 1024 / 16, 1);
+		glDispatchCompute(512 / 16, 512 / 16, 1);
 		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
 
 		// Final Binding for users of getWindAtPosition
