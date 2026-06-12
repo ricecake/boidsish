@@ -118,7 +118,7 @@ float calculateHeightAndParams(vec2 uv, int slice, vec3 worldOffset, float chunk
 		float rockHeightVar = rockId * 0.5 + 1.75;
 		float shapedRocks = pow(rocks, 0.5) * rockHeightVar;
 
-		float random = 0.5+0.5*(fastWorley3d(worldPosScaled / 50.0) * fastBlueNoise(worldPosScaled.zx) * (1.0-smoothstep(1, 10, currentHeight)) * smoothstep(0.01, 1, currentHeight));
+		float random = 0.5+0.5*(fastWorley3d(worldPosScaled / 50.0) * fastBlueNoise(worldPos.zx * 0.005) * (1.0-smoothstep(1.0, 10.0, currentHeight)) * smoothstep(0.01, 1.0, currentHeight));
 
 		// Substrate modulation
 		float substrateMod = mix(1.2, 0.4, clamp(substrateOutput * 0.5 + 0.5, 0.0, 1.0));
@@ -204,15 +204,21 @@ void main() {
 				if (pixelCoord.y < 0) chunkOffset.y = -1;
 				else if (pixelCoord.y >= res) chunkOffset.y = 1;
 
-				targetChunkCoord += chunkOffset;
-				targetPixelCoord = (pixelCoord + ivec2(res-1)) % (res-1); // Note: raw heightmap is (res x res)
-
-				ivec2 localGridCoord = targetChunkCoord - u_originSize.xy;
+				ivec2 neighborChunkCoord = task.chunk_coord + chunkOffset;
+				ivec2 localGridCoord = neighborChunkCoord - u_originSize.xy;
+				int neighborSlice = -1;
 				if (localGridCoord.x >= 0 && localGridCoord.x < u_originSize.z && localGridCoord.y >= 0 && localGridCoord.y < u_originSize.z) {
-					int neighborSlice = texelFetch(u_chunkGrid, localGridCoord, 0).r;
-					if (neighborSlice >= 0) {
-						targetSlice = neighborSlice;
-					}
+					neighborSlice = texelFetch(u_chunkGrid, localGridCoord, 0).r;
+				}
+
+				if (neighborSlice >= 0) {
+					targetSlice = neighborSlice;
+					targetChunkCoord = neighborChunkCoord;
+					targetPixelCoord = (pixelCoord + ivec2(res-1)) % (res-1);
+				} else {
+					// Neighbor not available, clamp to current chunk edge to avoid wrapping spikes
+					// targetSlice remains current slice, targetChunkCoord remains current chunk
+					targetPixelCoord = clamp(pixelCoord, 0, res - 1);
 				}
 			}
 

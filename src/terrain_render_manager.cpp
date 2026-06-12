@@ -399,6 +399,7 @@ namespace Boidsish {
 
 		auto& reg = GpuResourceRegistry::Instance();
 		reg.PublishTexture(Constants::TextureUnit::TerrainHeightmap(), heightmap_texture_, GL_TEXTURE_2D_ARRAY);
+		reg.PublishTexture(Constants::TextureUnit::TerrainRawHeightmap(), raw_heightmap_texture_, GL_TEXTURE_2D_ARRAY);
 	}
 
 	void TerrainRenderManager::UploadHeightmapSlice(
@@ -1008,6 +1009,10 @@ namespace Boidsish {
 		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainDisplacement());
 		glBindTexture(GL_TEXTURE_2D_ARRAY, displacement_texture_);
 		shader_base.trySetInt("u_displacementArray", Constants::TextureUnit::TerrainDisplacement());
+
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainRawHeightmap());
+		glBindTexture(GL_TEXTURE_2D_ARRAY, raw_heightmap_texture_);
+		shader_base.trySetInt("u_rawHeightmapArray", Constants::TextureUnit::TerrainRawHeightmap());
 
 		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainHorizonMap());
 		glBindTexture(GL_TEXTURE_2D_ARRAY, horizon_map_texture_);
