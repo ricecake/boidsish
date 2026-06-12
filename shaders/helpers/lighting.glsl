@@ -121,32 +121,31 @@ float calculateCloudShadow(int light_index, vec3 frag_pos) {
 	}
 
 	vec3 L = normalize(-lights[light_index].direction);
-	if (L.y <= 0.0)
+	if (L.y <= 0.001)
 		return 1.0;
 
-	// Project to the middle of the cloud layer to ensure we're within the tapering range
-	float shadowAltitude = cloudAltitude + cloudThickness * 0.5;
-	float scaledCloudAltitude = shadowAltitude * worldScale;
-	float t = (scaledCloudAltitude - frag_pos.y) / L.y;
+	// Project to the nominal center of the cloud layer along the light direction.
+	// Since the shadow map integrates vertically, we account for the slanted path by dividing by L.y.
+	float shadowAltitude = cloudAltitude + cloudThickness * 2.0; // Approximation of effective center
+	float t = (shadowAltitude * worldScale - frag_pos.y) / L.y;
 
-	if (t < 0.0)
-		return 1.0;
+	if (t < 0.0) return 1.0;
 
-	vec3 cloudPos = frag_pos + L * t;
-
-	// Use the precomputed 2D shadow map
-	vec4 shadowUV = cloudShadowMatrix * vec4(cloudPos.xz, 0.0, 1.0);
-
-	// Sample the shadow map
+	vec3  cloudPos = frag_pos + L * t;
+	vec4  shadowUV = cloudShadowMatrix * vec4(cloudPos.xz, 0.0, 1.0);
 	float d = 0.0;
+
 	if (shadowUV.x >= 0.0 && shadowUV.x <= 1.0 && shadowUV.y >= 0.0 && shadowUV.y <= 1.0) {
 		d = texture(u_cloudShadowMap, shadowUV.xy).r;
 	} else {
-		// Fallback for points outside the shadow map: evaluate noise directly
+		// Fallback for points outside the shadow map: evaluate noise directly (expensive, but limited to edges)
 		d = evaluateCloudShadowDensityAtWorldPos(cloudPos.xz, time);
 	}
 
-	return mix(1.0, exp(-d), cloudShadowIntensity);
+	// Apply slant-factor and intensity
+	float finalDepth = (d / L.y) * cloudShadowOpticalDepthMultiplier;
+
+	return mix(1.0, exp(-finalDepth), cloudShadowIntensity);
 }
 
 #ifdef USE_TERRAIN_DATA
