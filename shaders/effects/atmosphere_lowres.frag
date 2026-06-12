@@ -1,14 +1,14 @@
 #version 460 core
 layout(location = 0) out vec4 FragColor;
-layout(location = 1) out float CloudDepth;
+layout(location = 1) out vec2 CloudDepth;
 
 in vec2 TexCoords;
 
 uniform sampler2D depthTexture;
 // u_transmittanceLUT is declared in helpers/lighting.glsl
 
-uniform mat4 invView;
-uniform mat4 invProjection;
+// uniform mat4 invView;
+// uniform mat4 invProjection;
 
 uniform vec3 cloudColorUniform;
 
@@ -17,6 +17,7 @@ uniform vec3 cloudColorUniform;
 #include "../helpers/clouds.glsl"
 #include "../helpers/fast_noise.glsl"
 #include "../helpers/lighting.glsl"
+#include "../types/temporal_data.glsl"
 #include "helpers/math.glsl"
 #include "lygia/generative/wavelet.glsl"
 #include "lygia/generative/voronoi.glsl"
@@ -131,8 +132,9 @@ void main() {
 
 	vec3  cloudColor = vec3(0.0);
 	float cloudTransmittance = 1.0;
-	float avgCloudDist = 0.0;
 	float totalWeight = 0.0;
+	float firstHitDist = -1.0;
+	float stepSize = 0.0;
 
 	if (t_start < t_end) {
 		vec3 lightEnergy = vec3(0.0);
@@ -149,8 +151,8 @@ void main() {
 			}
 		}
 
-		float jitter = fastSpatiotemporalBlueNoise(TexCoords, 3, int(240*time));
-		float stepSize = (t_end - t_start) / float(samples);
+		float jitter = fastSpatiotemporalBlueNoise(TexCoords, 0, int(frameIndex));
+		stepSize = (t_end - t_start) / float(samples);
 
 		for (int i = 0; i < samples; i++) {
 			float t = t_start + (float(i)) * stepSize;
@@ -169,8 +171,13 @@ void main() {
 			CloudLayer layer = computeCloudLayer(weather, props);
 
 			float d = calculateCloudDensity(p, weather, layer, props, time, false);
-			if (d <= 0.01)
+			if (d <= 0.1)
 				continue;
+
+			// Capture the exact unjittered boundary of the first solid hit
+			if (firstHitDist < 0.0) {
+				firstHitDist = t;
+			}
 
 			float stepDensity = d * stepSize * 0.005;
 			float transmittanceAtStep = exp(-stepDensity);
@@ -254,7 +261,6 @@ void main() {
 			// lightEnergy += cloudTransmittance * S * stepDensity;
 			float weight = cloudTransmittance * (1.0 - transmittanceAtStep);
 			lightEnergy += S * weight;
-			avgCloudDist += t * weight;
 			totalWeight += weight;
 
 			cloudTransmittance *= transmittanceAtStep;
@@ -265,15 +271,16 @@ void main() {
 		}
 
 		cloudColor = lightEnergy; // * cloudColorUniform;
-		if (totalWeight > 0.001) {
-			avgCloudDist /= totalWeight;
-		} else {
-			avgCloudDist = 50000.0 * worldScale;
-		}
-	} else {
-		avgCloudDist = 50000.0 * worldScale;
 	}
 
+
 	FragColor = vec4(cloudColor, cloudTransmittance);
-	CloudDepth = avgCloudDist;
+
+	// Output the stable surface depth for the temporal resolver
+	if (firstHitDist > 0.0 && totalWeight > 0.001) {
+		CloudDepth = vec2(firstHitDist, stepSize);
+	} else {
+		CloudDepth = vec2(50000.0 * worldScale, stepSize);
+	}
+
 }

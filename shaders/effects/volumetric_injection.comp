@@ -176,7 +176,7 @@ void main() {
         vec3 lightRadiance = lights[i].color * max(0.0, lights[i].intensity);
 
         // Single scattering (shadowed) + multi-scattering contribution (unshadowed)
-        radiance += lightRadiance * shadow * (atmosphereTransmittance * combinedPhase + multiScat * (s.rayleigh + s.mie));
+        radiance += lightRadiance * (atmosphereTransmittance * shadow * combinedPhase + multiScat * (s.rayleigh + s.mie));
     }
 
     // Local lights

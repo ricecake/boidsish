@@ -42,7 +42,9 @@ void main() {
 	vec2 uv = (vec2(pixel) + 0.5) / vec2(size);
 
 	vec4  currentRGBA = texture(uCurrentFrame, uv);
-	float currentCloudDist = texture(uCurrentCloudDepth, uv).r;
+	vec2  currDepth = texture(uCurrentCloudDepth, uv).rg;
+	float currentCloudDist = currDepth.r;
+	float currentCloudStep = currDepth.g;
 
 	// 1. Reprojection using Cloud Depth
 	vec2 ndc = uv * 2.0 - 1.0;
@@ -68,26 +70,31 @@ void main() {
 	float alphaMean = 0.0;
 	float alphaM2 = 0.0;
 
-	for (int y = -1; y <= 1; y++) {
-		for (int x = -1; x <= 1; x++) {
-			vec4 smp = texture(uCurrentFrame, uv + vec2(x, y) * texelSize);
+float weightSum = 0.0;
 
-			// Color stats (YCoCg)
-			vec3 ycocg = RGBToYCoCg(smp.rgb);
-			m1 += ycocg;
-			m2 += ycocg * ycocg;
+    for (int y = -1; y <= 1; y++) {
+        for (int x = -1; x <= 1; x++) {
+            vec4 smp = texture(uCurrentFrame, uv + vec2(x, y) * texelSize);
 
-			// Alpha stats
-			alphaMean += smp.a;
-			alphaM2 += smp.a * smp.a;
-		}
-	}
+            // 3x3 Gaussian approximation: Center 0.25, Edges 0.125, Corners 0.0625
+            float w = (x == 0 && y == 0) ? 0.25 : ((x == 0 || y == 0) ? 0.125 : 0.0625);
 
-	vec3 mean = m1 / 9.0;
-	vec3 stddev = sqrt(max(vec3(0.0), (m2 / 9.0) - (mean * mean)));
+            vec3 ycocg = RGBToYCoCg(smp.rgb);
 
-	alphaMean /= 9.0;
-	float alphaStd = sqrt(max(0.0, (alphaM2 / 9.0) - (alphaMean * alphaMean)));
+            m1 += ycocg * w;
+            m2 += ycocg * ycocg * w;
+
+            alphaMean += smp.a * w;
+            alphaM2 += smp.a * smp.a * w;
+            weightSum += w;
+        }
+    }
+
+    vec3 mean = m1 / weightSum;
+    vec3 stddev = sqrt(max(vec3(0.0), (m2 / weightSum) - (mean * mean)));
+
+    alphaMean /= weightSum;
+    float alphaStd = sqrt(max(0.0, (alphaM2 / weightSum) - (alphaMean * alphaMean)));
 
 	// 4. Variance clipping/clamping
 	float gamma = 2.5;
@@ -101,13 +108,23 @@ void main() {
 	historyRGBA.a = clamp(historyRGBA.a, alphaMean - gamma * alphaStd, alphaMean + gamma * alphaStd);
 
 	// 5. Dynamic Blend Weight
-	float distDiff = abs(currentCloudDist - historyCloudDist) / max(currentCloudDist, 1.0);
-	float weight = mix(0.95, 0.80, smoothstep(0.1, 0.25, distDiff));
+	// Identify if the depth jump is just an edge miss (one hit the sky, one hit the cloud)
+	bool currentIsSky = currentCloudDist > 40000.0;
+	bool historyIsSky = historyCloudDist > 40000.0;
+	bool isEdgeMiss = currentIsSky != historyIsSky;
 
-	if (!validHistory) weight = 0.0;
+	// Calculate normal structural difference
+	float absDistDiff = abs(currentCloudDist - historyCloudDist);
+	float normalizedDiff = max(0.0, absDistDiff - currentCloudStep) / max(currentCloudDist, 1.0);
 
-	vec4  finalRGBA = mix(currentRGBA, historyRGBA, weight);
-	float finalCloudDist = mix(currentCloudDist, historyCloudDist, weight);
+	// If it's a soft edge miss, keep a stable blend to smooth the noise.
+	// Otherwise, use the structural difference to detect disocclusion.
+	float targetWeight = isEdgeMiss ? 0.90 : mix(0.95, 0.80, smoothstep(0.10, 0.30, normalizedDiff));
+
+	if (!validHistory) targetWeight = 0.0;
+
+	vec4  finalRGBA = mix(currentRGBA, historyRGBA, targetWeight);
+	float finalCloudDist = mix(currentCloudDist, historyCloudDist, targetWeight);
 
 	imageStore(outColor, pixel, finalRGBA);
 	imageStore(outDepth, pixel, vec4(finalCloudDist, 0.0, 0.0, 0.0));
