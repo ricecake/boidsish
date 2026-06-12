@@ -151,7 +151,7 @@ void main() {
 			}
 		}
 
-		float jitter = fastSpatiotemporalBlueNoise(TexCoords, 0, int(frameIndex));
+		float jitter = fastSpatiotemporalBlueNoise(TexCoords, 1, int(frameIndex));
 		stepSize = (t_end - t_start) / float(samples);
 
 		for (int i = 0; i < samples; i++) {
