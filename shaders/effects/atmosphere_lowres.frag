@@ -83,7 +83,7 @@ vec3 getUnstretchedCoords(vec3 p, vec3 earthCenter, vec3 viewPos, float R_earth)
 void main() {
 	vec2  jitteredUV = TexCoords + uJitter;
 	float depth = texture(depthTexture, jitteredUV).r;
-	vec3  zenithRadiance = sampleSkyView(vec3(0, 1, 0)) * 4.0;
+	vec3  zenithRadiance = sampleSkyView(vec3(0, 1, 0));
 
 	float z = depth * 2.0 - 1.0;
 	vec4  clipSpacePosition = vec4(jitteredUV * 2.0 - 1.0, z, 1.0);
@@ -174,9 +174,9 @@ void main() {
 			CloudWeather weather = computeCloudWeather(p, props);
 			CloudLayer layer = computeCloudLayer(weather, props);
 
-			float d = calculateCloudDensity(p, weather, layer, props, time, false);
-			if (d <= 0.1)
-				continue;
+			float d = clamp(calculateCloudDensity(p, weather, layer, props, time, false), mix(0.01, 0.005, smoothstep(-0.01, 0.3, rayDir.y)), 1.0);
+			// if (d <= 0.01)
+			// 	continue;
 
 			// Capture the exact unjittered boundary of the first solid hit
 			if (firstHitDist < 0.0) {

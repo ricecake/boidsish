@@ -137,7 +137,7 @@ void main() {
 	float normalizedDiff = max(0.0, absDistDiff - currentCloudStep) / max(currentCloudDist, 1.0);
 
 	// Depth confidence: smoothly reduces blend as depth disagreement grows
-	float depthConfidence = absDistDiff > 20000? 0.90 : 1.0 - smoothstep(0.05, 0.25, normalizedDiff);
+	float depthConfidence = absDistDiff > 20000? 0.0 : 1.0 - smoothstep(0.05, 0.25, normalizedDiff);
 
 	// UV confidence: reduce blend near screen edges where reprojection is less reliable
 	float uvEdgeDist = min(min(prevUV.x, 1.0 - prevUV.x), min(prevUV.y, 1.0 - prevUV.y));
