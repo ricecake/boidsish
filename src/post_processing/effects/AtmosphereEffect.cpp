@@ -256,6 +256,7 @@ namespace Boidsish {
 				temporal_shader_->setFloat("uBlendAlpha", has_valid_history_ ? 0.95f : 0.0f);
 				temporal_shader_->setInt("uFrameIndex", frame_index_);
 				temporal_shader_->setMat4("uInvView", invView);
+				temporal_shader_->setVec2("uJitter", jitter);
 				temporal_shader_->setMat4("uInvProjection", invProj);
 				temporal_shader_->setMat4("uPrevViewProjection", prev_view_projection_);
 

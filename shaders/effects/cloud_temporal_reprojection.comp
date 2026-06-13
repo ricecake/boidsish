@@ -16,6 +16,7 @@ uniform mat4  uInvProjection;
 uniform mat4  uPrevViewProjection;
 uniform float uBlendAlpha; // How much history to keep (0.85-0.95)
 uniform int   uFrameIndex;
+uniform vec2  uJitter;
 
 vec3 RGBToYCoCg(vec3 rgb) {
 	float y  = dot(rgb, vec3(0.25, 0.5, 0.25));
@@ -34,6 +35,38 @@ vec3 YCoCgToRGB(vec3 ycocg) {
 	return vec3(r, g, b);
 }
 
+
+vec4 SampleHistoryCatmullRom(sampler2D tex, vec2 uv, vec2 texSize) {
+    vec2 samplePos = uv * texSize;
+    vec2 texPos1 = floor(samplePos - 0.5) + 0.5;
+    vec2 f = samplePos - texPos1;
+
+    vec2 w0 = f * (-0.5 + f * (1.0 - 0.5 * f));
+    vec2 w1 = 1.0 + f * f * (-2.5 + 1.5 * f);
+    vec2 w2 = f * (0.5 + f * (2.0 - 1.5 * f));
+    vec2 w3 = f * f * (-0.5 + 0.5 * f);
+
+    vec2 w12 = w1 + w2;
+    vec2 offset12 = w2 / (w1 + w2);
+
+    vec2 texPos0 = texPos1 - 1.0;
+    vec2 texPos3 = texPos1 + 2.0;
+    vec2 texPos12 = texPos1 + offset12;
+
+    texPos0 /= texSize;
+    texPos3 /= texSize;
+    texPos12 /= texSize;
+
+    vec4 result = vec4(0.0);
+    result += texture(tex, vec2(texPos0.x, texPos12.y)) * w0.x * w12.y;
+    result += texture(tex, vec2(texPos12.x, texPos0.y)) * w12.x * w0.y;
+    result += texture(tex, vec2(texPos12.x, texPos12.y)) * w12.x * w12.y;
+    result += texture(tex, vec2(texPos3.x, texPos12.y)) * w3.x * w12.y;
+    result += texture(tex, vec2(texPos12.x, texPos3.y)) * w12.x * w3.y;
+
+    return result / (w12.x * w12.y + w0.x * w12.y + w12.x * w0.y + w3.x * w12.y + w12.x * w3.y);
+}
+
 void main() {
 	ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
 	ivec2 size = imageSize(outColor);
@@ -48,7 +81,10 @@ void main() {
 	float currentCloudStep = currDepth.g;
 
 	// 1. Reprojection using Cloud Depth
-	vec2 ndc = uv * 2.0 - 1.0;
+	// Apply the jitter to reconstruct the exact ray that was actually cast
+	vec2 jitteredUV = uv + uJitter;
+	vec2 ndc = jitteredUV * 2.0 - 1.0;
+
 	vec4 viewPos = uInvProjection * vec4(ndc, 1.0, 1.0);
 	viewPos /= viewPos.w;
 	vec3 worldDir = normalize((uInvView * vec4(viewPos.xyz, 0.0)).xyz);
@@ -60,10 +96,14 @@ void main() {
 	vec4  prevClip = uPrevViewProjection * vec4(prevWorldPos, 1.0);
 	vec2  prevUV = (prevClip.xy / prevClip.w) * 0.5 + 0.5;
 
-	// 2. History Fetch and Validation
-	bool validHistory = all(greaterThanEqual(prevUV, vec2(0.0))) && all(lessThanEqual(prevUV, vec2(1.0)));
+// 2. History Fetch and Validation
+    bool validHistory = all(greaterThanEqual(prevUV, vec2(0.0))) && all(lessThanEqual(prevUV, vec2(1.0)));
 
-	vec4  historyRGBA = validHistory ? texture(uHistoryFrame, prevUV) : currentRGBA;
+    vec4 historyRGBA = currentRGBA;
+    if (validHistory) {
+        historyRGBA = SampleHistoryCatmullRom(uHistoryFrame, prevUV, vec2(size));
+    }
+
 	float historyCloudDist = validHistory ? texture(uHistoryCloudDepth, prevUV).r : currentCloudDist;
 
 	// 3. Neighborhood Analysis (3x3)
@@ -137,7 +177,13 @@ void main() {
 	float normalizedDiff = max(0.0, absDistDiff - currentCloudStep) / max(currentCloudDist, 1.0);
 
 	// Depth confidence: smoothly reduces blend as depth disagreement grows
-	float depthConfidence = absDistDiff > 20000? 0.0 : 1.0 - smoothstep(0.05, 0.25, normalizedDiff);
+	float depthConfidence = 0.0;
+	if (absDistDiff > 20000) {
+		depthConfidence = float(historyCloudDist > currentCloudDist);
+	}
+	else {
+		depthConfidence = 1.0 - smoothstep(0.05, 0.25, normalizedDiff);
+	}
 
 	// UV confidence: reduce blend near screen edges where reprojection is less reliable
 	float uvEdgeDist = min(min(prevUV.x, 1.0 - prevUV.x), min(prevUV.y, 1.0 - prevUV.y));
@@ -148,7 +194,7 @@ void main() {
 	if (!validHistory) targetWeight = 0.0;
 
 	vec4  finalRGBA = mix(currentRGBA, historyRGBA, targetWeight);
-	float finalCloudDist = min(currentCloudDist, historyCloudDist);
+	float finalCloudDist = currentCloudDist;
 
 	imageStore(outColor, pixel, finalRGBA);
 	imageStore(outDepth, pixel, vec4(finalCloudDist, 0.0, 0.0, 0.0));
