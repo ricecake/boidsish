@@ -2333,6 +2333,8 @@ namespace Boidsish {
 					lighting_ubo_data_.cloudFlowHeightScale = atmosphere_effect->GetCloudFlowHeightScale();
 					lighting_ubo_data_.cloudCurlStrength = atmosphere_effect->GetCloudCurlStrength();
 					lighting_ubo_data_.cloudCurlFrequency = atmosphere_effect->GetCloudCurlFrequency();
+					lighting_ubo_data_.hazeDensity = atmosphere_effect->GetHazeDensity();
+					lighting_ubo_data_.humidity = atmosphere_effect->GetHumidity();
 
 					// Calculate cloud shadow matrix (world XZ to shadow map UV)
 					float     mapSize = atmosphere_manager->GetCloudShadowWorldSize();
@@ -3527,6 +3529,7 @@ namespace Boidsish {
 			if (impl->atmosphere_effect) {
 				impl->atmosphere_effect->SetHazeDensity(w.haze_density);
 				impl->atmosphere_effect->SetHazeHeight(w.haze_height);
+				impl->atmosphere_effect->SetHumidity(w.humidity);
 				impl->atmosphere_effect->SetCloudDensity(w.cloud_density);
 				impl->atmosphere_effect->SetCloudAltitude(w.cloud_altitude);
 				impl->atmosphere_effect->SetCloudThickness(w.cloud_thickness);

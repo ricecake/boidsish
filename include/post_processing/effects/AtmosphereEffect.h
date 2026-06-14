@@ -33,6 +33,10 @@ namespace Boidsish {
 
 			float GetHazeHeight() const { return haze_height_; }
 
+			void SetHumidity(float humidity) { humidity_ = humidity; }
+
+			float GetHumidity() const { return humidity_; }
+
 			void SetHazeColor(const glm::vec3& color) { haze_color_ = color; }
 
 			glm::vec3 GetHazeColor() const { return haze_color_; }
@@ -212,6 +216,7 @@ namespace Boidsish {
 
 			float     haze_density_ = WeatherConstants::HazeDensity.normal;
 			float     haze_height_ = WeatherConstants::HazeHeight.normal;
+			float     humidity_ = 0.5f;
 			glm::vec3 haze_color_ = WeatherConstants::DefaultHazeColor;
 			float     cloud_density_ = WeatherConstants::CloudDensity.normal;
 			float     cloud_altitude_ = WeatherConstants::CloudAltitude.normal;

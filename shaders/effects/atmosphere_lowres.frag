@@ -174,9 +174,7 @@ void main() {
 			CloudWeather weather = computeCloudWeather(p, props);
 			CloudLayer layer = computeCloudLayer(weather, props);
 
-			float d = clamp(calculateCloudDensity(p, weather, layer, props, time, false), mix(0.01, 0.005, smoothstep(-0.01, 0.3, rayDir.y)), 1.0);
-			// if (d <= 0.01)
-			// 	continue;
+			float d = clamp(calculateCloudDensity(p, weather, layer, props, time, false), 0.0, 1.0);
 
 			// Capture the exact unjittered boundary of the first solid hit
 			if (firstHitDist < 0.0) {
@@ -272,6 +270,42 @@ void main() {
 			if (cloudTransmittance < 0.01) {
 				break;
 			}
+		}
+
+		// Minimum atmospheric scattering based on ray length through the cloud layer bounds
+		float atmosphereDist = t_end - t_start;
+		if (atmosphereDist > 0.0) {
+			// Base atmospheric density predominantly found at the end of the march
+			// We use hazeDensity and humidity to scale it
+			float baseAtmosphericDensity = (hazeDensity * 0.05 + humidity * 0.02) * 1e-4;
+			float atmosOpticalDepth = baseAtmosphericDensity * atmosphereDist;
+			float atmosTransmittance = exp(-atmosOpticalDepth);
+
+			vec3 atmosScattering = vec3(0.0);
+			for (int j = 0; j < num_lights; j++) {
+				if (lights[j].type != LIGHT_TYPE_DIRECTIONAL) continue;
+
+				vec3 L = normalize(-lights[j].direction);
+				float cosTheta = dot(rayDir, L);
+				float phase = cloudPhase(cosTheta);
+
+				vec3 voxelToCenter = (viewPos + rayDir * t_end) - earthCenter;
+				float r_km = length(voxelToCenter) / (1000.0 * worldScale);
+				float mu = dot(normalize(voxelToCenter), L);
+
+				vec2 transUV = transmittanceToUV(r_km, mu);
+				vec3 sunTransmittance = texture(u_transmittanceLUT, transUV).rgb;
+
+				atmosScattering += sunTransmittance * phase * lights[j].intensity *
+					(j == 0 ? cloudSunLightScale : cloudMoonLightScale);
+			}
+
+			vec3 ambient = evalSHIrradiance(rayDir) * 0.5;
+			vec3 S = (atmosScattering + ambient);
+
+			float weight = cloudTransmittance * (1.0 - atmosTransmittance);
+			lightEnergy += S * weight;
+			cloudTransmittance *= atmosTransmittance;
 		}
 
 		cloudColor = lightEnergy; // * cloudColorUniform;
