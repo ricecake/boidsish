@@ -40,6 +40,8 @@ namespace Boidsish {
 		float     ao = 1.0f;
 		glm::vec3 emissiveColor = glm::vec3(0.0f);
 		int       variant = 0; // Shape variant for Leaf, etc.
+		float     tree_depth = 0.0f;
+		float     branch_factor = 0.0f;
 
 		// Hierarchy
 		int              parent = -1;

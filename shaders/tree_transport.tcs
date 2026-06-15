@@ -1,0 +1,33 @@
+#version 460 core
+
+layout(vertices = 3) out;
+
+in vec3 vPos[];
+in vec3 vNormal[];
+in vec2 vTexCoords[];
+in vec3 vMetadata[];
+in vec3 vViewPos[];
+
+out vec3 tcPos[];
+out vec3 tcNormal[];
+out vec2 tcTexCoords[];
+out vec3 tcMetadata[];
+
+#include "temporal_data.glsl"
+
+void main() {
+    tcPos[gl_InvocationID] = vPos[gl_InvocationID];
+    tcNormal[gl_InvocationID] = vNormal[gl_InvocationID];
+    tcTexCoords[gl_InvocationID] = vTexCoords[gl_InvocationID];
+    tcMetadata[gl_InvocationID] = vMetadata[gl_InvocationID];
+
+    if (gl_InvocationID == 0) {
+        float dist = distance(vViewPos[0], vPos[0]);
+        float level = mix(4.0, 1.0, clamp(dist / 100.0, 0.0, 1.0));
+
+        gl_TessLevelOuter[0] = level;
+        gl_TessLevelOuter[1] = level;
+        gl_TessLevelOuter[2] = level;
+        gl_TessLevelInner[0] = level;
+    }
+}
