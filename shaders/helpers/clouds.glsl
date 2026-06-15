@@ -188,7 +188,9 @@ float calculateCloudDensity(
 	vec3 p_scaled = (p_advected) / (50000.0 * props.worldScale);
 
 	vec2 baseBubble = fastWorley3dID(p_scaled);
-	float cloudFactor = random(baseBubble.y);
+	float cloudFactor = baseBubble.y;
+	return step(coverageThreshold, baseBubble.x);
+	return step(0.2, smoothstep(0.0, 0.5, step(coverageThreshold, baseBubble.x) * step(0.00, cloudFactor)));
 	vec3 p_scaled_adv = (p_advected +time*cloudFactor) / (50000.0 * props.worldScale);
 	// float baseNoise = (fastWorley3d(p_scaled));
 	// float baseNoise = abs((fastSimplex3d(p_scaled_adv)) + baseBubble.x);
