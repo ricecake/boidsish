@@ -110,26 +110,28 @@ CloudWeather computeCloudWeather(vec3 p, CloudProperties props) {
 }
 
 CloudLayer computeCloudLayer(CloudWeather weather, CloudProperties props) {
-	// Use heightMap for dramatic vertical expansion for specific weather cells
-	// Tall clouds (cumulonimbus) can be 5-10x thicker than base thickness
-	float verticalExpansion = mix(1.0, 8.0, weather.heightMap * weather.weatherMap);
+	// Use heightMap for vertical expansion to decouple it from horizontal coverage
+	float floorOffset = mix(20.0, -50.0, weather.heightMap);
+	float ceilingOffset = mix(10.0, 500.0, weather.heightMap);
+
+	float altitudeOffset = mix(0.0, 500.0, weather.heightMap);
 
 	CloudLayer layer;
-	layer.baseFloor = props.altitude * props.worldScale;
-	layer.baseCeiling = (props.altitude + props.thickness * verticalExpansion) * props.worldScale;
+	layer.baseFloor = (altitudeOffset + props.altitude + floorOffset) * props.worldScale;
+	layer.baseCeiling = (altitudeOffset + props.altitude + props.thickness + ceilingOffset) * props.worldScale;
 	layer.thickness = max(layer.baseCeiling - layer.baseFloor, 0.001);
 	return layer;
 }
 
 vec3 getCloudAdvectionOffset(float h, float worldScale, float time) {
+	// return vec3(0);
 	float angle = cloudFlowDirection;
 	vec2  flowDir = vec2(cos(angle), sin(angle));
-
-	// Dramatic non-linear shear profile
-	float shear = h * h * cloudFlowHeightScale * 2.0;
-
-	vec3 advect = vec3(flowDir.x, 0.0, flowDir.y) * time * cloudFlowSpeed * worldScale * 10.0;
-	advect.xz += flowDir * shear * worldScale * 100.0;
+	// Increase shear effect by making it more dramatic with height
+	float heightFactor = 1.0 + h * cloudFlowHeightScale * 2.0;
+	// 1000.0 is a magic scale to make the "speed" parameter feel reasonable in world units
+	vec3 advect = vec3(flowDir.x, 0.0, flowDir.y) * time * cloudFlowSpeed * worldScale * 1.0;
+	advect += heightFactor;
 
 	return advect;
 }
@@ -188,16 +190,18 @@ float calculateCloudDensity(
 	vec3 p_scaled = (p_advected) / (50000.0 * props.worldScale);
 
 	vec2 baseBubble = fastWorley3dID(p_scaled);
-	float cloudFactor = random(baseBubble.y);
+	float cloudFactor = baseBubble.y;
+
+	return step(coverageThreshold, baseBubble.x) * step(0.00, cloudFactor);
+
 	vec3 p_scaled_adv = (p_advected +time*cloudFactor) / (50000.0 * props.worldScale);
 	// float baseNoise = (fastWorley3d(p_scaled));
 	// float baseNoise = abs((fastSimplex3d(p_scaled_adv)) + baseBubble.x);
 	// float baseNoise = baseBubble.x;
-	// float baseNoise = 1.0-baseBubble.x;
+	float baseNoise = 1.0-baseBubble.x;
 	// float baseNoise = fastFbmCurl3d(p_scaled_adv)-(1.0-baseBubble.x);
 	// float baseNoise = fastPhasor2d(random2(baseBubble.y), degrees(0))*baseBubble.x;
 	// float baseNoise = WaveletNoise(p_warped/2000, 1.52, degrees(cloudFactor*time))*baseBubble.x;
-	float baseNoise = baseBubble.x - (fastSimplex3d(p_scaled_adv));
 
 
 	// Implement "Roll": Billowy edges that vary with height
