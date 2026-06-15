@@ -10,6 +10,7 @@
 #include "constants.h"
 #include "frustum.h"
 #include "model.h"
+#include "persistent_buffer.h"
 #include "procedural_generator.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -74,11 +75,12 @@ namespace Boidsish {
 		DecorProperties        props;
 
 		// GPU resources
-		unsigned int ssbo = 0;                   // Main storage (persistent)
-		unsigned int visible_ssbo = 0;           // Culled storage (per-frame)
-		unsigned int indirect_buffer = 0;        // MDI commands
-		unsigned int shadow_indirect_buffer = 0; // MDI commands for shadow pass
-		unsigned int count_buffer = 0;           // For culling atomic counter
+		unsigned int                                 ssbo = 0; // Main storage (persistent)
+		std::unique_ptr<PersistentBuffer<glm::mat4>> visible_pb;
+		unsigned int                                 visible_ssbo = 0;           // Culled storage (per-frame)
+		unsigned int                                 indirect_buffer = 0;        // MDI commands
+		unsigned int                                 shadow_indirect_buffer = 0; // MDI commands for shadow pass
+		unsigned int                                 count_buffer = 0;           // For culling atomic counter
 
 		// Cached instance count (read back after compute, used during render)
 		unsigned int cached_count = 0;
@@ -261,8 +263,9 @@ namespace Boidsish {
 		// Per-type properties UBO for placement shader (uploaded in PrepareResources)
 		GLuint decor_props_ubo_ = 0;
 		// Global placement params UBO and per-chunk SSBO (uploaded per dispatch frame)
-		GLuint placement_globals_ubo_ = 0;
-		GLuint chunk_params_ssbo_ = 0;
+		GLuint                                            placement_globals_ubo_ = 0;
+		std::unique_ptr<PersistentBuffer<ChunkParamsGPU>> chunk_params_pb_;
+		GLuint                                            chunk_params_ssbo_ = 0;
 
 		// Distance-based density parameters
 		float                    density_falloff_start_ = 200.0f;

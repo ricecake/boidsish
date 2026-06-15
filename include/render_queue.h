@@ -28,11 +28,22 @@ namespace Boidsish {
 	};
 
 	/**
+	 * @brief Result of preparing draw data for a specific layer.
+	 */
+	struct LayerDrawPrep {
+		uint32_t uniform_start = 0;
+		uint32_t uniform_count = 0;
+		uint32_t elements_start = 0;
+		uint32_t elements_count = 0;
+		uint32_t arrays_start = 0;
+		uint32_t arrays_count = 0;
+		uint32_t bone_start = 0;
+		uint32_t bone_count = 0;
+		uint32_t frustum_index = 0;
+	};
+
+	/**
 	 * @brief A queue that collects RenderPackets and sorts them for efficient rendering.
-	 *
-	 * The RenderQueue acts as an intermediate storage between objects (Geometry)
-	 * and the low-level renderer. It allows for batching, sorting by state,
-	 * and minimizing OpenGL state changes.
 	 *
 	 * ## Thread Safety Contract
 	 * - Submit() is thread-safe (mutex protected) and can be called from multiple threads
@@ -115,6 +126,14 @@ namespace Boidsish {
 		void BuildBatches(ShaderHandle shadow_shader_override);
 
 		/**
+		 * @brief Preparation results for the current frame's prepared data.
+		 */
+		const LayerDrawPrep& GetPrep(RenderLayer layer) const { return m_layer_preps[static_cast<size_t>(layer)]; }
+		const LayerDrawPrep& GetShadowPrep() const { return m_shadow_prep; }
+		void                 SetPrep(RenderLayer layer, const LayerDrawPrep& prep) { m_layer_preps[static_cast<size_t>(layer)] = prep; }
+		void                 SetShadowPrep(const LayerDrawPrep& prep) { m_shadow_prep = prep; }
+
+		/**
 		 * @brief Clear the queue for the next frame.
 		 * @note Should only be called from main thread after rendering completes.
 		 */
@@ -130,6 +149,10 @@ namespace Boidsish {
 		// Parallel arrays to track valid (unskipped) packet indices within each layer
 		std::vector<uint32_t> m_valid_indices[5];
 		std::vector<uint32_t> m_shadow_indices;
+
+		// Preparation results
+		LayerDrawPrep m_layer_preps[5];
+		LayerDrawPrep m_shadow_prep;
 
 		mutable std::mutex m_mutex;
 	};

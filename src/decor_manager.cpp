@@ -30,8 +30,7 @@ namespace Boidsish {
 		for (auto& type : decor_types_) {
 			if (type.ssbo != 0)
 				glDeleteBuffers(1, &type.ssbo);
-			if (type.visible_ssbo != 0)
-				glDeleteBuffers(1, &type.visible_ssbo);
+			// visible_ssbo managed by visible_pb
 			if (type.count_buffer != 0)
 				glDeleteBuffers(1, &type.count_buffer);
 			if (type.indirect_buffer != 0)
@@ -45,8 +44,7 @@ namespace Boidsish {
 			glDeleteBuffers(1, &decor_props_ubo_);
 		if (placement_globals_ubo_ != 0)
 			glDeleteBuffers(1, &placement_globals_ubo_);
-		if (chunk_params_ssbo_ != 0)
-			glDeleteBuffers(1, &chunk_params_ssbo_);
+		// chunk_params_ssbo managed by chunk_params_pb
 	}
 
 	void DecorManager::_Initialize() {
@@ -84,7 +82,8 @@ namespace Boidsish {
 		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
 		// Per-chunk params SSBO (resized as needed per dispatch)
-		glGenBuffers(1, &chunk_params_ssbo_);
+		chunk_params_pb_ = std::make_unique<PersistentBuffer<ChunkParamsGPU>>(GL_SHADER_STORAGE_BUFFER, kMaxActiveChunks, 3);
+		chunk_params_ssbo_ = chunk_params_pb_->GetBufferId();
 
 		initialized_ = true;
 	}
@@ -118,9 +117,8 @@ namespace Boidsish {
 		glBufferData(GL_SHADER_STORAGE_BUFFER, kMaxInstancesPerType * sizeof(glm::mat4), nullptr, GL_DYNAMIC_DRAW);
 
 		// Visible instances (filled per frame)
-		glGenBuffers(1, &type.visible_ssbo);
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, type.visible_ssbo);
-		glBufferData(GL_SHADER_STORAGE_BUFFER, kMaxInstancesPerType * sizeof(glm::mat4), nullptr, GL_DYNAMIC_DRAW);
+		type.visible_pb = std::make_unique<PersistentBuffer<glm::mat4>>(GL_SHADER_STORAGE_BUFFER, kMaxInstancesPerType, 3);
+		type.visible_ssbo = type.visible_pb->GetBufferId();
 
 		// Indirect commands (one per mesh)
 		const auto&                              meshes = type.model->getMeshes();
@@ -158,7 +156,7 @@ namespace Boidsish {
 		glBindBuffer(GL_ATOMIC_COUNTER_BUFFER, type.count_buffer);
 		glBufferData(GL_ATOMIC_COUNTER_BUFFER, sizeof(unsigned int), nullptr, GL_DYNAMIC_DRAW);
 
-		decor_types_.push_back(type);
+		decor_types_.push_back(std::move(type));
 	}
 
 	void DecorManager::AddProceduralDecor(ProceduralType type, const DecorProperties& props, int variants) {
@@ -634,19 +632,13 @@ namespace Boidsish {
 			glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(PlacementGlobalsGPU), &globals);
 
 			// Upload per-chunk params SSBO (all chunks in one buffer)
-			std::vector<ChunkParamsGPU> chunk_gpu(num_chunks);
+			chunk_params_pb_->AdvanceFrame();
+			ChunkParamsGPU* chunk_ptr = chunk_params_pb_->GetFrameDataPtr();
 			for (int j = 0; j < num_chunks; ++j) {
 				const auto& cd = all_chunks[chunks_to_generate[j].src_index];
-				chunk_gpu[j].offset_slice_size = glm::vec4(cd.world_offset, cd.slice, cd.chunk_size);
-				chunk_gpu[j].indices = glm::ivec4(chunks_to_generate[j].block * kInstancesPerChunk, 0, 0, 0);
+				chunk_ptr[j].offset_slice_size = glm::vec4(cd.world_offset, cd.slice, cd.chunk_size);
+				chunk_ptr[j].indices = glm::ivec4(chunks_to_generate[j].block * kInstancesPerChunk, 0, 0, 0);
 			}
-			glBindBuffer(GL_SHADER_STORAGE_BUFFER, chunk_params_ssbo_);
-			glBufferData(
-				GL_SHADER_STORAGE_BUFFER,
-				num_chunks * sizeof(ChunkParamsGPU),
-				chunk_gpu.data(),
-				GL_STREAM_DRAW
-			);
 
 			// Bind everything once, then one dispatch per type
 			placement_shader_->use();
@@ -661,7 +653,7 @@ namespace Boidsish {
 
 			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::DecorProps(), decor_props_ubo_);
 			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::DecorPlacementGlobals(), placement_globals_ubo_);
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::DecorChunkParams(), chunk_params_ssbo_);
+			chunk_params_pb_->BindRange(Constants::SsboBinding::DecorChunkParams());
 
 			int dispatch_size = (Constants::Class::Terrain::ChunkSize() + 7) / 8;
 			for (size_t i = 0; i < decor_types_.size(); ++i) {
@@ -755,8 +747,10 @@ namespace Boidsish {
 			culling_shader_->setVec3("u_aabbMin", type.model->GetData()->aabb.min);
 			culling_shader_->setVec3("u_aabbMax", type.model->GetData()->aabb.max);
 
+			type.visible_pb->AdvanceFrame();
+
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::DecorAllInstances(), type.ssbo);
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::DecorInstances(), type.visible_ssbo);
+			type.visible_pb->BindRange(Constants::SsboBinding::DecorInstances());
 			glBindBufferBase(GL_ATOMIC_COUNTER_BUFFER, 0, type.count_buffer);
 			glDispatchCompute(kMaxInstancesPerType / 64, 1, 1);
 
@@ -980,7 +974,7 @@ namespace Boidsish {
 			auto& type = decor_types_[i];
 
 			// Bind the culled instances SSBO
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::DecorInstances(), type.visible_ssbo);
+			type.visible_pb->BindRange(Constants::SsboBinding::DecorInstances());
 
 			if (type.model->IsNoCull()) {
 				glDisable(GL_CULL_FACE);
