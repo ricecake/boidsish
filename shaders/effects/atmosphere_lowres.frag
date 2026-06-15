@@ -1,6 +1,6 @@
 #version 460 core
 layout(location = 0) out vec4 FragColor;
-layout(location = 1) out vec2 CloudDepth;
+layout(location = 1) out vec4 CloudDepth;
 layout(location = 2) out vec2 CloudVelocity;
 
 in vec2 TexCoords;
@@ -14,6 +14,10 @@ uniform sampler2D depthTexture;
 uniform vec3  cloudColorUniform;
 uniform vec2  uJitter;
 uniform float uDeltaTime;
+
+uniform sampler2D uHistoryDepth; // Previous frame's accumulated depth (firstHit, lastHit, stepSize, 0)
+uniform mat4  uPrevViewProjection;
+uniform bool  uHasHistory;
 
 // Atmosphere common defines and includes
 #include "../atmosphere/common.glsl"
@@ -134,10 +138,40 @@ void main() {
 
 	t_end = min(t_end, dist);
 
+	// Use reprojected history to narrow the march range
+	float fullStart = t_start;
+	float fullEnd = t_end;
+	if (uHasHistory && t_start < t_end) {
+		vec4 prevClip = uPrevViewProjection * vec4(viewPos + rayDir * max(t_start, 0.1), 1.0);
+		vec2 histUV = (prevClip.xy / prevClip.w) * 0.5 + 0.5;
+
+		if (all(greaterThanEqual(histUV, vec2(0.0))) && all(lessThanEqual(histUV, vec2(1.0)))) {
+			vec4 histDepth = texture(uHistoryDepth, histUV);
+			float histFirst = histDepth.r;
+			float histLast = histDepth.g;
+			float histStep = histDepth.b;
+
+			// Only narrow if history had valid cloud hits (not sky distance)
+			if (histFirst > 0.0 && histFirst < 40000.0 * worldScale) {
+				// Expand the known region by a margin to catch clouds that are growing/moving
+				float margin = max(histStep * 6.0, (histLast - histFirst) * 0.5);
+				float guidedStart = max(t_start, histFirst - margin);
+				float guidedEnd = min(t_end, histLast + margin);
+
+				// Only use the guided range if it's a meaningful narrowing
+				if (guidedEnd > guidedStart && (guidedEnd - guidedStart) < (t_end - t_start) * 0.9) {
+					t_start = guidedStart;
+					t_end = guidedEnd;
+				}
+			}
+		}
+	}
+
 	vec3  cloudColor = vec3(0.0);
 	float cloudTransmittance = 1.0;
 	float totalWeight = 0.0;
 	float firstHitDist = -1.0;
+	float lastHitDist = -1.0;
 	float stepSize = 0.0;
 
 	if (t_start < t_end) {
@@ -155,7 +189,7 @@ void main() {
 			}
 		}
 
-		float jitter = fastSpatiotemporalBlueNoise(TexCoords, 1, int(frameIndex));
+		float jitter = fastSpatiotemporalBlueNoise(jitteredUV, 0, frameIndex);
 		stepSize = (t_end - t_start) / float(samples);
 
 		for (int i = 0; i < samples; i++) {
@@ -176,13 +210,14 @@ void main() {
 
 			// float d = clamp(calculateCloudDensity(p, weather, layer, props, time, false), mix(0.01, 0.005, smoothstep(-0.01, 0.3, rayDir.y)), 1.0);
 			float d = clamp(calculateCloudDensity(p, weather, layer, props, time, false), 0, 1.0);
-			if (d <= 0.01)
+			if (d <= 0.1)
 				continue;
 
 			// Capture the exact unjittered boundary of the first solid hit
 			if (firstHitDist < 0.0) {
 				firstHitDist = t;
 			}
+			lastHitDist = t;
 
 			float stepDensity = d * stepSize * 0.005;
 			float transmittanceAtStep = exp(-stepDensity);
@@ -292,10 +327,10 @@ void main() {
 
 	// Output the stable surface depth for the temporal resolver
 	if (firstHitDist > 0.0 && totalWeight > 0.001) {
-		CloudDepth = vec2(firstHitDist, stepSize);
+		CloudDepth = vec4(firstHitDist, lastHitDist, stepSize, 0.0);
 		CloudVelocity = displacement;
 	} else {
-		CloudDepth = vec2(50000.0 * worldScale, stepSize);
+		CloudDepth = vec4(50000.0 * worldScale, 50000.0 * worldScale, stepSize, 0.0);
 		// Even miss pixels need velocity so the TAA can track where the gap was last frame
 		CloudVelocity = displacement;
 	}

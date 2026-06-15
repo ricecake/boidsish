@@ -99,7 +99,7 @@ CloudWeather computeCloudWeather(vec3 p, CloudProperties props) {
 	// p.y *= weatherData.y;
 	// p.z *= weatherData.x;
 
-	float heightMap = fastWorley3d(vec3(p.x, p.y+(100.0 * time * cellID), p.z) / (7500.0 * worldScale));
+	float heightMap = fastWorley3d(vec3(p.x, p.y+(3.0 * time), p.z) / (7500.0 * worldScale));
 
 	CloudWeather weather;
 	weather.weatherMap = weatherMap;

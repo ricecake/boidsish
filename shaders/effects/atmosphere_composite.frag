@@ -83,9 +83,9 @@ void main() {
 			vec2 sampleUV = (baseTexel + vec2(dx, dy) + 0.5) * cloudTexelSize;
 			sampleUV = clamp(sampleUV, cloudTexelSize * 0.5, 1.0 - cloudTexelSize * 0.5);
 
-			vec2  sampleDepth = texture(cloudDepthTexture, sampleUV).rg;
+			vec4  sampleDepth = texture(cloudDepthTexture, sampleUV);
 			float sampleCloudDist = sampleDepth.r;
-			float sampleCloudStep = sampleDepth.g;
+			float sampleCloudStep = sampleDepth.b;
 
 			vec4 sampleColor = texture(cloudTexture, sampleUV);
 
