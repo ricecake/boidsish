@@ -40,6 +40,11 @@ namespace Boidsish {
 			temporal_shader_ = std::make_unique<ComputeShader>("shaders/effects/cloud_temporal_reprojection.comp");
 			spatial_filter_shader_ = std::make_unique<ComputeShader>("shaders/effects/cloud_spatial_filter.comp");
 
+			if (temporal_shader_ && temporal_shader_->isValid()) {
+				temporal_shader_->use();
+				temporal_shader_->bindUniformBlock("TerrainData", Constants::UboBinding::TerrainData());
+			}
+
 			auto setup_shader = [](Shader& s) {
 				s.use();
 				s.bindUniformBlock("Lighting", Constants::UboBinding::Lighting());
@@ -259,6 +264,7 @@ namespace Boidsish {
 				temporal_shader_->setVec2("uJitter", jitter);
 				temporal_shader_->setMat4("uInvProjection", invProj);
 				temporal_shader_->setMat4("uPrevViewProjection", prev_view_projection_);
+				temporal_shader_->setFloat("uCloudAltitude", cloud_altitude_);
 
 				temporal_shader_->setInt("uCurrentFrame", 0);
 				temporal_shader_->setInt("uHistoryFrame", 1);

@@ -189,6 +189,9 @@ float calculateCloudDensity(
 
 	vec2 baseBubble = fastWorley3dID(p_scaled);
 	float cloudFactor = baseBubble.y;
+	// float baseNoise = remap(baseBubble.x, 0.0, 1.0, props.densityBase, 1.0) * step(coverageThreshold, baseBubble.y);
+	float baseNoise = step(coverageThreshold, baseBubble.x) * remap(baseBubble.y, 0, 1, props.densityBase, 1);
+	return clamp(baseNoise - fastSimplex3d((p_advected + vec3(100*time, 0, 50*time)) / 50000), 0, 1);
 	return step(coverageThreshold, baseBubble.x);
 	return step(0.2, smoothstep(0.0, 0.5, step(coverageThreshold, baseBubble.x) * step(0.00, cloudFactor)));
 	vec3 p_scaled_adv = (p_advected +time*cloudFactor) / (50000.0 * props.worldScale);
@@ -199,7 +202,7 @@ float calculateCloudDensity(
 	// float baseNoise = fastFbmCurl3d(p_scaled_adv)-(1.0-baseBubble.x);
 	// float baseNoise = fastPhasor2d(random2(baseBubble.y), degrees(0))*baseBubble.x;
 	// float baseNoise = WaveletNoise(p_warped/2000, 1.52, degrees(cloudFactor*time))*baseBubble.x;
-	float baseNoise = baseBubble.x - (fastSimplex3d(p_scaled_adv));
+	// float baseNoise = baseBubble.x - (fastSimplex3d(p_scaled_adv));
 
 
 	// Implement "Roll": Billowy edges that vary with height

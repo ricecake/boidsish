@@ -23,7 +23,10 @@ void main() {
     float totalOpacityWeight = 0.0;
     float totalWeight = 0.0;
 
-    // 3x3 Depth-aware and transmittance-aware bilateral filter
+    // Determine if center pixel is at a cloud boundary (low opacity or near sky)
+    float centerOpacity = clamp(1.0 - centerColor.a, 0.0, 1.0);
+
+    // 3x3 Depth-aware bilateral filter with relaxed edge handling
     for (int y = -1; y <= 1; y++) {
         for (int x = -1; x <= 1; x++) {
             vec2 offset = vec2(x, y) * texelSize;
@@ -33,20 +36,23 @@ void main() {
             // Spatial weight (Gaussian-ish)
             float spatialWeight = exp(-(float(x*x + y*y)) / 1.0);
 
-            // Depth weight: heavily penalize large depth differences to avoid bleeding
+            // Depth weight: penalize large depth differences to avoid bleeding
+            // But relax for sky-distance samples (they're just "no hit" not a different surface)
             float depthDiff = abs(centerDepth - sampleDepth);
-            float depthWeight = exp(-depthDiff / 500.0);
+            bool bothNearby = centerDepth < 40000.0 && sampleDepth < 40000.0;
+            float depthSigma = bothNearby ? 500.0 : 50000.0;
+            float depthWeight = exp(-depthDiff / depthSigma);
 
-            // Transmittance similarity weight: prevents blurring across cloud boundaries
+            // Transmittance similarity: relax at low-opacity boundaries to allow
+            // averaging across the cloud edge, which smooths the binary step noise
             float transDiff = abs(centerColor.a - sampleColor.a);
-            float transWeight = exp(-transDiff / 0.1);
+            float transSigma = mix(0.3, 0.1, centerOpacity);
+            float transWeight = exp(-transDiff / transSigma);
 
             float weight = spatialWeight * depthWeight * transWeight;
 
-            // Scatting is additive, but we weight it by the transmittance-based weight
             totalScattering += sampleColor.rgb * weight;
 
-            // We want to track total opacity in the neighborhood to normalize radiance
             float sampleOpacity = clamp(1.0 - sampleColor.a, 0.0, 1.0);
             totalOpacityWeight += weight * sampleOpacity;
 

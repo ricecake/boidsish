@@ -20,6 +20,7 @@ uniform float uBlendAlpha; // How much history to keep (0.85-0.95)
 
 uniform int   uFrameIndex;
 uniform vec2  uJitter;
+uniform float uCloudAltitude;
 
 vec3 RGBToYCoCg(vec3 rgb) {
 	float y  = dot(rgb, vec3(0.25, 0.5, 0.25));
@@ -85,7 +86,7 @@ void main() {
 
 	// 1. Reprojection using Cloud Depth
 	// Apply the jitter to reconstruct the exact ray that was actually cast
-	vec2 jitteredUV = uv + uJitter;
+	vec2 jitteredUV = uv - uJitter;
 	vec2 ndc = jitteredUV * 2.0 - 1.0;
 
 	vec4 viewPos = uInvProjection * vec4(ndc, 1.0, 1.0);
@@ -94,7 +95,16 @@ void main() {
 	vec3 cameraPos = (uInvView * vec4(0, 0, 0, 1)).xyz;
 
 	vec2  velocity = texture(uVelocityTexture, uv).rg;
-	vec3  worldPos = cameraPos + worldDir * currentCloudDist;
+
+	// For reprojection depth, use the cloud surface distance rather than sky distance.
+	// When the current frame misses (sky dist), we still want to reproject from where
+	// the cloud surface is to correctly track the moving boundary.
+	float skyThreshold = 20000.0 * WORLD_SCALE_VALUE;
+	float cloudLayerDist = uCloudAltitude * WORLD_SCALE_VALUE / max(0.01, abs(worldDir.y));
+	float reprojDist = currentCloudDist < skyThreshold ? currentCloudDist : cloudLayerDist;
+	reprojDist = min(reprojDist, skyThreshold);
+
+	vec3  worldPos = cameraPos + worldDir * reprojDist;
 	vec3  prevWorldPos = worldPos - vec3(velocity.x, 0.0, velocity.y);
 	vec4  prevClip = uPrevViewProjection * vec4(prevWorldPos, 1.0);
 	vec2  prevUV = (prevClip.xy / prevClip.w) * 0.5 + 0.5;
@@ -152,7 +162,10 @@ void main() {
 
     // Tighter variance bounds — relax only slightly in low-density regions
     float gamma = mix(3.5, 2.0, smoothstep(0.05, 0.7, alphaMean));
-	float alphaGamma = mix(1.3, 0.75, smoothstep(0.0, 0.3, alphaMean));
+	// Alpha clamping: loosest at boundary regions (mid-transmittance) where the
+	// binary density step causes oscillation, tighter in solid cloud or clear sky
+	float boundaryness = 1.0 - abs(alphaMean - 0.5) * 2.0; // 1.0 at alphaMean=0.5, 0.0 at extremes
+	float alphaGamma = mix(0.75, 1.5, boundaryness);
 
 	// 4. Variance clipping (clip toward mean rather than hard clamp for stability)
 	vec3 minColor = mean - gamma * stddev;
@@ -181,22 +194,28 @@ void main() {
 
 	// 5. Continuous confidence-based blend weight
 	float absDistDiff = abs(currentCloudDist - historyCloudDist);
-	float normalizedDiff = max(0.0, absDistDiff - currentCloudStep) / max(currentCloudDist, 1.0);
+	float normalizedDiff = max(0.0, absDistDiff - currentCloudStep) / max(min(currentCloudDist, historyCloudDist), 1.0);
 
-	// Depth confidence: smoothly reduces blend as depth disagreement grows
-	float depthConfidence = 0.0;
-	if (absDistDiff > 20000 * WORLD_SCALE_VALUE) {
-		// If the difference is huge, something fundamental changed (e.g., ray now hitting a cloud vs sky).
-		// We should always trust the current frame in this case to avoid "cloud ghosts" or "sky holes".
-		depthConfidence = float(historyCloudDist < currentCloudDist);
-	}
-	else {
+	// Depth confidence: smoothly reduces blend as depth disagreement grows.
+	// For cloud/sky transitions (one is far-sky, other is near-cloud), use a gentler
+	// falloff to allow the boundary to converge rather than snapping.
+	bool currentIsSky = currentCloudDist > 40000.0 * WORLD_SCALE_VALUE;
+	bool historyIsSky = historyCloudDist > 40000.0 * WORLD_SCALE_VALUE;
+
+	float depthConfidence;
+	if (currentIsSky != historyIsSky) {
+		// Sky/cloud boundary: blend based on opacity agreement rather than depth.
+		// Low opacity mismatch → soft edge / gap → keep blending
+		// High opacity mismatch → real disocclusion → reduce blend
+		float opacityMismatch = abs((1.0 - currentRGBA.a) - (1.0 - historyRGBA.a));
+		depthConfidence = mix(0.7, 0.3, opacityMismatch);
+	} else {
 		depthConfidence = 1.0 - smoothstep(0.05, 0.25, normalizedDiff);
 	}
 
 	// UV confidence: reduce blend near screen edges where reprojection is less reliable
 	float uvEdgeDist = min(min(prevUV.x, 1.0 - prevUV.x), min(prevUV.y, 1.0 - prevUV.y));
-	float uvConfidence = smoothstep(0.0, 0.05, uvEdgeDist);
+	float uvConfidence = smoothstep(0.0, 0.01, uvEdgeDist);
 
 	float targetWeight = uBlendAlpha * depthConfidence * uvConfidence;
 

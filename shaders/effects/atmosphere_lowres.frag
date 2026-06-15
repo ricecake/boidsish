@@ -175,7 +175,7 @@ void main() {
 			CloudLayer layer = computeCloudLayer(weather, props);
 
 			float d = clamp(calculateCloudDensity(p, weather, layer, props, time, false), mix(0.01, 0.005, smoothstep(-0.01, 0.3, rayDir.y)), 1.0);
-			if (d <= 0.2)
+			if (d <= 0.01)
 				continue;
 
 			// Capture the exact unjittered boundary of the first solid hit
@@ -183,7 +183,7 @@ void main() {
 				firstHitDist = t;
 			}
 
-			float stepDensity = d * stepSize * 0.005;
+			float stepDensity = d * stepSize * 0.001;
 			float transmittanceAtStep = exp(-stepDensity);
 
 			vec3 stepScattering = vec3(0.0);
@@ -280,22 +280,23 @@ void main() {
 
 	FragColor = vec4(cloudColor, cloudTransmittance);
 
+	// Calculate Cloud Velocity (displacement since previous frame)
+	// Feature at world p at time t is at p' at t-dt such that:
+	// p + advect(t) = p' + advect(t-dt)
+	// p' = p + advect(t) - advect(t-dt)
+	// velocity (p - p') = -(advect(t) - advect(t-dt))
+	float angle = cloudFlowDirection;
+	vec2  flowDir = vec2(cos(angle), sin(angle));
+	vec2  displacement = -flowDir * uDeltaTime * cloudFlowSpeed * props.worldScale * 10.0;
+
 	// Output the stable surface depth for the temporal resolver
 	if (firstHitDist > 0.0 && totalWeight > 0.001) {
 		CloudDepth = vec2(firstHitDist, stepSize);
-
-		// Calculate Cloud Velocity (displacement since previous frame)
-		// Feature at world p at time t is at p' at t-dt such that:
-		// p + advect(t) = p' + advect(t-dt)
-		// p' = p + advect(t) - advect(t-dt)
-		// velocity (p - p') = -(advect(t) - advect(t-dt))
-		float angle = cloudFlowDirection;
-		vec2  flowDir = vec2(cos(angle), sin(angle));
-		vec2  displacement = -flowDir * uDeltaTime * cloudFlowSpeed * props.worldScale * 10.0;
 		CloudVelocity = displacement;
 	} else {
 		CloudDepth = vec2(50000.0 * worldScale, stepSize);
-		CloudVelocity = vec2(0.0);
+		// Even miss pixels need velocity so the TAA can track where the gap was last frame
+		CloudVelocity = displacement;
 	}
 
 }
