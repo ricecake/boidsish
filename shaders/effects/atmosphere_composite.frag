@@ -63,7 +63,7 @@ void main() {
 	float dist = length(worldPos - viewPos);
 
 	if (depth > 0.999999) {
-		dist = 50000.0 * worldScale;
+		dist = 50000.0 * WORLD_SCALE_VALUE;
 	}
 
 	// 1. Bilateral upsample of low-res clouds and cloud depth
@@ -95,9 +95,9 @@ void main() {
 			float spatialW = bx * by;
 
 			// Scene depth awareness: avoid bleeding clouds over foreground objects.
-			// We use the cloud step size to relax the depth check within the cloud volume.
-			float depthDiff = max(0.0, abs(sampleCloudDist - sceneDist) - sampleCloudStep);
-			float sceneWeight = exp(-depthDiff / (500.0 * worldScale));
+			// Cloud samples are accepted if they are in front of the scene OR at the background distance.
+			float depthDiff = (sceneDist + sampleCloudStep * 2.0) - sampleCloudDist;
+            float sceneWeight = (depth > 0.999) ? 1.0 : smoothstep(0.0, 1.0, depthDiff / (100.0 * WORLD_SCALE_VALUE));
 
 			float w = spatialW * sceneWeight;
 
@@ -122,60 +122,55 @@ void main() {
 	} else {
 		// Fallback for occluded pixels: Clear sky behavior
 		cloudData = vec4(0.0, 0.0, 0.0, 1.0);
-		upsampledCloudDist = 50000.0 * worldScale;
+		upsampledCloudDist = 50000.0 * WORLD_SCALE_VALUE;
 	}
 
-	vec3  cloudColor = cloudData.rgb;
+	vec3  cloudScattering = cloudData.rgb;
 	float cloudTransmittance = cloudData.a;
 
-	// 2. High-res Atmosphere (Haze/Fog) for the terrain/scene
-	float distKM = (dist / 1000.0);
-	vec3  inScattering = sampleAerialPerspective(rayDir, distKM);
-	float transmittance = sampleAerialPerspectiveTransmittance(rayDir, distKM);
+	// 2. Atmosphere Integration
+	// We need the atmosphere between the camera and the cloud, and between the camera and the scene.
+	float sceneDistKM = (dist / 1000.0);
+	float cloudDistKM = (min(upsampledCloudDist, dist) / 1000.0);
 
-	// 3. Cloud Atmospheric Integration
-	// Clouds should also be affected by the atmosphere between them and the camera.
-	// We use the upsampled cloud distance for consistency, clamped to the scene depth.
-	float effectiveCloudDist = min(upsampledCloudDist, dist);
-	float cloudDistKM = (effectiveCloudDist / 1000.0);
+	vec3  atmosInScattering = sampleAerialPerspective(rayDir, sceneDistKM);
+	float atmosTransmittance = sampleAerialPerspectiveTransmittance(rayDir, sceneDistKM);
 
-	vec3  atmosInScattering = sampleAerialPerspective(rayDir, cloudDistKM);
-	float atmosTransmittance = sampleAerialPerspectiveTransmittance(rayDir, cloudDistKM);
+	vec3  cloudFrontInScattering = sampleAerialPerspective(rayDir, cloudDistKM);
+	float cloudFrontTransmittance = sampleAerialPerspectiveTransmittance(rayDir, cloudDistKM);
 
-	// Combine everything
-	bool isSky = depth > 0.9999;
+    // Apply terrain shadows to atmosphere behind clouds
+    if (depth < 0.999) {
+        float atmosShadow = 1.0;
+        if (num_lights > 0 && lights[0].type == LIGHT_TYPE_DIRECTIONAL) {
+            vec3 N = texture(normalTexture, TexCoords).xyz * 2.0 - 1.0;
+            vec3 L = normalize(-lights[0].direction);
+            atmosShadow = calculateShadow(0, worldPos, N, L);
+            atmosShadow = mix(0.1, 1.0, atmosShadow);
+        }
+        // Shadow only the atmosphere that is behind the cloud.
+        // We approximate this by shadowing the total in-scattering but keeping the portion in front of the cloud lit.
+        atmosInScattering = mix(cloudFrontInScattering, atmosInScattering, atmosShadow);
+    }
 
-	vec3 result;
-	if (!isSky) {
-		// Applying shadows to in-scattering (prevent sunrise/sunset glow through hills)
-		// but softened to maintain ambient levels.
-		float atmosShadow = 1.0;
-		if (num_lights > 0 && lights[0].type == LIGHT_TYPE_DIRECTIONAL) {
-			vec3 N = texture(normalTexture, TexCoords).xyz * 2.0 - 1.0;
-			vec3 L = normalize(-lights[0].direction);
-			atmosShadow = calculateShadow(0, worldPos, N, L);
-			atmosShadow = mix(0.01, 1.0, atmosShadow);
-		}
+	// 3. Final Composition
+	// result = (Background * CloudTransmittance + CloudScattering) * FrontTransmittance + FrontScattering
+    // where Background is the scene behind the cloud atmosphere.
 
-		// Shadows only apply to the background atmosphere components
-		inScattering *= atmosShadow;
+    // The 'sceneColor' already includes the full atmosphere (sceneColor = raw * atmosTrans + atmosInScat).
+    // To get the "background behind the cloud", we need to 'undo' the front atmosphere.
+    vec3 background = (sceneColor - cloudFrontInScattering);
 
-		// Physically-based additive blending:
-		// result = (Background * CloudTransmittance + CloudScattering) * FrontTransmittance + FrontScattering
-		// where Front is the atmosphere between camera and cloud.
+    // Physically, the cloud layer is inserted into the atmosphere.
+    // Result = background * cloudTransmittance + cloudScattering;
+    // Then re-apply the front atmosphere:
+    // Result = Result * cloudFrontTransmittance + cloudFrontInScattering;
 
-		// terrainAtmos = sceneColor * transmittance + inScattering
-		// We need to extract the atmosphere behind the cloud.
-		vec3 terrainAtmos = sceneColor * transmittance + inScattering;
+    // However, cloudScattering from the low-res pass ALREADY includes the lighting at that altitude.
+    // The correct formula for a volume integrated into atmosphere is:
+    // Result = (SceneColor_behind_cloud) * cloudTransmittance + cloudScattering_integrated
 
-		// Subtract front fog contribution from the total integrated fog.
-		// Note that atmosInScattering is NOT shadowed here as it's the air in front of the cloud.
-		result = (terrainAtmos - atmosInScattering) * cloudTransmittance + (cloudColor * atmosTransmittance + atmosInScattering);
-		result = max(result, vec3(0.0));
-	} else {
-		// Sky and colossal objects: Background (Sky) * CloudTransmittance + CloudInScattering
-		result = sceneColor * cloudTransmittance + (cloudColor * atmosTransmittance + atmosInScattering);
-	}
+    vec3 result = max(sceneColor - cloudFrontInScattering, vec3(0.0)) * cloudTransmittance + (cloudScattering * cloudFrontTransmittance + cloudFrontInScattering);
 
 	FragColor = vec4(result, 1.0);
 }
