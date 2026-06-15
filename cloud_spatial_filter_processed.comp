@@ -1,4 +1,6 @@
 #version 460 core
+#ifndef GSHADERS_EFFECTS_CLOUD_SPATIAL_FILTER_COMP
+#define GSHADERS_EFFECTS_CLOUD_SPATIAL_FILTER_COMP
 layout(local_size_x = 8, local_size_y = 8) in;
 
 layout(binding = 0, rgba16f) uniform image2D outFilteredColor;
@@ -67,3 +69,4 @@ void main() {
 
     imageStore(outFilteredColor, pixel, finalColor);
 }
+#endif // GSHADERS_EFFECTS_CLOUD_SPATIAL_FILTER_COMP

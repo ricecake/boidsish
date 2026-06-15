@@ -68,7 +68,9 @@ void main() {
 
 	// 1. Bilateral upsample of low-res clouds and cloud depth
 	float sceneDist = dist;
-	vec4  cloudData = vec4(0.0);
+	vec3  totalScattering = vec3(0.0);
+	float totalTransmittance = 0.0;
+	float totalOpacityWeight = 0.0;
 	float upsampledCloudDist = 0.0;
 	float totalWeight = 0.0;
 
@@ -81,7 +83,11 @@ void main() {
 			vec2 sampleUV = (baseTexel + vec2(dx, dy) + 0.5) * cloudTexelSize;
 			sampleUV = clamp(sampleUV, cloudTexelSize * 0.5, 1.0 - cloudTexelSize * 0.5);
 
-			float sampleCloudDist = texture(cloudDepthTexture, sampleUV).r;
+			vec2  sampleDepth = texture(cloudDepthTexture, sampleUV).rg;
+			float sampleCloudDist = sampleDepth.r;
+			float sampleCloudStep = sampleDepth.g;
+
+			vec4 sampleColor = texture(cloudTexture, sampleUV);
 
 			// Bilinear weight
 			float bx = (dx == 0) ? (1.0 - frac_.x) : frac_.x;
@@ -89,18 +95,29 @@ void main() {
 			float spatialW = bx * by;
 
 			// Scene depth awareness: avoid bleeding clouds over foreground objects.
-			float depthDiff = max(0.0, sampleCloudDist - sceneDist);
+			// We use the cloud step size to relax the depth check within the cloud volume.
+			float depthDiff = max(0.0, abs(sampleCloudDist - sceneDist) - sampleCloudStep);
 			float sceneWeight = exp(-depthDiff / (500.0 * worldScale));
 
 			float w = spatialW * sceneWeight;
-			cloudData += texture(cloudTexture, sampleUV) * w;
+
+			totalScattering += sampleColor.rgb * w;
+			totalTransmittance += sampleColor.a * w;
+			totalOpacityWeight += w * clamp(1.0 - sampleColor.a, 0.0, 1.0);
+
 			upsampledCloudDist += sampleCloudDist * w;
 			totalWeight += w;
 		}
 	}
 
+	vec4 cloudData;
 	if (totalWeight > 1e-4) {
-		cloudData /= totalWeight;
+		float avgTransmittance = totalTransmittance / totalWeight;
+		float avgOpacity = 1.0 - avgTransmittance;
+		vec3  avgRadiance = totalScattering / max(totalOpacityWeight, 0.0001);
+
+		cloudData.rgb = avgRadiance * avgOpacity;
+		cloudData.a = avgTransmittance;
 		upsampledCloudDist /= totalWeight;
 	} else {
 		// Fallback for occluded pixels: Clear sky behavior
