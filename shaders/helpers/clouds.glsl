@@ -194,14 +194,30 @@ float calculateCloudDensity(
 	vec3 p_scaled = (p_advected) / (50000.0 * props.worldScale);
 
 	vec2 baseBubble = fastWorley3dID(p_scaled);
-	float noise = fastSimplex3d(p_scaled);
+	float noise = fastFbm3d(p_scaled);
 	float cloudFactor = baseBubble.y;
 	// float baseNoise = remap(baseBubble.x, 0.0, 1.0, props.densityBase, 1.0) * step(coverageThreshold, baseBubble.y);
 	// float baseNoise = step(coverageThreshold, baseBubble.x) * remap(baseBubble.y, 0, 1, props.densityBase, 1);
 	// return clamp(baseNoise - fastSimplex3d((p_advected + vec3(100*time, 0, 50*time)) / 50000), 0, 1);
 	// return step(coverageThreshold, baseBubble.x);
 
-	float baseNoise = remapClamp(baseBubble.x * step(coverageThreshold, baseBubble.y), noise, 1.0, 0.0, props.densityBase);
+	float weight = smoothstep(coverageThreshold, 1.0, baseBubble.y);
+	float baseNoise = weight * step(0, baseBubble.y - baseBubble.x);
+
+	for (uint i = 4; i <=6; i++) {
+		vec3 scaled_p = (p_advected) / (pow(6, i) * props.worldScale);
+		vec2 bubble = fastWorley3dID(scaled_p);
+		float stepWeight = smoothstep(coverageThreshold, 1.0, bubble.y);
+		baseNoise += stepWeight*step(0, bubble.y - bubble.x);
+		weight += stepWeight;
+	}
+
+	baseNoise /= weight;
+
+	return remapClamp(baseNoise, noise, 1.0, 0.0, props.densityBase);
+	// return smoothstep(coverageThreshold-0.05, 0.750, baseNoise/weight);
+	// float baseNoise = remapClamp(baseBubble.x * step(coverageThreshold, baseBubble.y), noise, 1.0, 0.0, props.densityBase);
+
 
 	return baseNoise;
 	// return step(0.2, smoothstep(0.0, 0.5, step(coverageThreshold, baseBubble.x) * step(0.00, cloudFactor)));
