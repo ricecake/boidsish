@@ -244,7 +244,8 @@ float calculateCloudDensity(
 
 	float density = smoothstep(coverageThreshold, max(1.0, coverageThreshold), baseDensity);
 
-	return smoothstep(0.0, 1.0, density * densityProfile * props.densityBase * 2.0);
+	float val = smoothstep(0.0, 1.0, density * densityProfile * props.densityBase * 5.0);
+	return step(0.25, val) * val;
 }
 
 float calculateCloudShadowDensity(vec3 p, CloudWeather weather, CloudLayer layer, CloudProperties props, float time) {

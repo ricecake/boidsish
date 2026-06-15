@@ -29,7 +29,7 @@ void main() {
             float sampleDepth = texture(uCloudDepth, uv + offset).r;
 
             // Spatial weight (Gaussian-ish)
-            float spatialWeight = exp(-(x*x + y*y) / 2.0);
+            float spatialWeight = exp(-(x*x + y*y) / 0.10);
 
             // Depth weight: heavily penalize large depth differences to avoid bleeding
             float depthDiff = abs(centerDepth - sampleDepth);

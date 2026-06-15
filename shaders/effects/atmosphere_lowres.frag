@@ -175,11 +175,11 @@ void main() {
 			CloudLayer layer = computeCloudLayer(weather, props);
 
 			float d = clamp(calculateCloudDensity(p, weather, layer, props, time, false), mix(0.01, 0.005, smoothstep(-0.01, 0.3, rayDir.y)), 1.0);
-			// if (d <= 0.01)
+			// if (d <= 0.2)
 			// 	continue;
 
 			// Capture the exact unjittered boundary of the first solid hit
-			if (firstHitDist < 0.0) {
+			if (firstHitDist < 0.0 && d >= 0.2) {
 				firstHitDist = t;
 			}
 
@@ -248,7 +248,7 @@ void main() {
 
 				// stepScattering += sunTransmittance * lights[j].color * shadowTerm * phase * lights[j].intensity * (j
 				// == 0 ? cloudSunLightScale : cloudMoonLightScale);
-				stepScattering += sunTransmittance * shadowTerm * phase * lights[j].intensity *
+				stepScattering += sunTransmittance * lights[j].color * shadowTerm * phase * lights[j].intensity *
 					(j == 0 ? cloudSunLightScale : cloudMoonLightScale);
 			}
 
@@ -274,7 +274,7 @@ void main() {
 			}
 		}
 
-		cloudColor = lightEnergy; // * cloudColorUniform;
+		cloudColor = lightEnergy * cloudColorUniform;
 	}
 
 
