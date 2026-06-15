@@ -90,7 +90,7 @@ vec3 getWarpedCloudPos(vec3 p, out float fade) {
 }
 
 CloudWeather computeCloudWeather(vec3 p, CloudProperties props) {
-	p += vec3(150 * time, 0, 75 * time);
+	// p += vec3(150 * time, 0, 75 * time);
 	vec2  weatherData = fastWorley3dID(vec3(p.x, 0.0, p.z) / (10000.0 * worldScale));
 	float weatherMap = 1.0 - weatherData.x; // Worley distance for coverage
 	float cellID = weatherData.y;           // Cell ID for variety
@@ -126,10 +126,10 @@ vec3 getCloudAdvectionOffset(float h, float worldScale, float time) {
 	vec2  flowDir = vec2(cos(angle), sin(angle));
 
 	// Dramatic non-linear shear profile
-	float shear = h * h * cloudFlowHeightScale * 2.0;
+	// float shear = h * h * cloudFlowHeightScale * 2.0;
 
 	vec3 advect = vec3(flowDir.x, 0.0, flowDir.y) * time * cloudFlowSpeed * worldScale * 10.0;
-	advect.xz += flowDir * shear * worldScale * 100.0;
+	// advect.xz += flowDir * shear * worldScale * 100.0;
 
 	return advect;
 }

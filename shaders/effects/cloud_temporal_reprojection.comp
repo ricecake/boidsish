@@ -151,7 +151,8 @@ void main() {
     float alphaStd = sqrt(max(0.0, (alphaM2 / weightSumAlpha) - (alphaMean * alphaMean)));
 
     // Tighter variance bounds — relax only slightly in low-density regions
-    float gamma = mix(1.5, 1.0, smoothstep(0.0, 0.3, alphaMean));
+    float gamma = mix(3.0, 2.5, smoothstep(0.15, 0.85, alphaMean));
+	float alphaGamma = mix(1.3, 1.0, smoothstep(0.1, 0.4, alphaMean));
 
 	// 4. Variance clipping (clip toward mean rather than hard clamp for stability)
 	vec3 minColor = mean - gamma * stddev;
@@ -176,7 +177,7 @@ void main() {
 	historyYCoCg = mix(historyYCoCg, mean, clipT);
 	historyRGBA.rgb = YCoCgToRGB(historyYCoCg);
 
-	historyRGBA.a = clamp(historyRGBA.a, alphaMean - gamma * 2.0 * alphaStd, alphaMean + gamma * 2.0 * alphaStd);
+	historyRGBA.a = clamp(historyRGBA.a, alphaMean - alphaGamma * 2.0 * alphaStd, alphaMean + alphaGamma * 2.0 * alphaStd);
 
 	// 5. Continuous confidence-based blend weight
 	float absDistDiff = abs(currentCloudDist - historyCloudDist);
@@ -187,7 +188,7 @@ void main() {
 	if (absDistDiff > 20000 * WORLD_SCALE_VALUE) {
 		// If the difference is huge, something fundamental changed (e.g., ray now hitting a cloud vs sky).
 		// We should always trust the current frame in this case to avoid "cloud ghosts" or "sky holes".
-		depthConfidence = 0.0;
+		depthConfidence = float(historyCloudDist < currentCloudDist);
 	}
 	else {
 		depthConfidence = 1.0 - smoothstep(0.05, 0.25, normalizedDiff);
