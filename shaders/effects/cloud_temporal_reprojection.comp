@@ -145,7 +145,8 @@ void main() {
     float alphaStd = sqrt(max(0.0, (alphaM2 / weightSumAlpha) - (alphaMean * alphaMean)));
 
     // Tighter variance bounds — relax only slightly in low-density regions
-    float gamma = mix(1.5, 1.0, smoothstep(0.0, 0.3, alphaMean));
+    float gamma = mix(3.0, 2.5, smoothstep(0.15, 0.85, alphaMean));
+    float alphaGamma = mix(1.3, 1.0, smoothstep(0.1, 0.4, alphaMean));
 
 	// 4. Variance clipping (clip toward mean rather than hard clamp for stability)
 	vec3 minColor = mean - gamma * stddev;
@@ -170,7 +171,7 @@ void main() {
 	historyYCoCg = mix(historyYCoCg, mean, clipT);
 	historyRGBA.rgb = YCoCgToRGB(historyYCoCg);
 
-	historyRGBA.a = clamp(historyRGBA.a, alphaMean - gamma * alphaStd, alphaMean + gamma * alphaStd);
+	historyRGBA.a = clamp(historyRGBA.a, alphaMean - alphaGamma * alphaStd, alphaMean + alphaGamma * alphaStd);
 
 	// 5. Continuous confidence-based blend weight
 	float absDistDiff = abs(currentCloudDist - historyCloudDist);
@@ -179,7 +180,8 @@ void main() {
 	// Depth confidence: smoothly reduces blend as depth disagreement grows
 	float depthConfidence = 0.0;
 	if (absDistDiff > 20000) {
-		depthConfidence = float(historyCloudDist > currentCloudDist);
+		depthConfidence = float(historyCloudDist < currentCloudDist);
+		// depthConfidence = 1.00;
 	}
 	else {
 		depthConfidence = 1.0 - smoothstep(0.05, 0.25, normalizedDiff);
