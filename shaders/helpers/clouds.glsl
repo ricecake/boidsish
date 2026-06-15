@@ -95,11 +95,11 @@ CloudWeather computeCloudWeather(vec3 p, CloudProperties props) {
 	float weatherMap = 1.0 - weatherData.x; // Worley distance for coverage
 	float cellID = weatherData.y;           // Cell ID for variety
 
-	p.x *= weatherData.x;
-	p.y *= weatherData.y;
-	p.z *= weatherData.x;
+	// p.x *= weatherData.x;
+	// p.y *= weatherData.y;
+	// p.z *= weatherData.x;
 
-	float heightMap = fastWorley3d(vec3(p.x, p.y+(3.0 * time), p.z) / (7500.0 * worldScale)) * 0.5 + 0.5;
+	float heightMap = fastWorley3d(vec3(p.x, p.y+(100.0 * time * cellID), p.z) / (7500.0 * worldScale));
 
 	CloudWeather weather;
 	weather.weatherMap = weatherMap;
@@ -120,6 +120,12 @@ CloudLayer computeCloudLayer(CloudWeather weather, CloudProperties props) {
 	layer.thickness = max(layer.baseCeiling - layer.baseFloor, 0.001);
 	return layer;
 }
+
+float remapClamp(float value, float inMin, float inMax, float outMin, float outMax) {
+    float t = clamp((value - inMin) / (inMax - inMin), 0.0, 1.0);
+    return mix(outMin, outMax, t);
+}
+
 
 vec3 getCloudAdvectionOffset(float h, float worldScale, float time) {
 	float angle = cloudFlowDirection;
@@ -181,19 +187,24 @@ float calculateCloudDensity(
 
 	// Apply advection to the sample position
 	vec3 advect = getCloudAdvectionOffset(h, props.worldScale, time);
-	vec3 p_advected = p + advect;
+	vec3 p_advected = p;// + advect;
 
 	// Base noise for cloud shapes
 	vec3 p_warped = p;
 	vec3 p_scaled = (p_advected) / (50000.0 * props.worldScale);
 
 	vec2 baseBubble = fastWorley3dID(p_scaled);
+	float noise = fastSimplex3d(p_scaled);
 	float cloudFactor = baseBubble.y;
 	// float baseNoise = remap(baseBubble.x, 0.0, 1.0, props.densityBase, 1.0) * step(coverageThreshold, baseBubble.y);
-	float baseNoise = step(coverageThreshold, baseBubble.x) * remap(baseBubble.y, 0, 1, props.densityBase, 1);
-	return clamp(baseNoise - fastSimplex3d((p_advected + vec3(100*time, 0, 50*time)) / 50000), 0, 1);
-	return step(coverageThreshold, baseBubble.x);
-	return step(0.2, smoothstep(0.0, 0.5, step(coverageThreshold, baseBubble.x) * step(0.00, cloudFactor)));
+	// float baseNoise = step(coverageThreshold, baseBubble.x) * remap(baseBubble.y, 0, 1, props.densityBase, 1);
+	// return clamp(baseNoise - fastSimplex3d((p_advected + vec3(100*time, 0, 50*time)) / 50000), 0, 1);
+	// return step(coverageThreshold, baseBubble.x);
+
+	float baseNoise = remapClamp(baseBubble.x * step(coverageThreshold, baseBubble.y), noise, 1.0, 0.0, props.densityBase);
+
+	return baseNoise;
+	// return step(0.2, smoothstep(0.0, 0.5, step(coverageThreshold, baseBubble.x) * step(0.00, cloudFactor)));
 	vec3 p_scaled_adv = (p_advected +time*cloudFactor) / (50000.0 * props.worldScale);
 	// float baseNoise = (fastWorley3d(p_scaled));
 	// float baseNoise = abs((fastSimplex3d(p_scaled_adv)) + baseBubble.x);

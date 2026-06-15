@@ -174,7 +174,8 @@ void main() {
 			CloudWeather weather = computeCloudWeather(p, props);
 			CloudLayer layer = computeCloudLayer(weather, props);
 
-			float d = clamp(calculateCloudDensity(p, weather, layer, props, time, false), mix(0.01, 0.005, smoothstep(-0.01, 0.3, rayDir.y)), 1.0);
+			// float d = clamp(calculateCloudDensity(p, weather, layer, props, time, false), mix(0.01, 0.005, smoothstep(-0.01, 0.3, rayDir.y)), 1.0);
+			float d = clamp(calculateCloudDensity(p, weather, layer, props, time, false), 0, 1.0);
 			if (d <= 0.01)
 				continue;
 
@@ -183,7 +184,7 @@ void main() {
 				firstHitDist = t;
 			}
 
-			float stepDensity = d * stepSize * 0.001;
+			float stepDensity = d * stepSize * 0.005;
 			float transmittanceAtStep = exp(-stepDensity);
 
 			vec3 stepScattering = vec3(0.0);
