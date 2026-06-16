@@ -70,7 +70,6 @@ void main() {
 	float sceneDist = dist;
 	vec3  totalScattering = vec3(0.0);
 	float totalTransmittance = 0.0;
-	float totalOpacityWeight = 0.0;
 	float upsampledCloudDist = 0.0;
 	float totalWeight = 0.0;
 
@@ -103,7 +102,6 @@ void main() {
 
 			totalScattering += sampleColor.rgb * w;
 			totalTransmittance += sampleColor.a * w;
-			totalOpacityWeight += w * clamp(1.0 - sampleColor.a, 0.0, 1.0);
 
 			upsampledCloudDist += sampleCloudDist * w;
 			totalWeight += w;
@@ -111,20 +109,17 @@ void main() {
 	}
 
 	vec4 cloudData;
-	if (totalWeight > 1e-4) {
-		float avgTransmittance = totalTransmittance / totalWeight;
-		float avgOpacity = 1.0 - avgTransmittance;
-		vec3  avgRadiance = totalScattering / max(totalOpacityWeight, 0.0001);
+    if (totalWeight > 1e-4) {
+        // Average the pre-multiplied energy and transmittance directly
+        cloudData.rgb = totalScattering / totalWeight;
+        cloudData.a = totalTransmittance / totalWeight;
 
-		cloudData.rgb = avgRadiance * avgOpacity;
-		cloudData.a = avgTransmittance;
-		upsampledCloudDist /= totalWeight;
-	} else {
-		// Fallback for occluded pixels: Clear sky behavior
-		cloudData = vec4(0.0, 0.0, 0.0, 1.0);
-		upsampledCloudDist = 50000.0 * WORLD_SCALE_VALUE;
-	}
-
+        upsampledCloudDist /= totalWeight;
+    } else {
+        // Fallback for occluded pixels: Clear sky behavior
+        cloudData = vec4(0.0, 0.0, 0.0, 1.0);
+        upsampledCloudDist = 50000.0 * WORLD_SCALE_VALUE;
+    }
 	vec3  cloudScattering = cloudData.rgb;
 	float cloudTransmittance = cloudData.a;
 
