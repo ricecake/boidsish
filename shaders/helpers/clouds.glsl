@@ -213,7 +213,7 @@ float calculateCloudDensity(
 	// }
 
 	float weight = 1.0;
-	float baseNoise = 1.0 * step(props.densityBase, baseBubble.x);
+	float baseNoise = smoothstep(coverageThreshold, 1.0, baseBubble.y) * remap(baseBubble.x, baseBubble.y, 1, 0, props.densityBase);
 
 	for (uint i = 4; i <=6; i++) {
 		vec3 scaled_p = (p_advected) / (pow(6, i) * props.worldScale);
@@ -221,7 +221,7 @@ float calculateCloudDensity(
 		float stepWeight = 1.0;
 		// baseNoise += smoothstep(props.densityBase, 1.0, bubble.y) * step(coverageThreshold, baseBubble.x);
 		// baseNoise += 1.0 * step(coverageThreshold, baseBubble.x);
-		baseNoise += step(baseBubble.y * bubble.y,  coverageThreshold) * step(props.densityBase, baseBubble.x);
+		baseNoise += smoothstep(coverageThreshold,1.0, bubble.y) * remap(baseBubble.x, bubble.y, 1, 0, props.densityBase);
 		weight += stepWeight;
 	}
 

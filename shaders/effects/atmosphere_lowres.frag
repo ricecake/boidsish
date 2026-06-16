@@ -192,16 +192,15 @@ void main() {
 		float jitter = fastSpatiotemporalBlueNoise(jitteredUV, 0, frameIndex);
 		stepSize = (t_end - t_start) / float(samples);
 
+		float t_offset = jitter * stepSize;
 		for (int i = 0; i < samples; i++) {
-			float t = t_start + (float(i)) * stepSize;
-			if (t > dist)
+			float t = t_start + t_offset + (float(i)) * stepSize;
+			if (t > dist || t > t_end)
 				break;
 
 			vec3 p = viewPos + rayDir * t;
 			float altitude = length(p - earthCenter) - R_earth;
 			p.y = altitude;
-
-			p += jitter * stepSize * rayDir;
 
 			float h_norm = clamp((altitude - props.altitude * props.worldScale) / max(props.thickness * props.worldScale, 1.0), 0.0, 1.0);
 
@@ -213,11 +212,12 @@ void main() {
 			d = d * smoothstep(0.001, 0.01, d);
 			if (d <= 0.000) continue;
 
+			float t_unjittered = t - t_offset;
 			// Capture the exact unjittered boundary of the first solid hit
 			if (firstHitDist < 0.0) {
-				firstHitDist = t;
+				firstHitDist = t_unjittered;
 			}
-			lastHitDist = t;
+			lastHitDist = t_unjittered;
 
 			float stepDensity = d * stepSize * 0.005;
 			float transmittanceAtStep = exp(-stepDensity);
