@@ -95,7 +95,6 @@ void main() {
 	vec3 worldDir = normalize((uInvView * vec4(viewPos.xyz, 0.0)).xyz);
 	vec3 cameraPos = (uInvView * vec4(0, 0, 0, 1)).xyz;
 
-
 	// 3x3 Dilation: Find the closest depth and its UV
     float closestDist = 50000.0 * WORLD_SCALE_VALUE; // Use your skybox max distance
     vec2 closestUV = uv;
@@ -111,20 +110,11 @@ void main() {
             }
         }
     }
+    float skyThreshold = 40000.0 * WORLD_SCALE_VALUE;
+    float cloudLayerDist = (uCloudAltitude * WORLD_SCALE_VALUE) / max(0.05, abs(worldDir.y));
 
-    // Use the dilated depth and UV for reprojection
-    float reprojDist = closestDist;
+    float reprojDist = closestDist < skyThreshold ? closestDist : cloudLayerDist;
     vec2  velocity = texture(uVelocityTexture, closestUV).rg;
-
-	// vec2  velocity = texture(uVelocityTexture, uv).rg;
-
-	// // For reprojection depth, use the cloud surface distance rather than sky distance.
-	// // When the current frame misses (sky dist), we still want to reproject from where
-	// // the cloud surface is to correctly track the moving boundary.
-	// float skyThreshold = 20000.0 * WORLD_SCALE_VALUE;
-	// float cloudLayerDist = uCloudAltitude * WORLD_SCALE_VALUE / max(0.01, abs(worldDir.y));
-	// float reprojDist = currentCloudDist < skyThreshold ? currentCloudDist : cloudLayerDist;
-	// reprojDist = min(reprojDist, skyThreshold);
 
 	vec3  worldPos = cameraPos + worldDir * reprojDist;
 	vec3  prevWorldPos = worldPos - vec3(velocity.x, 0.0, velocity.y);
@@ -203,29 +193,30 @@ void main() {
 
 	vec3 historyYCoCg = RGBToYCoCg(historyRGBA.rgb);
 
-	// Clip-toward-mean: find the intersection of the line from history to mean with the AABB
-	// Only apply the color clip if the neighborhood actually contains cloud data
-	if (alphaMean > 0.02) {
-		vec3 clipDir = mean - historyYCoCg;
-		vec3 clipFactors = vec3(1.0);
+// Clip-toward-mean: find the intersection of the line from history to mean with the AABB
+    vec3 clipDir = mean - historyYCoCg;
+    vec3 clipFactors = vec3(1.0);
 
-		for (int i = 0; i < 3; i++) {
-			if (abs(clipDir[i]) > 0.0001) {
-				if (historyYCoCg[i] < minColor[i])
-					clipFactors[i] = (minColor[i] - historyYCoCg[i]) / clipDir[i];
-				else if (historyYCoCg[i] > maxColor[i])
-					clipFactors[i] = (maxColor[i] - historyYCoCg[i]) / clipDir[i];
-				else
-					clipFactors[i] = 0.0;
-			}
-		}
+    for (int i = 0; i < 3; i++) {
+        if (abs(clipDir[i]) > 0.0001) {
+            if (historyYCoCg[i] < minColor[i])
+                clipFactors[i] = (minColor[i] - historyYCoCg[i]) / clipDir[i];
+            else if (historyYCoCg[i] > maxColor[i])
+                clipFactors[i] = (maxColor[i] - historyYCoCg[i]) / clipDir[i];
+            else
+                clipFactors[i] = 0.0;
+        }
+    }
 
-		float clipT = clamp(max(clipFactors.x, max(clipFactors.y, clipFactors.z)), 0.0, 1.0);
-		historyYCoCg = mix(historyYCoCg, mean, clipT);
-		historyRGBA.rgb = YCoCgToRGB(historyYCoCg);
-	}
+    float clipT = clamp(max(clipFactors.x, max(clipFactors.y, clipFactors.z)), 0.0, 1.0);
 
-	// historyRGBA.a = clamp(historyRGBA.a, alphaMean - alphaGamma * alphaStd, alphaMean + alphaGamma * alphaStd);
+    // STOCHASTIC FRINGE FIX:
+    // Smoothly bypass the clip in low-density regions so the temporal accumulation can stabilize.
+    float clipBlend = smoothstep(0.02, 0.15, alphaMean);
+
+    vec3 clippedYCoCg = mix(historyYCoCg, mean, clipT);
+    historyYCoCg = mix(historyYCoCg, clippedYCoCg, clipBlend);
+    historyRGBA.rgb = YCoCgToRGB(historyYCoCg);
 
 	float historyOpacity = clamp(1.0 - historyRGBA.a, 0.0, 1.0);
 	historyOpacity = clamp(historyOpacity, alphaMean - alphaGamma * alphaStd, alphaMean + alphaGamma * alphaStd);
