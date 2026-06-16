@@ -41,34 +41,34 @@ vec3 YCoCgToRGB(vec3 ycocg) {
 
 
 vec4 SampleHistoryCatmullRom(sampler2D tex, vec2 uv, vec2 texSize) {
-    vec2 samplePos = uv * texSize;
-    vec2 texPos1 = floor(samplePos - 0.5) + 0.5;
-    vec2 f = samplePos - texPos1;
+	vec2 samplePos = uv * texSize;
+	vec2 texPos1 = floor(samplePos - 0.5) + 0.5;
+	vec2 f = samplePos - texPos1;
 
-    vec2 w0 = f * (-0.5 + f * (1.0 - 0.5 * f));
-    vec2 w1 = 1.0 + f * f * (-2.5 + 1.5 * f);
-    vec2 w2 = f * (0.5 + f * (2.0 - 1.5 * f));
-    vec2 w3 = f * f * (-0.5 + 0.5 * f);
+	vec2 w0 = f * (-0.5 + f * (1.0 - 0.5 * f));
+	vec2 w1 = 1.0 + f * f * (-2.5 + 1.5 * f);
+	vec2 w2 = f * (0.5 + f * (2.0 - 1.5 * f));
+	vec2 w3 = f * f * (-0.5 + 0.5 * f);
 
-    vec2 w12 = w1 + w2;
-    vec2 offset12 = w2 / (w1 + w2);
+	vec2 w12 = w1 + w2;
+	vec2 offset12 = w2 / (w1 + w2);
 
-    vec2 texPos0 = texPos1 - 1.0;
-    vec2 texPos3 = texPos1 + 2.0;
-    vec2 texPos12 = texPos1 + offset12;
+	vec2 texPos0 = texPos1 - 1.0;
+	vec2 texPos3 = texPos1 + 2.0;
+	vec2 texPos12 = texPos1 + offset12;
 
-    texPos0 /= texSize;
-    texPos3 /= texSize;
-    texPos12 /= texSize;
+	texPos0 /= texSize;
+	texPos3 /= texSize;
+	texPos12 /= texSize;
 
-    vec4 result = vec4(0.0);
-    result += texture(tex, vec2(texPos0.x, texPos12.y)) * w0.x * w12.y;
-    result += texture(tex, vec2(texPos12.x, texPos0.y)) * w12.x * w0.y;
-    result += texture(tex, vec2(texPos12.x, texPos12.y)) * w12.x * w12.y;
-    result += texture(tex, vec2(texPos3.x, texPos12.y)) * w3.x * w12.y;
-    result += texture(tex, vec2(texPos12.x, texPos3.y)) * w12.x * w3.y;
+	vec4 result = vec4(0.0);
+	result += texture(tex, vec2(texPos0.x, texPos12.y)) * w0.x * w12.y;
+	result += texture(tex, vec2(texPos12.x, texPos0.y)) * w12.x * w0.y;
+	result += texture(tex, vec2(texPos12.x, texPos12.y)) * w12.x * w12.y;
+	result += texture(tex, vec2(texPos3.x, texPos12.y)) * w3.x * w12.y;
+	result += texture(tex, vec2(texPos12.x, texPos3.y)) * w12.x * w3.y;
 
-    return result / (w12.x * w12.y + w0.x * w12.y + w12.x * w0.y + w3.x * w12.y + w12.x * w3.y);
+	return result / (w12.x * w12.y + w0.x * w12.y + w12.x * w0.y + w3.x * w12.y + w12.x * w3.y);
 }
 
 void main() {
@@ -111,16 +111,16 @@ void main() {
 	vec2 prevUV = uv + velocity;
 
 	// 2. History Fetch and Validation
-    bool validHistory = all(greaterThanEqual(prevUV, vec2(0.0))) && all(lessThanEqual(prevUV, vec2(1.0)));
+	bool validHistory = all(greaterThanEqual(prevUV, vec2(0.0))) && all(lessThanEqual(prevUV, vec2(1.0)));
 
-    vec4 historyRGBA = currentRGBA;
-    if (validHistory) {
-        historyRGBA = SampleHistoryCatmullRom(uHistoryFrame, prevUV, vec2(size));
+	vec4 historyRGBA = currentRGBA;
+	if (validHistory) {
+		historyRGBA = SampleHistoryCatmullRom(uHistoryFrame, prevUV, vec2(size));
 
-        // Prevent Catmull-Rom ringing (overshoot and undershoot)
-        historyRGBA.rgb = max(vec3(0.0), historyRGBA.rgb); // Kill negative energy
-        historyRGBA.a = clamp(historyRGBA.a, 0.0, 1.0);    // Keep transmittance physical
-    }
+		// Prevent Catmull-Rom ringing (overshoot and undershoot)
+		historyRGBA.rgb = max(vec3(0.0), historyRGBA.rgb); // Kill negative energy
+		historyRGBA.a = clamp(historyRGBA.a, 0.0, 1.0);    // Keep transmittance physical
+	}
 
 	vec4  historyDepth = validHistory ? texture(uHistoryCloudDepth, prevUV) : currDepth;
 	float historyCloudDist = historyDepth.r;
@@ -136,55 +136,55 @@ void main() {
 	float transMean = 0.0;
 
 	float weightSumColor = 0.0;
-    float weightSumAlpha = 0.0;
+	float weightSumAlpha = 0.0;
 	float weightSumTrans = 0.0;
 	vec3 localMin = vec3(100000.0);
-    vec3 localMax = vec3(-100000.0);
+	vec3 localMax = vec3(-100000.0);
 
-    for (int y = -1; y <= 1; y++) {
-        for (int x = -1; x <= 1; x++) {
-            vec4 smp = texture(uCurrentFrame, uv + vec2(x, y) * texelSize);
+	for (int y = -1; y <= 1; y++) {
+		for (int x = -1; x <= 1; x++) {
+			vec4 smp = texture(uCurrentFrame, uv + vec2(x, y) * texelSize);
 
 			localMin = min(localMin, smp.rgb);
-            localMax = max(localMax, smp.rgb);
+			localMax = max(localMax, smp.rgb);
 
-            // Spatial Gaussian weight
-            float spatialW = (x == 0 && y == 0) ? 0.25 : ((x == 0 || y == 0) ? 0.125 : 0.0625);
+			// Spatial Gaussian weight
+			float spatialW = (x == 0 && y == 0) ? 0.25 : ((x == 0 || y == 0) ? 0.125 : 0.0625);
 
-            // Weight color stats by opacity so the black sky doesn't ruin the cloud bounds
-            float opacity = clamp(1.0 - smp.a, 0.0, 1.0);
-            float colorW = spatialW * max(opacity, 0.001);
+			// Weight color stats by opacity so the black sky doesn't ruin the cloud bounds
+			float opacity = clamp(1.0 - smp.a, 0.0, 1.0);
+			float colorW = spatialW * max(opacity, 0.001);
 
-            vec3 ycocg = RGBToYCoCg(smp.rgb);
+			vec3 ycocg = RGBToYCoCg(smp.rgb);
 
-            m1 += ycocg * colorW;
-            m2 += ycocg * ycocg * colorW;
-            weightSumColor += colorW;
+			m1 += ycocg * colorW;
+			m2 += ycocg * ycocg * colorW;
+			weightSumColor += colorW;
 
-            alphaMean += opacity * spatialW;
-            alphaM2 += opacity * opacity * spatialW;
-            weightSumAlpha += spatialW;
+			alphaMean += opacity * spatialW;
+			alphaM2 += opacity * opacity * spatialW;
+			weightSumAlpha += spatialW;
 
 			transMean += smp.a * spatialW;
 			weightSumTrans += spatialW;
-        }
-    }
-	historyRGBA.rgb = clamp(historyRGBA.rgb, localMin, localMax);
+		}
+	}
+	// historyRGBA.rgb = clamp(historyRGBA.rgb, localMin, localMax);
 
-    vec3 mean = m1 / weightSumColor;
-    vec3 stddev = sqrt(max(vec3(0.0), (m2 / weightSumColor) - (mean * mean)));
+	vec3 mean = m1 / weightSumColor;
+	vec3 stddev = sqrt(max(vec3(0.0), (m2 / weightSumColor) - (mean * mean)));
 
-    alphaMean /= weightSumAlpha;
-    float alphaStd = sqrt(max(0.0, (alphaM2 / weightSumAlpha) - (alphaMean * alphaMean)));
+	alphaMean /= weightSumAlpha;
+	float alphaStd = sqrt(max(0.0, (alphaM2 / weightSumAlpha) - (alphaMean * alphaMean)));
 
 	transMean /= weightSumTrans;
 
-    // Tighter variance bounds — relax only slightly in low-density regions
+	// Tighter variance bounds — relax only slightly in low-density regions
 	// Alpha clamping: loosest at boundary regions (mid-transmittance) where the
 	// binary density step causes oscillation, tighter in solid cloud or clear sky
 	float boundaryness = 1.0 - abs(alphaMean - 0.5) * 2.0; // 1.0 at alphaMean=0.5, 0.0 at extremes
 	float alphaGamma = mix(0.75, 1.1, boundaryness);
-    float gamma = mix(2.50, 3.6, boundaryness);
+	float gamma = mix(2.50, 3.6, boundaryness);
 
 	// 4. Variance clipping (clip toward mean rather than hard clamp for stability)
 	vec3 minColor = mean - gamma * stddev;
@@ -193,29 +193,29 @@ void main() {
 	vec3 historyYCoCg = RGBToYCoCg(historyRGBA.rgb);
 
 	// Clip-toward-mean: find the intersection of the line from history to mean with the AABB
-    vec3 clipDir = mean - historyYCoCg;
-    vec3 clipFactors = vec3(1.0);
+	vec3 clipDir = mean - historyYCoCg;
+	vec3 clipFactors = vec3(1.0);
 
-    for (int i = 0; i < 3; i++) {
-        if (abs(clipDir[i]) > 0.0001) {
-            if (historyYCoCg[i] < minColor[i])
-                clipFactors[i] = (minColor[i] - historyYCoCg[i]) / clipDir[i];
-            else if (historyYCoCg[i] > maxColor[i])
-                clipFactors[i] = (maxColor[i] - historyYCoCg[i]) / clipDir[i];
-            else
-                clipFactors[i] = 0.0;
-        }
-    }
+	for (int i = 0; i < 3; i++) {
+		if (abs(clipDir[i]) > 0.0001) {
+			if (historyYCoCg[i] < minColor[i])
+				clipFactors[i] = (minColor[i] - historyYCoCg[i]) / clipDir[i];
+			else if (historyYCoCg[i] > maxColor[i])
+				clipFactors[i] = (maxColor[i] - historyYCoCg[i]) / clipDir[i];
+			else
+				clipFactors[i] = 0.0;
+		}
+	}
 
-    float clipT = clamp(max(clipFactors.x, max(clipFactors.y, clipFactors.z)), 0.0, 1.0);
+	float clipT = clamp(max(clipFactors.x, max(clipFactors.y, clipFactors.z)), 0.0, 1.0);
 
-    // STOCHASTIC FRINGE FIX:
-    // Smoothly bypass the clip in low-density regions so the temporal accumulation can stabilize.
-    float clipBlend = smoothstep(0.02, 0.15, alphaMean);
+	// STOCHASTIC FRINGE FIX:
+	// Smoothly bypass the clip in low-density regions so the temporal accumulation can stabilize.
+	float clipBlend = smoothstep(0.02, 0.15, alphaMean);
 
-    vec3 clippedYCoCg = mix(historyYCoCg, mean, clipT);
-    historyYCoCg = mix(historyYCoCg, clippedYCoCg, clipBlend);
-    historyRGBA.rgb = YCoCgToRGB(historyYCoCg);
+	vec3 clippedYCoCg = mix(historyYCoCg, mean, clipT);
+	historyYCoCg = mix(historyYCoCg, clippedYCoCg, clipBlend);
+	historyRGBA.rgb = YCoCgToRGB(historyYCoCg);
 
 	float historyOpacity = clamp(1.0 - historyRGBA.a, 0.0, 1.0);
 	historyOpacity = clamp(historyOpacity, alphaMean - alphaGamma * alphaStd, alphaMean + alphaGamma * alphaStd);
@@ -248,22 +248,47 @@ void main() {
 	float uvEdgeDist = min(min(prevUV.x, 1.0 - prevUV.x), min(prevUV.y, 1.0 - prevUV.y));
 	float uvConfidence = smoothstep(0.0, 0.01, uvEdgeDist);
 
-    ivec2 sceneTexSize = textureSize(uSceneDepth, 0);
-    ivec2 depthPos = ivec2(jitteredUV * vec2(sceneTexSize));
-    float rawSceneDepth = texelFetch(uSceneDepth, depthPos, 0).r;
+// 1. Fetch un-interpolated scene depth using texelFetch to preserve hard edges
+	ivec2 sceneTexSize = textureSize(uSceneDepth, 0);
+	ivec2 depthPos = ivec2(jitteredUV * vec2(sceneTexSize));
+	float rawSceneDepth = texelFetch(uSceneDepth, depthPos, 0).r;
 
-    vec4 ndcDepth = vec4(jitteredUV * 2.0 - 1.0, rawSceneDepth * 2.0 - 1.0, 1.0);
-    vec4 viewSpaceScene = uInvProjection * ndcDepth;
-    float linearSceneDepth = -(viewSpaceScene.z / viewSpaceScene.w);
+	vec4 ndcDepth = vec4(jitteredUV * 2.0 - 1.0, rawSceneDepth * 2.0 - 1.0, 1.0);
+	vec4 viewSpaceScene = uInvProjection * ndcDepth;
+	float linearSceneDepth = -(viewSpaceScene.z / viewSpaceScene.w);
 
-    if (rawSceneDepth >= 1.0) {
-        linearSceneDepth = 50000.0 * WORLD_SCALE_VALUE;
-    }
+	if (rawSceneDepth >= 1.0) {
+		linearSceneDepth = 50000.0 * WORLD_SCALE_VALUE;
+	}
 
-    float depthEpsilon = 100.0 * WORLD_SCALE_VALUE;
-    if (linearSceneDepth < currentCloudDist - depthEpsilon) {
-        validHistory = false;
-    }
+	// 2. Distance-Scaling Epsilon
+	// Precision drops at a distance. A 1.5% error margin prevents distant Z-fighting.
+	float depthEpsilon = 10.0 * WORLD_SCALE_VALUE + (linearSceneDepth * 0.015);
+
+	// 3. Standard Disocclusion
+	// Foreground object covers background cloud
+	if (linearSceneDepth < currentCloudDist - depthEpsilon) {
+		validHistory = false;
+	}
+
+	// 4. Jitter Silhouette Lock
+	// Because the raymarcher terminates at the depth buffer, currentCloudDist
+	// will match linearSceneDepth if the ray hit the mountain.
+	bool currentIsTerrain = (linearSceneDepth - currentCloudDist) < depthEpsilon;
+
+	if (currentIsTerrain) {
+		// Pixel is currently on the mountain.
+		// If history was in the sky/clouds (significantly deeper), kill it to prevent white ringing.
+		if (historyCloudDist > linearSceneDepth + depthEpsilon) {
+			validHistory = false;
+		}
+	} else {
+		// Pixel is currently in the sky/clouds.
+		// If history was on the mountain, kill it to prevent dark ringing.
+		if (abs(historyCloudDist - linearSceneDepth) < depthEpsilon && linearSceneDepth < 45000.0 * WORLD_SCALE_VALUE) {
+			validHistory = false;
+		}
+	}
 
 	float targetWeight = uBlendAlpha * depthConfidence * uvConfidence;
 

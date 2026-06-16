@@ -95,11 +95,33 @@ void main() {
 
 			// Scene depth awareness: avoid bleeding clouds over foreground objects.
 			// Cloud samples are accepted if they are in front of the scene OR at the background distance.
-			float depthDiff = (sceneDist + sampleCloudStep * 2.0) - sampleCloudDist;
+			// float depthDiff = (sceneDist + sampleCloudStep * 2.0) - sampleCloudDist;
             // float sceneWeight = (depth > 0.999) ? 1.0 : smoothstep(0.0, 1.0, depthDiff / (100.0 * WORLD_SCALE_VALUE));
-			float sceneWeight = (depth > 0.999) ? 1.0 : smoothstep(0.0, 1.0, depthDiff / (20.0 * WORLD_SCALE_VALUE));
+			// float sceneWeight = (depth > 0.999) ? 1.0 : smoothstep(0.0, 1.0, depthDiff / (20.0 * WORLD_SCALE_VALUE));
+			// Strictly evaluate if the cloud is physically in front of the terrain
+			// float depthDiff = sceneDist - sampleCloudDist;
+			// // Tighten the bleed tolerance.
+			// // If depthDiff is negative (cloud is behind terrain), it smoothly cuts to 0 over 5 meters.
+			// float sceneWeight = (depth > 0.999) ? 1.0 : smoothstep(-5.0 * WORLD_SCALE_VALUE, 15.0 * WORLD_SCALE_VALUE, depthDiff);
 
-			float w = spatialW * sceneWeight;
+// In atmosphere_composite.frag
+// Replace the existing depthDiff and sceneWeight logic with this asymmetric check:
+
+float sceneWeight = 1.0;
+if (depth < 0.999) {
+    // The high-res pixel is a solid foreground object
+    if (sampleCloudDist > sceneDist) {
+        // The low-res sample is physically BEHIND the terrain (e.g. background sky).
+        // Exponentially kill the weight to prevent the background from bleeding over the silhouette.
+        float bleed = sampleCloudDist - sceneDist;
+        sceneWeight = exp(-bleed / (10.0 * WORLD_SCALE_VALUE));
+    }
+    // If sampleCloudDist <= sceneDist, the cloud/fog is in front of
+    // or exactly touching the terrain. It naturally retains the full 1.0 weight.
+}
+
+float w = spatialW * sceneWeight;
+
 
 			totalScattering += sampleColor.rgb * w;
 			totalTransmittance += sampleColor.a * w;
