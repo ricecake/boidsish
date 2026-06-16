@@ -207,14 +207,14 @@ void main() {
 			CloudWeather weather = computeCloudWeather(p, props);
 			CloudLayer layer = computeCloudLayer(weather, props);
 
-			// float d = clamp(calculateCloudDensity(p, weather, layer, props, time, false), mix(0.01, 0.005, smoothstep(-0.01, 0.3, rayDir.y)), 1.0);
-			float d = clamp(calculateCloudDensity(p, weather, layer, props, time, false), 0, 1.0);
+			float d = clamp(calculateCloudDensity(p, weather, layer, props, time, false), mix(0.01, 0.005, smoothstep(-0.01, 0.3, rayDir.y)), 2.0);
+			// float d = clamp(calculateCloudDensity(p, weather, layer, props, time, false), 0, 2.0);
 			d = d * smoothstep(0.001, 0.01, d);
 			if (d <= 0.000) continue;
 
 			float t_unjittered = t - t_offset;
 			// Capture the exact unjittered boundary of the first solid hit
-			if (firstHitDist < 0.0) {
+			if (firstHitDist < 0.0 && d > 0.01) {
 				firstHitDist = t_unjittered;
 			}
 			lastHitDist = t_unjittered;

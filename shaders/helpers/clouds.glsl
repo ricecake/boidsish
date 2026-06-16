@@ -100,10 +100,10 @@ vec3 getCloudAdvectionOffset(float h, float time) {
 	vec2  flowDir = vec2(cos(angle), sin(angle));
 
 	// Dramatic non-linear shear profile
-	float shear = h * h * cloudFlowHeightScale * 2.0;
+	float shear = h * h * cloudFlowHeightScale * 1.0;
 
 	vec3 advect = getCloudWindOffset(time);
-	advect.xz += flowDir * shear * worldScale * 100.0;
+	advect.xz += flowDir * shear * worldScale * 10.0;
 
 	return advect;
 }
@@ -183,14 +183,14 @@ float calculateCloudDensity(
 
 	// Domain warping for "boiling" look (using curl noise)
 	if (!simplified) {
-		vec3 curl = fastCurl3d(p_advected / (cloudCurlFrequency * props.worldScale * 100.0));
-		p_advected += curl * cloudCurlStrength * props.worldScale * 500.0 * (1.0 - h);
+		vec3 curl = fastCurl3d(p_advected / (cloudCurlFrequency * props.worldScale * 5000.0));
+		p_advected += curl * cloudCurlStrength * props.worldScale * 5000.0 * (1.0 - h);
 	}
 
 	// Base noise sampling (Perlin-Worley hybrid proxy)
 	vec3 p_scaled = p_advected / (30000.0 * props.worldScale);
 	float perlin = (fastFbm3d(p_scaled) + 1.0) * 0.5;
-	float worley = 1.0 - fastWorley3d(p_scaled);
+	float worley = fastWorley3d(p_scaled);
 
 	// Perlin-Worley hybrid: remap perlin by worley
 	float baseNoise = remapClamp(perlin, worley, 1.0, 0.0, 1.0);
@@ -208,14 +208,19 @@ float calculateCloudDensity(
 	}
 
 	// Detail erosion
-	vec3 p_detail = p_advected / (1500.0 * props.worldScale);
+	vec3 p_detail = p_advected / (4500.0 * props.worldScale);
 	float detailWorley = fastWorley3d(p_detail);
 
 	// Erode more at the bottom for "wispy" look, less at the top for "bulgy" look
 	float erosion = detailWorley * (1.0 - h);
-	float finalDensity = remapClamp(baseDensity, erosion * 0.4, 1.0, 0.0, 1.0);
+	// float finalDensity = remapClamp(baseDensity, erosion * 0.4, 1.0, 0.0, 1.0);
 
-	return clamp(finalDensity * props.densityBase * 2.0, 0.0, 1.0);
+	float coverageThreshold = 1.0 - props.coverage;
+
+	// return clamp(finalDensity * props.densityBase * 2.0, 0.0, 2.0);
+	// return smoothstep(coverageThreshold, 1.0, baseDensity) * remap(baseDensity * 2.0, erosion * 0.4, 1.0, 0.0, props.densityBase);
+	float finalDensity = remap(baseDensity * 2.0, erosion * 0.4, 1.0, 0.0, 2.0*props.densityBase);
+	return smoothstep(coverageThreshold, 1.0, finalDensity) * finalDensity;
 }
 
 float calculateCloudShadowDensity(vec3 p, CloudWeather weather, CloudLayer layer, CloudProperties props, float time) {
