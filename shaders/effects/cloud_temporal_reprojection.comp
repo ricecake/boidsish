@@ -171,8 +171,8 @@ void main() {
             m2 += ycocg * ycocg * colorW;
             weightSumColor += colorW;
 
-            alphaMean += smp.a * spatialW;
-            alphaM2 += smp.a * smp.a * spatialW;
+            alphaMean += opacity * spatialW;
+            alphaM2 += opacity * opacity * spatialW;
             weightSumAlpha += spatialW;
         }
     }
@@ -187,7 +187,7 @@ void main() {
 	// Alpha clamping: loosest at boundary regions (mid-transmittance) where the
 	// binary density step causes oscillation, tighter in solid cloud or clear sky
 	float boundaryness = 1.0 - abs(alphaMean - 0.5) * 2.0; // 1.0 at alphaMean=0.5, 0.0 at extremes
-	float alphaGamma = mix(0.85, 1.1, boundaryness);
+	float alphaGamma = mix(0.75, 1.1, boundaryness);
     float gamma = mix(3.5, 1.50, smoothstep(0.05, 0.7, alphaMean));
 
 	// 4. Variance clipping (clip toward mean rather than hard clamp for stability)
@@ -197,27 +197,32 @@ void main() {
 	vec3 historyYCoCg = RGBToYCoCg(historyRGBA.rgb);
 
 	// Clip-toward-mean: find the intersection of the line from history to mean with the AABB
-// Only apply the color clip if the neighborhood actually contains cloud data
-    if (alphaMean > 0.02) {
-        vec3 clipDir = mean - historyYCoCg;
-        vec3 clipFactors = vec3(1.0);
-	for (int i = 0; i < 3; i++) {
-		if (abs(clipDir[i]) > 0.0001) {
-			if (historyYCoCg[i] < minColor[i])
-				clipFactors[i] = (minColor[i] - historyYCoCg[i]) / clipDir[i];
-			else if (historyYCoCg[i] > maxColor[i])
-				clipFactors[i] = (maxColor[i] - historyYCoCg[i]) / clipDir[i];
-			else
-				clipFactors[i] = 0.0;
+	// Only apply the color clip if the neighborhood actually contains cloud data
+	if (alphaMean > 0.02) {
+		vec3 clipDir = mean - historyYCoCg;
+		vec3 clipFactors = vec3(1.0);
+
+		for (int i = 0; i < 3; i++) {
+			if (abs(clipDir[i]) > 0.0001) {
+				if (historyYCoCg[i] < minColor[i])
+					clipFactors[i] = (minColor[i] - historyYCoCg[i]) / clipDir[i];
+				else if (historyYCoCg[i] > maxColor[i])
+					clipFactors[i] = (maxColor[i] - historyYCoCg[i]) / clipDir[i];
+				else
+					clipFactors[i] = 0.0;
+			}
 		}
+
+		float clipT = clamp(max(clipFactors.x, max(clipFactors.y, clipFactors.z)), 0.0, 1.0);
+		historyYCoCg = mix(historyYCoCg, mean, clipT);
+		historyRGBA.rgb = YCoCgToRGB(historyYCoCg);
 	}
 
-        float clipT = clamp(max(clipFactors.x, max(clipFactors.y, clipFactors.z)), 0.0, 1.0);
-        historyYCoCg = mix(historyYCoCg, mean, clipT);
-        historyRGBA.rgb = YCoCgToRGB(historyYCoCg);
-    }
+	// historyRGBA.a = clamp(historyRGBA.a, alphaMean - alphaGamma * alphaStd, alphaMean + alphaGamma * alphaStd);
 
-	historyRGBA.a = clamp(historyRGBA.a, alphaMean - alphaGamma * alphaStd, alphaMean + alphaGamma * alphaStd);
+	float historyOpacity = clamp(1.0 - historyRGBA.a, 0.0, 1.0);
+	historyOpacity = clamp(historyOpacity, alphaMean - alphaGamma * alphaStd, alphaMean + alphaGamma * alphaStd);
+	historyRGBA.a = 1.0 - historyOpacity;
 
 	// 5. Continuous confidence-based blend weight
 	float absDistDiff = abs(currentCloudDist - historyCloudDist);
@@ -230,26 +235,47 @@ void main() {
 	bool historyIsSky = historyCloudDist > 40000.0 * WORLD_SCALE_VALUE;
 
 	float depthConfidence;
-	if (currentIsSky != historyIsSky || currentIsSky) {
-		// Sky/cloud boundary: blend based on opacity agreement rather than depth.
-		// Low opacity mismatch → soft edge / gap → keep blending
-		// High opacity mismatch → real disocclusion → reduce blend
-		float opacityMismatch = abs((1.0 - currentRGBA.a) - (1.0 - historyRGBA.a));
-		depthConfidence = mix(0.7, 0.3, opacityMismatch);
-	} else {
-		depthConfidence = 1.0 - smoothstep(0.05, 0.25, normalizedDiff);
-	}
+    if (currentIsSky != historyIsSky) {
+        // Edge miss: maintain high confidence to bridge the jitter gap
+        depthConfidence = 0.85;
+    } else if (currentIsSky) {
+        // Both are sky: full confidence
+        depthConfidence = 1.0;
+    } else {
+        // Both are cloud: evaluate structural depth drift
+        depthConfidence = 1.0 - smoothstep(0.05, 0.25, normalizedDiff);
+    }
+
 
 	// UV confidence: reduce blend near screen edges where reprojection is less reliable
 	float uvEdgeDist = min(min(prevUV.x, 1.0 - prevUV.x), min(prevUV.y, 1.0 - prevUV.y));
 	float uvConfidence = smoothstep(0.0, 0.01, uvEdgeDist);
+
+	// 1. Linearize the scene's terrain depth
+	float rawSceneDepth = texture(uSceneDepth, uv).r;
+	vec4 ndcDepth = vec4(uv * 2.0 - 1.0, rawSceneDepth * 2.0 - 1.0, 1.0);
+	vec4 viewSpaceScene = uInvProjection * ndcDepth;
+	float linearSceneDepth = -(viewSpaceScene.z / viewSpaceScene.w);
+
+	// Clean up the skybox infinity check
+	if (rawSceneDepth >= 1.0) {
+		linearSceneDepth = 50000.0 * WORLD_SCALE_VALUE;
+	}
+
+	// 2. The Disocclusion Check
+	// If the solid terrain is closer to the camera than the cloud volume,
+	// we must kill the history to prevent the cloud from ghosting over the mountain.
+	if (linearSceneDepth < currentCloudDist) {
+		validHistory = false;
+	}
 
 	float targetWeight = uBlendAlpha * depthConfidence * uvConfidence;
 
 	if (!validHistory) targetWeight = 0.0;
 
 	vec4  finalRGBA = mix(currentRGBA, historyRGBA, targetWeight);
-	float finalCloudDist = mix(currentCloudDist, historyCloudDist, targetWeight);
+	// float finalCloudDist = min(currentCloudDist, historyCloudDist);
+	float finalCloudDist = currentCloudDist;
 	float finalCloudLastHit = mix(currentCloudLastHit, historyCloudLastHit, targetWeight);
 	float finalCloudStep = mix(currentCloudStep, historyCloudStep, targetWeight);
 
