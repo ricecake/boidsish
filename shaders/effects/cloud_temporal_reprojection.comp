@@ -85,41 +85,29 @@ void main() {
 	float currentCloudLastHit = currDepth.g;
 	float currentCloudStep = currDepth.b;
 
-	// 1. Reprojection using Cloud Depth
-	// Apply the jitter to reconstruct the exact ray that was actually cast
-	vec2 jitteredUV = uv - uJitter;
-	vec2 ndc = jitteredUV * 2.0 - 1.0;
+	// 1. Reprojection using screen-space motion vectors
+	// The velocity texture now contains direct UV offsets (prevUV - currentUV)
+	// that already encode both camera motion and cloud advection.
 
-	vec4 viewPos = uInvProjection * vec4(ndc, 1.0, 1.0);
-	viewPos /= viewPos.w;
-	vec3 worldDir = normalize((uInvView * vec4(viewPos.xyz, 0.0)).xyz);
-	vec3 cameraPos = (uInvView * vec4(0, 0, 0, 1)).xyz;
+	// 3x3 Dilation: use the motion vector from the closest cloud pixel
+	// to avoid edge artifacts where sky pixels have less accurate vectors.
+	vec2 texelSize = 1.0 / vec2(size);
+	float closestDist = 50000.0 * WORLD_SCALE_VALUE;
+	vec2 closestUV = uv;
 
-	// 3x3 Dilation: Find the closest depth and its UV
-    float closestDist = 50000.0 * WORLD_SCALE_VALUE; // Use your skybox max distance
-    vec2 closestUV = uv;
+	for (int y = -1; y <= 1; y++) {
+		for (int x = -1; x <= 1; x++) {
+			vec2 sampleUV = uv + vec2(x, y) * texelSize;
+			float d = texture(uCurrentCloudDepth, sampleUV).r;
+			if (d < closestDist) {
+				closestDist = d;
+				closestUV = sampleUV;
+			}
+		}
+	}
 
-    vec2 texelSize = 1.0 / vec2(size);
-    for (int y = -1; y <= 1; y++) {
-        for (int x = -1; x <= 1; x++) {
-            vec2 sampleUV = uv + vec2(x, y) * texelSize;
-            float d = texture(uCurrentCloudDepth, sampleUV).r;
-            if (d < closestDist) {
-                closestDist = d;
-                closestUV = sampleUV;
-            }
-        }
-    }
-    float skyThreshold = 40000.0 * WORLD_SCALE_VALUE;
-    float cloudLayerDist = (uCloudAltitude * WORLD_SCALE_VALUE) / max(0.05, abs(worldDir.y));
-
-    float reprojDist = closestDist < skyThreshold ? closestDist : cloudLayerDist;
-    vec2  velocity = texture(uVelocityTexture, closestUV).rg;
-
-	vec3  worldPos = cameraPos + worldDir * reprojDist;
-	vec3  prevWorldPos = worldPos - vec3(velocity.x, 0.0, velocity.y);
-	vec4  prevClip = uPrevViewProjection * vec4(prevWorldPos, 1.0);
-	vec2  prevUV = (prevClip.xy / prevClip.w) * 0.5 + 0.5;
+	vec2 velocity = texture(uVelocityTexture, closestUV).rg;
+	vec2 prevUV = uv + velocity;
 
 	// 2. History Fetch and Validation
     bool validHistory = all(greaterThanEqual(prevUV, vec2(0.0))) && all(lessThanEqual(prevUV, vec2(1.0)));

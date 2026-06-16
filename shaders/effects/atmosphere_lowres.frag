@@ -316,23 +316,34 @@ void main() {
 
 	FragColor = vec4(cloudColor, cloudTransmittance);
 
-	// Calculate Cloud Velocity (displacement since previous frame)
-	// Feature at world p at time t is at p' at t-dt such that:
-	// p + advect(t) = p' + advect(t-dt)
-	// p' = p + advect(t) - advect(t-dt)
-	// velocity (p - p') = -(advect(t) - advect(t-dt))
+	// Compute screen-space motion vector directly.
+	// This captures both camera motion AND cloud advection in one UV offset,
+	// eliminating the need for the TAA to reconstruct world positions.
 	float angle = cloudFlowDirection;
 	vec2  flowDir = vec2(cos(angle), sin(angle));
-	vec2  displacement = -flowDir * uDeltaTime * cloudFlowSpeed * props.worldScale * 10.0;
+	vec3  advectionPerFrame = vec3(flowDir.x, 0.0, flowDir.y) * uDeltaTime * cloudFlowSpeed * props.worldScale * 10.0;
 
 	// Output the stable surface depth for the temporal resolver
 	if (firstHitDist > 0.0 && totalWeight > 0.001) {
 		CloudDepth = vec4(firstHitDist, lastHitDist, stepSize, 0.0);
-		CloudVelocity = displacement;
+
+		// The cloud feature at this world position was at (worldPos - advection) last frame.
+		// Project that through the previous VP to get the screen-space motion vector.
+		vec3 hitWorldPos = viewPos + rayDir * firstHitDist;
+		vec3 prevHitPos = hitWorldPos - advectionPerFrame;
+		vec4 prevClipHit = uPrevViewProjection * vec4(prevHitPos, 1.0);
+		vec2 prevScreenUV = (prevClipHit.xy / prevClipHit.w) * 0.5 + 0.5;
+		// Velocity is relative to the canonical pixel center (TexCoords), not the jittered sample
+		CloudVelocity = prevScreenUV - TexCoords;
 	} else {
 		CloudDepth = vec4(50000.0 * worldScale, 50000.0 * worldScale, stepSize, 0.0);
-		// Even miss pixels need velocity so the TAA can track where the gap was last frame
-		CloudVelocity = displacement;
+		// For miss pixels, estimate motion at cloud layer distance
+		float fallbackDist = cloudAltitude * worldScale / max(0.05, abs(rayDir.y));
+		vec3 fallbackWorldPos = viewPos + rayDir * fallbackDist;
+		vec3 prevFallbackPos = fallbackWorldPos - advectionPerFrame;
+		vec4 prevClipFb = uPrevViewProjection * vec4(prevFallbackPos, 1.0);
+		vec2 prevScreenFb = (prevClipFb.xy / prevClipFb.w) * 0.5 + 0.5;
+		CloudVelocity = prevScreenFb - TexCoords;
 	}
 
 }
