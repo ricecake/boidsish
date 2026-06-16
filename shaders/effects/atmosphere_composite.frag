@@ -96,7 +96,8 @@ void main() {
 			// Scene depth awareness: avoid bleeding clouds over foreground objects.
 			// Cloud samples are accepted if they are in front of the scene OR at the background distance.
 			float depthDiff = (sceneDist + sampleCloudStep * 2.0) - sampleCloudDist;
-            float sceneWeight = (depth > 0.999) ? 1.0 : smoothstep(0.0, 1.0, depthDiff / (100.0 * WORLD_SCALE_VALUE));
+            // float sceneWeight = (depth > 0.999) ? 1.0 : smoothstep(0.0, 1.0, depthDiff / (100.0 * WORLD_SCALE_VALUE));
+			float sceneWeight = (depth > 0.999) ? 1.0 : smoothstep(0.0, 1.0, depthDiff / (20.0 * WORLD_SCALE_VALUE));
 
 			float w = spatialW * sceneWeight;
 
