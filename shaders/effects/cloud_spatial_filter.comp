@@ -16,6 +16,8 @@ void main() {
     vec2 texelSize = 1.0 / vec2(size);
 
     float centerDepth = texture(uCloudDepth, uv).r;
+    float centerOpacity = clamp(1.0 - texture(uCloudColor, uv).a, 0.0, 1.0);
+    float depthSigma = mix(5000.0, 1000.0, smoothstep(0.0, 0.25, centerOpacity));
 
     vec3 totalScattering = vec3(0.0);
     float totalTransmittance = 0.0;
@@ -36,6 +38,8 @@ void main() {
             bool centerIsSky = centerDepth > 40000.0;
             bool sampleIsSky = sampleDepth > 40000.0;
 
+            // In cloud_spatial_filter.comp
+
             if (centerIsSky != sampleIsSky) {
                 // Soft Edge Bridging: If one sample hit the cloud and one hit the sky,
                 // we WANT them to blur together to smooth the noisy silhouette.
@@ -44,7 +48,7 @@ void main() {
                 // Internal Structure: Stop blurring if we cross massive depth discontinuities
                 // (e.g. a foreground cloud overlapping a background cloud).
                 float depthDiff = abs(centerDepth - sampleDepth);
-                depthWeight = exp(-depthDiff / 1000.0);
+                depthWeight = exp(-depthDiff / depthSigma);
             }
 
             float weight = spatialWeight * depthWeight;
