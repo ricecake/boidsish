@@ -84,7 +84,6 @@ void main() {
 
 			vec4  sampleDepth = texture(cloudDepthTexture, sampleUV);
 			float sampleCloudDist = sampleDepth.r;
-			float sampleCloudStep = sampleDepth.b;
 
 			vec4 sampleColor = texture(cloudTexture, sampleUV);
 
@@ -93,35 +92,22 @@ void main() {
 			float by = (dy == 0) ? (1.0 - frac_.y) : frac_.y;
 			float spatialW = bx * by;
 
-			// Scene depth awareness: avoid bleeding clouds over foreground objects.
-			// Cloud samples are accepted if they are in front of the scene OR at the background distance.
-			// float depthDiff = (sceneDist + sampleCloudStep * 2.0) - sampleCloudDist;
-            // float sceneWeight = (depth > 0.999) ? 1.0 : smoothstep(0.0, 1.0, depthDiff / (100.0 * WORLD_SCALE_VALUE));
-			// float sceneWeight = (depth > 0.999) ? 1.0 : smoothstep(0.0, 1.0, depthDiff / (20.0 * WORLD_SCALE_VALUE));
-			// Strictly evaluate if the cloud is physically in front of the terrain
-			// float depthDiff = sceneDist - sampleCloudDist;
-			// // Tighten the bleed tolerance.
-			// // If depthDiff is negative (cloud is behind terrain), it smoothly cuts to 0 over 5 meters.
-			// float sceneWeight = (depth > 0.999) ? 1.0 : smoothstep(-5.0 * WORLD_SCALE_VALUE, 15.0 * WORLD_SCALE_VALUE, depthDiff);
+			// Depth rejection: cloud must be in front of the scene geometry.
+			// Use a tight transition to prevent cloud bleeding over foreground edges.
+			float sceneWeight = (depth > 0.999) ? 1.0 : smoothstep(0.0, 1.0, (sceneDist - sampleCloudDist) / max(sceneDist * 0.0001, 1.0));
+			if (depth < 0.999) {
+				// The high-res pixel is a solid foreground object
+				if (sampleCloudDist > sceneDist) {
+					// The low-res sample is physically BEHIND the terrain (e.g. background sky).
+					// Exponentially kill the weight to prevent the background from bleeding over the silhouette.
+					float bleed = sampleCloudDist - sceneDist;
+					sceneWeight = min(sceneWeight, exp(-bleed / (10.0 * WORLD_SCALE_VALUE)));
+				}
+				// If sampleCloudDist <= sceneDist, the cloud/fog is in front of
+				// or exactly touching the terrain. It naturally retains the full 1.0 weight.
+			}
 
-// In atmosphere_composite.frag
-// Replace the existing depthDiff and sceneWeight logic with this asymmetric check:
-
-float sceneWeight = 1.0;
-if (depth < 0.999) {
-    // The high-res pixel is a solid foreground object
-    if (sampleCloudDist > sceneDist) {
-        // The low-res sample is physically BEHIND the terrain (e.g. background sky).
-        // Exponentially kill the weight to prevent the background from bleeding over the silhouette.
-        float bleed = sampleCloudDist - sceneDist;
-        sceneWeight = exp(-bleed / (10.0 * WORLD_SCALE_VALUE));
-    }
-    // If sampleCloudDist <= sceneDist, the cloud/fog is in front of
-    // or exactly touching the terrain. It naturally retains the full 1.0 weight.
-}
-
-float w = spatialW * sceneWeight;
-
+			float w = spatialW * sceneWeight;
 
 			totalScattering += sampleColor.rgb * w;
 			totalTransmittance += sampleColor.a * w;
@@ -132,17 +118,21 @@ float w = spatialW * sceneWeight;
 	}
 
 	vec4 cloudData;
-    if (totalWeight > 1e-4) {
-        // Average the pre-multiplied energy and transmittance directly
-        cloudData.rgb = totalScattering / totalWeight;
-        cloudData.a = totalTransmittance / totalWeight;
+	if (totalWeight > 0.21) {
+		cloudData.rgb = totalScattering / totalWeight;
+		cloudData.a = totalTransmittance / totalWeight;
+		upsampledCloudDist /= totalWeight;
 
-        upsampledCloudDist /= totalWeight;
-    } else {
-        // Fallback for occluded pixels: Clear sky behavior
-        cloudData = vec4(0.0, 0.0, 0.0, 1.0);
-        upsampledCloudDist = 50000.0 * WORLD_SCALE_VALUE;
-    }
+		// Fade cloud contribution when most bilinear samples were rejected.
+		// This kills the halo at foreground edges where 1-2 surviving samples
+		// produce full-brightness cloud after normalization.
+		float confidence = smoothstep(0.95, 1.0, totalWeight);
+		cloudData.rgb *= confidence;
+		cloudData.a = mix(1.0, cloudData.a, confidence);
+	} else {
+		cloudData = vec4(0.0, 0.0, 0.0, 1.0);
+		upsampledCloudDist = 50000.0 * WORLD_SCALE_VALUE;
+	}
 	vec3  cloudScattering = cloudData.rgb;
 	float cloudTransmittance = cloudData.a;
 

@@ -86,17 +86,23 @@ vec3 getUnstretchedCoords(vec3 p, vec3 earthCenter, vec3 viewPos, float R_earth)
 
 void main() {
 	vec2  jitteredUV = TexCoords + uJitter;
-	float depth = texture(depthTexture, jitteredUV).r;
 	vec3  zenithRadiance = sampleSkyView(vec3(0, 1, 0));
 
+	// Canonical (un-jittered) ray for stable scene depth limit and motion vectors
+	float depth = texture(depthTexture, TexCoords).r;
 	float z = depth * 2.0 - 1.0;
-	vec4  clipSpacePosition = vec4(jitteredUV * 2.0 - 1.0, z, 1.0);
+	vec4  clipSpacePosition = vec4(TexCoords * 2.0 - 1.0, z, 1.0);
 	vec4  viewSpacePosition = invProjection * clipSpacePosition;
 	viewSpacePosition /= viewSpacePosition.w;
 	vec3 worldPos = (invView * viewSpacePosition).xyz;
-
-	vec3  rayDir = normalize(worldPos - viewPos);
+	vec3 canonicalRayDir = normalize(worldPos - viewPos);
 	float dist = length(worldPos - viewPos);
+
+	// Jittered ray for the actual march (temporal super-resolution)
+	vec4  jClip = vec4(jitteredUV * 2.0 - 1.0, 0.0, 1.0);
+	vec4  jView = invProjection * jClip;
+	jView /= jView.w;
+	vec3  rayDir = normalize((invView * vec4(jView.xyz, 0.0)).xyz);
 
 	float R_earth = kEarthRadius * 1000.0 * worldScale;
 	if (depth == 1.0) {
@@ -324,9 +330,8 @@ void main() {
 	if (firstHitDist > 0.0 && totalWeight > 0.001) {
 		CloudDepth = vec4(firstHitDist, lastHitDist, stepSize, 0.0);
 
-		// The cloud feature at this world position was at (worldPos - advection) last frame.
-		// Project that through the previous VP to get the screen-space motion vector.
-		vec3 hitWorldPos = viewPos + rayDir * firstHitDist;
+		// Use canonical ray for stable motion vector (jittered ray wobbles per frame)
+		vec3 hitWorldPos = viewPos + canonicalRayDir * firstHitDist;
 		float hitAltitude = length(hitWorldPos - earthCenter) - R_earth;
 		float h_norm = clamp((hitAltitude - props.altitude * props.worldScale) / max(props.thickness * props.worldScale, 1.0), 0.0, 1.0);
 		vec3 advectionPerFrame = getCloudAdvectionOffset(h_norm, uDeltaTime);
@@ -339,8 +344,8 @@ void main() {
 	} else {
 		CloudDepth = vec4(50000.0 * worldScale, 50000.0 * worldScale, stepSize, 0.0);
 		// For miss pixels, estimate motion at cloud layer distance
-		float fallbackDist = cloudAltitude * worldScale / max(0.05, abs(rayDir.y));
-		vec3 fallbackWorldPos = viewPos + rayDir * fallbackDist;
+		float fallbackDist = cloudAltitude * worldScale / max(0.05, abs(canonicalRayDir.y));
+		vec3 fallbackWorldPos = viewPos + canonicalRayDir * fallbackDist;
 		vec3 advectionPerFrame = getCloudAdvectionOffset(0.0, uDeltaTime); // Use base wind for sky fallback
 		vec3 prevFallbackPos = fallbackWorldPos - advectionPerFrame;
 		vec4 prevClipFb = uPrevViewProjection * vec4(prevFallbackPos, 1.0);
