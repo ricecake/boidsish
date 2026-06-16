@@ -96,7 +96,7 @@ void main() {
 	vec3 cameraPos = (uInvView * vec4(0, 0, 0, 1)).xyz;
 
 
-// 3x3 Dilation: Find the closest depth and its UV
+	// 3x3 Dilation: Find the closest depth and its UV
     float closestDist = 50000.0 * WORLD_SCALE_VALUE; // Use your skybox max distance
     vec2 closestUV = uv;
 
@@ -131,7 +131,7 @@ void main() {
 	vec4  prevClip = uPrevViewProjection * vec4(prevWorldPos, 1.0);
 	vec2  prevUV = (prevClip.xy / prevClip.w) * 0.5 + 0.5;
 
-// 2. History Fetch and Validation
+	// 2. History Fetch and Validation
     bool validHistory = all(greaterThanEqual(prevUV, vec2(0.0))) && all(lessThanEqual(prevUV, vec2(1.0)));
 
     vec4 historyRGBA = currentRGBA;
@@ -230,7 +230,7 @@ void main() {
 	bool historyIsSky = historyCloudDist > 40000.0 * WORLD_SCALE_VALUE;
 
 	float depthConfidence;
-	if (currentIsSky != historyIsSky) {
+	if (currentIsSky != historyIsSky || currentIsSky) {
 		// Sky/cloud boundary: blend based on opacity agreement rather than depth.
 		// Low opacity mismatch → soft edge / gap → keep blending
 		// High opacity mismatch → real disocclusion → reduce blend
