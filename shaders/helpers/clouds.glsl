@@ -187,7 +187,7 @@ float calculateCloudDensity(
 
 	// Apply advection to the sample position
 	vec3 advect = getCloudAdvectionOffset(h, props.worldScale, time);
-	vec3 p_advected = p;// + advect;
+	vec3 p_advected = p + advect;
 
 	// Base noise for cloud shapes
 	vec3 p_warped = p;
@@ -201,18 +201,18 @@ float calculateCloudDensity(
 	// return clamp(baseNoise - fastSimplex3d((p_advected + vec3(100*time, 0, 50*time)) / 50000), 0, 1);
 	// return step(coverageThreshold, baseBubble.x);
 
-	float weight = smoothstep(coverageThreshold, 1.0, baseBubble.y);
-	float baseNoise = weight * step(0, baseBubble.y - baseBubble.x);
+	float weight = 1.0;
+	float baseNoise = remap(step(coverageThreshold, baseBubble.x), fastFbm3d(p_scaled), 1.0, 0.0, props.densityBase);
 
 	for (uint i = 4; i <=6; i++) {
 		vec3 scaled_p = (p_advected) / (pow(6, i) * props.worldScale);
 		vec2 bubble = fastWorley3dID(scaled_p);
-		float stepWeight = smoothstep(coverageThreshold, 1.0, bubble.y);
-		baseNoise += stepWeight*step(0, bubble.y - bubble.x);
+		float stepWeight = 1.0;
+		baseNoise += remap(step(coverageThreshold, bubble.x), fastFbm3d(p_scaled), 1.0, 0.0, props.densityBase);
 		weight += stepWeight;
 	}
 
-	baseNoise /= weight;
+	// baseNoise /= weight;
 
 	return remapClamp(baseNoise, noise, 1.0, 0.0, props.densityBase);
 	// return smoothstep(coverageThreshold-0.05, 0.750, baseNoise/weight);
