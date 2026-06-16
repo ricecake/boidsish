@@ -319,9 +319,6 @@ void main() {
 	// Compute screen-space motion vector directly.
 	// This captures both camera motion AND cloud advection in one UV offset,
 	// eliminating the need for the TAA to reconstruct world positions.
-	float angle = cloudFlowDirection;
-	vec2  flowDir = vec2(cos(angle), sin(angle));
-	vec3  advectionPerFrame = vec3(flowDir.x, 0.0, flowDir.y) * uDeltaTime * cloudFlowSpeed * props.worldScale * 10.0;
 
 	// Output the stable surface depth for the temporal resolver
 	if (firstHitDist > 0.0 && totalWeight > 0.001) {
@@ -330,6 +327,10 @@ void main() {
 		// The cloud feature at this world position was at (worldPos - advection) last frame.
 		// Project that through the previous VP to get the screen-space motion vector.
 		vec3 hitWorldPos = viewPos + rayDir * firstHitDist;
+		float hitAltitude = length(hitWorldPos - earthCenter) - R_earth;
+		float h_norm = clamp((hitAltitude - props.altitude * props.worldScale) / max(props.thickness * props.worldScale, 1.0), 0.0, 1.0);
+		vec3 advectionPerFrame = getCloudAdvectionOffset(h_norm, uDeltaTime);
+
 		vec3 prevHitPos = hitWorldPos - advectionPerFrame;
 		vec4 prevClipHit = uPrevViewProjection * vec4(prevHitPos, 1.0);
 		vec2 prevScreenUV = (prevClipHit.xy / prevClipHit.w) * 0.5 + 0.5;
@@ -340,6 +341,7 @@ void main() {
 		// For miss pixels, estimate motion at cloud layer distance
 		float fallbackDist = cloudAltitude * worldScale / max(0.05, abs(rayDir.y));
 		vec3 fallbackWorldPos = viewPos + rayDir * fallbackDist;
+		vec3 advectionPerFrame = getCloudAdvectionOffset(0.0, uDeltaTime); // Use base wind for sky fallback
 		vec3 prevFallbackPos = fallbackWorldPos - advectionPerFrame;
 		vec4 prevClipFb = uPrevViewProjection * vec4(prevFallbackPos, 1.0);
 		vec2 prevScreenFb = (prevClipFb.xy / prevClipFb.w) * 0.5 + 0.5;

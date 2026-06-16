@@ -89,17 +89,34 @@ vec3 getWarpedCloudPos(vec3 p, out float fade) {
 	return axisPoint + toP * scale;
 }
 
+vec3 getCloudWindOffset(float time) {
+	float angle = cloudFlowDirection;
+	vec2  flowDir = vec2(cos(angle), sin(angle));
+	return vec3(flowDir.x, 0.0, flowDir.y) * time * cloudFlowSpeed * worldScale * 10.0;
+}
+
+vec3 getCloudAdvectionOffset(float h, float time) {
+	float angle = cloudFlowDirection;
+	vec2  flowDir = vec2(cos(angle), sin(angle));
+
+	// Dramatic non-linear shear profile
+	float shear = h * h * cloudFlowHeightScale * 2.0;
+
+	vec3 advect = getCloudWindOffset(time);
+	advect.xz += flowDir * shear * worldScale * 100.0;
+
+	return advect;
+}
+
 CloudWeather computeCloudWeather(vec3 p, CloudProperties props) {
-	// p += vec3(150 * time, 0, 75 * time);
-	vec2  weatherData = fastWorley3dID(vec3(p.x, 0.0, p.z) / (10000.0 * worldScale));
+	vec3 advect = getCloudWindOffset(time);
+	vec3 p_advected = p + advect;
+
+	vec2  weatherData = fastWorley3dID(vec3(p_advected.x, 0.0, p_advected.z) / (10000.0 * worldScale));
 	float weatherMap = 1.0 - weatherData.x; // Worley distance for coverage
 	float cellID = weatherData.y;           // Cell ID for variety
 
-	// p.x *= weatherData.x;
-	// p.y *= weatherData.y;
-	// p.z *= weatherData.x;
-
-	float heightMap = fastWorley3d(vec3(p.x, p.y+(3.0 * time), p.z) / (7500.0 * worldScale));
+	float heightMap = fastWorley3d(vec3(p_advected.x, p_advected.y + (3.0 * time), p_advected.z) / (7500.0 * worldScale));
 
 	CloudWeather weather;
 	weather.weatherMap = weatherMap;
@@ -126,43 +143,20 @@ float remapClamp(float value, float inMin, float inMax, float outMin, float outM
     return mix(outMin, outMax, t);
 }
 
+float getDensityHeightGradient(float h, float type) {
+	// Typical height profiles for different cloud types
+	// Stratus: low and thin
+	float stratus = smoothstep(0.0, 0.1, h) * (1.0 - smoothstep(0.15, 0.3, h));
+	// Cumulus: medium height, billowy
+	float cumulus = smoothstep(0.0, 0.2, h) * (1.0 - smoothstep(0.7, 0.9, h));
+	// Cumulonimbus: tall, reaching the top
+	float cumulonimbus = smoothstep(0.0, 0.05, h) * (1.0 - smoothstep(0.85, 1.0, h));
 
-vec3 getCloudAdvectionOffset(float h, float worldScale, float time) {
-	float angle = cloudFlowDirection;
-	vec2  flowDir = vec2(cos(angle), sin(angle));
-
-	// Dramatic non-linear shear profile
-	// float shear = h * h * cloudFlowHeightScale * 2.0;
-
-	vec3 advect = vec3(flowDir.x, 0.0, flowDir.y) * time * cloudFlowSpeed * worldScale * 10.0;
-	// advect.xz += flowDir * shear * worldScale * 100.0;
-
-	return advect;
+	// Interpolate based on cloud type (weather.heightMap)
+	float res = mix(stratus, cumulus, smoothstep(0.0, 0.5, type));
+	res = mix(res, cumulonimbus, smoothstep(0.5, 1.0, type));
+	return res;
 }
-
-vec3 erot(vec3 p, vec3 ax, float ro) {
-    return mix(dot(p,ax)*ax,p,cos(ro))+sin(ro)*cross(ax,p);
-}
-
-float WaveletNoise(vec3 p, float z, float k) {
-    // https://www.shadertoy.com/view/wsBfzK
-    float d=0.,s=1.,m=0., a;
-    for(float i=0.; i<5.; i++) {
-        vec3 q = p*s, g=fract(floor(q)*vec3(123.34,233.53,314.15));
-    	g += dot(g, g+23.234);
-		a = fract(g.x*g.y)*1e3 +z*(mod(g.x+g.y, 2.)-1.); // add vorticity
-        q = (fract(q)-.5);
-        //random rotation in 3d. the +.1 is to fix the rare case that g == vec3(0)
-        //https://suricrasia.online/demoscene/functions/#rndrot
-        q = erot(q, normalize(tan(g+.1)), a);
-        d += sin(q.x*10.+z)*smoothstep(.25, .0, dot(q,q))/s;
-        p = erot(p,normalize(vec3(-1,1,0)),atan(sqrt(2.)))+i; //rotate along the magic angle
-        m += 1./s;
-        s *= k;
-    }
-    return d/m;
-}
-
 
 // Cloud density calculation helper
 // Returns a density value [0, 1+] based on world-space position
@@ -177,122 +171,51 @@ float calculateCloudDensity(
 	if (p.y < layer.baseFloor || p.y > layer.baseCeiling)
 		return 0.0;
 
-	p.y -= weather.heightMap * layer.thickness;
-
-	// Height-based tapering with a more natural profile
 	float h = (p.y - layer.baseFloor) / layer.thickness;
-	float tapering = smoothstep(0.0, 0.15, h) * 1.0-smoothstep(0.7, 1.0, h);
 
-	float coverageThreshold = 1.0 - props.coverage;
+	// Height-based density gradient (cloud type)
+	float type = weather.heightMap;
+	float heightGradient = getDensityHeightGradient(h, type);
 
-	// Apply advection to the sample position
-	vec3 advect = getCloudAdvectionOffset(h, props.worldScale, time);
+	// Apply advection
+	vec3 advect = getCloudAdvectionOffset(h, time);
 	vec3 p_advected = p + advect;
 
-	// Base noise for cloud shapes
-	vec3 p_warped = p;
-	vec3 p_scaled = (p_advected) / (50000.0 * props.worldScale);
-
-	vec2 baseBubble = fastWorley3dID(p_scaled);
-	float noise = fastFbm3d(p_scaled);
-	float cloudFactor = baseBubble.y;
-	// float baseNoise = remap(baseBubble.x, 0.0, 1.0, props.densityBase, 1.0) * step(coverageThreshold, baseBubble.y);
-	// float baseNoise = step(coverageThreshold, baseBubble.x) * remap(baseBubble.y, 0, 1, props.densityBase, 1);
-	// return clamp(baseNoise - fastSimplex3d((p_advected + vec3(100*time, 0, 50*time)) / 50000), 0, 1);
-	// return step(coverageThreshold, baseBubble.x);
-
-	// float weight = 1.0;
-	// float baseNoise = remap(step(coverageThreshold, baseBubble.x), fastFbm3d(p_scaled), 1.0, 0.0, props.densityBase);
-
-	// for (uint i = 4; i <=6; i++) {
-	// 	vec3 scaled_p = (p_advected) / (pow(6, i) * props.worldScale);
-	// 	vec2 bubble = fastWorley3dID(scaled_p);
-	// 	float stepWeight = 1.0;
-	// 	baseNoise += remap(step(coverageThreshold, bubble.x), fastFbm3d(p_scaled), 1.0, 0.0, props.densityBase);
-	// 	weight += stepWeight;
-	// }
-
-	float weight = 1.0;
-	float baseNoise = smoothstep(coverageThreshold, 1.0, baseBubble.y) * remap(baseBubble.x, baseBubble.y, 1, 0, props.densityBase);
-
-	for (uint i = 4; i <=6; i++) {
-		vec3 scaled_p = (p_advected) / (pow(6, i) * props.worldScale);
-		vec2 bubble = fastWorley3dID(scaled_p);
-		float stepWeight = 1.0;
-		// baseNoise += smoothstep(props.densityBase, 1.0, bubble.y) * step(coverageThreshold, baseBubble.x);
-		// baseNoise += 1.0 * step(coverageThreshold, baseBubble.x);
-		baseNoise += smoothstep(coverageThreshold,1.0, bubble.y) * remap(baseBubble.x, bubble.y, 1, 0, props.densityBase);
-		weight += stepWeight;
+	// Domain warping for "boiling" look (using curl noise)
+	if (!simplified) {
+		vec3 curl = fastCurl3d(p_advected / (cloudCurlFrequency * props.worldScale * 100.0));
+		p_advected += curl * cloudCurlStrength * props.worldScale * 500.0 * (1.0 - h);
 	}
 
+	// Base noise sampling (Perlin-Worley hybrid proxy)
+	vec3 p_scaled = p_advected / (30000.0 * props.worldScale);
+	float perlin = (fastFbm3d(p_scaled) + 1.0) * 0.5;
+	float worley = 1.0 - fastWorley3d(p_scaled);
 
-	// baseNoise /= weight;
+	// Perlin-Worley hybrid: remap perlin by worley
+	float baseNoise = remapClamp(perlin, worley, 1.0, 0.0, 1.0);
 
-	// return remapClamp(baseNoise, noise, 1.0, 0.0, props.densityBase);
-	return clamp(baseNoise, 0, 1);
-	// return smoothstep(coverageThreshold-0.05, 0.750, baseNoise/weight);
-	// float baseNoise = remapClamp(baseBubble.x * step(coverageThreshold, baseBubble.y), noise, 1.0, 0.0, props.densityBase);
+	// Apply height gradient
+	baseNoise *= heightGradient;
 
-
-	return baseNoise;
-	// return step(0.2, smoothstep(0.0, 0.5, step(coverageThreshold, baseBubble.x) * step(0.00, cloudFactor)));
-	vec3 p_scaled_adv = (p_advected +time*cloudFactor) / (50000.0 * props.worldScale);
-	// float baseNoise = (fastWorley3d(p_scaled));
-	// float baseNoise = abs((fastSimplex3d(p_scaled_adv)) + baseBubble.x);
-	// float baseNoise = baseBubble.x;
-	// float baseNoise = 1.0-baseBubble.x;
-	// float baseNoise = fastFbmCurl3d(p_scaled_adv)-(1.0-baseBubble.x);
-	// float baseNoise = fastPhasor2d(random2(baseBubble.y), degrees(0))*baseBubble.x;
-	// float baseNoise = WaveletNoise(p_warped/2000, 1.52, degrees(cloudFactor*time))*baseBubble.x;
-	// float baseNoise = baseBubble.x - (fastSimplex3d(p_scaled_adv));
-
-
-	// Implement "Roll": Billowy edges that vary with height
-	// We remap the base noise threshold based on the vertical position
-	float rollFactor = remap(h, 0.0, 1.0, 0.4, 0.1);
-	float rolledNoise = remap(baseNoise, rollFactor, 1.0, 0.0, 1.0);
-
-	// Tall cloud profile: anvil-like top for tall clouds
-	// Mix between a bottom-heavy profile and an anvil profile based on heightMap
-	float bottomHeavy = tapering;
-	float anvil = pow(tapering, mix(0.7, 0.3, weather.heightMap));
-	float densityProfile = mix(bottomHeavy, anvil, ((cloudFactor + 0.5) * h) * weather.heightMap);
+	// Coverage remapping
+	float coverage = props.coverage * weather.weatherMap;
+	float baseDensity = remapClamp(baseNoise, 1.0 - coverage, 1.0, 0.0, 1.0);
+	baseDensity *= coverage;
 
 	if (simplified) {
-		float density = smoothstep(coverageThreshold, max(1.0, coverageThreshold), rolledNoise * weather.weatherMap);
-		return smoothstep(0, 0.65, density * densityProfile * props.densityBase * 5.0);
+		return clamp(baseDensity * props.densityBase * 2.0, 0.0, 1.0);
 	}
 
-	// Add ridges and textures for definition
-	vec3 slide = p_warped;
-	slide.xz += cloudFactor*time*25.0;
-	float ridges = fastRidge3d(slide / (1600.0 * props.worldScale));
-	float detail = fastFbm3d(slide / (1450.0 * props.worldScale));
+	// Detail erosion
+	vec3 p_detail = p_advected / (1500.0 * props.worldScale);
+	float detailWorley = fastWorley3d(p_detail);
 
-	// Combine noises
-	float finalNoise = rolledNoise * (0.6 + 0.4 * ridges);
-	finalNoise = mix(finalNoise, remap(finalNoise, detail, 1.0, 0.0, 1.0), 0.3);
+	// Erode more at the bottom for "wispy" look, less at the top for "bulgy" look
+	float erosion = detailWorley * (1.0 - h);
+	float finalDensity = remapClamp(baseDensity, erosion * 0.4, 1.0, 0.0, 1.0);
 
-	// Apply coverage and local density
-	float baseDensity =  finalNoise * weather.weatherMap;
-
-	// Add "Edge Wisps": high-frequency FBM at the boundaries
-	if (baseDensity > 0.0 && baseDensity < 0.3) {
-		float wisps = fastFbm3d((p_warped+time*(30.0)) / (1000.0 * props.worldScale));
-		float wispMask = 1.0 - smoothstep(0.0, 0.5, baseDensity);
-		baseDensity += wisps * wispMask * 0.35 * weather.weatherMap;
-	}
-
-	// Giant tall clouds vs wispy things
-	// High weatherMap = tall, dense, sharp
-	// Low weatherMap = wispy, thin, soft
-	float wispyFactor = smoothstep(0.2, 0.35, weather.weatherMap);
-	baseDensity *= mix(0.6, 1.0, wispyFactor);
-
-	float density = smoothstep(coverageThreshold, max(1.0, coverageThreshold), baseDensity);
-
-	float val = smoothstep(0.0, 1.0, density * densityProfile * props.densityBase * 5.0);
-	return step(0.25, val) * val;
+	return clamp(finalDensity * props.densityBase * 2.0, 0.0, 1.0);
 }
 
 float calculateCloudShadowDensity(vec3 p, CloudWeather weather, CloudLayer layer, CloudProperties props, float time) {
