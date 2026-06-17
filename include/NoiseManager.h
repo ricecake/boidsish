@@ -58,7 +58,7 @@ namespace Boidsish {
 		GLuint                         extra_noise_texture_ = 0;
 		GLuint                         phasor_noise_texture_ = 0;
 		int                            size_ = 64; // 64x64x64
-		int                            blue_noise_size_ = 512;
+		int                            blue_noise_size_ = 1024;
 	};
 
 } // namespace Boidsish

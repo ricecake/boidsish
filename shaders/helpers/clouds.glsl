@@ -239,6 +239,8 @@ float calculateCloudDensityExpV1(
 
 
 	float baseNoise = fastWorley3d((p_advected+100*sin(time*0.1)*fastCurl3d(p_scaled))/10000.0);
+	float erosion = (fastFbm3d(p_scaled) + 1.0) * 0.5;
+	baseNoise = remap(baseNoise, erosion * 0.4, 1.0, 0.0, 2.0*props.densityBase);
 	return smoothstep(0.499, 0.5, baseNoise) * smoothstep(0.75, 1, baseNoise);// * baseNoise;
 
 }
@@ -258,7 +260,7 @@ float calculateCloudDensity(
 		return 0.0;
 
 	return calculateCloudDensityExpV1(p, weather, layer, props, time, simplified);
-	return calculateCloudDensityHZDv1(p, weather, layer, props, time, simplified);
+	// return calculateCloudDensityHZDv1(p, weather, layer, props, time, simplified);
 }
 
 
