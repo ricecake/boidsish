@@ -10,7 +10,7 @@ TEST(MoodManagerTest, BasicInterpolation) {
     layer.name = "Test Layer";
     layer.priority = 0;
     layer.blendMode = MoodBlendMode::Override;
-    layer.trackedParameter = MoodParameter::TimeOfDay;
+    layer.trackedParameters = {MoodParameter::TimeOfDay};
 
     MoodSettings s0;
     s0.cloudDensity = 0.0f;
@@ -20,8 +20,8 @@ TEST(MoodManagerTest, BasicInterpolation) {
     s1.cloudDensity = 1.0f;
     s1.cloudColor = glm::vec3(1.0f);
 
-    layer.controlPoints.push_back({0.0f, s0});
-    layer.controlPoints.push_back({1.0f, s1});
+    layer.controlPoints.push_back({{0.0f}, s0});
+    layer.controlPoints.push_back({{1.0f}, s1});
 
     mgr.AddLayer(layer);
 
@@ -46,10 +46,10 @@ TEST(MoodManagerTest, SparseLayers) {
     base.name = "Base";
     base.priority = 0;
     base.blendMode = MoodBlendMode::Override;
-    base.trackedParameter = MoodParameter::TimeOfDay;
+    base.trackedParameters = {MoodParameter::TimeOfDay};
     MoodSettings sBase;
     sBase.cloudDensity = 0.5f;
-    base.controlPoints.push_back({0.0f, sBase});
+    base.controlPoints.push_back({{0.0f}, sBase});
     mgr.AddLayer(base);
 
     // Add layer only sets cloudSunLightScale
@@ -57,10 +57,10 @@ TEST(MoodManagerTest, SparseLayers) {
     add.name = "Add";
     add.priority = 1;
     add.blendMode = MoodBlendMode::Add;
-    add.trackedParameter = MoodParameter::TimeOfDay;
+    add.trackedParameters = {MoodParameter::TimeOfDay};
     MoodSettings sAdd;
     sAdd.cloudSunLightScale = 10.0f;
-    add.controlPoints.push_back({0.0f, sAdd});
+    add.controlPoints.push_back({{0.0f}, sAdd});
     mgr.AddLayer(add);
 
     std::map<MoodParameter, float> params;
@@ -85,13 +85,13 @@ TEST(MoodManagerTest, CyclicWrapping) {
     layer.name = "TOD";
     layer.priority = 0;
     layer.blendMode = MoodBlendMode::Override;
-    layer.trackedParameter = MoodParameter::TimeOfDay; // wraps at 24.0
+    layer.trackedParameters = {MoodParameter::TimeOfDay}; // wraps at 24.0
 
     MoodSettings s23; s23.cloudDensity = 10.0f;
     MoodSettings s1;  s1.cloudDensity = 20.0f;
 
-    layer.controlPoints.push_back({23.0f, s23});
-    layer.controlPoints.push_back({1.0f, s1});
+    layer.controlPoints.push_back({{23.0f}, s23});
+    layer.controlPoints.push_back({{1.0f}, s1});
 
     mgr.AddLayer(layer);
 
@@ -107,6 +107,41 @@ TEST(MoodManagerTest, CyclicWrapping) {
     EXPECT_GT(*settings.cloudDensity, 10.0f);
     EXPECT_LT(*settings.cloudDensity, 20.0f);
     EXPECT_NEAR(*settings.cloudDensity, 14.14f, 0.1f);
+}
+
+TEST(MoodManagerTest, MultiParameterIDW) {
+    MoodManager mgr;
+    MoodLayer layer;
+    layer.name = "Dew Layer";
+    layer.priority = 0;
+    layer.blendMode = MoodBlendMode::Override;
+    layer.trackedParameters = {MoodParameter::Humidity, MoodParameter::Temperature};
+
+    // Low Hum, High Temp -> No Dew
+    MoodSettings s0;
+    s0.dew = 0.0f;
+    layer.controlPoints.push_back({{0.0f, 300.0f}, s0});
+
+    // High Hum, Low Temp -> Full Dew
+    MoodSettings s1;
+    s1.dew = 1.0f;
+    layer.controlPoints.push_back({{1.0f, 273.15f}, s1});
+
+    mgr.AddLayer(layer);
+
+    std::map<MoodParameter, float> params;
+
+    // Exactly at point 1
+    params[MoodParameter::Humidity] = 1.0f;
+    params[MoodParameter::Temperature] = 273.15f;
+    mgr.Update(params, 1.0f);
+    EXPECT_NEAR(*mgr.GetBlendedSettings().dew, 1.0f, 0.001f);
+
+    // Midway
+    params[MoodParameter::Humidity] = 0.5f;
+    params[MoodParameter::Temperature] = 286.575f; // (300 + 273.15) / 2
+    mgr.Update(params, 1.0f);
+    EXPECT_NEAR(*mgr.GetBlendedSettings().dew, 0.5f, 0.05f);
 }
 
 int main(int argc, char **argv) {
