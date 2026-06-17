@@ -294,10 +294,10 @@ void main() {
 
 	if (!validHistory) targetWeight = 0.0;
 
-	vec4  finalRGBA = mix(currentRGBA, historyRGBA, targetWeight);
+	vec4  finalRGBA = mix(currentRGBA, historyRGBA, smoothstep(0, 1, targetWeight));
 	float finalCloudDist = currentCloudDist;
-	float finalCloudLastHit = mix(currentCloudLastHit, historyCloudLastHit, targetWeight);
-	float finalCloudStep = mix(currentCloudStep, historyCloudStep, targetWeight);
+	float finalCloudLastHit = mix(currentCloudLastHit, historyCloudLastHit, 0);
+	float finalCloudStep = mix(currentCloudStep, historyCloudStep, 0);
 
 	imageStore(outColor, pixel, finalRGBA);
 	imageStore(outDepth, pixel, vec4(finalCloudDist, finalCloudLastHit, finalCloudStep, 0.0));

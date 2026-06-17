@@ -158,19 +158,14 @@ float getDensityHeightGradient(float h, float type) {
 	return res;
 }
 
-// Cloud density calculation helper
-// Returns a density value [0, 1+] based on world-space position
-float calculateCloudDensity(
+float calculateCloudDensityHZDv1(
 	vec3            p,
 	CloudWeather    weather,
 	CloudLayer      layer,
 	CloudProperties props,
 	float           time,
 	bool            simplified
-) {
-	if (p.y < layer.baseFloor || p.y > layer.baseCeiling)
-		return 0.0;
-
+){
 	float h = (p.y - layer.baseFloor) / layer.thickness;
 
 	// Height-based density gradient (cloud type)
@@ -222,6 +217,50 @@ float calculateCloudDensity(
 	float finalDensity = remap(baseDensity * 2.0, erosion * 0.4, 1.0, 0.0, 2.0*props.densityBase);
 	return smoothstep(coverageThreshold, 1.0, finalDensity) * finalDensity;
 }
+
+float calculateCloudDensityExpV1(
+	vec3            p,
+	CloudWeather    weather,
+	CloudLayer      layer,
+	CloudProperties props,
+	float           time,
+	bool            simplified
+) {
+	float h = (p.y - layer.baseFloor) / layer.thickness;
+
+	// Height-based density gradient (cloud type)
+	float type = weather.heightMap;
+	float heightGradient = getDensityHeightGradient(h, type);
+
+	// Apply advection
+	vec3 advect = getCloudAdvectionOffset(h, time);
+	vec3 p_advected = p + advect;
+	vec3 p_scaled = p_advected / (3000.0 * props.worldScale);
+
+
+	float baseNoise = fastFbm3d((p_advected+100*sin(time*0.1)*fastCurl3d(p_scaled))/10000.0);
+	return 3*smoothstep(0.2, 0.21, baseNoise);// * baseNoise;
+
+}
+
+
+// Cloud density calculation helper
+// Returns a density value [0, 1+] based on world-space position
+float calculateCloudDensity(
+	vec3            p,
+	CloudWeather    weather,
+	CloudLayer      layer,
+	CloudProperties props,
+	float           time,
+	bool            simplified
+) {
+	if (p.y < layer.baseFloor || p.y > layer.baseCeiling)
+		return 0.0;
+
+	return calculateCloudDensityExpV1(p, weather, layer, props, time, simplified);
+	return calculateCloudDensityHZDv1(p, weather, layer, props, time, simplified);
+}
+
 
 float calculateCloudShadowDensity(vec3 p, CloudWeather weather, CloudLayer layer, CloudProperties props, float time) {
 	return 10.0 * calculateCloudDensity(p, weather, layer, props, time, true);
