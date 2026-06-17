@@ -100,10 +100,10 @@ vec3 getCloudAdvectionOffset(float h, float time) {
 	vec2  flowDir = vec2(cos(angle), sin(angle));
 
 	// Dramatic non-linear shear profile
-	// float shear = h * h * cloudFlowHeightScale * 1.0;
+	float shear = h * h * cloudFlowHeightScale * 1.0;
 
 	vec3 advect = getCloudWindOffset(time);
-	// advect.xz += flowDir * shear * worldScale * 10.0;
+	advect.xz += flowDir * shear * worldScale * 10.0;
 
 	return advect;
 }
@@ -238,7 +238,7 @@ float calculateCloudDensityExpV1(
 	vec3 p_scaled = p_advected / (3000.0 * props.worldScale);
 
 
-	float baseNoise = fastWorley3d((p_advected+100*sin(time*0.1)*fastCurl3d(p_scaled))/10000.0);
+	float baseNoise = fastWorley3d((p_advected)/10000.0);
 	float erosion = (fastFbm3d(p_scaled) + 1.0) * 0.5;
 	baseNoise = remap(baseNoise, erosion * 0.4, 1.0, 0.0, 2.0*props.densityBase);
 	return smoothstep(0.499, 0.5, baseNoise) * smoothstep(0.75, 1, baseNoise);// * baseNoise;
