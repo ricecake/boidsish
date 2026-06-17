@@ -8,6 +8,7 @@ namespace Boidsish {
 	class Potshot: public Entity<Model> {
 	public:
 		Potshot(int id, Vector3 pos);
+		bool IsThreat() const override { return true; }
 
 		void UpdateEntity(const EntityHandler& handler, float time, float delta_time) override;
 		void OnHit(const EntityHandler& handler, float damage) override;

@@ -101,7 +101,7 @@ namespace Boidsish {
 		position_ += velocity_ * dt;
 	}
 
-	void SteeringProbe::HandleCheckpoints(float dt, const EntityHandler& handler, std::shared_ptr<EntityBase> player) {
+	int SteeringProbe::HandleCheckpoints(float dt, const EntityHandler& handler, std::shared_ptr<EntityBase> player) {
 		timeSinceLastDrop_ += dt;
 
 		if (player) {
@@ -255,7 +255,7 @@ namespace Boidsish {
 		}
 
 		if (glm::length(velocity_) < 0.1f)
-			return;
+			return -1;
 		glm::vec3 currentDir = glm::normalize(velocity_);
 
 		float dist = glm::distance(position_, lastCheckpointPos_);
@@ -295,7 +295,9 @@ namespace Boidsish {
 			lastCheckpointPos_ = position_;
 			lastCheckpointDir_ = currentDir;
 			timeSinceLastDrop_ = 0.0f;
+			return id;
 		}
+		return -1;
 	}
 
 } // namespace Boidsish

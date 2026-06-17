@@ -19,6 +19,7 @@ namespace Boidsish {
 
 		void UpdateEntity(const EntityHandler& handler, float time, float delta_time) override;
 		void Explode(const EntityHandler& handler, bool hit_target, bool timeout = false);
+		bool IsThreat() const override { return !exploded_; }
 
 	private:
 		// Constants
