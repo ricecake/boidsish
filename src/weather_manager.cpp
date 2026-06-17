@@ -67,9 +67,7 @@ namespace Boidsish {
 			} catch (...) {}
 		}
 
-		if (wind_data_ubo_ != 0) {
-			glDeleteBuffers(1, &wind_data_ubo_);
-		}
+		wind_data_pb_.reset();
 		if (wind_texture_ != 0) {
 			glDeleteTextures(1, &wind_texture_);
 		}
@@ -758,11 +756,8 @@ namespace Boidsish {
 			return;
 
 		// Lazy initialization of GPU resources
-		if (wind_data_ubo_ == 0) {
-			glGenBuffers(1, &wind_data_ubo_);
-			glBindBuffer(GL_UNIFORM_BUFFER, wind_data_ubo_);
-			glBufferData(GL_UNIFORM_BUFFER, sizeof(WindDataUbo), nullptr, GL_DYNAMIC_DRAW);
-			glBindBuffer(GL_UNIFORM_BUFFER, 0);
+		if (!wind_data_pb_) {
+			wind_data_pb_ = std::make_unique<PersistentBuffer<WindDataUbo>>(GL_UNIFORM_BUFFER, 1, 3);
 		}
 		if (wind_texture_ == 0) {
 			glGenTextures(1, &wind_texture_);
@@ -812,6 +807,8 @@ namespace Boidsish {
 		WindDataUbo ubo = latest_snapshot_.uboMetadata;
 		const auto& wind_data = latest_snapshot_.windData;
 
+		*wind_data_pb_->GetFrameDataPtr() = ubo;
+
 		if (!macro_sim_enabled_) {
 			// Fallback: Uniform slowly changing wind vector
 			float wind_t = totalTime * 0.05f;
@@ -826,18 +823,10 @@ namespace Boidsish {
 			// We still use the snapshot's grid dimensions for metadata but override the content
 			std::vector<glm::vec4> fallback_data(wind_data.size(), glm::vec4(windVec.x, 0.0f, windVec.y, 0.0f));
 
-			glBindBuffer(GL_UNIFORM_BUFFER, wind_data_ubo_);
-			glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(WindDataUbo), &ubo);
-			glBindBuffer(GL_UNIFORM_BUFFER, 0);
-
 			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::LbmWindData());
 			glBindTexture(GL_TEXTURE_2D, lbm_wind_texture_);
 			glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, ubo.originSize.y, ubo.originSize.w, GL_RGBA, GL_FLOAT, fallback_data.data());
 		} else {
-			glBindBuffer(GL_UNIFORM_BUFFER, wind_data_ubo_);
-			glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(WindDataUbo), &ubo);
-			glBindBuffer(GL_UNIFORM_BUFFER, 0);
-
 			// Update LBM Wind Texture
 			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::LbmWindData());
 			glBindTexture(GL_TEXTURE_2D, lbm_wind_texture_);
@@ -888,7 +877,7 @@ namespace Boidsish {
 		wind_compute_shader_->use();
 
 		// Bind Metadata UBO
-		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::WindData(), wind_data_ubo_);
+		wind_data_pb_->BindRange(Constants::UboBinding::WindData());
 
 		// Bind Input LBM Wind
 		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::LbmWindData());

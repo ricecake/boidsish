@@ -2121,6 +2121,12 @@ namespace Boidsish {
 			temporal_pb->AdvanceFrame();
 			if (visual_effects_pb) visual_effects_pb->AdvanceFrame();
 
+			// Advance manager-specific persistent buffers
+			if (fire_effect_manager) fire_effect_manager->AdvanceFrame();
+			if (decor_manager) decor_manager->AdvanceFrame();
+			if (weather_manager) weather_manager->AdvanceFrame();
+			if (shadow_manager) shadow_manager->AdvanceFrame();
+
 			int current_idx = uniforms_ssbo->GetCurrentBufferIndex();
 			if (mdi_fences[current_idx]) {
 				glClientWaitSync(mdi_fences[current_idx], GL_SYNC_FLUSH_COMMANDS_BIT, GL_TIMEOUT_IGNORED);
@@ -3655,6 +3661,7 @@ namespace Boidsish {
 		// Shadow decor renders during the overlap window (no packets needed).
 		// The shape callback triggers lazy sync when packets are first needed.
 		impl->RenderShadowPasses(frame);
+		impl->shadow_manager->UpdateShadowUBO(impl->shadow_pass_->GetShadowLights());
 		impl->EnsurePacketsSynced(frame); // fallback if no shadow shapes triggered it
 
 		// Pre-dispatch compute effects (like volumetric lighting) so results are available for the scene

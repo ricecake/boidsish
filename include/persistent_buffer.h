@@ -40,10 +40,13 @@ namespace Boidsish {
 				glGetIntegerv(GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT, &alignment);
 			} else if (target_ == GL_SHADER_STORAGE_BUFFER) {
 				glGetIntegerv(GL_SHADER_STORAGE_BUFFER_OFFSET_ALIGNMENT, &alignment);
+			} else if (target_ == GL_DRAW_INDIRECT_BUFFER || target_ == GL_DISPATCH_INDIRECT_BUFFER) {
+				// Indirect buffers must be 16-byte aligned for many drivers/APIs
+				alignment = 16;
 			}
 
-			// Ensure a minimum alignment of 256 for all triple-buffered segments to be safe
-			alignment = std::max(alignment, 256);
+			// Ensure a minimum alignment of 16 for all triple-buffered segments to be safe
+			alignment = std::max(alignment, 16);
 			aligned_frame_stride_ =
 				((raw_frame_bytes + (size_t)alignment - 1) / (size_t)alignment) * (size_t)alignment;
 
