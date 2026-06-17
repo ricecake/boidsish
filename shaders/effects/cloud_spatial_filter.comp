@@ -24,14 +24,14 @@ void main() {
     float totalWeight = 0.0;
 
     // 3x3 Cross-Bilateral filter driven ONLY by depth
-    for (int y = -1; y <= 1; y++) {
-        for (int x = -1; x <= 1; x++) {
+    for (int y = -2; y <= 2; y++) {
+        for (int x = -2; x <= 2; x++) {
             vec2 offset = vec2(x, y) * texelSize;
             vec4 sampleColor = texture(uCloudColor, uv + offset);
             float sampleDepth = texture(uCloudDepth, uv + offset).r;
 
             // Spatial Gaussian weight (Sigma ~ 1.0)
-            float spatialWeight = exp(-(float(x*x + y*y)) / 2.0);
+            float spatialWeight = exp(-(float(x*x + y*y)) / 1.0);
 
             // Depth Weighting
             float depthWeight = 1.0;

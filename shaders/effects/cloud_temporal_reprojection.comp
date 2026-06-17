@@ -169,7 +169,7 @@ void main() {
 			weightSumTrans += spatialW;
 		}
 	}
-	// historyRGBA.rgb = clamp(historyRGBA.rgb, localMin, localMax);
+	historyRGBA.rgb = clamp(historyRGBA.rgb, localMin, localMax);
 
 	vec3 mean = m1 / weightSumColor;
 	vec3 stddev = sqrt(max(vec3(0.0), (m2 / weightSumColor) - (mean * mean)));
@@ -182,9 +182,10 @@ void main() {
 	// Tighter variance bounds — relax only slightly in low-density regions
 	// Alpha clamping: loosest at boundary regions (mid-transmittance) where the
 	// binary density step causes oscillation, tighter in solid cloud or clear sky
-	float boundaryness = 1.0 - abs(alphaMean - 0.5) * 2.0; // 1.0 at alphaMean=0.5, 0.0 at extremes
-	float alphaGamma = mix(0.75, 1.1, boundaryness);
-	float gamma = mix(2.50, 3.6, boundaryness);
+	// float boundaryness = 1.0 - abs(alphaMean - 0.5) * 2.0; // 1.0 at alphaMean=0.5, 0.0 at extremes
+	float boundaryness = 1.0 - smoothstep(0.0, 0.80, alphaMean); // 1.0 at alphaMean=0.5, 0.0 at extremes
+	float alphaGamma = mix(0.5, 1.0, boundaryness);
+	float gamma = mix(3.00, 3.8, boundaryness);
 
 	// 4. Variance clipping (clip toward mean rather than hard clamp for stability)
 	vec3 minColor = mean - gamma * stddev;
@@ -211,7 +212,7 @@ void main() {
 
 	// STOCHASTIC FRINGE FIX:
 	// Smoothly bypass the clip in low-density regions so the temporal accumulation can stabilize.
-	float clipBlend = smoothstep(0.02, 0.15, alphaMean);
+	float clipBlend = smoothstep(0.5, 0.75, alphaMean);
 
 	vec3 clippedYCoCg = mix(historyYCoCg, mean, clipT);
 	historyYCoCg = mix(historyYCoCg, clippedYCoCg, clipBlend);
@@ -240,7 +241,7 @@ void main() {
 	} else {
 		// In low-density wisps, forgive a massive 80% depth disagreement
 		// In solid clouds, enforce the strict 25% boundary check
-		float depthTolerance = mix(0.80, 0.25, smoothstep(0.0, 0.2, alphaMean));
+		float depthTolerance = mix(0.80, 0.25, smoothstep(0.0, 0.1, alphaMean));
 		depthConfidence = 1.0 - smoothstep(0.05, depthTolerance, normalizedDiff);
 	}
 
@@ -290,14 +291,14 @@ void main() {
 		}
 	}
 
-	float targetWeight = uBlendAlpha * depthConfidence * uvConfidence;
+	float targetWeight = 0.96 * smoothstep(0.25, 0.75, depthConfidence) * uvConfidence;
 
 	if (!validHistory) targetWeight = 0.0;
 
-	vec4  finalRGBA = mix(currentRGBA, historyRGBA, smoothstep(0, 1, targetWeight));
+	vec4  finalRGBA = mix(currentRGBA, historyRGBA, targetWeight);
 	float finalCloudDist = currentCloudDist;
-	float finalCloudLastHit = mix(currentCloudLastHit, historyCloudLastHit, 0);
-	float finalCloudStep = mix(currentCloudStep, historyCloudStep, 0);
+	float finalCloudLastHit = mix(currentCloudLastHit, historyCloudLastHit, targetWeight);
+	float finalCloudStep = mix(currentCloudStep, historyCloudStep, targetWeight);
 
 	imageStore(outColor, pixel, finalRGBA);
 	imageStore(outDepth, pixel, vec4(finalCloudDist, finalCloudLastHit, finalCloudStep, 0.0));

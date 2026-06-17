@@ -160,7 +160,7 @@ void main() {
 			// Only narrow if history had valid cloud hits (not sky distance)
 			if (histFirst > 0.0 && histFirst < 40000.0 * worldScale) {
 				// Expand the known region by a margin to catch clouds that are growing/moving
-				float margin = max(histStep * 6.0, (histLast - histFirst) * 0.5);
+				float margin = max(histStep * 8.0, (histLast - histFirst) * 0.5);
 				float guidedStart = max(t_start, histFirst - margin);
 				float guidedEnd = min(t_end, histLast + margin);
 
