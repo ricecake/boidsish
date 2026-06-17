@@ -25,6 +25,7 @@ namespace Boidsish {
 		std::string GetInstanceKey() const override { return "ProceduralWalkingCreature:" + std::to_string(GetId()); }
 
 		void SetTarget(const glm::vec3& target) { target_pos_ = target; }
+		void SetLookDirection(const glm::vec3& dir) { look_dir_ = dir; }
 
 	private:
 		struct Leg {
@@ -49,6 +50,7 @@ namespace Boidsish {
 		glm::vec3 current_pos_;
 		float     current_yaw_ = 0.0f;
 		glm::vec3 target_pos_;
+		glm::vec3 look_dir_ = glm::vec3(0, 0, 1);
 
 		int              current_sequence_idx_ = 0;
 		std::vector<int> sequence_ = {0, 2, 1, 3}; // FL, BR, FR, BL
