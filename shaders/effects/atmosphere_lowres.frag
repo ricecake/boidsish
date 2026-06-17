@@ -179,6 +179,7 @@ void main() {
 	float firstHitDist = -1.0;
 	float lastHitDist = -1.0;
 	float stepSize = 0.0;
+	float pathDensity = 0.0;
 
 	if (t_start < t_end) {
 		vec3 lightEnergy = vec3(0.0);
@@ -225,6 +226,7 @@ void main() {
 			}
 			lastHitDist = t_unjittered;
 
+			pathDensity = max(pathDensity, d);
 			float stepDensity = d * stepSize * 0.005;
 			float transmittanceAtStep = exp(-stepDensity);
 
@@ -328,7 +330,7 @@ void main() {
 
 	// Output the stable surface depth for the temporal resolver
 	if (firstHitDist > 0.0 && totalWeight > 0.001) {
-		CloudDepth = vec4(firstHitDist, lastHitDist, stepSize, 0.0);
+		CloudDepth = vec4(firstHitDist, lastHitDist, stepSize, pathDensity);
 
 		// Use canonical ray for stable motion vector (jittered ray wobbles per frame)
 		vec3 hitWorldPos = viewPos + canonicalRayDir * firstHitDist;
@@ -342,7 +344,7 @@ void main() {
 		// Velocity is relative to the canonical pixel center (TexCoords), not the jittered sample
 		CloudVelocity = prevScreenUV - TexCoords;
 	} else {
-		CloudDepth = vec4(50000.0 * worldScale, 50000.0 * worldScale, stepSize, 0.0);
+		CloudDepth = vec4(50000.0 * worldScale, 50000.0 * worldScale, stepSize, pathDensity);
 		// For miss pixels, estimate motion at cloud layer distance
 		float fallbackDist = cloudAltitude * worldScale / max(0.05, abs(canonicalRayDir.y));
 		vec3 fallbackWorldPos = viewPos + canonicalRayDir * fallbackDist;

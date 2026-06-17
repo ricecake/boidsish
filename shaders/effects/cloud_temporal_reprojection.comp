@@ -85,6 +85,7 @@ void main() {
 	float currentCloudDist = currDepth.r;
 	float currentCloudLastHit = currDepth.g;
 	float currentCloudStep = currDepth.b;
+	float currentCloudMaxDensity = currDepth.a;
 
 	// 1. Reprojection using screen-space motion vectors
 	// The velocity texture now contains direct UV offsets (prevUV - currentUV)
@@ -126,6 +127,7 @@ void main() {
 	float historyCloudDist = historyDepth.r;
 	float historyCloudLastHit = historyDepth.g;
 	float historyCloudStep = historyDepth.b;
+	float historyCloudMaxDensity = historyDepth.a;
 
 	float historyShellThickness = historyCloudLastHit - historyCloudStep;
 	float nyquist = currentCloudStep / historyShellThickness;
@@ -216,7 +218,7 @@ void main() {
 
 	// STOCHASTIC FRINGE FIX:
 	// Smoothly bypass the clip in low-density regions so the temporal accumulation can stabilize.
-	float clipBlend = smoothstep(0.4, 0.5, alphaMean);
+	float clipBlend = smoothstep(0.5, 1.0, alphaMean);
 
 	vec3 clippedYCoCg = mix(historyYCoCg, mean, clipT);
 	historyYCoCg = mix(historyYCoCg, clippedYCoCg, clipBlend);
@@ -226,28 +228,52 @@ void main() {
 	historyOpacity = clamp(historyOpacity, alphaMean - alphaGamma * alphaStd, alphaMean + alphaGamma * alphaStd);
 	historyRGBA.a = 1.0 - historyOpacity;
 
-	// 5. Continuous confidence-based blend weight
-	float absDistDiff = abs(currentCloudDist - historyCloudDist);
-	float normalizedDiff = max(0.0, absDistDiff - currentCloudStep) / max(min(currentCloudDist, historyCloudDist), 1.0);
+	// Calculate the observed physical thickness of the volumetric features
+    // Clamp to a small positive value to prevent division by zero
+    float currentThickness = max(currentCloudLastHit - currentCloudDist, 1.0 * WORLD_SCALE_VALUE);
+    float historyThickness = max(historyCloudLastHit - historyCloudDist, 1.0 * WORLD_SCALE_VALUE);
 
-	// Depth confidence: smoothly reduces blend as depth disagreement grows.
-	// For cloud/sky transitions (one is far-sky, other is near-cloud), use a gentler
-	// falloff to allow the boundary to converge rather than snapping.
-	bool currentIsSky = currentCloudDist > 40000.0 * WORLD_SCALE_VALUE;
-	bool historyIsSky = historyCloudDist > 40000.0 * WORLD_SCALE_VALUE;
+    // Evaluate the Nyquist ratio (Step Size / Thickness)
+    // Represents the probability that a ray of this step size leaped entirely over the feature
+    float currentMissProbability = smoothstep(0.1, 1.0, currentCloudStep / currentThickness);
+    float historyMissProbability = smoothstep(0.1, 1.0, historyCloudStep / historyThickness);
 
-	float depthConfidence;
-	if (currentIsSky != historyIsSky) {
-		// Edge miss: maintain high confidence to bridge the skybox gap
-		depthConfidence = 0.85;
-	} else if (currentIsSky) {
-		depthConfidence = 1.0;
-	} else {
-		// In low-density wisps, forgive a massive 80% depth disagreement
-		// In solid clouds, enforce the strict 25% boundary check
-		float depthTolerance = mix(0.80, 0.25, smoothstep(0.0, 0.1, alphaMean));
-		depthConfidence = 1.0 - smoothstep(0.05, depthTolerance, normalizedDiff);
-	}
+    // 5. Continuous confidence-based blend weight
+    float absDistDiff = abs(currentCloudDist - historyCloudDist);
+    float normalizedDiff = max(0.0, absDistDiff - currentCloudStep) / max(min(currentCloudDist, historyCloudDist), 1.0);
+
+    bool currentIsSky = currentCloudDist > 40000.0 * WORLD_SCALE_VALUE;
+    bool historyIsSky = historyCloudDist > 40000.0 * WORLD_SCALE_VALUE;
+
+    float depthConfidence;
+    if (currentIsSky != historyIsSky) {
+
+        if (currentIsSky) {
+            // We missed this frame, but hit last frame.
+            // If the historical cloud was thick (low miss probability), this is a real structural change -> low confidence.
+            // If the historical cloud was thin (high miss probability), this is just jitter noise -> high confidence.
+            depthConfidence = mix(0.15, 0.95, historyMissProbability);
+        } else {
+            // We hit this frame, but missed last frame.
+            // If we just hit a massive structure, trust the new data immediately to prevent ghosting -> low confidence.
+            // If we just hit a tiny wisp, bridge it with the sky history to prevent fireflies -> high confidence.
+            depthConfidence = mix(0.15, 0.95, currentMissProbability);
+        }
+
+    } else if (currentIsSky) {
+        depthConfidence = 1.0;
+    } else {
+        // Both hit cloud: Standard structural depth evaluation.
+
+        // We can optionally use the miss probability here as well to expand the
+        // depth tolerance for thin, wispy clouds that suffer from high first-hit variance.
+        float localMissProb = min(currentMissProbability, historyMissProbability);
+
+        float baseTolerance = mix(0.80, 0.25, smoothstep(0.0, 0.1, alphaMean));
+        float depthTolerance = baseTolerance + (localMissProb * 0.5); // Forgive up to 50% more variance on thin wisps
+
+        depthConfidence = 1.0 - smoothstep(0.05, depthTolerance, normalizedDiff);
+    }
 
 	// UV confidence: reduce blend near screen edges where reprojection is less reliable
 	float uvEdgeDist = min(min(prevUV.x, 1.0 - prevUV.x), min(prevUV.y, 1.0 - prevUV.y));
@@ -297,7 +323,7 @@ void main() {
 
 	// Aggressive accumulation: the spatial filter pre-blurs depth-coherent samples,
 	// so the TAA only needs to be conservative at actual depth discontinuities.
-	float targetWeight = 0.97 * smoothstep(0.3, 0.5, depthConfidence) * uvConfidence;
+	float targetWeight = 0.97 * depthConfidence * uvConfidence;
 
 	if (!validHistory) targetWeight = 0.0;
 
@@ -305,7 +331,8 @@ void main() {
 	float finalCloudDist = currentCloudDist;
 	float finalCloudLastHit = mix(currentCloudLastHit, historyCloudLastHit, targetWeight);
 	float finalCloudStep = mix(currentCloudStep, historyCloudStep, targetWeight);
+	float finalCloudMaxDensity = mix(currentCloudMaxDensity, historyCloudMaxDensity, targetWeight);
 
 	imageStore(outColor, pixel, finalRGBA);
-	imageStore(outDepth, pixel, vec4(finalCloudDist, finalCloudLastHit, finalCloudStep, 0.0));
+	imageStore(outDepth, pixel, vec4(finalCloudDist, finalCloudLastHit, finalCloudStep, finalCloudMaxDensity));
 }

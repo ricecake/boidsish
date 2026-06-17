@@ -18,8 +18,15 @@ void main() {
     float centerDepth = texture(uCloudDepth, uv).r;
     bool centerIsSky = centerDepth > 40000.0;
 
-    // Depth tolerance scales with distance — farther clouds have coarser depth precision
-    float depthSigma = centerIsSky ? 99999.0 : max(centerDepth * 0.05, 500.0);
+    float centerMaxDensity = texture(uCloudDepth, uv).a; // Read the PSD
+
+    // 0.0 = Pure formless haze (needs massive blur)
+    // 1.0 = Solid cloud core (needs strict edge preservation)
+    float structuralRigidity = smoothstep(0.01, 0.3, centerMaxDensity);
+
+    // Dynamic Depth Tolerance:
+    // Haze ignores depth boundaries (20000m tolerance). Solid clouds enforce them (500m tolerance).
+    float depthSigma = mix(10000.0, 500.0, structuralRigidity);
 
     vec3 totalScattering = vec3(0.0);
     float totalTransmittance = 0.0;
@@ -45,6 +52,8 @@ void main() {
                 float depthDiff = abs(centerDepth - sampleDepth);
                 depthWeight = exp(-depthDiff * depthDiff / (depthSigma * depthSigma));
             }
+
+            depthWeight = mix(1.0, depthWeight, structuralRigidity);
 
             float weight = spatialWeight * depthWeight;
 

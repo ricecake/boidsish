@@ -76,43 +76,34 @@ void main() {
 	vec2 lowResUV = TexCoords / cloudTexelSize - 0.5;
 	vec2 baseTexel = floor(lowResUV);
 	vec2 frac_ = lowResUV - baseTexel;
+	float depthTolerance = 0.05;
 
 	for (int dy = 0; dy <= 1; dy++) {
 		for (int dx = 0; dx <= 1; dx++) {
 			vec2 sampleUV = (baseTexel + vec2(dx, dy) + 0.5) * cloudTexelSize;
-			sampleUV = clamp(sampleUV, cloudTexelSize * 0.5, 1.0 - cloudTexelSize * 0.5);
 
-			vec4  sampleDepth = texture(cloudDepthTexture, sampleUV);
-			float sampleCloudDist = sampleDepth.r;
+			vec4 sDepthData = texture(cloudDepthTexture, sampleUV);
+			float sDepth = sDepthData.r;
+			float sMaxDensity = sDepthData.a; // Read the PSD
 
-			vec4 sampleColor = texture(cloudTexture, sampleUV);
+			vec4 sColor = texture(cloudTexture, sampleUV);
+			float w = ((dx == 0) ? (1.0 - frac_.x) : frac_.x) * ((dy == 0) ? (1.0 - frac_.y) : frac_.y);
 
-			// Bilinear weight
-			float bx = (dx == 0) ? (1.0 - frac_.x) : frac_.x;
-			float by = (dy == 0) ? (1.0 - frac_.y) : frac_.y;
-			float spatialW = bx * by;
+			// Determine if this sample is a hard structure or soft haze
+			float structuralRigidity = smoothstep(0.01, 0.15, sMaxDensity);
 
-			// Depth rejection: cloud must be in front of the scene geometry.
-			// Use a tight transition to prevent cloud bleeding over foreground edges.
-			float sceneWeight = (depth > 0.999) ? 1.0 : smoothstep(0.0, 1.0, (sceneDist - sampleCloudDist) / max(sceneDist * 0.0001, 1.0));
-			if (depth < 0.999) {
-				// The high-res pixel is a solid foreground object
-				if (sampleCloudDist > sceneDist) {
-					// The low-res sample is physically BEHIND the terrain (e.g. background sky).
-					// Exponentially kill the weight to prevent the background from bleeding over the silhouette.
-					float bleed = sampleCloudDist - sceneDist;
-					sceneWeight = min(sceneWeight, exp(-bleed / (10.0 * WORLD_SCALE_VALUE)));
-				}
-				// If sampleCloudDist <= sceneDist, the cloud/fog is in front of
-				// or exactly touching the terrain. It naturally retains the full 1.0 weight.
+			if (sDepth > sceneDist + depthTolerance) {
+				// If it is a solid cloud behind the mountain, rigorously clamp it (w = 0.0).
+				// If it is formless background haze, allow a 50% bleed so the noise doesn't
+				// flicker against the mountain silhouette.
+				float hazeBleedAllowance = 0.5;
+				w *= mix(hazeBleedAllowance, 0.0, structuralRigidity);
 			}
 
-			float w = spatialW * sceneWeight;
+			totalScattering += sColor.rgb * w;
+			totalTransmittance += sColor.a * w;
 
-			totalScattering += sampleColor.rgb * w;
-			totalTransmittance += sampleColor.a * w;
-
-			upsampledCloudDist += sampleCloudDist * w;
+			upsampledCloudDist += sDepth * w;
 			totalWeight += w;
 		}
 	}

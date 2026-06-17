@@ -239,7 +239,7 @@ float calculateCloudDensityExpV1(
 
 
 	float baseNoise = fastWorley3d((p_advected+100*sin(time*0.1)*fastCurl3d(p_scaled))/10000.0);
-	return step(0.3, baseNoise) * smoothstep(0.75, 1, baseNoise);// * baseNoise;
+	return smoothstep(0.499, 0.5, baseNoise) * smoothstep(0.75, 1, baseNoise);// * baseNoise;
 
 }
 
