@@ -149,7 +149,8 @@ void main() {
 			vec4 smp = texture(uCurrentFrame, uv + vec2(x, y) * texelSize);
 
 			// Spatial Gaussian weight (sigma ~ 1.0)
-			float spatialW = (x == 0 && y == 0) ? 0.25 : ((x == 0 || y == 0) ? 0.125 : 0.0625);
+			// float spatialW = (x == 0 && y == 0) ? 0.25 : ((x == 0 || y == 0) ? 0.125 : 0.0625);
+			float spatialW = exp(-float(x*x + y*y) / 8.0);
 
 			float opacity = clamp(1.0 - smp.a, 0.0, 1.0);
 			float colorW = spatialW * max(opacity, 0.001);
@@ -175,15 +176,32 @@ void main() {
 	alphaMean /= weightSumAlpha;
 	float alphaStd = sqrt(max(0.0, (alphaM2 / weightSumAlpha) - (alphaMean * alphaMean)));
 
+	// Evaluate structural states BEFORE clipping
+	bool currentIsSky = currentCloudDist > 40000.0 * WORLD_SCALE_VALUE;
+	bool historyIsSky = historyCloudDist > 40000.0 * WORLD_SCALE_VALUE;
+
 	// 4. Variance Clipping driven by Peak Structural Density (PSD)
-	// 0.0 = Wispy formless noise. 1.0 = Solid core.
 	float structuralRigidity = smoothstep(0.0, 0.4, currentCloudMaxDensity);
 
-	// Dynamic Gamma:
-	// Haze needs a tight box (gamma ~0.75) to aggressively crush noise fireflies.
-	// Solid cores need a loose box (gamma ~2.5) to preserve sharp edges and prevent temporal ghosting.
+	// Dynamic Gamma
 	float gamma = mix(0.75, 2.5, structuralRigidity);
 	float alphaGamma = mix(0.5, 1.5, structuralRigidity);
+
+	// SILHOUETTE ANTI-CRUSH:
+	// If the ray randomly jumped off or onto the cloud edge, the 3x3 neighborhood
+	// is temporarily mismatched with the history. Expand the box massively to
+	// let the historical data survive the clip.
+	if (currentIsSky != historyIsSky) {
+		gamma *= 2.5;
+		alphaGamma *= 2.5;
+		// gamma *= 4.0;
+		// alphaGamma *= 3.0;
+	}
+
+	// Minimum variance floor
+	float minStddev = max(0.02, mean.x * 0.15);
+	stddev = max(stddev, vec3(minStddev));
+	alphaStd = max(alphaStd, 0.05);
 
 	vec3 minColor = mean - gamma * stddev;
 	vec3 maxColor = mean + gamma * stddev;
@@ -230,9 +248,6 @@ void main() {
 	// 5. Continuous confidence-based blend weight
 	float absDistDiff = abs(currentCloudDist - historyCloudDist);
 	float normalizedDiff = max(0.0, absDistDiff - currentCloudStep) / max(min(currentCloudDist, historyCloudDist), 1.0);
-
-	bool currentIsSky = currentCloudDist > 40000.0 * WORLD_SCALE_VALUE;
-	bool historyIsSky = historyCloudDist > 40000.0 * WORLD_SCALE_VALUE;
 
 	float depthConfidence;
 	if (currentIsSky != historyIsSky) {
@@ -312,9 +327,9 @@ void main() {
 
 	// Aggressive accumulation: the spatial filter pre-blurs depth-coherent samples,
 	// so the TAA only needs to be conservative at actual depth discontinuities.
-	float targetWeight = 0.90 * depthConfidence * uvConfidence;
+	float targetWeight = 0.97 * depthConfidence * uvConfidence;
 
-	if (!validHistory) targetWeight *= 0.150;
+	if (!validHistory) targetWeight *= 0.0;//150;
 
 	vec4  finalRGBA = mix(currentRGBA, historyRGBA, targetWeight);
 	float finalCloudDist = currentCloudDist;

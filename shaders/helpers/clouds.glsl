@@ -239,9 +239,10 @@ float calculateCloudDensityExpV1(
 
 
 	float baseNoise = fastWorley3d((p_advected)/10000.0);
+	baseNoise *= 1.0-smoothstep(-0.10, props.coverage, baseNoise);
 	float erosion = (fastFbm3d(p_scaled) + 1.0) * 0.5;
-	baseNoise = remap(baseNoise, erosion * 0.4, 1.0, 0.0, 2.0*props.densityBase);
-	return smoothstep(0.499, 0.5, baseNoise) * smoothstep(0.75, 1, baseNoise);// * baseNoise;
+	baseNoise = remapClamp(baseNoise, erosion * 0.4, 1.0, 0.0, props.densityBase);
+	return baseNoise;
 
 }
 
