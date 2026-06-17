@@ -10,10 +10,10 @@ using namespace Boidsish;
 
 int main(int argc, char** argv) {
 	try {
-		Visualizer vis(1280, 960, "Procedural Walking Creature Demo");
+		Visualizer vis(1280, 960, "Robotic Quadruped gait Demo");
 
 		// Create the procedural walking creature
-		auto creature = std::make_shared<ProceduralWalkingCreature>(0, 0, 0, 0, 8.0f);
+		auto creature = std::make_shared<ProceduralWalkingCreature>(0, 0, 0, 0, 10.0f);
 		creature->SetClampedToTerrain(true);
 
 		// Use a shape handler to update and return the creature for rendering
