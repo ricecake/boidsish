@@ -74,15 +74,21 @@ namespace Boidsish {
 		float cloudSunLightScale;                // offset 756, 4 bytes
 		float cloudMoonLightScale;               // offset 760, 4 bytes
 		float cloudBeerPowderMix;                // offset 764, 4 bytes
-		alignas(16) glm::mat4 cloudShadowMatrix; // offset 768, 64 bytes
-		alignas(16) glm::mat4 view;              // offset 832, 64 bytes
-		alignas(16) glm::mat4 projection;        // offset 896, 64 bytes
-		alignas(16) glm::vec3 lightningColor;    // offset 960, 12 bytes
-		float lightningPulse;                    // offset 972, 4 bytes
-		alignas(16) glm::vec4 sh_coeffs[9];      // offset 976, 144 bytes
-	}; // Total: 1120 bytes
+		float cloudFlowSpeed;                    // offset 768, 4 bytes
+		float cloudFlowDirection;                // offset 772, 4 bytes
+		float cloudFlowHeightScale;              // offset 776, 4 bytes
+		float cloudCurlStrength;                 // offset 780, 4 bytes
+		float cloudCurlFrequency;                // offset 784, 4 bytes
+		float _pad0, _pad1, _pad2;               // offset 788, 12 bytes
+		alignas(16) glm::mat4 cloudShadowMatrix; // offset 800, 64 bytes
+		alignas(16) glm::mat4 view;              // offset 864, 64 bytes
+		alignas(16) glm::mat4 projection;        // offset 928, 64 bytes
+		alignas(16) glm::vec3 lightningColor;    // offset 992, 12 bytes
+		float lightningPulse;                    // offset 1004, 4 bytes
+		alignas(16) glm::vec4 sh_coeffs[9];      // offset 1008, 144 bytes
+	}; // Total: 1152 bytes
 
-	static_assert(sizeof(LightingUbo) == 1120, "LightingUbo must be 1104 bytes for UBO alignment");
+	static_assert(sizeof(LightingUbo) == 1152, "LightingUbo must be 1152 bytes for UBO alignment");
 
 	/**
 	 * @brief Light source data structure for rendering.

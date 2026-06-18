@@ -8,6 +8,7 @@
 #include "profiler.h"
 #include "service_locator.h"
 #include "shader.h"
+#include "state.h"
 
 namespace Boidsish {
 	AtmosphereManager::AtmosphereManager(ServiceLocator& /*loc*/) {}
@@ -331,6 +332,30 @@ namespace Boidsish {
 		shader.trySetFloat("u_mieScale", _mieScale);
 		shader.trySetFloat("u_mieAnisotropy", _mieAnisotropy);
 		shader.setVec3("u_ozoneAbsorptionBase", _ozoneAbsorption);
+	}
+
+	void AtmosphereManager::ApplyTargetState(const state::SystemConfiguration& config) {
+		const auto& s = config.atmosphere;
+		// Atmosphere enable/disable is typically handled at the effect level in Visualizer,
+		// but we can track it here if needed.
+
+		SetRayleighScale(s.rayleighScale);
+		SetMieScale(s.mieScale);
+		SetMieAnisotropy(s.mieAnisotropy);
+		SetMultiScatteringScale(s.multiScatScale);
+		SetAmbientScatteringScale(s.ambientScatScale);
+		SetAtmosphereHeight(s.atmosphereHeight);
+		SetRayleighScattering(s.rayleighScattering);
+		SetMieScattering(s.mieScattering);
+		SetMieExtinction(s.mieExtinction);
+		SetOzoneAbsorption(s.ozoneAbsorption);
+		SetRayleighScaleHeight(s.rayleighScaleHeight);
+		SetMieScaleHeight(s.mieScaleHeight);
+		SetColorVarianceScale(s.colorVarianceScale);
+		SetColorVarianceStrength(s.colorVarianceStrength);
+		SetCloudShadowIntensity(s.cloudShadowIntensity);
+
+		// Cloud params are mostly in UBO/Effect, AtmosphereManager doesn't store all of them.
 	}
 
 } // namespace Boidsish

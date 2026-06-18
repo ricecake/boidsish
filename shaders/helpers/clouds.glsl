@@ -99,6 +99,14 @@ CloudLayer computeCloudLayer(CloudWeather weather, CloudProperties props) {
 	return layer;
 }
 
+vec3 getCloudAdvectionOffset(float h, float worldScale, float time) {
+	float angle = cloudFlowDirection;
+	vec2  flowDir = vec2(cos(angle), sin(angle));
+	float heightFactor = 1.0 + h * cloudFlowHeightScale;
+	// 1000.0 is a magic scale to make the "speed" parameter feel reasonable in world units
+	return vec3(flowDir.x, 0.0, flowDir.y) * time * cloudFlowSpeed * heightFactor * 1000.0 * worldScale;
+}
+
 // Cloud density calculation helper
 // Returns a density value [0, 1+] based on world-space position
 float calculateCloudDensity(
@@ -125,15 +133,18 @@ float calculateCloudDensity(
 	float coverageThreshold = 1.0 - props.coverage;
 	float localDensity = weather.weatherMap * props.densityBase;
 
+	// Apply advection to the sample position
+	vec3 p_advected = p - getCloudAdvectionOffset(h, props.worldScale, time);
+
 	if (simplified) {
 		// Include base Worley noise so shadow patterns match the full cloud shapes
-		float baseNoise = fastWorley3d(p / (50000.0 * props.worldScale) + time * 0.0005);
+		float baseNoise = fastWorley3d(p_advected / (50000.0 * props.worldScale) + time * 0.0005);
 		float baseDensity = baseNoise * weather.weatherMap;
 		return smoothstep(coverageThreshold, coverageThreshold + 0.4, baseDensity) * densityProfile * props.densityBase;
 	}
 
 	// Base noise for cloud shapes
-	vec3 p_warped = p + 5.0 * fastCurl3d(p / (900.0 * props.worldScale) + time * 0.002);
+	vec3 p_warped = p_advected + cloudCurlStrength * fastCurl3d(p_advected * cloudCurlFrequency + time * 0.002);
 	vec3 p_scaled = p_warped / (50000.0 * props.worldScale);
 
 	float baseNoise = fastWorley3d(p_scaled + time * 0.0005);
@@ -186,8 +197,12 @@ float evaluateCloudShadowDensityAtWorldPos(vec2 worldXZ, float time) {
 	float scaledCloudAltitude = shadowAltitude * worldScale;
 	vec3  cloudPos = vec3(worldXZ.x, scaledCloudAltitude, worldXZ.y);
 
-	float weatherMap = (fastWorley3d(vec3(cloudPos.xz / (4000.0 * worldScale), time * 0.001)) * 0.5 + 0.5);
-	float heightMap = (fastWorley3d(vec3(cloudPos.xz / (2500.0 * worldScale), time * 0.0004)) * 0.5 + 0.5);
+	// Approximate height for advection in the middle of the layer
+	// Coverage should also be advected so clouds move as a whole
+	vec3 advectedCloudPos = cloudPos - getCloudAdvectionOffset(0.5, worldScale, time);
+
+	float weatherMap = (fastWorley3d(vec3(advectedCloudPos.xz / (4000.0 * worldScale), time * 0.001)) * 0.5 + 0.5);
+	float heightMap = (fastWorley3d(vec3(advectedCloudPos.xz / (2500.0 * worldScale), time * 0.0004)) * 0.5 + 0.5);
 
 	CloudWeather weather;
 	weather.weatherMap = weatherMap;

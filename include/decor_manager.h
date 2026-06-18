@@ -11,6 +11,7 @@
 #include "frustum.h"
 #include "model.h"
 #include "procedural_generator.h"
+#include "shadow_manager.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <shader.h>
@@ -95,8 +96,6 @@ namespace Boidsish {
 		std::string                model_path;
 		std::vector<DecorInstance> instances;
 	};
-
-	struct ShadowCasterInfo;
 
 	class DecorManager {
 	public:

@@ -1,6 +1,8 @@
 #include "post_processing/effects/BloomEffect.h"
 
 #include "logger.h"
+#include "state.h"
+#include "service_locator.h"
 #include "shader.h"
 #include "constants.h"
 #include <glm/gtc/matrix_transform.hpp>
@@ -407,4 +409,56 @@ namespace Boidsish {
 		}
 
 	} // namespace PostProcessing
+
+	using namespace PostProcessing;
+
+	void BloomEffect::ApplyTargetState(const state::SystemConfiguration& config) {
+		const auto& s = config.bloom;
+		SetEnabled(s.enabled);
+		SetIntensity(s.intensity);
+		SetThreshold(s.threshold);
+
+		auto applyLayer = [](BloomEffect::LayerSettings& dest, const state::BloomLayerSettings& src) {
+			dest.toneMappingEnabled = src.toneMappingEnabled;
+			dest.toneMappingMode = src.toneMappingMode;
+			dest.autoExposureEnabled = src.autoExposureEnabled;
+			dest.targetLuminance = src.targetLuminance;
+			dest.minExposure = src.minExposure;
+			dest.maxExposure = src.maxExposure;
+			dest.speedUp = src.speedUp;
+			dest.speedDown = src.speedDown;
+			dest.centerWeightTightness = src.centerWeightTightness;
+			dest.focusPoint = src.focusPoint;
+			dest.histogramLowCutoff = src.histogramLowCutoff;
+			dest.histogramHighCutoff = src.histogramHighCutoff;
+			dest.uchimuraP = src.uchimuraP;
+			dest.uchimuraA = src.uchimuraA;
+			dest.uchimuraM = src.uchimuraM;
+			dest.uchimuraL = src.uchimuraL;
+			dest.uchimuraC = src.uchimuraC;
+			dest.uchimuraB = src.uchimuraB;
+			dest.autoTuneEnabled = src.autoTuneEnabled;
+			dest.minContrast = src.minContrast;
+			dest.maxContrast = src.maxContrast;
+			dest.targetBrightness = src.targetBrightness;
+			dest.cdlSlope = src.cdlSlope;
+			dest.cdlOffset = src.cdlOffset;
+			dest.cdlPower = src.cdlPower;
+			dest.cdlSaturation = src.cdlSaturation;
+			dest.whiteTemp = src.whiteTemp;
+			dest.whiteTint = src.whiteTint;
+			dest.ltmEnabled = src.ltmEnabled;
+			dest.ltmEvSpread = src.ltmEvSpread;
+			dest.ltmTarget = src.ltmTarget;
+			dest.ltmSigma = src.ltmSigma;
+			dest.ltmWeightContrast = src.ltmWeightContrast;
+			dest.ltmWeightSaturation = src.ltmWeightSaturation;
+			dest.ltmWeightExposedness = src.ltmWeightExposedness;
+			dest.ltmBoostLocalContrast = src.ltmBoostLocalContrast;
+		};
+
+		applyLayer(_sceneSettings, s.scene);
+		applyLayer(_skySettings, s.sky);
+	}
+
 } // namespace Boidsish

@@ -6,6 +6,7 @@
 #include <optional>
 #include <glm/glm.hpp>
 #include "post_processing/effects/BloomEffect.h"
+#include "state.h"
 
 namespace Boidsish {
 
@@ -143,6 +144,8 @@ namespace Boidsish {
         std::vector<MoodLayer>& GetLayers() { return _layers; }
 
         const std::map<MoodParameter, float>& GetCurrentParameters() const { return _currentParams; }
+
+        void ApplyTargetState(const class state::SystemConfiguration& config);
 
     private:
         MoodSettings Interpolate(const MoodLayer& layer, float paramValue);

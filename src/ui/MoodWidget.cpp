@@ -4,6 +4,9 @@
 #include "imgui.h"
 #include <vector>
 #include <string>
+#include "state.h"
+#include "state_frame.h"
+#include "service_locator.h"
 
 namespace Boidsish {
     namespace UI {
@@ -76,6 +79,9 @@ namespace Boidsish {
                 return;
             }
 
+            auto fb = ServiceLocator::Instance().Get<state::FrameBuffer>();
+            const auto& input = *fb->Read().user_input;
+
             MoodManager* moodMgr = m_visualizer.GetMoodManager();
             if (!moodMgr) {
                 ImGui::Text("Mood Manager not available");
@@ -83,9 +89,9 @@ namespace Boidsish {
                 return;
             }
 
-            bool engineEnabled = moodMgr->IsEnabled();
+            bool engineEnabled = input.mood.enabled;
             if (ImGui::Checkbox("Engine Enabled", &engineEnabled)) {
-                moodMgr->SetEnabled(engineEnabled);
+                fb->Apply(state::actions::SetMoodEnabled{engineEnabled});
             }
 
             if (ImGui::CollapsingHeader("Environment Parameters", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -117,7 +123,7 @@ namespace Boidsish {
                     }
                     ImGui::SameLine();
 
-                    bool active = layer.enabled && !layer.controlPoints.empty() && engineEnabled;
+                    bool active = layer.enabled && !layer.controlPoints.empty() && input.mood.enabled;
                     if (active) {
                         ImGui::TextColored(ImVec4(0, 1, 0, 1), "[ACTIVE]");
                     } else {
@@ -155,12 +161,12 @@ namespace Boidsish {
                 }
             }
 
-            bool override = moodMgr->IsOverrideEnabled();
-            if (ImGui::Checkbox("User Override", &override)) {
-                moodMgr->SetOverride(moodMgr->GetBlendedSettings(), override);
+            bool override_active = input.mood.userOverride;
+            if (ImGui::Checkbox("User Override", &override_active)) {
+                fb->Apply(state::actions::SetMoodUserOverride{override_active});
             }
 
-            if (override) {
+            if (input.mood.userOverride) {
                 ImGui::TextColored(ImVec4(1, 1, 0, 1), "Manual override active. Current settings are frozen.");
             }
 
