@@ -331,9 +331,10 @@ void main() {
 
 	if (!validHistory) targetWeight *= 0.0;//150;
 
-	vec4  finalRGBA = mix(currentRGBA, historyRGBA, targetWeight);
 	float finalCloudDist = currentCloudDist;
-	float finalCloudLastHit = mix(currentCloudLastHit, historyCloudLastHit, max((1.0-structuralRigidity), targetWeight));
+
+	vec4  finalRGBA = mix(currentRGBA, historyRGBA, targetWeight);
+	float finalCloudLastHit = mix(currentCloudLastHit, historyCloudLastHit, targetWeight);
 	float finalCloudStep = mix(currentCloudStep, historyCloudStep, targetWeight);
 	float finalCloudMaxDensity = mix(currentCloudMaxDensity, historyCloudMaxDensity, targetWeight);
 
