@@ -79,8 +79,10 @@ void main() {
 	float historyMissProbability = smoothstep(0.1, 1.0, historyCloudStep / historyThickness);
 
 	float structuralRigidity = smoothstep(0.0, 0.4, currentCloudMaxDensity);
+	float structuralFlux = abs(currentCloudMaxDensity - historyCloudMaxDensity)/historyCloudMaxDensity;
 
-	float antiNyquist = (1.0 - max(historyMissProbability, currentMissProbability));
+	float nyquist = (max(historyMissProbability, currentMissProbability));
+	float antiNyquist = (1.0 - nyquist);
 	float structuralLock = structuralRigidity * antiNyquist;
 
 	vec3 m1 = vec3(0.0);
@@ -109,7 +111,6 @@ void main() {
 			alphaM2 += opacity * opacity * spatialW;
 
 			weightSumColor += colorW;
-
 			weightSumAlpha += spatialW;
 		}
 	}
@@ -130,6 +131,7 @@ void main() {
 	// Base weight is highly aggressive to crush any remaining jitter
 	float targetWeight = 0.99 * uvConfidence;
 	// float targetWeight = 0.99;
+	// float targetWeight = uvConfidence * mix(antiNyquist, 0.99, smoothstep(-0.1, 1.1, structuralFlux));
 
 	// 5. Solid Geometry Disocclusion (The Mountain Fix)
 	// Fetch un-interpolated scene depth to preserve hard mountain silhouettes
@@ -177,6 +179,9 @@ void main() {
 	float finalCloudLastHit = mix(currentCloudLastHit, historyCloudLastHit, targetWeight);
 	float finalCloudStep = mix(currentCloudStep, historyCloudStep, targetWeight);
 	float finalCloudMaxDensity = mix(currentCloudMaxDensity, historyCloudMaxDensity, targetWeight);
+
+	if (structuralFlux > 0.30 && structuralRigidity < 0.3 && historyThickness/historyCloudStep > 1.0) finalRGBA = vec4(5, 0, 0, 0);
+	// if (structuralFlux > 0.50 && structuralRigidity < 0.50) finalRGBA.a = 1.0 - alphaMean;
 
 	imageStore(outColor, pixel, finalRGBA);
 	imageStore(outDepth, pixel, vec4(finalCloudDist, finalCloudLastHit, finalCloudStep, finalCloudMaxDensity));
