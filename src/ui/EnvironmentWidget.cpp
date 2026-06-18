@@ -3,6 +3,7 @@
 #include <cmath>
 
 #include "ConfigManager.h"
+#include "constants.h"
 #include "decor_manager.h"
 #include "fire_effect_manager.h"
 #include "grass_manager.h"
@@ -13,6 +14,10 @@
 #include "post_processing/effects/VolumetricLightingEffect.h"
 #include "terrain_generator_interface.h"
 #include "weather_manager.h"
+#include "state.h"
+#include "state_frame.h"
+#include "service_locator.h"
+#include "ui/Widgets.h"
 
 namespace Boidsish {
 	namespace UI {
@@ -23,44 +28,50 @@ namespace Boidsish {
 			if (!m_show)
 				return;
 
+			auto fb = ServiceLocator::Instance().Get<state::FrameBuffer>();
+			const auto& input = *fb->Read().user_input;
+			const auto& sim = fb->Read().simulation;
+			const auto& eff = *fb->Read().effective;
+
 			ImGui::SetNextWindowPos(ImVec2(20, 20), ImGuiCond_FirstUseEver);
 			ImGui::SetNextWindowSize(ImVec2(500, 600), ImGuiCond_FirstUseEver);
 			if (ImGui::Begin("Environment", &m_show)) {
 				auto weather = m_visualizer.GetWeatherManager();
-				auto drawAttrControl = [&](const char* label, WeatherAttribute attr, float min_v, float max_v, const char* fmt) {
-					if (!weather) return;
-					float val = 0.0f;
-					// Use current value for the slider if no target is set
-					const auto& weather_cur = weather->GetCurrentWeather();
-					switch(attr) {
-						case WeatherAttribute::Temperature: val = weather_cur.temperature; break;
-						case WeatherAttribute::Precipitation: val = weather_cur.precipitation; break;
-						case WeatherAttribute::Humidity: val = weather_cur.humidity; break;
-						case WeatherAttribute::WindStrength: val = weather_cur.wind_strength; break;
-						case WeatherAttribute::WindSpeed: val = weather_cur.wind_speed; break;
-						case WeatherAttribute::WindFrequency: val = weather_cur.wind_frequency; break;
-						case WeatherAttribute::CloudCoverage: val = weather_cur.cloud_coverage; break;
-						default: break;
-					}
+
+				// Helper for weather attribute sliders with T/min/max/U constraint buttons.
+				// The slider uses SliderFloatWithActual to show user input vs simulation actual.
+				// Constraint buttons still use weather manager directly (transient constraint management).
+				auto drawAttrControl = [&](const char* label, const char* constraint_key, float user_val, float actual_val, float min_v, float max_v, const char* fmt, auto action_factory) {
+					float val = user_val;
 
 					ImGui::Text("%s:", label);
-					if (ImGui::SliderFloat((std::string("##slide") + label).c_str(), &val, min_v, max_v, fmt)) {
-						weather->SetTarget(attr, val);
+					if (SliderFloatWithActual((std::string("##slide") + label).c_str(), &val, actual_val, min_v, max_v)) {
+						fb->Apply(action_factory(val));
 					}
 					ImGui::SameLine();
-					if (ImGui::Button((std::string("T##") + label).c_str())) weather->SetTarget(attr, val);
+					if (ImGui::Button((std::string("T##") + label).c_str())) {
+						state::AttributeConstraint c;
+						c.target = val;
+						fb->Apply(state::actions::SetWeatherAttrConstraint{constraint_key, c});
+					}
 					ImGui::SetItemTooltip("Set Target");
 					ImGui::SameLine();
-					if (ImGui::Button((std::string("min##") + label).c_str())) weather->SetMin(attr, val);
+					if (ImGui::Button((std::string("min##") + label).c_str())) {
+						state::AttributeConstraint c;
+						c.min = val;
+						fb->Apply(state::actions::SetWeatherAttrConstraint{constraint_key, c});
+					}
 					ImGui::SetItemTooltip("Set Minimum");
 					ImGui::SameLine();
-					if (ImGui::Button((std::string("max##") + label).c_str())) weather->SetMax(attr, val);
+					if (ImGui::Button((std::string("max##") + label).c_str())) {
+						state::AttributeConstraint c;
+						c.max = val;
+						fb->Apply(state::actions::SetWeatherAttrConstraint{constraint_key, c});
+					}
 					ImGui::SetItemTooltip("Set Maximum");
 					ImGui::SameLine();
 					if (ImGui::Button((std::string("U##") + label).c_str())) {
-						weather->ClearTarget(attr);
-						weather->ClearMin(attr);
-						weather->ClearMax(attr);
+						fb->Apply(state::actions::ClearWeatherAttrConstraint{constraint_key});
 					}
 					ImGui::SetItemTooltip("Unlock / Clear Constraints");
 				};
@@ -68,42 +79,41 @@ namespace Boidsish {
 				// 0. Weather
 				if (ImGui::CollapsingHeader("Ambient Weather", ImGuiTreeNodeFlags_DefaultOpen)) {
 					if (weather) {
-						bool enabled = weather->IsEnabled();
+						bool enabled = input.weather.enabled;
 						if (ImGui::Checkbox("Enable Weather System", &enabled)) {
-							weather->SetEnabled(enabled);
+							fb->Apply(state::actions::SetWeatherEnabled{enabled});
 						}
 
 						if (enabled) {
-							float time_scale = weather->GetTimeScale();
+							float time_scale = input.weather.timeScale;
 							if (ImGui::SliderFloat("Weather Time Scale", &time_scale, 0.0f, 0.015f, "%.3f")) {
-								weather->SetTimeScale(time_scale);
+								fb->Apply(state::actions::SetWeatherTimeScale{time_scale});
 							}
 
-							float spatial_scale = weather->GetSpatialScale();
+							float spatial_scale = input.weather.spatialScale;
 							if (ImGui::SliderFloat("Weather Spatial Scale", &spatial_scale, 0.0f, 0.003f, "%.4f")) {
-								weather->SetSpatialScale(spatial_scale);
+								fb->Apply(state::actions::SetWeatherSpatialScale{spatial_scale});
 							}
 
-							float hold_threshold = weather->GetHoldThreshold();
+							float hold_threshold = input.weather.holdThreshold;
 							if (ImGui::SliderFloat("Hold Threshold", &hold_threshold, 0.0f, 1.0f, "%.2f")) {
-								weather->SetHoldThreshold(hold_threshold);
+								fb->Apply(state::actions::SetWeatherHoldThreshold{hold_threshold});
 							}
 
 							if (ImGui::Button("Clear All Weather Constraints")) {
-								weather->ClearAllConstraints();
+								fb->Apply(state::actions::ClearAllWeatherAttrConstraints{});
 							}
 
 							ImGui::Separator();
-							const auto& cur = weather->GetCurrentWeather();
 
-							drawAttrControl("Temperature (K)", WeatherAttribute::Temperature, 200.0f, 350.0f, "%.1f K");
-							float temp = cur.temperature;
+							drawAttrControl("Temperature (K)", "temperature", input.weather.temperature, sim.weather.temperature, 200.0f, 350.0f, "%.1f K", [](float v){ return state::actions::SetWeatherTemperature{v}; });
+							float temp = sim.weather.temperature;
 							ImGui::Text("  (%.1f C / %.1f F)", temp - 273.15f, (temp - 273.15f) * 1.8f + 32.0f);
 
-							drawAttrControl("Precipitation", WeatherAttribute::Precipitation, 0.0f, 1.0f, "%.2f");
-							drawAttrControl("Humidity", WeatherAttribute::Humidity, 0.0f, 1.0f, "%.2f");
-							drawAttrControl("Wind Strength", WeatherAttribute::WindStrength, 0.0f, 5.0f, "%.2f");
-							drawAttrControl("Cloud Coverage", WeatherAttribute::CloudCoverage, 0.0f, 1.0f, "%.2f");
+							drawAttrControl("Precipitation", "precipitation", input.weather.precipitation, sim.weather.precipitation, 0.0f, 1.0f, "%.2f", [](float v){ return state::actions::SetWeatherPrecipitation{v}; });
+							drawAttrControl("Humidity", "humidity", input.weather.humidity, sim.weather.humidity, 0.0f, 1.0f, "%.2f", [](float v){ return state::actions::SetWeatherHumidity{v}; });
+							drawAttrControl("Wind Strength", "windStrength", input.weather.windStrength, sim.weather.windStrength, 0.0f, 5.0f, "%.2f", [](float v){ return state::actions::SetWeatherWindStrength{v}; });
+							drawAttrControl("Cloud Coverage", "cloudCoverage", input.weather.cloudCoverage, sim.weather.cloudCoverage, 0.0f, 1.0f, "%.2f", [](float v){ return state::actions::SetWeatherCloudCoverage{v}; });
 
 							auto active_constraints = weather->GetActiveConstraints();
 							if (!active_constraints.empty()) {
@@ -126,8 +136,8 @@ namespace Boidsish {
 							}
 
 							// Display derived intensities and wetness
-							float rain = (cur.temperature > 273.15f) ? cur.precipitation : 0.0f;
-							float snow = (cur.temperature <= 273.15f) ? cur.precipitation : 0.0f;
+							float rain = (sim.weather.temperature > 273.15f) ? sim.weather.precipitation : 0.0f;
+							float snow = (sim.weather.temperature <= 273.15f) ? sim.weather.precipitation : 0.0f;
 							ImGui::Text("Rain Intensity: %.2f", rain);
 							ImGui::Text("Snow Intensity: %.2f", snow);
 
@@ -165,25 +175,25 @@ namespace Boidsish {
 
 							ImGui::Separator();
 							if (ImGui::TreeNode("Macro Weather Simulation")) {
-								bool macro_enabled = weather->IsMacroSimEnabled();
+								bool macro_enabled = input.weather.macroSimEnabled;
 								if (ImGui::Checkbox("Enable Macro Simulation", &macro_enabled)) {
-									weather->SetMacroSimEnabled(macro_enabled);
+									fb->Apply(state::actions::SetWeatherMacroSimEnabled{macro_enabled});
 								}
 
 								if (macro_enabled) {
-									float tau = weather->GetSimTau();
+									float tau = input.weather.simTau;
 									if (ImGui::SliderFloat("Simulation Relaxation (Tau)", &tau, 0.51f, 2.0f, "%.2f")) {
-										weather->SetSimTau(tau);
+										fb->Apply(state::actions::SetWeatherSimTau{tau});
 									}
 
-									bool strict = weather->IsStrictEnforcementEnabled();
+									bool strict = input.weather.strictEnforcement;
 									if (ImGui::Checkbox("Strict Enforcement (Instant Snap)", &strict)) {
-										weather->SetStrictEnforcement(strict);
+										fb->Apply(state::actions::SetWeatherStrictEnforcement{strict});
 									}
 
-									float stiffness = weather->GetNudgeStiffness();
+									float stiffness = input.weather.nudgeStiffness;
 									if (ImGui::SliderFloat("Nudge Stiffness", &stiffness, 0.01f, 10.0f, "%.2f")) {
-										weather->SetNudgeStiffness(stiffness);
+										fb->Apply(state::actions::SetWeatherNudgeStiffness{stiffness});
 									}
 
 									if (ImGui::Button("Reset Simulation")) {
@@ -298,39 +308,39 @@ namespace Boidsish {
 										};
 
 										if (ImGui::Button("Inject Pressure")) {
-											weather->InjectPressure(get_target_pos(), m_targetPressure, m_burstStrength);
+											fb->Apply(state::actions::InjectPressure{get_target_pos(), m_targetPressure, m_burstStrength});
 										}
 										ImGui::SameLine();
 										if (ImGui::Button("Burst (1100 hPa)")) {
-											weather->InjectPressure(get_target_pos(), 1100.0f, 0.1f);
+											fb->Apply(state::actions::InjectPressure{get_target_pos(), 1100.0f, 0.1f});
 										}
 										ImGui::SameLine();
 										if (ImGui::Button("Vacuum (900 hPa)")) {
-											weather->InjectPressure(get_target_pos(), 900.0f, 0.0f);
+											fb->Apply(state::actions::InjectPressure{get_target_pos(), 900.0f, 0.0f});
 										}
 
 										if (ImGui::Button("Inject Temperature")) {
-											weather->InjectTemperature(get_target_pos(), m_targetTemperature);
+											fb->Apply(state::actions::InjectTemperature{get_target_pos(), m_targetTemperature});
 										}
 										ImGui::SameLine();
 										if (ImGui::Button("Heat (350 K)")) {
-											weather->InjectTemperature(get_target_pos(), 350.0f);
+											fb->Apply(state::actions::InjectTemperature{get_target_pos(), 350.0f});
 										}
 										ImGui::SameLine();
 										if (ImGui::Button("Cold (250 K)")) {
-											weather->InjectTemperature(get_target_pos(), 250.0f);
+											fb->Apply(state::actions::InjectTemperature{get_target_pos(), 250.0f});
 										}
 
 										if (ImGui::Button("Inject Aerosol")) {
-											weather->InjectAerosol(get_target_pos(), m_targetAerosol);
+											fb->Apply(state::actions::InjectAerosol{get_target_pos(), m_targetAerosol});
 										}
 										ImGui::SameLine();
 										if (ImGui::Button("Dusty (0.5)")) {
-											weather->InjectAerosol(get_target_pos(), 0.5f);
+											fb->Apply(state::actions::InjectAerosol{get_target_pos(), 0.5f});
 										}
 										ImGui::SameLine();
 										if (ImGui::Button("Clean (0.0)")) {
-											weather->InjectAerosol(get_target_pos(), 0.0f);
+											fb->Apply(state::actions::InjectAerosol{get_target_pos(), 0.0f});
 										}
 
 										ImGui::TreePop();
@@ -344,525 +354,432 @@ namespace Boidsish {
 
 				// 3.5 Grass
 				if (ImGui::CollapsingHeader("Grass", ImGuiTreeNodeFlags_DefaultOpen)) {
-					auto grass_manager = m_visualizer.GetGrassManager();
-					if (grass_manager) {
-						auto& cfg = ConfigManager::GetInstance();
-						bool  enabled = grass_manager->IsEnabled();
-						if (ImGui::Checkbox("Enable Grass", &enabled)) {
-							grass_manager->SetEnabled(enabled);
-							cfg.SetBool("grass_enabled", enabled);
+					bool enabled = input.grass.enabled;
+					if (ImGui::Checkbox("Enable Grass", &enabled)) {
+						fb->Apply(state::actions::SetGrassEnabled{enabled});
+					}
+
+					if (enabled) {
+						float length = input.grass.lengthMultiplier;
+						if (ImGui::SliderFloat("Length Multiplier", &length, 0.1f, 5.0f)) {
+							fb->Apply(state::actions::SetGrassLength{length});
+						}
+						float width = input.grass.widthMultiplier;
+						if (ImGui::SliderFloat("Width Multiplier", &width, 0.1f, 5.0f)) {
+							fb->Apply(state::actions::SetGrassWidth{width});
+						}
+						float density = input.grass.densityMultiplier;
+						if (ImGui::SliderFloat("Density Multiplier", &density, 0.0f, 2.0f)) {
+							fb->Apply(state::actions::SetGrassDensity{density});
+						}
+						float rigidity = input.grass.rigidityMultiplier;
+						if (ImGui::SliderFloat("Rigidity Multiplier", &rigidity, 0.0f, 2.0f)) {
+							fb->Apply(state::actions::SetGrassRigidity{rigidity});
+						}
+						float wind = input.grass.windMultiplier;
+						if (ImGui::SliderFloat("Wind Multiplier", &wind, 0.0f, 5.0f)) {
+							fb->Apply(state::actions::SetGrassWind{wind});
 						}
 
-						if (enabled) {
-							GlobalGrassProperties props = grass_manager->GetGlobalProperties();
-							bool                  changed = false;
-
-							if (ImGui::SliderFloat("Length Multiplier", &props.lengthMultiplier, 0.1f, 5.0f)) {
-								changed = true;
-								cfg.SetFloat("grass_length_multiplier", props.lengthMultiplier);
-							}
-							if (ImGui::SliderFloat("Width Multiplier", &props.widthMultiplier, 0.1f, 5.0f)) {
-								changed = true;
-								cfg.SetFloat("grass_width_multiplier", props.widthMultiplier);
-							}
-							if (ImGui::SliderFloat("Density Multiplier", &props.densityMultiplier, 0.0f, 2.0f)) {
-								changed = true;
-								cfg.SetFloat("grass_density_multiplier", props.densityMultiplier);
-							}
-							if (ImGui::SliderFloat("Rigidity Multiplier", &props.rigidityMultiplier, 0.0f, 2.0f)) {
-								changed = true;
-								cfg.SetFloat("grass_rigidity_multiplier", props.rigidityMultiplier);
-							}
-							if (ImGui::SliderFloat("Wind Multiplier", &props.windMultiplier, 0.0f, 5.0f)) {
-								changed = true;
-								cfg.SetFloat("grass_wind_multiplier", props.windMultiplier);
-							}
-
-							ImGui::Separator();
-							ImGui::Text("Procedural Scaling");
-							if (ImGui::SliderFloat("LOD Scale Factor", &props.lodScaleFactor, 1.1f, 4.0f)) {
-								changed = true;
-								cfg.SetFloat("grass_lod_scale_factor", props.lodScaleFactor);
-							}
-							if (ImGui::SliderFloat("LOD Base Range", &props.lodBaseRange, 5.0f, 100.0f)) {
-								changed = true;
-								cfg.SetFloat("grass_lod_base_range", props.lodBaseRange);
-							}
-							if (ImGui::SliderFloat("Base Grid Scale", &props.baseScale, 0.05f, 2.0f)) {
-								changed = true;
-								cfg.SetFloat("grass_base_scale", props.baseScale);
-							}
-
-							if (changed) {
-								grass_manager->SetGlobalProperties(props);
-							}
+						ImGui::Separator();
+						ImGui::Text("Procedural Scaling");
+						float lodScaleFactor = input.grass.lodScaleFactor;
+						if (ImGui::SliderFloat("LOD Scale Factor", &lodScaleFactor, 1.1f, 4.0f)) {
+							fb->Apply(state::actions::SetGrassLodScaleFactor{lodScaleFactor});
+						}
+						float lodBaseRange = input.grass.lodBaseRange;
+						if (ImGui::SliderFloat("LOD Base Range", &lodBaseRange, 5.0f, 100.0f)) {
+							fb->Apply(state::actions::SetGrassLodBaseRange{lodBaseRange});
+						}
+						float baseScale = input.grass.baseScale;
+						if (ImGui::SliderFloat("Base Grid Scale", &baseScale, 0.05f, 2.0f)) {
+							fb->Apply(state::actions::SetGrassBaseScale{baseScale});
 						}
 					}
 				}
 
-				// 1. Day/Night Cycle (from LightsWidget)
+				// 1. Day/Night Cycle
 				if (ImGui::CollapsingHeader("Day/Night Cycle", ImGuiTreeNodeFlags_DefaultOpen)) {
-					auto& cycle = m_visualizer.GetLightManager().GetDayNightCycle();
-					ImGui::Checkbox("Enabled", &cycle.enabled);
-					ImGui::SliderFloat("Time (24h)", &cycle.time, 0.0f, 24.0f, "%.1f h");
-					ImGui::SliderFloat("Speed", &cycle.speed, 0.0f, 2.0f, "%.2f");
-					ImGui::Checkbox("Paused", &cycle.paused);
+					bool dn_enabled = input.dayNight.enabled;
+					if (ImGui::Checkbox("Enabled", &dn_enabled)) {
+						fb->Apply(state::actions::SetDayNightEnabled{dn_enabled});
+					}
+					float dn_time = input.dayNight.time;
+					if (ImGui::SliderFloat("Time (24h)", &dn_time, 0.0f, 24.0f, "%.1f h")) {
+						fb->Apply(state::actions::SetDayNightTime{dn_time});
+					}
+					float dn_speed = input.dayNight.speed;
+					if (ImGui::SliderFloat("Speed", &dn_speed, 0.0f, 2.0f, "%.2f")) {
+						fb->Apply(state::actions::SetDayNightSpeed{dn_speed});
+					}
+					bool dn_paused = input.dayNight.paused;
+					if (ImGui::Checkbox("Paused", &dn_paused)) {
+						fb->Apply(state::actions::SetDayNightPaused{dn_paused});
+					}
 
 					ImGui::Separator();
 					ImGui::Text("Moon");
-					ImGui::SliderFloat("Lunar Albedo", &cycle.lunar_albedo, 0.0f, 0.5f, "%.3f");
-					ImGui::ColorEdit3("Moon Tint", &cycle.moon_tint[0]);
-					ImGui::SliderFloat("Lunar Month (days)", &cycle.lunar_month, 0.1f, 30.0f, "%.2f");
-					ImGui::SliderFloat("Moon Phase (days)", &cycle.moon_phase_days, 0.0f, cycle.lunar_month, "%.1f");
+					float albedo = input.dayNight.lunarAlbedo;
+					if (ImGui::SliderFloat("Lunar Albedo", &albedo, 0.0f, 0.5f, "%.3f")) {
+						fb->Apply(state::actions::SetLunarAlbedo{albedo});
+					}
+					glm::vec3 tint = input.dayNight.moonTint;
+					if (ImGui::ColorEdit3("Moon Tint", &tint[0])) {
+						fb->Apply(state::actions::SetMoonTint{tint});
+					}
+					float month = input.dayNight.lunarMonth;
+					if (ImGui::SliderFloat("Lunar Month (days)", &month, 0.1f, 30.0f, "%.2f")) {
+						fb->Apply(state::actions::SetLunarMonth{month});
+					}
+					float phase = input.dayNight.moonPhaseDays;
+					if (ImGui::SliderFloat("Moon Phase (days)", &phase, 0.0f, month, "%.1f")) {
+						fb->Apply(state::actions::SetMoonPhaseDays{phase});
+					}
 					ImGui::Text(
 						"Phase: %.0f%%",
-						(std::fmod(cycle.moon_phase_days, cycle.lunar_month) / cycle.lunar_month) * 100.0f
+						(std::fmod(phase, month) / month) * 100.0f
 					);
 				}
 
-				// 2. Atmosphere (from PostProcessingWidget)
+				// 2. Atmosphere
 				if (ImGui::CollapsingHeader("Atmosphere", ImGuiTreeNodeFlags_DefaultOpen)) {
-					auto& manager = m_visualizer.GetPostProcessingManager();
-					for (auto& effect : manager.GetPreToneMappingEffects()) {
-						if (effect->GetName() == "Atmosphere") {
-							bool is_enabled = effect->IsEnabled();
-							if (ImGui::Checkbox("Enable Atmosphere", &is_enabled)) {
-								effect->SetEnabled(is_enabled);
+					bool at_enabled = input.atmosphere.enabled;
+					if (ImGui::Checkbox("Enable Atmosphere", &at_enabled)) {
+						fb->Apply(state::actions::SetAtmosphereEnabled{at_enabled});
+					}
+
+					if (at_enabled) {
+						float haze_density = input.atmosphere.hazeDensity;
+						if (SliderFloatWithActual("Haze Density", &haze_density, eff.atmosphere.hazeDensity, 0.0f, 5.0f)) {
+							fb->Apply(state::actions::SetHazeDensity{haze_density});
+						}
+						if (weather) {
+							ImGui::SameLine();
+							if (ImGui::Button("Unlock##HazeDensity")) weather->ClearTarget(WeatherAttribute::HazeDensity);
+						}
+
+						float haze_height = input.atmosphere.hazeHeight;
+						if (SliderFloatWithActual("Haze Height", &haze_height, eff.atmosphere.hazeHeight, 0.0f, 50.0f)) {
+							fb->Apply(state::actions::SetHazeHeight{haze_height});
+						}
+						if (weather) {
+							ImGui::SameLine();
+							if (ImGui::Button("Unlock##HazeHeight")) weather->ClearTarget(WeatherAttribute::HazeHeight);
+						}
+
+						glm::vec3 haze_color = input.atmosphere.hazeColor;
+						if (ImGui::ColorEdit3("Haze Color", &haze_color[0])) {
+							fb->Apply(state::actions::SetHazeColor{haze_color});
+						}
+						if (weather) {
+							ImGui::SameLine();
+							if (ImGui::Button("Unlock##HazeColor")) {
+								weather->ClearTarget(WeatherAttribute::HazeColorR);
+								weather->ClearTarget(WeatherAttribute::HazeColorG);
+								weather->ClearTarget(WeatherAttribute::HazeColorB);
 							}
+						}
 
-							if (is_enabled) {
-								auto atmosphere_effect = std::dynamic_pointer_cast<PostProcessing::AtmosphereEffect>(
-									effect
-								);
-								if (atmosphere_effect) {
-									auto weather = m_visualizer.GetWeatherManager();
+						float cloud_density = input.atmosphere.cloudDensity;
+						if (SliderFloatWithActual("Cloud Density", &cloud_density, eff.atmosphere.cloudDensity, 0.0f, 1.0f)) {
+							fb->Apply(state::actions::SetCloudDensity{cloud_density});
+						}
+						if (weather) {
+							ImGui::SameLine();
+							if (ImGui::Button("Unlock##CloudDensity")) weather->ClearTarget(WeatherAttribute::CloudDensity);
+						}
 
-									float haze_density = atmosphere_effect->GetHazeDensity();
-									if (ImGui::SliderFloat("Haze Density", &haze_density, 0.0f, 5.0f, "%.2f")) {
-										if (weather) weather->SetTarget(WeatherAttribute::HazeDensity, haze_density);
-										else atmosphere_effect->SetHazeDensity(haze_density);
-									}
-									if (weather) {
-										ImGui::SameLine();
-										if (ImGui::Button("Unlock##HazeDensity")) weather->ClearTarget(WeatherAttribute::HazeDensity);
-									}
-									float haze_height = atmosphere_effect->GetHazeHeight();
-									if (ImGui::SliderFloat("Haze Height", &haze_height, 0.0f, 50.0f)) {
-										if (weather) weather->SetTarget(WeatherAttribute::HazeHeight, haze_height);
-										else atmosphere_effect->SetHazeHeight(haze_height);
-									}
-									if (weather) {
-										ImGui::SameLine();
-										if (ImGui::Button("Unlock##HazeHeight")) weather->ClearTarget(WeatherAttribute::HazeHeight);
-									}
-									glm::vec3 haze_color = atmosphere_effect->GetHazeColor();
-									if (ImGui::ColorEdit3("Haze Color", &haze_color[0])) {
-										if (weather) {
-											weather->SetTarget(WeatherAttribute::HazeColorR, haze_color.r);
-											weather->SetTarget(WeatherAttribute::HazeColorG, haze_color.g);
-											weather->SetTarget(WeatherAttribute::HazeColorB, haze_color.b);
-										} else atmosphere_effect->SetHazeColor(haze_color);
-									}
-									if (weather) {
-										ImGui::SameLine();
-										if (ImGui::Button("Unlock##HazeColor")) {
-											weather->ClearTarget(WeatherAttribute::HazeColorR);
-											weather->ClearTarget(WeatherAttribute::HazeColorG);
-											weather->ClearTarget(WeatherAttribute::HazeColorB);
-										}
-									}
-									float cloud_density = atmosphere_effect->GetCloudDensity();
-									if (ImGui::SliderFloat("Cloud Density", &cloud_density, 0.0f, 1.0f)) {
-										if (weather) weather->SetTarget(WeatherAttribute::CloudDensity, cloud_density);
-										else atmosphere_effect->SetCloudDensity(cloud_density);
-									}
-									if (weather) {
-										ImGui::SameLine();
-										if (ImGui::Button("Unlock##CloudDensity")) weather->ClearTarget(WeatherAttribute::CloudDensity);
-									}
-									float cloud_altitude = atmosphere_effect->GetCloudAltitude();
-									if (ImGui::SliderFloat("Cloud Altitude", &cloud_altitude, 0.0f, 1000.0f)) {
-										if (weather) weather->SetTarget(WeatherAttribute::CloudAltitude, cloud_altitude);
-										else atmosphere_effect->SetCloudAltitude(cloud_altitude);
-									}
-									if (weather) {
-										ImGui::SameLine();
-										if (ImGui::Button("Unlock##CloudAltitude")) weather->ClearTarget(WeatherAttribute::CloudAltitude);
-									}
-									float cloud_thickness = atmosphere_effect->GetCloudThickness();
-									if (ImGui::SliderFloat("Cloud Thickness", &cloud_thickness, 0.0f, 500.0f)) {
-										if (weather) weather->SetTarget(WeatherAttribute::CloudThickness, cloud_thickness);
-										else atmosphere_effect->SetCloudThickness(cloud_thickness);
-									}
-									if (weather) {
-										ImGui::SameLine();
-										if (ImGui::Button("Unlock##CloudThickness")) weather->ClearTarget(WeatherAttribute::CloudThickness);
-									}
-									float cloud_coverage = atmosphere_effect->GetCloudCoverage();
-									if (ImGui::SliderFloat("Cloud Coverage", &cloud_coverage, 0.0f, 2.0f)) {
-										if (weather) weather->SetTarget(WeatherAttribute::CloudCoverage, cloud_coverage);
-										else atmosphere_effect->SetCloudCoverage(cloud_coverage);
-									}
-									if (weather) {
-										ImGui::SameLine();
-										if (ImGui::Button("Unlock##CloudCoverage")) weather->ClearTarget(WeatherAttribute::CloudCoverage);
-									}
-									float cloud_warp = atmosphere_effect->GetCloudWarp();
-									if (ImGui::SliderFloat("Camera Cloud Buffer", &cloud_warp, 0.0f, 1000.0f)) {
-										atmosphere_effect->SetCloudWarp(cloud_warp);
-									}
-									glm::vec3 cloud_color = atmosphere_effect->GetCloudColor();
-									if (ImGui::ColorEdit3("Cloud Color", &cloud_color[0])) {
-										if (weather) {
-											weather->SetTarget(WeatherAttribute::CloudColorR, cloud_color.r);
-											weather->SetTarget(WeatherAttribute::CloudColorG, cloud_color.g);
-											weather->SetTarget(WeatherAttribute::CloudColorB, cloud_color.b);
-										} else atmosphere_effect->SetCloudColor(cloud_color);
-									}
-									if (weather) {
-										ImGui::SameLine();
-										if (ImGui::Button("Unlock##CloudColor")) {
-											weather->ClearTarget(WeatherAttribute::CloudColorR);
-											weather->ClearTarget(WeatherAttribute::CloudColorG);
-											weather->ClearTarget(WeatherAttribute::CloudColorB);
-										}
-									}
+						float cloud_altitude = input.atmosphere.cloudAltitude;
+						if (SliderFloatWithActual("Cloud Altitude", &cloud_altitude, eff.atmosphere.cloudAltitude, 0.0f, 1000.0f)) {
+							fb->Apply(state::actions::SetCloudAltitude{cloud_altitude});
+						}
+						if (weather) {
+							ImGui::SameLine();
+							if (ImGui::Button("Unlock##CloudAltitude")) weather->ClearTarget(WeatherAttribute::CloudAltitude);
+						}
 
-									auto& cfg = ConfigManager::GetInstance();
+						float cloud_thickness = input.atmosphere.cloudThickness;
+						if (SliderFloatWithActual("Cloud Thickness", &cloud_thickness, eff.atmosphere.cloudThickness, 0.0f, 500.0f)) {
+							fb->Apply(state::actions::SetCloudThickness{cloud_thickness});
+						}
+						if (weather) {
+							ImGui::SameLine();
+							if (ImGui::Button("Unlock##CloudThickness")) weather->ClearTarget(WeatherAttribute::CloudThickness);
+						}
 
-									float cloud_shadow = cfg.GetAppSettingFloat("cloud_shadow_intensity", 0.5f);
-									if (ImGui::SliderFloat("Cloud Shadow Intensity", &cloud_shadow, 0.0f, 1.0f)) {
-										cfg.SetFloat("cloud_shadow_intensity", cloud_shadow);
-									}
+						float cloud_coverage = input.atmosphere.cloudCoverage;
+						if (SliderFloatWithActual("Cloud Coverage", &cloud_coverage, eff.atmosphere.cloudCoverage, 0.0f, 2.0f)) {
+							fb->Apply(state::actions::SetCloudCoverage{cloud_coverage});
+						}
+						if (weather) {
+							ImGui::SameLine();
+							if (ImGui::Button("Unlock##CloudCoverage")) weather->ClearTarget(WeatherAttribute::CloudCoverage);
+						}
 
-									ImGui::Separator();
-									ImGui::Text("Advanced Cloud Parameters");
+						float cloud_warp = input.atmosphere.cloudWarp;
+						if (ImGui::SliderFloat("Camera Cloud Buffer", &cloud_warp, 0.0f, 1000.0f)) {
+							fb->Apply(state::actions::SetCloudWarp{cloud_warp});
+						}
 
-									float g1 = cfg.GetAppSettingFloat(
-										"cloud_phase_g1",
-										atmosphere_effect->GetCloudPhaseG1()
-									);
-									if (ImGui::SliderFloat("Phase G1 (Forward)", &g1, 0.0f, 0.99f)) {
-										atmosphere_effect->SetCloudPhaseG1(g1);
-										cfg.SetFloat("cloud_phase_g1", g1);
-									}
-									float g2 = cfg.GetAppSettingFloat(
-										"cloud_phase_g2",
-										atmosphere_effect->GetCloudPhaseG2()
-									);
-									if (ImGui::SliderFloat("Phase G2 (Backward)", &g2, -0.99f, 0.0f)) {
-										atmosphere_effect->SetCloudPhaseG2(g2);
-										cfg.SetFloat("cloud_phase_g2", g2);
-									}
-									float alpha = cfg.GetAppSettingFloat(
-										"cloud_phase_alpha",
-										atmosphere_effect->GetCloudPhaseAlpha()
-									);
-									if (ImGui::SliderFloat("Phase Mix Alpha", &alpha, 0.0f, 1.0f)) {
-										atmosphere_effect->SetCloudPhaseAlpha(alpha);
-										cfg.SetFloat("cloud_phase_alpha", alpha);
-									}
-									float isotropic = cfg.GetAppSettingFloat(
-										"cloud_phase_isotropic",
-										atmosphere_effect->GetCloudPhaseIsotropic()
-									);
-									if (ImGui::SliderFloat("Phase Isotropic Mix", &isotropic, 0.0f, 1.0f)) {
-										atmosphere_effect->SetCloudPhaseIsotropic(isotropic);
-										cfg.SetFloat("cloud_phase_isotropic", isotropic);
-									}
-
-									float p_scale = cfg.GetAppSettingFloat(
-										"cloud_powder_scale",
-										atmosphere_effect->GetCloudPowderScale()
-									);
-									if (ImGui::SliderFloat("Powder Scale", &p_scale, 0.0f, 2.0f)) {
-										atmosphere_effect->SetCloudPowderScale(p_scale);
-										cfg.SetFloat("cloud_powder_scale", p_scale);
-									}
-									float p_mult = cfg.GetAppSettingFloat(
-										"cloud_powder_multiplier",
-										atmosphere_effect->GetCloudPowderMultiplier()
-									);
-									if (ImGui::SliderFloat("Powder Multiplier", &p_mult, 0.0f, 2.0f)) {
-										atmosphere_effect->SetCloudPowderMultiplier(p_mult);
-										cfg.SetFloat("cloud_powder_multiplier", p_mult);
-									}
-									float p_local = cfg.GetAppSettingFloat(
-										"cloud_powder_local_scale",
-										atmosphere_effect->GetCloudPowderLocalScale()
-									);
-									if (ImGui::SliderFloat("Powder Local Scale", &p_local, 0.0f, 10.0f)) {
-										atmosphere_effect->SetCloudPowderLocalScale(p_local);
-										cfg.SetFloat("cloud_powder_local_scale", p_local);
-									}
-
-									float s_opt = cfg.GetAppSettingFloat(
-										"cloud_shadow_optical_depth_multiplier",
-										atmosphere_effect->GetCloudShadowOpticalDepthMultiplier()
-									);
-									if (ImGui::SliderFloat("Shadow Optical Depth Mult", &s_opt, 0.0f, 1.0f)) {
-										atmosphere_effect->SetCloudShadowOpticalDepthMultiplier(s_opt);
-										cfg.SetFloat("cloud_shadow_optical_depth_multiplier", s_opt);
-									}
-									float s_step = cfg.GetAppSettingFloat(
-										"cloud_shadow_step_multiplier",
-										atmosphere_effect->GetCloudShadowStepMultiplier()
-									);
-									if (ImGui::SliderFloat("Shadow Step Mult", &s_step, 0.0f, 1.0f)) {
-										atmosphere_effect->SetCloudShadowStepMultiplier(s_step);
-										cfg.SetFloat("cloud_shadow_step_multiplier", s_step);
-									}
-
-									float sun_scale = cfg.GetAppSettingFloat(
-										"cloud_sun_light_scale",
-										atmosphere_effect->GetCloudSunLightScale()
-									);
-									if (ImGui::SliderFloat("Sun Light Scale", &sun_scale, 0.0f, 50.0f)) {
-										atmosphere_effect->SetCloudSunLightScale(sun_scale);
-										cfg.SetFloat("cloud_sun_light_scale", sun_scale);
-									}
-									float moon_scale = cfg.GetAppSettingFloat(
-										"cloud_moon_light_scale",
-										atmosphere_effect->GetCloudMoonLightScale()
-									);
-									if (ImGui::SliderFloat("Moon Light Scale", &moon_scale, 0.0f, 20.0f)) {
-										atmosphere_effect->SetCloudMoonLightScale(moon_scale);
-										cfg.SetFloat("cloud_moon_light_scale", moon_scale);
-									}
-
-									float bp_mix = cfg.GetAppSettingFloat(
-										"cloud_beer_powder_mix",
-										atmosphere_effect->GetCloudBeerPowderMix()
-									);
-									if (ImGui::SliderFloat("Beer-Powder Mix", &bp_mix, 0.0f, 1.0f)) {
-										atmosphere_effect->SetCloudBeerPowderMix(bp_mix);
-										cfg.SetFloat("cloud_beer_powder_mix", bp_mix);
-									}
-
-									ImGui::Separator();
-									ImGui::Text("Scattering");
-									float rayleigh = atmosphere_effect->GetRayleighScale();
-									if (ImGui::SliderFloat("Rayleigh Scale", &rayleigh, 0.0f, 3.0f)) {
-										if (weather) weather->SetTarget(WeatherAttribute::RayleighScale, rayleigh);
-										else atmosphere_effect->SetRayleighScale(rayleigh);
-									}
-									if (weather) {
-										ImGui::SameLine();
-										if (ImGui::Button("Unlock##RayleighScale")) weather->ClearTarget(WeatherAttribute::RayleighScale);
-									}
-									float mie = atmosphere_effect->GetMieScale();
-									if (ImGui::SliderFloat("Mie Scale", &mie, 0.0f, 0.25f)) {
-										if (weather) weather->SetTarget(WeatherAttribute::MieScale, mie);
-										else atmosphere_effect->SetMieScale(mie);
-									}
-									if (weather) {
-										ImGui::SameLine();
-										if (ImGui::Button("Unlock##MieScale")) weather->ClearTarget(WeatherAttribute::MieScale);
-									}
-									float mie_g = atmosphere_effect->GetMieAnisotropy();
-									if (ImGui::SliderFloat("Mie Anisotropy", &mie_g, 0.0f, 0.99f)) {
-										atmosphere_effect->SetMieAnisotropy(mie_g);
-									}
-									float multi_scat = atmosphere_effect->GetMultiScatScale();
-									if (ImGui::SliderFloat("MultiScat Scale", &multi_scat, 0.0f, 0.25f)) {
-										atmosphere_effect->SetMultiScatScale(multi_scat);
-									}
-									float ambient_scat = atmosphere_effect->GetAmbientScatScale();
-									if (ImGui::SliderFloat("Ambient Scat Scale", &ambient_scat, 0.0f, 2.0f)) {
-										atmosphere_effect->SetAmbientScatScale(ambient_scat);
-									}
-
-									ImGui::Separator();
-									ImGui::Text("Physical Parameters");
-
-									float atmos_height = atmosphere_effect->GetAtmosphereHeight();
-									if (ImGui::SliderFloat("Atmosphere Height (km)", &atmos_height, 0.0f, 300.0f)) {
-										if (weather) weather->SetTarget(WeatherAttribute::AtmosphereHeight, atmos_height);
-										else atmosphere_effect->SetAtmosphereHeight(atmos_height);
-									}
-									if (weather) {
-										ImGui::SameLine();
-										if (ImGui::Button("Unlock##AtmosphereHeight")) weather->ClearTarget(WeatherAttribute::AtmosphereHeight);
-									}
-
-									glm::vec3 rayleigh_scattering = atmosphere_effect->GetRayleighScattering() *
-										1000.0f;
-									if (ImGui::ColorEdit3("Rayleigh Scattering", &rayleigh_scattering[0])) {
-										if (weather) {
-											weather->SetTarget(WeatherAttribute::RayleighScatteringR, rayleigh_scattering.r * 0.001f);
-											weather->SetTarget(WeatherAttribute::RayleighScatteringG, rayleigh_scattering.g * 0.001f);
-											weather->SetTarget(WeatherAttribute::RayleighScatteringB, rayleigh_scattering.b * 0.001f);
-										} else atmosphere_effect->SetRayleighScattering(rayleigh_scattering * 0.001f);
-									}
-									if (weather) {
-										ImGui::SameLine();
-										if (ImGui::Button("Unlock##RayleighScattering")) {
-											weather->ClearTarget(WeatherAttribute::RayleighScatteringR);
-											weather->ClearTarget(WeatherAttribute::RayleighScatteringG);
-											weather->ClearTarget(WeatherAttribute::RayleighScatteringB);
-										}
-									}
-
-									float mie_scat = atmosphere_effect->GetMieScattering() * 1000.0f;
-									if (ImGui::SliderFloat("Mie Scattering coeff", &mie_scat, 0.0f, 10.0f)) {
-										if (weather) weather->SetTarget(WeatherAttribute::MieScattering, mie_scat * 0.001f);
-										else atmosphere_effect->SetMieScattering(mie_scat * 0.001f);
-									}
-									if (weather) {
-										ImGui::SameLine();
-										if (ImGui::Button("Unlock##MieScattering")) weather->ClearTarget(WeatherAttribute::MieScattering);
-									}
-
-									float mie_ext = atmosphere_effect->GetMieExtinction() * 1000.0f;
-									if (ImGui::SliderFloat("Mie Extinction coeff", &mie_ext, 0.0f, 10.0f)) {
-										if (weather) weather->SetTarget(WeatherAttribute::MieExtinction, mie_ext * 0.001f);
-										else atmosphere_effect->SetMieExtinction(mie_ext * 0.001f);
-									}
-									if (weather) {
-										ImGui::SameLine();
-										if (ImGui::Button("Unlock##MieExtinction")) weather->ClearTarget(WeatherAttribute::MieExtinction);
-									}
-
-									glm::vec3 ozone_absorption = atmosphere_effect->GetOzoneAbsorption() * 1000.0f;
-									if (ImGui::ColorEdit3("Ozone Absorption", &ozone_absorption[0])) {
-										atmosphere_effect->SetOzoneAbsorption(ozone_absorption * 0.001f);
-									}
-
-									float rayleigh_h = atmosphere_effect->GetRayleighScaleHeight();
-									if (ImGui::SliderFloat("Rayleigh Scale Height (km)", &rayleigh_h, 0.0f, 20.0f)) {
-										if (weather) weather->SetTarget(WeatherAttribute::RayleighScaleHeight, rayleigh_h);
-										else atmosphere_effect->SetRayleighScaleHeight(rayleigh_h);
-									}
-									if (weather) {
-										ImGui::SameLine();
-										if (ImGui::Button("Unlock##RayleighScaleHeight")) weather->ClearTarget(WeatherAttribute::RayleighScaleHeight);
-									}
-
-									float mie_h = atmosphere_effect->GetMieScaleHeight();
-									if (ImGui::SliderFloat("Mie Scale Height (km)", &mie_h, 0.0f, 3.0f)) {
-										if (weather) weather->SetTarget(WeatherAttribute::MieScaleHeight, mie_h);
-										else atmosphere_effect->SetMieScaleHeight(mie_h);
-									}
-									if (weather) {
-										ImGui::SameLine();
-										if (ImGui::Button("Unlock##MieScaleHeight")) weather->ClearTarget(WeatherAttribute::MieScaleHeight);
-									}
-
-									ImGui::Separator();
-									ImGui::Text("Atmosphere Variance");
-
-									float var_scale = atmosphere_effect->GetColorVarianceScale();
-									if (ImGui::SliderFloat("Variance Scale", &var_scale, 0.0f, 2.5f)) {
-										atmosphere_effect->SetColorVarianceScale(var_scale);
-									}
-
-									float var_strength = atmosphere_effect->GetColorVarianceStrength();
-									if (ImGui::SliderFloat("Variance Strength", &var_strength, 0.0f, 0.5f)) {
-										atmosphere_effect->SetColorVarianceStrength(var_strength);
-									}
-								}
+						glm::vec3 cloud_color = input.atmosphere.cloudColor;
+						if (ImGui::ColorEdit3("Cloud Color", &cloud_color[0])) {
+							fb->Apply(state::actions::SetCloudColor{cloud_color});
+						}
+						if (weather) {
+							ImGui::SameLine();
+							if (ImGui::Button("Unlock##CloudColor")) {
+								weather->ClearTarget(WeatherAttribute::CloudColorR);
+								weather->ClearTarget(WeatherAttribute::CloudColorG);
+								weather->ClearTarget(WeatherAttribute::CloudColorB);
 							}
-							break;
+						}
+
+						float cloud_shadow = input.atmosphere.cloudShadowIntensity;
+						if (ImGui::SliderFloat("Cloud Shadow Intensity", &cloud_shadow, 0.0f, 1.0f)) {
+							fb->Apply(state::actions::SetCloudShadowIntensity{cloud_shadow});
+						}
+
+						ImGui::Separator();
+						ImGui::Text("Advanced Cloud Parameters");
+
+						auto& cfg = ConfigManager::GetInstance();
+
+						float g1 = cfg.GetAppSettingFloat("cloud_phase_g1", 0.8f);
+						if (ImGui::SliderFloat("Phase G1 (Forward)", &g1, 0.0f, 0.99f)) {
+							cfg.SetFloat("cloud_phase_g1", g1);
+						}
+						float g2 = cfg.GetAppSettingFloat("cloud_phase_g2", -0.3f);
+						if (ImGui::SliderFloat("Phase G2 (Backward)", &g2, -0.99f, 0.0f)) {
+							cfg.SetFloat("cloud_phase_g2", g2);
+						}
+						float alpha = cfg.GetAppSettingFloat("cloud_phase_alpha", 0.7f);
+						if (ImGui::SliderFloat("Phase Mix Alpha", &alpha, 0.0f, 1.0f)) {
+							cfg.SetFloat("cloud_phase_alpha", alpha);
+						}
+						float isotropic = cfg.GetAppSettingFloat("cloud_phase_isotropic", 0.15f);
+						if (ImGui::SliderFloat("Phase Isotropic Mix", &isotropic, 0.0f, 1.0f)) {
+							cfg.SetFloat("cloud_phase_isotropic", isotropic);
+						}
+
+						float p_scale = input.atmosphere.cloudPowderScale;
+						if (ImGui::SliderFloat("Powder Scale", &p_scale, 0.0f, 2.0f)) {
+							fb->Apply(state::actions::SetCloudPowderScale{p_scale});
+						}
+						float p_mult = input.atmosphere.cloudPowderMultiplier;
+						if (ImGui::SliderFloat("Powder Multiplier", &p_mult, 0.0f, 2.0f)) {
+							fb->Apply(state::actions::SetCloudPowderMultiplier{p_mult});
+						}
+						float p_local = input.atmosphere.cloudPowderLocalScale;
+						if (ImGui::SliderFloat("Powder Local Scale", &p_local, 0.0f, 10.0f)) {
+							fb->Apply(state::actions::SetCloudPowderLocalScale{p_local});
+						}
+
+						float s_opt = input.atmosphere.cloudShadowOpticalDepthMultiplier;
+						if (ImGui::SliderFloat("Shadow Optical Depth Mult", &s_opt, 0.0f, 1.0f)) {
+							fb->Apply(state::actions::SetCloudShadowOpticalDepthMultiplier{s_opt});
+						}
+						float s_step = input.atmosphere.cloudShadowStepMultiplier;
+						if (ImGui::SliderFloat("Shadow Step Mult", &s_step, 0.0f, 1.0f)) {
+							fb->Apply(state::actions::SetCloudShadowStepMultiplier{s_step});
+						}
+
+						float sun_scale = input.atmosphere.cloudSunLightScale;
+						if (ImGui::SliderFloat("Sun Light Scale", &sun_scale, 0.0f, 50.0f)) {
+							fb->Apply(state::actions::SetCloudSunLightScale{sun_scale});
+						}
+						float moon_scale = input.atmosphere.cloudMoonLightScale;
+						if (ImGui::SliderFloat("Moon Light Scale", &moon_scale, 0.0f, 20.0f)) {
+							fb->Apply(state::actions::SetCloudMoonLightScale{moon_scale});
+						}
+
+						float bp_mix = input.atmosphere.cloudBeerPowderMix;
+						if (ImGui::SliderFloat("Beer-Powder Mix", &bp_mix, 0.0f, 1.0f)) {
+							fb->Apply(state::actions::SetCloudBeerPowderMix{bp_mix});
+						}
+
+						ImGui::Separator();
+						ImGui::Text("Scattering");
+						float rayleigh = input.atmosphere.rayleighScale;
+						if (SliderFloatWithActual("Rayleigh Scale", &rayleigh, eff.atmosphere.rayleighScale, 0.0f, 3.0f)) {
+							fb->Apply(state::actions::SetRayleighScale{rayleigh});
+						}
+						if (weather) {
+							ImGui::SameLine();
+							if (ImGui::Button("Unlock##RayleighScale")) weather->ClearTarget(WeatherAttribute::RayleighScale);
+						}
+						float mie = input.atmosphere.mieScale;
+						if (SliderFloatWithActual("Mie Scale", &mie, eff.atmosphere.mieScale, 0.0f, 0.25f)) {
+							fb->Apply(state::actions::SetMieScale{mie});
+						}
+						if (weather) {
+							ImGui::SameLine();
+							if (ImGui::Button("Unlock##MieScale")) weather->ClearTarget(WeatherAttribute::MieScale);
+						}
+						float mie_g = input.atmosphere.mieAnisotropy;
+						if (ImGui::SliderFloat("Mie Anisotropy", &mie_g, 0.0f, 0.99f)) {
+							fb->Apply(state::actions::SetMieAnisotropy{mie_g});
+						}
+						float multi_scat = input.atmosphere.multiScatScale;
+						if (ImGui::SliderFloat("MultiScat Scale", &multi_scat, 0.0f, 0.25f)) {
+							fb->Apply(state::actions::SetMultiScatScale{multi_scat});
+						}
+						float ambient_scat = input.atmosphere.ambientScatScale;
+						if (ImGui::SliderFloat("Ambient Scat Scale", &ambient_scat, 0.0f, 2.0f)) {
+							fb->Apply(state::actions::SetAmbientScatScale{ambient_scat});
+						}
+
+						ImGui::Separator();
+						ImGui::Text("Physical Parameters");
+
+						float atmos_height = input.atmosphere.atmosphereHeight;
+						if (ImGui::SliderFloat("Atmosphere Height (km)", &atmos_height, 0.0f, 300.0f)) {
+							fb->Apply(state::actions::SetAtmosphereHeight{atmos_height});
+						}
+						if (weather) {
+							ImGui::SameLine();
+							if (ImGui::Button("Unlock##AtmosphereHeight")) weather->ClearTarget(WeatherAttribute::AtmosphereHeight);
+						}
+
+						glm::vec3 rayleigh_scattering = input.atmosphere.rayleighScattering * 1000.0f;
+						if (ImGui::ColorEdit3("Rayleigh Scattering", &rayleigh_scattering[0])) {
+							fb->Apply(state::actions::SetRayleighScattering{rayleigh_scattering * 0.001f});
+						}
+						if (weather) {
+							ImGui::SameLine();
+							if (ImGui::Button("Unlock##RayleighScattering")) {
+								weather->ClearTarget(WeatherAttribute::RayleighScatteringR);
+								weather->ClearTarget(WeatherAttribute::RayleighScatteringG);
+								weather->ClearTarget(WeatherAttribute::RayleighScatteringB);
+							}
+						}
+
+						float mie_scat = input.atmosphere.mieScattering * 1000.0f;
+						if (ImGui::SliderFloat("Mie Scattering coeff", &mie_scat, 0.0f, 10.0f)) {
+							fb->Apply(state::actions::SetMieScattering{mie_scat * 0.001f});
+						}
+						if (weather) {
+							ImGui::SameLine();
+							if (ImGui::Button("Unlock##MieScattering")) weather->ClearTarget(WeatherAttribute::MieScattering);
+						}
+
+						float mie_ext = input.atmosphere.mieExtinction * 1000.0f;
+						if (ImGui::SliderFloat("Mie Extinction coeff", &mie_ext, 0.0f, 10.0f)) {
+							fb->Apply(state::actions::SetMieExtinction{mie_ext * 0.001f});
+						}
+						if (weather) {
+							ImGui::SameLine();
+							if (ImGui::Button("Unlock##MieExtinction")) weather->ClearTarget(WeatherAttribute::MieExtinction);
+						}
+
+						glm::vec3 ozone_absorption = input.atmosphere.ozoneAbsorption * 1000.0f;
+						if (ImGui::ColorEdit3("Ozone Absorption", &ozone_absorption[0])) {
+							fb->Apply(state::actions::SetOzoneAbsorption{ozone_absorption * 0.001f});
+						}
+
+						float rayleigh_h = input.atmosphere.rayleighScaleHeight;
+						if (ImGui::SliderFloat("Rayleigh Scale Height (km)", &rayleigh_h, 0.0f, 20.0f)) {
+							fb->Apply(state::actions::SetRayleighScaleHeight{rayleigh_h});
+						}
+						if (weather) {
+							ImGui::SameLine();
+							if (ImGui::Button("Unlock##RayleighScaleHeight")) weather->ClearTarget(WeatherAttribute::RayleighScaleHeight);
+						}
+
+						float mie_h = input.atmosphere.mieScaleHeight;
+						if (ImGui::SliderFloat("Mie Scale Height (km)", &mie_h, 0.0f, 3.0f)) {
+							fb->Apply(state::actions::SetMieScaleHeight{mie_h});
+						}
+						if (weather) {
+							ImGui::SameLine();
+							if (ImGui::Button("Unlock##MieScaleHeight")) weather->ClearTarget(WeatherAttribute::MieScaleHeight);
+						}
+
+						ImGui::Separator();
+						ImGui::Text("Atmosphere Variance");
+
+						float var_scale = input.atmosphere.colorVarianceScale;
+						if (ImGui::SliderFloat("Variance Scale", &var_scale, 0.0f, 2.5f)) {
+							fb->Apply(state::actions::SetAtmosphereColorVarianceScale{var_scale});
+						}
+
+						float var_strength = input.atmosphere.colorVarianceStrength;
+						if (ImGui::SliderFloat("Variance Strength", &var_strength, 0.0f, 0.5f)) {
+							fb->Apply(state::actions::SetAtmosphereColorVarianceStrength{var_strength});
 						}
 					}
 				}
 
 				// 2.5 Volumetric Lighting
 				if (ImGui::CollapsingHeader("Volumetric Lighting", ImGuiTreeNodeFlags_DefaultOpen)) {
-					auto& manager = m_visualizer.GetPostProcessingManager();
-					for (auto& effect : manager.GetPreToneMappingEffects()) {
-						if (effect->GetName() == "Volumetric Lighting") {
-							bool is_enabled = effect->IsEnabled();
-							if (ImGui::Checkbox("Enable Volumetric Lighting", &is_enabled)) {
-								effect->SetEnabled(is_enabled);
-							}
+					bool vol_enabled = input.volumetric.enabled;
+					if (ImGui::Checkbox("Enable Volumetric Lighting", &vol_enabled)) {
+						fb->Apply(state::actions::SetVolumetricEnabled{vol_enabled});
+					}
 
-							if (is_enabled) {
-								auto vol_effect = std::dynamic_pointer_cast<PostProcessing::VolumetricLightingEffect>(effect);
-								if (vol_effect) {
-									float intensity = vol_effect->GetIntensity();
-									if (ImGui::SliderFloat("Intensity##Vol", &intensity, 0.0f, 5.0f)) {
-										vol_effect->SetIntensity(intensity);
-									}
-
-									float anisotropy = vol_effect->GetScatteringAnisotropy();
-									if (ImGui::SliderFloat("Anisotropy##Vol", &anisotropy, 0.0f, 0.99f)) {
-										vol_effect->SetScatteringAnisotropy(anisotropy);
-									}
-
-									float alpha = vol_effect->GetTemporalAlpha();
-									if (ImGui::SliderFloat("Temporal Alpha##Vol", &alpha, 0.0f, 0.99f)) {
-										vol_effect->SetTemporalAlpha(alpha);
-									}
-								}
-							}
-							break;
+					if (vol_enabled) {
+						float intensity = input.volumetric.intensity;
+						if (ImGui::SliderFloat("Intensity##Vol", &intensity, 0.0f, 5.0f)) {
+							fb->Apply(state::actions::SetVolumetricIntensity{intensity});
+						}
+						float anisotropy = input.volumetric.anisotropy;
+						if (ImGui::SliderFloat("Anisotropy##Vol", &anisotropy, 0.0f, 0.99f)) {
+							fb->Apply(state::actions::SetVolumetricAnisotropy{anisotropy});
+						}
+						float vol_alpha = input.volumetric.temporalAlpha;
+						if (ImGui::SliderFloat("Temporal Alpha##Vol", &vol_alpha, 0.0f, 0.99f)) {
+							fb->Apply(state::actions::SetVolumetricTemporalAlpha{vol_alpha});
 						}
 					}
 				}
 
-				// 3. Terrain & Foliage (from ConfigWidget)
+				// 3. Terrain & Foliage
 				if (ImGui::CollapsingHeader("Terrain", ImGuiTreeNodeFlags_DefaultOpen)) {
-					auto& config = ConfigManager::GetInstance();
-					bool  render_terrain = config.GetAppSettingBool("render_terrain", true);
+					bool render_terrain = input.terrain.renderTerrain;
 					if (ImGui::Checkbox("Render Terrain", &render_terrain)) {
-						config.SetBool("render_terrain", render_terrain);
+						fb->Apply(state::actions::SetRenderTerrain{render_terrain});
 					}
-					bool render_floor = config.GetAppSettingBool("render_floor", true);
+					bool render_floor = input.terrain.renderFloor;
 					if (ImGui::Checkbox("Render Floor", &render_floor)) {
-						config.SetBool("render_floor", render_floor);
+						fb->Apply(state::actions::SetRenderFloor{render_floor});
 					}
-					bool force_both = config.GetAppSettingBool("force_both_floor_and_terrain", false);
+					bool force_both = input.terrain.forceBoth;
 					if (ImGui::Checkbox("Force Both Floor and Terrain", &force_both)) {
-						config.SetBool("force_both_floor_and_terrain", force_both);
+						fb->Apply(state::actions::SetForceBoth{force_both});
 					}
 
 					ImGui::Separator();
 
-					auto terrain = m_visualizer.GetTerrain();
-					if (terrain) {
-						float world_scale = terrain->GetWorldScale();
-						if (ImGui::SliderFloat("World Scale", &world_scale, 0.1f, 5.0f)) {
-							terrain->SetWorldScale(world_scale);
-						}
-						ImGui::Text("Higher = larger world, Lower = smaller world");
+					float world_scale = input.terrain.worldScale;
+					if (ImGui::SliderFloat("World Scale", &world_scale, 0.1f, 5.0f)) {
+						fb->Apply(state::actions::SetWorldScale{world_scale});
+					}
+					ImGui::Text("Higher = larger world, Lower = smaller world");
+
+					bool fol_enabled = input.terrain.foliageEnabled;
+					if (ImGui::Checkbox("Enable Foliage", &fol_enabled)) {
+						fb->Apply(state::actions::SetFoliageEnabled{fol_enabled});
 					}
 
-					auto decor_manager = m_visualizer.GetDecorManager();
-					if (decor_manager) {
-						auto& cfg = ConfigManager::GetInstance();
-						bool  enabled = decor_manager->IsEnabled();
-						if (ImGui::Checkbox("Enable Foliage", &enabled)) {
-							decor_manager->SetEnabled(enabled);
-							cfg.SetBool("render_decor", enabled);
+					if (fol_enabled) {
+						float threshold = input.terrain.foliagePixelThreshold;
+						if (ImGui::SliderFloat("Foliage Pixel Threshold", &threshold, 0.0f, 50.0f)) {
+							fb->Apply(state::actions::SetFoliagePixelThreshold{threshold});
 						}
-
-						if (enabled) {
-							float threshold = ConfigManager::GetInstance().GetAppSettingFloat(
-								"foliage_culling_pixel_threshold",
-								10.0f
-							);
-							if (ImGui::SliderFloat("Foliage Pixel Threshold", &threshold, 0.0f, 50.0f)) {
-								ConfigManager::GetInstance().SetFloat("foliage_culling_pixel_threshold", threshold);
-							}
-							ImGui::Text("Higher = cull larger objects, 0 = disable size culling");
-						}
+						ImGui::Text("Higher = cull larger objects, 0 = disable size culling");
 					}
 				}
 
 				// 4. Particles
 				if (ImGui::CollapsingHeader("Particles", ImGuiTreeNodeFlags_DefaultOpen)) {
-					auto& config = ConfigManager::GetInstance();
-
-					bool enabled = config.GetAppSettingBool("particles_enabled", true);
-					if (ImGui::Checkbox("Enable Particle System", &enabled)) {
-						config.SetBool("particles_enabled", enabled);
+					bool part_enabled = input.particles.enabled;
+					if (ImGui::Checkbox("Enable Particle System", &part_enabled)) {
+						fb->Apply(state::actions::SetParticlesEnabled{part_enabled});
 					}
 
-					if (enabled) {
-						float density = config.GetAppSettingFloat("ambient_particle_density", 0.15f);
+					if (part_enabled) {
+						float density = input.particles.ambientDensity;
 						if (ImGui::SliderFloat("Ambient Density", &density, 0.0f, 2.0f, "%.2f")) {
-							config.SetFloat("ambient_particle_density", density);
+							fb->Apply(state::actions::SetAmbientParticleDensity{density});
 						}
 						ImGui::Text(
 							"Approx. %d ambient particles",
@@ -872,91 +789,82 @@ namespace Boidsish {
 						ImGui::Separator();
 						ImGui::Text("Population Limits & Live Counts");
 
-						auto fire_manager = m_visualizer.GetFireEffectManager();
-						if (fire_manager) {
-							Boidsish::ParticleStats stats = fire_manager->GetStats();
+						auto drawRatioLimit = [&](const char* label, const char* type, float target_ratio, uint32_t current, uint32_t limit) {
+							float ratio = target_ratio;
+							if (ImGui::SliderFloat(label, &ratio, 0.0f, 1.0f, "%.2f")) {
+								fb->Apply(state::actions::SetParticleRatio{type, ratio});
+							}
+							ImGui::SameLine();
+							ImGui::Text("(%u/%u live)", current, limit);
+						};
 
-							auto drawRatioLimit = [&](const char* label, const char* cfg_key, uint32_t current, uint32_t limit, float default_ratio) {
-								float ratio = config.GetAppSettingFloat(cfg_key, default_ratio);
-								if (ImGui::SliderFloat(label, &ratio, 0.0f, 1.0f, "%.2f")) {
-									config.SetFloat(cfg_key, ratio);
-								}
-								ImGui::SameLine();
-								ImGui::Text("(%u/%u live)", current, limit);
-							};
-
-							drawRatioLimit("Birds", "particle_ratio_birds", stats.count_birds, stats.limit_birds, 0.05f);
-							drawRatioLimit("Leaves", "particle_ratio_leaves", stats.count_leaves, stats.limit_leaves, 0.25f);
-							drawRatioLimit("Petals", "particle_ratio_petals", stats.count_petals, stats.limit_petals, 0.25f);
-							drawRatioLimit("Bubbles", "particle_ratio_bubbles", stats.count_bubbles, stats.limit_bubbles, 0.15f);
-							drawRatioLimit("Fireflies", "particle_ratio_fireflies", stats.count_fireflies, stats.limit_fireflies, 0.25f);
-							drawRatioLimit("Fairies", "particle_ratio_fairies", stats.count_fairies, stats.limit_fairies, 0.1f);
-							drawRatioLimit("Snow", "particle_ratio_snow", stats.count_snow, stats.limit_snow, 0.5f);
-							drawRatioLimit("Rain", "particle_ratio_rain", stats.count_rain, stats.limit_rain, 0.5f);
-							drawRatioLimit("Dust", "particle_ratio_dust", stats.count_dust, stats.limit_dust, 0.25f);
-						}
+						drawRatioLimit("Birds", "birds", input.particles.ratioBirds, sim.particles.countBirds, sim.particles.limitBirds);
+						drawRatioLimit("Leaves", "leaves", input.particles.ratioLeaves, sim.particles.countLeaves, sim.particles.limitLeaves);
+						drawRatioLimit("Petals", "petals", input.particles.ratioPetals, sim.particles.countPetals, sim.particles.limitPetals);
+						drawRatioLimit("Bubbles", "bubbles", input.particles.ratioBubbles, sim.particles.countBubbles, sim.particles.limitBubbles);
+						drawRatioLimit("Fireflies", "fireflies", input.particles.ratioFireflies, sim.particles.countFireflies, sim.particles.limitFireflies);
+						drawRatioLimit("Fairies", "fairies", input.particles.ratioFairies, sim.particles.countFairies, sim.particles.limitFairies);
+						drawRatioLimit("Snow", "snow", input.particles.ratioSnow, sim.particles.countSnow, sim.particles.limitSnow);
+						drawRatioLimit("Rain", "rain", input.particles.ratioRain, sim.particles.countRain, sim.particles.limitRain);
+						drawRatioLimit("Dust", "dust", input.particles.ratioDust, sim.particles.countDust, sim.particles.limitDust);
 					}
 				}
 
-				// 5. Wind (from EffectsWidget)
+				// 5. Wind
 				if (ImGui::CollapsingHeader("Wind", ImGuiTreeNodeFlags_DefaultOpen)) {
 					if (weather) {
-						drawAttrControl("Wind Strength", WeatherAttribute::WindStrength, 0.0f, 5.0f, "%.2f");
-						drawAttrControl("Wind Speed", WeatherAttribute::WindSpeed, 0.0f, 10.0f, "%.2f");
-						drawAttrControl("Wind Frequency", WeatherAttribute::WindFrequency, 0.01f, 1.0f, "%.2f");
+						drawAttrControl("Wind Strength", "windStrength", input.weather.windStrength, sim.weather.windStrength, 0.0f, 5.0f, "%.2f", [](float v){ return state::actions::SetWeatherWindStrength{v}; });
+						drawAttrControl("Wind Speed", "windSpeed", input.weather.windSpeed, sim.weather.windSpeed, 0.0f, 10.0f, "%.2f", [](float v){ return state::actions::SetWeatherWindSpeed{v}; });
+						drawAttrControl("Wind Frequency", "windFrequency", input.weather.windFrequency, sim.weather.windFrequency, 0.01f, 1.0f, "%.2f", [](float v){ return state::actions::SetWeatherWindFrequency{v}; });
 					} else {
-						auto& config = ConfigManager::GetInstance();
-
-						float wind_strength = config.GetAppSettingFloat("wind_strength", 0.065f);
+						float wind_strength = input.weather.windStrength;
 						if (ImGui::SliderFloat("Wind Strength", &wind_strength, 0.0f, 5.0f)) {
-							config.SetFloat("wind_strength", wind_strength);
+							fb->Apply(state::actions::SetWeatherWindStrength{wind_strength});
 						}
 
-						float wind_speed = config.GetAppSettingFloat("wind_speed", 0.075f);
+						float wind_speed = input.weather.windSpeed;
 						if (ImGui::SliderFloat("Wind Speed", &wind_speed, 0.0f, 10.0f)) {
-							config.SetFloat("wind_speed", wind_speed);
+							fb->Apply(state::actions::SetWeatherWindSpeed{wind_speed});
 						}
 
-						float wind_frequency = config.GetAppSettingFloat("wind_frequency", 0.01f);
+						float wind_frequency = input.weather.windFrequency;
 						if (ImGui::SliderFloat("Wind Frequency", &wind_frequency, 0.01f, 1.0f)) {
-							config.SetFloat("wind_frequency", wind_frequency);
+							fb->Apply(state::actions::SetWeatherWindFrequency{wind_frequency});
 						}
 					}
 				}
 
 				// 6. Terrain Erosion
 				if (ImGui::CollapsingHeader("Terrain Erosion", ImGuiTreeNodeFlags_DefaultOpen)) {
-					auto& config = ConfigManager::GetInstance();
-
-					bool erosion_enabled = config.GetAppSettingBool("erosion_enabled", true);
+					bool erosion_enabled = input.erosion.enabled;
 					if (ImGui::Checkbox("Enable Erosion Filter", &erosion_enabled)) {
-						config.SetBool("erosion_enabled", erosion_enabled);
+						fb->Apply(state::actions::SetErosionEnabled{erosion_enabled});
 					}
 
 					if (erosion_enabled) {
-						float erosion_strength = config.GetAppSettingFloat("erosion_strength", 0.12f);
+						float erosion_strength = input.erosion.strength;
 						if (ImGui::SliderFloat("Erosion Strength", &erosion_strength, 0.0f, 0.5f, "%.3f")) {
-							config.SetFloat("erosion_strength", erosion_strength);
+							fb->Apply(state::actions::SetErosionStrength{erosion_strength});
 						}
 
-						float erosion_scale = config.GetAppSettingFloat("erosion_scale", 0.15f);
+						float erosion_scale = input.erosion.scale;
 						if (ImGui::SliderFloat("Erosion Scale", &erosion_scale, 0.01f, 1.0f, "%.2f")) {
-							config.SetFloat("erosion_scale", erosion_scale);
+							fb->Apply(state::actions::SetErosionScale{erosion_scale});
 						}
 
-						float erosion_detail = config.GetAppSettingFloat("erosion_detail", 1.5f);
+						float erosion_detail = input.erosion.detail;
 						if (ImGui::SliderFloat("Erosion Detail", &erosion_detail, 0.1f, 5.0f, "%.1f")) {
-							config.SetFloat("erosion_detail", erosion_detail);
+							fb->Apply(state::actions::SetErosionDetail{erosion_detail});
 						}
 
-						float erosion_gully_weight = config.GetAppSettingFloat("erosion_gully_weight", 0.5f);
+						float erosion_gully_weight = input.erosion.gullyWeight;
 						if (ImGui::SliderFloat("Gully Weight", &erosion_gully_weight, 0.0f, 1.0f, "%.2f")) {
-							config.SetFloat("erosion_gully_weight", erosion_gully_weight);
+							fb->Apply(state::actions::SetErosionGullyWeight{erosion_gully_weight});
 						}
 
-						float erosion_max_dist = config.GetAppSettingFloat("erosion_max_dist", 450.0f);
+						float erosion_max_dist = input.erosion.maxDist;
 						if (ImGui::SliderFloat("Erosion Max Dist", &erosion_max_dist, 50.0f, 1000.0f, "%.0f")) {
-							config.SetFloat("erosion_max_dist", erosion_max_dist);
+							fb->Apply(state::actions::SetErosionMaxDist{erosion_max_dist});
 						}
 					}
 				}

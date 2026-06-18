@@ -4,6 +4,9 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <vector>
+
+#include "shadow_manager.h"
 
 class Shader; // Global scope — external library type
 
@@ -25,7 +28,6 @@ namespace Boidsish {
 	class ShadowManager;
 	class SdfVolumeManager;
 	class TerrainRenderManager;
-	struct ShadowCasterInfo;
 
 	namespace PostProcessing {
 		class PostProcessingManager;
