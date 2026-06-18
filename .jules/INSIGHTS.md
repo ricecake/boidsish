@@ -38,6 +38,18 @@
 - **Evidence**: `frustum_ubo` was created in the constructor but not deleted in the destructor.
 - **Learning**: Centralized resource management or a more robust RAII wrapper system could mitigate missed cleanups as the codebase grows.
 
+### 7. Missing Resource Cleanup in Mesh Class
+- **Issue Type**: Memory Leak (OpenGL Objects)
+- **Location**: `include/model.h`, `src/model.cpp`, `Mesh`
+- **Evidence**: `Mesh` class generated VAOs, VBOs, and EBOs but lacked a destructor to call `Cleanup()`.
+- **Learning**: All low-level OpenGL resource wrappers must implement destructors to ensure GPU resources are reclaimed when the C++ object goes out of scope.
+
+### 8. Missing Resource Cleanup in Visualizer
+- **Issue Type**: Memory Leak (OpenGL Buffer)
+- **Location**: `src/graphics.cpp`, `VisualizerImpl::~VisualizerImpl`
+- **Evidence**: `temporal_data_ubo` was created in the constructor but missing from the destructor.
+- **Learning**: Resource management in complex singleton-like objects requires careful auditing of every `glGen*` call against its corresponding `glDelete*`.
+
 ## Rationale for Fixes
 - **Fix 1**: Add missing `glDelete*` calls to `VisualizerImpl` destructor to ensure all main scene resources are freed.
 - **Fix 2**: Implement a destructor for `InstanceManager` to clean up VBOs and reuse them across frames.
@@ -45,4 +57,6 @@
 - **Fix 4**: Add a virtual destructor to `ShaderBase` that calls `glDeleteProgram(ID)`.
 - **Fix 5**: Implement uniform location caching in `ShaderBase` using a `std::unordered_map` to minimize `glGetUniformLocation` overhead.
 - **Fix 6**: Disable copy operations and implement move operations for `ShaderBase` (Rule of Five) to safely manage OpenGL program ownership.
-- **Fix 7**: Add `glDeleteBuffers(1, &frustum_ubo)` to `VisualizerImpl` destructor.
+- **Fix 7**: Removed unused `frustum_ubo` and `main_fbo_rbo_` members from `VisualizerImpl`.
+- **Fix 8**: Added destructor to `Mesh` class to call `Cleanup()` and free VAO/VBO/EBO resources.
+- **Fix 9**: Added missing `glDeleteBuffers(1, &temporal_data_ubo)` to `VisualizerImpl` destructor.
