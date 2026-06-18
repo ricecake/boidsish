@@ -15,14 +15,26 @@ void main() {
     vec2 uv = (vec2(pixel) + 0.5) / vec2(size);
     vec2 texelSize = 1.0 / vec2(size);
 
-    float centerDepth = texture(uCloudDepth, uv).r;
+    vec4 centerProps = texture(uCloudDepth, uv);
+    float centerDepth = centerProps.r;
     bool centerIsSky = centerDepth > 40000.0;
 
-    float centerMaxDensity = texture(uCloudDepth, uv).a; // Read the PSD
+	float currentCloudDist = centerProps.r;
+	float currentCloudLastHit = centerProps.g;
+	float currentCloudStep = centerProps.b;
+	float currentCloudMaxDensity = centerProps.a;
+
+	float currentThickness = max(currentCloudLastHit - currentCloudDist, 1.0);
+	float currentMissProbability = smoothstep(0.1, 1.0, currentCloudStep / currentThickness);
+	float structuralRigidity = smoothstep(0.0, 0.4, currentCloudMaxDensity);
+	float antiNyquist = (1.0 - currentMissProbability);
+	bool currentIsSky = currentCloudDist > 40000.0;
+
+    float centerMaxDensity = centerProps.a; // Read the PSD
 
     // 0.0 = Pure formless haze (needs massive blur)
     // 1.0 = Solid cloud core (needs strict edge preservation)
-    float structuralRigidity = smoothstep(0.01, 0.3, centerMaxDensity);
+    // float structuralRigidity = smoothstep(0.01, 0.5, centerMaxDensity);
 
     // Dynamic Depth Tolerance:
     // Haze ignores depth boundaries (10000m tolerance). Solid clouds enforce them (500m tolerance).
@@ -37,25 +49,62 @@ void main() {
         for (int x = -2; x <= 2; x++) {
             vec2 offset = vec2(x, y) * texelSize;
             vec4 sampleColor = texture(uCloudColor, uv + offset);
-            float sampleDepth = texture(uCloudDepth, uv + offset).r;
+            vec4 sampleProps = texture(uCloudDepth, uv + offset);
+            float sampleDepth = sampleProps.r;
+
+            float sampleCloudDist = sampleProps.r;
+            float sampleCloudLastHit = sampleProps.g;
+            float sampleCloudStep = sampleProps.b;
+            float sampleCloudMaxDensity = sampleProps.a;
+
+            float sampleThickness = max(sampleCloudLastHit - sampleCloudDist, 1.0);
+            float sampleMissProbability = smoothstep(0.1, 1.0, sampleCloudStep / sampleThickness);
+            float sampStructuralRigidity = smoothstep(0.0, 0.4, sampleCloudMaxDensity);
+            float sampAntiNyquist = (1.0 - sampleMissProbability);
+            bool sampleIsSky = sampleCloudDist > 40000.0;
+
 
             // Spatial Gaussian with sigma=2.0 so the 5x5 kernel is actually utilized
             float spatialWeight = exp(-float(x*x + y*y) / 16.0);
 
             // Depth weighting: preserve structure across depth discontinuities
+            // float depthDiff = abs(centerDepth - sampleDepth);
+            // float depthWeight = exp(-depthDiff * depthDiff / (depthSigma * depthSigma)) * sampStructuralRigidity;
+
             float depthWeight = 1.0;
-            bool sampleIsSky = sampleDepth > 40000.0;
+            // bool sampleIsSky = sampleDepth > 40000.0;
+            // if (centerIsSky) {
+            //     if (sampleIsSky) {
+            //         depthWeight = 0.0;
+            //     }
+            //     else {
+            //         depthWeight = 2.0;
+            //     }
+            // } else {
+            //     if (sampleIsSky) {
+            //         depthWeight = 0.0;
+            //     }
+            //     else {
+            //         float depthDiff = abs(centerDepth - sampleDepth);
+            //         depthWeight = exp(-depthDiff * depthDiff / (depthSigma * depthSigma));
+            //     }
+            // }
 
             if (centerIsSky != sampleIsSky) {
-                depthWeight = 0.8;
+                // Hard Structure Boundary: Prevent the black sky from mathematically diluting
+                // the cloud fringe energy, which causes darkening and erosion.
+                depthWeight = 0.0;
             } else if (!centerIsSky) {
+                // Internal Cloud Softness: depthSigma expands to 10000m in haze,
+                // forcing depthWeight -> 1.0 and fully blurring the noise.
                 float depthDiff = abs(centerDepth - sampleDepth);
                 depthWeight = exp(-depthDiff * depthDiff / (depthSigma * depthSigma));
             }
 
-            depthWeight = mix(1.0, depthWeight, structuralRigidity);
 
-            float weight = spatialWeight * depthWeight;
+            // depthWeight = mix(1.0, depthWeight, currentMissProbability);
+
+            float weight = spatialWeight * depthWeight * antiNyquist;
 
             totalScattering += sampleColor.rgb * weight;
             totalTransmittance += sampleColor.a * weight;

@@ -191,10 +191,12 @@ void main() {
 	float historyMissProbability = smoothstep(0.1, 1.0, historyCloudStep / historyThickness);
 
 	float structuralRigidity = smoothstep(0.0, 0.4, currentCloudMaxDensity);
-	float structuralLock = structuralRigidity * (1.0 - max(historyMissProbability, currentMissProbability));
+	float antiNyquist = (1.0 - max(historyMissProbability, currentMissProbability));
+	float structuralLock = structuralRigidity * antiNyquist;
     if (currentIsSky) structuralLock = 0.0;
 
-	bool isSilhouetteEdge = (currentIsSky != historyIsSky);
+	bool isSilhouetteEdge = (antiNyquist < 1.0 && antiNyquist > 0.0);
+	// bool isSilhouetteEdge = (currentIsSky != historyIsSky);
 	// bool isSilhouetteEdge = bool(
 	// 	mix(
 	// 		mix(
@@ -212,8 +214,8 @@ void main() {
 	// 4. Variance Clipping driven by Peak Structural Density (PSD)
 
 	// Dynamic Gamma
-	float gamma = mix(0.75, 2.5, structuralLock);
-	float alphaGamma = mix(0.5, 1.5, structuralLock);
+	float gamma = mix(0.75, 2.5, 1-antiNyquist);
+	float alphaGamma = mix(0.5, 1.5, 1-antiNyquist);
 
 	// SILHOUETTE ANTI-CRUSH:
 	// If the ray randomly jumped off or onto the cloud edge, the 3x3 neighborhood
@@ -251,7 +253,7 @@ void main() {
 		}
 	}
 	float clipT = clamp(max(clipFactors.x, max(clipFactors.y, clipFactors.z)), 0.0, 1.0);
-	float clipEnforcement = isSilhouetteEdge ? 0.0 : mix(0.1, 1.0, structuralLock);
+	float clipEnforcement = 1.0;//mix(0.5, 1.0, antiNyquist);
 
 	vec3 clippedYCoCg = mix(historyYCoCg, mean, clipT);
 	historyYCoCg = mix(historyYCoCg, clippedYCoCg, clipEnforcement);
@@ -260,17 +262,17 @@ void main() {
 
 	// Keep alpha bounds physical to prevent transmittance inversion
 	float historyOpacity = clamp(1.0 - historyRGBA.a, 0.0, 1.0);
-	if (!isSilhouetteEdge) {
+	// if (isSilhouetteEdge) {
         historyOpacity = clamp(historyOpacity, alphaMean - alphaGamma * alphaStd, alphaMean + alphaGamma * alphaStd);
-    }
-		historyRGBA.a = 1.0 - historyOpacity;
+    // }
+	historyRGBA.a = 1.0 - historyOpacity;
 
 	// 5. Continuous confidence-based blend weight
 	float absDistDiff = abs(currentCloudDist - historyCloudDist);
 	float normalizedDiff = max(0.0, absDistDiff - currentCloudStep) / max(min(currentCloudDist, historyCloudDist), 1.0);
 
 	float depthConfidence;
-	if (currentIsSky != historyIsSky) {
+	if ((antiNyquist < 1.0 && antiNyquist > 0.0)) {
 
 		if (currentIsSky) {
 			// We missed this frame, but hit last frame.
@@ -347,14 +349,18 @@ void main() {
 
 	// Aggressive accumulation: the spatial filter pre-blurs depth-coherent samples,
 	// so the TAA only needs to be conservative at actual depth discontinuities.
-	float targetWeight = 0.9 * depthConfidence * uvConfidence;
+	float targetWeight = 0.90 * depthConfidence * uvConfidence;
+	// float targetWeight = smoothstep(-0.1, 1.1, antiNyquist);
 
-	if (!validHistory) targetWeight *= 0.0;//150;
+	// if (!validHistory) targetWeight *= 0.0;//150;
 	// if(isSilhouetteEdge) targetWeight = 1.0;
 
 	float finalCloudDist = currentCloudDist;
 
-	vec4  finalRGBA = mix(currentRGBA, historyRGBA, targetWeight);
+	vec4 fallbackRGBA = vec4(YCoCgToRGB(mean), 1.0 - alphaMean);
+    vec4 finalRGBA = mix(fallbackRGBA, historyRGBA, targetWeight);
+
+	// vec4  finalRGBA = mix(currentRGBA, historyRGBA, targetWeight);
 	float finalCloudLastHit = mix(currentCloudLastHit, historyCloudLastHit, targetWeight);
 	float finalCloudStep = mix(currentCloudStep, historyCloudStep, targetWeight);
 	float finalCloudMaxDensity = mix(currentCloudMaxDensity, historyCloudMaxDensity, targetWeight);
@@ -366,7 +372,9 @@ void main() {
 	// finalRGBA.gba = vec3(0);
 	// finalRGBA = mix(vec4(0,0,0,1.0), vec4(10.0, 0,0,0.0), float(isSilhouetteEdge));
 
-	if (structuralLock < 0.6) finalRGBA = mix(vec4(5.0,0,0, 0.0), finalRGBA, smoothstep(0.4, 0.5, structuralLock));
+	// if (structuralLock < 0.6 && structuralLock > 0.0) finalRGBA = mix(vec4(5.0,0,0, 0.0), finalRGBA, smoothstep(0.4, 0.5, structuralLock));
+	// if (antiNyquist < 1.0 && antiNyquist > 0.0) finalRGBA = vec4(5.0,0,0, 0.0);
+	// if (structuralRigidity < 0.9999999709 && structuralRigidity > 0.0004649) finalRGBA = vec4(5.0,0,0, 0.0);
 
 	// if (isSilhouetteEdge) finalRGBA.g = smoothstep(0, 5, max(currentCloudStep, historyCloudStep));
 	// if (isSilhouetteEdge) finalRGBA.g = smoothstep(0, 5, max(currentCloudMaxDensity, historyCloudMaxDensity));
