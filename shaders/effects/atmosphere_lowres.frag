@@ -224,7 +224,10 @@ void main() {
 			if (firstHitDist < 0.0 && d > 0.01) {
 				firstHitDist = t_unjittered;
 			}
-			lastHitDist = t_unjittered;
+			if (d > 0.01) {
+				lastHitDist = t_unjittered;
+			}
+
 
 			pathDensity = max(pathDensity, d);
 			float stepDensity = d * stepSize * 0.01;

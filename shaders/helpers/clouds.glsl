@@ -103,7 +103,7 @@ vec3 getCloudAdvectionOffset(float h, float time) {
 	float shear = h * h * cloudFlowHeightScale * 1.0;
 
 	vec3 advect = getCloudWindOffset(time);
-	advect.xz += flowDir * shear * worldScale * 10.0;
+	// advect.xz += flowDir * shear * worldScale * 10.0;
 
 	return advect;
 }

@@ -176,22 +176,50 @@ void main() {
 	alphaMean /= weightSumAlpha;
 	float alphaStd = sqrt(max(0.0, (alphaM2 / weightSumAlpha) - (alphaMean * alphaMean)));
 
-	// Evaluate structural states BEFORE clipping
+	// Calculate the observed physical thickness of the volumetric features
+	// Clamp to a small positive value to prevent division by zero
+	float currentThickness = max(currentCloudLastHit - currentCloudDist, 1.0 * WORLD_SCALE_VALUE);
+	float historyThickness = max(historyCloudLastHit - historyCloudDist, 1.0 * WORLD_SCALE_VALUE);
 	bool currentIsSky = currentCloudDist > 40000.0 * WORLD_SCALE_VALUE;
 	bool historyIsSky = historyCloudDist > 40000.0 * WORLD_SCALE_VALUE;
 
-	// 4. Variance Clipping driven by Peak Structural Density (PSD)
+	// Evaluate the Nyquist ratio (Step Size / Thickness)
+	// Represents the probability that a ray of this step size leaped entirely over the feature
+	// float currentMissProbability = smoothstep(0.1, 1.0, log(currentCloudStep) / (currentThickness/1024.0));
+	// float historyMissProbability = smoothstep(0.1, 1.0, log(historyCloudStep) / (historyThickness/1024.0));
+	float currentMissProbability = smoothstep(0.1, 1.0, currentCloudStep / currentThickness);
+	float historyMissProbability = smoothstep(0.1, 1.0, historyCloudStep / historyThickness);
+
 	float structuralRigidity = smoothstep(0.0, 0.4, currentCloudMaxDensity);
+	float structuralLock = structuralRigidity * (1.0 - max(historyMissProbability, currentMissProbability));
+    if (currentIsSky) structuralLock = 0.0;
+
+	bool isSilhouetteEdge = (currentIsSky != historyIsSky);
+	// bool isSilhouetteEdge = bool(
+	// 	mix(
+	// 		mix(
+	// 			0.5,
+	// 			1,
+	// 		currentMissProbability), // Low density
+	// 		mix(
+	// 			0,
+	// 			1,
+	// 		currentMissProbability), // high density
+	// 	structuralRigidity) > 0.5
+	// );
+
+
+	// 4. Variance Clipping driven by Peak Structural Density (PSD)
 
 	// Dynamic Gamma
-	float gamma = mix(0.75, 2.5, structuralRigidity);
-	float alphaGamma = mix(0.5, 1.5, structuralRigidity);
+	float gamma = mix(0.75, 2.5, structuralLock);
+	float alphaGamma = mix(0.5, 1.5, structuralLock);
 
 	// SILHOUETTE ANTI-CRUSH:
 	// If the ray randomly jumped off or onto the cloud edge, the 3x3 neighborhood
 	// is temporarily mismatched with the history. Expand the box massively to
 	// let the historical data survive the clip.
-	if (currentIsSky != historyIsSky) {
+	if (isSilhouetteEdge) {
 		gamma *= 2.5;
 		alphaGamma *= 2.5;
 		// gamma *= 4.0;
@@ -222,28 +250,20 @@ void main() {
 				clipFactors[i] = 0.0;
 		}
 	}
-
 	float clipT = clamp(max(clipFactors.x, max(clipFactors.y, clipFactors.z)), 0.0, 1.0);
+	float clipEnforcement = isSilhouetteEdge ? 0.0 : mix(0.1, 1.0, structuralLock);
 
-	// We NO LONGER bypass the clip. The dynamic gamma handles the noise natively.
-	historyYCoCg = mix(historyYCoCg, mean, clipT);
+	vec3 clippedYCoCg = mix(historyYCoCg, mean, clipT);
+	historyYCoCg = mix(historyYCoCg, clippedYCoCg, clipEnforcement);
+
 	historyRGBA.rgb = YCoCgToRGB(historyYCoCg);
 
 	// Keep alpha bounds physical to prevent transmittance inversion
 	float historyOpacity = clamp(1.0 - historyRGBA.a, 0.0, 1.0);
-	historyOpacity = clamp(historyOpacity, alphaMean - alphaGamma * alphaStd, alphaMean + alphaGamma * alphaStd);
-	historyRGBA.a = 1.0 - historyOpacity;
-
-
-	// Calculate the observed physical thickness of the volumetric features
-	// Clamp to a small positive value to prevent division by zero
-	float currentThickness = max(currentCloudLastHit - currentCloudDist, 1.0 * WORLD_SCALE_VALUE);
-	float historyThickness = max(historyCloudLastHit - historyCloudDist, 1.0 * WORLD_SCALE_VALUE);
-
-	// Evaluate the Nyquist ratio (Step Size / Thickness)
-	// Represents the probability that a ray of this step size leaped entirely over the feature
-	float currentMissProbability = smoothstep(0.1, 1.0, currentCloudStep / currentThickness);
-	float historyMissProbability = smoothstep(0.1, 1.0, historyCloudStep / historyThickness);
+	if (!isSilhouetteEdge) {
+        historyOpacity = clamp(historyOpacity, alphaMean - alphaGamma * alphaStd, alphaMean + alphaGamma * alphaStd);
+    }
+		historyRGBA.a = 1.0 - historyOpacity;
 
 	// 5. Continuous confidence-based blend weight
 	float absDistDiff = abs(currentCloudDist - historyCloudDist);
@@ -327,9 +347,10 @@ void main() {
 
 	// Aggressive accumulation: the spatial filter pre-blurs depth-coherent samples,
 	// so the TAA only needs to be conservative at actual depth discontinuities.
-	float targetWeight = 0.97 * depthConfidence * uvConfidence;
+	float targetWeight = 0.9 * depthConfidence * uvConfidence;
 
 	if (!validHistory) targetWeight *= 0.0;//150;
+	// if(isSilhouetteEdge) targetWeight = 1.0;
 
 	float finalCloudDist = currentCloudDist;
 
@@ -337,6 +358,19 @@ void main() {
 	float finalCloudLastHit = mix(currentCloudLastHit, historyCloudLastHit, targetWeight);
 	float finalCloudStep = mix(currentCloudStep, historyCloudStep, targetWeight);
 	float finalCloudMaxDensity = mix(currentCloudMaxDensity, historyCloudMaxDensity, targetWeight);
+
+	// finalRGBA.r = float((log(currentCloudStep))/(currentThickness/1024));
+	// finalRGBA.a = 1.0-(float(structuralRigidity) * float((log(currentCloudStep))/(currentThickness/1024)));
+	// finalRGBA.r  = 4*step(0.6, currentMissProbability);
+	// finalRGBA.r = 4*structuralLock;
+	// finalRGBA.gba = vec3(0);
+	// finalRGBA = mix(vec4(0,0,0,1.0), vec4(10.0, 0,0,0.0), float(isSilhouetteEdge));
+
+	if (structuralLock < 0.6) finalRGBA = mix(vec4(5.0,0,0, 0.0), finalRGBA, smoothstep(0.4, 0.5, structuralLock));
+
+	// if (isSilhouetteEdge) finalRGBA.g = smoothstep(0, 5, max(currentCloudStep, historyCloudStep));
+	// if (isSilhouetteEdge) finalRGBA.g = smoothstep(0, 5, max(currentCloudMaxDensity, historyCloudMaxDensity));
+	// if (finalCloudMaxDensity > 0.01) finalRGBA = vec4(currentThickness/1000, (int(currentThickness)%1000)/100, int(currentThickness)%10, 0.0);
 
 	imageStore(outColor, pixel, finalRGBA);
 	imageStore(outDepth, pixel, vec4(finalCloudDist, finalCloudLastHit, finalCloudStep, finalCloudMaxDensity));
