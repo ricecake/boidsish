@@ -195,8 +195,9 @@ void main() {
 				break;
 			}
 		}
-
-		float jitter = fastSpatiotemporalBlueNoise(jitteredUV, 0, frameIndex);
+		// int timer = (int(time) / 2) + 2 * (int(time) % 2);
+		float timer = ((time) / 2) + 2 * mod(time, 2);
+		float jitter = fastSpatiotemporalBlueNoise(jitteredUV, 0, int(timer));
 		stepSize = (t_end - t_start) / float(samples);
 
 		float t_offset = jitter * stepSize;

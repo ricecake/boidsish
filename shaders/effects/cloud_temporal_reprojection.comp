@@ -79,11 +79,24 @@ void main() {
 	float historyMissProbability = smoothstep(0.1, 1.0, historyCloudStep / historyThickness);
 
 	float structuralRigidity = smoothstep(0.0, 0.4, currentCloudMaxDensity);
-	float structuralFlux = abs(currentCloudMaxDensity - historyCloudMaxDensity)/historyCloudMaxDensity;
+	// float structuralFlux = abs(currentCloudMaxDensity - historyCloudMaxDensity)/historyCloudMaxDensity;
 
 	float nyquist = (max(historyMissProbability, currentMissProbability));
 	float antiNyquist = (1.0 - nyquist);
 	float structuralLock = structuralRigidity * antiNyquist;
+
+	// Guard against divide-by-zero on pure sky history pixels
+    float structuralFlux = abs(currentCloudMaxDensity - historyCloudMaxDensity) / max(historyCloudMaxDensity, 0.001);
+
+    // Your exact isolation mask
+	// if (structuralFlux > 0.00001 && historyThickness/historyCloudStep < 1.0) finalRGBA = vec4(5, 0, 0, 0);
+    bool isNoisyFringe = (structuralFlux  > 0.00001 &&
+                          (historyThickness / max(historyCloudStep, 1.0)) < 1.0);
+	float fringy = step(historyCloudDist, 45000) * (1-structuralRigidity) *smoothstep(0.0, 0.000005, structuralFlux) * (1.0 - smoothstep(0.0, 1.0, historyThickness / max(historyCloudStep, 1.0)));
+
+	// bool isNoisyFringe = smoothstep(0.0, 1.0, abs(currentCloudDist-currentCloudLastHit)/currentCloudStep ) < 0.7;
+	// if (structuralFlux > 0.30 && structuralRigidity < 0.3 && historyThickness/historyCloudStep > 1.0) finalRGBA = vec4(5, 0, 0, 0);
+
 
 	vec3 m1 = vec3(0.0);
 	vec3 m2 = vec3(0.0);
@@ -94,15 +107,33 @@ void main() {
 	float weightSumAlpha = 0.0;
 	float weightSumTrans = 0.0;
 
-	for (int y = -1; y <= 1; y++) {
-		for (int x = -1; x <= 1; x++) {
-			vec4 smp = texture(uCurrentFrame, uv + vec2(x, y) * texelSize);
+	for (int y = -2; y <= 2; y++) {
+		for (int x = -2; x <= 2; x++) {
+			// if(isNoisyFringe) {
+				vec4 smpH = texture(uHistoryFrame, uv + vec2(x, y) * texelSize);
+			// }
+			// else {
+				vec4 smpC = texture(uCurrentFrame, uv + vec2(x, y) * texelSize);
+			// }
 
-			float spatialW = exp(-float(x*x + y*y) / 8.0);
+			vec4 smp = mix(smpC, smpH, fringy);
+
+			float spatialW = exp(-float(x*x + y*y) / 16.0);
 			float opacity = clamp(1.0 - smp.a, 0.0, 1.0);
-			float colorW = spatialW * max(opacity, 0.001);
 
-			vec3 ycocg = (smp.rgb);
+            // THE DYNAMIC BLUR INCREASE:
+            // If it's a solid core, we respect opacity (bilateral) to preserve the sharp edge.
+            // If it's a noisy fringe, we force the opacity multiplier to 1.0, creating a
+            // maximum-strength Gaussian blur that melts the stochastic noise into the sky.
+            float adjustedOpacity = isNoisyFringe ? 1.0 : max(opacity, 0.001);
+            float colorW = spatialW * adjustedOpacity;
+
+			if(isNoisyFringe && x ==0 && y == 0) {
+				colorW = 0.0;
+				spatialW = 0.0;
+			}
+
+            vec3 ycocg = smp.rgb;
 
 			m1 += ycocg * colorW;
 			m2 += ycocg * ycocg * colorW;
@@ -129,7 +160,7 @@ void main() {
 	float uvConfidence = smoothstep(0.0, 0.01, uvEdgeDist);
 
 	// Base weight is highly aggressive to crush any remaining jitter
-	float targetWeight = 0.99 * uvConfidence;
+	float targetWeight = 0.9 * uvConfidence;
 	// float targetWeight = 0.99;
 	// float targetWeight = uvConfidence * mix(antiNyquist, 0.99, smoothstep(-0.1, 1.1, structuralFlux));
 
@@ -170,17 +201,33 @@ void main() {
 		targetWeight = 0.0;
 	}
 
+    if (isNoisyFringe) {
+        // targeted spatial melt: overwrite the raw stochastic noise with the local 3x3 mean
+        currentRGBA.rgb = mean;
+
+        // Optionally, soften the opacity slightly to physically thin out the fringe static
+        // currentRGBA.a = mix(currentRGBA.a, 1.0 - alphaMean, fringy);
+		currentRGBA.a = historyRGBA.a * 0.5;
+		targetWeight = 1.0 - fringy;
+    }
+
+// targetWeight = 0.0;
 	// Fallback uses the spatially smoothed mean to perfectly hide low-res blocks
 	// during rapid camera rotation when targetWeight hits 0.0.
-	vec4 fallbackRGBA = vec4(mean, 1.0 - alphaMean);
-	vec4 finalRGBA = mix(fallbackRGBA, historyRGBA, targetWeight);
+	vec4 fallbackRGBA = currentRGBA;
+	vec4 finalRGBA = mix(currentRGBA, historyRGBA, targetWeight);
 
 	float finalCloudDist = currentCloudDist;
 	float finalCloudLastHit = mix(currentCloudLastHit, historyCloudLastHit, targetWeight);
 	float finalCloudStep = mix(currentCloudStep, historyCloudStep, targetWeight);
 	float finalCloudMaxDensity = mix(currentCloudMaxDensity, historyCloudMaxDensity, targetWeight);
 
-	if (structuralFlux > 0.30 && structuralRigidity < 0.3 && historyThickness/historyCloudStep > 1.0) finalRGBA = vec4(5, 0, 0, 0);
+	// if (structuralFlux > 0.01 && structuralRigidity < 0.8 && historyThickness/historyCloudStep > 0.180) finalRGBA = vec4(5, 0, 0, 0);
+	// if (structuralFlux > 0.00001 && historyThickness/historyCloudStep < 1.0) finalRGBA = vec4(5, 0, 0, 0);
+
+	// if(isNoisyFringe)
+	// finalRGBA += vec4(10*fringy, 0, 0, 0);
+
 	// if (structuralFlux > 0.50 && structuralRigidity < 0.50) finalRGBA.a = 1.0 - alphaMean;
 
 	imageStore(outColor, pixel, finalRGBA);
