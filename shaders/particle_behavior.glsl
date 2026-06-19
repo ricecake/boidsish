@@ -186,6 +186,8 @@ void updateFireflies(inout Particle p, float dt, float time, sampler3D curlTextu
 
 	p.color.rgb = firefly_base * (2.0 + twinkle * 8.0) * flicker;
 	p.color.a = (0.4 + twinkle * 0.6) * smoothstep(0.0, 0.5, p.pos.w);
+	// p.color.rgb = firefly_base * (2.0 + twinkle * 8.0);
+	// p.color.a = (0.2 + 0.2 * twinkle + twinkle * 0.6) * smoothstep(0.0, 0.5, p.pos.w);
 	p.vel.w = 15.0;
 	p.origin.w = 0.2 * p.color.a;
 }
@@ -468,8 +470,10 @@ void updateAmbientFirefly(
 	float flicker = mix(1.0, waver, smoothstep(0.8, 1.0, twinkle));
 
 	p.color.rgb = firefly_base * (2.0 + twinkle * 8.0) * flicker;
-	p.color.a = 0.00 + step(p.counter, 0.6) * (0.4 + twinkle * 0.6) * smoothstep(0.0, 0.5, p.pos.w);
-	p.vel.w = 15.0;
+	// p.color.a = 0.00 + step(p.counter, 0.6) * (0.4 + twinkle * 0.6) * smoothstep(0.0, 0.5, p.pos.w);
+	// p.color.rgb = firefly_base * (2.0 + twinkle * 8.0);
+	p.color.a = (0.2 + step(p.counter, 0.6) * (0.2 + twinkle * 0.6)) * smoothstep(0.0, 0.5, p.pos.w);
+	p.vel.w = 180.0;
 	p.origin.w = 0.5 * p.color.a;
 }
 

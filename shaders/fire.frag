@@ -57,13 +57,13 @@ void main() {
 	vec3  color = vec3(0.0);
 	float alpha = 0.0;
 
-	if (v_style == STYLE_ROCKET_TRAIL || v_style == STYLE_SPARKS || v_style == STYLE_GLITTER || v_style == STYLE_BUBBLES || v_style == STYLE_FIREFLIES || v_style == STYLE_DEBUG ||
-	    v_style == STYLE_CINDER || v_style == STYLE_IRIDESCENT || v_style == STYLE_RAIN || v_style == STYLE_SNOW || v_style == STYLE_LEAF || v_style == STYLE_PETAL || v_style == STYLE_BIRDS || v_style == STYLE_FAIRY || v_style == STYLE_DUST) {
+	if (v_style == STYLE_ROCKET_TRAIL || v_style == STYLE_SPARKS || v_style == STYLE_GLITTER || v_style == STYLE_BUBBLES || v_style == STYLE_DEBUG ||
+	    v_style == STYLE_CINDER || v_style == STYLE_IRIDESCENT || v_style == STYLE_RAIN || v_style == STYLE_SNOW || v_style == STYLE_LEAF || v_style == STYLE_PETAL || v_style == STYLE_BIRDS || v_style == STYLE_FAIRY || v_style == STYLE_DUST || v_style == STYLE_FIREFLIES) {
 
 		color = v_p.color.rgb;
 		alpha = v_p.color.a;
 
-		if (v_style == STYLE_LEAF || v_style == STYLE_PETAL || v_style == STYLE_FIREFLIES || v_style == STYLE_BIRDS || v_style == STYLE_FAIRY) {
+		if (v_style == STYLE_LEAF || v_style == STYLE_PETAL || v_style == STYLE_BIRDS || v_style == STYLE_FAIRY || v_style == STYLE_FIREFLIES) {
 			vec3 biome_albedo = (v_emitter_index >= 0 && v_emitter_index < 8) ? u_biomeAlbedos[v_emitter_index] : vec3(0.5);
 			color = mix(color, biome_albedo, 0.5);
 		}
@@ -128,6 +128,31 @@ void main() {
 				smoothstep(0.30, 0.40, gl_PointCoord.x) * (1.0 - smoothstep(0.60, 0.70, gl_PointCoord.x))
 			);
 			alpha = 1.0;
+		} else if (v_style == STYLE_FIREFLIES) {
+			float dist = length(circ);
+			float twinkle = clamp((v_p.color.a / smoothstep(0.0, 0.5, v_lifetime)) - 0.2, 0.0, 1.0);
+
+			// Always present soft core
+			float core = 1.0 - smoothstep(0.0, 0.15, dist);
+
+			// Expanding ring with wavering size
+			float waver = snoise3d(vec3(v_pos.xyz * 0.5 + u_time * 2.0)) * 0.05 * twinkle;
+			float ringRadius = 0.1 + twinkle * 0.35 + waver;
+			float ringWidth = 0.02 + twinkle * 0.1;
+			float ring = smoothstep(ringRadius + ringWidth, ringRadius, dist) * smoothstep(ringRadius - ringWidth, ringRadius, dist);
+
+			shapeMask = max(core, ring);
+
+			// Diffracted, gem-like sparkle
+			float angle = atan(circ.y, circ.x);
+			vec3 diffraction;
+			diffraction.r = sin(angle * 3.0 + u_time * 0.150 * waver + dist * 10.0) * 0.5 + 0.5;
+			diffraction.g = sin(angle * 3.0 + u_time * 0.450 * waver + dist * 10.0 + 2.0) * 0.5 + 0.5;
+			diffraction.b = sin(angle * 3.0 + u_time * 0.650 * waver + dist * 10.0 + 4.0) * 0.5 + 0.5;
+
+			color = mix(color, diffraction * 2.0, twinkle);
+
+			alpha = v_p.color.a * shapeMask;
 		} else if (v_style == STYLE_FAIRY) {
 			// Phase-based brightness (using p.counter and p.phase logic from firefly)
 			float twinkle = pow(smoothstep(0.0, 0.3, v_p.counter) * (1.0 - smoothstep(0.4, 0.6, v_p.counter)), 2.0) * step(v_p.counter, 0.6);
