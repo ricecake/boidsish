@@ -611,6 +611,10 @@ namespace Boidsish {
 			service_locator_.Provide<ConfigManager>(
 				std::shared_ptr<ConfigManager>(&ConfigManager::GetInstance(), [](ConfigManager*) {})
 			);
+
+			service_locator_.Provide<task_thread_pool::task_thread_pool>(
+				std::shared_ptr<task_thread_pool::task_thread_pool>(&thread_pool, [](task_thread_pool::task_thread_pool*) {})
+			);
 		}
 
 		VisualizerImpl(Visualizer* p, int w, int h, const char* title): parent(p), width(w), height(h) {
@@ -1490,9 +1494,11 @@ namespace Boidsish {
 			}
 
 			// Ensure all CPU writes to persistent mapped buffers are visible to GPU
-			glMemoryBarrier(
-				GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT | GL_COMMAND_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT
-			);
+			// GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT is for non-coherent mapping,
+			// but we use coherent mapping for our persistent buffers.
+			// GL_COMMAND_BARRIER_BIT and GL_SHADER_STORAGE_BARRIER_BIT are still needed
+			// for indirect commands and SSBO visibility.
+			glMemoryBarrier(GL_COMMAND_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
 
 			// Hi-Z occlusion culling dispatch (between uniform fill and draw calls)
 			uint32_t pass_draw_count = mdi_uniform_count - mdi_pass_uniform_start;

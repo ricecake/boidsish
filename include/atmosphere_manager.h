@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "IManager.h"
+#include "persistent_buffer.h"
 #include <GL/glew.h>
 #include <glm/glm.hpp>
 #include "weather_constants.h"
@@ -182,7 +183,7 @@ namespace Boidsish {
 		GLuint _skyViewLUT = 0;
 		GLuint _aerialPerspectiveLUT = 0;
 		GLuint _cloudShadowMap = 0;
-		GLuint _shCoeffsBuffer = 0;
+		std::unique_ptr<PersistentBuffer<glm::vec4>> _shCoeffs_pb;
 
 		std::unique_ptr<ComputeShader> _transmittanceShader;
 		std::unique_ptr<ComputeShader> _multiScatteringShader;
