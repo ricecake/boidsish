@@ -35,7 +35,7 @@ else()
     set(BOIDSISH_LIB_TYPE STATIC)
 endif()
 
-option(BOIDSISH_USE_SPIRV "Compile and use SPIR-V shaders" OFF)
+option(BOIDSISH_USE_SPIRV "Compile and use SPIR-V shaders" ON)
 if(BOIDSISH_USE_SPIRV)
     add_definitions(-DBOIDSISH_USE_SPIRV)
 endif()
@@ -137,6 +137,9 @@ foreach(EXAMPLE_DIR ${EXAMPLE_DIRS})
 
         if(EXAMPLE_SOURCES)
             add_executable(${EXAMPLE_NAME} ${EXAMPLE_SOURCES})
+            if(BOIDSISH_USE_SPIRV)
+                add_dependencies(${EXAMPLE_NAME} glcheck)
+            endif()
 
             target_link_libraries(${EXAMPLE_NAME} PRIVATE boidsish)
             target_include_directories(${EXAMPLE_NAME} PRIVATE "${EXAMPLE_DIR}/include")
@@ -161,6 +164,9 @@ foreach(APP_DIR ${APP_DIRS})
 
         if(APP_SOURCES)
             add_executable(${APP_NAME} ${APP_SOURCES})
+            if(BOIDSISH_USE_SPIRV)
+                add_dependencies(${APP_NAME} glcheck)
+            endif()
             target_link_libraries(${APP_NAME} PRIVATE boidsish)
             target_include_directories(${APP_NAME} PRIVATE "${APP_DIR}/include")
             target_compile_definitions(${APP_NAME} PRIVATE GLM_ENABLE_EXPERIMENTAL)
@@ -241,7 +247,11 @@ foreach(TOOL_SOURCE ${TOOL_SOURCES})
 endforeach()
 
 # Find glslangValidator
-find_program(GLSLANG_VALIDATOR_EXE NAMES glslangValidator)
+if(BOIDSISH_USE_SPIRV)
+    find_program(GLSLANG_VALIDATOR_EXE NAMES glslangValidator REQUIRED)
+else()
+    find_program(GLSLANG_VALIDATOR_EXE NAMES glslangValidator)
+endif()
 
 if(GLSLANG_VALIDATOR_EXE)
     file(GLOB_RECURSE SHADER_FILES
