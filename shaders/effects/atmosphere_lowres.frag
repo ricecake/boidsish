@@ -196,9 +196,9 @@ void main() {
 			}
 		}
 		// int timer = (int(time) / 2) + 2 * (int(time) % 2);
-		float timer = ((time) / 2) + 2 * mod(time, 2);
+		float timer = ((frameIndex) / 2) + 2 * mod(frameIndex, 2);
 		float jitter = fastSpatiotemporalBlueNoise(jitteredUV, 0, int(timer));
-		stepSize = (t_end - t_start) / float(samples);
+		stepSize = clamp((t_end - t_start) / float(samples), 1.0, 750.0);
 
 		float t_offset = jitter * stepSize;
 		for (int i = 0; i < samples; i++) {
@@ -216,7 +216,7 @@ void main() {
 			CloudLayer layer = computeCloudLayer(weather, props);
 
 			// float d = clamp(calculateCloudDensity(p, weather, layer, props, time, false), mix(0.01, 0.005, smoothstep(-0.01, 0.3, rayDir.y)), 2.0);
-			float d = clamp(calculateCloudDensity(p, weather, layer, props, time, false), 0, 2.0);
+			float d = calculateCloudDensity(p, weather, layer, props, time, false);
 			// d = d * smoothstep(0.1, 2, d);
 			// if (d <= 0.000) continue;
 
@@ -231,7 +231,7 @@ void main() {
 
 
 			pathDensity = max(pathDensity, d);
-			float stepDensity = d * stepSize * 0.005;
+			float stepDensity = d * stepSize * 0.05;
 			float transmittanceAtStep = exp(-stepDensity);
 
 			vec3 stepScattering = vec3(0.0);

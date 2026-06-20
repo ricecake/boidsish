@@ -5,7 +5,7 @@
 #include "fast_noise.glsl"
 #include "math.glsl"
 #include "lygia/generative/random.glsl"
-
+#include "lygia/sdf.glsl"
 
 float cloudPhase(float cosTheta) {
 	// Dual-lobe Henyey-Greenstein for forward and back scattering
@@ -333,7 +333,24 @@ float calculateCloudDensityExpV2(
 
 	float density = smoothstep(coverageThreshold, max(1.0, coverageThreshold), baseDensity);
 
-	return smoothstep(0.0, 1.0, density * densityProfile * props.densityBase * 2.0);
+	return smoothstep(-0.1, 1.0, density * densityProfile * props.densityBase * 2.0);
+}
+
+float calculateCloudDensityExpV4(
+	vec3            p,
+	CloudWeather    weather,
+	CloudLayer      layer,
+	CloudProperties props,
+	float           time,
+	bool            simplified
+) {
+	float h = (p.y - layer.baseFloor) / layer.thickness;
+
+	float heightGrid = 25*(mix(250, 500, h)/25);
+
+	vec3 roundP = heightGrid*round((p/heightGrid));
+	float dist = distance(p, roundP);
+	return 0.75*step(dist, 25*abs(0.5+sin(time*h)));
 }
 
 // Cloud density calculation helper
@@ -349,7 +366,8 @@ float calculateCloudDensity(
 	if (p.y < layer.baseFloor || p.y > layer.baseCeiling)
 		return 0.0;
 
-	return calculateCloudDensityExpV2(p, weather, layer, props, time, simplified);
+	return calculateCloudDensityExpV4(p, weather, layer, props, time, simplified);
+	// return calculateCloudDensityExpV2(p, weather, layer, props, time, simplified);
 	// return calculateCloudDensityExpV1(p, weather, layer, props, time, simplified);
 	// return calculateCloudDensityHZDv1(p, weather, layer, props, time, simplified);
 }
