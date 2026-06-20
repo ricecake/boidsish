@@ -49,6 +49,11 @@ namespace Boidsish {
 			setup_shader(*shader_);
 			setup_shader(*composite_shader_);
 
+			if (temporal_shader_) {
+				temporal_shader_->use();
+				temporal_shader_->bindUniformBlock("Lighting", Constants::UboBinding::Lighting());
+			}
+
 			width_ = width;
 			height_ = height;
 
@@ -101,12 +106,32 @@ namespace Boidsish {
 			has_valid_history_ = false;
 		}
 
+		static float Halton(int index, int base) {
+			float f = 1.0f;
+			float r = 0.0f;
+			while (index > 0) {
+				f /= static_cast<float>(base);
+				r += f * static_cast<float>(index % base);
+				index /= base;
+			}
+			return r;
+		}
+
 		void AtmosphereEffect::Apply(GLuint sourceTexture, GLuint depthTexture, GLuint velocityTexture, GLuint normalTexture, GLuint albedoTexture, const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix, const glm::vec3& cameraPos) {
 			// Re-bind the previous framebuffer (which was the target for this effect)
 			// We MUST bind it back if we changed it.
 			// Save the current FBO before changing it.
 			GLint original_fbo;
 			glGetIntegerv(GL_FRAMEBUFFER_BINDING, &original_fbo);
+
+			// Calculate subpixel jitter for TAA
+			if (cloud_taa_enabled_) {
+				float jx = Halton((frame_index_ % 16) + 1, 2) - 0.5f;
+				float jy = Halton((frame_index_ % 16) + 1, 3) - 0.5f;
+				subpixel_jitter_ = glm::vec2(jx / (float)width_, jy / (float)height_);
+			} else {
+				subpixel_jitter_ = glm::vec2(0.0f);
+			}
 
 			// --- PASS 1: Low-res Cloud Rendering ---
 			int low_res_width = std::max(1, static_cast<int>(width_ * render_scale_));
@@ -163,7 +188,7 @@ namespace Boidsish {
 				int next_temporal = 1 - temporal_index_;
 
 				temporal_shader_->use();
-				temporal_shader_->setFloat("uBlendAlpha", has_valid_history_ ? 0.75f : 0.0f);
+				temporal_shader_->setFloat("uBlendAlpha", (has_valid_history_ && cloud_taa_enabled_) ? cloud_taa_alpha_ : 0.0f);
 				temporal_shader_->setInt("uFrameIndex", frame_index_);
 				temporal_shader_->setMat4("uInvView", invView);
 				temporal_shader_->setMat4("uInvProjection", invProj);

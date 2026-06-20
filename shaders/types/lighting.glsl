@@ -41,6 +41,17 @@ layout(std140, binding = [[LIGHTING_BINDING]]) uniform Lighting {
 	float cloudSunLightScale;
 	float cloudMoonLightScale;
 	float cloudBeerPowderMix;
+	int   cloudStepCount;
+	float cloudExtinctionFactor;
+	float cloudMinDensity;
+	float cloudMaxDensity;
+	float cloudMinDropOff;
+	int   cloudJitterMode;
+	int   cloudTaaEnabled;
+	float cloudTaaAlpha;
+	float cloudTaaClamp;
+	float _pad_clouds_0;
+	vec2  cloudSubpixelJitter;
 	mat4  cloudShadowMatrix;
 	mat4  view;
 	mat4  projection;

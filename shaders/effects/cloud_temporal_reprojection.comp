@@ -13,6 +13,8 @@ uniform mat4  uPrevViewProjection;
 uniform float uBlendAlpha; // How much history to keep (0.85-0.95)
 uniform int   uFrameIndex;
 
+#include "../helpers/lighting.glsl"
+
 void main() {
 	ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
 	ivec2 size = imageSize(outResult);
@@ -59,13 +61,13 @@ void main() {
 	vec4 stddev = sqrt(max(vec4(0.0), (m2 / 9.0) - (mean * mean)));
 
 	// Wider clamp range for clouds — they change slowly so we can trust history more
-	float gamma = 1.5;
+	float gamma = cloudTaaClamp;
 	vec4  minColor = mean - gamma * stddev;
 	vec4  maxColor = mean + gamma * stddev;
 	history = clamp(history, minColor, maxColor);
 
 	// Blend: higher alpha = more history = smoother but more lag
-	vec4 result = mix(current, history, 0.95); // uBlendAlpha);
+	vec4 result = mix(current, history, uBlendAlpha);
 
 	imageStore(outResult, pixel, result);
 }

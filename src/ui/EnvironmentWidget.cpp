@@ -205,8 +205,6 @@ namespace Boidsish {
 										ImGui::Text("Cloud Coverage: %.1f%%", phys->cloudCoverage * 100.0f);
 									}
 
-									ImGui::Separator();
-
 								if (ImGui::TreeNode("Weather Constraints & Nudges")) {
 									auto& constraints = weather->GetSimConstraints();
 									bool  changed = false;
@@ -533,6 +531,57 @@ namespace Boidsish {
 									float cloud_shadow = cfg.GetAppSettingFloat("cloud_shadow_intensity", 0.5f);
 									if (ImGui::SliderFloat("Cloud Shadow Intensity", &cloud_shadow, 0.0f, 1.0f)) {
 										cfg.SetFloat("cloud_shadow_intensity", cloud_shadow);
+									}
+
+									ImGui::Separator();
+									ImGui::Text("Cloud Raymarching & TAA");
+
+									int cloud_steps = atmosphere_effect->GetCloudStepCount();
+									if (ImGui::SliderInt("Raymarch Steps", &cloud_steps, 16, 256)) {
+										atmosphere_effect->SetCloudStepCount(cloud_steps);
+									}
+
+									float extinction = atmosphere_effect->GetCloudExtinctionFactor();
+									if (ImGui::SliderFloat("Extinction Factor", &extinction, 0.001f, 0.05f, "%.4f")) {
+										atmosphere_effect->SetCloudExtinctionFactor(extinction);
+									}
+
+									float min_density = atmosphere_effect->GetCloudMinDensity();
+									if (ImGui::SliderFloat("Min Density", &min_density, 0.0f, 0.1f, "%.3f")) {
+										atmosphere_effect->SetCloudMinDensity(min_density);
+									}
+
+									float max_density = atmosphere_effect->GetCloudMaxDensity();
+									if (ImGui::SliderFloat("Max Density", &max_density, 0.1f, 10.0f, "%.2f")) {
+										atmosphere_effect->SetCloudMaxDensity(max_density);
+									}
+
+									float drop_off = atmosphere_effect->GetCloudMinDropOff();
+									if (ImGui::SliderFloat("Min Drop-off Rate", &drop_off, 0.0f, 0.5f, "%.3f")) {
+										atmosphere_effect->SetCloudMinDropOff(drop_off);
+									}
+
+									int jitter_mode = atmosphere_effect->GetCloudJitterMode();
+									const char* jitter_items[] = { "Blue Noise", "Bayer Matrix" };
+									if (ImGui::Combo("Jitter Mode", &jitter_mode, jitter_items, IM_ARRAYSIZE(jitter_items))) {
+										atmosphere_effect->SetCloudJitterMode(jitter_mode);
+									}
+
+									bool taa_enabled = atmosphere_effect->GetCloudTaaEnabled();
+									if (ImGui::Checkbox("Cloud TAA Enabled", &taa_enabled)) {
+										atmosphere_effect->SetCloudTaaEnabled(taa_enabled);
+									}
+
+									if (taa_enabled) {
+										float taa_alpha = atmosphere_effect->GetCloudTaaAlpha();
+										if (ImGui::SliderFloat("TAA Alpha", &taa_alpha, 0.0f, 0.99f, "%.2f")) {
+											atmosphere_effect->SetCloudTaaAlpha(taa_alpha);
+										}
+
+										float taa_clamp = atmosphere_effect->GetCloudTaaClamp();
+										if (ImGui::SliderFloat("TAA Variance Clamp", &taa_clamp, 0.0f, 5.0f, "%.2f")) {
+											atmosphere_effect->SetCloudTaaClamp(taa_clamp);
+										}
 									}
 
 									ImGui::Separator();
