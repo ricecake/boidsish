@@ -2328,6 +2328,17 @@ namespace Boidsish {
 					lighting_ubo_data_.cloudMoonLightScale = atmosphere_effect->GetCloudMoonLightScale();
 					lighting_ubo_data_.cloudBeerPowderMix = atmosphere_effect->GetCloudBeerPowderMix();
 
+					lighting_ubo_data_.cloudStepCount = atmosphere_effect->GetCloudStepCount();
+					lighting_ubo_data_.cloudExtinctionFactor = atmosphere_effect->GetCloudExtinctionFactor();
+					lighting_ubo_data_.cloudMinDensity = atmosphere_effect->GetCloudMinDensity();
+					lighting_ubo_data_.cloudMaxDensity = atmosphere_effect->GetCloudMaxDensity();
+					lighting_ubo_data_.cloudMinDropOff = atmosphere_effect->GetCloudMinDropOff();
+					lighting_ubo_data_.cloudJitterMode = atmosphere_effect->GetCloudJitterMode();
+					lighting_ubo_data_.cloudTaaEnabled = atmosphere_effect->GetCloudTaaEnabled() ? 1 : 0;
+					lighting_ubo_data_.cloudTaaAlpha = atmosphere_effect->GetCloudTaaAlpha();
+					lighting_ubo_data_.cloudTaaClamp = atmosphere_effect->GetCloudTaaClamp();
+					lighting_ubo_data_.cloudSubpixelJitter = atmosphere_effect->GetSubpixelJitter();
+
 					// Calculate cloud shadow matrix (world XZ to shadow map UV)
 					float     mapSize = atmosphere_manager->GetCloudShadowWorldSize();
 					glm::vec3 camPos = camera.pos();
@@ -2356,10 +2367,10 @@ namespace Boidsish {
 
 				// GPU-side copy of SH coefficients from SSBO into the UBO (no CPU readback)
 				if (atmosphere_manager) {
-					static_assert(offsetof(LightingUbo, sh_coeffs) == 976, "SH offset mismatch");
+					static_assert(offsetof(LightingUbo, sh_coeffs) == 1024, "SH offset mismatch");
 					atmosphere_manager->CopySHToUBO(
 						lighting_pb->GetBufferId(),
-						static_cast<GLintptr>(lighting_pb->GetFrameOffset()) + 976
+						static_cast<GLintptr>(lighting_pb->GetFrameOffset()) + 1024
 					);
 				}
 			}

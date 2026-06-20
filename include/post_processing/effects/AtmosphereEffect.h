@@ -110,6 +110,44 @@ namespace Boidsish {
 
 			float GetCloudBeerPowderMix() const { return cloud_beer_powder_mix_; }
 
+			void SetCloudStepCount(int s) { cloud_step_count_ = s; }
+
+			int GetCloudStepCount() const { return cloud_step_count_; }
+
+			void SetCloudExtinctionFactor(float e) { cloud_extinction_factor_ = e; }
+
+			float GetCloudExtinctionFactor() const { return cloud_extinction_factor_; }
+
+			void SetCloudMinDensity(float d) { cloud_min_density_ = d; }
+
+			float GetCloudMinDensity() const { return cloud_min_density_; }
+
+			void SetCloudMaxDensity(float d) { cloud_max_density_ = d; }
+
+			float GetCloudMaxDensity() const { return cloud_max_density_; }
+
+			void SetCloudMinDropOff(float d) { cloud_min_drop_off_ = d; }
+
+			float GetCloudMinDropOff() const { return cloud_min_drop_off_; }
+
+			void SetCloudJitterMode(int m) { cloud_jitter_mode_ = m; }
+
+			int GetCloudJitterMode() const { return cloud_jitter_mode_; }
+
+			void SetCloudTaaEnabled(bool e) { cloud_taa_enabled_ = e; }
+
+			bool GetCloudTaaEnabled() const { return cloud_taa_enabled_; }
+
+			void SetCloudTaaAlpha(float a) { cloud_taa_alpha_ = a; }
+
+			float GetCloudTaaAlpha() const { return cloud_taa_alpha_; }
+
+			void SetCloudTaaClamp(float c) { cloud_taa_clamp_ = c; }
+
+			float GetCloudTaaClamp() const { return cloud_taa_clamp_; }
+
+			glm::vec2 GetSubpixelJitter() const { return cloud_taa_enabled_ ? subpixel_jitter_ : glm::vec2(0.0f); }
+
 			// Scattering parameters
 			void SetRayleighScale(float s) { rayleigh_scale_ = s; }
 
@@ -209,6 +247,17 @@ namespace Boidsish {
 			float cloud_sun_light_scale_ = 1.0f;
 			float cloud_moon_light_scale_ = 2.0f;
 			float cloud_beer_powder_mix_ = 0.600f;
+
+			int   cloud_step_count_ = 48;
+			float cloud_extinction_factor_ = 0.005f;
+			float cloud_min_density_ = 0.01f;
+			float cloud_max_density_ = 1.0f;
+			float cloud_min_drop_off_ = 0.01f;
+			int   cloud_jitter_mode_ = 0; // 0 = Blue Noise, 1 = Bayer Matrix
+			bool  cloud_taa_enabled_ = true;
+			float cloud_taa_alpha_ = 0.95f;
+			float cloud_taa_clamp_ = 1.5f;
+			glm::vec2 subpixel_jitter_ = glm::vec2(0.0f);
 
 			float     rayleigh_scale_ = WeatherConstants::RayleighScale.normal;
 			float     mie_scale_ = WeatherConstants::MieScale.normal;

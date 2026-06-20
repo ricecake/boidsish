@@ -74,15 +74,26 @@ namespace Boidsish {
 		float cloudSunLightScale;                // offset 756, 4 bytes
 		float cloudMoonLightScale;               // offset 760, 4 bytes
 		float cloudBeerPowderMix;                // offset 764, 4 bytes
-		alignas(16) glm::mat4 cloudShadowMatrix; // offset 768, 64 bytes
-		alignas(16) glm::mat4 view;              // offset 832, 64 bytes
-		alignas(16) glm::mat4 projection;        // offset 896, 64 bytes
-		alignas(16) glm::vec3 lightningColor;    // offset 960, 12 bytes
-		float lightningPulse;                    // offset 972, 4 bytes
-		alignas(16) glm::vec4 sh_coeffs[9];      // offset 976, 144 bytes
-	}; // Total: 1120 bytes
+		int   cloudStepCount;                    // offset 768, 4 bytes
+		float cloudExtinctionFactor;             // offset 772, 4 bytes
+		float cloudMinDensity;                   // offset 776, 4 bytes
+		float cloudMaxDensity;                   // offset 780, 4 bytes
+		float cloudMinDropOff;                   // offset 784, 4 bytes
+		int   cloudJitterMode;                   // offset 788, 4 bytes
+		int   cloudTaaEnabled;                   // offset 792, 4 bytes
+		float cloudTaaAlpha;                     // offset 796, 4 bytes
+		float cloudTaaClamp;                     // offset 800, 4 bytes
+		float _pad_clouds_0;                     // offset 804, 4 bytes (padding for vec2 alignment)
+		alignas(8) glm::vec2 cloudSubpixelJitter;// offset 808, 8 bytes
+		alignas(16) glm::mat4 cloudShadowMatrix; // offset 816, 64 bytes
+		alignas(16) glm::mat4 view;              // offset 880, 64 bytes
+		alignas(16) glm::mat4 projection;        // offset 944, 64 bytes
+		alignas(16) glm::vec3 lightningColor;    // offset 1008, 12 bytes
+		float lightningPulse;                    // offset 1020, 4 bytes
+		alignas(16) glm::vec4 sh_coeffs[9];      // offset 1024, 144 bytes
+	}; // Total: 1168 bytes
 
-	static_assert(sizeof(LightingUbo) == 1120, "LightingUbo must be 1104 bytes for UBO alignment");
+	static_assert(sizeof(LightingUbo) == 1168, "LightingUbo alignment mismatch");
 
 	/**
 	 * @brief Light source data structure for rendering.

@@ -33,12 +33,24 @@ vec3 sampleSkyView(vec3 rd) {
 	return texture(u_skyViewLUT, vec2(u, v)).rgb;
 }
 
+const int bayer8x8[64] = int[](
+	0, 32, 8, 40, 2, 34, 10, 42,
+	48, 16, 56, 24, 50, 18, 58, 26,
+	12, 44, 4, 36, 14, 46, 6, 38,
+	60, 28, 52, 20, 62, 30, 54, 22,
+	3, 35, 11, 43, 1, 33, 9, 41,
+	51, 19, 59, 27, 49, 17, 57, 25,
+	15, 47, 7, 39, 13, 45, 5, 37,
+	63, 31, 55, 23, 61, 29, 53, 21
+);
+
 void main() {
-	float depth = texture(depthTexture, TexCoords).r;
+	vec2  jitteredTexCoords = TexCoords + cloudSubpixelJitter;
+	float depth = texture(depthTexture, jitteredTexCoords).r;
 	vec3  zenithRadiance = sampleSkyView(vec3(0, 1, 0)) * 4.0;
 
 	float z = depth * 2.0 - 1.0;
-	vec4  clipSpacePosition = vec4(TexCoords * 2.0 - 1.0, z, 1.0);
+	vec4  clipSpacePosition = vec4(jitteredTexCoords * 2.0 - 1.0, z, 1.0);
 	vec4  viewSpacePosition = invProjection * clipSpacePosition;
 	viewSpacePosition /= viewSpacePosition.w;
 	vec3 worldPos = (invView * viewSpacePosition).xyz;
@@ -92,7 +104,7 @@ void main() {
 	if (t_start < t_end) {
 		vec3 lightEnergy = vec3(0.0);
 
-		int samples = 48;
+		int samples = cloudStepCount;
 		int shadow_samples = 4;
 
 		// Capture primary light direction for multi-direction ambient sampling
@@ -104,7 +116,14 @@ void main() {
 			}
 		}
 
-		float jitter = fastSpatiotemporalBlueNoise(TexCoords, 0, int(1000*time));
+		float jitter = 0.0;
+		if (cloudJitterMode == 0) {
+			jitter = fastSpatiotemporalBlueNoise(TexCoords, 0, int(1000 * time));
+		} else {
+			ivec2 pixel = ivec2(gl_FragCoord.xy);
+			jitter = float(bayer8x8[(pixel.y & 7) * 8 + (pixel.x & 7)]) / 64.0;
+		}
+
 		float stepSize = (t_end - t_start) / float(samples);
 
 		for (int i = 0; i < samples; i++) {
@@ -138,10 +157,14 @@ void main() {
 			CloudLayer layer = computeCloudLayer(weather, props);
 
 			float d = calculateCloudDensity(p_curved_warped, weather, layer, props, time, false);
-			if (d <= 0.01)
+			if (d <= cloudMinDensity)
 				continue;
 
-			float stepDensity = d * stepSize * 0.005;
+			d = min(d, cloudMaxDensity);
+			if (d < cloudMinDropOff)
+				d *= smoothstep(0.0, cloudMinDropOff, d);
+
+			float stepDensity = d * stepSize * cloudExtinctionFactor;
 			float transmittanceAtStep = exp(-stepDensity);
 
 			vec3 stepScattering = vec3(0.0);
