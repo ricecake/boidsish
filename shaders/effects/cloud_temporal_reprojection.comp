@@ -22,6 +22,55 @@ uniform int   uFrameIndex;
 uniform vec2  uJitter;
 uniform float uCloudAltitude;
 
+vec3 RGBToYCoCg(vec3 rgb) {
+	float y  = dot(rgb, vec3(0.25, 0.5, 0.25));
+	float co = dot(rgb, vec3(0.5, 0.0, -0.5));
+	float cg = dot(rgb, vec3(-0.25, 0.5, -0.25));
+	return vec3(y, co, cg);
+}
+
+vec3 YCoCgToRGB(vec3 ycocg) {
+	float y  = ycocg.x;
+	float co = ycocg.y;
+	float cg = ycocg.z;
+	float r = y + co - cg;
+	float g = y + cg;
+	float b = y - co - cg;
+	return vec3(r, g, b);
+}
+
+
+vec4 SampleHistoryCatmullRom(sampler2D tex, vec2 uv, vec2 texSize) {
+	vec2 samplePos = uv * texSize;
+	vec2 texPos1 = floor(samplePos - 0.5) + 0.5;
+	vec2 f = samplePos - texPos1;
+
+	vec2 w0 = f * (-0.5 + f * (1.0 - 0.5 * f));
+	vec2 w1 = 1.0 + f * f * (-2.5 + 1.5 * f);
+	vec2 w2 = f * (0.5 + f * (2.0 - 1.5 * f));
+	vec2 w3 = f * f * (-0.5 + 0.5 * f);
+
+	vec2 w12 = w1 + w2;
+	vec2 offset12 = w2 / (w1 + w2);
+
+	vec2 texPos0 = texPos1 - 1.0;
+	vec2 texPos3 = texPos1 + 2.0;
+	vec2 texPos12 = texPos1 + offset12;
+
+	texPos0 /= texSize;
+	texPos3 /= texSize;
+	texPos12 /= texSize;
+
+	vec4 result = vec4(0.0);
+	result += texture(tex, vec2(texPos0.x, texPos12.y)) * w0.x * w12.y;
+	result += texture(tex, vec2(texPos12.x, texPos0.y)) * w12.x * w0.y;
+	result += texture(tex, vec2(texPos12.x, texPos12.y)) * w12.x * w12.y;
+	result += texture(tex, vec2(texPos3.x, texPos12.y)) * w3.x * w12.y;
+	result += texture(tex, vec2(texPos12.x, texPos3.y)) * w12.x * w3.y;
+
+	return result / (w12.x * w12.y + w0.x * w12.y + w12.x * w0.y + w3.x * w12.y + w12.x * w3.y);
+}
+
 void main() {
 	ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
 	ivec2 size = imageSize(outColor);
@@ -65,7 +114,11 @@ void main() {
 
 	vec4 historyRGBA = currentRGBA;
 	if (validHistory) {
-		historyRGBA = texture(uHistoryFrame, prevUV);
+		historyRGBA = SampleHistoryCatmullRom(uHistoryFrame, prevUV, vec2(size));
+
+		// Prevent Catmull-Rom ringing (overshoot and undershoot)
+		// historyRGBA.rgb = max(vec3(0.0), historyRGBA.rgb); // Kill negative energy
+		// historyRGBA.a = clamp(historyRGBA.a, 0.0, 1.0);    // Keep transmittance physical
 	}
 
 	vec4  historyDepth = validHistory ? texture(uHistoryCloudDepth, prevUV) : currDepth;
@@ -111,14 +164,14 @@ void main() {
 	for (int y = -2; y <= 2; y++) {
 		for (int x = -2; x <= 2; x++) {
 			// if(isNoisyFringe) {
-				vec4 smpH = texture(uHistoryFrame, uv + vec2(x, y) * texelSize);
+				// vec4 smpH = texture(uHistoryFrame, uv + vec2(x, y) * texelSize);
 			// }
 			// else {
 				vec4 smpC = texture(uCurrentFrame, uv + vec2(x, y) * texelSize);
 			// }
 
-			vec4 smp = mix(smpC, smpH, fringy);
-			// vec4 smp = smpC;
+			// vec4 smp = mix(smpC, smpH, fringy);
+			vec4 smp = smpC;
 
 			float spatialW = exp(-float(x*x + y*y) / 16.0);
 			float opacity = clamp(1.0 - smp.a, 0.0, 1.0);
@@ -154,6 +207,40 @@ void main() {
 	float alphaMean = alphaM1 / weightSumAlpha;
 	float alphaStd = sqrt(max(0.0, (alphaM2 / weightSumAlpha) - (alphaMean * alphaMean)));
 
+	// 5. Continuous confidence-based blend weight
+	float absDistDiff = abs(currentCloudDist - historyCloudDist);
+	float normalizedDiff = max(0.0, absDistDiff - currentCloudStep) / max(min(currentCloudDist, historyCloudDist), 1.0);
+
+	float depthConfidence;
+	if (currentIsSky != historyIsSky) {
+
+		if (currentIsSky) {
+			// We missed this frame, but hit last frame.
+			// If the historical cloud was thick (low miss probability), this is a real structural change -> low confidence.
+			// If the historical cloud was thin (high miss probability), this is just jitter noise -> high confidence.
+			depthConfidence = mix(0.15, 0.95, historyMissProbability);
+		} else {
+			// We hit this frame, but missed last frame.
+			// If we just hit a massive structure, trust the new data immediately to prevent ghosting -> low confidence.
+			// If we just hit a tiny wisp, bridge it with the sky history to prevent fireflies -> high confidence.
+			depthConfidence = mix(0.15, 0.95, currentMissProbability);
+		}
+
+	} else if (currentIsSky) {
+		depthConfidence = 1.0;
+	} else {
+		// Both hit cloud: Standard structural depth evaluation.
+
+		// We can optionally use the miss probability here as well to expand the
+		// depth tolerance for thin, wispy clouds that suffer from high first-hit variance.
+		float localMissProb = min(currentMissProbability, historyMissProbability);
+
+		float baseTolerance = mix(0.80, 0.25, smoothstep(0.0, 0.1, alphaMean));
+		float depthTolerance = baseTolerance + (localMissProb * 0.5); // Forgive up to 50% more variance on thin wisps
+
+		depthConfidence = 1.0 - smoothstep(0.05, depthTolerance, normalizedDiff);
+	}
+
 
 	// 4. "Dumb" High-Retention Accumulation
 	// We completely abandon volumetric depth tracking and Miss Probabilities.
@@ -161,13 +248,7 @@ void main() {
 	float uvEdgeDist = min(min(prevUV.x, 1.0 - prevUV.x), min(prevUV.y, 1.0 - prevUV.y));
 	float uvConfidence = smoothstep(0.0, 0.01, uvEdgeDist);
 
-	// Base weight is highly aggressive to crush any remaining jitter
-	float targetWeight = 0.1 * uvConfidence;
-	// float targetWeight = 0.99;
-	// float targetWeight = uvConfidence * mix(antiNyquist, 0.99, smoothstep(-0.1, 1.1, structuralFlux));
-
-	// 5. Solid Geometry Disocclusion (The Mountain Fix)
-	// Fetch un-interpolated scene depth to preserve hard mountain silhouettes
+	// 1. Fetch un-interpolated scene depth using texelFetch to preserve hard edges
 	ivec2 sceneTexSize = textureSize(uSceneDepth, 0);
 	ivec2 depthPos = ivec2(jitteredUV * vec2(sceneTexSize));
 	float rawSceneDepth = texelFetch(uSceneDepth, depthPos, 0).r;
@@ -180,59 +261,62 @@ void main() {
 		linearSceneDepth = 50000.0 * WORLD_SCALE_VALUE;
 	}
 
+	// 2. Distance-Scaling Epsilon
+	// Precision drops at a distance. A 1.5% error margin prevents distant Z-fighting.
 	float depthEpsilon = 10.0 * WORLD_SCALE_VALUE + (linearSceneDepth * 0.015);
 
-	// Foreground terrain object physically covers background cloud
+	// 3. Standard Disocclusion
+	// Foreground object covers background cloud
 	if (linearSceneDepth < currentCloudDist - depthEpsilon) {
 		validHistory = false;
 	}
 
-	// Jitter Silhouette Lock: Prevent terrain edges from smearing
+	// 4. Jitter Silhouette Lock
+	// Because the raymarcher terminates at the depth buffer, currentCloudDist
+	// will match linearSceneDepth if the ray hit the mountain.
 	bool currentIsTerrain = (linearSceneDepth - currentCloudDist) < depthEpsilon;
+
 	if (currentIsTerrain) {
+		// Pixel is currently on the mountain.
+		// If history was in the sky/clouds (significantly deeper), kill it to prevent white ringing.
 		if (historyCloudDist > linearSceneDepth + depthEpsilon) {
-			validHistory = false; // Cloud history bleeding onto mountain
+			validHistory = false;
 		}
 	} else {
+		// Pixel is currently in the sky/clouds.
+		// If history was on the mountain, kill it to prevent dark ringing.
 		if (abs(historyCloudDist - linearSceneDepth) < depthEpsilon && linearSceneDepth < 45000.0 * WORLD_SCALE_VALUE) {
-			validHistory = false; // Mountain history bleeding into sky/cloud
+			validHistory = false;
 		}
 	}
 
-	if (!validHistory) {
-		// targetWeight = 0.0;
-	}
+	// Aggressive accumulation: the spatial filter pre-blurs depth-coherent samples,
+	// so the TAA only needs to be conservative at actual depth discontinuities.
+	float targetWeight = 0.9 * uvConfidence;
 
-	currentRGBA = vec4(mean, 1.0-alphaMean);
-
-	vec4 finalRGBA = mix(currentRGBA, historyRGBA, targetWeight);
-
-    // if (isNoisyFringe) {
-    //     // targeted spatial melt: overwrite the raw stochastic noise with the local 3x3 mean
-    //     currentRGBA.rgb = mean;
-
-    //     // Optionally, soften the opacity slightly to physically thin out the fringe static
-    //     // currentRGBA.a = mix(currentRGBA.a, 1.0 - alphaMean, fringy);
-	// 	currentRGBA.a = historyRGBA.a;
-	// 	// targetWeight = 1.0 - fringy;
-    // }
-
-	// if(isNoisyFringe) finalRGBA.a = 0.0;
-
-	finalRGBA.a = mix(0.0, historyRGBA.a, fringy);
+	if (!validHistory) targetWeight *= 0.0;//150;
+	// if(isSilhouetteEdge) targetWeight = 1.0;
 
 	float finalCloudDist = currentCloudDist;
+
+	vec4  outputRGBA = mix(currentRGBA, vec4(mean, 1-alphaMean), step(0.5, fringy));
+	vec4  finalRGBA = mix(currentRGBA, historyRGBA, targetWeight);
 	float finalCloudLastHit = mix(currentCloudLastHit, historyCloudLastHit, targetWeight);
 	float finalCloudStep = mix(currentCloudStep, historyCloudStep, targetWeight);
 	float finalCloudMaxDensity = mix(currentCloudMaxDensity, historyCloudMaxDensity, targetWeight);
 
-	// if (structuralFlux > 0.01 && structuralRigidity < 0.8 && historyThickness/historyCloudStep > 0.180) finalRGBA = vec4(5, 0, 0, 0);
-	// if (structuralFlux > 0.00001 && historyThickness/historyCloudStep < 1.0) finalRGBA = vec4(5, 0, 0, 0);
+	// finalRGBA.r = float((log(currentCloudStep))/(currentThickness/1024));
+	// finalRGBA.a = 1.0-(float(structuralRigidity) * float((log(currentCloudStep))/(currentThickness/1024)));
+	// finalRGBA.r  = 4*step(0.6, currentMissProbability);
+	// finalRGBA.r = 4*structuralLock;
+	// finalRGBA.gba = vec3(0);
+	// finalRGBA = mix(vec4(0,0,0,1.0), vec4(10.0, 0,0,0.0), float(isSilhouetteEdge));
 
-	// if(isNoisyFringe)
-	// finalRGBA += vec4(10*fringy, 0, 0, 0);
+	// if (structuralLock < 0.6) finalRGBA = mix(vec4(5.0,0,0, 0.0), finalRGBA, smoothstep(0.4, 0.5, structuralLock));
 
-	// if (structuralFlux > 0.50 && structuralRigidity < 0.50) finalRGBA.a = 1.0 - alphaMean;
+	// if (isSilhouetteEdge) finalRGBA.g = smoothstep(0, 5, max(currentCloudStep, historyCloudStep));
+	// if (isSilhouetteEdge) finalRGBA.g = smoothstep(0, 5, max(currentCloudMaxDensity, historyCloudMaxDensity));
+	// if (finalCloudMaxDensity > 0.01) finalRGBA = vec4(currentThickness/1000, (int(currentThickness)%1000)/100, int(currentThickness)%10, 0.0);
 
 	imageStore(outColor, pixel, finalRGBA);
 	imageStore(outDepth, pixel, vec4(finalCloudDist, finalCloudLastHit, finalCloudStep, finalCloudMaxDensity));

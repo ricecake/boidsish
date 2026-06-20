@@ -350,7 +350,7 @@ float calculateCloudDensityExpV4(
 
 	vec3 roundP = heightGrid*round((p/heightGrid));
 	float dist = distance(p, roundP);
-	return 0.75*step(dist, 25*abs(0.5+sin(time*h)));
+	return 0.75*step(dist, 25*(1+h));
 }
 
 // Cloud density calculation helper
