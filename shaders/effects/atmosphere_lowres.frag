@@ -209,7 +209,7 @@ void main() {
 		// int timer = (int(time) / 2) + 2 * (int(time) % 2);
 
 
-		// float timer = ((frameIndex) / 2) + 2 * mod(frameIndex, 2);
+		// int timer = ((frameIndex) / 2) + 2 * (frameIndex%2);
 		// float jitter = fastSpatiotemporalBlueNoise(jitteredUV, 0, int(timer));
 
 		ivec2 pixel = ivec2(gl_FragCoord.xy);

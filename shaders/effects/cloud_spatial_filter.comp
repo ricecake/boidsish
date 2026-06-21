@@ -50,7 +50,7 @@ void main() {
 			float sampleCloudMaxDensity = sampleProps.a;
 			bool sampleIsSky = sampleDepth > 40000.0;
 
-			float noiseEdge = smoothstep(-0.10, 1.0, abs(sampleDepth-sampleCloudLastHit)/sampleCloudStep );
+			// float noiseEdge = smoothstep(-0.10, 1.0, abs(sampleDepth-sampleCloudLastHit)/sampleCloudStep );
 
 			// Spatial Gaussian
 			float spatialWeight = exp(-float(x*x + y*y) / 8.0);
