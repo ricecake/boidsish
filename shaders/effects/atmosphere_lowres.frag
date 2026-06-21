@@ -11,6 +11,17 @@ uniform sampler2D depthTexture;
 // uniform mat4 invView;
 // uniform mat4 invProjection;
 
+const int bayer8x8[64] = int[](
+	0, 32, 8, 40, 2, 34, 10, 42,
+	48, 16, 56, 24, 50, 18, 58, 26,
+	12, 44, 4, 36, 14, 46, 6, 38,
+	60, 28, 52, 20, 62, 30, 54, 22,
+	3, 35, 11, 43, 1, 33, 9, 41,
+	51, 19, 59, 27, 49, 17, 57, 25,
+	15, 47, 7, 39, 13, 45, 5, 37,
+	63, 31, 55, 23, 61, 29, 53, 21
+);
+
 uniform vec3  cloudColorUniform;
 uniform vec2  uJitter;
 uniform float uDeltaTime;
@@ -85,7 +96,7 @@ vec3 getUnstretchedCoords(vec3 p, vec3 earthCenter, vec3 viewPos, float R_earth)
 }
 
 void main() {
-	vec2  jitteredUV = TexCoords + uJitter;
+	vec2  jitteredUV = TexCoords;// + uJitter;
 	vec3  zenithRadiance = sampleSkyView(vec3(0, 1, 0));
 
 	// Canonical (un-jittered) ray for stable scene depth limit and motion vectors
@@ -196,9 +207,21 @@ void main() {
 			}
 		}
 		// int timer = (int(time) / 2) + 2 * (int(time) % 2);
-		float timer = ((frameIndex) / 2) + 2 * mod(frameIndex, 2);
-		float jitter = fastSpatiotemporalBlueNoise(jitteredUV, 0, int(timer));
+
+
+		// float timer = ((frameIndex) / 2) + 2 * mod(frameIndex, 2);
+		// float jitter = fastSpatiotemporalBlueNoise(jitteredUV, 0, int(timer));
+
+		ivec2 pixel = ivec2(gl_FragCoord.xy);
+		// float jitter = float(bayer8x8[(pixel.y & 7) * 8 + (pixel.x & 7)]) / 64.0;
+		float jitter = float(bayer8x8[((pixel.y & 7) * 8 + (pixel.x & 7) + frameIndex) % 64]) / 64.0;
+
+		// float timer = frameIndex + ((frameIndex+2)%3);
+		// float jitter = length(mod(timer*jitteredUV, 16)/16);
 		stepSize = clamp((t_end - t_start) / float(samples), 1.0, 750.0);
+		float minDist = R_ceiling - relRo.y;
+		float rayDist = t_end - t_start;
+		float maxDist = sqrt(R_ceiling * R_ceiling - relRo.y * relRo.y);
 
 		float t_offset = jitter * stepSize;
 		for (int i = 0; i < samples; i++) {
@@ -216,7 +239,9 @@ void main() {
 			CloudLayer layer = computeCloudLayer(weather, props);
 
 			// float d = clamp(calculateCloudDensity(p, weather, layer, props, time, false), mix(0.01, 0.005, smoothstep(-0.01, 0.3, rayDir.y)), 2.0);
-			float d = calculateCloudDensity(p, weather, layer, props, time, false);
+			// float d = max(calculateCloudDensity(p, weather, layer, props, time, false), mix(0.01, 0.005, smoothstep(-0.01, 0.3, rayDir.y)));
+			float d = clamp(calculateCloudDensity(p, weather, layer, props, time, false), mix(0.008, 0.05, smoothstep(minDist, maxDist, rayDist)) * smoothstep(0, rayDist, t), 1.0);
+			// float d = calculateCloudDensity(p, weather, layer, props, time, false);
 			// d = d * smoothstep(0.1, 2, d);
 			// if (d <= 0.000) continue;
 
@@ -231,7 +256,7 @@ void main() {
 
 
 			pathDensity = max(pathDensity, d);
-			float stepDensity = d * stepSize * 0.05;
+			float stepDensity = d * stepSize * 0.005;
 			float transmittanceAtStep = exp(-stepDensity);
 
 			vec3 stepScattering = vec3(0.0);

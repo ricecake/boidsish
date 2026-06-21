@@ -346,11 +346,15 @@ float calculateCloudDensityExpV4(
 ) {
 	float h = (p.y - layer.baseFloor) / layer.thickness;
 
-	float heightGrid = 25*(mix(250, 500, h)/25);
+	float heightGrid = 250*(mix(500, 1000, h)/250);
 
 	vec3 roundP = heightGrid*round((p/heightGrid));
 	float dist = distance(p, roundP);
-	return 0.75*step(dist, 25*(1+h));
+	float baseNoise = step(dist, 250*(1+h));
+	float erosion = (fastFbm3d(p/10000) + 1.0) * 0.5;
+	// baseNoise = remapClamp(baseNoise, erosion * 0.4, 1.0, 0.0, props.densityBase);
+
+	return baseNoise;// * erosion;
 }
 
 // Cloud density calculation helper
@@ -366,8 +370,8 @@ float calculateCloudDensity(
 	if (p.y < layer.baseFloor || p.y > layer.baseCeiling)
 		return 0.0;
 
-	return calculateCloudDensityExpV4(p, weather, layer, props, time, simplified);
-	// return calculateCloudDensityExpV2(p, weather, layer, props, time, simplified);
+	// return calculateCloudDensityExpV4(p, weather, layer, props, time, simplified);
+	return calculateCloudDensityExpV2(p, weather, layer, props, time, simplified);
 	// return calculateCloudDensityExpV1(p, weather, layer, props, time, simplified);
 	// return calculateCloudDensityHZDv1(p, weather, layer, props, time, simplified);
 }

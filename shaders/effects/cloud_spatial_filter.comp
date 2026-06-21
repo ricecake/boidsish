@@ -84,6 +84,7 @@ void main() {
 
 			// Multiply the firefly weight into the final factor
 			float weight = spatialWeight * opacityWeight * depthWeight * fireflyWeight * noiseEdge;
+			// float weight = spatialWeight * opacityWeight * depthWeight;
 
 			totalScattering += sampleColor.rgb * weight;
 			totalTransmittance += sampleColor.a * weight;
