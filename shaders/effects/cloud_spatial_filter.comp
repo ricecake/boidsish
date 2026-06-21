@@ -63,7 +63,8 @@ void main() {
 			// Solid Core: opacitySigma -> 5.0 (Strictly preserves physical cloud edges)
 			float opacitySigma = mix(0.0, 5.0, psdRigidity);
 			// Force a 5% minimum blend to prevent noise from mathematically isolating itself
-			float opacityWeight = max(0.05, exp(-opacityDiff * opacitySigma)) * noiseEdge;
+			// float opacityWeight = max(0.05, exp(-opacityDiff * opacitySigma)) * noiseEdge;
+			float opacityWeight = max(0.05, exp(-opacityDiff * opacitySigma));
 
 			// float flux = smoothstep(0, 0.3, abs(centerMaxDensity - sampleCloudMaxDensity) / max(centerMaxDensity, 0.01));
 			// opacityWeight = mix(opacityWeight, 1.0, flux);
@@ -83,7 +84,7 @@ void main() {
 			}
 
 			// Multiply the firefly weight into the final factor
-			float weight = spatialWeight * opacityWeight * depthWeight * fireflyWeight * noiseEdge;
+			float weight = spatialWeight * opacityWeight * depthWeight * fireflyWeight;
 			// float weight = spatialWeight * opacityWeight * depthWeight;
 
 			totalScattering += sampleColor.rgb * weight;

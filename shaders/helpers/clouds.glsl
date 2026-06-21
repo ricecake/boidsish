@@ -371,9 +371,9 @@ float calculateCloudDensity(
 		return 0.0;
 
 	// return calculateCloudDensityExpV4(p, weather, layer, props, time, simplified);
-	return calculateCloudDensityExpV2(p, weather, layer, props, time, simplified);
+	// return calculateCloudDensityExpV2(p, weather, layer, props, time, simplified);
 	// return calculateCloudDensityExpV1(p, weather, layer, props, time, simplified);
-	// return calculateCloudDensityHZDv1(p, weather, layer, props, time, simplified);
+	return calculateCloudDensityHZDv1(p, weather, layer, props, time, simplified);
 }
 
 

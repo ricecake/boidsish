@@ -71,6 +71,43 @@ vec4 SampleHistoryCatmullRom(sampler2D tex, vec2 uv, vec2 texSize) {
 	return result / (w12.x * w12.y + w0.x * w12.y + w12.x * w0.y + w3.x * w12.y + w12.x * w3.y);
 }
 
+
+float mitchell_netravali(float x) {
+    float B = 1.0 / 3.0;
+    float C = 1.0 / 3.0;
+
+    float ax = abs(x);
+    if (ax < 1) {
+        return ((12 - 9 * B - 6 * C) * ax * ax * ax + (-18 + 12 * B + 6 * C) * ax * ax + (6 - 2 * B)) / 6;
+    } else if ((ax >= 1) && (ax < 2)) {
+        return ((-B - 6 * C) * ax * ax * ax + (6 * B + 30 * C) * ax * ax + (-12 * B - 48 * C) * ax + (8 * B + 24 * C)) / 6;
+    } else {
+        return 0;
+    }
+}
+
+vec3 fetch_center_filtered(sampler2D inputTex, ivec2 pix) {
+    vec4 res = 0.0.xxxx;
+
+    for (int y = -1; y <= 1; ++y) {
+        for (int x = -1; x <= 1; ++x) {
+            ivec2 src = pix + ivec2(x, y);
+            vec4 col = vec4(texelFetch(inputTex, src, 0).rgb, 1);
+            float dist = length(-uJitter - vec2(x, y));
+            float wt = mitchell_netravali(dist);
+            col *= wt;
+            res += col;
+        }
+    }
+
+    return res.rgb / res.a;
+}
+
+// float antiFlickerBlend() {
+//         float clamp_dist = (min(abs(history.x - nmin.x), abs(history.x - nmax.x))) / max(max(history.x, ex.x), 1e-5);
+//         blend_factor *= mix(0.2, 1.0, smoothstep(0.0, 2.0, clamp_dist));
+// }
+
 void main() {
 	ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
 	ivec2 size = imageSize(outColor);
@@ -78,7 +115,7 @@ void main() {
 		return;
 
 	vec2 uv = (vec2(pixel) + 0.5) / vec2(size);
-	vec2 jitteredUV = uv;// + uJitter;
+	vec2 jitteredUV = uv + uJitter;
 
 	vec4  currentRGBA = texture(uCurrentFrame, uv);
 	vec4  currDepth = texture(uCurrentCloudDepth, uv);

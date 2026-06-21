@@ -96,7 +96,7 @@ vec3 getUnstretchedCoords(vec3 p, vec3 earthCenter, vec3 viewPos, float R_earth)
 }
 
 void main() {
-	vec2  jitteredUV = TexCoords;// + uJitter;
+	vec2  jitteredUV = TexCoords + uJitter;
 	vec3  zenithRadiance = sampleSkyView(vec3(0, 1, 0));
 
 	// Canonical (un-jittered) ray for stable scene depth limit and motion vectors
