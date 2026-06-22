@@ -60,7 +60,7 @@ void main() {
 			} else {
 				gl_PointSize *= (0.8 + size_var * 0.4);
 			}
-			gl_PointSize = clamp(gl_PointSize, 2.0, 40.0);
+			gl_PointSize = clamp(gl_PointSize, 2.0, 120.0);
 		} else {
 			gl_PointSize = base_size;
 		}
