@@ -263,6 +263,7 @@ namespace Boidsish {
 			GLuint low_res_depth_texture_ = 0;
 			GLuint low_res_velocity_texture_ = 0;
 			GLuint low_res_filtered_texture_ = 0;
+			GLuint low_res_spatial_aux_texture_ = 0;
 
 			// Temporal reprojection: double-buffered history at low res
 			GLuint    temporal_textures_[2] = {0, 0};

@@ -119,11 +119,6 @@ vec4 textureMitchell(sampler2D tex, vec2 uv, vec2 textureSize) {
 	return color / weightsSum;
 }
 
-// float antiFlickerBlend() {
-//         float clamp_dist = (min(abs(history.x - nmin.x), abs(history.x - nmax.x))) / max(max(history.x, ex.x), 1e-5);
-//         blend_factor *= mix(0.2, 1.0, smoothstep(0.0, 2.0, clamp_dist));
-// }
-
 void main() {
 	ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
 	ivec2 size = imageSize(outColor);
@@ -163,7 +158,6 @@ void main() {
 	bool validHistory = all(greaterThanEqual(prevUV, vec2(0.0))) && all(lessThanEqual(prevUV, vec2(1.0)));
 
 	// 3. Disocclusion Detection (Depth-based)
-	// Fetch un-interpolated scene depth to preserve hard edges
 	ivec2 sceneTexSize = textureSize(uSceneDepth, 0);
 	ivec2 depthPos = ivec2(jitteredUV * vec2(sceneTexSize));
 	float rawSceneDepth = texelFetch(uSceneDepth, depthPos, 0).r;
@@ -178,7 +172,6 @@ void main() {
 
 	float depthEpsilon = 20.0 * WORLD_SCALE_VALUE + (linearSceneDepth * 0.02);
 
-	// Standard disocclusion: foreground covers cloud
 	if (linearSceneDepth < currentCloudDist - depthEpsilon) {
 		validHistory = false;
 	}
@@ -186,7 +179,6 @@ void main() {
 	vec4 historyDepthProps = texture(uHistoryCloudDepth, prevUV);
 	float historyCloudDist = historyDepthProps.r;
 
-	// Reprojection disocclusion
 	if (validHistory) {
 		float distDiff = abs(currentCloudDist - historyCloudDist);
 		if (distDiff > depthEpsilon * 2.0) {
@@ -205,26 +197,23 @@ void main() {
 		historyLength = historyMoments.z;
 	}
 
-	historyLength = min(64.0, historyLength + 1.0);
+	historyLength = min(32.0, historyLength + 1.0);
 	if (!validHistory) {
 		historyLength = 1.0;
 		historyRGBA = currentRGBA;
+		historyMoments = vec4(0.0);
 	}
 
 	float alpha = 1.0 / historyLength;
-	// Put more trust in history for clouds (limit minimum alpha)
 	alpha = max(alpha, 0.05);
 
-	// Accumulate Color
 	vec4 accumulatedRGBA = mix(historyRGBA, currentRGBA, alpha);
 
-	// Accumulate Moments (Luma, Luma^2)
 	float currentLuma = luma(currentRGBA.rgb);
 	vec2  currentMoments = vec2(currentLuma, currentLuma * currentLuma);
 	vec2  accumulatedMoments = mix(historyMoments.xy, currentMoments, alpha);
 
-	// 5. Variance Clipping (on accumulated result to prevent ghosting)
-	// Use 3x3 neighborhood of CURRENT frame to bound history
+	// 5. Variance Clipping
 	vec3 m1 = vec3(0.0);
 	vec3 m2 = vec3(0.0);
 	for (int y = -1; y <= 1; y++) {
@@ -238,7 +227,7 @@ void main() {
 	vec3 mean = m1 / 9.0;
 	vec3 stddev = sqrt(max(vec3(0.0), (m2 / 9.0) - (mean * mean)));
 
-	float gamma = 2.0;
+	float gamma = 4.0; // Loosen clipping for clouds to allow more temporal accumulation
 	vec3 minColor = mean - gamma * stddev;
 	vec3 maxColor = mean + gamma * stddev;
 
@@ -249,6 +238,6 @@ void main() {
 
 	// 6. Output
 	imageStore(outColor, pixel, accumulatedRGBA);
-	imageStore(outDepth, pixel, currDepthProps); // Pass through current depth for spatial filter
+	imageStore(outDepth, pixel, currDepthProps);
 	imageStore(outMoments, pixel, vec4(accumulatedMoments, historyLength, 0.0));
 }

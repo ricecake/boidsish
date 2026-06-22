@@ -24,6 +24,7 @@ namespace Boidsish {
 				glDeleteTextures(1, &low_res_depth_texture_);
 				glDeleteTextures(1, &low_res_velocity_texture_);
 				glDeleteTextures(1, &low_res_filtered_texture_);
+				glDeleteTextures(1, &low_res_spatial_aux_texture_);
 			}
 			if (temporal_textures_[0]) {
 				glDeleteTextures(2, temporal_textures_);
@@ -74,6 +75,7 @@ namespace Boidsish {
 				glGenTextures(1, &low_res_depth_texture_);
 				glGenTextures(1, &low_res_velocity_texture_);
 				glGenTextures(1, &low_res_filtered_texture_);
+				glGenTextures(1, &low_res_spatial_aux_texture_);
 			}
 
 			int low_res_width = std::max(1, static_cast<int>(width_ * render_scale_));
@@ -108,9 +110,17 @@ namespace Boidsish {
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D, low_res_velocity_texture_, 0);
 
-			// Extra texture for spatial filter output (RGBA16F)
+			// Extra texture for spatial filter output (RGBA32F to match aux and shader)
 			glBindTexture(GL_TEXTURE_2D, low_res_filtered_texture_);
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, low_res_width, low_res_height, 0, GL_RGBA, GL_FLOAT, NULL);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, low_res_width, low_res_height, 0, GL_RGBA, GL_FLOAT, NULL);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+			// Extra texture for spatial filter ping-pong (RGBA32F to store variance too)
+			glBindTexture(GL_TEXTURE_2D, low_res_spatial_aux_texture_);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, low_res_width, low_res_height, 0, GL_RGBA, GL_FLOAT, NULL);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -302,27 +312,38 @@ namespace Boidsish {
 				cloud_depth_source = temporal_depth_textures_[temporal_index_];
 			}
 
-			// --- PASS 1.5: Spatial Filter ---
-			// SVGF-style: Use temporal variance to guide the spatial denoising.
+			// --- PASS 1.5: À-Trous Spatial Filter passes ---
+			// SVGF-style: Use temporal variance to guide the spatial denoising across multiple scales.
 			if (spatial_filter_shader_ && spatial_filter_shader_->isValid()) {
 				spatial_filter_shader_->use();
 				spatial_filter_shader_->setInt("uCloudColor", 0);
 				spatial_filter_shader_->setInt("uCloudDepth", 1);
 				spatial_filter_shader_->setInt("uCloudMoments", 2);
 
-				glActiveTexture(GL_TEXTURE0);
-				glBindTexture(GL_TEXTURE_2D, cloud_source);
-				glActiveTexture(GL_TEXTURE1);
-				glBindTexture(GL_TEXTURE_2D, cloud_depth_source);
-				glActiveTexture(GL_TEXTURE2);
-				glBindTexture(GL_TEXTURE_2D, temporal_moments_textures_[temporal_index_]);
+				GLuint ping = cloud_source;
+				GLuint pong = low_res_spatial_aux_texture_;
 
-				glBindImageTexture(0, low_res_filtered_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+				for (int i = 0; i < 4; ++i) {
+					int step_size = 1 << i;
+					spatial_filter_shader_->setInt("uStepSize", step_size);
 
-				glDispatchCompute((low_res_width + 7) / 8, (low_res_height + 7) / 8, 1);
-				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+					glActiveTexture(GL_TEXTURE0);
+					glBindTexture(GL_TEXTURE_2D, ping);
+					glActiveTexture(GL_TEXTURE1);
+					glBindTexture(GL_TEXTURE_2D, cloud_depth_source);
+					glActiveTexture(GL_TEXTURE2);
+					glBindTexture(GL_TEXTURE_2D, temporal_moments_textures_[temporal_index_]);
 
-				cloud_source = low_res_filtered_texture_;
+					glBindImageTexture(0, pong, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
+
+					glDispatchCompute((low_res_width + 7) / 8, (low_res_height + 7) / 8, 1);
+					glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+					ping = pong;
+					pong = (ping == low_res_spatial_aux_texture_) ? low_res_filtered_texture_ : low_res_spatial_aux_texture_;
+				}
+
+				cloud_source = ping;
 			}
 
 			// Store current VP for next frame's reprojection
