@@ -129,7 +129,8 @@ void main() {
 	vec2 jitteredUV = uv + uJitter;
 
 	// 1. Fetch Current Frame Data (Noisy)
-	vec4  currentRGBA = textureMitchell(uCurrentFrame, uv, vec2(size));
+	// vec4  currentRGBA = textureMitchell(uCurrentFrame, uv, vec2(size));
+	vec4  currentRGBA = texture(uCurrentFrame, uv);
 	vec4  currDepthProps = texture(uCurrentCloudDepth, uv);
 	float currentCloudDist = currDepthProps.r;
 	float currentCloudLastHit = currDepthProps.g;
@@ -200,13 +201,14 @@ void main() {
 	bool isSilhouetteEdge = (currentIsSky != historyIsSky);
 
 	float newStructureConfidence = smoothstep(0.0, 0.5, max(0.0, currentCloudMaxDensity - historyCloudMaxDensity) / max(historyCloudMaxDensity, 0.1));
+	// if (newStructureConfidence >= 1.0) validHistory = false;
 
-	if (validHistory) {
-		float distDiff = abs(currentCloudDist - historyCloudDist);
-		if (distDiff > depthEpsilon * 2.0) {
-			validHistory = false;
-		}
-	}
+	// if (validHistory) {
+	// 	float distDiff = abs(currentCloudDist - historyCloudDist);
+	// 	if (distDiff > depthEpsilon * 2.0) {
+	// 		validHistory = false;
+	// 	}
+	// }
 
 	// 4. Accumulation
 	vec4  historyRGBA = vec4(0.0);
@@ -353,9 +355,9 @@ void main() {
 	alpha = max(alpha, 0.05);
 
 	// Force the alpha to 1.0 (trust current frame entirely) if we hit a new dense core
-	alpha = mix(alpha, 1.0, newStructureConfidence);
+	// alpha = mix(alpha, 1.0, newStructureConfidence);
 
-	currentRGBA = vec4(YCoCgToRGB(spatialMean), 1.0-alphaMean);
+	// currentRGBA = vec4(YCoCgToRGB(spatialMean), 1.0-alphaMean);
 	vec4 accumulatedRGBA = mix(historyRGBA, currentRGBA, alpha);
 
 	float currentLuma = luma(currentRGBA.rgb);
