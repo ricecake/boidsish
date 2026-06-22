@@ -179,8 +179,8 @@ namespace Boidsish {
 			// --- Halton Jitter calculation ---
 			halton_index_ = (halton_index_ + 1) % 16;
 			glm::vec2 jitter = glm::vec2(
-				(Halton(halton_index_ + 1, 2) - 0.5f) / static_cast<float>(width_),
-				(Halton(halton_index_ + 1, 3) - 0.5f) / static_cast<float>(height_)
+				(Halton(halton_index_ + 1, 2) - 0.5f) / static_cast<float>(width_ * render_scale_),
+				(Halton(halton_index_ + 1, 3) - 0.5f) / static_cast<float>(height_ * render_scale_)
 			);
 
 			// --- PASS 1: Low-res Cloud Rendering ---
