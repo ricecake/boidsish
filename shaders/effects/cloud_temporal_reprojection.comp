@@ -199,6 +199,8 @@ void main() {
 
 	bool isSilhouetteEdge = (currentIsSky != historyIsSky);
 
+	float newStructureConfidence = smoothstep(0.0, 0.5, max(0.0, currentCloudMaxDensity - historyCloudMaxDensity) / max(historyCloudMaxDensity, 0.1));
+
 	if (validHistory) {
 		float distDiff = abs(currentCloudDist - historyCloudDist);
 		if (distDiff > depthEpsilon * 2.0) {
@@ -257,11 +259,16 @@ void main() {
 		}
 	}
 
-	vec3 mean = m1 / weightSumColor;
-	vec3 stddev = sqrt(max(vec3(0.0), (m2 / weightSumColor) - (mean * mean)));
+	vec3 spatialMean = m1 / weightSumColor;
+	vec3 stddev = sqrt(max(vec3(0.0), (m2 / weightSumColor) - (spatialMean * spatialMean)));
 
 	float alphaMean = alphaM1 / weightSumAlpha;
 	float alphaStd = sqrt(max(0.0, (alphaM2 / weightSumAlpha) - (alphaMean * alphaMean)));
+
+	float histLumaMean = historyMoments.x;
+	float histLumaSqMean = historyMoments.y;
+	float temporalVar = max(0.0, histLumaSqMean - (histLumaMean * histLumaMean));
+	float temporalStdDev = sqrt(temporalVar);
 
 	// Dynamic Gamma
 	float gamma = mix(0.75, 2.5, structuralLock);
@@ -272,28 +279,28 @@ void main() {
 	// is temporarily mismatched with the history. Expand the box massively to
 	// let the historical data survive the clip.
 	if (isSilhouetteEdge) {
-		gamma *= 1.0;
+		gamma *= 1.5;
 		alphaGamma *= 1.1;
-		// gamma *= 4.0;
-		// alphaGamma *= 3.0;
 	}
 
 	// Minimum variance floor
-	float minStddev = max(0.02, mean.x * 0.15);
+	float minStddev = max(0.02, spatialMean.x * 0.15);
 	stddev = max(stddev, vec3(minStddev));
 	alphaStd = max(alphaStd, 0.05);
 
-	vec3 minColor = mean - gamma * stddev;
-	vec3 maxColor = mean + gamma * stddev;
+	float minExtents = max(0.02, spatialMean.x * 0.15);
+	vec3 clipExtents = max(vec3(temporalStdDev * gamma), vec3(minExtents));
 
+	vec3 minColor = spatialMean - clipExtents;
+	vec3 maxColor = spatialMean + clipExtents;
 
 	float falseNegativeLikelihood = smoothstep(0.1, 1.0, currentMissProbability);
-	maxColor += vec3(1.0) * falseNegativeLikelihood; // Expand bounds upward
+	maxColor += spatialMean * falseNegativeLikelihood; // Expand bounds upward
 
 	vec3 historyYCoCg = RGBToYCoCg(historyRGBA.rgb);
 
-	// Clip-toward-mean YCoCg AABB intersection
-	vec3 clipDir = mean - historyYCoCg;
+	// Clip-toward-spatialMean YCoCg AABB intersection
+	vec3 clipDir = spatialMean - historyYCoCg;
 	vec3 clipFactors = vec3(1.0);
 
 	for (int i = 0; i < 3; i++) {
@@ -307,7 +314,7 @@ void main() {
 		}
 	}
 	float clipT = clamp(max(clipFactors.x, max(clipFactors.y, clipFactors.z)), 0.0, 1.0);
-	historyYCoCg = mix(historyYCoCg, mean, clipT);
+	historyYCoCg = mix(historyYCoCg, spatialMean, clipT);
 	historyRGBA.rgb = YCoCgToRGB(historyYCoCg);
 
 	// Keep alpha bounds physical to prevent transmittance inversion
@@ -323,7 +330,7 @@ void main() {
 	// float falseNegativeLikelihood = smoothstep(0.1, 1.0, currentMissProbability);
 	maxAlpha += (1.0 - alphaMean) * falseNegativeLikelihood; // Expand bounds upward
 
-	// 3. 1D Clip-Toward-Mean Intersection
+	// 3. 1D Clip-Toward-spatialMean Intersection
 	float alphaClipDir = alphaMean - historyOpacity;
 	float alphaClipFactor = 1.0;
 
@@ -342,11 +349,13 @@ void main() {
 	float clippedAlpha = mix(historyOpacity, alphaMean, finalAlphaClipT);
 	historyRGBA.a = 1.0 - clamp(clippedAlpha, 0.0, 1.0);
 
-
 	float alpha = 1.0 / historyLength;
 	alpha = max(alpha, 0.05);
 
-	currentRGBA = vec4(YCoCgToRGB(mean), 1-alphaMean);
+	// Force the alpha to 1.0 (trust current frame entirely) if we hit a new dense core
+	alpha = mix(alpha, 1.0, newStructureConfidence);
+
+	currentRGBA = vec4(YCoCgToRGB(spatialMean), 1-alphaMean);
 	vec4 accumulatedRGBA = mix(historyRGBA, currentRGBA, alpha);
 
 	float currentLuma = luma(currentRGBA.rgb);
