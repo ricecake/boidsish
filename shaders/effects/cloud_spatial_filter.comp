@@ -42,7 +42,7 @@ void main() {
 
 	// Adaptive thresholds based on noise levels and history length
 	// We trust history more as it accumulates, allowing for more aggressive blurring of initial noise
-	float historyScale = mix(2.0, 1.0, smoothstep(1.0, 10.0, centerHistory));
+	float historyScale = mix(8.0, 1.0, smoothstep(1.0, 10.0, centerHistory));
 	float phiLuma = (10.0 * stdLuma + 0.01) * historyScale;
 	float phiDensity = (0.5 * stdDensity + 0.1) * historyScale;
 	float phiTransmittance = 0.1 * historyScale;

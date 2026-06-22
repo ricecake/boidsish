@@ -150,7 +150,7 @@ void main() {
 		for (int x = -1; x <= 1; x++) {
 			vec2 sampleUV = uv + vec2(x, y) * texelSize;
 			float d = texture(uCurrentCloudDepth, sampleUV).a;
-			if (d < closestDist) {
+			if (d > closestDist) {
 				closestDist = d;
 				closestUV = sampleUV;
 			}
@@ -263,7 +263,6 @@ void main() {
 	float alphaMean = alphaM1 / weightSumAlpha;
 	float alphaStd = sqrt(max(0.0, (alphaM2 / weightSumAlpha) - (alphaMean * alphaMean)));
 
-
 	// Dynamic Gamma
 	float gamma = mix(0.75, 2.5, structuralLock);
 	float alphaGamma = mix(0.5, 1.5, structuralLock);
@@ -289,7 +288,7 @@ void main() {
 
 
 	float falseNegativeLikelihood = smoothstep(0.1, 1.0, currentMissProbability);
-	maxColor += mean * falseNegativeLikelihood; // Expand bounds upward
+	maxColor += vec3(1.0) * falseNegativeLikelihood; // Expand bounds upward
 
 	vec3 historyYCoCg = RGBToYCoCg(historyRGBA.rgb);
 
