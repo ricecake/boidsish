@@ -132,8 +132,6 @@ void main() {
 	vec2 jitteredUV = uv + uJitter;
 
 	vec4  currentRGBA = textureMitchell(uCurrentFrame, uv, vec2(size));
-
-	// vec4  currentRGBA = texture(uCurrentFrame, uv);
 	vec4  currDepth = texture(uCurrentCloudDepth, uv);
 	float currentCloudDist = currDepth.r;
 	float currentCloudLastHit = currDepth.g;
@@ -275,8 +273,8 @@ void main() {
 	// is temporarily mismatched with the history. Expand the box massively to
 	// let the historical data survive the clip.
 	if (isSilhouetteEdge) {
-		gamma *= 1.5;
-		alphaGamma *= 1.5;
+		gamma *= 1.0;
+		alphaGamma *= 1.1;
 		// gamma *= 4.0;
 		// alphaGamma *= 3.0;
 	}
@@ -306,7 +304,7 @@ void main() {
 		}
 	}
 	float clipT = clamp(max(clipFactors.x, max(clipFactors.y, clipFactors.z)), 0.0, 1.0);
-	float clipEnforcement = isSilhouetteEdge ? 0.0 : mix(0.1, 1.0, structuralLock);
+	float clipEnforcement = 1.0;//isSilhouetteEdge ? 0.0 : mix(0.1, 1.0, structuralLock);
 
 	vec3 clippedYCoCg = mix(historyYCoCg, mean, clipT);
 	historyYCoCg = mix(historyYCoCg, clippedYCoCg, clipEnforcement);
@@ -315,9 +313,9 @@ void main() {
 
 	// Keep alpha bounds physical to prevent transmittance inversion
 	float historyOpacity = clamp(1.0 - historyRGBA.a, 0.0, 1.0);
-	if (!isSilhouetteEdge) {
+	// if (!isSilhouetteEdge) {
 		historyOpacity = clamp(historyOpacity, alphaMean - alphaGamma * alphaStd, alphaMean + alphaGamma * alphaStd);
-	}
+	// }
 	historyRGBA.a = 1.0 - historyOpacity;
 
 
@@ -423,7 +421,7 @@ void main() {
 	// float targetWeight = 15/16 * uvConfidence;
 
 	// if (isNoisyFringe) targetWeight = 15/16 * uvConfidence;
-	if (!validHistory) targetWeight *= 0.0;//150;
+	// if (!validHistory) targetWeight *= 0.0;//150;
 	// if(isSilhouetteEdge) targetWeight = 1.0;
 
 	float finalCloudDist = currentCloudDist;
@@ -431,6 +429,8 @@ void main() {
 	// vec4  outputRGBA = mix(currentRGBA, vec4(mean, 1-alphaMean), step(0.5, fringy));
 
 	vec4  finalRGBA = mix(currentRGBA, historyRGBA, targetWeight);
+	// finalRGBA.a = mix(currentRGBA.a, historyRGBA.a, 0.5);
+	finalRGBA.a = mix(currentRGBA.a, historyRGBA.a, currentMissProbability);
 	float finalCloudLastHit = mix(currentCloudLastHit, historyCloudLastHit, targetWeight);
 	float finalCloudStep = mix(currentCloudStep, historyCloudStep, targetWeight);
 	float finalCloudMaxDensity = mix(currentCloudMaxDensity, historyCloudMaxDensity, targetWeight);

@@ -211,10 +211,12 @@ void main() {
 
 		// int timer = ((frameIndex) / 2) + 2 * (frameIndex%2);
 		// float jitter = fastSpatiotemporalBlueNoise(jitteredUV, 0, int(timer));
+		float jitter = fastSpatiotemporalBlueNoise(jitteredUV, 0, int(frameIndex));
 
-		ivec2 pixel = ivec2(gl_FragCoord.xy);
-		// float jitter = float(bayer8x8[(pixel.y & 7) * 8 + (pixel.x & 7)]) / 64.0;
-		float jitter = float(bayer8x8[((pixel.y & 7) * 8 + (pixel.x & 7) + frameIndex) % 64]) / 64.0;
+		// ivec2 pixel = ivec2(gl_FragCoord.xy);
+				// float jitter = float(bayer8x8[(pixel.y & 7) * 8 + (pixel.x & 7)]) / 64.0;
+
+		// float jitter = float(bayer8x8[((pixel.y & 7) * 8 + (pixel.x & 7) + frameIndex) % 64]) / 64.0;
 
 		// float timer = frameIndex + ((frameIndex+2)%3);
 		// float jitter = length(mod(timer*jitteredUV, 16)/16);
