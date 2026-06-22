@@ -27,6 +27,7 @@ uniform vec2  uJitter;
 uniform float uDeltaTime;
 
 uniform sampler2D uHistoryDepth; // Previous frame's accumulated depth (firstHit, lastHit, stepSize, 0)
+uniform sampler2D uHistoryMoments; // Previous accumulated moments (Luma1, Luma2, Density2, historyLength)
 uniform mat4  uPrevViewProjection;
 uniform bool  uHasHistory;
 
@@ -155,9 +156,13 @@ void main() {
 
 	t_end = min(t_end, dist);
 
-	// Use reprojected history to narrow the march range
+	// Use reprojected history to narrow the march range and guide sample count
 	float fullStart = t_start;
 	float fullEnd = t_end;
+	int   samples = 64;
+	float historyVariance = 0.0;
+	float historyLength = 0.0;
+
 	if (uHasHistory && t_start < t_end) {
 		vec4 prevClip = uPrevViewProjection * vec4(viewPos + rayDir * max(t_start, 0.1), 1.0);
 		vec2 histUV = (prevClip.xy / prevClip.w) * 0.5 + 0.5;
@@ -168,15 +173,26 @@ void main() {
 			float histLast = histDepth.g;
 			float histStep = histDepth.b;
 
+			vec4 histMoments = texture(uHistoryMoments, histUV);
+			historyVariance = max(0.0, histMoments.y - histMoments.x * histMoments.x);
+			historyLength = histMoments.w;
+
+			// Newly disoccluded or high-variance pixels get more samples
+			float varianceBoost = smoothstep(0.0, 0.05, historyVariance);
+			float historyBoost = 1.0 - smoothstep(1.0, 16.0, historyLength);
+			samples = int(mix(48.0, 128.0, max(varianceBoost, historyBoost)));
+
 			// Only narrow if history had valid cloud hits (not sky distance)
 			if (histFirst > 0.0 && histFirst < 40000.0 * worldScale) {
-				// Expand the known region by a margin to catch clouds that are growing/moving
-				float margin = max(histStep * 2.0, (histLast - histFirst) * 0.5);
+				// Dynamic margin based on variance and history: wider if unstable
+				float marginScale = mix(1.0, 4.0, max(varianceBoost, historyBoost));
+				float margin = max(histStep * 2.0 * marginScale, (histLast - histFirst) * 0.5 * marginScale);
+
 				float guidedStart = max(t_start, histFirst - margin);
 				float guidedEnd = min(t_end, histLast + margin);
 
 				// Only use the guided range if it's a meaningful narrowing
-				if (guidedEnd > guidedStart && (guidedEnd - guidedStart) < (t_end - t_start) * 0.9) {
+				if (guidedEnd > guidedStart && (guidedEnd - guidedStart) < (t_end - t_start) * 0.95) {
 					t_start = guidedStart;
 					t_end = guidedEnd;
 				}
@@ -194,8 +210,6 @@ void main() {
 
 	if (t_start < t_end) {
 		vec3 lightEnergy = vec3(0.0);
-
-		int samples = 64;
 		int shadow_samples = 4;
 
 		// Capture primary light direction for multi-direction ambient sampling
@@ -209,30 +223,40 @@ void main() {
 		// int timer = (int(time) / 2) + 2 * (int(time) % 2);
 
 
-		int timer = ((frameIndex) / 2) + 2 * (frameIndex%2);
-		// float jitter = fastSpatiotemporalBlueNoise(jitteredUV, 0, int(timer));
-		// float jitter = fastSpatiotemporalBlueNoise(jitteredUV, 0, int(frameIndex));
+		float jitter = fastSpatiotemporalBlueNoise(jitteredUV, 0, frameIndex);
 
-		ivec2 pixel = ivec2(gl_FragCoord.xy);
-		// float jitter = float(bayer8x8[(pixel.y & 7) * 8 + (pixel.x & 7)]) / 64.0;
-		// float jitter = float(bayer8x8[((pixel.y & 7) * 8 + (pixel.x & 7) + frameIndex) % 64]) / 64.0;
-		float jitter = float(bayer8x8[((pixel.y & 7) * 8 + (pixel.x & 7) + timer) % 64]) / 64.0;
+		// Use a numerically stable altitude calculation to maintain precision at distance.
+		// altitude = length(p - earthCenter) - R_earth
+		// altitude = (length(p - earthCenter)^2 - R_earth^2) / (length(p - earthCenter) + R_earth)
 
-		// float timer = frameIndex + ((frameIndex+2)%3);
-		// float jitter = length(mod(timer*jitteredUV, 16)/16);
-		stepSize = clamp((t_end - t_start) / float(samples), 1.0, 750.0);
-		float minDist = R_ceiling - relRo.y;
+		// Revised stepSize calculation: factor in total ray distance for precision issues at horizon
 		float rayDist = t_end - t_start;
-		float maxDist = sqrt(R_ceiling * R_ceiling - relRo.y * relRo.y);
+		float precisionLimit = max(1.0, t_end * 1e-5);
+		stepSize = clamp(rayDist / float(samples), precisionLimit, 750.0);
 
+		// Targeted Step Offset: ensure jittered offset is relative to the narrowed range
 		float t_offset = jitter * stepSize;
+
+		float minDist = R_ceiling - relRo.y;
+		float maxDist = sqrt(max(0.0, R_ceiling * R_ceiling - relRo.y * relRo.y));
+
+		// Pre-calculate loop invariants for numerically stable altitude
+		float H0 = length(relRo) - R_earth;
+		float roDotRd = dot(relRo, rayDir);
+		float h0Term = 2.0 * R_earth * H0 + H0 * H0;
+
 		for (int i = 0; i < samples; i++) {
 			float t = t_start + t_offset + (float(i)) * stepSize;
 			if (t > dist || t > t_end)
 				break;
 
 			vec3 p = viewPos + rayDir * t;
-			float altitude = length(p - earthCenter) - R_earth;
+
+			// Numerically stable altitude calculation using camera-relative offsets
+			// This avoids precision loss when subtracting large planetary radiuses.
+			float r2_minus_R2 = h0Term + 2.0 * t * roDotRd + t * t;
+			float r = sqrt(max(0.0, r2_minus_R2 + R_earth * R_earth));
+			float altitude = r2_minus_R2 / (r + R_earth);
 			p.y = altitude;
 
 			float h_norm = clamp((altitude - props.altitude * props.worldScale) / max(props.thickness * props.worldScale, 1.0), 0.0, 1.0);
