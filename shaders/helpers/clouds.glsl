@@ -370,6 +370,7 @@ float calculateCloudDensity(
 	if (p.y < layer.baseFloor || p.y > layer.baseCeiling)
 		return 0.0;
 
+	// Need a worley fbm to mix in
 	// return calculateCloudDensityExpV4(p, weather, layer, props, time, simplified);
 	return calculateCloudDensityExpV2(p, weather, layer, props, time, simplified);
 	// return calculateCloudDensityExpV1(p, weather, layer, props, time, simplified);

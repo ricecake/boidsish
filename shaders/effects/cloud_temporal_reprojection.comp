@@ -149,7 +149,7 @@ void main() {
 	for (int y = -1; y <= 1; y++) {
 		for (int x = -1; x <= 1; x++) {
 			vec2 sampleUV = uv + vec2(x, y) * texelSize;
-			float d = texture(uCurrentCloudDepth, sampleUV).r;
+			float d = texture(uCurrentCloudDepth, sampleUV).a;
 			if (d < closestDist) {
 				closestDist = d;
 				closestUV = sampleUV;
@@ -234,8 +234,8 @@ void main() {
 			// If it's a solid core, we respect opacity (bilateral) to preserve the sharp edge.
 			// If it's a noisy fringe, we force the opacity multiplier to 1.0, creating a
 			// maximum-strength Gaussian blur that melts the stochastic noise into the sky.
-			float adjustedOpacity = isNoisyFringe ? 1.0 : max(opacity, 0.001);
-			float colorW = spatialW * adjustedOpacity;
+			// float adjustedOpacity = isNoisyFringe ? 1.0 : max(opacity, 0.001);
+			float colorW = spatialW * max(opacity, 0.001);
 
 			// if(isNoisyFringe && x ==0 && y == 0) {
 			// 	colorW = 0.0;
@@ -287,6 +287,10 @@ void main() {
 	vec3 minColor = mean - gamma * stddev;
 	vec3 maxColor = mean + gamma * stddev;
 
+float falseNegativeLikelihood = smoothstep(0.1, 1.0, currentMissProbability);
+maxColor += mean * falseNegativeLikelihood; // Expand bounds upward
+
+
 	vec3 historyYCoCg = RGBToYCoCg(historyRGBA.rgb);
 
 	// Clip-toward-mean YCoCg AABB intersection
@@ -313,11 +317,38 @@ void main() {
 
 	// Keep alpha bounds physical to prevent transmittance inversion
 	float historyOpacity = clamp(1.0 - historyRGBA.a, 0.0, 1.0);
-	// if (!isSilhouetteEdge) {
-		historyOpacity = clamp(historyOpacity, alphaMean - alphaGamma * alphaStd, alphaMean + alphaGamma * alphaStd);
-	// }
-	historyRGBA.a = 1.0 - historyOpacity;
+// 1. Establish the standard spatial bounds
+float minAlpha = alphaMean - alphaGamma * alphaStd;
+float maxAlpha = alphaMean + alphaGamma * alphaStd;
 
+// 2. Asymmetric Box Expansion (The "Trust History" Fix)
+// If the current frame has a high miss probability, it's highly likely the spatial
+// neighborhood is falsely reporting empty sky. We dynamically inflate the maximum
+// bound to prevent valid history from being clipped away by a noisy miss.
+// float falseNegativeLikelihood = smoothstep(0.1, 1.0, currentMissProbability);
+maxAlpha += (1.0 - alphaMean) * falseNegativeLikelihood; // Expand bounds upward
+
+// 3. 1D Clip-Toward-Mean Intersection
+float alphaClipDir = alphaMean - historyOpacity;
+float alphaClipFactor = 1.0;
+
+if (abs(alphaClipDir) > 0.0001) {
+    if (historyOpacity < minAlpha) {
+        alphaClipFactor = (minAlpha - historyOpacity) / alphaClipDir;
+    } else if (historyOpacity > maxAlpha) {
+        alphaClipFactor = (maxAlpha - historyOpacity) / alphaClipDir;
+    } else {
+        alphaClipFactor = 0.0; // History is safely inside the bounds
+    }
+}
+
+// 4. Apply the clip
+float finalAlphaClipT = clamp(alphaClipFactor, 0.0, 1.0);
+float clippedAlpha = mix(historyOpacity, alphaMean, finalAlphaClipT);
+
+// 5. Final Enforcement (allowing silhouette relaxation if needed)
+historyOpacity = mix(historyOpacity, clippedAlpha, clipEnforcement);
+historyRGBA.a = 1.0 - clamp(historyOpacity, 0.0, 1.0);
 
 	// 5. Continuous confidence-based blend weight
 	float absDistDiff = abs(currentCloudDist - historyCloudDist);
@@ -417,7 +448,7 @@ void main() {
 
 	// Aggressive accumulation: the spatial filter pre-blurs depth-coherent samples,
 	// so the TAA only needs to be conservative at actual depth discontinuities.
-	float targetWeight = lumaMix;// * uvConfidence * depthConfidence * fringy;
+	float targetWeight = lumaMix * uvConfidence;// * depthConfidence;// * fringy;
 	// float targetWeight = 15/16 * uvConfidence;
 
 	// if (isNoisyFringe) targetWeight = 15/16 * uvConfidence;
@@ -430,7 +461,7 @@ void main() {
 
 	vec4  finalRGBA = mix(currentRGBA, historyRGBA, targetWeight);
 	// finalRGBA.a = mix(currentRGBA.a, historyRGBA.a, 0.5);
-	finalRGBA.a = mix(currentRGBA.a, historyRGBA.a, currentMissProbability);
+	finalRGBA.a = mix(currentRGBA.a, historyRGBA.a, 0.75);
 	float finalCloudLastHit = mix(currentCloudLastHit, historyCloudLastHit, targetWeight);
 	float finalCloudStep = mix(currentCloudStep, historyCloudStep, targetWeight);
 	float finalCloudMaxDensity = mix(currentCloudMaxDensity, historyCloudMaxDensity, targetWeight);
