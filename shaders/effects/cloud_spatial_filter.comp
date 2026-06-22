@@ -1,10 +1,17 @@
 #version 460 core
 layout(local_size_x = 8, local_size_y = 8) in;
 
-layout(binding = 0, rgba16f) uniform image2D outFilteredColor;
+layout(binding = 0, rgba32f) uniform image2D outFilteredColor;
 
-uniform sampler2D uCloudColor;  // low_res_texture_
-uniform sampler2D uCloudDepth;  // low_res_depth_texture_
+uniform sampler2D uCloudColor;   // Accumulated RGBA or previous pass result
+uniform sampler2D uCloudDepth;   // Accumulated Depth Props (dist, lastHit, step, density)
+uniform sampler2D uCloudMoments; // Accumulated Moments (Luma1, Luma2, Density2, historyLength)
+uniform int       uStepSize;     // 1, 2, 4, 8, 16...
+
+#include "lygia/color/luma.glsl"
+
+// À-Trous B3-Spline Kernel (5x5)
+const float kernel[5] = float[](1.0/16.0, 1.0/4.0, 3.0/8.0, 1.0/4.0, 1.0/16.0);
 
 void main() {
 	ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
@@ -17,86 +24,68 @@ void main() {
 
 	vec4 centerColor = texture(uCloudColor, uv);
 	vec4 centerProps = texture(uCloudDepth, uv);
+	vec4 centerMoments = texture(uCloudMoments, uv);
 
 	float centerDepth = centerProps.r;
-	float centerMaxDensity = centerProps.a;
-	bool centerIsSky = centerDepth > 40000.0;
+	float centerDensity = centerProps.a;
+	float centerTransmittance = centerColor.a;
+	bool  centerIsSky = centerDepth > 40000.0;
+	float centerHistory = centerMoments.w;
 
-	// 0.0 = Formless haze/fringe, 1.0 = Solid cloud core
-	float psdRigidity = smoothstep(0.0, 0.4, centerMaxDensity);
+	// Variance estimation
+	float varLuma = max(0.0, centerMoments.y - centerMoments.x * centerMoments.x);
+	float varDensity = max(0.0, centerMoments.z - centerDensity * centerDensity);
 
-	// Dynamic Depth Tolerance
-	// Haze needs massive depth forgiveness. Cores need moderate edge preservation.
-	float depthSigma = mix(15000.0, 1000.0, psdRigidity);
+	// SVGF-style: Use temporal variance to drive edge stopping
+	float stdLuma = sqrt(varLuma);
+	float stdDensity = sqrt(varDensity);
 
-	// Center Opacity for Bilateral Weighting
-	float centerOpacity = clamp(1.0 - centerColor.a, 0.0, 1.0);
+	// Adaptive thresholds based on noise levels and history length
+	// We trust history more as it accumulates, allowing for more aggressive blurring of initial noise
+	float historyScale = mix(2.0, 1.0, smoothstep(1.0, 10.0, centerHistory));
+	float phiLuma = (10.0 * stdLuma + 0.01) * historyScale;
+	float phiDensity = (0.5 * stdDensity + 0.1) * historyScale;
+	float phiTransmittance = 0.1 * historyScale;
 
-	vec3 totalScattering = vec3(0.0);
-	float totalTransmittance = 0.0;
-	float totalWeight = 0.0;
+	vec4  sumColor = vec4(0.0);
+	float sumWeight = 0.0;
 
-
-	// 5x5 Opacity-Guided Bilateral Filter
 	for (int y = -2; y <= 2; y++) {
 		for (int x = -2; x <= 2; x++) {
-			vec2 offset = vec2(x, y) * texelSize;
+			vec2 offset = vec2(x, y) * float(uStepSize) * texelSize;
 			vec4 sampleColor = texture(uCloudColor, uv + offset);
 			vec4 sampleProps = texture(uCloudDepth, uv + offset);
 
 			float sampleDepth = sampleProps.r;
-			float sampleCloudLastHit = sampleProps.g;
-			float sampleCloudStep = sampleProps.b;
-			float sampleCloudMaxDensity = sampleProps.a;
-			bool sampleIsSky = sampleDepth > 40000.0;
+			float sampleDensity = sampleProps.a;
+			float sampleTransmittance = sampleColor.a;
+			bool  sampleIsSky = sampleDepth > 40000.0;
 
-			// float noiseEdge = smoothstep(-0.10, 1.0, abs(sampleDepth-sampleCloudLastHit)/sampleCloudStep );
+			// Edge stopping functions
+			// 1. Luma
+			float lumaWeight = exp(-abs(luma(centerColor.rgb) - luma(sampleColor.rgb)) / phiLuma);
 
-			// Spatial Gaussian
-			float spatialWeight = exp(-float(x*x + y*y) / 8.0);
-
-			// 1. Transmittance/Opacity Weighting (With Isolation Floor)
-			float sampleOpacity = clamp(1.0 - sampleColor.a, 0.0, 1.0);
-			float opacityDiff = abs(centerOpacity - sampleOpacity);
-
-			// Haze/Fringe: opacitySigma -> 0.0 (opacityWeight becomes 1.0, forcing pure blur)
-			// Solid Core: opacitySigma -> 5.0 (Strictly preserves physical cloud edges)
-			float opacitySigma = mix(0.0, 5.0, psdRigidity);
-			// Force a 5% minimum blend to prevent noise from mathematically isolating itself
-			// float opacityWeight = max(0.05, exp(-opacityDiff * opacitySigma)) * noiseEdge;
-			float opacityWeight = max(0.1, exp(-opacityDiff * opacitySigma));
-
-			// float flux = smoothstep(0, 0.3, abs(centerMaxDensity - sampleCloudMaxDensity) / max(centerMaxDensity, 0.01));
-			// opacityWeight = mix(opacityWeight, 1.0, flux);
-
-			// 2. Firefly Suppression (Karis Average)
-			float luma = dot(sampleColor.rgb, vec3(0.2126, 0.7152, 0.0722));
-			float fireflyWeight = 1.0 / (1.0 + luma);
-
-			// 3. Depth / Boundary Weighting
+			// 2. Depth
 			float depthWeight = 1.0;
-
 			if (centerIsSky != sampleIsSky) {
-				depthWeight = 1.0 - psdRigidity;
+				depthWeight = 0.0;
 			} else if (!centerIsSky) {
-				float depthDiff = abs(centerDepth - sampleDepth);
-				depthWeight = exp(-depthDiff * depthDiff / (depthSigma * depthSigma));
+				depthWeight = exp(-abs(centerDepth - sampleDepth) / 1000.0);
 			}
 
-			// Multiply the firefly weight into the final factor
-			float weight = spatialWeight * opacityWeight * depthWeight * fireflyWeight;
-			// float weight = spatialWeight * opacityWeight * depthWeight;
+			// 3. Volumetric Density
+			float densityWeight = exp(-abs(centerDensity - sampleDensity) / phiDensity);
 
-			totalScattering += sampleColor.rgb * weight;
-			totalTransmittance += sampleColor.a * weight;
-			totalWeight += weight;
+			// 4. Volumetric Transmittance (Alpha channel)
+			float transmittanceWeight = exp(-abs(centerTransmittance - sampleTransmittance) / phiTransmittance);
+
+			float weight = kernel[x + 2] * kernel[y + 2] * lumaWeight * depthWeight * densityWeight * transmittanceWeight;
+
+			sumColor += sampleColor * weight;
+			sumWeight += weight;
 		}
 	}
 
-	vec4 finalColor;
-	float invTotalWeight = 1.0 / max(totalWeight, 0.0001);
-	finalColor.rgb = totalScattering * invTotalWeight;
-	finalColor.a   = totalTransmittance * invTotalWeight;
-
-	imageStore(outFilteredColor, pixel, finalColor);
+	vec4 filteredResult = sumColor / max(sumWeight, 0.0001);
+	imageStore(outFilteredColor, pixel, filteredResult);
 }
