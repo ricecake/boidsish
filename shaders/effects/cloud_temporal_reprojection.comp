@@ -11,7 +11,7 @@ uniform sampler2D uSceneDepth;       // Full-res scene depth
 uniform sampler2D uCurrentCloudDepth;// Current low-res cloud distance
 uniform sampler2D uHistoryCloudDepth;// Previous accumulated cloud distance
 uniform sampler2D uVelocityTexture;  // Current low-res cloud velocity (XZ)
-uniform sampler2D uHistoryMoments;    // Previous accumulated moments (Luma, Luma2, historyLength)
+uniform sampler2D uHistoryMoments;    // Previous accumulated moments (Luma1, Luma2, Density2, historyLength)
 
 uniform mat4  uInvView;
 uniform mat4  uInvProjection;
@@ -133,6 +133,7 @@ void main() {
 	vec4  currDepthProps = texture(uCurrentCloudDepth, uv);
 	float currentCloudDist = currDepthProps.r;
 	float currentCloudStep = currDepthProps.b;
+	float currentDensity = currDepthProps.a;
 	bool  currentIsSky = currentCloudDist > 40000.0 * WORLD_SCALE_VALUE;
 
 	// 2. Reproject History
@@ -194,7 +195,7 @@ void main() {
 	if (validHistory) {
 		historyRGBA = textureMitchell(uHistoryFrame, prevUV, vec2(size));
 		historyMoments = texture(uHistoryMoments, prevUV);
-		historyLength = historyMoments.z;
+		historyLength = historyMoments.w;
 	}
 
 	historyLength = min(32.0, historyLength + 1.0);
@@ -210,8 +211,8 @@ void main() {
 	vec4 accumulatedRGBA = mix(historyRGBA, currentRGBA, alpha);
 
 	float currentLuma = luma(currentRGBA.rgb);
-	vec2  currentMoments = vec2(currentLuma, currentLuma * currentLuma);
-	vec2  accumulatedMoments = mix(historyMoments.xy, currentMoments, alpha);
+	vec3  currentM = vec3(currentLuma, currentLuma * currentLuma, currentDensity * currentDensity);
+	vec3  accumulatedM = mix(historyMoments.xyz, currentM, alpha);
 
 	// 5. Variance Clipping
 	vec3 m1 = vec3(0.0);
@@ -238,6 +239,12 @@ void main() {
 
 	// 6. Output
 	imageStore(outColor, pixel, accumulatedRGBA);
-	imageStore(outDepth, pixel, currDepthProps);
-	imageStore(outMoments, pixel, vec4(accumulatedMoments, historyLength, 0.0));
+
+	// Accumulate density metadata for the spatial filter
+	vec4 accumulatedDepthProps = mix(historyDepthProps, currDepthProps, alpha);
+	// Distance and step size should stay closer to current to prevent depth blurring artifacts
+	accumulatedDepthProps.rb = currDepthProps.rb;
+
+	imageStore(outDepth, pixel, accumulatedDepthProps);
+	imageStore(outMoments, pixel, vec4(accumulatedM, historyLength));
 }

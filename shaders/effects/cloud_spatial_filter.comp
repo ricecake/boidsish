@@ -4,8 +4,8 @@ layout(local_size_x = 8, local_size_y = 8) in;
 layout(binding = 0, rgba32f) uniform image2D outFilteredColor;
 
 uniform sampler2D uCloudColor;   // Accumulated RGBA or previous pass result
-uniform sampler2D uCloudDepth;   // Accumulated Depth Props
-uniform sampler2D uCloudMoments; // Accumulated Moments (Luma, Luma2, historyLength)
+uniform sampler2D uCloudDepth;   // Accumulated Depth Props (dist, lastHit, step, density)
+uniform sampler2D uCloudMoments; // Accumulated Moments (Luma1, Luma2, Density2, historyLength)
 uniform int       uStepSize;     // 1, 2, 4, 8, 16...
 
 #include "lygia/color/luma.glsl"
@@ -27,19 +27,25 @@ void main() {
 	vec4 centerMoments = texture(uCloudMoments, uv);
 
 	float centerDepth = centerProps.r;
+	float centerDensity = centerProps.a;
+	float centerTransmittance = centerColor.a;
 	bool  centerIsSky = centerDepth > 40000.0;
-	float centerHistory = centerMoments.z;
+	float centerHistory = centerMoments.w;
 
-	// Calculate temporal variance (only used to guide the first pass or if we're filtering variance)
-	// For subsequent À-Trous passes, we typically filter the color and use the variance to guide.
-	// In some implementations, variance is also filtered.
-	float variance = max(0.0, centerMoments.y - centerMoments.x * centerMoments.x);
+	// Variance estimation
+	float varLuma = max(0.0, centerMoments.y - centerMoments.x * centerMoments.x);
+	float varDensity = max(0.0, centerMoments.z - centerDensity * centerDensity);
 
-	// If this isn't the first pass, we might have stored variance in the alpha or another channel.
-	// But let's stick to the core SVGF guide:
-	float stdDev = sqrt(variance);
-	float phiLuma = 10.0 * stdDev + 0.01;
-	phiLuma *= mix(2.0, 1.0, smoothstep(1.0, 10.0, centerHistory));
+	// SVGF-style: Use temporal variance to drive edge stopping
+	float stdLuma = sqrt(varLuma);
+	float stdDensity = sqrt(varDensity);
+
+	// Adaptive thresholds based on noise levels and history length
+	// We trust history more as it accumulates, allowing for more aggressive blurring of initial noise
+	float historyScale = mix(2.0, 1.0, smoothstep(1.0, 10.0, centerHistory));
+	float phiLuma = (10.0 * stdLuma + 0.01) * historyScale;
+	float phiDensity = (0.5 * stdDensity + 0.1) * historyScale;
+	float phiTransmittance = 0.1 * historyScale;
 
 	vec4  sumColor = vec4(0.0);
 	float sumWeight = 0.0;
@@ -51,6 +57,8 @@ void main() {
 			vec4 sampleProps = texture(uCloudDepth, uv + offset);
 
 			float sampleDepth = sampleProps.r;
+			float sampleDensity = sampleProps.a;
+			float sampleTransmittance = sampleColor.a;
 			bool  sampleIsSky = sampleDepth > 40000.0;
 
 			// Edge stopping functions
@@ -62,13 +70,16 @@ void main() {
 			if (centerIsSky != sampleIsSky) {
 				depthWeight = 0.0;
 			} else if (!centerIsSky) {
-				// Philips SVGF uses a more sophisticated depth weight:
-				// exp(-abs(centerDepth - sampleDepth) / (phiDepth * abs(gradient_dot_offset) + epsilon))
-				// For now, a simpler version:
 				depthWeight = exp(-abs(centerDepth - sampleDepth) / 1000.0);
 			}
 
-			float weight = kernel[x + 2] * kernel[y + 2] * lumaWeight * depthWeight;
+			// 3. Volumetric Density
+			float densityWeight = exp(-abs(centerDensity - sampleDensity) / phiDensity);
+
+			// 4. Volumetric Transmittance (Alpha channel)
+			float transmittanceWeight = exp(-abs(centerTransmittance - sampleTransmittance) / phiTransmittance);
+
+			float weight = kernel[x + 2] * kernel[y + 2] * lumaWeight * depthWeight * densityWeight * transmittanceWeight;
 
 			sumColor += sampleColor * weight;
 			sumWeight += weight;
