@@ -53,6 +53,7 @@ namespace Boidsish {
 				s.bindUniformBlock("Shadows", Constants::UboBinding::Shadows());
 				s.bindUniformBlock("TerrainData", Constants::UboBinding::TerrainData());
 				s.bindUniformBlock("VisualEffects", Constants::UboBinding::VisualEffects());
+				s.bindUniformBlock("TemporalData", Constants::UboBinding::TemporalData());
 
 				// Explicitly set standard sampler bindings
 				s.setInt("shadowMaps", Constants::TextureUnit::ShadowMaps());
@@ -228,8 +229,9 @@ namespace Boidsish {
 			shader_->setVec3("cloudColorUniform", cloud_color_);
 			shader_->setFloat("u_atmosphereHeight", atmosphere_height_);
 
-			// History depth feedback for guided marching
+			// History feedback for guided marching
 			shader_->setInt("uHistoryDepth", 6);
+			shader_->setInt("uHistoryMoments", 7);
 			shader_->setMat4("uPrevViewProjection", prev_view_projection_);
 			shader_->setBool("uHasHistory", has_valid_history_);
 
@@ -245,6 +247,8 @@ namespace Boidsish {
 
 			glActiveTexture(GL_TEXTURE6);
 			glBindTexture(GL_TEXTURE_2D, temporal_depth_textures_[temporal_index_]);
+			glActiveTexture(GL_TEXTURE7);
+			glBindTexture(GL_TEXTURE_2D, temporal_moments_textures_[temporal_index_]);
 
 			GpuResourceRegistry::Instance().BindTextures({
 				Constants::TextureUnit::AtmosphereTransmittance(),
