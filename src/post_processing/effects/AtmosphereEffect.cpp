@@ -28,6 +28,7 @@ namespace Boidsish {
 			if (temporal_textures_[0]) {
 				glDeleteTextures(2, temporal_textures_);
 				glDeleteTextures(2, temporal_depth_textures_);
+				glDeleteTextures(2, temporal_moments_textures_);
 			}
 		}
 
@@ -132,9 +133,11 @@ namespace Boidsish {
 			if (temporal_textures_[0]) {
 				glDeleteTextures(2, temporal_textures_);
 				glDeleteTextures(2, temporal_depth_textures_);
+				glDeleteTextures(2, temporal_moments_textures_);
 			}
 			glGenTextures(2, temporal_textures_);
 			glGenTextures(2, temporal_depth_textures_);
+			glGenTextures(2, temporal_moments_textures_);
 			for (int i = 0; i < 2; i++) {
 				glBindTexture(GL_TEXTURE_2D, temporal_textures_[i]);
 				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, low_res_width, low_res_height, 0, GL_RGBA, GL_FLOAT, NULL);
@@ -144,6 +147,13 @@ namespace Boidsish {
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
 				glBindTexture(GL_TEXTURE_2D, temporal_depth_textures_[i]);
+				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, low_res_width, low_res_height, 0, GL_RGBA, GL_FLOAT, NULL);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+				glBindTexture(GL_TEXTURE_2D, temporal_moments_textures_[i]);
 				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, low_res_width, low_res_height, 0, GL_RGBA, GL_FLOAT, NULL);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -237,30 +247,12 @@ namespace Boidsish {
 
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 
-			// --- PASS 1.2: Spatial Filter ---
-			if (spatial_filter_shader_ && spatial_filter_shader_->isValid()) {
-				spatial_filter_shader_->use();
-				spatial_filter_shader_->setInt("uCloudColor", 0);
-				spatial_filter_shader_->setInt("uCloudDepth", 1);
-
-				glActiveTexture(GL_TEXTURE0);
-				glBindTexture(GL_TEXTURE_2D, low_res_texture_);
-				glActiveTexture(GL_TEXTURE1);
-				glBindTexture(GL_TEXTURE_2D, low_res_depth_texture_);
-
-				glBindImageTexture(0, low_res_filtered_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
-
-				glDispatchCompute((low_res_width + 7) / 8, (low_res_height + 7) / 8, 1);
-				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
-			}
-
-			// --- PASS 1.5: Temporal Reprojection (compute, at low res) ---
-			// Blend current low-res clouds with reprojected history to reduce noise and
-			// effectively supersample the low-res buffer over multiple frames.
-			GLuint    cloud_source = low_res_filtered_texture_;
-			GLuint    cloud_depth_source = low_res_depth_texture_;
+			// --- PASS 1.2: Temporal Reprojection (compute, at low res) ---
+			// SVGF-style: Accumulate current noisy frame into history textures.
 			glm::mat4 invView = glm::inverse(viewMatrix);
 			glm::mat4 invProj = glm::inverse(projectionMatrix);
+			GLuint cloud_source = low_res_texture_;
+			GLuint cloud_depth_source = low_res_depth_texture_;
 
 			if (temporal_shader_ && temporal_shader_->isValid()) {
 				int next_temporal = 1 - temporal_index_;
@@ -280,9 +272,10 @@ namespace Boidsish {
 				temporal_shader_->setInt("uCurrentCloudDepth", 3);
 				temporal_shader_->setInt("uHistoryCloudDepth", 4);
 				temporal_shader_->setInt("uVelocityTexture", 5);
+				temporal_shader_->setInt("uHistoryMoments", 6);
 
 				glActiveTexture(GL_TEXTURE0);
-				glBindTexture(GL_TEXTURE_2D, cloud_source);
+				glBindTexture(GL_TEXTURE_2D, low_res_texture_);
 				glActiveTexture(GL_TEXTURE1);
 				glBindTexture(GL_TEXTURE_2D, temporal_textures_[temporal_index_]);
 				glActiveTexture(GL_TEXTURE2);
@@ -293,9 +286,12 @@ namespace Boidsish {
 				glBindTexture(GL_TEXTURE_2D, temporal_depth_textures_[temporal_index_]);
 				glActiveTexture(GL_TEXTURE5);
 				glBindTexture(GL_TEXTURE_2D, low_res_velocity_texture_);
+				glActiveTexture(GL_TEXTURE6);
+				glBindTexture(GL_TEXTURE_2D, temporal_moments_textures_[temporal_index_]);
 
 				glBindImageTexture(0, temporal_textures_[next_temporal], 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 				glBindImageTexture(1, temporal_depth_textures_[next_temporal], 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
+				glBindImageTexture(2, temporal_moments_textures_[next_temporal], 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
 
 				glDispatchCompute((low_res_width + 7) / 8, (low_res_height + 7) / 8, 1);
 				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
@@ -304,6 +300,29 @@ namespace Boidsish {
 				has_valid_history_ = true;
 				cloud_source = temporal_textures_[temporal_index_];
 				cloud_depth_source = temporal_depth_textures_[temporal_index_];
+			}
+
+			// --- PASS 1.5: Spatial Filter ---
+			// SVGF-style: Use temporal variance to guide the spatial denoising.
+			if (spatial_filter_shader_ && spatial_filter_shader_->isValid()) {
+				spatial_filter_shader_->use();
+				spatial_filter_shader_->setInt("uCloudColor", 0);
+				spatial_filter_shader_->setInt("uCloudDepth", 1);
+				spatial_filter_shader_->setInt("uCloudMoments", 2);
+
+				glActiveTexture(GL_TEXTURE0);
+				glBindTexture(GL_TEXTURE_2D, cloud_source);
+				glActiveTexture(GL_TEXTURE1);
+				glBindTexture(GL_TEXTURE_2D, cloud_depth_source);
+				glActiveTexture(GL_TEXTURE2);
+				glBindTexture(GL_TEXTURE_2D, temporal_moments_textures_[temporal_index_]);
+
+				glBindImageTexture(0, low_res_filtered_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+
+				glDispatchCompute((low_res_width + 7) / 8, (low_res_height + 7) / 8, 1);
+				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+				cloud_source = low_res_filtered_texture_;
 			}
 
 			// Store current VP for next frame's reprojection

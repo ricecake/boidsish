@@ -267,6 +267,7 @@ namespace Boidsish {
 			// Temporal reprojection: double-buffered history at low res
 			GLuint    temporal_textures_[2] = {0, 0};
 			GLuint    temporal_depth_textures_[2] = {0, 0};
+			GLuint    temporal_moments_textures_[2] = {0, 0};
 			int       temporal_index_ = 0;
 			glm::mat4 prev_view_projection_ = glm::mat4(1.0f);
 			bool      has_valid_history_ = false;

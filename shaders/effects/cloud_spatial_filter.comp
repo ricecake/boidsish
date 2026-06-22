@@ -3,8 +3,11 @@ layout(local_size_x = 8, local_size_y = 8) in;
 
 layout(binding = 0, rgba16f) uniform image2D outFilteredColor;
 
-uniform sampler2D uCloudColor;  // low_res_texture_
-uniform sampler2D uCloudDepth;  // low_res_depth_texture_
+uniform sampler2D uCloudColor;   // Accumulated RGBA
+uniform sampler2D uCloudDepth;   // Accumulated Depth Props
+uniform sampler2D uCloudMoments; // Accumulated Moments (Luma, Luma2, historyLength)
+
+#include "lygia/color/luma.glsl"
 
 void main() {
 	ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
@@ -17,75 +20,58 @@ void main() {
 
 	vec4 centerColor = texture(uCloudColor, uv);
 	vec4 centerProps = texture(uCloudDepth, uv);
+	vec4 centerMoments = texture(uCloudMoments, uv);
 
 	float centerDepth = centerProps.r;
-	float centerMaxDensity = centerProps.a;
 	bool centerIsSky = centerDepth > 40000.0;
+	float centerHistory = centerMoments.z;
 
-	// 0.0 = Formless haze/fringe, 1.0 = Solid cloud core
-	float psdRigidity = smoothstep(0.0, 0.4, centerMaxDensity);
+	// Calculate temporal variance
+	float variance = max(0.0, centerMoments.y - centerMoments.x * centerMoments.x);
 
-	// Dynamic Depth Tolerance
-	// Haze needs massive depth forgiveness. Cores need moderate edge preservation.
-	float depthSigma = mix(15000.0, 1000.0, psdRigidity);
+	// SVGF-style: Use temporal variance to drive luma-based edge stopping
+	// We also use history length to increase the filter radius/strength for new pixels
+	float stdDev = sqrt(variance);
+	float phiLuma = 10.0 * stdDev + 0.01; // Scale phi based on noise levels
 
-	// Center Opacity for Bilateral Weighting
-	float centerOpacity = clamp(1.0 - centerColor.a, 0.0, 1.0);
+	// Adjust phiLuma based on history: fewer samples means we trust the variance less, so blur more.
+	phiLuma *= mix(2.0, 1.0, smoothstep(1.0, 10.0, centerHistory));
 
 	vec3 totalScattering = vec3(0.0);
 	float totalTransmittance = 0.0;
 	float totalWeight = 0.0;
 
+	// Adaptive filter radius based on history
+	int radius = (centerHistory < 4.0) ? 3 : 2;
 
-	// 5x5 Opacity-Guided Bilateral Filter
-	for (int y = -2; y <= 2; y++) {
-		for (int x = -2; x <= 2; x++) {
+	for (int y = -radius; y <= radius; y++) {
+		for (int x = -radius; x <= radius; x++) {
 			vec2 offset = vec2(x, y) * texelSize;
 			vec4 sampleColor = texture(uCloudColor, uv + offset);
 			vec4 sampleProps = texture(uCloudDepth, uv + offset);
 
 			float sampleDepth = sampleProps.r;
-			float sampleCloudLastHit = sampleProps.g;
-			float sampleCloudStep = sampleProps.b;
-			float sampleCloudMaxDensity = sampleProps.a;
 			bool sampleIsSky = sampleDepth > 40000.0;
 
-			// float noiseEdge = smoothstep(-0.10, 1.0, abs(sampleDepth-sampleCloudLastHit)/sampleCloudStep );
+			// 1. Spatial Weight
+			float spatialWeight = exp(-float(x*x + y*y) / (radius * radius * 0.5));
 
-			// Spatial Gaussian
-			float spatialWeight = exp(-float(x*x + y*y) / 8.0);
+			// 2. Luma/Variance Weighting
+			float sampleLuma = luma(sampleColor.rgb);
+			float centerLuma = luma(centerColor.rgb);
+			float lumaWeight = exp(-abs(centerLuma - sampleLuma) / phiLuma);
 
-			// 1. Transmittance/Opacity Weighting (With Isolation Floor)
-			float sampleOpacity = clamp(1.0 - sampleColor.a, 0.0, 1.0);
-			float opacityDiff = abs(centerOpacity - sampleOpacity);
-
-			// Haze/Fringe: opacitySigma -> 0.0 (opacityWeight becomes 1.0, forcing pure blur)
-			// Solid Core: opacitySigma -> 5.0 (Strictly preserves physical cloud edges)
-			float opacitySigma = mix(0.0, 5.0, psdRigidity);
-			// Force a 5% minimum blend to prevent noise from mathematically isolating itself
-			// float opacityWeight = max(0.05, exp(-opacityDiff * opacitySigma)) * noiseEdge;
-			float opacityWeight = max(0.1, exp(-opacityDiff * opacitySigma));
-
-			// float flux = smoothstep(0, 0.3, abs(centerMaxDensity - sampleCloudMaxDensity) / max(centerMaxDensity, 0.01));
-			// opacityWeight = mix(opacityWeight, 1.0, flux);
-
-			// 2. Firefly Suppression (Karis Average)
-			float luma = dot(sampleColor.rgb, vec3(0.2126, 0.7152, 0.0722));
-			float fireflyWeight = 1.0 / (1.0 + luma);
-
-			// 3. Depth / Boundary Weighting
+			// 3. Depth Weighting
 			float depthWeight = 1.0;
-
 			if (centerIsSky != sampleIsSky) {
-				depthWeight = 1.0 - psdRigidity;
+				depthWeight = 0.0;
 			} else if (!centerIsSky) {
 				float depthDiff = abs(centerDepth - sampleDepth);
-				depthWeight = exp(-depthDiff * depthDiff / (depthSigma * depthSigma));
+				float phiDepth = 1000.0; // Fixed depth tolerance
+				depthWeight = exp(-depthDiff / phiDepth);
 			}
 
-			// Multiply the firefly weight into the final factor
-			float weight = spatialWeight * opacityWeight * depthWeight * fireflyWeight;
-			// float weight = spatialWeight * opacityWeight * depthWeight;
+			float weight = spatialWeight * lumaWeight * depthWeight;
 
 			totalScattering += sampleColor.rgb * weight;
 			totalTransmittance += sampleColor.a * weight;
