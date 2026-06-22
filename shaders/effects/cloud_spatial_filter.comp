@@ -46,6 +46,7 @@ void main() {
 	float phiLuma = (10.0 * stdLuma + 0.01) * historyScale;
 	float phiDensity = (0.5 * stdDensity + 0.1) * historyScale;
 	float phiTransmittance = 0.1 * historyScale;
+	float phiDepth = mix(15000.0, 1000.0, smoothstep(0.0, 0.4, centerDensity));
 
 	vec4  sumColor = vec4(0.0);
 	float sumWeight = 0.0;
@@ -70,7 +71,10 @@ void main() {
 			if (centerIsSky != sampleIsSky) {
 				depthWeight = 0.0;
 			} else if (!centerIsSky) {
-				depthWeight = exp(-abs(centerDepth - sampleDepth) / 1000.0);
+				float depthDiff = abs(centerDepth - sampleDepth);
+
+				// depthWeight = exp(-abs(centerDepth - sampleDepth) / 1000.0);
+				depthWeight = exp(-depthDiff * depthDiff / (phiDepth * phiDepth));
 			}
 
 			// 3. Volumetric Density

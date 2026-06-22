@@ -355,7 +355,7 @@ void main() {
 	// Force the alpha to 1.0 (trust current frame entirely) if we hit a new dense core
 	alpha = mix(alpha, 1.0, newStructureConfidence);
 
-	currentRGBA = vec4(YCoCgToRGB(spatialMean), 1-alphaMean);
+	currentRGBA = vec4(YCoCgToRGB(spatialMean), 1.0-alphaMean);
 	vec4 accumulatedRGBA = mix(historyRGBA, currentRGBA, alpha);
 
 	float currentLuma = luma(currentRGBA.rgb);
