@@ -406,7 +406,8 @@ float evaluateCloudShadowDensityAtWorldPos(vec2 worldXZ, float time) {
 
 	for (int i = 0; i < shadowSteps; i++) {
 		vec3 p = vec3(worldXZ.x, layer.baseFloor + (float(i) + 0.5) * stepSize, worldXZ.y);
-		totalDensity += calculateCloudDensity(p, weather, layer, props, time, true);
+		float minDensity = max(0.0, fastSimplex3d(p / (100000.0 * props.worldScale))) * 0.05;
+		totalDensity += clamp(calculateCloudDensity(p, weather, layer, props, time, true), minDensity, 1.0);
 	}
 
 	return totalDensity * stepSize * 0.1; // Scale to representative optical depth
