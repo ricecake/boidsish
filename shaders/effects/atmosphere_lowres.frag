@@ -240,10 +240,8 @@ void main() {
 			CloudWeather weather = computeCloudWeather(p, props);
 			CloudLayer layer = computeCloudLayer(weather, props);
 
-			// float d = clamp(calculateCloudDensity(p, weather, layer, props, time, false), mix(0.01, 0.005, smoothstep(-0.01, 0.3, rayDir.y)), 2.0);
-			// float d = max(calculateCloudDensity(p, weather, layer, props, time, false), mix(0.01, 0.005, smoothstep(-0.01, 0.3, rayDir.y)));
-			float d = clamp(calculateCloudDensity(p, weather, layer, props, time, false), mix(0.008, 0.05, smoothstep(minDist, maxDist, rayDist)) * smoothstep(0, rayDist, t), 1.0);
-			// float d = calculateCloudDensity(p, weather, layer, props, time, false);
+			float minDensity = max(0.0, fastSimplex3d(p / (100000.0 * worldScale))) * 0.05 * smoothstep(0, rayDist, t);
+			float d = clamp(calculateCloudDensity(p, weather, layer, props, time, false), minDensity, 1.0);
 			// d = d * smoothstep(0.1, 2, d);
 			// if (d <= 0.000) continue;
 
@@ -311,7 +309,8 @@ void main() {
 					vec3 sp_curved = sp;
 					sp_curved.y = length(sp - earthCenter) - R_earth;
 
-					shadowDensity += calculateCloudDensity(sp_curved, weather, layer, props, time, true);
+					float minShadowDensity = max(0.0, fastSimplex3d(sp_curved / (100000.0 * worldScale))) * 0.05 * smoothstep(0, rayDist, t);
+					shadowDensity += clamp(calculateCloudDensity(sp_curved, weather, layer, props, time, true), minShadowDensity, 1.0);
 				}
 				float opticalDepthToLight = shadowDensity * shadowStepSize * cloudShadowOpticalDepthMultiplier;
 				float shadowTerm = mix(
