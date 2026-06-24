@@ -76,7 +76,7 @@ void main() {
 	vec2 lowResUV = TexCoords / cloudTexelSize - 0.5;
 	vec2 baseTexel = floor(lowResUV);
 	vec2 frac_ = lowResUV - baseTexel;
-	float depthTolerance = 100.0;
+	float depthTolerance = 10.0 * WORLD_SCALE_VALUE;
 
 	for (int dy = 0; dy <= 1; dy++) {
 		for (int dx = 0; dx <= 1; dx++) {
@@ -92,13 +92,10 @@ void main() {
 			// Determine if this sample is a hard structure or soft haze
 			float structuralRigidity = smoothstep(0.01, 0.15, sMaxDensity);
 
-			if (sDepth > sceneDist + depthTolerance) {
-				// If it is a solid cloud behind the mountain, rigorously clamp it (w = 0.0).
-				// If it is formless background haze, allow a 50% bleed so the noise doesn't
-				// flicker against the mountain silhouette.
-				float hazeBleedAllowance = 0.5;
-				w *= mix(hazeBleedAllowance, 0.0, structuralRigidity);
-			}
+			float depthDiff = max(0.0, sDepth - sceneDist);
+			float depthWeight = exp(-(depthDiff * depthDiff) / (depthTolerance * depthTolerance));
+			depthWeight = mix(1.0, depthWeight, structuralRigidity);
+			w *= depthWeight;
 
 			totalScattering += sColor.rgb * w;
 			totalTransmittance += sColor.a * w;
@@ -109,17 +106,10 @@ void main() {
 	}
 
 	vec4 cloudData;
-	if (totalWeight > 0.21) {
+	if (totalWeight > 0.0) {
 		cloudData.rgb = totalScattering / totalWeight;
 		cloudData.a = totalTransmittance / totalWeight;
 		upsampledCloudDist /= totalWeight;
-
-		// Fade cloud contribution when most bilinear samples were rejected.
-		// This kills the halo at foreground edges where 1-2 surviving samples
-		// produce full-brightness cloud after normalization.
-		float confidence = smoothstep(0.95, 1.0, totalWeight);
-		cloudData.rgb *= confidence;
-		cloudData.a = mix(1.0, cloudData.a, confidence);
 	} else {
 		cloudData = vec4(0.0, 0.0, 0.0, 1.0);
 		upsampledCloudDist = 50000.0 * WORLD_SCALE_VALUE;
