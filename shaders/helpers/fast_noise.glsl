@@ -45,7 +45,7 @@ float fastRidge3d(vec3 p) {
 
 // G: Gradient 3D
 float fastGradient3d(vec3 p) {
-	return textureLod(u_extraNoiseTexture, p, 0.0).g * 2.0 - 1.0;
+	return textureLod(u_extraNoiseTexture, p, 0.0).g;
 }
 
 vec2 fastWorley3dID(vec3 p) {
