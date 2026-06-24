@@ -320,12 +320,11 @@ void main() {
 		// Skybox-like rendering: rotation-only view removes translation so the
 		// object stays at a fixed direction in the sky (no parallax, infinite distance)
 		mat4 staticView = mat4(mat3(view));
-		vec3 skyPositionOffset = vec3(0.0, -10.0, -500.0);
-		vec4 world_pos = current_model * vec4(displacedPos * 50.0, 1.0);
-		world_pos.xyz += skyPositionOffset;
+		vec4 world_pos = current_model * vec4(displacedPos, 1.0);
 		gl_Position = projection * staticView * world_pos;
-		gl_Position.z = gl_Position.w * 0.99999;
-		FragPos = world_pos.xyz;
+		// Push to far plane but preserve internal depth to avoid flattening
+		gl_Position.z = gl_Position.w * 0.9995 + gl_Position.z * 0.0004;
+		FragPos = viewPos + world_pos.xyz;
 
 		CurPosition = gl_Position;
 		PrevPosition =
