@@ -180,7 +180,7 @@ void main() {
 			// Newly disoccluded or high-variance pixels get more samples
 			float varianceBoost = smoothstep(0.0, 0.05, historyVariance);
 			float historyBoost = 1.0 - smoothstep(1.0, 16.0, historyLength);
-			samples = int(mix(32, 64.0, max(varianceBoost, historyBoost)));
+			samples = int(mix(32, 96.0, pow(max(varianceBoost, historyBoost), 2)));
 
 			// Only narrow if history had valid cloud hits (not sky distance)
 			if (histFirst > 0.0 && histFirst < 40000.0 * worldScale) {
