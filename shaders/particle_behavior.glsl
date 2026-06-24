@@ -413,7 +413,7 @@ void updateAmbientFairy(
 	// Rendering params (colors/glow handled in frag)
 	float twinkle = pow(smoothstep(0.0, 0.3, p.counter) * (1.0 - smoothstep(0.4, 0.6, p.counter)), 2) * step(p.counter, 0.6);
 	p.color.a = (0.3 + twinkle * 0.7) * smoothstep(0.0, 0.5, p.pos.w);
-	p.vel.w = 20.0; // Size
+	p.vel.w = 100.0; // Size
 	p.origin.w = 0.4 * p.color.a;
 }
 
