@@ -128,12 +128,12 @@ void main() {
 				smoothstep(0.30, 0.40, gl_PointCoord.x) * (1.0 - smoothstep(0.60, 0.70, gl_PointCoord.x))
 			);
 			alpha = 1.0;
-		} else if (v_style == STYLE_FIREFLIES) {
+		} else if (v_style == STYLE_FAIRY) {
 			float dist = length(circ);
 			float twinkle = clamp((v_p.color.a / smoothstep(0.0, 0.5, v_lifetime)) - 0.2, 0.0, 1.0);
 
-			// Always present soft core
 			float core = 1.0 - smoothstep(0.0, 0.15, dist);
+			float penumbra = exp(-distSq * 5.0);
 
 			// Expanding ring with wavering size
 			float waver = snoise3d(vec3(v_pos.xyz * 0.5 + u_time * 2.0)) * 0.05 * twinkle;
@@ -141,31 +141,7 @@ void main() {
 			float ringWidth = 0.02 + twinkle * 0.1;
 			float ring = smoothstep(ringRadius + ringWidth, ringRadius, dist) * smoothstep(ringRadius - ringWidth, ringRadius, dist);
 
-			shapeMask = max(core, ring);
-
-			// Diffracted, gem-like sparkle
-			float angle = atan(circ.y, circ.x);
-			vec3 diffraction;
-			diffraction.r = sin(angle * 3.0 + u_time * 0.150 * waver + dist * 10.0) * 0.5 + 0.5;
-			diffraction.g = sin(angle * 3.0 + u_time * 0.450 * waver + dist * 10.0 + 2.0) * 0.5 + 0.5;
-			diffraction.b = sin(angle * 3.0 + u_time * 0.650 * waver + dist * 10.0 + 4.0) * 0.5 + 0.5;
-
-			color = mix(color, diffraction * 2.0, twinkle);
-
-			alpha = v_p.color.a * shapeMask;
-		} else if (v_style == STYLE_FAIRY) {
-			// Phase-based brightness (using p.counter and p.phase logic from firefly)
-			float twinkle = pow(smoothstep(0.0, 0.3, v_p.counter) * (1.0 - smoothstep(0.4, 0.6, v_p.counter)), 2.0) * step(v_p.counter, 0.6);
-
-			float waver = 1.0 + 0.2 * snoise(vec2(u_time * 40.0, float(v_particle_idx) * 0.13));
-			float flicker = mix(1.0, waver, smoothstep(0.8, 1.0, twinkle));
-
-			float brightness = (0.5 + twinkle * 10.0) * flicker;
-
-			// Small soft core
-			float core = exp(-distSq * 100.0);
-			// Large penumbra
-			float penumbra = exp(-distSq * 5.0);
+			shapeMask = max(max(core, ring), penumbra);
 
 			// Iridescent sheen in the penumbra
 			float angle_factor = pow(clamp(1.0 - distSq * 4.0, 0.0, 1.0), 2.0);
@@ -175,17 +151,23 @@ void main() {
 				sin(angle_factor * 8.0 + v_p.phase + 4.0) * 0.5 + 0.5
 			);
 
+			// Diffracted, gem-like sparkle in the ring
+			float angle = atan(circ.y, circ.x);
+			vec3 diffraction;
+			diffraction.r = sin(angle * 3.0 + u_time * 0.150 * waver + dist * 10.0) * 0.5 + 0.5;
+			diffraction.g = sin(angle * 3.0 + u_time * 0.450 * waver + dist * 10.0 + 2.0) * 0.5 + 0.5;
+			diffraction.b = sin(angle * 3.0 + u_time * 0.650 * waver + dist * 10.0 + 4.0) * 0.5 + 0.5;
+
 			// Glittering sparkles using Worley noise
 			float sparkle = pow(fastWorley3d(v_pos.xyz * 10.0 + u_time * 2.0), 6.0);
 			vec3 sparkle_color = vec3(1.0, 0.9, 0.6) * sparkle * 10.0;
 
 			color = mix(vec3(1.0, 1.0, 1.0), iridescent_color, 0.7) * penumbra;
 			color += core * 2.0;
+			color = mix(color, diffraction * 2.0, ring * twinkle);
 			color += sparkle_color * penumbra;
-			color *= brightness;
 
-			shapeMask = penumbra;
-			alpha = (shapeMask  + sparkle ) * (twinkle);
+			alpha = v_p.color.a * shapeMask;
 		}
 
 		alpha *= shapeMask;
