@@ -19,6 +19,7 @@ uniform mat4  uPrevViewProjection;
 uniform float uBlendAlpha; // How much history to keep (0.85-0.95)
 
 #include "../atmosphere/common.glsl"
+#include "../lighting.glsl"
 #include "lygia/color/luma.glsl"
 
 
@@ -276,6 +277,10 @@ void main() {
 	float gamma = mix(0.75, 2.5, structuralLock);
 	float alphaGamma = mix(0.5, 1.5, structuralLock);
 
+	// Loosen clamping significantly during lightning strikes to prevent bright flashes from being "clamped out".
+	gamma = mix(gamma, 16.0, lightningPulse);
+	alphaGamma = mix(alphaGamma, 8.0, lightningPulse);
+
 	// SILHOUETTE ANTI-CRUSH:
 	// If the ray randomly jumped off or onto the cloud edge, the 3x3 neighborhood
 	// is temporarily mismatched with the history. Expand the box massively to
@@ -353,6 +358,9 @@ void main() {
 
 	float alpha = 1.0 / historyLength;
 	alpha = max(alpha, 0.25);
+
+	// Fast adaptation during lightning
+	alpha = mix(alpha, 1.0, lightningPulse * 0.9);
 
 	// Force the alpha to 1.0 (trust current frame entirely) if we hit a new dense core
 	alpha = mix(alpha, 1.0, newStructureConfidence);

@@ -1,5 +1,6 @@
 #include "post_processing/TemporalAccumulator.h"
 
+#include "constants.h"
 #include "shader.h"
 #include <GL/glew.h>
 
@@ -18,6 +19,10 @@ namespace Boidsish {
 			_internalFormat = internalFormat;
 
 			_accumulationShader = std::make_unique<ComputeShader>("shaders/effects/temporal_accumulation.comp");
+			if (_accumulationShader && _accumulationShader->isValid()) {
+				_accumulationShader->use();
+				_accumulationShader->bindUniformBlock("Lighting", Constants::UboBinding::Lighting());
+			}
 			CreateTextures();
 		}
 
