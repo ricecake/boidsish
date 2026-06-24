@@ -45,6 +45,7 @@ namespace Boidsish {
 			if (temporal_shader_ && temporal_shader_->isValid()) {
 				temporal_shader_->use();
 				temporal_shader_->bindUniformBlock("TerrainData", Constants::UboBinding::TerrainData());
+				temporal_shader_->bindUniformBlock("Lighting", Constants::UboBinding::Lighting());
 			}
 
 			auto setup_shader = [](Shader& s) {

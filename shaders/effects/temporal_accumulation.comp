@@ -9,6 +9,7 @@ uniform sampler2D uVelocity;
 uniform sampler2D uDepth;
 
 #include "temporal_data.glsl"
+#include "../lighting.glsl"
 
 uniform float uAlpha = 0.9; // Accumulation factor
 
@@ -68,22 +69,26 @@ void main() {
 	float stability = 1.0 - clamp(spatialStd / (spatialLum + 0.001), 0.0, 1.0);
 
 	// Clamp history to neighborhood of current
-	// Use a tighter clamp (gamma) for firefly rejection, but loosen it if the area is stable
+	// Use a tighter clamp (gamma) for firefly rejection, but loosen it if the area is stable.
+	// We also significantly loosen it during lightning strikes to prevent bright flashes from being "clamped out".
 	float gamma = mix(1.2, 4.0, stability);
+	gamma = mix(gamma, 16.0, lightningPulse);
+
 	vec4  minColor = mean - gamma * stddev;
 	vec4  maxColor = mean + gamma * stddev;
 	history = clamp(history, minColor, maxColor);
 
-	// Additionally reject current outliers that are far from history
-	// this helps prevent fireflies from ever entering the history
+	// Additionally reject current outliers that are far from history.
+	// This helps prevent fireflies from ever entering the history.
+	// Disable during lightning to ensure the flash is preserved.
 	vec4 m_diff = abs(current - history);
-	// Loosen outlier rejection if stability is high
-	if (any(greaterThan(m_diff, stddev * (4.0 + stability * 8.0) + 0.1))) {
+	float outlierThreshold = 4.0 + stability * 8.0;
+	if (lightningPulse < 0.1 && any(greaterThan(m_diff, stddev * outlierThreshold + 0.1))) {
 		current = mix(current, history, 0.5);
 	}
 
 	// 4. Accumulate
-	// Higher alpha means more history
+	// Higher alpha means more history.
 	// If the current signal is stable but significantly different from history,
 	// reduce alpha to adapt faster to lighting changes.
 	float activeAlpha = uAlpha;
@@ -93,6 +98,9 @@ void main() {
 	if (stability > 0.8 && abs(currentLum - historyLum) > 0.1) {
 		activeAlpha *= 0.5; // Adapt faster to stable lighting changes
 	}
+
+	// Fast adaptation during lightning
+	activeAlpha *= mix(1.0, 0.1, lightningPulse);
 
 	// Detect if current pixel was actually updated (for checkerboarding)
 	// This depends on how we pass the info.

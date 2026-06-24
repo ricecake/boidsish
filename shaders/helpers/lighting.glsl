@@ -3,6 +3,12 @@
 
 #include "../helpers/constants.glsl"
 #include "../lighting.glsl"
+#ifdef USE_TERRAIN_DATA
+#ifndef TERRAIN_HEIGHT_DEFINED
+#define TERRAIN_HEIGHT_DEFINED
+#include "terrain_common.glsl"
+#endif
+#endif
 #include "clouds.glsl"
 #include "brdf.glsl"
 
@@ -173,10 +179,12 @@ float calculateShadow(int light_index, vec3 frag_pos, vec3 normal, vec3 light_di
 	// Optimization: Quick terrain raycast for directional lights (Sun)
 	float terrainShadow = 1.0;
 	if (lights[light_index].type == LIGHT_TYPE_DIRECTIONAL) {
+#ifndef SKIP_TERRAIN_RAYCAST
 		terrainShadow = terrainShadowCoverage(frag_pos, normal, light_dir);
 		if (terrainShadow <= 0.0) {
 			return terrainShadow;
 		}
+#endif
 	}
 
 	int shadow_index = lightShadowIndices[light_index];
@@ -447,9 +455,18 @@ vec3 getSpatialAmbientSH(vec3 worldPos, vec3 N) {
 	vec3 environmentalIrradiance = evalSHIrradianceFromCoeffs(N, interpolatedCoeffs);
 	vec3 skyIrradiance = evalSHIrradiance(N); // Global sky/ambient fallback
 
+	// Calculate vertical tapering to prevent "light beams" in the sky.
+	// Ambient bounce should be strongest near the ground and fade out with altitude.
+	float h_surface = getTerrainHeight(worldPos.xz);
+	float heightAboveGround = max(0.0, worldPos.y - h_surface);
+
+	// Fade out the spatial contribution over 100 meters
+	float verticalFade = exp(-heightAboveGround * 0.01);
+
 	// Combine spatially-varying environmental SH (sky + bounce) with global sky irradiance.
 	// We blend between them because probes now capture both sky and ground bounce.
-	return mix(skyIrradiance, environmentalIrradiance, clamp(totalWeight * bounceFade, 0.0, 1.0));
+	float finalWeight = clamp(totalWeight * bounceFade * verticalFade, 0.0, 1.0);
+	return mix(skyIrradiance, environmentalIrradiance, finalWeight);
 }
 
 // Forward declare macro occlusion from terrain_shadows.glsl
