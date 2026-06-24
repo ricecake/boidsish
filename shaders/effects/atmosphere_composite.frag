@@ -76,7 +76,7 @@ void main() {
 	vec2 lowResUV = TexCoords / cloudTexelSize - 0.5;
 	vec2 baseTexel = floor(lowResUV);
 	vec2 frac_ = lowResUV - baseTexel;
-	float depthTolerance = 0.05;
+	float depthTolerance = 100.0;
 
 	for (int dy = 0; dy <= 1; dy++) {
 		for (int dx = 0; dx <= 1; dx++) {

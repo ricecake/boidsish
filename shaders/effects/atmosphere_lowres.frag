@@ -180,7 +180,7 @@ void main() {
 			// Newly disoccluded or high-variance pixels get more samples
 			float varianceBoost = smoothstep(0.0, 0.05, historyVariance);
 			float historyBoost = 1.0 - smoothstep(1.0, 16.0, historyLength);
-			samples = int(mix(48.0, 128.0, max(varianceBoost, historyBoost)));
+			samples = int(mix(32, 64.0, max(varianceBoost, historyBoost)));
 
 			// Only narrow if history had valid cloud hits (not sky distance)
 			if (histFirst > 0.0 && histFirst < 40000.0 * worldScale) {
@@ -249,6 +249,8 @@ void main() {
 		float precisionLimit = max(1.0, t_end * 1e-5);
 		stepSize = clamp(rayDist / float(samples), precisionLimit, 750.0);
 
+		float viewLength = fullEnd - fullStart;
+
 		// Targeted Step Offset: ensure jittered offset is relative to the narrowed range
 		float t_offset = jitter * stepSize;
 
@@ -259,6 +261,7 @@ void main() {
 		float H0 = length(relRo) - R_earth;
 		float roDotRd = dot(relRo, rayDir);
 		float h0Term = 2.0 * R_earth * H0 + H0 * H0;
+		float elevation = 1.0 - dot(rayDir, vec3(0, 1, 0));
 
 		for (int i = 0; i < samples; i++) {
 			float t = t_start + t_offset + (float(i)) * stepSize;
@@ -266,6 +269,7 @@ void main() {
 				break;
 
 			vec3 p = viewPos + rayDir * t;
+			float t_unjittered = t - t_offset;
 
 			// Numerically stable altitude calculation using camera-relative offsets
 			// This avoids precision loss when subtracting large planetary radiuses.
@@ -281,12 +285,16 @@ void main() {
 
 			// float d = clamp(calculateCloudDensity(p, weather, layer, props, time, false), mix(0.01, 0.005, smoothstep(-0.01, 0.3, rayDir.y)), 2.0);
 			// float d = max(calculateCloudDensity(p, weather, layer, props, time, false), mix(0.01, 0.005, smoothstep(-0.01, 0.3, rayDir.y)));
-			float d = clamp(calculateCloudDensity(p, weather, layer, props, time, false), mix(0.008, 0.05, smoothstep(minDist, maxDist, rayDist)) * smoothstep(0, rayDist, t), 1.0);
-			// float d = calculateCloudDensity(p, weather, layer, props, time, false);
-			// d = d * smoothstep(0.1, 2, d);
-			// if (d <= 0.000) continue;
+			// float d = clamp(calculateCloudDensity(p, weather, layer, props, time, false), mix(0.008, 0.05, smoothstep(minDist, maxDist, rayDist)) * smoothstep(0, rayDist, t), 1.0);
+			float d = calculateCloudDensity(p, weather, layer, props, time, false);
+			d = d * smoothstep(0.1, 2, d);
+			// d = max(d, mix(0.008, 0.05, smoothstep(minDist, maxDist, viewLength))/samples * smoothstep(0, viewLength, t_unjittered)   );
+			// d = max(d, (0.000025 * viewLength)/samples * smoothstep(-viewLength * 0.5, viewLength, t_unjittered)   );
+			// d = max(d, (0.00000025 * R_ceiling)/samples * smoothstep(0, 1, elevation)   );
+			d = max(d, 0.01*smoothstep(0, 1, elevation));
 
-			float t_unjittered = t - t_offset;
+			if (d <= 0.000) continue;
+
 			// Capture the exact unjittered boundary of the first solid hit
 			if (firstHitDist < 0.0 && d > 0.01) {
 				firstHitDist = t_unjittered;
@@ -393,6 +401,7 @@ void main() {
 
 
 	FragColor = vec4(cloudColor, cloudTransmittance);
+	// FragColor = vec4(vec3((samples/64)-1), 0.0);
 
 	// Compute screen-space motion vector directly.
 	// This captures both camera motion AND cloud advection in one UV offset,
