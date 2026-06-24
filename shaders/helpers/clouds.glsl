@@ -114,7 +114,7 @@ CloudWeather computeCloudWeather(vec3 p, CloudProperties props) {
 	vec3 advect = getCloudWindOffset(time);
 	vec3 p_advected = p + advect;
 
-	vec2  weatherData = fastWorley3dID(vec3(p_advected.x, 0.0, p_advected.z) / (10000.0 * worldScale));
+	vec2  weatherData = fastWorley3dID(vec3(p_advected.x, p_advected.y, p_advected.z) / (10000.0 * worldScale));
 	float weatherMap = 1.0 - weatherData.x; // Worley distance for coverage
 	float cellID = weatherData.y;           // Cell ID for variety
 

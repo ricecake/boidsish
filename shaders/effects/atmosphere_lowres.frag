@@ -276,7 +276,7 @@ void main() {
 			float r2_minus_R2 = h0Term + 2.0 * t * roDotRd + t * t;
 			float r = sqrt(max(0.0, r2_minus_R2 + R_earth * R_earth));
 			float altitude = r2_minus_R2 / (r + R_earth);
-			p.y = altitude;
+			// p.y = altitude;
 
 			float h_norm = clamp((altitude - props.altitude * props.worldScale) / max(props.thickness * props.worldScale, 1.0), 0.0, 1.0);
 
