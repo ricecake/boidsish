@@ -207,9 +207,11 @@ namespace Boidsish {
         pre_pass_shader_->use();
         renderManager->BindTerrainData(*pre_pass_shader_);
 
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainPatchVisibility(), renderManager->GetPatchVisibilitySSBO());
+        {
+            const GLuint ssbos[] = {renderManager->GetPatchVisibilitySSBO(), grass_tasks_ssbo_};
+            glBindBuffersBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainPatchVisibility(), 2, ssbos);
+        }
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainPatchMetrics(), renderManager->GetPatchMetricsSSBO());
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::GrassTasks(), grass_tasks_ssbo_);
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::IndirectionBuffer(), renderManager->GetInstanceBuffer());
 
         pre_pass_shader_->setVec3("uCameraPos", camera.pos());

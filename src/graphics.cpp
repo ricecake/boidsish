@@ -1501,20 +1501,28 @@ namespace Boidsish {
 				occlusion_cull_shader_->use();
 
 				// Bind uniforms SSBO (current frame's data) for compute to read AABBs
-				glBindBufferRange(
-					GL_SHADER_STORAGE_BUFFER,
-					Constants::SsboBinding::CommonUniforms(),
-					uniforms_ssbo->GetBufferId(),
-					(frame_element_offset + mdi_pass_uniform_start) * sizeof(CommonUniforms),
-					pass_draw_count * sizeof(CommonUniforms)
-				);
+				// Bind uniforms and visibility SSBOs using multi-bind
+				{
+					const GLuint ssbos[] = {occlusion_visibility_ssbo_, uniforms_ssbo->GetBufferId()};
+					// Note: Bindings are 13 (Visibility) and 21 (CommonUniforms), NOT sequential.
+					// We'll stick to individual binds if they are not sequential.
+					// Actually, let's check constants.h again.
 
-				// Bind visibility SSBO for compute to write
-				glBindBufferBase(
-					GL_SHADER_STORAGE_BUFFER,
-					Constants::SsboBinding::OcclusionVisibility(),
-					occlusion_visibility_ssbo_
-				);
+					glBindBufferRange(
+						GL_SHADER_STORAGE_BUFFER,
+						Constants::SsboBinding::CommonUniforms(),
+						uniforms_ssbo->GetBufferId(),
+						(frame_element_offset + mdi_pass_uniform_start) * sizeof(CommonUniforms),
+						pass_draw_count * sizeof(CommonUniforms)
+					);
+
+					// Bind visibility SSBO for compute to write
+					glBindBufferBase(
+						GL_SHADER_STORAGE_BUFFER,
+						Constants::SsboBinding::OcclusionVisibility(),
+						occlusion_visibility_ssbo_
+					);
+				}
 
 				// Bind Hi-Z texture
 				glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::HiZ());
@@ -1594,25 +1602,30 @@ namespace Boidsish {
 					batch.command_count * sizeof(CommonUniforms)
 				);
 
-				// Bind bone matrices SSBO
-				glBindBufferRange(
-					GL_SHADER_STORAGE_BUFFER,
-					Constants::SsboBinding::BoneMatrix(),
-					bone_matrices_ssbo->GetBufferId(),
-					bone_matrices_ssbo->GetFrameOffset(),
-					bone_matrices_ssbo->GetElementCount() * sizeof(glm::mat4)
-				);
-				s->setBool("uUseMDI", true);
+				// Bind bone matrices and visibility SSBOs using multi-bind
+				{
+					const GLuint     ssbos[] = {bone_matrices_ssbo->GetBufferId(), occlusion_visibility_ssbo_};
+					const GLintptr   offsets[] = {static_cast<GLintptr>(bone_matrices_ssbo->GetFrameOffset()), 0};
+					const GLsizeiptr sizes[] = {
+						static_cast<GLsizeiptr>(bone_matrices_ssbo->GetElementCount() * sizeof(glm::mat4)),
+						0 // size 0 for glBindBuffersRange is only valid if we use glBindBuffersBase for that index,
+						  // but we can't mix them in one call easily for sequential units if one needs range.
+						  // Actually, we can just use a large enough size for visibility SSBO or just stick to separate binds
+						  // if they aren't perfectly suitable for a single call.
+						  // But BoneMatrix (12) and OcclusionVisibility (13) ARE sequential.
+					};
+					// If we don't know the exact size of occlusion_visibility_ssbo_, we can't use glBindBuffersRange easily.
+					// Let's use glBindBuffersBase and then override the one that needs a range.
+					glBindBuffersBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::BoneMatrix(), 2, ssbos);
+					glBindBufferRange(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::BoneMatrix(),
+						bone_matrices_ssbo->GetBufferId(), bone_matrices_ssbo->GetFrameOffset(),
+						bone_matrices_ssbo->GetElementCount() * sizeof(glm::mat4));
 
-				// Bind visibility SSBO for Hi-Z occlusion culling (matching uniform indexing)
-				if (dispatch_hiz_occlusion && !is_shadow_pass) {
-					glBindBufferBase(
-						GL_SHADER_STORAGE_BUFFER,
-						Constants::SsboBinding::OcclusionVisibility(),
-						occlusion_visibility_ssbo_
-					);
-					s->setUint("u_baseVisibilityIndex", batch_global_index);
+					if (dispatch_hiz_occlusion && !is_shadow_pass) {
+						s->setUint("u_baseVisibilityIndex", batch_global_index);
+					}
 				}
+				s->setBool("uUseMDI", true);
 
 				if (!is_shadow_pass) {
 					unsigned int diffuseNr = 1;
@@ -1620,10 +1633,11 @@ namespace Boidsish {
 					unsigned int normalNr = 1;
 					unsigned int heightNr = 1;
 
-					for (size_t i = 0; i < batch.textures.size(); ++i) {
-						glActiveTexture(GL_TEXTURE0 + i);
-						glBindTexture(GL_TEXTURE_2D, batch.textures[i].id);
+					constexpr size_t kMaxBatchTextures = 16;
+					GLuint           texture_ids[kMaxBatchTextures];
+					size_t           count = std::min(batch.textures.size(), kMaxBatchTextures);
 
+					for (size_t i = 0; i < count; ++i) {
 						std::string number;
 						std::string name = batch.textures[i].type;
 						if (name == "texture_diffuse")
@@ -1635,7 +1649,12 @@ namespace Boidsish {
 						else if (name == "texture_height")
 							number = std::to_string(heightNr++);
 
-						s->setInt((name + number).c_str(), i);
+						s->setInt((name + number).c_str(), static_cast<int>(i));
+						texture_ids[i] = batch.textures[i].id;
+					}
+
+					if (count > 0) {
+						glBindTextures(0, static_cast<GLsizei>(count), texture_ids);
 					}
 					// Note: use_texture is now a bitmask handled in RenderPacket::uniforms (SSBO)
 					// This uniform is only used for non-MDI fallback or special passes

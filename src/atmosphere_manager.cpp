@@ -301,16 +301,14 @@ namespace Boidsish {
 	}
 
 	void AtmosphereManager::BindTextures() {
-		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereTransmittance());
-		glBindTexture(GL_TEXTURE_2D, _transmittanceLUT);
-		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereMultiScattering());
-		glBindTexture(GL_TEXTURE_2D, _multiScatteringLUT);
-		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereSkyView());
-		glBindTexture(GL_TEXTURE_2D, _skyViewLUT);
-		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereAerialPerspective());
-		glBindTexture(GL_TEXTURE_3D, _aerialPerspectiveLUT);
-		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereCloudShadow());
-		glBindTexture(GL_TEXTURE_2D, _cloudShadowMap);
+		const GLuint textures[] = {
+			_transmittanceLUT,
+			_multiScatteringLUT,
+			_skyViewLUT,
+			_aerialPerspectiveLUT,
+			_cloudShadowMap
+		};
+		glBindTextures(Constants::TextureUnit::AtmosphereTransmittance(), 5, textures);
 	}
 
 	void AtmosphereManager::BindToShader(::ShaderBase& shader) {

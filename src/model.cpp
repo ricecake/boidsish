@@ -373,8 +373,11 @@ namespace Boidsish {
 		unsigned int aoNr = 1;
 		unsigned int emissiveNr = 1;
 
-		for (unsigned int i = 0; i < textures.size(); i++) {
-			glActiveTexture(GL_TEXTURE0 + i);
+		constexpr size_t kMaxTextures = 16;
+		GLuint           texture_ids[kMaxTextures];
+		size_t           count = std::min(textures.size(), kMaxTextures);
+
+		for (unsigned int i = 0; i < count; i++) {
 			std::string number;
 			std::string name = textures[i].type;
 			if (name == "texture_diffuse")
@@ -395,7 +398,11 @@ namespace Boidsish {
 				number = std::to_string(emissiveNr++);
 
 			shader.setInt((name + number).c_str(), i);
-			glBindTexture(GL_TEXTURE_2D, textures[i].id);
+			texture_ids[i] = textures[i].id;
+		}
+
+		if (count > 0) {
+			glBindTextures(0, static_cast<GLsizei>(count), texture_ids);
 		}
 	}
 

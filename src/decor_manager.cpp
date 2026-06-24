@@ -659,8 +659,8 @@ namespace Boidsish {
 			glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture);
 			placement_shader_->setInt("u_biomeMap", Constants::TextureUnit::TerrainBiomeMap());
 
-			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::DecorProps(), decor_props_ubo_);
-			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::DecorPlacementGlobals(), placement_globals_ubo_);
+			const GLuint ubos[] = {decor_props_ubo_, placement_globals_ubo_};
+			glBindBuffersBase(GL_UNIFORM_BUFFER, Constants::UboBinding::DecorProps(), 2, ubos);
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::DecorChunkParams(), chunk_params_ssbo_);
 
 			int dispatch_size = (Constants::Class::Terrain::ChunkSize() + 7) / 8;
@@ -851,10 +851,10 @@ namespace Boidsish {
 		glBindTexture(GL_TEXTURE_2D_ARRAY, render_manager->GetBiomeTexture());
 		placement_shader_->setInt("u_biomeMap", Constants::TextureUnit::TerrainBiomeMap());
 
-		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::DecorProps(), decor_props_ubo_);
-		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::DecorPlacementGlobals(), temp_globals_ubo);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::DecorChunkParams(), temp_chunk_params_ssbo);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::DecorAllInstances(), temp_instance_ssbo);
+		const GLuint ubos[] = {decor_props_ubo_, temp_globals_ubo};
+		glBindBuffersBase(GL_UNIFORM_BUFFER, Constants::UboBinding::DecorProps(), 2, ubos);
+		const GLuint ssbos[] = {temp_chunk_params_ssbo, temp_instance_ssbo};
+		glBindBuffersBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::DecorChunkParams(), 2, ssbos);
 
 		int                           num_types = (int)decor_types_.size();
 		std::vector<DecorTypeResults> results(num_types);
