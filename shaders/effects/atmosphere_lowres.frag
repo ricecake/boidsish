@@ -287,12 +287,13 @@ void main() {
 			// float d = max(calculateCloudDensity(p, weather, layer, props, time, false), mix(0.01, 0.005, smoothstep(-0.01, 0.3, rayDir.y)));
 			// float d = clamp(calculateCloudDensity(p, weather, layer, props, time, false), mix(0.008, 0.05, smoothstep(minDist, maxDist, rayDist)) * smoothstep(0, rayDist, t), 1.0);
 			float d = calculateCloudDensity(p, weather, layer, props, time, false);
-			d = d * smoothstep(0.1, 2, d);
+			// d = d * smoothstep(0.1, 0.2, d);
 			// d = max(d, mix(0.008, 0.05, smoothstep(minDist, maxDist, viewLength))/samples * smoothstep(0, viewLength, t_unjittered)   );
 			// d = max(d, (0.000025 * viewLength)/samples * smoothstep(-viewLength * 0.5, viewLength, t_unjittered)   );
 			// d = max(d, (0.00000025 * R_ceiling)/samples * smoothstep(0, 1, elevation)   );
-			d = max(d, 0.01*smoothstep(0, 1, elevation));
+			// d = max(d, 0.01*smoothstep(0, 1, elevation));
 
+			// d = max(d, 0.01*smoothstep(0, 1, elevation));
 			if (d <= 0.000) continue;
 
 			// Capture the exact unjittered boundary of the first solid hit
@@ -302,9 +303,9 @@ void main() {
 			if (d > 0.01) {
 				lastHitDist = t_unjittered;
 			}
-
-
 			pathDensity = max(pathDensity, d);
+
+
 			float stepDensity = d * stepSize * 0.005;
 			float transmittanceAtStep = exp(-stepDensity);
 

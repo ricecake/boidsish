@@ -177,7 +177,7 @@ void main() {
         vec3 lightRadiance = lights[i].color * max(0.0, lights[i].intensity);
 
         // Single scattering (shadowed) + multi-scattering (partially shadowed to preserve terrain contrast)
-        float multiScatShadow = mix(1.0, shadow, 0.7);
+        float multiScatShadow = mix(1.0, shadow, 0.75);
         radiance += lightRadiance * (atmosphereTransmittance * shadow * combinedPhase + multiScat * multiScatShadow * (s.rayleigh + s.mie));
     }
 
@@ -199,8 +199,8 @@ void main() {
     vec3 baseAmbientRadiance = hazeColor * 0.05; // Base glow
     vec3 effectiveAmbient = max(ambient_light, baseAmbientRadiance);
 
-    radiance += getSpatialAmbientSH(worldPos, V) * 0.5; // Spatial bounce
-    radiance += effectiveAmbient * (s.rayleigh + s.mie); // Global atmospheric ambient
+    radiance += getSpatialAmbientSH(worldPos, V) / max(2.0, worldPos.y); // Spatial bounce
+    // radiance += effectiveAmbient * (s.rayleigh + s.mie); // Global atmospheric ambient
 
     // Lightning illumination
     if (lightningPulse > 0.01) {
@@ -248,7 +248,7 @@ void main() {
 
 */
 
-        radiance *= hazeDensity * uIntensity; // Apply user-controlled overall intensity
+        radiance *= uIntensity;// * hazeDensity; // Apply user-controlled overall intensity
 
         // Convert atmospheric coefficients from per-KM to per-meter
         float obliquity = getObliquity(vox.xy, blueNoise);
