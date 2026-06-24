@@ -151,7 +151,7 @@ void main() {
 		for (int x = -1; x <= 1; x++) {
 			vec2 sampleUV = uv + vec2(x, y) * texelSize;
 			float d = texture(uCurrentCloudDepth, sampleUV).a;
-			if (d > closestDist) {
+			if (d > closestDist && d >= 0.05) {
 				closestDist = d;
 				closestUV = sampleUV;
 			}
@@ -240,6 +240,7 @@ void main() {
 
 	for (int y = -2; y <= 2; y++) {
 		for (int x = -2; x <= 2; x++) {
+			// vec4 smpC = texture(uHistoryFrame, prevUV + vec2(x, y) * texelSize);
 			vec4 smpC = texture(uCurrentFrame, uv + vec2(x, y) * texelSize);
 			vec4 smp = smpC;
 
@@ -352,7 +353,7 @@ void main() {
 	historyRGBA.a = 1.0 - clamp(clippedAlpha, 0.0, 1.0);
 
 	float alpha = 1.0 / historyLength;
-	alpha = max(alpha, 0.25);
+	alpha = max(alpha, mix(0.03, 0.25, smoothstep(8.0, 2.0, historyLength)));
 
 	// Force the alpha to 1.0 (trust current frame entirely) if we hit a new dense core
 	alpha = mix(alpha, 1.0, newStructureConfidence);

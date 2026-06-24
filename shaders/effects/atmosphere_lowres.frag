@@ -22,6 +22,14 @@ const int bayer8x8[64] = int[](
 	63, 31, 55, 23, 61, 29, 53, 21
 );
 
+const int bayer4x4[16] = int[](
+    0, 12, 3, 15,
+    8, 4, 11, 7,
+    2, 14, 1, 13,
+    10, 6, 9, 5
+);
+
+
 uniform vec3  cloudColorUniform;
 uniform vec2  uJitter;
 uniform float uDeltaTime;
@@ -230,15 +238,16 @@ void main() {
 		// float jitter = fastSpatiotemporalBlueNoise(jitteredUV, 0, int(timer));
 		// float jitter = fastSpatiotemporalBlueNoise(jitteredUV, 0, int(frameIndex));
 
-		// ivec2 pixel = ivec2(gl_FragCoord.xy);
+		ivec2 pixel = ivec2(gl_FragCoord.xy);
 		// float jitter = float(bayer8x8[(pixel.y & 7) * 8 + (pixel.x & 7)]) / 64.0;
-		// float jitter = float(bayer8x8[((pixel.y & 7) * 8 + (pixel.x & 7) + frameIndex) % 64]) / 64.0;
+		float jitter = float(bayer8x8[((pixel.y & 7) * 8 + (pixel.x & 7) + frameIndex) % 64]) / 64.0;
 		// float jitter = float(bayer8x8[((pixel.y & 7) * 8 + (pixel.x & 7) + timer) % 64]) / 64.0;
+		// float jitter = float(bayer4x4[((pixel.y & 3) * 4 + (pixel.x & 3) + frameIndex) % 16]) / 16.0;
 
 		// float timer = frameIndex + ((frameIndex+2)%3);
 		// float jitter = length(mod(timer*jitteredUV, 16)/16);
 
-		float jitter = fastSpatiotemporalBlueNoise(jitteredUV, 0, frameIndex);
+		// float jitter = fastSpatiotemporalBlueNoise(jitteredUV, 0, frameIndex);
 
 		// Use a numerically stable altitude calculation to maintain precision at distance.
 		// altitude = length(p - earthCenter) - R_earth

@@ -76,7 +76,7 @@ void main() {
 	vec2 lowResUV = TexCoords / cloudTexelSize - 0.5;
 	vec2 baseTexel = floor(lowResUV);
 	vec2 frac_ = lowResUV - baseTexel;
-	float depthTolerance = 10.0 * WORLD_SCALE_VALUE;
+	float depthTolerance = 100.0 * WORLD_SCALE_VALUE;
 
 	for (int dy = 0; dy <= 1; dy++) {
 		for (int dx = 0; dx <= 1; dx++) {
@@ -90,7 +90,7 @@ void main() {
 			float w = ((dx == 0) ? (1.0 - frac_.x) : frac_.x) * ((dy == 0) ? (1.0 - frac_.y) : frac_.y);
 
 			// Determine if this sample is a hard structure or soft haze
-			float structuralRigidity = smoothstep(0.01, 0.15, sMaxDensity);
+			float structuralRigidity = smoothstep(0.01, 0.05, sMaxDensity);
 
 			float depthDiff = max(0.0, sDepth - sceneDist);
 			float depthWeight = exp(-(depthDiff * depthDiff) / (depthTolerance * depthTolerance));
