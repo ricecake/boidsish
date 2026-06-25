@@ -154,24 +154,19 @@ namespace Boidsish {
 	}
 
 	void NoiseManager::BindDefault(ShaderBase& shader) const {
-		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::NoiseSimplex());
-		glBindTexture(GL_TEXTURE_3D, noise_texture_);
+		const GLuint textures[] = {
+			noise_texture_,
+			curl_noise_texture_,
+			blue_noise_texture_,
+			extra_noise_texture_,
+			phasor_noise_texture_
+		};
+		glBindTextures(Constants::TextureUnit::NoiseSimplex(), 5, textures);
+
 		shader.trySetInt("u_noiseTexture", Constants::TextureUnit::NoiseSimplex());
-
-		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::NoiseCurl());
-		glBindTexture(GL_TEXTURE_3D, curl_noise_texture_);
 		shader.trySetInt("u_curlTexture", Constants::TextureUnit::NoiseCurl());
-
-		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::NoiseBlue());
-		glBindTexture(GL_TEXTURE_2D, blue_noise_texture_);
 		shader.trySetInt("u_blueNoiseTexture", Constants::TextureUnit::NoiseBlue());
-
-		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::NoiseExtra());
-		glBindTexture(GL_TEXTURE_3D, extra_noise_texture_);
 		shader.trySetInt("u_extraNoiseTexture", Constants::TextureUnit::NoiseExtra());
-
-		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::NoisePhasor());
-		glBindTexture(GL_TEXTURE_2D, phasor_noise_texture_);
 		shader.trySetInt("u_phasorTexture", Constants::TextureUnit::NoisePhasor());
 	}
 

@@ -416,12 +416,18 @@ namespace Boidsish {
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleBuffer(), particle_buffer_);
 		emitter_buffer_->BindRange(Constants::SsboBinding::EmitterBuffer());
 		indirection_buffer_->BindRange(Constants::SsboBinding::IndirectionBuffer());
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainChunkInfo(), terrain_chunk_buffer_);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::SliceData(), slice_data_buffer_);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::VisibleParticleIndices(), visible_indices_buffer_);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleDrawCommand(), draw_command_buffer_);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::LiveParticleIndices(), live_indices_buffer_);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::BehaviorDrawCommand(), behavior_command_buffer_);
+		{
+			const GLuint ssbos[] = {terrain_chunk_buffer_, slice_data_buffer_};
+			glBindBuffersBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainChunkInfo(), 2, ssbos);
+		}
+		{
+			const GLuint ssbos[] = {visible_indices_buffer_, draw_command_buffer_};
+			glBindBuffersBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::VisibleParticleIndices(), 2, ssbos);
+		}
+		{
+			const GLuint ssbos[] = {live_indices_buffer_, behavior_command_buffer_};
+			glBindBuffersBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::LiveParticleIndices(), 2, ssbos);
+		}
 		stats_buffer_->AdvanceFrame();
 		stats_buffer_->BindRange(Constants::SsboBinding::ParticleStats());
 
@@ -536,9 +542,10 @@ namespace Boidsish {
 			grid_build_shader_->setFloat("u_cell_size", Constants::Class::Particles::ParticleGridCellSize());
 			grid_build_shader_->setInt("u_num_particles", kMaxParticles);
 
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleBuffer(), particle_buffer_);
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleGridHeads(), grid_heads_buffer_);
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleGridNext(), grid_next_buffer_);
+			{
+				const GLuint ssbos[] = {grid_heads_buffer_, grid_next_buffer_, particle_buffer_};
+				glBindBuffersBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleGridHeads(), 3, ssbos);
+			}
 
 			// Mode 0: Clear
 			grid_build_shader_->setInt("u_mode", 0);
@@ -564,8 +571,10 @@ namespace Boidsish {
 		// --- Phase 4: Behavior ---
 		// Processes only live particles identified in Phase 1, using grid from Phase 2
 		bind_textures_and_uniforms(behavior_shader_.get());
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleGridHeads(), grid_heads_buffer_);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleGridNext(), grid_next_buffer_);
+		{
+			const GLuint ssbos[] = {grid_heads_buffer_, grid_next_buffer_};
+			glBindBuffersBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleGridHeads(), 2, ssbos);
+		}
 
 		// Indirect dispatch!
 		glBindBuffer(GL_DISPATCH_INDIRECT_BUFFER, behavior_command_buffer_);
@@ -575,17 +584,22 @@ namespace Boidsish {
 		// Ensure memory operations are finished before rendering
 		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT);
 
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleBuffer(), 0);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleGridHeads(), 0);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleGridNext(), 0);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::EmitterBuffer(), 0);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::IndirectionBuffer(), 0);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainChunkInfo(), 0);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::SliceData(), 0);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::VisibleParticleIndices(), 0);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleDrawCommand(), 0);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::LiveParticleIndices(), 0);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::BehaviorDrawCommand(), 0);
+		{
+			const GLuint zeros[] = {0, 0, 0, 0, 0};
+			glBindBuffersBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleGridHeads(), 5, zeros);
+		}
+		{
+			const GLuint zeros[] = {0, 0};
+			glBindBuffersBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainChunkInfo(), 2, zeros);
+		}
+		{
+			const GLuint zeros[] = {0, 0};
+			glBindBuffersBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::VisibleParticleIndices(), 2, zeros);
+		}
+		{
+			const GLuint zeros[] = {0, 0};
+			glBindBuffersBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::LiveParticleIndices(), 2, zeros);
+		}
 	}
 
 	void FireEffectManager::_UpdateParticleAllocation() {
@@ -673,9 +687,8 @@ namespace Boidsish {
 		std::lock_guard<std::mutex> lock(mutex_);
 		if (!initialized_) return;
 
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleBuffer(), particle_buffer_);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleGridHeads(), grid_heads_buffer_);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleGridNext(), grid_next_buffer_);
+		const GLuint ssbos[] = {grid_heads_buffer_, grid_next_buffer_, particle_buffer_};
+		glBindBuffersBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleGridHeads(), 3, ssbos);
 	}
 
 	void FireEffectManager::Render(

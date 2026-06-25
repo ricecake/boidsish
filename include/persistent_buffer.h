@@ -114,6 +114,8 @@ namespace Boidsish {
 
 		size_t GetElementCount() const { return element_count_; }
 
+		size_t GetAlignedFrameStride() const { return aligned_frame_stride_; }
+
 		size_t GetTotalSize() const { return aligned_frame_stride_ * num_buffers_; }
 
 		int GetCurrentBufferIndex() const { return current_buffer_index_; }
