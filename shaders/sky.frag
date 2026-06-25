@@ -9,6 +9,8 @@ in vec2 TexCoords;
 
 #include "helpers/lighting.glsl"
 #include "atmosphere/common.glsl"
+#include "helpers/fast_noise.glsl"
+#include "helpers/clouds.glsl"
 
 uniform mat4 invProjection;
 uniform mat4 invView;
@@ -112,7 +114,7 @@ vec3 hash33(vec3 p) {
 	return fract((p.xxy + p.yxx) * p.zyx);
 }
 
-float fbm(vec3 p) {
+float fbm_sky(vec3 p) {
 	float v = 0.0;
 	float a = 0.5;
 	for (int i = 0; i < 4; i++) {
@@ -207,8 +209,8 @@ void main() {
 	vec3 stars = starLayer(world_ray) * vec3(1.0, 0.9, 0.8);
 
 	vec3  p = world_ray * 4.0;
-	vec3  warp_offset = vec3(fbm(p + time * 0.05));
-	float nebula_noise = fbm(p + warp_offset * 0.5);
+	vec3  warp_offset = vec3(fbm_sky(p + time * 0.05));
+	float nebula_noise = fbm_sky(p + warp_offset * 0.5);
 	// vec3  nebula = vec3(0);
 	// vec3  nebula = mix(vec3(0.0, 0.1, 0.4), vec3(0.8, 0.2, 0.7), nebula_noise) * 0.4;
 	vec3  nebula = mix(vec3(0.0, 0.0, 0.0), vec3(0.8, 0.2, 0.7), nebula_noise) * 0.4;
@@ -241,9 +243,16 @@ void main() {
 	float moonDistSq = moonLocalX * moonLocalX + moonFlattenedY * moonFlattenedY;
 	float moonMask = smoothstep(
 		moonAngularRadius * moonAngularRadius,
+		(sunAngularRadius - 0.001) * (sunAngularRadius - 0.001), // Typo in original? No, moonAngularRadius.
+		moonDistSq
+	);
+	// Re-checking the above: it was using sunAngularRadius in original for moonMask? Let's fix to moonAngularRadius
+	moonMask = smoothstep(
+		moonAngularRadius * moonAngularRadius,
 		(moonAngularRadius - 0.001) * (moonAngularRadius - 0.001),
 		moonDistSq
 	);
+
 	moonMask *= step(0.99, moonLocalZ);
 
 	vec3 moonTransmittance = max(getTransmittance(r, moonDir.y), vec3(0.001));
@@ -282,11 +291,11 @@ void main() {
 			vec3 advect = getCloudWindOffset(time * 0.5); // Cirrus moves slower relative to world
 			vec2 uv_cirrus = (p_cirrus.xz + advect.xz) * (0.00005 / worldScale);
 
-			float n = (fbm(vec3(uv_cirrus * 2.0, time * 0.01)) + 1.0) * 0.5;
-			float n2 = (fbm(vec3(uv_cirrus * 5.0, time * 0.02 + 10.0)) + 1.0) * 0.5;
+			float n = (fbm_sky(vec3(uv_cirrus * 2.0, time * 0.01)) + 1.0) * 0.5;
+			float n2 = (fbm_sky(vec3(uv_cirrus * 5.0, time * 0.02 + 10.0)) + 1.0) * 0.5;
 			float noise = smoothstep(0.3, 0.8, n * n2);
 
-			vec3  T_cirrus = texture(u_transmittanceLUT, getTransmittanceUV(kEarthRadius + cirrusAlt, sunDir.y)).rgb;
+			vec3  T_cirrus = texture(u_transmittanceLUT, transmittanceToUV(kEarthRadius + cirrusAlt, sunDir.y)).rgb;
 			float cirrusPhase = mix(0.2, 1.0, pow(max(0.0, dot(world_ray, sunDir)), 3.0));
 
 			// High-altitude cirrus receives strong scattered sky light even when noise is low
