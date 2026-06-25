@@ -180,17 +180,17 @@ void main() {
 	float distToSun = sqrt(max(0.0, distSq));
 
 	// Humidity-driven sun aureole (Mie scattering approximation)
-	// Requested baseline: humidity 0, strength 1.0 looks like old humidity 0.05, strength 3.0
-	float aureoleScale = mix(2.175, 8.0, localHumidity * sunAureoleStrength);
-	float aureole = exp(-distToSun * (50.0 / aureoleScale)) * sunAureoleStrength * 6.3 * (1.0 + 2.0 * localHumidity);
+	float aureoleScale = 1.1 + smoothstep(0.0, 1.00, localHumidity * sunAureoleStrength);
+	float aureole = exp(-distToSun * (45.0 / aureoleScale)) * sunAureoleStrength * 3.5 * (1.3 + 1.750 * localHumidity);
 
 	float sunMask = smoothstep(
 		sunAngularRadius * sunAngularRadius,
 		(sunAngularRadius - 0.001) * (sunAngularRadius - 0.001),
 		distSq
 	);
-	// Add aureole to the mask
-	sunMask = clamp(sunMask + aureole, 0.0, 20.0);
+	// Add aureole to the mask with soft-clamping to avoid hard cut-offs at high brightness
+	sunMask += aureole;
+	sunMask = 20.0 * tanh(sunMask / 20.0);
 
 	// Ensure we are in front of the sun
 	sunMask *= step(0.99, rayLocalZ);
