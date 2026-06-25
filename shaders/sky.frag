@@ -180,13 +180,12 @@ void main() {
 	float distToSun = sqrt(max(0.0, distSq));
 
 	// Humidity-driven sun aureole (Mie scattering approximation)
-	// Requested baseline: humidity 0, strength 1.0 looks like old humidity 0.05, strength 3.0
-	float aureoleScale = mix(2.175, 8.0, localHumidity * sunAureoleStrength);
-	float aureole = exp(-distToSun * (50.0 / aureoleScale)) * sunAureoleStrength * 6.3 * (1.0 + 2.0 * localHumidity);
+	float aureoleScale = 1.1+smoothstep(0.0, 1.00, localHumidity * sunAureoleStrength);
+	float aureole = exp(-distToSun * (45.0 / aureoleScale)) * sunAureoleStrength * 3.5 * (1.3 + 1.750 * localHumidity);
 
-	float sunMask = smoothstep(
-		sunAngularRadius * sunAngularRadius,
+	float sunMask = 1.0 - smoothstep(
 		(sunAngularRadius - 0.001) * (sunAngularRadius - 0.001),
+		sunAngularRadius * sunAngularRadius,
 		distSq
 	);
 	// Add aureole to the mask
@@ -290,7 +289,7 @@ void main() {
 
 			// High-altitude cirrus receives strong scattered sky light even when noise is low
 			vec3 cirrusLighting = (T_cirrus * sunColor * cirrusPhase * 5.0) + (skyRadiance * 0.5);
-			cirrusColor = cirrusLighting * noise * cirrusOpacity;
+			cirrusColor = cirrusLighting * noise * cirrusOpacity * 15.0;
 
 			// Fade cirrus near horizon to avoid tiling artifacts
 			cirrusColor *= smoothstep(0.0, 0.15, world_ray.y);
