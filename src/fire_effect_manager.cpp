@@ -571,8 +571,10 @@ namespace Boidsish {
 		// --- Phase 4: Behavior ---
 		// Processes only live particles identified in Phase 1, using grid from Phase 2
 		bind_textures_and_uniforms(behavior_shader_.get());
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleGridHeads(), grid_heads_buffer_);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleGridNext(), grid_next_buffer_);
+		{
+			const GLuint ssbos[] = {grid_heads_buffer_, grid_next_buffer_};
+			glBindBuffersBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleGridHeads(), 2, ssbos);
+		}
 
 		// Indirect dispatch!
 		glBindBuffer(GL_DISPATCH_INDIRECT_BUFFER, behavior_command_buffer_);
@@ -583,14 +585,8 @@ namespace Boidsish {
 		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT);
 
 		{
-			const GLuint zeros[] = {0, 0, 0};
-			glBindBuffersBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleGridHeads(), 3, zeros);
-		}
-		{
-			const GLuint zeros[] = {0, 0};
-			glBindBuffersBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::IndirectionBuffer(), 2, zeros);
-			// Note: IndirectionBuffer is 17, but ParticleBuffer is 16. EmitterBuffer is 22.
-			// Let's just do them individually if they are not sequential.
+			const GLuint zeros[] = {0, 0, 0, 0, 0};
+			glBindBuffersBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleGridHeads(), 5, zeros);
 		}
 		{
 			const GLuint zeros[] = {0, 0};

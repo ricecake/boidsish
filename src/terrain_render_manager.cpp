@@ -950,17 +950,14 @@ namespace Boidsish {
 		shader_base.trySetInt("uBiomeMap", Constants::TextureUnit::TerrainBiomeMap());
 		shader_base.trySetInt("u_biomeMap", Constants::TextureUnit::TerrainBiomeMap());
 
-		const GLuint textures2[] = {
-			baked_params_texture_,
-			0, // TerrainRawHeightmap
-			0, // TerrainBiomeImage
-			0, // TerrainHeightmapImage
-			0, // TerrainBakedParamsImage
-			horizon_map_texture_,
-			0, // LbmWindData
-			terrain_shadow_map_texture_
-		};
-		glBindTextures(Constants::TextureUnit::TerrainBakedParams(), 8, textures2);
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainBakedParams());
+		glBindTexture(GL_TEXTURE_2D_ARRAY, baked_params_texture_);
+
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainHorizonMap());
+		glBindTexture(GL_TEXTURE_2D_ARRAY, horizon_map_texture_);
+
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainShadowMap());
+		glBindTexture(GL_TEXTURE_2D, terrain_shadow_map_texture_);
 
 		shader_base.trySetInt("uBakedParams", Constants::TextureUnit::TerrainBakedParams());
 		shader_base.trySetInt("u_displacementArray", Constants::TextureUnit::TerrainDisplacement());
@@ -1057,30 +1054,18 @@ namespace Boidsish {
 
 		glMemoryBarrier(GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT);
 
-		{
-			const GLuint buffers[] = {
-				patch_metrics_ssbo_,
-				patch_draw_data_pb_->GetBufferId(),
-				patch_tess_levels_pb_->GetBufferId(),
-				patch_indirect_pb_->GetBufferId(),
-				patch_visibility_ssbo_
-			};
-			const GLintptr offsets[] = {
-				0,
-				static_cast<GLintptr>(patch_draw_data_pb_->GetFrameOffset()),
-				static_cast<GLintptr>(patch_tess_levels_pb_->GetFrameOffset()),
-				static_cast<GLintptr>(patch_indirect_pb_->GetFrameOffset()),
-				0
-			};
-			const GLsizeiptr sizes[] = {
-				0,
-				static_cast<GLsizeiptr>(patch_draw_data_pb_->GetAlignedFrameStride()),
-				static_cast<GLsizeiptr>(patch_tess_levels_pb_->GetAlignedFrameStride()),
-				static_cast<GLsizeiptr>(patch_indirect_pb_->GetTotalSize() / 3),
-				0
-			};
-			glBindBuffersRange(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainPatchMetrics(), 5, buffers, offsets, sizes);
-		}
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainPatchMetrics(), patch_metrics_ssbo_);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainPatchVisibility(), patch_visibility_ssbo_);
+		patch_draw_data_pb_->BindRange(Constants::SsboBinding::TerrainPatchDrawData());
+		patch_tess_levels_pb_->BindRange(Constants::SsboBinding::TerrainPatchTessLevels());
+
+		glBindBufferRange(
+			GL_SHADER_STORAGE_BUFFER,
+			Constants::SsboBinding::TerrainPatchIndirect(),
+			patch_indirect_pb_->GetBufferId(),
+			patch_indirect_pb_->GetFrameOffset(),
+			patch_indirect_pb_->GetTotalSize() / 3
+		);
 
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::IndirectionBuffer(), instance_vbo_);
 		if (temporal_data_ubo_ != 0) {

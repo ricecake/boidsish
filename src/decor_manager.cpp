@@ -853,8 +853,8 @@ namespace Boidsish {
 
 		const GLuint ubos[] = {decor_props_ubo_, temp_globals_ubo};
 		glBindBuffersBase(GL_UNIFORM_BUFFER, Constants::UboBinding::DecorProps(), 2, ubos);
-		const GLuint ssbos[] = {temp_chunk_params_ssbo, temp_instance_ssbo};
-		glBindBuffersBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::DecorChunkParams(), 2, ssbos);
+		const GLuint ssbos[] = {temp_instance_ssbo, temp_chunk_params_ssbo};
+		glBindBuffersBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::DecorAllInstances(), 2, ssbos);
 
 		int                           num_types = (int)decor_types_.size();
 		std::vector<DecorTypeResults> results(num_types);
