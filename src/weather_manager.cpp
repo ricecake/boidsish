@@ -598,8 +598,8 @@ namespace Boidsish {
 		sunny.settings.rayleigh_scattering = {RayleighScattering, RayleighScattering};
 		sunny.settings.haze_color = {DefaultHazeColor, DefaultHazeColor};
 		sunny.settings.cloud_color = {DefaultCloudColor, DefaultCloudColor};
-		sunny.settings.sun_aureole_strength = {0.2f, 0.4f};
-		sunny.settings.cirrus_opacity = {0.1f, 0.3f};
+		sunny.settings.sun_aureole_strength = {0.3f, 0.5f};
+		sunny.settings.cirrus_opacity = {0.2f, 0.4f};
 		presets_.push_back(sunny);
 
 		// 2. Cloudy
@@ -630,8 +630,8 @@ namespace Boidsish {
 		cloudy.settings.rayleigh_scattering = {RayleighScattering, RayleighScattering * 1.1f};
 		cloudy.settings.haze_color = {DefaultHazeColor * 0.9f, DefaultHazeColor};
 		cloudy.settings.cloud_color = {DefaultCloudColor * 0.9f, DefaultCloudColor};
-		cloudy.settings.sun_aureole_strength = {0.4f, 0.7f};
-		cloudy.settings.cirrus_opacity = {0.3f, 0.6f};
+		cloudy.settings.sun_aureole_strength = {0.6f, 0.9f};
+		cloudy.settings.cirrus_opacity = {0.4f, 0.7f};
 		presets_.push_back(cloudy);
 
 		// 3. Overcast
@@ -662,8 +662,8 @@ namespace Boidsish {
 		overcast.settings.rayleigh_scattering = {RayleighScattering * 1.1f, RayleighScattering * 1.3f};
 		overcast.settings.haze_color = {DefaultHazeColor * 0.7f, DefaultHazeColor * 0.8f};
 		overcast.settings.cloud_color = {DefaultCloudColor * 0.7f, DefaultCloudColor * 0.8f};
-		overcast.settings.sun_aureole_strength = {0.6f, 1.0f};
-		overcast.settings.cirrus_opacity = {0.5f, 0.9f};
+		overcast.settings.sun_aureole_strength = {0.8f, 1.2f};
+		overcast.settings.cirrus_opacity = {0.6f, 1.0f};
 		presets_.push_back(overcast);
 
 		// 4. Foggy

@@ -133,7 +133,7 @@ Sampling getAtmospherePropertiesAtPos(vec3 worldPos) {
 
 	// Boost Mie scattering at low altitudes to eliminate the "gap" below the cloud floor
 	// This makes clear areas still feel atmospheric.
-	#ifdef LIGHTING_TYPES_GLSL
+	#if defined(LIGHTING_TYPES_GLSL) && !defined(ATMOSPHERE_PRECOMPUTE)
 	float groundHaze = hazeDensity * exp(-max(0.0, h * 1000.0 * WORLD_SCALE_VALUE) / max(hazeHeight * 1000.0 * WORLD_SCALE_VALUE, 1.0));
 	float gapFactor = mix(1.0, 1.0 + groundHaze, smoothstep(cloudAltitude * WORLD_SCALE_VALUE, 0.0, worldPos.y));
 	#else
