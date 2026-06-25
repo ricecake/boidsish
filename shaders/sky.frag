@@ -188,7 +188,6 @@ void main() {
 		sunAngularRadius * sunAngularRadius,
 		distSq
 	);
-
 	// Add aureole to the mask with soft-clamping to avoid hard cut-offs at high brightness
 	sunMask += aureole;
 	sunMask = 20.0 * tanh(sunMask / 20.0);

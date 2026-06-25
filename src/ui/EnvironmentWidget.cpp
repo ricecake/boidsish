@@ -40,8 +40,6 @@ namespace Boidsish {
 						case WeatherAttribute::WindSpeed: val = weather_cur.wind_speed; break;
 						case WeatherAttribute::WindFrequency: val = weather_cur.wind_frequency; break;
 						case WeatherAttribute::CloudCoverage: val = weather_cur.cloud_coverage; break;
-						case WeatherAttribute::SunAureoleStrength: val = weather_cur.sun_aureole_strength; break;
-						case WeatherAttribute::CirrusOpacity: val = weather_cur.cirrus_opacity; break;
 						default: break;
 					}
 
@@ -106,8 +104,6 @@ namespace Boidsish {
 							drawAttrControl("Humidity", WeatherAttribute::Humidity, 0.0f, 1.0f, "%.2f");
 							drawAttrControl("Wind Strength", WeatherAttribute::WindStrength, 0.0f, 5.0f, "%.2f");
 							drawAttrControl("Cloud Coverage", WeatherAttribute::CloudCoverage, 0.0f, 1.0f, "%.2f");
-							drawAttrControl("Sun Aureole", WeatherAttribute::SunAureoleStrength, 0.0f, 2.0f, "%.2f");
-							drawAttrControl("Cirrus Opacity", WeatherAttribute::CirrusOpacity, 0.0f, 1.0f, "%.2f");
 
 							auto active_constraints = weather->GetActiveConstraints();
 							if (!active_constraints.empty()) {
@@ -642,6 +638,54 @@ namespace Boidsish {
 										atmosphere_effect->SetCloudBeerPowderMix(bp_mix);
 										cfg.SetFloat("cloud_beer_powder_mix", bp_mix);
 									}
+
+										ImGui::Separator();
+										ImGui::Text("Cloud Advection & Detail");
+
+										float flow_speed = cfg.GetAppSettingFloat(
+											"cloud_flow_speed",
+											atmosphere_effect->GetCloudFlowSpeed()
+										);
+										if (ImGui::SliderFloat("Cloud Flow Speed", &flow_speed, 0.0f, 2.0f)) {
+											atmosphere_effect->SetCloudFlowSpeed(flow_speed);
+											cfg.SetFloat("cloud_flow_speed", flow_speed);
+										}
+
+										float flow_dir = cfg.GetAppSettingFloat(
+											"cloud_flow_direction",
+											atmosphere_effect->GetCloudFlowDirection()
+										);
+										if (ImGui::SliderAngle("Cloud Flow Direction", &flow_dir)) {
+											atmosphere_effect->SetCloudFlowDirection(flow_dir);
+											cfg.SetFloat("cloud_flow_direction", flow_dir);
+										}
+
+										float flow_height = cfg.GetAppSettingFloat(
+											"cloud_flow_height_scale",
+											atmosphere_effect->GetCloudFlowHeightScale()
+										);
+										if (ImGui::SliderFloat("Cloud Flow Height Scale", &flow_height, 0.0f, 0.5f)) {
+											atmosphere_effect->SetCloudFlowHeightScale(flow_height);
+											cfg.SetFloat("cloud_flow_height_scale", flow_height);
+										}
+
+										float curl_strength = cfg.GetAppSettingFloat(
+											"cloud_curl_strength",
+											atmosphere_effect->GetCloudCurlStrength()
+										);
+										if (ImGui::SliderFloat("Cloud Curl Strength", &curl_strength, 0.0f, 20.0f)) {
+											atmosphere_effect->SetCloudCurlStrength(curl_strength);
+											cfg.SetFloat("cloud_curl_strength", curl_strength);
+										}
+
+										float curl_freq = cfg.GetAppSettingFloat(
+											"cloud_curl_frequency",
+											atmosphere_effect->GetCloudCurlFrequency()
+										);
+										if (ImGui::SliderFloat("Cloud Curl Frequency", &curl_freq, 0.1f, 10.0f)) {
+											atmosphere_effect->SetCloudCurlFrequency(curl_freq);
+											cfg.SetFloat("cloud_curl_frequency", curl_freq);
+										}
 
 									ImGui::Separator();
 									ImGui::Text("Scattering");
