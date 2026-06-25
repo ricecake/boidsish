@@ -189,8 +189,9 @@ void main() {
 		distSq
 	);
 	// Add aureole to the mask with soft-clamping to avoid hard cut-offs at high brightness
+	// Using a more gradual quadratic-rational soft-clamp for a natural look
 	sunMask += aureole;
-	sunMask = 20.0 * tanh(sunMask / 20.0);
+	sunMask = (sunMask * (1.0 + sunMask * 0.05)) / (1.0 + sunMask * 0.06);
 
 	// Ensure we are in front of the sun
 	sunMask *= step(0.99, rayLocalZ);
