@@ -363,11 +363,10 @@ float calculateCloudDensityExpV3(
 	// Apply advection to the sample position
 	vec3 advect = getCloudAdvectionOffset(h, time);
 	vec3 p_advected = p;// - advect;
-	vec3 p_deadvected = p + 2*advect;
-	vec3 p_warp = p + 3 * advect;
+	vec3 p_deadvected = p - 2*advect;
+	vec3 p_warp = p - 5 * advect;
 	vec3 p_scaled = (p_advected) / (50000.0 * props.worldScale);
 	vec3 p_descaled = (p_deadvected) / (50000.0 * props.worldScale);
-	// vec3 p_warped = (p+fastCurl3d((p_warp) / (50000.0 * props.worldScale))) / (10000.0 * props.worldScale);
 
 
 	// vec2 worley = fastWorley3dID(p_scaled) + 0.5 * fastWorley3dID(p_scaled * 2.0)+ 0.25 * fastWorley3dID(p_scaled * 4.0);
@@ -380,17 +379,19 @@ float calculateCloudDensityExpV3(
 	// return (cos(2*worley.y*time)+1.5)*step(sin(time*worley.y)*0.5+0.5, length(fract(p)));
 
 	// float baseNoise = smoothstep(coverageThreshold, 1.0, max(worley.x,worley.y));
-	// float baseNoise = smoothstep(coverageThreshold, 1.0, weather.weatherMap) * max(worley.x,worley.y);
-	float baseNoise = remap(max(worley.x,worley.y), coverageThreshold, 1.0, 0.0, 1.0);
+	float baseNoise = smoothstep(coverageThreshold, 1.0, weather.weatherMap) * max(worley.x,worley.y);
+	// float baseNoise = remap(max(worley.x,worley.y), coverageThreshold, 1.0, 0.0, 1.0);
+	// float baseNoise = remap(remap(worley.y, worley.x, 1.0, 0.0, 1.0), coverageThreshold, 1.0, 0.0, 1.0);
 
 	if (simplified) {
 		return remapClamp(baseNoise*heightGradient*2.0, 0, 1.0, 0.0, props.densityBase);
 	}
 
-	float ridge = abs(fastRidge3d(p_descaled * 25.0));
+	vec3 p_warped = (p+time*fastCurl3d((p_warp) / (50000.0 * props.worldScale))) / (10000.0 * props.worldScale);
+	float ridge = abs(fastRidge3d(p_warped*10.0));
 
 	// return step(coverageThreshold, worley.x*step(coverageThreshold, worley.y)) * remapClamp(baseNoise, mix(worley.x, fastFbmCurl3d(p_scaled), h) * 0.5, 1.0, 0.0, props.densityBase);
-	return remapClamp(baseNoise*heightGradient*2.0, 2.0*ridge, 2.0, 0.0, props.densityBase);
+	return 5.0*remapClamp(baseNoise*heightGradient*2.0, 2.0*ridge, 2.0, 0.0, props.densityBase);
 }
 
 

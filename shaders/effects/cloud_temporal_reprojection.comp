@@ -353,7 +353,8 @@ void main() {
 	historyRGBA.a = 1.0 - clamp(clippedAlpha, 0.0, 1.0);
 
 	float alpha = 1.0 / historyLength;
-	alpha = max(alpha, mix(0.03, 0.25, smoothstep(8.0, 2.0, historyLength)));
+	// alpha = max(alpha, mix(0.03, 0.25, smoothstep(8.0, 2.0, historyLength)));
+	alpha = max(alpha, 0.25);
 
 	// Force the alpha to 1.0 (trust current frame entirely) if we hit a new dense core
 	alpha = mix(alpha, 1.0, newStructureConfidence);
