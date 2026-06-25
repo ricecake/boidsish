@@ -7,8 +7,8 @@ layout(location = 3) out vec4 AlbedoOut;
 
 in vec2 TexCoords;
 
-#include "atmosphere/common.glsl"
 #include "helpers/lighting.glsl"
+#include "atmosphere/common.glsl"
 
 uniform mat4 invProjection;
 uniform mat4 invView;
@@ -180,8 +180,9 @@ void main() {
 	float distToSun = sqrt(max(0.0, distSq));
 
 	// Humidity-driven sun aureole (Mie scattering approximation)
-	float aureoleScale = mix(1.0, 4.0, localHumidity * sunAureoleStrength);
-	float aureole = exp(-distToSun * (50.0 / aureoleScale)) * sunAureoleStrength * (0.5 + 2.0 * localHumidity);
+	// Requested baseline: humidity 0, strength 1.0 looks like old humidity 0.05, strength 3.0
+	float aureoleScale = mix(2.175, 8.0, localHumidity * sunAureoleStrength);
+	float aureole = exp(-distToSun * (50.0 / aureoleScale)) * sunAureoleStrength * 6.3 * (1.0 + 2.0 * localHumidity);
 
 	float sunMask = smoothstep(
 		sunAngularRadius * sunAngularRadius,
@@ -280,17 +281,19 @@ void main() {
 			vec3 advect = getCloudWindOffset(time * 0.5); // Cirrus moves slower relative to world
 			vec2 uv_cirrus = (p_cirrus.xz + advect.xz) * (0.00005 / worldScale);
 
-			float n = fbm(vec3(uv_cirrus * 2.0, time * 0.01));
-			float n2 = fbm(vec3(uv_cirrus * 4.0, time * 0.02 + 10.0));
-			float noise = smoothstep(0.4, 0.7, n * n2);
+			float n = (fbm(vec3(uv_cirrus * 2.0, time * 0.01)) + 1.0) * 0.5;
+			float n2 = (fbm(vec3(uv_cirrus * 5.0, time * 0.02 + 10.0)) + 1.0) * 0.5;
+			float noise = smoothstep(0.3, 0.8, n * n2);
 
 			vec3  T_cirrus = texture(u_transmittanceLUT, getTransmittanceUV(kEarthRadius + cirrusAlt, sunDir.y)).rgb;
-			float cirrusPhase = mix(0.1, 1.0, pow(max(0.0, dot(world_ray, sunDir)), 4.0));
+			float cirrusPhase = mix(0.2, 1.0, pow(max(0.0, dot(world_ray, sunDir)), 3.0));
 
-			cirrusColor = T_cirrus * sunColor * noise * cirrusOpacity * cirrusPhase * 2.0;
+			// High-altitude cirrus receives strong scattered sky light even when noise is low
+			vec3 cirrusLighting = (T_cirrus * sunColor * cirrusPhase * 5.0) + (skyRadiance * 0.5);
+			cirrusColor = cirrusLighting * noise * cirrusOpacity;
 
 			// Fade cirrus near horizon to avoid tiling artifacts
-			cirrusColor *= smoothstep(0.0, 0.1, world_ray.y);
+			cirrusColor *= smoothstep(0.0, 0.15, world_ray.y);
 		}
 	}
 

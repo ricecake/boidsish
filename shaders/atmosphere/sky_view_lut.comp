@@ -18,6 +18,7 @@ uniform float u_cloudShadowIntensity;
 uniform float u_colorVarianceScale;
 uniform float u_colorVarianceStrength;
 
+#define ATMOSPHERE_PRECOMPUTE
 #include "../helpers/fast_noise.glsl"
 #include "common.glsl"
 #include "../helpers/lighting.glsl"
