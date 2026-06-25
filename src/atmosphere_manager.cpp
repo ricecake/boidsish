@@ -204,6 +204,8 @@ namespace Boidsish {
 		_skyViewShader->setFloat("u_mieScaleHeight", _mieScaleHeight);
 		_skyViewShader->setFloat("u_colorVarianceScale", _colorVarianceScale);
 		_skyViewShader->setFloat("u_colorVarianceStrength", _colorVarianceStrength);
+		_skyViewShader->setFloat("u_sunAureoleStrength", _sunAureoleStrength);
+		_skyViewShader->setFloat("u_cirrusOpacity", _cirrusOpacity);
 
 		glDispatchCompute(192 / 8, (108 + 7) / 8, 1);
 		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
@@ -236,6 +238,8 @@ namespace Boidsish {
 		_aerialPerspectiveShader->setFloat("u_mieScaleHeight", _mieScaleHeight);
 		_aerialPerspectiveShader->setFloat("u_colorVarianceScale", _colorVarianceScale);
 		_aerialPerspectiveShader->setFloat("u_colorVarianceStrength", _colorVarianceStrength);
+		_aerialPerspectiveShader->setFloat("u_sunAureoleStrength", _sunAureoleStrength);
+		_aerialPerspectiveShader->setFloat("u_cirrusOpacity", _cirrusOpacity);
 
 		auto wm = ServiceLocator::Instance().Get<WeatherManager>();
 		auto weather = wm->GetCurrentWeather();

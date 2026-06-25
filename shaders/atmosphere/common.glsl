@@ -102,10 +102,13 @@ Sampling getAtmosphereProperties(float h) {
 	float md = getMieDensity(h);
 	float od = getOzoneDensity(h);
 
+	// Base haze factor from uniforms (applied to LUT generation)
+	float groundHaze = hazeDensity * exp(-max(0.0, h) / max(hazeHeight, 1.0));
+
 	Sampling s;
 	s.rayleigh = kRayleighScattering * rd * u_rayleighScale;
-	s.mie = hazeColor * (kMieScattering * md * u_mieScale);
-	s.extinction = s.rayleigh + hazeColor * (kMieExtinction * md * u_mieScale) + kOzoneAbsorption * od;
+	s.mie = hazeColor * (kMieScattering * (md + groundHaze) * u_mieScale);
+	s.extinction = s.rayleigh + hazeColor * (kMieExtinction * (md + groundHaze) * u_mieScale) + kOzoneAbsorption * od;
 	return s;
 }
 
@@ -128,12 +131,21 @@ Sampling getAtmospherePropertiesAtPos(vec3 worldPos) {
 	float humidityFactor = 1.0 + humidity * 5.0;
 	float aerosolFactor = 1.0 + aerosolConc * 10.0;
 
+	// Boost Mie scattering at low altitudes to eliminate the "gap" below the cloud floor
+	// This makes clear areas still feel atmospheric.
+	#ifdef LIGHTING_TYPES_GLSL
+	float groundHaze = hazeDensity * exp(-max(0.0, h * 1000.0 * WORLD_SCALE_VALUE) / max(hazeHeight * 1000.0 * WORLD_SCALE_VALUE, 1.0));
+	float gapFactor = mix(1.0, 1.0 + groundHaze, smoothstep(cloudAltitude * WORLD_SCALE_VALUE, 0.0, worldPos.y));
+	#else
+	float gapFactor = 1.0;
+	#endif
+
 	float md = getMieDensity(h);
 	vec3  mieScatBase = hazeColor * (kMieScattering * md * u_mieScale);
 	vec3  mieExtBase = hazeColor * (kMieExtinction * md * u_mieScale);
 
-	s.mie = mieScatBase * humidityFactor * aerosolFactor;
-	s.extinction += (mieExtBase * (humidityFactor * aerosolFactor - 1.0));
+	s.mie = mieScatBase * humidityFactor * aerosolFactor * gapFactor;
+	s.extinction += (mieExtBase * (humidityFactor * aerosolFactor * gapFactor - 1.0));
 
 	return s;
 }

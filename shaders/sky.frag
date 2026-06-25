@@ -151,6 +151,12 @@ void main() {
 	// 1. Atmospheric Scattering
 	vec3 skyRadiance = sampleSkyView(world_ray);
 
+	// Fetch weather scalars for humidity-driven effects
+	float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
+	vec2 weatherUV = (viewPos.xz / scaledChunkSize - vec2(u_originSize.xy)) / 128.0;
+	vec4 weatherScalars = texture(u_weatherScalars, weatherUV);
+	float localHumidity = weatherScalars.y;
+
 	// 2. Sun Disc with Realistic Distortion (flattening near horizon)
 	float cosTheta = dot(world_ray, sunDir);
 	float sunAngularRadius = 0.02; // approx 1.0 degrees
@@ -171,11 +177,20 @@ void main() {
 
 	// Effective angle to sun center
 	float distSq = rayLocalX * rayLocalX + flattenedY * flattenedY;
+	float distToSun = sqrt(max(0.0, distSq));
+
+	// Humidity-driven sun aureole (Mie scattering approximation)
+	float aureoleScale = mix(1.0, 4.0, localHumidity * sunAureoleStrength);
+	float aureole = exp(-distToSun * (50.0 / aureoleScale)) * sunAureoleStrength * (0.5 + 2.0 * localHumidity);
+
 	float sunMask = smoothstep(
 		sunAngularRadius * sunAngularRadius,
 		(sunAngularRadius - 0.001) * (sunAngularRadius - 0.001),
 		distSq
 	);
+	// Add aureole to the mask
+	sunMask = clamp(sunMask + aureole, 0.0, 20.0);
+
 	// Ensure we are in front of the sun
 	sunMask *= step(0.99, rayLocalZ);
 
@@ -250,10 +265,39 @@ void main() {
 
 	vec3 moonDisc = u_moonFullRadiance * phasedMask * moonTransmittance * smoothstep(-0.01, 0.01, moonDir.y);
 
+	// 5. Cirrus Cloud Layer
+	vec3 cirrusColor = vec3(0.0);
+	if (cirrusOpacity > 0.01) {
+		float cirrusAlt = 10.0; // 10 km altitude
+		float camAltKM = viewPos.y / (1000.0 * worldScale);
+		float h_cirrus = cirrusAlt - camAltKM;
+
+		if (world_ray.y > 0.0) {
+			float t_cirrus = h_cirrus / max(world_ray.y, 0.001);
+			vec3  p_cirrus = viewPos + world_ray * (t_cirrus * 1000.0 * worldScale);
+
+			// Advect cirrus using global flow
+			vec3 advect = getCloudWindOffset(time * 0.5); // Cirrus moves slower relative to world
+			vec2 uv_cirrus = (p_cirrus.xz + advect.xz) * (0.00005 / worldScale);
+
+			float n = fbm(vec3(uv_cirrus * 2.0, time * 0.01));
+			float n2 = fbm(vec3(uv_cirrus * 4.0, time * 0.02 + 10.0));
+			float noise = smoothstep(0.4, 0.7, n * n2);
+
+			vec3  T_cirrus = texture(u_transmittanceLUT, getTransmittanceUV(kEarthRadius + cirrusAlt, sunDir.y)).rgb;
+			float cirrusPhase = mix(0.1, 1.0, pow(max(0.0, dot(world_ray, sunDir)), 4.0));
+
+			cirrusColor = T_cirrus * sunColor * noise * cirrusOpacity * cirrusPhase * 2.0;
+
+			// Fade cirrus near horizon to avoid tiling artifacts
+			cirrusColor *= smoothstep(0.0, 0.1, world_ray.y);
+		}
+	}
+
 	// Lightning background pulse
 	vec3 lightningEffect = lightningColor * lightningPulse * 0.35;
 
-	vec3 finalColor = skyRadiance + sunDisc + moonDisc + spaceBackground + lightningEffect;
+	vec3 finalColor = skyRadiance + sunDisc + moonDisc + cirrusColor + spaceBackground + lightningEffect;
 
 	FragColor = vec4(finalColor, 1.0);
 	Velocity = vec4(0, 0, 1.0, 0.0); // Roughness 1.0 (sky is not reflective), Metallic 0.0

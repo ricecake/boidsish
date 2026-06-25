@@ -50,6 +50,8 @@ namespace Boidsish {
 		CloudColorR,
 		CloudColorG,
 		CloudColorB,
+		SunAureoleStrength,
+		CirrusOpacity,
 		Count
 	};
 
@@ -90,6 +92,8 @@ namespace Boidsish {
 		WeatherRange<glm::vec3> rayleigh_scattering;
 		WeatherRange<glm::vec3> haze_color;
 		WeatherRange<glm::vec3> cloud_color;
+		WeatherRange<float>     sun_aureole_strength;
+		WeatherRange<float>     cirrus_opacity;
 
 		WeatherSettings operator+(const WeatherSettings& other) const {
 			return {
@@ -116,7 +120,9 @@ namespace Boidsish {
 				mie_extinction + other.mie_extinction,
 				rayleigh_scattering + other.rayleigh_scattering,
 				haze_color + other.haze_color,
-				cloud_color + other.cloud_color
+				cloud_color + other.cloud_color,
+				sun_aureole_strength + other.sun_aureole_strength,
+				cirrus_opacity + other.cirrus_opacity
 			};
 		}
 
@@ -145,7 +151,9 @@ namespace Boidsish {
 				mie_extinction * f,
 				rayleigh_scattering * f,
 				haze_color * f,
-				cloud_color * f
+				cloud_color * f,
+				sun_aureole_strength * f,
+				cirrus_opacity * f
 			};
 		}
 	};
@@ -192,6 +200,8 @@ namespace Boidsish {
 		float     pressure = 1013.25f;
 		glm::vec3 haze_color = WeatherConstants::DefaultHazeColor;
 		glm::vec3 cloud_color = WeatherConstants::DefaultCloudColor;
+		float     sun_aureole_strength = 0.5f;
+		float     cirrus_opacity = 0.3f;
 	};
 
 	class ServiceLocator;

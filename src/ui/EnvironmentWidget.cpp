@@ -40,6 +40,8 @@ namespace Boidsish {
 						case WeatherAttribute::WindSpeed: val = weather_cur.wind_speed; break;
 						case WeatherAttribute::WindFrequency: val = weather_cur.wind_frequency; break;
 						case WeatherAttribute::CloudCoverage: val = weather_cur.cloud_coverage; break;
+						case WeatherAttribute::SunAureoleStrength: val = weather_cur.sun_aureole_strength; break;
+						case WeatherAttribute::CirrusOpacity: val = weather_cur.cirrus_opacity; break;
 						default: break;
 					}
 
@@ -104,6 +106,8 @@ namespace Boidsish {
 							drawAttrControl("Humidity", WeatherAttribute::Humidity, 0.0f, 1.0f, "%.2f");
 							drawAttrControl("Wind Strength", WeatherAttribute::WindStrength, 0.0f, 5.0f, "%.2f");
 							drawAttrControl("Cloud Coverage", WeatherAttribute::CloudCoverage, 0.0f, 1.0f, "%.2f");
+							drawAttrControl("Sun Aureole", WeatherAttribute::SunAureoleStrength, 0.0f, 2.0f, "%.2f");
+							drawAttrControl("Cirrus Opacity", WeatherAttribute::CirrusOpacity, 0.0f, 1.0f, "%.2f");
 
 							auto active_constraints = weather->GetActiveConstraints();
 							if (!active_constraints.empty()) {

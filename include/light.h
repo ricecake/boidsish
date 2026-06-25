@@ -79,7 +79,9 @@ namespace Boidsish {
 		float cloudFlowHeightScale;              // offset 776, 4 bytes
 		float cloudCurlStrength;                 // offset 780, 4 bytes
 		float cloudCurlFrequency;                // offset 784, 4 bytes
-		float _pad_clouds1, _pad_clouds2, _pad_clouds3; // offset 788, 12 bytes
+		float sunAureoleStrength;                // offset 788, 4 bytes
+		float cirrusOpacity;                     // offset 792, 4 bytes
+		float _pad_clouds3;                      // offset 796, 4 bytes
 		alignas(16) glm::mat4 cloudShadowMatrix; // offset 800, 64 bytes
 		alignas(16) glm::mat4 view;              // offset 864, 64 bytes
 		alignas(16) glm::mat4 projection;        // offset 928, 64 bytes
