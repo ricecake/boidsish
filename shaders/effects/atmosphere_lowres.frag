@@ -171,6 +171,11 @@ void main() {
 	float historyVariance = 0.0;
 	float historyLength = 0.0;
 
+	float expectedStart = t_start;
+	float expectedEnd = t_end;
+	float maxEmptyMult = 1.0;
+	float historyConfidence = 0.0;
+
 	if (uHasHistory && t_start < t_end) {
 		vec4 prevClip = uPrevViewProjection * vec4(viewPos + rayDir * max(t_start, 0.1), 1.0);
 		vec2 histUV = (prevClip.xy / prevClip.w) * 0.5 + 0.5;
@@ -196,14 +201,9 @@ void main() {
 				float marginScale = mix(1.0, 4.0, max(varianceBoost, historyBoost));
 				float margin = max(histStep * 2.0 * marginScale, (histLast - histFirst) * 0.5 * marginScale);
 
-				float guidedStart = max(t_start, histFirst - margin);
-				float guidedEnd = min(t_end, histLast + margin);
-
-				// Only use the guided range if it's a meaningful narrowing
-				if (guidedEnd > guidedStart && (guidedEnd - guidedStart) < (t_end - t_start) * 0.95) {
-					t_start = guidedStart;
-					t_end = guidedEnd;
-				}
+				expectedStart = histFirst - margin;
+				expectedEnd = histLast + margin;
+				maxEmptyMult = mix(1.0, 4.0, historyConfidence);
 			}
 		}
 	}
@@ -272,17 +272,35 @@ void main() {
 		float h0Term = 2.0 * R_earth * H0 + H0 * H0;
 		float elevation = 1.0 - dot(rayDir, vec3(0, 1, 0));
 
+		float t = t_start;
+		float minStepSize = 50.0 * worldScale;
+		float perspectiveScale = 0.005;
+		float blendDist = 2000.0 * worldScale;
+
 		for (int i = 0; i < samples; i++) {
 			float t = t_start + t_offset + (float(i)) * stepSize;
 			if (t > dist || t > t_end)
 				break;
 
-			vec3 p = viewPos + rayDir * t;
-			float t_unjittered = t - t_offset;
+
+			// 2. Dynamic Sizing
+			float distToFocus = max(0.0, max(expectedStart - t, t - expectedEnd));
+			float historyMult = mix(1.0, maxEmptyMult, smoothstep(0.0, blendDist, distToFocus));
+			float currentStepSize = (minStepSize + (t * perspectiveScale)) * historyMult;
+
+			// CRITICAL: Clamp step size so it never leaps entirely through the cloud layer
+			float maxSafeStep = (props.thickness * props.worldScale) * 0.25;
+			currentStepSize = min(currentStepSize, maxSafeStep);
+
+			// 3. Jitter Application
+			float step_t = t + jitter * currentStepSize;
+			vec3 p = viewPos + rayDir * step_t;
+
+			float t_unjittered = step_t - t_offset;
 
 			// Numerically stable altitude calculation using camera-relative offsets
 			// This avoids precision loss when subtracting large planetary radiuses.
-			float r2_minus_R2 = h0Term + 2.0 * t * roDotRd + t * t;
+			float r2_minus_R2 = h0Term + 2.0 * step_t * roDotRd + step_t * step_t;
 			float r = sqrt(max(0.0, r2_minus_R2 + R_earth * R_earth));
 			float altitude = r2_minus_R2 / (r + R_earth);
 			// p.y = altitude;
@@ -305,18 +323,17 @@ void main() {
 			// d = max(d, 0.01*smoothstep(0, 1, elevation));
 			if (d <= 0.000) continue;
 
-			// Capture the exact unjittered boundary of the first solid hit
-			if (firstHitDist < 0.0 && d > 0.01) {
-				firstHitDist = t_unjittered;
-			}
-			if (d > 0.01) {
-				lastHitDist = t_unjittered;
-			}
-			pathDensity = max(pathDensity, d);
+if (d > 0.01) {
+        maxEmptyMult = 1.0; // Lock back to high-detail stepping
+        if (firstHitDist < 0.0) firstHitDist = t;
+        lastHitDist = t;
+    }
 
+    // 4. Update the Integration Math
+    // Ensure you are using currentStepSize, not the old global stepSize
+    float stepDensity = d * currentStepSize * 0.005;
+    float transmittanceAtStep = exp(-stepDensity);
 
-			float stepDensity = d * stepSize * 0.005;
-			float transmittanceAtStep = exp(-stepDensity);
 
 			vec3 stepScattering = vec3(0.0);
 			for (int j = 0; j < num_lights; j++) {
@@ -400,7 +417,7 @@ void main() {
 			totalWeight += weight;
 
 			cloudTransmittance *= transmittanceAtStep;
-
+			t += currentStepSize;
 			if (cloudTransmittance < 0.01) {
 				break;
 			}
