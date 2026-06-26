@@ -66,6 +66,8 @@ uniform vec3 u_ozoneAbsorptionBase;
 // Helper functions
 bool intersectSphere(vec3 ro, vec3 rd, float radius, out float t0, out float t1) {
 	float b = dot(ro, rd);
+	// Use a more numerically stable calculation for 'c' when ro is near the sphere surface.
+	// c = dot(ro, ro) - radius * radius = (length(ro) - radius) * (length(ro) + radius)
 	float rLen = length(ro);
 	float c = (rLen - radius) * (rLen + radius);
 	float det = b * b - c;
@@ -100,13 +102,10 @@ Sampling getAtmosphereProperties(float h) {
 	float md = getMieDensity(h);
 	float od = getOzoneDensity(h);
 
-	// Base haze factor from uniforms (applied to LUT generation)
-	float groundHaze = hazeDensity * exp(-max(0.0, h) / max(hazeHeight, 1.0));
-
 	Sampling s;
 	s.rayleigh = kRayleighScattering * rd * u_rayleighScale;
-	s.mie = hazeColor * (kMieScattering * (md + groundHaze) * u_mieScale);
-	s.extinction = s.rayleigh + hazeColor * (kMieExtinction * (md + groundHaze) * u_mieScale) + kOzoneAbsorption * od;
+	s.mie = hazeColor * (kMieScattering * md * u_mieScale);
+	s.extinction = s.rayleigh + hazeColor * (kMieExtinction * md * u_mieScale) + kOzoneAbsorption * od;
 	return s;
 }
 
@@ -114,8 +113,9 @@ Sampling getAtmospherePropertiesAtPos(vec3 worldPos) {
 	float h = worldPos.y / (1000.0 * max(0.0001, WORLD_SCALE_VALUE));
 	Sampling s = getAtmosphereProperties(h);
 
-#ifndef ATMOSPHERE_PRECOMPUTE
 	// Modulate Mie based on weather
+	// LBM grid is 128x128, each cell is 32.0 units (one chunk size)
+	// u_originSize contains the anchor coordinates in chunk-space
 	float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
 	vec2 weatherUV = (worldPos.xz / scaledChunkSize - vec2(u_originSize.xy)) / 128.0;
 	vec4 scalars = texture(u_weatherScalars, weatherUV);
@@ -128,22 +128,12 @@ Sampling getAtmospherePropertiesAtPos(vec3 worldPos) {
 	float humidityFactor = 1.0 + humidity * 5.0;
 	float aerosolFactor = 1.0 + aerosolConc * 10.0;
 
-	// Enhancement: ensure the "gap" between floor and cloud layer is as dense as the sky in the cloud layer.
-	// We boost Mie scattering below the cloud floor to provide continuous atmospheric feel.
-	#ifdef LIGHTING_TYPES_GLSL
-	float cloudFloorKM = cloudAltitude * worldScale / 1000.0;
-	float gapFactor = 1.0 + humidity * 8.0 * smoothstep(cloudFloorKM + 0.5, cloudFloorKM, h);
+	float md = getMieDensity(h);
+	vec3  mieScatBase = hazeColor * (kMieScattering * md * u_mieScale);
+	vec3  mieExtBase = hazeColor * (kMieExtinction * md * u_mieScale);
 
-	vec3 oldMie = s.mie;
-	s.mie *= (humidityFactor * aerosolFactor * gapFactor);
-	// Update extinction based on the difference in Mie scattering
-	s.extinction += (s.mie - oldMie);
-	#else
-	vec3 oldMie = s.mie;
-	s.mie *= (humidityFactor * aerosolFactor);
-	s.extinction += (s.mie - oldMie);
-	#endif
-#endif
+	s.mie = mieScatBase * humidityFactor * aerosolFactor;
+	s.extinction += (mieExtBase * (humidityFactor * aerosolFactor - 1.0));
 
 	return s;
 }

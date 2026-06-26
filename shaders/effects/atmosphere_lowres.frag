@@ -39,11 +39,11 @@ uniform sampler2D uHistoryMoments; // Previous accumulated moments (Luma1, Luma2
 uniform mat4  uPrevViewProjection;
 uniform bool  uHasHistory;
 
-// Atmosphere and lighting includes
-#include "../helpers/lighting.glsl"
+// Atmosphere common defines and includes
 #include "../atmosphere/common.glsl"
 #include "../helpers/clouds.glsl"
 #include "../helpers/fast_noise.glsl"
+#include "../helpers/lighting.glsl"
 #include "../types/temporal_data.glsl"
 #include "helpers/math.glsl"
 #include "lygia/generative/wavelet.glsl"
@@ -107,12 +107,6 @@ vec3 getUnstretchedCoords(vec3 p, vec3 earthCenter, vec3 viewPos, float R_earth)
 void main() {
 	vec2  jitteredUV = TexCoords + uJitter;
 	vec3  zenithRadiance = sampleSkyView(vec3(0, 1, 0));
-
-	// Fetch local weather for humidity-driven effects
-	float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
-	vec2 weatherUV = (viewPos.xz / scaledChunkSize - vec2(u_originSize.xy)) / 128.0;
-	vec4 weatherScalars = texture(u_weatherScalars, weatherUV);
-	float localHumidity = weatherScalars.y;
 
 	// Canonical (un-jittered) ray for stable scene depth limit and motion vectors
 	float depth = texture(depthTexture, TexCoords).r;
@@ -297,7 +291,17 @@ void main() {
 			CloudWeather weather = computeCloudWeather(p, props);
 			CloudLayer layer = computeCloudLayer(weather, props);
 
+			// float d = clamp(calculateCloudDensity(p, weather, layer, props, time, false), mix(0.01, 0.005, smoothstep(-0.01, 0.3, rayDir.y)), 2.0);
+			// float d = max(calculateCloudDensity(p, weather, layer, props, time, false), mix(0.01, 0.005, smoothstep(-0.01, 0.3, rayDir.y)));
+			// float d = clamp(calculateCloudDensity(p, weather, layer, props, time, false), mix(0.008, 0.05, smoothstep(minDist, maxDist, rayDist)) * smoothstep(0, rayDist, t), 1.0);
 			float d = calculateCloudDensity(p, weather, layer, props, time, false);
+			// d = d * smoothstep(0.1, 0.2, d);
+			// d = max(d, mix(0.008, 0.05, smoothstep(minDist, maxDist, viewLength))/samples * smoothstep(0, viewLength, t_unjittered)   );
+			// d = max(d, (0.000025 * viewLength)/samples * smoothstep(-viewLength * 0.5, viewLength, t_unjittered)   );
+			// d = max(d, (0.00000025 * R_ceiling)/samples * smoothstep(0, 1, elevation)   );
+			// d = max(d, 0.01*smoothstep(0, 1, elevation));
+
+			// d = max(d, 0.01*smoothstep(0, 1, elevation));
 			if (d <= 0.000) continue;
 
 			if (d > 0.01) {
@@ -305,10 +309,10 @@ void main() {
 				if (firstHitDist < 0.0) firstHitDist = t;
 				lastHitDist = t;
 			}
+			pathDensity = max(pathDensity, d);
 
 			float stepDensity = d * currentStepSize * 0.005;
 			float transmittanceAtStep = exp(-stepDensity);
-
 
 			vec3 stepScattering = vec3(0.0);
 			for (int j = 0; j < num_lights; j++) {
@@ -369,6 +373,8 @@ void main() {
 			}
 
 			// Multi-direction SH ambient: blend overhead sky with sun-facing horizon.
+			// At sunset the horizon sample carries warm orange/red tones.
+			// Scale ambient down at low sun angles so warm direct light dominates.
 			vec3  ambientUp = evalSHIrradiance(vec3(0, 1, 0));
 			vec3  ambientHorizon = evalSHIrradiance(normalize(vec3(primaryLightDir.x, 0.15, primaryLightDir.z)));
 			float sunHeight = max(primaryLightDir.y, 0.0);
@@ -389,12 +395,6 @@ void main() {
 		cloudColor = lightEnergy * cloudColorUniform;
 	}
 
-	// Final Enhancement: Horizon moisture scattering boost to fill the "gap" between ground and clouds
-	// Based on localHumidity and how much clear air we have below the cloud floor
-	float h_km = viewPos.y / (1000.0 * worldScale);
-	float cloudFloorKM = props.altitude * props.worldScale / 1000.0;
-	float horizonGapBoost = localHumidity * 0.15 * smoothstep(cloudFloorKM + 2.0, cloudFloorKM - 1.0, h_km);
-	cloudColor += zenithRadiance * horizonGapBoost * (1.0 - cloudTransmittance);
 
 	FragColor = vec4(cloudColor, cloudTransmittance);
 
