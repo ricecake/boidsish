@@ -2,6 +2,9 @@
 #define HELPERS_CLOUDS_GLSL
 
 #include "../lighting.glsl"
+#ifdef USE_TERRAIN_DATA
+#include "terrain_common.glsl"
+#endif
 #include "fast_noise.glsl"
 #include "math.glsl"
 #include "lygia/generative/random.glsl"
@@ -89,8 +92,10 @@ vec3 getWarpedCloudPos(vec3 p, out float fade) {
 	return axisPoint + toP * scale;
 }
 
-const float cloudFlow = 3.14;
-const float clFlowSpeed = 5.0;
+// Use UBO values for cloud motion
+#define cloudFlow cloudFlowDirection
+#define clFlowSpeed cloudFlowSpeed
+
 vec3 getCloudWindOffset(float time) {
 	float angle = cloudFlow;
 	vec2  flowDir = vec2(cos(angle), sin(angle));
@@ -119,6 +124,16 @@ CloudWeather computeCloudWeather(vec3 p, CloudProperties props) {
 	float cellID = weatherData.y;           // Cell ID for variety
 
 	float heightMap = fastWorley3d(vec3(p_advected.x, p_advected.y + (3.0 * time), p_advected.z) / (7500.0 * worldScale));
+
+#ifdef USE_TERRAIN_DATA
+	// Weather map distortion: increase coverage on leeward slopes of high terrain
+	// This captures air spilling over a mountain and forcing cloud formation
+	vec3  windDir = normalize(getCloudWindOffset(1.0) + vec3(0, 0, 0.0001));
+	float h0 = getTerrainHeight(p.xz);
+	float h1 = getTerrainHeight(p.xz - windDir.xz * 2000.0 * props.worldScale);
+	float dH = max(0.0, h1 - h0); // h1 is upwind, h0 is current. dH > 0 means air is descending at p.
+	weatherMap += 0.5 * (dH / (1000.0 * props.worldScale)) * smoothstep(200.0 * props.worldScale, 1000.0 * props.worldScale, h0);
+#endif
 
 	CloudWeather weather;
 	weather.weatherMap = weatherMap;
@@ -257,6 +272,20 @@ float calculateCloudDensityExpV2(
 	float           time,
 	bool            simplified
 ) {
+#ifdef USE_TERRAIN_DATA
+	// Terrain-aware cloud displacement
+	// Pushes clouds around peaks or over ranges when they would otherwise intersect terrain
+	TerrainSurface surf = getTerrainSurface(p.xz);
+	if (layer.baseFloor < surf.height) {
+		float lift = surf.height - layer.baseFloor;
+		vec3  advect = getCloudWindOffset(time);
+		vec3  flow = normalize(advect + vec3(0.0, 0.0001, 0.0));
+		// Use orthogonal component of terrain normal relative to flow for displacement
+		vec3 n_ortho = normalize(surf.normal) - dot(normalize(surf.normal), flow) * flow;
+		p -= n_ortho * lift;
+	}
+#endif
+
 	if (p.y < layer.baseFloor || p.y > layer.baseCeiling)
 		return 0.0;
 

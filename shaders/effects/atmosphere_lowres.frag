@@ -40,6 +40,7 @@ uniform mat4  uPrevViewProjection;
 uniform bool  uHasHistory;
 
 // Atmosphere common defines and includes
+#define USE_TERRAIN_DATA
 #include "../atmosphere/common.glsl"
 #include "../helpers/clouds.glsl"
 #include "../helpers/fast_noise.glsl"
