@@ -243,12 +243,6 @@ void main() {
 	float moonDistSq = moonLocalX * moonLocalX + moonFlattenedY * moonFlattenedY;
 	float moonMask = smoothstep(
 		moonAngularRadius * moonAngularRadius,
-		(sunAngularRadius - 0.001) * (sunAngularRadius - 0.001), // Typo in original? No, moonAngularRadius.
-		moonDistSq
-	);
-	// Re-checking the above: it was using sunAngularRadius in original for moonMask? Let's fix to moonAngularRadius
-	moonMask = smoothstep(
-		moonAngularRadius * moonAngularRadius,
 		(moonAngularRadius - 0.001) * (moonAngularRadius - 0.001),
 		moonDistSq
 	);

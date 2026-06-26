@@ -87,7 +87,8 @@ void main() {
 
 			// 1. Gaussian Spatial Weight (Sigma ~ 1.0)
 			vec2 pixelOffset = (lowResUV - 0.5) - (nearestTexel + offset);
-			float spatialW = exp(-dot(pixelOffset, pixelOffset));
+			// float spatialW = exp(-float(x*x + y*y) / 2.0);
+			float spatialW = exp(-dot(pixelOffset, pixelOffset)/4.0);
 
 			vec4 sDepthData = texture(cloudDepthTexture, sampleUV);
 			float sDepth = sDepthData.r;
@@ -95,7 +96,7 @@ void main() {
 
 			vec4 sColor = texture(cloudTexture, sampleUV);
 
-			float structuralRigidity = smoothstep(0.01, 0.05, sMaxDensity);
+			float structuralRigidity = smoothstep(0.015, 0.05, sMaxDensity);
 
 			// 2. Depth Occlusion Penalty
 			float depthDiff = max(0.0, sDepth - sceneDist);

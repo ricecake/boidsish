@@ -316,7 +316,7 @@ void main() {
 			}
 			pathDensity = max(pathDensity, d);
 
-			float stepDensity = d * currentStepSize * 0.005;
+			float stepDensity = d * currentStepSize * 0.01;
 			float transmittanceAtStep = exp(-stepDensity);
 
 			vec3 stepScattering = vec3(0.0);

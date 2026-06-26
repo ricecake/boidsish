@@ -197,14 +197,14 @@ void main() {
 	bool historyIsSky = historyCloudDist > 40000.0 * WORLD_SCALE_VALUE;
 	float historyMissProbability = smoothstep(0.1, 1.0, historyCloudStep / historyThickness);
 
-	float structuralRigidity = smoothstep(0.0, 0.4, currentCloudMaxDensity);
+	float structuralRigidity = smoothstep(0.10, 0.5, currentCloudMaxDensity);
 	float nyquist = (max(historyMissProbability, currentMissProbability));
 	float antiNyquist = (1.0 - nyquist);
 	float structuralLock = structuralRigidity * antiNyquist;
 
 	bool isSilhouetteEdge = (currentIsSky != historyIsSky);
 
-	float newStructureConfidence = smoothstep(0.0, 0.5, max(0.0, currentCloudMaxDensity - historyCloudMaxDensity) / max(historyCloudMaxDensity, 0.1));
+	float newStructureConfidence = smoothstep(0.1, 0.5, max(0.0, currentCloudMaxDensity - historyCloudMaxDensity) / max(historyCloudMaxDensity, 0.1));
 
 	// If the history thought there was a dense cloud, but the current frame sees a massive drop in density,
 	// the wind has blown the cloud out of this pixel.
@@ -391,6 +391,7 @@ void main() {
 
 	// Force the alpha to 1.0 (trust current frame entirely) if we hit a new dense core
 	alpha = mix(alpha, 1.0, newStructureConfidence);
+	alpha = mix(alpha, 1.0, nyquist);
 
 	// currentRGBA = vec4(YCoCgToRGB(spatialMean), 1.0-alphaMean);
 	vec4 accumulatedRGBA = mix(historyRGBA, currentRGBA, alpha);
