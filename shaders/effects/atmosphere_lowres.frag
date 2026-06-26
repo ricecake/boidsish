@@ -189,7 +189,11 @@ void main() {
 	}
 
 	ivec2 pixel = ivec2(gl_FragCoord.xy);
-	float jitter = float(bayer4x4[((pixel.y & 3) * 4 + (pixel.x & 3) + frameIndex) % 16]) / 16.0;
+	int timer = ((frameIndex) / 2) + 2 * (frameIndex%2);
+	float jitter = float(bayer4x4[((pixel.y & 3) * 4 + (pixel.x & 3) + (timer%16)) % 16]) / 16.0;
+
+	// float jitter = float(bayer4x4[((pixel.y & 3) * 4 + (pixel.x & 3) + frameIndex) % 16]) / 16.0;
+	// float jitter = float(bayer4x4[((pixel.y & 3) * 4 + (pixel.x & 3)) % 16]) / 16.0;
 
 	vec3  cloudColor = vec3(0.0);
 	float cloudTransmittance = 1.0;
@@ -209,7 +213,7 @@ void main() {
 
     if (t_start < t_end) {
         vec3 lightEnergy = vec3(0.0);
-        int shadow_samples = 4;
+        int shadow_samples = 5;
 
         vec3 primaryLightDir = vec3(0, 1, 0);
         for (int j = 0; j < num_lights; j++) {

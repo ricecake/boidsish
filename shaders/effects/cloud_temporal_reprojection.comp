@@ -211,7 +211,7 @@ void main() {
 	float densityDecay = historyCloudMaxDensity - currentCloudMaxDensity;
 
 	// If we lose more than 20% density in a single frame while moving, it's a trailing edge.
-	bool isTrailingEdge = (densityDecay > 0.2) && (length(velocity) > 0.0001);
+	bool isTrailingEdge = (densityDecay > 0.25) && (length(velocity) > 0.0001);
 
 	if (isTrailingEdge) {
 		// Guillotine the history. Do not let it fade out smoothly.
@@ -241,13 +241,13 @@ void main() {
 	historyLength = min(maxHistory, historyLength + 1.0);
 
 	if (validHistory) {
-		// if (velocityMagnitude < 0.01) {
-		// 	// Perfectly static: bypass interpolation blur entirely
-		// 	historyRGBA = texture(uHistoryFrame, prevUV);
-		// } else {
+		if (velocityMagnitude < 0.01) {
+			// Perfectly static: bypass interpolation blur entirely
+			historyRGBA = texture(uHistoryFrame, prevUV);
+		} else {
 			// Moving: use bicubic to prevent pixel-snapping artifacts
 			historyRGBA = textureMitchell(uHistoryFrame, prevUV, vec2(size));
-		// }
+		}
 		historyMoments = texture(uHistoryMoments, prevUV);
 		historyLength = historyMoments.w;
 	}
@@ -308,7 +308,7 @@ void main() {
 	// float gamma = mix(0.75, 2.5, structuralLock);
 	// float alphaGamma = mix(0.5, 1.5, structuralLock);
 	float gamma = mix(0.5, 1.25, structuralLock);
-	float alphaGamma = mix(0.35, 0.85, structuralLock);
+	float alphaGamma = mix(0.35, 0.1, structuralLock);
 
 	// SILHOUETTE ANTI-CRUSH:
 	// If the ray randomly jumped off or onto the cloud edge, the 3x3 neighborhood
@@ -391,7 +391,7 @@ void main() {
 
 	// Force the alpha to 1.0 (trust current frame entirely) if we hit a new dense core
 	alpha = mix(alpha, 1.0, newStructureConfidence);
-	alpha = mix(alpha, 1.0, nyquist);
+	// alpha = mix(alpha, 1.0, nyquist);
 
 	// currentRGBA = vec4(YCoCgToRGB(spatialMean), 1.0-alphaMean);
 	vec4 accumulatedRGBA = mix(historyRGBA, currentRGBA, alpha);

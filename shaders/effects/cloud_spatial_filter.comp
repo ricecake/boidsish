@@ -27,7 +27,7 @@ void main() {
 	vec4 centerMoments = texture(uCloudMoments, uv);
 
 	float centerDepth = centerProps.r;
-	float centerStep = max(centerProps.b, 1.0);
+	float centerStep = centerProps.b;
 	float centerDensity = centerProps.a;
 	float centerTransmittance = centerColor.a;
 	bool  centerIsSky = centerDepth > 40000.0;
@@ -67,7 +67,7 @@ void main() {
 	// float phiDensity = (0.5 * stdDensity + 0.1) * historyScale;
 	// float phiTransmittance = 0.1 * historyScale;
 	// float phiDepth = mix(15000.0, 1000.0, smoothstep(0.0, 0.4, centerDensity));
-	float baseDepthTolerance = mix(4.0, 1.5, smoothstep(0.0, 0.4, centerDensity));
+	float baseDepthTolerance = mix(4.0, 2.0, smoothstep(0.0, 0.4, centerDensity));
 	float phiDepth = centerStep * baseDepthTolerance * stepScale;
 
 	vec4  sumColor = vec4(0.0);
