@@ -215,6 +215,7 @@ void main() {
 	float lastHitDist = -1.0;
 	float stepSize = 0.0;
 	float pathDensity = 0.0;
+	float firstStepSize = stepSize;
 
 	if (t_start < t_end) {
 		vec3 lightEnergy = vec3(0.0);
@@ -239,6 +240,7 @@ void main() {
 		float rayDist = t_end - t_start;
 		float precisionLimit = max(1.0, t_end * 1e-5);
 		stepSize = clamp(rayDist / float(samples), precisionLimit, 750.0);
+		firstStepSize = stepSize;
 
 		float viewLength = fullEnd - fullStart;
 
@@ -306,7 +308,10 @@ void main() {
 
 			if (d > 0.01) {
 				maxEmptyMult = 1.0; // Lock back to high-detail stepping
-				if (firstHitDist < 0.0) firstHitDist = t;
+				if (firstHitDist < 0.0) {
+					firstHitDist = t;
+				}
+				firstStepSize = currentStepSize;
 				lastHitDist = t;
 			}
 			pathDensity = max(pathDensity, d);
@@ -396,11 +401,12 @@ void main() {
 	}
 
 
+	firstStepSize = 0.5*(firstStepSize + stepSize);
 	FragColor = vec4(cloudColor, cloudTransmittance);
 
 	// Output the stable surface depth for the temporal resolver
 	if (firstHitDist > 0.0 && totalWeight > 0.001) {
-		CloudDepth = vec4(firstHitDist, lastHitDist, stepSize, pathDensity);
+		CloudDepth = vec4(firstHitDist, lastHitDist, firstStepSize, pathDensity);
 
 		// Use canonical ray for stable motion vector (jittered ray wobbles per frame)
 		vec3 hitWorldPos = viewPos + canonicalRayDir * firstHitDist;
@@ -413,7 +419,7 @@ void main() {
 		vec2 prevScreenUV = (prevClipHit.xy / prevClipHit.w) * 0.5 + 0.5;
 		CloudVelocity = prevScreenUV - TexCoords;
 	} else {
-		CloudDepth = vec4(50000.0 * worldScale, 50000.0 * worldScale, stepSize, pathDensity);
+		CloudDepth = vec4(50000.0 * worldScale, 50000.0 * worldScale, firstStepSize, pathDensity);
 		// For miss pixels, estimate motion at cloud layer distance
 		float fallbackDist = cloudAltitude * worldScale / max(0.05, abs(canonicalRayDir.y));
 		vec3 fallbackWorldPos = viewPos + canonicalRayDir * fallbackDist;

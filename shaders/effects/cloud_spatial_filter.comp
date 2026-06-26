@@ -27,14 +27,27 @@ void main() {
 	vec4 centerMoments = texture(uCloudMoments, uv);
 
 	float centerDepth = centerProps.r;
+	float centerStep = max(centerProps.b, 1.0);
 	float centerDensity = centerProps.a;
 	float centerTransmittance = centerColor.a;
 	bool  centerIsSky = centerDepth > 40000.0;
 	float centerHistory = centerMoments.w;
 
+	// Fetch smoothed moments to stabilize the edge-stopping bounds
+	vec4 smoothedMoments = vec4(0.0);
+	for (int y = -1; y <= 1; y++) {
+		for (int x = -1; x <= 1; x++) {
+			smoothedMoments += texture(uCloudMoments, uv + vec2(x, y) * texelSize);
+		}
+	}
+	smoothedMoments /= 9.0;
+
+
 	// Variance estimation
-	float varLuma = max(0.0, centerMoments.y - centerMoments.x * centerMoments.x);
-	float varDensity = max(0.0, centerMoments.z - centerDensity * centerDensity);
+	// float varLuma = max(0.0, centerMoments.y - centerMoments.x * centerMoments.x);
+	// float varDensity = max(0.0, centerMoments.z - centerDensity * centerDensity);
+	float varLuma = max(0.0, smoothedMoments.y - smoothedMoments.x * smoothedMoments.x);
+	float varDensity = max(0.0, smoothedMoments.z - centerDensity * centerDensity);
 
 	// SVGF-style: Use temporal variance to drive edge stopping
 	float stdLuma = sqrt(varLuma);
@@ -43,10 +56,19 @@ void main() {
 	// Adaptive thresholds based on noise levels and history length
 	// We trust history more as it accumulates, allowing for more aggressive blurring of initial noise
 	float historyScale = mix(8.0, 1.0, smoothstep(1.0, 10.0, centerHistory));
-	float phiLuma = (10.0 * stdLuma + 0.01) * historyScale;
-	float phiDensity = (0.5 * stdDensity + 0.1) * historyScale;
-	float phiTransmittance = 0.1 * historyScale;
-	float phiDepth = mix(15000.0, 1000.0, smoothstep(0.0, 0.4, centerDensity));
+	// Scale variance tolerance as the kernel expands
+	float stepScale = max(1.0, float(uStepSize) / 2);
+
+	float phiLuma = (10.0 * stdLuma + 0.01) * historyScale * stepScale;
+	float phiDensity = (0.5 * stdDensity + 0.1) * historyScale * stepScale;
+	float phiTransmittance = (0.5 * stdDensity + 0.2) * historyScale * stepScale;
+
+	// float phiLuma = (10.0 * stdLuma + 0.01) * historyScale;
+	// float phiDensity = (0.5 * stdDensity + 0.1) * historyScale;
+	// float phiTransmittance = 0.1 * historyScale;
+	// float phiDepth = mix(15000.0, 1000.0, smoothstep(0.0, 0.4, centerDensity));
+	float baseDepthTolerance = mix(4.0, 1.5, smoothstep(0.0, 0.4, centerDensity));
+	float phiDepth = centerStep * baseDepthTolerance * stepScale;
 
 	vec4  sumColor = vec4(0.0);
 	float sumWeight = 0.0;

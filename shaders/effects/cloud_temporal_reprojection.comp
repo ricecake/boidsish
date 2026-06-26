@@ -93,6 +93,8 @@ float mitchell(float x, float B, float C) {
 
 // 2D Bicubic Texture Fetch
 vec4 textureMitchell(sampler2D tex, vec2 uv, vec2 textureSize) {
+	// B = 0.0, C = 0.5 is standard Catmull-Rom
+	// B = 0.0, C = 0.75 or 1.0 adds an aggressive sharpening lobe
 	vec2 texelSize = 1.0 / textureSize;
 	uv = uv * textureSize - 0.5;
 
@@ -104,10 +106,12 @@ vec4 textureMitchell(sampler2D tex, vec2 uv, vec2 textureSize) {
 
 	// 4x4 Neighborhood Sampling
 	for (int j = -1; j <= 2; j++) {
-		float wy = mitchell(float(j) - f.y, 1.0/3.0, 1.0/3.0);
+		// float wy = mitchell(float(j) - f.y, 1.0/3.0, 1.0/3.0);
+		float wy = mitchell(float(j) - f.y, 0.0, 0.75);
 
 		for (int i = -1; i <= 2; i++) {
-			float wx = mitchell(float(i) - f.x, 1.0/3.0, 1.0/3.0);
+			// float wx = mitchell(float(i) - f.x, 1.0/3.0, 1.0/3.0);
+			float wx = mitchell(float(i) - f.x, 0.0, 0.75);
 			float weight = wx * wy;
 
 			vec2 pos = (c + vec2(i, j) + 0.5) * texelSize;
@@ -201,6 +205,18 @@ void main() {
 	bool isSilhouetteEdge = (currentIsSky != historyIsSky);
 
 	float newStructureConfidence = smoothstep(0.0, 0.5, max(0.0, currentCloudMaxDensity - historyCloudMaxDensity) / max(historyCloudMaxDensity, 0.1));
+
+	// If the history thought there was a dense cloud, but the current frame sees a massive drop in density,
+	// the wind has blown the cloud out of this pixel.
+	float densityDecay = historyCloudMaxDensity - currentCloudMaxDensity;
+
+	// If we lose more than 20% density in a single frame while moving, it's a trailing edge.
+	bool isTrailingEdge = (densityDecay > 0.2) && (length(velocity) > 0.0001);
+
+	if (isTrailingEdge) {
+		// Guillotine the history. Do not let it fade out smoothly.
+		validHistory = false;
+	}
 	// if (newStructureConfidence >= 1.0) validHistory = false;
 
 	// if (validHistory) {
@@ -215,8 +231,23 @@ void main() {
 	vec4  historyMoments = vec4(0.0);
 	float historyLength = 0.0;
 
+	// Convert UV velocity to pixel velocity
+	float velocityMagnitude = length(velocity * vec2(size));
+
+	// If the cloud is moving more than 0.5 pixels per frame, aggressively drop the history cap.
+	// Fast motion = short history (sharp edge). Static = long history (smooth core).
+	float maxHistory = mix(32.0, 4.0, smoothstep(0.0, 2.0, velocityMagnitude));
+
+	historyLength = min(maxHistory, historyLength + 1.0);
+
 	if (validHistory) {
-		historyRGBA = textureMitchell(uHistoryFrame, prevUV, vec2(size));
+		// if (velocityMagnitude < 0.01) {
+		// 	// Perfectly static: bypass interpolation blur entirely
+		// 	historyRGBA = texture(uHistoryFrame, prevUV);
+		// } else {
+			// Moving: use bicubic to prevent pixel-snapping artifacts
+			historyRGBA = textureMitchell(uHistoryFrame, prevUV, vec2(size));
+		// }
 		historyMoments = texture(uHistoryMoments, prevUV);
 		historyLength = historyMoments.w;
 	}
@@ -274,15 +305,17 @@ void main() {
 	float temporalStdDev = sqrt(temporalVar);
 
 	// Dynamic Gamma
-	float gamma = mix(0.75, 2.5, structuralLock);
-	float alphaGamma = mix(0.5, 1.5, structuralLock);
+	// float gamma = mix(0.75, 2.5, structuralLock);
+	// float alphaGamma = mix(0.5, 1.5, structuralLock);
+	float gamma = mix(0.5, 1.25, structuralLock);
+	float alphaGamma = mix(0.35, 0.85, structuralLock);
 
 	// SILHOUETTE ANTI-CRUSH:
 	// If the ray randomly jumped off or onto the cloud edge, the 3x3 neighborhood
 	// is temporarily mismatched with the history. Expand the box massively to
 	// let the historical data survive the clip.
-	if (isSilhouetteEdge) {
-		gamma *= 1.5;
+	if (isTrailingEdge) {
+		gamma *= 1.1;
 		alphaGamma *= 1.1;
 	}
 
@@ -297,8 +330,8 @@ void main() {
 	vec3 minColor = spatialMean - clipExtents;
 	vec3 maxColor = spatialMean + clipExtents;
 
-	float falseNegativeLikelihood = smoothstep(0.1, 1.0, currentMissProbability);
-	maxColor += spatialMean * falseNegativeLikelihood; // Expand bounds upward
+	// float falseNegativeLikelihood = smoothstep(0.1, 1.0, currentMissProbability);
+	// maxColor += spatialMean * falseNegativeLikelihood; // Expand bounds upward
 
 	vec3 historyYCoCg = RGBToYCoCg(historyRGBA.rgb);
 
@@ -331,7 +364,7 @@ void main() {
 	// neighborhood is falsely reporting empty sky. We dynamically inflate the maximum
 	// bound to prevent valid history from being clipped away by a noisy miss.
 	// float falseNegativeLikelihood = smoothstep(0.1, 1.0, currentMissProbability);
-	maxAlpha += (1.0 - alphaMean) * falseNegativeLikelihood; // Expand bounds upward
+	// maxAlpha += (1.0 - alphaMean) * falseNegativeLikelihood; // Expand bounds upward
 
 	// 3. 1D Clip-Toward-spatialMean Intersection
 	float alphaClipDir = alphaMean - historyOpacity;
@@ -353,8 +386,8 @@ void main() {
 	historyRGBA.a = 1.0 - clamp(clippedAlpha, 0.0, 1.0);
 
 	float alpha = 1.0 / historyLength;
-	// alpha = max(alpha, mix(0.03, 0.25, smoothstep(8.0, 2.0, historyLength)));
-	alpha = max(alpha, 0.25);
+	alpha = max(alpha, mix(0.03, 0.25, smoothstep(8.0, 2.0, historyLength)));
+	// alpha = max(alpha, 0.25);
 
 	// Force the alpha to 1.0 (trust current frame entirely) if we hit a new dense core
 	alpha = mix(alpha, 1.0, newStructureConfidence);
