@@ -39,11 +39,11 @@ uniform sampler2D uHistoryMoments; // Previous accumulated moments (Luma1, Luma2
 uniform mat4  uPrevViewProjection;
 uniform bool  uHasHistory;
 
-// Atmosphere common defines and includes
+// Atmosphere and lighting includes
+#include "../helpers/lighting.glsl"
 #include "../atmosphere/common.glsl"
 #include "../helpers/clouds.glsl"
 #include "../helpers/fast_noise.glsl"
-#include "../helpers/lighting.glsl"
 #include "../types/temporal_data.glsl"
 #include "helpers/math.glsl"
 #include "lygia/generative/wavelet.glsl"
@@ -107,6 +107,12 @@ vec3 getUnstretchedCoords(vec3 p, vec3 earthCenter, vec3 viewPos, float R_earth)
 void main() {
 	vec2  jitteredUV = TexCoords + uJitter;
 	vec3  zenithRadiance = sampleSkyView(vec3(0, 1, 0));
+
+	// Fetch local weather for humidity-driven effects
+	float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
+	vec2 weatherUV = (viewPos.xz / scaledChunkSize - vec2(u_originSize.xy)) / 128.0;
+	vec4 weatherScalars = texture(u_weatherScalars, weatherUV);
+	float localHumidity = weatherScalars.y;
 
 	// Canonical (un-jittered) ray for stable scene depth limit and motion vectors
 	float depth = texture(depthTexture, TexCoords).r;
@@ -285,24 +291,13 @@ void main() {
 			float r2_minus_R2 = h0Term + 2.0 * step_t * roDotRd + step_t * step_t;
 			float r = sqrt(max(0.0, r2_minus_R2 + R_earth * R_earth));
 			float altitude = r2_minus_R2 / (r + R_earth);
-			// p.y = altitude;
 
 			float h_norm = clamp((altitude - props.altitude * props.worldScale) / max(props.thickness * props.worldScale, 1.0), 0.0, 1.0);
 
 			CloudWeather weather = computeCloudWeather(p, props);
 			CloudLayer layer = computeCloudLayer(weather, props);
 
-			// float d = clamp(calculateCloudDensity(p, weather, layer, props, time, false), mix(0.01, 0.005, smoothstep(-0.01, 0.3, rayDir.y)), 2.0);
-			// float d = max(calculateCloudDensity(p, weather, layer, props, time, false), mix(0.01, 0.005, smoothstep(-0.01, 0.3, rayDir.y)));
-			// float d = clamp(calculateCloudDensity(p, weather, layer, props, time, false), mix(0.008, 0.05, smoothstep(minDist, maxDist, rayDist)) * smoothstep(0, rayDist, t), 1.0);
 			float d = calculateCloudDensity(p, weather, layer, props, time, false);
-			// d = d * smoothstep(0.1, 0.2, d);
-			// d = max(d, mix(0.008, 0.05, smoothstep(minDist, maxDist, viewLength))/samples * smoothstep(0, viewLength, t_unjittered)   );
-			// d = max(d, (0.000025 * viewLength)/samples * smoothstep(-viewLength * 0.5, viewLength, t_unjittered)   );
-			// d = max(d, (0.00000025 * R_ceiling)/samples * smoothstep(0, 1, elevation)   );
-			// d = max(d, 0.01*smoothstep(0, 1, elevation));
-
-			// d = max(d, 0.01*smoothstep(0, 1, elevation));
 			if (d <= 0.000) continue;
 
 			if (d > 0.01) {
@@ -324,16 +319,13 @@ void main() {
 				vec3 L = normalize(-lights[j].direction);
 
 				vec3  voxelToCenter = p - earthCenter;
-				float r = length(voxelToCenter);
 				float r_world = length(p - earthCenter);
 				float r_km = r_world / (1000.0 * worldScale);
-				float mu = dot(voxelToCenter / r, L);
+				float mu = dot(voxelToCenter / r_world, L);
 				float cosTheta = dot(rayDir, L);
 				float phase = cloudPhase(cosTheta);
 
 				float shadowDensity = 0.0;
-				// float shadowStepSize = layer.thickness / float(shadow_samples) * cloudShadowStepMultiplier;
-				// intersectSphere(p, L, R_ceiling);
 
 				float st_start = 1e10;
 				float st_end = -1e10;
@@ -352,14 +344,12 @@ void main() {
 					}
 				}
 
-				// vec2 transUV = transmittanceToUV(r, mu);
 				vec2 transUV = transmittanceToUV(r_km, mu);
 				vec3 sunTransmittance = texture(u_transmittanceLUT, transUV).rgb;
 
 				float maxShadowDist = layer.thickness * 1.5;
 				float traceDist = min(st_end - st_start, maxShadowDist);
 				float shadowStepSize = traceDist / float(shadow_samples);
-				// float shadowStepSize = (st_end - st_start) / float(shadow_samples);
 				for (int k = 0; k < shadow_samples; k++) {
 					vec3 sp = p + L * (float(k) + 0.5) * shadowStepSize;
 					vec3 sp_curved = sp;
@@ -369,21 +359,16 @@ void main() {
 				}
 				float opticalDepthToLight = shadowDensity * shadowStepSize * cloudShadowOpticalDepthMultiplier;
 				float shadowTerm = mix(
-					// beerPowder(opticalDepthToLight, d),
 					beerPowder(opticalDepthToLight, stepDensity),
 					exp(-opticalDepthToLight),
 					cloudBeerPowderMix
 				);
 
-				// stepScattering += sunTransmittance * lights[j].color * shadowTerm * phase * lights[j].intensity * (j
-				// == 0 ? cloudSunLightScale : cloudMoonLightScale);
 				stepScattering += sunTransmittance * lights[j].color * shadowTerm * phase * lights[j].intensity *
 					(j == 0 ? cloudSunLightScale : cloudMoonLightScale);
 			}
 
 			// Multi-direction SH ambient: blend overhead sky with sun-facing horizon.
-			// At sunset the horizon sample carries warm orange/red tones.
-			// Scale ambient down at low sun angles so warm direct light dominates.
 			vec3  ambientUp = evalSHIrradiance(vec3(0, 1, 0));
 			vec3  ambientHorizon = evalSHIrradiance(normalize(vec3(primaryLightDir.x, 0.15, primaryLightDir.z)));
 			float sunHeight = max(primaryLightDir.y, 0.0);
@@ -391,7 +376,6 @@ void main() {
 			vec3  ambient = mix(ambientUp, ambientHorizon, 0.4) * ambientScale;
 			vec3  S = (stepScattering + ambient*smoothstep(0, 1, h_norm));
 
-			// lightEnergy += cloudTransmittance * S * stepDensity;
 			float weight = cloudTransmittance * (1.0 - transmittanceAtStep);
 			lightEnergy += S * weight;
 			totalWeight += weight;
@@ -405,13 +389,14 @@ void main() {
 		cloudColor = lightEnergy * cloudColorUniform;
 	}
 
+	// Final Enhancement: Horizon moisture scattering boost to fill the "gap" between ground and clouds
+	// Based on localHumidity and how much clear air we have below the cloud floor
+	float h_km = viewPos.y / (1000.0 * worldScale);
+	float cloudFloorKM = props.altitude * props.worldScale / 1000.0;
+	float horizonGapBoost = localHumidity * 0.15 * smoothstep(cloudFloorKM + 2.0, cloudFloorKM - 1.0, h_km);
+	cloudColor += zenithRadiance * horizonGapBoost * (1.0 - cloudTransmittance);
 
 	FragColor = vec4(cloudColor, cloudTransmittance);
-	// FragColor = vec4(vec3((samples/64)-1), 0.0);
-
-	// Compute screen-space motion vector directly.
-	// This captures both camera motion AND cloud advection in one UV offset,
-	// eliminating the need for the TAA to reconstruct world positions.
 
 	// Output the stable surface depth for the temporal resolver
 	if (firstHitDist > 0.0 && totalWeight > 0.001) {
@@ -426,14 +411,13 @@ void main() {
 		vec3 prevHitPos = hitWorldPos - advectionPerFrame;
 		vec4 prevClipHit = uPrevViewProjection * vec4(prevHitPos, 1.0);
 		vec2 prevScreenUV = (prevClipHit.xy / prevClipHit.w) * 0.5 + 0.5;
-		// Velocity is relative to the canonical pixel center (TexCoords), not the jittered sample
 		CloudVelocity = prevScreenUV - TexCoords;
 	} else {
 		CloudDepth = vec4(50000.0 * worldScale, 50000.0 * worldScale, stepSize, pathDensity);
 		// For miss pixels, estimate motion at cloud layer distance
 		float fallbackDist = cloudAltitude * worldScale / max(0.05, abs(canonicalRayDir.y));
 		vec3 fallbackWorldPos = viewPos + canonicalRayDir * fallbackDist;
-		vec3 advectionPerFrame = getCloudAdvectionOffset(0.0, uDeltaTime); // Use base wind for sky fallback
+		vec3 advectionPerFrame = getCloudAdvectionOffset(0.0, uDeltaTime);
 		vec3 prevFallbackPos = fallbackWorldPos - advectionPerFrame;
 		vec4 prevClipFb = uPrevViewProjection * vec4(prevFallbackPos, 1.0);
 		vec2 prevScreenFb = (prevClipFb.xy / prevClipFb.w) * 0.5 + 0.5;
