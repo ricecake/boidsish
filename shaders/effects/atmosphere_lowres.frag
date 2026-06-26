@@ -23,10 +23,10 @@ const int bayer8x8[64] = int[](
 );
 
 const int bayer4x4[16] = int[](
-    0, 12, 3, 15,
-    8, 4, 11, 7,
-    2, 14, 1, 13,
-    10, 6, 9, 5
+	0, 12, 3, 15,
+	8, 4, 11, 7,
+	2, 14, 1, 13,
+	10, 6, 9, 5
 );
 
 
@@ -68,40 +68,40 @@ vec3 sampleSkyView(vec3 rd) {
 // Gets the spherical position relative to the planet center
 // This keeps sampling consistent along the shell regardless of viewing angle
 vec3 getSphericalCoords(vec3 p, vec3 earthCenter, float R_earth) {
-    vec3 dir = normalize(p - earthCenter);
-    float altitude = length(p - earthCenter) - R_earth;
+	vec3 dir = normalize(p - earthCenter);
+	float altitude = length(p - earthCenter) - R_earth;
 
-    // You can multiply 'dir' by R_earth to keep the frequency
-    // constant relative to the surface distance
-    return dir * (R_earth + altitude);
+	// You can multiply 'dir' by R_earth to keep the frequency
+	// constant relative to the surface distance
+	return dir * (R_earth + altitude);
 }
 
 // Maps Cartesian coordinates to a flattened UV-style projection
 // useful if your noise textures are authored for a flat plane
 vec2 getSphericalUV(vec3 p, vec3 earthCenter) {
-    vec3 dir = normalize(p - earthCenter);
-    return vec2(
-        atan(dir.z, dir.x) / (2.0 * PI),
-        asin(dir.y) / PI + 0.5
-    );
+	vec3 dir = normalize(p - earthCenter);
+	return vec2(
+		atan(dir.z, dir.x) / (2.0 * PI),
+		asin(dir.y) / PI + 0.5
+	);
 }
 
 vec3 getUnstretchedCoords(vec3 p, vec3 earthCenter, vec3 viewPos, float R_earth) {
-    float altitude = length(p - earthCenter) - R_earth;
-    vec3 P_norm = normalize(p - earthCenter);
+	float altitude = length(p - earthCenter) - R_earth;
+	vec3 P_norm = normalize(p - earthCenter);
 
-    // Calculate the angle from the zenith (where zenith is vec3(0,1,0) at the viewer)
-    float theta = acos(clamp(P_norm.y, -1.0, 1.0));
-    float arc_dist = R_earth * theta;
+	// Calculate the angle from the zenith (where zenith is vec3(0,1,0) at the viewer)
+	float theta = acos(clamp(P_norm.y, -1.0, 1.0));
+	float arc_dist = R_earth * theta;
 
-    // Find the horizontal direction
-    vec2 p_xz = vec2(P_norm.x, P_norm.z);
-    float len_xz = length(p_xz);
-    vec2 dir_XZ = p_xz / (len_xz + 1e-6); // Branchless normalize
+	// Find the horizontal direction
+	vec2 p_xz = vec2(P_norm.x, P_norm.z);
+	float len_xz = length(p_xz);
+	vec2 dir_XZ = p_xz / (len_xz + 1e-6); // Branchless normalize
 
-    // Reconstruct a vector where Y is strictly altitude,
-    // and X/Z are un-stretched arc lengths from the viewer.
-    return vec3(viewPos.x + dir_XZ.x * arc_dist, altitude, viewPos.z + dir_XZ.y * arc_dist);
+	// Reconstruct a vector where Y is strictly altitude,
+	// and X/Z are un-stretched arc lengths from the viewer.
+	return vec3(viewPos.x + dir_XZ.x * arc_dist, altitude, viewPos.z + dir_XZ.y * arc_dist);
 }
 
 void main() {
@@ -228,30 +228,12 @@ void main() {
 				break;
 			}
 		}
-		// int timer = (int(time) / 2) + 2 * (int(time) % 2);
-
-
-		// int timer = (int(time) / 2) + 2 * (int(time) % 2);
-
+		ivec2 pixel = ivec2(gl_FragCoord.xy);
+		float jitter = float(bayer4x4[((pixel.y & 3) * 4 + (pixel.x & 3) + frameIndex) % 16]) / 16.0;
 
 		// int timer = ((frameIndex) / 2) + 2 * (frameIndex%2);
-		// float jitter = fastSpatiotemporalBlueNoise(jitteredUV, 0, int(timer));
-		// float jitter = fastSpatiotemporalBlueNoise(jitteredUV, 0, int(frameIndex));
-
-		ivec2 pixel = ivec2(gl_FragCoord.xy);
-		// float jitter = float(bayer8x8[(pixel.y & 7) * 8 + (pixel.x & 7)]) / 64.0;
-		float jitter = float(bayer8x8[((pixel.y & 7) * 8 + (pixel.x & 7) + frameIndex) % 64]) / 64.0;
-		// float jitter = float(bayer8x8[((pixel.y & 7) * 8 + (pixel.x & 7) + timer) % 64]) / 64.0;
-		// float jitter = float(bayer4x4[((pixel.y & 3) * 4 + (pixel.x & 3) + frameIndex) % 16]) / 16.0;
-
-		// float timer = frameIndex + ((frameIndex+2)%3);
-		// float jitter = length(mod(timer*jitteredUV, 16)/16);
-
+		// float jitter = float(bayer8x8[((pixel.y & 7) * 8 + (pixel.x & 7) + frameIndex) % 64]) / 64.0;
 		// float jitter = fastSpatiotemporalBlueNoise(jitteredUV, 0, frameIndex);
-
-		// Use a numerically stable altitude calculation to maintain precision at distance.
-		// altitude = length(p - earthCenter) - R_earth
-		// altitude = (length(p - earthCenter)^2 - R_earth^2) / (length(p - earthCenter) + R_earth)
 
 		// Revised stepSize calculation: factor in total ray distance for precision issues at horizon
 		float rayDist = t_end - t_start;
@@ -273,7 +255,7 @@ void main() {
 		float elevation = 1.0 - dot(rayDir, vec3(0, 1, 0));
 
 		float t = t_start;
-		float minStepSize = 50.0 * worldScale;
+		float minStepSize = 5.0 * worldScale;
 		float perspectiveScale = 0.005;
 		float blendDist = 2000.0 * worldScale;
 
@@ -323,16 +305,14 @@ void main() {
 			// d = max(d, 0.01*smoothstep(0, 1, elevation));
 			if (d <= 0.000) continue;
 
-if (d > 0.01) {
-        maxEmptyMult = 1.0; // Lock back to high-detail stepping
-        if (firstHitDist < 0.0) firstHitDist = t;
-        lastHitDist = t;
-    }
+			if (d > 0.01) {
+				maxEmptyMult = 1.0; // Lock back to high-detail stepping
+				if (firstHitDist < 0.0) firstHitDist = t;
+				lastHitDist = t;
+			}
 
-    // 4. Update the Integration Math
-    // Ensure you are using currentStepSize, not the old global stepSize
-    float stepDensity = d * currentStepSize * 0.005;
-    float transmittanceAtStep = exp(-stepDensity);
+			float stepDensity = d * currentStepSize * 0.005;
+			float transmittanceAtStep = exp(-stepDensity);
 
 
 			vec3 stepScattering = vec3(0.0);
@@ -417,7 +397,6 @@ if (d > 0.01) {
 			totalWeight += weight;
 
 			cloudTransmittance *= transmittanceAtStep;
-			t += currentStepSize;
 			if (cloudTransmittance < 0.01) {
 				break;
 			}
