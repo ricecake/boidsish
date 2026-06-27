@@ -293,10 +293,11 @@ void main() {
 
 	float neighborHitMass = 0.0;
 	float spatialSampleCount = 0.0;
-	float weightBalance = 0.0;
+	float phaseGradient = 0.0;
 	float massEarly = 0.0;
     float massLate = 0.0;
     float totalNeighborDensity = 0.0;
+	float localDensityMass = 0.0;
 
 	for (int y = -2; y <= 2; y++) {
 		for (int x = -2; x <= 2; x++) {
@@ -312,9 +313,11 @@ void main() {
 			vec4 sampleProps = texture(uCurrentCloudDepth, sampleUV);
 			bool sampleIsSky = sampleProps.r > 40000.0 * WORLD_SCALE_VALUE;
 			float sampleHit = sampleIsSky ? 0.0 : 1.0;
+			float sampleDensity = sampleProps.a;
 
 			float spatialW = exp(-float(x*x + y*y) / 16.0);
 			float opacity = clamp(1.0 - smp.a, 0.0, 1.0);
+			float densityW = sampleDensity * spatialW;
 
 			float colorW = spatialW * max(opacity, 0.001);
 
@@ -332,14 +335,12 @@ void main() {
 			neighborHitMass += sampleHit * spatialW;
 			spatialSampleCount += spatialW;
 
-			weightBalance += (currentPhase - samplePhase) * sampleProps.a;
+			localDensityMass += densityW;
+			phaseGradient += (currentPhase - samplePhase) * densityW;
 
 			if (x == 0 && y == 0) continue;
 
-			float sampleDensity = sampleProps.a;
-
 			// Weight the importance of this neighbor by its structural presence
-			float densityW = sampleDensity * spatialW;
 			totalNeighborDensity += densityW;
 
 			if (samplePhase < currentPhase) {
@@ -363,6 +364,7 @@ void main() {
 	float temporalStdDev = sqrt(temporalVar);
 
 	float localCloudCoverage = neighborHitMass / max(spatialSampleCount, 0.0001);
+	float normalizedPhaseGradient = abs(phaseGradient) / max(localDensityMass, 0.001);
 	// float grazingEdgeConfidence = min(float(currentIsSky), currentMissProbability) * localCloudCoverage;
 	float centerMiss = currentIsSky ? 1.0 : currentMissProbability;
 	float grazingEdgeConfidence = centerMiss * localCloudCoverage * ditherVulnerability;
@@ -374,12 +376,13 @@ void main() {
     // Phase Straddle: approaches 1.0 only if density brackets the current phase from both sides
     float phaseStraddle = 3*normMassEarly * normMassLate;
     phaseStraddle = clamp(phaseStraddle, 0.0, 1.0);
+	float ditherEdgeConfidence = smoothstep(0.1, 0.4, normalizedPhaseGradient);
 
-float trueTrailingEdgeLikelihood = max(0.0, densityDecay) * (1.0 - phaseStraddle);
-bool isTrueTrailingEdge = (trueTrailingEdgeLikelihood > 0.25) && (velocityMagnitude > 0.01);
-if (isTrueTrailingEdge) {
-        validHistory = false;
-    }
+	float trueTrailingEdgeLikelihood = max(0.0, densityDecay) * (1.0 - phaseStraddle);
+	bool isTrueTrailingEdge = (trueTrailingEdgeLikelihood > 0.25) && (velocityMagnitude > 0.01);
+	if (isTrueTrailingEdge) {
+		validHistory = false;
+	}
 
 
 
@@ -474,16 +477,22 @@ if (isTrueTrailingEdge) {
 	// alpha *= (1.0 - smoothstep(0.2, 0.8, grazingEdgeConfidence));
 	// alpha = mix(alpha, 0.5, grazingEdgeConfidence);
 
-	float weightThing = smoothstep(-1, 1.0, (1.0-smoothstep(0.5, 1.0, clamp(abs(weightBalance), 0, 1))) - grazingEdgeConfidence);
+	float weightThing = smoothstep(-1, 1.0, (1.0-smoothstep(0.5, 1.0, clamp(abs(phaseGradient), 0, 1))) - grazingEdgeConfidence);
 	alpha = mix(alpha, 1.0, weightThing);
 	// Force the alpha to 1.0 (trust current frame entirely) if we hit a new dense core
 	// alpha = mix(alpha, 1.0, newStructureConfidence);
 	// alpha = mix(alpha, 1.0, nyquist);
-
+	float finalHistoryLength = mix(historyLength, 1.0, weightThing);
 
 	float ditherHoleConfidence = (1.0 - (currentIsSky ? currentCloudMaxDensity : 0.0)) * phaseStraddle;
     alpha *= (1.0 - smoothstep(0.1, 0.6, ditherHoleConfidence));
 
+	alpha = mix(alpha, 1.0, ditherEdgeConfidence);
+	finalHistoryLength = mix(historyLength, 1.0, ditherEdgeConfidence);
+	// if (currentCloudMaxDensity > historyCloudMaxDensity) {
+	// 	alpha = 1.0;
+	// 	finalHistoryLength = 1.0;
+	// }
 
 	vec4 accumulatedRGBA = mix(historyRGBA, currentRGBA, alpha);
 
@@ -505,5 +514,5 @@ if (isTrueTrailingEdge) {
 	accumulatedDepthProps.rb = currDepthProps.rb;
 
 	imageStore(outDepth, pixel, accumulatedDepthProps);
-	imageStore(outMoments, pixel, vec4(accumulatedM, historyLength));
+	imageStore(outMoments, pixel, vec4(accumulatedM, finalHistoryLength));
 }
