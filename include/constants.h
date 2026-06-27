@@ -43,6 +43,7 @@ namespace Boidsish {
 				WeatherScalars = 42,
 				WeatherAerosols = 43,
 				TerrainDisplacementImage = 44,
+				CloudDynamicsLUT = 45,
 			};
 
 			enum class Ubo {
@@ -51,6 +52,7 @@ namespace Boidsish {
 				Shadows = 2,
 				FrustumData = 3,
 				Shockwaves = 4,
+				CloudDynamics = 5,
 				TemporalData = 6,
 				Biomes = 7,
 				TerrainData = 8,
@@ -129,6 +131,10 @@ namespace Boidsish {
 
 			consteval int Shockwaves() {
 				return std::to_underlying(Constants::Bindings::Ubo::Shockwaves);
+			}
+
+			consteval int CloudDynamics() {
+				return std::to_underlying(Constants::Bindings::Ubo::CloudDynamics);
 			}
 
 			consteval int TemporalData() {
@@ -303,6 +309,10 @@ namespace Boidsish {
 
 			consteval int TerrainDisplacementImage() {
 				return std::to_underlying(Constants::Bindings::Texture::TerrainDisplacementImage);
+			}
+
+			consteval int CloudDynamicsLUT() {
+				return std::to_underlying(Constants::Bindings::Texture::CloudDynamicsLUT);
 			}
 		} // namespace TextureUnit
 

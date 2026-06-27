@@ -7,6 +7,10 @@
 #include "lygia/generative/random.glsl"
 #include "lygia/sdf.glsl"
 
+uniform sampler3D uCloudDynamicsLUT;
+uniform vec3 uCloudWorldMin;
+uniform vec3 uCloudWorldMax;
+
 float cloudPhase(float cosTheta) {
 	// Dual-lobe Henyey-Greenstein for forward and back scattering
 	// Blended with a large isotropic component to ensure visibility at all angles
@@ -128,6 +132,11 @@ CloudWeather computeCloudWeather(vec3 p, CloudProperties props) {
 	return weather;
 }
 
+CloudLayer layerWithDynamics(CloudLayer layer, vec4 dynamics) {
+    // Optional: add logic here to verticaly expand/contract layer
+    return layer;
+}
+
 CloudLayer computeCloudLayer(CloudWeather weather, CloudProperties props) {
 	// Use heightMap for dramatic vertical expansion for specific weather cells
 	// Tall clouds (cumulonimbus) can be 5-10x thicker than base thickness
@@ -168,6 +177,13 @@ float calculateCloudDensityHZDv1(
 	float           time,
 	bool            simplified
 ){
+    // Sample cloud dynamics LUT
+    vec3 dynUVW = (p - uCloudWorldMin) / (uCloudWorldMax - uCloudWorldMin);
+    vec4 dynamics = vec4(0.0);
+    if (all(greaterThanEqual(dynUVW, vec3(0.0))) && all(lessThanEqual(dynUVW, vec3(1.0)))) {
+        dynamics = texture(uCloudDynamicsLUT, dynUVW);
+    }
+
 	float h = (p.y - layer.baseFloor) / layer.thickness;
 
 	// Height-based density gradient (cloud type)
@@ -176,6 +192,7 @@ float calculateCloudDensityHZDv1(
 
 	// Apply advection
 	vec3 advect = getCloudAdvectionOffset(h, time);
+    advect += dynamics.xyz;
 	vec3 p_advected = p + advect;
 
 	// Domain warping for "boiling" look (using curl noise)
@@ -217,6 +234,7 @@ float calculateCloudDensityHZDv1(
 	// return clamp(finalDensity * props.densityBase * 2.0, 0.0, 2.0);
 	// return smoothstep(coverageThreshold, 1.0, baseDensity) * remap(baseDensity * 2.0, erosion * 0.4, 1.0, 0.0, props.densityBase);
 	float finalDensity = remap(baseDensity * 2.0, erosion * 0.4, 1.0, 0.0, 2.0*props.densityBase);
+    finalDensity += dynamics.a;
 	return smoothstep(coverageThreshold, 1.0, finalDensity) * finalDensity;
 }
 
@@ -228,6 +246,13 @@ float calculateCloudDensityExpV1(
 	float           time,
 	bool            simplified
 ) {
+    // Sample cloud dynamics LUT
+    vec3 dynUVW = (p - uCloudWorldMin) / (uCloudWorldMax - uCloudWorldMin);
+    vec4 dynamics = vec4(0.0);
+    if (all(greaterThanEqual(dynUVW, vec3(0.0))) && all(lessThanEqual(dynUVW, vec3(1.0)))) {
+        dynamics = texture(uCloudDynamicsLUT, dynUVW);
+    }
+
 	float h = (p.y - layer.baseFloor) / layer.thickness;
 
 	// Height-based density gradient (cloud type)
@@ -236,6 +261,7 @@ float calculateCloudDensityExpV1(
 
 	// Apply advection
 	vec3 advect = getCloudAdvectionOffset(h, time);
+    advect += dynamics.xyz;
 	vec3 p_advected = p + advect;
 	vec3 p_scaled = p_advected / (3000.0 * props.worldScale);
 
@@ -244,6 +270,7 @@ float calculateCloudDensityExpV1(
 	baseNoise *= 1.0-smoothstep(-0.10, props.coverage, baseNoise);
 	float erosion = (fastFbm3d(p_scaled) + 1.0) * 0.5;
 	baseNoise = remapClamp(baseNoise, erosion * 0.4, 1.0, 0.0, props.densityBase);
+    baseNoise += dynamics.a;
 	return baseNoise;
 
 }
@@ -260,6 +287,13 @@ float calculateCloudDensityExpV2(
 	if (p.y < layer.baseFloor || p.y > layer.baseCeiling)
 		return 0.0;
 
+    // Sample cloud dynamics LUT
+    vec3 dynUVW = (p - uCloudWorldMin) / (uCloudWorldMax - uCloudWorldMin);
+    vec4 dynamics = vec4(0.0);
+    if (all(greaterThanEqual(dynUVW, vec3(0.0))) && all(lessThanEqual(dynUVW, vec3(1.0)))) {
+        dynamics = texture(uCloudDynamicsLUT, dynUVW);
+    }
+
 	// p.y -= weather.heightMap * layer.thickness;
 
 	// Height-based tapering with a more natural profile
@@ -270,6 +304,7 @@ float calculateCloudDensityExpV2(
 
 	// Apply advection to the sample position
 	vec3 advect = getCloudAdvectionOffset(h, time);
+	advect += dynamics.xyz;
 	vec3 p_advected = p + advect;
 
 	// Base noise for cloud shapes
@@ -349,6 +384,13 @@ float calculateCloudDensityExpV3(
 	if (p.y < layer.baseFloor || p.y > layer.baseCeiling)
 		return 0.0;
 
+    // Sample cloud dynamics LUT
+    vec3 dynUVW = (p - uCloudWorldMin) / (uCloudWorldMax - uCloudWorldMin);
+    vec4 dynamics = vec4(0.0);
+    if (all(greaterThanEqual(dynUVW, vec3(0.0))) && all(lessThanEqual(dynUVW, vec3(1.0)))) {
+        dynamics = texture(uCloudDynamicsLUT, dynUVW);
+    }
+
 	// p.y -= weather.heightMap * layer.thickness;
 
 	// Height-based tapering with a more natural profile
@@ -362,7 +404,9 @@ float calculateCloudDensityExpV3(
 
 	// Apply advection to the sample position
 	vec3 advect = getCloudAdvectionOffset(h, time);
-	vec3 p_advected = p;// - advect;
+    advect += dynamics.xyz;
+
+	vec3 p_advected = p - advect;
 	vec3 p_deadvected = p - 2*advect;
 	vec3 p_warp = p - advect;
 	vec3 p_scaled = (p_advected) / (50000.0 * props.worldScale);
@@ -395,7 +439,10 @@ float calculateCloudDensityExpV3(
 
 	// return step(coverageThreshold, worley.x*step(coverageThreshold, worley.y)) * remapClamp(baseNoise, mix(worley.x, fastFbmCurl3d(p_scaled), h) * 0.5, 1.0, 0.0, props.densityBase);
 	float val = remapClamp(baseNoise*heightGradient*2, mix(max(worley.y, worley.x), fbm, smoothstep(0.25, 0.75, h)), 1.0, 0.0, props.densityBase);
-	return 2.0*val * step(0.3, val);
+
+    val += dynamics.a;
+
+    return 2.0*val * step(0.3, val);
 	// return 5.0*remapClamp(baseNoise*heightGradient*2, mix(worley.x, 2*fbm*ridge, h), 1.0, 0.0, props.densityBase);
 }
 
@@ -408,6 +455,13 @@ float calculateCloudDensityExpV4(
 	float           time,
 	bool            simplified
 ) {
+    // Sample cloud dynamics LUT
+    vec3 dynUVW = (p - uCloudWorldMin) / (uCloudWorldMax - uCloudWorldMin);
+    vec4 dynamics = vec4(0.0);
+    if (all(greaterThanEqual(dynUVW, vec3(0.0))) && all(lessThanEqual(dynUVW, vec3(1.0)))) {
+        dynamics = texture(uCloudDynamicsLUT, dynUVW);
+    }
+
 	float h = (p.y - layer.baseFloor) / layer.thickness;
 
 	float heightGrid = 150+250*(mix(500, 1000, h)/250);
@@ -417,6 +471,8 @@ float calculateCloudDensityExpV4(
 	float baseNoise = step(dist, 100);
 	float erosion = (fastFbm3d(p/1000) + 1.0) * 0.5;
 	baseNoise = remapClamp(baseNoise, erosion * 0.4, 1.0, 0.0, props.densityBase);
+
+    baseNoise += dynamics.a;
 
 	return baseNoise;// * erosion;
 }
@@ -429,6 +485,13 @@ float calculateCloudDensityExpV5(
 	float           time,
 	bool            simplified
 ) {
+    // Sample cloud dynamics LUT
+    vec3 dynUVW = (p - uCloudWorldMin) / (uCloudWorldMax - uCloudWorldMin);
+    vec4 dynamics = vec4(0.0);
+    if (all(greaterThanEqual(dynUVW, vec3(0.0))) && all(lessThanEqual(dynUVW, vec3(1.0)))) {
+        dynamics = texture(uCloudDynamicsLUT, dynUVW);
+    }
+
 	float h = (p.y - layer.baseFloor) / layer.thickness;
 	float type = weather.heightMap;
 	float heightGradient = getDensityHeightGradient(h, type);
@@ -436,6 +499,7 @@ float calculateCloudDensityExpV5(
 	float coverageThreshold = 1.0 - props.coverage;
 
 	vec3 advect = getCloudAdvectionOffset(h, time);
+    advect += dynamics.xyz;
 	vec3 p_advected = p + advect;
 	vec3 p_scaled = (p_advected) / (50000.0 * props.worldScale);
 	vec2 worley = fastWorley3dID(p_scaled*5.0);
@@ -451,6 +515,7 @@ float calculateCloudDensityExpV5(
 	// float finalNoise = remapClamp(baseNoise, worley.x, 1.0, weather.weatherMap, props.densityBase);
 	// float finalNoise = remap(baseDensity * 2.0, ((fastRidge3d(p_scaled * h * 100.0)+1.0)*0.5)*0.4, 1.0, 0.0, 2.0*props.densityBase);
 	float finalNoise = remap(baseDensity, ((fastRidge3d(p_scaled * h * 100.0)*0.5)+0.5)*0.25, 1.0, 0.0, props.densityBase);
+    finalNoise += dynamics.a;
 	// float finalNoise = baseDensity;
 	return finalNoise;
 }

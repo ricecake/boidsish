@@ -339,6 +339,58 @@ namespace Boidsish {
 
 										ImGui::TreePop();
 									}
+
+									if (ImGui::TreeNode("Cloud Dynamics")) {
+										auto& manager = m_visualizer.GetPostProcessingManager();
+										std::shared_ptr<PostProcessing::AtmosphereEffect> atmos;
+										for (auto& effect : manager.GetPreToneMappingEffects()) {
+											if (effect->GetName() == "Atmosphere") {
+												atmos = std::dynamic_pointer_cast<PostProcessing::AtmosphereEffect>(effect);
+												break;
+											}
+										}
+
+										if (atmos) {
+											auto& cdm = atmos->GetCloudDynamicsManager();
+											static float radius = 500.0f;
+											static float strength = 25.0f;
+											static float density = -0.5f;
+
+											ImGui::SliderFloat("Radius##CD", &radius, 10.0f, 2000.0f);
+											ImGui::SliderFloat("Strength##CD", &strength, 0.0f, 100.0f);
+											ImGui::SliderFloat("Density Offset##CD", &density, -1.0f, 1.0f);
+
+											auto get_target_pos = [&]() -> glm::vec3 {
+												auto screen_w = ImGui::GetIO().DisplaySize.x;
+												auto screen_h = ImGui::GetIO().DisplaySize.y;
+												auto pos = m_visualizer.ScreenToWorld(screen_w * 0.5f, screen_h * 0.5f);
+												return pos.value_or(m_visualizer.GetCamera().pos());
+											};
+
+											if (ImGui::Button("Create Sink (Push)")) {
+												CloudDynamicsEffect e;
+												e.position = get_target_pos();
+												e.radius = radius;
+												e.strength = strength;
+												e.densityOffset = density;
+												e.type = 0;
+												cdm.AddEffect(e);
+											}
+											ImGui::SameLine();
+											if (ImGui::Button("Create Source (Flow)")) {
+												CloudDynamicsEffect e;
+												e.position = get_target_pos();
+												e.radius = radius;
+												e.strength = strength;
+												e.densityOffset = -density; // Invert for source?
+												e.type = 1;
+												cdm.AddEffect(e);
+											}
+										} else {
+											ImGui::Text("Atmosphere effect not found or disabled.");
+										}
+										ImGui::TreePop();
+									}
 								}
 								ImGui::TreePop();
 							}

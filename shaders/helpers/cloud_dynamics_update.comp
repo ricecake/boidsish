@@ -1,0 +1,74 @@
+#version 460 core
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
+
+layout(rgba32f, binding = 0) uniform image3D uCloudDynamicsLUT;
+
+struct CloudDynamicsEffect {
+    vec4 position_radius;    // xyz: pos, w: radius
+    vec4 params;             // x: strength, y: densityOffset, z: type, w: stateProgress
+    vec4 state_info;         // x: state enum, y: unused, z: unused, w: unused
+};
+
+layout(std140, binding = 5) uniform CloudDynamics {
+    CloudDynamicsEffect effects[64];
+};
+
+uniform int uLutSize;
+uniform int uNumEffects;
+uniform vec3 uWorldMin;
+uniform vec3 uWorldMax;
+uniform float uTime;
+
+void main() {
+    ivec3 texelPos = ivec3(gl_GlobalInvocationID);
+    if (any(greaterThanEqual(texelPos, ivec3(uLutSize)))) return;
+
+    vec3 uvw = vec3(texelPos) / float(uLutSize - 1);
+    vec3 worldPos = mix(uWorldMin, uWorldMax, uvw);
+
+    vec3 totalAdvection = vec3(0.0);
+    float totalDensityOffset = 0.0;
+
+    for (int i = 0; i < uNumEffects; i++) {
+        vec3 pos = effects[i].position_radius.xyz;
+        float radius = effects[i].position_radius.w;
+        float strength = effects[i].params.x;
+        float densityOffset = effects[i].params.y;
+        float type = effects[i].params.z;
+        float progress = effects[i].params.w;
+        float state = effects[i].state_info.x;
+
+        float dist = distance(worldPos, pos);
+        if (dist > radius * 2.0) continue;
+
+        float falloff = smoothstep(radius * 2.0, radius, dist);
+        vec3 dir = normalize(worldPos - pos);
+
+        // State 0: Pushing, 1: FadingAdvection, 2: FadingDensity
+        float advectionFade = 1.0;
+        float densityFade = 1.0;
+
+        if (state == 0.0) { // Pushing
+            advectionFade = 1.0;
+            densityFade = progress;
+        } else if (state == 1.0) { // FadingAdvection
+            advectionFade = 1.0 - progress;
+            densityFade = 1.0;
+        } else if (state == 2.0) { // FadingDensity
+            advectionFade = 0.0;
+            densityFade = 1.0 - progress;
+        }
+
+        vec3 advection = dir * strength * falloff * advectionFade;
+        if (type == 0.0) { // Sink - push away
+            totalAdvection += advection;
+        } else { // Source - flow out
+            totalAdvection += advection;
+        }
+
+        totalDensityOffset += densityOffset * falloff * densityFade;
+    }
+
+    imageStore(uCloudDynamicsLUT, texelPos, vec4(totalAdvection, totalDensityOffset));
+}

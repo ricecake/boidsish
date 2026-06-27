@@ -4,6 +4,7 @@
 
 #include "weather_constants.h"
 #include "post_processing/IPostProcessingEffect.h"
+#include "cloud_dynamics_manager.h"
 
 class Shader;
 class ComputeShader;
@@ -205,6 +206,8 @@ namespace Boidsish {
 
 			float GetRenderScale() const { return render_scale_; }
 
+			CloudDynamicsManager& GetCloudDynamicsManager() { return *cloud_dynamics_manager_; }
+
 		private:
 			void InitializeLowResResources();
 			void InitializeTemporalResources();
@@ -283,6 +286,7 @@ namespace Boidsish {
 			glm::mat4 prev_view_projection_ = glm::mat4(1.0f);
 			bool      has_valid_history_ = false;
 
+			std::unique_ptr<CloudDynamicsManager> cloud_dynamics_manager_;
 		};
 
 	} // namespace PostProcessing

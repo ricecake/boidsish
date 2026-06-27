@@ -9,12 +9,14 @@
 #include "shadow_manager.h"
 #include "shader.h"
 #include "terrain_render_manager.h"
+#include "service_locator.h"
 
 namespace Boidsish {
 	namespace PostProcessing {
 
 		AtmosphereEffect::AtmosphereEffect() {
 			name_ = "Atmosphere";
+			cloud_dynamics_manager_ = std::make_unique<CloudDynamicsManager>(ServiceLocator::Instance());
 		}
 
 		AtmosphereEffect::~AtmosphereEffect() {
@@ -34,6 +36,8 @@ namespace Boidsish {
 		}
 
 		void AtmosphereEffect::Initialize(int width, int height) {
+			cloud_dynamics_manager_->Initialize();
+
 			shader_ = std::make_unique<Shader>("shaders/postprocess.vert", "shaders/effects/atmosphere_lowres.frag");
 			composite_shader_ = std::make_unique<Shader>(
 				"shaders/postprocess.vert",
@@ -197,6 +201,9 @@ namespace Boidsish {
 			float dt = time_ - last_time_;
 			last_time_ = time_;
 
+			cloud_dynamics_manager_->Update(dt);
+			cloud_dynamics_manager_->BakeLUT(time_);
+
 			// --- Halton Jitter calculation ---
 			// halton_index_ = (halton_index_ + 1) % 16;
 			// glm::vec2 jitter = glm::vec2(
@@ -232,6 +239,10 @@ namespace Boidsish {
 			shader_->setFloat("u_sunAureoleStrength", sun_aureole_strength_);
 			shader_->setFloat("u_cirrusOpacity", cirrus_opacity_);
 
+			shader_->setInt("uCloudDynamicsLUT", Constants::TextureUnit::CloudDynamicsLUT());
+			shader_->setVec3("uCloudWorldMin", cloud_dynamics_manager_->GetWorldMin());
+			shader_->setVec3("uCloudWorldMax", cloud_dynamics_manager_->GetWorldMax());
+
 			// History feedback for guided marching
 			shader_->setInt("uHistoryDepth", 6);
 			shader_->setInt("uHistoryMoments", 7);
@@ -252,6 +263,9 @@ namespace Boidsish {
 			glBindTexture(GL_TEXTURE_2D, temporal_depth_textures_[temporal_index_]);
 			glActiveTexture(GL_TEXTURE7);
 			glBindTexture(GL_TEXTURE_2D, temporal_moments_textures_[temporal_index_]);
+
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::CloudDynamicsLUT());
+			glBindTexture(GL_TEXTURE_3D, cloud_dynamics_manager_->GetLUT());
 
 			GpuResourceRegistry::Instance().BindTextures({
 				Constants::TextureUnit::AtmosphereTransmittance(),
@@ -378,6 +392,10 @@ namespace Boidsish {
 
 			composite_shader_->setVec2("cloudTexelSize", glm::vec2(1.0f / low_res_width, 1.0f / low_res_height));
 			composite_shader_->setFloat("u_atmosphereHeight", atmosphere_height_);
+
+			composite_shader_->setInt("uCloudDynamicsLUT", Constants::TextureUnit::CloudDynamicsLUT());
+			composite_shader_->setVec3("uCloudWorldMin", cloud_dynamics_manager_->GetWorldMin());
+			composite_shader_->setVec3("uCloudWorldMax", cloud_dynamics_manager_->GetWorldMax());
 
 			auto& loc = ServiceLocator::Instance();
 			auto shadow_mgr = loc.Get<ShadowManager>();
