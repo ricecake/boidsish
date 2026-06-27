@@ -363,7 +363,7 @@ float calculateCloudDensityExpV3(
 	// Apply advection to the sample position
 	vec3 advect = getCloudAdvectionOffset(h, time);
 	vec3 p_advected = p;// - advect;
-	vec3 p_deadvected = p - 2*advect;
+	vec3 p_deadvected = p - advect;
 	vec3 p_warp = p - advect;
 	vec3 p_scaled = (p_advected) / (50000.0 * props.worldScale);
 	vec3 p_descaled = (p_deadvected) / (50000.0 * props.worldScale);
@@ -383,18 +383,19 @@ float calculateCloudDensityExpV3(
 	// 	return remapClamp(baseNoise*heightGradient*2.0, 0, 1.0, 0.0, props.densityBase);
 	// }
 
-	vec3 p_warped = (p_deadvected+5*fastCurl3d((p_warp) / (50000.0 * props.worldScale))) / (10000.0 * props.worldScale);
+	// vec3 p_warped = (p_deadvected+10*fastCurl3d((p_warp) / (50000.0 * props.worldScale))) / (1000.0 * props.worldScale);
 
 	vec2 worley = vec2(0);
 	for (float i = 0; i < 3; i++) {
-		worley += pow(2, -i) * fastWorley3dID(p_warped * pow(2, i));
+		worley += pow(2, -i) * fastWorley3dID(p_descaled * pow(2, i));
 	}
 
-	float ridge = abs(fastRidge3d(p_warped*5));
-	float fbm = fastWarpedFbm3d(p_warped*10);
+	float ridge = abs(fastRidge3d(p_descaled*5));
+	float fbm = fastWarpedFbm3d(p_descaled*10);
 
 	// return step(coverageThreshold, worley.x*step(coverageThreshold, worley.y)) * remapClamp(baseNoise, mix(worley.x, fastFbmCurl3d(p_scaled), h) * 0.5, 1.0, 0.0, props.densityBase);
-	float val = remapClamp(baseNoise*heightGradient*2, mix(max(worley.y, worley.x), fbm, smoothstep(0.25, 0.75, h)), 1.0, 0.0, props.densityBase);
+	// float val = remapClamp(baseNoise*heightGradient*2, mix(max(worley.y, worley.x), fbm, smoothstep(0.25, 0.75, h)), 1.0, 0.0, props.densityBase);
+	float val = remapClamp(baseNoise*heightGradient*2, mix(ridge, fbm, smoothstep(0.25, 0.75, h)), 1.0, 0.0, props.densityBase);
 	return 2.0*val * step(0.3, val);
 	// return 5.0*remapClamp(baseNoise*heightGradient*2, mix(worley.x, 2*fbm*ridge, h), 1.0, 0.0, props.densityBase);
 }
