@@ -208,7 +208,7 @@ void main() {
 	float newStructureConfidence = smoothstep(0.1, 0.5, max(0.0, currentCloudMaxDensity - historyCloudMaxDensity) / max(historyCloudMaxDensity, 0.1));
 
 	ivec2 currentCoord = pixel;
-	ivec2 prevCoord = ivec2(prevUV * vec2(size));
+	ivec2 prevCoord = ivec2(round(prevUV * vec2(size)));
 
 	float currentPhase = bayer4x4StepPhase(currentCoord, uFrameIndex);
 	float historyPhase = bayer4x4StepPhase(prevCoord, uFrameIndex);
@@ -302,7 +302,7 @@ void main() {
 	for (int y = -2; y <= 2; y++) {
 		for (int x = -2; x <= 2; x++) {
 			vec2 sampleUV = uv + vec2(x, y) * texelSize;
-			ivec2 sampleCoord = ivec2(sampleUV * vec2(size));
+			ivec2 sampleCoord = ivec2(round(sampleUV * vec2(size)));
 			float samplePhase = bayer4x4StepPhase(sampleCoord, uFrameIndex);
 
 
@@ -407,7 +407,8 @@ void main() {
 	alphaStd = max(alphaStd, 0.05);
 
 	float minExtents = max(0.02, spatialMean.x * 0.15);
-	vec3 clipExtents = max(vec3(temporalStdDev * gamma), vec3(minExtents));
+	// vec3 clipExtents = max(vec3(temporalStdDev * gamma), vec3(minExtents));
+	vec3 clipExtents = max(vec3(stddev * gamma), vec3(minExtents));
 
 	vec3 minColor = spatialMean - clipExtents;
 	vec3 maxColor = spatialMean + clipExtents;
