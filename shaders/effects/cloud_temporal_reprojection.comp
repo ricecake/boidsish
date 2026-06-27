@@ -20,6 +20,7 @@ uniform float uBlendAlpha; // How much history to keep (0.85-0.95)
 
 #include "../atmosphere/common.glsl"
 #include "lygia/color/luma.glsl"
+#include "helpers/math.glsl"
 
 
 uniform int   uFrameIndex;
@@ -183,7 +184,7 @@ void main() {
 	float depthEpsilon = 20.0 * WORLD_SCALE_VALUE + (linearSceneDepth * 0.02);
 
 	if (linearSceneDepth < currentCloudDist - depthEpsilon) {
-		validHistory = false;
+		// validHistory = false;
 	}
 
 
@@ -205,6 +206,26 @@ void main() {
 	bool isSilhouetteEdge = (currentIsSky != historyIsSky);
 
 	float newStructureConfidence = smoothstep(0.1, 0.5, max(0.0, currentCloudMaxDensity - historyCloudMaxDensity) / max(historyCloudMaxDensity, 0.1));
+
+	ivec2 currentCoord = pixel;
+	ivec2 prevCoord = ivec2(prevUV * vec2(size));
+
+	float currentPhase = bayer4x4StepPhase(currentCoord, uFrameIndex);
+	float historyPhase = bayer4x4StepPhase(prevCoord, uFrameIndex);
+
+	// How much the depth SHOULD have changed purely due to sliding across the dither grid
+	float phaseDrift = (currentPhase - historyPhase) * currentCloudStep;
+
+	// Phase-corrected depth comparison
+	float alignedHistoryDist = historyCloudDist + phaseDrift;
+	float trueDepthDelta = abs(currentCloudDist - alignedHistoryDist);
+
+	// Now you can trust the history much more aggressively, because the quantization noise is removed
+	float depthTolerance = currentCloudStep * mix(1.5, 0.5, structuralLock);
+	if (trueDepthDelta > depthTolerance) {
+		validHistory = false;
+	}
+
 
 	// If the history thought there was a dense cloud, but the current frame sees a massive drop in density,
 	// the wind has blown the cloud out of this pixel.
@@ -269,11 +290,22 @@ void main() {
 	float weightSumAlpha = 0.0;
 	float weightSumTrans = 0.0;
 
+	float neighborHitMass = 0.0;
+	float spatialSampleCount = 0.0;
+	float weightBalance = 0.0;
+
 	for (int y = -2; y <= 2; y++) {
 		for (int x = -2; x <= 2; x++) {
+			vec2 sampleUV = uv + vec2(x, y) * texelSize;
+			float samplePhase = bayer4x4StepPhase(ivec2(sampleUV), uFrameIndex);
+
 			// vec4 smpC = texture(uHistoryFrame, prevUV + vec2(x, y) * texelSize);
-			vec4 smpC = texture(uCurrentFrame, uv + vec2(x, y) * texelSize);
+			vec4 smpC = texture(uCurrentFrame, sampleUV);
 			vec4 smp = smpC;
+
+			vec4 sampleProps = texture(uCurrentCloudDepth, sampleUV);
+			bool sampleIsSky = sampleProps.r > 40000.0 * WORLD_SCALE_VALUE;
+			float sampleHit = sampleIsSky ? 0.0 : 1.0;
 
 			float spatialW = exp(-float(x*x + y*y) / 16.0);
 			float opacity = clamp(1.0 - smp.a, 0.0, 1.0);
@@ -290,6 +322,11 @@ void main() {
 
 			weightSumColor += colorW;
 			weightSumAlpha += spatialW;
+
+			neighborHitMass += sampleHit * spatialW;
+			spatialSampleCount += spatialW;
+
+			weightBalance += (currentPhase - samplePhase) * sampleProps.a;
 		}
 	}
 
@@ -303,6 +340,10 @@ void main() {
 	float histLumaSqMean = historyMoments.y;
 	float temporalVar = max(0.0, histLumaSqMean - (histLumaMean * histLumaMean));
 	float temporalStdDev = sqrt(temporalVar);
+
+	float localCloudCoverage = neighborHitMass / max(spatialSampleCount, 0.0001);
+
+	float grazingEdgeConfidence = min(float(currentIsSky), currentMissProbability) * localCloudCoverage;
 
 	// Dynamic Gamma
 	// float gamma = mix(0.75, 2.5, structuralLock);
@@ -329,9 +370,10 @@ void main() {
 
 	vec3 minColor = spatialMean - clipExtents;
 	vec3 maxColor = spatialMean + clipExtents;
+	maxColor += spatialMean * grazingEdgeConfidence;
 
-	// float falseNegativeLikelihood = smoothstep(0.1, 1.0, currentMissProbability);
-	// maxColor += spatialMean * falseNegativeLikelihood; // Expand bounds upward
+	float falseNegativeLikelihood = smoothstep(0.1, 1.0, currentMissProbability);
+	maxColor += spatialMean * falseNegativeLikelihood; // Expand bounds upward
 
 	vec3 historyYCoCg = RGBToYCoCg(historyRGBA.rgb);
 
@@ -358,13 +400,13 @@ void main() {
 	// 1. Establish the standard spatial bounds
 	float minAlpha = alphaMean - alphaGamma * alphaStd;
 	float maxAlpha = alphaMean + alphaGamma * alphaStd;
-
+	// maxAlpha += (1.0 - alphaMean) * grazingEdgeConfidence;
 	// 2. Asymmetric Box Expansion (The "Trust History" Fix)
 	// If the current frame has a high miss probability, it's highly likely the spatial
 	// neighborhood is falsely reporting empty sky. We dynamically inflate the maximum
 	// bound to prevent valid history from being clipped away by a noisy miss.
 	// float falseNegativeLikelihood = smoothstep(0.1, 1.0, currentMissProbability);
-	// maxAlpha += (1.0 - alphaMean) * falseNegativeLikelihood; // Expand bounds upward
+	maxAlpha += (1.0 - alphaMean) * falseNegativeLikelihood; // Expand bounds upward
 
 	// 3. 1D Clip-Toward-spatialMean Intersection
 	float alphaClipDir = alphaMean - historyOpacity;
@@ -388,10 +430,17 @@ void main() {
 	float alpha = 1.0 / historyLength;
 	alpha = max(alpha, mix(0.03, 0.25, smoothstep(8.0, 2.0, historyLength)));
 	// alpha = max(alpha, 0.25);
+	// Standard accumulation based on history length
 
+	// alpha *= (1.0 - smoothstep(0.2, 0.8, grazingEdgeConfidence));
+	// alpha = mix(alpha, 0.5, grazingEdgeConfidence);
+
+	float weightThing = smoothstep(-1, 1.0, (1.0-smoothstep(0.5, 1.0, clamp(abs(weightBalance), 0, 1))) - grazingEdgeConfidence);
+	alpha = mix(alpha, 1.0, weightThing);
 	// Force the alpha to 1.0 (trust current frame entirely) if we hit a new dense core
-	alpha = mix(alpha, 1.0, newStructureConfidence);
+	// alpha = mix(alpha, 1.0, newStructureConfidence);
 	// alpha = mix(alpha, 1.0, nyquist);
+
 
 	// currentRGBA = vec4(YCoCgToRGB(spatialMean), 1.0-alphaMean);
 	vec4 accumulatedRGBA = mix(historyRGBA, currentRGBA, alpha);
@@ -400,6 +449,8 @@ void main() {
 	vec3  currentM = vec3(currentLuma, currentLuma * currentLuma, currentCloudMaxDensity * currentCloudMaxDensity);
 	vec3  accumulatedM = mix(historyMoments.xyz, currentM, alpha);
 
+
+	// accumulatedRGBA = mix(vec4(5, 0,0,0), vec4(0,5,0,0), alpha);
 
 	// 6. Output
 	imageStore(outColor, pixel, accumulatedRGBA);

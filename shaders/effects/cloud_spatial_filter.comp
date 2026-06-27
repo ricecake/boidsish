@@ -7,8 +7,10 @@ uniform sampler2D uCloudColor;   // Accumulated RGBA or previous pass result
 uniform sampler2D uCloudDepth;   // Accumulated Depth Props (dist, lastHit, step, density)
 uniform sampler2D uCloudMoments; // Accumulated Moments (Luma1, Luma2, Density2, historyLength)
 uniform int       uStepSize;     // 1, 2, 4, 8, 16...
+uniform int   uFrameIndex;
 
 #include "lygia/color/luma.glsl"
+#include "helpers/math.glsl"
 
 // À-Trous B3-Spline Kernel (5x5)
 const float kernel[5] = float[](1.0/16.0, 1.0/4.0, 3.0/8.0, 1.0/4.0, 1.0/16.0);
@@ -32,6 +34,8 @@ void main() {
 	float centerTransmittance = centerColor.a;
 	bool  centerIsSky = centerDepth > 40000.0;
 	float centerHistory = centerMoments.w;
+	float centerPhase = bayer4x4StepPhase(pixel, uFrameIndex);
+
 
 	// Fetch smoothed moments to stabilize the edge-stopping bounds
 	vec4 smoothedMoments = vec4(0.0);
@@ -67,8 +71,11 @@ void main() {
 	// float phiDensity = (0.5 * stdDensity + 0.1) * historyScale;
 	// float phiTransmittance = 0.1 * historyScale;
 	// float phiDepth = mix(15000.0, 1000.0, smoothstep(0.0, 0.4, centerDensity));
-	float baseDepthTolerance = mix(4.0, 2.0, smoothstep(0.0, 0.4, centerDensity));
-	float phiDepth = centerStep * baseDepthTolerance * stepScale;
+
+	// float baseDepthTolerance = mix(4.0, 2.0, smoothstep(0.0, 0.4, centerDensity));
+	// float phiDepth = centerStep * baseDepthTolerance * stepScale;
+
+	float phiDepth = centerStep * mix(1.5, 0.5, smoothstep(0.0, 0.4, centerDensity)) * float(uStepSize);
 
 	vec4  sumColor = vec4(0.0);
 	float sumWeight = 0.0;
@@ -76,6 +83,7 @@ void main() {
 	for (int y = -2; y <= 2; y++) {
 		for (int x = -2; x <= 2; x++) {
 			vec2 offset = vec2(x, y) * float(uStepSize) * texelSize;
+			ivec2 sampleCoord = pixel + ivec2(x, y) * uStepSize;
 			vec4 sampleColor = texture(uCloudColor, uv + offset);
 			vec4 sampleProps = texture(uCloudDepth, uv + offset);
 
@@ -83,19 +91,22 @@ void main() {
 			float sampleDensity = sampleProps.a;
 			float sampleTransmittance = sampleColor.a;
 			bool  sampleIsSky = sampleDepth > 40000.0;
+			float samplePhase = bayer4x4StepPhase(sampleCoord, uFrameIndex);
+
+			// Shift the neighbor's depth to match the ray origin of the center pixel
+			float phaseShift = (centerPhase - samplePhase) * centerStep;
+			float alignedSampleDepth = sampleDepth + phaseShift;
 
 			// Edge stopping functions
 			// 1. Luma
 			float lumaWeight = exp(-abs(luma(centerColor.rgb) - luma(sampleColor.rgb)) / phiLuma);
 
-			// 2. Depth
+			// 2. Depth Edge-Stopping
 			float depthWeight = 1.0;
 			if (centerIsSky != sampleIsSky) {
 				depthWeight = 0.0;
 			} else if (!centerIsSky) {
-				float depthDiff = abs(centerDepth - sampleDepth);
-
-				// depthWeight = exp(-abs(centerDepth - sampleDepth) / 1000.0);
+				float depthDiff = abs(centerDepth - alignedSampleDepth);
 				depthWeight = exp(-depthDiff * depthDiff / (phiDepth * phiDepth));
 			}
 

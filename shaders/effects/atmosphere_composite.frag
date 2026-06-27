@@ -11,6 +11,7 @@ layout(binding = 4) uniform sampler2D cloudDepthTexture;
 
 uniform mat4 invView;
 uniform mat4 invProjection;
+uniform int   uFrameIndex;
 
 uniform vec2 cloudTexelSize; // 1.0 / lowResSize
 
@@ -96,13 +97,34 @@ void main() {
 			float sMaxDensity = sDepthData.a;
 
 			vec4 sColor = texture(cloudTexture, sampleUV);
-
 			float structuralRigidity = smoothstep(0.015, 0.05, sMaxDensity);
 
-			// One-sided depth occlusion penalty
-			float depthDiff = max(0.0, sDepth - sceneDist);
+
+
+			// Inside the Composite Upsample (inside the nested dx/dy loop)
+			ivec2 sampleCoord = ivec2((nearestTexelCenter + offset));
+			float sPhase = bayer4x4StepPhase(sampleCoord, uFrameIndex);
+			float rayStepLength = sDepthData.b;
+
+			// Estimate the absolute front of the volume before the dither offset pushed the ray inward
+			float continuousFrontEdge = sDepth - (sPhase * rayStepLength);
+
+			// 2. Depth Occlusion Penalty against the high-res scene distance
+			// Use the estimated continuous edge, not the quantized sDepth
+			float depthDiff = max(0.0, continuousFrontEdge - sceneDist);
+
+			// The tolerance only needs to account for sub-step geometric variation now
+			float depthTolerance = rayStepLength * 0.75;
 			float depthPenalty = exp(-(depthDiff * depthDiff) / (depthTolerance * depthTolerance));
 			depthPenalty = mix(1.0, depthPenalty, structuralRigidity);
+
+
+
+
+			// One-sided depth occlusion penalty
+			// float depthDiff = max(0.0, sDepth - sceneDist);
+			// float depthPenalty = exp(-(depthDiff * depthDiff) / (depthTolerance * depthTolerance));
+			// depthPenalty = mix(1.0, depthPenalty, structuralRigidity);
 
 			// Compute a unified bilateral weight for normalization
 			float bilateralW = spatialW * depthPenalty;

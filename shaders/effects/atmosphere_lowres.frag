@@ -188,16 +188,7 @@ void main() {
 		}
 	}
 
-	ivec2 pixel = ivec2(gl_FragCoord.xy);
-	int timer = ((frameIndex) / 2) + 2 * (frameIndex%2);
-	// float jitter = float(bayer4x4[((pixel.y & 3) * 4 + (pixel.x & 3) + (timer%16)) % 16]) / 16.0;
-
-	ivec2 pixelOffset = ivec2(timer % 4, (timer + 2) %4);
-	pixel += pixelOffset;
-	float jitter = float(bayer4x4[((pixel.y & 3) * 4 + (pixel.x & 3)) % 16]) / 16.0;
-
-	// float jitter = float(bayer4x4[((pixel.y & 3) * 4 + (pixel.x & 3) + frameIndex) % 16]) / 16.0;
-	// float jitter = float(bayer4x4[((pixel.y & 3) * 4 + (pixel.x & 3)) % 16]) / 16.0;
+	float jitter = bayer4x4StepPhase(ivec2(gl_FragCoord.xy), frameIndex);
 
 	vec3  cloudColor = vec3(0.0);
 	float cloudTransmittance = 1.0;
@@ -248,7 +239,7 @@ void main() {
 
             // Apply perspective scaling directly to the base step
             float perspectiveScale = 1.0 + (t * 0.00005);
-            float currentStepSize = baseStepSize * perspectiveScale * historyMult;
+            float currentStepSize = baseStepSize;// * perspectiveScale * historyMult;
 
             // Clamp to prevent jumping entirely through the cloud layer
             float maxSafeStep = (props.thickness * props.worldScale) * 0.25;

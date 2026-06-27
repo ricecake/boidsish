@@ -323,6 +323,7 @@ namespace Boidsish {
 			// SVGF-style: Use temporal variance to guide the spatial denoising across multiple scales.
 			if (spatial_filter_shader_ && spatial_filter_shader_->isValid()) {
 				spatial_filter_shader_->use();
+				temporal_shader_->setInt("uFrameIndex", frame_index_);
 				spatial_filter_shader_->setInt("uCloudColor", 0);
 				spatial_filter_shader_->setInt("uCloudDepth", 1);
 				spatial_filter_shader_->setInt("uCloudMoments", 2);
