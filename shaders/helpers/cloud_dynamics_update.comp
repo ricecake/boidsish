@@ -1,0 +1,57 @@
+#version 430 core
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
+
+layout(rgba32f, binding = 0) uniform image3D cloudDynamicsLUT;
+
+struct CloudEffect {
+    vec4 position_radius;    // xyz: pos, w: radius
+    vec4 advection_density; // x: magnitude, y: density offset, zw: unused
+};
+
+layout(std140, binding = 6) uniform CloudDynamics {
+    uint numEffects;
+    uint pad0;
+    uint pad1;
+    uint pad2;
+    CloudEffect effects[64];
+};
+
+uniform vec3 worldMin;
+uniform vec3 worldMax;
+
+void main() {
+    ivec3 texel = ivec3(gl_GlobalInvocationID.xyz);
+    ivec3 size = imageSize(cloudDynamicsLUT);
+
+    if (texel.x >= size.x || texel.y >= size.y || texel.z >= size.z) return;
+
+    vec3 uvw = vec3(texel) / vec3(size - 1);
+    vec3 worldPos = mix(worldMin, worldMax, uvw);
+
+    vec3 totalAdvection = vec3(0.0);
+    float totalDensityOffset = 0.0;
+
+    for (uint i = 0; i < numEffects; i++) {
+        vec3 center = effects[i].position_radius.xyz;
+        float radius = effects[i].position_radius.w;
+        float mag = effects[i].advection_density.x;
+        float dens = effects[i].advection_density.y;
+
+        vec3 dir = worldPos - center;
+        float dist = length(dir);
+
+        if (dist < radius) {
+            float falloff = 1.0 - smoothstep(0.0, radius, dist);
+
+            // Advection is a radial force
+            if (dist > 0.001) {
+                totalAdvection += normalize(dir) * mag * falloff;
+            }
+
+            totalDensityOffset += dens * falloff;
+        }
+    }
+
+    imageStore(cloudDynamicsLUT, texel, vec4(totalAdvection, totalDensityOffset));
+}

@@ -3,6 +3,7 @@
 #include <memory>
 
 #include "post_processing/IPostProcessingEffect.h"
+#include "cloud_dynamics_manager.h"
 
 class Shader; // Forward declaration
 class ComputeShader;
@@ -77,15 +78,21 @@ namespace Boidsish {
 
 			GLuint GetCloudNoiseLUT() const { return cloud_noise_lut_; }
 
+			CloudDynamicsManager& GetCloudDynamicsManager() { return cloud_dynamics_manager_; }
+
 		private:
 			void GenerateLUTs();
 
 			std::unique_ptr<Shader>        shader_;
 			std::unique_ptr<ComputeShader> transmittance_lut_shader_;
 			std::unique_ptr<ComputeShader> cloud_noise_lut_shader_;
+			std::unique_ptr<ComputeShader> cloud_dynamics_update_shader_;
+
 			GLuint                         transmittance_lut_ = 0;
 			GLuint                         cloud_noise_lut_ = 0;
+			GLuint                         cloud_dynamics_lut_ = 0;
 			float                          time_ = 0.0f;
+			float                          last_time_ = 0.0f;
 
 			float     haze_density_ = 0.005f;
 			float     haze_height_ = 20.0f;
@@ -102,6 +109,8 @@ namespace Boidsish {
 
 			int width_ = 0;
 			int height_ = 0;
+
+			CloudDynamicsManager cloud_dynamics_manager_;
 		};
 
 	} // namespace PostProcessing
