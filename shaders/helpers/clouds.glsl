@@ -7,7 +7,7 @@
 #include "lygia/generative/random.glsl"
 #include "lygia/sdf.glsl"
 
-uniform sampler3D uCloudDynamicsLUT;
+layout(binding = [[CLOUD_DYNAMICS_LUT_BINDING]]) uniform sampler3D uCloudDynamicsLUT;
 uniform vec3 uCloudWorldMin;
 uniform vec3 uCloudWorldMax;
 

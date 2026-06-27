@@ -10,7 +10,7 @@ struct CloudDynamicsEffect {
     vec4 state_info;         // x: state enum, y: unused, z: unused, w: unused
 };
 
-layout(std140, binding = 5) uniform CloudDynamics {
+layout(std140, binding = [[CLOUD_DYNAMICS_BINDING]]) uniform CloudDynamics {
     CloudDynamicsEffect effects[64];
 };
 
