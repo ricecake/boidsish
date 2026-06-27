@@ -7,6 +7,7 @@ uniform sampler2D sceneTexture;
 uniform sampler2D depthTexture;
 uniform sampler2D transmittanceLUT;
 uniform sampler3D cloudNoiseLUT;
+uniform sampler3D cloudDynamicsLUT;
 
 uniform vec3 cameraPos;
 uniform mat4 invView;
@@ -20,6 +21,9 @@ uniform float cloudDensity;
 uniform float cloudAltitude;
 uniform float cloudThickness;
 uniform vec3  cloudColorUniform;
+
+uniform vec3 cloudWorldMin;
+uniform vec3 cloudWorldMax;
 
 // New uniforms for enhanced clouds and atmosphere
 uniform float hazeG = 0.7;
@@ -48,14 +52,24 @@ float sampleCloudDensity(vec3 p) {
 	float h = (p.y - cloudAltitude) / max(cloudThickness, 0.001);
 	float tapering = smoothstep(0.0, 0.2, h) * smoothstep(1.0, 0.5, h);
 
-	vec3  uvw = p * 0.0002 + vec3(time * 0.005, 0.0, time * 0.002);
+	// Sample dynamics
+	vec3 dyn_uvw = (p - cloudWorldMin) / (cloudWorldMax - cloudWorldMin);
+	vec4 dynamics = vec4(0.0);
+	if (all(greaterThanEqual(dyn_uvw, vec3(0.0))) && all(lessThanEqual(dyn_uvw, vec3(1.0)))) {
+		dynamics = texture(cloudDynamicsLUT, dyn_uvw);
+	}
+
+	vec3 advection = dynamics.xyz;
+	float densityOffset = dynamics.w;
+
+	vec3  uvw = (p + advection * 100.0) * 0.0002 + vec3(time * 0.005, 0.0, time * 0.002);
 	vec4  noise = texture(cloudNoiseLUT, uvw);
 
 	// FBM from 3D texture
 	float d_noise = noise.r * 0.5 + noise.g * 0.25 + noise.b * 0.125 + noise.a * 0.0625;
 
-	float d = smoothstep(0.3, 0.7, d_noise) * cloudDensity * tapering;
-	return d;
+	float d = (smoothstep(0.3, 0.7, d_noise) * cloudDensity + densityOffset) * tapering;
+	return max(0.0, d);
 }
 
 void main() {

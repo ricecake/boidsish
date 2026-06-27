@@ -16,12 +16,16 @@ namespace Boidsish {
 			if (cloud_noise_lut_ != 0) {
 				glDeleteTextures(1, &cloud_noise_lut_);
 			}
+			if (cloud_dynamics_lut_ != 0) {
+				glDeleteTextures(1, &cloud_dynamics_lut_);
+			}
 		}
 
 		void AtmosphereEffect::Initialize(int width, int height) {
 			shader_ = std::make_unique<Shader>("shaders/postprocess.vert", "shaders/effects/atmosphere.frag");
 			transmittance_lut_shader_ = std::make_unique<ComputeShader>("shaders/helpers/atmosphere_lut.comp");
 			cloud_noise_lut_shader_ = std::make_unique<ComputeShader>("shaders/helpers/cloud_noise_lut.comp");
+			cloud_dynamics_update_shader_ = std::make_unique<ComputeShader>("shaders/helpers/cloud_dynamics_update.comp");
 
 			GLuint lighting_idx = glGetUniformBlockIndex(shader_->ID, "Lighting");
 			if (lighting_idx != GL_INVALID_INDEX) {
@@ -30,6 +34,8 @@ namespace Boidsish {
 
 			width_ = width;
 			height_ = height;
+
+			cloud_dynamics_manager_.Initialize();
 
 			GenerateLUTs();
 		}
@@ -72,6 +78,19 @@ namespace Boidsish {
 				cloud_noise_lut_shader_->dispatch(16, 16, 16); // 16*8 = 128
 			}
 
+			// 3. Cloud Dynamics LUT (3D)
+			if (cloud_dynamics_lut_ == 0) {
+				glGenTextures(1, &cloud_dynamics_lut_);
+			}
+
+			glBindTexture(GL_TEXTURE_3D, cloud_dynamics_lut_);
+			glTexImage3D(GL_TEXTURE_3D, 0, GL_RGBA32F, 128, 128, 128, 0, GL_RGBA, GL_FLOAT, NULL);
+			glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 		}
 
@@ -82,11 +101,38 @@ namespace Boidsish {
 			const glm::mat4& projectionMatrix,
 			const glm::vec3& cameraPos
 		) {
+			// Update and Dispatch Cloud Dynamics
+			float        deltaTime = time_ - last_time_;
+			last_time_ = time_;
+			if (deltaTime < 0.0f)
+				deltaTime = 0.0f;
+
+			cloud_dynamics_manager_.Update(deltaTime);
+			cloud_dynamics_manager_.UpdateUBO();
+
+			if (cloud_dynamics_update_shader_ && cloud_dynamics_update_shader_->isValid()) {
+				cloud_dynamics_update_shader_->use();
+				glBindImageTexture(0, cloud_dynamics_lut_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
+				cloud_dynamics_manager_.BindUBO(6); // Bind to 6 as per shader
+
+				// Define world bounds for the dynamics LUT
+				// For now, let's use a fixed area around origin or relative to clouds
+				glm::vec3 worldMin(-1000.0f, cloud_altitude_ - 10.0f, -1000.0f);
+				glm::vec3 worldMax(1000.0f, cloud_altitude_ + cloud_thickness_ + 10.0f, 1000.0f);
+
+				cloud_dynamics_update_shader_->setVec3("worldMin", worldMin);
+				cloud_dynamics_update_shader_->setVec3("worldMax", worldMax);
+
+				cloud_dynamics_update_shader_->dispatch(16, 16, 16); // 128 / 8 = 16
+				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+			}
+
 			shader_->use();
 			shader_->setInt("sceneTexture", 0);
 			shader_->setInt("depthTexture", 1);
 			shader_->setInt("transmittanceLUT", 2);
 			shader_->setInt("cloudNoiseLUT", 3);
+			shader_->setInt("cloudDynamicsLUT", 4);
 			shader_->setFloat("time", time_);
 			shader_->setVec3("cameraPos", cameraPos);
 			shader_->setMat4("invView", glm::inverse(viewMatrix));
@@ -114,6 +160,14 @@ namespace Boidsish {
 			glBindTexture(GL_TEXTURE_2D, transmittance_lut_);
 			glActiveTexture(GL_TEXTURE3);
 			glBindTexture(GL_TEXTURE_3D, cloud_noise_lut_);
+			glActiveTexture(GL_TEXTURE4);
+			glBindTexture(GL_TEXTURE_3D, cloud_dynamics_lut_);
+
+			// Also pass world bounds to main shader
+			glm::vec3 worldMin(-1000.0f, cloud_altitude_ - 10.0f, -1000.0f);
+			glm::vec3 worldMax(1000.0f, cloud_altitude_ + cloud_thickness_ + 10.0f, 1000.0f);
+			shader_->setVec3("cloudWorldMin", worldMin);
+			shader_->setVec3("cloudWorldMax", worldMax);
 
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 		}
