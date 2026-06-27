@@ -215,6 +215,7 @@ void main() {
 
 	// How much the depth SHOULD have changed purely due to sliding across the dither grid
 	float phaseDrift = (currentPhase - historyPhase) * currentCloudStep;
+	float ditherVulnerability = mix(0.2, 1.0, currentPhase);
 
 	// Phase-corrected depth comparison
 	float alignedHistoryDist = historyCloudDist + phaseDrift;
@@ -236,7 +237,7 @@ void main() {
 
 	if (isTrailingEdge) {
 		// Guillotine the history. Do not let it fade out smoothly.
-		validHistory = false;
+		// validHistory = false;
 	}
 	// if (newStructureConfidence >= 1.0) validHistory = false;
 
@@ -293,11 +294,16 @@ void main() {
 	float neighborHitMass = 0.0;
 	float spatialSampleCount = 0.0;
 	float weightBalance = 0.0;
+	float massEarly = 0.0;
+    float massLate = 0.0;
+    float totalNeighborDensity = 0.0;
 
 	for (int y = -2; y <= 2; y++) {
 		for (int x = -2; x <= 2; x++) {
 			vec2 sampleUV = uv + vec2(x, y) * texelSize;
-			float samplePhase = bayer4x4StepPhase(ivec2(sampleUV), uFrameIndex);
+			ivec2 sampleCoord = ivec2(sampleUV * vec2(size));
+			float samplePhase = bayer4x4StepPhase(sampleCoord, uFrameIndex);
+
 
 			// vec4 smpC = texture(uHistoryFrame, prevUV + vec2(x, y) * texelSize);
 			vec4 smpC = texture(uCurrentFrame, sampleUV);
@@ -327,6 +333,21 @@ void main() {
 			spatialSampleCount += spatialW;
 
 			weightBalance += (currentPhase - samplePhase) * sampleProps.a;
+
+			if (x == 0 && y == 0) continue;
+
+			float sampleDensity = sampleProps.a;
+
+			// Weight the importance of this neighbor by its structural presence
+			float densityW = sampleDensity * spatialW;
+			totalNeighborDensity += densityW;
+
+			if (samplePhase < currentPhase) {
+				massEarly += densityW;
+			} else if (samplePhase > currentPhase) {
+				massLate += densityW;
+			}
+
 		}
 	}
 
@@ -342,8 +363,25 @@ void main() {
 	float temporalStdDev = sqrt(temporalVar);
 
 	float localCloudCoverage = neighborHitMass / max(spatialSampleCount, 0.0001);
+	// float grazingEdgeConfidence = min(float(currentIsSky), currentMissProbability) * localCloudCoverage;
+	float centerMiss = currentIsSky ? 1.0 : currentMissProbability;
+	float grazingEdgeConfidence = centerMiss * localCloudCoverage * ditherVulnerability;
 
-	float grazingEdgeConfidence = min(float(currentIsSky), currentMissProbability) * localCloudCoverage;
+	// Normalize masses to isolate structural distribution from raw density magnitude
+    float normMassEarly = massEarly / max(totalNeighborDensity, 0.001);
+    float normMassLate = massLate / max(totalNeighborDensity, 0.001);
+
+    // Phase Straddle: approaches 1.0 only if density brackets the current phase from both sides
+    float phaseStraddle = 3*normMassEarly * normMassLate;
+    phaseStraddle = clamp(phaseStraddle, 0.0, 1.0);
+
+float trueTrailingEdgeLikelihood = max(0.0, densityDecay) * (1.0 - phaseStraddle);
+bool isTrueTrailingEdge = (trueTrailingEdgeLikelihood > 0.25) && (velocityMagnitude > 0.01);
+if (isTrueTrailingEdge) {
+        validHistory = false;
+    }
+
+
 
 	// Dynamic Gamma
 	// float gamma = mix(0.75, 2.5, structuralLock);
@@ -406,7 +444,8 @@ void main() {
 	// neighborhood is falsely reporting empty sky. We dynamically inflate the maximum
 	// bound to prevent valid history from being clipped away by a noisy miss.
 	// float falseNegativeLikelihood = smoothstep(0.1, 1.0, currentMissProbability);
-	maxAlpha += (1.0 - alphaMean) * falseNegativeLikelihood; // Expand bounds upward
+	// maxAlpha += (1.0 - alphaMean) * falseNegativeLikelihood; // Expand bounds upward
+	maxAlpha += (1.0 - alphaMean) * grazingEdgeConfidence;
 
 	// 3. 1D Clip-Toward-spatialMean Intersection
 	float alphaClipDir = alphaMean - historyOpacity;
@@ -442,16 +481,21 @@ void main() {
 	// alpha = mix(alpha, 1.0, nyquist);
 
 
-	// currentRGBA = vec4(YCoCgToRGB(spatialMean), 1.0-alphaMean);
+	float ditherHoleConfidence = (1.0 - (currentIsSky ? currentCloudMaxDensity : 0.0)) * phaseStraddle;
+    alpha *= (1.0 - smoothstep(0.1, 0.6, ditherHoleConfidence));
+
+
 	vec4 accumulatedRGBA = mix(historyRGBA, currentRGBA, alpha);
+
+
 
 	float currentLuma = luma(currentRGBA.rgb);
 	vec3  currentM = vec3(currentLuma, currentLuma * currentLuma, currentCloudMaxDensity * currentCloudMaxDensity);
 	vec3  accumulatedM = mix(historyMoments.xyz, currentM, alpha);
 
 
-	// accumulatedRGBA = mix(vec4(5, 0,0,0), vec4(0,5,0,0), alpha);
 
+	// accumulatedRGBA = mix(vec4(5, 0,0,0), vec4(0,0,5,0), phaseStraddle);
 	// 6. Output
 	imageStore(outColor, pixel, accumulatedRGBA);
 
