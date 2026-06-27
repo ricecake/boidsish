@@ -94,8 +94,8 @@ void main() {
 			float samplePhase = bayer4x4StepPhase(sampleCoord, uFrameIndex);
 
 			// Shift the neighbor's depth to match the ray origin of the center pixel
-			float phaseShift = (centerPhase - samplePhase) * centerStep;
-			float alignedSampleDepth = sampleDepth + phaseShift;
+			// float phaseShift = (centerPhase - samplePhase) * centerStep;
+			// float alignedSampleDepth = sampleDepth + phaseShift;
 
 			// Edge stopping functions
 			// 1. Luma
@@ -106,7 +106,7 @@ void main() {
 			if (centerIsSky != sampleIsSky) {
 				depthWeight = 0.0;
 			} else if (!centerIsSky) {
-				float depthDiff = abs(centerDepth - alignedSampleDepth);
+				float depthDiff = abs(centerDepth - sampleDepth);
 				depthWeight = exp(-depthDiff * depthDiff / (phiDepth * phiDepth));
 			}
 

@@ -198,7 +198,7 @@ namespace Boidsish {
 			void SetRenderScale(float scale) {
 				if (render_scale_ != scale) {
 					render_scale_ = scale;
-					InitializeLowResResources();
+					InitializePackedResources();
 					InitializeTemporalResources();
 				}
 			}
@@ -206,10 +206,10 @@ namespace Boidsish {
 			float GetRenderScale() const { return render_scale_; }
 
 		private:
-			void InitializeLowResResources();
+			void InitializePackedResources();
 			void InitializeTemporalResources();
 
-			std::unique_ptr<Shader>        shader_;
+			std::unique_ptr<ComputeShader> cloud_render_shader_;
 			std::unique_ptr<Shader>        composite_shader_;
 			std::unique_ptr<ComputeShader> temporal_shader_;
 			std::unique_ptr<ComputeShader> spatial_filter_shader_;
@@ -268,14 +268,14 @@ namespace Boidsish {
 			int   height_ = 0;
 			float render_scale_ = 0.50f;
 
-			GLuint low_res_fbo_ = 0;
-			GLuint low_res_texture_ = 0;
-			GLuint low_res_depth_texture_ = 0;
-			GLuint low_res_velocity_texture_ = 0;
-			GLuint low_res_filtered_texture_ = 0;
-			GLuint low_res_spatial_aux_texture_ = 0;
+			GLuint packed_texture_ = 0;
+			GLuint packed_depth_texture_ = 0;
+			GLuint packed_velocity_texture_ = 0;
 
-			// Temporal reprojection: double-buffered history at low res
+			GLuint filtered_texture_ = 0;
+			GLuint spatial_aux_texture_ = 0;
+
+			// Temporal reprojection: double-buffered history at full res
 			GLuint    temporal_textures_[2] = {0, 0};
 			GLuint    temporal_depth_textures_[2] = {0, 0};
 			GLuint    temporal_moments_textures_[2] = {0, 0};

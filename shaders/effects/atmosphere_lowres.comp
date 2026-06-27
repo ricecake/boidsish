@@ -1,0 +1,352 @@
+#version 460 core
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(binding = 0, rgba16f) uniform image2D outPackedColor;
+layout(binding = 1, rgba32f) uniform image2D outPackedDepth;
+layout(binding = 2, rg16f)   uniform image2D outPackedVelocity;
+
+uniform sampler2D depthTexture;
+
+uniform float uDeltaTime;
+uniform float uTime;
+uniform int   uFrameIndex;
+
+uniform mat4  uInvView;
+uniform mat4  uInvProjection;
+
+uniform float uCloudDensity;
+uniform float uCloudAltitude;
+uniform float uCloudThickness;
+uniform float uCloudCoverage;
+uniform float uCloudWarp;
+uniform vec3  uCloudColorUniform;
+#define ATMOSPHERE_HEIGHT_DEFINED
+uniform float u_atmosphereHeight;
+
+uniform sampler2D uHistoryDepth;
+uniform sampler2D uHistoryMoments;
+uniform mat4  uPrevViewProjection;
+uniform bool  uHasHistory;
+
+uniform sampler2D u_skyViewLUT;
+
+#include "../atmosphere/common.glsl"
+#include "../helpers/clouds.glsl"
+#include "../helpers/fast_noise.glsl"
+#include "../helpers/lighting.glsl"
+#include "../types/temporal_data.glsl"
+#include "helpers/math.glsl"
+#include "lygia/generative/wavelet.glsl"
+#include "lygia/generative/voronoi.glsl"
+#include "lygia/generative/random.glsl"
+
+vec3 sampleSkyView(vec3 rd) {
+	float azimuth = atan(rd.x, -rd.z);
+	if (azimuth < 0.0) azimuth += 2.0 * PI;
+	float elevation = asin(clamp(rd.y, -1.0, 1.0));
+
+	float u = azimuth / (2.0 * PI);
+	float adjV = sqrt(abs(elevation) / (PI * 0.5));
+	float v = (elevation < 0.0) ? (1.0 - adjV) * 0.5 : (adjV + 1.0) * 0.5;
+
+	return texture(u_skyViewLUT, vec2(u, v)).rgb;
+}
+
+void main() {
+	ivec2 packedPixel = ivec2(gl_GlobalInvocationID.xy);
+	ivec2 packedSize = imageSize(outPackedColor);
+	if (packedPixel.x >= packedSize.x || packedPixel.y >= packedSize.y)
+		return;
+
+	// 2x2 Bayer pattern for interleaving
+	ivec2 bayer_offsets[4] = ivec2[](
+		ivec2(0, 0),
+		ivec2(1, 1),
+		ivec2(1, 0),
+		ivec2(0, 1)
+	);
+	ivec2 offset = bayer_offsets[uFrameIndex % 4];
+	ivec2 fullResPixel = packedPixel * 2 + offset;
+	ivec2 fullResSize = packedSize * 2;
+
+	vec2 TexCoords = (vec2(fullResPixel) + 0.5) / vec2(fullResSize);
+
+	// The rest is ported from atmosphere_lowres.frag
+	// vec3 zenithRadiance = sampleSkyView(vec3(0, 1, 0)); // Unused in original but present
+
+	float depth = texture(depthTexture, TexCoords).r;
+	float z = depth * 2.0 - 1.0;
+	vec4  clipSpacePosition = vec4(TexCoords * 2.0 - 1.0, z, 1.0);
+	vec4  viewSpacePosition = uInvProjection * clipSpacePosition;
+	viewSpacePosition /= viewSpacePosition.w;
+	vec3 worldPos = (uInvView * viewSpacePosition).xyz;
+	vec3 canonicalRayDir = normalize(worldPos - viewPos);
+	float dist = length(worldPos - viewPos);
+
+	// In the compute shader, we don't have uJitter as a separate uniform usually,
+	// or we can use sub-pixel jitter if needed. Original frag had uJitter.
+	// But since we are rendering at full resolution (but sub-sampled),
+	// TexCoords already points to the exact full res pixel.
+	vec3 rayDir = canonicalRayDir;
+
+	float R_earth = kEarthRadius * 1000.0 * worldScale;
+	if (depth == 1.0) {
+		dist = 50000.0 * worldScale;
+		worldPos = viewPos + rayDir * dist;
+	}
+
+	CloudProperties props;
+	props.altitude = uCloudAltitude;
+	props.thickness = uCloudThickness;
+	props.densityBase = uCloudDensity;
+	props.coverage = uCloudCoverage;
+	props.worldScale = worldScale;
+
+	float R_floor = R_earth + (uCloudAltitude - 200.0) * worldScale;
+	float R_ceiling = R_earth + (uCloudAltitude + uCloudThickness + 2000.0) * worldScale;
+
+	vec3 earthCenter = vec3(viewPos.x, -R_earth, viewPos.z);
+	vec3 relRo = viewPos - earthCenter;
+
+	float t_start = 1e10;
+	float t_end = -1e10;
+
+	float t0, t1;
+	if (intersectSphere(relRo, rayDir, R_ceiling, t0, t1)) {
+		t_start = max(0.0, t0);
+		t_end = t1;
+
+		if (intersectSphere(relRo, rayDir, R_floor, t0, t1)) {
+			if (t0 < 0.0) {
+				t_start = max(t_start, t1);
+			} else {
+				t_end = min(t_end, t0);
+			}
+		}
+	}
+
+	t_end = min(t_end, dist);
+
+	int samples = 64;
+	float historyVariance = 0.0;
+	float historyLength = 0.0;
+
+	// Default temporal bounds initialization
+	float expectedStart = t_start;
+	float expectedEnd = t_end;
+	float maxEmptyMult = 1.0;
+	float historyConfidence = 0.0;
+
+	if (uHasHistory && t_start < t_end) {
+		vec4 prevClip = uPrevViewProjection * vec4(viewPos + rayDir * max(t_start, 0.1), 1.0);
+		vec2 histUV = (prevClip.xy / prevClip.w) * 0.5 + 0.5;
+
+		if (all(greaterThanEqual(histUV, vec2(0.0))) && all(lessThanEqual(histUV, vec2(1.0)))) {
+			vec4 histDepth = texture(uHistoryDepth, histUV);
+			float histFirst = histDepth.r;
+			float histLast = histDepth.g;
+			float histStep = histDepth.b;
+
+			vec4 histMoments = texture(uHistoryMoments, histUV);
+			historyVariance = max(0.0, histMoments.y - histMoments.x * histMoments.x);
+			historyLength = histMoments.w;
+
+			float varianceBoost = smoothstep(0.0, 0.05, historyVariance);
+			float historyBoost = 1.0 - smoothstep(1.0, 16.0, historyLength);
+
+			historyConfidence = max(varianceBoost, historyBoost);
+			samples = int(mix(32, 96.0, pow(historyConfidence, 2.0)));
+
+			if (histFirst > 0.0 && histFirst < 40000.0 * worldScale) {
+				float marginScale = mix(1.0, 4.0, historyConfidence);
+				float margin = max(histStep * 2.0 * marginScale, (histLast - histFirst) * 0.5 * marginScale);
+
+				expectedStart = histFirst - margin;
+				expectedEnd = histLast + margin;
+				maxEmptyMult = mix(1.0, 4.0, historyConfidence);
+			}
+		}
+	}
+
+	float jitter = bayer4x4StepPhase(fullResPixel, uFrameIndex);
+
+	vec3  cloudColor = vec3(0.0);
+	float cloudTransmittance = 1.0;
+	float totalWeight = 0.0;
+	float firstHitDist = -1.0;
+	float lastHitDist = -1.0;
+	float pathDensity = 0.0;
+
+	float rayDist = t_end - t_start;
+	float precisionLimit = max(1.0, t_end * 1e-5);
+	float baseStepSize = clamp(rayDist / float(samples), precisionLimit, 750.0);
+
+	float t_offset = jitter * baseStepSize;
+	float firstStepSize = baseStepSize;
+
+	if (t_start < t_end) {
+		vec3 lightEnergy = vec3(0.0);
+		int shadow_samples = 5;
+
+		vec3 primaryLightDir = vec3(0, 1, 0);
+		for (int j = 0; j < num_lights; j++) {
+			if (lights[j].type == LIGHT_TYPE_DIRECTIONAL) {
+				primaryLightDir = normalize(-lights[j].direction);
+				break;
+			}
+		}
+
+		float H0 = length(relRo) - R_earth;
+		float roDotRd = dot(relRo, rayDir);
+		float h0Term = 2.0 * R_earth * H0 + H0 * H0;
+
+		float t = t_start;
+		float blendDist = 500.0 * worldScale;
+		float lodDistanceThreshold = 25000.0 * worldScale;
+
+		int MAX_ITERATIONS = 150;
+
+		for (int i = 0; i < MAX_ITERATIONS; i++) {
+			if (t > dist || t > t_end) break;
+
+			float distToFocus = max(0.0, max(expectedStart - t, t - expectedEnd));
+			float historyMult = mix(1.0, maxEmptyMult, smoothstep(0.0, blendDist, distToFocus));
+
+			float currentStepSize = baseStepSize;
+			float maxSafeStep = (props.thickness * props.worldScale) * 0.25;
+			currentStepSize = min(currentStepSize, maxSafeStep);
+
+			float step_t = t + t_offset;
+			vec3 p = viewPos + rayDir * step_t;
+
+			float r2_minus_R2 = h0Term + 2.0 * step_t * roDotRd + step_t * step_t;
+			float r = sqrt(max(0.0, r2_minus_R2 + R_earth * R_earth));
+			float altitude = r2_minus_R2 / (r + R_earth);
+			float h_norm = clamp((altitude - props.altitude * props.worldScale) / max(props.thickness * props.worldScale, 1.0), 0.0, 1.0);
+
+			bool useCheapEval = step_t > lodDistanceThreshold;
+			CloudWeather weather = computeCloudWeather(p, props);
+			CloudLayer layer = computeCloudLayer(weather, props);
+
+			float d = calculateCloudDensity(p, weather, layer, props, uTime, useCheapEval);
+
+			if (d > 0.01) {
+				maxEmptyMult = 1.0;
+				if (firstHitDist < 0.0) {
+					firstHitDist = t;
+					firstStepSize = currentStepSize;
+				}
+				lastHitDist = t;
+			}
+
+			pathDensity = max(pathDensity, d);
+
+			if (d > 0.000) {
+				float integrationStep = (historyMult > 1.1) ? baseStepSize : currentStepSize;
+				float stepDensity = d * integrationStep * 0.01;
+				float transmittanceAtStep = exp(-stepDensity);
+
+				vec3 stepScattering = vec3(0.0);
+				for (int j = 0; j < num_lights; j++) {
+					if (lights[j].type != LIGHT_TYPE_DIRECTIONAL) continue;
+
+					vec3 L = normalize(-lights[j].direction);
+					float r_world = length(p - earthCenter);
+					float r_km = r_world / (1000.0 * worldScale);
+					float mu = dot((p - earthCenter) / r_world, L);
+					float cosTheta = dot(rayDir, L);
+					float phase = cloudPhase(cosTheta);
+
+					float shadowDensity = 0.0;
+					float st_start = 1e10;
+					float st_end = -1e10;
+
+					float t0_s, t1_s;
+					if (intersectSphere(p, L, R_ceiling, t0_s, t1_s)) {
+						st_start = max(0.0, t0_s);
+						st_end = t1_s;
+						if (intersectSphere(p, L, R_floor, t0_s, t1_s)) {
+							if (t0_s < 0.0) st_start = max(t_start, t1_s);
+							else st_end = min(t_end, t0_s);
+						}
+					}
+
+					vec2 transUV = getTransmittanceUV(r_km, mu);
+					vec3 sunTransmittance = texture(u_transmittanceLUT, transUV).rgb;
+
+					float maxShadowDist = layer.thickness * 1.5;
+					float traceDist = min(st_end - st_start, maxShadowDist);
+					float shadowStepSize = traceDist / float(shadow_samples);
+
+					for (int k = 0; k < shadow_samples; k++) {
+						vec3 sp = p + L * (float(k) + 0.5) * shadowStepSize;
+						shadowDensity += calculateCloudDensity(sp, weather, layer, props, uTime, true);
+					}
+
+					float opticalDepthToLight = shadowDensity * shadowStepSize * cloudShadowOpticalDepthMultiplier;
+					float shadowTerm = mix(
+						beerPowder(opticalDepthToLight, stepDensity),
+						exp(-opticalDepthToLight),
+						cloudBeerPowderMix
+					);
+
+					stepScattering += sunTransmittance * lights[j].color * shadowTerm * phase * lights[j].intensity *
+						(j == 0 ? cloudSunLightScale : cloudMoonLightScale);
+				}
+
+				vec3  ambientUp = evalSHIrradiance(vec3(0, 1, 0));
+				vec3  ambientHorizon = evalSHIrradiance(normalize(vec3(primaryLightDir.x, 0.15, primaryLightDir.z)));
+				float sunHeight = max(primaryLightDir.y, 0.0);
+				float ambientScale = mix(0.3, 1.0, smoothstep(0.0, 0.3, sunHeight));
+				vec3  ambient = mix(ambientUp, ambientHorizon, 0.4) * ambientScale;
+				vec3  S = (stepScattering + ambient * smoothstep(0.0, 1.0, h_norm));
+
+				float weight = cloudTransmittance * (1.0 - transmittanceAtStep);
+				lightEnergy += S * weight;
+				totalWeight += weight;
+
+				cloudTransmittance *= transmittanceAtStep;
+			}
+
+			t += currentStepSize;
+
+			if (cloudTransmittance < 0.01) {
+				break;
+			}
+		}
+
+		cloudColor = lightEnergy * uCloudColorUniform;
+	}
+
+	vec4 finalColor = vec4(cloudColor, cloudTransmittance);
+	vec4 finalDepth;
+	vec2 finalVelocity;
+
+	if (firstHitDist > 0.0 && totalWeight > 0.001) {
+		finalDepth = vec4(firstHitDist, lastHitDist, firstStepSize, pathDensity);
+
+		vec3 hitWorldPos = viewPos + canonicalRayDir * firstHitDist;
+		float hitAltitude = length(hitWorldPos - earthCenter) - R_earth;
+		float h_norm = clamp((hitAltitude - props.altitude * props.worldScale) / max(props.thickness * props.worldScale, 1.0), 0.0, 1.0);
+		vec3 advectionPerFrame = getCloudAdvectionOffset(h_norm, uDeltaTime);
+
+		vec3 prevHitPos = hitWorldPos - advectionPerFrame;
+		vec4 prevClipHit = uPrevViewProjection * vec4(prevHitPos, 1.0);
+		vec2 prevScreenUV = (prevClipHit.xy / prevClipHit.w) * 0.5 + 0.5;
+		finalVelocity = prevScreenUV - TexCoords;
+	} else {
+		finalDepth = vec4(50000.0 * worldScale, 50000.0 * worldScale, firstStepSize, pathDensity);
+
+		float fallbackDist = cloudAltitude * worldScale / max(0.05, abs(canonicalRayDir.y));
+		vec3 fallbackWorldPos = viewPos + canonicalRayDir * fallbackDist;
+		vec3 advectionPerFrame = getCloudAdvectionOffset(0.0, uDeltaTime);
+		vec3 prevFallbackPos = fallbackWorldPos - advectionPerFrame;
+		vec4 prevClipFb = uPrevViewProjection * vec4(prevFallbackPos, 1.0);
+		vec2 prevScreenFb = (prevClipFb.xy / prevClipFb.w) * 0.5 + 0.5;
+		finalVelocity = prevScreenFb - TexCoords;
+	}
+
+	imageStore(outPackedColor, packedPixel, finalColor);
+	imageStore(outPackedDepth, packedPixel, finalDepth);
+	imageStore(outPackedVelocity, packedPixel, vec4(finalVelocity, 0.0, 0.0));
+}
