@@ -1,35 +1,44 @@
 #version 460 core
-layout(local_size_x = 8, local_size_y = 8) in;
+layout(location = 0) out vec4 FragColor;
+layout(location = 1) out vec4 CloudDepth;
+layout(location = 2) out vec2 CloudVelocity;
 
-layout(binding = 0, rgba16f) uniform image2D outPackedColor;
-layout(binding = 1, rgba32f) uniform image2D outPackedDepth;
-layout(binding = 2, rg16f)   uniform image2D outPackedVelocity;
+in vec2 TexCoords;
 
 uniform sampler2D depthTexture;
+// u_transmittanceLUT is declared in helpers/lighting.glsl
 
+// uniform mat4 invView;
+// uniform mat4 invProjection;
+
+const int bayer8x8[64] = int[](
+	0, 32, 8, 40, 2, 34, 10, 42,
+	48, 16, 56, 24, 50, 18, 58, 26,
+	12, 44, 4, 36, 14, 46, 6, 38,
+	60, 28, 52, 20, 62, 30, 54, 22,
+	3, 35, 11, 43, 1, 33, 9, 41,
+	51, 19, 59, 27, 49, 17, 57, 25,
+	15, 47, 7, 39, 13, 45, 5, 37,
+	63, 31, 55, 23, 61, 29, 53, 21
+);
+
+const int bayer4x4[16] = int[](
+	0, 12, 3, 15,
+	8, 4, 11, 7,
+	2, 14, 1, 13,
+	10, 6, 9, 5
+);
+
+uniform vec3  cloudColorUniform;
+uniform vec2  uJitter;
 uniform float uDeltaTime;
-uniform float uTime;
-uniform int   uFrameIndex;
-
-uniform mat4  uInvView;
-uniform mat4  uInvProjection;
-
-uniform float uCloudDensity;
-uniform float uCloudAltitude;
-uniform float uCloudThickness;
-uniform float uCloudCoverage;
-uniform float uCloudWarp;
-uniform vec3  uCloudColorUniform;
-#define ATMOSPHERE_HEIGHT_DEFINED
-uniform float u_atmosphereHeight;
 
 uniform sampler2D uHistoryDepth;
 uniform sampler2D uHistoryMoments;
 uniform mat4  uPrevViewProjection;
 uniform bool  uHasHistory;
 
-uniform sampler2D u_skyViewLUT;
-
+// Atmosphere common defines and includes
 #include "../atmosphere/common.glsl"
 #include "../helpers/clouds.glsl"
 #include "../helpers/fast_noise.glsl"
@@ -39,6 +48,8 @@ uniform sampler2D u_skyViewLUT;
 #include "lygia/generative/wavelet.glsl"
 #include "lygia/generative/voronoi.glsl"
 #include "lygia/generative/random.glsl"
+
+uniform sampler2D u_skyViewLUT;
 
 vec3 sampleSkyView(vec3 rd) {
 	float azimuth = atan(rd.x, -rd.z);
@@ -52,42 +63,50 @@ vec3 sampleSkyView(vec3 rd) {
 	return texture(u_skyViewLUT, vec2(u, v)).rgb;
 }
 
-void main() {
-	ivec2 packedPixel = ivec2(gl_GlobalInvocationID.xy);
-	ivec2 packedSize = imageSize(outPackedColor);
-	if (packedPixel.x >= packedSize.x || packedPixel.y >= packedSize.y)
-		return;
+vec3 getSphericalCoords(vec3 p, vec3 earthCenter, float R_earth) {
+	vec3 dir = normalize(p - earthCenter);
+	float altitude = length(p - earthCenter) - R_earth;
+	return dir * (R_earth + altitude);
+}
 
-	// 2x2 Bayer pattern for interleaving
-	ivec2 bayer_offsets[4] = ivec2[](
-		ivec2(0, 0),
-		ivec2(1, 1),
-		ivec2(1, 0),
-		ivec2(0, 1)
+vec2 getSphericalUV(vec3 p, vec3 earthCenter) {
+	vec3 dir = normalize(p - earthCenter);
+	return vec2(
+		atan(dir.z, dir.x) / (2.0 * PI),
+		asin(dir.y) / PI + 0.5
 	);
-	ivec2 offset = bayer_offsets[uFrameIndex % 4];
-	ivec2 fullResPixel = packedPixel * 2 + offset;
-	ivec2 fullResSize = packedSize * 2;
+}
 
-	vec2 TexCoords = (vec2(fullResPixel) + 0.5) / vec2(fullResSize);
+vec3 getUnstretchedCoords(vec3 p, vec3 earthCenter, vec3 viewPos, float R_earth) {
+	float altitude = length(p - earthCenter) - R_earth;
+	vec3 P_norm = normalize(p - earthCenter);
+	float theta = acos(clamp(P_norm.y, -1.0, 1.0));
+	float arc_dist = R_earth * theta;
 
-	// The rest is ported from atmosphere_lowres.frag
-	// vec3 zenithRadiance = sampleSkyView(vec3(0, 1, 0)); // Unused in original but present
+	vec2 p_xz = vec2(P_norm.x, P_norm.z);
+	float len_xz = length(p_xz);
+	vec2 dir_XZ = p_xz / (len_xz + 1e-6);
+
+	return vec3(viewPos.x + dir_XZ.x * arc_dist, altitude, viewPos.z + dir_XZ.y * arc_dist);
+}
+
+void main() {
+	vec2  jitteredUV = TexCoords + uJitter;
+	vec3  zenithRadiance = sampleSkyView(vec3(0, 1, 0));
 
 	float depth = texture(depthTexture, TexCoords).r;
 	float z = depth * 2.0 - 1.0;
 	vec4  clipSpacePosition = vec4(TexCoords * 2.0 - 1.0, z, 1.0);
-	vec4  viewSpacePosition = uInvProjection * clipSpacePosition;
+	vec4  viewSpacePosition = invProjection * clipSpacePosition;
 	viewSpacePosition /= viewSpacePosition.w;
-	vec3 worldPos = (uInvView * viewSpacePosition).xyz;
+	vec3 worldPos = (invView * viewSpacePosition).xyz;
 	vec3 canonicalRayDir = normalize(worldPos - viewPos);
 	float dist = length(worldPos - viewPos);
 
-	// In the compute shader, we don't have uJitter as a separate uniform usually,
-	// or we can use sub-pixel jitter if needed. Original frag had uJitter.
-	// But since we are rendering at full resolution (but sub-sampled),
-	// TexCoords already points to the exact full res pixel.
-	vec3 rayDir = canonicalRayDir;
+	vec4  jClip = vec4(jitteredUV * 2.0 - 1.0, 0.0, 1.0);
+	vec4  jView = invProjection * jClip;
+	jView /= jView.w;
+	vec3  rayDir = normalize((invView * vec4(jView.xyz, 0.0)).xyz);
 
 	float R_earth = kEarthRadius * 1000.0 * worldScale;
 	if (depth == 1.0) {
@@ -96,14 +115,14 @@ void main() {
 	}
 
 	CloudProperties props;
-	props.altitude = uCloudAltitude;
-	props.thickness = uCloudThickness;
-	props.densityBase = uCloudDensity;
-	props.coverage = uCloudCoverage;
+	props.altitude = cloudAltitude;
+	props.thickness = cloudThickness;
+	props.densityBase = cloudDensity;
+	props.coverage = cloudCoverage;
 	props.worldScale = worldScale;
 
-	float R_floor = R_earth + (uCloudAltitude - 200.0) * worldScale;
-	float R_ceiling = R_earth + (uCloudAltitude + uCloudThickness + 2000.0) * worldScale;
+	float R_floor = R_earth + (cloudAltitude - 200.0) * worldScale;
+	float R_ceiling = R_earth + (cloudAltitude + cloudThickness + 2000.0) * worldScale;
 
 	vec3 earthCenter = vec3(viewPos.x, -R_earth, viewPos.z);
 	vec3 relRo = viewPos - earthCenter;
@@ -154,6 +173,7 @@ void main() {
 			float varianceBoost = smoothstep(0.0, 0.05, historyVariance);
 			float historyBoost = 1.0 - smoothstep(1.0, 16.0, historyLength);
 
+			// Assign confidence here so it can be utilized for the multiplier
 			historyConfidence = max(varianceBoost, historyBoost);
 			samples = int(mix(32, 96.0, pow(historyConfidence, 2.0)));
 
@@ -168,7 +188,7 @@ void main() {
 		}
 	}
 
-	float jitter = bayer4x4StepPhase(fullResPixel, uFrameIndex);
+	float jitter = bayer4x4StepPhase(ivec2(gl_FragCoord.xy), frameIndex);
 
 	vec3  cloudColor = vec3(0.0);
 	float cloudTransmittance = 1.0;
@@ -177,10 +197,12 @@ void main() {
 	float lastHitDist = -1.0;
 	float pathDensity = 0.0;
 
+	// 1. Establish stable baseline step size based on the full ray distance
 	float rayDist = t_end - t_start;
 	float precisionLimit = max(1.0, t_end * 1e-5);
 	float baseStepSize = clamp(rayDist / float(samples), precisionLimit, 750.0);
 
+	// 2. Calculate a single, stable jitter offset for the entire ray
 	float t_offset = jitter * baseStepSize;
 	float firstStepSize = baseStepSize;
 
@@ -204,18 +226,26 @@ void main() {
 		float blendDist = 500.0 * worldScale;
 		float lodDistanceThreshold = 25000.0 * worldScale;
 
+		// 3. Decouple loop limit from ray distance.
+		// We use a high max iteration to prevent GPU hangs, but rely on `t > t_end` to exit naturally.
 		int MAX_ITERATIONS = 150;
 
 		for (int i = 0; i < MAX_ITERATIONS; i++) {
 			if (t > dist || t > t_end) break;
 
+			// Calculate Dynamic Step
 			float distToFocus = max(0.0, max(expectedStart - t, t - expectedEnd));
 			float historyMult = mix(1.0, maxEmptyMult, smoothstep(0.0, blendDist, distToFocus));
 
-			float currentStepSize = baseStepSize;
+			// Apply perspective scaling directly to the base step
+			float perspectiveScale = 1.0 + (t * 0.00005);
+			float currentStepSize = baseStepSize;// * perspectiveScale * historyMult;
+
+			// Clamp to prevent jumping entirely through the cloud layer
 			float maxSafeStep = (props.thickness * props.worldScale) * 0.25;
 			currentStepSize = min(currentStepSize, maxSafeStep);
 
+			// Apply stable jitter offset
 			float step_t = t + t_offset;
 			vec3 p = viewPos + rayDir * step_t;
 
@@ -228,10 +258,10 @@ void main() {
 			CloudWeather weather = computeCloudWeather(p, props);
 			CloudLayer layer = computeCloudLayer(weather, props);
 
-			float d = calculateCloudDensity(p, weather, layer, props, uTime, useCheapEval);
+			float d = calculateCloudDensity(p, weather, layer, props, time, useCheapEval);
 
 			if (d > 0.01) {
-				maxEmptyMult = 1.0;
+				maxEmptyMult = 1.0; // Lock back to fine stepping
 				if (firstHitDist < 0.0) {
 					firstHitDist = t;
 					firstStepSize = currentStepSize;
@@ -242,6 +272,10 @@ void main() {
 			pathDensity = max(pathDensity, d);
 
 			if (d > 0.000) {
+				// 4. The "Wall of Opacity" Fix:
+				// If we just hit a cloud while in fast-forward mode, do NOT use the massive currentStepSize
+				// to calculate optical depth, or transmittance will instantly hit 0.
+				// Use the baseStepSize for integration until currentStepSize shrinks on the next iteration.
 				float integrationStep = (historyMult > 1.1) ? baseStepSize : currentStepSize;
 				float stepDensity = d * integrationStep * 0.01;
 				float transmittanceAtStep = exp(-stepDensity);
@@ -261,17 +295,17 @@ void main() {
 					float st_start = 1e10;
 					float st_end = -1e10;
 
-					float t0_s, t1_s;
-					if (intersectSphere(p, L, R_ceiling, t0_s, t1_s)) {
-						st_start = max(0.0, t0_s);
-						st_end = t1_s;
-						if (intersectSphere(p, L, R_floor, t0_s, t1_s)) {
-							if (t0_s < 0.0) st_start = max(t_start, t1_s);
-							else st_end = min(t_end, t0_s);
+					float t0, t1;
+					if (intersectSphere(p, L, R_ceiling, t0, t1)) {
+						st_start = max(0.0, t0);
+						st_end = t1;
+						if (intersectSphere(p, L, R_floor, t0, t1)) {
+							if (t0 < 0.0) st_start = max(t_start, t1);
+							else st_end = min(t_end, t0);
 						}
 					}
 
-					vec2 transUV = getTransmittanceUV(r_km, mu);
+					vec2 transUV = transmittanceToUV(r_km, mu);
 					vec3 sunTransmittance = texture(u_transmittanceLUT, transUV).rgb;
 
 					float maxShadowDist = layer.thickness * 1.5;
@@ -280,7 +314,7 @@ void main() {
 
 					for (int k = 0; k < shadow_samples; k++) {
 						vec3 sp = p + L * (float(k) + 0.5) * shadowStepSize;
-						shadowDensity += calculateCloudDensity(sp, weather, layer, props, uTime, true);
+						shadowDensity += calculateCloudDensity(sp, weather, layer, props, time, true);
 					}
 
 					float opticalDepthToLight = shadowDensity * shadowStepSize * cloudShadowOpticalDepthMultiplier;
@@ -308,6 +342,7 @@ void main() {
 				cloudTransmittance *= transmittanceAtStep;
 			}
 
+			// Advance ray
 			t += currentStepSize;
 
 			if (cloudTransmittance < 0.01) {
@@ -315,15 +350,13 @@ void main() {
 			}
 		}
 
-		cloudColor = lightEnergy * uCloudColorUniform;
+		cloudColor = lightEnergy * cloudColorUniform;
 	}
 
-	vec4 finalColor = vec4(cloudColor, cloudTransmittance);
-	vec4 finalDepth;
-	vec2 finalVelocity;
+	FragColor = vec4(cloudColor, cloudTransmittance);
 
 	if (firstHitDist > 0.0 && totalWeight > 0.001) {
-		finalDepth = vec4(firstHitDist, lastHitDist, firstStepSize, pathDensity);
+		CloudDepth = vec4(firstHitDist, lastHitDist, firstStepSize, pathDensity);
 
 		vec3 hitWorldPos = viewPos + canonicalRayDir * firstHitDist;
 		float hitAltitude = length(hitWorldPos - earthCenter) - R_earth;
@@ -333,9 +366,9 @@ void main() {
 		vec3 prevHitPos = hitWorldPos - advectionPerFrame;
 		vec4 prevClipHit = uPrevViewProjection * vec4(prevHitPos, 1.0);
 		vec2 prevScreenUV = (prevClipHit.xy / prevClipHit.w) * 0.5 + 0.5;
-		finalVelocity = prevScreenUV - TexCoords;
+		CloudVelocity = prevScreenUV - TexCoords;
 	} else {
-		finalDepth = vec4(50000.0 * worldScale, 50000.0 * worldScale, firstStepSize, pathDensity);
+		CloudDepth = vec4(50000.0 * worldScale, 50000.0 * worldScale, firstStepSize, pathDensity);
 
 		float fallbackDist = cloudAltitude * worldScale / max(0.05, abs(canonicalRayDir.y));
 		vec3 fallbackWorldPos = viewPos + canonicalRayDir * fallbackDist;
@@ -343,10 +376,6 @@ void main() {
 		vec3 prevFallbackPos = fallbackWorldPos - advectionPerFrame;
 		vec4 prevClipFb = uPrevViewProjection * vec4(prevFallbackPos, 1.0);
 		vec2 prevScreenFb = (prevClipFb.xy / prevClipFb.w) * 0.5 + 0.5;
-		finalVelocity = prevScreenFb - TexCoords;
+		CloudVelocity = prevScreenFb - TexCoords;
 	}
-
-	imageStore(outPackedColor, packedPixel, finalColor);
-	imageStore(outPackedDepth, packedPixel, finalDepth);
-	imageStore(outPackedVelocity, packedPixel, vec4(finalVelocity, 0.0, 0.0));
 }

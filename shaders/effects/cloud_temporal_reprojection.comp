@@ -22,6 +22,8 @@ uniform sampler2D uHistoryMoments;    // Previous accumulated moments (Luma1, Lu
 
 uniform float uBlendAlpha; // How much history to keep (0.85-0.95)
 uniform float uCloudAltitude;
+uniform int uFrameIndex;
+uniform mat4 uInvProjection;
 
 vec3 RGBToYCoCg(vec3 rgb) {
 	float y  = dot(rgb, vec3(0.25, 0.5, 0.25));
@@ -95,7 +97,7 @@ void main() {
 		ivec2(1, 0),
 		ivec2(0, 1)
 	);
-	ivec2 current_offset = bayer_offsets[frameIndex % 4];
+	ivec2 current_offset = bayer_offsets[uFrameIndex % 4];
 	bool is_new_pixel = (pixel % 2) == current_offset;
 
 	vec4 currentRGBA;
@@ -131,7 +133,7 @@ void main() {
 	// 3. Disocclusion Detection
 	float rawSceneDepth = texture(uSceneDepth, uv).r;
 	vec4 ndcDepth = vec4(uv * 2.0 - 1.0, rawSceneDepth * 2.0 - 1.0, 1.0);
-	vec4 viewSpaceScene = invProjection * ndcDepth;
+	vec4 viewSpaceScene = uInvProjection * ndcDepth;
 	float linearSceneDepth = -(viewSpaceScene.z / viewSpaceScene.w);
 	if (rawSceneDepth >= 1.0) linearSceneDepth = 50000.0 * worldScale;
 

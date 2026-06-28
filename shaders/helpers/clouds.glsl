@@ -471,7 +471,7 @@ float calculateCloudDensity(
 
 	// Need a worley fbm to mix in
 	// return calculateCloudDensityExpV5(p, weather, layer, props, time, simplified);
-	// return calculateCloudDensityExpV4(p, weather, layer, props, time, simplified);
+	return calculateCloudDensityExpV4(p, weather, layer, props, time, simplified);
 	return calculateCloudDensityExpV3(p, weather, layer, props, time, simplified);
 	// return calculateCloudDensityExpV2(p, weather, layer, props, time, simplified);
 	// return calculateCloudDensityExpV1(p, weather, layer, props, time, simplified);
