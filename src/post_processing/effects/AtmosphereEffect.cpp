@@ -229,6 +229,8 @@ namespace Boidsish {
 			shader_->setFloat("cloudWarp", cloud_warp_);
 			shader_->setVec3("cloudColorUniform", cloud_color_);
 			shader_->setFloat("u_atmosphereHeight", atmosphere_height_);
+			shader_->setFloat("u_sunAureoleStrength", sun_aureole_strength_);
+			shader_->setFloat("u_cirrusOpacity", cirrus_opacity_);
 
 			// History feedback for guided marching
 			shader_->setInt("uHistoryDepth", 6);
@@ -321,6 +323,7 @@ namespace Boidsish {
 			// SVGF-style: Use temporal variance to guide the spatial denoising across multiple scales.
 			if (spatial_filter_shader_ && spatial_filter_shader_->isValid()) {
 				spatial_filter_shader_->use();
+				temporal_shader_->setInt("uFrameIndex", frame_index_);
 				spatial_filter_shader_->setInt("uCloudColor", 0);
 				spatial_filter_shader_->setInt("uCloudDepth", 1);
 				spatial_filter_shader_->setInt("uCloudMoments", 2);

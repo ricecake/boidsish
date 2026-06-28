@@ -2043,6 +2043,8 @@ namespace Boidsish {
 				atmosphere_manager->SetMieScaleHeight(atmosphere_effect->GetMieScaleHeight());
 				atmosphere_manager->SetColorVarianceScale(atmosphere_effect->GetColorVarianceScale());
 				atmosphere_manager->SetColorVarianceStrength(atmosphere_effect->GetColorVarianceStrength());
+				atmosphere_manager->SetSunAureoleStrength(atmosphere_effect->GetSunAureoleStrength());
+				atmosphere_manager->SetCirrusOpacity(atmosphere_effect->GetCirrusOpacity());
 
 			float cloudShadowIntensity = ConfigManager::GetInstance().GetAppSettingFloat("cloud_shadow_intensity", 0.5f);
 			atmosphere_manager->SetCloudShadowIntensity(cloudShadowIntensity);
@@ -2333,6 +2335,8 @@ namespace Boidsish {
 					lighting_ubo_data_.cloudFlowHeightScale = atmosphere_effect->GetCloudFlowHeightScale();
 					lighting_ubo_data_.cloudCurlStrength = atmosphere_effect->GetCloudCurlStrength();
 					lighting_ubo_data_.cloudCurlFrequency = atmosphere_effect->GetCloudCurlFrequency();
+					lighting_ubo_data_.sunAureoleStrength = atmosphere_effect->GetSunAureoleStrength();
+					lighting_ubo_data_.cirrusOpacity = atmosphere_effect->GetCirrusOpacity();
 
 					// Calculate cloud shadow matrix (world XZ to shadow map UV)
 					float     mapSize = atmosphere_manager->GetCloudShadowWorldSize();
@@ -3544,6 +3548,8 @@ namespace Boidsish {
 				impl->atmosphere_effect->SetMieScaleHeight(w.mie_scale_height);
 				impl->atmosphere_effect->SetHazeColor(w.haze_color);
 				impl->atmosphere_effect->SetCloudColor(w.cloud_color);
+				impl->atmosphere_effect->SetSunAureoleStrength(w.sun_aureole_strength);
+				impl->atmosphere_effect->SetCirrusOpacity(w.cirrus_opacity);
 
 				impl->atmosphere_effect->SetCloudFlowSpeed(w.wind_speed);
 				impl->atmosphere_effect->SetCloudFlowDirection(glm::radians(180.0f)); // Fixed direction for consistency

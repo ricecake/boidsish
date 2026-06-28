@@ -17,6 +17,7 @@ uniform float u_time;
 uniform float u_colorVarianceScale;
 uniform float u_colorVarianceStrength;
 
+#define ATMOSPHERE_PRECOMPUTE
 #include "../helpers/fast_noise.glsl"
 #include "../lighting.glsl"
 #include "common.glsl"

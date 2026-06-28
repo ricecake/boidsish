@@ -55,6 +55,8 @@ namespace Boidsish {
 		SetPace(WeatherAttribute::CloudColorR, 10.0f);
 		SetPace(WeatherAttribute::CloudColorG, 10.0f);
 		SetPace(WeatherAttribute::CloudColorB, 10.0f);
+		SetPace(WeatherAttribute::SunAureoleStrength, 10.0f);
+		SetPace(WeatherAttribute::CirrusOpacity, 10.0f);
 
 		LoadConfig();
 	}
@@ -399,6 +401,10 @@ namespace Boidsish {
 			return &current_.cloud_color.g;
 		case WeatherAttribute::CloudColorB:
 			return &current_.cloud_color.b;
+		case WeatherAttribute::SunAureoleStrength:
+			return &current_.sun_aureole_strength;
+		case WeatherAttribute::CirrusOpacity:
+			return &current_.cirrus_opacity;
 		default:
 			return nullptr;
 		}
@@ -592,6 +598,8 @@ namespace Boidsish {
 		sunny.settings.rayleigh_scattering = {RayleighScattering, RayleighScattering};
 		sunny.settings.haze_color = {DefaultHazeColor, DefaultHazeColor};
 		sunny.settings.cloud_color = {DefaultCloudColor, DefaultCloudColor};
+		sunny.settings.sun_aureole_strength = {0.3f, 0.5f};
+		sunny.settings.cirrus_opacity = {0.2f, 0.4f};
 		presets_.push_back(sunny);
 
 		// 2. Cloudy
@@ -622,6 +630,8 @@ namespace Boidsish {
 		cloudy.settings.rayleigh_scattering = {RayleighScattering, RayleighScattering * 1.1f};
 		cloudy.settings.haze_color = {DefaultHazeColor * 0.9f, DefaultHazeColor};
 		cloudy.settings.cloud_color = {DefaultCloudColor * 0.9f, DefaultCloudColor};
+		cloudy.settings.sun_aureole_strength = {0.6f, 0.9f};
+		cloudy.settings.cirrus_opacity = {0.4f, 0.7f};
 		presets_.push_back(cloudy);
 
 		// 3. Overcast
@@ -652,6 +662,8 @@ namespace Boidsish {
 		overcast.settings.rayleigh_scattering = {RayleighScattering * 1.1f, RayleighScattering * 1.3f};
 		overcast.settings.haze_color = {DefaultHazeColor * 0.7f, DefaultHazeColor * 0.8f};
 		overcast.settings.cloud_color = {DefaultCloudColor * 0.7f, DefaultCloudColor * 0.8f};
+		overcast.settings.sun_aureole_strength = {0.8f, 1.2f};
+		overcast.settings.cirrus_opacity = {0.6f, 1.0f};
 		presets_.push_back(overcast);
 
 		// 4. Foggy
@@ -682,6 +694,8 @@ namespace Boidsish {
 		foggy.settings.rayleigh_scattering = {RayleighScattering * 1.3f, RayleighScattering * 1.5f};
 		foggy.settings.haze_color = {DefaultHazeColor * 0.5f, DefaultHazeColor * 0.6f};
 		foggy.settings.cloud_color = {DefaultCloudColor * 0.5f, DefaultCloudColor * 0.6f};
+		foggy.settings.sun_aureole_strength = {0.8f, 1.5f};
+		foggy.settings.cirrus_opacity = {0.0f, 0.2f};
 		presets_.push_back(foggy);
 
 		// 5. Rainy
@@ -712,6 +726,8 @@ namespace Boidsish {
 		rainy.settings.rayleigh_scattering = {RayleighScattering * 1.1f, RayleighScattering * 1.3f};
 		rainy.settings.haze_color = {DefaultHazeColor * 0.6f, DefaultHazeColor * 0.7f};
 		rainy.settings.cloud_color = {DefaultCloudColor * 0.6f, DefaultCloudColor * 0.7f};
+		rainy.settings.sun_aureole_strength = {0.5f, 0.9f};
+		rainy.settings.cirrus_opacity = {0.4f, 0.8f};
 		presets_.push_back(rainy);
 
 		// 6. Snowy
@@ -742,6 +758,8 @@ namespace Boidsish {
 		snowy.settings.rayleigh_scattering = {RayleighScattering * 1.2f, RayleighScattering * 1.4f};
 		snowy.settings.haze_color = {DefaultHazeColor * 0.8f, DefaultHazeColor * 0.9f};
 		snowy.settings.cloud_color = {DefaultCloudColor * 0.8f, DefaultCloudColor * 0.9f};
+		snowy.settings.sun_aureole_strength = {0.3f, 0.6f};
+		snowy.settings.cirrus_opacity = {0.6f, 1.0f};
 		presets_.push_back(snowy);
 
 		// Calculate CDF
@@ -1097,6 +1115,8 @@ namespace Boidsish {
 			cached_targets_.rayleigh_scattering = blended.rayleigh_scattering.Lerp(pressure);
 			cached_targets_.haze_color = blended.haze_color.Lerp(humidity);
 			cached_targets_.cloud_color = blended.cloud_color.Lerp(humidity);
+			cached_targets_.sun_aureole_strength = blended.sun_aureole_strength.Lerp(humidity);
+			cached_targets_.cirrus_opacity = blended.cirrus_opacity.Lerp(sampleNoise(11.1f));
 		}
 
 		// If LBM is enabled, some targets are driven directly by simulation
@@ -1197,6 +1217,8 @@ namespace Boidsish {
 		UpdateAttribute(WeatherAttribute::CloudColorR, cached_targets_.cloud_color.r, deltaTime);
 		UpdateAttribute(WeatherAttribute::CloudColorG, cached_targets_.cloud_color.g, deltaTime);
 		UpdateAttribute(WeatherAttribute::CloudColorB, cached_targets_.cloud_color.b, deltaTime);
+		UpdateAttribute(WeatherAttribute::SunAureoleStrength, cached_targets_.sun_aureole_strength, deltaTime);
+		UpdateAttribute(WeatherAttribute::CirrusOpacity, cached_targets_.cirrus_opacity, deltaTime);
 	}
 
 	void WeatherManager::SaveAttributeTarget(WeatherAttribute attr) {
@@ -1282,6 +1304,10 @@ namespace Boidsish {
 			return "Cloud Color (G)";
 		case WeatherAttribute::CloudColorB:
 			return "Cloud Color (B)";
+		case WeatherAttribute::SunAureoleStrength:
+			return "Sun Aureole Strength";
+		case WeatherAttribute::CirrusOpacity:
+			return "Cirrus Opacity";
 		default:
 			return "Unknown";
 		}
@@ -1349,6 +1375,10 @@ namespace Boidsish {
 			return "cloud_color_g";
 		case WeatherAttribute::CloudColorB:
 			return "cloud_color_b";
+		case WeatherAttribute::SunAureoleStrength:
+			return "sun_aureole_strength";
+		case WeatherAttribute::CirrusOpacity:
+			return "cirrus_opacity";
 		default:
 			return "unknown";
 		}

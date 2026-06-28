@@ -11,6 +11,7 @@ layout(binding = 4) uniform sampler2D cloudDepthTexture;
 
 uniform mat4 invView;
 uniform mat4 invProjection;
+uniform int   uFrameIndex;
 
 uniform vec2 cloudTexelSize; // 1.0 / lowResSize
 
@@ -66,65 +67,90 @@ void main() {
 		dist = 50000.0 * WORLD_SCALE_VALUE;
 	}
 
-	// 1. Joint Bilateral Upsample (3x3 Gaussian)
+// 1. Aligned Joint Bilateral Upsample (3x3 High-Fidelity)
 	float sceneDist = dist;
-	vec3  totalScattering = vec3(0.0);
-	float totalTransmittance = 0.0;
+	vec3  sumScattering = vec3(0.0);
+	float sumTransmittance = 0.0;
+	float sumWeight = 0.0;
 
 	float upsampledCloudDist = 0.0;
 	float totalDepthWeight = 0.0;
-	float totalSpatialWeight = 0.0;
 
-	// Find the center of the nearest low-res texel
+	// Correctly locate the exact continuous texel position and its integer center
 	vec2 lowResUV = TexCoords / cloudTexelSize;
-	vec2 nearestTexel = floor(lowResUV - 0.5) + 0.5;
+	vec2 nearestTexelCenter = floor(lowResUV) + 0.5;
 	float depthTolerance = 100.0 * WORLD_SCALE_VALUE;
 
 	for (int dy = -1; dy <= 1; dy++) {
 		for (int dx = -1; dx <= 1; dx++) {
 			vec2 offset = vec2(dx, dy);
-			vec2 sampleUV = (nearestTexel + offset) * cloudTexelSize;
+			vec2 sampleUV = (nearestTexelCenter + offset) * cloudTexelSize;
 
-			// 1. Gaussian Spatial Weight (Sigma ~ 1.0)
-			vec2 pixelOffset = (lowResUV - 0.5) - (nearestTexel + offset);
-			float spatialW = exp(-dot(pixelOffset, pixelOffset));
+			// Aligned coordinate vector from continuous position to the exact sample center
+			vec2 pixelOffset = lowResUV - (nearestTexelCenter + offset);
+
+			// Tightened sigma (/0.75) to preserve sharp structural details
+			float spatialW = exp(-dot(pixelOffset, pixelOffset) / 0.75);
 
 			vec4 sDepthData = texture(cloudDepthTexture, sampleUV);
 			float sDepth = sDepthData.r;
 			float sMaxDensity = sDepthData.a;
 
 			vec4 sColor = texture(cloudTexture, sampleUV);
+			float structuralRigidity = smoothstep(0.015, 0.05, sMaxDensity);
 
-			float structuralRigidity = smoothstep(0.01, 0.05, sMaxDensity);
 
-			// 2. Depth Occlusion Penalty
-			float depthDiff = max(0.0, sDepth - sceneDist);
+
+			// Inside the Composite Upsample (inside the nested dx/dy loop)
+			ivec2 sampleCoord = ivec2((nearestTexelCenter + offset));
+			float sPhase = bayer4x4StepPhase(sampleCoord, uFrameIndex);
+			float rayStepLength = sDepthData.b;
+
+			// Estimate the absolute front of the volume before the dither offset pushed the ray inward
+			float continuousFrontEdge = sDepth - (sPhase * rayStepLength);
+
+			// 2. Depth Occlusion Penalty against the high-res scene distance
+			// Use the estimated continuous edge, not the quantized sDepth
+			float depthDiff = max(0.0, continuousFrontEdge - sceneDist);
+
+			// The tolerance only needs to account for sub-step geometric variation now
+			float depthTolerance = rayStepLength * 0.75;
 			float depthPenalty = exp(-(depthDiff * depthDiff) / (depthTolerance * depthTolerance));
 			depthPenalty = mix(1.0, depthPenalty, structuralRigidity);
 
-			vec3  sampleScattering = sColor.rgb * depthPenalty;
-			float sampleTransmittance = mix(1.0, sColor.a, depthPenalty); // Fades to transparent
 
-			totalScattering += sampleScattering * spatialW;
-			totalTransmittance += sampleTransmittance * spatialW;
-			totalSpatialWeight += spatialW;
 
-			// 4. Isolate depth accumulation to only valid, unoccluded structure
-			float depthAccumW = spatialW * depthPenalty * (1.0 - sampleTransmittance);
+
+			// One-sided depth occlusion penalty
+			// float depthDiff = max(0.0, sDepth - sceneDist);
+			// float depthPenalty = exp(-(depthDiff * depthDiff) / (depthTolerance * depthTolerance));
+			// depthPenalty = mix(1.0, depthPenalty, structuralRigidity);
+
+			// Compute a unified bilateral weight for normalization
+			float bilateralW = spatialW * depthPenalty;
+
+			sumScattering += sColor.rgb * bilateralW;
+			sumTransmittance += sColor.a * bilateralW;
+			sumWeight += bilateralW;
+
+			// Separate weighting for distance interpolation to keep atmospheric depth valid
+			float depthAccumW = bilateralW * (1.0 - sColor.a);
 			upsampledCloudDist += sDepth * depthAccumW;
 			totalDepthWeight += depthAccumW;
 		}
 	}
 
 	vec4 cloudData;
-	if (totalSpatialWeight > 0.0) {
-		cloudData.rgb = totalScattering / totalSpatialWeight;
-		cloudData.a = totalTransmittance / totalSpatialWeight;
+	if (sumWeight > 0.01) {
+		// Normalize using the bilateral weight to prevent dark halos and edge jaggies
+		cloudData.rgb = sumScattering / sumWeight;
+		cloudData.a = sumTransmittance / sumWeight;
 
 		upsampledCloudDist = (totalDepthWeight > 0.001) ?
 							 (upsampledCloudDist / totalDepthWeight) :
 							 (50000.0 * WORLD_SCALE_VALUE);
 	} else {
+		// If the entire 3x3 neighborhood is completely behind geometry, force clean transparency
 		cloudData = vec4(0.0, 0.0, 0.0, 1.0);
 		upsampledCloudDist = 50000.0 * WORLD_SCALE_VALUE;
 	}

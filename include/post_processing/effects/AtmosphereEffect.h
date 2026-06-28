@@ -187,6 +187,14 @@ namespace Boidsish {
 
 			float GetColorVarianceStrength() const { return color_variance_strength_; }
 
+			void SetSunAureoleStrength(float s) { sun_aureole_strength_ = s; }
+
+			float GetSunAureoleStrength() const { return sun_aureole_strength_; }
+
+			void SetCirrusOpacity(float o) { cirrus_opacity_ = o; }
+
+			float GetCirrusOpacity() const { return cirrus_opacity_; }
+
 			void SetRenderScale(float scale) {
 				if (render_scale_ != scale) {
 					render_scale_ = scale;
@@ -253,6 +261,8 @@ namespace Boidsish {
 			float     mie_scale_height_ = WeatherConstants::MieScaleHeight.normal;
 			float     color_variance_scale_ = 1.0f;
 			float     color_variance_strength_ = 0.0f;
+			float     sun_aureole_strength_ = 0.5f;
+			float     cirrus_opacity_ = 0.3f;
 
 			int   width_ = 0;
 			int   height_ = 0;

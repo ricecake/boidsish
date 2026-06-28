@@ -7,8 +7,10 @@ layout(location = 3) out vec4 AlbedoOut;
 
 in vec2 TexCoords;
 
-#include "atmosphere/common.glsl"
 #include "helpers/lighting.glsl"
+#include "atmosphere/common.glsl"
+#include "helpers/fast_noise.glsl"
+#include "helpers/clouds.glsl"
 
 uniform mat4 invProjection;
 uniform mat4 invView;
@@ -112,7 +114,7 @@ vec3 hash33(vec3 p) {
 	return fract((p.xxy + p.yxx) * p.zyx);
 }
 
-float fbm(vec3 p) {
+float fbm_sky(vec3 p) {
 	float v = 0.0;
 	float a = 0.5;
 	for (int i = 0; i < 4; i++) {
@@ -151,6 +153,12 @@ void main() {
 	// 1. Atmospheric Scattering
 	vec3 skyRadiance = sampleSkyView(world_ray);
 
+	// Fetch weather scalars for humidity-driven effects
+	float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
+	vec2 weatherUV = (viewPos.xz / scaledChunkSize - vec2(u_originSize.xy)) / 128.0;
+	vec4 weatherScalars = texture(u_weatherScalars, weatherUV);
+	float localHumidity = weatherScalars.y;
+
 	// 2. Sun Disc with Realistic Distortion (flattening near horizon)
 	float cosTheta = dot(world_ray, sunDir);
 	float sunAngularRadius = 0.02; // approx 1.0 degrees
@@ -171,11 +179,22 @@ void main() {
 
 	// Effective angle to sun center
 	float distSq = rayLocalX * rayLocalX + flattenedY * flattenedY;
-	float sunMask = smoothstep(
-		sunAngularRadius * sunAngularRadius,
+	float distToSun = sqrt(max(0.0, distSq));
+
+	// Humidity-driven sun aureole (Mie scattering approximation)
+	float aureoleScale = 1.1 + smoothstep(0.0, 1.00, localHumidity * sunAureoleStrength);
+	float aureole = exp(-distToSun * (45.0 / aureoleScale)) * sunAureoleStrength * 3.5 * (1.3 + 1.750 * localHumidity);
+
+	float sunMask = 1.0 - smoothstep(
 		(sunAngularRadius - 0.001) * (sunAngularRadius - 0.001),
+		sunAngularRadius * sunAngularRadius,
 		distSq
 	);
+	// Add aureole to the mask with soft-clamping to avoid hard cut-offs at high brightness
+	// Using a more gradual quadratic-rational soft-clamp for a natural look
+	sunMask += aureole;
+	sunMask = (sunMask * (1.0 + sunMask * 0.05)) / (1.0 + sunMask * 0.06);
+
 	// Ensure we are in front of the sun
 	sunMask *= step(0.99, rayLocalZ);
 
@@ -190,8 +209,8 @@ void main() {
 	vec3 stars = starLayer(world_ray) * vec3(1.0, 0.9, 0.8);
 
 	vec3  p = world_ray * 4.0;
-	vec3  warp_offset = vec3(fbm(p + time * 0.05));
-	float nebula_noise = fbm(p + warp_offset * 0.5);
+	vec3  warp_offset = vec3(fbm_sky(p + time * 0.05));
+	float nebula_noise = fbm_sky(p + warp_offset * 0.5);
 	// vec3  nebula = vec3(0);
 	// vec3  nebula = mix(vec3(0.0, 0.1, 0.4), vec3(0.8, 0.2, 0.7), nebula_noise) * 0.4;
 	vec3  nebula = mix(vec3(0.0, 0.0, 0.0), vec3(0.8, 0.2, 0.7), nebula_noise) * 0.4;
@@ -227,6 +246,7 @@ void main() {
 		(moonAngularRadius - 0.001) * (moonAngularRadius - 0.001),
 		moonDistSq
 	);
+
 	moonMask *= step(0.99, moonLocalZ);
 
 	vec3 moonTransmittance = max(getTransmittance(r, moonDir.y), vec3(0.001));
@@ -250,10 +270,41 @@ void main() {
 
 	vec3 moonDisc = u_moonFullRadiance * phasedMask * moonTransmittance * smoothstep(-0.01, 0.01, moonDir.y);
 
+	// 5. Cirrus Cloud Layer
+	vec3 cirrusColor = vec3(0.0);
+	if (cirrusOpacity > 0.01) {
+		float cirrusAlt = 10.0; // 10 km altitude
+		float camAltKM = viewPos.y / (1000.0 * worldScale);
+		float h_cirrus = cirrusAlt - camAltKM;
+
+		if (world_ray.y > 0.0) {
+			float t_cirrus = h_cirrus / max(world_ray.y, 0.001);
+			vec3  p_cirrus = viewPos + world_ray * (t_cirrus * 1000.0 * worldScale);
+
+			// Advect cirrus using global flow
+			vec3 advect = getCloudWindOffset(time * 0.5); // Cirrus moves slower relative to world
+			vec2 uv_cirrus = (p_cirrus.xz + advect.xz) * (0.00005 / worldScale);
+
+			float n = (fbm_sky(vec3(uv_cirrus * 2.0, time * 0.01)) + 1.0) * 0.5;
+			float n2 = (fbm_sky(vec3(uv_cirrus * 5.0, time * 0.02 + 10.0)) + 1.0) * 0.5;
+			float noise = smoothstep(0.3, 0.8, n * n2);
+
+			vec3  T_cirrus = texture(u_transmittanceLUT, transmittanceToUV(kEarthRadius + cirrusAlt, sunDir.y)).rgb;
+			float cirrusPhase = mix(0.2, 1.0, pow(max(0.0, dot(world_ray, sunDir)), 3.0));
+
+			// High-altitude cirrus receives strong scattered sky light even when noise is low
+			vec3 cirrusLighting = (T_cirrus * sunColor * cirrusPhase * 5.0) + (skyRadiance * 0.5);
+			cirrusColor = cirrusLighting * noise * cirrusOpacity * 15.0;
+
+			// Fade cirrus near horizon to avoid tiling artifacts
+			cirrusColor *= smoothstep(0.0, 0.15, world_ray.y);
+		}
+	}
+
 	// Lightning background pulse
 	vec3 lightningEffect = lightningColor * lightningPulse * 0.35;
 
-	vec3 finalColor = skyRadiance + sunDisc + moonDisc + spaceBackground + lightningEffect;
+	vec3 finalColor = skyRadiance + sunDisc + moonDisc + cirrusColor + spaceBackground + lightningEffect;
 
 	FragColor = vec4(finalColor, 1.0);
 	Velocity = vec4(0, 0, 1.0, 0.0); // Roughness 1.0 (sky is not reflective), Metallic 0.0

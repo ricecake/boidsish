@@ -168,6 +168,14 @@ namespace Boidsish {
 
 		float GetCloudShadowIntensity() const { return _cloudShadowIntensity; }
 
+		void SetSunAureoleStrength(float s) { _sunAureoleStrength = s; }
+
+		float GetSunAureoleStrength() const { return _sunAureoleStrength; }
+
+		void SetCirrusOpacity(float o) { _cirrusOpacity = o; }
+
+		float GetCirrusOpacity() const { return _cirrusOpacity; }
+
 		const glm::vec4* GetSHCoefficients() const { return _shCoeffs; }
 
 		// Copy SH coefficients directly from GPU SSBO into a UBO, avoiding CPU readback
@@ -210,6 +218,8 @@ namespace Boidsish {
 		float     _colorVarianceScale = 1.0f;
 		float     _colorVarianceStrength = 0.0f;
 		float     _cloudShadowIntensity = 0.5f;
+		float     _sunAureoleStrength = 0.5f;
+		float     _cirrusOpacity = 0.3f;
 
 		glm::vec3 _ambientEstimate = glm::vec3(0.0f);
 	};
