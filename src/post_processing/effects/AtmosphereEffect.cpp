@@ -171,6 +171,9 @@ namespace Boidsish {
 		}
 
 		void AtmosphereEffect::Apply(GLuint sourceTexture, GLuint depthTexture, GLuint velocityTexture, GLuint normalTexture, GLuint albedoTexture, const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix, const glm::vec3& cameraPos) {
+			GLint original_fbo;
+			glGetIntegerv(GL_FRAMEBUFFER_BINDING, &original_fbo);
+
 			float dt = time_ - last_time_;
 			last_time_ = time_;
 
@@ -183,35 +186,15 @@ namespace Boidsish {
 			// --- PASS 1: Packed Quarter-res Cloud Rendering ---
 			if (cloud_render_shader_ && cloud_render_shader_->isValid()) {
 				cloud_render_shader_->use();
-				cloud_render_shader_->setFloat("uTime", time_);
 				cloud_render_shader_->setFloat("uDeltaTime", dt);
-				cloud_render_shader_->setInt("uFrameIndex", frame_index_);
-				cloud_render_shader_->setMat4("uInvView", invView);
-				cloud_render_shader_->setMat4("uInvProjection", invProj);
-
-				cloud_render_shader_->setFloat("uCloudDensity", cloud_density_);
-				cloud_render_shader_->setFloat("uCloudAltitude", cloud_altitude_);
-				cloud_render_shader_->setFloat("uCloudThickness", cloud_thickness_);
-				cloud_render_shader_->setFloat("uCloudCoverage", cloud_coverage_);
-				cloud_render_shader_->setFloat("uCloudWarp", cloud_warp_);
-				cloud_render_shader_->setVec3("uCloudColorUniform", cloud_color_);
+				cloud_render_shader_->setVec3("cloudColorUniform", cloud_color_);
 				cloud_render_shader_->setFloat("u_atmosphereHeight", atmosphere_height_);
-				cloud_render_shader_->setFloat("u_sunAureoleStrength", sun_aureole_strength_);
-				cloud_render_shader_->setFloat("u_cirrusOpacity", cirrus_opacity_);
 
 				cloud_render_shader_->setInt("depthTexture", 0);
 				cloud_render_shader_->setInt("uHistoryDepth", 1);
 				cloud_render_shader_->setInt("uHistoryMoments", 2);
 				cloud_render_shader_->setMat4("uPrevViewProjection", prev_view_projection_);
 				cloud_render_shader_->setBool("uHasHistory", has_valid_history_);
-
-				cloud_render_shader_->setInt("u_transmittanceLUT", Constants::TextureUnit::AtmosphereTransmittance());
-				cloud_render_shader_->setInt("u_skyViewLUT", Constants::TextureUnit::AtmosphereSkyView());
-				cloud_render_shader_->trySetInt("u_noiseTexture", Constants::TextureUnit::NoiseSimplex());
-				cloud_render_shader_->trySetInt("u_curlTexture", Constants::TextureUnit::NoiseCurl());
-				cloud_render_shader_->trySetInt("u_blueNoiseTexture", Constants::TextureUnit::NoiseBlue());
-				cloud_render_shader_->trySetInt("u_extraNoiseTexture", Constants::TextureUnit::NoiseExtra());
-
 
 				glActiveTexture(GL_TEXTURE0);
 				glBindTexture(GL_TEXTURE_2D, depthTexture);
@@ -242,12 +225,7 @@ namespace Boidsish {
 				int next_temporal = 1 - temporal_index_;
 
 				temporal_shader_->use();
-				temporal_shader_->setFloat("uBlendAlpha", has_valid_history_ ? 0.95f : 0.0f);
-				temporal_shader_->setInt("uFrameIndex", frame_index_);
-				temporal_shader_->setMat4("uInvView", invView);
-				temporal_shader_->setMat4("uInvProjection", invProj);
-				temporal_shader_->setMat4("uPrevViewProjection", prev_view_projection_);
-				temporal_shader_->setFloat("uCloudAltitude", cloud_altitude_);
+				temporal_shader_->setMat4("invProjection", invProj);
 
 				temporal_shader_->setInt("uPackedFrame", 0);
 				temporal_shader_->setInt("uPackedDepth", 1);
@@ -287,7 +265,6 @@ namespace Boidsish {
 			GLuint cloud_source = temporal_textures_[temporal_index_];
 			if (spatial_filter_shader_ && spatial_filter_shader_->isValid()) {
 				spatial_filter_shader_->use();
-				spatial_filter_shader_->setInt("uFrameIndex", frame_index_);
 				spatial_filter_shader_->setInt("uCloudColor", 0);
 				spatial_filter_shader_->setInt("uCloudDepth", 1);
 				spatial_filter_shader_->setInt("uCloudMoments", 2);
@@ -318,13 +295,14 @@ namespace Boidsish {
 			}
 
 			// --- PASS 4: Final Composition (Full Resolution) ---
+			glBindFramebuffer(GL_FRAMEBUFFER, original_fbo);
+			glViewport(0, 0, width_, height_);
 			composite_shader_->use();
 			composite_shader_->setInt("sceneTexture", 0);
 			composite_shader_->setInt("depthTexture", 1);
 			composite_shader_->setInt("cloudTexture", 2);
 			composite_shader_->setInt("normalTexture", 3);
 			composite_shader_->setInt("cloudDepthTexture", 4);
-			composite_shader_->setFloat("time", time_);
 			composite_shader_->setMat4("invView", invView);
 			composite_shader_->setMat4("invProjection", invProj);
 
@@ -375,6 +353,10 @@ namespace Boidsish {
 			// Composition still happens in a full-screen quad fragment shader for simplicity,
 			// though it could also be a compute shader.
 			glDrawArrays(GL_TRIANGLES, 0, 6);
+
+			// Store current VP for next frame's reprojection
+			prev_view_projection_ = projectionMatrix * viewMatrix;
+			frame_index_++;
 
 			// Cleanup
 			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereAerialPerspective());

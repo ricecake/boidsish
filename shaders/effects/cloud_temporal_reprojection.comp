@@ -20,11 +20,6 @@ uniform sampler2D uHistoryMoments;    // Previous accumulated moments (Luma1, Lu
 #include "lygia/color/luma.glsl"
 #include "helpers/math.glsl"
 
-uniform float uBlendAlpha; // How much history to keep (0.85-0.95)
-uniform float uCloudAltitude;
-uniform int uFrameIndex;
-uniform mat4 uInvProjection;
-
 vec3 RGBToYCoCg(vec3 rgb) {
 	float y  = dot(rgb, vec3(0.25, 0.5, 0.25));
 	float co = dot(rgb, vec3(0.5, 0.0, -0.5));
@@ -62,13 +57,10 @@ float mitchell(float x, float B, float C) {
 vec4 textureMitchell(sampler2D tex, vec2 uv, vec2 textureSize) {
 	vec2 texelSize = 1.0 / textureSize;
 	uv = uv * textureSize - 0.5;
-
 	vec2 f = fract(uv);
 	vec2 c = floor(uv);
-
 	vec4 color = vec4(0.0);
 	float weightsSum = 0.0;
-
 	for (int j = -1; j <= 2; j++) {
 		float wy = mitchell(float(j) - f.y, 0.0, 0.75);
 		for (int i = -1; i <= 2; i++) {
@@ -85,63 +77,29 @@ vec4 textureMitchell(sampler2D tex, vec2 uv, vec2 textureSize) {
 void main() {
 	ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
 	ivec2 size = imageSize(outColor);
-	if (pixel.x >= size.x || pixel.y >= size.y)
-		return;
+	if (pixel.x >= size.x || pixel.y >= size.y) return;
 
 	vec2 uv = (vec2(pixel) + 0.5) / vec2(size);
-
-	// 1. Determine if this pixel was rendered this frame
-	ivec2 bayer_offsets[4] = ivec2[](
-		ivec2(0, 0),
-		ivec2(1, 1),
-		ivec2(1, 0),
-		ivec2(0, 1)
-	);
-	ivec2 current_offset = bayer_offsets[uFrameIndex % 4];
+	ivec2 bayer_offsets[4] = ivec2[](ivec2(0, 0), ivec2(1, 1), ivec2(1, 0), ivec2(0, 1));
+	ivec2 current_offset = bayer_offsets[frameIndex % 4];
 	bool is_new_pixel = (pixel % 2) == current_offset;
 
 	vec4 currentRGBA;
 	vec4 currDepthProps;
 	vec2 velocity;
 
+	ivec2 packedPixel = pixel / 2;
+	velocity = texelFetch(uPackedVelocity, packedPixel, 0).rg;
+
 	if (is_new_pixel) {
-		ivec2 packedPixel = pixel / 2;
 		currentRGBA = texelFetch(uPackedFrame, packedPixel, 0);
 		currDepthProps = texelFetch(uPackedDepth, packedPixel, 0);
-		velocity = texelFetch(uPackedVelocity, packedPixel, 0).rg;
-	} else {
-		// For pixels not rendered this frame, we don't have "current" data.
-		// We'll rely more on history.
-		// To keep the variance clipping working, we can sample the packed frame's neighborhood
-		// but that's complex. Let's assume current is history for now if not new,
-		// but we need a better way to handle the "interleaved" nature.
-		// Actually, the SVGF approach usually reprojects everything, and only the "new" pixels
-		// get the fresh sample.
-		currentRGBA = vec4(0.0);
-		currDepthProps = vec4(0.0);
-
-		// We still need a velocity to reproject. We can fetch it from the packed buffer
-		// of the pixel that WAS rendered in this 2x2 block.
-		ivec2 packedPixel = pixel / 2;
-		velocity = texelFetch(uPackedVelocity, packedPixel, 0).rg;
 	}
 
-	// 2. Reproject History
 	vec2 prevUV = uv + velocity;
 	bool validHistory = all(greaterThanEqual(prevUV, vec2(0.0))) && all(lessThanEqual(prevUV, vec2(1.0)));
 
-	// 3. Disocclusion Detection
-	float rawSceneDepth = texture(uSceneDepth, uv).r;
-	vec4 ndcDepth = vec4(uv * 2.0 - 1.0, rawSceneDepth * 2.0 - 1.0, 1.0);
-	vec4 viewSpaceScene = uInvProjection * ndcDepth;
-	float linearSceneDepth = -(viewSpaceScene.z / viewSpaceScene.w);
-	if (rawSceneDepth >= 1.0) linearSceneDepth = 50000.0 * worldScale;
-
-	float currentCloudDist = is_new_pixel ? currDepthProps.r : textureMitchell(uHistoryCloudDepth, prevUV, vec2(size)).r;
-
-	float depthEpsilon = 20.0 * worldScale + (linearSceneDepth * 0.02);
-	// if (linearSceneDepth < currentCloudDist - depthEpsilon) validHistory = false;
-
+	// Reproject History
 	vec4 historyRGBA = vec4(0.0);
 	vec4 historyMoments = vec4(0.0);
 	vec4 historyDepthProps = vec4(0.0);
@@ -154,11 +112,17 @@ void main() {
 		historyLength = historyMoments.w;
 	}
 
+	// Depth disocclusion
+	float rawSceneDepth = texture(uSceneDepth, uv).r;
+	vec4 ndcDepth = vec4(uv * 2.0 - 1.0, rawSceneDepth * 2.0 - 1.0, 1.0);
+	vec4 viewSpaceScene = invProjection * ndcDepth;
+	float linearSceneDepth = -(viewSpaceScene.z / viewSpaceScene.w);
+	if (rawSceneDepth >= 1.0) linearSceneDepth = 50000.0 * worldScale;
+
 	if (is_new_pixel) {
-		// Check for major depth discontinuities to invalidate history
-		float historyCloudDist = historyDepthProps.r;
+		float currentCloudDist = currDepthProps.r;
 		float currentCloudStep = currDepthProps.b;
-		if (abs(currentCloudDist - historyCloudDist) > currentCloudStep * 2.0) {
+		if (abs(currentCloudDist - historyDepthProps.r) > currentCloudStep * 4.0) {
 			// validHistory = false;
 		}
 	}
@@ -170,17 +134,13 @@ void main() {
 			historyRGBA = currentRGBA;
 			historyDepthProps = currDepthProps;
 		} else {
-			// If not new and no history, we have nothing.
-			// In practice, we should sample the neighbors or wait for this pixel to be rendered.
-			// For now, just use history (which is 0).
+			// Guided fetch from history neighbors or just use current neighborhood if available
+			historyRGBA = vec4(0, 0, 0, 1);
 		}
 		historyMoments = vec4(0.0);
 	}
 
-	// 4. Variance Clipping (using 3x3 or 5x5 neighborhood of CURRENT PACKED samples)
-	// This is tricky because only 1/4 of pixels are new.
-	// We use the full-res neighborhood of the PREVIOUSLY accumulated frame + the NEW samples.
-
+	// Variance Clipping
 	vec3 m1 = vec3(0.0);
 	vec3 m2 = vec3(0.0);
 	float weightSum = 0.0;
@@ -194,7 +154,7 @@ void main() {
 			if ((neighborPixel % 2) == current_offset) {
 				sampleRGBA = texelFetch(uPackedFrame, neighborPixel / 2, 0);
 			} else {
-				// Use history for pixels not rendered this frame
+				// reprojection of previously known state is safer than current frame raw history here
 				sampleRGBA = texelFetch(uHistoryFrame, neighborPixel, 0);
 			}
 
@@ -208,9 +168,7 @@ void main() {
 
 	vec3 mean = m1 / weightSum;
 	vec3 stddev = sqrt(max(vec3(0.0), (m2 / weightSum) - (mean * mean)));
-
-	// Clip history towards the neighborhood mean
-	float gamma = 1.5;
+	float gamma = is_new_pixel ? 1.5 : 0.75;
 	vec3 minColor = mean - stddev * gamma;
 	vec3 maxColor = mean + stddev * gamma;
 
@@ -218,14 +176,7 @@ void main() {
 	historyYCoCg = clamp(historyYCoCg, minColor, maxColor);
 	historyRGBA.rgb = YCoCgToRGB(historyYCoCg);
 
-	// 5. Accumulate
-	// float alpha = is_new_pixel ? (1.0 / historyLength) : 0.0;
-	float alpha = is_new_pixel ? 1.0 : 0.0;
-	// If not new, we just keep history (alpha=0 means accumulated = history)
-	// But we want to slowly fade towards the neighbors if we are not rendering this pixel?
-	// Actually, the "HZD technique" usually means we only update the 1/4 pixels.
-	// The other 3/4 just stay as they were (reprojected).
-
+	float alpha = is_new_pixel ? (1.0 / historyLength) : 0.05;
 	vec4 accumulatedRGBA = is_new_pixel ? mix(historyRGBA, currentRGBA, alpha) : historyRGBA;
 	vec4 accumulatedDepth = is_new_pixel ? mix(historyDepthProps, currDepthProps, alpha) : historyDepthProps;
 
