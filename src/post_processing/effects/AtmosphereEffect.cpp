@@ -49,6 +49,12 @@ namespace Boidsish {
 				cloud_render_shader_->bindUniformBlock("VisualEffects", Constants::UboBinding::VisualEffects());
 				cloud_render_shader_->bindUniformBlock("TemporalData", Constants::UboBinding::TemporalData());
 				cloud_render_shader_->setInt("shadowMaps", Constants::TextureUnit::ShadowMaps());
+				cloud_render_shader_->setInt("u_transmittanceLUT", Constants::TextureUnit::AtmosphereTransmittance());
+				cloud_render_shader_->setInt("u_skyViewLUT", Constants::TextureUnit::AtmosphereSkyView());
+				cloud_render_shader_->trySetInt("u_noiseTexture", Constants::TextureUnit::NoiseSimplex());
+				cloud_render_shader_->trySetInt("u_curlTexture", Constants::TextureUnit::NoiseCurl());
+				cloud_render_shader_->trySetInt("u_blueNoiseTexture", Constants::TextureUnit::NoiseBlue());
+				cloud_render_shader_->trySetInt("u_extraNoiseTexture", Constants::TextureUnit::NoiseExtra());
 			}
 
 			if (temporal_shader_ && temporal_shader_->isValid()) {
@@ -353,10 +359,6 @@ namespace Boidsish {
 			// Composition still happens in a full-screen quad fragment shader for simplicity,
 			// though it could also be a compute shader.
 			glDrawArrays(GL_TRIANGLES, 0, 6);
-
-			// Store current VP for next frame's reprojection
-			prev_view_projection_ = projectionMatrix * viewMatrix;
-			frame_index_++;
 
 			// Cleanup
 			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereAerialPerspective());

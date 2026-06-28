@@ -5,14 +5,14 @@ layout(binding = 0, rgba16f) uniform image2D outColor;
 layout(binding = 1, rgba32f)  uniform image2D outDepth;
 layout(binding = 2, rgba32f)  uniform image2D outMoments;
 
-uniform sampler2D uPackedFrame;     // Packed quarter-res noisy cloud RGBA
-uniform sampler2D uPackedDepth;     // Packed quarter-res cloud distance/props
-uniform sampler2D uPackedVelocity;  // Packed quarter-res cloud velocity (XZ)
+uniform sampler2D uPackedFrame;
+uniform sampler2D uPackedDepth;
+uniform sampler2D uPackedVelocity;
 
-uniform sampler2D uHistoryFrame;     // Previous accumulated full-res cloud RGBA
-uniform sampler2D uSceneDepth;       // Full-res scene depth
-uniform sampler2D uHistoryCloudDepth;// Previous accumulated full-res cloud distance
-uniform sampler2D uHistoryMoments;    // Previous accumulated moments (Luma1, Luma2, Density2, historyLength)
+uniform sampler2D uHistoryFrame;
+uniform sampler2D uSceneDepth;
+uniform sampler2D uHistoryCloudDepth;
+uniform sampler2D uHistoryMoments;
 
 #include "../atmosphere/common.glsl"
 #include "../helpers/lighting.glsl"
@@ -37,34 +37,26 @@ vec3 YCoCgToRGB(vec3 ycocg) {
 	return vec3(r, g, b);
 }
 
-// Mitchell-Netravali Weight Function
-float mitchell(float x, float B, float C) {
+float mitchellWeight(float x) {
 	float ax = abs(x);
-	if (ax < 1.0) {
-		return ((12.0 - 9.0 * B - 6.0 * C) * ax * ax * ax +
-				(-18.0 + 12.0 * B + 6.0 * C) * ax * ax +
-				(6.0 - 2.0 * B)) / 6.0;
-	} else if (ax < 2.0) {
-		return ((-B - 6.0 * C) * ax * ax * ax +
-				(5.0 * B + 30.0 * C) * ax * ax +
-				(-8.0 * B - 48.0 * C) * ax +
-				(4.0 * B + 24.0 * C)) / 6.0;
-	}
+	if (ax < 1.0) return ((12.0 - 9.0 * 0.0 - 6.0 * 0.5) * ax * ax * ax + (-18.0 + 12.0 * 0.0 + 6.0 * 0.5) * ax * ax + (6.0 - 2.0 * 0.0)) / 6.0;
+	else if (ax < 2.0) return ((-0.0 - 6.0 * 0.5) * ax * ax * ax + (5.0 * 0.0 + 30.0 * 0.5) * ax * ax + (-8.0 * 0.0 - 48.0 * 0.5) * ax + (4.0 * 0.0 + 24.0 * 0.5)) / 6.0;
 	return 0.0;
 }
 
-// 2D Bicubic Texture Fetch
+// 2D Bicubic Texture Fetch (Mitchell-Netravali)
 vec4 textureMitchell(sampler2D tex, vec2 uv, vec2 textureSize) {
 	vec2 texelSize = 1.0 / textureSize;
 	uv = uv * textureSize - 0.5;
 	vec2 f = fract(uv);
 	vec2 c = floor(uv);
+
 	vec4 color = vec4(0.0);
 	float weightsSum = 0.0;
 	for (int j = -1; j <= 2; j++) {
-		float wy = mitchell(float(j) - f.y, 0.0, 0.75);
+		float wy = mitchellWeight(float(j) - f.y);
 		for (int i = -1; i <= 2; i++) {
-			float wx = mitchell(float(i) - f.x, 0.0, 0.75);
+			float wx = mitchellWeight(float(i) - f.x);
 			float weight = wx * wy;
 			vec2 pos = (c + vec2(i, j) + 0.5) * texelSize;
 			color += texture(tex, pos) * weight;
@@ -84,22 +76,18 @@ void main() {
 	ivec2 current_offset = bayer_offsets[frameIndex % 4];
 	bool is_new_pixel = (pixel % 2) == current_offset;
 
-	vec4 currentRGBA;
-	vec4 currDepthProps;
-	vec2 velocity;
-
 	ivec2 packedPixel = pixel / 2;
-	velocity = texelFetch(uPackedVelocity, packedPixel, 0).rg;
+	vec2 velocity = texelFetch(uPackedVelocity, packedPixel, 0).rg;
+	vec2 prevUV = uv + velocity;
+	bool validHistory = all(greaterThanEqual(prevUV, vec2(0.0))) && all(lessThanEqual(prevUV, vec2(1.0)));
 
+	vec4 currentRGBA = vec4(0.0);
+	vec4 currDepthProps = vec4(0.0);
 	if (is_new_pixel) {
 		currentRGBA = texelFetch(uPackedFrame, packedPixel, 0);
 		currDepthProps = texelFetch(uPackedDepth, packedPixel, 0);
 	}
 
-	vec2 prevUV = uv + velocity;
-	bool validHistory = all(greaterThanEqual(prevUV, vec2(0.0))) && all(lessThanEqual(prevUV, vec2(1.0)));
-
-	// Reproject History
 	vec4 historyRGBA = vec4(0.0);
 	vec4 historyMoments = vec4(0.0);
 	vec4 historyDepthProps = vec4(0.0);
@@ -110,20 +98,12 @@ void main() {
 		historyMoments = texture(uHistoryMoments, prevUV);
 		historyDepthProps = texture(uHistoryCloudDepth, prevUV);
 		historyLength = historyMoments.w;
-	}
 
-	// Depth disocclusion
-	float rawSceneDepth = texture(uSceneDepth, uv).r;
-	vec4 ndcDepth = vec4(uv * 2.0 - 1.0, rawSceneDepth * 2.0 - 1.0, 1.0);
-	vec4 viewSpaceScene = invProjection * ndcDepth;
-	float linearSceneDepth = -(viewSpaceScene.z / viewSpaceScene.w);
-	if (rawSceneDepth >= 1.0) linearSceneDepth = 50000.0 * worldScale;
-
-	if (is_new_pixel) {
-		float currentCloudDist = currDepthProps.r;
-		float currentCloudStep = currDepthProps.b;
-		if (abs(currentCloudDist - historyDepthProps.r) > currentCloudStep * 4.0) {
-			// validHistory = false;
+		if (is_new_pixel) {
+			float depthDiff = abs(currDepthProps.r - historyDepthProps.r);
+			if (depthDiff > currDepthProps.b * 8.0) {
+				validHistory = false;
+			}
 		}
 	}
 
@@ -134,17 +114,15 @@ void main() {
 			historyRGBA = currentRGBA;
 			historyDepthProps = currDepthProps;
 		} else {
-			// Guided fetch from history neighbors or just use current neighborhood if available
 			historyRGBA = vec4(0, 0, 0, 1);
+			historyDepthProps = vec4(50000.0 * worldScale, 50000.0 * worldScale, 100.0, 0.0);
 		}
 		historyMoments = vec4(0.0);
 	}
 
-	// Variance Clipping
 	vec3 m1 = vec3(0.0);
 	vec3 m2 = vec3(0.0);
 	float weightSum = 0.0;
-
 	for (int y = -2; y <= 2; y++) {
 		for (int x = -2; x <= 2; x++) {
 			ivec2 neighborPixel = pixel + ivec2(x, y);
@@ -154,7 +132,6 @@ void main() {
 			if ((neighborPixel % 2) == current_offset) {
 				sampleRGBA = texelFetch(uPackedFrame, neighborPixel / 2, 0);
 			} else {
-				// reprojection of previously known state is safer than current frame raw history here
 				sampleRGBA = texelFetch(uHistoryFrame, neighborPixel, 0);
 			}
 
@@ -168,7 +145,7 @@ void main() {
 
 	vec3 mean = m1 / weightSum;
 	vec3 stddev = sqrt(max(vec3(0.0), (m2 / weightSum) - (mean * mean)));
-	float gamma = is_new_pixel ? 1.5 : 0.75;
+	float gamma = is_new_pixel ? 1.5 : 0.5;
 	vec3 minColor = mean - stddev * gamma;
 	vec3 maxColor = mean + stddev * gamma;
 
@@ -176,7 +153,7 @@ void main() {
 	historyYCoCg = clamp(historyYCoCg, minColor, maxColor);
 	historyRGBA.rgb = YCoCgToRGB(historyYCoCg);
 
-	float alpha = is_new_pixel ? (1.0 / historyLength) : 0.05;
+	float alpha = is_new_pixel ? (1.0 / historyLength) : 0.02;
 	vec4 accumulatedRGBA = is_new_pixel ? mix(historyRGBA, currentRGBA, alpha) : historyRGBA;
 	vec4 accumulatedDepth = is_new_pixel ? mix(historyDepthProps, currDepthProps, alpha) : historyDepthProps;
 
