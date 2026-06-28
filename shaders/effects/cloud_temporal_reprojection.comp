@@ -220,7 +220,7 @@ void main() {
 
 	// 5. Accumulate
 	// float alpha = is_new_pixel ? (1.0 / historyLength) : 0.0;
-	float alpha = (is_new_pixel && currDepthProps.a > 0.01) ? 1.0 : 0.250;
+	float alpha = (is_new_pixel && currDepthProps.a > 0.01) ? 0.90 : 0.01;
 	// If not new, we just keep history (alpha=0 means accumulated = history)
 	// But we want to slowly fade towards the neighbors if we are not rendering this pixel?
 	// Actually, the "HZD technique" usually means we only update the 1/4 pixels.

@@ -171,6 +171,7 @@ void main() {
 	// float jitter = bayer4x4StepPhase(fullResPixel, uFrameIndex);
 	// float jitter = fastSpatiotemporalBlueNoise(fullResPixel, 0, uFrameIndex);
 	float jitter = InterleavedGradientNoise(fullResPixel, uFrameIndex);
+	// float jitter = 0.0;
 
 
 	vec3  cloudColor = vec3(0.0);
