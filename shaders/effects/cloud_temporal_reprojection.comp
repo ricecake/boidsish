@@ -37,6 +37,71 @@ vec3 YCoCgToRGB(vec3 ycocg) {
 	return vec3(r, g, b);
 }
 
+vec2 getDilatedVelocity_Thresholded(vec2 uv, vec2 texelSize) {
+    float closestDist = 50000.0;
+    vec2 bestVelocity = texture(uPackedVelocity, uv).xy;
+
+    // Baseline density of the current pixel to establish expectations
+    float centerDensity = texture(uPackedDepth, uv).a;
+
+    // We only trust depths from pixels that are at least 50% as dense as the center,
+    // or have a baseline solidity, ignoring the ultra-thin jittered shell.
+    float densityThreshold = max(centerDensity * 0.5, 0.1);
+
+    for (int y = -1; y <= 1; y++) {
+        for (int x = -1; x <= 1; x++) {
+            vec2 sampleUV = uv + vec2(x, y) * texelSize;
+
+            vec2 sampleVel = texture(uPackedVelocity, sampleUV).xy;
+            vec4 sampleProps = texture(uPackedDepth, sampleUV);
+
+            float sampleDist = sampleProps.r;
+            float sampleDensity = sampleProps.a;
+
+            // Only accept this depth if it's a solid hit
+            if (sampleDensity > densityThreshold && sampleDist < closestDist) {
+                closestDist = sampleDist;
+                bestVelocity = sampleVel;
+            }
+        }
+    }
+
+    return bestVelocity;
+}
+
+vec2 getDilatedVelocity_Weighted(vec2 uv, vec2 texelSize) {
+    vec2 sumVelocity = vec2(0.0);
+    float sumWeight = 0.0;
+
+    for (int y = -1; y <= 1; y++) {
+        for (int x = -1; x <= 1; x++) {
+            vec2 sampleUV = uv + vec2(x, y) * texelSize;
+
+            vec2 sampleVel = texture(uPackedVelocity, sampleUV).xy;
+            vec4 sampleProps = texture(uPackedDepth, sampleUV);
+
+            float sampleDepth = sampleProps.r;
+            float sampleDensity = sampleProps.a;
+
+            // Ignore pure sky pixels
+            if (sampleDepth > 40000.0) continue;
+
+            // Weight primarily by density to ignore jittered wisps.
+            // You can also divide by depth to slightly favor foregrounds.
+            float weight = sampleDensity * sampleDensity; // Square to penalize fuzzy edges
+
+            sumVelocity += sampleVel * weight;
+            sumWeight += weight;
+        }
+    }
+
+    if (sumWeight > 0.0001) {
+        return sumVelocity / sumWeight;
+    }
+
+    return texture(uPackedVelocity, uv).xy; // Fallback
+}
+
 // Mitchell-Netravali Weight Function
 float mitchell(float x, float B, float C) {
 	float ax = abs(x);
@@ -89,7 +154,7 @@ void main() {
 	bool is_new_pixel = (pixel % 2) == current_offset;
 
 	ivec2 packedPixel = pixel / 2;
-	vec2 velocity = texelFetch(uPackedVelocity, packedPixel, 0).rg;
+	vec2 velocity = getDilatedVelocity_Weighted(packedPixel, size);
 	vec2 prevUV = uv + velocity;
 	bool validHistory = all(greaterThanEqual(prevUV, vec2(0.0))) && all(lessThanEqual(prevUV, vec2(1.0)));
 
@@ -108,7 +173,12 @@ void main() {
 	float historyLength = 0.0;
 
 	if (validHistory) {
-		historyRGBA = textureMitchell(uHistoryFrame, prevUV, vec2(size));
+		if (length(velocity) < 0.01) {
+			historyRGBA = texture(uHistoryFrame, prevUV);
+		}
+		else {
+			historyRGBA = textureMitchell(uHistoryFrame, prevUV, vec2(size));
+		}
 		historyMoments = texture(uHistoryMoments, prevUV);
 		historyDepthProps = texture(uHistoryCloudDepth, prevUV);
 		historyLength = historyMoments.w;
