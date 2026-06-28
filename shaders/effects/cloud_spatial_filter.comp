@@ -94,7 +94,9 @@ void main() {
 			float sampleDensity = sampleProps.a;
 			float sampleTransmittance = sampleColor.a;
 			bool  sampleIsSky = sampleDepth > 40000.0;
-			float samplePhase = bayer4x4StepPhase(sampleCoord, uFrameIndex);
+			// float samplePhase = bayer4x4StepPhase(sampleCoord, uFrameIndex);
+			float samplePhase = InterleavedGradientNoise(sampleCoord, uFrameIndex);
+
 
 			// Shift the neighbor's depth to match the ray origin of the center pixel
 			// float phaseShift = (centerPhase - samplePhase) * centerStep;

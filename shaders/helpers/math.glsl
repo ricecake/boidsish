@@ -44,6 +44,14 @@ float bayer4x4StepPhase(ivec2 pixel, int index) {
 	// float jitter = float(bayer4x4[((pixel.y & 3) * 4 + (pixel.x & 3)) % 16]) / 16.0;
 }
 
+float InterleavedGradientNoise(vec2 uv, int FrameId){
+	uv += float(FrameId)  * (vec2(47, 17) * 0.695f);
+	vec3 magic = vec3( 0.06711056f, 0.00583715f, 52.9829189f );
+	//vec3 magic = vec3( 12.9898, 78.233, 43758.5453123 );
+	return fract(magic.z * fract(dot(uv, magic.xy)));
+}
+
+
 //  0, 1, 2, 3,
 //  4, 5, 6, 7
 //  8, 9,10,11
