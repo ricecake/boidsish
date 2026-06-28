@@ -205,6 +205,14 @@ namespace Boidsish {
 				cloud_render_shader_->setMat4("uPrevViewProjection", prev_view_projection_);
 				cloud_render_shader_->setBool("uHasHistory", has_valid_history_);
 
+				cloud_render_shader_->setInt("u_transmittanceLUT", Constants::TextureUnit::AtmosphereTransmittance());
+				cloud_render_shader_->setInt("u_skyViewLUT", Constants::TextureUnit::AtmosphereSkyView());
+				cloud_render_shader_->trySetInt("u_noiseTexture", Constants::TextureUnit::NoiseSimplex());
+				cloud_render_shader_->trySetInt("u_curlTexture", Constants::TextureUnit::NoiseCurl());
+				cloud_render_shader_->trySetInt("u_blueNoiseTexture", Constants::TextureUnit::NoiseBlue());
+				cloud_render_shader_->trySetInt("u_extraNoiseTexture", Constants::TextureUnit::NoiseExtra());
+
+
 				glActiveTexture(GL_TEXTURE0);
 				glBindTexture(GL_TEXTURE_2D, depthTexture);
 				glActiveTexture(GL_TEXTURE1);
