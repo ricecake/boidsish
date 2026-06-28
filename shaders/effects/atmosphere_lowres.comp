@@ -139,7 +139,7 @@ void main() {
 
 	// float jitter = bayer4x4StepPhase(fullResPixel, uFrameIndex);
 	// float jitter = fastSpatiotemporalBlueNoise(fullResPixel, 0, uFrameIndex);
-	float jitter = InterleavedGradientNoise(fullResPixel, FrameIndex);
+	float jitter = InterleavedGradientNoise(fullResPixel, frameIndex);
 	// float jitter = 0.0;
 
 
