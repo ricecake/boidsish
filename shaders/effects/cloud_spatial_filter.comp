@@ -3,23 +3,22 @@ layout(local_size_x = 8, local_size_y = 8) in;
 
 layout(binding = 0, rgba32f) uniform image2D outFilteredColor;
 
-uniform sampler2D uCloudColor;   // Accumulated RGBA or previous pass result
+uniform sampler2D uCloudColor;   // Accumulated RGBA
 uniform sampler2D uCloudDepth;   // Accumulated Depth Props (dist, lastHit, step, density)
 uniform sampler2D uCloudMoments; // Accumulated Moments (Luma1, Luma2, Density2, historyLength)
 uniform int       uStepSize;     // 1, 2, 4, 8, 16...
-uniform int   uFrameIndex;
 
+#include "../helpers/lighting.glsl"
+#include "../types/temporal_data.glsl"
 #include "lygia/color/luma.glsl"
 #include "helpers/math.glsl"
 
-// À-Trous B3-Spline Kernel (5x5)
 const float kernel[5] = float[](1.0/16.0, 1.0/4.0, 3.0/8.0, 1.0/4.0, 1.0/16.0);
 
 void main() {
 	ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
 	ivec2 size = imageSize(outFilteredColor);
-	if (pixel.x >= size.x || pixel.y >= size.y)
-		return;
+	if (pixel.x >= size.x || pixel.y >= size.y) return;
 
 	vec2 uv = (vec2(pixel) + 0.5) / vec2(size);
 	vec2 texelSize = 1.0 / vec2(size);
@@ -28,57 +27,20 @@ void main() {
 	vec4 centerProps = texture(uCloudDepth, uv);
 	vec4 centerMoments = texture(uCloudMoments, uv);
 
-	// imageStore(outFilteredColor, pixel, centerColor);
-	// return;
-
 	float centerDepth = centerProps.r;
 	float centerStep = centerProps.b;
 	float centerDensity = centerProps.a;
-	float centerTransmittance = centerColor.a;
-	bool  centerIsSky = centerDepth > 40000.0;
 	float centerHistory = centerMoments.w;
-	float centerPhase = bayer4x4StepPhase(pixel, uFrameIndex);
 
-
-	// Fetch smoothed moments to stabilize the edge-stopping bounds
-	vec4 smoothedMoments = vec4(0.0);
-	for (int y = -1; y <= 1; y++) {
-		for (int x = -1; x <= 1; x++) {
-			smoothedMoments += texture(uCloudMoments, uv + vec2(x, y) * texelSize);
-		}
-	}
-	smoothedMoments /= 9.0;
-
-
-	// Variance estimation
-	// float varLuma = max(0.0, centerMoments.y - centerMoments.x * centerMoments.x);
-	// float varDensity = max(0.0, centerMoments.z - centerDensity * centerDensity);
-	float varLuma = max(0.0, smoothedMoments.y - smoothedMoments.x * smoothedMoments.x);
-	float varDensity = max(0.0, smoothedMoments.z - centerDensity * centerDensity);
-
-	// SVGF-style: Use temporal variance to drive edge stopping
+	float varLuma = max(0.0, centerMoments.y - centerMoments.x * centerMoments.x);
 	float stdLuma = sqrt(varLuma);
-	float stdDensity = sqrt(varDensity);
 
-	// Adaptive thresholds based on noise levels and history length
-	// We trust history more as it accumulates, allowing for more aggressive blurring of initial noise
-	float historyScale = mix(8.0, 1.0, smoothstep(1.0, 10.0, centerHistory));
-	// Scale variance tolerance as the kernel expands
-	float stepScale = max(1.0, float(uStepSize) / 2);
+	float historyScale = mix(4.0, 1.0, smoothstep(1.0, 10.0, centerHistory));
+	float stepScale = max(1.0, float(uStepSize) / 2.0);
 
-	float phiLuma = (10.0 * stdLuma + 0.01) * historyScale * stepScale;
-	float phiDensity = (0.5 * stdDensity + 0.1) * historyScale * stepScale;
-	float phiTransmittance = (0.5 * stdDensity + 0.2) * historyScale * stepScale;
-
-	// float phiLuma = (10.0 * stdLuma + 0.01) * historyScale;
-	// float phiDensity = (0.5 * stdDensity + 0.1) * historyScale;
-	// float phiTransmittance = 0.1 * historyScale;
-	// float phiDepth = mix(15000.0, 1000.0, smoothstep(0.0, 0.4, centerDensity));
-
-	// float baseDepthTolerance = mix(4.0, 2.0, smoothstep(0.0, 0.4, centerDensity));
-	// float phiDepth = centerStep * baseDepthTolerance * stepScale;
-
-	float phiDepth = centerStep * mix(1.5, 0.5, smoothstep(0.0, 0.4, centerDensity)) * float(uStepSize);
+	float phiLuma = (10.0 * stdLuma + 0.02) * historyScale * stepScale;
+	float phiDepth = centerStep * mix(2.0, 1.0, smoothstep(0.0, 0.4, centerDensity)) * float(uStepSize);
+	float phiDensity = (0.5 * centerDensity + 0.1) * historyScale * stepScale;
 
 	vec4  sumColor = vec4(0.0);
 	float sumWeight = 0.0;
@@ -86,48 +48,21 @@ void main() {
 	for (int y = -2; y <= 2; y++) {
 		for (int x = -2; x <= 2; x++) {
 			vec2 offset = vec2(x, y) * float(uStepSize) * texelSize;
-			ivec2 sampleCoord = pixel + ivec2(x, y) * uStepSize;
 			vec4 sampleColor = texture(uCloudColor, uv + offset);
 			vec4 sampleProps = texture(uCloudDepth, uv + offset);
 
 			float sampleDepth = sampleProps.r;
 			float sampleDensity = sampleProps.a;
-			float sampleTransmittance = sampleColor.a;
-			bool  sampleIsSky = sampleDepth > 40000.0;
-			// float samplePhase = bayer4x4StepPhase(sampleCoord, uFrameIndex);
-			float samplePhase = InterleavedGradientNoise(sampleCoord, uFrameIndex);
 
-
-			// Shift the neighbor's depth to match the ray origin of the center pixel
-			// float phaseShift = (centerPhase - samplePhase) * centerStep;
-			// float alignedSampleDepth = sampleDepth + phaseShift;
-
-			// Edge stopping functions
-			// 1. Luma
 			float lumaWeight = exp(-abs(luma(centerColor.rgb) - luma(sampleColor.rgb)) / phiLuma);
-
-			// 2. Depth Edge-Stopping
-			float depthWeight = 1.0;
-			if (centerIsSky != sampleIsSky) {
-				depthWeight = 0.0;
-			} else if (!centerIsSky) {
-				float depthDiff = abs(centerDepth - sampleDepth);
-				depthWeight = exp(-depthDiff * depthDiff / (phiDepth * phiDepth));
-			}
-
-			// 3. Volumetric Density
+			float depthWeight = exp(-abs(centerDepth - sampleDepth) / phiDepth);
 			float densityWeight = exp(-abs(centerDensity - sampleDensity) / phiDensity);
 
-			// 4. Volumetric Transmittance (Alpha channel)
-			float transmittanceWeight = exp(-abs(centerTransmittance - sampleTransmittance) / phiTransmittance);
-
-			float weight = kernel[x + 2] * kernel[y + 2] * lumaWeight * depthWeight * densityWeight * transmittanceWeight;
-
+			float weight = kernel[x + 2] * kernel[y + 2] * lumaWeight * depthWeight * densityWeight;
 			sumColor += sampleColor * weight;
 			sumWeight += weight;
 		}
 	}
 
-	vec4 filteredResult = sumColor / max(sumWeight, 0.0001);
-	imageStore(outFilteredColor, pixel, filteredResult);
+	imageStore(outFilteredColor, pixel, sumColor / max(sumWeight, 0.0001));
 }
