@@ -5,26 +5,51 @@ uniform vec2      RESOLUTION;
 uniform float     uReduceMin;
 uniform float     uReduceMul;
 uniform float     uSpanMax;
+uniform float     uLumaThreshold;
 
 in vec2 TexCoords;
 out vec4 FragColor;
 
-// Fixed FXAA implementation to avoid "black sky" issue found in some library versions
-// and to ensure correct coordinate scaling.
-vec4 sampleFXAA_fixed(sampler2D tex, vec2 uv, vec2 pixel) {
-    vec3 rgbNW  = texture(tex, uv + vec2(-1.0, -1.0) * pixel).xyz;
-    vec3 rgbNE  = texture(tex, uv + vec2( 1.0, -1.0) * pixel).xyz;
-    vec3 rgbSW  = texture(tex, uv + vec2(-1.0,  1.0) * pixel).xyz;
-    vec3 rgbSE  = texture(tex, uv + vec2( 1.0,  1.0) * pixel).xyz;
-    vec4 rgbaM  = texture(tex, uv);
-    vec3 rgbM   = rgbaM.xyz;
+// HDR-safe luma calculation
+float getLuma(vec3 rgb) {
+    // Basic luma
+    float l = dot(rgb, vec3(0.299, 0.587, 0.114));
+    // Apply a simple tonemap to the luma for more stable edge detection in HDR
+    return l / (1.0 + l);
+}
 
-    vec3 luma   = vec3(0.299, 0.587, 0.114);
-    float lumaNW = dot(rgbNW, luma);
-    float lumaNE = dot(rgbNE, luma);
-    float lumaSW = dot(rgbSW, luma);
-    float lumaSE = dot(rgbSE, luma);
-    float lumaM  = dot(rgbM,  luma);
+vec3 safe_sample(vec2 uv) {
+    vec3 c = texture(screenTexture, uv).rgb;
+    // Replace NaNs and Infs with 0 to prevent black propagation
+    if (any(isnan(c)) || any(isinf(c))) return vec3(0.0);
+    return max(c, vec3(0.0));
+}
+
+void main() {
+    vec2 pixel = 1.0 / RESOLUTION;
+
+    vec4 colorM = texture(screenTexture, TexCoords);
+    vec3 rgbM = colorM.rgb;
+    if (any(isnan(rgbM)) || any(isinf(rgbM))) rgbM = vec3(0.0);
+    rgbM = max(rgbM, vec3(0.0));
+
+    float lumaM = getLuma(rgbM);
+
+    // Fast exit for low luma areas to preserve sky/dark details
+    if (lumaM < uLumaThreshold) {
+        FragColor = vec4(rgbM, colorM.a);
+        return;
+    }
+
+    vec3 rgbNW = safe_sample(TexCoords + vec2(-1.0, -1.0) * pixel);
+    vec3 rgbNE = safe_sample(TexCoords + vec2( 1.0, -1.0) * pixel);
+    vec3 rgbSW = safe_sample(TexCoords + vec2(-1.0,  1.0) * pixel);
+    vec3 rgbSE = safe_sample(TexCoords + vec2( 1.0,  1.0) * pixel);
+
+    float lumaNW = getLuma(rgbNW);
+    float lumaNE = getLuma(rgbNE);
+    float lumaSW = getLuma(rgbSW);
+    float lumaSE = getLuma(rgbSE);
 
     float lumaMin = min(lumaM, min(min(lumaNW, lumaNE), min(lumaSW, lumaSE)));
     float lumaMax = max(lumaM, max(max(lumaNW, lumaNE), max(lumaSW, lumaSE)));
@@ -40,20 +65,16 @@ vec4 sampleFXAA_fixed(sampler2D tex, vec2 uv, vec2 pixel) {
               max(vec2(-uSpanMax, -uSpanMax),
                   dir * rcpDirMin)) * pixel;
 
-    vec4 rgbA = 0.5 * (
-        texture(tex, uv + dir * (1.0/3.0 - 0.5)) +
-        texture(tex, uv + dir * (2.0/3.0 - 0.5)));
-    vec4 rgbB = rgbA * 0.5 + 0.25 * (
-        texture(tex, uv + dir * -0.5) +
-        texture(tex, uv + dir * 0.5));
+    vec3 rgbA = 0.5 * (
+        safe_sample(TexCoords + dir * (1.0/3.0 - 0.5)) +
+        safe_sample(TexCoords + dir * (2.0/3.0 - 0.5)));
+    vec3 rgbB = rgbA * 0.5 + 0.25 * (
+        safe_sample(TexCoords + dir * -0.5) +
+        safe_sample(TexCoords + dir * 0.5));
 
-    float lumaB = dot(rgbB.rgb, luma);
+    float lumaB = getLuma(rgbB);
     if ((lumaB < lumaMin) || (lumaB > lumaMax))
-        return vec4(rgbA.rgb, rgbaM.a);
+        FragColor = vec4(rgbA, colorM.a);
     else
-        return vec4(rgbB.rgb, rgbaM.a);
-}
-
-void main() {
-    FragColor = sampleFXAA_fixed(screenTexture, TexCoords, 1.0 / RESOLUTION);
+        FragColor = vec4(rgbB, colorM.a);
 }

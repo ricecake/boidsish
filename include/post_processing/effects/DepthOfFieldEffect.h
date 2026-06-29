@@ -17,20 +17,20 @@ namespace Boidsish {
             void Apply(GLuint sourceTexture, GLuint depthTexture, GLuint velocityTexture, GLuint normalTexture, GLuint albedoTexture, const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix, const glm::vec3& cameraPos) override;
             void Resize(int width, int height) override;
 
-            void SetFocusPoint(float focusPoint) { focusPoint_ = focusPoint; }
-            float GetFocusPoint() const { return focusPoint_; }
+            void SetFocusDistance(float dist) { manualFocusDistance_ = dist; }
+            float GetFocusDistance() const { return manualFocusDistance_; }
 
-            void SetFocusScale(float focusScale) { focusScale_ = focusScale; }
+            void SetFocusScale(float scale) { focusScale_ = scale; }
             float GetFocusScale() const { return focusScale_; }
 
-            void SetBlurSize(float blurSize) { blurSize_ = blurSize; }
+            void SetBlurSize(float size) { blurSize_ = size; }
             float GetBlurSize() const { return blurSize_; }
 
-            void SetAutofocus(bool enabled) { autofocus_ = enabled; }
-            bool IsAutofocusEnabled() const { return autofocus_; }
+            void SetAutofocus(bool enabled) { autofocusEnabled_ = enabled; }
+            bool IsAutofocusEnabled() const { return autofocusEnabled_; }
 
-            void SetFocusOffset(const glm::vec2& offset) { focusOffset_ = offset; }
-            glm::vec2 GetFocusOffset() const { return focusOffset_; }
+            void SetFocalPointOffset(const glm::vec2& offset) { focalPointOffset_ = offset; }
+            glm::vec2 GetFocalPointOffset() const { return focalPointOffset_; }
 
             void SetMinFocusDistance(float dist) { minFocusDistance_ = dist; }
             float GetMinFocusDistance() const { return minFocusDistance_; }
@@ -42,14 +42,15 @@ namespace Boidsish {
             std::unique_ptr<Shader> shader_;
             int width_;
             int height_;
-            float focusPoint_;
-            float focusScale_;
-            float blurSize_;
 
-            bool autofocus_;
-            glm::vec2 focusOffset_;
+            bool autofocusEnabled_;
+            float manualFocusDistance_;
+            glm::vec2 focalPointOffset_;
             float minFocusDistance_;
             float maxFocusDistance_;
+
+            float focusScale_;
+            float blurSize_;
         };
 
     } // namespace PostProcessing

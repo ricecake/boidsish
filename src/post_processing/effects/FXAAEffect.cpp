@@ -5,7 +5,8 @@ namespace Boidsish {
     namespace PostProcessing {
 
         FXAAEffect::FXAAEffect()
-            : reduceMin_(1.0f/128.0f), reduceMul_(1.0f/8.0f), spanMax_(8.0f), width_(0), height_(0) {
+            : reduceMin_(1.0f/128.0f), reduceMul_(1.0f/8.0f), spanMax_(8.0f),
+              lumaThreshold_(0.01f), mulAlpha_(false), width_(0), height_(0) {
             name_ = "FXAA";
             is_enabled_ = false;
         }
@@ -26,6 +27,8 @@ namespace Boidsish {
             shader_->setFloat("uReduceMin", reduceMin_);
             shader_->setFloat("uReduceMul", reduceMul_);
             shader_->setFloat("uSpanMax", spanMax_);
+            shader_->setFloat("uLumaThreshold", lumaThreshold_);
+            shader_->setBool("uMulAlpha", mulAlpha_);
 
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, sourceTexture);

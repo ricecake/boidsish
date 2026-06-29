@@ -42,6 +42,13 @@ namespace Boidsish {
 				const glm::vec3& cameraPos,
 				float            time
 			);
+
+			void ApplyVeryLateEffects(
+				const glm::mat4& viewMatrix,
+				const glm::mat4& projectionMatrix,
+				const glm::vec3& cameraPos,
+				float            time
+			);
 			void ApplyLateEffects(
 				const glm::mat4& viewMatrix,
 				const glm::mat4& projectionMatrix,

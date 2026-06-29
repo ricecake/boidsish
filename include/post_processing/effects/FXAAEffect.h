@@ -17,6 +17,8 @@ namespace Boidsish {
             void Apply(GLuint sourceTexture, GLuint depthTexture, GLuint velocityTexture, GLuint normalTexture, GLuint albedoTexture, const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix, const glm::vec3& cameraPos) override;
             void Resize(int width, int height) override;
 
+			bool IsVeryLate() const override { return true; }
+
             void SetReduceMin(float val) { reduceMin_ = val; }
             float GetReduceMin() const { return reduceMin_; }
 
@@ -26,6 +28,12 @@ namespace Boidsish {
             void SetSpanMax(float val) { spanMax_ = val; }
             float GetSpanMax() const { return spanMax_; }
 
+            void SetLumaThreshold(float val) { lumaThreshold_ = val; }
+            float GetLumaThreshold() const { return lumaThreshold_; }
+
+            void SetMulAlpha(bool val) { mulAlpha_ = val; }
+            bool GetMulAlpha() const { return mulAlpha_; }
+
         private:
             std::unique_ptr<Shader> shader_;
             int width_;
@@ -33,6 +41,8 @@ namespace Boidsish {
             float reduceMin_;
             float reduceMul_;
             float spanMax_;
+            float lumaThreshold_;
+            bool mulAlpha_;
         };
 
     } // namespace PostProcessing

@@ -131,7 +131,22 @@ namespace Boidsish {
 			PROJECT_PROFILE_SCOPE("ApplyLateEffects");
 
 			for (const auto& effect : pre_tone_mapping_effects_) {
-				if (effect->IsEnabled() && !effect->IsEarly()) {
+				if (effect->IsEnabled() && !effect->IsEarly() && !effect->IsVeryLate()) {
+					ApplyEffectInternal(effect, viewMatrix, projectionMatrix, cameraPos, time);
+				}
+			}
+		}
+
+		void PostProcessingManager::ApplyVeryLateEffects(
+			const glm::mat4& viewMatrix,
+			const glm::mat4& projectionMatrix,
+			const glm::vec3& cameraPos,
+			float            time
+		) {
+			PROJECT_PROFILE_SCOPE("ApplyVeryLateEffects");
+
+			for (const auto& effect : pre_tone_mapping_effects_) {
+				if (effect->IsEnabled() && effect->IsVeryLate()) {
 					ApplyEffectInternal(effect, viewMatrix, projectionMatrix, cameraPos, time);
 				}
 			}

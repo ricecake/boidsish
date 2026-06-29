@@ -152,6 +152,7 @@ namespace Boidsish {
 
 		if (effects_enabled && post_fx) {
 			post_fx->ApplyLateEffects(frame.view, frame.projection, frame.camera_pos, frame.simulation_time);
+			post_fx->ApplyVeryLateEffects(frame.view, frame.projection, frame.camera_pos, frame.simulation_time);
 			GLuint final_texture = post_fx->GetFinalTexture();
 
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);

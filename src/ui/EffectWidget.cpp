@@ -96,9 +96,9 @@ namespace Boidsish {
 								}
 
 								if (autofocus) {
-									glm::vec2 offset = dof_effect->GetFocusOffset();
+									glm::vec2 offset = dof_effect->GetFocalPointOffset();
 									if (ImGui::SliderFloat2("Focus Offset##DoF", &offset.x, -0.5f, 0.5f)) {
-										dof_effect->SetFocusOffset(offset);
+										dof_effect->SetFocalPointOffset(offset);
 									}
 									float minDist = dof_effect->GetMinFocusDistance();
 									if (ImGui::SliderFloat("Min Distance##DoF", &minDist, 0.01f, 10.0f)) {
@@ -109,9 +109,9 @@ namespace Boidsish {
 										dof_effect->SetMaxFocusDistance(maxDist);
 									}
 								} else {
-									float focusPoint = dof_effect->GetFocusPoint();
-									if (ImGui::SliderFloat("Focus Distance##DoF", &focusPoint, 0.1f, 1000.0f)) {
-										dof_effect->SetFocusPoint(focusPoint);
+									float focusDist = dof_effect->GetFocusDistance();
+									if (ImGui::SliderFloat("Focus Distance##DoF", &focusDist, 0.1f, 1000.0f)) {
+										dof_effect->SetFocusDistance(focusDist);
 									}
 								}
 
@@ -140,6 +140,10 @@ namespace Boidsish {
 								float spanMax = fxaa_effect->GetSpanMax();
 								if (ImGui::SliderFloat("Span Max##FXAA", &spanMax, 0.0f, 20.0f)) {
 									fxaa_effect->SetSpanMax(spanMax);
+								}
+								float lumaThreshold = fxaa_effect->GetLumaThreshold();
+								if (ImGui::SliderFloat("Luma Threshold##FXAA", &lumaThreshold, 0.0f, 0.5f)) {
+									fxaa_effect->SetLumaThreshold(lumaThreshold);
 								}
 							}
 						}
