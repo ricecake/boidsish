@@ -23,10 +23,10 @@ float getLinearDepth(vec2 uv) {
 
     vec4 clipSpacePos = vec4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
     vec4 viewSpacePos = uInvProjection * clipSpacePos;
+    if (abs(viewSpacePos.w) < 0.0001) return 50000.0;
     return -viewSpacePos.z / viewSpacePos.w;
 }
 
-// Sample depth with a small kernel for more stable autofocus
 float getStableFocusDepth(vec2 uv) {
     float d = 0.0;
     vec2 off = 1.0 / RESOLUTION;
@@ -36,6 +36,12 @@ float getStableFocusDepth(vec2 uv) {
     d += getLinearDepth(uv + vec2(0.0, off.y));
     d += getLinearDepth(uv + vec2(0.0, -off.y));
     return d / 5.0;
+}
+
+vec4 safe_sample(vec2 uv) {
+    vec4 c = texture(screenTexture, uv);
+    if (any(isnan(c)) || any(isinf(c))) return vec4(0.0);
+    return max(c, vec4(0.0));
 }
 
 void main() {
@@ -51,17 +57,18 @@ void main() {
     float blurSize = abs(coc) * uBlurSize;
 
     if (blurSize < 0.05) {
-        FragColor = texture(screenTexture, TexCoords);
+        FragColor = safe_sample(TexCoords);
         return;
     }
 
     vec2 pixelSize = 1.0 / RESOLUTION;
-    vec4 color = texture(screenTexture, TexCoords);
+    vec4 colorSum = safe_sample(TexCoords);
+    float totalWeight = 1.0;
 
-    float tot = 1.0;
     float radius = 0.5;
     const float GOLDEN_ANGLE = 2.39996323;
 
+    // Standard weighted accumulation loop (more stable than incremental average for HDR)
     for (float ang = 0.0; radius < blurSize; ang += GOLDEN_ANGLE) {
         vec2 tc = TexCoords + vec2(cos(ang), sin(ang)) * pixelSize * radius;
         float sampleDepth = getLinearDepth(tc);
@@ -69,22 +76,18 @@ void main() {
         float sampleCoc = clamp((1.0/focusDist - 1.0/sampleDepth) * uFocusScale, -1.0, 1.0);
         float sampleBlurSize = abs(sampleCoc) * uBlurSize;
 
+        // Bleeding prevention: don't let far objects blur over near ones
         if (sampleDepth > centerDepth)
             sampleBlurSize = clamp(sampleBlurSize, 0.0, blurSize * 2.0);
 
-        float pct = smoothstep(radius - 0.5, radius + 0.5, sampleBlurSize);
-        vec4 sampleColor = texture(screenTexture, tc);
+        float weight = smoothstep(radius - 0.5, radius + 0.5, sampleBlurSize);
+        vec4 sampleColor = safe_sample(tc);
 
-        // Protect against NaNs/Infs in the source texture
-        if (any(isnan(sampleColor)) || any(isinf(sampleColor))) {
-            sampleColor = vec4(0.0);
-            pct = 0.0;
-        }
+        colorSum += sampleColor * weight;
+        totalWeight += weight;
 
-        color += mix(color/tot, sampleColor, pct);
-        tot += 1.0;
         radius += 0.5 / radius;
     }
 
-    FragColor = color / tot;
+    FragColor = colorSum / max(totalWeight, 0.0001);
 }
