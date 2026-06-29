@@ -146,6 +146,7 @@ void main() {
 	vec3  cloudColor = vec3(0.0);
 	float cloudTransmittance = 1.0;
 	float totalWeight = 0.0;
+	float weightedDistSum = 0.0;
 	float firstHitDist = -1.0;
 	float lastHitDist = -1.0;
 	float pathDensity = 0.0;
@@ -159,7 +160,8 @@ void main() {
 
 	if (t_start < t_end) {
 		vec3 lightEnergy = vec3(0.0);
-		int shadow_samples = 5;
+		float prevDensity = 0.0;
+		const int shadow_samples = 5;
 
 		vec3 primaryLightDir = vec3(0, 1, 0);
 		for (int j = 0; j < num_lights; j++) {
@@ -215,10 +217,12 @@ void main() {
 
 			pathDensity = max(pathDensity, d);
 
-			if (d > 0.000) {
-				float integrationStep = (historyMult > 1.1) ? baseStepSize : currentStepSize;
-				float stepDensity = d * integrationStep * 0.0071;
+			float integrationStep = (historyMult > 1.1) ? baseStepSize : currentStepSize;
+			if (d > 0.000 || prevDensity > 0.000) {
+				float averageDensity = (prevDensity + d) * 0.5;
+				float stepDensity = averageDensity * integrationStep * 0.01;
 				float transmittanceAtStep = exp(-stepDensity);
+				float stepWeight = cloudTransmittance * (1.0 - transmittanceAtStep);
 
 				vec3 stepScattering = vec3(0.0);
 				for (int j = 0; j < num_lights; j++) {
@@ -276,13 +280,15 @@ void main() {
 				vec3  S = (stepScattering + ambient * smoothstep(0.0, 1.0, h_norm));
 
 				float weight = cloudTransmittance * (1.0 - transmittanceAtStep);
+				weightedDistSum += step_t * weight;
 				lightEnergy += S * weight;
 				totalWeight += weight;
 
 				cloudTransmittance *= transmittanceAtStep;
 			}
 
-			t += currentStepSize;
+			t += integrationStep;
+			prevDensity = d;
 			if (cloudTransmittance < 0.01) break;
 		}
 
@@ -293,18 +299,26 @@ void main() {
 	vec4 finalDepth;
 	vec2 finalVelocity;
 
-	if (firstHitDist > 0.0 && totalWeight > 0.001) {
+	if (totalWeight > 0.001) { // Replaces the check against firstHitDist
+		// Calculate the stabilized center of mass for this ray
+		float stableHitDist = weightedDistSum / totalWeight;
+
+		// You can still output first/last hit for depth-of-field or spatial filtering,
+		// but use the stable distance purely for motion vectors.
 		finalDepth = vec4(firstHitDist, lastHitDist, firstStepSize, pathDensity);
 
-		vec3 hitWorldPos = viewPos + canonicalRayDir * firstHitDist;
-		float hitAltitude = length(hitWorldPos - earthCenter) - R_earth;
+		// Reproject using the stabilized hit position
+		vec3 stableHitPos = viewPos + canonicalRayDir * stableHitDist;
+		float hitAltitude = length(stableHitPos - earthCenter) - R_earth;
 		float h_norm = clamp((hitAltitude - props.altitude * props.worldScale) / max(props.thickness * props.worldScale, 1.0), 0.0, 1.0);
+
 		vec3 advectionOffset = getCloudAdvectionOffset(h_norm, time);
 		vec3 prevAdvectionOffset = getCloudAdvectionOffset(h_norm, time - uDeltaTime);
 
-		vec3 prevHitPos = hitWorldPos - advectionOffset + prevAdvectionOffset;
+		vec3 prevHitPos = stableHitPos - advectionOffset + prevAdvectionOffset;
 		vec4 prevClipHit = uPrevViewProjection * vec4(prevHitPos, 1.0);
 		vec2 prevScreenUV = (prevClipHit.xy / prevClipHit.w) * 0.5 + 0.5;
+
 		finalVelocity = prevScreenUV - TexCoords;
 	} else {
 		finalDepth = vec4(50000.0 * worldScale, 50000.0 * worldScale, firstStepSize, pathDensity);
