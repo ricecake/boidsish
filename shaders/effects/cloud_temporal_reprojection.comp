@@ -38,68 +38,163 @@ vec3 YCoCgToRGB(vec3 ycocg) {
 }
 
 vec2 getDilatedVelocity_Thresholded(vec2 uv, vec2 texelSize) {
-    float closestDist = 50000.0;
-    vec2 bestVelocity = texture(uPackedVelocity, uv).xy;
+	float closestDist = 50000.0;
+	vec2 bestVelocity = texture(uPackedVelocity, uv).xy;
 
-    // Baseline density of the current pixel to establish expectations
-    float centerDensity = texture(uPackedDepth, uv).a;
+	// Baseline density of the current pixel to establish expectations
+	float centerDensity = texture(uPackedDepth, uv).a;
 
-    // We only trust depths from pixels that are at least 50% as dense as the center,
-    // or have a baseline solidity, ignoring the ultra-thin jittered shell.
-    float densityThreshold = max(centerDensity * 0.5, 0.1);
+	// We only trust depths from pixels that are at least 50% as dense as the center,
+	// or have a baseline solidity, ignoring the ultra-thin jittered shell.
+	float densityThreshold = max(centerDensity * 0.5, 0.1);
 
-    for (int y = -1; y <= 1; y++) {
-        for (int x = -1; x <= 1; x++) {
-            vec2 sampleUV = uv + vec2(x, y) * texelSize;
+	for (int y = -1; y <= 1; y++) {
+		for (int x = -1; x <= 1; x++) {
+			vec2 sampleUV = uv + vec2(x, y) * texelSize;
 
-            vec2 sampleVel = texture(uPackedVelocity, sampleUV).xy;
-            vec4 sampleProps = texture(uPackedDepth, sampleUV);
+			vec2 sampleVel = texture(uPackedVelocity, sampleUV).xy;
+			vec4 sampleProps = texture(uPackedDepth, sampleUV);
 
-            float sampleDist = sampleProps.r;
-            float sampleDensity = sampleProps.a;
+			float sampleDist = sampleProps.r;
+			float sampleDensity = sampleProps.a;
 
-            // Only accept this depth if it's a solid hit
-            if (sampleDensity > densityThreshold && sampleDist < closestDist) {
-                closestDist = sampleDist;
-                bestVelocity = sampleVel;
-            }
-        }
-    }
+			// Only accept this depth if it's a solid hit
+			if (sampleDensity > densityThreshold && sampleDist < closestDist) {
+				closestDist = sampleDist;
+				bestVelocity = sampleVel;
+			}
+		}
+	}
 
-    return bestVelocity;
+	return bestVelocity;
 }
 
 vec2 getDilatedVelocity_Weighted(vec2 uv, vec2 texelSize) {
-    vec2 sumVelocity = vec2(0.0);
-    float sumWeight = 0.0;
+	vec2 sumVelocity = vec2(0.0);
+	float sumWeight = 0.0;
 
-    for (int y = -1; y <= 1; y++) {
-        for (int x = -1; x <= 1; x++) {
-            vec2 sampleUV = uv + vec2(x, y) * texelSize;
+	for (int y = -1; y <= 1; y++) {
+		for (int x = -1; x <= 1; x++) {
+			vec2 sampleUV = uv + vec2(x, y) * texelSize;
 
-            vec2 sampleVel = texture(uPackedVelocity, sampleUV).xy;
-            vec4 sampleProps = texture(uPackedDepth, sampleUV);
+			vec2 sampleVel = texture(uPackedVelocity, sampleUV).xy;
+			vec4 sampleProps = texture(uPackedDepth, sampleUV);
 
-            float sampleDepth = sampleProps.r;
-            float sampleDensity = sampleProps.a;
+			float sampleDepth = sampleProps.r;
+			float sampleDensity = sampleProps.a;
 
-            // Ignore pure sky pixels
-            if (sampleDepth > 40000.0) continue;
+			// Ignore pure sky pixels
+			if (sampleDepth > 40000.0) continue;
 
-            // Weight primarily by density to ignore jittered wisps.
-            // You can also divide by depth to slightly favor foregrounds.
-            float weight = sampleDensity * sampleDensity; // Square to penalize fuzzy edges
+			// Weight primarily by density to ignore jittered wisps.
+			// You can also divide by depth to slightly favor foregrounds.
+			float weight = sampleDensity * sampleDensity; // Square to penalize fuzzy edges
 
-            sumVelocity += sampleVel * weight;
-            sumWeight += weight;
-        }
-    }
+			sumVelocity += sampleVel * weight;
+			sumWeight += weight;
+		}
+	}
 
-    if (sumWeight > 0.0001) {
-        return sumVelocity / sumWeight;
-    }
+	if (sumWeight > 0.0001) {
+		return sumVelocity / sumWeight;
+	}
 
-    return texture(uPackedVelocity, uv).xy; // Fallback
+	return texture(uPackedVelocity, uv).xy; // Fallback
+}
+
+struct NeighborhoodStats {
+	vec3 spatialMean;
+	vec3 stddev;
+	float alphaMean;
+	float alphaStddev;
+};
+
+NeighborhoodStats computeNeighborhoodStats(sampler2D frameTex, vec2 uv, vec2 texelSize) {
+	vec3 m1 = vec3(0.0);
+	vec3 m2 = vec3(0.0);
+	float alphaM1 = 0.0;
+	float alphaM2 = 0.0;
+	float weightSum = 0.0;
+
+	// 3x3 Rounded Gaussian weights
+	float weights[3] = float[](0.25, 0.5, 0.25);
+
+	for (int y = -1; y <= 1; y++) {
+		for (int x = -1; x <= 1; x++) {
+			vec2 sampleUV = uv + vec2(x, y) * texelSize;
+			vec4 smp = texture(frameTex, sampleUV);
+
+			vec3 ycocg = RGBToYCoCg(smp.rgb);
+			float opacity = 1.0 - smp.a;
+
+			float w = weights[abs(x)] * weights[abs(y)];
+
+			m1 += ycocg * w;
+			m2 += ycocg * ycocg * w;
+			alphaM1 += opacity * w;
+			alphaM2 += opacity * opacity * w;
+			weightSum += w;
+		}
+	}
+
+	NeighborhoodStats stats;
+	stats.spatialMean = m1 / weightSum;
+	stats.stddev = sqrt(max(vec3(0.0), (m2 / weightSum) - (stats.spatialMean * stats.spatialMean)));
+
+	stats.alphaMean = alphaM1 / weightSum;
+	stats.alphaStddev = sqrt(max(0.0, (alphaM2 / weightSum) - (stats.alphaMean * stats.alphaMean)));
+
+	return stats;
+}
+
+
+vec3 calculateDynamicExtents(vec3 spatialStdDev, vec4 historyMoments, float baseGamma) {
+	float histLumaMean = historyMoments.x;
+	float histLumaSqMean = historyMoments.y;
+	float temporalVar = max(0.0, histLumaSqMean - (histLumaMean * histLumaMean));
+	float temporalStdDev = sqrt(temporalVar);
+
+	// Combine spatial and temporal variance.
+	// If the history is highly variant, we expand the box to let the dither integrate.
+	vec3 extents = max(spatialStdDev * baseGamma, vec3(temporalStdDev * (baseGamma * 0.75)));
+
+	// Hard floor to prevent the bounding box from collapsing entirely on static edges
+	vec3 minExtents = vec3(0.02);
+	return max(extents, minExtents);
+}
+
+vec3 clipAABB(vec3 historyYCoCg, vec3 spatialMean, vec3 minColor, vec3 maxColor) {
+	vec3 clipDir = spatialMean - historyYCoCg;
+	vec3 clipFactors = vec3(1.0);
+
+	for (int i = 0; i < 3; i++) {
+		if (abs(clipDir[i]) > 0.0001) {
+			if (historyYCoCg[i] < minColor[i])
+				clipFactors[i] = (minColor[i] - historyYCoCg[i]) / clipDir[i];
+			else if (historyYCoCg[i] > maxColor[i])
+				clipFactors[i] = (maxColor[i] - historyYCoCg[i]) / clipDir[i];
+			else
+				clipFactors[i] = 0.0; // History is safely inside bounds
+		}
+	}
+	float clipT = clamp(max(clipFactors.x, max(clipFactors.y, clipFactors.z)), 0.0, 1.0);
+	return mix(historyYCoCg, spatialMean, clipT);
+}
+
+float clipAlpha(float historyAlpha, float minAlpha, float maxAlpha, float centerAlpha) {
+	float clipDir = centerAlpha - historyAlpha;
+	float clipFactor = 1.0;
+
+	if (abs(clipDir) > 0.0001) {
+		if (historyAlpha < minAlpha) {
+			clipFactor = (minAlpha - historyAlpha) / clipDir;
+		} else if (historyAlpha > maxAlpha) {
+			clipFactor = (maxAlpha - historyAlpha) / clipDir;
+		} else {
+			clipFactor = 0.0;
+		}
+	}
+	return mix(historyAlpha, centerAlpha, clamp(clipFactor, 0.0, 1.0));
 }
 
 // Mitchell-Netravali Weight Function
@@ -206,39 +301,24 @@ void main() {
 
 	float historyPathDensity = historyDepthProps.a;
 
-	vec3 m1 = vec3(0.0);
-	vec3 m2 = vec3(0.0);
-	float weightSum = 0.0;
-	for (int y = -2; y <= 2; y++) {
-		for (int x = -2; x <= 2; x++) {
-			ivec2 neighborPixel = pixel + ivec2(x, y);
-			if (any(lessThan(neighborPixel, ivec2(0))) || any(greaterThanEqual(neighborPixel, size))) continue;
+	NeighborhoodStats stats = computeNeighborhoodStats(uPackedFrame, uv, texelSize);
 
-			vec4 sampleRGBA;
-			if ((neighborPixel % 2) == current_offset) {
-				sampleRGBA = texelFetch(uPackedFrame, neighborPixel / 2, 0);
-			} else {
-				sampleRGBA = texelFetch(uHistoryFrame, neighborPixel, 0);
-			}
+	vec3 extents = calculateDynamicExtents(stats.stddev, historyMoments, 1.5);
+	vec3 minColor = stats.spatialMean - extents;
+	vec3 maxColor = stats.spatialMean + extents;
 
-			float w = exp(-float(x*x + y*y) / 4.0);
-			vec3 ycocg = RGBToYCoCg(sampleRGBA.rgb);
-			m1 += ycocg * w;
-			m2 += ycocg * ycocg * w;
-			weightSum += w;
-		}
-	}
-
-	vec3 mean = m1 / weightSum;
-	vec3 stddev = sqrt(max(vec3(0.0), (m2 / weightSum) - (mean * mean)));
-	float gamma = is_new_pixel ? 1.5 : 0.5;
-	vec3 minColor = mean - stddev * gamma;
-	vec3 maxColor = mean + stddev * gamma;
+	float minAlpha = stats.alphaMean - stats.alphaStddev * 1.5;
+	float maxAlpha = stats.alphaMean + stats.alphaStddev * 1.5;
 
 	vec3 historyYCoCg = RGBToYCoCg(historyRGBA.rgb);
-	historyYCoCg = clamp(historyYCoCg, minColor, maxColor);
-	historyRGBA.rgb = YCoCgToRGB(historyYCoCg);
+	float historyOpacity = clamp(1.0 - historyRGBA.a, 0.0, 1.0);
 
+	// Apply clips
+	historyYCoCg = clipAABB(historyYCoCg, stats.spatialMean, minColor, maxColor);
+	float clippedOpacity = clipAlpha(historyOpacity, minAlpha, maxAlpha, stats.alphaMean);
+
+	historyRGBA.rgb = YCoCgToRGB(historyYCoCg);
+	historyRGBA.a = 1.0 - clamp(clippedOpacity, 0.0, 1.0); // Convert back to transmittance
 
 	// 5. Accumulate
 	float densityDiff = currentPathDensity - historyPathDensity;
@@ -249,12 +329,12 @@ void main() {
 	// If density drops by more than 40% (relativeDiff < -0.4), start rejecting.
 	// Leading edges (cloud enters pixel) cause less offensive ghosting. Be forgiving
 	// to prevent the dither noise from surviving the edge.
-	float trailingEdgeRejection = smoothstep(-0.2, -0.6, relativeDiff);
+	float trailingEdgeRejection = 1.0 - smoothstep(-0.6, -0.2, relativeDiff);
 	float leadingEdgeRejection = smoothstep(0.5, 0.9, relativeDiff);
 
 	float rejectionFactor = max(trailingEdgeRejection, leadingEdgeRejection);
 	float pixelSpeed = length(velocity * size);
-	float motionConfidence = smoothstep(0.1, 1.0, pixelSpeed); // Only reject if actually moving
+	float motionConfidence = 1.0;//smoothstep(0.1, 1.0, pixelSpeed); // Only reject if actually moving
 
 	rejectionFactor *= motionConfidence;
 

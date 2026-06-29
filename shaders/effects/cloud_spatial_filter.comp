@@ -26,6 +26,8 @@ void main() {
 	vec4 centerColor = texture(uCloudColor, uv);
 	vec4 centerProps = texture(uCloudDepth, uv);
 	vec4 centerMoments = texture(uCloudMoments, uv);
+	// imageStore(outFilteredColor, pixel, centerColor);
+	// return;
 
 	float centerDepth = centerProps.r;
 	float centerStep = centerProps.b;

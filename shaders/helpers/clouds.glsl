@@ -383,7 +383,7 @@ float calculateCloudDensityExpV3(
 	// 	return remapClamp(baseNoise*heightGradient*2.0, 0, 1.0, 0.0, props.densityBase);
 	// }
 
-	// vec3 p_warped = (p_deadvected+10*fastCurl3d((p_warp) / (50000.0 * props.worldScale))) / (1000.0 * props.worldScale);
+	vec3 p_warped = (p_deadvected+10*fastCurl3d((p_warp) / (50000.0 * props.worldScale))) / (1000.0 * props.worldScale);
 
 	vec2 worley = vec2(0);
 	for (float i = 0; i < 3; i++) {
@@ -391,7 +391,7 @@ float calculateCloudDensityExpV3(
 	}
 
 	float ridge = abs(fastRidge3d(p_descaled*5));
-	float fbm = fastWarpedFbm3d(p_descaled*10);
+	float fbm = fastWarpedFbm3d(p_warped/3);
 
 	// return step(coverageThreshold, worley.x*step(coverageThreshold, worley.y)) * remapClamp(baseNoise, mix(worley.x, fastFbmCurl3d(p_scaled), h) * 0.5, 1.0, 0.0, props.densityBase);
 	// float val = remapClamp(baseNoise*heightGradient*2, mix(max(worley.y, worley.x), fbm, smoothstep(0.25, 0.75, h)), 1.0, 0.0, props.densityBase);

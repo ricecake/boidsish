@@ -31,12 +31,12 @@ float bayer4x4StepPhase(ivec2 pixel, int index) {
 	// int timer = ((index) / 2) + 2 * (index%2);
 	// ivec2 pixelOffset = ivec2(timer % 4, (timer + 2) %4);
 
-	ivec2 pixelOffset = ivec2(index % 4, (index + 2) %4);
-	pixel += pixelOffset;
+	// ivec2 pixelOffset = ivec2(index % 4, (index + 2) %4);
+	// pixel += pixelOffset;
 
-	if (index % 2 > 0) {
-		return float(bayer4x4[((pixel.y & 3) * 4 + (pixel.x & 3)) % 16]) / 16.0;
-	}
+	// if (index % 2 > 0) {
+	// 	return float(bayer4x4[((pixel.y & 3) * 4 + (pixel.x & 3)) % 16]) / 16.0;
+	// }
 	return float(bayer4x4[((pixel.x & 3) * 4 + (pixel.y & 3)) % 16]) / 16.0;
 
 	// float jitter = float(bayer4x4[((pixel.y & 3) * 4 + (pixel.x & 3) + (timer%16)) % 16]) / 16.0;

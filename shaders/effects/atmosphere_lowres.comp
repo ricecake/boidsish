@@ -137,7 +137,7 @@ void main() {
 		}
 	}
 
-	// float jitter = bayer4x4StepPhase(fullResPixel, uFrameIndex);
+	// float jitter = bayer4x4StepPhase(fullResPixel, frameIndex);
 	// float jitter = fastSpatiotemporalBlueNoise(fullResPixel, 0, uFrameIndex);
 	float jitter = InterleavedGradientNoise(fullResPixel, frameIndex);
 	// float jitter = 0.0;
@@ -185,7 +185,8 @@ void main() {
 			float distToFocus = max(0.0, max(expectedStart - t, t - expectedEnd));
 			float historyMult = mix(1.0, maxEmptyMult, smoothstep(0.0, blendDist, distToFocus));
 
-			float currentStepSize = baseStepSize;
+			float perspectiveScale = 1.0 + (t * 0.00005);
+			float currentStepSize = baseStepSize * perspectiveScale * historyMult;
 			float maxSafeStep = (props.thickness * props.worldScale) * 0.25;
 			currentStepSize = min(currentStepSize, maxSafeStep);
 
@@ -216,7 +217,7 @@ void main() {
 
 			if (d > 0.000) {
 				float integrationStep = (historyMult > 1.1) ? baseStepSize : currentStepSize;
-				float stepDensity = d * integrationStep * 0.01;
+				float stepDensity = d * integrationStep * 0.0071;
 				float transmittanceAtStep = exp(-stepDensity);
 
 				vec3 stepScattering = vec3(0.0);
