@@ -93,24 +93,33 @@ vec3 getWarpedCloudPos(vec3 p, out float fade) {
 
 const float cloudFlow = 3.14;
 const float clFlowSpeed = 5.0;
-vec3 getCloudWindOffset(float time) {
+vec3 getCloudWindSpeed(float time) {
 	float angle = cloudFlow;
 	vec2  flowDir = vec2(cos(angle), sin(angle));
-	return vec3(flowDir.x, 0.0, flowDir.y) * time * clFlowSpeed * worldScale * 10.0;
+	return vec3(flowDir.x, 0.0, flowDir.y) * clFlowSpeed * worldScale * 10.0;
 }
 
-vec3 getCloudAdvectionOffset(float h, float time) {
+vec3 getCloudAdvectionSpeed(float h, float time) {
 	float angle = cloudFlow;
 	vec2  flowDir = vec2(cos(angle), sin(angle));
 
 	// Dramatic non-linear shear profile
 	float shear = h * h * cloudFlowHeightScale * 1.0;
 
-	vec3 advect = getCloudWindOffset(time);
+	vec3 advect = getCloudWindSpeed(time);
 	advect.xz += flowDir * shear * worldScale * 10.0;
 
 	return advect;
 }
+
+vec3 getCloudWindOffset(float time) {
+	return time * getCloudWindSpeed(time);
+}
+
+vec3 getCloudAdvectionOffset(float h, float time) {
+	return time * getCloudAdvectionSpeed(h, time);
+}
+
 
 CloudWeather computeCloudWeather(vec3 p, CloudProperties props) {
 	vec3 advect = getCloudWindOffset(time);
@@ -162,7 +171,7 @@ float getDensityHeightGradient(float h, float type) {
 	return res;
 }
 
-float calculateCloudDensityHZDv1(
+vec4 calculateCloudDensityHZDv1(
 	vec3            p,
 	CloudWeather    weather,
 	CloudLayer      layer,
@@ -203,7 +212,7 @@ float calculateCloudDensityHZDv1(
 	baseDensity *= coverage;
 
 	if (simplified) {
-		return clamp(baseDensity * props.densityBase * 2.0, 0.0, 1.0);
+		return vec4(clamp(baseDensity * props.densityBase * 2.0, 0.0, 1.0), advect);
 	}
 
 	// Detail erosion
@@ -219,10 +228,10 @@ float calculateCloudDensityHZDv1(
 	// return clamp(finalDensity * props.densityBase * 2.0, 0.0, 2.0);
 	// return smoothstep(coverageThreshold, 1.0, baseDensity) * remap(baseDensity * 2.0, erosion * 0.4, 1.0, 0.0, props.densityBase);
 	float finalDensity = remap(baseDensity * 2.0, erosion * 0.4, 1.0, 0.0, 2.0*props.densityBase);
-	return smoothstep(coverageThreshold, 1.0, finalDensity) * finalDensity;
+	return vec4(smoothstep(coverageThreshold, 1.0, finalDensity) * finalDensity, advect);
 }
 
-float calculateCloudDensityExpV1(
+vec4 calculateCloudDensityExpV1(
 	vec3            p,
 	CloudWeather    weather,
 	CloudLayer      layer,
@@ -246,12 +255,12 @@ float calculateCloudDensityExpV1(
 	baseNoise *= 1.0-smoothstep(-0.10, props.coverage, baseNoise);
 	float erosion = (fastFbm3d(p_scaled) + 1.0) * 0.5;
 	baseNoise = remapClamp(baseNoise, erosion * 0.4, 1.0, 0.0, props.densityBase);
-	return baseNoise;
+	return vec4(baseNoise, advect);
 
 }
 
 
-float calculateCloudDensityExpV2(
+vec4 calculateCloudDensityExpV2(
 	vec3            p,
 	CloudWeather    weather,
 	CloudLayer      layer,
@@ -260,7 +269,7 @@ float calculateCloudDensityExpV2(
 	bool            simplified
 ) {
 	if (p.y < layer.baseFloor || p.y > layer.baseCeiling)
-		return 0.0;
+		return vec4(0.0);
 
 	// p.y -= weather.heightMap * layer.thickness;
 
@@ -281,7 +290,7 @@ float calculateCloudDensityExpV2(
 	vec2 baseBubble = fastWorley3dID(p_scaled);
 	float cloudFactor = baseBubble.y;
 
-	return step(coverageThreshold, baseBubble.x) * step(0.00, cloudFactor);
+	return vec4(step(coverageThreshold, baseBubble.x) * step(0.00, cloudFactor), advect);
 
 	vec3 p_scaled_adv = (p_advected +time*cloudFactor) / (50000.0 * props.worldScale);
 	// float baseNoise = (fastWorley3d(p_scaled));
@@ -306,7 +315,7 @@ float calculateCloudDensityExpV2(
 
 	if (simplified) {
 		float density = smoothstep(coverageThreshold, max(1.0, coverageThreshold), rolledNoise * weather.weatherMap);
-		return smoothstep(0, 0.65, density * densityProfile * props.densityBase * 5.0);
+		return vec4(smoothstep(0, 0.65, density * densityProfile * props.densityBase * 5.0), advect);
 	}
 
 	// Add ridges and textures for definition
@@ -337,10 +346,10 @@ float calculateCloudDensityExpV2(
 
 	float density = smoothstep(coverageThreshold, max(1.0, coverageThreshold), baseDensity);
 
-	return smoothstep(-0.1, 1.0, density * densityProfile * props.densityBase * 2.0);
+	return vec4(smoothstep(-0.1, 1.0, density * densityProfile * props.densityBase * 2.0), advect);
 }
 
-float calculateCloudDensityExpV3(
+vec4 calculateCloudDensityExpV3(
 	vec3            p,
 	CloudWeather    weather,
 	CloudLayer      layer,
@@ -349,7 +358,7 @@ float calculateCloudDensityExpV3(
 	bool            simplified
 ) {
 	if (p.y < layer.baseFloor || p.y > layer.baseCeiling)
-		return 0.0;
+		return vec4(0.0);
 
 	// p.y -= weather.heightMap * layer.thickness;
 
@@ -382,7 +391,7 @@ float calculateCloudDensityExpV3(
 	// float baseNoise = remap(remap(worley.y, worley.x, 1.0, 0.0, 1.0), coverageThreshold, 1.0, 0.0, 1.0);
 
 	// if (simplified) {
-	// 	return remapClamp(baseNoise*heightGradient*2.0, 0, 1.0, 0.0, props.densityBase);
+	// 	return vec4(remapClamp(baseNoise*heightGradient*2.0, 0, 1.0, 0.0, props.densityBase), advect);
 	// }
 
 	vec3 p_warped = (p_deadvected+10*fastCurl3d((p_warp) / (50000.0 * props.worldScale))) / (1000.0 * props.worldScale);
@@ -395,15 +404,15 @@ float calculateCloudDensityExpV3(
 	float ridge = abs(fastRidge3d(p_descaled*5));
 	float fbm = fastWarpedFbm3d(p_warped/3);
 
-	// return step(coverageThreshold, worley.x*step(coverageThreshold, worley.y)) * remapClamp(baseNoise, mix(worley.x, fastFbmCurl3d(p_scaled), h) * 0.5, 1.0, 0.0, props.densityBase);
+	// return vec4(step(coverageThreshold, worley.x*step(coverageThreshold, worley.y)) * remapClamp(baseNoise, mix(worley.x, fastFbmCurl3d(p_scaled), h) * 0.5, 1.0, 0.0, props.densityBase), advect);
 	// float val = remapClamp(baseNoise*heightGradient*2, mix(max(worley.y, worley.x), fbm, smoothstep(0.25, 0.75, h)), 1.0, 0.0, props.densityBase);
 	float val = remapClamp(baseNoise*heightGradient*2, mix(ridge, fbm, smoothstep(0.25, 0.75, h)), 1.0, 0.0, props.densityBase);
-	return 2.0*val * step(0.3, val);
-	// return 5.0*remapClamp(baseNoise*heightGradient*2, mix(worley.x, 2*fbm*ridge, h), 1.0, 0.0, props.densityBase);
+	return vec4(2.0*val * step(0.3, val), advect);
+	// return vec4(5.0*remapClamp(baseNoise*heightGradient*2, mix(worley.x, 2*fbm*ridge, h), 1.0, 0.0, props.densityBase), advect);
 }
 
 
-float calculateCloudDensityExpV4(
+vec4 calculateCloudDensityExpV4(
 	vec3            p,
 	CloudWeather    weather,
 	CloudLayer      layer,
@@ -421,10 +430,10 @@ float calculateCloudDensityExpV4(
 	float erosion = (fastFbm3d(p/1000) + 1.0) * 0.5;
 	baseNoise = remapClamp(baseNoise, erosion * 0.4, 1.0, 0.0, props.densityBase);
 
-	return baseNoise;// * erosion;
+	return vec4(baseNoise, vec3(0.0));// * erosion;
 }
 
-float calculateCloudDensityExpV5(
+vec4 calculateCloudDensityExpV5(
 	vec3            p,
 	CloudWeather    weather,
 	CloudLayer      layer,
@@ -450,15 +459,15 @@ float calculateCloudDensityExpV5(
 	float baseDensity = remapClamp(baseNoise, 1.0 - coverage, 1.0, 0.0, 1.0);
 	// baseDensity *= coverage;
 
-	// return step(coverageThreshold, worley.x*step(coverageThreshold, worley.y)) * remapClamp(baseNoise, mix(worley.x, fastFbmCurl3d(p_scaled), h) * 0.5, 1.0, 0.0, props.densityBase);
+	// return vec4(step(coverageThreshold, worley.x*step(coverageThreshold, worley.y)) * remapClamp(baseNoise, mix(worley.x, fastFbmCurl3d(p_scaled), h) * 0.5, 1.0, 0.0, props.densityBase), advect);
 	// float finalNoise = remapClamp(baseNoise, worley.x, 1.0, weather.weatherMap, props.densityBase);
 	// float finalNoise = remap(baseDensity * 2.0, ((fastRidge3d(p_scaled * h * 100.0)+1.0)*0.5)*0.4, 1.0, 0.0, 2.0*props.densityBase);
 	float finalNoise = remap(baseDensity, ((fastRidge3d(p_scaled * h * 100.0)*0.5)+0.5)*0.25, 1.0, 0.0, props.densityBase);
 	// float finalNoise = baseDensity;
-	return finalNoise;
+	return vec4(finalNoise, advect);
 }
 
-float calculateCloudDensityExpV6(
+vec4 calculateCloudDensityExpV6(
 	vec3            p,
 	CloudWeather    weather,
 	CloudLayer      layer,
@@ -474,7 +483,8 @@ float calculateCloudDensityExpV6(
 	float coverageThreshold = 1.0 - props.coverage;
 
 	// // Apply advection to the sample position
-	vec3 advect = getCloudAdvectionOffset(h, time);
+	vec3 advectSpeed = getCloudAdvectionSpeed(h, time);
+	vec3 advect = time * advectSpeed;
 	vec3 p_advected = p + advect;
 	// vec3 p_scaled = (p_advected) / (50000.0 * props.worldScale);
 
@@ -504,14 +514,14 @@ float calculateCloudDensityExpV6(
 	baseDensity *= coverage;
 
 
-	return baseDensity;// * smoothstep(coverageThreshold, coverageThreshold+0.01, weather.weatherMap);
+	return vec4(baseDensity, advectSpeed);// * smoothstep(coverageThreshold, coverageThreshold+0.01, weather.weatherMap);
 }
 
 
 
 // Cloud density calculation helper
-// Returns a density value [0, 1+] based on world-space position
-float calculateCloudDensity(
+// Returns vec4(density, advection.xyz) based on world-space position
+vec4 calculateCloudDensity(
 	vec3            p,
 	CloudWeather    weather,
 	CloudLayer      layer,
@@ -520,7 +530,7 @@ float calculateCloudDensity(
 	bool            simplified
 ) {
 	if (p.y < layer.baseFloor || p.y > layer.baseCeiling)
-		return 0.0;
+		return vec4(0.0);
 
 	// Need a worley fbm to mix in
 	return calculateCloudDensityExpV6(p, weather, layer, props, time, simplified);
@@ -534,13 +544,9 @@ float calculateCloudDensity(
 
 
 float calculateCloudShadowDensity(vec3 p, CloudWeather weather, CloudLayer layer, CloudProperties props, float time) {
-	return 10.0 * calculateCloudDensity(p, weather, layer, props, time, true);
+	return 10.0 * calculateCloudDensity(p, weather, layer, props, time, true).x;
 }
 
-/**
- * High-level function to evaluate cloud shadow density at a specific world XZ position.
- * This encapsulates the logic used by both the shadow map generator and the runtime fallback.
- */
 float evaluateCloudShadowDensityAtWorldPos(vec2 worldXZ, float time) {
 	CloudProperties props;
 	props.altitude = cloudAltitude;
@@ -549,22 +555,20 @@ float evaluateCloudShadowDensityAtWorldPos(vec2 worldXZ, float time) {
 	props.coverage = cloudCoverage;
 	props.worldScale = worldScale;
 
-	// Use a dummy cloud position to evaluate weather/layer at this XZ
 	vec3  basePos = vec3(worldXZ.x, props.altitude * props.worldScale, worldXZ.y);
 	CloudWeather weather = computeCloudWeather(basePos, props);
 	CloudLayer layer = computeCloudLayer(weather, props);
 
-	// Integrate density vertically through the expanded layer to capture the full shadow
 	float totalDensity = 0.0;
 	const int shadowSteps = 4;
 	float stepSize = layer.thickness / float(shadowSteps);
 
 	for (int i = 0; i < shadowSteps; i++) {
 		vec3 p = vec3(worldXZ.x, layer.baseFloor + (float(i) + 0.5) * stepSize, worldXZ.y);
-		totalDensity += calculateCloudDensity(p, weather, layer, props, time, true);
+		totalDensity += calculateCloudDensity(p, weather, layer, props, time, true).x;
 	}
 
-	return totalDensity * stepSize * 0.1; // Scale to representative optical depth
+	return totalDensity * stepSize * 0.1;
 }
 
 #endif // HELPERS_CLOUDS_GLSL
