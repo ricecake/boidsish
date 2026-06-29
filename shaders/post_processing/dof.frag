@@ -7,9 +7,6 @@ uniform vec2      RESOLUTION;
 uniform bool      uAutofocus;
 uniform float     uManualFocusDistance;
 uniform vec2      uFocalPointOffset;
-uniform float     uMinFocusDistance;
-uniform float     uMaxFocusDistance;
-
 uniform float     uFocusScale;
 uniform float     uBlurSize;
 uniform mat4      uInvProjection;
@@ -17,60 +14,62 @@ uniform mat4      uInvProjection;
 in vec2 TexCoords;
 out vec4 FragColor;
 
+// Robust linear depth reconstruction
 float getLinearDepth(vec2 uv) {
-    float depth = texture(depthTexture, uv).r;
-    if (depth >= 0.999) return 100000.0;
+    float d = textureLod(depthTexture, uv, 0.0).r;
+    if (d >= 0.999) return 100000.0;
 
-    vec4 clipSpacePos = vec4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
-    vec4 viewSpacePos = uInvProjection * clipSpacePos;
+    vec4 clip = vec4(uv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0);
+    vec4 view = uInvProjection * clip;
 
-    float w = viewSpacePos.w;
-    if (abs(w) < 0.000001) return 100000.0;
+    if (abs(view.w) < 0.00001) return 100000.0;
+    float linearZ = -view.z / view.w;
 
-    float linearZ = -viewSpacePos.z / w;
+    if (isnan(linearZ) || isinf(linearZ)) return 100000.0;
     return clamp(linearZ, 0.1, 100000.0);
 }
 
-float getStableFocusDepth(vec2 uv) {
-    vec2 off = 1.0 / RESOLUTION;
-    float d = getLinearDepth(uv);
-    d += getLinearDepth(uv + vec2(off.x, 0.0));
-    d += getLinearDepth(uv + vec2(-off.x, 0.0));
-    d += getLinearDepth(uv + vec2(0.0, off.y));
-    d += getLinearDepth(uv + vec2(0.0, -off.y));
-    return d * 0.2;
-}
-
-vec4 fetch_safe(sampler2D tex, vec2 uv) {
-    vec4 c = texture(tex, uv);
-    if (any(isnan(c)) || any(isinf(c))) return vec4(0.0);
-    return max(c, vec4(0.0));
+vec3 safe_color(vec3 c) {
+    if (any(isnan(c)) || any(isinf(c))) return vec3(0.0);
+    return max(c, vec3(0.0));
 }
 
 void main() {
-    float focusDist = uManualFocusDistance;
-    if (uAutofocus) {
-        vec2 focusUV = vec2(0.5) + uFocalPointOffset;
-        focusDist = getStableFocusDepth(focusUV);
-        focusDist = clamp(focusDist, uMinFocusDistance, uMaxFocusDistance);
-    }
+    vec4  centerColorRaw = textureLod(screenTexture, TexCoords, 0.0);
+    float centerDepth = textureLod(depthTexture, TexCoords, 0.0).r;
 
-    float centerDepth = getLinearDepth(TexCoords);
-    float coc = clamp((1.0/focusDist - 1.0/centerDepth) * uFocusScale, -1.0, 1.0);
-    float blurRadius = abs(coc) * uBlurSize;
-
-    if (blurRadius < 0.2) {
-        FragColor = fetch_safe(screenTexture, TexCoords);
+    // 1. ABSOLUTE SKY PROTECTION: If we're looking at the sky, don't blur.
+    if (centerDepth >= 0.99) {
+        FragColor = vec4(safe_color(centerColorRaw.rgb), centerColorRaw.a);
         return;
     }
 
-    vec2 pixelSize = 1.0 / RESOLUTION;
-    vec4 colorSum = vec4(0.0);
+    // 2. Determine focal distance
+    float focusDist = uManualFocusDistance;
+    if (uAutofocus) {
+        focusDist = getLinearDepth(vec2(0.5) + uFocalPointOffset);
+    }
+    focusDist = clamp(focusDist, 0.1, 100000.0);
+
+    // 3. Calculate local CoC
+    float centerLinearDepth = getLinearDepth(TexCoords);
+    float coc = clamp((1.0/focusDist - 1.0/centerLinearDepth) * uFocusScale, -1.0, 1.0);
+    float blurRadius = abs(coc) * uBlurSize;
+
+    // 4. Early exit for sharp regions
+    if (blurRadius < 0.1) {
+        FragColor = vec4(safe_color(centerColorRaw.rgb), centerColorRaw.a);
+        return;
+    }
+
+    // 5. Weighted Bokeh Accumulation
+    vec2  pixelSize = 1.0 / RESOLUTION;
+    vec3  colorSum = vec3(0.0);
     float totalWeight = 0.0;
 
-    // Always start with the center sample to guarantee a baseline
-    vec4 centerColor = fetch_safe(screenTexture, TexCoords);
-    colorSum += centerColor;
+    // Center sample
+    vec3 centerRGB = safe_color(centerColorRaw.rgb);
+    colorSum += centerRGB;
     totalWeight += 1.0;
 
     const int SAMPLES = 32;
@@ -83,21 +82,24 @@ void main() {
         float currentSampleRadius = r * blurRadius;
         vec2 tc = TexCoords + vec2(cos(theta), sin(theta)) * currentSampleRadius * pixelSize;
 
-        float sampleDepth = getLinearDepth(tc);
-        float sampleCoc = clamp((1.0/focusDist - 1.0/sampleDepth) * uFocusScale, -1.0, 1.0);
-        float sampleBlurRadius = abs(sampleCoc) * uBlurSize;
+        float sampleDepth = textureLod(depthTexture, tc, 0.0).r;
+        vec3  sampleRGB = safe_color(textureLod(screenTexture, tc, 0.0).rgb);
 
-        // Weighting:
-        // Sharp background shouldn't bleed into blurred foreground
         float weight = 1.0;
-        if (sampleDepth > centerDepth) {
-            weight = smoothstep(currentSampleRadius + 0.5, currentSampleRadius - 0.5, sampleBlurRadius);
+
+        // Background bleeding prevention
+        if (sampleDepth > centerDepth + 0.0001) {
+            float sampleLinearDepth = getLinearDepth(tc);
+            float sampleCoc = clamp((1.0/focusDist - 1.0/sampleLinearDepth) * uFocusScale, -1.0, 1.0);
+            weight = smoothstep(currentSampleRadius + 0.5, currentSampleRadius - 0.5, abs(sampleCoc) * uBlurSize);
         }
 
-        vec4 sampleColor = fetch_safe(screenTexture, tc);
-        colorSum += sampleColor * weight;
+        // Sky contribution
+        if (sampleDepth >= 0.99) weight = 1.0;
+
+        colorSum += sampleRGB * weight;
         totalWeight += weight;
     }
 
-    FragColor = colorSum / totalWeight;
+    FragColor = vec4(colorSum / totalWeight, centerColorRaw.a);
 }

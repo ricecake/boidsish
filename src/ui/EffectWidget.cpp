@@ -116,11 +116,11 @@ namespace Boidsish {
 								}
 
 								float focusScale = dof_effect->GetFocusScale();
-								if (ImGui::SliderFloat("Focus Scale##DoF", &focusScale, 0.0f, 100.0f)) {
+								if (ImGui::SliderFloat("Focus Scale##DoF", &focusScale, 0.0f, 1000.0f)) {
 									dof_effect->SetFocusScale(focusScale);
 								}
 								float blurSize = dof_effect->GetBlurSize();
-								if (ImGui::SliderFloat("Blur Size##DoF", &blurSize, 0.0f, 50.0f)) {
+								if (ImGui::SliderFloat("Blur Size##DoF", &blurSize, 0.0f, 100.0f)) {
 									dof_effect->SetBlurSize(blurSize);
 								}
 							}

@@ -8,7 +8,7 @@ namespace Boidsish {
         DepthOfFieldEffect::DepthOfFieldEffect()
             : autofocusEnabled_(true), manualFocusDistance_(10.0f), focalPointOffset_(0.0f),
               minFocusDistance_(0.1f), maxFocusDistance_(1000.0f),
-              focusScale_(5.0f), blurSize_(6.0f), width_(0), height_(0) {
+              focusScale_(10.0f), blurSize_(10.0f), width_(0), height_(0) {
             name_ = "Depth of Field";
             is_enabled_ = false;
         }
@@ -31,8 +31,6 @@ namespace Boidsish {
             shader_->setBool("uAutofocus", autofocusEnabled_);
             shader_->setFloat("uManualFocusDistance", manualFocusDistance_);
             shader_->setVec2("uFocalPointOffset", focalPointOffset_);
-            shader_->setFloat("uMinFocusDistance", minFocusDistance_);
-            shader_->setFloat("uMaxFocusDistance", maxFocusDistance_);
 
             shader_->setFloat("uFocusScale", focusScale_);
             shader_->setFloat("uBlurSize", blurSize_);
