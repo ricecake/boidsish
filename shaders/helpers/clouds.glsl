@@ -6,6 +6,7 @@
 #include "math.glsl"
 #include "lygia/generative/random.glsl"
 // #include "lygia/generative.glsl"
+// #include "lygia/generative/snoise.glsl"
 #include "lygia/sdf.glsl"
 
 float cloudPhase(float cosTheta) {
@@ -457,6 +458,57 @@ float calculateCloudDensityExpV5(
 	return finalNoise;
 }
 
+float calculateCloudDensityExpV6(
+	vec3            p,
+	CloudWeather    weather,
+	CloudLayer      layer,
+	CloudProperties props,
+	float           time,
+	bool            simplified
+) {
+	float h = (p.y - layer.baseFloor) / layer.thickness;
+	float type = weather.heightMap;
+	float heightGradient = getDensityHeightGradient(h, type);
+
+	float tapering = smoothstep(0.0, 0.15, h) * 1.0-smoothstep(0.7, 1.0, h);
+	float coverageThreshold = 1.0 - props.coverage;
+
+	// // Apply advection to the sample position
+	vec3 advect = getCloudAdvectionOffset(h, time);
+	vec3 p_advected = p + advect;
+	// vec3 p_scaled = (p_advected) / (50000.0 * props.worldScale);
+
+	// Domain warping for "boiling" look (using curl noise)
+	vec4 rawCurlData = textureLod(u_curlTexture, (p_advected-advect) / (cloudCurlFrequency * props.worldScale * 8000.0), 0.0);
+	// vec3 curl = fastCurl3d(p_advected / (cloudCurlFrequency * props.worldScale * 5000.0));
+	p_advected += rawCurlData.rgb * 9 * props.worldScale * 5000.0 * (1.0 - h);
+
+	// Base noise sampling (Perlin-Worley hybrid proxy)
+	vec3 p_scaled = p_advected / (50000.0 * props.worldScale);
+	vec2 worleyis = fastWorley3dID(p_scaled);
+	// float perlin = (fastFbm3d(p_scaled) + 1.0) * 0.5;
+	// float worley = fastWorley3d(p_scaled);
+	float perlin = worleyis.y;
+	float worley = worleyis.x;
+
+	// Perlin-Worley hybrid: remap perlin by worley
+	// float baseNoise = remapClamp(perlin, mix(worley, rawCurlData.a, h), 1.0, 0.0, 1.0);
+	float baseNoise = remapClamp(perlin, worley, 1.0, 0.0, 1.0);
+
+	// Apply height gradient
+	baseNoise *= heightGradient;
+
+	// Coverage remapping
+	float coverage = props.coverage * step(0.25, weather.weatherMap);
+	float baseDensity = remapClamp(baseNoise+weather.weatherMap, 1.0 - coverage, 1.0, 0.0, props.densityBase);
+	baseDensity *= coverage;
+
+
+	return baseDensity;// * smoothstep(coverageThreshold, coverageThreshold+0.01, weather.weatherMap);
+}
+
+
+
 // Cloud density calculation helper
 // Returns a density value [0, 1+] based on world-space position
 float calculateCloudDensity(
@@ -471,9 +523,10 @@ float calculateCloudDensity(
 		return 0.0;
 
 	// Need a worley fbm to mix in
+	return calculateCloudDensityExpV6(p, weather, layer, props, time, simplified);
 	// return calculateCloudDensityExpV5(p, weather, layer, props, time, simplified);
 	// return calculateCloudDensityExpV4(p, weather, layer, props, time, simplified);
-	return calculateCloudDensityExpV3(p, weather, layer, props, time, simplified);
+	// return calculateCloudDensityExpV3(p, weather, layer, props, time, simplified);
 	// return calculateCloudDensityExpV2(p, weather, layer, props, time, simplified);
 	// return calculateCloudDensityExpV1(p, weather, layer, props, time, simplified);
 	// return calculateCloudDensityHZDv1(p, weather, layer, props, time, simplified);

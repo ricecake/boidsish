@@ -224,11 +224,11 @@ vec4 textureMitchell(sampler2D tex, vec2 uv, vec2 textureSize) {
 	vec4 color = vec4(0.0);
 	float weightsSum = 0.0;
 	for (int j = -1; j <= 2; j++) {
-		float wy = mitchell(float(j) - f.y, 1.0/3.0, 1.0/3.0);
-		// float wy = mitchell(float(j) - f.y, 0.0, 0.75);
+		// float wy = mitchell(float(j) - f.y, 1.0/3.0, 1.0/3.0);
+		float wy = mitchell(float(j) - f.y, 0.0, 0.75);
 		for (int i = -1; i <= 2; i++) {
-			float wx = mitchell(float(i) - f.x, 1.0/3.0, 1.0/3.0);
-			// float wx = mitchell(float(i) - f.x, 0.0, 0.75);
+			// float wx = mitchell(float(i) - f.x, 1.0/3.0, 1.0/3.0);
+			float wx = mitchell(float(i) - f.x, 0.0, 0.75);
 			float weight = wx * wy;
 			vec2 pos = (c + vec2(i, j) + 0.5) * texelSize;
 			color += texture(tex, pos) * weight;
