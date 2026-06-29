@@ -182,8 +182,10 @@ void main() {
 	float distToSun = sqrt(max(0.0, distSq));
 
 	// Humidity-driven sun aureole (Mie scattering approximation)
+	float aureoleNoise = pow((fbm_sky(vec3(rayLocalX*3, rayLocalY*3, time*0.01)) * 0.25) + 1.25, 3)/(1+distSq);
+	localHumidity *= aureoleNoise;
 	float aureoleScale = 1.1 + smoothstep(0.0, 1.00, localHumidity * sunAureoleStrength);
-	float aureole = exp(-distToSun * (45.0 / aureoleScale)) * sunAureoleStrength * 3.5 * (1.3 + 1.750 * localHumidity);
+	float aureole = exp(-distToSun * (45.0 / (aureoleScale))) * sunAureoleStrength * 3.5 * (1.3 + 1.750 * localHumidity);
 
 	float sunMask = 1.0 - smoothstep(
 		(sunAngularRadius - 0.001) * (sunAngularRadius - 0.001),
@@ -196,7 +198,7 @@ void main() {
 	sunMask = (sunMask * (1.0 + sunMask * 0.05)) / (1.0 + sunMask * 0.06);
 
 	// Ensure we are in front of the sun
-	sunMask *= step(0.99, rayLocalZ);
+	// sunMask *= step(0.99, rayLocalZ);
 
 	float r = kEarthRadius + max(0.0, viewPos.y / (1000.0 * worldScale));
 	vec3  sunTransmittance = max(getTransmittance(r, sunDir.y), vec3(0.001));
