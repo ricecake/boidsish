@@ -19,27 +19,30 @@ out vec4 FragColor;
 
 float getLinearDepth(vec2 uv) {
     float depth = texture(depthTexture, uv).r;
-    if (depth > 0.99999) return 50000.0;
+    if (depth >= 0.999) return 100000.0;
 
     vec4 clipSpacePos = vec4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
     vec4 viewSpacePos = uInvProjection * clipSpacePos;
-    if (abs(viewSpacePos.w) < 0.0001) return 50000.0;
-    return -viewSpacePos.z / viewSpacePos.w;
+
+    float w = viewSpacePos.w;
+    if (abs(w) < 0.000001) return 100000.0;
+
+    float linearZ = -viewSpacePos.z / w;
+    return clamp(linearZ, 0.1, 100000.0);
 }
 
 float getStableFocusDepth(vec2 uv) {
-    float d = 0.0;
     vec2 off = 1.0 / RESOLUTION;
-    d += getLinearDepth(uv);
+    float d = getLinearDepth(uv);
     d += getLinearDepth(uv + vec2(off.x, 0.0));
     d += getLinearDepth(uv + vec2(-off.x, 0.0));
     d += getLinearDepth(uv + vec2(0.0, off.y));
     d += getLinearDepth(uv + vec2(0.0, -off.y));
-    return d / 5.0;
+    return d * 0.2;
 }
 
-vec4 safe_sample(vec2 uv) {
-    vec4 c = texture(screenTexture, uv);
+vec4 fetch_safe(sampler2D tex, vec2 uv) {
+    vec4 c = texture(tex, uv);
     if (any(isnan(c)) || any(isinf(c))) return vec4(0.0);
     return max(c, vec4(0.0));
 }
@@ -54,40 +57,47 @@ void main() {
 
     float centerDepth = getLinearDepth(TexCoords);
     float coc = clamp((1.0/focusDist - 1.0/centerDepth) * uFocusScale, -1.0, 1.0);
-    float blurSize = abs(coc) * uBlurSize;
+    float blurRadius = abs(coc) * uBlurSize;
 
-    if (blurSize < 0.05) {
-        FragColor = safe_sample(TexCoords);
+    if (blurRadius < 0.2) {
+        FragColor = fetch_safe(screenTexture, TexCoords);
         return;
     }
 
     vec2 pixelSize = 1.0 / RESOLUTION;
-    vec4 colorSum = safe_sample(TexCoords);
-    float totalWeight = 1.0;
+    vec4 colorSum = vec4(0.0);
+    float totalWeight = 0.0;
 
-    float radius = 0.5;
+    // Always start with the center sample to guarantee a baseline
+    vec4 centerColor = fetch_safe(screenTexture, TexCoords);
+    colorSum += centerColor;
+    totalWeight += 1.0;
+
+    const int SAMPLES = 32;
     const float GOLDEN_ANGLE = 2.39996323;
 
-    // Standard weighted accumulation loop (more stable than incremental average for HDR)
-    for (float ang = 0.0; radius < blurSize; ang += GOLDEN_ANGLE) {
-        vec2 tc = TexCoords + vec2(cos(ang), sin(ang)) * pixelSize * radius;
+    for (int i = 0; i < SAMPLES; i++) {
+        float r = sqrt(float(i) + 0.5) / sqrt(float(SAMPLES));
+        float theta = float(i) * GOLDEN_ANGLE;
+
+        float currentSampleRadius = r * blurRadius;
+        vec2 tc = TexCoords + vec2(cos(theta), sin(theta)) * currentSampleRadius * pixelSize;
+
         float sampleDepth = getLinearDepth(tc);
-
         float sampleCoc = clamp((1.0/focusDist - 1.0/sampleDepth) * uFocusScale, -1.0, 1.0);
-        float sampleBlurSize = abs(sampleCoc) * uBlurSize;
+        float sampleBlurRadius = abs(sampleCoc) * uBlurSize;
 
-        // Bleeding prevention: don't let far objects blur over near ones
-        if (sampleDepth > centerDepth)
-            sampleBlurSize = clamp(sampleBlurSize, 0.0, blurSize * 2.0);
+        // Weighting:
+        // Sharp background shouldn't bleed into blurred foreground
+        float weight = 1.0;
+        if (sampleDepth > centerDepth) {
+            weight = smoothstep(currentSampleRadius + 0.5, currentSampleRadius - 0.5, sampleBlurRadius);
+        }
 
-        float weight = smoothstep(radius - 0.5, radius + 0.5, sampleBlurSize);
-        vec4 sampleColor = safe_sample(tc);
-
+        vec4 sampleColor = fetch_safe(screenTexture, tc);
         colorSum += sampleColor * weight;
         totalWeight += weight;
-
-        radius += 0.5 / radius;
     }
 
-    FragColor = colorSum / max(totalWeight, 0.0001);
+    FragColor = colorSum / totalWeight;
 }
