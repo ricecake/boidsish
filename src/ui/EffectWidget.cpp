@@ -90,16 +90,37 @@ namespace Boidsish {
 						if (effect->GetName() == "Depth of Field" && is_enabled) {
 							auto dof_effect = std::dynamic_pointer_cast<PostProcessing::DepthOfFieldEffect>(effect);
 							if (dof_effect) {
-								float focusPoint = dof_effect->GetFocusPoint();
-								if (ImGui::SliderFloat("Focus Point##DoF", &focusPoint, 0.0f, 1.0f)) {
-									dof_effect->SetFocusPoint(focusPoint);
+								bool autofocus = dof_effect->IsAutofocusEnabled();
+								if (ImGui::Checkbox("Autofocus##DoF", &autofocus)) {
+									dof_effect->SetAutofocus(autofocus);
 								}
+
+								if (autofocus) {
+									glm::vec2 offset = dof_effect->GetFocusOffset();
+									if (ImGui::SliderFloat2("Focus Offset##DoF", &offset.x, -0.5f, 0.5f)) {
+										dof_effect->SetFocusOffset(offset);
+									}
+									float minDist = dof_effect->GetMinFocusDistance();
+									if (ImGui::SliderFloat("Min Distance##DoF", &minDist, 0.01f, 10.0f)) {
+										dof_effect->SetMinFocusDistance(minDist);
+									}
+									float maxDist = dof_effect->GetMaxFocusDistance();
+									if (ImGui::SliderFloat("Max Distance##DoF", &maxDist, 10.0f, 2000.0f)) {
+										dof_effect->SetMaxFocusDistance(maxDist);
+									}
+								} else {
+									float focusPoint = dof_effect->GetFocusPoint();
+									if (ImGui::SliderFloat("Focus Distance##DoF", &focusPoint, 0.1f, 1000.0f)) {
+										dof_effect->SetFocusPoint(focusPoint);
+									}
+								}
+
 								float focusScale = dof_effect->GetFocusScale();
-								if (ImGui::SliderFloat("Focus Scale##DoF", &focusScale, 0.0f, 20.0f)) {
+								if (ImGui::SliderFloat("Focus Scale##DoF", &focusScale, 0.0f, 100.0f)) {
 									dof_effect->SetFocusScale(focusScale);
 								}
 								float blurSize = dof_effect->GetBlurSize();
-								if (ImGui::SliderFloat("Blur Size##DoF", &blurSize, 0.0f, 20.0f)) {
+								if (ImGui::SliderFloat("Blur Size##DoF", &blurSize, 0.0f, 50.0f)) {
 									dof_effect->SetBlurSize(blurSize);
 								}
 							}

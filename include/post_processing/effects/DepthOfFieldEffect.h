@@ -26,6 +26,18 @@ namespace Boidsish {
             void SetBlurSize(float blurSize) { blurSize_ = blurSize; }
             float GetBlurSize() const { return blurSize_; }
 
+            void SetAutofocus(bool enabled) { autofocus_ = enabled; }
+            bool IsAutofocusEnabled() const { return autofocus_; }
+
+            void SetFocusOffset(const glm::vec2& offset) { focusOffset_ = offset; }
+            glm::vec2 GetFocusOffset() const { return focusOffset_; }
+
+            void SetMinFocusDistance(float dist) { minFocusDistance_ = dist; }
+            float GetMinFocusDistance() const { return minFocusDistance_; }
+
+            void SetMaxFocusDistance(float dist) { maxFocusDistance_ = dist; }
+            float GetMaxFocusDistance() const { return maxFocusDistance_; }
+
         private:
             std::unique_ptr<Shader> shader_;
             int width_;
@@ -33,6 +45,11 @@ namespace Boidsish {
             float focusPoint_;
             float focusScale_;
             float blurSize_;
+
+            bool autofocus_;
+            glm::vec2 focusOffset_;
+            float minFocusDistance_;
+            float maxFocusDistance_;
         };
 
     } // namespace PostProcessing

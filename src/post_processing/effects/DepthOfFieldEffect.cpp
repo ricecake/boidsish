@@ -6,7 +6,8 @@ namespace Boidsish {
     namespace PostProcessing {
 
         DepthOfFieldEffect::DepthOfFieldEffect()
-            : focusPoint_(0.5f), focusScale_(5.0f), blurSize_(6.0f), width_(0), height_(0) {
+            : focusPoint_(0.5f), focusScale_(5.0f), blurSize_(6.0f), width_(0), height_(0),
+              autofocus_(true), focusOffset_(0.0f), minFocusDistance_(0.1f), maxFocusDistance_(1000.0f) {
             name_ = "Depth of Field";
             is_enabled_ = false;
         }
@@ -28,6 +29,14 @@ namespace Boidsish {
             shader_->setFloat("uFocusPoint", focusPoint_);
             shader_->setFloat("uFocusScale", focusScale_);
             shader_->setFloat("uBlurSize", blurSize_);
+
+            shader_->setBool("uAutofocus", autofocus_);
+            shader_->setVec2("uFocusOffset", focusOffset_);
+            shader_->setFloat("uMinFocusDistance", minFocusDistance_);
+            shader_->setFloat("uMaxFocusDistance", maxFocusDistance_);
+
+            // For depth reconstruction in shader
+            shader_->setMat4("uInvProjection", glm::inverse(projectionMatrix));
 
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, sourceTexture);
