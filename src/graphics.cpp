@@ -46,6 +46,8 @@
 #include "post_processing/effects/BloomEffect.h"
 #include "mood_manager.h"
 #include "mood_definitions.h"
+#include "post_processing/effects/DepthOfFieldEffect.h"
+#include "post_processing/effects/FXAAEffect.h"
 #include "post_processing/effects/FilmGrainEffect.h"
 #include "post_processing/effects/GlitchEffect.h"
 #include "post_processing/effects/NegativeEffect.h"
@@ -1088,6 +1090,14 @@ namespace Boidsish {
 				auto film_grain_effect = std::make_shared<PostProcessing::FilmGrainEffect>();
 				film_grain_effect->SetEnabled(false);
 				post_processing_manager_->AddEffect(film_grain_effect);
+
+				auto dof_effect = std::make_shared<PostProcessing::DepthOfFieldEffect>();
+				dof_effect->SetEnabled(false);
+				post_processing_manager_->AddEffect(dof_effect);
+
+				auto fxaa_effect = std::make_shared<PostProcessing::FXAAEffect>();
+				fxaa_effect->SetEnabled(false);
+				post_processing_manager_->AddEffect(fxaa_effect);
 
 				auto super_speed_effect = std::make_shared<PostProcessing::SuperSpeedEffect>();
 				super_speed_effect->SetEnabled(true);
