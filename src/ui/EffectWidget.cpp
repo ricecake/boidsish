@@ -5,6 +5,8 @@
 #include "imgui.h"
 #include "post_processing/PostProcessingManager.h"
 #include "post_processing/effects/BloomEffect.h"
+#include "post_processing/effects/DepthOfFieldEffect.h"
+#include "post_processing/effects/FXAAEffect.h"
 #include "post_processing/effects/FilmGrainEffect.h"
 #include "post_processing/effects/UnifiedScreenSpaceEffect.h"
 
@@ -81,6 +83,42 @@ namespace Boidsish {
 								float intensity = film_grain_effect->GetIntensity();
 								if (ImGui::SliderFloat("Intensity##FilmGrain", &intensity, 0.0f, 1.0f)) {
 									film_grain_effect->SetIntensity(intensity);
+								}
+							}
+						}
+
+						if (effect->GetName() == "Depth of Field" && is_enabled) {
+							auto dof_effect = std::dynamic_pointer_cast<PostProcessing::DepthOfFieldEffect>(effect);
+							if (dof_effect) {
+								float focusPoint = dof_effect->GetFocusPoint();
+								if (ImGui::SliderFloat("Focus Point##DoF", &focusPoint, 0.0f, 1.0f)) {
+									dof_effect->SetFocusPoint(focusPoint);
+								}
+								float focusScale = dof_effect->GetFocusScale();
+								if (ImGui::SliderFloat("Focus Scale##DoF", &focusScale, 0.0f, 20.0f)) {
+									dof_effect->SetFocusScale(focusScale);
+								}
+								float blurSize = dof_effect->GetBlurSize();
+								if (ImGui::SliderFloat("Blur Size##DoF", &blurSize, 0.0f, 20.0f)) {
+									dof_effect->SetBlurSize(blurSize);
+								}
+							}
+						}
+
+						if (effect->GetName() == "FXAA" && is_enabled) {
+							auto fxaa_effect = std::dynamic_pointer_cast<PostProcessing::FXAAEffect>(effect);
+							if (fxaa_effect) {
+								float reduceMin = fxaa_effect->GetReduceMin();
+								if (ImGui::SliderFloat("Reduce Min##FXAA", &reduceMin, 0.0f, 0.1f)) {
+									fxaa_effect->SetReduceMin(reduceMin);
+								}
+								float reduceMul = fxaa_effect->GetReduceMul();
+								if (ImGui::SliderFloat("Reduce Mul##FXAA", &reduceMul, 0.0f, 1.0f)) {
+									fxaa_effect->SetReduceMul(reduceMul);
+								}
+								float spanMax = fxaa_effect->GetSpanMax();
+								if (ImGui::SliderFloat("Span Max##FXAA", &spanMax, 0.0f, 20.0f)) {
+									fxaa_effect->SetSpanMax(spanMax);
 								}
 							}
 						}
