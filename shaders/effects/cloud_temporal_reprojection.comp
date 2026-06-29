@@ -102,6 +102,44 @@ vec2 getDilatedVelocity_Weighted(vec2 uv, vec2 texelSize) {
 	return texture(uPackedVelocity, uv).xy; // Fallback
 }
 
+vec2 getDilatedVelocity_Hybrid(vec2 uv, vec2 texelSize) {
+	vec2 sumVelocity = vec2(0.0);
+	float sumWeight = 0.0;
+
+	float centerDensity = texture(uPackedDepth, uv).a;
+	float densityThreshold = max(centerDensity * 0.25, 0.1);
+
+	for (int y = -1; y <= 1; y++) {
+		for (int x = -1; x <= 1; x++) {
+			vec2 sampleUV = uv + vec2(x, y) * texelSize;
+
+			vec2 sampleVel = texture(uPackedVelocity, sampleUV).xy;
+			vec4 sampleProps = texture(uPackedDepth, sampleUV);
+
+			float sampleDepth = sampleProps.r;
+			float sampleDensity = sampleProps.a;
+
+			// Ignore pure sky pixels
+			if (sampleDepth > 40000.0) continue;
+			if (sampleDensity > densityThreshold) continue;
+
+			// Weight primarily by density to ignore jittered wisps.
+			// You can also divide by depth to slightly favor foregrounds.
+			float weight = sampleDensity * sampleDensity; // Square to penalize fuzzy edges
+
+			sumVelocity += sampleVel * weight;
+			sumWeight += weight;
+		}
+	}
+
+	if (sumWeight > 0.0001) {
+		return sumVelocity / sumWeight;
+	}
+
+	return texture(uPackedVelocity, uv).xy; // Fallback
+}
+
+
 struct NeighborhoodStats {
 	vec3 spatialMean;
 	vec3 stddev;
@@ -249,7 +287,7 @@ void main() {
 	bool is_new_pixel = (pixel % 2) == current_offset;
 
 	ivec2 packedPixel = pixel / 2;
-	vec2 velocity = getDilatedVelocity_Weighted(packedPixel, size);
+	vec2 velocity = getDilatedVelocity_Hybrid(packedPixel, size);
 	vec2 prevUV = uv + velocity;
 	bool validHistory = all(greaterThanEqual(prevUV, vec2(0.0))) && all(lessThanEqual(prevUV, vec2(1.0)));
 
@@ -303,12 +341,13 @@ void main() {
 
 	NeighborhoodStats stats = computeNeighborhoodStats(uPackedFrame, uv, texelSize);
 
-	vec3 extents = calculateDynamicExtents(stats.stddev, historyMoments, 1.5);
+	const float gamma = 1.5;
+	vec3 extents = calculateDynamicExtents(stats.stddev, historyMoments, gamma);
 	vec3 minColor = stats.spatialMean - extents;
 	vec3 maxColor = stats.spatialMean + extents;
 
-	float minAlpha = stats.alphaMean - stats.alphaStddev * 1.5;
-	float maxAlpha = stats.alphaMean + stats.alphaStddev * 1.5;
+	float minAlpha = stats.alphaMean - stats.alphaStddev * gamma;
+	float maxAlpha = stats.alphaMean + stats.alphaStddev * gamma;
 
 	vec3 historyYCoCg = RGBToYCoCg(historyRGBA.rgb);
 	float historyOpacity = clamp(1.0 - historyRGBA.a, 0.0, 1.0);
@@ -329,12 +368,12 @@ void main() {
 	// If density drops by more than 40% (relativeDiff < -0.4), start rejecting.
 	// Leading edges (cloud enters pixel) cause less offensive ghosting. Be forgiving
 	// to prevent the dither noise from surviving the edge.
-	float trailingEdgeRejection = 1.0 - smoothstep(-0.6, -0.2, relativeDiff);
-	float leadingEdgeRejection = smoothstep(0.5, 0.9, relativeDiff);
+	float trailingEdgeRejection = 1.0 - smoothstep(-0.5, -0.3, relativeDiff);
+	float leadingEdgeRejection = smoothstep(0.4, 0.8, relativeDiff);
 
 	float rejectionFactor = max(trailingEdgeRejection, leadingEdgeRejection);
 	float pixelSpeed = length(velocity * size);
-	float motionConfidence = 1.0;//smoothstep(0.1, 1.0, pixelSpeed); // Only reject if actually moving
+	float motionConfidence = smoothstep(0.1, 1.0, pixelSpeed); // Only reject if actually moving
 
 	rejectionFactor *= motionConfidence;
 

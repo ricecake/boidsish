@@ -40,9 +40,9 @@ void main() {
 	float historyScale = mix(4.0, 1.0, smoothstep(1.0, 10.0, centerHistory));
 	float stepScale = max(1.0, float(uStepSize) / 2.0);
 
-	float phiLuma = (10.0 * stdLuma + 0.02) * historyScale * stepScale;
-	float phiDepth = centerStep * mix(2.0, 1.0, smoothstep(0.0, 0.4, centerDensity)) * float(uStepSize);
-	float phiDensity = (0.5 * centerDensity + 0.1) * historyScale * stepScale;
+	float phiLuma = (20.0 * stdLuma + 0.02) * historyScale * stepScale;
+	float phiDepth = centerStep * mix(1.50, 1.0, smoothstep(0.0, 0.4, centerDensity)) * float(uStepSize);
+	float phiDensity = (0.05 * centerDensity + 0.1) * historyScale * stepScale;
 
 	vec4  sumColor = vec4(0.0);
 	float sumWeight = 0.0;

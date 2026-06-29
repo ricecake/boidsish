@@ -489,9 +489,9 @@ vec4 calculateCloudDensityExpV6(
 	// vec3 p_scaled = (p_advected) / (50000.0 * props.worldScale);
 
 	// Domain warping for "boiling" look (using curl noise)
-	vec4 rawCurlData = textureLod(u_curlTexture, (p_advected-advect) / (cloudCurlFrequency * props.worldScale * 8000.0), 0.0);
+	vec4 rawCurlData = textureLod(u_curlTexture, (p_advected-advect) / (cloudCurlFrequency * props.worldScale * 10000.0), 0.0);
 	// vec3 curl = fastCurl3d(p_advected / (cloudCurlFrequency * props.worldScale * 5000.0));
-	p_advected += rawCurlData.rgb * 9 * props.worldScale * 5000.0 * (1.0 - h);
+	p_advected += rawCurlData.rgb * 10 * props.worldScale * 5000.0 * (1.0 - h);
 
 	// Base noise sampling (Perlin-Worley hybrid proxy)
 	vec3 p_scaled = p_advected / (50000.0 * props.worldScale);
