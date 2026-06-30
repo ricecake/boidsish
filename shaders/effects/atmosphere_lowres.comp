@@ -15,6 +15,7 @@ uniform float u_atmosphereHeight;
 
 uniform sampler2D uHistoryDepth;
 uniform sampler2D uHistoryMoments;
+uniform sampler2D u_cloudJFADistance;
 uniform mat4  uPrevViewProjection;
 uniform bool  uHasHistory;
 
@@ -194,12 +195,28 @@ void main() {
 
 			float perspectiveScale = 1.0 + (t * 0.00005);
 			float currentStepSize = baseStepSize * perspectiveScale * historyMult * mix(1.25, 0.25, smoothstep(-0.25, 0.25, prevTransmissionDelta));
+
+			// Empty space skipping using JFA distance map
+			float step_t = t + t_offset;
+			vec3 p_temp = viewPos + rayDir * step_t;
+			vec3 advect_temp = getCloudWindOffset(time);
+			vec3 p_advected_temp = p_temp + advect_temp;
+			vec2 weatherUV = p_advected_temp.xz / (100000.0 * props.worldScale);
+			float emptyDist = textureLod(u_cloudJFADistance, weatherUV, 0.0).r;
+
+			// If we are far from any potential cloud, we can take a much larger step.
+			// We subtract a safety margin.
+			float jfaStep = max(0.0, emptyDist - 2000.0 * props.worldScale);
+			currentStepSize = max(currentStepSize, jfaStep);
+
 			float maxSafeStep = (props.thickness * props.worldScale) * 0.25;
-			currentStepSize = min(currentStepSize, maxSafeStep);
+			// If we are in empty space, we can exceed maxSafeStep to jump to the next cloud.
+			if (emptyDist < 500.0 * props.worldScale) {
+				currentStepSize = min(currentStepSize, maxSafeStep);
+			}
 
 			minStepSize = min(minStepSize, currentStepSize);
 
-			float step_t = t + t_offset;
 			vec3 p = viewPos + rayDir * step_t;
 
 			float r2_minus_R2 = h0Term + 2.0 * step_t * roDotRd + step_t * step_t;

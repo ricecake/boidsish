@@ -15,6 +15,7 @@ uniform sampler3D u_curlTexture;
 uniform sampler2D u_blueNoiseTexture;
 uniform sampler3D u_extraNoiseTexture;
 uniform sampler2D u_phasorTexture;
+uniform sampler2D u_cloudWeatherTexture;
 #endif
 
 // R: Simplex 3D

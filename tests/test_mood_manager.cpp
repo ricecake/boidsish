@@ -117,14 +117,14 @@ TEST(MoodManagerTest, MultiParameterIDW) {
     layer.blendMode = MoodBlendMode::Override;
     layer.trackedParameters = {MoodParameter::Humidity, MoodParameter::Temperature};
 
-    // Low Hum, High Temp -> No Dew
+    // Low Hum, High Temp -> Low Density
     MoodSettings s0;
-    s0.dew = 0.0f;
+    s0.cloudDensity = 0.0f;
     layer.controlPoints.push_back({{0.0f, 300.0f}, s0});
 
-    // High Hum, Low Temp -> Full Dew
+    // High Hum, Low Temp -> High Density
     MoodSettings s1;
-    s1.dew = 1.0f;
+    s1.cloudDensity = 1.0f;
     layer.controlPoints.push_back({{1.0f, 273.15f}, s1});
 
     mgr.AddLayer(layer);
@@ -135,13 +135,13 @@ TEST(MoodManagerTest, MultiParameterIDW) {
     params[MoodParameter::Humidity] = 1.0f;
     params[MoodParameter::Temperature] = 273.15f;
     mgr.Update(params, 1.0f);
-    EXPECT_NEAR(*mgr.GetBlendedSettings().dew, 1.0f, 0.001f);
+    EXPECT_NEAR(*mgr.GetBlendedSettings().cloudDensity, 1.0f, 0.001f);
 
     // Midway
     params[MoodParameter::Humidity] = 0.5f;
     params[MoodParameter::Temperature] = 286.575f; // (300 + 273.15) / 2
     mgr.Update(params, 1.0f);
-    EXPECT_NEAR(*mgr.GetBlendedSettings().dew, 0.5f, 0.05f);
+    EXPECT_NEAR(*mgr.GetBlendedSettings().cloudDensity, 0.5f, 0.05f);
 }
 
 int main(int argc, char **argv) {

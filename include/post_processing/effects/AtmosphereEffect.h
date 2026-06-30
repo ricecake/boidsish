@@ -54,7 +54,12 @@ namespace Boidsish {
 
 			glm::vec3 GetCloudColor() const { return cloud_color_; }
 
-			void SetCloudCoverage(float coverage) { cloud_coverage_ = coverage; }
+			void SetCloudCoverage(float coverage) {
+				if (std::abs(cloud_coverage_ - coverage) > 0.005f) {
+					cloud_coverage_ = coverage;
+					needs_weather_bake_ = true;
+				}
+			}
 
 			float GetCloudCoverage() const { return cloud_coverage_; }
 
@@ -205,6 +210,15 @@ namespace Boidsish {
 
 			float GetRenderScale() const { return render_scale_; }
 
+			void SetWorldScale(float scale) {
+				if (std::abs(world_scale_ - scale) > 0.001f) {
+					world_scale_ = scale;
+					needs_weather_bake_ = true;
+				}
+			}
+
+			float GetWorldScale() const { return world_scale_; }
+
 		private:
 			void InitializePackedResources();
 			void InitializeTemporalResources();
@@ -213,6 +227,12 @@ namespace Boidsish {
 			std::unique_ptr<Shader>        composite_shader_;
 			std::unique_ptr<ComputeShader> temporal_shader_;
 			std::unique_ptr<ComputeShader> spatial_filter_shader_;
+
+			std::unique_ptr<ComputeShader> cloud_bake_shader_;
+			std::unique_ptr<ComputeShader> cloud_jfa_init_shader_;
+			std::unique_ptr<ComputeShader> cloud_jfa_iterate_shader_;
+			std::unique_ptr<ComputeShader> cloud_jfa_distance_shader_;
+
 			float                          time_ = 0.0f;
 			float                          last_time_ = 0.0f;
 			int                            frame_index_ = 0;
@@ -282,6 +302,12 @@ namespace Boidsish {
 			int       temporal_index_ = 0;
 			glm::mat4 prev_view_projection_ = glm::mat4(1.0f);
 			bool      has_valid_history_ = false;
+
+			GLuint cloud_weather_texture_ = 0;
+			GLuint cloud_jfa_textures_[2] = {0, 0};
+			GLuint cloud_distance_texture_ = 0;
+			bool   needs_weather_bake_ = true;
+			float  world_scale_ = 1.0f;
 
 		};
 

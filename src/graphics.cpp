@@ -3524,6 +3524,7 @@ namespace Boidsish {
 			);
 
 			const auto& w = impl->weather_manager->GetCurrentWeather();
+			float world_scale = impl->terrain_generator ? impl->terrain_generator->GetWorldScale() : 1.0f;
 
 			// Calculate precipitation targets
 			float rain_target = (w.temperature > 273.15f) ? w.precipitation : 0.0f;
@@ -3539,6 +3540,7 @@ namespace Boidsish {
 
 			// Apply to atmosphere effect
 			if (impl->atmosphere_effect) {
+				impl->atmosphere_effect->SetWorldScale(world_scale);
 				impl->atmosphere_effect->SetHazeDensity(w.haze_density);
 				impl->atmosphere_effect->SetHazeHeight(w.haze_height);
 				impl->atmosphere_effect->SetCloudDensity(w.cloud_density);

@@ -125,16 +125,15 @@ CloudWeather computeCloudWeather(vec3 p, CloudProperties props) {
 	vec3 advect = getCloudWindOffset(time);
 	vec3 p_advected = p + advect;
 
-	vec2  weatherData = fastWorley3dID(vec3(p_advected.x, p_advected.y, p_advected.z) / (10000.0 * worldScale));
-	float weatherMap = abs(weatherData.y - weatherData.x); // Worley distance for coverage
-	float cellID = weatherData.y;           // Cell ID for variety
-
-	float heightMap = fastWorley3d(vec3(p_advected.x, p_advected.y + (3.0 * time), p_advected.z) / (7500.0 * worldScale));
+	// Use baked weather map. Sampling UV is worldXZ / range.
+	// Range is 100,000 * worldScale as defined in the bake shader.
+	vec2 uv = p_advected.xz / (100000.0 * props.worldScale);
+	vec4 bakedWeather = textureLod(u_cloudWeatherTexture, uv, 0.0);
 
 	CloudWeather weather;
-	weather.weatherMap = weatherMap;
-	weather.heightMap = heightMap;
-	weather.cellID = cellID;
+	weather.weatherMap = bakedWeather.r;
+	weather.heightMap = bakedWeather.g;
+	weather.cellID = bakedWeather.b;
 
 	return weather;
 }

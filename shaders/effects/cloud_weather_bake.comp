@@ -1,0 +1,33 @@
+#version 460 core
+
+layout(local_size_x = 16, local_size_y = 16) in;
+
+layout(binding = 0, rgba16f) uniform image2D outWeatherMap;
+
+#include "../helpers/fast_noise.glsl"
+
+uniform float uWorldScale;
+
+void main() {
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = imageSize(outWeatherMap);
+    if (pixel.x >= size.x || pixel.y >= size.y) return;
+
+    vec2 uv = (vec2(pixel) + 0.5) / vec2(size);
+
+    // We bake a "canonical" weather map that is static in local space.
+    // Raymarching will apply wind advection as an offset to the sampling UV.
+    // To make it "non-obvious" when it wraps, it should be large.
+    // 2048 texture at 10000 scale means one tile is 20,480,000 units.
+
+    vec3 p = vec3(uv.x * 100000.0 * uWorldScale, 0.0, uv.y * 100000.0 * uWorldScale);
+
+    vec2 weatherData = fastWorley3dID(p / (10000.0 * uWorldScale));
+    float weatherMap = abs(weatherData.y - weatherData.x);
+    float cellID = weatherData.y;
+
+    // Heightmap needs its own frequency
+    float heightMap = fastWorley3d(p / (7500.0 * uWorldScale));
+
+    imageStore(outWeatherMap, pixel, vec4(weatherMap, heightMap, cellID, 1.0));
+}
