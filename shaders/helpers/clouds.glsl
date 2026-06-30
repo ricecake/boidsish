@@ -35,7 +35,8 @@ struct CloudProperties {
 
 struct CloudWeather {
 	float weatherMap; // Density/Coverage
-	float heightMap;  // Vertical expansion and variety
+	float heightMap;  // Altitude variety
+	float thickness;  // Thickness variety
 	float cellID;     // Per-cell variety
 };
 
@@ -125,28 +126,31 @@ CloudWeather computeCloudWeather(vec3 p, CloudProperties props) {
 	vec3 advect = getCloudWindOffset(time);
 	vec3 p_advected = p + advect;
 
-	vec2  weatherData = fastWorley3dID(vec3(p_advected.x, p_advected.y, p_advected.z) / (10000.0 * worldScale));
-	float weatherMap = abs(weatherData.y - weatherData.x); // Worley distance for coverage
-	float cellID = weatherData.y;           // Cell ID for variety
-
-	float heightMap = fastWorley3d(vec3(p_advected.x, p_advected.y + (3.0 * time), p_advected.z) / (7500.0 * worldScale));
+	// Use baked weather map. Sampling UV is worldXZ / range.
+	// Range is 100,000 * worldScale as defined in the bake shader.
+	vec2 uv = p_advected.xz / (100000.0 * props.worldScale);
+	vec4 bakedWeather = textureLod(u_cloudWeatherTexture, uv, 0.0);
 
 	CloudWeather weather;
-	weather.weatherMap = weatherMap;
-	weather.heightMap = heightMap;
-	weather.cellID = cellID;
+	weather.weatherMap = bakedWeather.r;
+	weather.heightMap = bakedWeather.g;
+	weather.cellID = bakedWeather.b;
+	weather.thickness = bakedWeather.a;
 
 	return weather;
 }
 
 CloudLayer computeCloudLayer(CloudWeather weather, CloudProperties props) {
-	// Use heightMap for dramatic vertical expansion for specific weather cells
-	// Tall clouds (cumulonimbus) can be 5-10x thicker than base thickness
-	float verticalExpansion = mix(1.0, 8.0, weather.heightMap * weather.weatherMap);
+	// heightMap (gradual) provides a base altitude variation
+	float altitudeShift = weather.heightMap * props.thickness * 2.0;
+
+	// thickness (cell-based ID) provides dramatic vertical expansion per cell
+	// Tall clouds (cumulonimbus) can be much thicker than base thickness
+	float verticalExpansion = mix(1.0, 8.0, weather.thickness * weather.weatherMap);
 
 	CloudLayer layer;
-	layer.baseFloor = props.altitude * props.worldScale;
-	layer.baseCeiling = (props.altitude + props.thickness * verticalExpansion) * props.worldScale;
+	layer.baseFloor = (props.altitude * props.worldScale) + altitudeShift * props.worldScale;
+	layer.baseCeiling = layer.baseFloor + (props.thickness * verticalExpansion) * props.worldScale;
 	layer.thickness = max(layer.baseCeiling - layer.baseFloor, 0.001);
 	return layer;
 }

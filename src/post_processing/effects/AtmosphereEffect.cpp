@@ -30,6 +30,11 @@ namespace Boidsish {
 				glDeleteTextures(2, temporal_depth_textures_);
 				glDeleteTextures(2, temporal_moments_textures_);
 			}
+			if (cloud_weather_texture_) {
+				glDeleteTextures(1, &cloud_weather_texture_);
+				glDeleteTextures(2, cloud_jfa_textures_);
+				glDeleteTextures(1, &cloud_distance_texture_);
+			}
 		}
 
 		void AtmosphereEffect::Initialize(int width, int height) {
@@ -40,6 +45,16 @@ namespace Boidsish {
 			);
 			temporal_shader_ = std::make_unique<ComputeShader>("shaders/effects/cloud_temporal_reprojection.comp");
 			spatial_filter_shader_ = std::make_unique<ComputeShader>("shaders/effects/cloud_spatial_filter.comp");
+
+			cloud_bake_shader_ = std::make_unique<ComputeShader>("shaders/effects/cloud_weather_bake.comp");
+			if (cloud_bake_shader_ && cloud_bake_shader_->isValid()) {
+				cloud_bake_shader_->use();
+				cloud_bake_shader_->trySetInt("u_extraNoiseTexture", Constants::TextureUnit::NoiseExtra());
+			}
+
+			cloud_jfa_init_shader_ = std::make_unique<ComputeShader>("shaders/effects/cloud_jfa_init.comp");
+			cloud_jfa_iterate_shader_ = std::make_unique<ComputeShader>("shaders/effects/cloud_jfa_iterate.comp");
+			cloud_jfa_distance_shader_ = std::make_unique<ComputeShader>("shaders/effects/cloud_jfa_distance.comp");
 
 			if (cloud_render_shader_ && cloud_render_shader_->isValid()) {
 				cloud_render_shader_->use();
@@ -55,6 +70,8 @@ namespace Boidsish {
 				cloud_render_shader_->trySetInt("u_curlTexture", Constants::TextureUnit::NoiseCurl());
 				cloud_render_shader_->trySetInt("u_blueNoiseTexture", Constants::TextureUnit::NoiseBlue());
 				cloud_render_shader_->trySetInt("u_extraNoiseTexture", Constants::TextureUnit::NoiseExtra());
+				cloud_render_shader_->trySetInt("u_cloudWeatherTexture", Constants::TextureUnit::CloudWeatherBake());
+				cloud_render_shader_->trySetInt("u_cloudJFADistance", Constants::TextureUnit::CloudJFADistance());
 			}
 
 			if (temporal_shader_ && temporal_shader_->isValid()) {
@@ -90,6 +107,35 @@ namespace Boidsish {
 				glGenTextures(1, &packed_velocity_texture_);
 				glGenTextures(1, &filtered_texture_);
 				glGenTextures(1, &spatial_aux_texture_);
+
+				glGenTextures(1, &cloud_weather_texture_);
+				glGenTextures(2, cloud_jfa_textures_);
+				glGenTextures(1, &cloud_distance_texture_);
+
+				// Cloud Weather Bake (2048x2048) - Only allocate once
+				glBindTexture(GL_TEXTURE_2D, cloud_weather_texture_);
+				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, 2048, 2048, 0, GL_RGBA, GL_FLOAT, NULL);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+				// JFA and Distance Map
+				for (int i = 0; i < 2; i++) {
+					glBindTexture(GL_TEXTURE_2D, cloud_jfa_textures_[i]);
+					glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, 2048, 2048, 0, GL_RGBA, GL_FLOAT, NULL);
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+				}
+
+				glBindTexture(GL_TEXTURE_2D, cloud_distance_texture_);
+				glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, 2048, 2048, 0, GL_RED, GL_FLOAT, NULL);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 			}
 
 			int packed_width = std::max(1, static_cast<int>(width_ * render_scale_));
@@ -189,6 +235,55 @@ namespace Boidsish {
 			glm::mat4 invView = glm::inverse(viewMatrix);
 			glm::mat4 invProj = glm::inverse(projectionMatrix);
 
+			// --- OPTIONAL PASS: Cloud Weather Bake & JFA ---
+			if (needs_weather_bake_) {
+				// 1. Bake weather map
+				cloud_bake_shader_->use();
+				cloud_bake_shader_->setFloat("uWorldScale", world_scale_);
+				glBindImageTexture(0, cloud_weather_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+				GpuResourceRegistry::Instance().BindTextures({Constants::TextureUnit::NoiseExtra()});
+				glDispatchCompute(2048 / 16, 2048 / 16, 1);
+				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+				// 2. Initialize JFA
+				cloud_jfa_init_shader_->use();
+				cloud_jfa_init_shader_->setFloat("uCloudCoverage", cloud_coverage_);
+				glActiveTexture(GL_TEXTURE0);
+				glBindTexture(GL_TEXTURE_2D, cloud_weather_texture_);
+				cloud_jfa_init_shader_->setInt("uWeatherMap", 0);
+				glBindImageTexture(0, cloud_jfa_textures_[0], 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
+				glDispatchCompute(2048 / 16, 2048 / 16, 1);
+				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+				// 3. Iterate JFA
+				int totalSteps = static_cast<int>(std::ceil(std::log2(2048.0)));
+				int ping = 0;
+				for (int i = 0; i < totalSteps; i++) {
+					int pong = 1 - ping;
+					cloud_jfa_iterate_shader_->use();
+					cloud_jfa_iterate_shader_->setFloat("uJumpStep", std::pow(2.0, totalSteps - i - 1.0));
+					glActiveTexture(GL_TEXTURE0);
+					glBindTexture(GL_TEXTURE_2D, cloud_jfa_textures_[ping]);
+					cloud_jfa_iterate_shader_->setInt("uInputJFA", 0);
+					glBindImageTexture(0, cloud_jfa_textures_[pong], 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
+					glDispatchCompute(2048 / 16, 2048 / 16, 1);
+					glMemoryBarrier(GL_TEXTURE_FETCH_BARRIER_BIT | GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+					ping = pong;
+				}
+
+				// 4. Final Distance Map
+				cloud_jfa_distance_shader_->use();
+				cloud_jfa_distance_shader_->setFloat("uWorldRange", 100000.0f * world_scale_);
+				glActiveTexture(GL_TEXTURE0);
+				glBindTexture(GL_TEXTURE_2D, cloud_jfa_textures_[ping]);
+				cloud_jfa_distance_shader_->setInt("uInputJFA", 0);
+				glBindImageTexture(0, cloud_distance_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R32F);
+				glDispatchCompute(2048 / 16, 2048 / 16, 1);
+				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+				needs_weather_bake_ = false;
+			}
+
 			// --- PASS 1: Packed Quarter-res Cloud Rendering ---
 			if (cloud_render_shader_ && cloud_render_shader_->isValid()) {
 				cloud_render_shader_->use();
@@ -217,6 +312,11 @@ namespace Boidsish {
 					Constants::TextureUnit::NoiseBlue(),
 					Constants::TextureUnit::NoiseExtra()
 				});
+
+				glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::CloudWeatherBake());
+				glBindTexture(GL_TEXTURE_2D, cloud_weather_texture_);
+				glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::CloudJFADistance());
+				glBindTexture(GL_TEXTURE_2D, cloud_distance_texture_);
 
 				glBindImageTexture(0, packed_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 				glBindImageTexture(1, packed_depth_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);

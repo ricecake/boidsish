@@ -1,0 +1,24 @@
+#version 460 core
+
+layout(local_size_x = 16, local_size_y = 16) in;
+
+layout(binding = 0, r32f) uniform image2D outDistanceMap;
+uniform sampler2D uInputJFA;
+uniform float uWorldRange;
+
+#define JUMPFLOOD_TYPE vec4
+#include "lygia/morphological/jumpFlood.glsl"
+
+void main() {
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = imageSize(outDistanceMap);
+    if (pixel.x >= size.x || pixel.y >= size.y) return;
+
+    vec2 uv = (vec2(pixel) + 0.5) / vec2(size);
+    float distUV = jumpFloodSdf(uInputJFA, uv);
+
+    // Convert UV distance to world distance
+    float worldDist = distUV * uWorldRange;
+
+    imageStore(outDistanceMap, pixel, vec4(worldDist, 0.0, 0.0, 1.0));
+}
