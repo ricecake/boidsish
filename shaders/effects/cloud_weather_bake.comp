@@ -26,8 +26,11 @@ void main() {
     float weatherMap = abs(weatherData.y - weatherData.x);
     float cellID = weatherData.y;
 
-    // Heightmap needs its own frequency
-    float heightMap = fastWorley3d(p / (7500.0 * uWorldScale));
+    // Height/Altitude needs its own frequency
+    // Use ID variant to get both a gradual distance (G) and a per-cell variety ID (A)
+    vec2 heightData = fastWorley3dID(p / (7500.0 * uWorldScale));
+    float altitudeMap = abs(heightData.y - heightData.x);
+    float thicknessMap = heightData.y;
 
-    imageStore(outWeatherMap, pixel, vec4(weatherMap, heightMap, cellID, 1.0));
+    imageStore(outWeatherMap, pixel, vec4(weatherMap, altitudeMap, cellID, thicknessMap));
 }
