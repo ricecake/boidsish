@@ -35,7 +35,8 @@ struct CloudProperties {
 
 struct CloudWeather {
 	float weatherMap; // Density/Coverage
-	float heightMap;  // Vertical expansion and variety
+	float heightMap;  // Altitude variety
+	float thickness;  // Thickness variety
 	float cellID;     // Per-cell variety
 };
 
@@ -134,18 +135,22 @@ CloudWeather computeCloudWeather(vec3 p, CloudProperties props) {
 	weather.weatherMap = bakedWeather.r;
 	weather.heightMap = bakedWeather.g;
 	weather.cellID = bakedWeather.b;
+	weather.thickness = bakedWeather.a;
 
 	return weather;
 }
 
 CloudLayer computeCloudLayer(CloudWeather weather, CloudProperties props) {
-	// Use heightMap for dramatic vertical expansion for specific weather cells
-	// Tall clouds (cumulonimbus) can be 5-10x thicker than base thickness
-	float verticalExpansion = mix(1.0, 8.0, weather.heightMap * weather.weatherMap);
+	// heightMap (gradual) provides a base altitude variation
+	float altitudeShift = weather.heightMap * props.thickness * 2.0;
+
+	// thickness (cell-based ID) provides dramatic vertical expansion per cell
+	// Tall clouds (cumulonimbus) can be much thicker than base thickness
+	float verticalExpansion = mix(1.0, 8.0, weather.thickness * weather.weatherMap);
 
 	CloudLayer layer;
-	layer.baseFloor = props.altitude * props.worldScale;
-	layer.baseCeiling = (props.altitude + props.thickness * verticalExpansion) * props.worldScale;
+	layer.baseFloor = (props.altitude * props.worldScale) + altitudeShift * props.worldScale;
+	layer.baseCeiling = layer.baseFloor + (props.thickness * verticalExpansion) * props.worldScale;
 	layer.thickness = max(layer.baseCeiling - layer.baseFloor, 0.001);
 	return layer;
 }

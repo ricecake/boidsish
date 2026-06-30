@@ -74,8 +74,8 @@ void main() {
 	props.coverage = cloudCoverage;
 	props.worldScale = worldScale;
 
-	float R_floor = R_earth + (cloudAltitude - 200.0) * worldScale;
-	float R_ceiling = R_earth + (cloudAltitude + cloudThickness + 2000.0) * worldScale;
+	float R_floor = R_earth + (cloudAltitude - 500.0) * worldScale;
+	float R_ceiling = R_earth + (cloudAltitude + cloudThickness * 10.0 + 5000.0) * worldScale;
 
 	vec3 earthCenter = vec3(viewPos.x, -R_earth, viewPos.z);
 	vec3 relRo = viewPos - earthCenter;
