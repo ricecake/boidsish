@@ -33,7 +33,7 @@ void main() {
 
     // If there's potential for cloud, it's a seed
     // We use a threshold slightly below the actual coverage to be safe
-    bool isCloud = weather.r > 0.1;
+    bool isCloud = weather.r > (1.0 - uCloudCoverage);
 
     vec4 data = vec4(0.0);
     if (isCloud) {

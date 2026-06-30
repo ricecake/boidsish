@@ -25,7 +25,8 @@ void main() {
     vec3 p = vec3(uv.x * 100000.0 * uWorldScale, 0.0, uv.y * 100000.0 * uWorldScale);
 
     vec2 weatherData = worley3d_tiling(p / (10000.0 * uWorldScale), 16.0);
-    float weatherMap = step(1.0 - uCloudCoverage, abs(1-weatherData.x));
+    // float weatherMap = step(1.0 - uCloudCoverage, abs(1-weatherData.x));
+    float weatherMap = abs(1-weatherData.x);
     float cellID = weatherData.y;
 
     // Height/Altitude needs its own frequency

@@ -534,9 +534,38 @@ vec4 calculateCloudDensityExpV7(
 ) {
 	float h = (p.y - layer.baseFloor) / layer.thickness;
 	vec3 advectSpeed = getCloudAdvectionSpeed(h, time);
-	vec3 advect = time * advectSpeed;
+	// float type = weather.cellID;
+		float type = weather.heightMap;
 
-	return vec4(weather.weatherMap, advectSpeed);
+	float heightGradient = getDensityHeightGradient(h, type);
+
+	vec3 advect = time * advectSpeed;
+	vec3 p_advected = p + advect;
+
+	vec4 rawCurlData = textureLod(u_curlTexture, (p_advected-advect) / (cloudCurlFrequency * props.worldScale * 6000.0), 0.0);
+	p_advected += rawCurlData.rgb * 10 * props.worldScale * 5000.0 * (1.0 - h);
+
+	vec3 p_scaled = p_advected / (50000.0 * props.worldScale);
+	vec2 worleyis = fastWorley3dID(p_scaled);
+	float perlin = worleyis.y;
+	float worley = worleyis.x;
+
+	float baseNoise = remapClamp(perlin, worley, 1.0, 0.0, 1.0);
+
+	float tapering = smoothstep(0.0, 0.15, h) * 1.0-smoothstep(0.7, 1.0, h);
+
+	baseNoise *= heightGradient;
+	// float coverage = props.coverage * step(0.25, weather.weatherMap);
+	// float baseDensity = remapClamp(baseNoise, 1.0 - coverage, 1.0, 0.0, props.densityBase);
+
+	float map = (1.0-weather.weatherMap) * tapering;
+	float coverage = props.coverage * step(0.25, weather.weatherMap);
+	float baseDensity = remapClamp((baseNoise+tapering*map), 1.0 - coverage, 1.0, 0.0, props.densityBase);
+	baseDensity *= coverage;
+
+	// baseDensity *= tapering;
+
+	return vec4(baseDensity, advectSpeed);
 }
 
 
