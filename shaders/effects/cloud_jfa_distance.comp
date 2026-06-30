@@ -20,5 +20,5 @@ void main() {
     // Convert UV distance to world distance
     float worldDist = distUV * uWorldRange;
 
-    imageStore(outDistanceMap, pixel, vec4(worldDist, 0.0, 0.0, 1.0));
+    imageStore(outDistanceMap, pixel, vec4(worldDist, distUV, 0.0, 1.0));
 }

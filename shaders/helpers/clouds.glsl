@@ -121,6 +121,16 @@ vec3 getCloudAdvectionOffset(float h, float time) {
 	return time * getCloudAdvectionSpeed(h, time);
 }
 
+CloudWeather loadCloudWeather(vec4 tex) {
+	CloudWeather weather;
+	weather.weatherMap = tex.r;
+	weather.heightMap = tex.g;
+	weather.cellID = tex.b;
+	weather.thickness = tex.a;
+
+	return weather;
+}
+
 
 CloudWeather computeCloudWeather(vec3 p, CloudProperties props) {
 	vec3 advect = getCloudWindOffset(time);
@@ -130,14 +140,7 @@ CloudWeather computeCloudWeather(vec3 p, CloudProperties props) {
 	// Range is 100,000 * worldScale as defined in the bake shader.
 	vec2 uv = p_advected.xz / (100000.0 * props.worldScale);
 	vec4 bakedWeather = textureLod(u_cloudWeatherTexture, uv, 0.0);
-
-	CloudWeather weather;
-	weather.weatherMap = bakedWeather.r;
-	weather.heightMap = bakedWeather.g;
-	weather.cellID = bakedWeather.b;
-	weather.thickness = bakedWeather.a;
-
-	return weather;
+	return loadCloudWeather(bakedWeather);
 }
 
 CloudLayer computeCloudLayer(CloudWeather weather, CloudProperties props) {
