@@ -159,10 +159,13 @@ void main() {
 
 	float t_offset = jitter * baseStepSize;
 	float firstStepSize = baseStepSize;
+	float minStepSize = 100000;
 
 	if (t_start < t_end) {
 		vec3 lightEnergy = vec3(0.0);
 		float prevDensity = 0.0;
+		float prevTransmission = -1.0;
+		float prevTransmissionDelta = 0.0;
 		const int shadow_samples = 5;
 
 		vec3 primaryLightDir = vec3(0, 1, 0);
@@ -190,9 +193,11 @@ void main() {
 			float historyMult = mix(1.0, maxEmptyMult, smoothstep(0.0, blendDist, distToFocus));
 
 			float perspectiveScale = 1.0 + (t * 0.00005);
-			float currentStepSize = baseStepSize * perspectiveScale * historyMult;
+			float currentStepSize = baseStepSize * perspectiveScale * historyMult * mix(1.25, 0.25, smoothstep(-0.25, 0.25, prevTransmissionDelta));
 			float maxSafeStep = (props.thickness * props.worldScale) * 0.25;
 			currentStepSize = min(currentStepSize, maxSafeStep);
+
+			minStepSize = min(minStepSize, currentStepSize);
 
 			float step_t = t + t_offset;
 			vec3 p = viewPos + rayDir * step_t;
@@ -226,7 +231,8 @@ void main() {
 				float averageDensity = (prevDensity + d) * 0.5;
 				float stepDensity = averageDensity * integrationStep * 0.01;
 				float transmittanceAtStep = exp(-stepDensity);
-				float stepWeight = cloudTransmittance * (1.0 - transmittanceAtStep);
+				prevTransmissionDelta = prevTransmission - transmittanceAtStep;
+				prevTransmission = transmittanceAtStep;
 
 				vec3 stepScattering = vec3(0.0);
 				for (int j = 0; j < num_lights; j++) {
@@ -285,11 +291,11 @@ void main() {
 
 				float weight = cloudTransmittance * (1.0 - transmittanceAtStep);
 				float bias = exp(-accumulatedOpticalDepth * 2.0);
-				stepWeight *= bias;
-				weightedDistSum += step_t * weight;
-				weightedAdvectionSum += sampleAdvection * weight;
+				float stepWeight = weight * bias;
+				weightedDistSum += step_t * stepWeight;
+				weightedAdvectionSum += sampleAdvection * stepWeight;
 				lightEnergy += S * weight;
-				totalWeight += weight;
+				totalWeight += stepWeight;
 
 				cloudTransmittance *= transmittanceAtStep;
 			}
@@ -321,6 +327,7 @@ void main() {
 		vec2 prevScreenUV = (prevClipHit.xy / prevClipHit.w) * 0.5 + 0.5;
 
 		finalVelocity = prevScreenUV - TexCoords;
+		// finalVelocity = vec2(minStepSize/10, 0);
 	} else {
 		finalDepth = vec4(50000.0 * worldScale, 50000.0 * worldScale, firstStepSize, pathDensity);
 		vec3 advectionOffset = getCloudAdvectionSpeed(0.0, time);
@@ -334,7 +341,7 @@ void main() {
 	}
 
 	imageStore(outPackedColor, packedPixel, finalColor);
-	// imageStore(outPackedColor, packedPixel, 10*vec4(abs(finalVelocity), 0,0));
+	// imageStore(outPackedColor, packedPixel, vec4(abs(finalVelocity), 0,0));
 	imageStore(outPackedDepth, packedPixel, finalDepth);
 	imageStore(outPackedVelocity, packedPixel, vec4(finalVelocity, 0.0, 0.0));
 }
