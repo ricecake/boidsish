@@ -239,6 +239,7 @@ namespace Boidsish {
 			if (needs_weather_bake_) {
 				// 1. Bake weather map
 				cloud_bake_shader_->use();
+				cloud_bake_shader_->setFloat("uCloudCoverage", cloud_coverage_);
 				cloud_bake_shader_->setFloat("uWorldScale", world_scale_);
 				glBindImageTexture(0, cloud_weather_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 				GpuResourceRegistry::Instance().BindTextures({Constants::TextureUnit::NoiseExtra()});

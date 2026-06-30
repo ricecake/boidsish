@@ -41,6 +41,7 @@ vec3 sampleSkyView(vec3 rd) {
 	return texture(u_skyViewLUT, uv).rgb;
 }
 
+/*
 // Fixed snoise with correct permutation mapping
 vec3 mod289(vec3 x) {
 	return x - floor(x * (1.0 / 289.0)) * 289.0;
@@ -61,6 +62,13 @@ vec4 taylorInvSqrt(vec4 r) {
 vec2 fade(vec2 t) {
 	return t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
 }
+
+vec3 hash33(vec3 p) {
+	p = fract(p * vec3(443.897, 441.423, 437.195));
+	p += dot(p, p.yxz + 19.19);
+	return fract((p.xxy + p.yxx) * p.zyx);
+}
+*/
 
 float snoise(vec3 v) {
 	const vec2 C = vec2(1.0 / 6.0, 1.0 / 3.0);
@@ -106,12 +114,6 @@ float snoise(vec3 v) {
 	vec4 m = max(0.6 - vec4(dot(x0, x0), dot(x1, x1), dot(x2, x2), dot(x3, x3)), 0.0);
 	m = m * m;
 	return 42.0 * dot(m * m, vec4(dot(p0, x0), dot(p1, x1), dot(p2, x2), dot(p3, x3)));
-}
-
-vec3 hash33(vec3 p) {
-	p = fract(p * vec3(443.897, 441.423, 437.195));
-	p += dot(p, p.yxz + 19.19);
-	return fract((p.xxy + p.yxx) * p.zyx);
 }
 
 float fbm_sky(vec3 p) {

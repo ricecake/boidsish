@@ -1,6 +1,12 @@
 #ifndef HELPERS_FAST_NOISE_GLSL
 #define HELPERS_FAST_NOISE_GLSL
 
+#include "helpers/noise.glsl"
+#include "lygia/generative/pnoise.glsl"
+#include "lygia/generative/psrdnoise.glsl"
+#include "lygia/generative/random.glsl"
+
+
 // Helper functions for fast texture-based noise lookups
 // Requires noise texture samplers bound to fixed units:
 // u_noiseTexture: 3D, unit 5, R=Simplex/G=Worley/B=FBM/A=Warped
@@ -17,6 +23,107 @@ uniform sampler3D u_extraNoiseTexture;
 uniform sampler2D u_phasorTexture;
 uniform sampler2D u_cloudWeatherTexture;
 #endif
+
+// Helper to compute curl noise using finite differences with tiling simplex noise
+vec3 computeCurl(vec3 p, float period) {
+	float e = 0.01;
+	vec3  dx = vec3(e, 0.0, 0.0);
+	vec3  dy = vec3(0.0, e, 0.0);
+	vec3  dz = vec3(0.0, 0.0, e);
+
+	// Offsets to decorrelate the potential field components
+	vec3 o1 = vec3(123.4, 567.8, 910.1);
+	vec3 o2 = vec3(234.5, 678.9, 112.2);
+	vec3 o3 = vec3(345.6, 789.0, 223.3);
+
+	vec3  g;
+	float dPsi_z_dy = (psrdnoise(p + dy + o3, vec3(period), 0.0, g) - psrdnoise(p - dy + o3, vec3(period), 0.0, g)) /
+		(2.0 * e);
+	float dPsi_y_dz = (psrdnoise(p + dz + o2, vec3(period), 0.0, g) - psrdnoise(p - dz + o2, vec3(period), 0.0, g)) /
+		(2.0 * e);
+
+	float dPsi_x_dz = (psrdnoise(p + dz + o1, vec3(period), 0.0, g) - psrdnoise(p - dz + o1, vec3(period), 0.0, g)) /
+		(2.0 * e);
+	float dPsi_z_dx = (psrdnoise(p + dx + o3, vec3(period), 0.0, g) - psrdnoise(p - dx + o3, vec3(period), 0.0, g)) /
+		(2.0 * e);
+
+	float dPsi_y_dx = (psrdnoise(p + dx + o2, vec3(period), 0.0, g) - psrdnoise(p - dx + o2, vec3(period), 0.0, g)) /
+		(2.0 * e);
+	float dPsi_x_dy = (psrdnoise(p + dy + o1, vec3(period), 0.0, g) - psrdnoise(p - dy + o1, vec3(period), 0.0, g)) /
+		(2.0 * e);
+
+	return vec3(dPsi_z_dy - dPsi_y_dz, dPsi_x_dz - dPsi_z_dx, dPsi_y_dx - dPsi_x_dy);
+}
+
+vec3 computeFbmCurl(vec3 p, int octaves, float period) {
+	vec3  total = vec3(0.0);
+	float amp = 1.0;
+	float freq = 1.0;
+	for (int i = 0; i < octaves; i++) {
+		total += computeCurl(p * freq, period * freq) * amp;
+		amp *= 0.5;
+		freq *= 2.0;
+	}
+	return total;
+}
+
+// Tiling 3D Simplex noise wrapper
+float simplex3d_tiling(vec3 p, float period) {
+	vec3 g;
+	return psrdnoise(p, vec3(period), 0.0, g);
+}
+
+// Tiling 3D Worley/Cellular noise
+vec2 worley3d_tiling(vec3 p, float period) {
+	vec3  i = floor(p);
+	vec3  f = fract(p);
+	float minDistSq = 1.0;
+	float cellId = 0.0;
+	for (int z = -1; z <= 1; z++) {
+		for (int y = -1; y <= 1; y++) {
+			for (int x = -1; x <= 1; x++) {
+				vec3 neighbor = vec3(float(x), float(y), float(z));
+				// Wrap neighbor + i to [0, period-1]
+				vec3 wrapped_coord = mod(i + neighbor, period);
+				vec3 point = hash33(wrapped_coord);
+				vec3 diff = neighbor + point - f;
+				float d = dot(diff, diff);
+				if (d < minDistSq) {
+					minDistSq = d;
+					// cellId = random(point); // Use the x component of the cell's random point as the ID
+					cellId = simplex3d_tiling(point, period) * 0.5 + 0.5; // Use the x component of the cell's random point as the ID
+				}
+			}
+		}
+	}
+	return vec2(sqrt(minDistSq), cellId);
+}
+
+// Tiling 3D FBM Perlin (using pnoise for classic Perlin)
+float fbm3d_tiling(vec3 p, float period) {
+	float value = 0.0;
+	float amplitude = 0.5;
+	for (int i = 0; i < 4; i++) {
+		value += amplitude * pnoise(p, vec3(period));
+		p *= 2.0;
+		period *= 2.0;
+		amplitude *= 0.5;
+	}
+	return value;
+}
+
+// Tiling 3D Ridge noise (based on Simplex)
+float ridge3d_tiling(vec3 p, float period) {
+	vec3  g;
+	float n = psrdnoise(p, vec3(period), 0.0, g);
+	return 1.0 - abs(n);
+}
+
+// Tiling 3D Gradient noise (classic Perlin)
+float gradient3d_tiling(vec3 p, float period) {
+	return pnoise(p, vec3(period)) * 0.5 + 0.5;
+}
+
 
 // R: Simplex 3D
 float fastSimplex3d(vec3 p) {

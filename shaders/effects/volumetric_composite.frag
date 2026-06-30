@@ -13,8 +13,8 @@ layout(binding = [[VOLUMETRIC_SCATTERING_BINDING]]) uniform sampler3D uVolumetri
 #include "../helpers/lighting.glsl"
 
 #include "lygia/color/palette.glsl"
-#include "lygia/generative/voronoi.glsl"
-#include "lygia/generative/snoise.glsl"
+// #include "lygia/generative/voronoi.glsl"
+// #include "lygia/generative/snoise.glsl"
 
 const int NUM_CASCADES = 4;
 const int GRID_RES_Z = 64;

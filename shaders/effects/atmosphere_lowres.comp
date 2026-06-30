@@ -202,7 +202,7 @@ void main() {
 			vec3 advect_temp = getCloudWindOffset(time);
 			vec3 p_advected_temp = p_temp + advect_temp;
 			vec2 weatherUV = p_advected_temp.xz / (100000.0 * props.worldScale);
-			float emptyDist = textureLod(u_cloudJFADistance, weatherUV, 0.0).r;
+			float emptyDist = textureLod(u_cloudJFADistance, vec2(0.5)+weatherUV, 0.0).r;
 
 			// If we are far from any potential cloud, we can take a much larger step.
 			// We subtract a safety margin.
