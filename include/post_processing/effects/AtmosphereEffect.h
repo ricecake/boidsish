@@ -229,9 +229,6 @@ namespace Boidsish {
 			std::unique_ptr<ComputeShader> spatial_filter_shader_;
 
 			std::unique_ptr<ComputeShader> cloud_bake_shader_;
-			std::unique_ptr<ComputeShader> cloud_jfa_init_shader_;
-			std::unique_ptr<ComputeShader> cloud_jfa_iterate_shader_;
-			std::unique_ptr<ComputeShader> cloud_jfa_distance_shader_;
 
 			float                          time_ = 0.0f;
 			float                          last_time_ = 0.0f;
@@ -304,8 +301,6 @@ namespace Boidsish {
 			bool      has_valid_history_ = false;
 
 			GLuint cloud_weather_texture_ = 0;
-			GLuint cloud_jfa_textures_[2] = {0, 0};
-			GLuint cloud_distance_texture_ = 0;
 			bool   needs_weather_bake_ = true;
 			float  world_scale_ = 1.0f;
 

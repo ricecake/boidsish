@@ -22,11 +22,17 @@ void main() {
     // To make it "non-obvious" when it wraps, it should be large.
     // 2048 texture at 10000 scale means one tile is 20,480,000 units.
 
-    vec3 p = vec3(uv.x * 100000.0 * uWorldScale, 0.0, uv.y * 100000.0 * uWorldScale);
+    float mapRange = 100000.0 * uWorldScale;
+    float cellRange = 10000.0 * uWorldScale;
+    vec3 p = vec3(uv.x * mapRange, 0.0, uv.y * mapRange);
 
-    vec2 weatherData = worley3d_tiling(p / (10000.0 * uWorldScale), 16.0);
-    // float weatherMap = step(1.0 - uCloudCoverage, abs(1-weatherData.x));
-    float weatherMap = abs(1-weatherData.x);
+    vec2 weatherData = worley3d_tiling(p / cellRange, 16.0);
+
+    // Direct SDF generation from Worley noise
+    // uCloudCoverage [0,1] maps to a radius [0, 1] in cell-space
+    float radius = uCloudCoverage;
+    float sdf = (weatherData.x - radius) * cellRange;
+
     float cellID = weatherData.y;
 
     // Height/Altitude needs its own frequency
@@ -35,5 +41,5 @@ void main() {
     float altitudeMap = abs(1.0 - heightData.x);
     float thicknessMap = heightData.y;
 
-    imageStore(outWeatherMap, pixel, vec4(weatherMap, altitudeMap, cellID, thicknessMap));
+    imageStore(outWeatherMap, pixel, vec4(sdf, altitudeMap, cellID, thicknessMap));
 }

@@ -34,7 +34,7 @@ struct CloudProperties {
 };
 
 struct CloudWeather {
-	float weatherMap; // Density/Coverage
+	float sdf;        // Signed Distance Field (world space)
 	float heightMap;  // Altitude variety
 	float thickness;  // Thickness variety
 	float cellID;     // Per-cell variety
@@ -123,12 +123,19 @@ vec3 getCloudAdvectionOffset(float h, float time) {
 
 CloudWeather loadCloudWeather(vec4 tex) {
 	CloudWeather weather;
-	weather.weatherMap = tex.r;
+	weather.sdf = tex.r;
 	weather.heightMap = tex.g;
 	weather.cellID = tex.b;
 	weather.thickness = tex.a;
 
 	return weather;
+}
+
+float getCloudCoverageFromSDF(float sdf, float worldScale) {
+	// SDF is negative inside the cloud, positive outside.
+	// We want coverage to be 1.0 inside and 0.0 outside.
+	// Use a smooth transition of 500m * worldScale.
+	return 1.0 - smoothstep(-500.0 * worldScale, 500.0 * worldScale, sdf);
 }
 
 
@@ -147,9 +154,11 @@ CloudLayer computeCloudLayer(CloudWeather weather, CloudProperties props) {
 	// heightMap (gradual) provides a base altitude variation
 	float altitudeShift = weather.heightMap * props.thickness * 2.0;
 
+	float coverage = getCloudCoverageFromSDF(weather.sdf, props.worldScale);
+
 	// thickness (cell-based ID) provides dramatic vertical expansion per cell
 	// Tall clouds (cumulonimbus) can be much thicker than base thickness
-	float verticalExpansion = mix(1.0, 8.0, weather.thickness * weather.weatherMap);
+	float verticalExpansion = mix(1.0, 8.0, weather.thickness * coverage);
 
 	CloudLayer layer;
 	layer.baseFloor = (props.altitude * props.worldScale) + altitudeShift * props.worldScale;
@@ -214,7 +223,7 @@ vec4 calculateCloudDensityHZDv1(
 	baseNoise *= heightGradient;
 
 	// Coverage remapping
-	float coverage = props.coverage * weather.weatherMap;
+	float coverage = props.coverage * getCloudCoverageFromSDF(weather.sdf, props.worldScale);
 	float baseDensity = remapClamp(baseNoise, 1.0 - coverage, 1.0, 0.0, 1.0);
 	baseDensity *= coverage;
 
@@ -321,7 +330,8 @@ vec4 calculateCloudDensityExpV2(
 	float densityProfile = mix(bottomHeavy, anvil, ((cloudFactor + 0.5) * h) * weather.heightMap);
 
 	if (simplified) {
-		float density = smoothstep(coverageThreshold, max(1.0, coverageThreshold), rolledNoise * weather.weatherMap);
+		float coverage = getCloudCoverageFromSDF(weather.sdf, props.worldScale);
+		float density = smoothstep(coverageThreshold, max(1.0, coverageThreshold), rolledNoise * coverage);
 		return vec4(smoothstep(0, 0.65, density * densityProfile * props.densityBase * 5.0), advect);
 	}
 
@@ -336,19 +346,21 @@ vec4 calculateCloudDensityExpV2(
 	finalNoise = mix(finalNoise, remap(finalNoise, detail, 1.0, 0.0, 1.0), 0.3);
 
 	// Apply coverage and local density
-	float baseDensity =  finalNoise * weather.weatherMap;
+	float baseDensity =  finalNoise * getCloudCoverageFromSDF(weather.sdf, props.worldScale);
 
 	// Add "Edge Wisps": high-frequency FBM at the boundaries
 	if (baseDensity > 0.0 && baseDensity < 0.3) {
+		float coverage = getCloudCoverageFromSDF(weather.sdf, props.worldScale);
 		float wisps = fastFbm3d((p_warped+time*(30.0)) / (1000.0 * props.worldScale));
 		float wispMask = 1.0 - smoothstep(0.0, 0.5, baseDensity);
-		baseDensity += wisps * wispMask * 0.35 * weather.weatherMap;
+		baseDensity += wisps * wispMask * 0.35 * coverage;
 	}
 
 	// Giant tall clouds vs wispy things
-	// High weatherMap = tall, dense, sharp
-	// Low weatherMap = wispy, thin, soft
-	float wispyFactor = smoothstep(0.2, 0.35, weather.weatherMap);
+	// High coverage = tall, dense, sharp
+	// Low coverage = wispy, thin, soft
+	float coverage = getCloudCoverageFromSDF(weather.sdf, props.worldScale);
+	float wispyFactor = smoothstep(0.2, 0.35, coverage);
 	baseDensity *= mix(0.6, 1.0, wispyFactor);
 
 	float density = smoothstep(coverageThreshold, max(1.0, coverageThreshold), baseDensity);
@@ -392,8 +404,9 @@ vec4 calculateCloudDensityExpV3(
 	// return (cos(2*worley.y*time)+1.5)*step(sin(time*worley.y)*0.5+0.5, worley.x);
 	// return (cos(2*worley.y*time)+1.5)*step(sin(time*worley.y)*0.5+0.5, length(fract(p)));
 
+	float coverage = getCloudCoverageFromSDF(weather.sdf, props.worldScale);
 	// float baseNoise = smoothstep(coverageThreshold, 1.0, max(worley.x,worley.y));
-	float baseNoise = smoothstep(coverageThreshold, 1.0, weather.weatherMap);// * max(worley.x,worley.y);
+	float baseNoise = smoothstep(coverageThreshold, 1.0, coverage);// * max(worley.x,worley.y);
 	// float baseNoise = remap(max(worley.x,worley.y), coverageThreshold, 1.0, 0.0, 1.0);
 	// float baseNoise = remap(remap(worley.y, worley.x, 1.0, 0.0, 1.0), coverageThreshold, 1.0, 0.0, 1.0);
 
@@ -462,12 +475,12 @@ vec4 calculateCloudDensityExpV5(
 	float baseNoise = remapClamp(fastSimplex3d(p_scaled), worley.x, 1.0, 0.0, 1.0);
 	baseNoise *= heightGradient;
 
-	float coverage = props.coverage * weather.weatherMap;
+	float coverage = props.coverage * getCloudCoverageFromSDF(weather.sdf, props.worldScale);
 	float baseDensity = remapClamp(baseNoise, 1.0 - coverage, 1.0, 0.0, 1.0);
 	// baseDensity *= coverage;
 
 	// return vec4(step(coverageThreshold, worley.x*step(coverageThreshold, worley.y)) * remapClamp(baseNoise, mix(worley.x, fastFbmCurl3d(p_scaled), h) * 0.5, 1.0, 0.0, props.densityBase), advect);
-	// float finalNoise = remapClamp(baseNoise, worley.x, 1.0, weather.weatherMap, props.densityBase);
+	// float finalNoise = remapClamp(baseNoise, worley.x, 1.0, coverage, props.densityBase);
 	// float finalNoise = remap(baseDensity * 2.0, ((fastRidge3d(p_scaled * h * 100.0)+1.0)*0.5)*0.4, 1.0, 0.0, 2.0*props.densityBase);
 	float finalNoise = remap(baseDensity, ((fastRidge3d(p_scaled * h * 100.0)*0.5)+0.5)*0.25, 1.0, 0.0, props.densityBase);
 	// float finalNoise = baseDensity;
@@ -516,12 +529,13 @@ vec4 calculateCloudDensityExpV6(
 	baseNoise *= heightGradient;
 
 	// Coverage remapping
-	float coverage = props.coverage * step(0.25, weather.weatherMap);
-	float baseDensity = remapClamp(baseNoise+weather.weatherMap, 1.0 - coverage, 1.0, 0.0, props.densityBase);
+	float coverageFromSDF = getCloudCoverageFromSDF(weather.sdf, props.worldScale);
+	float coverage = props.coverage * step(0.25, coverageFromSDF);
+	float baseDensity = remapClamp(baseNoise+coverageFromSDF, 1.0 - coverage, 1.0, 0.0, props.densityBase);
 	baseDensity *= coverage;
 
 
-	return vec4(baseDensity, advectSpeed);// * smoothstep(coverageThreshold, coverageThreshold+0.01, weather.weatherMap);
+	return vec4(baseDensity, advectSpeed);// * smoothstep(coverageThreshold, coverageThreshold+0.01, coverageFromSDF);
 }
 
 vec4 calculateCloudDensityExpV7(
@@ -555,11 +569,13 @@ vec4 calculateCloudDensityExpV7(
 	float tapering = smoothstep(0.0, 0.15, h) * 1.0-smoothstep(0.7, 1.0, h);
 
 	baseNoise *= heightGradient;
-	// float coverage = props.coverage * step(0.25, weather.weatherMap);
+
+	float coverageFromSDF = getCloudCoverageFromSDF(weather.sdf, props.worldScale);
+	// float coverage = props.coverage * step(0.25, coverageFromSDF);
 	// float baseDensity = remapClamp(baseNoise, 1.0 - coverage, 1.0, 0.0, props.densityBase);
 
-	float map = (1.0-weather.weatherMap) * tapering;
-	float coverage = props.coverage * step(0.25, weather.weatherMap);
+	float map = (1.0-coverageFromSDF) * tapering;
+	float coverage = props.coverage * step(0.25, coverageFromSDF);
 	float baseDensity = remapClamp((baseNoise+tapering*map), 1.0 - coverage, 1.0, 0.0, props.densityBase);
 	baseDensity *= coverage;
 
