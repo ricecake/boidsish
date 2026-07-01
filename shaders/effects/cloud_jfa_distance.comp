@@ -9,13 +9,21 @@ uniform float uWorldRange;
 #define JUMPFLOOD_TYPE vec4
 #include "lygia/morphological/jumpFlood.glsl"
 
+float jumpFloodSdfToroidal(sampler2D tex, vec2 st) {
+    vec2 seedpos = JUMPFLOOD_DECODE_FNC(texture(tex, st));
+    if (seedpos == vec2(0.0)) return 1.0;
+    vec2 diff = abs(seedpos - st);
+    diff = min(diff, 1.0 - diff);
+    return length(diff);
+}
+
 void main() {
     ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
     ivec2 size = imageSize(outDistanceMap);
     if (pixel.x >= size.x || pixel.y >= size.y) return;
 
     vec2 uv = (vec2(pixel) + 0.5) / vec2(size);
-    float distUV = jumpFloodSdf(uInputJFA, uv);
+    float distUV = jumpFloodSdfToroidal(uInputJFA, uv);
 
     // Convert UV distance to world distance
     float worldDist = distUV * uWorldRange;

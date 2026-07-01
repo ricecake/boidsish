@@ -2,6 +2,7 @@
 #define HELPERS_CLOUDS_GLSL
 
 #include "../lighting.glsl"
+#include "../atmosphere/common.glsl"
 #include "fast_noise.glsl"
 #include "math.glsl"
 #include "lygia/generative/random.glsl"
@@ -133,12 +134,20 @@ CloudWeather loadCloudWeather(vec4 tex) {
 
 
 CloudWeather computeCloudWeather(vec3 p, CloudProperties props) {
-	vec3 advect = getCloudWindOffset(time);
-	vec3 p_advected = p + advect;
+	vec3 earthCenter = vec3(0.0, -kEarthRadius * 1000.0 * props.worldScale, 0.0);
+	vec3 dir = normalize(p - earthCenter);
 
-	// Use baked weather map. Sampling UV is worldXZ / range.
-	// Range is 100,000 * worldScale as defined in the bake shader.
-	vec2 uv = p_advected.xz / (100000.0 * props.worldScale);
+	// Consistent Spherical Mapping (zyx rotation)
+	vec3 rotatedDir = dir.zyx;
+	float lon = atan(rotatedDir.y, rotatedDir.x);
+	float lat = acos(rotatedDir.z);
+
+	float R_cloud = kEarthRadius * 1000.0 * props.worldScale + props.altitude * props.worldScale;
+	vec2 sphericalPos = vec2(lon, lat) * R_cloud;
+
+	vec3 advect = getCloudWindOffset(time);
+	vec2 uv = fract((sphericalPos + advect.xz) / (100000.0 * props.worldScale));
+
 	vec4 bakedWeather = textureLod(u_cloudWeatherTexture, uv, 0.0);
 	return loadCloudWeather(bakedWeather);
 }
