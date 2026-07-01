@@ -10,6 +10,49 @@ uniform float uWorldScale;
 uniform float uCloudCoverage;
 
 
+// Tiling 3D Worley/Cellular noise
+vec2 cloudMapGen(vec3 p, float period) {
+	vec3  i = floor(p);
+	vec3  f = fract(p);
+	float minDistSq = 1.0;
+	float cellId = 0.0;
+	for (int z = -1; z <= 1; z++) {
+		for (int y = -1; y <= 1; y++) {
+			for (int x = -1; x <= 1; x++) {
+				vec3 neighbor = vec3(float(x), float(y), float(z));
+				// Wrap neighbor + i to [0, period-1]
+				vec3 wrapped_coord = mod(i + neighbor, period);
+				vec3 point = hash33(wrapped_coord);
+				vec3 diff = neighbor + point - f;
+				float d = dot(diff, diff);
+				if (d < minDistSq) {
+					minDistSq = d;
+					cellId = random(point); // Use the x component of the cell's random point as the ID
+					// cellId = (simplex3d_tiling(point, period)+1.0)*0.5; // Use the x component of the cell's random point as the ID
+				}
+			}
+		}
+	}
+	return vec2(sqrt(minDistSq), cellId);
+}
+
+// Tiling 3D FBM Perlin (using pnoise for classic Perlin)
+float simplexTiledWithGrad(vec3 p, float period) {
+	vec3 gradient;
+	float value = 0.0;
+	float amplitude = 0.5;
+	for (int i = 0; i < 4; i++) {
+        vec3 g;
+		value += amplitude * psrdnoise(p, vec3(period), 0.0, g);
+		p *= 2.0;
+		period *= 2.0;
+        gradient += amplitude * g;
+		amplitude *= 0.5;
+	}
+	return value;
+}
+
+
 void main() {
     ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
     ivec2 size = imageSize(outWeatherMap);
@@ -24,14 +67,17 @@ void main() {
 
     vec3 p = vec3(uv.x * 100000.0 * uWorldScale, 0.0, uv.y * 100000.0 * uWorldScale);
 
-    vec2 weatherData = worley3d_tiling(p / (10000.0 * uWorldScale), 16.0);
+    vec2 weatherData = cloudMapGen((p + computeCurl(p/1000, 16))/ (10000.0 * uWorldScale), 16.0);
+    // float weatherData = fbm3d_tiling(p/10000, 32);
     // float weatherMap = step(1.0 - uCloudCoverage, abs(1-weatherData.x));
-    float weatherMap = abs(1-weatherData.x);
+    // float weatherMap = (weatherData+1)*0.5;
+    float weatherMap = uCloudCoverage * abs(1.0-weatherData.x);
     float cellID = weatherData.y;
+    // float cellID = 7;
 
     // Height/Altitude needs its own frequency
     // Use ID variant to get both a gradual distance (G) and a per-cell variety ID (A)
-    vec2 heightData = worley3d_tiling(p / (15000.0 * uWorldScale), 16.0);
+    vec2 heightData = worley3d_tiling(p / (20000.0 * uWorldScale), 16.0);
     float altitudeMap = abs(1.0 - heightData.x);
     float thicknessMap = heightData.y;
 
