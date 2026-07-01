@@ -2,6 +2,7 @@
 #define HELPERS_CLOUDS_GLSL
 
 #include "../lighting.glsl"
+#include "../atmosphere/common.glsl"
 #include "fast_noise.glsl"
 #include "math.glsl"
 #include "lygia/generative/random.glsl"
@@ -133,14 +134,16 @@ CloudWeather loadCloudWeather(vec4 tex) {
 
 
 CloudWeather computeCloudWeather(vec3 p, CloudProperties props) {
-	vec3 earthCenter = vec3(viewPos.x, -6360.0 * 1000.0 * props.worldScale, viewPos.z);
+	vec3 earthCenter = vec3(0.0, -kEarthRadius * 1000.0 * props.worldScale, 0.0);
 	vec3 dir = normalize(p - earthCenter);
 
-	// Spherical Mapping: Using longitude and latitude-based arc lengths
-	float lon = atan(dir.z, dir.x);
-	float lat = asin(dir.y);
+	// Stable Spherical Mapping: Rotate frame so the "pole" is on the Z-axis
+	// This moves the singularity to the horizon for a typical ground camera.
+	vec3 rotatedDir = vec3(dir.x, dir.z, dir.y);
+	float lon = atan(rotatedDir.y, rotatedDir.x);
+	float lat = acos(rotatedDir.z);
 
-	float R_cloud = 6360.0 * 1000.0 * props.worldScale + props.altitude * props.worldScale;
+	float R_cloud = kEarthRadius * 1000.0 * props.worldScale + props.altitude * props.worldScale;
 	vec2 sphericalPos = vec2(lon, lat) * R_cloud;
 
 	vec3 advect = getCloudWindOffset(time);
