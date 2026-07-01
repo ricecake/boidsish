@@ -133,12 +133,19 @@ CloudWeather loadCloudWeather(vec4 tex) {
 
 
 CloudWeather computeCloudWeather(vec3 p, CloudProperties props) {
-	vec3 advect = getCloudWindOffset(time);
-	vec3 p_advected = p + advect;
+	vec3 earthCenter = vec3(viewPos.x, -6360.0 * 1000.0 * props.worldScale, viewPos.z);
+	vec3 dir = normalize(p - earthCenter);
 
-	// Use baked weather map. Sampling UV is worldXZ / range.
-	// Range is 100,000 * worldScale as defined in the bake shader.
-	vec2 uv = p_advected.xz / (100000.0 * props.worldScale);
+	// Spherical Mapping: Using longitude and latitude-based arc lengths
+	float lon = atan(dir.z, dir.x);
+	float lat = asin(dir.y);
+
+	float R_cloud = 6360.0 * 1000.0 * props.worldScale + props.altitude * props.worldScale;
+	vec2 sphericalPos = vec2(lon, lat) * R_cloud;
+
+	vec3 advect = getCloudWindOffset(time);
+	vec2 uv = fract((sphericalPos + advect.xz) / (100000.0 * props.worldScale));
+
 	vec4 bakedWeather = textureLod(u_cloudWeatherTexture, uv, 0.0);
 	return loadCloudWeather(bakedWeather);
 }

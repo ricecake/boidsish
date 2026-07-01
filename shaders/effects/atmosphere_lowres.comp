@@ -37,6 +37,7 @@ vec2 getNextCloudIntervalDDA(vec3 earthCenter, vec3 ro, vec3 rd, float t_min, fl
 	vec2 texRes = vec2(textureSize(u_cloudWeatherTexture, 0));
 	vec2 cellSize = 1.0 / texRes;
 	float mapScale = 100000.0 * props.worldScale;
+	float R_cloud = 6360.0 * 1000.0 * props.worldScale + props.altitude * props.worldScale;
 
 	vec3 windAdvect = getCloudWindOffset(time);
 
@@ -44,10 +45,25 @@ vec2 getNextCloudIntervalDDA(vec3 earthCenter, vec3 ro, vec3 rd, float t_min, fl
 	// from snapping back to the previous cell when resuming on a boundary.
 	float t_start_safe = t_min + 0.1;
 
-	// 1. Initialize Ray in 2D UV Space
-	vec2 uv_start = ((ro + rd * t_start_safe).xz + windAdvect.xz) / mapScale;
-	vec2 rayUVDir = rd.xz / mapScale;
+	// 1. Initialize Ray in 2D UV Space using Spherical Mapping
+	vec3 p_start = ro + rd * t_start_safe;
+	vec3 dir_start = normalize(p_start - earthCenter);
 
+	// Approximate rayUVDir in spherical space
+	vec3 p_end_approx = ro + rd * (t_start_safe + 100.0);
+	vec3 dir_end = normalize(p_end_approx - earthCenter);
+	vec2 lonlat_start = vec2(atan(dir_start.z, dir_start.x), asin(dir_start.y));
+	vec2 lonlat_end = vec2(atan(dir_end.z, dir_end.x), asin(dir_end.y));
+
+	// Handle longitude wrap-around for ray direction
+	float d_lon = lonlat_end.x - lonlat_start.x;
+	if (d_lon > PI) d_lon -= 2.0 * PI;
+	if (d_lon < -PI) d_lon += 2.0 * PI;
+
+	vec2 spherical_start = lonlat_start * R_cloud;
+	vec2 rayUVDir = vec2(d_lon, lonlat_end.y - lonlat_start.y) * R_cloud / (100.0 * mapScale);
+
+	vec2 uv_start = fract((spherical_start + windAdvect.xz) / mapScale);
 	ivec2 mapPos = ivec2(floor(uv_start * texRes));
 	ivec2 stepDir = ivec2(sign(rayUVDir));
 
@@ -62,7 +78,7 @@ vec2 getNextCloudIntervalDDA(vec3 earthCenter, vec3 ro, vec3 rd, float t_min, fl
 	// Maintain the true t_min for the return value so the first 0.1m isn't skipped
 	float current_t = t_min;
 
-	for (int i = 0; i < 200; i++) {
+	for (int i = 0; i < 512; i++) {
 		if (current_t >= t_max) break;
 
 		float next_t = min(tMax.x, tMax.y);
@@ -94,7 +110,10 @@ vec2 getNextCloudIntervalDDA(vec3 earthCenter, vec3 ro, vec3 rd, float t_min, fl
 				current_t += t_jump;
 
 				// Re-project and re-initialize the DDA grid state at the new leaped position
-				vec2 uv_curr = ((ro + rd * current_t).xz + windAdvect.xz) / mapScale;
+				vec3 p_curr = ro + rd * current_t;
+				vec3 dir_curr = normalize(p_curr - earthCenter);
+				vec2 spherical_curr = vec2(atan(dir_curr.z, dir_curr.x), asin(dir_curr.y)) * R_cloud;
+				vec2 uv_curr = fract((spherical_curr + windAdvect.xz) / mapScale);
 				mapPos = ivec2(floor(uv_curr * texRes));
 
 				vec2 nextBoundaryUV = (vec2(mapPos) + max(sign(rayUVDir), 0.0)) * cellSize;
@@ -134,10 +153,10 @@ vec2 getNextCloudIntervalDDA(vec3 earthCenter, vec3 ro, vec3 rd, float t_min, fl
 		current_t = next_t;
 		if (tMax.x < tMax.y) {
 			tMax.x += tDelta.x;
-			mapPos.x += stepDir.x;
+			mapPos.x = (mapPos.x + stepDir.x + int(texRes.x)) % int(texRes.x);
 		} else {
 			tMax.y += tDelta.y;
-			mapPos.y += stepDir.y;
+			mapPos.y = (mapPos.y + stepDir.y + int(texRes.y)) % int(texRes.y);
 		}
 	}
 
@@ -295,12 +314,12 @@ void main() {
 
 		float lodDistanceThreshold = 25000.0 * worldScale;
 
-		int MAX_ITERATIONS = 150;
+		int MAX_ITERATIONS = 512;
+		int iterations = 0;
 
 		float t = t_start;
-		float blendDist = 500.0 * worldScale; // [cite: 39]
 
-		while (t < dist && t < t_end) {
+		while (t < dist && t < t_end && iterations < MAX_ITERATIONS) {
 			// Get the next valid [entry, exit] interval for this ray
 			vec2 segment = getNextCloudIntervalDDA(earthCenter, viewPos, rayDir, t, t_end, props, time);
 
@@ -423,10 +442,11 @@ void main() {
 
 				prevDensity = d;
 				march_t += currentStepSize;
-				if (cloudTransmittance < 0.01) break; // [cite: 75]
+				iterations++;
+				if (cloudTransmittance < 0.001) break;
 			}
 
-			if (cloudTransmittance < 0.01) break;
+			if (cloudTransmittance < 0.001) break;
 
 			// Advance outer t to search the next cell
 			t = segment_end;
@@ -446,14 +466,23 @@ void main() {
 
 		// Reproject using the accumulated per-sample advection directly
 		vec3 stableHitPos = viewPos + canonicalRayDir * stableHitDist;
-		vec3 advectionDelta = avgAdvection * uDeltaTime;
 
-		vec3 prevHitPos = stableHitPos - advectionDelta;
+		// Spherical Advection Delta
+		vec3 dir = normalize(stableHitPos - earthCenter);
+		float lon = atan(dir.z, dir.x);
+		float lat = asin(dir.y);
+		float R_cloud = 6360.0 * 1000.0 * worldScale + props.altitude * worldScale;
+		vec2 sphericalPos = vec2(lon, lat) * R_cloud;
+
+		vec2 prevSphericalPos = sphericalPos - avgAdvection.xz * uDeltaTime;
+		vec2 prevLonLat = prevSphericalPos / R_cloud;
+		vec3 prevDir = vec3(cos(prevLonLat.y) * cos(prevLonLat.x), sin(prevLonLat.y), cos(prevLonLat.y) * sin(prevLonLat.x));
+		vec3 prevHitPos = earthCenter + prevDir * length(stableHitPos - earthCenter);
+
 		vec4 prevClipHit = uPrevViewProjection * vec4(prevHitPos, 1.0);
 		vec2 prevScreenUV = (prevClipHit.xy / prevClipHit.w) * 0.5 + 0.5;
 
 		finalVelocity = prevScreenUV - TexCoords;
-		// finalVelocity = vec2(minStepSize/10, 0);
 	} else {
 		finalDepth = vec4(50000.0 * worldScale, 50000.0 * worldScale, firstStepSize, pathDensity);
 		vec3 advectionOffset = getCloudAdvectionSpeed(0.0, time);

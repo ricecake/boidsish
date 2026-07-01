@@ -318,6 +318,8 @@ void main() {
 
 		if (is_new_pixel) {
 			float depthDiff = abs(currDepthProps.r - historyDepthProps.r);
+			// Spherical distance correction for depth comparison if needed,
+			// but linear depth is usually sufficient for small camera moves.
 			if (depthDiff > currDepthProps.b * 8.0) {
 				validHistory = false;
 			}
