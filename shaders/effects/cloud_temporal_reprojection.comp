@@ -287,7 +287,9 @@ void main() {
 	bool is_new_pixel = (pixel % 2) == current_offset;
 
 	ivec2 packedPixel = pixel / 2;
-	vec2 velocity = getDilatedVelocity_Hybrid(packedPixel, size);
+	vec2 packedSize = vec2(size / 2);
+	vec2 packedUV = (vec2(packedPixel) + 0.5) / packedSize;
+	vec2 velocity = getDilatedVelocity_Hybrid(packedUV, 1.0 / packedSize);
 	vec2 prevUV = uv + velocity;
 	bool validHistory = all(greaterThanEqual(prevUV, vec2(0.0))) && all(lessThanEqual(prevUV, vec2(1.0)));
 

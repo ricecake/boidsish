@@ -137,9 +137,8 @@ CloudWeather computeCloudWeather(vec3 p, CloudProperties props) {
 	vec3 earthCenter = vec3(0.0, -kEarthRadius * 1000.0 * props.worldScale, 0.0);
 	vec3 dir = normalize(p - earthCenter);
 
-	// Stable Spherical Mapping: Rotate frame so the "pole" is on the Z-axis
-	// This moves the singularity to the horizon for a typical ground camera.
-	vec3 rotatedDir = vec3(dir.x, dir.z, dir.y);
+	// Consistent Spherical Mapping (zyx rotation)
+	vec3 rotatedDir = dir.zyx;
 	float lon = atan(rotatedDir.y, rotatedDir.x);
 	float lat = acos(rotatedDir.z);
 
