@@ -4569,6 +4569,10 @@ namespace Boidsish {
 		impl->decor_manager = decor_manager;
 	}
 
+	AtmosphereManager* Visualizer::GetAtmosphereManager() {
+		return impl->atmosphere_manager.get();
+	}
+
 	GrassManager* Visualizer::GetGrassManager() {
 		return impl->grass_manager.get();
 	}

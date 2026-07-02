@@ -61,6 +61,7 @@ namespace Boidsish {
 			AddWidget(std::make_shared<RenderWidget>(visualizer));
 			AddWidget(std::make_shared<AudioWidget>(visualizer));
 			AddWidget(std::make_shared<SystemWidget>(visualizer, scene_manager));
+			AddWidget(std::make_shared<MapWidget>(visualizer));
 			AddWidget(std::make_shared<ProfilerWidget>());
 		}
 

@@ -45,6 +45,7 @@ namespace Boidsish {
 	class ShockwaveManager;
 	class SdfVolumeManager;
 	struct SdfSource;
+	class AtmosphereManager;
 	class DecorManager;
 	class GrassManager;
 	class WeatherManager;
@@ -580,6 +581,7 @@ namespace Boidsish {
 		FireEffectManager*                     GetFireEffectManager();
 		DecorManager*                          GetDecorManager();
 		void                                   SetDecorManager(std::shared_ptr<DecorManager> decor_manager);
+		AtmosphereManager*                     GetAtmosphereManager();
 		GrassManager*                          GetGrassManager();
 		WeatherManager*                        GetWeatherManager();
 		MoodManager*                           GetMoodManager();
