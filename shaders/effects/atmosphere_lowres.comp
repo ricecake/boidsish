@@ -249,19 +249,27 @@ void main() {
 			}
 
 			// Estimate SDF exit
-			float t_exit_sdf = t + max(baseStepSize, abs(weather.sdf) / rayXZLen);
-			t_exit = min(t_exit, t_exit_sdf);
+			// float t_exit_sdf = t + max(baseStepSize, abs(weather.sdf) / rayXZLen);
+			// t_exit = min(t_exit, t_exit_sdf);
 
-			/*
+			// /*
 			// Estimate SDF exit
 			CloudWeather exitPointWeather = computeCloudWeather(viewPos + rayDir * t, props);
-			while (exitPointWeather.sdf <= 0) {
-				t += abs(exitPointWeather.sdf);
-				exitPointWeather = computeCloudWeather(viewPos + rayDir * t, props);
+			int iter = 0;
+			float loop_t = t;
+			while (exitPointWeather.sdf <= 0 && iter < 250) {
+				iter += 1;
+				if (exitPointWeather.sdf <= 0) {
+					loop_t += max(2.0, abs(exitPointWeather.sdf)/rayXZLen);
+				}
+				else {
+					break;
+				}
+				exitPointWeather = computeCloudWeather(viewPos + rayDir * loop_t, props);
 			}
-			float t_exit_sdf = t - (exitPointWeather.sdf/rayXZLen);
-			t_exit = min(t_exit, t_exit_sdf) + 1.0;
-			*/
+			float t_exit_sdf = loop_t;// - ((exitPointWeather.sdf/rayXZLen) + 1.0);
+			t_exit = min(t_exit, t_exit_sdf);
+			// */
 
 
 			float cloudVolumeT = t_exit - t_entry;
@@ -269,7 +277,7 @@ void main() {
 			float innerStepSize = max(1.0, cloudVolumeT / float(innerSamples));
 
 			for (int k = 0; k < innerSamples; k++) {
-				float subT = t_entry + (float(k) + jitter) * innerStepSize;
+				float subT = t_entry + (float(k)) * innerStepSize;
 				if (subT >= t_exit || cloudTransmittance < 0.01) break;
 
 				vec3 subP = viewPos + rayDir * subT;
