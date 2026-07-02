@@ -581,7 +581,7 @@ vec4 calculateCloudDensityExpV7(
 
 	// baseDensity *= tapering;
 
-	return vec4(baseDensity, advectSpeed);
+	return vec4(coverageFromSDF, advectSpeed);
 }
 
 
