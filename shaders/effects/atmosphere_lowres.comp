@@ -74,9 +74,6 @@ vec2 getNextCloudIntervalDDA(vec3 earthCenter, vec3 ro, vec3 rd, float t_min, fl
 		// Fetch the 2D distance to the nearest active weather footprint.
 		float jfaDist = textureLod(u_cloudJFADistance, cellUV, 0.0).g;
 
-		// NOTE: Adjust this scaling based on how your JFA pass encodes distance.
-		// This line assumes the JFA map stores normalized UV distance (0.0 to 1.0).
-		// If it stores texel distances, multiply by (1.0 / texRes.x) * mapScale instead.
 		float safeJumpWorld2D = jfaDist * mapScale;
 		float cellWorldSize = cellSize.x * mapScale;
 
@@ -84,16 +81,11 @@ vec2 getNextCloudIntervalDDA(vec3 earthCenter, vec3 ro, vec3 rd, float t_min, fl
 		if (safeJumpWorld2D > cellWorldSize * 2.0) {
 			float rayXZLen = length(rd.xz);
 
-			// Prevent division by zero for rays pointing perfectly straight up/down
 			if (rayXZLen > 1e-4) {
-				// Convert 2D safe radius into 3D ray distance.
-				// Subtract a 1-cell buffer so the jump is conservative, ensuring the DDA
-				// resumes right before the actual boundary to handle the micro-edges perfectly.
 				float t_jump = (safeJumpWorld2D - cellWorldSize) / rayXZLen;
 
 				current_t += t_jump;
 
-				// Re-project and re-initialize the DDA grid state at the new leaped position
 				vec2 uv_curr = ((ro + rd * current_t).xz + windAdvect.xz) / mapScale;
 				mapPos = ivec2(floor(uv_curr * texRes));
 
@@ -117,39 +109,26 @@ vec2 getNextCloudIntervalDDA(vec3 earthCenter, vec3 ro, vec3 rd, float t_min, fl
 			float localBaseAlt = segmentLayer.baseFloor;
 			float localTopAlt  = segmentLayer.baseCeiling;
 
-			// vec3 p_in = ro + rd * current_t;
-			// vec3 p_out = ro + rd * cell_exit_t;
+			// Calculate horizontal distance from camera (assuming ro is camera)
+			float dist_in_xz = length(rd.xz * current_t);
+			float dist_out_xz = length(rd.xz * cell_exit_t);
 
-			// float alt_in = length(p_in - earthCenter) - R_earth;
-			// float alt_out = length(p_out - earthCenter) - R_earth;
+			// Apply Parabolic Drop: (d^2) / 2R
+			float drop_in = (dist_in_xz * dist_in_xz) / (2.0 * R_earth);
+			float drop_out = (dist_out_xz * dist_out_xz) / (2.0 * R_earth);
 
-			// float rayMinAlt = min(alt_in, alt_out);
-			// float rayMaxAlt = max(alt_in, alt_out);
+			// Flat world Y + Faux Curvature Drop
+			float alt_in = (ro.y + rd.y * current_t) + drop_in;
+			float alt_out = (ro.y + rd.y * cell_exit_t) + drop_out;
 
+			float rayMaxAlt = max(alt_in, alt_out);
+			float rayMinAlt = min(alt_in, alt_out);
 
-// Inside the DDA loop, replace the altitude logic with this:
-vec3 p_in = ro + rd * current_t;
-vec3 p_out = ro + rd * cell_exit_t;
+			// Re-introduce padding. Because the planes are mathematically flat now,
+			// this extends the bounding box linearly without causing radial distortion.
+			float padding = 0.0;//200.0 * props.worldScale;
 
-float alt_in = length(p_in - earthCenter) - R_earth;
-float alt_out = length(p_out - earthCenter) - R_earth;
-
-float rayMaxAlt = max(alt_in, alt_out);
-float rayMinAlt = min(alt_in, alt_out);
-
-// The Grazing Angle Fix: Calculate distance to the ray's closest approach to earth center
-vec3 earthToOrigin = ro - earthCenter;
-float t_closest = -dot(earthToOrigin, rd);
-
-// If the dip occurs within this specific cell, update the minimum altitude
-if (t_closest > current_t && t_closest < cell_exit_t) {
-    vec3 p_closest = ro + rd * t_closest;
-    float dip_alt = length(p_closest - earthCenter) - R_earth;
-    rayMinAlt = min(rayMinAlt, dip_alt);
-}
-
-
-			if (rayMaxAlt >= localBaseAlt && rayMinAlt <= localTopAlt) {
+			if (rayMaxAlt >= (localBaseAlt - padding) && rayMinAlt <= (localTopAlt + padding)) {
 				return vec2(current_t, cell_exit_t);
 			}
 		}
@@ -347,12 +326,13 @@ void main() {
 			float march_t = segment_start + jitter * currentStepSize;
 
 			while (march_t < segment_end) {
-				vec3 p = viewPos + rayDir * march_t; // [cite: 50]
+				vec3 p = viewPos + rayDir * march_t;
 
-				// Evaluate Spherical Altitude [cite: 50, 51, 52]
-				float r2_minus_R2 = h0Term + 2.0 * march_t * roDotRd + march_t * march_t;
-				float r = sqrt(max(0.0, r2_minus_R2 + R_earth * R_earth));
-				float altitude = r2_minus_R2 / (r + R_earth);
+				// Match the Faux Curvature drop from the DDA
+				float dist_xz = length(rayDir.xz * march_t);
+				float drop = (dist_xz * dist_xz) / (2.0 * R_earth);
+				float altitude = p.y + drop;
+
 				float h_norm = clamp((altitude - props.altitude * props.worldScale) / max(props.thickness * props.worldScale, 1.0), 0.0, 1.0);
 
 				bool useCheapEval = march_t > lodDistanceThreshold; // [cite: 53]
