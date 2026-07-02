@@ -556,8 +556,8 @@ vec4 calculateCloudDensityExpV7(
 	vec3 advect = time * advectSpeed;
 	vec3 p_advected = p + advect;
 
-	vec4 rawCurlData = textureLod(u_curlTexture, (p_advected-advect) / (cloudCurlFrequency * props.worldScale * 6000.0), 0.0);
-	p_advected += rawCurlData.rgb * 10 * props.worldScale * 5000.0 * (1.0 - h);
+	vec4 rawCurlData = textureLod(u_curlTexture, (p_advected-advect) / (cloudCurlFrequency * props.worldScale * 75000.0), 0.0);
+	p_advected += rawCurlData.rgb  * props.worldScale * 5000.0 * (1.0 - h);
 
 	vec3 p_scaled = p_advected / (50000.0 * props.worldScale);
 	vec2 worleyis = fastWorley3dID(p_scaled);
@@ -570,7 +570,7 @@ vec4 calculateCloudDensityExpV7(
 
 	baseNoise *= heightGradient;
 
-	float coverageFromSDF = getCloudCoverageFromSDF(weather.sdf, props.worldScale);
+	float coverageFromSDF = getCloudCoverageFromSDF(weather.sdf-0.5, props.worldScale);
 	// float coverage = props.coverage * step(0.25, coverageFromSDF);
 	// float baseDensity = remapClamp(baseNoise, 1.0 - coverage, 1.0, 0.0, props.densityBase);
 
@@ -581,7 +581,9 @@ vec4 calculateCloudDensityExpV7(
 
 	// baseDensity *= tapering;
 
-	return vec4(coverageFromSDF, advectSpeed);
+	return vec4(baseDensity, advectSpeed);
+	// return vec4(max(0.0, min(coverageFromSDF, baseDensity)), advectSpeed);
+	// return vec4(max(0.0, min(baseNoise, heightGradient*coverageFromSDF)), advectSpeed);
 }
 
 
