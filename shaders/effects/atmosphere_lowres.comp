@@ -217,7 +217,7 @@ void main() {
 			bool useCheapEval = t > lodDistanceThreshold;
 
 			CloudLayer layer = computeCloudLayer(weather, props);
-			vec4 densityResult = calculateCloudDensity(p, weather, layer, props, uDeltaTime, useCheapEval);
+			vec4 densityResult = calculateCloudDensity(p, weather, layer, props, time, useCheapEval);
 
 			float d = densityResult.x;
 			vec3 sampleAdvection = densityResult.yzw;
@@ -275,7 +275,7 @@ void main() {
 					float shadowDensity = 0.0;
 					for (int k = 0; k < shadow_samples; k++) {
 						vec3 sp = p + L * (float(k) + 0.5) * shadowStepSize;
-						shadowDensity += calculateCloudDensity(sp, weather, layer, props, uDeltaTime, true).x;
+						shadowDensity += calculateCloudDensity(sp, weather, layer, props, time, true).x;
 					}
 
 					float opticalDepthToLight = shadowDensity * shadowStepSize * cloudShadowOpticalDepthMultiplier;
