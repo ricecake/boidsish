@@ -110,7 +110,7 @@ void main() {
 	vec3 p = vec3(uv.x * mapRange, 0.0, uv.y * mapRange);
 
 	// vec2 weatherData = worley3d_tiling(p / cellRange, 16.0);
-	vec2 weatherData = vec2(sdVoronoiFbm(p.xz/cellRange, 2.0, 3.0, uCloudCoverage, vec2(16.0)), 6);
+	vec2 weatherData = vec2(sdVoronoiFbm(p.xz/cellRange, 2.0, 3.0, uCloudCoverage, vec2(10.0)), 6);
 
 	// Direct SDF generation from Worley noise
 	// uCloudCoverage [0,1] maps to a radius [0, 1] in cell-space
@@ -120,7 +120,7 @@ void main() {
 
 	// Height/Altitude needs its own frequency
 	// Use ID variant to get both a gradual distance (G) and a per-cell variety ID (A)
-	vec2 heightData = worley3d_tiling(p / (15000.0 * uWorldScale), 16.0);
+	vec2 heightData = worley3d_tiling(p / (20000.0 * uWorldScale), 5.0);
 	float altitudeMap = abs(1.0 - heightData.x);
 	float thicknessMap = heightData.y;
 
