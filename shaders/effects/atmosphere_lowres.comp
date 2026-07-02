@@ -243,25 +243,41 @@ void main() {
 				if (t1 > t + 0.1) t_exit = min(t_exit, t1);
 			}
 
-			// Estimate SDF exit
-			float t_exit_sdf = t + max(baseStepSize, abs(weather.sdf) / rayXZLen);
-			t_exit = min(t_exit, t_exit_sdf);
+			// // Estimate SDF exit
+			// float t_exit_sdf = t + max(baseStepSize, abs(weather.sdf) / rayXZLen);
+			// t_exit = min(t_exit, t_exit_sdf);
 
-			/*
+			// /*
 			// Estimate SDF exit
 			CloudWeather exitPointWeather = computeCloudWeather(viewPos + rayDir * t, props);
-			while (exitPointWeather.sdf <= 0) {
-				t += abs(exitPointWeather.sdf);
+			int iter = 0;
+			while (exitPointWeather.sdf <= 0 && iter < 50) {
+				iter += 1;
+				if (exitPointWeather.sdf < 0) {
+					t += max(2.0, abs(exitPointWeather.sdf)/rayXZLen);
+				}
+				else {
+					t+=1.0;
+					break;
+				}
 				exitPointWeather = computeCloudWeather(viewPos + rayDir * t, props);
 			}
-			float t_exit_sdf = t - (exitPointWeather.sdf/rayXZLen);
-			t_exit = min(t_exit, t_exit_sdf) + 1.0;
-			*/
+			float t_exit_sdf = t;// - (exitPointWeather.sdf/rayXZLen);
+			t_exit = min(t_exit, t_exit_sdf);
+			// */
 
 
-			float cloudVolumeT = t_exit - t_entry;
-			const int innerSamples = 4;
-			float innerStepSize = max(1.0, cloudVolumeT / float(innerSamples));
+			// float cloudVolumeT = t_exit - t_entry;
+			// const int innerSamples = 4;
+			// float innerStepSize = max(1.0, cloudVolumeT / float(innerSamples));
+
+
+			float cloudVolumeT = max(0.0, t_exit - t_entry);
+			float targetStepSize = mix(5.0, 50, t/dist ) * worldScale;
+			int targetSamples = int(ceil(cloudVolumeT / targetStepSize));
+			const int MAX_INNER_SAMPLES = 64;
+			int innerSamples = clamp(targetSamples, 1, MAX_INNER_SAMPLES);
+			float innerStepSize = cloudVolumeT / float(innerSamples);
 
 			for (int k = 0; k < innerSamples; k++) {
 				float subT = t_entry + (float(k) + jitter) * innerStepSize;
@@ -282,6 +298,11 @@ void main() {
 
 				float d = densityResult.x;
 				vec3 sampleAdvection = densityResult.yzw;
+
+				if (d <= 0.0 && weather.sdf > 0.0) {
+					// Ray has left the side of the cloud, break the inner sampling loop
+					break;
+				}
 
 				if (d > 0.01) {
 					if (firstHitDist < 0.0) {
@@ -368,6 +389,9 @@ void main() {
 				}
 				prevDensity = d;
 			}
+
+			// lightEnergy += vec3(cloudVolumeT*0.01, 0,0);//
+
 			t = t_exit;
 			prevDensity = 0.0;
 		}
