@@ -20,6 +20,11 @@ uniform bool  uHasHistory;
 
 uniform sampler2D u_skyViewLUT;
 
+uniform float uCloudMaxRayDistance;
+uniform int   uCloudMinSamples;
+uniform int   uCloudMaxSamples;
+uniform float uCloudExtinction;
+
 #include "../atmosphere/common.glsl"
 #include "../helpers/clouds.glsl"
 #include "../helpers/fast_noise.glsl"
@@ -64,7 +69,7 @@ void main() {
 	vec3 rayDir = canonicalRayDir;
 
 	if (depth == 1.0) {
-		dist = 100000.0 * worldScale;
+		dist = uCloudMaxRayDistance * worldScale;
 		worldPos = viewPos + rayDir * dist;
 	}
 
@@ -126,9 +131,9 @@ void main() {
 			float varianceBoost = smoothstep(0.0, 0.05, historyVariance);
 			float historyBoost = 1.0 - smoothstep(1.0, 16.0, historyLength);
 			float historyConfidence = max(varianceBoost, historyBoost);
-			samples = int(mix(32, 96.0, pow(historyConfidence, 2.0)));
+			samples = int(mix(float(uCloudMinSamples), float(uCloudMaxSamples), pow(historyConfidence, 2.0)));
 
-			if (histFirst > 0.0 && histFirst < 40000.0 * worldScale) {
+			if (histFirst > 0.0 && histFirst < uCloudMaxRayDistance * 0.4 * worldScale) {
 				float marginScale = mix(1.0, 4.0, historyConfidence);
 				float margin = max(histStep * 2.0 * marginScale, (histLast - histFirst) * 0.5 * marginScale);
 
@@ -296,7 +301,7 @@ void main() {
 				float integrationStep = innerStepSize;
 				if (d > 0.000 || prevDensity > 0.000) {
 					float averageDensity = (prevDensity + d) * 0.5;
-					float stepDensity = averageDensity * integrationStep * 0.01;
+					float stepDensity = averageDensity * integrationStep * uCloudExtinction;
 					float transmittanceAtStep = exp(-stepDensity);
 					prevTransmissionDelta = prevTransmission - transmittanceAtStep;
 					prevTransmission = transmittanceAtStep;
@@ -395,7 +400,7 @@ void main() {
 		finalVelocity = prevScreenUV - TexCoords;
 		// finalVelocity = vec2(minStepSize/10, 0);
 	} else {
-		finalDepth = vec4(50000.0 * worldScale, 50000.0 * worldScale, firstStepSize, pathDensity);
+		finalDepth = vec4(uCloudMaxRayDistance * 0.5 * worldScale, uCloudMaxRayDistance * 0.5 * worldScale, firstStepSize, pathDensity);
 		vec3 advectionOffset = getCloudAdvectionSpeed(0.0, time);
 		vec3 advectionDelta = advectionOffset * uDeltaTime;
 
