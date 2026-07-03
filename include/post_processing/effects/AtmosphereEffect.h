@@ -54,7 +54,12 @@ namespace Boidsish {
 
 			glm::vec3 GetCloudColor() const { return cloud_color_; }
 
-			void SetCloudCoverage(float coverage) { cloud_coverage_ = coverage; }
+			void SetCloudCoverage(float coverage) {
+				if (std::abs(cloud_coverage_ - coverage) > 0.005f) {
+					cloud_coverage_ = coverage;
+					needs_weather_bake_ = true;
+				}
+			}
 
 			float GetCloudCoverage() const { return cloud_coverage_; }
 
@@ -109,6 +114,26 @@ namespace Boidsish {
 			void SetCloudBeerPowderMix(float m) { cloud_beer_powder_mix_ = m; }
 
 			float GetCloudBeerPowderMix() const { return cloud_beer_powder_mix_; }
+
+			void SetCloudFlowSpeed(float s) { cloud_flow_speed_ = s; }
+
+			float GetCloudFlowSpeed() const { return cloud_flow_speed_; }
+
+			void SetCloudFlowDirection(float d) { cloud_flow_direction_ = d; }
+
+			float GetCloudFlowDirection() const { return cloud_flow_direction_; }
+
+			void SetCloudFlowHeightScale(float s) { cloud_flow_height_scale_ = s; }
+
+			float GetCloudFlowHeightScale() const { return cloud_flow_height_scale_; }
+
+			void SetCloudCurlStrength(float s) { cloud_curl_strength_ = s; }
+
+			float GetCloudCurlStrength() const { return cloud_curl_strength_; }
+
+			void SetCloudCurlFrequency(float f) { cloud_curl_frequency_ = f; }
+
+			float GetCloudCurlFrequency() const { return cloud_curl_frequency_; }
 
 			// Scattering parameters
 			void SetRayleighScale(float s) { rayleigh_scale_ = s; }
@@ -167,25 +192,76 @@ namespace Boidsish {
 
 			float GetColorVarianceStrength() const { return color_variance_strength_; }
 
+			void SetSunAureoleStrength(float s) { sun_aureole_strength_ = s; }
+
+			float GetSunAureoleStrength() const { return sun_aureole_strength_; }
+
+			void SetCirrusOpacity(float o) { cirrus_opacity_ = o; }
+
+			float GetCirrusOpacity() const { return cirrus_opacity_; }
+
 			void SetRenderScale(float scale) {
 				if (render_scale_ != scale) {
 					render_scale_ = scale;
-					InitializeLowResResources();
+					InitializePackedResources();
 					InitializeTemporalResources();
 				}
 			}
 
 			float GetRenderScale() const { return render_scale_; }
 
+			void SetWorldScale(float scale) {
+				if (std::abs(world_scale_ - scale) > 0.001f) {
+					world_scale_ = scale;
+					needs_weather_bake_ = true;
+				}
+			}
+
+			float GetWorldScale() const { return world_scale_; }
+
+			// Cloud Quality parameters
+			void SetCloudMaxRayDistance(float dist) { cloud_max_ray_distance_ = dist; }
+			float GetCloudMaxRayDistance() const { return cloud_max_ray_distance_; }
+
+			void SetCloudMinSamples(int samples) { cloud_min_samples_ = samples; }
+			int GetCloudMinSamples() const { return cloud_min_samples_; }
+
+			void SetCloudMaxSamples(int samples) { cloud_max_samples_ = samples; }
+			int GetCloudMaxSamples() const { return cloud_max_samples_; }
+
+			void SetCloudExtinction(float extinction) { cloud_extinction_ = extinction; }
+			float GetCloudExtinction() const { return cloud_extinction_; }
+
+			void SetCloudTemporalGamma(float gamma) { cloud_temporal_gamma_ = gamma; }
+			float GetCloudTemporalGamma() const { return cloud_temporal_gamma_; }
+
+			void SetCloudMaxHistoryLength(float length) { cloud_max_history_length_ = length; }
+			float GetCloudMaxHistoryLength() const { return cloud_max_history_length_; }
+
+			void SetCloudPhiLuma(float phi) { cloud_phi_luma_ = phi; }
+			float GetCloudPhiLuma() const { return cloud_phi_luma_; }
+
+			void SetCloudPhiDepth(float phi) { cloud_phi_depth_ = phi; }
+			float GetCloudPhiDepth() const { return cloud_phi_depth_; }
+
+			void SetCloudPhiDensity(float phi) { cloud_phi_density_ = phi; }
+			float GetCloudPhiDensity() const { return cloud_phi_density_; }
+
 		private:
-			void InitializeLowResResources();
+			void InitializePackedResources();
 			void InitializeTemporalResources();
 
-			std::unique_ptr<Shader>        shader_;
+			std::unique_ptr<ComputeShader> cloud_render_shader_;
 			std::unique_ptr<Shader>        composite_shader_;
 			std::unique_ptr<ComputeShader> temporal_shader_;
+			std::unique_ptr<ComputeShader> spatial_filter_shader_;
+
+			std::unique_ptr<ComputeShader> cloud_bake_shader_;
+
 			float                          time_ = 0.0f;
+			float                          last_time_ = 0.0f;
 			int                            frame_index_ = 0;
+			int                            halton_index_ = 0;
 
 			float     haze_density_ = WeatherConstants::HazeDensity.normal;
 			float     haze_height_ = WeatherConstants::HazeHeight.normal;
@@ -204,11 +280,17 @@ namespace Boidsish {
 			float cloud_powder_scale_ = 0.125f;
 			float cloud_powder_multiplier_ = 5.000f;
 			float cloud_powder_local_scale_ = 5.000f;
-			float cloud_shadow_optical_depth_multiplier_ = 0.277f;
-			float cloud_shadow_step_multiplier_ = 1.0f;
-			float cloud_sun_light_scale_ = 1.0f;
+			float cloud_shadow_optical_depth_multiplier_ = 0.05;
+			float cloud_shadow_step_multiplier_ = 0.15f;
+			float cloud_sun_light_scale_ = 25.0f;
 			float cloud_moon_light_scale_ = 2.0f;
 			float cloud_beer_powder_mix_ = 0.600f;
+
+			float cloud_flow_speed_ = 0.250f;
+			float cloud_flow_direction_ = glm::radians(180.0f);
+			float cloud_flow_height_scale_ = 0.0150f;
+			float cloud_curl_strength_ = 10.0f;
+			float cloud_curl_frequency_ = 2.0f;
 
 			float     rayleigh_scale_ = WeatherConstants::RayleighScale.normal;
 			float     mie_scale_ = WeatherConstants::MieScale.normal;
@@ -224,19 +306,42 @@ namespace Boidsish {
 			float     mie_scale_height_ = WeatherConstants::MieScaleHeight.normal;
 			float     color_variance_scale_ = 1.0f;
 			float     color_variance_strength_ = 0.0f;
+			float     sun_aureole_strength_ = 0.5f;
+			float     cirrus_opacity_ = 0.3f;
 
 			int   width_ = 0;
 			int   height_ = 0;
 			float render_scale_ = 0.50f;
 
-			GLuint low_res_fbo_ = 0;
-			GLuint low_res_texture_ = 0;
+			GLuint packed_texture_ = 0;
+			GLuint packed_depth_texture_ = 0;
+			GLuint packed_velocity_texture_ = 0;
 
-			// Temporal reprojection: double-buffered history at low res
+			GLuint filtered_texture_ = 0;
+			GLuint spatial_aux_texture_ = 0;
+
+			// Temporal reprojection: double-buffered history at full res
 			GLuint    temporal_textures_[2] = {0, 0};
+			GLuint    temporal_depth_textures_[2] = {0, 0};
+			GLuint    temporal_moments_textures_[2] = {0, 0};
 			int       temporal_index_ = 0;
 			glm::mat4 prev_view_projection_ = glm::mat4(1.0f);
 			bool      has_valid_history_ = false;
+
+			GLuint cloud_weather_texture_ = 0;
+			bool   needs_weather_bake_ = true;
+			float  world_scale_ = 1.0f;
+
+			// Cloud Quality Defaults
+			float cloud_max_ray_distance_ = 100000.0f;
+			int   cloud_min_samples_ = 32;
+			int   cloud_max_samples_ = 96;
+			float cloud_extinction_ = 0.01f;
+			float cloud_temporal_gamma_ = 1.5f;
+			float cloud_max_history_length_ = 32.0f;
+			float cloud_phi_luma_ = 20.0f;
+			float cloud_phi_depth_ = 1.5f;
+			float cloud_phi_density_ = 0.05f;
 
 		};
 

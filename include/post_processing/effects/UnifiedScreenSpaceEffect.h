@@ -34,6 +34,10 @@ namespace Boidsish {
 			// Global Toggles
 			void SetSSGIEnabled(bool enabled) { ssgi_enabled_ = enabled; }
 			bool IsSSGIEnabled() const { return ssgi_enabled_; }
+			void SetRestirDIEnabled(bool enabled) { restir_di_enabled_ = enabled; }
+			bool IsRestirDIEnabled() const { return restir_di_enabled_; }
+			void SetRestirGIEnabled(bool enabled) { restir_gi_enabled_ = enabled; }
+			bool IsRestirGIEnabled() const { return restir_gi_enabled_; }
 			void SetGTAOEnabled(bool enabled) { gtao_enabled_ = enabled; }
 			bool IsGTAOEnabled() const { return gtao_enabled_; }
 			void SetSSSEnabled(bool enabled) { sss_enabled_ = enabled; }
@@ -54,6 +58,11 @@ namespace Boidsish {
 			float GetSSGIReflectionIntensity() const { return ssgi_reflection_intensity_; }
 			void  SetSSGIRoughnessFactor(float factor) { ssgi_roughness_factor_ = factor; }
 			float GetSSGIRoughnessFactor() const { return ssgi_roughness_factor_; }
+
+			void  SetRestirDIIntensity(float intensity) { restir_di_intensity_ = intensity; }
+			float GetRestirDIIntensity() const { return restir_di_intensity_; }
+			void  SetRestirGIIntensity(float intensity) { restir_gi_intensity_ = intensity; }
+			float GetRestirGIIntensity() const { return restir_gi_intensity_; }
 
 			// GTAO Parameters
 			void  SetGTAOIntensity(float intensity) { gtao_intensity_ = intensity; }
@@ -90,6 +99,11 @@ namespace Boidsish {
 			void SetBlueNoiseTexture(GLuint blueNoise) { blue_noise_texture_ = blueNoise; }
 			void SetHiZTexture(GLuint hiz, int mips) { hiz_texture_ = hiz; hiz_mips_ = mips; }
 
+			void SetRestirDIReservoir(GLuint buffer) { di_reservoir_buffer_ = buffer; }
+			void SetRestirGIReservoir(GLuint buffer) { gi_reservoir_buffer_ = buffer; }
+			void SetLightCounts(int numLights, int numFire) { num_lights_ = numLights; num_fire_particles_ = numFire; }
+			void SetLightBuffers(GLuint allLights, GLuint particles) { all_lights_ssbo_ = allLights; particle_buffer_ = particles; }
+
 			GLuint GetShadowMaskTexture() const { return sss_accumulator_.GetResult(); }
 
 		private:
@@ -98,12 +112,20 @@ namespace Boidsish {
 			std::unique_ptr<ComputeShader> unified_shader_;
 			std::unique_ptr<Shader>        composite_shader_;
 			TemporalAccumulator            gi_ao_accumulator_;
+			TemporalAccumulator            di_accumulator_;
 			TemporalAccumulator            sss_accumulator_;
 
 			GLuint gi_ao_texture_ = 0;
+			GLuint di_texture_ = 0;
 			GLuint sss_texture_ = 0;
 			GLuint blue_noise_texture_ = 0;
 			GLuint hiz_texture_ = 0;
+			GLuint di_reservoir_buffer_ = 0;
+			GLuint gi_reservoir_buffer_ = 0;
+			GLuint all_lights_ssbo_ = 0;
+			GLuint particle_buffer_ = 0;
+			int    num_lights_ = 0;
+			int    num_fire_particles_ = 0;
 			int    hiz_mips_ = 0;
 			int    width_ = 0, height_ = 0;
 			int    internal_width_ = 0, internal_height_ = 0;
@@ -111,17 +133,21 @@ namespace Boidsish {
 
 			// Toggles
 			bool ssgi_enabled_ = true;
+			bool restir_di_enabled_ = true;
+			bool restir_gi_enabled_ = true;
 			bool gtao_enabled_ = true;
 			bool sss_enabled_ = true;
 
 			// SSGI
 			float ssgi_intensity_ = 1.0f;
+			float restir_gi_intensity_ = 1.0f;
 			float ssgi_radius_ = 2.0f;
 			float ssgi_falloff_ = 1.0f;
 			int   ssgi_steps_ = 8;
 			int   ssgi_ray_count_ = 2;
 			float ssgi_reflection_intensity_ = 1.0f;
 			float ssgi_roughness_factor_ = 1.0f;
+			float restir_di_intensity_ = 1.0f;
 
 			// GTAO
 			float gtao_intensity_ = 0.5f;

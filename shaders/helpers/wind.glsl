@@ -64,8 +64,9 @@ vec4 getWeatherAerosolsAtPosition(vec3 worldPos) {
 /**
  * Calculates the combined wind vector at a given world position.
  * Incorporates macro LBM-derived wind, terrain deflection, and small-scale curl noise.
+ * This version takes pre-fetched terrain height and normal for optimization.
  */
-vec4 computeWindAtPosition(vec3 worldPos) {
+vec4 computeWindAtPositionOptimized(vec3 worldPos, float terrainHeight, vec3 normal) {
 	if (u_windOriginSize.y <= 0) return vec4(0.0);
 
 	float gridSpacing = u_windParams.x;
@@ -80,14 +81,11 @@ vec4 computeWindAtPosition(vec3 worldPos) {
 	vec4 macroData = texture(u_lbmWindTexture, uv);
 
 	vec3 macroWind = macroData.xyz;
-	// return macroWind;
 	float drag = macroData.w;
 	float macroSpeed = length(macroWind);
 
 	// 2. Terrain Guidance
 	// Deflect wind based on terrain normal to follow slopes
-	vec3 normal = getTerrainNormal(worldPos.xz);
-	float terrainHeight = getTerrainHeight(worldPos.xz);
 
 	// How close we are to the ground affects guidance strength
 	float distToGround = max(0.0, worldPos.y - terrainHeight);
@@ -109,8 +107,6 @@ vec4 computeWindAtPosition(vec3 worldPos) {
 	float time = u_windParams.y;
 	float curlScale = u_windParams.z;
 	float curlStrength = u_windParams.w;
-
-	float flatTime = mix(mod(time, 29) * sin(time) * 0.5 + 0.5, mod(time * 1.07, 31)  * cos(time) * 0.5 + 0.5, sin(time) * 0.5 + 0.5);
 
 	// Extract normalized direction for predictable math
 	vec2 windDir2D = macroSpeed > 0.001 ? macroWind.xz / macroSpeed : vec2(1.0, 0.0);
@@ -201,6 +197,15 @@ vec4 computeWindAtPosition(vec3 worldPos) {
 
 	// Add curl as a final perturbation
 	return vec4(finalWind + curl * turbulenceIntensity, drag);
+}
+
+/**
+ * Calculates the combined wind vector at a given world position.
+ * Incorporates macro LBM-derived wind, terrain deflection, and small-scale curl noise.
+ */
+vec4 computeWindAtPosition(vec3 worldPos) {
+	TerrainSurface surface = getTerrainSurface(worldPos.xz);
+	return computeWindAtPositionOptimized(worldPos, surface.height, surface.normal);
 }
 #endif
 

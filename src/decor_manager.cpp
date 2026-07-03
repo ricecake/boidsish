@@ -179,6 +179,10 @@ namespace Boidsish {
 	}
 
 	void DecorManager::PopulateDefaultDecor() {
+		max_decor_distance_ = 1000.0f;
+		density_falloff_start_ = 800.0f;
+		density_falloff_end_ = 1000.0f;
+
 		if (!decor_types_.empty())
 			return;
 

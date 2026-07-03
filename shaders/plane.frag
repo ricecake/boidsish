@@ -14,7 +14,7 @@ in vec4 PrevPosition;
 #include "helpers/lighting.glsl"
 #include "temporal_data.glsl"
 
-
+/*
 vec3 mod289(vec3 x) {
 	return x - floor(x * (1.0 / 289.0)) * 289.0;
 }
@@ -106,6 +106,7 @@ float fbm(vec3 p) {
 	}
 	return value;
 }
+*/
 
 void main() {
 	// --- Distance Fade - Precalc ---

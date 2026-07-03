@@ -8,12 +8,22 @@ uniform sampler2D uGIAOTexture;  // RGB: GI, A: AO
 uniform sampler2D uSSSTexture;   // R: SSS
 uniform sampler2D uNormalTexture; // A: traditional shadow
 uniform sampler2D uDepthTexture;  // High-res depth
+uniform sampler2D uDITexture;     // RGB: ReSTIR DI
+uniform sampler2D uVelocityTexture;
+uniform sampler2D uRawGIAOTexture;
+uniform sampler2D uRawDITexture;
+uniform sampler2D uHistoryGIAOTexture;
+uniform sampler2D uHistoryDITexture;
 
 uniform bool  uSSGIEnabled = true;
+uniform bool  uRestirDIEnabled = true;
+uniform bool  uRestirGIEnabled = true;
 uniform bool  uGTAOEnabled = true;
 uniform bool  uSSSEnabled = true;
 
 uniform float uSSGIIntensity = 1.0;
+uniform float uRestirDIIntensity = 1.0;
+uniform float uRestirGIIntensity = 1.0;
 uniform float uGTAOIntensity = 1.0;
 uniform float uSSSIntensity = 0.5;
 
@@ -166,7 +176,6 @@ vec4 sampleBilateral(sampler2D lowResTex, sampler2D highResDepth, sampler2D high
 
 	vec2 lowResUV = uv * vec2(lowResSize);
 	vec2 baseCoord = floor(lowResUV - 0.5);
-	vec2 f = fract(lowResUV - 0.5);
 
 	vec4 sumColor = vec4(0.0);
 	float sumWeight = 0.0;
@@ -218,6 +227,73 @@ vec4 sampleBilateral(sampler2D lowResTex, sampler2D highResDepth, sampler2D high
 	return sumColor / sumWeight;
 }
 
+float InterleavedGradientNoise(vec2 pixelCoord) {
+    vec3 magic = vec3(0.06711056, 0.00583715, 52.9829189);
+    return fract(magic.z * fract(dot(pixelCoord, magic.xy)));
+}
+
+void sampleWithWeights(sampler2D srcTexture, sampler2D highResDepth, sampler2D highResNormal, float centerDepth, vec3 centerNormal, vec2 targetUV, vec2 sampleUV, vec2 srcResolution, inout vec4 color, inout float weight) {
+	const float depthSigma = 0.05;
+	const float normalSigma = 16.0;
+
+	vec3 rawNormal = texture(highResNormal, sampleUV).xyz;
+	vec3 sampleNormal = dot(rawNormal, rawNormal) > 0.001 ? normalize(rawNormal) : vec3(0.0, 1.0, 0.0);
+	vec4 sampleColor = texture(srcTexture, sampleUV);
+	float sampleDepth = texture(highResDepth, sampleUV).r;
+
+	// Calculate spatial distance in texel units, not UV space
+	vec2 texelDist = (sampleUV - targetUV) * srcResolution;
+	float spatialW = exp(-dot(texelDist, texelDist) / 2.0);
+
+	float depthDiff = abs(centerDepth - sampleDepth);
+	float depthW = exp(-(depthDiff * depthDiff) / (2.0 * depthSigma * depthSigma));
+	float normalW = pow(max(dot(centerNormal, sampleNormal), 0.0), normalSigma);
+
+	float sampleWeight = spatialW * depthW * normalW;
+
+	weight += sampleWeight;
+	color += sampleColor * sampleWeight;
+}
+
+vec4 tentUpsample(sampler2D srcTexture, sampler2D highResDepth, sampler2D highResNormal, float filterRadius, float srcLod, vec2 TexCoords, vec2 fragCoord) {
+    vec2 srcResolution = textureSize(srcTexture, 0);
+    vec2 texelSize = 1.0 / srcResolution;
+    float radius = max(1.0, filterRadius);
+
+    float centerDepth = texture(highResDepth, TexCoords).r;
+    vec3 centerNormal = normalize(texture(highResNormal, TexCoords).xyz);
+
+    vec4 result = vec4(0.0);
+    float weight = 0.0;
+
+    // Generate a random angle per-pixel for sample rotation
+    float noise = InterleavedGradientNoise(fragCoord);
+    float angle = noise * 6.2831853;
+    float s = sin(angle);
+    float c = cos(angle);
+    mat2 rotationMat = mat2(c, -s, s, c);
+
+    // Sample a 3x3 grid centered on the fragment's actual position in low-res
+    // texel space, not snapped to the grid — this prevents banding at texel
+    // boundaries where snapping biases the kernel toward one side.
+    for (float x = -1.0; x <= 1.0; x += 1.0) {
+        for (float y = -1.0; y <= 1.0; y += 1.0) {
+            vec2 offset = vec2(x, y) * radius;
+            vec2 rotatedOffset = rotationMat * offset;
+
+            vec2 sampleUV = TexCoords + rotatedOffset * texelSize;
+
+            sampleWithWeights(srcTexture, highResDepth, highResNormal, centerDepth, centerNormal, TexCoords, sampleUV, srcResolution, result, weight);
+        }
+    }
+
+    if (weight < 0.0001) {
+        return texture(srcTexture, TexCoords);
+    }
+
+    return result / weight;
+}
+
 void main() {
 	float centerDepth = texture(uDepthTexture, TexCoords).r;
 
@@ -229,10 +305,33 @@ void main() {
 		return;
 	}
 
+	ivec2 lowResSize = textureSize(uGIAOTexture, 0);
+	vec2 lowResInvSize = 1.0 / vec2(lowResSize);
 
 	// Use bilateral upsampling for low-res effects
-	vec4 giao = sampleBilateral(uGIAOTexture, uDepthTexture, uNormalTexture, TexCoords);
-	float sssFactor = sampleBilateral(uSSSTexture, uDepthTexture, uNormalTexture, TexCoords).r;
+	// vec4 giao = sampleBilateral(uGIAOTexture, uDepthTexture, uNormalTexture, TexCoords);
+	// float sssFactor = sampleBilateral(uSSSTexture, uDepthTexture, uNormalTexture, TexCoords).r;
+	// vec3 di_lighting = sampleBilateral(uDITexture, uDepthTexture, uNormalTexture, TexCoords).rgb;
+
+	vec4 giao =        tentUpsample(uGIAOTexture, uDepthTexture, uNormalTexture, 5.0, 0.0, TexCoords, gl_FragCoord.xy);
+	float sssFactor =  tentUpsample(uSSSTexture,  uDepthTexture, uNormalTexture, 5.0, 0.0, TexCoords, gl_FragCoord.xy).r;
+	vec3 di_lighting = tentUpsample(uDITexture,   uDepthTexture, uNormalTexture, 5.0, 0.0, TexCoords, gl_FragCoord.xy).rgb;
+
+    // di_lighting += tentUpsample(uDITexture, 5.0, 0.0, TexCoords).rgb;
+	// // Basic firefly rejection: clamp ReSTIR contribution based on scene luminance
+	// vec4 gR = textureGather(uSceneTexture, TexCoords, 0);
+	// vec4 gG = textureGather(uSceneTexture, TexCoords, 1);
+	// vec4 gB = textureGather(uSceneTexture, TexCoords, 2);
+
+	// vec3 gAvg = vec3(length(gR)+di_lighting.r, length(gG)+di_lighting.g, length(gB)+di_lighting.b)/4.0;
+
+	// float max_lum = max(gAvg.r, max(gAvg.g, gAvg.b));
+	// giao.rgb = min(giao.rgb, vec3(max_lum));
+	// di_lighting = min(di_lighting, vec3(max_lum));
+
+	// Advanced firefly rejection
+	giao = rejectFireflies(giao, uRawGIAOTexture, uHistoryGIAOTexture, uVelocityTexture, uDepthTexture, TexCoords, lowResInvSize);
+	di_lighting = rejectFireflies(vec4(di_lighting, 1.0), uRawDITexture, uHistoryDITexture, uVelocityTexture, uDepthTexture, TexCoords, lowResInvSize).rgb;
 
 	float traditionalShadow = texture(uNormalTexture, TexCoords).a;
 
@@ -251,10 +350,15 @@ void main() {
 		result *= ao;
 	}
 
-	// 3. Apply Global Illumination (SSGI)
+	// 3. Apply ReSTIR Direct Illumination
+	if (uRestirDIEnabled) {
+		result += di_lighting; // Intensity already applied in compute
+	}
+
+	// 4. Apply Global Illumination (SSGI)
 	if (uSSGIEnabled) {
 		vec3 ssgi = giao.rgb;
-		result += ssgi;
+		result += ssgi * uSSGIIntensity;
 	}
 
 	FragColor = vec4(result, color.a);

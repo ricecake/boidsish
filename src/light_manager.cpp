@@ -10,6 +10,7 @@
 #include "biome_properties.h"
 #include "profiler.h"
 #include "terrain_generator_interface.h"
+#include <GL/glew.h>
 
 namespace Boidsish {
 
@@ -23,7 +24,13 @@ namespace Boidsish {
 		{' ', "/"},     {',', "--..--"}, {'.', ".-.-.-"}, {'\'', ".----."}
 	};
 
-	LightManager::LightManager(ServiceLocator& /*loc*/) {}
+	LightManager::LightManager(ServiceLocator& /*loc*/) {
+		glGenBuffers(1, &_all_lights_ssbo);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, _all_lights_ssbo);
+		// Pre-allocate for 4096 lights (matching what ReSTIR might need)
+		glBufferData(GL_SHADER_STORAGE_BUFFER, 4096 * sizeof(LightGPU), nullptr, GL_DYNAMIC_DRAW);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+	}
 
 	static void GenerateMorseSequence(Light& light) {
 		light.behavior.morse_sequence.clear();
@@ -197,6 +204,9 @@ namespace Boidsish {
 			}
 		}
 
+		std::vector<LightGPU> gpu_lights;
+		gpu_lights.reserve(_lights.size());
+
 		for (auto it = _lights.begin(); it != _lights.end();) {
 			auto& light = *it;
 			if (light.behavior.type == LightBehaviorType::NONE) {
@@ -295,8 +305,24 @@ namespace Boidsish {
 			if (light.auto_remove && finished) {
 				it = _lights.erase(it);
 			} else {
+				if (light.intensity > 0.001f) {
+					gpu_lights.push_back(light.ToGPU());
+				}
 				++it;
 			}
+		}
+
+		// Update AllLights SSBO
+		_active_light_count = static_cast<int>(gpu_lights.size());
+		if (!gpu_lights.empty()) {
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, _all_lights_ssbo);
+			if (gpu_lights.size() * sizeof(LightGPU) > 4096 * sizeof(LightGPU)) {
+				// Reallocate if exceeded
+				glBufferData(GL_SHADER_STORAGE_BUFFER, gpu_lights.size() * sizeof(LightGPU), gpu_lights.data(), GL_DYNAMIC_DRAW);
+			} else {
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, gpu_lights.size() * sizeof(LightGPU), gpu_lights.data());
+			}
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 		}
 	}
 

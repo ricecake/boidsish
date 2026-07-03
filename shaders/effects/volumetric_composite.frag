@@ -3,11 +3,18 @@ out vec4 FragColor;
 
 in vec2 TexCoords;
 
+uniform mat4 uInvView;
+
 layout(binding = 0) uniform sampler2D uSceneTexture;
 layout(binding = 1) uniform sampler2D uDepthTexture;
 layout(binding = [[VOLUMETRIC_SCATTERING_BINDING]]) uniform sampler3D uVolumetricTexture;
 
 #include "../types/temporal_data.glsl"
+#include "../helpers/lighting.glsl"
+
+#include "lygia/color/palette.glsl"
+// #include "lygia/generative/voronoi.glsl"
+// #include "lygia/generative/snoise.glsl"
 
 const int NUM_CASCADES = 4;
 const int GRID_RES_Z = 64;
@@ -22,6 +29,7 @@ void main() {
     vec4 clipPos = vec4(TexCoords * 2.0 - 1.0, z_ndc, 1.0);
     vec4 viewPos = invProjection * clipPos;
     viewPos /= (abs(viewPos.w) > 0.0001) ? viewPos.w : 1.0;
+    vec3 worldPos = (uInvView * viewPos).xyz;
 
     float linearZ = max(0.1, -viewPos.z);
     if (depth >= 1.0) linearZ = 1000.0; // Sample far end for sky
@@ -46,15 +54,16 @@ void main() {
     if (cascade != -1) {
         // Calculate W coordinate for this cascade
         float slice = clamp(log(linearZ / z_near) / log(z_far / z_near), 0.0, 1.0);
-        float w = (float(cascade * GRID_RES_Z) + (slice * float(GRID_RES_Z - 1) + 0.5)) / float(GRID_RES_Z * NUM_CASCADES);
+
+        // Continuous mapping across all cascades to ensure smooth linear filtering
+        float w = (float(cascade) + slice) / float(NUM_CASCADES);
 
         vec4 vol = texture(uVolumetricTexture, vec3(TexCoords, w));
         scattering = vol.rgb;
         transmittance = vol.a;
     } else {
-        // Beyond last cascade
-        float w = (float(NUM_CASCADES * GRID_RES_Z) - 0.5) / float(GRID_RES_Z * NUM_CASCADES);
-        vec4 vol = texture(uVolumetricTexture, vec3(TexCoords, w));
+        // Beyond last cascade - sample the very edge
+        vec4 vol = texture(uVolumetricTexture, vec3(TexCoords, 1.0));
         scattering = max(vec3(0.0), vol.rgb);
         transmittance = clamp(vol.a, 0.0, 1.0);
     }

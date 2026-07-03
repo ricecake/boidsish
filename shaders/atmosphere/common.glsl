@@ -66,7 +66,10 @@ uniform vec3 u_ozoneAbsorptionBase;
 // Helper functions
 bool intersectSphere(vec3 ro, vec3 rd, float radius, out float t0, out float t1) {
 	float b = dot(ro, rd);
-	float c = dot(ro, ro) - radius * radius;
+	// Use a more numerically stable calculation for 'c' when ro is near the sphere surface.
+	// c = dot(ro, ro) - radius * radius = (length(ro) - radius) * (length(ro) + radius)
+	float rLen = length(ro);
+	float c = (rLen - radius) * (rLen + radius);
 	float det = b * b - c;
 	if (det < 0.0)
 		return false;

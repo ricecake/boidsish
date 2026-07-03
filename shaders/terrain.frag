@@ -16,6 +16,7 @@ in float      vIsWater;
 in float      vErosionDelta;
 in float      vRidgeMap;
 in float      vSubstrate;
+in float      vIsBaked;
 
 #define USE_TERRAIN_DATA
 #include "helpers/erosion.glsl"
@@ -480,9 +481,19 @@ TerrainMaterial processGrass(float largeNoise, vec3 norm, float realDist, float 
 
 		// Baked biome override
 		vec4 bakedDispGrass = texture(u_displacementArray, vec3(biomeUV, TextureSlice));
-		if (bakedDispGrass.a > 0.0) {
-			biomeData.x = bakedDispGrass.a;
-			biomeData.y = 0.0; // Full override
+		if (vIsBaked > 0.5) {
+			if (bakedDispGrass.a > 0.0) {
+				biomeData.x = bakedDispGrass.a;
+				biomeData.y = 0.0; // Full override
+			}
+		} else {
+			// FALLBACK: Recalculate outcrop mask for unbaked chunks
+			vec2 outcropWID = fastWorley3dID(FragPos * 0.05);
+			float outcropMask = smoothstep(0.7, 0.9, outcropWID.x);
+			if (outcropMask > 0.0) {
+				biomeData.x = 6.0 / 255.0; // GreyRock index
+				biomeData.y = 0.0;
+			}
 		}
 		int   idxA = int(biomeData.r * 255.0 + 0.5);
 		int   idxB = min(idxA + 1, 7);
@@ -798,9 +809,19 @@ void main() {
 
 		// Baked biome override
 		vec4 bakedDisp = texture(u_displacementArray, vec3(biomeUV, TextureSlice));
-		if (bakedDisp.a > 0.0) {
-			biomeInfo.x = bakedDisp.a;
-			biomeInfo.y = 0.0; // Full override
+		if (vIsBaked > 0.5) {
+			if (bakedDisp.a > 0.0) {
+				biomeInfo.x = bakedDisp.a;
+				biomeInfo.y = 0.0; // Full override
+			}
+		} else {
+			// FALLBACK: Recalculate outcrop mask for unbaked chunks
+			vec2 outcropWID = fastWorley3dID(FragPos * 0.05);
+			float outcropMask = smoothstep(0.7, 0.9, outcropWID.x);
+			if (outcropMask > 0.0) {
+				biomeInfo.x = 6.0 / 255.0; // GreyRock index
+				biomeInfo.y = 0.0;
+			}
 		}
 
 		float noiseTypeA = u_biomes[int(biomeInfo.x * 255.0 + 0.5)].params.w;

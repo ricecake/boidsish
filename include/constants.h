@@ -43,6 +43,8 @@ namespace Boidsish {
 				WeatherScalars = 42,
 				WeatherAerosols = 43,
 				TerrainDisplacementImage = 44,
+				CloudWeatherBake = 45,
+				CloudJFADistance = 46,
 			};
 
 			enum class Ubo {
@@ -107,6 +109,11 @@ namespace Boidsish {
 				TerrainPatchVisibility = 50,
 				GrassTasks = 51,
 				ParticleStats = 52,
+				AllLights = 53,
+				RestirReservoirs0 = 54,
+				RestirReservoirs1 = 55,
+				RestirGIReservoirs0 = 56,
+				RestirGIReservoirs1 = 57
 			};
 		} // namespace Bindings
 
@@ -304,6 +311,14 @@ namespace Boidsish {
 			consteval int TerrainDisplacementImage() {
 				return std::to_underlying(Constants::Bindings::Texture::TerrainDisplacementImage);
 			}
+
+			consteval int CloudWeatherBake() {
+				return std::to_underlying(Constants::Bindings::Texture::CloudWeatherBake);
+			}
+
+			consteval int CloudJFADistance() {
+				return std::to_underlying(Constants::Bindings::Texture::CloudJFADistance);
+			}
 		} // namespace TextureUnit
 
 		namespace ImageBinding {
@@ -447,6 +462,26 @@ namespace Boidsish {
 
 			consteval int AtmosphereSH() {
 				return std::to_underlying(Constants::Bindings::Ssbo::AtmosphereSH);
+			}
+
+			consteval int AllLights() {
+				return std::to_underlying(Constants::Bindings::Ssbo::AllLights);
+			}
+
+			consteval int RestirReservoirs0() {
+				return std::to_underlying(Constants::Bindings::Ssbo::RestirReservoirs0);
+			}
+
+			consteval int RestirReservoirs1() {
+				return std::to_underlying(Constants::Bindings::Ssbo::RestirReservoirs1);
+			}
+
+			consteval int RestirGIReservoirs0() {
+				return std::to_underlying(Constants::Bindings::Ssbo::RestirGIReservoirs0);
+			}
+
+			consteval int RestirGIReservoirs1() {
+				return std::to_underlying(Constants::Bindings::Ssbo::RestirGIReservoirs1);
 			}
 
 			consteval int TerrainPatchMetrics() {

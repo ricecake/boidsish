@@ -96,17 +96,24 @@ namespace Boidsish {
 			if (fire_mgr) fire_mgr->BindBuffers(*injection_shader_);
 
 			if (noise_mgr) {
-				glActiveTexture(GL_TEXTURE10);
-				glBindTexture(GL_TEXTURE_2D, noise_mgr->GetBlueNoiseTexture());
-				injection_shader_->setInt("uBlueNoise", 10);
+				noise_mgr->BindDefault(*injection_shader_);
+				// glActiveTexture(GL_TEXTURE10);
+				// glBindTexture(GL_TEXTURE_2D, noise_mgr->GetBlueNoiseTexture());
+				// injection_shader_->setInt("uBlueNoise", 10);
 
-				glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::NoiseCurl());
-				glBindTexture(GL_TEXTURE_3D, noise_mgr->GetCurlTexture());
-				injection_shader_->setInt("u_curlTexture", Constants::TextureUnit::NoiseCurl());
+				// glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::NoiseCurl());
+				// glBindTexture(GL_TEXTURE_3D, noise_mgr->GetCurlTexture());
+				// injection_shader_->setInt("u_curlTexture", Constants::TextureUnit::NoiseCurl());
 			}
 
 			injection_shader_->setFloat("uAnisotropy", anisotropy_);
 			injection_shader_->setFloat("uIntensity", intensity_);
+
+			if (atmos_mgr) {
+				glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereMultiScattering());
+				glBindTexture(GL_TEXTURE_2D, atmos_mgr->GetMultiScatteringLUT());
+				injection_shader_->setInt("u_multiScatteringLUT", Constants::TextureUnit::AtmosphereMultiScattering());
+			}
 			injection_shader_->setMat4("uInvView", glm::inverse(viewMatrix));
 			injection_shader_->setMat4("uInvProj", glm::inverse(projectionMatrix));
 			injection_shader_->setMat4("uPrevVP", prev_view_projection_);
@@ -159,6 +166,7 @@ namespace Boidsish {
 			composite_shader_->setInt("uSceneTexture", 0);
 			composite_shader_->setInt("uDepthTexture", 1);
 			composite_shader_->setInt("uVolumetricTexture", Constants::TextureUnit::VolumetricScattering());
+			composite_shader_->setMat4("uInvView", glm::inverse(viewMatrix));
 
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, sourceTexture);

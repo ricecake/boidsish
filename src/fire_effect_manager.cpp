@@ -18,15 +18,18 @@
 
 namespace Boidsish {
 
-	// This must match the struct in the compute shader
+	// This must match the struct in the compute shader (shaders/types/particle_types.glsl)
 	struct Particle {
-		glm::vec4 pos;
-		glm::vec4 vel;
-		alignas(16) glm::vec3 epicenter;
-		int   style;
-		int   emitter_index;
-		int   emitter_id;
-		float extras[2];
+		glm::vec4 pos;      // x, y, z, lifetime
+		glm::vec4 vel;      // x, y, z, size
+		glm::vec4 color;    // r, g, b, a
+		glm::vec4 origin;   // x, y, z, intensity
+		float     phase;
+		float     counter;
+		int       style;
+		int       emitter_id;
+		int       emitter_index;
+		int       _padding[3];
 	};
 
 	FireEffectManager::FireEffectManager(ServiceLocator& /*loc*/) {}

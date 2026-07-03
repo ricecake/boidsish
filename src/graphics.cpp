@@ -46,6 +46,8 @@
 #include "post_processing/effects/BloomEffect.h"
 #include "mood_manager.h"
 #include "mood_definitions.h"
+#include "post_processing/effects/DepthOfFieldEffect.h"
+#include "post_processing/effects/FXAAEffect.h"
 #include "post_processing/effects/FilmGrainEffect.h"
 #include "post_processing/effects/GlitchEffect.h"
 #include "post_processing/effects/NegativeEffect.h"
@@ -58,6 +60,7 @@
 #include "profiler.h"
 #include "render_passes.h"
 #include "render_queue.h"
+#include "RestirManager.h"
 #include "scene_compositor.h"
 #include "sdf_volume_manager.h"
 #include "shape.h"
@@ -394,6 +397,7 @@ namespace Boidsish {
 		std::shared_ptr<ShockwaveManager>                 shockwave_manager;
 		std::shared_ptr<AkiraEffectManager>               akira_effect_manager;
 		std::shared_ptr<SdfVolumeManager>                 sdf_volume_manager;
+		std::shared_ptr<RestirManager>                    restir_manager;
 		std::shared_ptr<ShadowManager>                    shadow_manager;
 		std::shared_ptr<AtmosphereManager>                atmosphere_manager;
 		std::shared_ptr<PostProcessing::AtmosphereEffect> atmosphere_effect;
@@ -584,6 +588,7 @@ namespace Boidsish {
 			service_locator_.Register<ShockwaveManager>();
 			service_locator_.Register<AkiraEffectManager>();
 			service_locator_.Register<SdfVolumeManager>();
+			service_locator_.Register<RestirManager>();
 			service_locator_.Register<SoundEffectManager>();
 			service_locator_.Register<TrailRenderManager>();
 
@@ -823,6 +828,8 @@ namespace Boidsish {
 			SetupAkiraBindings();
 			sdf_volume_manager = service_locator_.Get<SdfVolumeManager>();
 			sdf_volume_manager->Initialize();
+			restir_manager = service_locator_.Get<RestirManager>();
+			restir_manager->Initialize();
 			shadow_manager = service_locator_.Get<ShadowManager>();
 			scene_manager = service_locator_.Get<SceneManager>();
 			decor_manager = service_locator_.Get<DecorManager>();
@@ -1088,6 +1095,14 @@ namespace Boidsish {
 				auto film_grain_effect = std::make_shared<PostProcessing::FilmGrainEffect>();
 				film_grain_effect->SetEnabled(false);
 				post_processing_manager_->AddEffect(film_grain_effect);
+
+				auto dof_effect = std::make_shared<PostProcessing::DepthOfFieldEffect>();
+				dof_effect->SetEnabled(false);
+				post_processing_manager_->AddEffect(dof_effect);
+
+				auto fxaa_effect = std::make_shared<PostProcessing::FXAAEffect>();
+				fxaa_effect->SetEnabled(false);
+				post_processing_manager_->AddEffect(fxaa_effect);
 
 				auto super_speed_effect = std::make_shared<PostProcessing::SuperSpeedEffect>();
 				super_speed_effect->SetEnabled(true);
@@ -2043,6 +2058,8 @@ namespace Boidsish {
 				atmosphere_manager->SetMieScaleHeight(atmosphere_effect->GetMieScaleHeight());
 				atmosphere_manager->SetColorVarianceScale(atmosphere_effect->GetColorVarianceScale());
 				atmosphere_manager->SetColorVarianceStrength(atmosphere_effect->GetColorVarianceStrength());
+				atmosphere_manager->SetSunAureoleStrength(atmosphere_effect->GetSunAureoleStrength());
+				atmosphere_manager->SetCirrusOpacity(atmosphere_effect->GetCirrusOpacity());
 
 			float cloudShadowIntensity = ConfigManager::GetInstance().GetAppSettingFloat("cloud_shadow_intensity", 0.5f);
 			atmosphere_manager->SetCloudShadowIntensity(cloudShadowIntensity);
@@ -2328,6 +2345,14 @@ namespace Boidsish {
 					lighting_ubo_data_.cloudMoonLightScale = atmosphere_effect->GetCloudMoonLightScale();
 					lighting_ubo_data_.cloudBeerPowderMix = atmosphere_effect->GetCloudBeerPowderMix();
 
+					lighting_ubo_data_.cloudFlowSpeed = atmosphere_effect->GetCloudFlowSpeed();
+					lighting_ubo_data_.cloudFlowDirection = atmosphere_effect->GetCloudFlowDirection();
+					lighting_ubo_data_.cloudFlowHeightScale = atmosphere_effect->GetCloudFlowHeightScale();
+					lighting_ubo_data_.cloudCurlStrength = atmosphere_effect->GetCloudCurlStrength();
+					lighting_ubo_data_.cloudCurlFrequency = atmosphere_effect->GetCloudCurlFrequency();
+					lighting_ubo_data_.sunAureoleStrength = atmosphere_effect->GetSunAureoleStrength();
+					lighting_ubo_data_.cirrusOpacity = atmosphere_effect->GetCirrusOpacity();
+
 					// Calculate cloud shadow matrix (world XZ to shadow map UV)
 					float     mapSize = atmosphere_manager->GetCloudShadowWorldSize();
 					glm::vec3 camPos = camera.pos();
@@ -2356,10 +2381,10 @@ namespace Boidsish {
 
 				// GPU-side copy of SH coefficients from SSBO into the UBO (no CPU readback)
 				if (atmosphere_manager) {
-					static_assert(offsetof(LightingUbo, sh_coeffs) == 976, "SH offset mismatch");
+					static_assert(offsetof(LightingUbo, sh_coeffs) == 1008, "SH offset mismatch");
 					atmosphere_manager->CopySHToUBO(
 						lighting_pb->GetBufferId(),
-						static_cast<GLintptr>(lighting_pb->GetFrameOffset()) + 976
+						static_cast<GLintptr>(lighting_pb->GetFrameOffset()) + 1008
 					);
 				}
 			}
@@ -2572,6 +2597,7 @@ namespace Boidsish {
 
 			sdf_volume_manager->UpdateSSBO();
 			sdf_volume_manager->BindSSBO(Constants::SsboBinding::SdfVolumes());
+			restir_manager->Update(render_width, render_height, simulation_time);
 			shockwave_manager->UpdateShaderData();
 			shockwave_manager->BindUBO(Constants::UboBinding::Shockwaves());
 
@@ -2769,9 +2795,38 @@ namespace Boidsish {
 						for (auto& effect : post_processing_manager_->GetPreToneMappingEffects()) {
 							if (auto unified = std::dynamic_pointer_cast<PostProcessing::UnifiedScreenSpaceEffect>(effect)) {
 								unified->SetHiZTexture(hiz_manager->GetHiZTexture(), hiz_manager->GetMipCount());
+								if (restir_manager) {
+									unified->SetRestirDIReservoir(restir_manager->GetCurrentDIRiservoirBuffer());
+									unified->SetRestirGIReservoir(restir_manager->GetCurrentGIRiservoirBuffer());
+									unified->SetLightCounts(light_manager->GetActiveLightCount(), fire_effect_manager ? Constants::Class::Particles::MaxParticles() : 0);
+									unified->SetLightBuffers(light_manager->GetAllLightsSsbo(), fire_effect_manager ? fire_effect_manager->GetParticleBuffer() : 0);
+								}
 							}
 						}
 					}
+				}
+
+				// Sync ReSTIR enable state from the unified effect and dispatch
+				if (restir_manager) {
+					if (post_processing_manager_) {
+						for (auto& effect : post_processing_manager_->GetPreToneMappingEffects()) {
+							if (auto unified = std::dynamic_pointer_cast<PostProcessing::UnifiedScreenSpaceEffect>(effect)) {
+								restir_manager->SetDIEnabled(unified->IsRestirDIEnabled());
+								restir_manager->SetGIEnabled(unified->IsRestirGIEnabled());
+								break;
+							}
+						}
+					}
+					restir_manager->Dispatch(
+						compositor_->GetDepthTexture(),
+						compositor_->GetNormalTexture(),
+						compositor_->GetVelocityTexture(),
+						compositor_->GetColorTexture(),
+						compositor_->GetAlbedoTexture(),
+						noise_manager ? noise_manager->GetBlueNoiseTexture() : 0,
+						*light_manager,
+						fire_effect_manager.get()
+					);
 				}
 			}
 		}
@@ -3504,6 +3559,7 @@ namespace Boidsish {
 			);
 
 			const auto& w = impl->weather_manager->GetCurrentWeather();
+			float world_scale = impl->terrain_generator ? impl->terrain_generator->GetWorldScale() : 1.0f;
 
 			// Calculate precipitation targets
 			float rain_target = (w.temperature > 273.15f) ? w.precipitation : 0.0f;
@@ -3519,6 +3575,7 @@ namespace Boidsish {
 
 			// Apply to atmosphere effect
 			if (impl->atmosphere_effect) {
+				impl->atmosphere_effect->SetWorldScale(world_scale);
 				impl->atmosphere_effect->SetHazeDensity(w.haze_density);
 				impl->atmosphere_effect->SetHazeHeight(w.haze_height);
 				impl->atmosphere_effect->SetCloudDensity(w.cloud_density);
@@ -3538,6 +3595,14 @@ namespace Boidsish {
 				impl->atmosphere_effect->SetMieScaleHeight(w.mie_scale_height);
 				impl->atmosphere_effect->SetHazeColor(w.haze_color);
 				impl->atmosphere_effect->SetCloudColor(w.cloud_color);
+				impl->atmosphere_effect->SetSunAureoleStrength(w.sun_aureole_strength);
+				impl->atmosphere_effect->SetCirrusOpacity(w.cirrus_opacity);
+
+				impl->atmosphere_effect->SetCloudFlowSpeed(w.wind_speed);
+				impl->atmosphere_effect->SetCloudFlowDirection(glm::radians(180.0f)); // Fixed direction for consistency
+				impl->atmosphere_effect->SetCloudFlowHeightScale(0.2f);
+				impl->atmosphere_effect->SetCloudCurlStrength(5.0f);
+				impl->atmosphere_effect->SetCloudCurlFrequency(1.5f);
 			}
 		}
 
@@ -3673,6 +3738,7 @@ namespace Boidsish {
 				impl->compositor_->GetAlbedoTexture(),
 				impl->compositor_->GetVelocityTexture(),
 				impl->atmosphere_manager->GetSkyViewLUT(),
+				impl->atmosphere_manager->GetAerialPerspectiveLUT(),
 				frame.view,
 				frame.projection,
 				impl->render_state_.lighting.id,
@@ -4783,17 +4849,20 @@ namespace Boidsish {
 			glm::vec3(shape->GetR(), shape->GetG(), shape->GetB())
 		);
 
-		// 5. Flash light
-		Light flash = Light::CreateFlash(
-			position,
-			25.0f * intensity,
-			glm::vec3(1.0f, 0.7f, 0.3f), // Warm orange flash
-			25.0f * intensity
-		);
-		flash.auto_remove = true;
-		flash.behavior.loop = false;
-		flash.SetEaseOut(0.5f * intensity);
-		impl->light_manager->AddLight(flash);
+		// 5. Flash lights - Use multiple lights for more volume with ReSTIR
+		for (int i = 0; i < 3; i++) {
+			glm::vec3 offset = (i == 0) ? glm::vec3(0) : (glm::vec3(rand() % 100 - 50, rand() % 100 - 50, rand() % 100 - 50) * 0.1f * intensity);
+			Light flash = Light::CreateFlash(
+				position + offset,
+				25.0f * intensity,
+				glm::vec3(1.0f, 0.7f, 0.3f), // Warm orange flash
+				25.0f * intensity
+			);
+			flash.auto_remove = true;
+			flash.behavior.loop = false;
+			flash.SetEaseOut(0.5f * intensity);
+			impl->light_manager->AddLight(flash);
+		}
 	}
 
 	void Visualizer::CreateExplosion(const glm::vec3& position, float intensity) {
@@ -4830,17 +4899,20 @@ namespace Boidsish {
 		impl->shockwave_manager
 			->AddShockwave(position, normal, max_radius, duration, wave_intensity, ring_width, color);
 
-		// Add a flash light
-		Light flash = Light::CreateFlash(
-			position,
-			45.0f * intensity,
-			glm::vec3(1.0f, 0.8f, 0.5f), // Bright yellow-orange flash
-			45.0f * intensity
-		);
-		flash.auto_remove = true;
-		flash.behavior.loop = false;
-		flash.SetEaseOut(0.4f * intensity);
-		impl->light_manager->AddLight(flash);
+		// Add flash lights
+		for (int i = 0; i < 4; i++) {
+			glm::vec3 offset = (i == 0) ? glm::vec3(0) : (glm::vec3(rand() % 100 - 50, rand() % 100 - 50, rand() % 100 - 50) * 0.2f * intensity);
+			Light flash = Light::CreateFlash(
+				position + offset,
+				45.0f * intensity,
+				glm::vec3(1.0f, 0.8f, 0.5f), // Bright yellow-orange flash
+				45.0f * intensity
+			);
+			flash.auto_remove = true;
+			flash.behavior.loop = false;
+			flash.SetEaseOut(0.4f * intensity);
+			impl->light_manager->AddLight(flash);
+		}
 	}
 
 	void Visualizer::CreateShockwave(

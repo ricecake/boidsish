@@ -5,6 +5,8 @@
 #include "imgui.h"
 #include "post_processing/PostProcessingManager.h"
 #include "post_processing/effects/BloomEffect.h"
+#include "post_processing/effects/DepthOfFieldEffect.h"
+#include "post_processing/effects/FXAAEffect.h"
 #include "post_processing/effects/FilmGrainEffect.h"
 #include "post_processing/effects/UnifiedScreenSpaceEffect.h"
 
@@ -85,6 +87,67 @@ namespace Boidsish {
 							}
 						}
 
+						if (effect->GetName() == "Depth of Field" && is_enabled) {
+							auto dof_effect = std::dynamic_pointer_cast<PostProcessing::DepthOfFieldEffect>(effect);
+							if (dof_effect) {
+								bool autofocus = dof_effect->IsAutofocusEnabled();
+								if (ImGui::Checkbox("Autofocus##DoF", &autofocus)) {
+									dof_effect->SetAutofocus(autofocus);
+								}
+
+								if (autofocus) {
+									glm::vec2 offset = dof_effect->GetFocalPointOffset();
+									if (ImGui::SliderFloat2("Focus Offset##DoF", &offset.x, -0.5f, 0.5f)) {
+										dof_effect->SetFocalPointOffset(offset);
+									}
+									float minDist = dof_effect->GetMinFocusDistance();
+									if (ImGui::SliderFloat("Min Distance##DoF", &minDist, 0.01f, 10.0f)) {
+										dof_effect->SetMinFocusDistance(minDist);
+									}
+									float maxDist = dof_effect->GetMaxFocusDistance();
+									if (ImGui::SliderFloat("Max Distance##DoF", &maxDist, 10.0f, 2000.0f)) {
+										dof_effect->SetMaxFocusDistance(maxDist);
+									}
+								} else {
+									float focusDist = dof_effect->GetFocusDistance();
+									if (ImGui::SliderFloat("Focus Distance##DoF", &focusDist, 0.1f, 1000.0f)) {
+										dof_effect->SetFocusDistance(focusDist);
+									}
+								}
+
+								float focusScale = dof_effect->GetFocusScale();
+								if (ImGui::SliderFloat("Focus Scale##DoF", &focusScale, 0.0f, 100.0f)) {
+									dof_effect->SetFocusScale(focusScale);
+								}
+								float blurSize = dof_effect->GetBlurSize();
+								if (ImGui::SliderFloat("Blur Size##DoF", &blurSize, 0.0f, 50.0f)) {
+									dof_effect->SetBlurSize(blurSize);
+								}
+							}
+						}
+
+						if (effect->GetName() == "FXAA" && is_enabled) {
+							auto fxaa_effect = std::dynamic_pointer_cast<PostProcessing::FXAAEffect>(effect);
+							if (fxaa_effect) {
+								float reduceMin = fxaa_effect->GetReduceMin();
+								if (ImGui::SliderFloat("Reduce Min##FXAA", &reduceMin, 0.0f, 0.1f)) {
+									fxaa_effect->SetReduceMin(reduceMin);
+								}
+								float reduceMul = fxaa_effect->GetReduceMul();
+								if (ImGui::SliderFloat("Reduce Mul##FXAA", &reduceMul, 0.0f, 1.0f)) {
+									fxaa_effect->SetReduceMul(reduceMul);
+								}
+								float spanMax = fxaa_effect->GetSpanMax();
+								if (ImGui::SliderFloat("Span Max##FXAA", &spanMax, 0.0f, 20.0f)) {
+									fxaa_effect->SetSpanMax(spanMax);
+								}
+								float lumaThreshold = fxaa_effect->GetLumaThreshold();
+								if (ImGui::SliderFloat("Luma Threshold##FXAA", &lumaThreshold, 0.0f, 0.5f)) {
+									fxaa_effect->SetLumaThreshold(lumaThreshold);
+								}
+							}
+						}
+
 						if (effect->GetName() == "UnifiedScreenSpace" && is_enabled) {
 							auto unified = std::dynamic_pointer_cast<PostProcessing::UnifiedScreenSpaceEffect>(effect);
 							if (unified) {
@@ -97,6 +160,24 @@ namespace Boidsish {
 									if (current_res == 0) unified->SetResolutionScale(PostProcessing::ScreenSpaceResolution::Full);
 									else if (current_res == 1) unified->SetResolutionScale(PostProcessing::ScreenSpaceResolution::Half);
 									else if (current_res == 2) unified->SetResolutionScale(PostProcessing::ScreenSpaceResolution::Quarter);
+								}
+
+								if (ImGui::TreeNode("ReSTIR DI")) {
+									bool di_enabled = unified->IsRestirDIEnabled();
+									if (ImGui::Checkbox("Enabled##RestirDI", &di_enabled)) unified->SetRestirDIEnabled(di_enabled);
+
+									float di_intensity = unified->GetRestirDIIntensity();
+									if (ImGui::SliderFloat("Intensity##RestirDI", &di_intensity, 0.0f, 10.0f)) unified->SetRestirDIIntensity(di_intensity);
+									ImGui::TreePop();
+								}
+
+								if (ImGui::TreeNode("ReSTIR GI")) {
+									bool gi_enabled = unified->IsRestirGIEnabled();
+									if (ImGui::Checkbox("Enabled##RestirGI", &gi_enabled)) unified->SetRestirGIEnabled(gi_enabled);
+
+									float gi_intensity = unified->GetRestirGIIntensity();
+									if (ImGui::SliderFloat("Intensity##RestirGI", &gi_intensity, 0.0f, 10.0f)) unified->SetRestirGIIntensity(gi_intensity);
+									ImGui::TreePop();
 								}
 
 								if (ImGui::TreeNode("SSGI")) {

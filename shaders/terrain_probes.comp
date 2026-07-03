@@ -15,6 +15,7 @@ uniform sampler2D u_gNormal;
 uniform sampler2D u_gAlbedo;
 uniform sampler2D u_gVelocity;
 uniform sampler2D u_skyViewLUT;
+uniform sampler3D u_aerialPerspectiveLUT;
 
 uniform uint u_frameIndex;
 uniform mat4 u_view;
@@ -91,7 +92,19 @@ vec3 sampleSkyLUT(vec3 rd) {
 	float adjV = sqrt(abs(elevation) / (PI * 0.5));
 	float uvY = (elevation < 0.0) ? (0.5 - 0.5 * adjV) : (0.5 + 0.5 * adjV);
 
-	return max(texture(u_skyViewLUT, vec2(uvX, uvY)).rgb, vec3(0.01, 0.05, 0.1));
+	vec3 skyRadiance = max(texture(u_skyViewLUT, vec2(uvX, uvY)).rgb, vec3(0.01, 0.05, 0.1));
+
+	// Account for atmosphere between probe and sky (Aerial Perspective)
+	// Mapping for AP LUT (consistent with atmosphere_composite.frag)
+	float u = uvX;
+	float v = elevation / PI + 0.5;
+	float w = 1.0; // Sample at max distance (32km) to reach the "sky"
+
+	vec4 ap = texture(u_aerialPerspectiveLUT, vec3(u, v, w));
+	vec3 inScattering = ap.rgb;
+	float transmittance = ap.a;
+
+	return skyRadiance * transmittance + inScattering;
 }
 
 vec3 sampleTerrainFallback(vec3 worldPos, vec3 rayDir) {

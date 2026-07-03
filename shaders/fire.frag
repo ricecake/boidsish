@@ -57,13 +57,13 @@ void main() {
 	vec3  color = vec3(0.0);
 	float alpha = 0.0;
 
-	if (v_style == STYLE_ROCKET_TRAIL || v_style == STYLE_SPARKS || v_style == STYLE_GLITTER || v_style == STYLE_BUBBLES || v_style == STYLE_FIREFLIES || v_style == STYLE_DEBUG ||
-	    v_style == STYLE_CINDER || v_style == STYLE_IRIDESCENT || v_style == STYLE_RAIN || v_style == STYLE_SNOW || v_style == STYLE_LEAF || v_style == STYLE_PETAL || v_style == STYLE_BIRDS || v_style == STYLE_FAIRY || v_style == STYLE_DUST) {
+	if (v_style == STYLE_ROCKET_TRAIL || v_style == STYLE_SPARKS || v_style == STYLE_GLITTER || v_style == STYLE_BUBBLES || v_style == STYLE_DEBUG ||
+	    v_style == STYLE_CINDER || v_style == STYLE_IRIDESCENT || v_style == STYLE_RAIN || v_style == STYLE_SNOW || v_style == STYLE_LEAF || v_style == STYLE_PETAL || v_style == STYLE_BIRDS || v_style == STYLE_FAIRY || v_style == STYLE_DUST || v_style == STYLE_FIREFLIES || v_style == STYLE_POOF) {
 
 		color = v_p.color.rgb;
 		alpha = v_p.color.a;
 
-		if (v_style == STYLE_LEAF || v_style == STYLE_PETAL || v_style == STYLE_FIREFLIES || v_style == STYLE_BIRDS || v_style == STYLE_FAIRY) {
+		if (v_style == STYLE_LEAF || v_style == STYLE_PETAL || v_style == STYLE_BIRDS || v_style == STYLE_FAIRY || v_style == STYLE_FIREFLIES) {
 			vec3 biome_albedo = (v_emitter_index >= 0 && v_emitter_index < 8) ? u_biomeAlbedos[v_emitter_index] : vec3(0.5);
 			color = mix(color, biome_albedo, 0.5);
 		}
@@ -129,14 +129,19 @@ void main() {
 			);
 			alpha = 1.0;
 		} else if (v_style == STYLE_FAIRY) {
-			// Phase-based brightness (using p.counter and p.phase logic from firefly)
-			float twinkle = pow(smoothstep(0.0, 0.3, v_p.counter) * (1.0 - smoothstep(0.4, 0.6, v_p.counter)), 2.0) * step(v_p.counter, 0.6);
-			float brightness = 0.5 + twinkle * 10.0;
+			float dist = length(circ);
+			float twinkle = clamp((v_p.color.a / smoothstep(0.0, 0.5, v_lifetime)) - 0.2, 0.0, 1.0);
 
-			// Small soft core
-			float core = exp(-distSq * 100.0);
-			// Large penumbra
+			float core = 1.0 - smoothstep(0.0, 0.15, dist);
 			float penumbra = exp(-distSq * 5.0);
+
+			// Expanding ring with wavering size
+			float waver = snoise3d(vec3(v_pos.xyz * 0.5 + u_time * 2.0)) * 0.05 * twinkle;
+			float ringRadius = 0.1 + twinkle * 0.35 + waver;
+			float ringWidth = 0.02 + twinkle * 0.1;
+			float ring = smoothstep(ringRadius + ringWidth, ringRadius, dist) * smoothstep(ringRadius - ringWidth, ringRadius, dist);
+
+			shapeMask = max(max(core, ring), penumbra);
 
 			// Iridescent sheen in the penumbra
 			float angle_factor = pow(clamp(1.0 - distSq * 4.0, 0.0, 1.0), 2.0);
@@ -146,17 +151,36 @@ void main() {
 				sin(angle_factor * 8.0 + v_p.phase + 4.0) * 0.5 + 0.5
 			);
 
+			// Diffracted, gem-like sparkle in the ring
+			float angle = atan(circ.y, circ.x);
+			vec3 diffraction;
+			diffraction.r = sin(angle * 3.0 + u_time * 0.150 * waver + dist * 10.0) * 0.5 + 0.5;
+			diffraction.g = sin(angle * 3.0 + u_time * 0.450 * waver + dist * 10.0 + 2.0) * 0.5 + 0.5;
+			diffraction.b = sin(angle * 3.0 + u_time * 0.650 * waver + dist * 10.0 + 4.0) * 0.5 + 0.5;
+
 			// Glittering sparkles using Worley noise
 			float sparkle = pow(fastWorley3d(v_pos.xyz * 10.0 + u_time * 2.0), 6.0);
 			vec3 sparkle_color = vec3(1.0, 0.9, 0.6) * sparkle * 10.0;
 
 			color = mix(vec3(1.0, 1.0, 1.0), iridescent_color, 0.7) * penumbra;
 			color += core * 2.0;
+			color = mix(color, diffraction * 2.0, ring * twinkle);
 			color += sparkle_color * penumbra;
-			color *= brightness;
 
-			shapeMask = penumbra;
-			alpha = (shapeMask  + sparkle ) * (twinkle);
+			alpha = v_p.color.a * shapeMask;
+		} else if (v_style == STYLE_POOF) {
+			float angle = v_p.phase;
+			float s = sin(angle);
+			float c = cos(angle);
+			mat2  rot = mat2(c, -s, s, c);
+			vec2  rotatedUV = rot * circ;
+
+			float noise = fastWarpedFbm3d(vec3(rotatedUV / 5.0, v_lifetime / 0.1));
+			float maskRadius = 0.5 * (v_p.color.a);
+			shapeMask = 1.0;// - smoothstep(maskRadius - 0.1, maskRadius, length(circ));
+
+			color = vec3(0.8, 0.8, 0.8) * (0.5 + 0.5 * noise);
+			alpha = v_p.color.a;// * shapeMask;
 		}
 
 		alpha *= shapeMask;
