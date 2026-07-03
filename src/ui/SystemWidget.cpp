@@ -376,6 +376,14 @@ namespace Boidsish {
 						}
 					}
 
+					auto map_widget = m_visualizer.GetUIConfigManager().GetWidget<MapWidget>();
+					if (map_widget) {
+						bool show_map = map_widget->IsVisible();
+						if (ImGui::Checkbox("Show Environmental Maps", &show_map)) {
+							map_widget->SetVisible(show_map);
+						}
+					}
+
 					if (ImGui::Button("Get World Coordinates")) {
 						m_is_picking_enabled = true;
 					}
