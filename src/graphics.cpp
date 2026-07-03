@@ -15,7 +15,7 @@
 #include "ConfigManager.h"
 #include "NoiseManager.h"
 #include "SceneManager.h"
-#include "UIManager.h"
+#include "UIConfigManager.h"
 #include "akira_effect.h"
 #include "arcade_text.h"
 #include "atmosphere_manager.h"
@@ -46,6 +46,8 @@
 #include "post_processing/effects/BloomEffect.h"
 #include "mood_manager.h"
 #include "mood_definitions.h"
+#include "post_processing/effects/DepthOfFieldEffect.h"
+#include "post_processing/effects/FXAAEffect.h"
 #include "post_processing/effects/FilmGrainEffect.h"
 #include "post_processing/effects/GlitchEffect.h"
 #include "post_processing/effects/NegativeEffect.h"
@@ -418,7 +420,7 @@ namespace Boidsish {
 		std::vector<PrepareCallback>                           prepare_callbacks;
 		std::vector<UpdateHandler>                             update_handlers;
 		bool                                                   prepared_{false};
-		std::shared_ptr<UI::UIManager>                         ui_manager;
+		std::shared_ptr<UI::UIConfigManager>                   ui_manager;
 		std::shared_ptr<HudManager>                            hud_manager;
 		std::shared_ptr<PostProcessing::PostProcessingManager> post_processing_manager_;
 		int                                                    exit_key;
@@ -590,9 +592,9 @@ namespace Boidsish {
 			service_locator_.Register<SoundEffectManager>();
 			service_locator_.Register<TrailRenderManager>();
 
-			service_locator_.RegisterFactory<UI::UIManager>(
+			service_locator_.RegisterFactory<UI::UIConfigManager>(
 				[this](ServiceLocator& loc) {
-					return std::make_shared<UI::UIManager>(loc, window);
+					return std::make_shared<UI::UIConfigManager>(loc, window);
 				}
 			);
 			service_locator_.RegisterFactory<PostProcessing::PostProcessingManager>(
@@ -899,13 +901,9 @@ namespace Boidsish {
 				SetupShaderBindings(*sky_shader);
 			}
 
-			ui_manager = service_locator_.Get<UI::UIManager>();
+			ui_manager = service_locator_.Get<UI::UIConfigManager>();
 			logger::LOG("Initializing HudManager...");
 			hud_manager = service_locator_.Get<HudManager>();
-			logger::LOG("HudManager initialized. Creating HudWidget...");
-			auto hud_widget = std::make_shared<UI::HudWidget>(*hud_manager);
-			ui_manager->AddWidget(hud_widget);
-			logger::LOG("HudWidget created and added.");
 
 			if (terrain_generator) {
 				// Use terrain shaders with heightmap texture lookup
@@ -1098,6 +1096,14 @@ namespace Boidsish {
 				film_grain_effect->SetEnabled(false);
 				post_processing_manager_->AddEffect(film_grain_effect);
 
+				auto dof_effect = std::make_shared<PostProcessing::DepthOfFieldEffect>();
+				dof_effect->SetEnabled(false);
+				post_processing_manager_->AddEffect(dof_effect);
+
+				auto fxaa_effect = std::make_shared<PostProcessing::FXAAEffect>();
+				fxaa_effect->SetEnabled(false);
+				post_processing_manager_->AddEffect(fxaa_effect);
+
 				auto super_speed_effect = std::make_shared<PostProcessing::SuperSpeedEffect>();
 				super_speed_effect->SetEnabled(true);
 				post_processing_manager_->AddEffect(super_speed_effect);
@@ -1115,8 +1121,9 @@ namespace Boidsish {
 				post_processing_manager_->AddEffect(bloom_effect);
 
 				mood_manager = std::make_shared<MoodManager>();
-				mood_manager->AddLayer(GetBaseTimeOfDayLayer());
-				mood_manager->AddLayer(GetWeatherPrecipitationLayer());
+				for (auto& layer : GetAllMoodSettings()) {
+					mood_manager->AddLayer(layer);
+				}
 
 
 				if (enable_hdr_) {
@@ -1130,14 +1137,7 @@ namespace Boidsish {
 				// --- UI ---
 			}
 
-			ui_manager->AddWidget(std::make_shared<UI::EnvironmentWidget>(*parent));
-			ui_manager->AddWidget(std::make_shared<UI::MoodWidget>(*parent));
-			ui_manager->AddWidget(std::make_shared<UI::LightningWidget>(*parent));
-			ui_manager->AddWidget(std::make_shared<UI::EffectWidget>(*parent));
-			ui_manager->AddWidget(std::make_shared<UI::RenderWidget>(*parent));
-			ui_manager->AddWidget(std::make_shared<UI::AudioWidget>(*parent));
-			ui_manager->AddWidget(std::make_shared<UI::SystemWidget>(*parent, *scene_manager));
-			ui_manager->AddWidget(std::make_shared<UI::ProfilerWidget>());
+			ui_manager->SetupDefaultWidgets(*parent, *scene_manager, *hud_manager);
 		}
 
 		void BindShadows(Shader& s) {
@@ -2058,6 +2058,8 @@ namespace Boidsish {
 				atmosphere_manager->SetMieScaleHeight(atmosphere_effect->GetMieScaleHeight());
 				atmosphere_manager->SetColorVarianceScale(atmosphere_effect->GetColorVarianceScale());
 				atmosphere_manager->SetColorVarianceStrength(atmosphere_effect->GetColorVarianceStrength());
+				atmosphere_manager->SetSunAureoleStrength(atmosphere_effect->GetSunAureoleStrength());
+				atmosphere_manager->SetCirrusOpacity(atmosphere_effect->GetCirrusOpacity());
 
 			float cloudShadowIntensity = ConfigManager::GetInstance().GetAppSettingFloat("cloud_shadow_intensity", 0.5f);
 			atmosphere_manager->SetCloudShadowIntensity(cloudShadowIntensity);
@@ -2269,6 +2271,7 @@ namespace Boidsish {
 					std::map<MoodParameter, float> params;
 					params[MoodParameter::TimeOfDay] = light_manager->GetDayNightCycle().time;
 					params[MoodParameter::Precipitation] = weather_manager->GetCurrentWeather().precipitation;
+					params[MoodParameter::Humidity] = weather_manager->GetCurrentWeather().humidity;
 					params[MoodParameter::Temperature] = weather_manager->GetCurrentWeather().temperature;
 					params[MoodParameter::CloudCover] = weather_manager->GetCurrentWeather().cloud_coverage;
 					params[MoodParameter::SunAngle] = light_manager->GetLights().empty() ? 0.0f : light_manager->GetLights()[0].elevation;
@@ -2300,23 +2303,23 @@ namespace Boidsish {
 						#undef B_M
 					}
 
-					if (atmosphere_effect) {
-						if (mood.cloudDensity) atmosphere_effect->SetCloudDensity(*mood.cloudDensity);
-						if (mood.cloudAltitude) atmosphere_effect->SetCloudAltitude(*mood.cloudAltitude);
-						if (mood.cloudThickness) atmosphere_effect->SetCloudThickness(*mood.cloudThickness);
-						if (mood.cloudColor) atmosphere_effect->SetCloudColor(*mood.cloudColor);
-						if (mood.cloudCoverage) atmosphere_effect->SetCloudCoverage(*mood.cloudCoverage);
-						if (mood.cloudSunLightScale) atmosphere_effect->SetCloudSunLightScale(*mood.cloudSunLightScale);
-						if (mood.cloudMoonLightScale) atmosphere_effect->SetCloudMoonLightScale(*mood.cloudMoonLightScale);
-						if (mood.cloudPowderScale) atmosphere_effect->SetCloudPowderScale(*mood.cloudPowderScale);
-						if (mood.cloudBeerPowderMix) atmosphere_effect->SetCloudBeerPowderMix(*mood.cloudBeerPowderMix);
+					// if (atmosphere_effect) {
+					// 	if (mood.cloudDensity) atmosphere_effect->SetCloudDensity(*mood.cloudDensity);
+					// 	if (mood.cloudAltitude) atmosphere_effect->SetCloudAltitude(*mood.cloudAltitude);
+					// 	if (mood.cloudThickness) atmosphere_effect->SetCloudThickness(*mood.cloudThickness);
+					// 	if (mood.cloudColor) atmosphere_effect->SetCloudColor(*mood.cloudColor);
+					// 	// if (mood.cloudCoverage) atmosphere_effect->SetCloudCoverage(*mood.cloudCoverage);
+					// 	if (mood.cloudSunLightScale) atmosphere_effect->SetCloudSunLightScale(*mood.cloudSunLightScale);
+					// 	if (mood.cloudMoonLightScale) atmosphere_effect->SetCloudMoonLightScale(*mood.cloudMoonLightScale);
+					// 	if (mood.cloudPowderScale) atmosphere_effect->SetCloudPowderScale(*mood.cloudPowderScale);
+					// 	if (mood.cloudBeerPowderMix) atmosphere_effect->SetCloudBeerPowderMix(*mood.cloudBeerPowderMix);
 
-						if (mood.rayleighScale) atmosphere_effect->SetRayleighScale(*mood.rayleighScale);
-						if (mood.mieScale) atmosphere_effect->SetMieScale(*mood.mieScale);
-						if (mood.rayleighScattering) atmosphere_effect->SetRayleighScattering(*mood.rayleighScattering);
-						if (mood.mieScattering) atmosphere_effect->SetMieScattering(*mood.mieScattering);
-						if (mood.mieExtinction) atmosphere_effect->SetMieExtinction(*mood.mieExtinction);
-					}
+					// 	if (mood.rayleighScale) atmosphere_effect->SetRayleighScale(*mood.rayleighScale);
+					// 	if (mood.mieScale) atmosphere_effect->SetMieScale(*mood.mieScale);
+						// if (mood.rayleighScattering) atmosphere_effect->SetRayleighScattering(*mood.rayleighScattering);
+					// 	if (mood.mieScattering) atmosphere_effect->SetMieScattering(*mood.mieScattering);
+					// 	if (mood.mieExtinction) atmosphere_effect->SetMieExtinction(*mood.mieExtinction);
+					// }
 				}
 
 				if (atmosphere_effect) {
@@ -2341,6 +2344,14 @@ namespace Boidsish {
 					lighting_ubo_data_.cloudSunLightScale = atmosphere_effect->GetCloudSunLightScale();
 					lighting_ubo_data_.cloudMoonLightScale = atmosphere_effect->GetCloudMoonLightScale();
 					lighting_ubo_data_.cloudBeerPowderMix = atmosphere_effect->GetCloudBeerPowderMix();
+
+					lighting_ubo_data_.cloudFlowSpeed = atmosphere_effect->GetCloudFlowSpeed();
+					lighting_ubo_data_.cloudFlowDirection = atmosphere_effect->GetCloudFlowDirection();
+					lighting_ubo_data_.cloudFlowHeightScale = atmosphere_effect->GetCloudFlowHeightScale();
+					lighting_ubo_data_.cloudCurlStrength = atmosphere_effect->GetCloudCurlStrength();
+					lighting_ubo_data_.cloudCurlFrequency = atmosphere_effect->GetCloudCurlFrequency();
+					lighting_ubo_data_.sunAureoleStrength = atmosphere_effect->GetSunAureoleStrength();
+					lighting_ubo_data_.cirrusOpacity = atmosphere_effect->GetCirrusOpacity();
 
 					// Calculate cloud shadow matrix (world XZ to shadow map UV)
 					float     mapSize = atmosphere_manager->GetCloudShadowWorldSize();
@@ -2370,10 +2381,10 @@ namespace Boidsish {
 
 				// GPU-side copy of SH coefficients from SSBO into the UBO (no CPU readback)
 				if (atmosphere_manager) {
-					static_assert(offsetof(LightingUbo, sh_coeffs) == 976, "SH offset mismatch");
+					static_assert(offsetof(LightingUbo, sh_coeffs) == 1008, "SH offset mismatch");
 					atmosphere_manager->CopySHToUBO(
 						lighting_pb->GetBufferId(),
-						static_cast<GLintptr>(lighting_pb->GetFrameOffset()) + 976
+						static_cast<GLintptr>(lighting_pb->GetFrameOffset()) + 1008
 					);
 				}
 			}
@@ -2573,7 +2584,8 @@ namespace Boidsish {
 				noise_manager ? noise_manager->GetExtraNoiseTexture() : 0,
 				render_state_.visual_effects.id,
 				static_cast<GLintptr>(render_state_.visual_effects.offset),
-				static_cast<GLsizeiptr>(render_state_.visual_effects.size)
+				static_cast<GLsizeiptr>(render_state_.visual_effects.size),
+				terrain_render_manager ? terrain_render_manager->GetTerrainDataUbo() : 0
 			);
 			mesh_explosion_manager->Update(simulation_delta_time, simulation_time);
 			sound_effect_manager->Update(simulation_delta_time);
@@ -2730,7 +2742,11 @@ namespace Boidsish {
 
 		void RenderOpaqueScene(const FrameData& frame) {
 			if (opaque_pass_ && compositor_) {
-				opaque_pass_->Execute(frame, *compositor_, render_scale, MakeRenderCallbacks(frame));
+				std::vector<ShadowCasterInfo> casters;
+				if (shadow_pass_) {
+					casters = shadow_pass_->GetShadowCasterInfos(frame);
+				}
+				opaque_pass_->Execute(frame, *compositor_, render_scale, MakeRenderCallbacks(frame), casters);
 
 				if (grass_manager && frame.config.render_decor) {
 					GrassManager::RenderResources res{};
@@ -3543,6 +3559,7 @@ namespace Boidsish {
 			);
 
 			const auto& w = impl->weather_manager->GetCurrentWeather();
+			float world_scale = impl->terrain_generator ? impl->terrain_generator->GetWorldScale() : 1.0f;
 
 			// Calculate precipitation targets
 			float rain_target = (w.temperature > 273.15f) ? w.precipitation : 0.0f;
@@ -3558,6 +3575,7 @@ namespace Boidsish {
 
 			// Apply to atmosphere effect
 			if (impl->atmosphere_effect) {
+				impl->atmosphere_effect->SetWorldScale(world_scale);
 				impl->atmosphere_effect->SetHazeDensity(w.haze_density);
 				impl->atmosphere_effect->SetHazeHeight(w.haze_height);
 				impl->atmosphere_effect->SetCloudDensity(w.cloud_density);
@@ -3577,6 +3595,14 @@ namespace Boidsish {
 				impl->atmosphere_effect->SetMieScaleHeight(w.mie_scale_height);
 				impl->atmosphere_effect->SetHazeColor(w.haze_color);
 				impl->atmosphere_effect->SetCloudColor(w.cloud_color);
+				impl->atmosphere_effect->SetSunAureoleStrength(w.sun_aureole_strength);
+				impl->atmosphere_effect->SetCirrusOpacity(w.cirrus_opacity);
+
+				impl->atmosphere_effect->SetCloudFlowSpeed(w.wind_speed);
+				impl->atmosphere_effect->SetCloudFlowDirection(glm::radians(180.0f)); // Fixed direction for consistency
+				impl->atmosphere_effect->SetCloudFlowHeightScale(0.2f);
+				impl->atmosphere_effect->SetCloudCurlStrength(5.0f);
+				impl->atmosphere_effect->SetCloudCurlFrequency(1.5f);
 			}
 		}
 
@@ -3712,6 +3738,7 @@ namespace Boidsish {
 				impl->compositor_->GetAlbedoTexture(),
 				impl->compositor_->GetVelocityTexture(),
 				impl->atmosphere_manager->GetSkyViewLUT(),
+				impl->atmosphere_manager->GetAerialPerspectiveLUT(),
 				frame.view,
 				frame.projection,
 				impl->render_state_.lighting.id,
@@ -3789,15 +3816,6 @@ namespace Boidsish {
 					impl->decor_manager->SetNoiseManager(impl->noise_manager.get());
 				}
 
-				impl->decor_manager->Cull(
-					view,
-					impl->projection,
-					impl->render_width,
-					impl->render_height,
-					std::nullopt,
-					std::nullopt,
-					impl->terrain_render_manager
-				);
 				impl->decor_manager->Render(view, impl->projection, impl->terrain_render_manager);
 			}
 
@@ -4960,7 +4978,7 @@ namespace Boidsish {
 		return ConfigManager::GetInstance().GetAppSettingBool("artistic_effect_wireframe", false);
 	}
 
-	UI::UIManager& Visualizer::GetUIManager() {
+	UI::UIConfigManager& Visualizer::GetUIConfigManager() {
 		return *impl->ui_manager;
 	}
 } // namespace Boidsish

@@ -40,6 +40,8 @@ namespace Boidsish {
 						case WeatherAttribute::WindSpeed: val = weather_cur.wind_speed; break;
 						case WeatherAttribute::WindFrequency: val = weather_cur.wind_frequency; break;
 						case WeatherAttribute::CloudCoverage: val = weather_cur.cloud_coverage; break;
+						case WeatherAttribute::SunAureoleStrength: val = weather_cur.sun_aureole_strength; break;
+						case WeatherAttribute::CirrusOpacity: val = weather_cur.cirrus_opacity; break;
 						default: break;
 					}
 
@@ -104,6 +106,8 @@ namespace Boidsish {
 							drawAttrControl("Humidity", WeatherAttribute::Humidity, 0.0f, 1.0f, "%.2f");
 							drawAttrControl("Wind Strength", WeatherAttribute::WindStrength, 0.0f, 5.0f, "%.2f");
 							drawAttrControl("Cloud Coverage", WeatherAttribute::CloudCoverage, 0.0f, 1.0f, "%.2f");
+							drawAttrControl("Sun Aureole", WeatherAttribute::SunAureoleStrength, 0.0f, 2.0f, "%.2f");
+							drawAttrControl("Cirrus Opacity", WeatherAttribute::CirrusOpacity, 0.0f, 1.0f, "%.2f");
 
 							auto active_constraints = weather->GetActiveConstraints();
 							if (!active_constraints.empty()) {
@@ -378,6 +382,21 @@ namespace Boidsish {
 								cfg.SetFloat("grass_wind_multiplier", props.windMultiplier);
 							}
 
+							ImGui::Separator();
+							ImGui::Text("Procedural Scaling");
+							if (ImGui::SliderFloat("LOD Scale Factor", &props.lodScaleFactor, 1.1f, 4.0f)) {
+								changed = true;
+								cfg.SetFloat("grass_lod_scale_factor", props.lodScaleFactor);
+							}
+							if (ImGui::SliderFloat("LOD Base Range", &props.lodBaseRange, 5.0f, 100.0f)) {
+								changed = true;
+								cfg.SetFloat("grass_lod_base_range", props.lodBaseRange);
+							}
+							if (ImGui::SliderFloat("Base Grid Scale", &props.baseScale, 0.05f, 2.0f)) {
+								changed = true;
+								cfg.SetFloat("grass_base_scale", props.baseScale);
+							}
+
 							if (changed) {
 								grass_manager->SetGlobalProperties(props);
 							}
@@ -624,6 +643,54 @@ namespace Boidsish {
 										cfg.SetFloat("cloud_beer_powder_mix", bp_mix);
 									}
 
+										ImGui::Separator();
+										ImGui::Text("Cloud Advection & Detail");
+
+										float flow_speed = cfg.GetAppSettingFloat(
+											"cloud_flow_speed",
+											atmosphere_effect->GetCloudFlowSpeed()
+										);
+										if (ImGui::SliderFloat("Cloud Flow Speed", &flow_speed, 0.0f, 2.0f)) {
+											atmosphere_effect->SetCloudFlowSpeed(flow_speed);
+											cfg.SetFloat("cloud_flow_speed", flow_speed);
+										}
+
+										float flow_dir = cfg.GetAppSettingFloat(
+											"cloud_flow_direction",
+											atmosphere_effect->GetCloudFlowDirection()
+										);
+										if (ImGui::SliderAngle("Cloud Flow Direction", &flow_dir)) {
+											atmosphere_effect->SetCloudFlowDirection(flow_dir);
+											cfg.SetFloat("cloud_flow_direction", flow_dir);
+										}
+
+										float flow_height = cfg.GetAppSettingFloat(
+											"cloud_flow_height_scale",
+											atmosphere_effect->GetCloudFlowHeightScale()
+										);
+										if (ImGui::SliderFloat("Cloud Flow Height Scale", &flow_height, 0.0f, 0.5f)) {
+											atmosphere_effect->SetCloudFlowHeightScale(flow_height);
+											cfg.SetFloat("cloud_flow_height_scale", flow_height);
+										}
+
+										float curl_strength = cfg.GetAppSettingFloat(
+											"cloud_curl_strength",
+											atmosphere_effect->GetCloudCurlStrength()
+										);
+										if (ImGui::SliderFloat("Cloud Curl Strength", &curl_strength, 0.0f, 20.0f)) {
+											atmosphere_effect->SetCloudCurlStrength(curl_strength);
+											cfg.SetFloat("cloud_curl_strength", curl_strength);
+										}
+
+										float curl_freq = cfg.GetAppSettingFloat(
+											"cloud_curl_frequency",
+											atmosphere_effect->GetCloudCurlFrequency()
+										);
+										if (ImGui::SliderFloat("Cloud Curl Frequency", &curl_freq, 0.1f, 10.0f)) {
+											atmosphere_effect->SetCloudCurlFrequency(curl_freq);
+											cfg.SetFloat("cloud_curl_frequency", curl_freq);
+										}
+
 									ImGui::Separator();
 									ImGui::Text("Scattering");
 									float rayleigh = atmosphere_effect->GetRayleighScale();
@@ -861,23 +928,24 @@ namespace Boidsish {
 						if (fire_manager) {
 							Boidsish::ParticleStats stats = fire_manager->GetStats();
 
-							auto drawLimit = [&](const char* label, const char* cfg_key, uint32_t current, uint32_t limit) {
-								int i_limit = (int)limit;
-								if (ImGui::SliderInt(label, &i_limit, 0, 20000)) {
-									config.SetInt(cfg_key, i_limit);
+							auto drawRatioLimit = [&](const char* label, const char* cfg_key, uint32_t current, uint32_t limit, float default_ratio) {
+								float ratio = config.GetAppSettingFloat(cfg_key, default_ratio);
+								if (ImGui::SliderFloat(label, &ratio, 0.0f, 1.0f, "%.2f")) {
+									config.SetFloat(cfg_key, ratio);
 								}
 								ImGui::SameLine();
-								ImGui::Text("(%u live)", current);
+								ImGui::Text("(%u/%u live)", current, limit);
 							};
 
-							drawLimit("Birds", "particle_limit_birds", stats.count_birds, stats.limit_birds);
-							drawLimit("Leaves", "particle_limit_leaves", stats.count_leaves, stats.limit_leaves);
-							drawLimit("Petals", "particle_limit_petals", stats.count_petals, stats.limit_petals);
-							drawLimit("Bubbles", "particle_limit_bubbles", stats.count_bubbles, stats.limit_bubbles);
-							drawLimit("Fireflies", "particle_limit_fireflies", stats.count_fireflies, stats.limit_fireflies);
-							drawLimit("Snow", "particle_limit_snow", stats.count_snow, stats.limit_snow);
-							drawLimit("Rain", "particle_limit_rain", stats.count_rain, stats.limit_rain);
-							drawLimit("Dust", "particle_limit_dust", stats.count_dust, stats.limit_dust);
+							drawRatioLimit("Birds", "particle_ratio_birds", stats.count_birds, stats.limit_birds, 0.05f);
+							drawRatioLimit("Leaves", "particle_ratio_leaves", stats.count_leaves, stats.limit_leaves, 0.25f);
+							drawRatioLimit("Petals", "particle_ratio_petals", stats.count_petals, stats.limit_petals, 0.25f);
+							drawRatioLimit("Bubbles", "particle_ratio_bubbles", stats.count_bubbles, stats.limit_bubbles, 0.15f);
+							drawRatioLimit("Fireflies", "particle_ratio_fireflies", stats.count_fireflies, stats.limit_fireflies, 0.25f);
+							drawRatioLimit("Fairies", "particle_ratio_fairies", stats.count_fairies, stats.limit_fairies, 0.1f);
+							drawRatioLimit("Snow", "particle_ratio_snow", stats.count_snow, stats.limit_snow, 0.5f);
+							drawRatioLimit("Rain", "particle_ratio_rain", stats.count_rain, stats.limit_rain, 0.5f);
+							drawRatioLimit("Dust", "particle_ratio_dust", stats.count_dust, stats.limit_dust, 0.25f);
 						}
 					}
 				}

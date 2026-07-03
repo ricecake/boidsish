@@ -216,6 +216,12 @@ void main() {
 			float dist = distance(uv, layers[isSky].focusPoint);
 			float weight = exp(-dist * layers[isSky].centerWeightTightness);
 
+			if (isSky == 1) {
+				// Raise the floor: ignore/down-weight sky pixels near or below the horizon
+				// This prevents dark sub-horizon values from dragging down the luminance.
+				weight *= smoothstep(-0.05, 0.1, worldDir.y);
+			}
+
 			// Map logLuma to histogram bin
 			float normalizedLogLuma = clamp((logLuma - MIN_LOG_LUMA) / (MAX_LOG_LUMA - MIN_LOG_LUMA), 0.0, 1.0);
 			int bin = int(normalizedLogLuma * 255.0);

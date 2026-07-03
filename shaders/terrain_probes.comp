@@ -5,14 +5,9 @@ layout(local_size_x = 8, local_size_y = 8) in;
 #include "helpers/constants.glsl"
 
 #define USE_TERRAIN_DATA
-// Forward declarations for lighting.glsl
-float terrainShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) { return 1.0; }
-float calculateTerrainOcclusion(vec3 worldPos, vec3 normal) { return 1.0; }
-
+#include "helpers/terrain_shadows.glsl"
 #include "helpers/lighting.glsl"
 #include "helpers/fast_noise.glsl"
-layout(binding = [[BAKED_HEIGHTMAP_BINDING]]) uniform sampler2DArray u_heightmapArray;
-layout(binding = [[TERRAIN_BIOME_MAP_BINDING]]) uniform sampler2DArray u_biomeMap; // RGBA8: R=low_idx, G=t, B=bake_flag
 
 uniform sampler2D u_gColor;
 uniform sampler2D u_gDepth;
@@ -20,6 +15,7 @@ uniform sampler2D u_gNormal;
 uniform sampler2D u_gAlbedo;
 uniform sampler2D u_gVelocity;
 uniform sampler2D u_skyViewLUT;
+uniform sampler3D u_aerialPerspectiveLUT;
 
 uniform uint u_frameIndex;
 uniform mat4 u_view;
@@ -96,7 +92,19 @@ vec3 sampleSkyLUT(vec3 rd) {
 	float adjV = sqrt(abs(elevation) / (PI * 0.5));
 	float uvY = (elevation < 0.0) ? (0.5 - 0.5 * adjV) : (0.5 + 0.5 * adjV);
 
-	return max(texture(u_skyViewLUT, vec2(uvX, uvY)).rgb, vec3(0.01, 0.05, 0.1));
+	vec3 skyRadiance = max(texture(u_skyViewLUT, vec2(uvX, uvY)).rgb, vec3(0.01, 0.05, 0.1));
+
+	// Account for atmosphere between probe and sky (Aerial Perspective)
+	// Mapping for AP LUT (consistent with atmosphere_composite.frag)
+	float u = uvX;
+	float v = elevation / PI + 0.5;
+	float w = 1.0; // Sample at max distance (32km) to reach the "sky"
+
+	vec4 ap = texture(u_aerialPerspectiveLUT, vec3(u, v, w));
+	vec3 inScattering = ap.rgb;
+	float transmittance = ap.a;
+
+	return skyRadiance * transmittance + inScattering;
 }
 
 vec3 sampleTerrainFallback(vec3 worldPos, vec3 rayDir) {
@@ -145,26 +153,8 @@ vec3 sampleTerrainFallback(vec3 worldPos, vec3 rayDir) {
 							// Cloud shadows
 							shadow *= calculateCloudShadow(l, p);
 
-							// Simple raymarch check against heightmap
-							vec3  shadowP = p + normal * (0.5 * worldScaleVal);
-							float shadowT = 2.0 * worldScaleVal;
-							for (int step = 0; step < 8; ++step) {
-								vec3  testP = shadowP + L * shadowT;
-								vec2  testGridPos = testP.xz / scaledChunkSize - vec2(u_originSize.xy);
-								ivec2 testCoord = ivec2(floor(testGridPos));
-								if (testCoord.x >= 0 && testCoord.x < u_originSize.z && testCoord.y >= 0 &&
-								    testCoord.y < u_originSize.z) {
-									int testSlice = texelFetch(u_chunkGrid, testCoord, 0).r;
-									if (testSlice >= 0) {
-										float h = texture(u_heightmapArray, vec3(fract(testGridPos), float(testSlice))).r;
-										if (testP.y < h) {
-											shadow = 0.0;
-											break;
-										}
-									}
-								}
-								shadowT += 4.0 * worldScaleVal;
-							}
+							// Precomputed terrain shadow map or raymarch
+							shadow *= terrainShadowCoverage(p, normal, L);
 						}
 
 						// Direct illumination contribution to ground bounce (diffuse only for SH)
@@ -296,7 +286,7 @@ void main() {
 	vec3  worldNormal = normalize(sampledHeightNorm.gba);
 
 	// Position probe origin slightly above terrain to ensure clear visibility
-	vec3 probeOrigin = worldPos + worldNormal * 1.0 * worldScaleVal;
+	vec3 probeOrigin = worldPos + worldNormal * 5.0 * worldScaleVal;
 
 	// Calculate focus weight based on screen-space position
 	vec4 clipPos = u_projection * u_view * vec4(probeOrigin, 1.0);

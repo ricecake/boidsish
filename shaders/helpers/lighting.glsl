@@ -3,6 +3,12 @@
 
 #include "../helpers/constants.glsl"
 #include "../lighting.glsl"
+#ifdef USE_TERRAIN_DATA
+#ifndef TERRAIN_HEIGHT_DEFINED
+#define TERRAIN_HEIGHT_DEFINED
+#include "terrain_common.glsl"
+#endif
+#endif
 #include "clouds.glsl"
 #include "brdf.glsl"
 
@@ -113,7 +119,9 @@ void calculateLightContribution(int light_index, vec3 frag_pos, out vec3 light_d
 
 /**
  * Calculate cloud shadow factor for a fragment position.
- * Projects the fragment position to the cloud layer along the light direction.
+ * The shadow map is pre-projected: each texel stores the density of the cloud
+ * that casts a shadow at that ground XZ position (already offset by sun angle).
+ * So we look up directly by the fragment's XZ.
  */
 float calculateCloudShadow(int light_index, vec3 frag_pos) {
 	if (lights[light_index].type != LIGHT_TYPE_DIRECTIONAL || cloudShadowIntensity <= 0.0) {
@@ -121,32 +129,35 @@ float calculateCloudShadow(int light_index, vec3 frag_pos) {
 	}
 
 	vec3 L = normalize(-lights[light_index].direction);
-	if (L.y <= 0.0)
+	if (L.y <= 0.001)
 		return 1.0;
 
-	// Project to the middle of the cloud layer to ensure we're within the tapering range
-	float shadowAltitude = cloudAltitude + cloudThickness * 0.5;
-	float scaledCloudAltitude = shadowAltitude * worldScale;
-	float t = (scaledCloudAltitude - frag_pos.y) / L.y;
-
-	if (t < 0.0)
+	// Skip if fragment is above the cloud layer (it's not in the cloud's shadow)
+	float cloudCeiling = (cloudAltitude + cloudThickness * 8.0) * worldScale;
+	if (frag_pos.y > cloudCeiling)
 		return 1.0;
 
-	vec3 cloudPos = frag_pos + L * t;
-
-	// Use the precomputed 2D shadow map
-	vec4 shadowUV = cloudShadowMatrix * vec4(cloudPos.xz, 0.0, 1.0);
-
-	// Sample the shadow map
+	// Shadow map is indexed by ground XZ — the map generator projected from
+	// ground to cloud along L. For elevated fragments, project down to ground
+	// along L to find the equivalent ground lookup point.
+	vec2  lookupXZ = frag_pos.xz - L.xz * (frag_pos.y / L.y);
+	vec4  shadowUV = cloudShadowMatrix * vec4(lookupXZ, 0.0, 1.0);
 	float d = 0.0;
+
 	if (shadowUV.x >= 0.0 && shadowUV.x <= 1.0 && shadowUV.y >= 0.0 && shadowUV.y <= 1.0) {
 		d = texture(u_cloudShadowMap, shadowUV.xy).r;
 	} else {
-		// Fallback for points outside the shadow map: evaluate noise directly
+		// Fallback: project to cloud layer to evaluate density directly
+		float t = (cloudAltitude * worldScale - frag_pos.y) / L.y;
+		if (t < 0.0) return 1.0;
+		vec3 cloudPos = frag_pos + L * t;
 		d = evaluateCloudShadowDensityAtWorldPos(cloudPos.xz, time);
 	}
 
-	return mix(1.0, exp(-d), cloudShadowIntensity);
+	// Apply slant-factor (longer path through cloud at oblique angles) and intensity
+	float finalDepth = (d / L.y) * cloudShadowOpticalDepthMultiplier;
+
+	return mix(1.0, exp(-finalDepth), cloudShadowIntensity);
 }
 
 #ifdef USE_TERRAIN_DATA
@@ -168,10 +179,12 @@ float calculateShadow(int light_index, vec3 frag_pos, vec3 normal, vec3 light_di
 	// Optimization: Quick terrain raycast for directional lights (Sun)
 	float terrainShadow = 1.0;
 	if (lights[light_index].type == LIGHT_TYPE_DIRECTIONAL) {
+#ifndef SKIP_TERRAIN_RAYCAST
 		terrainShadow = terrainShadowCoverage(frag_pos, normal, light_dir);
 		if (terrainShadow <= 0.0) {
 			return terrainShadow;
 		}
+#endif
 	}
 
 	int shadow_index = lightShadowIndices[light_index];
@@ -442,9 +455,18 @@ vec3 getSpatialAmbientSH(vec3 worldPos, vec3 N) {
 	vec3 environmentalIrradiance = evalSHIrradianceFromCoeffs(N, interpolatedCoeffs);
 	vec3 skyIrradiance = evalSHIrradiance(N); // Global sky/ambient fallback
 
+	// Calculate vertical tapering to prevent "light beams" in the sky.
+	// Ambient bounce should be strongest near the ground and fade out with altitude.
+	float h_surface = getTerrainHeight(worldPos.xz);
+	float heightAboveGround = max(0.0, worldPos.y - h_surface);
+
+	// Fade out the spatial contribution over 100 meters
+	float verticalFade = exp(-heightAboveGround * 0.1);
+
 	// Combine spatially-varying environmental SH (sky + bounce) with global sky irradiance.
 	// We blend between them because probes now capture both sky and ground bounce.
-	return mix(skyIrradiance, environmentalIrradiance, clamp(totalWeight * bounceFade, 0.0, 1.0));
+	float finalWeight = clamp(totalWeight * bounceFade * verticalFade, 0.0, 1.0);
+	return mix(skyIrradiance, environmentalIrradiance, finalWeight);
 }
 
 // Forward declare macro occlusion from terrain_shadows.glsl

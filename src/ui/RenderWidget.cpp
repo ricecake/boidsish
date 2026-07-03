@@ -4,6 +4,9 @@
 #include "graphics.h"
 #include "imgui.h"
 #include "light_manager.h"
+#include "post_processing/IPostProcessingEffect.h"
+#include "post_processing/PostProcessingManager.h"
+#include "post_processing/effects/AtmosphereEffect.h"
 
 namespace Boidsish {
 	namespace UI {
@@ -79,6 +82,72 @@ namespace Boidsish {
 							int new_agg = (current_agg_proc == 2) ? 40 : (current_agg_proc == 1 ? 8 : 0);
 							config_manager.SetInt("mesh_simplifier_aggression_procedural", new_agg);
 						}
+					}
+				}
+
+				// 2.5 Cloud Quality (New section)
+				if (ImGui::CollapsingHeader("Cloud Quality", ImGuiTreeNodeFlags_DefaultOpen)) {
+					auto& manager = m_visualizer.GetPostProcessingManager();
+					std::shared_ptr<PostProcessing::AtmosphereEffect> atmosphere_effect = nullptr;
+					for (auto& effect : manager.GetPreToneMappingEffects()) {
+						if (effect->GetName() == "Atmosphere") {
+							atmosphere_effect = std::dynamic_pointer_cast<PostProcessing::AtmosphereEffect>(effect);
+							break;
+						}
+					}
+
+					if (atmosphere_effect) {
+						ImGui::Text("Raymarching");
+						float max_dist = atmosphere_effect->GetCloudMaxRayDistance();
+						if (ImGui::SliderFloat("Max Ray Distance", &max_dist, 10000.0f, 200000.0f, "%.0f")) {
+							atmosphere_effect->SetCloudMaxRayDistance(max_dist);
+						}
+
+						int min_samples = atmosphere_effect->GetCloudMinSamples();
+						if (ImGui::SliderInt("Min Samples", &min_samples, 4, 128)) {
+							atmosphere_effect->SetCloudMinSamples(min_samples);
+						}
+
+						int max_samples = atmosphere_effect->GetCloudMaxSamples();
+						if (ImGui::SliderInt("Max Samples", &max_samples, 16, 256)) {
+							atmosphere_effect->SetCloudMaxSamples(max_samples);
+						}
+
+						float extinction = atmosphere_effect->GetCloudExtinction();
+						if (ImGui::SliderFloat("Extinction Coeff", &extinction, 0.001f, 0.1f, "%.3f")) {
+							atmosphere_effect->SetCloudExtinction(extinction);
+						}
+
+						ImGui::Separator();
+						ImGui::Text("Temporal Accumulation");
+						float gamma = atmosphere_effect->GetCloudTemporalGamma();
+						if (ImGui::SliderFloat("Temporal Gamma", &gamma, 0.1f, 10.0f, "%.2f")) {
+							atmosphere_effect->SetCloudTemporalGamma(gamma);
+						}
+
+						float max_history = atmosphere_effect->GetCloudMaxHistoryLength();
+						if (ImGui::SliderFloat("Max History Length", &max_history, 1.0f, 256.0f, "%.0f")) {
+							atmosphere_effect->SetCloudMaxHistoryLength(max_history);
+						}
+
+						ImGui::Separator();
+						ImGui::Text("SVGF (Spatial Filter)");
+						float phi_luma = atmosphere_effect->GetCloudPhiLuma();
+						if (ImGui::SliderFloat("Phi Luma", &phi_luma, 0.0f, 100.0f, "%.1f")) {
+							atmosphere_effect->SetCloudPhiLuma(phi_luma);
+						}
+
+						float phi_depth = atmosphere_effect->GetCloudPhiDepth();
+						if (ImGui::SliderFloat("Phi Depth", &phi_depth, 0.0f, 10.0f, "%.2f")) {
+							atmosphere_effect->SetCloudPhiDepth(phi_depth);
+						}
+
+						float phi_density = atmosphere_effect->GetCloudPhiDensity();
+						if (ImGui::SliderFloat("Phi Density", &phi_density, 0.0f, 2.0f, "%.3f")) {
+							atmosphere_effect->SetCloudPhiDensity(phi_density);
+						}
+					} else {
+						ImGui::TextDisabled("Atmosphere effect not found.");
 					}
 				}
 

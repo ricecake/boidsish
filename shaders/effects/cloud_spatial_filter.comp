@@ -1,0 +1,74 @@
+#version 460 core
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(binding = 0, rgba32f) uniform image2D outFilteredColor;
+
+uniform sampler2D uCloudColor;   // Accumulated RGBA
+uniform sampler2D uCloudDepth;   // Accumulated Depth Props (dist, lastHit, step, density)
+uniform sampler2D uCloudMoments; // Accumulated Moments (Luma1, Luma2, Density2, historyLength)
+uniform int       uStepSize;     // 1, 2, 4, 8, 16...
+
+uniform float uCloudPhiLuma;
+uniform float uCloudPhiDepth;
+uniform float uCloudPhiDensity;
+
+#include "../helpers/lighting.glsl"
+#include "../types/temporal_data.glsl"
+#include "lygia/color/luma.glsl"
+#include "helpers/math.glsl"
+
+const float kernel[5] = float[](1.0/16.0, 1.0/4.0, 3.0/8.0, 1.0/4.0, 1.0/16.0);
+
+void main() {
+	ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+	ivec2 size = imageSize(outFilteredColor);
+	if (pixel.x >= size.x || pixel.y >= size.y) return;
+
+	vec2 uv = (vec2(pixel) + 0.5) / vec2(size);
+	vec2 texelSize = 1.0 / vec2(size);
+
+	vec4 centerColor = texture(uCloudColor, uv);
+	vec4 centerProps = texture(uCloudDepth, uv);
+	vec4 centerMoments = texture(uCloudMoments, uv);
+	// imageStore(outFilteredColor, pixel, centerColor);
+	// return;
+
+	float centerDepth = centerProps.r;
+	float centerStep = centerProps.b;
+	float centerDensity = centerProps.a;
+	float centerHistory = centerMoments.w;
+
+	float varLuma = max(0.0, centerMoments.y - centerMoments.x * centerMoments.x);
+	float stdLuma = sqrt(varLuma);
+
+	float historyScale = mix(4.0, 1.0, smoothstep(1.0, 10.0, centerHistory));
+	float stepScale = max(1.0, float(uStepSize) / 2.0);
+
+	float phiLuma = (uCloudPhiLuma * stdLuma + 0.02) * historyScale * stepScale;
+	float phiDepth = centerStep * mix(uCloudPhiDepth, 1.0, smoothstep(0.0, 0.4, centerDensity)) * float(uStepSize);
+	float phiDensity = (uCloudPhiDensity * centerDensity + 0.1) * historyScale * stepScale;
+
+	vec4  sumColor = vec4(0.0);
+	float sumWeight = 0.0;
+
+	for (int y = -2; y <= 2; y++) {
+		for (int x = -2; x <= 2; x++) {
+			vec2 offset = vec2(x, y) * float(uStepSize) * texelSize;
+			vec4 sampleColor = texture(uCloudColor, uv + offset);
+			vec4 sampleProps = texture(uCloudDepth, uv + offset);
+
+			float sampleDepth = sampleProps.r;
+			float sampleDensity = sampleProps.a;
+
+			float lumaWeight = exp(-abs(luma(centerColor.rgb) - luma(sampleColor.rgb)) / phiLuma);
+			float depthWeight = exp(-abs(centerDepth - sampleDepth) / phiDepth);
+			float densityWeight = exp(-abs(centerDensity - sampleDensity) / phiDensity);
+
+			float weight = kernel[x + 2] * kernel[y + 2] * lumaWeight * depthWeight * densityWeight;
+			sumColor += sampleColor * weight;
+			sumWeight += weight;
+		}
+	}
+
+	imageStore(outFilteredColor, pixel, sumColor / max(sumWeight, 0.0001));
+}

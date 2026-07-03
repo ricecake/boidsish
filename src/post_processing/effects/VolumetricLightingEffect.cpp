@@ -7,6 +7,7 @@
 #include "atmosphere_manager.h"
 #include "fire_effect_manager.h"
 #include "NoiseManager.h"
+#include "weather_manager.h"
 #include <GL/glew.h>
 
 namespace Boidsish {
@@ -75,7 +76,7 @@ namespace Boidsish {
 			has_history_ = false;
 		}
 
-		void VolumetricLightingEffect::Apply(GLuint sourceTexture, GLuint depthTexture, GLuint velocityTexture, GLuint normalTexture, GLuint albedoTexture, const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix, const glm::vec3& cameraPos) {
+		void VolumetricLightingEffect::PreDispatch(const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix, const glm::vec3& cameraPos) {
 			auto& loc = ServiceLocator::Instance();
 			auto shadow_mgr = loc.Get<ShadowManager>();
 			auto terrain_mgr = loc.Get<TerrainRenderManager>();
@@ -83,6 +84,9 @@ namespace Boidsish {
 			auto atmos_mgr = loc.Get<AtmosphereManager>();
 			auto fire_mgr = loc.Get<FireEffectManager>();
 			auto noise_mgr = loc.Get<NoiseManager>();
+			auto wm = loc.Get<WeatherManager>();
+
+			auto weather = wm->GetCurrentWeather();
 
 			// 1. Injection
 			injection_shader_->use();
@@ -92,17 +96,24 @@ namespace Boidsish {
 			if (fire_mgr) fire_mgr->BindBuffers(*injection_shader_);
 
 			if (noise_mgr) {
-				glActiveTexture(GL_TEXTURE10);
-				glBindTexture(GL_TEXTURE_2D, noise_mgr->GetBlueNoiseTexture());
-				injection_shader_->setInt("uBlueNoise", 10);
+				noise_mgr->BindDefault(*injection_shader_);
+				// glActiveTexture(GL_TEXTURE10);
+				// glBindTexture(GL_TEXTURE_2D, noise_mgr->GetBlueNoiseTexture());
+				// injection_shader_->setInt("uBlueNoise", 10);
 
-				glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::NoiseCurl());
-				glBindTexture(GL_TEXTURE_3D, noise_mgr->GetCurlTexture());
-				injection_shader_->setInt("u_curlTexture", Constants::TextureUnit::NoiseCurl());
+				// glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::NoiseCurl());
+				// glBindTexture(GL_TEXTURE_3D, noise_mgr->GetCurlTexture());
+				// injection_shader_->setInt("u_curlTexture", Constants::TextureUnit::NoiseCurl());
 			}
 
 			injection_shader_->setFloat("uAnisotropy", anisotropy_);
 			injection_shader_->setFloat("uIntensity", intensity_);
+
+			if (atmos_mgr) {
+				glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereMultiScattering());
+				glBindTexture(GL_TEXTURE_2D, atmos_mgr->GetMultiScatteringLUT());
+				injection_shader_->setInt("u_multiScatteringLUT", Constants::TextureUnit::AtmosphereMultiScattering());
+			}
 			injection_shader_->setMat4("uInvView", glm::inverse(viewMatrix));
 			injection_shader_->setMat4("uInvProj", glm::inverse(projectionMatrix));
 			injection_shader_->setMat4("uPrevVP", prev_view_projection_);
@@ -113,6 +124,9 @@ namespace Boidsish {
 			injection_shader_->setFloat("u_cell_size", Constants::Class::Particles::ParticleGridCellSize());
 			injection_shader_->setUint("u_grid_size", Constants::Class::Particles::ParticleGridSize());
 			injection_shader_->setIVec3("u_grid_res", glm::ivec3(grid_res_x_, grid_res_y_, grid_res_z_));
+			injection_shader_->setFloat("hazeDensity", weather.haze_density);
+			injection_shader_->setFloat("hazeHeight", weather.haze_height);
+			injection_shader_->setVec3("hazeColor", weather.haze_color);
 
 			glBindImageTexture(Constants::ImageBinding::VolumetricInjection(), injection_texture_, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 
@@ -144,12 +158,15 @@ namespace Boidsish {
 			// Extract camera front from inverse view matrix (3rd column is Back)
 			glm::mat4 invView = glm::inverse(viewMatrix);
 			prev_camera_front_ = -glm::normalize(glm::vec3(invView[2]));
+		}
 
-			// 3. Composition
+		void VolumetricLightingEffect::Apply(GLuint sourceTexture, GLuint depthTexture, GLuint velocityTexture, GLuint normalTexture, GLuint albedoTexture, const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix, const glm::vec3& cameraPos) {
+			// Composition
 			composite_shader_->use();
 			composite_shader_->setInt("uSceneTexture", 0);
 			composite_shader_->setInt("uDepthTexture", 1);
 			composite_shader_->setInt("uVolumetricTexture", Constants::TextureUnit::VolumetricScattering());
+			composite_shader_->setMat4("uInvView", glm::inverse(viewMatrix));
 
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, sourceTexture);

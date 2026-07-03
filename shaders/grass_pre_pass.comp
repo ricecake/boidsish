@@ -49,18 +49,55 @@ layout(std430, binding = [[INDIRECTION_BUFFER_BINDING]]) readonly buffer ActiveC
 	InstanceData chunks[];
 };
 
+struct GrassProperties {
+    vec4  colorTop;
+    vec4  colorBottom;
+    float height;
+    float width;
+    float rigidity;
+    float heightVariance;
+    float widthVariance;
+    float density;
+    float colorVariability;
+    float windInfluence;
+    uint  enabled;
+    float flowerRatio;
+    float _pad1;
+    float _pad2;
+};
+
+struct GlobalGrassProperties {
+    float lengthMultiplier;
+    float widthMultiplier;
+    float densityMultiplier;
+    float rigidityMultiplier;
+    float windMultiplier;
+    uint  enabled;
+    float lodScaleFactor;
+    float lodBaseRange;
+    float baseScale;
+    float _pad0;
+    float _pad1;
+    float _pad2;
+};
+
+layout(std140, binding = [[GRASS_PROPS_BINDING]]) uniform GrassProps {
+    GrassProperties biomeProps[8];
+    GlobalGrassProperties globalProps;
+};
+
 uniform int   u_numChunks;
 uniform vec3  uCameraPos;
 uniform float uWorldScale;
 
-#define MAX_GRASS_TASKS 16384
+#define MAX_GRASS_TASKS 65536
 
-void emitTask(vec3 worldOffset, float patchSize, float dist, int slice, int lodIndex) {
+void emitTask(vec3 worldOffset, float patchSize, float dist, int slice) {
     uint outIdx = atomicAdd(taskCount, 1);
     if (outIdx >= MAX_GRASS_TASKS) return;
 
     tasks[outIdx].patch_offset_and_scale = vec4(worldOffset, patchSize);
-    tasks[outIdx].data = vec4(dist, float(slice), float(lodIndex), 0.0);
+    tasks[outIdx].data = vec4(dist, float(slice), 0.0, 0.0);
 }
 
 void main() {
@@ -92,23 +129,17 @@ void main() {
     worldOffset.z = chunkOffset.z + float(patchY) * patchSize;
     worldOffset.y = 0.0;
 
-    vec3 patchCenter = worldOffset + vec3(patchSize * 0.5, (metrics.min_y + metrics.max_y) * 0.5, patchSize * 0.5);
-    float dist = distance(uCameraPos, patchCenter);
+    // Use 2D distance for culling and LOD to ensure horizontal stability
+    vec2 patchMin = worldOffset.xz;
+    vec2 patchMax = worldOffset.xz + vec2(patchSize);
+    vec2 closest = clamp(uCameraPos.xz, patchMin, patchMax);
+    float minDist = distance(uCameraPos.xz, closest);
 
-    float baseRange = 20.0 * uWorldScale;
-    float radius = patchSize * 0.707;
+    // One task per visible patch. Density is handled in the placement shader.
+    // Max view distance is roughly (MaxViewDistance * ChunkSize)
+    float maxDist = float([[MAX_VIEW_DISTANCE]] * [[CHUNK_SIZE]]) * uWorldScale;
 
-    // We check which LOD levels intersect this patch using consistent ranges
-    int minLod = -1;
-    for (int lod = minLod; lod <= 2; ++lod) {
-        float r_prev = baseRange * exp(float(lod - 1));
-        float r_next = baseRange * exp(float(lod + 1));
-
-        float lower = (lod == minLod) ? 0.0 : r_prev;
-        float upper = r_next;
-
-        if (dist - radius < upper && dist + radius > lower) {
-            emitTask(worldOffset, patchSize, dist, slice, lod);
-        }
+    if (minDist < maxDist) {
+        emitTask(worldOffset, patchSize, minDist, slice);
     }
 }

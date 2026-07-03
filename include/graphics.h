@@ -34,7 +34,7 @@ namespace Boidsish {
 
 	namespace UI {
 		class IWidget;
-		class UIManager;
+		class UIConfigManager;
 	} // namespace UI
 	class EntityBase;
 	class CurvedText;
@@ -653,7 +653,7 @@ namespace Boidsish {
 		bool IsGlitchedEffectEnabled() const;
 		bool IsWireframeEffectEnabled() const;
 
-		UI::UIManager& GetUIManager();
+		UI::UIConfigManager& GetUIConfigManager();
 
 	private:
 		struct VisualizerImpl;

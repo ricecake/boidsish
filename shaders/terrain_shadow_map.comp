@@ -6,7 +6,6 @@ layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 #include "helpers/terrain_shadows.glsl"
 
 layout(r8, binding = [[TERRAIN_SHADOW_MAP_IMAGE_BINDING]]) uniform writeonly image2D u_terrainShadowMapImage;
-layout(binding = [[TERRAIN_HORIZON_MAP_BINDING]]) uniform sampler2DArray u_terrainHorizonMap;
 
 uniform vec3 u_lightDir;     // From fragment to light
 uniform vec2 u_shadowOrigin; // World XZ of the bottom-left corner of the shadow map
@@ -28,55 +27,10 @@ void main() {
 	vec3 worldPos = vec3(worldXZ.x, h, worldXZ.y);
 
 	// Horizon map lookup optimization
-	float shadow = 1.0;
-	bool ambiguous = true;
+	float shadow = calculateHorizonVisibility(worldPos, u_lightDir);
 
-	float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
-	vec2  gridPos = worldXZ / scaledChunkSize;
-	ivec2 chunkCoord = ivec2(floor(gridPos));
-	ivec2 localGridCoord = chunkCoord - u_originSize.xy;
-
-	if (u_originSize.w > 0 &&
-	    localGridCoord.x >= 0 && localGridCoord.x < u_originSize.z &&
-	    localGridCoord.y >= 0 && localGridCoord.y < u_originSize.z) {
-
-		int slice = texelFetch(u_chunkGrid, localGridCoord, 0).r;
-		if (slice >= 0) {
-			vec2 uv_chunk = (worldXZ - vec2(chunkCoord) * scaledChunkSize) / scaledChunkSize;
-			// 8x8 horizon map per chunk
-			vec4 horizons = texture(u_terrainHorizonMap, vec3(uv_chunk, float(slice)));
-
-			// Simple check against 4 cardinal directions
-			vec2 dirXZ = normalize(u_lightDir.xz);
-			float sunElevation = atan(u_lightDir.y / length(u_lightDir.xz));
-
-			// Approximate horizon at sun direction
-			float horizonAngle = 0.0;
-			if (dirXZ.x > 0.707) horizonAngle = horizons.x; // East
-			else if (dirXZ.y > 0.707) horizonAngle = horizons.y; // North
-			else if (dirXZ.x < -0.707) horizonAngle = horizons.z; // West
-			else if (dirXZ.y < -0.707) horizonAngle = horizons.w; // South
-			else {
-				// Interpolate
-				float wE = max(0.0, dirXZ.x);
-				float wN = max(0.0, dirXZ.y);
-				float wW = max(0.0, -dirXZ.x);
-				float wS = max(0.0, -dirXZ.y);
-				horizonAngle = (wE * horizons.x + wN * horizons.y + wW * horizons.z + wS * horizons.w) / (wE + wN + wW + wS);
-			}
-
-			float margin = 0.05; // ~3 degrees
-			if (sunElevation > horizonAngle + margin) {
-				shadow = 1.0;
-				ambiguous = false;
-			} else if (sunElevation < horizonAngle - margin) {
-				shadow = 0.0;
-				ambiguous = false;
-			}
-		}
-	}
-
-	if (ambiguous) {
+	// If the result is between 0 and 1, we perform a detailed raymarch
+	if (shadow > 0.0 && shadow < 1.0) {
 		shadow = terrainShadowCoverage(worldPos, normal, u_lightDir);
 	}
 

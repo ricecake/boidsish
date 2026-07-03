@@ -92,7 +92,8 @@ namespace Boidsish {
 			GLuint                        extra_noise_texture = 0,
 			GLuint                        visual_effects_ubo = 0,
 			GLintptr                      vfx_offset = 0,
-			GLsizeiptr                    vfx_size = 0
+			GLsizeiptr                    vfx_size = 0,
+			GLuint                        terrain_data_ubo = 0
 		);
 		void Render(
 			const glm::mat4& view,

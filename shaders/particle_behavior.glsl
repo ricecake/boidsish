@@ -38,6 +38,8 @@ const float kCinderLifetime = 8.0;
 const float kCinderDriftIntensity = 4.0;
 const float kCinderBuoyancy = 1.5;
 
+const float kPoofLifetime = 1.5;
+
 bool handleTerrainCollision(inout Particle p, int num_chunks, sampler2DArray heightmapArray) {
 	bool collided = false;
 	for (int i = 0; i < num_chunks; i++) {
@@ -180,7 +182,11 @@ void updateFireflies(inout Particle p, float dt, float time, sampler3D curlTextu
 
 	vec3 firefly_base = vec3(0.7, 0.9, 0.1);
 	float twinkle = sin(time * 6.0 + float(gl_GlobalInvocationID.x)) * 0.5 + 0.5;
-	p.color.rgb = firefly_base * (2.0 + twinkle * 8.0);
+
+	float waver = 1.0 + 0.2 * snoise(vec2(time * 40.0, float(gl_GlobalInvocationID.x) * 0.13));
+	float flicker = mix(1.0, waver, smoothstep(0.8, 1.0, twinkle));
+
+	p.color.rgb = firefly_base * (2.0 + twinkle * 8.0) * flicker;
 	p.color.a = (0.4 + twinkle * 0.6) * smoothstep(0.0, 0.5, p.pos.w);
 	p.vel.w = 15.0;
 	p.origin.w = 0.2 * p.color.a;
@@ -406,9 +412,9 @@ void updateAmbientFairy(
 
 	// Rendering params (colors/glow handled in frag)
 	float twinkle = pow(smoothstep(0.0, 0.3, p.counter) * (1.0 - smoothstep(0.4, 0.6, p.counter)), 2) * step(p.counter, 0.6);
-	p.color.a = (0.3 + twinkle * 0.7) * smoothstep(0.0, 0.5, p.pos.w);
-	p.vel.w = 20.0; // Size
-	p.origin.w = 0.4 * p.color.a;
+	p.color.a = (0.2 + step(p.counter, 0.6) * (0.2 + twinkle * 0.6)) * smoothstep(0.0, 0.5, p.pos.w);
+	p.vel.w = 180.0;
+	p.origin.w = 0.5 * p.color.a;
 }
 
 void updateAmbientFirefly(
@@ -459,7 +465,11 @@ void updateAmbientFirefly(
 
 	vec3 firefly_base = vec3(0.7, 0.9, 0.1);
 	float twinkle = pow(smoothstep(0.0, 0.3, p.counter) * (1.0 - smoothstep(0.4, 0.6, p.counter)), 2) * step(p.counter, 0.6);
-	p.color.rgb = firefly_base * (2.0 + twinkle * 8.0);
+
+	float waver = 1.0 + 0.2 * snoise(vec2(time * 40.0, float(gl_GlobalInvocationID.x) * 0.13));
+	float flicker = mix(1.0, waver, smoothstep(0.8, 1.0, twinkle));
+
+	p.color.rgb = firefly_base * (2.0 + twinkle * 8.0) * flicker;
 	p.color.a = 0.00 + step(p.counter, 0.6) * (0.4 + twinkle * 0.6) * smoothstep(0.0, 0.5, p.pos.w);
 	p.vel.w = 15.0;
 	p.origin.w = 0.5 * p.color.a;
@@ -521,23 +531,34 @@ void updateEnvironmentalQueueBehavior(
 	int            num_chunks,
 	sampler2DArray heightmapArray
 ) {
+	vec3 wind = getWindAtPosition(p.pos.xyz);
+	float maxSpeed = length(wind) * 0.5;
+
 	if (p.style == STYLE_RAIN) {
+		maxSpeed = 50.0;
 		updateRain(p, dt, time);
 	} else if (p.style == STYLE_SNOW) {
+		maxSpeed = 25.0;
 		updateSnow(p, dt, time);
 	} else if (p.style == STYLE_DUST) {
-		vec3 wind = getWindAtPosition(p.pos.xyz);
 		p.vel.xyz += wind * 3.0 * dt;
 		p.vel.xyz *= pow(0.95, dt / 0.016);
 		p.color = vec4(0.8, 0.8, 0.7, 0.3);
 		// p.phase = mix(0, mix(1, 2, smoothstep(500, 506, temperature)), smoothstep(270.0, 280.0, temperature));
 		p.phase = temperature;
 		p.vel.w = 8.0;
+
+		applyAmbientAvoidance(p, dt, time, viewPos, viewDir, curlTexture);
+
 	}
 
 	// Apply curl noise for non-uniform movement
 	float curlInfluence = (p.style == STYLE_RAIN) ? 0.5 : 2.0;
 	p.vel.xyz += curlNoise(p.pos.xyz, time, curlTexture) * curlInfluence * dt;
+
+	if (length(p.vel.xyz) > maxSpeed) {
+		p.vel.xyz = normalize(p.vel.xyz) * maxSpeed;
+	}
 
 	p.pos.xyz += p.vel.xyz * dt;
 
@@ -554,9 +575,22 @@ void updateEnvironmentalQueueBehavior(
 		p.pos.z = viewPos.z - sign(relPos.z) * (K_ENV_QUEUE_RADIUS - 0.5);
 	}
 
-	if (p.style != STYLE_DUST && handleTerrainCollision(p, num_chunks, heightmapArray)) {
-		p.pos.w = 0.0;
+	if (handleTerrainCollision(p, num_chunks, heightmapArray)) {
+		if(p.style != STYLE_DUST) {
+			p.pos.w = 0.0;
+		}
 	}
+}
+
+void updatePoof(inout Particle p, float dt, float time) {
+	float normLife = clamp(p.pos.w / kPoofLifetime, 0.0, 1.0);
+	float t = 1.0 - normLife;
+	float slowing = normLife * normLife;
+
+	p.pos.xyz += p.vel.xyz * slowing * dt;
+	p.vel.w = mix(10.0, 40.0, t);
+	p.phase += 4.0 * slowing * dt;
+	p.color = vec4(1.0, 1.0, 1.0, normLife);
 }
 
 void updateFireBehavior(
@@ -601,19 +635,23 @@ void updateFireBehavior(
 	} else if (p.style == STYLE_SNOW) {
 		updateSnow(p, dt, time);
 		maxSpeed = 5.0;
+	} else if (p.style == STYLE_POOF) {
+		updatePoof(p, dt, time);
 	}
 
 	if (p.style != STYLE_SPARKS && p.style != STYLE_GLITTER && p.style != STYLE_AMBIENT && p.style != STYLE_BUBBLES && p.style != STYLE_FIREFLIES && p.style != STYLE_DEBUG && p.style != STYLE_CINDER &&
-	    p.style != STYLE_FIRE && p.style != STYLE_RAIN && p.style != STYLE_SNOW) {
+	    p.style != STYLE_FIRE && p.style != STYLE_RAIN && p.style != STYLE_SNOW && p.style != STYLE_POOF) {
 		p.vel.y -= 0.05 * dt;
 	}
 
-	if (p.style != STYLE_AMBIENT && p.style != STYLE_BUBBLES && p.style != STYLE_FIREFLIES && p.style != STYLE_DEBUG && p.style != STYLE_CINDER && p.style != STYLE_FIRE && p.style != STYLE_RAIN && p.style != STYLE_SNOW) {
+	if (p.style != STYLE_AMBIENT && p.style != STYLE_BUBBLES && p.style != STYLE_FIREFLIES && p.style != STYLE_DEBUG && p.style != STYLE_CINDER && p.style != STYLE_FIRE && p.style != STYLE_RAIN && p.style != STYLE_SNOW && p.style != STYLE_POOF) {
 		p.vel.xyz += vec3(mix(curlNoise(p.pos.xyz, time, curlTexture) * 3, vec3(0, 0, 0), length(p.vel) / maxSpeed)) *
 			dt;
 	}
 
-	p.pos.xyz += p.vel.xyz * dt;
+	if (p.style != STYLE_POOF) {
+		p.pos.xyz += p.vel.xyz * dt;
+	}
 	handleTerrainCollision(p, num_chunks, heightmapArray);
 }
 

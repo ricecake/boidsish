@@ -1,0 +1,149 @@
+#version 460 core
+
+layout(local_size_x = 16, local_size_y = 16) in;
+
+layout(binding = 0, rgba16f) uniform image2D outWeatherMap;
+
+#include "../helpers/fast_noise.glsl"
+
+uniform float uWorldScale;
+uniform float uCloudCoverage;
+
+
+
+// Tile-aware 2D hash
+vec2 hash2(vec2 p, vec2 period)
+{
+	if (period.x > 0.0) p = mod(p, period);
+	p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
+	return fract(sin(p) * 43758.5453123);
+}
+
+// Tile-aware 2D value noise for domain warping
+vec2 warpNoise(vec2 p, vec2 period)
+{
+	vec2 i = floor(p);
+	vec2 f = fract(p);
+	f = f * f * (3.0 - 2.0 * f);
+
+	vec2 a = hash2(i + vec2(0,0), period);
+	vec2 b = hash2(i + vec2(1,0), period);
+	vec2 c = hash2(i + vec2(0,1), period);
+	vec2 d = hash2(i + vec2(1,1), period);
+
+	// Remap to [-1, 1] range for displacement
+	return mix(mix(a, b, f.x), mix(c, d, f.x), f.y) * 2.0 - 1.0;
+}
+
+struct VoronoiData {
+	float dist;
+	vec2 f1;
+	vec2 f2;
+};
+
+// Exact Voronoi distance to cell edges
+VoronoiData sdVoronoiEdge(vec2 p, vec2 period)
+{
+	vec2 n = floor(p);
+	vec2 f = fract(p);
+
+	vec2 mg, mr, mo;
+	float md = 8.0;
+
+	// Pass 1: Find closest point
+	for(int j = -1; j <= 1; j++)
+	for(int i = -1; i <= 1; i++)
+	{
+		vec2 g = vec2(float(i), float(j));
+		vec2 o = hash2(n + g, period);
+		// Optional: Animate internal points
+		// o = 0.5 + 0.5 * sin(iTime + 6.2831 * o);
+		vec2 r = g + o - f;
+		float d = dot(r, r);
+		if(d < md) {
+			md = d;
+			mr = r;
+			mg = g;
+			mo = o;
+		}
+	}
+
+	// Pass 2: Exact distance to the bisector plane
+	md = 8.0;
+	vec2 f2_g, f2_o;
+	for(int j = -2; j <= 2; j++)
+	for(int i = -2; i <= 2; i++)
+	{
+		vec2 g = mg + vec2(float(i), float(j));
+		vec2 o = hash2(n + g, period);
+		vec2 r = g + o - f;
+
+		if(dot(mr - r, mr - r) > 0.00001) {
+			float edgeDist = dot(0.5 * (mr + r), normalize(r - mr));
+			if(edgeDist < md)
+			{
+				md = edgeDist;
+				f2_g = g;
+				f2_o = o;
+			}
+		}
+	}
+
+	VoronoiData res;
+	res.dist = md;
+
+	res.f1 = n + mg + mo;
+	res.f2 = n + f2_g + f2_o;
+	return res;
+}
+
+VoronoiData sdVoronoiFbm(vec2 p, float lacunarity, float iter, float coverage, vec2 period)
+{
+	vec2 warp = vec2(0.0);
+	float amp = 0.5;
+	vec2 wp = p;
+	vec2 wPeriod = period;
+
+	// Accumulate warp FBM
+	for(float i = 0.0; i < iter; i++)
+	{
+		warp += amp * warpNoise(wp, wPeriod);
+		wp *= lacunarity;
+		wPeriod *= lacunarity;
+		amp *= 0.5;
+	}
+
+	vec2 warpedP = p + warp * 0.9;
+	VoronoiData res = sdVoronoiEdge(warpedP, period);
+
+	res.dist = -(res.dist - (1.0 - coverage));
+	return res;
+}
+
+
+
+void main() {
+	ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+	ivec2 size = imageSize(outWeatherMap);
+	if (pixel.x >= size.x || pixel.y >= size.y) return;
+
+	vec2 uv = (vec2(pixel) + 0.5) / vec2(size);
+
+	float mapRange = 100000.0 * uWorldScale;
+	float cellRange = 10000.0 * uWorldScale;
+	vec3 p = vec3(uv.x * mapRange, 0.0, uv.y * mapRange);
+
+	// vec2 weatherData = worley3d_tiling(p / cellRange, 16.0);
+	VoronoiData vd = sdVoronoiFbm(p.xz/cellRange, 2.0, 3.0, uCloudCoverage, vec2(10.0));
+
+	float sdf = vd.dist * cellRange;
+
+	float cellID = psrdnoise(vd.f1);
+
+	vec3 f1WorldPos = vec3(vd.f1.x * cellRange, 0.0, vd.f1.y * cellRange);
+	vec2 heightData = worley3d_tiling(f1WorldPos / (20000.0 * uWorldScale), 20.0);
+	float altitudeMap = abs(1.0 - heightData.x);
+	float thicknessMap = heightData.y;
+
+	imageStore(outWeatherMap, pixel, vec4(sdf, altitudeMap, cellID, thicknessMap));
+}

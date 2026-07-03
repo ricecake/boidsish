@@ -2,6 +2,7 @@
 
 #include <algorithm>
 
+#include "shadow_manager.h"
 #include "service_locator.h"
 #include <set>
 
@@ -178,6 +179,10 @@ namespace Boidsish {
 	}
 
 	void DecorManager::PopulateDefaultDecor() {
+		max_decor_distance_ = 1000.0f;
+		density_falloff_start_ = 800.0f;
+		density_falloff_end_ = 1000.0f;
+
 		if (!decor_types_.empty())
 			return;
 
@@ -677,6 +682,7 @@ namespace Boidsish {
 		const glm::mat4&                      projection,
 		int                                   viewport_width,
 		int                                   viewport_height,
+		const std::vector<ShadowCasterInfo>&  shadow_casters,
 		const std::optional<glm::mat4>&       light_space_matrix,
 		const std::optional<glm::vec3>&       light_dir,
 		std::shared_ptr<TerrainRenderManager> render_manager
@@ -693,6 +699,17 @@ namespace Boidsish {
 		glm::mat4 viewProj = is_shadow_pass ? *light_space_matrix : projection * view;
 
 		culling_shader_->use();
+
+		// Upload shadow caster info
+		int num_casters = std::min((int)shadow_casters.size(), 4);
+		culling_shader_->setInt("u_numShadowCasters", num_casters);
+		for (int i = 0; i < num_casters; ++i) {
+			std::string prefix = "u_shadowCasters[" + std::to_string(i) + "].";
+			culling_shader_->setMat4(prefix + "lightSpaceMatrix", shadow_casters[i].light_space_matrix);
+			culling_shader_->setVec3(prefix + "frustumMin", shadow_casters[i].frustum_min);
+			culling_shader_->setVec3(prefix + "frustumMax", shadow_casters[i].frustum_max);
+		}
+
 		for (int p = 0; p < 6; ++p) {
 			culling_shader_->setVec4(
 				"u_frustumPlanes[" + std::to_string(p) + "]",

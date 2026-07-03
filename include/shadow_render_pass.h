@@ -69,6 +69,11 @@ namespace Boidsish {
 		 */
 		const glm::vec3& GetSceneCenter() const { return scene_center_; }
 
+		/**
+		 * @brief Retrieves information about current shadow casters for culling.
+		 */
+		std::vector<ShadowCasterInfo> GetShadowCasterInfos(const FrameData& frame) const;
+
 	private:
 		// Dependencies (references — VisualizerImpl owns lifetimes)
 		ShadowManager&                        shadow_manager_;

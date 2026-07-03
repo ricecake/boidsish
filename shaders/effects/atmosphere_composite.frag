@@ -7,15 +7,11 @@ layout(binding = 0) uniform sampler2D sceneTexture;
 layout(binding = 1) uniform sampler2D depthTexture;
 layout(binding = 2) uniform sampler2D cloudTexture; // Low-res clouds (temporally accumulated)
 layout(binding = 3) uniform sampler2D normalTexture;
+layout(binding = 4) uniform sampler2D cloudDepthTexture;
 
 uniform mat4 invView;
 uniform mat4 invProjection;
-
-uniform float hazeDensity;
-uniform float hazeHeight;
-uniform vec3  hazeColor;
-
-uniform vec2 cloudTexelSize; // 1.0 / lowResSize
+uniform int   uFrameIndex;
 
 // u_transmittanceLUT is declared in helpers/lighting.glsl
 uniform sampler3D u_aerialPerspectiveLUT;
@@ -34,7 +30,7 @@ vec3 sampleAerialPerspective(vec3 rd, float distKM) {
 
 	float u = azimuth / (2.0 * PI);
 	float v = elevation / PI + 0.5;
-	float w = distKM / 32.0; // maxDist in AP LUT
+	float w = clamp(distKM / 32.0, 0.0, 1.0); // Linear mapping for AP LUT
 
 	return texture(u_aerialPerspectiveLUT, vec3(u, v, w)).rgb;
 }
@@ -47,7 +43,7 @@ float sampleAerialPerspectiveTransmittance(vec3 rd, float distKM) {
 
 	float u = azimuth / (2.0 * PI);
 	float v = elevation / PI + 0.5;
-	float w = sqrt(distKM / 32.0);
+	float w = clamp(distKM / 32.0, 0.0, 1.0);
 
 	return texture(u_aerialPerspectiveLUT, vec3(u, v, w)).a;
 }
@@ -66,104 +62,67 @@ void main() {
 	float dist = length(worldPos - viewPos);
 
 	if (depth > 0.999999) {
-		dist = 50000.0 * worldScale;
+		dist = 50000.0 * WORLD_SCALE_VALUE;
 	}
 
-	// 1. Bilateral upsample of low-res clouds
-	// Weight nearby low-res texels by depth similarity to avoid bleeding across edges
-	float centerDepth = dist;
-	vec4  cloudData = vec4(0.0);
-	float totalWeight = 0.0;
+	vec4  cloudData = texture(cloudTexture, TexCoords);
+	vec4  cloudDepthData = texture(cloudDepthTexture, TexCoords);
+	float upsampledCloudDist = cloudDepthData.r;
 
-	// Sample a 2x2 neighborhood of the nearest low-res texels
-	vec2 lowResUV = TexCoords / cloudTexelSize - 0.5;
-	vec2 baseTexel = floor(lowResUV);
-	vec2 frac_ = lowResUV - baseTexel;
-
-	for (int dy = 0; dy <= 1; dy++) {
-		for (int dx = 0; dx <= 1; dx++) {
-			vec2 sampleUV = (baseTexel + vec2(dx, dy) + 0.5) * cloudTexelSize;
-			sampleUV = clamp(sampleUV, cloudTexelSize * 0.5, 1.0 - cloudTexelSize * 0.5);
-
-			// Reconstruct depth at this low-res texel center
-			float sampleDepthRaw = texture(depthTexture, sampleUV).r;
-			float sampleDist;
-			if (sampleDepthRaw >= 1.0) {
-				sampleDist = 50000.0 * worldScale;
-			} else {
-				float sz = sampleDepthRaw * 2.0 - 1.0;
-				vec4  sClip = vec4(sampleUV * 2.0 - 1.0, sz, 1.0);
-				vec4  sView = invProjection * sClip;
-				sView /= sView.w;
-				vec3 sWorld = (invView * sView).xyz;
-				sampleDist = length(sWorld - viewPos);
-			}
-
-			// Bilinear weight
-			float bx = (dx == 0) ? (1.0 - frac_.x) : frac_.x;
-			float by = (dy == 0) ? (1.0 - frac_.y) : frac_.y;
-			float spatialW = bx * by;
-
-			// Depth similarity weight — exponential falloff
-			float depthDiff = abs(centerDepth - sampleDist) / max(centerDepth, 1.0);
-			float depthW = exp(-depthDiff * 150.0);
-
-			float w = spatialW * depthW;
-			cloudData += texture(cloudTexture, sampleUV) * w;
-			totalWeight += w;
-		}
-	}
-	cloudData /= max(totalWeight, 1e-6);
-
-	vec3  cloudColor = cloudData.rgb;
+	vec3  cloudScattering = cloudData.rgb;
 	float cloudTransmittance = cloudData.a;
 
-	// 2. High-res Atmosphere (Haze)
-	float distKM = (dist / 1000.0);
-	vec3  inScattering = sampleAerialPerspective(rayDir, distKM);
-	float transmittance = sampleAerialPerspectiveTransmittance(rayDir, distKM);
-
-	// 3. Cloud Atmospheric Integration
-	// Clouds should also be affected by the atmosphere between them and the camera.
-	float cloudDist = (cloudAltitude * worldScale - viewPos.y) / max(abs(rayDir.y), 0.01);
-	cloudDist = clamp(cloudDist, 0.0, dist);
-	float cloudDistKM = (cloudDist / 1000.0);
-
-	vec3  atmosInScattering = sampleAerialPerspective(rayDir, cloudDistKM);
-	float atmosTransmittance = sampleAerialPerspectiveTransmittance(rayDir, cloudDistKM);
-
-	// Combine everything
-	// Colossal objects write depth ~0.99999 — treat them like sky (no aerial perspective
-	// fog, which would completely wash them out at that reconstructed distance)
-	bool isSky = depth > 0.9999;
-
-	vec3 result;
-	if (!isSky) {
-		// 4. Shadowing for in-scattering (prevent sunrise/sunset glow through hills)
-		// float atmosShadow = 1.0;
-		// if (num_lights > 0 && lights[0].type == LIGHT_TYPE_DIRECTIONAL) {
-		// 	vec3 N = texture(normalTexture, TexCoords).xyz * 2.0 - 1.0;
-		// 	vec3 L = normalize(-lights[0].direction);
-		// 	atmosShadow = calculateShadow(0, worldPos, N, L);
-
-		// 	// Soften the shadow for atmosphere — don't make it pitch black,
-		// 	// atmosphere still has ambient light.
-		// 	atmosShadow = mix(0.1, 1.0, atmosShadow);
-		// }
-
-		// inScattering *= atmosShadow;
-		// atmosInScattering *= atmosShadow;
-
-		// Terrain/objects: apply aerial perspective and clouds
-		vec3 terrainAtmos = sceneColor * transmittance + inScattering;
-		vec3 cloudsAtmos = cloudColor * atmosTransmittance + atmosInScattering * (1.0 - cloudTransmittance);
-		result = mix(cloudsAtmos, terrainAtmos, cloudTransmittance);
-	} else {
-		// Sky and colossal objects: preserve scene output (sun, moon, stars, colossal)
-		// and blend clouds on top
-		vec3 cloudsAtmos = cloudColor * atmosTransmittance + atmosInScattering * (1.0 - cloudTransmittance);
-		result = sceneColor * cloudTransmittance + cloudsAtmos;
+	// Depth occlusion penalty against the scene distance
+	float sceneDist = dist;
+	if (sceneDist < upsampledCloudDist - (cloudDepthData.b * 2.0)) {
+		cloudScattering = vec3(0.0);
+		cloudTransmittance = 1.0;
+		upsampledCloudDist = 50000.0 * WORLD_SCALE_VALUE;
 	}
+
+	// 2. Atmosphere Integration
+	// We need the atmosphere between the camera and the cloud, and between the camera and the scene.
+	float sceneDistKM = (dist / 1000.0);
+	float cloudDistKM = (min(upsampledCloudDist, dist) / 1000.0);
+
+	vec3  atmosInScattering = sampleAerialPerspective(rayDir, sceneDistKM);
+	float atmosTransmittance = sampleAerialPerspectiveTransmittance(rayDir, sceneDistKM);
+
+	vec3  cloudFrontInScattering = sampleAerialPerspective(rayDir, cloudDistKM);
+	float cloudFrontTransmittance = sampleAerialPerspectiveTransmittance(rayDir, cloudDistKM);
+
+	// Apply terrain shadows to atmosphere behind clouds
+	if (depth < 0.999) {
+		float atmosShadow = 1.0;
+		if (num_lights > 0 && lights[0].type == LIGHT_TYPE_DIRECTIONAL) {
+			vec3 N = texture(normalTexture, TexCoords).xyz * 2.0 - 1.0;
+			vec3 L = normalize(-lights[0].direction);
+			atmosShadow = calculateShadow(0, worldPos, N, L);
+			atmosShadow = mix(0.1, 1.0, atmosShadow);
+		}
+		// Shadow only the atmosphere that is behind the cloud.
+		// We approximate this by shadowing the total in-scattering but keeping the portion in front of the cloud lit.
+		atmosInScattering = mix(cloudFrontInScattering, atmosInScattering, atmosShadow);
+	}
+
+	// 3. Final Composition
+	// result = (Background * CloudTransmittance + CloudScattering) * FrontTransmittance + FrontScattering
+	// where Background is the scene behind the cloud atmosphere.
+
+	// The 'sceneColor' already includes the full atmosphere (sceneColor = raw * atmosTrans + atmosInScat).
+	// To get the "background behind the cloud", we need to 'undo' the front atmosphere.
+	vec3 background = (sceneColor - cloudFrontInScattering);
+
+	// Physically, the cloud layer is inserted into the atmosphere.
+	// Result = background * cloudTransmittance + cloudScattering;
+	// Then re-apply the front atmosphere:
+	// Result = Result * cloudFrontTransmittance + cloudFrontInScattering;
+
+	// However, cloudScattering from the low-res pass ALREADY includes the lighting at that altitude.
+	// The correct formula for a volume integrated into atmosphere is:
+	// Result = (SceneColor_behind_cloud) * cloudTransmittance + cloudScattering_integrated
+
+	vec3 result = max(sceneColor - cloudFrontInScattering, vec3(0.0)) * cloudTransmittance + (cloudScattering * cloudFrontTransmittance + cloudFrontInScattering);
 
 	FragColor = vec4(result, 1.0);
 }

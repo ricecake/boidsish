@@ -8,8 +8,9 @@ shared vec4 s_current[8 * 8 * 4];
 layout(rgba16f, binding = [[VOLUMETRIC_INJECTION_IMAGE_BINDING]]) uniform image3D outInjection;
 
 layout(binding = [[VOLUMETRIC_HISTORY_BINDING]]) uniform sampler3D uHistoryTexture;
-layout(binding = 10) uniform sampler2D uBlueNoise;
-// layout(binding = 11) uniform sampler3D u_curlTexture;
+layout(binding = [[BLUE_NOISE_BINDING]]) uniform sampler2D uBlueNoise;
+
+uniform sampler2D u_multiScatteringLUT;
 
 uniform mat4 uInvView;
 uniform mat4 uInvProj;
@@ -22,6 +23,7 @@ uniform float uIntensity;
 uniform float uTemporalAlpha;
 
 #define USE_TERRAIN_DATA
+#define SKIP_TERRAIN_RAYCAST
 #include "../helpers/terrain_shadows.glsl"
 #include "../helpers/lighting.glsl"
 #include "../helpers/math.glsl"
@@ -38,7 +40,7 @@ uniform ivec3 u_grid_res;
 
 #include "helpers/wind.glsl"
 
-#include "lygia/generative/curl.glsl"
+// #include "lygia/generative/curl.glsl"
 
 const int NUM_CASCADES = 4;
 const float CASCADE_DISTANCES[4] = { 20.0, 60.0, 200.0, 1000.0 };
@@ -101,8 +103,9 @@ void main() {
     // Calculate scattering and extinction
     Sampling s = getAtmospherePropertiesAtPos(worldPos);
 
-    vec3 radiance = vec3(0.0);
+    vec3 radiance = vec3(0);
     vec3 V = normalize(viewPos - worldPos);
+
 
 /*
     float height = getTerrainHeight(worldPos.xz);
@@ -129,40 +132,61 @@ void main() {
             vec3 pos1 = worldPos - (windDir * t1 * advectDist);
             vec3 pos2 = worldPos - (windDir * t2 * advectDist);
 
-            // vec3 curl1 = textureLod(u_curlTexture, pos1 / 300.0, 0.0).rgb * 2.0 - 1.0;
-            // vec3 curl2 = textureLod(u_curlTexture, pos2 / 300.0, 0.0).rgb * 2.0 - 1.0;
+            vec3 curl1 = textureLod(u_curlTexture, pos1 / 300.0, 0.0).rgb * 2.0 - 1.0;
+            vec3 curl2 = textureLod(u_curlTexture, pos2 / 300.0, 0.0).rgb * 2.0 - 1.0;
 
-            vec3 curl1 = curl(pos1/150) * 2.0 - 1.0;
-            vec3 curl2 = curl(pos1/150) * 2.0 - 1.0;
+            // vec3 curl1 = curl(pos1/150) * 2.0 - 1.0;
+            // vec3 curl2 = curl(pos1/150) * 2.0 - 1.0;
 
             vec3 normWindXZ = normalize(windDir);
             float align1 = smoothstep(0.85, 1.0, dot(normWindXZ, normalize(curl1)));
             float align2 = smoothstep(0.85, 1.0, dot(normWindXZ, normalize(curl2)));
 
-            float fade = smoothstep(80.0, 60.0, distToCam) * smoothstep(60.0, 50.0, worldPos.y);
+            float fade = 1.0;//(1-smoothstep(60.0, 80.0, distToCam)) * (1-smoothstep(50.0, 60.0, worldPos.y));
             float streakIntensity = ((align1 * w1) + (align2 * w2)) * fade;
 
             s.mie *= max(1.0, 5.0 * windSpeed * streakIntensity);
             s.extinction *= max(1.0, 5.0 * windSpeed * streakIntensity);
+            radiance += streakIntensity * vec3(0,1.3,0);
         }
     }
 */
 
-    // Direct light (Sun)
+    // Direct light (Sun/Moon)
     for (int i = 0; i < min(2, num_lights); ++i) {
         if (lights[i].type != LIGHT_TYPE_DIRECTIONAL) continue;
 
         vec3 L = normalize(-lights[i].direction);
         float cosTheta = dot(-V, L);
-        float phase = henyeyGreenstein(uAnisotropy, cosTheta);
 
-        float shadow = calculateShadow(i, worldPos, vec3(0,1,0), L);
-        shadow *= calculateCloudShadow(i, worldPos);
+        // Physically based phase functions for both Rayleigh and Mie components
+        float rayPhase = rayleighPhase(cosTheta);
+        float miePhase = henyeyGreenstein(uAnisotropy, cosTheta);
+        vec3 combinedPhase = s.rayleigh * rayPhase + s.mie * miePhase;
 
-        float r = kEarthRadiusKM + (worldPos.y / (1000.0 * max(0.0001, worldScale)));
-        vec3 atmosphereTransmittance = texture(u_transmittanceLUT, getTransmittanceUV(r, L.y)).rgb;
+        // Consolidate shadow checks: Cloud shadow is a fast texture lookup, so check it first.
+        float shadow = calculateCloudShadow(i, worldPos);
+        if (shadow > 0.0) {
+            // Use the volumetric-optimized terrain shadow DDA march for terrain.
+            shadow = min(shadow, terrainShadowVolumetric(worldPos, L));
 
-        radiance += lights[i].color * max(0.0, lights[i].intensity) * atmosphereTransmittance * shadow * phase;
+            // Check shadow maps for scene objects (buildings, entities).
+            // We use the version that skips redundant terrain raycasts for efficiency.
+            shadow = min(shadow, calculateShadow(i, worldPos, vec3(0, 1, 0), L));
+        }
+
+        float r_km = kEarthRadius + worldPos.y / (1000.0 * max(0.0001, worldScale));
+        vec3 atmosphereTransmittance = texture(u_transmittanceLUT, getTransmittanceUV(r_km, L.y)).rgb;
+
+        // Multi-scattering lookup
+        vec2 multiScatUV = vec2(L.y * 0.5 + 0.5, (r_km - kEarthRadius) / kAtmosphereHeight);
+        vec3 multiScat = texture(u_multiScatteringLUT, multiScatUV).rgb;
+
+        vec3 lightRadiance = lights[i].color * max(0.0, lights[i].intensity);
+
+        // Single scattering (shadowed) + multi-scattering (partially shadowed to preserve terrain contrast)
+        float multiScatShadow = mix(1.0, shadow, 0.75);
+        radiance += lightRadiance * (atmosphereTransmittance * shadow * combinedPhase + multiScat * multiScatShadow * (s.rayleigh + s.mie));
     }
 
     // Local lights
@@ -172,21 +196,26 @@ void main() {
         if (atten <= 0.0) continue;
 
         float cosTheta = dot(-V, L);
-        float phase = henyeyGreenstein(uAnisotropy, cosTheta);
+        float miePhase = henyeyGreenstein(uAnisotropy, cosTheta);
         float shadow = calculateShadow(i, worldPos, vec3(0,1,0), L);
 
-        radiance += lights[i].color * lights[i].intensity * atten * shadow * phase;
+        radiance += lights[i].color * lights[i].intensity * atten * shadow * miePhase * s.mie;
     }
 
-    // Ambient (SH) - We use a simple isotropic phase for ambient light
-    radiance += getSpatialAmbientSH(worldPos, V) * 0.1;
+    // Ambient (SH) - We use spatial SH to capture local bounce from the terrain
+    // and combine it with global atmospheric ambient scattering.
+    vec3 baseAmbientRadiance = hazeColor * 0.05; // Base glow
+    vec3 effectiveAmbient = max(ambient_light, baseAmbientRadiance);
+
+    radiance += getSpatialAmbientSH(worldPos, V) * 0.5; // Spatial bounce
+    radiance += effectiveAmbient * (s.rayleigh + s.mie); // Global atmospheric ambient
 
     // Lightning illumination
     if (lightningPulse > 0.01) {
         float cloudLvl = cloudAltitude * worldScale;
         float distToCloud = abs(worldPos.y - cloudLvl);
         float cloudGlow = exp(-distToCloud * 0.005);
-        radiance += lightningColor * lightningPulse * (0.2 + 0.8 * cloudGlow);
+        radiance += lightningColor * lightningPulse * (0.2 + 0.8 * cloudGlow) * (s.rayleigh + s.mie);
     }
 
 /*
@@ -227,14 +256,14 @@ void main() {
 
 */
 
-        radiance *= uIntensity * 3.0; // Boosted intensity for prominence
+        radiance *= uIntensity;// * hazeDensity; // Apply user-controlled overall intensity
 
         // Convert atmospheric coefficients from per-KM to per-meter
         float obliquity = getObliquity(vox.xy, blueNoise);
-        vec3 mieCoeff = s.mie * 0.001 * obliquity;
+        vec3 finalScattering = radiance * 0.001 * obliquity;
         float extinctionCoeff = (s.rayleigh.r + s.rayleigh.g + s.rayleigh.b + s.mie.r + s.mie.g + s.mie.b) / 3.0 * 0.001 * obliquity;
 
-        current_local = vec4(radiance * mieCoeff, extinctionCoeff);
+        current_local = vec4(finalScattering, extinctionCoeff);
     }
 
     // 2. Populate shared memory for neighborhood clamping
@@ -282,10 +311,10 @@ void main() {
                 slice -= (blueNoise.z - 0.5) / float(u_grid_res.z);
                 slice = clamp(slice, 0.0, 1.0);
 
-                // Correct mapping from cascade/slice to [0,1] 3D texture coordinate
-                // Use consistent continuous mapping to align with storage and composite shader
-                float total_slices = float(u_grid_res.z * NUM_CASCADES);
-                float w = (float(prevCascade * u_grid_res.z) + (slice * float(u_grid_res.z - 1) + 0.5)) / total_slices;
+                // Continuous mapping from cascade/slice to [0,1] 3D texture coordinate.
+                // This matches the mapping in volumetric_composite.frag and ensures
+                // smooth transitions between cascades.
+                float w = (float(prevCascade) + slice) / float(NUM_CASCADES);
 
                 vec4 history = texture(uHistoryTexture, vec3(prevUV.xy, w));
                 if (all(greaterThanEqual(history, vec4(0.0))) && all(lessThanEqual(history, vec4(1000.0)))) {
@@ -327,10 +356,6 @@ void main() {
 
                     // Reduce alpha if there's a significant change in local luminance
                     activeAlpha *= 1.0 - smoothstep(0.1, 0.5, lumDiff);
-
-                    // 2. Lightning pulse adaptation
-                    // If a flash is happening, we want to react almost instantly
-                    activeAlpha *= 1.0 - clamp(lightningPulse * 2.0, 0.0, 1.0);
 
                     // 3. Stability check (high variance = low alpha)
                     float spatialStd = dot(stddev.rgb, vec3(0.2126, 0.7152, 0.0722));

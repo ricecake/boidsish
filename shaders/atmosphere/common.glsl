@@ -6,6 +6,13 @@
 // Physical Constants
 const float kEarthRadius = 6360.0; // km
 
+#ifndef HAZE_UNIFORMS_DEFINED
+#define HAZE_UNIFORMS_DEFINED
+uniform float hazeDensity;
+uniform float hazeHeight;
+uniform vec3  hazeColor;
+#endif
+
 #ifndef ATMOSPHERE_HEIGHT_DEFINED
 	#define ATMOSPHERE_HEIGHT_DEFINED
 uniform float u_atmosphereHeight;
@@ -59,7 +66,10 @@ uniform vec3 u_ozoneAbsorptionBase;
 // Helper functions
 bool intersectSphere(vec3 ro, vec3 rd, float radius, out float t0, out float t1) {
 	float b = dot(ro, rd);
-	float c = dot(ro, ro) - radius * radius;
+	// Use a more numerically stable calculation for 'c' when ro is near the sphere surface.
+	// c = dot(ro, ro) - radius * radius = (length(ro) - radius) * (length(ro) + radius)
+	float rLen = length(ro);
+	float c = (rLen - radius) * (rLen + radius);
 	float det = b * b - c;
 	if (det < 0.0)
 		return false;
@@ -94,8 +104,8 @@ Sampling getAtmosphereProperties(float h) {
 
 	Sampling s;
 	s.rayleigh = kRayleighScattering * rd * u_rayleighScale;
-	s.mie = vec3(kMieScattering * md * u_mieScale);
-	s.extinction = s.rayleigh + vec3(kMieExtinction * md * u_mieScale) + kOzoneAbsorption * od;
+	s.mie = hazeColor * (kMieScattering * md * u_mieScale);
+	s.extinction = s.rayleigh + hazeColor * (kMieExtinction * md * u_mieScale) + kOzoneAbsorption * od;
 	return s;
 }
 
@@ -118,8 +128,12 @@ Sampling getAtmospherePropertiesAtPos(vec3 worldPos) {
 	float humidityFactor = 1.0 + humidity * 5.0;
 	float aerosolFactor = 1.0 + aerosolConc * 10.0;
 
-	s.mie *= humidityFactor * aerosolFactor;
-	s.extinction += (s.mie - vec3(kMieScattering * getMieDensity(h) * u_mieScale)); // Re-calculate extinction diff
+	float md = getMieDensity(h);
+	vec3  mieScatBase = hazeColor * (kMieScattering * md * u_mieScale);
+	vec3  mieExtBase = hazeColor * (kMieExtinction * md * u_mieScale);
+
+	s.mie = mieScatBase * humidityFactor * aerosolFactor;
+	s.extinction += (mieExtBase * (humidityFactor * aerosolFactor - 1.0));
 
 	return s;
 }

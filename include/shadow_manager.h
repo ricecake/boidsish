@@ -18,6 +18,12 @@ namespace Boidsish {
 	class ServiceLocator;
 	struct Light;
 
+	struct ShadowCasterInfo {
+		glm::mat4 light_space_matrix;
+		glm::vec3 frustum_min; // Camera frustum min in light space
+		glm::vec3 frustum_max; // Camera frustum max in light space
+	};
+
 	/**
 	 * @brief Manages shadow map generation and shadow data for the lighting system.
 	 *
@@ -67,6 +73,16 @@ namespace Boidsish {
 		 * @param view Camera view matrix for CSM frustum calculation
 		 * @param projection Camera projection matrix for CSM frustum calculation
 		 */
+		glm::mat4 CalculateLightSpaceMatrix(
+			const Light&     light,
+			const glm::vec3& scene_center,
+			float            scene_radius = Constants::Class::Shadows::DefaultSceneRadius(),
+			int              cascade_index = -1,
+			const glm::mat4& view = glm::mat4(1.0f),
+			float            fov = Constants::Class::Shadows::DefaultFOV(),
+			float            aspect = 1.0f
+		);
+
 		void BeginShadowPass(
 			int              map_index,
 			const Light&     light,
@@ -163,7 +179,7 @@ namespace Boidsish {
 		// Cascade splits: logarithmic distribution for better near-field detail
 		// Near splits are tighter for crisp close shadows
 		// Far cascade (3) acts as catchall extending to very distant terrain
-		std::array<float, kMaxCascades> cascade_splits_ = {20.0f, 50.0f, 150.0f, 700.0f};
+		std::array<float, kMaxCascades> cascade_splits_ = {32.0f, 64.0f, 256.0f, 768.0f};
 
 		std::vector<glm::vec4> GetFrustumCornersWorldSpace(const glm::mat4& proj, const glm::mat4& view);
 	};

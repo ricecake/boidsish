@@ -35,10 +35,11 @@ namespace Boidsish {
 		terrain_render_manager_(std::move(terrain_render_manager)) {}
 
 	void OpaqueScenePass::Execute(
-		const FrameData&       frame,
-		SceneCompositor&       compositor,
-		float                  render_scale,
-		const RenderCallbacks& cb
+		const FrameData&                     frame,
+		SceneCompositor&                     compositor,
+		float                                render_scale,
+		const RenderCallbacks&               cb,
+		const std::vector<ShadowCasterInfo>& shadow_casters
 	) {
 		PROJECT_PROFILE_SCOPE("MainScenePass");
 		compositor.BeginScene(frame, render_scale);
@@ -58,15 +59,18 @@ namespace Boidsish {
 		} else {
 			decor_.SetHiZEnabled(false);
 		}
+
 		decor_.Cull(
 			frame.view,
 			frame.projection,
 			frame.render_width,
 			frame.render_height,
+			shadow_casters,
 			std::nullopt,
 			std::nullopt,
 			terrain_render_manager_
 		);
+
 		decor_.Render(frame.view, frame.projection, terrain_render_manager_);
 
 		cb.execute_queue(RenderLayer::Opaque, hiz_culling_enabled_ && frame.frame_count > 0);

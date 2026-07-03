@@ -1,8 +1,20 @@
-#include "UIManager.h"
+#include "UIConfigManager.h"
 
 #include <algorithm>
 
 #include "IWidget.h"
+#include "graphics.h"
+#include "SceneManager.h"
+#include "hud_manager.h"
+#include "ui/EnvironmentWidget.h"
+#include "ui/MoodWidget.h"
+#include "ui/LightningWidget.h"
+#include "ui/EffectWidget.h"
+#include "ui/RenderWidget.h"
+#include "ui/AudioWidget.h"
+#include "ui/SystemWidget.h"
+#include "ui/ProfilerWidget.h"
+#include "ui/hud_widget.h"
 #include "service_locator.h"
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
@@ -12,7 +24,7 @@
 
 namespace Boidsish {
 	namespace UI {
-		UIManager::UIManager(ServiceLocator& /*loc*/, GLFWwindow* window) {
+		UIConfigManager::UIConfigManager(ServiceLocator& /*loc*/, GLFWwindow* window) {
 			IMGUI_CHECKVERSION();
 			ImGui::CreateContext();
 			ImGuiIO& io = ImGui::GetIO();
@@ -29,19 +41,31 @@ namespace Boidsish {
 			ImGui_ImplOpenGL3_Init("#version 130");
 		}
 
-		UIManager::~UIManager() {
+		UIConfigManager::~UIConfigManager() {
 			ImGui::SaveIniSettingsToDisk("imgui.ini");
 			ImGui_ImplOpenGL3_Shutdown();
 			ImGui_ImplGlfw_Shutdown();
 			ImGui::DestroyContext();
 		}
 
-		void UIManager::AddWidget(std::shared_ptr<IWidget> widget) {
+		void UIConfigManager::AddWidget(std::shared_ptr<IWidget> widget) {
 			m_widgets.push_back(widget);
 		}
 
-		void UIManager::Render() {
-			PROJECT_PROFILE_SCOPE("UIManager::Render");
+		void UIConfigManager::SetupDefaultWidgets(Visualizer& visualizer, SceneManager& scene_manager, HudManager& hud_manager) {
+			AddWidget(std::make_shared<HudWidget>(hud_manager));
+			AddWidget(std::make_shared<EnvironmentWidget>(visualizer));
+			AddWidget(std::make_shared<MoodWidget>(visualizer));
+			AddWidget(std::make_shared<LightningWidget>(visualizer));
+			AddWidget(std::make_shared<EffectWidget>(visualizer));
+			AddWidget(std::make_shared<RenderWidget>(visualizer));
+			AddWidget(std::make_shared<AudioWidget>(visualizer));
+			AddWidget(std::make_shared<SystemWidget>(visualizer, scene_manager));
+			AddWidget(std::make_shared<ProfilerWidget>());
+		}
+
+		void UIConfigManager::Render() {
+			PROJECT_PROFILE_SCOPE("UIConfigManager::Render");
 
 			bool any_hud_visible = std::any_of(m_widgets.begin(), m_widgets.end(), [](const auto& widget) {
 				return widget->IsHud() && widget->IsVisible();
@@ -67,7 +91,7 @@ namespace Boidsish {
 			ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 		}
 
-		void UIManager::PositionMinimizedWindows() {
+		void UIConfigManager::PositionMinimizedWindows() {
 			ImGuiContext& g = *GImGui;
 			ImGuiIO&      io = ImGui::GetIO();
 

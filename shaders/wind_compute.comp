@@ -24,9 +24,10 @@ void main() {
 
     // We sample at a representative height (e.g., ground level + 1.0)
     // The wind system uses getTerrainHeight internally for deflection
-    float height = getTerrainHeight(worldXZ) + 1.0;
+    TerrainSurface surface = getTerrainSurface(worldXZ);
+    float height = surface.height + 1.0;
 
-    vec4 integratedWind = computeWindAtPosition(vec3(worldXZ.x, height, worldXZ.y));
+    vec4 integratedWind = computeWindAtPositionOptimized(vec3(worldXZ.x, height, worldXZ.y), surface.height, surface.normal);
 
     imageStore(u_integratedWindImage, texelCoord, integratedWind);
 }

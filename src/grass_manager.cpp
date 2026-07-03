@@ -47,6 +47,7 @@ namespace Boidsish {
         // Without this, the compute shader's frustum culling reads garbage and rejects all blades.
         placement_shader_->bindUniformBlock("FrustumData", Constants::UboBinding::FrustumData());
         pre_pass_shader_->bindUniformBlock("FrustumData", Constants::UboBinding::FrustumData());
+        pre_pass_shader_->bindUniformBlock("GrassProps", Constants::UboBinding::GrassProps());
 
         grass_shader_->bindUniformBlock("Lighting", Constants::UboBinding::Lighting());
         grass_shader_->bindUniformBlock("Shadows", Constants::UboBinding::Shadows());
@@ -99,6 +100,10 @@ namespace Boidsish {
     }
 
     void GrassManager::PopulateDefaultGrassProperties() {
+        global_props_.lodScaleFactor = 2.0f;
+        global_props_.lodBaseRange = 25.0f;
+        global_props_.baseScale = 0.5f;
+
         // Lush Grass
         GrassProperties lushGrass;
         lushGrass.colorTop = glm::vec4(0.3f, 0.8f, 0.2f, 1.0f);

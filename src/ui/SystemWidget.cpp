@@ -6,7 +6,7 @@
 
 #include "ConfigManager.h"
 #include "SceneManager.h"
-#include "UIManager.h"
+#include "UIConfigManager.h"
 #include "graphics.h"
 #include "imgui.h"
 #include "post_processing/PostProcessingManager.h"
@@ -368,7 +368,7 @@ namespace Boidsish {
 
 				// 4. Picking Tool (from EffectsWidget)
 				if (ImGui::CollapsingHeader("Tools", ImGuiTreeNodeFlags_DefaultOpen)) {
-					auto profiler_widget = m_visualizer.GetUIManager().GetWidget<ProfilerWidget>();
+					auto profiler_widget = m_visualizer.GetUIConfigManager().GetWidget<ProfilerWidget>();
 					if (profiler_widget) {
 						bool show_profiler = profiler_widget->IsVisible();
 						if (ImGui::Checkbox("Show Profiler", &show_profiler)) {
