@@ -8,6 +8,10 @@ uniform sampler2D uCloudDepth;   // Accumulated Depth Props (dist, lastHit, step
 uniform sampler2D uCloudMoments; // Accumulated Moments (Luma1, Luma2, Density2, historyLength)
 uniform int       uStepSize;     // 1, 2, 4, 8, 16...
 
+uniform float uCloudPhiLuma;
+uniform float uCloudPhiDepth;
+uniform float uCloudPhiDensity;
+
 #include "../helpers/lighting.glsl"
 #include "../types/temporal_data.glsl"
 #include "lygia/color/luma.glsl"
@@ -40,9 +44,9 @@ void main() {
 	float historyScale = mix(4.0, 1.0, smoothstep(1.0, 10.0, centerHistory));
 	float stepScale = max(1.0, float(uStepSize) / 2.0);
 
-	float phiLuma = (20.0 * stdLuma + 0.02) * historyScale * stepScale;
-	float phiDepth = centerStep * mix(1.50, 1.0, smoothstep(0.0, 0.4, centerDensity)) * float(uStepSize);
-	float phiDensity = (0.05 * centerDensity + 0.1) * historyScale * stepScale;
+	float phiLuma = (uCloudPhiLuma * stdLuma + 0.02) * historyScale * stepScale;
+	float phiDepth = centerStep * mix(uCloudPhiDepth, 1.0, smoothstep(0.0, 0.4, centerDensity)) * float(uStepSize);
+	float phiDensity = (uCloudPhiDensity * centerDensity + 0.1) * historyScale * stepScale;
 
 	vec4  sumColor = vec4(0.0);
 	float sumWeight = 0.0;

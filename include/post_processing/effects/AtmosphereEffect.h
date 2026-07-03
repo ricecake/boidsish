@@ -219,6 +219,34 @@ namespace Boidsish {
 
 			float GetWorldScale() const { return world_scale_; }
 
+			// Cloud Quality parameters
+			void SetCloudMaxRayDistance(float dist) { cloud_max_ray_distance_ = dist; }
+			float GetCloudMaxRayDistance() const { return cloud_max_ray_distance_; }
+
+			void SetCloudMinSamples(int samples) { cloud_min_samples_ = samples; }
+			int GetCloudMinSamples() const { return cloud_min_samples_; }
+
+			void SetCloudMaxSamples(int samples) { cloud_max_samples_ = samples; }
+			int GetCloudMaxSamples() const { return cloud_max_samples_; }
+
+			void SetCloudExtinction(float extinction) { cloud_extinction_ = extinction; }
+			float GetCloudExtinction() const { return cloud_extinction_; }
+
+			void SetCloudTemporalGamma(float gamma) { cloud_temporal_gamma_ = gamma; }
+			float GetCloudTemporalGamma() const { return cloud_temporal_gamma_; }
+
+			void SetCloudMaxHistoryLength(float length) { cloud_max_history_length_ = length; }
+			float GetCloudMaxHistoryLength() const { return cloud_max_history_length_; }
+
+			void SetCloudPhiLuma(float phi) { cloud_phi_luma_ = phi; }
+			float GetCloudPhiLuma() const { return cloud_phi_luma_; }
+
+			void SetCloudPhiDepth(float phi) { cloud_phi_depth_ = phi; }
+			float GetCloudPhiDepth() const { return cloud_phi_depth_; }
+
+			void SetCloudPhiDensity(float phi) { cloud_phi_density_ = phi; }
+			float GetCloudPhiDensity() const { return cloud_phi_density_; }
+
 		private:
 			void InitializePackedResources();
 			void InitializeTemporalResources();
@@ -303,6 +331,17 @@ namespace Boidsish {
 			GLuint cloud_weather_texture_ = 0;
 			bool   needs_weather_bake_ = true;
 			float  world_scale_ = 1.0f;
+
+			// Cloud Quality Defaults
+			float cloud_max_ray_distance_ = 100000.0f;
+			int   cloud_min_samples_ = 32;
+			int   cloud_max_samples_ = 96;
+			float cloud_extinction_ = 0.01f;
+			float cloud_temporal_gamma_ = 1.5f;
+			float cloud_max_history_length_ = 32.0f;
+			float cloud_phi_luma_ = 20.0f;
+			float cloud_phi_depth_ = 1.5f;
+			float cloud_phi_density_ = 0.05f;
 
 		};
 

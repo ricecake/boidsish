@@ -14,6 +14,9 @@ uniform sampler2D uSceneDepth;
 uniform sampler2D uHistoryCloudDepth;
 uniform sampler2D uHistoryMoments;
 
+uniform float uCloudTemporalGamma;
+uniform float uCloudMaxHistoryLength;
+
 #include "../atmosphere/common.glsl"
 #include "../helpers/lighting.glsl"
 #include "../types/temporal_data.glsl"
@@ -324,7 +327,7 @@ void main() {
 		}
 	}
 
-	historyLength = validHistory ? min(32.0, historyLength + 1.0) : 1.0;
+	historyLength = validHistory ? min(uCloudMaxHistoryLength, historyLength + 1.0) : 1.0;
 
 	if (!validHistory) {
 		if (is_new_pixel) {
@@ -341,7 +344,7 @@ void main() {
 
 	NeighborhoodStats stats = computeNeighborhoodStats(uPackedFrame, uv, texelSize);
 
-	const float gamma = 1.5;
+	float gamma = uCloudTemporalGamma;
 	vec3 extents = calculateDynamicExtents(stats.stddev, historyMoments, gamma);
 	vec3 minColor = stats.spatialMean - extents;
 	vec3 maxColor = stats.spatialMean + extents;

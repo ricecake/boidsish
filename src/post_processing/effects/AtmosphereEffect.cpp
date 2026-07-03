@@ -106,8 +106,8 @@ namespace Boidsish {
 				// Cloud Weather Bake (2048x2048) - Only allocate once
 				glBindTexture(GL_TEXTURE_2D, cloud_weather_texture_);
 				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, 2048, 2048, 0, GL_RGBA, GL_FLOAT, NULL);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 			}
@@ -230,6 +230,11 @@ namespace Boidsish {
 				cloud_render_shader_->setVec3("cloudColorUniform", cloud_color_);
 				cloud_render_shader_->setFloat("u_atmosphereHeight", atmosphere_height_);
 
+				cloud_render_shader_->setFloat("uCloudMaxRayDistance", cloud_max_ray_distance_);
+				cloud_render_shader_->setInt("uCloudMinSamples", cloud_min_samples_);
+				cloud_render_shader_->setInt("uCloudMaxSamples", cloud_max_samples_);
+				cloud_render_shader_->setFloat("uCloudExtinction", cloud_extinction_);
+
 				cloud_render_shader_->setInt("depthTexture", 0);
 				cloud_render_shader_->setInt("uHistoryDepth", 1);
 				cloud_render_shader_->setInt("uHistoryMoments", 2);
@@ -269,6 +274,9 @@ namespace Boidsish {
 
 				temporal_shader_->use();
 				temporal_shader_->setMat4("invProjection", invProj);
+
+				temporal_shader_->setFloat("uCloudTemporalGamma", cloud_temporal_gamma_);
+				temporal_shader_->setFloat("uCloudMaxHistoryLength", cloud_max_history_length_);
 
 				temporal_shader_->setInt("uPackedFrame", 0);
 				temporal_shader_->setInt("uPackedDepth", 1);
@@ -311,6 +319,10 @@ namespace Boidsish {
 				spatial_filter_shader_->setInt("uCloudColor", 0);
 				spatial_filter_shader_->setInt("uCloudDepth", 1);
 				spatial_filter_shader_->setInt("uCloudMoments", 2);
+
+				spatial_filter_shader_->setFloat("uCloudPhiLuma", cloud_phi_luma_);
+				spatial_filter_shader_->setFloat("uCloudPhiDepth", cloud_phi_depth_);
+				spatial_filter_shader_->setFloat("uCloudPhiDensity", cloud_phi_density_);
 
 				GLuint ping = temporal_textures_[temporal_index_];
 				GLuint pong = spatial_aux_texture_;
