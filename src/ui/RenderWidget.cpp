@@ -209,6 +209,13 @@ namespace Boidsish {
 							// Color
 							ImGui::ColorEdit3("Color", &lights[i].color[0]);
 
+							// Properties
+							ImGui::Checkbox("Casts Shadow", &lights[i].casts_shadow);
+							ImGui::SameLine();
+							ImGui::Checkbox("Volumetric Shadow", &lights[i].volumetric_shadow);
+							ImGui::SameLine();
+							ImGui::Checkbox("Camera Relative", &lights[i].camera_relative);
+
 							// Intensity
 							if (ImGui::DragFloat("Intensity", &lights[i].base_intensity, 0.1f)) {
 								if (lights[i].behavior.type == LightBehaviorType::NONE) {

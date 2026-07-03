@@ -57,10 +57,15 @@ const int LIGHT_TYPE_FLASH = 4;    // Explosion/flash light (rapid falloff)
 void calculateLightContribution(int light_index, vec3 frag_pos, out vec3 light_dir, out float attenuation) {
 	attenuation = 1.0;
 
+	vec3 light_pos = lights[light_index].position;
+	if ((lights[light_index].flags & LIGHT_FLAG_CAMERA_RELATIVE) != 0) {
+		light_pos += viewPos;
+	}
+
 	if (lights[light_index].type == LIGHT_TYPE_POINT) {
 		// Point light: attenuates with distance
-		light_dir = normalize(lights[light_index].position - frag_pos);
-		float distance = length(lights[light_index].position - frag_pos);
+		light_dir = normalize(light_pos - frag_pos);
+		float distance = length(light_pos - frag_pos);
 		// Practical attenuation curve (inverse square falloff with linear term)
 		attenuation = 1.0 / (1.0 + 0.09 * distance + 0.032 * distance * distance);
 
@@ -71,8 +76,8 @@ void calculateLightContribution(int light_index, vec3 frag_pos, out vec3 light_d
 
 	} else if (lights[light_index].type == LIGHT_TYPE_SPOT) {
 		// Spot light: distance attenuation + angular falloff
-		light_dir = normalize(lights[light_index].position - frag_pos);
-		float distance = length(lights[light_index].position - frag_pos);
+		light_dir = normalize(light_pos - frag_pos);
+		float distance = length(light_pos - frag_pos);
 		attenuation = 1.0 / (1.0 + 0.09 * distance + 0.032 * distance * distance);
 
 		// Angular falloff using inner/outer cutoff angles
@@ -84,8 +89,8 @@ void calculateLightContribution(int light_index, vec3 frag_pos, out vec3 light_d
 	} else if (lights[light_index].type == LIGHT_TYPE_EMISSIVE) {
 		// Emissive/glowing object light: similar to point light but with soft near-field
 		// inner_cutoff stores the emissive object radius for soft falloff
-		light_dir = normalize(lights[light_index].position - frag_pos);
-		float distance = length(lights[light_index].position - frag_pos);
+		light_dir = normalize(light_pos - frag_pos);
+		float distance = length(light_pos - frag_pos);
 		float emissive_radius = lights[light_index].inner_cutoff;
 
 		// Soft falloff that accounts for the size of the glowing object
@@ -100,8 +105,8 @@ void calculateLightContribution(int light_index, vec3 frag_pos, out vec3 light_d
 	} else if (lights[light_index].type == LIGHT_TYPE_FLASH) {
 		// Flash/explosion light: very bright with rapid falloff
 		// inner_cutoff = flash radius, outer_cutoff = falloff exponent
-		light_dir = normalize(lights[light_index].position - frag_pos);
-		float distance = length(lights[light_index].position - frag_pos);
+		light_dir = normalize(light_pos - frag_pos);
+		float distance = length(light_pos - frag_pos);
 		float flash_radius = lights[light_index].inner_cutoff;
 		float falloff_exp = lights[light_index].outer_cutoff;
 

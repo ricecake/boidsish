@@ -9,7 +9,13 @@ struct Light {
 	vec3  direction;
 	float inner_cutoff; // Also: emissive_radius (EMISSIVE), flash_radius (FLASH)
 	float outer_cutoff; // Also: falloff_exp (FLASH)
+	int   flags;
+	float _pad[2];
 };
+
+const int LIGHT_FLAG_CASTS_SHADOW = 1;
+const int LIGHT_FLAG_VOLUMETRIC_SHADOW = 2;
+const int LIGHT_FLAG_CAMERA_RELATIVE = 4;
 
 const int MAX_LIGHTS = [[MAX_LIGHTS]];
 
