@@ -208,8 +208,8 @@ void main() {
 			float rayXZLen = max(length(rayDir.xz), 1e-4);
 
 			// 1. Outside XZ Footprint: Jump using 2D SDF
-			if (weather.sdf > 0.0) {
-				float jump = weather.sdf / rayXZLen;
+			if (weather.sdf >= 0.0) {
+				float jump = max(2*worldScale, weather.sdf / rayXZLen);
 				t += jump;
 				prevDensity = 0.0;
 				continue;
@@ -249,32 +249,38 @@ void main() {
 			}
 
 			// Estimate SDF exit
-			// float t_exit_sdf = t + max(baseStepSize, abs(weather.sdf) / rayXZLen);
-			// t_exit = min(t_exit, t_exit_sdf);
-
-			// /*
-			// Estimate SDF exit
 			CloudWeather exitPointWeather = computeCloudWeather(viewPos + rayDir * t, props);
 			int iter = 0;
 			float loop_t = t;
-			while (exitPointWeather.sdf <= 0 && iter < 250) {
-				iter += 1;
-				if (exitPointWeather.sdf <= 0) {
-					loop_t += max(2.0, abs(exitPointWeather.sdf)/rayXZLen);
+			float t_last_inside = t;
+
+			while (loop_t < t_exit && iter < 30) {
+				if (exitPointWeather.sdf >= 0.0) {
+					break; // Left the XZ footprint
 				}
-				else {
-					break;
-				}
+
+				t_last_inside = loop_t;
+
+				float jump = abs(exitPointWeather.sdf) / rayXZLen;
+				loop_t += clamp(jump, 2.0 * props.worldScale, 200.0 * props.worldScale);
+
 				exitPointWeather = computeCloudWeather(viewPos + rayDir * loop_t, props);
+				iter++;
 			}
-			float t_exit_sdf = loop_t;// - ((exitPointWeather.sdf/rayXZLen) + 1.0);
-			t_exit = min(t_exit, t_exit_sdf);
-			// */
 
+			if (loop_t >= t_exit) {
+				t_last_inside = t_exit - (2.0 * props.worldScale);
+			}
 
-			float cloudVolumeT = t_exit - t_entry;
-			const int innerSamples = 4;
-			float innerStepSize = max(1.0, cloudVolumeT / float(innerSamples));
+			float t_exit_inside = max(t_entry + (2.0 * props.worldScale), t_last_inside);
+
+			float cloudVolumeT = t_exit_inside - t_entry;
+			float targetStepSize = 50.0 * props.worldScale;
+
+			int innerSamples = max(3, int(ceil(cloudVolumeT / targetStepSize)));
+			float innerStepSize = cloudVolumeT / float(innerSamples);
+
+			t_exit = max(t_exit_inside, loop_t);
 
 			for (int k = 0; k < innerSamples; k++) {
 				float subT = t_entry + (float(k)) * innerStepSize;
