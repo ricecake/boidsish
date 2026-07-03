@@ -209,7 +209,7 @@ void main() {
 
 			// 1. Outside XZ Footprint: Jump using 2D SDF
 			if (weather.sdf >= 0.0) {
-				float jump = max(2*worldScale, weather.sdf / rayXZLen);
+				float jump = clamp(weather.sdf / rayXZLen, 2*worldScale, 500*worldScale);
 				t += jump;
 				prevDensity = 0.0;
 				continue;
@@ -280,7 +280,7 @@ void main() {
 			int innerSamples = max(3, int(ceil(cloudVolumeT / targetStepSize)));
 			float innerStepSize = cloudVolumeT / float(innerSamples);
 
-			t_exit = max(t_exit_inside, loop_t);
+			t_exit = max(t_exit_inside, loop_t) + (2.0 * props.worldScale);
 
 			for (int k = 0; k < innerSamples; k++) {
 				float subT = t_entry + (float(k)) * innerStepSize;

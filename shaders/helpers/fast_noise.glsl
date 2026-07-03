@@ -78,7 +78,7 @@ vec2 worley3d_tiling(vec3 p, float period) {
 	vec3  i = floor(p);
 	vec3  f = fract(p);
 	float minDistSq = 1.0;
-	float cellId = 0.0;
+	vec3 cellId = vec3(0.0);
 	for (int z = -1; z <= 1; z++) {
 		for (int y = -1; y <= 1; y++) {
 			for (int x = -1; x <= 1; x++) {
@@ -91,12 +91,12 @@ vec2 worley3d_tiling(vec3 p, float period) {
 				if (d < minDistSq) {
 					minDistSq = d;
 					// cellId = random(point); // Use the x component of the cell's random point as the ID
-					cellId = simplex3d_tiling(point, period) * 0.5 + 0.5; // Use the x component of the cell's random point as the ID
+					cellId = point; // Use the x component of the cell's random point as the ID
 				}
 			}
 		}
 	}
-	return vec2(sqrt(minDistSq), cellId);
+	return vec2(sqrt(minDistSq), simplex3d_tiling(cellId, period) * 0.5 + 0.5);
 }
 
 // Tiling 3D FBM Perlin (using pnoise for classic Perlin)

@@ -35,13 +35,19 @@ vec2 warpNoise(vec2 p, vec2 period)
 	return mix(mix(a, b, f.x), mix(c, d, f.x), f.y) * 2.0 - 1.0;
 }
 
+struct VoronoiData {
+	float dist;
+	vec2 f1;
+	vec2 f2;
+};
+
 // Exact Voronoi distance to cell edges
-float sdVoronoiEdge(vec2 p, vec2 period)
+VoronoiData sdVoronoiEdge(vec2 p, vec2 period)
 {
 	vec2 n = floor(p);
 	vec2 f = fract(p);
 
-	vec2 mg, mr;
+	vec2 mg, mr, mo;
 	float md = 8.0;
 
 	// Pass 1: Find closest point
@@ -54,11 +60,17 @@ float sdVoronoiEdge(vec2 p, vec2 period)
 		// o = 0.5 + 0.5 * sin(iTime + 6.2831 * o);
 		vec2 r = g + o - f;
 		float d = dot(r, r);
-		if(d < md) { md = d; mr = r; mg = g; }
+		if(d < md) {
+			md = d;
+			mr = r;
+			mg = g;
+			mo = o;
+		}
 	}
 
 	// Pass 2: Exact distance to the bisector plane
 	md = 8.0;
+	vec2 f2_g, f2_o;
 	for(int j = -2; j <= 2; j++)
 	for(int i = -2; i <= 2; i++)
 	{
@@ -66,15 +78,26 @@ float sdVoronoiEdge(vec2 p, vec2 period)
 		vec2 o = hash2(n + g, period);
 		vec2 r = g + o - f;
 
-		if(dot(mr - r, mr - r) > 0.00001)
-		{
-			md = min(md, dot(0.5 * (mr + r), normalize(r - mr)));
+		if(dot(mr - r, mr - r) > 0.00001) {
+			float edgeDist = dot(0.5 * (mr + r), normalize(r - mr));
+			if(edgeDist < md)
+			{
+				md = edgeDist;
+				f2_g = g;
+				f2_o = o;
+			}
 		}
 	}
-	return md;
+
+	VoronoiData res;
+	res.dist = md;
+
+	res.f1 = n + mg + mo;
+	res.f2 = n + f2_g + f2_o;
+	return res;
 }
 
-float sdVoronoiFbm(vec2 p, float lacunarity, float iter, float coverage, vec2 period)
+VoronoiData sdVoronoiFbm(vec2 p, float lacunarity, float iter, float coverage, vec2 period)
 {
 	vec2 warp = vec2(0.0);
 	float amp = 0.5;
@@ -91,9 +114,10 @@ float sdVoronoiFbm(vec2 p, float lacunarity, float iter, float coverage, vec2 pe
 	}
 
 	vec2 warpedP = p + warp * 0.9;
-	float d = sdVoronoiEdge(warpedP, period);
-	d = d - (1.0-coverage);
-	return -1.0*d;// * 0.5;
+	VoronoiData res = sdVoronoiEdge(warpedP, period);
+
+	res.dist = -(res.dist - (1.0 - coverage));
+	return res;
 }
 
 
@@ -110,17 +134,14 @@ void main() {
 	vec3 p = vec3(uv.x * mapRange, 0.0, uv.y * mapRange);
 
 	// vec2 weatherData = worley3d_tiling(p / cellRange, 16.0);
-	vec2 weatherData = vec2(sdVoronoiFbm(p.xz/cellRange, 2.0, 3.0, uCloudCoverage, vec2(10.0)), 6);
+	VoronoiData vd = sdVoronoiFbm(p.xz/cellRange, 2.0, 3.0, uCloudCoverage, vec2(10.0));
 
-	// Direct SDF generation from Worley noise
-	// uCloudCoverage [0,1] maps to a radius [0, 1] in cell-space
-	float sdf = (weatherData.x) * cellRange;
+	float sdf = vd.dist * cellRange;
 
-	float cellID = weatherData.y;
+	float cellID = psrdnoise(vd.f1);
 
-	// Height/Altitude needs its own frequency
-	// Use ID variant to get both a gradual distance (G) and a per-cell variety ID (A)
-	vec2 heightData = worley3d_tiling(p / (20000.0 * uWorldScale), 5.0);
+	vec3 f1WorldPos = vec3(vd.f1.x * cellRange, 0.0, vd.f1.y * cellRange);
+	vec2 heightData = worley3d_tiling(f1WorldPos / (20000.0 * uWorldScale), 20.0);
 	float altitudeMap = abs(1.0 - heightData.x);
 	float thicknessMap = heightData.y;
 
