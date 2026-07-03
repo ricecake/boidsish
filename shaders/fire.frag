@@ -58,7 +58,7 @@ void main() {
 	float alpha = 0.0;
 
 	if (v_style == STYLE_ROCKET_TRAIL || v_style == STYLE_SPARKS || v_style == STYLE_GLITTER || v_style == STYLE_BUBBLES || v_style == STYLE_DEBUG ||
-	    v_style == STYLE_CINDER || v_style == STYLE_IRIDESCENT || v_style == STYLE_RAIN || v_style == STYLE_SNOW || v_style == STYLE_LEAF || v_style == STYLE_PETAL || v_style == STYLE_BIRDS || v_style == STYLE_FAIRY || v_style == STYLE_DUST || v_style == STYLE_FIREFLIES) {
+	    v_style == STYLE_CINDER || v_style == STYLE_IRIDESCENT || v_style == STYLE_RAIN || v_style == STYLE_SNOW || v_style == STYLE_LEAF || v_style == STYLE_PETAL || v_style == STYLE_BIRDS || v_style == STYLE_FAIRY || v_style == STYLE_DUST || v_style == STYLE_FIREFLIES || v_style == STYLE_POOF) {
 
 		color = v_p.color.rgb;
 		alpha = v_p.color.a;
@@ -167,6 +167,19 @@ void main() {
 			color = mix(color, diffraction * 2.0, ring * twinkle);
 			color += sparkle_color * penumbra;
 
+			alpha = v_p.color.a * shapeMask;
+		} else if (v_style == STYLE_POOF) {
+			float angle = v_p.phase;
+			float s = sin(angle);
+			float c = cos(angle);
+			mat2  rot = mat2(c, -s, s, c);
+			vec2  rotatedUV = rot * circ;
+
+			float noise = fastWarpedFbm3d(vec3(rotatedUV * 5.0, v_lifetime * 0.1));
+			float maskRadius = 0.25 * (v_p.color.a);
+			shapeMask = 1.0 - smoothstep(maskRadius - 0.1, maskRadius, length(circ));
+
+			color = vec3(0.8, 0.8, 0.8) * (0.5 + 0.5 * noise);
 			alpha = v_p.color.a * shapeMask;
 		}
 
