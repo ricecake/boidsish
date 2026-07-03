@@ -24,6 +24,7 @@ namespace Boidsish {
 		Snow = 11,
 		Leaf = 12,
 		Petal = 13,
+		Poof = 17,
 		Iridescent = 28,
 		Null = -1
 	};

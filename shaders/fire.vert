@@ -61,6 +61,9 @@ void main() {
 				gl_PointSize *= (0.8 + size_var * 0.4);
 			}
 			gl_PointSize = clamp(gl_PointSize, 2.0, 40.0);
+		} else if (p.style == STYLE_POOF) {
+			gl_PointSize = base_size / (-view_pos.z * 0.05);
+			gl_PointSize = clamp(gl_PointSize, 2.0, 100.0);
 		} else {
 			gl_PointSize = base_size;
 		}
