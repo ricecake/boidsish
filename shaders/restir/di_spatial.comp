@@ -81,10 +81,10 @@ void main() {
     // Divide screen into 16x16 chunks
 
     for (int i = 0; i < u_spatial_samples; i++) {
-    uint dim = 16;
-    dim = int(exp2((i%3) + 3));
-    ivec2 chunkId = pixel / int(dim);
-    ivec2 localPixel = pixel % int(dim);
+        uint dim = 16;
+        dim = int(exp2((i%3) + 3));
+        ivec2 chunkId = pixel / int(dim);
+        ivec2 localPixel = pixel % int(dim);
         ivec2 localNeighbor = involute(localPixel, dim, uint(frameIndex) + uint(i));
         ivec2 neighborPixel = chunkId * int(dim) + localNeighbor;
 

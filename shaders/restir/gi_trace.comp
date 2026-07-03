@@ -47,8 +47,11 @@ void main() {
 
     // Use spatiotemporal blue noise for jittered sampling
     vec2 bnUV = (vec2(pixel) + 0.5) / vec2(textureSize(u_blueNoiseTexture, 0).xy);
-    float jitterX = fastSpatiotemporalBlueNoise(bnUV, 2, frameIndex);
-    float jitterY = fastSpatiotemporalBlueNoise(bnUV, 3, frameIndex);
+    // float jitterX = fastSpatiotemporalBlueNoise(bnUV, 2, frameIndex);
+    // float jitterY = fastSpatiotemporalBlueNoise(bnUV, 3, frameIndex);
+    float jitterX = InterleavedGradientNoise(pixel, (3*frameIndex)% 17);
+	float jitterY = InterleavedGradientNoise(pixel, (5*frameIndex)% 17);
+
 
     vec2 jitter = vec2(jitterX, jitterY) - 0.5;
     vec2 uv = (vec2(pixel) + 0.5 + jitter) / vec2(size);
@@ -69,9 +72,12 @@ void main() {
     // GI Trace: Sample indirect light
     // We trace a ray in screen space to find a hitting point
     // Use spatiotemporal blue noise to drive ray direction
+
+
+
     vec2 randRay = vec2(
-        fastSpatiotemporalBlueNoise(bnUV, 0, frameIndex),
-        fastSpatiotemporalBlueNoise(bnUV, 1, frameIndex)
+        InterleavedGradientNoise(pixel, (7*frameIndex)% 23),
+        InterleavedGradientNoise(pixel, (2*frameIndex)% 23)
     );
     vec3 rayDir = hemisphereSample(randRay, vNorm);
 
