@@ -615,32 +615,30 @@ vec4 calculateCloudDensity(
 }
 
 
-float calculateCloudShadowDensity(vec3 p, CloudWeather weather, CloudLayer layer, CloudProperties props, float time) {
-	return 10.0 * calculateCloudDensity(p, weather, layer, props, time, true).x;
+/**
+ * Evaluate cloud shadow density at a specific world position and height.
+ * Uses the baked weather map SDF for high-performance, consistent shadows.
+ */
+float evaluateCloudShadowDensityAtHeight(vec2 worldXZ, float y, float time) {
+	float baseAlt = cloudAltitude * worldScale;
+	float cloudCeiling = baseAlt + cloudThickness * 8.0 * worldScale;
+
+	float h_norm = clamp((y - baseAlt) / max(1.0, cloudCeiling - baseAlt), 0.0, 1.0);
+	if (h_norm >= 1.0) return 0.0;
+
+	// Map to weather texture UV with wind advection
+	vec2 uv = (worldXZ + time * getCloudWindSpeed(time).xz) / (100000.0 * worldScale);
+	float sdf = textureLod(u_cloudWeatherTexture, uv, 0.0).r;
+
+	// Convert SDF to coverage [0, 1]
+	float coverage = getCloudCoverageFromSDF(sdf, worldScale);
+
+	// Accumulate density from current height to ceiling
+	return coverage * (1.0 - h_norm) * cloudDensity * 10.0;
 }
 
 float evaluateCloudShadowDensityAtWorldPos(vec2 worldXZ, float time) {
-	CloudProperties props;
-	props.altitude = cloudAltitude;
-	props.thickness = cloudThickness;
-	props.densityBase = cloudDensity;
-	props.coverage = cloudCoverage;
-	props.worldScale = worldScale;
-
-	vec3  basePos = vec3(worldXZ.x, props.altitude * props.worldScale, worldXZ.y);
-	CloudWeather weather = computeCloudWeather(basePos, props);
-	CloudLayer layer = computeCloudLayer(weather, props);
-
-	float totalDensity = 0.0;
-	const int shadowSteps = 4;
-	float stepSize = layer.thickness / float(shadowSteps);
-
-	for (int i = 0; i < shadowSteps; i++) {
-		vec3 p = vec3(worldXZ.x, layer.baseFloor + (float(i) + 0.5) * stepSize, worldXZ.y);
-		totalDensity += calculateCloudDensity(p, weather, layer, props, time, true).x;
-	}
-
-	return totalDensity * stepSize * 0.1;
+	return evaluateCloudShadowDensityAtHeight(worldXZ, 0.0, time);
 }
 
 #endif // HELPERS_CLOUDS_GLSL
