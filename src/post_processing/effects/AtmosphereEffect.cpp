@@ -9,6 +9,7 @@
 #include "shadow_manager.h"
 #include "shader.h"
 #include "terrain_render_manager.h"
+#include "atmosphere_manager.h"
 
 namespace Boidsish {
 	namespace PostProcessing {
@@ -30,9 +31,6 @@ namespace Boidsish {
 				glDeleteTextures(2, temporal_depth_textures_);
 				glDeleteTextures(2, temporal_moments_textures_);
 			}
-			if (cloud_weather_texture_) {
-				glDeleteTextures(1, &cloud_weather_texture_);
-			}
 		}
 
 		void AtmosphereEffect::Initialize(int width, int height) {
@@ -43,12 +41,6 @@ namespace Boidsish {
 			);
 			temporal_shader_ = std::make_unique<ComputeShader>("shaders/effects/cloud_temporal_reprojection.comp");
 			spatial_filter_shader_ = std::make_unique<ComputeShader>("shaders/effects/cloud_spatial_filter.comp");
-
-			cloud_bake_shader_ = std::make_unique<ComputeShader>("shaders/effects/cloud_weather_bake.comp");
-			if (cloud_bake_shader_ && cloud_bake_shader_->isValid()) {
-				cloud_bake_shader_->use();
-				cloud_bake_shader_->trySetInt("u_extraNoiseTexture", Constants::TextureUnit::NoiseExtra());
-			}
 
 			if (cloud_render_shader_ && cloud_render_shader_->isValid()) {
 				cloud_render_shader_->use();
@@ -100,16 +92,6 @@ namespace Boidsish {
 				glGenTextures(1, &packed_velocity_texture_);
 				glGenTextures(1, &filtered_texture_);
 				glGenTextures(1, &spatial_aux_texture_);
-
-				glGenTextures(1, &cloud_weather_texture_);
-
-				// Cloud Weather Bake (2048x2048) - Only allocate once
-				glBindTexture(GL_TEXTURE_2D, cloud_weather_texture_);
-				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, 2048, 2048, 0, GL_RGBA, GL_FLOAT, NULL);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 			}
 
 			int packed_width = std::max(1, static_cast<int>(width_ * render_scale_));
@@ -209,20 +191,6 @@ namespace Boidsish {
 			glm::mat4 invView = glm::inverse(viewMatrix);
 			glm::mat4 invProj = glm::inverse(projectionMatrix);
 
-			// --- OPTIONAL PASS: Cloud Weather Bake ---
-			if (needs_weather_bake_) {
-				// 1. Bake weather map
-				cloud_bake_shader_->use();
-				cloud_bake_shader_->setFloat("uCloudCoverage", cloud_coverage_);
-				cloud_bake_shader_->setFloat("uWorldScale", world_scale_);
-				glBindImageTexture(0, cloud_weather_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
-				GpuResourceRegistry::Instance().BindTextures({Constants::TextureUnit::NoiseExtra()});
-				glDispatchCompute(2048 / 16, 2048 / 16, 1);
-				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
-
-				needs_weather_bake_ = false;
-			}
-
 			// --- PASS 1: Packed Quarter-res Cloud Rendering ---
 			if (cloud_render_shader_ && cloud_render_shader_->isValid()) {
 				cloud_render_shader_->use();
@@ -258,7 +226,8 @@ namespace Boidsish {
 				});
 
 				glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::CloudWeatherBake());
-				glBindTexture(GL_TEXTURE_2D, cloud_weather_texture_);
+				auto atmos_mgr = ServiceLocator::Instance().Get<AtmosphereManager>();
+				glBindTexture(GL_TEXTURE_2D, atmos_mgr->GetCloudWeatherTexture());
 
 				glBindImageTexture(0, packed_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 				glBindImageTexture(1, packed_depth_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);

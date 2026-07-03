@@ -55,10 +55,7 @@ namespace Boidsish {
 			glm::vec3 GetCloudColor() const { return cloud_color_; }
 
 			void SetCloudCoverage(float coverage) {
-				if (std::abs(cloud_coverage_ - coverage) > 0.005f) {
-					cloud_coverage_ = coverage;
-					needs_weather_bake_ = true;
-				}
+				cloud_coverage_ = coverage;
 			}
 
 			float GetCloudCoverage() const { return cloud_coverage_; }
@@ -211,10 +208,7 @@ namespace Boidsish {
 			float GetRenderScale() const { return render_scale_; }
 
 			void SetWorldScale(float scale) {
-				if (std::abs(world_scale_ - scale) > 0.001f) {
-					world_scale_ = scale;
-					needs_weather_bake_ = true;
-				}
+				world_scale_ = scale;
 			}
 
 			float GetWorldScale() const { return world_scale_; }
@@ -328,9 +322,7 @@ namespace Boidsish {
 			glm::mat4 prev_view_projection_ = glm::mat4(1.0f);
 			bool      has_valid_history_ = false;
 
-			GLuint cloud_weather_texture_ = 0;
-			bool   needs_weather_bake_ = true;
-			float  world_scale_ = 1.0f;
+			float world_scale_ = 1.0f;
 
 			// Cloud Quality Defaults
 			float cloud_max_ray_distance_ = 100000.0f;

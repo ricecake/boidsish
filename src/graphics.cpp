@@ -2348,18 +2348,8 @@ namespace Boidsish {
 					lighting_ubo_data_.sunAureoleStrength = atmosphere_effect->GetSunAureoleStrength();
 					lighting_ubo_data_.cirrusOpacity = atmosphere_effect->GetCirrusOpacity();
 
-					// Calculate cloud shadow matrix (world XZ to shadow map UV)
-					float     mapSize = atmosphere_manager->GetCloudShadowWorldSize();
-					glm::vec3 camPos = camera.pos();
-					glm::mat4 shadowMat(1.0f);
-					// 1. Move to camera-relative XZ
-					shadowMat = glm::translate(shadowMat, glm::vec3(0.5f, 0.5f, 0.0f));
-					// 2. Scale to [0, 1] UV space
-					shadowMat = glm::scale(shadowMat, glm::vec3(1.0f / mapSize, 1.0f / mapSize, 1.0f));
-					// 3. Center on camera
-					shadowMat = glm::translate(shadowMat, glm::vec3(-camPos.x, -camPos.z, 0.0f));
-
-					lighting_ubo_data_.cloudShadowMatrix = shadowMat;
+					// Cloud shadow matrix deprecated - now sampled directly from world-space weather map
+					lighting_ubo_data_.cloudShadowMatrix = glm::mat4(1.0f);
 
 				if (lightning_manager) {
 					lighting_ubo_data_.lightningColor = lightning_manager->GetGlobalColor();
@@ -2753,7 +2743,6 @@ namespace Boidsish {
 						res.transmittanceLUT = atmosphere_manager->GetTransmittanceLUT();
 						res.skyViewLUT = atmosphere_manager->GetSkyViewLUT();
 						res.aerialPerspectiveLUT = atmosphere_manager->GetAerialPerspectiveLUT();
-						res.cloudShadowMap = atmosphere_manager->GetCloudShadowMap();
 						res.atmosphereHeight = atmosphere_manager->GetAtmosphereHeight();
 					}
 					if (noise_manager) {
@@ -3538,7 +3527,12 @@ namespace Boidsish {
 			}
 			impl->wetness_ = std::clamp(impl->wetness_, 0.0f, 1.0f);
 
-			// Apply to atmosphere effect
+			// Apply to atmosphere manager and effect
+			if (impl->atmosphere_manager) {
+				impl->atmosphere_manager->SetWorldScale(world_scale);
+				impl->atmosphere_manager->SetCloudCoverage(w.cloud_coverage);
+			}
+
 			if (impl->atmosphere_effect) {
 				impl->atmosphere_effect->SetWorldScale(world_scale);
 				impl->atmosphere_effect->SetHazeDensity(w.haze_density);

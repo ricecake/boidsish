@@ -41,21 +41,16 @@ namespace Boidsish {
 
 		GLuint GetAerialPerspectiveLUT() const { return _aerialPerspectiveLUT; }
 
-		GLuint GetCloudShadowMap() const { return _cloudShadowMap; }
 
 		static constexpr GLuint kTransmittanceUnit = 20;
 		static constexpr GLuint kMultiScatteringUnit = 21;
 		static constexpr GLuint kSkyViewUnit = 22;
 		static constexpr GLuint kAerialPerspectiveUnit = 23;
-		static constexpr GLuint kCloudShadowUnit = 24;
 
 		void BindTextures();
 		void BindToShader(::ShaderBase& shader);
 
-		static constexpr int   kCloudShadowResolution = 512;
-		static constexpr float kCloudShadowWorldSize = 4000.0f;
-
-		float GetCloudShadowWorldSize() const { return kCloudShadowWorldSize; }
+		GLuint GetCloudWeatherTexture() const { return _cloudWeatherTexture; }
 
 		// Parameters
 		void SetRayleighScale(float s) {
@@ -168,6 +163,20 @@ namespace Boidsish {
 
 		float GetCloudShadowIntensity() const { return _cloudShadowIntensity; }
 
+		void SetCloudCoverage(float coverage) {
+			if (std::abs(_cloudCoverage - coverage) > 0.005f) {
+				_cloudCoverage = coverage;
+				_needsWeatherBake = true;
+			}
+		}
+
+		void SetWorldScale(float scale) {
+			if (std::abs(_worldScale - scale) > 0.001f) {
+				_worldScale = scale;
+				_needsWeatherBake = true;
+			}
+		}
+
 		void SetSunAureoleStrength(float s) { _sunAureoleStrength = s; }
 
 		float GetSunAureoleStrength() const { return _sunAureoleStrength; }
@@ -189,7 +198,7 @@ namespace Boidsish {
 		GLuint _multiScatteringLUT = 0;
 		GLuint _skyViewLUT = 0;
 		GLuint _aerialPerspectiveLUT = 0;
-		GLuint _cloudShadowMap = 0;
+		GLuint _cloudWeatherTexture = 0;
 		GLuint _shCoeffsBuffer = 0;
 
 		std::unique_ptr<ComputeShader> _transmittanceShader;
@@ -197,11 +206,12 @@ namespace Boidsish {
 		std::unique_ptr<ComputeShader> _skyViewShader;
 		std::unique_ptr<ComputeShader> _aerialPerspectiveShader;
 		std::unique_ptr<ComputeShader> _skyToSHShader;
-		std::unique_ptr<ComputeShader> _cloudShadowShader;
+		std::unique_ptr<ComputeShader> _cloudBakeShader;
 
 		glm::vec4 _shCoeffs[9];
 
 		bool _needsPrecompute = true;
+		bool _needsWeatherBake = true;
 
 		float     _rayleighScale = WeatherConstants::RayleighScale.normal;
 		float     _mieScale = WeatherConstants::MieScale.normal;
@@ -220,6 +230,8 @@ namespace Boidsish {
 		float     _cloudShadowIntensity = 0.5f;
 		float     _sunAureoleStrength = 0.5f;
 		float     _cirrusOpacity = 0.3f;
+		float     _cloudCoverage = 0.85f;
+		float     _worldScale = 1.0f;
 
 		glm::vec3 _ambientEstimate = glm::vec3(0.0f);
 	};
