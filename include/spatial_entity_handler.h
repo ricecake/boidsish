@@ -23,6 +23,18 @@ namespace Boidsish {
 
 		virtual ~SpatialEntityHandler();
 
+		void AddEntity(int id, std::shared_ptr<EntityBase> entity) override {
+			std::unique_lock lock(spatial_mutex_);
+			EntityHandler::AddEntity(id, entity);
+			spatial_structure_.AddEntity(entity);
+		}
+
+		void RemoveEntity(int id) override {
+			std::unique_lock lock(spatial_mutex_);
+			EntityHandler::RemoveEntity(id);
+			spatial_structure_.RemoveEntity(id);
+		}
+
 		using EntityHandler::AddEntity;
 
 		template <typename T>
@@ -89,14 +101,17 @@ namespace Boidsish {
 		RaycastEntities(const Ray& ray, float& out_t, glm::vec3& out_hit_point) const override;
 
 	protected:
-		// Spatial structure is rebuilt from scratch every frame, so we don't need incremental updates.
-		void OnEntityUpdated(std::shared_ptr<EntityBase> entity) override { (void)entity; }
+		void PreTimestep(float time, float delta_time) override;
+
+		void OnEntityUpdated(std::shared_ptr<EntityBase> entity) override {
+			// BufferUpdate is internally thread-safe with its own mutex
+			spatial_structure_.BufferUpdate(entity);
+		}
 
 		void PostTimestep(float time, float delta_time) override;
 
 	private:
 		SpatialStructure spatial_structure_;
-		SpatialStructure next_spatial_structure_; // Double buffering
 		mutable std::shared_mutex spatial_mutex_;
 	};
 

@@ -25,7 +25,7 @@ TEST(SpatialEntityHandlerTest, RadiusSearch) {
     handler.AddEntity<TestEntity>(Vector3(10, 0, 0));
     handler.AddEntity<OtherEntity>(Vector3(2, 0, 0));
 
-    // Spatial structures are updated in PostTimestep
+    // Spatial structures are updated in PreTimestep of the next call
     handler.operator()(1.0f);
 
     auto near_entities = handler.GetEntitiesInRadius<TestEntity>(Vector3(0, 0, 0), 5.0f);
@@ -75,17 +75,21 @@ TEST(SpatialEntityHandlerTest, Raycast) {
     EXPECT_NEAR(t, 9.0f, 0.1f);
 }
 
-TEST(SpatialEntityHandlerTest, Rebuild) {
+TEST(SpatialEntityHandlerTest, IncrementalUpdate) {
     task_thread_pool::task_thread_pool pool;
     SpatialEntityHandler handler(pool);
 
     auto id = handler.AddEntity<TestEntity>(Vector3(0, 0, 0));
-    handler.operator()(1.0f); // Build
+    handler.operator()(1.0f); // Processes AddEntity
 
     auto entity = handler.GetEntity(id);
     entity->SetPosition(Vector3(20, 0, 0));
 
-    handler.operator()(2.0f); // Should trigger full rebuild of the grid
+    // In actual use, EntityHandler::operator() calls UpdateEntity which updates the shape,
+    // then calls OnEntityUpdated which buffers the update in the spatial structure.
+    // For this test, we simulate the frame loop.
+    handler.operator()(2.0f); // UpdateEntity -> OnEntityUpdated -> BufferUpdate -> PostTimestep
+    handler.operator()(3.0f); // PreTimestep -> ProcessBufferedUpdates
 
     // Search at new position
     auto near_entities = handler.GetEntitiesInRadius<TestEntity>(Vector3(20, 0, 0), 1.0f);

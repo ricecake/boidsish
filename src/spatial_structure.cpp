@@ -5,6 +5,7 @@
 #include <unordered_set>
 #include <algorithm>
 #include <vector>
+#include <mutex>
 
 #define TINYBVH_IMPLEMENTATION
 #include <tiny_bvh.h>
@@ -27,10 +28,19 @@ namespace Boidsish {
         }
     };
 
+    struct EntityInfo {
+        GridKey min_k, max_k;
+        std::shared_ptr<EntityBase> entity;
+    };
+
     struct SpatialStructure::Impl {
         float cell_size = 32.0f;
-        std::unordered_map<GridKey, std::vector<std::shared_ptr<EntityBase>>, GridKeyHash> grid;
-        std::vector<std::shared_ptr<EntityBase>> all_entities;
+        std::unordered_map<GridKey, std::vector<int>, GridKeyHash> grid;
+        std::unordered_map<int, EntityInfo> entity_tracking;
+        std::unordered_map<int, std::shared_ptr<EntityBase>> all_entities;
+
+        std::vector<std::shared_ptr<EntityBase>> update_buffer;
+        std::mutex buffer_mutex;
 
         Impl() {
             cell_size = (float)Constants::Class::Terrain::ChunkSize();
@@ -45,31 +55,115 @@ namespace Boidsish {
             };
         }
 
-        void Update(const std::vector<std::shared_ptr<EntityBase>>& entities) {
-            grid.clear();
-            all_entities = entities;
-            for (const auto& entity : entities) {
-                glm::vec3 pos = entity->GetPosition().Toglm();
-                float half_size = entity->GetSize() * 0.5f;
-                glm::vec3 min_p = pos - glm::vec3(half_size);
-                glm::vec3 max_p = pos + glm::vec3(half_size);
-
-                GridKey min_k = GetKey(min_p);
-                GridKey max_k = GetKey(max_p);
-
-                for(int x = min_k.x; x <= max_k.x; ++x) {
-                    for(int y = min_k.y; y <= max_k.y; ++y) {
-                        for(int z = min_k.z; z <= max_k.z; ++z) {
-                            grid[{x, y, z}].push_back(entity);
-                        }
+        void AddToGrid(int id, const GridKey& min_k, const GridKey& max_k) {
+            for(int x = min_k.x; x <= max_k.x; ++x) {
+                for(int y = min_k.y; y <= max_k.y; ++y) {
+                    for(int z = min_k.z; z <= max_k.z; ++z) {
+                        grid[{x, y, z}].push_back(id);
                     }
                 }
             }
         }
 
+        void RemoveFromGrid(int id, const GridKey& min_k, const GridKey& max_k) {
+            for(int x = min_k.x; x <= max_k.x; ++x) {
+                for(int y = min_k.y; y <= max_k.y; ++y) {
+                    for(int z = min_k.z; z <= max_k.z; ++z) {
+                        auto& cell = grid[{x, y, z}];
+                        cell.erase(std::remove(cell.begin(), cell.end(), id), cell.end());
+                        if (cell.empty()) grid.erase({x, y, z});
+                    }
+                }
+            }
+        }
+
+        void AddEntity(std::shared_ptr<EntityBase> entity) {
+            int id = entity->GetId();
+            if (all_entities.count(id)) return;
+
+            all_entities[id] = entity;
+            glm::vec3 pos = entity->GetPosition().Toglm();
+            float half_size = entity->GetSize() * 0.5f;
+            GridKey min_k = GetKey(pos - glm::vec3(half_size));
+            GridKey max_k = GetKey(pos + glm::vec3(half_size));
+
+            entity_tracking[id] = {min_k, max_k, entity};
+            AddToGrid(id, min_k, max_k);
+        }
+
+        void RemoveEntity(int id) {
+            auto it = entity_tracking.find(id);
+            if (it != entity_tracking.end()) {
+                RemoveFromGrid(id, it->second.min_k, it->second.max_k);
+                entity_tracking.erase(it);
+            }
+            all_entities.erase(id);
+        }
+
+        void BufferUpdate(std::shared_ptr<EntityBase> entity) {
+            std::lock_guard<std::mutex> lock(buffer_mutex);
+            update_buffer.push_back(entity);
+        }
+
+        void ProcessBufferedUpdates() {
+            std::vector<std::shared_ptr<EntityBase>> current_buffer;
+            {
+                std::lock_guard<std::mutex> lock(buffer_mutex);
+                current_buffer = std::move(update_buffer);
+                update_buffer.clear();
+            }
+
+            for (const auto& entity : current_buffer) {
+                int id = entity->GetId();
+                auto it = entity_tracking.find(id);
+                if (it == entity_tracking.end()) {
+                    AddEntity(entity);
+                    continue;
+                }
+
+                glm::vec3 pos = entity->GetPosition().Toglm();
+                float half_size = entity->GetSize() * 0.5f;
+                GridKey new_min = GetKey(pos - glm::vec3(half_size));
+                GridKey new_max = GetKey(pos + glm::vec3(half_size));
+
+                if (!(new_min == it->second.min_k && new_max == it->second.max_k)) {
+                    RemoveFromGrid(id, it->second.min_k, it->second.max_k);
+                    AddToGrid(id, new_min, new_max);
+                    it->second.min_k = new_min;
+                    it->second.max_k = new_max;
+                }
+            }
+        }
+
+        void Clear() {
+            grid.clear();
+            entity_tracking.clear();
+            all_entities.clear();
+            std::lock_guard<std::mutex> lock(buffer_mutex);
+            update_buffer.clear();
+        }
+
         std::vector<int> GetEntityIdsInRadius(const glm::vec3& center, float radius, const std::vector<int>& allowed_ids) const {
             std::vector<int> results;
             float radius_sq = radius * radius;
+
+            std::vector<int> sorted_allowed = allowed_ids;
+            std::sort(sorted_allowed.begin(), sorted_allowed.end());
+            auto is_allowed = [&](int id) {
+                if (sorted_allowed.empty()) return true;
+                return std::binary_search(sorted_allowed.begin(), sorted_allowed.end(), id);
+            };
+
+            if (radius > cell_size * 16.0f) { // Fallback for large radius
+                 for (const auto& [id, entity] : all_entities) {
+                    if (!is_allowed(id)) continue;
+                    glm::vec3 diff = entity->GetPosition().Toglm() - center;
+                    if (glm::dot(diff, diff) <= radius_sq) {
+                        results.push_back(id);
+                    }
+                }
+                return results;
+            }
 
             GridKey min_k = GetKey(center - glm::vec3(radius));
             GridKey max_k = GetKey(center + glm::vec3(radius));
@@ -81,14 +175,15 @@ namespace Boidsish {
                     for(int z = min_k.z; z <= max_k.z; ++z) {
                         auto it = grid.find({x, y, z});
                         if (it != grid.end()) {
-                            for (const auto& entity : it->second) {
-                                int id = entity->GetId();
+                            for (int id : it->second) {
                                 if (found_ids.count(id)) continue;
 
-                                if (!allowed_ids.empty() && std::find(allowed_ids.begin(), allowed_ids.end(), id) == allowed_ids.end())
-                                    continue;
+                                if (!is_allowed(id)) continue;
 
-                                glm::vec3 diff = entity->GetPosition().Toglm() - center;
+                                auto ent_it = all_entities.find(id);
+                                if (ent_it == all_entities.end()) continue;
+
+                                glm::vec3 diff = ent_it->second->GetPosition().Toglm() - center;
                                 if (glm::dot(diff, diff) <= radius_sq) {
                                     results.push_back(id);
                                     found_ids.insert(id);
@@ -105,15 +200,16 @@ namespace Boidsish {
             float nearest_dist_sq = max_radius * max_radius;
             int nearest_id = -1;
 
-            // If the search radius is too large, it's more efficient to just iterate over all entities
-            // instead of iterating over millions of empty grid cells.
-            bool search_all = max_radius > cell_size * 8.0f; // Arbitrary threshold
+            std::vector<int> sorted_allowed = allowed_ids;
+            std::sort(sorted_allowed.begin(), sorted_allowed.end());
+            auto is_allowed = [&](int id) {
+                if (sorted_allowed.empty()) return true;
+                return std::binary_search(sorted_allowed.begin(), sorted_allowed.end(), id);
+            };
 
-            if (search_all) {
-                for (const auto& entity : all_entities) {
-                    int id = entity->GetId();
-                    if (!allowed_ids.empty() && std::find(allowed_ids.begin(), allowed_ids.end(), id) == allowed_ids.end())
-                        continue;
+            if (max_radius > cell_size * 16.0f) {
+                for (const auto& [id, entity] : all_entities) {
+                    if (!is_allowed(id)) continue;
 
                     glm::vec3 diff = entity->GetPosition().Toglm() - center;
                     float dist_sq = glm::dot(diff, diff);
@@ -135,15 +231,16 @@ namespace Boidsish {
                     for(int z = min_k.z; z <= max_k.z; ++z) {
                         auto it = grid.find({x, y, z});
                         if (it != grid.end()) {
-                            for (const auto& entity : it->second) {
-                                int id = entity->GetId();
+                            for (int id : it->second) {
                                 if (checked_ids.count(id)) continue;
                                 checked_ids.insert(id);
 
-                                if (!allowed_ids.empty() && std::find(allowed_ids.begin(), allowed_ids.end(), id) == allowed_ids.end())
-                                    continue;
+                                if (!is_allowed(id)) continue;
 
-                                glm::vec3 diff = entity->GetPosition().Toglm() - center;
+                                auto ent_it = all_entities.find(id);
+                                if (ent_it == all_entities.end()) continue;
+
+                                glm::vec3 diff = ent_it->second->GetPosition().Toglm() - center;
                                 float dist_sq = glm::dot(diff, diff);
                                 if (dist_sq < nearest_dist_sq) {
                                     nearest_dist_sq = dist_sq;
@@ -223,16 +320,16 @@ namespace Boidsish {
             nextT.z = (dir.z > 0) ? (float(cell.z + 1) * cell_size - pos.z) / dir.z : (dir.z < 0 ? (float(cell.z) * cell_size - pos.z) / dir.z : 1e30f);
 
             float t = 0;
-            // Limit search distance or until we exit some bounds if needed
-            // For now use max_ray_dist
             while (t < max_ray_dist) {
                 auto it = grid.find({cell.x, cell.y, cell.z});
                 if (it != grid.end()) {
-                    for (const auto& entity : it->second) {
-                        int id = entity->GetId();
+                    for (int id : it->second) {
                         if (candidate_ids.find(id) == candidate_ids.end()) {
-                            candidates.push_back(entity);
-                            candidate_ids.insert(id);
+                            auto ent_it = all_entities.find(id);
+                            if (ent_it != all_entities.end()) {
+                                candidates.push_back(ent_it->second);
+                                candidate_ids.insert(id);
+                            }
                         }
                     }
                 }
@@ -299,8 +396,24 @@ namespace Boidsish {
         std::swap(impl_, other.impl_);
     }
 
-    void SpatialStructure::Update(const std::vector<std::shared_ptr<EntityBase>>& entities) {
-        impl_->Update(entities);
+    void SpatialStructure::AddEntity(std::shared_ptr<EntityBase> entity) {
+        impl_->AddEntity(entity);
+    }
+
+    void SpatialStructure::RemoveEntity(int id) {
+        impl_->RemoveEntity(id);
+    }
+
+    void SpatialStructure::BufferUpdate(std::shared_ptr<EntityBase> entity) {
+        impl_->BufferUpdate(entity);
+    }
+
+    void SpatialStructure::ProcessBufferedUpdates() {
+        impl_->ProcessBufferedUpdates();
+    }
+
+    void SpatialStructure::Clear() {
+        impl_->Clear();
     }
 
     std::vector<int> SpatialStructure::GetEntityIdsInRadius(const glm::vec3& center, float radius, const std::vector<int>& allowed_ids) const {

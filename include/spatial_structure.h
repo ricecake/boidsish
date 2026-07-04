@@ -11,6 +11,8 @@ namespace Boidsish {
 
     /**
      * @brief Encapsulates a bucketed spatial grid for spatial queries.
+     *
+     * Supports incremental updates and internal batching to avoid full rebuilds.
      */
     class SpatialStructure {
     public:
@@ -28,9 +30,33 @@ namespace Boidsish {
         void swap(SpatialStructure& other) noexcept;
 
         /**
-         * @brief Updates the spatial structure from a list of entities.
+         * @brief Adds an entity to the spatial structure.
          */
-        void Update(const std::vector<std::shared_ptr<EntityBase>>& entities);
+        void AddEntity(std::shared_ptr<EntityBase> entity);
+
+        /**
+         * @brief Removes an entity from the spatial structure by ID.
+         */
+        void RemoveEntity(int id);
+
+        /**
+         * @brief Buffers an entity for potential grid update.
+         *
+         * Thread-safe. Detects if the entity has moved to a new cell.
+         */
+        void BufferUpdate(std::shared_ptr<EntityBase> entity);
+
+        /**
+         * @brief Processes all buffered updates and applies them to the grid.
+         *
+         * Should be called in a serial phase.
+         */
+        void ProcessBufferedUpdates();
+
+        /**
+         * @brief Clears the spatial structure.
+         */
+        void Clear();
 
         /**
          * @brief Finds all entities within a certain radius.

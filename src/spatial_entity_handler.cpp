@@ -10,24 +10,20 @@ namespace Boidsish {
 
 	SpatialEntityHandler::~SpatialEntityHandler() = default;
 
+	void SpatialEntityHandler::PreTimestep(float time, float delta_time) {
+		(void)time;
+		(void)delta_time;
+
+		// Process all entity moves from the previous frame into the grid
+		std::unique_lock lock(spatial_mutex_);
+		spatial_structure_.ProcessBufferedUpdates();
+	}
+
 	void SpatialEntityHandler::PostTimestep(float time, float delta_time) {
 		(void)time;
 		(void)delta_time;
 
-		// Collect all current entities
-		std::vector<std::shared_ptr<EntityBase>> entities;
-		auto all_entities = GetAllEntities();
-		entities.reserve(all_entities.size());
-		for (auto const& [id, entity] : all_entities) {
-			entities.push_back(entity);
-		}
-
-		// Rebuild the "next" implementation (write buffer)
-		next_spatial_structure_.Update(entities);
-
-		// Swap it into the active implementation (read buffer)
-		std::unique_lock lock(spatial_mutex_);
-		spatial_structure_.swap(next_spatial_structure_);
+		// No longer rebuilding the whole thing here
 	}
 
 	std::shared_ptr<EntityBase>
