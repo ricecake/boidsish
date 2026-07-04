@@ -338,8 +338,8 @@ void main() {
 			// If TAA is disabled or history is invalid, and this isn't the one new pixel in the 2x2,
 			// we must still produce a result. We can't just leave it black if uEnableTemporal is false.
 			if (!uEnableTemporal) {
-				historyRGBA = texture(uPackedFrame, packedPixel, 0);
-				historyDepthProps = texture(uPackedDepth, packedPixel, 0);
+				historyRGBA = texelFetch(uPackedFrame, packedPixel, 0);
+				historyDepthProps = texelFetch(uPackedDepth, packedPixel, 0);
 			} else {
 				historyRGBA = vec4(0, 0, 0, 1);
 				historyDepthProps = vec4(50000.0 * worldScale, 50000.0 * worldScale, 100.0, 0.0);
