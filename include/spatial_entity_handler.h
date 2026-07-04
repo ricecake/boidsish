@@ -24,41 +24,32 @@ namespace Boidsish {
 		virtual ~SpatialEntityHandler();
 
 		void AddEntity(int id, std::shared_ptr<EntityBase> entity) override {
-			std::unique_lock lock(spatial_mutex_);
 			EntityHandler::AddEntity(id, entity);
-			spatial_structure_.AddEntity(entity);
+			spatial_structure_.BufferAdd(entity);
 		}
 
 		void RemoveEntity(int id) override {
-			std::unique_lock lock(spatial_mutex_);
 			EntityHandler::RemoveEntity(id);
-			spatial_structure_.RemoveEntity(id);
+			spatial_structure_.BufferRemove(id);
 		}
 
 		using EntityHandler::AddEntity;
 
 		template <typename T>
 		std::vector<std::shared_ptr<T>> GetEntitiesInRadius(const Vector3& center, float radius) const {
-			std::vector<int> allowed_ids;
-			if constexpr (!std::is_same_v<T, EntityBase>) {
-				auto typed_entities = GetEntitiesByType<T>();
-				for (auto* e : typed_entities) {
-					allowed_ids.push_back(e->GetId());
-				}
-			}
-
 			std::vector<std::shared_ptr<T>> result;
 			glm::vec3                       c(center.x, center.y, center.z);
 
-			std::shared_lock lock(spatial_mutex_);
-			auto             ids = spatial_structure_.GetEntityIdsInRadius(c, radius, allowed_ids);
-
-			for (int id : ids) {
-				auto entity = GetEntity(id);
-				if (entity) {
+			spatial_structure_.QueryRadius(c, radius, [&](std::shared_ptr<EntityBase> entity) {
+				if constexpr (std::is_same_v<T, EntityBase>) {
 					result.push_back(std::static_pointer_cast<T>(entity));
+				} else {
+					auto typed_entity = std::dynamic_pointer_cast<T>(entity);
+					if (typed_entity) {
+						result.push_back(typed_entity);
+					}
 				}
-			}
+			});
 
 			return result;
 		}
@@ -66,7 +57,7 @@ namespace Boidsish {
 		template <typename T>
 		std::shared_ptr<T> FindNearest(
 			const Vector3& center,
-			float          initial_radius = 1.0f,
+			float          initial_radius = 1000.0f,
 			float          expansion_factor = 2.0f,
 			int            max_expansions = 10
 		) const {
@@ -74,22 +65,19 @@ namespace Boidsish {
 			(void)expansion_factor;
 			(void)max_expansions;
 
-			std::vector<int> allowed_ids;
-			if constexpr (!std::is_same_v<T, EntityBase>) {
-				auto typed_entities = GetEntitiesByType<T>();
-				for (auto* e : typed_entities) {
-					allowed_ids.push_back(e->GetId());
-				}
-			}
+			glm::vec3 c(center.x, center.y, center.z);
 
-			glm::vec3        c(center.x, center.y, center.z);
-			std::shared_lock lock(spatial_mutex_);
-			int              id = spatial_structure_.FindNearestId(c, 1000.0f, allowed_ids);
-			if (id != -1) {
-				auto entity = GetEntity(id);
-				if (entity) {
-					return std::static_pointer_cast<T>(entity);
+			auto filter = [](std::shared_ptr<EntityBase> entity) -> bool {
+				if constexpr (std::is_same_v<T, EntityBase>) {
+					return true;
+				} else {
+					return dynamic_cast<T*>(entity.get()) != nullptr;
 				}
+			};
+
+			auto entity = spatial_structure_.QueryNearest(c, initial_radius, filter);
+			if (entity) {
+				return std::static_pointer_cast<T>(entity);
 			}
 			return nullptr;
 		}
@@ -104,7 +92,6 @@ namespace Boidsish {
 		void PreTimestep(float time, float delta_time) override;
 
 		void OnEntityUpdated(std::shared_ptr<EntityBase> entity) override {
-			// BufferUpdate is internally thread-safe with its own mutex
 			spatial_structure_.BufferUpdate(entity);
 		}
 
@@ -112,7 +99,6 @@ namespace Boidsish {
 
 	private:
 		SpatialStructure spatial_structure_;
-		mutable std::shared_mutex spatial_mutex_;
 	};
 
 } // namespace Boidsish

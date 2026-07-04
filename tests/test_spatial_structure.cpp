@@ -75,7 +75,7 @@ TEST(SpatialEntityHandlerTest, Raycast) {
     EXPECT_NEAR(t, 9.0f, 0.1f);
 }
 
-TEST(SpatialEntityHandlerTest, IncrementalUpdate) {
+TEST(SpatialEntityHandlerTest, ParallelIncrementalUpdate) {
     task_thread_pool::task_thread_pool pool;
     SpatialEntityHandler handler(pool);
 
@@ -85,10 +85,8 @@ TEST(SpatialEntityHandlerTest, IncrementalUpdate) {
     auto entity = handler.GetEntity(id);
     entity->SetPosition(Vector3(20, 0, 0));
 
-    // In actual use, EntityHandler::operator() calls UpdateEntity which updates the shape,
-    // then calls OnEntityUpdated which buffers the update in the spatial structure.
-    // For this test, we simulate the frame loop.
-    handler.operator()(2.0f); // UpdateEntity -> OnEntityUpdated -> BufferUpdate -> PostTimestep
+    // In actual use, EntityHandler::operator() parallel loop calls OnEntityUpdated which buffers updates.
+    handler.operator()(2.0f); // Parallel updates + OnEntityUpdated -> BufferUpdate
     handler.operator()(3.0f); // PreTimestep -> ProcessBufferedUpdates
 
     // Search at new position

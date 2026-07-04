@@ -2,6 +2,7 @@
 
 #include <vector>
 #include <memory>
+#include <functional>
 #include <glm/glm.hpp>
 #include "collision.h"
 
@@ -12,7 +13,7 @@ namespace Boidsish {
     /**
      * @brief Encapsulates a bucketed spatial grid for spatial queries.
      *
-     * Supports incremental updates and internal batching to avoid full rebuilds.
+     * Supports incremental updates, internal batching, and internal locking.
      */
     class SpatialStructure {
     public:
@@ -30,26 +31,26 @@ namespace Boidsish {
         void swap(SpatialStructure& other) noexcept;
 
         /**
-         * @brief Adds an entity to the spatial structure.
+         * @brief Buffers an entity for addition to the spatial structure.
          */
-        void AddEntity(std::shared_ptr<EntityBase> entity);
+        void BufferAdd(std::shared_ptr<EntityBase> entity);
 
         /**
-         * @brief Removes an entity from the spatial structure by ID.
+         * @brief Buffers an entity ID for removal from the spatial structure.
          */
-        void RemoveEntity(int id);
+        void BufferRemove(int id);
 
         /**
          * @brief Buffers an entity for potential grid update.
          *
-         * Thread-safe. Detects if the entity has moved to a new cell.
+         * Thread-safe. Only queues an update if the entity crossed a cell boundary.
          */
         void BufferUpdate(std::shared_ptr<EntityBase> entity);
 
         /**
-         * @brief Processes all buffered updates and applies them to the grid.
+         * @brief Processes all buffered additions, removals, and moves.
          *
-         * Should be called in a serial phase.
+         * Applies changes to the internal grid state.
          */
         void ProcessBufferedUpdates();
 
@@ -59,14 +60,14 @@ namespace Boidsish {
         void Clear();
 
         /**
-         * @brief Finds all entities within a certain radius.
+         * @brief Finds all entities within a certain radius that pass a filter.
          */
-        std::vector<int> GetEntityIdsInRadius(const glm::vec3& center, float radius, const std::vector<int>& allowed_ids) const;
+        void QueryRadius(const glm::vec3& center, float radius, const std::function<void(std::shared_ptr<EntityBase>)>& callback) const;
 
         /**
-         * @brief Finds the nearest entity from an allowed set.
+         * @brief Finds the nearest entity that passes a filter.
          */
-        int FindNearestId(const glm::vec3& center, float max_radius, const std::vector<int>& allowed_ids) const;
+        std::shared_ptr<EntityBase> QueryNearest(const glm::vec3& center, float max_radius, const std::function<bool(std::shared_ptr<EntityBase>)>& filter) const;
 
         /**
          * @brief Raycasts against the entity AABBs.

@@ -14,27 +14,21 @@ namespace Boidsish {
 		(void)time;
 		(void)delta_time;
 
-		// Process all entity moves from the previous frame into the grid
-		std::unique_lock lock(spatial_mutex_);
+		// Process all entity moves, additions, and removals from the previous frame into the grid
 		spatial_structure_.ProcessBufferedUpdates();
 	}
 
 	void SpatialEntityHandler::PostTimestep(float time, float delta_time) {
 		(void)time;
 		(void)delta_time;
-
-		// No longer rebuilding the whole thing here
 	}
 
 	std::shared_ptr<EntityBase>
 	SpatialEntityHandler::RaycastEntities(const Ray& ray, float& out_t, glm::vec3& out_hit_point) const {
 		int id = -1;
 
-		{
-			std::shared_lock lock(spatial_mutex_);
-			if (!spatial_structure_.Raycast(ray, out_t, id)) {
-				return nullptr;
-			}
+		if (!spatial_structure_.Raycast(ray, out_t, id)) {
+			return nullptr;
 		}
 
 		auto entity = GetEntity(id);
