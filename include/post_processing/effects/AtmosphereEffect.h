@@ -247,6 +247,21 @@ namespace Boidsish {
 			void SetCloudPhiDensity(float phi) { cloud_phi_density_ = phi; }
 			float GetCloudPhiDensity() const { return cloud_phi_density_; }
 
+			void SetCloudEnableTemporal(bool enable) { enable_temporal_ = enable; }
+			bool GetCloudEnableTemporal() const { return enable_temporal_; }
+
+			void SetCloudEnableSpatialFilter(bool enable) { enable_spatial_filter_ = enable; }
+			bool GetCloudEnableSpatialFilter() const { return enable_spatial_filter_; }
+
+			void SetCloudSvgfPasses(int passes) { cloud_svgf_passes_ = passes; }
+			int  GetCloudSvgfPasses() const { return cloud_svgf_passes_; }
+
+			void SetCloudSvgfHistoryBoost(float boost) { cloud_svgf_history_boost_ = boost; }
+			float GetCloudSvgfHistoryBoost() const { return cloud_svgf_history_boost_; }
+
+			void SetCloudSvgfHistoryThreshold(float threshold) { cloud_svgf_history_threshold_ = threshold; }
+			float GetCloudSvgfHistoryThreshold() const { return cloud_svgf_history_threshold_; }
+
 		private:
 			void InitializePackedResources();
 			void InitializeTemporalResources();
@@ -342,6 +357,12 @@ namespace Boidsish {
 			float cloud_phi_luma_ = 20.0f;
 			float cloud_phi_depth_ = 1.5f;
 			float cloud_phi_density_ = 0.05f;
+
+			bool  enable_temporal_ = true;
+			bool  enable_spatial_filter_ = true;
+			int   cloud_svgf_passes_ = 4;
+			float cloud_svgf_history_boost_ = 4.0f;
+			float cloud_svgf_history_threshold_ = 10.0f;
 
 		};
 

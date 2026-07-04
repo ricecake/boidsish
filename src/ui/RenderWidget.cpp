@@ -130,8 +130,24 @@ namespace Boidsish {
 							atmosphere_effect->SetCloudMaxHistoryLength(max_history);
 						}
 
+						bool enable_temporal = atmosphere_effect->GetCloudEnableTemporal();
+						if (ImGui::Checkbox("Enable TAA Accumulation", &enable_temporal)) {
+							atmosphere_effect->SetCloudEnableTemporal(enable_temporal);
+						}
+
 						ImGui::Separator();
 						ImGui::Text("SVGF (Spatial Filter)");
+
+						bool enable_spatial = atmosphere_effect->GetCloudEnableSpatialFilter();
+						if (ImGui::Checkbox("Enable SVGF", &enable_spatial)) {
+							atmosphere_effect->SetCloudEnableSpatialFilter(enable_spatial);
+						}
+
+						int svgf_passes = atmosphere_effect->GetCloudSvgfPasses();
+						if (ImGui::SliderInt("SVGF Passes", &svgf_passes, 0, 6)) {
+							atmosphere_effect->SetCloudSvgfPasses(svgf_passes);
+						}
+
 						float phi_luma = atmosphere_effect->GetCloudPhiLuma();
 						if (ImGui::SliderFloat("Phi Luma", &phi_luma, 0.0f, 100.0f, "%.1f")) {
 							atmosphere_effect->SetCloudPhiLuma(phi_luma);
@@ -145,6 +161,16 @@ namespace Boidsish {
 						float phi_density = atmosphere_effect->GetCloudPhiDensity();
 						if (ImGui::SliderFloat("Phi Density", &phi_density, 0.0f, 2.0f, "%.3f")) {
 							atmosphere_effect->SetCloudPhiDensity(phi_density);
+						}
+
+						float history_boost = atmosphere_effect->GetCloudSvgfHistoryBoost();
+						if (ImGui::SliderFloat("History Boost", &history_boost, 1.0f, 32.0f, "%.1f")) {
+							atmosphere_effect->SetCloudSvgfHistoryBoost(history_boost);
+						}
+
+						float history_threshold = atmosphere_effect->GetCloudSvgfHistoryThreshold();
+						if (ImGui::SliderFloat("History Threshold", &history_threshold, 1.0f, 64.0f, "%.1f")) {
+							atmosphere_effect->SetCloudSvgfHistoryThreshold(history_threshold);
 						}
 					} else {
 						ImGui::TextDisabled("Atmosphere effect not found.");
