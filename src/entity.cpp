@@ -68,6 +68,33 @@ namespace Boidsish {
 				entity->path_segment_index_ = update.new_segment_index;
 				entity->path_t_ = update.new_t;
 			}
+
+			// Orient to velocity
+			if (entity->orient_to_velocity_) {
+				entity->rigid_body_.FaceVelocity();
+			}
+
+			entity->rigid_body_.Update(delta_time);
+
+			// Apply path constraint
+			if (entity->constraint_path_) {
+				glm::vec3 closest_point_glm = entity->constraint_path_->FindClosestPoint(entity->GetPosition());
+				Vector3   closest_point(closest_point_glm.x, closest_point_glm.y, closest_point_glm.z);
+				Vector3   to_path = closest_point - entity->GetPosition();
+				float     distance_from_path = to_path.Magnitude();
+
+				if (distance_from_path > entity->constraint_radius_) {
+					Vector3 from_path = to_path.Normalized() * -1.0f;
+					Vector3 corrected_position = closest_point + from_path * entity->constraint_radius_;
+					entity->SetPosition(corrected_position);
+				}
+			}
+
+			// Update the entity's shape
+			entity->UpdateShape();
+
+			// Call the OnEntityUpdated hook
+			OnEntityUpdated(entity);
 		});
 
 		// Call post-timestep hook
@@ -96,36 +123,6 @@ namespace Boidsish {
 		}
 		for (auto& request : current_frame_mods) {
 			request();
-		}
-
-		// Generate shapes from entity states
-		for (auto& entity : entities) {
-			// Orient to velocity
-			if (entity->orient_to_velocity_) {
-				entity->rigid_body_.FaceVelocity();
-			}
-
-			entity->rigid_body_.Update(delta_time);
-
-			// Apply path constraint
-			if (entity->constraint_path_) {
-				glm::vec3 closest_point_glm = entity->constraint_path_->FindClosestPoint(entity->GetPosition());
-				Vector3   closest_point(closest_point_glm.x, closest_point_glm.y, closest_point_glm.z);
-				Vector3   to_path = closest_point - entity->GetPosition();
-				float     distance_from_path = to_path.Magnitude();
-
-				if (distance_from_path > entity->constraint_radius_) {
-					Vector3 from_path = to_path.Normalized() * -1.0f;
-					Vector3 corrected_position = closest_point + from_path * entity->constraint_radius_;
-					entity->SetPosition(corrected_position);
-				}
-			}
-
-			// Update the entity's shape
-			entity->UpdateShape();
-
-			// Call the OnEntityUpdated hook
-			OnEntityUpdated(entity);
 		}
 
 		return {};

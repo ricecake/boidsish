@@ -7,16 +7,20 @@
 #include <algorithm>
 #include <optional>
 #include <utility>
+#include <mutex>
+#include <atomic>
 
 #include <nigh/lp_space.hpp>
 #include <nigh/kdtree_batch.hpp>
+#include <task_thread_pool.hpp>
+#include <poolstl/poolstl.hpp>
 
 namespace Boidsish {
 
     namespace {
-        // Standard value type for Nigh to avoid complexity
+        // Value type for Nigh: store shared_ptr directly for O(1) retrieval
         struct NighEntity {
-            int id;
+            std::shared_ptr<EntityBase> entity;
             Eigen::Matrix<float, 3, 1> pos;
         };
 
@@ -27,115 +31,68 @@ namespace Boidsish {
         };
 
         using NighSpace = unc::robotics::nigh::metric::L2Space<float, 3>;
+        // Use Concurrent for thread-safe, parallel insertions
         using NighTree = unc::robotics::nigh::Nigh<
             NighEntity,
             NighSpace,
             NighEntityKey,
-            unc::robotics::nigh::NoThreadSafety,
+            unc::robotics::nigh::Concurrent,
             unc::robotics::nigh::KDTreeBatch<64>>;
     }
 
     struct BvhSpatialStructure::Impl {
-        tinybvh::BVH bvh;
-        std::vector<tinybvh::bvhvec4> bvh_aabbs;
+        mutable tinybvh::BVH bvh;
+        mutable std::vector<tinybvh::bvhvec4> bvh_aabbs;
         std::vector<int> entity_ids;
-        std::vector<glm::vec3> entity_positions;
-        std::unordered_map<int, int> id_to_prim;
+        mutable std::atomic<bool> bvh_dirty{true};
+        mutable std::mutex bvh_build_mutex;
 
         NighTree nigh_tree;
 
-        void Update(const std::vector<std::shared_ptr<EntityBase>>& entities) {
-            bool needs_rebuild = entities.size() != entity_ids.size();
-            if (!needs_rebuild) {
-                for (size_t i = 0; i < entities.size(); ++i) {
-                    if (entities[i]->GetId() != entity_ids[i]) {
-                        needs_rebuild = true;
-                        break;
-                    }
-                }
-            }
-
-            if (needs_rebuild) {
-                Rebuild(entities);
-            } else {
-                Refit(entities);
-            }
-        }
-
-        void Rebuild(const std::vector<std::shared_ptr<EntityBase>>& entities) {
-            id_to_prim.clear();
+        void Update(const std::vector<std::shared_ptr<EntityBase>>& entities, ::task_thread_pool::task_thread_pool& pool) {
+            // Nigh is chose for performant update capabilities, so we clear and re-insert in parallel.
+            // KDTreeBatch insertion is very fast.
             nigh_tree.clear();
+
             if (entities.empty()) {
-                bvh_aabbs.clear();
                 entity_ids.clear();
-                entity_positions.clear();
+                bvh_aabbs.clear();
+                bvh_dirty.store(true, std::memory_order_release);
                 return;
             }
 
-            bvh_aabbs.assign(entities.size() * 2, tinybvh::bvhvec4(0.0f));
+            // 1. Parallel insertion into Nigh
+            std::for_each(poolstl::par.on(pool), entities.begin(), entities.end(), [&](const auto& entity) {
+                auto pos = entity->GetPosition();
+                nigh_tree.insert({entity, {pos.x, pos.y, pos.z}});
+            });
+
+            // 2. Prepare data for lazy BVH building
             entity_ids.assign(entities.size(), -1);
-            entity_positions.assign(entities.size(), glm::vec3(0.0f));
+            bvh_aabbs.assign(entities.size() * 2, tinybvh::bvhvec4(0.0f));
 
             for (size_t i = 0; i < entities.size(); ++i) {
                 const auto& entity = entities[i];
-                auto        pos = entity->GetPosition();
-                float       size = entity->GetSize() * 0.5f;
+                auto pos = entity->GetPosition();
+                float size = entity->GetSize() * 0.5f;
 
                 bvh_aabbs[i * 2] = tinybvh::bvhvec4(pos.x - size, pos.y - size, pos.z - size, 0.0f);
                 bvh_aabbs[i * 2 + 1] = tinybvh::bvhvec4(pos.x + size, pos.y + size, pos.z + size, 0.0f);
                 entity_ids[i] = entity->GetId();
-                entity_positions[i] = glm::vec3(pos.x, pos.y, pos.z);
-                id_to_prim[entity_ids[i]] = (int)i;
-
-                nigh_tree.insert({entity_ids[i], {pos.x, pos.y, pos.z}});
             }
 
-            bvh.BuildAABB(bvh_aabbs.data(), (uint32_t)entities.size());
+            bvh_dirty.store(true, std::memory_order_release);
         }
 
-        void Refit(const std::vector<std::shared_ptr<EntityBase>>& entities) {
-            if (entities.empty())
-                return;
+        void EnsureBvhBuilt() const {
+            if (!bvh_dirty.load(std::memory_order_acquire)) return;
+            std::lock_guard<std::mutex> lock(bvh_build_mutex);
+            if (!bvh_dirty.load(std::memory_order_relaxed)) return;
 
-            nigh_tree.clear();
-            // Update AABBs and positions
-            for (size_t i = 0; i < entities.size(); ++i) {
-                const auto& entity = entities[i];
-                auto        pos = entity->GetPosition();
-                float       size = entity->GetSize() * 0.5f;
-
-                bvh_aabbs[i * 2] = tinybvh::bvhvec4(pos.x - size, pos.y - size, pos.z - size, 0.0f);
-                bvh_aabbs[i * 2 + 1] = tinybvh::bvhvec4(pos.x + size, pos.y + size, pos.z + size, 0.0f);
-                entity_positions[i] = glm::vec3(pos.x, pos.y, pos.z);
-
-                nigh_tree.insert({entity_ids[i], {pos.x, pos.y, pos.z}});
+            if (!entity_ids.empty()) {
+                bvh.BuildAABB(bvh_aabbs.data(), (uint32_t)entity_ids.size());
             }
-
-            // Manually refit the BVH nodes using updated AABBs
-            RefitRecursive(0);
-            bvh.aabbMin = bvh.bvhNode[0].aabbMin;
-            bvh.aabbMax = bvh.bvhNode[0].aabbMax;
-        }
-
-        void RefitRecursive(uint32_t nodeIdx) {
-            auto& node = bvh.bvhNode[nodeIdx];
-            if (node.isLeaf()) {
-                tinybvh::bvhvec3 bmin(BVH_FAR), bmax(-BVH_FAR);
-                for (uint32_t i = 0; i < node.triCount; ++i) {
-                    uint32_t primIdx = bvh.primIdx[node.leftFirst + i];
-                    bmin = tinybvh_min(bmin, tinybvh::bvhvec3(bvh_aabbs[primIdx * 2]));
-                    bmax = tinybvh_max(bmax, tinybvh::bvhvec3(bvh_aabbs[primIdx * 2 + 1]));
-                }
-                node.aabbMin = bmin;
-                node.aabbMax = bmax;
-            } else {
-                RefitRecursive(node.leftFirst);
-                RefitRecursive(node.leftFirst + 1);
-                const auto& left = bvh.bvhNode[node.leftFirst];
-                const auto& right = bvh.bvhNode[node.leftFirst + 1];
-                node.aabbMin = tinybvh_min(left.aabbMin, right.aabbMin);
-                node.aabbMax = tinybvh_max(left.aabbMax, right.aabbMax);
-            }
+            bvh_dirty.store(false, std::memory_order_release);
         }
 
         void RaycastRecursive(
@@ -183,12 +140,12 @@ namespace Boidsish {
     BvhSpatialStructure::BvhSpatialStructure(BvhSpatialStructure&&) noexcept = default;
     BvhSpatialStructure& BvhSpatialStructure::operator=(BvhSpatialStructure&&) noexcept = default;
 
-    void BvhSpatialStructure::Update(const std::vector<std::shared_ptr<EntityBase>>& entities) {
-        impl_->Update(entities);
+    void BvhSpatialStructure::Update(const std::vector<std::shared_ptr<EntityBase>>& entities, ::task_thread_pool::task_thread_pool& pool) {
+        impl_->Update(entities, pool);
     }
 
-    std::vector<int> BvhSpatialStructure::GetEntityIdsInRadius(const glm::vec3& center, float radius, const std::vector<int>& allowed_ids) const {
-        std::vector<int> results;
+    std::vector<std::shared_ptr<EntityBase>> BvhSpatialStructure::GetEntitiesInRadius(const glm::vec3& center, float radius) const {
+        std::vector<std::shared_ptr<EntityBase>> results;
         if (impl_->entity_ids.empty()) return results;
 
         Eigen::Matrix<float, 3, 1> q{center.x, center.y, center.z};
@@ -197,61 +154,33 @@ namespace Boidsish {
         // nigh uses max_size() as a flag for all neighbors within radius
         impl_->nigh_tree.nearest(neighbors, q, std::numeric_limits<std::size_t>::max(), radius);
 
-        if (allowed_ids.empty()) {
-            for (const auto& pair : neighbors) {
-                results.push_back(pair.first.id);
-            }
-        } else {
-            // Optimization: if allowed_ids is small, it might be better to check against it
-            // if large, sorting it for binary search is better.
-            std::vector<int> sorted_allowed = allowed_ids;
-            std::sort(sorted_allowed.begin(), sorted_allowed.end());
-            for (const auto& pair : neighbors) {
-                if (std::binary_search(sorted_allowed.begin(), sorted_allowed.end(), pair.first.id)) {
-                    results.push_back(pair.first.id);
-                }
-            }
+        results.reserve(neighbors.size());
+        for (const auto& pair : neighbors) {
+            results.push_back(pair.first.entity);
         }
 
         return results;
     }
 
-    int BvhSpatialStructure::FindNearestId(const glm::vec3& center, float max_radius, const std::vector<int>& allowed_ids) const {
-        if (impl_->entity_ids.empty()) return -1;
+    std::shared_ptr<EntityBase> BvhSpatialStructure::FindNearest(const glm::vec3& center, float max_radius) const {
+        if (impl_->entity_ids.empty()) return nullptr;
 
         Eigen::Matrix<float, 3, 1> q{center.x, center.y, center.z};
+        std::vector<std::pair<NighEntity, float>> neighbors;
+        impl_->nigh_tree.nearest(neighbors, q, 1, max_radius);
 
-        if (allowed_ids.empty()) {
-            std::vector<std::pair<NighEntity, float>> neighbors;
-            impl_->nigh_tree.nearest(neighbors, q, 1, max_radius);
-            if (!neighbors.empty()) {
-                return neighbors[0].first.id;
-            }
-        } else {
-            // Nigh doesn't support filtering natively in the nearest() call easily without
-            // potentially many re-queries if the nearest isn't allowed.
-            // We can use the k-nearest version and find the first allowed one.
-            std::vector<std::pair<NighEntity, float>> neighbors;
-            // Fetch some reasonable number of neighbors, or all if needed.
-            // Since we want the ABSOLUTE nearest allowed, and Nigh is fast,
-            // we can fetch all in radius and pick the first one.
-            impl_->nigh_tree.nearest(neighbors, q, std::numeric_limits<std::size_t>::max(), max_radius);
-
-            std::vector<int> sorted_allowed = allowed_ids;
-            std::sort(sorted_allowed.begin(), sorted_allowed.end());
-
-            for (const auto& pair : neighbors) {
-                if (std::binary_search(sorted_allowed.begin(), sorted_allowed.end(), pair.first.id)) {
-                    return pair.first.id;
-                }
-            }
+        if (!neighbors.empty()) {
+            return neighbors[0].first.entity;
         }
 
-        return -1;
+        return nullptr;
     }
 
     bool BvhSpatialStructure::Raycast(const Ray& ray, float& out_t, int& out_entity_id) const {
         if (impl_->entity_ids.empty()) return false;
+
+        impl_->EnsureBvhBuilt();
+
         tinybvh::Ray bvh_ray(
             tinybvh::bvhvec3(ray.origin.x, ray.origin.y, ray.origin.z),
             tinybvh::bvhvec3(ray.direction.x, ray.direction.y, ray.direction.z)

@@ -6,6 +6,10 @@
 #include <glm/glm.hpp>
 #include "collision.h"
 
+namespace task_thread_pool {
+    class task_thread_pool;
+}
+
 namespace Boidsish {
 
     class EntityBase;
@@ -38,17 +42,17 @@ namespace Boidsish {
          * Automatically decides between a full rebuild and a faster refit
          * based on whether the set of entities has changed.
          */
-        void Update(const std::vector<std::shared_ptr<EntityBase>>& entities);
+        void Update(const std::vector<std::shared_ptr<EntityBase>>& entities, task_thread_pool::task_thread_pool& pool);
 
         /**
          * @brief Finds all entities within a certain radius.
          */
-        std::vector<int> GetEntityIdsInRadius(const glm::vec3& center, float radius, const std::vector<int>& allowed_ids) const;
+        std::vector<std::shared_ptr<EntityBase>> GetEntitiesInRadius(const glm::vec3& center, float radius) const;
 
         /**
-         * @brief Finds the nearest entity from an allowed set.
+         * @brief Finds the nearest entity.
          */
-        int FindNearestId(const glm::vec3& center, float max_radius, const std::vector<int>& allowed_ids) const;
+        std::shared_ptr<EntityBase> FindNearest(const glm::vec3& center, float max_radius) const;
 
         /**
          * @brief Raycasts against the entity AABBs.
