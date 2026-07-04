@@ -75,7 +75,7 @@ TEST(SpatialEntityHandlerTest, Raycast) {
     EXPECT_NEAR(t, 9.0f, 0.1f);
 }
 
-TEST(SpatialEntityHandlerTest, Refit) {
+TEST(SpatialEntityHandlerTest, Rebuild) {
     task_thread_pool::task_thread_pool pool;
     SpatialEntityHandler handler(pool);
 
@@ -85,7 +85,7 @@ TEST(SpatialEntityHandlerTest, Refit) {
     auto entity = handler.GetEntity(id);
     entity->SetPosition(Vector3(20, 0, 0));
 
-    handler.operator()(2.0f); // Should trigger Refit instead of Rebuild
+    handler.operator()(2.0f); // Should trigger full rebuild of the grid
 
     // Search at new position
     auto near_entities = handler.GetEntitiesInRadius<TestEntity>(Vector3(20, 0, 0), 1.0f);

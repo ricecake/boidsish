@@ -10,7 +10,7 @@
 
 #include "entity.h"
 #include "graphics.h"
-#include "bvh_spatial_structure.h"
+#include "spatial_structure.h"
 
 namespace Boidsish {
 
@@ -38,8 +38,8 @@ namespace Boidsish {
 			std::vector<std::shared_ptr<T>> result;
 			glm::vec3                       c(center.x, center.y, center.z);
 
-			std::shared_lock lock(bvh_mutex_);
-			auto             ids = bvh_.GetEntityIdsInRadius(c, radius, allowed_ids);
+			std::shared_lock lock(spatial_mutex_);
+			auto             ids = spatial_structure_.GetEntityIdsInRadius(c, radius, allowed_ids);
 
 			for (int id : ids) {
 				auto entity = GetEntity(id);
@@ -71,8 +71,8 @@ namespace Boidsish {
 			}
 
 			glm::vec3        c(center.x, center.y, center.z);
-			std::shared_lock lock(bvh_mutex_);
-			int              id = bvh_.FindNearestId(c, 1e10f, allowed_ids);
+			std::shared_lock lock(spatial_mutex_);
+			int              id = spatial_structure_.FindNearestId(c, 1000.0f, allowed_ids);
 			if (id != -1) {
 				auto entity = GetEntity(id);
 				if (entity) {
@@ -89,15 +89,15 @@ namespace Boidsish {
 		RaycastEntities(const Ray& ray, float& out_t, glm::vec3& out_hit_point) const override;
 
 	protected:
-		// BVH is rebuilt from scratch every frame, so we don't need incremental updates.
+		// Spatial structure is rebuilt from scratch every frame, so we don't need incremental updates.
 		void OnEntityUpdated(std::shared_ptr<EntityBase> entity) override { (void)entity; }
 
 		void PostTimestep(float time, float delta_time) override;
 
 	private:
-		BvhSpatialStructure bvh_;
-		BvhSpatialStructure next_bvh_; // Double buffering
-		mutable std::shared_mutex bvh_mutex_;
+		SpatialStructure spatial_structure_;
+		SpatialStructure next_spatial_structure_; // Double buffering
+		mutable std::shared_mutex spatial_mutex_;
 	};
 
 } // namespace Boidsish

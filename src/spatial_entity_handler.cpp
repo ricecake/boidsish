@@ -23,11 +23,11 @@ namespace Boidsish {
 		}
 
 		// Rebuild the "next" implementation (write buffer)
-		next_bvh_.Update(entities);
+		next_spatial_structure_.Update(entities);
 
 		// Swap it into the active implementation (read buffer)
-		std::unique_lock lock(bvh_mutex_);
-		bvh_.swap(next_bvh_);
+		std::unique_lock lock(spatial_mutex_);
+		spatial_structure_.swap(next_spatial_structure_);
 	}
 
 	std::shared_ptr<EntityBase>
@@ -35,8 +35,8 @@ namespace Boidsish {
 		int id = -1;
 
 		{
-			std::shared_lock lock(bvh_mutex_);
-			if (!bvh_.Raycast(ray, out_t, id)) {
+			std::shared_lock lock(spatial_mutex_);
+			if (!spatial_structure_.Raycast(ray, out_t, id)) {
 				return nullptr;
 			}
 		}

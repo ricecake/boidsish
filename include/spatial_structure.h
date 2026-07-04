@@ -2,7 +2,6 @@
 
 #include <vector>
 #include <memory>
-#include <typeindex>
 #include <glm/glm.hpp>
 #include "collision.h"
 
@@ -11,32 +10,25 @@ namespace Boidsish {
     class EntityBase;
 
     /**
-     * @brief Encapsulates a Bounding Volume Hierarchy for spatial queries.
-     *
-     * This class separates the low-level BVH implementation from the entity management.
+     * @brief Encapsulates a bucketed spatial grid for spatial queries.
      */
-    class BvhSpatialStructure {
+    class SpatialStructure {
     public:
-        BvhSpatialStructure();
-        ~BvhSpatialStructure();
+        SpatialStructure();
+        ~SpatialStructure();
 
         // Non-copyable
-        BvhSpatialStructure(const BvhSpatialStructure&) = delete;
-        BvhSpatialStructure& operator=(const BvhSpatialStructure&) = delete;
+        SpatialStructure(const SpatialStructure&) = delete;
+        SpatialStructure& operator=(const SpatialStructure&) = delete;
 
         // Movable
-        BvhSpatialStructure(BvhSpatialStructure&&) noexcept;
-        BvhSpatialStructure& operator=(BvhSpatialStructure&&) noexcept;
+        SpatialStructure(SpatialStructure&&) noexcept;
+        SpatialStructure& operator=(SpatialStructure&&) noexcept;
 
-        void swap(BvhSpatialStructure& other) noexcept {
-            std::swap(impl_, other.impl_);
-        }
+        void swap(SpatialStructure& other) noexcept;
 
         /**
-         * @brief Updates the BVH from a list of entities.
-         *
-         * Automatically decides between a full rebuild and a faster refit
-         * based on whether the set of entities has changed.
+         * @brief Updates the spatial structure from a list of entities.
          */
         void Update(const std::vector<std::shared_ptr<EntityBase>>& entities);
 
