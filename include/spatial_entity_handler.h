@@ -27,24 +27,20 @@ namespace Boidsish {
 
 		template <typename T>
 		std::vector<std::shared_ptr<T>> GetEntitiesInRadius(const Vector3& center, float radius) const {
-			std::vector<int> allowed_ids;
-			if constexpr (!std::is_same_v<T, EntityBase>) {
-				auto typed_entities = GetEntitiesByType<T>();
-				for (auto* e : typed_entities) {
-					allowed_ids.push_back(e->GetId());
-				}
-			}
-
 			std::vector<std::shared_ptr<T>> result;
 			glm::vec3                       c(center.x, center.y, center.z);
 
 			std::shared_lock lock(bvh_mutex_);
-			auto             ids = bvh_.GetEntityIdsInRadius(c, radius, allowed_ids);
+			auto             entities = bvh_.GetEntitiesInRadius(c, radius);
 
-			for (int id : ids) {
-				auto entity = GetEntity(id);
-				if (entity) {
+			for (auto& entity : entities) {
+				if constexpr (std::is_same_v<T, EntityBase>) {
 					result.push_back(std::static_pointer_cast<T>(entity));
+				} else {
+					auto typed_entity = std::dynamic_pointer_cast<T>(entity);
+					if (typed_entity) {
+						result.push_back(typed_entity);
+					}
 				}
 			}
 
@@ -62,23 +58,33 @@ namespace Boidsish {
 			(void)expansion_factor;
 			(void)max_expansions;
 
-			std::vector<int> allowed_ids;
-			if constexpr (!std::is_same_v<T, EntityBase>) {
-				auto typed_entities = GetEntitiesByType<T>();
-				for (auto* e : typed_entities) {
-					allowed_ids.push_back(e->GetId());
+			glm::vec3 c(center.x, center.y, center.z);
+
+			std::shared_lock lock(bvh_mutex_);
+
+			if constexpr (std::is_same_v<T, EntityBase>) {
+				auto entity = bvh_.FindNearest(c, 1e10f);
+				return std::static_pointer_cast<T>(entity);
+			} else {
+				// For typed nearest, we search in increasing radii if needed,
+				// or just use k-nearest from Nigh.
+				// For now, let's fetch a batch and filter.
+				// Since Nigh is fast, we can fetch more if the first one doesn't match.
+				auto entity = bvh_.FindNearest(c, 1e10f);
+				if (auto typed = std::dynamic_pointer_cast<T>(entity)) {
+					return typed;
+				}
+
+				// Fallback to radius search if the absolute nearest is not of the requested type.
+				// In many cases in this engine, the absolute nearest IS the target or there are few entities.
+				auto near_entities = bvh_.GetEntitiesInRadius(c, 1e10f);
+				for (auto& e : near_entities) {
+					if (auto typed = std::dynamic_pointer_cast<T>(e)) {
+						return typed;
+					}
 				}
 			}
 
-			glm::vec3        c(center.x, center.y, center.z);
-			std::shared_lock lock(bvh_mutex_);
-			int              id = bvh_.FindNearestId(c, 1e10f, allowed_ids);
-			if (id != -1) {
-				auto entity = GetEntity(id);
-				if (entity) {
-					return std::static_pointer_cast<T>(entity);
-				}
-			}
 			return nullptr;
 		}
 

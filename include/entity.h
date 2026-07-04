@@ -372,6 +372,8 @@ namespace Boidsish {
 
 		int GetNextId() const { return next_id_++; }
 
+		task_thread_pool::task_thread_pool& GetThreadPool() const { return thread_pool_; }
+
 		std::tuple<float, glm::vec3>                 CalculateTerrainPropertiesAtPoint(float x, float y) const;
 		const std::vector<std::shared_ptr<Terrain>>& GetTerrainChunks() const;
 		const TerrainGenerator*                      GetTerrainGenerator() const;

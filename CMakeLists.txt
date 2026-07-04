@@ -103,6 +103,7 @@ target_include_directories(boidsish
         ${ASSIMP_INCLUDE_DIR}
         ${BULLET_INCLUDE_DIRS}
         external/eigen
+        external/nigh/src
 )
 
 # 4. Platform-Specific Linking
