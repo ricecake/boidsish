@@ -10,7 +10,8 @@ struct Light {
 	float inner_cutoff; // Also: emissive_radius (EMISSIVE), flash_radius (FLASH)
 	float outer_cutoff; // Also: falloff_exp (FLASH)
 	int   flags;
-	float _pad[2];
+	float _pad0;
+	float _pad1;
 };
 
 const int LIGHT_FLAG_CASTS_SHADOW = 1;

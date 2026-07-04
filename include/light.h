@@ -30,7 +30,7 @@ namespace Boidsish {
 	 * This struct must match the std140 layout of the 'Light' struct in GLSL.
 	 * Total size: 64 bytes.
 	 */
-	struct LightGPU {
+	struct alignas(16) LightGPU {
 		glm::vec3 position;     // offset 0,  12 bytes
 		float     intensity;    // offset 12, 4 bytes
 		glm::vec3 color;        // offset 16, 12 bytes
