@@ -25,7 +25,7 @@ TEST(SpatialEntityHandlerTest, RadiusSearch) {
     handler.AddEntity<TestEntity>(Vector3(10, 0, 0));
     handler.AddEntity<OtherEntity>(Vector3(2, 0, 0));
 
-    // Spatial structures are updated in PostTimestep
+    // Spatial structures are updated in PreTimestep of the next call
     handler.operator()(1.0f);
 
     auto near_entities = handler.GetEntitiesInRadius<TestEntity>(Vector3(0, 0, 0), 5.0f);
@@ -75,17 +75,19 @@ TEST(SpatialEntityHandlerTest, Raycast) {
     EXPECT_NEAR(t, 9.0f, 0.1f);
 }
 
-TEST(SpatialEntityHandlerTest, Refit) {
+TEST(SpatialEntityHandlerTest, ParallelIncrementalUpdate) {
     task_thread_pool::task_thread_pool pool;
     SpatialEntityHandler handler(pool);
 
     auto id = handler.AddEntity<TestEntity>(Vector3(0, 0, 0));
-    handler.operator()(1.0f); // Build
+    handler.operator()(1.0f); // Processes AddEntity
 
     auto entity = handler.GetEntity(id);
     entity->SetPosition(Vector3(20, 0, 0));
 
-    handler.operator()(2.0f); // Should trigger Refit instead of Rebuild
+    // In actual use, EntityHandler::operator() parallel loop calls OnEntityUpdated which buffers updates.
+    handler.operator()(2.0f); // Parallel updates + OnEntityUpdated -> BufferUpdate
+    handler.operator()(3.0f); // PreTimestep -> ProcessBufferedUpdates
 
     // Search at new position
     auto near_entities = handler.GetEntitiesInRadius<TestEntity>(Vector3(20, 0, 0), 1.0f);
