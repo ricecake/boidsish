@@ -17,6 +17,7 @@ struct Light {
 const int LIGHT_FLAG_CASTS_SHADOW = 1;
 const int LIGHT_FLAG_VOLUMETRIC_SHADOW = 2;
 const int LIGHT_FLAG_CAMERA_RELATIVE = 4;
+const int LIGHT_FLAG_CLOUD_EMISSIVE = 8;
 
 const int MAX_LIGHTS = [[MAX_LIGHTS]];
 

@@ -321,11 +321,32 @@ void main() {
 					prevTransmission = transmittanceAtStep;
 
 					vec3 stepScattering = vec3(0.0);
+					vec3 emissiveGlow = vec3(0.0);
+
 					for (int j = 0; j < num_lights; j++) {
+						if (lights[j].intensity <= 0.0) continue;
+
+						// Cloud Emissive Lighting (Lightning)
+						if ((lights[j].flags & LIGHT_FLAG_CLOUD_EMISSIVE) != 0) {
+							// Sheet-like segment light: distance to line segment (position -> direction)
+							vec3 A = lights[j].position;
+							vec3 B = lights[j].direction;
+							vec3 AP = subP - A;
+							vec3 AB = B - A;
+							float h = clamp(dot(AP, AB) / dot(AB, AB), 0.0, 1.0);
+							float distToSegment = length(AP - AB * h);
+
+							float emissiveRadius = lights[j].inner_cutoff;
+							float falloff = 1.0 / (1.0 + 0.01 * distToSegment + 0.0001 * distToSegment * distToSegment);
+							falloff *= smoothstep(emissiveRadius * 1.5, emissiveRadius * 0.5, distToSegment);
+
+							emissiveGlow += lights[j].color.rgb * lights[j].intensity * falloff;
+						}
+
+						// Standard Cloud Scattering (Shadowed)
 						// Skip if doesn't cast shadows OR doesn't have volumetric shadow flag
 						if ((lights[j].flags & LIGHT_FLAG_CASTS_SHADOW) == 0 ||
 						    (lights[j].flags & LIGHT_FLAG_VOLUMETRIC_SHADOW) == 0) continue;
-						if (lights[j].intensity <= 0.0) continue;
 
 						vec3 L;
 						float attenuation;
@@ -392,7 +413,7 @@ void main() {
 							lightScale = (j == 0 ? cloudSunLightScale : cloudMoonLightScale);
 						}
 
-						stepScattering += lightTransmittance * lights[j].color * shadowTerm * phase *
+						stepScattering += lightTransmittance * lights[j].color.rgb * shadowTerm * phase *
 							lights[j].intensity * attenuation * lightScale;
 					}
 
@@ -401,7 +422,7 @@ void main() {
 					float sunHeight = max(primaryLightDir.y, 0.0);
 					float ambientScale = mix(0.3, 1.0, smoothstep(0.0, 0.3, sunHeight));
 					vec3  ambient = mix(ambientUp, ambientHorizon, 0.4) * ambientScale;
-					vec3  S = (stepScattering + ambient * smoothstep(0.0, 1.0, h_norm));
+					vec3  S = (stepScattering + ambient * smoothstep(0.0, 1.0, h_norm) + emissiveGlow);
 
 					float weight = cloudTransmittance * (1.0 - transmittanceAtStep);
 					float bias = exp(-accumulatedOpticalDepth * 2.0);

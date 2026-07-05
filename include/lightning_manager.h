@@ -32,6 +32,8 @@ namespace Boidsish {
 		float intensity;       // Current brightness [0-1]
 		glm::vec3 color;
 		bool has_spawned_flash;
+		int   flash_light_id = -1;
+		glm::vec3 drift_velocity = glm::vec3(0.0f);
 	};
 
 	class LightningManager : public IManager {

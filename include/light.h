@@ -46,6 +46,7 @@ namespace Boidsish {
 	constexpr int LIGHT_FLAG_CASTS_SHADOW = 1;
 	constexpr int LIGHT_FLAG_VOLUMETRIC_SHADOW = 2;
 	constexpr int LIGHT_FLAG_CAMERA_RELATIVE = 4;
+	constexpr int LIGHT_FLAG_CLOUD_EMISSIVE = 8;
 
 	/**
 	 * @brief Complete lighting UBO data for single-call upload (std140 layout).
@@ -141,6 +142,7 @@ namespace Boidsish {
 		bool casts_shadow = false;
 		bool volumetric_shadow = false;
 		bool camera_relative = false;
+		bool cloud_emissive = false;
 
 		int  shadow_map_index = -1;
 
@@ -167,6 +169,7 @@ namespace Boidsish {
 			if (casts_shadow) gpu.flags |= LIGHT_FLAG_CASTS_SHADOW;
 			if (volumetric_shadow) gpu.flags |= LIGHT_FLAG_VOLUMETRIC_SHADOW;
 			if (camera_relative) gpu.flags |= LIGHT_FLAG_CAMERA_RELATIVE;
+			if (cloud_emissive) gpu.flags |= LIGHT_FLAG_CLOUD_EMISSIVE;
 			return gpu;
 		}
 
