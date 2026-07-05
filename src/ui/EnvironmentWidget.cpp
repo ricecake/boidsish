@@ -10,7 +10,6 @@
 #include "imgui.h"
 #include "post_processing/PostProcessingManager.h"
 #include "post_processing/effects/AtmosphereEffect.h"
-#include "post_processing/effects/VolumetricLightingEffect.h"
 #include "terrain_generator_interface.h"
 #include "weather_manager.h"
 
@@ -819,33 +818,26 @@ namespace Boidsish {
 					}
 				}
 
-				// 2.5 Volumetric Lighting
+				// 2.5 Volumetric Lighting (Unified with Atmosphere)
 				if (ImGui::CollapsingHeader("Volumetric Lighting", ImGuiTreeNodeFlags_DefaultOpen)) {
 					auto& manager = m_visualizer.GetPostProcessingManager();
 					for (auto& effect : manager.GetPreToneMappingEffects()) {
-						if (effect->GetName() == "Volumetric Lighting") {
-							bool is_enabled = effect->IsEnabled();
-							if (ImGui::Checkbox("Enable Volumetric Lighting", &is_enabled)) {
-								effect->SetEnabled(is_enabled);
-							}
+						if (effect->GetName() == "Atmosphere") {
+							auto atmosphere_effect = std::dynamic_pointer_cast<PostProcessing::AtmosphereEffect>(effect);
+							if (atmosphere_effect) {
+								float intensity = atmosphere_effect->GetVolumetricIntensity();
+								if (ImGui::SliderFloat("Intensity##Vol", &intensity, 0.0f, 5.0f)) {
+									atmosphere_effect->SetVolumetricIntensity(intensity);
+								}
 
-							if (is_enabled) {
-								auto vol_effect = std::dynamic_pointer_cast<PostProcessing::VolumetricLightingEffect>(effect);
-								if (vol_effect) {
-									float intensity = vol_effect->GetIntensity();
-									if (ImGui::SliderFloat("Intensity##Vol", &intensity, 0.0f, 5.0f)) {
-										vol_effect->SetIntensity(intensity);
-									}
+								float anisotropy = atmosphere_effect->GetVolumetricAnisotropy();
+								if (ImGui::SliderFloat("Anisotropy##Vol", &anisotropy, 0.0f, 0.99f)) {
+									atmosphere_effect->SetVolumetricAnisotropy(anisotropy);
+								}
 
-									float anisotropy = vol_effect->GetScatteringAnisotropy();
-									if (ImGui::SliderFloat("Anisotropy##Vol", &anisotropy, 0.0f, 0.99f)) {
-										vol_effect->SetScatteringAnisotropy(anisotropy);
-									}
-
-									float alpha = vol_effect->GetTemporalAlpha();
-									if (ImGui::SliderFloat("Temporal Alpha##Vol", &alpha, 0.0f, 0.99f)) {
-										vol_effect->SetTemporalAlpha(alpha);
-									}
+								float exposure = atmosphere_effect->GetVolumetricHazeExposure();
+								if (ImGui::SliderFloat("Haze Exposure##Vol", &exposure, 0.0f, 10.0f)) {
+									atmosphere_effect->SetVolumetricHazeExposure(exposure);
 								}
 							}
 							break;

@@ -65,6 +65,7 @@ namespace Boidsish {
 				cloud_render_shader_->trySetInt("u_blueNoiseTexture", Constants::TextureUnit::NoiseBlue());
 				cloud_render_shader_->trySetInt("u_extraNoiseTexture", Constants::TextureUnit::NoiseExtra());
 				cloud_render_shader_->trySetInt("u_cloudWeatherTexture", Constants::TextureUnit::CloudWeatherBake());
+				cloud_render_shader_->setInt("u_multiScatteringLUT", Constants::TextureUnit::AtmosphereMultiScattering());
 			}
 
 			if (temporal_shader_ && temporal_shader_->isValid()) {
@@ -235,6 +236,10 @@ namespace Boidsish {
 				cloud_render_shader_->setInt("uCloudMaxSamples", cloud_max_samples_);
 				cloud_render_shader_->setFloat("uCloudExtinction", cloud_extinction_);
 
+				cloud_render_shader_->setFloat("uVolumetricIntensity", volumetric_intensity_);
+				cloud_render_shader_->setFloat("uVolumetricAnisotropy", volumetric_anisotropy_);
+				cloud_render_shader_->setFloat("uVolumetricHazeExposure", volumetric_haze_exposure_);
+
 				cloud_render_shader_->setInt("depthTexture", 0);
 				cloud_render_shader_->setInt("uHistoryDepth", 1);
 				cloud_render_shader_->setInt("uHistoryMoments", 2);
@@ -248,13 +253,23 @@ namespace Boidsish {
 				glActiveTexture(GL_TEXTURE2);
 				glBindTexture(GL_TEXTURE_2D, temporal_moments_textures_[temporal_index_]);
 
+				auto& loc = ServiceLocator::Instance();
+				auto shadow_mgr = loc.Get<ShadowManager>();
+				auto terrain_mgr = loc.Get<TerrainRenderManager>();
+
+				if (shadow_mgr) shadow_mgr->BindForRendering(*cloud_render_shader_);
+				if (terrain_mgr) terrain_mgr->BindTerrainData(*cloud_render_shader_);
+
 				GpuResourceRegistry::Instance().BindTextures({
 					Constants::TextureUnit::AtmosphereTransmittance(),
+					Constants::TextureUnit::AtmosphereMultiScattering(),
 					Constants::TextureUnit::AtmosphereSkyView(),
 					Constants::TextureUnit::NoiseSimplex(),
 					Constants::TextureUnit::NoiseCurl(),
 					Constants::TextureUnit::NoiseBlue(),
-					Constants::TextureUnit::NoiseExtra()
+					Constants::TextureUnit::NoiseExtra(),
+					Constants::TextureUnit::WeatherScalars(),
+					Constants::TextureUnit::WeatherAerosols()
 				});
 
 				glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::CloudWeatherBake());

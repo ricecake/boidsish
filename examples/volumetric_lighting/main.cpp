@@ -1,7 +1,7 @@
 #include "graphics.h"
 #include "service_locator.h"
 #include "post_processing/PostProcessingManager.h"
-#include "post_processing/effects/VolumetricLightingEffect.h"
+#include "post_processing/effects/AtmosphereEffect.h"
 #include "light_manager.h"
 #include "weather_manager.h"
 #include "terrain_generator_interface.h"
@@ -11,9 +11,7 @@ using namespace Boidsish;
 int main() {
     Visualizer visualizer(1280, 720, "Volumetric Lighting Demo");
 
-    // Add Volumetric Lighting effect
-    auto vol_effect = std::make_shared<PostProcessing::VolumetricLightingEffect>();
-    visualizer.GetPostProcessingManager().AddEffect(vol_effect);
+    // Unified Volumetric is part of Atmosphere effect
 
     // Configure scene for god-rays
     auto& light_mgr = visualizer.GetLightManager();

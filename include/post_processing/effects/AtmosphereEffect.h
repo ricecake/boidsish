@@ -264,6 +264,16 @@ namespace Boidsish {
 			void SetCloudSvgfHistoryThreshold(float threshold) { cloud_svgf_history_threshold_ = threshold; }
 			float GetCloudSvgfHistoryThreshold() const { return cloud_svgf_history_threshold_; }
 
+			// Unified Volumetric parameters
+			void SetVolumetricIntensity(float i) { volumetric_intensity_ = i; }
+			float GetVolumetricIntensity() const { return volumetric_intensity_; }
+
+			void SetVolumetricAnisotropy(float g) { volumetric_anisotropy_ = g; }
+			float GetVolumetricAnisotropy() const { return volumetric_anisotropy_; }
+
+			void SetVolumetricHazeExposure(float e) { volumetric_haze_exposure_ = e; }
+			float GetVolumetricHazeExposure() const { return volumetric_haze_exposure_; }
+
 		private:
 			void InitializePackedResources();
 			void InitializeTemporalResources();
@@ -366,6 +376,9 @@ namespace Boidsish {
 			float cloud_svgf_history_boost_ = 4.0f;
 			float cloud_svgf_history_threshold_ = 10.0f;
 
+			float volumetric_intensity_ = 1.0f;
+			float volumetric_anisotropy_ = 0.8f;
+			float volumetric_haze_exposure_ = 1.0f;
 		};
 
 	} // namespace PostProcessing
