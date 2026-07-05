@@ -16,6 +16,7 @@ uniform sampler2D uHistoryMoments;
 
 uniform float uCloudTemporalGamma;
 uniform float uCloudMaxHistoryLength;
+uniform bool  uEnableTemporal;
 
 #include "../atmosphere/common.glsl"
 #include "../helpers/lighting.glsl"
@@ -308,7 +309,7 @@ void main() {
 	vec4 historyDepthProps = vec4(0.0);
 	float historyLength = 0.0;
 
-	if (validHistory) {
+	if (uEnableTemporal && validHistory) {
 		if (length(velocity) < 0.01) {
 			historyRGBA = texture(uHistoryFrame, prevUV);
 		}
@@ -327,15 +328,22 @@ void main() {
 		}
 	}
 
-	historyLength = validHistory ? min(uCloudMaxHistoryLength, historyLength + 1.0) : 1.0;
+	historyLength = (uEnableTemporal && validHistory) ? min(uCloudMaxHistoryLength, historyLength + 1.0) : 1.0;
 
-	if (!validHistory) {
+	if (!uEnableTemporal || !validHistory) {
 		if (is_new_pixel) {
 			historyRGBA = currentRGBA;
 			historyDepthProps = currDepthProps;
 		} else {
-			historyRGBA = vec4(0, 0, 0, 1);
-			historyDepthProps = vec4(50000.0 * worldScale, 50000.0 * worldScale, 100.0, 0.0);
+			// If TAA is disabled or history is invalid, and this isn't the one new pixel in the 2x2,
+			// we must still produce a result. We can't just leave it black if uEnableTemporal is false.
+			if (!uEnableTemporal) {
+				historyRGBA = texelFetch(uPackedFrame, packedPixel, 0);
+				historyDepthProps = texelFetch(uPackedDepth, packedPixel, 0);
+			} else {
+				historyRGBA = vec4(0, 0, 0, 1);
+				historyDepthProps = vec4(50000.0 * worldScale, 50000.0 * worldScale, 100.0, 0.0);
+			}
 		}
 		historyMoments = vec4(0.0);
 	}
@@ -381,13 +389,16 @@ void main() {
 	rejectionFactor *= motionConfidence;
 
 	float alpha = 0.0;
-	if (is_new_pixel) {
+	if (!uEnableTemporal) {
+		alpha = 1.0;
+		historyLength = 1.0;
+	} else if (is_new_pixel) {
 		historyLength = mix(historyLength, 1.0, rejectionFactor);
 		alpha = 1.0 / max(historyLength, 1.0);
 	}
 
 
-	vec4 accumulatedRGBA = is_new_pixel ? mix(historyRGBA, currentRGBA, alpha) : historyRGBA;
+	vec4 accumulatedRGBA = (is_new_pixel || !uEnableTemporal) ? mix(historyRGBA, currentRGBA, alpha) : historyRGBA;
 	vec4 accumulatedDepth = is_new_pixel ? mix(historyDepthProps, currDepthProps, alpha) : historyDepthProps;
 
 	float currentLuma = luma(accumulatedRGBA.rgb);

@@ -7,10 +7,14 @@ uniform sampler2D uCloudColor;   // Accumulated RGBA
 uniform sampler2D uCloudDepth;   // Accumulated Depth Props (dist, lastHit, step, density)
 uniform sampler2D uCloudMoments; // Accumulated Moments (Luma1, Luma2, Density2, historyLength)
 uniform int       uStepSize;     // 1, 2, 4, 8, 16...
+uniform int       uPassIndex;
 
 uniform float uCloudPhiLuma;
 uniform float uCloudPhiDepth;
 uniform float uCloudPhiDensity;
+
+uniform float uCloudSvgfHistoryBoost;
+uniform float uCloudSvgfHistoryThreshold;
 
 #include "../helpers/lighting.glsl"
 #include "../types/temporal_data.glsl"
@@ -39,9 +43,28 @@ void main() {
 	float centerHistory = centerMoments.w;
 
 	float varLuma = max(0.0, centerMoments.y - centerMoments.x * centerMoments.x);
+
+	// Adaptive SVGF: If we have very low history, the temporal variance might be unreliable or zero.
+	// We supplement it with spatial variance in the first pass.
+	if (uPassIndex == 0 && centerHistory < uCloudSvgfHistoryThreshold) {
+		float spatialM1 = 0.0;
+		float spatialM2 = 0.0;
+		float wSum = 0.0;
+		for (int y = -1; y <= 1; y++) {
+			for (int x = -1; x <= 1; x++) {
+				vec2 smpMoments = texture(uCloudMoments, uv + vec2(x, y) * texelSize).xy;
+				spatialM1 += smpMoments.x;
+				spatialM2 += smpMoments.y;
+				wSum += 1.0;
+			}
+		}
+		float spatialVar = max(0.0, (spatialM2 / wSum) - (spatialM1 / wSum) * (spatialM1 / wSum));
+		varLuma = mix(spatialVar, varLuma, smoothstep(0.0, uCloudSvgfHistoryThreshold, centerHistory));
+	}
+
 	float stdLuma = sqrt(varLuma);
 
-	float historyScale = mix(4.0, 1.0, smoothstep(1.0, 10.0, centerHistory));
+	float historyScale = mix(uCloudSvgfHistoryBoost, 1.0, smoothstep(1.0, uCloudSvgfHistoryThreshold, centerHistory));
 	float stepScale = max(1.0, float(uStepSize) / 2.0);
 
 	float phiLuma = (uCloudPhiLuma * stdLuma + 0.02) * historyScale * stepScale;

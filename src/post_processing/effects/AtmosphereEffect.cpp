@@ -118,16 +118,16 @@ namespace Boidsish {
 			// Color: Packed Cloud Color (RGBA16F)
 			glBindTexture(GL_TEXTURE_2D, packed_texture_);
 			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, packed_width, packed_height, 0, GL_RGBA, GL_FLOAT, NULL);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
 			// Depth: Packed Cloud Depth (RGBA32F)
 			glBindTexture(GL_TEXTURE_2D, packed_depth_texture_);
 			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, packed_width, packed_height, 0, GL_RGBA, GL_FLOAT, NULL);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
 			// Velocity: Packed Cloud Velocity (RG16F)
 			glBindTexture(GL_TEXTURE_2D, packed_velocity_texture_);
@@ -275,6 +275,7 @@ namespace Boidsish {
 				temporal_shader_->use();
 				temporal_shader_->setMat4("invProjection", invProj);
 
+				temporal_shader_->setBool("uEnableTemporal", enable_temporal_);
 				temporal_shader_->setFloat("uCloudTemporalGamma", cloud_temporal_gamma_);
 				temporal_shader_->setFloat("uCloudMaxHistoryLength", cloud_max_history_length_);
 
@@ -314,7 +315,7 @@ namespace Boidsish {
 
 			// --- PASS 3: Spatial Denoising (Full Resolution) ---
 			GLuint cloud_source = temporal_textures_[temporal_index_];
-			if (spatial_filter_shader_ && spatial_filter_shader_->isValid()) {
+			if (enable_spatial_filter_ && spatial_filter_shader_ && spatial_filter_shader_->isValid()) {
 				spatial_filter_shader_->use();
 				spatial_filter_shader_->setInt("uCloudColor", 0);
 				spatial_filter_shader_->setInt("uCloudDepth", 1);
@@ -324,12 +325,16 @@ namespace Boidsish {
 				spatial_filter_shader_->setFloat("uCloudPhiDepth", cloud_phi_depth_);
 				spatial_filter_shader_->setFloat("uCloudPhiDensity", cloud_phi_density_);
 
+				spatial_filter_shader_->setFloat("uCloudSvgfHistoryBoost", cloud_svgf_history_boost_);
+				spatial_filter_shader_->setFloat("uCloudSvgfHistoryThreshold", cloud_svgf_history_threshold_);
+
 				GLuint ping = temporal_textures_[temporal_index_];
 				GLuint pong = spatial_aux_texture_;
 
-				for (int i = 0; i < 4; ++i) {
+				for (int i = 0; i < cloud_svgf_passes_; ++i) {
 					int step_size = 1 << i;
 					spatial_filter_shader_->setInt("uStepSize", step_size);
+					spatial_filter_shader_->setInt("uPassIndex", i);
 
 					glActiveTexture(GL_TEXTURE0);
 					glBindTexture(GL_TEXTURE_2D, ping);
