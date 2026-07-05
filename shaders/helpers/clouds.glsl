@@ -9,6 +9,19 @@
 // #include "lygia/generative/snoise.glsl"
 #include "lygia/sdf.glsl"
 
+#ifndef CLOUD_SHELL_DEFINED
+#define CLOUD_SHELL_DEFINED
+float getCloudShellFloor(float altitude, float worldScale) {
+	return (altitude - 500.0) * worldScale;
+}
+float getCloudShellCeiling(float altitude, float thickness, float worldScale) {
+	return (altitude + thickness * 10.0 + 5000.0) * worldScale;
+}
+#endif
+
+layout(binding = [[ATMOSPHERE_CLOUD_FOM0_BINDING]]) uniform sampler2D u_cloudFOM0;
+layout(binding = [[ATMOSPHERE_CLOUD_FOM1_BINDING]]) uniform sampler2D u_cloudFOM1;
+
 float cloudPhase(float cosTheta) {
 	// Dual-lobe Henyey-Greenstein for forward and back scattering
 	// Blended with a large isotropic component to ensure visibility at all angles
@@ -617,6 +630,30 @@ vec4 calculateCloudDensity(
 
 float calculateCloudShadowDensity(vec3 p, CloudWeather weather, CloudLayer layer, CloudProperties props, float time) {
 	return 10.0 * calculateCloudDensity(p, weather, layer, props, time, true).x;
+}
+
+float evaluateCloudFOM(vec2 uv, float z, float thickness) {
+	vec4 fom0 = textureLod(u_cloudFOM0, uv, 0.0);
+	vec4 fom1 = textureLod(u_cloudFOM1, uv, 0.0);
+
+	float a0 = fom0.x;
+	vec3  a  = vec3(fom0.y, fom0.w, fom1.y);
+	vec3  b  = vec3(fom0.z, fom1.x, fom1.z);
+	float a4 = fom1.w;
+
+	// Analytically integrate the Fourier series for D(z) from 0 to z.
+	// Int [0, z] (a0 + sum(a_k cos(2pi k z') + b_k sin(2pi k z'))) dz'
+	// = a0*z + sum( a_k sin(2pi k z) / (2pi k) - b_k (cos(2pi k z) - 1) / (2pi k) )
+
+	float od = a0 * z;
+	float inv2PI = 1.0 / (2.0 * PI);
+
+	od += (a.x * sin(2.0 * PI * 1.0 * z) - b.x * (cos(2.0 * PI * 1.0 * z) - 1.0)) * (inv2PI / 1.0);
+	od += (a.y * sin(2.0 * PI * 2.0 * z) - b.y * (cos(2.0 * PI * 2.0 * z) - 1.0)) * (inv2PI / 2.0);
+	od += (a.z * sin(2.0 * PI * 3.0 * z) - b.z * (cos(2.0 * PI * 3.0 * z) - 1.0)) * (inv2PI / 3.0);
+	od += (a4  * sin(2.0 * PI * 4.0 * z) ) * (inv2PI / 4.0); // b4 is effectively zero or not stored
+
+	return max(0.0, od * thickness);
 }
 
 float evaluateCloudShadowDensityAtWorldPos(vec2 worldXZ, float time) {

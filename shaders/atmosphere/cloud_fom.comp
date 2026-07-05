@@ -1,0 +1,85 @@
+#version 460 core
+
+layout(local_size_x = 16, local_size_y = 16) in;
+
+layout(rgba16f, binding = 0) uniform image2D outFOM0;
+layout(rgba16f, binding = 1) uniform image2D outFOM1;
+
+#include "../helpers/constants.glsl"
+#include "../lighting.glsl"
+#include "../helpers/clouds.glsl"
+
+uniform vec2 u_mapCenter;
+uniform float u_mapSize;
+
+void main() {
+    ivec2 texel = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = imageSize(outFOM0);
+    if (texel.x >= size.x || texel.y >= size.y) return;
+
+    // Map texel to world XZ — this is the same projection as cloud_shadow_map.comp
+    vec2 uv = (vec2(texel) + 0.5) / vec2(size);
+    vec2 groundXZ = u_mapCenter + (uv - 0.5) * u_mapSize;
+
+    vec3 L = vec3(0, 1, 0);
+    for (int i = 0; i < min(2, num_lights); ++i) {
+        if (lights[i].type == 1) { // LIGHT_TYPE_DIRECTIONAL
+            L = normalize(-lights[i].direction);
+            break;
+        }
+    }
+
+    vec2 cloudXZ = groundXZ;
+    if (L.y > 0.01) {
+        float baseAlt = cloudAltitude * worldScale;
+        float t = baseAlt / L.y;
+        cloudXZ = groundXZ + L.xz * t;
+    }
+
+    CloudProperties props;
+    props.altitude = cloudAltitude;
+    props.thickness = cloudThickness;
+    props.densityBase = cloudDensity;
+    props.coverage = cloudCoverage;
+    props.worldScale = worldScale;
+
+    vec3 basePos = vec3(cloudXZ.x, props.altitude * props.worldScale, cloudXZ.y);
+    CloudWeather weather = computeCloudWeather(basePos, props);
+    CloudLayer layer = computeCloudLayer(weather, props);
+
+    // Fourier coefficients for density function D(z).
+    // We expand D(z) on [0, 1], where z=0 is ceiling and z=1 is floor.
+    // OD(z) = layer.thickness * integral from 0 to z of D(z') dz'.
+    float a0 = 0.0;
+    vec3  a = vec3(0.0);
+    vec3  b = vec3(0.0);
+    float a4 = 0.0;
+
+    const int steps = 16;
+    float invSteps = 1.0 / float(steps);
+
+    // Sample density and compute Fourier coefficients
+    for (int i = 0; i < steps; i++) {
+        float z = (float(i) + 0.5) * invSteps;
+        // p.y goes from ceiling down to floor
+        float h = layer.baseCeiling - z * layer.thickness;
+        vec3 p = vec3(cloudXZ.x, h, cloudXZ.y);
+
+        float d = calculateCloudDensity(p, weather, layer, props, time, true).x;
+
+        // Fourier expansion of the density function D(z) defined on [0, 1]
+        a0  += d;
+        a.x += d * cos(2.0 * PI * 1.0 * z);
+        b.x += d * sin(2.0 * PI * 1.0 * z);
+        a.y += d * cos(2.0 * PI * 2.0 * z);
+        b.y += d * sin(2.0 * PI * 2.0 * z);
+        a.z += d * cos(2.0 * PI * 3.0 * z);
+        b.z += d * sin(2.0 * PI * 3.0 * z);
+        a4  += d * cos(2.0 * PI * 4.0 * z);
+    }
+
+    // Multiply by 2.0 for a_k and b_k (standard Fourier series formula for [0, 1])
+    // Except a0 which is just the average.
+    imageStore(outFOM0, texel, vec4(a0, a.x * 2.0, b.x * 2.0, a.y * 2.0) * invSteps);
+    imageStore(outFOM1, texel, vec4(b.y * 2.0, a.z * 2.0, b.z * 2.0, a4 * 2.0) * invSteps);
+}

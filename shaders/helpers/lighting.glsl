@@ -134,12 +134,12 @@ float calculateCloudShadow(int light_index, vec3 frag_pos) {
 	}
 
 	vec3 L = normalize(-lights[light_index].direction);
-	if (L.y <= 0.001)
+	if (L.y <= 0.01)
 		return 1.0;
 
-	// Skip if fragment is above the cloud layer (it's not in the cloud's shadow)
-	float cloudCeiling = (cloudAltitude + cloudThickness * 8.0) * worldScale;
-	if (frag_pos.y > cloudCeiling)
+	// Use shell boundaries for quick culling
+	float shellCeiling = getCloudShellCeiling(cloudAltitude, cloudThickness, worldScale);
+	if (frag_pos.y > shellCeiling)
 		return 1.0;
 
 	// Shadow map is indexed by ground XZ — the map generator projected from
@@ -150,13 +150,22 @@ float calculateCloudShadow(int light_index, vec3 frag_pos) {
 	float d = 0.0;
 
 	if (shadowUV.x >= 0.0 && shadowUV.x <= 1.0 && shadowUV.y >= 0.0 && shadowUV.y <= 1.0) {
-		d = texture(u_cloudShadowMap, shadowUV.xy).r;
+		// Use Fourier Opacity Map for altitude-aware shadowing.
+		// To avoid expensive per-fragment weather map lookups, we use the average
+		// cloud layer properties for height remapping in the general scene.
+		float avgBaseCeiling = (cloudAltitude + cloudThickness * 4.0) * worldScale;
+		float avgThickness = cloudThickness * 4.0 * worldScale;
+
+		if (frag_pos.y < avgBaseCeiling) {
+			float z = clamp((avgBaseCeiling - frag_pos.y) / max(avgThickness, 1.0), 0.0, 1.0);
+			d = evaluateCloudFOM(shadowUV.xy, z, avgThickness);
+		} else {
+			return 1.0;
+		}
 	} else {
-		// Fallback: project to cloud layer to evaluate density directly
-		float t = (cloudAltitude * worldScale - frag_pos.y) / L.y;
-		if (t < 0.0) return 1.0;
-		vec3 cloudPos = frag_pos + L * t;
-		d = evaluateCloudShadowDensityAtWorldPos(cloudPos.xz, time);
+		// Fallback: evaluate integrated density directly at world position.
+		// This ensures consistency with the FOM branch (both are integrated OD).
+		d = evaluateCloudShadowDensityAtWorldPos(lookupXZ, time);
 	}
 
 	// Apply slant-factor (longer path through cloud at oblique angles) and intensity
