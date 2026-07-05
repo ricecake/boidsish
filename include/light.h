@@ -30,7 +30,7 @@ namespace Boidsish {
 	 * This struct must match the std140 layout of the 'Light' struct in GLSL.
 	 * Total size: 64 bytes.
 	 */
-	struct LightGPU {
+	struct alignas(16) LightGPU {
 		glm::vec3 position;     // offset 0,  12 bytes
 		float     intensity;    // offset 12, 4 bytes
 		glm::vec3 color;        // offset 16, 12 bytes
@@ -38,8 +38,14 @@ namespace Boidsish {
 		glm::vec3 direction;    // offset 32, 12 bytes
 		float     inner_cutoff; // offset 44, 4 bytes
 		float     outer_cutoff; // offset 48, 4 bytes
-		float     _padding[3];  // offset 52, 12 bytes of padding
+		int       flags;        // offset 52, 4 bytes
+		float     _padding[2];  // offset 56, 8 bytes of padding
 	}; // Total: 64 bytes
+
+	// Light flag bitmasks
+	constexpr int LIGHT_FLAG_CASTS_SHADOW = 1;
+	constexpr int LIGHT_FLAG_VOLUMETRIC_SHADOW = 2;
+	constexpr int LIGHT_FLAG_CAMERA_RELATIVE = 4;
 
 	/**
 	 * @brief Complete lighting UBO data for single-call upload (std140 layout).
@@ -131,8 +137,11 @@ namespace Boidsish {
 		float inner_cutoff;
 		float outer_cutoff;
 
-		// CPU-side shadow configuration (not uploaded to lighting UBO directly)
+		// CPU-side shadow configuration
 		bool casts_shadow = false;
+		bool volumetric_shadow = false;
+		bool camera_relative = false;
+
 		int  shadow_map_index = -1;
 
 		// State tracking for shadow optimization
@@ -154,6 +163,10 @@ namespace Boidsish {
 			gpu.direction = direction;
 			gpu.inner_cutoff = inner_cutoff;
 			gpu.outer_cutoff = outer_cutoff;
+			gpu.flags = 0;
+			if (casts_shadow) gpu.flags |= LIGHT_FLAG_CASTS_SHADOW;
+			if (volumetric_shadow) gpu.flags |= LIGHT_FLAG_VOLUMETRIC_SHADOW;
+			if (camera_relative) gpu.flags |= LIGHT_FLAG_CAMERA_RELATIVE;
 			return gpu;
 		}
 
@@ -232,6 +245,8 @@ namespace Boidsish {
 			l.inner_cutoff = glm::cos(glm::radians(12.5f));
 			l.outer_cutoff = glm::cos(glm::radians(17.5f));
 			l.casts_shadow = shadows;
+			l.volumetric_shadow = false;
+			l.camera_relative = false;
 			l.shadow_map_index = -1;
 			// Initialize last state for shadow optimization
 			l.last_position = l.position;
@@ -247,6 +262,7 @@ namespace Boidsish {
 			l.azimuth = azimuth;
 			l.elevation = elevation;
 			l.UpdateDirectionFromAngles();
+			l.volumetric_shadow = true; // Directional lights should have this by default
 			return l;
 		}
 
@@ -255,6 +271,7 @@ namespace Boidsish {
 			l.type = DIRECTIONAL_LIGHT;
 			l.direction = glm::normalize(dir);
 			GetAnglesFromDirection(l.direction, l.azimuth, l.elevation);
+			l.volumetric_shadow = true;
 			return l;
 		}
 

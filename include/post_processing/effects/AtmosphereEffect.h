@@ -247,6 +247,8 @@ namespace Boidsish {
 			void SetCloudPhiDensity(float phi) { cloud_phi_density_ = phi; }
 			float GetCloudPhiDensity() const { return cloud_phi_density_; }
 
+			GLuint GetCloudWeatherTexture() const { return cloud_weather_texture_; }
+
 			void SetCloudEnableTemporal(bool enable) { enable_temporal_ = enable; }
 			bool GetCloudEnableTemporal() const { return enable_temporal_; }
 
