@@ -283,7 +283,7 @@ void main() {
 			t_exit = max(t_exit_inside, loop_t) + (2.0 * props.worldScale);
 
 			for (int k = 0; k < innerSamples; k++) {
-				float subT = t_entry + (float(k)) * innerStepSize;
+				float subT = t_entry + (float(k) + jitter) * innerStepSize;
 				if (subT >= t_exit || cloudTransmittance < 0.01) break;
 
 				vec3 subP = viewPos + rayDir * subT;
@@ -352,12 +352,19 @@ void main() {
 						float shadowStepSize = traceDist / float(shadow_samples);
 
 						float shadowDensity = 0.0;
+						float opticalDepthToLight = 0.0;
 						for (int ks = 0; ks < shadow_samples; ks++) {
-							vec3 sp = subP + L * (float(ks) + 0.5) * shadowStepSize;
-							shadowDensity += calculateCloudDensity(sp, weather, layer, props, time, true).x;
+							vec3 sp = subP + L * (float(ks) + jitter) * shadowStepSize;
+							float currentShadowDensity = calculateCloudDensity(sp, weather, layer, props, time, true).x;
+							float currentOpticalDepth = shadowDensity * shadowStepSize * cloudShadowOpticalDepthMultiplier;
+
+							if (currentOpticalDepth > 3.0) {
+								break;
+							}
+							shadowDensity += currentShadowDensity;
+							opticalDepthToLight += currentOpticalDepth;
 						}
 
-						float opticalDepthToLight = shadowDensity * shadowStepSize * cloudShadowOpticalDepthMultiplier;
 						float shadowTerm = mix(
 							beerPowder(opticalDepthToLight, stepDensity),
 							exp(-opticalDepthToLight),
