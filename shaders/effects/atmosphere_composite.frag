@@ -5,7 +5,7 @@ in vec2 TexCoords;
 
 layout(binding = 0) uniform sampler2D sceneTexture;
 layout(binding = 1) uniform sampler2D depthTexture;
-layout(binding = 2) uniform sampler2D cloudTexture; // Low-res clouds (temporally accumulated)
+layout(binding = 2) uniform sampler2D cloudTexture; // Unified volumetric result
 layout(binding = 3) uniform sampler2D normalTexture;
 layout(binding = 4) uniform sampler2D cloudDepthTexture;
 
@@ -65,64 +65,26 @@ void main() {
 		dist = 50000.0 * WORLD_SCALE_VALUE;
 	}
 
-	vec4  cloudData = texture(cloudTexture, TexCoords);
-	vec4  cloudDepthData = texture(cloudDepthTexture, TexCoords);
-	float upsampledCloudDist = cloudDepthData.r;
+	vec4  volumetricData = texture(cloudTexture, TexCoords);
 
-	vec3  cloudScattering = cloudData.rgb;
-	float cloudTransmittance = cloudData.a;
+	// The unified volumetric pass already computes scattering and transmittance from camera to scene depth.
+	// However, it's done at lower resolution and then upsampled.
+	// We combine it with the aerial perspective LUT for the VERY far atmosphere if needed,
+	// but for now let's assume the unified pass covers it.
 
-	// Depth occlusion penalty against the scene distance
-	float sceneDist = dist;
-	if (sceneDist < upsampledCloudDist - (cloudDepthData.b * 2.0)) {
-		cloudScattering = vec3(0.0);
-		cloudTransmittance = 1.0;
-		upsampledCloudDist = 50000.0 * WORLD_SCALE_VALUE;
-	}
+	vec3  volScattering = volumetricData.rgb;
+	float volTransmittance = volumetricData.a;
 
-	// 2. Atmosphere Integration
-	// We need the atmosphere between the camera and the cloud, and between the camera and the scene.
-	float sceneDistKM = (dist / 1000.0);
-	float cloudDistKM = (min(upsampledCloudDist, dist) / 1000.0);
+	// In the unified pass, we integrate along the full ray.
+	// result = sceneColor * volTransmittance + volScattering
+	// BUT sceneColor usually already has some lighting.
+	// If the scene color is the raw lit surface (before atmosphere), then this is correct.
+	// If sceneColor already includes global aerial perspective, we might be double-counting.
 
-	vec3  atmosInScattering = sampleAerialPerspective(rayDir, sceneDistKM);
-	float atmosTransmittance = sampleAerialPerspectiveTransmittance(rayDir, sceneDistKM);
+	// Actually, the renderer usually applies lighting but not global atmosphere before post-processing.
+	// Let's check how other effects are applied.
 
-	vec3  cloudFrontInScattering = sampleAerialPerspective(rayDir, cloudDistKM);
-	float cloudFrontTransmittance = sampleAerialPerspectiveTransmittance(rayDir, cloudDistKM);
-
-	// Apply terrain shadows to atmosphere behind clouds
-	if (depth < 0.999) {
-		float atmosShadow = 1.0;
-		if (num_lights > 0 && lights[0].type == LIGHT_TYPE_DIRECTIONAL) {
-			vec3 N = texture(normalTexture, TexCoords).xyz * 2.0 - 1.0;
-			vec3 L = normalize(-lights[0].direction);
-			atmosShadow = calculateShadow(0, worldPos, N, L);
-			atmosShadow = mix(0.1, 1.0, atmosShadow);
-		}
-		// Shadow only the atmosphere that is behind the cloud.
-		// We approximate this by shadowing the total in-scattering but keeping the portion in front of the cloud lit.
-		atmosInScattering = mix(cloudFrontInScattering, atmosInScattering, atmosShadow);
-	}
-
-	// 3. Final Composition
-	// result = (Background * CloudTransmittance + CloudScattering) * FrontTransmittance + FrontScattering
-	// where Background is the scene behind the cloud atmosphere.
-
-	// The 'sceneColor' already includes the full atmosphere (sceneColor = raw * atmosTrans + atmosInScat).
-	// To get the "background behind the cloud", we need to 'undo' the front atmosphere.
-	vec3 background = (sceneColor - cloudFrontInScattering);
-
-	// Physically, the cloud layer is inserted into the atmosphere.
-	// Result = background * cloudTransmittance + cloudScattering;
-	// Then re-apply the front atmosphere:
-	// Result = Result * cloudFrontTransmittance + cloudFrontInScattering;
-
-	// However, cloudScattering from the low-res pass ALREADY includes the lighting at that altitude.
-	// The correct formula for a volume integrated into atmosphere is:
-	// Result = (SceneColor_behind_cloud) * cloudTransmittance + cloudScattering_integrated
-
-	vec3 result = max(sceneColor - cloudFrontInScattering, vec3(0.0)) * cloudTransmittance + (cloudScattering * cloudFrontTransmittance + cloudFrontInScattering);
+	vec3 result = sceneColor * volTransmittance + volScattering;
 
 	FragColor = vec4(result, 1.0);
 }
