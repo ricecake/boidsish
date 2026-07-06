@@ -50,6 +50,9 @@ namespace Boidsish {
 			 it->lifetime += deltaTime;
 
 			 if (it->lifetime >= it->max_lifetime) {
+				 if (it->flash_light_id != -1 && light_manager) {
+					 light_manager->RemoveLight(it->flash_light_id);
+				 }
 				 it = _activeStrikes.erase(it);
 				 continue;
 			 }
@@ -59,7 +62,12 @@ namespace Boidsish {
 			 if (t < 0.1f) {
 				 it->intensity = (t / 0.1f) * _intensityMultiplier;
 			 } else {
-				 float flicker = (sin(it->lifetime * 100.0f) * 0.5f + 0.5f) * 0.4f + 0.6f;
+				 float flicker_freq = (it->type == LightningType::CLOUD_TO_CLOUD) ? 60.0f : 100.0f;
+				 float flicker = (sin(it->lifetime * flicker_freq) * 0.5f + 0.5f) * 0.4f + 0.6f;
+				 if (it->type == LightningType::CLOUD_TO_CLOUD) {
+					 // More complex flickering for cloud lightning
+					 flicker *= (sin(it->lifetime * 15.0f) * 0.2f + 0.8f);
+				 }
 				 it->intensity = (1.0f - (t - 0.1f) / 0.9f) * flicker * _intensityMultiplier;
 			 }
 
@@ -72,8 +80,38 @@ namespace Boidsish {
 				 _globalColor = it->color;
 			 }
 
-			 // Spawn physical light for terrain illumination
-			 if (!it->has_spawned_flash && it->type != LightningType::CLOUD_TO_CLOUD && t > 0.05f) {
+			 // Spawn physical light for terrain illumination or cloud glow
+			 if (it->type == LightningType::CLOUD_TO_CLOUD) {
+				 if (!it->segments.empty() && light_manager) {
+					 glm::vec3 start = it->segments.front().start;
+					 glm::vec3 end = it->segments.back().end;
+
+					 // Apply drift
+					 for (auto& seg : it->segments) {
+						 seg.start += it->drift_velocity * deltaTime;
+						 seg.end += it->drift_velocity * deltaTime;
+					 }
+					 start = it->segments.front().start;
+					 end = it->segments.back().end;
+
+					 if (it->flash_light_id == -1) {
+						 Light flash = Light::CreateFlash(start, 50.0f * it->intensity, it->color, 500.0f);
+						 flash.direction = end; // Repurpose direction as segment end
+						 flash.cloud_emissive = true;
+						 flash.auto_remove = false; // Managed by LightningManager
+						 it->flash_light_id = light_manager->AddLight(flash);
+						 it->has_spawned_flash = true;
+					 } else {
+						 Light* flash = light_manager->GetLight(it->flash_light_id);
+						 if (flash) {
+							 flash->position = start;
+							 flash->direction = end;
+							 flash->intensity = 50.0f * it->intensity;
+							 flash->color = it->color;
+						 }
+					 }
+				 }
+			 } else if (!it->has_spawned_flash && t > 0.05f) {
 				 if (light_manager && !it->segments.empty()) {
 					 glm::vec3 strikePos = it->segments.back().end;
 					 Light flash = Light::CreateFlash(strikePos, 150.0f * it->intensity, it->color, 300.0f);
@@ -121,9 +159,20 @@ namespace Boidsish {
 		 strike.type = type;
 		 strike.color = color;
 		 strike.lifetime = 0.0f;
-		 strike.max_lifetime = (0.2f + (static_cast<float>(rand()) / RAND_MAX) * 0.3f) * _lifetimeMultiplier;
 		 strike.intensity = 0.0f;
 		 strike.has_spawned_flash = false;
+		 strike.flash_light_id = -1;
+
+		 if (type == LightningType::CLOUD_TO_CLOUD) {
+			 strike.max_lifetime = (0.8f + (static_cast<float>(rand()) / RAND_MAX) * 0.7f) * _lifetimeMultiplier;
+			 // Random drift velocity
+			 float speed = 20.0f + (static_cast<float>(rand()) / RAND_MAX) * 30.0f;
+			 float angle = (static_cast<float>(rand()) / RAND_MAX) * 2.0f * 3.14159f;
+			 strike.drift_velocity = glm::vec3(cos(angle) * speed, (static_cast<float>(rand()) / RAND_MAX - 0.5f) * 10.0f, sin(angle) * speed);
+		 } else {
+			 strike.max_lifetime = (0.2f + (static_cast<float>(rand()) / RAND_MAX) * 0.3f) * _lifetimeMultiplier;
+			 strike.drift_velocity = glm::vec3(0.0f);
+		 }
 
 		 if (type == LightningType::BOLT || type == LightningType::FORK) {
 			 GenerateBolt(strike, startPos, endPos, (type == LightningType::FORK) ? 5 : 0);

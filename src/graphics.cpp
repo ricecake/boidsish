@@ -2055,13 +2055,15 @@ namespace Boidsish {
 				atmosphere_manager->SetColorVarianceStrength(atmosphere_effect->GetColorVarianceStrength());
 				atmosphere_manager->SetSunAureoleStrength(atmosphere_effect->GetSunAureoleStrength());
 				atmosphere_manager->SetCirrusOpacity(atmosphere_effect->GetCirrusOpacity());
+				atmosphere_manager->SetCloudCoverage(atmosphere_effect->GetCloudCoverage());
 
-			float cloudShadowIntensity = ConfigManager::GetInstance().GetAppSettingFloat("cloud_shadow_intensity", 0.5f);
-			atmosphere_manager->SetCloudShadowIntensity(cloudShadowIntensity);
+				float cloudShadowIntensity = ConfigManager::GetInstance().GetAppSettingFloat("cloud_shadow_intensity", 0.5f);
+				atmosphere_manager->SetCloudShadowIntensity(cloudShadowIntensity);
 			}
 
 			// Update the atmosphere model with the current sun/moon light
 			float world_scale = terrain_generator ? terrain_generator->GetWorldScale() : 1.0f;
+			if (atmosphere_manager) atmosphere_manager->SetWorldScale(world_scale);
 			atmosphere_manager->Update(sun_dir, sun_color, sun_intensity, camera.pos(), simulation_time, world_scale);
 
 			// Sync ambient light from atmosphere to ensure decor and world match

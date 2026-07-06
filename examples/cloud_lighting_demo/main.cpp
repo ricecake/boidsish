@@ -49,7 +49,7 @@ int main() {
 		vis.AddUpdateHandler([&](float dt, float totalTime) {
 			if (positionFound) return;
 
-			GLuint tex = atmosphere->GetCloudWeatherTexture();
+			GLuint tex = 0.0;//atmosphere->GetCloudWeatherTexture();
 			if (tex == 0) return;
 
 			// Read back a small portion of the 2048x2048 texture to find a cloud
