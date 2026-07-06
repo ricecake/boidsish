@@ -23,6 +23,8 @@ namespace Boidsish {
 			glDeleteTextures(1, &_aerialPerspectiveLUT);
 		if (_cloudShadowMap)
 			glDeleteTextures(1, &_cloudShadowMap);
+		if (_cloudWeatherTexture)
+			glDeleteTextures(1, &_cloudWeatherTexture);
 		if (_shCoeffsBuffer)
 			glDeleteBuffers(1, &_shCoeffsBuffer);
 	}
@@ -79,6 +81,15 @@ namespace Boidsish {
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
+		// Cloud Weather Map: 2048x2048 RGBA16F
+		glGenTextures(1, &_cloudWeatherTexture);
+		glBindTexture(GL_TEXTURE_2D, _cloudWeatherTexture);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, 2048, 2048, 0, GL_RGBA, GL_FLOAT, nullptr);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
 		// SH Coefficients SSBO: 9 x vec4
 		glGenBuffers(1, &_shCoeffsBuffer);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, _shCoeffsBuffer);
@@ -110,6 +121,7 @@ namespace Boidsish {
 		_aerialPerspectiveShader = std::make_unique<ComputeShader>("shaders/atmosphere/aerial_perspective_lut.comp");
 		_skyToSHShader = std::make_unique<ComputeShader>("shaders/atmosphere/sky_to_sh.comp");
 		_cloudShadowShader = std::make_unique<ComputeShader>("shaders/atmosphere/cloud_shadow_map.comp");
+		_cloudBakeShader = std::make_unique<ComputeShader>("shaders/effects/cloud_weather_bake.comp");
 
 		setup_shader(*_transmittanceShader);
 		setup_shader(*_multiScatteringShader);
@@ -117,6 +129,7 @@ namespace Boidsish {
 		setup_shader(*_aerialPerspectiveShader);
 		setup_shader(*_skyToSHShader);
 		setup_shader(*_cloudShadowShader);
+		setup_shader(*_cloudBakeShader);
 	}
 
 	void AtmosphereManager::Update(
@@ -128,6 +141,24 @@ namespace Boidsish {
 		float            worldScale
 	) {
 		PROJECT_PROFILE_SCOPE("AtmosphereManager::Update");
+		if (_needsWeatherBake) {
+			_cloudBakeShader->use();
+			_cloudBakeShader->setFloat("uCloudCoverage", _cloudCoverage);
+			_cloudBakeShader->setFloat("uWorldScale", worldScale);
+			glBindImageTexture(0, _cloudWeatherTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+			GpuResourceRegistry::Instance().BindTextures({Constants::TextureUnit::NoiseExtra()});
+			glDispatchCompute(2048 / 16, 2048 / 16, 1);
+			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+			// CPU Readback for weather queries
+			_cpuWeatherMap.resize(2048 * 2048);
+			glBindTexture(GL_TEXTURE_2D, _cloudWeatherTexture);
+			glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_FLOAT, _cpuWeatherMap.data());
+
+			_needsWeatherBake = false;
+			_worldScale = worldScale;
+		}
+
 		if (_needsPrecompute) {
 			// Dispatch Transmittance
 			_transmittanceShader->use();
@@ -318,6 +349,8 @@ namespace Boidsish {
 		glBindTexture(GL_TEXTURE_3D, _aerialPerspectiveLUT);
 		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereCloudShadow());
 		glBindTexture(GL_TEXTURE_2D, _cloudShadowMap);
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::CloudWeatherBake());
+		glBindTexture(GL_TEXTURE_2D, _cloudWeatherTexture);
 	}
 
 	void AtmosphereManager::BindToShader(::ShaderBase& shader) {
@@ -327,6 +360,7 @@ namespace Boidsish {
 		shader.trySetInt("u_skyViewLUT", Constants::TextureUnit::AtmosphereSkyView());
 		shader.trySetInt("u_aerialPerspectiveLUT", Constants::TextureUnit::AtmosphereAerialPerspective());
 		shader.trySetInt("u_cloudShadowMap", Constants::TextureUnit::AtmosphereCloudShadow());
+		shader.trySetInt("u_cloudWeatherTexture", Constants::TextureUnit::CloudWeatherBake());
 		shader.trySetFloat("u_atmosphereHeight", _atmosphereHeight);
 
 		shader.setVec3("u_rayleighScatteringBase", _rayleighScattering);
@@ -338,6 +372,30 @@ namespace Boidsish {
 		shader.trySetFloat("u_mieScale", _mieScale);
 		shader.trySetFloat("u_mieAnisotropy", _mieAnisotropy);
 		shader.setVec3("u_ozoneAbsorptionBase", _ozoneAbsorption);
+	}
+
+	glm::vec4 AtmosphereManager::GetCloudWeather(glm::vec2 worldXZ, float time) const {
+		if (_cpuWeatherMap.empty()) return glm::vec4(100000.0f, 0, 0, 0);
+
+		// factor in advection (matches shaders/helpers/clouds.glsl)
+		float     angle = 3.14f; // cloudFlow constant
+		glm::vec2 flowDir = glm::vec2(cos(angle), sin(angle));
+		glm::vec2 advect = flowDir * 5.0f * _worldScale * 10.0f * time;
+
+		glm::vec2 p_advected = worldXZ + advect;
+		float     mapRange = 100000.0f * _worldScale;
+
+		float u = p_advected.x / mapRange;
+		float v = p_advected.y / mapRange;
+
+		// Toroidal wrapping
+		u = fmod(u, 1.0f); if (u < 0.0f) u += 1.0f;
+		v = fmod(v, 1.0f); if (v < 0.0f) v += 1.0f;
+
+		int x = (int)(u * 2047.0f);
+		int y = (int)(v * 2047.0f);
+
+		return _cpuWeatherMap[y * 2048 + x];
 	}
 
 } // namespace Boidsish

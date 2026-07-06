@@ -168,6 +168,32 @@ namespace Boidsish {
 
 		float GetCloudShadowIntensity() const { return _cloudShadowIntensity; }
 
+		void SetCloudCoverage(float c) {
+			if (std::abs(_cloudCoverage - c) > 0.005f) {
+				_cloudCoverage = c;
+				_needsWeatherBake = true;
+			}
+		}
+		float GetCloudCoverage() const { return _cloudCoverage; }
+
+		void SetWorldScale(float s) {
+			if (std::abs(_worldScale - s) > 0.001f) {
+				_worldScale = s;
+				_needsWeatherBake = true;
+			}
+		}
+		float GetWorldScale() const { return _worldScale; }
+
+		GLuint GetCloudWeatherTexture() const { return _cloudWeatherTexture; }
+
+		/**
+		 * Sample the cloud weather data on the CPU.
+		 * @param worldXZ Position in world space
+		 * @param time Current simulation time
+		 * @return RGBA weather data (x: SDF, y: altitudeMap, z: cellID, w: thicknessMap)
+		 */
+		glm::vec4 GetCloudWeather(glm::vec2 worldXZ, float time) const;
+
 		void SetSunAureoleStrength(float s) { _sunAureoleStrength = s; }
 
 		float GetSunAureoleStrength() const { return _sunAureoleStrength; }
@@ -190,6 +216,7 @@ namespace Boidsish {
 		GLuint _skyViewLUT = 0;
 		GLuint _aerialPerspectiveLUT = 0;
 		GLuint _cloudShadowMap = 0;
+		GLuint _cloudWeatherTexture = 0;
 		GLuint _shCoeffsBuffer = 0;
 
 		std::unique_ptr<ComputeShader> _transmittanceShader;
@@ -198,10 +225,16 @@ namespace Boidsish {
 		std::unique_ptr<ComputeShader> _aerialPerspectiveShader;
 		std::unique_ptr<ComputeShader> _skyToSHShader;
 		std::unique_ptr<ComputeShader> _cloudShadowShader;
+		std::unique_ptr<ComputeShader> _cloudBakeShader;
 
 		glm::vec4 _shCoeffs[9];
 
 		bool _needsPrecompute = true;
+		bool _needsWeatherBake = true;
+
+		std::vector<glm::vec4> _cpuWeatherMap;
+		float _cloudCoverage = WeatherConstants::CloudCoverage.normal;
+		float _worldScale = 1.0f;
 
 		float     _rayleighScale = WeatherConstants::RayleighScale.normal;
 		float     _mieScale = WeatherConstants::MieScale.normal;

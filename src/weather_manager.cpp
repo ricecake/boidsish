@@ -13,6 +13,7 @@
 #include "terrain_render_manager.h"
 #include "ConfigManager.h"
 #include "lightning_manager.h"
+#include "atmosphere_manager.h"
 
 namespace Boidsish {
 
@@ -1152,64 +1153,74 @@ namespace Boidsish {
 					if (rand() % 100 < 20) type = LightningType::CLOUD_TO_CLOUD;
 
 					float worldScaleVal = terrain_ ? terrain_->GetWorldScale() : 1.0f;
+					auto  atm_mgr = ServiceLocator::Instance().Get<AtmosphereManager>();
 
-					// Default random positioning
+					// Default random positioning near camera
 					glm::vec3 startPos(
-						cameraPos.x + (rand() % 1000 - 500),
+						cameraPos.x + (rand() % 2000 - 1000),
 						current_.cloud_altitude * worldScaleVal,
-						cameraPos.z + (rand() % 1000 - 500)
+						cameraPos.z + (rand() % 2000 - 1000)
 					);
 					glm::vec3 endPos = startPos;
 
-					// Attempt to find actual cloudy regions using LBM humidity
-					if (latest_snapshot_.valid && !latest_snapshot_.scalarData.empty()) {
-						int width = latest_snapshot_.uboMetadata.originSize.y;
-						int height = latest_snapshot_.uboMetadata.originSize.w;
+					// Attempt to find actual cloudy regions using baked cloud SDF
+					if (atm_mgr) {
+						std::vector<glm::vec3> candidatePositions;
+						const int searchAttempts = 32;
+						for (int i = 0; i < searchAttempts; ++i) {
+							glm::vec3 p(
+								cameraPos.x + (rand() % 4000 - 2000),
+								0.0f,
+								cameraPos.z + (rand() % 4000 - 2000)
+							);
 
-						// Camera pos in grid coords
-						int camGX = (int)std::floor(cameraPos.x / 32.0f) - latest_snapshot_.gridAnchor.x;
-						int camGZ = (int)std::floor(cameraPos.z / 32.0f) - latest_snapshot_.gridAnchor.y;
-
-						// Search for cloudy cells (high humidity) near camera
-						int searchRadius = 25;
-						std::vector<glm::ivec2> cloudyCells;
-						for (int gz = camGZ - searchRadius; gz <= camGZ + searchRadius; ++gz) {
-							for (int gx = camGX - searchRadius; gx <= camGX + searchRadius; ++gx) {
-								if (gx >= 0 && gx < width && gz >= 0 && gz < height) {
-									// scalarData.y is humidity
-									if (latest_snapshot_.scalarData[gz * width + gx].y > 0.65f) {
-										cloudyCells.push_back({gx, gz});
-									}
-								}
+							// GetCloudWeather returns SDF in .x (negative if inside cloud)
+							glm::vec4 weather = atm_mgr->GetCloudWeather(glm::vec2(p.x, p.z), totalTime);
+							if (weather.x < -50.0f * worldScaleVal) {
+								candidatePositions.push_back(p);
 							}
 						}
 
-						if (!cloudyCells.empty()) {
-							const auto& startCell = cloudyCells[rand() % cloudyCells.size()];
-							startPos.x = (startCell.x + latest_snapshot_.gridAnchor.x) * 32.0f + 16.0f;
-							startPos.z = (startCell.y + latest_snapshot_.gridAnchor.y) * 32.0f + 16.0f;
+						if (!candidatePositions.empty()) {
+							startPos = candidatePositions[rand() % candidatePositions.size()];
+							glm::vec4 startWeather = atm_mgr->GetCloudWeather(glm::vec2(startPos.x, startPos.z), totalTime);
 
-							// Pick a height within the cloud layer
-							float vOffset = (static_cast<float>(rand()) / RAND_MAX) * current_.cloud_thickness;
-							startPos.y = (current_.cloud_altitude + vOffset) * worldScaleVal;
+							// Calculate actual cloud layer bounds at this position
+							float altitudeShift = startWeather.y * current_.cloud_thickness * 2.0f;
+							float coverage = 1.0f - glm::smoothstep(-500.0f * worldScaleVal, 500.0f * worldScaleVal, startWeather.x);
+							float verticalExpansion = glm::mix(1.0f, 8.0f, startWeather.w * coverage);
+
+							float baseFloor = (current_.cloud_altitude + altitudeShift) * worldScaleVal;
+							float baseCeiling = baseFloor + (current_.cloud_thickness * verticalExpansion) * worldScaleVal;
+
+							// Pick a height within the actual cloud volume
+							startPos.y = glm::mix(baseFloor, baseCeiling, 0.2f + (static_cast<float>(rand()) / RAND_MAX) * 0.6f);
 
 							if (type == LightningType::CLOUD_TO_CLOUD) {
-								// Find another nearby cloudy cell for the end point
-								std::vector<glm::ivec2> candidateEndCells;
-								for (const auto& cell : cloudyCells) {
-									float d = glm::distance(glm::vec2(startCell), glm::vec2(cell));
-									if (d > 3.0f && d < 15.0f) candidateEndCells.push_back(cell);
+								// Find another cloudy position for the end point
+								std::vector<glm::vec3> candidateEndPositions;
+								for (const auto& p : candidatePositions) {
+									float d = glm::distance(glm::vec2(startPos.x, startPos.z), glm::vec2(p.x, p.z));
+									if (d > 100.0f * worldScaleVal && d < 1000.0f * worldScaleVal) {
+										candidateEndPositions.push_back(p);
+									}
 								}
 
-								if (!candidateEndCells.empty()) {
-									const auto& endCell = candidateEndCells[rand() % candidateEndCells.size()];
-									endPos.x = (endCell.x + latest_snapshot_.gridAnchor.x) * 32.0f + 16.0f;
-									endPos.z = (endCell.y + latest_snapshot_.gridAnchor.y) * 32.0f + 16.0f;
-									float evOffset = (static_cast<float>(rand()) / RAND_MAX) * current_.cloud_thickness;
-									endPos.y = (current_.cloud_altitude + evOffset) * worldScaleVal;
+								if (!candidateEndPositions.empty()) {
+									endPos = candidateEndPositions[rand() % candidateEndPositions.size()];
+									glm::vec4 endWeather = atm_mgr->GetCloudWeather(glm::vec2(endPos.x, endPos.z), totalTime);
+
+									float eAltitudeShift = endWeather.y * current_.cloud_thickness * 2.0f;
+									float eCoverage = 1.0f - glm::smoothstep(-500.0f * worldScaleVal, 500.0f * worldScaleVal, endWeather.x);
+									float eVerticalExpansion = glm::mix(1.0f, 8.0f, endWeather.w * eCoverage);
+
+									float eBaseFloor = (current_.cloud_altitude + eAltitudeShift) * worldScaleVal;
+									float eBaseCeiling = eBaseFloor + (current_.cloud_thickness * eVerticalExpansion) * worldScaleVal;
+
+									endPos.y = glm::mix(eBaseFloor, eBaseCeiling, 0.2f + (static_cast<float>(rand()) / RAND_MAX) * 0.6f);
 								} else {
 									// Local random fallback for endPos
-									endPos = startPos + glm::vec3((rand() % 400 - 200), (rand() % 100 - 50), (rand() % 400 - 200));
+									endPos = startPos + glm::vec3((rand() % 800 - 400), (rand() % 200 - 100), (rand() % 800 - 400));
 								}
 							}
 						}
