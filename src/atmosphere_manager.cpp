@@ -7,6 +7,7 @@
 #include "gpu_resource_registry.h"
 #include "profiler.h"
 #include "service_locator.h"
+#include <cstring>
 #include "shader.h"
 
 namespace Boidsish {
@@ -25,6 +26,8 @@ namespace Boidsish {
 			glDeleteTextures(1, &_cloudShadowMap);
 		if (_cloudWeatherTexture)
 			glDeleteTextures(1, &_cloudWeatherTexture);
+		if (_cloudSeedsBuffer)
+			glDeleteBuffers(1, &_cloudSeedsBuffer);
 		if (_shCoeffsBuffer)
 			glDeleteBuffers(1, &_shCoeffsBuffer);
 	}
@@ -91,6 +94,13 @@ namespace Boidsish {
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
 		// SH Coefficients SSBO: 9 x vec4
+		// Cloud Seeds SSBO: 100 x vec4 (10x10 Voronoi period)
+		glGenBuffers(1, &_cloudSeedsBuffer);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, _cloudSeedsBuffer);
+		glBufferData(GL_SHADER_STORAGE_BUFFER, 100 * sizeof(glm::vec4), nullptr, GL_DYNAMIC_DRAW);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+
+		// SH Coefficients SSBO: 9 x vec4
 		glGenBuffers(1, &_shCoeffsBuffer);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, _shCoeffsBuffer);
 		glBufferData(GL_SHADER_STORAGE_BUFFER, 9 * sizeof(glm::vec4), nullptr, GL_DYNAMIC_DRAW);
@@ -142,18 +152,33 @@ namespace Boidsish {
 	) {
 		PROJECT_PROFILE_SCOPE("AtmosphereManager::Update");
 		if (_needsWeatherBake) {
+			// Clear seeds buffer before bake
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, _cloudSeedsBuffer);
+			std::vector<glm::vec4> clearData(100, glm::vec4(0, 0, 100000.0f, 0));
+			glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, 100 * sizeof(glm::vec4), clearData.data());
+
 			_cloudBakeShader->use();
 			_cloudBakeShader->setFloat("uCloudCoverage", _cloudCoverage);
 			_cloudBakeShader->setFloat("uWorldScale", worldScale);
 			glBindImageTexture(0, _cloudWeatherTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::CloudSeeds(), _cloudSeedsBuffer);
 			GpuResourceRegistry::Instance().BindTextures({Constants::TextureUnit::NoiseExtra()});
 			glDispatchCompute(2048 / 16, 2048 / 16, 1);
-			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
 
 			// CPU Readback for weather queries
 			_cpuWeatherMap.resize(2048 * 2048);
 			glBindTexture(GL_TEXTURE_2D, _cloudWeatherTexture);
 			glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_FLOAT, _cpuWeatherMap.data());
+
+			// CPU Readback for seeds
+			_cpuCloudSeeds.resize(100);
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, _cloudSeedsBuffer);
+			void* ptr = glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_READ_ONLY);
+			if (ptr) {
+				memcpy(_cpuCloudSeeds.data(), ptr, 100 * sizeof(glm::vec4));
+				glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
+			}
 
 			_needsWeatherBake = false;
 			_worldScale = worldScale;

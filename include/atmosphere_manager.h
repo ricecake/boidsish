@@ -194,6 +194,8 @@ namespace Boidsish {
 		 */
 		glm::vec4 GetCloudWeather(glm::vec2 worldXZ, float time) const;
 
+		const std::vector<glm::vec4>& GetCloudSeeds() const { return _cpuCloudSeeds; }
+
 		void SetSunAureoleStrength(float s) { _sunAureoleStrength = s; }
 
 		float GetSunAureoleStrength() const { return _sunAureoleStrength; }
@@ -217,6 +219,7 @@ namespace Boidsish {
 		GLuint _aerialPerspectiveLUT = 0;
 		GLuint _cloudShadowMap = 0;
 		GLuint _cloudWeatherTexture = 0;
+		GLuint _cloudSeedsBuffer = 0;
 		GLuint _shCoeffsBuffer = 0;
 
 		std::unique_ptr<ComputeShader> _transmittanceShader;
@@ -233,6 +236,7 @@ namespace Boidsish {
 		bool _needsWeatherBake = true;
 
 		std::vector<glm::vec4> _cpuWeatherMap;
+		std::vector<glm::vec4> _cpuCloudSeeds;
 		float _cloudCoverage = WeatherConstants::CloudCoverage.normal;
 		float _worldScale = 1.0f;
 

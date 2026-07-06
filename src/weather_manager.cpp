@@ -1163,21 +1163,24 @@ namespace Boidsish {
 					);
 					glm::vec3 endPos = startPos;
 
-					// Attempt to find actual cloudy regions using baked cloud SDF
+					// Attempt to find actual cloudy regions using baked cloud seeds
 					if (atm_mgr) {
 						std::vector<glm::vec3> candidatePositions;
-						const int searchAttempts = 32;
-						for (int i = 0; i < searchAttempts; ++i) {
-							glm::vec3 p(
-								cameraPos.x + (rand() % 4000 - 2000),
-								0.0f,
-								cameraPos.z + (rand() % 4000 - 2000)
-							);
+						const auto& seeds = atm_mgr->GetCloudSeeds();
 
-							// GetCloudWeather returns SDF in .x (negative if inside cloud)
-							glm::vec4 weather = atm_mgr->GetCloudWeather(glm::vec2(p.x, p.z), totalTime);
-							if (weather.x < -50.0f * worldScaleVal) {
-								candidatePositions.push_back(p);
+						// factor in advection (matches AtmosphereManager::GetCloudWeather)
+						float     angle = 3.14f; // cloudFlow constant
+						glm::vec2 flowDir = glm::vec2(cos(angle), sin(angle));
+						glm::vec2 advect = flowDir * 5.0f * worldScaleVal * 10.0f * totalTime;
+
+						for (const auto& seed : seeds) {
+							// seed.w is isCloudy (sdf < 0)
+							if (seed.w > 0.5f) {
+								glm::vec3 p(seed.x - advect.x, 0.0f, seed.y - advect.y);
+								float d = glm::distance(glm::vec2(cameraPos.x, cameraPos.z), glm::vec2(p.x, p.z));
+								if (d < 4000.0f * worldScaleVal) {
+									candidatePositions.push_back(p);
+								}
 							}
 						}
 
