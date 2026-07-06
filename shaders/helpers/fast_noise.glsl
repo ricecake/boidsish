@@ -21,7 +21,10 @@ uniform sampler3D u_curlTexture;
 uniform sampler2D u_blueNoiseTexture;
 uniform sampler3D u_extraNoiseTexture;
 uniform sampler2D u_phasorTexture;
-uniform sampler2D u_cloudWeatherTexture;
+
+layout(binding = [[CLOUD_WEATHER_BINDING]]) uniform sampler2D u_cloudWeatherTexture;
+layout(binding = [[CLOUD_WEATHER_XY_BINDING]]) uniform sampler2D u_cloudWeatherXYTexture;
+layout(binding = [[CLOUD_WEATHER_YZ_BINDING]]) uniform sampler2D u_cloudWeatherYZTexture;
 #endif
 
 // Helper to compute curl noise using finite differences with tiling simplex noise

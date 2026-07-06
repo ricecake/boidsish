@@ -33,6 +33,12 @@ namespace Boidsish {
 			if (cloud_weather_texture_) {
 				glDeleteTextures(1, &cloud_weather_texture_);
 			}
+			if (cloud_weather_xy_texture_) {
+				glDeleteTextures(1, &cloud_weather_xy_texture_);
+			}
+			if (cloud_weather_yz_texture_) {
+				glDeleteTextures(1, &cloud_weather_yz_texture_);
+			}
 		}
 
 		void AtmosphereEffect::Initialize(int width, int height) {
@@ -65,6 +71,8 @@ namespace Boidsish {
 				cloud_render_shader_->trySetInt("u_blueNoiseTexture", Constants::TextureUnit::NoiseBlue());
 				cloud_render_shader_->trySetInt("u_extraNoiseTexture", Constants::TextureUnit::NoiseExtra());
 				cloud_render_shader_->trySetInt("u_cloudWeatherTexture", Constants::TextureUnit::CloudWeatherBake());
+				cloud_render_shader_->trySetInt("u_cloudWeatherXYTexture", Constants::TextureUnit::CloudWeatherXY());
+				cloud_render_shader_->trySetInt("u_cloudWeatherYZTexture", Constants::TextureUnit::CloudWeatherYZ());
 			}
 
 			if (temporal_shader_ && temporal_shader_->isValid()) {
@@ -102,14 +110,34 @@ namespace Boidsish {
 				glGenTextures(1, &spatial_aux_texture_);
 
 				glGenTextures(1, &cloud_weather_texture_);
+				glGenTextures(1, &cloud_weather_xy_texture_);
+				glGenTextures(1, &cloud_weather_yz_texture_);
 
 				// Cloud Weather Bake (2048x2048) - Only allocate once
 				glBindTexture(GL_TEXTURE_2D, cloud_weather_texture_);
 				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, 2048, 2048, 0, GL_RGBA, GL_FLOAT, NULL);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+				// XY and YZ textures wrap horizontally (X or Z) but not vertically (Y)
+				// They are 2048 wide (matching XZ) and 512 tall (matching cloud layer thickness)
+				auto setup_side_texture = [](GLuint tex) {
+					glBindTexture(GL_TEXTURE_2D, tex);
+					glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, 2048, 512, 0, GL_RGBA, GL_FLOAT, NULL);
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+				};
+				setup_side_texture(cloud_weather_xy_texture_);
+				setup_side_texture(cloud_weather_yz_texture_);
+
+				auto& reg = GpuResourceRegistry::Instance();
+				reg.PublishTexture(Constants::TextureUnit::CloudWeatherBake(), cloud_weather_texture_);
+				reg.PublishTexture(Constants::TextureUnit::CloudWeatherXY(), cloud_weather_xy_texture_);
+				reg.PublishTexture(Constants::TextureUnit::CloudWeatherYZ(), cloud_weather_yz_texture_);
 			}
 
 			int packed_width = std::max(1, static_cast<int>(width_ * render_scale_));
@@ -211,13 +239,30 @@ namespace Boidsish {
 
 			// --- OPTIONAL PASS: Cloud Weather Bake ---
 			if (needs_weather_bake_) {
-				// 1. Bake weather map
+				// 1. Bake weather map (XZ, XY, YZ)
 				cloud_bake_shader_->use();
 				cloud_bake_shader_->setFloat("uCloudCoverage", cloud_coverage_);
 				cloud_bake_shader_->setFloat("uWorldScale", world_scale_);
-				glBindImageTexture(0, cloud_weather_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+				cloud_bake_shader_->setFloat("uCloudAltitude", cloud_altitude_);
+				cloud_bake_shader_->setFloat("uCloudThickness", cloud_thickness_);
+
 				GpuResourceRegistry::Instance().BindTextures({Constants::TextureUnit::NoiseExtra()});
+
+				// Bake XZ
+				cloud_bake_shader_->setInt("uMode", 0);
+				glBindImageTexture(0, cloud_weather_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 				glDispatchCompute(2048 / 16, 2048 / 16, 1);
+
+				// Bake XY
+				cloud_bake_shader_->setInt("uMode", 1);
+				glBindImageTexture(0, cloud_weather_xy_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+				glDispatchCompute(2048 / 16, 512 / 16, 1);
+
+				// Bake YZ
+				cloud_bake_shader_->setInt("uMode", 2);
+				glBindImageTexture(0, cloud_weather_yz_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+				glDispatchCompute(2048 / 16, 512 / 16, 1);
+
 				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
 				needs_weather_bake_ = false;
@@ -259,6 +304,10 @@ namespace Boidsish {
 
 				glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::CloudWeatherBake());
 				glBindTexture(GL_TEXTURE_2D, cloud_weather_texture_);
+				glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::CloudWeatherXY());
+				glBindTexture(GL_TEXTURE_2D, cloud_weather_xy_texture_);
+				glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::CloudWeatherYZ());
+				glBindTexture(GL_TEXTURE_2D, cloud_weather_yz_texture_);
 
 				glBindImageTexture(0, packed_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 				glBindImageTexture(1, packed_depth_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);

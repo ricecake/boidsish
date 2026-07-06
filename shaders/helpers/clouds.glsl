@@ -143,11 +143,28 @@ CloudWeather computeCloudWeather(vec3 p, CloudProperties props) {
 	vec3 advect = getCloudWindOffset(time);
 	vec3 p_advected = p + advect;
 
-	// Use baked weather map. Sampling UV is worldXZ / range.
-	// Range is 100,000 * worldScale as defined in the bake shader.
-	vec2 uv = p_advected.xz / (100000.0 * props.worldScale);
-	vec4 bakedWeather = textureLod(u_cloudWeatherTexture, uv, 0.0);
-	return loadCloudWeather(bakedWeather);
+	float mapRange = 100000.0 * props.worldScale;
+	float layerRange = props.thickness * props.worldScale;
+
+	// XZ Projection
+	vec2 uvXZ = p_advected.xz / mapRange;
+	vec4 bakedXZ = textureLod(u_cloudWeatherTexture, uvXZ, 0.0);
+
+	// XY Projection
+	float hNorm = clamp((p.y - props.altitude * props.worldScale) / layerRange, 0.0, 1.0);
+	vec2 uvXY = vec2(p_advected.x / mapRange, hNorm);
+	vec4 bakedXY = textureLod(u_cloudWeatherXYTexture, uvXY, 0.0);
+
+	// YZ Projection
+	vec2 uvYZ = vec2(p_advected.z / mapRange, hNorm);
+	vec4 bakedYZ = textureLod(u_cloudWeatherYZTexture, uvYZ, 0.0);
+
+	CloudWeather weather = loadCloudWeather(bakedXZ);
+
+	// Intersect the SDFs (take the max of the three SDF values)
+	weather.sdf = max(bakedXZ.r, max(bakedXY.r, bakedYZ.r));
+
+	return weather;
 }
 
 CloudLayer computeCloudLayer(CloudWeather weather, CloudProperties props) {
