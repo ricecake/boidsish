@@ -113,6 +113,10 @@ namespace Boidsish {
 
 		T::RegisterConstant("BLUE_NOISE_BINDING", Constants::TextureUnit::NoiseBlue());
 
+		T::RegisterConstant("CLOUD_WEATHER_BINDING", Constants::TextureUnit::CloudWeatherBake());
+		T::RegisterConstant("CLOUD_WEATHER_XY_BINDING", Constants::TextureUnit::CloudWeatherXY());
+		T::RegisterConstant("CLOUD_WEATHER_YZ_BINDING", Constants::TextureUnit::CloudWeatherYZ());
+
 		T::RegisterConstant("VOLUMETRIC_INJECTION_IMAGE_BINDING", Constants::ImageBinding::VolumetricInjection());
 		T::RegisterConstant("VOLUMETRIC_SCATTERING_IMAGE_BINDING", Constants::ImageBinding::VolumetricScattering());
 		T::RegisterConstant("VOLUMETRIC_HISTORY_IMAGE_BINDING", Constants::ImageBinding::VolumetricHistory());

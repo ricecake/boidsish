@@ -8,6 +8,9 @@ layout(binding = 0, rgba16f) uniform image2D outWeatherMap;
 
 uniform float uWorldScale;
 uniform float uCloudCoverage;
+uniform float uCloudAltitude;
+uniform float uCloudThickness;
+uniform int uMode; // 0: XZ, 1: XY, 2: YZ
 
 
 
@@ -130,17 +133,34 @@ void main() {
 	vec2 uv = (vec2(pixel) + 0.5) / vec2(size);
 
 	float mapRange = 100000.0 * uWorldScale;
+	float layerRange = uCloudThickness * uWorldScale;
 	float cellRange = 10000.0 * uWorldScale;
-	vec3 p = vec3(uv.x * mapRange, 0.0, uv.y * mapRange);
+
+	vec3 p;
+	vec2 projP;
+	if (uMode == 0) { // XZ
+		p = vec3(uv.x * mapRange, 0.0, uv.y * mapRange);
+		projP = p.xz;
+	} else if (uMode == 1) { // XY
+		p = vec3(uv.x * mapRange, uv.y * layerRange, 0.0);
+		projP = p.xy;
+	} else { // YZ
+		p = vec3(0.0, uv.y * layerRange, uv.x * mapRange);
+		projP = p.zy; // Using Z as horizontal, Y as vertical
+	}
 
 	// vec2 weatherData = worley3d_tiling(p / cellRange, 16.0);
-	VoronoiData vd = sdVoronoiFbm(p.xz/cellRange, 2.0, 3.0, uCloudCoverage, vec2(10.0));
+	VoronoiData vd = sdVoronoiFbm(projP/cellRange, 2.0, 3.0, uCloudCoverage, vec2(10.0));
 
 	float sdf = vd.dist * cellRange;
 
 	float cellID = psrdnoise(vd.f1);
 
-	vec3 f1WorldPos = vec3(vd.f1.x * cellRange, 0.0, vd.f1.y * cellRange);
+	vec3 f1WorldPos = vec3(0.0);
+	if (uMode == 0) f1WorldPos.xz = vd.f1 * cellRange;
+	else if (uMode == 1) f1WorldPos.xy = vd.f1 * cellRange;
+	else f1WorldPos.zy = vd.f1 * cellRange;
+
 	vec2 heightData = worley3d_tiling(f1WorldPos / (20000.0 * uWorldScale), 20.0);
 	float altitudeMap = abs(1.0 - heightData.x);
 	float thicknessMap = heightData.y;

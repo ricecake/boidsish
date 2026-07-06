@@ -346,6 +346,8 @@ namespace Boidsish {
 			bool      has_valid_history_ = false;
 
 			GLuint cloud_weather_texture_ = 0;
+			GLuint cloud_weather_xy_texture_ = 0;
+			GLuint cloud_weather_yz_texture_ = 0;
 			bool   needs_weather_bake_ = true;
 			float  world_scale_ = 1.0f;
 
