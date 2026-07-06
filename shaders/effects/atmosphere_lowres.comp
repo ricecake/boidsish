@@ -386,19 +386,26 @@ void main() {
 							traceDist = length(lp - subP);
 						}
 
-						float shadowDensity = 0.0;
 						float opticalDepthToLight = 0.0;
-						if (traceDist > 0.01 * worldScale) {
+						bool useFOM = (lights[j].type == LIGHT_TYPE_DIRECTIONAL && L.y > 0.01);
+
+						if (useFOM && traceDist > 0.01 * worldScale) {
+							vec2 lookupXZ = subP.xz - L.xz * (subP.y / L.y);
+							vec2 uv = (cloudShadowMatrix * vec4(lookupXZ, 0.0, 1.0)).xy;
+							if (all(greaterThanEqual(uv, vec2(0.0))) && all(lessThanEqual(uv, vec2(1.0)))) {
+								float z = clamp((layer.baseCeiling - subP.y) / layer.thickness, 0.0, 1.0);
+								opticalDepthToLight = evaluateCloudFOM(uv, z, layer.thickness) * (cloudShadowOpticalDepthMultiplier / L.y);
+							} else {
+								useFOM = false;
+							}
+						}
+
+						if (!useFOM && traceDist > 0.01 * worldScale) {
 							float shadowStepSize = traceDist / float(shadow_samples);
 							for (int ks = 0; ks < shadow_samples; ks++) {
 								vec3 sp = subP + L * (float(ks) + jitter) * shadowStepSize;
-								float currentShadowDensity = calculateCloudDensity(sp, weather, layer, props, time, true).x;
-								float currentOpticalDepth = shadowDensity * shadowStepSize * cloudShadowOpticalDepthMultiplier;
-								if (currentOpticalDepth > 3.0) {
-									break;
-								}
-								shadowDensity += currentShadowDensity;
-								opticalDepthToLight += currentOpticalDepth;
+								float d_shadow = calculateCloudDensity(sp, weather, layer, props, time, true).x;
+								opticalDepthToLight += d_shadow * shadowStepSize * cloudShadowOpticalDepthMultiplier;
 							}
 						}
 

@@ -28,7 +28,8 @@ namespace Boidsish {
 			float            sunIntensity,
 			const glm::vec3& cameraPos,
 			float            time,
-			float            worldScale
+			float            worldScale,
+			uint64_t         frameCount
 		);
 
 		glm::vec3 GetAmbientEstimate() const { return _ambientEstimate; }
@@ -42,6 +43,9 @@ namespace Boidsish {
 		GLuint GetAerialPerspectiveLUT() const { return _aerialPerspectiveLUT; }
 
 		GLuint GetCloudShadowMap() const { return _cloudShadowMap; }
+
+		GLuint GetCloudFOM0() const { return _cloudFOM[0]; }
+		GLuint GetCloudFOM1() const { return _cloudFOM[1]; }
 
 		static constexpr GLuint kTransmittanceUnit = 20;
 		static constexpr GLuint kMultiScatteringUnit = 21;
@@ -190,6 +194,7 @@ namespace Boidsish {
 		GLuint _skyViewLUT = 0;
 		GLuint _aerialPerspectiveLUT = 0;
 		GLuint _cloudShadowMap = 0;
+		GLuint _cloudFOM[2] = { 0, 0 };
 		GLuint _shCoeffsBuffer = 0;
 
 		std::unique_ptr<ComputeShader> _transmittanceShader;
@@ -198,6 +203,7 @@ namespace Boidsish {
 		std::unique_ptr<ComputeShader> _aerialPerspectiveShader;
 		std::unique_ptr<ComputeShader> _skyToSHShader;
 		std::unique_ptr<ComputeShader> _cloudShadowShader;
+		std::unique_ptr<ComputeShader> _cloudFOMShader;
 
 		glm::vec4 _shCoeffs[9];
 

@@ -2062,7 +2062,7 @@ namespace Boidsish {
 
 			// Update the atmosphere model with the current sun/moon light
 			float world_scale = terrain_generator ? terrain_generator->GetWorldScale() : 1.0f;
-			atmosphere_manager->Update(sun_dir, sun_color, sun_intensity, camera.pos(), simulation_time, world_scale);
+			atmosphere_manager->Update(sun_dir, sun_color, sun_intensity, camera.pos(), simulation_time, world_scale, frame_count_);
 
 			// Sync ambient light from atmosphere to ensure decor and world match
 			glm::vec3 estimated_ambient = atmosphere_manager->GetAmbientEstimate();
