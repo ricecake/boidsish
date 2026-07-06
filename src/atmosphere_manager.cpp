@@ -144,7 +144,8 @@ namespace Boidsish {
 		float            sunIntensity,
 		const glm::vec3& cameraPos,
 		float            time,
-		float            worldScale
+		float            worldScale,
+		uint64_t         frameCount
 	) {
 		PROJECT_PROFILE_SCOPE("AtmosphereManager::Update");
 		if (_needsPrecompute) {
@@ -291,13 +292,16 @@ namespace Boidsish {
 		glDispatchCompute(kCloudShadowResolution / 16, kCloudShadowResolution / 16, 1);
 		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
-		// Dispatch Cloud FOM
+		// Dispatch Cloud FOM (interleaved rendering - 1/4 texels per frame)
 		_cloudFOMShader->use();
 		glBindImageTexture(0, _cloudFOM[0], 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 		glBindImageTexture(1, _cloudFOM[1], 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 		_cloudFOMShader->setVec2("u_mapCenter", glm::vec2(cameraPos.x, cameraPos.z));
 		_cloudFOMShader->setFloat("u_mapSize", kCloudShadowWorldSize);
-		glDispatchCompute(kCloudShadowResolution / 16, kCloudShadowResolution / 16, 1);
+		_cloudFOMShader->setUint("u_frameCount", static_cast<GLuint>(frameCount));
+		// Local size 16x16, texture 512x512. Full resolution is 32x32 workgroups.
+		// Interleaved 1/2 res (1/4 total area) is 16x16 workgroups.
+		glDispatchCompute(kCloudShadowResolution / 32, kCloudShadowResolution / 32, 1);
 		glMemoryBarrier(GL_TEXTURE_FETCH_BARRIER_BIT);
 
 		// SH coefficients remain on GPU — copied to UBO via CopySHToUBO() later.

@@ -11,11 +11,23 @@ layout(rgba16f, binding = 1) uniform image2D outFOM1;
 
 uniform vec2 u_mapCenter;
 uniform float u_mapSize;
+uniform uint u_frameCount;
 
 void main() {
-    ivec2 texel = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 packedPixel = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 packedSize = imageSize(outFOM0) / 2;
+    if (packedPixel.x >= packedSize.x || packedPixel.y >= packedSize.y) return;
+
+    // 2x2 Bayer pattern for interleaved updates
+    ivec2 bayer_offsets[4] = ivec2[](
+        ivec2(0, 0),
+        ivec2(1, 1),
+        ivec2(1, 0),
+        ivec2(0, 1)
+    );
+    ivec2 offset = bayer_offsets[u_frameCount % 4];
+    ivec2 texel = packedPixel * 2 + offset;
     ivec2 size = imageSize(outFOM0);
-    if (texel.x >= size.x || texel.y >= size.y) return;
 
     // Map texel to world XZ — this is the same projection as cloud_shadow_map.comp
     vec2 uv = (vec2(texel) + 0.5) / vec2(size);

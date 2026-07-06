@@ -28,7 +28,8 @@ namespace Boidsish {
 			float            sunIntensity,
 			const glm::vec3& cameraPos,
 			float            time,
-			float            worldScale
+			float            worldScale,
+			uint64_t         frameCount
 		);
 
 		glm::vec3 GetAmbientEstimate() const { return _ambientEstimate; }
