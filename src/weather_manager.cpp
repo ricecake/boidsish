@@ -1152,19 +1152,74 @@ namespace Boidsish {
 					if (rand() % 100 < 20) type = LightningType::CLOUD_TO_CLOUD;
 
 					float worldScaleVal = terrain_ ? terrain_->GetWorldScale() : 1.0f;
+
+					// Default random positioning
 					glm::vec3 startPos(
 						cameraPos.x + (rand() % 1000 - 500),
 						current_.cloud_altitude * worldScaleVal,
 						cameraPos.z + (rand() % 1000 - 500)
 					);
-
 					glm::vec3 endPos = startPos;
-					if (type == LightningType::CLOUD_TO_CLOUD) {
-						endPos.x += (rand() % 400 - 200);
-						endPos.z += (rand() % 400 - 200);
-						endPos.y += (rand() % 100 - 50);
-					} else {
-						endPos.y = 0.0f; // Ground
+
+					// Attempt to find actual cloudy regions using LBM humidity
+					if (latest_snapshot_.valid && !latest_snapshot_.scalarData.empty()) {
+						int width = latest_snapshot_.uboMetadata.originSize.y;
+						int height = latest_snapshot_.uboMetadata.originSize.w;
+
+						// Camera pos in grid coords
+						int camGX = (int)std::floor(cameraPos.x / 32.0f) - latest_snapshot_.gridAnchor.x;
+						int camGZ = (int)std::floor(cameraPos.z / 32.0f) - latest_snapshot_.gridAnchor.y;
+
+						// Search for cloudy cells (high humidity) near camera
+						int searchRadius = 25;
+						std::vector<glm::ivec2> cloudyCells;
+						for (int gz = camGZ - searchRadius; gz <= camGZ + searchRadius; ++gz) {
+							for (int gx = camGX - searchRadius; gx <= camGX + searchRadius; ++gx) {
+								if (gx >= 0 && gx < width && gz >= 0 && gz < height) {
+									// scalarData.y is humidity
+									if (latest_snapshot_.scalarData[gz * width + gx].y > 0.65f) {
+										cloudyCells.push_back({gx, gz});
+									}
+								}
+							}
+						}
+
+						if (!cloudyCells.empty()) {
+							const auto& startCell = cloudyCells[rand() % cloudyCells.size()];
+							startPos.x = (startCell.x + latest_snapshot_.gridAnchor.x) * 32.0f + 16.0f;
+							startPos.z = (startCell.y + latest_snapshot_.gridAnchor.y) * 32.0f + 16.0f;
+
+							// Pick a height within the cloud layer
+							float vOffset = (static_cast<float>(rand()) / RAND_MAX) * current_.cloud_thickness;
+							startPos.y = (current_.cloud_altitude + vOffset) * worldScaleVal;
+
+							if (type == LightningType::CLOUD_TO_CLOUD) {
+								// Find another nearby cloudy cell for the end point
+								std::vector<glm::ivec2> candidateEndCells;
+								for (const auto& cell : cloudyCells) {
+									float d = glm::distance(glm::vec2(startCell), glm::vec2(cell));
+									if (d > 3.0f && d < 15.0f) candidateEndCells.push_back(cell);
+								}
+
+								if (!candidateEndCells.empty()) {
+									const auto& endCell = candidateEndCells[rand() % candidateEndCells.size()];
+									endPos.x = (endCell.x + latest_snapshot_.gridAnchor.x) * 32.0f + 16.0f;
+									endPos.z = (endCell.y + latest_snapshot_.gridAnchor.y) * 32.0f + 16.0f;
+									float evOffset = (static_cast<float>(rand()) / RAND_MAX) * current_.cloud_thickness;
+									endPos.y = (current_.cloud_altitude + evOffset) * worldScaleVal;
+								} else {
+									// Local random fallback for endPos
+									endPos = startPos + glm::vec3((rand() % 400 - 200), (rand() % 100 - 50), (rand() % 400 - 200));
+								}
+							}
+						}
+					}
+
+					// BOLT/FORK endPos: Ensure it's on the ground
+					if (type != LightningType::CLOUD_TO_CLOUD) {
+						endPos.x = startPos.x + (rand() % 200 - 100);
+						endPos.z = startPos.z + (rand() % 200 - 100);
+						endPos.y = 0.0f;
 						if (terrain_) {
 							auto [h, n] = terrain_->GetTerrainPropertiesAtPoint(endPos.x, endPos.z);
 							endPos.y = h;
