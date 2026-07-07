@@ -9,9 +9,9 @@
 #include <unordered_map>
 #include <vector>
 
-namespace Boidsish {
+#include "render_context.h"
 
-	class RenderContext {};
+namespace Boidsish {
 
 	// --- Factory System ---
 
@@ -68,6 +68,15 @@ namespace Boidsish {
 		virtual uint32_t GetTexture(TextureHandle handle) const = 0;
 	};
 
+	class SimpleRenderGraphResources : public RenderGraphResources {
+	public:
+		void     SetTexture(std::string name, uint32_t id) { m_textures[name] = id; }
+		uint32_t GetTexture(TextureHandle handle) const override;
+
+	private:
+		std::unordered_map<std::string, uint32_t> m_textures;
+	};
+
 	class RenderGraphBuilder {
 	public:
 		virtual ~RenderGraphBuilder() = default;
@@ -89,15 +98,18 @@ namespace Boidsish {
 		RenderGraph();
 		~RenderGraph() override;
 
-		template <typename T>
-		T* AddPass() {
-			auto base_ptr = Factory::get().create(std::type_index(typeid(T)));
-			if (!base_ptr) {
-				// Fallback if not registered, though we want self-registration
-				m_passes.push_back(std::make_unique<T>());
-			} else {
-				m_passes.push_back(std::unique_ptr<IRenderPass>(static_cast<IRenderPass*>(base_ptr.release())));
+		template <typename T, typename... Args>
+		T* AddPass(Args&&... args) {
+			// Ignore factory for now if arguments are provided
+			if constexpr (sizeof...(Args) == 0) {
+				auto base_ptr = Factory::get().create(std::type_index(typeid(T)));
+				if (base_ptr) {
+					m_passes.push_back(std::unique_ptr<IRenderPass>(static_cast<IRenderPass*>(base_ptr.release())));
+					return static_cast<T*>(m_passes.back().get());
+				}
 			}
+
+			m_passes.push_back(std::make_unique<T>(std::forward<Args>(args)...));
 			return static_cast<T*>(m_passes.back().get());
 		}
 
@@ -109,6 +121,9 @@ namespace Boidsish {
 		// Hooks
 		void OnBegin(std::function<void(const RenderContext&)> func) { m_begin_hooks.push_back(std::move(func)); }
 		void OnEnd(std::function<void(const RenderContext&)> func) { m_end_hooks.push_back(std::move(func)); }
+
+		const std::vector<std::unique_ptr<IRenderPass>>& GetPasses() const { return m_passes; }
+		const std::vector<IRenderPass*>&                 GetActivePasses() const { return m_active_passes; }
 
 	private:
 		std::vector<std::unique_ptr<IRenderPass>> m_passes;

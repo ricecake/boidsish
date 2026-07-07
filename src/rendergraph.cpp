@@ -43,6 +43,16 @@ namespace Boidsish {
 		IRenderPass* m_current_pass;
 	};
 
+	// --- SimpleRenderGraphResources Implementation ---
+
+	uint32_t SimpleRenderGraphResources::GetTexture(TextureHandle handle) const {
+		if (handle.id != 0) return handle.id;
+		if (auto it = m_textures.find(handle.name); it != m_textures.end()) {
+			return it->second;
+		}
+		return 0;
+	}
+
 	// --- RenderGraph Implementation ---
 
 	RenderGraph::RenderGraph() = default;
