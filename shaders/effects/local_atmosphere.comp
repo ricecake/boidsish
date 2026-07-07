@@ -1,0 +1,231 @@
+#version 460 core
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(binding = 0, rgba16f) uniform image2D outPackedColor;
+layout(binding = 1, rgba32f) uniform image2D outPackedDepth;
+layout(binding = 2, rg16f)   uniform image2D outPackedVelocity;
+
+uniform sampler2D depthTexture;
+
+uniform float uDeltaTime;
+uniform vec3  cloudColorUniform;
+#define ATMOSPHERE_HEIGHT_DEFINED
+uniform float u_atmosphereHeight;
+
+uniform sampler2D u_skyViewLUT;
+
+// Volumetric lighting resources
+layout(binding = [[VOLUMETRIC_INJECTION_BINDING]]) uniform sampler3D uVolumetricInjection;
+layout(binding = [[VOLUMETRIC_SCATTERING_BINDING]]) uniform sampler3D uVolumetricScattering;
+
+#define USE_TERRAIN_DATA
+#define SKIP_TERRAIN_RAYCAST
+#include "../atmosphere/common.glsl"
+#include "../helpers/clouds.glsl"
+#include "../helpers/fast_noise.glsl"
+#include "../helpers/lighting.glsl"
+#include "../types/temporal_data.glsl"
+#include "helpers/math.glsl"
+
+#define COMPUTE_SHADER
+#include "../particle_types.glsl"
+#include "../helpers/spatial_hash.glsl"
+
+uniform float u_cell_size;
+uniform uint  u_grid_size;
+
+const int NUM_CASCADES = 4;
+const float CASCADE_DISTANCES[4] = { 20.0, 60.0, 200.0, 1000.0 };
+
+// Helper to map world position to volumetric grid W coordinate
+float worldToVolumetricW(vec3 p) {
+    float linearZ = dot(p - viewPos, viewDir);
+    int cascade = -1;
+    float z_near = 0.1;
+    float z_far = 0.0;
+
+    for (int i = 0; i < NUM_CASCADES; ++i) {
+        if (linearZ <= CASCADE_DISTANCES[i]) {
+            cascade = i;
+            z_far = CASCADE_DISTANCES[i];
+            if (i > 0) z_near = CASCADE_DISTANCES[i-1];
+            break;
+        }
+    }
+
+    if (cascade == -1) return 1.0;
+    float slice = clamp(log(linearZ / z_near) / log(z_far / z_near), 0.0, 1.0);
+    return (float(cascade) + slice) / float(NUM_CASCADES);
+}
+
+void main() {
+    ivec2 packedPixel = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 packedSize = imageSize(outPackedColor);
+    if (packedPixel.x >= packedSize.x || packedPixel.y >= packedSize.y)
+        return;
+
+    // 2x2 Bayer pattern for interleaving (consistent with atmosphere_lowres.comp)
+    ivec2 bayer_offsets[4] = ivec2[](
+        ivec2(0, 0),
+        ivec2(1, 1),
+        ivec2(1, 0),
+        ivec2(0, 1)
+    );
+    ivec2 offset = bayer_offsets[frameIndex % 4];
+    ivec2 fullResPixel = packedPixel * 2 + offset;
+    ivec2 fullResSize = packedSize * 2;
+
+    vec2 TexCoords = (vec2(fullResPixel) + 0.5) / vec2(fullResSize);
+
+    float depth = texture(depthTexture, TexCoords).r;
+    float z = depth * 2.0 - 1.0;
+    vec4  clipSpacePosition = vec4(TexCoords * 2.0 - 1.0, z, 1.0);
+    vec4  viewSpacePosition = invProjection * clipSpacePosition;
+    viewSpacePosition /= viewSpacePosition.w;
+    vec3 worldTarget = (invView * viewSpacePosition).xyz;
+    vec3 rayDir = normalize(worldTarget - viewPos);
+    float sceneDist = length(worldTarget - viewPos);
+
+    if (depth == 1.0) {
+        sceneDist = 100000.0 * worldScale;
+    }
+
+    // Local march range: up to 500 units
+    float t_start = 0.1 * worldScale;
+    float t_end = min(sceneDist, 500.0 * worldScale);
+
+    // Initial results from the distant cloud march
+    vec4 distantResult = imageLoad(outPackedColor, packedPixel);
+    vec4 distantDepth = imageLoad(outPackedDepth, packedPixel);
+    vec2 distantVelocity = imageLoad(outPackedVelocity, packedPixel).xy;
+
+    vec3  localScattering = vec3(0.0);
+    float localTransmittance = 1.0;
+    float firstHitDist = -1.0;
+    float lastHitDist = -1.0;
+
+    int samples = 32;
+    float stepSize = (t_end - t_start) / float(samples);
+    float jitter = InterleavedGradientNoise(fullResPixel, frameIndex);
+    float t = t_start + jitter * stepSize;
+
+    for (int i = 0; i < samples; i++) {
+        if (t >= t_end || localTransmittance < 0.01) break;
+
+        vec3 p = viewPos + rayDir * t;
+
+        // Terrain awareness
+        float terrainHeight = getTerrainHeight(p.xz);
+        if (p.y < terrainHeight - 1.0 * worldScale) {
+            // Hit terrain, end march
+            break;
+        }
+
+        // 1. Sample Volumetric Lighting Grid for base lighting
+        float w = worldToVolumetricW(p);
+        vec4 volLighting = textureLod(uVolumetricScattering, vec3(TexCoords, w), 0.0);
+        vec4 volInjection = textureLod(uVolumetricInjection, vec3(TexCoords, w), 0.0);
+
+        float extinction = volInjection.a;
+        vec3 stepScat = vec3(0.0);
+
+        // 2. If froxel has enough density, refine by sampling source
+        if (extinction > 0.01) {
+            Sampling s = getAtmospherePropertiesAtPos(p);
+            vec3 detailRadiance = vec3(0.0);
+            vec3 V = -rayDir;
+
+            // Direct light (Sun/Moon)
+            for (int j = 0; j < min(2, num_lights); ++j) {
+                if (lights[j].type != LIGHT_TYPE_DIRECTIONAL) continue;
+                vec3 L = normalize(-lights[j].direction);
+                float shadow = calculateCloudShadow(j, p);
+                if (shadow > 0.01) {
+                    shadow = min(shadow, terrainShadowVolumetric(p, L));
+                    shadow = min(shadow, calculateShadow(j, p, vec3(0, 1, 0), L));
+                }
+                float cosTheta = dot(rayDir, L);
+                float rayPhase = rayleighPhase(cosTheta);
+                float miePhase = henyeyGreenstein(0.8, cosTheta); // Use a fixed anisotropy for local refinement
+                detailRadiance += lights[j].color * lights[j].intensity * shadow * (s.rayleigh * rayPhase + s.mie * miePhase);
+            }
+
+            // Local lights
+            for (int j = 2; j < num_lights; ++j) {
+                vec3 L; float atten;
+                calculateLightContribution(j, p, L, atten);
+                if (atten <= 0.0) continue;
+                float cosTheta = dot(rayDir, L);
+                float miePhase = henyeyGreenstein(0.8, cosTheta);
+                float shadow = calculateShadow(j, p, vec3(0, 1, 0), L);
+                detailRadiance += lights[j].color * lights[j].intensity * atten * shadow * miePhase * s.mie;
+            }
+
+            // Emissive Particles
+            float particlePhase = 1.0 / (4.0 * PI);
+            ivec3 baseCell = ivec3(floor(p / u_cell_size));
+            for (int x = -1; x <= 1; ++x) {
+                for (int y = -1; y <= 1; ++y) {
+                    for (int z = -1; z <= 1; ++z) {
+                        ivec3 cellPos = baseCell + ivec3(x, y, z);
+                        uint  h = uint(cellPos.x * 73856093) ^ uint(cellPos.y * 19349663) ^ uint(cellPos.z * 83492791);
+                        uint  cell_idx = h % u_grid_size;
+                        int   particle_idx = grid_heads[cell_idx];
+                        while (particle_idx != -1) {
+                            Particle part = particles[particle_idx];
+                            if (part.pos.w > 0 && (part.style == STYLE_FIRE || part.style == STYLE_FIREFLIES || part.style == STYLE_CINDER || part.style == STYLE_EXPLOSION || part.style == STYLE_ROCKET_TRAIL)) {
+                                float distSq = dot(part.pos.xyz - p, part.pos.xyz - p);
+                                float radius = part.vel.w * 6.0;
+                                float radiusSq = radius * radius;
+                                if (distSq < radiusSq) {
+                                    float intensityScale = (part.style == STYLE_FIREFLIES) ? 0.25 : 8.0;
+                                    detailRadiance += pow(max(0, 1.0 - distSq/radiusSq), 3) * part.color.rgb * part.color.a * particlePhase * intensityScale;
+                                }
+                            }
+                            particle_idx = grid_next[particle_idx];
+                        }
+                    }
+                }
+            }
+
+            stepScat = detailRadiance * 0.001; // Scale to per-meter
+            extinction = (s.rayleigh.r + s.rayleigh.g + s.rayleigh.b + s.mie.r + s.mie.g + s.mie.b) / 3.0 * 0.001;
+        } else {
+            // Use low-res froxel data directly if low density
+            stepScat = volLighting.rgb / max(0.001, volLighting.a); // Approximate local scattering
+        }
+
+        float stepTransmittance = exp(-extinction * stepSize);
+        vec3 integratedScat = stepScat * (1.0 - stepTransmittance) / max(extinction, 0.0001);
+
+        localScattering += localTransmittance * integratedScat;
+        localTransmittance *= stepTransmittance;
+
+        if (extinction > 0.05 && firstHitDist < 0.0) firstHitDist = t;
+        if (extinction > 0.05) lastHitDist = t;
+
+        t += stepSize;
+    }
+
+    // Composition: local scattering in front of distant clouds
+    vec3 finalColor = localScattering + localTransmittance * distantResult.rgb;
+    float finalAlpha = distantResult.a * localTransmittance;
+
+    vec4 finalDepth = distantDepth;
+    vec2 finalVelocity = distantVelocity;
+
+    if (firstHitDist > 0.0) {
+        if (distantDepth.r < 0.0 || firstHitDist < distantDepth.r) {
+            finalDepth.r = firstHitDist;
+            finalDepth.g = max(distantDepth.g, lastHitDist);
+            // Rough velocity for local hits (camera-relative static)
+            vec4 prevClipLocal = prevViewProjection * vec4(viewPos + rayDir * firstHitDist, 1.0);
+            vec2 prevScreenUV = (prevClipLocal.xy / prevClipLocal.w) * 0.5 + 0.5;
+            finalVelocity = prevScreenUV - TexCoords;
+        }
+    }
+
+    imageStore(outPackedColor, packedPixel, vec4(finalColor, finalAlpha));
+    imageStore(outPackedDepth, packedPixel, finalDepth);
+    imageStore(outPackedVelocity, packedPixel, vec4(finalVelocity, 0.0, 0.0));
+}
