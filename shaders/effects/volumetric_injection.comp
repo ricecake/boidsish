@@ -218,7 +218,7 @@ void main() {
         radiance += lightningColor * lightningPulse * (0.2 + 0.8 * cloudGlow) * (s.rayleigh + s.mie);
     }
 
-/*
+// /*
     // --- Emissive Particle Illumination ---
     // Simple isotropic phase for particle lights
     float particlePhase = 1.0 / (4.0 * PI);
@@ -240,21 +240,16 @@ void main() {
                         float distSq = dot(p.pos.xyz - worldPos, p.pos.xyz - worldPos);
                         float radius = p.vel.w * 6.0; // Influence radius based on size
                         float radiusSq = radius * radius;
-
-                        if (distSq < radiusSq) {
-                            float atten = 1.0 - smoothstep(0.0, radiusSq, distSq);
-                            // Fireflies are smaller but point-like, fires are larger and more intense
-                            float intensityScale = (p.style == STYLE_FIREFLIES) ? 0.250 : 8.0;
-                            radiance += p.color.rgb * p.color.a * atten * particlePhase * intensityScale;
-                        }
+                        // Fireflies are smaller but point-like, fires are larger and more intense
+                        float intensityScale = (p.style == STYLE_FIREFLIES) ? 0.250 : 8.0;
+                        radiance += pow(max(0, 1.0 - distSq/radiusSq), 3) * p.color.rgb * p.color.a * particlePhase * intensityScale;
                     }
                     particle_idx = grid_next[particle_idx];
                 }
             }
         }
     }
-
-*/
+// */
 
         radiance *= uIntensity;// * hazeDensity; // Apply user-controlled overall intensity
 
