@@ -8,6 +8,12 @@ namespace Boidsish {
 
 		class RenderGraphPostProcessingEffect : public IPostProcessingEffect {
 		public:
+			struct PassRequirements {
+				std::vector<std::string>           reads;
+				std::vector<std::string>           writes;
+				std::map<std::string, std::string> forwards;
+			};
+
 			RenderGraphPostProcessingEffect(std::string name);
 			~RenderGraphPostProcessingEffect() override;
 
@@ -40,9 +46,12 @@ namespace Boidsish {
 			int                        height_ = 0;
 			float                      time_ = 0.0f;
 
-			std::unordered_map<std::string, TextureResource> intermediate_resources_;
+			std::unordered_map<std::string, TextureResource>    intermediate_resources_;
+			std::unordered_map<IRenderPass*, PassRequirements> m_pass_requirements;
+			bool                                                needs_compile_ = true;
 
 			void EnsureResources();
+			void RefreshRequirements();
 
 		public:
 			GLuint GetIntermediateFBO(const std::string& name) const {

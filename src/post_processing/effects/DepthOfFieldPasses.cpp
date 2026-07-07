@@ -17,9 +17,6 @@ namespace Boidsish {
 		void CoCPass::Execute(const RenderContext& ctx, const RenderGraphResources& resources) {
 			if (!params_) return;
 
-			glBindFramebuffer(GL_FRAMEBUFFER, effect_->GetIntermediateFBO("CoCTexture"));
-			glClear(GL_COLOR_BUFFER_BIT);
-
 			shader_->use();
 			shader_->setVec2("RESOLUTION", glm::vec2(params_->width, params_->height));
 			shader_->setBool("uAutofocus", params_->autofocusEnabled);

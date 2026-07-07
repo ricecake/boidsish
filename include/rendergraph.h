@@ -123,6 +123,7 @@ namespace Boidsish {
 		void OnEnd(std::function<void(const RenderContext&)> func) { m_end_hooks.push_back(std::move(func)); }
 
 		const std::vector<std::unique_ptr<IRenderPass>>& GetPasses() const { return m_passes; }
+		const std::vector<IRenderPass*>&                 GetActivePasses() const { return m_active_passes; }
 
 	private:
 		std::vector<std::unique_ptr<IRenderPass>> m_passes;

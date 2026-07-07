@@ -6,16 +6,9 @@
 
 namespace Boidsish {
 
-	// Internal helper to access requirements
-	struct PassRequirements {
-		std::vector<std::string>           reads;
-		std::vector<std::string>           writes;
-		std::map<std::string, std::string> forwards;
-	};
-
 	class BetterRenderGraphBuilder : public RenderGraphBuilder {
 	public:
-		BetterRenderGraphBuilder(std::map<IRenderPass*, PassRequirements>& requirements) :
+		BetterRenderGraphBuilder(std::unordered_map<IRenderPass*, PostProcessing::RenderGraphPostProcessingEffect::PassRequirements>& requirements) :
 			m_requirements(requirements), m_current_pass(nullptr) {}
 		void SetCurrentPass(IRenderPass* pass) { m_current_pass = pass; }
 		TextureHandle Read(std::string name) override {
@@ -30,7 +23,7 @@ namespace Boidsish {
 			m_requirements[m_current_pass].forwards[name] = handle.name;
 		}
 	private:
-		std::map<IRenderPass*, PassRequirements>& m_requirements;
+		std::unordered_map<IRenderPass*, PostProcessing::RenderGraphPostProcessingEffect::PassRequirements>& m_requirements;
 		IRenderPass*                              m_current_pass;
 	};
 }
@@ -61,16 +54,20 @@ namespace Boidsish {
 			EnsureResources();
 		}
 
-		void RenderGraphPostProcessingEffect::EnsureResources() {
-			std::map<IRenderPass*, PassRequirements> requirements;
-			BetterRenderGraphBuilder                 builder(requirements);
+		void RenderGraphPostProcessingEffect::RefreshRequirements() {
+			m_pass_requirements.clear();
+			BetterRenderGraphBuilder builder(m_pass_requirements);
 
 			for (auto& pass : graph_.GetPasses()) {
 				builder.SetCurrentPass(pass.get());
 				pass->Setup(builder);
 			}
+		}
 
-			for (auto const& [pass, req] : requirements) {
+		void RenderGraphPostProcessingEffect::EnsureResources() {
+			RefreshRequirements();
+
+			for (auto const& [pass, req] : m_pass_requirements) {
 				for (auto const& resName : req.writes) {
 					if (resName == "OutColor") continue; // Handled by the caller's FBO
 
@@ -124,30 +121,34 @@ namespace Boidsish {
 			ctx.view_pos = cameraPos;
 			ctx.time = time_;
 
-			// We need to manage FBO switching between passes.
-			// This really should be in RenderGraph::Execute, but it doesn't have enough info yet.
-			// So for now, we'll manually execute and switch FBOs here if we can.
-			// Actually, let's keep it simple and just call Execute, but the passes MUST bind their own FBOs
-			// if they know where they are writing.
-
-			// A better way: The RenderGraph should know which FBO to bind for each pass.
-			// But since it doesn't, let's just make the passes responsible for now,
-			// giving them access to intermediate_resources_ somehow or just letting them use resources_.GetTexture.
-
-			// Actually, I'll update RenderGraph::Execute to take a callback or something,
-			// or just wrap each pass execution here.
-
-			graph_.Compile(); // Ensure it's compiled
+			if (needs_compile_) {
+				graph_.Compile();
+				RefreshRequirements();
+				needs_compile_ = false;
+			}
 
 			GLint originalFbo;
 			glGetIntegerv(GL_FRAMEBUFFER_BINDING, &originalFbo);
 
-			// We need a way to iterate the active passes.
-			// Since RenderGraph doesn't expose them easily, I might need to move this logic into RenderGraph
-			// or just let passes bind FBOs for now.
-			// I'll go with passes binding FBOs for now to keep this change focused.
+			for (auto* pass : graph_.GetActivePasses()) {
+				auto it = m_pass_requirements.find(pass);
+				if (it != m_pass_requirements.end() && !it->second.writes.empty()) {
+					// Post-processing passes usually have only one output.
+					const std::string& targetName = it->second.writes[0];
+					if (targetName == "OutColor") {
+						glBindFramebuffer(GL_FRAMEBUFFER, originalFbo);
+					} else if (intermediate_resources_.count(targetName)) {
+						glBindFramebuffer(GL_FRAMEBUFFER, intermediate_resources_[targetName].fbo);
+						glClear(GL_COLOR_BUFFER_BIT);
+					}
+				}
 
-			graph_.Execute(ctx, resources_);
+				// Post-processing quads should not be depth-tested or write to depth buffer
+				glDisable(GL_DEPTH_TEST);
+				glDepthMask(GL_FALSE);
+
+				pass->Execute(ctx, resources_);
+			}
 
 			glBindFramebuffer(GL_FRAMEBUFFER, originalFbo);
 		}
