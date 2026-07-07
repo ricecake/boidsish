@@ -253,7 +253,7 @@ namespace Boidsish {
 		/**
 		 * @brief Update the global chunk grid and max height textures.
 		 */
-		void UpdateGridTextures(float world_scale, GLuint lighting_ubo = 0, GLintptr lighting_ubo_offset = 0, GLsizeiptr lighting_ubo_size = 0, float day_time = -1.0f);
+		void UpdateGridTextures(float world_scale);
 
 		/**
 		 * @brief Perform deferred terrain baking for queued chunks.
@@ -391,8 +391,7 @@ namespace Boidsish {
 		GLuint biome_ubo_ = 0; // UBO for BiomeShaderProperties
 
 		// Global terrain grid resources
-		GLuint chunk_grid_texture_ = 0;      // GL_TEXTURE_2D (R16I: texture_slice index, -1 if none)
-		GLuint max_height_grid_texture_ = 0; // GL_TEXTURE_2D (R32F: max_y, mips for hierarchical check)
+		GLuint chunk_grid_texture_ = 0;      // GL_TEXTURE_2D (RG32F: texture_slice, maxHeight, mips for hierarchical check)
 		GLuint terrain_data_ubo_ = 0;        // UBO for grid parameters
 		GLuint probe_ssbo_ = 0;              // SSBO for per-chunk SH probes
 		GLuint bake_ssbo_ = 0;               // SSBO for BakeTask
@@ -415,6 +414,7 @@ namespace Boidsish {
 		GLuint grass_props_ubo_ = 0;
 
 		std::unique_ptr<ComputeShader> grid_mip_shader_;
+		std::unique_ptr<ComputeShader> height_mip_shader_;
 		std::unique_ptr<ComputeShader> probe_compute_shader_;
 		std::unique_ptr<ComputeShader> terrain_bake_shader_;
 		std::unique_ptr<ComputeShader> terrain_horizon_shader_;

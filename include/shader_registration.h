@@ -95,7 +95,6 @@ namespace Boidsish {
 		T::RegisterConstant("BAKED_DISPLACEMENT_BINDING", Constants::TextureUnit::TerrainDisplacement());
 
 		T::RegisterConstant("TERRAIN_CHUNK_GRID_BINDING", Constants::TextureUnit::TerrainChunkGrid());
-		T::RegisterConstant("TERRAIN_MAX_HEIGHT_BINDING", Constants::TextureUnit::TerrainMaxHeight());
 		T::RegisterConstant("TERRAIN_BIOME_MAP_BINDING", Constants::TextureUnit::TerrainBiomeMap());
 		T::RegisterConstant("HIZ_TEXTURE_BINDING", Constants::TextureUnit::HiZ());
 

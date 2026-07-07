@@ -208,7 +208,7 @@ void main() {
 				ivec2 localGridCoord = neighborChunkCoord - u_originSize.xy;
 				int neighborSlice = -1;
 				if (localGridCoord.x >= 0 && localGridCoord.x < u_originSize.z && localGridCoord.y >= 0 && localGridCoord.y < u_originSize.z) {
-					neighborSlice = texelFetch(u_chunkGrid, localGridCoord, 0).r;
+					neighborSlice = int(texelFetch(u_chunkGrid, localGridCoord, 0).r);
 				}
 
 				if (neighborSlice >= 0) {

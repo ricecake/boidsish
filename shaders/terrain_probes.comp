@@ -121,7 +121,7 @@ vec3 sampleTerrainFallback(vec3 worldPos, vec3 rayDir) {
 		ivec2 chunkCoord = ivec2(floor(gridPos));
 
 		if (chunkCoord.x >= 0 && chunkCoord.x < u_originSize.z && chunkCoord.y >= 0 && chunkCoord.y < u_originSize.z) {
-			int slice = texelFetch(u_chunkGrid, chunkCoord, 0).r;
+			int slice = int(texelFetch(u_chunkGrid, chunkCoord, 0).r);
 			if (slice >= 0) {
 				vec2 uv = fract(gridPos);
 				vec2 remappedUV = (uv * u_terrainParams.x + 0.5) / (u_terrainParams.x + 1.0);
@@ -270,7 +270,7 @@ void main() {
 	ivec2 toroidalCoord = (worldChunkCoord % u_originSize.z + u_originSize.z) % u_originSize.z;
 	int   flatIdx = int(toroidalCoord.y * u_originSize.z + toroidalCoord.x);
 
-	int slice = texelFetch(u_chunkGrid, localCoord, 0).r;
+	int slice = int(texelFetch(u_chunkGrid, localCoord, 0).r);
 	if (slice < 0) {
 		for (int i = 0; i < 9; ++i) {
 			u_terrainProbes[flatIdx].sh_coeffs[i] = vec4(0.0, 0.0, 0.0, 1.0);

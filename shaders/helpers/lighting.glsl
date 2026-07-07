@@ -416,7 +416,7 @@ vec3 getSpatialAmbientSH(vec3 worldPos, vec3 N) {
 			ivec2 localCoord = chunkCoord + ivec2(x, z);
 			if (localCoord.x >= 0 && localCoord.x < u_originSize.z && localCoord.y >= 0 && localCoord.y < u_originSize.z) {
 				// Only include this probe if it's actually registered in the current grid
-				if (texelFetch(u_chunkGrid, localCoord, 0).r >= 0) {
+				if (int(texelFetch(u_chunkGrid, localCoord, 0).r) >= 0) {
 					float weight = (x == 0 ? 1.0 - fracPos.x : fracPos.x) * (z == 0 ? 1.0 - fracPos.y : fracPos.y);
 
 					ivec2 worldChunkCoord = localCoord + u_originSize.xy;
