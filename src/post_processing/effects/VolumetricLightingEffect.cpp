@@ -1,5 +1,6 @@
 #include "post_processing/effects/VolumetricLightingEffect.h"
 #include "constants.h"
+#include "gpu_resource_registry.h"
 #include "service_locator.h"
 #include "shadow_manager.h"
 #include "light_manager.h"
@@ -72,6 +73,10 @@ namespace Boidsish {
 			create3DArray(scattering_texture_);
 			create3DArray(history_textures_[0]);
 			create3DArray(history_textures_[1]);
+
+			auto& reg = GpuResourceRegistry::Instance();
+			reg.PublishTexture(Constants::TextureUnit::VolumetricInjection(), injection_texture_, GL_TEXTURE_3D);
+			reg.PublishTexture(Constants::TextureUnit::VolumetricScattering(), scattering_texture_, GL_TEXTURE_3D);
 
 			has_history_ = false;
 		}

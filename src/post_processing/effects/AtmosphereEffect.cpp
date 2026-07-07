@@ -5,6 +5,7 @@
 #include "atmosphere_manager.h"
 #include "constants.h"
 #include "gpu_resource_registry.h"
+#include "fire_effect_manager.h"
 #include "light_manager.h"
 #include "service_locator.h"
 #include "shadow_manager.h"
@@ -41,6 +42,7 @@ namespace Boidsish {
 			);
 			temporal_shader_ = std::make_unique<ComputeShader>("shaders/effects/cloud_temporal_reprojection.comp");
 			spatial_filter_shader_ = std::make_unique<ComputeShader>("shaders/effects/cloud_spatial_filter.comp");
+			local_render_shader_ = std::make_unique<ComputeShader>("shaders/effects/local_atmosphere.comp");
 
 			if (cloud_render_shader_ && cloud_render_shader_->isValid()) {
 				cloud_render_shader_->use();
@@ -57,6 +59,26 @@ namespace Boidsish {
 				cloud_render_shader_->trySetInt("u_blueNoiseTexture", Constants::TextureUnit::NoiseBlue());
 				cloud_render_shader_->trySetInt("u_extraNoiseTexture", Constants::TextureUnit::NoiseExtra());
 				cloud_render_shader_->trySetInt("u_cloudWeatherTexture", Constants::TextureUnit::CloudWeatherBake());
+			}
+
+			if (local_render_shader_ && local_render_shader_->isValid()) {
+				local_render_shader_->use();
+				local_render_shader_->bindUniformBlock("Lighting", Constants::UboBinding::Lighting());
+				local_render_shader_->bindUniformBlock("Shadows", Constants::UboBinding::Shadows());
+				local_render_shader_->bindUniformBlock("TerrainData", Constants::UboBinding::TerrainData());
+				local_render_shader_->bindUniformBlock("VisualEffects", Constants::UboBinding::VisualEffects());
+				local_render_shader_->bindUniformBlock("TemporalData", Constants::UboBinding::TemporalData());
+				local_render_shader_->setInt("shadowMaps", Constants::TextureUnit::ShadowMaps());
+				local_render_shader_->setInt("u_transmittanceLUT", Constants::TextureUnit::AtmosphereTransmittance());
+				local_render_shader_->setInt("u_skyViewLUT", Constants::TextureUnit::AtmosphereSkyView());
+				local_render_shader_->trySetInt("u_noiseTexture", Constants::TextureUnit::NoiseSimplex());
+				local_render_shader_->trySetInt("u_curlTexture", Constants::TextureUnit::NoiseCurl());
+				local_render_shader_->trySetInt("u_blueNoiseTexture", Constants::TextureUnit::NoiseBlue());
+				local_render_shader_->trySetInt("u_extraNoiseTexture", Constants::TextureUnit::NoiseExtra());
+				local_render_shader_->trySetInt("u_cloudWeatherTexture", Constants::TextureUnit::CloudWeatherBake());
+
+				local_render_shader_->trySetInt("uVolumetricInjection", Constants::TextureUnit::VolumetricInjection());
+				local_render_shader_->trySetInt("uVolumetricScattering", Constants::TextureUnit::VolumetricScattering());
 			}
 
 			if (temporal_shader_ && temporal_shader_->isValid()) {
@@ -233,6 +255,68 @@ namespace Boidsish {
 				glBindImageTexture(0, packed_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 				glBindImageTexture(1, packed_depth_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
 				glBindImageTexture(2, packed_velocity_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RG16F);
+
+				glDispatchCompute((packed_width + 7) / 8, (packed_height + 7) / 8, 1);
+				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+			}
+
+			// --- PASS 1.5: Local Atmosphere Raymarching ---
+			if (local_render_shader_ && local_render_shader_->isValid()) {
+				local_render_shader_->use();
+				local_render_shader_->setFloat("uDeltaTime", dt);
+				local_render_shader_->setVec3("cloudColorUniform", cloud_color_);
+				local_render_shader_->setFloat("u_atmosphereHeight", atmosphere_height_);
+
+				local_render_shader_->setInt("depthTexture", 0);
+				glActiveTexture(GL_TEXTURE0);
+				glBindTexture(GL_TEXTURE_2D, depthTexture);
+
+				local_render_shader_->bindUniformBlock("Lighting", Constants::UboBinding::Lighting());
+				local_render_shader_->bindUniformBlock("Shadows", Constants::UboBinding::Shadows());
+				local_render_shader_->bindUniformBlock("TerrainData", Constants::UboBinding::TerrainData());
+				local_render_shader_->bindUniformBlock("VisualEffects", Constants::UboBinding::VisualEffects());
+				local_render_shader_->bindUniformBlock("TemporalData", Constants::UboBinding::TemporalData());
+
+				GpuResourceRegistry::Instance().BindTextures({
+					Constants::TextureUnit::AtmosphereTransmittance(),
+					Constants::TextureUnit::AtmosphereSkyView(),
+					Constants::TextureUnit::NoiseSimplex(),
+					Constants::TextureUnit::NoiseCurl(),
+					Constants::TextureUnit::NoiseBlue(),
+					Constants::TextureUnit::NoiseExtra()
+				});
+
+				auto atm_mgr = ServiceLocator::Instance().Get<AtmosphereManager>();
+				if (atm_mgr) {
+					atm_mgr->BindToShader(*local_render_shader_);
+				}
+
+				auto fire_mgr = ServiceLocator::Instance().Get<FireEffectManager>();
+				if (fire_mgr) {
+					fire_mgr->BindBuffers(*local_render_shader_);
+				}
+
+				local_render_shader_->setFloat("u_cell_size", Constants::Class::Particles::ParticleGridCellSize());
+				local_render_shader_->setUint("u_grid_size", Constants::Class::Particles::ParticleGridSize());
+
+				// Bind volumetric textures from registry
+				GLuint volInjection = GpuResourceRegistry::Instance().GetTexture(Constants::TextureUnit::VolumetricInjection());
+				GLuint volScattering = GpuResourceRegistry::Instance().GetTexture(Constants::TextureUnit::VolumetricScattering());
+
+				if (volInjection) {
+					glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::VolumetricInjection());
+					glBindTexture(GL_TEXTURE_3D, volInjection);
+					local_render_shader_->setInt("uVolumetricInjection", Constants::TextureUnit::VolumetricInjection());
+				}
+				if (volScattering) {
+					glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::VolumetricScattering());
+					glBindTexture(GL_TEXTURE_3D, volScattering);
+					local_render_shader_->setInt("uVolumetricScattering", Constants::TextureUnit::VolumetricScattering());
+				}
+
+				glBindImageTexture(0, packed_texture_, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA16F);
+				glBindImageTexture(1, packed_depth_texture_, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
+				glBindImageTexture(2, packed_velocity_texture_, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RG16F);
 
 				glDispatchCompute((packed_width + 7) / 8, (packed_height + 7) / 8, 1);
 				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);

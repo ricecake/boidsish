@@ -265,6 +265,7 @@ namespace Boidsish {
 			void InitializeTemporalResources();
 
 			std::unique_ptr<ComputeShader> cloud_render_shader_;
+			std::unique_ptr<ComputeShader> local_render_shader_;
 			std::unique_ptr<Shader>        composite_shader_;
 			std::unique_ptr<ComputeShader> temporal_shader_;
 			std::unique_ptr<ComputeShader> spatial_filter_shader_;
