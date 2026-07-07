@@ -117,6 +117,7 @@ namespace Boidsish {
 
 			for (const auto& effect : pre_tone_mapping_effects_) {
 				if (effect->IsEnabled() && effect->IsEarly()) {
+					PROJECT_PROFILE_SCOPE(effect->GetName().c_str());
 					ApplyEffectInternal(effect, viewMatrix, projectionMatrix, cameraPos, time);
 				}
 			}
@@ -132,6 +133,7 @@ namespace Boidsish {
 
 			for (const auto& effect : pre_tone_mapping_effects_) {
 				if (effect->IsEnabled() && !effect->IsEarly() && !effect->IsVeryLate()) {
+					PROJECT_PROFILE_SCOPE(effect->GetName().c_str());
 					ApplyEffectInternal(effect, viewMatrix, projectionMatrix, cameraPos, time);
 				}
 			}
@@ -147,6 +149,7 @@ namespace Boidsish {
 
 			for (const auto& effect : pre_tone_mapping_effects_) {
 				if (effect->IsEnabled() && effect->IsVeryLate()) {
+					PROJECT_PROFILE_SCOPE(effect->GetName().c_str());
 					ApplyEffectInternal(effect, viewMatrix, projectionMatrix, cameraPos, time);
 				}
 			}

@@ -6,7 +6,15 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS ON) # Corresponds to -std=gnu++23
 
-# Get the current git hash
+# Get the current git hash and branch
+execute_process(
+    COMMAND git rev-parse --abbrev-ref HEAD
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    OUTPUT_VARIABLE GIT_BRANCH
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+)
+
 execute_process(
     COMMAND git rev-parse --short HEAD
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
@@ -19,7 +27,13 @@ if(NOT GIT_HASH)
     set(GIT_HASH "unknown")
 endif()
 
-add_definitions(-DBOIDSISH_BUILD_ID="PREALPHA")
+if(NOT GIT_BRANCH)
+    set(GIT_BRANCH "unknown")
+endif()
+
+set(BOIDSISH_GIT_IDENT "${GIT_BRANCH}-${GIT_HASH}")
+
+configure_file(include/build_info.h.in ${CMAKE_CURRENT_BINARY_DIR}/include/build_info.h)
 
 find_program(CCACHE_PROGRAM ccache)
 if(CCACHE_PROGRAM)
@@ -100,6 +114,7 @@ target_compile_definitions(boidsish PUBLIC BOIDSISH_BUILD_DIR="${CMAKE_BINARY_DI
 target_include_directories(boidsish
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>
         $<INSTALL_INTERFACE:include>
         external/include
         external/libmorton/include
