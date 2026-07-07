@@ -13,7 +13,7 @@ layout(std140, binding = [[TERRAIN_DATA_BINDING]]) uniform TerrainData {
 // Input: Raw heightmap (R=height, GBA=normal)
 layout(binding = [[RAW_HEIGHTMAP_BINDING]]) uniform sampler2DArray u_rawHeightmapArray;
 // Input: Chunk grid for neighbor lookups
-layout(binding = [[TERRAIN_CHUNK_GRID_BINDING]]) uniform isampler2D u_chunkGrid;
+layout(binding = [[TERRAIN_CHUNK_GRID_BINDING]]) uniform sampler2D u_chunkGrid;
 // Input: Biome data (RG8: R=low_idx, G=t)
 layout(rgba8, binding = [[BIOME_MAP_IMAGE_BINDING]]) uniform image2DArray u_biomeMap;
 
