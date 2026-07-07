@@ -24,30 +24,28 @@ namespace Boidsish {
 
 		class CoCPass : public IRenderPass {
 		public:
-			CoCPass(RenderGraphPostProcessingEffect* effect);
+			CoCPass();
 			void Setup(RenderGraphBuilder& builder) override;
 			void Execute(const RenderContext& ctx, const RenderGraphResources& resources) override;
 
 			void SetParameters(const DoFParameters* params) { params_ = params; }
 
 		private:
-			std::unique_ptr<Shader>           shader_;
-			const DoFParameters*              params_ = nullptr;
-			RenderGraphPostProcessingEffect*  effect_;
+			std::unique_ptr<Shader> shader_;
+			const DoFParameters*    params_ = nullptr;
 		};
 
 		class DoFBlurPass : public IRenderPass {
 		public:
-			DoFBlurPass(RenderGraphPostProcessingEffect* effect);
+			DoFBlurPass();
 			void Setup(RenderGraphBuilder& builder) override;
 			void Execute(const RenderContext& ctx, const RenderGraphResources& resources) override;
 
 			void SetParameters(const DoFParameters* params) { params_ = params; }
 
 		private:
-			std::unique_ptr<Shader>           shader_;
-			const DoFParameters*              params_ = nullptr;
-			RenderGraphPostProcessingEffect*  effect_;
+			std::unique_ptr<Shader> shader_;
+			const DoFParameters*    params_ = nullptr;
 		};
 
 	} // namespace PostProcessing

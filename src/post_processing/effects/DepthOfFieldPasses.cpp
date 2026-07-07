@@ -1,17 +1,16 @@
 #include "post_processing/effects/DepthOfFieldPasses.h"
-#include "post_processing/RenderGraphPostProcessingEffect.h"
 #include <GL/glew.h>
 
 namespace Boidsish {
 	namespace PostProcessing {
 
-		CoCPass::CoCPass(RenderGraphPostProcessingEffect* effect) : effect_(effect) {
+		CoCPass::CoCPass() {
 			shader_ = std::make_unique<Shader>("shaders/postprocess.vert", "shaders/post_processing/dof_coc.frag");
 		}
 
 		void CoCPass::Setup(RenderGraphBuilder& builder) {
 			builder.Read("InDepth");
-			builder.Write("CoCTexture");
+			builder.Write("CoCTexture", ResourceDesc{.format = TextureFormat::R16F});
 		}
 
 		void CoCPass::Execute(const RenderContext& ctx, const RenderGraphResources& resources) {
@@ -28,17 +27,13 @@ namespace Boidsish {
 			shader_->setMat4("uInvProjection", glm::inverse(params_->projectionMatrix));
 
 			glActiveTexture(GL_TEXTURE0);
-			glBindTexture(GL_TEXTURE_2D, resources.GetTexture(TextureHandle{.name = "InDepth"}));
+			glBindTexture(GL_TEXTURE_2D, resources.GetTexture("InDepth"));
 			shader_->setInt("depthTexture", 0);
-
-			// Render to CoCTexture - assuming RenderGraph handles FBO binding
-			// Wait, the current RenderGraph implementation DOES NOT handle FBO binding or texture allocation yet!
-			// I need to add that to RenderGraph::Execute or the wrapper.
 
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 		}
 
-		DoFBlurPass::DoFBlurPass(RenderGraphPostProcessingEffect* effect) : effect_(effect) {
+		DoFBlurPass::DoFBlurPass() {
 			shader_ = std::make_unique<Shader>("shaders/postprocess.vert", "shaders/post_processing/dof_blur.frag");
 		}
 
@@ -58,15 +53,15 @@ namespace Boidsish {
 			shader_->setMat4("uInvProjection", glm::inverse(params_->projectionMatrix));
 
 			glActiveTexture(GL_TEXTURE0);
-			glBindTexture(GL_TEXTURE_2D, resources.GetTexture(TextureHandle{.name = "InColor"}));
+			glBindTexture(GL_TEXTURE_2D, resources.GetTexture("InColor"));
 			shader_->setInt("screenTexture", 0);
 
 			glActiveTexture(GL_TEXTURE1);
-			glBindTexture(GL_TEXTURE_2D, resources.GetTexture(TextureHandle{.name = "CoCTexture"}));
+			glBindTexture(GL_TEXTURE_2D, resources.GetTexture("CoCTexture"));
 			shader_->setInt("cocTexture", 1);
 
 			glActiveTexture(GL_TEXTURE2);
-			glBindTexture(GL_TEXTURE_2D, resources.GetTexture(TextureHandle{.name = "InDepth"}));
+			glBindTexture(GL_TEXTURE_2D, resources.GetTexture("InDepth"));
 			shader_->setInt("depthTexture", 2);
 
 			glDrawArrays(GL_TRIANGLES, 0, 6);
