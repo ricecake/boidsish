@@ -41,8 +41,7 @@ float findHorizon(vec2 originXZ, float originH, vec2 dir) {
 		if (localGridCoord.x >= 0 && localGridCoord.x < u_originSize.z &&
 			localGridCoord.y >= 0 && localGridCoord.y < u_originSize.z) {
 
-			vec2 gridUV = (vec2(localGridCoord) + 0.5) / float(u_originSize.z);
-			float h_max = textureLod(u_maxHeightGrid, gridUV, 0.0).r;
+			float h_max = texelFetch(u_chunkGrid, localGridCoord, 0).g;
 
 			if (h_max > originH) {
 				// Potential occlusion, check height

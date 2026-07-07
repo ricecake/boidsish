@@ -11,10 +11,10 @@ layout(std140, binding = [[TERRAIN_DATA_BINDING]]) uniform TerrainData {
 
 #ifndef TERRAIN_GRID_DEFINED
 	#define TERRAIN_GRID_DEFINED
-layout(binding = [[TERRAIN_CHUNK_GRID_BINDING]]) uniform isampler2D u_chunkGrid;
+// RG32F: R=slice, G=maxHeight. Hierarchical mips stored in same texture.
+layout(binding = [[TERRAIN_CHUNK_GRID_BINDING]]) uniform sampler2D u_chunkGrid;
 #endif
 
-layout(binding = [[TERRAIN_MAX_HEIGHT_BINDING]]) uniform sampler2D  u_maxHeightGrid;
 layout(binding = [[BAKED_HEIGHTMAP_BINDING]]) uniform sampler2DArray u_heightmapArray;
 layout(binding = [[BAKED_PARAMS_BINDING]])    uniform sampler2DArray u_bakedParamsArray;
 
@@ -39,7 +39,7 @@ float getTerrainHeight(vec2 worldXZ) {
 		return -9999.0;
 	}
 
-	int slice = texelFetch(u_chunkGrid, localGridCoord, 0).r;
+	int slice = int(texelFetch(u_chunkGrid, localGridCoord, 0).r);
 	if (slice < 0)
 		return -10000.0;
 
@@ -64,7 +64,7 @@ vec3 getTerrainNormal(vec2 worldXZ) {
 		return vec3(0.0, 1.0, 0.0);
 	}
 
-	int slice = texelFetch(u_chunkGrid, localGridCoord, 0).r;
+	int slice = int(texelFetch(u_chunkGrid, localGridCoord, 0).r);
 	if (slice < 0)
 		return vec3(0.0, 1.0, 0.0);
 
@@ -101,7 +101,7 @@ TerrainSurface getTerrainSurface(vec2 worldXZ) {
 		return surface;
 	}
 
-	int slice = texelFetch(u_chunkGrid, localGridCoord, 0).r;
+	int slice = int(texelFetch(u_chunkGrid, localGridCoord, 0).r);
 	if (slice < 0)
 		return surface;
 

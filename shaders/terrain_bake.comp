@@ -13,7 +13,7 @@ layout(std140, binding = [[TERRAIN_DATA_BINDING]]) uniform TerrainData {
 // Input: Raw heightmap (R=height, GBA=normal)
 layout(binding = [[RAW_HEIGHTMAP_BINDING]]) uniform sampler2DArray u_rawHeightmapArray;
 // Input: Chunk grid for neighbor lookups
-layout(binding = [[TERRAIN_CHUNK_GRID_BINDING]]) uniform isampler2D u_chunkGrid;
+layout(binding = [[TERRAIN_CHUNK_GRID_BINDING]]) uniform sampler2D u_chunkGrid;
 // Input: Biome data (RG8: R=low_idx, G=t)
 layout(rgba8, binding = [[BIOME_MAP_IMAGE_BINDING]]) uniform image2DArray u_biomeMap;
 
@@ -208,7 +208,7 @@ void main() {
 				ivec2 localGridCoord = neighborChunkCoord - u_originSize.xy;
 				int neighborSlice = -1;
 				if (localGridCoord.x >= 0 && localGridCoord.x < u_originSize.z && localGridCoord.y >= 0 && localGridCoord.y < u_originSize.z) {
-					neighborSlice = texelFetch(u_chunkGrid, localGridCoord, 0).r;
+					neighborSlice = int(texelFetch(u_chunkGrid, localGridCoord, 0).r);
 				}
 
 				if (neighborSlice >= 0) {

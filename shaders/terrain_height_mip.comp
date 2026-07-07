@@ -1,0 +1,48 @@
+#version 460 core
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+// Source heightmap array (RGBA16F: R=height/max, G=min, B=nx, A=nz - or similar)
+// For Mip 0: R = height, GBA = normal
+// For Mip 1+: R = max height, G = min height
+layout(binding = 0) uniform sampler2DArray u_srcHeightmap;
+
+// Destination: current mip level being generated for a specific slice
+layout(rgba16f, binding = 0) uniform writeonly image2DArray u_dstMip;
+
+uniform int u_srcLevel;
+uniform int u_slice;
+
+void main() {
+	ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+	ivec2 dstSize = imageSize(u_dstMip).xy;
+
+	if (pixel.x >= dstSize.x || pixel.y >= dstSize.y)
+		return;
+
+	ivec2 srcCoord = pixel * 2;
+
+	if (u_srcLevel == 0) {
+		// From Mip 0: R is height
+		float h00 = texelFetch(u_srcHeightmap, ivec3(srcCoord + ivec2(0, 0), u_slice), 0).r;
+		float h10 = texelFetch(u_srcHeightmap, ivec3(srcCoord + ivec2(1, 0), u_slice), 0).r;
+		float h01 = texelFetch(u_srcHeightmap, ivec3(srcCoord + ivec2(0, 1), u_slice), 0).r;
+		float h11 = texelFetch(u_srcHeightmap, ivec3(srcCoord + ivec2(1, 1), u_slice), 0).r;
+
+		float maxH = max(max(h00, h10), max(h01, h11));
+		float minH = min(min(h00, h10), min(h01, h11));
+
+		imageStore(u_dstMip, ivec3(pixel, u_slice), vec4(maxH, minH, 0.0, 0.0));
+	} else {
+		// From Mip 1+: R is max, G is min
+		vec2 d00 = texelFetch(u_srcHeightmap, ivec3(srcCoord + ivec2(0, 0), u_slice), u_srcLevel).rg;
+		vec2 d10 = texelFetch(u_srcHeightmap, ivec3(srcCoord + ivec2(1, 0), u_slice), u_srcLevel).rg;
+		vec2 d01 = texelFetch(u_srcHeightmap, ivec3(srcCoord + ivec2(0, 1), u_slice), u_srcLevel).rg;
+		vec2 d11 = texelFetch(u_srcHeightmap, ivec3(srcCoord + ivec2(1, 1), u_slice), u_srcLevel).rg;
+
+		float maxH = max(max(d00.x, d10.x), max(d01.x, d11.x));
+		float minH = min(min(d00.y, d10.y), min(d01.y, d11.y));
+
+		imageStore(u_dstMip, ivec3(pixel, u_slice), vec4(maxH, minH, 0.0, 0.0));
+	}
+}
