@@ -19,7 +19,7 @@ if(NOT GIT_HASH)
     set(GIT_HASH "unknown")
 endif()
 
-# add_definitions(-DBOIDSISH_BUILD_ID="${GIT_HASH}")
+add_definitions(-DBOIDSISH_BUILD_ID="PREALPHA")
 
 find_program(CCACHE_PROGRAM ccache)
 if(CCACHE_PROGRAM)
