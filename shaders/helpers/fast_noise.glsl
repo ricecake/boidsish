@@ -21,7 +21,11 @@ uniform sampler3D u_curlTexture;
 uniform sampler2D u_blueNoiseTexture;
 uniform sampler3D u_extraNoiseTexture;
 uniform sampler2D u_phasorTexture;
-uniform sampler2D u_cloudWeatherTexture;
+#endif
+
+#ifndef CLOUD_WEATHER_TEXTURE_DEFINED
+#define CLOUD_WEATHER_TEXTURE_DEFINED
+layout(binding = [[CLOUD_WEATHER_BINDING]]) uniform sampler2D u_cloudWeatherTexture;
 #endif
 
 // Helper to compute curl noise using finite differences with tiling simplex noise

@@ -222,7 +222,8 @@ namespace Boidsish {
 					Constants::TextureUnit::NoiseSimplex(),
 					Constants::TextureUnit::NoiseCurl(),
 					Constants::TextureUnit::NoiseBlue(),
-					Constants::TextureUnit::NoiseExtra()
+					Constants::TextureUnit::NoiseExtra(),
+					Constants::TextureUnit::CloudWeatherBake()
 				});
 
 				auto atm_mgr = ServiceLocator::Instance().Get<AtmosphereManager>();
