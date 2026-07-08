@@ -5,19 +5,30 @@ layout(local_size_x = 16, local_size_y = 16) in;
 uniform sampler2D u_skyViewLUT;
 
 layout(std430, binding = [[ATMOSPHERE_SH_BINDING]]) buffer SHCoeffs {
-	vec4 coefficients[9];
+	vec4 coefficients[81]; // 9 probes * 9 coeffs
 };
 
 shared vec4 shared_sh[9][256];
 
-#define PI 3.14159265359
+#include "../helpers/lighting.glsl"
 
 void main() {
 	ivec2 size = textureSize(u_skyViewLUT, 0);
 	uint  localIdx = gl_LocalInvocationIndex;
+	uint  probeIdx = gl_WorkGroupID.z; // Assumes dispatched with Z = 9 workgroups
 
 	for (int i = 0; i < 9; ++i) {
 		shared_sh[i][localIdx] = vec4(0.0);
+	}
+
+	// Determine probe world position
+	// Probe 0: Camera center
+	// Probes 1-8: Perimeter just past typical cloud radius (approx 100km)
+	float radius = 100000.0 * worldScale;
+	vec3 probePos = viewPos;
+	if (probeIdx > 0) {
+		float angle = (float(probeIdx - 1) / 8.0) * 2.0 * PI;
+		probePos += vec3(cos(angle), 0.0, sin(angle)) * radius;
 	}
 
 	// Each thread sums a portion of the LUT
@@ -38,10 +49,12 @@ void main() {
 		// Direction vector
 		vec3 rd = vec3(cos(elevation) * sin(azimuth), sin(elevation), -cos(elevation) * cos(azimuth));
 
+		// Attenuate sky light by local clouds at probe position
+		float cloudShadow = calculateCloudShadowFactor(probePos, rd, cloudShadowIntensity);
+		radiance.rgb *= cloudShadow;
+
 		// Differential solid angle dW = cos(elevation) * dElevation * dAzimuth
 		float dAzimuth = 2.0 * PI / float(size.x);
-		// dElevation = d(PI/2 * adjV^2) = PI * adjV * dAdjV
-		// dAdjV = 2.0 / size.y
 		float dElevation = PI * max(adjV, 0.001) * (2.0 / float(size.y));
 		float weight = cos(elevation) * dAzimuth * dElevation;
 
@@ -80,7 +93,7 @@ void main() {
 
 	if (localIdx == 0) {
 		for (int i = 0; i < 9; ++i) {
-			coefficients[i] = shared_sh[i][0];
+			coefficients[probeIdx * 9 + i] = shared_sh[i][0];
 		}
 	}
 }
