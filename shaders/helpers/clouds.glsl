@@ -702,45 +702,6 @@ vec4 calculateCloudDensity(
 
 
 /**
- * Calculate cloud shadow factor for a fragment position.
- * Projects the fragment to the cloud layer and samples the weather map SDF directly.
- */
-float calculateCloudShadowFactor(vec3 frag_pos, vec3 L, float intensity) {
-	if (intensity <= 0.0) return 1.0;
-	if (L.y <= 0.001) return 1.0;
-
-	// Skip if fragment is above the cloud layer
-	float cloudCeiling = (cloudAltitude + cloudThickness * 8.0) * worldScale;
-	if (frag_pos.y > cloudCeiling)
-		return 1.0;
-
-	// Project to representative cloud altitude
-	float baseAlt = (cloudAltitude + cloudThickness * 0.5) * worldScale;
-	float t = (baseAlt - frag_pos.y) / L.y;
-	if (t < 0.0) return 1.0;
-
-	vec3 cloudPos = frag_pos + L * t;
-
-	CloudProperties props;
-	props.altitude = cloudAltitude;
-	props.thickness = cloudThickness;
-	props.densityBase = cloudDensity;
-	props.coverage = cloudCoverage;
-	props.worldScale = worldScale;
-
-	CloudWeather weather = computeCloudWeather(cloudPos, props);
-	CloudLayer   layer = computeCloudLayer(weather, props);
-
-	float d3d = calculatePuffyCloudSDF(cloudPos, weather, layer, worldScale);
-
-	// Transition around zero for penumbra
-	float penumbra = 500.0 * worldScale;
-	float litFactor = smoothstep(-penumbra, penumbra, d3d);
-
-	return mix(1.0, litFactor, intensity);
-}
-
-/**
  * Internal helper to calculate a "puffy" 3D SDF for a cloud point.
  */
 float calculatePuffyCloudSDF(float sdf, float h, float h_unit) {
