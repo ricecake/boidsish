@@ -23,7 +23,6 @@ namespace Boidsish {
 				AtmosphereMultiScattering = 22,
 				AtmosphereSkyView = 23,
 				AtmosphereAerialPerspective = 24,
-				AtmosphereCloudShadow = 25,
 				WindData = 26,
 				HiZ = 27,
 				TerrainBakedParams = 28,
@@ -226,10 +225,6 @@ namespace Boidsish {
 
 			consteval int AtmosphereAerialPerspective() {
 				return std::to_underlying(Constants::Bindings::Texture::AtmosphereAerialPerspective);
-			}
-
-			consteval int AtmosphereCloudShadow() {
-				return std::to_underlying(Constants::Bindings::Texture::AtmosphereCloudShadow);
 			}
 
 			consteval int WindData() {
