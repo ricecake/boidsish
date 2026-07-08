@@ -23,6 +23,7 @@ namespace Boidsish {
 				AtmosphereMultiScattering = 22,
 				AtmosphereSkyView = 23,
 				AtmosphereAerialPerspective = 24,
+				CloudWeatherBake = 25,
 				WindData = 26,
 				HiZ = 27,
 				TerrainBakedParams = 28,
@@ -42,7 +43,6 @@ namespace Boidsish {
 				WeatherScalars = 42,
 				WeatherAerosols = 43,
 				TerrainDisplacementImage = 44,
-				CloudWeatherBake = 45,
 				CloudJFADistance = 46,
 			};
 
