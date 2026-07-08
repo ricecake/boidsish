@@ -622,19 +622,15 @@ float calculateCloudShadowDensity(vec3 p, CloudWeather weather, CloudLayer layer
 /**
  * Internal helper to calculate a "puffy" 3D SDF for a cloud point.
  */
-float calculatePuffyCloudSDF(vec3 p, CloudWeather weather, CloudLayer layer, float worldScale) {
-	// Representative "unit" for the height remapping
-	float h_unit = 10000.0 * worldScale;
-
-	// Normalize height relative to cloud center
-	float cloudCenter = (layer.baseFloor + layer.baseCeiling) * 0.5;
-	float h = (p.y - cloudCenter) / h_unit;
-
+float calculatePuffyCloudSDF(float sdf, float h, float h_unit) {
 	// Puff factor
 	float R = 0.5;
 
 	// 3D SDF approximation assuming smooth clouds around their axis
-	float d3d = h_unit * (length(vec2(weather.sdf / h_unit + R, abs(h))) - R);
+	// We use max(0, x) and min(0, x) to ensure the interior is solid and doesn't "hollow out"
+	float x = sdf / h_unit;
+	float puffy_x = x + R;
+	float d3d = h_unit * (length(vec2(max(0.0, puffy_x), h)) - R + min(0.0, puffy_x));
 
 	return d3d;
 }
@@ -667,15 +663,20 @@ float calculateCloudShadowFactor(vec3 frag_pos, vec3 L, float intensity) {
 	props.worldScale = worldScale;
 
 	CloudWeather weather = computeCloudWeather(cloudPos, props);
-	CloudLayer   layer = computeCloudLayer(weather, props);
 
-	float d3d = calculatePuffyCloudSDF(cloudPos, weather, layer, worldScale);
+	// Use h=0 to sample the fattest part of the puffy cloud for the shadow projection
+	float h_unit = 10000.0 * worldScale;
+	float d3d = calculatePuffyCloudSDF(weather.sdf, 0.0, h_unit);
 
-	// Transition around zero for penumbra
-	float penumbra = 500.0 * worldScale;
-	float litFactor = smoothstep(-penumbra, penumbra, d3d);
+	// Sharpness of the cloud edge in meters
+	float penumbra = 100.0 * worldScale;
 
-	return mix(1.0, litFactor, intensity);
+	// Beer's law approximation for the shadow density
+	// We multiply by a factor to make the shadow more prominent
+	float shadowDepth = max(0.0, -d3d / penumbra);
+	float shadowTerm = exp(-shadowDepth * 4.0);
+
+	return mix(1.0, shadowTerm, intensity);
 }
 
 float evaluateCloudShadowDensityAtWorldPos(vec2 worldXZ, float time) {
@@ -688,13 +689,13 @@ float evaluateCloudShadowDensityAtWorldPos(vec2 worldXZ, float time) {
 
 	vec3  basePos = vec3(worldXZ.x, (props.altitude + props.thickness * 0.5) * props.worldScale, worldXZ.y);
 	CloudWeather weather = computeCloudWeather(basePos, props);
-	CloudLayer   layer = computeCloudLayer(weather, props);
 
-	float d3d = calculatePuffyCloudSDF(basePos, weather, layer, worldScale);
+	float h_unit = 10000.0 * worldScale;
+	float d3d = calculatePuffyCloudSDF(weather.sdf, 0.0, h_unit);
 
 	// Convert SDF to a density value for consumers that expect density (e.g. sky_view_lut.comp)
-	float penumbra = 500.0 * worldScale;
-	return max(0.0, -d3d / penumbra) * 2.0;
+	float penumbra = 100.0 * worldScale;
+	return max(0.0, -d3d / penumbra) * 4.0;
 }
 
 #endif // HELPERS_CLOUDS_GLSL

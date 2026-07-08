@@ -119,6 +119,7 @@ namespace Boidsish {
 
 		T::RegisterConstant("WEATHER_SCALARS_BINDING", Constants::TextureUnit::WeatherScalars());
 		T::RegisterConstant("WEATHER_AEROSOLS_BINDING", Constants::TextureUnit::WeatherAerosols());
+		T::RegisterConstant("CLOUD_WEATHER_BINDING", Constants::TextureUnit::CloudWeatherBake());
 	}
 
 } // namespace Boidsish
