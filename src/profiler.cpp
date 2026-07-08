@@ -1,4 +1,5 @@
 #include "profiler.h"
+#include "build_info.h"
 
 #include <cstring>
 #include <ctime>

@@ -8,6 +8,7 @@
 
 #include "imgui.h"
 #include "profiler.h"
+#include "build_info.h"
 
 namespace Boidsish {
 	namespace UI {
