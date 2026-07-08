@@ -648,10 +648,9 @@ float calculateCloudShadowFactor(vec3 frag_pos, vec3 L, float intensity) {
 	if (frag_pos.y > cloudCeiling)
 		return 1.0;
 
-	// Project to representative cloud altitude
-	float baseAlt = (cloudAltitude + cloudThickness * 0.5) * worldScale;
-	float t = (baseAlt - frag_pos.y) / L.y;
-	if (t < 0.0) return 1.0;
+	// Project to the cloud ceiling to find the casting XZ position
+	float t = (cloudCeiling - frag_pos.y) / L.y;
+	// Since frag_pos.y <= cloudCeiling and L.y > 0, t is always >= 0
 
 	vec3 cloudPos = frag_pos + L * t;
 
@@ -673,8 +672,10 @@ float calculateCloudShadowFactor(vec3 frag_pos, vec3 L, float intensity) {
 
 	// Beer's law approximation for the shadow density
 	// We multiply by a factor to make the shadow more prominent
-	float shadowDepth = max(0.0, -d3d / penumbra);
-	float shadowTerm = exp(-shadowDepth * 4.0);
+	// And apply a slant factor for longer paths at oblique angles
+	float slant = 1.0 / max(0.01, L.y);
+	float shadowDepth = max(0.0, -d3d / penumbra) * slant;
+	float shadowTerm = exp(-shadowDepth * 8.0);
 
 	return mix(1.0, shadowTerm, intensity);
 }
