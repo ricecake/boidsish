@@ -10,7 +10,6 @@ namespace Boidsish {
 			enum class Texture {
 				ShadowMaps = 10,
 				TerrainChunkGrid = 11,
-				TerrainMaxHeight = 12,
 				TerrainHeightmap = 13,
 				TerrainBiomeMap = 14,
 				Refraction = 15,
@@ -173,10 +172,6 @@ namespace Boidsish {
 
 			consteval int TerrainChunkGrid() {
 				return std::to_underlying(Constants::Bindings::Texture::TerrainChunkGrid);
-			}
-
-			consteval int TerrainMaxHeight() {
-				return std::to_underlying(Constants::Bindings::Texture::TerrainMaxHeight);
 			}
 
 			consteval int TerrainHeightmap() {

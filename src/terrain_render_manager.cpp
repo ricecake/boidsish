@@ -48,26 +48,19 @@ namespace Boidsish {
 		glBufferData(GL_UNIFORM_BUFFER, sizeof(TerrainDataUbo), nullptr, GL_DYNAMIC_DRAW);
 		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
-		// Global terrain grid resources
+		// Global terrain grid resources (Consolidated RG32F: R=slice, G=maxHeight)
 		int grid_size = Constants::Class::Terrain::SliceMapSize();
 		glGenTextures(1, &chunk_grid_texture_);
 		glBindTexture(GL_TEXTURE_2D, chunk_grid_texture_);
-		glTexStorage2D(GL_TEXTURE_2D, 1, GL_R16I, grid_size, grid_size);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-		glGenTextures(1, &max_height_grid_texture_);
-		glBindTexture(GL_TEXTURE_2D, max_height_grid_texture_);
-		int mips = 1 + static_cast<int>(std::floor(std::log2(grid_size)));
-		glTexStorage2D(GL_TEXTURE_2D, mips, GL_R32F, grid_size, grid_size);
+		int grid_mips = 1 + static_cast<int>(std::floor(std::log2(grid_size)));
+		glTexStorage2D(GL_TEXTURE_2D, grid_mips, GL_RG32F, grid_size, grid_size);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
 		grid_mip_shader_ = std::make_unique<ComputeShader>("shaders/terrain_hiz_generate.comp");
+		height_mip_shader_ = std::make_unique<ComputeShader>("shaders/terrain_height_mip.comp");
 		probe_compute_shader_ = std::make_unique<ComputeShader>("shaders/terrain_probes.comp");
 		terrain_bake_shader_ = std::make_unique<ComputeShader>("shaders/terrain_bake.comp");
 		terrain_horizon_shader_ = std::make_unique<ComputeShader>("shaders/terrain_horizon_update.comp");
@@ -162,7 +155,6 @@ namespace Boidsish {
 
 		auto& reg = GpuResourceRegistry::Instance();
 		reg.PublishTexture(Constants::TextureUnit::TerrainChunkGrid(), chunk_grid_texture_);
-		reg.PublishTexture(Constants::TextureUnit::TerrainMaxHeight(), max_height_grid_texture_);
 		reg.PublishTexture(Constants::TextureUnit::TerrainShadowMap(), terrain_shadow_map_texture_);
 	}
 
@@ -193,8 +185,6 @@ namespace Boidsish {
 			glDeleteBuffers(1, &biome_ubo_);
 		if (chunk_grid_texture_)
 			glDeleteTextures(1, &chunk_grid_texture_);
-		if (max_height_grid_texture_)
-			glDeleteTextures(1, &max_height_grid_texture_);
 		if (terrain_data_ubo_)
 			glDeleteBuffers(1, &terrain_data_ubo_);
 		if (probe_ssbo_)
@@ -368,19 +358,19 @@ namespace Boidsish {
 
 		max_chunks_ = new_capacity;
 
-		auto create_array = [&](GLuint& tex, GLenum internalFormat, GLenum format, GLenum type, bool linear) {
+		auto create_array = [&](GLuint& tex, GLenum internalFormat, GLenum format, GLenum type, bool linear, bool mips = false) {
 			glGenTextures(1, &tex);
 			glBindTexture(GL_TEXTURE_2D_ARRAY, tex);
-			glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, internalFormat, heightmap_resolution_, heightmap_resolution_,
-			             max_chunks_, 0, format, type, nullptr);
-			glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, linear ? GL_LINEAR : GL_NEAREST);
+			int levels = mips ? (1 + static_cast<int>(std::floor(std::log2(heightmap_resolution_)))) : 1;
+			glTexStorage3D(GL_TEXTURE_2D_ARRAY, levels, internalFormat, heightmap_resolution_, heightmap_resolution_, max_chunks_);
+			glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, linear ? (mips ? GL_LINEAR_MIPMAP_NEAREST : GL_LINEAR) : GL_NEAREST);
 			glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, linear ? GL_LINEAR : GL_NEAREST);
 			glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 			glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 		};
 
 		create_array(raw_heightmap_texture_, GL_RGBA16F, GL_RGBA, GL_FLOAT, true);
-		create_array(heightmap_texture_, GL_RGBA16F, GL_RGBA, GL_FLOAT, true);
+		create_array(heightmap_texture_, GL_RGBA16F, GL_RGBA, GL_FLOAT, true, true);
 		create_array(baked_params_texture_, GL_RGBA16F, GL_RGBA, GL_FLOAT, true);
 		create_array(displacement_texture_, GL_RGBA16F, GL_RGBA, GL_FLOAT, true);
 
@@ -457,10 +447,19 @@ namespace Boidsish {
 	}
 
 	void TerrainRenderManager::InitializeSliceData(int slice, float min_y, float max_y, const std::vector<PatchMetrics>& patch_metrics) {
-		// 1. Clear baked textures to prevent ghosting from previous chunks
+		// 1. Clear baked textures and mips to prevent ghosting and ensure conservative raymarching
 		float clear_color[4] = {0.0f, 0.0f, 0.0f, 0.0f};
 		glClearTexSubImage(baked_params_texture_, 0, 0, 0, slice, heightmap_resolution_, heightmap_resolution_, 1, GL_RGBA, GL_FLOAT, clear_color);
 		glClearTexSubImage(displacement_texture_, 0, 0, 0, slice, heightmap_resolution_, heightmap_resolution_, 1, GL_RGBA, GL_FLOAT, clear_color);
+
+		// Initialize heightmap mips 1+ with conservative values (Max=10000, Min=-10000)
+		// This ensures hierarchical raymarching doesn't skip unbaked chunks.
+		float conservative_min_max[4] = {10000.0f, -10000.0f, 0.0f, 0.0f};
+		int levels = 1 + static_cast<int>(std::floor(std::log2(heightmap_resolution_)));
+		for (int mip = 1; mip < levels; ++mip) {
+			int mip_res = std::max(1, heightmap_resolution_ >> mip);
+			glClearTexSubImage(heightmap_texture_, mip, 0, 0, slice, mip_res, mip_res, 1, GL_RGBA, GL_FLOAT, conservative_min_max);
+		}
 
 		// Clear horizon map (8x8)
 		glClearTexSubImage(horizon_map_texture_, 0, 0, 0, slice, 8, 8, 1, GL_RGBA, GL_FLOAT, clear_color);
@@ -698,7 +697,7 @@ namespace Boidsish {
 		last_camera_pos_ = camera_pos;
 		last_world_scale_ = world_scale;
 
-		UpdateGridTextures(world_scale, lighting_ubo, lighting_ubo_offset, lighting_ubo_size, day_time);
+		UpdateGridTextures(world_scale);
 
 		// Perform baking after updating grid textures to ensure UBO is fresh
 		PerformBaking(world_scale);
@@ -781,7 +780,7 @@ namespace Boidsish {
 		}
 	}
 
-	void TerrainRenderManager::UpdateGridTextures(float world_scale, GLuint lighting_ubo, GLintptr lighting_ubo_offset, GLsizeiptr lighting_ubo_size, float day_time) {
+	void TerrainRenderManager::UpdateGridTextures(float world_scale) {
 		PROJECT_PROFILE_SCOPE("TerrainRenderManager::UpdateGridTextures");
 		int grid_size = Constants::Class::Terrain::SliceMapSize();
 		int half_grid = grid_size / 2;
@@ -793,24 +792,12 @@ namespace Boidsish {
 		int origin_x = center_chunk_x - half_grid;
 		int origin_z = center_chunk_z - half_grid;
 
-		// Re-dispatch probes if lighting changed significantly (time of day)
-		static float last_probe_update_day_time = -1.0f;
-		bool         lighting_changed = false;
-
-		if (day_time >= 0.0f) {
-			if (std::abs(day_time - last_probe_update_day_time) > 0.1f) { // ~6 mins in game time
-				lighting_changed = true;
-				last_probe_update_day_time = day_time;
-			}
-		}
-
 		if (origin_x == last_grid_origin_x_ && origin_z == last_grid_origin_z_ &&
-		    world_scale == last_grid_world_scale_ && !grid_dirty_ && !lighting_changed) {
+		    world_scale == last_grid_world_scale_ && !grid_dirty_) {
 			return;
 		}
 
-		std::vector<int16_t> slice_data(grid_size * grid_size, -1);
-		std::vector<float>   height_data(grid_size * grid_size, -10000.0f);
+		std::vector<glm::vec2> grid_data(grid_size * grid_size, glm::vec2(-1.0f, -10000.0f));
 
 		for (const auto& [key, chunk] : chunks_) {
 			int lx = key.first - origin_x;
@@ -818,18 +805,15 @@ namespace Boidsish {
 
 			if (lx >= 0 && lx < grid_size && lz >= 0 && lz < grid_size) {
 				int idx = lz * grid_size + lx;
-				slice_data[idx] = static_cast<int16_t>(chunk.texture_slice);
+				grid_data[idx].x = static_cast<float>(chunk.texture_slice);
 				// Add a vertical safety buffer to account for dynamic terrain displacements
 				// (erosion, shockwaves, micro-relief) in the Hi-Z structure.
-				height_data[idx] = chunk.max_y + (5.0f * world_scale);
+				grid_data[idx].y = chunk.max_y + (5.0f * world_scale);
 			}
 		}
 
 		glBindTexture(GL_TEXTURE_2D, chunk_grid_texture_);
-		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, grid_size, grid_size, GL_RED_INTEGER, GL_SHORT, slice_data.data());
-
-		glBindTexture(GL_TEXTURE_2D, max_height_grid_texture_);
-		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, grid_size, grid_size, GL_RED, GL_FLOAT, height_data.data());
+		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, grid_size, grid_size, GL_RG, GL_FLOAT, grid_data.data());
 
 		GenerateMaxHeightMips();
 
@@ -916,9 +900,6 @@ namespace Boidsish {
 		glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture_);
 		probe_compute_shader_->setInt("u_heightmapArray", Constants::TextureUnit::TerrainHeightmap());
 
-		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainMaxHeight());
-		glBindTexture(GL_TEXTURE_2D, max_height_grid_texture_);
-		probe_compute_shader_->setInt("u_maxHeightGrid", Constants::TextureUnit::TerrainMaxHeight());
 
 		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainShadowMap());
 		glBindTexture(GL_TEXTURE_2D, terrain_shadow_map_texture_);
@@ -966,17 +947,17 @@ namespace Boidsish {
 			int dst_h = std::max(1, grid_size >> mip);
 
 			glActiveTexture(GL_TEXTURE0);
-			glBindTexture(GL_TEXTURE_2D, max_height_grid_texture_);
+			glBindTexture(GL_TEXTURE_2D, chunk_grid_texture_);
 			grid_mip_shader_->setInt("u_srcDepth", 0);
 			grid_mip_shader_->setInt("u_srcLevel", mip - 1);
 
-			glBindImageTexture(0, max_height_grid_texture_, mip, GL_FALSE, 0, GL_WRITE_ONLY, GL_R32F);
+			glBindImageTexture(0, chunk_grid_texture_, mip, GL_FALSE, 0, GL_WRITE_ONLY, GL_RG32F);
 
 			glDispatchCompute((dst_w + 7) / 8, (dst_h + 7) / 8, 1);
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
 		}
 
-		glBindTexture(GL_TEXTURE_2D, max_height_grid_texture_);
+		glBindTexture(GL_TEXTURE_2D, chunk_grid_texture_);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, mips - 1);
 		glBindTexture(GL_TEXTURE_2D, 0);
@@ -988,9 +969,6 @@ namespace Boidsish {
 		glBindTexture(GL_TEXTURE_2D, chunk_grid_texture_);
 		shader_base.setInt("u_chunkGrid", Constants::TextureUnit::TerrainChunkGrid());
 
-		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainMaxHeight());
-		glBindTexture(GL_TEXTURE_2D, max_height_grid_texture_);
-		shader_base.setInt("u_maxHeightGrid", Constants::TextureUnit::TerrainMaxHeight());
 
 		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainHeightmap());
 		glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture_);
@@ -1412,6 +1390,31 @@ namespace Boidsish {
 			glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 		}
 
+		// Update hierarchical mips for baked heightmaps
+		if (height_mip_shader_ && height_mip_shader_->isValid()) {
+			PROJECT_PROFILE_SCOPE("TerrainRenderManager::GenerateHeightMips");
+			height_mip_shader_->use();
+			int levels = 1 + static_cast<int>(std::floor(std::log2(heightmap_resolution_)));
+
+			for (const auto& task : tasks) {
+				height_mip_shader_->setInt("u_slice", task.slice);
+				for (int mip = 1; mip < levels; ++mip) {
+					int dst_w = std::max(1, heightmap_resolution_ >> mip);
+					int dst_h = std::max(1, heightmap_resolution_ >> mip);
+
+					glActiveTexture(GL_TEXTURE0);
+					glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture_);
+					height_mip_shader_->setInt("u_srcHeightmap", 0);
+					height_mip_shader_->setInt("u_srcLevel", mip - 1);
+
+					glBindImageTexture(0, heightmap_texture_, mip, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+
+					glDispatchCompute((dst_w + 7) / 8, (dst_h + 7) / 8, 1);
+					glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+				}
+			}
+		}
+
 		// Update horizon map for these chunks
 		UpdateHorizonMap(tasks);
 
@@ -1461,9 +1464,6 @@ namespace Boidsish {
 		glBindTexture(GL_TEXTURE_2D, chunk_grid_texture_);
 		terrain_horizon_shader_->setInt("u_chunkGrid", Constants::TextureUnit::TerrainChunkGrid());
 
-		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainMaxHeight());
-		glBindTexture(GL_TEXTURE_2D, max_height_grid_texture_);
-		terrain_horizon_shader_->setInt("u_maxHeightGrid", Constants::TextureUnit::TerrainMaxHeight());
 
 		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainHeightmap());
 		glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture_);
