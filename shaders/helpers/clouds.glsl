@@ -619,6 +619,65 @@ float calculateCloudShadowDensity(vec3 p, CloudWeather weather, CloudLayer layer
 	return 10.0 * calculateCloudDensity(p, weather, layer, props, time, true).x;
 }
 
+/**
+ * Internal helper to calculate a "puffy" 3D SDF for a cloud point.
+ */
+float calculatePuffyCloudSDF(vec3 p, CloudWeather weather, CloudLayer layer, float worldScale) {
+	// Representative "unit" for the height remapping
+	float h_unit = 10000.0 * worldScale;
+
+	// Normalize height relative to cloud center
+	float cloudCenter = (layer.baseFloor + layer.baseCeiling) * 0.5;
+	float h = (p.y - cloudCenter) / h_unit;
+
+	// Puff factor
+	float R = 0.5;
+
+	// 3D SDF approximation assuming smooth clouds around their axis
+	float d3d = h_unit * (length(vec2(weather.sdf / h_unit + R, abs(h))) - R);
+
+	return d3d;
+}
+
+/**
+ * Calculate cloud shadow factor for a fragment position.
+ * Projects the fragment to the cloud layer and samples the weather map SDF directly.
+ */
+float calculateCloudShadowFactor(vec3 frag_pos, vec3 L, float intensity) {
+	if (intensity <= 0.0) return 1.0;
+	if (L.y <= 0.001) return 1.0;
+
+	// Skip if fragment is above the cloud layer
+	float cloudCeiling = (cloudAltitude + cloudThickness * 8.0) * worldScale;
+	if (frag_pos.y > cloudCeiling)
+		return 1.0;
+
+	// Project to representative cloud altitude
+	float baseAlt = (cloudAltitude + cloudThickness * 0.5) * worldScale;
+	float t = (baseAlt - frag_pos.y) / L.y;
+	if (t < 0.0) return 1.0;
+
+	vec3 cloudPos = frag_pos + L * t;
+
+	CloudProperties props;
+	props.altitude = cloudAltitude;
+	props.thickness = cloudThickness;
+	props.densityBase = cloudDensity;
+	props.coverage = cloudCoverage;
+	props.worldScale = worldScale;
+
+	CloudWeather weather = computeCloudWeather(cloudPos, props);
+	CloudLayer   layer = computeCloudLayer(weather, props);
+
+	float d3d = calculatePuffyCloudSDF(cloudPos, weather, layer, worldScale);
+
+	// Transition around zero for penumbra
+	float penumbra = 500.0 * worldScale;
+	float litFactor = smoothstep(-penumbra, penumbra, d3d);
+
+	return mix(1.0, litFactor, intensity);
+}
+
 float evaluateCloudShadowDensityAtWorldPos(vec2 worldXZ, float time) {
 	CloudProperties props;
 	props.altitude = cloudAltitude;
@@ -627,14 +686,15 @@ float evaluateCloudShadowDensityAtWorldPos(vec2 worldXZ, float time) {
 	props.coverage = cloudCoverage;
 	props.worldScale = worldScale;
 
-	vec3  basePos = vec3(worldXZ.x, props.altitude * props.worldScale, worldXZ.y);
+	vec3  basePos = vec3(worldXZ.x, (props.altitude + props.thickness * 0.5) * props.worldScale, worldXZ.y);
 	CloudWeather weather = computeCloudWeather(basePos, props);
+	CloudLayer   layer = computeCloudLayer(weather, props);
+
+	float d3d = calculatePuffyCloudSDF(basePos, weather, layer, worldScale);
 
 	// Convert SDF to a density value for consumers that expect density (e.g. sky_view_lut.comp)
-	// SDF <= 0 is inside cloud.
-	// Return a value that when passed to exp(-d) produces a shadow.
 	float penumbra = 500.0 * worldScale;
-	return max(0.0, -weather.sdf / penumbra) * 2.0;
+	return max(0.0, -d3d / penumbra) * 2.0;
 }
 
 #endif // HELPERS_CLOUDS_GLSL
