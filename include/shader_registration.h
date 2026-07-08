@@ -84,7 +84,6 @@ namespace Boidsish {
 		// Texture unit bindings
 		T::RegisterConstant("PHASOR_TEXTURE_BINDING", Constants::TextureUnit::NoisePhasor());
 		T::RegisterConstant("ATMOSPHERE_TRANSMITTANCE_BINDING", Constants::TextureUnit::AtmosphereTransmittance());
-		T::RegisterConstant("ATMOSPHERE_CLOUD_SHADOW_BINDING", Constants::TextureUnit::AtmosphereCloudShadow());
 		T::RegisterConstant("WIND_TEXTURE_BINDING", Constants::TextureUnit::WindData());
 		T::RegisterConstant("LBM_WIND_TEXTURE_BINDING", Constants::TextureUnit::LbmWindData());
 		T::RegisterConstant("INTEGRATED_WIND_IMAGE_BINDING", Constants::TextureUnit::WindData());

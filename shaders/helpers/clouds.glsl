@@ -629,18 +629,12 @@ float evaluateCloudShadowDensityAtWorldPos(vec2 worldXZ, float time) {
 
 	vec3  basePos = vec3(worldXZ.x, props.altitude * props.worldScale, worldXZ.y);
 	CloudWeather weather = computeCloudWeather(basePos, props);
-	CloudLayer layer = computeCloudLayer(weather, props);
 
-	float totalDensity = 0.0;
-	const int shadowSteps = 4;
-	float stepSize = layer.thickness / float(shadowSteps);
-
-	for (int i = 0; i < shadowSteps; i++) {
-		vec3 p = vec3(worldXZ.x, layer.baseFloor + (float(i) + 0.5) * stepSize, worldXZ.y);
-		totalDensity += calculateCloudDensity(p, weather, layer, props, time, true).x;
-	}
-
-	return totalDensity * stepSize * 0.1;
+	// Convert SDF to a density value for consumers that expect density (e.g. sky_view_lut.comp)
+	// SDF <= 0 is inside cloud.
+	// Return a value that when passed to exp(-d) produces a shadow.
+	float penumbra = 500.0 * worldScale;
+	return max(0.0, -weather.sdf / penumbra) * 2.0;
 }
 
 #endif // HELPERS_CLOUDS_GLSL

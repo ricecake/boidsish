@@ -2350,19 +2350,6 @@ namespace Boidsish {
 					lighting_ubo_data_.sunAureoleStrength = atmosphere_effect->GetSunAureoleStrength();
 					lighting_ubo_data_.cirrusOpacity = atmosphere_effect->GetCirrusOpacity();
 
-					// Calculate cloud shadow matrix (world XZ to shadow map UV)
-					float     mapSize = atmosphere_manager->GetCloudShadowWorldSize();
-					glm::vec3 camPos = camera.pos();
-					glm::mat4 shadowMat(1.0f);
-					// 1. Move to camera-relative XZ
-					shadowMat = glm::translate(shadowMat, glm::vec3(0.5f, 0.5f, 0.0f));
-					// 2. Scale to [0, 1] UV space
-					shadowMat = glm::scale(shadowMat, glm::vec3(1.0f / mapSize, 1.0f / mapSize, 1.0f));
-					// 3. Center on camera
-					shadowMat = glm::translate(shadowMat, glm::vec3(-camPos.x, -camPos.z, 0.0f));
-
-					lighting_ubo_data_.cloudShadowMatrix = shadowMat;
-
 				if (lightning_manager) {
 					lighting_ubo_data_.lightningColor = lightning_manager->GetGlobalColor();
 					lighting_ubo_data_.lightningPulse = lightning_manager->GetGlobalPulse();
@@ -2755,7 +2742,6 @@ namespace Boidsish {
 						res.transmittanceLUT = atmosphere_manager->GetTransmittanceLUT();
 						res.skyViewLUT = atmosphere_manager->GetSkyViewLUT();
 						res.aerialPerspectiveLUT = atmosphere_manager->GetAerialPerspectiveLUT();
-						res.cloudShadowMap = atmosphere_manager->GetCloudShadowMap();
 						res.atmosphereHeight = atmosphere_manager->GetAtmosphereHeight();
 					}
 					if (noise_manager) {

@@ -25,7 +25,6 @@ uniform float u_atmosphereHeight; // usually 100.0 km
 layout(binding = [[ATMOSPHERE_TRANSMITTANCE_BINDING]]) uniform sampler2D u_transmittanceLUT;
 #endif
 
-layout(binding = [[ATMOSPHERE_CLOUD_SHADOW_BINDING]]) uniform sampler2D u_cloudShadowMap;
 #ifndef TERRAIN_GRID_DEFINED
 	#define TERRAIN_GRID_DEFINED
 layout(binding = [[TERRAIN_CHUNK_GRID_BINDING]]) uniform isampler2D u_chunkGrid;
@@ -124,9 +123,7 @@ void calculateLightContribution(int light_index, vec3 frag_pos, out vec3 light_d
 
 /**
  * Calculate cloud shadow factor for a fragment position.
- * The shadow map is pre-projected: each texel stores the density of the cloud
- * that casts a shadow at that ground XZ position (already offset by sun angle).
- * So we look up directly by the fragment's XZ.
+ * Projects the fragment to the cloud layer and samples the weather map SDF directly.
  */
 float calculateCloudShadow(int light_index, vec3 frag_pos) {
 	if (lights[light_index].type != LIGHT_TYPE_DIRECTIONAL || cloudShadowIntensity <= 0.0) {
@@ -142,27 +139,33 @@ float calculateCloudShadow(int light_index, vec3 frag_pos) {
 	if (frag_pos.y > cloudCeiling)
 		return 1.0;
 
-	// Shadow map is indexed by ground XZ — the map generator projected from
-	// ground to cloud along L. For elevated fragments, project down to ground
-	// along L to find the equivalent ground lookup point.
-	vec2  lookupXZ = frag_pos.xz - L.xz * (frag_pos.y / L.y);
-	vec4  shadowUV = cloudShadowMatrix * vec4(lookupXZ, 0.0, 1.0);
-	float d = 0.0;
+	// Project from fragment toward the sun to find where the ray hits the cloud layer.
+	// Since we only have a 2D weather map, we project to a representative cloud altitude.
+	float baseAlt = (cloudAltitude + cloudThickness * 0.5) * worldScale;
+	float t = (baseAlt - frag_pos.y) / L.y;
 
-	if (shadowUV.x >= 0.0 && shadowUV.x <= 1.0 && shadowUV.y >= 0.0 && shadowUV.y <= 1.0) {
-		d = texture(u_cloudShadowMap, shadowUV.xy).r;
-	} else {
-		// Fallback: project to cloud layer to evaluate density directly
-		float t = (cloudAltitude * worldScale - frag_pos.y) / L.y;
-		if (t < 0.0) return 1.0;
-		vec3 cloudPos = frag_pos + L * t;
-		d = evaluateCloudShadowDensityAtWorldPos(cloudPos.xz, time);
-	}
+	// If the light is below the fragment, it's not casting a cloud shadow onto it
+	if (t < 0.0) return 1.0;
 
-	// Apply slant-factor (longer path through cloud at oblique angles) and intensity
-	float finalDepth = (d / L.y) * cloudShadowOpticalDepthMultiplier;
+	vec3 cloudPos = frag_pos + L * t;
 
-	return mix(1.0, exp(-finalDepth), cloudShadowIntensity);
+	CloudProperties props;
+	props.altitude = cloudAltitude;
+	props.thickness = cloudThickness;
+	props.densityBase = cloudDensity;
+	props.coverage = cloudCoverage;
+	props.worldScale = worldScale;
+
+	CloudWeather weather = computeCloudWeather(cloudPos, props);
+
+	// SDF based shadow logic:
+	// Negative SDF = Solid cloud (full shadow)
+	// Positive SDF = Outside cloud
+	// Transition around zero for penumbra
+	float penumbra = 500.0 * worldScale;
+	float litFactor = smoothstep(-penumbra, penumbra, weather.sdf);
+
+	return mix(1.0, litFactor, cloudShadowIntensity);
 }
 
 #ifdef USE_TERRAIN_DATA
