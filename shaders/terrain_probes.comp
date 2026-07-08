@@ -83,7 +83,7 @@ void projectRadianceToSH(vec3 dir, vec3 radiance, float weight, inout vec3 sh[9]
 	sh[8] += radiance * (C5 * (x * x - z * z)) * mcWeight;
 }
 
-vec3 sampleSkyLUT(vec3 rd) {
+vec3 sampleSkyLUT(vec3 rd, vec3 probeOrigin) {
 	float azimuth = atan(rd.x, -rd.z);
 	if (azimuth < 0.0) azimuth += 2.0 * PI;
 	float uvX = azimuth / (2.0 * PI);
@@ -104,7 +104,13 @@ vec3 sampleSkyLUT(vec3 rd) {
 	vec3 inScattering = ap.rgb;
 	float transmittance = ap.a;
 
-	return skyRadiance * transmittance + inScattering;
+	vec3 finalSky = skyRadiance * transmittance + inScattering;
+
+	// Attenuate sky light by clouds for probes on the ground.
+	// This ensures that bright astral phenomena (now in SkyViewLUT)
+	// only affect the ground where it's not cloudy.
+	float cloudShadow = calculateCloudShadowFactor(probeOrigin, rd, 1.0);
+	return finalSky * cloudShadow;
 }
 
 vec3 sampleTerrainFallback(vec3 worldPos, vec3 rayDir) {
@@ -174,7 +180,7 @@ vec3 sampleTerrainFallback(vec3 worldPos, vec3 rayDir) {
 		}
 		currentDist += stepSize;
 	}
-	return sampleSkyLUT(rayDir); // Missed terrain (sky is important for occlusion)
+	return sampleSkyLUT(rayDir, worldPos); // Missed terrain (sky is important for occlusion)
 }
 
 void shMarchMain(vec3 rd, vec3 probeOrigin, int totalRayCount, inout vec3 newSH[9]) {
@@ -197,7 +203,7 @@ void shMarchMain(vec3 rd, vec3 probeOrigin, int totalRayCount, inout vec3 newSH[
 			float sceneDepth = texture(u_gDepth, uv).r;
 			// If we hit the skybox, grab the sky radiance immediately and bail
 			if (sceneDepth >= 0.9999) {
-				radiance = sampleSkyLUT(rd);
+				radiance = sampleSkyLUT(rd, probeOrigin);
 				hitFound = true;
 				break;
 			}
