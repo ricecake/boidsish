@@ -94,10 +94,10 @@ namespace Boidsish {
 		alignas(16) glm::mat4 projection;        // offset 928, 64 bytes
 		alignas(16) glm::vec3 lightningColor;    // offset 992, 12 bytes
 		float lightningPulse;                    // offset 1004, 4 bytes
-		alignas(16) glm::vec4 sh_coeffs[9];      // offset 1008, 144 bytes
-	}; // Total: 1152 bytes
+		alignas(16) glm::vec4 sh_coeffs[81];     // offset 1008, 1296 bytes (9 probes * 9 coeffs)
+	}; // Total: 2304 bytes
 
-	static_assert(sizeof(LightingUbo) == 1152, "LightingUbo size mismatch");
+	static_assert(sizeof(LightingUbo) == 2304, "LightingUbo size mismatch");
 
 	/**
 	 * @brief Light source data structure for rendering.
