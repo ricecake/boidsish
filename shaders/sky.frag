@@ -117,16 +117,18 @@ void main() {
 	float skyBrightness = max(max(skyRadiance.r, skyRadiance.g), skyRadiance.b);
 	float starVisibility = smoothstep(0.5, 0.05, skyBrightness);
 	vec3 stars = vec3(0);
+	vec3 nebula = vec3(0);
 
 	if (starVisibility > 0.0) {
 		stars = computeStars(world_ray, time) * vec3(1.0, 0.9, 0.8);
+		nebula = computeNebula(world_ray, time);
 	}
 
 	// Attenuate stars by sky brightness — on Earth, stars are overwhelmed by
 	// scattered sunlight during the day, not just absorbed
 	// Note: Nebula is now part of skyRadiance (via SkyViewLUT)
 	vec3 skyTransmittance = getTransmittance(r, world_ray.y);
-	vec3 spaceBackground = stars * skyTransmittance * starVisibility;
+	vec3 spaceBackground = (stars + nebula) * skyTransmittance * starVisibility;
 
 	// 4. Moon Disc with Atmospheric Refraction
 	vec3  moonDir = normalize(u_moonDir);
