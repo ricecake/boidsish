@@ -201,8 +201,10 @@ float calculatePuffyCloudSDF(vec3 p, CloudWeather weather, CloudLayer layer, flo
 	// Puff factor
 	float R = 0.5;
 
-	// 3D SDF approximation assuming smooth clouds around their axis
-	float d3d = h_unit * (length(vec2(weather.sdf / h_unit + R, abs(h))) - R);
+	float x = weather.sdf / h_unit;
+	float puffy_x = x + R;
+	float d3d = h_unit * (length(vec2(max(0.0, puffy_x), h)) - R + min(0.0, puffy_x));
+
 
 	return d3d;
 }
@@ -625,8 +627,20 @@ vec4 calculateCloudDensityExpV8(
 
 
 	float d3d = calculatePuffyCloudSDF(p, weather, layer, props.worldScale);
+	bool isCore = d3d <= -5000.0;
+	float baseNoise = ((2.0+0.5*length(sin(p_advected)))*smoothstep(0, 25, -d3d));
+	if (!simplified && !isCore) {
+		float erodeMask = smoothstep(-5000.0, 0.0, d3d);
+		erodeMask *= step(0.05, erodeMask);
+		float erosion = 1.0;
+		if (erodeMask > 0.0) {
+			erosion *= abs(fastFbm3d(p_advected/10000));
+			erosion *= fastRidge3d(p_advected/8000);
+		}
+		baseNoise *= ((erodeMask * erosion));
+	}
 
-	return vec4(exp(2.50*smoothstep(0, 25, -d3d)), advectSpeed);
+	return vec4(baseNoise, advectSpeed);
 }
 
 

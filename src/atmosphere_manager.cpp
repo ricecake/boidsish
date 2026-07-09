@@ -298,6 +298,8 @@ namespace Boidsish {
 		_skyToSHShader->use();
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, _skyViewLUT);
+		// glActiveTexture(GL_TEXTURE1);
+		// glBindTexture(GL_TEXTURE_3D, _aerialPerspectiveLUT);
 		_skyToSHShader->setInt("u_skyViewLUT", 0);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::AtmosphereSH(), _shCoeffsBuffer);
 		glDispatchCompute(1, 1, 9); // Dispatch 9 workgroups (Z dimension), one for each spatial probe

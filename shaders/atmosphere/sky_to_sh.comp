@@ -3,6 +3,8 @@
 layout(local_size_x = 16, local_size_y = 16) in;
 
 uniform sampler2D u_skyViewLUT;
+// uniform sampler3D u_aerialPerspectiveLUT;
+
 
 layout(std430, binding = [[ATMOSPHERE_SH_BINDING]]) buffer SHCoeffs {
 	vec4 coefficients[81]; // 9 probes * 9 coeffs
@@ -11,6 +13,7 @@ layout(std430, binding = [[ATMOSPHERE_SH_BINDING]]) buffer SHCoeffs {
 shared vec4 shared_sh[9][256];
 
 #include "../helpers/lighting.glsl"
+#include "helpers/astral.glsl"
 
 void main() {
 	ivec2 size = textureSize(u_skyViewLUT, 0);
@@ -48,6 +51,13 @@ void main() {
 
 		// Direction vector
 		vec3 rd = vec3(cos(elevation) * sin(azimuth), sin(elevation), -cos(elevation) * cos(azimuth));
+		radiance.rgb += computeNebula(rd, time);
+
+		// vec4 ap = texture(u_aerialPerspectiveLUT, vec3(uv.x, elevation/PI+0.5, 1.0));
+		// vec3 inScattering = ap.rgb;
+		// float transmittance = ap.a;
+
+		// radiance.rgb *= transmittance + inScattering;
 
 		// Attenuate sky light by local clouds at probe position
 		float cloudShadow = calculateCloudShadowFactor(probePos, rd, cloudShadowIntensity);

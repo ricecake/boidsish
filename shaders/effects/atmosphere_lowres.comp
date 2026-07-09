@@ -34,6 +34,7 @@ uniform float uCloudExtinction;
 #include "lygia/generative/wavelet.glsl"
 #include "lygia/generative/voronoi.glsl"
 #include "lygia/generative/random.glsl"
+#include "helpers/astral.glsl"
 
 float R_earth = kEarthRadius * 1000.0 * worldScale;
 
@@ -417,12 +418,41 @@ void main() {
 							lights[j].intensity * attenuation * lightScale;
 					}
 
-					vec3  ambientUp = evalSHIrradianceSpatial(subP, vec3(0, 1, 0));
-					vec3  ambientHorizon = evalSHIrradianceSpatial(subP, normalize(vec3(primaryLightDir.x, 0.15, primaryLightDir.z)));
+					// --- Sun/Time of Day Scaling ---
 					float sunHeight = max(primaryLightDir.y, 0.0);
 					float ambientScale = mix(0.3, 1.0, smoothstep(0.0, 0.3, sunHeight));
-					vec3  ambient = mix(ambientUp, ambientHorizon, 0.4) * ambientScale;
-					vec3  S = (stepScattering + ambient * smoothstep(0.0, 1.0, h_norm) + emissiveGlow);
+
+					// --- 1. Sample SH Probes (Sky, Horizon, and Ground) ---
+					vec3 skySH     = evalSHIrradianceSpatial(subP, vec3(0.0, 1.0, 0.0));
+					vec3 horizonSH = evalSHIrradianceSpatial(subP, normalize(vec3(primaryLightDir.x, 0.15, primaryLightDir.z)));
+					vec3 groundSH  = evalSHIrradianceSpatial(subP, vec3(0.0, -1.0, 0.0));
+
+					// Base directional blends
+					vec3 ambientTop    = mix(skySH, horizonSH, 0.4) * ambientScale;
+					vec3 ambientBottom = groundSH * ambientScale; // Ground upwelling
+
+					// --- 2. Approximate Vertical Optical Depth ---
+					float ambientExtinction = 0.50; // Tuning var: how fast ambient light dies in the cloud
+
+					// Sky light attenuates as it travels down through the cloud density
+					float downwardOD = stepDensity * (1.0 - h_norm) * layer.thickness;
+					float skyAttenuation = exp(-downwardOD * ambientExtinction);
+
+					// Ground light attenuates as it travels up through the cloud density
+					float upwardOD = stepDensity * h_norm * layer.thickness;
+					float groundAttenuation = exp(-upwardOD * ambientExtinction);
+
+					// --- 3. The Powder Effect ---
+					float powderScale = 2.0; // Tuning var: intensity of dark inward-facing crevices
+					float powder = 1.0 - exp(-stepDensity * powderScale);
+
+					// --- 4. Final Integration ---
+					// Apply directional attenuation to their respective sources
+					vec3 finalAmbient = (ambientTop * skyAttenuation) + (ambientBottom * groundAttenuation);
+
+					// Modulate ambient by the powder effect, then combine with primary scattering
+					vec3 S = stepScattering + (finalAmbient * powder) + emissiveGlow;
+					//+ 10*computeNebula(subP/10000.0, 0.01*time);
 
 					float weight = cloudTransmittance * (1.0 - transmittanceAtStep);
 					float bias = exp(-accumulatedOpticalDepth * 2.0);
