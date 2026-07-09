@@ -286,7 +286,10 @@ namespace Boidsish {
 
 		const std::vector<Mesh>& getMeshes() const;
 
-		void SetBaseRotation(const glm::quat& rotation) { base_rotation_ = rotation; }
+		void SetBaseRotation(const glm::quat& rotation) {
+			base_rotation_ = rotation;
+			MarkDirty();
+		}
 
 		// Returns unique key for this model file - models loaded from the same file can be instanced together
 		std::string GetInstanceKey() const override;

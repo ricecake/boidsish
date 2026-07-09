@@ -55,13 +55,13 @@ namespace Boidsish {
 		bool IsTransparent() const override { return GetA() < 0.99f || is_text_effect_; }
 
 		// Text effect state
-		void SetTextEffect(bool enabled) { is_text_effect_ = enabled; }
+		void SetTextEffect(bool enabled) { is_text_effect_ = enabled; MarkDirty(); }
 
-		void SetFadeProgress(float progress) { text_fade_progress_ = progress; }
+		void SetFadeProgress(float progress) { text_fade_progress_ = progress; MarkDirty(); }
 
-		void SetFadeSoftness(float softness) { text_fade_softness_ = softness; }
+		void SetFadeSoftness(float softness) { text_fade_softness_ = softness; MarkDirty(); }
 
-		void SetFadeMode(int mode) { text_fade_mode_ = mode; }
+		void SetFadeMode(int mode) { text_fade_mode_ = mode; MarkDirty(); }
 
 	protected:
 		void         LoadFont(const std::string& font_path);
