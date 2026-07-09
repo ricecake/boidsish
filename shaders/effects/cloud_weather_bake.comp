@@ -12,6 +12,7 @@ layout(std430, binding = [[CLOUD_SEEDS_BINDING]]) buffer CloudSeeds {
 
 uniform float uWorldScale;
 uniform float uCloudCoverage;
+uniform float time;
 
 
 
@@ -137,7 +138,6 @@ void main() {
 	float cellRange = 10000.0 * uWorldScale;
 	vec3 p = vec3(uv.x * mapRange, 0.0, uv.y * mapRange);
 
-	// vec2 weatherData = worley3d_tiling(p / cellRange, 16.0);
 	VoronoiData vd = sdVoronoiFbm(p.xz/cellRange, 2.0, 3.0, uCloudCoverage, vec2(10.0));
 
 	float sdf = vd.dist * cellRange;
