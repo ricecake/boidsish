@@ -27,6 +27,7 @@ layout(std430, binding = [[BONE_MATRIX_BINDING]]) buffer BoneMatricesSSBO {
 #include "visual_effects.glsl"
 
 uniform bool uUseMDI = false;
+uniform uint u_baseUniformIndex = 0;
 uniform bool useSSBOInstancing = false;
 uniform mat4 lightSpaceMatrix;
 uniform mat4 model;
@@ -48,7 +49,7 @@ flat out int vUniformIndex;
 void main() {
 	int drawID = gl_DrawID;
 
-	vUniformIndex = uUseMDI ? drawID : -1;
+	vUniformIndex = uUseMDI ? int(u_baseUniformIndex) + drawID : -1;
 	bool use_ssbo = uUseMDI && vUniformIndex >= 0;
 
 	mat4 current_model = use_ssbo ? uniforms_data[vUniformIndex].model : model;

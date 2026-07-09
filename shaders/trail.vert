@@ -13,6 +13,7 @@ flat out int vUniformIndex;
 #include "common_uniforms.glsl"
 
 uniform bool uUseMDI = false;
+uniform uint u_baseUniformIndex = 0;
 uniform mat4 model;
 uniform vec4 clipPlane;
 
@@ -24,7 +25,7 @@ out vec4 CurPosition;
 out vec4 PrevPosition;
 
 void main() {
-	vUniformIndex = uUseMDI ? gl_DrawID : -1;
+	vUniformIndex = uUseMDI ? int(u_baseUniformIndex) + gl_DrawID : -1;
 	bool use_ssbo = uUseMDI && vUniformIndex >= 0;
 
 	mat4  current_model = use_ssbo ? uniforms_data[vUniformIndex].model : model;

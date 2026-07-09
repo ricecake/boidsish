@@ -10,6 +10,7 @@ layout(location = 2) in vec2 aTexCoords;
 #include "temporal_data.glsl"
 
 uniform bool uUseMDI = false;
+uniform uint u_baseUniformIndex = 0;
 
 out vec3     FragPos;
 out vec3     Normal;
@@ -24,7 +25,7 @@ uniform vec4 clipPlane;
 void main() {
 	int drawID = gl_DrawID;
 
-	vUniformIndex = uUseMDI ? drawID : -1;
+	vUniformIndex = uUseMDI ? int(u_baseUniformIndex) + drawID : -1;
 	bool use_ssbo = uUseMDI && vUniformIndex >= 0;
 	mat4 current_model = use_ssbo ? uniforms_data[vUniformIndex].model : model;
 
