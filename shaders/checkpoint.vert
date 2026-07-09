@@ -22,7 +22,7 @@ uniform mat4 model;
 uniform vec4 clipPlane;
 
 void main() {
-	int drawID = gl_DrawIDARB;
+	int drawID = gl_DrawID;
 
 	vUniformIndex = uUseMDI ? drawID : -1;
 	bool use_ssbo = uUseMDI && vUniformIndex >= 0;

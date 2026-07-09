@@ -74,7 +74,7 @@ uniform float arcadeWaveFrequency = 10.0;
 uniform float arcadeWaveSpeed = 5.0;
 
 void main() {
-	int drawID = gl_DrawIDARB;
+	int drawID = gl_DrawID;
 
 	vUniformIndex = uUseMDI ? drawID : -1;
 	bool use_ssbo = uUseMDI && vUniformIndex >= 0;

@@ -46,7 +46,7 @@ out vec3     FragPos;
 flat out int vUniformIndex;
 
 void main() {
-	int drawID = gl_DrawIDARB;
+	int drawID = gl_DrawID;
 
 	vUniformIndex = uUseMDI ? drawID : -1;
 	bool use_ssbo = uUseMDI && vUniformIndex >= 0;

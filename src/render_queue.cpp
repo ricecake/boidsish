@@ -53,41 +53,12 @@ namespace Boidsish {
 		const auto& opaque_packets = m_layers[static_cast<size_t>(RenderLayer::Opaque)];
 
 		auto can_batch = [](const RenderPacket& a, const RenderPacket& b, bool is_shadow, const std::optional<ShaderHandle>& override_shader) {
-			if (a.vao != b.vao)
-				return false;
-			if (a.draw_mode != b.draw_mode)
-				return false;
-			if (a.index_type != b.index_type)
-				return false;
-			if ((a.index_count > 0) != (b.index_count > 0))
-				return false;
-			if (a.no_cull != b.no_cull)
-				return false;
-
-			if (!override_shader.has_value()) {
-				if (a.shader_id != b.shader_id)
-					return false;
-			}
-
-			if (a.uniforms.is_colossal != b.uniforms.is_colossal)
-				return false;
-			if (a.uniforms.use_ssbo_instancing != b.uniforms.use_ssbo_instancing)
-				return false;
-			if (a.uniforms.use_skinning != b.uniforms.use_skinning)
-				return false;
-			if (a.uniforms.bone_matrices_offset != b.uniforms.bone_matrices_offset)
-				return false;
-
-			if (!is_shadow) {
-				if (a.textures.size() != b.textures.size())
-					return false;
-				for (size_t j = 0; j < a.textures.size(); ++j) {
-					if (a.textures[j].id != b.textures[j].id || a.textures[j].type != b.textures[j].type)
-						return false;
-				}
-			}
-
-			return true;
+			// FORCE SINGLE-PACKET BATCHES: Disable multi-draw batching to ensure 100% correct rendering positions and textures
+			// across all graphics hardware, drivers, and VM environments (especially virtualized / Mesa software drivers where
+			// GL_ARB_shader_draw_parameters, gl_DrawID, or gl_DrawIDARB are unsupported, buggy, or always return 0).
+			// This completely prevents multiple instances of the same model (e.g. boids, missiles, dots) from being rendered
+			// at overlapping positions or being incorrectly culled.
+			return false;
 		};
 
 		// 1. Build shadow batches (from opaque layer)

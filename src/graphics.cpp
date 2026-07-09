@@ -2461,7 +2461,8 @@ namespace Boidsish {
 									packet.draw_mode,
 									packet.index_count > 0,
 									packet.material_handle,
-									normalized_depth
+									normalized_depth,
+									packet.no_cull
 								);
 								local_packets.push_back(std::move(packet));
 							}
