@@ -179,14 +179,17 @@ namespace Boidsish {
 				vertices_to_upload.push_back(v);
 			}
 
+			bool needs_mark_dirty = false;
 			if (nodes_changed) {
 				allocation_ = mb->AllocateDynamic(static_cast<uint32_t>(vertices_to_upload.size()), 0);
 				is_dynamic_ = true;
-			} else if (
-				!allocation_.valid || allocation_.vertex_count != static_cast<uint32_t>(vertices_to_upload.size())
-			) {
-				allocation_ = mb->AllocateStatic(static_cast<uint32_t>(vertices_to_upload.size()), 0);
-				is_dynamic_ = false;
+				needs_mark_dirty = true;
+			} else {
+				if (is_dynamic_ || !allocation_.valid || allocation_.vertex_count != static_cast<uint32_t>(vertices_to_upload.size())) {
+					allocation_ = mb->AllocateStatic(static_cast<uint32_t>(vertices_to_upload.size()), 0);
+					is_dynamic_ = false;
+					needs_mark_dirty = true;
+				}
 			}
 
 			if (allocation_.valid) {
@@ -199,7 +202,7 @@ namespace Boidsish {
 				cached_vertex_positions_.push_back(node.position);
 			buffers_initialized_ = true;
 
-			if (nodes_changed) {
+			if (needs_mark_dirty) {
 				const_cast<Graph*>(this)->MarkDirty();
 			}
 		} else {
