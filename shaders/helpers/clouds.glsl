@@ -195,14 +195,16 @@ float calculatePuffyCloudSDF(vec3 p, CloudWeather weather, CloudLayer layer, flo
 	float h_unit = 10000.0 * worldScale;
 
 	// Normalize height relative to cloud center
-	float cloudCenter = (layer.baseFloor + layer.baseCeiling) * 0.5;
+	float cloudCenter = (layer.baseFloor + layer.thickness) * 0.5;
 	float h = (p.y - cloudCenter) / h_unit;
 
 	// Puff factor
 	float R = 0.5;
 
-	// 3D SDF approximation assuming smooth clouds around their axis
-	float d3d = h_unit * (length(vec2(weather.sdf / h_unit + R, abs(h))) - R);
+	float x = weather.sdf / h_unit;
+	float puffy_x = x + R;
+	float d3d = h_unit * (length(vec2(max(0.0, puffy_x), h)) - R + min(0.0, puffy_x));
+
 
 	return d3d;
 }
@@ -614,7 +616,7 @@ vec4 calculateCloudDensityExpV8(
 	CloudLayer      layer,
 	CloudProperties props,
 	float           time,
-	bool            simplified
+	float            simplified
 ) {
 	float h = (p.y - layer.baseFloor) / layer.thickness;
 	vec3 advectSpeed = getCloudAdvectionSpeed(h, time);
@@ -624,9 +626,50 @@ vec4 calculateCloudDensityExpV8(
 	vec3 p_advected = p + advect;
 
 
-	float d3d = calculatePuffyCloudSDF(p, weather, layer, props.worldScale);
+	// float d3d = calculatePuffyCloudSDF(p, weather, layer, props.worldScale);
 
-	return vec4(exp(2.50*smoothstep(0, 25, -d3d)), advectSpeed);
+	vec3 warpOffset = vec3(fastFbm3d(p_advected / 5000.0)) * 1500.0 * props.worldScale;
+	float d3d = calculatePuffyCloudSDF(p + warpOffset, weather, layer, props.worldScale);
+
+	bool isCore = d3d <= -10000.0;
+	float baseNoise = (1.0-0.25*clamp(sin(2*p_advected.x) + sin(5*p_advected.y) + sin(11*p_advected.z), 0, 1)    ) * clamp(-d3d, 0, 1);
+	// baseNoise *= heightGradient;
+	// baseNoise = remap(baseNoise, 1.0-heightGradient, 1.0, 0.0, 1.0);
+
+	float erodeMask = smoothstep(-10000.0, 0.0, d3d);
+	if (erodeMask > 0.0) {
+		float largeScale = abs(fastFbm3d(p_advected/8000));
+		baseNoise = remap(baseNoise, largeScale, 1.0, 0.0, 1.0);
+
+		if (!isCore) {
+			if (simplified < 1.0) {
+				erodeMask = 1.0 - baseNoise;
+				float coarseScale = abs(fastFbm3d(p_advected/5000)) * erodeMask;
+				baseNoise = remap(baseNoise, coarseScale, 1.0, 0.0, 1.0);
+			}
+
+			if (simplified < .75) {
+				erodeMask = 1.0 - baseNoise;
+				float mediumScale = (1.0-fastRidge3d(p_advected/4000)) * erodeMask;
+				baseNoise = remap(baseNoise, mediumScale, 1.0, 0.0, 1.0);
+			}
+
+			if (simplified < 0.50) {
+				erodeMask = 1.0 - baseNoise;
+				float fineScale = abs(fastFbm3d(p_advected / 3000.0)) * erodeMask;
+				baseNoise = remap(baseNoise, fineScale, 1.0, 0.0, 1.0);
+			}
+
+			if (simplified < 0.25) {
+				erodeMask = 1.0 - baseNoise;
+				float detailScale = fastRidge3d(p / vec3(2000.0, 1000.0, 2000.0)) * erodeMask;
+				baseNoise = remap(baseNoise, detailScale, 1.0, 0.0, 1.0);
+			}
+		}
+		// baseNoise *= smoothstep(0.01, 0.05, baseNoise);
+	}
+
+	return vec4(clamp(baseNoise, 0.0, 1.0), advectSpeed);
 }
 
 
@@ -638,7 +681,7 @@ vec4 calculateCloudDensity(
 	CloudLayer      layer,
 	CloudProperties props,
 	float           time,
-	bool            simplified
+	float            simplified
 ) {
 	if (p.y < layer.baseFloor || p.y > layer.baseCeiling) {
 		float h = (p.y - layer.baseFloor) / layer.thickness;

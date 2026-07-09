@@ -357,7 +357,51 @@ vec3 evalSHIrradianceFromCoeffs(vec3 n, vec4 coeffs[9]) {
  * Uses 2nd-order SH coefficients from the Lighting UBO.
  */
 vec3 evalSHIrradiance(vec3 n) {
-	return evalSHIrradianceFromCoeffs(n, sh_coeffs);
+	// Fallback to center probe (Probe 0)
+	vec4 center_coeffs[9];
+	for (int i = 0; i < 9; ++i) center_coeffs[i] = sh_coeffs[i];
+	return evalSHIrradianceFromCoeffs(n, center_coeffs);
+}
+
+/**
+ * Evaluate spatially-interpolated Spherical Harmonics irradiance for a given position and normal.
+ * Interpolates between 9 precomputed sky probes (1 at camera, 8 on 100km perimeter).
+ */
+vec3 evalSHIrradianceSpatial(vec3 pos, vec3 n) {
+	// Probe 0: Camera center
+	// Probes 1-8: Perimeter at 100km radius
+	float radius = 100000.0 * worldScale;
+	vec3 relPos = pos - viewPos;
+	float dist = length(relPos.xz);
+
+	// If very close to center, just use Probe 0
+	if (dist < radius * 0.1) {
+		return evalSHIrradiance(n);
+	}
+
+	// Calculate weights for blending between center and perimeter
+	float edgeWeight = smoothstep(radius * 0.1, radius, dist);
+	float centerWeight = 1.0 - edgeWeight;
+
+	// Calculate weights for blending between the 8 perimeter probes
+	float angle = atan(relPos.x, relPos.z);
+	if (angle < 0.0) angle += 2.0 * PI;
+	float sector = (angle / (2.0 * PI)) * 8.0;
+	int idx1 = 1 + int(floor(sector)) % 8;
+	int idx2 = 1 + (int(floor(sector)) + 1) % 8;
+	float sectorFrac = fract(sector);
+
+	vec4 interpolated[9];
+	for (int i = 0; i < 9; ++i) {
+		vec3 center = sh_coeffs[i].rgb;
+		vec3 p1 = sh_coeffs[idx1 * 9 + i].rgb;
+		vec3 p2 = sh_coeffs[idx2 * 9 + i].rgb;
+
+		vec3 edge = mix(p1, p2, sectorFrac);
+		interpolated[i] = vec4(mix(center, edge, edgeWeight), 1.0);
+	}
+
+	return evalSHIrradianceFromCoeffs(n, interpolated);
 }
 
 #ifdef USE_TERRAIN_DATA
@@ -374,6 +418,9 @@ vec3 getSpatialAmbientSH(vec3 worldPos, vec3 N) {
 	vec2  fracPos = fract(gridPos);
 	ivec2 chunkCoord = ivec2(floor(gridPos)) - u_originSize.xy;
 
+	// Use smoothstep for a non-linear blending curve to ensure smooth transitions between probes
+	vec2  s = smoothstep(0.0, 1.0, fracPos);
+
 	// Simple bilinear interpolation between 4 nearest chunk probes
 	vec3 totalSH[9];
 	for (int i = 0; i < 9; ++i)
@@ -386,7 +433,7 @@ vec3 getSpatialAmbientSH(vec3 worldPos, vec3 N) {
 			if (localCoord.x >= 0 && localCoord.x < u_originSize.z && localCoord.y >= 0 && localCoord.y < u_originSize.z) {
 				// Only include this probe if it's actually registered in the current grid
 				if (int(texelFetch(u_chunkGrid, localCoord, 0).r) >= 0) {
-					float weight = (x == 0 ? 1.0 - fracPos.x : fracPos.x) * (z == 0 ? 1.0 - fracPos.y : fracPos.y);
+					float weight = (x == 0 ? 1.0 - s.x : s.x) * (z == 0 ? 1.0 - s.y : s.y);
 
 					ivec2 worldChunkCoord = localCoord + u_originSize.xy;
 					ivec2 toroidalCoord = (worldChunkCoord % u_originSize.z + u_originSize.z) % u_originSize.z;
@@ -427,7 +474,7 @@ vec3 getSpatialAmbientSH(vec3 worldPos, vec3 N) {
 
 	// Combine spatially-varying environmental bounce with global sky irradiance
 	vec3 environmentalIrradiance = evalSHIrradianceFromCoeffs(N, interpolatedCoeffs);
-	vec3 skyIrradiance = evalSHIrradiance(N); // Global sky/ambient fallback
+	vec3 skyIrradiance = evalSHIrradianceSpatial(worldPos, N); // Spatially-interpolated sky/ambient fallback
 
 	// Calculate vertical tapering to prevent "light beams" in the sky.
 	// Ambient bounce should be strongest near the ground and fade out with altitude.
