@@ -418,6 +418,9 @@ vec3 getSpatialAmbientSH(vec3 worldPos, vec3 N) {
 	vec2  fracPos = fract(gridPos);
 	ivec2 chunkCoord = ivec2(floor(gridPos)) - u_originSize.xy;
 
+	// Use smoothstep for a non-linear blending curve to ensure smooth transitions between probes
+	vec2  s = smoothstep(0.0, 1.0, fracPos);
+
 	// Simple bilinear interpolation between 4 nearest chunk probes
 	vec3 totalSH[9];
 	for (int i = 0; i < 9; ++i)
@@ -430,7 +433,7 @@ vec3 getSpatialAmbientSH(vec3 worldPos, vec3 N) {
 			if (localCoord.x >= 0 && localCoord.x < u_originSize.z && localCoord.y >= 0 && localCoord.y < u_originSize.z) {
 				// Only include this probe if it's actually registered in the current grid
 				if (int(texelFetch(u_chunkGrid, localCoord, 0).r) >= 0) {
-					float weight = (x == 0 ? 1.0 - fracPos.x : fracPos.x) * (z == 0 ? 1.0 - fracPos.y : fracPos.y);
+					float weight = (x == 0 ? 1.0 - s.x : s.x) * (z == 0 ? 1.0 - s.y : s.y);
 
 					ivec2 worldChunkCoord = localCoord + u_originSize.xy;
 					ivec2 toroidalCoord = (worldChunkCoord % u_originSize.z + u_originSize.z) % u_originSize.z;
