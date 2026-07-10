@@ -149,9 +149,15 @@ namespace Boidsish {
 		 glBindBuffer(GL_ARRAY_BUFFER, _vbo);
 		 glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(LightningVertex), vertices.data(), GL_STREAM_DRAW);
 
+		 glDisable(GL_CULL_FACE);
+		 glDepthMask(GL_FALSE);
+
 		 glBindVertexArray(_vao);
 		 glDrawArrays(GL_LINES, 0, static_cast<GLsizei>(vertices.size()));
 		 glBindVertexArray(0);
+
+		 glEnable(GL_CULL_FACE);
+		 glDepthMask(GL_TRUE);
 	 }
 
 	 void LightningManager::TriggerStrike(LightningType type, const glm::vec3& startPos, const glm::vec3& endPos, const glm::vec3& color) {
