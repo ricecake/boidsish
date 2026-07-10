@@ -89,13 +89,13 @@ namespace Boidsish {
 		glBufferData(GL_SHADER_STORAGE_BUFFER, 100 * sizeof(glm::vec4), nullptr, GL_DYNAMIC_DRAW);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
-		// SH Coefficients SSBO: 9 x vec4
+		// SH Coefficients SSBO: 81 x vec4 (9 probes * 9 coeffs)
 		glGenBuffers(1, &_shCoeffsBuffer);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, _shCoeffsBuffer);
-		glBufferData(GL_SHADER_STORAGE_BUFFER, 9 * sizeof(glm::vec4), nullptr, GL_DYNAMIC_DRAW);
+		glBufferData(GL_SHADER_STORAGE_BUFFER, 81 * sizeof(glm::vec4), nullptr, GL_DYNAMIC_DRAW);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
-		for (int i = 0; i < 9; ++i) {
+		for (int i = 0; i < 81; ++i) {
 			_shCoeffs[i] = glm::vec4(0.0f);
 		}
 
@@ -298,9 +298,11 @@ namespace Boidsish {
 		_skyToSHShader->use();
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, _skyViewLUT);
+		// glActiveTexture(GL_TEXTURE1);
+		// glBindTexture(GL_TEXTURE_3D, _aerialPerspectiveLUT);
 		_skyToSHShader->setInt("u_skyViewLUT", 0);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::AtmosphereSH(), _shCoeffsBuffer);
-		glDispatchCompute(1, 1, 1); // Logic in sky_to_sh.comp uses a single workgroup for simple integration
+		glDispatchCompute(1, 1, 9); // Dispatch 9 workgroups (Z dimension), one for each spatial probe
 		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
 		// SH coefficients remain on GPU — copied to UBO via CopySHToUBO() later.
@@ -333,7 +335,7 @@ namespace Boidsish {
 			return;
 		glBindBuffer(GL_COPY_READ_BUFFER, _shCoeffsBuffer);
 		glBindBuffer(GL_COPY_WRITE_BUFFER, lightingUbo);
-		glCopyBufferSubData(GL_COPY_READ_BUFFER, GL_COPY_WRITE_BUFFER, 0, shOffset, 9 * sizeof(glm::vec4));
+		glCopyBufferSubData(GL_COPY_READ_BUFFER, GL_COPY_WRITE_BUFFER, 0, shOffset, 81 * sizeof(glm::vec4));
 		glBindBuffer(GL_COPY_READ_BUFFER, 0);
 		glBindBuffer(GL_COPY_WRITE_BUFFER, 0);
 	}

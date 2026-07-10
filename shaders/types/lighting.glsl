@@ -62,7 +62,7 @@ layout(std140, binding = [[LIGHTING_BINDING]]) uniform Lighting {
 	mat4  projection;
 	vec3  lightningColor;
 	float lightningPulse;
-	vec4  sh_coeffs[9];
+	vec4  sh_coeffs[81];
 };
 
 #endif

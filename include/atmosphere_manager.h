@@ -220,7 +220,7 @@ namespace Boidsish {
 		std::unique_ptr<ComputeShader> _skyToSHShader;
 		std::unique_ptr<ComputeShader> _cloudBakeShader;
 
-		glm::vec4 _shCoeffs[9];
+		glm::vec4 _shCoeffs[81];
 
 		bool _needsPrecompute = true;
 		bool _needsWeatherBake = true;
