@@ -673,31 +673,26 @@ vec4 calculateCloudDensityExpV8(
 
 
 // Cloud density calculation helper
-// Returns vec4(density, advection.xyz) based on world-space position
-vec4 calculateCloudDensity(
+// Returns vec3(density) based on world-space position, and outputs advection vector
+vec3 calculateCloudDensity(
 	vec3            p,
 	CloudWeather    weather,
 	CloudLayer      layer,
 	CloudProperties props,
 	float           time,
-	float            simplified
+	float           simplified,
+	out vec3        advection
 ) {
 	if (p.y < layer.baseFloor || p.y > layer.baseCeiling) {
 		float h = (p.y - layer.baseFloor) / layer.thickness;
-		vec3 advectSpeed = getCloudAdvectionSpeed(h, time);
-		return vec4(0.0, advectSpeed);
+		advection = getCloudAdvectionSpeed(h, time);
+		return vec3(0.0);
 	}
 
 	// Need a worley fbm to mix in
-	return calculateCloudDensityExpV8(p, weather, layer, props, time, simplified);
-	// return calculateCloudDensityExpV7(p, weather, layer, props, time, simplified);
-	// return calculateCloudDensityExpV6(p, weather, layer, props, time, simplified);
-	// return calculateCloudDensityExpV5(p, weather, layer, props, time, simplified);
-	// return calculateCloudDensityExpV4(p, weather, layer, props, time, simplified);
-	// return calculateCloudDensityExpV3(p, weather, layer, props, time, simplified);
-	// return calculateCloudDensityExpV2(p, weather, layer, props, time, simplified);
-	// return calculateCloudDensityExpV1(p, weather, layer, props, time, simplified);
-	// return calculateCloudDensityHZDv1(p, weather, layer, props, time, simplified);
+	vec4 res = calculateCloudDensityExpV8(p, weather, layer, props, time, simplified);
+	advection = res.yzw;
+	return vec3(res.x);
 }
 
 
