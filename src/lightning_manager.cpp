@@ -18,7 +18,7 @@ namespace Boidsish {
 	 }
 
 	 void LightningManager::Initialize() {
-		 _shader = std::make_unique<Shader>("shaders/lightning.vert", "shaders/lightning.frag");
+		 _shader = std::make_unique<Shader>("shaders/lightning.vert", "shaders/lightning.frag", nullptr, nullptr, "shaders/lightning.geom");
 
 		 glGenVertexArrays(1, &_vao);
 		 glGenBuffers(1, &_vbo);
@@ -144,6 +144,7 @@ namespace Boidsish {
 		 _shader->use();
 		 _shader->setMat4("view", view);
 		 _shader->setMat4("projection", projection);
+		 _shader->setFloat("thickness", _thickness);
 
 		 glBindBuffer(GL_ARRAY_BUFFER, _vbo);
 		 glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(LightningVertex), vertices.data(), GL_STREAM_DRAW);
