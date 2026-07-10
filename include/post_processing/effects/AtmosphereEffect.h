@@ -230,6 +230,9 @@ namespace Boidsish {
 			void SetCloudExtinction(float extinction) { cloud_extinction_ = extinction; }
 			float GetCloudExtinction() const { return cloud_extinction_; }
 
+			void SetCloudExtinctionColor(const glm::vec3& color) { cloud_extinction_color_ = color; }
+			glm::vec3 GetCloudExtinctionColor() const { return cloud_extinction_color_; }
+
 			void SetCloudTemporalGamma(float gamma) { cloud_temporal_gamma_ = gamma; }
 			float GetCloudTemporalGamma() const { return cloud_temporal_gamma_; }
 
@@ -346,6 +349,7 @@ namespace Boidsish {
 			int   cloud_min_samples_ = 32;
 			int   cloud_max_samples_ = 96;
 			float cloud_extinction_ = 0.01f;
+			glm::vec3 cloud_extinction_color_ = glm::vec3(1.0f, 0.7f, 0.4f);
 			float cloud_temporal_gamma_ = 1.5f;
 			float cloud_max_history_length_ = 32.0f;
 			float cloud_phi_luma_ = 20.0f;
