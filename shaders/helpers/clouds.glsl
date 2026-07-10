@@ -219,6 +219,35 @@ float calculatePuffyCloudSDF(vec3 p, CloudWeather weather, CloudLayer layer, flo
 }
 
 
+float calculateLoftedCloudSDF(vec3 p, CloudWeather weather, CloudLayer layer, float worldScale) {
+    // 1. The 2D footprint distance (positive outside, negative inside)
+    float d_edge = weather.sdf;
+
+    // 2. Calculate the depth inside the cloud boundary
+    float depthInside = max(0.0, -d_edge);
+
+    // 3. Map internal depth to vertical height along the +Y axis.
+    // 'puffSlope' determines how steep the sides of the cloud are.
+    // A slope of 1.0 represents a 45-degree rise from the edge.
+    float puffSlope = 1.5;
+    float domeHeight = depthInside * puffSlope;
+
+    // Clamp the height to the atmospheric layer's defined maximum thickness
+    domeHeight = min(domeHeight, layer.thickness);
+
+    // 4. Define the vertical bounds for this specific XZ column
+    // This creates a flat bottom at baseFloor and a domed top.
+    float columnCenter = layer.baseFloor + (domeHeight * 0.5);
+    float d_vertical = abs(p.y - columnCenter) - (domeHeight * 0.5);
+
+    // 5. Intersect the 2D boundary with the dynamic 1D vertical boundary
+    // The exact distance to the boundary is the maximum of the two orthogonal distances.
+    float d3d = max(d_edge, d_vertical);
+
+    return d3d;
+}
+
+
 vec4 calculateCloudDensityHZDv1(
 	vec3            p,
 	CloudWeather    weather,
@@ -636,7 +665,8 @@ vec4 calculateCloudDensityExpV8(
 
 	float warpy = fastFbm3d(p_advected/5000.0);
 	vec3 warpOffset = vec3(warpy) * 1500.0 * props.worldScale;
-	float baseSdf = calculatePuffyCloudSDF(p + warpOffset, weather, layer, props.worldScale);
+	// float baseSdf = calculatePuffyCloudSDF(p + warpOffset, weather, layer, props.worldScale);
+	float baseSdf = calculateLoftedCloudSDF(p + warpOffset, weather, layer, props.worldScale);
 
 	float d3d = baseSdf;// + (fastRidge3d(p_advected / 15000.0) * 2000.0 * props.worldScale);
 
@@ -790,10 +820,9 @@ float calculateCloudShadowFactor(vec3 frag_pos, vec3 L, float intensity) {
 	props.worldScale = worldScale;
 
 	CloudWeather weather = computeCloudWeather(cloudPos, props);
+	CloudLayer layer = computeCloudLayer(weather, props);
 
-	// Use h=0 to sample the fattest part of the puffy cloud for the shadow projection
-	float h_unit = 10000.0 * worldScale;
-	float d3d = calculatePuffyCloudSDF(weather.sdf, 0.0, h_unit);
+	float d3d = calculateLoftedCloudSDF(cloudPos, weather, layer, props.worldScale);
 
 	// Sharpness of the cloud edge in meters
 	float penumbra = 100.0 * worldScale;
@@ -818,11 +847,9 @@ float evaluateCloudShadowDensityAtWorldPos(vec2 worldXZ, float time) {
 
 	vec3  basePos = vec3(worldXZ.x, (props.altitude + props.thickness * 0.5) * props.worldScale, worldXZ.y);
 	CloudWeather weather = computeCloudWeather(basePos, props);
+	CloudLayer layer = computeCloudLayer(weather, props);
 
-	float h_unit = 10000.0 * worldScale;
-	float d3d = calculatePuffyCloudSDF(weather.sdf, 0.0, h_unit);
-
-	// Convert SDF to a density value for consumers that expect density (e.g. sky_view_lut.comp)
+	float d3d = calculateLoftedCloudSDF(basePos, weather, layer, props.worldScale);
 	float penumbra = 100.0 * worldScale;
 	return max(0.0, -d3d / penumbra) * 4.0;
 	// return calculateCloudDensityExpV8(basePos, weather, layer, props, time, true).x;
