@@ -671,8 +671,8 @@ vec4 calculateCloudDensityExpV8(
 	float d3d = baseSdf;// + (fastRidge3d(p_advected / 15000.0) * 2000.0 * props.worldScale);
 
 	bool isCore = d3d <= -10000.0;
-	float baseNoise = (1.0-0.25*clamp(sin(2*p_advected.x) + sin(5*p_advected.y) + sin(11*p_advected.z), 0, 1)    ) * clamp(-d3d, 0, 1);
-	// float baseNoise = clamp(-d3d, 0, 1);
+	// float baseNoise = (1.0-0.25*clamp(sin(2*p_advected.x) + sin(5*p_advected.y) + sin(11*p_advected.z), 0, 1)    ) * clamp(-d3d, 0, 1);
+	float baseNoise = clamp(-d3d, 0, 1);
 
 	float erodeMask = smoothstep(-10000.0, 0.0, d3d);
 	if (erodeMask > 0.0) {
@@ -726,16 +726,7 @@ vec4 calculateCloudDensityExpV9(
 	vec3 p_advected = p + advect;
 
 	float baseSdf = calculateLoftedCloudSDF(p_advected, weather, layer, props.worldScale);
-	float d3d = baseSdf;
-
-	float baseNoise = (1.0-0.25*clamp(sin(2*p_advected.x) + sin(5*p_advected.y) + sin(11*p_advected.z), 0, 1)    ) * clamp(-d3d, 0, 1);
-
-	float erodeMask = smoothstep(-10000.0, 0.0, d3d);
-	if (erodeMask > 0.0) {
-		float largeScale = abs(fastFbm3d(p_advected/10000)) * erodeMask;
-		baseNoise = remap(baseNoise, largeScale, 1.0, 0.0, 1.0);
-	}
-
+	float baseNoise = clamp(-baseSdf/150.0, 0, 1);
 	return vec4(clamp(baseNoise, 0.00, 1.0), advectSpeed);
 }
 
