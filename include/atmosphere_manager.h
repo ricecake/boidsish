@@ -178,6 +178,8 @@ namespace Boidsish {
 
 		GLuint GetCloudWeatherTexture() const { return _cloudWeatherTexture; }
 
+		GLuint GetCloud3DTexture() const { return _cloud3DTexture; }
+
 		/**
 		 * Sample the cloud weather data on the CPU.
 		 * @param worldXZ Position in world space
@@ -210,6 +212,7 @@ namespace Boidsish {
 		GLuint _skyViewLUT = 0;
 		GLuint _aerialPerspectiveLUT = 0;
 		GLuint _cloudWeatherTexture = 0;
+		GLuint _cloud3DTexture = 0;
 		GLuint _cloudSeedsBuffer = 0;
 		GLuint _shCoeffsBuffer = 0;
 
@@ -219,6 +222,7 @@ namespace Boidsish {
 		std::unique_ptr<ComputeShader> _aerialPerspectiveShader;
 		std::unique_ptr<ComputeShader> _skyToSHShader;
 		std::unique_ptr<ComputeShader> _cloudBakeShader;
+		std::unique_ptr<ComputeShader> _cloud3DBakeShader;
 
 		glm::vec4 _shCoeffs[81];
 

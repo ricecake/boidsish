@@ -1,0 +1,60 @@
+#version 460 core
+
+layout(local_size_x = 8, local_size_y = 4, local_size_z = 8) in;
+
+layout(binding = 0, rgba16f) uniform writeonly image3D outCloud3D;
+
+#include "../helpers/clouds.glsl"
+
+uniform float uWorldScale;
+uniform float uCloudCoverage;
+uniform float time;
+
+float getCloudMinAltitude(float worldScale) {
+	return (cloudAltitude - 1000.0) * worldScale;
+}
+
+float getCloudMaxAltitude(float worldScale) {
+	return (cloudAltitude + cloudThickness * 12.0 + 10000.0) * worldScale;
+}
+
+void main() {
+	ivec3 voxelCoord = ivec3(gl_GlobalInvocationID.xyz);
+	ivec3 size = imageSize(outCloud3D);
+
+	if (any(greaterThanEqual(voxelCoord, size))) {
+		return;
+	}
+
+	vec3 uvw = (vec3(voxelCoord) + 0.5) / vec3(size);
+
+	// Horizontal coordinates map to 100,000 * worldScale range (toroidal)
+	float mapRange = 100000.0 * uWorldScale;
+	vec3 p;
+	p.x = uvw.x * mapRange;
+	p.z = uvw.z * mapRange;
+
+	// Vertical coordinate maps to the altitude range
+	float minAlt = getCloudMinAltitude(uWorldScale);
+	float maxAlt = getCloudMaxAltitude(uWorldScale);
+	p.y = mix(minAlt, maxAlt, uvw.y);
+
+	CloudProperties props;
+	props.altitude = cloudAltitude;
+	props.thickness = cloudThickness;
+	props.densityBase = cloudDensity;
+	props.coverage = uCloudCoverage;
+	props.worldScale = uWorldScale;
+
+	CloudWeather weather = computeCloudWeather(p, props);
+	CloudLayer layer = computeCloudLayer(weather, props);
+
+	float d3d = calculateLoftedCloudSDF(p, weather, layer, uWorldScale);
+
+	// Also calculate low-resolution density
+	vec3 advection;
+	vec3 densityVal = calculateCloudDensity(p, weather, layer, props, 0.0, 1.0, advection);
+	float density = densityVal.x;
+
+	imageStore(outCloud3D, voxelCoord, vec4(d3d, density, uvw.y, 1.0));
+}

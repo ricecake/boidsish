@@ -42,6 +42,7 @@ namespace Boidsish {
 				WeatherScalars = 42,
 				WeatherAerosols = 43,
 				TerrainDisplacementImage = 44,
+				Cloud3D = 45,
 				CloudJFADistance = 46,
 			};
 
@@ -300,6 +301,10 @@ namespace Boidsish {
 
 			consteval int CloudWeatherBake() {
 				return std::to_underlying(Constants::Bindings::Texture::CloudWeatherBake);
+			}
+
+			consteval int Cloud3D() {
+				return std::to_underlying(Constants::Bindings::Texture::Cloud3D);
 			}
 
 			consteval int CloudJFADistance() {
