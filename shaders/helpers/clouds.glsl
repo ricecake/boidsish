@@ -711,6 +711,34 @@ vec4 calculateCloudDensityExpV8(
 }
 
 
+
+vec4 calculateCloudDensityExpV9(
+	vec3            p,
+	CloudWeather    weather,
+	CloudLayer      layer,
+	CloudProperties props,
+	float           time,
+	float            simplified
+) {
+	float h = (p.y - layer.baseFloor) / layer.thickness;
+	vec3 advectSpeed = getCloudAdvectionSpeed(h, time);
+	vec3 advect = time * advectSpeed;
+	vec3 p_advected = p + advect;
+
+	float baseSdf = calculateLoftedCloudSDF(p_advected, weather, layer, props.worldScale);
+	float d3d = baseSdf;
+
+	float baseNoise = (1.0-0.25*clamp(sin(2*p_advected.x) + sin(5*p_advected.y) + sin(11*p_advected.z), 0, 1)    ) * clamp(-d3d, 0, 1);
+
+	float erodeMask = smoothstep(-10000.0, 0.0, d3d);
+	if (erodeMask > 0.0) {
+		float largeScale = abs(fastFbm3d(p_advected/10000)) * erodeMask;
+		baseNoise = remap(baseNoise, largeScale, 1.0, 0.0, 1.0);
+	}
+
+	return vec4(clamp(baseNoise, 0.00, 1.0), advectSpeed);
+}
+
 // Cloud density calculation helper
 // Returns vec3(density) based on world-space position, and outputs advection vector
 vec3 calculateCloudDensity(
@@ -729,7 +757,8 @@ vec3 calculateCloudDensity(
 	}
 
 	// Need a worley fbm to mix in
-	vec4 res = calculateCloudDensityExpV8(p, weather, layer, props, time, simplified);
+	vec4 res = calculateCloudDensityExpV9(p, weather, layer, props, time, simplified);
+	// vec4 res = calculateCloudDensityExpV8(p, weather, layer, props, time, simplified);
 	advection = res.yzw;
 	return vec3(res.x);
 }

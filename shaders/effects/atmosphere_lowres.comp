@@ -263,7 +263,7 @@ void main() {
 
 				t_last_inside = loop_t;
 
-				float jump = abs(exitPointWeather.sdf) / rayXZLen;
+				float jump = 0.0001 + abs(exitPointWeather.sdf) / rayXZLen;
 				loop_t += clamp(jump, 2.0 * props.worldScale, 200.0 * props.worldScale);
 
 				exitPointWeather = computeCloudWeather(viewPos + rayDir * loop_t, props);
@@ -287,15 +287,68 @@ void main() {
 			// --- Adaptive Raymarching Setup ---
 			float baseTargetStepSize = 50.0 * props.worldScale;
 			float currentStepSize = baseTargetStepSize;
-			float subT = t_entry + (jitter * currentStepSize);
+
+			float intersectionThickness = max(t_exit - t_entry, 0.0);
+			float maxGuaranteedStep = intersectionThickness * 0.3333;
+
+			float minTargetStepSize = 20.0 * props.worldScale; // The tightest step (near camera)
+			float maxTargetStepSize = 300.0 * props.worldScale; // The loosest step (horizon)
+
+			float subT = t_entry;
 
 			// Use a high max iteration limit, as we rely on t_exit and transmittance to break
 			int MAX_INNER_SAMPLES = 250;
 
 			for (int k = 0; k < MAX_INNER_SAMPLES; k++) {
+			// Break if we passed the exit, or if all color channels are functionally opaque
 				if (subT >= t_exit || max(cloudTransmittance.x, max(cloudTransmittance.y, cloudTransmittance.z)) < 0.01) break;
 
-				vec3 subP = viewPos + rayDir * subT;
+				// 1. Calculate depth-based step size (yields logarithmic sample distribution)
+				float distanceGrowth = subT * 0.015; // Tune this multiplier to control how fast steps grow
+				float baseStep = clamp(minTargetStepSize + distanceGrowth, minTargetStepSize, maxTargetStepSize);
+
+				// 2. The Guarantee: Clamp to ensure at least 3 samples inside the volume bounds
+				float currentStepSize = min(baseStep, maxGuaranteedStep);
+
+				// 3. Apply Transmittance/SDF Density multipliers
+				float scalarTransmittance = dot(cloudTransmittance, vec3(0.3333));
+				float stepScaleMultiplier = mix(4.0, 1.0, scalarTransmittance);
+
+				// (Apply any history or SDF core multipliers to stepScaleMultiplier here)
+				// // --- Calculate Next Step Size ---
+				// float stepScaleMultiplier = 1.0;
+
+				// // 1. Transmittance backoff: Take larger steps through dense cores where we can't see much anyway
+				// float scalarTransmittance = dot(cloudTransmittance, vec3(0.3333));
+				// stepScaleMultiplier *= mix(4.0, 1.0, scalarTransmittance);
+
+				// // 2. History bounds: You calculate expectedStart/expectedEnd and maxEmptyMult in the history block.
+				// // Use them here to rush through areas that were empty last frame.
+				// if (uHasHistory && (subT < expectedStart || subT > expectedEnd)) {
+				// 	stepScaleMultiplier *= maxEmptyMult;
+				// }
+
+				// // 3. SDF Proximity: Larger steps deeper inside the cloud volume (where SDF is increasingly negative)
+				// // Assuming weather.sdf returns a distance field where interior is negative
+				// float coreDepthRatio = 1.0 - smoothstep(-300.0 * props.worldScale, 0.0, weather.sdf);
+				// stepScaleMultiplier *= mix(1.0, 2.0, coreDepthRatio);
+
+				// currentStepSize = baseTargetStepSize * stepScaleMultiplier;
+
+
+				currentStepSize *= stepScaleMultiplier;
+
+				// 4. Snap to the exit boundary perfectly on the final step
+				if (subT + currentStepSize > t_exit) {
+					currentStepSize = t_exit - subT;
+				}
+
+				// 5. Stable Jitter: Offset the sample position, NOT the integration distance
+				// (Assumes 'jitter' is a 0.0 to 1.0 noise value per-pixel)
+				float sampleT = subT + (jitter * currentStepSize);
+				vec3 subP = viewPos + rayDir * sampleT;
+
+				float integrationStep = currentStepSize;
 
 				// Sub-sample altitude and lighting properties
 				float r2_sub = h0Term + 2.0 * subT * roDotRd + subT * subT;
@@ -319,7 +372,6 @@ void main() {
 
 				pathDensity = max(pathDensity, max(d.x, max(d.y, d.z)));
 
-				float integrationStep = currentStepSize;
 				if (any(greaterThan(d, vec3(0.000))) || any(greaterThan(prevDensity, vec3(0.000)))) {
 					vec3 averageDensity = (prevDensity + d) * 0.5;
 					vec3 rgbExtinction = uCloudExtinctionColor * uCloudExtinction;
@@ -451,7 +503,7 @@ void main() {
 					vec3 groundAttenuation = exp(-upwardOD * ambientExtinction);
 
 					// --- 3. The Powder Effect ---
-					float powderScale = 1.0; // Tuning var: intensity of dark inward-facing crevices
+					float powderScale = 15.0; // Tuning var: intensity of dark inward-facing crevices
 					vec3 powder = vec3(1.0) - exp(-stepDensity * powderScale);
 
 					// --- 4. Final Integration ---
@@ -465,7 +517,7 @@ void main() {
 					vec3 weight = cloudTransmittance * (vec3(1.0) - transmittanceAtStep);
 					// Extract scalars for stable temporal weighting
 					float scalarAccumOD = dot(accumulatedOpticalDepth, vec3(0.3333));
-					float bias = exp(-scalarAccumOD * 2.0);
+					float bias = exp(-scalarAccumOD * 15.0);
 					float scalarWeight = dot(weight, vec3(0.3333));
 					float stepWeight = scalarWeight * bias;
 					weightedDistSum += subT * stepWeight;
@@ -478,26 +530,6 @@ void main() {
 					accumulatedOpticalDepth += stepDensity;
 				}
 				prevDensity = d;
-
-				// --- Calculate Next Step Size ---
-				float stepScaleMultiplier = 1.0;
-
-				// 1. Transmittance backoff: Take larger steps through dense cores where we can't see much anyway
-				float scalarTransmittance = dot(cloudTransmittance, vec3(0.3333));
-				stepScaleMultiplier *= mix(4.0, 1.0, scalarTransmittance);
-
-				// 2. History bounds: You calculate expectedStart/expectedEnd and maxEmptyMult in the history block.
-				// Use them here to rush through areas that were empty last frame.
-				if (uHasHistory && (subT < expectedStart || subT > expectedEnd)) {
-					stepScaleMultiplier *= maxEmptyMult;
-				}
-
-				// 3. SDF Proximity: Larger steps deeper inside the cloud volume (where SDF is increasingly negative)
-				// Assuming weather.sdf returns a distance field where interior is negative
-				float coreDepthRatio = 1.0 - smoothstep(-300.0 * props.worldScale, 0.0, weather.sdf);
-				stepScaleMultiplier *= mix(1.0, 2.0, coreDepthRatio);
-
-				currentStepSize = baseTargetStepSize * stepScaleMultiplier;
 				subT += currentStepSize;
 			}
 
