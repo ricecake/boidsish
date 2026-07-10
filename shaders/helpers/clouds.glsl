@@ -25,6 +25,15 @@ float beerPowder(float d, float local_d) {
 	);
 }
 
+vec3 beerPowder(vec3 d, vec3 local_d) {
+	// Approximation of multiple scattering (Beer-Powder law)
+	// Ensuring sunny side isn't black when d is small
+	return max(
+		exp(-d),
+		exp(-d * cloudPowderScale) * cloudPowderMultiplier * (vec3(1.0) - exp(-local_d * cloudPowderLocalScale))
+	);
+}
+
 struct CloudProperties {
 	float altitude;
 	float thickness;

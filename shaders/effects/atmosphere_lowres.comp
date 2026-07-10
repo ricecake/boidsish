@@ -24,6 +24,7 @@ uniform float uCloudMaxRayDistance;
 uniform int   uCloudMinSamples;
 uniform int   uCloudMaxSamples;
 uniform float uCloudExtinction;
+uniform vec3  uCloudExtinctionColor;
 
 #include "../atmosphere/common.glsl"
 #include "../helpers/clouds.glsl"
@@ -321,7 +322,7 @@ void main() {
 				float integrationStep = currentStepSize;
 				if (any(greaterThan(d, vec3(0.000))) || any(greaterThan(prevDensity, vec3(0.000)))) {
 					vec3 averageDensity = (prevDensity + d) * 0.5;
-					vec3 rgbExtinction = vec3(1.0, 0.7, 0.4) * uCloudExtinction;
+					vec3 rgbExtinction = uCloudExtinctionColor * uCloudExtinction;
 					vec3 stepDensity = averageDensity * integrationStep * rgbExtinction;
 					vec3 transmittanceAtStep = exp(-stepDensity);
 					prevTransmissionDelta = prevTransmission - transmittanceAtStep;
@@ -410,10 +411,11 @@ void main() {
 							}
 						}
 
-						// Inline Beer-Powder to support vec3
-						vec3 standardBeer = exp(-opticalDepthToLight);
-						vec3 powderTerm = standardBeer * (vec3(1.0) - exp(-stepDensity * 2.0));
-						vec3 shadowTerm = mix(powderTerm, standardBeer, cloudBeerPowderMix);
+						vec3 shadowTerm = mix(
+							beerPowder(opticalDepthToLight, stepDensity),
+							exp(-opticalDepthToLight),
+							cloudBeerPowderMix
+						);
 
 						float lightScale = 1.0;
 						if (lights[j].type == LIGHT_TYPE_DIRECTIONAL) {
