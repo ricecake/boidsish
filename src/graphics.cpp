@@ -4925,6 +4925,10 @@ namespace Boidsish {
 		return ConfigManager::GetInstance().GetAppSettingBool("artistic_effect_wireframe", false);
 	}
 
+	ShaderHandle Visualizer::RegisterShader(std::shared_ptr<Shader> shader) {
+		return impl->shader_table.Register(std::make_unique<RenderShader>(shader));
+	}
+
 	UI::UIConfigManager& Visualizer::GetUIConfigManager() {
 		return *impl->ui_manager;
 	}

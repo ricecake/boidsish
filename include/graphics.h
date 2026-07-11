@@ -655,6 +655,9 @@ namespace Boidsish {
 
 		UI::UIConfigManager& GetUIConfigManager();
 
+		// Register a custom shader with the internal ShaderTable
+		ShaderHandle RegisterShader(std::shared_ptr<Shader> shader);
+
 	private:
 		struct VisualizerImpl;
 		std::unique_ptr<VisualizerImpl> impl;
