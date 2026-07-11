@@ -194,50 +194,63 @@ float sph( vec3 i, vec3 f, vec3 c )
 // 	);
 // }
 
-// https://iquilezles.org/articles/fbmsdf
-float sdBase( in vec3 p )
-{
-    vec3 i = floor(p);
-    vec3 f = fract(p);
-    return
-		min(
-			min(sph(i,f,vec3(0.5,0.5,0)), sph(i,f,vec3(0.5,0.5,1))),
-			min(sph(i,f,vec3(1.0,0.5,0.5)), sph(i,f,vec3(0,0.5,0.5)))
-		);
+// --- Configurable Analytical SDF Sphere Parameters ---
+// Number of spheres mapped to edges of the tileable square
+const int NUM_CL_SPHERES = 4;
+
+// Base local locations of spheres within the unit cell [0, 1]^3
+const vec3 CL_SPHERE_CENTERS[4] = vec3[](
+	vec3(0.5, 0.5, 0.0),
+	vec3(0.5, 0.5, 1.0),
+	vec3(1.0, 0.5, 0.5),
+	vec3(0.0, 0.5, 0.5)
+);
+
+// Base radii of spheres
+const float CL_SPHERE_RADII[4] = float[](
+	0.35,
+	0.35,
+	0.35,
+	0.35
+);
+
+// Easily adjustable variations
+const float CL_HEIGHT_VARIATION = 0.15;
+const float CL_RADIUS_VARIATION = 0.1;
+
+// Simple inline hash for cell-specific variation
+float hash_sdf(vec3 p) {
+	return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453123);
 }
 
+// Highly configurable, simple and tileable spheres-based SDF
+float evalTiledSpheresSdf(vec3 p) {
+	vec3 i = floor(p);
+	vec3 f = fract(p);
+	float d = 1e10;
 
-// https://iquilezles.org/articles/fbmsdf
-vec2 sdFbm( in vec3 p, in float th, in float d )
-{
-    // rotation and 2x scale matrix
-    const mat3 m = mat3( 0.00,  1.60,  1.20,
-                        -1.60,  0.72, -0.96,
-                        -1.20, -0.96,  1.28 );
-    vec3  q = p;
-    float t = 0.0;
-	float s = 1.0;
-    const int ioct = 2;
-    for( int i=0; i<ioct; i++ )
-    {
-        if( d>s*0.866 ) break; // early exit
-        if( s<th ) break;      // lod
+	for (int s = 0; s < NUM_CL_SPHERES; s++) {
+		vec3 center = CL_SPHERE_CENTERS[s];
+		float baseRadius = CL_SPHERE_RADII[s];
 
-        float n = s*sdBase(q);
-        n = smax(n,d-0.1*s,0.3*s);
-        d = smin(n,d      ,0.3*s);
-        q = m*q;
-        s = 0.415*s;
+		// Compute pseudorandom value per-cell per-sphere
+		float h = hash_sdf(i + center * 17.0);
 
-        t += d;
-        q.z += -4.33*t*s; // deform things a bit
-    }
-    return vec2( d, t );
+		// Adjust height (Y) and size based on variations
+		center.y += (h * 2.0 - 1.0) * CL_HEIGHT_VARIATION;
+		float radius = baseRadius + (fract(h * 31.39) * 2.0 - 1.0) * CL_RADIUS_VARIATION;
+
+		// Distance to the sphere (handles tiling boundaries cleanly because spheres are close to edges/corners)
+		float dist = length(f - center) - radius;
+
+		// Smooth minimum blending
+		d = smin(d, dist, 0.2);
+	}
+	return d;
 }
 
 float evalSdf(vec3 p, float time) {
-	// return sdFbm(p, 0.2, 0.1).x;
-	return sdBase(p);
+	return evalTiledSpheresSdf(p);
 }
 
 CloudWeather computeCloudWeather(vec3 p, CloudProperties props) {
@@ -314,14 +327,6 @@ float calculatePuffyCloudSDF(vec3 p, CloudWeather weather, CloudLayer layer, flo
 
 
 float calculateLoftedCloudSDF(vec3 p, CloudWeather weather, CloudLayer layer, float worldScale) {
-	// Use baked weather map. Sampling UV is worldXZ / range.
-	// Range is 100,000 * worldScale as defined in the bake shader.
-	vec3 uv = p / (5000.0 * worldScale);
-	// vec4 bakedWeather = textureLod(u_cloudWeatherTexture, uv, 0.0);
-	return 5000*evalSdf(uv, time);
-	// return 10000*(distance(fract(uv), vec3(0.5)) - 0.5);
-
-
     // 1. The 2D footprint distance (positive outside, negative inside)
     float d_edge = weather.sdf;
 
