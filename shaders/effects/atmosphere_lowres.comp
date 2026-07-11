@@ -212,8 +212,8 @@ void main() {
 				// Outside vertical bounds
 				float verticalDist = (normY < 0.0) ? (minAlt - p.y) : (p.y - maxAlt);
 				// Calculate conservative step along the ray based on vertical distance
-				float verticalStep = max(verticalDist, 2.0 * worldScale);
-				t += verticalStep;
+				float verticalStep = verticalDist / max(abs(rayDir.y), 1e-6);
+				t += max(verticalStep, 2.0 * worldScale);
 				prevDensity = vec3(0.0);
 				continue;
 			}

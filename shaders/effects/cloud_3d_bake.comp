@@ -1,21 +1,19 @@
 #version 460 core
 
+#define BAKING_SHADER
+
 layout(local_size_x = 8, local_size_y = 4, local_size_z = 8) in;
 
 layout(binding = 0, rgba16f) uniform writeonly image3D outCloud3D;
 
 #include "../helpers/clouds.glsl"
 
-uniform float uWorldScale;
-uniform float uCloudCoverage;
-uniform float time;
-
-float getCloudMinAltitude(float worldScale) {
-	return (cloudAltitude - 1000.0) * worldScale;
+float getCloudMinAltitude(float ws) {
+	return (cloudAltitude - 1000.0) * ws;
 }
 
-float getCloudMaxAltitude(float worldScale) {
-	return (cloudAltitude + cloudThickness * 12.0 + 10000.0) * worldScale;
+float getCloudMaxAltitude(float ws) {
+	return (cloudAltitude + cloudThickness * 12.0 + 10000.0) * ws;
 }
 
 void main() {
@@ -29,27 +27,27 @@ void main() {
 	vec3 uvw = (vec3(voxelCoord) + 0.5) / vec3(size);
 
 	// Horizontal coordinates map to 100,000 * worldScale range (toroidal)
-	float mapRange = 100000.0 * uWorldScale;
+	float mapRange = 100000.0 * worldScale;
 	vec3 p;
 	p.x = uvw.x * mapRange;
 	p.z = uvw.z * mapRange;
 
 	// Vertical coordinate maps to the altitude range
-	float minAlt = getCloudMinAltitude(uWorldScale);
-	float maxAlt = getCloudMaxAltitude(uWorldScale);
+	float minAlt = getCloudMinAltitude(worldScale);
+	float maxAlt = getCloudMaxAltitude(worldScale);
 	p.y = mix(minAlt, maxAlt, uvw.y);
 
 	CloudProperties props;
 	props.altitude = cloudAltitude;
 	props.thickness = cloudThickness;
 	props.densityBase = cloudDensity;
-	props.coverage = uCloudCoverage;
-	props.worldScale = uWorldScale;
+	props.coverage = cloudCoverage;
+	props.worldScale = worldScale;
 
 	CloudWeather weather = computeCloudWeather(p, props);
 	CloudLayer layer = computeCloudLayer(weather, props);
 
-	float d3d = calculateLoftedCloudSDF(p, weather, layer, uWorldScale);
+	float d3d = calculateLoftedCloudSDF(p, weather, layer, worldScale);
 
 	// Also calculate low-resolution density
 	vec3 advection;

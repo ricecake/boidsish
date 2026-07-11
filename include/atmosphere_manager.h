@@ -176,6 +176,38 @@ namespace Boidsish {
 		}
 		float GetWorldScale() const { return _worldScale; }
 
+		void SetCloudAltitude(float a) {
+			if (std::abs(_cloudAltitude - a) > 0.01f) {
+				_cloudAltitude = a;
+				_needsWeatherBake = true;
+			}
+		}
+		float GetCloudAltitude() const { return _cloudAltitude; }
+
+		void SetCloudThickness(float t) {
+			if (std::abs(_cloudThickness - t) > 0.01f) {
+				_cloudThickness = t;
+				_needsWeatherBake = true;
+			}
+		}
+		float GetCloudThickness() const { return _cloudThickness; }
+
+		void SetCloudDensity(float d) {
+			if (std::abs(_cloudDensity - d) > 0.01f) {
+				_cloudDensity = d;
+				_needsWeatherBake = true;
+			}
+		}
+		float GetCloudDensity() const { return _cloudDensity; }
+
+		void SetCloudFlowHeightScale(float s) {
+			if (std::abs(_cloudFlowHeightScale - s) > 0.01f) {
+				_cloudFlowHeightScale = s;
+				_needsWeatherBake = true;
+			}
+		}
+		float GetCloudFlowHeightScale() const { return _cloudFlowHeightScale; }
+
 		GLuint GetCloudWeatherTexture() const { return _cloudWeatherTexture; }
 
 		GLuint GetCloud3DTexture() const { return _cloud3DTexture; }
@@ -233,6 +265,10 @@ namespace Boidsish {
 		std::vector<glm::vec4> _cpuCloudSeeds;
 		float _cloudCoverage = WeatherConstants::CloudCoverage.normal;
 		float _worldScale = 1.0f;
+		float _cloudAltitude = WeatherConstants::CloudAltitude.normal;
+		float _cloudThickness = WeatherConstants::CloudThickness.normal;
+		float _cloudDensity = WeatherConstants::CloudDensity.normal;
+		float _cloudFlowHeightScale = 0.5f;
 
 		float     _rayleighScale = WeatherConstants::RayleighScale.normal;
 		float     _mieScale = WeatherConstants::MieScale.normal;

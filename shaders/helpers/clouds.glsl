@@ -1,7 +1,38 @@
 #ifndef HELPERS_CLOUDS_GLSL
 #define HELPERS_CLOUDS_GLSL
 
+#ifndef BAKING_SHADER
 #include "../lighting.glsl"
+#else
+uniform float cloudAltitude;
+uniform float cloudThickness;
+uniform float cloudDensity;
+uniform float cloudCoverage;
+uniform float worldScale;
+uniform float cloudFlowHeightScale;
+uniform float time;
+
+uniform float cloudPhaseG1 = 0.8;
+uniform float cloudPhaseG2 = -0.5;
+uniform float cloudPhaseAlpha = 0.5;
+uniform float cloudPhaseIsotropic = 0.2;
+uniform float cloudPowderScale = 1.0;
+uniform float cloudPowderMultiplier = 1.0;
+uniform float cloudPowderLocalScale = 1.0;
+uniform float cloudShadowOpticalDepthMultiplier = 1.0;
+uniform float cloudShadowStepMultiplier = 1.0;
+uniform float cloudSunLightScale = 1.0;
+uniform float cloudMoonLightScale = 1.0;
+uniform float cloudBeerPowderMix = 1.0;
+uniform float cloudFlowSpeed = 1.0;
+uniform float cloudFlowDirection = 1.0;
+uniform float cloudCurlStrength = 1.0;
+uniform float cloudCurlFrequency = 1.0;
+uniform float cloudWarp = 75.0;
+uniform vec3 viewPos = vec3(0.0);
+uniform vec3 viewDir = vec3(0.0, 0.0, 1.0);
+#endif
+
 #include "fast_noise.glsl"
 #include "math.glsl"
 #include "lygia/generative/random.glsl"

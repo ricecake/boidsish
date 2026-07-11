@@ -91,8 +91,8 @@ namespace Boidsish {
 		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_REPEAT);
 
 		// SH Coefficients SSBO: 9 x vec4
 		// Cloud Seeds SSBO: 100 x vec4 (10x10 Voronoi period)
@@ -170,8 +170,13 @@ namespace Boidsish {
 
 			// Dispatch 3D Cloud Bake
 			_cloud3DBakeShader->use();
-			_cloud3DBakeShader->setFloat("uCloudCoverage", _cloudCoverage);
-			_cloud3DBakeShader->setFloat("uWorldScale", worldScale);
+			_cloud3DBakeShader->trySetInt("u_cloudWeatherTexture", Constants::TextureUnit::CloudWeatherBake());
+			_cloud3DBakeShader->setFloat("cloudAltitude", _cloudAltitude);
+			_cloud3DBakeShader->setFloat("cloudThickness", _cloudThickness);
+			_cloud3DBakeShader->setFloat("cloudDensity", _cloudDensity);
+			_cloud3DBakeShader->setFloat("cloudCoverage", _cloudCoverage);
+			_cloud3DBakeShader->setFloat("worldScale", worldScale);
+			_cloud3DBakeShader->setFloat("cloudFlowHeightScale", _cloudFlowHeightScale);
 			_cloud3DBakeShader->setFloat("time", 0.0f);
 			glBindImageTexture(0, _cloud3DTexture, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::CloudWeatherBake());
