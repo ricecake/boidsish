@@ -148,14 +148,108 @@ float getCloudCoverageFromSDF(float sdf, float worldScale) {
 }
 
 
+// https://iquilezles.org/articles/smin
+float smin( float a, float b, float k )
+{
+    float h = max(k-abs(a-b),0.0);
+    return min(a, b) - h*h*0.25/k;
+}
+
+// https://iquilezles.org/articles/smin
+float smax( float a, float b, float k )
+{
+    float h = max(k-abs(a-b),0.0);
+    return max(a, b) + h*h*0.25/k;
+}
+
+// https://iquilezles.org/articles/fbmsdf
+float sph( vec3 i, vec3 f, vec3 c )
+{
+    // random radius at grid vertex i+c (please replace this hash by
+    // something better if you plan to use this for a real application)
+    // vec3  p = 17.0*fract( (i+c)*0.3183099+vec3(0.11,0.17,0.13) );
+    // float w = fract( p.x*p.y*p.z*(p.x+p.y+p.z) );
+    // float r = 0.7*w*w;
+    // distance to sphere at grid vertex i+c
+	vec3 w = (3*i+5*c)/7.0;
+	float r = fract(w.x+w.y+w.z);
+    return length(f-c) - 0.25 * r;
+}
+
+// // https://iquilezles.org/articles/fbmsdf
+// float sdBase( in vec3 p )
+// {
+//     vec3 i = floor(p);
+//     vec3 f = fract(p);
+//     return
+// 	min(
+// 		min(
+// 			min(sph(i,f,vec3(0,0,0)), sph(i,f,vec3(0,0,1))),
+// 			min(sph(i,f,vec3(0,1,0)), sph(i,f,vec3(0,1,1)))
+// 		),
+// 		min(
+// 			min(sph(i,f,vec3(1,0,0)), sph(i,f,vec3(1,0,1))),
+// 			min(sph(i,f,vec3(1,1,0)), sph(i,f,vec3(1,1,1)))
+// 		)
+// 	);
+// }
+
+// https://iquilezles.org/articles/fbmsdf
+float sdBase( in vec3 p )
+{
+    vec3 i = floor(p);
+    vec3 f = fract(p);
+    return
+		min(
+			min(sph(i,f,vec3(0.5,0.5,0)), sph(i,f,vec3(0.5,0.5,1))),
+			min(sph(i,f,vec3(1.0,0.5,0.5)), sph(i,f,vec3(0,0.5,0.5)))
+		);
+}
+
+
+// https://iquilezles.org/articles/fbmsdf
+vec2 sdFbm( in vec3 p, in float th, in float d )
+{
+    // rotation and 2x scale matrix
+    const mat3 m = mat3( 0.00,  1.60,  1.20,
+                        -1.60,  0.72, -0.96,
+                        -1.20, -0.96,  1.28 );
+    vec3  q = p;
+    float t = 0.0;
+	float s = 1.0;
+    const int ioct = 2;
+    for( int i=0; i<ioct; i++ )
+    {
+        if( d>s*0.866 ) break; // early exit
+        if( s<th ) break;      // lod
+
+        float n = s*sdBase(q);
+        n = smax(n,d-0.1*s,0.3*s);
+        d = smin(n,d      ,0.3*s);
+        q = m*q;
+        s = 0.415*s;
+
+        t += d;
+        q.z += -4.33*t*s; // deform things a bit
+    }
+    return vec2( d, t );
+}
+
+float evalSdf(vec3 p, float time) {
+	// return sdFbm(p, 0.2, 0.1).x;
+	return sdBase(p);
+}
+
 CloudWeather computeCloudWeather(vec3 p, CloudProperties props) {
 	vec3 advect = getCloudWindOffset(time);
 	vec3 p_advected = p + advect;
 
 	// Use baked weather map. Sampling UV is worldXZ / range.
 	// Range is 100,000 * worldScale as defined in the bake shader.
-	vec2 uv = p_advected.xz / (100000.0 * props.worldScale);
-	vec4 bakedWeather = textureLod(u_cloudWeatherTexture, uv, 0.0);
+	vec3 uv = p_advected / (5000.0 * props.worldScale);
+	// vec4 bakedWeather = textureLod(u_cloudWeatherTexture, uv, 0.0);
+	// vec4 bakedWeather = vec4(10000*(distance(fract(uv), vec2(0.5)) - 0.5), 0.5, 0.5, 1.0);
+	vec4 bakedWeather = vec4(5000*evalSdf(uv, time), 0.5, 0.5, 1.0);
 	return loadCloudWeather(bakedWeather);
 }
 
@@ -220,6 +314,14 @@ float calculatePuffyCloudSDF(vec3 p, CloudWeather weather, CloudLayer layer, flo
 
 
 float calculateLoftedCloudSDF(vec3 p, CloudWeather weather, CloudLayer layer, float worldScale) {
+	// Use baked weather map. Sampling UV is worldXZ / range.
+	// Range is 100,000 * worldScale as defined in the bake shader.
+	vec3 uv = p / (5000.0 * worldScale);
+	// vec4 bakedWeather = textureLod(u_cloudWeatherTexture, uv, 0.0);
+	return 5000*evalSdf(uv, time);
+	// return 10000*(distance(fract(uv), vec3(0.5)) - 0.5);
+
+
     // 1. The 2D footprint distance (positive outside, negative inside)
     float d_edge = weather.sdf;
 
