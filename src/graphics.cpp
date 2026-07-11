@@ -2056,6 +2056,10 @@ namespace Boidsish {
 				atmosphere_manager->SetSunAureoleStrength(atmosphere_effect->GetSunAureoleStrength());
 				atmosphere_manager->SetCirrusOpacity(atmosphere_effect->GetCirrusOpacity());
 				atmosphere_manager->SetCloudCoverage(atmosphere_effect->GetCloudCoverage());
+				atmosphere_manager->SetCloudAltitude(atmosphere_effect->GetCloudAltitude());
+				atmosphere_manager->SetCloudThickness(atmosphere_effect->GetCloudThickness());
+				atmosphere_manager->SetCloudDensity(atmosphere_effect->GetCloudDensity());
+				atmosphere_manager->SetCloudFlowHeightScale(atmosphere_effect->GetCloudFlowHeightScale());
 
 				float cloudShadowIntensity = ConfigManager::GetInstance().GetAppSettingFloat("cloud_shadow_intensity", 0.5f);
 				atmosphere_manager->SetCloudShadowIntensity(cloudShadowIntensity);
