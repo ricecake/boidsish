@@ -66,3 +66,46 @@ TEST(ProceduralGeneratorTest, WeldVerticesReducesCount) {
     // This is hard to test without bypassing CreateModelDataFromGeometry
     // but we can assume it's working if it compiles and runs without crashing.
 }
+
+TEST(ProceduralGeneratorTest, PineTreeAndMaterialType) {
+    auto pine = ProceduralGenerator::Generate(ProceduralType::PineTree, 42);
+    ASSERT_NE(pine, nullptr);
+    ASSERT_GT(pine->getMeshes().size(), 0);
+
+    bool hasBark = false;
+    bool hasLeaf = false;
+
+    for (const auto& mesh : pine->getMeshes()) {
+        if (mesh.material_type == 1) {
+            hasBark = true;
+        } else if (mesh.material_type == 2) {
+            hasLeaf = true;
+            // Verify continuous UV coordinates on leaf meshes
+            bool uvVaries = false;
+            if (mesh.vertices.size() > 1) {
+                glm::vec2 firstUv = mesh.vertices[0].TexCoords;
+                for (const auto& v : mesh.vertices) {
+                    if (glm::distance(v.TexCoords, firstUv) > 1e-4f) {
+                        uvVaries = true;
+                        break;
+                    }
+                }
+            }
+            EXPECT_TRUE(uvVaries);
+        }
+    }
+
+    EXPECT_TRUE(hasBark);
+    EXPECT_TRUE(hasLeaf);
+
+    // Verify other models have correct material types assigned
+    auto flower = ProceduralGenerator::Generate(ProceduralType::Flower, 101);
+    ASSERT_NE(flower, nullptr);
+    bool hasFlowerPetals = false;
+    for (const auto& mesh : flower->getMeshes()) {
+        if (mesh.material_type == 3) {
+            hasFlowerPetals = true;
+        }
+    }
+    EXPECT_TRUE(hasFlowerPetals);
+}
