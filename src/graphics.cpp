@@ -1678,6 +1678,10 @@ namespace Boidsish {
 					glEnable(GL_CULL_FACE);
 				}
 
+				if (batch.draw_mode == GL_PATCHES) {
+					glPatchParameteri(GL_PATCH_VERTICES, 3);
+				}
+
 				if (batch.is_indexed) {
 					glBindBuffer(GL_DRAW_INDIRECT_BUFFER, indirect_elements_buffer->GetBufferId());
 					glMultiDrawElementsIndirect(
