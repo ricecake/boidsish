@@ -21,28 +21,19 @@ void main() {
 	props.coverage = cloudCoverage;
 	props.worldScale = worldScale;
 
-	// X and Z coordinates represent 1 full period of uv space: p_advected / (5000.0 * props.worldScale)
-	// So worldX and worldZ range from 0 to 5000.0 * props.worldScale
+	// X and Z coordinates represent 1 full period of uv space: p_advected / (1000.0 * props.worldScale)
 	float mapRange = 1000.0 * props.worldScale;
 	float worldX = texCoords.x * mapRange;
 	float worldZ = texCoords.z * mapRange;
 
 	// Y coordinate represents the altitude range of the cloud layer
-	// y_min = props.altitude * props.worldScale
-	// y_max = (props.altitude + props.thickness * 12.0) * props.worldScale
 	float y_min = props.altitude * props.worldScale;
 	float y_max = (props.altitude + props.thickness * 12.0) * props.worldScale;
 	float worldY = y_min + texCoords.y * (y_max - y_min);
 
 	vec3 p = vec3(worldX, worldY, worldZ);
 
-	// We bake the static SDF (time = 0.0) without advection
-	vec3 p_static = p;// - getCloudWindOffset(time);
-	CloudWeather weather = computeCloudWeather(p_static, props);
-	CloudLayer layer = computeCloudLayer(weather, props);
-
-	// float d3d = calculateLoftedCloudSDF(p_static, weather, layer, props.worldScale);
-	float d3d = calculateAnalyticalDensity(p_static, weather, layer, props, time);
+	float d3d = evalSdf(p, time);
 
 	imageStore(outSdfTexture, pixel, vec4(d3d, 0.0, 0.0, 0.0));
 }
