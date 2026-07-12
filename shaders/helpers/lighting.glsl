@@ -515,8 +515,9 @@ void evaluate_brdf(
  * @param roughness Surface roughness [0=smooth, 1=rough]
  * @param metallic Metallic property [0=dielectric, 1=metal]
  * @param ao Ambient occlusion [0=fully occluded, 1=no occlusion]
+ * @param isColossal Whether the object is "colossal" (orbital/sky layer)
  */
-vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness, float metallic, float ao, out float primaryShadow) {
+vec4 apply_lighting_pbr_internal(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness, float metallic, float ao, bool isColossal, out float primaryShadow) {
 	primaryShadow = 1.0;
 	vec3 N = normalize(normal);
 	vec3 V = normalize(viewPos - frag_pos);
@@ -545,19 +546,25 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 		float base_attenuation; // Unused for directional, but needed for your function signature
 		calculateLightContribution(i, frag_pos, L, base_attenuation);
 
-		// Horizon check and normal-facing check
-		if (L.y <= 0.0 || dot(N, L) <= 0.0) continue;
+		// Normal-facing check. For colossal objects, we bypass horizon check since they are orbital.
+		if ((!isColossal && L.y <= 0.0) || dot(N, L) <= 0.0) continue;
 
-		// Atmospheric transmittance isolated outside the loop
-		float r = kEarthRadiusKM + (frag_pos.y / (1000.0 * worldScale));
-		vec3 atmosphereTransmittance = texture(u_transmittanceLUT, getTransmittanceUV(r, L.y)).rgb;
+		vec3 atmosphereTransmittance = vec3(1.0);
+		if (!isColossal) {
+			// Atmospheric transmittance isolated outside the loop
+			float r = kEarthRadiusKM + (frag_pos.y / (1000.0 * worldScale));
+			atmosphereTransmittance = texture(u_transmittanceLUT, getTransmittanceUV(r, L.y)).rgb;
+		}
 
 		float attenuation = lights[i].intensity * PBR_INTENSITY_BOOST;
 		vec3 radiance = lights[i].color * attenuation * atmosphereTransmittance;
 
 		// Cloud shadows isolated outside the loop
-		float shadow = calculateShadow(i, frag_pos, N, L);
-		shadow *= calculateCloudShadow(i, frag_pos);
+		float shadow = 1.0;
+		if (!isColossal) {
+			shadow = calculateShadow(i, frag_pos, N, L);
+			shadow *= calculateCloudShadow(i, frag_pos);
+		}
 
 		primaryShadow = min(primaryShadow, shadow);
 
@@ -582,13 +589,16 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 		float attenuation = (lights[i].intensity * PBR_INTENSITY_BOOST) * base_attenuation;
 		vec3 radiance = lights[i].color * attenuation;
 
-		float shadow = calculateShadow(i, frag_pos, N, L);
+		float shadow = 1.0;
+		if (!isColossal) {
+			shadow = calculateShadow(i, frag_pos, N, L);
+		}
 
 		evaluate_brdf(N, V, L, albedo, roughness, metallic, F0, radiance, shadow, Lo, spec_lum);
 	}
 
 	// Spatially-varying SH ambient augmented with macro occlusion
-	float terrainOcc = calculateTerrainOcclusion(frag_pos, N);
+	float terrainOcc = isColossal ? 1.0 : calculateTerrainOcclusion(frag_pos, N);
 	vec3  spatialSHAmbient = getSpatialAmbientSH(frag_pos, N);
 
 	float combinedAO = ao * terrainOcc;
@@ -609,7 +619,9 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 	vec3 envColor = getSpatialAmbientSH(frag_pos, R);
 
 	// Attenuate reflection by occlusion to prevent glow in caves/valleys
-	envColor *= terrainOcc;
+	if (!isColossal) {
+		envColor *= terrainOcc;
+	}
 
 	// Environment reflection strength based on smoothness
 	float smoothness = 1.0 - roughness;
@@ -624,6 +636,21 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 	vec3 color = ambient + Lo;
 
 	return vec4(color, spec_lum + get_luminance(ambientSpecular));
+}
+
+/**
+ * PBR lighting with Cook-Torrance BRDF - supports all light types.
+ */
+vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness, float metallic, float ao, out float primaryShadow) {
+	return apply_lighting_pbr_internal(frag_pos, normal, albedo, roughness, metallic, ao, false, primaryShadow);
+}
+
+/**
+ * PBR lighting with Cook-Torrance BRDF - supports all light types.
+ * Overload for colossal objects.
+ */
+vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness, float metallic, float ao, bool isColossal, out float primaryShadow) {
+	return apply_lighting_pbr_internal(frag_pos, normal, albedo, roughness, metallic, ao, isColossal, primaryShadow);
 }
 
 void evaluate_foliage_brdf(
@@ -731,8 +758,16 @@ vec4 apply_lighting_foliage(vec3 frag_pos, vec3 normal, vec3 albedo, float rough
  * PBR lighting without shadows - for shaders that don't need shadow calculations.
  * Supports all light types (point, directional, spot).
  * Returns vec4(color.rgb, specular_luminance).
+ *
+ * @param frag_pos Fragment world position
+ * @param normal Surface normal
+ * @param albedo Base color
+ * @param roughness Surface roughness
+ * @param metallic Metallic property
+ * @param ao Ambient occlusion
+ * @param isColossal Whether the object is "colossal" (orbital)
  */
-vec4 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness, float metallic, float ao, out float primaryShadow) {
+vec4 apply_lighting_pbr_no_shadows_internal(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness, float metallic, float ao, bool isColossal, out float primaryShadow) {
 	primaryShadow = 1.0;
 	vec3 N = normalize(normal);
 	vec3 V = normalize(viewPos - frag_pos);
@@ -756,10 +791,12 @@ vec4 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, floa
 		if (lights[i].type == LIGHT_TYPE_DIRECTIONAL) {
 			attenuation = lights[i].intensity * PBR_INTENSITY_BOOST;
 
-			// Apply atmospheric attenuation
-			float r = kEarthRadiusKM + (frag_pos.y / (1000.0 * worldScale));
-			float mu = L.y;
-			atmosphereTransmittance = texture(u_transmittanceLUT, getTransmittanceUV(r, mu)).rgb;
+			if (!isColossal) {
+				// Apply atmospheric attenuation
+				float r = kEarthRadiusKM + (frag_pos.y / (1000.0 * worldScale));
+				float mu = L.y;
+				atmosphereTransmittance = texture(u_transmittanceLUT, getTransmittanceUV(r, mu)).rgb;
+			}
 		} else {
 			attenuation = (lights[i].intensity * PBR_INTENSITY_BOOST) * base_attenuation;
 		}
@@ -781,7 +818,7 @@ vec4 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, floa
 
 		// Apply cloud shadow for directional lights
 		float shadow = 1.0;
-		if (lights[i].type == LIGHT_TYPE_DIRECTIONAL) {
+		if (!isColossal && lights[i].type == LIGHT_TYPE_DIRECTIONAL) {
 			shadow *= calculateCloudShadow(i, frag_pos);
 		}
 
@@ -794,7 +831,7 @@ vec4 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, floa
 	}
 
 	// Spatially-varying SH ambient augmented with macro occlusion
-	float terrainOcc = calculateTerrainOcclusion(frag_pos, N);
+	float terrainOcc = isColossal ? 1.0 : calculateTerrainOcclusion(frag_pos, N);
 	vec3  spatialSHAmbient = getSpatialAmbientSH(frag_pos, N);
 
 	float combinedAO = ao * terrainOcc;
@@ -813,7 +850,9 @@ vec4 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, floa
 	vec3 envColor = getSpatialAmbientSH(frag_pos, R);
 
 	// Attenuate reflection by occlusion to prevent glow in caves/valleys
-	envColor *= terrainOcc;
+	if (!isColossal) {
+		envColor *= terrainOcc;
+	}
 
 	float smoothness = 1.0 - roughness;
 	float envStrength = smoothness * smoothness * 0.8;
@@ -821,6 +860,20 @@ vec4 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, floa
 	vec3  ambient = ambientDiffuse * (1.0 - metallic * 0.9) + ambientSpecular;
 
 	return vec4(ambient + Lo, spec_lum + get_luminance(ambientSpecular));
+}
+
+/**
+ * PBR lighting without shadows.
+ */
+vec4 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness, float metallic, float ao, out float primaryShadow) {
+	return apply_lighting_pbr_no_shadows_internal(frag_pos, normal, albedo, roughness, metallic, ao, false, primaryShadow);
+}
+
+/**
+ * PBR lighting without shadows. Overload for colossal objects.
+ */
+vec4 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness, float metallic, float ao, bool isColossal, out float primaryShadow) {
+	return apply_lighting_pbr_no_shadows_internal(frag_pos, normal, albedo, roughness, metallic, ao, isColossal, primaryShadow);
 }
 
 // ============================================================================

@@ -324,7 +324,8 @@ void main() {
 		gl_Position = projection * staticView * world_pos;
 		// Push to far plane but preserve internal depth to avoid flattening
 		gl_Position.z = gl_Position.w * 0.9995 + gl_Position.z * 0.0004;
-		FragPos = viewPos + world_pos.xyz;
+		// Scale world position for atmospheric distance calculation (past the atmosphere)
+		FragPos = viewPos + world_pos.xyz * 100.0;
 
 		CurPosition = gl_Position;
 		PrevPosition =

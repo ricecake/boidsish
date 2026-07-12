@@ -183,7 +183,7 @@ void main() {
 	// Choose between PBR and legacy lighting
 	vec4 lightResult;
 	float primaryShadow;
-	lightResult = apply_lighting_pbr(FragPos, norm, albedo * baseAlpha, tex_roughness, tex_metallic, tex_ao, primaryShadow);
+	lightResult = apply_lighting_pbr(FragPos, norm, albedo * baseAlpha, tex_roughness, tex_metallic, tex_ao, c_isColossal, primaryShadow);
 	lightResult.rgb += emissive;
 
 	vec3  result = lightResult.rgb;
