@@ -100,9 +100,11 @@ int main(int argc, char** argv) {
 	auto widget = std::make_shared<TessellationControlWidget>(tessShader);
 	vis.AddWidget(widget);
 
-	auto model = std::make_shared<Model>("assets/utah_teapot.obj");
-	model->SetPosition(0.0f, 0.0f, 0.0f);
-	model->SetScale(glm::vec3(1.0f));
+	// Create model with no_cull=true to prevent winding order/backface culling issues
+	auto model = std::make_shared<Model>("assets/utah_teapot.obj", true);
+	// Place it slightly above the floor and scale it up for maximum visibility
+	model->SetPosition(0.0f, 1.0f, 0.0f);
+	model->SetScale(glm::vec3(2.5f));
 
 	vis.AddPrepareCallback([tessShader, model](Visualizer& v) {
 		// Register custom tessellated shader and get handle
@@ -119,9 +121,9 @@ int main(int argc, char** argv) {
 	// Position camera nicely facing the teapot model
 	Camera cam = vis.GetCamera();
 	cam.x = 0;
-	cam.y = 3;
-	cam.z = 10;
-	cam.pitch = -15;
+	cam.y = 5;
+	cam.z = 12;
+	cam.pitch = -18;
 	cam.yaw = 0;
 	vis.SetCamera(cam);
 

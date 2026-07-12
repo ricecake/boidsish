@@ -34,6 +34,11 @@ flat out vec4 vWeights;
 flat out int vDrawID;
 flat out int vInstanceID;
 
+uniform mat4 projection;
+uniform mat4 view;
+uniform mat4 model;
+uniform bool useSSBOInstancing = false;
+
 void main() {
 	int drawID = gl_DrawIDARB;
 	vDrawID = drawID;
@@ -46,5 +51,19 @@ void main() {
 	vBoneIDs = aBoneIDs;
 	vWeights = aWeights;
 
-	gl_Position = vec4(aPos, 1.0);
+	int vIdx = uUseMDI ? drawID : -1;
+	bool use_ssbo = uUseMDI && vIdx >= 0;
+
+	mat4 current_model = use_ssbo ? uniforms_data[vIdx].model : model;
+	bool current_useSSBOInstancing = use_ssbo ? (uniforms_data[vIdx].use_ssbo_instancing != 0)
+											   : useSSBOInstancing;
+
+	mat4 modelMatrix;
+	if (current_useSSBOInstancing) {
+		modelMatrix = ssboInstanceMatrices[gl_InstanceID];
+	} else {
+		modelMatrix = current_model;
+	}
+
+	gl_Position = projection * view * modelMatrix * vec4(aPos, 1.0);
 }

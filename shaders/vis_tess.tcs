@@ -69,7 +69,6 @@ void main() {
 		bool use_ssbo = uUseMDI && tempUniformIndex >= 0;
 
 		mat4  current_model = use_ssbo ? uniforms_data[tempUniformIndex].model : model;
-		bool  current_isColossal = use_ssbo ? (uniforms_data[tempUniformIndex].is_colossal != 0) : isColossal;
 		bool  current_useSSBOInstancing = use_ssbo ? (uniforms_data[tempUniformIndex].use_ssbo_instancing != 0)
 												   : useSSBOInstancing;
 
@@ -82,52 +81,20 @@ void main() {
 
 		// Extract world position
 		vec3  instanceCenter = vec3(modelMatrix[3]);
-		float instanceScale = length(vec3(modelMatrix[0])); // Approximate scale
 
+		// Completely disable frustum and occlusion culling inside TCS for debugging/robustness
 		bool visible = true;
 
-		// GPU frustum culling
-		if (enableFrustumCulling && !current_isColossal) {
-			if (use_ssbo) {
-				vec3 aabbMin = vec3(uniforms_data[tempUniformIndex].aabb_min_x, uniforms_data[tempUniformIndex].aabb_min_y,
-									uniforms_data[tempUniformIndex].aabb_min_z);
-				vec3 aabbMax = vec3(uniforms_data[tempUniformIndex].aabb_max_x, uniforms_data[tempUniformIndex].aabb_max_y,
-									uniforms_data[tempUniformIndex].aabb_max_z);
-				if (aabbMin != aabbMax) {
-					visible = isAABBInFrustum(aabbMin, aabbMax);
-				} else {
-					visible = isSphereInFrustum(instanceCenter, frustumCullRadius * instanceScale);
-				}
-			} else {
-				visible = isSphereInFrustum(instanceCenter, frustumCullRadius * instanceScale);
-			}
-		}
+		// Calculate Tessellation levels dynamically based on distance to camera
+		float dist = distance(viewPos, instanceCenter);
 
-		// Hi-Z occlusion culling
-		if (visible && enableHiZCulling && uUseMDI && !current_isColossal) {
-			if (hiz_visibility[u_baseVisibilityIndex + drawID] == 0u) {
-				visible = false;
-			}
-		}
+		// Dynamic LOD factor
+		float tessLevel = mix(u_tessFactorMax, u_tessFactorMin, clamp((dist - u_tessDistMin) / (u_tessDistMax - u_tessDistMin), 0.0, 1.0));
 
-		if (!visible) {
-			// Cull completely by setting tessellation factors to 0
-			gl_TessLevelOuter[0] = 0.0;
-			gl_TessLevelOuter[1] = 0.0;
-			gl_TessLevelOuter[2] = 0.0;
-			gl_TessLevelInner[0] = 0.0;
-		} else {
-			// Calculate Tessellation levels dynamically based on distance to camera
-			float dist = distance(viewPos, instanceCenter);
-
-			// Dynamic LOD factor
-			float tessLevel = mix(u_tessFactorMax, u_tessFactorMin, clamp((dist - u_tessDistMin) / (u_tessDistMax - u_tessDistMin), 0.0, 1.0));
-
-			gl_TessLevelOuter[0] = tessLevel;
-			gl_TessLevelOuter[1] = tessLevel;
-			gl_TessLevelOuter[2] = tessLevel;
-			gl_TessLevelInner[0] = tessLevel;
-		}
+		gl_TessLevelOuter[0] = tessLevel;
+		gl_TessLevelOuter[1] = tessLevel;
+		gl_TessLevelOuter[2] = tessLevel;
+		gl_TessLevelInner[0] = tessLevel;
 	}
 
 	gl_out[gl_InvocationID].gl_Position = gl_in[gl_InvocationID].gl_Position;
