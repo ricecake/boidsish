@@ -6,47 +6,22 @@ layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 #include "frustum.glsl"
 #include "temporal_data.glsl"
 
-#ifndef TERRAIN_DATA_BLOCK
-#define TERRAIN_DATA_BLOCK
-layout(std140, binding = [[TERRAIN_DATA_BINDING]]) uniform TerrainData {
-	ivec4 u_originSize;    // x, z, size, is_bound
-	vec4  u_terrainParams; // chunkSize, worldScale
-};
-#endif
-
-#include "helpers/terrain_shadows.glsl"
-
-struct PatchMetrics {
-	float min_y;
-	float max_y;
-	float avg_curvature;
-	float avg_roughness;
-	float avg_grass_density;
-	float max_variance;
-	float _pad[2];
+struct ChunkState {
+    ivec2 coordinate;
+    int is_visible;
+    int current_lod;
+    int target_lod;
+    int needs_rebake;
+    uint vertex_offset;
+    uint vertex_count;
+    uint index_offset;
+    uint index_count;
+    uint last_frame_used;
+    uint padding[2];
 };
 
-layout(std430, binding = [[TERRAIN_PATCH_METRICS_BINDING]]) readonly buffer TerrainPatchMetrics {
-	PatchMetrics patchMetrics[];
-};
-
-struct PatchDrawData {
-	vec4 world_offset_and_slice; // xyz = world offset, w = texture slice index
-	vec4 patch_coords_and_size;  // xy = patch local coords (0..PatchesPerChunkSide-1), z = patch size, w = chunk size
-};
-
-layout(std430, binding = [[TERRAIN_PATCH_DRAW_DATA_BINDING]]) writeonly buffer TerrainPatchDrawData {
-	PatchDrawData patchDrawData[];
-};
-
-struct PatchTessLevels {
-	float outer[4];
-	float inner[2];
-	float _pad[2];
-};
-
-layout(std430, binding = [[TERRAIN_PATCH_TESS_LEVELS_BINDING]]) writeonly buffer TerrainPatchTessLevels {
-	PatchTessLevels patchTessLevels[];
+layout(std430, binding = [[TERRAIN_PATCH_TESS_LEVELS_BINDING]]) buffer ChunkStates {
+    ChunkState chunkStates[];
 };
 
 struct DrawElementsIndirectCommand {
@@ -57,18 +32,19 @@ struct DrawElementsIndirectCommand {
 	uint baseInstance;
 };
 
-layout(std430, binding = [[TERRAIN_PATCH_INDIRECT_BINDING]]) buffer TerrainPatchIndirect {
-	uint total_patches; // Optional tracker, or just pad
-	uint _pad[3];
-	DrawElementsIndirectCommand command; // Single command
+layout(std430, binding = [[TERRAIN_PATCH_INDIRECT_BINDING]]) buffer TerrainIndirectBuffer {
+    uint draw_count;
+    uint padding[3];
+    DrawElementsIndirectCommand commands[];
 };
 
 layout(std430, binding = [[TERRAIN_PATCH_VISIBILITY_BINDING]]) writeonly buffer TerrainPatchVisibility {
-	uint patchVisibility[]; // 1 if visible, 0 otherwise, indexed by slice * numPatchesPerChunk + localPatchIdx
+    uint patchVisibility[]; // 1 if visible, 0 otherwise, indexed by slice * 16 + localPatchIdx (for grass)
 };
+
 struct InstanceData {
 	vec4 world_offset_and_slice; // xyz = world offset, w = texture slice index
-	vec4 bounds;                 // xy = min/max Y for this chunk
+	vec4 bounds;                 // xy = min/max Y for this chunk, z = raw chunkSize
 };
 
 layout(std430, binding = [[INDIRECTION_BUFFER_BINDING]]) readonly buffer ActiveChunks {
@@ -76,14 +52,8 @@ layout(std430, binding = [[INDIRECTION_BUFFER_BINDING]]) readonly buffer ActiveC
 };
 
 uniform int   u_numChunks;
-uniform float u_tessLevelMax;
-uniform float u_tessLevelMin;
-uniform float u_tessQualityMultiplier;
-uniform vec2  u_viewportSize;
-uniform float u_lodProjectionScalar;
 uniform float u_worldScale;
 uniform vec3  u_viewPos;
-uniform vec3  u_viewDir;
 
 // Hi-Z occlusion culling uniforms
 layout(binding = [[HIZ_TEXTURE_BINDING]]) uniform sampler2D u_hizTexture;
@@ -91,64 +61,6 @@ uniform ivec2     u_hizSize;
 uniform int       u_hizMipCount;
 uniform float     u_screenExpansion;
 uniform bool      u_enableOcclusionCulling;
-
-// Constants for quality
-const float TARGET_EDGE_LENGTH_PIXELS = 24.0;
-
-
-vec3 getWorldPos(vec2 uv, int slice, vec2 chunkOffsetXZ) {
-	vec2  remappedUV = (uv * u_terrainParams.x + 0.5) / (u_terrainParams.x + 1.0);
-	float h = textureLod(u_heightmapArray, vec3(remappedUV, float(slice)), 0.0).r;
-	return vec3(chunkOffsetXZ.x + uv.x * u_terrainParams.x * u_worldScale,
-	            h,
-	            chunkOffsetXZ.y + uv.y * u_terrainParams.x * u_worldScale);
-}
-
-float calculateEdgeTessellation(vec3 p0, vec3 p1, vec2 uv0, vec2 uv1, int slice) {
-	const float TARGET_ERROR_PIXELS = max(2.0, 2.0 / max(0.01, u_tessQualityMultiplier));
-
-	// 1. Calculate Distance
-	vec3  midPoint = (p0 + p1) * 0.5;
-	float distToCam = max(distance(u_viewPos, midPoint), 1.0 * u_worldScale);
-
-	// 2. The Baseline: Screen-Space Edge Length
-	float physicalEdgeLength = distance(p0, p1);
-	float pixelEdgeLength = (physicalEdgeLength * u_lodProjectionScalar) / distToCam;
-	float baseLevel = pixelEdgeLength / TARGET_EDGE_LENGTH_PIXELS;
-
-	// 3. The Detailer: Screen-Space Chordal Error (Deviation)
-	vec2 remappedUV0 = (uv0 * u_terrainParams.x + 0.5) / (u_terrainParams.x + 1.0);
-	vec2 remappedUV1 = (uv1 * u_terrainParams.x + 0.5) / (u_terrainParams.x + 1.0);
-	float dev0 = textureLod(u_bakedParamsArray, vec3(remappedUV0, float(slice)), 0.0).a;
-	float dev1 = textureLod(u_bakedParamsArray, vec3(remappedUV1, float(slice)), 0.0).a;
-	float physicalDeviation = (dev0 + dev1) * 0.5;
-
-
-	float crestThreshold = 0.25 * u_worldScale;
-	float crestMask = smoothstep(0.0, crestThreshold, physicalDeviation);
-
-	// SILHOUETTE BOOST
-	vec4 hData = textureLod(u_heightmapArray, vec3((remappedUV0 + remappedUV1) * 0.5, float(slice)), 0.0);
-	vec3 norm = normalize(hData.gba);
-	float silhouetteFactor = 1.0 - abs(dot(norm, normalize(u_viewPos - midPoint)));
-	float silhouetteImportance = silhouetteFactor * crestMask * (1.0 - smoothstep(100.0 * u_worldScale, 400.0 * u_worldScale, distToCam));
-
-	float distanceFade = smoothstep(100.0 * u_worldScale, 400.0 * u_worldScale, distToCam);
-	float effectiveTargetError = (TARGET_ERROR_PIXELS) / (1.0 + silhouetteImportance * 4.0 + distanceFade * 4.0);
-
-	float pixelDeviation = (physicalDeviation * u_lodProjectionScalar) / distToCam;
-	float errorLevel = pixelDeviation / effectiveTargetError;
-
-	// 4. Combine and Clamp
-	float finalLevel = max(baseLevel, errorLevel);
-
-	// Triangle size constraint to ensure triangles large enough to be seen (approx 8 pixels)
-	float physicalPatchSize = float([[PATCH_SIZE]]) * u_worldScale;
-	float patchSizeInPixels = (physicalPatchSize * u_lodProjectionScalar) / distToCam;
-	float maxTessForSize = patchSizeInPixels / TARGET_EDGE_LENGTH_PIXELS;
-
-	return clamp(finalLevel, u_tessLevelMin, min(u_tessLevelMax, max(u_tessLevelMin, maxTessForSize)));
-}
 
 bool projectAABB(vec3 aabbMin, vec3 aabbMax, mat4 vp, out vec4 screenRect, out float nearestDepth) {
 	vec2 minScreen = vec2(1e30);
@@ -194,156 +106,62 @@ bool projectAABB(vec3 aabbMin, vec3 aabbMax, mat4 vp, out vec4 screenRect, out f
 }
 
 void main() {
-	const float TARGET_ERROR_PIXELS = max(2.0, 2.0 / max(0.01, u_tessQualityMultiplier));
-
-	int globalIdx = int(gl_GlobalInvocationID.x);
-	int numPatchesPerChunk = [[PATCHES_PER_CHUNK_SIDE]] * [[PATCHES_PER_CHUNK_SIDE]];
-	int totalPatches = u_numChunks * numPatchesPerChunk;
-
-	if (globalIdx >= totalPatches) return;
-
-	int chunkIdx = globalIdx / numPatchesPerChunk;
-	int localPatchIdx = globalIdx % numPatchesPerChunk;
-	int patchX = localPatchIdx % [[PATCHES_PER_CHUNK_SIDE]];
-	int patchY = localPatchIdx / [[PATCHES_PER_CHUNK_SIDE]];
+	int chunkIdx = int(gl_GlobalInvocationID.x);
+	if (chunkIdx >= u_numChunks) return;
 
 	InstanceData chunk = chunks[chunkIdx];
 	int slice = int(chunk.world_offset_and_slice.w);
 	vec3 chunkOffset = chunk.world_offset_and_slice.xyz;
 
-	int patchIdx = (slice * numPatchesPerChunk) + localPatchIdx;
-	PatchMetrics metrics = patchMetrics[patchIdx];
+	float rawChunkSize = chunk.bounds.z;
+	float chunkSize = rawChunkSize * u_worldScale;
 
-	float patchSize = float([[PATCH_SIZE]]) * u_worldScale;
-	vec3 patchCenter;
-	patchCenter.x = chunkOffset.x + (float(patchX) + 0.5) * patchSize;
-	patchCenter.z = chunkOffset.z + (float(patchY) + 0.5) * patchSize;
-	patchCenter.y = (metrics.min_y + metrics.max_y) * 0.5;
-
-	float radius = patchSize * 0.707 + (metrics.max_y - metrics.min_y) * 0.5;
-
-	vec3 viewVec = patchCenter - u_viewPos;
-	float distToCam = length(viewVec);
+	vec3 aabbMin = vec3(chunkOffset.x, chunk.bounds.x, chunkOffset.z);
+	vec3 aabbMax = vec3(chunkOffset.x + chunkSize, chunk.bounds.y, chunkOffset.z + chunkSize);
 
 	// FRUSTUM CULLING
-	vec3 aabbMin = vec3(chunkOffset.x + float(patchX) * patchSize, metrics.min_y, chunkOffset.z + float(patchY) * patchSize);
-	vec3 aabbMax = vec3(chunkOffset.x + float(patchX + 1) * patchSize, metrics.max_y, chunkOffset.z + float(patchY + 1) * patchSize);
-
-	// Added a small margin to prevent edge flickering
-	if (!isAABBInFrustum(aabbMin - 1.0 * u_worldScale, aabbMax + 1.0 * u_worldScale)) {
-		return;
-	}
+	bool visible = isAABBInFrustum(aabbMin - 1.0 * u_worldScale, aabbMax + 1.0 * u_worldScale);
 
 	// OCCLUSION CULLING
-	if (u_enableOcclusionCulling) {
+	if (visible && u_enableOcclusionCulling) {
 		vec4  screenRect;
 		float nearestDepth;
-		// Project using PREVIOUS View-Projection for temporal consistency with Hi-Z
 		if (projectAABB(aabbMin, aabbMax, prevViewProjection, screenRect, nearestDepth)) {
 			vec2 screenSize = screenRect.zw - screenRect.xy;
-			// If patch is very large on screen, skip occlusion check
+			// If chunk is very large on screen, skip occlusion check
 			if (screenSize.x * screenSize.y < 0.5) {
 				vec2  pixelSize = screenSize * vec2(u_hizSize);
 				float maxPixelDim = max(pixelSize.x, pixelSize.y);
-				// Selecting a mip level where the projected rect is approx 1x1 texel
 				int mipLevel = clamp(int(ceil(log2(max(maxPixelDim, 1.0)))), 0, u_hizMipCount - 1);
 
-				// Conservative occlusion check: farthest depth in Hi-Z region vs nearest depth of patch
 				float hizDepth = 0.0;
 				hizDepth = max(hizDepth, textureLod(u_hizTexture, screenRect.xy, float(mipLevel)).r);
 				hizDepth = max(hizDepth, textureLod(u_hizTexture, screenRect.zy, float(mipLevel)).r);
 				hizDepth = max(hizDepth, textureLod(u_hizTexture, screenRect.xw, float(mipLevel)).r);
 				hizDepth = max(hizDepth, textureLod(u_hizTexture, screenRect.zw, float(mipLevel)).r);
 
-				// In standard GL depth (0=near, 1=far), nearestDepth > hizDepth means patch is occluded.
-				// Added a small bias to hizDepth to be more conservative.
 				if (hizDepth > 0.0001 && nearestDepth > hizDepth + 0.0005) {
-					// Verify occlusion with a raymarch from camera towards the patch
-					float visibility = marchOcclusion(u_viewPos, viewVec / distToCam, distToCam);
-
-					if (visibility <= 0.0) {
-						return;
-					}
+					visible = false;
 				}
 			}
 		}
 	}
 
-	// Visibility confirmed, allocate draw call
-	uint outIdx = atomicAdd(command.instanceCount, 1);
+	chunkStates[slice].is_visible = visible ? 1 : 0;
 
-	patchVisibility[patchIdx] = 1;
-
-	// Patch corners in UV space
-	float ps = float([[PATCH_SIZE]]);
-	float cs = u_terrainParams.x;
-	vec2 uv00 = vec2(float(patchX) * ps, float(patchY) * ps) / cs;
-	vec2 uv10 = vec2(float(patchX + 1) * ps, float(patchY) * ps) / cs;
-	vec2 uv11 = vec2(float(patchX + 1) * ps, float(patchY + 1) * ps) / cs;
-	vec2 uv01 = vec2(float(patchX) * ps, float(patchY + 1) * ps) / cs;
-
-	// Corner points in world space
-	vec3 p00 = getWorldPos(uv00, slice, chunkOffset.xz);
-	vec3 p10 = getWorldPos(uv10, slice, chunkOffset.xz);
-	vec3 p11 = getWorldPos(uv11, slice, chunkOffset.xz);
-	vec3 p01 = getWorldPos(uv01, slice, chunkOffset.xz);
-
-	// Compute levels at edges. Shared edges between patches will produce identical results.
-	// OpenGL Quads: 0=Left(u=0), 1=Bottom(v=0), 2=Right(u=1), 3=Top(v=1)
-	float eLeft   = calculateEdgeTessellation(p00, p01, uv00, uv01, slice);
-	float eBottom = calculateEdgeTessellation(p00, p10, uv00, uv10, slice);
-	float eRight  = calculateEdgeTessellation(p10, p11, uv10, uv11, slice);
-	float eTop    = calculateEdgeTessellation(p01, p11, uv01, uv11, slice);
-
-	// Inner level based on patch-wide max_variance using SSE logic
-	float distToCenter = max(distance(u_viewPos, patchCenter), 1.0 * u_worldScale);
-	float innerPixelError = TARGET_ERROR_PIXELS + 4 * metrics.avg_grass_density + 4 * smoothstep(100* u_worldScale, 400* u_worldScale, distToCam);
-
-/*
-	float crestThreshold = 0.25 * u_worldScale;
-	float crestMask = smoothstep(0.0, crestThreshold, metrics.max_variance);
-
-	vec4 hData = textureLod(u_heightmapArray, vec3(0.5, 0.5, float(slice)), 0.0);
-	vec3 norm = normalize(hData.gba);
-	float silhouetteFactor = 1.0 - abs(dot(norm, viewVec));
-
-	if (crestMask > 0 && crestMask < 1.0) {
-		innerPixelError /= crestMask;
+	// Update patch visibility for grass pre-pass compatibility
+	int numPatches = 16;
+	for (int i = 0; i < numPatches; ++i) {
+		patchVisibility[slice * numPatches + i] = visible ? 1 : 0;
 	}
 
-	if (silhouetteFactor > 0 && silhouetteFactor < 1.0) {
-		innerPixelError /= silhouetteFactor;
+	// Append MDI command if visible and already baked
+	if (visible && chunkStates[slice].current_lod != -1) {
+		uint drawIdx = atomicAdd(draw_count, 1);
+		commands[drawIdx].count = chunkStates[slice].index_count;
+		commands[drawIdx].instanceCount = 1;
+		commands[drawIdx].firstIndex = chunkStates[slice].index_offset;
+		commands[drawIdx].baseVertex = int(chunkStates[slice].vertex_offset);
+		commands[drawIdx].baseInstance = uint(slice);
 	}
-*/
-
-	// Error level based on max variance (chordal error)
-	float innerErrorLevel = (metrics.max_variance * u_lodProjectionScalar) / (distToCenter * innerPixelError);
-
-	// Base level based on patch size (diagonal to be safe)
-	float physicalDiag = distance(p00, p11);
-	float pixelDiag = (physicalDiag * u_lodProjectionScalar) / distToCenter;
-	float innerBaseLevel = (pixelDiag / TARGET_EDGE_LENGTH_PIXELS) / 1.414; // Approximate grid subdivision
-
-	float innerLevel = max(innerBaseLevel, innerErrorLevel);
-
-	float patchSizeInPixels = (patchSize * u_lodProjectionScalar) / distToCenter;
-	float maxInnerTessForSize = patchSizeInPixels / TARGET_EDGE_LENGTH_PIXELS;
-
-	innerLevel = clamp(innerLevel, u_tessLevelMin, min(u_tessLevelMax, max(u_tessLevelMin, maxInnerTessForSize)));
-
-	// Patch Draw Data
-	PatchDrawData draw;
-	draw.world_offset_and_slice = chunk.world_offset_and_slice;
-	draw.patch_coords_and_size = vec4(float(patchX), float(patchY), float([[PATCH_SIZE]]), chunk.bounds.z);
-	patchDrawData[outIdx] = draw;
-
-	// Patch Tess Levels
-	PatchTessLevels tess;
-	tess.outer[0] = eLeft;
-	tess.outer[1] = eBottom;
-	tess.outer[2] = eRight;
-	tess.outer[3] = eTop;
-	tess.inner[0] = innerLevel;
-	tess.inner[1] = innerLevel;
-	patchTessLevels[outIdx] = tess;
 }

@@ -309,12 +309,48 @@ namespace Boidsish {
 			float     max_y;            // For frustum culling
 			glm::vec2 world_offset;     // (chunk_x * chunk_size, chunk_z * chunk_size)
 			uint32_t  update_count = 0; // Incremented each time chunk data is re-uploaded
+			int       current_lod = -1; // Rework: Tracking currently baked LOD
 		};
 
 		// Per-instance data sent to GPU (std140 layout)
 		struct alignas(16) InstanceData {
 			glm::vec4 world_offset_and_slice; // xyz = world offset, w = texture slice index
 			glm::vec4 bounds;                 // xy = min/max Y for this chunk (for shader LOD)
+		};
+
+		struct alignas(16) TerrainVertex {
+			glm::vec4 position;       // xyz = position, w = texture_slice
+			glm::vec4 normal;         // xyz = normal, w = perturb_factor
+			glm::vec4 tex_coords;     // xy = tex_coords, z = tess_factor, w = v_is_water
+			glm::vec4 params;         // x = v_erosion_delta, y = v_ridge_map, z = v_substrate, w = padding
+		};
+
+		struct alignas(16) ChunkState {
+			glm::ivec2 coordinate;
+			int        is_visible;
+			int        current_lod;
+			int        target_lod;
+			int        needs_rebake;
+			uint32_t   vertex_offset;
+			uint32_t   vertex_count;
+			uint32_t   index_offset;
+			uint32_t   index_count;
+			uint32_t   last_frame_used;
+			uint32_t   padding[5]; // Clean 16-byte alignment
+		};
+
+		struct DrawElementsIndirectCommand {
+			uint32_t count;
+			uint32_t instanceCount;
+			uint32_t firstIndex;
+			int32_t  baseVertex;
+			uint32_t baseInstance;
+		};
+
+		struct IndirectCommandBuffer {
+			uint32_t draw_count;
+			uint32_t padding[3];
+			DrawElementsIndirectCommand commands[8192]; // Sized to max supported chunks
 		};
 
 		struct PatchMetrics {
@@ -325,25 +361,6 @@ namespace Boidsish {
 			float avg_grass_density;
 			float max_variance;
 			float _pad[2];
-		};
-
-		struct PatchDrawData {
-			glm::vec4 world_offset_and_slice; // xyz = world offset, w = texture slice index
-			glm::vec4 patch_coords_and_size;  // xy = patch local coords (0..PatchesPerChunkSide-1), z = patch size, w = chunk size
-		};
-
-		struct PatchTessLevels {
-			float outer[4];
-			float inner[2];
-			float _pad[2];
-		};
-
-		struct DrawElementsIndirectCommand {
-			uint32_t count;
-			uint32_t instanceCount;
-			uint32_t firstIndex;
-			int32_t  baseVertex;
-			uint32_t baseInstance;
 		};
 
 		// Frustum culling helper
@@ -403,9 +420,11 @@ namespace Boidsish {
 		GLintptr frustum_ubo_offset_ = 0;
 		GLsizeiptr frustum_ubo_size_ = 0;
 
-		std::unique_ptr<PersistentBuffer<PatchDrawData>> patch_draw_data_pb_;
-		std::unique_ptr<PersistentBuffer<PatchTessLevels>> patch_tess_levels_pb_;
-		std::unique_ptr<PersistentBuffer<uint8_t>> patch_indirect_pb_; // Raw bytes for command buffer
+		GLuint terrain_vbo_ = 0;
+		GLuint terrain_ebo_ = 0;
+		GLuint terrain_vao_ = 0;
+		std::unique_ptr<PersistentBuffer<ChunkState>> chunk_states_pb_;
+		std::unique_ptr<PersistentBuffer<IndirectCommandBuffer>> terrain_indirect_pb_;
 
 		GLsync patch_fences_[3]{0, 0, 0};
 
@@ -416,16 +435,11 @@ namespace Boidsish {
 		std::unique_ptr<ComputeShader> height_mip_shader_;
 		std::unique_ptr<ComputeShader> probe_compute_shader_;
 		std::unique_ptr<ComputeShader> terrain_bake_shader_;
+		std::unique_ptr<ComputeShader> terrain_mesh_bake_shader_;
 		std::unique_ptr<ComputeShader> terrain_horizon_shader_;
 		std::unique_ptr<ComputeShader> terrain_shadow_map_shader_;
 		std::unique_ptr<ComputeShader> patch_metrics_shader_;
 		std::unique_ptr<ComputeShader> patch_prepare_shader_;
-
-		// Patch-based MDI resources
-		GLuint patch_vao_ = 0;
-		GLuint patch_vbo_ = 0;
-		GLuint patch_ebo_ = 0;
-		size_t patch_index_count_ = 0;
 
 		// Grid mesh data
 		size_t grid_index_count_ = 0;
