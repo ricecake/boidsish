@@ -1336,22 +1336,30 @@ namespace Boidsish {
 		// Bind prebaked direct rendering VAO
 		glBindVertexArray(terrain_vao_);
 
-		// Bind direct command buffer and parameter buffer for fully GPU-driven rendering
-		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, terrain_indirect_pb_->GetBufferId());
-		glBindBuffer(GL_PARAMETER_BUFFER, terrain_indirect_pb_->GetBufferId());
+		// Wait for GPU to finish culling and building indirect draw commands
+		int current_idx = chunk_states_pb_->GetCurrentBufferIndex();
+		if (patch_fences_[current_idx]) {
+			glClientWaitSync(patch_fences_[current_idx], GL_SYNC_FLUSH_COMMANDS_BIT, GL_TIMEOUT_IGNORED);
+			glDeleteSync(patch_fences_[current_idx]);
+			patch_fences_[current_idx] = 0;
+		}
 
-		glMultiDrawElementsIndirectCount(
+		IndirectCommandBuffer* mapped_indirect = terrain_indirect_pb_->GetFrameDataPtr();
+		uint32_t count = mapped_indirect->draw_count;
+
+		// Bind direct command buffer
+		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, terrain_indirect_pb_->GetBufferId());
+
+		glMultiDrawElementsIndirect(
 			GL_TRIANGLES,
 			GL_UNSIGNED_INT,
 			(void*)(uintptr_t)(terrain_indirect_pb_->GetFrameOffset() + offsetof(IndirectCommandBuffer, commands)),
-			(GLintptr)terrain_indirect_pb_->GetFrameOffset(),
-			static_cast<GLsizei>(visible_instances_.size()),
+			count,
 			sizeof(DrawElementsIndirectCommand)
 		);
 
 		glBindVertexArray(0);
 		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, 0);
-		glBindBuffer(GL_PARAMETER_BUFFER, 0);
 		glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
 	}
 

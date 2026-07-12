@@ -122,31 +122,7 @@ void main() {
 	// FRUSTUM CULLING
 	bool visible = isAABBInFrustum(aabbMin - 1.0 * u_worldScale, aabbMax + 1.0 * u_worldScale);
 
-	// OCCLUSION CULLING
-	if (visible && u_enableOcclusionCulling) {
-		vec4  screenRect;
-		float nearestDepth;
-		if (projectAABB(aabbMin, aabbMax, prevViewProjection, screenRect, nearestDepth)) {
-			vec2 screenSize = screenRect.zw - screenRect.xy;
-			// If chunk is very large on screen, skip occlusion check
-			if (screenSize.x * screenSize.y < 0.5) {
-				vec2  pixelSize = screenSize * vec2(u_hizSize);
-				float maxPixelDim = max(pixelSize.x, pixelSize.y);
-				int mipLevel = clamp(int(ceil(log2(max(maxPixelDim, 1.0)))), 0, u_hizMipCount - 1);
-
-				float hizDepth = 0.0;
-				hizDepth = max(hizDepth, textureLod(u_hizTexture, screenRect.xy, float(mipLevel)).r);
-				hizDepth = max(hizDepth, textureLod(u_hizTexture, screenRect.zy, float(mipLevel)).r);
-				hizDepth = max(hizDepth, textureLod(u_hizTexture, screenRect.xw, float(mipLevel)).r);
-				hizDepth = max(hizDepth, textureLod(u_hizTexture, screenRect.zw, float(mipLevel)).r);
-
-				if (hizDepth > 0.0001 && nearestDepth > hizDepth + 0.0005) {
-					visible = false;
-				}
-			}
-		}
-	}
-
+	// OCCLUSION CULLING (bypassed for terrain robustness)
 	chunkStates[slice].is_visible = visible ? 1 : 0;
 
 	// Update patch visibility for grass pre-pass compatibility
