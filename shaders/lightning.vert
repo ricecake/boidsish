@@ -6,6 +6,7 @@ layout(location = 2) in float aIntensity;
 
 out vec3 vColor;
 out float vIntensity;
+out vec3 vViewPos;
 
 uniform mat4 projection;
 uniform mat4 view;
@@ -13,5 +14,6 @@ uniform mat4 view;
 void main() {
     vColor = aColor;
     vIntensity = aIntensity;
-    gl_Position = projection * view * vec4(aPos, 1.0);
+    vViewPos = vec3(view * vec4(aPos, 1.0));
+    gl_Position = projection * vec4(vViewPos, 1.0);
 }
