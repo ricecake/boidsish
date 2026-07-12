@@ -1,0 +1,101 @@
+#version 460 core
+
+layout(vertices = 3) out;
+
+#include "common_uniforms.glsl"
+#include "types/lighting.glsl"
+
+in vec3 vPos[];
+in vec3 vNormal[];
+in vec2 vTexCoords[];
+in vec3 vVertexColor[];
+flat in ivec4 vBoneIDs[];
+flat in vec4 vWeights[];
+flat in int vDrawID[];
+flat in int vInstanceID[];
+
+out vec3 tcPos[];
+out vec3 tcNormal[];
+out vec2 tcTexCoords[];
+out vec3 tcVertexColor[];
+flat out ivec4 tcBoneIDs[];
+flat out vec4 tcWeights[];
+flat out int tcDrawID[];
+flat out int tcInstanceID[];
+
+uniform bool uUseMDI = false;
+uniform mat4 model;
+uniform bool isColossal = false;
+uniform bool useSSBOInstancing = false;
+
+// SSBO for decor/foliage instancing
+layout(std430, binding = [[DECOR_INSTANCES_BINDING]]) buffer SSBOInstances {
+	mat4 ssboInstanceMatrices[];
+};
+
+#include "frustum.glsl"
+
+uniform bool  enableFrustumCulling = false;
+uniform float frustumCullRadius = 5.0; // Approximate object radius for sphere test
+uniform bool  enableHiZCulling = false;
+
+// Hi-Z occlusion visibility (per-draw, written by occlusion_cull.comp)
+layout(std430, binding = [[OCCLUSION_VISIBILITY_BINDING]]) readonly buffer OcclusionVisibility {
+	uint hiz_visibility[];
+};
+
+uniform uint u_baseVisibilityIndex;
+
+// User configurable tessellation parameters
+uniform float u_tessFactorMin = 1.0;
+uniform float u_tessFactorMax = 16.0;
+uniform float u_tessDistMin = 5.0;
+uniform float u_tessDistMax = 100.0;
+
+void main() {
+	// Pass through attributes
+	tcPos[gl_InvocationID] = vPos[gl_InvocationID];
+	tcNormal[gl_InvocationID] = vNormal[gl_InvocationID];
+	tcTexCoords[gl_InvocationID] = vTexCoords[gl_InvocationID];
+	tcVertexColor[gl_InvocationID] = vVertexColor[gl_InvocationID];
+	tcBoneIDs[gl_InvocationID] = vBoneIDs[gl_InvocationID];
+	tcWeights[gl_InvocationID] = vWeights[gl_InvocationID];
+	tcDrawID[gl_InvocationID] = vDrawID[gl_InvocationID];
+	tcInstanceID[gl_InvocationID] = vInstanceID[gl_InvocationID];
+
+	if (gl_InvocationID == 0) {
+		int drawID = vDrawID[0];
+		int tempUniformIndex = uUseMDI ? drawID : -1;
+		bool use_ssbo = uUseMDI && tempUniformIndex >= 0;
+
+		mat4  current_model = use_ssbo ? uniforms_data[tempUniformIndex].model : model;
+		bool  current_useSSBOInstancing = use_ssbo ? (uniforms_data[tempUniformIndex].use_ssbo_instancing != 0)
+												   : useSSBOInstancing;
+
+		mat4 modelMatrix;
+		if (current_useSSBOInstancing) {
+			modelMatrix = ssboInstanceMatrices[vInstanceID[0]];
+		} else {
+			modelMatrix = current_model;
+		}
+
+		// Extract world position
+		vec3  instanceCenter = vec3(modelMatrix[3]);
+
+		// Completely disable frustum and occlusion culling inside TCS for debugging/robustness
+		bool visible = true;
+
+		// Calculate Tessellation levels dynamically based on distance to camera
+		float dist = distance(viewPos, instanceCenter);
+
+		// Dynamic LOD factor
+		float tessLevel = mix(u_tessFactorMax, u_tessFactorMin, clamp((dist - u_tessDistMin) / (u_tessDistMax - u_tessDistMin), 0.0, 1.0));
+
+		gl_TessLevelOuter[0] = tessLevel;
+		gl_TessLevelOuter[1] = tessLevel;
+		gl_TessLevelOuter[2] = tessLevel;
+		gl_TessLevelInner[0] = tessLevel;
+	}
+
+	gl_out[gl_InvocationID].gl_Position = gl_in[gl_InvocationID].gl_Position;
+}

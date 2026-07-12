@@ -554,7 +554,7 @@ namespace Boidsish {
 				packet.shadow_first_index = static_cast<uint32_t>(mesh.indices.size());
 			}
 
-			packet.draw_mode = GL_TRIANGLES;
+			packet.draw_mode = GetCustomDrawMode().value_or(GL_TRIANGLES);
 			packet.index_type = GL_UNSIGNED_INT;
 			packet.shader_id = shader ? shader->ID : 0;
 
@@ -632,7 +632,7 @@ namespace Boidsish {
 			}
 
 			RenderLayer layer = (packet.uniforms.color.w < 0.99f) ? RenderLayer::Transparent : RenderLayer::Opaque;
-			packet.shader_handle = shader_handle;
+			packet.shader_handle = GetCustomShaderHandle().value_or(shader_handle);
 			packet.material_handle = MaterialHandle(texture_hash);
 
 			packet.no_cull = no_cull_ || dissolve_enabled_;

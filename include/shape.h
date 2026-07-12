@@ -77,7 +77,9 @@ namespace Boidsish {
 			refractive_index_(other.refractive_index_),
 			shadow_caster_override_(other.shadow_caster_override_),
 			allow_megabuffer_(other.allow_megabuffer_),
-			material_type_(other.material_type_) {}
+			material_type_(other.material_type_),
+			custom_shader_handle_(std::move(other.custom_shader_handle_)),
+			custom_draw_mode_(other.custom_draw_mode_) {}
 
 		Shape& operator=(Shape&& other) noexcept {
 			if (this != &other) {
@@ -120,6 +122,8 @@ namespace Boidsish {
 				shadow_caster_override_ = other.shadow_caster_override_;
 				allow_megabuffer_ = other.allow_megabuffer_;
 				material_type_ = other.material_type_;
+				custom_shader_handle_ = std::move(other.custom_shader_handle_);
+				custom_draw_mode_ = other.custom_draw_mode_;
 			}
 			return *this;
 		}
@@ -336,6 +340,24 @@ namespace Boidsish {
 		inline void SetAllowMegabuffer(bool allow) {
 			allow_megabuffer_ = allow;
 			MarkDirty();
+		}
+
+		inline void SetCustomShaderHandle(std::optional<ShaderHandle> handle) {
+			custom_shader_handle_ = handle;
+			MarkDirty();
+		}
+
+		inline std::optional<ShaderHandle> GetCustomShaderHandle() const {
+			return custom_shader_handle_;
+		}
+
+		inline void SetCustomDrawMode(std::optional<unsigned int> mode) {
+			custom_draw_mode_ = mode;
+			MarkDirty();
+		}
+
+		inline std::optional<unsigned int> GetCustomDrawMode() const {
+			return custom_draw_mode_;
 		}
 
 		// Returns a key identifying what shapes can be instanced together
@@ -575,6 +597,8 @@ namespace Boidsish {
 		std::optional<bool> shadow_caster_override_;
 		bool                allow_megabuffer_;
 		int                 material_type_ = 0;
+		std::optional<ShaderHandle> custom_shader_handle_;
+		std::optional<unsigned int> custom_draw_mode_;
 
 	protected:
 		bool      dissolve_enabled_;

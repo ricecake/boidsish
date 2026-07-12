@@ -1,0 +1,322 @@
+#version 460 core
+#extension GL_GOOGLE_include_directive : enable
+layout(location = 0) out vec4 FragColor;
+layout(location = 1) out vec4 Velocity;
+layout(location = 2) out vec4 NormalOut;
+layout(location = 3) out vec4 AlbedoOut;
+
+#include "common_uniforms.glsl"
+#include "temporal_data.glsl"
+
+uniform bool uUseMDI = false;
+flat in int  vUniformIndex;
+
+#include "helpers/fast_noise.glsl"
+#define USE_TERRAIN_DATA
+#include "helpers/terrain_shadows.glsl"
+#include "helpers/lighting.glsl"
+#include "visual_effects.frag"
+#include "visual_effects.glsl"
+
+in vec3  FragPos;
+in vec4  CurPosition;
+in vec4  PrevPosition;
+in vec3  Normal;
+in vec3  vs_color;
+in vec3  barycentric;
+in vec2  TexCoords;
+in vec4  InstanceColor;
+in float WindDeflection;
+
+uniform vec3  objectColor;
+uniform float objectAlpha = 1.0;
+uniform int   useVertexColor;
+uniform bool  isColossal = false;
+uniform bool  isLine = false;
+uniform int   lineStyle = 0; // 0: SOLID, 1: LASER
+
+uniform bool  isTextEffect = false;
+uniform float textFadeProgress = 1.0;
+uniform float textFadeSoftness = 0.1;
+uniform int   textFadeMode = 0; // 0: Fade In, 1: Fade Out
+
+// Arcade Text Effects
+uniform bool  isArcadeText = false;
+uniform bool  arcadeRainbowEnabled = false;
+uniform float arcadeRainbowSpeed = 2.0;
+uniform float arcadeRainbowFrequency = 5.0;
+
+// PBR material properties
+uniform bool  usePBR = false;
+uniform float roughness = 0.5;
+uniform float metallic = 0.0;
+uniform float ao = 1.0;
+uniform int   material_type = 0;
+
+uniform bool  dissolve_enabled = false;
+uniform vec3  dissolve_plane_normal = vec3(0, 1, 0);
+uniform float dissolve_plane_dist = 0.0;
+
+uniform bool  is_refractive = false;
+uniform float refractive_index = 1.0;
+uniform vec3  emissiveColor = vec3(0.0);
+
+uniform sampler2D texture_diffuse1;
+uniform sampler2D texture_normal1;
+uniform sampler2D texture_metallic1;
+uniform sampler2D texture_roughness1;
+uniform sampler2D texture_ao1;
+uniform sampler2D texture_emissive1;
+
+// use_texture is a bitmask (see common_uniforms.glsl)
+uniform int   use_texture;
+uniform float u_windRimHighlight;
+
+uniform sampler2D refractionTexture;
+
+
+void main() {
+	bool  use_ssbo = uUseMDI && vUniformIndex >= 0;
+	vec3  c_objectColor = use_ssbo ? uniforms_data[vUniformIndex].color.rgb : objectColor;
+	int   c_material_type = use_ssbo ? uniforms_data[vUniformIndex].material_type : material_type;
+	float c_objectAlpha = use_ssbo ? uniforms_data[vUniformIndex].color.a : objectAlpha;
+	bool  c_usePBR = use_ssbo ? (uniforms_data[vUniformIndex].use_pbr != 0) : usePBR;
+	float c_roughness = use_ssbo ? uniforms_data[vUniformIndex].roughness : roughness;
+	float c_metallic = use_ssbo ? uniforms_data[vUniformIndex].metallic : metallic;
+	float c_ao = use_ssbo ? uniforms_data[vUniformIndex].ao : ao;
+	int   c_use_texture = use_ssbo ? uniforms_data[vUniformIndex].use_texture : use_texture;
+	bool  c_isLine = use_ssbo ? (uniforms_data[vUniformIndex].is_line != 0) : isLine;
+	int   c_lineStyle = use_ssbo ? uniforms_data[vUniformIndex].line_style : lineStyle;
+	bool  c_isTextEffect = use_ssbo ? (uniforms_data[vUniformIndex].is_text_effect != 0) : isTextEffect;
+	float c_textFadeProgress = use_ssbo ? uniforms_data[vUniformIndex].text_fade_progress : textFadeProgress;
+	float c_textFadeSoftness = use_ssbo ? uniforms_data[vUniformIndex].text_fade_softness : textFadeSoftness;
+	int   c_textFadeMode = use_ssbo ? uniforms_data[vUniformIndex].text_fade_mode : textFadeMode;
+	bool  c_isArcadeText = use_ssbo ? (uniforms_data[vUniformIndex].is_arcade_text != 0) : isArcadeText;
+	bool  c_arcadeRainbowEnabled = use_ssbo ? (uniforms_data[vUniformIndex].arcade_rainbow_enabled != 0)
+											: arcadeRainbowEnabled;
+	float c_arcadeRainbowSpeed = use_ssbo ? uniforms_data[vUniformIndex].arcade_rainbow_speed : arcadeRainbowSpeed;
+	float c_arcadeRainbowFrequency = use_ssbo ? uniforms_data[vUniformIndex].arcade_rainbow_frequency
+											  : arcadeRainbowFrequency;
+	bool  c_isColossal = use_ssbo ? (uniforms_data[vUniformIndex].is_colossal != 0) : isColossal;
+	bool  c_useVertexColor = use_ssbo ? (uniforms_data[vUniformIndex].use_vertex_color != 0) : (useVertexColor != 0);
+
+	bool  c_dissolve_enabled = use_ssbo ? (uniforms_data[vUniformIndex].dissolve_enabled != 0) : dissolve_enabled;
+	vec3  c_dissolve_normal = use_ssbo ? uniforms_data[vUniformIndex].dissolve_plane_normal : dissolve_plane_normal;
+	float c_dissolve_dist = use_ssbo ? uniforms_data[vUniformIndex].dissolve_plane_dist : dissolve_plane_dist;
+	bool  c_is_refractive = use_ssbo ? (uniforms_data[vUniformIndex].is_refractive != 0) : is_refractive;
+	float c_refractive_index = use_ssbo ? uniforms_data[vUniformIndex].refractive_index : refractive_index;
+	vec3  c_emissive_color = use_ssbo ? vec3(
+											uniforms_data[vUniformIndex].emissive_r,
+											uniforms_data[vUniformIndex].emissive_g,
+											uniforms_data[vUniformIndex].emissive_b
+										)
+									  : emissiveColor;
+
+	float fade = 1.0;
+	if (c_dissolve_enabled) {
+		if (dot(FragPos, c_dissolve_normal) > c_dissolve_dist) {
+			discard;
+		}
+	}
+
+	if (!c_isColossal) {
+		float dist = length(FragPos.xz - viewPos.xz);
+		float fade_start = 540.0 * worldScale;
+		float fade_end = 550.0 * worldScale;
+		fade = 1.0 - smoothstep(fade_start, fade_end, dist);
+
+		if (fade < 0.2) {
+			discard;
+		}
+	}
+
+	vec3 albedo;
+	if (c_useVertexColor) {
+		albedo = vs_color;
+	} else {
+		albedo = c_objectColor;
+	}
+
+	bool has_diffuse = (c_use_texture & 1) != 0;
+	bool has_normal = (c_use_texture & 2) != 0;
+	bool has_metallic = (c_use_texture & 4) != 0;
+	bool has_roughness = (c_use_texture & 8) != 0;
+	bool has_ao = (c_use_texture & 16) != 0;
+	bool has_emissive = (c_use_texture & 32) != 0;
+
+	if (has_diffuse) {
+		albedo *= texture(texture_diffuse1, TexCoords).rgb;
+	}
+
+	vec3 norm = normalize(Normal);
+	if (has_normal) {
+		vec3 mappedNormal = texture(texture_normal1, TexCoords).rgb * 2.0 - 1.0;
+		norm = normalize(mix(norm, mappedNormal, 0.5));
+	}
+
+	float tex_metallic = c_metallic;
+	if (has_metallic) {
+		tex_metallic *= texture(texture_metallic1, TexCoords).r;
+	}
+
+	float tex_roughness = c_roughness;
+	if (has_roughness) {
+		tex_roughness *= texture(texture_roughness1, TexCoords).r;
+	}
+
+	float tex_ao = c_ao;
+	if (has_ao) {
+		tex_ao *= texture(texture_ao1, TexCoords).r;
+	}
+
+	vec3 emissive = vec3(0.0);
+	if (has_emissive) {
+		emissive = texture(texture_emissive1, TexCoords).rgb;
+	}
+	emissive += c_emissive_color * nightFactor;
+
+	float baseAlpha = c_objectAlpha;
+
+	if (c_material_type == 2) { // Leaf/Needle
+		float needle_lines = sin(TexCoords.x * 60.0);
+		float noise_val = fastWarpedFbm3d(FragPos * 12.0);
+		float needle_pattern = smoothstep(0.1, 0.4, needle_lines * 0.5 + 0.5 + noise_val * 0.2);
+
+		float edge_fade = smoothstep(0.0, 0.15, TexCoords.y) * smoothstep(1.0, 0.85, TexCoords.y);
+		needle_pattern *= edge_fade;
+
+		baseAlpha *= needle_pattern;
+		if (baseAlpha < 0.25) {
+			discard;
+		}
+	}
+
+	// Choose between PBR and legacy lighting
+	vec4 lightResult;
+	float primaryShadow;
+	lightResult = apply_lighting_pbr(FragPos, norm, albedo * baseAlpha, tex_roughness, tex_metallic, tex_ao, primaryShadow);
+	lightResult.rgb += emissive;
+
+	vec3  result = lightResult.rgb;
+	float spec_lum = lightResult.a;
+
+	// Apply wind-driven rim highlight
+	float rim = pow(1.0 - max(dot(norm, normalize(viewPos - FragPos)), 0.0), 3.0);
+	result += rim * WindDeflection * u_windRimHighlight * vec3(1.0);
+
+	result = applyArtisticEffects(result, FragPos, barycentric, time);
+
+	if (c_is_refractive) {
+		vec3 V = normalize(FragPos - viewPos);
+
+		vec2 screenUV = gl_FragCoord.xy * texelSize;
+
+		vec3 a = vec3(0.5, 0.5, 0.5);
+		vec3 b = vec3(0.5, 0.5, 0.5);
+		vec3 c = vec3(0.8, 0.8, 0.8);
+		vec3 d = vec3(0.0, 0.33, 0.67); // Shifts for R, G, B
+
+		vec3  refractionColor = vec3(0);
+		vec3  refractionAcc = vec3(0);
+		int   steps = 5;
+		float jitter = fastWarpedFbm3d(vec3(screenUV * 0.125, time * 0.125)) * 0.5 + 0.5;
+		for (int i = 0; i < steps; i++) {
+			vec3 R = refract(
+				V,
+				norm,
+				1.0 / max(c_refractive_index + jitter * ((float(i) / float(steps - 1)) * 0.15), 1.0)
+			);
+			vec3 refractedPos = FragPos + R * 10.0; // Fallback distance
+			vec4 refractedClip = viewProjection * vec4(refractedPos, 1.0);
+			vec2 refractedUV = (refractedClip.xy / refractedClip.w) * 0.5 + 0.5;
+
+			refractedUV = mix(screenUV, refractedUV, smoothstep(1.0, 1.01, c_refractive_index));
+
+			float distToEdge = min(min(refractedUV.x, 1.0 - refractedUV.x), min(refractedUV.y, 1.0 - refractedUV.y));
+
+			vec3 rawColor = texture(refractionTexture, refractedUV).rgb;
+			vec3 testColor = (a + b * cos(6.28318 * (c * (float(i * jitter) / float(steps - 1)) + d)));
+			refractionColor += rawColor * testColor;
+			refractionAcc += testColor;
+		}
+
+		refractionColor /= refractionAcc;
+
+		vec4  cl = viewProjection * vec4(FragPos, 1.0);
+		vec2  uv = (cl.xy / cl.w) * 0.5 + 0.5;
+		float distToEdge = min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y));
+		float edgeFade = smoothstep(0.0, 0.05, distToEdge);
+
+		result = mix(refractionColor, result * c_objectColor, c_objectAlpha * 0.25) * edgeFade +
+			mix(refractionColor * (1.0 - edgeFade),
+		        2 * (refractionColor / length(refractionColor)),
+		        pow(1.0 - abs(dot(viewDir, norm)), 10.0));
+	}
+
+	if (c_isLine && c_lineStyle == 1) { // LASER style
+		float distToCenter = abs(TexCoords.y - 0.5) * 2.0;
+
+		float core = smoothstep(0.15, 0.08, distToCenter);
+		float glow = exp(-distToCenter * 3.0) * 0.8;
+		float innerGlow = exp(-distToCenter * 10.0) * 0.5;
+
+		vec3 coreColor = vec3(1.0, 1.0, 1.0); // Core is white
+		vec3 glowColor = albedo;              // Glow is the object color
+
+		vec3 laserColor = mix(glowColor, coreColor, core);
+		laserColor += glowColor * glow;
+		laserColor += coreColor * innerGlow;
+
+		result = laserColor;
+	}
+
+	vec4 outColor;
+
+	if (c_isLine && c_lineStyle == 1) {
+		float distToCenter = abs(TexCoords.y - 0.5) * 2.0;
+		float alpha = max(smoothstep(0.15, 0.08, distToCenter), exp(-distToCenter * 3.0) * 0.8);
+		outColor = vec4(result, alpha * fade * c_objectAlpha);
+	} else if (c_isColossal) {
+		vec3  skyColor = ambient_light;
+		float haze_start = 0.0;
+		float haze_end = 150.0 * worldScale;
+		float haze_factor = 1.0 - smoothstep(haze_start, haze_end, FragPos.y);
+		vec3  final_haze_color = mix(result, skyColor, haze_factor * 0.5);
+		outColor = vec4(final_haze_color, 1.0);
+	} else {
+		float final_alpha = clamp((baseAlpha + spec_lum) * fade, 0.0, 1.0);
+		if (c_is_refractive) {
+			final_alpha = fade;
+		}
+
+		if (c_isTextEffect) {
+			float alpha_factor = 1.0;
+			if (c_textFadeMode == 0) { // Fade In
+				alpha_factor = smoothstep(TexCoords.x, TexCoords.x + c_textFadeSoftness, c_textFadeProgress);
+			} else if (c_textFadeMode == 1) { // Fade Out
+				alpha_factor = 1.0 - smoothstep(TexCoords.x, TexCoords.x + c_textFadeSoftness, c_textFadeProgress);
+			}
+			final_alpha *= alpha_factor;
+		}
+
+		if (c_isArcadeText && c_arcadeRainbowEnabled) {
+			vec3 rainbow = 0.5 +
+				0.5 * cos(time * c_arcadeRainbowSpeed + TexCoords.x * c_arcadeRainbowFrequency + vec3(0, 2, 4));
+			result *= rainbow;
+		}
+
+		outColor = vec4(result, final_alpha);
+		outColor = mix(vec4(0.0, 0.7, 0.7, final_alpha) * length(outColor), outColor, step(1.0, fade));
+	}
+
+	FragColor = outColor;
+
+	// Calculate screen-space velocity and material properties
+	vec2 a = (CurPosition.xy / CurPosition.w) * 0.5 + 0.5;
+	vec2 b = (PrevPosition.xy / PrevPosition.w) * 0.5 + 0.5;
+	Velocity = vec4(a - b, tex_roughness, tex_metallic);
+
+	// Output view-space normal
+	NormalOut = vec4(normalize(mat3(view) * norm), primaryShadow);
+	AlbedoOut = vec4(albedo * baseAlpha, 1.0);
+}

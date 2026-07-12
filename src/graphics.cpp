@@ -1678,10 +1678,19 @@ namespace Boidsish {
 					glEnable(GL_CULL_FACE);
 				}
 
+				GLenum draw_mode = batch.draw_mode;
+				if (is_shadow_pass && draw_mode == GL_PATCHES) {
+					draw_mode = GL_TRIANGLES;
+				}
+
+				if (draw_mode == GL_PATCHES) {
+					glPatchParameteri(GL_PATCH_VERTICES, 3);
+				}
+
 				if (batch.is_indexed) {
 					glBindBuffer(GL_DRAW_INDIRECT_BUFFER, indirect_elements_buffer->GetBufferId());
 					glMultiDrawElementsIndirect(
-						batch.draw_mode,
+						draw_mode,
 						batch.index_type,
 						(void*)(uintptr_t)(indirect_elements_buffer->GetFrameOffset() +
 					                       (mdi_pass_elements_start + batch.first_command) * sizeof(DrawElementsIndirectCommand)),
@@ -1691,7 +1700,7 @@ namespace Boidsish {
 				} else {
 					glBindBuffer(GL_DRAW_INDIRECT_BUFFER, indirect_arrays_buffer->GetBufferId());
 					glMultiDrawArraysIndirect(
-						batch.draw_mode,
+						draw_mode,
 						(void*)(uintptr_t)(indirect_arrays_buffer->GetFrameOffset() +
 					                       (mdi_pass_arrays_start + batch.first_command) * sizeof(DrawArraysIndirectCommand)),
 						batch.command_count,
@@ -4923,6 +4932,10 @@ namespace Boidsish {
 
 	bool Visualizer::IsWireframeEffectEnabled() const {
 		return ConfigManager::GetInstance().GetAppSettingBool("artistic_effect_wireframe", false);
+	}
+
+	ShaderHandle Visualizer::RegisterShader(std::shared_ptr<Shader> shader) {
+		return impl->shader_table.Register(std::make_unique<RenderShader>(shader));
 	}
 
 	UI::UIConfigManager& Visualizer::GetUIConfigManager() {

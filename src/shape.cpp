@@ -45,7 +45,7 @@ namespace Boidsish {
 		}
 		packet.vertex_count = mesh.vertex_count;
 		packet.index_count = mesh.index_count;
-		packet.draw_mode = GL_TRIANGLES;
+		packet.draw_mode = custom_draw_mode_.value_or(GL_TRIANGLES);
 		packet.index_type = GL_UNSIGNED_INT;
 		packet.shader_id = shader ? shader->ID : 0;
 
@@ -81,7 +81,7 @@ namespace Boidsish {
 		packet.casts_shadows = CastsShadows();
 		RenderLayer layer = IsTransparent() ? RenderLayer::Transparent : RenderLayer::Opaque;
 
-		packet.shader_handle = shader_handle;
+		packet.shader_handle = custom_shader_handle_.value_or(shader_handle);
 		packet.material_handle = MaterialHandle(0);
 		packet.no_cull = ShouldDisableCulling();
 
