@@ -182,12 +182,6 @@ namespace Boidsish {
 				glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
 			}
 
-			// Dispatch 3D SDF Baking
-			_cloudSdf3DBakeShader->use();
-			glBindImageTexture(0, _cloudSdf3DTexture, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_R32F);
-			glDispatchCompute(128 / 8, 32 / 4, 128 / 8); // workgroup size: 8x4x8
-			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
-
 			_needsWeatherBake = false;
 			_worldScale = worldScale;
 		}
@@ -349,6 +343,12 @@ namespace Boidsish {
 		glm::vec3 nightGlow = glm::vec3(0.01f, 0.012f, 0.018f) * _ambientScatScale * 10.0f;
 
 		_ambientEstimate = sunColor * sunIntensity * ambientFactor + nightGlow;
+
+		// Dispatch 3D SDF Baking (every frame to ensure perfect sync with dynamic cloud altitude/thickness)
+		_cloudSdf3DBakeShader->use();
+		glBindImageTexture(0, _cloudSdf3DTexture, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_R32F);
+		glDispatchCompute(128 / 8, 32 / 4, 128 / 8); // workgroup size: 8x4x8
+		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 	}
 
 	void AtmosphereManager::CopySHToUBO(GLuint lightingUbo, size_t shOffset) {
