@@ -24,6 +24,8 @@ namespace Boidsish {
 			glDeleteTextures(1, &_aerialPerspectiveLUT);
 		if (_cloudWeatherTexture)
 			glDeleteTextures(1, &_cloudWeatherTexture);
+		if (_cloudSdf3DTexture)
+			glDeleteTextures(1, &_cloudSdf3DTexture);
 		if (_cloudSeedsBuffer)
 			glDeleteBuffers(1, &_cloudSeedsBuffer);
 		if (_shCoeffsBuffer)
@@ -82,6 +84,16 @@ namespace Boidsish {
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
+		// Cloud 3D SDF Texture: 128x32x128 R32F (Volume)
+		glGenTextures(1, &_cloudSdf3DTexture);
+		glBindTexture(GL_TEXTURE_3D, _cloudSdf3DTexture);
+		glTexImage3D(GL_TEXTURE_3D, 0, GL_R32F, 128, 32, 128, 0, GL_RED, GL_FLOAT, nullptr);
+		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_REPEAT);
+
 		// SH Coefficients SSBO: 9 x vec4
 		// Cloud Seeds SSBO: 100 x vec4 (10x10 Voronoi period)
 		glGenBuffers(1, &_cloudSeedsBuffer);
@@ -105,6 +117,7 @@ namespace Boidsish {
 		reg.PublishTexture(Constants::TextureUnit::AtmosphereSkyView(), _skyViewLUT);
 		reg.PublishTexture(Constants::TextureUnit::AtmosphereAerialPerspective(), _aerialPerspectiveLUT, GL_TEXTURE_3D);
 		reg.PublishTexture(Constants::TextureUnit::CloudWeatherBake(), _cloudWeatherTexture);
+		reg.PublishTexture(Constants::TextureUnit::CloudSdf3D(), _cloudSdf3DTexture, GL_TEXTURE_3D);
 	}
 
 	void AtmosphereManager::CreateShaders() {
@@ -120,6 +133,7 @@ namespace Boidsish {
 		_aerialPerspectiveShader = std::make_unique<ComputeShader>("shaders/atmosphere/aerial_perspective_lut.comp");
 		_skyToSHShader = std::make_unique<ComputeShader>("shaders/atmosphere/sky_to_sh.comp");
 		_cloudBakeShader = std::make_unique<ComputeShader>("shaders/effects/cloud_weather_bake.comp");
+		_cloudSdf3DBakeShader = std::make_unique<ComputeShader>("shaders/effects/cloud_3d_sdf_bake.comp");
 
 		setup_shader(*_transmittanceShader);
 		setup_shader(*_multiScatteringShader);
@@ -127,6 +141,7 @@ namespace Boidsish {
 		setup_shader(*_aerialPerspectiveShader);
 		setup_shader(*_skyToSHShader);
 		setup_shader(*_cloudBakeShader);
+		setup_shader(*_cloudSdf3DBakeShader);
 	}
 
 	void AtmosphereManager::Update(
@@ -328,6 +343,12 @@ namespace Boidsish {
 		glm::vec3 nightGlow = glm::vec3(0.01f, 0.012f, 0.018f) * _ambientScatScale * 10.0f;
 
 		_ambientEstimate = sunColor * sunIntensity * ambientFactor + nightGlow;
+
+		// Dispatch 3D SDF Baking (every frame to ensure perfect sync with dynamic cloud altitude/thickness)
+		_cloudSdf3DBakeShader->use();
+		glBindImageTexture(0, _cloudSdf3DTexture, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_R32F);
+		glDispatchCompute(128 / 8, 32 / 4, 128 / 8); // workgroup size: 8x4x8
+		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 	}
 
 	void AtmosphereManager::CopySHToUBO(GLuint lightingUbo, size_t shOffset) {
@@ -351,6 +372,8 @@ namespace Boidsish {
 		glBindTexture(GL_TEXTURE_3D, _aerialPerspectiveLUT);
 		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::CloudWeatherBake());
 		glBindTexture(GL_TEXTURE_2D, _cloudWeatherTexture);
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::CloudSdf3D());
+		glBindTexture(GL_TEXTURE_3D, _cloudSdf3DTexture);
 	}
 
 	void AtmosphereManager::BindToShader(::ShaderBase& shader) {
@@ -360,6 +383,7 @@ namespace Boidsish {
 		shader.trySetInt("u_skyViewLUT", Constants::TextureUnit::AtmosphereSkyView());
 		shader.trySetInt("u_aerialPerspectiveLUT", Constants::TextureUnit::AtmosphereAerialPerspective());
 		shader.trySetInt("u_cloudWeatherTexture", Constants::TextureUnit::CloudWeatherBake());
+		shader.trySetInt("u_cloudSdf3DTexture", Constants::TextureUnit::CloudSdf3D());
 		shader.trySetFloat("u_atmosphereHeight", _atmosphereHeight);
 
 		shader.setVec3("u_rayleighScatteringBase", _rayleighScattering);
