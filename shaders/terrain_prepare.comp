@@ -17,7 +17,7 @@ struct ChunkState {
     uint index_offset;
     uint index_count;
     uint last_frame_used;
-    uint padding[2];
+    uint padding[5];
 };
 
 layout(std430, binding = [[TERRAIN_PATCH_TESS_LEVELS_BINDING]]) buffer ChunkStates {

@@ -52,7 +52,7 @@ namespace Boidsish {
 		struct BakeTask {
 			glm::ivec2 chunk_coord;
 			int        slice;
-			int        _pad;
+			int        target_lod;
 		};
 
 		TerrainRenderManager(ServiceLocator& loc, int chunk_size = Constants::Class::Terrain::ChunkSize(), int max_chunks = 512);

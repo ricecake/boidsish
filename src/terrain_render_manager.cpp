@@ -64,6 +64,7 @@ namespace Boidsish {
 		height_mip_shader_ = std::make_unique<ComputeShader>("shaders/terrain_height_mip.comp");
 		probe_compute_shader_ = std::make_unique<ComputeShader>("shaders/terrain_probes.comp");
 		terrain_bake_shader_ = std::make_unique<ComputeShader>("shaders/terrain_bake.comp");
+		terrain_mesh_bake_shader_ = std::make_unique<ComputeShader>("shaders/terrain_mesh_bake.comp");
 		terrain_horizon_shader_ = std::make_unique<ComputeShader>("shaders/terrain_horizon_update.comp");
 		terrain_shadow_map_shader_ = std::make_unique<ComputeShader>("shaders/terrain_shadow_map.comp");
 		patch_metrics_shader_ = std::make_unique<ComputeShader>("shaders/terrain_patch_metrics.comp");
@@ -1335,22 +1336,22 @@ namespace Boidsish {
 		// Bind prebaked direct rendering VAO
 		glBindVertexArray(terrain_vao_);
 
-		// Read the actual draw count from the mapped indirect command buffer
-		IndirectCommandBuffer* mapped_indirect = terrain_indirect_pb_->GetFrameDataPtr();
-		uint32_t count = mapped_indirect->draw_count;
-
+		// Bind direct command buffer and parameter buffer for fully GPU-driven rendering
 		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, terrain_indirect_pb_->GetBufferId());
+		glBindBuffer(GL_PARAMETER_BUFFER, terrain_indirect_pb_->GetBufferId());
 
-		glMultiDrawElementsIndirect(
+		glMultiDrawElementsIndirectCount(
 			GL_TRIANGLES,
 			GL_UNSIGNED_INT,
 			(void*)(uintptr_t)(terrain_indirect_pb_->GetFrameOffset() + offsetof(IndirectCommandBuffer, commands)),
-			count,
+			(GLintptr)terrain_indirect_pb_->GetFrameOffset(),
+			static_cast<GLsizei>(visible_instances_.size()),
 			sizeof(DrawElementsIndirectCommand)
 		);
 
 		glBindVertexArray(0);
 		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, 0);
+		glBindBuffer(GL_PARAMETER_BUFFER, 0);
 		glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
 	}
 
@@ -1521,10 +1522,10 @@ namespace Boidsish {
 
 			for (const auto& task : tasks) {
 				terrain_mesh_bake_shader_->setInt("u_slice", task.slice);
-				terrain_mesh_bake_shader_->setInt("u_lod", task._pad); // _pad was target_lod!
+				terrain_mesh_bake_shader_->setInt("u_lod", task.target_lod);
 
 				// Compute dispatch size based on target LOD: grid width = (32 >> lod) + 1
-				int gridWidth = (chunk_size_ >> task._pad) + 1;
+				int gridWidth = (chunk_size_ >> task.target_lod) + 1;
 				GLuint groups_x = (gridWidth + 15) / 16;
 				GLuint groups_y = (gridWidth + 15) / 16;
 
@@ -1540,7 +1541,7 @@ namespace Boidsish {
 				auto key = std::make_pair(task.chunk_coord.x, task.chunk_coord.y);
 				auto it = chunks_.find(key);
 				if (it != chunks_.end()) {
-					it->second.current_lod = task._pad; // _pad was target_lod!
+					it->second.current_lod = task.target_lod;
 				}
 			}
 		}
