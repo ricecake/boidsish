@@ -32,10 +32,9 @@ namespace Boidsish {
 		std::vector<float>        packed_height_normal;
 		std::vector<uint8_t>      packed_biomes;
 		PatchProxy                proxy;
-		int                                            chunk_x;
-		int                                            chunk_z;
-		bool                                           has_terrain;
-		std::vector<TerrainRenderManager::PatchMetrics> patch_metrics;
+		int                       chunk_x;
+		int                       chunk_z;
+		bool                      has_terrain;
 	};
 
 	class TerrainGenerator: public ITerrainGenerator {
