@@ -98,10 +98,18 @@ float evalSdf(vec3            p, float           time, CloudProperties props) {
 			// 1. WRAP the cell coordinate to match the texture's repeat frequency
 			// GLSL mod() safely handles negative coordinate wrapping
 			vec2 wrapped_cell = mod(cell, tilePeriod);
+			float rotHash = hash_sdf(vec3(wrapped_cell, 99.0));
+			int rotSteps = int(rotHash * 4.0);
 
 			for (int s = 0; s < NUM_CL_SPHERES; s++) {
 				vec2 center_local = CL_SPHERE_CENTERS[s];
 				float baseRadius = CL_SPHERE_RADII[s] * tileScale;
+
+				vec2 c = center_local - vec2(0.5);
+				if (rotSteps == 1)      c = vec2(-c.y,  c.x);
+				else if (rotSteps == 2) c = vec2(-c.x, -c.y);
+				else if (rotSteps == 3) c = vec2( c.y, -c.x);
+				center_local = c + vec2(0.5);
 
 				// 2. Hash using the WRAPPED cell so the layout repeats perfectly
 				float h = hash_sdf(vec3(wrapped_cell, float(s)));
@@ -115,7 +123,16 @@ float evalSdf(vec3            p, float           time, CloudProperties props) {
 				sphere_center.xz = (cell + center_local) * tileScale;
 				sphere_center.y = Cy;
 
-				float dist = length(p - sphere_center) - radius;
+				float dist;
+				if (h < 100.5) {
+					// Evaluate as Sphere
+					dist = length(p - sphere_center) - radius;
+				} else {
+					// Evaluate as Rounded Box (Anvil cloud)
+					vec3 boxExtents = vec3(radius * 1.5, radius * 0.5, radius * 1.5);
+					vec3 q = abs(p - sphere_center) - boxExtents;
+					dist = length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0) - (radius * 0.2); // 0.2 is the corner rounding
+				}
 
 				d = smin(d, dist, 0.45 * tileScale);
 			}
