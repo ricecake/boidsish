@@ -43,10 +43,9 @@ public:
 						atmosphere->SetMieScale(mie);
 						cfg.SetFloat("mie_scale", mie);
 					}
-					float mieAnisotropy = atmosphere->GetMieAnisotropy();
-					if (ImGui::SliderFloat("Mie Anisotropy", &mieAnisotropy, 0.0f, 0.99f)) {
+					glm::vec3 mieAnisotropy = atmosphere->GetMieAnisotropy();
+					if (ImGui::SliderFloat3("Mie Anisotropy (g)", &mieAnisotropy[0], 0.0f, 0.99f)) {
 						atmosphere->SetMieAnisotropy(mieAnisotropy);
-						// Add config if needed
 					}
 					float multiScat = atmosphere->GetMultiScatScale();
 					if (ImGui::SliderFloat("MultiScat Scale", &multiScat, 0.0f, 2.0f)) {
@@ -183,13 +182,13 @@ public:
 						atmosphere->SetRayleighScattering(rayleighScattering * 0.001f);
 					}
 
-					float mieScat = atmosphere->GetMieScattering() * 1000.0f;
-					if (ImGui::SliderFloat("Mie Scattering coeff", &mieScat, 0.0f, 10.0f)) {
+					glm::vec3 mieScat = atmosphere->GetMieScattering() * 1000.0f;
+					if (ImGui::ColorEdit3("Mie Scattering coeff", &mieScat[0])) {
 						atmosphere->SetMieScattering(mieScat * 0.001f);
 					}
 
-					float mieExt = atmosphere->GetMieExtinction() * 1000.0f;
-					if (ImGui::SliderFloat("Mie Extinction coeff", &mieExt, 0.0f, 10.0f)) {
+					glm::vec3 mieExt = atmosphere->GetMieExtinction() * 1000.0f;
+					if (ImGui::ColorEdit3("Mie Extinction coeff", &mieExt[0])) {
 						atmosphere->SetMieExtinction(mieExt * 0.001f);
 					}
 
@@ -279,7 +278,8 @@ private:
 		if (atmosphere) {
 			file << "RayleighScale=" << atmosphere->GetRayleighScale() << "\n";
 			file << "MieScale=" << atmosphere->GetMieScale() << "\n";
-			file << "MieAnisotropy=" << atmosphere->GetMieAnisotropy() << "\n";
+			auto ma = atmosphere->GetMieAnisotropy();
+			file << "MieAnisotropy=" << ma.r << "," << ma.g << "," << ma.b << "\n";
 			file << "MultiScatScale=" << atmosphere->GetMultiScatScale() << "\n";
 			file << "AmbientScatScale=" << atmosphere->GetAmbientScatScale() << "\n";
 
@@ -313,8 +313,10 @@ private:
 			file << "AtmosphereHeight=" << atmosphere->GetAtmosphereHeight() << "\n";
 			auto rs = atmosphere->GetRayleighScattering();
 			file << "RayleighScattering=" << rs.r << "," << rs.g << "," << rs.b << "\n";
-			file << "MieScattering=" << atmosphere->GetMieScattering() << "\n";
-			file << "MieExtinction=" << atmosphere->GetMieExtinction() << "\n";
+			auto ms = atmosphere->GetMieScattering();
+			file << "MieScattering=" << ms.r << "," << ms.g << "," << ms.b << "\n";
+			auto me = atmosphere->GetMieExtinction();
+			file << "MieExtinction=" << me.r << "," << me.g << "," << me.b << "\n";
 			auto oa = atmosphere->GetOzoneAbsorption();
 			file << "OzoneAbsorption=" << oa.r << "," << oa.g << "," << oa.b << "\n";
 			file << "RayleighScaleHeight=" << atmosphere->GetRayleighScaleHeight() << "\n";

@@ -3543,8 +3543,8 @@ namespace Boidsish {
 				// Atmosphere-specific attributes from weather
 				impl->atmosphere_effect->SetAtmosphereHeight(w.atmosphere_height);
 				impl->atmosphere_effect->SetRayleighScattering(w.rayleigh_scattering);
-				impl->atmosphere_effect->SetMieScattering(w.mie_scattering);
-				impl->atmosphere_effect->SetMieExtinction(w.mie_extinction);
+				impl->atmosphere_effect->SetMieScattering(glm::vec3(w.mie_scattering));
+				impl->atmosphere_effect->SetMieExtinction(glm::vec3(w.mie_extinction));
 				impl->atmosphere_effect->SetOzoneAbsorption(w.ozone_absorption);
 				impl->atmosphere_effect->SetRayleighScaleHeight(w.rayleigh_scale_height);
 				impl->atmosphere_effect->SetMieScaleHeight(w.mie_scale_height);

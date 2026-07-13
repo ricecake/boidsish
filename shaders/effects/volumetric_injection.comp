@@ -18,7 +18,7 @@ uniform mat4 uPrevVP;
 uniform vec3 uPrevCamPos;
 uniform vec3 uPrevCamFront;
 
-uniform float uAnisotropy;
+uniform vec3  uAnisotropy;
 uniform float uIntensity;
 uniform float uTemporalAlpha;
 
@@ -161,7 +161,7 @@ void main() {
 
         // Physically based phase functions for both Rayleigh and Mie components
         float rayPhase = rayleighPhase(cosTheta);
-        float miePhase = henyeyGreenstein(uAnisotropy, cosTheta);
+        vec3  miePhase = henyeyGreenstein(uAnisotropy, cosTheta);
         vec3 combinedPhase = s.rayleigh * rayPhase + s.mie * miePhase;
 
         // Consolidate shadow checks: Cloud shadow is a fast texture lookup, so check it first.
@@ -196,7 +196,7 @@ void main() {
         if (atten <= 0.0) continue;
 
         float cosTheta = dot(-V, L);
-        float miePhase = henyeyGreenstein(uAnisotropy, cosTheta);
+        vec3  miePhase = henyeyGreenstein(uAnisotropy, cosTheta);
         float shadow = calculateShadow(i, worldPos, vec3(0,1,0), L);
 
         radiance += lights[i].color * lights[i].intensity * atten * shadow * miePhase * s.mie;

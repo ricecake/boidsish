@@ -539,6 +539,16 @@ namespace Boidsish {
 										cfg.SetFloat("cloud_shadow_intensity", cloud_shadow);
 									}
 
+									float extinction = atmosphere_effect->GetCloudExtinction();
+									if (ImGui::SliderFloat("Extinction Scale", &extinction, 0.001f, 0.1f, "%.3f")) {
+										atmosphere_effect->SetCloudExtinction(extinction);
+									}
+
+									glm::vec3 ext_color = atmosphere_effect->GetCloudExtinctionColor();
+									if (ImGui::ColorEdit3("Extinction Balance", &ext_color[0])) {
+										atmosphere_effect->SetCloudExtinctionColor(ext_color);
+									}
+
 									ImGui::Separator();
 									ImGui::Text("Advanced Cloud Parameters");
 
@@ -711,8 +721,8 @@ namespace Boidsish {
 										ImGui::SameLine();
 										if (ImGui::Button("Unlock##MieScale")) weather->ClearTarget(WeatherAttribute::MieScale);
 									}
-									float mie_g = atmosphere_effect->GetMieAnisotropy();
-									if (ImGui::SliderFloat("Mie Anisotropy", &mie_g, 0.0f, 0.99f)) {
+									glm::vec3 mie_g = atmosphere_effect->GetMieAnisotropy();
+									if (ImGui::SliderFloat3("Mie Anisotropy (g)", &mie_g[0], 0.0f, 0.99f)) {
 										atmosphere_effect->SetMieAnisotropy(mie_g);
 									}
 									float multi_scat = atmosphere_effect->GetMultiScatScale();
@@ -755,24 +765,14 @@ namespace Boidsish {
 										}
 									}
 
-									float mie_scat = atmosphere_effect->GetMieScattering() * 1000.0f;
-									if (ImGui::SliderFloat("Mie Scattering coeff", &mie_scat, 0.0f, 10.0f)) {
-										if (weather) weather->SetTarget(WeatherAttribute::MieScattering, mie_scat * 0.001f);
-										else atmosphere_effect->SetMieScattering(mie_scat * 0.001f);
-									}
-									if (weather) {
-										ImGui::SameLine();
-										if (ImGui::Button("Unlock##MieScattering")) weather->ClearTarget(WeatherAttribute::MieScattering);
+									glm::vec3 mie_scat = atmosphere_effect->GetMieScattering() * 1000.0f;
+									if (ImGui::ColorEdit3("Mie Scattering coeff", &mie_scat[0])) {
+										atmosphere_effect->SetMieScattering(mie_scat * 0.001f);
 									}
 
-									float mie_ext = atmosphere_effect->GetMieExtinction() * 1000.0f;
-									if (ImGui::SliderFloat("Mie Extinction coeff", &mie_ext, 0.0f, 10.0f)) {
-										if (weather) weather->SetTarget(WeatherAttribute::MieExtinction, mie_ext * 0.001f);
-										else atmosphere_effect->SetMieExtinction(mie_ext * 0.001f);
-									}
-									if (weather) {
-										ImGui::SameLine();
-										if (ImGui::Button("Unlock##MieExtinction")) weather->ClearTarget(WeatherAttribute::MieExtinction);
+									glm::vec3 mie_ext = atmosphere_effect->GetMieExtinction() * 1000.0f;
+									if (ImGui::ColorEdit3("Mie Extinction coeff", &mie_ext[0])) {
+										atmosphere_effect->SetMieExtinction(mie_ext * 0.001f);
 									}
 
 									glm::vec3 ozone_absorption = atmosphere_effect->GetOzoneAbsorption() * 1000.0f;
@@ -837,8 +837,8 @@ namespace Boidsish {
 										vol_effect->SetIntensity(intensity);
 									}
 
-									float anisotropy = vol_effect->GetScatteringAnisotropy();
-									if (ImGui::SliderFloat("Anisotropy##Vol", &anisotropy, 0.0f, 0.99f)) {
+									glm::vec3 anisotropy = vol_effect->GetScatteringAnisotropy();
+									if (ImGui::SliderFloat3("Anisotropy##Vol", &anisotropy[0], 0.0f, 0.99f)) {
 										vol_effect->SetScatteringAnisotropy(anisotropy);
 									}
 

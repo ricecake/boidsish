@@ -22,8 +22,8 @@ namespace Boidsish {
 			bool IsEarly() const override { return true; }
 
 			// UI-controlled parameters
-			void SetScatteringAnisotropy(float g) { anisotropy_ = g; }
-			float GetScatteringAnisotropy() const { return anisotropy_; }
+			void SetScatteringAnisotropy(const glm::vec3& g) { anisotropy_ = g; }
+			glm::vec3 GetScatteringAnisotropy() const { return anisotropy_; }
 
 			void SetIntensity(float i) { intensity_ = i; }
 			float GetIntensity() const { return intensity_; }
@@ -55,7 +55,7 @@ namespace Boidsish {
 			glm::vec3 prev_camera_pos_ = glm::vec3(0.0f);
 			glm::vec3 prev_camera_front_ = glm::vec3(0.0f, 0.0f, -1.0f);
 
-			float anisotropy_ = 0.8f;
+			glm::vec3 anisotropy_ = glm::vec3(0.8f);
 			float intensity_ = 1.0f;
 			float temporal_alpha_ = 0.95f;
 
