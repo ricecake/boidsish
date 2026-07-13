@@ -1,3 +1,24 @@
+struct CloudProperties {
+	float altitude;
+	float thickness;
+	float densityBase;
+	float coverage;
+	float worldScale;
+};
+
+struct CloudWeather {
+	float sdf;        // Signed Distance Field (world space)
+	float heightMap;  // Altitude variety
+	float thickness;  // Thickness variety
+	float cellID;     // Per-cell variety
+};
+
+struct CloudLayer {
+	float baseFloor;
+	float baseCeiling;
+	float thickness;
+};
+
 vec3 cloudPhase(float cosTheta) {
 	// Dual-lobe Henyey-Greenstein for forward and back scattering
 	// Blended with a large isotropic component to ensure visibility at all angles
@@ -53,7 +74,8 @@ const float CL_SPHERE_RADII[3] = float[](
 const float CL_RADIUS_VARIATION = 0.04;
 
 // Elegant and precise analytical 3D sphere SDF
-float evalSdf(vec3 p, float time) {
+
+float evalSdf(vec3            p, float           time, CloudProperties props) {
 	float tileScale = 1000.0 * worldScale;
 
 	float y_min = cloudAltitude * worldScale;
@@ -67,7 +89,7 @@ float evalSdf(vec3 p, float time) {
 
 	// Determine how many tiles the 3D texture covers.
 	// mapRange (1000) / tileScale (1000) = 1.0 tile period.
-	float tilePeriod = 4.0;
+	float tilePeriod = 6.0;
 
 	for (int dx = -1; dx <= 1; dx++) {
 		for (int dz = -1; dz <= 1; dz++) {
@@ -99,29 +121,12 @@ float evalSdf(vec3 p, float time) {
 			}
 		}
 	}
-	return d;
+	float maxErosion = 500.0 * worldScale;
+	float maxDilation = 500.0 * worldScale;
+	float coverageOffset = mix(-maxErosion, maxDilation, props.coverage);
+	return d - coverageOffset;
+	// return d;
 }
-
-struct CloudProperties {
-	float altitude;
-	float thickness;
-	float densityBase;
-	float coverage;
-	float worldScale;
-};
-
-struct CloudWeather {
-	float sdf;        // Signed Distance Field (world space)
-	float heightMap;  // Altitude variety
-	float thickness;  // Thickness variety
-	float cellID;     // Per-cell variety
-};
-
-struct CloudLayer {
-	float baseFloor;
-	float baseCeiling;
-	float thickness;
-};
 
 const float cloudFlow = 3.14;
 const float clFlowSpeed = 5.0;
@@ -153,7 +158,7 @@ CloudWeather loadCloudWeather(vec4 tex) {
 
 CloudWeather computeCloudWeather(vec3 p, CloudProperties props) {
 	CloudWeather weather;
-	weather.sdf = evalSdf(p, time);
+	weather.sdf = evalSdf(p, time, props);
 	weather.heightMap = 0.5;
 	weather.cellID = 0.5;
 	weather.thickness = 0.5;
@@ -217,7 +222,14 @@ float calculateCloudShadowFactor(vec3 frag_pos, vec3 L, float intensity) {
 
 	vec3 cloudPos = frag_pos + L * t;
 
-	float d3d = evalSdf(cloudPos, time);
+	CloudProperties props;
+	props.altitude = cloudAltitude;
+	props.thickness = cloudThickness;
+	props.densityBase = cloudDensity;
+	props.coverage = cloudCoverage;
+	props.worldScale = worldScale;
+
+	float d3d = evalSdf(cloudPos, time, props);
 
 	// Sharpness of the cloud edge in meters
 	float penumbra = 100.0 * worldScale;
@@ -238,7 +250,14 @@ float evaluateCloudShadowDensityAtWorldPos(vec2 worldXZ, float time) {
 	float y_center = (y_min + y_max) * 0.5;
 	vec3 basePos = vec3(worldXZ.x, y_center, worldXZ.y);
 
-	float d3d = evalSdf(basePos, time);
+	CloudProperties props;
+	props.altitude = cloudAltitude;
+	props.thickness = cloudThickness;
+	props.densityBase = cloudDensity;
+	props.coverage = cloudCoverage;
+	props.worldScale = worldScale;
+
+	float d3d = evalSdf(basePos, time, props);
 	float penumbra = 100.0 * worldScale;
 	return max(0.0, -d3d / penumbra) * 4.0;
 }

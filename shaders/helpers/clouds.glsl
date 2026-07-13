@@ -30,7 +30,7 @@ vec3 calculateCloudDensity(
 	float type = weather.heightMap;
 	float heightGradient = getDensityHeightGradient(h, type);
 	// Retrieve distance field from evalSdf
-	float dist = evalSdf(p, time);
+	float dist = evalSdf(p, time, props);
 
 	// Inside the cloud, dist is negative.
 	// Density is positive inside, and 0 outside.

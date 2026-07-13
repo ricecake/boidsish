@@ -168,7 +168,7 @@ void main() {
 	float precisionLimit = max(1.0, t_end * 1e-5);
 	float baseStepSize = clamp(rayDist / float(samples), precisionLimit, 200.0);
 
-	float t_offset = jitter * baseStepSize;
+	float t_offset = baseStepSize;
 	float firstStepSize = baseStepSize;
 	float minStepSize = 100000;
 
@@ -208,7 +208,7 @@ void main() {
 			float low_res_sdf = 1e10;
 			float y_min = props.altitude * props.worldScale;
 			float y_max = (props.altitude + props.thickness * 12.0) * props.worldScale;
-			float mapRange = 4000.0 * props.worldScale;
+			float mapRange = 6000.0 * props.worldScale;
 			if (p.y < y_min) {
 				low_res_sdf = y_min - p.y;
 			} else if (p.y > y_max) {
@@ -230,10 +230,11 @@ void main() {
 			}
 // */
 			// Active cell of the texture hit! Switch to analytical raymarch.
+			// p += jitter * rayDir;
 			CloudWeather weather = computeCloudWeather(p, props);
 			CloudLayer layer = computeCloudLayer(weather, props);
 
-			float d3d = evalSdf(p, time);
+			float d3d = evalSdf(p, time, props);
 
 			// Sphere tracing for empty space skipping!
 			if (d3d > 0.0) {
@@ -247,7 +248,7 @@ void main() {
 			// We are inside the cloud volume! Run integration step.
 			float useCheapEval = t / lodDistanceThreshold;
 			vec3 sampleAdvection;
-			vec3 d = calculateCloudDensity(p, weather, layer, props, time, useCheapEval, sampleAdvection);
+			vec3 d = calculateCloudDensity(p + jitter * rayDir, weather, layer, props, time, useCheapEval, sampleAdvection);
 
 			if (max(d.x, max(d.y, d.z)) > 0.01) {
 				if (firstHitDist < 0.0) {

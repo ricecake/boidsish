@@ -22,7 +22,7 @@ void main() {
 	props.worldScale = worldScale;
 
 	// X and Z coordinates represent 1 full period of uv space: p_advected / (1000.0 * props.worldScale)
-	float mapRange = 4000.0 * props.worldScale;
+	float mapRange = 6000.0 * props.worldScale;
 	float worldX = texCoords.x * mapRange;
 	float worldZ = texCoords.z * mapRange;
 
@@ -42,7 +42,7 @@ void main() {
 	float voxelCircumradius = length(voxelSize) * 0.5;
 
 
-	float d3d = evalSdf(p, time);
+	float d3d = evalSdf(p, time, props);
 
 	// Dilate the SDF to ensure the bounding box covers voxel corners
 	d3d -= voxelCircumradius;
