@@ -1,5 +1,5 @@
 #include "graphics.h"
-
+#include <stacktrace> // Requires C++23
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -200,6 +200,8 @@ namespace Boidsish {
 		std::cerr << "\n[OpenGL Debug] " << severityStr << " | " << typeStr << " | " << sourceStr << "\n"
 		          << "  ID: " << id << "\n"
 		          << "  Message: " << message << "\n"
+				  << "  Stacktrace:\n\n"
+		          << std::stacktrace::current() << "\n"
 		          << std::endl;
 
 		// Break into debugger on high severity errors (optional)

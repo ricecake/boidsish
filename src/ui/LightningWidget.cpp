@@ -64,6 +64,11 @@ namespace Boidsish {
 						lightning->SetBranchProbability(branchProb);
 					}
 
+					float thickness = lightning->GetThickness();
+					if (ImGui::SliderFloat("Stripe Thickness", &thickness, 0.1f, 10.0f, "%.2f")) {
+						lightning->SetThickness(thickness);
+					}
+
 					ImGui::Checkbox("Manual Auto-trigger", &m_manualAutoTrigger);
 					ImGui::SetItemTooltip("Spawns random lightning near camera regardless of weather.");
 				}
