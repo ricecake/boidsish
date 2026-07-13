@@ -553,12 +553,12 @@ namespace Boidsish {
 									ImGui::Text("Advanced Cloud Parameters");
 
 									glm::vec3 g1 = atmosphere_effect->GetCloudPhaseG1();
-									if (ImGui::SliderFloat3("Phase G1 (Forward)", &g1[0], 0.0f, 0.99f)) {
+									if (ImGui::ColorEdit3("Phase G1 (Forward)", &g1[0])) {
 										atmosphere_effect->SetCloudPhaseG1(g1);
 									}
-									glm::vec3 g2 = atmosphere_effect->GetCloudPhaseG2();
-									if (ImGui::SliderFloat3("Phase G2 (Backward)", &g2[0], -0.99f, 0.0f)) {
-										atmosphere_effect->SetCloudPhaseG2(g2);
+									glm::vec3 g2 = glm::abs(atmosphere_effect->GetCloudPhaseG2());
+									if (ImGui::ColorEdit3("Phase G2 (Backward)", &g2[0])) {
+										atmosphere_effect->SetCloudPhaseG2(-g2);
 									}
 									float alpha = cfg.GetAppSettingFloat(
 										"cloud_phase_alpha",
@@ -714,7 +714,7 @@ namespace Boidsish {
 										if (ImGui::Button("Unlock##MieScale")) weather->ClearTarget(WeatherAttribute::MieScale);
 									}
 									glm::vec3 mie_g = atmosphere_effect->GetMieAnisotropy();
-									if (ImGui::SliderFloat3("Mie Anisotropy (g)", &mie_g[0], 0.0f, 0.99f)) {
+									if (ImGui::ColorEdit3("Mie Anisotropy (g)", &mie_g[0])) {
 										atmosphere_effect->SetMieAnisotropy(mie_g);
 									}
 									float multi_scat = atmosphere_effect->GetMultiScatScale();
@@ -830,7 +830,7 @@ namespace Boidsish {
 									}
 
 									glm::vec3 anisotropy = vol_effect->GetScatteringAnisotropy();
-									if (ImGui::SliderFloat3("Anisotropy##Vol", &anisotropy[0], 0.0f, 0.99f)) {
+									if (ImGui::ColorEdit3("Anisotropy##Vol", &anisotropy[0])) {
 										vol_effect->SetScatteringAnisotropy(anisotropy);
 									}
 

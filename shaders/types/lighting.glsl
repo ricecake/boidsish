@@ -37,8 +37,8 @@ layout(std140, binding = [[LIGHTING_BINDING]]) uniform Lighting {
 	float cloudDensity;
 	float cloudCoverage;
 	float cloudWarp;
-	vec3  cloudPhaseG1;
-	vec3  cloudPhaseG2;
+	vec4  cloudPhaseG1;
+	vec4  cloudPhaseG2;
 	float cloudPhaseAlpha;
 	float cloudPhaseIsotropic;
 	float cloudPowderScale;

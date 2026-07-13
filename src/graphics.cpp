@@ -2330,8 +2330,8 @@ namespace Boidsish {
 					lighting_ubo_data_.cloudDensity = atmosphere_effect->GetCloudDensity();
 					lighting_ubo_data_.cloudCoverage = atmosphere_effect->GetCloudCoverage();
 					lighting_ubo_data_.cloudWarp = atmosphere_effect->GetCloudWarp();
-					lighting_ubo_data_.cloudPhaseG1 = atmosphere_effect->GetCloudPhaseG1();
-					lighting_ubo_data_.cloudPhaseG2 = atmosphere_effect->GetCloudPhaseG2();
+					lighting_ubo_data_.cloudPhaseG1 = glm::vec4(atmosphere_effect->GetCloudPhaseG1(), 1.0f);
+					lighting_ubo_data_.cloudPhaseG2 = glm::vec4(atmosphere_effect->GetCloudPhaseG2(), 1.0f);
 					lighting_ubo_data_.cloudPhaseAlpha = atmosphere_effect->GetCloudPhaseAlpha();
 					lighting_ubo_data_.cloudPhaseIsotropic = atmosphere_effect->GetCloudPhaseIsotropic();
 					lighting_ubo_data_.cloudPowderScale = atmosphere_effect->GetCloudPowderScale();

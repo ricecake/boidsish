@@ -69,8 +69,8 @@ namespace Boidsish {
 		float cloudDensity;                      // offset 708, 4 bytes
 		float cloudCoverage;                     // offset 712, 4 bytes
 		float cloudWarp;                         // offset 716, 4 bytes
-		alignas(16) glm::vec3 cloudPhaseG1;      // offset 720, 16 bytes aligned
-		alignas(16) glm::vec3 cloudPhaseG2;      // offset 736, 16 bytes aligned
+		glm::vec4 cloudPhaseG1;                  // offset 720, 16 bytes
+		glm::vec4 cloudPhaseG2;                  // offset 736, 16 bytes
 		float cloudPhaseAlpha;                   // offset 752, 4 bytes
 		float cloudPhaseIsotropic;               // offset 756, 4 bytes
 		float cloudPowderScale;                  // offset 760, 4 bytes

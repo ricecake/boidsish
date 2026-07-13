@@ -44,7 +44,7 @@ public:
 						cfg.SetFloat("mie_scale", mie);
 					}
 					glm::vec3 mieAnisotropy = atmosphere->GetMieAnisotropy();
-					if (ImGui::SliderFloat3("Mie Anisotropy (g)", &mieAnisotropy[0], 0.0f, 0.99f)) {
+					if (ImGui::ColorEdit3("Mie Anisotropy (g)", &mieAnisotropy[0])) {
 						atmosphere->SetMieAnisotropy(mieAnisotropy);
 					}
 					float multiScat = atmosphere->GetMultiScatScale();
@@ -106,12 +106,12 @@ public:
 					ImGui::Text("Advanced Cloud Parameters");
 
 					glm::vec3 g1 = atmosphere->GetCloudPhaseG1();
-					if (ImGui::SliderFloat3("Phase G1 (Forward)", &g1[0], 0.0f, 0.99f)) {
+					if (ImGui::ColorEdit3("Phase G1 (Forward)", &g1[0])) {
 						atmosphere->SetCloudPhaseG1(g1);
 					}
-					glm::vec3 g2 = atmosphere->GetCloudPhaseG2();
-					if (ImGui::SliderFloat3("Phase G2 (Backward)", &g2[0], -0.99f, 0.0f)) {
-						atmosphere->SetCloudPhaseG2(g2);
+					glm::vec3 g2 = glm::abs(atmosphere->GetCloudPhaseG2());
+					if (ImGui::ColorEdit3("Phase G2 (Backward)", &g2[0])) {
+						atmosphere->SetCloudPhaseG2(-g2);
 					}
 					float alpha = atmosphere->GetCloudPhaseAlpha();
 					if (ImGui::SliderFloat("Phase Mix Alpha", &alpha, 0.0f, 1.0f)) {
