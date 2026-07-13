@@ -58,7 +58,8 @@ layout(std140, binding = [[LIGHTING_BINDING]]) uniform Lighting {
 	float cirrusOpacity;
 	float _pad_clouds3;
 	vec4  _pad_cloud_shadow_mat[2];
-	float _pad_extra_mat[2];
+	float _pad_extra0;
+	float _pad_extra1;
 	mat4  view;
 	mat4  projection;
 	vec3  lightningColor;
