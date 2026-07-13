@@ -22,7 +22,6 @@ const int LIGHT_FLAG_CLOUD_EMISSIVE = 8;
 const int MAX_LIGHTS = [[MAX_LIGHTS]];
 
 layout(std140, binding = [[LIGHTING_BINDING]]) uniform Lighting {
-	Light lights[MAX_LIGHTS];
 	int   num_lights;
 	float worldScale;
 	float dayTime;
@@ -56,7 +55,12 @@ layout(std140, binding = [[LIGHTING_BINDING]]) uniform Lighting {
 	float cloudCurlFrequency;
 	float sunAureoleStrength;
 	float cirrusOpacity;
-	float _pad_clouds3;
+	float zNear;
+	float zFar;
+	float _pad_clouds3_a;
+	float _pad_clouds3_b;
+	float _pad_clouds3_c;
+	vec4  _pad_clouds3_vec[3];
 	vec4  _pad_cloud_shadow_mat[4];
 	mat4  view;
 	mat4  projection;
