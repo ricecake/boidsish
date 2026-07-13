@@ -10,6 +10,7 @@
 #include "shadow_manager.h"
 #include "shader.h"
 #include "terrain_render_manager.h"
+#include "ConfigManager.h"
 
 namespace Boidsish {
 	namespace PostProcessing {
@@ -80,6 +81,17 @@ namespace Boidsish {
 
 			width_ = width;
 			height_ = height;
+
+			auto& cfg = ConfigManager::GetInstance();
+			float g1_r = cfg.GetAppSettingFloat("cloud_phase_g1_r", 0.875f);
+			float g1_g = cfg.GetAppSettingFloat("cloud_phase_g1_g", 0.875f);
+			float g1_b = cfg.GetAppSettingFloat("cloud_phase_g1_b", 0.875f);
+			cloud_phase_g1_ = glm::vec3(g1_r, g1_g, g1_b);
+
+			float g2_r = cfg.GetAppSettingFloat("cloud_phase_g2_r", 0.3f);
+			float g2_g = cfg.GetAppSettingFloat("cloud_phase_g2_g", 0.3f);
+			float g2_b = cfg.GetAppSettingFloat("cloud_phase_g2_b", 0.3f);
+			cloud_phase_g2_ = -glm::vec3(g2_r, g2_g, g2_b); // Inverted on backend!
 
 			InitializePackedResources();
 			InitializeTemporalResources();

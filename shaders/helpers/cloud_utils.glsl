@@ -1,8 +1,8 @@
-float cloudPhase(float cosTheta) {
+vec3 cloudPhase(float cosTheta) {
 	// Dual-lobe Henyey-Greenstein for forward and back scattering
 	// Blended with a large isotropic component to ensure visibility at all angles
-	float hg = mix(henyeyGreenstein(cloudPhaseG1, cosTheta), henyeyGreenstein(cloudPhaseG2, cosTheta), cloudPhaseAlpha);
-	return mix(hg, 1.0 / (4.0 * PI), cloudPhaseIsotropic);
+	vec3 hg = mix(henyeyGreenstein(cloudPhaseG1, cosTheta), henyeyGreenstein(cloudPhaseG2, cosTheta), cloudPhaseAlpha);
+	return mix(hg, vec3(1.0 / (4.0 * PI)), cloudPhaseIsotropic);
 }
 
 float beerPowder(float d, float local_d) {
