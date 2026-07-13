@@ -552,21 +552,13 @@ namespace Boidsish {
 									ImGui::Separator();
 									ImGui::Text("Advanced Cloud Parameters");
 
-									float g1 = cfg.GetAppSettingFloat(
-										"cloud_phase_g1",
-										atmosphere_effect->GetCloudPhaseG1()
-									);
-									if (ImGui::SliderFloat("Phase G1 (Forward)", &g1, 0.0f, 0.99f)) {
+									glm::vec3 g1 = atmosphere_effect->GetCloudPhaseG1();
+									if (ImGui::SliderFloat3("Phase G1 (Forward)", &g1[0], 0.0f, 0.99f)) {
 										atmosphere_effect->SetCloudPhaseG1(g1);
-										cfg.SetFloat("cloud_phase_g1", g1);
 									}
-									float g2 = cfg.GetAppSettingFloat(
-										"cloud_phase_g2",
-										atmosphere_effect->GetCloudPhaseG2()
-									);
-									if (ImGui::SliderFloat("Phase G2 (Backward)", &g2, -0.99f, 0.0f)) {
+									glm::vec3 g2 = atmosphere_effect->GetCloudPhaseG2();
+									if (ImGui::SliderFloat3("Phase G2 (Backward)", &g2[0], -0.99f, 0.0f)) {
 										atmosphere_effect->SetCloudPhaseG2(g2);
-										cfg.SetFloat("cloud_phase_g2", g2);
 									}
 									float alpha = cfg.GetAppSettingFloat(
 										"cloud_phase_alpha",

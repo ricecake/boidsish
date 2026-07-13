@@ -303,7 +303,7 @@ void main() {
 					if (attenuation * lights[j].intensity < 0.001) continue;
 
 					float cosTheta = dot(rayDir, L);
-					float phase = cloudPhase(cosTheta);
+					vec3  phase = cloudPhase(cosTheta);
 
 					float traceDist = 0.0;
 					vec3 lightTransmittance = vec3(1.0);

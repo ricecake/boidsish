@@ -1,4 +1,7 @@
 
+#ifndef MATH_GLSL
+#define MATH_GLSL
+
 #include "constants.glsl"
 
 float roundToEvenPlaces(float value, float places) {
@@ -82,3 +85,5 @@ float InterleavedGradientNoise(vec2 uv, int FrameId){
 // 0, 5, 8, 13,
 
 // 0,6,8,14,
+
+#endif // MATH_GLSL

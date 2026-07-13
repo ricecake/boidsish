@@ -105,15 +105,13 @@ public:
 					ImGui::Separator();
 					ImGui::Text("Advanced Cloud Parameters");
 
-					float g1 = atmosphere->GetCloudPhaseG1();
-					if (ImGui::SliderFloat("Phase G1 (Forward)", &g1, 0.0f, 0.99f)) {
+					glm::vec3 g1 = atmosphere->GetCloudPhaseG1();
+					if (ImGui::SliderFloat3("Phase G1 (Forward)", &g1[0], 0.0f, 0.99f)) {
 						atmosphere->SetCloudPhaseG1(g1);
-						cfg.SetFloat("cloud_phase_g1", g1);
 					}
-					float g2 = atmosphere->GetCloudPhaseG2();
-					if (ImGui::SliderFloat("Phase G2 (Backward)", &g2, -0.99f, 0.0f)) {
+					glm::vec3 g2 = atmosphere->GetCloudPhaseG2();
+					if (ImGui::SliderFloat3("Phase G2 (Backward)", &g2[0], -0.99f, 0.0f)) {
 						atmosphere->SetCloudPhaseG2(g2);
-						cfg.SetFloat("cloud_phase_g2", g2);
 					}
 					float alpha = atmosphere->GetCloudPhaseAlpha();
 					if (ImGui::SliderFloat("Phase Mix Alpha", &alpha, 0.0f, 1.0f)) {
@@ -296,8 +294,10 @@ private:
 			file << "CloudShadowIntensity="
 			     << ConfigManager::GetInstance().GetAppSettingFloat("cloud_shadow_intensity", 0.5f) << "\n";
 
-			file << "CloudPhaseG1=" << atmosphere->GetCloudPhaseG1() << "\n";
-			file << "CloudPhaseG2=" << atmosphere->GetCloudPhaseG2() << "\n";
+			auto g1 = atmosphere->GetCloudPhaseG1();
+			file << "CloudPhaseG1=" << g1.r << "," << g1.g << "," << g1.b << "\n";
+			auto g2 = atmosphere->GetCloudPhaseG2();
+			file << "CloudPhaseG2=" << g2.r << "," << g2.g << "," << g2.b << "\n";
 			file << "CloudPhaseAlpha=" << atmosphere->GetCloudPhaseAlpha() << "\n";
 			file << "CloudPhaseIsotropic=" << atmosphere->GetCloudPhaseIsotropic() << "\n";
 			file << "CloudPowderScale=" << atmosphere->GetCloudPowderScale() << "\n";
