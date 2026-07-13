@@ -1,3 +1,5 @@
+#ifndef HELPERS_MATH_GLSL
+#define HELPERS_MATH_GLSL
 
 #include "constants.glsl"
 
@@ -82,3 +84,5 @@ float InterleavedGradientNoise(vec2 uv, int FrameId){
 // 0, 5, 8, 13,
 
 // 0,6,8,14,
+
+#endif // HELPERS_MATH_GLSL

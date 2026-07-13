@@ -66,13 +66,13 @@ namespace Boidsish {
 
 			float GetCloudWarp() const { return cloud_warp_; }
 
-			void SetCloudPhaseG1(float g) { cloud_phase_g1_ = g; }
+			void SetCloudPhaseG1(const glm::vec3& g) { cloud_phase_g1_ = g; }
 
-			float GetCloudPhaseG1() const { return cloud_phase_g1_; }
+			glm::vec3 GetCloudPhaseG1() const { return cloud_phase_g1_; }
 
-			void SetCloudPhaseG2(float g) { cloud_phase_g2_ = g; }
+			void SetCloudPhaseG2(const glm::vec3& g) { cloud_phase_g2_ = g; }
 
-			float GetCloudPhaseG2() const { return cloud_phase_g2_; }
+			glm::vec3 GetCloudPhaseG2() const { return cloud_phase_g2_; }
 
 			void SetCloudPhaseAlpha(float a) { cloud_phase_alpha_ = a; }
 
@@ -287,8 +287,8 @@ namespace Boidsish {
 			float     cloud_warp_ = 75.0f;
 			glm::vec3 cloud_color_ = WeatherConstants::DefaultCloudColor;
 
-			float cloud_phase_g1_ = 0.875;
-			float cloud_phase_g2_ = -0.3f;
+			glm::vec3 cloud_phase_g1_ = glm::vec3(0.875f);
+			glm::vec3 cloud_phase_g2_ = glm::vec3(-0.3f);
 			float cloud_phase_alpha_ = 0.181f;
 			float cloud_phase_isotropic_ = 0.426f;
 			float cloud_powder_scale_ = 0.125f;

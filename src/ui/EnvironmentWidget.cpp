@@ -552,21 +552,34 @@ namespace Boidsish {
 									ImGui::Separator();
 									ImGui::Text("Advanced Cloud Parameters");
 
-									float g1 = cfg.GetAppSettingFloat(
-										"cloud_phase_g1",
-										atmosphere_effect->GetCloudPhaseG1()
-									);
-									if (ImGui::SliderFloat("Phase G1 (Forward)", &g1, 0.0f, 0.99f)) {
+									glm::vec3 g1 = atmosphere_effect->GetCloudPhaseG1();
+									float old_g1 = cfg.GetAppSettingFloat("cloud_phase_g1", -1.0f);
+									float default_g1_r = (old_g1 >= 0.0f) ? old_g1 : g1.x;
+									float default_g1_g = (old_g1 >= 0.0f) ? old_g1 : g1.y;
+									float default_g1_b = (old_g1 >= 0.0f) ? old_g1 : g1.z;
+									g1.x = cfg.GetAppSettingFloat("cloud_phase_g1_r", default_g1_r);
+									g1.y = cfg.GetAppSettingFloat("cloud_phase_g1_g", default_g1_g);
+									g1.z = cfg.GetAppSettingFloat("cloud_phase_g1_b", default_g1_b);
+									if (ImGui::ColorEdit3("Phase G1 (Forward)", &g1[0])) {
 										atmosphere_effect->SetCloudPhaseG1(g1);
-										cfg.SetFloat("cloud_phase_g1", g1);
+										cfg.SetFloat("cloud_phase_g1_r", g1.x);
+										cfg.SetFloat("cloud_phase_g1_g", g1.y);
+										cfg.SetFloat("cloud_phase_g1_b", g1.z);
 									}
-									float g2 = cfg.GetAppSettingFloat(
-										"cloud_phase_g2",
-										atmosphere_effect->GetCloudPhaseG2()
-									);
-									if (ImGui::SliderFloat("Phase G2 (Backward)", &g2, -0.99f, 0.0f)) {
-										atmosphere_effect->SetCloudPhaseG2(g2);
-										cfg.SetFloat("cloud_phase_g2", g2);
+
+									glm::vec3 g2 = -atmosphere_effect->GetCloudPhaseG2(); // positive in UI
+									float old_g2 = cfg.GetAppSettingFloat("cloud_phase_g2", 1.0f);
+									float default_g2_r = (old_g2 <= 0.0f) ? -old_g2 : g2.x;
+									float default_g2_g = (old_g2 <= 0.0f) ? -old_g2 : g2.y;
+									float default_g2_b = (old_g2 <= 0.0f) ? -old_g2 : g2.z;
+									g2.x = cfg.GetAppSettingFloat("cloud_phase_g2_r", default_g2_r);
+									g2.y = cfg.GetAppSettingFloat("cloud_phase_g2_g", default_g2_g);
+									g2.z = cfg.GetAppSettingFloat("cloud_phase_g2_b", default_g2_b);
+									if (ImGui::ColorEdit3("Phase G2 (Backward)", &g2[0])) {
+										atmosphere_effect->SetCloudPhaseG2(-g2); // Store negative on backend!
+										cfg.SetFloat("cloud_phase_g2_r", g2.x);
+										cfg.SetFloat("cloud_phase_g2_g", g2.y);
+										cfg.SetFloat("cloud_phase_g2_b", g2.z);
 									}
 									float alpha = cfg.GetAppSettingFloat(
 										"cloud_phase_alpha",
@@ -722,7 +735,7 @@ namespace Boidsish {
 										if (ImGui::Button("Unlock##MieScale")) weather->ClearTarget(WeatherAttribute::MieScale);
 									}
 									glm::vec3 mie_g = atmosphere_effect->GetMieAnisotropy();
-									if (ImGui::SliderFloat3("Mie Anisotropy (g)", &mie_g[0], 0.0f, 0.99f)) {
+									if (ImGui::ColorEdit3("Mie Anisotropy (g)", &mie_g[0])) {
 										atmosphere_effect->SetMieAnisotropy(mie_g);
 									}
 									float multi_scat = atmosphere_effect->GetMultiScatScale();
@@ -838,7 +851,7 @@ namespace Boidsish {
 									}
 
 									glm::vec3 anisotropy = vol_effect->GetScatteringAnisotropy();
-									if (ImGui::SliderFloat3("Anisotropy##Vol", &anisotropy[0], 0.0f, 0.99f)) {
+									if (ImGui::ColorEdit3("Anisotropy##Vol", &anisotropy[0])) {
 										vol_effect->SetScatteringAnisotropy(anisotropy);
 									}
 

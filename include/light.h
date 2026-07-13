@@ -69,27 +69,30 @@ namespace Boidsish {
 		float cloudDensity;                      // offset 708, 4 bytes
 		float cloudCoverage;                     // offset 712, 4 bytes
 		float cloudWarp;                         // offset 716, 4 bytes
-		float cloudPhaseG1;                      // offset 720, 4 bytes
-		float cloudPhaseG2;                      // offset 724, 4 bytes
-		float cloudPhaseAlpha;                   // offset 728, 4 bytes
-		float cloudPhaseIsotropic;               // offset 732, 4 bytes
-		float cloudPowderScale;                  // offset 736, 4 bytes
-		float cloudPowderMultiplier;             // offset 740, 4 bytes
-		float cloudPowderLocalScale;             // offset 744, 4 bytes
-		float cloudShadowOpticalDepthMultiplier; // offset 748, 4 bytes
-		float cloudShadowStepMultiplier;         // offset 752, 4 bytes
-		float cloudSunLightScale;                // offset 756, 4 bytes
-		float cloudMoonLightScale;               // offset 760, 4 bytes
-		float cloudBeerPowderMix;                // offset 764, 4 bytes
-		float cloudFlowSpeed;                    // offset 768, 4 bytes
-		float cloudFlowDirection;                // offset 772, 4 bytes
-		float cloudFlowHeightScale;              // offset 776, 4 bytes
-		float cloudCurlStrength;                 // offset 780, 4 bytes
-		float cloudCurlFrequency;                // offset 784, 4 bytes
-		float sunAureoleStrength;                // offset 788, 4 bytes
-		float cirrusOpacity;                     // offset 792, 4 bytes
-		float _pad_clouds3;                      // offset 796, 4 bytes
-		float _pad_cloud_shadow_mat[16];         // offset 800, 64 bytes
+		alignas(16) glm::vec3 cloudPhaseG1;      // offset 720, 16 bytes (aligned)
+		alignas(16) glm::vec3 cloudPhaseG2;      // offset 736, 16 bytes (aligned)
+		float cloudPhaseAlpha;                   // offset 748, 4 bytes (aligned to 4-byte boundary)
+		float cloudPhaseIsotropic;               // offset 752, 4 bytes
+		float cloudPowderScale;                  // offset 756, 4 bytes
+		float cloudPowderMultiplier;             // offset 760, 4 bytes
+		float cloudPowderLocalScale;             // offset 764, 4 bytes
+		float cloudShadowOpticalDepthMultiplier; // offset 768, 4 bytes
+		float cloudShadowStepMultiplier;         // offset 772, 4 bytes
+		float cloudSunLightScale;                // offset 776, 4 bytes
+		float cloudMoonLightScale;               // offset 780, 4 bytes
+		float cloudBeerPowderMix;                // offset 784, 4 bytes
+		float cloudFlowSpeed;                    // offset 788, 4 bytes
+		float cloudFlowDirection;                // offset 792, 4 bytes
+		float cloudFlowHeightScale;              // offset 796, 4 bytes
+		float cloudCurlStrength;                 // offset 800, 4 bytes
+		float cloudCurlFrequency;                // offset 804, 4 bytes
+		float sunAureoleStrength;                // offset 808, 4 bytes
+		float cirrusOpacity;                     // offset 812, 4 bytes
+		float _pad_cloud_1;                      // offset 816, 4 bytes
+		float _pad_cloud_2;                      // offset 820, 4 bytes
+		float _pad_cloud_3;                      // offset 824, 4 bytes
+		float _pad_cloud_4;                      // offset 828, 4 bytes
+		float _pad_cloud_shadow_mat[8];          // offset 832, 32 bytes
 		alignas(16) glm::mat4 view;              // offset 864, 64 bytes
 		alignas(16) glm::mat4 projection;        // offset 928, 64 bytes
 		alignas(16) glm::vec3 lightningColor;    // offset 992, 12 bytes
