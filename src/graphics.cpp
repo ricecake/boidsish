@@ -2330,8 +2330,8 @@ namespace Boidsish {
 					lighting_ubo_data_.cloudDensity = atmosphere_effect->GetCloudDensity();
 					lighting_ubo_data_.cloudCoverage = atmosphere_effect->GetCloudCoverage();
 					lighting_ubo_data_.cloudWarp = atmosphere_effect->GetCloudWarp();
-					lighting_ubo_data_.cloudPhaseG1 = atmosphere_effect->GetCloudPhaseG1();
-					lighting_ubo_data_.cloudPhaseG2 = atmosphere_effect->GetCloudPhaseG2();
+					lighting_ubo_data_.cloudPhaseG1 = glm::vec4(atmosphere_effect->GetCloudPhaseG1(), 1.0f);
+					lighting_ubo_data_.cloudPhaseG2 = glm::vec4(atmosphere_effect->GetCloudPhaseG2(), 1.0f);
 					lighting_ubo_data_.cloudPhaseAlpha = atmosphere_effect->GetCloudPhaseAlpha();
 					lighting_ubo_data_.cloudPhaseIsotropic = atmosphere_effect->GetCloudPhaseIsotropic();
 					lighting_ubo_data_.cloudPowderScale = atmosphere_effect->GetCloudPowderScale();
@@ -3543,8 +3543,8 @@ namespace Boidsish {
 				// Atmosphere-specific attributes from weather
 				impl->atmosphere_effect->SetAtmosphereHeight(w.atmosphere_height);
 				impl->atmosphere_effect->SetRayleighScattering(w.rayleigh_scattering);
-				impl->atmosphere_effect->SetMieScattering(w.mie_scattering);
-				impl->atmosphere_effect->SetMieExtinction(w.mie_extinction);
+				impl->atmosphere_effect->SetMieScattering(glm::vec3(w.mie_scattering));
+				impl->atmosphere_effect->SetMieExtinction(glm::vec3(w.mie_extinction));
 				impl->atmosphere_effect->SetOzoneAbsorption(w.ozone_absorption);
 				impl->atmosphere_effect->SetRayleighScaleHeight(w.rayleigh_scale_height);
 				impl->atmosphere_effect->SetMieScaleHeight(w.mie_scale_height);

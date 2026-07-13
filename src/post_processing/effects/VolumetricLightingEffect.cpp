@@ -106,7 +106,7 @@ namespace Boidsish {
 				// injection_shader_->setInt("u_curlTexture", Constants::TextureUnit::NoiseCurl());
 			}
 
-			injection_shader_->setFloat("uAnisotropy", anisotropy_);
+			injection_shader_->setVec3("uAnisotropy", anisotropy_);
 			injection_shader_->setFloat("uIntensity", intensity_);
 
 			if (atmos_mgr) {

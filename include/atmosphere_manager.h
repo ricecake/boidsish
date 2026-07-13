@@ -68,14 +68,14 @@ namespace Boidsish {
 
 		float GetMieScale() const { return _mieScale; }
 
-		void SetMieAnisotropy(float g) {
+		void SetMieAnisotropy(const glm::vec3& g) {
 			if (g != _mieAnisotropy) {
 				_mieAnisotropy = g;
 				_needsPrecompute = true;
 			}
 		}
 
-		float GetMieAnisotropy() const { return _mieAnisotropy; }
+		glm::vec3 GetMieAnisotropy() const { return _mieAnisotropy; }
 
 		void SetMultiScatteringScale(float s) { _multiScatScale = s; }
 
@@ -103,23 +103,23 @@ namespace Boidsish {
 
 		glm::vec3 GetRayleighScattering() const { return _rayleighScattering; }
 
-		void SetMieScattering(float s) {
+		void SetMieScattering(const glm::vec3& s) {
 			if (s != _mieScattering) {
 				_mieScattering = s;
 				_needsPrecompute = true;
 			}
 		}
 
-		float GetMieScattering() const { return _mieScattering; }
+		glm::vec3 GetMieScattering() const { return _mieScattering; }
 
-		void SetMieExtinction(float e) {
+		void SetMieExtinction(const glm::vec3& e) {
 			if (e != _mieExtinction) {
 				_mieExtinction = e;
 				_needsPrecompute = true;
 			}
 		}
 
-		float GetMieExtinction() const { return _mieExtinction; }
+		glm::vec3 GetMieExtinction() const { return _mieExtinction; }
 
 		void SetOzoneAbsorption(const glm::vec3& a) {
 			if (a != _ozoneAbsorption) {
@@ -234,13 +234,13 @@ namespace Boidsish {
 
 		float     _rayleighScale = WeatherConstants::RayleighScale.normal;
 		float     _mieScale = WeatherConstants::MieScale.normal;
-		float     _mieAnisotropy = WeatherConstants::MieAnisotropy;
+		glm::vec3 _mieAnisotropy = glm::vec3(WeatherConstants::MieAnisotropy);
 		float     _multiScatScale = 1.0f;
 		float     _ambientScatScale = 1.0f;
 		float     _atmosphereHeight = WeatherConstants::AtmosphereHeight.normal;
 		glm::vec3 _rayleighScattering = WeatherConstants::RayleighScattering;
-		float     _mieScattering = WeatherConstants::MieScattering;
-		float     _mieExtinction = WeatherConstants::MieExtinction;
+		glm::vec3 _mieScattering = glm::vec3(WeatherConstants::MieScattering);
+		glm::vec3 _mieExtinction = glm::vec3(WeatherConstants::MieExtinction);
 		glm::vec3 _ozoneAbsorption = WeatherConstants::OzoneAbsorption;
 		float     _rayleighScaleHeight = WeatherConstants::RayleighScaleHeight.normal;
 		float     _mieScaleHeight = WeatherConstants::MieScaleHeight.normal;

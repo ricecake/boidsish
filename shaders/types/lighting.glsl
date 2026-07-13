@@ -37,8 +37,8 @@ layout(std140, binding = [[LIGHTING_BINDING]]) uniform Lighting {
 	float cloudDensity;
 	float cloudCoverage;
 	float cloudWarp;
-	float cloudPhaseG1;
-	float cloudPhaseG2;
+	vec4  cloudPhaseG1;
+	vec4  cloudPhaseG2;
 	float cloudPhaseAlpha;
 	float cloudPhaseIsotropic;
 	float cloudPowderScale;
@@ -57,7 +57,9 @@ layout(std140, binding = [[LIGHTING_BINDING]]) uniform Lighting {
 	float sunAureoleStrength;
 	float cirrusOpacity;
 	float _pad_clouds3;
-	vec4  _pad_cloud_shadow_mat[4];
+	vec4  _pad_cloud_shadow_mat[2];
+	float _pad_extra0;
+	float _pad_extra1;
 	mat4  view;
 	mat4  projection;
 	vec3  lightningColor;

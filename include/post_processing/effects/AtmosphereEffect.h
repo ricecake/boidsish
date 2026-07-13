@@ -66,13 +66,13 @@ namespace Boidsish {
 
 			float GetCloudWarp() const { return cloud_warp_; }
 
-			void SetCloudPhaseG1(float g) { cloud_phase_g1_ = g; }
+			void SetCloudPhaseG1(const glm::vec3& g) { cloud_phase_g1_ = g; }
 
-			float GetCloudPhaseG1() const { return cloud_phase_g1_; }
+			glm::vec3 GetCloudPhaseG1() const { return cloud_phase_g1_; }
 
-			void SetCloudPhaseG2(float g) { cloud_phase_g2_ = g; }
+			void SetCloudPhaseG2(const glm::vec3& g) { cloud_phase_g2_ = g; }
 
-			float GetCloudPhaseG2() const { return cloud_phase_g2_; }
+			glm::vec3 GetCloudPhaseG2() const { return cloud_phase_g2_; }
 
 			void SetCloudPhaseAlpha(float a) { cloud_phase_alpha_ = a; }
 
@@ -143,9 +143,9 @@ namespace Boidsish {
 
 			float GetMieScale() const { return mie_scale_; }
 
-			void SetMieAnisotropy(float g) { mie_anisotropy_ = g; }
+			void SetMieAnisotropy(const glm::vec3& g) { mie_anisotropy_ = g; }
 
-			float GetMieAnisotropy() const { return mie_anisotropy_; }
+			glm::vec3 GetMieAnisotropy() const { return mie_anisotropy_; }
 
 			void SetMultiScatScale(float s) { multi_scat_scale_ = s; }
 
@@ -163,13 +163,13 @@ namespace Boidsish {
 
 			glm::vec3 GetRayleighScattering() const { return rayleigh_scattering_; }
 
-			void SetMieScattering(float s) { mie_scattering_ = s; }
+			void SetMieScattering(const glm::vec3& s) { mie_scattering_ = s; }
 
-			float GetMieScattering() const { return mie_scattering_; }
+			glm::vec3 GetMieScattering() const { return mie_scattering_; }
 
-			void SetMieExtinction(float e) { mie_extinction_ = e; }
+			void SetMieExtinction(const glm::vec3& e) { mie_extinction_ = e; }
 
-			float GetMieExtinction() const { return mie_extinction_; }
+			glm::vec3 GetMieExtinction() const { return mie_extinction_; }
 
 			void SetOzoneAbsorption(const glm::vec3& a) { ozone_absorption_ = a; }
 
@@ -287,8 +287,8 @@ namespace Boidsish {
 			float     cloud_warp_ = 75.0f;
 			glm::vec3 cloud_color_ = WeatherConstants::DefaultCloudColor;
 
-			float cloud_phase_g1_ = 0.875;
-			float cloud_phase_g2_ = -0.3f;
+			glm::vec3 cloud_phase_g1_ = glm::vec3(0.875f);
+			glm::vec3 cloud_phase_g2_ = glm::vec3(-0.3f);
 			float cloud_phase_alpha_ = 0.181f;
 			float cloud_phase_isotropic_ = 0.426f;
 			float cloud_powder_scale_ = 0.125f;
@@ -308,13 +308,13 @@ namespace Boidsish {
 
 			float     rayleigh_scale_ = WeatherConstants::RayleighScale.normal;
 			float     mie_scale_ = WeatherConstants::MieScale.normal;
-			float     mie_anisotropy_ = WeatherConstants::MieAnisotropy;
+			glm::vec3 mie_anisotropy_ = glm::vec3(WeatherConstants::MieAnisotropy);
 			float     multi_scat_scale_ = 0.250f;
 			float     ambient_scat_scale_ = 0.0f;
 			float     atmosphere_height_ = WeatherConstants::AtmosphereHeight.normal;
 			glm::vec3 rayleigh_scattering_ = WeatherConstants::RayleighScattering;
-			float     mie_scattering_ = WeatherConstants::MieScattering;
-			float     mie_extinction_ = WeatherConstants::MieExtinction;
+			glm::vec3 mie_scattering_ = glm::vec3(WeatherConstants::MieScattering);
+			glm::vec3 mie_extinction_ = glm::vec3(WeatherConstants::MieExtinction);
 			glm::vec3 ozone_absorption_ = WeatherConstants::OzoneAbsorption;
 			float     rayleigh_scale_height_ = WeatherConstants::RayleighScaleHeight.normal;
 			float     mie_scale_height_ = WeatherConstants::MieScaleHeight.normal;

@@ -1,4 +1,7 @@
 
+#ifndef MATH_GLSL
+#define MATH_GLSL
+
 #include "constants.glsl"
 
 float roundToEvenPlaces(float value, float places) {
@@ -14,6 +17,19 @@ float roundToPlaces(float value, float places) {
 float henyeyGreenstein(float g, float cosTheta) {
 	float g2 = g * g;
 	return (1.0 - g2) / (4.0 * PI * pow(max(0.0001, 1.0 + g2 - 2.0 * g * cosTheta), 1.5));
+}
+
+vec3 henyeyGreenstein(vec3 g, float cosTheta) {
+	if (g.r == g.g && g.g == g.b) {
+		float gs = g.r;
+		float g2 = gs * gs;
+		return vec3((1.0 - g2) / (4.0 * PI * pow(max(0.0001, 1.0 + g2 - 2.0 * gs * cosTheta), 1.5)));
+	} else {
+		vec3 g2 = g * g;
+		vec3 den = vec3(1.0) + g2 - 2.0 * g * cosTheta;
+		den = max(vec3(0.0001), den);
+		return (vec3(1.0) - g2) / (4.0 * PI * pow(den, vec3(1.5)));
+	}
 }
 
 float remap(float value, float low1, float high1, float low2, float high2) {
@@ -69,3 +85,5 @@ float InterleavedGradientNoise(vec2 uv, int FrameId){
 // 0, 5, 8, 13,
 
 // 0,6,8,14,
+
+#endif // MATH_GLSL
