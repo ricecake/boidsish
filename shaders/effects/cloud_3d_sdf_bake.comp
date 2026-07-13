@@ -22,7 +22,7 @@ void main() {
 	props.worldScale = worldScale;
 
 	// X and Z coordinates represent 1 full period of uv space: p_advected / (1000.0 * props.worldScale)
-	float mapRange = 1000.0 * props.worldScale;
+	float mapRange = 4000.0 * props.worldScale;
 	float worldX = texCoords.x * mapRange;
 	float worldZ = texCoords.z * mapRange;
 
@@ -32,8 +32,21 @@ void main() {
 	float worldY = y_min + texCoords.y * (y_max - y_min);
 
 	vec3 p = vec3(worldX, worldY, worldZ);
+	vec3 voxelSize = vec3(
+		mapRange / float(size.x),
+		(y_max - y_min) / float(size.y),
+		mapRange / float(size.z)
+	);
+
+// The distance from the center of the voxel to its furthest corner
+	float voxelCircumradius = length(voxelSize) * 0.5;
+
 
 	float d3d = evalSdf(p, time);
+
+	// Dilate the SDF to ensure the bounding box covers voxel corners
+	d3d -= voxelCircumradius;
+	// p.xz /= 6.0;
 
 	imageStore(outSdfTexture, pixel, vec4(d3d, 0.0, 0.0, 0.0));
 }

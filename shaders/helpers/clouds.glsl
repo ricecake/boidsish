@@ -27,7 +27,8 @@ vec3 calculateCloudDensity(
 
 	float h = clamp((p.y - layer.baseFloor) / layer.thickness, 0.0, 1.0);
 	advection = getCloudAdvectionSpeed(h, time);
-
+	float type = weather.heightMap;
+	float heightGradient = getDensityHeightGradient(h, type);
 	// Retrieve distance field from evalSdf
 	float dist = evalSdf(p, time);
 
@@ -35,7 +36,7 @@ vec3 calculateCloudDensity(
 	// Density is positive inside, and 0 outside.
 	// We can use a smooth transition to avoid aliasing.
 	float softness = 15.0 * props.worldScale;
-	float density = clamp(-dist / softness, 0.0, 1.0) * props.densityBase;
+	float density = clamp(-dist * heightGradient, 0.0, 1.0) * props.densityBase;
 
 	return vec3(density);
 }

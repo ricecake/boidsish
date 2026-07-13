@@ -204,31 +204,31 @@ void main() {
 			}
 
 			vec3 p = viewPos + rayDir * t;
-
+// /*
 			float low_res_sdf = 1e10;
 			float y_min = props.altitude * props.worldScale;
 			float y_max = (props.altitude + props.thickness * 12.0) * props.worldScale;
-
+			float mapRange = 4000.0 * props.worldScale;
 			if (p.y < y_min) {
 				low_res_sdf = y_min - p.y;
 			} else if (p.y > y_max) {
 				low_res_sdf = p.y - y_max;
 			} else {
-				vec3 p_unadvected = p + getCloudWindOffset(time);
 				vec3 texCoords;
-				texCoords.x = p_unadvected.x / (1000.0 * props.worldScale);
-				texCoords.z = p_unadvected.z / (1000.0 * props.worldScale);
-				texCoords.y = (p_unadvected.y - y_min) / (y_max - y_min);
+				texCoords.x = p.x / mapRange;
+				texCoords.z = p.z / mapRange;
+				texCoords.y = (p.y - y_min) / (y_max - y_min);
+				// texCoords.xz *= 6.0;
 				low_res_sdf = texture(u_cloudSdf3DTexture, texCoords).r;
 			}
 
 			if (low_res_sdf > 0.0) {
 				// Skip empty space conservatively using the 3D SDF texture.
-				t += max(low_res_sdf * 0.9, baseStepSize);
+				t += max(low_res_sdf * 0.9, 2);
 				prevDensity = vec3(0.0);
 				continue;
 			}
-
+// */
 			// Active cell of the texture hit! Switch to analytical raymarch.
 			CloudWeather weather = computeCloudWeather(p, props);
 			CloudLayer layer = computeCloudLayer(weather, props);
@@ -239,7 +239,7 @@ void main() {
 			if (d3d > 0.0) {
 				// We are outside of the cloud. Skip empty space conservatively using the 3D SDF.
 				// We must advance at least by baseStepSize to ensure forward progress.
-				t += max(d3d, baseStepSize);
+				t += max(d3d, 2.0 * worldScale);
 				prevDensity = vec3(0.0);
 				continue;
 			}

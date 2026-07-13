@@ -26,8 +26,8 @@ vec3 beerPowder(vec3 d, vec3 local_d) {
 // https://iquilezles.org/articles/smin
 float smin( float a, float b, float k )
 {
-    float h = max(k-abs(a-b),0.0);
-    return min(a, b) - h*h*0.25/k;
+	float h = max(k-abs(a-b),0.0);
+	return min(a, b) - h*h*0.25/k;
 }
 
 // Simple inline hash for cell-specific variation
@@ -60,43 +60,42 @@ float evalSdf(vec3 p, float time) {
 	float y_max = (cloudAltitude + cloudThickness * 12.0) * worldScale;
 	float H = y_max - y_min;
 
-	// We repeat/tile on X and Z axes.
-	// For each point, find the closest sphere by checking the current cell and its 8 neighbors.
 	vec2 p_xz = p.xz / tileScale;
 	vec2 i_xz = floor(p_xz);
 
 	float d = 1e10;
 
-	// Loop over 3x3 neighbor cells
+	// Determine how many tiles the 3D texture covers.
+	// mapRange (1000) / tileScale (1000) = 1.0 tile period.
+	float tilePeriod = 4.0;
+
 	for (int dx = -1; dx <= 1; dx++) {
 		for (int dz = -1; dz <= 1; dz++) {
 			vec2 cell = i_xz + vec2(float(dx), float(dz));
 
-			// For this cell, evaluate its spheres
+			// 1. WRAP the cell coordinate to match the texture's repeat frequency
+			// GLSL mod() safely handles negative coordinate wrapping
+			vec2 wrapped_cell = mod(cell, tilePeriod);
+
 			for (int s = 0; s < NUM_CL_SPHERES; s++) {
 				vec2 center_local = CL_SPHERE_CENTERS[s];
 				float baseRadius = CL_SPHERE_RADII[s] * tileScale;
 
-				// Compute pseudorandom value per-cell per-sphere
-				float h = hash_sdf(vec3(cell, float(s)));
+				// 2. Hash using the WRAPPED cell so the layout repeats perfectly
+				float h = hash_sdf(vec3(wrapped_cell, float(s)));
 
-				// Variation in radius
 				float radius = baseRadius + (fract(h * 31.39) * 2.0 - 1.0) * CL_RADIUS_VARIATION * tileScale;
-
-				// Sitting in the middle of the height volume, with variation touching bottom/top without being cut in half
 				float h_y = fract(h * 17.31);
 				float Cy = (y_min + radius) + h_y * (H - 2.0 * radius);
 
-				// World space sphere center
 				vec3 sphere_center;
+				// 3. Place using the UNWRAPPED cell so the geometry exists at this world position
 				sphere_center.xz = (cell + center_local) * tileScale;
 				sphere_center.y = Cy;
 
-				// Distance to sphere
 				float dist = length(p - sphere_center) - radius;
 
-				// Smooth minimum blending
-				d = smin(d, dist, 0.2 * tileScale);
+				d = smin(d, dist, 0.45 * tileScale);
 			}
 		}
 	}
@@ -170,8 +169,8 @@ CloudLayer computeCloudLayer(CloudWeather weather, CloudProperties props) {
 }
 
 float remapClamp(float value, float inMin, float inMax, float outMin, float outMax) {
-    float t = clamp((value - inMin) / (inMax - inMin), 0.0, 1.0);
-    return mix(outMin, outMax, t);
+	float t = clamp((value - inMin) / (inMax - inMin), 0.0, 1.0);
+	return mix(outMin, outMax, t);
 }
 
 float getDensityHeightGradient(float h, float type) {
