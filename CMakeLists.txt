@@ -73,6 +73,8 @@ find_package(assimp REQUIRED)
 find_package(ZLIB REQUIRED)
 find_package(Threads REQUIRED)
 
+find_package(Backtrace REQUIRED)
+
 # 1. Define ImGui FIRST so FastNoise2 can see it
 add_library(imgui STATIC
     ${IMGUI_DIR}/imgui.cpp
@@ -143,6 +145,15 @@ target_link_libraries(boidsish
         Threads::Threads
         glm::glm
 )
+
+# Link GCC-specific backtrace libraries manually if necessary
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    if(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 14.0)
+        target_link_libraries(boidsish PRIVATE stdc++exp)
+    else()
+        target_link_libraries(boidsish PRIVATE stdc++_libbacktrace)
+    endif()
+endif()
 
 # 5. Build Examples
 file(GLOB EXAMPLE_DIRS "examples/*")

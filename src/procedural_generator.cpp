@@ -307,6 +307,9 @@ namespace Boidsish {
 		case ProceduralType::Structure:
 			ir = GenerateStructureIR(seed);
 			break;
+		case ProceduralType::PineTree:
+			ir = GeneratePineTreeIR(seed);
+			break;
 		default:
 			return nullptr;
 		}
@@ -318,6 +321,13 @@ namespace Boidsish {
 
 	std::shared_ptr<Model> ProceduralGenerator::GenerateSpringPlant(unsigned int seed, const SpringPlantConfig& config) {
 		auto ir = GenerateSpringPlantIR(seed, config);
+		ProceduralOptimizer::Optimize(ir);
+		ProceduralRefiner::Refine(ir);
+		return ProceduralMesher::GenerateModel(ir);
+	}
+
+	std::shared_ptr<Model> ProceduralGenerator::GeneratePineTree(unsigned int seed) {
+		auto ir = GeneratePineTreeIR(seed);
 		ProceduralOptimizer::Optimize(ir);
 		ProceduralRefiner::Refine(ir);
 		return ProceduralMesher::GenerateModel(ir);
@@ -397,8 +407,8 @@ namespace Boidsish {
 			float     r3 = 0.005f;
 			glm::vec3 c3 = grassCol * 1.5f;
 
-			int id1 = ir.AddTube(p1, p2, r1, r2, c1);
-			ir.AddTube(p2, p3, r2, r3, c2, id1);
+			int id1 = ir.AddTube(p1, p2, r1, r2, c1, -1, "", false, SkinningMode::Auto, 2);
+			ir.AddTube(p2, p3, r2, r3, c2, id1, "", false, SkinningMode::Auto, 2);
 		}
 
 		return ir;
@@ -474,7 +484,11 @@ namespace Boidsish {
 					current.thickness,
 					next_thickness,
 					current.color,
-					current.last_node_idx
+					current.last_node_idx,
+					"",
+					false,
+					SkinningMode::Auto,
+					2
 				);
 				current.position = next_pos;
 				current.thickness = next_thickness;
@@ -486,12 +500,16 @@ namespace Boidsish {
 					0.3f,
 					current.color,
 					current.variant,
-					current.last_node_idx
+					current.last_node_idx,
+					"",
+					false,
+					SkinningMode::Auto,
+					2
 				);
 			} else if (c == 'P') {
-				ir.AddPuffball(current.position, 0.15f, current.color, 0, current.last_node_idx);
+				ir.AddPuffball(current.position, 0.15f, current.color, 0, current.last_node_idx, "", false, SkinningMode::Auto, 3);
 			} else if (c == 'B') {
-				ir.AddPuffball(current.position, 0.15f, current.color, 1, current.last_node_idx);
+				ir.AddPuffball(current.position, 0.15f, current.color, 1, current.last_node_idx, "", false, SkinningMode::Auto, 3);
 			} else if (c == '\'') {
 				current.color_idx = (current.color_idx + 1) % palette.size();
 				current.color = palette[current.color_idx];
@@ -517,11 +535,11 @@ namespace Boidsish {
 			} else if (c == ']') {
 				// Legacy flower head if it was just an empty branch ending
 				if (custom_axiom.empty()) {
-					ir.AddPuffball(current.position, 0.15f, glm::vec3(1.0f, 0.9f, 0.2f), 1, current.last_node_idx);
+					ir.AddPuffball(current.position, 0.15f, glm::vec3(1.0f, 0.9f, 0.2f), 1, current.last_node_idx, "", false, SkinningMode::Auto, 3);
 					for (int i = 0; i < 6; ++i) {
 						glm::quat petalOri = current.orientation * glm::angleAxis(i * 1.04f, glm::vec3(0, 1, 0));
 						petalOri = petalOri * glm::angleAxis(1.0f, glm::vec3(1, 0, 0));
-						ir.AddLeaf(current.position, petalOri, 0.3f, palette[1], 0, current.last_node_idx);
+						ir.AddLeaf(current.position, petalOri, 0.3f, palette[1], 0, current.last_node_idx, "", false, SkinningMode::Auto, 3);
 					}
 				}
 				current = stack.top();
@@ -764,16 +782,20 @@ namespace Boidsish {
 					nodes[nodes[i].parentId].radius,
 					nodes[i].radius,
 					woodCol,
-					parent_ir
+					parent_ir,
+					"",
+					false,
+					SkinningMode::Auto,
+					1
 				);
 			} else {
-				node_to_ir[i] = ir.AddHub(nodes[i].pos, nodes[i].radius, woodCol);
+				node_to_ir[i] = ir.AddHub(nodes[i].pos, nodes[i].radius, woodCol, -1, "", false, SkinningMode::Auto, 1);
 			}
 		}
 
 		for (size_t i = 0; i < nodes.size(); ++i) {
 			if (nodes[i].children.empty()) {
-				ir.AddPuffball(nodes[i].pos, 0.4f, leafCol, node_to_ir[i]);
+				ir.AddPuffball(nodes[i].pos, 0.4f, leafCol, 0, node_to_ir[i], "", false, SkinningMode::Auto, 2);
 			}
 		}
 
@@ -985,10 +1007,14 @@ namespace Boidsish {
 					nodes[nodes[i].parentId].radius,
 					nodes[i].radius,
 					woodCol,
-					nodeToIr[nodes[i].parentId]
+					nodeToIr[nodes[i].parentId],
+					"",
+					false,
+					SkinningMode::Auto,
+					1
 				);
 			} else {
-				nodeToIr[i] = ir.AddHub(nodes[i].pos, nodes[i].radius, woodCol);
+				nodeToIr[i] = ir.AddHub(nodes[i].pos, nodes[i].radius, woodCol, -1, "", false, SkinningMode::Auto, 1);
 			}
 		}
 
@@ -1012,11 +1038,11 @@ namespace Boidsish {
 				if (!tooClose) {
 					populatedPoints.push_back(nodes[i].pos);
 					if (dis(gen) > 0.8f) {
-						ir.AddPuffball(nodes[i].pos, 0.25f, flowerCol, 1, nodeToIr[i]);
+						ir.AddPuffball(nodes[i].pos, 0.25f, flowerCol, 1, nodeToIr[i], "", false, SkinningMode::Auto, 3);
 					} else {
 						glm::quat leafOri = glm::angleAxis(dis(gen) * 6.28f, glm::vec3(0, 1, 0)) *
 						                    glm::angleAxis(dis(gen) * 1.57f, glm::vec3(1, 0, 0));
-						ir.AddLeaf(nodes[i].pos, leafOri, 0.4f, leafCol, 0, nodeToIr[i]);
+						ir.AddLeaf(nodes[i].pos, leafOri, 0.4f, leafCol, 0, nodeToIr[i], "", false, SkinningMode::Auto, 2);
 					}
 				}
 			}
@@ -1081,7 +1107,11 @@ namespace Boidsish {
 					current.thickness,
 					current.thickness,
 					woodCol,
-					current.last_node_idx
+					current.last_node_idx,
+					"",
+					false,
+					SkinningMode::Auto,
+					1
 				);
 				current.position = nextPos;
 				current.last_node_idx = id;
@@ -1103,7 +1133,7 @@ namespace Boidsish {
 				current.thickness *= 0.707f; // Slightly more conservative area conservation
 			} else if (c == ']') {
 				if (current.thickness < 0.15f) {
-					ir.AddPuffball(current.position, 0.6f, leafCol, current.last_node_idx);
+					ir.AddPuffball(current.position, 0.6f, leafCol, 0, current.last_node_idx, "", false, SkinningMode::Auto, 2);
 				}
 				current = stack.top();
 				stack.pop();
@@ -1425,6 +1455,214 @@ namespace Boidsish {
 		}
 
 		return data;
+	}
+
+	ProceduralIR ProceduralGenerator::GeneratePineTreeIR(unsigned int seed) {
+		std::mt19937 gen(seed);
+		std::uniform_real_distribution<float> dis(-0.1f, 0.1f);
+
+		ProceduralIR ir;
+		ir.name = "pinetree";
+
+		float H = 8.0f + dis(gen) * 2.0f; // Height of the tree
+		int num_segments = 16;
+		float seg_height = H / num_segments;
+
+		glm::vec3 woodCol(0.28f, 0.20f, 0.12f);
+		glm::vec3 leafCol(0.04f, 0.30f + dis(gen) * 0.05f, 0.04f);
+
+		// 1. Generate trunk (cylindrical body)
+		std::vector<int> trunk_indices;
+		glm::vec3 current_pos(0.0f);
+		float base_radius = 0.35f + dis(gen) * 0.05f;
+
+		int last_trunk_idx = -1;
+		for (int j = 0; j <= num_segments; ++j) {
+			float y = j * seg_height;
+			float r = base_radius * (1.0f - (y / H) * 0.85f);
+			if (r < 0.03f) r = 0.03f;
+
+			glm::vec3 next_pos(dis(gen) * 0.05f, y, dis(gen) * 0.05f);
+			if (j == 0) {
+				last_trunk_idx = ir.AddHub(next_pos, r, woodCol, -1, "trunk_base", false, SkinningMode::Auto, 1);
+				trunk_indices.push_back(last_trunk_idx);
+			} else {
+				last_trunk_idx = ir.AddTube(
+					current_pos,
+					next_pos,
+					base_radius * (1.0f - ((y - seg_height) / H) * 0.85f),
+					r,
+					woodCol,
+					last_trunk_idx,
+					"trunk",
+					false,
+					SkinningMode::Auto,
+					1
+				);
+				trunk_indices.push_back(last_trunk_idx);
+			}
+			current_pos = next_pos;
+
+			// Add concentric leaf rings around the trunk body
+			if (j >= 3 && j <= num_segments - 2) {
+				float trunk_leaf_size = 1.0f * (1.0f - (y / H) * 0.6f);
+				int num_leaves = 8;
+				for (int m = 0; m < num_leaves; ++m) {
+					float leaf_angle = (float)m / num_leaves * 2.0f * (float)std::numbers::pi;
+					glm::quat leaf_ori = glm::angleAxis(leaf_angle, glm::vec3(0, 1, 0)) *
+					                    glm::angleAxis(0.4f + dis(gen) * 0.1f, glm::vec3(1, 0, 0));
+					ir.AddLeaf(current_pos, leaf_ori, trunk_leaf_size, leafCol, 0, last_trunk_idx, "trunk_leaf", false, SkinningMode::Auto, 2);
+				}
+			}
+		}
+
+		// 2. Generate lateral branches with bifurcation (splits)
+		// We spawn rings of branches along the trunk
+		for (int j = 3; j < num_segments - 1; ++j) {
+			glm::vec3 trunk_node_pos = ir.elements[trunk_indices[j]].position;
+			float y_frac = (float)j / num_segments;
+
+			// Conical pine shape: branches get shorter as we go up
+			float max_branch_len = 3.5f * (1.0f - y_frac);
+			if (max_branch_len < 0.5f) continue;
+
+			int num_branches = 5 - (j / 4); // 5 at bottom, 3-4 at top
+			if (num_branches < 3) num_branches = 3;
+
+			float base_angle_offset = dis(gen) * 2.0f * (float)std::numbers::pi;
+
+			for (int k = 0; k < num_branches; ++k) {
+				float angle = (float)k / num_branches * 2.0f * (float)std::numbers::pi + base_angle_offset;
+				glm::vec3 dir(std::cos(angle), 0.15f + dis(gen) * 0.05f, std::sin(angle));
+				dir = glm::normalize(dir);
+
+				float branch_len = max_branch_len * (0.85f + dis(gen) * 0.1f);
+				float br_start_r = 0.08f * (1.0f - y_frac * 0.5f);
+				float br_mid_r = br_start_r * 0.7f;
+
+				// Level 1 Branch Base Tube
+				glm::vec3 mid_pos = trunk_node_pos + dir * (branch_len * 0.45f);
+				int base_branch_idx = ir.AddTube(
+					trunk_node_pos,
+					mid_pos,
+					br_start_r,
+					br_mid_r,
+					woodCol,
+					trunk_indices[j],
+					"branch_level1",
+					false,
+					SkinningMode::Auto,
+					1
+				);
+
+				// Generate leaf rings along branch level 1
+				{
+					glm::vec3 b_dir = glm::normalize(mid_pos - trunk_node_pos);
+					glm::vec3 up_vec(0, 1, 0);
+					if (std::abs(glm::dot(b_dir, up_vec)) > 0.95f) up_vec = glm::vec3(1, 0, 0);
+					glm::vec3 U = glm::normalize(glm::cross(b_dir, up_vec));
+					glm::vec3 V = glm::normalize(glm::cross(U, b_dir));
+					int num_leaves = 6;
+					for (int m = 0; m < num_leaves; ++m) {
+						float leaf_angle = (float)m / num_leaves * 2.0f * (float)std::numbers::pi;
+						glm::vec3 leaf_dir = std::cos(leaf_angle) * U + std::sin(leaf_angle) * V;
+						glm::quat leaf_ori = glm::quatLookAt(leaf_dir, b_dir);
+						// Tilt leaf slightly outward
+						leaf_ori = leaf_ori * glm::angleAxis(0.3f, glm::vec3(1, 0, 0));
+						ir.AddLeaf(mid_pos, leaf_ori, 0.6f * (1.0f - y_frac * 0.5f), leafCol, 0, base_branch_idx, "branch_leaf", false, SkinningMode::Auto, 2);
+					}
+				}
+
+				// Level 2 Bifurcation: split into left and right sub-branches
+				glm::vec3 side_vec = glm::normalize(glm::cross(dir, glm::vec3(0, 1, 0)));
+				float split_angle = 0.45f + dis(gen) * 0.05f; // around 25-30 degrees
+
+				glm::vec3 sub_dir_left = glm::normalize(dir * std::cos(split_angle) + side_vec * std::sin(split_angle));
+				glm::vec3 sub_dir_right = glm::normalize(dir * std::cos(split_angle) - side_vec * std::sin(split_angle));
+
+				float sub_branch_len = branch_len * 0.35f;
+				float br_end_r = br_mid_r * 0.6f;
+
+				glm::vec3 end_pos_left = mid_pos + sub_dir_left * sub_branch_len;
+				glm::vec3 end_pos_right = mid_pos + sub_dir_right * sub_branch_len;
+
+				int left_branch_idx = ir.AddTube(
+					mid_pos,
+					end_pos_left,
+					br_mid_r,
+					br_end_r,
+					woodCol,
+					base_branch_idx,
+					"branch_level2_L",
+					false,
+					SkinningMode::Auto,
+					1
+				);
+
+				int right_branch_idx = ir.AddTube(
+					mid_pos,
+					end_pos_right,
+					br_mid_r,
+					br_end_r,
+					woodCol,
+					base_branch_idx,
+					"branch_level2_R",
+					false,
+					SkinningMode::Auto,
+					1
+				);
+
+				// Generate leaf rings at level 2 branch ends
+				for (const auto& [end_pos, br_idx, sub_dir] : {std::tie(end_pos_left, left_branch_idx, sub_dir_left), std::tie(end_pos_right, right_branch_idx, sub_dir_right)}) {
+					glm::vec3 up_vec(0, 1, 0);
+					if (std::abs(glm::dot(sub_dir, up_vec)) > 0.95f) up_vec = glm::vec3(1, 0, 0);
+					glm::vec3 U = glm::normalize(glm::cross(sub_dir, up_vec));
+					glm::vec3 V = glm::normalize(glm::cross(U, sub_dir));
+					int num_leaves = 6;
+					for (int m = 0; m < num_leaves; ++m) {
+						float leaf_angle = (float)m / num_leaves * 2.0f * (float)std::numbers::pi;
+						glm::vec3 leaf_dir = std::cos(leaf_angle) * U + std::sin(leaf_angle) * V;
+						glm::quat leaf_ori = glm::quatLookAt(leaf_dir, sub_dir);
+						leaf_ori = leaf_ori * glm::angleAxis(0.3f, glm::vec3(1, 0, 0));
+						ir.AddLeaf(end_pos, leaf_ori, 0.45f * (1.0f - y_frac * 0.5f), leafCol, 0, br_idx, "branch_leaf", false, SkinningMode::Auto, 2);
+					}
+
+					// Level 3 Bifurcation: split again for extra bifurcation density!
+					glm::vec3 sub_side_vec = glm::normalize(glm::cross(sub_dir, glm::vec3(0, 1, 0)));
+					float split_angle3 = 0.4f + dis(gen) * 0.05f;
+
+					glm::vec3 dir_left3 = glm::normalize(sub_dir * std::cos(split_angle3) + sub_side_vec * std::sin(split_angle3));
+					glm::vec3 dir_right3 = glm::normalize(sub_dir * std::cos(split_angle3) - sub_side_vec * std::sin(split_angle3));
+
+					float len3 = sub_branch_len * 0.4f;
+					float r3_end = br_end_r * 0.5f;
+
+					glm::vec3 p_l3 = end_pos + dir_left3 * len3;
+					glm::vec3 p_r3 = end_pos + dir_right3 * len3;
+
+					int br_l3 = ir.AddTube(end_pos, p_l3, br_end_r, r3_end, woodCol, br_idx, "branch_level3_L", false, SkinningMode::Auto, 1);
+					int br_r3 = ir.AddTube(end_pos, p_r3, br_end_r, r3_end, woodCol, br_idx, "branch_level3_R", false, SkinningMode::Auto, 1);
+
+					// Leaf rings at terminal tips
+					for (const auto& [terminal_pos, term_idx, term_dir] : {std::tie(p_l3, br_l3, dir_left3), std::tie(p_r3, br_r3, dir_right3)}) {
+						glm::vec3 up_vec_t(0, 1, 0);
+						if (std::abs(glm::dot(term_dir, up_vec_t)) > 0.95f) up_vec_t = glm::vec3(1, 0, 0);
+						glm::vec3 Ut = glm::normalize(glm::cross(term_dir, up_vec_t));
+						glm::vec3 Vt = glm::normalize(glm::cross(Ut, term_dir));
+						int num_leaves_term = 6;
+						for (int m = 0; m < num_leaves_term; ++m) {
+							float leaf_angle = (float)m / num_leaves_term * 2.0f * (float)std::numbers::pi;
+							glm::vec3 leaf_dir = std::cos(leaf_angle) * Ut + std::sin(leaf_angle) * Vt;
+							glm::quat leaf_ori = glm::quatLookAt(leaf_dir, term_dir);
+							leaf_ori = leaf_ori * glm::angleAxis(0.3f, glm::vec3(1, 0, 0));
+							ir.AddLeaf(terminal_pos, leaf_ori, 0.35f * (1.0f - y_frac * 0.5f), leafCol, 0, term_idx, "branch_leaf", false, SkinningMode::Auto, 2);
+						}
+					}
+				}
+			}
+		}
+
+		return ir;
 	}
 
 } // namespace Boidsish

@@ -76,7 +76,8 @@ namespace Boidsish {
 			is_refractive_(other.is_refractive_),
 			refractive_index_(other.refractive_index_),
 			shadow_caster_override_(other.shadow_caster_override_),
-			allow_megabuffer_(other.allow_megabuffer_) {}
+			allow_megabuffer_(other.allow_megabuffer_),
+			material_type_(other.material_type_) {}
 
 		Shape& operator=(Shape&& other) noexcept {
 			if (this != &other) {
@@ -118,6 +119,7 @@ namespace Boidsish {
 				refractive_index_ = other.refractive_index_;
 				shadow_caster_override_ = other.shadow_caster_override_;
 				allow_megabuffer_ = other.allow_megabuffer_;
+				material_type_ = other.material_type_;
 			}
 			return *this;
 		}
@@ -426,6 +428,13 @@ namespace Boidsish {
 			MarkDirty();
 		}
 
+		inline int GetMaterialType() const { return material_type_; }
+
+		inline void SetMaterialType(int type) {
+			material_type_ = type;
+			MarkDirty();
+		}
+
 		/**
 		 * @brief Set the dissolve plane for the shape.
 		 * Fragments where dot(FragPos, direction) > dist will be discarded.
@@ -523,7 +532,8 @@ namespace Boidsish {
 			is_refractive_(false),
 			refractive_index_(1.0f),
 			shadow_caster_override_(std::nullopt),
-			allow_megabuffer_(true) {}
+			allow_megabuffer_(true),
+			material_type_(0) {}
 
 		virtual bool GetDefaultCastsShadows() const { return !is_colossal_; }
 
@@ -564,6 +574,7 @@ namespace Boidsish {
 
 		std::optional<bool> shadow_caster_override_;
 		bool                allow_megabuffer_;
+		int                 material_type_ = 0;
 
 	protected:
 		bool      dissolve_enabled_;

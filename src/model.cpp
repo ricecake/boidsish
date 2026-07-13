@@ -50,6 +50,7 @@ namespace Boidsish {
 		ao = other.ao;
 		emissiveColor = other.emissiveColor;
 		has_vertex_colors = other.has_vertex_colors;
+		material_type = other.material_type;
 
 		// Do not copy VAO/VBO/EBO handles - setupMesh will create new ones if needed
 		VAO = VBO = EBO = shadow_EBO = 0;
@@ -71,6 +72,7 @@ namespace Boidsish {
 			ao = other.ao;
 			emissiveColor = other.emissiveColor;
 			has_vertex_colors = other.has_vertex_colors;
+			material_type = other.material_type;
 		}
 		return *this;
 	}
@@ -324,6 +326,7 @@ namespace Boidsish {
 		shader.setFloat("metallic", metallic);
 		shader.setFloat("ao", ao);
 		shader.setVec3("emissiveColor", emissiveColor);
+		shader.setInt("material_type", material_type);
 
 		// Bind textures using the provided shader
 		bindTextures(shader);
@@ -569,6 +572,7 @@ namespace Boidsish {
 			packet.uniforms.emissive_r = mesh.emissiveColor.r;
 			packet.uniforms.emissive_g = mesh.emissiveColor.g;
 			packet.uniforms.emissive_b = mesh.emissiveColor.b;
+			packet.uniforms.material_type = mesh.material_type;
 
 			int  use_texture_mask = 0;
 			bool has_diffuse = false;
