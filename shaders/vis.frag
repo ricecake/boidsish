@@ -51,6 +51,7 @@ uniform bool  usePBR = false;
 uniform float roughness = 0.5;
 uniform float metallic = 0.0;
 uniform float ao = 1.0;
+uniform int   material_type = 0;
 
 uniform bool  dissolve_enabled = false;
 uniform vec3  dissolve_plane_normal = vec3(0, 1, 0);
@@ -77,6 +78,7 @@ uniform sampler2D refractionTexture;
 void main() {
 	bool  use_ssbo = uUseMDI && vUniformIndex >= 0;
 	vec3  c_objectColor = use_ssbo ? uniforms_data[vUniformIndex].color.rgb : objectColor;
+	int   c_material_type = use_ssbo ? uniforms_data[vUniformIndex].material_type : material_type;
 	float c_objectAlpha = use_ssbo ? uniforms_data[vUniformIndex].color.a : objectAlpha;
 	bool  c_usePBR = use_ssbo ? (uniforms_data[vUniformIndex].use_pbr != 0) : usePBR;
 	float c_roughness = use_ssbo ? uniforms_data[vUniformIndex].roughness : roughness;
@@ -179,6 +181,21 @@ void main() {
 	emissive += c_emissive_color * nightFactor;
 
 	float baseAlpha = c_objectAlpha;
+
+	if (c_material_type == 2) { // Leaf/Needle
+		// Create a fine needle-like pattern using high frequency TexCoords and noise.
+		float needle_lines = sin(TexCoords.x * 60.0);
+		float noise_val = fastWarpedFbm3d(FragPos * 12.0);
+		float needle_pattern = smoothstep(0.1, 0.4, needle_lines * 0.5 + 0.5 + noise_val * 0.2);
+
+		float edge_fade = smoothstep(0.0, 0.15, TexCoords.y) * smoothstep(1.0, 0.85, TexCoords.y);
+		needle_pattern *= edge_fade;
+
+		baseAlpha *= needle_pattern;
+		if (baseAlpha < 0.25) {
+			discard;
+		}
+	}
 
 	// Choose between PBR and legacy lighting
 	vec4 lightResult;

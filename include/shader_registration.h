@@ -69,6 +69,8 @@ namespace Boidsish {
 		T::RegisterConstant("GRASS_TASKS_BINDING", Constants::SsboBinding::GrassTasks());
 		T::RegisterConstant("PARTICLE_STATS_BINDING", Constants::SsboBinding::ParticleStats());
 		T::RegisterConstant("CLOUD_SEEDS_BINDING", Constants::SsboBinding::CloudSeeds());
+		T::RegisterConstant("LIGHTS_BUFFER_BINDING", Constants::SsboBinding::LightsBuffer());
+		T::RegisterConstant("CLUSTER_GRID_BINDING", Constants::SsboBinding::ClusterGridBuffer());
 
 		// Limits and Sizes
 		T::RegisterConstant("MAX_LIGHTS", Constants::Class::Shadows::MaxLights());

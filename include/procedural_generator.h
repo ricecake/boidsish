@@ -21,7 +21,8 @@ namespace Boidsish {
 		TreeSpaceColonization,
 		TreeSpring,
 		Critter,
-		Structure
+		Structure,
+		PineTree
 	};
 
 	struct SpringPlantConfig {
@@ -59,6 +60,7 @@ namespace Boidsish {
 		);
 		static std::shared_ptr<Model> GenerateSpaceColonizationTree(unsigned int seed);
 		static std::shared_ptr<Model> GenerateSpringPlant(unsigned int seed, const SpringPlantConfig& config = {});
+		static std::shared_ptr<Model> GeneratePineTree(unsigned int seed);
 		static std::shared_ptr<Model> GenerateCritter(
 			unsigned int                    seed,
 			const std::string&              axiom = "",
@@ -81,6 +83,7 @@ namespace Boidsish {
 		);
 		static ProceduralIR GenerateSpaceColonizationTreeIR(unsigned int seed);
 		static ProceduralIR GenerateSpringPlantIR(unsigned int seed, const SpringPlantConfig& config = {});
+		static ProceduralIR GeneratePineTreeIR(unsigned int seed);
 		static ProceduralIR GenerateCritterIR(
 			unsigned int                    seed,
 			const std::string&              axiom = "",

@@ -912,6 +912,11 @@ namespace Boidsish {
 					}
 
 					if (enabled) {
+						bool particle_lights_enabled = config.GetAppSettingBool("particle_lights_enabled", true);
+						if (ImGui::Checkbox("Particles Create Lights", &particle_lights_enabled)) {
+							config.SetBool("particle_lights_enabled", particle_lights_enabled);
+						}
+
 						float density = config.GetAppSettingFloat("ambient_particle_density", 0.15f);
 						if (ImGui::SliderFloat("Ambient Density", &density, 0.0f, 2.0f, "%.2f")) {
 							config.SetFloat("ambient_particle_density", density);
