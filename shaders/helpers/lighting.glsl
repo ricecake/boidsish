@@ -606,6 +606,28 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 	// ------------------------------------------------------------------
 	// PASS 2: Local Lights (Point/Spot) - CLUSTERED
 	// ------------------------------------------------------------------
+	// Evaluate global lights loop first (index 3456)
+	Cluster global_cluster = clusters[3456];
+	for (uint idx = 0; idx < global_cluster.count; ++idx) {
+		int i = int(global_cluster.lightIndices[idx]);
+		if (lights[i].intensity <= 0.0) {
+			continue;
+		}
+
+		vec3 L;
+		float base_attenuation;
+		calculateLightContribution(i, frag_pos, L, base_attenuation);
+
+		if (dot(N, L) <= 0.0) continue;
+
+		float attenuation = (lights[i].intensity * PBR_INTENSITY_BOOST) * base_attenuation;
+		vec3 radiance = lights[i].color * attenuation;
+
+		float shadow = calculateShadow(i, frag_pos, N, L);
+
+		evaluate_brdf(N, V, L, albedo, roughness, metallic, F0, radiance, shadow, Lo, spec_lum);
+	}
+
 	uint cluster_index = getClusterIndex(frag_pos);
 	Cluster cluster = clusters[cluster_index];
 
@@ -746,6 +768,25 @@ vec4 apply_lighting_foliage(vec3 frag_pos, vec3 normal, vec3 albedo, float rough
     }
 
     // PASS 2: Local Lights - CLUSTERED
+    // Evaluate global lights loop first (index 3456)
+    Cluster foliage_global_cluster = clusters[3456];
+    for (uint idx = 0; idx < foliage_global_cluster.count; ++idx) {
+        int i = int(foliage_global_cluster.lightIndices[idx]);
+        if (lights[i].intensity <= 0.0) {
+            continue;
+        }
+
+        vec3 L; float base_atten;
+        calculateLightContribution(i, frag_pos, L, base_atten);
+
+        if (abs(dot(N, L)) < 0.0001) continue;
+
+        vec3 radiance = lights[i].color * (lights[i].intensity * PBR_INTENSITY_BOOST) * base_atten;
+        float shadow = calculateShadow(i, frag_pos, N, L);
+
+        evaluate_foliage_brdf(N, V, L, albedo, roughness, metallic, F0, radiance, shadow, translucency, Lo, spec_lum);
+    }
+
     uint foliage_cluster_index = getClusterIndex(frag_pos);
     Cluster foliage_cluster = clusters[foliage_cluster_index];
 
@@ -834,6 +875,39 @@ vec4 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, floa
 	}
 
 	// PASS 2: Local Lights (Point/Spot) - CLUSTERED
+	// Evaluate global lights loop first (index 3456)
+	Cluster no_shadow_global_cluster = clusters[3456];
+	for (uint idx = 0; idx < no_shadow_global_cluster.count; ++idx) {
+		int i = int(no_shadow_global_cluster.lightIndices[idx]);
+		if (lights[i].intensity <= 0.0) continue;
+
+		vec3  L;
+		float base_attenuation;
+		calculateLightContribution(i, frag_pos, L, base_attenuation);
+
+		vec3 H = normalize(V + L);
+
+		float attenuation = (lights[i].intensity * PBR_INTENSITY_BOOST) * base_attenuation;
+		vec3 radiance = lights[i].color * attenuation;
+
+		float NDF = DistributionGGX(N, H, roughness);
+		float G = GeometrySmith(N, V, L, roughness);
+		vec3  F = fresnelSchlick(max(dot(H, V), 0.0), F0);
+
+		vec3  numerator = NDF * G * F;
+		float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.0001;
+		vec3  specular = numerator / denominator;
+
+		vec3 kS = F;
+		vec3 kD = (vec3(1.0) - kS) * (1.0 - metallic);
+
+		float NdotL = max(dot(N, L), 0.0);
+
+		vec3 specular_radiance = specular * radiance * NdotL;
+		Lo += (kD * albedo / PI) * radiance * NdotL + specular_radiance;
+		spec_lum += get_luminance(specular_radiance);
+	}
+
 	uint no_shadow_cluster_index = getClusterIndex(frag_pos);
 	Cluster no_shadow_cluster = clusters[no_shadow_cluster_index];
 
@@ -951,6 +1025,35 @@ vec4 apply_lighting(vec3 frag_pos, vec3 normal, vec3 albedo, float specular_stre
 	}
 
 	// PASS 2: Local Lights (Point/Spot) - CLUSTERED
+	// Evaluate global lights loop first (index 3456)
+	Cluster legacy_global_cluster = clusters[3456];
+	for (uint idx = 0; idx < legacy_global_cluster.count; ++idx) {
+		int i = int(legacy_global_cluster.lightIndices[idx]);
+		if (lights[i].intensity <= 0.0) continue;
+
+		vec3  light_dir;
+		float attenuation;
+		calculateLightContribution(i, frag_pos, light_dir, attenuation);
+
+		// Calculate shadow factor for this light with slope-scaled bias
+		float shadow = calculateShadow(i, frag_pos, normal, light_dir);
+
+		// Diffuse
+		float diff = max(dot(normal, light_dir), 0.0);
+		vec3  diffuse = lights[i].color * diff * albedo;
+
+		// Specular (Blinn-Phong)
+		vec3  view_dir = normalize(viewPos - frag_pos);
+		vec3  reflect_dir = reflect(-light_dir, normal);
+		float spec = pow(max(dot(view_dir, reflect_dir), 0.0), 32);
+		vec3  specular_contribution = lights[i].color * spec * specular_strength *
+			lights[i].intensity * shadow * attenuation;
+
+		// Apply shadow and attenuation to diffuse and specular, but not ambient
+		result += (diffuse * lights[i].intensity * shadow * attenuation) + specular_contribution;
+		spec_lum += get_luminance(specular_contribution);
+	}
+
 	uint legacy_cluster_index = getClusterIndex(frag_pos);
 	Cluster legacy_cluster = clusters[legacy_cluster_index];
 
@@ -1023,6 +1126,31 @@ vec4 apply_lighting_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, float sp
 	}
 
 	// PASS 2: Local Lights (Point/Spot) - CLUSTERED
+	// Evaluate global lights loop first (index 3456)
+	Cluster legacy_no_shadow_global_cluster = clusters[3456];
+	for (uint idx = 0; idx < legacy_no_shadow_global_cluster.count; ++idx) {
+		int i = int(legacy_no_shadow_global_cluster.lightIndices[idx]);
+		if (lights[i].intensity <= 0.0) continue;
+
+		vec3  light_dir;
+		float attenuation;
+		calculateLightContribution(i, frag_pos, light_dir, attenuation);
+
+		// Diffuse
+		float diff = max(dot(normal, light_dir), 0.0);
+		vec3  diffuse = lights[i].color * diff * albedo;
+
+		// Specular
+		vec3  view_dir = normalize(viewPos - frag_pos);
+		vec3  reflect_dir = reflect(-light_dir, normal);
+		float spec = pow(max(dot(view_dir, reflect_dir), 0.0), 32);
+		vec3  specular_contribution = lights[i].color * spec * specular_strength *
+			lights[i].intensity * attenuation;
+
+		result += (diffuse * lights[i].intensity * attenuation) + specular_contribution;
+		spec_lum += get_luminance(specular_contribution);
+	}
+
 	uint legacy_no_shadow_cluster_index = getClusterIndex(frag_pos);
 	Cluster legacy_no_shadow_cluster = clusters[legacy_no_shadow_cluster_index];
 
@@ -1156,6 +1284,40 @@ vec4 apply_lighting_pbr_iridescent_no_shadows(
 	}
 
 	// PASS 2: Local Lights (Point/Spot) - CLUSTERED
+	// Evaluate global lights loop first (index 3456)
+	Cluster iridescent_global_cluster = clusters[3456];
+	for (uint idx = 0; idx < iridescent_global_cluster.count; ++idx) {
+		int i = int(iridescent_global_cluster.lightIndices[idx]);
+		if (lights[i].intensity <= 0.0) continue;
+
+		vec3  L;
+		float base_attenuation;
+		calculateLightContribution(i, frag_pos, L, base_attenuation);
+
+		vec3  H = normalize(V + L);
+		float NdotL = max(dot(N, L), 0.0);
+		float HdotV = max(dot(H, V), 0.0);
+
+		float attenuation = (lights[i].intensity * PBR_INTENSITY_BOOST) * base_attenuation;
+		vec3 radiance = lights[i].color * attenuation;
+
+		// GGX specular for sharp highlights
+		float NDF = DistributionGGX(N, H, roughness);
+		float G = GeometrySmith(N, V, L, roughness);
+
+		// Fresnel with iridescent F0
+		vec3 F0 = iridescent_color * 0.8 + vec3(0.2);
+		vec3 F = fresnelSchlick(HdotV, F0);
+
+		vec3  numerator = NDF * G * F;
+		float denominator = 4.0 * NdotV * NdotL + 0.0001;
+		vec3  specular = numerator / denominator;
+
+		vec3 specular_contribution = specular * radiance * NdotL;
+		specular_total += specular_contribution;
+		spec_lum += get_luminance(specular_contribution);
+	}
+
 	uint iridescent_cluster_index = getClusterIndex(frag_pos);
 	Cluster iridescent_cluster = clusters[iridescent_cluster_index];
 

@@ -41,6 +41,41 @@ void main() {
 	float y_min_far = y_min_factor * tan_half_fov_y * (-zFarSlice);
 	float y_max_far = y_max_factor * tan_half_fov_y * (-zFarSlice);
 
+	const float GLOBAL_LIGHT_RADIUS_THRESHOLD = 500.0;
+
+	// Populate global lights bucket at clusters[3456]
+	if (clusterID == uvec3(0, 0, 0)) {
+		uint global_count = 0;
+		uint total_lights = min(count, 1024u);
+		for (uint i = 2; i < total_lights; ++i) {
+			if (lights[i].intensity <= 0.0) continue;
+
+			float radius = 0.0;
+			if (lights[i].type == 0 || lights[i].type == 2 || lights[i].type == 3) { // POINT, SPOT, EMISSIVE
+				radius = sqrt(max(0.1, lights[i].intensity)) * 50.0;
+				if (lights[i].type == 3) {
+					radius += lights[i].inner_cutoff;
+				}
+			} else if (lights[i].type == 4) { // FLASH
+				radius = 2.0 * lights[i].inner_cutoff;
+			} else {
+				continue;
+			}
+
+			if (radius >= GLOBAL_LIGHT_RADIUS_THRESHOLD) {
+				if (global_count < 64) {
+					clusters[3456].lightIndices[global_count] = uint(i);
+					global_count++;
+				}
+			}
+		}
+		clusters[3456].count = global_count;
+	}
+
+	// Ensure the write to global bucket is complete before clusters read from it or we continue
+	groupMemoryBarrier();
+	barrier();
+
 	// Determine Axis-Aligned Bounding Box (AABB) in view space
 	vec3 aabbMin = vec3(
 		min(min(x_min_near, x_max_near), min(x_min_far, x_max_far)),
@@ -80,6 +115,12 @@ void main() {
 			radius = 2.0 * lights[i].inner_cutoff;
 		} else {
 			continue; // skip directional lights or other types
+		}
+
+		// If a light is exceptionally bright/attenuated so that it qualifies as global,
+		// do not put it in individual clusters' local light lists.
+		if (radius >= GLOBAL_LIGHT_RADIUS_THRESHOLD) {
+			continue;
 		}
 
 		// Sphere-AABB intersection test in view space
