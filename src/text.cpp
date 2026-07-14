@@ -70,12 +70,14 @@ namespace Boidsish {
 		text_ = text;
 		GenerateMesh(text_, font_size_, depth_);
 		mesh_dirty_ = true;
+		MarkDirty();
 	}
 
 	void Text::SetJustification(Justification justification) {
 		justification_ = justification;
 		GenerateMesh(text_, font_size_, depth_);
 		mesh_dirty_ = true;
+		MarkDirty();
 	}
 
 	void Text::GenerateMesh(const std::string& text, float font_size, float depth) {

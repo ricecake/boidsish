@@ -713,12 +713,14 @@ namespace Boidsish {
 	void Model::SetAnimation(int index) {
 		if (m_animator) {
 			m_animator->PlayAnimation(index);
+			MarkDirty();
 		}
 	}
 
 	void Model::SetAnimation(const std::string& name) {
 		if (m_animator) {
 			m_animator->PlayAnimation(name);
+			MarkDirty();
 		}
 	}
 

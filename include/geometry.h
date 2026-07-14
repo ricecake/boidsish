@@ -275,7 +275,7 @@ namespace Boidsish {
 		 * @brief Marks this geometry as needing packet regeneration.
 		 * Call this when any property affecting rendering changes.
 		 */
-		virtual void MarkDirty() {}
+		virtual void MarkDirty() const {}
 
 		/**
 		 * @brief Returns cached packets if available, nullptr otherwise.

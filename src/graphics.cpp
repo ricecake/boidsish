@@ -1432,6 +1432,15 @@ namespace Boidsish {
 			CommonUniforms*              uniforms_ptr = uniforms_ssbo->GetFrameDataPtr();
 			glm::mat4*                   bones_ptr = bone_matrices_ssbo->GetFrameDataPtr();
 
+			// Bind uniforms SSBO for the entire pass (100% aligned and robust)
+			glBindBufferRange(
+				GL_SHADER_STORAGE_BUFFER,
+				Constants::SsboBinding::CommonUniforms(),
+				uniforms_ssbo->GetBufferId(),
+				uniforms_ssbo->GetFrameOffset(),
+				uniforms_ssbo->GetElementCount() * sizeof(CommonUniforms)
+			);
+
 			uint32_t max_elements = 65536; // Buffer capacity
 			uint32_t frame_element_offset = uniforms_ssbo->GetCurrentBufferIndex() * max_elements;
 
@@ -1518,13 +1527,13 @@ namespace Boidsish {
 			    hiz_manager->IsInitialized() && pass_draw_count > 0) {
 				occlusion_cull_shader_->use();
 
-				// Bind uniforms SSBO (current frame's data) for compute to read AABBs
+				// Bind uniforms SSBO (current frame's data) for compute to read AABBs (perfectly aligned)
 				glBindBufferRange(
 					GL_SHADER_STORAGE_BUFFER,
 					Constants::SsboBinding::CommonUniforms(),
 					uniforms_ssbo->GetBufferId(),
-					(frame_element_offset + mdi_pass_uniform_start) * sizeof(CommonUniforms),
-					pass_draw_count * sizeof(CommonUniforms)
+					uniforms_ssbo->GetFrameOffset(),
+					uniforms_ssbo->GetElementCount() * sizeof(CommonUniforms)
 				);
 
 				// Bind visibility SSBO for compute to write
@@ -1602,15 +1611,9 @@ namespace Boidsish {
 
 				// s->setBool("uUseMDI", true); // Moved below SSBO binding
 
-				// Bind SSBO for this batch's uniforms (replaces uBaseUniformIndex)
+				// Set base uniform index for this batch within the SSBO
 				uint32_t batch_global_index = mdi_pass_uniform_start + (batch.base_uniform_index);
-				glBindBufferRange(
-					GL_SHADER_STORAGE_BUFFER,
-					Constants::SsboBinding::CommonUniforms(),
-					uniforms_ssbo->GetBufferId(),
-					(frame_element_offset + batch_global_index) * sizeof(CommonUniforms),
-					batch.command_count * sizeof(CommonUniforms)
-				);
+				s->trySetUint("u_baseUniformIndex", batch_global_index);
 
 				// Bind bone matrices SSBO
 				glBindBufferRange(
@@ -2506,7 +2509,8 @@ namespace Boidsish {
 									packet.draw_mode,
 									packet.index_count > 0,
 									packet.material_handle,
-									normalized_depth
+									normalized_depth,
+									packet.no_cull
 								);
 								local_packets.push_back(std::move(packet));
 							}

@@ -46,11 +46,11 @@ namespace Boidsish {
 
 		float GetBoundingRadius() const override { return radius_ * 2.0f; }
 
-		void SetRadius(float radius) { radius_ = radius; }
+		void SetRadius(float radius) { radius_ = radius; MarkDirty(); }
 
 		float GetRadius() const { return radius_; }
 
-		void SetStyle(CheckpointStyle style) { style_ = style; }
+		void SetStyle(CheckpointStyle style) { style_ = style; MarkDirty(); }
 
 		CheckpointStyle GetStyle() const { return style_; }
 

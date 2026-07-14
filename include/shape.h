@@ -149,7 +149,7 @@ namespace Boidsish {
 
 		void MarkClean() const override { render_dirty_.store(false, std::memory_order_release); }
 
-		void MarkDirty() override { render_dirty_.store(true, std::memory_order_release); }
+		void MarkDirty() const override { render_dirty_.store(true, std::memory_order_release); }
 
 		std::vector<RenderPacket>* GetCachedPackets() override {
 			return render_dirty_.load(std::memory_order_acquire) ? nullptr : &cached_packets_;

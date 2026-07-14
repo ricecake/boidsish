@@ -160,6 +160,8 @@ namespace Boidsish {
 
 		std::string GetInstanceKey() const override { return "delaunay_blob_" + std::to_string(id_); }
 
+		bool IsDirty() const override { return true; }
+
 		/// Get centroid of all points
 		glm::vec3 GetCentroid() const;
 
@@ -167,7 +169,10 @@ namespace Boidsish {
 		float GetBoundingRadius() const override;
 
 	protected:
-		void MarkDirty() const { mesh_dirty_ = true; }
+		void MarkDirty() const {
+			mesh_dirty_ = true;
+			Shape::MarkDirty();
+		}
 
 		void UpdateMeshBuffers() const;
 		void InitializeBuffers() const;

@@ -83,7 +83,10 @@ namespace Boidsish {
 
 		bool IsVisible() const { return visible_; }
 
-		void SetVisible(bool visible) { visible_ = visible; }
+		void SetVisible(bool visible) {
+			visible_ = visible;
+			MarkDirty();
+		}
 
 		std::vector<Waypoint>& GetWaypoints() { return waypoints_; }
 

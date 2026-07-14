@@ -34,15 +34,15 @@ namespace Boidsish {
 
 		inline glm::vec3 GetStart() const { return glm::vec3(GetX(), GetY(), GetZ()); }
 
-		inline void SetEnd(const glm::vec3& end) { end_ = end; }
+		inline void SetEnd(const glm::vec3& end) { end_ = end; MarkDirty(); }
 
 		inline glm::vec3 GetEnd() const { return end_; }
 
-		inline void SetWidth(float width) { width_ = width; }
+		inline void SetWidth(float width) { width_ = width; MarkDirty(); }
 
 		inline float GetWidth() const { return width_; }
 
-		inline void SetStyle(Style style) { style_ = style; }
+		inline void SetStyle(Style style) { style_ = style; MarkDirty(); }
 
 		inline Style GetStyle() const { return style_; }
 

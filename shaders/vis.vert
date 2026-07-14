@@ -11,6 +11,7 @@ layout(location = 10) in vec4 aWeights;
 #include "common_uniforms.glsl"
 
 uniform bool uUseMDI = false;
+uniform uint u_baseUniformIndex = 0;
 
 // SSBO for decor/foliage instancing
 layout(std430, binding = [[DECOR_INSTANCES_BINDING]]) buffer SSBOInstances {
@@ -74,9 +75,9 @@ uniform float arcadeWaveFrequency = 10.0;
 uniform float arcadeWaveSpeed = 5.0;
 
 void main() {
-	int drawID = gl_DrawIDARB;
+	int drawID = gl_DrawID;
 
-	vUniformIndex = uUseMDI ? drawID : -1;
+	vUniformIndex = uUseMDI ? int(u_baseUniformIndex) + drawID : -1;
 	bool use_ssbo = uUseMDI && vUniformIndex >= 0;
 
 	mat4  current_model = use_ssbo ? uniforms_data[vUniformIndex].model : model;
