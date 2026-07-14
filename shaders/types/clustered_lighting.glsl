@@ -7,7 +7,8 @@ struct Cluster {
 	uint padding[3];
 };
 
-layout(std430, binding = [[LIGHTS_BUFFER_BINDING]]) readonly buffer LightsBuffer {
+layout(std430, binding = [[LIGHTS_BUFFER_BINDING]]) buffer LightsBuffer {
+	uint count;
 	Light lights[];
 };
 
