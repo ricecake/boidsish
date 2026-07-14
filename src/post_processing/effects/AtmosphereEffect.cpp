@@ -396,6 +396,7 @@ namespace Boidsish {
 			}
 
 			if (terrain_mgr) {
+				terrain_mgr->BindTerrainData(*shader_);
 				terrain_mgr->BindTerrainData(*composite_shader_);
 			}
 
