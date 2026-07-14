@@ -220,30 +220,20 @@ float calculatePuffyCloudSDF(vec3 p, CloudWeather weather, CloudLayer layer, flo
 
 
 float calculateLoftedCloudSDF(vec3 p, CloudWeather weather, CloudLayer layer, float worldScale) {
-    // 1. The 2D footprint distance (positive outside, negative inside)
-    float d_edge = weather.sdf;
+    float R_earth = 6360.0 * 1000.0 * worldScale;
+    vec3 earthCenter = vec3(viewPos.x, -R_earth, viewPos.z);
 
-    // 2. Calculate the depth inside the cloud boundary
-    float depthInside = max(0.0, -d_edge);
+    float d_horizontal = weather.sdf; // negative inside, positive outside
 
-    // 3. Map internal depth to vertical height along the +Y axis.
-    // 'puffSlope' determines how steep the sides of the cloud are.
-    // A slope of 1.0 represents a 45-degree rise from the edge.
-    float puffSlope = 1.5;
-    float domeHeight = depthInside * puffSlope;
+    float r = length(p - earthCenter);
+    float altitude = r - R_earth;
 
-    // Clamp the height to the atmospheric layer's defined maximum thickness
-    domeHeight = min(domeHeight, layer.thickness);
+    float halfHeight = 0.5 * layer.thickness;
+    float midHeight = layer.baseFloor + halfHeight;
+    float d_vertical = abs(altitude - midHeight) - halfHeight;
 
-    // 4. Define the vertical bounds for this specific XZ column
-    // This creates a flat bottom at baseFloor and a domed top.
-    float columnCenter = layer.baseFloor + (domeHeight * 0.5);
-    float d_vertical = abs(p.y - columnCenter) - (domeHeight * 0.5);
-
-    // 5. Intersect the 2D boundary with the dynamic 1D vertical boundary
-    // The exact distance to the boundary is the maximum of the two orthogonal distances.
-    float d3d = max(d_edge, d_vertical);
-
+    vec2 w = vec2(d_horizontal, d_vertical);
+    float d3d = min(max(w.x, w.y), 0.0) + length(max(w, vec2(0.0)));
     return d3d;
 }
 
@@ -720,7 +710,12 @@ vec4 calculateCloudDensityExpV9(
 	float           time,
 	float            simplified
 ) {
-	float h = (p.y - layer.baseFloor) / layer.thickness;
+	float R_earth = 6360.0 * 1000.0 * props.worldScale;
+	vec3 earthCenter = vec3(viewPos.x, -R_earth, viewPos.z);
+	float r = length(p - earthCenter);
+	float altitude = r - R_earth;
+
+	float h = (altitude - layer.baseFloor) / layer.thickness;
 	vec3 advectSpeed = getCloudAdvectionSpeed(h, time);
 	vec3 advect = time * advectSpeed;
 	vec3 p_advected = p + advect;
@@ -741,8 +736,13 @@ vec3 calculateCloudDensity(
 	float           simplified,
 	out vec3        advection
 ) {
-	if (p.y < layer.baseFloor || p.y > layer.baseCeiling) {
-		float h = (p.y - layer.baseFloor) / layer.thickness;
+	float R_earth = 6360.0 * 1000.0 * props.worldScale;
+	vec3 earthCenter = vec3(viewPos.x, -R_earth, viewPos.z);
+	float r = length(p - earthCenter);
+	float altitude = r - R_earth;
+
+	if (altitude < layer.baseFloor || altitude > layer.baseCeiling) {
+		float h = (altitude - layer.baseFloor) / layer.thickness;
 		advection = getCloudAdvectionSpeed(h, time);
 		return vec3(0.0);
 	}
