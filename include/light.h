@@ -88,11 +88,12 @@ namespace Boidsish {
 		float cloudCurlFrequency;                // offset 804, 4 bytes
 		float sunAureoleStrength;                // offset 808, 4 bytes
 		float cirrusOpacity;                     // offset 812, 4 bytes
-		float _pad_cloud_1;                      // offset 816, 4 bytes
-		float _pad_cloud_2;                      // offset 820, 4 bytes
-		float _pad_cloud_3;                      // offset 824, 4 bytes
-		float _pad_cloud_4;                      // offset 828, 4 bytes
-		float _pad_cloud_shadow_mat[8];          // offset 832, 32 bytes
+		float cloudExtinction;                   // offset 816, 4 bytes
+		float _pad_cloud_1;                      // offset 820, 4 bytes
+		float _pad_cloud_2;                      // offset 824, 4 bytes
+		float _pad_cloud_3;                      // offset 828, 4 bytes
+		alignas(16) glm::vec3 cloudExtinctionColor; // offset 832, 12 bytes
+		float _pad_cloud_shadow_mat[4];          // offset 848, 16 bytes
 		alignas(16) glm::mat4 view;              // offset 864, 64 bytes
 		alignas(16) glm::mat4 projection;        // offset 928, 64 bytes
 		alignas(16) glm::vec3 lightningColor;    // offset 992, 12 bytes

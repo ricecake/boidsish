@@ -291,15 +291,15 @@ float getCloudCoverageFromSDF(float sdf, float worldScale) {
  * Calculate cloud shadow factor for a fragment position.
  * Projects the fragment to the cloud layer and samples the weather map SDF directly.
  */
-float calculateCloudShadowFactor(vec3 frag_pos, vec3 L, float intensity) {
-	if (intensity <= 0.0) return 1.0;
-	if (L.y <= 0.001) return 1.0;
+vec3 calculateCloudShadowFactor(vec3 frag_pos, vec3 L, float intensity) {
+	if (intensity <= 0.0) return vec3(1.0);
+	if (L.y <= 0.001) return vec3(1.0);
 
 	// Skip if fragment is above the cloud layer
 	float y_min = cloudAltitude * worldScale;
 	float y_max = (cloudAltitude + cloudThickness * 12.0) * worldScale;
 	if (frag_pos.y > y_max)
-		return 1.0;
+		return vec3(1.0);
 
 	// Project to the cloud center to find the casting XZ position
 	float y_center = (y_min + y_max) * 0.5;
@@ -324,9 +324,11 @@ float calculateCloudShadowFactor(vec3 frag_pos, vec3 L, float intensity) {
 	// And apply a slant factor for longer paths at oblique angles
 	float slant = 1.0 / max(0.01, L.y);
 	float shadowDepth = max(0.0, -d3d / penumbra) * slant;
-	float shadowTerm = exp(-shadowDepth * 8.0);
+	vec3 rgbExtinction = cloudExtinctionColor * cloudExtinction;
+	vec3 stepOD = shadowDepth * (rgbExtinction * 800.0);
+	vec3 shadowTerm = exp(-stepOD);
 
-	return mix(1.0, shadowTerm, intensity);
+	return mix(vec3(1.0), shadowTerm, intensity);
 }
 
 float evaluateCloudShadowDensityAtWorldPos(vec2 worldXZ, float time) {
