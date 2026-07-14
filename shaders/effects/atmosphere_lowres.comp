@@ -402,6 +402,75 @@ void main() {
 					}
 
 					// PASS 2: Local Lights (Point/Spot/Emissive/Flash) - CLUSTERED
+					// Evaluate global lights loop first (index 3456)
+					Cluster global_cloud_cluster = clusters[3456];
+					for (uint idx = 0; idx < global_cloud_cluster.count; idx++) {
+						int j = int(global_cloud_cluster.lightIndices[idx]);
+						if (lights[j].intensity <= 0.0) continue;
+
+						// Cloud Emissive Lighting (Lightning)
+						if ((lights[j].flags & LIGHT_FLAG_CLOUD_EMISSIVE) != 0) {
+							// Sheet-like segment light: distance to line segment (position -> direction)
+							vec3 A = lights[j].position;
+							vec3 B = lights[j].direction;
+							vec3 AP = subP - A;
+							vec3 AB = B - A;
+							float h = clamp(dot(AP, AB) / dot(AB, AB), 0.0, 1.0);
+							float distToSegment = length(AP - AB * h);
+
+							float emissiveRadius = lights[j].inner_cutoff;
+							float falloff = 1.0 / (1.0 + 0.01 * distToSegment + 0.0001 * distToSegment * distToSegment);
+							falloff *= smoothstep(emissiveRadius * 1.5, emissiveRadius * 0.5, distToSegment);
+
+							emissiveGlow += lights[j].color.rgb * lights[j].intensity * falloff;
+						}
+
+						// Standard Cloud Scattering (Shadowed)
+						// Skip if doesn't cast shadows OR doesn't have volumetric shadow flag
+						if ((lights[j].flags & LIGHT_FLAG_CASTS_SHADOW) == 0 ||
+						    (lights[j].flags & LIGHT_FLAG_VOLUMETRIC_SHADOW) == 0) continue;
+
+						vec3 L;
+						float attenuation;
+						calculateLightContribution(j, subP, L, attenuation);
+
+						if (attenuation * lights[j].intensity < 0.001) continue;
+
+						float cosTheta = dot(rayDir, L);
+						float phase = cloudPhase(cosTheta);
+
+						float traceDist = length(lights[j].position - subP);
+						if ((lights[j].flags & LIGHT_FLAG_CAMERA_RELATIVE) != 0) {
+							vec3 lp = lights[j].position + viewPos;
+							traceDist = length(lp - subP);
+						}
+
+						vec3 opticalDepthToLight = vec3(0.0);
+						if (traceDist > 0.01 * worldScale) {
+							float shadowStepSize = traceDist / float(shadow_samples);
+							for (int ks = 0; ks < shadow_samples; ks++) {
+								vec3 sp = subP + L * (float(ks) + jitter) * shadowStepSize;
+								vec3 dummyAdvect;
+								vec3 currentShadowDensity = calculateCloudDensity(sp, weather, layer, props, time, 100.0, dummyAdvect);
+
+								vec3 stepOD = currentShadowDensity * shadowStepSize * (rgbExtinction * cloudShadowOpticalDepthMultiplier);
+								opticalDepthToLight += stepOD;
+								if (all(greaterThan(opticalDepthToLight, vec3(3.0)))) {
+									break;
+								}
+							}
+						}
+
+						vec3 shadowTerm = mix(
+							beerPowder(opticalDepthToLight, stepDensity),
+							exp(-opticalDepthToLight),
+							cloudBeerPowderMix
+						);
+
+						stepScattering += lights[j].color.rgb * shadowTerm * phase *
+							lights[j].intensity * attenuation;
+					}
+
 					uint cloud_cluster_index = getClusterIndex(subP);
 					Cluster cloud_cluster = clusters[cloud_cluster_index];
 

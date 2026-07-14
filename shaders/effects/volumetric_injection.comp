@@ -190,6 +190,36 @@ void main() {
     }
 
     // Local lights - CLUSTERED
+    // Evaluate global lights loop first (index 3456)
+    Cluster global_injection_cluster = clusters[3456];
+    for (uint idx = 0; idx < global_injection_cluster.count; ++idx) {
+        int i = int(global_injection_cluster.lightIndices[idx]);
+        vec3 L; float atten;
+        calculateLightContribution(i, worldPos, L, atten);
+        if (atten <= 0.0) continue;
+
+        float cosTheta = dot(-V, L);
+        float miePhase = henyeyGreenstein(uAnisotropy, cosTheta);
+
+        // Simple shadow map lookup for point/spot lights
+        float shadow = 1.0;
+        if ((lights[i].flags & LIGHT_FLAG_CASTS_SHADOW) != 0) {
+            shadow = calculateShadow(i, worldPos, vec3(0.0), L);
+        }
+
+        vec3 lightTransmittance = vec3(1.0);
+        float distToLight = length(lights[i].position - worldPos);
+        if ((lights[i].flags & LIGHT_FLAG_CAMERA_RELATIVE) != 0) {
+            distToLight = length(lights[i].position + viewPos - worldPos);
+        }
+
+        // Analytical transmittance to light source
+        lightTransmittance = exp(-s.extinction * distToLight);
+
+        vec3 lightRadiance = lights[i].color * max(0.0, lights[i].intensity) * atten * shadow;
+        radiance += lightRadiance * (lightTransmittance * miePhase + (1.0 - lightTransmittance) * (s.rayleigh + s.mie));
+    }
+
     uint injection_cluster_index = getClusterIndex(worldPos);
     Cluster injection_cluster = clusters[injection_cluster_index];
 
