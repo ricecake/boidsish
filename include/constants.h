@@ -107,7 +107,9 @@ namespace Boidsish {
 				TerrainPatchVisibility = 50,
 				GrassTasks = 51,
 				ParticleStats = 44,
-				CloudSeeds = 46
+				CloudSeeds = 46,
+				LightsBuffer = 52,
+				ClusterGridBuffer = 53
 			};
 		} // namespace Bindings
 
@@ -480,6 +482,14 @@ namespace Boidsish {
 
 			consteval int CloudSeeds() {
 				return std::to_underlying(Constants::Bindings::Ssbo::CloudSeeds);
+			}
+
+			consteval int LightsBuffer() {
+				return std::to_underlying(Constants::Bindings::Ssbo::LightsBuffer);
+			}
+
+			consteval int ClusterGridBuffer() {
+				return std::to_underlying(Constants::Bindings::Ssbo::ClusterGridBuffer);
 			}
 		} // namespace SsboBinding
 

@@ -189,8 +189,12 @@ void main() {
         radiance += lightRadiance * (atmosphereTransmittance * shadow * combinedPhase + multiScat * multiScatShadow * (s.rayleigh + s.mie));
     }
 
-    // Local lights
-    for (int i = 2; i < num_lights; ++i) {
+    // Local lights - CLUSTERED
+    uint injection_cluster_index = getClusterIndex(worldPos);
+    Cluster injection_cluster = clusters[injection_cluster_index];
+
+    for (uint idx = 0; idx < injection_cluster.count; ++idx) {
+        int i = int(injection_cluster.lightIndices[idx]);
         vec3 L; float atten;
         calculateLightContribution(i, worldPos, L, atten);
         if (atten <= 0.0) continue;

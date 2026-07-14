@@ -463,6 +463,9 @@ namespace Boidsish {
 		std::unique_ptr<PersistentBuffer<LightingUbo>>      lighting_pb;
 		std::unique_ptr<PersistentBuffer<VisualEffectsUbo>> visual_effects_pb;
 		std::unique_ptr<PersistentBuffer<TemporalUbo>>      temporal_pb;
+		std::unique_ptr<PersistentBuffer<LightGPU>>         lights_ssbo;
+		std::unique_ptr<PersistentBuffer<ClusterGPU>>       cluster_grid_ssbo;
+		std::unique_ptr<ComputeShader>                      cluster_light_assignment_shader;
 		glm::mat4               projection;
 		glm::mat4               prev_view_projection{1.0f};
 
@@ -857,9 +860,12 @@ namespace Boidsish {
 
 			lighting_pb = std::make_unique<PersistentBuffer<LightingUbo>>(GL_UNIFORM_BUFFER, 1, 3);
 			temporal_pb = std::make_unique<PersistentBuffer<TemporalUbo>>(GL_UNIFORM_BUFFER, 1, 3);
+			lights_ssbo = std::make_unique<PersistentBuffer<LightGPU>>(GL_SHADER_STORAGE_BUFFER, 1024, 3);
+			cluster_grid_ssbo = std::make_unique<PersistentBuffer<ClusterGPU>>(GL_SHADER_STORAGE_BUFFER, 16 * 9 * 24, 3);
+			cluster_light_assignment_shader = std::make_unique<ComputeShader>("shaders/effects/cluster_light_assignment.comp");
 
 			// Pre-allocate lighting cache for batched UBO updates
-			gpu_lights_cache_.reserve(10);
+			gpu_lights_cache_.reserve(1024);
 
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true)) {
 				visual_effects_pb = std::make_unique<PersistentBuffer<VisualEffectsUbo>>(GL_UNIFORM_BUFFER, 1, 3);
@@ -2136,6 +2142,8 @@ namespace Boidsish {
 			lighting_pb->AdvanceFrame();
 			temporal_pb->AdvanceFrame();
 			if (visual_effects_pb) visual_effects_pb->AdvanceFrame();
+			if (lights_ssbo) lights_ssbo->AdvanceFrame();
+			if (cluster_grid_ssbo) cluster_grid_ssbo->AdvanceFrame();
 
 			int current_idx = uniforms_ssbo->GetCurrentBufferIndex();
 			if (mdi_fences[current_idx]) {
@@ -2243,17 +2251,23 @@ namespace Boidsish {
 					CheckpointRingShape::GetShader()->setFloat("time", simulation_time);
 				}
 				const auto& lights = light_manager->GetLights();
-				int         num_lights = std::min(static_cast<int>(lights.size()), 10);
+				int         num_lights = std::min(static_cast<int>(lights.size()), 1024);
 
 				gpu_lights_cache_.clear();
 				for (int i = 0; i < num_lights; ++i) {
 					gpu_lights_cache_.push_back(lights[i].ToGPU());
 				}
 
+				if (num_lights > 0) {
+					std::memcpy(lights_ssbo->GetFrameDataPtr(), gpu_lights_cache_.data(), num_lights * sizeof(LightGPU));
+				}
+
+				float world_scale = terrain_generator ? terrain_generator->GetWorldScale() : 1.0f;
+				float far_plane = Constants::Project::Camera::DefaultFarPlane() * std::max(1.0f, world_scale);
+
 				std::memset(&lighting_ubo_data_, 0, sizeof(LightingUbo));
-				std::memcpy(lighting_ubo_data_.lights, gpu_lights_cache_.data(), num_lights * sizeof(LightGPU));
 				lighting_ubo_data_.num_lights = num_lights;
-				lighting_ubo_data_.world_scale = terrain_generator ? terrain_generator->GetWorldScale() : 1.0f;
+				lighting_ubo_data_.world_scale = world_scale;
 				lighting_ubo_data_.day_time = light_manager->GetDayNightCycle().time;
 				lighting_ubo_data_.night_factor = light_manager->GetDayNightCycle().night_factor;
 				if (post_processing_manager_) {
@@ -2361,17 +2375,44 @@ namespace Boidsish {
 					lighting_ubo_data_.cloudShadowIntensity = 0.0f;
 				}
 
+				lighting_ubo_data_.zNear = 0.1f;
+				lighting_ubo_data_.zFar = far_plane;
+
 				*lighting_pb->GetFrameDataPtr() = lighting_ubo_data_;
 				glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::Lighting(),
 					lighting_pb->GetBufferId(), lighting_pb->GetFrameOffset(), sizeof(LightingUbo));
 
 				// GPU-side copy of SH coefficients from SSBO into the UBO (no CPU readback)
 				if (atmosphere_manager) {
-					static_assert(offsetof(LightingUbo, sh_coeffs) == 1008, "SH offset mismatch");
+					static_assert(offsetof(LightingUbo, sh_coeffs) == 432, "SH offset mismatch");
 					atmosphere_manager->CopySHToUBO(
 						lighting_pb->GetBufferId(),
-						static_cast<GLintptr>(lighting_pb->GetFrameOffset()) + 1008
+						static_cast<GLintptr>(lighting_pb->GetFrameOffset()) + 432
 					);
+				}
+
+				// Run the compute shader to assign lights to clusters on the GPU
+				if (cluster_light_assignment_shader && cluster_light_assignment_shader->isValid()) {
+					cluster_light_assignment_shader->use();
+
+					// Bind the Uniform and SSBO buffers so the compute shader can access them:
+					// 1. Lighting UBO (contains view/projection matrices, nearPlane, farPlane, etc.)
+					glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::Lighting(),
+						lighting_pb->GetBufferId(), lighting_pb->GetFrameOffset(), sizeof(LightingUbo));
+
+					// 2. LightsBuffer SSBO (contains active lights)
+					lights_ssbo->BindRange(Constants::SsboBinding::LightsBuffer());
+
+					// 3. ClusterGridBuffer SSBO (contains output cluster grid)
+					cluster_grid_ssbo->BindRange(Constants::SsboBinding::ClusterGridBuffer());
+
+					// Dispatch compute shader
+					// Grid size: 16 x 9 x 24. Thread group sizes: (16, 9, 1).
+					// So we dispatch (1, 1, 24) groups to cover 16*9*24 clusters!
+					glDispatchCompute(1, 1, 24);
+
+					// Insert memory barrier to ensure SSBO writes are visible to subsequent shading
+					glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 				}
 			}
 
@@ -2415,7 +2456,9 @@ namespace Boidsish {
 				.UboRange(Constants::UboBinding::Lighting(),
 					lighting_pb->GetBufferId(), lighting_pb->GetFrameOffset(), sizeof(LightingUbo))
 				.UboRange(Constants::UboBinding::TemporalData(),
-					temporal_pb->GetBufferId(), temporal_pb->GetFrameOffset(), sizeof(TemporalUbo));
+					temporal_pb->GetBufferId(), temporal_pb->GetFrameOffset(), sizeof(TemporalUbo))
+				.SsboRange(Constants::SsboBinding::LightsBuffer(), *lights_ssbo)
+				.SsboRange(Constants::SsboBinding::ClusterGridBuffer(), *cluster_grid_ssbo);
 			if (visual_effects_pb) {
 				render_state_.global_bindings.UboRange(Constants::UboBinding::VisualEffects(),
 					visual_effects_pb->GetBufferId(), visual_effects_pb->GetFrameOffset(),
