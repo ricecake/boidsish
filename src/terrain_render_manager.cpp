@@ -105,7 +105,7 @@ namespace Boidsish {
 
 		glGenBuffers(1, &patch_metrics_ssbo_);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, patch_metrics_ssbo_);
-		glBufferData(GL_SHADER_STORAGE_BUFFER, max_patches * sizeof(PatchMetrics), nullptr, GL_STATIC_DRAW);
+		glBufferData(GL_SHADER_STORAGE_BUFFER, max_patches * sizeof(PatchMetrics), nullptr, GL_DYNAMIC_DRAW);
 
 		glGenBuffers(1, &patch_visibility_ssbo_);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, patch_visibility_ssbo_);
@@ -369,7 +369,7 @@ namespace Boidsish {
 
 		// Resize patch SSBOs
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, patch_metrics_ssbo_);
-		glBufferData(GL_SHADER_STORAGE_BUFFER, max_patches * sizeof(PatchMetrics), nullptr, GL_STATIC_DRAW);
+		glBufferData(GL_SHADER_STORAGE_BUFFER, max_patches * sizeof(PatchMetrics), nullptr, GL_DYNAMIC_DRAW);
 
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, patch_visibility_ssbo_);
 		glBufferData(GL_SHADER_STORAGE_BUFFER, max_patches * sizeof(uint32_t), nullptr, GL_DYNAMIC_DRAW);
@@ -1186,7 +1186,15 @@ namespace Boidsish {
 
 		// Bind structures for prebaked draw culling
 		chunk_states_pb_->BindRange(Constants::SsboBinding::TerrainPatchTessLevels());
-		terrain_indirect_pb_->BindRange(Constants::SsboBinding::TerrainPatchIndirect());
+
+		// Bind indirect buffer as GL_SHADER_STORAGE_BUFFER so compute shader can write to it
+		glBindBufferRange(
+			GL_SHADER_STORAGE_BUFFER,
+			Constants::SsboBinding::TerrainPatchIndirect(),
+			terrain_indirect_pb_->GetBufferId(),
+			terrain_indirect_pb_->GetFrameOffset(),
+			terrain_indirect_pb_->GetTotalSize() / 3
+		);
 
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainPatchVisibility(), patch_visibility_ssbo_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainPatchMetrics(), patch_metrics_ssbo_);
