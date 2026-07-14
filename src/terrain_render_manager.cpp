@@ -1540,6 +1540,9 @@ namespace Boidsish {
 				terrain_mesh_bake_shader_->setInt("u_slice", task.slice);
 				terrain_mesh_bake_shader_->setInt("u_lod", task.target_lod);
 
+				float scaled_chunk_size = chunk_size_ * world_scale;
+				terrain_mesh_bake_shader_->setVec2("u_worldOffset", glm::vec2(task.chunk_coord) * scaled_chunk_size);
+
 				// Compute dispatch size based on target LOD: grid width = (32 >> lod) + 1
 				int gridWidth = (chunk_size_ >> task.target_lod) + 1;
 				GLuint groups_x = (gridWidth + 15) / 16;

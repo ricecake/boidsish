@@ -28,6 +28,7 @@ layout(std430, binding = [[TERRAIN_PATCH_DRAW_DATA_BINDING]]) writeonly buffer V
 
 uniform int u_slice;
 uniform int u_lod;
+uniform vec2 u_worldOffset;
 
 void main() {
     int chunkSize = int(u_terrainParams.x);
@@ -54,6 +55,7 @@ void main() {
     // Apply displacement
     vec3 displacement = textureLod(u_displacementArray, vec3(remappedUV, float(u_slice)), 0.0).rgb;
     vec3 staticPos = vec3(uv.x * float(chunkSize) * worldScale, height, uv.y * float(chunkSize) * worldScale) + displacement;
+    staticPos.xz += u_worldOffset;
 
     // Sample params
     vec4 paramsVal = textureLod(u_bakedParamsArray, vec3(remappedUV, float(u_slice)), 0.0);
