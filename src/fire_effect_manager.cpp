@@ -457,6 +457,7 @@ namespace Boidsish {
 			shader->setInt("u_num_chunks", static_cast<int>(chunk_info.size()));
 			shader->setUint("u_grid_size", Constants::Class::Particles::ParticleGridSize());
 			shader->setFloat("u_cell_size", Constants::Class::Particles::ParticleGridCellSize());
+			shader->setBool("u_particle_lights_enabled", cfg.GetAppSettingBool("particle_lights_enabled", true));
 
 			if (heightmap_texture != 0) {
 				glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainHeightmap());

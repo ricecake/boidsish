@@ -85,6 +85,7 @@ namespace Boidsish {
 
 		// Particle settings
 		GetAppSettingBool("particles_enabled", true);
+		GetAppSettingBool("particle_lights_enabled", true);
 		GetAppSettingFloat("ambient_particle_density", Constants::Class::Particles::DefaultAmbientDensity());
 		GetAppSettingFloat("particle_ratio_birds", 0.05f);
 		GetAppSettingFloat("particle_ratio_leaves", 0.25f);

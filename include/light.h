@@ -1,6 +1,7 @@
 #ifndef LIGHT_H
 #define LIGHT_H
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -41,6 +42,12 @@ namespace Boidsish {
 		int       flags;        // offset 52, 4 bytes
 		float     _padding[2];  // offset 56, 8 bytes of padding
 	}; // Total: 64 bytes
+
+	struct alignas(16) LightsSSBOData {
+		uint32_t count;
+		uint32_t padding[3];
+		LightGPU lights[1024];
+	};
 
 	// Light flag bitmasks
 	constexpr int LIGHT_FLAG_CASTS_SHADOW = 1;

@@ -16,6 +16,7 @@ uniform int   u_num_emitters;
 uniform int   u_num_chunks;
 uniform uint  u_grid_size;
 uniform float u_cell_size;
+uniform bool  u_particle_lights_enabled;
 
 #ifndef TERRAIN_BIOME_MAP_DEFINED
 #define TERRAIN_BIOME_MAP_DEFINED
@@ -48,6 +49,42 @@ void main() {
 		u_num_chunks,
 		u_heightmapArray
 	);
+
+	if (u_particle_lights_enabled && p.pos.w > 0.0) {
+		if (p.style == STYLE_FIRE || p.style == STYLE_FIREFLIES) {
+			bool should_create = false;
+			float intensity = 0.0;
+			if (p.style == STYLE_FIRE) {
+				if ((gid % 8) == 0) {
+					should_create = true;
+					intensity = p.color.a * 3.0;
+				}
+			} else if (p.style == STYLE_FIREFLIES) {
+				if ((gid % 4) == 0) {
+					should_create = true;
+					intensity = p.color.a * 0.5;
+				}
+			}
+
+			if (should_create && intensity > 0.01) {
+				uint light_idx = atomicAdd(count, 1);
+				if (light_idx < 1024) {
+					lights[light_idx].position = p.pos.xyz;
+					lights[light_idx].intensity = intensity;
+					lights[light_idx].color = p.color.rgb;
+					lights[light_idx].type = 0; // POINT_LIGHT
+					lights[light_idx].direction = vec3(0.0, -1.0, 0.0);
+					lights[light_idx].inner_cutoff = 0.0;
+					lights[light_idx].outer_cutoff = 0.0;
+					lights[light_idx].flags = 0;
+					lights[light_idx]._pad0 = 0.0;
+					lights[light_idx]._pad1 = 0.0;
+				} else {
+					atomicAdd(count, 0xFFFFFFFFU);
+				}
+			}
+		}
+	}
 
 	particles[gid] = p;
 

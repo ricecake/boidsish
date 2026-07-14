@@ -53,11 +53,12 @@ void main() {
 		max(zNearSlice, zFarSlice)
 	);
 
-	uint count = 0;
+	uint local_count = 0;
 	uint local_light_indices[64];
 
 	// Iterate through local lights (indices starting from 2, index 0 and 1 are reserved for global directional lights)
-	for (int i = 2; i < num_lights; ++i) {
+	uint total_lights = min(count, 1024u);
+	for (uint i = 2; i < total_lights; ++i) {
 		if (lights[i].intensity <= 0.0) continue;
 
 		vec3 light_pos = lights[i].position;
@@ -93,16 +94,16 @@ void main() {
 		}
 
 		if (dist_sq <= radius * radius) {
-			if (count < 64) {
-				local_light_indices[count] = uint(i);
-				count++;
+			if (local_count < 64) {
+				local_light_indices[local_count] = uint(i);
+				local_count++;
 			}
 		}
 	}
 
 	uint cluster_index = clusterID.x + clusterID.y * 16 + clusterID.z * 16 * 9;
-	clusters[cluster_index].count = count;
-	for (uint i = 0; i < count; ++i) {
+	clusters[cluster_index].count = local_count;
+	for (uint i = 0; i < local_count; ++i) {
 		clusters[cluster_index].lightIndices[i] = local_light_indices[i];
 	}
 }
