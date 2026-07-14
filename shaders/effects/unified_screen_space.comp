@@ -21,6 +21,7 @@ float calculateTerrainOcclusion(vec3 worldPos, vec3 normal) { return 1.0; }
 
 #include "temporal_data.glsl"
 #include "../helpers/lighting.glsl"
+#include "helpers/math.glsl"
 
 // Unified Parameters
 uniform bool  uSSGIEnabled = true;
@@ -145,6 +146,7 @@ void main() {
 			float finalEdgeFade = 1.0;
 			bool hit = false;
 
+			vec2 texSize = vec2(textureSize(gDepth, 0));
 			for (int i = 0; i < uSSSSteps; i++) {
 				vec4 clipPos = uProjection * vec4(rayPos, 1.0);
 				vec3 ndcPos = clipPos.xyz / clipPos.w;
@@ -152,13 +154,31 @@ void main() {
 
 				if (sampleUV.x < 0.0 || sampleUV.x > 1.0 || sampleUV.y < 0.0 || sampleUV.y > 1.0 || ndcPos.z > 1.0 || ndcPos.z < -1.0) break;
 
-				float sampleDepth = texture(gDepth, sampleUV).r;
-				if (sampleDepth < 1.0) {
-					vec3 sampledPos = getViewPos(sampleUV, sampleDepth);
-					float depthDiff = sampledPos.z - rayPos.z;
-					if (depthDiff > 0.01 * worldScaleVal && depthDiff < 2.0 * worldScaleVal) {
+				vec4 depths = textureGather(gDepth, sampleUV);
+				vec2 fracUV = fract(sampleUV * texSize - 0.5);
+
+				float depthBottom = mix(depths.w, depths.z, fracUV.x);
+				float depthTop    = mix(depths.x, depths.y, fracUV.x);
+				float depthLinear = mix(depthBottom, depthTop, fracUV.y);
+
+				float depthPoint = (fracUV.y < 0.5) ?
+								((fracUV.x < 0.5) ? depths.w : depths.z) :
+								((fracUV.x < 0.5) ? depths.x : depths.y);
+
+				if (depthPoint < 1.0 || depthLinear < 1.0) {
+					float zLinear = getViewPos(sampleUV, depthLinear).z;
+					float zPoint  = getViewPos(sampleUV, depthPoint).z;
+
+					float zClosestToCamera = max(zLinear, zPoint);
+					float zFurthestFromCamera = min(zLinear, zPoint);
+
+					bool isBehindBoth = rayPos.z < zFurthestFromCamera;
+					float penetration = zClosestToCamera - rayPos.z;
+
+					if (isBehindBoth && penetration > 0.01 * worldScaleVal && penetration < 2.0 * worldScaleVal) {
 						vec2 edgeDist = min(sampleUV, 1.0 - sampleUV);
 						float edgeFade = clamp(min(edgeDist.x, edgeDist.y) * 10.0, 0.0, 1.0);
+
 						if (edgeFade > 0.0) {
 							sssVisibility = 0.0;
 							minContactDist = distance(rayPos, rayStartPos);
@@ -180,8 +200,10 @@ void main() {
 
 	// --- 2. Ground Truth Ambient Occlusion (GTAO) ---
 	float ao = 1.0;
+		vec3 bentNormal = vNorm; // Default to geometric normal
 	if (uGTAOEnabled) {
 		float gtao_ao = 0.0;
+vec3 gtao_bent_normal = vec3(0.0); // Initialize accumulator
 		vec3 viewDir = normalize(-vPos);
 		float spatialOffset = hash12(uv * 1.5);
 		float projScale = uProjection[0][0] * 0.5;
@@ -205,10 +227,29 @@ void main() {
 				if (d1 < uGTAORadius) h1 = max(h1, dot(normalize(v1), viewDir) * f1);
 				if (d2 < uGTAORadius) h2 = max(h2, dot(normalize(v2), viewDir) * f2);
 			}
-			gtao_ao += (acos(h1) + acos(h2)) / 2.0;
+
+			float theta1 = acos(h1);
+			float theta2 = acos(h2);
+			gtao_ao += (theta1 + theta2) / 2.0;
+
+			// Construct an approximate view-space slice direction
+			vec3 sliceDir = vec3(dir.x, dir.y, 0.0);
+
+			// Find the bisector of the unoccluded wedge
+			float bisectorAngle = (theta1 - theta2) * 0.5;
+			vec3 sliceUnoccludedDir = cos(bisectorAngle) * viewDir + sin(bisectorAngle) * sliceDir;
+
+			// Accumulate weighted by the total unoccluded angle for this slice
+			gtao_bent_normal += sliceUnoccludedDir * (theta1 + theta2);
 		}
+
 		float visibility = gtao_ao / (float(uGTAODirections) * PI);
 		ao = clamp(1.0 - (1.0 - visibility) * uGTAOIntensity, 0.0, 1.0);
+
+		// Normalize and blend with the geometric normal based on intensity
+		if (length(gtao_bent_normal) > 0.001) {
+			bentNormal = normalize(mix(vNorm, normalize(gtao_bent_normal), uGTAOIntensity));
+		}
 	}
 
 	// --- 3. Screen Space Global Illumination (SSGI) ---
@@ -250,7 +291,7 @@ void main() {
 				vec3 F = fresnelSchlick(VdotH, F0);
 				weight = F * GeometrySchlickGGX(NdotL, roughness) * uSSGIReflectionIntensity / specProb;
 			} else {
-				rayDir = hemisphereSample(jitterDir, vNorm);
+				rayDir = hemisphereSample(jitterDir, bentNormal);
 				weight = albedo * (1.0 - metallic) * uSSGIIntensity / (1.0 - specProb);
 			}
 
@@ -285,7 +326,8 @@ void main() {
 				// Fallback to SH probes if screen-space march misses
 				// We weight this fallback higher for diffuse rays than specular to avoid over-bright reflections
 				float fallbackWeight = isSpecular ? 0.05 : 0.25;
-				indirect += getSpatialAmbientSH(worldPos, worldRayDir) * weight * fallbackWeight;
+				vec3 shDir = isSpecular ? worldRayDir : bentNormal;
+				indirect += getSpatialAmbientSH(worldPos, shDir) * weight * fallbackWeight * ao;
 			}
 		}
 		indirect /= float(uSSGIRayCount);
