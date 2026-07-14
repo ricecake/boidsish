@@ -2,6 +2,7 @@
 #define HELPERS_ASTRAL_GLSL
 
 #include "noise.glsl"
+#include "lygia/color/palette.glsl"
 
 float fbm_astral(vec3 p) {
 	float v = 0.0;
@@ -46,8 +47,10 @@ vec3 computeNebula(vec3 dir, float time) {
     vec3 warp_offset = vec3(fbm_astral(p + time * 0.05));
     float nebula_noise = fbm_astral(p + warp_offset * 0.5);
 
-    vec3 color = mix(vec3(0.0, 0.0, 0.0), vec3(0.8, 0.2, 0.7) * curl_astral(warp_offset), nebula_noise);
-    return color * 0.1 * snoise3d(warp_offset);
+    // vec3 color = mix(vec3(0.0, 0.0, 0.0), vec3(0.8, 0.2, 0.7) * curl_astral(warp_offset), nebula_noise);
+    // return color * 0.1 * snoise3d(warp_offset);
+    // return mix(vec3(0.0), palette(nebula_noise, vec3(0.5,0.5,0.5),vec3(0.5,0.5,0.5),vec3(1.0,1.0,1.0),vec3(0.0,0.33,0.67)), smoothstep(0.0, 0.125, nebula_noise));
+    return 0.05*snoise3d(warp_offset)*palette(nebula_noise, vec3(0.5,0.5,0.5),vec3(0.5,0.5,0.5),vec3(1.0,1.0,1.0),vec3(0.0,0.33,0.67));
 }
 
 float computeStars(vec3 dir, float time) {
