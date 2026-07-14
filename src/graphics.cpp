@@ -861,7 +861,7 @@ namespace Boidsish {
 			lighting_pb = std::make_unique<PersistentBuffer<LightingUbo>>(GL_UNIFORM_BUFFER, 1, 3);
 			temporal_pb = std::make_unique<PersistentBuffer<TemporalUbo>>(GL_UNIFORM_BUFFER, 1, 3);
 			lights_ssbo = std::make_unique<PersistentBuffer<LightsSSBOData>>(GL_SHADER_STORAGE_BUFFER, 1, 3);
-			cluster_grid_ssbo = std::make_unique<PersistentBuffer<ClusterGPU>>(GL_SHADER_STORAGE_BUFFER, 16 * 9 * 24, 3);
+			cluster_grid_ssbo = std::make_unique<PersistentBuffer<ClusterGPU>>(GL_SHADER_STORAGE_BUFFER, 16 * 9 * 24 + 1, 3);
 			cluster_light_assignment_shader = std::make_unique<ComputeShader>("shaders/effects/cluster_light_assignment.comp");
 
 			// Pre-allocate lighting cache for batched UBO updates
