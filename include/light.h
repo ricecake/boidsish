@@ -49,55 +49,68 @@ namespace Boidsish {
 	constexpr int LIGHT_FLAG_CLOUD_EMISSIVE = 8;
 
 	/**
+	 * @brief Cluster structure matching the GLSL representation.
+	 */
+	struct alignas(16) ClusterGPU {
+		uint32_t count;
+		uint32_t lightIndices[64];
+		uint32_t padding[3]; // pad to 272 bytes (multiple of 16)
+	};
+
+	/**
 	 * @brief Complete lighting UBO data for single-call upload (std140 layout).
 	 * Must match layout in shaders/lighting.glsl.
 	 * Replaces 8 separate glBufferSubData calls with one for better GPU throughput.
 	 */
 	struct alignas(16) LightingUbo {
-		LightGPU lights[10];                     // offset 0,   640 bytes
-		int      num_lights;                     // offset 640, 4 bytes
-		float    world_scale;                    // offset 644, 4 bytes
-		float    day_time;                       // offset 648, 4 bytes (0-24)
-		float    night_factor;                   // offset 652, 4 bytes (0-1)
-		alignas(16) glm::vec3 view_pos;          // offset 656, 12 bytes
-		float cloudShadowIntensity;              // offset 668, 4 bytes
-		alignas(16) glm::vec3 ambient_light;     // offset 672, 12 bytes
-		float time;                              // offset 684, 4 bytes
-		alignas(16) glm::vec3 view_dir;          // offset 688, 12 bytes
-		float cloudAltitude;                     // offset 700, 4 bytes
-		float cloudThickness;                    // offset 704, 4 bytes
-		float cloudDensity;                      // offset 708, 4 bytes
-		float cloudCoverage;                     // offset 712, 4 bytes
-		float cloudWarp;                         // offset 716, 4 bytes
-		float cloudPhaseG1;                      // offset 720, 4 bytes
-		float cloudPhaseG2;                      // offset 724, 4 bytes
-		float cloudPhaseAlpha;                   // offset 728, 4 bytes
-		float cloudPhaseIsotropic;               // offset 732, 4 bytes
-		float cloudPowderScale;                  // offset 736, 4 bytes
-		float cloudPowderMultiplier;             // offset 740, 4 bytes
-		float cloudPowderLocalScale;             // offset 744, 4 bytes
-		float cloudShadowOpticalDepthMultiplier; // offset 748, 4 bytes
-		float cloudShadowStepMultiplier;         // offset 752, 4 bytes
-		float cloudSunLightScale;                // offset 756, 4 bytes
-		float cloudMoonLightScale;               // offset 760, 4 bytes
-		float cloudBeerPowderMix;                // offset 764, 4 bytes
-		float cloudFlowSpeed;                    // offset 768, 4 bytes
-		float cloudFlowDirection;                // offset 772, 4 bytes
-		float cloudFlowHeightScale;              // offset 776, 4 bytes
-		float cloudCurlStrength;                 // offset 780, 4 bytes
-		float cloudCurlFrequency;                // offset 784, 4 bytes
-		float sunAureoleStrength;                // offset 788, 4 bytes
-		float cirrusOpacity;                     // offset 792, 4 bytes
-		float _pad_clouds3;                      // offset 796, 4 bytes
-		float _pad_cloud_shadow_mat[16];         // offset 800, 64 bytes
-		alignas(16) glm::mat4 view;              // offset 864, 64 bytes
-		alignas(16) glm::mat4 projection;        // offset 928, 64 bytes
-		alignas(16) glm::vec3 lightningColor;    // offset 992, 12 bytes
-		float lightningPulse;                    // offset 1004, 4 bytes
-		alignas(16) glm::vec4 sh_coeffs[81];     // offset 1008, 1296 bytes (9 probes * 9 coeffs)
-	}; // Total: 2304 bytes
+		int      num_lights;                     // offset 0, 4 bytes
+		float    world_scale;                    // offset 4, 4 bytes
+		float    day_time;                       // offset 8, 4 bytes (0-24)
+		float    night_factor;                   // offset 12, 4 bytes (0-1)
+		alignas(16) glm::vec3 view_pos;          // offset 16, 12 bytes
+		float cloudShadowIntensity;              // offset 28, 4 bytes
+		alignas(16) glm::vec3 ambient_light;     // offset 32, 12 bytes
+		float time;                              // offset 44, 4 bytes
+		alignas(16) glm::vec3 view_dir;          // offset 48, 12 bytes
+		float cloudAltitude;                     // offset 60, 4 bytes
+		float cloudThickness;                    // offset 64, 4 bytes
+		float cloudDensity;                      // offset 68, 4 bytes
+		float cloudCoverage;                     // offset 72, 4 bytes
+		float cloudWarp;                         // offset 76, 4 bytes
+		float cloudPhaseG1;                      // offset 80, 4 bytes
+		float cloudPhaseG2;                      // offset 84, 4 bytes
+		float cloudPhaseAlpha;                   // offset 88, 4 bytes
+		float cloudPhaseIsotropic;               // offset 92, 4 bytes
+		float cloudPowderScale;                  // offset 96, 4 bytes
+		float cloudPowderMultiplier;             // offset 100, 4 bytes
+		float cloudPowderLocalScale;             // offset 104, 4 bytes
+		float cloudShadowOpticalDepthMultiplier; // offset 108, 4 bytes
+		float cloudShadowStepMultiplier;         // offset 112, 4 bytes
+		float cloudSunLightScale;                // offset 116, 4 bytes
+		float cloudMoonLightScale;               // offset 120, 4 bytes
+		float cloudBeerPowderMix;                // offset 124, 4 bytes
+		float cloudFlowSpeed;                    // offset 128, 4 bytes
+		float cloudFlowDirection;                // offset 132, 4 bytes
+		float cloudFlowHeightScale;              // offset 136, 4 bytes
+		float cloudCurlStrength;                 // offset 140, 4 bytes
+		float cloudCurlFrequency;                // offset 144, 4 bytes
+		float sunAureoleStrength;                // offset 148, 4 bytes
+		float cirrusOpacity;                     // offset 152, 4 bytes
+		float zNear;                             // offset 156, 4 bytes
+		float zFar;                              // offset 160, 4 bytes
+		float                 _pad_clouds3_a;      // offset 164, 4 bytes
+		float                 _pad_clouds3_b;      // offset 168, 4 bytes
+		float                 _pad_clouds3_c;      // offset 172, 4 bytes
+		alignas(16) glm::vec4 _pad_clouds3_vec[3]; // offset 176, 48 bytes of padding
+		float _pad_cloud_shadow_mat[16];         // offset 224, 64 bytes
+		alignas(16) glm::mat4 view;              // offset 288, 64 bytes
+		alignas(16) glm::mat4 projection;        // offset 352, 64 bytes
+		alignas(16) glm::vec3 lightningColor;    // offset 416, 12 bytes
+		float lightningPulse;                    // offset 428, 4 bytes
+		alignas(16) glm::vec4 sh_coeffs[81];     // offset 432, 1296 bytes (9 probes * 9 coeffs)
+	}; // Total: 1728 bytes
 
-	static_assert(sizeof(LightingUbo) == 2304, "LightingUbo size mismatch");
+	static_assert(sizeof(LightingUbo) == 1728, "LightingUbo size mismatch");
 
 	/**
 	 * @brief Light source data structure for rendering.
