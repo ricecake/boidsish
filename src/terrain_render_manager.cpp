@@ -130,8 +130,9 @@ namespace Boidsish {
 					unsigned int i1 = y * width + (x + 1);
 					unsigned int i2 = (y + 1) * width + x;
 					unsigned int i3 = (y + 1) * width + (x + 1);
-					idxs.push_back(i0); idxs.push_back(i1); idxs.push_back(i2);
-					idxs.push_back(i1); idxs.push_back(i3); idxs.push_back(i2);
+					// Counter-Clockwise (CCW) winding order when looking from above (+Y)
+					idxs.push_back(i0); idxs.push_back(i2); idxs.push_back(i1);
+					idxs.push_back(i1); idxs.push_back(i2); idxs.push_back(i3);
 				}
 			}
 			return idxs;
@@ -794,11 +795,21 @@ namespace Boidsish {
 			);
 			float dist = glm::distance(camera_pos_2d, chunk_center);
 
-			// Determine target LOD based on distance
-			int target_lod = 3;
-			if (dist < 128.0f * world_scale) target_lod = 0;
-			else if (dist < 256.0f * world_scale) target_lod = 1;
-			else if (dist < 512.0f * world_scale) target_lod = 2;
+			// Determine target LOD with hysteresis to prevent thrashing visual disruption
+			int target_lod = chunk.current_lod;
+			if (target_lod == -1) {
+				if (dist < 128.0f * world_scale) target_lod = 0;
+				else if (dist < 256.0f * world_scale) target_lod = 1;
+				else if (dist < 512.0f * world_scale) target_lod = 2;
+				else target_lod = 3;
+			} else {
+				if (target_lod == 0 && dist > 144.0f * world_scale) target_lod = 1;
+				else if (target_lod == 1 && dist < 112.0f * world_scale) target_lod = 0;
+				else if (target_lod == 1 && dist > 288.0f * world_scale) target_lod = 2;
+				else if (target_lod == 2 && dist < 224.0f * world_scale) target_lod = 1;
+				else if (target_lod == 2 && dist > 544.0f * world_scale) target_lod = 3;
+				else if (target_lod == 3 && dist < 480.0f * world_scale) target_lod = 2;
+			}
 
 			// If current baked LOD differs from target LOD, trigger a rebake task
 			if (chunk.current_lod != target_lod) {
