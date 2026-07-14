@@ -73,6 +73,73 @@ const float CL_SPHERE_RADII[3] = float[](
 
 const float CL_RADIUS_VARIATION = 0.04;
 
+float dot2(vec3 x) {
+	return dot(x, x);
+}
+
+float sdSphere( vec3 p, float r )
+{
+  return length(p) - r;
+}
+
+float sdSolidAngle( vec3 p, vec2 c, float ra )
+{
+  // c is the sin/cos of the angle
+  vec2 q = vec2( length(p.xz), p.y );
+  float l = length(q) - ra;
+  float m = length(q - c*clamp(dot(q,c),0.0,ra) );
+  return max(l,m*sign(c.y*q.x-c.x*q.y));
+}
+
+float sdCutSphere( vec3 p, float r, float h )
+{
+  float w = sqrt(r*r-h*h);
+
+  vec2 q = vec2( length(p.xz), p.y );
+  float s = max( (h-r)*q.x*q.x+w*w*(h+r-2.0*q.y), h*q.x-w*q.y );
+  return (s<0.0) ? length(q)-r :
+         (q.x<w) ? h - q.y     :
+                   length(q-vec2(w,h));
+}
+
+float sdRoundCone( vec3 p, vec3 a, vec3 b, float r1, float r2 )
+{
+  vec3  ba = b - a;
+  float l2 = dot(ba,ba);
+  float rr = r1 - r2;
+  float a2 = l2 - rr*rr;
+  float il2 = 1.0/l2;
+
+  vec3 pa = p - a;
+  float y = dot(pa,ba);
+  float z = y - l2;
+  float x2 = dot2( pa*l2 - ba*y );
+  float y2 = y*y*l2;
+  float z2 = z*z*l2;
+
+  // single square root!
+  float k = sign(rr)*rr*rr*x2;
+  if( sign(z)*a2*z2>k ) return  sqrt(x2 + z2)        *il2 - r2;
+  if( sign(y)*a2*y2<k ) return  sqrt(x2 + y2)        *il2 - r1;
+                        return (sqrt(x2*a2*il2)+y*rr)*il2 - r1;
+}
+
+float sdVesicaSegment( in vec3 p, in vec3 a, in vec3 b, in float w )
+{
+    vec3  c = (a+b)*0.5;
+    float l = length(b-a);
+    vec3  v = (b-a)/l;
+    float y = dot(p-c,v);
+    vec2  q = vec2(length(p-c-y*v),abs(y));
+
+    float r = 0.5*l;
+    float d = 0.5*(r*r-w*w)/w;
+    vec3  h = (r*q.x<d*(q.y-r)) ? vec3(0.0,r,0.0) : vec3(-d,0.0,d+w);
+
+    return length(q-h.xy) - h.z;
+}
+
+
 // Elegant and precise analytical 3D sphere SDF
 
 float evalSdf(vec3            p, float           time, CloudProperties props) {
@@ -127,6 +194,7 @@ float evalSdf(vec3            p, float           time, CloudProperties props) {
 				if (h < 100.5) {
 					// Evaluate as Sphere
 					dist = length(p - sphere_center) - radius;
+					// dist = sdRoundCone(sphere_center, vec3(0.25, sphere_center.y, 0.25), vec3(0.5, sphere_center.y, 0.5), 1.25 * radius, 0.75 * radius);
 				} else {
 					// Evaluate as Rounded Box (Anvil cloud)
 					vec3 boxExtents = vec3(radius * 1.5, radius * 0.5, radius * 1.5);
