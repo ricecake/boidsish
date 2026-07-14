@@ -375,14 +375,22 @@ namespace Boidsish {
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, patch_visibility_ssbo_);
 		glBufferData(GL_SHADER_STORAGE_BUFFER, max_patches * sizeof(uint32_t), nullptr, GL_DYNAMIC_DRAW);
 
-		// Resize prebaked VBO
-		if (terrain_vbo_) {
-			glDeleteBuffers(1, &terrain_vbo_);
-		}
-		glGenBuffers(1, &terrain_vbo_);
-		glBindBuffer(GL_ARRAY_BUFFER, terrain_vbo_);
+		// Resize prebaked VBO preserving existing baked vertex data
+		GLuint new_vbo = 0;
+		glGenBuffers(1, &new_vbo);
+		glBindBuffer(GL_ARRAY_BUFFER, new_vbo);
 		glBufferData(GL_ARRAY_BUFFER, new_capacity * 1089 * sizeof(TerrainVertex), nullptr, GL_STATIC_DRAW);
 		glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+		if (terrain_vbo_) {
+			glBindBuffer(GL_COPY_READ_BUFFER, terrain_vbo_);
+			glBindBuffer(GL_COPY_WRITE_BUFFER, new_vbo);
+			glCopyBufferSubData(GL_COPY_READ_BUFFER, GL_COPY_WRITE_BUFFER, 0, 0, max_chunks_ * 1089 * sizeof(TerrainVertex));
+			glBindBuffer(GL_COPY_READ_BUFFER, 0);
+			glBindBuffer(GL_COPY_WRITE_BUFFER, 0);
+			glDeleteBuffers(1, &terrain_vbo_);
+		}
+		terrain_vbo_ = new_vbo;
 
 		// Update VAO vertex buffer binding
 		if (terrain_vao_) {
