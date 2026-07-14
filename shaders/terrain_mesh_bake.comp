@@ -1,0 +1,81 @@
+#version 460 core
+
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+#include "helpers/constants.glsl"
+
+layout(std140, binding = [[TERRAIN_DATA_BINDING]]) uniform TerrainData {
+	ivec4 u_originSize;    // x, z, size, is_bound
+	vec4  u_terrainParams; // x=chunkSize, y=worldScale
+};
+
+// Baked inputs
+layout(binding = [[BAKED_HEIGHTMAP_BINDING]]) uniform sampler2DArray u_heightmapArray;
+layout(binding = [[BAKED_PARAMS_BINDING]]) uniform sampler2DArray u_bakedParamsArray;
+layout(binding = [[BAKED_DISPLACEMENT_BINDING]]) uniform sampler2DArray u_displacementArray;
+layout(binding = [[TERRAIN_BIOME_MAP_BINDING]]) uniform sampler2DArray u_biomeMap;
+
+struct TerrainVertex {
+    vec4 position;       // xyz = position, w = texture_slice
+    vec4 normal;         // xyz = normal, w = perturb_factor
+    vec4 tex_coords;     // xy = tex_coords, z = tess_factor, w = v_is_water
+    vec4 params;         // x = v_erosion_delta, y = v_ridge_map, z = v_substrate, w = padding
+};
+
+layout(std430, binding = [[TERRAIN_PATCH_DRAW_DATA_BINDING]]) writeonly buffer VboPool {
+    TerrainVertex vertices[];
+};
+
+uniform int u_slice;
+uniform int u_lod;
+uniform vec2 u_worldOffset;
+
+void main() {
+    int chunkSize = int(u_terrainParams.x);
+    float worldScale = u_terrainParams.y;
+
+    int gridWidth = (chunkSize >> u_lod) + 1;
+
+    ivec2 localID = ivec2(gl_LocalInvocationID.xy);
+    ivec2 groupID = ivec2(gl_WorkGroupID.xy);
+    ivec2 pixelCoord = groupID * 16 + localID;
+
+    if (pixelCoord.x >= gridWidth || pixelCoord.y >= gridWidth)
+        return;
+
+    // UV in [0, 1]
+    vec2 uv = vec2(pixelCoord) / float(gridWidth - 1);
+
+    // Sample heightmap
+    vec2 remappedUV = (uv * float(chunkSize) + 0.5) / (float(chunkSize) + 1.0);
+    vec4 hData = textureLod(u_heightmapArray, vec3(remappedUV, float(u_slice)), 0.0);
+    float height = hData.r;
+    vec3 normal = normalize(hData.gba);
+
+    // Apply displacement
+    vec3 displacement = textureLod(u_displacementArray, vec3(remappedUV, float(u_slice)), 0.0).rgb;
+    vec3 staticPos = vec3(uv.x * float(chunkSize) * worldScale, height, uv.y * float(chunkSize) * worldScale) + displacement;
+    staticPos.xz += u_worldOffset;
+
+    // Sample params
+    vec4 paramsVal = textureLod(u_bakedParamsArray, vec3(remappedUV, float(u_slice)), 0.0);
+    float erosionDelta = paramsVal.r;
+    float ridgeMap = paramsVal.g;
+    float substrate = paramsVal.b;
+
+    // Sample biome map for water mask
+    vec4 biomeData = textureLod(u_biomeMap, vec3(remappedUV, float(u_slice)), 0.0);
+    float isWater = biomeData.a; // Relocated to alpha
+
+    // Calculate perturb factor and tess factor (LOD indicators for shader effects)
+    float tessFactor = 64.0 / float(1 << u_lod);
+    float perturbFactor = clamp(tessFactor / float(chunkSize), 0.0, 1.0);
+
+    // Write to VBO (LOD-packed vertices inside the slice's reserved block)
+    uint vertexIdx = uint(u_slice * 1089) + uint(pixelCoord.y * gridWidth + pixelCoord.x);
+
+    vertices[vertexIdx].position = vec4(staticPos, float(u_slice));
+    vertices[vertexIdx].normal = vec4(normal, perturbFactor);
+    vertices[vertexIdx].tex_coords = vec4(uv, tessFactor, isWater);
+    vertices[vertexIdx].params = vec4(erosionDelta, ridgeMap, substrate, 0.0);
+}
