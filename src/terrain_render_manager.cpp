@@ -772,6 +772,9 @@ namespace Boidsish {
 
 		UpdateGridTextures(world_scale);
 
+		// Perform baking of any pending chunks FIRST so their current_lod is fresh
+		PerformBaking(world_scale);
+
 		// Advance double/triple buffers before checking/writing
 		chunk_states_pb_->AdvanceFrame();
 		terrain_indirect_pb_->AdvanceFrame();
@@ -850,9 +853,6 @@ namespace Boidsish {
 			state.index_count = index_count;
 			state.last_frame_used = frame_count_;
 		}
-
-		// Perform baking after updating grid textures to ensure UBO is fresh
-		PerformBaking(world_scale);
 
 		// Update shadow map if needed
 		if (glm::length(sun_dir) > 0.1f) {
