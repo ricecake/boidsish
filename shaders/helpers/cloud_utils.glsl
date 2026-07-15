@@ -44,6 +44,49 @@ vec3 beerPowder(vec3 d, vec3 local_d) {
 	);
 }
 
+
+const float cloudFlow = 3.14159265;
+const float clFlowSpeed = 5.0;
+vec3 getCloudWindSpeed(float time) {
+	return vec3(0);
+}
+
+vec3 getCloudAdvectionSpeed(float h, float time) {
+	float angle = 3.14159265;
+	vec2 flowDir = vec2(cos(angle), sin(angle));
+	vec2 speed = flowDir * 5.0 * worldScale * 10.0;
+	return vec3(speed.x, 0.0, speed.y);
+}
+
+vec3 getCloudWindOffset(float time) {
+	return vec3(0);
+}
+
+vec3 getCloudAdvectionOffset(float h, float time) {
+	float angle = 3.14159265;
+	vec2 flowDir = vec2(cos(angle), sin(angle));
+	vec2 advect = flowDir * 5.0 * worldScale * 10.0 * time;
+	return vec3(advect.x, 0.0, advect.y);
+}
+
+CloudWeather loadCloudWeather(vec4 tex) {
+	CloudWeather weather;
+	weather.sdf = tex.r;
+	weather.heightMap = tex.g;
+	weather.cellID = tex.b;
+	weather.thickness = tex.a;
+
+	return weather;
+}
+
+CloudLayer computeCloudLayer(CloudWeather weather, CloudProperties props) {
+	CloudLayer layer;
+	layer.baseFloor = props.altitude * props.worldScale;
+	layer.baseCeiling = layer.baseFloor + (props.thickness * 12.0) * props.worldScale;
+	layer.thickness = max(layer.baseCeiling - layer.baseFloor, 0.001);
+	return layer;
+}
+
 // https://iquilezles.org/articles/smin
 float smin( float a, float b, float k )
 {
@@ -226,40 +269,6 @@ float evalSdf(vec3            p, float           time, CloudProperties props) {
 	// return d;
 }
 
-const float cloudFlow = 3.14159265;
-const float clFlowSpeed = 5.0;
-vec3 getCloudWindSpeed(float time) {
-	return vec3(0);
-}
-
-vec3 getCloudAdvectionSpeed(float h, float time) {
-	float angle = 3.14159265;
-	vec2 flowDir = vec2(cos(angle), sin(angle));
-	vec2 speed = flowDir * 5.0 * worldScale * 10.0;
-	return vec3(speed.x, 0.0, speed.y);
-}
-
-vec3 getCloudWindOffset(float time) {
-	return vec3(0);
-}
-
-vec3 getCloudAdvectionOffset(float h, float time) {
-	float angle = 3.14159265;
-	vec2 flowDir = vec2(cos(angle), sin(angle));
-	vec2 advect = flowDir * 5.0 * worldScale * 10.0 * time;
-	return vec3(advect.x, 0.0, advect.y);
-}
-
-CloudWeather loadCloudWeather(vec4 tex) {
-	CloudWeather weather;
-	weather.sdf = tex.r;
-	weather.heightMap = tex.g;
-	weather.cellID = tex.b;
-	weather.thickness = tex.a;
-
-	return weather;
-}
-
 CloudWeather computeCloudWeather(vec3 p, CloudProperties props) {
 	CloudWeather weather;
 	weather.sdf = evalSdf(p, time, props);
@@ -269,13 +278,6 @@ CloudWeather computeCloudWeather(vec3 p, CloudProperties props) {
 	return weather;
 }
 
-CloudLayer computeCloudLayer(CloudWeather weather, CloudProperties props) {
-	CloudLayer layer;
-	layer.baseFloor = props.altitude * props.worldScale;
-	layer.baseCeiling = layer.baseFloor + (props.thickness * 12.0) * props.worldScale;
-	layer.thickness = max(layer.baseCeiling - layer.baseFloor, 0.001);
-	return layer;
-}
 
 float remapClamp(float value, float inMin, float inMax, float outMin, float outMax) {
 	float t = clamp((value - inMin) / (inMax - inMin), 0.0, 1.0);
