@@ -143,6 +143,10 @@ float sdVesicaSegment( in vec3 p, in vec3 a, in vec3 b, in float w )
 // Elegant and precise analytical 3D sphere SDF
 
 float evalSdf(vec3            p, float           time, CloudProperties props) {
+	if (time > 0.0) {
+		p -= getCloudAdvectionOffset(0.0, time);
+	}
+
 	float tileScale = 1000.0 * worldScale;
 
 	float y_min = cloudAltitude * worldScale;
@@ -191,10 +195,19 @@ float evalSdf(vec3            p, float           time, CloudProperties props) {
 				sphere_center.y = Cy;
 
 				float dist;
-				if (h < 100.5) {
+				if (h < 0.6) {
+					// Evaluate as Rounded, Capped Cone oriented to the direction of advection
+					float angle = 3.14159265;
+					vec3 advectDir = normalize(vec3(cos(angle), 0.0, sin(angle)));
+					float halfLength = radius * 1.2;
+					vec3 a = sphere_center - advectDir * halfLength;
+					vec3 b = sphere_center + advectDir * halfLength;
+					float r1 = radius * 1.1; // larger radius
+					float r2 = radius * 0.5; // smaller radius (tapered)
+					dist = sdRoundCone(p, a, b, r1, r2);
+				} else if (h < 0.85) {
 					// Evaluate as Sphere
 					dist = length(p - sphere_center) - radius;
-					// dist = sdRoundCone(sphere_center, vec3(0.25, sphere_center.y, 0.25), vec3(0.5, sphere_center.y, 0.5), 1.25 * radius, 0.75 * radius);
 				} else {
 					// Evaluate as Rounded Box (Anvil cloud)
 					vec3 boxExtents = vec3(radius * 1.5, radius * 0.5, radius * 1.5);
@@ -213,14 +226,17 @@ float evalSdf(vec3            p, float           time, CloudProperties props) {
 	// return d;
 }
 
-const float cloudFlow = 3.14;
+const float cloudFlow = 3.14159265;
 const float clFlowSpeed = 5.0;
 vec3 getCloudWindSpeed(float time) {
 	return vec3(0);
 }
 
 vec3 getCloudAdvectionSpeed(float h, float time) {
-	return vec3(0);
+	float angle = 3.14159265;
+	vec2 flowDir = vec2(cos(angle), sin(angle));
+	vec2 speed = flowDir * 5.0 * worldScale * 10.0;
+	return vec3(speed.x, 0.0, speed.y);
 }
 
 vec3 getCloudWindOffset(float time) {
@@ -228,7 +244,10 @@ vec3 getCloudWindOffset(float time) {
 }
 
 vec3 getCloudAdvectionOffset(float h, float time) {
-	return vec3(0);
+	float angle = 3.14159265;
+	vec2 flowDir = vec2(cos(angle), sin(angle));
+	vec2 advect = flowDir * 5.0 * worldScale * 10.0 * time;
+	return vec3(advect.x, 0.0, advect.y);
 }
 
 CloudWeather loadCloudWeather(vec4 tex) {

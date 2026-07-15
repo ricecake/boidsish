@@ -204,22 +204,29 @@ void main() {
 			}
 
 			vec3 p = viewPos + rayDir * t;
-// /*
+
+			vec4 prebaked = vec4(1e10, 1.0, 1.0, 0.0);
 			float low_res_sdf = 1e10;
 			float y_min = props.altitude * props.worldScale;
 			float y_max = (props.altitude + props.thickness * 12.0) * props.worldScale;
 			float mapRange = 6000.0 * props.worldScale;
 			if (p.y < y_min) {
 				low_res_sdf = y_min - p.y;
+				prebaked.r = low_res_sdf;
 			} else if (p.y > y_max) {
 				low_res_sdf = p.y - y_max;
+				prebaked.r = low_res_sdf;
 			} else {
+				vec3 p_advected = p;
+				if (time > 0.0) {
+					p_advected -= getCloudAdvectionOffset(0.0, time);
+				}
 				vec3 texCoords;
-				texCoords.x = p.x / mapRange;
-				texCoords.z = p.z / mapRange;
-				texCoords.y = (p.y - y_min) / (y_max - y_min);
-				// texCoords.xz *= 6.0;
-				low_res_sdf = texture(u_cloudSdf3DTexture, texCoords).r;
+				texCoords.x = p_advected.x / mapRange;
+				texCoords.z = p_advected.z / mapRange;
+				texCoords.y = (p_advected.y - y_min) / (y_max - y_min);
+				prebaked = texture(u_cloudSdf3DTexture, texCoords);
+				low_res_sdf = prebaked.r;
 			}
 
 			if (low_res_sdf > 0.0) {
@@ -228,7 +235,7 @@ void main() {
 				prevDensity = vec3(0.0);
 				continue;
 			}
-// */
+
 			// Active cell of the texture hit! Switch to analytical raymarch.
 			// p += jitter * rayDir;
 			CloudWeather weather = computeCloudWeather(p, props);
@@ -249,6 +256,10 @@ void main() {
 			float useCheapEval = t / lodDistanceThreshold;
 			vec3 sampleAdvection;
 			vec3 d = calculateCloudDensity(p + jitter * rayDir, weather, layer, props, time, useCheapEval, sampleAdvection);
+
+			// Integrate prebaked coarse density inside the cloud core
+			float coreWeight = smoothstep(0.0, -100.0 * worldScale, low_res_sdf);
+			d = mix(d, vec3(prebaked.a), coreWeight);
 
 			if (max(d.x, max(d.y, d.z)) > 0.01) {
 				if (firstHitDist < 0.0) {
@@ -358,6 +369,11 @@ void main() {
 						cloudBeerPowderMix
 					);
 
+					// Apply prebaked directional shadow factor to primary directional lights
+					if (lights[j].type == LIGHT_TYPE_DIRECTIONAL) {
+						shadowTerm *= prebaked.b;
+					}
+
 					float lightScale = 1.0;
 					if (lights[j].type == LIGHT_TYPE_DIRECTIONAL) {
 						lightScale = (j == 0 ? cloudSunLightScale : cloudMoonLightScale);
@@ -400,8 +416,8 @@ void main() {
 				vec3 powder = vec3(1.0) - exp(-stepDensity * powderScale);
 
 				// --- 4. Final Integration ---
-				// Apply directional attenuation to their respective sources
-				vec3 finalAmbient = (ambientTop * skyAttenuation) + (ambientBottom * groundAttenuation);
+				// Apply directional attenuation and modulate with prebaked AO
+				vec3 finalAmbient = (ambientTop * skyAttenuation * prebaked.g) + (ambientBottom * groundAttenuation);
 
 				// Modulate ambient by the powder effect, then combine with primary scattering
 				vec3 S = stepScattering + (finalAmbient * powder) + emissiveGlow;

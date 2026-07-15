@@ -84,10 +84,10 @@ namespace Boidsish {
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
-		// Cloud 3D SDF Texture: 128x32x128 R32F (Volume)
+		// Cloud 3D SDF Texture: 128x32x128 RGBA16F (Volume)
 		glGenTextures(1, &_cloudSdf3DTexture);
 		glBindTexture(GL_TEXTURE_3D, _cloudSdf3DTexture);
-		glTexImage3D(GL_TEXTURE_3D, 0, GL_R32F, 128, 32, 128, 0, GL_RED, GL_FLOAT, nullptr);
+		glTexImage3D(GL_TEXTURE_3D, 0, GL_RGBA16F, 128, 32, 128, 0, GL_RGBA, GL_FLOAT, nullptr);
 		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_REPEAT);
@@ -184,7 +184,7 @@ namespace Boidsish {
 
 			// Dispatch 3D SDF Baking (every frame to ensure perfect sync with dynamic cloud altitude/thickness)
 			_cloudSdf3DBakeShader->use();
-			glBindImageTexture(0, _cloudSdf3DTexture, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_R32F);
+			glBindImageTexture(0, _cloudSdf3DTexture, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 			glDispatchCompute(128 / 8, 32 / 4, 128 / 8); // workgroup size: 8x4x8
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 

@@ -2,7 +2,7 @@
 
 layout(local_size_x = 8, local_size_y = 4, local_size_z = 8) in;
 
-layout(binding = 0, r32f) uniform image3D outSdfTexture;
+layout(binding = 0, rgba16f) uniform image3D outSdfTexture;
 
 #include "../helpers/clouds.glsl"
 
@@ -38,15 +38,59 @@ void main() {
 		mapRange / float(size.z)
 	);
 
-// The distance from the center of the voxel to its furthest corner
+	// The distance from the center of the voxel to its furthest corner
 	float voxelCircumradius = length(voxelSize) * 0.5;
 
-
-	float d3d = evalSdf(p, time, props);
-
-	// Dilate the SDF to ensure the bounding box covers voxel corners
+	// Bake unadvected SDF at time = 0.0
+	float d3d = evalSdf(p, 0.0, props);
 	d3d -= voxelCircumradius;
-	// p.xz /= 6.0;
 
-	imageStore(outSdfTexture, pixel, vec4(d3d, 0.0, 0.0, 0.0));
+	// 1. Prebake coarse density
+	float h_norm = clamp((worldY - y_min) / max(y_max - y_min, 1.0), 0.0, 1.0);
+	float heightGradient = getDensityHeightGradient(h_norm, 0.5);
+	float density = clamp(-d3d * heightGradient, 0.0, 1.0) * props.densityBase;
+
+	// 2. Prebake Ambient Occlusion (AO) by raymarching vertically upwards
+	float ao = 0.0;
+	float stepSizeAO = (y_max - worldY) / 8.0;
+	if (stepSizeAO > 0.01) {
+		for (int step = 1; step <= 8; step++) {
+			vec3 sp = p + vec3(0.0, float(step) * stepSizeAO, 0.0);
+			float sd = evalSdf(sp, 0.0, props);
+			if (sd < 0.0) {
+				float h_s = clamp((sp.y - y_min) / max(y_max - y_min, 1.0), 0.0, 1.0);
+				float grad_s = getDensityHeightGradient(h_s, 0.5);
+				float dens_s = clamp(-sd * grad_s, 0.0, 1.0) * props.densityBase;
+				ao += dens_s * stepSizeAO;
+			}
+		}
+	}
+	ao = exp(-ao * 0.05);
+
+	// 3. Prebake Directional Shadow factor by raymarching towards the primary directional light source
+	vec3 L = vec3(0.0, 1.0, 0.0);
+	for (int j = 0; j < num_lights; j++) {
+		if (lights[j].type == 1) { // DIRECTIONAL_LIGHT
+			L = normalize(-lights[j].direction);
+			break;
+		}
+	}
+
+	float shadowOD = 0.0;
+	float shadowStepSize = 150.0 * props.worldScale;
+	int shadow_steps = 6;
+	for (int step = 1; step <= shadow_steps; step++) {
+		vec3 sp = p + L * float(step) * shadowStepSize;
+		if (sp.y > y_max) break;
+		float sd = evalSdf(sp, 0.0, props);
+		if (sd < 0.0) {
+			float h_s = clamp((sp.y - y_min) / max(y_max - y_min, 1.0), 0.0, 1.0);
+			float grad_s = getDensityHeightGradient(h_s, 0.5);
+			float dens_s = clamp(-sd * grad_s, 0.0, 1.0) * props.densityBase;
+			shadowOD += dens_s * shadowStepSize;
+		}
+	}
+	float shadowFactor = exp(-shadowOD * 0.08);
+
+	imageStore(outSdfTexture, pixel, vec4(d3d, ao, shadowFactor, density));
 }
