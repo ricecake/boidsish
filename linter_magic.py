@@ -110,8 +110,8 @@ def analyze_project(build_dir, project_root, target_functions):
 def detect_literal_parameters(cursor, target_functions, allowed_dirs, seen_issues):
     macro_calls = []
 
-    find_macros(cursor, target_functions, macro_calls)
-    find_expressions_in_macros(cursor, target_functions, macro_calls)
+    # find_macros(cursor, target_functions, macro_calls)
+    # find_expressions_in_macros(cursor, target_functions, macro_calls)
 
     if macro_calls:
         print(macro_calls)
@@ -128,14 +128,14 @@ def detect_literal_parameters(cursor, target_functions, allowed_dirs, seen_issue
     if cursor.kind == CursorKind.CALL_EXPR:
         if cursor.referenced:
             call_name = cursor.referenced.spelling
-            # print(call_name)
+            # print(call_name, cursor.spelling)
         else:
             call_name = cursor.spelling
 
         if call_name in target_functions:
-            args = list(cursor.get_arguments())
+            # args = list(cursor.get_arguments())
 
-            # args = [ skip_casts_and_parens(arg) for arg in list(cursor.get_arguments()) ]
+            args = [ skip_casts_and_parens(arg) for arg in list(cursor.get_arguments()) ]
             for arg in args:
                 location = cursor.location
                 issue_id = f"{location.file.name}:{location.line}:{location.column} : {cursor.spelling}"
@@ -167,6 +167,9 @@ def main():
     # opengl_functions = ['glBindImageTexture', 'glBindTexture']
     opengl_functions = ['glBindTexture', 'glBindImageTexture']
     # opengl_functions = ['glBindImageTexture']
+
+    opengl_functions += [ tok.replace('gl', '__glew') for tok in opengl_functions]
+    print(opengl_functions)
 
     # Pass the current working directory as the project root
     analyze_project('./build/', '.', opengl_functions)
