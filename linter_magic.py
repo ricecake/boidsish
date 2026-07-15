@@ -2,6 +2,55 @@ import clang.cindex
 from clang.cindex import CursorKind
 import os
 
+def skip_casts_and_parens(cursor):
+    """Recursively traverses the AST to skip unexposed expressions,
+       implicit casts, and parentheses."""
+    if cursor.kind in (CursorKind.UNEXPOSED_EXPR, CursorKind.PAREN_EXPR):
+        # print(cursor.kind, [t.spelling for t in cursor.get_tokens()])
+        # Look at the first child of the unexposed expression
+        for child in cursor.get_children():
+            return skip_casts_and_parens(child)
+    return cursor
+
+
+def find_macros(node, target_functions, macro_calls):
+    # We target a specific macro name, e.g., "LOG_DATA"
+    if node.kind == clang.cindex.CursorKind.MACRO_INSTANTIATION and node.spelling in target_functions:
+        start_offset = node.extent.start.offset
+        end_offset = node.extent.end.offset
+        macro_calls.append({
+            'name': node.spelling,
+            'start': start_offset,
+            'end': end_offset,
+            'line': node.location.line,
+            'found_expressions': []
+        })
+    for child in node.get_children():
+        find_macros(child, target_functions, macro_calls)
+
+# Step 2: Traverse AST to find expressions evaluated inside those macro boundaries
+def find_expressions_in_macros(node, target_functions, macro_calls):
+    # Only look at nodes that represent concrete values/expressions
+    if node.kind.is_expression():
+        node_start = node.extent.start.offset
+        node_end = node.extent.end.offset
+
+        # Check if this expression belongs inside any discovered macro call
+        for macro in macro_calls:
+            if node_start >= macro['start'] and node_end <= macro['end']:
+                # Filter out compound parent expressions to get the core arguments
+                # e.g., we want 'x' and 'y', not the 'x + y' wrapper if it repeats types
+                macro['found_expressions'].append({
+                    'spelling': node.spelling,
+                    'kind': node.kind.name,
+                    'type': node.type.spelling,
+                    'start_offset': node_start
+                })
+
+    for child in node.get_children():
+        find_expressions_in_macros(child, target_functions, macro_calls)
+
+
 def analyze_project(build_dir, project_root, target_functions):
     index = clang.cindex.Index.create()
 
@@ -55,26 +104,25 @@ def analyze_project(build_dir, project_root, target_functions):
         tu = index.parse(filename, args=extracted_args, options=clang.cindex.TranslationUnit.PARSE_DETAILED_PROCESSING_RECORD)
 
         print(f"Analyzing: {filename}")
+
         detect_literal_parameters(tu.cursor, target_functions, allowed_dirs, seen_issues)
 
-def skip_casts_and_parens(cursor):
-    """Recursively traverses the AST to skip unexposed expressions,
-       implicit casts, and parentheses."""
-    if cursor.kind in (CursorKind.UNEXPOSED_EXPR, CursorKind.PAREN_EXPR):
-        # print(cursor.kind, [t.spelling for t in cursor.get_tokens()])
-        # Look at the first child of the unexposed expression
-        for child in cursor.get_children():
-            return skip_casts_and_parens(child)
-    return cursor
-
 def detect_literal_parameters(cursor, target_functions, allowed_dirs, seen_issues):
+    macro_calls = []
+
+    find_macros(cursor, target_functions, macro_calls)
+    find_expressions_in_macros(cursor, target_functions, macro_calls)
+
+    if macro_calls:
+        print(macro_calls)
+
     # if cursor.kind == CursorKind.CALL_EXPR and cursor.spelling in target_functions:
-    if cursor.kind == clang.cindex.CursorKind.MACRO_INSTANTIATION:
-        # Get the unexpanded macro tokens
-        print(cursor.__dict__)
-        tokens = [token.spelling for token in cursor.get_tokens()]
-        print(f"Macro Expansion Found at {cursor.location.line}:{cursor.location.column}")
-        print(f"Original Text: {' '.join(tokens)}")
+    # if cursor.kind == clang.cindex.CursorKind.MACRO_INSTANTIATION:
+    #     # Get the unexpanded macro tokens
+    #     print(cursor.__dict__)
+    #     tokens = [token.spelling for token in cursor.get_tokens()]
+    #     print(f"Macro Expansion Found at {cursor.location.line}:{cursor.location.column}")
+    #     print(f"Original Text: {' '.join(tokens)}")
 
     # print(cursor.spelling)
     if cursor.kind == CursorKind.CALL_EXPR:
