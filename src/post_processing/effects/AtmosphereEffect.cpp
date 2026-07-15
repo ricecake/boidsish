@@ -10,6 +10,7 @@
 #include "shadow_manager.h"
 #include "shader.h"
 #include "terrain_render_manager.h"
+#include "ConfigManager.h"
 
 namespace Boidsish {
 	namespace PostProcessing {

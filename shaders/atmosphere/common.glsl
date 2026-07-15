@@ -2,6 +2,7 @@
 #define ATMOSPHERE_COMMON_GLSL
 
 #include "../helpers/constants.glsl"
+#include "../helpers/math.glsl"
 
 // Physical Constants
 const float kEarthRadius = 6360.0; // km
@@ -144,9 +145,7 @@ float rayleighPhase(float cosTheta) {
 }
 
 float miePhase(float cosTheta) {
-	float g = u_mieAnisotropy;
-	float g2 = g * g;
-	return (1.0 - g2) / (4.0 * PI * pow(max(1e-4, 1.0 + g2 - 2.0 * g * cosTheta), 1.5));
+	return henyeyGreenstein(u_mieAnisotropy, cosTheta);
 }
 
 // LUT mapping functions - Simple Linear mapping for Transmittance to avoid precision issues
