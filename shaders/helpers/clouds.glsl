@@ -473,8 +473,14 @@ vec4 calculateCloudDensityExpV8(
 }
 
 
+struct CloudSpotDetails {
+	float density;
+	vec3 relativeExtinction;
+	vec3 advectionSpeed;
+};
 
-vec4 calculateCloudDensityExpV9(
+
+CloudSpotDetails calculateCloudDensityExpV9(
 	vec3            p,
 	CloudWeather    weather,
 	CloudLayer      layer,
@@ -489,7 +495,47 @@ vec4 calculateCloudDensityExpV9(
 
 	float baseSdf = getCloud3DSDF(p_advected, weather, layer, props.worldScale);
 	float baseNoise = clamp(-baseSdf/150.0, 0, 1);
-	return vec4(clamp(baseNoise, 0.00, 1.0), advectSpeed);
+	bool isCore = baseSdf <= -50000.0;
+
+
+	float erodeMask = smoothstep(-10000.0, 0.0, baseSdf);
+	if (erodeMask > 0.0) {
+		float largeScale = abs(fastFbm3d(p_advected/10000)) * erodeMask;
+		baseNoise = remap(baseNoise, largeScale, 1.0, 0.0, 1.0);
+
+		if (!isCore) {
+			if (simplified < 1.0) {
+				erodeMask = 1.0 - baseNoise;
+				float coarseScale = abs(fastFbm3d(p_advected/5000.0)) * erodeMask;
+				baseNoise = remap(baseNoise, coarseScale, 1.0, 0.0, 1.0);
+			}
+
+			if (simplified < .75) {
+				erodeMask = 1.0 - baseNoise;
+				float mediumScale = (1.0-fastRidge3d(p_advected/4000)) * erodeMask;
+				baseNoise = remap(baseNoise, mediumScale, 1.0, 0.0, 1.0);
+			}
+
+			if (simplified < 0.50) {
+				erodeMask = 1.0 - baseNoise;
+				float fineScale = abs(fastFbm3d(p_advected / 3000.0)) * erodeMask;
+				baseNoise = remap(baseNoise, fineScale, 1.0, 0.0, 1.0);
+			}
+
+			if (simplified < 0.25) {
+				erodeMask = 1.0 - baseNoise;
+				float detailScale = fastRidge3d(p / vec3(2000.0, 1000.0, 2000.0)) * erodeMask;
+				baseNoise = remap(baseNoise, detailScale, 1.0, 0.0, 1.0);
+			}
+		}
+		baseNoise *= smoothstep(0.01, 0.02, baseNoise);
+	}
+
+	return CloudSpotDetails(
+		clamp(baseNoise, 0.00, 1.0),
+		vec3(1.0),
+		advectSpeed
+	);
 }
 
 // Cloud density calculation helper
@@ -508,12 +554,9 @@ vec3 calculateCloudDensity(
 		advection = getCloudAdvectionSpeed(h, time);
 		return vec3(0.0);
 	}
-
 	// Need a worley fbm to mix in
-	vec4 res = calculateCloudDensityExpV9(p, weather, layer, props, time, simplified);
+	CloudSpotDetails res = calculateCloudDensityExpV9(p, weather, layer, props, time, simplified);
 	// vec4 res = calculateCloudDensityExpV8(p, weather, layer, props, time, simplified);
-	advection = res.yzw;
-	return vec3(res.x);
 	// return calculateCloudDensityExpV8(p, weather, layer, props, time, simplified);
 	// return calculateCloudDensityExpV7(p, weather, layer, props, time, simplified);
 	// return calculateCloudDensityExpV6(p, weather, layer, props, time, simplified);
@@ -523,6 +566,11 @@ vec3 calculateCloudDensity(
 	// return calculateCloudDensityExpV2(p, weather, layer, props, time, simplified);
 	// return calculateCloudDensityExpV1(p, weather, layer, props, time, simplified);
 	// return calculateCloudDensityHZDv1(p, weather, layer, props, time, simplified);
+
+
+	advection = res.advectionSpeed;
+	return res.relativeExtinction * res.density;
+
 }
 
 #endif // HELPERS_CLOUDS_GLSL

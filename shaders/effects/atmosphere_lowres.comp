@@ -198,8 +198,8 @@ void main() {
 		float currentStepSize = baseStepSize;
 
 		for (int i = 0; i < MAX_ITERATIONS; i++) {
-			// if (t >= dist || t >= t_end || all(lessThan(cloudTransmittance, vec3(0.01)))) break;
-			if (t >= dist || t >= t_end || max(cloudTransmittance.x, max(cloudTransmittance.y, cloudTransmittance.z)) < 0.01) break;
+			if (t >= dist || t >= t_end || all(lessThan(cloudTransmittance, vec3(0.01)))) break;
+			// if (t >= dist || t >= t_end || max(cloudTransmittance.x, max(cloudTransmittance.y, cloudTransmittance.z)) < 0.01) break;
 
 			vec3 p = viewPos + rayDir * t;
 			CloudWeather weather = computeCloudWeather(p, props);
