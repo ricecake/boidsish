@@ -26,6 +26,16 @@ uniform float u_atmosphereHeight; // usually 100.0 km
 layout(binding = [[ATMOSPHERE_TRANSMITTANCE_BINDING]]) uniform sampler2D u_transmittanceLUT;
 #endif
 
+#ifndef LTC1_LUT_DEFINED
+	#define LTC1_LUT_DEFINED
+layout(binding = [[LTC1_BINDING]]) uniform sampler2D u_LTC1;
+#endif
+
+#ifndef LTC2_LUT_DEFINED
+	#define LTC2_LUT_DEFINED
+layout(binding = [[LTC2_BINDING]]) uniform sampler2D u_LTC2;
+#endif
+
 #ifndef TERRAIN_GRID_DEFINED
 	#define TERRAIN_GRID_DEFINED
 layout(binding = [[TERRAIN_CHUNK_GRID_BINDING]]) uniform sampler2D u_chunkGrid;
@@ -41,11 +51,181 @@ vec2 getTransmittanceUV(float r, float mu) {
 	return vec2(clamp(x_mu, 0.0, 1.0), clamp(x_r, 0.0, 1.0));
 }
 
+float get_luminance(vec3 color);
+
+vec3 IntegrateEdgeVec(vec3 v1, vec3 v2) {
+	float x = dot(v1, v2);
+	float y = abs(x);
+	float a = 0.8543985 + (0.4965155 + 0.0145206 * y) * y;
+	float b = 3.4175940 + (4.1616724 + y) * y;
+	float v = a / b;
+	float theta_sintheta = (x > 0.0) ? v : 0.5 * inversesqrt(max(1.0 - x * x, 1e-7)) - v;
+	return cross(v1, v2) * theta_sintheta;
+}
+
+vec3 LTC_Evaluate(vec3 N, vec3 V, vec3 P, mat3 Minv, vec3 points[4], bool twoSided) {
+	// construct orthonormal basis around N
+	vec3 T1 = normalize(V - N * dot(V, N));
+	vec3 T2 = cross(N, T1);
+
+	// rotate area light in (T1, T2, N) basis
+	Minv = Minv * transpose(mat3(T1, T2, N));
+
+	// polygon (allocate 4 vertices for clipping)
+	vec3 L[4];
+
+	// transform polygon from LTC back to origin Do (cosine weighted)
+	L[0] = Minv * (points[0] - P);
+	L[1] = Minv * (points[1] - P);
+	L[2] = Minv * (points[2] - P);
+	L[3] = Minv * (points[3] - P);
+
+	// use tabulated horizon-clipped sphere
+	// check if the shading point is behind the light
+	vec3 dir = points[0] - P;
+	vec3 lightNormal = cross(points[1] - points[0], points[3] - points[0]);
+	bool behind = (dot(dir, lightNormal) < 0.0);
+
+	// cos weighted space
+	L[0] = normalize(L[0]);
+	L[1] = normalize(L[1]);
+	L[2] = normalize(L[2]);
+	L[3] = normalize(L[3]);
+
+	// integrate
+	vec3 vsum = vec3(0.0);
+	vsum += IntegrateEdgeVec(L[0], L[1]);
+	vsum += IntegrateEdgeVec(L[1], L[2]);
+	vsum += IntegrateEdgeVec(L[2], L[3]);
+	vsum += IntegrateEdgeVec(L[3], L[0]);
+
+	// form factor of the polygon in direction vsum
+	float len = length(vsum);
+
+	float z = vsum.z / max(len, 1e-6);
+	if (behind)
+		z = -z;
+
+	vec2 uv = vec2(z * 0.5 + 0.5, len); // range [0, 1]
+	const float LUT_SIZE = 64.0;
+	const float LUT_SCALE = (LUT_SIZE - 1.0) / LUT_SIZE;
+	const float LUT_BIAS = 0.5 / LUT_SIZE;
+	uv = uv * LUT_SCALE + LUT_BIAS;
+
+	// Fetch the form factor for horizon clipping
+	float scale = texture(u_LTC2, uv).w;
+
+	float sum = len * scale;
+	if (!behind && !twoSided)
+		sum = 0.0;
+
+	vec3 Lo_i = vec3(sum);
+	return Lo_i;
+}
+
+void evaluate_area_light_pbr(int i, vec3 frag_pos, vec3 N, vec3 V, vec3 albedo, float roughness, float metallic, vec3 F0, inout vec3 Lo, inout float spec_lum) {
+	vec3 points[4];
+	vec3 P_light = lights[i].position;
+	if ((lights[i].flags & LIGHT_FLAG_CAMERA_RELATIVE) != 0) {
+		P_light += viewPos;
+	}
+	vec3 N_light = normalize(lights[i].direction);
+	vec3 R_light = normalize(lights[i].tangent);
+	vec3 U_light = normalize(cross(N_light, R_light));
+	float W_light = lights[i].inner_cutoff;
+	float H_light = lights[i].outer_cutoff;
+
+	vec3 halfR = R_light * (W_light * 0.5);
+	vec3 halfU = U_light * (H_light * 0.5);
+	points[0] = P_light - halfR - halfU;
+	points[1] = P_light + halfR - halfU;
+	points[2] = P_light + halfR + halfU;
+	points[3] = P_light - halfR + halfU;
+
+	float dotNV = clamp(dot(N, V), 0.0, 1.0);
+	const float LUT_SIZE = 64.0;
+	const float LUT_SCALE = (LUT_SIZE - 1.0) / LUT_SIZE;
+	const float LUT_BIAS = 0.5 / LUT_SIZE;
+	vec2 ltc_uv = vec2(roughness, sqrt(1.0 - dotNV));
+	ltc_uv = ltc_uv * LUT_SCALE + LUT_BIAS;
+
+	vec4 t1 = texture(u_LTC1, ltc_uv);
+	vec4 t2 = texture(u_LTC2, ltc_uv);
+
+	mat3 Minv = mat3(
+		vec3(t1.x, 0.0, t1.y),
+		vec3(0.0,  1.0, 0.0),
+		vec3(t1.z, 0.0, t1.w)
+	);
+
+	bool twoSided = true;
+	vec3 diffuse_shading = LTC_Evaluate(N, V, frag_pos, mat3(1.0), points, twoSided);
+	vec3 specular_shading = LTC_Evaluate(N, V, frag_pos, Minv, points, twoSided);
+
+	vec3 F = F0 * t2.x + (vec3(1.0) - F0) * t2.y;
+	vec3 specular_term = specular_shading * F;
+	vec3 diffuse_term = albedo * (1.0 - metallic) * diffuse_shading;
+
+	vec3 radiance = lights[i].color * lights[i].intensity;
+	Lo += radiance * (specular_term + diffuse_term);
+	spec_lum += get_luminance(radiance * specular_term);
+}
+
+void evaluate_area_light_legacy(int i, vec3 frag_pos, vec3 normal, vec3 albedo, float specular_strength, inout vec3 result, inout float spec_lum) {
+	vec3 points[4];
+	vec3 P_light = lights[i].position;
+	if ((lights[i].flags & LIGHT_FLAG_CAMERA_RELATIVE) != 0) {
+		P_light += viewPos;
+	}
+	vec3 N_light = normalize(lights[i].direction);
+	vec3 R_light = normalize(lights[i].tangent);
+	vec3 U_light = normalize(cross(N_light, R_light));
+	float W_light = lights[i].inner_cutoff;
+	float H_light = lights[i].outer_cutoff;
+
+	vec3 halfR = R_light * (W_light * 0.5);
+	vec3 halfU = U_light * (H_light * 0.5);
+	points[0] = P_light - halfR - halfU;
+	points[1] = P_light + halfR - halfU;
+	points[2] = P_light + halfR + halfU;
+	points[3] = P_light - halfR + halfU;
+
+	vec3 V = normalize(viewPos - frag_pos);
+	float dotNV = clamp(dot(normal, V), 0.0, 1.0);
+	const float LUT_SIZE = 64.0;
+	const float LUT_SCALE = (LUT_SIZE - 1.0) / LUT_SIZE;
+	const float LUT_BIAS = 0.5 / LUT_SIZE;
+	vec2 ltc_uv = vec2(0.5, sqrt(1.0 - dotNV)); // Default roughness of 0.5 for legacy phong
+	ltc_uv = ltc_uv * LUT_SCALE + LUT_BIAS;
+
+	vec4 t1 = texture(u_LTC1, ltc_uv);
+	vec4 t2 = texture(u_LTC2, ltc_uv);
+
+	mat3 Minv = mat3(
+		vec3(t1.x, 0.0, t1.y),
+		vec3(0.0,  1.0, 0.0),
+		vec3(t1.z, 0.0, t1.w)
+	);
+
+	bool twoSided = true;
+	vec3 diffuse_shading = LTC_Evaluate(normal, V, frag_pos, mat3(1.0), points, twoSided);
+	vec3 specular_shading = LTC_Evaluate(normal, V, frag_pos, Minv, points, twoSided);
+
+	vec3 F = vec3(0.04) * t2.x + (vec3(1.0) - vec3(0.04)) * t2.y;
+	vec3 specular_term = specular_shading * F * specular_strength;
+	vec3 diffuse_term = albedo * diffuse_shading;
+
+	vec3 radiance = lights[i].color * lights[i].intensity;
+	result += radiance * (specular_term + diffuse_term);
+	spec_lum += get_luminance(radiance * specular_term);
+}
+
 const int LIGHT_TYPE_POINT = 0;
 const int LIGHT_TYPE_DIRECTIONAL = 1;
 const int LIGHT_TYPE_SPOT = 2;
 const int LIGHT_TYPE_EMISSIVE = 3; // Glowing object light (can cast shadows)
 const int LIGHT_TYPE_FLASH = 4;    // Explosion/flash light (rapid falloff)
+const int LIGHT_TYPE_AREA = 5;     // Linearly Transformed Cosines Area light
 
 /**
  * Calculate light direction and attenuation for any light type.
@@ -614,6 +794,11 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 			continue;
 		}
 
+		if (lights[i].type == LIGHT_TYPE_AREA) {
+			evaluate_area_light_pbr(i, frag_pos, N, V, albedo, roughness, metallic, F0, Lo, spec_lum);
+			continue;
+		}
+
 		vec3 L;
 		float base_attenuation;
 		calculateLightContribution(i, frag_pos, L, base_attenuation);
@@ -634,6 +819,11 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 	for (uint idx = 0; idx < cluster.count; ++idx) {
 		int i = int(cluster.lightIndices[idx]);
 		if (lights[i].intensity <= 0.0) {
+			continue;
+		}
+
+		if (lights[i].type == LIGHT_TYPE_AREA) {
+			evaluate_area_light_pbr(i, frag_pos, N, V, albedo, roughness, metallic, F0, Lo, spec_lum);
 			continue;
 		}
 
@@ -776,6 +966,11 @@ vec4 apply_lighting_foliage(vec3 frag_pos, vec3 normal, vec3 albedo, float rough
             continue;
         }
 
+        if (lights[i].type == LIGHT_TYPE_AREA) {
+            evaluate_area_light_pbr(i, frag_pos, N, V, albedo, roughness, metallic, F0, Lo, spec_lum);
+            continue;
+        }
+
         vec3 L; float base_atten;
         calculateLightContribution(i, frag_pos, L, base_atten);
 
@@ -795,6 +990,11 @@ vec4 apply_lighting_foliage(vec3 frag_pos, vec3 normal, vec3 albedo, float rough
 		if (lights[i].intensity <= 0.0) {
 			continue;
 		}
+
+        if (lights[i].type == LIGHT_TYPE_AREA) {
+            evaluate_area_light_pbr(i, frag_pos, N, V, albedo, roughness, metallic, F0, Lo, spec_lum);
+            continue;
+        }
 
         vec3 L; float base_atten;
         calculateLightContribution(i, frag_pos, L, base_atten);
@@ -881,6 +1081,11 @@ vec4 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, floa
 		int i = int(no_shadow_global_cluster.lightIndices[idx]);
 		if (lights[i].intensity <= 0.0) continue;
 
+		if (lights[i].type == LIGHT_TYPE_AREA) {
+			evaluate_area_light_pbr(i, frag_pos, N, V, albedo, roughness, metallic, F0, Lo, spec_lum);
+			continue;
+		}
+
 		vec3  L;
 		float base_attenuation;
 		calculateLightContribution(i, frag_pos, L, base_attenuation);
@@ -914,6 +1119,11 @@ vec4 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, floa
 	for (uint idx = 0; idx < no_shadow_cluster.count; ++idx) {
 		int i = int(no_shadow_cluster.lightIndices[idx]);
 		if (lights[i].intensity <= 0.0) continue;
+
+		if (lights[i].type == LIGHT_TYPE_AREA) {
+			evaluate_area_light_pbr(i, frag_pos, N, V, albedo, roughness, metallic, F0, Lo, spec_lum);
+			continue;
+		}
 
 		vec3  L;
 		float base_attenuation;
@@ -1031,6 +1241,11 @@ vec4 apply_lighting(vec3 frag_pos, vec3 normal, vec3 albedo, float specular_stre
 		int i = int(legacy_global_cluster.lightIndices[idx]);
 		if (lights[i].intensity <= 0.0) continue;
 
+		if (lights[i].type == LIGHT_TYPE_AREA) {
+			evaluate_area_light_legacy(i, frag_pos, normal, albedo, specular_strength, result, spec_lum);
+			continue;
+		}
+
 		vec3  light_dir;
 		float attenuation;
 		calculateLightContribution(i, frag_pos, light_dir, attenuation);
@@ -1060,6 +1275,11 @@ vec4 apply_lighting(vec3 frag_pos, vec3 normal, vec3 albedo, float specular_stre
 	for (uint idx = 0; idx < legacy_cluster.count; ++idx) {
 		int i = int(legacy_cluster.lightIndices[idx]);
 		if (lights[i].intensity <= 0.0) continue;
+
+		if (lights[i].type == LIGHT_TYPE_AREA) {
+			evaluate_area_light_legacy(i, frag_pos, normal, albedo, specular_strength, result, spec_lum);
+			continue;
+		}
 
 		vec3  light_dir;
 		float attenuation;
@@ -1132,6 +1352,11 @@ vec4 apply_lighting_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, float sp
 		int i = int(legacy_no_shadow_global_cluster.lightIndices[idx]);
 		if (lights[i].intensity <= 0.0) continue;
 
+		if (lights[i].type == LIGHT_TYPE_AREA) {
+			evaluate_area_light_legacy(i, frag_pos, normal, albedo, specular_strength, result, spec_lum);
+			continue;
+		}
+
 		vec3  light_dir;
 		float attenuation;
 		calculateLightContribution(i, frag_pos, light_dir, attenuation);
@@ -1157,6 +1382,11 @@ vec4 apply_lighting_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, float sp
 	for (uint idx = 0; idx < legacy_no_shadow_cluster.count; ++idx) {
 		int i = int(legacy_no_shadow_cluster.lightIndices[idx]);
 		if (lights[i].intensity <= 0.0) continue;
+
+		if (lights[i].type == LIGHT_TYPE_AREA) {
+			evaluate_area_light_legacy(i, frag_pos, normal, albedo, specular_strength, result, spec_lum);
+			continue;
+		}
 
 		vec3  light_dir;
 		float attenuation;
