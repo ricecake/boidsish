@@ -1,4 +1,5 @@
 #include "graphics.h"
+#include "ltc_matrix.h"
 #include <stacktrace> // Requires C++23
 #include <algorithm>
 #include <array>
@@ -452,6 +453,9 @@ namespace Boidsish {
 		GLuint                         occlusion_visibility_ssbo_{0};
 		bool                           enable_hiz_culling_{true};
 
+		GLuint ltc1_texture_{0};
+		GLuint ltc2_texture_{0};
+
 		std::shared_ptr<Shader> shader;
 		std::shared_ptr<Shader> plane_shader;
 		std::shared_ptr<Shader> sky_shader;
@@ -618,6 +622,30 @@ namespace Boidsish {
 			service_locator_.Provide<ConfigManager>(
 				std::shared_ptr<ConfigManager>(&ConfigManager::GetInstance(), [](ConfigManager*) {})
 			);
+		}
+
+		void LoadLtcTextures() {
+			glGenTextures(1, &ltc1_texture_);
+			glBindTexture(GL_TEXTURE_2D, ltc1_texture_);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, 64, 64, 0, GL_RGBA, GL_FLOAT, LTC1);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+			glGenTextures(1, &ltc2_texture_);
+			glBindTexture(GL_TEXTURE_2D, ltc2_texture_);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, 64, 64, 0, GL_RGBA, GL_FLOAT, LTC2);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+			glBindTexture(GL_TEXTURE_2D, 0);
+
+			auto& reg = GpuResourceRegistry::Instance();
+			reg.PublishTexture(Constants::TextureUnit::Ltc1(), ltc1_texture_);
+			reg.PublishTexture(Constants::TextureUnit::Ltc2(), ltc2_texture_);
 		}
 
 		VisualizerImpl(Visualizer* p, int w, int h, const char* title): parent(p), width(w), height(h) {
@@ -816,6 +844,7 @@ namespace Boidsish {
 			ServiceLocator::SetInstance(&service_locator_);
 			GpuResourceRegistry::SetInstance(&gpu_resources_);
 			RegisterManagers();
+			LoadLtcTextures();
 
 			hiz_manager = service_locator_.Get<HiZManager>();
 			noise_manager = service_locator_.Get<NoiseManager>();
@@ -1331,6 +1360,13 @@ namespace Boidsish {
 
 			if (occlusion_visibility_ssbo_) {
 				glDeleteBuffers(1, &occlusion_visibility_ssbo_);
+			}
+
+			if (ltc1_texture_) {
+				glDeleteTextures(1, &ltc1_texture_);
+			}
+			if (ltc2_texture_) {
+				glDeleteTextures(1, &ltc2_texture_);
 			}
 
 			service_locator_.Clear();

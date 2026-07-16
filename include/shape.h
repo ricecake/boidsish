@@ -428,6 +428,11 @@ namespace Boidsish {
 			MarkDirty();
 		}
 
+		inline bool IsEmissive() const { return emissive_; }
+		inline void SetEmissive(bool enabled) { emissive_ = enabled; MarkDirty(); }
+		inline const glm::vec3& GetEmissiveColor() const { return emissive_color_; }
+		inline void SetEmissiveColor(const glm::vec3& color) { emissive_color_ = color; MarkDirty(); }
+
 		inline int GetMaterialType() const { return material_type_; }
 
 		inline void SetMaterialType(int type) {
@@ -526,6 +531,8 @@ namespace Boidsish {
 			metallic_(0.0f),
 			ao_(1.0f),
 			use_pbr_(false),
+			emissive_(false),
+			emissive_color_(0.0f),
 			dissolve_enabled_(false),
 			dissolve_plane_normal_(0, 1, 0),
 			dissolve_plane_dist_(0.0f),
@@ -571,6 +578,8 @@ namespace Boidsish {
 		float     metallic_;
 		float     ao_;
 		bool      use_pbr_;
+		bool      emissive_;
+		glm::vec3 emissive_color_;
 
 		std::optional<bool> shadow_caster_override_;
 		bool                allow_megabuffer_;
