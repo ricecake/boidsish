@@ -323,9 +323,8 @@ float evalSdf(
 }
 
 CloudWeather loadCloudWeather(vec3 p, CloudProperties props, vec4 tex) {
-	float exSdf = sdExtrusion(p, tex.r, props.altitude + (props.thickness*tex.g));
 	CloudWeather weather;
-	weather.sdf = exSdf;
+	weather.sdf = tex.r;
 	weather.heightMap = tex.g;
 	weather.cellID = tex.b;
 	weather.thickness = tex.a;
@@ -425,6 +424,10 @@ float calculateLoftedCloudSDF(vec3 p, CloudWeather weather, CloudLayer layer, fl
     float d3d = max(d_edge, d_vertical);
 
     return d3d;
+}
+
+float getCloud3DSDF(vec3 p, CloudWeather weather, CloudLayer layer, float worldScale) {
+    return calculateLoftedCloudSDF(p, weather, layer, worldScale);
 }
 
 /**
