@@ -302,16 +302,32 @@ void main() {
 
 	vec3 p = vec3(uv.x * mapRange, 0.0, uv.y * mapRange);
 
-	float sdf = generateOrganicCellSDF(p.xz, cellRange, vec2(10.0), uCloudCoverage);
+	// vec2 g;
+	// float slowNoise = 0.5+0.5*psrdnoise(p.xz, vec2(10.0), 0.0, g);
+	// // float sdf = generateOrganicCellSDF(p.xz, cellRange, vec2(10.0), clamp(uCloudCoverage + (slowNoise * (1.0 - uCloudCoverage)), 0, 1));
+	// float sdf = generateOrganicCellSDF(p.xz, cellRange, vec2(10.0), uCloudCoverage*smoothstep(0, slowNoise, uCloudCoverage) );
+
+vec2 g;
+// Scale the coordinates so the noise spans large regions
+float macroFrequency = cellRange;
+float slowNoise = 0.5 + 0.5 * psrdnoise(p.xz / macroFrequency, vec2(10.0), 0.0, g);
+
+// Map uCloudCoverage from [0, 1] to [-1, 1]
+float coverageBias = (uCloudCoverage * 2.0) - 1.0;
+
+// Shift the noise elevation and clamp
+float regionalCoverage = clamp(slowNoise + coverageBias, 0.0, 1.0);
+
+float sdf = generateOrganicCellSDF(p.xz, cellRange, vec2(10.0), regionalCoverage);
 
 	vec2 cellId = floor(p.xz / cellRange);
 	float cellID = hash12(cellId, vec2(10.0)); // Fallback ID hash
 
-	VoronoiData vd = sdVoronoiFbm(p.xz / (5*cellRange), 2.0, 3.0, uCloudCoverage, vec2(50.0));
-	VoronoiData vd2 = sdVoronoiFbm(p.xz / (cellRange), 2.0, 3.0, uCloudCoverage, vec2(10.0));
+	VoronoiData vd = sdVoronoiFbm(p.xz / (cellRange), 2.0, 3.0, regionalCoverage, vec2(10.0));
+	VoronoiData vd2 = sdVoronoiFbm(p.xz / (cellRange), 3.0, 5.0, regionalCoverage, vec2(10.0));
 
 	float altitudeMap = clamp(vd.dist, 0.0, 1.0);
-	float thicknessMap = (uCloudCoverage)*clamp(vd2.dist, 0.0, 1.0);
+	float thicknessMap = regionalCoverage*clamp(vd2.dist, 0.0, 1.0);
 
 	imageStore(outWeatherMap, pixel, vec4(sdf, altitudeMap, cellID, thicknessMap));
 
