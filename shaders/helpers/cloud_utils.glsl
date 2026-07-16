@@ -323,9 +323,8 @@ float evalSdf(
 }
 
 CloudWeather loadCloudWeather(vec3 p, CloudProperties props, vec4 tex) {
-	float exSdf = sdExtrusion(p, tex.r, props.altitude + (props.thickness*tex.g));
 	CloudWeather weather;
-	weather.sdf = exSdf;
+	weather.sdf = tex.r;
 	weather.heightMap = tex.g;
 	weather.cellID = tex.b;
 	weather.thickness = tex.a;
@@ -409,7 +408,7 @@ float calculateLoftedCloudSDF(vec3 p, CloudWeather weather, CloudLayer layer, fl
     // 3. Map internal depth to vertical height along the +Y axis.
     // 'puffSlope' determines how steep the sides of the cloud are.
     // A slope of 1.0 represents a 45-degree rise from the edge.
-    float puffSlope = 1.5;
+    float puffSlope = 1.1;
     float domeHeight = depthInside * puffSlope;
 
     // Clamp the height to the atmospheric layer's defined maximum thickness
@@ -426,6 +425,16 @@ float calculateLoftedCloudSDF(vec3 p, CloudWeather weather, CloudLayer layer, fl
 
     return d3d;
 }
+
+float getCloud3DSDF(vec3 p, CloudWeather weather, CloudLayer layer, float worldScale) {
+    // return calculateLoftedCloudSDF(p, weather, layer, worldScale);
+	float sdf2d = weather.sdf;
+	float h = layer.baseFloor+layer.thickness;
+    vec2 w = vec2(sdf2d, abs(p.y) - h);
+    return min(max(w.x, w.y), 0.0) + length(max(w, 0.0));
+
+}
+
 
 /**
  * Calculate cloud shadow factor for a fragment position.
@@ -456,7 +465,7 @@ float calculateCloudShadowFactor(vec3 frag_pos, vec3 L, float intensity) {
 	CloudWeather weather = computeCloudWeather(cloudPos, props);
 	CloudLayer layer = computeCloudLayer(weather, props);
 
-	float d3d = calculateLoftedCloudSDF(cloudPos, weather, layer, props.worldScale);
+	float d3d = getCloud3DSDF(cloudPos, weather, layer, props.worldScale);
 
 	// Sharpness of the cloud edge in meters
 	float penumbra = 100.0 * worldScale;
@@ -483,7 +492,7 @@ float evaluateCloudShadowDensityAtWorldPos(vec2 worldXZ, float time) {
 	CloudWeather weather = computeCloudWeather(basePos, props);
 	CloudLayer layer = computeCloudLayer(weather, props);
 
-	float d3d = calculateLoftedCloudSDF(basePos, weather, layer, props.worldScale);
+	float d3d = getCloud3DSDF(basePos, weather, layer, props.worldScale);
 	float penumbra = 100.0 * worldScale;
 	return max(0.0, -d3d / penumbra) * 4.0;
 	// return calculateCloudDensityExpV8(basePos, weather, layer, props, time, true).x;

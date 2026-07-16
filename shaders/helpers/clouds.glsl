@@ -487,7 +487,7 @@ vec4 calculateCloudDensityExpV9(
 	vec3 advect = time * advectSpeed;
 	vec3 p_advected = p + advect;
 
-	float baseSdf = calculateLoftedCloudSDF(p_advected, weather, layer, props.worldScale);
+	float baseSdf = getCloud3DSDF(p_advected, weather, layer, props.worldScale);
 	float baseNoise = clamp(-baseSdf/150.0, 0, 1);
 	return vec4(clamp(baseNoise, 0.00, 1.0), advectSpeed);
 }
