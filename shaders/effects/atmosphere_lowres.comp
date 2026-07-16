@@ -164,7 +164,8 @@ void main() {
 
 	float rayDist = t_end - t_start;
 	float precisionLimit = max(1.0, t_end * 1e-5);
-	float baseStepSize = clamp(rayDist / float(samples), precisionLimit, 50.0);
+	// float baseStepSize = clamp(rayDist / float(samples), precisionLimit, 50.0);
+	float baseStepSize = 50.0;
 
 	float firstStepSize = baseStepSize;
 	float minStepSize = 100000;
@@ -193,7 +194,7 @@ void main() {
 		int MAX_ITERATIONS = 500;
 		bool inVolume = false;
 
-		float t = t_start;// + jitter * baseStepSize;
+		float t = t_start + jitter * baseStepSize;
 		float blendDist = 500.0 * worldScale;
 		float currentStepSize = baseStepSize;
 
@@ -208,11 +209,11 @@ void main() {
 			float distScale = 1.0 + (t / (25000.0 * worldScale));
 			float currentStepSize = baseStepSize * distScale;
 
-			float d3d = getCloud3DSDF(p, weather, layer, props.worldScale);
+			float d3d = getCloud3DSDF(p, weather, layer, props.worldScale) - 600.0;
 
 			// 1. Outside Cloud Volume: Skip empty space using sphere tracing (conservative 3D SDF)
 			if (d3d > currentStepSize) {
-				float step = min(d3d * 0.8, currentStepSize);
+				float step = max(d3d*0.8, 2);
 				t += step;
 				prevDensity = vec3(0.0);
 				inVolume = false;
@@ -226,8 +227,8 @@ void main() {
 
 			if (!inVolume) {
 				inVolume = true;
-				t += jitter * currentStepSize;
-				p = viewPos + rayDir * t; // Re-evaluate p with the synchronized t
+				// t += jitter * currentStepSize;
+				// p = viewPos + rayDir * t; // Re-evaluate p with the synchronized t
 				weather = computeCloudWeather(p, props);
 				layer = computeCloudLayer(weather, props);
 			}

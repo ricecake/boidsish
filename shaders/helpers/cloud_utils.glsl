@@ -427,10 +427,13 @@ float calculateLoftedCloudSDF(vec3 p, CloudWeather weather, CloudLayer layer, fl
 }
 
 float getCloud3DSDF(vec3 p, CloudWeather weather, CloudLayer layer, float worldScale) {
-    // return calculateLoftedCloudSDF(p, weather, layer, worldScale);
 	float sdf2d = weather.sdf;
-	float h = layer.baseFloor+layer.thickness;
-    vec2 w = vec2(sdf2d, abs(p.y) - h);
+
+	float centerY = layer.baseFloor + (layer.thickness * 0.5);
+	float halfHeight = layer.thickness * 0.5;
+	float distY = abs(p.y - centerY) - halfHeight;
+	vec2 w = vec2(sdf2d, distY);
+
     return min(max(w.x, w.y), 0.0) + length(max(w, 0.0));
 
 }
