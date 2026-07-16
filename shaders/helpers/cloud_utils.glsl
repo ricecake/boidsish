@@ -322,8 +322,8 @@ float evalSdf(
 	// return d;
 }
 
-CloudWeather loadCloudWeather(vec3 p, vec4 tex) {
-	float exSdf = sdExtrusion(p, tex.r, tex.g);
+CloudWeather loadCloudWeather(vec3 p, CloudProperties props, vec4 tex) {
+	float exSdf = sdExtrusion(p, tex.r, props.altitude + (props.thickness*tex.g));
 	CloudWeather weather;
 	weather.sdf = exSdf;
 	weather.heightMap = tex.g;
@@ -342,7 +342,7 @@ CloudWeather computeCloudWeather(vec3 p, CloudProperties props) {
 	// Range is 100,000 * worldScale as defined in the bake shader.
 	vec2 uv = p_advected.xz / (100000.0 * props.worldScale);
 	vec4 bakedWeather = textureLod(u_cloudWeatherTexture, uv, 0.0);
-	return loadCloudWeather(p, bakedWeather);
+	return loadCloudWeather(p, props, bakedWeather);
 }
 
 CloudLayer computeCloudLayer(CloudWeather weather, CloudProperties props) {
