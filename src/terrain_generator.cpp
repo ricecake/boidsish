@@ -704,8 +704,8 @@ namespace Boidsish {
 	}
 
 	TerrainGenerationResult TerrainGenerator::generateChunkData(int chunkX, int chunkZ) {
-		const int num_vertices_x = chunk_size_ + 1;
-		const int num_vertices_z = chunk_size_ + 1;
+		const int num_vertices_x = chunk_size_ * 2 + 1;
+		const int num_vertices_z = chunk_size_ * 2 + 1;
 
 		std::vector<std::vector<glm::vec3>> heightmap(num_vertices_x, std::vector<glm::vec3>(num_vertices_z));
 		std::vector<std::vector<glm::vec2>> biome_map(num_vertices_x, std::vector<glm::vec2>(num_vertices_z));
@@ -728,8 +728,8 @@ namespace Boidsish {
 
 		for (int i = 0; i < num_vertices_x; ++i) {
 			for (int j = 0; j < num_vertices_z; ++j) {
-				float worldX = (chunkX * chunk_size_ + i) * world_scale_;
-				float worldZ = (chunkZ * chunk_size_ + j) * world_scale_;
+				float worldX = (chunkX * chunk_size_ + i * 0.5f) * world_scale_;
+				float worldZ = (chunkZ * chunk_size_ + j * 0.5f) * world_scale_;
 
 				auto res = pointGenerateAll(worldX, worldZ);
 				heightmap[i][j] = res.height_data;
@@ -748,8 +748,8 @@ namespace Boidsish {
 			has_terrain = true; // Deformations can create terrain where there was none
 			for (int i = 0; i < num_vertices_x; ++i) {
 				for (int j = 0; j < num_vertices_z; ++j) {
-					float worldX = (chunkX * chunk_size_ + i) * world_scale_;
-					float worldZ = (chunkZ * chunk_size_ + j) * world_scale_;
+					float worldX = (chunkX * chunk_size_ + i * 0.5f) * world_scale_;
+					float worldZ = (chunkZ * chunk_size_ + j * 0.5f) * world_scale_;
 
 					if (deformation_manager_.HasDeformationAt(worldX, worldZ)) {
 						float     base_height = heightmap[i][j][0];
@@ -776,8 +776,8 @@ namespace Boidsish {
 		// even if they're outside the current chunk's data.
 		for (int i = 0; i < num_vertices_x; ++i) {
 			for (int j = 0; j < num_vertices_z; ++j) {
-				float worldX = (chunkX * chunk_size_ + i) * world_scale_;
-				float worldZ = (chunkZ * chunk_size_ + j) * world_scale_;
+				float worldX = (chunkX * chunk_size_ + i * 0.5f) * world_scale_;
+				float worldZ = (chunkZ * chunk_size_ + j * 0.5f) * world_scale_;
 
 				float h_center = heightmap[i][j][0];
 				float h_left, h_right, h_down, h_up;
@@ -785,25 +785,25 @@ namespace Boidsish {
 				if (i > 0)
 					h_left = heightmap[i - 1][j][0];
 				else
-					h_left = std::get<0>(CalculateTerrainPropertiesAtPoint(worldX - world_scale_, worldZ));
+					h_left = std::get<0>(CalculateTerrainPropertiesAtPoint(worldX - 0.5f * world_scale_, worldZ));
 
 				if (i < num_vertices_x - 1)
 					h_right = heightmap[i + 1][j][0];
 				else
-					h_right = std::get<0>(CalculateTerrainPropertiesAtPoint(worldX + world_scale_, worldZ));
+					h_right = std::get<0>(CalculateTerrainPropertiesAtPoint(worldX + 0.5f * world_scale_, worldZ));
 
 				if (j > 0)
 					h_down = heightmap[i][j - 1][0];
 				else
-					h_down = std::get<0>(CalculateTerrainPropertiesAtPoint(worldX, worldZ - world_scale_));
+					h_down = std::get<0>(CalculateTerrainPropertiesAtPoint(worldX, worldZ - 0.5f * world_scale_));
 
 				if (j < num_vertices_z - 1)
 					h_up = heightmap[i][j + 1][0];
 				else
-					h_up = std::get<0>(CalculateTerrainPropertiesAtPoint(worldX, worldZ + world_scale_));
+					h_up = std::get<0>(CalculateTerrainPropertiesAtPoint(worldX, worldZ + 0.5f * world_scale_));
 
-				float dx = (h_right - h_left) / (2.0f * world_scale_);
-				float dz = (h_up - h_down) / (2.0f * world_scale_);
+				float dx = (h_right - h_left) / (2.0f * 0.5f * world_scale_);
+				float dz = (h_up - h_down) / (2.0f * 0.5f * world_scale_);
 
 				heightmap[i][j][1] = dx;
 				heightmap[i][j][2] = dz;
@@ -822,7 +822,7 @@ namespace Boidsish {
 				float dx = heightmap[i][j][1];
 				float dz = heightmap[i][j][2];
 
-				positions.emplace_back(i * world_scale_, y, j * world_scale_);
+				positions.emplace_back(i * 0.5f * world_scale_, y, j * 0.5f * world_scale_);
 				normals.push_back(diffToNorm(dx, dz));
 				biomes_flat.push_back(biome_map[i][j]);
 			}
@@ -863,7 +863,7 @@ namespace Boidsish {
 		proxy.radiusSq = max_dist_sq;
 
 		// Pre-pack heightmap and biome data for the renderer (Z-major transposition)
-		const int res = chunk_size_ + 1;
+		const int res = chunk_size_ * 2 + 1;
 		std::vector<float>   packed_height_normal;
 		std::vector<uint8_t> packed_biomes;
 		packed_height_normal.reserve(res * res * 4);
@@ -880,15 +880,15 @@ namespace Boidsish {
 				float totalVar = 0.0f;
 				int count = 0;
 
-				for (int y = py * patch_size; y <= (py + 1) * patch_size; ++y) {
-					for (int x = px * patch_size; x <= (px + 1) * patch_size; ++x) {
+				for (int y = py * patch_size * 2; y <= (py + 1) * patch_size * 2; ++y) {
+					for (int x = px * patch_size * 2; x <= (px + 1) * patch_size * 2; ++x) {
 						int idx = x * res + y;
 						float h = positions[idx].y;
 						minH = std::min(minH, h);
 						maxH = std::max(maxH, h);
 
 						// Coarse variance calculation (neighbor difference)
-						if (x < px * patch_size + patch_size && y < py * patch_size + patch_size) {
+						if (x < px * patch_size * 2 + patch_size * 2 && y < py * patch_size * 2 + patch_size * 2) {
 							float h_right = positions[(x + 1) * res + y].y;
 							float h_down = positions[x * res + (y + 1)].y;
 							float var = std::max(std::abs(h - h_right), std::abs(h - h_down));

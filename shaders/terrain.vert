@@ -1,54 +1,74 @@
 #version 460 core
 
-// Per-vertex attributes (from flat grid mesh)
-layout(location = 0) in vec3 aPos;       // Flat grid position (x, 0, z) in [0, chunk_size]
-layout(location = 1) in vec2 aTexCoords; // Heightmap UV [0, 1]
-
 #include "helpers/constants.glsl"
 #include "helpers/lighting.glsl"
+#include "temporal_data.glsl"
+#include "helpers/shockwave.glsl"
 
-struct PatchDrawData {
-	vec4 world_offset_and_slice; // xyz = world offset, w = texture slice index
-	vec4 patch_coords_and_size;  // xy = patch local coords (0..PatchesPerChunkSide-1), z = patch size, w = chunk size
+struct TerrainVertex {
+	vec4 position; // xyz = position, w = slice
+	vec4 normal;   // xyz = normal, w = unused
+	vec4 biome;    // x = low_idx, y = t, z = waterMask, w = isBaked (1.0)
+	vec4 params;   // x = erosionDelta, y = ridgeMap, z = substrate, w = deviation
 };
 
-layout(std430, binding = [[TERRAIN_PATCH_DRAW_DATA_BINDING]]) readonly buffer TerrainPatchDrawData {
-	PatchDrawData patchDrawData[];
+layout(std430, binding = [[TERRAIN_PATCH_TESS_LEVELS_BINDING]]) readonly buffer BakedVertices {
+	TerrainVertex bakedVertices[];
 };
 
-out vec3       LocalPos_VS_out;  // Local grid position
-out vec2       TexCoords_VS_out; // Heightmap UV
-out vec3       viewForward;
-flat out float TextureSlice_VS_out;
-flat out vec3  WorldOffset_VS_out;
-flat out vec4  PatchInfo_VS_out;    // xy = patch local coords, z = patch size, w = chunk size
-flat out int   DrawID_VS_out;
+out vec3       Normal;
+out vec3       FragPos;
+out vec4       CurPosition;
+out vec4       PrevPosition;
+out vec2       TexCoords;
+flat out float TextureSlice;
+out float      perturbFactor;
+out float      tessFactor;
+out float      vIsWater;
+out float      vErosionDelta;
+out float      vRidgeMap;
+out float      vSubstrate;
+out float      vIsBaked;
+
+uniform vec4 clipPlane;
+
+#ifndef TERRAIN_DATA_BLOCK
+#define TERRAIN_DATA_BLOCK
+layout(std140, binding = [[TERRAIN_DATA_BINDING]]) uniform TerrainData {
+	ivec4 u_originSize;    // x, z, size, is_bound
+	vec4  u_terrainParams; // chunkSize, worldScale
+};
+#endif
 
 void main() {
-	// Extract camera forward vector
-	viewForward = vec3(-view[0][2], -view[1][2], -view[2][2]);
+	int vertexIdx = gl_VertexID;
+	TerrainVertex v = bakedVertices[vertexIdx];
 
-	int drawID = gl_InstanceID;
-	PatchDrawData draw = patchDrawData[drawID];
+	FragPos = v.position.xyz;
+	Normal = v.normal.xyz;
+	TextureSlice = v.position.w;
 
-	// aPos is in [0, patch_size]
-	// localPatchOffset = patchCoords * patch_size
-	float patchSize = draw.patch_coords_and_size.z;
-	vec2 localPatchOffset = draw.patch_coords_and_size.xy * patchSize;
+	vIsBaked = v.biome.w;
+	vIsWater = v.biome.z;
+	vErosionDelta = v.params.x;
+	vRidgeMap = v.params.y;
+	vSubstrate = v.params.z;
 
-	// Local position within the chunk [0, chunk_size]
-	vec3 localChunkPos = aPos + vec3(localPatchOffset.x, 0.0, localPatchOffset.y);
+	float worldScale = u_terrainParams.y;
+	float chunkSize = u_terrainParams.x * worldScale;
+	vec2 localPos = mod(v.position.xz, chunkSize);
+	TexCoords = localPos / chunkSize;
 
-	LocalPos_VS_out = localChunkPos;
+	perturbFactor = 1.0;
+	tessFactor = 64.0;
 
-	// Heightmap UV
-	float chunkSize = draw.patch_coords_and_size.w;
-	TexCoords_VS_out = localChunkPos.xz / chunkSize;
+	vec3 displacedFragPos = FragPos + getShockwaveDisplacement(FragPos, 0.0, false);
+	FragPos = displacedFragPos;
 
-	TextureSlice_VS_out = draw.world_offset_and_slice.w;
-	WorldOffset_VS_out = draw.world_offset_and_slice.xyz;
-	PatchInfo_VS_out = draw.patch_coords_and_size;
-	DrawID_VS_out = drawID;
+	gl_Position = projection * view * vec4(FragPos, 1.0);
+	CurPosition = gl_Position;
+	PrevPosition = prevViewProjection * vec4(FragPos, 1.0);
 
-	gl_Position = vec4(localChunkPos, 1.0);
+	// Clip plane for reflections
+	gl_ClipDistance[0] = dot(FragPos, clipPlane.xyz) + clipPlane.w;
 }
