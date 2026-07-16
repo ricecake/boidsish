@@ -129,18 +129,6 @@ float sdExtrusion(vec3 p, float sdf2d, float h) {
     return min(max(w.x, w.y), 0.0) + length(max(w, 0.0));
 }
 
-CloudWeather loadCloudWeather(vec3 p, vec4 tex) {
-	float exSdf = sdExtrusion(p, tex.r, tex.g);
-	CloudWeather weather;
-	weather.sdf = exSdf;
-	weather.heightMap = tex.g;
-	weather.cellID = tex.b;
-	weather.thickness = tex.a;
-	weather.p = p;
-
-	return weather;
-}
-
 float getCloudCoverageFromSDF(float sdf, float worldScale) {
 	// SDF is negative inside the cloud, positive outside.
 	// We want coverage to be 1.0 inside and 0.0 outside.
@@ -332,6 +320,18 @@ float evalSdf(
 	float coverageOffset = mix(-maxErosion, maxDilation, props.coverage);
 	return d - coverageOffset;
 	// return d;
+}
+
+CloudWeather loadCloudWeather(vec3 p, vec4 tex) {
+	float exSdf = sdExtrusion(p, tex.r, tex.g);
+	CloudWeather weather;
+	weather.sdf = exSdf;
+	weather.heightMap = tex.g;
+	weather.cellID = tex.b;
+	weather.thickness = tex.a;
+	weather.p = p;
+
+	return weather;
 }
 
 CloudWeather computeCloudWeather(vec3 p, CloudProperties props) {
