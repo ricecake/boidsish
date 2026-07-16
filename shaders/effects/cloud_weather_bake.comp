@@ -209,36 +209,116 @@ VoronoiData sdVoronoiHybrid(vec2 p, float lacunarity, float iter, float coverage
 	return vd;
 }
 
+
+// Polynomial smooth min
+// https://iquilezles.org/articles/smin
+float smin(float a, float b, float k) {
+    float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+    return mix(b, a, h) - k * h * (1.0 - h);
+}
+
+float generateOrganicCellSDF(vec2 p, float cellSize, vec2 period, float coverage) {
+    vec2 p_grid = p / cellSize;
+    vec2 id = floor(p_grid);
+
+    float globalDist = 1e10;
+
+    // --- Tuning Knobs ---
+    float k = 0.4; // Blend strength (higher = more blobby/organic)
+
+    // Parent circle constraints
+    float parentBaseRadius = 0.40;
+    float parentRadiusVar = 0.15;
+    float parentScatter = 0.4;
+
+    // Child circle constraints
+    float childBaseRadius = 0.20;
+    float childRadiusVar = 0.15;
+    float childScatter = 0.30;
+
+    // 3x3 Search to ensure seamless SDF across cell boundaries
+    for (int y = -1; y <= 1; y++) {
+        for (int x = -1; x <= 1; x++) {
+            vec2 neighborId = id + vec2(float(x), float(y));
+            vec2 cellOrigin = neighborId;
+
+            // --- Coverage Integration ---
+            // 1. Hash this cell to determine its natural density (0.0 to 1.0)
+            float cellDensity = hash12(neighborId + 99.9, period);
+
+            // 2. Bias the natural density by the global coverage uniform
+            // A coverage of 0.5 leaves the grid naturally patchy.
+            float localCoverage = clamp(cellDensity + (coverage - 0.5) * 2.0, 0.0, 1.0);
+
+            // 3. Skip heavy math if the cell is completely empty
+            if (localCoverage <= 0.01) continue;
+
+            // 4. Scale the shapes so clouds physically shrink before disappearing
+            float radiusMod = localCoverage;
+
+            // Generate Parent Circle
+            vec2 parentHash = hash2(neighborId, period);
+            vec2 parentCenter = cellOrigin + 0.5 + (parentHash - 0.5) * parentScatter;
+            float parentRadius = (parentBaseRadius + hash12(neighborId + 13.37, period) * parentRadiusVar) * radiusMod;
+
+            float cellDist = length(p_grid - parentCenter) - parentRadius;
+
+            // Generate 4 Child Circles
+            for (int cy = 0; cy <= 1; cy++) {
+                for (int cx = 0; cx <= 1; cx++) {
+                    vec2 childIndex = vec2(float(cx), float(cy));
+                    vec2 childOrigin = cellOrigin + childIndex * 0.5;
+
+                    vec2 childSeed = neighborId * 4.0 + childIndex;
+                    vec2 childHash = hash2(childSeed, period);
+
+                    vec2 childCenter = childOrigin + 0.25 + (childHash - 0.5) * childScatter;
+                    float childRadius = (childBaseRadius + hash12(childSeed + 42.0, period) * childRadiusVar) * radiusMod;
+
+                    float childSdf = length(p_grid - childCenter) - childRadius;
+
+                    // Blend child into the parent structure
+                    cellDist = smin(cellDist, childSdf, k);
+                }
+            }
+
+            // Blend this entire cell structure into the global field
+            globalDist = smin(globalDist, cellDist, k);
+        }
+    }
+
+    // Convert back to world space scale
+    return globalDist * cellSize;
+}
+
 void main() {
 	ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
 	ivec2 size = imageSize(outWeatherMap);
 	if (pixel.x >= size.x || pixel.y >= size.y) return;
 
 	vec2 uv = (vec2(pixel) + 0.5) / vec2(size);
-
 	float mapRange = 100000.0 * uWorldScale;
 	float cellRange = 10000.0 * uWorldScale;
+
 	vec3 p = vec3(uv.x * mapRange, 0.0, uv.y * mapRange);
 
-	// VoronoiData vd = sdVoronoiFbm(p.xz / cellRange, 2.0, 3.0, uCloudCoverage, vec2(10.0));
-	// float dist = calculateFbmSdf(p.xz / cellRange, 2.0, 3.0, uCloudCoverage, vec2(10.0));
-	VoronoiData vd = sdVoronoiHybrid(p.xz / cellRange, 2.0, 3.0, uCloudCoverage, vec2(10.0));
+	float sdf = generateOrganicCellSDF(p.xz, cellRange, vec2(10.0), uCloudCoverage);
 
-	float sdf = vd.dist * cellRange;
+	vec2 cellId = floor(p.xz / cellRange);
+	float cellID = hash12(cellId, vec2(10.0)); // Fallback ID hash
 
-	float cellID = psrdnoise(vd.f1);
+	VoronoiData vd = sdVoronoiFbm(p.xz / (5*cellRange), 2.0, 3.0, uCloudCoverage, vec2(50.0));
+	VoronoiData vd2 = sdVoronoiFbm(p.xz / (cellRange), 2.0, 3.0, uCloudCoverage, vec2(10.0));
 
-	vec3 f1WorldPos = vec3(vd.f1.x * cellRange, 0.0, vd.f1.y * cellRange);
-	vec2 heightData = worley3d_tiling(f1WorldPos / (20000.0 * uWorldScale), 20.0);
-	float altitudeMap = abs(1.0 - heightData.x);
-	float thicknessMap = heightData.y;
+	float altitudeMap = clamp(vd.dist, 0.0, 1.0);
+	float thicknessMap = clamp(vd2.dist, 0.0, 1.0);
 
 	imageStore(outWeatherMap, pixel, vec4(sdf, altitudeMap, cellID, thicknessMap));
 
 	// Record seed info if this is the pixel closest to the cell center (f1)
-	vec2 f1Pixel = (vd.f1 * cellRange) / mapRange * vec2(size);
+	vec2 f1Pixel = (cellId * cellRange) / mapRange * vec2(size);
 	if (length(vec2(pixel) - f1Pixel) < 1.0) {
-		int cellIdx = int(mod(floor(vd.f1.y), 10.0) * 10.0 + mod(floor(vd.f1.x), 10.0));
-		seeds[cellIdx] = vec4(vd.f1.x * cellRange, vd.f1.y * cellRange, sdf, (sdf < 0.0 ? 1.0 : 0.0));
+		int cellIdx = int(mod(floor(cellId.y), 10.0) * 10.0 + mod(floor(cellId.x), 10.0));
+		seeds[cellIdx] = vec4(cellId.x * cellRange, cellId.y * cellRange, sdf, (sdf < 0.0 ? 1.0 : 0.0));
 	}
 }

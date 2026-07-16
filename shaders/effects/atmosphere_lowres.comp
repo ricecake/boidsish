@@ -194,7 +194,7 @@ void main() {
 		int MAX_ITERATIONS = 500;
 		bool inVolume = false;
 
-		float t = t_start + jitter * baseStepSize;
+		float t = t_start;// + jitter * baseStepSize;
 		float blendDist = 500.0 * worldScale;
 		float currentStepSize = baseStepSize;
 
@@ -227,8 +227,8 @@ void main() {
 
 			if (!inVolume) {
 				inVolume = true;
-				// t += jitter * currentStepSize;
-				// p = viewPos + rayDir * t; // Re-evaluate p with the synchronized t
+				t += jitter * currentStepSize;
+				p = viewPos + rayDir * t; // Re-evaluate p with the synchronized t
 				weather = computeCloudWeather(p, props);
 				layer = computeCloudLayer(weather, props);
 			}
