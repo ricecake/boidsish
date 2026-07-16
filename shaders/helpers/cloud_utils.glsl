@@ -11,6 +11,7 @@ struct CloudWeather {
 	float heightMap;  // Altitude variety
 	float thickness;  // Thickness variety
 	float cellID;     // Per-cell variety
+	vec3 p;
 };
 
 struct CloudLayer {
@@ -123,12 +124,19 @@ vec3 getCloudAdvectionOffset(float h, float time) {
 	return time * getCloudAdvectionSpeed(h, time);
 }
 
-CloudWeather loadCloudWeather(vec4 tex) {
+float sdExtrusion(vec3 p, float sdf2d, float h) {
+    vec2 w = vec2(sdf2d, abs(p.y) - h);
+    return min(max(w.x, w.y), 0.0) + length(max(w, 0.0));
+}
+
+CloudWeather loadCloudWeather(vec3 p, vec4 tex) {
+	float exSdf = sdExtrusion(p, tex.r, tex.g);
 	CloudWeather weather;
-	weather.sdf = tex.r;
+	weather.sdf = exSdf;
 	weather.heightMap = tex.g;
 	weather.cellID = tex.b;
 	weather.thickness = tex.a;
+	weather.p = p;
 
 	return weather;
 }
@@ -334,7 +342,7 @@ CloudWeather computeCloudWeather(vec3 p, CloudProperties props) {
 	// Range is 100,000 * worldScale as defined in the bake shader.
 	vec2 uv = p_advected.xz / (100000.0 * props.worldScale);
 	vec4 bakedWeather = textureLod(u_cloudWeatherTexture, uv, 0.0);
-	return loadCloudWeather(bakedWeather);
+	return loadCloudWeather(p, bakedWeather);
 }
 
 CloudLayer computeCloudLayer(CloudWeather weather, CloudProperties props) {
