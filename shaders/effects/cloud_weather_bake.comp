@@ -311,7 +311,7 @@ void main() {
 	VoronoiData vd2 = sdVoronoiFbm(p.xz / (cellRange), 2.0, 3.0, uCloudCoverage, vec2(10.0));
 
 	float altitudeMap = clamp(vd.dist, 0.0, 1.0);
-	float thicknessMap = clamp(vd2.dist, 0.0, 1.0);
+	float thicknessMap = (uCloudCoverage)*clamp(vd2.dist, 0.0, 1.0);
 
 	imageStore(outWeatherMap, pixel, vec4(sdf, altitudeMap, cellID, thicknessMap));
 
