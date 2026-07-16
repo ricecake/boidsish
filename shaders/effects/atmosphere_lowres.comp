@@ -205,13 +205,14 @@ void main() {
 			CloudWeather weather = computeCloudWeather(p, props);
 			CloudLayer layer = computeCloudLayer(weather, props);
 
-			float distScale = 1.0;// + (t / (20000.0 * worldScale));
+			float distScale = 1.0 + (t / (25000.0 * worldScale));
 			float currentStepSize = baseStepSize * distScale;
-			float d3d = weather.sdf;
+
+			float d3d = getCloud3DSDF(p, weather, layer, props.worldScale);
 
 			// 1. Outside Cloud Volume: Skip empty space using sphere tracing (conservative 3D SDF)
-			if (d3d >= currentStepSize) {
-				float step = max(d3d * 0.8, 2);
+			if (d3d > 0.0) {
+				float step = max(d3d * distScale, baseStepSize * 0.1);
 				t += step;
 				prevDensity = vec3(0.0);
 				inVolume = false;
@@ -219,8 +220,10 @@ void main() {
 			}
 
 			// 2. Inside Cloud Volume: Integrate density and lighting
-			distScale = 1.0;// + (t / (20000.0 * worldScale));
-			currentStepSize = baseStepSize * distScale;
+			float transVal = max(cloudTransmittance.x, max(cloudTransmittance.y, cloudTransmittance.z));
+			float transScale = mix(4.0, 1.0, transVal);
+			currentStepSize = baseStepSize * distScale * transScale;
+
 			if (!inVolume) {
 				inVolume = true;
 				t += jitter * currentStepSize;
