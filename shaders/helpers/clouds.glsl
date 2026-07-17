@@ -497,12 +497,13 @@ CloudSpotDetails calculateCloudDensityExpV9(
 
 	float baseSdf = getCloud3DSDF(p_advected, weather, layer, props.worldScale);
 	float baseNoise = clamp(-baseSdf/150.0, 0, 1);
-	bool isCore = baseSdf <= -1* (props.coverage * 10000.0)/3.0;
 
 	baseNoise *= heightGradient;
 
-	float erodeMask = smoothstep(-5000.0, 0.0, baseSdf);
-	if (erodeMask > 0.0) {
+	bool isCore = baseNoise >= 1.0;
+
+	float erodeMask = smoothstep(0.0, 1.0, baseNoise);
+	if (erodeMask > 0.0 && !isCore) {
 		float largeScale = abs(fastFbm3d(p_advected/10000)) * erodeMask;
 		baseNoise = remap(baseNoise, largeScale, 1.0, 0.0, 1.0);
 

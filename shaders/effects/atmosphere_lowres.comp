@@ -273,9 +273,10 @@ void main() {
 		float lodDistanceThreshold = 25000.0 * worldScale;
 
 		bool inVolume = false;
+		float stepGrowthRate = 0.015;
 
 		float initialT = max(t_start, expectedStart);
-		float localStepSize = max(baseStepSize, initialT * 0.015);
+		float localStepSize = max(baseStepSize, initialT * stepGrowthRate);
 		float t = initialT + jitter * localStepSize;
 
 		float currentStepSize = baseStepSize;
@@ -285,9 +286,6 @@ void main() {
 		vec3 horizonSH = evalSHIrradianceSpatial(probePos, normalize(vec3(primaryLightDir.x, 0.15, primaryLightDir.z)));
 		vec3 groundSH  = evalSHIrradianceSpatial(probePos, vec3(0.0, -1.0, 0.0));
 
-		float geometricFactor = 1.0;
-		const float stepGrowthRate = 1.015;
-
 		for (int i = 0; i < MAX_ITERATIONS; i++) {
 			if (t >= dist || t >= t_end || all(lessThan(cloudTransmittance, vec3(0.01)))) break;
 			// if (t >= dist || t >= t_end || max(cloudTransmittance.x, max(cloudTransmittance.y, cloudTransmittance.z)) < 0.01) break;
@@ -296,7 +294,7 @@ void main() {
 			CloudWeather weather = computeCloudWeather(p, props);
 			CloudLayer layer = computeCloudLayer(weather, props);
 
-			float currentStepSize = max(baseStepSize, t * 0.015);
+			float currentStepSize = max(baseStepSize, t * stepGrowthRate);
 
 			float d3d = getCloud3DSDF(p, weather, layer, props.worldScale) - 600.0;
 
@@ -306,14 +304,8 @@ void main() {
 				t += step;
 				prevDensity = vec3(0.0);
 				inVolume = false;
-				geometricFactor *= stepGrowthRate;
 				continue;
 			}
-
-			// 2. Inside Cloud Volume: Integrate density and lighting
-			float transVal = max(cloudTransmittance.x, max(cloudTransmittance.y, cloudTransmittance.z));
-			float transScale = mix(4.0, 1.0, transVal);
-			currentStepSize = max(baseStepSize, t * 0.015);
 
 			if (!inVolume) {
 				inVolume = true;
@@ -352,6 +344,7 @@ void main() {
 			pathDensity = max(pathDensity, max(d.x, max(d.y, d.z)));
 
 			float integrationStep = currentStepSize;
+			stepGrowthRate = mix(0.01, 0.025, smoothstep(0, 1, length(d)));
 			if (any(greaterThan(d, vec3(0.000))) || any(greaterThan(prevDensity, vec3(0.000)))) {
 				vec3 averageDensity = (prevDensity + d) * 0.5;
 				vec3 rgbExtinction = uCloudExtinctionColor * uCloudExtinction;
