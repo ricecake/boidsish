@@ -111,20 +111,20 @@ namespace Boidsish {
 
 							auto active_constraints = weather->GetActiveConstraints();
 							if (!active_constraints.empty()) {
-								ImGui::Separator();
-								ImGui::Text("Active Weather Constraints:");
-								for (const auto& con : active_constraints) {
-									std::string text = WeatherManager::GetAttributeName(con.attr) + ": ";
-									if (con.target) text += "Target=" + std::to_string(*con.target).substr(0, 5) + " ";
-									if (con.min) text += "Min=" + std::to_string(*con.min).substr(0, 5) + " ";
-									if (con.max) text += "Max=" + std::to_string(*con.max).substr(0, 5) + " ";
+								if (ImGui::CollapsingHeader("Active Weather Constraints", ImGuiTreeNodeFlags_None)) {
+									for (const auto& con : active_constraints) {
+										std::string text = WeatherManager::GetAttributeName(con.attr) + ": ";
+										if (con.target) text += "Target=" + std::to_string(*con.target).substr(0, 5) + " ";
+										if (con.min) text += "Min=" + std::to_string(*con.min).substr(0, 5) + " ";
+										if (con.max) text += "Max=" + std::to_string(*con.max).substr(0, 5) + " ";
 
-									ImGui::Text("%s", text.c_str());
-									ImGui::SameLine();
-									if (ImGui::Button((std::string("X##") + text).c_str())) {
-										weather->ClearTarget(con.attr);
-										weather->ClearMin(con.attr);
-										weather->ClearMax(con.attr);
+										ImGui::Text("%s", text.c_str());
+										ImGui::SameLine();
+										if (ImGui::Button((std::string("X##") + text).c_str())) {
+											weather->ClearTarget(con.attr);
+											weather->ClearMin(con.attr);
+											weather->ClearMax(con.attr);
+										}
 									}
 								}
 							}
