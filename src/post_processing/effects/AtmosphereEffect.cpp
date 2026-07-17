@@ -203,6 +203,7 @@ namespace Boidsish {
 				cloud_render_shader_->setInt("uCloudMaxSamples", cloud_max_samples_);
 				cloud_render_shader_->setFloat("uCloudExtinction", cloud_extinction_);
 				cloud_render_shader_->setVec3("uCloudExtinctionColor", cloud_extinction_color_);
+				cloud_render_shader_->setVec3("uCloudAlbedo", cloud_albedo_);
 
 				cloud_render_shader_->setInt("depthTexture", 0);
 				cloud_render_shader_->setInt("uHistoryDepth", 1);
