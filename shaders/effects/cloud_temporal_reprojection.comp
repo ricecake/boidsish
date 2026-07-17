@@ -125,7 +125,7 @@ vec2 getDilatedVelocity_Hybrid(vec2 uv, vec2 texelSize) {
 
 			// Ignore pure sky pixels
 			if (sampleDepth > 40000.0) continue;
-			if (sampleDensity > densityThreshold) continue;
+			if (sampleDensity < densityThreshold) continue;
 
 			// Weight primarily by density to ignore jittered wisps.
 			// You can also divide by depth to slightly favor foregrounds.
@@ -291,7 +291,9 @@ void main() {
 	bool is_new_pixel = (pixel % 2) == current_offset;
 
 	ivec2 packedPixel = pixel / 2;
-	vec2 velocity = getDilatedVelocity_Hybrid(packedPixel, size);
+	vec2 packedSize = vec2(textureSize(uPackedVelocity, 0));
+	vec2 packedTexelSize = 1.0 / packedSize;
+	vec2 velocity = getDilatedVelocity_Thresholded(uv, packedTexelSize);
 	vec2 prevUV = uv + velocity;
 	bool validHistory = all(greaterThanEqual(prevUV, vec2(0.0))) && all(lessThanEqual(prevUV, vec2(1.0)));
 
@@ -322,7 +324,9 @@ void main() {
 
 		if (is_new_pixel) {
 			float depthDiff = abs(currDepthProps.r - historyDepthProps.r);
-			if (depthDiff > currDepthProps.b * 8.0) {
+			float allowedDiff = max(currDepthProps.b * 16.0, 0.15 * currDepthProps.r);
+			allowedDiff = max(allowedDiff, 1000.0 * worldScale);
+			if (depthDiff > allowedDiff) {
 				validHistory = false;
 			}
 		}
@@ -335,15 +339,9 @@ void main() {
 			historyRGBA = currentRGBA;
 			historyDepthProps = currDepthProps;
 		} else {
-			// If TAA is disabled or history is invalid, and this isn't the one new pixel in the 2x2,
-			// we must still produce a result. We can't just leave it black if uEnableTemporal is false.
-			if (!uEnableTemporal) {
-				historyRGBA = texelFetch(uPackedFrame, packedPixel, 0);
-				historyDepthProps = texelFetch(uPackedDepth, packedPixel, 0);
-			} else {
-				historyRGBA = vec4(0, 0, 0, 1);
-				historyDepthProps = vec4(50000.0 * worldScale, 50000.0 * worldScale, 100.0, 0.0);
-			}
+			// Fallback to bilinear current frame when history is invalid or temporal is disabled
+			historyRGBA = texture(uPackedFrame, uv);
+			historyDepthProps = texture(uPackedDepth, uv);
 		}
 		historyMoments = vec4(0.0);
 	}
@@ -363,12 +361,32 @@ void main() {
 	vec3 historyYCoCg = RGBToYCoCg(historyRGBA.rgb);
 	float historyOpacity = clamp(1.0 - historyRGBA.a, 0.0, 1.0);
 
+	// Calculate luminance-difference-guided temporal confidence
+	float lumaCurrent = luma(texture(uPackedFrame, uv).rgb);
+	float lumaHistory = luma(historyRGBA.rgb);
+	float lumaDiff = abs(lumaCurrent - lumaHistory);
+	float maxLuma = max(max(lumaCurrent, lumaHistory), 0.001);
+	float relativeLumaDiff = lumaDiff / maxLuma;
+
+	// High confidence when relative luma difference is small
+	float lumaConfidence = smoothstep(0.35, 0.05, relativeLumaDiff);
+
+	// High confidence when motion is small
+	float pixelSpeed = length(velocity * size);
+	float motionConfidenceFactor = smoothstep(2.0, 0.2, pixelSpeed);
+
+	float confidence = lumaConfidence * motionConfidenceFactor;
+
 	// Apply clips
-	historyYCoCg = clipAABB(historyYCoCg, stats.spatialMean, minColor, maxColor);
-	float clippedOpacity = clipAlpha(historyOpacity, minAlpha, maxAlpha, stats.alphaMean);
+	vec3 clippedHistoryYCoCg = clipAABB(historyYCoCg, stats.spatialMean, minColor, maxColor);
+	float clippedHistoryOpacity = clipAlpha(historyOpacity, minAlpha, maxAlpha, stats.alphaMean);
+
+	// Blend between clipped and unclipped history based on confidence
+	historyYCoCg = mix(clippedHistoryYCoCg, historyYCoCg, confidence * 0.9);
+	float blendedOpacity = mix(clippedHistoryOpacity, historyOpacity, confidence * 0.9);
 
 	historyRGBA.rgb = YCoCgToRGB(historyYCoCg);
-	historyRGBA.a = 1.0 - clamp(clippedOpacity, 0.0, 1.0); // Convert back to transmittance
+	historyRGBA.a = 1.0 - clamp(blendedOpacity, 0.0, 1.0); // Convert back to transmittance
 
 	// 5. Accumulate
 	float densityDiff = currentPathDensity - historyPathDensity;
@@ -383,7 +401,6 @@ void main() {
 	float leadingEdgeRejection = smoothstep(0.4, 0.8, relativeDiff);
 
 	float rejectionFactor = max(trailingEdgeRejection, leadingEdgeRejection);
-	float pixelSpeed = length(velocity * size);
 	float motionConfidence = smoothstep(0.1, 1.0, pixelSpeed); // Only reject if actually moving
 
 	rejectionFactor *= motionConfidence;
