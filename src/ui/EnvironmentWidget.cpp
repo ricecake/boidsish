@@ -418,7 +418,7 @@ namespace Boidsish {
 					ImGui::Separator();
 					ImGui::Text("Moon");
 					ImGui::SliderFloat("Lunar Albedo", &cycle.lunar_albedo, 0.0f, 0.5f, "%.3f");
-					ImGui::ColorEdit3("Moon Tint", &cycle.moon_tint[0]);
+					ImGui::ColorEdit3("Moon Tint", &cycle.moon_tint[0], ImGuiColorEditFlags_HDR|ImGuiColorEditFlags_Float);
 					ImGui::SliderFloat("Lunar Month (days)", &cycle.lunar_month, 0.1f, 30.0f, "%.2f");
 					ImGui::SliderFloat("Moon Phase (days)", &cycle.moon_phase_days, 0.0f, cycle.lunar_month, "%.1f");
 					ImGui::Text(
@@ -463,7 +463,7 @@ namespace Boidsish {
 										if (ImGui::Button("Unlock##HazeHeight")) weather->ClearTarget(WeatherAttribute::HazeHeight);
 									}
 									glm::vec3 haze_color = atmosphere_effect->GetHazeColor();
-									if (ImGui::ColorEdit3("Haze Color", &haze_color[0])) {
+									if (ImGui::ColorEdit3("Haze Color", &haze_color[0], ImGuiColorEditFlags_HDR|ImGuiColorEditFlags_Float)) {
 										if (weather) {
 											weather->SetTarget(WeatherAttribute::HazeColorR, haze_color.r);
 											weather->SetTarget(WeatherAttribute::HazeColorG, haze_color.g);
@@ -519,7 +519,7 @@ namespace Boidsish {
 										atmosphere_effect->SetCloudWarp(cloud_warp);
 									}
 									glm::vec3 cloud_color = atmosphere_effect->GetCloudColor();
-									if (ImGui::ColorEdit3("Cloud Color", &cloud_color[0])) {
+									if (ImGui::ColorEdit3("Cloud Color", &cloud_color[0], ImGuiColorEditFlags_HDR|ImGuiColorEditFlags_Float)) {
 										if (weather) {
 											weather->SetTarget(WeatherAttribute::CloudColorR, cloud_color.r);
 											weather->SetTarget(WeatherAttribute::CloudColorG, cloud_color.g);
@@ -652,12 +652,12 @@ namespace Boidsish {
 									}
 
 									glm::vec3 ext_color = atmosphere_effect->GetCloudExtinctionColor();
-									if (ImGui::ColorEdit3("Extinction Balance", &ext_color[0])) {
+									if (ImGui::ColorEdit3("Extinction Balance", &ext_color[0], ImGuiColorEditFlags_HDR|ImGuiColorEditFlags_Float)) {
 										atmosphere_effect->SetCloudExtinctionColor(ext_color);
 									}
 
 									glm::vec3 albedo = atmosphere_effect->GetCloudAlbedo();
-									if (ImGui::ColorEdit3("Cloud Albedo", &albedo[0])) {
+									if (ImGui::ColorEdit3("Cloud Albedo", &albedo[0], ImGuiColorEditFlags_HDR|ImGuiColorEditFlags_Float)) {
 										atmosphere_effect->SetCloudAlbedo(albedo);
 									}
 
@@ -755,9 +755,8 @@ namespace Boidsish {
 										if (ImGui::Button("Unlock##AtmosphereHeight")) weather->ClearTarget(WeatherAttribute::AtmosphereHeight);
 									}
 
-									glm::vec3 rayleigh_scattering = atmosphere_effect->GetRayleighScattering() *
-										1000.0f;
-									if (ImGui::ColorEdit3("Rayleigh Scattering", &rayleigh_scattering[0])) {
+									glm::vec3 rayleigh_scattering = atmosphere_effect->GetRayleighScattering() * 1000.0f;
+									if (ImGui::ColorEdit3("Rayleigh Scattering", &rayleigh_scattering[0], ImGuiColorEditFlags_HDR|ImGuiColorEditFlags_Float)) {
 										if (weather) {
 											weather->SetTarget(WeatherAttribute::RayleighScatteringR, rayleigh_scattering.r * 0.001f);
 											weather->SetTarget(WeatherAttribute::RayleighScatteringG, rayleigh_scattering.g * 0.001f);
@@ -794,7 +793,7 @@ namespace Boidsish {
 									}
 
 									glm::vec3 ozone_absorption = atmosphere_effect->GetOzoneAbsorption() * 1000.0f;
-									if (ImGui::ColorEdit3("Ozone Absorption", &ozone_absorption[0])) {
+									if (ImGui::ColorEdit3("Ozone Absorption", &ozone_absorption[0], ImGuiColorEditFlags_HDR|ImGuiColorEditFlags_Float)) {
 										atmosphere_effect->SetOzoneAbsorption(ozone_absorption * 0.001f);
 									}
 
