@@ -62,6 +62,25 @@ void main() {
 	perturbFactor = 1.0;
 	tessFactor = 64.0;
 
+	float waterMask = vIsWater;
+	if (waterMask > 0.0) {
+		float landHeight = FragPos.y;
+		float waterHeight = 0.0;
+
+		// Add gentle ripple displacement
+		float rippleTime = time * 2.0;
+		float ripple = sin(FragPos.x * 0.5 + rippleTime) * 0.05 + cos(FragPos.z * 0.5 + rippleTime * 0.8) * 0.05;
+		waterHeight += ripple;
+
+		// Approximate normal for the ripple surface
+		float dx = 0.05 * cos(FragPos.x * 0.5 + rippleTime) * 0.5;
+		float dz = 0.05 * -sin(FragPos.z * 0.5 + rippleTime * 0.8) * 0.4;
+		vec3  waterNormal = normalize(vec3(-dx, 1.0, -dz));
+
+		FragPos.y = mix(landHeight, waterHeight, waterMask);
+		Normal = normalize(mix(Normal, waterNormal, waterMask));
+	}
+
 	vec3 displacedFragPos = FragPos + getShockwaveDisplacement(FragPos, 0.0, false);
 	FragPos = displacedFragPos;
 

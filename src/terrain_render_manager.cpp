@@ -175,14 +175,14 @@ namespace Boidsish {
 					unsigned int i11 = (y + step) * 65 + (x + step);
 					unsigned int i01 = (y + step) * 65 + x;
 
-					// CW Winding
+					// CCW Winding
 					all_indices.push_back(i00);
-					all_indices.push_back(i10);
 					all_indices.push_back(i01);
+					all_indices.push_back(i10);
 
 					all_indices.push_back(i10);
-					all_indices.push_back(i11);
 					all_indices.push_back(i01);
+					all_indices.push_back(i11);
 				}
 			}
 		}
