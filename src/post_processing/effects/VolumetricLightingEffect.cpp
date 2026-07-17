@@ -21,6 +21,7 @@ namespace Boidsish {
 			if (injection_texture_) glDeleteTextures(1, &injection_texture_);
 			if (scattering_texture_) glDeleteTextures(1, &scattering_texture_);
 			if (history_textures_[0]) glDeleteTextures(2, history_textures_);
+			if (history_textures_2d_[0]) glDeleteTextures(2, history_textures_2d_);
 		}
 
 		void VolumetricLightingEffect::Initialize(int width, int height) {
@@ -30,6 +31,7 @@ namespace Boidsish {
 			injection_shader_ = std::make_unique<ComputeShader>("shaders/effects/volumetric_injection.comp");
 			integration_shader_ = std::make_unique<ComputeShader>("shaders/effects/volumetric_integration.comp");
 			composite_shader_ = std::make_unique<Shader>("shaders/postprocess.vert", "shaders/effects/volumetric_composite.frag");
+			accumulation_2d_shader_ = std::make_unique<ComputeShader>("shaders/effects/volumetric_temporal_accumulation_2d.comp");
 
 			auto setup_shader = [](ShaderBase& s) {
 				s.use();
@@ -43,13 +45,16 @@ namespace Boidsish {
 			setup_shader(*injection_shader_);
 			setup_shader(*integration_shader_);
 			setup_shader(*composite_shader_);
+			setup_shader(*accumulation_2d_shader_);
 
 			CreateGridTextures();
+			Create2DHistoryTextures(width, height);
 		}
 
 		void VolumetricLightingEffect::Resize(int width, int height) {
 			width_ = width;
 			height_ = height;
+			Create2DHistoryTextures(width, height);
 		}
 
 		void VolumetricLightingEffect::CreateGridTextures() {
@@ -74,6 +79,23 @@ namespace Boidsish {
 			create3DArray(history_textures_[1]);
 
 			has_history_ = false;
+		}
+
+		void VolumetricLightingEffect::Create2DHistoryTextures(int w, int h) {
+			if (history_textures_2d_[0]) glDeleteTextures(2, history_textures_2d_);
+
+			glGenTextures(2, history_textures_2d_);
+			for (int i = 0; i < 2; ++i) {
+				glBindTexture(GL_TEXTURE_2D, history_textures_2d_[i]);
+				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, w, h, 0, GL_RGBA, GL_FLOAT, nullptr);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+			}
+
+			has_history_2d_ = false;
+			history_index_2d_ = 0;
 		}
 
 		void VolumetricLightingEffect::PreDispatch(const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix, const glm::vec3& cameraPos) {
@@ -108,6 +130,11 @@ namespace Boidsish {
 
 			injection_shader_->setFloat("uAnisotropy", anisotropy_);
 			injection_shader_->setFloat("uIntensity", intensity_);
+			injection_shader_->setFloat("uAmbientScale", ambient_scale_);
+			injection_shader_->setFloat("uRayleighScale", rayleigh_scale_);
+			injection_shader_->setFloat("uMieScale", mie_scale_);
+			injection_shader_->setFloat("uMultiScatScale", multi_scat_scale_);
+			injection_shader_->setFloat("uShadowSensitivity", shadow_sensitivity_);
 
 			if (atmos_mgr) {
 				glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereMultiScattering());
@@ -119,7 +146,7 @@ namespace Boidsish {
 			injection_shader_->setMat4("uPrevVP", prev_view_projection_);
 			injection_shader_->setVec3("uPrevCamPos", prev_camera_pos_);
 			injection_shader_->setVec3("uPrevCamFront", prev_camera_front_);
-			injection_shader_->setFloat("uTemporalAlpha", has_history_ ? temporal_alpha_ : 0.0f);
+			injection_shader_->setFloat("uTemporalAlpha", (has_history_ && !temporal_accumulation_2d_) ? temporal_alpha_ : 0.0f);
 
 			injection_shader_->setFloat("u_cell_size", Constants::Class::Particles::ParticleGridCellSize());
 			injection_shader_->setUint("u_grid_size", Constants::Class::Particles::ParticleGridSize());
@@ -130,9 +157,11 @@ namespace Boidsish {
 
 			glBindImageTexture(Constants::ImageBinding::VolumetricInjection(), injection_texture_, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 
-			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::VolumetricHistory());
-			glBindTexture(GL_TEXTURE_3D, history_textures_[history_index_]);
-			injection_shader_->setInt("uHistoryTexture", Constants::TextureUnit::VolumetricHistory());
+			if (!temporal_accumulation_2d_) {
+				glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::VolumetricHistory());
+				glBindTexture(GL_TEXTURE_3D, history_textures_[history_index_]);
+				injection_shader_->setInt("uHistoryTexture", Constants::TextureUnit::VolumetricHistory());
+			}
 
 			glDispatchCompute((grid_res_x_ + 7) / 8, (grid_res_y_ + 7) / 8, (grid_res_z_ * num_cascades_ + 3) / 4);
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
@@ -140,19 +169,25 @@ namespace Boidsish {
 			// 2. Integration (Accumulate along Z)
 			integration_shader_->use();
 			integration_shader_->setIVec3("u_grid_res", glm::ivec3(grid_res_x_, grid_res_y_, grid_res_z_));
+			integration_shader_->setBool("uStore3DHistory", !temporal_accumulation_2d_);
 
 			glBindImageTexture(Constants::ImageBinding::VolumetricInjection(), injection_texture_, 0, GL_TRUE, 0, GL_READ_ONLY, GL_RGBA16F);
 			glBindImageTexture(Constants::ImageBinding::VolumetricScattering(), scattering_texture_, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 
-			// Copy to history for next frame
-			int next_history = 1 - history_index_;
-			glBindImageTexture(Constants::ImageBinding::VolumetricHistory(), history_textures_[next_history], 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+			int next_history = history_index_;
+			if (!temporal_accumulation_2d_) {
+				// Copy to history for next frame
+				next_history = 1 - history_index_;
+				glBindImageTexture(Constants::ImageBinding::VolumetricHistory(), history_textures_[next_history], 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+			}
 
 			glDispatchCompute(grid_res_x_, grid_res_y_, 1);
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
-			history_index_ = next_history;
-			has_history_ = true;
+			if (!temporal_accumulation_2d_) {
+				history_index_ = next_history;
+				has_history_ = true;
+			}
 			prev_view_projection_ = projectionMatrix * viewMatrix;
 			prev_camera_pos_ = cameraPos;
 			// Extract camera front from inverse view matrix (3rd column is Back)
@@ -161,19 +196,61 @@ namespace Boidsish {
 		}
 
 		void VolumetricLightingEffect::Apply(GLuint sourceTexture, GLuint depthTexture, GLuint velocityTexture, GLuint normalTexture, GLuint albedoTexture, const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix, const glm::vec3& cameraPos) {
+			if (temporal_accumulation_2d_) {
+				accumulation_2d_shader_->use();
+				accumulation_2d_shader_->setFloat("uTemporalAlpha", has_history_2d_ ? temporal_alpha_ : 0.0f);
+
+				// Bind inputs
+				glActiveTexture(GL_TEXTURE1);
+				glBindTexture(GL_TEXTURE_2D, depthTexture);
+				accumulation_2d_shader_->setInt("uDepthTexture", 1);
+
+				glActiveTexture(GL_TEXTURE2);
+				glBindTexture(GL_TEXTURE_2D, velocityTexture);
+				accumulation_2d_shader_->setInt("uVelocityTexture", 2);
+
+				glActiveTexture(GL_TEXTURE3);
+				glBindTexture(GL_TEXTURE_2D, history_textures_2d_[history_index_2d_]);
+				accumulation_2d_shader_->setInt("uPrevAccumulated", 3);
+
+				glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::VolumetricScattering());
+				glBindTexture(GL_TEXTURE_3D, scattering_texture_);
+				accumulation_2d_shader_->setInt("uVolumetric3D", Constants::TextureUnit::VolumetricScattering());
+
+				// Bind output image (Image binding 0)
+				int next_history_2d = 1 - history_index_2d_;
+				glBindImageTexture(0, history_textures_2d_[next_history_2d], 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+
+				glDispatchCompute((width_ + 7) / 8, (height_ + 7) / 8, 1);
+				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+				// Advance index
+				history_index_2d_ = next_history_2d;
+				has_history_2d_ = true;
+			}
+
 			// Composition
 			composite_shader_->use();
 			composite_shader_->setInt("uSceneTexture", 0);
 			composite_shader_->setInt("uDepthTexture", 1);
-			composite_shader_->setInt("uVolumetricTexture", Constants::TextureUnit::VolumetricScattering());
 			composite_shader_->setMat4("uInvView", glm::inverse(viewMatrix));
 
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, sourceTexture);
 			glActiveTexture(GL_TEXTURE1);
 			glBindTexture(GL_TEXTURE_2D, depthTexture);
-			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::VolumetricScattering());
-			glBindTexture(GL_TEXTURE_3D, scattering_texture_);
+
+			if (temporal_accumulation_2d_) {
+				composite_shader_->setBool("uUse2DAccumulation", true);
+				glActiveTexture(GL_TEXTURE3);
+				glBindTexture(GL_TEXTURE_2D, history_textures_2d_[history_index_2d_]);
+				composite_shader_->setInt("uVolumetricHistory2D", 3);
+			} else {
+				composite_shader_->setBool("uUse2DAccumulation", false);
+				composite_shader_->setInt("uVolumetricTexture", Constants::TextureUnit::VolumetricScattering());
+				glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::VolumetricScattering());
+				glBindTexture(GL_TEXTURE_3D, scattering_texture_);
+			}
 
 			glMemoryBarrier(GL_TEXTURE_FETCH_BARRIER_BIT);
 
