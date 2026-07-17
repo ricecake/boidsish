@@ -123,6 +123,11 @@ namespace Boidsish {
 							atmosphere_effect->SetCloudExtinctionColor(ext_color);
 						}
 
+						glm::vec3 albedo = atmosphere_effect->GetCloudAlbedo();
+						if (ImGui::ColorEdit3("Cloud Albedo", &albedo[0])) {
+							atmosphere_effect->SetCloudAlbedo(albedo);
+						}
+
 						ImGui::Separator();
 						ImGui::Text("Temporal Accumulation");
 						float gamma = atmosphere_effect->GetCloudTemporalGamma();
