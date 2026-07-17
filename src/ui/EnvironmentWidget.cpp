@@ -104,10 +104,13 @@ namespace Boidsish {
 
 							drawAttrControl("Precipitation", WeatherAttribute::Precipitation, 0.0f, 1.0f, "%.2f");
 							drawAttrControl("Humidity", WeatherAttribute::Humidity, 0.0f, 1.0f, "%.2f");
-							drawAttrControl("Wind Strength", WeatherAttribute::WindStrength, 0.0f, 5.0f, "%.2f");
 							drawAttrControl("Cloud Coverage", WeatherAttribute::CloudCoverage, 0.0f, 1.0f, "%.2f");
 							drawAttrControl("Sun Aureole", WeatherAttribute::SunAureoleStrength, 0.0f, 2.0f, "%.2f");
 							drawAttrControl("Cirrus Opacity", WeatherAttribute::CirrusOpacity, 0.0f, 1.0f, "%.2f");
+							drawAttrControl("Wind Strength", WeatherAttribute::WindStrength, 0.0f, 5.0f, "%.2f");
+							drawAttrControl("Wind Speed", WeatherAttribute::WindSpeed, 0.0f, 10.0f, "%.2f");
+							drawAttrControl("Wind Frequency", WeatherAttribute::WindFrequency, 0.01f, 1.0f, "%.2f");
+
 
 							auto active_constraints = weather->GetActiveConstraints();
 							if (!active_constraints.empty()) {
@@ -966,32 +969,6 @@ namespace Boidsish {
 							drawRatioLimit("Snow", "particle_ratio_snow", stats.count_snow, stats.limit_snow, 0.5f);
 							drawRatioLimit("Rain", "particle_ratio_rain", stats.count_rain, stats.limit_rain, 0.5f);
 							drawRatioLimit("Dust", "particle_ratio_dust", stats.count_dust, stats.limit_dust, 0.25f);
-						}
-					}
-				}
-
-				// 5. Wind (from EffectsWidget)
-				if (ImGui::CollapsingHeader("Wind", ImGuiTreeNodeFlags_DefaultOpen)) {
-					if (weather) {
-						drawAttrControl("Wind Strength", WeatherAttribute::WindStrength, 0.0f, 5.0f, "%.2f");
-						drawAttrControl("Wind Speed", WeatherAttribute::WindSpeed, 0.0f, 10.0f, "%.2f");
-						drawAttrControl("Wind Frequency", WeatherAttribute::WindFrequency, 0.01f, 1.0f, "%.2f");
-					} else {
-						auto& config = ConfigManager::GetInstance();
-
-						float wind_strength = config.GetAppSettingFloat("wind_strength", 0.065f);
-						if (ImGui::SliderFloat("Wind Strength", &wind_strength, 0.0f, 5.0f)) {
-							config.SetFloat("wind_strength", wind_strength);
-						}
-
-						float wind_speed = config.GetAppSettingFloat("wind_speed", 0.075f);
-						if (ImGui::SliderFloat("Wind Speed", &wind_speed, 0.0f, 10.0f)) {
-							config.SetFloat("wind_speed", wind_speed);
-						}
-
-						float wind_frequency = config.GetAppSettingFloat("wind_frequency", 0.01f);
-						if (ImGui::SliderFloat("Wind Frequency", &wind_frequency, 0.01f, 1.0f)) {
-							config.SetFloat("wind_frequency", wind_frequency);
 						}
 					}
 				}
