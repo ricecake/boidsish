@@ -157,9 +157,11 @@ namespace Boidsish {
 
 			glBindImageTexture(Constants::ImageBinding::VolumetricInjection(), injection_texture_, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 
-			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::VolumetricHistory());
-			glBindTexture(GL_TEXTURE_3D, history_textures_[history_index_]);
-			injection_shader_->setInt("uHistoryTexture", Constants::TextureUnit::VolumetricHistory());
+			if (!temporal_accumulation_2d_) {
+				glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::VolumetricHistory());
+				glBindTexture(GL_TEXTURE_3D, history_textures_[history_index_]);
+				injection_shader_->setInt("uHistoryTexture", Constants::TextureUnit::VolumetricHistory());
+			}
 
 			glDispatchCompute((grid_res_x_ + 7) / 8, (grid_res_y_ + 7) / 8, (grid_res_z_ * num_cascades_ + 3) / 4);
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
@@ -167,19 +169,25 @@ namespace Boidsish {
 			// 2. Integration (Accumulate along Z)
 			integration_shader_->use();
 			integration_shader_->setIVec3("u_grid_res", glm::ivec3(grid_res_x_, grid_res_y_, grid_res_z_));
+			integration_shader_->setBool("uStore3DHistory", !temporal_accumulation_2d_);
 
 			glBindImageTexture(Constants::ImageBinding::VolumetricInjection(), injection_texture_, 0, GL_TRUE, 0, GL_READ_ONLY, GL_RGBA16F);
 			glBindImageTexture(Constants::ImageBinding::VolumetricScattering(), scattering_texture_, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 
-			// Copy to history for next frame
-			int next_history = 1 - history_index_;
-			glBindImageTexture(Constants::ImageBinding::VolumetricHistory(), history_textures_[next_history], 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+			int next_history = history_index_;
+			if (!temporal_accumulation_2d_) {
+				// Copy to history for next frame
+				next_history = 1 - history_index_;
+				glBindImageTexture(Constants::ImageBinding::VolumetricHistory(), history_textures_[next_history], 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+			}
 
 			glDispatchCompute(grid_res_x_, grid_res_y_, 1);
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
-			history_index_ = next_history;
-			has_history_ = true;
+			if (!temporal_accumulation_2d_) {
+				history_index_ = next_history;
+				has_history_ = true;
+			}
 			prev_view_projection_ = projectionMatrix * viewMatrix;
 			prev_camera_pos_ = cameraPos;
 			// Extract camera front from inverse view matrix (3rd column is Back)
