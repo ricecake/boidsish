@@ -76,10 +76,21 @@ RawVertex getRawVertex(ivec2 pixelCoord, int slice, ivec2 chunk_coord) {
 
 	if (pixelCoord.x < 0 || pixelCoord.x >= res || pixelCoord.y < 0 || pixelCoord.y >= res) {
 		ivec2 chunkOffset = ivec2(0);
-		if (pixelCoord.x < 0) chunkOffset.x = -1;
-		else if (pixelCoord.x >= res) chunkOffset.x = 1;
-		if (pixelCoord.y < 0) chunkOffset.y = -1;
-		else if (pixelCoord.y >= res) chunkOffset.y = 1;
+		if (pixelCoord.x < 0) {
+			chunkOffset.x = -1;
+			targetPixelCoord.x = 64 + pixelCoord.x;
+		} else if (pixelCoord.x >= res) {
+			chunkOffset.x = 1;
+			targetPixelCoord.x = pixelCoord.x - 64;
+		}
+
+		if (pixelCoord.y < 0) {
+			chunkOffset.y = -1;
+			targetPixelCoord.y = 64 + pixelCoord.y;
+		} else if (pixelCoord.y >= res) {
+			chunkOffset.y = 1;
+			targetPixelCoord.y = pixelCoord.y - 64;
+		}
 
 		ivec2 neighborChunkCoord = chunk_coord + chunkOffset;
 		ivec2 localGridCoord = neighborChunkCoord - u_originSize.xy;
@@ -90,9 +101,8 @@ RawVertex getRawVertex(ivec2 pixelCoord, int slice, ivec2 chunk_coord) {
 
 		if (neighborSlice >= 0) {
 			targetSlice = neighborSlice;
-			targetPixelCoord = (pixelCoord + ivec2(64)) % 64;
 		} else {
-			targetPixelCoord = clamp(pixelCoord, 0, res - 1);
+			targetPixelCoord = clamp(pixelCoord, 0, 64);
 		}
 	}
 
@@ -306,6 +316,7 @@ void main() {
 
 	float avgNeighbors = sumNeighbors / numNeighbors;
 	float deviation = abs(centerV - avgNeighbors);
+	float waterMask = bakedParams.w; // Store original waterMask before overwrite!
 	bakedParams.a = deviation;
 
 	// Sample biome to preserve override if not set by outcrop
@@ -323,7 +334,7 @@ void main() {
 	// Mark as baked in the biome map (B channel)
 	biomeData.b = 1.0;
 	// Relocate waterMask to biome map Alpha channel
-	biomeData.a = s_params[localID.x + 2][localID.y + 2].w;
+	biomeData.a = waterMask;
 
 	imageStore(u_biomeMap, ivec3(pixelCoord, slice), biomeData);
 
@@ -338,7 +349,7 @@ void main() {
 	TerrainVertex outV;
 	outV.position = vec4(vec3(worldOffset.x + float(pixelCoord.x) * 0.5 * worldScale, bakedHeight, worldOffset.y + float(pixelCoord.y) * 0.5 * worldScale) + bakedDisplacement, float(slice));
 	outV.normal = vec4(bakedNormal, 0.0);
-	outV.biome = vec4(low_idx, t_val, bakedParams.w, 1.0);
+	outV.biome = vec4(low_idx, t_val, waterMask, 1.0);
 	outV.params = vec4(bakedParams.r, bakedParams.g, bakedParams.b, deviation);
 
 	int vertexIdx = slice * (65 * 65) + pixelCoord.y * 65 + pixelCoord.x;
