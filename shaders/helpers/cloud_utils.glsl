@@ -333,15 +333,19 @@ CloudWeather loadCloudWeather(vec3 p, CloudProperties props, vec4 tex) {
 	return weather;
 }
 
-CloudWeather computeCloudWeather(vec3 p, CloudProperties props) {
+CloudWeather computeCloudWeather(vec3 p, CloudProperties props, float lod) {
 	vec3 advect = getCloudWindOffset(time);
 	vec3 p_advected = p + advect;
 
 	// Use baked weather map. Sampling UV is worldXZ / range.
 	// Range is 100,000 * worldScale as defined in the bake shader.
 	vec2 uv = p_advected.xz / (100000.0 * props.worldScale);
-	vec4 bakedWeather = textureLod(u_cloudWeatherTexture, uv, 0.0);
+	vec4 bakedWeather = textureLod(u_cloudWeatherTexture, uv, lod);
 	return loadCloudWeather(p, props, bakedWeather);
+}
+
+CloudWeather computeCloudWeather(vec3 p, CloudProperties props) {
+	return computeCloudWeather(p, props, 0.0);
 }
 
 CloudLayer computeCloudLayer(CloudWeather weather, CloudProperties props) {

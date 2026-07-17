@@ -57,6 +57,7 @@ namespace Boidsish {
 				cloud_render_shader_->trySetInt("u_blueNoiseTexture", Constants::TextureUnit::NoiseBlue());
 				cloud_render_shader_->trySetInt("u_extraNoiseTexture", Constants::TextureUnit::NoiseExtra());
 				cloud_render_shader_->trySetInt("u_cloudWeatherTexture", Constants::TextureUnit::CloudWeatherBake());
+				cloud_render_shader_->trySetInt("u_cloud3DTexture", Constants::TextureUnit::Cloud3D());
 			}
 
 			if (temporal_shader_ && temporal_shader_->isValid()) {

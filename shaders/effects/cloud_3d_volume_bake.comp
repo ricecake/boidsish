@@ -1,0 +1,52 @@
+#version 460 core
+
+layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
+
+layout(binding = 0, rgba16f) uniform image3D outVolume;
+
+#include "../helpers/fast_noise.glsl"
+
+void main() {
+	ivec3 voxel = ivec3(gl_GlobalInvocationID.xyz);
+	ivec3 size = imageSize(outVolume); // 128, 128, 128
+	if (voxel.x >= size.x || voxel.y >= size.y || voxel.z >= size.z) return;
+
+	vec3 p = vec3(voxel) / vec3(size); // [0, 1]
+
+	// 1. R Channel: Tiling 3D noise.
+	// Remap it from [-1, 1] to [0, 1].
+	float noiseVal = fbm3d_tiling(p * 8.0, 8.0);
+	noiseVal = clamp(noiseVal * 0.5 + 0.5, 0.0, 1.0);
+
+	// 2. G Channel: Local Ambient Occlusion.
+	// We want to integrate/sample the R channel noise in a hemisphere/cone pointing upwards.
+	// Let's sample a few offsets. Since it's tiling, we must wrap coordinates in [0, 1] range.
+	float densitySum = 0.0;
+	const int AO_SAMPLES = 8;
+	vec3 ao_offsets[AO_SAMPLES] = vec3[](
+		vec3(0.0, 0.02, 0.0),
+		vec3(0.0, 0.05, 0.0),
+		vec3(0.0, 0.10, 0.0),
+		vec3(0.02, 0.04, 0.02),
+		vec3(-0.02, 0.04, -0.02),
+		vec3(0.03, 0.08, -0.03),
+		vec3(-0.03, 0.08, 0.03),
+		vec3(0.0, 0.15, 0.0)
+	);
+
+	for (int i = 0; i < AO_SAMPLES; i++) {
+		vec3 sample_uvw = fract(p + ao_offsets[i]);
+		float sampleNoise = fbm3d_tiling(sample_uvw * 8.0, 8.0);
+		sampleNoise = clamp(sampleNoise * 0.5 + 0.5, 0.0, 1.0);
+		densitySum += sampleNoise;
+	}
+	float aoVal = clamp(1.0 - (densitySum / float(AO_SAMPLES)) * 1.5, 0.0, 1.0);
+
+	// 3. B Channel: Local Albedo Basis.
+	// We can use a different noise frequency to give high frequency variety, e.g. we can use a second tiling noise with period 16.0.
+	float noiseVal2 = fbm3d_tiling(p * 16.0, 16.0);
+	noiseVal2 = clamp(noiseVal2 * 0.5 + 0.5, 0.0, 1.0);
+	float albedoBasis = mix(0.4, 1.0, noiseVal2) * (1.0 - 0.2 * noiseVal);
+
+	imageStore(outVolume, voxel, vec4(noiseVal, aoVal, albedoBasis, 1.0));
+}
