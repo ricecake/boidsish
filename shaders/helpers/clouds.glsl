@@ -542,39 +542,60 @@ CloudSpotDetails calculateCloudDensityExpV9(
 	);
 }
 
+struct CloudDensityResult {
+	vec3 density;
+	vec3 advectionSpeed;
+	float ao;
+	vec3 albedo;
+};
+
+uniform sampler3D u_cloud3DTexture;
+
 // Cloud density calculation helper
-// Returns vec3(density) based on world-space position, and outputs advection vector
-vec3 calculateCloudDensity(
+// Returns CloudDensityResult based on world-space position
+CloudDensityResult calculateCloudDensity(
 	vec3            p,
 	CloudWeather    weather,
 	CloudLayer      layer,
 	CloudProperties props,
 	float           time,
-	float           simplified,
-	out vec3        advection
+	float           simplified
 ) {
 	if (p.y < layer.baseFloor || p.y > layer.baseCeiling) {
 		float h = (p.y - layer.baseFloor) / layer.thickness;
-		advection = getCloudAdvectionSpeed(h, time);
-		return vec3(0.0);
+		vec3 advectSpeed = getCloudAdvectionSpeed(h, time);
+		return CloudDensityResult(vec3(0.0), advectSpeed, 1.0, vec3(1.0));
 	}
-	// Need a worley fbm to mix in
+
+	float h = (p.y - layer.baseFloor) / layer.thickness;
+	vec3 advectSpeed = getCloudAdvectionSpeed(h, time);
+
+	// Sample the 3D cloud volume texture with slower advection speed
+	vec3 advect_3d = time * advectSpeed * 0.75;
+	vec3 p_advected_3d = p + advect_3d;
+	vec3 uvw = vec3(
+		p_advected_3d.x / (100000.0 * props.worldScale),
+		h,
+		p_advected_3d.z / (100000.0 * props.worldScale)
+	);
+
+	vec4 volSample = textureLod(u_cloud3DTexture, uvw, 0.0);
+	float volNoise = volSample.r;
+	float volAo = volSample.g;
+	float volAlbedoBasis = volSample.b;
+
 	CloudSpotDetails res = calculateCloudDensityExpV9(p, weather, layer, props, time, simplified);
-	// vec4 res = calculateCloudDensityExpV8(p, weather, layer, props, time, simplified);
-	// return calculateCloudDensityExpV8(p, weather, layer, props, time, simplified);
-	// return calculateCloudDensityExpV7(p, weather, layer, props, time, simplified);
-	// return calculateCloudDensityExpV6(p, weather, layer, props, time, simplified);
-	// return calculateCloudDensityExpV5(p, weather, layer, props, time, simplified);
-	// return calculateCloudDensityExpV4(p, weather, layer, props, time, simplified);
-	// return calculateCloudDensityExpV3(p, weather, layer, props, time, simplified);
-	// return calculateCloudDensityExpV2(p, weather, layer, props, time, simplified);
-	// return calculateCloudDensityExpV1(p, weather, layer, props, time, simplified);
-	// return calculateCloudDensityHZDv1(p, weather, layer, props, time, simplified);
 
+	// Where the current system has density, the 3d volume adds variety and breaks up the linear nature.
+	float finalDensity = res.density;
+	if (finalDensity > 0.0) {
+		finalDensity *= mix(0.4, 1.6, volNoise);
+	}
 
-	advection = res.advectionSpeed;
-	return res.relativeExtinction * res.density;
+	vec3 mixedDensity = res.relativeExtinction * finalDensity;
+	vec3 mixedAlbedo = vec3(volAlbedoBasis);
 
+	return CloudDensityResult(mixedDensity, advectSpeed, volAo, mixedAlbedo);
 }
 
 #endif // HELPERS_CLOUDS_GLSL
