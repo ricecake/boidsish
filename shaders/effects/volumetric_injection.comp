@@ -312,19 +312,19 @@ void main() {
         current_local = vec4(finalScattering, extinctionCoeff);
     }
 
-    // 2. Populate shared memory for neighborhood clamping
-    ivec3 l_id = ivec3(gl_LocalInvocationID.xyz);
-    int flat_id = int(l_id.z * 64 + l_id.y * 8 + l_id.x);
-    s_current[flat_id] = current_local;
-
-    barrier();
-
     if (out_of_bounds) return;
 
     vec4 current = current_local;
 
     // Temporal accumulation
     if (uTemporalAlpha > 0.0) {
+        // 2. Populate shared memory for neighborhood clamping
+        ivec3 l_id = ivec3(gl_LocalInvocationID.xyz);
+        int flat_id = int(l_id.z * 64 + l_id.y * 8 + l_id.x);
+        s_current[flat_id] = current_local;
+
+        barrier();
+
         vec4 prevClip = uPrevVP * vec4(worldPos, 1.0);
         vec3 prevNDC = prevClip.xyz / (abs(prevClip.w) > 0.0001 ? prevClip.w : 1.0);
 
