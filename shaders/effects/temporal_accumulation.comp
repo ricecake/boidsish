@@ -11,6 +11,23 @@ uniform sampler2D uDepth;
 #include "temporal_data.glsl"
 
 uniform float uAlpha = 0.9; // Accumulation factor
+uniform int uResolutionScale = 1;
+
+// 2x2 Bayer pattern for interleaving
+const ivec2 bayer_offsets_2x2[4] = ivec2[](
+	ivec2(0, 0),
+	ivec2(1, 1),
+	ivec2(1, 0),
+	ivec2(0, 1)
+);
+
+// 4x4 Bayer pattern for interleaving
+const ivec2 bayer_offsets_4x4[16] = ivec2[](
+	ivec2(0, 0), ivec2(2, 2), ivec2(0, 2), ivec2(2, 0),
+	ivec2(1, 1), ivec2(3, 3), ivec2(1, 3), ivec2(3, 1),
+	ivec2(0, 1), ivec2(2, 3), ivec2(0, 3), ivec2(2, 1),
+	ivec2(1, 0), ivec2(3, 2), ivec2(1, 2), ivec2(3, 0)
+);
 
 void main() {
 	ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
@@ -20,40 +37,59 @@ void main() {
 
 	vec2 uv = (vec2(pixel) + 0.5) / vec2(size);
 
+	// Determine if this pixel is newly calculated this frame
+	bool is_new_pixel = false;
+	if (uResolutionScale <= 1) {
+		is_new_pixel = true;
+	} else if (uResolutionScale == 2) {
+		ivec2 offset = bayer_offsets_2x2[frameIndex % 4];
+		is_new_pixel = ((pixel.x % 2) == offset.x && (pixel.y % 2) == offset.y);
+	} else if (uResolutionScale == 4) {
+		ivec2 offset = bayer_offsets_4x4[frameIndex % 16];
+		is_new_pixel = ((pixel.x % 4) == offset.x && (pixel.y % 4) == offset.y);
+	}
+
 	// 1. Reprojection
 	vec2 velocity = texture(uVelocity, uv).rg;
 	vec2 prevUV = uv - velocity;
 
 	vec4 current = texture(uCurrentFrame, uv);
 
-	// 2. Out of bounds check
+	bool validHistory = true;
 	if (prevUV.x < 0.0 || prevUV.x > 1.0 || prevUV.y < 0.0 || prevUV.y > 1.0) {
+		validHistory = false;
+	} else {
+		float prevDepth = texture(uDepth, prevUV).r;
+		float currentDepth = texture(uDepth, uv).r;
+		if (abs(currentDepth - prevDepth) > 0.01) {
+			validHistory = false;
+		}
+	}
+
+	if (!validHistory) {
+		// Fallback when history is invalid
+		// If is_new_pixel is false, current is not updated, but texture(uCurrentFrame, uv) is a bilinear lookup which blends nearby valid pixels
 		imageStore(outResult, pixel, current);
 		return;
 	}
 
 	vec4 history = texture(uHistoryFrame, prevUV);
 
-	// Validation
-	float prevDepth = texture(uDepth, prevUV).r;
-	float currentDepth = texture(uDepth, uv).r;
-
-	// Simple depth-based validation to reduce ghosting
-	// In linear space or reversed-Z this might need adjustment,
-	// but basically we want to see if they are the same surface.
-	if (abs(currentDepth - prevDepth) > 0.01) {
-		imageStore(outResult, pixel, current);
+	if (!is_new_pixel) {
+		// If not a new pixel, just propagate reprojected history
+		imageStore(outResult, pixel, history);
 		return;
 	}
 
 	// 3. Neighborhood Clamping to reduce ghosting
-	// Sample 3x3 neighborhood of current frame
+	// Sample 3x3 neighborhood of current frame, using stride uResolutionScale to avoid unwritten pixels
 	vec4 m1 = vec4(0.0);
 	vec4 m2 = vec4(0.0);
 	vec2 currentTexelSize = 1.0 / textureSize(uCurrentFrame, 0);
 	for (int y = -1; y <= 1; y++) {
 		for (int x = -1; x <= 1; x++) {
-			vec4 val = texture(uCurrentFrame, uv + vec2(x, y) * currentTexelSize);
+			vec2 offsetUV = uv + vec2(x, y) * float(uResolutionScale) * currentTexelSize;
+			vec4 val = texture(uCurrentFrame, offsetUV);
 			m1 += val;
 			m2 += val * val;
 		}
@@ -62,30 +98,23 @@ void main() {
 	vec4 stddev = sqrt(max(vec4(0.0), (m2 / 9.0) - (mean * mean)));
 
 	// Spatial stability: how uniform is the local neighborhood?
-	// Higher stability means the current value is likely a real feature, not noise/firefly.
 	float spatialLum = dot(mean.rgb, vec3(0.2126, 0.7152, 0.0722));
 	float spatialStd = dot(stddev.rgb, vec3(0.2126, 0.7152, 0.0722));
 	float stability = 1.0 - clamp(spatialStd / (spatialLum + 0.001), 0.0, 1.0);
 
 	// Clamp history to neighborhood of current
-	// Use a tighter clamp (gamma) for firefly rejection, but loosen it if the area is stable
 	float gamma = mix(1.2, 4.0, stability);
 	vec4  minColor = mean - gamma * stddev;
 	vec4  maxColor = mean + gamma * stddev;
 	history = clamp(history, minColor, maxColor);
 
 	// Additionally reject current outliers that are far from history
-	// this helps prevent fireflies from ever entering the history
 	vec4 m_diff = abs(current - history);
-	// Loosen outlier rejection if stability is high
 	if (any(greaterThan(m_diff, stddev * (4.0 + stability * 8.0) + 0.1))) {
 		current = mix(current, history, 0.5);
 	}
 
 	// 4. Accumulate
-	// Higher alpha means more history
-	// If the current signal is stable but significantly different from history,
-	// reduce alpha to adapt faster to lighting changes.
 	float activeAlpha = uAlpha;
 	float currentLum = dot(current.rgb, vec3(0.2126, 0.7152, 0.0722));
 	float historyLum = dot(history.rgb, vec3(0.2126, 0.7152, 0.0722));
@@ -93,10 +122,6 @@ void main() {
 	if (stability > 0.8 && abs(currentLum - historyLum) > 0.1) {
 		activeAlpha *= 0.5; // Adapt faster to stable lighting changes
 	}
-
-	// Detect if current pixel was actually updated (for checkerboarding)
-	// This depends on how we pass the info.
-	// For now, assume always updated or handled by neighborhood clamping.
 
 	vec4 result = mix(current, history, activeAlpha);
 

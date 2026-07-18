@@ -21,8 +21,8 @@ namespace Boidsish {
 		void UnifiedScreenSpaceEffect::Initialize(int width, int height) {
 			width_ = width;
 			height_ = height;
-			internal_width_ = width / static_cast<int>(resolution_scale_);
-			internal_height_ = height / static_cast<int>(resolution_scale_);
+			internal_width_ = width;
+			internal_height_ = height;
 
 			unified_shader_ = std::make_unique<ComputeShader>("shaders/effects/unified_screen_space.comp");
 			composite_shader_ = std::make_unique<Shader>(
@@ -97,6 +97,9 @@ namespace Boidsish {
 			unified_shader_->setFloat("uSSSBias", sss_bias_);
 			unified_shader_->setInt("uSSSSteps", sss_steps_);
 
+			int scale = static_cast<int>(resolution_scale_);
+			unified_shader_->setInt("uResolutionScale", scale);
+
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, depthTexture);
 			unified_shader_->setInt("gDepth", 0);
@@ -142,7 +145,9 @@ namespace Boidsish {
 			glBindImageTexture(0, gi_ao_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 			glBindImageTexture(1, sss_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R8);
 
-			glDispatchCompute((internal_width_ + 7) / 8, (internal_height_ + 7) / 8, 1);
+			int dispatch_width = (width_ + scale - 1) / scale;
+			int dispatch_height = (height_ + scale - 1) / scale;
+			glDispatchCompute((dispatch_width + 7) / 8, (dispatch_height + 7) / 8, 1);
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
 
 			// Unbind image units to prevent stale bindings from interfering with
@@ -150,8 +155,8 @@ namespace Boidsish {
 			glBindImageTexture(0, 0, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA16F);
 			glBindImageTexture(1, 0, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R8);
 
-			GLuint accGIAO = gi_ao_accumulator_.Accumulate(gi_ao_texture_, velocityTexture, depthTexture);
-			GLuint accSSS = sss_accumulator_.Accumulate(sss_texture_, velocityTexture, depthTexture);
+			GLuint accGIAO = gi_ao_accumulator_.Accumulate(gi_ao_texture_, velocityTexture, depthTexture, scale);
+			GLuint accSSS = sss_accumulator_.Accumulate(sss_texture_, velocityTexture, depthTexture, scale);
 
 			composite_shader_->use();
 			composite_shader_->setInt("uSceneTexture", 0);
@@ -184,8 +189,8 @@ namespace Boidsish {
 		void UnifiedScreenSpaceEffect::Resize(int width, int height) {
 			width_ = width;
 			height_ = height;
-			internal_width_ = width / static_cast<int>(resolution_scale_);
-			internal_height_ = height / static_cast<int>(resolution_scale_);
+			internal_width_ = width;
+			internal_height_ = height;
 			gi_ao_accumulator_.Resize(internal_width_, internal_height_);
 			sss_accumulator_.Resize(internal_width_, internal_height_);
 			InitializeTextures();

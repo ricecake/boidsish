@@ -49,7 +49,7 @@ namespace Boidsish {
 			CreateTextures();
 		}
 
-		GLuint TemporalAccumulator::Accumulate(GLuint currentFrame, GLuint velocityTexture, GLuint depthTexture) {
+		GLuint TemporalAccumulator::Accumulate(GLuint currentFrame, GLuint velocityTexture, GLuint depthTexture, int resolutionScale) {
 			if (!_accumulationShader || !_accumulationShader->isValid())
 				return currentFrame;
 
@@ -57,6 +57,7 @@ namespace Boidsish {
 
 			_accumulationShader->use();
 			_accumulationShader->setFloat("uAlpha", _alpha);
+			_accumulationShader->setInt("uResolutionScale", resolutionScale);
 
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, currentFrame);
