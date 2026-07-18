@@ -49,8 +49,8 @@ uniform float u_rayleighScaleHeight;
 #define kRayleighScattering u_rayleighScatteringBase
 #define kRayleighScaleHeight u_rayleighScaleHeight
 
-uniform float u_mieScatteringBase;
-uniform float u_mieExtinctionBase;
+uniform vec3  u_mieScatteringBase;
+uniform vec3  u_mieExtinctionBase;
 uniform float u_mieScaleHeight;
 #define kMieScattering u_mieScatteringBase
 #define kMieExtinction u_mieExtinctionBase
@@ -58,7 +58,7 @@ uniform float u_mieScaleHeight;
 
 uniform float u_rayleighScale;
 uniform float u_mieScale;
-uniform float u_mieAnisotropy;
+uniform vec3  u_mieAnisotropy;
 
 uniform vec3 u_ozoneAbsorptionBase;
 #define kOzoneAbsorption u_ozoneAbsorptionBase
@@ -143,10 +143,10 @@ float rayleighPhase(float cosTheta) {
 	return 3.0 / (16.0 * PI) * (1.0 + cosTheta * cosTheta);
 }
 
-float miePhase(float cosTheta) {
-	float g = u_mieAnisotropy;
-	float g2 = g * g;
-	return (1.0 - g2) / (4.0 * PI * pow(max(1e-4, 1.0 + g2 - 2.0 * g * cosTheta), 1.5));
+vec3 miePhase(float cosTheta) {
+	vec3 g = u_mieAnisotropy;
+	vec3 g2 = g * g;
+	return (vec3(1.0) - g2) / (4.0 * PI * pow(max(vec3(1e-4), vec3(1.0) + g2 - 2.0 * g * cosTheta), vec3(1.5)));
 }
 
 // LUT mapping functions - Simple Linear mapping for Transmittance to avoid precision issues

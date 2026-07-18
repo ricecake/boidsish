@@ -128,7 +128,10 @@ namespace Boidsish {
 				// injection_shader_->setInt("u_curlTexture", Constants::TextureUnit::NoiseCurl());
 			}
 
-			injection_shader_->setFloat("uAnisotropy", anisotropy_);
+			injection_shader_->setVec3("uAnisotropy", anisotropy_g1_);
+			injection_shader_->setVec3("uAnisotropyG2", anisotropy_g2_);
+			injection_shader_->setFloat("uAnisotropyAlpha", anisotropy_alpha_);
+			injection_shader_->setFloat("uAnisotropyIsotropic", anisotropy_isotropic_);
 			injection_shader_->setFloat("uIntensity", intensity_);
 			injection_shader_->setFloat("uAmbientScale", ambient_scale_);
 			injection_shader_->setFloat("uRayleighScale", rayleigh_scale_);

@@ -17,6 +17,21 @@
 namespace Boidsish {
 	namespace UI {
 
+		static glm::vec3 GetConfigVec3(const std::string& key, const glm::vec3& default_val) {
+			auto& cfg = ConfigManager::GetInstance();
+			float r = cfg.GetAppSettingFloat(key + "_r", default_val.r);
+			float g = cfg.GetAppSettingFloat(key + "_g", default_val.g);
+			float b = cfg.GetAppSettingFloat(key + "_b", default_val.b);
+			return glm::vec3(r, g, b);
+		}
+
+		static void SetConfigVec3(const std::string& key, const glm::vec3& val) {
+			auto& cfg = ConfigManager::GetInstance();
+			cfg.SetFloat(key + "_r", val.r);
+			cfg.SetFloat(key + "_g", val.g);
+			cfg.SetFloat(key + "_b", val.b);
+		}
+
 		EnvironmentWidget::EnvironmentWidget(Visualizer& visualizer): m_visualizer(visualizer) {}
 
 		void EnvironmentWidget::Draw() {
@@ -545,21 +560,17 @@ namespace Boidsish {
 									ImGui::Separator();
 									ImGui::Text("Advanced Cloud Parameters");
 
-									float g1 = cfg.GetAppSettingFloat(
-										"cloud_phase_g1",
-										atmosphere_effect->GetCloudPhaseG1()
-									);
-									if (ImGui::SliderFloat("Phase G1 (Forward)", &g1, 0.0f, 0.99f)) {
+									glm::vec3 g1 = GetConfigVec3("cloud_phase_g1", atmosphere_effect->GetCloudPhaseG1());
+									if (ImGui::ColorEdit3("Phase G1 (Forward)", &g1[0])) {
 										atmosphere_effect->SetCloudPhaseG1(g1);
-										cfg.SetFloat("cloud_phase_g1", g1);
+										SetConfigVec3("cloud_phase_g1", g1);
 									}
-									float g2 = cfg.GetAppSettingFloat(
-										"cloud_phase_g2",
-										atmosphere_effect->GetCloudPhaseG2()
-									);
-									if (ImGui::SliderFloat("Phase G2 (Backward)", &g2, -0.99f, 0.0f)) {
+									glm::vec3 g2 = GetConfigVec3("cloud_phase_g2", atmosphere_effect->GetCloudPhaseG2());
+									glm::vec3 ui_g2 = glm::abs(g2);
+									if (ImGui::ColorEdit3("Phase G2 (Backward)", &ui_g2[0])) {
+										g2 = -ui_g2;
 										atmosphere_effect->SetCloudPhaseG2(g2);
-										cfg.SetFloat("cloud_phase_g2", g2);
+										SetConfigVec3("cloud_phase_g2", g2);
 									}
 									float alpha = cfg.GetAppSettingFloat(
 										"cloud_phase_alpha",
@@ -729,8 +740,8 @@ namespace Boidsish {
 										ImGui::SameLine();
 										if (ImGui::Button("Unlock##MieScale")) weather->ClearTarget(WeatherAttribute::MieScale);
 									}
-									float mie_g = atmosphere_effect->GetMieAnisotropy();
-									if (ImGui::SliderFloat("Mie Anisotropy", &mie_g, 0.0f, 0.99f)) {
+									glm::vec3 mie_g = atmosphere_effect->GetMieAnisotropy();
+									if (ImGui::ColorEdit3("Mie Anisotropy", &mie_g[0])) {
 										atmosphere_effect->SetMieAnisotropy(mie_g);
 									}
 									float multi_scat = atmosphere_effect->GetMultiScatScale();
@@ -772,24 +783,14 @@ namespace Boidsish {
 										}
 									}
 
-									float mie_scat = atmosphere_effect->GetMieScattering() * 1000.0f;
-									if (ImGui::SliderFloat("Mie Scattering coeff", &mie_scat, 0.0f, 10.0f)) {
-										if (weather) weather->SetTarget(WeatherAttribute::MieScattering, mie_scat * 0.001f);
-										else atmosphere_effect->SetMieScattering(mie_scat * 0.001f);
-									}
-									if (weather) {
-										ImGui::SameLine();
-										if (ImGui::Button("Unlock##MieScattering")) weather->ClearTarget(WeatherAttribute::MieScattering);
+									glm::vec3 mie_scat = atmosphere_effect->GetMieScattering() * 1000.0f;
+									if (ImGui::ColorEdit3("Mie Scattering coeff", &mie_scat[0])) {
+										atmosphere_effect->SetMieScattering(mie_scat * 0.001f);
 									}
 
-									float mie_ext = atmosphere_effect->GetMieExtinction() * 1000.0f;
-									if (ImGui::SliderFloat("Mie Extinction coeff", &mie_ext, 0.0f, 10.0f)) {
-										if (weather) weather->SetTarget(WeatherAttribute::MieExtinction, mie_ext * 0.001f);
-										else atmosphere_effect->SetMieExtinction(mie_ext * 0.001f);
-									}
-									if (weather) {
-										ImGui::SameLine();
-										if (ImGui::Button("Unlock##MieExtinction")) weather->ClearTarget(WeatherAttribute::MieExtinction);
+									glm::vec3 mie_ext = atmosphere_effect->GetMieExtinction() * 1000.0f;
+									if (ImGui::ColorEdit3("Mie Extinction coeff", &mie_ext[0])) {
+										atmosphere_effect->SetMieExtinction(mie_ext * 0.001f);
 									}
 
 									glm::vec3 ozone_absorption = atmosphere_effect->GetOzoneAbsorption() * 1000.0f;
@@ -854,9 +855,26 @@ namespace Boidsish {
 										vol_effect->SetIntensity(intensity);
 									}
 
-									float anisotropy = vol_effect->GetScatteringAnisotropy();
-									if (ImGui::SliderFloat("Anisotropy##Vol", &anisotropy, 0.0f, 0.99f)) {
-										vol_effect->SetScatteringAnisotropy(anisotropy);
+									glm::vec3 vol_g1 = vol_effect->GetScatteringAnisotropyG1();
+									if (ImGui::ColorEdit3("Anisotropy G1 (Forward)##Vol", &vol_g1[0])) {
+										vol_effect->SetScatteringAnisotropyG1(vol_g1);
+									}
+
+									glm::vec3 vol_g2 = vol_effect->GetScatteringAnisotropyG2();
+									glm::vec3 ui_vol_g2 = glm::abs(vol_g2);
+									if (ImGui::ColorEdit3("Anisotropy G2 (Backward)##Vol", &ui_vol_g2[0])) {
+										vol_g2 = -ui_vol_g2;
+										vol_effect->SetScatteringAnisotropyG2(vol_g2);
+									}
+
+									float vol_alpha = vol_effect->GetScatteringAnisotropyAlpha();
+									if (ImGui::SliderFloat("Anisotropy Mix Alpha##Vol", &vol_alpha, 0.0f, 1.0f)) {
+										vol_effect->SetScatteringAnisotropyAlpha(vol_alpha);
+									}
+
+									float vol_isotropic = vol_effect->GetScatteringAnisotropyIsotropic();
+									if (ImGui::SliderFloat("Anisotropy Isotropic##Vol", &vol_isotropic, 0.0f, 1.0f)) {
+										vol_effect->SetScatteringAnisotropyIsotropic(vol_isotropic);
 									}
 
 									float alpha = vol_effect->GetTemporalAlpha();

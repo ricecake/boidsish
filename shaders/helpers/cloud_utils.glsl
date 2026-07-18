@@ -1,3 +1,29 @@
+uniform float cloudShadowIntensity;
+uniform float cloudAltitude;
+uniform float cloudThickness;
+uniform float cloudDensity;
+uniform float cloudCoverage;
+uniform float cloudWarp;
+uniform vec3  cloudPhaseG1;
+uniform vec3  cloudPhaseG2;
+uniform float cloudPhaseAlpha;
+uniform float cloudPhaseIsotropic;
+uniform float cloudPowderScale;
+uniform float cloudPowderMultiplier;
+uniform float cloudPowderLocalScale;
+uniform float cloudShadowOpticalDepthMultiplier;
+uniform float cloudShadowStepMultiplier;
+uniform float cloudSunLightScale;
+uniform float cloudMoonLightScale;
+uniform float cloudBeerPowderMix;
+uniform float cloudFlowSpeed;
+uniform float cloudFlowDirection;
+uniform float cloudFlowHeightScale;
+uniform float cloudCurlStrength;
+uniform float cloudCurlFrequency;
+uniform float sunAureoleStrength;
+uniform float cirrusOpacity;
+
 struct CloudProperties {
 	float altitude;
 	float thickness;
@@ -25,11 +51,11 @@ float remapClamp(float value, float inMin, float inMax, float outMin, float outM
     return mix(outMin, outMax, t);
 }
 
-float cloudPhase(float cosTheta) {
+vec3 cloudPhase(float cosTheta) {
 	// Dual-lobe Henyey-Greenstein for forward and back scattering
 	// Blended with a large isotropic component to ensure visibility at all angles
-	float hg = mix(henyeyGreenstein(cloudPhaseG1, cosTheta), henyeyGreenstein(cloudPhaseG2, cosTheta), cloudPhaseAlpha);
-	return mix(hg, (1.0 / (4.0 * PI)), cloudPhaseIsotropic);
+	vec3 hg = mix(henyeyGreenstein(cloudPhaseG1, cosTheta), henyeyGreenstein(cloudPhaseG2, cosTheta), cloudPhaseAlpha);
+	return mix(hg, vec3(1.0 / (4.0 * PI)), cloudPhaseIsotropic);
 }
 
 float beerPowder(float d, float local_d) {
@@ -456,9 +482,9 @@ float calculateCloudShadowFactor(vec3 frag_pos, vec3 L, float intensity) {
 	if (frag_pos.y > cloudCeiling)
 		return 1.0;
 
-	// Project to the cloud ceiling to find the casting XZ position
-	float t = (cloudCeiling - frag_pos.y) / L.y;
-	// Since frag_pos.y <= cloudCeiling and L.y > 0, t is always >= 0
+	// Project to the middle of the cloud layer to find the casting XZ position
+	float cloudMidHeight = (cloudAltitude + cloudThickness * 4.0) * worldScale;
+	float t = (cloudMidHeight - frag_pos.y) / L.y;
 
 	vec3 cloudPos = frag_pos + L * t;
 
@@ -474,15 +500,13 @@ float calculateCloudShadowFactor(vec3 frag_pos, vec3 L, float intensity) {
 
 	float d3d = getCloud3DSDF(cloudPos, weather, layer, props.worldScale);
 
-	// Sharpness of the cloud edge in meters
-	float penumbra = 100.0 * worldScale;
+	// Sharpness of the cloud shadow in meters, controlled by cloudShadowStepMultiplier
+	float penumbra = max(1.0, (1.0 - cloudShadowStepMultiplier) * 2000.0 * worldScale);
 
 	// Beer's law approximation for the shadow density
-	// We multiply by a factor to make the shadow more prominent
-	// And apply a slant factor for longer paths at oblique angles
 	float slant = 1.0 / max(0.01, L.y);
 	float shadowDepth = max(0.0, -d3d / penumbra) * slant;
-	float shadowTerm = exp(-shadowDepth * 8.0);
+	float shadowTerm = exp(-shadowDepth * cloudShadowOpticalDepthMultiplier * 100.0);
 
 	return mix(1.0, shadowTerm, intensity);
 }

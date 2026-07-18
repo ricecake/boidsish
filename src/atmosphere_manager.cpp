@@ -211,8 +211,8 @@ namespace Boidsish {
 
 			_transmittanceShader->setFloat("u_atmosphereHeight", _atmosphereHeight);
 			_transmittanceShader->setVec3("u_rayleighScatteringBase", _rayleighScattering);
-			_transmittanceShader->setFloat("u_mieScatteringBase", _mieScattering);
-			_transmittanceShader->setFloat("u_mieExtinctionBase", _mieExtinction);
+			_transmittanceShader->setVec3("u_mieScatteringBase", _mieScattering);
+			_transmittanceShader->setVec3("u_mieExtinctionBase", _mieExtinction);
 			_transmittanceShader->setVec3("u_ozoneAbsorptionBase", _ozoneAbsorption);
 			_transmittanceShader->setFloat("u_rayleighScaleHeight", _rayleighScaleHeight);
 			_transmittanceShader->setFloat("u_mieScaleHeight", _mieScaleHeight);
@@ -225,12 +225,12 @@ namespace Boidsish {
 			_multiScatteringShader->use();
 			_multiScatteringShader->setFloat("u_rayleighScale", _rayleighScale);
 			_multiScatteringShader->setFloat("u_mieScale", _mieScale);
-			_multiScatteringShader->setFloat("u_mieAnisotropy", _mieAnisotropy);
+			_multiScatteringShader->setVec3("u_mieAnisotropy", _mieAnisotropy);
 
 			_multiScatteringShader->setFloat("u_atmosphereHeight", _atmosphereHeight);
 			_multiScatteringShader->setVec3("u_rayleighScatteringBase", _rayleighScattering);
-			_multiScatteringShader->setFloat("u_mieScatteringBase", _mieScattering);
-			_multiScatteringShader->setFloat("u_mieExtinctionBase", _mieExtinction);
+			_multiScatteringShader->setVec3("u_mieScatteringBase", _mieScattering);
+			_multiScatteringShader->setVec3("u_mieExtinctionBase", _mieExtinction);
 			_multiScatteringShader->setVec3("u_ozoneAbsorptionBase", _ozoneAbsorption);
 			_multiScatteringShader->setFloat("u_rayleighScaleHeight", _rayleighScaleHeight);
 			_multiScatteringShader->setFloat("u_mieScaleHeight", _mieScaleHeight);
@@ -260,7 +260,7 @@ namespace Boidsish {
 		_skyViewShader->setFloat("u_time", time);
 		_skyViewShader->setFloat("u_rayleighScale", _rayleighScale);
 		_skyViewShader->setFloat("u_mieScale", _mieScale);
-		_skyViewShader->setFloat("u_mieAnisotropy", _mieAnisotropy);
+		_skyViewShader->setVec3("u_mieAnisotropy", _mieAnisotropy);
 		_skyViewShader->setFloat("u_multiScatScale", _multiScatScale);
 
 		_skyViewShader->setFloat("u_worldScale", worldScale);
@@ -268,8 +268,8 @@ namespace Boidsish {
 
 		_skyViewShader->setFloat("u_atmosphereHeight", _atmosphereHeight);
 		_skyViewShader->setVec3("u_rayleighScatteringBase", _rayleighScattering);
-		_skyViewShader->setFloat("u_mieScatteringBase", _mieScattering);
-		_skyViewShader->setFloat("u_mieExtinctionBase", _mieExtinction);
+		_skyViewShader->setVec3("u_mieScatteringBase", _mieScattering);
+		_skyViewShader->setVec3("u_mieExtinctionBase", _mieExtinction);
 		_skyViewShader->setVec3("u_ozoneAbsorptionBase", _ozoneAbsorption);
 		_skyViewShader->setFloat("u_rayleighScaleHeight", _rayleighScaleHeight);
 		_skyViewShader->setFloat("u_mieScaleHeight", _mieScaleHeight);
@@ -301,14 +301,14 @@ namespace Boidsish {
 		_aerialPerspectiveShader->setFloat("u_time", time);
 		_aerialPerspectiveShader->setFloat("u_rayleighScale", _rayleighScale);
 		_aerialPerspectiveShader->setFloat("u_mieScale", _mieScale);
-		_aerialPerspectiveShader->setFloat("u_mieAnisotropy", _mieAnisotropy);
+		_aerialPerspectiveShader->setVec3("u_mieAnisotropy", _mieAnisotropy);
 		_aerialPerspectiveShader->setFloat("u_multiScatScale", _multiScatScale);
 		_aerialPerspectiveShader->setFloat("u_ambientScatScale", _ambientScatScale);
 
 		_aerialPerspectiveShader->setFloat("u_atmosphereHeight", _atmosphereHeight);
 		_aerialPerspectiveShader->setVec3("u_rayleighScatteringBase", _rayleighScattering);
-		_aerialPerspectiveShader->setFloat("u_mieScatteringBase", _mieScattering);
-		_aerialPerspectiveShader->setFloat("u_mieExtinctionBase", _mieExtinction);
+		_aerialPerspectiveShader->setVec3("u_mieScatteringBase", _mieScattering);
+		_aerialPerspectiveShader->setVec3("u_mieExtinctionBase", _mieExtinction);
 		_aerialPerspectiveShader->setVec3("u_ozoneAbsorptionBase", _ozoneAbsorption);
 		_aerialPerspectiveShader->setFloat("u_rayleighScaleHeight", _rayleighScaleHeight);
 		_aerialPerspectiveShader->setFloat("u_mieScaleHeight", _mieScaleHeight);
@@ -399,13 +399,40 @@ namespace Boidsish {
 
 		shader.setVec3("u_rayleighScatteringBase", _rayleighScattering);
 		shader.trySetFloat("u_rayleighScaleHeight", _rayleighScaleHeight);
-		shader.trySetFloat("u_mieScatteringBase", _mieScattering);
-		shader.trySetFloat("u_mieExtinctionBase", _mieExtinction);
+		shader.setVec3("u_mieScatteringBase", _mieScattering);
+		shader.setVec3("u_mieExtinctionBase", _mieExtinction);
 		shader.trySetFloat("u_mieScaleHeight", _mieScaleHeight);
 		shader.trySetFloat("u_rayleighScale", _rayleighScale);
 		shader.trySetFloat("u_mieScale", _mieScale);
-		shader.trySetFloat("u_mieAnisotropy", _mieAnisotropy);
+		shader.setVec3("u_mieAnisotropy", _mieAnisotropy);
 		shader.setVec3("u_ozoneAbsorptionBase", _ozoneAbsorption);
+
+		// Cloud & Atmosphere centralized parameters (from LightingUbo)
+		shader.trySetFloat("cloudShadowIntensity", _cloudShadowIntensity);
+		shader.trySetFloat("cloudAltitude", _cloudAltitude);
+		shader.trySetFloat("cloudThickness", _cloudThickness);
+		shader.trySetFloat("cloudDensity", _cloudDensity);
+		shader.trySetFloat("cloudCoverage", _cloudCoverage);
+		shader.trySetFloat("cloudWarp", _cloudWarp);
+		shader.setVec3("cloudPhaseG1", _cloudPhaseG1);
+		shader.setVec3("cloudPhaseG2", _cloudPhaseG2);
+		shader.trySetFloat("cloudPhaseAlpha", _cloudPhaseAlpha);
+		shader.trySetFloat("cloudPhaseIsotropic", _cloudPhaseIsotropic);
+		shader.trySetFloat("cloudPowderScale", _cloudPowderScale);
+		shader.trySetFloat("cloudPowderMultiplier", _cloudPowderMultiplier);
+		shader.trySetFloat("cloudPowderLocalScale", _cloudPowderLocalScale);
+		shader.trySetFloat("cloudShadowOpticalDepthMultiplier", _cloudShadowOpticalDepthMultiplier);
+		shader.trySetFloat("cloudShadowStepMultiplier", _cloudShadowStepMultiplier);
+		shader.trySetFloat("cloudSunLightScale", _cloudSunLightScale);
+		shader.trySetFloat("cloudMoonLightScale", _cloudMoonLightScale);
+		shader.trySetFloat("cloudBeerPowderMix", _cloudBeerPowderMix);
+		shader.trySetFloat("cloudFlowSpeed", _cloudFlowSpeed);
+		shader.trySetFloat("cloudFlowDirection", _cloudFlowDirection);
+		shader.trySetFloat("cloudFlowHeightScale", _cloudFlowHeightScale);
+		shader.trySetFloat("cloudCurlStrength", _cloudCurlStrength);
+		shader.trySetFloat("cloudCurlFrequency", _cloudCurlFrequency);
+		shader.trySetFloat("sunAureoleStrength", _sunAureoleStrength);
+		shader.trySetFloat("cirrusOpacity", _cirrusOpacity);
 	}
 
 	glm::vec4 AtmosphereManager::GetCloudWeather(glm::vec2 worldXZ, float time) const {

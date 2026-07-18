@@ -75,34 +75,11 @@ namespace Boidsish {
 		float    day_time;                       // offset 8, 4 bytes (0-24)
 		float    night_factor;                   // offset 12, 4 bytes (0-1)
 		alignas(16) glm::vec3 view_pos;          // offset 16, 12 bytes
-		float cloudShadowIntensity;              // offset 28, 4 bytes
+		float _pad_clouds0;                      // offset 28, 4 bytes (was cloudShadowIntensity)
 		alignas(16) glm::vec3 ambient_light;     // offset 32, 12 bytes
 		float time;                              // offset 44, 4 bytes
 		alignas(16) glm::vec3 view_dir;          // offset 48, 12 bytes
-		float cloudAltitude;                     // offset 60, 4 bytes
-		float cloudThickness;                    // offset 64, 4 bytes
-		float cloudDensity;                      // offset 68, 4 bytes
-		float cloudCoverage;                     // offset 72, 4 bytes
-		float cloudWarp;                         // offset 76, 4 bytes
-		float cloudPhaseG1;                      // offset 80, 4 bytes
-		float cloudPhaseG2;                      // offset 84, 4 bytes
-		float cloudPhaseAlpha;                   // offset 88, 4 bytes
-		float cloudPhaseIsotropic;               // offset 92, 4 bytes
-		float cloudPowderScale;                  // offset 96, 4 bytes
-		float cloudPowderMultiplier;             // offset 100, 4 bytes
-		float cloudPowderLocalScale;             // offset 104, 4 bytes
-		float cloudShadowOpticalDepthMultiplier; // offset 108, 4 bytes
-		float cloudShadowStepMultiplier;         // offset 112, 4 bytes
-		float cloudSunLightScale;                // offset 116, 4 bytes
-		float cloudMoonLightScale;               // offset 120, 4 bytes
-		float cloudBeerPowderMix;                // offset 124, 4 bytes
-		float cloudFlowSpeed;                    // offset 128, 4 bytes
-		float cloudFlowDirection;                // offset 132, 4 bytes
-		float cloudFlowHeightScale;              // offset 136, 4 bytes
-		float cloudCurlStrength;                 // offset 140, 4 bytes
-		float cloudCurlFrequency;                // offset 144, 4 bytes
-		float sunAureoleStrength;                // offset 148, 4 bytes
-		float cirrusOpacity;                     // offset 152, 4 bytes
+		float _pad_clouds1[24];                  // offset 60, 96 bytes (was cloudAltitude ... cirrusOpacity)
 		float zNear;                             // offset 156, 4 bytes
 		float zFar;                              // offset 160, 4 bytes
 		float                 _pad_clouds3_a;      // offset 164, 4 bytes

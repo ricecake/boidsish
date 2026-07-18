@@ -27,34 +27,11 @@ layout(std140, binding = [[LIGHTING_BINDING]]) uniform Lighting {
 	float dayTime;
 	float nightFactor;
 	vec3  viewPos;
-	float cloudShadowIntensity;
+	float _pad_clouds0;                      // was cloudShadowIntensity
 	vec3  ambient_light;
 	float time;
 	vec3  viewDir;
-	float cloudAltitude;
-	float cloudThickness;
-	float cloudDensity;
-	float cloudCoverage;
-	float cloudWarp;
-	float cloudPhaseG1;
-	float cloudPhaseG2;
-	float cloudPhaseAlpha;
-	float cloudPhaseIsotropic;
-	float cloudPowderScale;
-	float cloudPowderMultiplier;
-	float cloudPowderLocalScale;
-	float cloudShadowOpticalDepthMultiplier;
-	float cloudShadowStepMultiplier;
-	float cloudSunLightScale;
-	float cloudMoonLightScale;
-	float cloudBeerPowderMix;
-	float cloudFlowSpeed;
-	float cloudFlowDirection;
-	float cloudFlowHeightScale;
-	float cloudCurlStrength;
-	float cloudCurlFrequency;
-	float sunAureoleStrength;
-	float cirrusOpacity;
+	float _pad_clouds1[24];                  // was cloudAltitude ... cirrusOpacity
 	float zNear;
 	float zFar;
 	float _pad_clouds3_a;

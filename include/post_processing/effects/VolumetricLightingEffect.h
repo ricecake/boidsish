@@ -22,8 +22,17 @@ namespace Boidsish {
 			bool IsEarly() const override { return true; }
 
 			// UI-controlled parameters
-			void SetScatteringAnisotropy(float g) { anisotropy_ = g; }
-			float GetScatteringAnisotropy() const { return anisotropy_; }
+			void SetScatteringAnisotropyG1(const glm::vec3& g) { anisotropy_g1_ = g; }
+			glm::vec3 GetScatteringAnisotropyG1() const { return anisotropy_g1_; }
+
+			void SetScatteringAnisotropyG2(const glm::vec3& g) { anisotropy_g2_ = g; }
+			glm::vec3 GetScatteringAnisotropyG2() const { return anisotropy_g2_; }
+
+			void SetScatteringAnisotropyAlpha(float a) { anisotropy_alpha_ = a; }
+			float GetScatteringAnisotropyAlpha() const { return anisotropy_alpha_; }
+
+			void SetScatteringAnisotropyIsotropic(float i) { anisotropy_isotropic_ = i; }
+			float GetScatteringAnisotropyIsotropic() const { return anisotropy_isotropic_; }
 
 			void SetIntensity(float i) { intensity_ = i; }
 			float GetIntensity() const { return intensity_; }
@@ -80,7 +89,10 @@ namespace Boidsish {
 			glm::vec3 prev_camera_pos_ = glm::vec3(0.0f);
 			glm::vec3 prev_camera_front_ = glm::vec3(0.0f, 0.0f, -1.0f);
 
-			float anisotropy_ = 0.8f;
+			glm::vec3 anisotropy_g1_ = glm::vec3(0.8f);
+			glm::vec3 anisotropy_g2_ = glm::vec3(-0.3f);
+			float anisotropy_alpha_ = 0.181f;
+			float anisotropy_isotropic_ = 0.426f;
 			float intensity_ = 1.0f;
 			float temporal_alpha_ = 0.95f;
 
