@@ -479,6 +479,13 @@ struct CloudSpotDetails {
 	vec3 advectionSpeed;
 };
 
+struct CloudDensityResult {
+	vec3 density;
+	vec3 advectionSpeed;
+	float ao;
+	vec3 albedo;
+	vec3 emissivity;
+};
 
 CloudSpotDetails calculateCloudDensityExpV9(
 	vec3            p,
@@ -542,13 +549,6 @@ CloudSpotDetails calculateCloudDensityExpV9(
 	);
 }
 
-struct CloudDensityResult {
-	vec3 density;
-	vec3 advectionSpeed;
-	float ao;
-	vec3 albedo;
-};
-
 uniform sampler3D u_cloud3DTexture;
 
 // Cloud density calculation helper
@@ -561,14 +561,13 @@ CloudDensityResult calculateCloudDensity(
 	float           time,
 	float           simplified
 ) {
-	if (p.y < layer.baseFloor || p.y > layer.baseCeiling) {
-		float h = (p.y - layer.baseFloor) / layer.thickness;
-		vec3 advectSpeed = getCloudAdvectionSpeed(h, time);
-		return CloudDensityResult(vec3(0.0), advectSpeed, 1.0, vec3(1.0));
-	}
-
 	float h = (p.y - layer.baseFloor) / layer.thickness;
 	vec3 advectSpeed = getCloudAdvectionSpeed(h, time);
+	CloudDensityResult pointDetails = CloudDensityResult(vec3(0.0), advectSpeed, 1.0, vec3(1.0), vec3(0.0));
+
+	if (p.y < layer.baseFloor || p.y > layer.baseCeiling) {
+		return pointDetails;
+	}
 
 	// Sample the 3D cloud volume texture with slower advection speed
 	vec3 advect_3d = time * advectSpeed * 0.75;
@@ -595,7 +594,7 @@ CloudDensityResult calculateCloudDensity(
 	vec3 mixedDensity = res.relativeExtinction * finalDensity;
 	vec3 mixedAlbedo = vec3(volAlbedoBasis);
 
-	return CloudDensityResult(mixedDensity, advectSpeed, volAo, mixedAlbedo);
+	return CloudDensityResult(mixedDensity, advectSpeed, volAo, mixedAlbedo, vec3(0.0));
 }
 
 #endif // HELPERS_CLOUDS_GLSL

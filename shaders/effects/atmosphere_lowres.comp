@@ -97,6 +97,7 @@ void CalculateStochasticClusterLight(
 			vec3 sp = p + L * random_shadow * traceDist;
 			CloudDensityResult shadowRes = calculateCloudDensity(sp, weather, layer, props, time, 100.0);
 			opticalDepthToLight = shadowRes.density * traceDist * (rgbExtinction * cloudShadowOpticalDepthMultiplier);
+			emissiveGlow += shadowRes.emissivity;
 		}
 
 		vec3 shadowTerm = mix(
@@ -313,7 +314,7 @@ void main() {
 				prevTransmission = transmittanceAtStep;
 
 				vec3 stepScattering = vec3(0.0);
-				vec3 emissiveGlow = vec3(0.0);
+				vec3 emissiveGlow = densityRes.emissivity;
 
 				// PASS 1: Global Directional Lights (Sun/Moon)
 				for (int j = 0; j < min(2, num_lights); j++) {
@@ -361,6 +362,7 @@ void main() {
 						vec3 sp = p + L * random_shadow * traceDist;
 						CloudDensityResult shadowRes = calculateCloudDensity(sp, weather, layer, props, time, 100.0);
 						opticalDepthToLight = shadowRes.density * traceDist * (rgbExtinction * cloudShadowOpticalDepthMultiplier);
+						emissiveGlow += shadowRes.emissivity;
 					}
 
 					vec3 shadowTerm = mix(
