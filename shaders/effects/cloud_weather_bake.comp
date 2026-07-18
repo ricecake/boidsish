@@ -256,7 +256,8 @@ float generateOrganicCellSDF(vec2 p, float cellSize, vec2 period, float coverage
 
             // 2. Bias the natural density by the global coverage uniform
             // A coverage of 0.5 leaves the grid naturally patchy.
-            float localCoverage = clamp(cellDensity + (lCover), 0.0, 1.0);
+            // float localCoverage = clamp(cellDensity + (lCover), 0.0, 1.0);
+			float localCoverage = clamp(cellDensity + (coverage * 2.0 - 1.0), 0.0, 1.0);
 
             // 3. Skip heavy math if the cell is completely empty
             if (localCoverage <= 0.01) continue;
@@ -335,7 +336,8 @@ float sdf = generateOrganicCellSDF(p.xz, cellRange, vec2(10.0), regionalCoverage
 	VoronoiData vd2 = sdVoronoiFbm(p.xz / (cellRange), 3.0, 5.0, regionalCoverage, vec2(10.0));
 
 	float altitudeMap = clamp(-vd.dist, 0.0, 1.0);
-	float thicknessMap = regionalCoverage*clamp(-vd2.dist, 0.0, 1.0);
+	float verticalScale = smoothstep(0.0, 0.4, regionalCoverage);
+	float thicknessMap = verticalScale * clamp(-vd2.dist, 0.0, 1.0);
 
 	imageStore(outWeatherMap, pixel, vec4(sdf, altitudeMap, cellID, thicknessMap));
 
