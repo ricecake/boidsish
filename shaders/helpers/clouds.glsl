@@ -589,6 +589,7 @@ CloudDensityResult calculateCloudDensity(
 	float finalDensity = res.density;
 	if (finalDensity > 0.0) {
 		finalDensity *= mix(0.4, 1.6, volNoise);
+		// remapClamp(finalDensity, volNoise, 1.0, 0.0, 1.0);
 	}
 
 	vec3 mixedDensity = res.relativeExtinction * finalDensity;

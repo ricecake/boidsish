@@ -242,7 +242,7 @@ void main() {
 
 			float currentStepSize = max(baseStepSize, t * stepGrowthRate);
 
-			float d3d = getCloud3DSDF(p, weather, layer, props.worldScale) - 600.0;
+			float d3d = getCloud3DSDF(p, weather, layer, props.worldScale);
 
 			// 1. Outside Cloud Volume: Skip empty space using sphere tracing (conservative 3D SDF)
 			if (d3d > currentStepSize) {
