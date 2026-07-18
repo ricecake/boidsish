@@ -863,6 +863,36 @@ namespace Boidsish {
 									if (ImGui::SliderFloat("Temporal Alpha##Vol", &alpha, 0.0f, 0.99f)) {
 										vol_effect->SetTemporalAlpha(alpha);
 									}
+
+									float ambient_scale = vol_effect->GetAmbientScale();
+									if (ImGui::SliderFloat("Ambient Scale##Vol", &ambient_scale, 0.0f, 5.0f)) {
+										vol_effect->SetAmbientScale(ambient_scale);
+									}
+
+									float rayleigh_scale = vol_effect->GetRayleighScale();
+									if (ImGui::SliderFloat("Rayleigh Scale##Vol", &rayleigh_scale, 0.0f, 5.0f)) {
+										vol_effect->SetRayleighScale(rayleigh_scale);
+									}
+
+									float mie_scale = vol_effect->GetMieScale();
+									if (ImGui::SliderFloat("Mie Scale##Vol", &mie_scale, 0.0f, 5.0f)) {
+										vol_effect->SetMieScale(mie_scale);
+									}
+
+									float multi_scat_scale = vol_effect->GetMultiScatScale();
+									if (ImGui::SliderFloat("Multi-scatter Scale##Vol", &multi_scat_scale, 0.0f, 5.0f)) {
+										vol_effect->SetMultiScatScale(multi_scat_scale);
+									}
+
+									float shadow_sensitivity = vol_effect->GetShadowSensitivity();
+									if (ImGui::SliderFloat("Shadow Sensitivity##Vol", &shadow_sensitivity, 0.0f, 1.0f)) {
+										vol_effect->SetShadowSensitivity(shadow_sensitivity);
+									}
+
+									bool use_2d_acc = vol_effect->GetTemporalAccumulation2D();
+									if (ImGui::Checkbox("2D Screenspace Temporal Accumulation##Vol", &use_2d_acc)) {
+										vol_effect->SetTemporalAccumulation2D(use_2d_acc);
+									}
 								}
 							}
 							break;

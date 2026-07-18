@@ -22,6 +22,12 @@ uniform float uAnisotropy;
 uniform float uIntensity;
 uniform float uTemporalAlpha;
 
+uniform float uAmbientScale;
+uniform float uRayleighScale;
+uniform float uMieScale;
+uniform float uMultiScatScale;
+uniform float uShadowSensitivity;
+
 #define USE_TERRAIN_DATA
 #define SKIP_TERRAIN_RAYCAST
 #include "../helpers/terrain_shadows.glsl"
@@ -102,6 +108,9 @@ void main() {
 
     // Calculate scattering and extinction
     Sampling s = getAtmospherePropertiesAtPos(worldPos);
+    s.rayleigh *= uRayleighScale;
+    s.mie *= uMieScale;
+    s.extinction = s.rayleigh + s.mie * (kMieExtinction / max(1e-5, kMieScattering));
 
     vec3 radiance = vec3(0);
     vec3 V = normalize(viewPos - worldPos);
@@ -174,6 +183,7 @@ void main() {
             // We use the version that skips redundant terrain raycasts for efficiency.
             shadow = min(shadow, calculateShadow(i, worldPos, vec3(0, 1, 0), L));
         }
+        shadow = clamp(mix(1.0, shadow, uShadowSensitivity), 0.0, 1.0);
 
         float r_km = kEarthRadius + worldPos.y / (1000.0 * max(0.0001, worldScale));
         vec3 atmosphereTransmittance = texture(u_transmittanceLUT, getTransmittanceUV(r_km, L.y)).rgb;
@@ -186,7 +196,7 @@ void main() {
 
         // Single scattering (shadowed) + multi-scattering (partially shadowed to preserve terrain contrast)
         float multiScatShadow = mix(1.0, shadow, 0.75);
-        radiance += lightRadiance * (atmosphereTransmittance * shadow * combinedPhase + multiScat * multiScatShadow * (s.rayleigh + s.mie));
+        radiance += lightRadiance * (atmosphereTransmittance * shadow * combinedPhase + multiScat * multiScatShadow * (s.rayleigh + s.mie) * uMultiScatScale);
     }
 
     // Local lights - CLUSTERED
@@ -205,6 +215,7 @@ void main() {
         float shadow = 1.0;
         if ((lights[i].flags & LIGHT_FLAG_CASTS_SHADOW) != 0) {
             shadow = calculateShadow(i, worldPos, vec3(0.0), L);
+            shadow = clamp(mix(1.0, shadow, uShadowSensitivity), 0.0, 1.0);
         }
 
         vec3 lightTransmittance = vec3(1.0);
@@ -232,6 +243,7 @@ void main() {
         float cosTheta = dot(-V, L);
         float miePhase = henyeyGreenstein(uAnisotropy, cosTheta);
         float shadow = calculateShadow(i, worldPos, vec3(0,1,0), L);
+        shadow = clamp(mix(1.0, shadow, uShadowSensitivity), 0.0, 1.0);
 
         radiance += lights[i].color * lights[i].intensity * atten * shadow * miePhase * s.mie;
     }
@@ -241,8 +253,8 @@ void main() {
     vec3 baseAmbientRadiance = hazeColor * 0.05; // Base glow
     vec3 effectiveAmbient = max(ambient_light, baseAmbientRadiance);
 
-    radiance += getSpatialAmbientSH(worldPos, V) * 0.5; // Spatial bounce
-    radiance += effectiveAmbient * (s.rayleigh + s.mie); // Global atmospheric ambient
+    vec3 ambientContrib = getSpatialAmbientSH(worldPos, V) * 0.5 + effectiveAmbient * (s.rayleigh + s.mie);
+    radiance += ambientContrib * uAmbientScale;
 
     // Lightning illumination
     if (lightningPulse > 0.01) {
@@ -300,19 +312,19 @@ void main() {
         current_local = vec4(finalScattering, extinctionCoeff);
     }
 
-    // 2. Populate shared memory for neighborhood clamping
-    ivec3 l_id = ivec3(gl_LocalInvocationID.xyz);
-    int flat_id = int(l_id.z * 64 + l_id.y * 8 + l_id.x);
-    s_current[flat_id] = current_local;
-
-    barrier();
-
     if (out_of_bounds) return;
 
     vec4 current = current_local;
 
     // Temporal accumulation
     if (uTemporalAlpha > 0.0) {
+        // 2. Populate shared memory for neighborhood clamping
+        ivec3 l_id = ivec3(gl_LocalInvocationID.xyz);
+        int flat_id = int(l_id.z * 64 + l_id.y * 8 + l_id.x);
+        s_current[flat_id] = current_local;
+
+        barrier();
+
         vec4 prevClip = uPrevVP * vec4(worldPos, 1.0);
         vec3 prevNDC = prevClip.xyz / (abs(prevClip.w) > 0.0001 ? prevClip.w : 1.0);
 
