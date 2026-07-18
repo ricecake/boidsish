@@ -75,10 +75,10 @@ namespace Boidsish {
 		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
 
-		// Cloud Weather Map: 2048x2048 RGBA16F
+		// Cloud Weather Map: 2048x2048 RGBA16F (12 levels)
 		glGenTextures(1, &_cloudWeatherTexture);
 		glBindTexture(GL_TEXTURE_2D, _cloudWeatherTexture);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, 2048, 2048, 0, GL_RGBA, GL_FLOAT, nullptr);
+		glTexStorage2D(GL_TEXTURE_2D, 12, GL_RGBA16F, 2048, 2048);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
@@ -134,6 +134,7 @@ namespace Boidsish {
 		_skyToSHShader = std::make_unique<ComputeShader>("shaders/atmosphere/sky_to_sh.comp");
 		_cloudBakeShader = std::make_unique<ComputeShader>("shaders/effects/cloud_weather_bake.comp");
 		_cloudVolumeBakeShader = std::make_unique<ComputeShader>("shaders/effects/cloud_3d_volume_bake.comp");
+		_cloudMipShader = std::make_unique<ComputeShader>("shaders/effects/cloud_weather_mip.comp");
 
 		setup_shader(*_transmittanceShader);
 		setup_shader(*_multiScatteringShader);
@@ -180,9 +181,23 @@ namespace Boidsish {
 			glDispatchCompute(2048 / 16, 2048 / 16, 1);
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
 
-			// Generate mipmaps for the weather map
+			// Generate mipmaps for the weather map using custom minimum-downsampling compute shader
+			_cloudMipShader->use();
+			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, _cloudWeatherTexture);
-			glGenerateMipmap(GL_TEXTURE_2D);
+			_cloudMipShader->setInt("u_srcWeatherMap", 0);
+
+			for (int dstLevel = 1; dstLevel < 12; ++dstLevel) {
+				int srcLevel = dstLevel - 1;
+				int dstWidth = std::max(1, 2048 >> dstLevel);
+				int dstHeight = std::max(1, 2048 >> dstLevel);
+
+				glBindImageTexture(0, _cloudWeatherTexture, dstLevel, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+				_cloudMipShader->setInt("u_srcLevel", srcLevel);
+
+				glDispatchCompute((dstWidth + 7) / 8, (dstHeight + 7) / 8, 1);
+				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+			}
 			glBindTexture(GL_TEXTURE_2D, 0);
 
 			// CPU Readback for weather queries
