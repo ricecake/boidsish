@@ -246,7 +246,8 @@ void main() {
 
 			// 1. Outside Cloud Volume: Skip empty space using sphere tracing (conservative 3D SDF)
 			if (d3d > currentStepSize) {
-				float step = max(d3d*0.8, 2);
+				float step = max(d3d * 0.4, 2.0);
+				step = min(step, 2000.0 * worldScale);
 				t += step;
 				prevDensity = vec3(0.0);
 				inVolume = false;

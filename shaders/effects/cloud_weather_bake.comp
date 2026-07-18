@@ -296,8 +296,9 @@ float generateOrganicCellSDF(vec2 p, float cellSize, vec2 period, float coverage
         }
     }
 
-    // Convert back to world space scale
-    return globalDist * cellSize;
+    // Convert back to world space scale with a conservative clamp to prevent extreme values in empty regions
+    float finalSdf = globalDist * cellSize;
+    return min(finalSdf, 30000.0 * uWorldScale);
 }
 
 void main() {
