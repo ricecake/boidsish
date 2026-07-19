@@ -43,6 +43,7 @@
 #include "post_processing/effects/ArtisticGbufferEffect.h"
 #include "post_processing/effects/AtmosphereEffect.h"
 #include "post_processing/effects/VolumetricLightingEffect.h"
+#include "post_processing/effects/DetailEnhancementEffect.h"
 #include "post_processing/effects/BloomEffect.h"
 #include "mood_manager.h"
 #include "mood_definitions.h"
@@ -402,6 +403,7 @@ namespace Boidsish {
 		std::shared_ptr<AtmosphereManager>                atmosphere_manager;
 		std::shared_ptr<PostProcessing::AtmosphereEffect> atmosphere_effect;
 		std::shared_ptr<PostProcessing::VolumetricLightingEffect> volumetric_effect;
+		std::shared_ptr<PostProcessing::DetailEnhancementEffect>  detail_enhancement_effect;
 		std::shared_ptr<PostProcessing::BloomEffect>              bloom_effect;
 		std::shared_ptr<MoodManager>                              mood_manager;
 		std::shared_ptr<WeatherManager>                           weather_manager;
@@ -1118,6 +1120,10 @@ namespace Boidsish {
 				volumetric_effect = std::make_shared<PostProcessing::VolumetricLightingEffect>();
 				volumetric_effect->SetEnabled(true);
 				post_processing_manager_->AddEffect(volumetric_effect);
+
+				detail_enhancement_effect = std::make_shared<PostProcessing::DetailEnhancementEffect>();
+				detail_enhancement_effect->SetEnabled(false); // Disabled by default
+				post_processing_manager_->AddEffect(detail_enhancement_effect);
 
 				bloom_effect = std::make_shared<PostProcessing::BloomEffect>(render_width, render_height);
 				bloom_effect->SetEnabled(true);

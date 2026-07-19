@@ -9,6 +9,7 @@
 #include "post_processing/effects/FXAAEffect.h"
 #include "post_processing/effects/FilmGrainEffect.h"
 #include "post_processing/effects/UnifiedScreenSpaceEffect.h"
+#include "post_processing/effects/DetailEnhancementEffect.h"
 
 namespace Boidsish {
 	namespace UI {
@@ -84,6 +85,66 @@ namespace Boidsish {
 								if (ImGui::SliderFloat("Intensity##FilmGrain", &intensity, 0.0f, 1.0f)) {
 									film_grain_effect->SetIntensity(intensity);
 								}
+							}
+						}
+
+						if (effect->GetName() == "Detail Enhancement" && is_enabled) {
+							auto de_effect = std::dynamic_pointer_cast<PostProcessing::DetailEnhancementEffect>(effect);
+							if (de_effect) {
+								float strength = de_effect->GetStrength();
+								if (ImGui::SliderFloat("Master Strength##DE", &strength, 0.0f, 3.0f)) {
+									de_effect->SetStrength(strength);
+								}
+
+								ImGui::Separator();
+								ImGui::Text("Detail Boost Curve (Level i=1..4)");
+								// Boost curve: Scale * pow(i, Exponent) + Bias
+								float str_exp = de_effect->GetStrengthExponent();
+								if (ImGui::SliderFloat("Exponent##DE_Str", &str_exp, -3.0f, 3.0f)) {
+									de_effect->SetStrengthExponent(str_exp);
+								}
+								float str_scale = de_effect->GetStrengthScale();
+								if (ImGui::SliderFloat("Scale##DE_Str", &str_scale, 0.0f, 3.0f)) {
+									de_effect->SetStrengthScale(str_scale);
+								}
+								float str_bias = de_effect->GetStrengthBias();
+								if (ImGui::SliderFloat("Bias##DE_Str", &str_bias, -1.0f, 3.0f)) {
+									de_effect->SetStrengthBias(str_bias);
+								}
+
+								// Show computed boosts for each level
+								ImGui::Text("Computed Boosts: Level 1: %.2f | 2: %.2f | 3: %.2f | 4: %.2f",
+									str_scale * std::pow(1.0f, str_exp) + str_bias,
+									str_scale * std::pow(2.0f, str_exp) + str_bias,
+									str_scale * std::pow(3.0f, str_exp) + str_bias,
+									str_scale * std::pow(4.0f, str_exp) + str_bias);
+
+								ImGui::Separator();
+								ImGui::Text("Guiding Strength Curve (Epsilon)");
+								// Epsilon curve: Base * (Scale * pow(i, Exponent) + Bias)
+								float eps_base = de_effect->GetEpsilonBase();
+								if (ImGui::SliderFloat("Base Epsilon##DE_Eps", &eps_base, 0.0001f, 0.1f, "%.4f")) {
+									de_effect->SetEpsilonBase(eps_base);
+								}
+								float eps_exp = de_effect->GetEpsilonExponent();
+								if (ImGui::SliderFloat("Exponent##DE_Eps", &eps_exp, -3.0f, 3.0f)) {
+									de_effect->SetEpsilonExponent(eps_exp);
+								}
+								float eps_scale = de_effect->GetEpsilonScale();
+								if (ImGui::SliderFloat("Scale##DE_Eps", &eps_scale, 0.0f, 10.0f)) {
+									de_effect->SetEpsilonScale(eps_scale);
+								}
+								float eps_bias = de_effect->GetEpsilonBias();
+								if (ImGui::SliderFloat("Bias##DE_Eps", &eps_bias, 0.0f, 10.0f)) {
+									de_effect->SetEpsilonBias(eps_bias);
+								}
+
+								// Show computed epsilons for each level
+								ImGui::Text("Computed Epsilons: Level 1: %.5f | 2: %.5f | 3: %.5f | 4: %.5f",
+									eps_base * (eps_scale * std::pow(1.0f, eps_exp) + eps_bias),
+									eps_base * (eps_scale * std::pow(2.0f, eps_exp) + eps_bias),
+									eps_base * (eps_scale * std::pow(3.0f, eps_exp) + eps_bias),
+									eps_base * (eps_scale * std::pow(4.0f, eps_exp) + eps_bias));
 							}
 						}
 

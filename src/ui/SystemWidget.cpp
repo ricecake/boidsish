@@ -13,6 +13,7 @@
 #include "post_processing/effects/AtmosphereEffect.h"
 #include "post_processing/effects/BloomEffect.h"
 #include "post_processing/effects/FilmGrainEffect.h"
+#include "post_processing/effects/DetailEnhancementEffect.h"
 #include "ui/ProfilerWidget.h"
 
 namespace Boidsish {
@@ -234,6 +235,18 @@ namespace Boidsish {
 									) {
 										scene.post_processing.film_grain_enabled = fg->IsEnabled();
 										scene.post_processing.film_grain_intensity = fg->GetIntensity();
+									} else if (
+										auto de = std::dynamic_pointer_cast<PostProcessing::DetailEnhancementEffect>(effect)
+									) {
+										scene.post_processing.detail_enhancement_enabled = de->IsEnabled();
+										scene.post_processing.detail_enhancement_strength = de->GetStrength();
+										scene.post_processing.detail_strength_exponent = de->GetStrengthExponent();
+										scene.post_processing.detail_strength_scale = de->GetStrengthScale();
+										scene.post_processing.detail_strength_bias = de->GetStrengthBias();
+										scene.post_processing.detail_epsilon_base = de->GetEpsilonBase();
+										scene.post_processing.detail_epsilon_exponent = de->GetEpsilonExponent();
+										scene.post_processing.detail_epsilon_scale = de->GetEpsilonScale();
+										scene.post_processing.detail_epsilon_bias = de->GetEpsilonBias();
 									} else if (effect->GetName() == "Negative") {
 										scene.post_processing.negative_enabled = effect->IsEnabled();
 									} else if (effect->GetName() == "Glitch") {
@@ -341,6 +354,18 @@ namespace Boidsish {
 									) {
 										fg->SetEnabled(scene.post_processing.film_grain_enabled);
 										fg->SetIntensity(scene.post_processing.film_grain_intensity);
+									} else if (
+										auto de = std::dynamic_pointer_cast<PostProcessing::DetailEnhancementEffect>(effect)
+									) {
+										de->SetEnabled(scene.post_processing.detail_enhancement_enabled);
+										de->SetStrength(scene.post_processing.detail_enhancement_strength);
+										de->SetStrengthExponent(scene.post_processing.detail_strength_exponent);
+										de->SetStrengthScale(scene.post_processing.detail_strength_scale);
+										de->SetStrengthBias(scene.post_processing.detail_strength_bias);
+										de->SetEpsilonBase(scene.post_processing.detail_epsilon_base);
+										de->SetEpsilonExponent(scene.post_processing.detail_epsilon_exponent);
+										de->SetEpsilonScale(scene.post_processing.detail_epsilon_scale);
+										de->SetEpsilonBias(scene.post_processing.detail_epsilon_bias);
 									} else if (effect->GetName() == "Negative") {
 										effect->SetEnabled(scene.post_processing.negative_enabled);
 									} else if (effect->GetName() == "Glitch") {

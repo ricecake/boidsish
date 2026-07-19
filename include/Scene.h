@@ -55,6 +55,17 @@ namespace Boidsish {
 			bool strobe_enabled = false;
 			bool whisp_trail_enabled = false;
 			bool time_stutter_enabled = false;
+
+			// Detail Enhancement
+			bool  detail_enhancement_enabled = false;
+			float detail_enhancement_strength = 0.5f;
+			float detail_strength_exponent = -0.5f;
+			float detail_strength_scale = 1.0f;
+			float detail_strength_bias = 0.5f;
+			float detail_epsilon_base = 0.01f;
+			float detail_epsilon_exponent = 1.0f;
+			float detail_epsilon_scale = 1.0f;
+			float detail_epsilon_bias = 0.0f;
 		} post_processing;
 	};
 

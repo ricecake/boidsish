@@ -121,6 +121,17 @@ namespace Boidsish {
 		config.SetBool(pp_section, "whisp_trail_enabled", scene.post_processing.whisp_trail_enabled);
 		config.SetBool(pp_section, "time_stutter_enabled", scene.post_processing.time_stutter_enabled);
 
+		// Detail Enhancement
+		config.SetBool(pp_section, "detail_enhancement_enabled", scene.post_processing.detail_enhancement_enabled);
+		config.SetFloat(pp_section, "detail_enhancement_strength", scene.post_processing.detail_enhancement_strength);
+		config.SetFloat(pp_section, "detail_strength_exponent", scene.post_processing.detail_strength_exponent);
+		config.SetFloat(pp_section, "detail_strength_scale", scene.post_processing.detail_strength_scale);
+		config.SetFloat(pp_section, "detail_strength_bias", scene.post_processing.detail_strength_bias);
+		config.SetFloat(pp_section, "detail_epsilon_base", scene.post_processing.detail_epsilon_base);
+		config.SetFloat(pp_section, "detail_epsilon_exponent", scene.post_processing.detail_epsilon_exponent);
+		config.SetFloat(pp_section, "detail_epsilon_scale", scene.post_processing.detail_epsilon_scale);
+		config.SetFloat(pp_section, "detail_epsilon_bias", scene.post_processing.detail_epsilon_bias);
+
 		if (scene.camera) {
 			std::string cam_section = section + "_Camera";
 			config.SetFloat(cam_section, "x", scene.camera->x);
@@ -221,6 +232,17 @@ namespace Boidsish {
 		scene.post_processing.strobe_enabled = config.GetBool(pp_section, "strobe_enabled", false);
 		scene.post_processing.whisp_trail_enabled = config.GetBool(pp_section, "whisp_trail_enabled", false);
 		scene.post_processing.time_stutter_enabled = config.GetBool(pp_section, "time_stutter_enabled", false);
+
+		// Detail Enhancement
+		scene.post_processing.detail_enhancement_enabled = config.GetBool(pp_section, "detail_enhancement_enabled", false);
+		scene.post_processing.detail_enhancement_strength = config.GetFloat(pp_section, "detail_enhancement_strength", 0.5f);
+		scene.post_processing.detail_strength_exponent = config.GetFloat(pp_section, "detail_strength_exponent", -0.5f);
+		scene.post_processing.detail_strength_scale = config.GetFloat(pp_section, "detail_strength_scale", 1.0f);
+		scene.post_processing.detail_strength_bias = config.GetFloat(pp_section, "detail_strength_bias", 0.5f);
+		scene.post_processing.detail_epsilon_base = config.GetFloat(pp_section, "detail_epsilon_base", 0.01f);
+		scene.post_processing.detail_epsilon_exponent = config.GetFloat(pp_section, "detail_epsilon_exponent", 1.0f);
+		scene.post_processing.detail_epsilon_scale = config.GetFloat(pp_section, "detail_epsilon_scale", 1.0f);
+		scene.post_processing.detail_epsilon_bias = config.GetFloat(pp_section, "detail_epsilon_bias", 0.0f);
 
 		if (has_camera) {
 			std::string cam_section = section + "_Camera";
