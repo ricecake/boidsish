@@ -31,7 +31,11 @@ layout(std140, binding = [[LIGHTING_BINDING]]) uniform Lighting {
 	vec3  ambient_light;
 	float time;
 	vec3  viewDir;
-	float _pad_clouds1[24];                  // was cloudAltitude ... cirrusOpacity
+	float _pad_after_view_dir;
+	vec4  _pad_clouds1[5];
+	float _pad_clouds2_a;
+	float _pad_clouds2_b;
+	float _pad_clouds2_c;
 	float zNear;
 	float zFar;
 	float _pad_clouds3_a;

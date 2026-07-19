@@ -79,7 +79,11 @@ namespace Boidsish {
 		alignas(16) glm::vec3 ambient_light;     // offset 32, 12 bytes
 		float time;                              // offset 44, 4 bytes
 		alignas(16) glm::vec3 view_dir;          // offset 48, 12 bytes
-		float _pad_clouds1[24];                  // offset 60, 96 bytes (was cloudAltitude ... cirrusOpacity)
+		float _pad_after_view_dir;               // offset 60, 4 bytes
+		alignas(16) glm::vec4 _pad_clouds1[5];   // offset 64, 80 bytes
+		float _pad_clouds2_a;                    // offset 144, 4 bytes
+		float _pad_clouds2_b;                    // offset 148, 4 bytes
+		float _pad_clouds2_c;                    // offset 152, 4 bytes
 		float zNear;                             // offset 156, 4 bytes
 		float zFar;                              // offset 160, 4 bytes
 		float                 _pad_clouds3_a;      // offset 164, 4 bytes
