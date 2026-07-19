@@ -16,6 +16,11 @@ float henyeyGreenstein(float g, float cosTheta) {
 	return (1.0 - g2) / (4.0 * PI * pow(max(0.0001, 1.0 + g2 - 2.0 * g * cosTheta), 1.5));
 }
 
+vec3 henyeyGreenstein(vec3 g, float cosTheta) {
+	vec3 g2 = g * g;
+	return (vec3(1.0) - g2) / (4.0 * PI * pow(max(vec3(0.0001), vec3(1.0) + g2 - 2.0 * g * cosTheta), vec3(1.5)));
+}
+
 float remap(float value, float low1, float high1, float low2, float high2) {
 	return low2 + (value - low1) * (high2 - low2) / max(0.0001, (high1 - low1));
 }
