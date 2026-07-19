@@ -1,0 +1,33 @@
+#version 460 core
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+// Source: the weather map sampler (we can bind it once and read any mip level using texelFetch)
+layout(binding = 0) uniform sampler2D u_srcWeatherMap;
+
+// Destination: the specific mip level being written
+layout(rgba16f, binding = 0) uniform writeonly image2D u_dstMip;
+
+uniform int u_srcLevel;
+
+void main() {
+	ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+	ivec2 dstSize = imageSize(u_dstMip);
+
+	if (pixel.x >= dstSize.x || pixel.y >= dstSize.y)
+		return;
+
+	ivec2 srcCoord = pixel * 2;
+	ivec2 srcSize = textureSize(u_srcWeatherMap, u_srcLevel);
+	ivec2 maxCoord = srcSize - 1;
+
+	// Component-wise minimum of the 2x2 texels (with boundary clamping)
+	vec4 c00 = texelFetch(u_srcWeatherMap, clamp(srcCoord + ivec2(0, 0), ivec2(0), maxCoord), u_srcLevel);
+	vec4 c10 = texelFetch(u_srcWeatherMap, clamp(srcCoord + ivec2(1, 0), ivec2(0), maxCoord), u_srcLevel);
+	vec4 c01 = texelFetch(u_srcWeatherMap, clamp(srcCoord + ivec2(0, 1), ivec2(0), maxCoord), u_srcLevel);
+	vec4 c11 = texelFetch(u_srcWeatherMap, clamp(srcCoord + ivec2(1, 1), ivec2(0), maxCoord), u_srcLevel);
+
+	vec4 minVal = min(min(c00, c10), min(c01, c11));
+
+	imageStore(u_dstMip, pixel, minVal);
+}

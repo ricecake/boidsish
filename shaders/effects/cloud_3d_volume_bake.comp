@@ -50,5 +50,5 @@ void main() {
 
 	// A - emissivity - material? - need to work full params for density function, with argument passthrough so different functions can handle different bits
 
-	imageStore(outVolume, voxel, vec4(noiseVal, aoVal, albedoBasis, 1.0));
+	imageStore(outVolume, voxel, vec4(noiseVal, aoVal, 1.0, 1.0));
 }
