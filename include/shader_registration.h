@@ -80,6 +80,10 @@ namespace Boidsish {
 		T::RegisterConstant("CHUNK_SIZE", Constants::Class::Terrain::ChunkSize());
 		T::RegisterConstant("MAX_VIEW_DISTANCE", Constants::Class::Terrain::MaxViewDistance());
 		T::RegisterConstant("CHUNK_SIZE_PLUS_1", Constants::Class::Terrain::ChunkSizePlus1());
+		T::RegisterConstant("TERRAIN_SPACING", Constants::Class::Terrain::Spacing());
+		T::RegisterConstant("TERRAIN_LOD0_THRESHOLD", Constants::Class::Terrain::Lod0ThresholdMultiplier());
+		T::RegisterConstant("TERRAIN_LOD1_THRESHOLD", Constants::Class::Terrain::Lod1ThresholdMultiplier());
+		T::RegisterConstant("TERRAIN_LOD2_THRESHOLD", Constants::Class::Terrain::Lod2ThresholdMultiplier());
 		T::RegisterConstant("PATCH_SIZE", Constants::Class::Terrain::PatchSize());
 		T::RegisterConstant("PATCHES_PER_CHUNK_SIDE", Constants::Class::Terrain::PatchesPerChunkSide());
 

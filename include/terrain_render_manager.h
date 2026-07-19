@@ -428,6 +428,12 @@ namespace Boidsish {
 		GLuint patch_ebo_ = 0;
 		size_t patch_index_count_ = 0;
 
+		// Global direct-rendering mesh resources
+		GLuint raw_vertices_ssbo_ = 0;
+		GLuint terrain_vao_ = 0;
+		GLuint terrain_vbo_ = 0;
+		GLuint terrain_ebo_ = 0;
+
 		// Grid mesh data
 		size_t grid_index_count_ = 0;
 
