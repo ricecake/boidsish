@@ -776,6 +776,22 @@ namespace Boidsish {
 				consteval float WarpStrength() {
 					return 20.0f;
 				}
+
+				consteval float Spacing() {
+					return 0.5f;
+				}
+
+				consteval float Lod0ThresholdMultiplier() {
+					return 2.0f;
+				}
+
+				consteval float Lod1ThresholdMultiplier() {
+					return 4.0f;
+				}
+
+				consteval float Lod2ThresholdMultiplier() {
+					return 8.0f;
+				}
 			} // namespace Terrain
 
 			namespace Particles {

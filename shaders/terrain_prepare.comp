@@ -167,11 +167,11 @@ void main() {
 		// Calculate LOD
 		float lodDistScale = u_tessQualityMultiplier > 0.0 ? (1.0 / u_tessQualityMultiplier) : 1.0;
 		int lod = 3;
-		if (dist < 2.0 * chunkSize * lodDistScale) {
+		if (dist < [[TERRAIN_LOD0_THRESHOLD]] * chunkSize * lodDistScale) {
 			lod = 0;
-		} else if (dist < 4.0 * chunkSize * lodDistScale) {
+		} else if (dist < [[TERRAIN_LOD1_THRESHOLD]] * chunkSize * lodDistScale) {
 			lod = 1;
-		} else if (dist < 8.0 * chunkSize * lodDistScale) {
+		} else if (dist < [[TERRAIN_LOD2_THRESHOLD]] * chunkSize * lodDistScale) {
 			lod = 2;
 		}
 
