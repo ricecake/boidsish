@@ -336,8 +336,9 @@ float sdf = generateOrganicCellSDF(p.xz, cellRange, vec2(10.0), regionalCoverage
 	VoronoiData vd2 = sdVoronoiFbm(p.xz / (cellRange), 3.0, 5.0, regionalCoverage, vec2(10.0));
 
 	float altitudeMap = clamp(-vd.dist, 0.0, 1.0);
-	float verticalScale = smoothstep(0.0, 0.4, regionalCoverage);
-	float thicknessMap = verticalScale * clamp(-vd2.dist, 0.0, 1.0);
+	// float verticalScale = smoothstep(0.0, 0.4, regionalCoverage);
+	// float thicknessMap = smoothstep(0, 200, -vd2.dist) * clamp(-vd2.dist, 0.0, 1.0);
+	float thicknessMap = smoothstep(0, 0.6, -vd2.dist/max(1, distance(p.xz, vd2.f1)));
 
 	imageStore(outWeatherMap, pixel, vec4(sdf, altitudeMap, cellID, thicknessMap));
 

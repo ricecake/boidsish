@@ -223,7 +223,7 @@ void main() {
 		float lodDistanceThreshold = 25000.0 * worldScale;
 
 		bool inVolume = false;
-		float stepGrowthRate = 0.015;
+		float stepGrowthRate = 0.025;
 
 		float t = t_start + jitter * baseStepSize;
 
@@ -245,13 +245,17 @@ void main() {
 			// pow(1.2, (round(log(x)/log(1.2) )))
 			// float currentStepSize = t - t/1.02;
 			float currentStepSize = max(baseStepSize, t * stepGrowthRate);
+			// float currentStepSize = max(abs(t_start - t), t - t/(1.0+stepGrowthRate));
+			// float currentStepSize = max(abs(t_start - t), t * stepGrowthRate);
 
 			float d3d = getCloud3DSDF(p, weather, layer, props.worldScale);
 
 			// 1. Outside Cloud Volume: Skip empty space using sphere tracing (conservative 3D SDF)
 			if (d3d > currentStepSize) {
-				float step = max(d3d*0.8, 2);
-				t += step;
+				// Calculate how many full steps we can safely skip based on the SDF
+				float skipSteps = max(1.0, floor(d3d / currentStepSize));
+				t += skipSteps * currentStepSize;
+
 				prevDensity = vec3(0.0);
 				inVolume = false;
 				continue;
@@ -259,8 +263,7 @@ void main() {
 
 			if (!inVolume) {
 				inVolume = true;
-				t = floor(t / currentStepSize) * currentStepSize + (jitter * currentStepSize);
-				p = viewPos + rayDir * t; // Re-evaluate p with the synchronized t
+				p = viewPos + rayDir * t;
 				weather = computeCloudWeather(p, props, lod);
 				layer = computeCloudLayer(weather, props);
 			}
@@ -293,17 +296,17 @@ void main() {
 
 			// Step size cadence adjustment based on cheap density
 			float cadenceScale = 1.0;
-			float densityMag = length(d_cheap);
-			if (densityMag < 0.01) {
-				cadenceScale = 2.0;
-			} else if (densityMag < 0.3) {
-				cadenceScale = mix(0.5, 1.0, densityMag / 0.3);
-			} else {
-				cadenceScale = mix(1.0, 5.0, clamp((densityMag - 0.3) / 0.7, 0.0, 1.0));
-			}
+			// float densityMag = length(d_cheap);
+			// if (densityMag < 0.01) {
+			// 	cadenceScale = 2.0;
+			// } else if (densityMag < 0.3) {
+			// 	cadenceScale = mix(0.5, 1.0, densityMag / 0.3);
+			// } else {
+			// 	cadenceScale = mix(1.0, 5.0, clamp((densityMag - 0.3) / 0.7, 0.0, 1.0));
+			// }
 			float stepSize = currentStepSize * cadenceScale;
 			float integrationStep = stepSize;
-			stepGrowthRate = mix(0.01, 0.025, smoothstep(0, 1, length(d_cheap)));
+			// stepGrowthRate = mix(0.01, 0.025, smoothstep(0, 1, length(d_cheap)));
 
 			// Residual Ratio Tracking inside the step
 			vec3 d = d_cheap;
