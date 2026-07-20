@@ -10,6 +10,7 @@
 #include "shadow_manager.h"
 #include "shader.h"
 #include "terrain_render_manager.h"
+#include "ConfigManager.h"
 
 namespace Boidsish {
 	namespace PostProcessing {
@@ -34,6 +35,13 @@ namespace Boidsish {
 		}
 
 		void AtmosphereEffect::Initialize(int width, int height) {
+			auto& cfg = ConfigManager::GetInstance();
+			cloud_flow_speed_ = cfg.GetAppSettingFloat("cloud_flow_speed", cloud_flow_speed_);
+			cloud_flow_direction_ = cfg.GetAppSettingFloat("cloud_flow_direction", cloud_flow_direction_);
+			cloud_flow_height_scale_ = cfg.GetAppSettingFloat("cloud_flow_height_scale", cloud_flow_height_scale_);
+			cloud_curl_strength_ = cfg.GetAppSettingFloat("cloud_curl_strength", cloud_curl_strength_);
+			cloud_curl_frequency_ = cfg.GetAppSettingFloat("cloud_curl_frequency", cloud_curl_frequency_);
+
 			cloud_render_shader_ = std::make_unique<ComputeShader>("shaders/effects/atmosphere_lowres.comp");
 			composite_shader_ = std::make_unique<Shader>(
 				"shaders/postprocess.vert",
