@@ -289,9 +289,9 @@ void main() {
 
 			vec3 rgbExtinction = uCloudExtinctionColor * uCloudExtinction;
 			// float mu_maj = max(rgbExtinction.x, max(rgbExtinction.y, rgbExtinction.z)) * props.coverage;
-			vec3 maj = rgbExtinction * d_cheap;
+			vec3 maj = rgbExtinction - d_cheap;
 			// float mu_maj = max(maj.x, max(maj.y, maj.z));
-			float mu_maj = 1.0-length(maj);
+			float mu_maj = length(maj);
 			mu_maj = max(mu_maj, 1e-4);
 
 			// Step size cadence adjustment based on cheap density
