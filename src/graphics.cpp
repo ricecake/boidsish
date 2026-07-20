@@ -3607,11 +3607,6 @@ namespace Boidsish {
 				impl->atmosphere_effect->SetSunAureoleStrength(w.sun_aureole_strength);
 				impl->atmosphere_effect->SetCirrusOpacity(w.cirrus_opacity);
 
-				impl->atmosphere_effect->SetCloudFlowSpeed(w.wind_speed);
-				impl->atmosphere_effect->SetCloudFlowDirection(glm::radians(180.0f)); // Fixed direction for consistency
-				impl->atmosphere_effect->SetCloudFlowHeightScale(0.2f);
-				impl->atmosphere_effect->SetCloudCurlStrength(5.0f);
-				impl->atmosphere_effect->SetCloudCurlFrequency(1.5f);
 			}
 		}
 

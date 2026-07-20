@@ -95,16 +95,14 @@ vec3 getWarpedCloudPos(vec3 p, out float fade) {
 	return axisPoint + toP * scale;
 }
 
-const float cloudFlow = 3.14;
-const float clFlowSpeed = 5.0;
 vec3 getCloudWindSpeed(float time) {
-	float angle = cloudFlow;
+	float angle = cloudFlowDirection;
 	vec2  flowDir = vec2(cos(angle), sin(angle));
-	return vec3(flowDir.x, 0.0, flowDir.y) * clFlowSpeed * worldScale * 10.0;
+	return vec3(flowDir.x, 0.0, flowDir.y) * cloudFlowSpeed * worldScale * 10.0;
 }
 
 vec3 getCloudAdvectionSpeed(float h, float time) {
-	float angle = cloudFlow;
+	float angle = cloudFlowDirection;
 	vec2  flowDir = vec2(cos(angle), sin(angle));
 
 	// Dramatic non-linear shear profile
@@ -354,9 +352,15 @@ CloudLayer computeCloudLayer(CloudWeather weather, CloudProperties props) {
 
 	float coverage = getCloudCoverageFromSDF(weather.sdf, props.worldScale);
 
-	// thickness (cell-based ID) provides dramatic vertical expansion per cell
-	// Tall clouds (cumulonimbus) can be much thicker than base thickness
-	float verticalExpansion = mix(1.0, 8.0, weather.thickness * coverage);
+	// Scale the vertical expansion by the size of the cloud footprint.
+	// We use the distance from the edge (-weather.sdf) to determine footprint size.
+	// For very large clouds, the footprint size factor reaches 1.0.
+	// For smaller clouds, it is limited by the maximum depth of the cloud.
+	float footprintSizeFactor = clamp(-weather.sdf / (3500.0 * props.worldScale), 0.0, 1.0);
+	footprintSizeFactor = smoothstep(0.0, 1.0, footprintSizeFactor);
+
+	// Tall clouds (cumulonimbus) are scaled by coverage, weather.thickness, and footprintSizeFactor!
+	float verticalExpansion = mix(1.0, 8.0, weather.thickness * coverage * footprintSizeFactor);
 
 	CloudLayer layer;
 	layer.baseFloor = (props.altitude * props.worldScale) + altitudeShift * props.worldScale;
