@@ -63,10 +63,9 @@ void main() {
 	if (pixel.x >= size.x || pixel.y >= size.y) return;
 
 	vec4 centerColor = texture(uCloudColor, uv);
-	vec4 centerProps = texture(uCloudDepth, uv);
 	vec4 centerMoments = texture(uCloudMoments, uv);
 
-	float centerDensity = centerProps.a;
+	float centerDensity = centerColor.a;
 	float centerHistory = centerMoments.w;
 
 	float varLuma = max(0.0, centerMoments.y - centerMoments.x * centerMoments.x);
@@ -101,9 +100,9 @@ void main() {
 	for (int y = -2; y <= 2; y++) {
 		for (int x = -2; x <= 2; x++) {
 			vec2 offset = vec2(x, y) * float(uStepSize) * texelSize;
-			vec4 sampleColor = texture(uCloudColor, uv + offset);
 
-			float sampleDensity = texture(uCloudDepth, uv + offset).a;
+			vec4 sampleColor = texture(uCloudColor, uv + offset);
+			float sampleDensity = sampleColor.a;
 
 			float lumaWeight = exp(-abs(luma(centerColor.rgb) - luma(sampleColor.rgb)) / phiLuma);
 			float densityWeight = exp(-abs(centerDensity - sampleDensity) / phiDensity);
