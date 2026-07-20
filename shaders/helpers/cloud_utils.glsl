@@ -347,24 +347,9 @@ CloudWeather computeCloudWeather(vec3 p, CloudProperties props) {
 }
 
 CloudLayer computeCloudLayer(CloudWeather weather, CloudProperties props) {
-	// heightMap (gradual) provides a base altitude variation
-	float altitudeShift = weather.heightMap * props.thickness * 2.0;
-
-	float coverage = getCloudCoverageFromSDF(weather.sdf, props.worldScale);
-
-	// Scale the vertical expansion by the size of the cloud footprint.
-	// We use the distance from the edge (-weather.sdf) to determine footprint size.
-	// For very large clouds, the footprint size factor reaches 1.0.
-	// For smaller clouds, it is limited by the maximum depth of the cloud.
-	float footprintSizeFactor = clamp(-weather.sdf / (3500.0 * props.worldScale), 0.0, 1.0);
-	footprintSizeFactor = smoothstep(0.0, 1.0, footprintSizeFactor);
-
-	// Tall clouds (cumulonimbus) are scaled by coverage, weather.thickness, and footprintSizeFactor!
-	float verticalExpansion = mix(1.0, 8.0, weather.thickness * coverage * footprintSizeFactor);
-
 	CloudLayer layer;
-	layer.baseFloor = (props.altitude * props.worldScale) + altitudeShift * props.worldScale;
-	layer.baseCeiling = layer.baseFloor + (props.thickness * verticalExpansion) * props.worldScale;
+	layer.baseFloor = props.altitude * props.worldScale;
+	layer.baseCeiling = (props.altitude + props.thickness * 10.0) * props.worldScale;
 	layer.thickness = max(layer.baseCeiling - layer.baseFloor, 0.001);
 	return layer;
 }

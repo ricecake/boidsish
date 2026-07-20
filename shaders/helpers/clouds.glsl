@@ -493,12 +493,18 @@ CloudSpotDetails calculateCloudDensityExpV9(
 	CloudLayer      layer,
 	CloudProperties props,
 	float           time,
-	float            simplified
+	float           simplified,
+	float           h_dynamic,
+	float           dynamicFloor,
+	float           dynamicCeiling,
+	vec3            advectSpeed
 ) {
-	float h = (p.y - layer.baseFloor) / layer.thickness;
-	vec3 advectSpeed = getCloudAdvectionSpeed(h, time);
+	if (p.y < dynamicFloor || p.y > dynamicCeiling) {
+		return CloudSpotDetails(0.0, vec3(1.0), advectSpeed);
+	}
+
 	float type = weather.heightMap;
-	float heightGradient = getDensityHeightGradient(h, type);
+	float heightGradient = getDensityHeightGradient(h_dynamic, type);
 	vec3 advect = time * advectSpeed;
 	vec3 p_advected = p + advect;
 
@@ -561,41 +567,56 @@ CloudDensityResult calculateCloudDensity(
 	float           time,
 	float           simplified
 ) {
-	float h = (p.y - layer.baseFloor) / layer.thickness;
-	vec3 advectSpeed = getCloudAdvectionSpeed(h, time);
+	// 1. Evaluate dynamic cloud boundaries inside the fixed layer bounds
+	float coverageFromSDF = getCloudCoverageFromSDF(weather.sdf, props.worldScale);
+	float footprintSizeFactor = clamp(-weather.sdf / (3500.0 * props.worldScale), 0.0, 1.0);
+	footprintSizeFactor = smoothstep(0.0, 1.0, footprintSizeFactor);
+	float verticalExpansion = mix(1.0, 8.0, weather.thickness * coverageFromSDF * footprintSizeFactor);
+
+	float dynamicFloor = layer.baseFloor + weather.heightMap * props.thickness * 2.0 * props.worldScale;
+	float dynamicCeiling = dynamicFloor + (props.thickness * verticalExpansion) * props.worldScale;
+
+	float h_dynamic = (p.y - dynamicFloor) / max(0.001, dynamicCeiling - dynamicFloor);
+	vec3 advectSpeed = getCloudAdvectionSpeed(h_dynamic, time);
 	CloudDensityResult pointDetails = CloudDensityResult(vec3(0.0), advectSpeed, 1.0, vec3(1.0), vec3(0.0));
 
-	if (p.y < layer.baseFloor || p.y > layer.baseCeiling) {
+	if (p.y < dynamicFloor || p.y > dynamicCeiling) {
 		return pointDetails;
 	}
+
+	float finalDensity = 0.0;
+	vec3 mixedAlbedo = vec3(1.0);
+	float volAo = 1.0;
 
 	// Sample the 3D cloud volume texture with slower advection speed
 	vec3 advect_3d = time * advectSpeed * 0.75;
 	vec3 p_advected_3d = p + advect_3d;
 	vec3 uvw = vec3(
 		p_advected_3d.x / (100000.0 * props.worldScale),
-		h,
+		h_dynamic,
 		p_advected_3d.z / (100000.0 * props.worldScale)
 	);
 
 	vec4 volSample = textureLod(u_cloud3DTexture, uvw, 0.0);
-	float volNoise = volSample.r;
-	float volAo = volSample.g;
-	float volAlbedoBasis = volSample.b;
+	volAo = volSample.g;
+	mixedAlbedo = vec3(volSample.b);
 
-	CloudSpotDetails res = calculateCloudDensityExpV9(p, weather, layer, props, time, simplified);
-
-	// Where the current system has density, the 3d volume adds variety and breaks up the linear nature.
-	float finalDensity = res.density;
-	if (finalDensity > 0.0) {
-		finalDensity *= mix(0.4, 1.6, volNoise);
-		// remapClamp(finalDensity, volNoise, 1.0, 0.0, 1.0);
+	if (simplified >= 1.0) {
+		// Use the baked A channel of the 3D volume for fast rough density lookup
+		float roughDensity = volSample.a;
+		float heightGradient = getDensityHeightGradient(h_dynamic, weather.heightMap);
+		finalDensity = roughDensity * coverageFromSDF * heightGradient * props.densityBase * 2.0;
+	} else {
+		// Full detailed density evaluation
+		float volNoise = volSample.r;
+		CloudSpotDetails res = calculateCloudDensityExpV9(p, weather, layer, props, time, simplified, h_dynamic, dynamicFloor, dynamicCeiling, advectSpeed);
+		finalDensity = res.density;
+		if (finalDensity > 0.0) {
+			finalDensity *= mix(0.4, 1.6, volNoise);
+		}
 	}
 
-	vec3 mixedDensity = res.relativeExtinction * finalDensity;
-	vec3 mixedAlbedo = vec3(volAlbedoBasis);
-
-	// return CloudDensityResult(mixedDensity, advectSpeed, volAo, mixedAlbedo, smoothstep(0.8, 1.2, mixedDensity) * vec3(0,1,0));
+	vec3 mixedDensity = vec3(finalDensity);
 	return CloudDensityResult(mixedDensity, advectSpeed, volAo, mixedAlbedo, vec3(0.0));
 }
 

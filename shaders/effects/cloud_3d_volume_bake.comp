@@ -63,5 +63,6 @@ void main() {
 	noiseVal2 = clamp(noiseVal2 * 0.5 + 0.5, 0.0, 1.0);
 	float albedoBasis = mix(0.4, 1.0, noiseVal2) * (1.0 - 0.2 * noiseVal);
 
-	imageStore(outVolume, voxel, vec4(noiseVal, aoVal, albedoBasis, 1.0));
+	// 4. A Channel: Rough density lookup based on noiseVal.
+	imageStore(outVolume, voxel, vec4(noiseVal, aoVal, albedoBasis, noiseVal));
 }
