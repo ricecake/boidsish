@@ -495,7 +495,25 @@ CloudSpotDetails calculateCloudDensityExpV9(
 	float           time,
 	float            simplified
 ) {
-	float h = (p.y - layer.baseFloor) / layer.thickness;
+	float coverage = getCloudCoverageFromSDF(weather.sdf, props.worldScale);
+	float totalHeight = layer.baseCeiling - layer.baseFloor;
+
+	float floorShift = mix(0.4, 0.0, smoothstep(0.15, 0.5, coverage));
+	float thicknessFraction = mix(0.1, 1.0, smoothstep(0.15, 0.6, coverage));
+
+	float heightVar = weather.heightMap * 0.2;
+	floorShift = clamp(floorShift + heightVar, 0.0, 0.8);
+
+	float localFloor = layer.baseFloor + floorShift * totalHeight;
+	float localThickness = thicknessFraction * totalHeight * mix(0.8, 1.2, weather.thickness);
+	float localCeiling = min(layer.baseCeiling, localFloor + localThickness);
+
+	float altitude = getCurvedAltitude(p);
+	if (altitude < localFloor || altitude > localCeiling) {
+		return CloudSpotDetails(0.0, vec3(1.0), vec3(0.0));
+	}
+
+	float h = clamp((altitude - localFloor) / max(1.0, localCeiling - localFloor), 0.0, 1.0);
 	vec3 advectSpeed = getCloudAdvectionSpeed(h, time);
 	float type = weather.heightMap;
 	float heightGradient = getDensityHeightGradient(h, type);
@@ -549,8 +567,6 @@ CloudSpotDetails calculateCloudDensityExpV9(
 	);
 }
 
-uniform sampler3D u_cloud3DTexture;
-
 // Cloud density calculation helper
 // Returns CloudDensityResult based on world-space position
 CloudDensityResult calculateCloudDensityMinimal(
@@ -559,17 +575,18 @@ CloudDensityResult calculateCloudDensityMinimal(
 	CloudLayer      layer,
 	CloudProperties props
 ) {
-	float h = (p.y - layer.baseFloor) / layer.thickness;
-	vec3 advectSpeed = getCloudAdvectionSpeed(h, time);
+	float altitude = getCurvedAltitude(p);
+	float h_volume = (altitude - layer.baseFloor) / (layer.baseCeiling - layer.baseFloor);
+	vec3 advectSpeed = getCloudAdvectionSpeed(clamp(h_volume, 0.0, 1.0), time);
 	CloudDensityResult pointDetails = CloudDensityResult(vec3(0.0), advectSpeed, 1.0, vec3(1.0), vec3(0.0));
 
-	if (p.y < layer.baseFloor || p.y > layer.baseCeiling) {
+	if (altitude < layer.baseFloor || altitude > layer.baseCeiling) {
 		return pointDetails;
 	}
 
 	CloudSpotDetails res = calculateCloudDensityExpV9(p, weather, layer, props, time, 1000.0);
 
-	return CloudDensityResult(res.relativeExtinction, advectSpeed, 1.0, vec3(1.0), vec3(0.0));
+	return CloudDensityResult(res.relativeExtinction * res.density, advectSpeed, 1.0, vec3(1.0), vec3(0.0));
 }
 
 
@@ -581,11 +598,12 @@ CloudDensityResult calculateCloudDensity(
 	float           time,
 	float           simplified
 ) {
-	float h = (p.y - layer.baseFloor) / layer.thickness;
-	vec3 advectSpeed = getCloudAdvectionSpeed(h, time);
+	float altitude = getCurvedAltitude(p);
+	float h_volume = (altitude - layer.baseFloor) / (layer.baseCeiling - layer.baseFloor);
+	vec3 advectSpeed = getCloudAdvectionSpeed(clamp(h_volume, 0.0, 1.0), time);
 	CloudDensityResult pointDetails = CloudDensityResult(vec3(0.0), advectSpeed, 1.0, vec3(1.0), vec3(0.0));
 
-	if (p.y < layer.baseFloor || p.y > layer.baseCeiling) {
+	if (altitude < layer.baseFloor || altitude > layer.baseCeiling) {
 		return pointDetails;
 	}
 
@@ -594,28 +612,24 @@ CloudDensityResult calculateCloudDensity(
 	vec3 p_advected_3d = p + advect_3d;
 	vec3 uvw = vec3(
 		p_advected_3d.x / (10000.0 * props.worldScale),
-		h,
+		clamp(h_volume, 0.0, 1.0),
 		p_advected_3d.z / (50000.0 * props.worldScale)
 	);
 
 	vec4 volSample = textureLod(u_cloud3DTexture, uvw, 0.0);
 	float volNoise = volSample.r;
 	float volAo = volSample.g;
-	// float volAlbedoBasis = volSample.b;
 
 	CloudSpotDetails res = calculateCloudDensityExpV9(p, weather, layer, props, time, simplified);
 
 	// Where the current system has density, the 3d volume adds variety and breaks up the linear nature.
 	float finalDensity = res.density;
 	if (finalDensity > 0.0) {
-		// finalDensity *= mix(0.4, 1.6, volNoise);
 		finalDensity = adjust(finalDensity, 1.0-volNoise);
 	}
 
 	vec3 mixedDensity = res.relativeExtinction * finalDensity;
-	// vec3 mixedAlbedo = vec3(volAlbedoBasis);
 
-	// return CloudDensityResult(mixedDensity, advectSpeed, volAo, mixedAlbedo, smoothstep(0.8, 1.2, mixedDensity) * vec3(0,1,0));
 	return CloudDensityResult(mixedDensity, advectSpeed, volAo, vec3(1.0), vec3(0.0));
 }
 

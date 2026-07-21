@@ -372,32 +372,69 @@ void main() {
 		vec3 horizonSH = evalSHIrradianceSpatial(probePos, normalize(vec3(primaryLightDir.x, 0.15, primaryLightDir.z)));
 		vec3 groundSH  = evalSHIrradianceSpatial(probePos, vec3(0.0, -1.0, 0.0));
 
+		bool largeStep = true;
+
 		for (int i = 0; i < MAX_ITERATIONS; i++) {
 			if (t >= dist || t >= t_end || all(lessThan(cloudTransmittance, vec3(0.01)))) break;
-
-			// t = pow(1.2, (round(log(t)/log(1.2) )));
 
 			float lod = clamp(log2(max(1.0, t / (1000.0 * worldScale))), 0.0, 8.0);
 			vec3 p = viewPos + rayDir * t;
 			CloudWeather weather = computeCloudWeather(p, props, lod);
 			CloudLayer layer = computeCloudLayer(weather, props);
 
-			// pow(1.2, (round(log(x)/log(1.2) )))
-			// float currentStepSize = t - t/1.02;
-			float currentStepSize = max(baseStepSize, t * stepGrowthRate);
-			// float currentStepSize = max(abs(t_start - t), t - t/(1.0+stepGrowthRate));
-			// float currentStepSize = max(abs(t_start - t), t * stepGrowthRate);
+			float smallStepSize = max(baseStepSize, t * stepGrowthRate);
+			float largeStepSize = smallStepSize * 4.0;
+			float stepSize = largeStep ? largeStepSize : smallStepSize;
 
 			float d3d = getCloud3DSDF(p, weather, layer, props.worldScale);
 
-			// 1. Outside Cloud Volume: Skip empty space using sphere tracing (conservative 3D SDF)
-			if (d3d > currentStepSize) {
-				// Calculate how many full steps we can safely skip based on the SDF
-				float skipSteps = max(1.0, floor(d3d / currentStepSize));
-				t += skipSteps * currentStepSize;
+			// Sample approximate density from 3D texture A channel
+			float altitude = getCurvedAltitude(p);
+			float h_volume = (altitude - layer.baseFloor) / (layer.baseCeiling - layer.baseFloor);
+			float approxDensity = 0.0;
+			if (h_volume >= 0.0 && h_volume <= 1.0) {
+				vec3 advect_3d = time * getCloudAdvectionSpeed(h_volume, time) * 0.75;
+				vec3 p_advected_3d = p + advect_3d;
+				vec3 uvw = vec3(
+					p_advected_3d.x / (10000.0 * props.worldScale),
+					h_volume,
+					p_advected_3d.z / (50000.0 * props.worldScale)
+				);
+				approxDensity = textureLod(u_cloud3DTexture, uvw, 0.0).a;
+			}
 
+			if (largeStep) {
+				// 1. Empty Space Skipping
+				if (d3d > largeStepSize) {
+					float skipSteps = max(1.0, floor(d3d / largeStepSize));
+					t += skipSteps * largeStepSize;
+					prevDensity = vec3(0.0);
+					inVolume = false;
+					continue;
+				}
+
+				// 2. Transition to Small Steps if we hit actual density
+				if (approxDensity > 0.01) {
+					// Move one big step back, switch to small step mode
+					t = max(t_start, t - largeStepSize);
+					largeStep = false;
+					prevDensity = vec3(0.0);
+					inVolume = false;
+					continue;
+				}
+
+				// Otherwise, proceed in large step mode (inside empty space inside the cloud boundaries)
+				t += largeStepSize;
 				prevDensity = vec3(0.0);
-				inVolume = false;
+				continue;
+			}
+
+			// --- SMALL STEP PHASE ---
+			// Check if we exited density or bounds
+			if (d3d > smallStepSize || (approxDensity <= 0.005 && all(lessThan(prevDensity, vec3(0.01))))) {
+				largeStep = true;
+				t += largeStepSize;
+				prevDensity = vec3(0.0);
 				continue;
 			}
 
@@ -428,25 +465,11 @@ void main() {
 			vec3 d_cheap = densityResCheap.density;
 
 			vec3 rgbExtinction = uCloudExtinctionColor * uCloudExtinction;
-			// float mu_maj = max(rgbExtinction.x, max(rgbExtinction.y, rgbExtinction.z)) * props.coverage;
 			vec3 maj = rgbExtinction - d_cheap;
-			// float mu_maj = max(maj.x, max(maj.y, maj.z));
 			float mu_maj = length(maj);
 			mu_maj = max(mu_maj, 1e-4);
 
-			// Step size cadence adjustment based on cheap density
-			float cadenceScale = 1.0;
-			// float densityMag = length(d_cheap);
-			// if (densityMag < 0.01) {
-			// 	cadenceScale = 2.0;
-			// } else if (densityMag < 0.3) {
-			// 	cadenceScale = mix(0.5, 1.0, densityMag / 0.3);
-			// } else {
-			// 	cadenceScale = mix(1.0, 5.0, clamp((densityMag - 0.3) / 0.7, 0.0, 1.0));
-			// }
-			float stepSize = currentStepSize * cadenceScale;
-			float integrationStep = stepSize;
-			// stepGrowthRate = mix(0.01, 0.025, smoothstep(0, 1, length(d_cheap)));
+			float integrationStep = smallStepSize;
 
 			// Residual Ratio Tracking inside the step
 			vec3 d = d_cheap;
@@ -488,7 +511,7 @@ void main() {
 			if (max(d.x, max(d.y, d.z)) > 0.01) {
 				if (firstHitDist < 0.0) {
 					firstHitDist = t;
-					firstStepSize = currentStepSize;
+					firstStepSize = smallStepSize;
 				}
 				lastHitDist = t;
 			}
@@ -547,7 +570,7 @@ void main() {
 			}
 			prevDensity = d;
 
-			t += stepSize;
+			t += smallStepSize;
 		}
 		cloudColor = lightEnergy * cloudColorUniform;
 	}
