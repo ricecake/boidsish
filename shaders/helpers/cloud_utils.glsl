@@ -434,7 +434,7 @@ float calculateLoftedCloudSDF(vec3 p, CloudWeather weather, CloudLayer layer, fl
     // 4. Define the vertical bounds for this specific XZ column
     // This creates a flat bottom at baseFloor and a domed top.
     float columnCenter = layer.baseFloor + (domeHeight * 0.5);
-    float d_vertical = abs(p.y - columnCenter) - (domeHeight * 0.5);
+    float d_vertical = abs(getCurvedAltitude(p) - columnCenter) - (domeHeight * 0.5);
 
     // 5. Intersect the 2D boundary with the dynamic 1D vertical boundary
     // The exact distance to the boundary is the maximum of the two orthogonal distances.
@@ -443,27 +443,92 @@ float calculateLoftedCloudSDF(vec3 p, CloudWeather weather, CloudLayer layer, fl
     return d3d;
 }
 
+uniform sampler3D u_cloud3DTexture;
+
 float getCloud3DSDF(vec3 p, CloudWeather weather, CloudLayer layer, float worldScale) {
-	// // heightMap (gradual) provides a base altitude variation
-	// float altitudeShift = weather.heightMap * props.thickness * 2.0;
-
+	#ifdef CLOUD_BAKE_SHADER
+	// Analytical evaluation during baking
 	float coverage = getCloudCoverageFromSDF(weather.sdf, worldScale);
+	float totalHeight = layer.baseCeiling - layer.baseFloor;
 
-	// // thickness (cell-based ID) provides dramatic vertical expansion per cell
-	// // Tall clouds (cumulonimbus) can be much thicker than base thickness
-	float verticalExpansion = mix(1.0, 8.0, weather.thickness * coverage);
+	float floorShift = mix(0.4, 0.0, smoothstep(0.15, 0.5, coverage));
+	float thicknessFraction = mix(0.1, 1.0, smoothstep(0.15, 0.6, coverage));
+
+	float heightVar = weather.heightMap * 0.2;
+	floorShift = clamp(floorShift + heightVar, 0.0, 0.8);
+
+	float localFloor = layer.baseFloor + floorShift * totalHeight;
+	float localThickness = thicknessFraction * totalHeight * mix(0.8, 1.2, weather.thickness);
+	float localCeiling = min(layer.baseCeiling, localFloor + localThickness);
+
+	float altitude = getCurvedAltitude(p);
+	float h = clamp((altitude - localFloor) / max(1.0, localCeiling - localFloor), 0.0, 1.0);
 
 	float sdf2d = weather.sdf;
-	float floor = layer.baseFloor * weather.heightMap;
-	float thick = mix(layer.thickness, 10*layer.thickness, smoothstep(0.5, 1.0, weather.thickness * coverage)) * weather.thickness;
+	if (coverage > 0.4) {
+		float bottomShrink = 1.0 - smoothstep(0.0, 0.4, h);
+		sdf2d += bottomShrink * 400.0 * worldScale * (coverage - 0.4);
 
-	float halfHeight = thick * 0.5;
-	float centerY = floor + halfHeight;
-	float distY = abs(p.y - centerY) - halfHeight;
+		float topExpand = smoothstep(0.7, 1.0, h);
+		sdf2d -= topExpand * 600.0 * worldScale * (coverage - 0.4);
+	}
+
+	float centerY = (localFloor + localCeiling) * 0.5;
+	float halfHeight = (localCeiling - localFloor) * 0.5;
+	float distY = abs(altitude - centerY) - halfHeight;
+
 	vec2 w = vec2(sdf2d, distY);
+	return min(max(w.x, w.y), 0.0) + length(max(w, 0.0));
+	#else
+	// Sampling from the precomputed B channel of the 3D volume texture
+	float altitude = getCurvedAltitude(p);
+	float h_volume = (altitude - layer.baseFloor) / (layer.baseCeiling - layer.baseFloor);
 
-    return min(max(w.x, w.y), 0.0) + length(max(w, 0.0));
+	if (h_volume < -0.1 || h_volume > 1.1) {
+		// Analytical fallback when far outside the volume
+		float coverage = getCloudCoverageFromSDF(weather.sdf, worldScale);
+		float totalHeight = layer.baseCeiling - layer.baseFloor;
 
+		float floorShift = mix(0.4, 0.0, smoothstep(0.15, 0.5, coverage));
+		float thicknessFraction = mix(0.1, 1.0, smoothstep(0.15, 0.6, coverage));
+
+		float heightVar = weather.heightMap * 0.2;
+		floorShift = clamp(floorShift + heightVar, 0.0, 0.8);
+
+		float localFloor = layer.baseFloor + floorShift * totalHeight;
+		float localThickness = thicknessFraction * totalHeight * mix(0.8, 1.2, weather.thickness);
+		float localCeiling = min(layer.baseCeiling, localFloor + localThickness);
+
+		float h = clamp((altitude - localFloor) / max(1.0, localCeiling - localFloor), 0.0, 1.0);
+
+		float sdf2d = weather.sdf;
+		if (coverage > 0.4) {
+			float bottomShrink = 1.0 - smoothstep(0.0, 0.4, h);
+			sdf2d += bottomShrink * 400.0 * worldScale * (coverage - 0.4);
+
+			float topExpand = smoothstep(0.7, 1.0, h);
+			sdf2d -= topExpand * 600.0 * worldScale * (coverage - 0.4);
+		}
+
+		float centerY = (localFloor + localCeiling) * 0.5;
+		float halfHeight = (localCeiling - localFloor) * 0.5;
+		float distY = abs(altitude - centerY) - halfHeight;
+
+		vec2 w = vec2(sdf2d, distY);
+		return min(max(w.x, w.y), 0.0) + length(max(w, 0.0));
+	}
+
+	vec3 advectSpeed = getCloudAdvectionSpeed(clamp(h_volume, 0.0, 1.0), time);
+	vec3 advect_3d = time * advectSpeed * 0.75;
+	vec3 p_advected_3d = p + advect_3d;
+	vec3 uvw = vec3(
+		p_advected_3d.x / (10000.0 * worldScale),
+		clamp(h_volume, 0.0, 1.0),
+		p_advected_3d.z / (50000.0 * worldScale)
+	);
+	vec4 volSample = textureLod(u_cloud3DTexture, uvw, 0.0);
+	return volSample.b;
+	#endif
 }
 
 

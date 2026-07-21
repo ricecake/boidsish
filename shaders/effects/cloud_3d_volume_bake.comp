@@ -71,8 +71,14 @@ void main() {
 	CloudWeather weather = loadCloudWeather(vec3(p.x * 100000.0 * worldScale, 0.0, p.z * 100000.0 * worldScale), props, bakedWeather);
 	CloudLayer layer = computeCloudLayer(weather, props);
 
-	// Calculate worldPos corresponding to the vertical position (p.y = h_dynamic)
-	float worldY = props.altitude + p.y * (props.altitude+10*props.thickness);
+	// Calculate exact spherical worldY corresponding to the vertical position (p.y = h_dynamic)
+	float H = layer.baseFloor + p.y * (layer.baseCeiling - layer.baseFloor);
+	float R_earth = 6360.0 * 1000.0 * worldScale;
+	vec3 earthCenter = vec3(viewPos.x, -R_earth, viewPos.z);
+	float dx = p.x * 100000.0 * worldScale - viewPos.x;
+	float dz = p.z * 100000.0 * worldScale - viewPos.z;
+	float dy_sq = (H + R_earth) * (H + R_earth) - (dx * dx + dz * dz);
+	float worldY = sqrt(max(0.0, dy_sq)) - R_earth;
 	vec3 worldPos = vec3(p.x * 100000.0 * worldScale, worldY, p.z * 100000.0 * worldScale);
 
 	// 3. B Channel: Store the precomputed conservative 3D SDF of the cloud layer in meters.
