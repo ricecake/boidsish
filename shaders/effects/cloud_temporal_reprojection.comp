@@ -17,6 +17,7 @@ uniform sampler2D uHistoryMoments;
 uniform float uCloudTemporalGamma;
 uniform float uCloudMaxHistoryLength;
 uniform bool  uEnableTemporal;
+uniform bool  uHasHistory;
 
 #include "../atmosphere/common.glsl"
 #include "../helpers/lighting.glsl"
@@ -295,7 +296,7 @@ void main() {
 	vec2 packedTexelSize = 1.0 / packedSize;
 	vec2 velocity = getDilatedVelocity_Thresholded(uv, packedTexelSize);
 	vec2 prevUV = uv + velocity;
-	bool validHistory = all(greaterThanEqual(prevUV, vec2(0.0))) && all(lessThanEqual(prevUV, vec2(1.0)));
+	bool validHistory = uHasHistory && all(greaterThanEqual(prevUV, vec2(0.0))) && all(lessThanEqual(prevUV, vec2(1.0)));
 
 	vec4 currentRGBA = vec4(0.0);
 	vec4 currDepthProps = vec4(0.0);
