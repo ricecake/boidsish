@@ -72,7 +72,7 @@ void main() {
 	CloudLayer layer = computeCloudLayer(weather, props);
 
 	// Calculate worldPos corresponding to the vertical position (p.y = h_dynamic)
-	float worldY = props.altitude + p.y * (props.altitude+10*props.thickness);
+	float worldY = (props.altitude + p.y * (2.0 * props.thickness)) * worldScale;
 	vec3 worldPos = vec3(p.x * 100000.0 * worldScale, worldY, p.z * 100000.0 * worldScale);
 
 	// 3. B Channel: Store the precomputed conservative 3D SDF of the cloud layer in meters.

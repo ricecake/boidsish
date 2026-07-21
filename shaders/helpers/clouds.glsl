@@ -416,9 +416,16 @@ vec4 calculateCloudDensityExpV8(
 	CloudLayer      layer,
 	CloudProperties props,
 	float           time,
-	float            simplified
+	float           simplified
 ) {
-	float h = (p.y - layer.baseFloor) / layer.thickness;
+	float altitudeShift = weather.heightMap * layer.thickness;
+	float actualThickness = weather.thickness * layer.thickness;
+	float localFloor = layer.baseFloor + altitudeShift;
+
+	// h is normalized over the actual local cloud thickness to correctly apply the height gradient and wind shear
+	float altitude = getCurvedAltitude(p);
+	float h = clamp((altitude - localFloor) / max(actualThickness, 0.001), 0.0, 1.0);
+
 	vec3 advectSpeed = getCloudAdvectionSpeed(h, time);
 	float type = weather.heightMap;
 	float heightGradient = getDensityHeightGradient(h, type);
@@ -559,11 +566,12 @@ CloudDensityResult calculateCloudDensityMinimal(
 	CloudLayer      layer,
 	CloudProperties props
 ) {
-	float h = (p.y - layer.baseFloor) / layer.thickness;
+	float altitude = getCurvedAltitude(p);
+	float h = clamp((altitude - layer.baseFloor) / max(2.0 * layer.thickness, 0.001), 0.0, 1.0);
 	vec3 advectSpeed = getCloudAdvectionSpeed(h, time);
 	CloudDensityResult pointDetails = CloudDensityResult(vec3(0.0), advectSpeed, 1.0, vec3(1.0), vec3(0.0));
 
-	if (p.y < layer.baseFloor || p.y > layer.baseCeiling) {
+	if (altitude < layer.baseFloor || altitude > layer.baseCeiling) {
 		return pointDetails;
 	}
 
@@ -581,11 +589,12 @@ CloudDensityResult calculateCloudDensity(
 	float           time,
 	float           simplified
 ) {
-	float h = (p.y - layer.baseFloor) / layer.thickness;
+	float altitude = getCurvedAltitude(p);
+	float h = clamp((altitude - layer.baseFloor) / max(2.0 * layer.thickness, 0.001), 0.0, 1.0);
 	vec3 advectSpeed = getCloudAdvectionSpeed(h, time);
 	CloudDensityResult pointDetails = CloudDensityResult(vec3(0.0), advectSpeed, 1.0, vec3(1.0), vec3(0.0));
 
-	if (p.y < layer.baseFloor || p.y > layer.baseCeiling) {
+	if (altitude < layer.baseFloor || altitude > layer.baseCeiling) {
 		return pointDetails;
 	}
 

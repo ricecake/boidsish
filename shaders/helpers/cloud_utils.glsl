@@ -371,10 +371,9 @@ CloudWeather computeCloudWeather(vec3 p, CloudProperties props) {
 CloudLayer computeCloudLayer(CloudWeather weather, CloudProperties props) {
 	CloudLayer layer;
 	layer.baseFloor = props.altitude * props.worldScale;
-	// ceiling is altitude + thickness + thickness: a cloud at relative altitude 0 with thickness 1 should span the "base" layer.
-	// A tall cloud should be able to be at high altitude, so need to support a real ceiling of 2*thickness
-	layer.baseCeiling = (props.altitude + 10.0*props.thickness) * props.worldScale;
-	layer.thickness = max(props.thickness, 0.001);
+	layer.thickness = max(props.thickness, 0.001) * props.worldScale;
+	// The evaluation volume needs twice the thickness to account for a full height cloud at maximum altitude.
+	layer.baseCeiling = layer.baseFloor + 2.0 * layer.thickness;
 	return layer;
 }
 
@@ -444,28 +443,24 @@ float calculateLoftedCloudSDF(vec3 p, CloudWeather weather, CloudLayer layer, fl
 }
 
 float getCloud3DSDF(vec3 p, CloudWeather weather, CloudLayer layer, float worldScale) {
-	// // heightMap (gradual) provides a base altitude variation
-
-	float coverage = getCloudCoverageFromSDF(weather.sdf, worldScale);
-
-	// // thickness (cell-based ID) provides dramatic vertical expansion per cell
-	// // Tall clouds (cumulonimbus) can be much thicker than base thickness
-	float verticalExpansion = mix(1.0, 8.0, weather.thickness * coverage);
-
 	float sdf2d = weather.sdf;
-	float floor = layer.baseFloor * weather.heightMap;
-	float thick = mix(layer.thickness, 10.0*layer.thickness, smoothstep(0.5, 1.0, weather.thickness * coverage)) * weather.thickness;
-	float altitudeShift = weather.heightMap * thick;
 
-	p.y -= altitudeShift;
+	// Use curved altitude to respect Earth's curvature
+	float altitude = getCurvedAltitude(p);
 
-	float halfHeight = thick * 0.5;
-	float centerY = floor + halfHeight;
-	float distY = abs(p.y - centerY) - halfHeight;
+	// Proportional altitude shift and thickness
+	float altitudeShift = weather.heightMap * layer.thickness;
+	float actualThickness = weather.thickness * layer.thickness;
+
+	// The actual cloud spans from local floor to local ceiling
+	float localFloor = layer.baseFloor + altitudeShift;
+
+	float halfHeight = actualThickness * 0.5;
+	float centerY = localFloor + halfHeight;
+	float distY = abs(altitude - centerY) - halfHeight;
+
 	vec2 w = vec2(sdf2d, distY);
-
-    return min(max(w.x, w.y), 0.0) + length(max(w, 0.0));
-
+	return min(max(w.x, w.y), 0.0) + length(max(w, 0.0));
 }
 
 
