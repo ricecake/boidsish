@@ -142,6 +142,7 @@ namespace Boidsish {
 		setup_shader(*_aerialPerspectiveShader);
 		setup_shader(*_skyToSHShader);
 		setup_shader(*_cloudBakeShader);
+		setup_shader(*_cloudVolumeBakeShader);
 	}
 
 	void AtmosphereManager::Update(
@@ -159,19 +160,7 @@ namespace Boidsish {
 			std::vector<glm::vec4> clearData(100, glm::vec4(0, 0, 100000.0f, 0));
 			glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, 100 * sizeof(glm::vec4), clearData.data());
 
-			// Dispatch 3D volume bake
-			_cloudVolumeBakeShader->use();
-			glBindImageTexture(0, _cloudVolumeTexture, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
-			GpuResourceRegistry::Instance().BindTextures({
-				Constants::TextureUnit::NoiseSimplex(),
-				Constants::TextureUnit::NoiseCurl(),
-				Constants::TextureUnit::NoiseBlue(),
-				Constants::TextureUnit::NoiseExtra(),
-				Constants::TextureUnit::NoisePhasor()
-			});
-			glDispatchCompute(128 / 4, 128 / 4, 128 / 4);
-			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
-
+			// 1. Dispatch 2D weather map bake
 			_cloudBakeShader->use();
 			_cloudBakeShader->setFloat("uCloudCoverage", _cloudCoverage);
 			_cloudBakeShader->setFloat("uWorldScale", worldScale);
@@ -181,7 +170,7 @@ namespace Boidsish {
 			glDispatchCompute(2048 / 16, 2048 / 16, 1);
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
 
-			// Generate mipmaps for the weather map using custom minimum-downsampling compute shader
+			// 2. Generate mipmaps for the weather map using custom minimum-downsampling compute shader
 			_cloudMipShader->use();
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, _cloudWeatherTexture);
@@ -199,6 +188,23 @@ namespace Boidsish {
 				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
 			}
 			glBindTexture(GL_TEXTURE_2D, 0);
+
+			// 3. Dispatch 3D volume bake, sampling the baked weather map
+			_cloudVolumeBakeShader->use();
+			_cloudVolumeBakeShader->setInt("u_cloudWeatherTexture", Constants::TextureUnit::CloudWeatherBake());
+			glBindImageTexture(0, _cloudVolumeTexture, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::CloudWeatherBake());
+			glBindTexture(GL_TEXTURE_2D, _cloudWeatherTexture);
+
+			GpuResourceRegistry::Instance().BindTextures({
+				Constants::TextureUnit::NoiseSimplex(),
+				Constants::TextureUnit::NoiseCurl(),
+				Constants::TextureUnit::NoiseBlue(),
+				Constants::TextureUnit::NoiseExtra(),
+				Constants::TextureUnit::NoisePhasor()
+			});
+			glDispatchCompute(128 / 4, 128 / 4, 128 / 4);
+			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
 			// CPU Readback for weather queries
 			_cpuWeatherMap.resize(2048 * 2048);

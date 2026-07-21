@@ -95,16 +95,14 @@ vec3 getWarpedCloudPos(vec3 p, out float fade) {
 	return axisPoint + toP * scale;
 }
 
-const float cloudFlow = 3.14;
-const float clFlowSpeed = 5.0;
 vec3 getCloudWindSpeed(float time) {
-	float angle = cloudFlow;
+	float angle = cloudFlowDirection;
 	vec2  flowDir = vec2(cos(angle), sin(angle));
-	return vec3(flowDir.x, 0.0, flowDir.y) * clFlowSpeed * worldScale * 10.0;
+	return vec3(flowDir.x, 0.0, flowDir.y) * cloudFlowSpeed * worldScale * 10.0;
 }
 
 vec3 getCloudAdvectionSpeed(float h, float time) {
-	float angle = cloudFlow;
+	float angle = cloudFlowDirection;
 	vec2  flowDir = vec2(cos(angle), sin(angle));
 
 	// Dramatic non-linear shear profile
@@ -349,19 +347,12 @@ CloudWeather computeCloudWeather(vec3 p, CloudProperties props) {
 }
 
 CloudLayer computeCloudLayer(CloudWeather weather, CloudProperties props) {
-	// heightMap (gradual) provides a base altitude variation
-	float altitudeShift = weather.heightMap * props.thickness * 2.0;
-
-	float coverage = getCloudCoverageFromSDF(weather.sdf, props.worldScale);
-
-	// thickness (cell-based ID) provides dramatic vertical expansion per cell
-	// Tall clouds (cumulonimbus) can be much thicker than base thickness
-	float verticalExpansion = mix(1.0, 8.0, weather.thickness * coverage);
-
 	CloudLayer layer;
-	layer.baseFloor = (props.altitude * props.worldScale) + altitudeShift * props.worldScale;
-	layer.baseCeiling = layer.baseFloor + (props.thickness * verticalExpansion) * props.worldScale;
-	layer.thickness = max(layer.baseCeiling - layer.baseFloor, 0.001);
+	layer.baseFloor = props.altitude * props.worldScale;
+	// ceiling is altitude + thickness + thickness: a cloud at relative altitude 0 with thickness 1 should span the "base" layer.
+	// A tall cloud should be able to be at high altitude, so need to support a real ceiling of 2*thickness
+	layer.baseCeiling = (props.altitude + 2.0*props.thickness) * props.worldScale;
+	layer.thickness = max(props.thickness, 0.001);
 	return layer;
 }
 
@@ -431,10 +422,21 @@ float calculateLoftedCloudSDF(vec3 p, CloudWeather weather, CloudLayer layer, fl
 }
 
 float getCloud3DSDF(vec3 p, CloudWeather weather, CloudLayer layer, float worldScale) {
-	float sdf2d = weather.sdf;
+	// // heightMap (gradual) provides a base altitude variation
+	// float altitudeShift = weather.heightMap * props.thickness * 2.0;
 
-	float centerY = layer.baseFloor + (layer.thickness * 0.5);
-	float halfHeight = layer.thickness * 0.5;
+	// float coverage = getCloudCoverageFromSDF(weather.sdf, props.worldScale);
+
+	// // thickness (cell-based ID) provides dramatic vertical expansion per cell
+	// // Tall clouds (cumulonimbus) can be much thicker than base thickness
+	// float verticalExpansion = mix(1.0, 8.0, weather.thickness * coverage);
+
+	float sdf2d = weather.sdf;
+	float floor = layer.baseFloor * weather.heightMap;
+	float thick = layer.thickness * weather.thickness;
+
+	float halfHeight = thick * 0.5;
+	float centerY = floor + halfHeight;
 	float distY = abs(p.y - centerY) - halfHeight;
 	vec2 w = vec2(sdf2d, distY);
 
