@@ -425,15 +425,15 @@ float getCloud3DSDF(vec3 p, CloudWeather weather, CloudLayer layer, float worldS
 	// // heightMap (gradual) provides a base altitude variation
 	// float altitudeShift = weather.heightMap * props.thickness * 2.0;
 
-	// float coverage = getCloudCoverageFromSDF(weather.sdf, props.worldScale);
+	float coverage = getCloudCoverageFromSDF(weather.sdf, worldScale);
 
 	// // thickness (cell-based ID) provides dramatic vertical expansion per cell
 	// // Tall clouds (cumulonimbus) can be much thicker than base thickness
-	// float verticalExpansion = mix(1.0, 8.0, weather.thickness * coverage);
+	float verticalExpansion = mix(1.0, 8.0, weather.thickness * coverage);
 
 	float sdf2d = weather.sdf;
 	float floor = layer.baseFloor * weather.heightMap;
-	float thick = layer.thickness * weather.thickness;
+	float thick = mix(layer.thickness, 2*layer.thickness, smoothstep(0.5, 1.0, weather.thickness * coverage)) * weather.thickness;
 
 	float halfHeight = thick * 0.5;
 	float centerY = floor + halfHeight;
