@@ -418,7 +418,7 @@ vec4 calculateCloudDensityExpV8(
 	float           time,
 	float            simplified
 ) {
-	float h = (p.y - layer.baseFloor) / layer.thickness;
+	float h = (getCurvedAltitude(p) - layer.baseFloor) / layer.thickness;
 	vec3 advectSpeed = getCloudAdvectionSpeed(h, time);
 	float type = weather.heightMap;
 	float heightGradient = getDensityHeightGradient(h, type);
@@ -495,7 +495,7 @@ CloudSpotDetails calculateCloudDensityExpV9(
 	float           time,
 	float            simplified
 ) {
-	float h = (p.y - layer.baseFloor) / layer.thickness;
+	float h = (getCurvedAltitude(p) - layer.baseFloor) / layer.thickness;
 	vec3 advectSpeed = getCloudAdvectionSpeed(h, time);
 	float type = weather.heightMap;
 	float heightGradient = getDensityHeightGradient(h, type);
@@ -561,11 +561,11 @@ CloudDensityResult calculateCloudDensity(
 	float           time,
 	float           simplified
 ) {
-	float h = (p.y - layer.baseFloor) / layer.thickness;
+	float h = (getCurvedAltitude(p) - layer.baseFloor) / layer.thickness;
 	vec3 advectSpeed = getCloudAdvectionSpeed(h, time);
 	CloudDensityResult pointDetails = CloudDensityResult(vec3(0.0), advectSpeed, 1.0, vec3(1.0), vec3(0.0));
 
-	if (p.y < layer.baseFloor || p.y > layer.baseCeiling) {
+	if (getCurvedAltitude(p) < layer.baseFloor || getCurvedAltitude(p) > layer.baseCeiling) {
 		return pointDetails;
 	}
 
