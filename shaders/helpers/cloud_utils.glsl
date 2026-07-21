@@ -351,7 +351,7 @@ CloudLayer computeCloudLayer(CloudWeather weather, CloudProperties props) {
 	layer.baseFloor = props.altitude * props.worldScale;
 	// ceiling is altitude + thickness + thickness: a cloud at relative altitude 0 with thickness 1 should span the "base" layer.
 	// A tall cloud should be able to be at high altitude, so need to support a real ceiling of 2*thickness
-	layer.baseCeiling = (props.altitude + 2.0*props.thickness) * props.worldScale;
+	layer.baseCeiling = (props.altitude + 10.0*props.thickness) * props.worldScale;
 	layer.thickness = max(props.thickness, 0.001);
 	return layer;
 }
@@ -433,7 +433,7 @@ float getCloud3DSDF(vec3 p, CloudWeather weather, CloudLayer layer, float worldS
 
 	float sdf2d = weather.sdf;
 	float floor = layer.baseFloor * weather.heightMap;
-	float thick = mix(layer.thickness, 2*layer.thickness, smoothstep(0.5, 1.0, weather.thickness * coverage)) * weather.thickness;
+	float thick = mix(layer.thickness, 10*layer.thickness, smoothstep(0.5, 1.0, weather.thickness * coverage)) * weather.thickness;
 
 	float halfHeight = thick * 0.5;
 	float centerY = floor + halfHeight;

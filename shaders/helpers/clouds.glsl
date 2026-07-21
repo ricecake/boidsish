@@ -553,6 +553,26 @@ uniform sampler3D u_cloud3DTexture;
 
 // Cloud density calculation helper
 // Returns CloudDensityResult based on world-space position
+CloudDensityResult calculateCloudDensityMinimal(
+	vec3            p,
+	CloudWeather    weather,
+	CloudLayer      layer,
+	CloudProperties props
+) {
+	float h = (p.y - layer.baseFloor) / layer.thickness;
+	vec3 advectSpeed = getCloudAdvectionSpeed(h, time);
+	CloudDensityResult pointDetails = CloudDensityResult(vec3(0.0), advectSpeed, 1.0, vec3(1.0), vec3(0.0));
+
+	if (p.y < layer.baseFloor || p.y > layer.baseCeiling) {
+		return pointDetails;
+	}
+
+	CloudSpotDetails res = calculateCloudDensityExpV9(p, weather, layer, props, time, 1000.0);
+
+	return CloudDensityResult(res.relativeExtinction, advectSpeed, 1.0, vec3(1.0), vec3(0.0));
+}
+
+
 CloudDensityResult calculateCloudDensity(
 	vec3            p,
 	CloudWeather    weather,
@@ -573,30 +593,30 @@ CloudDensityResult calculateCloudDensity(
 	vec3 advect_3d = time * advectSpeed * 0.75;
 	vec3 p_advected_3d = p + advect_3d;
 	vec3 uvw = vec3(
-		p_advected_3d.x / (100000.0 * props.worldScale),
+		p_advected_3d.x / (10000.0 * props.worldScale),
 		h,
-		p_advected_3d.z / (100000.0 * props.worldScale)
+		p_advected_3d.z / (10000.0 * props.worldScale)
 	);
 
 	vec4 volSample = textureLod(u_cloud3DTexture, uvw, 0.0);
 	float volNoise = volSample.r;
 	float volAo = volSample.g;
-	float volAlbedoBasis = volSample.b;
+	// float volAlbedoBasis = volSample.b;
 
 	CloudSpotDetails res = calculateCloudDensityExpV9(p, weather, layer, props, time, simplified);
 
 	// Where the current system has density, the 3d volume adds variety and breaks up the linear nature.
 	float finalDensity = res.density;
 	if (finalDensity > 0.0) {
-		finalDensity *= mix(0.4, 1.6, volNoise);
-		// remapClamp(finalDensity, volNoise, 1.0, 0.0, 1.0);
+		// finalDensity *= mix(0.4, 1.6, volNoise);
+		remapClamp(finalDensity, 1.0-volNoise, 1.0, 0.0, 1.0);
 	}
 
 	vec3 mixedDensity = res.relativeExtinction * finalDensity;
-	vec3 mixedAlbedo = vec3(volAlbedoBasis);
+	// vec3 mixedAlbedo = vec3(volAlbedoBasis);
 
 	// return CloudDensityResult(mixedDensity, advectSpeed, volAo, mixedAlbedo, smoothstep(0.8, 1.2, mixedDensity) * vec3(0,1,0));
-	return CloudDensityResult(mixedDensity, advectSpeed, volAo, mixedAlbedo, vec3(0.0));
+	return CloudDensityResult(mixedDensity, advectSpeed, volAo, vec3(1.0), vec3(0.0));
 }
 
 #endif // HELPERS_CLOUDS_GLSL
