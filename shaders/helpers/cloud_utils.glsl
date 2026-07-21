@@ -347,24 +347,9 @@ CloudWeather computeCloudWeather(vec3 p, CloudProperties props) {
 }
 
 CloudLayer computeCloudLayer(CloudWeather weather, CloudProperties props) {
-	// heightMap (gradual) provides a base altitude variation
-	float altitudeShift = weather.heightMap * props.thickness * 2.0;
-
-	float coverage = getCloudCoverageFromSDF(weather.sdf, props.worldScale);
-
-	// Scale the vertical expansion by the size of the cloud footprint.
-	// We use the distance from the edge (-weather.sdf) to determine footprint size.
-	// For very large clouds, the footprint size factor reaches 1.0.
-	// For smaller clouds, it is limited by the maximum depth of the cloud.
-	float footprintSizeFactor = clamp(-weather.sdf / (3500.0 * props.worldScale), 0.0, 1.0);
-	footprintSizeFactor = smoothstep(0.0, 1.0, footprintSizeFactor);
-
-	// Tall clouds (cumulonimbus) are scaled by coverage, weather.thickness, and footprintSizeFactor!
-	float verticalExpansion = mix(1.0, 8.0, weather.thickness * coverage * footprintSizeFactor);
-
 	CloudLayer layer;
-	layer.baseFloor = (props.altitude * props.worldScale) + altitudeShift * props.worldScale;
-	layer.baseCeiling = layer.baseFloor + (props.thickness * verticalExpansion) * props.worldScale;
+	layer.baseFloor = props.altitude * props.worldScale;
+	layer.baseCeiling = (props.altitude + props.thickness * 10.0) * props.worldScale;
 	layer.thickness = max(layer.baseCeiling - layer.baseFloor, 0.001);
 	return layer;
 }
@@ -434,6 +419,9 @@ float calculateLoftedCloudSDF(vec3 p, CloudWeather weather, CloudLayer layer, fl
     return d3d;
 }
 
+uniform sampler3D u_cloud3DTexture;
+
+#ifdef CLOUD_BAKE_SHADER
 float getCloud3DSDF(vec3 p, CloudWeather weather, CloudLayer layer, float worldScale) {
 	float sdf2d = weather.sdf;
 
@@ -442,9 +430,32 @@ float getCloud3DSDF(vec3 p, CloudWeather weather, CloudLayer layer, float worldS
 	float distY = abs(p.y - centerY) - halfHeight;
 	vec2 w = vec2(sdf2d, distY);
 
-    return min(max(w.x, w.y), 0.0) + length(max(w, 0.0));
-
+	return min(max(w.x, w.y), 0.0) + length(max(w, 0.0));
 }
+#else
+float getCloud3DSDF(vec3 p, CloudWeather weather, CloudLayer layer, float worldScale) {
+	float centerY = layer.baseFloor + (layer.thickness * 0.5);
+	float halfHeight = layer.thickness * 0.5;
+	float distY = abs(p.y - centerY) - halfHeight;
+
+	// Fallback to analytical distance when significantly outside the cloud layer
+	if (distY > 100.0 * worldScale) {
+		vec2 w = vec2(weather.sdf, distY);
+		return min(max(w.x, w.y), 0.0) + length(max(w, 0.0));
+	}
+
+	// Retrieve precomputed high-fidelity conservative 3D SDF from the B channel!
+	vec3 advect = getCloudWindOffset(time);
+	vec3 p_advected = p + advect;
+	vec3 uvw = vec3(
+		p_advected.x / (100000.0 * worldScale),
+		clamp((p.y - layer.baseFloor) / layer.thickness, 0.0, 1.0),
+		p_advected.z / (100000.0 * worldScale)
+	);
+	vec4 volSample = textureLod(u_cloud3DTexture, uvw, 0.0);
+	return volSample.b;
+}
+#endif
 
 
 /**
