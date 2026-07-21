@@ -266,6 +266,8 @@ namespace Boidsish {
 			void SetCloudSvgfHistoryThreshold(float threshold) { cloud_svgf_history_threshold_ = threshold; }
 			float GetCloudSvgfHistoryThreshold() const { return cloud_svgf_history_threshold_; }
 
+			void FlushHistory() { has_valid_history_ = false; }
+
 		private:
 			void InitializePackedResources();
 			void InitializeTemporalResources();

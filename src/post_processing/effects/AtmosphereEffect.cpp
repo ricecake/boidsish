@@ -42,6 +42,19 @@ namespace Boidsish {
 			cloud_curl_strength_ = cfg.GetAppSettingFloat("cloud_curl_strength", cloud_curl_strength_);
 			cloud_curl_frequency_ = cfg.GetAppSettingFloat("cloud_curl_frequency", cloud_curl_frequency_);
 
+			cloud_phase_g1_ = cfg.GetAppSettingFloat("cloud_phase_g1", cloud_phase_g1_);
+			cloud_phase_g2_ = cfg.GetAppSettingFloat("cloud_phase_g2", cloud_phase_g2_);
+			cloud_phase_alpha_ = cfg.GetAppSettingFloat("cloud_phase_alpha", cloud_phase_alpha_);
+			cloud_phase_isotropic_ = cfg.GetAppSettingFloat("cloud_phase_isotropic", cloud_phase_isotropic_);
+			cloud_powder_scale_ = cfg.GetAppSettingFloat("cloud_powder_scale", cloud_powder_scale_);
+			cloud_powder_multiplier_ = cfg.GetAppSettingFloat("cloud_powder_multiplier", cloud_powder_multiplier_);
+			cloud_powder_local_scale_ = cfg.GetAppSettingFloat("cloud_powder_local_scale", cloud_powder_local_scale_);
+			cloud_shadow_optical_depth_multiplier_ = cfg.GetAppSettingFloat("cloud_shadow_optical_depth_multiplier", cloud_shadow_optical_depth_multiplier_);
+			cloud_shadow_step_multiplier_ = cfg.GetAppSettingFloat("cloud_shadow_step_multiplier", cloud_shadow_step_multiplier_);
+			cloud_sun_light_scale_ = cfg.GetAppSettingFloat("cloud_sun_light_scale", cloud_sun_light_scale_);
+			cloud_moon_light_scale_ = cfg.GetAppSettingFloat("cloud_moon_light_scale", cloud_moon_light_scale_);
+			cloud_beer_powder_mix_ = cfg.GetAppSettingFloat("cloud_beer_powder_mix", cloud_beer_powder_mix_);
+
 			cloud_render_shader_ = std::make_unique<ComputeShader>("shaders/effects/atmosphere_lowres.comp");
 			composite_shader_ = std::make_unique<Shader>(
 				"shaders/postprocess.vert",
@@ -260,6 +273,7 @@ namespace Boidsish {
 				temporal_shader_->setBool("uEnableTemporal", enable_temporal_);
 				temporal_shader_->setFloat("uCloudTemporalGamma", cloud_temporal_gamma_);
 				temporal_shader_->setFloat("uCloudMaxHistoryLength", cloud_max_history_length_);
+				temporal_shader_->setBool("uHasHistory", has_valid_history_);
 
 				temporal_shader_->setInt("uPackedFrame", 0);
 				temporal_shader_->setInt("uPackedDepth", 1);

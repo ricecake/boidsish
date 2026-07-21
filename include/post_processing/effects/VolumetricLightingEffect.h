@@ -49,6 +49,11 @@ namespace Boidsish {
 			void SetTemporalAccumulation2D(bool b) { temporal_accumulation_2d_ = b; }
 			bool GetTemporalAccumulation2D() const { return temporal_accumulation_2d_; }
 
+			void FlushHistory() {
+				has_history_ = false;
+				has_history_2d_ = false;
+			}
+
 		private:
 			void CreateGridTextures();
 			void Create2DHistoryTextures(int w, int h);
