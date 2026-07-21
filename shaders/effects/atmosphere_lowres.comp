@@ -111,6 +111,146 @@ void CalculateStochasticClusterLight(
 	}
 }
 
+vec3 EvaluateStepLighting(
+	vec3 p,
+	vec3 rayDir,
+	float jitter,
+	CloudWeather weather,
+	CloudLayer layer,
+	CloudProperties props,
+	vec3 rgbExtinction,
+	vec3 stepDensity,
+	float h_norm,
+	vec3 sampleAdvection,
+	float sampleAo,
+	vec3 sampleAlbedo,
+	inout vec3 emissiveGlow,
+	vec3 skySH,
+	vec3 horizonSH,
+	vec3 groundSH,
+	vec3 primaryLightDir,
+	float R_ceiling,
+	float R_floor,
+	vec3 earthCenter
+) {
+	vec3 stepScattering = vec3(0.0);
+
+	// PASS 1: Global Directional Lights (Sun/Moon)
+	for (int j = 0; j < min(2, num_lights); j++) {
+		if (lights[j].type != LIGHT_TYPE_DIRECTIONAL) continue;
+		if (lights[j].intensity <= 0.0) continue;
+
+		if ((lights[j].flags & LIGHT_FLAG_CASTS_SHADOW) == 0 ||
+			(lights[j].flags & LIGHT_FLAG_VOLUMETRIC_SHADOW) == 0) continue;
+
+		vec3 L;
+		float attenuation;
+		calculateLightContribution(j, p, L, attenuation);
+
+		if (attenuation * lights[j].intensity < 0.001) continue;
+
+		float cosTheta = dot(rayDir, L);
+		float phase = cloudPhase(cosTheta);
+
+		float traceDist = 0.0;
+		vec3 lightTransmittance = vec3(1.0);
+
+		float r_world = length(p - earthCenter);
+		float r_km = r_world / (1000.0 * worldScale);
+		float mu = dot((p - earthCenter) / r_world, L);
+
+		float t0_s, t1_s;
+		float st_start = 1e10;
+		float st_end = -1e10;
+		if (intersectSphere(p, L, R_ceiling, t0_s, t1_s)) {
+			st_start = max(0.0, t0_s);
+			st_end = t1_s;
+			if (intersectSphere(p, L, R_floor, t0_s, t1_s)) {
+				if (t0_s < 0.0) t0_s = t1_s;
+				st_end = min(st_end, t0_s);
+			}
+		}
+		traceDist = min(st_end - st_start, layer.thickness * 1.5);
+
+		vec2 transUV = getTransmittanceUV(r_km, mu);
+		lightTransmittance = texture(u_transmittanceLUT, transUV).rgb;
+
+		vec3 opticalDepthToLight = vec3(0.0);
+		if (traceDist > 0.01 * worldScale) {
+			float random_shadow = fract(jitter + float(j) * 0.153);
+			vec3 sp = p + L * random_shadow * traceDist;
+			CloudDensityResult shadowRes = calculateCloudDensity(sp, weather, layer, props, time, 100.0);
+			opticalDepthToLight = shadowRes.density * traceDist * (rgbExtinction * cloudShadowOpticalDepthMultiplier);
+			emissiveGlow += shadowRes.emissivity;
+		}
+
+		vec3 shadowTerm = mix(
+			beerPowder(opticalDepthToLight, stepDensity),
+			exp(-opticalDepthToLight),
+			cloudBeerPowderMix
+		);
+
+		float lightScale = (j == 0 ? cloudSunLightScale : cloudMoonLightScale);
+
+		stepScattering += lightTransmittance * lights[j].color.rgb * shadowTerm * phase *
+			lights[j].intensity * attenuation * lightScale;
+	}
+
+
+	uint cloud_cluster_index = getClusterIndex(p);
+	Cluster cloud_cluster = clusters[cloud_cluster_index];
+	Cluster global_cloud_cluster = clusters[3456];
+
+	CalculateStochasticClusterLight(
+		p,
+		rayDir,
+		jitter,
+		weather,
+		layer,
+		props,
+		rgbExtinction,
+		stepDensity,
+		global_cloud_cluster,
+		stepScattering,
+		emissiveGlow
+	);
+
+	CalculateStochasticClusterLight(
+		p,
+		rayDir,
+		jitter,
+		weather,
+		layer,
+		props,
+		rgbExtinction,
+		stepDensity,
+		cloud_cluster,
+		stepScattering,
+		emissiveGlow
+	);
+
+
+	const float ambientExtinction = 0.1;
+	const float powderScale = 15.0;
+	vec3 powder = vec3(1.0) - exp(-stepDensity * powderScale);
+	float sunHeight = max(primaryLightDir.y, 0.0);
+	float ambientScale = mix(0.3, 1.0, smoothstep(0.0, 0.3, sunHeight));
+
+	vec3 ambientTop    = mix(skySH, horizonSH, 0.4) * ambientScale;
+	vec3 ambientBottom = groundSH * ambientScale;
+
+	vec3 upwardOD = stepDensity * h_norm * layer.thickness;
+	vec3 downwardOD = stepDensity * (1.0 - h_norm) * layer.thickness;
+	vec3 groundAttenuation = exp(-upwardOD * ambientExtinction);
+	vec3 skyAttenuation = exp(-downwardOD * ambientExtinction);
+
+	vec3 finalAmbient = ((ambientTop * skyAttenuation) + (ambientBottom * groundAttenuation)) * sampleAo;
+
+	vec3 S = (stepScattering + (finalAmbient * powder)) * (uCloudAlbedo * sampleAlbedo) + emissiveGlow;
+
+	return S;
+}
+
 void main() {
 	ivec2 packedPixel = ivec2(gl_GlobalInvocationID.xy);
 	ivec2 packedSize = imageSize(outPackedColor);
@@ -317,7 +457,7 @@ void main() {
 			if (any(greaterThan(d_cheap, vec3(0.000))) || any(greaterThan(prevDensity, vec3(0.000)))) {
 				float t_track = 0.0;
 				float seed = jitter + p.x * 12.9898 + p.y * 78.233 + float(i) * 0.153;
-				for (int k = 0; k < 3; ++k) {
+				for (int k = 0; k < 2; ++k) {
 					float u = fract(sin(seed + float(k) * 43.123) * 43758.5453);
 					float s = -log(max(1e-5, 1.0 - u)) / mu_maj;
 					t_track += s;
@@ -368,73 +508,7 @@ void main() {
 				vec3 stepScattering = vec3(0.0);
 				vec3 emissiveGlow = densityRes.emissivity;
 
-				// PASS 1: Global Directional Lights (Sun/Moon)
-				for (int j = 0; j < min(2, num_lights); j++) {
-					if (lights[j].type != LIGHT_TYPE_DIRECTIONAL) continue;
-					if (lights[j].intensity <= 0.0) continue;
-
-					if ((lights[j].flags & LIGHT_FLAG_CASTS_SHADOW) == 0 ||
-					    (lights[j].flags & LIGHT_FLAG_VOLUMETRIC_SHADOW) == 0) continue;
-
-					vec3 L;
-					float attenuation;
-					calculateLightContribution(j, p, L, attenuation);
-
-					if (attenuation * lights[j].intensity < 0.001) continue;
-
-					float cosTheta = dot(rayDir, L);
-					float phase = cloudPhase(cosTheta);
-
-					float traceDist = 0.0;
-					vec3 lightTransmittance = vec3(1.0);
-
-					float r_world = length(p - earthCenter);
-					float r_km = r_world / (1000.0 * worldScale);
-					float mu = dot((p - earthCenter) / r_world, L);
-
-					float t0_s, t1_s;
-					float st_start = 1e10;
-					float st_end = -1e10;
-					if (intersectSphere(p, L, R_ceiling, t0_s, t1_s)) {
-						st_start = max(0.0, t0_s);
-						st_end = t1_s;
-						if (intersectSphere(p, L, R_floor, t0_s, t1_s)) {
-							if (t0_s < 0.0) t0_s = t1_s;
-							st_end = min(st_end, t0_s);
-						}
-					}
-					traceDist = min(st_end - st_start, layer.thickness * 1.5);
-
-					vec2 transUV = getTransmittanceUV(r_km, mu);
-					lightTransmittance = texture(u_transmittanceLUT, transUV).rgb;
-
-					vec3 opticalDepthToLight = vec3(0.0);
-					if (traceDist > 0.01 * worldScale) {
-						float random_shadow = fract(jitter + float(j) * 0.153);
-						vec3 sp = p + L * random_shadow * traceDist;
-						CloudDensityResult shadowRes = calculateCloudDensity(sp, weather, layer, props, time, 100.0);
-						opticalDepthToLight = shadowRes.density * traceDist * (rgbExtinction * cloudShadowOpticalDepthMultiplier);
-						emissiveGlow += shadowRes.emissivity;
-					}
-
-					vec3 shadowTerm = mix(
-						beerPowder(opticalDepthToLight, stepDensity),
-						exp(-opticalDepthToLight),
-						cloudBeerPowderMix
-					);
-
-					float lightScale = (j == 0 ? cloudSunLightScale : cloudMoonLightScale);
-
-					stepScattering += lightTransmittance * lights[j].color.rgb * shadowTerm * phase *
-						lights[j].intensity * attenuation * lightScale;
-				}
-
-
-				uint cloud_cluster_index = getClusterIndex(p);
-				Cluster cloud_cluster = clusters[cloud_cluster_index];
-				Cluster global_cloud_cluster = clusters[3456];
-
-				CalculateStochasticClusterLight(
+				vec3 S = EvaluateStepLighting(
 					p,
 					rayDir,
 					jitter,
@@ -443,47 +517,20 @@ void main() {
 					props,
 					rgbExtinction,
 					stepDensity,
-					global_cloud_cluster,
-					stepScattering,
-					emissiveGlow
+					h_norm,
+					densityRes.advectionSpeed,
+					densityRes.ao,
+					densityRes.albedo,
+					emissiveGlow,
+					skySH,
+					horizonSH,
+					groundSH,
+					primaryLightDir,
+					R_ceiling,
+					R_floor,
+					earthCenter
 				);
 
-				CalculateStochasticClusterLight(
-					p,
-					rayDir,
-					jitter,
-					weather,
-					layer,
-					props,
-					rgbExtinction,
-					stepDensity,
-					cloud_cluster,
-					stepScattering,
-					emissiveGlow
-				);
-
-
-
-				float sunHeight = max(primaryLightDir.y, 0.0);
-				float ambientScale = mix(0.3, 1.0, smoothstep(0.0, 0.3, sunHeight));
-
-				vec3 ambientTop    = mix(skySH, horizonSH, 0.4) * ambientScale;
-				vec3 ambientBottom = groundSH * ambientScale;
-
-				float ambientExtinction = 0.1;
-
-				vec3 downwardOD = stepDensity * (1.0 - h_norm) * layer.thickness;
-				vec3 skyAttenuation = exp(-downwardOD * ambientExtinction);
-
-				vec3 upwardOD = stepDensity * h_norm * layer.thickness;
-				vec3 groundAttenuation = exp(-upwardOD * ambientExtinction);
-
-				float powderScale = 15.0;
-				vec3 powder = vec3(1.0) - exp(-stepDensity * powderScale);
-
-				vec3 finalAmbient = ((ambientTop * skyAttenuation) + (ambientBottom * groundAttenuation)) * sampleAo;
-
-				vec3 S = (stepScattering + (finalAmbient * powder)) * (uCloudAlbedo * sampleAlbedo) + emissiveGlow;
 
 				vec3 weight = cloudTransmittance * (vec3(1.0) - transmittanceAtStep);
 				float scalarAccumOD = dot(accumulatedOpticalDepth, vec3(0.3333));
