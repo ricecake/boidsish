@@ -555,8 +555,6 @@ CloudSpotDetails calculateCloudDensityExpV9(
 	);
 }
 
-uniform sampler3D u_cloud3DTexture;
-
 // Cloud density calculation helper
 // Returns CloudDensityResult based on world-space position
 CloudDensityResult calculateCloudDensity(
@@ -599,13 +597,15 @@ CloudDensityResult calculateCloudDensity(
 
 	vec4 volSample = textureLod(u_cloud3DTexture, uvw, 0.0);
 	volAo = volSample.g;
-	mixedAlbedo = vec3(volSample.b);
+
+	// B channel stores the precomputed conservative 3D SDF.
+	// We map the distance value into a clean, smooth albedo/brightness basis.
+	float volAlbedoBasis = mix(1.0, 0.4, clamp(volSample.b / -0.35, 0.0, 1.0));
+	mixedAlbedo = vec3(volAlbedoBasis);
 
 	if (simplified >= 1.0) {
-		// Use the baked A channel of the 3D volume for fast rough density lookup
-		float roughDensity = volSample.a;
-		float heightGradient = getDensityHeightGradient(h_dynamic, weather.heightMap);
-		finalDensity = roughDensity * coverageFromSDF * heightGradient * props.densityBase * 2.0;
+		// A channel stores the precomputed actual physical density of the cloud volume.
+		finalDensity = volSample.a;
 	} else {
 		// Full detailed density evaluation
 		float volNoise = volSample.r;

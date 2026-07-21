@@ -4,9 +4,10 @@ layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
 
 layout(binding = 0, rgba16f) uniform image3D outVolume;
 
-#include "../helpers/fast_noise.glsl"
+#define CLOUD_BAKE_SHADER
+#include "../helpers/clouds.glsl"
 
-float remap(float value, float low1, float high1, float low2, float high2) {
+float remap_bake(float value, float low1, float high1, float low2, float high2) {
 	return low2 + (value - low1) * (high2 - low2) / max(0.0001, (high1 - low1));
 }
 
@@ -22,7 +23,7 @@ float computeSimplexWorley(vec3 p) {
 	float worleyFbm = w0 * 0.625 + w1 * 0.25 + w2 * 0.125;
 
 	// Simplex noise carved/remapped by Worley FBM
-	float simplexWorley = remap(simplex, worleyFbm, 1.0, 0.0, 1.0);
+	float simplexWorley = remap_bake(simplex, worleyFbm, 1.0, 0.0, 1.0);
 	return clamp(simplexWorley, 0.0, 1.0);
 }
 
@@ -37,7 +38,6 @@ void main() {
 	float noiseVal = computeSimplexWorley(p);
 
 	// 2. G Channel: Local Ambient Occlusion.
-	// Sample offsets. Since it's tiling, wrap coordinates in [0, 1] range.
 	float densitySum = 0.0;
 	const int AO_SAMPLES = 8;
 	vec3 ao_offsets[AO_SAMPLES] = vec3[](
@@ -58,11 +58,42 @@ void main() {
 	}
 	float aoVal = clamp(1.0 - (densitySum / float(AO_SAMPLES)) * 1.5, 0.0, 1.0);
 
-	// 3. B Channel: Local Albedo Basis.
-	float noiseVal2 = fbm3d_tiling(p * 16.0, 16.0);
-	noiseVal2 = clamp(noiseVal2 * 0.5 + 0.5, 0.0, 1.0);
-	float albedoBasis = mix(0.4, 1.0, noiseVal2) * (1.0 - 0.2 * noiseVal);
+	// Sample the 2D weather map texture using the horizontal coordinates (p.xz)
+	vec4 bakedWeather = textureLod(u_cloudWeatherTexture, p.xz, 0.0);
 
-	// 4. A Channel: Rough density lookup based on noiseVal.
-	imageStore(outVolume, voxel, vec4(noiseVal, aoVal, albedoBasis, noiseVal));
+	CloudProperties props;
+	props.altitude = cloudAltitude;
+	props.thickness = cloudThickness;
+	props.densityBase = cloudDensity;
+	props.coverage = cloudCoverage;
+	props.worldScale = worldScale;
+
+	CloudWeather weather = loadCloudWeather(vec3(p.x * 100000.0 * worldScale, 0.0, p.z * 100000.0 * worldScale), props, bakedWeather);
+	CloudLayer layer = computeCloudLayer(weather, props);
+
+	// Calculate dynamic bounds at this column
+	float coverageFromSDF = getCloudCoverageFromSDF(weather.sdf, worldScale);
+	float footprintSizeFactor = clamp(-weather.sdf / (3500.0 * worldScale), 0.0, 1.0);
+	footprintSizeFactor = smoothstep(0.0, 1.0, footprintSizeFactor);
+	float verticalExpansion = mix(1.0, 8.0, weather.thickness * coverageFromSDF * footprintSizeFactor);
+
+	float dynamicFloor = layer.baseFloor + weather.heightMap * props.thickness * 2.0 * worldScale;
+	float dynamicCeiling = dynamicFloor + (props.thickness * verticalExpansion) * worldScale;
+
+	// Calculate worldPos corresponding to the vertical position (p.y = h_dynamic)
+	float worldY = dynamicFloor + p.y * (dynamicCeiling - dynamicFloor);
+	vec3 worldPos = vec3(p.x * 100000.0 * worldScale, worldY, p.z * 100000.0 * worldScale);
+
+	// 3. B Channel: Store the precomputed conservative 3D SDF of the cloud layer in meters.
+	float cloud3dSdf = getCloud3DSDF(worldPos, weather, layer, worldScale);
+
+	// 4. A Channel: Store the actual physical density of the cloud volume.
+	vec3 advectSpeed = getCloudAdvectionSpeed(p.y, 0.0);
+	CloudSpotDetails res = calculateCloudDensityExpV9(worldPos, weather, layer, props, 0.0, 1.0, p.y, dynamicFloor, dynamicCeiling, advectSpeed);
+	float actualDensity = res.density;
+	if (actualDensity > 0.0) {
+		actualDensity *= mix(0.4, 1.6, noiseVal);
+	}
+
+	imageStore(outVolume, voxel, vec4(noiseVal, aoVal, cloud3dSdf, actualDensity));
 }
