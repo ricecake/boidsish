@@ -595,7 +595,7 @@ CloudDensityResult calculateCloudDensity(
 	vec3 uvw = vec3(
 		p_advected_3d.x / (10000.0 * props.worldScale),
 		h,
-		p_advected_3d.z / (10000.0 * props.worldScale)
+		p_advected_3d.z / (50000.0 * props.worldScale)
 	);
 
 	vec4 volSample = textureLod(u_cloud3DTexture, uvw, 0.0);
@@ -609,7 +609,7 @@ CloudDensityResult calculateCloudDensity(
 	float finalDensity = res.density;
 	if (finalDensity > 0.0) {
 		// finalDensity *= mix(0.4, 1.6, volNoise);
-		remapClamp(finalDensity, 1.0-volNoise, 1.0, 0.0, 1.0);
+		finalDensity = adjust(finalDensity, 1.0-volNoise);
 	}
 
 	vec3 mixedDensity = res.relativeExtinction * finalDensity;

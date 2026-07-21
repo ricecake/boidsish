@@ -20,9 +20,25 @@ struct CloudLayer {
 	float thickness;
 };
 
+// float saturate(float value) {
+// 	return clamp(value, 0.0, 1.0);
+// }
+
+float remap(float value, float valueMin, float valueMax) {
+	return (value - valueMin) / (valueMax - valueMin);
+}
+
 float remapClamp(float value, float inMin, float inMax, float outMin, float outMax) {
     float t = clamp((value - inMin) / (inMax - inMin), 0.0, 1.0);
     return mix(outMin, outMax, t);
+}
+
+float adjust(float value, float scaly) {
+	float f = 1.0 - value;
+	float h = 0.4; // adjustable filter
+
+	float a = scaly * (1.0-h) + h;
+	return clamp((remap(a, f, f + h)), 0.0, 1.0);
 }
 
 float cloudPhase(float cosTheta) {
