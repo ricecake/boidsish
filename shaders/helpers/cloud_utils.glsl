@@ -455,7 +455,7 @@ float getCloud3DSDF(vec3 p, CloudWeather weather, CloudLayer layer, float worldS
 
 	float sdf2d = weather.sdf;
 	float floor = layer.baseFloor * weather.heightMap;
-	float thick = mix(layer.thickness, 10*layer.thickness, smoothstep(0.5, 1.0, weather.thickness * coverage)) * weather.thickness;
+	float thick = mix(layer.thickness, 10.0*layer.thickness, smoothstep(0.5, 1.0, weather.thickness * coverage)) * weather.thickness;
 
 	float halfHeight = thick * 0.5;
 	float centerY = floor + halfHeight;
