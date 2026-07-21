@@ -445,7 +445,6 @@ float calculateLoftedCloudSDF(vec3 p, CloudWeather weather, CloudLayer layer, fl
 
 float getCloud3DSDF(vec3 p, CloudWeather weather, CloudLayer layer, float worldScale) {
 	// // heightMap (gradual) provides a base altitude variation
-	// float altitudeShift = weather.heightMap * props.thickness * 2.0;
 
 	float coverage = getCloudCoverageFromSDF(weather.sdf, worldScale);
 
@@ -456,6 +455,9 @@ float getCloud3DSDF(vec3 p, CloudWeather weather, CloudLayer layer, float worldS
 	float sdf2d = weather.sdf;
 	float floor = layer.baseFloor * weather.heightMap;
 	float thick = mix(layer.thickness, 10.0*layer.thickness, smoothstep(0.5, 1.0, weather.thickness * coverage)) * weather.thickness;
+	float altitudeShift = weather.heightMap * thick;
+
+	p.y -= altitudeShift;
 
 	float halfHeight = thick * 0.5;
 	float centerY = floor + halfHeight;
