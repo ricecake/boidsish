@@ -656,7 +656,7 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 	float terrainOcc = calculateTerrainOcclusion(frag_pos, N);
 	vec3  spatialSHAmbient = getSpatialAmbientSH(frag_pos, N);
 
-	float combinedAO = ao * terrainOcc;
+	float combinedAO = ao * terrainOcc * calculateCloudAmbientOcclusion(frag_pos);
 	vec3  ambientDiffuse = spatialSHAmbient * albedo * combinedAO;
 
 	// Scale down ambient overall to maintain shadow contrast and prevent "flat" look
@@ -810,7 +810,8 @@ vec4 apply_lighting_foliage(vec3 frag_pos, vec3 normal, vec3 albedo, float rough
 
     // Standard Ambient (using your existing SH logic)
     float terrainOcc = calculateTerrainOcclusion(frag_pos, N);
-    vec3 ambient = (getSpatialAmbientSH(frag_pos, N) * albedo) * (ao * terrainOcc);
+    float cloudAO = calculateCloudAmbientOcclusion(frag_pos);
+    vec3 ambient = (getSpatialAmbientSH(frag_pos, N) * albedo) * (ao * terrainOcc * cloudAO);
 
     return vec4(ambient + Lo, spec_lum);
 }
@@ -946,7 +947,7 @@ vec4 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, floa
 	float terrainOcc = calculateTerrainOcclusion(frag_pos, N);
 	vec3  spatialSHAmbient = getSpatialAmbientSH(frag_pos, N);
 
-	float combinedAO = ao * terrainOcc;
+	float combinedAO = ao * terrainOcc * calculateCloudAmbientOcclusion(frag_pos);
 	vec3  ambientDiffuse = spatialSHAmbient * albedo * combinedAO;
 
 	// Scale down ambient overall to maintain shadow contrast
@@ -982,7 +983,8 @@ vec4 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, floa
  */
 vec4 apply_lighting(vec3 frag_pos, vec3 normal, vec3 albedo, float specular_strength, out float primaryShadow) {
 	primaryShadow = 1.0;
-	vec3  result = ambient_light * albedo;
+	float cloudAO = calculateCloudAmbientOcclusion(frag_pos);
+	vec3  result = ambient_light * albedo * cloudAO;
 	float spec_lum = 0.0;
 
 	// PASS 1: Global Directional Lights (Sun/Moon)
@@ -1093,7 +1095,8 @@ vec4 apply_lighting(vec3 frag_pos, vec3 normal, vec3 albedo, float specular_stre
  */
 vec4 apply_lighting_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, float specular_strength, out float primaryShadow) {
 	primaryShadow = 1.0;
-	vec3  result = ambient_light * albedo;
+	float cloudAO = calculateCloudAmbientOcclusion(frag_pos);
+	vec3  result = ambient_light * albedo * cloudAO;
 	float spec_lum = 0.0;
 
 	// PASS 1: Global Directional Lights (Sun/Moon)
