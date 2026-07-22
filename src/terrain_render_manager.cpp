@@ -320,7 +320,7 @@ namespace Boidsish {
 
 		// Resize patch SSBOs
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, patch_metrics_ssbo_);
-		glBufferData(GL_SHADER_STORAGE_BUFFER, max_patches * sizeof(PatchMetrics), nullptr, GL_STATIC_DRAW);
+		glBufferData(GL_SHADER_STORAGE_BUFFER, max_patches * sizeof(PatchMetrics), nullptr, GL_DYNAMIC_DRAW);
 
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, patch_visibility_ssbo_);
 		glBufferData(GL_SHADER_STORAGE_BUFFER, max_patches * sizeof(uint32_t), nullptr, GL_DYNAMIC_DRAW);

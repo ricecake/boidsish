@@ -494,6 +494,8 @@ struct CloudDensityResult {
 	vec3 emissivity;
 };
 
+uniform sampler3D u_cloud3DTexture;
+
 CloudSpotDetails calculateCloudDensityExpV9(
 	vec3            p,
 	CloudWeather    weather,
@@ -516,42 +518,55 @@ CloudSpotDetails calculateCloudDensityExpV9(
 	vec3 advect = time * advectSpeed;
 	vec3 p_advected = p + advect;
 
-	float baseSdf = getCloud3DSDF(p_advected, weather, layer, props.worldScale);
-	float baseNoise = clamp(-baseSdf, 0, 1);
+	float baseNoise = 1.0;
+	if (simplified >= 10.0) {
+		float baseSdf = getCloud3DSDF(p_advected, weather, layer, props.worldScale);
+		baseNoise = clamp(-baseSdf, 0, 1);
+	}
+	else {
+		vec3 uvw = vec3(
+			p_advected.x / (10000.0 * props.worldScale),
+			h,
+			p_advected.z / (50000.0 * props.worldScale)
+		);
+
+		vec4 volSample = textureLod(u_cloud3DTexture, uvw, 0.0);
+		baseNoise = volSample.r;
+	}
 
 	baseNoise *= heightGradient;
 
-	bool isCore = baseNoise >= 1.0;
+	bool isCore = baseNoise >= 0.50;
 
-	float erodeMask = smoothstep(0.0, 1.0, baseNoise);
+	float erodeMask = 1.0-smoothstep(0.0, 0.50, baseNoise);
 	if (erodeMask > 0.0 && !isCore) {
 		float largeScale = abs(fastFbm3d(p_advected/10000)) * erodeMask;
 		baseNoise = adjust(baseNoise, largeScale);
 
 		if (!isCore) {
-			if (simplified < 1.0) {
-				erodeMask = 1.0 - baseNoise;
-				float coarseScale = abs(fastFbm3d(p_advected/5000.0)) * erodeMask;
-				baseNoise = adjust(baseNoise, coarseScale);
-			}
+			// if (simplified < 1.0) {
+			// 	erodeMask = 1.0 - baseNoise;
+			// 	float coarseScale = abs(fastFbm3d(p_advected/5000.0)) * erodeMask;
+			// 	baseNoise = adjust(baseNoise, coarseScale);
+			// }
 
-			if (simplified < .75) {
-				erodeMask = 1.0 - baseNoise;
-				float mediumScale = (1.0-fastRidge3d(p_advected/4000)) * erodeMask;
-				baseNoise = adjust(baseNoise, mediumScale);
-			}
+			// if (simplified < .75) {
+			// 	erodeMask = 1.0 - baseNoise;
+			// 	float mediumScale = (1.0-fastRidge3d(p_advected/4000)) * erodeMask;
+			// 	baseNoise = adjust(baseNoise, mediumScale);
+			// }
 
-			if (simplified < 0.50) {
-				erodeMask = 1.0 - baseNoise;
-				float fineScale = abs(fastFbm3d(p_advected / 3000.0)) * erodeMask;
-				baseNoise = adjust(baseNoise, fineScale);
-			}
+			// if (simplified < 0.50) {
+			// 	erodeMask = 1.0 - baseNoise;
+			// 	float fineScale = abs(fastFbm3d(p_advected / 3000.0)) * erodeMask;
+			// 	baseNoise = adjust(baseNoise, fineScale);
+			// }
 
-			if (simplified < 0.25) {
-				erodeMask = 1.0 - baseNoise;
-				float detailScale = fastRidge3d(p / vec3(2000.0, 1000.0, 2000.0)) * erodeMask;
-				baseNoise = adjust(baseNoise, detailScale);
-			}
+			// if (simplified < 0.25) {
+			// 	erodeMask = 1.0 - baseNoise;
+			// 	float detailScale = fastRidge3d(p / vec3(2000.0, 1000.0, 2000.0)) * erodeMask;
+			// 	baseNoise = adjust(baseNoise, detailScale);
+			// }
 		}
 		baseNoise *= smoothstep(0.01, 0.32, baseNoise);
 	}
@@ -562,8 +577,6 @@ CloudSpotDetails calculateCloudDensityExpV9(
 		advectSpeed
 	);
 }
-
-uniform sampler3D u_cloud3DTexture;
 
 // Cloud density calculation helper
 // Returns CloudDensityResult based on world-space position
