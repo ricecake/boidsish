@@ -1,0 +1,145 @@
+#include "SpaceProbeManager.h"
+
+#include <iostream>
+#include <glm/gtc/matrix_transform.hpp>
+
+#include "shader.h"
+#include "constants.h"
+#include "atmosphere_manager.h"
+#include "terrain_render_manager.h"
+#include "render_state.h"
+
+namespace Boidsish {
+
+	SpaceProbeManager::SpaceProbeManager() {}
+
+	SpaceProbeManager::~SpaceProbeManager() {
+		if (probe_ssbo_ != 0) {
+			glDeleteBuffers(1, &probe_ssbo_);
+		}
+	}
+
+	void SpaceProbeManager::Initialize() {
+		if (initialized_) return;
+
+		collect_shader_ = std::make_unique<ComputeShader>("shaders/effects/space_probe_collect.comp");
+		render_shader_ = std::make_unique<Shader>("shaders/effects/space_probe.vert", "shaders/effects/space_probe.frag");
+
+		glGenBuffers(1, &probe_ssbo_);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, probe_ssbo_);
+		glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(SpaceProbeData), &cached_data_, GL_DYNAMIC_COPY);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+
+		initialized_ = true;
+	}
+
+	void SpaceProbeManager::Update(
+		float deltaTime,
+		const GlobalRenderState& render_state,
+		AtmosphereManager* atmosphere_manager,
+		TerrainRenderManager* terrain_render_manager
+	) {
+		(void)deltaTime;
+		if (!initialized_ || !is_enabled) return;
+		if (!continuous_update && !refresh_requested) return;
+		if (!atmosphere_manager || !terrain_render_manager) return;
+
+		collect_shader_->use();
+		collect_shader_->setVec3("u_probePosition", position);
+
+		// Bind textures for atmospheric lookup and fallback
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereSkyView());
+		glBindTexture(GL_TEXTURE_2D, atmosphere_manager->GetSkyViewLUT());
+		collect_shader_->setInt("u_skyViewLUT", Constants::TextureUnit::AtmosphereSkyView());
+
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereAerialPerspective());
+		glBindTexture(GL_TEXTURE_3D, atmosphere_manager->GetAerialPerspectiveLUT());
+		collect_shader_->setInt("u_aerialPerspectiveLUT", Constants::TextureUnit::AtmosphereAerialPerspective());
+
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereTransmittance());
+		glBindTexture(GL_TEXTURE_2D, atmosphere_manager->GetTransmittanceLUT());
+		collect_shader_->setInt("u_transmittanceLUT", Constants::TextureUnit::AtmosphereTransmittance());
+
+		// Bind terrain textures and UBOs
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainBiomeMap());
+		glBindTexture(GL_TEXTURE_2D_ARRAY, terrain_render_manager->GetBiomeTexture());
+		collect_shader_->setInt("u_biomeMap", Constants::TextureUnit::TerrainBiomeMap());
+
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainChunkGrid());
+		glBindTexture(GL_TEXTURE_2D, terrain_render_manager->GetChunkGridTexture());
+		collect_shader_->setInt("u_chunkGrid", Constants::TextureUnit::TerrainChunkGrid());
+
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainHeightmap());
+		glBindTexture(GL_TEXTURE_2D_ARRAY, terrain_render_manager->GetHeightmapTexture());
+		collect_shader_->setInt("u_heightmapArray", Constants::TextureUnit::TerrainHeightmap());
+
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainShadowMap());
+		glBindTexture(GL_TEXTURE_2D, terrain_render_manager->GetTerrainShadowMapTexture());
+		collect_shader_->setInt("u_terrainShadowMap", Constants::TextureUnit::TerrainShadowMap());
+
+		// Bind standard UBO ranges using helper methods
+		render_state.BindLighting(Constants::UboBinding::Lighting());
+		render_state.BindTemporal(Constants::UboBinding::TemporalData());
+		render_state.BindVisualEffects(Constants::UboBinding::VisualEffects());
+		render_state.BindFrustum(Constants::UboBinding::FrustumData());
+
+		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::TerrainData(), terrain_render_manager->GetTerrainDataUbo());
+		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Biomes(), terrain_render_manager->GetBiomeUbo());
+
+		// Bind the SSBO
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::SpaceProbe(), probe_ssbo_);
+
+		// Dispatch compute shader (only 1 thread needed as it calculates properties for a single point)
+		collect_shader_->dispatch(1, 1, 1);
+
+		// Synchronize buffer access before reading back to CPU
+		glMemoryBarrier(GL_BUFFER_UPDATE_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
+
+		// Read back results into CPU cache
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, probe_ssbo_);
+		glGetBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(SpaceProbeData), &cached_data_);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+
+		// Clear refresh flag
+		refresh_requested = false;
+	}
+
+	void SpaceProbeManager::Render(
+		const GlobalRenderState& render_state,
+		GLuint depthTexture,
+		GLuint quadVAO
+	) {
+		if (!initialized_ || !is_enabled || !render_sphere) return;
+
+		render_shader_->use();
+
+		// Transformation matrices and camera position
+		render_shader_->setVec3("cameraPos", render_state.camera_pos);
+		render_shader_->setMat4("invProjection", glm::inverse(render_state.projection));
+		render_shader_->setMat4("invView", glm::inverse(render_state.view));
+		render_shader_->setMat4("projection", render_state.projection);
+		render_shader_->setMat4("view", render_state.view);
+
+		// Custom sphere properties and toggles
+		render_shader_->setVec3("u_probePosition", position);
+		render_shader_->setFloat("u_probeRadius", sphere_radius);
+		render_shader_->setVec3("u_probeColor", sphere_color);
+		render_shader_->setFloat("u_probeMetallic", metallic);
+		render_shader_->setFloat("u_probeRoughness", roughness);
+		render_shader_->setBool("u_useSHVisualizer", use_sh_visualizer);
+
+		// Bind scene depth texture for proper occlusion
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, depthTexture);
+		render_shader_->setInt("depthTexture", 0);
+
+		// Bind the space probe SSBO so the sphere can sample computed SH coefficients
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::SpaceProbe(), probe_ssbo_);
+
+		// Render quad to evaluate sphere SDF and shade it in screenspace
+		glBindVertexArray(quadVAO);
+		glDrawArrays(GL_TRIANGLES, 0, 6);
+		glBindVertexArray(0);
+	}
+
+} // namespace Boidsish

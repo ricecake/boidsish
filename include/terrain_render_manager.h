@@ -191,6 +191,10 @@ namespace Boidsish {
 		 */
 		GLuint GetBiomeTexture() const { return biome_texture_; }
 
+		GLuint GetChunkGridTexture() const { return chunk_grid_texture_; }
+		GLuint GetTerrainShadowMapTexture() const { return terrain_shadow_map_texture_; }
+		GLuint GetBiomeUbo() const { return biome_ubo_; }
+
 		/**
 		 * @brief Get the patch visibility SSBO.
 		 */
