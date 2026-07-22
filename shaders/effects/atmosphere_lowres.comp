@@ -402,7 +402,7 @@ void main() {
 
 	float rayDist = t_end - t_start;
 	float precisionLimit = max(1.0, t_end * 1e-5);
-	float baseStepSize = clamp(rayDist / float(samples), precisionLimit, 50.0);
+	float baseStepSize = clamp(rayDist / float(samples), precisionLimit, 100.0);
 
 	float firstStepSize = baseStepSize;
 	float minStepSize = 100000;
@@ -410,6 +410,7 @@ void main() {
 	int MAX_ITERATIONS = 500;
 
 	float steps = 0.0;
+	float magic_stepping = 0.0;
 
 	if (t_start < t_end) {
 		vec3 lightEnergy = vec3(0.0);
@@ -444,6 +445,30 @@ void main() {
 		vec3 skySH     = evalSHIrradianceSpatial(probePos, vec3(0.0, 1.0, 0.0));
 		vec3 horizonSH = evalSHIrradianceSpatial(probePos, normalize(vec3(primaryLightDir.x, 0.15, primaryLightDir.z)));
 		vec3 groundSH  = evalSHIrradianceSpatial(probePos, vec3(0.0, -1.0, 0.0));
+
+		float t_probe = t + gl_SubGroupInvocationARB * baseStepSize;
+		vec3 p_probe = viewPos + rayDir * t;
+		CloudWeather weather_probe = computeCloudWeather(p_probe, props, 8.0);
+		CloudLayer layer_probe = computeCloudLayer(weather_probe, props);
+		float d3d_probe = getCloud3DSDF(p_probe, weather_probe, layer_probe, props.worldScale);
+		uint64_t probe_check = ballotARB(d3d_probe <= 0.0);
+		uvec2 fields = unpackUint2x32(probe_check);
+		uint id_check;
+		int offset = -1;
+
+		if (fields.y > 0) {
+			offset = findLSB(fields.y);
+		}
+		else if (fields.x > 0) {
+			offset = findLSB(fields.x);
+			offset += 32;
+		}
+
+		if (offset > -1) {
+			t += (offset-1) * baseStepSize;
+			magic_stepping = offset * baseStepSize;
+		}
+
 
 		for (int i = 0; i < MAX_ITERATIONS; i++) {
 			steps = i;
@@ -607,6 +632,7 @@ void main() {
 	}
 
 	vec4 finalColor = vec4(cloudColor, dot(cloudTransmittance, vec3(0.3333)));
+	// vec4 finalColor = vec4(mix(vec3(0,10,0), vec3(10,0,0), smoothstep(0, 100, magic_stepping)), 0.0);
 	// vec4 finalColor = vec4(mix(vec3(0,10,0), vec3(10,0,0), smoothstep(0, 100, steps)), 0.0);
 	vec4 finalDepth;
 	vec2 finalVelocity;
