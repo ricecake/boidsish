@@ -12,6 +12,7 @@ namespace Boidsish {
 	struct GlobalRenderState;
 	class AtmosphereManager;
 	class TerrainRenderManager;
+	class ShadowManager;
 
 	struct SpaceProbeData {
 		float     shadow_level = 1.0f;
@@ -34,12 +35,14 @@ namespace Boidsish {
 			float deltaTime,
 			const GlobalRenderState& render_state,
 			AtmosphereManager* atmosphere_manager,
-			TerrainRenderManager* terrain_render_manager
+			TerrainRenderManager* terrain_render_manager,
+			ShadowManager* shadow_manager
 		);
 		void Render(
 			const GlobalRenderState& render_state,
 			GLuint depthTexture,
-			GLuint quadVAO
+			GLuint quadVAO,
+			ShadowManager* shadow_manager
 		);
 
 		// Properties and Settings

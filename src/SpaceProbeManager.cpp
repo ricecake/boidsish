@@ -7,6 +7,7 @@
 #include "constants.h"
 #include "atmosphere_manager.h"
 #include "terrain_render_manager.h"
+#include "shadow_manager.h"
 #include "render_state.h"
 
 namespace Boidsish {
@@ -37,12 +38,13 @@ namespace Boidsish {
 		float deltaTime,
 		const GlobalRenderState& render_state,
 		AtmosphereManager* atmosphere_manager,
-		TerrainRenderManager* terrain_render_manager
+		TerrainRenderManager* terrain_render_manager,
+		ShadowManager* shadow_manager
 	) {
 		(void)deltaTime;
 		if (!initialized_ || !is_enabled) return;
 		if (!continuous_update && !refresh_requested) return;
-		if (!atmosphere_manager || !terrain_render_manager) return;
+		if (!atmosphere_manager || !terrain_render_manager || !shadow_manager) return;
 
 		collect_shader_->use();
 		collect_shader_->setVec3("u_probePosition", position);
@@ -77,6 +79,13 @@ namespace Boidsish {
 		glBindTexture(GL_TEXTURE_2D, terrain_render_manager->GetTerrainShadowMapTexture());
 		collect_shader_->setInt("u_terrainShadowMap", Constants::TextureUnit::TerrainShadowMap());
 
+		// Bind Shadows UBO and ShadowMaps texture array (needed for shadow mapping!)
+		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Shadows(), shadow_manager->GetShadowUbo());
+
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::ShadowMaps());
+		glBindTexture(GL_TEXTURE_2D_ARRAY, shadow_manager->GetShadowMapArray());
+		collect_shader_->setInt("shadowMaps", Constants::TextureUnit::ShadowMaps());
+
 		// Bind standard UBO ranges using helper methods
 		render_state.BindLighting(Constants::UboBinding::Lighting());
 		render_state.BindTemporal(Constants::UboBinding::TemporalData());
@@ -107,9 +116,10 @@ namespace Boidsish {
 	void SpaceProbeManager::Render(
 		const GlobalRenderState& render_state,
 		GLuint depthTexture,
-		GLuint quadVAO
+		GLuint quadVAO,
+		ShadowManager* shadow_manager
 	) {
-		if (!initialized_ || !is_enabled || !render_sphere) return;
+		if (!initialized_ || !is_enabled || !render_sphere || !shadow_manager) return;
 
 		render_shader_->use();
 
@@ -132,6 +142,13 @@ namespace Boidsish {
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, depthTexture);
 		render_shader_->setInt("depthTexture", 0);
+
+		// Bind Shadows UBO and ShadowMaps texture array (needed for shadow mapping!)
+		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Shadows(), shadow_manager->GetShadowUbo());
+
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::ShadowMaps());
+		glBindTexture(GL_TEXTURE_2D_ARRAY, shadow_manager->GetShadowMapArray());
+		render_shader_->setInt("shadowMaps", Constants::TextureUnit::ShadowMaps());
 
 		// Bind the space probe SSBO so the sphere can sample computed SH coefficients
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::SpaceProbe(), probe_ssbo_);
