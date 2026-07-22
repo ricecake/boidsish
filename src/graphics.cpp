@@ -2685,7 +2685,8 @@ namespace Boidsish {
 					render_state_,
 					atmosphere_manager.get(),
 					terrain_render_manager.get(),
-					shadow_manager.get()
+					shadow_manager.get(),
+					light_manager.get()
 				);
 			}
 		}
@@ -2897,7 +2898,15 @@ namespace Boidsish {
 			}
 
 			if (space_probe_manager) {
-				space_probe_manager->Render(render_state_, compositor_->GetDepthTexture(), blur_quad_vao, shadow_manager.get());
+				space_probe_manager->Render(
+					render_state_,
+					compositor_->GetDepthTexture(),
+					blur_quad_vao,
+					shadow_manager.get(),
+					light_manager.get(),
+					atmosphere_manager.get(),
+					terrain_render_manager.get()
+				);
 			}
 		}
 

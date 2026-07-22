@@ -1,6 +1,7 @@
 #include "SpaceProbeManager.h"
 
 #include <iostream>
+#include <array>
 #include <glm/gtc/matrix_transform.hpp>
 
 #include "shader.h"
@@ -8,6 +9,7 @@
 #include "atmosphere_manager.h"
 #include "terrain_render_manager.h"
 #include "shadow_manager.h"
+#include "light_manager.h"
 #include "render_state.h"
 
 namespace Boidsish {
@@ -39,12 +41,13 @@ namespace Boidsish {
 		const GlobalRenderState& render_state,
 		AtmosphereManager* atmosphere_manager,
 		TerrainRenderManager* terrain_render_manager,
-		ShadowManager* shadow_manager
+		ShadowManager* shadow_manager,
+		LightManager* light_manager
 	) {
 		(void)deltaTime;
 		if (!initialized_ || !is_enabled) return;
 		if (!continuous_update && !refresh_requested) return;
-		if (!atmosphere_manager || !terrain_render_manager || !shadow_manager) return;
+		if (!atmosphere_manager || !terrain_render_manager || !shadow_manager || !light_manager) return;
 
 		collect_shader_->use();
 		collect_shader_->setVec3("u_probePosition", position);
@@ -86,6 +89,15 @@ namespace Boidsish {
 		glBindTexture(GL_TEXTURE_2D_ARRAY, shadow_manager->GetShadowMapArray());
 		collect_shader_->setInt("shadowMaps", Constants::TextureUnit::ShadowMaps());
 
+		// Set lightShadowIndices uniform array explicitly on the shader
+		std::array<int, 10> shadow_indices;
+		shadow_indices.fill(-1);
+		const auto& all_lights = light_manager->GetLights();
+		for (size_t j = 0; j < all_lights.size() && j < 10; ++j) {
+			shadow_indices[j] = all_lights[j].shadow_map_index;
+		}
+		collect_shader_->setIntArray("lightShadowIndices", shadow_indices.data(), 10);
+
 		// Bind standard UBO ranges using helper methods
 		render_state.BindLighting(Constants::UboBinding::Lighting());
 		render_state.BindTemporal(Constants::UboBinding::TemporalData());
@@ -117,9 +129,17 @@ namespace Boidsish {
 		const GlobalRenderState& render_state,
 		GLuint depthTexture,
 		GLuint quadVAO,
-		ShadowManager* shadow_manager
+		ShadowManager* shadow_manager,
+		LightManager* light_manager,
+		AtmosphereManager* atmosphere_manager,
+		TerrainRenderManager* terrain_render_manager
 	) {
-		if (!initialized_ || !is_enabled || !render_sphere || !shadow_manager) return;
+		if (!initialized_ || !is_enabled || !render_sphere || !shadow_manager || !light_manager || !atmosphere_manager || !terrain_render_manager) return;
+
+		// Force standard depth test and write state explicitly to prevent transparent pass leaks
+		glEnable(GL_DEPTH_TEST);
+		glDepthMask(GL_TRUE);
+		glDepthFunc(GL_LEQUAL);
 
 		render_shader_->use();
 
@@ -149,6 +169,54 @@ namespace Boidsish {
 		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::ShadowMaps());
 		glBindTexture(GL_TEXTURE_2D_ARRAY, shadow_manager->GetShadowMapArray());
 		render_shader_->setInt("shadowMaps", Constants::TextureUnit::ShadowMaps());
+
+		// Set lightShadowIndices uniform array explicitly on the shader
+		std::array<int, 10> shadow_indices;
+		shadow_indices.fill(-1);
+		const auto& all_lights = light_manager->GetLights();
+		for (size_t j = 0; j < all_lights.size() && j < 10; ++j) {
+			shadow_indices[j] = all_lights[j].shadow_map_index;
+		}
+		render_shader_->setIntArray("lightShadowIndices", shadow_indices.data(), 10);
+
+		// Bind textures for atmospheric lookup
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereSkyView());
+		glBindTexture(GL_TEXTURE_2D, atmosphere_manager->GetSkyViewLUT());
+		render_shader_->setInt("u_skyViewLUT", Constants::TextureUnit::AtmosphereSkyView());
+
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereAerialPerspective());
+		glBindTexture(GL_TEXTURE_3D, atmosphere_manager->GetAerialPerspectiveLUT());
+		render_shader_->setInt("u_aerialPerspectiveLUT", Constants::TextureUnit::AtmosphereAerialPerspective());
+
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereTransmittance());
+		glBindTexture(GL_TEXTURE_2D, atmosphere_manager->GetTransmittanceLUT());
+		render_shader_->setInt("u_transmittanceLUT", Constants::TextureUnit::AtmosphereTransmittance());
+
+		// Bind terrain textures and UBOs
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainBiomeMap());
+		glBindTexture(GL_TEXTURE_2D_ARRAY, terrain_render_manager->GetBiomeTexture());
+		render_shader_->setInt("u_biomeMap", Constants::TextureUnit::TerrainBiomeMap());
+
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainChunkGrid());
+		glBindTexture(GL_TEXTURE_2D, terrain_render_manager->GetChunkGridTexture());
+		render_shader_->setInt("u_chunkGrid", Constants::TextureUnit::TerrainChunkGrid());
+
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainHeightmap());
+		glBindTexture(GL_TEXTURE_2D_ARRAY, terrain_render_manager->GetHeightmapTexture());
+		render_shader_->setInt("u_heightmapArray", Constants::TextureUnit::TerrainHeightmap());
+
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainShadowMap());
+		glBindTexture(GL_TEXTURE_2D, terrain_render_manager->GetTerrainShadowMapTexture());
+		render_shader_->setInt("u_terrainShadowMap", Constants::TextureUnit::TerrainShadowMap());
+
+		// Bind standard UBO ranges using helper methods
+		render_state.BindLighting(Constants::UboBinding::Lighting());
+		render_state.BindTemporal(Constants::UboBinding::TemporalData());
+		render_state.BindVisualEffects(Constants::UboBinding::VisualEffects());
+		render_state.BindFrustum(Constants::UboBinding::FrustumData());
+
+		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::TerrainData(), terrain_render_manager->GetTerrainDataUbo());
+		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Biomes(), terrain_render_manager->GetBiomeUbo());
 
 		// Bind the space probe SSBO so the sphere can sample computed SH coefficients
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::SpaceProbe(), probe_ssbo_);
