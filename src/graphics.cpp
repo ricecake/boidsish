@@ -819,6 +819,7 @@ namespace Boidsish {
 			GpuResourceRegistry::SetInstance(&gpu_resources_);
 			RegisterManagers();
 			space_probe_manager = std::make_shared<SpaceProbeManager>();
+			space_probe_manager->Initialize();
 
 			hiz_manager = service_locator_.Get<HiZManager>();
 			noise_manager = service_locator_.Get<NoiseManager>();
