@@ -9,11 +9,8 @@ in vec2 TexCoords;
 #include "../helpers/terrain_shadows.glsl"
 #include "../helpers/lighting.glsl"
 
-uniform vec3 cameraPos;
 uniform mat4 invProjection;
 uniform mat4 invView;
-uniform mat4 view;
-uniform mat4 projection;
 
 uniform vec3 u_probePosition;
 uniform float u_probeRadius;
@@ -69,10 +66,10 @@ void main() {
 	float depth = texture(depthTexture, TexCoords).r;
 
 	vec4 ndcPos = vec4(TexCoords * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
-	vec4 viewPos = invProjection * ndcPos;
-	viewPos /= viewPos.w;
-	vec4  worldPos = invView * viewPos;
-	float sceneDistance = length(worldPos.xyz - cameraPos);
+	vec4 viewPosFromDepth = invProjection * ndcPos;
+	viewPosFromDepth /= viewPosFromDepth.w;
+	vec4  worldPos = invView * viewPosFromDepth;
+	float sceneDistance = length(worldPos.xyz - viewPos);
 	if (depth >= 0.999999) {
 		sceneDistance = 1000000.0;
 	}
@@ -82,7 +79,7 @@ void main() {
 	vec3 rayDir = normalize((invView * vec4(normalize(target.xyz), 0.0)).xyz);
 
 	// Sphere raycast
-	vec3 oc = cameraPos - u_probePosition;
+	vec3 oc = viewPos - u_probePosition;
 	float b = dot(oc, rayDir);
 	float c = dot(oc, oc) - u_probeRadius * u_probeRadius;
 	float h = b * b - c;
@@ -99,7 +96,7 @@ void main() {
 	}
 
 	// We have a valid hit on the sphere overlay
-	vec3 hitPos = cameraPos + rayDir * t;
+	vec3 hitPos = viewPos + rayDir * t;
 	vec3 N = normalize(hitPos - u_probePosition);
 
 	// Calculate correct depth and write to gl_FragDepth
@@ -120,7 +117,7 @@ void main() {
 		float metallic = u_probeMetallic;
 
 		vec3 directLight = vec3(0.0);
-		vec3 V = normalize(cameraPos - hitPos);
+		vec3 V = normalize(viewPos - hitPos);
 
 		for (int i = 0; i < num_lights; ++i) {
 			vec3 L;
