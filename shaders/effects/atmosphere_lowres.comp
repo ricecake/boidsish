@@ -402,7 +402,7 @@ void main() {
 
 	float rayDist = t_end - t_start;
 	float precisionLimit = max(1.0, t_end * 1e-5);
-	float baseStepSize = clamp(rayDist / float(samples), precisionLimit, 100.0);
+	float baseStepSize = clamp(rayDist / float(samples), precisionLimit, 50.0);
 
 	float firstStepSize = baseStepSize;
 	float minStepSize = 100000;
@@ -411,6 +411,82 @@ void main() {
 
 	float steps = 0.0;
 	float magic_stepping = 0.0;
+
+	// if (t_start < t_end) {
+	// 	// vec2 t_last = texture(uHistoryDepth, vec2(packedPixel)).rg;
+	// 	float t_last_end = t_end;//t_last.y;
+	// 	float t_last_start = t_start;//t_last.x;
+	// 	float rayDist = t_last_end - t_last_start;
+
+	// 	float probeStepSize = rayDist / float(gl_SubGroupSizeARB);
+	// 	float t_probe = t_last_start + probeStepSize;
+
+	// 	vec3 p_probe = viewPos + rayDir * t_probe;
+
+	// 	CloudWeather weather_probe = computeCloudWeather(p_probe, props, 2.0);
+	// 	CloudLayer layer_probe = computeCloudLayer(weather_probe, props);
+	// 	float d3d_probe = getCloud3DSDF(p_probe, weather_probe, layer_probe, props.worldScale);
+
+	// 	uint64_t probe_check = ballotARB(d3d_probe <= 0.0);
+	// 	uvec2 fields = unpackUint2x32(probe_check);
+
+	// 	int low_lsb  = findLSB(fields.x);
+	// 	int high_lsb = findLSB(fields.y);
+	// 	int first_active_lane = (low_lsb != -1) ? low_lsb : ((high_lsb != -1) ? (high_lsb + 32) : -1);
+
+	// 	if (first_active_lane > -1) {
+	// 		float safe_step_multiplier = float(max(0, first_active_lane - 1));
+	// 		probeStepSize = pow(t_last_end/t_last_start, float(safe_step_multiplier)/float(gl_SubGroupSizeARB));
+	// 		t_start += safe_step_multiplier * probeStepSize + baseStepSize * jitter;
+	// 	} else {
+	// 		t_start = t_end;
+	// 	}
+	// }
+
+
+// if (t_start < t_end) {
+// 	vec2 t_last = texture(uHistoryDepth, vec2(packedPixel)).rg;
+// 	// float t_last_end = min(max(1.0, t_last.y), t_end);
+// 	float t_last_end = mix(t_end, t_last.y, fract(sin(t_end * jitter)));
+
+// 	t_start = mix(t_start, t_last.x, jitter);
+//     float rayDist = t_last_end - t_start;
+
+//     // 1. Calculate normalized lane fraction (0.0 to 1.0)
+//     float fraction = float(gl_SubGroupInvocationARB) / float(gl_SubGroupSizeARB);
+
+//     // 2. Curve the fraction to front-load probes.
+//     // fraction^2 or fraction^3 pushes smaller steps to the front, larger to the back.
+//     float curvedFraction = fraction * fraction;
+
+//     // 3. Apply the curved fraction to the total distance
+//     float t_probe = t_start + rayDist * curvedFraction;
+//     vec3 p_probe = viewPos + rayDir * t_probe;
+
+//     CloudWeather weather_probe = computeCloudWeather(p_probe, props, 2.0);
+//     CloudLayer layer_probe = computeCloudLayer(weather_probe, props);
+//     float d3d_probe = getCloud3DSDF(p_probe, weather_probe, layer_probe, props.worldScale);
+
+//     uint64_t probe_check = ballotARB(d3d_probe <= 0.0);
+//     uvec2 fields = unpackUint2x32(probe_check);
+
+//     int low_lsb  = findLSB(fields.x);
+//     int high_lsb = findLSB(fields.y);
+//     int first_active_lane = (low_lsb != -1) ? low_lsb : ((high_lsb != -1) ? (high_lsb + 32) : -1);
+
+//     if (first_active_lane > -1) {
+//         // 4. Recover the exact t_probe distance of the safe lane
+//         float safe_lane = float(max(0, first_active_lane - 1));
+//         float safe_fraction = safe_lane / float(gl_SubGroupSizeARB);
+//         float safe_curved = safe_fraction * safe_fraction;
+
+//         // Directly assign the calculated distance, do not construct additive steps
+//         t_start = t_start + rayDist * safe_curved;
+//     } else {
+//         t_start = t_end;
+//     }
+// }
+
 
 	if (t_start < t_end) {
 		vec3 lightEnergy = vec3(0.0);
@@ -445,29 +521,6 @@ void main() {
 		vec3 skySH     = evalSHIrradianceSpatial(probePos, vec3(0.0, 1.0, 0.0));
 		vec3 horizonSH = evalSHIrradianceSpatial(probePos, normalize(vec3(primaryLightDir.x, 0.15, primaryLightDir.z)));
 		vec3 groundSH  = evalSHIrradianceSpatial(probePos, vec3(0.0, -1.0, 0.0));
-
-		float t_probe = t + gl_SubGroupInvocationARB * baseStepSize;
-		vec3 p_probe = viewPos + rayDir * t;
-		CloudWeather weather_probe = computeCloudWeather(p_probe, props, 8.0);
-		CloudLayer layer_probe = computeCloudLayer(weather_probe, props);
-		float d3d_probe = getCloud3DSDF(p_probe, weather_probe, layer_probe, props.worldScale);
-		uint64_t probe_check = ballotARB(d3d_probe <= 0.0);
-		uvec2 fields = unpackUint2x32(probe_check);
-		uint id_check;
-		int offset = -1;
-
-		if (fields.y > 0) {
-			offset = findLSB(fields.y);
-		}
-		else if (fields.x > 0) {
-			offset = findLSB(fields.x);
-			offset += 32;
-		}
-
-		if (offset > -1) {
-			t += (offset-1) * baseStepSize;
-			magic_stepping = offset * baseStepSize;
-		}
 
 
 		for (int i = 0; i < MAX_ITERATIONS; i++) {
@@ -634,6 +687,7 @@ void main() {
 	vec4 finalColor = vec4(cloudColor, dot(cloudTransmittance, vec3(0.3333)));
 	// vec4 finalColor = vec4(mix(vec3(0,10,0), vec3(10,0,0), smoothstep(0, 100, magic_stepping)), 0.0);
 	// vec4 finalColor = vec4(mix(vec3(0,10,0), vec3(10,0,0), smoothstep(0, 100, steps)), 0.0);
+	// vec4 finalColor = vec4(magic_stepping * 100, 0.0, 0, 0);
 	vec4 finalDepth;
 	vec2 finalVelocity;
 
