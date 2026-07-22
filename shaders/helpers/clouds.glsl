@@ -502,7 +502,14 @@ CloudSpotDetails calculateCloudDensityExpV9(
 	float           time,
 	float            simplified
 ) {
-	float h = (p.y - layer.baseFloor) / layer.thickness;
+	float altitudeShift = weather.heightMap * layer.thickness;
+	float actualThickness = weather.thickness * layer.thickness;
+	float localFloor = layer.baseFloor + altitudeShift;
+
+	// h is normalized over the actual local cloud thickness to correctly apply the height gradient and wind shear
+	float altitude = getCurvedAltitude(p);
+	float h = clamp((altitude - localFloor) / max(actualThickness, 0.001), 0.0, 1.0);
+
 	vec3 advectSpeed = getCloudAdvectionSpeed(h, time);
 	float type = weather.heightMap;
 	float heightGradient = getDensityHeightGradient(h, type);
