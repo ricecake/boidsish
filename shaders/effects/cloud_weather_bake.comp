@@ -53,7 +53,8 @@ void main() {
 	VoronoiData vd = sdVoronoiFbm(p.xz / (cellRange), 2.0, 3.0, regionalCoverage, vec2(10.0));
 	VoronoiData vd2 = sdVoronoiFbm(p.xz / (cellRange), 3.0, 5.0, regionalCoverage, vec2(10.0));
 
-	float altitudeMap = clamp(-vd.dist, 0.0, 1.0);
+	// Use continuous slow regional noise for altitudeMap to avoid droopy mushroom caps at individual cloud edges
+	float altitudeMap = clamp(slowNoise, 0.0, 1.0);
 
 	// Fix coordinate scaling bug by using the Voronoi FBM distance directly with a robust scaling factor
 	float thicknessMap = clamp(-vd2.dist * 2.0, 0.0, 1.0);
