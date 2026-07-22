@@ -14,6 +14,7 @@
 #include "post_processing/effects/BloomEffect.h"
 #include "post_processing/effects/FilmGrainEffect.h"
 #include "ui/ProfilerWidget.h"
+#include "ui/SpaceProbeWidget.h"
 
 namespace Boidsish {
 	namespace UI {
@@ -373,6 +374,14 @@ namespace Boidsish {
 						bool show_profiler = profiler_widget->IsVisible();
 						if (ImGui::Checkbox("Show Profiler", &show_profiler)) {
 							profiler_widget->SetVisible(show_profiler);
+						}
+					}
+
+					auto probe_widget = m_visualizer.GetUIConfigManager().GetWidget<SpaceProbeWidget>();
+					if (probe_widget) {
+						bool show_probe = probe_widget->IsVisible();
+						if (ImGui::Checkbox("Show Space Probe Menu", &show_probe)) {
+							probe_widget->SetVisible(show_probe);
 						}
 					}
 

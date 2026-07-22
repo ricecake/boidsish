@@ -1,4 +1,5 @@
 #include "graphics.h"
+#include "SpaceProbeManager.h"
 #include <stacktrace> // Requires C++23
 #include <algorithm>
 #include <array>
@@ -409,6 +410,7 @@ namespace Boidsish {
 		std::shared_ptr<SceneManager>                     scene_manager;
 		std::shared_ptr<DecorManager>                     decor_manager;
 		std::shared_ptr<GrassManager>                     grass_manager;
+		std::shared_ptr<SpaceProbeManager>                space_probe_manager;
 		std::map<int, std::shared_ptr<Trail>>             trails;
 		std::map<int, float>                              trail_last_update;
 		std::shared_ptr<LightManager>                     light_manager;
@@ -816,6 +818,7 @@ namespace Boidsish {
 			ServiceLocator::SetInstance(&service_locator_);
 			GpuResourceRegistry::SetInstance(&gpu_resources_);
 			RegisterManagers();
+			space_probe_manager = std::make_shared<SpaceProbeManager>();
 
 			hiz_manager = service_locator_.Get<HiZManager>();
 			noise_manager = service_locator_.Get<NoiseManager>();
@@ -2675,6 +2678,17 @@ namespace Boidsish {
 					terrain_render_manager
 				);
 			}
+
+			if (space_probe_manager) {
+				space_probe_manager->Update(
+					simulation_delta_time,
+					render_state_,
+					atmosphere_manager.get(),
+					terrain_render_manager.get(),
+					shadow_manager.get(),
+					light_manager.get()
+				);
+			}
 		}
 
 		void AssignLightsToClusters() {
@@ -2881,6 +2895,18 @@ namespace Boidsish {
 
 			if (transparent_pass_) {
 				transparent_pass_->Execute(frame, MakeRenderCallbacks(frame));
+			}
+
+			if (space_probe_manager) {
+				space_probe_manager->Render(
+					render_state_,
+					compositor_->GetDepthTexture(),
+					blur_quad_vao,
+					shadow_manager.get(),
+					light_manager.get(),
+					atmosphere_manager.get(),
+					terrain_render_manager.get()
+				);
 			}
 		}
 
@@ -4627,6 +4653,10 @@ namespace Boidsish {
 
 	PostProcessing::PostProcessingManager& Visualizer::GetPostProcessingManager() {
 		return *impl->post_processing_manager_;
+	}
+
+	std::shared_ptr<SpaceProbeManager> Visualizer::GetSpaceProbeManager() const {
+		return impl->space_probe_manager;
 	}
 
 	float Visualizer::GetLastFrameTime() const {
