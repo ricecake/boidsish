@@ -95,9 +95,9 @@ void main() {
 		// }
 	}
 
-	// Guided Upsampling for LTM (Scene only)
-	if (layers[0].ltmEnabled != 0 && isSky == 0) {
-		float exposure = layers[0].targetLuminance / max(layers[0].avgLuma, 0.0001);
+	// Guided Upsampling for LTM
+	if (layers[isSky].ltmEnabled != 0) {
+		float exposure = layers[isSky].targetLuminance / max(layers[isSky].avgLuma, 0.0001);
 		vec3 currentExposure = result * exposure;
 		vec3 currentAces = aces(currentExposure);
 		float guidanceLuma = sqrt(max(dot(currentAces, vec3(0.2126, 0.7152, 0.0722)), 0.0));

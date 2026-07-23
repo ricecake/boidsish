@@ -285,10 +285,11 @@ namespace Boidsish {
 			}
 
 			// 2.5 LTM Fusion
-			if (_sceneSettings.ltmEnabled) {
+			if (_sceneSettings.ltmEnabled || _skySettings.ltmEnabled) {
 				_ltmFuseComputeShader->use();
 				_ltmFuseComputeShader->setInt("expTexture", 0);
 				_ltmFuseComputeShader->setInt("wgtTexture", 1);
+				_ltmFuseComputeShader->setInt("depthTexture", 3);
 				_ltmFuseComputeShader->setInt("startMip", _numMips - 1);
 				_ltmFuseComputeShader->setInt("endMip", 0);
 
@@ -297,12 +298,16 @@ namespace Boidsish {
 				glActiveTexture(GL_TEXTURE1);
 				glBindTexture(GL_TEXTURE_2D, _ltmWgtTexture);
 				glBindImageTexture(2, _ltmFusedTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R16F);
+				glActiveTexture(GL_TEXTURE3);
+				glBindTexture(GL_TEXTURE_2D, depthTexture);
 
 				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::AutoExposure(), _exposureSsbo);
 
 				_ltmFuseComputeShader->dispatch(groupsX, groupsY, 1);
 				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
 				glBindImageTexture(2, 0, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R16F);
+				glActiveTexture(GL_TEXTURE3);
+				glBindTexture(GL_TEXTURE_2D, 0);
 			}
 
 			// 3. Progressive upsample and accumulate

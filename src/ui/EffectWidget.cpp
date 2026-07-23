@@ -318,19 +318,17 @@ namespace Boidsish {
 												ImGui::SliderFloat("Temperature (K)", &settings.whiteTemp, 2000.0f, 12000.0f);
 												ImGui::SliderFloat("Tint", &settings.whiteTint, -1.0f, 1.0f);
 
-												if (isScene) {
-													ImGui::Separator();
-													ImGui::Text("Local Tone Mapping (Exposure Fusion)");
-													ImGui::Checkbox("Enable LTM", &settings.ltmEnabled);
-													if (settings.ltmEnabled) {
-														ImGui::SliderFloat("EV Spread", &settings.ltmEvSpread, 0.0f, 4.0f);
-														ImGui::SliderFloat("Well Exposed Target", &settings.ltmTarget, 0.0f, 1.0f);
-														ImGui::SliderFloat("Well Exposed Sigma", &settings.ltmSigma, 0.01f, 1.0f);
-														ImGui::SliderFloat("Weight Contrast", &settings.ltmWeightContrast, 0.0f, 1.0f);
-														ImGui::SliderFloat("Weight Saturation", &settings.ltmWeightSaturation, 0.0f, 1.0f);
-														ImGui::SliderFloat("Weight Exposedness", &settings.ltmWeightExposedness, 0.0f, 1.0f);
-														ImGui::SliderFloat("Boost Local Contrast", &settings.ltmBoostLocalContrast, 0.0f, 2.0f);
-													}
+												ImGui::Separator();
+												ImGui::Text("Local Tone Mapping (Exposure Fusion)");
+												ImGui::Checkbox("Enable LTM", &settings.ltmEnabled);
+												if (settings.ltmEnabled) {
+													ImGui::SliderFloat("EV Spread", &settings.ltmEvSpread, 0.0f, 4.0f);
+													ImGui::SliderFloat("Well Exposed Target", &settings.ltmTarget, 0.0f, 1.0f);
+													ImGui::SliderFloat("Well Exposed Sigma", &settings.ltmSigma, 0.01f, 1.0f);
+													ImGui::SliderFloat("Weight Contrast", &settings.ltmWeightContrast, 0.0f, 1.0f);
+													ImGui::SliderFloat("Weight Saturation", &settings.ltmWeightSaturation, 0.0f, 1.0f);
+													ImGui::SliderFloat("Weight Exposedness", &settings.ltmWeightExposedness, 0.0f, 1.0f);
+													ImGui::SliderFloat("Boost Local Contrast", &settings.ltmBoostLocalContrast, 0.0f, 2.0f);
 												}
 												ImGui::TreePop();
 											}

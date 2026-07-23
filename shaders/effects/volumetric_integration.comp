@@ -20,37 +20,42 @@ void main() {
     if (xy.x >= u_grid_res.x || xy.y >= u_grid_res.y) return;
 
     int idx = int(gl_LocalInvocationID.x);
-    if (idx >= u_grid_res.z * NUM_CASCADES) return;
+    bool valid = (idx < u_grid_res.z * NUM_CASCADES);
 
-    ivec3 vox = ivec3(xy, idx);
+    s_scat[idx] = vec3(0.0);
+    s_trans[idx] = 1.0;
 
-    // 1. Load data and compute local scattering/transmittance
-    vec4 data = imageLoad(inInjection, vox);
-    if (any(isnan(data))) data = vec4(0.0);
+    if (valid) {
+        ivec3 vox = ivec3(xy, idx);
 
-    // Optionally store 3D history (only if 3D accumulation is enabled)
-    if (uStore3DHistory) {
-        imageStore(outHistory, vox, data);
+        // 1. Load data and compute local scattering/transmittance
+        vec4 data = imageLoad(inInjection, vox);
+        if (any(isnan(data))) data = vec4(0.0);
+
+        // Optionally store 3D history (only if 3D accumulation is enabled)
+        if (uStore3DHistory) {
+            imageStore(outHistory, vox, data);
+        }
+
+        vec3 scattering = max(vec3(0.0), data.rgb);
+        float extinction = max(0.0, data.a);
+
+        int cascade = idx / u_grid_res.z;
+        int z = idx % u_grid_res.z;
+
+        float z_near = (cascade == 0) ? 0.1 : CASCADE_DISTANCES[cascade - 1];
+        float z_far = CASCADE_DISTANCES[cascade];
+
+        float z0 = z_near * pow(z_far / z_near, float(z) / float(u_grid_res.z));
+        float z1 = z_near * pow(z_far / z_near, float(z + 1) / float(u_grid_res.z));
+        float stepSize = z1 - z0;
+
+        float transmittance = exp(-extinction * stepSize);
+        float factor = (extinction > 0.00001) ? (1.0 - transmittance) / extinction : stepSize;
+
+        s_scat[idx] = scattering * factor;
+        s_trans[idx] = transmittance;
     }
-
-    vec3 scattering = max(vec3(0.0), data.rgb);
-    float extinction = max(0.0, data.a);
-
-    int cascade = idx / u_grid_res.z;
-    int z = idx % u_grid_res.z;
-
-    float z_near = (cascade == 0) ? 0.1 : CASCADE_DISTANCES[cascade - 1];
-    float z_far = CASCADE_DISTANCES[cascade];
-
-    float z0 = z_near * pow(z_far / z_near, float(z) / float(u_grid_res.z));
-    float z1 = z_near * pow(z_far / z_near, float(z + 1) / float(u_grid_res.z));
-    float stepSize = z1 - z0;
-
-    float transmittance = exp(-extinction * stepSize);
-    float factor = (extinction > 0.00001) ? (1.0 - transmittance) / extinction : stepSize;
-
-    s_scat[idx] = scattering * factor;
-    s_trans[idx] = transmittance;
 
     barrier();
 
@@ -76,11 +81,14 @@ void main() {
         barrier();
     }
 
-    // 3. Final safety check and store
-    vec3 finalScat = s_scat[idx];
-    float finalTrans = clamp(s_trans[idx], 0.0, 1.0);
+    if (valid) {
+        ivec3 vox = ivec3(xy, idx);
+        // 3. Final safety check and store
+        vec3 finalScat = s_scat[idx];
+        float finalTrans = clamp(s_trans[idx], 0.0, 1.0);
 
-    if (any(isnan(finalScat))) finalScat = vec3(0.0);
+        if (any(isnan(finalScat))) finalScat = vec3(0.0);
 
-    imageStore(outScattering, vox, vec4(finalScat, finalTrans));
+        imageStore(outScattering, vox, vec4(finalScat, finalTrans));
+    }
 }
