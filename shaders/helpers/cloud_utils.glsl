@@ -82,7 +82,8 @@ AnalyticalCloud getAnalyticalCloud3D(vec3 p, CloudProperties props) {
 	float L = (100000.0 * props.worldScale) / uCloudVolumeTiles;
 	float H = 2.0 * props.thickness * props.worldScale;
 
-	float sdf_horizontal = cell_sdf * L;
+	// Divide cell_sdf by freq to scale Worley cell distance to normalized [0, 1] coords
+	float sdf_horizontal = (cell_sdf / freq) * L;
 	float sdf_vertical = dist_y * H;
 
 	// Combined 3D SDF in meters
@@ -575,10 +576,6 @@ float getCloud3DSDF(vec3 p, CloudWeather weather, CloudLayer layer, float worldS
 	float centerY = baseFloor + layerThickness;
 	float halfHeight = layerThickness;
 	float distY = abs(altitude - centerY) - halfHeight;
-
-	if (distY > 100.0 * props.worldScale) {
-		return distY;
-	}
 
 	float h = (altitude - baseFloor) / max(2.0 * layerThickness, 0.001);
 	vec3 advect = getCloudAdvectionOffset(h, time);
