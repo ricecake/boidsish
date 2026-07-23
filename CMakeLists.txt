@@ -7,6 +7,15 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS ON) # Corresponds to -std=gnu++23
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# include(CheckIPOSupported)
+# check_ipo_supported(RESULT ipo_supported OUTPUT error)
+
+# if(ipo_supported)
+#     set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
+# else()
+#     message(STATUS "LTO/IPO is not supported: ${error}")
+# endif()
+
 # Get the current git hash and branch
 execute_process(
     COMMAND git rev-parse --abbrev-ref HEAD
@@ -113,6 +122,9 @@ file(GLOB_RECURSE LIB_SOURCES "src/*.cpp")
 add_library(boidsish ${BOIDSISH_LIB_TYPE} ${LIB_SOURCES})
 target_compile_definitions(boidsish PUBLIC GLM_ENABLE_EXPERIMENTAL)
 target_compile_definitions(boidsish PUBLIC BOIDSISH_BUILD_DIR="${CMAKE_BINARY_DIR}")
+
+target_compile_options(boidsish PRIVATE -march=native -ffast-math)
+
 
 target_include_directories(boidsish
     PUBLIC
