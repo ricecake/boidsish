@@ -38,7 +38,7 @@ shared vec3 s_ltmWgt[16][16];
 
 // Constants for histogram
 const float MIN_LOG_LUMA = -10.0;
-const float MAX_LOG_LUMA = 2.0;
+const float MAX_LOG_LUMA = 14.0; // Expanded to perfectly cover up to 100k+ lux physical light levels
 
 // Calculates a safe multiplier to prevent sky luminance from blowing out the Uchimura shoulder
 float calculateSkyAttenuation(vec3 rawHdrColor, float uchimuraM, float uchimuraL, float rolloffStrength) {
@@ -282,21 +282,33 @@ void main() {
 		bloomColor /= 10.0;
 
 		// 2. Exposure
-		float exposure = layers[isSky].targetLuminance / max(layers[isSky].adaptedLuminance, 0.0001);
-		exposure = clamp(exposure, layers[isSky].minExposure, layers[isSky].maxExposure);
+		float exposure = 1.0;
 		if (layers[isSky].useAutoExposure != 0) {
+			exposure = layers[isSky].targetLuminance / max(layers[isSky].adaptedLuminance, 0.0001);
+			exposure = clamp(exposure, layers[isSky].minExposure, layers[isSky].maxExposure);
+
 			if (isSky == 1) {
 				float attenuation = calculateSkyAttenuation(bloomColor * exposure, layers[1].autoUchimuraM, layers[1].autoUchimuraL, 1.20);
 				float mask = smoothstep(-3.14 * 0.125, 0.5*1.5707, asin(worldDir.y));
 				attenuation = mix(attenuation, 1.0, mask);
 				exposure *= attenuation;
 			}
-
-			bloomColor *= exposure;
+		} else {
+			exposure = (layers[isSky].iso / 100.0) * (1.0 / (layers[isSky].aperture * layers[isSky].aperture)) * layers[isSky].exposureTime;
 		}
 
+		bloomColor *= exposure;
+
 		// Apply Bright Pass Threshold relative to scene exposure (layer 0)
-		float effectiveThreshold = threshold / max(exposure, 0.0001);
+		float sceneExposure = 1.0;
+		if (layers[0].useAutoExposure != 0) {
+			sceneExposure = layers[0].targetLuminance / max(layers[0].adaptedLuminance, 0.0001);
+			sceneExposure = clamp(sceneExposure, layers[0].minExposure, layers[0].maxExposure);
+		} else {
+			sceneExposure = (layers[0].iso / 100.0) * (1.0 / (layers[0].aperture * layers[0].aperture)) * layers[0].exposureTime;
+		}
+
+		float effectiveThreshold = threshold / max(sceneExposure, 0.0001);
 		float brightness = dot(bloomColor, vec3(0.2126, 0.7152, 0.0722));
 		if (brightness <= effectiveThreshold) {
 			bloomColor = vec3(0.0);

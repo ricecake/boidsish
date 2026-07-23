@@ -140,8 +140,12 @@ void main() {
 
     float primaryShadow;
     vec4 litColor = apply_lighting_foliage(fWorldPos, N, albedo, roughness, 0.0, ao, primaryShadow);
-    litColor = min(litColor, vec4(highlight, litColor.a));
-    litColor.rgb = clamp(litColor.rgb, 0.0, 5.0); // Clamp HDR to prevent "bright white" blowouts
+    float scaleFactor = 1.0;
+    if (num_lights > 0) {
+        scaleFactor = max(1.0, lights[0].intensity / 10.0);
+    }
+    litColor = min(litColor, vec4(highlight * scaleFactor, litColor.a));
+    litColor.rgb = clamp(litColor.rgb, 0.0, 5.0 * scaleFactor); // Clamp HDR to prevent "bright white" blowouts scaled to physical units
 
     // Distance fade and distant cyan blend (matching terrain style)
     float fade_start = 560.0 * worldScale;

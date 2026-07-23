@@ -118,8 +118,10 @@ namespace Boidsish {
 				auto setupLayer = [&](int idx, const LayerSettings& settings) {
 					initialData.layers[idx].adaptedLuminance = 0.3f;
 					initialData.layers[idx].targetLuminance = settings.targetLuminance;
-					initialData.layers[idx].minExposure = settings.minExposure;
-					initialData.layers[idx].maxExposure = settings.maxExposure;
+					float initMinExp = settings.targetLuminance / (1.2f * std::pow(2.0f, settings.maxEV100));
+					float initMaxExp = settings.targetLuminance / (1.2f * std::pow(2.0f, settings.minEV100));
+					initialData.layers[idx].minExposure = initMinExp;
+					initialData.layers[idx].maxExposure = initMaxExp;
 					initialData.layers[idx].useAutoExposure = settings.autoExposureEnabled ? 1 : 0;
 					initialData.layers[idx].centerWeightTightness = settings.centerWeightTightness;
 					initialData.layers[idx].focusPoint = settings.focusPoint;
@@ -149,6 +151,9 @@ namespace Boidsish {
 
 					initialData.layers[idx].whiteTemp = settings.whiteTemp;
 					initialData.layers[idx].whiteTint = settings.whiteTint;
+					initialData.layers[idx].aperture = settings.aperture;
+					initialData.layers[idx].exposureTime = settings.exposureTime;
+					initialData.layers[idx].iso = settings.iso;
 
 					initialData.layers[idx].ltmEnabled = settings.ltmEnabled ? 1 : 0;
 					initialData.layers[idx].ltmEvSpread = settings.ltmEvSpread;
@@ -181,12 +186,14 @@ namespace Boidsish {
 			glBindBuffer(GL_SHADER_STORAGE_BUFFER, _exposureSsbo);
 			auto updateLayer = [&](int idx, const LayerSettings& settings) {
 				float actualTarget = settings.targetLuminance * (idx == 0 ? (1.0f - _nightFactor * 0.5f) : 1.0f);
-				float actualMax = settings.maxExposure * (idx == 0 ? (1.0f - _nightFactor * 0.4f) : 1.0f);
+
+				float calculatedMinExposure = actualTarget / (1.2f * std::pow(2.0f, settings.maxEV100));
+				float calculatedMaxExposure = actualTarget / (1.2f * std::pow(2.0f, settings.minEV100));
 
 				size_t offset = idx * sizeof(LayerData);
 				glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset + offsetof(LayerData, targetLuminance), sizeof(float), &actualTarget);
-				glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset + offsetof(LayerData, minExposure), sizeof(float), &settings.minExposure);
-				glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset + offsetof(LayerData, maxExposure), sizeof(float), &actualMax);
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset + offsetof(LayerData, minExposure), sizeof(float), &calculatedMinExposure);
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset + offsetof(LayerData, maxExposure), sizeof(float), &calculatedMaxExposure);
 				int enabled = settings.autoExposureEnabled ? 1 : 0;
 				glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset + offsetof(LayerData, useAutoExposure), sizeof(int), &enabled);
 				glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset + offsetof(LayerData, centerWeightTightness), sizeof(float), &settings.centerWeightTightness);
@@ -222,6 +229,9 @@ namespace Boidsish {
 
 				glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset + offsetof(LayerData, whiteTemp), sizeof(float), &settings.whiteTemp);
 				glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset + offsetof(LayerData, whiteTint), sizeof(float), &settings.whiteTint);
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset + offsetof(LayerData, aperture), sizeof(float), &settings.aperture);
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset + offsetof(LayerData, exposureTime), sizeof(float), &settings.exposureTime);
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset + offsetof(LayerData, iso), sizeof(float), &settings.iso);
 
 				int ltmEnabled = settings.ltmEnabled ? 1 : 0;
 				glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset + offsetof(LayerData, ltmEnabled), sizeof(int), &ltmEnabled);
@@ -296,35 +306,37 @@ namespace Boidsish {
 			}
 
 			// 3. Progressive upsample and accumulate
-			_upsampleShader->use();
-			_upsampleShader->setFloat("filterRadius", 1.0f);
+			if (_bloomEnabled) {
+				_upsampleShader->use();
+				_upsampleShader->setFloat("filterRadius", 1.0f);
 
-			glEnable(GL_BLEND);
-			glBlendFunc(GL_ONE, GL_ONE);
-			glBlendEquation(GL_FUNC_ADD);
+				glEnable(GL_BLEND);
+				glBlendFunc(GL_ONE, GL_ONE);
+				glBlendEquation(GL_FUNC_ADD);
 
-			for (int i = _numMips - 1; i > 0; i--) {
-				int srcMip = i;
-				int dstMip = i - 1;
+				for (int i = _numMips - 1; i > 0; i--) {
+					int srcMip = i;
+					int dstMip = i - 1;
 
-				int dstWidth = (_width / 2) >> dstMip;
-				int dstHeight = (_height / 2) >> dstMip;
-				int srcWidth = (_width / 2) >> srcMip;
-				int srcHeight = (_height / 2) >> srcMip;
+					int dstWidth = (_width / 2) >> dstMip;
+					int dstHeight = (_height / 2) >> dstMip;
+					int srcWidth = (_width / 2) >> srcMip;
+					int srcHeight = (_height / 2) >> srcMip;
 
-				glBindFramebuffer(GL_FRAMEBUFFER, _upsampleFBOs[dstMip]);
-				glViewport(0, 0, dstWidth, dstHeight);
+					glBindFramebuffer(GL_FRAMEBUFFER, _upsampleFBOs[dstMip]);
+					glViewport(0, 0, dstWidth, dstHeight);
 
-				_upsampleShader->setVec2("srcResolution", (float)srcWidth, (float)srcHeight);
+					_upsampleShader->setVec2("srcResolution", (float)srcWidth, (float)srcHeight);
 
-				glActiveTexture(GL_TEXTURE0);
-				glBindTexture(GL_TEXTURE_2D, _bloomTexture);
-				_upsampleShader->setFloat("srcLod", (float)srcMip);
+					glActiveTexture(GL_TEXTURE0);
+					glBindTexture(GL_TEXTURE_2D, _bloomTexture);
+					_upsampleShader->setFloat("srcLod", (float)srcMip);
 
-				glDrawArrays(GL_TRIANGLES, 0, 6);
+					glDrawArrays(GL_TRIANGLES, 0, 6);
+				}
+
+				glDisable(GL_BLEND);
 			}
-
-			glDisable(GL_BLEND);
 
 			// 4. Final composite with scene and integrated tonemapping
 			glBindFramebuffer(GL_FRAMEBUFFER, originalFBO);
@@ -341,6 +353,8 @@ namespace Boidsish {
 			_compositeShader->setFloat("maxIntensity", maxIntensity_);
 			_compositeShader->setMat4("invView", glm::inverse(viewMatrix));
 			_compositeShader->setMat4("invProjection", glm::inverse(projectionMatrix));
+			_compositeShader->setFloat("gamma", _sceneSettings.gamma);
+			_compositeShader->setBool("uBloomEnabled", _bloomEnabled);
 
 
 			_compositeShader->setFloat("farPlane", Constants::Project::Camera::DefaultFarPlane());
