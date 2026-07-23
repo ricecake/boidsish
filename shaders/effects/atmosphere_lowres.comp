@@ -579,7 +579,8 @@ void main() {
 
 			// 1. Outside Cloud Volume: Skip empty space using sphere tracing (precomputed 3D SDF)
 			if (d3d > 0.0) {
-				t += max(baseStepSize, d3d);
+				float skipStep = min(2000.0 * props.worldScale, max(baseStepSize, d3d * 0.4));
+				t += skipStep;
 				t = min(t_end, t);
 
 				prevDensity = vec3(0.0);
