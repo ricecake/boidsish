@@ -26,6 +26,9 @@ namespace Boidsish {
 				float speedUp = 3.0f;
 				float speedDown = 1.0f;
 
+				float minEV100 = -10.0f;
+				float maxEV100 = 20.0f;
+
 				float centerWeightTightness = 4.0f;
 				glm::vec2 focusPoint = glm::vec2(0.5f, 0.5f);
 				float histogramLowCutoff = 0.1f;

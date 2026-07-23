@@ -269,8 +269,8 @@ namespace Boidsish {
 												ImGui::SliderFloat("Screen Brightness (Key Value)", &settings.targetLuminance, 0.01f, 1.0f);
 												ImGui::SliderFloat("Speed Up", &settings.speedUp, 0.1f, 10.0f);
 												ImGui::SliderFloat("Speed Down", &settings.speedDown, 0.1f, 10.0f);
-												ImGui::SliderFloat("Min Exposure", &settings.minExposure, 1e-7f, 1.0f, "%.7f");
-												ImGui::SliderFloat("Max Exposure", &settings.maxExposure, 1.0f, 1000.0f, "%.1f");
+												ImGui::SliderFloat("Min EV100", &settings.minEV100, -20.0f, 20.0f, "%.1f");
+												ImGui::SliderFloat("Max EV100", &settings.maxEV100, -20.0f, 20.0f, "%.1f");
 												ImGui::SliderFloat("Center Weight", &settings.centerWeightTightness, 0.0f, 10.0f);
 												ImGui::SliderFloat2("Focus Point", &settings.focusPoint.x, 0.0f, 1.0f);
 												ImGui::SliderFloat("Histogram Low Cutoff", &settings.histogramLowCutoff, 0.0f, 1.0f);

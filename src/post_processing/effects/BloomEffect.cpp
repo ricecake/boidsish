@@ -118,8 +118,10 @@ namespace Boidsish {
 				auto setupLayer = [&](int idx, const LayerSettings& settings) {
 					initialData.layers[idx].adaptedLuminance = 0.3f;
 					initialData.layers[idx].targetLuminance = settings.targetLuminance;
-					initialData.layers[idx].minExposure = settings.minExposure;
-					initialData.layers[idx].maxExposure = settings.maxExposure;
+					float initMinExp = settings.targetLuminance / (1.2f * std::pow(2.0f, settings.maxEV100));
+					float initMaxExp = settings.targetLuminance / (1.2f * std::pow(2.0f, settings.minEV100));
+					initialData.layers[idx].minExposure = initMinExp;
+					initialData.layers[idx].maxExposure = initMaxExp;
 					initialData.layers[idx].useAutoExposure = settings.autoExposureEnabled ? 1 : 0;
 					initialData.layers[idx].centerWeightTightness = settings.centerWeightTightness;
 					initialData.layers[idx].focusPoint = settings.focusPoint;
@@ -184,12 +186,14 @@ namespace Boidsish {
 			glBindBuffer(GL_SHADER_STORAGE_BUFFER, _exposureSsbo);
 			auto updateLayer = [&](int idx, const LayerSettings& settings) {
 				float actualTarget = settings.targetLuminance * (idx == 0 ? (1.0f - _nightFactor * 0.5f) : 1.0f);
-				float actualMax = settings.maxExposure * (idx == 0 ? (1.0f - _nightFactor * 0.4f) : 1.0f);
+
+				float calculatedMinExposure = actualTarget / (1.2f * std::pow(2.0f, settings.maxEV100));
+				float calculatedMaxExposure = actualTarget / (1.2f * std::pow(2.0f, settings.minEV100));
 
 				size_t offset = idx * sizeof(LayerData);
 				glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset + offsetof(LayerData, targetLuminance), sizeof(float), &actualTarget);
-				glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset + offsetof(LayerData, minExposure), sizeof(float), &settings.minExposure);
-				glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset + offsetof(LayerData, maxExposure), sizeof(float), &actualMax);
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset + offsetof(LayerData, minExposure), sizeof(float), &calculatedMinExposure);
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset + offsetof(LayerData, maxExposure), sizeof(float), &calculatedMaxExposure);
 				int enabled = settings.autoExposureEnabled ? 1 : 0;
 				glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset + offsetof(LayerData, useAutoExposure), sizeof(int), &enabled);
 				glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset + offsetof(LayerData, centerWeightTightness), sizeof(float), &settings.centerWeightTightness);

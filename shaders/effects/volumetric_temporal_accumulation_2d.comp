@@ -88,8 +88,11 @@ void main() {
     float prevLinearZ = max(0.1, -prevViewPos.z);
     if (prevDepth >= 1.0) prevLinearZ = 1000.0;
 
-    float depthDiff = abs(linearZ - prevLinearZ);
-    float maxAllowedDiff = 0.05 * linearZ + 0.1; // 5% relative tolerance + 0.1m absolute tolerance
+    // Relative depth check clamped to maximum range to prevent off-camera volumetric clipping
+    float clampedZ = min(linearZ, 200.0);
+    float clampedPrevZ = min(prevLinearZ, 200.0);
+    float depthDiff = abs(clampedZ - clampedPrevZ);
+    float maxAllowedDiff = 0.15 * clampedZ + 1.5; // Relaxed tolerance (15% relative + 1.5m absolute)
     if (depthDiff > maxAllowedDiff) {
         imageStore(outAccumulated, pixel, current_vol);
         return;
