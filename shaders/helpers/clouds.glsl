@@ -519,20 +519,20 @@ CloudSpotDetails calculateCloudDensityExpV9(
 	vec3 p_advected = p + advect;
 
 	float baseNoise = 1.0;
-	if (simplified >= 10.0) {
+	// if (simplified >= 10.0) {
 		float baseSdf = getCloud3DSDF(p_advected, weather, layer, props.worldScale);
 		baseNoise = clamp(-baseSdf, 0, 1);
-	}
-	else {
-		vec3 uvw = vec3(
-			p_advected.x / (10000.0 * props.worldScale),
-			h,
-			p_advected.z / (50000.0 * props.worldScale)
-		);
+	// }
+	// else {
+	// 	vec3 uvw = vec3(
+	// 		p_advected.x / (50000.0 * props.worldScale),
+	// 		h,
+	// 		p_advected.z / (50000.0 * props.worldScale)
+	// 	);
 
-		vec4 volSample = textureLod(u_cloud3DTexture, uvw, 0.0);
-		baseNoise = volSample.r;
-	}
+	// 	vec4 volSample = textureLod(u_cloud3DTexture, uvw, 0.0);
+	// 	baseNoise = volSample.r;
+	// }
 
 	baseNoise *= heightGradient;
 
@@ -622,7 +622,7 @@ CloudDensityResult calculateCloudDensity(
 	vec3 advect_3d = time * advectSpeed * 0.75;
 	vec3 p_advected_3d = p + advect_3d;
 	vec3 uvw = vec3(
-		p_advected_3d.x / (10000.0 * props.worldScale),
+		p_advected_3d.x / (50000.0 * props.worldScale),
 		h,
 		p_advected_3d.z / (50000.0 * props.worldScale)
 	);
