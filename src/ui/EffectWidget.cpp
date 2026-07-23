@@ -266,7 +266,7 @@ namespace Boidsish {
 											ImGui::Text("Auto-Exposure");
 											ImGui::Checkbox("Enable AE", &settings.autoExposureEnabled);
 											if (settings.autoExposureEnabled) {
-												ImGui::SliderFloat("Target Luminance", &settings.targetLuminance, 0.01f, 1.0f);
+												ImGui::SliderFloat("Screen Brightness (Key Value)", &settings.targetLuminance, 0.01f, 1.0f);
 												ImGui::SliderFloat("Speed Up", &settings.speedUp, 0.1f, 10.0f);
 												ImGui::SliderFloat("Speed Down", &settings.speedDown, 0.1f, 10.0f);
 												ImGui::SliderFloat("Min Exposure", &settings.minExposure, 1e-7f, 1.0f, "%.7f");

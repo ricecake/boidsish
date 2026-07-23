@@ -128,7 +128,8 @@ void main() {
     }
 
     vec4 result = mix(current_vol, history_vol, activeAlpha);
-    result = clamp(result, vec4(0.0), vec4(1000.0));
+    result.rgb = clamp(result.rgb, vec3(0.0), vec3(1000.0));
+    result.a = clamp(result.a, 0.0, 1.0); // Transmittance must always be in [0, 1] range
 
     imageStore(outAccumulated, pixel, result);
 }

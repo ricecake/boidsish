@@ -38,7 +38,7 @@ shared vec3 s_ltmWgt[16][16];
 
 // Constants for histogram
 const float MIN_LOG_LUMA = -10.0;
-const float MAX_LOG_LUMA = 2.0;
+const float MAX_LOG_LUMA = 14.0; // Expanded to perfectly cover up to 100k+ lux physical light levels
 
 // Calculates a safe multiplier to prevent sky luminance from blowing out the Uchimura shoulder
 float calculateSkyAttenuation(vec3 rawHdrColor, float uchimuraM, float uchimuraL, float rolloffStrength) {
