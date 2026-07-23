@@ -79,9 +79,21 @@ void main() {
     vec4 history_vol = texture(uPrevAccumulated, prevUV);
     if (any(isnan(history_vol))) history_vol = current_vol;
 
-    // 3. Simple depth validation to reduce ghosting
+    // 3. Physical relative depth validation to reduce ghosting
     float prevDepth = texture(uDepthTexture, prevUV).r;
-    if (abs(depth - prevDepth) > 0.01) {
+    float prev_z_ndc = prevDepth * 2.0 - 1.0;
+    vec4 prevClipPos = vec4(prevUV * 2.0 - 1.0, prev_z_ndc, 1.0);
+    vec4 prevViewPos = invProjection * prevClipPos;
+    prevViewPos /= (abs(prevViewPos.w) > 0.0001) ? prevViewPos.w : 1.0;
+    float prevLinearZ = max(0.1, -prevViewPos.z);
+    if (prevDepth >= 1.0) prevLinearZ = 1000.0;
+
+    // Relative depth check clamped to maximum range to prevent off-camera volumetric clipping
+    float clampedZ = min(linearZ, 200.0);
+    float clampedPrevZ = min(prevLinearZ, 200.0);
+    float depthDiff = abs(clampedZ - clampedPrevZ);
+    float maxAllowedDiff = 0.15 * clampedZ + 1.5; // Relaxed tolerance (15% relative + 1.5m absolute)
+    if (depthDiff > maxAllowedDiff) {
         imageStore(outAccumulated, pixel, current_vol);
         return;
     }
@@ -119,7 +131,8 @@ void main() {
     }
 
     vec4 result = mix(current_vol, history_vol, activeAlpha);
-    result = clamp(result, vec4(0.0), vec4(1000.0));
+    result.rgb = clamp(result.rgb, vec3(0.0), vec3(1000.0));
+    result.a = clamp(result.a, 0.0, 1.0); // Transmittance must always be in [0, 1] range
 
     imageStore(outAccumulated, pixel, result);
 }
