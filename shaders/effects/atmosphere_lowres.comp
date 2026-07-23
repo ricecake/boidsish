@@ -577,11 +577,10 @@ void main() {
 
 			float d3d = getCloud3DSDF(p, weather, layer, props.worldScale);
 
-			// 1. Outside Cloud Volume: Skip empty space using sphere tracing (conservative 3D SDF)
-			// if (allInvocationsARB(d3d >= currentStepSize)) {
-			if ((d3d >= currentStepSize)) {
-				float skipSteps = max(1.0, floor(d3d / currentStepSize));
-				t += skipSteps * currentStepSize;
+			// 1. Outside Cloud Volume: Skip empty space using sphere tracing (precomputed 3D SDF)
+			if (d3d > 0.0) {
+				float skipStep = min(2000.0 * props.worldScale, max(baseStepSize, d3d * 0.4));
+				t += skipStep;
 				t = min(t_end, t);
 
 				prevDensity = vec3(0.0);
