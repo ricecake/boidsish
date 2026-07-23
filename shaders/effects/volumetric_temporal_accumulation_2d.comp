@@ -79,9 +79,18 @@ void main() {
     vec4 history_vol = texture(uPrevAccumulated, prevUV);
     if (any(isnan(history_vol))) history_vol = current_vol;
 
-    // 3. Simple depth validation to reduce ghosting
+    // 3. Physical relative depth validation to reduce ghosting
     float prevDepth = texture(uDepthTexture, prevUV).r;
-    if (abs(depth - prevDepth) > 0.01) {
+    float prev_z_ndc = prevDepth * 2.0 - 1.0;
+    vec4 prevClipPos = vec4(prevUV * 2.0 - 1.0, prev_z_ndc, 1.0);
+    vec4 prevViewPos = invProjection * prevClipPos;
+    prevViewPos /= (abs(prevViewPos.w) > 0.0001) ? prevViewPos.w : 1.0;
+    float prevLinearZ = max(0.1, -prevViewPos.z);
+    if (prevDepth >= 1.0) prevLinearZ = 1000.0;
+
+    float depthDiff = abs(linearZ - prevLinearZ);
+    float maxAllowedDiff = 0.05 * linearZ + 0.1; // 5% relative tolerance + 0.1m absolute tolerance
+    if (depthDiff > maxAllowedDiff) {
         imageStore(outAccumulated, pixel, current_vol);
         return;
     }

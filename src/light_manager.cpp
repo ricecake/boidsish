@@ -154,7 +154,7 @@ namespace Boidsish {
 				// The atmosphere LUTs (transmittance) will handle the color and intensity
 				// change naturally. We keep the sun "on" as long as it's not deep below horizon.
 				if (sun_vis > -0.1f) {
-					_lights[0].base_intensity = 10.0f;
+					_lights[0].base_intensity = 100000.0f;
 				} else {
 					_lights[0].base_intensity = 0.0f;
 				}
@@ -174,7 +174,7 @@ namespace Boidsish {
 				const glm::vec3 lunarTint = _cycle.moon_tint;
 
 				// Moon color = sun's full output × albedo × phase × tint
-				glm::vec3 sunFullRadiance = _lights[0].color * 10.0f;
+				glm::vec3 sunFullRadiance = _lights[0].color * 100000.0f;
 				_lights[1].color = sunFullRadiance * lunarAlbedo * phase * lunarTint;
 
 				if (moon_vis > 0.0f) {

@@ -236,21 +236,28 @@ namespace Boidsish {
 						if (effect->GetName() == "Bloom" && is_enabled) {
 							auto bloom_effect = std::dynamic_pointer_cast<PostProcessing::BloomEffect>(effect);
 							if (bloom_effect) {
-								float intensity = bloom_effect->GetIntensity();
-								if (ImGui::SliderFloat("Intensity##Bloom", &intensity, 0.0f, 2.0f)) {
-									bloom_effect->SetIntensity(intensity);
+								bool bloom_enabled = bloom_effect->IsBloomEnabled();
+								if (ImGui::Checkbox("Enable Bloom Blur", &bloom_enabled)) {
+									bloom_effect->SetBloomEnabled(bloom_enabled);
 								}
-								float threshold = bloom_effect->GetThreshold();
-								if (ImGui::SliderFloat("Threshold", &threshold, 0.0f, 3.0f)) {
-									bloom_effect->SetThreshold(threshold);
-								}
-								float min_intensity = bloom_effect->GetMinIntensity();
-								if (ImGui::SliderFloat("Min Intensity (AE)", &min_intensity, 0.0f, 5.0f)) {
-									bloom_effect->SetMinIntensity(min_intensity);
-								}
-								float max_intensity = bloom_effect->GetMaxIntensity();
-								if (ImGui::SliderFloat("Max Intensity (AE)", &max_intensity, 0.0f, 10.0f)) {
-									bloom_effect->SetMaxIntensity(max_intensity);
+
+								if (bloom_enabled) {
+									float intensity = bloom_effect->GetIntensity();
+									if (ImGui::SliderFloat("Intensity##Bloom", &intensity, 0.0f, 2.0f)) {
+										bloom_effect->SetIntensity(intensity);
+									}
+									float threshold = bloom_effect->GetThreshold();
+									if (ImGui::SliderFloat("Threshold", &threshold, 0.0f, 3.0f)) {
+										bloom_effect->SetThreshold(threshold);
+									}
+									float min_intensity = bloom_effect->GetMinIntensity();
+									if (ImGui::SliderFloat("Min Intensity (AE)", &min_intensity, 0.0f, 5.0f)) {
+										bloom_effect->SetMinIntensity(min_intensity);
+									}
+									float max_intensity = bloom_effect->GetMaxIntensity();
+									if (ImGui::SliderFloat("Max Intensity (AE)", &max_intensity, 0.0f, 10.0f)) {
+										bloom_effect->SetMaxIntensity(max_intensity);
+									}
 								}
 
 								if (ImGui::BeginTabBar("BloomTabs")) {
@@ -262,12 +269,16 @@ namespace Boidsish {
 												ImGui::SliderFloat("Target Luminance", &settings.targetLuminance, 0.01f, 1.0f);
 												ImGui::SliderFloat("Speed Up", &settings.speedUp, 0.1f, 10.0f);
 												ImGui::SliderFloat("Speed Down", &settings.speedDown, 0.1f, 10.0f);
-												ImGui::SliderFloat("Min Exposure", &settings.minExposure, 0.01f, 10.0f);
-												ImGui::SliderFloat("Max Exposure", &settings.maxExposure, 1.0f, 100.0f);
+												ImGui::SliderFloat("Min Exposure", &settings.minExposure, 1e-7f, 1.0f, "%.7f");
+												ImGui::SliderFloat("Max Exposure", &settings.maxExposure, 1.0f, 1000.0f, "%.1f");
 												ImGui::SliderFloat("Center Weight", &settings.centerWeightTightness, 0.0f, 10.0f);
 												ImGui::SliderFloat2("Focus Point", &settings.focusPoint.x, 0.0f, 1.0f);
 												ImGui::SliderFloat("Histogram Low Cutoff", &settings.histogramLowCutoff, 0.0f, 1.0f);
 												ImGui::SliderFloat("Histogram High Cutoff", &settings.histogramHighCutoff, 0.0f, 1.0f);
+											} else {
+												ImGui::SliderFloat("Exposure Time (s)", &settings.exposureTime, 0.0001f, 1.0f, "%.4f");
+												ImGui::SliderFloat("ISO", &settings.iso, 10.0f, 6400.0f, "%.0f");
+												ImGui::SliderFloat("Aperture (f-stop)", &settings.aperture, 1.0f, 22.0f, "%.1f");
 											}
 											ImGui::Separator();
 											ImGui::Checkbox("Tone Mapping", &settings.toneMappingEnabled);
@@ -284,6 +295,8 @@ namespace Boidsish {
 													ImGui::SliderFloat("Pedestal (b)", &settings.uchimuraB, 0.0f, 1.0f);
 												}
 											}
+
+											ImGui::SliderFloat("Gamma", &settings.gamma, 1.0f, 3.0f, "%.2f");
 
 											if (ImGui::TreeNode("Color Pipeline")) {
 												ImGui::Checkbox("Enable Auto-tune", &settings.autoTuneEnabled);

@@ -21,8 +21,8 @@ namespace Boidsish {
 
 				bool  autoExposureEnabled = true;
 				float targetLuminance = 0.25f;
-				float minExposure = 0.01f;
-				float maxExposure = 25.0f;
+				float minExposure = 1e-7f;
+				float maxExposure = 1000.0f;
 				float speedUp = 3.0f;
 				float speedDown = 1.0f;
 
@@ -30,6 +30,11 @@ namespace Boidsish {
 				glm::vec2 focusPoint = glm::vec2(0.5f, 0.5f);
 				float histogramLowCutoff = 0.1f;
 				float histogramHighCutoff = 0.95f;
+
+				float exposureTime = 0.008f; // 1/125s default
+				float iso = 100.0f;
+				float aperture = 8.0f;
+				float gamma = 2.2f;
 
 				float uchimuraP = 1.0f;
 				float uchimuraA = 1.0f;
@@ -83,6 +88,9 @@ namespace Boidsish {
 			void SetMaxIntensity(float maxIntensity) { maxIntensity_ = maxIntensity; }
 
 			float GetMaxIntensity() const { return maxIntensity_; }
+
+			void SetBloomEnabled(bool enabled) { _bloomEnabled = enabled; }
+			bool IsBloomEnabled() const { return _bloomEnabled; }
 
 			LayerSettings& GetSceneSettings() { return _sceneSettings; }
 			LayerSettings& GetSkySettings() { return _skySettings; }
@@ -211,8 +219,8 @@ namespace Boidsish {
 				float autoUchimuraL;
 				float autoUchimuraC;
 				float autoUchimuraB;
-				float _pad0;
-				float _pad1;
+				float exposureTime;
+				float iso;
 
 				// Manual Uchimura parameters
 				float uchimuraP;
@@ -233,7 +241,7 @@ namespace Boidsish {
 				// White Balance
 				float whiteTemp;
 				float whiteTint;
-				float _pad2;
+				float aperture;
 
 				// Local Tone Mapping (Exposure Fusion)
 				int   ltmEnabled;
@@ -281,6 +289,7 @@ namespace Boidsish {
 			LayerSettings _sceneSettings;
 			LayerSettings _skySettings = { .targetLuminance = 0.5 };
 
+			bool  _bloomEnabled = true;
 			float _nightFactor = 0.0f;
 			float _lastTime = 0.0f;
 			float _deltaTime = 0.0f;
