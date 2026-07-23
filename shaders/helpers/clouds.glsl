@@ -494,7 +494,10 @@ struct CloudDensityResult {
 	vec3 emissivity;
 };
 
+#ifndef CLOUD_3D_TEXTURE_DEFINED
+#define CLOUD_3D_TEXTURE_DEFINED
 uniform sampler3D u_cloud3DTexture;
+#endif
 
 CloudSpotDetails calculateCloudDensityExpV9(
 	vec3            p,
@@ -587,17 +590,34 @@ CloudDensityResult calculateCloudDensityMinimal(
 	CloudProperties props
 ) {
 	float altitude = getCurvedAltitude(p);
-	float h = clamp((altitude - layer.baseFloor) / max(2.0 * layer.thickness, 0.001), 0.0, 1.0);
+	float baseFloor = props.altitude * props.worldScale;
+	float layerThickness = props.thickness * props.worldScale;
+	float h = clamp((altitude - baseFloor) / max(2.0 * layerThickness, 0.001), 0.0, 1.0);
+
 	vec3 advectSpeed = getCloudAdvectionSpeed(h, time);
 	CloudDensityResult pointDetails = CloudDensityResult(vec3(0.0), advectSpeed, 1.0, vec3(1.0), vec3(0.0));
 
-	if (altitude < layer.baseFloor || altitude > layer.baseCeiling) {
+	if (altitude < baseFloor || altitude > baseFloor + 2.0 * layerThickness) {
 		return pointDetails;
 	}
 
-	CloudSpotDetails res = calculateCloudDensityExpV9(p, weather, layer, props, time, 1000.0);
+	// Map to 3D texture coordinate using advection
+	vec3 advect = time * advectSpeed;
+	vec3 p_advected = p + advect;
 
-	return CloudDensityResult(res.relativeExtinction, advectSpeed, 1.0, vec3(1.0), vec3(0.0));
+	vec3 uvw = vec3(
+		p_advected.x / (100000.0 * props.worldScale) * uCloudVolumeTiles,
+		h,
+		p_advected.z / (100000.0 * props.worldScale) * uCloudVolumeTiles
+	);
+
+	vec4 volSample = textureLod(u_cloud3DTexture, uvw, 2.0); // LOD 2 for cheap evaluation
+	float volAo = volSample.g;
+	float volDensity = volSample.a;
+
+	pointDetails.density = vec3(volDensity);
+	pointDetails.ao = volAo;
+	return pointDetails;
 }
 
 
@@ -610,42 +630,37 @@ CloudDensityResult calculateCloudDensity(
 	float           simplified
 ) {
 	float altitude = getCurvedAltitude(p);
-	float h = clamp((altitude - layer.baseFloor) / max(2.0 * layer.thickness, 0.001), 0.0, 1.0);
+	float baseFloor = props.altitude * props.worldScale;
+	float layerThickness = props.thickness * props.worldScale;
+	float h = clamp((altitude - baseFloor) / max(2.0 * layerThickness, 0.001), 0.0, 1.0);
+
 	vec3 advectSpeed = getCloudAdvectionSpeed(h, time);
 	CloudDensityResult pointDetails = CloudDensityResult(vec3(0.0), advectSpeed, 1.0, vec3(1.0), vec3(0.0));
 
-	if (altitude < layer.baseFloor || altitude > layer.baseCeiling) {
+	if (altitude < baseFloor || altitude > baseFloor + 2.0 * layerThickness) {
 		return pointDetails;
 	}
 
-	// Sample the 3D cloud volume texture with slower advection speed
-	vec3 advect_3d = time * advectSpeed * 0.75;
-	vec3 p_advected_3d = p + advect_3d;
+	// Map to 3D texture coordinate using advection
+	vec3 advect = time * advectSpeed;
+	vec3 p_advected = p + advect;
+
 	vec3 uvw = vec3(
-		p_advected_3d.x / (50000.0 * props.worldScale),
+		p_advected.x / (100000.0 * props.worldScale) * uCloudVolumeTiles,
 		h,
-		p_advected_3d.z / (50000.0 * props.worldScale)
+		p_advected.z / (100000.0 * props.worldScale) * uCloudVolumeTiles
 	);
 
-	vec4 volSample = textureLod(u_cloud3DTexture, uvw, 0.0);
+	float lod = (simplified >= 1.0) ? 2.0 : 0.0;
+	vec4 volSample = textureLod(u_cloud3DTexture, uvw, lod);
+
 	float volNoise = volSample.r;
 	float volAo = volSample.g;
-	// float volAlbedoBasis = volSample.b;
+	float volDensity = volSample.a;
 
-	CloudSpotDetails res = calculateCloudDensityExpV9(p, weather, layer, props, time, simplified);
-
-	// Where the current system has density, the 3d volume adds variety and breaks up the linear nature.
-	float finalDensity = res.density;
-	if (finalDensity > 0.0) {
-		// finalDensity *= mix(0.4, 1.6, volNoise);
-		finalDensity = adjust(finalDensity, 1.0-volNoise);
-	}
-
-	vec3 mixedDensity = res.relativeExtinction * finalDensity;
-	// vec3 mixedAlbedo = vec3(volAlbedoBasis);
-
-	// return CloudDensityResult(mixedDensity, advectSpeed, volAo, mixedAlbedo, smoothstep(0.8, 1.2, mixedDensity) * vec3(0,1,0));
-	return CloudDensityResult(mixedDensity, advectSpeed, volAo, vec3(1.0), vec3(0.0));
+	pointDetails.density = vec3(volDensity);
+	pointDetails.ao = volAo;
+	return pointDetails;
 }
 
 #endif // HELPERS_CLOUDS_GLSL

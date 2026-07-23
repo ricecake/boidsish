@@ -1,3 +1,8 @@
+#ifndef CLOUD_3D_TEXTURE_DEFINED
+#define CLOUD_3D_TEXTURE_DEFINED
+uniform sampler3D u_cloud3DTexture;
+#endif
+
 struct CloudProperties {
 	float altitude;
 	float thickness;
@@ -19,6 +24,91 @@ struct CloudLayer {
 	float baseCeiling;
 	float thickness;
 };
+
+const float uCloudVolumeTiles = 4.0;
+
+// Forward declarations
+float remap(float value, float valueMin, float valueMax);
+float adjust(float value, float scaly);
+
+struct AnalyticalCloud {
+	float density;
+	float sdf;
+};
+
+float remap_bake(float value, float low1, float high1, float low2, float high2) {
+	return low2 + (value - low1) * (high2 - low2) / max(0.0001, (high1 - low1));
+}
+
+float computeSimplexWorley(vec3 p) {
+	// Base Simplex noise (normalized to [0, 1])
+	float simplex = simplex3d_tiling(p * 8.0, 8.0);
+	simplex = clamp(simplex * 0.5 + 0.5, 0.0, 1.0);
+
+	// Worley FBM (cell centers are billowy and puffy)
+	float w0 = 1.0 - worley3d_tiling(p * 8.0, 8.0).x;
+	float w1 = 1.0 - worley3d_tiling(p * 16.0, 16.0).x;
+	float w2 = 1.0 - worley3d_tiling(p * 32.0, 32.0).x;
+	float worleyFbm = w0 * 0.625 + w1 * 0.25 + w2 * 0.125;
+
+	// Simplex noise carved/remapped by Worley FBM
+	float simplexWorley = remap_bake(simplex, worleyFbm, 1.0, 0.0, 1.0);
+	return clamp(simplexWorley, 0.0, 1.0);
+}
+
+AnalyticalCloud getAnalyticalCloud3D(vec3 p, CloudProperties props) {
+	// 3D coordinates in [0, 1]^3
+	// freq is the cellular frequency.
+	float freq = 4.0;
+	vec2 cell = worley3d_tiling(p * freq, freq);
+	float dist = cell.x;
+	float cell_id = cell.y; // unique value per cell in [0, 1]
+
+	// Determine if this cell contains a cloud mass based on coverage
+	float coverage_threshold = 1.0 - props.coverage;
+	float active_factor = smoothstep(coverage_threshold - 0.1, coverage_threshold + 0.1, cell_id);
+
+	float radius = mix(0.15, 0.35, cell_id) * active_factor;
+	float cell_sdf = dist - radius;
+
+	// Vertical limits of the cloud layer inside the [0, 1] range of the 3D texture
+	float local_floor = 0.1;
+	float local_ceil = 0.9;
+	float half_h = (local_ceil - local_floor) * 0.5;
+	float center_y = local_floor + half_h;
+	float dist_y = abs(p.y - center_y) - half_h;
+
+	// Convert normalized distances to world space meters
+	float L = (100000.0 * props.worldScale) / uCloudVolumeTiles;
+	float H = 2.0 * props.thickness * props.worldScale;
+
+	float sdf_horizontal = cell_sdf * L;
+	float sdf_vertical = dist_y * H;
+
+	// Combined 3D SDF in meters
+	float d3d_meters = max(sdf_horizontal, sdf_vertical);
+
+	// Compute density inside the cloud
+	float density = 0.0;
+	if (d3d_meters < 0.0) {
+		float depth = -d3d_meters;
+		float base_density = clamp(depth / (1000.0 * props.worldScale), 0.0, 1.0);
+
+		float h_norm = clamp((p.y - local_floor) / (local_ceil - local_floor), 0.0, 1.0);
+		float height_gradient = smoothstep(0.0, 0.2, h_norm) * (1.0 - smoothstep(0.8, 1.0, h_norm));
+
+		// Use high-quality 3D noise for detail carving
+		float noiseVal = computeSimplexWorley(p);
+		density = base_density * height_gradient;
+		density = adjust(density, 1.0 - noiseVal);
+		density *= props.densityBase;
+	}
+
+	AnalyticalCloud res;
+	res.sdf = d3d_meters;
+	res.density = density;
+	return res;
+}
 
 float getCurvedAltitude(vec3 p) {
 	float R_earth = 6360.0 * 1000.0 * worldScale;
@@ -443,24 +533,66 @@ float calculateLoftedCloudSDF(vec3 p, CloudWeather weather, CloudLayer layer, fl
 }
 
 float getCloud3DSDF(vec3 p, CloudWeather weather, CloudLayer layer, float worldScale) {
-	float sdf2d = weather.sdf;
+#ifdef CLOUD_BAKE_SHADER
+	// Return analytical 3D SDF during baking
+	CloudProperties props;
+	props.altitude = cloudAltitude;
+	props.thickness = cloudThickness;
+	props.densityBase = cloudDensity;
+	props.coverage = cloudCoverage;
+	props.worldScale = worldScale;
 
-	// Use curved altitude to respect Earth's curvature
+	// Map worldPos to [0, 1] normalized coordinates in the 3D volume texture
+	// worldY range: [baseFloor, baseFloor + 2.0 * layerThickness]
+	float baseFloor = props.altitude * props.worldScale;
+	float layerThickness = props.thickness * props.worldScale;
+	float h = clamp((p.y - baseFloor) / max(2.0 * layerThickness, 0.001), 0.0, 1.0);
+
+	// Map horizontal world coordinates to [0, 1] horizontal range of 3D texture
+	float mapRange = 100000.0 * props.worldScale;
+	vec3 norm_p = vec3(
+		p.x / mapRange,
+		h,
+		p.z / mapRange
+	);
+
+	// Get the analytical cloud data
+	AnalyticalCloud cloud = getAnalyticalCloud3D(norm_p, props);
+	return cloud.sdf;
+#else
+	// During raymarching, sample the precomputed 3D SDF from the texture
+	CloudProperties props;
+	props.altitude = cloudAltitude;
+	props.thickness = cloudThickness;
+	props.densityBase = cloudDensity;
+	props.coverage = cloudCoverage;
+	props.worldScale = worldScale;
+
 	float altitude = getCurvedAltitude(p);
+	float baseFloor = props.altitude * props.worldScale;
+	float layerThickness = props.thickness * props.worldScale;
 
-	// Proportional altitude shift and thickness
-	float altitudeShift = weather.heightMap * layer.thickness;
-	float actualThickness = weather.thickness * layer.thickness;
-
-	// The actual cloud spans from local floor to local ceiling
-	float localFloor = layer.baseFloor + altitudeShift;
-
-	float halfHeight = actualThickness * 0.5;
-	float centerY = localFloor + halfHeight;
+	float centerY = baseFloor + layerThickness;
+	float halfHeight = layerThickness;
 	float distY = abs(altitude - centerY) - halfHeight;
 
-	vec2 w = vec2(sdf2d, distY);
-	return min(max(w.x, w.y), 0.0) + length(max(w, 0.0));
+	if (distY > 100.0 * props.worldScale) {
+		return distY;
+	}
+
+	float h = (altitude - baseFloor) / max(2.0 * layerThickness, 0.001);
+	vec3 advect = getCloudAdvectionOffset(h, time);
+	vec3 p_advected = p + advect;
+
+	vec3 uvw = vec3(
+		p_advected.x / (100000.0 * props.worldScale) * uCloudVolumeTiles,
+		h,
+		p_advected.z / (100000.0 * props.worldScale) * uCloudVolumeTiles
+	);
+
+	float texSdf = textureLod(u_cloud3DTexture, uvw, 0.0).b;
+	return max(texSdf, distY);
+#endif
 }
 
 
