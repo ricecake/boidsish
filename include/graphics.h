@@ -51,6 +51,7 @@ namespace Boidsish {
 	class MoodManager;
 	class LightningManager;
 	class Path;
+	class SpaceProbeManager;
 
 	namespace PostProcessing {
 		class PostProcessingManager;
@@ -585,6 +586,7 @@ namespace Boidsish {
 		MoodManager*                           GetMoodManager();
 		LightningManager*                      GetLightningManager();
 		PostProcessing::PostProcessingManager& GetPostProcessingManager();
+		std::shared_ptr<SpaceProbeManager>     GetSpaceProbeManager() const;
 		float                                  GetLastFrameTime() const;
 
 		float GetRenderScale() const;

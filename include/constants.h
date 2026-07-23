@@ -110,7 +110,8 @@ namespace Boidsish {
 				ParticleStats = 44,
 				CloudSeeds = 46,
 				LightsBuffer = 52,
-				ClusterGridBuffer = 53
+				ClusterGridBuffer = 53,
+				SpaceProbe = 54
 			};
 		} // namespace Bindings
 
@@ -495,6 +496,10 @@ namespace Boidsish {
 
 			consteval int ClusterGridBuffer() {
 				return std::to_underlying(Constants::Bindings::Ssbo::ClusterGridBuffer);
+			}
+
+			consteval int SpaceProbe() {
+				return std::to_underlying(Constants::Bindings::Ssbo::SpaceProbe);
 			}
 		} // namespace SsboBinding
 
