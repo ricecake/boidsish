@@ -19,6 +19,9 @@ uniform mat4 invProjection;
 uniform float nearPlane; // Set from application (e.g., 0.1)
 uniform float farPlane;  // Set from application (e.g., 1000.0)
 
+uniform float gamma;
+uniform bool  uBloomEnabled;
+
 
 #include "helpers/tonemapping.glsl"
 #include "types/autoexposure.glsl"
@@ -92,9 +95,9 @@ void main() {
 		// }
 	}
 
-	// Guided Upsampling for LTM (Scene only)
-	if (layers[0].ltmEnabled != 0 && isSky == 0) {
-		float exposure = layers[0].targetLuminance / max(layers[0].avgLuma, 0.0001);
+	// Guided Upsampling for LTM
+	if (layers[isSky].ltmEnabled != 0) {
+		float exposure = layers[isSky].targetLuminance / max(layers[isSky].avgLuma, 0.0001);
 		vec3 currentExposure = result * exposure;
 		vec3 currentAces = aces(currentExposure);
 		float guidanceLuma = sqrt(max(dot(currentAces, vec3(0.2126, 0.7152, 0.0722)), 0.0));
@@ -145,8 +148,9 @@ void main() {
 	}
 
 	// 2. Exposure
+	float exposure = 1.0;
 	if (layers[isSky].useAutoExposure != 0) {
-		float exposure = layers[isSky].targetLuminance / max(layers[isSky].adaptedLuminance, 0.0001);
+		exposure = layers[isSky].targetLuminance / max(layers[isSky].adaptedLuminance, 0.0001);
 		exposure = clamp(exposure, layers[isSky].minExposure, layers[isSky].maxExposure);
 
 		if (isSky == 1) {
@@ -160,11 +164,15 @@ void main() {
 			attenuation = mix(attenuation, 1.0, mask);
 			exposure *= attenuation;
 		}
-
-		result *= exposure;
+	} else {
+		exposure = (layers[isSky].iso / 100.0) * (1.0 / (layers[isSky].aperture * layers[isSky].aperture)) * layers[isSky].exposureTime;
 	}
 
-	result += bloomColor * intensity;
+	result *= exposure;
+
+	if (uBloomEnabled) {
+		result += bloomColor * intensity;
+	}
 
 	// 1. White Balance
 	vec3 whiteGain = 1.0 / max(tempToRgb(layers[isSky].whiteTemp), 0.0001);
@@ -196,6 +204,9 @@ void main() {
 	// Saturation
 	float luma = dot(result, vec3(0.2126, 0.7152, 0.0722));
 	result = luma + layers[isSky].cdlSaturation * (result - luma);
+
+	// 5. Gamma Correction
+	result = pow(max(result, 0.0), vec3(1.0 / gamma));
 
 	FragColor = vec4(result, 1.0);
 }

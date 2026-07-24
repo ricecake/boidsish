@@ -739,7 +739,7 @@ void main() {
 		float effectiveWindStrength = max(0.0, length(windAtPos) - windThreshold);
 
 		vec3 undersideColor = grassColor * 1.25 + vec3(0.05, 0.05, 0.0);
-		vec3 dynamicGrassColor = mix(grassColor, undersideColor, smoothstep(0, blueNoise, effectiveWindStrength));
+		vec3 dynamicGrassColor = mix(grassColor, undersideColor, blueNoise);
 
 		finalMaterial.albedo = mix(finalMaterial.albedo, dynamicGrassColor, smoothstep(0, blueNoise, grassMask));
 

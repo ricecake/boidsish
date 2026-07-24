@@ -1,5 +1,6 @@
 #include "graphics.h"
 #include "ltc_matrix.h"
+#include "SpaceProbeManager.h"
 #include <stacktrace> // Requires C++23
 #include <algorithm>
 #include <array>
@@ -410,6 +411,7 @@ namespace Boidsish {
 		std::shared_ptr<SceneManager>                     scene_manager;
 		std::shared_ptr<DecorManager>                     decor_manager;
 		std::shared_ptr<GrassManager>                     grass_manager;
+		std::shared_ptr<SpaceProbeManager>                space_probe_manager;
 		std::map<int, std::shared_ptr<Trail>>             trails;
 		std::map<int, float>                              trail_last_update;
 		std::shared_ptr<LightManager>                     light_manager;
@@ -845,6 +847,8 @@ namespace Boidsish {
 			GpuResourceRegistry::SetInstance(&gpu_resources_);
 			RegisterManagers();
 			LoadLtcTextures();
+			space_probe_manager = std::make_shared<SpaceProbeManager>();
+			space_probe_manager->Initialize();
 
 			hiz_manager = service_locator_.Get<HiZManager>();
 			noise_manager = service_locator_.Get<NoiseManager>();
@@ -1915,7 +1919,7 @@ namespace Boidsish {
 
 						// Pass full moon radiance (without phase) for disk rendering to avoid double-phasing
 						const auto& cycle = light_manager->GetDayNightCycle();
-						glm::vec3 moonFullRadiance = lights[0].color * 10.0f * cycle.lunar_albedo * cycle.moon_tint;
+						glm::vec3 moonFullRadiance = lights[0].color * 100000.0f * cycle.lunar_albedo * cycle.moon_tint;
 						sky_shader->setVec3("u_moonFullRadiance", moonFullRadiance);
 					} else {
 						sky_shader->setVec3("u_moonRadiance", glm::vec3(0.0f));
@@ -2711,6 +2715,17 @@ namespace Boidsish {
 					terrain_render_manager
 				);
 			}
+
+			if (space_probe_manager) {
+				space_probe_manager->Update(
+					simulation_delta_time,
+					render_state_,
+					atmosphere_manager.get(),
+					terrain_render_manager.get(),
+					shadow_manager.get(),
+					light_manager.get()
+				);
+			}
 		}
 
 		void AssignLightsToClusters() {
@@ -2917,6 +2932,18 @@ namespace Boidsish {
 
 			if (transparent_pass_) {
 				transparent_pass_->Execute(frame, MakeRenderCallbacks(frame));
+			}
+
+			if (space_probe_manager) {
+				space_probe_manager->Render(
+					render_state_,
+					compositor_->GetDepthTexture(),
+					blur_quad_vao,
+					shadow_manager.get(),
+					light_manager.get(),
+					atmosphere_manager.get(),
+					terrain_render_manager.get()
+				);
 			}
 		}
 
@@ -3643,11 +3670,6 @@ namespace Boidsish {
 				impl->atmosphere_effect->SetSunAureoleStrength(w.sun_aureole_strength);
 				impl->atmosphere_effect->SetCirrusOpacity(w.cirrus_opacity);
 
-				impl->atmosphere_effect->SetCloudFlowSpeed(w.wind_speed);
-				impl->atmosphere_effect->SetCloudFlowDirection(glm::radians(180.0f)); // Fixed direction for consistency
-				impl->atmosphere_effect->SetCloudFlowHeightScale(0.2f);
-				impl->atmosphere_effect->SetCloudCurlStrength(5.0f);
-				impl->atmosphere_effect->SetCloudCurlFrequency(1.5f);
 			}
 		}
 
@@ -4668,6 +4690,10 @@ namespace Boidsish {
 
 	PostProcessing::PostProcessingManager& Visualizer::GetPostProcessingManager() {
 		return *impl->post_processing_manager_;
+	}
+
+	std::shared_ptr<SpaceProbeManager> Visualizer::GetSpaceProbeManager() const {
+		return impl->space_probe_manager;
 	}
 
 	float Visualizer::GetLastFrameTime() const {

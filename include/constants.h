@@ -42,6 +42,7 @@ namespace Boidsish {
 				WeatherScalars = 42,
 				WeatherAerosols = 43,
 				TerrainDisplacementImage = 44,
+				Cloud3D = 45,
 				CloudJFADistance = 46,
 				Ltc1 = 47,
 				Ltc2 = 48,
@@ -111,7 +112,8 @@ namespace Boidsish {
 				ParticleStats = 44,
 				CloudSeeds = 46,
 				LightsBuffer = 52,
-				ClusterGridBuffer = 53
+				ClusterGridBuffer = 53,
+				SpaceProbe = 54
 			};
 		} // namespace Bindings
 
@@ -304,6 +306,10 @@ namespace Boidsish {
 
 			consteval int CloudWeatherBake() {
 				return std::to_underlying(Constants::Bindings::Texture::CloudWeatherBake);
+			}
+
+			consteval int Cloud3D() {
+				return std::to_underlying(Constants::Bindings::Texture::Cloud3D);
 			}
 
 			consteval int CloudJFADistance() {
@@ -500,6 +506,10 @@ namespace Boidsish {
 
 			consteval int ClusterGridBuffer() {
 				return std::to_underlying(Constants::Bindings::Ssbo::ClusterGridBuffer);
+			}
+
+			consteval int SpaceProbe() {
+				return std::to_underlying(Constants::Bindings::Ssbo::SpaceProbe);
 			}
 		} // namespace SsboBinding
 

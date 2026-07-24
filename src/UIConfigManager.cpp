@@ -14,6 +14,7 @@
 #include "ui/AudioWidget.h"
 #include "ui/SystemWidget.h"
 #include "ui/ProfilerWidget.h"
+#include "ui/SpaceProbeWidget.h"
 #include "ui/hud_widget.h"
 #include "service_locator.h"
 #include "imgui.h"
@@ -62,6 +63,7 @@ namespace Boidsish {
 			AddWidget(std::make_shared<AudioWidget>(visualizer));
 			AddWidget(std::make_shared<SystemWidget>(visualizer, scene_manager));
 			AddWidget(std::make_shared<ProfilerWidget>());
+			AddWidget(std::make_shared<SpaceProbeWidget>(visualizer));
 		}
 
 		void UIConfigManager::Render() {

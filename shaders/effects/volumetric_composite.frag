@@ -9,6 +9,9 @@ layout(binding = 0) uniform sampler2D uSceneTexture;
 layout(binding = 1) uniform sampler2D uDepthTexture;
 layout(binding = [[VOLUMETRIC_SCATTERING_BINDING]]) uniform sampler3D uVolumetricTexture;
 
+uniform bool uUse2DAccumulation;
+uniform sampler2D uVolumetricHistory2D;
+
 #include "../types/temporal_data.glsl"
 #include "../helpers/lighting.glsl"
 
@@ -51,21 +54,27 @@ void main() {
     vec3 scattering = vec3(0.0);
     float transmittance = 1.0;
 
-    if (cascade != -1) {
-        // Calculate W coordinate for this cascade
-        float slice = clamp(log(linearZ / z_near) / log(z_far / z_near), 0.0, 1.0);
-
-        // Continuous mapping across all cascades to ensure smooth linear filtering
-        float w = (float(cascade) + slice) / float(NUM_CASCADES);
-
-        vec4 vol = texture(uVolumetricTexture, vec3(TexCoords, w));
+    if (uUse2DAccumulation) {
+        vec4 vol = texture(uVolumetricHistory2D, TexCoords);
         scattering = vol.rgb;
         transmittance = vol.a;
     } else {
-        // Beyond last cascade - sample the very edge
-        vec4 vol = texture(uVolumetricTexture, vec3(TexCoords, 1.0));
-        scattering = max(vec3(0.0), vol.rgb);
-        transmittance = clamp(vol.a, 0.0, 1.0);
+        if (cascade != -1) {
+            // Calculate W coordinate for this cascade
+            float slice = clamp(log(linearZ / z_near) / log(z_far / z_near), 0.0, 1.0);
+
+            // Continuous mapping across all cascades to ensure smooth linear filtering
+            float w = (float(cascade) + slice) / float(NUM_CASCADES);
+
+            vec4 vol = texture(uVolumetricTexture, vec3(TexCoords, w));
+            scattering = vol.rgb;
+            transmittance = vol.a;
+        } else {
+            // Beyond last cascade - sample the very edge
+            vec4 vol = texture(uVolumetricTexture, vec3(TexCoords, 1.0));
+            scattering = max(vec3(0.0), vol.rgb);
+            transmittance = clamp(vol.a, 0.0, 1.0);
+        }
     }
 
     if (any(isnan(scattering))) scattering = vec3(0.0);

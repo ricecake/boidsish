@@ -31,12 +31,37 @@ namespace Boidsish {
 			void SetTemporalAlpha(float a) { temporal_alpha_ = a; }
 			float GetTemporalAlpha() const { return temporal_alpha_; }
 
+			void SetAmbientScale(float s) { ambient_scale_ = s; }
+			float GetAmbientScale() const { return ambient_scale_; }
+
+			void SetRayleighScale(float s) { rayleigh_scale_ = s; }
+			float GetRayleighScale() const { return rayleigh_scale_; }
+
+			void SetMieScale(float s) { mie_scale_ = s; }
+			float GetMieScale() const { return mie_scale_; }
+
+			void SetMultiScatScale(float s) { multi_scat_scale_ = s; }
+			float GetMultiScatScale() const { return multi_scat_scale_; }
+
+			void SetShadowSensitivity(float s) { shadow_sensitivity_ = s; }
+			float GetShadowSensitivity() const { return shadow_sensitivity_; }
+
+			void SetTemporalAccumulation2D(bool b) { temporal_accumulation_2d_ = b; }
+			bool GetTemporalAccumulation2D() const { return temporal_accumulation_2d_; }
+
+			void FlushHistory() {
+				has_history_ = false;
+				has_history_2d_ = false;
+			}
+
 		private:
 			void CreateGridTextures();
+			void Create2DHistoryTextures(int w, int h);
 
 			std::unique_ptr<ComputeShader> injection_shader_;
 			std::unique_ptr<ComputeShader> integration_shader_;
 			std::unique_ptr<Shader> composite_shader_;
+			std::unique_ptr<ComputeShader> accumulation_2d_shader_;
 
 			int width_ = 0;
 			int height_ = 0;
@@ -51,6 +76,11 @@ namespace Boidsish {
 			int history_index_ = 0;
 			bool has_history_ = false;
 
+			// 2D Temporal accumulation history (for screenspace temporal accumulation)
+			GLuint history_textures_2d_[2] = {0, 0};
+			int history_index_2d_ = 0;
+			bool has_history_2d_ = false;
+
 			glm::mat4 prev_view_projection_ = glm::mat4(1.0f);
 			glm::vec3 prev_camera_pos_ = glm::vec3(0.0f);
 			glm::vec3 prev_camera_front_ = glm::vec3(0.0f, 0.0f, -1.0f);
@@ -58,6 +88,13 @@ namespace Boidsish {
 			float anisotropy_ = 0.8f;
 			float intensity_ = 1.0f;
 			float temporal_alpha_ = 0.95f;
+
+			float ambient_scale_ = 1.0f;
+			float rayleigh_scale_ = 1.0f;
+			float mie_scale_ = 1.0f;
+			float multi_scat_scale_ = 1.0f;
+			float shadow_sensitivity_ = 1.0f;
+			bool temporal_accumulation_2d_ = true;
 
 			// Froxel grid dimensions per cascade
 			const int grid_res_x_ = 160;

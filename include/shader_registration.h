@@ -71,6 +71,7 @@ namespace Boidsish {
 		T::RegisterConstant("CLOUD_SEEDS_BINDING", Constants::SsboBinding::CloudSeeds());
 		T::RegisterConstant("LIGHTS_BUFFER_BINDING", Constants::SsboBinding::LightsBuffer());
 		T::RegisterConstant("CLUSTER_GRID_BINDING", Constants::SsboBinding::ClusterGridBuffer());
+		T::RegisterConstant("SPACE_PROBE_BINDING", Constants::SsboBinding::SpaceProbe());
 
 		// Limits and Sizes
 		T::RegisterConstant("MAX_LIGHTS", Constants::Class::Shadows::MaxLights());
@@ -124,6 +125,7 @@ namespace Boidsish {
 
 		T::RegisterConstant("LTC1_BINDING", Constants::TextureUnit::Ltc1());
 		T::RegisterConstant("LTC2_BINDING", Constants::TextureUnit::Ltc2());
+		T::RegisterConstant("CLOUD_3D_BINDING", Constants::TextureUnit::Cloud3D());
 	}
 
 } // namespace Boidsish

@@ -10,7 +10,6 @@ uniform int       uStepSize;     // 1, 2, 4, 8, 16...
 uniform int       uPassIndex;
 
 uniform float uCloudPhiLuma;
-uniform float uCloudPhiDepth;
 uniform float uCloudPhiDensity;
 
 uniform float uCloudSvgfHistoryBoost;
@@ -23,36 +22,63 @@ uniform float uCloudSvgfHistoryThreshold;
 
 const float kernel[5] = float[](1.0/16.0, 1.0/4.0, 3.0/8.0, 1.0/4.0, 1.0/16.0);
 
+// Shared memory for 8x8 workgroup + 1 pixel padding for 3x3 spatial variance
+const int TILE_SIZE = 8;
+const int PAD = 1;
+const int SHARED_SIZE = TILE_SIZE + 2 * PAD;
+shared vec2 sharedMoments[SHARED_SIZE][SHARED_SIZE];
+
 void main() {
 	ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+	ivec2 localID = ivec2(gl_LocalInvocationID.xy);
 	ivec2 size = imageSize(outFilteredColor);
+
+	vec2 texelSize = 1.0 / vec2(size);
+	vec2 uv = (vec2(pixel) + 0.5) * texelSize;
+
+	// Populate shared memory for Pass 0 to eliminate 9x redundant texture reads
+	if (uPassIndex == 0) {
+		ivec2 sharedPos = localID + ivec2(PAD);
+		sharedMoments[sharedPos.x][sharedPos.y] = texture(uCloudMoments, uv).xy;
+
+		if (localID.x < PAD) {
+			sharedMoments[0][sharedPos.y] = texture(uCloudMoments, uv - vec2(PAD, 0) * texelSize).xy;
+			sharedMoments[SHARED_SIZE - 1][sharedPos.y] = texture(uCloudMoments, uv + vec2(TILE_SIZE, 0) * texelSize).xy;
+		}
+		if (localID.y < PAD) {
+			sharedMoments[sharedPos.x][0] = texture(uCloudMoments, uv - vec2(0, PAD) * texelSize).xy;
+			sharedMoments[sharedPos.x][SHARED_SIZE - 1] = texture(uCloudMoments, uv + vec2(0, TILE_SIZE) * texelSize).xy;
+		}
+		if (localID.x < PAD && localID.y < PAD) {
+			sharedMoments[0][0] = texture(uCloudMoments, uv - vec2(PAD, PAD) * texelSize).xy;
+			sharedMoments[SHARED_SIZE - 1][0] = texture(uCloudMoments, uv + vec2(TILE_SIZE, -PAD) * texelSize).xy;
+			sharedMoments[0][SHARED_SIZE - 1] = texture(uCloudMoments, uv + vec2(-PAD, TILE_SIZE) * texelSize).xy;
+			sharedMoments[SHARED_SIZE - 1][SHARED_SIZE - 1] = texture(uCloudMoments, uv + vec2(TILE_SIZE, TILE_SIZE) * texelSize).xy;
+		}
+	}
+
+	barrier();
+	memoryBarrierShared();
+
 	if (pixel.x >= size.x || pixel.y >= size.y) return;
 
-	vec2 uv = (vec2(pixel) + 0.5) / vec2(size);
-	vec2 texelSize = 1.0 / vec2(size);
-
 	vec4 centerColor = texture(uCloudColor, uv);
-	vec4 centerProps = texture(uCloudDepth, uv);
 	vec4 centerMoments = texture(uCloudMoments, uv);
-	// imageStore(outFilteredColor, pixel, centerColor);
-	// return;
 
-	float centerDepth = centerProps.r;
-	float centerStep = centerProps.b;
-	float centerDensity = centerProps.a;
+	float centerDensity = centerColor.a;
 	float centerHistory = centerMoments.w;
 
 	float varLuma = max(0.0, centerMoments.y - centerMoments.x * centerMoments.x);
 
-	// Adaptive SVGF: If we have very low history, the temporal variance might be unreliable or zero.
-	// We supplement it with spatial variance in the first pass.
 	if (uPassIndex == 0 && centerHistory < uCloudSvgfHistoryThreshold) {
 		float spatialM1 = 0.0;
 		float spatialM2 = 0.0;
 		float wSum = 0.0;
+
+		ivec2 baseLocal = localID + ivec2(PAD);
 		for (int y = -1; y <= 1; y++) {
 			for (int x = -1; x <= 1; x++) {
-				vec2 smpMoments = texture(uCloudMoments, uv + vec2(x, y) * texelSize).xy;
+				vec2 smpMoments = sharedMoments[baseLocal.x + x][baseLocal.y + y];
 				spatialM1 += smpMoments.x;
 				spatialM2 += smpMoments.y;
 				wSum += 1.0;
@@ -63,13 +89,10 @@ void main() {
 	}
 
 	float stdLuma = sqrt(varLuma);
-
 	float historyScale = mix(uCloudSvgfHistoryBoost, 1.0, smoothstep(1.0, uCloudSvgfHistoryThreshold, centerHistory));
-	float stepScale = max(1.0, float(uStepSize) / 2.0);
 
-	float phiLuma = (uCloudPhiLuma * stdLuma + 0.02) * historyScale * stepScale;
-	float phiDepth = centerStep * mix(uCloudPhiDepth, 1.0, smoothstep(0.0, 0.4, centerDensity)) * float(uStepSize);
-	float phiDensity = (uCloudPhiDensity * centerDensity + 0.1) * historyScale * stepScale;
+	float phiLuma = (uCloudPhiLuma * stdLuma + 0.02) * historyScale;
+	float phiDensity = (uCloudPhiDensity * centerDensity + 0.1) * historyScale;
 
 	vec4  sumColor = vec4(0.0);
 	float sumWeight = 0.0;
@@ -77,17 +100,14 @@ void main() {
 	for (int y = -2; y <= 2; y++) {
 		for (int x = -2; x <= 2; x++) {
 			vec2 offset = vec2(x, y) * float(uStepSize) * texelSize;
-			vec4 sampleColor = texture(uCloudColor, uv + offset);
-			vec4 sampleProps = texture(uCloudDepth, uv + offset);
 
-			float sampleDepth = sampleProps.r;
-			float sampleDensity = sampleProps.a;
+			vec4 sampleColor = texture(uCloudColor, uv + offset);
+			float sampleDensity = sampleColor.a;
 
 			float lumaWeight = exp(-abs(luma(centerColor.rgb) - luma(sampleColor.rgb)) / phiLuma);
-			float depthWeight = exp(-abs(centerDepth - sampleDepth) / phiDepth);
 			float densityWeight = exp(-abs(centerDensity - sampleDensity) / phiDensity);
 
-			float weight = kernel[x + 2] * kernel[y + 2] * lumaWeight * depthWeight * densityWeight;
+			float weight = kernel[x + 2] * kernel[y + 2] * lumaWeight * densityWeight;
 			sumColor += sampleColor * weight;
 			sumWeight += weight;
 		}
