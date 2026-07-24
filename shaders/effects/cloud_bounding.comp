@@ -95,7 +95,9 @@ void main() {
 			float maxDensity = minMax.y;
 
 			if (maxDensity == 0.0) {
-				float texelSize = float(1 << L) * 48.828 * worldScale;
+				float mapRange = 100000.0 * worldScale;
+				float texelSizeAtLevel0 = mapRange / 2048.0;
+				float texelSize = float(1 << L) * texelSizeAtLevel0;
 				float dt = texelSize / max(0.01, length(rayDir.xz));
 				dt = clamp(dt, baseStepSize, 4000.0 * worldScale);
 				t += dt;
