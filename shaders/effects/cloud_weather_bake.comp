@@ -62,14 +62,13 @@ void main() {
 	VoronoiData vd = sdVoronoiHybrid(p.xz / cellRange, 3.0, 5.0, regionalCoverage, vec2(10.0));
 	vec2 cellId = vd.f1;
 	float cellID = hash12(vd.f1, vec2(10.0));
-	imageStore(outWeatherMap, pixel, vec4(vd.dist, vd.dist_f1, cellID, (vd.f2 - vd.f1)));
-
-	float density = (sdf < 0.0) ? thicknessMap : 0.0;
+	float density = distance(vd.f2, vd.f1);
+	imageStore(outWeatherMap, pixel, vec4(vd.dist, vd.dist_f1, cellID, density));
 	imageStore(outMinMaxMap, pixel, vec4(density, density, 0.0, 0.0));
 
 	// Record seed info if this is the pixel closest to the cell center (f1)
 	vec2 f1Pixel = (cellId * cellRange) / mapRange * vec2(size);
-	if (length(vec2(pixel) - f1Pixel) < 1.0) {
+	if (distance(vec2(pixel), f1Pixel) < 1.0) {
 		int cellIdx = int(mod(floor(cellId.y), 10.0) * 10.0 + mod(floor(cellId.x), 10.0));
 		seeds[cellIdx] = vec4(cellId.x * cellRange, cellId.y * cellRange, vd.dist, (vd.dist < 0.0 ? 1.0 : 0.0));
 	}
