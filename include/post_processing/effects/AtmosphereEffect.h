@@ -273,6 +273,7 @@ namespace Boidsish {
 			void InitializeTemporalResources();
 
 			std::unique_ptr<ComputeShader> cloud_render_shader_;
+			std::unique_ptr<ComputeShader> cloud_bounding_shader_;
 			std::unique_ptr<Shader>        composite_shader_;
 			std::unique_ptr<ComputeShader> temporal_shader_;
 			std::unique_ptr<ComputeShader> spatial_filter_shader_;
@@ -335,6 +336,7 @@ namespace Boidsish {
 			GLuint packed_texture_ = 0;
 			GLuint packed_depth_texture_ = 0;
 			GLuint packed_velocity_texture_ = 0;
+			GLuint bounding_texture_ = 0;
 
 			GLuint filtered_texture_ = 0;
 			GLuint spatial_aux_texture_ = 0;
