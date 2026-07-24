@@ -898,58 +898,69 @@ namespace Boidsish {
 							if (is_enabled) {
 								auto vol_effect = std::dynamic_pointer_cast<PostProcessing::VolumetricLightingEffect>(effect);
 								if (vol_effect) {
+									auto& cfg = ConfigManager::GetInstance();
 									bool changed_vol = false;
+
 									float intensity = vol_effect->GetIntensity();
 									if (ImGui::SliderFloat("Intensity##Vol", &intensity, 0.0f, 5.0f)) {
 										vol_effect->SetIntensity(intensity);
+										cfg.SetFloat("volumetric_intensity", intensity);
 										changed_vol = true;
 									}
 
 									float anisotropy = vol_effect->GetScatteringAnisotropy();
 									if (ImGui::SliderFloat("Anisotropy##Vol", &anisotropy, 0.0f, 0.99f)) {
 										vol_effect->SetScatteringAnisotropy(anisotropy);
+										cfg.SetFloat("volumetric_anisotropy", anisotropy);
 										changed_vol = true;
 									}
 
 									float alpha = vol_effect->GetTemporalAlpha();
 									if (ImGui::SliderFloat("Temporal Alpha##Vol", &alpha, 0.0f, 0.99f)) {
 										vol_effect->SetTemporalAlpha(alpha);
+										cfg.SetFloat("volumetric_temporal_alpha", alpha);
 										changed_vol = true;
 									}
 
 									float ambient_scale = vol_effect->GetAmbientScale();
 									if (ImGui::SliderFloat("Ambient Scale##Vol", &ambient_scale, 0.0f, 5.0f)) {
 										vol_effect->SetAmbientScale(ambient_scale);
+										cfg.SetFloat("volumetric_ambient_scale", ambient_scale);
 										changed_vol = true;
 									}
 
 									float rayleigh_scale = vol_effect->GetRayleighScale();
 									if (ImGui::SliderFloat("Rayleigh Scale##Vol", &rayleigh_scale, 0.0f, 5.0f)) {
 										vol_effect->SetRayleighScale(rayleigh_scale);
+										cfg.SetFloat("volumetric_rayleigh_scale", rayleigh_scale);
 										changed_vol = true;
 									}
 
 									float mie_scale = vol_effect->GetMieScale();
 									if (ImGui::SliderFloat("Mie Scale##Vol", &mie_scale, 0.0f, 5.0f)) {
 										vol_effect->SetMieScale(mie_scale);
+										cfg.SetFloat("volumetric_mie_scale", mie_scale);
 										changed_vol = true;
 									}
 
 									float multi_scat_scale = vol_effect->GetMultiScatScale();
 									if (ImGui::SliderFloat("Multi-scatter Scale##Vol", &multi_scat_scale, 0.0f, 5.0f)) {
 										vol_effect->SetMultiScatScale(multi_scat_scale);
+										cfg.SetFloat("volumetric_multi_scat_scale", multi_scat_scale);
 										changed_vol = true;
 									}
 
 									float shadow_sensitivity = vol_effect->GetShadowSensitivity();
-									if (ImGui::SliderFloat("Shadow Sensitivity##Vol", &shadow_sensitivity, 0.0f, 1.0f)) {
+									if (ImGui::SliderFloat("Shadow Sensitivity##Vol", &shadow_sensitivity, 0.0f, 5.0f)) {
 										vol_effect->SetShadowSensitivity(shadow_sensitivity);
+										cfg.SetFloat("volumetric_shadow_sensitivity", shadow_sensitivity);
 										changed_vol = true;
 									}
 
 									bool use_2d_acc = vol_effect->GetTemporalAccumulation2D();
 									if (ImGui::Checkbox("2D Screenspace Temporal Accumulation##Vol", &use_2d_acc)) {
 										vol_effect->SetTemporalAccumulation2D(use_2d_acc);
+										cfg.SetBool("volumetric_temporal_accumulation_2d", use_2d_acc);
 										changed_vol = true;
 									}
 

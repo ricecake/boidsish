@@ -177,6 +177,7 @@ namespace Boidsish {
 		float GetWorldScale() const { return _worldScale; }
 
 		GLuint GetCloudWeatherTexture() const { return _cloudWeatherTexture; }
+		GLuint GetCloudWeatherMinMaxTexture() const { return _cloudWeatherMinMaxTexture; }
 
 		/**
 		 * Sample the cloud weather data on the CPU.
@@ -210,6 +211,7 @@ namespace Boidsish {
 		GLuint _skyViewLUT = 0;
 		GLuint _aerialPerspectiveLUT = 0;
 		GLuint _cloudWeatherTexture = 0;
+		GLuint _cloudWeatherMinMaxTexture = 0;
 		GLuint _cloudVolumeTexture = 0;
 		GLuint _cloudSeedsBuffer = 0;
 		GLuint _shCoeffsBuffer = 0;

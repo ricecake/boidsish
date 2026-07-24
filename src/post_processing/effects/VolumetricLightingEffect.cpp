@@ -8,6 +8,7 @@
 #include "fire_effect_manager.h"
 #include "NoiseManager.h"
 #include "weather_manager.h"
+#include "ConfigManager.h"
 #include <GL/glew.h>
 
 namespace Boidsish {
@@ -27,6 +28,17 @@ namespace Boidsish {
 		void VolumetricLightingEffect::Initialize(int width, int height) {
 			width_ = width;
 			height_ = height;
+
+			auto& cfg = ConfigManager::GetInstance();
+			intensity_ = cfg.GetAppSettingFloat("volumetric_intensity", intensity_);
+			anisotropy_ = cfg.GetAppSettingFloat("volumetric_anisotropy", anisotropy_);
+			temporal_alpha_ = cfg.GetAppSettingFloat("volumetric_temporal_alpha", temporal_alpha_);
+			ambient_scale_ = cfg.GetAppSettingFloat("volumetric_ambient_scale", ambient_scale_);
+			rayleigh_scale_ = cfg.GetAppSettingFloat("volumetric_rayleigh_scale", rayleigh_scale_);
+			mie_scale_ = cfg.GetAppSettingFloat("volumetric_mie_scale", mie_scale_);
+			multi_scat_scale_ = cfg.GetAppSettingFloat("volumetric_multi_scat_scale", multi_scat_scale_);
+			shadow_sensitivity_ = cfg.GetAppSettingFloat("volumetric_shadow_sensitivity", shadow_sensitivity_);
+			temporal_accumulation_2d_ = cfg.GetAppSettingBool("volumetric_temporal_accumulation_2d", temporal_accumulation_2d_);
 
 			injection_shader_ = std::make_unique<ComputeShader>("shaders/effects/volumetric_injection.comp");
 			integration_shader_ = std::make_unique<ComputeShader>("shaders/effects/volumetric_integration.comp");

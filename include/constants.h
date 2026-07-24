@@ -44,6 +44,8 @@ namespace Boidsish {
 				TerrainDisplacementImage = 44,
 				Cloud3D = 45,
 				CloudJFADistance = 46,
+				CloudWeatherMinMax = 49,
+				CloudMinMaxBounding = 50,
 			};
 
 			enum class Ubo {
@@ -312,6 +314,14 @@ namespace Boidsish {
 
 			consteval int CloudJFADistance() {
 				return std::to_underlying(Constants::Bindings::Texture::CloudJFADistance);
+			}
+
+			consteval int CloudWeatherMinMax() {
+				return std::to_underlying(Constants::Bindings::Texture::CloudWeatherMinMax);
+			}
+
+			consteval int CloudMinMaxBounding() {
+				return std::to_underlying(Constants::Bindings::Texture::CloudMinMaxBounding);
 			}
 		} // namespace TextureUnit
 
