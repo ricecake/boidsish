@@ -46,6 +46,9 @@ namespace Boidsish {
 			void SetShadowSensitivity(float s) { shadow_sensitivity_ = s; }
 			float GetShadowSensitivity() const { return shadow_sensitivity_; }
 
+			void SetLightAccent(float a) { light_accent_ = a; }
+			float GetLightAccent() const { return light_accent_; }
+
 			void SetTemporalAccumulation2D(bool b) { temporal_accumulation_2d_ = b; }
 			bool GetTemporalAccumulation2D() const { return temporal_accumulation_2d_; }
 
@@ -94,6 +97,7 @@ namespace Boidsish {
 			float mie_scale_ = 1.0f;
 			float multi_scat_scale_ = 1.0f;
 			float shadow_sensitivity_ = 1.0f;
+			float light_accent_ = 2.0f;
 			bool temporal_accumulation_2d_ = true;
 
 			// Froxel grid dimensions per cascade

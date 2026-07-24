@@ -27,6 +27,7 @@ uniform float uRayleighScale;
 uniform float uMieScale;
 uniform float uMultiScatScale;
 uniform float uShadowSensitivity;
+uniform float uLightAccent;
 
 #define USE_TERRAIN_DATA
 #define SKIP_TERRAIN_RAYCAST
@@ -162,6 +163,7 @@ void main() {
 */
 
     // Direct light (Sun/Moon)
+    float mainLightShadow = 1.0;
     for (int i = 0; i < min(2, num_lights); ++i) {
         if (lights[i].type != LIGHT_TYPE_DIRECTIONAL) continue;
 
@@ -183,7 +185,19 @@ void main() {
             // We use the version that skips redundant terrain raycasts for efficiency.
             shadow = min(shadow, calculateShadow(i, worldPos, vec3(0, 1, 0), L));
         }
-        shadow = clamp(mix(1.0, shadow, uShadowSensitivity), 0.0, 1.0);
+
+        if (i == 0) {
+            mainLightShadow = shadow;
+        }
+
+        // Make the shadows stand out strongly:
+        // Raise shadow to a power or apply a contrast function based on uShadowSensitivity
+        float adjustedShadow = shadow;
+        if (uShadowSensitivity > 1.0) {
+            adjustedShadow = pow(clamp(shadow, 0.0, 1.0), uShadowSensitivity);
+        } else {
+            adjustedShadow = clamp(mix(1.0, shadow, uShadowSensitivity), 0.0, 1.0);
+        }
 
         float r_km = kEarthRadius + worldPos.y / (1000.0 * max(0.0001, worldScale));
         vec3 atmosphereTransmittance = texture(u_transmittanceLUT, getTransmittanceUV(r_km, L.y)).rgb;
@@ -194,9 +208,9 @@ void main() {
 
         vec3 lightRadiance = lights[i].color * max(0.0, lights[i].intensity);
 
-        // Single scattering (shadowed) + multi-scattering (partially shadowed to preserve terrain contrast)
-        float multiScatShadow = mix(1.0, shadow, 0.75);
-        radiance += lightRadiance * (atmosphereTransmittance * shadow * combinedPhase + multiScat * multiScatShadow * (s.rayleigh + s.mie) * uMultiScatScale);
+        // Single scattering (shadowed) + multi-scattering (attenuated in shadow to stand out strongly)
+        float multiScatShadow = mix(1.0, adjustedShadow, 0.85 * clamp(uShadowSensitivity, 0.0, 1.0));
+        radiance += lightRadiance * (atmosphereTransmittance * adjustedShadow * combinedPhase * uLightAccent + multiScat * multiScatShadow * (s.rayleigh + s.mie) * uMultiScatScale);
     }
 
     // Local lights - CLUSTERED
@@ -254,7 +268,10 @@ void main() {
     vec3 effectiveAmbient = max(ambient_light, baseAmbientRadiance);
 
     vec3 ambientContrib = getSpatialAmbientSH(worldPos, V) * 0.5 + effectiveAmbient * (s.rayleigh + s.mie);
-    radiance += ambientContrib * uAmbientScale;
+
+    // Attenuate ambient in shadowed regions based on shadow sensitivity to make shadows stand out strongly
+    float ambientShadow = mix(1.0, mainLightShadow, 0.85 * clamp(uShadowSensitivity, 0.0, 1.0));
+    radiance += ambientContrib * uAmbientScale * ambientShadow;
 
     // Lightning illumination
     if (lightningPulse > 0.01) {
