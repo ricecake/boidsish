@@ -6,6 +6,7 @@
 #include "graphics.h"
 #include "SceneManager.h"
 #include "hud_manager.h"
+#include "hud.h"
 #include "ui/EnvironmentWidget.h"
 #include "ui/MoodWidget.h"
 #include "ui/LightningWidget.h"
@@ -64,6 +65,9 @@ namespace Boidsish {
 			AddWidget(std::make_shared<SystemWidget>(visualizer, scene_manager));
 			AddWidget(std::make_shared<ProfilerWidget>());
 			AddWidget(std::make_shared<SpaceProbeWidget>(visualizer));
+
+			// Register Space Probe HUD element
+			hud_manager.AddElement(std::make_shared<HudSpaceProbe>(visualizer));
 		}
 
 		void UIConfigManager::Render() {
