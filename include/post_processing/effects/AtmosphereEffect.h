@@ -355,18 +355,18 @@ namespace Boidsish {
 			float cloud_max_ray_distance_ = 100000.0f;
 			int   cloud_min_samples_ = 32;
 			int   cloud_max_samples_ = 96;
-			float cloud_extinction_ = 0.01f;
-			glm::vec3 cloud_extinction_color_ = glm::vec3(1.0f, 0.7f, 0.4f);
-			glm::vec3 cloud_albedo_ = glm::vec3(0.9f);
-			float cloud_temporal_gamma_ = 1.5f;
-			float cloud_max_history_length_ = 32.0f;
+			float cloud_extinction_ = 0.5f;
+			glm::vec3 cloud_extinction_color_ = glm::vec3(1.0f, 1.0f, 1.0f);
+			glm::vec3 cloud_albedo_ = glm::vec3(0.85f);
+			float cloud_temporal_gamma_ = 1.2f;
+			float cloud_max_history_length_ = 64.0f;
 			float cloud_phi_luma_ = 20.0f;
 			float cloud_phi_depth_ = 1.5f;
 			float cloud_phi_density_ = 0.05f;
 
 			bool  enable_temporal_ = true;
 			bool  enable_spatial_filter_ = true;
-			int   cloud_svgf_passes_ = 4;
+			int   cloud_svgf_passes_ = 2;
 			float cloud_svgf_history_boost_ = 4.0f;
 			float cloud_svgf_history_threshold_ = 10.0f;
 
