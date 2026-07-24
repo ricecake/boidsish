@@ -3,6 +3,7 @@
 layout(local_size_x = 16, local_size_y = 16) in;
 
 layout(binding = 0, rgba16f) uniform image2D outWeatherMap;
+layout(binding = 1, rg16f) uniform image2D outMinMaxMap;
 
 layout(std430, binding = [[CLOUD_SEEDS_BINDING]] ) buffer CloudSeeds {
 	vec4 seeds[]; // x: worldX, y: worldZ, z: SDF, w: isCloudy
@@ -60,6 +61,9 @@ void main() {
 	float thicknessMap = clamp(-vd2.dist * 2.0, 0.0, 1.0);
 
 	imageStore(outWeatherMap, pixel, vec4(sdf, altitudeMap, cellID, thicknessMap));
+
+	float density = (sdf < 0.0) ? thicknessMap : 0.0;
+	imageStore(outMinMaxMap, pixel, vec4(density, density, 0.0, 0.0));
 
 	// Record seed info if this is the pixel closest to the cell center (f1)
 	vec2 f1Pixel = (cellId * cellRange) / mapRange * vec2(size);
