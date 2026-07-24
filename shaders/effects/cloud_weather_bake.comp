@@ -45,26 +45,28 @@ void main() {
 	// Smooth and linear mapping of uCloudCoverage from [0.0, 1.0] to regionalCoverage without harsh steps
 	float regionalCoverage = clamp((slowNoise - 1.0) + uCloudCoverage * 2.0, 0.0, 1.0);
 
-	float sdf = generateOrganicCellSDF(p.xz, cellRange, vec2(10.0), regionalCoverage);
+	// float sdf = generateOrganicCellSDF(p.xz, cellRange, vec2(10.0), regionalCoverage);
 
-	vec2 cellId = floor(p.xz / cellRange);
-	float cellID = hash12(cellId, vec2(10.0)); // Fallback ID hash
+	// vec2 cellId = floor(p.xz / cellRange);
+	// float cellID = hash12(cellId, vec2(10.0)); // Fallback ID hash
 
 	// VoronoiData vd = sdVoronoiFbm(hash2(p.xz, vec2(10)), 2.0, 3.0, regionalCoverage, vec2(10.0));
-	VoronoiData vd2 = sdVoronoiFbm(p.xz / cellRange, 3.0, 5.0, regionalCoverage, vec2(10.0));
+	// VoronoiData vd2 = sdVoronoiFbm(p.xz / cellRange, 3.0, 5.0, regionalCoverage, vec2(10.0));
 
 	// Use continuous slow regional noise for altitudeMap to avoid droopy mushroom caps at individual cloud edges
-	float altitudeMap = smoothstep(cellID, 1.0, slowNoise);
+	// float altitudeMap = smoothstep(cellID, 1.0, slowNoise);
 
 	// Fix coordinate scaling bug by using the Voronoi FBM distance directly with a robust scaling factor
-	float thicknessMap = clamp(-vd2.dist * 2.0, 0.0, 1.0);
-
-	imageStore(outWeatherMap, pixel, vec4(sdf, altitudeMap, cellID, thicknessMap));
+	// float thicknessMap = clamp(-vd2.dist * 2.0, 0.0, 1.0);
+	VoronoiData vd = sdVoronoiHybrid(p.xz / cellRange, 3.0, 5.0, regionalCoverage, vec2(10.0));
+	vec2 cellId = vd.f1;
+	float cellID = hash12(vd.f1, vec2(10.0));
+	imageStore(outWeatherMap, pixel, vec4(vd.dist, vd.dist_f1, cellID, (vd.f2 - vd.f1)));
 
 	// Record seed info if this is the pixel closest to the cell center (f1)
 	vec2 f1Pixel = (cellId * cellRange) / mapRange * vec2(size);
 	if (length(vec2(pixel) - f1Pixel) < 1.0) {
 		int cellIdx = int(mod(floor(cellId.y), 10.0) * 10.0 + mod(floor(cellId.x), 10.0));
-		seeds[cellIdx] = vec4(cellId.x * cellRange, cellId.y * cellRange, sdf, (sdf < 0.0 ? 1.0 : 0.0));
+		seeds[cellIdx] = vec4(cellId.x * cellRange, cellId.y * cellRange, vd.dist, (vd.dist < 0.0 ? 1.0 : 0.0));
 	}
 }

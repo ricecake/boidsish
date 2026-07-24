@@ -8,9 +8,13 @@ struct CloudProperties {
 
 struct CloudWeather {
 	float sdf;        // Signed Distance Field (world space)
+	float centerDist;
+	float density;
+	float cellID;     // Per-cell variety
 	float heightMap;  // Altitude variety
 	float thickness;  // Thickness variety
-	float cellID;     // Per-cell variety
+	float ecentricity;
+	float curve;
 	vec3 p;
 };
 
@@ -29,6 +33,13 @@ float getCurvedAltitude(vec3 p) {
 // float saturate(float value) {
 // 	return clamp(value, 0.0, 1.0);
 // }
+
+vec4 hash41(float p) {
+    vec4 p4 = fract(vec4(p) * vec4(.1031, .1030, .0973, .1099));
+    p4 += dot(p4, p4.wzxy + 33.33);
+    return fract((p4.xxyz + p4.yzzw) * p4.zywx);
+}
+
 
 float remap(float value, float valueMin, float valueMax) {
 	return (value - valueMin) / (valueMax - valueMin);
@@ -344,10 +355,16 @@ float evalSdf(
 
 CloudWeather loadCloudWeather(vec3 p, CloudProperties props, vec4 tex) {
 	CloudWeather weather;
+	//imageStore(outWeatherMap, pixel, vec4(vd.dist, vd.dist_f1, cellID, (vd.f2 - vd.f1) * slowNoise));
+	vec4 derived = hash41(tex.b);
 	weather.sdf = tex.r;
-	weather.heightMap = tex.g;
+	weather.centerDist = tex.g;
+	weather.density = tex.a;
 	weather.cellID = tex.b;
-	weather.thickness = tex.a;
+	weather.heightMap = derived.r;
+	weather.thickness = derived.g;
+	weather.ecentricity = derived.b;
+	weather.curve = derived.a;
 	weather.p = p;
 
 	return weather;
@@ -443,6 +460,17 @@ float calculateLoftedCloudSDF(vec3 p, CloudWeather weather, CloudLayer layer, fl
 }
 
 float getCloud3DSDF(vec3 p, CloudWeather weather, CloudLayer layer, float worldScale) {
+/*
+	weather.sdf = tex.r;
+	weather.centerDist = tex.g;
+	weather.density = tex.a;
+	weather.cellID = tex.b;
+	weather.heightMap = derived.r;
+	weather.thickness = derived.g;
+	weather.ecentricity = derived.b;
+	weather.curve = derived.a;
+	weather.p = p;
+*/
 	float sdf2d = weather.sdf;
 
 	// Use curved altitude to respect Earth's curvature
@@ -450,7 +478,7 @@ float getCloud3DSDF(vec3 p, CloudWeather weather, CloudLayer layer, float worldS
 
 	// Proportional altitude shift and thickness
 	float altitudeShift = weather.heightMap * layer.thickness;
-	float actualThickness = weather.thickness * layer.thickness;
+	float actualThickness = weather.thickness * layer.thickness ;//* (1.0-smoothstep(0, 1.0, weather.centerDist));
 
 	// The actual cloud spans from local floor to local ceiling
 	float localFloor = layer.baseFloor + altitudeShift;

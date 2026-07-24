@@ -91,6 +91,8 @@ vec2 warpNoise(vec2 p, vec2 period)
 
 struct VoronoiData {
 	float dist;
+	float dist_f1;
+	float dist_f2;
 	vec2 f1;
 	vec2 f2;
 };
@@ -143,10 +145,14 @@ VoronoiData sdVoronoiEdge(vec2 p, vec2 period)
 		}
 
 	VoronoiData res;
-	res.dist = md;
 
 	res.f1 = n + mg + mo;
 	res.f2 = n + f2_g + f2_o;
+
+	res.dist = md;
+	res.dist_f1 = distance(res.f1, f);
+	res.dist_f2 = distance(res.f2, f);
+
 	return res;
 }
 
