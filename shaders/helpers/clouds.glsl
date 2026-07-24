@@ -518,12 +518,13 @@ CloudSpotDetails calculateCloudDensityExpV9(
 	vec3 advect = time * advectSpeed;
 	vec3 p_advected = p + advect;
 
-	float density = weather.density * smoothstep(0, weather.ecentricity, h) * (1.0 - smoothstep(0, weather.ecentricity, h));
+	float h_mid = mix(0.15, 0.5, weather.ecentricity);
+	float density = weather.density * (1.0 - abs(h - h_mid) / max(0.001, (h < h_mid ? h_mid : 1.0 - h_mid)));
 
 	float baseNoise = 1.0;
 	// if (simplified >= 10.0) {
 		float baseSdf = getCloud3DSDF(p_advected, weather, layer, props.worldScale);
-		baseNoise = clamp(abs(baseSdf), 0, 1);
+		baseNoise = clamp(-baseSdf / max(1.0, 500.0 * props.worldScale), 0.0, 1.0);
 	// }
 	// else {
 		vec3 uvw = vec3(
@@ -599,7 +600,7 @@ CloudDensityResult calculateCloudDensityMinimal(
 
 	CloudSpotDetails res = calculateCloudDensityExpV9(p, weather, layer, props, time, 1000.0);
 
-	return CloudDensityResult(res.relativeExtinction, advectSpeed, 1.0, vec3(1.0), vec3(0.0));
+	return CloudDensityResult(res.relativeExtinction * res.density, advectSpeed, 1.0, vec3(1.0), vec3(0.0));
 }
 
 

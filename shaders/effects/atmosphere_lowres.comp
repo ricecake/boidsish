@@ -580,8 +580,8 @@ void main() {
 			// 1. Outside Cloud Volume: Skip empty space using sphere tracing (conservative 3D SDF)
 			// if (allInvocationsARB(d3d >= currentStepSize)) {
 			if ((d3d >= currentStepSize)) {
-				float skipSteps = max(1.0, floor(d3d / currentStepSize));
-				t += skipSteps * currentStepSize;
+				float skipDist = clamp(d3d * 0.8, currentStepSize, 2000.0 * worldScale);
+				t += skipDist;
 				t = min(t_end, t);
 
 				prevDensity = vec3(0.0);
