@@ -1,0 +1,121 @@
+#version 460 core
+
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(binding = 0, rgba32f) uniform image2D outBoundingMap;
+
+uniform sampler2D depthTexture;
+
+#define ATMOSPHERE_HEIGHT_DEFINED
+uniform float u_atmosphereHeight;
+
+uniform sampler2D u_skyViewLUT;
+
+uniform float uCloudMaxRayDistance;
+
+// Include standard uniforms and utilities
+#include "../atmosphere/common.glsl"
+#include "../helpers/clouds.glsl"
+#include "../helpers/fast_noise.glsl"
+#include "../helpers/lighting.glsl"
+#include "../types/temporal_data.glsl"
+#include "helpers/math.glsl"
+
+layout(binding = [[CLOUD_WEATHER_MIN_MAX_BINDING]]) uniform sampler2D u_cloudWeatherMinMaxTexture;
+
+void main() {
+	ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+	ivec2 packedSize = imageSize(outBoundingMap);
+	if (pixel.x >= packedSize.x || pixel.y >= packedSize.y)
+		return;
+
+	vec2 uv = (vec2(pixel) + 0.5) / vec2(packedSize);
+
+	float depth = texture(depthTexture, uv).r;
+	float z = depth * 2.0 - 1.0;
+	vec4 clipSpacePosition = vec4(uv * 2.0 - 1.0, z, 1.0);
+	vec4 viewSpacePosition = invProjection * clipSpacePosition;
+	viewSpacePosition /= viewSpacePosition.w;
+	vec3 worldPos = (invView * viewSpacePosition).xyz;
+	vec3 rayDir = normalize(worldPos - viewPos);
+	float dist = length(worldPos - viewPos);
+
+	if (depth == 1.0) {
+		dist = uCloudMaxRayDistance * worldScale;
+		worldPos = viewPos + rayDir * dist;
+	}
+
+	float R_earth = kEarthRadius * 1000.0 * worldScale;
+	float R_floor = R_earth + (cloudAltitude - 500.0) * worldScale;
+	float R_ceiling = R_earth + (cloudAltitude + 2.0 * cloudThickness + 500.0) * worldScale;
+
+	vec3 earthCenter = vec3(viewPos.x, -R_earth, viewPos.z);
+	vec3 relRo = viewPos - earthCenter;
+
+	float t_start = 1e10;
+	float t_end = -1e10;
+
+	float t0, t1;
+	if (intersectSphere(relRo, rayDir, R_ceiling, t0, t1)) {
+		t_start = max(0.0, t0);
+		t_end = t1;
+
+		if (intersectSphere(relRo, rayDir, R_floor, t0, t1)) {
+			if (t0 < 0.0) {
+				t_start = max(t_start, t1);
+			} else {
+				t_end = min(t_end, t0);
+			}
+		}
+	}
+
+	t_end = min(t_end, dist);
+
+	float firstHit = -1.0;
+	float lastHit = -1.0;
+	float totalDensity = 0.0;
+
+	if (t_start < t_end) {
+		float t = t_start;
+		int L = 6;
+		float baseStepSize = 250.0 * worldScale;
+
+		for (int i = 0; i < 200; ++i) {
+			if (t >= t_end) break;
+
+			vec3 p = viewPos + rayDir * t;
+			vec3 advect = getCloudWindOffset(time);
+			vec3 p_advected = p + advect;
+			vec2 weatherUV = p_advected.xz / (100000.0 * worldScale);
+
+			// Wrap horizontally
+			weatherUV = fract(weatherUV);
+
+			vec2 minMax = textureLod(u_cloudWeatherMinMaxTexture, weatherUV, float(L)).rg;
+			float maxDensity = minMax.y;
+
+			if (maxDensity == 0.0) {
+				float texelSize = float(1 << L) * 48.828 * worldScale;
+				float dt = texelSize / max(0.01, length(rayDir.xz));
+				dt = clamp(dt, baseStepSize, 4000.0 * worldScale);
+				t += dt;
+				L = min(6, L + 1);
+			} else {
+				if (L > 0) {
+					L--;
+				} else {
+					if (maxDensity > 0.01) {
+						if (firstHit < 0.0) {
+							firstHit = t;
+						}
+						lastHit = t;
+						totalDensity += maxDensity * (baseStepSize / (1000.0 * worldScale));
+					}
+					t += baseStepSize;
+				}
+			}
+		}
+	}
+
+	imageStore(outBoundingMap, pixel, vec4(firstHit, lastHit, totalDensity, 0.0));
+}
