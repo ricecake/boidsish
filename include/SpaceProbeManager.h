@@ -61,6 +61,7 @@ namespace Boidsish {
 		float     roughness = 0.5f;
 		bool      use_sh_visualizer = true;
 		bool      refresh_requested = false;
+		bool      camera_follow_mode = false;
 
 		// Get readback data
 		const SpaceProbeData& GetData() const { return cached_data_; }

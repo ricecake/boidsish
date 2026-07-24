@@ -3067,6 +3067,19 @@ namespace Boidsish {
 					}
 				}
 			}
+
+			static float f2_cooldown = 0.0f;
+			if (f2_cooldown > 0.0f) {
+				f2_cooldown -= state.delta_time;
+			}
+
+			if (state.key_down[GLFW_KEY_F2] && f2_cooldown <= 0.0f) {
+				auto probe = parent->GetSpaceProbeManager();
+				if (probe) {
+					probe->camera_follow_mode = !probe->camera_follow_mode;
+					f2_cooldown = 0.3f; // 300 ms cooldown to prevent rapid repeat/flutter
+				}
+			}
 		}
 
 		void ToggleFullscreen() {
