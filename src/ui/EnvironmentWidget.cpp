@@ -957,6 +957,13 @@ namespace Boidsish {
 										changed_vol = true;
 									}
 
+									float light_accent = vol_effect->GetLightAccent();
+									if (ImGui::SliderFloat("Light Accent / God Ray Boost##Vol", &light_accent, 1.0f, 10.0f)) {
+										vol_effect->SetLightAccent(light_accent);
+										cfg.SetFloat("volumetric_light_accent", light_accent);
+										changed_vol = true;
+									}
+
 									bool use_2d_acc = vol_effect->GetTemporalAccumulation2D();
 									if (ImGui::Checkbox("2D Screenspace Temporal Accumulation##Vol", &use_2d_acc)) {
 										vol_effect->SetTemporalAccumulation2D(use_2d_acc);

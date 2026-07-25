@@ -27,6 +27,7 @@ uniform float uRayleighScale;
 uniform float uMieScale;
 uniform float uMultiScatScale;
 uniform float uShadowSensitivity;
+uniform float uLightAccent;
 
 #define USE_TERRAIN_DATA
 #define SKIP_TERRAIN_RAYCAST
@@ -209,7 +210,7 @@ void main() {
 
         // Single scattering (shadowed) + multi-scattering (attenuated in shadow to stand out strongly)
         float multiScatShadow = mix(1.0, adjustedShadow, 0.85 * clamp(uShadowSensitivity, 0.0, 1.0));
-        radiance += lightRadiance * (atmosphereTransmittance * adjustedShadow * combinedPhase + multiScat * multiScatShadow * (s.rayleigh + s.mie) * uMultiScatScale);
+        radiance += lightRadiance * (atmosphereTransmittance * adjustedShadow * combinedPhase * uLightAccent + multiScat * multiScatShadow * (s.rayleigh + s.mie) * uMultiScatScale);
     }
 
     // Local lights - CLUSTERED

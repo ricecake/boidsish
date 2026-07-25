@@ -38,6 +38,7 @@ namespace Boidsish {
 			mie_scale_ = cfg.GetAppSettingFloat("volumetric_mie_scale", mie_scale_);
 			multi_scat_scale_ = cfg.GetAppSettingFloat("volumetric_multi_scat_scale", multi_scat_scale_);
 			shadow_sensitivity_ = cfg.GetAppSettingFloat("volumetric_shadow_sensitivity", shadow_sensitivity_);
+			light_accent_ = cfg.GetAppSettingFloat("volumetric_light_accent", light_accent_);
 			temporal_accumulation_2d_ = cfg.GetAppSettingBool("volumetric_temporal_accumulation_2d", temporal_accumulation_2d_);
 
 			injection_shader_ = std::make_unique<ComputeShader>("shaders/effects/volumetric_injection.comp");
@@ -147,6 +148,7 @@ namespace Boidsish {
 			injection_shader_->setFloat("uMieScale", mie_scale_);
 			injection_shader_->setFloat("uMultiScatScale", multi_scat_scale_);
 			injection_shader_->setFloat("uShadowSensitivity", shadow_sensitivity_);
+			injection_shader_->setFloat("uLightAccent", light_accent_);
 
 			if (atmos_mgr) {
 				glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereMultiScattering());
