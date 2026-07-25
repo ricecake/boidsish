@@ -45,6 +45,41 @@ uniform vec3  uCloudAlbedo;
 
 float R_earth = kEarthRadius * 1000.0 * worldScale;
 
+struct Reservoir {
+	float t;        // Chosen sample distance along the ray
+	float p_hat;    // Target PDF (scattering/density contribution)
+	float w_sum;    // Sum of candidate weights
+	float M;        // Number of samples processed
+	float W;        // Final weight: w_sum / (M * p_hat)
+};
+
+void updateReservoir(inout Reservoir r, float t, float p_hat, float weight, float seed) {
+	r.w_sum += weight;
+	r.M += 1.0;
+	if (fract(sin(seed) * 43758.5453) * r.w_sum < weight) {
+		r.t = t;
+		r.p_hat = p_hat;
+	}
+}
+
+void mergeReservoir(inout Reservoir r1, Reservoir r2, float p_hat_at_r1, float seed) {
+	float weight = r2.W * p_hat_at_r1 * r2.M;
+	r1.w_sum += weight;
+	r1.M += r2.M;
+	if (fract(sin(seed) * 43758.5453) * r1.w_sum < weight) {
+		r1.t = r2.t;
+		r1.p_hat = p_hat_at_r1;
+	}
+}
+
+void finalizeReservoir(inout Reservoir r) {
+	if (r.p_hat > 0.0) {
+		r.W = r.w_sum / (r.M * r.p_hat);
+	} else {
+		r.W = 0.0;
+	}
+}
+
 
 /**
  * Calculates the adaptive step size for a volumetric ray sampling system.
@@ -199,13 +234,37 @@ void CalculateStochasticClusterLight(
 
 		vec3 opticalDepthToLight = vec3(0.0);
 		if (traceDist > 0.01 * worldScale) {
-			float random_shadow = fract(jitter + float(j) * 0.153);
-			vec3 sp = p + L * random_shadow * traceDist;
-			CloudWeather shadow_weather = computeCloudWeather(sp, props, 100.0);
-			CloudLayer shadow_layer = computeCloudLayer(shadow_weather, props);
-			CloudDensityResult shadowRes = calculateCloudDensity(sp, shadow_weather, shadow_layer, props, time, 100.0);
-			opticalDepthToLight = shadowRes.density * traceDist * (rgbExtinction * cloudShadowOpticalDepthMultiplier);
-			emissiveGlow += shadowRes.emissivity;
+			// Volumetric ReSTIR shadow reservoir for point/spot lights
+			Reservoir shadow_r = Reservoir(0.0, 0.0, 0.0, 0.0, 0.0);
+			int K_candidates = 4;
+			float shadow_segment = traceDist / float(K_candidates);
+			CloudDensityResult selected_shadowRes;
+
+			for (int k = 0; k < K_candidates; ++k) {
+				float s_c = (float(k) + fract(jitter + float(k) * 0.153 + float(j) * 0.283)) * shadow_segment;
+				vec3 sp_c = p + L * s_c;
+
+				CloudWeather shadow_weather_c = computeCloudWeather(sp_c, props, 100.0);
+				CloudLayer shadow_layer_c = computeCloudLayer(shadow_weather_c, props);
+				CloudDensityResult shadowRes_c = calculateCloudDensity(sp_c, shadow_weather_c, shadow_layer_c, props, time, 100.0);
+				vec3 d_c = shadowRes_c.density;
+
+				float p_hat_c = length(d_c);
+				if (p_hat_c > 0.001) {
+					float weight_c = p_hat_c * traceDist;
+					float prev_w_sum = shadow_r.w_sum;
+					updateReservoir(shadow_r, s_c, p_hat_c, weight_c, jitter + float(k) * 0.384 + float(j) * 0.152);
+					if (shadow_r.w_sum > prev_w_sum && shadow_r.t == s_c) {
+						selected_shadowRes = shadowRes_c;
+					}
+				}
+			}
+			finalizeReservoir(shadow_r);
+
+			if (shadow_r.W > 0.0) {
+				opticalDepthToLight = selected_shadowRes.density * shadow_r.W * (rgbExtinction * cloudShadowOpticalDepthMultiplier);
+				emissiveGlow += selected_shadowRes.emissivity;
+			}
 		}
 
 		vec3 shadowTerm = mix(
@@ -282,13 +341,37 @@ vec3 EvaluateStepLighting(
 
 		vec3 opticalDepthToLight = vec3(0.0);
 		if (traceDist > 0.01 * worldScale) {
-			float random_shadow = fract(jitter + float(j) * 0.153);
-			vec3 sp = p + L * random_shadow * traceDist;
-			CloudWeather shadow_weather = computeCloudWeather(sp, props, 100.0);
-			CloudLayer shadow_layer = computeCloudLayer(shadow_weather, props);
-			CloudDensityResult shadowRes = calculateCloudDensity(sp, shadow_weather, shadow_layer, props, time, 100.0);
-			opticalDepthToLight = shadowRes.density * traceDist * (rgbExtinction * cloudShadowOpticalDepthMultiplier);
-			emissiveGlow += shadowRes.emissivity;
+			// Volumetric ReSTIR shadow reservoir for directional lights
+			Reservoir shadow_r = Reservoir(0.0, 0.0, 0.0, 0.0, 0.0);
+			int K_candidates = 4;
+			float shadow_segment = traceDist / float(K_candidates);
+			CloudDensityResult selected_shadowRes;
+
+			for (int k = 0; k < K_candidates; ++k) {
+				float s_c = (float(k) + fract(jitter + float(k) * 0.153 + float(j) * 0.283)) * shadow_segment;
+				vec3 sp_c = p + L * s_c;
+
+				CloudWeather shadow_weather_c = computeCloudWeather(sp_c, props, 100.0);
+				CloudLayer shadow_layer_c = computeCloudLayer(shadow_weather_c, props);
+				CloudDensityResult shadowRes_c = calculateCloudDensity(sp_c, shadow_weather_c, shadow_layer_c, props, time, 100.0);
+				vec3 d_c = shadowRes_c.density;
+
+				float p_hat_c = length(d_c);
+				if (p_hat_c > 0.001) {
+					float weight_c = p_hat_c * traceDist;
+					float prev_w_sum = shadow_r.w_sum;
+					updateReservoir(shadow_r, s_c, p_hat_c, weight_c, jitter + float(k) * 0.384 + float(j) * 0.152);
+					if (shadow_r.w_sum > prev_w_sum && shadow_r.t == s_c) {
+						selected_shadowRes = shadowRes_c;
+					}
+				}
+			}
+			finalizeReservoir(shadow_r);
+
+			if (shadow_r.W > 0.0) {
+				opticalDepthToLight = selected_shadowRes.density * shadow_r.W * (rgbExtinction * cloudShadowOpticalDepthMultiplier);
+				emissiveGlow += selected_shadowRes.emissivity;
+			}
 		}
 
 		float cosTheta = dot(rayDir, L);
