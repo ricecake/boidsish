@@ -580,6 +580,54 @@ CloudSpotDetails calculateCloudDensityExpV9(
 	);
 }
 
+float getCloud3DProfile(vec3 p, CloudWeather weather, CloudLayer layer, float worldScale) {
+	float sdf2d = weather.sdf; // world space 2D distance to edge
+
+	// Use curved altitude to respect Earth's curvature
+	float altitude = getCurvedAltitude(p);
+
+	// Proportional altitude shift and thickness
+	float altitudeShift = weather.heightMap * layer.thickness;
+	float actualThickness = weather.thickness * layer.thickness * 2.5;
+
+	// The actual cloud spans from local floor to local ceiling
+	float localFloor = layer.baseFloor + altitudeShift;
+
+	// Normalized height h within local cloud layer
+	float h = clamp((altitude - localFloor) / max(actualThickness, 0.001), 0.0, 1.0);
+
+	float cellRange = 10000.0 * worldScale;
+	float normCenterDist = clamp(weather.centerDist / (cellRange * 0.5), 0.0, 1.0);
+	float thicknessTaper = smoothstep(1.0, 0.0, normCenterDist);
+
+	float eccentricity = clamp(weather.ecentricity, 0.1, 0.9);
+	float curveExponent = clamp(weather.curve, 0.5, 5.0);
+
+	float profile = 0.0;
+	if (h < eccentricity) {
+		float t = h / eccentricity;
+		profile = pow(t, curveExponent);
+	} else {
+		float t = (1.0 - h) / (1.0 - eccentricity);
+		profile = pow(t, curveExponent);
+	}
+	profile *= thicknessTaper;
+
+	// Taper vertical cloud thickness as a function of weather.centerDist
+	float maxTaperRadius = 4000.0 * worldScale;
+	float modifiedSdf2d = sdf2d + (1.0 - profile) * maxTaperRadius;
+
+	// If altitude is outside the local cloud layer, density is 0
+	if (altitude < localFloor || altitude > localFloor + actualThickness) {
+		return 0.0;
+	}
+
+	float shapeDensity = smoothstep(100.0 * worldScale, -100.0 * worldScale, modifiedSdf2d);
+	shapeDensity *= profile;
+
+	return shapeDensity;
+}
+
 // Cloud density calculation helper
 // Returns CloudDensityResult based on world-space position
 CloudDensityResult calculateCloudDensityMinimal(
@@ -610,9 +658,17 @@ CloudDensityResult calculateCloudDensityMinimal(
 	uvw.xz = fract(uvw.xz);
 
 	vec4 volSample = textureLod(u_cloud3DTexture, uvw, 0.0);
-	float density = volSample.a;
+	float volNoise = volSample.r;
 
-	pointDetails.density = vec3(density);
+	// Calculate base shape and erode with 3D texture noise on-the-fly
+	float shape = getCloud3DProfile(p, weather, layer, props.worldScale);
+	float finalDensity = 0.0;
+	if (shape > 0.0) {
+		shape = remapClamp(shape, (1.0 - volNoise) * 0.4, 1.0, 0.0, 1.0);
+		finalDensity = shape * clamp(volNoise * 1.5, 0.2, 1.8) * props.densityBase * weather.density;
+	}
+
+	pointDetails.density = vec3(finalDensity);
 	pointDetails.ao = volSample.g;
 	pointDetails.albedo = vec3(volSample.b);
 
@@ -650,9 +706,27 @@ CloudDensityResult calculateCloudDensity(
 	uvw.xz = fract(uvw.xz);
 
 	vec4 volSample = textureLod(u_cloud3DTexture, uvw, 0.0);
-	float density = volSample.a;
+	float volNoise = volSample.r;
 
-	pointDetails.density = vec3(density);
+	// Calculate shape on-the-fly
+	float shape = getCloud3DProfile(p, weather, layer, props.worldScale);
+	float finalDensity = 0.0;
+	if (shape > 0.0) {
+		float detail = 1.0;
+		if (simplified < 0.5) {
+			vec3 p_detail = (p + time * advectSpeed) / (3000.0 * props.worldScale);
+			detail = (fastFbm3d(p_detail) + 1.0) * 0.5;
+			vec3 curl = fastCurl3d(p_detail * 2.0);
+			p_detail += curl * 0.1 * (1.0 - h);
+			detail = mix(detail, fastWorley3d(p_detail), 0.35);
+		}
+
+		float combinedNoise = clamp(volNoise * (0.7 + 0.3 * detail), 0.0, 1.0);
+		shape = remapClamp(shape, (1.0 - combinedNoise) * 0.4, 1.0, 0.0, 1.0);
+		finalDensity = shape * clamp(combinedNoise * 1.5, 0.2, 1.8) * props.densityBase * weather.density;
+	}
+
+	pointDetails.density = vec3(finalDensity);
 	pointDetails.ao = volSample.g;
 	pointDetails.albedo = vec3(volSample.b);
 
