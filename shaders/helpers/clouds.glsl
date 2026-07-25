@@ -597,9 +597,26 @@ CloudDensityResult calculateCloudDensityMinimal(
 		return pointDetails;
 	}
 
-	CloudSpotDetails res = calculateCloudDensityExpV9(p, weather, layer, props, time, 1000.0);
+	// Sample the 3D cloud volume texture with slower advection speed
+	vec3 advect_3d = time * advectSpeed * 0.75;
+	vec3 p_advected_3d = p + advect_3d;
+	vec3 uvw = vec3(
+		p_advected_3d.x / (50000.0 * props.worldScale),
+		h,
+		p_advected_3d.z / (50000.0 * props.worldScale)
+	);
 
-	return CloudDensityResult(res.relativeExtinction, advectSpeed, 1.0, vec3(1.0), vec3(0.0));
+	// Wrap UVW horizontally
+	uvw.xz = fract(uvw.xz);
+
+	vec4 volSample = textureLod(u_cloud3DTexture, uvw, 0.0);
+	float density = volSample.a;
+
+	pointDetails.density = vec3(density);
+	pointDetails.ao = volSample.g;
+	pointDetails.albedo = vec3(volSample.b);
+
+	return pointDetails;
 }
 
 
@@ -629,25 +646,17 @@ CloudDensityResult calculateCloudDensity(
 		p_advected_3d.z / (50000.0 * props.worldScale)
 	);
 
+	// Wrap UVW horizontally
+	uvw.xz = fract(uvw.xz);
+
 	vec4 volSample = textureLod(u_cloud3DTexture, uvw, 0.0);
-	float volNoise = volSample.r;
-	float volAo = volSample.g;
-	// float volAlbedoBasis = volSample.b;
+	float density = volSample.a;
 
-	CloudSpotDetails res = calculateCloudDensityExpV9(p, weather, layer, props, time, simplified);
+	pointDetails.density = vec3(density);
+	pointDetails.ao = volSample.g;
+	pointDetails.albedo = vec3(volSample.b);
 
-	// Where the current system has density, the 3d volume adds variety and breaks up the linear nature.
-	float finalDensity = res.density;
-	if (finalDensity > 0.0) {
-		finalDensity *= mix(0.4, 1.6, volNoise);
-		// finalDensity = adjust(finalDensity, 1.0-volNoise);
-	}
-
-	vec3 mixedDensity = res.relativeExtinction * finalDensity;
-	// vec3 mixedAlbedo = vec3(volAlbedoBasis);
-
-	// return CloudDensityResult(mixedDensity, advectSpeed, volAo, mixedAlbedo, smoothstep(0.8, 1.2, mixedDensity) * vec3(0,1,0));
-	return CloudDensityResult(mixedDensity, advectSpeed, volAo, vec3(1.0), vec3(0.0));
+	return pointDetails;
 }
 
 #endif // HELPERS_CLOUDS_GLSL

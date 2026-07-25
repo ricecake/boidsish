@@ -355,16 +355,18 @@ float evalSdf(
 
 CloudWeather loadCloudWeather(vec3 p, CloudProperties props, vec4 tex) {
 	CloudWeather weather;
-	//imageStore(outWeatherMap, pixel, vec4(vd.dist, vd.dist_f1, cellID, (vd.f2 - vd.f1) * slowNoise));
 	vec4 derived = hash41(tex.b);
 	weather.sdf = tex.r;
 	weather.centerDist = tex.g;
-	weather.density = tex.a;
 	weather.cellID = tex.b;
-	weather.heightMap = derived.r;
-	weather.thickness = derived.g;
-	weather.ecentricity = derived.b;
-	weather.curve = derived.a;
+	weather.density = tex.a;
+
+	// Decode derived features:
+	// x: thickness, y: altitude shift, z: baseline density, w: eccentricity (widest point)
+	weather.thickness = derived.x;
+	weather.heightMap = derived.y;
+	weather.ecentricity = derived.w;
+	weather.curve = derived.x * 3.0 + 1.0; // curve exponent
 	weather.p = p;
 
 	return weather;
@@ -460,17 +462,6 @@ float calculateLoftedCloudSDF(vec3 p, CloudWeather weather, CloudLayer layer, fl
 }
 
 float getCloud3DSDF(vec3 p, CloudWeather weather, CloudLayer layer, float worldScale) {
-/*
-	weather.sdf = tex.r;
-	weather.centerDist = tex.g;
-	weather.density = tex.a;
-	weather.cellID = tex.b;
-	weather.heightMap = derived.r;
-	weather.thickness = derived.g;
-	weather.ecentricity = derived.b;
-	weather.curve = derived.a;
-	weather.p = p;
-*/
 	float sdf2d = weather.sdf;
 
 	// Use curved altitude to respect Earth's curvature
@@ -478,16 +469,39 @@ float getCloud3DSDF(vec3 p, CloudWeather weather, CloudLayer layer, float worldS
 
 	// Proportional altitude shift and thickness
 	float altitudeShift = weather.heightMap * layer.thickness;
-	float actualThickness = weather.thickness * layer.thickness ;//* (1.0-smoothstep(0, 1.0, weather.centerDist));
+	float actualThickness = weather.thickness * layer.thickness * 2.5;
 
 	// The actual cloud spans from local floor to local ceiling
 	float localFloor = layer.baseFloor + altitudeShift;
 
-	float halfHeight = actualThickness * 0.5;
-	float centerY = localFloor + halfHeight;
-	float distY = abs(altitude - centerY) - halfHeight;
+	// Normalized height h within local cloud layer
+	float h = clamp((altitude - localFloor) / max(actualThickness, 0.001), 0.0, 1.0);
 
-	vec2 w = vec2(sdf2d, distY);
+	float cellRange = 10000.0 * worldScale;
+	float normCenterDist = clamp(weather.centerDist / (cellRange * 0.5), 0.0, 1.0);
+	float thicknessTaper = smoothstep(1.0, 0.0, normCenterDist);
+
+	float eccentricity = clamp(weather.ecentricity, 0.1, 0.9);
+	float curveExponent = clamp(weather.curve, 0.5, 5.0);
+
+	float profile = 0.0;
+	if (h < eccentricity) {
+		float t = h / eccentricity;
+		profile = pow(t, curveExponent);
+	} else {
+		float t = (1.0 - h) / (1.0 - eccentricity);
+		profile = pow(t, curveExponent);
+	}
+	profile *= thicknessTaper;
+
+	// Taper vertical cloud thickness as a function of weather.centerDist
+	float maxTaperRadius = 4000.0 * worldScale;
+	float modifiedSdf2d = sdf2d + (1.0 - profile) * maxTaperRadius;
+
+	float centerY = localFloor + actualThickness * 0.5;
+	float distY = abs(altitude - centerY) - actualThickness * 0.5;
+
+	vec2 w = vec2(modifiedSdf2d, distY);
 	return min(max(w.x, w.y), 0.0) + length(max(w, 0.0));
 }
 

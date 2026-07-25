@@ -1,6 +1,28 @@
 #ifndef HELPERS_CLOUD_WEATHER_UTILS_GLSL
 #define HELPERS_CLOUD_WEATHER_UTILS_GLSL
 
+#include "lygia/generative/psrdnoise.glsl"
+
+float simplexFbm(vec2 p, vec2 period, int octaves) {
+	float val = 0.0;
+	float amp = 0.5;
+	float freq = 1.0;
+	vec2 g;
+	for (int i = 0; i < octaves; i++) {
+		val += amp * psrdnoise(p * freq, period * freq, 0.0, g);
+		amp *= 0.5;
+		freq *= 2.0;
+	}
+	return val;
+}
+
+vec2 simplexWarpFbm(vec2 p, vec2 period, float coverage) {
+	float noiseX = simplexFbm(p, period, 4);
+	float noiseY = simplexFbm(p + vec2(17.37, 29.11), period, 4);
+	float strength = 0.15 * coverage;
+	return vec2(noiseX, noiseY) * strength;
+}
+
 // Tile-aware 2D hash
 vec2 hash2(vec2 p, vec2 period)
 {
@@ -206,6 +228,29 @@ float smin_bake( float a, float b, float k )
     k *= 4.0;
     float h = max( k-abs(a-b), 0.0 )/k;
     return min(a,b) - h*h*k*(1.0/4.0);
+}
+
+VoronoiData sdVoronoiEroded(vec2 p, float coverage, vec2 period) {
+	vec2 warpedP = p + simplexWarpFbm(p, period, coverage);
+	VoronoiData res = sdVoronoiEdge(warpedP, period);
+	res.dist = -(res.dist - (1.0 - coverage));
+	return res;
+}
+
+float getErodedVoronoiDist(vec2 p, float coverage, vec2 period) {
+	return sdVoronoiEroded(p, coverage, period).dist;
+}
+
+VoronoiData sdVoronoiErodedHybrid(vec2 p, float coverage, vec2 period) {
+	VoronoiData vd = sdVoronoiEroded(p, coverage, period);
+	vec2 eps = vec2(0.001, 0.0);
+	float dx = getErodedVoronoiDist(p + eps.xy, coverage, period) -
+			   getErodedVoronoiDist(p - eps.xy, coverage, period);
+	float dy = getErodedVoronoiDist(p + eps.yx, coverage, period) -
+			   getErodedVoronoiDist(p - eps.yx, coverage, period);
+	vec2 grad = vec2(dx, dy) / (2.0 * eps.x);
+	vd.dist = vd.dist / (length(grad) + 0.0001);
+	return vd;
 }
 
 float generateOrganicCellSDF(vec2 p, float cellSize, vec2 period, float coverage) {

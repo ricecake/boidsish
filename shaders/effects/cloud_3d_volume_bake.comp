@@ -75,13 +75,22 @@ void main() {
 	float worldY = (props.altitude + p.y * (2.0 * props.thickness)) * worldScale;
 	vec3 worldPos = vec3(p.x * 100000.0 * worldScale, worldY, p.z * 100000.0 * worldScale);
 
-	// 3. B Channel: Store the precomputed conservative 3D SDF of the cloud layer in meters.
-	float cloud3dSdf = getCloud3DSDF(worldPos, weather, layer, worldScale);
+	// 3. B Channel: Store a noise driven height based baseline albedo
+	// 4. A Channel: Store the physical density of the cloud volume.
+	float d3d = getCloud3DSDF(worldPos, weather, layer, worldScale);
+	float shapeProfile = smoothstep(100.0 * worldScale, -100.0 * worldScale, d3d);
 
-	// 4. A Channel: Store the actual physical density of the cloud volume.
-	CloudDensityResult densityRes = calculateCloudDensityMinimal(worldPos, weather, layer, props);
+	float erodedDensity = shapeProfile;
+	float baselineAlbedo = 0.0;
+	float finalDensity = 0.0;
 
-	float actualDensity = length(densityRes.density);
+	if (erodedDensity > 0.0) {
+		float h_frac = float(voxel.y) / float(size.y);
+		baselineAlbedo = clamp(h_frac * (0.7 + 0.3 * noiseVal) + 0.3 * noiseVal, 0.0, 1.0);
+		erodedDensity = remap_bake(erodedDensity, (1.0 - noiseVal) * 0.4, 1.0, 0.0, 1.0);
+		erodedDensity = clamp(erodedDensity * mix(0.5, 1.5, noiseVal), 0.0, 1.0);
+		finalDensity = erodedDensity * props.densityBase * weather.density;
+	}
 
-	imageStore(outVolume, voxel, vec4(noiseVal, aoVal, cloud3dSdf, actualDensity));
+	imageStore(outVolume, voxel, vec4(noiseVal, aoVal, baselineAlbedo, finalDensity));
 }
