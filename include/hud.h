@@ -20,6 +20,7 @@ namespace Boidsish {
 
 	class HudManager;
 	struct Camera;
+	class Visualizer;
 
 	class HudElement {
 	public:
@@ -289,6 +290,21 @@ namespace Boidsish {
 	private:
 		std::string m_message;
 		float       m_fontSizeScale;
+	};
+
+	class HudSpaceProbe: public HudElement {
+	public:
+		HudSpaceProbe(
+			Visualizer& visualizer,
+			HudAlignment alignment = HudAlignment::BOTTOM_RIGHT,
+			glm::vec2 position = {-20, -20}
+		);
+
+		void Update(float dt, const Camera& camera) override;
+		void Draw(HudManager& manager) override;
+
+	private:
+		Visualizer& m_visualizer;
 	};
 
 } // namespace Boidsish

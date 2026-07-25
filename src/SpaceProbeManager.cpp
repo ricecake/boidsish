@@ -14,7 +14,7 @@
 
 namespace Boidsish {
 
-	SpaceProbeManager::SpaceProbeManager() {}
+	SpaceProbeManager::SpaceProbeManager() : camera_follow_mode(false) {}
 
 	SpaceProbeManager::~SpaceProbeManager() {
 		if (probe_ssbo_ != 0) {
@@ -45,6 +45,29 @@ namespace Boidsish {
 		LightManager* light_manager
 	) {
 		(void)deltaTime;
+
+		if (camera_follow_mode) {
+			is_enabled = true;
+			continuous_update = true;
+
+			// Extract camera directions from the view matrix
+			glm::vec3 cam_up(render_state.view[0][1], render_state.view[1][1], render_state.view[2][1]);
+			glm::vec3 cam_front(-render_state.view[0][2], -render_state.view[1][2], -render_state.view[2][2]);
+
+			cam_up = glm::length(cam_up) > 0.001f ? glm::normalize(cam_up) : glm::vec3(0.0f, 1.0f, 0.0f);
+			cam_front = glm::length(cam_front) > 0.001f ? glm::normalize(cam_front) : glm::vec3(0.0f, 0.0f, -1.0f);
+
+			float D = 15.0f;
+			float tan_half_fov = 0.57735f; // default fallback for 60 degrees FOV
+			if (render_state.projection[1][1] != 0.0f) {
+				tan_half_fov = 1.0f / render_state.projection[1][1];
+			}
+			float half_height = D * tan_half_fov;
+			float H = 0.667f * half_height;
+
+			position = render_state.camera_pos + cam_front * D - cam_up * H;
+		}
+
 		if (!initialized_ || !is_enabled) return;
 		if (!continuous_update && !refresh_requested) return;
 		if (!atmosphere_manager || !terrain_render_manager || !shadow_manager || !light_manager) return;

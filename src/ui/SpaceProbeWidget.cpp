@@ -8,7 +8,7 @@ namespace Boidsish {
 	namespace UI {
 
 		SpaceProbeWidget::SpaceProbeWidget(Visualizer& visualizer) : m_visualizer(visualizer) {
-			m_show = false; // Closed by default, can be toggled via the UI menu or System tab
+			m_show = true; // Open by default, alongside other top-level menus
 		}
 
 		void SpaceProbeWidget::Draw() {
@@ -29,9 +29,14 @@ namespace Boidsish {
 				ImGui::Checkbox("Render Sphere Overlay", &probe->render_sphere);
 				ImGui::Checkbox("Update Continuously", &probe->continuous_update);
 				ImGui::Checkbox("SH Visualizer Mode", &probe->use_sh_visualizer);
+				ImGui::Checkbox("Camera Follow Mode (F2)", &probe->camera_follow_mode);
 
 				ImGui::Separator();
 				ImGui::Text("--- Interactive Actions ---");
+
+				if (probe->camera_follow_mode) {
+					ImGui::BeginDisabled();
+				}
 
 				// --- Interactive Position & Control Buttons ---
 				if (ImGui::Button("Move Probe to Camera")) {
@@ -43,6 +48,12 @@ namespace Boidsish {
 				}
 
 				ImGui::DragFloat3("Probe Coordinates", &probe->position[0], 0.1f);
+
+				if (probe->camera_follow_mode) {
+					ImGui::EndDisabled();
+					ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f), "Coordinates locked to Camera Follow Mode");
+				}
+
 				ImGui::SliderFloat("Sphere Radius", &probe->sphere_radius, 0.1f, 20.0f);
 
 				ImGui::Separator();
