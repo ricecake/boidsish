@@ -885,6 +885,10 @@ namespace Boidsish {
 				default_vfx.wind_strength = ConfigManager::GetInstance().GetAppSettingFloat("wind_strength", 0.065f);
 				default_vfx.wind_speed = ConfigManager::GetInstance().GetAppSettingFloat("wind_speed", 0.075f);
 				default_vfx.wind_frequency = ConfigManager::GetInstance().GetAppSettingFloat("wind_frequency", 0.01f);
+				default_vfx.solar_flares_enabled = ConfigManager::GetInstance().GetAppSettingBool("solar_flares_enabled", true) ? 1 : 0;
+				default_vfx.solar_flare_strength = ConfigManager::GetInstance().GetAppSettingFloat("solar_flare_strength", 1.5f);
+				default_vfx.solar_flare_scale = ConfigManager::GetInstance().GetAppSettingFloat("solar_flare_scale", 1.0f);
+				default_vfx.solar_flare_speed = ConfigManager::GetInstance().GetAppSettingFloat("solar_flare_speed", 0.5f);
 				for (int i = 0; i < 3; ++i) {
 					*visual_effects_pb->GetFrameDataPtr(i) = default_vfx;
 				}
@@ -1274,6 +1278,11 @@ namespace Boidsish {
 			frame_config_.wind_strength = cfg.GetAppSettingFloat("wind_strength", 0.065f);
 			frame_config_.wind_speed = cfg.GetAppSettingFloat("wind_speed", 0.075f);
 			frame_config_.wind_frequency = cfg.GetAppSettingFloat("wind_frequency", 0.01f);
+
+			frame_config_.solar_flares_enabled = cfg.GetAppSettingBool("solar_flares_enabled", true);
+			frame_config_.solar_flare_strength = cfg.GetAppSettingFloat("solar_flare_strength", 1.5f);
+			frame_config_.solar_flare_scale = cfg.GetAppSettingFloat("solar_flare_scale", 1.0f);
+			frame_config_.solar_flare_speed = cfg.GetAppSettingFloat("solar_flare_speed", 0.5f);
 
 			if (decor_manager) {
 				decor_manager->SetEnabled(frame_config_.render_decor);
@@ -2230,6 +2239,10 @@ namespace Boidsish {
 				ubo_data.wind_strength = frame_config_.wind_strength;
 				ubo_data.wind_speed = frame_config_.wind_speed;
 				ubo_data.wind_frequency = frame_config_.wind_frequency;
+				ubo_data.solar_flares_enabled = frame_config_.solar_flares_enabled ? 1 : 0;
+				ubo_data.solar_flare_strength = frame_config_.solar_flare_strength;
+				ubo_data.solar_flare_scale = frame_config_.solar_flare_scale;
+				ubo_data.solar_flare_speed = frame_config_.solar_flare_speed;
 				ubo_data.erosion_strength = frame_config_.erosion_strength;
 				ubo_data.erosion_scale = frame_config_.erosion_scale;
 				ubo_data.erosion_detail = frame_config_.erosion_detail;
