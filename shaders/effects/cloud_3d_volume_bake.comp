@@ -59,8 +59,13 @@ void main() {
 	float aoVal = clamp(1.0 - (densitySum / float(AO_SAMPLES)) * 1.5, 0.0, 1.0);
 
 	float baseHeightGradient = mix(0.9, 0.6, smoothstep(0.15, 0.85, p.y));
-	float baseAlbedo = computeSimplexWorley(fract(p*2)*baseHeightGradient);
-	float baseDensity = computeSimplexWorley(fract(p*3)*baseHeightGradient);
+
+	// Tile horizontally but do not repeat vertically
+	vec3 albedoCoords = vec3(fract(p.xz * 1.0), p.y);
+	vec3 densityCoords = vec3(fract(p.xz * 1.0), p.y);
+
+	float baseAlbedo = computeSimplexWorley(albedoCoords * baseHeightGradient);
+	float baseDensity = computeSimplexWorley(densityCoords * baseHeightGradient);
 
 	imageStore(outVolume, voxel, vec4(noiseVal, aoVal, baseAlbedo, baseDensity));
 }

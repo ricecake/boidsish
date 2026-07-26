@@ -328,6 +328,10 @@ void main() {
 				validHistory = false;
 			}
 		}
+
+		if (currentPathDensity < 0.01) {
+			validHistory = false;
+		}
 	}
 
 	historyLength = (uEnableTemporal && validHistory) ? min(uCloudMaxHistoryLength, historyLength + 1.0) : 1.0;
@@ -434,6 +438,11 @@ void main() {
 		} else if (is_new_pixel) {
 			historyLength = mix(historyLength, 1.0, rejectionFactor);
 			alpha = 1.0 / max(historyLength, 1.0);
+		}
+
+		if (currentPathDensity < 0.01) {
+			alpha = 1.0;
+			historyLength = 1.0;
 		}
 
 

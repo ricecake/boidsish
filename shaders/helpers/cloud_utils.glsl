@@ -432,34 +432,43 @@ float calculatePuffyCloudSDF(vec3 p, CloudWeather weather, CloudLayer layer, flo
 }
 
 float calculateLoftedCloudSDF(vec3 p, CloudWeather weather, CloudLayer layer, float worldScale) {
-    // 1. The 2D footprint distance (positive outside, negative inside)
     float d_edge = weather.sdf;
-	float altitude = getCurvedAltitude(p);
+    float altitude = getCurvedAltitude(p);
 
-	float altitudeShift = weather.heightMap * layer.thickness;
-	float actualThickness = weather.thickness * layer.thickness ;//* (1.0-smoothstep(0, 1.0, weather.centerDist));
-	float localFloor = layer.baseFloor + altitudeShift;
+    // Increase baseline height and thickness for tall, fluffy clouds
+    float baselineHeightOffset = 1500.0 * worldScale;
+    float thicknessMultiplier = 2.2;
 
-    // 2. Calculate the depth inside the cloud boundary
-    float depthInside = max(0.0, -d_edge);
+    float localFloor = layer.baseFloor + baselineHeightOffset + weather.heightMap * layer.thickness;
+    float actualThickness = weather.thickness * layer.thickness * thicknessMultiplier;
 
-    // 3. Map internal depth to vertical height along the +Y axis.
-    // 'puffSlope' determines how steep the sides of the cloud are.
-    // A slope of 1.0 represents a 45-degree rise from the edge.
-    float puffSlope = 0.5+weather.curve;
-    float domeHeight = depthInside * puffSlope;
+    // Taper the thickness as a function of center distance to create a domed shape
+    float cellRange = 10000.0 * worldScale;
+    float normCenterDist = clamp(weather.centerDist / cellRange, 0.0, 1.0);
+    float taper = sqrt(clamp(1.0 - normCenterDist * normCenterDist, 0.0, 1.0));
+    float localThickness = actualThickness * taper;
 
-    // Clamp the height to the atmospheric layer's defined maximum thickness
-    domeHeight = min(domeHeight, layer.thickness);
+    // Adjust vertical center based on eccentricity to dome/loft the cloud mass
+    float bulgeHeight = clamp(weather.ecentricity, 0.1, 0.9) * localThickness;
+    float verticalCenter = localFloor + bulgeHeight;
 
-    // 4. Define the vertical bounds for this specific XZ column
-    // This creates a flat bottom at baseFloor and a domed top.
-    float columnCenter = localFloor + (domeHeight * 0.5);
-    float d_vertical = abs(altitude - columnCenter) - (domeHeight * 0.5);
+    // Top and bottom heights relative to the vertical center
+    float topHeight = localThickness - bulgeHeight;
+    float bottomHeight = bulgeHeight;
 
-    // 5. Intersect the 2D boundary with the dynamic 1D vertical boundary
-    // The exact distance to the boundary is the maximum of the two orthogonal distances.
-    float d3d = max(d_edge, d_vertical);
+    float distY = 0.0;
+    if (altitude > verticalCenter) {
+        float h_norm = clamp((altitude - verticalCenter) / max(topHeight, 0.001), 0.0, 1.0);
+        float curveExponent = mix(1.0, 4.0, clamp(weather.curve, 0.0, 1.0));
+        distY = (altitude - verticalCenter) - topHeight * pow(1.0 - pow(h_norm, curveExponent), 1.0 / curveExponent);
+    } else {
+        float h_norm = clamp((verticalCenter - altitude) / max(bottomHeight, 0.001), 0.0, 1.0);
+        float curveExponent = 4.0;
+        distY = (verticalCenter - altitude) - bottomHeight * pow(1.0 - pow(h_norm, curveExponent), 1.0 / curveExponent);
+    }
+
+    vec2 w = vec2(d_edge, distY);
+    float d3d = min(max(w.x, w.y), 0.0) + length(max(w, 0.0));
 
     return d3d;
 }
