@@ -9,6 +9,7 @@
 #include "post_processing/effects/FXAAEffect.h"
 #include "post_processing/effects/FilmGrainEffect.h"
 #include "post_processing/effects/UnifiedScreenSpaceEffect.h"
+#include "post_processing/effects/ScreenSpaceWeatherEffect.h"
 
 namespace Boidsish {
 	namespace UI {
@@ -83,6 +84,79 @@ namespace Boidsish {
 								float intensity = film_grain_effect->GetIntensity();
 								if (ImGui::SliderFloat("Intensity##FilmGrain", &intensity, 0.0f, 1.0f)) {
 									film_grain_effect->SetIntensity(intensity);
+								}
+							}
+						}
+
+						if (effect->GetName() == "Screen Space Weather" && is_enabled) {
+							auto weather_effect = std::dynamic_pointer_cast<PostProcessing::ScreenSpaceWeatherEffect>(effect);
+							if (weather_effect) {
+								if (ImGui::TreeNode("Heat Shimmer (Distortion)")) {
+									float strength = weather_effect->GetHeatStrength();
+									if (ImGui::SliderFloat("Strength##Heat", &strength, 0.0f, 2.0f)) {
+										weather_effect->SetHeatStrength(strength);
+									}
+									float scale = weather_effect->GetHeatScale();
+									if (ImGui::SliderFloat("Scale##Heat", &scale, 0.01f, 10.0f)) {
+										weather_effect->SetHeatScale(scale);
+									}
+									float speed = weather_effect->GetHeatSpeed();
+									if (ImGui::SliderFloat("Speed##Heat", &speed, 0.0f, 10.0f)) {
+										weather_effect->SetHeatSpeed(speed);
+									}
+									ImGui::TreePop();
+								}
+
+								if (ImGui::TreeNode("Wind-driven Blur")) {
+									float angle = weather_effect->GetWindAngle();
+									if (ImGui::SliderFloat("Wind Angle (Degrees)##Wind", &angle, 0.0f, 360.0f)) {
+										weather_effect->SetWindAngle(angle);
+									}
+									float speed = weather_effect->GetWindSpeed();
+									if (ImGui::SliderFloat("Wind Speed (Base)##Wind", &speed, 0.0f, 20.0f)) {
+										weather_effect->SetWindSpeed(speed);
+									}
+									float blur_scale = weather_effect->GetWindBlurScale();
+									if (ImGui::SliderFloat("Blur Scale##Wind", &blur_scale, 0.0f, 0.1f, "%.4f")) {
+										weather_effect->SetWindBlurScale(blur_scale);
+									}
+									float gust_freq = weather_effect->GetWindGustFrequency();
+									if (ImGui::SliderFloat("Gust Frequency##Wind", &gust_freq, 0.01f, 10.0f)) {
+										weather_effect->SetWindGustFrequency(gust_freq);
+									}
+									float gust_strength = weather_effect->GetWindGustStrength();
+									if (ImGui::SliderFloat("Gust Strength##Wind", &gust_strength, 0.0f, 5.0f)) {
+										weather_effect->SetWindGustStrength(gust_strength);
+									}
+									ImGui::TreePop();
+								}
+
+								if (ImGui::TreeNode("Frost & Ice Crystals")) {
+									bool manual = weather_effect->IsManualIceCoverage();
+									if (ImGui::Checkbox("Use Manual Coverage##Ice", &manual)) {
+										weather_effect->SetManualIceCoverage(manual);
+									}
+									if (manual) {
+										float coverage = weather_effect->GetIceCoverage();
+										if (ImGui::SliderFloat("Coverage##Ice", &coverage, 0.0f, 1.0f)) {
+											weather_effect->SetIceCoverage(coverage);
+										}
+									} else {
+										ImGui::Text("Coverage driven by current temperature.");
+									}
+									float scale = weather_effect->GetIceScale();
+									if (ImGui::SliderFloat("Crystal Scale##Ice", &scale, 1.0f, 30.0f)) {
+										weather_effect->SetIceScale(scale);
+									}
+									float edge_width = weather_effect->GetIceEdgeWidth();
+									if (ImGui::SliderFloat("Edge Width##Ice", &edge_width, 0.05f, 1.5f)) {
+										weather_effect->SetIceEdgeWidth(edge_width);
+									}
+									glm::vec3 color = weather_effect->GetIceColor();
+									if (ImGui::ColorEdit3("Ice Color##Ice", &color.x)) {
+										weather_effect->SetIceColor(color);
+									}
+									ImGui::TreePop();
 								}
 							}
 						}

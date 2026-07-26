@@ -42,6 +42,7 @@
 #include "polyhedron.h"
 #include "post_processing/PostProcessingManager.h"
 #include "post_processing/effects/ArtisticGbufferEffect.h"
+#include "post_processing/effects/ScreenSpaceWeatherEffect.h"
 #include "post_processing/effects/AtmosphereEffect.h"
 #include "post_processing/effects/VolumetricLightingEffect.h"
 #include "post_processing/effects/BloomEffect.h"
@@ -1067,6 +1068,10 @@ namespace Boidsish {
 				auto artistic_gbuffer_effect = std::make_shared<PostProcessing::ArtisticGbufferEffect>();
 				artistic_gbuffer_effect->SetEnabled(false);
 				post_processing_manager_->AddEffect(artistic_gbuffer_effect);
+
+				auto screen_space_weather_effect = std::make_shared<PostProcessing::ScreenSpaceWeatherEffect>();
+				screen_space_weather_effect->SetEnabled(false);
+				post_processing_manager_->AddEffect(screen_space_weather_effect);
 
 				auto unified_ss_effect = std::make_shared<PostProcessing::UnifiedScreenSpaceEffect>();
 				unified_ss_effect->SetEnabled(true);
