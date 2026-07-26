@@ -355,12 +355,12 @@ float evalSdf(
 
 CloudWeather loadCloudWeather(vec3 p, CloudProperties props, vec4 tex) {
 	CloudWeather weather;
-	//imageStore(outWeatherMap, pixel, vec4(vd.dist, vd.dist_f1, cellID, (vd.f2 - vd.f1) * slowNoise));
-	vec4 derived = hash41(tex.b);
 	weather.sdf = tex.r;
 	weather.centerDist = tex.g;
-	weather.density = tex.a;
 	weather.cellID = tex.b;
+	weather.density = tex.a;
+
+	vec4 derived = hash41(tex.b);
 	weather.heightMap = derived.r;
 	weather.thickness = derived.g;
 	weather.ecentricity = derived.b;
@@ -434,6 +434,11 @@ float calculatePuffyCloudSDF(vec3 p, CloudWeather weather, CloudLayer layer, flo
 float calculateLoftedCloudSDF(vec3 p, CloudWeather weather, CloudLayer layer, float worldScale) {
     // 1. The 2D footprint distance (positive outside, negative inside)
     float d_edge = weather.sdf;
+	float altitude = getCurvedAltitude(p);
+
+	float altitudeShift = weather.heightMap * layer.thickness;
+	float actualThickness = weather.thickness * layer.thickness ;//* (1.0-smoothstep(0, 1.0, weather.centerDist));
+	float localFloor = layer.baseFloor + altitudeShift;
 
     // 2. Calculate the depth inside the cloud boundary
     float depthInside = max(0.0, -d_edge);
@@ -441,7 +446,7 @@ float calculateLoftedCloudSDF(vec3 p, CloudWeather weather, CloudLayer layer, fl
     // 3. Map internal depth to vertical height along the +Y axis.
     // 'puffSlope' determines how steep the sides of the cloud are.
     // A slope of 1.0 represents a 45-degree rise from the edge.
-    float puffSlope = 1.1;
+    float puffSlope = 0.5+weather.curve;
     float domeHeight = depthInside * puffSlope;
 
     // Clamp the height to the atmospheric layer's defined maximum thickness
@@ -449,8 +454,8 @@ float calculateLoftedCloudSDF(vec3 p, CloudWeather weather, CloudLayer layer, fl
 
     // 4. Define the vertical bounds for this specific XZ column
     // This creates a flat bottom at baseFloor and a domed top.
-    float columnCenter = layer.baseFloor + (domeHeight * 0.5);
-    float d_vertical = abs(p.y - columnCenter) - (domeHeight * 0.5);
+    float columnCenter = localFloor + (domeHeight * 0.5);
+    float d_vertical = abs(altitude - columnCenter) - (domeHeight * 0.5);
 
     // 5. Intersect the 2D boundary with the dynamic 1D vertical boundary
     // The exact distance to the boundary is the maximum of the two orthogonal distances.
@@ -460,6 +465,7 @@ float calculateLoftedCloudSDF(vec3 p, CloudWeather weather, CloudLayer layer, fl
 }
 
 float getCloud3DSDF(vec3 p, CloudWeather weather, CloudLayer layer, float worldScale) {
+	return calculateLoftedCloudSDF(p, weather, layer, worldScale);
 /*
 	weather.sdf = tex.r;
 	weather.centerDist = tex.g;

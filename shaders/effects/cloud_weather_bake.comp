@@ -44,25 +44,24 @@ void main() {
 	float slowNoise = regionalFbm(p.xz / cellRange, vec2(10.0));
 
 	// Smooth and linear mapping of uCloudCoverage from [0.0, 1.0] to regionalCoverage without harsh steps
-	float regionalCoverage = clamp((slowNoise - 1.0) + uCloudCoverage * 2.0, 0.0, 1.0);
+	// float regionalCoverage = clamp((slowNoise - 1.0) + uCloudCoverage * 2.0, 0.0, 1.0);
+	// clamp(2*(    clamp(f1(x,t), 0, smoothstep(0.1,0.5,x) )*( clamp(f1(x,t),  (1-smoothstep(0.5,0.9,x)), 1)  )), 0, 1)
+	// clamp(2*(    clamp(f1(x,t), 0, smoothstep(0.1,0.5,x) )*( clamp(f1(x,t),  (1-smoothstep(0.5,0.9,x)), 1)  )), 0, 1)
+	// clamp(2*(    smoothstep(f1(x,t), 1, smoothstep(0.1,0.5,x) )*( smoothstep(0.0, f1(x,t),  (1-smoothstep(0.5,0.9,x)), 1)  )), 0, 1)
+	float regionalCoverage = clamp(2.0 *
+		smoothstep(slowNoise,       1,     smoothstep(0.1,0.5,uCloudCoverage) ) *
+		smoothstep(    0.0, slowNoise,  (1-smoothstep(0.5,0.9,uCloudCoverage))), 0, 1
+	);
 
-	// float sdf = generateOrganicCellSDF(p.xz, cellRange, vec2(10.0), regionalCoverage);
+	// float regionalCoverage = clamp(
+	// 	2*
+	// 	(clamp(slowNoise,  0, smoothstep(0.1,0.5,uCloudCoverage))*
+	// 	(clamp(slowNoise,  (1-smoothstep(0.5,0.9,uCloudCoverage)), 1)  )), 0, 1);
 
-	// vec2 cellId = floor(p.xz / cellRange);
-	// float cellID = hash12(cellId, vec2(10.0)); // Fallback ID hash
-
-	// VoronoiData vd = sdVoronoiFbm(hash2(p.xz, vec2(10)), 2.0, 3.0, regionalCoverage, vec2(10.0));
-	// VoronoiData vd2 = sdVoronoiFbm(p.xz / cellRange, 3.0, 5.0, regionalCoverage, vec2(10.0));
-
-	// Use continuous slow regional noise for altitudeMap to avoid droopy mushroom caps at individual cloud edges
-	// float altitudeMap = smoothstep(cellID, 1.0, slowNoise);
-
-	// Fix coordinate scaling bug by using the Voronoi FBM distance directly with a robust scaling factor
-	// float thicknessMap = clamp(-vd2.dist * 2.0, 0.0, 1.0);
 	VoronoiData vd = sdVoronoiHybrid(p.xz / cellRange, 3.0, 5.0, regionalCoverage, vec2(10.0));
 	vec2 cellId = vd.f1;
 	float cellID = hash12(vd.f1, vec2(10.0));
-	float density = distance(vd.f2, vd.f1);
+	float density = clamp(-vd.dist, 0, 1);
 	imageStore(outWeatherMap, pixel, vec4(vd.dist, vd.dist_f1, cellID, density));
 	imageStore(outMinMaxMap, pixel, vec4(density, density, 0.0, 0.0));
 

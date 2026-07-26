@@ -78,9 +78,9 @@ void main() {
 	if (t_start < t_end) {
 		float t = t_start;
 		int L = 6;
-		float baseStepSize = 250.0 * worldScale;
+		float baseStepSize = 25.0 * worldScale;
 
-		for (int i = 0; i < 200; ++i) {
+		for (int i = 0; i < 2000; ++i) {
 			if (t >= t_end) break;
 
 			vec3 p = viewPos + rayDir * t;

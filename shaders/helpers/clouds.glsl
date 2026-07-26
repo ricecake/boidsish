@@ -521,24 +521,12 @@ CloudSpotDetails calculateCloudDensityExpV9(
 	float density = weather.density * smoothstep(0, weather.ecentricity, h) * (1.0 - smoothstep(weather.ecentricity, 1.0, h));
 
 	float baseNoise = 1.0;
-	// if (simplified >= 10.0) {
-		float baseSdf = getCloud3DSDF(p_advected, weather, layer, props.worldScale);
-		baseNoise = clamp(abs(baseSdf), 0, 1);
-	// }
-	// else {
-		vec3 uvw = vec3(
-			p_advected.x / (50000.0 * props.worldScale),
-			h,
-			p_advected.z / (50000.0 * props.worldScale)
-		);
+	float baseSdf = getCloud3DSDF(p_advected, weather, layer, props.worldScale);
+	baseNoise = clamp(abs(baseSdf), 0, 1);
 
-		vec4 volSample = textureLod(u_cloud3DTexture, uvw, 0.0);
-		baseNoise *= volSample.r;
-	// }
-
-	baseNoise *= heightGradient;
+	// baseNoise *= heightGradient;
 	// baseNoise = adjust(baseNoise, weather.density);
-	baseNoise = smoothstep(0.0, density, baseNoise);
+	// baseNoise = smoothstep(0.0, density, baseNoise);
 
 	// bool isCore = baseNoise >= 0.50;
 
@@ -632,7 +620,8 @@ CloudDensityResult calculateCloudDensity(
 	vec4 volSample = textureLod(u_cloud3DTexture, uvw, 0.0);
 	float volNoise = volSample.r;
 	float volAo = volSample.g;
-	// float volAlbedoBasis = volSample.b;
+	float volAlbedoBasis = volSample.b;
+	float volDensityBasis = volSample.a;
 
 	CloudSpotDetails res = calculateCloudDensityExpV9(p, weather, layer, props, time, simplified);
 
@@ -643,8 +632,8 @@ CloudDensityResult calculateCloudDensity(
 		// finalDensity = adjust(finalDensity, 1.0-volNoise);
 	}
 
-	vec3 mixedDensity = res.relativeExtinction * finalDensity;
-	// vec3 mixedAlbedo = vec3(volAlbedoBasis);
+	vec3 mixedDensity = volDensityBasis * res.relativeExtinction * finalDensity;
+	vec3 mixedAlbedo = vec3(volAlbedoBasis);
 
 	// return CloudDensityResult(mixedDensity, advectSpeed, volAo, mixedAlbedo, smoothstep(0.8, 1.2, mixedDensity) * vec3(0,1,0));
 	return CloudDensityResult(mixedDensity, advectSpeed, volAo, vec3(1.0), vec3(0.0));
