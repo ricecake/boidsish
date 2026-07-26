@@ -566,7 +566,7 @@ void main() {
 
 	if (b_firstHit < 0.0 || b_totalDensity < 0.01) {
 		// Output clear sky / no clouds and early return
-		imageStore(outPackedColor, packedPixel, vec4(0.0));
+		imageStore(outPackedColor, packedPixel, vec4(0.0, 0.0, 0.0, 1.0));
 		imageStore(outPackedDepth, packedPixel, vec4(uCloudMaxRayDistance * 0.5 * worldScale, uCloudMaxRayDistance * 0.5 * worldScale, baseStepSize, 0.0));
 
 		vec3 advectionOffset = getCloudAdvectionSpeed(0.0, time);
