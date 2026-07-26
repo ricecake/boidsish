@@ -3,6 +3,7 @@ out vec4 FragColor;
 
 #include "lygia/generative/snoise.glsl"
 #include "visual_effects.glsl"
+#include "helpers/wind.glsl"
 
 in vec2 TexCoords;
 
@@ -24,6 +25,8 @@ uniform vec3 cameraPos;
 uniform float u_HeatStrength;
 uniform float u_HeatScale;
 uniform float u_HeatSpeed;
+uniform float u_HeatWidth;
+uniform float u_HeatHeight;
 
 // Wind Blur controls
 uniform float u_WindAngle;
@@ -31,6 +34,9 @@ uniform float u_WindSpeed;
 uniform float u_WindBlurScale;
 uniform float u_WindGustFrequency;
 uniform float u_WindGustStrength;
+uniform float u_WindRoughenStrength;
+uniform float u_WindStreakDecay;
+uniform float u_WindTintStrength;
 
 // Ice Crystal controls
 uniform bool  u_UseManualIceCoverage;
@@ -48,7 +54,7 @@ float LinearizeDepth(float depth) {
 }
 
 // Simple hash function for Voronoi
-vec2 hash22(vec2 p) {
+vec2 weather_hash22(vec2 p) {
     p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
     return fract(sin(p) * 43758.5453123);
 }
@@ -63,7 +69,7 @@ float voronoiDistanceToEdge(vec2 x) {
     for (int j = -1; j <= 1; ++j) {
         for (int i = -1; i <= 1; ++i) {
             vec2 g = vec2(float(i), float(j));
-            vec2 o = hash22(n + g);
+            vec2 o = weather_hash22(n + g);
             // Animate cells slightly with time to make the frost look "alive"
             o = 0.5 + 0.5 * sin(time * 0.15 + 6.2831 * o);
             vec2 r = g + o - f;
@@ -81,7 +87,7 @@ float voronoiDistanceToEdge(vec2 x) {
     for (int j = -2; j <= 2; ++j) {
         for (int i = -2; i <= 2; ++i) {
             vec2 g = mg + vec2(float(i), float(j));
-            vec2 o = hash22(n + g);
+            vec2 o = weather_hash22(n + g);
             o = 0.5 + 0.5 * sin(time * 0.15 + 6.2831 * o);
             vec2 r = g + o - f;
 
@@ -110,9 +116,9 @@ void main() {
     // ==========================================
     // EFFECT 1: Heat Shimmer (Heat Lines)
     // ==========================================
-    // Generate noise coords stretched vertically in world-space Y
-    // Pinned to world space so lines remain vertical regardless of camera rotation
-    vec3 heatNoiseCoord = vec3(worldPos.x, worldPos.y * 0.1, worldPos.z) * u_HeatScale + vec3(0.0, -time * u_HeatSpeed, 0.0);
+    // Generate noise coords stretched vertically and horizontally in world-space
+    // Use u_HeatWidth and u_HeatHeight to sculpt wave proportions (emphasizing width)
+    vec3 heatNoiseCoord = vec3(worldPos.x * u_HeatWidth, worldPos.y * u_HeatHeight, worldPos.z * u_HeatWidth) * u_HeatScale + vec3(0.0, -time * u_HeatSpeed, 0.0);
     float n1 = snoise(heatNoiseCoord);
     float n2 = snoise(heatNoiseCoord * 2.15 + vec3(1.1, 0.0, 0.8));
     float shimmerVal = n1 * 0.7 + n2 * 0.3;
@@ -128,35 +134,56 @@ void main() {
     deformedUVs = clamp(deformedUVs, 0.0, 1.0);
 
     // ==========================================
-    // EFFECT 2: Wind-driven Directional Blur
+    // EFFECT 2: Wind-driven Trailing Streak Blur
     // ==========================================
-    // Compute 3D wind velocity vector in world-space
-    vec3 windWorldDir = vec3(sin(radians(u_WindAngle)), 0.0, -cos(radians(u_WindAngle)));
-    // Modulate speed by the VisualEffects UBO's wind_strength
-    float windSpeedVal = u_WindSpeed * (1.0 + wind_strength);
-    vec3 windWorldVel = windWorldDir * windSpeedVal;
+    // Read wind velocity from the wind weather texture at this world position, with manual fallback
+    vec3 windWorldVel;
+    if (u_windOriginSize.y > 0) {
+        vec3 localWind = getWindAtPosition(worldPos.xyz);
+        windWorldVel = localWind * u_WindSpeed;
+    } else {
+        // Fallback to manual angle and speed, scaling with UBO's wind_strength
+        vec3 windWorldDir = vec3(sin(radians(u_WindAngle)), 0.0, -cos(radians(u_WindAngle)));
+        windWorldVel = windWorldDir * u_WindSpeed * (1.0 + wind_strength);
+    }
 
-    // Transform to view space
+    // Transform 3D wind velocity to view space
     vec4 windViewVel = viewMatrix * vec4(windWorldVel, 0.0);
 
-    // Perform directional blur along projected screen wind vector
+    // Perform directional streak blur along projected screen wind vector
     vec2 windScreenVec = windViewVel.xy;
 
     // Add gustiness over time
     float gust = 1.0 + u_WindGustStrength * snoise(vec3(0.0, 0.0, time * u_WindGustFrequency));
     vec2 blurVec = windScreenVec * u_WindBlurScale * gust;
 
-    vec4 blurredColor = vec4(0.0);
-    float totalWeight = 0.0;
-    const int numTaps = 8;
+    vec3 blurAccum = vec3(0.0);
+    float weightAccum = 0.0;
+    const int numTaps = 12; // High-quality streaks
+
     for (int i = 0; i < numTaps; ++i) {
-        float t = float(i) / float(numTaps - 1) - 0.5; // [-0.5, 0.5]
-        vec2 tapOffset = blurVec * t;
-        float weight = 1.0 - abs(t) * 2.0; // Triangle filter
-        blurredColor += texture(sceneTexture, deformedUVs + tapOffset) * weight;
-        totalWeight += weight;
+        float t = float(i) / float(numTaps - 1); // [0.0, 1.0]
+
+        // Jitter/roughen sample coordinates with high-frequency noise for fuzzed/wind-swept look
+        vec2 jitter = vec2(
+            snoise(vec3(TexCoords * 400.0, time * 25.0 + float(i))),
+            snoise(vec3(TexCoords * 400.0 + vec2(19.0, 29.0), time * 25.0 + float(i)))
+        ) * u_WindRoughenStrength;
+
+        // Trail off exponentially along the wind vector
+        vec2 tapOffset = blurVec * t + jitter * 0.003;
+        float weight = exp(-t * u_WindStreakDecay); // Exponential decay
+
+        blurAccum += texture(sceneTexture, deformedUVs - tapOffset).rgb * weight;
+        weightAccum += weight;
     }
-    vec3 finalSceneColor = blurredColor.rgb / totalWeight;
+    vec3 finalSceneColor = blurAccum / weightAccum;
+
+    // Tint the scene white/grey based on wind speed to simulate wind-swept mist/dust
+    float windStrengthVal = length(windWorldVel);
+    vec3 tintColor = vec3(0.92, 0.94, 0.95); // Frosty wind-swept grey-white tint
+    float tintFactor = clamp(windStrengthVal * u_WindTintStrength * 0.05, 0.0, 0.85);
+    finalSceneColor = mix(finalSceneColor, tintColor, tintFactor);
 
     // ==========================================
     // EFFECT 3: Temperature-driven Ice Crystals

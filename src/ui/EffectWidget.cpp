@@ -104,6 +104,14 @@ namespace Boidsish {
 									if (ImGui::SliderFloat("Speed##Heat", &speed, 0.0f, 10.0f)) {
 										weather_effect->SetHeatSpeed(speed);
 									}
+									float width = weather_effect->GetHeatWidth();
+									if (ImGui::SliderFloat("Wave Width##Heat", &width, 0.01f, 1.0f)) {
+										weather_effect->SetHeatWidth(width);
+									}
+									float height = weather_effect->GetHeatHeight();
+									if (ImGui::SliderFloat("Wave Height##Heat", &height, 0.01f, 1.0f)) {
+										weather_effect->SetHeatHeight(height);
+									}
 									ImGui::TreePop();
 								}
 
@@ -113,7 +121,7 @@ namespace Boidsish {
 										weather_effect->SetWindAngle(angle);
 									}
 									float speed = weather_effect->GetWindSpeed();
-									if (ImGui::SliderFloat("Wind Speed (Base)##Wind", &speed, 0.0f, 20.0f)) {
+									if (ImGui::SliderFloat("Wind Speed (Multiplier)##Wind", &speed, 0.0f, 20.0f)) {
 										weather_effect->SetWindSpeed(speed);
 									}
 									float blur_scale = weather_effect->GetWindBlurScale();
@@ -127,6 +135,18 @@ namespace Boidsish {
 									float gust_strength = weather_effect->GetWindGustStrength();
 									if (ImGui::SliderFloat("Gust Strength##Wind", &gust_strength, 0.0f, 5.0f)) {
 										weather_effect->SetWindGustStrength(gust_strength);
+									}
+									float roughen = weather_effect->GetWindRoughenStrength();
+									if (ImGui::SliderFloat("Roughen Strength##Wind", &roughen, 0.0f, 5.0f)) {
+										weather_effect->SetWindRoughenStrength(roughen);
+									}
+									float streak_decay = weather_effect->GetWindStreakDecay();
+									if (ImGui::SliderFloat("Streak Decay##Wind", &streak_decay, 0.1f, 5.0f)) {
+										weather_effect->SetWindStreakDecay(streak_decay);
+									}
+									float tint_strength = weather_effect->GetWindTintStrength();
+									if (ImGui::SliderFloat("Tint Strength (Storm Mist)##Wind", &tint_strength, 0.0f, 2.0f)) {
+										weather_effect->SetWindTintStrength(tint_strength);
 									}
 									ImGui::TreePop();
 								}

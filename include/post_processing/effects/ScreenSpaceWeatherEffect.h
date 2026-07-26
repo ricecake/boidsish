@@ -17,7 +17,7 @@ namespace Boidsish {
 			void Apply(GLuint sourceTexture, GLuint depthTexture, GLuint velocityTexture, GLuint normalTexture, GLuint albedoTexture, const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix, const glm::vec3& cameraPos) override;
 			void Resize(int width, int height) override;
 
-			bool IsEarly() const override { return true; }
+			bool IsEarly() const override { return false; }
 
 			void SetTime(float time) override { time_ = time; }
 
@@ -30,6 +30,12 @@ namespace Boidsish {
 
 			float GetHeatSpeed() const { return heat_speed_; }
 			void SetHeatSpeed(float v) { heat_speed_ = v; }
+
+			float GetHeatWidth() const { return heat_width_; }
+			void SetHeatWidth(float v) { heat_width_ = v; }
+
+			float GetHeatHeight() const { return heat_height_; }
+			void SetHeatHeight(float v) { heat_height_ = v; }
 
 			float GetWindAngle() const { return wind_angle_; }
 			void SetWindAngle(float v) { wind_angle_ = v; }
@@ -45,6 +51,15 @@ namespace Boidsish {
 
 			float GetWindGustStrength() const { return wind_gust_strength_; }
 			void SetWindGustStrength(float v) { wind_gust_strength_ = v; }
+
+			float GetWindRoughenStrength() const { return wind_roughen_strength_; }
+			void SetWindRoughenStrength(float v) { wind_roughen_strength_ = v; }
+
+			float GetWindStreakDecay() const { return wind_streak_decay_; }
+			void SetWindStreakDecay(float v) { wind_streak_decay_ = v; }
+
+			float GetWindTintStrength() const { return wind_tint_strength_; }
+			void SetWindTintStrength(float v) { wind_tint_strength_ = v; }
 
 			bool IsManualIceCoverage() const { return use_manual_ice_coverage_; }
 			void SetManualIceCoverage(bool b) { use_manual_ice_coverage_ = b; }
@@ -69,12 +84,17 @@ namespace Boidsish {
 			float     heat_strength_ = 0.15f;
 			float     heat_scale_ = 1.0f;
 			float     heat_speed_ = 1.5f;
+			float     heat_width_ = 0.15f;
+			float     heat_height_ = 0.05f;
 
 			float     wind_angle_ = 0.0f;
 			float     wind_speed_ = 3.0f;
 			float     wind_blur_scale_ = 0.015f;
 			float     wind_gust_frequency_ = 2.0f;
 			float     wind_gust_strength_ = 0.5f;
+			float     wind_roughen_strength_ = 0.5f;
+			float     wind_streak_decay_ = 1.5f;
+			float     wind_tint_strength_ = 0.1f;
 
 			bool      use_manual_ice_coverage_ = false;
 			float     ice_coverage_ = 0.0f;

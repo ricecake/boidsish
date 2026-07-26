@@ -1,5 +1,6 @@
 #include "post_processing/effects/ScreenSpaceWeatherEffect.h"
 #include "shader.h"
+#include "constants.h"
 
 namespace Boidsish {
 	namespace PostProcessing {
@@ -13,6 +14,8 @@ namespace Boidsish {
 
 		void ScreenSpaceWeatherEffect::Initialize(int /*width*/, int /*height*/) {
 			shader_ = std::make_unique<Shader>("shaders/postprocess.vert", "shaders/effects/screenspace_weather.frag");
+			shader_->bindUniformBlock("VisualEffects", Constants::UboBinding::VisualEffects());
+			shader_->bindUniformBlock("WindData", Constants::UboBinding::WindData());
 		}
 
 		void ScreenSpaceWeatherEffect::Apply(
@@ -40,16 +43,24 @@ namespace Boidsish {
 			shader_->setMat4("invProjection", glm::inverse(projectionMatrix));
 			shader_->setVec3("cameraPos", cameraPos);
 
+			// Wind textures
+			shader_->setInt("u_windTexture", Constants::TextureUnit::WindData());
+
 			// Effect control uniforms
 			shader_->setFloat("u_HeatStrength", heat_strength_);
 			shader_->setFloat("u_HeatScale", heat_scale_);
 			shader_->setFloat("u_HeatSpeed", heat_speed_);
+			shader_->setFloat("u_HeatWidth", heat_width_);
+			shader_->setFloat("u_HeatHeight", heat_height_);
 
 			shader_->setFloat("u_WindAngle", wind_angle_);
 			shader_->setFloat("u_WindSpeed", wind_speed_);
 			shader_->setFloat("u_WindBlurScale", wind_blur_scale_);
 			shader_->setFloat("u_WindGustFrequency", wind_gust_frequency_);
 			shader_->setFloat("u_WindGustStrength", wind_gust_strength_);
+			shader_->setFloat("u_WindRoughenStrength", wind_roughen_strength_);
+			shader_->setFloat("u_WindStreakDecay", wind_streak_decay_);
+			shader_->setFloat("u_WindTintStrength", wind_tint_strength_);
 
 			shader_->setBool("u_UseManualIceCoverage", use_manual_ice_coverage_);
 			shader_->setFloat("u_IceCoverage", ice_coverage_);
