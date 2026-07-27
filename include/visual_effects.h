@@ -33,5 +33,9 @@ namespace Boidsish {
 		float snow_intensity;
 		float wetness;
 		float temperature;
+		int   solar_flares_enabled;
+		float solar_flare_strength;
+		float solar_flare_scale;
+		float solar_flare_speed;
 	};
 } // namespace Boidsish
