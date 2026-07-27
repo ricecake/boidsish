@@ -13,18 +13,25 @@ float remap_bake(float value, float low1, float high1, float low2, float high2) 
 
 float computeSimplexWorley(vec3 p) {
 	// Base Simplex noise (normalized to [0, 1])
-	float simplex = simplex3d_tiling(p * 8.0, 8.0);
+	float simplex = simplex3d_tiling(vec3(p.xz * 4.0, p.y * 1.0), 4.0);
 	simplex = clamp(simplex * 0.5 + 0.5, 0.0, 1.0);
 
 	// Worley FBM (cell centers are billowy and puffy)
-	float w0 = 1.0 - worley3d_tiling(p * 8.0, 8.0).x;
-	float w1 = 1.0 - worley3d_tiling(p * 16.0, 16.0).x;
-	float w2 = 1.0 - worley3d_tiling(p * 32.0, 32.0).x;
+	float w0 = 1.0 - worley3d_tiling(vec3(p.xz * 4.0, p.y * 1.0), 4.0).x;
+	float w1 = 1.0 - worley3d_tiling(vec3(p.xz * 8.0, p.y * 2.0), 8.0).x;
+	float w2 = 1.0 - worley3d_tiling(vec3(p.xz * 16.0, p.y * 4.0), 16.0).x;
 	float worleyFbm = w0 * 0.625 + w1 * 0.25 + w2 * 0.125;
 
 	// Simplex noise carved/remapped by Worley FBM
 	float simplexWorley = remap_bake(simplex, worleyFbm, 1.0, 0.0, 1.0);
 	return clamp(simplexWorley, 0.0, 1.0);
+}
+
+CloudWeather computeCloudWeatherBake(vec3 p, CloudProperties props) {
+	// No advection during baking
+	vec2 uv = p.xz / (100000.0 * props.worldScale);
+	vec4 bakedWeather = textureLod(u_cloudWeatherTexture, uv, 0.0);
+	return loadCloudWeather(p, props, bakedWeather);
 }
 
 void main() {
@@ -35,7 +42,9 @@ void main() {
 	vec3 p = vec3(voxel) / vec3(size); // [0, 1]
 
 	// 1. R Channel: Tiling 3D noise (Simplex noise carved by Worley FBM in HZD fashion)
-	float noiseVal = computeSimplexWorley(p);
+	// Tile horizontally but do not repeat vertically
+	vec3 noiseCoords = vec3(fract(p.xz * 1.0), p.y);
+	float noiseVal = computeSimplexWorley(noiseCoords);
 
 	// 2. G Channel: Local Ambient Occlusion.
 	float densitySum = 0.0;
@@ -52,20 +61,42 @@ void main() {
 	);
 
 	for (int i = 0; i < AO_SAMPLES; i++) {
-		vec3 sample_uvw = fract(p + ao_offsets[i]);
+		vec3 sample_uvw = fract(noiseCoords + ao_offsets[i]);
 		float sampleNoise = computeSimplexWorley(sample_uvw);
 		densitySum += sampleNoise;
 	}
 	float aoVal = clamp(1.0 - (densitySum / float(AO_SAMPLES)) * 1.5, 0.0, 1.0);
 
+	// 3. B Channel: Noise-driven height-based baseline albedo.
 	float baseHeightGradient = mix(0.9, 0.6, smoothstep(0.15, 0.85, p.y));
+	float baseAlbedo = clamp(noiseVal * baseHeightGradient, 0.0, 1.0);
 
-	// Tile horizontally but do not repeat vertically
-	vec3 albedoCoords = vec3(fract(p.xz * 1.0), p.y);
-	vec3 densityCoords = vec3(fract(p.xz * 1.0), p.y);
+	// 4. A Channel: Actual computed physical cloud density.
+	CloudProperties props;
+	props.altitude = cloudAltitude;
+	props.thickness = cloudThickness;
+	props.densityBase = cloudDensity;
+	props.coverage = cloudCoverage;
+	props.worldScale = worldScale;
 
-	float baseAlbedo = computeSimplexWorley(albedoCoords * baseHeightGradient);
-	float baseDensity = computeSimplexWorley(densityCoords * baseHeightGradient);
+	// Calculate world space position for this voxel
+	vec3 p_world = vec3(
+		p.x * 150000.0 * worldScale,
+		(cloudAltitude + p.y * (2.0 * cloudThickness)) * worldScale,
+		p.z * 150000.0 * worldScale
+	);
+
+	CloudWeather weather = computeCloudWeatherBake(p_world, props);
+	CloudLayer layer = computeCloudLayer(weather, props);
+
+	CloudSpotDetails res = calculateCloudDensityExpV9(p_world, weather, layer, props, 0.0, 0.0);
+
+	float baseDensity = res.density;
+	if (baseDensity > 0.0) {
+		float erodeMask = 1.0 - baseDensity;
+		baseDensity = adjust(baseDensity, noiseVal * erodeMask);
+	}
+	baseDensity *= weather.density * cloudDensity;
 
 	imageStore(outVolume, voxel, vec4(noiseVal, aoVal, baseAlbedo, baseDensity));
 }
