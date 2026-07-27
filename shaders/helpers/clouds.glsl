@@ -518,7 +518,7 @@ CloudSpotDetails calculateCloudDensityExpV9(
 	vec3 advect = time * advectSpeed;
 	vec3 p_advected = p + advect;
 
-	float density = weather.density * smoothstep(0, weather.ecentricity, h) * (1.0 - smoothstep(weather.ecentricity, 1.0, h));
+	// float density = weather.density * smoothstep(0, weather.ecentricity, h) * (1.0 - smoothstep(weather.ecentricity, 1.0, h));
 
 	float baseNoise = 1.0;
 	float baseSdf = getCloud3DSDF(p_advected, weather, layer, props.worldScale);
@@ -530,10 +530,10 @@ CloudSpotDetails calculateCloudDensityExpV9(
 
 	// bool isCore = baseNoise >= 0.50;
 
-	// float erodeMask = 1.0-smoothstep(0.0, 0.50, baseNoise);
-	// if (erodeMask > 0.0) {
-	// 	float largeScale = abs(fastFbm3d(p_advected/10000)) * erodeMask;
-	// 	baseNoise = adjust(baseNoise, largeScale);
+	float erodeMask = 1.0-smoothstep(0.0, 0.50, baseNoise);
+	if (erodeMask > 0.0) {
+		float largeScale = abs(fastFbm3d(p_advected/10000)) * erodeMask;
+		baseNoise = adjust(baseNoise, largeScale);
 
 	// 	if (simplified < 1.0 && erodeMask > 0.0) {
 	// 		erodeMask = 1.0 - baseNoise;
@@ -558,8 +558,8 @@ CloudSpotDetails calculateCloudDensityExpV9(
 	// 	// 	float detailScale = fastRidge3d(p / vec3(2000.0, 1000.0, 2000.0)) * erodeMask;
 	// 	// 	baseNoise = adjust(baseNoise, detailScale);
 	// 	// }
-	// 	baseNoise *= smoothstep(0.01, 0.32, baseNoise);
-	// }
+		baseNoise *= smoothstep(0.01, 0.32, baseNoise);
+	}
 
 	return CloudSpotDetails(
 		clamp(baseNoise, 0.00, 1.0),

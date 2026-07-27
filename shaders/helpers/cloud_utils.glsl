@@ -361,7 +361,7 @@ CloudWeather loadCloudWeather(vec3 p, CloudProperties props, vec4 tex) {
 	weather.cellID = tex.b;
 	weather.density = tex.a;
 
-	vec4 derived = clamp(hash41(tex.b), 0, 1);//*0.05+0.05;
+	vec4 derived = hash41(tex.b);//*0.05+0.05;
 	weather.heightMap = derived.r;
 	weather.thickness = derived.g;
 	weather.ecentricity = derived.b;
@@ -471,7 +471,7 @@ float calculateLoftedCloudSDF(vec3 p, CloudWeather weather, CloudLayer layer, fl
     vec2 w = vec2(d_edge, distY);
     float d3d = min(max(w.x, w.y), 0.0) + length(max(w, 0.0));
 
-    return d3d * weather.density;
+    return d3d;// * weather.density;
 }
 
 float getCloud3DSDF(vec3 p, CloudWeather weather, CloudLayer layer, float worldScale) {

@@ -594,9 +594,8 @@ void main() {
 	baseStepSize = clamp(absoluteShellDist / float(samples), precisionLimit, 25.0);
 
 	float firstStepSize = baseStepSize;
-	float minStepSize = 100000;
 	float its = 0.0;
-	int MAX_ITERATIONS = int(uCloudMaxRayDistance / 25.0);
+	int MAX_ITERATIONS = 1000;//int(uCloudMaxRayDistance / 25.0);
 
 	float steps = 0.0;
 	float firstHitStep = 0.0;
@@ -915,7 +914,6 @@ void main() {
 		vec2 prevScreenUV = (prevClipHit.xy / prevClipHit.w) * 0.5 + 0.5;
 
 		finalVelocity = prevScreenUV - TexCoords;
-		// finalVelocity = vec2(minStepSize/10, 0);
 	} else {
 		finalDepth = vec4(uCloudMaxRayDistance * 0.5 * worldScale, uCloudMaxRayDistance * 0.5 * worldScale, firstStepSize, pathDensity);
 		vec3 advectionOffset = getCloudAdvectionSpeed(0.0, time);

@@ -96,6 +96,26 @@ float calculateSkyAttenuation(vec3 rawHdrColor, float uchimuraM, float uchimuraL
 	return multiplier;
 }
 
+// Simulates the scotopic rod shift in mesopic lighting conditions
+vec3 ApplyPurkinjeShift(vec3 exposedLinearColor, float avgLuminance, vec3 scotopicTint) {
+    float scotopicMin = 0.001;
+    float photopicMax = 3.0;
+
+    // Calculate logarithmic blend factor
+    float logAvg = log(max(avgLuminance, 1e-5));
+    float logMin = log(scotopicMin);
+    float logMax = log(photopicMax);
+
+    float photopicWeight = clamp((logAvg - logMin) / (logMax - logMin), 0.0, 1.0);
+    photopicWeight = smoothstep(0.0, 1.0, photopicWeight);
+
+    // Calculate scene luminance using Rec. 709 luma
+    float pixelLuminance = dot(exposedLinearColor, vec3(0.2126, 0.7152, 0.0722));
+    vec3 scotopicColor = pixelLuminance * scotopicTint;
+
+    return mix(scotopicColor, exposedLinearColor, photopicWeight);
+}
+
 void main() {
 	vec3 sceneColor = texture(sceneTexture, TexCoords).rgb;
 	vec3 bloomColor = texture(bloomBlur, TexCoords).rgb;
@@ -189,6 +209,12 @@ void main() {
 	}
 
 	result *= exposure;
+
+	// --- PURKINJE SHIFT ---
+	vec3 scotopicTint = vec3(0.15, 0.3, 0.6);
+	// vec3 scotopicTint = vec3(2.0, 0.3, 0.6);
+	result = ApplyPurkinjeShift(result, layers[isSky].adaptedLuminance, scotopicTint);
+	// ----------------------
 
 	if (uBloomEnabled) {
 		result += bloomColor * intensity;
