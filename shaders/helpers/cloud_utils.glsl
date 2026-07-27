@@ -25,6 +25,7 @@ struct CloudLayer {
 };
 
 float getCurvedAltitude(vec3 p) {
+	// return p.y;
 	float R_earth = 6360.0 * 1000.0 * worldScale;
 	vec3 earthCenter = vec3(viewPos.x, -R_earth, viewPos.z);
 	return length(p - earthCenter) - R_earth;
@@ -35,8 +36,8 @@ float getCurvedAltitude(vec3 p) {
 // }
 
 vec4 hash41(float p) {
-    vec4 p4 = fract(vec4(p) * vec4(.1031, .1030, .0973, .1099));
-    p4 += dot(p4, p4.wzxy + 33.33);
+    vec4 p4 = fract(p * vec4(443.897, 441.423, .0973, .1099));
+    p4 += dot(p4, p4.wzxy + 19.19);
     return fract((p4.xxyz + p4.yzzw) * p4.zywx);
 }
 
@@ -360,7 +361,7 @@ CloudWeather loadCloudWeather(vec3 p, CloudProperties props, vec4 tex) {
 	weather.cellID = tex.b;
 	weather.density = tex.a;
 
-	vec4 derived = hash41(tex.b);
+	vec4 derived = clamp(hash41(tex.b), 0, 1);//*0.05+0.05;
 	weather.heightMap = derived.r;
 	weather.thickness = derived.g;
 	weather.ecentricity = derived.b;
@@ -436,10 +437,10 @@ float calculateLoftedCloudSDF(vec3 p, CloudWeather weather, CloudLayer layer, fl
     float altitude = getCurvedAltitude(p);
 
     // Increase baseline height and thickness for tall, fluffy clouds
-    float baselineHeightOffset = 1500.0 * worldScale;
+    // float baselineHeightOffset = 1500.0 * worldScale;
     float thicknessMultiplier = 2.2;
 
-    float localFloor = layer.baseFloor + baselineHeightOffset + weather.heightMap * layer.thickness;
+    float localFloor = layer.baseFloor + weather.heightMap * layer.thickness;
     float actualThickness = weather.thickness * layer.thickness * thicknessMultiplier;
 
     // Taper the thickness as a function of center distance to create a domed shape
@@ -470,7 +471,7 @@ float calculateLoftedCloudSDF(vec3 p, CloudWeather weather, CloudLayer layer, fl
     vec2 w = vec2(d_edge, distY);
     float d3d = min(max(w.x, w.y), 0.0) + length(max(w, 0.0));
 
-    return d3d;
+    return d3d * weather.density;
 }
 
 float getCloud3DSDF(vec3 p, CloudWeather weather, CloudLayer layer, float worldScale) {
