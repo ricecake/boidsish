@@ -504,7 +504,8 @@ void main() {
 
 	vec3 rayDir = canonicalRayDir;
 
-	if (depth == 1.0) {
+	if (depth > 0.9999) {
+		// if (depth == 1.0) {
 		dist = uCloudMaxRayDistance * worldScale;
 		worldPos = viewPos + rayDir * dist;
 	}
@@ -566,7 +567,7 @@ void main() {
 
 	if (b_firstHit < 0.0 || b_totalDensity < 0.01) {
 		// Output clear sky / no clouds and early return
-		imageStore(outPackedColor, packedPixel, vec4(0.0));
+		imageStore(outPackedColor, packedPixel, vec4(0.0, 0.0, 0.0, 1.0));
 		imageStore(outPackedDepth, packedPixel, vec4(uCloudMaxRayDistance * 0.5 * worldScale, uCloudMaxRayDistance * 0.5 * worldScale, baseStepSize, 0.0));
 
 		vec3 advectionOffset = getCloudAdvectionSpeed(0.0, time);
@@ -583,14 +584,18 @@ void main() {
 	t_start = max(t_start, b_firstHit);
 	t_end = min(t_end, b_lastHit);
 
-	rayDist = t_end - t_start;
+	// rayDist = t_end - t_start;
+	// precisionLimit = max(1.0, t_end * 1e-5);
+	// baseStepSize = clamp(rayDist / float(samples), precisionLimit, 25.0);
+
+	// Calculate base step size from the absolute atmosphere depth, immune to blocky bounds
+	float absoluteShellDist = t1 - max(0.0, t0);
 	precisionLimit = max(1.0, t_end * 1e-5);
-	baseStepSize = clamp(rayDist / float(samples), precisionLimit, 25.0);
+	baseStepSize = clamp(absoluteShellDist / float(samples), precisionLimit, 25.0);
 
 	float firstStepSize = baseStepSize;
-	float minStepSize = 100000;
 	float its = 0.0;
-	int MAX_ITERATIONS = 500;
+	int MAX_ITERATIONS = 1000;//int(uCloudMaxRayDistance / 25.0);
 
 	float steps = 0.0;
 	float firstHitStep = 0.0;
@@ -768,18 +773,30 @@ void main() {
 			CloudWeather weather = computeCloudWeather(p, props, 0.0);
 			CloudLayer layer = computeCloudLayer(weather, props);
 			CloudDensityResult densityResCheap = calculateCloudDensityMinimal(p, weather, layer, props);
+			// CloudDensityResult densityResCheap = calculateCloudDensity(p, weather, layer, props, time, 0.0);
+
 			vec3 d_cheap = densityResCheap.density;
 
-			// float nextStepSize = calculateBifurcatedStepSize(inVolume, zero_count, max(d_cheap.x,max(d_cheap.y,d_cheap.z)), baseStepSize, 1.0, 2);
-			vec2 weatherUV = p.xz / (100000.0 * worldScale);
-			vec2 minMax = textureLod(u_cloudWeatherMinMaxTexture, weatherUV, 6.0).rg;
-			float nextStepSize = calculateBifurcatedStepSize(inVolume, zero_count, minMax.y, baseStepSize, 2.0, 2);
+			float nextStepSize = calculateBifurcatedStepSize(inVolume, zero_count, max(d_cheap.x,max(d_cheap.y,d_cheap.z)), baseStepSize, 3, 3);
+			// vec3 base_advect = getCloudWindOffset(time);
+			// vec2 weatherUV = (p + base_advect).xz / (100000.0 * worldScale);
+			// vec2 minMax = textureLod(u_cloudWeatherMinMaxTexture, weatherUV, 6.0).rg;
+			// float nextStepSize = calculateBifurcatedStepSize(inVolume, zero_count, minMax.y, baseStepSize, 2.0, 2);
 
-			if (!inVolume) {
+			if (nextStepSize < 0.0) {
+				// We overshot. Move 't' backward, but do NOT update 't_prev'.
+				// Continue to bypass integration so we don't calculate negative density.
 				t += nextStepSize;
 				continue;
 			}
 
+			// 4. Handle Empty Space
+			if (!inVolume) {
+				// Lock in the current position BEFORE moving forward.
+				t_prev = t;
+				t += nextStepSize;
+				continue;
+			}
 
 			float stepSize = t - t_prev;
 			vec3 d = vec3(0.0);
@@ -873,7 +890,7 @@ void main() {
 	vec4 finalColor = vec4(cloudColor, dot(cloudTransmittance, vec3(0.3333)));
 	// vec4 finalColor = vec4(mix(vec3(0,10,0), vec3(10,0,0), smoothstep(0, 100, magic_stepping)), 0.0);
 	// vec4 finalColor = vec4(mix(vec3(0,10,0), vec3(10,0,0), smoothstep(0, 100, firstHitDist/firstHitStep)), 0.0);
-	// vec4 finalColor = vec4(mix(vec3(0,10,0), vec3(10,0,0), smoothstep(0, 100, firstHitStep)), 0.0);
+	// finalColor = mix(finalColor, vec4(mix(vec3(0,10000000,0), vec3(10000000,0,0), smoothstep(0, 100, firstHitStep)), 0.0), 0.3);
 	// vec4 finalColor = vec4(magic_stepping * 100, 0.0, 0, 0);
 	vec4 finalDepth;
 	vec2 finalVelocity;
@@ -897,7 +914,6 @@ void main() {
 		vec2 prevScreenUV = (prevClipHit.xy / prevClipHit.w) * 0.5 + 0.5;
 
 		finalVelocity = prevScreenUV - TexCoords;
-		// finalVelocity = vec2(minStepSize/10, 0);
 	} else {
 		finalDepth = vec4(uCloudMaxRayDistance * 0.5 * worldScale, uCloudMaxRayDistance * 0.5 * worldScale, firstStepSize, pathDensity);
 		vec3 advectionOffset = getCloudAdvectionSpeed(0.0, time);
