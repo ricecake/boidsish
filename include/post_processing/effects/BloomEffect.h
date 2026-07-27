@@ -15,6 +15,35 @@ namespace Boidsish {
 
 		class BloomEffect: public IPostProcessingEffect {
 		public:
+			struct CdlGradingEntry {
+				glm::vec3 cdlSlope = glm::vec3(1.0f);
+				glm::vec3 cdlOffset = glm::vec3(0.0f);
+				glm::vec3 cdlPower = glm::vec3(1.0f);
+				float     cdlSaturation = 1.0f;
+
+				float targetDepth = 50.0f;
+				float falloffWidth = 20.0f;
+				float falloffRate = 1.0f;
+				int   priority = 0;
+
+				bool  enabled = true;
+				bool  isMain = false;
+			};
+
+			struct GpuCdlEntry {
+				glm::vec4 cdlSlope = glm::vec4(1.0f);
+				glm::vec4 cdlOffset = glm::vec4(0.0f);
+				glm::vec4 cdlPower = glm::vec4(1.0f);
+				float     cdlSaturation = 1.0f;
+				float     targetDepth = 0.0f;
+				float     falloffWidth = 0.0f;
+				float     falloffRate = 1.0f;
+				int       priority = 0;
+				int       enabled = 1;
+				int       isMain = 0;
+				float     padding = 0.0f;
+			};
+
 			struct LayerSettings {
 				bool  toneMappingEnabled = true;
 				int   toneMappingMode = 5; // Default to Uchimura
@@ -178,6 +207,15 @@ namespace Boidsish {
 			void SetLtmBoostLocalContrast(float boost) { _sceneSettings.ltmBoostLocalContrast = boost; }
 			float GetLtmBoostLocalContrast() const { return _sceneSettings.ltmBoostLocalContrast; }
 
+			std::vector<CdlGradingEntry>& GetAdditionalCdlEntries() { return _additionalCdlEntries; }
+			const std::vector<CdlGradingEntry>& GetAdditionalCdlEntries() const { return _additionalCdlEntries; }
+			void AddCdlEntry(const CdlGradingEntry& entry) { _additionalCdlEntries.push_back(entry); }
+			void RemoveCdlEntry(size_t index) {
+				if (index < _additionalCdlEntries.size()) {
+					_additionalCdlEntries.erase(_additionalCdlEntries.begin() + index);
+				}
+			}
+
 			void SetNightFactor(float factor) override { _nightFactor = factor; }
 
 			void SetTime(float time) override;
@@ -291,6 +329,9 @@ namespace Boidsish {
 
 			LayerSettings _sceneSettings;
 			LayerSettings _skySettings = { .targetLuminance = 0.5 };
+
+			std::vector<CdlGradingEntry> _additionalCdlEntries;
+			GLuint _cdlGradingSsbo = 0;
 
 			bool  _bloomEnabled = true;
 			float _nightFactor = 0.0f;

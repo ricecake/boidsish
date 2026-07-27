@@ -72,6 +72,7 @@ consteval bool ValidateSsboBindings() {
 		Constants::SsboBinding::TrailGeneratedVBO(),
 		Constants::SsboBinding::AtmosphereSH(),
 		Constants::SsboBinding::SdfVolumes(),
+		Constants::SsboBinding::CdlGradingLayers(),
 	};
 	return AllUnique(ssbos);
 }

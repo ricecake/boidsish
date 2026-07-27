@@ -30,6 +30,26 @@ uniform bool  uBloomEnabled;
 
 #include "types/lighting.glsl";
 
+struct CdlEntry {
+	vec4  cdlSlope;
+	vec4  cdlOffset;
+	vec4  cdlPower;
+	float cdlSaturation;
+	float targetDepth;
+	float falloffWidth;
+	float falloffRate;
+	int   priority;
+	int   enabled;
+	int   isMain;
+	float padding;
+};
+
+layout(std430, binding = [[CDL_GRADING_LAYERS_BINDING]]) buffer CdlGradingLayers {
+	CdlEntry cdlEntries[];
+};
+
+uniform int uNumCdlEntries;
+
 // Planckian locus approximation for temperature to RGB
 vec3 tempToRgb(float temp) {
     temp /= 100.0;
@@ -184,8 +204,31 @@ void main() {
 	whiteGain /= max(dot(whiteGain, vec3(0.2126, 0.7152, 0.0722)), 0.0001);
 	result *= whiteGain;
 
-	// 3. ASC CDL Color Grading
-	result = pow(max(result * layers[isSky].cdlSlope.rgb + layers[isSky].cdlOffset.rgb, 0.0), layers[isSky].cdlPower.rgb);
+	// 3. ASC CDL Color Grading (Single or Multi-layer depth based)
+	if (isSky == 0) {
+		float linearZ = linearizeDepth(rawDepth);
+		for (int i = 0; i < uNumCdlEntries; ++i) {
+			CdlEntry entry = cdlEntries[i];
+			if (entry.enabled == 0) continue;
+
+			float weight = 1.0;
+			if (entry.isMain == 0) {
+				float dist = abs(linearZ - entry.targetDepth);
+				float x = clamp(dist / max(entry.falloffWidth, 0.0001), 0.0, 1.0);
+				weight = pow(1.0 - x, entry.falloffRate);
+			}
+
+			if (weight > 0.0) {
+				vec3 graded = pow(max(result * entry.cdlSlope.rgb + entry.cdlOffset.rgb, 0.0), entry.cdlPower.rgb);
+				float layerLuma = dot(graded, vec3(0.2126, 0.7152, 0.0722));
+				graded = layerLuma + entry.cdlSaturation * (graded - layerLuma);
+				result = mix(result, graded, weight);
+			}
+		}
+	} else {
+		// Existing sky color grading
+		result = pow(max(result * layers[1].cdlSlope.rgb + layers[1].cdlOffset.rgb, 0.0), layers[1].cdlPower.rgb);
+	}
 
 	// 4. Tonemapping
 	if (layers[isSky].toneMappingEnabled != 0) {
@@ -202,8 +245,10 @@ void main() {
 	}
 
 	// Saturation
-	float luma = dot(result, vec3(0.2126, 0.7152, 0.0722));
-	result = luma + layers[isSky].cdlSaturation * (result - luma);
+	if (isSky == 1) {
+		float luma = dot(result, vec3(0.2126, 0.7152, 0.0722));
+		result = luma + layers[1].cdlSaturation * (result - luma);
+	}
 
 	// 5. Gamma Correction
 	result = pow(max(result, 0.0), vec3(1.0 / gamma));
