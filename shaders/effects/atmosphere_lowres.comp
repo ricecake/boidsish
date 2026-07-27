@@ -584,14 +584,10 @@ void main() {
 	t_start = max(t_start, b_firstHit);
 	t_end = min(t_end, b_lastHit);
 
-	// rayDist = t_end - t_start;
-	// precisionLimit = max(1.0, t_end * 1e-5);
-	// baseStepSize = clamp(rayDist / float(samples), precisionLimit, 25.0);
-
-	// Calculate base step size from the absolute atmosphere depth, immune to blocky bounds
 	float absoluteShellDist = t1 - max(0.0, t0);
-	precisionLimit = max(1.0, t_end * 1e-5);
-	baseStepSize = clamp(absoluteShellDist / float(samples), precisionLimit, 25.0);
+	rayDist = t_end - t_start;
+	baseStepSize = clamp(rayDist / float(samples), precisionLimit, 25.0);
+	// baseStepSize = clamp(absoluteShellDist / float(samples), precisionLimit, 25.0);
 
 	float firstStepSize = baseStepSize;
 	float its = 0.0;

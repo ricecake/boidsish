@@ -475,7 +475,30 @@ float calculateLoftedCloudSDF(vec3 p, CloudWeather weather, CloudLayer layer, fl
 }
 
 float getCloud3DSDF(vec3 p, CloudWeather weather, CloudLayer layer, float worldScale) {
-	return calculateLoftedCloudSDF(p, weather, layer, worldScale);
+	float altitude = getCurvedAltitude(p);
+	float altitudeShift = weather.heightMap * layer.thickness;
+	float actualThickness = weather.thickness * layer.thickness;
+	float localFloor = layer.baseFloor + altitudeShift;
+
+	if (p.y < localFloor || p.y > (localFloor + actualThickness)) {
+		return 0.0;
+	}
+
+
+	float h = clamp((altitude - localFloor) / max(actualThickness, 0.001), 0.0, 1.0);
+
+	float type = weather.heightMap;
+	float heightGradient = getDensityHeightGradient(h, type);
+
+	float coverage2D = weather.sdf;
+	float macroVolume = coverage2D * heightGradient;
+	float domeMask = smoothstep(h, h + 0.2, coverage2D);
+
+	macroVolume *= domeMask;
+
+	return macroVolume;
+
+	// return calculateLoftedCloudSDF(p, weather, layer, worldScale);
 /*
 	weather.sdf = tex.r;
 	weather.centerDist = tex.g;
@@ -487,24 +510,24 @@ float getCloud3DSDF(vec3 p, CloudWeather weather, CloudLayer layer, float worldS
 	weather.curve = derived.a;
 	weather.p = p;
 */
-	float sdf2d = weather.sdf;
+	// float sdf2d = weather.sdf;
 
-	// Use curved altitude to respect Earth's curvature
-	float altitude = getCurvedAltitude(p);
+	// // Use curved altitude to respect Earth's curvature
+	// float altitude = getCurvedAltitude(p);
 
-	// Proportional altitude shift and thickness
-	float altitudeShift = weather.heightMap * layer.thickness;
-	float actualThickness = weather.thickness * layer.thickness ;//* (1.0-smoothstep(0, 1.0, weather.centerDist));
+	// // Proportional altitude shift and thickness
+	// float altitudeShift = weather.heightMap * layer.thickness;
+	// float actualThickness = weather.thickness * layer.thickness ;//* (1.0-smoothstep(0, 1.0, weather.centerDist));
 
-	// The actual cloud spans from local floor to local ceiling
-	float localFloor = layer.baseFloor + altitudeShift;
+	// // The actual cloud spans from local floor to local ceiling
+	// float localFloor = layer.baseFloor + altitudeShift;
 
-	float halfHeight = actualThickness * 0.5;
-	float centerY = localFloor + halfHeight;
-	float distY = abs(altitude - centerY) - halfHeight;
+	// float halfHeight = actualThickness * 0.5;
+	// float centerY = localFloor + halfHeight;
+	// float distY = abs(altitude - centerY) - halfHeight;
 
-	vec2 w = vec2(sdf2d, distY);
-	return min(max(w.x, w.y), 0.0) + length(max(w, 0.0));
+	// vec2 w = vec2(sdf2d, distY);
+	// return min(max(w.x, w.y), 0.0) + length(max(w, 0.0));
 }
 
 

@@ -40,28 +40,27 @@ void main() {
 
 	vec3 p = vec3(uv.x * mapRange, 0.0, uv.y * mapRange);
 
-	// Multi-octave regional coverage noise
-	float slowNoise = regionalFbm(p.xz / cellRange, vec2(10.0));
+	vec4 worleyDetails = worley3d_tiling_id(p / (cellRange * 0.25), 10.0);
 
-	// Smooth and linear mapping of uCloudCoverage from [0.0, 1.0] to regionalCoverage without harsh steps
-	float edge0 = clamp(1.0 - uCloudCoverage * 2.0, 0.0, 1.0);
-	float edge1 = clamp(2.0 - uCloudCoverage * 2.0, 0.0001, 1.0);
-	float regionalCoverage = smoothstep(edge0, max(edge0 + 0.001, edge1), slowNoise);
+	float macro = regionalFbm(p.xz / cellRange, vec2(10.0));
+	float micro = 1.0 - worleyDetails.x;
+	float coverage = clamp(micro - (1.0 - macro), 0.0, 1.0);
+	float finalCoverage = clamp(coverage + (uCloudCoverage * 2.0 - 1.0), 0.0, 1.0);
 
-	VoronoiData vd = sdVoronoiHybrid(p.xz / cellRange, 3.0, 5.0, regionalCoverage, vec2(10.0));
-	vec2 cellId = vd.f1;
-	float cellID = hash12(vd.f1, vec2(10.0));
-	float density = clamp(-vd.dist, 0, 1);
+	vec2 cellId = worleyDetails.yw;
+	float cellID = simplex3d_tiling(worleyDetails.yzw, 10.0) * 0.5 + 0.5;
+	float density = clamp(2.0 * cellID * macro, 0, 1);
 
-	float distInMeters = vd.dist * cellRange;
-	float distF1InMeters = vd.dist_f1 * cellRange;
-	imageStore(outWeatherMap, pixel, vec4(distInMeters, distF1InMeters, cellID, density));
+	float distInMeters = micro * cellRange;
+	float distF1InMeters = worleyDetails.x * cellRange;
+
+	imageStore(outWeatherMap, pixel, vec4(finalCoverage, distF1InMeters, cellID, density));
 	imageStore(outMinMaxMap, pixel, vec4(density, density, 0.0, 0.0));
 
 	// Record seed info if this is the pixel closest to the cell center (f1)
 	vec2 f1Pixel = (cellId * cellRange) / mapRange * vec2(size);
 	if (distance(vec2(pixel), f1Pixel) < 1.0) {
 		int cellIdx = int(mod(floor(cellId.y), 10.0) * 10.0 + mod(floor(cellId.x), 10.0));
-		seeds[cellIdx] = vec4(cellId.x * cellRange, cellId.y * cellRange, distInMeters, (vd.dist < 0.0 ? 1.0 : 0.0));
+		seeds[cellIdx] = vec4(cellId.x * cellRange, cellId.y * cellRange, distInMeters, (finalCoverage > 0.0 ? 1.0 : 0.0));
 	}
 }

@@ -78,7 +78,7 @@ float simplex3d_tiling(vec3 p, float period) {
 }
 
 // Tiling 3D Worley/Cellular noise
-vec2 worley3d_tiling(vec3 p, float period) {
+vec4 worley3d_tiling_id(vec3 p, float period) {
 	vec3  i = floor(p);
 	vec3  f = fract(p);
 	float minDistSq = 1.0;
@@ -100,7 +100,13 @@ vec2 worley3d_tiling(vec3 p, float period) {
 			}
 		}
 	}
-	return vec2(sqrt(minDistSq), simplex3d_tiling(cellId, period) * 0.5 + 0.5);
+	return vec4(sqrt(minDistSq), cellId);
+}
+
+// Tiling 3D Worley/Cellular noise
+vec2 worley3d_tiling(vec3 p, float period) {
+	vec4 res = worley3d_tiling_id(p, period);
+	return vec2(res.x, simplex3d_tiling(res.yzw, period) * 0.5 + 0.5);
 }
 
 // Tiling 3D FBM Perlin (using pnoise for classic Perlin)
