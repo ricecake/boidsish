@@ -22,7 +22,7 @@ uniform bool  uHasHistory;
 
 #include "../atmosphere/common.glsl"
 #include "../helpers/lighting.glsl"
-#include "../types/temporal_data.glsl"p
+#include "../types/temporal_data.glsl"
 #include "lygia/color/luma.glsl"
 #include "helpers/math.glsl"
 
