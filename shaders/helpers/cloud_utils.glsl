@@ -355,18 +355,22 @@ float evalSdf(
 }
 
 CloudWeather loadCloudWeather(vec3 p, CloudProperties props, vec4 tex) {
+	// imageStore(outWeatherMap, pixel, vec4(finalCoverage, distF1InMeters, cellID, density));
+
 	CloudWeather weather;
+	weather.p = p;
+
 	weather.sdf = tex.r;
 	weather.centerDist = tex.g;
 	weather.cellID = tex.b;
 	weather.density = tex.a;
 
-	vec4 derived = hash41(tex.b);//*0.05+0.05;
+	vec4 derived = clamp(hash41(tex.b), 0.0, 1.0);
+
 	weather.heightMap = derived.r;
 	weather.thickness = derived.g;
 	weather.ecentricity = derived.b;
 	weather.curve = derived.a;
-	weather.p = p;
 
 	return weather;
 }
@@ -378,7 +382,7 @@ CloudWeather computeCloudWeather(vec3 p, CloudProperties props, float lod) {
 	// Use baked weather map. Sampling UV is worldXZ / range.
 	// Range is 100,000 * worldScale as defined in the bake shader.
 	vec2 uv = p_advected.xz / (100000.0 * props.worldScale);
-	vec4 bakedWeather = textureLod(u_cloudWeatherTexture, uv, lod);
+	vec4 bakedWeather = textureLod(u_cloudWeatherTexture, uv, 0.0);
 	return loadCloudWeather(p, props, bakedWeather);
 }
 
@@ -485,6 +489,7 @@ float getCloud3DSDF(vec3 p, CloudWeather weather, CloudLayer layer, float worldS
 	}
 
 
+	// float h = weather.heightMap;
 	float h = clamp((altitude - localFloor) / max(actualThickness, 0.001), 0.0, 1.0);
 
 	float type = weather.heightMap;

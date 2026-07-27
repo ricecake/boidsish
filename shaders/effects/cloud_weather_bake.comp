@@ -40,16 +40,16 @@ void main() {
 
 	vec3 p = vec3(uv.x * mapRange, 0.0, uv.y * mapRange);
 
-	vec4 worleyDetails = worley3d_tiling_id(p / (cellRange * 0.25), 10.0);
+	vec3 worleyDetails = worley2d_tiling_id(p.xz / (cellRange * 0.25), 10.0);
 
 	float macro = regionalFbm(p.xz / cellRange, vec2(10.0));
 	float micro = 1.0 - worleyDetails.x;
 	float coverage = clamp(micro - (1.0 - macro), 0.0, 1.0);
 	float finalCoverage = clamp(coverage + (uCloudCoverage * 2.0 - 1.0), 0.0, 1.0);
 
-	vec2 cellId = worleyDetails.yw;
-	float cellID = simplex3d_tiling(worleyDetails.yzw, 10.0) * 0.5 + 0.5;
-	float density = clamp(2.0 * cellID * macro, 0, 1);
+	vec2 cellId = worleyDetails.yz;
+	float cellID = psrdnoise(cellId, vec2(10.0)) * 0.5 + 0.5;
+	float density = clamp(macro, 0, 1);
 
 	float distInMeters = micro * cellRange;
 	float distF1InMeters = worleyDetails.x * cellRange;

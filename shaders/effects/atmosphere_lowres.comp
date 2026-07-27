@@ -768,8 +768,8 @@ void main() {
 
 			CloudWeather weather = computeCloudWeather(p, props, 0.0);
 			CloudLayer layer = computeCloudLayer(weather, props);
-			CloudDensityResult densityResCheap = calculateCloudDensityMinimal(p, weather, layer, props);
-			// CloudDensityResult densityResCheap = calculateCloudDensity(p, weather, layer, props, time, 0.0);
+			// CloudDensityResult densityResCheap = calculateCloudDensityMinimal(p, weather, layer, props);
+			CloudDensityResult densityResCheap = calculateCloudDensity(p, weather, layer, props, time, 0.0);
 
 			vec3 d_cheap = densityResCheap.density;
 
