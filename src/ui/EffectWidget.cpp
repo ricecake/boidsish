@@ -407,6 +407,43 @@ namespace Boidsish {
 												ImGui::ColorEdit3("Power", &settings.cdlPower.x);
 												ImGui::SliderFloat("Saturation", &settings.cdlSaturation, 0.0f, 2.0f);
 
+											if (isScene) {
+												ImGui::Separator();
+												ImGui::Text("Depth-Based Grading Layers");
+												auto& additionalLayers = bloom_effect->GetAdditionalCdlEntries();
+												if (ImGui::Button("Add Layer##CDL")) {
+													PostProcessing::BloomEffect::CdlGradingEntry newEntry;
+													bloom_effect->AddCdlEntry(newEntry);
+												}
+
+												for (size_t i = 0; i < additionalLayers.size(); ++i) {
+													ImGui::PushID(static_cast<int>(i));
+													std::string headerName = "Layer " + std::to_string(i + 1);
+													if (ImGui::TreeNode(headerName.c_str())) {
+														auto& entry = additionalLayers[i];
+														ImGui::Checkbox("Enabled##CdlLayer", &entry.enabled);
+														ImGui::SliderFloat("Target Depth##CdlLayer", &entry.targetDepth, 0.1f, 1000.0f);
+														ImGui::SliderFloat("Falloff Width##CdlLayer", &entry.falloffWidth, 0.1f, 500.0f);
+														ImGui::SliderFloat("Falloff Rate##CdlLayer", &entry.falloffRate, 0.1f, 10.0f);
+														ImGui::InputInt("Priority##CdlLayer", &entry.priority);
+
+														ImGui::ColorEdit3("Slope##CdlLayer", &entry.cdlSlope.x);
+														ImGui::ColorEdit3("Offset##CdlLayer", &entry.cdlOffset.x);
+														ImGui::ColorEdit3("Power##CdlLayer", &entry.cdlPower.x);
+														ImGui::SliderFloat("Saturation##CdlLayer", &entry.cdlSaturation, 0.0f, 2.0f);
+
+														if (ImGui::Button("Remove Layer##CdlLayer")) {
+															bloom_effect->RemoveCdlEntry(i);
+															ImGui::TreePop();
+															ImGui::PopID();
+															break; // break the loop as vector size changed
+														}
+														ImGui::TreePop();
+													}
+													ImGui::PopID();
+												}
+											}
+
 												ImGui::Separator();
 												ImGui::Text("White Balance");
 												ImGui::SliderFloat("Temperature (K)", &settings.whiteTemp, 2000.0f, 12000.0f);
