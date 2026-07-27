@@ -6,12 +6,15 @@
 #include "graphics.h"
 #include "SceneManager.h"
 #include "hud_manager.h"
+#include "light_manager.h"
+#include "mood_manager.h"
 #include "hud.h"
 #include "ui/EnvironmentWidget.h"
 #include "ui/MoodWidget.h"
 #include "ui/LightningWidget.h"
 #include "ui/EffectWidget.h"
 #include "ui/RenderWidget.h"
+#include "ui/LightingWidget.h"
 #include "ui/AudioWidget.h"
 #include "ui/SystemWidget.h"
 #include "ui/ProfilerWidget.h"
@@ -55,12 +58,14 @@ namespace Boidsish {
 		}
 
 		void UIConfigManager::SetupDefaultWidgets(Visualizer& visualizer, SceneManager& scene_manager, HudManager& hud_manager) {
+			m_visualizer = &visualizer;
 			AddWidget(std::make_shared<HudWidget>(hud_manager));
 			AddWidget(std::make_shared<EnvironmentWidget>(visualizer));
 			AddWidget(std::make_shared<MoodWidget>(visualizer));
 			AddWidget(std::make_shared<LightningWidget>(visualizer));
 			AddWidget(std::make_shared<EffectWidget>(visualizer));
 			AddWidget(std::make_shared<RenderWidget>(visualizer));
+			AddWidget(std::make_shared<LightingWidget>(visualizer));
 			AddWidget(std::make_shared<AudioWidget>(visualizer));
 			AddWidget(std::make_shared<SystemWidget>(visualizer, scene_manager));
 			AddWidget(std::make_shared<ProfilerWidget>());
@@ -89,6 +94,29 @@ namespace Boidsish {
 				if (widget->IsHud() || m_show_menus) {
 					widget->Draw();
 				}
+			}
+
+			// Render the floating Quick Controls toolbar if menus are open
+			if (m_show_menus && m_visualizer) {
+				ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x * 0.5f - 175.0f, 20.0f), ImGuiCond_FirstUseEver);
+				ImGui::SetNextWindowSize(ImVec2(350, 150), ImGuiCond_FirstUseEver);
+				if (ImGui::Begin("Quick Controls", nullptr, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize)) {
+					auto& cycle = m_visualizer->GetLightManager().GetDayNightCycle();
+					ImGui::Text("Day/Night Cycle:");
+					ImGui::SliderFloat("Time (24h)##Quick", &cycle.time, 0.0f, 24.0f, "%.1f h");
+					ImGui::Checkbox("Pause Day/Night Cycle##Quick", &cycle.paused);
+
+					ImGui::Separator();
+
+					auto mood_mgr = m_visualizer->GetMoodManager();
+					if (mood_mgr) {
+						bool mood_enabled = mood_mgr->IsEnabled();
+						if (ImGui::Checkbox("Enable Mood Engine##Quick", &mood_enabled)) {
+							mood_mgr->SetEnabled(mood_enabled);
+						}
+					}
+				}
+				ImGui::End();
 			}
 
 			PositionMinimizedWindows();
