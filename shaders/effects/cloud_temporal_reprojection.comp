@@ -304,6 +304,9 @@ void main() {
 	if (is_new_pixel) {
 		currentRGBA = texelFetch(uPackedFrame, packedPixel, 0);
 		currDepthProps = texelFetch(uPackedDepth, packedPixel, 0);
+	} else {
+		currentRGBA = texture(uPackedFrame, uv);
+		currDepthProps = texture(uPackedDepth, uv);
 	}
 
 	float currentPathDensity = currDepthProps.a;
@@ -320,13 +323,15 @@ void main() {
 		historyDepthProps = texture(uHistoryCloudDepth, prevUV);
 		historyLength = historyMoments.w;
 
-		if (is_new_pixel) {
-			float depthDiff = abs(currDepthProps.r - historyDepthProps.r);
-			float allowedDiff = max(currDepthProps.b * 16.0, 0.15 * currDepthProps.r);
-			allowedDiff = max(allowedDiff, 1000.0 * worldScale);
-			if (depthDiff > allowedDiff) {
-				validHistory = false;
-			}
+		float depthDiff = abs(currDepthProps.r - historyDepthProps.r);
+		float allowedDiff = max(currDepthProps.b * 16.0, 0.15 * currDepthProps.r);
+		allowedDiff = max(allowedDiff, 1000.0 * worldScale);
+		if (depthDiff > allowedDiff) {
+			validHistory = false;
+		}
+
+		if (currentPathDensity < 0.01) {
+			validHistory = false;
 		}
 	}
 
@@ -434,6 +439,11 @@ void main() {
 		} else if (is_new_pixel) {
 			historyLength = mix(historyLength, 1.0, rejectionFactor);
 			alpha = 1.0 / max(historyLength, 1.0);
+		}
+
+		if (currentPathDensity < 0.01) {
+			alpha = 1.0;
+			historyLength = 1.0;
 		}
 
 

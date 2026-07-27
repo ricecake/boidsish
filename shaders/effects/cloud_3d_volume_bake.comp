@@ -58,30 +58,14 @@ void main() {
 	}
 	float aoVal = clamp(1.0 - (densitySum / float(AO_SAMPLES)) * 1.5, 0.0, 1.0);
 
-	// Sample the 2D weather map texture using the horizontal coordinates (p.xz)
-	vec4 bakedWeather = textureLod(u_cloudWeatherTexture, p.xz, 0.0);
+	float baseHeightGradient = mix(0.9, 0.6, smoothstep(0.15, 0.85, p.y));
 
-	CloudProperties props;
-	props.altitude = cloudAltitude;
-	props.thickness = cloudThickness;
-	props.densityBase = cloudDensity;
-	props.coverage = cloudCoverage;
-	props.worldScale = worldScale;
+	// Tile horizontally but do not repeat vertically
+	vec3 albedoCoords = vec3(fract(p.xz * 1.0), p.y);
+	vec3 densityCoords = vec3(fract(p.xz * 1.0), p.y);
 
-	CloudWeather weather = loadCloudWeather(vec3(p.x * 100000.0 * worldScale, 0.0, p.z * 100000.0 * worldScale), props, bakedWeather);
-	CloudLayer layer = computeCloudLayer(weather, props);
+	float baseAlbedo = computeSimplexWorley(albedoCoords * baseHeightGradient);
+	float baseDensity = computeSimplexWorley(densityCoords * baseHeightGradient);
 
-	// Calculate worldPos corresponding to the vertical position (p.y = h_dynamic)
-	float worldY = (props.altitude + p.y * (2.0 * props.thickness)) * worldScale;
-	vec3 worldPos = vec3(p.x * 100000.0 * worldScale, worldY, p.z * 100000.0 * worldScale);
-
-	// 3. B Channel: Store the precomputed conservative 3D SDF of the cloud layer in meters.
-	float cloud3dSdf = getCloud3DSDF(worldPos, weather, layer, worldScale);
-
-	// 4. A Channel: Store the actual physical density of the cloud volume.
-	CloudDensityResult densityRes = calculateCloudDensityMinimal(worldPos, weather, layer, props);
-
-	float actualDensity = length(densityRes.density);
-
-	imageStore(outVolume, voxel, vec4(noiseVal, aoVal, cloud3dSdf, actualDensity));
+	imageStore(outVolume, voxel, vec4(noiseVal, aoVal, baseAlbedo, baseDensity));
 }

@@ -77,10 +77,10 @@ void main() {
 
 	if (t_start < t_end) {
 		float t = t_start;
-		int L = 6;
-		float baseStepSize = 250.0 * worldScale;
+		int L = 3;
+		float baseStepSize = 25.0 * worldScale;
 
-		for (int i = 0; i < 200; ++i) {
+		for (int i = 0; i < 200000; ++i) {
 			if (t >= t_end) break;
 
 			vec3 p = viewPos + rayDir * t;
@@ -94,15 +94,34 @@ void main() {
 			vec2 minMax = textureLod(u_cloudWeatherMinMaxTexture, weatherUV, float(L)).rg;
 			float maxDensity = minMax.y;
 
-			if (maxDensity == 0.0) {
+			if (maxDensity <= 0.001) {
 				float mapRange = 100000.0 * worldScale;
 				float texelSizeAtLevel0 = mapRange / 2048.0;
 				float texelSize = float(1 << L) * texelSizeAtLevel0;
-				float dt = texelSize / max(0.01, length(rayDir.xz));
-				dt = clamp(dt, baseStepSize, 4000.0 * worldScale);
+
+				vec2 dir2D = rayDir.xz;
+				float len2D = max(length(dir2D), 1e-6);
+				vec2 dir_norm = dir2D / len2D;
+
+				vec2 p_xz = p_advected.xz;
+				vec2 cell_idx = floor(p_xz / texelSize);
+
+				vec2 next_bound;
+				next_bound.x = (dir_norm.x > 0.0) ? (cell_idx.x + 1.0) * texelSize : cell_idx.x * texelSize;
+				next_bound.y = (dir_norm.y > 0.0) ? (cell_idx.y + 1.0) * texelSize : cell_idx.y * texelSize;
+
+				vec2 dist_to_bound;
+				dist_to_bound.x = (abs(dir_norm.x) > 1e-6) ? (next_bound.x - p_xz.x) / dir_norm.x : 1e10;
+				dist_to_bound.y = (abs(dir_norm.y) > 1e-6) ? (next_bound.y - p_xz.y) / dir_norm.y : 1e10;
+
+				float dt_2D = min(dist_to_bound.x, dist_to_bound.y);
+				float dt = (dt_2D / len2D) + 0.1; // +0.1 pushes it safely over the boundary line
+
+				dt = clamp(dt, baseStepSize, 2000.0 * worldScale);
 				t += dt;
 				L = min(6, L + 1);
-			} else {
+			}
+			else {
 				if (L > 0) {
 					L--;
 				} else {
