@@ -875,6 +875,34 @@ namespace Boidsish {
 										changed_atm = true;
 									}
 
+									ImGui::Separator();
+									ImGui::Text("Solar Flares");
+
+									auto& sf_cfg = ConfigManager::GetInstance();
+									bool solar_flares = sf_cfg.GetAppSettingBool("solar_flares_enabled", true);
+									if (ImGui::Checkbox("Enable Solar Flares", &solar_flares)) {
+										sf_cfg.SetBool("solar_flares_enabled", solar_flares);
+										changed_atm = true;
+									}
+
+									if (solar_flares) {
+										float sf_strength = sf_cfg.GetAppSettingFloat("solar_flare_strength", 1.5f);
+										if (ImGui::SliderFloat("Flare Strength", &sf_strength, 0.0f, 10.0f)) {
+											sf_cfg.SetFloat("solar_flare_strength", sf_strength);
+											changed_atm = true;
+										}
+										float sf_scale = sf_cfg.GetAppSettingFloat("solar_flare_scale", 1.0f);
+										if (ImGui::SliderFloat("Flare Scale", &sf_scale, 0.1f, 10.0f)) {
+											sf_cfg.SetFloat("solar_flare_scale", sf_scale);
+											changed_atm = true;
+										}
+										float sf_speed = sf_cfg.GetAppSettingFloat("solar_flare_speed", 0.5f);
+										if (ImGui::SliderFloat("Flare Speed", &sf_speed, 0.0f, 5.0f)) {
+											sf_cfg.SetFloat("solar_flare_speed", sf_speed);
+											changed_atm = true;
+										}
+									}
+
 									if (changed_atm) {
 										atmosphere_effect->FlushHistory();
 									}

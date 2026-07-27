@@ -114,6 +114,10 @@ namespace Boidsish {
 		float sh_probe_scaling = 1.0f;
 		float sh_probe_convergence_speed = 1.0f;
 		int   sh_probe_ray_count_multiplier = 1;
+		bool  solar_flares_enabled = true;
+		float solar_flare_strength = 1.5f;
+		float solar_flare_scale = 1.0f;
+		float solar_flare_speed = 0.5f;
 	};
 
 	enum class CameraMode { FREE, AUTO, TRACKING, STATIONARY, CHASE, PATH_FOLLOW, FIRST_PERSON };
