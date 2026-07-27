@@ -72,6 +72,7 @@ namespace Boidsish {
 		T::RegisterConstant("LIGHTS_BUFFER_BINDING", Constants::SsboBinding::LightsBuffer());
 		T::RegisterConstant("CLUSTER_GRID_BINDING", Constants::SsboBinding::ClusterGridBuffer());
 		T::RegisterConstant("SPACE_PROBE_BINDING", Constants::SsboBinding::SpaceProbe());
+		T::RegisterConstant("CDL_GRADING_LAYERS_BINDING", Constants::SsboBinding::CdlGradingLayers());
 
 		// Limits and Sizes
 		T::RegisterConstant("MAX_LIGHTS", Constants::Class::Shadows::MaxLights());
