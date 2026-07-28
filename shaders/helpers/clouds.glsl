@@ -504,13 +504,8 @@ CloudSpotDetails calculateCloudDensityExpV9(
 	float           time,
 	float            simplified
 ) {
-	float altitudeShift = weather.heightMap * layer.thickness;
-	float actualThickness = weather.thickness * layer.thickness;
-	float localFloor = layer.baseFloor + altitudeShift;
-
-	// h is normalized over the actual local cloud thickness to correctly apply the height gradient and wind shear
-	float altitude = getCurvedAltitude(p);
-	float h = clamp((altitude - localFloor) / max(actualThickness, 0.001), 0.0, 1.0);
+	float localFloor, actualThickness;
+	float h = getCloudRelativeHeight(p, weather, layer, localFloor, actualThickness);
 
 	vec3 advectSpeed = getCloudAdvectionSpeed(h, time);
 	float type = weather.heightMap;
@@ -518,7 +513,7 @@ CloudSpotDetails calculateCloudDensityExpV9(
 	vec3 advect = time * advectSpeed;
 	vec3 p_advected = p + advect;
 
-	float baseNoise = getCloud3DSDF(p_advected, weather, layer, props.worldScale);
+	float baseNoise = getCloud3DCoverage(p_advected, weather, layer, props.worldScale);
 
 	// // weather.sdf now holds your 0.0 - 1.0 coverage probability from the bake shader
 	// float coverage2D = weather.sdf;
@@ -529,7 +524,7 @@ CloudSpotDetails calculateCloudDensityExpV9(
 	// // float density = weather.density * smoothstep(0, weather.ecentricity, h) * (1.0 - smoothstep(weather.ecentricity, 1.0, h));
 
 	// float baseNoise = 1.0;
-	// // float baseSdf = getCloud3DSDF(p_advected, weather, layer, props.worldScale);
+	// // float baseSdf = getCloud3DCoverage(p_advected, weather, layer, props.worldScale);
 	// baseNoise = macroVolume;
 
 	// baseNoise *= heightGradient;
@@ -585,11 +580,8 @@ CloudDensityResult calculateCloudDensityMinimal(
 	CloudLayer      layer,
 	CloudProperties props
 ) {
-	float altitude = getCurvedAltitude(p);
-	float altitudeShift = weather.heightMap * layer.thickness;
-	float actualThickness = weather.thickness * layer.thickness;
-	float localFloor = layer.baseFloor + altitudeShift;
-	float h = clamp((altitude - localFloor) / max(actualThickness, 0.001), 0.0, 1.0);
+	float localFloor, actualThickness;
+	float h = getCloudRelativeHeight(p, weather, layer, localFloor, actualThickness);
 
 	vec3 advectSpeed = getCloudAdvectionSpeed(h, time);
 	CloudDensityResult pointDetails = CloudDensityResult(vec3(0.0), advectSpeed, 1.0, vec3(1.0), vec3(0.0));
@@ -600,7 +592,7 @@ CloudDensityResult calculateCloudDensityMinimal(
 
 	CloudSpotDetails res = calculateCloudDensityExpV9(p, weather, layer, props, time, 1000.0);
 
-	return CloudDensityResult(res.relativeExtinction, advectSpeed, 1.0, vec3(1.0), vec3(0.0));
+	return CloudDensityResult(res.relativeExtinction * res.density, advectSpeed, 1.0, vec3(1.0), vec3(0.0));
 }
 
 
@@ -612,11 +604,8 @@ CloudDensityResult calculateCloudDensity(
 	float           time,
 	float           simplified
 ) {
-	float altitude = getCurvedAltitude(p);
-	float altitudeShift = weather.heightMap * layer.thickness;
-	float actualThickness = weather.thickness * layer.thickness;
-	float localFloor = layer.baseFloor + altitudeShift;
-	float h = clamp((altitude - localFloor) / max(actualThickness, 0.001), 0.0, 1.0);
+	float localFloor, actualThickness;
+	float h = getCloudRelativeHeight(p, weather, layer, localFloor, actualThickness);
 
 	vec3 advectSpeed = getCloudAdvectionSpeed(h, time);
 	CloudDensityResult pointDetails = CloudDensityResult(vec3(0.0), advectSpeed, 1.0, vec3(1.0), vec3(0.0));
