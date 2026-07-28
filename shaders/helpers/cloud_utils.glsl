@@ -78,9 +78,8 @@ float getCloudRelativeHeight(vec3 p, CloudWeather weather, CloudLayer layer, out
 	float altitude = getCurvedAltitude(p);
 	float altitudeShift = weather.heightMap * layer.thickness;
 	float cellRange = 10000.0 * worldScale;
-	// float thicknessTaper = clamp(1.0 - pow(weather.centerDist / (cellRange * 0.5), 2.0), 0.0, 1.0);
-	// actualThickness = max(weather.thickness * layer.thickness * thicknessTaper, 10.0 * worldScale);
-	actualThickness = max(weather.thickness * layer.thickness, 25.0 * worldScale);
+	float thicknessTaper = clamp(1.0 - pow(weather.centerDist / (cellRange * 0.5), 2.0), 0.0, 1.0);
+	actualThickness = max(weather.thickness * layer.thickness * thicknessTaper, 25.0 * worldScale);
 	localFloor = layer.baseFloor + altitudeShift;
 	return clamp((altitude - localFloor) / actualThickness, 0.0, 1.0);
 }
@@ -88,16 +87,7 @@ float getCloudRelativeHeight(vec3 p, CloudWeather weather, CloudLayer layer, out
 float getCloudRelativeHeight(vec3 p, CloudWeather weather, CloudLayer layer) {
 	float localFloor, actualThickness;
 	return getCloudRelativeHeight(p, weather, layer, localFloor, actualThickness);
-	// float altitude = getCurvedAltitude(p);
-	// float altitudeShift = weather.heightMap * layer.thickness;
-	// float actualThickness = weather.thickness * layer.thickness;
-	// float localFloor = layer.baseFloor + altitudeShift;
-	// return clamp((altitude - localFloor) / max(actualThickness, 0.001), 0.0, 1.0);
 }
-
-// float saturate(float value) {
-// 	return clamp(value, 0.0, 1.0);
-// }
 
 vec4 hash41(float p) {
     vec4 p4 = fract(p * vec4(443.897, 441.423, .0973, .1099));
@@ -155,13 +145,6 @@ vec3 getWarpedCloudPos(vec3 p, out float fade) {
 	if (cloudWarp <= 0.0)
 		return p;
 
-	// vec3  relP = p - viewPos;
-	// float projection = dot(relP, viewDir);
-
-	// Capsule distance: distance to the forward ray starting at viewPos
-	// vec3  axisPoint = viewPos + viewDir * max(0.0, projection);
-	// vec3  toP = p - axisPoint;
-	// float d = length(toP);
 	float R = cloudWarp * worldScale;
 
 	// New uniform or constant for how far the bubble extends
@@ -180,15 +163,11 @@ vec3 getWarpedCloudPos(vec3 p, out float fade) {
 
 	// To "push" clouds out, we sample from a position CLOSER to the axis.
 	// This maps the region [R, inf] to [0, inf].
-	// float d_sampling = max(0.0, d - R);
 	float d_sampling = d * ((d * d) / (d * d + R * R));
-	// float d_sampling = d * (1.0 - exp(-d / R));
-	// float d_sampling = d * (d / (d + R));
 	float scale = d_sampling / max(d, 0.0001);
 
 	// Fade out density in the inner core to create a clean hole and avoid sampling artifacts
 	fade = smoothstep(R * 0.1, R, d);
-	// fade = 1;
 
 	return axisPoint + toP * scale;
 }
@@ -415,33 +394,31 @@ float evalSdf(
 	float maxDilation = 500.0 * worldScale;
 	float coverageOffset = mix(-maxErosion, maxDilation, props.coverage);
 	return d - coverageOffset;
-	// return d;
 }
 
 CloudWeather loadCloudWeather(vec3 p, CloudProperties props, vec4 tex) {
-	// imageStore(outWeatherMap, pixel, vec4(finalCoverage, distF1InMeters, cellID, density));
-
 	CloudWeather weather;
 	weather.p = p;
 
-	// Apply props.coverage as an offset/threshold to the baked coverage map
-	weather.sdf = clamp(tex.r + (props.coverage * 2.0 - 1.0), 0.0, 1.0);
-	weather.heightMap = tex.g;
-	weather.thickness = tex.b;
+	float cellRange = 10000.0 * props.worldScale;
+	float normalizedSDF = clamp((tex.r / cellRange) + 0.5, 0.0, 1.0);
+
+	weather.sdf = clamp(normalizedSDF + (props.coverage * 2.0 - 1.0), 0.0, 1.0);
+	weather.centerDist = tex.g;
 	weather.density = tex.a;
+
+	float cellID = tex.b;
+	vec4 cellProps = hash41(cellID);
+
+	weather.heightMap = cellProps.x;
+	weather.thickness = cellProps.y;
+	weather.ecentricity = cellProps.z;
+	weather.curve = cellProps.w;
+
 	if (props.coverage >= 1.0) {
 		weather.sdf = 1.0;
-		// weather.heightMap = 1.0;
-		// weather.thickness = 1.0;
 		weather.density = 1.0;
 	}
-
-	// weather.heightMap = clamp(tex.g, 0.01, 1.0);
-	// weather.thickness = clamp(tex.b, 0.01, 1.0);
-	// weather.density = clamp(tex.a, 0.01, 1.0);
-	// weather.ecentricity = uncenter(psrdnoise(p, vec3(10.0)));
-	// weather.curve = uncenter(psrdnoise(p/2.0, vec3(10.0)));
-	// weather.centerDist = uncenter(psrdnoise(p/3.0, vec3(10.0)));
 
 	return weather;
 }
@@ -453,7 +430,7 @@ CloudWeather computeCloudWeather(vec3 p, CloudProperties props, float lod) {
 	// Use baked weather map. Sampling UV is worldXZ / range.
 	// Range is 100,000 * worldScale as defined in the bake shader.
 	vec2 uv = p_advected.xz / (100000.0 * props.worldScale);
-	vec4 bakedWeather = textureLod(u_cloudWeatherTexture, uv, 0.0);
+	vec4 bakedWeather = textureLod(u_cloudWeatherTexture, uv, lod);
 	return loadCloudWeather(p, props, bakedWeather);
 }
 
@@ -507,25 +484,45 @@ float calculatePuffyCloudSDF(vec3 p, CloudWeather weather, CloudLayer layer, flo
 	return d3d;
 }
 
-float getCloud3DSDF(vec3 p, CloudWeather weather, CloudLayer layer, float worldScale) {
+float getCloud3DCoverage(vec3 p, CloudWeather weather, CloudLayer layer, float worldScale) {
 	float localFloor, actualThickness;
-
 	float h = getCloudRelativeHeight(p, weather, layer, localFloor, actualThickness);
 
 	if (p.y < localFloor || p.y > (localFloor + actualThickness)) {
 		return 0.0;
 	}
 
+	// Superellipsoid profile
+	float e = mix(0.1, 0.9, weather.ecentricity); // dictate the middle/bulge height
+	float exponent = mix(1.5, 6.0, weather.curve); // define curvature exponents
+
+	float profileRadius = 0.0;
+	if (h < e) {
+		float t = (e - h) / e;
+		profileRadius = pow(max(0.0, 1.0 - pow(t, exponent)), 1.0 / exponent);
+	} else {
+		float t = (h - e) / (1.0 - e);
+		profileRadius = pow(max(0.0, 1.0 - pow(t, exponent)), 1.0 / exponent);
+	}
+
+	float shapeMask = profileRadius;
+
+	// Scale by height gradient of the cloud type
 	float type = weather.heightMap;
 	float heightGradient = getDensityHeightGradient(h, type);
 
-	float coverage2D = weather.sdf;
-	float macroVolume = coverage2D * heightGradient;
-	// float domeMask = smoothstep(h, h + 0.2, coverage2D);
+	// Taper by distance to cell center to make it even more puffy/organic
+	float cellRange = 10000.0 * worldScale;
+	float centerTaper = clamp(1.0 - pow(weather.centerDist / (cellRange * 0.5), 2.0), 0.0, 1.0);
 
-	// macroVolume *= domeMask;
+	float coverage2D = weather.sdf;
+	float macroVolume = coverage2D * shapeMask * heightGradient * centerTaper;
 
 	return macroVolume;
+}
+
+float getCloud3DSDF(vec3 p, CloudWeather weather, CloudLayer layer, float worldScale) {
+	return getCloud3DCoverage(p, weather, layer, worldScale);
 }
 
 
@@ -586,7 +583,6 @@ float evaluateCloudShadowDensityAtWorldPos(vec2 worldXZ, float time) {
 	float d3d = getCloud3DSDF(basePos, weather, layer, props.worldScale);
 	float penumbra = 100.0 * worldScale;
 	return max(0.0, -d3d / penumbra) * 4.0;
-	// return calculateCloudDensityExpV8(basePos, weather, layer, props, time, true).x;
 }
 
 /**
@@ -623,4 +619,3 @@ float calculateCloudAmbientOcclusion(vec3 frag_pos) {
 
 	return mix(1.0, cloudAO, cloudShadowIntensity);
 }
-

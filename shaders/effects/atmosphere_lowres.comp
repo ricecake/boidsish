@@ -697,9 +697,6 @@ void main() {
 	if (t_start < t_end) {
 		vec3 lightEnergy = vec3(0.0);
 		vec3 prevDensity = vec3(0.0);
-		vec3 prevTransmission = vec3(-1.0);
-		vec3 prevTransmissionDelta = vec3(0.0);
-		const int shadow_samples = 5;
 
 		vec3 primaryLightDir = vec3(0, 1, 0);
 		for (int j = 0; j < num_lights; j++) {
@@ -715,142 +712,94 @@ void main() {
 
 		float lodDistanceThreshold = 25000.0 * worldScale;
 
-		bool inVolume = false;
-		bool wasInVolume = false;
-		float stepGrowthRate = 0.0125;
+		// Uniform step size
+		float rayDist = t_end - t_start;
+		float stepSize = rayDist / float(samples);
 
-		float t = min(t_end, t_start + jitter * baseStepSize);
-		float t_prev = t_start;
-		prevDensity = vec3(0.0);
-		vec3 prevCheapDensity = vec3(0.0);
-
-		vec3 probePos = viewPos + rayDir * max(0.0, t);
+		vec3 probePos = viewPos + rayDir * ((t_start + t_end) * 0.5);
 		vec3 skySH     = evalSHIrradianceSpatial(probePos, vec3(0.0, 1.0, 0.0));
 		vec3 horizonSH = evalSHIrradianceSpatial(probePos, normalize(vec3(primaryLightDir.x, 0.15, primaryLightDir.z)));
 		vec3 groundSH  = evalSHIrradianceSpatial(probePos, vec3(0.0, -1.0, 0.0));
 
-
-		int zero_count = 0;
-		for (int i = 0; i < MAX_ITERATIONS; i++) {
-			steps = i;
-			if (t_prev >= dist || t_prev >= t_end || all(lessThan(cloudTransmittance, vec3(0.01)))) break;
+		for (int i = 0; i < samples; i++) {
+			steps = float(i);
+			float t = t_start + (float(i) + jitter) * stepSize;
+			if (t >= dist || t >= t_end || all(lessThan(cloudTransmittance, vec3(0.01)))) break;
 
 			vec3 p = viewPos + rayDir * t;
 
 			CloudWeather weather = computeCloudWeather(p, props, 0.0);
 			CloudLayer layer = computeCloudLayer(weather, props);
-			// CloudDensityResult densityResCheap = calculateCloudDensityMinimal(p, weather, layer, props);
-			CloudDensityResult densityResCheap = calculateCloudDensity(p, weather, layer, props, time, 0.0);
 
-			vec3 d_cheap = densityResCheap.density;
+			float altitudeShift = weather.heightMap * layer.thickness;
+			float actualThickness = weather.thickness * layer.thickness;
+			float localFloor = layer.baseFloor + altitudeShift;
 
-			float nextStepSize = calculateBifurcatedStepSize(inVolume, zero_count, max(d_cheap.x,max(d_cheap.y,d_cheap.z)), baseStepSize, 2, 3);
-			// float nextStepSize = calculateBifurcatedStepSize(inVolume, zero_count, 1.0, baseStepSize, 2, 3);
-			// vec3 base_advect = getCloudWindOffset(time);
-			// vec2 weatherUV = (p + base_advect).xz / (100000.0 * worldScale);
-			// vec2 minMax = textureLod(u_cloudWeatherMinMaxTexture, weatherUV, 6.0).rg;
-			// float nextStepSize = calculateBifurcatedStepSize(inVolume, zero_count, minMax.y, baseStepSize, 2.0, 2);
+			float h_norm = getCloudRelativeHeight(p, weather, layer);
 
-			if (nextStepSize < 0.0) {
-				// We overshot. Move 't' backward, but do NOT update 't_prev'.
-				// Continue to bypass integration so we don't calculate negative density.
-				t += nextStepSize;
-				continue;
-			}
+			float useCheapEval = t / lodDistanceThreshold;
+			float integrationStep = stepSize;
 
-			// 4. Handle Empty Space
-			if (!inVolume) {
-				// Lock in the current position BEFORE moving forward.
-				t_prev = t;
-				t += nextStepSize;
-				continue;
-			}
+			CloudDensityResult densityRes = calculateCloudDensity(p, weather, layer, props, time, useCheapEval);
+			vec3 d = densityRes.density;
+			vec3 sampleAdvection = densityRes.advectionSpeed;
 
-			float stepSize = t - t_prev;
-			vec3 d = vec3(0.0);
-			if (stepSize > 0.0) {
-				float altitudeShift = weather.heightMap * layer.thickness;
-				float actualThickness = weather.thickness * layer.thickness;
-				float localFloor = layer.baseFloor + altitudeShift;
-
-				float h_norm = getCloudRelativeHeight(p, weather, layer);
-
-				float useCheapEval = t / lodDistanceThreshold;
-				float integrationStep = stepSize;
-
-				CloudDensityResult densityRes = calculateCloudDensity(p, weather, layer, props, time, useCheapEval);
-				d = densityRes.density;
-				vec3 sampleAdvection = densityRes.advectionSpeed;
-				float sampleAo = densityRes.ao;
-				vec3 sampleAlbedo = densityRes.albedo;
-
-				if (max(d.x, max(d.y, d.z)) > 0.01) {
-					if (firstHitDist < 0.0) {
-						firstHitDist = t;
-						firstStepSize = stepSize;
-						firstHitStep = i;
-					}
-					lastHitDist = t;
+			if (max(d.x, max(d.y, d.z)) > 0.01) {
+				if (firstHitDist < 0.0) {
+					firstHitDist = t;
+					firstStepSize = stepSize;
 				}
-
-				pathDensity = max(pathDensity, max(d.x, max(d.y, d.z)));
-
-				if (any(greaterThan(d, vec3(0.000))) || any(greaterThan(prevDensity, vec3(0.000)))) {
-					vec3 averageDensity = (prevDensity + d) * 0.5;
-					vec3 rgbExtinction = uCloudExtinctionColor * uCloudExtinction;
-					vec3 stepDensity = averageDensity * integrationStep * rgbExtinction;
-					vec3 transmittanceAtStep = exp(-stepDensity);
-
-					prevTransmissionDelta = prevTransmission - transmittanceAtStep;
-					prevTransmission = transmittanceAtStep;
-
-					vec3 stepScattering = vec3(0.0);
-					vec3 emissiveGlow = densityRes.emissivity;
-
-					vec3 S = EvaluateStepLighting(
-						p,
-						rayDir,
-						jitter,
-						weather,
-						layer,
-						props,
-						rgbExtinction,
-						stepDensity,
-						h_norm,
-						densityRes.advectionSpeed,
-						densityRes.ao,
-						densityRes.albedo,
-						emissiveGlow,
-						skySH,
-						horizonSH,
-						groundSH,
-						primaryLightDir,
-						R_ceiling,
-						R_floor,
-						earthCenter,
-						shadow_r
-					);
-
-					vec3 weight = cloudTransmittance * (vec3(1.0) - transmittanceAtStep);
-					float scalarAccumOD = dot(accumulatedOpticalDepth, vec3(0.3333));
-					float bias = exp(-scalarAccumOD * 15.0);
-					float scalarWeight = dot(weight, vec3(0.3333));
-					float stepWeight = scalarWeight * bias;
-					weightedDistSum += t * stepWeight;
-					weightedAdvectionSum += sampleAdvection * stepWeight;
-					lightEnergy += S * weight;
-					totalWeight += stepWeight;
-
-					cloudTransmittance *= transmittanceAtStep;
-					accumulatedOpticalDepth += stepDensity;
-				}
-				prevDensity = d;
-				prevCheapDensity = d_cheap;
-				t_prev = t;
+				lastHitDist = t;
 			}
 
-			t += nextStepSize;
-			t = min(t_end, t);
+			pathDensity = max(pathDensity, max(d.x, max(d.y, d.z)));
+
+			if (any(greaterThan(d, vec3(0.000))) || any(greaterThan(prevDensity, vec3(0.000)))) {
+				vec3 averageDensity = (prevDensity + d) * 0.5;
+				vec3 stepDensity = averageDensity * integrationStep * rgbExtinction;
+				vec3 transmittanceAtStep = exp(-stepDensity);
+
+				vec3 stepScattering = vec3(0.0);
+				vec3 emissiveGlow = densityRes.emissivity;
+
+				vec3 S = EvaluateStepLighting(
+					p,
+					rayDir,
+					jitter,
+					weather,
+					layer,
+					props,
+					rgbExtinction,
+					stepDensity,
+					h_norm,
+					densityRes.advectionSpeed,
+					densityRes.ao,
+					densityRes.albedo,
+					emissiveGlow,
+					skySH,
+					horizonSH,
+					groundSH,
+					primaryLightDir,
+					R_ceiling,
+					R_floor,
+					earthCenter,
+					shadow_r
+				);
+
+				vec3 weight = cloudTransmittance * (vec3(1.0) - transmittanceAtStep);
+				float scalarAccumOD = dot(accumulatedOpticalDepth, vec3(0.3333));
+				float bias = exp(-scalarAccumOD * 15.0);
+				float scalarWeight = dot(weight, vec3(0.3333));
+				float stepWeight = scalarWeight * bias;
+				weightedDistSum += t * stepWeight;
+				weightedAdvectionSum += sampleAdvection * stepWeight;
+				lightEnergy += S * weight;
+				totalWeight += stepWeight;
+
+				cloudTransmittance *= transmittanceAtStep;
+				accumulatedOpticalDepth += stepDensity;
+			}
+			prevDensity = d;
 		}
 		cloudColor = lightEnergy * cloudColorUniform;
 	}

@@ -46,7 +46,8 @@ float localFbm(vec2 p, float period) {
 
 
 float posNoise(vec2 p, float scale, float period) {
-	return uncenter(psrdnoise(p / scale, vec2(period)));
+	vec2 g;
+	return uncenter(psrdnoise(p / scale, vec2(period), 0.0, g));
 }
 
 float schlickGain(float x, float g) {
@@ -79,27 +80,20 @@ void main() {
 
 	vec3 p = vec3(uv.x * mapRange, 0.0, uv.y * mapRange);
 
-	float macro = regionalFbm(p.xz / mapRange, vec2(5.0));
-	float worley = localFbm(p.xz/cellRange, 5.0);
-	float micro = clamp(1.0 - worley, 0, 1.0);
+	vec2 period = vec2(10.0); // mapRange / cellRange = 10.0
+	// Bake with constant nominal coverage of 0.5
+	VoronoiData vd = sdVoronoiHybrid(p.xz / cellRange, 2.0, 3.0, 0.5, period);
 
-	float coverage = max(macro, micro);
-	float finalCoverage = clamp(coverage, 0.0, 1.0);
-	float height = clamp(posNoise(p.xz, cellRange * 5, 2), 0.0, 1.0);
-	float thickness = clamp(posNoise(p.xz, cellRange, 5), 0.0, 1.0);
-	float density = clamp(posNoise(p.xz, 0.5 * cellRange, 5), 0.0, 1.0);
+	float cellID = hash12(mod(vd.f1, period), period);
 
-	imageStore(outWeatherMap, pixel, vec4(finalCoverage, height, thickness, density));
+	float distFromEdgeMeters = vd.dist * cellRange;
+	float distToCenterMeters = vd.dist_f1 * cellRange;
+
+	vec2 g;
+	float density = clamp(uncenter(psrdnoise(p.xz / (0.5 * cellRange), period * 2.0, 0.0, g)), 0.0, 1.0);
+
+	imageStore(outWeatherMap, pixel, vec4(distFromEdgeMeters, distToCenterMeters, cellID, density));
+
+	float finalCoverage = clamp(vd.dist + 0.5, 0.0, 1.0);
 	imageStore(outMinMaxMap, pixel, vec4(finalCoverage, finalCoverage, 0.0, 0.0));
-
-	// vec2 cellId = worleyDetails.yz;
-	// float cellID = psrdnoise(cellId, vec2(10.0)) * 0.5 + 0.5;
-	// float distInMeters = micro * cellRange;
-	// float distF1InMeters = worleyDetails.x * cellRange;
-	// // Record seed info if this is the pixel closest to the cell center (f1)
-	// vec2 f1Pixel = (cellId * cellRange) / mapRange * vec2(size);
-	// if (distance(vec2(pixel), f1Pixel) < 1.0) {
-	// 	int cellIdx = int(mod(floor(cellId.y), 10.0) * 10.0 + mod(floor(cellId.x), 10.0));
-	// 	seeds[cellIdx] = vec4(cellId.x * cellRange, cellId.y * cellRange, distInMeters, (finalCoverage > 0.0 ? 1.0 : 0.0));
-	// }
 }
