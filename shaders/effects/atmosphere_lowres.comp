@@ -801,6 +801,7 @@ void main() {
 				float altitudeShift = weather.heightMap * layer.thickness;
 				float actualThickness = weather.thickness * layer.thickness;
 				float localFloor = layer.baseFloor + altitudeShift;
+
 				float h_norm = clamp((altitude - localFloor) / max(actualThickness, 0.001), 0.0, 1.0);
 
 				float useCheapEval = t / lodDistanceThreshold;

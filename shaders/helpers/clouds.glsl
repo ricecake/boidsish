@@ -505,7 +505,7 @@ CloudSpotDetails calculateCloudDensityExpV9(
 	float            simplified
 ) {
 	float altitudeShift = weather.heightMap * layer.thickness;
-	float actualThickness = weather.thickness * layer.thickness;
+	float actualThickness = layer.thickness;
 	float localFloor = layer.baseFloor + altitudeShift;
 
 	// h is normalized over the actual local cloud thickness to correctly apply the height gradient and wind shear

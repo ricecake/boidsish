@@ -481,7 +481,7 @@ float calculateLoftedCloudSDF(vec3 p, CloudWeather weather, CloudLayer layer, fl
 float getCloud3DSDF(vec3 p, CloudWeather weather, CloudLayer layer, float worldScale) {
 	float altitude = getCurvedAltitude(p);
 	float altitudeShift = weather.heightMap * layer.thickness;
-	float actualThickness = weather.thickness * layer.thickness;
+	float actualThickness = layer.thickness;
 	float localFloor = layer.baseFloor + altitudeShift;
 
 	if (p.y < localFloor || p.y > (localFloor + actualThickness)) {
@@ -490,7 +490,7 @@ float getCloud3DSDF(vec3 p, CloudWeather weather, CloudLayer layer, float worldS
 
 
 	// float h = weather.heightMap;
-	float h = clamp((altitude - localFloor) / max(actualThickness, 0.001), 0.0, 1.0);
+	float h = clamp((altitude - localFloor) / max(layer.thickness, 0.001), 0.0, 1.0);
 
 	float type = weather.heightMap;
 	float heightGradient = getDensityHeightGradient(h, type);

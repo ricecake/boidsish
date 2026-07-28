@@ -43,7 +43,7 @@ void main() {
 	vec3 worleyDetails = worley2d_tiling_id(p.xz / (cellRange * 0.25), 10.0);
 
 	float macro = regionalFbm(p.xz / cellRange, vec2(10.0));
-	float micro = 1.0 - worleyDetails.x;
+	float micro = clamp(1.0 - (worleyDetails.x * 1.5), 0, 1.0);
 	float coverage = clamp(micro - (1.0 - macro), 0.0, 1.0);
 	float finalCoverage = clamp(coverage + (uCloudCoverage * 2.0 - 1.0), 0.0, 1.0);
 
