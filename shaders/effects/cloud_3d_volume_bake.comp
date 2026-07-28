@@ -15,7 +15,7 @@ float remap_bake(float value, float low1, float high1, float low2, float high2) 
 float computeSimplexWorley(vec3 p) {
 	// Base Simplex noise (normalized to [0, 1])
 	vec3 g;
-	return psrdnoise(p / (100), vec3(10.0, 1.0, 10.0), 0.0, g);
+	return 0.5+0.5*psrdnoise(p / (100), vec3(10.0, 1.0, 10.0), 0.0, g);
 	// simplex = clamp(simplex * 0.5 + 0.5, 0.0, 1.0);
 
 	// // Worley FBM (cell centers are billowy and puffy)
@@ -60,7 +60,7 @@ void main() {
 	}
 	float aoVal = clamp(1.0 - (densitySum / float(AO_SAMPLES)) * 1.5, 0.0, 1.0);
 
-	float baseHeightGradient = 1.0;//mix(0.9, 0.6, smoothstep(0.15, 0.85, p.y));
+	float baseHeightGradient = mix(0.9, 0.6, smoothstep(0.15, 0.85, p.y));
 
 	// Tile horizontally but do not repeat vertically
 	vec3 albedoCoords = vec3(fract(p.xz * 1.0), p.y);

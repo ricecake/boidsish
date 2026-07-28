@@ -45,29 +45,9 @@ void main() {
 		worldPos = viewPos + rayDir * dist;
 	}
 
-	float R_earth = kEarthRadius * 1000.0 * worldScale;
-	float R_floor = R_earth + (cloudAltitude - 500.0) * worldScale;
-	float R_ceiling = R_earth + (cloudAltitude + 2.0 * cloudThickness + 500.0) * worldScale;
-
-	vec3 earthCenter = vec3(viewPos.x, -R_earth, viewPos.z);
-	vec3 relRo = viewPos - earthCenter;
-
 	float t_start = 1e10;
 	float t_end = -1e10;
-
-	float t0, t1;
-	if (intersectSphere(relRo, rayDir, R_ceiling, t0, t1)) {
-		t_start = max(0.0, t0);
-		t_end = t1;
-
-		if (intersectSphere(relRo, rayDir, R_floor, t0, t1)) {
-			if (t0 < 0.0) {
-				t_start = max(t_start, t1);
-			} else {
-				t_end = min(t_end, t0);
-			}
-		}
-	}
+	intersectCloudShell(viewPos, rayDir, worldScale, t_start, t_end);
 
 	t_end = min(t_end, dist);
 
@@ -80,7 +60,7 @@ void main() {
 		int L = 3;
 		float baseStepSize = 25.0 * worldScale;
 
-		for (int i = 0; i < 200000; ++i) {
+		for (int i = 0; i < 2048; ++i) {
 			if (t >= t_end) break;
 
 			vec3 p = viewPos + rayDir * t;
@@ -92,7 +72,7 @@ void main() {
 			weatherUV = fract(weatherUV);
 
 			vec2 minMax = textureLod(u_cloudWeatherMinMaxTexture, weatherUV, float(L)).rg;
-			float maxDensity = minMax.y;
+			float maxDensity = clamp(minMax.y + (cloudCoverage * 2.0 - 1.0), 0.0, 1.0);
 
 			if (maxDensity <= 0.001) {
 				float mapRange = 100000.0 * worldScale;
@@ -115,11 +95,12 @@ void main() {
 				dist_to_bound.y = (abs(dir_norm.y) > 1e-6) ? (next_bound.y - p_xz.y) / dir_norm.y : 1e10;
 
 				float dt_2D = min(dist_to_bound.x, dist_to_bound.y);
-				float dt = (dt_2D / len2D) + 0.1; // +0.1 pushes it safely over the boundary line
+				float dt = (dt_2D / len2D) + 0.001; // +0.1 pushes it safely over the boundary line
 
-				dt = clamp(dt, baseStepSize, 2000.0 * worldScale);
+				// dt = clamp(dt, baseStepSize, 2000.0 * worldScale);
 				t += dt;
-				L = min(6, L + 1);
+				// L = min(6, L + 1);
+				L = clamp(L + 1, 0, 10);
 			}
 			else {
 				if (L > 0) {
