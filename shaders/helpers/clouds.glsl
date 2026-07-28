@@ -505,7 +505,7 @@ CloudSpotDetails calculateCloudDensityExpV9(
 	float            simplified
 ) {
 	float altitudeShift = weather.heightMap * layer.thickness;
-	float actualThickness = layer.thickness;
+	float actualThickness = weather.thickness * layer.thickness;
 	float localFloor = layer.baseFloor + altitudeShift;
 
 	// h is normalized over the actual local cloud thickness to correctly apply the height gradient and wind shear
@@ -586,11 +586,15 @@ CloudDensityResult calculateCloudDensityMinimal(
 	CloudProperties props
 ) {
 	float altitude = getCurvedAltitude(p);
-	float h = clamp((altitude - layer.baseFloor) / max(2.0 * layer.thickness, 0.001), 0.0, 1.0);
+	float altitudeShift = weather.heightMap * layer.thickness;
+	float actualThickness = weather.thickness * layer.thickness;
+	float localFloor = layer.baseFloor + altitudeShift;
+	float h = clamp((altitude - localFloor) / max(actualThickness, 0.001), 0.0, 1.0);
+
 	vec3 advectSpeed = getCloudAdvectionSpeed(h, time);
 	CloudDensityResult pointDetails = CloudDensityResult(vec3(0.0), advectSpeed, 1.0, vec3(1.0), vec3(0.0));
 
-	if (altitude < layer.baseFloor || altitude > layer.baseCeiling) {
+	if (p.y < localFloor || p.y > (localFloor + actualThickness)) {
 		return pointDetails;
 	}
 

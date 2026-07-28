@@ -49,12 +49,13 @@ void main() {
 	vec3 worleyDetails = worley2d_tiling_id(p.xz / (cellRange * 0.25), 10.0);
 
 	float macro = regionalFbm(p.xz / cellRange, vec2(10.0));
-	float micro = clamp(worleyDetails.x, 0, 1.0);
+	float micro = clamp(1.0 - (worleyDetails.x * worleyDetails.x * 2.5), 0, 1.0);
 
-	float coverage = clamp(macro - micro, 0.0, 1.0);
-	// float finalCoverage = clamp(coverage + (uCloudCoverage * 2.0 - 1.0), 0.0, 1.0);
-	// float finalCoverage = clamp(coverage + (uCloudCoverage * 2.0 - 1.0), 0.0, 1.0);
-	float finalCoverage = mix(min(uCloudCoverage, coverage), max(uCloudCoverage, coverage), uCloudCoverage);
+	// float coverage = clamp(macro - micro, 0.0, 1.0);
+	float coverage = macro * micro;
+	// float finalCoverage = mix(min(uCloudCoverage, coverage), max(uCloudCoverage, coverage), uCloudCoverage);
+	float finalCoverage = clamp(coverage + (uCloudCoverage * 2.0 - 1.0), 0.0, 1.0);
+	finalCoverage = smoothstep(0.05, 1.0, finalCoverage);
 
 	float density = clamp(macro, 0, 1);
 

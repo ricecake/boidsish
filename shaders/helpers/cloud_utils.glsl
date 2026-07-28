@@ -439,52 +439,10 @@ float calculatePuffyCloudSDF(vec3 p, CloudWeather weather, CloudLayer layer, flo
 	return d3d;
 }
 
-// float calculateLoftedCloudSDF(vec3 p, CloudWeather weather, CloudLayer layer, float worldScale) {
-//     float d_edge = weather.sdf;
-//     float altitude = getCurvedAltitude(p);
-
-//     // Increase baseline height and thickness for tall, fluffy clouds
-//     // float baselineHeightOffset = 1500.0 * worldScale;
-//     float thicknessMultiplier = 2.2;
-
-//     float localFloor = layer.baseFloor + weather.heightMap * layer.thickness;
-//     float actualThickness = weather.thickness * layer.thickness * thicknessMultiplier;
-
-//     // Taper the thickness as a function of center distance to create a domed shape
-//     float cellRange = 10000.0 * worldScale;
-//     float normCenterDist = clamp(weather.centerDist / cellRange, 0.0, 1.0);
-//     float taper = sqrt(clamp(1.0 - normCenterDist * normCenterDist, 0.0, 1.0));
-//     float localThickness = actualThickness * taper;
-
-//     // Adjust vertical center based on eccentricity to dome/loft the cloud mass
-//     float bulgeHeight = clamp(weather.ecentricity, 0.1, 0.9) * localThickness;
-//     float verticalCenter = localFloor + bulgeHeight;
-
-//     // Top and bottom heights relative to the vertical center
-//     float topHeight = localThickness - bulgeHeight;
-//     float bottomHeight = bulgeHeight;
-
-//     float distY = 0.0;
-//     if (altitude > verticalCenter) {
-//         float h_norm = clamp((altitude - verticalCenter) / max(topHeight, 0.001), 0.0, 1.0);
-//         float curveExponent = mix(1.0, 4.0, clamp(weather.curve, 0.0, 1.0));
-//         distY = (altitude - verticalCenter) - topHeight * pow(1.0 - pow(h_norm, curveExponent), 1.0 / curveExponent);
-//     } else {
-//         float h_norm = clamp((verticalCenter - altitude) / max(bottomHeight, 0.001), 0.0, 1.0);
-//         float curveExponent = 4.0;
-//         distY = (verticalCenter - altitude) - bottomHeight * pow(1.0 - pow(h_norm, curveExponent), 1.0 / curveExponent);
-//     }
-
-//     vec2 w = vec2(d_edge, distY);
-//     float d3d = min(max(w.x, w.y), 0.0) + length(max(w, 0.0));
-
-//     return d3d;// * weather.density;
-// }
-
 float getCloud3DSDF(vec3 p, CloudWeather weather, CloudLayer layer, float worldScale) {
 	float altitude = getCurvedAltitude(p);
 	float altitudeShift = weather.heightMap * layer.thickness;
-	float actualThickness = layer.thickness;
+	float actualThickness = weather.thickness * layer.thickness;
 	float localFloor = layer.baseFloor + altitudeShift;
 
 	if (p.y < localFloor || p.y > (localFloor + actualThickness)) {
@@ -505,37 +463,6 @@ float getCloud3DSDF(vec3 p, CloudWeather weather, CloudLayer layer, float worldS
 	macroVolume *= domeMask;
 
 	return macroVolume;
-
-	// return calculateLoftedCloudSDF(p, weather, layer, worldScale);
-/*
-	weather.sdf = tex.r;
-	weather.centerDist = tex.g;
-	weather.density = tex.a;
-	weather.cellID = tex.b;
-	weather.heightMap = derived.r;
-	weather.thickness = derived.g;
-	weather.ecentricity = derived.b;
-	weather.curve = derived.a;
-	weather.p = p;
-*/
-	// float sdf2d = weather.sdf;
-
-	// // Use curved altitude to respect Earth's curvature
-	// float altitude = getCurvedAltitude(p);
-
-	// // Proportional altitude shift and thickness
-	// float altitudeShift = weather.heightMap * layer.thickness;
-	// float actualThickness = weather.thickness * layer.thickness ;//* (1.0-smoothstep(0, 1.0, weather.centerDist));
-
-	// // The actual cloud spans from local floor to local ceiling
-	// float localFloor = layer.baseFloor + altitudeShift;
-
-	// float halfHeight = actualThickness * 0.5;
-	// float centerY = localFloor + halfHeight;
-	// float distY = abs(altitude - centerY) - halfHeight;
-
-	// vec2 w = vec2(sdf2d, distY);
-	// return min(max(w.x, w.y), 0.0) + length(max(w, 0.0));
 }
 
 
