@@ -46,28 +46,9 @@ void main() {
 	}
 
 	float R_earth = kEarthRadius * 1000.0 * worldScale;
-	float R_floor = R_earth + (cloudAltitude - 500.0) * worldScale;
-	float R_ceiling = R_earth + (cloudAltitude + 2.0 * cloudThickness + 500.0) * worldScale;
-
-	vec3 earthCenter = vec3(viewPos.x, -R_earth, viewPos.z);
-	vec3 relRo = viewPos - earthCenter;
-
 	float t_start = 1e10;
 	float t_end = -1e10;
-
-	float t0, t1;
-	if (intersectSphere(relRo, rayDir, R_ceiling, t0, t1)) {
-		t_start = max(0.0, t0);
-		t_end = t1;
-
-		if (intersectSphere(relRo, rayDir, R_floor, t0, t1)) {
-			if (t0 < 0.0) {
-				t_start = max(t_start, t1);
-			} else {
-				t_end = min(t_end, t0);
-			}
-		}
-	}
+	intersectCloudShell(viewPos, rayDir, R_earth, cloudAltitude, cloudThickness, worldScale, t_start, t_end);
 
 	t_end = min(t_end, dist);
 
