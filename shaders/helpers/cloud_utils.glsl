@@ -1,3 +1,6 @@
+#include "lygia/generative/psrdnoise.glsl"
+#include "lygia/space/uncenter.glsl"
+
 struct CloudProperties {
 	float altitude;
 	float thickness;
@@ -7,15 +10,14 @@ struct CloudProperties {
 };
 
 struct CloudWeather {
+	vec3 p;
 	float sdf;        // Signed Distance Field (world space)
-	// float centerDist;
 	float density;
-	// float cellID;     // Per-cell variety
 	float heightMap;  // Altitude variety
 	float thickness;  // Thickness variety
-	// float ecentricity;
-	// float curve;
-	vec3 p;
+	float ecentricity;
+	float curve;
+	float centerDist;
 };
 
 struct CloudLayer {
@@ -29,6 +31,68 @@ float getCurvedAltitude(vec3 p) {
 	float R_earth = 6360.0 * 1000.0 * worldScale;
 	vec3 earthCenter = vec3(viewPos.x, -R_earth, viewPos.z);
 	return length(p - earthCenter) - R_earth;
+}
+
+bool intersectSphereLocal(vec3 ro, vec3 rd, float radius, out float t0, out float t1) {
+	float b = dot(ro, rd);
+	float rLen = length(ro);
+	float c = (rLen - radius) * (rLen + radius);
+	float det = b * b - c;
+	if (det < 0.0)
+		return false;
+	det = sqrt(det);
+	t0 = -b - det;
+	t1 = -b + det;
+	return true;
+}
+
+bool intersectCloudShell(vec3 ro, vec3 rd, float worldScale, out float t_start, out float t_end) {
+	float R_earth = 6360.0 * 1000.0 * worldScale;
+	float R_floor = R_earth + (cloudAltitude - 500.0) * worldScale;
+	float R_ceiling = R_earth + (cloudAltitude + 2.0 * cloudThickness + 500.0) * worldScale;
+
+	vec3 earthCenter = vec3(viewPos.x, -R_earth, viewPos.z);
+	vec3 relRo = ro - earthCenter;
+
+	t_start = 1e10;
+	t_end = -1e10;
+
+	float t0, t1;
+	if (intersectSphereLocal(relRo, rd, R_ceiling, t0, t1)) {
+		t_start = max(0.0, t0);
+		t_end = t1;
+
+		if (intersectSphereLocal(relRo, rd, R_floor, t0, t1)) {
+			if (t0 < 0.0) {
+				t_start = max(t_start, t1);
+			} else {
+				t_end = min(t_end, t0);
+			}
+		}
+		return t_start < t_end;
+	}
+	return false;
+}
+
+float getCloudRelativeHeight(vec3 p, CloudWeather weather, CloudLayer layer, out float localFloor, out float actualThickness) {
+	float altitude = getCurvedAltitude(p);
+	float altitudeShift = weather.heightMap * layer.thickness;
+	float cellRange = 10000.0 * worldScale;
+	// float thicknessTaper = clamp(1.0 - pow(weather.centerDist / (cellRange * 0.5), 2.0), 0.0, 1.0);
+	// actualThickness = max(weather.thickness * layer.thickness * thicknessTaper, 10.0 * worldScale);
+	actualThickness = max(weather.thickness * layer.thickness, 25.0 * worldScale);
+	localFloor = layer.baseFloor + altitudeShift;
+	return clamp((altitude - localFloor) / actualThickness, 0.0, 1.0);
+}
+
+float getCloudRelativeHeight(vec3 p, CloudWeather weather, CloudLayer layer) {
+	float localFloor, actualThickness;
+	return getCloudRelativeHeight(p, weather, layer, localFloor, actualThickness);
+	// float altitude = getCurvedAltitude(p);
+	// float altitudeShift = weather.heightMap * layer.thickness;
+	// float actualThickness = weather.thickness * layer.thickness;
+	// float localFloor = layer.baseFloor + altitudeShift;
+	// return clamp((altitude - localFloor) / max(actualThickness, 0.001), 0.0, 1.0);
 }
 
 // float saturate(float value) {
@@ -360,20 +424,24 @@ CloudWeather loadCloudWeather(vec3 p, CloudProperties props, vec4 tex) {
 	CloudWeather weather;
 	weather.p = p;
 
-	weather.sdf = tex.r;
+	// Apply props.coverage as an offset/threshold to the baked coverage map
+	weather.sdf = clamp(tex.r + (props.coverage * 2.0 - 1.0), 0.0, 1.0);
 	weather.heightMap = tex.g;
 	weather.thickness = tex.b;
 	weather.density = tex.a;
+	if (props.coverage >= 1.0) {
+		weather.sdf = 1.0;
+		// weather.heightMap = 1.0;
+		// weather.thickness = 1.0;
+		weather.density = 1.0;
+	}
 
-	// vec4 derived = clamp(hash41(tex.b), 0.0, 1.0);
-
-	// weather.ecentricity = derived.b;
-	// weather.curve = derived.a;
-
-	// weather.heightMap = derived.r;
-	// weather.thickness = derived.g;
-	// weather.ecentricity = derived.b;
-	// weather.curve = derived.a;
+	// weather.heightMap = clamp(tex.g, 0.01, 1.0);
+	// weather.thickness = clamp(tex.b, 0.01, 1.0);
+	// weather.density = clamp(tex.a, 0.01, 1.0);
+	// weather.ecentricity = uncenter(psrdnoise(p, vec3(10.0)));
+	// weather.curve = uncenter(psrdnoise(p/2.0, vec3(10.0)));
+	// weather.centerDist = uncenter(psrdnoise(p/3.0, vec3(10.0)));
 
 	return weather;
 }
@@ -440,27 +508,22 @@ float calculatePuffyCloudSDF(vec3 p, CloudWeather weather, CloudLayer layer, flo
 }
 
 float getCloud3DSDF(vec3 p, CloudWeather weather, CloudLayer layer, float worldScale) {
-	float altitude = getCurvedAltitude(p);
-	float altitudeShift = weather.heightMap * layer.thickness;
-	float actualThickness = weather.thickness * layer.thickness;
-	float localFloor = layer.baseFloor + altitudeShift;
+	float localFloor, actualThickness;
+
+	float h = getCloudRelativeHeight(p, weather, layer, localFloor, actualThickness);
 
 	if (p.y < localFloor || p.y > (localFloor + actualThickness)) {
 		return 0.0;
 	}
-
-
-	// float h = weather.heightMap;
-	float h = clamp((altitude - localFloor) / max(layer.thickness, 0.001), 0.0, 1.0);
 
 	float type = weather.heightMap;
 	float heightGradient = getDensityHeightGradient(h, type);
 
 	float coverage2D = weather.sdf;
 	float macroVolume = coverage2D * heightGradient;
-	float domeMask = smoothstep(h, h + 0.2, coverage2D);
+	// float domeMask = smoothstep(h, h + 0.2, coverage2D);
 
-	macroVolume *= domeMask;
+	// macroVolume *= domeMask;
 
 	return macroVolume;
 }

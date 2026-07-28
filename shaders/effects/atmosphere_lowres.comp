@@ -324,17 +324,9 @@ vec3 EvaluateStepLighting(
 		float r_km = r_world / (1000.0 * worldScale);
 		float mu = dot((p - earthCenter) / r_world, L);
 
-		float t0_s, t1_s;
 		float st_start = 1e10;
 		float st_end = -1e10;
-		if (intersectSphere(p, L, R_ceiling, t0_s, t1_s)) {
-			st_start = max(0.0, t0_s);
-			st_end = t1_s;
-			if (intersectSphere(p, L, R_floor, t0_s, t1_s)) {
-				if (t0_s < 0.0) t0_s = t1_s;
-				st_end = min(st_end, t0_s);
-			}
-		}
+		intersectCloudShell(p, L, worldScale, st_start, st_end);
 		traceDist = min(st_end - st_start, props.thickness * 1.5 * worldScale);
 
 		vec2 transUV = getTransmittanceUV(r_km, mu);
@@ -525,20 +517,7 @@ void main() {
 
 	float t_start = 1e10;
 	float t_end = -1e10;
-
-	float t0, t1;
-	if (intersectSphere(relRo, rayDir, R_ceiling, t0, t1)) {
-		t_start = max(0.0, t0);
-		t_end = t1;
-
-		if (intersectSphere(relRo, rayDir, R_floor, t0, t1)) {
-			if (t0 < 0.0) {
-				t_start = max(t_start, t1);
-			} else {
-				t_end = min(t_end, t0);
-			}
-		}
-	}
+	intersectCloudShell(viewPos, rayDir, worldScale, t_start, t_end);
 
 	t_end = min(t_end, dist);
 
@@ -584,7 +563,7 @@ void main() {
 	t_start = max(t_start, b_firstHit);
 	t_end = min(t_end, b_lastHit);
 
-	float absoluteShellDist = t1 - max(0.0, t0);
+	float absoluteShellDist = t_end - t_start;
 	rayDist = t_end - t_start;
 	baseStepSize = clamp(rayDist / float(samples), precisionLimit, 25.0);
 	// baseStepSize = clamp(absoluteShellDist / float(samples), precisionLimit, 25.0);
@@ -612,17 +591,9 @@ void main() {
 
 		vec3 p_sh_start = viewPos + rayDir * t_start;
 
-		float t0_s, t1_s;
 		float st_start = 1e10;
 		float st_end = -1e10;
-		if (intersectSphere(p_sh_start, primaryLightDir, R_ceiling, t0_s, t1_s)) {
-			st_start = max(0.0, t0_s);
-			st_end = t1_s;
-			if (intersectSphere(p_sh_start, primaryLightDir, R_floor, t0_s, t1_s)) {
-				if (t0_s < 0.0) t0_s = t1_s;
-				st_end = min(st_end, t0_s);
-			}
-		}
+		intersectCloudShell(p_sh_start, primaryLightDir, worldScale, st_start, st_end);
 		float traceDist = min(st_end - st_start, cloudThickness * 1.5 * worldScale);
 
 		if (traceDist > 0.01 * worldScale) {
@@ -773,7 +744,8 @@ void main() {
 
 			vec3 d_cheap = densityResCheap.density;
 
-			float nextStepSize = calculateBifurcatedStepSize(inVolume, zero_count, max(d_cheap.x,max(d_cheap.y,d_cheap.z)), baseStepSize, 3, 3);
+			float nextStepSize = calculateBifurcatedStepSize(inVolume, zero_count, max(d_cheap.x,max(d_cheap.y,d_cheap.z)), baseStepSize, 2, 3);
+			// float nextStepSize = calculateBifurcatedStepSize(inVolume, zero_count, 1.0, baseStepSize, 2, 3);
 			// vec3 base_advect = getCloudWindOffset(time);
 			// vec2 weatherUV = (p + base_advect).xz / (100000.0 * worldScale);
 			// vec2 minMax = textureLod(u_cloudWeatherMinMaxTexture, weatherUV, 6.0).rg;
@@ -797,12 +769,11 @@ void main() {
 			float stepSize = t - t_prev;
 			vec3 d = vec3(0.0);
 			if (stepSize > 0.0) {
-				float altitude = getCurvedAltitude(p);
 				float altitudeShift = weather.heightMap * layer.thickness;
 				float actualThickness = weather.thickness * layer.thickness;
 				float localFloor = layer.baseFloor + altitudeShift;
 
-				float h_norm = clamp((altitude - localFloor) / max(actualThickness, 0.001), 0.0, 1.0);
+				float h_norm = getCloudRelativeHeight(p, weather, layer);
 
 				float useCheapEval = t / lodDistanceThreshold;
 				float integrationStep = stepSize;
