@@ -163,7 +163,6 @@ namespace Boidsish {
 		void SetCloudCoverage(float c) {
 			if (std::abs(_cloudCoverage - c) > 0.005f) {
 				_cloudCoverage = c;
-				_needsWeatherBake = true;
 			}
 		}
 		float GetCloudCoverage() const { return _cloudCoverage; }

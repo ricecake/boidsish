@@ -31,6 +31,55 @@ float getCurvedAltitude(vec3 p) {
 	return length(p - earthCenter) - R_earth;
 }
 
+bool intersectSphereLocal(vec3 ro, vec3 rd, float radius, out float t0, out float t1) {
+	float b = dot(ro, rd);
+	float rLen = length(ro);
+	float c = (rLen - radius) * (rLen + radius);
+	float det = b * b - c;
+	if (det < 0.0)
+		return false;
+	det = sqrt(det);
+	t0 = -b - det;
+	t1 = -b + det;
+	return true;
+}
+
+bool intersectCloudShell(vec3 ro, vec3 rd, float worldScale, out float t_start, out float t_end) {
+	float R_earth = 6360.0 * 1000.0 * worldScale;
+	float R_floor = R_earth + (cloudAltitude - 500.0) * worldScale;
+	float R_ceiling = R_earth + (cloudAltitude + 2.0 * cloudThickness + 500.0) * worldScale;
+
+	vec3 earthCenter = vec3(viewPos.x, -R_earth, viewPos.z);
+	vec3 relRo = ro - earthCenter;
+
+	t_start = 1e10;
+	t_end = -1e10;
+
+	float t0, t1;
+	if (intersectSphereLocal(relRo, rd, R_ceiling, t0, t1)) {
+		t_start = max(0.0, t0);
+		t_end = t1;
+
+		if (intersectSphereLocal(relRo, rd, R_floor, t0, t1)) {
+			if (t0 < 0.0) {
+				t_start = max(t_start, t1);
+			} else {
+				t_end = min(t_end, t0);
+			}
+		}
+		return t_start < t_end;
+	}
+	return false;
+}
+
+float getCloudRelativeHeight(vec3 p, CloudWeather weather, CloudLayer layer) {
+	float altitudeShift = weather.heightMap * layer.thickness;
+	float actualThickness = weather.thickness * layer.thickness;
+	float localFloor = layer.baseFloor + altitudeShift;
+	float altitude = getCurvedAltitude(p);
+	return clamp((altitude - localFloor) / max(actualThickness, 0.001), 0.0, 1.0);
+}
+
 // float saturate(float value) {
 // 	return clamp(value, 0.0, 1.0);
 // }
@@ -360,7 +409,8 @@ CloudWeather loadCloudWeather(vec3 p, CloudProperties props, vec4 tex) {
 	CloudWeather weather;
 	weather.p = p;
 
-	weather.sdf = tex.r;
+	// Apply props.coverage as an offset/threshold to the baked coverage map
+	weather.sdf = clamp(tex.r + (props.coverage * 2.0 - 1.0), 0.0, 1.0);
 	weather.heightMap = tex.g;
 	weather.thickness = tex.b;
 	weather.density = tex.a;
