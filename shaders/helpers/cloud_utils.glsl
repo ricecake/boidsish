@@ -80,7 +80,7 @@ float getCloudRelativeHeight(vec3 p, CloudWeather weather, CloudLayer layer, out
 	float cellRange = 10000.0 * worldScale;
 	// float thicknessTaper = clamp(1.0 - pow(weather.centerDist / (cellRange * 0.5), 2.0), 0.0, 1.0);
 	// actualThickness = max(weather.thickness * layer.thickness * thicknessTaper, 10.0 * worldScale);
-	actualThickness = max(weather.thickness * layer.thickness, 10.0 * worldScale);
+	actualThickness = max(weather.thickness * layer.thickness, 25.0 * worldScale);
 	localFloor = layer.baseFloor + altitudeShift;
 	return clamp((altitude - localFloor) / actualThickness, 0.0, 1.0);
 }
@@ -431,8 +431,8 @@ CloudWeather loadCloudWeather(vec3 p, CloudProperties props, vec4 tex) {
 	weather.density = tex.a;
 	if (props.coverage >= 1.0) {
 		weather.sdf = 1.0;
-		weather.heightMap = 1.0;
-		weather.thickness = 1.0;
+		// weather.heightMap = 1.0;
+		// weather.thickness = 1.0;
 		weather.density = 1.0;
 	}
 
@@ -508,18 +508,13 @@ float calculatePuffyCloudSDF(vec3 p, CloudWeather weather, CloudLayer layer, flo
 }
 
 float getCloud3DSDF(vec3 p, CloudWeather weather, CloudLayer layer, float worldScale) {
-	float altitude = getCurvedAltitude(p);
-	float altitudeShift = weather.heightMap * layer.thickness;
-	float actualThickness = weather.thickness * layer.thickness;
-	float localFloor = layer.baseFloor + altitudeShift;
+	float localFloor, actualThickness;
+
+	float h = getCloudRelativeHeight(p, weather, layer, localFloor, actualThickness);
 
 	if (p.y < localFloor || p.y > (localFloor + actualThickness)) {
 		return 0.0;
 	}
-
-
-	// float h = weather.heightMap;
-	float h = clamp((altitude - localFloor) / max(actualThickness, 0.001), 0.0, 1.0);
 
 	float type = weather.heightMap;
 	float heightGradient = getDensityHeightGradient(h, type);
