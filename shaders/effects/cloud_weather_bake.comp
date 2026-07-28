@@ -11,6 +11,8 @@ layout(std430, binding = [[CLOUD_SEEDS_BINDING]] ) buffer CloudSeeds {
 
 #include "../helpers/fast_noise.glsl"
 #include "../helpers/cloud_weather_utils.glsl"
+#include "lygia/space/uncenter.glsl"
+#include "lygia/math/gain.glsl"
 
 uniform float uWorldScale;
 uniform float uCloudCoverage;
@@ -29,6 +31,10 @@ float regionalFbm(vec2 p, vec2 period) {
 	return val;
 }
 
+float posNoise(vec2 p, float scale, float period) {
+	return uncenter(psrdnoise(p / scale, vec2(period)));
+}
+
 void main() {
 	ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
 	ivec2 size = imageSize(outWeatherMap);
@@ -43,24 +49,26 @@ void main() {
 	vec3 worleyDetails = worley2d_tiling_id(p.xz / (cellRange * 0.25), 10.0);
 
 	float macro = regionalFbm(p.xz / cellRange, vec2(10.0));
-	float micro = clamp(1.0 - (worleyDetails.x * 1.5), 0, 1.0);
-	float coverage = clamp(micro - (1.0 - macro), 0.0, 1.0);
-	float finalCoverage = clamp(coverage + (uCloudCoverage * 2.0 - 1.0), 0.0, 1.0);
+	float micro = clamp(worleyDetails.x, 0, 1.0);
 
-	vec2 cellId = worleyDetails.yz;
-	float cellID = psrdnoise(cellId, vec2(10.0)) * 0.5 + 0.5;
+	float coverage = clamp(macro - micro, 0.0, 1.0);
+	// float finalCoverage = clamp(coverage + (uCloudCoverage * 2.0 - 1.0), 0.0, 1.0);
+	// float finalCoverage = clamp(coverage + (uCloudCoverage * 2.0 - 1.0), 0.0, 1.0);
+	float finalCoverage = mix(min(uCloudCoverage, coverage), max(uCloudCoverage, coverage), uCloudCoverage);
+
 	float density = clamp(macro, 0, 1);
 
-	float distInMeters = micro * cellRange;
-	float distF1InMeters = worleyDetails.x * cellRange;
-
-	imageStore(outWeatherMap, pixel, vec4(finalCoverage, distF1InMeters, cellID, density));
+	imageStore(outWeatherMap, pixel, vec4(finalCoverage, posNoise(p.xz, cellRange, 5), posNoise(p.xz * 2, cellRange, 5), posNoise(p.xz / 2, cellRange, 5) ));
 	imageStore(outMinMaxMap, pixel, vec4(density, density, 0.0, 0.0));
 
-	// Record seed info if this is the pixel closest to the cell center (f1)
-	vec2 f1Pixel = (cellId * cellRange) / mapRange * vec2(size);
-	if (distance(vec2(pixel), f1Pixel) < 1.0) {
-		int cellIdx = int(mod(floor(cellId.y), 10.0) * 10.0 + mod(floor(cellId.x), 10.0));
-		seeds[cellIdx] = vec4(cellId.x * cellRange, cellId.y * cellRange, distInMeters, (finalCoverage > 0.0 ? 1.0 : 0.0));
-	}
+	// vec2 cellId = worleyDetails.yz;
+	// float cellID = psrdnoise(cellId, vec2(10.0)) * 0.5 + 0.5;
+	// float distInMeters = micro * cellRange;
+	// float distF1InMeters = worleyDetails.x * cellRange;
+	// // Record seed info if this is the pixel closest to the cell center (f1)
+	// vec2 f1Pixel = (cellId * cellRange) / mapRange * vec2(size);
+	// if (distance(vec2(pixel), f1Pixel) < 1.0) {
+	// 	int cellIdx = int(mod(floor(cellId.y), 10.0) * 10.0 + mod(floor(cellId.x), 10.0));
+	// 	seeds[cellIdx] = vec4(cellId.x * cellRange, cellId.y * cellRange, distInMeters, (finalCoverage > 0.0 ? 1.0 : 0.0));
+	// }
 }

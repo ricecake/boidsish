@@ -435,7 +435,7 @@ vec4 calculateCloudDensityExpV8(
 	float warpy = fastFbm3d(p_advected/5000.0);
 	vec3 warpOffset = vec3(warpy) * 1500.0 * props.worldScale;
 	// float baseSdf = calculatePuffyCloudSDF(p + warpOffset, weather, layer, props.worldScale);
-	float baseSdf = calculateLoftedCloudSDF(p + warpOffset, weather, layer, props.worldScale);
+	float baseSdf = 1.0;//calculateLoftedCloudSDF(p + warpOffset, weather, layer, props.worldScale);
 
 	float d3d = baseSdf;// + (fastRidge3d(p_advected / 15000.0) * 2000.0 * props.worldScale);
 
