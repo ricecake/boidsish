@@ -537,7 +537,7 @@ void main() {
 
 	float rayDist = t_end - t_start;
 	float precisionLimit = max(1.0, t_end * 1e-5);
-	float baseStepSize = clamp(rayDist / float(samples), precisionLimit, 25.0);
+	float baseStepSize = max(precisionLimit, rayDist / float(samples));
 
 	vec4 bounding = texelFetch(u_cloudMinMaxBoundingTexture, packedPixel, 0);
 	float b_firstHit = bounding.r;
@@ -565,8 +565,7 @@ void main() {
 
 	float absoluteShellDist = t_end - t_start;
 	rayDist = t_end - t_start;
-	baseStepSize = clamp(rayDist / float(samples), precisionLimit, 25.0);
-	// baseStepSize = clamp(absoluteShellDist / float(samples), precisionLimit, 25.0);
+	baseStepSize = max(precisionLimit, rayDist / float(samples));
 
 	float firstStepSize = baseStepSize;
 	float its = 0.0;
@@ -713,8 +712,8 @@ void main() {
 		float lodDistanceThreshold = 25000.0 * worldScale;
 
 		// Uniform step size
-		float rayDist = t_end - t_start;
-		float stepSize = rayDist / float(samples);
+		rayDist = t_end - t_start;
+		float stepSize = baseStepSize;
 
 		vec3 probePos = viewPos + rayDir * ((t_start + t_end) * 0.5);
 		vec3 skySH     = evalSHIrradianceSpatial(probePos, vec3(0.0, 1.0, 0.0));

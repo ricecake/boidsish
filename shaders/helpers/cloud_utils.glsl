@@ -400,25 +400,22 @@ CloudWeather loadCloudWeather(vec3 p, CloudProperties props, vec4 tex) {
 	CloudWeather weather;
 	weather.p = p;
 
-	float cellRange = 10000.0 * props.worldScale;
-	float normalizedSDF = clamp((tex.r / cellRange) + 0.5, 0.0, 1.0);
-
-	weather.sdf = clamp(normalizedSDF + (props.coverage * 2.0 - 1.0), 0.0, 1.0);
-	weather.centerDist = tex.g;
+	// Apply props.coverage as an offset/threshold to the baked coverage map
+	weather.sdf = clamp(tex.r + (props.coverage * 2.0 - 1.0), 0.0, 1.0);
+	weather.heightMap = tex.g;
+	weather.thickness = tex.b;
 	weather.density = tex.a;
-
-	float cellID = tex.b;
-	vec4 cellProps = hash41(cellID);
-
-	weather.heightMap = cellProps.x;
-	weather.thickness = cellProps.y;
-	weather.ecentricity = cellProps.z;
-	weather.curve = cellProps.w;
-
 	if (props.coverage >= 1.0) {
 		weather.sdf = 1.0;
 		weather.density = 1.0;
 	}
+
+	vec3 g;
+	weather.ecentricity = clamp(0.5 + 0.5 * psrdnoise(p / (5000.0 * props.worldScale), vec3(10.0), 0.0, g), 0.0, 1.0);
+	weather.curve = clamp(0.5 + 0.5 * psrdnoise(p / (10000.0 * props.worldScale), vec3(10.0), 0.0, g), 0.0, 1.0);
+
+	float noiseCenter = clamp(0.5 + 0.5 * psrdnoise(p / (15000.0 * props.worldScale), vec3(10.0), 0.0, g), 0.0, 1.0);
+	weather.centerDist = noiseCenter * (5000.0 * props.worldScale);
 
 	return weather;
 }
@@ -492,7 +489,7 @@ float getCloud3DCoverage(vec3 p, CloudWeather weather, CloudLayer layer, float w
 		return 0.0;
 	}
 
-	// Superellipsoid profile
+	// Superellipsoid profile to sculpt 'water balloon on a table' shapes
 	float e = mix(0.1, 0.9, weather.ecentricity); // dictate the middle/bulge height
 	float exponent = mix(1.5, 6.0, weather.curve); // define curvature exponents
 
