@@ -46,7 +46,7 @@ void main() {
 
 	vec3 p = vec3(uv.x * mapRange, 0.0, uv.y * mapRange);
 
-	vec3 worleyDetails = worley2d_tiling_id(p.xz / (cellRange * 0.25), 10.0);
+	vec3 worleyDetails = worley2d_tiling_id(p.xz / (cellRange), 5.0);
 
 	float macro = regionalFbm(p.xz / cellRange, vec2(10.0));
 	float micro = clamp(1.0 - (worleyDetails.x * worleyDetails.x * 2.5), 0, 1.0);
@@ -59,7 +59,7 @@ void main() {
 
 	float density = clamp(macro, 0, 1);
 
-	imageStore(outWeatherMap, pixel, vec4(finalCoverage, posNoise(p.xz, cellRange, 5), posNoise(p.xz * 2, cellRange, 5), posNoise(p.xz / 2, cellRange, 5) ));
+	imageStore(outWeatherMap, pixel, vec4(finalCoverage, posNoise(p.xz, cellRange * 5, 2), posNoise(p.xz, cellRange, 5), posNoise(p.xz, 0.5 * cellRange, 5) ));
 	imageStore(outMinMaxMap, pixel, vec4(density, density, 0.0, 0.0));
 
 	// vec2 cellId = worleyDetails.yz;
