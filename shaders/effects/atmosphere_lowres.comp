@@ -744,7 +744,8 @@ void main() {
 
 			vec3 d_cheap = densityResCheap.density;
 
-			float nextStepSize = calculateBifurcatedStepSize(inVolume, zero_count, max(d_cheap.x,max(d_cheap.y,d_cheap.z)), baseStepSize, 3, 3);
+			// float nextStepSize = calculateBifurcatedStepSize(inVolume, zero_count, max(d_cheap.x,max(d_cheap.y,d_cheap.z)), baseStepSize, 2, 3);
+			float nextStepSize = calculateBifurcatedStepSize(inVolume, zero_count, 1.0, baseStepSize, 2, 3);
 			// vec3 base_advect = getCloudWindOffset(time);
 			// vec2 weatherUV = (p + base_advect).xz / (100000.0 * worldScale);
 			// vec2 minMax = textureLod(u_cloudWeatherMinMaxTexture, weatherUV, 6.0).rg;

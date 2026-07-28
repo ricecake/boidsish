@@ -60,7 +60,7 @@ void main() {
 		int L = 3;
 		float baseStepSize = 25.0 * worldScale;
 
-		for (int i = 0; i < 200000; ++i) {
+		for (int i = 0; i < 2048; ++i) {
 			if (t >= t_end) break;
 
 			vec3 p = viewPos + rayDir * t;
@@ -72,7 +72,7 @@ void main() {
 			weatherUV = fract(weatherUV);
 
 			vec2 minMax = textureLod(u_cloudWeatherMinMaxTexture, weatherUV, float(L)).rg;
-			float maxDensity = minMax.y;
+			float maxDensity = clamp(minMax.y + (cloudCoverage * 2.0 - 1.0), 0.0, 1.0);
 
 			if (maxDensity <= 0.001) {
 				float mapRange = 100000.0 * worldScale;
@@ -95,7 +95,7 @@ void main() {
 				dist_to_bound.y = (abs(dir_norm.y) > 1e-6) ? (next_bound.y - p_xz.y) / dir_norm.y : 1e10;
 
 				float dt_2D = min(dist_to_bound.x, dist_to_bound.y);
-				float dt = (dt_2D / len2D) + 0.1; // +0.1 pushes it safely over the boundary line
+				float dt = (dt_2D / len2D) + 0.001; // +0.1 pushes it safely over the boundary line
 
 				dt = clamp(dt, baseStepSize, 2000.0 * worldScale);
 				t += dt;

@@ -538,7 +538,7 @@ CloudSpotDetails calculateCloudDensityExpV9(
 	// bool isCore = baseNoise >= 0.50;
 
 	// float erodeMask = 1.0-smoothstep(0.0, 0.50, baseNoise);
-	float erodeMask = 1.0 - baseNoise;
+	float erodeMask = -1;//1.0 - baseNoise;
 	if (erodeMask > 0.0) {
 		float largeScale = abs(fastFbm3d(p_advected/10000)) * erodeMask;
 		baseNoise = adjust(baseNoise, largeScale);
@@ -642,11 +642,12 @@ CloudDensityResult calculateCloudDensity(
 	// Where the current system has density, the 3d volume adds variety and breaks up the linear nature.
 	float finalDensity = res.density;
 	if (finalDensity > 0.0) {
-		finalDensity *= mix(0.4, 1.6, volNoise);
+		// finalDensity *= mix(0.4, 1.6, volNoise);
 		// finalDensity = adjust(finalDensity, 1.0-volNoise);
 	}
 
-	vec3 mixedDensity = volDensityBasis * res.relativeExtinction * finalDensity;
+	// vec3 mixedDensity = volDensityBasis * res.relativeExtinction * finalDensity;
+	vec3 mixedDensity = vec3(1)*finalDensity;
 	vec3 mixedAlbedo = vec3(volAlbedoBasis);
 
 	// return CloudDensityResult(mixedDensity, advectSpeed, volAo, mixedAlbedo, smoothstep(0.8, 1.2, mixedDensity) * vec3(0,1,0));

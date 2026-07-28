@@ -35,6 +35,25 @@ float posNoise(vec2 p, float scale, float period) {
 	return uncenter(psrdnoise(p / scale, vec2(period)));
 }
 
+float schlickGain(float x, float g) {
+	g = clamp(g, 0.001, 0.999);
+	float absDiff = abs(2.0 * x - 1.0);
+	float denominator = g + absDiff * (1.0 - 2.0 * g);
+	return 0.5 + ((x - 0.5) * (1.0 - g)) / denominator;
+}
+
+float schlickBias(float x, float g) {
+	// Guard inputs to safe analytical ranges
+	float xx = clamp(x, 0.0, 1.0);
+	float gg = clamp(g, 1e-4, 1.0 - 1e-4);
+
+	// Convert bias parameter to Schlick formulation factor
+	// Schlick's fast alternative: f(x) = x / ((1/a - 2) * (1.0 - x) + 1.0)
+	float k = (1.0 / gg) - 2.0;
+	return xx / (k * (1.0 - xx) + 1.0);
+}
+
+
 void main() {
 	ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
 	ivec2 size = imageSize(outWeatherMap);
@@ -51,17 +70,14 @@ void main() {
 	float macro = regionalFbm(p.xz / cellRange, vec2(10.0));
 	float micro = clamp(1.0 - (worleyDetails.x * worleyDetails.x * 2.5), 0, 1.0);
 
-	// float coverage = clamp(macro - micro, 0.0, 1.0);
 	float coverage = macro * micro;
-	// Bake with a nominal coverage of 0.5 instead of relying on the dynamic uCloudCoverage
-	float nominalCoverage = 0.5;
-	float finalCoverage = clamp(coverage + (nominalCoverage * 2.0 - 1.0), 0.0, 1.0);
-	finalCoverage = smoothstep(0.05, 1.0, finalCoverage);
+	float finalCoverage = clamp(coverage, 0.0, 1.0);
+	float height = clamp(posNoise(p.xz, cellRange * 5, 2), 0.0, 1.0);
+	float thickness = clamp(posNoise(p.xz, cellRange, 5), 0.0, 1.0);
+	float density = clamp(posNoise(p.xz, 0.5 * cellRange, 5), 0.0, 1.0);
 
-	float density = clamp(macro, 0, 1);
-
-	imageStore(outWeatherMap, pixel, vec4(finalCoverage, posNoise(p.xz, cellRange * 5, 2), posNoise(p.xz, cellRange, 5), posNoise(p.xz, 0.5 * cellRange, 5) ));
-	imageStore(outMinMaxMap, pixel, vec4(density, density, 0.0, 0.0));
+	imageStore(outWeatherMap, pixel, vec4(finalCoverage, height, thickness, density));
+	imageStore(outMinMaxMap, pixel, vec4(finalCoverage, finalCoverage, 0.0, 0.0));
 
 	// vec2 cellId = worleyDetails.yz;
 	// float cellID = psrdnoise(cellId, vec2(10.0)) * 0.5 + 0.5;
