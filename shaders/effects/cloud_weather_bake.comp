@@ -79,7 +79,8 @@ void main() {
 
 	vec3 p = vec3(uv.x * mapRange, 0.0, uv.y * mapRange);
 
-	float macro = regionalFbm(p.xz / mapRange, vec2(5.0));
+	float macro = regionalFbm((p.xz / mapRange) * 5.0, vec2(5.0));
+	// float macro = regionalFbm(p.xz / mapRange, vec2(5.0));
 	float worley = localFbm(p.xz/cellRange, 5.0);
 	// float micro = clamp(1.0 - worley, 0, 1.0);
 	float micro = clamp(1.0 - (worley * 2.5), 0.0, 1.0);

@@ -428,13 +428,17 @@ CloudWeather loadCloudWeather(vec3 p, CloudProperties props, vec4 tex) {
 	weather.sdf = clamp(tex.r + (props.coverage * 2.0 - 1.0), 0.0, 1.0);
 	weather.heightMap = tex.g;
 	weather.thickness = tex.b;
-	weather.density = tex.a;
+	weather.density = tex.a * props.densityBase;
 	if (props.coverage >= 1.0) {
 		weather.sdf = 1.0;
 		// weather.heightMap = 1.0;
 		// weather.thickness = 1.0;
-		weather.density = 1.0;
+		weather.density = props.densityBase;
 	}
+
+	weather.density = mix(weather.density, weather.sdf, 0.6);
+	weather.thickness = mix(weather.thickness, weather.density, 0.8);
+	weather.heightMap = mix(weather.heightMap, 0.0, weather.thickness * 0.9);
 
 	// weather.heightMap = clamp(tex.g, 0.01, 1.0);
 	// weather.thickness = clamp(tex.b, 0.01, 1.0);
@@ -471,17 +475,21 @@ CloudLayer computeCloudLayer(CloudWeather weather, CloudProperties props) {
 }
 
 float getDensityHeightGradient(float h, float type) {
-	// Typical height profiles for different cloud types
-	// Stratus: low and thin
-	float stratus = smoothstep(0.0, 0.1, h) * (1.0 - smoothstep(0.15, 0.3, h));
-	// Cumulus: medium height, billowy
-	float cumulus = smoothstep(0.0, 0.2, h) * (1.0 - smoothstep(0.7, 0.9, h));
-	// Cumulonimbus: tall, reaching the top
-	float cumulonimbus = smoothstep(0.0, 0.05, h) * (1.0 - smoothstep(0.85, 1.0, h));
+	// 1. Cumulonimbus (Type ~ 0.0): Massive storm chunks
+	// Solid, dark, flat base with a dense core that tapers slightly near the anvil top.
+	float cumulonimbus = smoothstep(0.0, 0.05, h) * (1.0 - smoothstep(0.7, 1.0, h));
 
-	// Interpolate based on cloud type (weather.heightMap)
-	float res = mix(stratus, cumulus, smoothstep(0.0, 0.5, type));
-	res = mix(res, cumulonimbus, smoothstep(0.5, 1.0, type));
+	// 2. Cumulus (Type ~ 0.5): Puffy fair-weather clouds
+	// Rounded bottoms and very rounded, billowy tops.
+	float cumulus = smoothstep(0.0, 0.2, h) * (1.0 - smoothstep(0.6, 0.9, h));
+
+	// 3. Stratus (Type ~ 1.0): Thin, patchy plates
+	// Soft fade in, flat middle, soft fade out.
+	float stratus = smoothstep(0.0, 0.3, h) * (1.0 - smoothstep(0.7, 1.0, h));
+
+	float res = mix(cumulonimbus, cumulus, smoothstep(0.0, 0.5, type));
+	res = mix(res, stratus, smoothstep(0.5, 1.0, type));
+
 	return res;
 }
 
