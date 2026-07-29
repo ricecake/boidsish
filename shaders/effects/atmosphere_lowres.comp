@@ -539,10 +539,27 @@ void main() {
 	float precisionLimit = max(1.0, t_end * 1e-5);
 	float baseStepSize = clamp(rayDist / float(samples), precisionLimit, 25.0);
 
-	vec4 bounding = texelFetch(u_cloudMinMaxBoundingTexture, packedPixel, 0);
-	float b_firstHit = bounding.r;
-	float b_lastHit = bounding.g;
-	float b_totalDensity = bounding.b;
+	ivec2 boundingSize = textureSize(u_cloudMinMaxBoundingTexture, 0);
+	float b_firstHit = -1.0;
+	float b_lastHit = -1.0;
+	float b_totalDensity = 0.0;
+
+	for (int y = -1; y <= 1; y++) {
+		for (int x = -1; x <= 1; x++) {
+			ivec2 samplePixel = clamp(packedPixel + ivec2(x, y), ivec2(0), boundingSize - 1);
+			vec4 b = texelFetch(u_cloudMinMaxBoundingTexture, samplePixel, 0);
+
+			if (b.r >= 0.0) {
+				if (b_firstHit < 0.0) {
+					b_firstHit = b.r;
+				} else {
+					b_firstHit = min(b_firstHit, b.r);
+				}
+				b_lastHit = max(b_lastHit, b.g);
+			}
+			b_totalDensity = max(b_totalDensity, b.b);
+		}
+	}
 
 	if (b_firstHit < 0.0 || b_totalDensity < 0.01) {
 		// Output clear sky / no clouds and early return
@@ -559,6 +576,9 @@ void main() {
 		imageStore(outPackedVelocity, packedPixel, vec4(finalVelocity, 0.0, 0.0));
 		return;
 	}
+
+	b_firstHit = max(t_start, b_firstHit - (50.0 * worldScale));
+	b_lastHit = min(t_end, b_lastHit + (50.0 * worldScale));
 
 	t_start = max(t_start, b_firstHit);
 	t_end = min(t_end, b_lastHit);
