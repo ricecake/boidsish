@@ -537,8 +537,8 @@ CloudSpotDetails calculateCloudDensityExpV9(
 
 	// bool isCore = baseNoise >= 0.50;
 
-	float erodeMask = 1.0-smoothstep(0.0, 0.90, baseNoise);
-	// float erodeMask = -1;//1.0 - baseNoise;
+	// float erodeMask = 1.0-smoothstep(0.0, 0.90, baseNoise);
+	float erodeMask = 1.0 - baseNoise;
 	if (erodeMask > 0.0) {
 		float largeScale = abs(fastFbm3d(p_advected/10000)) * erodeMask;
 		baseNoise = adjust(baseNoise, largeScale);
@@ -576,6 +576,41 @@ CloudSpotDetails calculateCloudDensityExpV9(
 	);
 }
 
+CloudSpotDetails calculateCloudDensityExpV10(
+	vec3            p,
+	CloudWeather    weather,
+	CloudLayer      layer,
+	CloudProperties props,
+	float           time,
+	float            simplified,
+	float volNoise
+) {
+	float localFloor, actualThickness;
+	float h = getCloudRelativeHeight(p, weather, layer, localFloor, actualThickness);
+
+	vec3 advectSpeed = getCloudAdvectionSpeed(h, time);
+	vec3 advect = time * advectSpeed;
+	vec3 p_advected = p + advect;
+
+	float baseNoise = getCloud3DSDF(p_advected, weather, layer, props.worldScale);
+	float erodeMask = 1.0 - baseNoise;
+
+	if (erodeMask > 0.0) {
+		baseNoise = remapClamp(baseNoise, volNoise * erodeMask, 1.0, 0.0, 1.0);
+
+		if (baseNoise > 0.0 && simplified < 0.25) {
+			float detailNoise = abs(fastFbm3d(p_advected / 3000.0));
+			baseNoise = remapClamp(baseNoise, detailNoise * erodeMask * 0.5, 1.0, 0.0, 1.0);
+		}
+	}
+
+	return CloudSpotDetails(
+		clamp(baseNoise, 0.00, 1.0),
+		vec3(1.0),
+		advectSpeed
+	);
+}
+
 // Cloud density calculation helper
 // Returns CloudDensityResult based on world-space position
 CloudDensityResult calculateCloudDensityMinimal(
@@ -592,7 +627,7 @@ CloudDensityResult calculateCloudDensityMinimal(
 		return pointDetails;
 	}
 
-	CloudSpotDetails res = calculateCloudDensityExpV9(p, weather, layer, props, time, 1000.0);
+	CloudSpotDetails res = calculateCloudDensityExpV10(p, weather, layer, props, time, 1000.0, 1.0);
 
 	return CloudDensityResult(res.relativeExtinction, advectSpeed, 1.0, vec3(1.0), vec3(0.0));
 }
@@ -629,7 +664,7 @@ CloudDensityResult calculateCloudDensity(
 	float volAlbedoBasis = volSample.b;
 	float volDensityBasis = volSample.a;
 
-	CloudSpotDetails res = calculateCloudDensityExpV9(p, weather, layer, props, time, simplified);
+	CloudSpotDetails res = calculateCloudDensityExpV10(p, weather, layer, props, time, simplified, volNoise);
 
 	// Where the current system has density, the 3d volume adds variety and breaks up the linear nature.
 	float finalDensity = res.density;

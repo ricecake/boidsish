@@ -15,18 +15,19 @@ float remap_bake(float value, float low1, float high1, float low2, float high2) 
 float computeSimplexWorley(vec3 p) {
 	// Base Simplex noise (normalized to [0, 1])
 	vec3 g;
-	return 0.5+0.5*psrdnoise(p / (100), vec3(10.0, 1.0, 10.0), 0.0, g);
-	// simplex = clamp(simplex * 0.5 + 0.5, 0.0, 1.0);
+	// return 0.5+0.5*psrdnoise(p / (100), vec3(10.0, 1.0, 10.0), 0.0, g);
+	float simplex = psrdnoise(p * 4, vec3(10.0, 1.0, 10.0), 0.0, g);
+	simplex = clamp(simplex * 0.5 + 0.5, 0.0, 1.0);
 
-	// // Worley FBM (cell centers are billowy and puffy)
-	// float w0 = 1.0 - worley3d_tiling(p * 8.0, 8.0).x;
-	// float w1 = 1.0 - worley3d_tiling(p * 16.0, 16.0).x;
-	// float w2 = 1.0 - worley3d_tiling(p * 32.0, 32.0).x;
-	// float worleyFbm = w0 * 0.625 + w1 * 0.25 + w2 * 0.125;
+	// Worley FBM (cell centers are billowy and puffy)
+	float w0 = 1.0 - worley3d_tiling(p * 8.0, 8.0).x;
+	float w1 = 1.0 - worley3d_tiling(p * 16.0, 16.0).x;
+	float w2 = 1.0 - worley3d_tiling(p * 32.0, 32.0).x;
+	float worleyFbm = w0 * 0.625 + w1 * 0.25 + w2 * 0.125;
 
-	// // Simplex noise carved/remapped by Worley FBM
-	// float simplexWorley = remap_bake(simplex, worleyFbm, 1.0, 0.0, 1.0);
-	// return clamp(simplexWorley, 0.0, 1.0);
+	// Simplex noise carved/remapped by Worley FBM
+	float simplexWorley = remap_bake(simplex, worleyFbm, 1.0, 0.0, 1.0);
+	return clamp(simplexWorley, 0.0, 1.0);
 }
 
 void main() {

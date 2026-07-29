@@ -521,9 +521,9 @@ float getCloud3DSDF(vec3 p, CloudWeather weather, CloudLayer layer, float worldS
 
 	float coverage2D = weather.sdf;
 	float macroVolume = coverage2D * heightGradient;
-	// float domeMask = smoothstep(h, h + 0.2, coverage2D);
+	float domeMask = smoothstep(h, h + 0.2, coverage2D);
 
-	// macroVolume *= domeMask;
+	macroVolume *= domeMask;
 
 	return macroVolume;
 }
