@@ -658,8 +658,9 @@ void main() {
 		CloudWeather weather;
 		float lastWeatherT = -1e9;
 
-		const float weatherUpdateInterval = (2 + (jitter*2.0 - 1.0)) * baseStepSize * worldScale; // Update every 100 meters
+		// const float weatherUpdateInterval = (2 + (jitter*2.0 - 1.0)) * baseStepSize * worldScale; // Update every 100 meters
 		// const float weatherUpdateInterval = (4 * jitter) * baseStepSize * worldScale; // Update every 100 meters
+		const float weatherUpdateInterval = 48.0 * worldScale; // Update every 100 meters
 		int zero_count = 0;
 		for (int i = 0; i < MAX_ITERATIONS; i++) {
 			steps = i;
