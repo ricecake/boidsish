@@ -182,6 +182,16 @@ namespace Boidsish {
 		int GetChunkSize() const { return chunk_size_; }
 
 		/**
+		 * @brief Pop the list of chunk coordinates that have completed generation and baking on the GPU.
+		 */
+		std::vector<std::pair<int, int>> PopCompletedBakes();
+
+		/**
+		 * @brief Get the texture slice index for a registered chunk. Returns -1 if not found.
+		 */
+		int GetChunkSlice(std::pair<int, int> chunk_key) const;
+
+		/**
 		 * @brief Get the heightmap texture array for shader binding.
 		 */
 		GLuint GetHeightmapTexture() const { return heightmap_texture_; }
@@ -399,6 +409,7 @@ namespace Boidsish {
 		GLuint terrain_data_ubo_ = 0;        // UBO for grid parameters
 		GLuint probe_ssbo_ = 0;              // SSBO for per-chunk SH probes
 		GLuint bake_ssbo_ = 0;               // SSBO for BakeTask
+		GLuint deformations_ssbo_ = 0;       // SSBO for active deformations
 		GLuint patch_metrics_ssbo_ = 0;      // SSBO for PatchMetrics
 		GLuint patch_visibility_ssbo_ = 0;   // SSBO for Patch visibility status
 		GLuint temporal_data_ubo_ = 0;
@@ -441,6 +452,7 @@ namespace Boidsish {
 		int                                      next_slice_ = 0;
 
 		std::vector<BakeTask> bake_queue_;
+		std::vector<std::pair<int, int>>         completed_bakes_;
 
 		// Per-frame instance data
 		std::vector<InstanceData> visible_instances_;
@@ -477,6 +489,8 @@ namespace Boidsish {
 
 		// Eviction callback for notifying TerrainGenerator
 		std::function<void(std::pair<int, int>)> eviction_callback_;
+
+		ServiceLocator& service_locator_;
 	};
 
 } // namespace Boidsish

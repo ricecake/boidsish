@@ -55,26 +55,9 @@ namespace Boidsish {
 
 	TerrainGenerator::~TerrainGenerator() {
 		{
-			for (auto& pair : pending_chunks_) {
-				pair.second.cancel();
-			}
-		}
-
-		// Wait for any in-flight tasks to complete (they may have started before cancel)
-		// This prevents use-after-free when tasks reference 'this'
-		{
-			for (auto& pair : pending_chunks_) {
-				try {
-					auto& handle = const_cast<TaskHandle<TerrainGenerationResult>&>(pair.second);
-					handle.get(); // Wait for completion, ignore result
-				} catch (...) {
-					// Ignore exceptions from cancelled/failed tasks
-				}
-			}
+			std::lock_guard<std::recursive_mutex> lock(chunk_cache_mutex_);
 			pending_chunks_.clear();
-		}
-
-		{
+			pending_deformations_.clear();
 			chunk_cache_.clear();
 		}
 		{
@@ -165,13 +148,39 @@ namespace Boidsish {
 			}
 		);
 
-		// Enqueue in sorted order
+		// Create and register chunks directly on the GPU
 		for (const auto& chunk : chunks_to_enqueue) {
 			std::pair<int, int> chunk_coord = {chunk.x, chunk.z};
-			pending_chunks_.emplace(
-				chunk_coord,
-				thread_pool_.enqueue(chunk.priority, &TerrainGenerator::generateChunkData, this, chunk.x, chunk.z)
+			pending_chunks_.insert(chunk_coord);
+
+			// Reconstruct placeholder Terrain chunk
+			auto terrain_chunk = std::make_shared<Terrain>(
+				std::vector<unsigned int>{},
+				std::vector<glm::vec3>{},
+				std::vector<glm::vec3>{},
+				std::vector<glm::vec2>{},
+				PatchProxy{}
 			);
+			terrain_chunk->SetPosition(chunk.x * scaled_chunk_size, 0, chunk.z * scaled_chunk_size);
+			terrain_chunk->SetManagedByRenderManager(true);
+
+			chunk_cache_[chunk_coord] = terrain_chunk;
+
+			if (render_manager_) {
+				render_manager_->RegisterChunk(
+					chunk_coord,
+					std::vector<glm::vec3>{},
+					std::vector<glm::vec3>{},
+					std::vector<glm::vec2>{},
+					std::vector<float>{},
+					std::vector<uint8_t>{},
+					std::vector<unsigned int>{},
+					0.0f, 0.0f,
+					glm::vec3(chunk.x * scaled_chunk_size, 0, chunk.z * scaled_chunk_size),
+					world_scale_,
+					std::vector<TerrainRenderManager::PatchMetrics>{}
+				);
+			}
 		}
 
 		ProcessCompletedChunks();
@@ -235,6 +244,9 @@ namespace Boidsish {
 				if (registrations_this_frame >= max_registrations_per_frame)
 					break;
 
+				float chunk_min_y = chunk.terrain->vertices.empty() ? 0.0f : chunk.terrain->proxy.minY;
+				float chunk_max_y = chunk.terrain->vertices.empty() ? 0.0f : chunk.terrain->proxy.maxY;
+
 				render_manager_->RegisterChunk(
 					chunk.key,
 					chunk.terrain->vertices,
@@ -243,8 +255,8 @@ namespace Boidsish {
 					chunk.terrain->packed_height_normal,
 					chunk.terrain->packed_biomes,
 					chunk.terrain->GetIndices(),
-					chunk.terrain->proxy.minY,
-					chunk.terrain->proxy.maxY,
+					chunk_min_y,
+					chunk_max_y,
 					glm::vec3(chunk.key.first * scaled_chunk_size, 0, chunk.key.second * scaled_chunk_size),
 					world_scale_,
 					chunk.terrain->patch_metrics
@@ -280,7 +292,7 @@ namespace Boidsish {
 		}
 
 		std::vector<std::pair<int, int>> to_cancel;
-		for (auto const& [key, val] : pending_chunks_) {
+		for (auto const& key : pending_chunks_) {
 			glm::vec2 chunk_center(
 				key.first * scaled_chunk_size + scaled_chunk_size * 0.5f,
 				key.second * scaled_chunk_size + scaled_chunk_size * 0.5f
@@ -293,7 +305,6 @@ namespace Boidsish {
 		}
 
 		for (const auto& key : to_cancel) {
-			pending_chunks_.at(key).cancel();
 			pending_chunks_.erase(key);
 		}
 
@@ -345,48 +356,116 @@ namespace Boidsish {
 	}
 
 	void TerrainGenerator::ProcessCompletedChunks() {
+		if (!render_manager_) {
+			return;
+		}
+
+		std::vector<std::pair<int, int>> ready_chunks = render_manager_->PopCompletedBakes();
+		if (ready_chunks.empty()) {
+			return;
+		}
+
 		float scaled_chunk_size = static_cast<float>(chunk_size_) * world_scale_;
-		std::vector<std::pair<int, int>> completed_chunks;
-		{
-			std::lock_guard<std::recursive_mutex> lock(chunk_cache_mutex_);
-			for (auto& pair : pending_chunks_) {
-				if (pair.second.is_ready()) {
-					try {
-						auto&                   future = const_cast<TaskHandle<TerrainGenerationResult>&>(pair.second);
-						TerrainGenerationResult result = future.get();
-						auto                    terrain_chunk = std::make_shared<Terrain>(
-							result.indices,
-							result.positions,
-							result.normals,
-							result.biomes,
-							result.proxy,
-							std::move(result.packed_height_normal),
-							std::move(result.packed_biomes),
-							std::move(result.patch_metrics)
-						);
-						terrain_chunk->SetPosition(
-							result.chunk_x * scaled_chunk_size,
-							0,
-							result.chunk_z * scaled_chunk_size
-						);
+		const int res = chunk_size_ + 1;
+		std::vector<float> height_buffer(res * res * 4);
+		std::vector<uint8_t> biome_buffer(res * res * 4);
 
-						if (render_manager_) {
-							terrain_chunk->SetManagedByRenderManager(true);
-						} else {
-							terrain_chunk->setupMesh();
-						}
+		std::lock_guard<std::recursive_mutex> lock(chunk_cache_mutex_);
 
-						chunk_cache_[pair.first] = terrain_chunk;
-						completed_chunks.push_back(pair.first);
-					} catch (...) {
-						completed_chunks.push_back(pair.first);
-					}
+		for (const auto& key : ready_chunks) {
+			auto it = chunk_cache_.find(key);
+			if (it == chunk_cache_.end() || !it->second) {
+				continue;
+			}
+
+			auto& terrain = it->second;
+			int slice = render_manager_->GetChunkSlice(key);
+			if (slice < 0) {
+				continue;
+			}
+
+			// Download heightmap and normal texture slice
+			glGetTextureSubImage(
+				render_manager_->GetHeightmapTexture(),
+				0, // mip level
+				0, 0, slice, // offsets
+				res, res, 1, // dimensions
+				GL_RGBA,
+				GL_FLOAT,
+				static_cast<GLsizei>(height_buffer.size() * sizeof(float)),
+				height_buffer.data()
+			);
+
+			// Download biome texture slice
+			glGetTextureSubImage(
+				render_manager_->GetBiomeTexture(),
+				0, // mip level
+				0, 0, slice, // offsets
+				res, res, 1, // dimensions
+				GL_RGBA,
+				GL_UNSIGNED_BYTE,
+				static_cast<GLsizei>(biome_buffer.size() * sizeof(uint8_t)),
+				biome_buffer.data()
+			);
+
+			// Transpose Z-major (contiguous GPU memory) back to X-major (C++ representation)
+			std::vector<glm::vec3> vertices(res * res);
+			std::vector<glm::vec3> normals(res * res);
+			std::vector<glm::vec2> biomes_flat(res * res);
+
+			for (int z = 0; z < res; ++z) {
+				for (int x = 0; x < res; ++x) {
+					int src_idx = z * res + x; // Z-major in downloaded buffer
+					int dst_idx = x * res + z; // X-major in CPU representation
+
+					float height = height_buffer[src_idx * 4 + 0];
+					glm::vec3 normal(
+						height_buffer[src_idx * 4 + 1],
+						height_buffer[src_idx * 4 + 2],
+						height_buffer[src_idx * 4 + 3]
+					);
+
+					float low_idx = static_cast<float>(biome_buffer[src_idx * 4 + 0]);
+					float t = static_cast<float>(biome_buffer[src_idx * 4 + 1]) / 255.0f;
+
+					vertices[dst_idx] = glm::vec3(x * world_scale_, height, z * world_scale_);
+					normals[dst_idx] = normal;
+					biomes_flat[dst_idx] = glm::vec2(low_idx, t);
 				}
 			}
 
-			for (const auto& key : completed_chunks) {
-				pending_chunks_.erase(key);
+			// Assign the reconstructed CPU buffers to the Terrain chunk
+			terrain->vertices = std::move(vertices);
+			terrain->normals = std::move(normals);
+			terrain->biomes = std::move(biomes_flat);
+
+			// Recompute the chunk's bounding proxy
+			PatchProxy proxy;
+			proxy.center = std::accumulate(terrain->vertices.begin(), terrain->vertices.end(), glm::vec3(0.0f)) / static_cast<float>(terrain->vertices.size());
+			proxy.totalNormal = std::accumulate(terrain->normals.begin(), terrain->normals.end(), glm::vec3(0.0f));
+
+			float max_dist_sq = 0.0f;
+			proxy.minY = std::numeric_limits<float>::max();
+			proxy.maxY = std::numeric_limits<float>::lowest();
+
+			for (const auto& pos : terrain->vertices) {
+				if (pos.y < proxy.minY) {
+					proxy.minY = pos.y;
+					proxy.lowestPoint = pos;
+				}
+				if (pos.y > proxy.maxY) {
+					proxy.maxY = pos.y;
+					proxy.highestPoint = pos;
+				}
+				float dist_sq = glm::dot(pos - proxy.center, pos - proxy.center);
+				if (dist_sq > max_dist_sq) {
+					max_dist_sq = dist_sq;
+				}
 			}
+			proxy.radiusSq = max_dist_sq;
+			terrain->proxy = proxy;
+
+			pending_chunks_.erase(key);
 		}
 	}
 
@@ -396,6 +475,10 @@ namespace Boidsish {
 
 		// Initial Update to enqueue all necessary chunks
 		Update(frustum, camera);
+
+		if (render_manager_) {
+			render_manager_->CommitUpdates(true);
+		}
 
 		// Loop until all pending tasks are finished
 		while (true) {
@@ -487,14 +570,7 @@ namespace Boidsish {
 		terrain_version_++;
 
 		// Cancel all pending tasks
-		for (auto& pair : pending_chunks_) {
-			pair.second.cancel();
-		}
 		pending_chunks_.clear();
-
-		for (auto& pair : pending_deformations_) {
-			pair.second.cancel();
-		}
 		pending_deformations_.clear();
 
 		{
@@ -1646,82 +1722,18 @@ namespace Boidsish {
 		std::vector<uint32_t> current_deformations;
 		{
 			std::lock_guard<std::mutex> lock(deformation_queue_mutex_);
-			if (queued_deformation_ids_.empty()) {
-				// Still need to process completed async tasks even if no new deformations
-			} else {
+			if (!queued_deformation_ids_.empty()) {
 				current_deformations = std::move(queued_deformation_ids_);
 				queued_deformation_ids_.clear();
 			}
 		}
 
-		float scaled_chunk_size = static_cast<float>(chunk_size_) * world_scale_;
-
-		// 1. Process completed deformation tasks
-		std::vector<std::pair<int, int>> completed_keys;
-		bool                             any_completed = false;
-		{
-			std::lock_guard<std::recursive_mutex> lock(chunk_cache_mutex_);
-			for (auto& pair : pending_deformations_) {
-				if (pair.second.is_ready()) {
-					try {
-						TerrainGenerationResult result = pair.second.get();
-						auto                    new_terrain = std::make_shared<Terrain>(
-							result.indices,
-							result.positions,
-							result.normals,
-							result.biomes,
-							result.proxy,
-							std::move(result.packed_height_normal),
-							std::move(result.packed_biomes),
-							std::move(result.patch_metrics)
-						);
-						new_terrain->SetPosition(
-							result.chunk_x * scaled_chunk_size,
-							0,
-							result.chunk_z * scaled_chunk_size
-						);
-
-						if (render_manager_) {
-							new_terrain->SetManagedByRenderManager(true);
-							render_manager_->RegisterChunk(
-								pair.first,
-								new_terrain->vertices,
-								new_terrain->normals,
-								new_terrain->biomes,
-								new_terrain->packed_height_normal,
-								new_terrain->packed_biomes,
-								new_terrain->GetIndices(),
-								new_terrain->proxy.minY,
-								new_terrain->proxy.maxY,
-								glm::vec3(result.chunk_x * scaled_chunk_size, 0, result.chunk_z * scaled_chunk_size),
-								world_scale_,
-								new_terrain->patch_metrics
-							);
-						} else {
-							new_terrain->setupMesh();
-						}
-						chunk_cache_[pair.first] = new_terrain;
-						completed_keys.push_back(pair.first);
-						any_completed = true;
-					} catch (...) {
-						completed_keys.push_back(pair.first);
-					}
-				}
-			}
-		}
-
-		for (const auto& key : completed_keys) {
-			pending_deformations_.erase(key);
-		}
-
-		if (any_completed) {
-			terrain_version_++;
-		}
-
 		if (current_deformations.empty())
 			return;
 
-		// 2. Identify all chunks that need regeneration from NEW deformations
+		float scaled_chunk_size = static_cast<float>(chunk_size_) * world_scale_;
+
+		// Identify all chunks that need regeneration from NEW deformations
 		std::set<std::pair<int, int>> chunks_to_regenerate;
 		bool                          all_deformed = false;
 
@@ -1764,40 +1776,31 @@ namespace Boidsish {
 			}
 		}
 
-		// 3. Filter to only chunks we already have in cache (don't generate new areas just because of deformation)
-		// and enqueue regeneration tasks
 		{
 			std::lock_guard<std::recursive_mutex> lock(chunk_cache_mutex_);
 			for (const auto& key : chunks_to_regenerate) {
 				if (chunk_cache_.count(key) > 0) {
-					// Cancel any existing pending generation for this chunk
-					auto it = pending_chunks_.find(key);
-					if (it != pending_chunks_.end()) {
-						it->second.cancel();
-						pending_chunks_.erase(it);
+					// Register again to trigger GPU baking of the deformed heightmap
+					if (render_manager_) {
+						render_manager_->RegisterChunk(
+							key,
+							std::vector<glm::vec3>{},
+							std::vector<glm::vec3>{},
+							std::vector<glm::vec2>{},
+							std::vector<float>{},
+							std::vector<uint8_t>{},
+							std::vector<unsigned int>{},
+							0.0f, 0.0f,
+							glm::vec3(key.first * scaled_chunk_size, 0, key.second * scaled_chunk_size),
+							world_scale_,
+							std::vector<TerrainRenderManager::PatchMetrics>{}
+						);
 					}
-
-					// Cancel any existing pending DEFORMATION generation for this chunk
-					auto it_def = pending_deformations_.find(key);
-					if (it_def != pending_deformations_.end()) {
-						it_def->second.cancel();
-						pending_deformations_.erase(it_def);
-					}
-
-					// Enqueue new high-priority regeneration
-					pending_deformations_.emplace(
-						key,
-						thread_pool_.enqueue(
-							TaskPriority::HIGH,
-							&TerrainGenerator::generateChunkData,
-							this,
-							key.first,
-							key.second
-						)
-					);
+					pending_chunks_.insert(key);
 				}
 			}
 		}
+		terrain_version_++;
 	}
 
 } // namespace Boidsish

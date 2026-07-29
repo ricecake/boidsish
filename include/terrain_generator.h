@@ -346,10 +346,10 @@ namespace Boidsish {
 		ThreadPool                                                         thread_pool_;
 		std::map<std::pair<int, int>, std::shared_ptr<Terrain>>            chunk_cache_;
 		std::vector<std::shared_ptr<Terrain>>                              visible_chunks_;
-		std::map<std::pair<int, int>, TaskHandle<TerrainGenerationResult>> pending_chunks_;
+		std::set<std::pair<int, int>> pending_chunks_;
 
 		// Deformation-specific async management
-		std::map<std::pair<int, int>, TaskHandle<TerrainGenerationResult>> pending_deformations_;
+		std::set<std::pair<int, int>> pending_deformations_;
 		std::vector<uint32_t>                                              queued_deformation_ids_;
 		mutable std::mutex                                                 deformation_queue_mutex_;
 
