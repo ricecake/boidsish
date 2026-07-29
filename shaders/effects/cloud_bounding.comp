@@ -51,6 +51,11 @@ void main() {
 
 	t_end = min(t_end, dist);
 
+	if (cloudCoverage >= 1.0) {
+		imageStore(outBoundingMap, pixel, vec4(t_start, t_end, 1.0, 0.0));
+		return;
+	}
+
 	float firstHit = -1.0;
 	float lastHit = -1.0;
 	float totalDensity = 0.0;
@@ -97,7 +102,7 @@ void main() {
 				float dt_2D = min(dist_to_bound.x, dist_to_bound.y);
 				float dt = (dt_2D / len2D) + 0.001; // +0.1 pushes it safely over the boundary line
 
-				// dt = clamp(dt, baseStepSize, 2000.0 * worldScale);
+				dt = clamp(dt, baseStepSize, 2000.0 * worldScale);
 				t += dt;
 				// L = min(6, L + 1);
 				L = clamp(L + 1, 0, 10);

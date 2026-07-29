@@ -502,10 +502,10 @@ namespace Boidsish {
 										ImGui::SameLine();
 										if (ImGui::Button("Unlock##CloudAltitude")) weather->ClearTarget(WeatherAttribute::CloudAltitude);
 									}
-									float cloud_thickness = atmosphere_effect->GetCloudThickness();
-									if (ImGui::SliderFloat("Cloud Thickness", &cloud_thickness, 0.0f, 500.0f)) {
-										if (weather) weather->SetTarget(WeatherAttribute::CloudThickness, cloud_thickness);
-										else atmosphere_effect->SetCloudThickness(cloud_thickness);
+									float cloud_thickness = atmosphere_effect->GetCloudThickness() / 1000.0f;
+									if (ImGui::SliderFloat("Cloud Thickness", &cloud_thickness, 0.0f, 20.0f)) {
+										if (weather) weather->SetTarget(WeatherAttribute::CloudThickness, cloud_thickness * 1000.0f);
+										else atmosphere_effect->SetCloudThickness(cloud_thickness * 1000.0f);
 										changed_atm = true;
 									}
 									if (weather) {
@@ -513,7 +513,7 @@ namespace Boidsish {
 										if (ImGui::Button("Unlock##CloudThickness")) weather->ClearTarget(WeatherAttribute::CloudThickness);
 									}
 									float cloud_coverage = atmosphere_effect->GetCloudCoverage();
-									if (ImGui::SliderFloat("Cloud Coverage", &cloud_coverage, 0.0f, 2.0f)) {
+									if (ImGui::SliderFloat("Cloud Coverage", &cloud_coverage, 0.0f, 1.0f)) {
 										if (weather) weather->SetTarget(WeatherAttribute::CloudCoverage, cloud_coverage);
 										else atmosphere_effect->SetCloudCoverage(cloud_coverage);
 										changed_atm = true;
@@ -597,7 +597,7 @@ namespace Boidsish {
 										"cloud_powder_scale",
 										atmosphere_effect->GetCloudPowderScale()
 									);
-									if (ImGui::SliderFloat("Powder Scale", &p_scale, 0.0f, 2.0f)) {
+									if (ImGui::SliderFloat("Powder Scale", &p_scale, 0.0f, 1.0f)) {
 										atmosphere_effect->SetCloudPowderScale(p_scale);
 										cfg.SetFloat("cloud_powder_scale", p_scale);
 										changed_atm = true;
@@ -606,7 +606,7 @@ namespace Boidsish {
 										"cloud_powder_multiplier",
 										atmosphere_effect->GetCloudPowderMultiplier()
 									);
-									if (ImGui::SliderFloat("Powder Multiplier", &p_mult, 0.0f, 2.0f)) {
+									if (ImGui::SliderFloat("Powder Multiplier", &p_mult, 0.0f, 5.0f)) {
 										atmosphere_effect->SetCloudPowderMultiplier(p_mult);
 										cfg.SetFloat("cloud_powder_multiplier", p_mult);
 										changed_atm = true;
@@ -625,7 +625,7 @@ namespace Boidsish {
 										"cloud_shadow_optical_depth_multiplier",
 										atmosphere_effect->GetCloudShadowOpticalDepthMultiplier()
 									);
-									if (ImGui::SliderFloat("Shadow Optical Depth Mult", &s_opt, 0.0f, 1.0f)) {
+									if (ImGui::SliderFloat("Shadow Optical Depth Mult", &s_opt, 0.0f, 2.0f)) {
 										atmosphere_effect->SetCloudShadowOpticalDepthMultiplier(s_opt);
 										cfg.SetFloat("cloud_shadow_optical_depth_multiplier", s_opt);
 										changed_atm = true;
@@ -634,7 +634,7 @@ namespace Boidsish {
 										"cloud_shadow_step_multiplier",
 										atmosphere_effect->GetCloudShadowStepMultiplier()
 									);
-									if (ImGui::SliderFloat("Shadow Step Mult", &s_step, 0.0f, 1.0f)) {
+									if (ImGui::SliderFloat("Shadow Step Mult", &s_step, 0.0f, 10.0f)) {
 										atmosphere_effect->SetCloudShadowStepMultiplier(s_step);
 										cfg.SetFloat("cloud_shadow_step_multiplier", s_step);
 										changed_atm = true;
@@ -670,7 +670,7 @@ namespace Boidsish {
 									}
 
 									float extinction = atmosphere_effect->GetCloudExtinction();
-									if (ImGui::SliderFloat("Extinction Scale", &extinction, 0.001f, 0.1f, "%.3f")) {
+									if (ImGui::SliderFloat("Extinction Scale", &extinction, 0.001f, 1.0f, "%.3f")) {
 										atmosphere_effect->SetCloudExtinction(extinction);
 										changed_atm = true;
 									}
