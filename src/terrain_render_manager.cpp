@@ -12,6 +12,7 @@
 #include "profiler.h"
 #include "service_locator.h"
 #include "shader.h"
+#include "terrain_generator.h"
 
 namespace Boidsish {
 
@@ -20,8 +21,18 @@ namespace Boidsish {
 		glm::vec4  terrain_params; // chunk_size, world_scale, unused, unused
 	};
 
-	TerrainRenderManager::TerrainRenderManager(ServiceLocator& /*loc*/, int chunk_size, int max_chunks):
-		chunk_size_(chunk_size), max_chunks_(max_chunks), heightmap_resolution_(chunk_size + 1) {
+	struct alignas(16) GPUDeformation {
+		glm::vec3 center;
+		int       type; // 0=Crater, 1=FlattenSquare, 2=Akira
+		glm::vec3 dimensions;
+		float     intensity;
+		glm::vec4 parameters;
+		uint32_t  seed;
+		int       _pad[3];
+	};
+
+	TerrainRenderManager::TerrainRenderManager(ServiceLocator& loc, int chunk_size, int max_chunks):
+		chunk_size_(chunk_size), max_chunks_(max_chunks), heightmap_resolution_(chunk_size + 1), service_locator_(loc) {
 		// Create Biome UBO
 		glGenBuffers(1, &biome_ubo_);
 		glBindBuffer(GL_UNIFORM_BUFFER, biome_ubo_);
@@ -96,6 +107,17 @@ namespace Boidsish {
 		glGenBuffers(1, &bake_ssbo_);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, bake_ssbo_);
 		glBufferData(GL_SHADER_STORAGE_BUFFER, 1024 * sizeof(BakeTask), nullptr, GL_DYNAMIC_DRAW);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+
+		// Create Deformations SSBO
+		glGenBuffers(1, &deformations_ssbo_);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, deformations_ssbo_);
+		glBufferData(
+			GL_SHADER_STORAGE_BUFFER,
+			sizeof(int) * 4 + 1024 * sizeof(GPUDeformation),
+			nullptr,
+			GL_DYNAMIC_DRAW
+		);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
 		// Patch SSBOs
@@ -191,6 +213,8 @@ namespace Boidsish {
 			glDeleteBuffers(1, &probe_ssbo_);
 		if (bake_ssbo_)
 			glDeleteBuffers(1, &bake_ssbo_);
+		if (deformations_ssbo_)
+			glDeleteBuffers(1, &deformations_ssbo_);
 		if (patch_metrics_ssbo_)
 			glDeleteBuffers(1, &patch_metrics_ssbo_);
 		if (patch_visibility_ssbo_)
@@ -397,6 +421,9 @@ namespace Boidsish {
 		const std::vector<float>&  packed_height_normal,
 		const std::vector<uint8_t>& packed_biomes
 	) {
+		if (packed_height_normal.empty() || packed_biomes.empty()) {
+			return; // Generated on the GPU
+		}
 		glBindTexture(GL_TEXTURE_2D_ARRAY, raw_heightmap_texture_);
 		glTexSubImage3D(
 			GL_TEXTURE_2D_ARRAY,
@@ -516,6 +543,13 @@ namespace Boidsish {
 		// Update world scale tracking
 		last_world_scale_ = world_scale;
 
+		float local_min_y = min_y;
+		float local_max_y = max_y;
+		if (packed_height_normal.empty()) {
+			local_min_y = -50.0f * world_scale;
+			local_max_y = 300.0f * world_scale;
+		}
+
 		// Scoped lock - released before calling eviction callback to avoid deadlock
 		{
 			std::lock_guard<std::recursive_mutex> lock(mutex_);
@@ -525,9 +559,9 @@ namespace Boidsish {
 			if (it != chunks_.end()) {
 				// Update existing chunk's heightmap
 				UploadHeightmapSlice(it->second.texture_slice, packed_height_normal, packed_biomes);
-				InitializeSliceData(it->second.texture_slice, min_y, max_y, patch_metrics);
-				it->second.min_y = min_y;
-				it->second.max_y = max_y;
+				InitializeSliceData(it->second.texture_slice, local_min_y, local_max_y, patch_metrics);
+				it->second.min_y = local_min_y;
+				it->second.max_y = local_max_y;
 				it->second.update_count++;
 				grid_dirty_ = true;
 		needs_prep_ = true;
@@ -598,7 +632,7 @@ namespace Boidsish {
 
 			// Upload heightmap data
 			UploadHeightmapSlice(slice, packed_height_normal, packed_biomes);
-			InitializeSliceData(slice, min_y, max_y, patch_metrics);
+			InitializeSliceData(slice, local_min_y, local_max_y, patch_metrics);
 
 			// Queue for baking
 			bake_queue_.push_back({glm::ivec2(chunk_key.first, chunk_key.second), slice, 0});
@@ -606,8 +640,8 @@ namespace Boidsish {
 			// Store chunk info
 			ChunkInfo info{};
 			info.texture_slice = slice;
-			info.min_y = min_y;
-			info.max_y = max_y;
+			info.min_y = local_min_y;
+			info.max_y = local_max_y;
 			info.world_offset = glm::vec2(world_offset.x, world_offset.z);
 
 			chunks_[chunk_key] = info;
@@ -1418,6 +1452,14 @@ namespace Boidsish {
 		// Update horizon map for these chunks
 		UpdateHorizonMap(tasks);
 
+		// Store completed bakes
+		{
+			std::lock_guard<std::recursive_mutex> lock(mutex_);
+			for (const auto& task : tasks) {
+				completed_bakes_.push_back({task.chunk_coord.x, task.chunk_coord.y});
+			}
+		}
+
 		// Synchronize to ensure initial loads are fully baked before rendering
 		if (force_sync) {
 			glFinish();
@@ -1432,6 +1474,22 @@ namespace Boidsish {
 	size_t TerrainRenderManager::GetVisibleChunkCount() const {
 		std::lock_guard<std::recursive_mutex> lock(mutex_);
 		return visible_instances_.size();
+	}
+
+	std::vector<std::pair<int, int>> TerrainRenderManager::PopCompletedBakes() {
+		std::lock_guard<std::recursive_mutex> lock(mutex_);
+		std::vector<std::pair<int, int>> result = std::move(completed_bakes_);
+		completed_bakes_.clear();
+		return result;
+	}
+
+	int TerrainRenderManager::GetChunkSlice(std::pair<int, int> chunk_key) const {
+		std::lock_guard<std::recursive_mutex> lock(mutex_);
+		auto it = chunks_.find(chunk_key);
+		if (it != chunks_.end()) {
+			return it->second.texture_slice;
+		}
+		return -1;
 	}
 
 	std::vector<glm::vec4> TerrainRenderManager::GetChunkInfo(float world_scale) const {

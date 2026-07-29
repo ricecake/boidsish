@@ -114,7 +114,8 @@ namespace Boidsish {
 				LightsBuffer = 52,
 				ClusterGridBuffer = 53,
 				SpaceProbe = 54,
-				CdlGradingLayers = 55
+				CdlGradingLayers = 55,
+				TerrainDeformations = 56
 			};
 		} // namespace Bindings
 
@@ -515,6 +516,10 @@ namespace Boidsish {
 
 			consteval int CdlGradingLayers() {
 				return std::to_underlying(Constants::Bindings::Ssbo::CdlGradingLayers);
+			}
+
+			consteval int TerrainDeformations() {
+				return std::to_underlying(Constants::Bindings::Ssbo::TerrainDeformations);
 			}
 		} // namespace SsboBinding
 
