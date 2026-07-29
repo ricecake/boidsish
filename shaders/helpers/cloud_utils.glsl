@@ -566,14 +566,11 @@ float calculateCloudShadowFactor(vec3 frag_pos, vec3 L, float intensity) {
 
 	float d3d = getCloud3DSDF(cloudPos, weather, layer, props.worldScale);
 
-	// Sharpness of the cloud edge in meters, scaled by cloudShadowStepMultiplier
-	float penumbra = 100.0 * worldScale * max(0.1, cloudShadowStepMultiplier);
-
-	// Beer's law approximation for the shadow density
-	// We multiply by a factor to make the shadow more prominent
-	// And apply a slant factor for longer paths at oblique angles
+	// Beer's law approximation for the shadow density using 3D cloud coverage/density [0.0, 1.0].
+	// Adjust contrast/sharpness of the cloud shadow edge using cloudShadowStepMultiplier,
+	// and apply a slant factor for longer paths at oblique angles.
 	float slant = 1.0 / max(0.01, L.y);
-	float shadowDepth = max(0.0, -d3d / penumbra) * slant;
+	float shadowDepth = (d3d / max(0.1, cloudShadowStepMultiplier)) * slant * 4.0;
 	float shadowTerm = exp(-shadowDepth * 8.0 * cloudShadowOpticalDepthMultiplier);
 
 	return mix(1.0, shadowTerm, intensity);
@@ -592,9 +589,7 @@ float evaluateCloudShadowDensityAtWorldPos(vec2 worldXZ, float time) {
 	CloudLayer layer = computeCloudLayer(weather, props);
 
 	float d3d = getCloud3DSDF(basePos, weather, layer, props.worldScale);
-	float penumbra = 100.0 * worldScale;
-	return max(0.0, -d3d / penumbra) * 4.0;
-	// return calculateCloudDensityExpV8(basePos, weather, layer, props, time, true).x;
+	return d3d * 4.0;
 }
 
 /**
@@ -622,9 +617,9 @@ float calculateCloudAmbientOcclusion(vec3 frag_pos) {
 
 	float d3d = getCloud3DSDF(cloudPos, weather, layer, props.worldScale);
 
-	// Soft penumbra/transition for local occlusion
-	float penumbra = 500.0 * worldScale * max(0.1, cloudShadowStepMultiplier);
-	float occlusionDepth = max(0.0, -d3d / penumbra);
+	// Soft transition/penumbra for local occlusion based on 3D cloud coverage/density [0.0, 1.0].
+	// Multiplied by 0.8 to preserve the 5x softer ratio compared to direct shadows (4.0 / 5.0 = 0.8).
+	float occlusionDepth = (d3d / max(0.1, cloudShadowStepMultiplier)) * 0.8;
 
 	// Dampen the ambient factor based on cloud shadow intensity
 	float cloudAO = exp(-occlusionDepth * 2.0 * cloudShadowOpticalDepthMultiplier);
