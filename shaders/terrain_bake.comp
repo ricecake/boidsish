@@ -10,7 +10,7 @@ layout(std140, binding = [[TERRAIN_DATA_BINDING]]) uniform TerrainData {
 	vec4  u_terrainParams; // x=chunkSize, y=worldScale
 };
 
-// Input: Raw heightmap (R=height, GBA=normal)
+// Input: Raw heightmap (R=height, GBA=normal) [Kept for binding compatibility, not sampled]
 layout(binding = [[RAW_HEIGHTMAP_BINDING]]) uniform sampler2DArray u_rawHeightmapArray;
 // Input: Chunk grid for neighbor lookups
 layout(binding = [[TERRAIN_CHUNK_GRID_BINDING]]) uniform sampler2D u_chunkGrid;
@@ -41,6 +41,424 @@ uniform int u_numTasks;
 #include "helpers/terrain_noise.glsl"
 #include "helpers/fast_noise.glsl"
 
+// --- GPU Terrain Deformation System ---
+struct GPUDeformation {
+    vec3  center;
+    int   type; // 0=Crater, 1=FlattenSquare, 2=Akira
+    vec3  dimensions; // Crater: x=radius, y=depth, z=rim_width. FlattenSquare: x=half_width, y=half_depth, z=blend_distance. Akira: x=radius, y=sphere_radius, z=depth
+    float intensity;
+    vec4  parameters; // Crater: x=irregularity, y=rim_height. FlattenSquare: x=rotation_y
+    uint  seed;
+    int   _pad[3];
+};
+
+layout(std430, binding = [[TERRAIN_DEFORMATIONS_BINDING]]) readonly buffer TerrainDeformations {
+    int            u_numDeformations;
+    int            _padDeforms[3];
+    GPUDeformation u_deformations[];
+};
+
+float getIrregularityOffsetGPU(float angle, float irregularity, float radius, uint seed) {
+    if (irregularity <= 0.0) return 0.0;
+    // Periodic noise using sine waves with pseudo-random frequencies based on seed
+    float n = sin(angle * 3.0 + float(seed) * 0.1) * 0.3 +
+              sin(angle * 7.0 + float(seed) * 0.2) * 0.2 +
+              sin(angle * 13.0 - float(seed) * 0.3) * 0.1;
+    return n * irregularity * radius * 0.3;
+}
+
+float queryDeformationsGPU(float x, float z, float current_height) {
+    float height = current_height;
+
+    for (int idx = 0; idx < u_numDeformations; idx++) {
+        GPUDeformation d = u_deformations[idx];
+
+        if (d.type == 0) { // Crater
+            float dx = x - d.center.x;
+            float dz = z - d.center.z;
+            float dist = sqrt(dx * dx + dz * dz);
+
+            float angle = atan(dz, dx);
+            float irregularity_offset = getIrregularityOffsetGPU(angle, d.parameters.x, d.dimensions.x, d.seed);
+            float effective_radius = d.dimensions.x + irregularity_offset;
+            if (effective_radius <= 0.0) effective_radius = 0.1;
+
+            float max_radius = effective_radius + d.dimensions.z;
+            if (dist <= max_radius) {
+                float normalized_dist = dist / effective_radius;
+
+                // Bowl shape using cosine falloff
+                float height_delta = 0.0;
+                if (normalized_dist <= 1.0) {
+                    float profile = 0.5 * (1.0 - cos(normalized_dist * 3.14159265));
+                    height_delta = -d.dimensions.y * (1.0 - profile);
+                }
+
+                // Rim raised edge just outside crater
+                if (d.parameters.y > 0.0 && normalized_dist > 0.8) {
+                    float rim_start = 0.8;
+                    float rim_end = 1.0 + d.dimensions.z / d.dimensions.x;
+                    float rim_center = 1.0;
+
+                    if (normalized_dist <= rim_center) {
+                        float t = (normalized_dist - rim_start) / (rim_center - rim_start);
+                        height_delta += d.parameters.y * sin(t * 3.14159265 * 0.5);
+                    } else if (normalized_dist <= rim_end) {
+                        float t = (normalized_dist - rim_center) / (rim_end - rim_center);
+                        height_delta += d.parameters.y * cos(t * 3.14159265 * 0.5);
+                    }
+                }
+
+                // Apply blend weight
+                float blend_norm_dist = dist / max_radius;
+                float blend_weight = 1.0 - pow(blend_norm_dist, 2.0);
+
+                height += height_delta * blend_weight * d.intensity;
+            }
+        }
+        else if (d.type == 1) { // FlattenSquare
+            float dx = x - d.center.x;
+            float dz = z - d.center.z;
+
+            float cos_rot = cos(d.parameters.x);
+            float sin_rot = sin(d.parameters.x);
+            float local_x = dx * cos_rot + dz * sin_rot;
+            float local_z = -dx * sin_rot + dz * cos_rot;
+
+            float half_w = d.dimensions.x;
+            float half_d = d.dimensions.y;
+            float blend_dist = d.dimensions.z;
+
+            float blend = 0.0;
+            if (blend_dist <= 0.0) {
+                if (abs(local_x) <= half_w && abs(local_z) <= half_d) {
+                    blend = 1.0;
+                }
+            } else {
+                float dist_x = max(0.0, abs(local_x) - half_w);
+                float dist_z = max(0.0, abs(local_z) - half_d);
+
+                if (dist_x <= blend_dist && dist_z <= blend_dist) {
+                    float blend_x = 1.0 - (dist_x / blend_dist);
+                    float blend_z = 1.0 - (dist_z / blend_dist);
+
+                    float b_x = blend_x * blend_x * (3.0 - 2.0 * blend_x);
+                    float b_z = blend_z * blend_z * (3.0 - 2.0 * blend_z);
+                    blend = b_x * b_z;
+                }
+            }
+
+            if (blend > 0.0) {
+                float height_diff = d.center.y - height;
+                height += height_diff * blend * d.intensity;
+            }
+        }
+        else if (d.type == 2) { // Akira
+            float dx = x - d.center.x;
+            float dz = z - d.center.z;
+            float dist_sq = dx * dx + dz * dz;
+            float radius = d.dimensions.x;
+            float sphere_radius = d.dimensions.y;
+
+            if (dist_sq <= radius * radius) {
+                float yc = d.center.y + sphere_radius / 3.0;
+                float sphere_y = yc - sqrt(max(0.0, sphere_radius * sphere_radius - dist_sq));
+                float height_delta = sphere_y - d.center.y;
+                height += height_delta * d.intensity;
+            }
+        }
+    }
+
+    return height;
+}
+
+// --- GPU Procedural Terrain Generation ---
+struct BiomeAttributes {
+    float spikeDamping;
+    float detailMasking;
+    float floorLevel;
+    float weight;
+    vec3  albedo;
+    float roughness;
+    float metallic;
+    float detailStrength;
+    float detailScale;
+    float noiseType;
+};
+
+const BiomeAttributes kBiomes[8] = BiomeAttributes[8](
+    BiomeAttributes(1.00, 0.90,  5.00,  2.0, vec3(0.76, 0.70, 0.55), 0.90, 0.0, 0.10, 40.0, 1.0), // Sand
+    BiomeAttributes(0.80, 0.50, 20.00, 10.0, vec3(0.20, 0.45, 0.15), 0.70, 0.0, 0.20, 20.0, 2.0), // Lush Grass
+    BiomeAttributes(0.05, 0.60, 40.00,  5.0, vec3(0.45, 0.50, 0.25), 0.80, 0.0, 0.15, 15.0, 2.0), // Dry Grass
+    BiomeAttributes(0.30, 0.50, 60.00, 15.0, vec3(0.12, 0.28, 0.10), 0.85, 0.0, 0.30, 10.0, 2.0), // Forest
+    BiomeAttributes(0.40, 0.40, 80.00,  9.0, vec3(0.35, 0.45, 0.25), 0.80, 0.0, 0.25, 15.0, 2.0), // Alpine Meadow
+    BiomeAttributes(0.30, 0.20, 100.0,  5.0, vec3(0.35, 0.30, 0.25), 0.60, 0.0, 0.50,  5.0, 3.0), // Brown Rock
+    BiomeAttributes(0.10, 0.10, 150.0,  3.0, vec3(0.45, 0.45, 0.48), 0.60, 0.0, 0.40,  4.0, 3.0), // Grey Rock
+    BiomeAttributes(0.05, 0.50, 250.0,  2.0, vec3(0.95, 0.97, 1.00), 0.40, 0.0, 0.05, 30.0, 0.0)  // Snow
+);
+
+vec3 dnoise2D(vec2 p) {
+    float h = snoise(p);
+    float eps = 0.001;
+    float h_x = snoise(p + vec2(eps, 0.0));
+    float h_y = snoise(p + vec2(0.0, eps));
+    float dx = (h_x - h) / eps;
+    float dy = (h_y - h) / eps;
+    return vec3(h, dx, dy);
+}
+
+vec3 dfBm2D(vec2 p, int octaves, float lacunarity, float gain) {
+    vec3 sum = vec3(0.0);
+    float freq = 1.0;
+    float amp = 0.5;
+    for (int i = 0; i < octaves; i++) {
+        vec3 n = dnoise2D(p * freq);
+        sum += n * amp;
+        freq *= lacunarity;
+        amp *= gain;
+    }
+    return sum;
+}
+
+float fBm2D(vec2 v, int octaves, float lacunarity, float gain) {
+    float sum = 0.0;
+    float freq = 1.0;
+    float amp = 0.5;
+    for (int i = 0; i < octaves; i++) {
+        sum += snoise(v * freq) * amp;
+        freq *= lacunarity;
+        amp *= gain;
+    }
+    return sum;
+}
+
+float iqfBm(vec2 v, int octaves, float lacunarity, float gain) {
+    float sum = 0.0;
+    float amp = 0.5;
+    float dx = 0.0;
+    float dy = 0.0;
+    float freq = 1.0;
+    for (int i = 0; i < octaves; i++) {
+        vec3 d = dnoise2D(v * freq);
+        dx += d.y;
+        dy += d.y; // Match CPU exact typo
+        sum += amp * d.x / (1.0 + dx*dx + dy*dy);
+        freq *= lacunarity;
+        amp *= gain;
+    }
+    return sum;
+}
+
+float flowNoise(vec2 v, float angle) {
+    float cos_a = cos(angle);
+    float sin_a = sin(angle);
+    vec2 rotated = vec2(v.x * cos_a - v.y * sin_a, v.x * sin_a + v.y * cos_a);
+    return snoise(rotated);
+}
+
+vec2 worleyNoiseWithId2D(vec2 v) {
+    vec2 p = floor(v);
+    vec2 f = fract(v);
+    float resSq = 8.0;
+    float id = 0.0;
+    for (int j = -1; j <= 1; j++) {
+        for (int i = -1; i <= 1; i++) {
+            vec2 b = vec2(float(i), float(j));
+            float noiseVal = snoise(p + b) * 0.5 + 0.5;
+            vec2 r = b - f + noiseVal;
+            float dSq = dot(r, r);
+            if (dSq < resSq) {
+                resSq = dSq;
+                id = noiseVal;
+            }
+        }
+    }
+    return vec2(sqrt(resSq), id);
+}
+
+float worleyNoise2D(vec2 v) {
+    return worleyNoiseWithId2D(v).x;
+}
+
+float worleyfBm2D(vec2 v, int octaves, float lacunarity, float gain) {
+    float sum = 0.0;
+    float freq = 1.0;
+    float amp = 0.5;
+    for (int i = 0; i < octaves; i++) {
+        float n = worleyNoise2D(v * freq);
+        sum += n * amp;
+        freq *= lacunarity;
+        amp *= gain;
+    }
+    return sum;
+}
+
+float ridgedMF2D(vec2 v, float ridgeOffset, int octaves, float lacunarity, float gain) {
+    float sum = 0.0;
+    float freq = 1.0;
+    float amp = 0.5;
+    float prev = 1.0;
+    for (int i = 0; i < octaves; i++) {
+        float n = ridgeOffset - abs(snoise(v * freq));
+        n = n * n;
+        sum += n * amp * prev;
+        prev = n;
+        freq *= lacunarity;
+        amp *= gain;
+    }
+    return sum;
+}
+
+vec3 getPathDataFlat(vec2 pos) {
+    const float kPathFrequency = 0.005;
+    return dnoise2D(pos * kPathFrequency);
+}
+
+vec3 getPathInfluence(float x, float z) {
+    vec3 noiseVal = getPathDataFlat(vec2(x, z));
+    float distance_from_spine = abs(noiseVal.x);
+    const float corridor_width = 0.25;
+    float path_factor = smoothstep(0.0, corridor_width, distance_from_spine);
+    return vec3(path_factor, noiseVal.y, noiseVal.z);
+}
+
+void GetBiomeIndicesAndWeights(float control_value, out int low_idx, out float t) {
+    const float cdf[8] = float[8](2.0, 12.0, 17.0, 32.0, 41.0, 46.0, 49.0, 51.0);
+    const float totalWeight = 51.0;
+    float target = clamp(control_value, 0.0, 1.0) * totalWeight;
+    int high_idx = 0;
+    for (int i = 0; i < 8; i++) {
+        if (cdf[i] > target) {
+            high_idx = i;
+            break;
+        }
+    }
+    high_idx = min(high_idx, 7);
+    low_idx = max(0, high_idx - 1);
+    float weight_high = cdf[high_idx];
+    float weight_low = (high_idx == 0) ? 0.0 : cdf[high_idx - 1];
+    float segment_width = weight_high - weight_low;
+    t = (segment_width > 0.0001) ? (target - weight_low) / segment_width : 0.0;
+}
+
+BiomeAttributes ApplyWeightedBiome(float control_value) {
+    int low_idx;
+    float t;
+    GetBiomeIndicesAndWeights(control_value, low_idx, t);
+    int high_idx = min(low_idx + 1, 7);
+    BiomeAttributes low_item = kBiomes[low_idx];
+    BiomeAttributes high_item = kBiomes[high_idx];
+    BiomeAttributes current;
+    current.spikeDamping = mix(low_item.spikeDamping, high_item.spikeDamping, t);
+    current.detailMasking = mix(low_item.detailMasking, high_item.detailMasking, t);
+    current.floorLevel = mix(low_item.floorLevel, high_item.floorLevel, t);
+    current.noiseType = (t < 0.5) ? low_item.noiseType : high_item.noiseType;
+    return current;
+}
+
+vec3 biomefbm(vec2 pos, BiomeAttributes attr) {
+    vec3 height = vec3(0.0);
+    float amp = 0.5;
+    float freq = 0.99;
+
+    vec3 base = dfBm2D(pos * freq, 4, 2.0, 0.5);
+    base.y *= freq;
+    base.z *= freq;
+    height = base * amp;
+
+    for (int i = 1; i < 6; i++) {
+        amp *= 0.5;
+        freq *= 2.0;
+        vec3 n = dfBm2D(pos * freq, 4, 2.0, 0.5);
+        n.y *= freq;
+        n.z *= freq;
+
+        float slope = length(n.yz);
+        float correction = 1.0 / (1.0 + slope * attr.spikeDamping);
+
+        float mask = mix(1.0 - attr.detailMasking, 1.0, height.x);
+        height += (n * amp * correction * mask);
+    }
+
+    if (height.x < attr.floorLevel) {
+        float t = smoothstep(attr.floorLevel - 0.1, attr.floorLevel, height.x);
+        height.x = t * attr.floorLevel;
+        height.y *= t;
+        height.z *= t;
+    }
+
+    height.x = height.x * 0.5 + 0.5;
+    height.y *= 0.5;
+    height.z *= 0.5;
+
+    if (height.x > 0.0) {
+        float floorScale = attr.floorLevel;
+        height.x *= floorScale;
+        height.y *= floorScale;
+        height.z *= floorScale;
+    }
+
+    return height;
+}
+
+struct PointData {
+    vec3 height_data;
+    float control_value;
+    float path_factor;
+};
+
+PointData pointGenerateAll(float x, float z, float worldScale) {
+    float sx = x / worldScale;
+    float sz = z / worldScale;
+
+    vec3 path_influence = getPathInfluence(sx * 0.07, sz * 0.25);
+    float path_factor = path_influence.x;
+
+    vec2 push_dir = vec2(0.0);
+    float path_grad_len = length(path_influence.yz);
+    if (path_grad_len > 0.0001) {
+        push_dir = path_influence.yz / path_grad_len;
+    }
+
+    const float warp_strength_const = 15.0;
+    float warp_strength = (1.0 - path_factor) * warp_strength_const;
+    vec2 warp = push_dir * warp_strength;
+
+    vec2 warped_pos = vec2(sx, sz) + warp;
+
+    const float control_noise_scale_const = 0.001;
+    vec2 biome_pos = warped_pos * control_noise_scale_const;
+    biome_pos *= 0.5;
+
+    float control_value_rough = snoise(biome_pos + curlNoise2D(biome_pos)) * 0.5 + 0.5;
+    float control_value_smooth = flowNoise(biome_pos + fBm2D(biome_pos, 4, 2.0, 0.5), atan(biome_pos.y, biome_pos.x)) * 0.5 + 0.5;
+    float control_value_round = worleyNoise2D(biome_pos + ridgedMF2D(biome_pos, 1.0, 4, 2.0, 0.5)) * 0.5 + 0.5;
+
+    float control_value = mix(control_value_rough, control_value_smooth, fBm2D(biome_pos, 4, 2.0, 0.5) * 0.5 + 0.5);
+    control_value = min(1.0 - control_value_round, control_value);
+
+    if (isnan(control_value) || isinf(control_value)) {
+        control_value = 0.0;
+    }
+
+    control_value = mix(0.0, control_value, path_factor);
+
+    BiomeAttributes current = ApplyWeightedBiome(control_value);
+
+    vec3 terrain_height = 2.5 * (1.0 + worleyfBm2D(biome_pos, 4, 2.0, 0.5)) * biomefbm(warped_pos * 0.25, current);
+
+    float path_floor_level = -0.10;
+    terrain_height.x = mix(path_floor_level, terrain_height.x, path_factor);
+
+    terrain_height.x *= worldScale;
+
+    PointData pd;
+    pd.height_data = terrain_height;
+    pd.control_value = control_value;
+    pd.path_factor = path_factor;
+    return pd;
+}
+
 // Shared memory for height and params to allow neighbor sampling for normals
 // Group size 8x8 + 1 pixel border = 10x10
 const int WORKGROUP_SIZE = 8;
@@ -49,16 +467,28 @@ shared float s_heights[SHARED_SIZE][SHARED_SIZE];
 shared vec3  s_displacements[SHARED_SIZE][SHARED_SIZE];
 shared vec4  s_params[SHARED_SIZE][SHARED_SIZE];
 
-float calculateHeightAndParams(vec2 uv, int slice, vec3 worldOffset, float chunkSize, float rawChunkSize, float worldScale, out vec4 params, out vec4 displacement) {
-	vec2  remappedUV = (uv * rawChunkSize + 0.5) / (rawChunkSize + 1.0);
-	vec4  data = textureLod(u_rawHeightmapArray, vec3(remappedUV, float(slice)), 0.0);
-	float height = data.r;
-	vec3  rawNormal = normalize(data.gba);
+float calculateHeightAndParams(vec2 uv, int slice, vec2 worldOffset, float chunkSize, float rawChunkSize, float worldScale, out vec4 params, out vec4 displacement) {
+	float worldX = worldOffset.x + uv.x * chunkSize;
+	float worldZ = worldOffset.y + uv.y * chunkSize;
+
+	PointData generated = pointGenerateAll(worldX, worldZ, worldScale);
+	float height = generated.height_data.x;
+
+	height = queryDeformationsGPU(worldX, worldZ, height);
+
+	float eps = worldScale;
+	float h_L = queryDeformationsGPU(worldX - eps, worldZ, pointGenerateAll(worldX - eps, worldZ, worldScale).height_data.x);
+	float h_R = queryDeformationsGPU(worldX + eps, worldZ, pointGenerateAll(worldX + eps, worldZ, worldScale).height_data.x);
+	float h_D = queryDeformationsGPU(worldX, worldZ - eps, pointGenerateAll(worldX, worldZ - eps, worldScale).height_data.x);
+	float h_U = queryDeformationsGPU(worldX, worldZ + eps, pointGenerateAll(worldX, worldZ + eps, worldScale).height_data.x);
+	float dx = (h_R - h_L) / (2.0 * eps);
+	float dz = (h_U - h_D) / (2.0 * eps);
+	vec3 rawNormal = normalize(vec3(-dx, 1.0, -dz));
 
 	vec3 worldPos;
-	worldPos.x = worldOffset.x + uv.x * chunkSize;
+	worldPos.x = worldX;
 	worldPos.y = height;
-	worldPos.z = worldOffset.y + uv.y * chunkSize;
+	worldPos.z = worldZ;
 
 	float ridgeMapOutput = 0.0;
 	float substrateOutput = 0.0;
@@ -114,42 +544,33 @@ float calculateHeightAndParams(vec2 uv, int slice, vec3 worldOffset, float chunk
 		float rocks = rockWID.x;
 		float rockId = rockWID.y;
 
-		// Use Worley Cell ID to give each rock a slightly different height/properties
 		float rockHeightVar = rockId * 0.5 + 1.75;
 		float shapedRocks = pow(rocks, 0.5) * rockHeightVar;
 
 		float random = 0.5+0.5*(fastWorley3d(worldPosScaled / 50.0) * fastBlueNoise(worldPos.zx * 0.005) * (1.0-smoothstep(1.0, 10.0, currentHeight)) * smoothstep(0.01, 1.0, currentHeight));
 
-		// Substrate modulation
 		float substrateMod = mix(1.2, 0.4, clamp(substrateOutput * 0.5 + 0.5, 0.0, 1.0));
 		float dispMag = (1.75 * random + shapedRocks * 1.5 - abs(divots) * 1.17) * substrateMod;
 
-		// Intermittent jagged rock outcrops
 		vec2 outcropWID = fastWorley3dID(worldPos * 0.05);
 		float outcropNoise = outcropWID.x;
 		float outcropId = outcropWID.y;
 		float outcropMask = smoothstep(0.7, 0.9, outcropNoise);
 		if (outcropMask > 0.0) {
 			float jagged = fastWorley3d(worldPos * 0.8) * 20.0;
-			// Use outcropId to vary outcrop height
 			dispMag += jagged * outcropMask * (5.0 + outcropId * 3.0) * worldScale;
-			// Biome override: if it's a rock outcrop, use rock biome (let's say index 6 for rocky)
 			displacement.a = 6.0 / 255.0;
 		}
 
 		displacement.xyz = currentNormal * dispMag;
 
 		if (outcropMask > 0.0) {
-			// 1. Columnar/Blocky vertical details with sharp edges
 			vec2 worleyIdData = fastWorley3dID(worldPos * 0.2);
 			float blockyHeight = (worleyIdData.y * 2.0 - 1.0) * 4.0 * worldScale;
 
-			// 2. Stratified Overhangs (horizontal displacement)
-			// Create layers based on height, only push out where we are already somewhat steep
 			float layers = sin(worldPos.y * 1.5) * 0.5 + 0.5;
 			float overhangMag = pow(layers, 4.0) * 3.0 * worldScale;
 
-			// Horizontal direction for overhangs - follow the normal but flattened
 			vec3 horizDir = normalize(vec3(currentNormal.x, 0.0, currentNormal.z) + vec3(0.001, 0, 0.001));
 
 			float jagged = fastWorley3d(worldPos * 0.8) * 2.0;
@@ -161,7 +582,6 @@ float calculateHeightAndParams(vec2 uv, int slice, vec3 worldOffset, float chunk
 
 			displacement.xyz += outcropDisp * outcropMask;
 
-			// Biome override: if it's a rock outcrop, use rock biome (index 6)
 			displacement.a = 6.0 / 255.0;
 		}
 	}
@@ -182,12 +602,9 @@ void main() {
 
 	int res = int(rawChunkSize) + 1;
 
-	// Each thread processes one main pixel + potentially some border pixels for the shared cache
 	ivec2 baseCoord = ivec2(gl_WorkGroupID.xy) * WORKGROUP_SIZE;
 	ivec2 localID = ivec2(gl_LocalInvocationID.xy);
 
-	// Load area into shared memory (inner + border)
-	// We use a 2-pixel border to allow for more stable normal calculation after displacement
 	for (int i = localID.x; i < SHARED_SIZE; i += WORKGROUP_SIZE) {
 		for (int j = localID.y; j < SHARED_SIZE; j += WORKGROUP_SIZE) {
 			ivec2 pixelCoord = baseCoord + ivec2(i, j) - 2;
@@ -196,7 +613,6 @@ void main() {
 			ivec2 targetChunkCoord = task.chunk_coord;
 			ivec2 targetPixelCoord = pixelCoord;
 
-			// Boundary lookup: if pixel is outside current chunk, look up neighbor in chunk grid
 			if (pixelCoord.x < 0 || pixelCoord.x >= res || pixelCoord.y < 0 || pixelCoord.y >= res) {
 				ivec2 chunkOffset = ivec2(0);
 				if (pixelCoord.x < 0) chunkOffset.x = -1;
@@ -216,8 +632,6 @@ void main() {
 					targetChunkCoord = neighborChunkCoord;
 					targetPixelCoord = (pixelCoord + ivec2(res-1)) % (res-1);
 				} else {
-					// Neighbor not available, clamp to current chunk edge to avoid wrapping spikes
-					// targetSlice remains current slice, targetChunkCoord remains current chunk
 					targetPixelCoord = clamp(pixelCoord, 0, res - 1);
 				}
 			}
@@ -227,7 +641,7 @@ void main() {
 
 			vec4 params;
 			vec4 disp;
-			s_heights[i][j] = calculateHeightAndParams(uv, targetSlice, targetWorldOffset, chunkSize, rawChunkSize, worldScale, params, disp);
+			s_heights[i][j] = calculateHeightAndParams(uv, targetSlice, targetWorldOffset.xz, chunkSize, rawChunkSize, worldScale, params, disp);
 			s_displacements[i][j] = disp.xyz;
 			s_params[i][j] = params;
 		}
@@ -239,10 +653,8 @@ void main() {
 	if (pixelCoord.x >= res || pixelCoord.y >= res)
 		return;
 
-	// Center point with displacement applied for normal calculation
 	vec3 pC = vec3(0, s_heights[localID.x + 2][localID.y + 2], 0) + s_displacements[localID.x + 2][localID.y + 2];
 
-	// Neighbors (1 pixel apart)
 	float stepSize = worldScale;
 	vec3 pL = vec3(-stepSize, s_heights[localID.x + 1][localID.y + 2], 0) + s_displacements[localID.x + 1][localID.y + 2];
 	vec3 pR = vec3(stepSize,  s_heights[localID.x + 3][localID.y + 2], 0) + s_displacements[localID.x + 3][localID.y + 2];
@@ -257,8 +669,6 @@ void main() {
 	vec4 bakedParams = s_params[localID.x + 2][localID.y + 2];
 	vec3 bakedDisplacement = s_displacements[localID.x + 2][localID.y + 2];
 
-	// --- VARIANCE CALCULATION ---
-	// Variance is calculated in a 3x3 neighborhood using shared memory.
 	float centerV = 0.0;
 	float sumNeighbors = 0.0;
 	float numNeighbors = 0.0;
@@ -269,7 +679,6 @@ void main() {
 			vec3 d = s_displacements[localID.x + ni][localID.y + nj];
 			float v = h + length(d);
 
-			// Assuming your center pixel in this 3x3 is at ni=2, nj=2
 			if (ni == 2 && nj == 2) {
 				centerV = v;
 			} else {
@@ -280,31 +689,21 @@ void main() {
 	}
 
 	float avgNeighbors = sumNeighbors / numNeighbors;
-
-	// 'deviation' is the literal, physical error (in world-space units)
-	// that would occur if we rendered this area as a single flat polygon.
 	float deviation = abs(centerV - avgNeighbors);
-
-	// Do NOT clamp to 0.0 - 1.0. Just store the raw physical deviation.
 	bakedParams.a = deviation;
 
-	// Sample biome to preserve override if not set by outcrop
-	vec4 biomeData = imageLoad(u_biomeMap, ivec3(pixelCoord, slice));
-
-	// If calculateHeightAndParams set an override (e.g. for outcrops), use it
+	// Populate biome details
 	vec2 uvCenter = vec2(pixelCoord) / rawChunkSize;
-	vec4 paramsCenter;
-	vec4 dispCenter;
-	calculateHeightAndParams(uvCenter, slice, vec3(worldOffset, 0.0), chunkSize, rawChunkSize, worldScale, paramsCenter, dispCenter);
+	PointData genCenter = pointGenerateAll(worldOffset.x + uvCenter.x * chunkSize, worldOffset.y + uvCenter.y * chunkSize, worldScale);
+	int low_idx;
+	float t;
+	GetBiomeIndicesAndWeights(genCenter.control_value, low_idx, t);
+
+	vec4 biomeData = vec4(float(low_idx) / 255.0, t, 1.0, bakedParams.w);
 
 	imageStore(u_heightmapArray, ivec3(pixelCoord, slice), vec4(bakedHeight, bakedNormal));
 	imageStore(u_bakedParamsArray, ivec3(pixelCoord, slice), bakedParams);
-	imageStore(u_displacementArray, ivec3(pixelCoord, slice), dispCenter);
-
-	// Mark as baked in the biome map (B channel)
-	biomeData.b = 1.0;
-	// Relocate waterMask to biome map Alpha channel
-	biomeData.a = s_params[localID.x + 2][localID.y + 2].w;
+	imageStore(u_displacementArray, ivec3(pixelCoord, slice), vec4(bakedDisplacement, genCenter.path_factor));
 
 	imageStore(u_biomeMap, ivec3(pixelCoord, slice), biomeData);
 }
