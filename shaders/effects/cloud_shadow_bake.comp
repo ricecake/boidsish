@@ -1,0 +1,119 @@
+#version 460 core
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(binding = 0, r16f) uniform image2D outShadowMap;
+
+#define ATMOSPHERE_HEIGHT_DEFINED
+uniform float u_atmosphereHeight;
+
+uniform mat4 u_lightSpaceMatrix;
+uniform mat4 u_invLightSpaceMatrix;
+uniform vec3 u_primaryLightDir;
+
+#include "../atmosphere/common.glsl"
+#include "../helpers/clouds.glsl"
+#include "../helpers/fast_noise.glsl"
+#include "../helpers/lighting.glsl"
+#include "../types/temporal_data.glsl"
+#include "helpers/math.glsl"
+
+layout(binding = [[CLOUD_WEATHER_MIN_MAX_BINDING]]) uniform sampler2D u_cloudWeatherMinMaxTexture;
+
+void main() {
+	ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+	ivec2 size = imageSize(outShadowMap);
+	if (pixel.x >= size.x || pixel.y >= size.y)
+		return;
+
+	vec2 uv = (vec2(pixel) + 0.5) / vec2(size);
+
+	// In OpenGL clip space, near plane is at Z = -1.0
+	vec4 clipSpace = vec4(uv * 2.0 - 1.0, -1.0, 1.0);
+	vec4 worldPosNear = u_invLightSpaceMatrix * clipSpace;
+	worldPosNear /= worldPosNear.w;
+
+	vec3 rayStart = worldPosNear.xyz;
+	// Ray direction is the light propagation direction (from light towards the ground)
+	vec3 rayDir = -normalize(u_primaryLightDir);
+
+	float t_start = 1e10;
+	float t_end = -1e10;
+	intersectCloudShell(rayStart, rayDir, worldScale, t_start, t_end);
+
+	if (t_start >= t_end) {
+		imageStore(outShadowMap, pixel, vec4(0.0));
+		return;
+	}
+
+	float accumulatedDensity = 0.0;
+	float t = t_start;
+	int L = 3;
+	float baseStepSize = 100.0 * worldScale;
+
+	CloudProperties props;
+	props.altitude = cloudAltitude;
+	props.thickness = cloudThickness;
+	props.densityBase = cloudDensity;
+	props.coverage = cloudCoverage;
+	props.worldScale = worldScale;
+
+	// Perform hierarchical DDA raymarching accelerated by min-max weather texture
+	for (int i = 0; i < 512; ++i) {
+		if (t >= t_end) break;
+
+		vec3 p = rayStart + rayDir * t;
+		vec3 advect = getCloudWindOffset(time);
+		vec3 p_advected = p + advect;
+		vec2 weatherUV = p_advected.xz / (100000.0 * worldScale);
+
+		// Wrap horizontally
+		weatherUV = fract(weatherUV);
+
+		vec2 minMax = textureLod(u_cloudWeatherMinMaxTexture, weatherUV, float(L)).rg;
+		float maxDensity = clamp(minMax.y + (cloudCoverage * 2.0 - 1.0), 0.0, 1.0);
+
+		if (maxDensity <= 0.001) {
+			float mapRange = 100000.0 * worldScale;
+			float texelSizeAtLevel0 = mapRange / 2048.0;
+			float texelSize = float(1 << L) * texelSizeAtLevel0;
+
+			vec2 dir2D = rayDir.xz;
+			float len2D = max(length(dir2D), 1e-6);
+			vec2 dir_norm = dir2D / len2D;
+
+			vec2 p_xz = p_advected.xz;
+			vec2 cell_idx = floor(p_xz / texelSize);
+
+			vec2 next_bound;
+			next_bound.x = (dir_norm.x > 0.0) ? (cell_idx.x + 1.0) * texelSize : cell_idx.x * texelSize;
+			next_bound.y = (dir_norm.y > 0.0) ? (cell_idx.y + 1.0) * texelSize : cell_idx.y * texelSize;
+
+			vec2 dist_to_bound;
+			dist_to_bound.x = (abs(dir_norm.x) > 1e-6) ? (next_bound.x - p_xz.x) / dir_norm.x : 1e10;
+			dist_to_bound.y = (abs(dir_norm.y) > 1e-6) ? (next_bound.y - p_xz.y) / dir_norm.y : 1e10;
+
+			float dt_2D = min(dist_to_bound.x, dist_to_bound.y);
+			float dt = (dt_2D / len2D) + 0.001; // pushes it safely over the boundary line
+
+			dt = clamp(dt, baseStepSize, 2000.0 * worldScale);
+			t += dt;
+			L = clamp(L + 1, 0, 10);
+		}
+		else {
+			if (L > 0) {
+				L--;
+			} else {
+				// At level 0, sample the actual cloud density
+				CloudWeather weather = computeCloudWeather(p, props);
+				CloudLayer layer = computeCloudLayer(weather, props);
+
+				CloudDensityResult densityRes = calculateCloudDensityMinimal(p, weather, layer, props);
+				accumulatedDensity += max(0.0, densityRes.density.r) * baseStepSize;
+
+				t += baseStepSize;
+			}
+		}
+	}
+
+	imageStore(outShadowMap, pixel, vec4(accumulatedDensity, 0.0, 0.0, 0.0));
+}

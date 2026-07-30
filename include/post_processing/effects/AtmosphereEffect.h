@@ -274,6 +274,7 @@ namespace Boidsish {
 
 			std::unique_ptr<ComputeShader> cloud_render_shader_;
 			std::unique_ptr<ComputeShader> cloud_bounding_shader_;
+			std::unique_ptr<ComputeShader> cloud_shadow_bake_shader_;
 			std::unique_ptr<Shader>        composite_shader_;
 			std::unique_ptr<ComputeShader> temporal_shader_;
 			std::unique_ptr<ComputeShader> spatial_filter_shader_;
@@ -337,9 +338,20 @@ namespace Boidsish {
 			GLuint packed_depth_texture_ = 0;
 			GLuint packed_velocity_texture_ = 0;
 			GLuint bounding_texture_ = 0;
+			GLuint cloud_shadow_texture_ = 0;
 
 			GLuint filtered_texture_ = 0;
 			GLuint spatial_aux_texture_ = 0;
+
+			glm::mat4 cloud_shadow_matrix_ = glm::mat4(1.0f);
+			glm::mat4 cloud_shadow_inv_matrix_ = glm::mat4(1.0f);
+			glm::vec3 last_baked_light_dir_ = glm::vec3(0.0f);
+			glm::vec3 last_baked_camera_pos_ = glm::vec3(0.0f);
+			float     last_baked_cloud_coverage_ = 0.0f;
+			float     last_baked_cloud_density_ = 0.0f;
+			float     last_baked_cloud_altitude_ = 0.0f;
+			float     last_baked_cloud_thickness_ = 0.0f;
+			bool      enable_cloud_shadow_map_ = true;
 
 			// Temporal reprojection: double-buffered history at full res
 			GLuint    temporal_textures_[2] = {0, 0};

@@ -1,6 +1,7 @@
 #include "post_processing/effects/AtmosphereEffect.h"
 
 #include <array>
+#include <glm/gtc/matrix_transform.hpp>
 
 #include "atmosphere_manager.h"
 #include "constants.h"
@@ -58,6 +59,7 @@ namespace Boidsish {
 
 			cloud_render_shader_ = std::make_unique<ComputeShader>("shaders/effects/atmosphere_lowres.comp");
 			cloud_bounding_shader_ = std::make_unique<ComputeShader>("shaders/effects/cloud_bounding.comp");
+			cloud_shadow_bake_shader_ = std::make_unique<ComputeShader>("shaders/effects/cloud_shadow_bake.comp");
 			composite_shader_ = std::make_unique<Shader>(
 				"shaders/postprocess.vert",
 				"shaders/effects/atmosphere_composite.frag"
@@ -96,6 +98,12 @@ namespace Boidsish {
 				cloud_bounding_shader_->trySetInt("u_cloudWeatherMinMaxTexture", Constants::TextureUnit::CloudWeatherMinMax());
 			}
 
+			if (cloud_shadow_bake_shader_ && cloud_shadow_bake_shader_->isValid()) {
+				cloud_shadow_bake_shader_->use();
+				cloud_shadow_bake_shader_->bindUniformBlock("Lighting", Constants::UboBinding::Lighting());
+				cloud_shadow_bake_shader_->trySetInt("u_cloudWeatherMinMaxTexture", Constants::TextureUnit::CloudWeatherMinMax());
+			}
+
 			if (temporal_shader_ && temporal_shader_->isValid()) {
 				temporal_shader_->use();
 				temporal_shader_->bindUniformBlock("TerrainData", Constants::UboBinding::TerrainData());
@@ -130,6 +138,18 @@ namespace Boidsish {
 				glGenTextures(1, &bounding_texture_);
 				glGenTextures(1, &filtered_texture_);
 				glGenTextures(1, &spatial_aux_texture_);
+			}
+
+			if (cloud_shadow_texture_ == 0) {
+				glGenTextures(1, &cloud_shadow_texture_);
+				glBindTexture(GL_TEXTURE_2D, cloud_shadow_texture_);
+				glTexImage2D(GL_TEXTURE_2D, 0, GL_R16F, 512, 512, 0, GL_RED, GL_FLOAT, nullptr);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+				float border_color[] = { 0.0f, 0.0f, 0.0f, 0.0f };
+				glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, border_color);
 			}
 
 			int packed_width = std::max(1, static_cast<int>(width_ * render_scale_));
@@ -223,6 +243,8 @@ namespace Boidsish {
 		}
 
 		void AtmosphereEffect::Apply(GLuint sourceTexture, GLuint depthTexture, GLuint velocityTexture, GLuint normalTexture, GLuint albedoTexture, const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix, const glm::vec3& cameraPos) {
+			auto& loc = ServiceLocator::Instance();
+
 			GLint original_fbo;
 			glGetIntegerv(GL_FRAMEBUFFER_BINDING, &original_fbo);
 
@@ -255,6 +277,89 @@ namespace Boidsish {
 				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 			}
 
+			// --- PASS 0.5: Cloud Shadow Map Bake ---
+			auto light_mgr = loc.Get<LightManager>();
+			glm::vec3 primaryLightDir = glm::vec3(0.0f, 1.0f, 0.0f);
+			if (light_mgr) {
+				const auto& lights = light_mgr->GetLights();
+				for (const auto& light : lights) {
+					if (light.type == Boidsish::DIRECTIONAL_LIGHT) {
+						primaryLightDir = glm::normalize(-light.direction); // Pointing towards light source
+						break;
+					}
+				}
+			}
+
+			bool needs_shadow_bake = (frame_index_ == 0);
+			if (!needs_shadow_bake && enable_cloud_shadow_map_) {
+				if (glm::distance(primaryLightDir, last_baked_light_dir_) > 0.01f) {
+					needs_shadow_bake = true;
+				}
+				if (glm::distance(glm::vec2(cameraPos.x, cameraPos.z), glm::vec2(last_baked_camera_pos_.x, last_baked_camera_pos_.z)) > 5000.0f * world_scale_) {
+					needs_shadow_bake = true;
+				}
+				if (std::abs(cloud_coverage_ - last_baked_cloud_coverage_) > 0.01f) {
+					needs_shadow_bake = true;
+				}
+				if (std::abs(cloud_density_ - last_baked_cloud_density_) > 0.01f) {
+					needs_shadow_bake = true;
+				}
+				if (std::abs(cloud_altitude_ - last_baked_cloud_altitude_) > 10.0f * world_scale_) {
+					needs_shadow_bake = true;
+				}
+				if (std::abs(cloud_thickness_ - last_baked_cloud_thickness_) > 10.0f * world_scale_) {
+					needs_shadow_bake = true;
+				}
+			}
+
+			if (needs_shadow_bake && enable_cloud_shadow_map_ && cloud_shadow_bake_shader_ && cloud_shadow_bake_shader_->isValid()) {
+				glm::vec3 center = glm::vec3(cameraPos.x, 0.0f, cameraPos.z);
+				glm::vec3 lightDir = glm::normalize(primaryLightDir);
+				glm::vec3 lightPos = center + lightDir * (20000.0f * world_scale_);
+				glm::vec3 target = center - lightDir * (20000.0f * world_scale_);
+				glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
+				if (std::abs(glm::dot(lightDir, up)) > 0.99f) {
+					up = glm::vec3(0.0f, 0.0f, 1.0f);
+				}
+				glm::mat4 lightView = glm::lookAt(lightPos, target, up);
+				float half_ext = 100000.0f * world_scale_;
+				glm::mat4 lightProj = glm::ortho(-half_ext, half_ext, -half_ext, half_ext, 0.0f, 40000.0f * world_scale_);
+				cloud_shadow_matrix_ = lightProj * lightView;
+				cloud_shadow_inv_matrix_ = glm::inverse(cloud_shadow_matrix_);
+
+				last_baked_light_dir_ = primaryLightDir;
+				last_baked_camera_pos_ = cameraPos;
+				last_baked_cloud_coverage_ = cloud_coverage_;
+				last_baked_cloud_density_ = cloud_density_;
+				last_baked_cloud_altitude_ = cloud_altitude_;
+				last_baked_cloud_thickness_ = cloud_thickness_;
+
+				// Dispatch the shadow bake compute shader
+				cloud_shadow_bake_shader_->use();
+				cloud_shadow_bake_shader_->setMat4("u_lightSpaceMatrix", cloud_shadow_matrix_);
+				cloud_shadow_bake_shader_->setMat4("u_invLightSpaceMatrix", cloud_shadow_inv_matrix_);
+				cloud_shadow_bake_shader_->setVec3("u_primaryLightDir", primaryLightDir);
+				cloud_shadow_bake_shader_->setFloat("u_atmosphereHeight", atmosphere_height_);
+				cloud_shadow_bake_shader_->setFloat("u_time", time_);
+				cloud_shadow_bake_shader_->setFloat("u_cloudCoverage", cloud_coverage_);
+				cloud_shadow_bake_shader_->setFloat("u_worldScale", world_scale_);
+				cloud_shadow_bake_shader_->setFloat("u_cloudAltitude", cloud_altitude_);
+				cloud_shadow_bake_shader_->setFloat("u_cloudThickness", cloud_thickness_);
+				cloud_shadow_bake_shader_->setFloat("u_cloudDensity", cloud_density_);
+
+				glBindImageTexture(0, cloud_shadow_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R16F);
+
+				// Bind u_cloudWeatherMinMaxTexture (Unit 49)
+				glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::CloudWeatherMinMax());
+				auto atm_mgr = ServiceLocator::Instance().Get<AtmosphereManager>();
+				if (atm_mgr) {
+					glBindTexture(GL_TEXTURE_2D, atm_mgr->GetCloudWeatherMinMaxTexture());
+				}
+
+				glDispatchCompute(512 / 8, 512 / 8, 1);
+				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+			}
+
 			// --- PASS 1: Packed Quarter-res Cloud Rendering ---
 			if (cloud_render_shader_ && cloud_render_shader_->isValid()) {
 				cloud_render_shader_->use();
@@ -276,6 +381,9 @@ namespace Boidsish {
 				cloud_render_shader_->setMat4("uPrevViewProjection", prev_view_projection_);
 				cloud_render_shader_->setBool("uHasHistory", has_valid_history_);
 
+				cloud_render_shader_->setMat4("u_cloudShadowMatrix", cloud_shadow_matrix_);
+				cloud_render_shader_->setBool("u_useCloudShadowMap", enable_cloud_shadow_map_);
+
 				glActiveTexture(GL_TEXTURE0);
 				glBindTexture(GL_TEXTURE_2D, depthTexture);
 				glActiveTexture(GL_TEXTURE1);
@@ -284,6 +392,9 @@ namespace Boidsish {
 				glBindTexture(GL_TEXTURE_2D, temporal_moments_textures_[temporal_index_]);
 				glActiveTexture(GL_TEXTURE3);
 				glBindTexture(GL_TEXTURE_2D, bounding_texture_);
+
+				glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::CloudShadowMap());
+				glBindTexture(GL_TEXTURE_2D, cloud_shadow_texture_);
 
 				GpuResourceRegistry::Instance().BindTextures({
 					Constants::TextureUnit::AtmosphereTransmittance(),
@@ -412,10 +523,8 @@ namespace Boidsish {
 			composite_shader_->setVec3("hazeColor", haze_color_);
 			composite_shader_->setFloat("u_atmosphereHeight", atmosphere_height_);
 
-			auto& loc = ServiceLocator::Instance();
 			auto shadow_mgr = loc.Get<ShadowManager>();
 			auto terrain_mgr = loc.Get<TerrainRenderManager>();
-			auto light_mgr = loc.Get<LightManager>();
 
 			if (shadow_mgr && shadow_mgr->IsInitialized()) {
 				shadow_mgr->BindForRendering(*composite_shader_);
