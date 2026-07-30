@@ -24,7 +24,7 @@ void main() {
 	float fade = 1.0 - smoothstep(fade_start, fade_end, dist + n_fade * 40.0);
 
 	// Sphere parameters
-	float R_p = 5000.0 * worldScale;
+	float R_p = 50000.0 * worldScale;
 	float d_clamped = min(dist, R_p - 1.0);
 	float y_sphere = -R_p + sqrt(R_p * R_p - d_clamped * d_clamped);
 

@@ -76,8 +76,8 @@ namespace Boidsish {
 		cb.execute_queue(RenderLayer::Opaque, hiz_culling_enabled_ && frame.frame_count > 0);
 
 		cb.render_terrain();
-		cb.render_plane();
 		cb.render_sky();
+		cb.render_plane();
 	}
 
 	// --- EarlyEffectsPass ---
