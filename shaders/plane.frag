@@ -34,7 +34,7 @@ void main() {
 
 	// Calculate correct fragment depth for the sphere
 	vec4 clipPos = projection * view * vec4(spherePos, 1.0);
-	gl_FragDepth = clipPos.z / clipPos.w;
+	gl_FragDepth = (clipPos.z / clipPos.w) * 0.5 + 0.5;
 
 	// Mask out the area where the terrain is, and fade out at horizon
 	float sphere_alpha = 1.0 - fade;
