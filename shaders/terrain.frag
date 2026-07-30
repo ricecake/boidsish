@@ -41,6 +41,9 @@ uniform sampler2DArray uBiomeMap;
 uniform sampler2DArray u_displacementArray;
 uniform float          uRawChunkSize;
 
+// 3D terrain color blend texture: X=height, Y=moisture, Z=roughness
+layout(binding = [[TERRAIN_COLOR_BLEND_BINDING]]) uniform sampler3D u_terrainColorBlend;
+
 
 struct GrassProperties {
     vec4  colorTop;

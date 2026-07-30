@@ -194,6 +194,7 @@ namespace Boidsish {
 		GLuint GetChunkGridTexture() const { return chunk_grid_texture_; }
 		GLuint GetTerrainShadowMapTexture() const { return terrain_shadow_map_texture_; }
 		GLuint GetBiomeUbo() const { return biome_ubo_; }
+		GLuint GetTerrainColorBlendTexture() const { return terrain_color_blend_texture_; }
 
 		/**
 		 * @brief Get the patch visibility SSBO.
@@ -387,6 +388,7 @@ namespace Boidsish {
 		GLuint horizon_map_texture_ = 0;   // GL_TEXTURE_2D_ARRAY (RGBA16F: 8 directions)
 		GLuint terrain_shadow_map_texture_ = 0; // GL_TEXTURE_2D (R8)
 		GLuint biome_texture_ = 0;         // GL_TEXTURE_2D_ARRAY (RGBA8: low_idx, t, bake_flag, unused)
+		GLuint terrain_color_blend_texture_ = 0; // GL_TEXTURE_3D (RGBA8: height, moisture, roughness)
 		GLuint noise_texture_ = 0;
 		GLuint curl_texture_ = 0;
 		GLuint extra_noise_texture_ = 0;
