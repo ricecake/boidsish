@@ -318,7 +318,7 @@ namespace Boidsish {
 				glm::vec3 lightPos = center + lightDir * (20000.0f * world_scale_);
 				glm::vec3 target = center - lightDir * (20000.0f * world_scale_);
 				glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
-				if (std::abs(glm::dot(lightDir, up)) > 0.99f) {
+				if (std::abs(lightDir.y) > 0.9f) {
 					up = glm::vec3(0.0f, 0.0f, 1.0f);
 				}
 				glm::mat4 lightView = glm::lookAt(lightPos, target, up);

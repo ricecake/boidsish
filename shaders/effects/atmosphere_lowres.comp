@@ -411,7 +411,13 @@ vec3 EvaluateStepLighting(
 		lightTransmittance = texture(u_transmittanceLUT, transUV).rgb;
 
 		vec3 opticalDepthToLight = vec3(0.0);
-		if (traceDist > 0.01 * worldScale) {
+		if (u_useCloudShadowMap && j == 0) {
+			vec4 lightSpacePos = u_cloudShadowMatrix * vec4(p, 1.0);
+			vec2 shadowUV = lightSpacePos.xy * 0.5 + 0.5;
+			float totalOpticalDepth = texture(u_cloudShadowTexture, shadowUV).r;
+			opticalDepthToLight = totalOpticalDepth * (1.0 - h_norm) * (rgbExtinction * cloudShadowOpticalDepthMultiplier);
+		}
+		else if (traceDist > 0.01 * worldScale) {
 			int shadow_steps = 5;
 			// Start with a small step to catch the crisp local self-shadowing
 			float shadow_step_size = 100.0 * worldScale;
