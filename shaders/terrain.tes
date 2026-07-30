@@ -212,6 +212,32 @@ void main() {
 		vIsWater = smoothstep(0.1, -0.1, FragPos.y);
 	}
 
+	// Apply detail fade to avoid aliasing and provide smooth transition
+	float dist = distance(viewPos, FragPos);
+	float detailFade = smoothstep(200.0 * worldScale, 50.0 * worldScale, dist) * smoothstep(16.0, 32.0, tessFactor);
+
+	// Fade towards unperturbed height/normal at distance
+	// Since Normal was recalculated for fallback, we should also blend it.
+	// For simplicity in this step, we just blend FragPos.
+	vec3 baseFragPos;
+	vec3 baseNormal;
+	sampleHeightmap(TexCoords, slice, worldOffset, baseFragPos, baseNormal);
+
+	// Displacement logic
+	if (isBaked) {
+		vec3 bakedDisp = texture(u_displacementArray, vec3(remappedUV, slice)).rgb;
+		FragPos += bakedDisp;
+	} else {
+		// Fallback displacement was already applied in calculateHeightAndParamsFallback
+		// We only handle horizontal displacement here if needed, but it's better to keep it unified.
+	}
+
+	FragPos = mix(baseFragPos, FragPos, detailFade);
+	Normal = mix(baseNormal, Normal, detailFade);
+
+	// Apply shockwave ripple to terrain
+	FragPos += getShockwaveDisplacement(FragPos, 0.0, false);
+
 	float waterMask = vIsWater;
 
 	if (waterMask > 0.0) {
@@ -231,32 +257,6 @@ void main() {
 		FragPos.y = mix(landHeight, waterHeight, waterMask);
 		Normal = normalize(mix(Normal, waterNormal, waterMask));
 	}
-
-	// Apply shockwave ripple to terrain
-	FragPos += getShockwaveDisplacement(FragPos, 0.0, false);
-
-	// Displacement logic
-	if (isBaked) {
-		vec3 bakedDisp = texture(u_displacementArray, vec3(remappedUV, slice)).rgb;
-		FragPos += bakedDisp;
-	} else {
-		// Fallback displacement was already applied in calculateHeightAndParamsFallback
-		// We only handle horizontal displacement here if needed, but it's better to keep it unified.
-	}
-
-	// Apply detail fade to avoid aliasing and provide smooth transition
-	float dist = distance(viewPos, FragPos);
-	float detailFade = smoothstep(200.0 * worldScale, 50.0 * worldScale, dist) * smoothstep(16.0, 32.0, tessFactor);
-
-	// Fade towards unperturbed height/normal at distance
-	// Since Normal was recalculated for fallback, we should also blend it.
-	// For simplicity in this step, we just blend FragPos.
-	vec3 baseFragPos;
-	vec3 baseNormal;
-	sampleHeightmap(TexCoords, slice, worldOffset, baseFragPos, baseNormal);
-
-	FragPos = mix(baseFragPos, FragPos, detailFade);
-	Normal = mix(baseNormal, Normal, detailFade);
 
 	// Clip plane for reflections
 	gl_ClipDistance[0] = dot(FragPos, clipPlane.xyz) + clipPlane.w;
