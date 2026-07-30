@@ -28,6 +28,23 @@ uniform sampler2D u_phasorTexture;
 layout(binding = [[CLOUD_WEATHER_BINDING]]) uniform sampler2D u_cloudWeatherTexture;
 #endif
 
+// Tile-aware 2D hash
+vec2 hash2Tile(vec2 p, vec2 period)
+{
+	if (period.x > 0.0) p = mod(p, period);
+	p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
+	return fract(sin(p) * 43758.5453123);
+}
+
+// Tile-aware hash returning a single float
+float hash12Tile(vec2 p, vec2 period) {
+	if (period.x > 0.0) p = mod(p, period);
+	vec3 p3 = fract(vec3(p.xyx) * .1031);
+	p3 += dot(p3, p3.yzx + 33.33);
+	return fract((p3.x + p3.y) * p3.z);
+}
+
+
 // Helper to compute curl noise using finite differences with tiling simplex noise
 vec3 computeCurl(vec3 p, float period) {
 	float e = 0.01;
@@ -129,7 +146,7 @@ WorleyData2D worley2d_tiling_id(vec2 p, float period) {
 			vec2 neighbor = vec2(float(x), float(y));
 			// Wrap neighbor + i to [0, period-1]
 			vec2 wrapped_coord = mod(i + neighbor, period);
-			vec2 point = random2(wrapped_coord);
+			vec2 point = hash2Tile(wrapped_coord, vec2(period));
 			vec2 diff = neighbor + point - f;
 			float d = dot(diff, diff);
 			if (d < minDistSq) {

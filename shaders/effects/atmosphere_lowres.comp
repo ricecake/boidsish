@@ -173,6 +173,71 @@ float calculateBifurcatedStepSize(
 }
 
 
+struct RaymarchState {
+    float t;
+    bool in_cloud;
+    int zero_count;
+    float current_lod;
+    float step_size;
+};
+
+/**
+ * Evaluates the unified step, state, and LOD for the current iteration.
+ */
+void evaluateRaymarchState(
+    inout RaymarchState state,
+    float macro_density,
+    float dist_max,
+    float base_step,
+    float cheap_mult,
+    int escape_threshold
+) {
+    // 1. Quadratic Distance Scaling
+    // Pushes the ray to the horizon efficiently by growing the base step
+    // exponentially after a safe near-field distance.
+    float dist_start = 15000.0 * worldScale;
+    float max_growth = 500.0 * worldScale; // Maximum added step size at horizon
+
+    float depth_factor = clamp((state.t - dist_start) / max(1.0, dist_max - dist_start), 0.0, 1.0);
+    float scaled_base_step = base_step + (max_growth * (depth_factor * depth_factor));
+
+    // 2. LOD Derivation
+    // Slave the LOD directly to the step expansion to guarantee the Nyquist limit
+    // is respected, preventing high-frequency noise from speckling the wide steps.
+    state.current_lod = clamp(log2(scaled_base_step / base_step), 0.0, 6.0);
+
+    // 3. Bifurcation Logic (Using the dynamically scaled base step)
+    float cheap_step = scaled_base_step * cheap_mult;
+
+    if (!state.in_cloud) {
+        if (macro_density > 0.01) {
+            // Cloud boundary detected. Step back by the cheap step[cite: 7].
+            state.in_cloud = true;
+            state.zero_count = 0;
+            state.step_size = -cheap_step;
+        } else {
+            // Space skipping[cite: 7]
+            state.step_size = cheap_step;
+        }
+    } else {
+        if (macro_density <= 0.0) {
+            // Potential exit[cite: 7]
+            state.zero_count++;
+            if (state.zero_count >= escape_threshold) {
+                state.in_cloud = false;
+                state.step_size = cheap_step;
+            } else {
+                state.step_size = scaled_base_step;
+            }
+        } else {
+            // Firmly inside[cite: 7]
+            state.zero_count = 0;
+            state.step_size = scaled_base_step;
+        }
+    }
+}
+
+
 float schlickPhase(float cosTheta, float k) {
     float kCos = k * cosTheta;
     float denom = 1.0 - kCos;
@@ -194,6 +259,7 @@ void CalculateStochasticClusterLight(
 	vec3 rgbExtinction,
 	vec3 stepDensity,
 	Cluster light_cluster,
+	float currentLOD,
 	inout vec3 stepScattering,
 	inout vec3 emissiveGlow
 ) {
@@ -236,36 +302,35 @@ void CalculateStochasticClusterLight(
 
 		vec3 opticalDepthToLight = vec3(0.0);
 		if (traceDist > 0.01 * worldScale) {
-			// Volumetric ReSTIR shadow reservoir for point/spot lights
-			Reservoir shadow_r = Reservoir(0.0, 0.0, 0.0, 0.0, 0.0);
-			int K_candidates = 2;
-			float shadow_segment = traceDist / float(K_candidates);
-			CloudDensityResult selected_shadowRes;
+			int shadow_steps = 5;
+			// Start with a small step to catch the crisp local self-shadowing
+			float shadow_step_size = 100.0 * worldScale;
+			// Double the distance each step to quickly escape the atmosphere
+			float step_multiplier = 2.0;
 
-			for (int k = 0; k < K_candidates; ++k) {
-				float s_c = (float(k) + fract(jitter + float(k) * 0.153 + float(j) * 0.283)) * shadow_segment;
-				vec3 sp_c = p + L * s_c;
+			// Dither the start position to hide the banding
+			float current_t = shadow_step_size * (0.5 + 0.5 * jitter);
 
-				CloudWeather shadow_weather_c = computeCloudWeather(sp_c, props, 100.0);
+			for (int k = 0; k < shadow_steps; ++k) {
+				if (current_t > traceDist) break;
+
+				vec3 sp_c = p + L * current_t;
+
+				CloudWeather shadow_weather_c = computeCloudWeather(sp_c, props, currentLOD);
 				CloudLayer shadow_layer_c = computeCloudLayer(shadow_weather_c, props);
-				CloudDensityResult shadowRes_c = calculateCloudDensity(sp_c, shadow_weather_c, shadow_layer_c, props, time, 100.0);
-				vec3 d_c = shadowRes_c.density;
 
-				float p_hat_c = length(d_c);
-				if (p_hat_c > 0.001) {
-					float weight_c = p_hat_c * traceDist;
-					float prev_w_sum = shadow_r.w_sum;
-					updateReservoir(shadow_r, s_c, p_hat_c, weight_c, jitter + float(k) * 0.384 + float(j) * 0.152);
-					if (shadow_r.w_sum > prev_w_sum && shadow_r.t == s_c) {
-						selected_shadowRes = shadowRes_c;
-					}
-				}
-			}
-			finalizeReservoir(shadow_r);
+				// Use the minimal evaluation to keep the inner loop fast
+				CloudDensityResult shadowRes_c = calculateCloudDensityMinimal(sp_c, shadow_weather_c, shadow_layer_c, props);
 
-			if (shadow_r.W > 0.0) {
-				opticalDepthToLight = selected_shadowRes.density * shadow_r.W * (rgbExtinction * cloudShadowOpticalDepthMultiplier);
-				emissiveGlow += selected_shadowRes.emissivity;
+				// Accumulate the optical depth linearly
+				opticalDepthToLight += shadowRes_c.density * shadow_step_size * (rgbExtinction * cloudShadowOpticalDepthMultiplier);
+
+				// Accumulate emissive glow, attenuated by the shadow we've marched through so far
+				emissiveGlow += shadowRes_c.emissivity * exp(-opticalDepthToLight);
+
+				// Grow the ray forward
+				current_t += shadow_step_size;
+				shadow_step_size *= step_multiplier;
 			}
 		}
 
@@ -449,6 +514,7 @@ vec3 EvaluateStepLighting(
 		rgbExtinction,
 		stepDensity,
 		global_cloud_cluster,
+		currentLOD,
 		stepScattering,
 		emissiveGlow
 	);
@@ -463,6 +529,7 @@ vec3 EvaluateStepLighting(
 		rgbExtinction,
 		stepDensity,
 		cloud_cluster,
+		currentLOD,
 		stepScattering,
 		emissiveGlow
 	);
@@ -804,10 +871,11 @@ void main() {
 		vec3 avgAdvection = weightedAdvectionSum / totalWeight;
 
 		finalDepth = vec4(firstHitDist, lastHitDist, firstStepSize, pathDensity);
-
 		// Reproject using the accumulated per-sample advection directly
 		vec3 stableHitPos = viewPos + canonicalRayDir * stableHitDist;
-		vec3 advectionDelta = avgAdvection * uDeltaTime;
+		// vec3 advectionDelta = avgAdvection * uDeltaTime;
+		float distanceDamping = 1.0 - smoothstep(10000.0 * worldScale, 50000.0 * worldScale, stableHitDist);
+		vec3 advectionDelta = (avgAdvection * distanceDamping) * uDeltaTime;
 
 		vec3 prevHitPos = stableHitPos - advectionDelta;
 		vec4 prevClipHit = uPrevViewProjection * vec4(prevHitPos, 1.0);
