@@ -629,7 +629,7 @@ CloudDensityResult calculateCloudDensityMinimal(
 
 	CloudSpotDetails res = calculateCloudDensityExpV10(p, weather, layer, props, time, 1000.0, 1.0);
 
-	return CloudDensityResult(res.relativeExtinction, advectSpeed, 1.0, vec3(1.0), vec3(0.0));
+	return CloudDensityResult(res.density * res.relativeExtinction, advectSpeed, 1.0, vec3(1.0), vec3(0.0));
 }
 
 
@@ -658,7 +658,7 @@ CloudDensityResult calculateCloudDensity(
 		p_advected_3d.z / (150000.0 * props.worldScale)
 	);
 
-	vec4 volSample = textureLod(u_cloud3DTexture, uvw, 0.0);
+	vec4 volSample = textureLod(u_cloud3DTexture, uvw, clamp(simplified * 4.0, 0.0, 4.0));
 	float volNoise = volSample.r;
 	float volAo = volSample.g;
 	float volAlbedoBasis = volSample.b;

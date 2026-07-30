@@ -300,7 +300,8 @@ vec3 EvaluateStepLighting(
 	vec3 primaryLightDir,
 	float R_ceiling,
 	float R_floor,
-	vec3 earthCenter
+	vec3 earthCenter,
+	float currentLOD
 ) {
 	vec3 stepScattering = vec3(0.0);
 
@@ -349,7 +350,7 @@ vec3 EvaluateStepLighting(
 
 				vec3 sp_c = p + L * current_t;
 
-				CloudWeather shadow_weather_c = computeCloudWeather(sp_c, props, 100.0);
+				CloudWeather shadow_weather_c = computeCloudWeather(sp_c, props, currentLOD);
 				CloudLayer shadow_layer_c = computeCloudLayer(shadow_weather_c, props);
 
 				// Use the minimal evaluation to keep the inner loop fast
@@ -639,8 +640,6 @@ void main() {
 		float roDotRd = dot(relRo, rayDir);
 		float h0Term = 2.0 * R_earth * H0 + H0 * H0;
 
-		float lodDistanceThreshold = 25000.0 * worldScale;
-
 		bool inVolume = false;
 		bool wasInVolume = false;
 		float stepGrowthRate = 0.0125;
@@ -657,6 +656,8 @@ void main() {
 
 		CloudWeather weather;
 		float lastWeatherT = -1e9;
+		float lodStartDist = 25000.0 * worldScale;
+		float lodFadeRange = 50000.0 * worldScale;
 
 		// const float weatherUpdateInterval = (2 + (jitter*2.0 - 1.0)) * baseStepSize * worldScale; // Update every 100 meters
 		// const float weatherUpdateInterval = (4 * jitter) * baseStepSize * worldScale; // Update every 100 meters
@@ -667,16 +668,17 @@ void main() {
 			if (t_prev >= dist || t_prev >= t_end || all(lessThan(cloudTransmittance, vec3(0.05)))) break;
 
 			vec3 p = viewPos + rayDir * t;
+			float currentLod = clamp((t - lodStartDist) / lodFadeRange, 0.0, 1.0);
 
 			// Only re-evaluate computeCloudWeather if we've advanced past the interval threshold
 			if (i == 0 || abs(t - lastWeatherT) >= weatherUpdateInterval) {
-				weather = computeCloudWeather(p, props, 0.0);
+				weather = computeCloudWeather(p, props, currentLod);
 				lastWeatherT = t;
 			}
 
 			CloudLayer layer = computeCloudLayer(weather, props);
 			// CloudDensityResult densityResCheap = calculateCloudDensityMinimal(p, weather, layer, props);
-			CloudDensityResult densityResCheap = calculateCloudDensity(p, weather, layer, props, time, 0.0);
+			CloudDensityResult densityResCheap = calculateCloudDensity(p, weather, layer, props, time, currentLod);
 
 			vec3 d_cheap = densityResCheap.density;
 
@@ -710,11 +712,9 @@ void main() {
 				float localFloor = layer.baseFloor + altitudeShift;
 
 				float h_norm = getCloudRelativeHeight(p, weather, layer);
-
-				float useCheapEval = t / lodDistanceThreshold;
 				float integrationStep = stepSize;
 
-				CloudDensityResult densityRes = calculateCloudDensity(p, weather, layer, props, time, useCheapEval);
+				CloudDensityResult densityRes = calculateCloudDensity(p, weather, layer, props, time, currentLod);
 				d = densityRes.density;
 				vec3 sampleAdvection = densityRes.advectionSpeed;
 				float sampleAo = densityRes.ao;
@@ -763,7 +763,8 @@ void main() {
 						primaryLightDir,
 						R_ceiling,
 						R_floor,
-						earthCenter
+						earthCenter,
+						currentLod
 					);
 
 					vec3 weight = cloudTransmittance * (vec3(1.0) - transmittanceAtStep);

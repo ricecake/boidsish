@@ -457,7 +457,7 @@ CloudWeather computeCloudWeather(vec3 p, CloudProperties props, float lod) {
 	// Use baked weather map. Sampling UV is worldXZ / range.
 	// Range is 100,000 * worldScale as defined in the bake shader.
 	vec2 uv = p_advected.xz / (100000.0 * props.worldScale);
-	vec4 bakedWeather = textureLod(u_cloudWeatherTexture, uv, 0.0);
+	vec4 bakedWeather = textureLod(u_cloudWeatherTexture, uv, clamp(lod * 6.0, 0.0, 6.0));
 	return loadCloudWeather(p, props, bakedWeather);
 }
 

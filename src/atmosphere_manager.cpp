@@ -80,8 +80,8 @@ namespace Boidsish {
 		// Cloud Weather Map: 2048x2048 RGBA16F (1 level, no mipmaps)
 		glGenTextures(1, &_cloudWeatherTexture);
 		glBindTexture(GL_TEXTURE_2D, _cloudWeatherTexture);
-		glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA16F, 2048, 2048);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexStorage2D(GL_TEXTURE_2D, 6, GL_RGBA16F, 2048, 2048);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
@@ -98,8 +98,9 @@ namespace Boidsish {
 		// Cloud Volume Texture: 128x128x128 RGBA16F (3D)
 		glGenTextures(1, &_cloudVolumeTexture);
 		glBindTexture(GL_TEXTURE_3D, _cloudVolumeTexture);
-		glTexImage3D(GL_TEXTURE_3D, 0, GL_RGBA16F, 128, 128, 128, 0, GL_RGBA, GL_FLOAT, nullptr);
-		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexImage3D(GL_TEXTURE_3D, 4, GL_RGBA16F, 128, 128, 128, 0, GL_RGBA, GL_FLOAT, nullptr);
+		glTexStorage3D(GL_TEXTURE_3D, 4, GL_RGBA16F, 128, 128, 128);
+		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
 		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_REPEAT);
 		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
@@ -185,6 +186,11 @@ namespace Boidsish {
 			glDispatchCompute(2048 / 16, 2048 / 16, 1);
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
 
+			// Generate mipmaps for the weather map
+			glBindTexture(GL_TEXTURE_2D, _cloudWeatherTexture);
+			glGenerateMipmap(GL_TEXTURE_2D);
+			glBindTexture(GL_TEXTURE_2D, 0);
+
 			// 2. Generate mipmaps for the weather min-max density map using custom min-max-downsampling compute shader
 			_cloudMipShader->use();
 			glActiveTexture(GL_TEXTURE0);
@@ -220,6 +226,11 @@ namespace Boidsish {
 			});
 			glDispatchCompute(128 / 4, 128 / 4, 128 / 4);
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+			// Generate mipmaps for the weather map
+			glBindTexture(GL_TEXTURE_3D, _cloudVolumeTexture);
+			glGenerateMipmap(GL_TEXTURE_3D);
+			glBindTexture(GL_TEXTURE_3D, 0);
 
 			// CPU Readback for weather queries
 			_cpuWeatherMap.resize(2048 * 2048);
