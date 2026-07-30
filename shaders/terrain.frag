@@ -829,7 +829,7 @@ void main() {
 		float noiseType = mix(noiseTypeA, noiseTypeB, biomeInfo.y);
 
 		// Use finite difference to approximate the gradient of the noise field
-		float eps = 0.015;
+		float eps = 0.15;
 		float n, nx, nz;
 
 		if (freezingScale < 0.5) {
