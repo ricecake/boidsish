@@ -273,6 +273,10 @@ void main() {
 	float tessFactor2 = mix(tessFactor_TC_out[3], tessFactor_TC_out[2], uv.x);
 	tessFactor = mix(tessFactor1, tessFactor2, uv.y);
 
+	float smoother = smoothstep(650, 700, distance(viewPos, FragPos));
+	FragPos.y = mix(FragPos.y, 0.0, smoother);
+	Normal = mix(Normal, vec3(0.0, 1.0, 0.0), smoother);
+
 	// out float tessFactor;
 	TextureSlice = slice;
 

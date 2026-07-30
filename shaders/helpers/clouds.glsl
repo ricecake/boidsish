@@ -598,8 +598,8 @@ CloudSpotDetails calculateCloudDensityExpV10(
 	if (erodeMask > 0.0) {
 		baseNoise = remapClamp(baseNoise, volNoise * erodeMask, 1.0, 0.0, 1.0);
 
-		if (baseNoise > 0.0 && simplified < 0.25) {
-			float detailNoise = abs(fastFbm3d(p_advected / 3000.0));
+		if (baseNoise > 0.0 && simplified < 0.5) {
+			float detailNoise = abs(fastFbm3d(p_advected / 5000.0));
 			baseNoise = remapClamp(baseNoise, detailNoise * erodeMask * 0.5, 1.0, 0.0, 1.0);
 		}
 	}

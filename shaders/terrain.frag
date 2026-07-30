@@ -376,7 +376,7 @@ void processWaterLayer(vec3 norm, float dist, float fade) {
 	// Add shimmer to grid intensity based on ripple height
 	float shimmer = 1.0 + rippleHeight * 2.0;
 	float grid_intensity = max(C_minor, C_major * 1.5) * 0.6 * shimmer;
-	vec3  grid_color = vec3(0.0, 0.8, 0.8) * grid_intensity;
+	vec3  grid_color = vec3(0.0, 0.8, 0.8) * grid_intensity * 5000.0;
 
 	vec3 surfaceColor = vec3(0.05, 0.05, 0.08);
 
@@ -625,7 +625,7 @@ void main() {
 	float noseFade = fade_start - 100.0;
 
 	if (fade < 0.2) {
-		discard;
+		// discard;
 		// FragColor = vec4(0);
 	}
 
