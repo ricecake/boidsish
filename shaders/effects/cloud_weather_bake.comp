@@ -36,8 +36,9 @@ float localFbm(vec2 p, float period) {
 	float amp = 0.5;
 	float freq = 1.0;
 	for (int i = 0; i < 3; i++) {
-		vec3 worleyDetails = worley2d_tiling_id(p * freq, period * freq);
-		val += amp * (worleyDetails.x * worleyDetails.x);
+		WorleyData2D worleyDetails = worley2d_tiling_id(p * freq, period * freq);
+		val += amp * worleyDetails.f1_dist;
+		val -= amp * 0.5*(worleyDetails.f2_dist - worleyDetails.f1_dist);
 		amp *= 0.5;
 		freq *= 2.0;
 	}
@@ -79,13 +80,13 @@ void main() {
 
 	vec3 p = vec3(uv.x * mapRange, 0.0, uv.y * mapRange);
 
-	float macro = regionalFbm((p.xz / mapRange) * 5.0, vec2(5.0));
+	float macro = regionalFbm((p.xz / mapRange), vec2(5.0));
 	// float macro = regionalFbm(p.xz / mapRange, vec2(5.0));
 	float worley = localFbm(p.xz/cellRange, 5.0);
 	// float micro = clamp(1.0 - worley, 0, 1.0);
 	float micro = clamp(1.0 - (worley * 2.5), 0.0, 1.0);
 
-	float coverage = max(macro, micro);
+	float coverage = max(macro * micro, 0);
 	float finalCoverage = clamp(coverage, 0.0, 1.0);
 	finalCoverage = smoothstep(0.05, 1.0, finalCoverage);
 	float height = pow(clamp(posNoise(p.xz, mapRange, 2), 0.0, 1.0), 2);
