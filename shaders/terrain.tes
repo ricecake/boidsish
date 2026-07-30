@@ -273,9 +273,14 @@ void main() {
 	float tessFactor2 = mix(tessFactor_TC_out[3], tessFactor_TC_out[2], uv.x);
 	tessFactor = mix(tessFactor1, tessFactor2, uv.y);
 
-	float smoother = smoothstep(650, 700, distance(viewPos, FragPos));
-	FragPos.y = mix(FragPos.y, 0.0, smoother);
-	Normal = mix(Normal, vec3(0.0, 1.0, 0.0), smoother);
+	float d_horiz = length(FragPos.xz - viewPos.xz);
+	float smoother = smoothstep(650.0 * worldScale, 700.0 * worldScale, d_horiz);
+	float R_sphere = 50000.0 * worldScale;
+	float sphere_height = sqrt(max(0.0, R_sphere * R_sphere - d_horiz * d_horiz)) - R_sphere;
+	vec3 sphere_normal = normalize(vec3(FragPos.x - viewPos.x, sphere_height + R_sphere, FragPos.z - viewPos.z));
+
+	FragPos.y = mix(FragPos.y, sphere_height, smoother);
+	Normal = mix(Normal, sphere_normal, smoother);
 
 	// out float tessFactor;
 	TextureSlice = slice;

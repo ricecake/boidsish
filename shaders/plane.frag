@@ -109,17 +109,23 @@ float fbm(vec3 p) {
 */
 
 void main() {
-	// --- Distance Fade - Precalc ---
-	// vec3  warp = vec3(fbm(WorldPos / 50 + time * 0.08));
-	float nebula_noise = 0; // fbm(WorldPos / 50 + warp * 0.8);
-	float dist = length(WorldPos.xz - viewPos.xz);
-	float fade_start = 550.0 * worldScale;
-	float fade_end = 600.0 * worldScale;
-	float fade = 1.0 - smoothstep(fade_start, fade_end, dist + nebula_noise * 50);
-
-	if (fade < 0.2) {
-		// discard;
+	float d = length(WorldPos.xz - viewPos.xz);
+	if (d < 650.0 * worldScale) {
+		discard;
 	}
+
+	float R = 50000.0 * worldScale;
+	float y = sqrt(max(0.0, R * R - d * d)) - R;
+	vec3 spherePos = vec3(WorldPos.x, y, WorldPos.z);
+	vec3 norm = normalize(spherePos - vec3(viewPos.x, -R, viewPos.z));
+
+	// Calculate the exact projected depth
+	vec4 clipPos = projection * view * vec4(spherePos, 1.0);
+	gl_FragDepth = (clipPos.z / clipPos.w) * 0.5 + 0.5;
+
+	// Mask out the terrain center and fade near the quad edge
+	float fade = smoothstep(650.0 * worldScale, 700.0 * worldScale, d);
+	fade *= 1.0 - smoothstep(9000.0 * worldScale, 10000.0 * worldScale, d);
 
 	// --- Grid logic ---
 	float grid_spacing = 1.0;
@@ -135,24 +141,25 @@ void main() {
 	float C_major = 1.0 - min(line_major, 1.0);
 
 	float intensity = max(C_minor, C_major * 1.5);
-	vec3  grid_color = vec3(0.0, 0.8, 0.8) * intensity * 5000.0 * (1.0-smoothstep(1000, 2000, dist));
+	vec3  grid_color = vec3(0.0, 0.8, 0.8) * intensity * 5000.0 * (1.0 - smoothstep(1000.0, 2000.0, d));
 
 	// --- Plane lighting ---
-	vec3 norm = normalize(Normal);
 	vec3 surfaceColor = vec3(0.05, 0.05, 0.08);
 	float primaryShadow;
-	vec3 lighting = apply_lighting_pbr(WorldPos, norm, surfaceColor, 0.05, 0.9, 1.0, primaryShadow).rgb;
+	vec3 lighting = apply_lighting_pbr(spherePos, norm, surfaceColor, 0.05, 0.9, 1.0, primaryShadow).rgb;
 
 	// --- Combine colors ---
 	vec3 final_color = lighting + grid_color;
 
 	// --- Distance Fade ---
 	vec4 outColor = vec4(final_color, fade);
-	FragColor = outColor;//mix(vec4(0.7, 0.1, 0.7, fade) * length(outColor), outColor, step(1, fade));
+	FragColor = outColor;
 
 	// Calculate screen-space velocity and material properties
-	vec2 a = (CurPosition.xy / CurPosition.w) * 0.5 + 0.5;
-	vec2 b = (PrevPosition.xy / PrevPosition.w) * 0.5 + 0.5;
+	vec4 curClip = projection * view * vec4(spherePos, 1.0);
+	vec4 prevClip = prevViewProjection * vec4(spherePos, 1.0);
+	vec2 a = (curClip.xy / curClip.w) * 0.5 + 0.5;
+	vec2 b = (prevClip.xy / prevClip.w) * 0.5 + 0.5;
 	Velocity = vec4(a - b, 0.05, 0.9); // Roughness, Metallic
 
 	// Output view-space normal

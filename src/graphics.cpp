@@ -1923,18 +1923,21 @@ namespace Boidsish {
 			BindShadows(*plane_shader);
 
 			glEnable(GL_DEPTH_TEST);
+			glDepthMask(GL_FALSE); // Disable depth writes for the infinite floor plane to prevent interference with volumetric lighting and post-processing
 			glEnable(GL_BLEND);
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 			plane_shader->use();
 
 			float     world_scale = terrain_generator ? terrain_generator->GetWorldScale() : 1.0f;
-			glm::mat4 model = glm::scale(glm::mat4(1.0f), glm::vec3(50000.0f * world_scale));
+			glm::mat4 model = glm::scale(glm::mat4(1.0f), glm::vec3(10000.0f * world_scale));
 			plane_shader->setMat4("model", model);
 			plane_shader->setMat4("view", view);
 			plane_shader->setMat4("projection", projection);
 			glBindVertexArray(plane_vao);
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 			glBindVertexArray(0);
+
+			glDepthMask(GL_TRUE); // Restore depth mask
 		}
 
 		void GatherShapes() {
