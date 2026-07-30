@@ -624,7 +624,7 @@ void main() {
 	float fade = 1.0 - smoothstep(fade_start, fade_end, dist + n_fade * 40.0);
 	float noseFade = fade_start - 100.0;
 
-	if (fade < 0.2) {
+	if (fade < 0.01) {
 		discard;
 		// FragColor = vec4(0);
 	}
@@ -912,7 +912,8 @@ void main() {
 	// ========================================================================
 	// The AtmosphereEffect will handle the scattering over the terrain.
 	// We just handle the alpha fade for transition to the skybox.
-	vec4 baseColor = vec4(lighting, mix(0.0, fade, step(0.01, FragPos.y)));
+	float terrainAlpha = (fade < 0.99) ? fade : mix(0.0, fade, step(0.01, FragPos.y));
+	vec4 baseColor = vec4(lighting, terrainAlpha);
 
 	// Restore deliberate cyan style for distant terrain
 	FragColor = mix(vec4(0.0, 0.7, 0.7, baseColor.a) * length(baseColor), baseColor, step(1.0, fade));

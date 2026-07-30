@@ -258,6 +258,24 @@ void main() {
 	FragPos = mix(baseFragPos, FragPos, detailFade);
 	Normal = mix(baseNormal, Normal, detailFade);
 
+	// --- Spherical Horizon Bending ---
+	float dist_xz = length(FragPos.xz - viewPos.xz);
+	float n_fade = fastSimplex3d(vec3(FragPos.xz / (250.0 * worldScale), time * 0.09));
+	float fade_start = 560.0 * worldScale;
+	float fade_end = 570.0 * worldScale;
+	float fade = 1.0 - smoothstep(fade_start, fade_end, dist_xz + n_fade * 40.0);
+
+	float R_p = 50000.0 * worldScale;
+	float d_clamped = min(dist_xz, R_p - 1.0);
+	float y_sphere = -R_p + sqrt(R_p * R_p - d_clamped * d_clamped);
+
+	// Blend FragPos.y to sphere height
+	FragPos.y = y_sphere + FragPos.y * fade;
+
+	// Blend Normal to sphere normal
+	vec3 sphere_normal = normalize(vec3(FragPos.x - viewPos.x, sqrt(R_p * R_p - d_clamped * d_clamped), FragPos.z - viewPos.z));
+	Normal = normalize(mix(sphere_normal, Normal, fade));
+
 	// Clip plane for reflections
 	gl_ClipDistance[0] = dot(FragPos, clipPlane.xyz) + clipPlane.w;
 
