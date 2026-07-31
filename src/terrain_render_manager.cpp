@@ -158,10 +158,10 @@ namespace Boidsish {
 
 		EnsureTextureCapacity(max_chunks);
 
-		// Create and populate the 4x4x4 3D terrain color blend texture
+		// Create and populate the 8x8x8 3D terrain color blend texture
 		glGenTextures(1, &terrain_color_blend_texture_);
 		glBindTexture(GL_TEXTURE_3D, terrain_color_blend_texture_);
-		glTexStorage3D(GL_TEXTURE_3D, 1, GL_RGBA8, 4, 4, 4);
+		glTexStorage3D(GL_TEXTURE_3D, 1, GL_RGBA8, 8, 8, 8);
 		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -182,16 +182,16 @@ namespace Boidsish {
 		const glm::vec3 COL_SNOW_OLD = glm::vec3(0.85f, 0.88f, 0.92f);
 		const glm::vec3 COL_DIRT = glm::vec3(0.35f, 0.25f, 0.18f);
 
-		std::vector<uint8_t> texture_data(4 * 4 * 4 * 4); // 4x4x4 RGBA8
+		std::vector<uint8_t> texture_data(8 * 8 * 8 * 4); // 8x8x8 RGBA8
 #ifdef HAS_TERRAIN_COLOR_BLEND_DATA
-		std::copy(kTerrainColorBlendData, kTerrainColorBlendData + 256, texture_data.begin());
+		std::copy(kTerrainColorBlendData, kTerrainColorBlendData + 2048, texture_data.begin());
 #else
-		for (int z = 0; z < 4; ++z) {     // Roughness (Z)
-			float r = z / 3.0f;
-			for (int y = 0; y < 4; ++y) { // Moisture (Y)
-				float m = y / 3.0f;
-				for (int x = 0; x < 4; ++x) { // Height (X)
-					float h = x / 3.0f;
+		for (int z = 0; z < 8; ++z) {     // Roughness (Z)
+			float r = z / 7.0f;
+			for (int y = 0; y < 8; ++y) { // Moisture (Y)
+				float m = y / 7.0f;
+				for (int x = 0; x < 8; ++x) { // Height (X)
+					float h = x / 7.0f;
 
 					// Compute beachColor (Band 0)
 					float wetness = m * (1.0f - r);
@@ -228,7 +228,7 @@ namespace Boidsish {
 						finalColor = glm::mix(alpineColor, snowColor, t);
 					}
 
-					int index = (z * 16 + y * 4 + x) * 4;
+					int index = (z * 64 + y * 8 + x) * 4;
 					texture_data[index + 0] = static_cast<uint8_t>(glm::clamp(finalColor.r * 255.0f, 0.0f, 255.0f));
 					texture_data[index + 1] = static_cast<uint8_t>(glm::clamp(finalColor.g * 255.0f, 0.0f, 255.0f));
 					texture_data[index + 2] = static_cast<uint8_t>(glm::clamp(finalColor.b * 255.0f, 0.0f, 255.0f));
@@ -238,7 +238,7 @@ namespace Boidsish {
 		}
 #endif
 
-		glTexSubImage3D(GL_TEXTURE_3D, 0, 0, 0, 0, 4, 4, 4, GL_RGBA, GL_UNSIGNED_BYTE, texture_data.data());
+		glTexSubImage3D(GL_TEXTURE_3D, 0, 0, 0, 0, 8, 8, 8, GL_RGBA, GL_UNSIGNED_BYTE, texture_data.data());
 		glBindTexture(GL_TEXTURE_3D, 0);
 
 		auto& reg = GpuResourceRegistry::Instance();
