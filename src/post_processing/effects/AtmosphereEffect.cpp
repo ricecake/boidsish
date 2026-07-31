@@ -28,12 +28,9 @@ namespace Boidsish {
 				glDeleteTextures(1, &filtered_texture_);
 				glDeleteTextures(1, &spatial_aux_texture_);
 
-				glDeleteTextures(1, &packed_far_texture_);
-				glDeleteTextures(1, &packed_far_depth_texture_);
-				glDeleteTextures(1, &packed_far_velocity_texture_);
-				glDeleteTextures(1, &packed_medium_far_texture_);
-				glDeleteTextures(1, &packed_medium_far_depth_texture_);
-				glDeleteTextures(1, &packed_medium_far_velocity_texture_);
+				glDeleteTextures(1, &packed_near_texture_);
+				glDeleteTextures(1, &packed_near_depth_texture_);
+				glDeleteTextures(1, &packed_near_velocity_texture_);
 			}
 			if (temporal_textures_[0]) {
 				glDeleteTextures(2, temporal_textures_);
@@ -138,12 +135,9 @@ namespace Boidsish {
 				glGenTextures(1, &filtered_texture_);
 				glGenTextures(1, &spatial_aux_texture_);
 
-				glGenTextures(1, &packed_far_texture_);
-				glGenTextures(1, &packed_far_depth_texture_);
-				glGenTextures(1, &packed_far_velocity_texture_);
-				glGenTextures(1, &packed_medium_far_texture_);
-				glGenTextures(1, &packed_medium_far_depth_texture_);
-				glGenTextures(1, &packed_medium_far_velocity_texture_);
+				glGenTextures(1, &packed_near_texture_);
+				glGenTextures(1, &packed_near_depth_texture_);
+				glGenTextures(1, &packed_near_velocity_texture_);
 			}
 
 			int packed_width = std::max(1, static_cast<int>(width_ * render_scale_));
@@ -169,38 +163,20 @@ namespace Boidsish {
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
-			// Far pass color, depth, velocity
-			glBindTexture(GL_TEXTURE_2D, packed_far_texture_);
+			// Near pass color, depth, velocity (runs first in front-to-back sequence)
+			glBindTexture(GL_TEXTURE_2D, packed_near_texture_);
 			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, packed_width, packed_height, 0, GL_RGBA, GL_FLOAT, NULL);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-			glBindTexture(GL_TEXTURE_2D, packed_far_depth_texture_);
+			glBindTexture(GL_TEXTURE_2D, packed_near_depth_texture_);
 			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, packed_width, packed_height, 0, GL_RGBA, GL_FLOAT, NULL);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
-			glBindTexture(GL_TEXTURE_2D, packed_far_velocity_texture_);
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RG16F, packed_width, packed_height, 0, GL_RG, GL_FLOAT, NULL);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-
-			// Medium-far pass color, depth, velocity
-			glBindTexture(GL_TEXTURE_2D, packed_medium_far_texture_);
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, packed_width, packed_height, 0, GL_RGBA, GL_FLOAT, NULL);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-			glBindTexture(GL_TEXTURE_2D, packed_medium_far_depth_texture_);
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, packed_width, packed_height, 0, GL_RGBA, GL_FLOAT, NULL);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-			glBindTexture(GL_TEXTURE_2D, packed_medium_far_velocity_texture_);
+			glBindTexture(GL_TEXTURE_2D, packed_near_velocity_texture_);
 			glTexImage2D(GL_TEXTURE_2D, 0, GL_RG16F, packed_width, packed_height, 0, GL_RG, GL_FLOAT, NULL);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
@@ -351,62 +327,35 @@ namespace Boidsish {
 				}
 
 				// Common split parameters
-				cloud_render_shader_->setFloat("uNearSplit", near_medium_split_ * world_scale_);
-				cloud_render_shader_->setFloat("uMediumSplit", medium_far_split_ * world_scale_);
+				cloud_render_shader_->setFloat("uNearSplit", near_split_ * world_scale_);
 
-				// Pass 0: Far Pass (runs every frame)
+				// Pass 0: Near Pass (runs first, high detail, 2x2 Bayer)
 				{
 					cloud_render_shader_->use();
 					cloud_render_shader_->setInt("uPassIndex", 0);
-					cloud_render_shader_->setFloat("uStepMultiplier", far_step_multiplier_);
+					cloud_render_shader_->setFloat("uStepMultiplier", 1.0f);
 
-					glBindImageTexture(0, packed_far_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
-					glBindImageTexture(1, packed_far_depth_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
-					glBindImageTexture(2, packed_far_velocity_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RG16F);
+					glBindImageTexture(0, packed_near_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+					glBindImageTexture(1, packed_near_depth_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
+					glBindImageTexture(2, packed_near_velocity_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RG16F);
 
 					glDispatchCompute((packed_width + 7) / 8, (packed_height + 7) / 8, 1);
 					glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 				}
 
-				// Pass 1: Medium Pass (runs every frame)
+				// Pass 1: Far Pass (runs second, lower detail, 8x8 Bayer, front-to-back accumulation)
 				{
 					cloud_render_shader_->use();
 					cloud_render_shader_->setInt("uPassIndex", 1);
-					cloud_render_shader_->setFloat("uStepMultiplier", medium_step_multiplier_);
+					cloud_render_shader_->setFloat("uStepMultiplier", step_multiplier_);
 
-					// Bind previous (far) pass results as samplers
+					// Bind Near pass results as samplers
 					glActiveTexture(GL_TEXTURE4);
-					glBindTexture(GL_TEXTURE_2D, packed_far_texture_);
+					glBindTexture(GL_TEXTURE_2D, packed_near_texture_);
 					glActiveTexture(GL_TEXTURE5);
-					glBindTexture(GL_TEXTURE_2D, packed_far_depth_texture_);
+					glBindTexture(GL_TEXTURE_2D, packed_near_depth_texture_);
 					glActiveTexture(GL_TEXTURE6);
-					glBindTexture(GL_TEXTURE_2D, packed_far_velocity_texture_);
-
-					cloud_render_shader_->setInt("uPrevColorTexture", 4);
-					cloud_render_shader_->setInt("uPrevDepthTexture", 5);
-					cloud_render_shader_->setInt("uPrevVelocityTexture", 6);
-
-					glBindImageTexture(0, packed_medium_far_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
-					glBindImageTexture(1, packed_medium_far_depth_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
-					glBindImageTexture(2, packed_medium_far_velocity_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RG16F);
-
-					glDispatchCompute((packed_width + 7) / 8, (packed_height + 7) / 8, 1);
-					glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
-				}
-
-				// Pass 2: Near Pass (runs every frame)
-				{
-					cloud_render_shader_->use();
-					cloud_render_shader_->setInt("uPassIndex", 2);
-					cloud_render_shader_->setFloat("uStepMultiplier", 1.0f);
-
-					// Bind previous (medium + far) pass results as samplers
-					glActiveTexture(GL_TEXTURE4);
-					glBindTexture(GL_TEXTURE_2D, packed_medium_far_texture_);
-					glActiveTexture(GL_TEXTURE5);
-					glBindTexture(GL_TEXTURE_2D, packed_medium_far_depth_texture_);
-					glActiveTexture(GL_TEXTURE6);
-					glBindTexture(GL_TEXTURE_2D, packed_medium_far_velocity_texture_);
+					glBindTexture(GL_TEXTURE_2D, packed_near_velocity_texture_);
 
 					cloud_render_shader_->setInt("uPrevColorTexture", 4);
 					cloud_render_shader_->setInt("uPrevDepthTexture", 5);

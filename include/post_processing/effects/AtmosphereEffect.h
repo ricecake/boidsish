@@ -338,19 +338,14 @@ namespace Boidsish {
 			GLuint packed_velocity_texture_ = 0;
 			GLuint bounding_texture_ = 0;
 
-			// Intermediate textures for 3-pass cloud rendering
-			GLuint packed_far_texture_ = 0;
-			GLuint packed_far_depth_texture_ = 0;
-			GLuint packed_far_velocity_texture_ = 0;
-			GLuint packed_medium_far_texture_ = 0;
-			GLuint packed_medium_far_depth_texture_ = 0;
-			GLuint packed_medium_far_velocity_texture_ = 0;
+			// Intermediate textures for 2-pass front-to-back cloud rendering
+			GLuint packed_near_texture_ = 0;
+			GLuint packed_near_depth_texture_ = 0;
+			GLuint packed_near_velocity_texture_ = 0;
 
-			// Pass parameters for 3-pass cloud rendering (in world units, meters)
-			float near_medium_split_ = 15000.0f;
-			float medium_far_split_ = 50000.0f;
-			float far_step_multiplier_ = 2.0f;
-			float medium_step_multiplier_ = 1.25f;
+			// Pass parameters for 2-pass cloud rendering
+			float near_split_ = 25000.0f;
+			float step_multiplier_ = 2.0f;
 
 			GLuint filtered_texture_ = 0;
 			GLuint spatial_aux_texture_ = 0;

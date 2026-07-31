@@ -574,17 +574,11 @@ void main() {
 		return;
 
 	ivec2 offset;
-	if (uPassIndex == 0) {
+	if (uPassIndex == 1) {
 		// Far pass (8x8)
 		int k = frameIndex % 64;
 		int dx = (((k & 1) << 2) | ((k & 4) >> 1) | ((k & 16) >> 4));
 		int dy = (((k & 2) << 1) | ((k & 8) >> 2) | ((k & 32) >> 5));
-		offset = ivec2(dx, dy);
-	} else if (uPassIndex == 1) {
-		// Medium pass (4x4)
-		int k = frameIndex % 16;
-		int dx = (((k & 1) << 1) | ((k & 4) >> 2));
-		int dy = (((k & 2)) | ((k & 8) >> 3));
 		offset = ivec2(dx, dy);
 	} else {
 		// Near pass (2x2)
@@ -601,6 +595,19 @@ void main() {
 	ivec2 fullResSize = packedSize * 2;
 
 	vec2 TexCoords = (vec2(fullResPixel) + 0.5) / vec2(fullResSize);
+
+	// Early out if previous pass is already opaque (front-to-back optimization)
+	if (uPassIndex > 0) {
+		vec4 prevColor = texture(uPrevColorTexture, TexCoords);
+		if (prevColor.a < 0.05) {
+			vec4 prevDepth = texture(uPrevDepthTexture, TexCoords);
+			vec4 prevVelocity = texture(uPrevVelocityTexture, TexCoords);
+			imageStore(outPackedColor, packedPixel, prevColor);
+			imageStore(outPackedDepth, packedPixel, prevDepth);
+			imageStore(outPackedVelocity, packedPixel, prevVelocity);
+			return;
+		}
+	}
 
 	float depth = texture(depthTexture, TexCoords).r;
 	float z = depth * 2.0 - 1.0;
@@ -651,6 +658,19 @@ void main() {
 	float firstHitDist = -1.0;
 	float lastHitDist = -1.0;
 	float pathDensity = 0.0;
+
+	if (uPassIndex > 0) {
+		vec4 prevColor = texture(uPrevColorTexture, TexCoords);
+		cloudColor = prevColor.rgb;
+		cloudTransmittance = vec3(prevColor.a);
+
+		vec4 prevDepth = texture(uPrevDepthTexture, TexCoords);
+		if (prevDepth.x < uCloudMaxRayDistance * 0.45 * worldScale) {
+			firstHitDist = prevDepth.x;
+			lastHitDist = prevDepth.y;
+		}
+		pathDensity = prevDepth.w;
+	}
 
 	float rayDist = t_end - t_start;
 	float precisionLimit = max(1.0, t_end * 1e-5);
@@ -712,16 +732,13 @@ void main() {
 
 	float overlap = 1500.0 * worldScale;
 
-	// Apply pass-specific limits on t_start and t_end (allowing overlaps)
+	// Apply pass-specific limits on t_start and t_end (allowing overlaps, front-to-back 2-pass)
 	float pass_t_start = t_start;
 	float pass_t_end = t_end;
 	if (uPassIndex == 0) {
-		pass_t_start = max(t_start, uMediumSplit - overlap);
-	} else if (uPassIndex == 1) {
-		pass_t_start = max(t_start, uNearSplit - overlap);
-		pass_t_end = min(t_end, uMediumSplit + overlap);
-	} else {
 		pass_t_end = min(t_end, uNearSplit + overlap);
+	} else {
+		pass_t_start = max(t_start, uNearSplit - overlap);
 	}
 
 	if (pass_t_start >= pass_t_end) {
@@ -766,7 +783,7 @@ void main() {
 	vec3 rgbExtinction = uCloudExtinctionColor * uCloudExtinction;
 
 	if (pass_t_start < pass_t_end) {
-		vec3 lightEnergy = vec3(0.0);
+		vec3 lightEnergy = (uPassIndex > 0) ? (cloudColor / max(cloudColorUniform, vec3(1e-5))) : vec3(0.0);
 		vec3 prevDensity = vec3(0.0);
 		vec3 prevTransmission = vec3(-1.0);
 		vec3 prevTransmissionDelta = vec3(0.0);
@@ -821,16 +838,14 @@ void main() {
 				lastWeatherT = t;
 			}
 
-			// Smooth overlap/blend fade factor
+			// Smooth overlap/blend fade factor (front-to-back 2-pass order)
 			float fade = 1.0;
 			if (uPassIndex == 0) {
-				fade = smoothstep(uMediumSplit - overlap, uMediumSplit + overlap, t);
-			} else if (uPassIndex == 1) {
-				float fadeNear = smoothstep(uNearSplit - overlap, uNearSplit + overlap, t);
-				float fadeFar = smoothstep(uMediumSplit + overlap, uMediumSplit - overlap, t);
-				fade = fadeNear * fadeFar;
-			} else {
+				// Near Pass (Pass 0) blends out at uNearSplit
 				fade = smoothstep(uNearSplit + overlap, uNearSplit - overlap, t);
+			} else {
+				// Far Pass (Pass 1) blends in at uNearSplit
+				fade = smoothstep(uNearSplit - overlap, uNearSplit + overlap, t);
 			}
 
 			CloudLayer layer = computeCloudLayer(weather, props);
@@ -978,25 +993,21 @@ void main() {
 		finalVelocity = prevScreen - TexCoords;
 	}
 
-	// Absorb previously stored energy and transmittance for further levels
+	// Combine depth and velocity for front-to-back passes
 	if (uPassIndex > 0) {
-		vec4 prevColor = texture(uPrevColorTexture, TexCoords);
 		vec4 prevDepth = texture(uPrevDepthTexture, TexCoords);
 		vec4 prevVelocity = texture(uPrevVelocityTexture, TexCoords);
 
-		// Combine color and transmittance
-		vec3 combinedColor = finalColor.rgb + finalColor.a * prevColor.rgb;
-		float combinedTransmittance = finalColor.a * prevColor.a;
-		finalColor = vec4(combinedColor, combinedTransmittance);
-
-		// Combine depth and velocity
 		if (totalWeight > 0.001) {
-			float combinedFirstHit = firstHitDist;
-			float combinedLastHit = (prevDepth.x < uCloudMaxRayDistance * 0.45 * worldScale) ? prevDepth.y : lastHitDist;
-			float combinedStepSize = firstStepSize;
-			float combinedPathDensity = max(pathDensity, prevDepth.w);
-			finalDepth = vec4(combinedFirstHit, combinedLastHit, combinedStepSize, combinedPathDensity);
+			// This pass has a hit
+			if (prevDepth.x < uCloudMaxRayDistance * 0.45 * worldScale) {
+				// Prioritize closer (previous) pass velocity and first hit distance
+				finalDepth.x = prevDepth.x;
+				finalVelocity = prevVelocity.xy;
+			}
+			finalDepth.w = max(finalDepth.w, prevDepth.w);
 		} else {
+			// No hit in this pass, copy previous pass's depth and velocity
 			finalDepth = prevDepth;
 			finalVelocity = prevVelocity.xy;
 		}
