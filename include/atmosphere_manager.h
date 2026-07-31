@@ -167,6 +167,27 @@ namespace Boidsish {
 		}
 		float GetCloudCoverage() const { return _cloudCoverage; }
 
+		void SetCloudAltitude(float h) {
+			if (h != _cloudAltitude) {
+				_cloudAltitude = h;
+			}
+		}
+		float GetCloudAltitude() const { return _cloudAltitude; }
+
+		void SetCloudThickness(float t) {
+			if (t != _cloudThickness) {
+				_cloudThickness = t;
+			}
+		}
+		float GetCloudThickness() const { return _cloudThickness; }
+
+		void SetCloudDensity(float d) {
+			if (d != _cloudDensity) {
+				_cloudDensity = d;
+			}
+		}
+		float GetCloudDensity() const { return _cloudDensity; }
+
 		void SetWorldScale(float s) {
 			if (std::abs(_worldScale - s) > 0.001f) {
 				_worldScale = s;
@@ -212,6 +233,7 @@ namespace Boidsish {
 		GLuint _cloudWeatherTexture = 0;
 		GLuint _cloudWeatherMinMaxTexture = 0;
 		GLuint _cloudVolumeTexture = 0;
+		GLuint _cloudShadowTexture = 0;
 		GLuint _cloudSeedsBuffer = 0;
 		GLuint _shCoeffsBuffer = 0;
 
@@ -223,6 +245,18 @@ namespace Boidsish {
 		std::unique_ptr<ComputeShader> _cloudBakeShader;
 		std::unique_ptr<ComputeShader> _cloudVolumeBakeShader;
 		std::unique_ptr<ComputeShader> _cloudMipShader;
+		std::unique_ptr<ComputeShader> _cloudShadowBakeShader;
+
+		glm::mat4 _cloudShadowMatrix = glm::mat4(1.0f);
+		glm::mat4 _cloudShadowInvMatrix = glm::mat4(1.0f);
+		glm::vec3 _lastBakedLightDir = glm::vec3(0.0f);
+		glm::vec3 _lastBakedCameraPos = glm::vec3(0.0f);
+		float     _lastBakedCloudCoverage = 0.0f;
+		float     _lastBakedCloudDensity = 0.0f;
+		float     _lastBakedCloudAltitude = 0.0f;
+		float     _lastBakedCloudThickness = 0.0f;
+		bool      _enableCloudShadowMap = true;
+		int       _frameIndex = 0;
 
 		glm::vec4 _shCoeffs[81];
 
@@ -232,6 +266,9 @@ namespace Boidsish {
 		std::vector<glm::vec4> _cpuWeatherMap;
 		std::vector<glm::vec4> _cpuCloudSeeds;
 		float _cloudCoverage = WeatherConstants::CloudCoverage.normal;
+		float _cloudAltitude = WeatherConstants::CloudAltitude.normal;
+		float _cloudThickness = WeatherConstants::CloudThickness.normal;
+		float _cloudDensity = WeatherConstants::CloudDensity.normal;
 		float _worldScale = 1.0f;
 
 		float     _rayleighScale = WeatherConstants::RayleighScale.normal;

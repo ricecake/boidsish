@@ -1,6 +1,7 @@
 #include "post_processing/effects/AtmosphereEffect.h"
 
 #include <array>
+#include <glm/gtc/matrix_transform.hpp>
 
 #include "atmosphere_manager.h"
 #include "constants.h"
@@ -223,6 +224,8 @@ namespace Boidsish {
 		}
 
 		void AtmosphereEffect::Apply(GLuint sourceTexture, GLuint depthTexture, GLuint velocityTexture, GLuint normalTexture, GLuint albedoTexture, const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix, const glm::vec3& cameraPos) {
+			auto& loc = ServiceLocator::Instance();
+
 			GLint original_fbo;
 			glGetIntegerv(GL_FRAMEBUFFER_BINDING, &original_fbo);
 
@@ -412,12 +415,11 @@ namespace Boidsish {
 			composite_shader_->setVec3("hazeColor", haze_color_);
 			composite_shader_->setFloat("u_atmosphereHeight", atmosphere_height_);
 
-			auto& loc = ServiceLocator::Instance();
 			auto shadow_mgr = loc.Get<ShadowManager>();
 			auto terrain_mgr = loc.Get<TerrainRenderManager>();
 			auto light_mgr = loc.Get<LightManager>();
 
-			if (shadow_mgr && shadow_mgr->IsInitialized()) {
+			if (shadow_mgr && shadow_mgr->IsInitialized() && light_mgr) {
 				shadow_mgr->BindForRendering(*composite_shader_);
 				std::array<int, 10> shadow_indices;
 				shadow_indices.fill(-1);

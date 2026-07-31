@@ -24,7 +24,6 @@ uniform bool  uHasHistory;
 uniform sampler2D u_skyViewLUT;
 layout(binding = [[CLOUD_MIN_MAX_BOUNDING_BINDING]]) uniform sampler2D u_cloudMinMaxBoundingTexture;
 layout(binding = [[CLOUD_WEATHER_MIN_MAX_BINDING]]) uniform sampler2D u_cloudWeatherMinMaxTexture;
-
 uniform float uCloudMaxRayDistance;
 uniform int   uCloudMinSamples;
 uniform int   uCloudMaxSamples;
@@ -301,7 +300,14 @@ void CalculateStochasticClusterLight(
 		}
 
 		vec3 opticalDepthToLight = vec3(0.0);
-		if (traceDist > 0.01 * worldScale) {
+		if (u_useCloudShadowMap && j == 0) {
+			vec4 lightSpacePos = u_cloudShadowMatrix * vec4(p, 1.0);
+			vec2 shadowUV = lightSpacePos.xy * 0.5 + 0.5;
+			float totalOpticalDepth = texture(u_cloudShadowTexture, shadowUV).r;
+			float h_n = getCloudRelativeHeight(p, weather, layer);
+			opticalDepthToLight = totalOpticalDepth * (1.0 - h_n) * (rgbExtinction * cloudShadowOpticalDepthMultiplier);
+		}
+		else if (traceDist > 0.01 * worldScale) {
 			int shadow_steps = 5;
 			// Start with a small step to catch the crisp local self-shadowing
 			float shadow_step_size = 100.0 * worldScale;
@@ -400,7 +406,13 @@ vec3 EvaluateStepLighting(
 		lightTransmittance = texture(u_transmittanceLUT, transUV).rgb;
 
 		vec3 opticalDepthToLight = vec3(0.0);
-		if (traceDist > 0.01 * worldScale) {
+		if (u_useCloudShadowMap && j == 0) {
+			vec4 lightSpacePos = u_cloudShadowMatrix * vec4(p, 1.0);
+			vec2 shadowUV = lightSpacePos.xy * 0.5 + 0.5;
+			float totalOpticalDepth = texture(u_cloudShadowTexture, shadowUV).r;
+			opticalDepthToLight = totalOpticalDepth * (1.0 - h_norm) * (rgbExtinction * cloudShadowOpticalDepthMultiplier);
+		}
+		else if (traceDist > 0.01 * worldScale) {
 			int shadow_steps = 5;
 			// Start with a small step to catch the crisp local self-shadowing
 			float shadow_step_size = 100.0 * worldScale;
