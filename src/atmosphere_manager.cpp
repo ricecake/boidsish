@@ -1,12 +1,14 @@
 #include "atmosphere_manager.h"
 
 #include <iostream>
+#include <glm/gtc/matrix_transform.hpp>
 
 #include "weather_manager.h"
 #include "constants.h"
 #include "gpu_resource_registry.h"
 #include "profiler.h"
 #include "service_locator.h"
+#include "light_manager.h"
 #include <cstring>
 #include "shader.h"
 
@@ -28,6 +30,8 @@ namespace Boidsish {
 			glDeleteTextures(1, &_cloudWeatherMinMaxTexture);
 		if (_cloudVolumeTexture)
 			glDeleteTextures(1, &_cloudVolumeTexture);
+		if (_cloudShadowTexture)
+			glDeleteTextures(1, &_cloudShadowTexture);
 		if (_cloudSeedsBuffer)
 			glDeleteBuffers(1, &_cloudSeedsBuffer);
 		if (_shCoeffsBuffer)
@@ -108,6 +112,17 @@ namespace Boidsish {
 		constexpr float border[] = {0.0f, 0.0f, 0.0f, 0.0f};
 		glTexParameterfv(GL_TEXTURE_3D, GL_TEXTURE_BORDER_COLOR, border);
 
+		// Cloud Shadow Map: 512x512 R16F (with mips for soft AO)
+		glGenTextures(1, &_cloudShadowTexture);
+		glBindTexture(GL_TEXTURE_2D, _cloudShadowTexture);
+		glTexStorage2D(GL_TEXTURE_2D, 10, GL_R16F, 512, 512);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+		float border_color[] = {0.0f, 0.0f, 0.0f, 0.0f};
+		glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, border_color);
+
 		// SH Coefficients SSBO: 9 x vec4
 		// Cloud Seeds SSBO: 100 x vec4 (10x10 Voronoi period)
 		glGenBuffers(1, &_cloudSeedsBuffer);
@@ -133,6 +148,7 @@ namespace Boidsish {
 		reg.PublishTexture(Constants::TextureUnit::CloudWeatherBake(), _cloudWeatherTexture);
 		reg.PublishTexture(Constants::TextureUnit::CloudWeatherMinMax(), _cloudWeatherMinMaxTexture);
 		reg.PublishTexture(Constants::TextureUnit::Cloud3D(), _cloudVolumeTexture, GL_TEXTURE_3D);
+		reg.PublishTexture(Constants::TextureUnit::CloudShadowMap(), _cloudShadowTexture);
 	}
 
 	void AtmosphereManager::CreateShaders() {
@@ -150,6 +166,7 @@ namespace Boidsish {
 		_cloudBakeShader = std::make_unique<ComputeShader>("shaders/effects/cloud_weather_bake.comp");
 		_cloudVolumeBakeShader = std::make_unique<ComputeShader>("shaders/effects/cloud_3d_volume_bake.comp");
 		_cloudMipShader = std::make_unique<ComputeShader>("shaders/effects/cloud_weather_mip.comp");
+		_cloudShadowBakeShader = std::make_unique<ComputeShader>("shaders/effects/cloud_shadow_bake.comp");
 
 		setup_shader(*_transmittanceShader);
 		setup_shader(*_multiScatteringShader);
@@ -158,6 +175,7 @@ namespace Boidsish {
 		setup_shader(*_skyToSHShader);
 		setup_shader(*_cloudBakeShader);
 		setup_shader(*_cloudVolumeBakeShader);
+		setup_shader(*_cloudShadowBakeShader);
 	}
 
 	void AtmosphereManager::Update(
@@ -169,6 +187,91 @@ namespace Boidsish {
 		float            worldScale
 	) {
 		PROJECT_PROFILE_SCOPE("AtmosphereManager::Update");
+
+		// Cloud Shadow Map Bake
+		auto light_mgr = ServiceLocator::Instance().Get<LightManager>();
+		glm::vec3 primaryLightDir = sunDir;
+		if (light_mgr) {
+			const auto& lights = light_mgr->GetLights();
+			for (const auto& light : lights) {
+				if (light.type == Boidsish::DIRECTIONAL_LIGHT) {
+					primaryLightDir = glm::normalize(-light.direction);
+					break;
+				}
+			}
+		}
+
+		bool needs_shadow_bake = (_frameIndex == 0);
+		if (!needs_shadow_bake && _enableCloudShadowMap) {
+			if (glm::distance(primaryLightDir, _lastBakedLightDir) > 0.01f) {
+				needs_shadow_bake = true;
+			}
+			if (glm::distance(glm::vec2(cameraPos.x, cameraPos.z), glm::vec2(_lastBakedCameraPos.x, _lastBakedCameraPos.z)) > 5000.0f * worldScale) {
+				needs_shadow_bake = true;
+			}
+			if (std::abs(_cloudCoverage - _lastBakedCloudCoverage) > 0.01f) {
+				needs_shadow_bake = true;
+			}
+			if (std::abs(_cloudDensity - _lastBakedCloudDensity) > 0.01f) {
+				needs_shadow_bake = true;
+			}
+			if (std::abs(_cloudAltitude - _lastBakedCloudAltitude) > 10.0f * worldScale) {
+				needs_shadow_bake = true;
+			}
+			if (std::abs(_cloudThickness - _lastBakedCloudThickness) > 10.0f * worldScale) {
+				needs_shadow_bake = true;
+			}
+		}
+
+		if (needs_shadow_bake && _enableCloudShadowMap && _cloudShadowBakeShader && _cloudShadowBakeShader->isValid()) {
+			glm::vec3 center = glm::vec3(cameraPos.x, 0.0f, cameraPos.z);
+			glm::vec3 lightDir = glm::normalize(primaryLightDir);
+			glm::vec3 lightPos = center + lightDir * (20000.0f * worldScale);
+			glm::vec3 target = center - lightDir * (20000.0f * worldScale);
+			glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
+			if (std::abs(lightDir.y) > 0.9f) {
+				up = glm::vec3(0.0f, 0.0f, 1.0f);
+			}
+			glm::mat4 lightView = glm::lookAt(lightPos, target, up);
+			float half_ext = 100000.0f * worldScale;
+			glm::mat4 lightProj = glm::ortho(-half_ext, half_ext, -half_ext, half_ext, 0.0f, 40000.0f * worldScale);
+			_cloudShadowMatrix = lightProj * lightView;
+			_cloudShadowInvMatrix = glm::inverse(_cloudShadowMatrix);
+
+			_lastBakedLightDir = primaryLightDir;
+			_lastBakedCameraPos = cameraPos;
+			_lastBakedCloudCoverage = _cloudCoverage;
+			_lastBakedCloudDensity = _cloudDensity;
+			_lastBakedCloudAltitude = _cloudAltitude;
+			_lastBakedCloudThickness = _cloudThickness;
+
+			_cloudShadowBakeShader->use();
+			_cloudShadowBakeShader->setMat4("u_lightSpaceMatrix", _cloudShadowMatrix);
+			_cloudShadowBakeShader->setMat4("u_invLightSpaceMatrix", _cloudShadowInvMatrix);
+			_cloudShadowBakeShader->setVec3("u_primaryLightDir", primaryLightDir);
+			_cloudShadowBakeShader->setFloat("u_atmosphereHeight", _atmosphereHeight);
+			_cloudShadowBakeShader->setFloat("u_time", time);
+			_cloudShadowBakeShader->setFloat("u_cloudCoverage", _cloudCoverage);
+			_cloudShadowBakeShader->setFloat("u_worldScale", worldScale);
+			_cloudShadowBakeShader->setFloat("u_cloudAltitude", _cloudAltitude);
+			_cloudShadowBakeShader->setFloat("u_cloudThickness", _cloudThickness);
+			_cloudShadowBakeShader->setFloat("u_cloudDensity", _cloudDensity);
+
+			glBindImageTexture(0, _cloudShadowTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R16F);
+
+			// Bind u_cloudWeatherMinMaxTexture (Unit 49)
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::CloudWeatherMinMax());
+			glBindTexture(GL_TEXTURE_2D, _cloudWeatherMinMaxTexture);
+
+			glDispatchCompute(512 / 8, 512 / 8, 1);
+			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+
+			// Generate mipmaps for blurred lookups (soft shadows/AO)
+			glBindTexture(GL_TEXTURE_2D, _cloudShadowTexture);
+			glGenerateMipmap(GL_TEXTURE_2D);
+			glBindTexture(GL_TEXTURE_2D, 0);
+		}
+		_frameIndex++;
 		if (_needsWeatherBake) {
 			// Clear seeds buffer before bake
 			glBindBuffer(GL_SHADER_STORAGE_BUFFER, _cloudSeedsBuffer);
@@ -434,6 +537,8 @@ namespace Boidsish {
 		glBindTexture(GL_TEXTURE_2D, _cloudWeatherMinMaxTexture);
 		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::Cloud3D());
 		glBindTexture(GL_TEXTURE_3D, _cloudVolumeTexture);
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::CloudShadowMap());
+		glBindTexture(GL_TEXTURE_2D, _cloudShadowTexture);
 	}
 
 	void AtmosphereManager::BindToShader(::ShaderBase& shader) {
@@ -445,6 +550,9 @@ namespace Boidsish {
 		shader.trySetInt("u_cloudWeatherTexture", Constants::TextureUnit::CloudWeatherBake());
 		shader.trySetInt("u_cloudWeatherMinMaxTexture", Constants::TextureUnit::CloudWeatherMinMax());
 		shader.trySetInt("u_cloud3DTexture", Constants::TextureUnit::Cloud3D());
+		shader.trySetInt("u_cloudShadowTexture", Constants::TextureUnit::CloudShadowMap());
+		shader.setMat4("u_cloudShadowMatrix", _cloudShadowMatrix);
+		shader.setBool("u_useCloudShadowMap", _enableCloudShadowMap);
 		shader.trySetFloat("u_atmosphereHeight", _atmosphereHeight);
 
 		shader.setVec3("u_rayleighScatteringBase", _rayleighScattering);
