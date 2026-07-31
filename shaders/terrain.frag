@@ -459,6 +459,15 @@ TerrainMaterial calculateMaterial(float largeNoise, float slope) {
 	finalMaterial.normalScale = mix(biomeMat.normalScale, cliffMat.normalScale, cliffMask);
 	finalMaterial.normalStrength = mix(biomeMat.normalStrength, cliffMat.normalStrength, cliffMask);
 
+	// 3D Texture Color Blend (X=Height, Y=Moisture, Z=Roughness)
+	vec3 blendCoord = vec3(
+		clamp(distortedHeight / (100.0 * worldScale), 0.0, 1.0),
+		moisture,
+		finalMaterial.roughness
+	);
+	vec3 blendColor = texture(u_terrainColorBlend, blendCoord).rgb;
+	finalMaterial.albedo = mix(finalMaterial.albedo, blendColor, 0.5);
+
 	// Large-scale macro color shifts
 	finalMaterial.albedo *= (1.0 + largeNoise * 0.12);
 	return finalMaterial;

@@ -1,11 +1,18 @@
 #include <iostream>
 #include <vector>
 #include <algorithm>
+#include <fstream>
+#include <string>
+
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
+
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+
 #include <glm/glm.hpp>
 
-int main() {
+void generateDefaultPng(const std::string& out_filename) {
 	// Colors defined in the terrain fragment shader
 	const glm::vec3 COL_SAND_WET = glm::vec3(0.55f, 0.45f, 0.35f);
 	const glm::vec3 COL_SAND_DRY = glm::vec3(0.76f, 0.70f, 0.55f);
@@ -20,14 +27,26 @@ int main() {
 	const glm::vec3 COL_SNOW_OLD = glm::vec3(0.85f, 0.88f, 0.92f);
 	const glm::vec3 COL_DIRT = glm::vec3(0.35f, 0.25f, 0.18f);
 
-	// Generate 4x4x4 3D data representing the color blend texture
-	std::vector<glm::vec3> blend_colors(4 * 4 * 4);
-	for (int z = 0; z < 4; ++z) {     // Roughness (Z)
-		float r = z / 3.0f;
-		for (int y = 0; y < 4; ++y) { // Moisture (Y)
-			float m = y / 3.0f;
-			for (int x = 0; x < 4; ++x) { // Height (X)
-				float h = x / 3.0f;
+	// Layout parameters
+	// Height is the slices (0 to 3) placed horizontally.
+	// Inside each slice: Moisture is Left-to-Right (X coordinate, 0 to 3), Roughness is Top-to-Bottom (Y coordinate, 0 to 3).
+	int block_size = 32;
+	int slice_res = 4 * block_size;
+	int border_size = 2;
+	int out_w = 4 * slice_res + 3 * border_size;
+	int out_h = slice_res;
+
+	std::vector<uint8_t> out_pixels(out_w * out_h * 3, 0); // RGB
+
+	for (int h_idx = 0; h_idx < 4; ++h_idx) {     // Height slices (Z-like, slice 0..3)
+		float h = h_idx / 3.0f;
+		int slice_x_offset = h_idx * (slice_res + border_size);
+
+		for (int r_idx = 0; r_idx < 4; ++r_idx) { // Roughness rows (0 at top, 3 at bottom)
+			float r = r_idx / 3.0f;
+
+			for (int m_idx = 0; m_idx < 4; ++m_idx) { // Moisture columns (0 at left, 3 at right)
+				float m = m_idx / 3.0f;
 
 				// Compute beachColor (Band 0)
 				float wetness = m * (1.0f - r);
@@ -64,62 +83,130 @@ int main() {
 					finalColor = glm::mix(alpineColor, snowColor, t);
 				}
 
-				blend_colors[z * 16 + y * 4 + x] = finalColor;
-			}
-		}
-	}
+				uint8_t col_r = static_cast<uint8_t>(std::clamp(finalColor.r * 255.0f, 0.0f, 255.0f));
+				uint8_t col_g = static_cast<uint8_t>(std::clamp(finalColor.g * 255.0f, 0.0f, 255.0f));
+				uint8_t col_b = static_cast<uint8_t>(std::clamp(finalColor.b * 255.0f, 0.0f, 255.0f));
 
-	// Layout parameters
-	// Each 4x4 layer (slice along roughness axis Z) will be upscaled to 32x32 per-pixel.
-	// So each slice is 128x128 pixels.
-	// We'll place the 4 roughness slices horizontally: Slice 0, Slice 1, Slice 2, Slice 3.
-	// We will add a 2-pixel black border between the slices.
-	// Total width: 4 * 128 + 3 * 2 = 518 pixels.
-	// Total height: 128 pixels.
-	int block_size = 32;
-	int slice_res = 4 * block_size;
-	int border_size = 2;
-	int out_w = 4 * slice_res + 3 * border_size;
-	int out_h = slice_res;
-
-	std::vector<uint8_t> out_pixels(out_w * out_h * 3, 0); // RGB
-
-	for (int z = 0; z < 4; ++z) {
-		int slice_x_offset = z * (slice_res + border_size);
-		for (int y = 0; y < 4; ++y) {
-			for (int x = 0; x < 4; ++x) {
-				glm::vec3 col = blend_colors[z * 16 + y * 4 + x];
-				uint8_t r = static_cast<uint8_t>(std::clamp(col.r * 255.0f, 0.0f, 255.0f));
-				uint8_t g = static_cast<uint8_t>(std::clamp(col.g * 255.0f, 0.0f, 255.0f));
-				uint8_t b = static_cast<uint8_t>(std::clamp(col.b * 255.0f, 0.0f, 255.0f));
-
-				// Fill block of size block_size x block_size
-				// Moisture (Y) increases from bottom to top, and Height (X) increases from left to right.
+				// Draw 32x32 block
 				for (int py = 0; py < block_size; ++py) {
-					int img_y = (3 - y) * block_size + py; // Invert Y so bottom is y=0
+					int img_y = r_idx * block_size + py; // r_idx=0 is top, r_idx=3 is bottom
 					for (int px = 0; px < block_size; ++px) {
-						int img_x = slice_x_offset + x * block_size + px;
+						int img_x = slice_x_offset + m_idx * block_size + px;
 
 						int out_idx = (img_y * out_w + img_x) * 3;
-						out_pixels[out_idx + 0] = r;
-						out_pixels[out_idx + 1] = g;
-						out_pixels[out_idx + 2] = b;
+						out_pixels[out_idx + 0] = col_r;
+						out_pixels[out_idx + 1] = col_g;
+						out_pixels[out_idx + 2] = col_b;
 					}
 				}
 			}
 		}
 	}
 
-	std::string out_filename = "terrain_color_blend_dump.png";
 	if (stbi_write_png(out_filename.c_str(), out_w, out_h, 3, out_pixels.data(), out_w * 3)) {
 		std::cout << "Successfully exported " << out_filename << " (" << out_w << "x" << out_h << " pixels)." << std::endl;
-		std::cout << "Axes: X inside each slice represents Height (left to right: low to high)." << std::endl;
-		std::cout << "      Y inside each slice represents Moisture (bottom to top: dry to wet)." << std::endl;
-		std::cout << "      The 4 separate horizontal slices represent Roughness (left to right: smooth to rough)." << std::endl;
+		std::cout << "Axes mapping in output image:" << std::endl;
+		std::cout << "  - Inside each slice: Moisture is Left-to-Right (dry to wet)." << std::endl;
+		std::cout << "                       Roughness is Top-to-Bottom (smooth to rough)." << std::endl;
+		std::cout << "  - The 4 horizontal slices correspond to Height levels (low to high: Beach -> Lowland -> Alpine -> Peak)." << std::endl;
 	} else {
 		std::cerr << "Failed to write " << out_filename << std::endl;
-		return 1;
+	}
+}
+
+void convertPngToHeader(const std::string& png_filename, const std::string& out_header) {
+	int width, height, channels;
+	uint8_t* pixels = stbi_load(png_filename.c_str(), &width, &height, &channels, 4);
+	if (!pixels) {
+		std::cerr << "Error: Failed to load " << png_filename << std::endl;
+		return;
 	}
 
+	// Expecting 518x128 image layout
+	if (width != 518 || height != 128) {
+		std::cerr << "Warning: Loaded image dimensions are " << width << "x" << height
+		          << ", but we expected 518x128. Sampling might be incorrect!" << std::endl;
+	}
+
+	std::vector<uint8_t> texture_data(256, 255); // 4x4x4 * 4 channels = 256 bytes
+
+	int block_size = 32;
+	int border_size = 2;
+	int slice_res = 128;
+
+	for (int h_idx = 0; h_idx < 4; ++h_idx) {
+		int slice_x_offset = h_idx * (slice_res + border_size);
+		for (int m_idx = 0; m_idx < 4; ++m_idx) {
+			for (int r_idx = 0; r_idx < 4; ++r_idx) {
+				// Sample the center of the block
+				int sample_x = slice_x_offset + m_idx * block_size + block_size / 2;
+				int sample_y = r_idx * block_size + block_size / 2;
+
+				// Clamp coordinates just in case
+				sample_x = std::clamp(sample_x, 0, width - 1);
+				sample_y = std::clamp(sample_y, 0, height - 1);
+
+				int pixel_idx = (sample_y * width + sample_x) * 4;
+
+				// In 3D texture space:
+				// - Coordinate X: Height (h_idx)
+				// - Coordinate Y: Moisture (m_idx)
+				// - Coordinate Z: Roughness (r_idx)
+				// Index = (z_idx * 16 + y_idx * 4 + x_idx) * 4
+				int index = (r_idx * 16 + m_idx * 4 + h_idx) * 4;
+
+				texture_data[index + 0] = pixels[pixel_idx + 0];
+				texture_data[index + 1] = pixels[pixel_idx + 1];
+				texture_data[index + 2] = pixels[pixel_idx + 2];
+				texture_data[index + 3] = pixels[pixel_idx + 3];
+			}
+		}
+	}
+
+	stbi_image_free(pixels);
+
+	// Write C++ Header
+	std::ofstream out(out_header);
+	if (!out.is_open()) {
+		std::cerr << "Error: Failed to open output header file " << out_header << std::endl;
+		return;
+	}
+
+	out << "#pragma once\n";
+	out << "#include <stdint.h>\n\n";
+	out << "// Pre-populated 4x4x4 RGBA8 color table compiled from " << png_filename << ".\n";
+	out << "// Layout: x_idx = Height (0..3), y_idx = Moisture (0..3), z_idx = Roughness (0..3).\n";
+	out << "// index = (z_idx * 16 + y_idx * 4 + x_idx) * 4.\n";
+	out << "const uint8_t kTerrainColorBlendData[256] = {\n";
+
+	for (int i = 0; i < 256; i += 16) {
+		out << "\t";
+		for (int j = 0; j < 16; ++j) {
+			out << static_cast<int>(texture_data[i + j]);
+			if (i + j < 255) {
+				out << ", ";
+			}
+		}
+		out << "\n";
+	}
+	out << "};\n";
+	out.close();
+
+	std::cout << "Successfully generated " << out_header << " containing kTerrainColorBlendData array." << std::endl;
+}
+
+int main(int argc, char** argv) {
+	if (argc > 1) {
+		std::string input_png = argv[1];
+		std::string output_header = "terrain_color_blend_data.h";
+		if (argc > 2) {
+			output_header = argv[2];
+		}
+		std::cout << "Converting edited image " << input_png << " back into C++ header..." << std::endl;
+		convertPngToHeader(input_png, output_header);
+	} else {
+		std::string out_filename = "terrain_color_blend_dump.png";
+		generateDefaultPng(out_filename);
+	}
 	return 0;
 }

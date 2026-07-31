@@ -13,6 +13,11 @@
 #include "service_locator.h"
 #include "shader.h"
 
+#if __has_include("terrain_color_blend_data.h")
+#include "terrain_color_blend_data.h"
+#define HAS_TERRAIN_COLOR_BLEND_DATA 1
+#endif
+
 namespace Boidsish {
 
 	struct TerrainDataUbo {
@@ -178,6 +183,9 @@ namespace Boidsish {
 		const glm::vec3 COL_DIRT = glm::vec3(0.35f, 0.25f, 0.18f);
 
 		std::vector<uint8_t> texture_data(4 * 4 * 4 * 4); // 4x4x4 RGBA8
+#ifdef HAS_TERRAIN_COLOR_BLEND_DATA
+		std::copy(kTerrainColorBlendData, kTerrainColorBlendData + 256, texture_data.begin());
+#else
 		for (int z = 0; z < 4; ++z) {     // Roughness (Z)
 			float r = z / 3.0f;
 			for (int y = 0; y < 4; ++y) { // Moisture (Y)
@@ -228,6 +236,7 @@ namespace Boidsish {
 				}
 			}
 		}
+#endif
 
 		glTexSubImage3D(GL_TEXTURE_3D, 0, 0, 0, 0, 4, 4, 4, GL_RGBA, GL_UNSIGNED_BYTE, texture_data.data());
 		glBindTexture(GL_TEXTURE_3D, 0);
