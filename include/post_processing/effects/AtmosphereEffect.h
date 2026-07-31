@@ -349,8 +349,8 @@ namespace Boidsish {
 			// Pass parameters for 3-pass cloud rendering (in world units, meters)
 			float near_medium_split_ = 15000.0f;
 			float medium_far_split_ = 50000.0f;
-			float far_step_multiplier_ = 3.0f;
-			float medium_step_multiplier_ = 1.5f;
+			float far_step_multiplier_ = 2.0f;
+			float medium_step_multiplier_ = 1.25f;
 
 			GLuint filtered_texture_ = 0;
 			GLuint spatial_aux_texture_ = 0;

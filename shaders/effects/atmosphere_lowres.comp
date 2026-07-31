@@ -573,14 +573,30 @@ void main() {
 	if (packedPixel.x >= packedSize.x || packedPixel.y >= packedSize.y)
 		return;
 
-	// 2x2 Bayer pattern for interleaving
-	ivec2 bayer_offsets[4] = ivec2[](
-		ivec2(0, 0),
-		ivec2(1, 1),
-		ivec2(1, 0),
-		ivec2(0, 1)
-	);
-	ivec2 offset = bayer_offsets[frameIndex % 4];
+	ivec2 offset;
+	if (uPassIndex == 0) {
+		// Far pass (8x8)
+		int k = frameIndex % 64;
+		int dx = (((k & 1) << 2) | ((k & 4) >> 1) | ((k & 16) >> 4));
+		int dy = (((k & 2) << 1) | ((k & 8) >> 2) | ((k & 32) >> 5));
+		offset = ivec2(dx, dy);
+	} else if (uPassIndex == 1) {
+		// Medium pass (4x4)
+		int k = frameIndex % 16;
+		int dx = (((k & 1) << 1) | ((k & 4) >> 2));
+		int dy = (((k & 2)) | ((k & 8) >> 3));
+		offset = ivec2(dx, dy);
+	} else {
+		// Near pass (2x2)
+		ivec2 bayer_offsets[4] = ivec2[](
+			ivec2(0, 0),
+			ivec2(1, 1),
+			ivec2(1, 0),
+			ivec2(0, 1)
+		);
+		offset = bayer_offsets[frameIndex % 4];
+	}
+
 	ivec2 fullResPixel = packedPixel * 2 + offset;
 	ivec2 fullResSize = packedSize * 2;
 
@@ -694,16 +710,18 @@ void main() {
 	t_start = max(t_start, b_firstHit);
 	t_end = min(t_end, b_lastHit);
 
-	// Apply pass-specific limits on t_start and t_end
+	float overlap = 1500.0 * worldScale;
+
+	// Apply pass-specific limits on t_start and t_end (allowing overlaps)
 	float pass_t_start = t_start;
 	float pass_t_end = t_end;
 	if (uPassIndex == 0) {
-		pass_t_start = max(t_start, uMediumSplit);
+		pass_t_start = max(t_start, uMediumSplit - overlap);
 	} else if (uPassIndex == 1) {
-		pass_t_start = max(t_start, uNearSplit);
-		pass_t_end = min(t_end, uMediumSplit);
+		pass_t_start = max(t_start, uNearSplit - overlap);
+		pass_t_end = min(t_end, uMediumSplit + overlap);
 	} else {
-		pass_t_end = min(t_end, uNearSplit);
+		pass_t_end = min(t_end, uNearSplit + overlap);
 	}
 
 	if (pass_t_start >= pass_t_end) {
@@ -794,7 +812,8 @@ void main() {
 			if (t_prev >= dist || t_prev >= pass_t_end || all(lessThan(cloudTransmittance, vec3(0.05)))) break;
 
 			vec3 p = viewPos + rayDir * t;
-			float currentLod = clamp((t - lodStartDist) / lodFadeRange, 0.0, 1.0);
+			float lodBias = log2(uStepMultiplier);
+			float currentLod = clamp((t - lodStartDist) / lodFadeRange + lodBias, 0.0, 1.0);
 
 			// Only re-evaluate computeCloudWeather if we've advanced past the interval threshold
 			if (i == 0 || abs(t - lastWeatherT) >= weatherUpdateInterval) {
@@ -802,11 +821,22 @@ void main() {
 				lastWeatherT = t;
 			}
 
+			// Smooth overlap/blend fade factor
+			float fade = 1.0;
+			if (uPassIndex == 0) {
+				fade = smoothstep(uMediumSplit - overlap, uMediumSplit + overlap, t);
+			} else if (uPassIndex == 1) {
+				float fadeNear = smoothstep(uNearSplit - overlap, uNearSplit + overlap, t);
+				float fadeFar = smoothstep(uMediumSplit + overlap, uMediumSplit - overlap, t);
+				fade = fadeNear * fadeFar;
+			} else {
+				fade = smoothstep(uNearSplit + overlap, uNearSplit - overlap, t);
+			}
+
 			CloudLayer layer = computeCloudLayer(weather, props);
-			// CloudDensityResult densityResCheap = calculateCloudDensityMinimal(p, weather, layer, props);
 			CloudDensityResult densityResCheap = calculateCloudDensity(p, weather, layer, props, time, currentLod);
 
-			vec3 d_cheap = densityResCheap.density;
+			vec3 d_cheap = densityResCheap.density * fade;
 
 			float nextStepSize = calculateBifurcatedStepSize(inVolume, zero_count, max(d_cheap.x,max(d_cheap.y,d_cheap.z)), baseStepSize, 3, 3);
 			// float nextStepSize = calculateBifurcatedStepSize(inVolume, zero_count, 1.0, baseStepSize, 2, 3);
@@ -841,7 +871,7 @@ void main() {
 				float integrationStep = stepSize;
 
 				CloudDensityResult densityRes = calculateCloudDensity(p, weather, layer, props, time, currentLod);
-				d = densityRes.density;
+				d = densityRes.density * fade;
 				vec3 sampleAdvection = densityRes.advectionSpeed;
 				float sampleAo = densityRes.ao;
 				vec3 sampleAlbedo = densityRes.albedo;

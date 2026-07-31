@@ -354,8 +354,8 @@ namespace Boidsish {
 				cloud_render_shader_->setFloat("uNearSplit", near_medium_split_ * world_scale_);
 				cloud_render_shader_->setFloat("uMediumSplit", medium_far_split_ * world_scale_);
 
-				// Pass 0: Far Pass (runs every 4 frames)
-				if (frame_index_ % 4 == 0) {
+				// Pass 0: Far Pass (runs every frame)
+				{
 					cloud_render_shader_->use();
 					cloud_render_shader_->setInt("uPassIndex", 0);
 					cloud_render_shader_->setFloat("uStepMultiplier", far_step_multiplier_);
@@ -368,8 +368,8 @@ namespace Boidsish {
 					glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 				}
 
-				// Pass 1: Medium Pass (runs every 2 frames)
-				if (frame_index_ % 2 == 0) {
+				// Pass 1: Medium Pass (runs every frame)
+				{
 					cloud_render_shader_->use();
 					cloud_render_shader_->setInt("uPassIndex", 1);
 					cloud_render_shader_->setFloat("uStepMultiplier", medium_step_multiplier_);
