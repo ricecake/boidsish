@@ -9,6 +9,7 @@ uniform float u_atmosphereHeight;
 uniform mat4 u_lightSpaceMatrix;
 uniform mat4 u_invLightSpaceMatrix;
 uniform vec3 u_primaryLightDir;
+uniform int u_frameIndex;
 
 #include "../atmosphere/common.glsl"
 #include "../helpers/clouds.glsl"
@@ -24,6 +25,18 @@ void main() {
 	ivec2 size = imageSize(outShadowMap);
 	if (pixel.x >= size.x || pixel.y >= size.y)
 		return;
+
+	// Staggered quarter-resolution schedule (2x2 Bayer grid)
+	ivec2 bayer_offsets[4] = ivec2[](
+		ivec2(0, 0),
+		ivec2(1, 1),
+		ivec2(1, 0),
+		ivec2(0, 1)
+	);
+	ivec2 current_offset = bayer_offsets[u_frameIndex % 4];
+	if ((pixel.x % 2) != current_offset.x || (pixel.y % 2) != current_offset.y) {
+		return; // Keep existing pixel values from prior frames
+	}
 
 	vec2 uv = (vec2(pixel) + 0.5) / vec2(size);
 

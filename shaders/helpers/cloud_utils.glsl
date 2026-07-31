@@ -554,15 +554,6 @@ float calculateCloudShadowFactor(vec3 frag_pos, vec3 L, float intensity) {
 	if (frag_pos.y > centerHeight)
 		return 1.0;
 
-	if (u_useCloudShadowMap) {
-		vec4 lightSpacePos = u_cloudShadowMatrix * vec4(frag_pos, 1.0);
-		vec2 shadowUV = lightSpacePos.xy * 0.5 + 0.5;
-		float totalOpticalDepth = texture(u_cloudShadowTexture, shadowUV).r;
-		float shadowDepth = totalOpticalDepth * cloudShadowOpticalDepthMultiplier;
-		float shadowTerm = exp(-shadowDepth * 8.0);
-		return mix(1.0, shadowTerm, intensity);
-	}
-
 	// Project to the cloud center height along the light ray
 	float t = (centerHeight - frag_pos.y) / L.y;
 	vec3 cloudPos = frag_pos + L * t;
@@ -613,16 +604,6 @@ float calculateCloudAmbientOcclusion(vec3 frag_pos) {
 	float centerHeight = (cloudAltitude + cloudThickness * 0.5) * worldScale;
 	if (frag_pos.y > centerHeight) {
 		return 1.0;
-	}
-
-	if (u_useCloudShadowMap) {
-		vec3 cloudPos = vec3(frag_pos.x, centerHeight, frag_pos.z);
-		vec4 lightSpacePos = u_cloudShadowMatrix * vec4(cloudPos, 1.0);
-		vec2 shadowUV = lightSpacePos.xy * 0.5 + 0.5;
-		float d3d = textureLod(u_cloudShadowTexture, shadowUV, 6.0).r;
-		float occlusionDepth = (d3d / max(0.1, cloudShadowStepMultiplier)) * 0.8;
-		float cloudAO = exp(-occlusionDepth * 2.0 * cloudShadowOpticalDepthMultiplier);
-		return mix(1.0, cloudAO, cloudShadowIntensity);
 	}
 
 	vec3 cloudPos = vec3(frag_pos.x, centerHeight, frag_pos.z);

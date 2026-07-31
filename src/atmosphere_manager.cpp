@@ -201,29 +201,7 @@ namespace Boidsish {
 			}
 		}
 
-		bool needs_shadow_bake = (_frameIndex == 0);
-		if (!needs_shadow_bake && _enableCloudShadowMap) {
-			if (glm::distance(primaryLightDir, _lastBakedLightDir) > 0.01f) {
-				needs_shadow_bake = true;
-			}
-			if (glm::distance(glm::vec2(cameraPos.x, cameraPos.z), glm::vec2(_lastBakedCameraPos.x, _lastBakedCameraPos.z)) > 5000.0f * worldScale) {
-				needs_shadow_bake = true;
-			}
-			if (std::abs(_cloudCoverage - _lastBakedCloudCoverage) > 0.01f) {
-				needs_shadow_bake = true;
-			}
-			if (std::abs(_cloudDensity - _lastBakedCloudDensity) > 0.01f) {
-				needs_shadow_bake = true;
-			}
-			if (std::abs(_cloudAltitude - _lastBakedCloudAltitude) > 10.0f * worldScale) {
-				needs_shadow_bake = true;
-			}
-			if (std::abs(_cloudThickness - _lastBakedCloudThickness) > 10.0f * worldScale) {
-				needs_shadow_bake = true;
-			}
-		}
-
-		if (needs_shadow_bake && _enableCloudShadowMap && _cloudShadowBakeShader && _cloudShadowBakeShader->isValid()) {
+		if (_enableCloudShadowMap && _cloudShadowBakeShader && _cloudShadowBakeShader->isValid()) {
 			glm::vec3 center = glm::vec3(cameraPos.x, 0.0f, cameraPos.z);
 			glm::vec3 lightDir = glm::normalize(primaryLightDir);
 			glm::vec3 lightPos = center + lightDir * (20000.0f * worldScale);
@@ -256,6 +234,7 @@ namespace Boidsish {
 			_cloudShadowBakeShader->setFloat("u_cloudAltitude", _cloudAltitude);
 			_cloudShadowBakeShader->setFloat("u_cloudThickness", _cloudThickness);
 			_cloudShadowBakeShader->setFloat("u_cloudDensity", _cloudDensity);
+			_cloudShadowBakeShader->setInt("u_frameIndex", _frameIndex);
 
 			glBindImageTexture(0, _cloudShadowTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R16F);
 
