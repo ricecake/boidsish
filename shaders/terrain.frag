@@ -41,6 +41,9 @@ uniform sampler2DArray uBiomeMap;
 uniform sampler2DArray u_displacementArray;
 uniform float          uRawChunkSize;
 
+// 3D terrain color blend texture: X=height, Y=moisture, Z=roughness
+layout(binding = [[TERRAIN_COLOR_BLEND_BINDING]]) uniform sampler3D u_terrainColorBlend;
+
 
 struct GrassProperties {
     vec4  colorTop;
@@ -212,7 +215,8 @@ TerrainMaterial getBiomeMaterial(float height, float moisture, float noise) {
 		float rockFactor = rockFactors.x;
 		float wetness = 1.0 - smoothstep(0.0, HEIGHT_BEACH_END, h) + moisture;
 
-		mat.albedo = mix(COL_SAND_DRY, COL_SAND_WET, wetness);
+		// mat.albedo = mix(COL_SAND_DRY, COL_SAND_WET, wetness);
+		mat.albedo = texture(u_terrainColorBlend, vec3(h, moisture, wetness)).rgb;
 		mat.roughness = mix(0.9, 0.4, wetness);
 		mat.normalScale = 40.0;
 		mat.normalStrength = mix(0.1, 0.05, wetness);
@@ -456,6 +460,15 @@ TerrainMaterial calculateMaterial(float largeNoise, float slope) {
 	finalMaterial.normalScale = mix(biomeMat.normalScale, cliffMat.normalScale, cliffMask);
 	finalMaterial.normalStrength = mix(biomeMat.normalStrength, cliffMat.normalStrength, cliffMask);
 
+	// // 3D Texture Color Blend (X=Height, Y=Moisture, Z=Roughness)
+	// vec3 blendCoord = vec3(
+	// 	clamp(distortedHeight / (100.0 * worldScale), 0.0, 1.0),
+	// 	moisture,
+	// 	finalMaterial.roughness
+	// );
+	// vec3 blendColor = texture(u_terrainColorBlend, blendCoord).rgb;
+	// finalMaterial.albedo = mix(finalMaterial.albedo, blendColor, 0.5);
+
 	// Large-scale macro color shifts
 	finalMaterial.albedo *= (1.0 + largeNoise * 0.12);
 	return finalMaterial;
@@ -635,6 +648,12 @@ void main() {
 	}
 
 	TerrainMaterial finalMaterial = calculateMaterial(largeNoise, slope);
+
+	// if (FragPos.x > 0) {
+	// 	float height = smoothstep(HEIGHT_BEACH_END, HEIGHT_PEAK, FragPos.y);
+	// 	// finalMaterial.albedo = texture(u_terrainColorBlend, vec3(height, largeNoise, vSubstrate)).rgb;
+	// 	finalMaterial.albedo = texture(u_terrainColorBlend, vec3(height-0.125*blueNoiseA, 1.0, 0)).rgb;
+	// }
 
 	float freezingScale = 1.0 - smoothstep(255.372, 273.15, temperature);
 
