@@ -1,6 +1,10 @@
 #include "lygia/generative/psrdnoise.glsl"
 #include "lygia/space/uncenter.glsl"
 
+layout(binding = [[CLOUD_SHADOW_MAP_BINDING]]) uniform sampler2D u_cloudShadowTexture;
+uniform mat4 u_cloudShadowMatrix;
+uniform bool u_useCloudShadowMap;
+
 struct CloudProperties {
 	float altitude;
 	float thickness;
