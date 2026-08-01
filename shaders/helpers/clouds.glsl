@@ -611,35 +611,41 @@ CloudSpotDetails calculateCloudDensityExpV10(
 	);
 }
 
-// Cloud density calculation helper
-// Returns CloudDensityResult based on world-space position
-CloudDensityResult calculateCloudDensityMinimal(
+float calculateCloudDensityRoughExt(
 	vec3            p,
-	CloudWeather    weather,
-	CloudLayer      layer,
-	CloudProperties props
+	CloudProperties props,
+	float           time,
+	sampler2D       weatherTexture
 ) {
+	CloudWeather weather = computeCloudWeatherExt(p, props, 0.0, weatherTexture);
+	CloudLayer layer = computeCloudLayer(weather, props);
+
 	float localFloor, actualThickness;
 	float h = getCloudRelativeHeight(p, weather, layer, localFloor, actualThickness);
-	vec3 advectSpeed = getCloudAdvectionSpeed(h, time);
-	CloudDensityResult pointDetails = CloudDensityResult(vec3(0.0), advectSpeed, 1.0, vec3(1.0), vec3(0.0));
 	if (p.y < localFloor || p.y > (localFloor + actualThickness)) {
-		return pointDetails;
+		return 0.0;
 	}
 
 	CloudSpotDetails res = calculateCloudDensityExpV10(p, weather, layer, props, time, 1000.0, 1.0);
-
-	return CloudDensityResult(res.density * res.relativeExtinction, advectSpeed, 1.0, vec3(1.0), vec3(0.0));
+	return res.density;
 }
 
+float calculateCloudDensityRough(
+	vec3            p,
+	CloudProperties props,
+	float           time
+) {
+	return calculateCloudDensityRoughExt(p, props, time, u_cloudWeatherTexture);
+}
 
-CloudDensityResult calculateCloudDensity(
+// Cloud density calculation helper
+// Returns CloudDensityResult based on world-space position
+CloudDensityResult calculateCloudDensityMinimalExt(
 	vec3            p,
 	CloudWeather    weather,
 	CloudLayer      layer,
 	CloudProperties props,
-	float           time,
-	float           simplified
+	sampler3D       cloud3DTexture
 ) {
 	float localFloor, actualThickness;
 	float h = getCloudRelativeHeight(p, weather, layer, localFloor, actualThickness);
@@ -658,7 +664,48 @@ CloudDensityResult calculateCloudDensity(
 		p_advected_3d.z / (150000.0 * props.worldScale)
 	);
 
-	vec4 volSample = textureLod(u_cloud3DTexture, uvw, clamp(simplified * 4.0, 0.0, 4.0));
+	vec4 volSample = textureLod(cloud3DTexture, uvw, 0.0);
+	float bakedDensity = volSample.a;
+
+	return CloudDensityResult(vec3(bakedDensity), advectSpeed, 1.0, vec3(1.0), vec3(0.0));
+}
+
+CloudDensityResult calculateCloudDensityMinimal(
+	vec3            p,
+	CloudWeather    weather,
+	CloudLayer      layer,
+	CloudProperties props
+) {
+	return calculateCloudDensityMinimalExt(p, weather, layer, props, u_cloud3DTexture);
+}
+
+CloudDensityResult calculateCloudDensityExt(
+	vec3            p,
+	CloudWeather    weather,
+	CloudLayer      layer,
+	CloudProperties props,
+	float           time,
+	float           simplified,
+	sampler3D       cloud3DTexture
+) {
+	float localFloor, actualThickness;
+	float h = getCloudRelativeHeight(p, weather, layer, localFloor, actualThickness);
+	vec3 advectSpeed = getCloudAdvectionSpeed(h, time);
+	CloudDensityResult pointDetails = CloudDensityResult(vec3(0.0), advectSpeed, 1.0, vec3(1.0), vec3(0.0));
+	if (p.y < localFloor || p.y > (localFloor + actualThickness)) {
+		return pointDetails;
+	}
+
+	// Sample the 3D cloud volume texture with slower advection speed
+	vec3 advect_3d = time * advectSpeed * 0.75;
+	vec3 p_advected_3d = p + advect_3d;
+	vec3 uvw = vec3(
+		p_advected_3d.x / (150000.0 * props.worldScale),
+		h,
+		p_advected_3d.z / (150000.0 * props.worldScale)
+	);
+
+	vec4 volSample = textureLod(cloud3DTexture, uvw, clamp(simplified * 4.0, 0.0, 4.0));
 	float volNoise = volSample.r;
 	float volAo = volSample.g;
 	float volAlbedoBasis = volSample.b;
@@ -679,6 +726,17 @@ CloudDensityResult calculateCloudDensity(
 
 	// return CloudDensityResult(mixedDensity, advectSpeed, volAo, mixedAlbedo, smoothstep(0.8, 1.2, mixedDensity) * vec3(0,1,0));
 	return CloudDensityResult(mixedDensity, advectSpeed, volAo, mixedAlbedo, vec3(0.0));
+}
+
+CloudDensityResult calculateCloudDensity(
+	vec3            p,
+	CloudWeather    weather,
+	CloudLayer      layer,
+	CloudProperties props,
+	float           time,
+	float           simplified
+) {
+	return calculateCloudDensityExt(p, weather, layer, props, time, simplified, u_cloud3DTexture);
 }
 
 #endif // HELPERS_CLOUDS_GLSL

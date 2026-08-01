@@ -65,10 +65,25 @@ void main() {
 
 	// Tile horizontally but do not repeat vertically
 	vec3 albedoCoords = vec3(fract(p.xz * 1.0), p.y);
-	vec3 densityCoords = vec3(fract(p.xz * 1.0), p.y);
-
 	float baseAlbedo = computeSimplexWorley(albedoCoords * baseHeightGradient);
-	float baseDensity = computeSimplexWorley(densityCoords * baseHeightGradient);
+
+	// Get the voxel's world-space position mapping matching 150,000 meters horizontally
+	// and vertical span matching the exact cloud layer boundaries.
+	vec3 world_pos;
+	world_pos.x = p.x * 150000.0 * worldScale;
+	world_pos.y = (cloudAltitude + p.y * (2.0 * cloudThickness)) * worldScale;
+	world_pos.z = p.z * 150000.0 * worldScale;
+
+	CloudProperties props;
+	props.altitude = cloudAltitude;
+	props.thickness = cloudThickness;
+	props.densityBase = cloudDensity;
+	props.coverage = cloudCoverage;
+	props.worldScale = worldScale;
+
+	// Evaluate the density function as written to find the density of the cloud volume
+	// at a point as would be ultimately evaluated at a rough scale.
+	float baseDensity = calculateCloudDensityRoughExt(world_pos, props, 0.0, u_cloudWeatherTexture);
 
 	imageStore(outVolume, voxel, vec4(noiseVal, aoVal, baseAlbedo, baseDensity));
 }
