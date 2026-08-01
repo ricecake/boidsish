@@ -88,7 +88,7 @@ void main() {
 		densities_backward[y] = getDensityAtUVW(vec3(uvw.x, uvw.y, fract(uvw.z - offset)), noiseVal, props);
 	}
 
-	// Top-down sweep to compute ambient occlusion (multi-directional) and shadow term
+	// Top-down sweep to compute ambient occlusion (multi-directional)
 	float accum_center = 0.0;
 	float accum_left = 0.0;
 	float accum_right = 0.0;
@@ -102,15 +102,13 @@ void main() {
 		accum_forward  += densities_forward[y];
 		accum_backward += densities_backward[y];
 
-		// Shadow term is still based on the direct top-down of the center column
-		float shadowTerm = exp(-accum_center * 0.1 * cloudShadowOpticalDepthMultiplier);
-
-		// Ambient occlusion integrates densities from multiple surrounding directions!
+		// Ambient occlusion integrates densities from multiple surrounding directions
 		float accum_ambient = (accum_center + accum_left + accum_right + accum_forward + accum_backward) * 0.2;
 		float occlusionDepth = accum_ambient * 0.1;
 		float aoVal = exp(-occlusionDepth * 0.05 * cloudShadowOpticalDepthMultiplier);
 
 		ivec3 voxel = ivec3(x, y, z);
-		imageStore(outVolume, voxel, vec4(noises[y], aoVal, shadowTerm, densities_center[y]));
+		// Initialize shadow to 1.0; cloud_shadow_bake.comp will compute the actual shadow responsive to sun position
+		imageStore(outVolume, voxel, vec4(noises[y], aoVal, 1.0, densities_center[y]));
 	}
 }

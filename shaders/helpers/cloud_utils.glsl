@@ -555,20 +555,23 @@ float calculateCloudShadowFactor(vec3 frag_pos, vec3 L, float intensity) {
 	if (frag_pos.y > centerHeight)
 		return 1.0;
 
-	if (u_useCloudShadowMap) {
-		vec4 lightSpacePos = u_cloudShadowMatrix * vec4(frag_pos, 1.0);
-		vec2 shadowUV = lightSpacePos.xy * 0.5 + 0.5;
-		float totalOpticalDepth = textureLod(u_cloudShadowTexture, shadowUV, 0.0).r;
+	float localFloor = cloudAltitude * worldScale;
+	float actualThickness = cloudThickness * worldScale;
+	float h = clamp((frag_pos.y - localFloor) / actualThickness, 0.0, 1.0);
 
-		float localFloor = cloudAltitude * worldScale;
-		float actualThickness = cloudThickness * worldScale;
-		float h_n = clamp((frag_pos.y - localFloor) / actualThickness, 0.0, 1.0);
+	vec3 advectSpeed = getCloudAdvectionSpeed(h, time);
+	vec3 advect_3d = time * advectSpeed * 0.75;
+	vec3 p_advected_3d = frag_pos + advect_3d;
+	vec3 uvw = vec3(
+		p_advected_3d.x / (150000.0 * worldScale),
+		h,
+		p_advected_3d.z / (150000.0 * worldScale)
+	);
 
-		float opticalDepth = totalOpticalDepth * (1.0 - h_n) * (cloudShadowOpticalDepthMultiplier);
-		float shadowTerm = exp(-opticalDepth * 8.0);
-		return mix(1.0, shadowTerm, intensity);
-	}
-	return 1.0;
+	// Sample the precomputed shadow term (B channel of 3D volume texture)
+	float shadowTerm = textureLod(u_cloud3DTexture, uvw, 0.0).b;
+
+	return mix(1.0, shadowTerm, intensity);
 }
 
 float evaluateCloudShadowDensityAtWorldPos(vec2 worldXZ, float time) {

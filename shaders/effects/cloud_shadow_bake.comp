@@ -1,32 +1,23 @@
 #version 460 core
-layout(local_size_x = 8, local_size_y = 8) in;
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
-layout(binding = 0, r16f) uniform image2D outShadowMap;
+layout(binding = 0, rgba16f) uniform image3D outVolume;
 
-#define ATMOSPHERE_HEIGHT_DEFINED
-uniform float u_atmosphereHeight;
-
-uniform mat4 u_lightSpaceMatrix;
-uniform mat4 u_invLightSpaceMatrix;
 uniform vec3 u_primaryLightDir;
 uniform int u_frameIndex;
+uniform float u_worldScale;
 
-#include "../atmosphere/common.glsl"
+#define CLOUD_BAKE_SHADER
 #include "../helpers/clouds.glsl"
-#include "../helpers/fast_noise.glsl"
-#include "../helpers/lighting.glsl"
-#include "../types/temporal_data.glsl"
-#include "helpers/math.glsl"
-
-layout(binding = [[CLOUD_WEATHER_MIN_MAX_BINDING]]) uniform sampler2D u_cloudWeatherMinMaxTexture;
 
 void main() {
-	ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
-	ivec2 size = imageSize(outShadowMap);
-	if (pixel.x >= size.x || pixel.y >= size.y)
+	ivec3 size = imageSize(outVolume); // 128, 128, 128
+	int x = int(gl_GlobalInvocationID.x);
+	int z = int(gl_GlobalInvocationID.y);
+	if (x >= size.x || z >= size.z)
 		return;
 
-	// Staggered quarter-resolution schedule (2x2 Bayer grid)
+	// Staggered quarter-resolution schedule (2x2 Bayer grid pattern based on u_frameIndex % 4)
 	ivec2 bayer_offsets[4] = ivec2[](
 		ivec2(0, 0),
 		ivec2(1, 1),
@@ -34,99 +25,49 @@ void main() {
 		ivec2(0, 1)
 	);
 	ivec2 current_offset = bayer_offsets[u_frameIndex % 4];
-	if ((pixel.x % 2) != current_offset.x || (pixel.y % 2) != current_offset.y) {
-		return; // Keep existing pixel values from prior frames
+	if ((x % 2) != current_offset.x || (z % 2) != current_offset.y) {
+		return; // Skip updating this column this frame
 	}
 
-	vec2 uv = (vec2(pixel) + 0.5) / vec2(size);
-
-	// In OpenGL clip space, near plane is at Z = -1.0
-	vec4 clipSpace = vec4(uv * 2.0 - 1.0, -1.0, 1.0);
-	vec4 worldPosNear = u_invLightSpaceMatrix * clipSpace;
-	worldPosNear /= worldPosNear.w;
-
-	vec3 rayStart = worldPosNear.xyz;
-	// Ray direction is the light propagation direction (from light towards the ground)
-	vec3 rayDir = -normalize(u_primaryLightDir);
-
-	float t_start = 1e10;
-	float t_end = -1e10;
-	intersectCloudShell(rayStart, rayDir, worldScale, t_start, t_end);
-
-	if (t_start >= t_end) {
-		imageStore(outShadowMap, pixel, vec4(0.0));
-		return;
+	vec3 L = normalize(u_primaryLightDir);
+	// If the sun/moon is below the horizon, we don't have direct sunlight, but let's keep a minimum L.y to prevent division/zero issues
+	if (L.y < 0.001) {
+		L = vec3(0.0, 1.0, 0.0);
 	}
 
-	float accumulatedDensity = 0.0;
-	float t = t_start;
-	int L = 3;
-	float baseStepSize = 100.0 * worldScale;
+	// For each voxel y from 127 down to 0:
+	// We trace a ray from this voxel along L to compute the accumulated density (optical depth)
+	// and write the computed shadow term back into the B channel of the voxel.
+	for (int y = 127; y >= 0; y--) {
+		ivec3 voxel = ivec3(x, y, z);
+		vec3 voxel_uvw = vec3(voxel) / vec3(size);
 
-	CloudProperties props;
-	props.altitude = cloudAltitude;
-	props.thickness = cloudThickness;
-	props.densityBase = cloudDensity;
-	props.coverage = cloudCoverage;
-	props.worldScale = worldScale;
+		// Raymarching to compute shadow factor from this voxel towards the sun
+		float accumulatedDensity = 0.0;
+		float t_step = 1.0 / 32.0; // standard step size for tracing through the volume
 
-	// Perform hierarchical DDA raymarching accelerated by min-max weather texture
-	for (int i = 0; i < 512; ++i) {
-		if (t >= t_end) break;
+		// Trace up to 32 steps (since cloud layer has finite thickness and we trace upwards)
+		for (int step = 1; step <= 32; step++) {
+			float t = float(step) * t_step;
+			vec3 sample_uvw = voxel_uvw + L * t;
 
-		vec3 p = rayStart + rayDir * t;
-		vec3 advect = getCloudWindOffset(time);
-		vec3 p_advected = p + advect;
-		vec2 weatherUV = p_advected.xz / (100000.0 * worldScale);
-
-		// Wrap horizontally
-		weatherUV = fract(weatherUV);
-
-		vec2 minMax = textureLod(u_cloudWeatherMinMaxTexture, weatherUV, float(L)).rg;
-		float maxDensity = clamp(minMax.y + (cloudCoverage * 2.0 - 1.0), 0.0, 1.0);
-
-		if (maxDensity <= 0.001) {
-			float mapRange = 100000.0 * worldScale;
-			float texelSizeAtLevel0 = mapRange / 2048.0;
-			float texelSize = float(1 << L) * texelSizeAtLevel0;
-
-			vec2 dir2D = rayDir.xz;
-			float len2D = max(length(dir2D), 1e-6);
-			vec2 dir_norm = dir2D / len2D;
-
-			vec2 p_xz = p_advected.xz;
-			vec2 cell_idx = floor(p_xz / texelSize);
-
-			vec2 next_bound;
-			next_bound.x = (dir_norm.x > 0.0) ? (cell_idx.x + 1.0) * texelSize : cell_idx.x * texelSize;
-			next_bound.y = (dir_norm.y > 0.0) ? (cell_idx.y + 1.0) * texelSize : cell_idx.y * texelSize;
-
-			vec2 dist_to_bound;
-			dist_to_bound.x = (abs(dir_norm.x) > 1e-6) ? (next_bound.x - p_xz.x) / dir_norm.x : 1e10;
-			dist_to_bound.y = (abs(dir_norm.y) > 1e-6) ? (next_bound.y - p_xz.y) / dir_norm.y : 1e10;
-
-			float dt_2D = min(dist_to_bound.x, dist_to_bound.y);
-			float dt = (dt_2D / len2D) + 0.001; // pushes it safely over the boundary line
-
-			dt = clamp(dt, baseStepSize, 2000.0 * worldScale);
-			t += dt;
-			L = clamp(L + 1, 0, 10);
-		}
-		else {
-			if (L > 0) {
-				L--;
-			} else {
-				// At level 0, sample the actual cloud density
-				CloudWeather weather = computeCloudWeather(p, props);
-				CloudLayer layer = computeCloudLayer(weather, props);
-
-				CloudDensityResult densityRes = calculateCloudDensityMinimal(p, weather, layer, props);
-				accumulatedDensity += max(0.0, densityRes.density.r) * baseStepSize;
-
-				t += baseStepSize;
+			// If the ray escapes the top of the cloud layer (y > 1.0) or bounds, we stop
+			if (sample_uvw.y > 1.0 || sample_uvw.x < 0.0 || sample_uvw.x > 1.0 || sample_uvw.z < 0.0 || sample_uvw.z > 1.0) {
+				break;
 			}
-		}
-	}
 
-	imageStore(outShadowMap, pixel, vec4(accumulatedDensity, 0.0, 0.0, 0.0));
+			// Sample density from the A (alpha) channel of our 3D image/texture
+			float stepDensity = imageLoad(outVolume, ivec3(sample_uvw * vec3(size))).a;
+			accumulatedDensity += stepDensity * t_step;
+		}
+
+		// Compute shadow term using Beer's law
+		float shadowTerm = exp(-accumulatedDensity * 12.0 * cloudShadowOpticalDepthMultiplier);
+
+		// Retrieve original voxel values (R = noise, G = AO, A = density)
+		vec4 original = imageLoad(outVolume, voxel);
+
+		// Overwrite only the B channel (shadowTerm)
+		imageStore(outVolume, voxel, vec4(original.r, original.g, shadowTerm, original.a));
+	}
 }
