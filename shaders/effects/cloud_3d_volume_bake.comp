@@ -1,6 +1,6 @@
 #version 460 core
 
-layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
 
 layout(binding = 0, rgba16f) uniform image3D outVolume;
 
@@ -29,12 +29,27 @@ float computeSimplexWorley(vec3 p) {
 	return clamp(simplexWorley, 0.0, 1.0);
 }
 
-float getDensityAtUVW(vec3 uvw, float noiseVal, CloudProperties props) {
+void main() {
+	ivec3 voxel = ivec3(gl_GlobalInvocationID.xyz);
+	ivec3 size = imageSize(outVolume); // 128, 128, 128
+	if (voxel.x >= size.x || voxel.y >= size.y || voxel.z >= size.z) return;
+
+	vec3 uvw = vec3(voxel) / vec3(size); // [0, 1]
+	float noiseVal = computeSimplexWorley(uvw);
+
 	// Map to world position (horizontal scale 150,000 meters)
 	vec3 p_world;
 	p_world.x = uvw.x * 150000.0 * worldScale;
 	p_world.z = uvw.z * 150000.0 * worldScale;
 
+	CloudProperties props;
+	props.altitude = cloudAltitude;
+	props.thickness = cloudThickness;
+	props.densityBase = cloudDensity;
+	props.coverage = cloudCoverage;
+	props.worldScale = worldScale;
+
+	// Sample weather map at p_world.xz
 	CloudWeather weather = computeCloudWeather(p_world, props);
 	CloudLayer layer = computeCloudLayer(weather, props);
 
@@ -49,66 +64,35 @@ float getDensityAtUVW(vec3 uvw, float noiseVal, CloudProperties props) {
 	if (finalDensity > 0.0) {
 		finalDensity *= mix(0.4, 1.6, noiseVal);
 	}
-	return finalDensity;
-}
 
-void main() {
-	ivec3 size = imageSize(outVolume); // 128, 128, 128
-	int x = int(gl_GlobalInvocationID.x);
-	int z = int(gl_GlobalInvocationID.y);
-	if (x >= size.x || z >= size.z) return;
+	// Write noiseVal and finalDensity to A channel first
+	imageStore(outVolume, voxel, vec4(noiseVal, 1.0, 1.0, finalDensity));
 
-	// Local arrays to store computed noise and density for top-down sweep
-	float densities_center[128];
-	float densities_left[128];
-	float densities_right[128];
-	float densities_forward[128];
-	float densities_backward[128];
-	float noises[128];
+	// Compute barrier to guarantee all density values are written
+	memoryBarrierImage();
+	barrier();
 
-	CloudProperties props;
-	props.altitude = cloudAltitude;
-	props.thickness = cloudThickness;
-	props.densityBase = cloudDensity;
-	props.coverage = cloudCoverage;
-	props.worldScale = worldScale;
+	// Check neighbors to compute ambient occlusion (cone / multi-directional)
+	float densitySum = 0.0;
+	const int AO_SAMPLES = 8;
+	ivec3 ao_offsets[AO_SAMPLES] = ivec3[](
+		ivec3(0, 1, 0),
+		ivec3(0, 2, 0),
+		ivec3(0, 4, 0),
+		ivec3(1, 1, 1),
+		ivec3(-1, 1, -1),
+		ivec3(2, 2, -2),
+		ivec3(-2, 2, 2),
+		ivec3(0, 6, 0)
+	);
 
-	float offset = 4.0 / 128.0; // horizontal offset in texture space (approx 4 texels out of 128)
-
-	// Loop to precompute noise and base densities for multiple surrounding directions
-	for (int y = 0; y < 128; y++) {
-		vec3 uvw = vec3(float(x), float(y), float(z)) / vec3(size);
-		float noiseVal = computeSimplexWorley(uvw);
-		noises[y] = noiseVal;
-
-		densities_center[y]   = getDensityAtUVW(uvw, noiseVal, props);
-		densities_left[y]     = getDensityAtUVW(vec3(fract(uvw.x - offset), uvw.y, uvw.z), noiseVal, props);
-		densities_right[y]    = getDensityAtUVW(vec3(fract(uvw.x + offset), uvw.y, uvw.z), noiseVal, props);
-		densities_forward[y]  = getDensityAtUVW(vec3(uvw.x, uvw.y, fract(uvw.z + offset)), noiseVal, props);
-		densities_backward[y] = getDensityAtUVW(vec3(uvw.x, uvw.y, fract(uvw.z - offset)), noiseVal, props);
+	for (int i = 0; i < AO_SAMPLES; i++) {
+		ivec3 neighbor = clamp(voxel + ao_offsets[i], ivec3(0), size - 1);
+		float sampleDensity = imageLoad(outVolume, neighbor).a;
+		densitySum += sampleDensity;
 	}
+	float aoVal = clamp(1.0 - (densitySum / float(AO_SAMPLES)) * 1.5, 0.0, 1.0);
 
-	// Top-down sweep to compute ambient occlusion (multi-directional)
-	float accum_center = 0.0;
-	float accum_left = 0.0;
-	float accum_right = 0.0;
-	float accum_forward = 0.0;
-	float accum_backward = 0.0;
-
-	for (int y = 127; y >= 0; y--) {
-		accum_center   += densities_center[y];
-		accum_left     += densities_left[y];
-		accum_right    += densities_right[y];
-		accum_forward  += densities_forward[y];
-		accum_backward += densities_backward[y];
-
-		// Ambient occlusion integrates densities from multiple surrounding directions
-		float accum_ambient = (accum_center + accum_left + accum_right + accum_forward + accum_backward) * 0.2;
-		float occlusionDepth = accum_ambient * 0.1;
-		float aoVal = exp(-occlusionDepth * 0.05 * cloudShadowOpticalDepthMultiplier);
-
-		ivec3 voxel = ivec3(x, y, z);
-		// Initialize shadow to 1.0; cloud_shadow_bake.comp will compute the actual shadow responsive to sun position
-		imageStore(outVolume, voxel, vec4(noises[y], aoVal, 1.0, densities_center[y]));
-	}
+	// Store finalized values
+	imageStore(outVolume, voxel, vec4(noiseVal, aoVal, 1.0, finalDensity));
 }
