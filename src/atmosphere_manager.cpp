@@ -201,7 +201,7 @@ namespace Boidsish {
 			}
 		}
 
-		if (_enableCloudShadowMap && _cloudShadowBakeShader && _cloudShadowBakeShader->isValid()) {
+		if (_enableCloudShadowMap && _cloudShadowBakeShader && _cloudShadowBakeShader->isValid() && (_frameIndex % 4 == 0)) {
 			glm::vec3 center = glm::vec3(cameraPos.x, 0.0f, cameraPos.z);
 			glm::vec3 lightDir = glm::normalize(primaryLightDir);
 			glm::vec3 lightPos = center + lightDir * (20000.0f * worldScale);
