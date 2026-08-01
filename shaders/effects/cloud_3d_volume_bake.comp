@@ -1,6 +1,6 @@
 #version 460 core
 
-layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
 layout(binding = 0, rgba16f) uniform image3D outVolume;
 
@@ -15,8 +15,7 @@ float remap_bake(float value, float low1, float high1, float low2, float high2) 
 float computeSimplexWorley(vec3 p) {
 	// Base Simplex noise (normalized to [0, 1])
 	vec3 g;
-	// return 0.5+0.5*psrdnoise(p / (100), vec3(10.0, 1.0, 10.0), 0.0, g);
-	float simplex = psrdnoise(p * 4, vec3(10.0, 1.0, 10.0), 0.0, g);
+	float simplex = psrdnoise(p * 4.0, vec3(10.0, 1.0, 10.0), 0.0, g);
 	simplex = clamp(simplex * 0.5 + 0.5, 0.0, 1.0);
 
 	// Worley FBM (cell centers are billowy and puffy)
@@ -31,44 +30,64 @@ float computeSimplexWorley(vec3 p) {
 }
 
 void main() {
-	ivec3 voxel = ivec3(gl_GlobalInvocationID.xyz);
 	ivec3 size = imageSize(outVolume); // 128, 128, 128
-	if (voxel.x >= size.x || voxel.y >= size.y || voxel.z >= size.z) return;
+	int x = int(gl_GlobalInvocationID.x);
+	int z = int(gl_GlobalInvocationID.y);
+	if (x >= size.x || z >= size.z) return;
 
-	vec3 p = vec3(voxel) / vec3(size); // [0, 1]
+	// Local arrays to store computed noise and density for top-down sweep
+	float densities[128];
+	float noises[128];
 
-	// 1. R Channel: Tiling 3D noise (Simplex noise carved by Worley FBM in HZD fashion)
-	float noiseVal = computeSimplexWorley(p);
+	CloudProperties props;
+	props.altitude = cloudAltitude;
+	props.thickness = cloudThickness;
+	props.densityBase = cloudDensity;
+	props.coverage = cloudCoverage;
+	props.worldScale = worldScale;
 
-	// 2. G Channel: Local Ambient Occlusion.
-	float densitySum = 0.0;
-	const int AO_SAMPLES = 8;
-	vec3 ao_offsets[AO_SAMPLES] = vec3[](
-		vec3(0.0, 0.02, 0.0),
-		vec3(0.0, 0.05, 0.0),
-		vec3(0.0, 0.10, 0.0),
-		vec3(0.02, 0.04, 0.02),
-		vec3(-0.02, 0.04, -0.02),
-		vec3(0.03, 0.08, -0.03),
-		vec3(-0.03, 0.08, 0.03),
-		vec3(0.0, 0.15, 0.0)
-	);
+	// Loop to precompute noise and base densities for this vertical column
+	for (int y = 0; y < 128; y++) {
+		vec3 uvw = vec3(float(x), float(y), float(z)) / vec3(size);
+		float noiseVal = computeSimplexWorley(uvw);
+		noises[y] = noiseVal;
 
-	for (int i = 0; i < AO_SAMPLES; i++) {
-		vec3 sample_uvw = fract(p + ao_offsets[i]);
-		float sampleNoise = computeSimplexWorley(sample_uvw);
-		densitySum += sampleNoise;
+		// Map to world position (horizontal scale 150,000 meters)
+		vec3 p_world;
+		p_world.x = uvw.x * 150000.0 * worldScale;
+		p_world.z = uvw.z * 150000.0 * worldScale;
+
+		// Sample weather map at p_world.xz
+		CloudWeather weather = computeCloudWeather(p_world, props);
+		CloudLayer layer = computeCloudLayer(weather, props);
+
+		float localFloor, actualThickness;
+		float dummy_h = getCloudRelativeHeight(p_world, weather, layer, localFloor, actualThickness);
+
+		// For y, we want world_pos.y to correspond to the given h = uvw.y
+		p_world.y = localFloor + uvw.y * actualThickness;
+
+		CloudSpotDetails res = calculateCloudDensityExpV10(p_world, weather, layer, props, 0.0, 1.0, noiseVal);
+		float finalDensity = res.density;
+		if (finalDensity > 0.0) {
+			finalDensity *= mix(0.4, 1.6, noiseVal);
+		}
+		densities[y] = finalDensity;
 	}
-	float aoVal = clamp(1.0 - (densitySum / float(AO_SAMPLES)) * 1.5, 0.0, 1.0);
 
-	float baseHeightGradient = mix(0.9, 0.6, smoothstep(0.15, 0.85, p.y));
+	// Top-down sweep to compute ambient occlusion and shadow term
+	float accumulatedDensity = 0.0;
+	for (int y = 127; y >= 0; y--) {
+		accumulatedDensity += densities[y];
 
-	// Tile horizontally but do not repeat vertically
-	vec3 albedoCoords = vec3(fract(p.xz * 1.0), p.y);
-	vec3 densityCoords = vec3(fract(p.xz * 1.0), p.y);
+		// Shadow term using Beer's law (transmittance from top of cloud layer)
+		float shadowTerm = exp(-accumulatedDensity * 0.1 * cloudShadowOpticalDepthMultiplier);
 
-	float baseAlbedo = computeSimplexWorley(albedoCoords * baseHeightGradient);
-	float baseDensity = computeSimplexWorley(densityCoords * baseHeightGradient);
+		// Ambient occlusion based on accumulated density above it (top-down)
+		float occlusionDepth = accumulatedDensity * 0.1;
+		float aoVal = exp(-occlusionDepth * 0.05 * cloudShadowOpticalDepthMultiplier);
 
-	imageStore(outVolume, voxel, vec4(noiseVal, aoVal, baseAlbedo, baseDensity));
+		ivec3 voxel = ivec3(x, y, z);
+		imageStore(outVolume, voxel, vec4(noises[y], aoVal, shadowTerm, densities[y]));
+	}
 }

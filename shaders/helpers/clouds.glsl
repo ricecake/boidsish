@@ -493,8 +493,6 @@ struct CloudDensityResult {
 	vec3 emissivity;
 };
 
-uniform sampler3D u_cloud3DTexture;
-
 CloudSpotDetails calculateCloudDensityExpV9(
 	vec3            p,
 	CloudWeather    weather,
@@ -627,9 +625,22 @@ CloudDensityResult calculateCloudDensityMinimal(
 		return pointDetails;
 	}
 
-	CloudSpotDetails res = calculateCloudDensityExpV10(p, weather, layer, props, time, 1000.0, 1.0);
+	// Sample 3D texture directly
+	vec3 advect_3d = time * advectSpeed * 0.75;
+	vec3 p_advected_3d = p + advect_3d;
+	vec3 uvw = vec3(
+		p_advected_3d.x / (150000.0 * props.worldScale),
+		h,
+		p_advected_3d.z / (150000.0 * props.worldScale)
+	);
 
-	return CloudDensityResult(res.density * res.relativeExtinction, advectSpeed, 1.0, vec3(1.0), vec3(0.0));
+	vec4 volSample = textureLod(u_cloud3DTexture, uvw, 0.0);
+	float volNoise = volSample.r;
+	float volAo = volSample.g;
+	float volShadow = volSample.b;
+	float volDensity = volSample.a;
+
+	return CloudDensityResult(vec3(volDensity), advectSpeed, volAo, vec3(1.0), vec3(0.0));
 }
 
 
@@ -661,23 +672,20 @@ CloudDensityResult calculateCloudDensity(
 	vec4 volSample = textureLod(u_cloud3DTexture, uvw, clamp(simplified * 4.0, 0.0, 4.0));
 	float volNoise = volSample.r;
 	float volAo = volSample.g;
-	float volAlbedoBasis = volSample.b;
-	float volDensityBasis = volSample.a;
+	float volShadow = volSample.b;
+	float volDensity = volSample.a;
 
+	// The full density lookup still checks the 2D texture and builds volume details
 	CloudSpotDetails res = calculateCloudDensityExpV10(p, weather, layer, props, time, simplified, volNoise);
 
-	// Where the current system has density, the 3d volume adds variety and breaks up the linear nature.
 	float finalDensity = res.density;
 	if (finalDensity > 0.0) {
 		finalDensity *= mix(0.4, 1.6, volNoise);
-		// finalDensity = adjust(finalDensity, 1.0-volNoise);
 	}
 
-	vec3 mixedDensity = volDensityBasis * res.relativeExtinction * finalDensity;
-	// vec3 mixedDensity = vec3(1)*finalDensity;
-	vec3 mixedAlbedo = vec3(volAlbedoBasis);
+	vec3 mixedDensity = vec3(finalDensity);
+	vec3 mixedAlbedo = vec3(1.0);
 
-	// return CloudDensityResult(mixedDensity, advectSpeed, volAo, mixedAlbedo, smoothstep(0.8, 1.2, mixedDensity) * vec3(0,1,0));
 	return CloudDensityResult(mixedDensity, advectSpeed, volAo, mixedAlbedo, vec3(0.0));
 }
 
