@@ -4,6 +4,7 @@
 #include <array>
 #include <glm/gtc/matrix_transform.hpp>
 
+#include "profiler.h"
 #include "shader.h"
 #include "constants.h"
 #include "atmosphere_manager.h"
@@ -44,6 +45,7 @@ namespace Boidsish {
 		ShadowManager* shadow_manager,
 		LightManager* light_manager
 	) {
+		PROJECT_PROFILE_SCOPE("SpaceProbeManager::Update");
 		(void)deltaTime;
 
 		if (camera_follow_mode) {
@@ -157,6 +159,7 @@ namespace Boidsish {
 		AtmosphereManager* atmosphere_manager,
 		TerrainRenderManager* terrain_render_manager
 	) {
+		PROJECT_PROFILE_SCOPE("SpaceProbeManager::Render");
 		if (!initialized_ || !is_enabled || !render_sphere || !shadow_manager || !light_manager || !atmosphere_manager || !terrain_render_manager) return;
 
 		// Force standard depth test and write state explicitly to prevent transparent pass leaks
