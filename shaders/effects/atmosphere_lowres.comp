@@ -966,13 +966,21 @@ void main() {
 	vec4 finalDepth;
 	vec2 finalVelocity;
 
+	// Calculate unjittered texture coordinates and camera ray direction to prevent subpixel Bayer jitter in velocity vectors
+	vec2 unjitteredTexCoords = (vec2(packedPixel * 2) + 1.0) / vec2(fullResSize);
+	vec4 unjitteredClipSpace = vec4(unjitteredTexCoords * 2.0 - 1.0, z, 1.0);
+	vec4 unviewSpacePosition = invProjection * unjitteredClipSpace;
+	unviewSpacePosition /= unviewSpacePosition.w;
+	vec3 unjitteredWorldPos = (invView * unviewSpacePosition).xyz;
+	vec3 unjitteredRayDir = normalize(unjitteredWorldPos - viewPos);
+
 	if (totalWeight > 0.001) {
 		float stableHitDist = weightedDistSum / totalWeight;
 		vec3 avgAdvection = weightedAdvectionSum / totalWeight;
 
 		finalDepth = vec4(firstHitDist, lastHitDist, firstStepSize, pathDensity);
-		// Reproject using the accumulated per-sample advection directly
-		vec3 stableHitPos = viewPos + canonicalRayDir * stableHitDist;
+		// Reproject using the unjittered stable hit position and unjittered camera ray
+		vec3 stableHitPos = viewPos + unjitteredRayDir * stableHitDist;
 		float distanceDamping = 1.0 - smoothstep(10000.0 * worldScale, 50000.0 * worldScale, stableHitDist);
 		vec3 advectionDelta = (avgAdvection * distanceDamping) * uDeltaTime;
 
@@ -980,17 +988,18 @@ void main() {
 		vec4 prevClipHit = uPrevViewProjection * vec4(prevHitPos, 1.0);
 		vec2 prevScreenUV = (prevClipHit.xy / prevClipHit.w) * 0.5 + 0.5;
 
-		finalVelocity = prevScreenUV - TexCoords;
+		finalVelocity = prevScreenUV - unjitteredTexCoords;
 	} else {
 		finalDepth = vec4(uCloudMaxRayDistance * 0.5 * worldScale, uCloudMaxRayDistance * 0.5 * worldScale, firstStepSize, pathDensity);
 		vec3 advectionOffset = getCloudAdvectionSpeed(0.0, time);
 		vec3 advectionDelta = advectionOffset * uDeltaTime;
 
-		vec3 currentPos = viewPos + canonicalRayDir * 5000.0 * worldScale;
+		// Re-project using unjittered camera ray
+		vec3 currentPos = viewPos + unjitteredRayDir * 5000.0 * worldScale;
 		vec3 prevPos = currentPos - advectionDelta;
 		vec4 prevClip = uPrevViewProjection * vec4(prevPos, 1.0);
 		vec2 prevScreen = (prevClip.xy / prevClip.w) * 0.5 + 0.5;
-		finalVelocity = prevScreen - TexCoords;
+		finalVelocity = prevScreen - unjitteredTexCoords;
 	}
 
 	// Combine depth and velocity for front-to-back passes
