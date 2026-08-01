@@ -25,6 +25,17 @@ uniform sampler2D u_skyViewLUT;
 layout(binding = [[CLOUD_MIN_MAX_BOUNDING_BINDING]]) uniform sampler2D u_cloudMinMaxBoundingTexture;
 layout(binding = [[CLOUD_WEATHER_MIN_MAX_BINDING]]) uniform sampler2D u_cloudWeatherMinMaxTexture;
 uniform float uCloudMaxRayDistance;
+
+// 3-Pass cloud rendering parameters
+uniform int uPassIndex; // 0 = Far, 1 = Medium, 2 = Near
+uniform float uNearSplit;
+uniform float uMediumSplit;
+uniform float uStepMultiplier;
+
+uniform sampler2D uPrevColorTexture;
+uniform sampler2D uPrevDepthTexture;
+uniform sampler2D uPrevVelocityTexture;
+
 uniform int   uCloudMinSamples;
 uniform int   uCloudMaxSamples;
 uniform float uCloudExtinction;
@@ -574,18 +585,41 @@ void main() {
 	if (packedPixel.x >= packedSize.x || packedPixel.y >= packedSize.y)
 		return;
 
-	// 2x2 Bayer pattern for interleaving
-	ivec2 bayer_offsets[4] = ivec2[](
-		ivec2(0, 0),
-		ivec2(1, 1),
-		ivec2(1, 0),
-		ivec2(0, 1)
-	);
-	ivec2 offset = bayer_offsets[frameIndex % 4];
+	ivec2 offset;
+	if (uPassIndex == 1) {
+		// Far pass (8x8)
+		int k = frameIndex % 64;
+		int dx = (((k & 1) << 2) | ((k & 4) >> 1) | ((k & 16) >> 4));
+		int dy = (((k & 2) << 1) | ((k & 8) >> 2) | ((k & 32) >> 5));
+		offset = ivec2(dx, dy);
+	} else {
+		// Near pass (2x2)
+		ivec2 bayer_offsets[4] = ivec2[](
+			ivec2(0, 0),
+			ivec2(1, 1),
+			ivec2(1, 0),
+			ivec2(0, 1)
+		);
+		offset = bayer_offsets[frameIndex % 4];
+	}
+
 	ivec2 fullResPixel = packedPixel * 2 + offset;
 	ivec2 fullResSize = packedSize * 2;
 
 	vec2 TexCoords = (vec2(fullResPixel) + 0.5) / vec2(fullResSize);
+
+	// Early out if previous pass is already opaque (front-to-back optimization)
+	if (uPassIndex > 0) {
+		vec4 prevColor = texture(uPrevColorTexture, TexCoords);
+		if (prevColor.a < 0.05) {
+			vec4 prevDepth = texture(uPrevDepthTexture, TexCoords);
+			vec4 prevVelocity = texture(uPrevVelocityTexture, TexCoords);
+			imageStore(outPackedColor, packedPixel, prevColor);
+			imageStore(outPackedDepth, packedPixel, prevDepth);
+			imageStore(outPackedVelocity, packedPixel, prevVelocity);
+			return;
+		}
+	}
 
 	float depth = texture(depthTexture, TexCoords).r;
 	float z = depth * 2.0 - 1.0;
@@ -637,6 +671,19 @@ void main() {
 	float lastHitDist = -1.0;
 	float pathDensity = 0.0;
 
+	if (uPassIndex > 0) {
+		vec4 prevColor = texture(uPrevColorTexture, TexCoords);
+		cloudColor = prevColor.rgb;
+		cloudTransmittance = vec3(prevColor.a);
+
+		vec4 prevDepth = texture(uPrevDepthTexture, TexCoords);
+		if (prevDepth.x < uCloudMaxRayDistance * 0.45 * worldScale) {
+			firstHitDist = prevDepth.x;
+			lastHitDist = prevDepth.y;
+		}
+		pathDensity = prevDepth.w;
+	}
+
 	float rayDist = t_end - t_start;
 	float precisionLimit = max(1.0, t_end * 1e-5);
 	float baseStepSize = clamp(rayDist / float(samples), precisionLimit, 25.0);
@@ -664,18 +711,28 @@ void main() {
 	}
 
 	if (b_firstHit < 0.0 || b_totalDensity < 0.01) {
-		// Output clear sky / no clouds and early return
-		imageStore(outPackedColor, packedPixel, vec4(0.0, 0.0, 0.0, 1.0));
-		imageStore(outPackedDepth, packedPixel, vec4(uCloudMaxRayDistance * 0.5 * worldScale, uCloudMaxRayDistance * 0.5 * worldScale, baseStepSize, 0.0));
+		if (uPassIndex == 0) {
+			// Output clear sky / no clouds and early return
+			imageStore(outPackedColor, packedPixel, vec4(0.0, 0.0, 0.0, 1.0));
+			imageStore(outPackedDepth, packedPixel, vec4(uCloudMaxRayDistance * 0.5 * worldScale, uCloudMaxRayDistance * 0.5 * worldScale, baseStepSize, 0.0));
 
-		vec3 advectionOffset = getCloudAdvectionSpeed(0.0, time);
-		vec3 advectionDelta = advectionOffset * uDeltaTime;
-		vec3 currentPos = viewPos + canonicalRayDir * 5000.0 * worldScale;
-		vec3 prevPos = currentPos - advectionDelta;
-		vec4 prevClip = uPrevViewProjection * vec4(prevPos, 1.0);
-		vec2 prevScreen = (prevClip.xy / prevClip.w) * 0.5 + 0.5;
-		vec2 finalVelocity = prevScreen - TexCoords;
-		imageStore(outPackedVelocity, packedPixel, vec4(finalVelocity, 0.0, 0.0));
+			vec3 advectionOffset = getCloudAdvectionSpeed(0.0, time);
+			vec3 advectionDelta = advectionOffset * uDeltaTime;
+			vec3 currentPos = viewPos + canonicalRayDir * 5000.0 * worldScale;
+			vec3 prevPos = currentPos - advectionDelta;
+			vec4 prevClip = uPrevViewProjection * vec4(prevPos, 1.0);
+			vec2 prevScreen = (prevClip.xy / prevClip.w) * 0.5 + 0.5;
+			vec2 finalVelocity = prevScreen - TexCoords;
+			imageStore(outPackedVelocity, packedPixel, vec4(finalVelocity, 0.0, 0.0));
+		} else {
+			// Copy previous pass's result
+			vec4 prevColor = texture(uPrevColorTexture, TexCoords);
+			vec4 prevDepth = texture(uPrevDepthTexture, TexCoords);
+			vec4 prevVelocity = texture(uPrevVelocityTexture, TexCoords);
+			imageStore(outPackedColor, packedPixel, prevColor);
+			imageStore(outPackedDepth, packedPixel, prevDepth);
+			imageStore(outPackedVelocity, packedPixel, prevVelocity);
+		}
 		return;
 	}
 
@@ -685,10 +742,47 @@ void main() {
 	t_start = max(t_start, b_firstHit);
 	t_end = min(t_end, b_lastHit);
 
-	float absoluteShellDist = t_end - t_start;
-	rayDist = t_end - t_start;
+	float overlap = 1500.0 * worldScale;
+
+	// Apply pass-specific limits on t_start and t_end (allowing overlaps, front-to-back 2-pass)
+	float pass_t_start = t_start;
+	float pass_t_end = t_end;
+	if (uPassIndex == 0) {
+		pass_t_end = min(t_end, uNearSplit + overlap);
+	} else {
+		pass_t_start = max(t_start, uNearSplit - overlap);
+	}
+
+	if (pass_t_start >= pass_t_end) {
+		if (uPassIndex == 0) {
+			// Output clear sky / no clouds and early return
+			imageStore(outPackedColor, packedPixel, vec4(0.0, 0.0, 0.0, 1.0));
+			imageStore(outPackedDepth, packedPixel, vec4(uCloudMaxRayDistance * 0.5 * worldScale, uCloudMaxRayDistance * 0.5 * worldScale, baseStepSize, 0.0));
+
+			vec3 advectionOffset = getCloudAdvectionSpeed(0.0, time);
+			vec3 advectionDelta = advectionOffset * uDeltaTime;
+			vec3 currentPos = viewPos + canonicalRayDir * 5000.0 * worldScale;
+			vec3 prevPos = currentPos - advectionDelta;
+			vec4 prevClip = uPrevViewProjection * vec4(prevPos, 1.0);
+			vec2 prevScreen = (prevClip.xy / prevClip.w) * 0.5 + 0.5;
+			vec2 finalVelocity = prevScreen - TexCoords;
+			imageStore(outPackedVelocity, packedPixel, vec4(finalVelocity, 0.0, 0.0));
+		} else {
+			// Copy previous pass's result
+			vec4 prevColor = texture(uPrevColorTexture, TexCoords);
+			vec4 prevDepth = texture(uPrevDepthTexture, TexCoords);
+			vec4 prevVelocity = texture(uPrevVelocityTexture, TexCoords);
+			imageStore(outPackedColor, packedPixel, prevColor);
+			imageStore(outPackedDepth, packedPixel, prevDepth);
+			imageStore(outPackedVelocity, packedPixel, prevVelocity);
+		}
+		return;
+	}
+
+	float absoluteShellDist = pass_t_end - pass_t_start;
+	rayDist = pass_t_end - pass_t_start;
 	baseStepSize = clamp(rayDist / float(samples), precisionLimit, 25.0);
-	// baseStepSize = clamp(absoluteShellDist / float(samples), precisionLimit, 25.0);
+	baseStepSize *= uStepMultiplier;
 
 	float firstStepSize = baseStepSize;
 	float its = 0.0;
@@ -700,8 +794,8 @@ void main() {
 
 	vec3 rgbExtinction = uCloudExtinctionColor * uCloudExtinction;
 
-	if (t_start < t_end) {
-		vec3 lightEnergy = vec3(0.0);
+	if (pass_t_start < pass_t_end) {
+		vec3 lightEnergy = (uPassIndex > 0) ? (cloudColor / max(cloudColorUniform, vec3(1e-5))) : vec3(0.0);
 		vec3 prevDensity = vec3(0.0);
 		vec3 prevTransmission = vec3(-1.0);
 		vec3 prevTransmissionDelta = vec3(0.0);
@@ -723,8 +817,8 @@ void main() {
 		bool wasInVolume = false;
 		float stepGrowthRate = 0.0125;
 
-		float t = min(t_end, t_start + jitter * baseStepSize);
-		float t_prev = t_start;
+		float t = min(pass_t_end, pass_t_start + jitter * baseStepSize);
+		float t_prev = pass_t_start;
 		prevDensity = vec3(0.0);
 		vec3 prevCheapDensity = vec3(0.0);
 
@@ -744,10 +838,11 @@ void main() {
 		int zero_count = 0;
 		for (int i = 0; i < MAX_ITERATIONS; i++) {
 			steps = i;
-			if (t_prev >= dist || t_prev >= t_end || all(lessThan(cloudTransmittance, vec3(0.05)))) break;
+			if (t_prev >= dist || t_prev >= pass_t_end || all(lessThan(cloudTransmittance, vec3(0.05)))) break;
 
 			vec3 p = viewPos + rayDir * t;
-			float currentLod = clamp((t - lodStartDist) / lodFadeRange, 0.0, 1.0);
+			float lodBias = log2(uStepMultiplier);
+			float currentLod = clamp((t - lodStartDist) / lodFadeRange + lodBias, 0.0, 1.0);
 
 			// Only re-evaluate computeCloudWeather if we've advanced past the interval threshold
 			if (i == 0 || abs(t - lastWeatherT) >= weatherUpdateInterval) {
@@ -755,11 +850,20 @@ void main() {
 				lastWeatherT = t;
 			}
 
+			// Smooth overlap/blend fade factor (front-to-back 2-pass order)
+			float fade = 1.0;
+			if (uPassIndex == 0) {
+				// Near Pass (Pass 0) blends out at uNearSplit
+				fade = smoothstep(uNearSplit + overlap, uNearSplit - overlap, t);
+			} else {
+				// Far Pass (Pass 1) blends in at uNearSplit
+				fade = smoothstep(uNearSplit - overlap, uNearSplit + overlap, t);
+			}
+
 			CloudLayer layer = computeCloudLayer(weather, props);
-			// CloudDensityResult densityResCheap = calculateCloudDensityMinimal(p, weather, layer, props);
 			CloudDensityResult densityResCheap = calculateCloudDensity(p, weather, layer, props, time, currentLod);
 
-			vec3 d_cheap = densityResCheap.density;
+			vec3 d_cheap = densityResCheap.density * fade;
 
 			float nextStepSize = calculateBifurcatedStepSize(inVolume, zero_count, max(d_cheap.x,max(d_cheap.y,d_cheap.z)), baseStepSize, 3, 3);
 			// float nextStepSize = calculateBifurcatedStepSize(inVolume, zero_count, 1.0, baseStepSize, 2, 3);
@@ -794,7 +898,7 @@ void main() {
 				float integrationStep = stepSize;
 
 				CloudDensityResult densityRes = calculateCloudDensity(p, weather, layer, props, time, currentLod);
-				d = densityRes.density;
+				d = densityRes.density * fade;
 				vec3 sampleAdvection = densityRes.advectionSpeed;
 				float sampleAo = densityRes.ao;
 				vec3 sampleAlbedo = densityRes.albedo;
@@ -865,27 +969,30 @@ void main() {
 			}
 
 			t += nextStepSize;
-			t = min(t_end, t);
+			t = min(pass_t_end, t);
 		}
 		cloudColor = lightEnergy * cloudColorUniform;
 	}
 
 	vec4 finalColor = vec4(cloudColor, dot(cloudTransmittance, vec3(0.3333)));
-	// vec4 finalColor = vec4(mix(vec3(0,10,0), vec3(10,0,0), smoothstep(0, 100, magic_stepping)), 0.0);
-	// vec4 finalColor = vec4(mix(vec3(0,10,0), vec3(10,0,0), smoothstep(0, 100, firstHitDist/firstHitStep)), 0.0);
-	// finalColor = mix(finalColor, vec4(mix(vec3(0,10000000,0), vec3(10000000,0,0), smoothstep(0, 100, firstHitStep)), 0.0), 0.3);
-	// vec4 finalColor = vec4(magic_stepping * 100, 0.0, 0, 0);
 	vec4 finalDepth;
 	vec2 finalVelocity;
+
+	// Calculate unjittered texture coordinates and camera ray direction to prevent subpixel Bayer jitter in velocity vectors
+	vec2 unjitteredTexCoords = (vec2(packedPixel * 2) + 1.0) / vec2(fullResSize);
+	vec4 unjitteredClipSpace = vec4(unjitteredTexCoords * 2.0 - 1.0, z, 1.0);
+	vec4 unviewSpacePosition = invProjection * unjitteredClipSpace;
+	unviewSpacePosition /= unviewSpacePosition.w;
+	vec3 unjitteredWorldPos = (invView * unviewSpacePosition).xyz;
+	vec3 unjitteredRayDir = normalize(unjitteredWorldPos - viewPos);
 
 	if (totalWeight > 0.001) {
 		float stableHitDist = weightedDistSum / totalWeight;
 		vec3 avgAdvection = weightedAdvectionSum / totalWeight;
 
 		finalDepth = vec4(firstHitDist, lastHitDist, firstStepSize, pathDensity);
-		// Reproject using the accumulated per-sample advection directly
-		vec3 stableHitPos = viewPos + canonicalRayDir * stableHitDist;
-		// vec3 advectionDelta = avgAdvection * uDeltaTime;
+		// Reproject using the unjittered stable hit position and unjittered camera ray
+		vec3 stableHitPos = viewPos + unjitteredRayDir * stableHitDist;
 		float distanceDamping = 1.0 - smoothstep(10000.0 * worldScale, 50000.0 * worldScale, stableHitDist);
 		vec3 advectionDelta = (avgAdvection * distanceDamping) * uDeltaTime;
 
@@ -893,21 +1000,41 @@ void main() {
 		vec4 prevClipHit = uPrevViewProjection * vec4(prevHitPos, 1.0);
 		vec2 prevScreenUV = (prevClipHit.xy / prevClipHit.w) * 0.5 + 0.5;
 
-		finalVelocity = prevScreenUV - TexCoords;
+		finalVelocity = prevScreenUV - unjitteredTexCoords;
 	} else {
 		finalDepth = vec4(uCloudMaxRayDistance * 0.5 * worldScale, uCloudMaxRayDistance * 0.5 * worldScale, firstStepSize, pathDensity);
 		vec3 advectionOffset = getCloudAdvectionSpeed(0.0, time);
 		vec3 advectionDelta = advectionOffset * uDeltaTime;
 
-		vec3 currentPos = viewPos + canonicalRayDir * 5000.0 * worldScale;
+		// Re-project using unjittered camera ray
+		vec3 currentPos = viewPos + unjitteredRayDir * 5000.0 * worldScale;
 		vec3 prevPos = currentPos - advectionDelta;
 		vec4 prevClip = uPrevViewProjection * vec4(prevPos, 1.0);
 		vec2 prevScreen = (prevClip.xy / prevClip.w) * 0.5 + 0.5;
-		finalVelocity = prevScreen - TexCoords;
+		finalVelocity = prevScreen - unjitteredTexCoords;
+	}
+
+	// Combine depth and velocity for front-to-back passes
+	if (uPassIndex > 0) {
+		vec4 prevDepth = texture(uPrevDepthTexture, TexCoords);
+		vec4 prevVelocity = texture(uPrevVelocityTexture, TexCoords);
+
+		if (totalWeight > 0.001) {
+			// This pass has a hit
+			if (prevDepth.x < uCloudMaxRayDistance * 0.45 * worldScale) {
+				// Prioritize closer (previous) pass velocity and first hit distance
+				finalDepth.x = prevDepth.x;
+				finalVelocity = prevVelocity.xy;
+			}
+			finalDepth.w = max(finalDepth.w, prevDepth.w);
+		} else {
+			// No hit in this pass, copy previous pass's depth and velocity
+			finalDepth = prevDepth;
+			finalVelocity = prevVelocity.xy;
+		}
 	}
 
 	imageStore(outPackedColor, packedPixel, finalColor);
-	// imageStore(outPackedColor, packedPixel, vec4(vec3(its/10, 0, 0),0));
 	imageStore(outPackedDepth, packedPixel, finalDepth);
 	imageStore(outPackedVelocity, packedPixel, vec4(finalVelocity, 0.0, 0.0));
 }
