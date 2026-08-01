@@ -592,6 +592,98 @@ void processGrain();
 void processGridFade();
 
 
+struct TerrainContext {
+	// Topography
+	float rawHeight;
+	float perturbedHeight;
+	float slope;
+	float valleyFactor;
+
+	// Climate & Weather
+	float moisture;
+	float freezingScale;
+	float globalWetness;
+
+	// Geological / Erosion State
+	float substrate;
+	float creaseMask;
+	float ridgeMask;
+
+	// Derived Masks
+	float cliffMask;
+};
+
+TerrainContext extractTerrainContext(
+    vec3 fragPos, vec3 normal, float largeNoise,
+    float vRidgeMap, float vSubstrate,
+    float temperature, float wetness
+) {
+    TerrainContext ctx;
+
+    // Topography (Assuming +Y up coordinate space)
+    ctx.rawHeight = fragPos.y;
+    ctx.perturbedHeight = ctx.rawHeight + largeNoise * 5.0 * worldScale; // Requires global worldScale
+
+    ctx.slope = dot(normal, vec3(0.0, 1.0, 0.0));
+    float distortedSlope = ctx.slope + largeNoise * 0.08;
+
+    ctx.valleyFactor = calculateValleyFactor(fragPos); // Assuming this remains a separate helper
+
+    // Climate
+    ctx.moisture = calculateMoisture(ctx.rawHeight, ctx.valleyFactor, fragPos);
+    float valleyLushness = clamp(-ctx.valleyFactor, 0.0, 1.0);
+    ctx.moisture = mix(ctx.moisture, min(ctx.moisture + 0.3, 1.0), valleyLushness);
+
+    ctx.freezingScale = 1.0 - smoothstep(255.372, 273.15, temperature);
+    ctx.globalWetness = max(wetness, ctx.freezingScale);
+
+    // Geological
+    ctx.substrate = vSubstrate;
+    ctx.creaseMask = 1.0 - smoothstep(-0.8, 0.2, vRidgeMap);
+    ctx.ridgeMask = smoothstep(0.2, 0.8, vRidgeMap);
+
+    // Derived Cliff Mask
+    float cliffThreshold = abs(largeNoise * 0.1) + mix(0.5, 0.4, smoothstep(HEIGHT_SNOW_START, HEIGHT_PEAK, ctx.rawHeight));
+    float rawCliff = 1.0 - smoothstep(cliffThreshold - 0.15, cliffThreshold, distortedSlope);
+    float verticalMask = 1.0 - smoothstep(0.2, 0.4, ctx.slope);
+
+    ctx.cliffMask = max(rawCliff, verticalMask);
+
+    // Prevent cliffs on beaches
+    float beachMask = 1.0 - smoothstep(0.0, HEIGHT_BEACH_END + 2.0, ctx.rawHeight);
+    ctx.cliffMask *= (1.0 - beachMask);
+
+    // Substrate modifier
+    float substrateCliffFactor = smoothstep(-0.6, 0.2, ctx.substrate);
+    ctx.cliffMask = clamp(ctx.cliffMask + substrateCliffFactor * 0.4, 0.0, 1.0);
+
+    return ctx;
+}
+
+vec3 calculateBaseColor(TerrainContext ctx, vec3 baseNoiseColor) {
+    // Start with a foundational color based on altitude and moisture
+    // This could ideally be a texture(u_macroLUT, vec2(ctx.perturbedHeight, ctx.moisture))
+	vec3 albedo = texture(u_terrainColorBlend, vec3(ctx.perturbedHeight, ctx.moisture, ctx.slope)).rgb;
+
+    // Apply macro color shifts from noise
+    albedo *= baseNoiseColor;
+
+    // Apply Erosion mappings
+    vec3 sediment = vec3(0.1, 0.08, 0.05);
+    vec3 rock = vec3(0.8, 0.75, 0.7);
+    albedo = mix(albedo, sediment, ctx.creaseMask * 0.5);
+    albedo = mix(albedo, rock, ctx.ridgeMask * 0.3);
+
+    // Apply Cliffs over the top
+    // albedo = mix(albedo, getCliffColor(ctx), ctx.cliffMask);
+
+    // Apply Weather
+    albedo = mix(albedo, albedo * 0.5, ctx.globalWetness * 0.5);
+    albedo = mix(albedo, vec3(0.9, 0.95, 1.0), ctx.freezingScale); // Snow override
+
+    return albedo;
+}
+
 void main() {
 	if (uIsShadowPass) {
 		// Output only depth (handled by hardware)
