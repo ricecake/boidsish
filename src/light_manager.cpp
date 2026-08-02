@@ -152,12 +152,18 @@ namespace Boidsish {
 
 				// With physical atmosphere, we don't manually dim the sun.
 				// The atmosphere LUTs (transmittance) will handle the color and intensity
-				// change naturally. We keep the sun "on" as long as it's not deep below horizon.
-				if (sun_vis > -0.1f) {
-					_lights[0].base_intensity = 100000.0f;
+				// change naturally. We keep the sun "on" as long as it's not deep below horizon,
+				// but smoothly fade it out to avoid a sudden visual step change.
+				float sun_fade = 1.0f;
+				if (sun_vis > 0.05f) {
+					sun_fade = 1.0f;
+				} else if (sun_vis < -0.20f) {
+					sun_fade = 0.0f;
 				} else {
-					_lights[0].base_intensity = 0.0f;
+					float t = (sun_vis - (-0.20f)) / (0.05f - (-0.20f));
+					sun_fade = glm::smoothstep(0.0f, 1.0f, t);
 				}
+				_lights[0].base_intensity = 100000.0f * sun_fade;
 
 				// Moon reflects sunlight: brightness and color derive from the sun
 				// The sun always illuminates the moon from space regardless of our horizon
@@ -177,11 +183,17 @@ namespace Boidsish {
 				glm::vec3 sunFullRadiance = _lights[0].color * 100000.0f;
 				_lights[1].color = sunFullRadiance * lunarAlbedo * phase * lunarTint;
 
-				if (moon_vis > 0.0f) {
-					_lights[1].base_intensity = 1.0f;
+				// Smoothly fade moon intensity to avoid pop-in/pop-out at the horizon
+				float moon_fade = 1.0f;
+				if (moon_vis > 0.05f) {
+					moon_fade = 1.0f;
+				} else if (moon_vis < -0.05f) {
+					moon_fade = 0.0f;
 				} else {
-					_lights[1].base_intensity = 0.0f;
+					float t = (moon_vis - (-0.05f)) / (0.05f - (-0.05f));
+					moon_fade = glm::smoothstep(0.0f, 1.0f, t);
 				}
+				_lights[1].base_intensity = 1.0f * moon_fade;
 
 				_cycle.night_factor = glm::smoothstep(0.2f, -0.2f, sun_vis);
 
@@ -192,7 +204,8 @@ namespace Boidsish {
 				// Moon ambient contribution scales with phase and visibility
 				night_ambient += _lights[1].color * 0.3f * std::max(0.0f, moon_vis);
 
-				float ambient_factor = std::clamp(sun_vis * 5.0f + 0.5f, 0.0f, 1.0f);
+				// Align fallback ambient light transition with the updated sun fade range
+				float ambient_factor = glm::smoothstep(-0.20f, 0.05f, sun_vis);
 				_ambient_light = glm::mix(night_ambient, day_ambient, ambient_factor);
 			}
 		}
