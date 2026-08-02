@@ -143,27 +143,62 @@ struct TerrainContext {
 	float biomeT;
 };
 
+float curvature (vec3 pos, vec3 norm) {
+    vec3 n = normalize(norm);
+
+    vec3 dx = dFdx(n);
+    vec3 dy = dFdy(n);
+
+    vec3 xneg = n - dx;
+    vec3 xpos = n + dx;
+    vec3 yneg = n - dy;
+    vec3 ypos = n + dy;
+
+  float depth = length(pos);
+
+    float curvature = (cross(xneg, xpos).y - cross(yneg, ypos).x) * 4 / depth;
+
+	return curvature;
+
+    // if (curvature > 0.0) {
+    //     // Convex surface (ridge / mountain)
+    //     fragColor = vec4(vec3(0.0, 1.0, 0.0) * abs(curvature) * 10.0, 1.0);
+    // } else {
+    //     // Concave surface (valley / cavity)
+    //     fragColor = vec4(vec3(1.0, 0.0, 0.0) * abs(curvature) * 10.0, 1.0);
+    // }
+}
+
 /**
  * Calculate valley/ridge factor using noise-based curvature approximation.
  * Valleys tend to accumulate moisture and be more lush.
  * Returns: negative = valley (concave), positive = ridge (convex)
  */
-float calculateValleyFactor(vec3 pos) {
+float calculateValleyFactor(vec3 pos, vec3 norm) {
+	float up = dot(Normal, vec3(0,1,0));
+	float range = smoothstep(0.7, 0.75, up) - smoothstep(0.8, 0.9, up);
+	float curve = curvature(FragPos, Normal);
+	float vallyIshNess = smoothstep(0.0, 0.02, -curve) * range;
+
+	return vallyIshNess;
+	// float normalChange = length(fwidth(normal));
+	// float pixelSize = length(fwidth(position));
+	// float curvature = normalChange / max(pixelSize, 0.0001);
 	// Sample noise at different scales to approximate local curvature
-	float scale = 0.02;
-	float center = length(pos * scale);
+	// float scale = 0.02;
+	// float center = length(pos * scale);
 
-	// Sample neighbors
-	float dx = 5.0;
-	float north = length((pos + vec3(0, 0, dx)) * scale);
-	float south = length((pos - vec3(0, 0, dx)) * scale);
-	float east = length((pos + vec3(dx, 0, 0)) * scale);
-	float west = length((pos - vec3(dx, 0, 0)) * scale);
+	// // Sample neighbors
+	// float dx = 5.0;
+	// float north = length((pos + vec3(0, 0, dx)) * scale);
+	// float south = length((pos - vec3(0, 0, dx)) * scale);
+	// float east = length((pos + vec3(dx, 0, 0)) * scale);
+	// float west = length((pos - vec3(dx, 0, 0)) * scale);
 
-	// Laplacian approximation - negative means we're lower than surroundings (valley)
-	float laplacian = (north + south + east + west) / 4.0 - center;
+	// // Laplacian approximation - negative means we're lower than surroundings (valley)
+	// float laplacian = (north + south + east + west) / 4.0 - center;
 
-	return laplacian * 10.0; // Scale for usability
+	// return laplacian * 10.0; // Scale for usability
 }
 
 /**
@@ -201,7 +236,7 @@ TerrainContext extractTerrainContext(
 	ctx.slope = dot(normal, vec3(0.0, 1.0, 0.0));
 	float distortedSlope = ctx.slope + largeNoise * 0.08;
 
-	ctx.valleyFactor = calculateValleyFactor(fragPos);
+	ctx.valleyFactor = calculateValleyFactor(fragPos, normal);
 
 	// Climate
 	ctx.moisture = calculateMoisture(ctx.rawHeight, ctx.valleyFactor, fragPos);
@@ -621,6 +656,14 @@ void applyDetailNormalPerturbation(
 	}
 }
 
+TerrainMaterial generateMaterial(TerrainContext ctx, float noise) {
+	TerrainMaterial mat = TerrainMaterial(vec3(0,0.0,0), 0.0, 0.0, 1.0, 1.0);
+
+	mat.albedo = texture(u_terrainColorBlend, vec3(ctx.perturbedHeight, ctx.moisture, ctx.slope)).rgb;
+
+	return mat;
+}
+
 void main() {
 	if (uIsShadowPass) {
 		// Output only depth (handled by hardware)
@@ -641,8 +684,8 @@ void main() {
 	// ========================================================================
 	// Noise Generation
 	// ========================================================================
-	float largeNoise = fastWarpedFbm3d(FragPos * (baseFreq * 0.1));
 	float n_fade = fastSimplex3d(vec3(FragPos.xz / (250.0 * worldScale), time * 0.09));
+	float largeNoise = fastWarpedFbm3d(FragPos * (baseFreq * 0.1));
 	float blueNoise = fastBlueNoise(FragPos.xz * (baseFreq * 0.05 * freqScale), 0) * 0.5 + 0.5;
 	float blueNoiseA = fastBlueNoise(FragPos.xz * (baseFreq * 0.1 * freqScale), 1) * 0.5 + 0.5;
 
@@ -669,7 +712,9 @@ void main() {
 		dist, realDist
 	);
 
-	TerrainMaterial finalMaterial = calculateMaterial(ctx, largeNoise);
+	// TerrainMaterial finalMaterial = calculateMaterial(ctx, largeNoise);
+	// TerrainMaterial getBiomeMaterial(TerrainContext ctx, float noise) {
+	TerrainMaterial finalMaterial = generateMaterial(ctx, largeNoise);
 
 	// Apply global wetness from precipitation
 	finalMaterial.albedo = mix(finalMaterial.albedo, finalMaterial.albedo * 0.5, ctx.globalWetness * 0.5);
@@ -706,15 +751,15 @@ void main() {
 		}
 	}
 
-	// Extra variety for rocky/steep areas
-	float rockyVar = largeNoise;
-	float rockyMask = smoothstep(0.5, 0.2, ctx.slope);
-	finalMaterial.albedo = mix(finalMaterial.albedo, finalMaterial.albedo * (1.0 + rockyVar * 0.2), rockyMask);
+	// // Extra variety for rocky/steep areas
+	// float rockyVar = largeNoise;
+	// float rockyMask = smoothstep(0.5, 0.2, ctx.slope);
+	// finalMaterial.albedo = mix(finalMaterial.albedo, finalMaterial.albedo * (1.0 + rockyVar * 0.2), rockyMask);
 
 	// ========================================================================
 	// Advanced Erosion Filter Coloration
 	// ========================================================================
-	finalMaterial.albedo = applyErosionColorMappingDefault(finalMaterial.albedo, vRidgeMap, vErosionDelta);
+	// finalMaterial.albedo = applyErosionColorMappingDefault(finalMaterial.albedo, vRidgeMap, vErosionDelta);
 
 	// ========================================================================
 	// Grass-based Styling
@@ -789,6 +834,12 @@ void main() {
 	vec4 baseColor = vec4(lighting, mix(0.0, fade, step(0.01, FragPos.y)));
 
 	FragColor = mix(vec4(0.0, 0.7, 0.7, baseColor.a) * length(baseColor), baseColor, step(1.0, fade));
+	// float up = dot(Normal, vec3(0,1,0));
+	// float range = smoothstep(0.7, 0.75, up) - smoothstep(0.8, 0.9, up);
+	// FragColor = baseColor+3000*mix(vec4(0,0,0, 1), vec4(5,0,0, 1), step(0.0, (-curvature(FragPos, Normal))) *  range  );
+
+	// float curve = curvature(Normal);
+	// smoothstep(0.5, 1.0, curve) * 1.0 - smoothstep
 
 	NormalOut = vec4(normalize(mat3(view) * perturbedNorm), primaryShadow);
 	AlbedoOut = vec4(albedo, 1.0);
