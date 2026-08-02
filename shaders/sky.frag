@@ -95,15 +95,64 @@ void main() {
 	vec3 world_ray = (invView * vec4(view_ray.xy, -1.0, 0.0)).xyz;
 	world_ray = normalize(world_ray);
 
+	// 1. Atmospheric Scattering
+	vec3 skyRadiance = sampleSkyView(world_ray);
+
+	if (world_ray.y < 0.0) {
+		float cameraHeight = max(0.001 * worldScale, viewPos.y);
+		float t = -cameraHeight / world_ray.y;
+		vec3 intersectPos = viewPos + t * world_ray;
+		intersectPos.y = 0.0; // Force exact level with y=0
+
+		// --- Grid logic ---
+		float grid_spacing = 1.0;
+		vec2  coord = intersectPos.xz / grid_spacing;
+		vec2  f = max(fwidth(coord), vec2(0.0001));
+
+		vec2  grid_minor = abs(fract(coord - 0.5) - 0.5) / f;
+		float line_minor = min(grid_minor.x, grid_minor.y);
+		float C_minor = 1.0 - min(line_minor, 1.0);
+
+		vec2  grid_major = abs(fract(coord / 5.0 - 0.5) - 0.5) / f;
+		float line_major = min(grid_major.x, grid_major.y);
+		float C_major = 1.0 - min(line_major, 1.0);
+
+		float intensity = max(C_minor, C_major * 1.5) * 0.6;
+		vec3  grid_color = vec3(0.0, 0.8, 0.8) * intensity;
+
+		// --- Plane lighting ---
+		vec3 norm = vec3(0.0, 1.0, 0.0);
+		vec3 surfaceColor = vec3(0.05, 0.05, 0.08);
+		float primaryShadow;
+		vec3 lighting = apply_lighting(intersectPos, norm, surfaceColor, 0.8, primaryShadow).rgb;
+
+		// --- Combine colors ---
+		vec3 landscapeColor = lighting * surfaceColor + grid_color;
+
+		// --- Distance Fade ---
+		float dist = length(intersectPos.xz - viewPos.xz);
+		float fogFactor = clamp(exp(-dist / (3000.0 * worldScale)), 0.0, 1.0);
+
+		// Blend ground with atmospheric sky radiance
+		vec3 finalColor = mix(skyRadiance, landscapeColor, fogFactor);
+
+		// Add lightning background pulse
+		vec3 localLightningEffect = lightningColor * lightningPulse * 0.35;
+		finalColor += localLightningEffect;
+
+		FragColor = vec4(finalColor, 1.0);
+		Velocity = vec4(0.0, 0.0, 0.8, 0.0); // Roughness 0.8, Metallic 0.0 (ground)
+		NormalOut = vec4(normalize(mat3(view) * norm), primaryShadow);
+		AlbedoOut = vec4(surfaceColor, 1.0);
+		return;
+	}
+
 	vec3 sunDir = vec3(0, 1, 0);
 	vec3 sunColor = vec3(1);
 	if (num_lights > 0) {
 		sunDir = normalize(-lights[0].direction);
 		sunColor = lights[0].color;
 	}
-
-	// 1. Atmospheric Scattering
-	vec3 skyRadiance = sampleSkyView(world_ray);
 
 	// Fetch weather scalars for humidity-driven effects
 	float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
