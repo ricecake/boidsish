@@ -99,10 +99,12 @@ void main() {
 	vec3 skyRadiance = sampleSkyView(world_ray);
 
 	if (world_ray.y < 0.0) {
+
 		float cameraHeight = max(0.001 * worldScale, viewPos.y);
 		float t = -cameraHeight / world_ray.y;
 		vec3 intersectPos = viewPos + t * world_ray;
 		intersectPos.y = 0.0; // Force exact level with y=0
+		float dist = length(intersectPos.xz - viewPos.xz);
 
 		// --- Grid logic ---
 		float grid_spacing = 1.0;
@@ -117,20 +119,21 @@ void main() {
 		float line_major = min(grid_major.x, grid_major.y);
 		float C_major = 1.0 - min(line_major, 1.0);
 
-		float intensity = max(C_minor, C_major * 1.5) * 0.6;
-		vec3  grid_color = vec3(0.0, 0.8, 0.8) * intensity;
+		float intensity = max(C_minor, C_major * 1.5);
+		// vec3  grid_color = vec3(0.0, 0.8, 0.8) * intensity;
+		vec3  grid_color = vec3(0.0, 0.8, 0.8) * intensity * 5000.0 * (1.0-smoothstep(2000, 200000, dist));
 
 		// --- Plane lighting ---
 		vec3 norm = vec3(0.0, 1.0, 0.0);
 		vec3 surfaceColor = vec3(0.05, 0.05, 0.08);
 		float primaryShadow;
-		vec3 lighting = apply_lighting(intersectPos, norm, surfaceColor, 0.8, primaryShadow).rgb;
+		// vec3 lighting = apply_lighting(intersectPos, norm, surfaceColor, 0.8, primaryShadow).rgb;
+		vec3 lighting = apply_lighting_pbr(intersectPos, norm, surfaceColor, 0.05, 0.9, 1.0, primaryShadow).rgb;
 
 		// --- Combine colors ---
-		vec3 landscapeColor = lighting * surfaceColor + grid_color;
+		vec3 landscapeColor = lighting + grid_color;
 
 		// --- Distance Fade ---
-		float dist = length(intersectPos.xz - viewPos.xz);
 		float fogFactor = clamp(exp(-dist / (3000.0 * worldScale)), 0.0, 1.0);
 
 		// Blend ground with atmospheric sky radiance
