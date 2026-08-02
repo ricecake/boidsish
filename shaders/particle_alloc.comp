@@ -1,0 +1,69 @@
+#version 460 core
+
+#define COMPUTE_SHADER
+#include "particle_types.glsl"
+
+uniform float u_ambient_density;
+uniform int   u_num_emitters;
+uniform int   u_ambient_particle_scale;
+
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+void main() {
+	uint gid = gl_GlobalInvocationID.x;
+
+	if (gid >= particles.length()) {
+		return;
+	}
+
+	int ambient_count = clamp(int(u_ambient_density * float(u_ambient_particle_scale)), 0, int(particles.length()));
+	int emitter_budget = int(particles.length()) - ambient_count;
+
+	int assigned_emitter = -1;
+	if (int(gid) < emitter_budget) {
+		int total_particle_demand = 0;
+		int num_unlimited_emitters = 0;
+		for (int i = 0; i < u_num_emitters; ++i) {
+			if (emitters[i].id > 0) {
+				int max_p = emitters[i].max_particles;
+				if (max_p != -1) {
+					total_particle_demand += max_p;
+				} else {
+					num_unlimited_emitters++;
+				}
+			}
+		}
+
+		int avg_particles_per_unlimited = 0;
+		if (num_unlimited_emitters > 0) {
+			int available_for_unlimited = emitter_budget - total_particle_demand;
+			if (available_for_unlimited > 0) {
+				avg_particles_per_unlimited = available_for_unlimited / num_unlimited_emitters;
+			}
+		}
+
+		int current_offset = 0;
+		for (int i = 0; i < u_num_emitters; ++i) {
+			if (emitters[i].id > 0) {
+				int max_p = emitters[i].max_particles;
+				int count = (max_p != -1) ? max_p : avg_particles_per_unlimited;
+
+				// Cap count to remaining emitter budget
+				if (current_offset + count > emitter_budget) {
+					count = emitter_budget - current_offset;
+				}
+
+				if (int(gid) >= current_offset && int(gid) < current_offset + count) {
+					assigned_emitter = i;
+					break;
+				}
+				current_offset += count;
+				if (current_offset >= emitter_budget) {
+					break;
+				}
+			}
+		}
+	}
+
+	particle_to_emitter_map[gid] = assigned_emitter;
+}

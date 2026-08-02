@@ -64,7 +64,9 @@ namespace Boidsish {
 			glDeleteBuffers(1, &grid_next_buffer_);
 		}
 		emitter_buffer_.reset();
-		indirection_buffer_.reset();
+		if (indirection_buffer_ != 0) {
+			glDeleteBuffers(1, &indirection_buffer_);
+		}
 		if (terrain_chunk_buffer_ != 0) {
 			glDeleteBuffers(1, &terrain_chunk_buffer_);
 		}
@@ -82,6 +84,13 @@ namespace Boidsish {
 		}
 
 		// Create shaders
+		alloc_shader_ = std::make_unique<ComputeShader>("shaders/particle_alloc.comp");
+		if (!alloc_shader_->isValid()) {
+			logger::ERROR("Failed to compile particle allocation shader - fire effects will be disabled");
+			initialized_ = true;
+			return;
+		}
+
 		lifecycle_shader_ = std::make_unique<ComputeShader>("shaders/fire_lifecycle.comp");
 		if (!lifecycle_shader_->isValid()) {
 			logger::ERROR("Failed to compile fire lifecycle shader - fire effects will be disabled");
@@ -124,6 +133,7 @@ namespace Boidsish {
 			shader->bindUniformBlock("VisualEffects", Constants::UboBinding::VisualEffects());
 		};
 
+		setup_comp_ubos(alloc_shader_.get());
 		setup_comp_ubos(lifecycle_shader_.get());
 		lifecycle_shader_->bindUniformBlock("TerrainData", Constants::UboBinding::TerrainData());
 		setup_comp_ubos(behavior_shader_.get());
@@ -151,7 +161,12 @@ namespace Boidsish {
 		glBufferData(GL_SHADER_STORAGE_BUFFER, kMaxParticles * sizeof(int), nullptr, GL_DYNAMIC_DRAW);
 
 		emitter_buffer_ = std::make_unique<PersistentBuffer<Emitter>>(GL_SHADER_STORAGE_BUFFER, kMaxEmitters, 3);
-		indirection_buffer_ = std::make_unique<PersistentBuffer<int>>(GL_SHADER_STORAGE_BUFFER, kMaxParticles, 3);
+
+		glGenBuffers(1, &indirection_buffer_);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, indirection_buffer_);
+		glBufferData(GL_SHADER_STORAGE_BUFFER, kMaxParticles * sizeof(int), nullptr, GL_DYNAMIC_DRAW);
+		std::vector<int> init_indirection(kMaxParticles, -1);
+		glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, init_indirection.size() * sizeof(int), init_indirection.data());
 
 		glGenBuffers(1, &terrain_chunk_buffer_);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, terrain_chunk_buffer_);
@@ -189,8 +204,6 @@ namespace Boidsish {
 
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, 0);
-
-		particle_to_emitter_map_.resize(kMaxParticles, -1);
 
 		// A dummy VAO is required by OpenGL 4.3 core profile for drawing arrays.
 		glGenVertexArrays(1, &dummy_vao_);
@@ -310,11 +323,6 @@ namespace Boidsish {
 			}
 		}
 
-		if (needs_reallocation_) {
-			_UpdateParticleAllocation();
-			needs_reallocation_ = false;
-		}
-
 		// --- Update Emitters and Slice Data ---
 		std::vector<Emitter>   emitters;
 		std::vector<glm::vec4> slice_points;
@@ -337,7 +345,8 @@ namespace Boidsish {
 					0,    // slice_data_count
 					0.0f, // slice_area
 					effect->NeedsClear() ? 1 : 0,
-					{0, 0} // padding
+					effect->GetMaxParticles(),
+					{0} // padding
 				};
 
 				auto model = effect->GetSourceModel();
@@ -363,7 +372,7 @@ namespace Boidsish {
 			} else {
 				// Add a placeholder for inactive emitters to maintain indexing
 				emitters.push_back(
-					{glm::vec3(0), 0, glm::vec3(0), 0, glm::vec3(0), 0, glm::vec3(0), 0, 0.0f, 0, 0, 0, 0.0f, 0, {0, 0}}
+					{glm::vec3(0), 0, glm::vec3(0), 0, glm::vec3(0), 0, glm::vec3(0), 0, 0.0f, 0, 0, 0, 0.0f, 0, 0, {0}}
 				);
 			}
 		}
@@ -385,13 +394,6 @@ namespace Boidsish {
 		if (!emitters.empty()) {
 			std::memcpy(emitter_buffer_->GetFrameDataPtr(), emitters.data(), emitters.size() * sizeof(Emitter));
 		}
-
-		indirection_buffer_->AdvanceFrame();
-		std::memcpy(
-			indirection_buffer_->GetFrameDataPtr(),
-			particle_to_emitter_map_.data(),
-			particle_to_emitter_map_.size() * sizeof(int)
-		);
 
 		if (!chunk_info.empty()) {
 			glBindBuffer(GL_SHADER_STORAGE_BUFFER, terrain_chunk_buffer_);
@@ -415,7 +417,7 @@ namespace Boidsish {
 		// --- Common Bindings ---
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleBuffer(), particle_buffer_);
 		emitter_buffer_->BindRange(Constants::SsboBinding::EmitterBuffer());
-		indirection_buffer_->BindRange(Constants::SsboBinding::IndirectionBuffer());
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::IndirectionBuffer(), indirection_buffer_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainChunkInfo(), terrain_chunk_buffer_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::SliceData(), slice_data_buffer_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::VisibleParticleIndices(), visible_indices_buffer_);
@@ -521,6 +523,14 @@ namespace Boidsish {
 			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::TerrainData(), terrain_data_ubo);
 		}
 
+		// --- Phase 0: Allocation ---
+		alloc_shader_->use();
+		alloc_shader_->setFloat("u_ambient_density", ambient_density);
+		alloc_shader_->setInt("u_ambient_particle_scale", Constants::Class::Particles::AmbientParticleScale());
+		alloc_shader_->setInt("u_num_emitters", emitters.size());
+		glDispatchCompute((kMaxParticles / Constants::Class::Particles::ComputeGroupSize()) + 1, 1, 1);
+		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
 		// --- Phase 1: Lifecycle ---
 		// Handle aging and respawning first so Phase 2/3 work with valid particles
 		bind_textures_and_uniforms(lifecycle_shader_.get());
@@ -589,74 +599,6 @@ namespace Boidsish {
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::BehaviorDrawCommand(), 0);
 	}
 
-	void FireEffectManager::_UpdateParticleAllocation() {
-		// New Dynamic Pool logic:
-		// Ambient particles get (density * AmbientParticleScale).
-		// Everything else goes to emitters.
-
-		int ambient_count = static_cast<int>(ambient_density_ * Constants::Class::Particles::AmbientParticleScale());
-		ambient_count = std::clamp(ambient_count, 0, kMaxParticles);
-		int emitter_budget = kMaxParticles - ambient_count;
-
-		// --- 1. Distribute Emitter Pool ---
-		std::vector<int> ideal_counts(effects_.size(), 0);
-		int              total_particle_demand = 0;
-		int              num_unlimited_emitters = 0;
-		int              num_active_emitters = 0;
-
-		for (const auto& effect : effects_) {
-			if (effect) {
-				num_active_emitters++;
-				int max_p = effect->GetMaxParticles();
-				if (max_p != -1) {
-					total_particle_demand += max_p;
-				} else {
-					num_unlimited_emitters++;
-				}
-			}
-		}
-
-		int avg_particles_per_unlimited = 0;
-		if (num_unlimited_emitters > 0) {
-			int available_for_unlimited = emitter_budget - total_particle_demand;
-			if (available_for_unlimited > 0) {
-				avg_particles_per_unlimited = available_for_unlimited / num_unlimited_emitters;
-			}
-		}
-
-		for (size_t i = 0; i < effects_.size(); ++i) {
-			if (effects_[i]) {
-				int max_p = effects_[i]->GetMaxParticles();
-				if (max_p != -1) {
-					ideal_counts[i] = max_p;
-				} else {
-					ideal_counts[i] = avg_particles_per_unlimited;
-				}
-			}
-		}
-
-		// --- 2. Update Map for Emitter Pool ---
-		int current_idx = 0;
-		for (size_t i = 0; i < effects_.size(); ++i) {
-			if (effects_[i]) {
-				int count = ideal_counts[i];
-				for (int j = 0; j < count && current_idx < emitter_budget; ++j) {
-					particle_to_emitter_map_[current_idx++] = (int)i;
-				}
-			}
-		}
-
-		// Clear remaining emitter pool
-		while (current_idx < emitter_budget) {
-			particle_to_emitter_map_[current_idx++] = -1;
-		}
-
-		// --- 3. Update Map for Ambient Pool ---
-		// Ambient pool starts after emitter pool
-		for (int i = emitter_budget; i < kMaxParticles; ++i) {
-			particle_to_emitter_map_[i] = -1;
-		}
-	}
 
 	ParticleStats FireEffectManager::GetStats() const {
 		std::lock_guard<std::mutex> lock(mutex_);
