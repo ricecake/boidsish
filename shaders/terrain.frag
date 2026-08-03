@@ -707,7 +707,24 @@ void main() {
 	// ========================================================================
 	// Noise Generation
 	// ========================================================================
-	float n_fade = fastSimplex3d(vec3(FragPos.xz / (250.0 * worldScale), time * 0.09));
+	// Calculate unit vector towards the camera
+	vec3 advectDir = realDist > 0.001 ? (FragPos - vec3(viewPos.x, 0.0, viewPos.z)) / realDist : vec3(0.0, 0.0, 1.0);
+
+	// Proper 3D advected and warped lookups
+	vec3 warpCoord1 = FragPos * (0.001 / worldScale) + vec3(0.0, time * 0.05, 0.0);
+	vec3 warp1 = fastCurl3d(warpCoord1);
+	float speed1 = 25.0 * worldScale;
+	vec3 p1 = FragPos + (advectDir * time * speed1) + 0.1*warp1;
+	p1.y += time * 2.0 * worldScale; // slow vertical drift
+	float n_fade = fastSimplex3d(p1 / (250.0 * worldScale));
+
+	vec3 warpCoord2 = FragPos * (0.015 / worldScale) - vec3(0.0, time * 0.03, 0.0);
+	vec3 warp2 = fastCurl3d(warpCoord2);
+	float speed2 = 18.0 * worldScale;
+	vec3 p2 = FragPos + (advectDir * time * speed2) + warp2;
+	p2.y -= time * 1.5 * worldScale; // slow vertical drift in opposite direction
+	float nightNoise = fastWorley3d(p2 / (125.0 * worldScale));
+
 	float largeNoise = fastWarpedFbm3d(FragPos * (baseFreq * 0.1));
 	float blueNoise = fastBlueNoise(FragPos.xz * (baseFreq * 0.05 * freqScale), 0) * 0.5 + 0.5;
 	float blueNoiseA = fastBlueNoise(FragPos.xz * (baseFreq * 0.1 * freqScale), 1) * 0.5 + 0.5;
@@ -817,6 +834,13 @@ void main() {
 		metallic = mix(metallic, 0.0, ctx.freezingScale);
 	}
 
+	// Smooth transition of material properties near the far boundary to match sky.frag floor plane properties
+	float floorBlend = smoothstep(0.0, 0.3, fade);
+	albedo = mix(vec3(0.05, 0.05, 0.08), albedo, floorBlend);
+	roughness = mix(0.05, roughness, floorBlend);
+	metallic = mix(0.9, metallic, floorBlend);
+	perturbedNorm = mix(vec3(0.0, 1.0, 0.0), perturbedNorm, floorBlend);
+
 	float primaryShadow;
 	vec3 lighting = apply_lighting_pbr(FragPos, perturbedNorm, albedo, roughness, metallic, 1.0 - grassAO, primaryShadow).rgb;
 	lighting.b *= 1.0 + (0.2 * ctx.freezingScale * (1.0 - primaryShadow));
@@ -825,8 +849,13 @@ void main() {
 	// Neon 80s Synth Style (Night Theme)
 	// ========================================================================
 	// --- Grid logic ---
+	float gridWarpStart = smoothstep(600, 650, distance(viewPos, FragPos));
+	float gridWarpEnd = 1.0 - smoothstep(680, 700, distance(viewPos, FragPos));
+	float gridWarp = max(1.0, FragPos.y *n_fade) * gridWarpStart * gridWarpEnd;
+
 	float grid_spacing = 1.0;
-	vec2  coord = FragPos.xz / grid_spacing;
+
+	vec2  coord = (FragPos+0.1*warp1*gridWarp).xz / grid_spacing;
 	vec2  f = max(fwidth(coord), vec2(0.0001));
 
 	vec2  grid_minor = abs(fract(coord - 0.5) - 0.5) / f;
@@ -837,7 +866,7 @@ void main() {
 	float line_major = min(grid_major.x, grid_major.y);
 	float C_major = 1.0 - min(line_major, 1.0);
 
-	float intensity = max(C_minor, C_major * 1.5);
+	float intensity = max(C_minor, C_major * 1.5 * max(1.0, 500*n_fade*abs(gridWarp*curvature(FragPos, Normal)))  ) ;
 	// vec3  grid_color = vec3(0.0, 0.8, 0.8) * intensity;
 	vec3  grid_color = vec3(0.0, 0.8, 0.8) * intensity * 5000.0;
 
@@ -857,22 +886,53 @@ void main() {
 	vec3 cyan = vec3(0.0, 1.0, 1.0)  * 2000.0;
 	vec3 magenta = vec3(1.0, 0.0, 1.0) * 2000.0;
 
+	// Calculate nightFade using the proper 3D advected nightNoise defined near the top of main
+	float nightFade = smoothstep(fade_start - 10, fade_end, realDist + nightNoise * 100.0);
+
+	// Temperature/cooling factor: 1.0 when fully digital, cools down to 0.0 near the solidification edge
+	float temperatureFactor = smoothstep(0.0, 0.8, nightFade*2.0);
+
+	// Hot magenta cools down to a deep, dark violet/blue
+	vec3 coolColor = vec3(0.05, 0.0, 0.2) * 2000.0;
+	vec3 dynamicMagenta = mix(coolColor, magenta, temperatureFactor);
+
+	// Organic Worley-based magenta splotches centered on cell centers
+	float splotchMask = smoothstep(0.5, 0.2, nightNoise);
+	vec3 splotches = dynamicMagenta * splotchMask * 0.8;
+
 	float heightGlow = smoothstep(0.0, 100.0 * worldScale, FragPos.y);
-	vec3 fancyLight = mix(grid_color, gridLine * cyan * 0.8 + gridGlowFactor * magenta * 0.4, fade);
+	vec3 fancyLight = mix(grid_color, gridLine * cyan * 0.8 + gridGlowFactor * dynamicMagenta * 0.4, fade);
 
 	vec3 newLighting = mix(lighting, lighting * vec3(0.4, 0.1, 0.5), 0.7);
 	newLighting += fancyLight;
-	newLighting += magenta * heightGlow * (0.8 + 0.2 * sin(time * 0.5));
+	newLighting += dynamicMagenta * heightGlow * (0.8 + 0.2 * sin(time * 0.5));
+	newLighting += splotches * (0.7 + 0.3 * sin(time * 0.8)); // Pulsating, advecting, cooling splotches
 
-	float nightNoise = fastWorley3d(vec3(FragPos.xz / (50 * worldScale), time * 0.08));
-	float nightFade = smoothstep(fade_start - 10, fade_end, realDist + nightNoise * 100.0);
-	// lighting = mix(mix(lighting, gridLight, smoothstep(fade_start - 150, fade_end - 20, realDist)), newLighting, nightFade);
-	lighting = mix(lighting, mix(fancyLight+vec3(0.05, 0.05, 0.08), newLighting, smoothstep(0.25, 0.75, fade)), nightFade);
+	// Blend the digital night theme between standard flat flooring lighting + grid_color and the full digital theme (newLighting) based on fade
+	vec3 digitalTheme = mix(lighting + grid_color, newLighting, smoothstep(0.0, 0.5, fade));
+
+	// Interpolate between PBR lighting and the digital night theme
+	lighting = mix(mix(lighting, lighting+dynamicMagenta*gridGlowFactor, 2*nightFade), digitalTheme, nightFade*2);
+
+	// Scanning print front band right at the solidification boundary representing hard light projector printing
+	float printFront = smoothstep(0.0, 0.25, fade) * (1.0-smoothstep(0.25, 0.5, fade));
+	printFront = pow(printFront, 2.0); // Sharpen the band
+	vec3 printFrontColor = mix(cyan, magenta, 0.5) * 20.0 * printFront;
+
+	// Apply print front glow on top
+	lighting += printFrontColor;
 
 	// ========================================================================
 	// Distance Fade
 	// ========================================================================
-	vec4 baseColor = vec4(lighting, mix(0.0, fade, step(0.01, FragPos.y)));
+	// Alpha fade out over the last portion of the transition (e.g. as fade goes from 0.2 down to 0.0)
+	float alphaFade = smoothstep(0.0, 0.2, fade);
+
+	// Allow flat terrain near the far boundary to remain visible and fade out smoothly, masking any differences or seams
+	float isFar = smoothstep(400.0 * worldScale, 500.0 * worldScale, realDist);
+	float terrainFlatMask = mix(step(0.01, FragPos.y), 1.0, isFar);
+
+	vec4 baseColor = vec4(lighting, fade * alphaFade * terrainFlatMask);
 
 	FragColor = mix(vec4(0.0, 0.7, 0.7, baseColor.a) * length(baseColor), baseColor, step(1.0, fade));
 	// float up = dot(Normal, vec3(0,1,0));
