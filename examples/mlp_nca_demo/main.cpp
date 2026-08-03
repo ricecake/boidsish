@@ -10,6 +10,7 @@
 #include "shader.h"
 #include "mlp_network.h"
 #include "dot.h"
+#include "IWidget.h"
 
 using namespace Boidsish;
 
@@ -20,7 +21,7 @@ struct GpuParticle {
 	glm::vec4 color;
 };
 
-class MlpNcaDemo {
+class MlpNcaDemo: public UI::IWidget {
 public:
 	MlpNcaDemo() {
 		// Initialize networks
@@ -49,7 +50,7 @@ public:
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 	}
 
-	~MlpNcaDemo() {
+	~MlpNcaDemo() override {
 		if (particle_ssbo_ != 0) {
 			glDeleteBuffers(1, &particle_ssbo_);
 		}
@@ -202,12 +203,10 @@ public:
 			glGetBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, particles_.size() * sizeof(GpuParticle), particles_.data());
 			glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 		}
-
-		// Draw ImGui Panel
-		RenderUI();
 	}
 
-	void RenderUI() {
+	// Override standard Draw callback for safely rendering ImGui controls during render phase
+	void Draw() override {
 		ImGui::Begin("Neural Shader Evaluator");
 
 		ImGui::Text("Explore Multi-Layer Perceptrons in Compute Shaders");
@@ -341,13 +340,16 @@ int main() {
 		Camera camera(0.0f, 0.0f, 15.0f, 0.0f, 0.0f, 45.0f);
 		viz.SetCamera(camera);
 
-		// Initialize demo runner
+		// Initialize demo runner (which is also our IWidget!)
 		auto demo = std::make_shared<MlpNcaDemo>();
+
+		// Add our demo widget safely to the Visualizer UI manager
+		viz.AddWidget(demo);
 
 		// Track elapsed time
 		float elapsed_time = 0.0f;
 
-		// Set up update callback in the frame loop
+		// Set up update callback in the frame loop (strictly for simulation, no ImGui drawing here)
 		viz.AddUpdateHandler([demo, &elapsed_time](float time, float dt) {
 			// Limit dt to prevent massive simulation jumps during lag spikes
 			float clamped_dt = std::min(dt, 0.1f);
