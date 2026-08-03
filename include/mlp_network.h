@@ -8,6 +8,7 @@
 
 namespace Boidsish {
 
+#pragma pack(push, 4)
 	struct LayerInfo {
 		int input_size;
 		int output_size;
@@ -21,6 +22,7 @@ namespace Boidsish {
 		int max_layer_size = 0;
 		LayerInfo layers[16] = {};
 	};
+#pragma pack(pop)
 
 	class MLPNetwork {
 	public:

@@ -6,8 +6,7 @@
 
 namespace Boidsish {
 
-	MLPNetwork::MLPNetwork() {
-		glGenBuffers(1, &ssbo_id_);
+	MLPNetwork::MLPNetwork() : ssbo_id_(0) {
 	}
 
 	MLPNetwork::~MLPNetwork() {
@@ -120,6 +119,9 @@ namespace Boidsish {
 	}
 
 	void MLPNetwork::SyncToGPU() {
+		if (ssbo_id_ == 0) {
+			glGenBuffers(1, &ssbo_id_);
+		}
 		if (ssbo_id_ == 0) return;
 
 		size_t metadata_size = sizeof(MLPMetadata);
@@ -138,6 +140,10 @@ namespace Boidsish {
 	}
 
 	void MLPNetwork::Bind(GLuint binding_point) const {
+		if (ssbo_id_ == 0) {
+			// Const cast to allow lazy initialization during bind
+			glGenBuffers(1, const_cast<GLuint*>(&ssbo_id_));
+		}
 		if (ssbo_id_ == 0) return;
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, binding_point, ssbo_id_);
 	}

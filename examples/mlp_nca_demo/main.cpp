@@ -348,10 +348,11 @@ int main() {
 		float elapsed_time = 0.0f;
 
 		// Set up update callback in the frame loop
-		viz.AddPrepareCallback([demo, &elapsed_time](Visualizer& v) {
-			float dt = v.GetLastFrameTime();
-			elapsed_time += dt;
-			demo->UpdateAndRender(elapsed_time, dt);
+		viz.AddUpdateHandler([demo, &elapsed_time](float time, float dt) {
+			// Limit dt to prevent massive simulation jumps during lag spikes
+			float clamped_dt = std::min(dt, 0.1f);
+			elapsed_time += clamped_dt;
+			demo->UpdateAndRender(elapsed_time, clamped_dt);
 		});
 
 		// Render the guided particles in the 3D scene using Boidsish Dot function
