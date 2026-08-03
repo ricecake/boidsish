@@ -23,6 +23,7 @@ layout(binding = 18, rgba16f) uniform writeonly image2D outWgtMip3;
 layout(binding = 19, rgba16f) uniform writeonly image2D outWgtMip4;
 
 #include "types/autoexposure.glsl"
+#include "types/lighting.glsl"
 #include "helpers/tonemapping.glsl"
 
 uniform vec2  srcResolution; // Full resolution of srcTexture
@@ -200,10 +201,19 @@ void main() {
 		ray_view = vec4(ray_view.xy, -1.0, 0.0);
 		vec3 worldDir = normalize((invView * ray_view).xyz);
 		if (centerDepth > 0.99999) {
-			isSky = 1;
-			// if (worldDir.y > 0.0) {
-			// 	isSky = 1;
-			// }
+			if (worldDir.y < 0.0 && viewPos.y > 0.0) {
+				float t = -viewPos.y / worldDir.y;
+				float maxSceneDist = mix(10000.0 * worldScale, 700.0 * worldScale, smoothstep(0.0, 1500.0 * worldScale, viewPos.y));
+				if (t < maxSceneDist) {
+					isSky = 0;
+				} else {
+					isSky = 1;
+				}
+			} else {
+				isSky = 1;
+			}
+		} else {
+			isSky = 0;
 		}
 
 

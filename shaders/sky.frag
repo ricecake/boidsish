@@ -136,8 +136,10 @@ void main() {
 		// --- Distance Fade ---
 		float fogFactor = clamp(exp(-dist / (3000.0 * worldScale)), 0.0, 1.0);
 
-		// Blend ground with atmospheric sky radiance
-		vec3 finalColor = mix(skyRadiance, landscapeColor, fogFactor);
+		// Blend ground with atmospheric sky radiance at the horizon to prevent leakage of below-horizon scattering
+		vec3 horizonRay = normalize(vec3(world_ray.x, 0.0, world_ray.z));
+		vec3 horizonSkyRadiance = sampleSkyView(horizonRay);
+		vec3 finalColor = mix(horizonSkyRadiance, landscapeColor, fogFactor);
 
 		// Add lightning background pulse
 		vec3 localLightningEffect = lightningColor * lightningPulse * 0.35;

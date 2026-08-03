@@ -125,14 +125,24 @@ void main() {
 	float rawDepth = texture(depthTexture, TexCoords).r;
 	int isSky = 0;
 	if (rawDepth > 0.99999) {
-		isSky = 1;
-		// vec2 ndc = TexCoords * 2.0 - 1.0;
-		// vec4 ray_view = invProjection * vec4(ndc, -1.0, 1.0);
-		// ray_view = vec4(ray_view.xy, -1.0, 0.0);
-		// vec3 worldDir = normalize((invView * ray_view).xyz);
-		// if (worldDir.y > 0.0) {
-		// 	isSky = 1;
-		// }
+		vec2 ndc = TexCoords * 2.0 - 1.0;
+		vec4 ray_view = invProjection * vec4(ndc, -1.0, 1.0);
+		ray_view = vec4(ray_view.xy, -1.0, 0.0);
+		vec3 worldDir = normalize((invView * ray_view).xyz);
+
+		if (worldDir.y < 0.0 && viewPos.y > 0.0) {
+			float t = -viewPos.y / worldDir.y;
+			float maxSceneDist = mix(10000.0 * worldScale, 700.0 * worldScale, smoothstep(0.0, 1500.0 * worldScale, viewPos.y));
+			if (t < maxSceneDist) {
+				isSky = 0;
+			} else {
+				isSky = 1;
+			}
+		} else {
+			isSky = 1;
+		}
+	} else {
+		isSky = 0;
 	}
 
 	// Guided Upsampling for LTM
