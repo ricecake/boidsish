@@ -212,26 +212,6 @@ void main() {
 		vIsWater = smoothstep(0.1, -0.1, FragPos.y);
 	}
 
-	float waterMask = vIsWater;
-
-	if (waterMask > 0.0) {
-		float landHeight = FragPos.y;
-		float waterHeight = 0.0;
-
-		// Add gentle ripple displacement
-		float rippleTime = time * 2.0;
-		float ripple = sin(FragPos.x * 0.5 + rippleTime) * 0.05 + cos(FragPos.z * 0.5 + rippleTime * 0.8) * 0.05;
-		waterHeight += ripple;
-
-		// Approximate normal for the ripple surface
-		float dx = 0.05 * cos(FragPos.x * 0.5 + rippleTime) * 0.5;
-		float dz = 0.05 * -sin(FragPos.z * 0.5 + rippleTime * 0.8) * 0.4;
-		vec3  waterNormal = normalize(vec3(-dx, 1.0, -dz));
-
-		FragPos.y = mix(landHeight, waterHeight, waterMask);
-		Normal = normalize(mix(Normal, waterNormal, waterMask));
-	}
-
 	// Apply shockwave ripple to terrain
 	FragPos += getShockwaveDisplacement(FragPos, 0.0, false);
 
@@ -273,8 +253,32 @@ void main() {
 	float tessFactor2 = mix(tessFactor_TC_out[3], tessFactor_TC_out[2], uv.x);
 	tessFactor = mix(tessFactor1, tessFactor2, uv.y);
 
+	float smoother = smoothstep(650, 700, distance(viewPos, FragPos));
+	FragPos.y = mix(FragPos.y, 0.0, smoother);
+	Normal = mix(Normal, vec3(0.0, 1.0, 0.0), smoother);
+
 	// out float tessFactor;
 	TextureSlice = slice;
+
+	float waterMask = 1.0-smoothstep(-0.1, 0.1, FragPos.y);
+	if (waterMask > 0.0) {
+		float landHeight = FragPos.y;
+		float waterHeight = 0.0;
+
+		// Add gentle ripple displacement
+		float rippleTime = time * 2.0;
+		float ripple = sin(FragPos.x * 0.5 + rippleTime) * 0.05 + cos(FragPos.z * 0.5 + rippleTime * 0.8) * 0.05;
+		waterHeight += ripple;
+
+		// Approximate normal for the ripple surface
+		float dx = 0.05 * cos(FragPos.x * 0.5 + rippleTime) * 0.5;
+		float dz = 0.05 * -sin(FragPos.z * 0.5 + rippleTime * 0.8) * 0.4;
+		vec3  waterNormal = normalize(vec3(-dx, 1.0, -dz));
+
+		FragPos.y = mix(landHeight, waterHeight, waterMask);
+		Normal = normalize(mix(Normal, waterNormal, waterMask));
+	}
+
 
 	// Final vertex position
 	gl_Position = projection * view * vec4(FragPos, 1.0);

@@ -107,6 +107,10 @@ void main() {
         // Use jitter in [0, 1] range which is centered on froxel centers (vox + 0.5)
         worldPos = worldFromFroxel(vox, blueNoise);
 
+    if (worldPos.y < 0.0) {
+        current_local = vec4(0.0);
+    } else {
+
     // Calculate scattering and extinction
     Sampling s = getAtmospherePropertiesAtPos(worldPos);
     s.rayleigh *= uRayleighScale;
@@ -327,6 +331,7 @@ void main() {
         float extinctionCoeff = (s.rayleigh.r + s.rayleigh.g + s.rayleigh.b + s.mie.r + s.mie.g + s.mie.b) / 3.0 * 0.001 * obliquity;
 
         current_local = vec4(finalScattering, extinctionCoeff);
+    }
     }
 
     // Temporal accumulation
