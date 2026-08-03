@@ -659,7 +659,7 @@ void applyDetailNormalPerturbation(
 TerrainMaterial generateMaterial(TerrainContext ctx, float noise) {
 	TerrainMaterial mat = TerrainMaterial(vec3(0,0.0,0), 0.0, 0.0, 1.0, 1.0);
 
-	mat.albedo = texture(u_terrainColorBlend, vec3(ctx.perturbedHeight, ctx.moisture, ctx.slope)).rgb;
+	mat.albedo = texture(u_terrainColorBlend, vec3(ctx.perturbedHeight/100.0, ctx.moisture, ctx.slope)).rgb;
 
 	return mat;
 }
