@@ -143,6 +143,25 @@ struct TerrainContext {
 	float biomeT;
 };
 
+vec2 worldToFlat(
+	vec3  worldPos,
+	vec3  worldNormal
+) {
+	// 1. Construct the TBN frame
+	vec3 N = normalize(worldNormal);
+
+	// Choose an 'up' vector, switching to X-axis if the normal is perfectly vertical
+	vec3 referenceUp = abs(N.y) < 0.999 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+
+	vec3 T = normalize(cross(referenceUp, N));
+	vec3 B = normalize(cross(N, T));
+
+	// 2. Project world position into 2D surface space
+	vec2 surfacePos = vec2(dot(worldPos, T), dot(worldPos, B));
+
+	return surfacePos;
+}
+
 float curvature (vec3 pos, vec3 norm) {
     vec3 n = normalize(norm);
 
@@ -509,7 +528,7 @@ void processWaterLayer(vec3 norm, float dist, float fade) {
 
 	float shimmer = 1.0 + rippleHeight * 2.0;
 	float grid_intensity = max(C_minor, C_major * 1.5) * 0.6 * shimmer;
-	vec3  grid_color = vec3(0.0, 0.8, 0.8) * grid_intensity;
+	vec3  grid_color = vec3(0.0, 0.8, 0.8) * grid_intensity * 5000.0;
 
 	vec3 surfaceColor = vec3(0.05, 0.05, 0.08);
 
@@ -676,6 +695,10 @@ void main() {
 	float dist = length(FragPos.xz - viewPos.xz);
 	float realDist = distance(FragPos, viewPos);
 
+	if (dist > 650) {
+		discard;
+	}
+
 	float baseFreq = 0.1 / worldScale;
 	float stepDist = 50.0 * int(realDist / 50.0);
 	float freqScale = mix(1.0, 0.25, smoothstep(150.0, 160.0, stepDist + 50.0));
@@ -691,11 +714,11 @@ void main() {
 
 	float fade_start = 560.0 * worldScale;
 	float fade_end = 570.0 * worldScale;
-	float fade = 1.0 - smoothstep(fade_start, fade_end, dist + n_fade * 40.0);
+	float fade = 1.0 - smoothstep(fade_start, fade_end, realDist + n_fade * 40.0);
 
-	if (fade < 0.2) {
-		discard;
-	}
+	// if (fade < 0.2) {
+	// 	discard;
+	// }
 
 	if (vIsWater > 0.5) {
 		processWaterLayer(norm, dist, fade);
@@ -801,7 +824,26 @@ void main() {
 	// ========================================================================
 	// Neon 80s Synth Style (Night Theme)
 	// ========================================================================
-	float gridScale = 0.05;
+	// --- Grid logic ---
+	float grid_spacing = 1.0;
+	vec2  coord = FragPos.xz / grid_spacing;
+	vec2  f = max(fwidth(coord), vec2(0.0001));
+
+	vec2  grid_minor = abs(fract(coord - 0.5) - 0.5) / f;
+	float line_minor = min(grid_minor.x, grid_minor.y);
+	float C_minor = 1.0 - min(line_minor, 1.0);
+
+	vec2  grid_major = abs(fract(coord / 5.0 - 0.5) - 0.5) / f;
+	float line_major = min(grid_major.x, grid_major.y);
+	float C_major = 1.0 - min(line_major, 1.0);
+
+	float intensity = max(C_minor, C_major * 1.5);
+	// vec3  grid_color = vec3(0.0, 0.8, 0.8) * intensity;
+	vec3  grid_color = vec3(0.0, 0.8, 0.8) * intensity * 5000.0;
+
+
+	// Synthwave grid lines
+	float gridScale = 0.05; // Lines every 20 units
 	vec2  gridUV = FragPos.xz * gridScale;
 
 	vec2  grid = abs(fract(gridUV - 0.5) - 0.5) / (fwidth(gridUV) * 1.5);
@@ -812,21 +854,20 @@ void main() {
 	float lineGlow = min(gridGlow.x, gridGlow.y);
 	float gridGlowFactor = 1.0 - smoothstep(0.0, 1.0, lineGlow);
 
-	vec3 cyan = vec3(0.0, 1.0, 1.0);
-	vec3 magenta = vec3(1.0, 0.0, 1.0);
-
-	vec3 newLighting = mix(lighting, lighting * vec3(0.4, 0.1, 0.5), 0.7);
-
-	newLighting += gridLine * cyan * 0.8;
-	newLighting += gridGlowFactor * magenta * 0.4;
-	vec3 gridLight = newLighting;
+	vec3 cyan = vec3(0.0, 1.0, 1.0)  * 2000.0;
+	vec3 magenta = vec3(1.0, 0.0, 1.0) * 2000.0;
 
 	float heightGlow = smoothstep(0.0, 100.0 * worldScale, FragPos.y);
+	vec3 fancyLight = mix(grid_color, gridLine * cyan * 0.8 + gridGlowFactor * magenta * 0.4, fade);
+
+	vec3 newLighting = mix(lighting, lighting * vec3(0.4, 0.1, 0.5), 0.7);
+	newLighting += fancyLight;
 	newLighting += magenta * heightGlow * (0.8 + 0.2 * sin(time * 0.5));
 
-	float nightNoise = fastWorley3d(vec3(FragPos.xy / (25.0 * worldScale), time * 0.08));
-	float nightFade = smoothstep(fade_start - 10.0, fade_end, dist + nightNoise * 100.0);
-	lighting = mix(mix(lighting, gridLight, smoothstep(fade_start - 150.0, fade_end - 20.0, dist)), newLighting, nightFade);
+	float nightNoise = fastWorley3d(vec3(FragPos.xz / (50 * worldScale), time * 0.08));
+	float nightFade = smoothstep(fade_start - 10, fade_end, realDist + nightNoise * 100.0);
+	// lighting = mix(mix(lighting, gridLight, smoothstep(fade_start - 150, fade_end - 20, realDist)), newLighting, nightFade);
+	lighting = mix(lighting, mix(fancyLight+vec3(0.05, 0.05, 0.08), newLighting, smoothstep(0.25, 0.75, fade)), nightFade);
 
 	// ========================================================================
 	// Distance Fade
