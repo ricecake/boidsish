@@ -834,6 +834,13 @@ void main() {
 		metallic = mix(metallic, 0.0, ctx.freezingScale);
 	}
 
+	// Smooth transition of material properties near the far boundary to match sky.frag floor plane properties
+	float floorBlend = smoothstep(0.0, 0.3, fade);
+	albedo = mix(vec3(0.05, 0.05, 0.08), albedo, floorBlend);
+	roughness = mix(0.05, roughness, floorBlend);
+	metallic = mix(0.9, metallic, floorBlend);
+	perturbedNorm = mix(vec3(0.0, 1.0, 0.0), perturbedNorm, floorBlend);
+
 	float primaryShadow;
 	vec3 lighting = apply_lighting_pbr(FragPos, perturbedNorm, albedo, roughness, metallic, 1.0 - grassAO, primaryShadow).rgb;
 	lighting.b *= 1.0 + (0.2 * ctx.freezingScale * (1.0 - primaryShadow));
@@ -896,8 +903,11 @@ void main() {
 	newLighting += dynamicMagenta * heightGlow * (0.8 + 0.2 * sin(time * 0.5));
 	newLighting += splotches * (0.7 + 0.3 * sin(time * 0.8)); // Pulsating, advecting, cooling splotches
 
-	// Interpolate between PBR lighting and the digital night lighting
-	lighting = mix(lighting, mix(fancyLight+vec3(0.05, 0.05, 0.08), newLighting, smoothstep(0.25, 0.75, fade)), nightFade);
+	// Blend the digital night theme between standard flat flooring lighting + grid_color and the full digital theme (newLighting) based on fade
+	vec3 digitalTheme = mix(lighting + grid_color, newLighting, smoothstep(0.0, 0.5, fade));
+
+	// Interpolate between PBR lighting and the digital night theme
+	lighting = mix(lighting, digitalTheme, nightFade);
 
 	// Scanning print front band right at the solidification boundary representing hard light projector printing
 	float printFront = smoothstep(0.0, 0.25, nightFade) * smoothstep(0.5, 0.25, nightFade);
@@ -910,7 +920,14 @@ void main() {
 	// ========================================================================
 	// Distance Fade
 	// ========================================================================
-	vec4 baseColor = vec4(lighting, mix(0.0, fade, step(0.01, FragPos.y)));
+	// Alpha fade out over the last portion of the transition (e.g. as fade goes from 0.2 down to 0.0)
+	float alphaFade = smoothstep(0.0, 0.2, fade);
+
+	// Allow flat terrain near the far boundary to remain visible and fade out smoothly, masking any differences or seams
+	float isFar = smoothstep(400.0 * worldScale, 500.0 * worldScale, realDist);
+	float terrainFlatMask = mix(step(0.01, FragPos.y), 1.0, isFar);
+
+	vec4 baseColor = vec4(lighting, fade * alphaFade * terrainFlatMask);
 
 	FragColor = mix(vec4(0.0, 0.7, 0.7, baseColor.a) * length(baseColor), baseColor, step(1.0, fade));
 	// float up = dot(Normal, vec3(0,1,0));
