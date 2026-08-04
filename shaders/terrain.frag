@@ -105,6 +105,31 @@ const vec3 COL_SNOW_FRESH = vec3(0.95, 0.97, 1.00);    // Fresh snow
 const vec3 COL_SNOW_OLD = vec3(0.85, 0.88, 0.92);      // Older packed snow
 const vec3 COL_DIRT = vec3(0.35, 0.25, 0.18);          // Exposed dirt
 
+
+#define ADSR_FADE(t, start, attack, sustain, release) \
+    (smoothstep(start, start + attack, t) * (1.0 - smoothstep(start + attack + sustain, start + attack + sustain + release, t)))
+
+
+#define EVAL_LOD_OPTIMIZED(OUT_VAR, FUNC, TRANS_LEN, SEG_LEN, CUR_LEN) \
+    { \
+        float _layer = floor((CUR_LEN) / (SEG_LEN)); \
+        float _local = mod((CUR_LEN), (SEG_LEN)); \
+        float _blend = smoothstep((SEG_LEN) - (TRANS_LEN), (SEG_LEN), _local); \
+        OUT_VAR = FUNC(_layer); \
+        if (_blend > 0.0) { \
+            OUT_VAR = mix(OUT_VAR, FUNC(_layer + 1.0), _blend); \
+        } \
+    }
+
+// FUNC: A function that takes a float layer_index and returns your procedural texture (float, vec2, vec4, etc.)
+#define LOD_BLEND(FUNC, TRANS_LEN, SEG_LEN, CUR_LEN) \
+    mix( \
+        FUNC(floor((CUR_LEN) / (SEG_LEN))), \
+        FUNC(floor((CUR_LEN) / (SEG_LEN)) + 1.0), \
+        smoothstep((SEG_LEN) - (TRANS_LEN), (SEG_LEN), mod((CUR_LEN), (SEG_LEN))) \
+    )
+
+
 struct TerrainMaterial {
 	vec3  albedo;
 	float roughness;
@@ -568,11 +593,10 @@ TerrainMaterial calculateMaterial(TerrainContext ctx, float largeNoise) {
 /**
  * Redone grass styling helper driven by TerrainContext.
  */
-TerrainMaterial applyGrassStyling(
+TerrainMaterial applyGrassStylingOld(
 	TerrainContext ctx,
 	TerrainMaterial mat,
 	float blueNoise,
-	float blueNoiseA,
 	float n_fade,
 	float freqScale,
 	out float grassAO,
@@ -586,7 +610,7 @@ TerrainMaterial applyGrassStyling(
 
 		vec3 colorA = u_grassBiomes[ctx.biomeIdxA].colorBottom.rgb;
 		vec3 colorB = u_grassBiomes[ctx.biomeIdxB].colorBottom.rgb;
-		vec3 grassColor = mix(colorA, colorB, smoothstep(0.0, blueNoiseA, ctx.biomeT));
+		vec3 grassColor = mix(colorA, colorB, smoothstep(0.0, blueNoise, ctx.biomeT));
 
 		float rigidA = u_grassBiomes[ctx.biomeIdxA].rigidity;
 		float rigidB = u_grassBiomes[ctx.biomeIdxB].rigidity;
@@ -623,6 +647,58 @@ TerrainMaterial applyGrassStyling(
 	}
 	return mat;
 }
+
+
+/**
+ * Redone grass styling helper driven by TerrainContext.
+ */
+TerrainMaterial applyGrassStyling(
+	vec3 pos,
+	TerrainContext ctx,
+	TerrainMaterial mat,
+	float blueNoise,
+	out float grassAO,
+	inout vec3 perturbedNorm
+) {
+	grassAO = 0.0;
+	if (u_grassGlobal.enabled != 0 && ctx.freezingScale == 0.0) {
+		float densityA = u_grassBiomes[ctx.biomeIdxA].density * float(u_grassBiomes[ctx.biomeIdxA].enabled);
+		float densityB = u_grassBiomes[ctx.biomeIdxB].density * float(u_grassBiomes[ctx.biomeIdxB].enabled);
+		float interpolatedDensity = mix(densityA, densityB, ctx.biomeT) * u_grassGlobal.densityMultiplier;
+
+		vec3 colorA = u_grassBiomes[ctx.biomeIdxA].colorBottom.rgb;
+		vec3 colorB = u_grassBiomes[ctx.biomeIdxB].colorBottom.rgb;
+		vec3 grassColor = mix(colorA, colorB, smoothstep(0.0, blueNoise, ctx.biomeT));
+
+		// Apply effect only on relatively flat surfaces where grass would grow
+		float grassMask = smoothstep(0.7, 0.8, perturbedNorm.y) * clamp(interpolatedDensity, 0.0, 1.0);
+
+		// AO baseline shift - darken dense grass areas
+		grassAO = grassMask * 0.75;
+
+		float distanceFactor = smoothstep(200.0, 350.0, ctx.dist);
+
+		perturbedNorm = mix(perturbedNorm, vec3(0.0, 1.0, 0.0), interpolatedDensity * distanceFactor);
+		perturbedNorm = normalize(perturbedNorm);
+
+		vec3 undersideColor = grassColor * 1.25 + vec3(0.05, 0.05, 0.0);
+		vec3 dynamicGrassColor = mix(grassColor, undersideColor, blueNoise);
+
+		float tuft = fastWorley3d(pos / ((125.0+25*blueNoise) * worldScale));
+
+		mat.albedo = mix(mat.albedo, dynamicGrassColor, tuft);
+		mat.albedo = mix(mat.albedo, dynamicGrassColor, tuft);
+
+		float floorTexture = pow(blueNoise, 1.0+blueNoise);
+
+		floorTexture = mix(1.0, floorTexture, (1.0 - smoothstep(0.0, 100.0, ctx.dist)));
+		mat.albedo *= floorTexture;
+
+		mat.roughness = mix(mat.roughness, clamp(mat.roughness, 0.0, 1.0), distanceFactor);
+	}
+	return mat;
+}
+
 
 /**
  * Apply normal detail perturbation helper driven by TerrainContext.
@@ -678,10 +754,93 @@ void applyDetailNormalPerturbation(
 TerrainMaterial generateMaterial(TerrainContext ctx, float noise) {
 	TerrainMaterial mat = TerrainMaterial(vec3(0,0.0,0), 0.0, 0.0, 1.0, 1.0);
 
-	mat.albedo = texture(u_terrainColorBlend, vec3(ctx.perturbedHeight/100.0, ctx.moisture, ctx.slope)).rgb;
+
+// struct TerrainMaterial {
+// 	vec3  albedo;
+// 	float roughness;
+// 	float metallic;
+// 	float normalScale;
+// 	float normalStrength;
+// };
+
+// struct TerrainContext {
+// 	// Topography
+// 	float rawHeight;
+// 	float perturbedHeight;
+// 	float slope;
+// 	float valleyFactor;
+
+// 	// Climate & Weather
+// 	float moisture;
+// 	float freezingScale;
+// 	float globalWetness;
+
+// 	// Geological / Erosion State
+// 	float substrate;
+// 	float creaseMask;
+// 	float ridgeMask;
+
+// 	// Derived Masks
+// 	float cliffMask;
+
+// 	// View/Distance Info
+// 	float dist;
+// 	float realDist;
+
+// 	// Consolidated Biome Info
+// 	int   biomeIdxA;
+// 	int   biomeIdxB;
+// 	float biomeT;
+// };
+
+	mat.roughness = (abs(ctx.slope*2.0) + clamp(ctx.cliffMask*2.0 - ctx.globalWetness, 0, 1) - ctx.substrate + ctx.ridgeMask - ctx.moisture)/5.0;
+	mat.albedo = texture(u_terrainColorBlend, vec3(ctx.perturbedHeight/100.0, (ctx.moisture+clamp(ctx.substrate, 0, 1)/2), mat.roughness)).rgb;
+	mat.metallic = 0.0;
+	mat.normalScale = (ctx.slope + ctx.cliffMask + ctx.ridgeMask);
+	mat.normalStrength = (ctx.slope + ctx.cliffMask + ctx.ridgeMask);
+
+	// float roughness;
+	// float metallic;
+	// float normalScale;
+	// float normalStrength;
+
 
 	return mat;
 }
+
+float calculateAntiAliasedFBM(vec3 pos, float baseFreq, int octaves) {
+    float pixelFootprint = length(fwidth(pos));
+
+	// The Nyquist limit is 2 pixels per cycle.
+	// We fade the octave out smoothly as its period approaches this limit.
+	float nyquistLimit = pixelFootprint * 2.0;
+
+    float value = 0.0;
+    float amplitude = 1.0;
+    float frequency = baseFreq;
+    float totalAmplitude = 0.0;
+
+    for (int i = 0; i < octaves; i++) {
+        float period = 1.0 / frequency;
+
+        // Transition band: Fade out when the period is between 1x and 4x the pixel footprint
+        float fade = smoothstep(nyquistLimit * 0.5, nyquistLimit * 2.0, period);
+
+        // Early exit optimization: If the frequency is entirely sub-pixel, stop calculating
+        if (fade <= 0.0) break;
+
+        // Evaluate the noise function
+		value += amplitude * fade * (fastBlueNoise(pos.xz * frequency, 0) * 0.5 + 0.5);
+        totalAmplitude += amplitude * fade;
+
+        // Standard fBm progression
+        frequency *= 2.0; // Lacunarity
+        amplitude *= 0.5; // Gain
+    }
+
+    return value / totalAmplitude;
+}
+
 
 void main() {
 	if (uIsShadowPass) {
@@ -700,9 +859,9 @@ void main() {
 	}
 
 	float baseFreq = 0.1 / worldScale;
-	float stepDist = 50.0 * int(realDist / 50.0);
-	float freqScale = mix(1.0, 0.25, smoothstep(150.0, 160.0, stepDist + 50.0));
-	freqScale = mix(5.0, freqScale, smoothstep(45.0, 50.0, stepDist));
+	// float stepDist = 50.0 * int(realDist / 50.0);
+	// float freqScale = mix(1.0, 0.25, smoothstep(150.0, 160.0, stepDist + 100.0));
+	float freqScale = 0.5;
 
 	// ========================================================================
 	// Noise Generation
@@ -712,30 +871,34 @@ void main() {
 
 	// Proper 3D advected and warped lookups
 	vec3 warpCoord1 = FragPos * (0.001 / worldScale) + vec3(0.0, time * 0.05, 0.0);
-	vec3 warp1 = fastCurl3d(warpCoord1);
-	float speed1 = 25.0 * worldScale;
-	vec3 p1 = FragPos + (advectDir * time * speed1) + 0.1*warp1;
-	p1.y += time * 2.0 * worldScale; // slow vertical drift
-	float n_fade = fastSimplex3d(p1 / (250.0 * worldScale));
-
 	vec3 warpCoord2 = FragPos * (0.015 / worldScale) - vec3(0.0, time * 0.03, 0.0);
+
+	vec3 warp1 = fastCurl3d(warpCoord1);
 	vec3 warp2 = fastCurl3d(warpCoord2);
+
+	float speed1 = 25.0 * worldScale;
 	float speed2 = 18.0 * worldScale;
-	vec3 p2 = FragPos + (advectDir * time * speed2) + warp2;
+
+	vec3 p1 = FragPos + (advectDir * time * speed1) + 0.1*warp1;
+	vec3 p2 = FragPos + (advectDir * time * speed2) + cross(warp2, 0.1*warp1);
+
+	p1.y += time * 2.0 * worldScale; // slow vertical drift
 	p2.y -= time * 1.5 * worldScale; // slow vertical drift in opposite direction
+
+	float n_fade = fastSimplex3d(p1 / (250.0 * worldScale));
 	float nightNoise = fastWorley3d(p2 / (125.0 * worldScale));
 
+
+	float pixelFootprint = length(fwidth(FragPos.xz));
+	float maxSafeFrequency = 1.0 / (2.0 * pixelFootprint);
+
 	float largeNoise = fastWarpedFbm3d(FragPos * (baseFreq * 0.1));
-	float blueNoise = fastBlueNoise(FragPos.xz * (baseFreq * 0.05 * freqScale), 0) * 0.5 + 0.5;
-	float blueNoiseA = fastBlueNoise(FragPos.xz * (baseFreq * 0.1 * freqScale), 1) * 0.5 + 0.5;
+	float blueNoise = 0.25*dot(vec4(1.0), fastBlueNoiseAll(FragPos.xz * min(maxSafeFrequency, baseFreq * 0.05)) *0.5 + 0.5  );
+
 
 	float fade_start = 560.0 * worldScale;
 	float fade_end = 570.0 * worldScale;
 	float fade = 1.0 - smoothstep(fade_start, fade_end, realDist + n_fade * 40.0);
-
-	// if (fade < 0.2) {
-	// 	discard;
-	// }
 
 	if (vIsWater > 0.5) {
 		processWaterLayer(norm, dist, fade);
@@ -756,10 +919,34 @@ void main() {
 	// TerrainMaterial getBiomeMaterial(TerrainContext ctx, float noise) {
 	TerrainMaterial finalMaterial = generateMaterial(ctx, largeNoise);
 
-	// Apply global wetness from precipitation
-	finalMaterial.albedo = mix(finalMaterial.albedo, finalMaterial.albedo * 0.5, ctx.globalWetness * 0.5);
-	finalMaterial.roughness = mix(finalMaterial.roughness, 0.1, ctx.globalWetness * 0.8);
+	// ========================================================================
+	// Advanced Erosion Filter Coloration
+	// ========================================================================
+	finalMaterial.albedo = applyErosionColorMappingDefault(finalMaterial.albedo, vRidgeMap, vErosionDelta);
 
+
+	// // Extra variety for rocky/steep areas
+	// float rockyVar = largeNoise;
+	// float rockyMask = smoothstep(0.5, 0.2, ctx.slope);
+	// finalMaterial.albedo = mix(finalMaterial.albedo, finalMaterial.albedo * (1.0 + rockyVar * 0.2), rockyMask);
+
+
+	// ========================================================================
+	// Grass-based Styling
+	// ========================================================================
+	float grassAO = 0.0;
+	vec3 perturbedNorm = norm;
+	finalMaterial = applyGrassStyling(
+		FragPos,
+		ctx, finalMaterial,
+		blueNoise,
+		grassAO, perturbedNorm
+	);
+
+
+	// Apply global wetness from precipitation
+	// finalMaterial.albedo = mix(finalMaterial.albedo, finalMaterial.albedo * 0.5, ctx.globalWetness * 0.5);
+	// finalMaterial.roughness = mix(finalMaterial.roughness, 0.1, ctx.globalWetness * 0.8);
 	// ========================================================================
 	// Running Water Effect
 	// ========================================================================
@@ -790,28 +977,6 @@ void main() {
 			}
 		}
 	}
-
-	// // Extra variety for rocky/steep areas
-	// float rockyVar = largeNoise;
-	// float rockyMask = smoothstep(0.5, 0.2, ctx.slope);
-	// finalMaterial.albedo = mix(finalMaterial.albedo, finalMaterial.albedo * (1.0 + rockyVar * 0.2), rockyMask);
-
-	// ========================================================================
-	// Advanced Erosion Filter Coloration
-	// ========================================================================
-	// finalMaterial.albedo = applyErosionColorMappingDefault(finalMaterial.albedo, vRidgeMap, vErosionDelta);
-
-	// ========================================================================
-	// Grass-based Styling
-	// ========================================================================
-	float grassAO = 0.0;
-	vec3 perturbedNorm = norm;
-	finalMaterial = applyGrassStyling(
-		ctx, finalMaterial,
-		blueNoise, blueNoiseA,
-		n_fade, freqScale,
-		grassAO, perturbedNorm
-	);
 
 	vec3  albedo = finalMaterial.albedo;
 	float roughness = finalMaterial.roughness;
@@ -917,10 +1082,16 @@ void main() {
 	// Scanning print front band right at the solidification boundary representing hard light projector printing
 	float printFront = smoothstep(0.0, 0.25, fade) * (1.0-smoothstep(0.25, 0.5, fade));
 	printFront = pow(printFront, 2.0); // Sharpen the band
-	vec3 printFrontColor = mix(cyan, magenta, 0.5) * 20.0 * printFront;
+	vec3 printFrontColor = mix(cyan, magenta, 0.5) * 50.0 * printFront;
+
+	// Scanning print front band right at the solidification boundary representing hard light projector printing
+	float printFront2 = smoothstep(0.0, 0.25, 2.0*nightFade) * (1.0-smoothstep(0.25, 0.5, 2.0*nightFade));
+	printFront2 = pow(printFront2, 2.0); // Sharpen the band
+	vec3 printFrontColor2 = lighting * 50000.0 * printFront;
 
 	// Apply print front glow on top
 	lighting += printFrontColor;
+	lighting += printFrontColor2;
 
 	// ========================================================================
 	// Distance Fade

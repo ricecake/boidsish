@@ -273,6 +273,10 @@ float fastBlueNoise(vec2 uv) {
 	return textureLod(u_blueNoiseTexture, uv, 0.0).r;
 }
 
+vec4 fastBlueNoiseAll(vec2 uv) {
+	return textureLod(u_blueNoiseTexture, uv, 0.0);
+}
+
 // Spatiotemporal Blue Noise lookup using golden ratio shift
 // Useful for Monte Carlo integration across frames
 float fastSpatiotemporalBlueNoise(vec2 uv, int frequencyIndex, int frameIndex) {
