@@ -65,6 +65,11 @@ void main() {
 		dist = 50000.0 * WORLD_SCALE_VALUE;
 	}
 
+	if (rayDir.y < 0.0) {
+		float t_floor = max(0.0, viewPos.y) / max(-rayDir.y, 0.00001);
+		dist = min(dist, t_floor);
+	}
+
 	vec4  cloudData = texture(cloudTexture, TexCoords);
 	vec4  cloudDepthData = texture(cloudDepthTexture, TexCoords);
 	float upsampledCloudDist = cloudDepthData.r;

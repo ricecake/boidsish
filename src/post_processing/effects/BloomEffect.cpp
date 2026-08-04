@@ -296,6 +296,8 @@ namespace Boidsish {
 				_ltmFuseComputeShader->setInt("depthTexture", 3);
 				_ltmFuseComputeShader->setInt("startMip", _numMips - 1);
 				_ltmFuseComputeShader->setInt("endMip", 0);
+				_ltmFuseComputeShader->setMat4("invView", glm::inverse(viewMatrix));
+				_ltmFuseComputeShader->setMat4("invProjection", glm::inverse(projectionMatrix));
 
 				glActiveTexture(GL_TEXTURE0);
 				glBindTexture(GL_TEXTURE_2D, _ltmExpTexture);

@@ -61,7 +61,8 @@ namespace Boidsish {
 		int       slice_data_count;
 		float     slice_area;
 		int       request_clear;
-		int       _padding_emitter[2];
+		int       max_particles;
+		int       _padding_emitter[1];
 	};
 
 	class FireEffectManager: public IManager {
@@ -125,12 +126,11 @@ namespace Boidsish {
 
 	private:
 		void _EnsureShaderAndBuffers();
-		void _UpdateParticleAllocation();
 
 		std::vector<std::shared_ptr<FireEffect>> effects_;
-		std::vector<int>                         particle_to_emitter_map_;
 		mutable std::mutex                       mutex_;
 
+		std::unique_ptr<ComputeShader> alloc_shader_;
 		std::unique_ptr<ComputeShader> lifecycle_shader_;
 		std::unique_ptr<ComputeShader> behavior_shader_;
 		std::unique_ptr<ComputeShader> fixup_shader_;
@@ -141,7 +141,7 @@ namespace Boidsish {
 		GLuint grid_heads_buffer_{0};
 		GLuint grid_next_buffer_{0};
 		std::unique_ptr<PersistentBuffer<Emitter>> emitter_buffer_;
-		std::unique_ptr<PersistentBuffer<int>> indirection_buffer_;
+		GLuint indirection_buffer_{0};
 		GLuint terrain_chunk_buffer_{0};
 		GLuint slice_data_buffer_{0};
 		GLuint visible_indices_buffer_{0};
