@@ -21,6 +21,7 @@ uniform sampler3D u_curlTexture;
 uniform sampler2D u_blueNoiseTexture;
 uniform sampler3D u_extraNoiseTexture;
 uniform sampler2D u_phasorTexture;
+uniform sampler3D u_nca3DTexture;
 #endif
 
 #ifndef CLOUD_WEATHER_TEXTURE_DEFINED
@@ -339,6 +340,11 @@ float fastPhasor2d(vec2 uv, float runtimePhase) {
 	float sinPhi = sin(runtimePhase);
 
 	return baked.x * cosPhi - baked.y * sinPhi;
+}
+
+// 3D NCA lookup
+vec4 fastNca3d(vec3 p) {
+	return textureLod(u_nca3DTexture, p, 0.0);
 }
 
 #endif // HELPERS_FAST_NOISE_GLSL
