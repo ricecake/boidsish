@@ -700,50 +700,56 @@ TerrainMaterial applyGrassStyling(
 }
 
 
-/**
- * Apply normal detail perturbation helper driven by TerrainContext.
- */
 void applyDetailNormalPerturbation(
-	TerrainContext ctx,
-	float perturbFactor,
-	float normalStrength,
-	float normalScale,
-	float waterEffect,
-	float largeNoise,
-	inout vec3 perturbedNorm,
-	inout float roughness
+    TerrainContext ctx,
+    float perturbFactor,
+    float normalStrength,
+    float normalScale,
+    float waterEffect,
+    float largeNoise,
+    inout vec3 perturbedNorm,
+    inout float roughness
 ) {
-	if (perturbFactor >= 0.1 && normalStrength > 0.0 && (ctx.dist + 50.0 * largeNoise) < 200.0 && waterEffect == 0.0) {
-		float roughnessStrength = smoothstep(0.1, 1.0, perturbFactor) * normalStrength;
-		float roughnessScale = normalScale * 0.05;
-		vec3  scaledFragPos = FragPos / worldScale;
+    // Early exit combined to save cycles
+    if (perturbFactor < 0.1 || normalStrength <= 0.0 || (ctx.dist + 50.0 * largeNoise) >= 200.0 || waterEffect > 0.0) {
+        return;
+    }
 
-		float noiseTypeA = u_biomes[ctx.biomeIdxA].params.w;
-		float noiseTypeB = u_biomes[ctx.biomeIdxB].params.w;
-		float noiseType = mix(noiseTypeA, noiseTypeB, ctx.biomeT);
+    float roughnessStrength = smoothstep(0.1, 1.0, perturbFactor) * normalStrength;
 
-		float n;
-		if (ctx.freezingScale < 0.5) {
-			n = abs(fastWorley3d(0.01 * vec3(1,0.01,1)*scaledFragPos * roughnessScale));
-		} else {
-			n = fastWarpedFbm3d(0.1 * scaledFragPos * roughnessScale);
-		}
+    // 1. Base Coordinate Space
+    vec3 basePos = (FragPos / worldScale) * normalScale * 0.05;
 
-		vec3 dPdx = dFdx(scaledFragPos);
-		vec3 dPdy = dFdy(scaledFragPos);
-		float dNdx = dFdx(n);
-		float dNdy = dFdy(n);
+    // 2. Domain Warping based on TerrainContext
+    // Compress Y on cliffs to create horizontal rock strata
+    // basePos.y *= mix(1.0, 0.15, ctx.cliffMask);
 
-		vec3 R1 = cross(dPdy, perturbedNorm);
-		vec3 R2 = cross(perturbedNorm, dPdx);
-		vec3 surfGrad = (R1 * dNdx + R2 * dNdy) / (dot(dPdx, R1) + 0.00001); // Prevent div by 0
+    // Increase frequency in freezing zones for icy/crystalline crunch
+    basePos *= mix(1.0, 3.5, ctx.freezingScale);
 
-		perturbedNorm = normalize(perturbedNorm - surfGrad * roughnessStrength);
+    // Optional: Add large-scale variance to break up grid alignment
+    basePos += largeNoise * 0.1;
 
-		// Toksvig-like Adjustment: Increase roughness based on normal variance
-		float variance = dot(surfGrad, surfGrad);
-		roughness = sqrt(clamp(roughness * roughness + variance * 0.25, 0.0, 1.0));
-	}
+    // 3. Single Noise Evaluation (Branchless)
+    float n = fastWarpedFbm3d(basePos)*0.5+0.5;
+
+    // 4. Screen-Space Derivatives
+    vec3 dPdx = dFdx(basePos);
+    vec3 dPdy = dFdy(basePos);
+    float dNdx = dFdx(n);
+    float dNdy = dFdy(n);
+
+    // 5. Compute Surface Gradient
+    vec3 R1 = cross(dPdy, perturbedNorm);
+    vec3 R2 = cross(perturbedNorm, dPdx);
+    vec3 surfGrad = (R1 * dNdx + R2 * dNdy) / (dot(dPdx, R1) + 0.00001);
+
+    // 6. Apply Perturbation
+    perturbedNorm = normalize(perturbedNorm - surfGrad * roughnessStrength);
+
+    // Toksvig-like Adjustment
+    float variance = dot(surfGrad, surfGrad) * roughnessStrength;
+    roughness = sqrt(clamp(roughness * roughness + variance * 0.25, 0.0, 1.0));
 }
 
 TerrainMaterial generateMaterial(TerrainContext ctx, float noise) {
@@ -791,8 +797,8 @@ TerrainMaterial generateMaterial(TerrainContext ctx, float noise) {
 	mat.roughness = (abs(ctx.slope*2.0) + clamp(ctx.cliffMask*2.0 - ctx.globalWetness, 0, 1) - ctx.substrate + ctx.ridgeMask - ctx.moisture)/5.0;
 	mat.albedo = texture(u_terrainColorBlend, vec3(ctx.perturbedHeight/100.0, (ctx.moisture+clamp(ctx.substrate, 0, 1)/2), mat.roughness)).rgb;
 	mat.metallic = 0.0;
-	mat.normalScale = (ctx.slope + ctx.cliffMask + ctx.ridgeMask);
-	mat.normalStrength = (ctx.slope + ctx.cliffMask + ctx.ridgeMask);
+	// mat.normalScale = (ctx.slope + ctx.cliffMask + ctx.ridgeMask);
+	// mat.normalStrength = (ctx.slope + ctx.cliffMask + ctx.ridgeMask);
 
 	// float roughness;
 	// float metallic;
