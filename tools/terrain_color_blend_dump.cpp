@@ -13,6 +13,14 @@
 
 #include <glm/glm.hpp>
 
+
+#if __has_include("terrain_color_blend_data.h")
+#include "terrain_color_blend_data.h"
+#define HAS_TERRAIN_COLOR_BLEND_DATA 1
+#endif
+
+
+
 // Oklab conversion helpers
 struct Oklab {
 	float L;
@@ -100,7 +108,38 @@ void generateDefaultPng(const std::string& out_filename) {
 	int out_h = slice_res;     // 128
 
 	std::vector<uint8_t> out_pixels(out_w * out_h * 3, 0); // RGB
+	// std::vector<uint8_t> texture_data(8 * 8 * 8 * 4); // 8x8x8 RGBA8
 
+#ifdef HAS_TERRAIN_COLOR_BLEND_DATA
+	for (int h_idx = 0; h_idx < 8; ++h_idx) {
+		int slice_x_offset = h_idx * slice_res;
+
+		for (int r_idx = 0; r_idx < 8; ++r_idx) {
+			for (int m_idx = 0; m_idx < 8; ++m_idx) {
+				// Reconstruct the 1D index mapping from the header generator
+				int src_idx = (r_idx * 64 + m_idx * 8 + h_idx) * 4;
+
+				uint8_t col_r = kTerrainColorBlendData[src_idx + 0];
+				uint8_t col_g = kTerrainColorBlendData[src_idx + 1];
+				uint8_t col_b = kTerrainColorBlendData[src_idx + 2];
+
+				// Expand back into 16x16 blocks
+				for (int py = 0; py < block_size; ++py) {
+					int img_y = r_idx * block_size + py;
+
+					for (int px = 0; px < block_size; ++px) {
+						int img_x = slice_x_offset + m_idx * block_size + px;
+						int out_idx = (img_y * out_w + img_x) * 3;
+
+						out_pixels[out_idx + 0] = col_r;
+						out_pixels[out_idx + 1] = col_g;
+						out_pixels[out_idx + 2] = col_b;
+					}
+				}
+			}
+		}
+	}
+#else
 	for (int h_idx = 0; h_idx < 8; ++h_idx) {     // Height slices (slice 0..7)
 		float h = h_idx / 7.0f;
 		int slice_x_offset = h_idx * slice_res;
@@ -165,6 +204,7 @@ void generateDefaultPng(const std::string& out_filename) {
 			}
 		}
 	}
+#endif
 
 	if (stbi_write_png(out_filename.c_str(), out_w, out_h, 3, out_pixels.data(), out_w * 3)) {
 		std::cout << "Successfully exported " << out_filename << " (" << out_w << "x" << out_h << " pixels)." << std::endl;
