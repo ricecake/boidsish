@@ -555,11 +555,53 @@ void processWaterLayer(vec3 norm, float dist, float fade) {
 	float grid_intensity = max(C_minor, C_major * 1.5) * 0.6 * shimmer;
 	vec3  grid_color = vec3(0.0, 0.8, 0.8) * grid_intensity * 5000.0;
 
-	vec3 surfaceColor = vec3(0.05, 0.05, 0.08);
+	// --- Shore and Pebble Bottom Logic ---
+	// vIsWater goes from 0.0 to 1.0. Near shore, it's between 0.5 and 1.0.
+	float shallowFactor = clamp((1.0 - vIsWater) / 0.5, 0.0, 1.0);
+
+	// Dynamic water roughness and metallic to prevent reflection artifacts near shore
+	float waterRoughness = mix(0.05, 0.45, shallowFactor);
+	float waterMetallic = mix(0.9, 0.05, shallowFactor);
+
+	// Generate refracted underwater pebbles
+	vec2 pebbleUV = (FragPos.xz + refractionOffset) * 15.0;
+	vec3 pebbleVor = voronoi(pebbleUV);
+	float pebbleRand = random(pebbleVor.xy);
+	float pebbleDist = pebbleVor.z;
+
+	// Rounded dome pebble shape
+	float pebbleShape = smoothstep(0.75, 0.0, pebbleDist);
+
+	vec3 pebbleColor;
+	if (pebbleRand < 0.25) {
+		pebbleColor = vec3(0.42, 0.44, 0.46); // slate gray river stone
+	} else if (pebbleRand < 0.5) {
+		pebbleColor = vec3(0.38, 0.35, 0.32); // brown/tan river stone
+	} else if (pebbleRand < 0.75) {
+		pebbleColor = vec3(0.48, 0.35, 0.32); // terracotta brick stone
+	} else {
+		pebbleColor = vec3(0.65, 0.66, 0.64); // light quartz stone
+	}
+
+	// 3D-shading for pebbles using distance gradient
+	vec2 pebbleOffset = (pebbleUV - pebbleVor.xy) * 2.0;
+	float pebbleLight = clamp(dot(normalize(vec3(pebbleOffset, 1.0)), normalize(vec3(-0.5, 0.5, 1.0))), 0.0, 1.0);
+	vec3 shadedPebble = pebbleColor * (0.35 + 0.65 * pebbleLight);
+	shadedPebble *= smoothstep(0.8, 0.4, pebbleDist); // darken gaps between pebbles
+
+	// Blend pebbles with water tint based on shallowFactor
+	vec3 waterTint = vec3(0.02, 0.22, 0.28);
+	vec3 underwaterBottomColor = mix(waterTint * 0.5, shadedPebble, shallowFactor);
+
+	// Base surface color of the water
+	vec3 surfaceColor = vec3(0.03, 0.04, 0.06);
 
 	float primaryShadow;
-	vec3 lighting = apply_lighting_pbr(FragPos, norm, surfaceColor, 0.05, 0.9, 1.0, primaryShadow).rgb;
-	vec3 final_color = lighting + grid_color;
+	vec3 lighting = apply_lighting_pbr(FragPos, norm, surfaceColor, waterRoughness, waterMetallic, 1.0, primaryShadow).rgb;
+
+	// Combine PBR surface lighting, underwater pebbles, and grid line glow
+	// In deep water, lighting dominates. In shallow water, the underwater pebbles are highly visible.
+	vec3 final_color = mix(lighting, underwaterBottomColor + lighting * 0.2, shallowFactor * 0.8) + grid_color;
 
 	vec4 baseColor = vec4(final_color, fade);
 	FragColor = mix(vec4(0.0, 0.7, 0.7, baseColor.a) * length(baseColor), baseColor, step(1.0, fade));
@@ -755,56 +797,26 @@ void applyDetailNormalPerturbation(
 TerrainMaterial generateMaterial(TerrainContext ctx, float noise) {
 	TerrainMaterial mat = TerrainMaterial(vec3(0,0.0,0), 0.0, 0.0, 1.0, 1.0);
 
+	// Balanced Roughness and Metallic Model across sand, rock, grass, snow and damp
+	float snowFactor = max(ctx.freezingScale, smoothstep(HEIGHT_SNOW_START, HEIGHT_PEAK, ctx.perturbedHeight));
+	float sandFactor = 1.0 - smoothstep(0.0, HEIGHT_BEACH_END, ctx.perturbedHeight);
+	float rockFactor = ctx.cliffMask;
 
-// struct TerrainMaterial {
-// 	vec3  albedo;
-// 	float roughness;
-// 	float metallic;
-// 	float normalScale;
-// 	float normalStrength;
-// };
+	float dampFactor = clamp(ctx.globalWetness + ctx.moisture * 0.4, 0.0, 1.0);
 
-// struct TerrainContext {
-// 	// Topography
-// 	float rawHeight;
-// 	float perturbedHeight;
-// 	float slope;
-// 	float valleyFactor;
+	float grassRough = mix(0.85, 0.65, dampFactor);
+	float sandRough = mix(0.80, 0.40, dampFactor);
+	float rockRough = mix(0.70, 0.25, dampFactor);
+	float snowRough = 0.65;
 
-// 	// Climate & Weather
-// 	float moisture;
-// 	float freezingScale;
-// 	float globalWetness;
+	float blendedRough = grassRough;
+	blendedRough = mix(blendedRough, rockRough, rockFactor);
+	blendedRough = mix(blendedRough, sandRough, sandFactor);
+	blendedRough = mix(blendedRough, snowRough, snowFactor);
 
-// 	// Geological / Erosion State
-// 	float substrate;
-// 	float creaseMask;
-// 	float ridgeMask;
-
-// 	// Derived Masks
-// 	float cliffMask;
-
-// 	// View/Distance Info
-// 	float dist;
-// 	float realDist;
-
-// 	// Consolidated Biome Info
-// 	int   biomeIdxA;
-// 	int   biomeIdxB;
-// 	float biomeT;
-// };
-
-	mat.roughness = (abs(ctx.slope*2.0) + clamp(ctx.cliffMask*2.0 - ctx.globalWetness, 0, 1) - ctx.substrate + ctx.ridgeMask - ctx.moisture)/5.0;
-	mat.albedo = texture(u_terrainColorBlend, vec3(ctx.perturbedHeight/100.0, (ctx.moisture+clamp(ctx.substrate, 0, 1)/2), mat.roughness)).rgb;
+	mat.roughness = clamp(blendedRough, 0.0, 1.0);
+	mat.albedo = texture(u_terrainColorBlend, vec3(ctx.perturbedHeight/100.0, (ctx.moisture+clamp(ctx.substrate, 0, 1.0)/2.0), mat.roughness)).rgb;
 	mat.metallic = 0.0;
-	// mat.normalScale = (ctx.slope + ctx.cliffMask + ctx.ridgeMask);
-	// mat.normalStrength = (ctx.slope + ctx.cliffMask + ctx.ridgeMask);
-
-	// float roughness;
-	// float metallic;
-	// float normalScale;
-	// float normalStrength;
-
 
 	return mat;
 }
@@ -865,7 +877,7 @@ void main() {
 	float freqScale = 0.5;
 
 	// ========================================================================
-	// Noise Generation
+	// Noise Generation (Consolidated)
 	// ========================================================================
 	// Calculate unit vector towards the camera
 	vec3 advectDir = realDist > 0.001 ? (FragPos - vec3(viewPos.x, 0.0, viewPos.z)) / realDist : vec3(0.0, 0.0, 1.0);
@@ -889,13 +901,16 @@ void main() {
 	float n_fade = fastSimplex3d(p1 / (250.0 * worldScale));
 	float nightNoise = fastWorley3d(p2 / (125.0 * worldScale));
 
-
 	float pixelFootprint = length(fwidth(FragPos.xz));
 	float maxSafeFrequency = 1.0 / (2.0 * pixelFootprint);
 
 	float largeNoise = fastWarpedFbm3d(FragPos * (baseFreq * 0.1));
 	float blueNoise = 0.25*dot(vec4(1.0), fastBlueNoiseAll(FragPos.xz * min(maxSafeFrequency, baseFreq * 0.05)) *0.5 + 0.5  );
 
+	// Consolidating additional procedural noises to minimize redundant execution calls
+	float stripeNoise = fastRidge3d(FragPos * 0.18) * 0.5 + 0.5;
+	float stripeType = fastSimplex3d(FragPos * 0.03);
+	float pebblePatch = fastSimplex3d(FragPos * (0.05 / worldScale));
 
 	float fade_start = 560.0 * worldScale;
 	float fade_end = 570.0 * worldScale;
@@ -916,9 +931,92 @@ void main() {
 		dist, realDist
 	);
 
-	// TerrainMaterial finalMaterial = calculateMaterial(ctx, largeNoise);
-	// TerrainMaterial getBiomeMaterial(TerrainContext ctx, float noise) {
 	TerrainMaterial finalMaterial = generateMaterial(ctx, largeNoise);
+
+	// --- Shading Enhancements & Local Stone Detail Overlays ---
+
+	// 1. More gray color to steep cliff faces
+	float steepFactor = smoothstep(0.7, 0.35, ctx.slope);
+	vec3 grayCliffColor = vec3(0.44, 0.45, 0.48) * (0.85 + 0.15 * n_fade);
+	float cliffGrayBlend = clamp(ctx.cliffMask * steepFactor, 0.0, 1.0);
+	finalMaterial.albedo = mix(finalMaterial.albedo, grayCliffColor, cliffGrayBlend);
+
+	// 2. Outcroppings mostly boulder color
+	float outcropMask = (ctx.biomeIdxA == 6) ? (1.0 - ctx.biomeT) : ((ctx.biomeIdxB == 6) ? ctx.biomeT : 0.0);
+	float totalOutcropMask = outcropMask;
+	vec3 boulderColor = vec3(0.35, 0.33, 0.31) * (0.85 + 0.15 * n_fade);
+	finalMaterial.albedo = mix(finalMaterial.albedo, boulderColor, totalOutcropMask);
+
+	// 3. White or red mineral stripes like deposits (on outcroppings and cliff faces)
+	float stoneMask = max(totalOutcropMask, ctx.cliffMask);
+	float stripeIntensity = smoothstep(0.85, 0.94, stripeNoise);
+	float activeStripeMask = stripeIntensity * stoneMask;
+
+	vec3 stripeColor = vec3(1.0);
+	float stripeMetallic = 0.0;
+	float stripeRoughness = 0.0;
+	if (stripeType < 0.0) {
+		// White Quartz deposit stripes
+		stripeColor = vec3(0.96, 0.96, 0.93);
+		stripeMetallic = 0.45;
+		stripeRoughness = 0.18;
+	} else {
+		// Red Iron oxide deposit stripes
+		stripeColor = vec3(0.68, 0.16, 0.1);
+		stripeMetallic = 0.55;
+		stripeRoughness = 0.35;
+	}
+
+	finalMaterial.albedo = mix(finalMaterial.albedo, stripeColor, activeStripeMask);
+	finalMaterial.roughness = mix(finalMaterial.roughness, stripeRoughness, activeStripeMask);
+	finalMaterial.metallic = mix(finalMaterial.metallic, stripeMetallic, activeStripeMask);
+
+	// 4. Tangent-to-world-space normal perturbation for mineral stripes
+	if (activeStripeMask > 0.01) {
+		vec3 stripeGrad = fastCurl3d(FragPos * 0.18);
+		vec3 stripePerturb = normalize(cross(norm, stripeGrad));
+		norm = normalize(mix(norm, normalize(norm + stripePerturb * 0.35), activeStripeMask));
+	}
+
+	// 5. Sporadic beach pebbles near beaches
+	float beachMask = 1.0 - smoothstep(0.0, HEIGHT_BEACH_END, ctx.perturbedHeight);
+	float activePebbleMask = beachMask * smoothstep(0.1, 0.45, pebblePatch);
+
+	if (activePebbleMask > 0.01) {
+		vec2 beachPebbleUV = FragPos.xz * 12.0;
+		vec3 beachPebbleVor = voronoi(beachPebbleUV);
+		float beachPebbleRand = random(beachPebbleVor.xy);
+		float beachPebbleDist = beachPebbleVor.z;
+
+		float pebbleShape = smoothstep(0.65, 0.0, beachPebbleDist);
+		float mixFactor = pebbleShape * activePebbleMask;
+
+		if (mixFactor > 0.01) {
+			vec3 beachPebbleColor;
+			if (beachPebbleRand < 0.3) {
+				beachPebbleColor = vec3(0.55, 0.54, 0.52); // grey pebble
+			} else if (beachPebbleRand < 0.6) {
+				beachPebbleColor = vec3(0.48, 0.44, 0.40); // brown/tan pebble
+			} else if (beachPebbleRand < 0.8) {
+				beachPebbleColor = vec3(0.65, 0.62, 0.58); // light quartz pebble
+			} else {
+				beachPebbleColor = vec3(0.35, 0.34, 0.34); // dark charcoal pebble
+			}
+
+			// Tangent-to-world-space normal perturbation for pebbles
+			vec2 pebbleNormalOffset = (beachPebbleUV - beachPebbleVor.xy) * 2.5;
+			vec3 localPebbleNormal = normalize(vec3(pebbleNormalOffset.x, 1.0, pebbleNormalOffset.y));
+
+			vec3 N_base = normalize(norm);
+			vec3 T = normalize(cross(N_base, abs(N_base.y) < 0.999 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0)));
+			vec3 B = normalize(cross(N_base, T));
+			vec3 worldPebbleNormal = normalize(T * localPebbleNormal.x + N_base * localPebbleNormal.y + B * localPebbleNormal.z);
+
+			finalMaterial.albedo = mix(finalMaterial.albedo, beachPebbleColor, mixFactor);
+			finalMaterial.roughness = mix(finalMaterial.roughness, 0.58, mixFactor);
+			norm = normalize(mix(norm, worldPebbleNormal, mixFactor * 0.8));
+		}
+	}
 
 	// ========================================================================
 	// Advanced Erosion Filter Coloration
