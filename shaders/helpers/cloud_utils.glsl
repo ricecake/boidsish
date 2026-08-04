@@ -4,6 +4,7 @@
 layout(binding = [[CLOUD_SHADOW_MAP_BINDING]]) uniform sampler2D u_cloudShadowTexture;
 uniform mat4 u_cloudShadowMatrix;
 uniform bool u_useCloudShadowMap;
+uniform sampler3D u_cloud3DTexture;
 
 struct CloudProperties {
 	float altitude;
@@ -554,28 +555,21 @@ float calculateCloudShadowFactor(vec3 frag_pos, vec3 L, float intensity) {
 	if (frag_pos.y > centerHeight)
 		return 1.0;
 
-	// Project to the cloud center height along the light ray
-	float t = (centerHeight - frag_pos.y) / L.y;
-	vec3 cloudPos = frag_pos + L * t;
+	float localFloor = cloudAltitude * worldScale;
+	float actualThickness = cloudThickness * worldScale;
+	float h = clamp((frag_pos.y - localFloor) / actualThickness, 0.0, 1.0);
 
-	CloudProperties props;
-	props.altitude = cloudAltitude;
-	props.thickness = cloudThickness;
-	props.densityBase = cloudDensity;
-	props.coverage = cloudCoverage;
-	props.worldScale = worldScale;
+	vec3 advectSpeed = getCloudAdvectionSpeed(h, time);
+	vec3 advect_3d = time * advectSpeed * 0.75;
+	vec3 p_advected_3d = frag_pos + advect_3d;
+	vec3 uvw = vec3(
+		p_advected_3d.x / (150000.0 * worldScale),
+		h,
+		p_advected_3d.z / (150000.0 * worldScale)
+	);
 
-	CloudWeather weather = computeCloudWeather(cloudPos, props);
-	CloudLayer layer = computeCloudLayer(weather, props);
-
-	float d3d = getCloud3DSDF(cloudPos, weather, layer, props.worldScale);
-
-	// Beer's law approximation for the shadow density using 3D cloud coverage/density [0.0, 1.0].
-	// Adjust contrast/sharpness of the cloud shadow edge using cloudShadowStepMultiplier,
-	// and apply a slant factor for longer paths at oblique angles.
-	float slant = 1.0 / max(0.01, L.y);
-	float shadowDepth = (d3d / max(0.1, cloudShadowStepMultiplier)) * slant * 4.0;
-	float shadowTerm = exp(-shadowDepth * 8.0 * cloudShadowOpticalDepthMultiplier);
+	// Sample the precomputed shadow term (B channel of 3D volume texture)
+	float shadowTerm = textureLod(u_cloud3DTexture, uvw, 0.0).b;
 
 	return mix(1.0, shadowTerm, intensity);
 }
@@ -608,25 +602,21 @@ float calculateCloudAmbientOcclusion(vec3 frag_pos) {
 
 	vec3 cloudPos = vec3(frag_pos.x, centerHeight, frag_pos.z);
 
-	CloudProperties props;
-	props.altitude = cloudAltitude;
-	props.thickness = cloudThickness;
-	props.densityBase = cloudDensity;
-	props.coverage = cloudCoverage;
-	props.worldScale = worldScale;
+	float localFloor = cloudAltitude * worldScale;
+	float actualThickness = cloudThickness * worldScale;
+	float h = clamp((cloudPos.y - localFloor) / actualThickness, 0.0, 1.0);
 
-	// Use a high LOD (6.0) to get a low-resolution, smoothed/averaged representation of the cloud coverage above.
-	CloudWeather weather = computeCloudWeather(cloudPos, props, 6.0);
-	CloudLayer layer = computeCloudLayer(weather, props);
+	vec3 advectSpeed = getCloudAdvectionSpeed(h, time);
+	vec3 advect_3d = time * advectSpeed * 0.75;
+	vec3 p_advected_3d = cloudPos + advect_3d;
+	vec3 uvw = vec3(
+		p_advected_3d.x / (150000.0 * worldScale),
+		h,
+		p_advected_3d.z / (150000.0 * worldScale)
+	);
 
-	float d3d = getCloud3DSDF(cloudPos, weather, layer, props.worldScale);
-
-	// Soft transition/penumbra for local occlusion based on 3D cloud coverage/density [0.0, 1.0].
-	// Multiplied by 0.8 to preserve the 5x softer ratio compared to direct shadows (4.0 / 5.0 = 0.8).
-	float occlusionDepth = (d3d / max(0.1, cloudShadowStepMultiplier)) * 0.8;
-
-	// Dampen the ambient factor based on cloud shadow intensity
-	float cloudAO = exp(-occlusionDepth * 2.0 * cloudShadowOpticalDepthMultiplier);
+	// Sample precomputed ambient occlusion (G channel of 3D volume texture) at high LOD for a blurred/smooth result
+	float cloudAO = textureLod(u_cloud3DTexture, uvw, 4.0).g;
 
 	return mix(1.0, cloudAO, cloudShadowIntensity);
 }

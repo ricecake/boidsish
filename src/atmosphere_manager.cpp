@@ -201,21 +201,7 @@ namespace Boidsish {
 			}
 		}
 
-		if (_enableCloudShadowMap && _cloudShadowBakeShader && _cloudShadowBakeShader->isValid()) {
-			glm::vec3 center = glm::vec3(cameraPos.x, 0.0f, cameraPos.z);
-			glm::vec3 lightDir = glm::normalize(primaryLightDir);
-			glm::vec3 lightPos = center + lightDir * (20000.0f * worldScale);
-			glm::vec3 target = center - lightDir * (20000.0f * worldScale);
-			glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
-			if (std::abs(lightDir.y) > 0.9f) {
-				up = glm::vec3(0.0f, 0.0f, 1.0f);
-			}
-			glm::mat4 lightView = glm::lookAt(lightPos, target, up);
-			float half_ext = 100000.0f * worldScale;
-			glm::mat4 lightProj = glm::ortho(-half_ext, half_ext, -half_ext, half_ext, 0.0f, 40000.0f * worldScale);
-			_cloudShadowMatrix = lightProj * lightView;
-			_cloudShadowInvMatrix = glm::inverse(_cloudShadowMatrix);
-
+		if (_enableCloudShadowMap && _cloudShadowBakeShader && _cloudShadowBakeShader->isValid() && (_frameIndex % 4 == 0)) {
 			_lastBakedLightDir = primaryLightDir;
 			_lastBakedCameraPos = cameraPos;
 			_lastBakedCloudCoverage = _cloudCoverage;
@@ -224,31 +210,20 @@ namespace Boidsish {
 			_lastBakedCloudThickness = _cloudThickness;
 
 			_cloudShadowBakeShader->use();
-			_cloudShadowBakeShader->setMat4("u_lightSpaceMatrix", _cloudShadowMatrix);
-			_cloudShadowBakeShader->setMat4("u_invLightSpaceMatrix", _cloudShadowInvMatrix);
 			_cloudShadowBakeShader->setVec3("u_primaryLightDir", primaryLightDir);
-			_cloudShadowBakeShader->setFloat("u_atmosphereHeight", _atmosphereHeight);
-			_cloudShadowBakeShader->setFloat("u_time", time);
-			_cloudShadowBakeShader->setFloat("u_cloudCoverage", _cloudCoverage);
 			_cloudShadowBakeShader->setFloat("u_worldScale", worldScale);
-			_cloudShadowBakeShader->setFloat("u_cloudAltitude", _cloudAltitude);
-			_cloudShadowBakeShader->setFloat("u_cloudThickness", _cloudThickness);
-			_cloudShadowBakeShader->setFloat("u_cloudDensity", _cloudDensity);
-			_cloudShadowBakeShader->setInt("u_frameIndex", _frameIndex);
+			_cloudShadowBakeShader->setInt("u_frameIndex", _frameIndex / 4);
 
-			glBindImageTexture(0, _cloudShadowTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R16F);
+			// Bind the 3D volume texture as read-write image unit 0
+			glBindImageTexture(0, _cloudVolumeTexture, 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA16F);
 
-			// Bind u_cloudWeatherMinMaxTexture (Unit 49)
-			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::CloudWeatherMinMax());
-			glBindTexture(GL_TEXTURE_2D, _cloudWeatherMinMaxTexture);
-
-			glDispatchCompute(512 / 8, 512 / 8, 1);
+			glDispatchCompute(128 / 16, 128 / 16, 1);
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
 
-			// Generate mipmaps for blurred lookups (soft shadows/AO)
-			glBindTexture(GL_TEXTURE_2D, _cloudShadowTexture);
-			glGenerateMipmap(GL_TEXTURE_2D);
-			glBindTexture(GL_TEXTURE_2D, 0);
+			// Generate mipmaps for blurred lookups (soft shadows/AO) in the 3D texture
+			glBindTexture(GL_TEXTURE_3D, _cloudVolumeTexture);
+			glGenerateMipmap(GL_TEXTURE_3D);
+			glBindTexture(GL_TEXTURE_3D, 0);
 		}
 		_frameIndex++;
 		if (_needsWeatherBake) {

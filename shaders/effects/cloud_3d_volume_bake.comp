@@ -12,18 +12,39 @@ float remap_bake(float value, float low1, float high1, float low2, float high2) 
 	return low2 + (value - low1) * (high2 - low2) / max(0.0001, (high1 - low1));
 }
 
+
+float localFbm(vec3 p, float period) {
+	float val = 0.0;
+	float amp = 0.5;
+	float freq = 1.0;
+	for (int i = 0; i < 3; i++) {
+		WorleyData3D worleyDetails = worley3d_tiling_id(p * freq, period * freq);
+		val += amp * worleyDetails.f1_dist;// * (1-(freq*p.y));
+		// val -= amp * 0.25*(worleyDetails.f2_dist - worleyDetails.f1_dist);
+		amp *= 0.5;
+		freq *= 2.0;
+	}
+
+	// amp = 0.5;
+	// freq = 1.0;
+	// for (int i = 0; i < 3; i++) {
+	// 	WorleyData3D worleyDetails = worley3d_tiling_id(p * freq, period * freq);
+	// 	// val += amp * worleyDetails.f1_dist;
+	// 	val -= amp * (worleyDetails.f2_dist - worleyDetails.f1_dist)  * (1-(freq*p.y));
+	// 	amp *= 0.35;
+	// 	freq *= 1.50;
+	// }
+
+	return val;
+}
+
+
 float computeSimplexWorley(vec3 p) {
 	// Base Simplex noise (normalized to [0, 1])
-	vec3 g;
-	// return 0.5+0.5*psrdnoise(p / (100), vec3(10.0, 1.0, 10.0), 0.0, g);
-	float simplex = psrdnoise(p * 4, vec3(10.0, 1.0, 10.0), 0.0, g);
+	float simplex = psrdnoise(p * 4, vec3(10.0, 1.0, 10.0));
 	simplex = clamp(simplex * 0.5 + 0.5, 0.0, 1.0);
 
-	// Worley FBM (cell centers are billowy and puffy)
-	float w0 = 1.0 - worley3d_tiling(p * 8.0, 8.0).x;
-	float w1 = 1.0 - worley3d_tiling(p * 16.0, 16.0).x;
-	float w2 = 1.0 - worley3d_tiling(p * 32.0, 32.0).x;
-	float worleyFbm = w0 * 0.625 + w1 * 0.25 + w2 * 0.125;
+	float worleyFbm = localFbm(p, 10);
 
 	// Simplex noise carved/remapped by Worley FBM
 	float simplexWorley = remap_bake(simplex, worleyFbm, 1.0, 0.0, 1.0);
@@ -35,40 +56,71 @@ void main() {
 	ivec3 size = imageSize(outVolume); // 128, 128, 128
 	if (voxel.x >= size.x || voxel.y >= size.y || voxel.z >= size.z) return;
 
-	vec3 p = vec3(voxel) / vec3(size); // [0, 1]
+	vec3 uvw = vec3(voxel);// / vec3(size); // [0, 1]
+	float noiseVal = computeSimplexWorley(uvw);
 
-	// 1. R Channel: Tiling 3D noise (Simplex noise carved by Worley FBM in HZD fashion)
-	float noiseVal = computeSimplexWorley(p);
+	// Map to world position (horizontal scale 150,000 meters)
+	vec3 p_world;
+	p_world.x = uvw.x * 150000.0 * worldScale;
+	p_world.z = uvw.z * 150000.0 * worldScale;
 
-	// 2. G Channel: Local Ambient Occlusion.
+	CloudProperties props;
+	props.altitude = cloudAltitude;
+	props.thickness = cloudThickness;
+	props.densityBase = cloudDensity;
+	props.coverage = cloudCoverage;
+	props.worldScale = worldScale;
+
+	// Sample weather map at p_world.xz
+	CloudWeather weather = computeCloudWeather(p_world, props);
+	CloudLayer layer = computeCloudLayer(weather, props);
+
+	float localFloor, actualThickness;
+	float dummy_h = getCloudRelativeHeight(p_world, weather, layer, localFloor, actualThickness);
+
+	// For y, we want world_pos.y to correspond to the given h = uvw.y
+	p_world.y = localFloor + uvw.y * actualThickness;
+
+	CloudSpotDetails res = calculateCloudDensityExpV10(p_world, weather, layer, props, 0.0, 1.0, noiseVal);
+	float finalDensity = res.density;
+	if (finalDensity > 0.0) {
+		finalDensity *= mix(0.4, 1.6, noiseVal);
+	}
+
+	// Write noiseVal and finalDensity to A channel first
+	imageStore(outVolume, voxel, vec4(noiseVal, 1.0, 1.0, finalDensity));
+
+	// Compute barrier to guarantee all density values are written
+	memoryBarrierImage();
+	barrier();
+
+	// Check neighbors to compute ambient occlusion (cone / multi-directional)
 	float densitySum = 0.0;
 	const int AO_SAMPLES = 8;
-	vec3 ao_offsets[AO_SAMPLES] = vec3[](
-		vec3(0.0, 0.02, 0.0),
-		vec3(0.0, 0.05, 0.0),
-		vec3(0.0, 0.10, 0.0),
-		vec3(0.02, 0.04, 0.02),
-		vec3(-0.02, 0.04, -0.02),
-		vec3(0.03, 0.08, -0.03),
-		vec3(-0.03, 0.08, 0.03),
-		vec3(0.0, 0.15, 0.0)
+	ivec3 ao_offsets[AO_SAMPLES] = ivec3[](
+		ivec3(0, 1, 0),
+		ivec3(0, 2, 0),
+		ivec3(0, 4, 0),
+		ivec3(1, 1, 1),
+		ivec3(-1, 1, -1),
+		ivec3(2, 2, -2),
+		ivec3(-2, 2, 2),
+		ivec3(0, 6, 0)
 	);
 
 	for (int i = 0; i < AO_SAMPLES; i++) {
-		vec3 sample_uvw = fract(p + ao_offsets[i]);
-		float sampleNoise = computeSimplexWorley(sample_uvw);
-		densitySum += sampleNoise;
+		ivec3 neighbor = clamp(voxel + ao_offsets[i], ivec3(0), size - 1);
+		float sampleDensity = imageLoad(outVolume, neighbor).a;
+		densitySum += sampleDensity;
 	}
 	float aoVal = clamp(1.0 - (densitySum / float(AO_SAMPLES)) * 1.5, 0.0, 1.0);
 
-	float baseHeightGradient = mix(0.9, 0.6, smoothstep(0.15, 0.85, p.y));
+	// Store finalized values
+	imageStore(outVolume, voxel, vec4(noiseVal, aoVal, 1.0, finalDensity));
+	// float baseHeightGradient = mix(0.9, 0.6, smoothstep(0.15, 0.85, p.y));
 
-	// Tile horizontally but do not repeat vertically
-	vec3 albedoCoords = vec3(fract(p.xz * 1.0), p.y);
-	vec3 densityCoords = vec3(fract(p.xz * 1.0), p.y);
+	// float baseAlbedo = computeSimplexWorley(p) * baseHeightGradient;
+	// float baseDensity = computeSimplexWorley(p) * baseHeightGradient;
 
-	float baseAlbedo = computeSimplexWorley(albedoCoords * baseHeightGradient);
-	float baseDensity = computeSimplexWorley(densityCoords * baseHeightGradient);
-
-	imageStore(outVolume, voxel, vec4(noiseVal, aoVal, baseAlbedo, baseDensity));
+	// imageStore(outVolume, voxel, vec4(noiseVal, aoVal, baseAlbedo, baseDensity));
 }
