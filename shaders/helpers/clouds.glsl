@@ -673,9 +673,9 @@ CloudDensityResult calculateCloudDensity(
 		// finalDensity = adjust(finalDensity, 1.0-volNoise);
 	}
 
-	vec3 mixedDensity = volDensityBasis * res.relativeExtinction * finalDensity;
+	vec3 mixedDensity = res.relativeExtinction * finalDensity;
 	// vec3 mixedDensity = vec3(1)*finalDensity;
-	vec3 mixedAlbedo = vec3(volAlbedoBasis);
+	vec3 mixedAlbedo = vec3(1.0);//vec3(volAlbedoBasis);
 
 	// return CloudDensityResult(mixedDensity, advectSpeed, volAo, mixedAlbedo, smoothstep(0.8, 1.2, mixedDensity) * vec3(0,1,0));
 	return CloudDensityResult(mixedDensity, advectSpeed, volAo, mixedAlbedo, vec3(0.0));
