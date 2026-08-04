@@ -36,6 +36,15 @@ vec2 hash2Tile(vec2 p, vec2 period)
 	return fract(sin(p) * 43758.5453123);
 }
 
+vec3 hash3Tile(vec3 p, vec3 period)
+{
+	if (period.x > 0.0) p = mod(p, period);
+    p = vec3( dot(p, vec3(127.1, 311.7, 74.7)),
+            dot(p, vec3(269.5, 183.3, 246.1)),
+            dot(p, vec3(113.5, 271.9, 124.6)));
+    return -1. + 2. * fract(sin(p) * 43758.5453123);
+}
+
 // Tile-aware hash returning a single float
 float hash12Tile(vec2 p, vec2 period) {
 	if (period.x > 0.0) p = mod(p, period);
@@ -94,35 +103,52 @@ float simplex3d_tiling(vec3 p, float period) {
 	return psrdnoise(p, vec3(period), 0.0, g);
 }
 
-// Tiling 3D Worley/Cellular noise
-vec4 worley3d_tiling_id(vec3 p, float period) {
+struct WorleyData3D {
+	float f1_dist;
+	float f2_dist;
+	vec3 f1;
+	vec3 f2;
+	vec3 p;
+};
+
+// Tiling 2D Worley/Cellular noise
+WorleyData3D worley3d_tiling_id(vec3 p, float period) {
 	vec3  i = floor(p);
 	vec3  f = fract(p);
 	float minDistSq = 1.0;
+	float f2DistSq = 1.0;
 	vec3 cellId = vec3(0.0);
+	vec3 f2CellId = vec3(0.0);
 	for (int z = -1; z <= 1; z++) {
 		for (int y = -1; y <= 1; y++) {
 			for (int x = -1; x <= 1; x++) {
 				vec3 neighbor = vec3(float(x), float(y), float(z));
 				// Wrap neighbor + i to [0, period-1]
 				vec3 wrapped_coord = mod(i + neighbor, period);
-				vec3 point = hash33(wrapped_coord);
+				vec3 point = hash3Tile(wrapped_coord, vec3(period));
 				vec3 diff = neighbor + point - f;
 				float d = dot(diff, diff);
 				if (d < minDistSq) {
+					f2DistSq = minDistSq;
+					f2CellId = cellId;
 					minDistSq = d;
 					cellId = i + neighbor + point;
+				}
+				else if (d < f2DistSq) {
+					f2DistSq = d;
+					f2CellId = i + neighbor + point;
 				}
 			}
 		}
 	}
-	return vec4(sqrt(minDistSq), cellId);
+	return WorleyData3D(sqrt(minDistSq), sqrt(f2DistSq), cellId, f2CellId, p);
 }
 
 // Tiling 3D Worley/Cellular noise
 vec2 worley3d_tiling(vec3 p, float period) {
-	vec4 res = worley3d_tiling_id(p, period);
-	return vec2(res.x, simplex3d_tiling(res.yzw, period) * 0.5 + 0.5);
+	WorleyData3D res = worley3d_tiling_id(p, period);
+
+	return vec2(res.f1_dist, psrdnoise(res.f1, vec3(period)) * 0.5 + 0.5);
 }
 
 struct WorleyData2D {
