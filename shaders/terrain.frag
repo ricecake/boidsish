@@ -722,31 +722,26 @@ void applyDetailNormalPerturbation(
 		float noiseTypeB = u_biomes[ctx.biomeIdxB].params.w;
 		float noiseType = mix(noiseTypeA, noiseTypeB, ctx.biomeT);
 
-		// Use finite difference to approximate the gradient of the noise field
-		float eps = 0.15;
-		float n, nx, nz;
-
+		float n;
 		if (ctx.freezingScale < 0.5) {
-			n = fastRidge3d(0.1 * scaledFragPos * roughnessScale);
-			nx = fastRidge3d(0.1 * (scaledFragPos + vec3(eps, 0.0, 0.0)) * roughnessScale);
-			nz = fastRidge3d(0.1 * (scaledFragPos + vec3(0.0, 0.0, eps)) * roughnessScale);
+			n = abs(fastWorley3d(0.01 * vec3(1,0.01,1)*scaledFragPos * roughnessScale));
 		} else {
 			n = fastWarpedFbm3d(0.1 * scaledFragPos * roughnessScale);
-			nx = fastWarpedFbm3d(0.1 * (scaledFragPos + vec3(eps, 0.0, 0.0)) * roughnessScale);
-			nz = fastWarpedFbm3d(0.1 * (scaledFragPos + vec3(0.0, 0.0, eps)) * roughnessScale);
 		}
 
-		// Compute local tangent space to orient the perturbation.
-		vec3 v = abs(perturbedNorm.z) < 0.999 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
-		vec3 tangent = normalize(cross(perturbedNorm, v));
-		vec3 bitangent = cross(tangent, perturbedNorm);
+		vec3 dPdx = dFdx(scaledFragPos);
+		vec3 dPdy = dFdy(scaledFragPos);
+		float dNdx = dFdx(n);
+		float dNdy = dFdy(n);
 
-		// Apply perturbation based on noise gradient
-		vec3 perturbation = (tangent * (n - nx) + bitangent * (n - nz)) * (roughnessStrength / eps);
-		perturbedNorm = normalize(perturbedNorm + perturbation);
+		vec3 R1 = cross(dPdy, perturbedNorm);
+		vec3 R2 = cross(perturbedNorm, dPdx);
+		vec3 surfGrad = (R1 * dNdx + R2 * dNdy) / (dot(dPdx, R1) + 0.00001); // Prevent div by 0
+
+		perturbedNorm = normalize(perturbedNorm - surfGrad * roughnessStrength);
 
 		// Toksvig-like Adjustment: Increase roughness based on normal variance
-		float variance = dot(perturbation, perturbation);
+		float variance = dot(surfGrad, surfGrad);
 		roughness = sqrt(clamp(roughness * roughness + variance * 0.25, 0.0, 1.0));
 	}
 }
