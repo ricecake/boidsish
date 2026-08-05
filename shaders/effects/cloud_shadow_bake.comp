@@ -142,7 +142,7 @@ void main() {
 	}
 
 	// Fill any unreached layers
-	for (int k = 0; k < 8; ++k) {
+	for (int k = 1; k < 8; ++k) {
 		float checkpoint = float(k) / 7.0;
 		if (accumForLayers[k] == 0.0 && accumulatedDensity > 0.0) {
 			accumForLayers[k] = accumulatedDensity;
