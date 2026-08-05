@@ -115,7 +115,7 @@ namespace Boidsish {
 		// Cloud Shadow Map: 512x512x8 R16F (2D Array with 8 layers for deep opacity map)
 		glGenTextures(1, &_cloudShadowTexture);
 		glBindTexture(GL_TEXTURE_2D_ARRAY, _cloudShadowTexture);
-		glTexStorage3D(GL_TEXTURE_2D_ARRAY, 10, GL_R16F, 512, 512, 8);
+		glTexStorage3D(GL_TEXTURE_2D_ARRAY, 10, GL_R16F, 1024, 1024, 8);
 		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
