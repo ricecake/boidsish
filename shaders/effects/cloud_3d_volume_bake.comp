@@ -85,44 +85,7 @@ void main() {
 	}
 	finalDensity = clamp(finalDensity, 0.0, 1.0);
 
-	// Calculate local Ambient Occlusion.
-	float densitySum = 0.0;
-	const int AO_SAMPLES = 8;
-	vec3 ao_offsets[AO_SAMPLES] = vec3[](
-		vec3(0.0, 0.02, 0.0),
-		vec3(0.0, 0.05, 0.0),
-		vec3(0.0, 0.10, 0.0),
-		vec3(0.02, 0.04, 0.02),
-		vec3(-0.02, 0.04, -0.02),
-		vec3(0.03, 0.08, -0.03),
-		vec3(-0.03, 0.08, 0.03),
-		vec3(0.0, 0.15, 0.0)
-	);
-
-	for (int i = 0; i < AO_SAMPLES; i++) {
-		vec3 sample_uvw = fract(uvw + ao_offsets[i]);
-		vec3 sHorizPos = vec3(sample_uvw.x * 150000.0 * ws, 0.0, sample_uvw.z * 150000.0 * ws);
-		CloudWeather sWeather = computeCloudWeather(sHorizPos, props);
-		CloudLayer sLayer = computeCloudLayer(sWeather, props);
-		float sFloor, sThickness;
-		float sH = getCloudRelativeHeight(sHorizPos, sWeather, sLayer, sFloor, sThickness);
-		float sTargetRadius = R_earth + sFloor + sample_uvw.y * sThickness;
-		vec3 sCenterToPlane = vec3(sHorizPos.x - viewPos.x, 0.0, sHorizPos.z - viewPos.z);
-		vec3 sRayDirUp = normalize(vec3(sCenterToPlane.x, R_earth, sCenterToPlane.z));
-		vec3 sWorldPos = earthCenter + sRayDirUp * sTargetRadius;
-
-		float sNoise = computeSimplexWorley(sample_uvw * vec3(size));
-		CloudSpotDetails sRes = calculateCloudDensityExpV10(sWorldPos, sWeather, sLayer, props, time, 1000.0, sNoise);
-		float sDensity = sRes.density;
-		if (sDensity > 0.0) {
-			sDensity *= mix(0.4, 1.6, sNoise);
-		}
-		densitySum += clamp(sDensity, 0.0, 1.0);
-	}
-	float aoVal = clamp(1.0 - (densitySum / float(AO_SAMPLES)) * 1.5, 0.0, 1.0);
-
-	float baseAlbedo = finalDensity;
-	float baseDensity = finalDensity;
-
-	imageStore(outVolume, voxel, vec4(noiseVal, aoVal, baseAlbedo, baseDensity));
+	// Initialize AO (G) and Shadow (B) channels to 1.0 (unoccluded/transparent)
+	// They will be computed dynamically in the shadow bake shader.
+	imageStore(outVolume, voxel, vec4(noiseVal, 1.0, 1.0, finalDensity));
 }
