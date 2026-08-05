@@ -7,6 +7,12 @@ layout(binding = 0, rgba16f) uniform image3D outVolume;
 #define CLOUD_BAKE_SHADER
 #include "../helpers/clouds.glsl"
 
+uniform float u_cloudAltitude;
+uniform float u_cloudThickness;
+uniform float u_cloudDensity;
+uniform float u_cloudCoverage;
+uniform float u_worldScale;
+
 void main() {
 	ivec3 voxel = ivec3(gl_GlobalInvocationID.xyz);
 	ivec3 size = imageSize(outVolume); // 128, 128, 128
@@ -15,11 +21,11 @@ void main() {
 	vec3 uvw = (vec3(voxel) + 0.5) / vec3(size);
 
 	CloudProperties props;
-	props.altitude = cloudAltitude;
-	props.thickness = cloudThickness;
-	props.densityBase = cloudDensity;
-	props.coverage = cloudCoverage;
-	props.worldScale = worldScale;
+	props.altitude = u_cloudAltitude;
+	props.thickness = u_cloudThickness;
+	props.densityBase = u_cloudDensity;
+	props.coverage = u_cloudCoverage;
+	props.worldScale = u_worldScale;
 
 	// Calculate the physical position 'p' corresponding to this voxel.
 	// Matching uvw mapping of clouds.glsl:

@@ -295,6 +295,11 @@ namespace Boidsish {
 			// 3b. Dispatch 3D density bake
 			_cloudDensityBakeShader->use();
 			_cloudDensityBakeShader->setInt("u_cloudWeatherTexture", Constants::TextureUnit::CloudWeatherBake());
+			_cloudDensityBakeShader->setFloat("u_cloudAltitude", _cloudAltitude);
+			_cloudDensityBakeShader->setFloat("u_cloudThickness", _cloudThickness);
+			_cloudDensityBakeShader->setFloat("u_cloudDensity", _cloudDensity);
+			_cloudDensityBakeShader->setFloat("u_cloudCoverage", _cloudCoverage);
+			_cloudDensityBakeShader->setFloat("u_worldScale", worldScale);
 			glBindImageTexture(0, _cloudVolumeTexture, 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA16F);
 			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::CloudWeatherBake());
 			glBindTexture(GL_TEXTURE_2D, _cloudWeatherTexture);
