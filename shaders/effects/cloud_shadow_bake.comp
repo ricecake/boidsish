@@ -70,7 +70,6 @@ void main() {
 	props.coverage = cloudCoverage;
 	props.worldScale = worldScale;
 
-	// Perform hierarchical DDA raymarching accelerated by min-max weather texture
 	for (int i = 0; i < 512; ++i) {
 		if (t >= t_end) break;
 
@@ -84,48 +83,13 @@ void main() {
 
 		vec2 minMax = textureLod(u_cloudWeatherMinMaxTexture, weatherUV, float(L)).rg;
 		float maxDensity = clamp(minMax.y + (cloudCoverage * 2.0 - 1.0), 0.0, 1.0);
+		CloudWeather weather = computeCloudWeather(p, props);
+		CloudLayer layer = computeCloudLayer(weather, props);
 
-		if (maxDensity <= 0.001) {
-			float mapRange = 100000.0 * worldScale;
-			float texelSizeAtLevel0 = mapRange / 2048.0;
-			float texelSize = float(1 << L) * texelSizeAtLevel0;
+		CloudDensityResult densityRes = calculateCloudDensityMinimal(p, weather, layer, props);
+		accumulatedDensity += max(0.0, densityRes.density.r) * baseStepSize;
 
-			vec2 dir2D = rayDir.xz;
-			float len2D = max(length(dir2D), 1e-6);
-			vec2 dir_norm = dir2D / len2D;
-
-			vec2 p_xz = p_advected.xz;
-			vec2 cell_idx = floor(p_xz / texelSize);
-
-			vec2 next_bound;
-			next_bound.x = (dir_norm.x > 0.0) ? (cell_idx.x + 1.0) * texelSize : cell_idx.x * texelSize;
-			next_bound.y = (dir_norm.y > 0.0) ? (cell_idx.y + 1.0) * texelSize : cell_idx.y * texelSize;
-
-			vec2 dist_to_bound;
-			dist_to_bound.x = (abs(dir_norm.x) > 1e-6) ? (next_bound.x - p_xz.x) / dir_norm.x : 1e10;
-			dist_to_bound.y = (abs(dir_norm.y) > 1e-6) ? (next_bound.y - p_xz.y) / dir_norm.y : 1e10;
-
-			float dt_2D = min(dist_to_bound.x, dist_to_bound.y);
-			float dt = (dt_2D / len2D) + 0.001; // pushes it safely over the boundary line
-
-			dt = clamp(dt, baseStepSize, 2000.0 * worldScale);
-			t += dt;
-			L = clamp(L + 1, 0, 10);
-		}
-		else {
-			if (L > 0) {
-				L--;
-			} else {
-				// At level 0, sample the actual cloud density
-				CloudWeather weather = computeCloudWeather(p, props);
-				CloudLayer layer = computeCloudLayer(weather, props);
-
-				CloudDensityResult densityRes = calculateCloudDensityMinimal(p, weather, layer, props);
-				accumulatedDensity += max(0.0, densityRes.density.r) * baseStepSize;
-
-				t += baseStepSize;
-			}
-		}
+		t += baseStepSize;
 	}
 
 	imageStore(outShadowMap, pixel, vec4(accumulatedDensity, 0.0, 0.0, 0.0));

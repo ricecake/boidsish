@@ -88,8 +88,9 @@ void main() {
 	finalCoverage = smoothstep(0.05, 1.0, finalCoverage);
 
 	float height = pow(clamp(posNoise(p, mapRange, 10), 0.0, 1.0), 2);
-	float thickness = clamp(posNoise(p, mapRange, 1), 0.0, 1.0);
-	float density = clamp(posNoise(p, cellRange, 1), 0.0, 1.0);
+	float thickness = clamp(posNoise(p, mapRange, 5), 0.0, 1.0);
+	float density = clamp(posNoise(p, mapRange, 5), 0.0, 1.0);
+	// float density = localFbm(p / mapRange, 5.0);
 
 	imageStore(outWeatherMap, pixel, vec4(finalCoverage, height, thickness, density));
 	imageStore(outMinMaxMap, pixel, vec4(finalCoverage, finalCoverage, 0.0, 0.0));

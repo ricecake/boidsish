@@ -519,6 +519,24 @@ float calculatePuffyCloudSDF(vec3 p, CloudWeather weather, CloudLayer layer, flo
 	return d3d;
 }
 
+float schlickGain(float x, float g) {
+	g = clamp(g, 0.001, 0.999);
+	float absDiff = abs(2.0 * x - 1.0);
+	float denominator = g + absDiff * (1.0 - 2.0 * g);
+	return 0.5 + ((x - 0.5) * (1.0 - g)) / denominator;
+}
+float schlickBias(float x, float g) {
+	// Guard inputs to safe analytical ranges
+	float xx = clamp(x, 0.0, 1.0);
+	float gg = clamp(g, 1e-4, 1.0 - 1e-4);
+
+	// Convert bias parameter to Schlick formulation factor
+	// Schlick's fast alternative: f(x) = x / ((1/a - 2) * (1.0 - x) + 1.0)
+	float k = (1.0 / gg) - 2.0;
+	return xx / (k * (1.0 - xx) + 1.0);
+}
+
+
 float getCloud3DSDF(vec3 p, CloudWeather weather, CloudLayer layer, float worldScale) {
 	float localFloor, actualThickness;
 
@@ -532,6 +550,8 @@ float getCloud3DSDF(vec3 p, CloudWeather weather, CloudLayer layer, float worldS
 	float heightGradient = getDensityHeightGradient(h, type);
 
 	float coverage2D = weather.sdf;
+	// float macroVolume = schlickBias(coverage2D * heightGradient, clamp(weather.density * (1.0 - h), 0.25, 0.75));
+	// float macroVolume = coverage2D * heightGradient * (1.5 - smoothstep(weather.density, 1.0, h));
 	float macroVolume = coverage2D * heightGradient;
 	// float domeMask = smoothstep(h, h + 0.2, coverage2D);
 
