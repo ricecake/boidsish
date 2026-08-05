@@ -67,10 +67,10 @@ namespace Boidsish {
 
 		GpuResourceRegistry::Instance().PublishTexture(Constants::TextureUnit::HiZ(), hiz_texture_);
 
-		// Create temp depth-only texture of full render size
+		// Create temp depth-stencil texture of full render size matching the source format exactly
 		glGenTextures(1, &temp_depth_texture_);
 		glBindTexture(GL_TEXTURE_2D, temp_depth_texture_);
-		glTexStorage2D(GL_TEXTURE_2D, 1, GL_DEPTH_COMPONENT32F, render_width_, render_height_);
+		glTexStorage2D(GL_TEXTURE_2D, 1, GL_DEPTH24_STENCIL8, render_width_, render_height_);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -80,7 +80,7 @@ namespace Boidsish {
 		// Create temp FBO
 		glGenFramebuffers(1, &temp_fbo_);
 		glBindFramebuffer(GL_FRAMEBUFFER, temp_fbo_);
-		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, temp_depth_texture_, 0);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, temp_depth_texture_, 0);
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	}
 
