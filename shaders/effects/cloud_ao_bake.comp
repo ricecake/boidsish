@@ -1,0 +1,42 @@
+#version 460 core
+
+layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
+
+layout(binding = 0, rgba16f) uniform image3D outVolume;
+
+void main() {
+	ivec3 voxel = ivec3(gl_GlobalInvocationID.xyz);
+	ivec3 size = imageSize(outVolume); // 128, 128, 128
+	if (voxel.x >= size.x || voxel.y >= size.y || voxel.z >= size.z) return;
+
+	// Evaluate the local density environment
+	float densitySum = 0.0;
+	const int AO_SAMPLES = 8;
+	vec3 ao_offsets[AO_SAMPLES] = vec3[](
+		vec3(0.0, 0.02, 0.0),
+		vec3(0.0, 0.05, 0.0),
+		vec3(0.0, 0.10, 0.0),
+		vec3(0.02, 0.04, 0.02),
+		vec3(-0.02, 0.04, -0.02),
+		vec3(0.03, 0.08, -0.03),
+		vec3(-0.03, 0.08, 0.03),
+		vec3(0.0, 0.15, 0.0)
+	);
+
+	for (int i = 0; i < AO_SAMPLES; i++) {
+		ivec3 sample_voxel = ivec3(floor(vec3(voxel) + ao_offsets[i] * 128.0));
+		// wrap sample_voxel horizontally (toroidal wrapping)
+		sample_voxel.x = (sample_voxel.x % 128 + 128) % 128;
+		sample_voxel.z = (sample_voxel.z % 128 + 128) % 128;
+		// clamp vertically (no wrapping over floor/ceiling)
+		sample_voxel.y = clamp(sample_voxel.y, 0, 127);
+
+		float sampleDensity = imageLoad(outVolume, sample_voxel).a;
+		densitySum += sampleDensity;
+	}
+	float aoVal = clamp(1.0 - (densitySum / float(AO_SAMPLES)) * 1.5, 0.0, 1.0);
+
+	vec4 currentVal = imageLoad(outVolume, voxel);
+	currentVal.g = aoVal;
+	imageStore(outVolume, voxel, currentVal);
+}

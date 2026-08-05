@@ -1,0 +1,54 @@
+#version 460 core
+
+layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
+
+layout(binding = 0, rgba16f) uniform image3D outVolume;
+
+#define CLOUD_BAKE_SHADER
+#include "../helpers/clouds.glsl"
+
+void main() {
+	ivec3 voxel = ivec3(gl_GlobalInvocationID.xyz);
+	ivec3 size = imageSize(outVolume); // 128, 128, 128
+	if (voxel.x >= size.x || voxel.y >= size.y || voxel.z >= size.z) return;
+
+	vec3 uvw = (vec3(voxel) + 0.5) / vec3(size);
+
+	CloudProperties props;
+	props.altitude = cloudAltitude;
+	props.thickness = cloudThickness;
+	props.densityBase = cloudDensity;
+	props.coverage = cloudCoverage;
+	props.worldScale = worldScale;
+
+	// Calculate the physical position 'p' corresponding to this voxel.
+	// Matching uvw mapping of clouds.glsl:
+	float x = uvw.x * 150000.0 * props.worldScale;
+	float z = uvw.z * 150000.0 * props.worldScale;
+
+	CloudWeather weather = computeCloudWeather(vec3(x, 0.0, z), props, 0.0);
+	CloudLayer layer = computeCloudLayer(weather, props);
+
+	float localFloor, actualThickness;
+	float h = getCloudRelativeHeight(vec3(x, 0.0, z), weather, layer, localFloor, actualThickness);
+
+	float R_earth = 6360.0 * 1000.0 * props.worldScale;
+	vec3 earthCenter = vec3(0.0, -R_earth, 0.0); // viewPos is assumed at origin for static volume bake
+	float alt = localFloor + uvw.y * actualThickness;
+	float target_len = R_earth + alt;
+	float d2 = x * x + z * z;
+	float y = -R_earth + sqrt(max(0.0, target_len * target_len - d2));
+
+	vec3 p = vec3(x, y, z);
+
+	// Load 3D noise (Simplex-Worley) from R channel
+	vec4 currentVal = imageLoad(outVolume, voxel);
+	float volNoise = currentVal.r;
+
+	// Evaluate density using V10
+	CloudSpotDetails res = calculateCloudDensityExpV10(p, weather, layer, props, 0.0, 0.0, volNoise);
+	float finalDensity = res.density;
+
+	currentVal.a = finalDensity;
+	imageStore(outVolume, voxel, currentVal);
+}

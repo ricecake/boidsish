@@ -1,7 +1,7 @@
 #version 460 core
 layout(local_size_x = 8, local_size_y = 8) in;
 
-layout(binding = 0, r16f) uniform image2D outShadowMap;
+layout(binding = 0, r16f) uniform writeonly image2DArray outShadowMap;
 
 #define ATMOSPHERE_HEIGHT_DEFINED
 uniform float u_atmosphereHeight;
@@ -22,7 +22,7 @@ layout(binding = [[CLOUD_WEATHER_MIN_MAX_BINDING]]) uniform sampler2D u_cloudWea
 
 void main() {
 	ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
-	ivec2 size = imageSize(outShadowMap);
+	ivec2 size = imageSize(outShadowMap).xy; // Get width and height
 	if (pixel.x >= size.x || pixel.y >= size.y)
 		return;
 
@@ -54,43 +54,103 @@ void main() {
 	intersectCloudShell(rayStart, rayDir, worldScale, t_start, t_end);
 
 	if (t_start >= t_end) {
-		imageStore(outShadowMap, pixel, vec4(0.0));
+		for (int k = 0; k < 8; ++k) {
+			imageStore(outShadowMap, ivec3(pixel, k), vec4(0.0));
+		}
 		return;
 	}
 
-	float accumulatedDensity = 0.0;
-	float t = t_start;
-	int L = 3;
-	float baseStepSize = 100.0 * worldScale;
+	// We have the intersection segment [t_start, t_end] in world space
+	vec3 posStart = rayStart + rayDir * t_start;
+	vec3 posEnd = rayStart + rayDir * t_end;
+	float rayDist = t_end - t_start;
 
-	CloudProperties props;
-	props.altitude = cloudAltitude;
-	props.thickness = cloudThickness;
-	props.densityBase = cloudDensity;
-	props.coverage = cloudCoverage;
-	props.worldScale = worldScale;
+	// Transform start and end points to local 3D texture DDA space
+	// Horizontally, scale by (150,000 * worldScale)
+	// Vertically, we are at the ceiling (1.0) and the floor (0.0) respectively
+	float horizontalScale = 150000.0 * worldScale;
+	vec3 startLocal = vec3(posStart.x / horizontalScale, 1.0, posStart.z / horizontalScale);
+	vec3 endLocal = vec3(posEnd.x / horizontalScale, 0.0, posEnd.z / horizontalScale);
 
-	for (int i = 0; i < 512; ++i) {
-		if (t >= t_end) break;
+	// Scale by 128.0 (gridMax) to do voxel-level traversal
+	vec3 voxStart = startLocal * 128.0;
+	vec3 voxEnd = endLocal * 128.0;
 
-		vec3 p = rayStart + rayDir * t;
-		vec3 advect = getCloudWindOffset(time);
-		vec3 p_advected = p + advect;
-		vec2 weatherUV = p_advected.xz / (100000.0 * worldScale);
+	vec3 ddaDir = voxEnd - voxStart;
+	float ddaFar = length(ddaDir);
+	ddaDir = normalize(ddaDir);
 
-		// Wrap horizontally
-		weatherUV = fract(weatherUV);
+	ivec3 vox = ivec3(floor(voxStart));
+	vec3 stepDir = sign(ddaDir);
 
-		vec2 minMax = textureLod(u_cloudWeatherMinMaxTexture, weatherUV, float(L)).rg;
-		float maxDensity = clamp(minMax.y + (cloudCoverage * 2.0 - 1.0), 0.0, 1.0);
-		CloudWeather weather = computeCloudWeather(p, props);
-		CloudLayer layer = computeCloudLayer(weather, props);
+	vec3 safeDdaDir = ddaDir;
+	if (abs(safeDdaDir.x) < 1e-6) safeDdaDir.x = (safeDdaDir.x >= 0.0 ? 1.0 : -1.0) * 1e-6;
+	if (abs(safeDdaDir.y) < 1e-6) safeDdaDir.y = (safeDdaDir.y >= 0.0 ? 1.0 : -1.0) * 1e-6;
+	if (abs(safeDdaDir.z) < 1e-6) safeDdaDir.z = (safeDdaDir.z >= 0.0 ? 1.0 : -1.0) * 1e-6;
 
-		CloudDensityResult densityRes = calculateCloudDensityMinimal(p, weather, layer, props);
-		accumulatedDensity += max(0.0, densityRes.density.r) * baseStepSize;
+	vec3 tDelta = abs(1.0 / safeDdaDir);
 
-		t += baseStepSize;
+	vec3 nextBoundary = vec3(vox) + max(stepDir, vec3(0.0));
+	vec3 tMaxBound = (nextBoundary - voxStart) / safeDdaDir;
+
+	float accumForLayers[8];
+	for (int k = 0; k < 8; ++k) {
+		accumForLayers[k] = 0.0;
 	}
 
-	imageStore(outShadowMap, pixel, vec4(accumulatedDensity, 0.0, 0.0, 0.0));
+	float accumulatedDensity = 0.0;
+	float t = 0.0;
+	const int maxSteps = 512;
+	float voxelToMeter = rayDist / max(0.001, ddaFar);
+
+	for (int i = 0; i < maxSteps; ++i) {
+		float tNext = min(min(tMaxBound.x, tMaxBound.y), tMaxBound.z);
+		float segmentLength = tNext - t;
+
+		// Wrap/clamp coordinates for texture sampling
+		ivec3 sampleVox;
+		sampleVox.x = (vox.x % 128 + 128) % 128;
+		sampleVox.y = clamp(vox.y, 0, 127);
+		sampleVox.z = (vox.z % 128 + 128) % 128;
+
+		// Read density from Alpha channel of u_cloud3DTexture
+		float density = texelFetch(u_cloud3DTexture, sampleVox, 0).a;
+		accumulatedDensity += density * (segmentLength * voxelToMeter);
+
+		float normT = tNext / max(0.001, ddaFar); // [0, 1]
+		for (int k = 0; k < 8; ++k) {
+			float checkpoint = float(k) / 7.0;
+			if (normT <= checkpoint) {
+				accumForLayers[k] = accumulatedDensity;
+			}
+		}
+
+		// Advance DDA traversal
+		if (tMaxBound.x < tMaxBound.y && tMaxBound.x < tMaxBound.z) {
+			vox.x += int(stepDir.x);
+			tMaxBound.x += tDelta.x;
+		} else if (tMaxBound.y < tMaxBound.z) {
+			vox.y += int(stepDir.y);
+			tMaxBound.y += tDelta.y;
+		} else {
+			vox.z += int(stepDir.z);
+			tMaxBound.z += tDelta.z;
+		}
+
+		t = tNext;
+		if (t > ddaFar) break;
+	}
+
+	// Fill any unreached layers
+	for (int k = 1; k < 8; ++k) {
+		float checkpoint = float(k) / 7.0;
+		if (accumForLayers[k] == 0.0 && accumulatedDensity > 0.0) {
+			accumForLayers[k] = accumulatedDensity;
+		}
+	}
+
+	// Save layers to the 2D array texture
+	for (int k = 0; k < 8; ++k) {
+		imageStore(outShadowMap, ivec3(pixel, k), vec4(accumForLayers[k], 0.0, 0.0, 0.0));
+	}
 }
