@@ -17,6 +17,10 @@ namespace Boidsish {
 
 	HiZManager::~HiZManager() {
 		DestroyTexture();
+		if (src_fbo_) {
+			glDeleteFramebuffers(1, &src_fbo_);
+			src_fbo_ = 0;
+		}
 	}
 
 	void HiZManager::Initialize(int width, int height) {
@@ -62,12 +66,36 @@ namespace Boidsish {
 		glBindTexture(GL_TEXTURE_2D, 0);
 
 		GpuResourceRegistry::Instance().PublishTexture(Constants::TextureUnit::HiZ(), hiz_texture_);
+
+		// Create temp depth-only texture of full render size
+		glGenTextures(1, &temp_depth_texture_);
+		glBindTexture(GL_TEXTURE_2D, temp_depth_texture_);
+		glTexStorage2D(GL_TEXTURE_2D, 1, GL_DEPTH_COMPONENT32F, render_width_, render_height_);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		glBindTexture(GL_TEXTURE_2D, 0);
+
+		// Create temp FBO
+		glGenFramebuffers(1, &temp_fbo_);
+		glBindFramebuffer(GL_FRAMEBUFFER, temp_fbo_);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, temp_depth_texture_, 0);
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	}
 
 	void HiZManager::DestroyTexture() {
 		if (hiz_texture_) {
 			glDeleteTextures(1, &hiz_texture_);
 			hiz_texture_ = 0;
+		}
+		if (temp_depth_texture_) {
+			glDeleteTextures(1, &temp_depth_texture_);
+			temp_depth_texture_ = 0;
+		}
+		if (temp_fbo_) {
+			glDeleteFramebuffers(1, &temp_fbo_);
+			temp_fbo_ = 0;
 		}
 	}
 
@@ -76,9 +104,45 @@ namespace Boidsish {
 		if (!initialized_ || !generate_shader_->isValid())
 			return;
 
+		// Save previous framebuffer bindings to restore them afterwards
+		GLint prev_read_fbo = 0;
+		GLint prev_draw_fbo = 0;
+		glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &prev_read_fbo);
+		glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &prev_draw_fbo);
+
+		// Perform hardware-accelerated blit of packed depth-stencil to pure GL_DEPTH_COMPONENT32F
+		if (!src_fbo_) {
+			glGenFramebuffers(1, &src_fbo_);
+		}
+		glBindFramebuffer(GL_FRAMEBUFFER, src_fbo_);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, depthTexture, 0);
+
+		// Disable scissor test during blit to ensure full copy
+		GLboolean scissor_enabled = glIsEnabled(GL_SCISSOR_TEST);
+		if (scissor_enabled) {
+			glDisable(GL_SCISSOR_TEST);
+		}
+
+		glBindFramebuffer(GL_READ_FRAMEBUFFER, src_fbo_);
+		glBindFramebuffer(GL_DRAW_FRAMEBUFFER, temp_fbo_);
+		glBlitFramebuffer(
+			0, 0, render_width_, render_height_,
+			0, 0, render_width_, render_height_,
+			GL_DEPTH_BUFFER_BIT,
+			GL_NEAREST
+		);
+
+		if (scissor_enabled) {
+			glEnable(GL_SCISSOR_TEST);
+		}
+
+		// Restore previous framebuffer bindings
+		glBindFramebuffer(GL_READ_FRAMEBUFFER, prev_read_fbo);
+		glBindFramebuffer(GL_DRAW_FRAMEBUFFER, prev_draw_fbo);
+
 		generate_shader_->use();
 
-		// Mip 0 source is the full-resolution depth buffer.
+		// Mip 0 source is the temporary, pure depth buffer.
 		// All subsequent mips source from the previous Hi-Z mip.
 		int src_w = render_width_;
 		int src_h = render_height_;
@@ -90,8 +154,8 @@ namespace Boidsish {
 			// Bind source texture
 			glActiveTexture(GL_TEXTURE0);
 			if (mip == 0) {
-				// Mip 0: 2x MAX downsample from full-res depth buffer → half-res Hi-Z base
-				glBindTexture(GL_TEXTURE_2D, depthTexture);
+				// Mip 0: 2x MAX downsample from our temp, pure depth_texture_ (GL_DEPTH_COMPONENT32F)
+				glBindTexture(GL_TEXTURE_2D, temp_depth_texture_);
 				generate_shader_->setInt("u_srcLevel", 0);
 			} else {
 				// Mip N: 2x MAX downsample from previous Hi-Z mip
