@@ -30,10 +30,10 @@ void main() {
 	CloudLayer layer = computeCloudLayer(weather, props);
 
 	float localFloor, actualThickness;
-	float h = getCloudRelativeHeight(vec3(x, 0.0, z), weather, layer, localFloor, actualThickness);
+	// Call getCloudRelativeHeightUnclamped to get localFloor and actualThickness for this column.
+	getCloudRelativeHeightUnclamped(vec3(x, 0.0, z), weather, layer, localFloor, actualThickness);
 
 	float R_earth = 6360.0 * 1000.0 * props.worldScale;
-	vec3 earthCenter = vec3(0.0, -R_earth, 0.0); // viewPos is assumed at origin for static volume bake
 	float alt = localFloor + uvw.y * actualThickness;
 	float target_len = R_earth + alt;
 	float d2 = x * x + z * z;
@@ -45,8 +45,8 @@ void main() {
 	vec4 currentVal = imageLoad(outVolume, voxel);
 	float volNoise = currentVal.r;
 
-	// Evaluate density using V10
-	CloudSpotDetails res = calculateCloudDensityExpV10(p, weather, layer, props, 0.0, 0.0, volNoise);
+	// Evaluate density using V10 Ext with explicit h = uvw.y
+	CloudSpotDetails res = calculateCloudDensityExpV10Ext(p, weather, layer, props, 0.0, 0.0, volNoise, uvw.y);
 	float finalDensity = res.density;
 
 	currentVal.a = finalDensity;

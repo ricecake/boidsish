@@ -78,25 +78,27 @@ bool intersectCloudShell(vec3 ro, vec3 rd, float worldScale, out float t_start, 
 	return false;
 }
 
-float getCloudRelativeHeight(vec3 p, CloudWeather weather, CloudLayer layer, out float localFloor, out float actualThickness) {
+float getCloudRelativeHeightUnclamped(vec3 p, CloudWeather weather, CloudLayer layer, out float localFloor, out float actualThickness) {
 	float altitude = getCurvedAltitude(p);
 	float altitudeShift = weather.heightMap * layer.thickness;
-	float cellRange = 10000.0 * worldScale;
-	// float thicknessTaper = clamp(1.0 - pow(weather.centerDist / (cellRange * 0.5), 2.0), 0.0, 1.0);
-	// actualThickness = max(weather.thickness * layer.thickness * thicknessTaper, 10.0 * worldScale);
 	actualThickness = max(weather.thickness * layer.thickness, 25.0 * worldScale);
 	localFloor = layer.baseFloor + altitudeShift;
-	return clamp((altitude - localFloor) / actualThickness, 0.0, 1.0);
+	return (altitude - localFloor) / actualThickness;
+}
+
+float getCloudRelativeHeightUnclamped(vec3 p, CloudWeather weather, CloudLayer layer) {
+	float localFloor, actualThickness;
+	return getCloudRelativeHeightUnclamped(p, weather, layer, localFloor, actualThickness);
+}
+
+float getCloudRelativeHeight(vec3 p, CloudWeather weather, CloudLayer layer, out float localFloor, out float actualThickness) {
+	float h_unclamped = getCloudRelativeHeightUnclamped(p, weather, layer, localFloor, actualThickness);
+	return clamp(h_unclamped, 0.0, 1.0);
 }
 
 float getCloudRelativeHeight(vec3 p, CloudWeather weather, CloudLayer layer) {
 	float localFloor, actualThickness;
 	return getCloudRelativeHeight(p, weather, layer, localFloor, actualThickness);
-	// float altitude = getCurvedAltitude(p);
-	// float altitudeShift = weather.heightMap * layer.thickness;
-	// float actualThickness = weather.thickness * layer.thickness;
-	// float localFloor = layer.baseFloor + altitudeShift;
-	// return clamp((altitude - localFloor) / max(actualThickness, 0.001), 0.0, 1.0);
 }
 
 // float saturate(float value) {
@@ -537,12 +539,8 @@ float schlickBias(float x, float g) {
 }
 
 
-float getCloud3DSDF(vec3 p, CloudWeather weather, CloudLayer layer, float worldScale) {
-	float localFloor, actualThickness;
-
-	float h = getCloudRelativeHeight(p, weather, layer, localFloor, actualThickness);
-
-	if (p.y < localFloor || p.y > (localFloor + actualThickness)) {
+float getCloud3DSDFExt(vec3 p, CloudWeather weather, CloudLayer layer, float worldScale, float h) {
+	if (h < 0.0 || h > 1.0) {
 		return 0.0;
 	}
 
@@ -550,14 +548,19 @@ float getCloud3DSDF(vec3 p, CloudWeather weather, CloudLayer layer, float worldS
 	float heightGradient = getDensityHeightGradient(h, type);
 
 	float coverage2D = weather.sdf;
-	// float macroVolume = schlickBias(coverage2D * heightGradient, clamp(weather.density * (1.0 - h), 0.25, 0.75));
-	// float macroVolume = coverage2D * heightGradient * (1.5 - smoothstep(weather.density, 1.0, h));
 	float macroVolume = coverage2D * heightGradient;
-	// float domeMask = smoothstep(h, h + 0.2, coverage2D);
-
-	// macroVolume *= domeMask;
 
 	return macroVolume;
+}
+
+float getCloud3DSDF(vec3 p, CloudWeather weather, CloudLayer layer, float worldScale) {
+	float localFloor, actualThickness;
+	float h_unclamped = getCloudRelativeHeightUnclamped(p, weather, layer, localFloor, actualThickness);
+	if (h_unclamped < 0.0 || h_unclamped > 1.0) {
+		return 0.0;
+	}
+	float h = clamp(h_unclamped, 0.0, 1.0);
+	return getCloud3DSDFExt(p, weather, layer, worldScale, h);
 }
 
 

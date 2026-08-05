@@ -758,17 +758,34 @@ void main() {
 			}
 
 			CloudLayer layer = computeCloudLayer(weather, props);
-			// CloudDensityResult densityResCheap = calculateCloudDensityMinimal(p, weather, layer, props);
-			CloudDensityResult densityResCheap = calculateCloudDensity(p, weather, layer, props, time, currentLod);
 
-			vec3 d_cheap = densityResCheap.density;
+			float localFloor, actualThickness;
+			float h_unclamped = getCloudRelativeHeightUnclamped(p, weather, layer, localFloor, actualThickness);
+			float h = clamp(h_unclamped, 0.0, 1.0);
 
-			float nextStepSize = calculateBifurcatedStepSize(inVolume, zero_count, max(d_cheap.x,max(d_cheap.y,d_cheap.z)), baseStepSize, 3, 3);
-			// float nextStepSize = calculateBifurcatedStepSize(inVolume, zero_count, 1.0, baseStepSize, 2, 3);
-			// vec3 base_advect = getCloudWindOffset(time);
-			// vec2 weatherUV = (p + base_advect).xz / (100000.0 * worldScale);
-			// vec2 minMax = textureLod(u_cloudWeatherMinMaxTexture, weatherUV, 6.0).rg;
-			// float nextStepSize = calculateBifurcatedStepSize(inVolume, zero_count, minMax.y, baseStepSize, 2.0, 2);
+			CloudDensityResult densityRes;
+			densityRes.density = vec3(0.0);
+			densityRes.advectionSpeed = getCloudAdvectionSpeed(h, time);
+			densityRes.ao = 1.0;
+			densityRes.albedo = vec3(1.0);
+			densityRes.emissivity = vec3(0.0);
+
+			if (h_unclamped >= 0.0 && h_unclamped <= 1.0) {
+				vec3 advect_3d = time * densityRes.advectionSpeed * 0.75;
+				vec3 p_advected_3d = p + advect_3d;
+				vec3 uvw = vec3(
+					p_advected_3d.x / (150000.0 * props.worldScale),
+					h,
+					p_advected_3d.z / (150000.0 * props.worldScale)
+				);
+
+				vec4 volSample = textureLod(u_cloud3DTexture, uvw, clamp(currentLod * 4.0, 0.0, 4.0));
+				densityRes = calculateCloudDensityExt(p, weather, layer, props, time, currentLod, h, volSample);
+			}
+
+			vec3 d_cheap = densityRes.density;
+
+			float nextStepSize = calculateBifurcatedStepSize(inVolume, zero_count, max(d_cheap.x, max(d_cheap.y, d_cheap.z)), baseStepSize, 3, 3);
 
 			if (nextStepSize < 0.0) {
 				// We overshot. Move 't' backward, but do NOT update 't_prev'.
@@ -788,14 +805,9 @@ void main() {
 			float stepSize = t - t_prev;
 			vec3 d = vec3(0.0);
 			if (stepSize > 0.0) {
-				float altitudeShift = weather.heightMap * layer.thickness;
-				float actualThickness = weather.thickness * layer.thickness;
-				float localFloor = layer.baseFloor + altitudeShift;
-
-				float h_norm = getCloudRelativeHeight(p, weather, layer);
+				float h_norm = h;
 				float integrationStep = stepSize;
 
-				CloudDensityResult densityRes = calculateCloudDensity(p, weather, layer, props, time, currentLod);
 				d = densityRes.density;
 				vec3 sampleAdvection = densityRes.advectionSpeed;
 				float sampleAo = densityRes.ao;
