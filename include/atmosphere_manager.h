@@ -244,6 +244,8 @@ namespace Boidsish {
 		std::unique_ptr<ComputeShader> _skyToSHShader;
 		std::unique_ptr<ComputeShader> _cloudBakeShader;
 		std::unique_ptr<ComputeShader> _cloudVolumeBakeShader;
+		std::unique_ptr<ComputeShader> _cloudDensityBakeShader;
+		std::unique_ptr<ComputeShader> _cloudAoBakeShader;
 		std::unique_ptr<ComputeShader> _cloudMipShader;
 		std::unique_ptr<ComputeShader> _cloudShadowBakeShader;
 

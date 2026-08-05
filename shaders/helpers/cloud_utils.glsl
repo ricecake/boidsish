@@ -1,7 +1,7 @@
 #include "lygia/generative/psrdnoise.glsl"
 #include "lygia/space/uncenter.glsl"
 
-layout(binding = [[CLOUD_SHADOW_MAP_BINDING]]) uniform sampler2D u_cloudShadowTexture;
+layout(binding = [[CLOUD_SHADOW_MAP_BINDING]]) uniform sampler2DArray u_cloudShadowTexture;
 uniform mat4 u_cloudShadowMatrix;
 uniform bool u_useCloudShadowMap;
 
@@ -567,6 +567,17 @@ float getCloud3DSDF(vec3 p, CloudWeather weather, CloudLayer layer, float worldS
  */
 float calculateCloudShadowFactor(vec3 frag_pos, vec3 L, float intensity) {
 	if (intensity <= 0.0) return 1.0;
+
+	if (u_useCloudShadowMap) {
+		vec4 lightSpacePos = u_cloudShadowMatrix * vec4(frag_pos, 1.0);
+		vec2 shadowUV = lightSpacePos.xy * 0.5 + 0.5;
+		if (shadowUV.x >= 0.0 && shadowUV.x <= 1.0 && shadowUV.y >= 0.0 && shadowUV.y <= 1.0) {
+			float totalOpticalDepth = texture(u_cloudShadowTexture, vec3(shadowUV, 7.0)).r;
+			float shadowTerm = exp(-totalOpticalDepth * cloudShadowOpticalDepthMultiplier);
+			return mix(1.0, shadowTerm, intensity);
+		}
+	}
+
 	if (L.y <= 0.001) return 1.0;
 
 	// Project to the cloud center height to find the casting XZ position

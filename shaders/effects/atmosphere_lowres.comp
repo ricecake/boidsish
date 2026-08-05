@@ -303,9 +303,10 @@ void CalculateStochasticClusterLight(
 		if (u_useCloudShadowMap && j == 0) {
 			vec4 lightSpacePos = u_cloudShadowMatrix * vec4(p, 1.0);
 			vec2 shadowUV = lightSpacePos.xy * 0.5 + 0.5;
-			float totalOpticalDepth = texture(u_cloudShadowTexture, shadowUV).r;
 			float h_n = getCloudRelativeHeight(p, weather, layer);
-			opticalDepthToLight = totalOpticalDepth * (1.0 - h_n) * (rgbExtinction * cloudShadowOpticalDepthMultiplier);
+			int layerIdx = clamp(int((1.0 - h_n) * 7.0), 0, 7);
+			float totalOpticalDepth = texture(u_cloudShadowTexture, vec3(shadowUV, float(layerIdx))).r;
+			opticalDepthToLight = totalOpticalDepth * (rgbExtinction * cloudShadowOpticalDepthMultiplier);
 		}
 		else if (traceDist > 0.01 * worldScale) {
 			int shadow_steps = 5;
@@ -409,8 +410,9 @@ vec3 EvaluateStepLighting(
 		if (u_useCloudShadowMap && j == 0) {
 			vec4 lightSpacePos = u_cloudShadowMatrix * vec4(p, 1.0);
 			vec2 shadowUV = lightSpacePos.xy * 0.5 + 0.5;
-			float totalOpticalDepth = texture(u_cloudShadowTexture, shadowUV).r;
-			opticalDepthToLight = totalOpticalDepth * (1.0 - h_norm) * (rgbExtinction * cloudShadowOpticalDepthMultiplier);
+			int layerIdx = clamp(int((1.0 - h_norm) * 7.0), 0, 7);
+			float totalOpticalDepth = texture(u_cloudShadowTexture, vec3(shadowUV, float(layerIdx))).r;
+			opticalDepthToLight = totalOpticalDepth * (rgbExtinction * cloudShadowOpticalDepthMultiplier);
 		}
 		else if (traceDist > 0.01 * worldScale) {
 			int shadow_steps = 5;

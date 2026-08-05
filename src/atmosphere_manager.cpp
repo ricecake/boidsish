@@ -112,16 +112,16 @@ namespace Boidsish {
 		constexpr float border[] = {0.0f, 0.0f, 0.0f, 0.0f};
 		glTexParameterfv(GL_TEXTURE_3D, GL_TEXTURE_BORDER_COLOR, border);
 
-		// Cloud Shadow Map: 512x512 R16F (with mips for soft AO)
+		// Cloud Shadow Map: 512x512x8 R16F (2D Array with 8 layers for deep opacity map)
 		glGenTextures(1, &_cloudShadowTexture);
-		glBindTexture(GL_TEXTURE_2D, _cloudShadowTexture);
-		glTexStorage2D(GL_TEXTURE_2D, 10, GL_R16F, 512, 512);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, _cloudShadowTexture);
+		glTexStorage3D(GL_TEXTURE_2D_ARRAY, 10, GL_R16F, 512, 512, 8);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
 		float border_color[] = {0.0f, 0.0f, 0.0f, 0.0f};
-		glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, border_color);
+		glTexParameterfv(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_BORDER_COLOR, border_color);
 
 		// SH Coefficients SSBO: 9 x vec4
 		// Cloud Seeds SSBO: 100 x vec4 (10x10 Voronoi period)
@@ -148,7 +148,7 @@ namespace Boidsish {
 		reg.PublishTexture(Constants::TextureUnit::CloudWeatherBake(), _cloudWeatherTexture);
 		reg.PublishTexture(Constants::TextureUnit::CloudWeatherMinMax(), _cloudWeatherMinMaxTexture);
 		reg.PublishTexture(Constants::TextureUnit::Cloud3D(), _cloudVolumeTexture, GL_TEXTURE_3D);
-		reg.PublishTexture(Constants::TextureUnit::CloudShadowMap(), _cloudShadowTexture);
+		reg.PublishTexture(Constants::TextureUnit::CloudShadowMap(), _cloudShadowTexture, GL_TEXTURE_2D_ARRAY);
 	}
 
 	void AtmosphereManager::CreateShaders() {
@@ -165,6 +165,8 @@ namespace Boidsish {
 		_skyToSHShader = std::make_unique<ComputeShader>("shaders/atmosphere/sky_to_sh.comp");
 		_cloudBakeShader = std::make_unique<ComputeShader>("shaders/effects/cloud_weather_bake.comp");
 		_cloudVolumeBakeShader = std::make_unique<ComputeShader>("shaders/effects/cloud_3d_volume_bake.comp");
+		_cloudDensityBakeShader = std::make_unique<ComputeShader>("shaders/effects/cloud_density_bake.comp");
+		_cloudAoBakeShader = std::make_unique<ComputeShader>("shaders/effects/cloud_ao_bake.comp");
 		_cloudMipShader = std::make_unique<ComputeShader>("shaders/effects/cloud_weather_mip.comp");
 		_cloudShadowBakeShader = std::make_unique<ComputeShader>("shaders/effects/cloud_shadow_bake.comp");
 
@@ -175,6 +177,8 @@ namespace Boidsish {
 		setup_shader(*_skyToSHShader);
 		setup_shader(*_cloudBakeShader);
 		setup_shader(*_cloudVolumeBakeShader);
+		setup_shader(*_cloudDensityBakeShader);
+		setup_shader(*_cloudAoBakeShader);
 		setup_shader(*_cloudShadowBakeShader);
 	}
 
@@ -288,7 +292,30 @@ namespace Boidsish {
 			glDispatchCompute(128 / 4, 128 / 4, 128 / 4);
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
-			// Generate mipmaps for the weather map
+			// 3b. Dispatch 3D density bake
+			_cloudDensityBakeShader->use();
+			_cloudDensityBakeShader->setInt("u_cloudWeatherTexture", Constants::TextureUnit::CloudWeatherBake());
+			glBindImageTexture(0, _cloudVolumeTexture, 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA16F);
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::CloudWeatherBake());
+			glBindTexture(GL_TEXTURE_2D, _cloudWeatherTexture);
+
+			GpuResourceRegistry::Instance().BindTextures({
+				Constants::TextureUnit::NoiseSimplex(),
+				Constants::TextureUnit::NoiseCurl(),
+				Constants::TextureUnit::NoiseBlue(),
+				Constants::TextureUnit::NoiseExtra(),
+				Constants::TextureUnit::NoisePhasor()
+			});
+			glDispatchCompute(128 / 4, 128 / 4, 128 / 4);
+			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+			// 3c. Dispatch 3D AO bake
+			_cloudAoBakeShader->use();
+			glBindImageTexture(0, _cloudVolumeTexture, 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA16F);
+			glDispatchCompute(128 / 4, 128 / 4, 128 / 4);
+			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+			// Generate mipmaps for the 3D cloud volume texture
 			glBindTexture(GL_TEXTURE_3D, _cloudVolumeTexture);
 			glGenerateMipmap(GL_TEXTURE_3D);
 			glBindTexture(GL_TEXTURE_3D, 0);
@@ -359,19 +386,24 @@ namespace Boidsish {
 			_cloudShadowBakeShader->setFloat("u_cloudDensity", _cloudDensity);
 			_cloudShadowBakeShader->setInt("u_frameIndex", _frameIndex);
 
-			glBindImageTexture(0, _cloudShadowTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R16F);
+			glBindImageTexture(0, _cloudShadowTexture, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_R16F);
 
 			// Bind u_cloudWeatherMinMaxTexture (Unit 49)
 			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::CloudWeatherMinMax());
 			glBindTexture(GL_TEXTURE_2D, _cloudWeatherMinMaxTexture);
 
+			// Bind u_cloud3DTexture (Unit 45)
+			_cloudShadowBakeShader->setInt("u_cloud3DTexture", Constants::TextureUnit::Cloud3D());
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::Cloud3D());
+			glBindTexture(GL_TEXTURE_3D, _cloudVolumeTexture);
+
 			glDispatchCompute(512 / 8, 512 / 8, 1);
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
 
 			// Generate mipmaps for blurred lookups (soft shadows/AO)
-			glBindTexture(GL_TEXTURE_2D, _cloudShadowTexture);
-			glGenerateMipmap(GL_TEXTURE_2D);
-			glBindTexture(GL_TEXTURE_2D, 0);
+			glBindTexture(GL_TEXTURE_2D_ARRAY, _cloudShadowTexture);
+			glGenerateMipmap(GL_TEXTURE_2D_ARRAY);
+			glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
 		}
 		_frameIndex++;
 
@@ -518,7 +550,7 @@ namespace Boidsish {
 		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::Cloud3D());
 		glBindTexture(GL_TEXTURE_3D, _cloudVolumeTexture);
 		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::CloudShadowMap());
-		glBindTexture(GL_TEXTURE_2D, _cloudShadowTexture);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, _cloudShadowTexture);
 	}
 
 	void AtmosphereManager::BindToShader(::ShaderBase& shader) {
