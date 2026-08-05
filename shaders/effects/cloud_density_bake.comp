@@ -29,8 +29,8 @@ void main() {
 
 	// Calculate the physical position 'p' corresponding to this voxel.
 	// Matching uvw mapping of clouds.glsl:
-	float x = uvw.x * 150000.0 * props.worldScale;
-	float z = uvw.z * 150000.0 * props.worldScale;
+	float x = uvw.x * 100000.0 * props.worldScale;
+	float z = uvw.z * 100000.0 * props.worldScale;
 
 	CloudWeather weather = computeCloudWeather(vec3(x, 0.0, z), props, 0.0);
 	CloudLayer layer = computeCloudLayer(weather, props);

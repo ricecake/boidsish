@@ -68,7 +68,7 @@ void main() {
 	// Transform start and end points to local 3D texture DDA space
 	// Horizontally, scale by (150,000 * worldScale)
 	// Vertically, we are at the ceiling (1.0) and the floor (0.0) respectively
-	float horizontalScale = 150000.0 * worldScale;
+	float horizontalScale = 100000.0 * worldScale;
 	vec3 startLocal = vec3(posStart.x / horizontalScale, 1.0, posStart.z / horizontalScale);
 	vec3 endLocal = vec3(posEnd.x / horizontalScale, 0.0, posEnd.z / horizontalScale);
 
@@ -103,6 +103,9 @@ void main() {
 	const int maxSteps = 512;
 	float voxelToMeter = rayDist / max(0.001, ddaFar);
 
+	vec3 voxelSize = vec3(100000.0 * worldScale, 700, 100000.0 * worldScale) / 128.0;
+	float physicalStepScale = length(ddaDir * voxelSize);
+
 	for (int i = 0; i < maxSteps; ++i) {
 		float tNext = min(min(tMaxBound.x, tMaxBound.y), tMaxBound.z);
 		float segmentLength = tNext - t;
@@ -113,9 +116,13 @@ void main() {
 		sampleVox.y = clamp(vox.y, 0, 127);
 		sampleVox.z = (vox.z % 128 + 128) % 128;
 
+
+		float physicalDistance = segmentLength * physicalStepScale;
+
 		// Read density from Alpha channel of u_cloud3DTexture
 		float density = texelFetch(u_cloud3DTexture, sampleVox, 0).a;
-		accumulatedDensity += density * (segmentLength * voxelToMeter);
+		accumulatedDensity += density * physicalDistance;
+		// accumulatedDensity += density * (segmentLength * voxelToMeter);
 
 		float normT = tNext / max(0.001, ddaFar); // [0, 1]
 		for (int k = 0; k < 8; ++k) {
