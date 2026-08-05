@@ -115,7 +115,7 @@ namespace Boidsish {
 		// Cloud Shadow Map: 512x512x8 R16F (2D Array with 8 layers for deep opacity map)
 		glGenTextures(1, &_cloudShadowTexture);
 		glBindTexture(GL_TEXTURE_2D_ARRAY, _cloudShadowTexture);
-		glTexStorage3D(GL_TEXTURE_2D_ARRAY, 10, GL_R16F, 512, 512, 8);
+		glTexStorage3D(GL_TEXTURE_2D_ARRAY, 10, GL_R16F, 1024, 1024, 8);
 		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
@@ -295,6 +295,11 @@ namespace Boidsish {
 			// 3b. Dispatch 3D density bake
 			_cloudDensityBakeShader->use();
 			_cloudDensityBakeShader->setInt("u_cloudWeatherTexture", Constants::TextureUnit::CloudWeatherBake());
+			_cloudDensityBakeShader->setFloat("u_cloudAltitude", _cloudAltitude);
+			_cloudDensityBakeShader->setFloat("u_cloudThickness", _cloudThickness);
+			_cloudDensityBakeShader->setFloat("u_cloudDensity", _cloudDensity);
+			_cloudDensityBakeShader->setFloat("u_cloudCoverage", _cloudCoverage);
+			_cloudDensityBakeShader->setFloat("u_worldScale", worldScale);
 			glBindImageTexture(0, _cloudVolumeTexture, 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA16F);
 			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::CloudWeatherBake());
 			glBindTexture(GL_TEXTURE_2D, _cloudWeatherTexture);
@@ -388,7 +393,13 @@ namespace Boidsish {
 
 			glBindImageTexture(0, _cloudShadowTexture, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_R16F);
 
+			// Bind u_cloudWeatherTexture (Unit 25)
+			_cloudShadowBakeShader->setInt("u_cloudWeatherTexture", Constants::TextureUnit::CloudWeatherBake());
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::CloudWeatherBake());
+			glBindTexture(GL_TEXTURE_2D, _cloudWeatherTexture);
+
 			// Bind u_cloudWeatherMinMaxTexture (Unit 49)
+			_cloudShadowBakeShader->setInt("u_cloudWeatherMinMaxTexture", Constants::TextureUnit::CloudWeatherMinMax());
 			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::CloudWeatherMinMax());
 			glBindTexture(GL_TEXTURE_2D, _cloudWeatherMinMaxTexture);
 
