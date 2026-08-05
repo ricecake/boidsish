@@ -2,6 +2,7 @@
 layout(local_size_x = 8, local_size_y = 8) in;
 
 layout(binding = 0, r16f) uniform image2D outShadowMap;
+layout(binding = 1, rgba16f) uniform image3D outVolume;
 
 #define ATMOSPHERE_HEIGHT_DEFINED
 uniform float u_atmosphereHeight;
@@ -34,6 +35,112 @@ void main() {
 		ivec2(0, 1)
 	);
 	ivec2 current_offset = bayer_offsets[u_frameIndex % 4];
+
+	// Staggered 3D volume update
+	if (pixel.x < 128 && pixel.y < 128) {
+		if ((pixel.x % 2) == current_offset.x && (pixel.y % 2) == current_offset.y) {
+			ivec3 size3d = imageSize(outVolume);
+			for (int y = 0; y < 128; ++y) {
+				ivec3 voxel = ivec3(pixel.x, y, pixel.y);
+
+				// 1. Read existing voxel (noise in R, evaluated density in A)
+				vec4 voxelData = imageLoad(outVolume, voxel);
+				float noiseVal = voxelData.r;
+				float finalDensity = voxelData.a;
+
+				// 2. Compute Ambient Occlusion based on evaluated density in A channel
+				float densitySum = 0.0;
+				const int AO_SAMPLES = 8;
+				vec3 ao_offsets[AO_SAMPLES] = vec3[](
+					vec3(0.0, 0.02, 0.0),
+					vec3(0.0, 0.05, 0.0),
+					vec3(0.0, 0.10, 0.0),
+					vec3(0.02, 0.04, 0.02),
+					vec3(-0.02, 0.04, -0.02),
+					vec3(0.03, 0.08, -0.03),
+					vec3(-0.03, 0.08, 0.03),
+					vec3(0.0, 0.15, 0.0)
+				);
+
+				vec3 uvw = vec3(voxel) / vec3(size3d);
+				for (int i = 0; i < AO_SAMPLES; i++) {
+					vec3 sample_uvw = fract(uvw + ao_offsets[i]);
+					ivec3 sample_voxel = ivec3(sample_uvw * vec3(size3d));
+					float sampleDensity = imageLoad(outVolume, sample_voxel).a;
+					densitySum += sampleDensity;
+				}
+				float aoVal = clamp(1.0 - (densitySum / float(AO_SAMPLES)) * 1.5, 0.0, 1.0);
+
+				// 3. March along current sun position to calculate optical depth
+				CloudProperties props;
+				props.altitude = cloudAltitude;
+				props.thickness = cloudThickness;
+				props.densityBase = cloudDensity;
+				props.coverage = cloudCoverage;
+				props.worldScale = worldScale;
+
+				float R_earth = 6360.0 * 1000.0 * worldScale;
+				vec3 earthCenter = vec3(viewPos.x, -R_earth, viewPos.z);
+
+				vec3 horizPos = vec3(uvw.x * 150000.0 * worldScale, 0.0, uvw.z * 150000.0 * worldScale);
+				CloudWeather weather = computeCloudWeather(horizPos, props);
+				CloudLayer layer = computeCloudLayer(weather, props);
+
+				float localFloor, actualThickness;
+				float h = getCloudRelativeHeight(horizPos, weather, layer, localFloor, actualThickness);
+
+				float targetRadius = R_earth + localFloor + uvw.y * actualThickness;
+				vec3 centerToPlane = vec3(horizPos.x - viewPos.x, 0.0, horizPos.z - viewPos.z);
+				vec3 rayDirUp = normalize(vec3(centerToPlane.x, R_earth, centerToPlane.z));
+				vec3 worldPos = earthCenter + rayDirUp * targetRadius;
+
+				// Ray direction is towards the sun
+				vec3 L = normalize(u_primaryLightDir);
+
+				// Find intersection with the cloud ceiling
+				float R_ceiling = R_earth + (cloudAltitude + 2.0 * cloudThickness + 500.0) * worldScale;
+				float t_start_ceil, t_end_ceil;
+				intersectSphereLocal(worldPos - earthCenter, L, R_ceiling, t_start_ceil, t_end_ceil);
+
+				// March from t = 0 to t_end_ceil
+				float t_end = max(0.0, t_end_ceil);
+				float stepSize = t_end / 16.0;
+				float accumulatedOpticalDepth = 0.0;
+
+				for (int j = 0; j < 16; ++j) {
+					float sampleT = (float(j) + 0.5) * stepSize;
+					vec3 samplePos = worldPos + L * sampleT;
+
+					float sampleAlt = length(samplePos - earthCenter) - R_earth;
+					CloudWeather sampleWeather = computeCloudWeather(samplePos, props);
+					CloudLayer sampleLayer = computeCloudLayer(sampleWeather, props);
+
+					float sFloor, sThickness;
+					float sampleH = getCloudRelativeHeight(samplePos, sampleWeather, sampleLayer, sFloor, sThickness);
+
+					if (sampleAlt >= sFloor && sampleAlt <= (sFloor + sThickness)) {
+						ivec3 sampleVoxel = ivec3(
+							floor(samplePos.x / (150000.0 * worldScale) * float(size3d.x)),
+							floor(sampleH * float(size3d.y)),
+							floor(samplePos.z / (150000.0 * worldScale) * float(size3d.z))
+						);
+						sampleVoxel.x = (sampleVoxel.x % size3d.x + size3d.x) % size3d.x;
+						sampleVoxel.z = (sampleVoxel.z % size3d.z + size3d.z) % size3d.z;
+						sampleVoxel.y = clamp(sampleVoxel.y, 0, size3d.y - 1);
+						float d = imageLoad(outVolume, sampleVoxel).a;
+						accumulatedOpticalDepth += d * stepSize;
+					}
+				}
+
+				// Convert optical depth to transmittance
+				float shadowTransmittance = exp(-accumulatedOpticalDepth * 2.0 * cloudShadowOpticalDepthMultiplier);
+
+				// Write updated aoVal and shadowTransmittance back to G and B channels of outVolume
+				imageStore(outVolume, voxel, vec4(noiseVal, aoVal, shadowTransmittance, finalDensity));
+			}
+		}
+	}
+
 	if ((pixel.x % 2) != current_offset.x || (pixel.y % 2) != current_offset.y) {
 		return; // Keep existing pixel values from prior frames
 	}

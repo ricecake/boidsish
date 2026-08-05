@@ -235,12 +235,18 @@ namespace Boidsish {
 			_cloudShadowBakeShader->setFloat("u_cloudThickness", _cloudThickness);
 			_cloudShadowBakeShader->setFloat("u_cloudDensity", _cloudDensity);
 			_cloudShadowBakeShader->setInt("u_frameIndex", _frameIndex);
+			_cloudShadowBakeShader->setInt("u_cloud3DTexture", Constants::TextureUnit::Cloud3D());
 
 			glBindImageTexture(0, _cloudShadowTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R16F);
+			glBindImageTexture(1, _cloudVolumeTexture, 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA16F);
 
 			// Bind u_cloudWeatherMinMaxTexture (Unit 49)
 			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::CloudWeatherMinMax());
 			glBindTexture(GL_TEXTURE_2D, _cloudWeatherMinMaxTexture);
+
+			// Bind u_cloud3DTexture (Unit 45)
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::Cloud3D());
+			glBindTexture(GL_TEXTURE_3D, _cloudVolumeTexture);
 
 			glDispatchCompute(512 / 8, 512 / 8, 1);
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);

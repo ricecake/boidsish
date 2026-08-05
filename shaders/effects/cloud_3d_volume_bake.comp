@@ -19,22 +19,10 @@ float localFbm(vec3 p, float period) {
 	float freq = 1.0;
 	for (int i = 0; i < 3; i++) {
 		WorleyData3D worleyDetails = worley3d_tiling_id(p * freq, period * freq);
-		val += amp * worleyDetails.f1_dist;// * (1-(freq*p.y));
-		// val -= amp * 0.25*(worleyDetails.f2_dist - worleyDetails.f1_dist);
+		val += amp * worleyDetails.f1_dist;
 		amp *= 0.5;
 		freq *= 2.0;
 	}
-
-	// amp = 0.5;
-	// freq = 1.0;
-	// for (int i = 0; i < 3; i++) {
-	// 	WorleyData3D worleyDetails = worley3d_tiling_id(p * freq, period * freq);
-	// 	// val += amp * worleyDetails.f1_dist;
-	// 	val -= amp * (worleyDetails.f2_dist - worleyDetails.f1_dist)  * (1-(freq*p.y));
-	// 	amp *= 0.35;
-	// 	freq *= 1.50;
-	// }
-
 	return val;
 }
 
@@ -61,7 +49,43 @@ void main() {
 	// 1. R Channel: Tiling 3D noise (Simplex noise carved by Worley FBM in HZD fashion)
 	float noiseVal = computeSimplexWorley(p);
 
-	// 2. G Channel: Local Ambient Occlusion.
+	// Calculate targetRadius and worldPos:
+	float ws = worldScale;
+	vec3 uvw = vec3(voxel) / vec3(size);
+
+	CloudProperties props;
+	props.altitude = cloudAltitude;
+	props.thickness = cloudThickness;
+	props.densityBase = cloudDensity;
+	props.coverage = cloudCoverage;
+	props.worldScale = ws;
+
+	// Establish horizontal coordinate mapped to [0, 150000 * worldScale]
+	vec3 horizPos = vec3(uvw.x * 150000.0 * ws, 0.0, uvw.z * 150000.0 * ws);
+
+	CloudWeather weather = computeCloudWeather(horizPos, props);
+	CloudLayer layer = computeCloudLayer(weather, props);
+
+	float localFloor, actualThickness;
+	float h = getCloudRelativeHeight(horizPos, weather, layer, localFloor, actualThickness);
+
+	float R_earth = 6360.0 * 1000.0 * ws;
+	vec3 earthCenter = vec3(viewPos.x, -R_earth, viewPos.z);
+	float targetRadius = R_earth + localFloor + uvw.y * actualThickness;
+
+	vec3 centerToPlane = vec3(horizPos.x - viewPos.x, 0.0, horizPos.z - viewPos.z);
+	vec3 rayDirUp = normalize(vec3(centerToPlane.x, R_earth, centerToPlane.z));
+	vec3 worldPos = earthCenter + rayDirUp * targetRadius;
+
+	// Evaluate final evaluated density using calculateCloudDensityExpV10 at worldPos
+	CloudSpotDetails res = calculateCloudDensityExpV10(worldPos, weather, layer, props, time, 1000.0, noiseVal);
+	float finalDensity = res.density;
+	if (finalDensity > 0.0) {
+		finalDensity *= mix(0.4, 1.6, noiseVal);
+	}
+	finalDensity = clamp(finalDensity, 0.0, 1.0);
+
+	// Calculate local Ambient Occlusion.
 	float densitySum = 0.0;
 	const int AO_SAMPLES = 8;
 	vec3 ao_offsets[AO_SAMPLES] = vec3[](
@@ -76,16 +100,29 @@ void main() {
 	);
 
 	for (int i = 0; i < AO_SAMPLES; i++) {
-		vec3 sample_uvw = fract(p + ao_offsets[i]);
-		float sampleNoise = computeSimplexWorley(sample_uvw);
-		densitySum += sampleNoise;
+		vec3 sample_uvw = fract(uvw + ao_offsets[i]);
+		vec3 sHorizPos = vec3(sample_uvw.x * 150000.0 * ws, 0.0, sample_uvw.z * 150000.0 * ws);
+		CloudWeather sWeather = computeCloudWeather(sHorizPos, props);
+		CloudLayer sLayer = computeCloudLayer(sWeather, props);
+		float sFloor, sThickness;
+		float sH = getCloudRelativeHeight(sHorizPos, sWeather, sLayer, sFloor, sThickness);
+		float sTargetRadius = R_earth + sFloor + sample_uvw.y * sThickness;
+		vec3 sCenterToPlane = vec3(sHorizPos.x - viewPos.x, 0.0, sHorizPos.z - viewPos.z);
+		vec3 sRayDirUp = normalize(vec3(sCenterToPlane.x, R_earth, sCenterToPlane.z));
+		vec3 sWorldPos = earthCenter + sRayDirUp * sTargetRadius;
+
+		float sNoise = computeSimplexWorley(sample_uvw * vec3(size));
+		CloudSpotDetails sRes = calculateCloudDensityExpV10(sWorldPos, sWeather, sLayer, props, time, 1000.0, sNoise);
+		float sDensity = sRes.density;
+		if (sDensity > 0.0) {
+			sDensity *= mix(0.4, 1.6, sNoise);
+		}
+		densitySum += clamp(sDensity, 0.0, 1.0);
 	}
 	float aoVal = clamp(1.0 - (densitySum / float(AO_SAMPLES)) * 1.5, 0.0, 1.0);
 
-	float baseHeightGradient = mix(0.9, 0.6, smoothstep(0.15, 0.85, p.y));
-
-	float baseAlbedo = computeSimplexWorley(p) * baseHeightGradient;
-	float baseDensity = computeSimplexWorley(p) * baseHeightGradient;
+	float baseAlbedo = finalDensity;
+	float baseDensity = finalDensity;
 
 	imageStore(outVolume, voxel, vec4(noiseVal, aoVal, baseAlbedo, baseDensity));
 }
