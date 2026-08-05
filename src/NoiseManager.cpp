@@ -221,6 +221,37 @@ namespace Boidsish {
 		glBindTexture(GL_TEXTURE_3D, 0);
 	}
 
+	void NoiseManager::Update(float time, float dt) {
+		// Only step when the simulation is not paused
+		if (dt <= 0.0f) return;
+
+		if (mlp_nca_3d_shader_ && mlp_nca_3d_shader_->isValid()) {
+			mlp_nca_3d_shader_->use();
+			nca_net_.Bind(57); // Bind MLP params
+
+			GLuint read_tex = nca_3d_texture_;
+			GLuint write_tex = nca_3d_temp_texture_;
+
+			glBindImageTexture(0, read_tex, 0, GL_TRUE, 0, GL_READ_ONLY, GL_RGBA32F);
+			glBindImageTexture(1, write_tex, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA32F);
+
+			mlp_nca_3d_shader_->setFloat("u_time", time);
+			mlp_nca_3d_shader_->setFloat("u_step_size", 1.0f);
+			mlp_nca_3d_shader_->setFloat("u_update_probability", 0.5f);
+
+			// local_size is 4x4x4, so dispatch size/4
+			glDispatchCompute(size_ / 4, size_ / 4, size_ / 4);
+			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+			// Swap actual texture IDs so nca_3d_texture_ holds the latest state
+			std::swap(nca_3d_texture_, nca_3d_temp_texture_);
+
+			// Re-publish the updated texture handle to GpuResourceRegistry
+			auto& reg = GpuResourceRegistry::Instance();
+			reg.PublishTexture(Constants::TextureUnit::NoiseNca3D(), nca_3d_texture_, GL_TEXTURE_3D);
+		}
+	}
+
 	void NoiseManager::Bind(GLuint unit) const {
 		glActiveTexture(GL_TEXTURE0 + unit);
 		glBindTexture(GL_TEXTURE_3D, noise_texture_);

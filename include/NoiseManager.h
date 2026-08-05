@@ -53,6 +53,7 @@ namespace Boidsish {
 		void Bind(GLuint unit) const;
 		void BindDefault(class ShaderBase& shader) const;
 		void Seed3DNCA();
+		void Update(float time, float dt);
 
 	private:
 		std::unique_ptr<ComputeShader> compute_shader_;

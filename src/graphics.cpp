@@ -2571,6 +2571,10 @@ namespace Boidsish {
 		}
 
 		void UpdateSystems(const FrameData& frame) {
+			if (noise_manager) {
+				noise_manager->Update(simulation_time, simulation_delta_time);
+			}
+
 			// Calculate frustum for terrain generation and decor placement
 			if (terrain_generator) {
 				float world_scale_val = terrain_generator->GetWorldScale();
