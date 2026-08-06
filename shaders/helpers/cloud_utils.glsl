@@ -30,6 +30,24 @@ struct CloudLayer {
 	float thickness;
 };
 
+float schlickGain(float x, float g) {
+	g = clamp(g, 0.001, 0.999);
+	float absDiff = abs(2.0 * x - 1.0);
+	float denominator = g + absDiff * (1.0 - 2.0 * g);
+	return 0.5 + ((x - 0.5) * (1.0 - g)) / denominator;
+}
+float schlickBias(float x, float g) {
+	// Guard inputs to safe analytical ranges
+	float xx = clamp(x, 0.0, 1.0);
+	float gg = clamp(g, 1e-4, 1.0 - 1e-4);
+
+	// Convert bias parameter to Schlick formulation factor
+	// Schlick's fast alternative: f(x) = x / ((1/a - 2) * (1.0 - x) + 1.0)
+	float k = (1.0 / gg) - 2.0;
+	return xx / (k * (1.0 - xx) + 1.0);
+}
+
+
 float getCurvedAltitude(vec3 p) {
 	// return p.y;
 	float R_earth = 6360.0 * 1000.0 * worldScale;
@@ -442,8 +460,11 @@ CloudWeather loadCloudWeather(vec3 p, CloudProperties props, vec4 tex) {
 	}
 	// float thickness = clamp(posNoise(p, mapRange, 5), 0.0, (1.0-cellData.f1_dist)*0.25*uCloudThickness/mapRange);
 
-	weather.thickness = clamp(weather.thickness, 0, 10000/props.thickness * weather.sdf);
-	weather.density = mix(weather.density, weather.sdf, 0.6);
+	weather.thickness = clamp(weather.thickness, 0, 10000/props.thickness * pow(weather.sdf, 0.75));
+	// weather.thickness = schlickBias(weather.sdf, 0.25);
+	// weather.density *= smoothstep(0.0, 0.95, weather.thickness);
+	weather.density = mix(weather.density, weather.sdf * props.densityBase, 0.4);
+
 	// weather.thickness = mix(weather.thickness, weather.density, 0.8);
 	weather.heightMap = mix(weather.heightMap, 0.0, weather.thickness * 0.9);
 
@@ -522,22 +543,6 @@ float calculatePuffyCloudSDF(vec3 p, CloudWeather weather, CloudLayer layer, flo
 	return d3d;
 }
 
-float schlickGain(float x, float g) {
-	g = clamp(g, 0.001, 0.999);
-	float absDiff = abs(2.0 * x - 1.0);
-	float denominator = g + absDiff * (1.0 - 2.0 * g);
-	return 0.5 + ((x - 0.5) * (1.0 - g)) / denominator;
-}
-float schlickBias(float x, float g) {
-	// Guard inputs to safe analytical ranges
-	float xx = clamp(x, 0.0, 1.0);
-	float gg = clamp(g, 1e-4, 1.0 - 1e-4);
-
-	// Convert bias parameter to Schlick formulation factor
-	// Schlick's fast alternative: f(x) = x / ((1/a - 2) * (1.0 - x) + 1.0)
-	float k = (1.0 / gg) - 2.0;
-	return xx / (k * (1.0 - xx) + 1.0);
-}
 
 
 float getCloud3DSDF(vec3 p, CloudWeather weather, CloudLayer layer, float worldScale) {

@@ -101,7 +101,7 @@ void main() {
 	float height = pow(clamp(posNoise((cellData.f1 + warp), mapRange, 10), 0.0, 1.0), 2);
 	// float thickness = clamp(posNoise(p, mapRange, 5), 0.0, (1.0-cellData.f1_dist)*0.125*uCloudThickness/cellRange);
 	float thickness = clamp(posNoise(p, mapRange, 5), 0.0, 1.0);
-	float density = clamp(posNoise(p, mapRange, 5), 0.0, 1.0);
+	float density = clamp(posNoise(cellData.f1, mapRange, 5), 0.0, finalCoverage);
 	// float density = localFbm(p / mapRange, 5.0);
 
 	imageStore(outWeatherMap, pixel, vec4(cellData.f1_dist, height, thickness, density));
