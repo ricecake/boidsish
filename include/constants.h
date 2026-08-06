@@ -117,7 +117,9 @@ namespace Boidsish {
 				ClusterGridBuffer = 53,
 				SpaceProbe = 54,
 				CdlGradingLayers = 55,
-				MlpParams = 57
+				MlpParams = 57,
+				SvoNodes = 60,
+				SvoVoxels = 61
 			};
 		} // namespace Bindings
 
@@ -530,6 +532,14 @@ namespace Boidsish {
 
 			consteval int MlpParams() {
 				return std::to_underlying(Constants::Bindings::Ssbo::MlpParams);
+			}
+
+			consteval int SvoNodes() {
+				return std::to_underlying(Constants::Bindings::Ssbo::SvoNodes);
+			}
+
+			consteval int SvoVoxels() {
+				return std::to_underlying(Constants::Bindings::Ssbo::SvoVoxels);
 			}
 		} // namespace SsboBinding
 
