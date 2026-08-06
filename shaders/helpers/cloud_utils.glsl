@@ -460,7 +460,7 @@ CloudWeather loadCloudWeather(vec3 p, CloudProperties props, vec4 tex) {
 	}
 	// float thickness = clamp(posNoise(p, mapRange, 5), 0.0, (1.0-cellData.f1_dist)*0.25*uCloudThickness/mapRange);
 
-	weather.thickness = clamp(weather.thickness, 0, 10000/props.thickness * pow(weather.sdf, 0.75));
+	weather.thickness = clamp(weather.thickness, 0, (2500* rawCoverage)/(props.thickness * weather.thickness));
 	// weather.thickness = schlickBias(weather.sdf, 0.25);
 	// weather.density *= smoothstep(0.0, 0.95, weather.thickness);
 	weather.density = mix(weather.density, weather.sdf * props.densityBase, 0.4);

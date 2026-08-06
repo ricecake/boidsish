@@ -53,6 +53,14 @@ float hash12Tile(vec2 p, vec2 period) {
 	return fract((p3.x + p3.y) * p3.z);
 }
 
+float hash13Tile(in vec3 pos, in vec3 period) {
+	if (period.x > 0.0) pos = mod(pos, period);
+    pos  = fract(pos * vec3(.1031, .1030, .0973));
+    pos += dot(pos, pos.zyx + 31.32);
+    return fract((pos.x + pos.y) * pos.z);
+}
+
+
 
 // Helper to compute curl noise using finite differences with tiling simplex noise
 vec3 computeCurl(vec3 p, float period) {

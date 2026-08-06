@@ -84,7 +84,7 @@ void main() {
 
 	float macro = regionalFbm((p / mapRange), vec2(10.0));
 
-	vec2 warp = vec2(posNoise(p, mapRange, 5), posNoise(p+vec2(123.45,67.89), mapRange, 5)) * 0.05;
+	vec2 warp = vec2(posNoise(p, mapRange, 5), posNoise(p+vec2(123.45,67.89), mapRange, 5)) * 0.25;
 
 	WorleyData2D cellData;
 	float worley = localFbm((p+warp) / cellRange, 2.0, cellData);
