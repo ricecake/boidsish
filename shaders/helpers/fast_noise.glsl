@@ -112,7 +112,7 @@ struct WorleyData3D {
 };
 
 // Tiling 2D Worley/Cellular noise
-WorleyData3D worley3d_tiling_id(vec3 p, float period) {
+WorleyData3D worley3d_tiling_id(vec3 p, vec3 period) {
 	vec3  i = floor(p);
 	vec3  f = fract(p);
 	float minDistSq = 1.0;
@@ -125,7 +125,7 @@ WorleyData3D worley3d_tiling_id(vec3 p, float period) {
 				vec3 neighbor = vec3(float(x), float(y), float(z));
 				// Wrap neighbor + i to [0, period-1]
 				vec3 wrapped_coord = mod(i + neighbor, period);
-				vec3 point = hash3Tile(wrapped_coord, vec3(period));
+				vec3 point = hash3Tile(wrapped_coord, period);
 				vec3 diff = neighbor + point - f;
 				float d = dot(diff, diff);
 				if (d < minDistSq) {
@@ -144,9 +144,13 @@ WorleyData3D worley3d_tiling_id(vec3 p, float period) {
 	return WorleyData3D(sqrt(minDistSq), sqrt(f2DistSq), cellId, f2CellId, p);
 }
 
+WorleyData3D worley3d_tiling_id(vec3 p, float period) {
+	return worley3d_tiling_id(p, vec3(period));
+}
+
 // Tiling 3D Worley/Cellular noise
 vec2 worley3d_tiling(vec3 p, float period) {
-	WorleyData3D res = worley3d_tiling_id(p, period);
+	WorleyData3D res = worley3d_tiling_id(p, vec3(period));
 
 	return vec2(res.f1_dist, psrdnoise(res.f1, vec3(period)) * 0.5 + 0.5);
 }

@@ -13,7 +13,7 @@ float remap_bake(float value, float low1, float high1, float low2, float high2) 
 }
 
 
-float localFbm(vec3 p, float period) {
+float localFbm(vec3 p, vec3 period) {
 	float val = 0.0;
 	float amp = 0.5;
 	float freq = 1.0;
@@ -41,13 +41,16 @@ float localFbm(vec3 p, float period) {
 
 float computeSimplexWorley(vec3 p) {
 	// Base Simplex noise (normalized to [0, 1])
-	float simplex = psrdnoise(p * 4, vec3(10.0, 1.0, 10.0));
+	float simplex = psrdnoise(p, vec3(10.0, 1.0, 10.0));
 	simplex = clamp(simplex * 0.5 + 0.5, 0.0, 1.0);
 
-	float worleyFbm = localFbm(p, 10);
+	float worleyFbm = localFbm(p, vec3(5, 1, 5));
+
+	float baseHeightGradient = mix(0.9, 0.6, smoothstep(0.15, 0.85, p.y));
 
 	// Simplex noise carved/remapped by Worley FBM
 	float simplexWorley = remap_bake(simplex, worleyFbm, 1.0, 0.0, 1.0);
+	// float simplexWorley = mix(worleyFbm, simplex, smoothstep(0.15, 0.85, p.y));
 	return clamp(simplexWorley, 0.0, 1.0);
 }
 
@@ -82,10 +85,5 @@ void main() {
 	}
 	float aoVal = clamp(1.0 - (densitySum / float(AO_SAMPLES)) * 1.5, 0.0, 1.0);
 
-	float baseHeightGradient = mix(0.9, 0.6, smoothstep(0.15, 0.85, p.y));
-
-	float baseAlbedo = computeSimplexWorley(p) * baseHeightGradient;
-	float baseDensity = computeSimplexWorley(p) * baseHeightGradient;
-
-	imageStore(outVolume, voxel, vec4(noiseVal, aoVal, baseAlbedo, baseDensity));
+	imageStore(outVolume, voxel, vec4(noiseVal, aoVal, 1.0, 1.0));
 }

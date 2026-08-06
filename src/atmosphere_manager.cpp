@@ -239,6 +239,7 @@ namespace Boidsish {
 			// 1. Dispatch 2D weather map bake and initial min-max density map
 			_cloudBakeShader->use();
 			_cloudBakeShader->setFloat("uCloudCoverage", _cloudCoverage);
+			_cloudBakeShader->setFloat("uCloudThickness", _cloudThickness);
 			_cloudBakeShader->setFloat("uWorldScale", worldScale);
 			glBindImageTexture(0, _cloudWeatherTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 			glBindImageTexture(1, _cloudWeatherMinMaxTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RG16F);

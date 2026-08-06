@@ -16,6 +16,7 @@ layout(std430, binding = [[CLOUD_SEEDS_BINDING]] ) buffer CloudSeeds {
 
 uniform float uWorldScale;
 uniform float uCloudCoverage;
+uniform float uCloudThickness;
 uniform float time;
 
 float regionalFbm(vec2 p, vec2 period) {
@@ -30,13 +31,16 @@ float regionalFbm(vec2 p, vec2 period) {
 	return val;
 }
 
-float localFbm(vec2 p, float period) {
+float localFbm(vec2 p, float period, out WorleyData2D data) {
 	float val = 0.0;
 	float amp = 0.5;
 	float freq = 1.0;
 	for (int i = 0; i < 3; i++) {
 		WorleyData2D worleyDetails = worley2d_tiling_id(p * freq, period * freq);
-		val += amp * worleyDetails.f1_dist;
+		if (i == 0) {
+			data = worleyDetails;
+		}
+		val += amp * (worleyDetails.f1_dist);
 		amp *= 0.5;
 		freq *= 2.0;
 	}
@@ -78,21 +82,29 @@ void main() {
 
 	vec2 p = uv * mapRange;
 
-	float macro = regionalFbm((p *10 / mapRange), vec2(10.0));
-	float worley = localFbm(p / cellRange, 5.0);
+	float macro = regionalFbm((p / mapRange), vec2(10.0));
 
-	float micro = clamp(1.0 - (worley), 0.0, 1.0);
+	vec2 warp = vec2(posNoise(p, mapRange, 5), posNoise(p+vec2(123.45,67.89), mapRange, 5)) * 0.05;
 
-	float coverage = max(macro * micro, 0);
+	WorleyData2D cellData;
+	float worley = localFbm((p+warp) / cellRange, 2.0, cellData);
+
+	// float micro = clamp(1.0 - (worley), 0.0, 1.0);
+
+	float coverage =1.0 - worley;//max(macro * micro, 0);
 	float finalCoverage = clamp(coverage, 0.0, 1.0);
+	// finalCoverage = coverage * smoothstep(0.05, 1.0, finalCoverage);
 	finalCoverage = smoothstep(0.05, 1.0, finalCoverage);
 
-	float height = pow(clamp(posNoise(p, mapRange, 10), 0.0, 1.0), 2);
+	WorleyData2D x;
+	// float height = pow(clamp(localFbm((cellData.f1 + warp)/ mapRange, 10, x), 0.0, 1.0), 2);
+	float height = pow(clamp(posNoise((cellData.f1 + warp), mapRange, 10), 0.0, 1.0), 2);
+	// float thickness = clamp(posNoise(p, mapRange, 5), 0.0, (1.0-cellData.f1_dist)*0.125*uCloudThickness/cellRange);
 	float thickness = clamp(posNoise(p, mapRange, 5), 0.0, 1.0);
 	float density = clamp(posNoise(p, mapRange, 5), 0.0, 1.0);
 	// float density = localFbm(p / mapRange, 5.0);
 
-	imageStore(outWeatherMap, pixel, vec4(finalCoverage, height, thickness, density));
+	imageStore(outWeatherMap, pixel, vec4(cellData.f1_dist, height, thickness, density));
 	imageStore(outMinMaxMap, pixel, vec4(finalCoverage, finalCoverage, 0.0, 0.0));
 
 	// vec2 cellId = worleyDetails.yz;

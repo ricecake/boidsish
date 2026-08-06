@@ -428,8 +428,9 @@ CloudWeather loadCloudWeather(vec3 p, CloudProperties props, vec4 tex) {
 	CloudWeather weather;
 	weather.p = p;
 
+	float rawCoverage = 1.0-tex.r;
 	// Apply props.coverage as an offset/threshold to the baked coverage map
-	weather.sdf = clamp(tex.r + (props.coverage * 2.0 - 1.0), 0.0, 1.0);
+	weather.sdf = clamp(clamp(1.0-tex.r, 0, 1) + (props.coverage * 2.0 - 1.0), 0.0, 1.0);
 	weather.heightMap = tex.g;
 	weather.thickness = tex.b;
 	weather.density = tex.a * props.densityBase;
@@ -439,9 +440,11 @@ CloudWeather loadCloudWeather(vec3 p, CloudProperties props, vec4 tex) {
 		// weather.thickness = 1.0;
 		weather.density = props.densityBase;
 	}
+	// float thickness = clamp(posNoise(p, mapRange, 5), 0.0, (1.0-cellData.f1_dist)*0.25*uCloudThickness/mapRange);
 
+	weather.thickness = clamp(weather.thickness, 0, 10000/props.thickness * weather.sdf);
 	weather.density = mix(weather.density, weather.sdf, 0.6);
-	weather.thickness = mix(weather.thickness, weather.density, 0.8);
+	// weather.thickness = mix(weather.thickness, weather.density, 0.8);
 	weather.heightMap = mix(weather.heightMap, 0.0, weather.thickness * 0.9);
 
 	// weather.heightMap = clamp(tex.g, 0.01, 1.0);
@@ -539,7 +542,6 @@ float schlickBias(float x, float g) {
 
 float getCloud3DSDF(vec3 p, CloudWeather weather, CloudLayer layer, float worldScale) {
 	float localFloor, actualThickness;
-
 	float h = getCloudRelativeHeight(p, weather, layer, localFloor, actualThickness);
 
 	if (p.y < localFloor || p.y > (localFloor + actualThickness)) {
@@ -549,17 +551,21 @@ float getCloud3DSDF(vec3 p, CloudWeather weather, CloudLayer layer, float worldS
 	float type = weather.heightMap;
 	float heightGradient = getDensityHeightGradient(h, type);
 
-	float coverage2D = weather.sdf;
-	// float macroVolume = schlickBias(coverage2D * heightGradient, clamp(weather.density * (1.0 - h), 0.25, 0.75));
-	// float macroVolume = coverage2D * heightGradient * (1.5 - smoothstep(weather.density, 1.0, h));
+	float coverage2D = weather.sdf; //
+
+	// // Create a flare modifier that increases in the upper half of the cloud.
+	// // Adjust the smoothstep bounds and multiplier to control the flare's altitude and width.
+	// float topFlare = smoothstep(0.4, 0.9, h) * 0.4;
+
+	// // Apply the flare to the 2D coverage, clamping to keep it a valid SDF/mask.
+	// float dynamicCoverage = clamp(coverage2D + topFlare, 0.0, 1.0);
+
+	// // Replace the static coverage2D with the dynamically flaring one.
+	// float macroVolume = dynamicCoverage * heightGradient; //[cite: 3]
+
 	float macroVolume = coverage2D * heightGradient;
-	// float domeMask = smoothstep(h, h + 0.2, coverage2D);
-
-	// macroVolume *= domeMask;
-
 	return macroVolume;
 }
-
 
 /**
  * Calculate cloud shadow factor for a fragment position.
