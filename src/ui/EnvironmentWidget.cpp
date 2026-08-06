@@ -3,6 +3,7 @@
 #include <cmath>
 
 #include "ConfigManager.h"
+#include "NoiseManager.h"
 #include "decor_manager.h"
 #include "fire_effect_manager.h"
 #include "grass_manager.h"
@@ -1145,6 +1146,42 @@ namespace Boidsish {
 						if (ImGui::SliderFloat("Erosion Max Dist", &erosion_max_dist, 50.0f, 1000.0f, "%.0f")) {
 							config.SetFloat("erosion_max_dist", erosion_max_dist);
 						}
+					}
+				}
+
+				// 7. Neural Cellular Automata (NCA)
+				if (ImGui::CollapsingHeader("Neural Cellular Automata (NCA)", ImGuiTreeNodeFlags_DefaultOpen)) {
+					auto noise_manager = m_visualizer.GetNoiseManager();
+					if (noise_manager) {
+						ImGui::Text("2D NCA Control:");
+						if (ImGui::Button("Randomize 2D Weights")) {
+							noise_manager->Randomize2DWeights();
+						}
+						ImGui::SameLine();
+						if (ImGui::Button("Seed 2D Point")) {
+							noise_manager->Seed2DPoint();
+						}
+						ImGui::SameLine();
+						if (ImGui::Button("Seed 2D Noise")) {
+							noise_manager->Seed2DNoise();
+						}
+
+						ImGui::Separator();
+
+						ImGui::Text("3D NCA Control:");
+						if (ImGui::Button("Randomize 3D Weights")) {
+							noise_manager->Randomize3DWeights();
+						}
+						ImGui::SameLine();
+						if (ImGui::Button("Seed 3D Point")) {
+							noise_manager->Seed3DPoint();
+						}
+						ImGui::SameLine();
+						if (ImGui::Button("Seed 3D Noise")) {
+							noise_manager->Seed3DNoise();
+						}
+					} else {
+						ImGui::TextDisabled("Noise Manager not available.");
 					}
 				}
 			}

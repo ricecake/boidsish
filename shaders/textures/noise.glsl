@@ -6,5 +6,6 @@ uniform sampler3D u_curlTexture;
 uniform sampler2D u_blueNoiseTexture;
 uniform sampler3D u_extraNoiseTexture;
 uniform sampler3D u_nca3DTexture;
+uniform sampler2D u_nca2DTexture;
 
 #endif

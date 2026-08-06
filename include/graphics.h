@@ -52,6 +52,7 @@ namespace Boidsish {
 	class LightningManager;
 	class Path;
 	class SpaceProbeManager;
+	class NoiseManager;
 
 	namespace PostProcessing {
 		class PostProcessingManager;
@@ -587,6 +588,7 @@ namespace Boidsish {
 		void                                   SetDecorManager(std::shared_ptr<DecorManager> decor_manager);
 		GrassManager*                          GetGrassManager();
 		WeatherManager*                        GetWeatherManager();
+		NoiseManager*                          GetNoiseManager();
 		MoodManager*                           GetMoodManager();
 		LightningManager*                      GetLightningManager();
 		PostProcessing::PostProcessingManager& GetPostProcessingManager();

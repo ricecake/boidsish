@@ -4682,6 +4682,10 @@ namespace Boidsish {
 		return impl->weather_manager.get();
 	}
 
+	NoiseManager* Visualizer::GetNoiseManager() {
+		return impl->noise_manager.get();
+	}
+
 	MoodManager* Visualizer::GetMoodManager() {
 		return impl->mood_manager.get();
 	}

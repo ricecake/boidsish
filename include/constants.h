@@ -20,6 +20,7 @@ namespace Boidsish {
 				NoisePhasor = 20,
 				AtmosphereTransmittance = 21,
 				NoiseNca3D = 52,
+				NoiseNca2D = 53,
 				AtmosphereMultiScattering = 22,
 				AtmosphereSkyView = 23,
 				AtmosphereAerialPerspective = 24,
@@ -219,6 +220,10 @@ namespace Boidsish {
 
 			consteval int NoiseNca3D() {
 				return std::to_underlying(Constants::Bindings::Texture::NoiseNca3D);
+			}
+
+			consteval int NoiseNca2D() {
+				return std::to_underlying(Constants::Bindings::Texture::NoiseNca2D);
 			}
 
 			consteval int AtmosphereTransmittance() {

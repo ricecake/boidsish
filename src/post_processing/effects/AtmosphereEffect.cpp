@@ -296,6 +296,7 @@ namespace Boidsish {
 					Constants::TextureUnit::NoiseBlue(),
 					Constants::TextureUnit::NoiseExtra(),
 					Constants::TextureUnit::NoiseNca3D(),
+					Constants::TextureUnit::NoiseNca2D(),
 					Constants::TextureUnit::CloudWeatherBake()
 				});
 

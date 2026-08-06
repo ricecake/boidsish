@@ -18,6 +18,7 @@ namespace Boidsish {
 		GLuint extra_noise;
 		GLuint phasor;
 		GLuint nca_3d;
+		GLuint nca_2d;
 	};
 
 	class NoiseManager: public IManager {
@@ -40,6 +41,8 @@ namespace Boidsish {
 
 		GLuint GetNca3DTexture() const { return nca_3d_texture_; }
 
+		GLuint GetNca2DTexture() const { return nca_2d_texture_; }
+
 		NoiseTextures GetTextures() const {
 			return {
 				noise_texture_,
@@ -47,7 +50,8 @@ namespace Boidsish {
 				blue_noise_texture_,
 				extra_noise_texture_,
 				phasor_noise_texture_,
-				nca_3d_texture_};
+				nca_3d_texture_,
+				nca_2d_texture_};
 		}
 
 		void Bind(GLuint unit) const;
@@ -55,11 +59,19 @@ namespace Boidsish {
 		void Seed3DNCA();
 		void Update(float time, float dt);
 
+		void Randomize2DWeights();
+		void Seed2DPoint();
+		void Seed2DNoise();
+		void Randomize3DWeights();
+		void Seed3DPoint();
+		void Seed3DNoise();
+
 	private:
 		std::unique_ptr<ComputeShader> compute_shader_;
 		std::unique_ptr<ComputeShader> blue_noise_shader_;
 		std::unique_ptr<ComputeShader> phasor_gen_shader_;
 		std::unique_ptr<ComputeShader> mlp_nca_3d_shader_;
+		std::unique_ptr<ComputeShader> mlp_nca_2d_shader_;
 		GLuint                         noise_texture_ = 0;
 		GLuint                         curl_noise_texture_ = 0;
 		GLuint                         blue_noise_texture_ = 0;
@@ -67,7 +79,10 @@ namespace Boidsish {
 		GLuint                         phasor_noise_texture_ = 0;
 		GLuint                         nca_3d_texture_ = 0;
 		GLuint                         nca_3d_temp_texture_ = 0;
+		GLuint                         nca_2d_texture_ = 0;
+		GLuint                         nca_2d_temp_texture_ = 0;
 		MLPNetwork                     nca_net_;
+		MLPNetwork                     nca_2d_net_;
 		int                            size_ = 64; // 64x64x64
 		int                            blue_noise_size_ = 1024;
 	};
