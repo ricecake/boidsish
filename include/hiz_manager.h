@@ -52,8 +52,6 @@ namespace Boidsish {
 		std::unique_ptr<ComputeShader> generate_shader_;
 		GLuint                         hiz_texture_ = 0;
 		GLuint                         temp_depth_texture_ = 0;
-		GLuint                         temp_fbo_ = 0;
-		GLuint                         src_fbo_ = 0;
 		int                            render_width_ = 0; // Full render resolution (depth buffer size)
 		int                            render_height_ = 0;
 		int                            hiz_width_ = 0; // Hi-Z base resolution (half render res)
