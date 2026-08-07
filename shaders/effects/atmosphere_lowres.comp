@@ -460,8 +460,8 @@ localAmbientVisibility /= max(totalWeight, 0.001);
 				CloudWeather shadow_weather_c = computeCloudWeather(sp_c, props, currentLOD);
 				CloudLayer shadow_layer_c = computeCloudLayer(shadow_weather_c, props);
 				CloudDensityResult shadowRes_c = calculateCloudDensityMinimal(sp_c, shadow_weather_c, shadow_layer_c, props);
-				opticalDepthToLight += shadowRes_c.density * current_dt * (rgbExtinction * cloudShadowOpticalDepthMultiplier);
-				emissiveGlow += shadowRes_c.emissivity;// * exp(-opticalDepthToLight);
+				opticalDepthToLight += max(vec3(0.00), shadowRes_c.density) * current_dt * (rgbExtinction * cloudShadowOpticalDepthMultiplier);
+				emissiveGlow += shadowRes_c.emissivity * exp(-opticalDepthToLight);
 				// localAmbientVisibility += exp(-(stepLength * (1.0-pow(3*pow(L.y, 2)-1.0, 2)/4)));
 				current_t += current_dt; // Move the ray forward
 				current_dt *= 2.0;
@@ -753,8 +753,8 @@ void main() {
 		vec3 prevCheapDensity = vec3(0.0);
 
 		vec3 probePos = viewPos + rayDir * max(0.0, t);
-		vec3 skySH;
-		vec3 horizonSH;
+		vec3 skySH     = evalSHIrradianceSpatial(probePos, vec3(0.0, 1.0, 0.0));
+		vec3 horizonSH = evalSHIrradianceSpatial(probePos, normalize(vec3(primaryLightDir.x, 0.15, primaryLightDir.z)));
 		vec3 groundSH;
 
 		CloudWeather weather;
@@ -777,8 +777,6 @@ void main() {
 			if (i == 0 || abs(t - lastWeatherT) >= weatherUpdateInterval) {
 				weather = computeCloudWeather(p, props, currentLod);
 				lastWeatherT = t;
-				skySH     = evalSHIrradianceSpatial(probePos, vec3(0.0, 1.0, 0.0));
-				horizonSH = evalSHIrradianceSpatial(probePos, normalize(vec3(primaryLightDir.x, 0.15, primaryLightDir.z)));
 				groundSH  = evalSHIrradianceSpatial(probePos, vec3(0.0, -1.0, 0.0));
 			}
 

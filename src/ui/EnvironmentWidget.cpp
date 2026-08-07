@@ -597,7 +597,7 @@ namespace Boidsish {
 										"cloud_powder_scale",
 										atmosphere_effect->GetCloudPowderScale()
 									);
-									if (ImGui::SliderFloat("Powder Scale", &p_scale, 0.0f, 1.0f)) {
+									if (ImGui::SliderFloat("Powder Scale", &p_scale, 0.0f, 10.0f)) {
 										atmosphere_effect->SetCloudPowderScale(p_scale);
 										cfg.SetFloat("cloud_powder_scale", p_scale);
 										changed_atm = true;
@@ -606,7 +606,7 @@ namespace Boidsish {
 										"cloud_powder_multiplier",
 										atmosphere_effect->GetCloudPowderMultiplier()
 									);
-									if (ImGui::SliderFloat("Powder Multiplier", &p_mult, 0.0f, 5.0f)) {
+									if (ImGui::SliderFloat("Powder Multiplier", &p_mult, 0.0f, 100.0f)) {
 										atmosphere_effect->SetCloudPowderMultiplier(p_mult);
 										cfg.SetFloat("cloud_powder_multiplier", p_mult);
 										changed_atm = true;
@@ -625,7 +625,7 @@ namespace Boidsish {
 										"cloud_shadow_optical_depth_multiplier",
 										atmosphere_effect->GetCloudShadowOpticalDepthMultiplier()
 									);
-									if (ImGui::SliderFloat("Shadow Optical Depth Mult", &s_opt, 0.0f, 2.0f)) {
+									if (ImGui::SliderFloat("Shadow Optical Depth Mult", &s_opt, 0.0f, 10.0f)) {
 										atmosphere_effect->SetCloudShadowOpticalDepthMultiplier(s_opt);
 										cfg.SetFloat("cloud_shadow_optical_depth_multiplier", s_opt);
 										changed_atm = true;

@@ -595,7 +595,7 @@ CloudSpotDetails calculateCloudDensityExpV10(
 	float baseNoise = getCloud3DSDF(p_advected, weather, layer, props.worldScale);
 	float erodeMask = 1.0 - baseNoise;
 
-	if (erodeMask > 0.0) {
+	if (erodeMask > 0.0 && simplified <= 1.0) {
 		baseNoise = remapClamp(baseNoise, volNoise * erodeMask, 1.0, 0.0, 1.0);
 
 		if (baseNoise > 0.0 && simplified < 0.25) {
