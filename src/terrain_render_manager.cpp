@@ -1521,6 +1521,72 @@ namespace Boidsish {
 		if (force_sync) {
 			glFinish();
 		}
+
+		{
+			std::lock_guard<std::recursive_mutex> lock(mutex_);
+			for (const auto& task : tasks) {
+				completed_bakes_.push_back({task.chunk_coord.x, task.chunk_coord.y});
+			}
+		}
+	}
+
+	std::vector<std::pair<int, int>> TerrainRenderManager::PopCompletedBakes() {
+		std::lock_guard<std::recursive_mutex> lock(mutex_);
+		auto completed = std::move(completed_bakes_);
+		completed_bakes_.clear();
+		return completed;
+	}
+
+	bool TerrainRenderManager::GetBakedData(
+		std::pair<int, int> chunk_key,
+		std::vector<float>& out_heightmap,
+		std::vector<uint8_t>& out_biomes,
+		std::vector<float>& out_displacement
+	) {
+		std::lock_guard<std::recursive_mutex> lock(mutex_);
+
+		auto it = chunks_.find(chunk_key);
+		if (it == chunks_.end())
+			return false;
+
+		int slice = it->second.texture_slice;
+		int res = heightmap_resolution_;
+
+		out_heightmap.resize(res * res * 4);
+		out_biomes.resize(res * res * 4);
+		out_displacement.resize(res * res * 4);
+
+		// Download heightmap
+		glGetTextureSubImage(
+			heightmap_texture_,
+			0, 0, 0, slice,
+			res, res, 1,
+			GL_RGBA, GL_FLOAT,
+			static_cast<GLsizei>(out_heightmap.size() * sizeof(float)),
+			out_heightmap.data()
+		);
+
+		// Download biomes
+		glGetTextureSubImage(
+			biome_texture_,
+			0, 0, 0, slice,
+			res, res, 1,
+			GL_RGBA, GL_UNSIGNED_BYTE,
+			static_cast<GLsizei>(out_biomes.size() * sizeof(uint8_t)),
+			out_biomes.data()
+		);
+
+		// Download displacement
+		glGetTextureSubImage(
+			displacement_texture_,
+			0, 0, 0, slice,
+			res, res, 1,
+			GL_RGBA, GL_FLOAT,
+			static_cast<GLsizei>(out_displacement.size() * sizeof(float)),
+			out_displacement.data()
+		);
+
+		return true;
 	}
 
 	size_t TerrainRenderManager::GetRegisteredChunkCount() const {

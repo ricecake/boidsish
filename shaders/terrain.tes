@@ -235,8 +235,10 @@ void main() {
 	vec3 baseNormal;
 	sampleHeightmap(TexCoords, slice, worldOffset, baseFragPos, baseNormal);
 
-	FragPos = mix(baseFragPos, FragPos, detailFade);
-	Normal = mix(baseNormal, Normal, detailFade);
+	if (!isBaked) {
+		FragPos = mix(baseFragPos, FragPos, detailFade);
+		Normal = mix(baseNormal, Normal, detailFade);
+	}
 
 	// Clip plane for reflections
 	gl_ClipDistance[0] = dot(FragPos, clipPlane.xyz) + clipPlane.w;

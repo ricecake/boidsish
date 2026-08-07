@@ -237,6 +237,21 @@ namespace Boidsish {
 		std::vector<DecorChunkData> GetDecorChunkData(float world_scale) const;
 
 		/**
+		 * @brief Pop all completed GPU bakes chunk keys.
+		 */
+		std::vector<std::pair<int, int>> PopCompletedBakes();
+
+		/**
+		 * @brief Retrieve baked heightmap, biomes, and displacement data for a chunk.
+		 */
+		bool GetBakedData(
+			std::pair<int, int> chunk_key,
+			std::vector<float>& out_heightmap,
+			std::vector<uint8_t>& out_biomes,
+			std::vector<float>& out_displacement
+		);
+
+		/**
 		 * @brief Bind terrain data textures and UBO to a shader.
 		 */
 		void BindTerrainData(ShaderBase& shader_base) const;
@@ -443,6 +458,7 @@ namespace Boidsish {
 		int                                      next_slice_ = 0;
 
 		std::vector<BakeTask> bake_queue_;
+		std::vector<std::pair<int, int>> completed_bakes_;
 
 		// Per-frame instance data
 		std::vector<InstanceData> visible_instances_;
