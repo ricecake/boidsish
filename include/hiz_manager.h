@@ -4,6 +4,7 @@
 
 #include <GL/glew.h>
 
+class Shader;
 class ComputeShader;
 
 namespace Boidsish {
@@ -49,9 +50,11 @@ namespace Boidsish {
 		void CreateTexture();
 		void DestroyTexture();
 
+		std::unique_ptr<Shader>        decode_shader_;
 		std::unique_ptr<ComputeShader> generate_shader_;
 		GLuint                         hiz_texture_ = 0;
-		GLuint                         temp_depth_texture_ = 0;
+		GLuint                         temp_fbo_ = 0;
+		GLuint                         empty_vao_ = 0;
 		int                            render_width_ = 0; // Full render resolution (depth buffer size)
 		int                            render_height_ = 0;
 		int                            hiz_width_ = 0; // Hi-Z base resolution (half render res)
