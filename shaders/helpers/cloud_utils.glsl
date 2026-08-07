@@ -1,7 +1,7 @@
 #include "lygia/generative/psrdnoise.glsl"
 #include "lygia/space/uncenter.glsl"
 
-layout(binding = [[CLOUD_SHADOW_MAP_BINDING]]) uniform sampler2D u_cloudShadowTexture;
+layout(binding = [[CLOUD_SHADOW_MAP_BINDING]]) uniform sampler2DArray u_cloudShadowTexture;
 uniform mat4 u_cloudShadowMatrix;
 uniform bool u_useCloudShadowMap;
 
@@ -572,22 +572,32 @@ float getCloud3DSDF(vec3 p, CloudWeather weather, CloudLayer layer, float worldS
 	return macroVolume;
 }
 
+float sampleDeepOpacityMap(vec2 shadowUV, float h, float lod) {
+	float layerIdx = 8.0 * (1.0 - h) - 1.0;
+	if (layerIdx < 0.0) {
+		float t = layerIdx + 1.0;
+		float depth0 = textureLod(u_cloudShadowTexture, vec3(shadowUV, 0.0), lod).r;
+		return mix(0.0, depth0, clamp(t, 0.0, 1.0));
+	} else {
+		float floorIdx = floor(layerIdx);
+		float ceilIdx = ceil(layerIdx);
+		float t = fract(layerIdx);
+		float depthFloor = textureLod(u_cloudShadowTexture, vec3(shadowUV, clamp(floorIdx, 0.0, 7.0)), lod).r;
+		float depthCeil = textureLod(u_cloudShadowTexture, vec3(shadowUV, clamp(ceilIdx, 0.0, 7.0)), lod).r;
+		return mix(depthFloor, depthCeil, t);
+	}
+}
+
 /**
- * Calculate cloud shadow factor for a fragment position.
- * Projects the fragment to the cloud layer and samples the weather map SDF directly.
+ * Calculate cloud shadow factor for a fragment position using the deep opacity map.
  */
 float calculateCloudShadowFactor(vec3 frag_pos, vec3 L, float intensity) {
 	if (intensity <= 0.0) return 1.0;
-	if (L.y <= 0.001) return 1.0;
+	if (!u_useCloudShadowMap) return 1.0;
 
-	// Project to the cloud center height to find the casting XZ position
-	float centerHeight = (cloudAltitude + cloudThickness * 0.5) * worldScale;
-	if (frag_pos.y > centerHeight)
-		return 1.0;
-
-	// Project to the cloud center height along the light ray
-	float t = (centerHeight - frag_pos.y) / L.y;
-	vec3 cloudPos = frag_pos + L * t;
+	// Project fragment pos to light space to get shadowUV
+	vec4 lightSpacePos = u_cloudShadowMatrix * vec4(frag_pos, 1.0);
+	vec2 shadowUV = lightSpacePos.xy * 0.5 + 0.5;
 
 	CloudProperties props;
 	props.altitude = cloudAltitude;
@@ -596,48 +606,34 @@ float calculateCloudShadowFactor(vec3 frag_pos, vec3 L, float intensity) {
 	props.coverage = cloudCoverage;
 	props.worldScale = worldScale;
 
-	CloudWeather weather = computeCloudWeather(cloudPos, props);
+	CloudWeather weather = computeCloudWeather(frag_pos, props);
 	CloudLayer layer = computeCloudLayer(weather, props);
+	float h = getCloudRelativeHeight(frag_pos, weather, layer);
 
-	float d3d = getCloud3DSDF(cloudPos, weather, layer, props.worldScale);
-
-	// Beer's law approximation for the shadow density using 3D cloud coverage/density [0.0, 1.0].
-	// Adjust contrast/sharpness of the cloud shadow edge using cloudShadowStepMultiplier,
-	// and apply a slant factor for longer paths at oblique angles.
-	float slant = 1.0 / max(0.01, L.y);
-	float shadowDepth = (d3d / max(0.1, cloudShadowStepMultiplier)) * slant * 4.0;
-	float shadowTerm = exp(-shadowDepth * 8.0 * cloudShadowOpticalDepthMultiplier);
+	float accumulatedDensity = sampleDeepOpacityMap(shadowUV, h, 0.0);
+	float shadowTerm = exp(-accumulatedDensity * cloudShadowOpticalDepthMultiplier);
 
 	return mix(1.0, shadowTerm, intensity);
 }
 
 float evaluateCloudShadowDensityAtWorldPos(vec2 worldXZ, float time) {
-	CloudProperties props;
-	props.altitude = cloudAltitude;
-	props.thickness = cloudThickness;
-	props.densityBase = cloudDensity;
-	props.coverage = cloudCoverage;
-	props.worldScale = worldScale;
-
-	vec3  basePos = vec3(worldXZ.x, (props.altitude + props.thickness * 0.5) * props.worldScale, worldXZ.y);
-	CloudWeather weather = computeCloudWeather(basePos, props);
-	CloudLayer layer = computeCloudLayer(weather, props);
-
-	float d3d = getCloud3DSDF(basePos, weather, layer, props.worldScale);
-	return d3d * 4.0;
+	if (!u_useCloudShadowMap) return 0.0;
+	vec4 lightSpacePos = u_cloudShadowMatrix * vec4(worldXZ.x, 0.0, worldXZ.y, 1.0);
+	vec2 shadowUV = lightSpacePos.xy * 0.5 + 0.5;
+	// Sample bottom layer (layer 7) for total optical depth through clouds
+	float totalDensity = textureLod(u_cloudShadowTexture, vec3(shadowUV, 7.0), 0.0).r;
+	return totalDensity * cloudShadowOpticalDepthMultiplier;
 }
 
 /**
- * Calculate local ambient occlusion from clouds at a fragment position.
- * Smoothly dampens the sky/ambient factor where clouds are directly above.
+ * Calculate local ambient occlusion from clouds at a fragment position using the deep opacity map.
  */
 float calculateCloudAmbientOcclusion(vec3 frag_pos) {
-	float centerHeight = (cloudAltitude + cloudThickness * 0.5) * worldScale;
-	if (frag_pos.y > centerHeight) {
-		return 1.0;
-	}
+	if (!u_useCloudShadowMap) return 1.0;
 
-	vec3 cloudPos = vec3(frag_pos.x, centerHeight, frag_pos.z);
+	// Project fragment pos to light space to get shadowUV
+	vec4 lightSpacePos = u_cloudShadowMatrix * vec4(frag_pos, 1.0);
+	vec2 shadowUV = lightSpacePos.xy * 0.5 + 0.5;
 
 	CloudProperties props;
 	props.altitude = cloudAltitude;
@@ -646,18 +642,12 @@ float calculateCloudAmbientOcclusion(vec3 frag_pos) {
 	props.coverage = cloudCoverage;
 	props.worldScale = worldScale;
 
-	// Use a high LOD (6.0) to get a low-resolution, smoothed/averaged representation of the cloud coverage above.
-	CloudWeather weather = computeCloudWeather(cloudPos, props, 6.0);
+	CloudWeather weather = computeCloudWeather(frag_pos, props);
 	CloudLayer layer = computeCloudLayer(weather, props);
+	float h = getCloudRelativeHeight(frag_pos, weather, layer);
 
-	float d3d = getCloud3DSDF(cloudPos, weather, layer, props.worldScale);
-
-	// Soft transition/penumbra for local occlusion based on 3D cloud coverage/density [0.0, 1.0].
-	// Multiplied by 0.8 to preserve the 5x softer ratio compared to direct shadows (4.0 / 5.0 = 0.8).
-	float occlusionDepth = (d3d / max(0.1, cloudShadowStepMultiplier)) * 0.8;
-
-	// Dampen the ambient factor based on cloud shadow intensity
-	float cloudAO = exp(-occlusionDepth * 2.0 * cloudShadowOpticalDepthMultiplier);
+	float accumulatedDensity = sampleDeepOpacityMap(shadowUV, h, 6.0); // high LOD for soft ambient occlusion
+	float cloudAO = exp(-accumulatedDensity * cloudShadowOpticalDepthMultiplier * 0.2); // scaled down for softer ambient occlusion
 
 	return mix(1.0, cloudAO, cloudShadowIntensity);
 }
