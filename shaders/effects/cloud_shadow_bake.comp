@@ -1,7 +1,7 @@
 #version 460 core
 layout(local_size_x = 8, local_size_y = 8) in;
 
-layout(binding = 0, r16f) uniform image2D outShadowMap;
+layout(binding = 0, r16f) uniform image2DArray outShadowMap;
 
 #define ATMOSPHERE_HEIGHT_DEFINED
 uniform float u_atmosphereHeight;
@@ -22,7 +22,8 @@ layout(binding = [[CLOUD_WEATHER_MIN_MAX_BINDING]]) uniform sampler2D u_cloudWea
 
 void main() {
 	ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
-	ivec2 size = imageSize(outShadowMap);
+	ivec3 image_size = imageSize(outShadowMap);
+	ivec2 size = image_size.xy;
 	if (pixel.x >= size.x || pixel.y >= size.y)
 		return;
 
@@ -54,11 +55,13 @@ void main() {
 	intersectCloudShell(rayStart, rayDir, worldScale, t_start, t_end);
 
 	if (t_start >= t_end) {
-		imageStore(outShadowMap, pixel, vec4(0.0));
+		for (int k = 0; k < 8; ++k) {
+			imageStore(outShadowMap, ivec3(pixel, k), vec4(0.0));
+		}
 		return;
 	}
 
-	float accumulatedDensity = 0.0;
+	float accumulated[8] = float[](0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
 	float t = t_start;
 	int L = 3;
 	float baseStepSize = 100.0 * worldScale;
@@ -86,11 +89,22 @@ void main() {
 		CloudWeather weather = computeCloudWeather(p, props);
 		CloudLayer layer = computeCloudLayer(weather, props);
 
+		float h = getCloudRelativeHeight(p, weather, layer);
+
 		CloudDensityResult densityRes = calculateCloudDensityMinimal(p, weather, layer, props);
-		accumulatedDensity += max(0.0, densityRes.density.r) * baseStepSize;
+		float stepDensity = max(0.0, densityRes.density.r) * baseStepSize;
+
+		for (int k = 0; k < 8; ++k) {
+			float h_k = 1.0 - (float(k) + 1.0) / 8.0;
+			if (h >= h_k) {
+				accumulated[k] += stepDensity;
+			}
+		}
 
 		t += baseStepSize;
 	}
 
-	imageStore(outShadowMap, pixel, vec4(accumulatedDensity, 0.0, 0.0, 0.0));
+	for (int k = 0; k < 8; ++k) {
+		imageStore(outShadowMap, ivec3(pixel, k), vec4(accumulated[k], 0.0, 0.0, 0.0));
+	}
 }
