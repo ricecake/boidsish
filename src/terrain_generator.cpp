@@ -176,6 +176,77 @@ namespace Boidsish {
 
 		ProcessCompletedChunks();
 
+		// Handle completed GPU bakes and synchronize them back to the CPU
+		if (render_manager_) {
+			auto completed = render_manager_->PopCompletedBakes();
+			for (const auto& key : completed) {
+				std::lock_guard<std::recursive_mutex> lock(chunk_cache_mutex_);
+				auto it = chunk_cache_.find(key);
+				if (it != chunk_cache_.end() && it->second) {
+					auto terrain_chunk = it->second;
+
+					std::vector<float> baked_heightmap;
+					std::vector<uint8_t> baked_biomes;
+					std::vector<float> baked_displacement;
+
+					if (render_manager_->GetBakedData(key, baked_heightmap, baked_biomes, baked_displacement)) {
+						int res = chunk_size_ + 1;
+						for (int z = 0; z < res; ++z) {
+							for (int x = 0; x < res; ++x) {
+								int tex_idx = (z * res + x) * 4;
+								int src_idx = x * res + z; // X-major
+
+								float baked_h = baked_heightmap[tex_idx + 0];
+								glm::vec3 baked_norm(
+									baked_heightmap[tex_idx + 1],
+									baked_heightmap[tex_idx + 2],
+									baked_heightmap[tex_idx + 3]
+								);
+								glm::vec3 baked_disp(
+									baked_displacement[tex_idx + 0],
+									baked_displacement[tex_idx + 1],
+									baked_displacement[tex_idx + 2]
+								);
+
+								// Update CPU-side representation (offsetting terrain to support vertical cliffs/overhangs/deformations)
+								terrain_chunk->vertices[src_idx] = glm::vec3(x * world_scale_, baked_h, z * world_scale_) + baked_disp;
+								terrain_chunk->normals[src_idx] = baked_norm;
+
+								terrain_chunk->biomes[src_idx] = glm::vec2(
+									static_cast<float>(baked_biomes[tex_idx + 0]),
+									static_cast<float>(baked_biomes[tex_idx + 1]) / 255.0f
+								);
+							}
+						}
+
+						// Recalculate aggregate data for the PatchProxy
+						terrain_chunk->proxy.center = std::accumulate(terrain_chunk->vertices.begin(), terrain_chunk->vertices.end(), glm::vec3(0.0f)) / (float)terrain_chunk->vertices.size();
+						terrain_chunk->proxy.totalNormal = std::accumulate(terrain_chunk->normals.begin(), terrain_chunk->normals.end(), glm::vec3(0.0f));
+
+						float max_dist_sq = 0.0f;
+						terrain_chunk->proxy.minY = std::numeric_limits<float>::max();
+						terrain_chunk->proxy.maxY = std::numeric_limits<float>::lowest();
+
+						for (const auto& pos : terrain_chunk->vertices) {
+							if (pos.y < terrain_chunk->proxy.minY) {
+								terrain_chunk->proxy.minY = pos.y;
+								terrain_chunk->proxy.lowestPoint = pos;
+							}
+							if (pos.y > terrain_chunk->proxy.maxY) {
+								terrain_chunk->proxy.maxY = pos.y;
+								terrain_chunk->proxy.highestPoint = pos;
+							}
+							float dist_sq = glm::dot(pos - terrain_chunk->proxy.center, pos - terrain_chunk->proxy.center);
+							if (dist_sq > max_dist_sq) {
+								max_dist_sq = dist_sq;
+							}
+						}
+						terrain_chunk->proxy.radiusSq = max_dist_sq;
+					}
+				}
+			}
+		}
+
 		// 3. Registration Pass: Register chunks with render manager
 		// Priority: 1) In frustum and close, 2) In frustum and far, 3) Out of frustum but close
 		// This prevents pop-in by pre-registering nearby chunks even if not visible yet
