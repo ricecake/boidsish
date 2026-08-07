@@ -36,12 +36,6 @@ namespace Boidsish {
 			return;
 		}
 
-		generate_shader_ = std::make_unique<ComputeShader>("shaders/hiz_generate.comp");
-		if (!generate_shader_->isValid()) {
-			std::cerr << "HiZManager: Failed to compile hiz_generate.comp" << std::endl;
-			return;
-		}
-
 		glGenVertexArrays(1, &empty_vao_);
 
 		CreateTexture();
@@ -95,7 +89,7 @@ namespace Boidsish {
 
 	void HiZManager::GeneratePyramid(GLuint depthTexture) {
 		PROJECT_PROFILE_SCOPE("HiZManager::GeneratePyramid");
-		if (!initialized_ || !generate_shader_->isValid() || !decode_shader_->isValid())
+		if (!initialized_ || !decode_shader_->isValid())
 			return;
 
 		// Save previous viewport and framebuffer binding
@@ -119,20 +113,38 @@ namespace Boidsish {
 		if (blend_enabled) glDisable(GL_BLEND);
 		if (cull_face_enabled) glDisable(GL_CULL_FACE);
 
-		// Render Pass 0: Raster-based full-screen triangle downsampling/decoding into mip level 0
 		glBindFramebuffer(GL_DRAW_FRAMEBUFFER, temp_fbo_);
-		glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, hiz_texture_, 0);
-
-		glViewport(0, 0, hiz_width_, hiz_height_);
-
 		decode_shader_->use();
 
-		glActiveTexture(GL_TEXTURE0);
-		glBindTexture(GL_TEXTURE_2D, depthTexture);
-		decode_shader_->setInt("u_srcDepth", 0);
-
 		glBindVertexArray(empty_vao_);
-		glDrawArrays(GL_TRIANGLES, 0, 3);
+
+		for (int mip = 0; mip < mip_count_; ++mip) {
+			int dst_w = std::max(1, hiz_width_ >> mip);
+			int dst_h = std::max(1, hiz_height_ >> mip);
+
+			// Attach current destination mip level to temp_fbo_
+			glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, hiz_texture_, mip);
+
+			glViewport(0, 0, dst_w, dst_h);
+
+			glActiveTexture(GL_TEXTURE0);
+			if (mip == 0) {
+				glBindTexture(GL_TEXTURE_2D, depthTexture);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+			} else {
+				glBindTexture(GL_TEXTURE_2D, hiz_texture_);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, mip - 1);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, mip - 1);
+			}
+			decode_shader_->setInt("u_srcDepth", 0);
+
+			glDrawArrays(GL_TRIANGLES, 0, 3);
+
+			// Insert memory barrier so the written mip level is visible as a texture source in the next iteration
+			glMemoryBarrier(GL_TEXTURE_FETCH_BARRIER_BIT | GL_FRAMEBUFFER_BARRIER_BIT);
+		}
+
 		glBindVertexArray(0);
 
 		// Restore previous fixed-function pipeline states
@@ -142,48 +154,15 @@ namespace Boidsish {
 		if (blend_enabled) glEnable(GL_BLEND);
 		if (cull_face_enabled) glEnable(GL_CULL_FACE);
 
-		// Restore previous draw framebuffer and viewport
-		glBindFramebuffer(GL_DRAW_FRAMEBUFFER, prev_draw_fbo);
-		glViewport(prev_viewport[0], prev_viewport[1], prev_viewport[2], prev_viewport[3]);
-
-		// Memory barrier to make written mip 0 data visible to subsequent texture fetches
-		glMemoryBarrier(GL_TEXTURE_FETCH_BARRIER_BIT | GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
-
-		generate_shader_->use();
-
-		// Mip >= 1 passes are computed from the previous Hi-Z mip
-		int src_w = hiz_width_;
-		int src_h = hiz_height_;
-
-		for (int mip = 1; mip < mip_count_; ++mip) {
-			int dst_w = std::max(1, hiz_width_ >> mip);
-			int dst_h = std::max(1, hiz_height_ >> mip);
-
-			// Bind source texture
-			glActiveTexture(GL_TEXTURE0);
-			glBindTexture(GL_TEXTURE_2D, hiz_texture_);
-			generate_shader_->setInt("u_srcLevel", mip - 1);
-			generate_shader_->setInt("u_srcDepth", 0);
-
-			// Bind destination mip as image
-			glBindImageTexture(0, hiz_texture_, mip, GL_FALSE, 0, GL_WRITE_ONLY, GL_R32F);
-
-			// Dispatch
-			glDispatchCompute((dst_w + 7) / 8, (dst_h + 7) / 8, 1);
-
-			// Barrier before next mip reads the result
-			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
-
-			// Next iteration's source size is this mip's size
-			src_w = dst_w;
-			src_h = dst_h;
-		}
-
-		// Reset texture parameters if we modified them
+		// Reset texture parameters of hiz_texture_ so subsequent passes can read all levels normally
 		glBindTexture(GL_TEXTURE_2D, hiz_texture_);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, mip_count_ - 1);
 		glBindTexture(GL_TEXTURE_2D, 0);
+
+		// Restore previous draw framebuffer and viewport
+		glBindFramebuffer(GL_DRAW_FRAMEBUFFER, prev_draw_fbo);
+		glViewport(prev_viewport[0], prev_viewport[1], prev_viewport[2], prev_viewport[3]);
 
 		// Ensure all Hi-Z mip data is visible to subsequent texture fetches.
 		glMemoryBarrier(GL_TEXTURE_FETCH_BARRIER_BIT);

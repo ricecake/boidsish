@@ -5,7 +5,6 @@
 #include <GL/glew.h>
 
 class Shader;
-class ComputeShader;
 
 namespace Boidsish {
 
@@ -51,7 +50,6 @@ namespace Boidsish {
 		void DestroyTexture();
 
 		std::unique_ptr<Shader>        decode_shader_;
-		std::unique_ptr<ComputeShader> generate_shader_;
 		GLuint                         hiz_texture_ = 0;
 		GLuint                         temp_fbo_ = 0;
 		GLuint                         empty_vao_ = 0;
