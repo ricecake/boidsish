@@ -3,6 +3,7 @@
 
 #include <memory>
 #include <vector>
+#include <string>
 
 #include "IManager.h"
 #include <GL/glew.h>
@@ -199,6 +200,12 @@ namespace Boidsish {
 		GLuint GetCloudWeatherTexture() const { return _cloudWeatherTexture; }
 		GLuint GetCloudWeatherMinMaxTexture() const { return _cloudWeatherMinMaxTexture; }
 
+		bool IsCustomWeatherMap() const { return _useCustomWeatherMap; }
+		void SetUseCustomWeatherMap(bool b);
+
+		bool ExportCloudWeatherMap(const std::string& filepath);
+		bool ImportCloudWeatherMap(const std::string& filepath);
+
 		/**
 		 * Sample the cloud weather data on the CPU.
 		 * @param worldXZ Position in world space
@@ -262,6 +269,7 @@ namespace Boidsish {
 
 		bool _needsPrecompute = true;
 		bool _needsWeatherBake = true;
+		bool _useCustomWeatherMap = false;
 
 		std::vector<glm::vec4> _cpuWeatherMap;
 		std::vector<glm::vec4> _cpuCloudSeeds;

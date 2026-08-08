@@ -2,6 +2,10 @@
 
 #include <iostream>
 #include <glm/gtc/matrix_transform.hpp>
+#include <algorithm>
+
+#include "stb_image.h"
+#include "stb_image_write.h"
 
 #include "weather_manager.h"
 #include "constants.h"
@@ -230,7 +234,7 @@ namespace Boidsish {
 			_needsPrecompute = false;
 		}
 
-		if (_needsWeatherBake) {
+		if (_needsWeatherBake && !_useCustomWeatherMap) {
 			// Clear seeds buffer before bake
 			glBindBuffer(GL_SHADER_STORAGE_BUFFER, _cloudSeedsBuffer);
 			std::vector<glm::vec4> clearData(100, glm::vec4(0, 0, 100000.0f, 0));
@@ -569,6 +573,140 @@ namespace Boidsish {
 		int y = (int)(v * 2047.0f);
 
 		return _cpuWeatherMap[y * 2048 + x];
+	}
+
+	void AtmosphereManager::SetUseCustomWeatherMap(bool b) {
+		if (_useCustomWeatherMap != b) {
+			_useCustomWeatherMap = b;
+			if (!b) {
+				_needsWeatherBake = true;
+			}
+		}
+	}
+
+	bool AtmosphereManager::ExportCloudWeatherMap(const std::string& filepath) {
+		if (!_cloudWeatherTexture) {
+			std::cerr << "[AtmosphereManager] Cannot export, texture not initialized." << std::endl;
+			return false;
+		}
+
+		std::vector<glm::vec4> floatPixels(2048 * 2048);
+		glBindTexture(GL_TEXTURE_2D, _cloudWeatherTexture);
+		glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_FLOAT, floatPixels.data());
+		glBindTexture(GL_TEXTURE_2D, 0);
+
+		std::vector<unsigned char> bytePixels(2048 * 2048 * 4);
+		for (size_t i = 0; i < floatPixels.size(); ++i) {
+			bytePixels[i * 4 + 0] = static_cast<unsigned char>(glm::clamp(floatPixels[i].r, 0.0f, 1.0f) * 255.0f + 0.5f);
+			bytePixels[i * 4 + 1] = static_cast<unsigned char>(glm::clamp(floatPixels[i].g, 0.0f, 1.0f) * 255.0f + 0.5f);
+			bytePixels[i * 4 + 2] = static_cast<unsigned char>(glm::clamp(floatPixels[i].b, 0.0f, 1.0f) * 255.0f + 0.5f);
+			bytePixels[i * 4 + 3] = static_cast<unsigned char>(glm::clamp(floatPixels[i].a, 0.0f, 1.0f) * 255.0f + 0.5f);
+		}
+
+		int success = stbi_write_png(filepath.c_str(), 2048, 2048, 4, bytePixels.data(), 2048 * 4);
+		if (!success) {
+			std::cerr << "[AtmosphereManager] Failed to write PNG to " << filepath << std::endl;
+			return false;
+		}
+
+		std::cout << "[AtmosphereManager] Successfully exported cloud weather map to " << filepath << std::endl;
+		return true;
+	}
+
+	bool AtmosphereManager::ImportCloudWeatherMap(const std::string& filepath) {
+		int width = 0, height = 0, channels = 0;
+		unsigned char* data = stbi_load(filepath.c_str(), &width, &height, &channels, 4);
+		if (!data) {
+			std::cerr << "[AtmosphereManager] Failed to load image from " << filepath << std::endl;
+			return false;
+		}
+
+		std::vector<glm::vec4> floatPixels(2048 * 2048);
+		for (int y = 0; y < 2048; ++y) {
+			for (int x = 0; x < 2048; ++x) {
+				float srcX = (static_cast<float>(x) + 0.5f) / 2048.0f * static_cast<float>(width);
+				float srcY = (static_cast<float>(y) + 0.5f) / 2048.0f * static_cast<float>(height);
+				int ix = std::clamp(static_cast<int>(srcX), 0, width - 1);
+				int iy = std::clamp(static_cast<int>(srcY), 0, height - 1);
+				int index = (iy * width + ix) * 4;
+				float r = data[index + 0] / 255.0f;
+				float g = data[index + 1] / 255.0f;
+				float b = data[index + 2] / 255.0f;
+				float a = data[index + 3] / 255.0f;
+				floatPixels[y * 2048 + x] = glm::vec4(r, g, b, a);
+			}
+		}
+		stbi_image_free(data);
+
+		// Activate custom weather map mode
+		_useCustomWeatherMap = true;
+
+		// 1. Upload weather map to Level 0 of _cloudWeatherTexture
+		glBindTexture(GL_TEXTURE_2D, _cloudWeatherTexture);
+		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 2048, 2048, GL_RGBA, GL_FLOAT, floatPixels.data());
+		glGenerateMipmap(GL_TEXTURE_2D);
+		glBindTexture(GL_TEXTURE_2D, 0);
+
+		// 2. Generate min-max texture Level 0 from R-channel (dist/coverage)
+		std::vector<glm::vec2> minMaxData(2048 * 2048);
+		for (size_t i = 0; i < floatPixels.size(); ++i) {
+			float f1_dist = floatPixels[i].r;
+			float coverage = 1.0f - f1_dist;
+			float finalCoverage = glm::clamp(coverage, 0.0f, 1.0f);
+			float t = glm::clamp((finalCoverage - 0.05f) / (1.0f - 0.05f), 0.0f, 1.0f);
+			finalCoverage = t * t * (3.0f - 2.0f * t);
+			minMaxData[i] = glm::vec2(finalCoverage, finalCoverage);
+		}
+		glBindTexture(GL_TEXTURE_2D, _cloudWeatherMinMaxTexture);
+		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 2048, 2048, GL_RG, GL_FLOAT, minMaxData.data());
+		glBindTexture(GL_TEXTURE_2D, 0);
+
+		// 3. Rerun the custom min-max mipmap downsampling shader
+		_cloudMipShader->use();
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, _cloudWeatherMinMaxTexture);
+		_cloudMipShader->setInt("u_srcWeatherMinMaxMap", 0);
+
+		for (int dstLevel = 1; dstLevel < 12; ++dstLevel) {
+			int srcLevel = dstLevel - 1;
+			int dstWidth = std::max(1, 2048 >> dstLevel);
+			int dstHeight = std::max(1, 2048 >> dstLevel);
+
+			glBindImageTexture(0, _cloudWeatherMinMaxTexture, dstLevel, GL_FALSE, 0, GL_WRITE_ONLY, GL_RG16F);
+			_cloudMipShader->setInt("u_srcLevel", srcLevel);
+
+			glDispatchCompute((dstWidth + 7) / 8, (dstHeight + 7) / 8, 1);
+			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+		}
+		glBindTexture(GL_TEXTURE_2D, 0);
+
+		// 4. Rerun the 3D volume bake shader
+		_cloudVolumeBakeShader->use();
+		_cloudVolumeBakeShader->setInt("u_cloudWeatherTexture", Constants::TextureUnit::CloudWeatherBake());
+		glBindImageTexture(0, _cloudVolumeTexture, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::CloudWeatherBake());
+		glBindTexture(GL_TEXTURE_2D, _cloudWeatherTexture);
+
+		GpuResourceRegistry::Instance().BindTextures({
+			Constants::TextureUnit::NoiseSimplex(),
+			Constants::TextureUnit::NoiseCurl(),
+			Constants::TextureUnit::NoiseBlue(),
+			Constants::TextureUnit::NoiseExtra(),
+			Constants::TextureUnit::NoisePhasor()
+		});
+		glDispatchCompute(128 / 4, 128 / 4, 128 / 4);
+		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+		// Generate mipmaps for 3D cloud volume
+		glBindTexture(GL_TEXTURE_3D, _cloudVolumeTexture);
+		glGenerateMipmap(GL_TEXTURE_3D);
+		glBindTexture(GL_TEXTURE_3D, 0);
+
+		// 5. Update CPU weather map for CPU/gameplay queries
+		_cpuWeatherMap = floatPixels;
+
+		std::cout << "[AtmosphereManager] Successfully imported custom cloud weather map from " << filepath << std::endl;
+		return true;
 	}
 
 } // namespace Boidsish
