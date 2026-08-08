@@ -610,7 +610,8 @@ float calculateCloudShadowFactor(vec3 frag_pos, vec3 L, float intensity) {
 	CloudLayer layer = computeCloudLayer(weather, props);
 	float h = getCloudRelativeHeight(frag_pos, weather, layer);
 
-	float accumulatedDensity = sampleDeepOpacityMap(shadowUV, h, 0.0);
+	// Scale accumulated density by a physical factor (0.02) to match average extinction values and keep shadows soft/realistic
+	float accumulatedDensity = sampleDeepOpacityMap(shadowUV, h, 0.0) * 0.02;
 	float shadowTerm = exp(-accumulatedDensity * cloudShadowOpticalDepthMultiplier);
 
 	return mix(1.0, shadowTerm, intensity);
@@ -620,8 +621,8 @@ float evaluateCloudShadowDensityAtWorldPos(vec2 worldXZ, float time) {
 	if (!u_useCloudShadowMap) return 0.0;
 	vec4 lightSpacePos = u_cloudShadowMatrix * vec4(worldXZ.x, 0.0, worldXZ.y, 1.0);
 	vec2 shadowUV = lightSpacePos.xy * 0.5 + 0.5;
-	// Sample bottom layer (layer 7) for total optical depth through clouds
-	float totalDensity = textureLod(u_cloudShadowTexture, vec3(shadowUV, 7.0), 0.0).r;
+	// Sample bottom layer (layer 7) for total optical depth through clouds, scaled appropriately
+	float totalDensity = textureLod(u_cloudShadowTexture, vec3(shadowUV, 7.0), 0.0).r * 0.02;
 	return totalDensity * cloudShadowOpticalDepthMultiplier;
 }
 
@@ -646,7 +647,8 @@ float calculateCloudAmbientOcclusion(vec3 frag_pos) {
 	CloudLayer layer = computeCloudLayer(weather, props);
 	float h = getCloudRelativeHeight(frag_pos, weather, layer);
 
-	float accumulatedDensity = sampleDeepOpacityMap(shadowUV, h, 6.0); // high LOD for soft ambient occlusion
+	// Scale accumulated density by a physical factor (0.02) to match average extinction values and keep ambient occlusion soft/realistic
+	float accumulatedDensity = sampleDeepOpacityMap(shadowUV, h, 6.0) * 0.02; // high LOD for soft ambient occlusion
 	float cloudAO = exp(-accumulatedDensity * cloudShadowOpticalDepthMultiplier * 0.2); // scaled down for softer ambient occlusion
 
 	return mix(1.0, cloudAO, cloudShadowIntensity);
