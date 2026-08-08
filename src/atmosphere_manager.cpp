@@ -379,12 +379,8 @@ namespace Boidsish {
 		// Dispatch SkyView
 		_skyViewShader->use();
 		glBindImageTexture(0, _skyViewLUT, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
-		glActiveTexture(GL_TEXTURE1);
-		glBindTexture(GL_TEXTURE_2D, _transmittanceLUT);
-		glActiveTexture(GL_TEXTURE2);
-		glBindTexture(GL_TEXTURE_2D, _multiScatteringLUT);
-		_skyViewShader->setInt("u_transmittanceLUT", 1);
-		_skyViewShader->setInt("u_multiScatteringLUT", 2);
+		BindToShader(*_skyViewShader);
+
 		_skyViewShader->setVec3("u_sunDir", sunDir);
 		_skyViewShader->setVec3("u_sunRadiance", sunColor * sunIntensity);
 		_skyViewShader->setVec3("u_cameraPos", cameraPos);
@@ -420,12 +416,8 @@ namespace Boidsish {
 		// Dispatch AerialPerspective
 		_aerialPerspectiveShader->use();
 		glBindImageTexture(0, _aerialPerspectiveLUT, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA32F);
-		glActiveTexture(GL_TEXTURE1);
-		glBindTexture(GL_TEXTURE_2D, _transmittanceLUT);
-		glActiveTexture(GL_TEXTURE2);
-		glBindTexture(GL_TEXTURE_2D, _multiScatteringLUT);
-		_aerialPerspectiveShader->setInt("u_transmittanceLUT", 1);
-		_aerialPerspectiveShader->setInt("u_multiScatteringLUT", 2);
+		BindToShader(*_aerialPerspectiveShader);
+
 		_aerialPerspectiveShader->setVec3("u_sunDir", sunDir);
 		_aerialPerspectiveShader->setVec3("u_sunRadiance", sunColor * sunIntensity);
 		_aerialPerspectiveShader->setVec3("u_cameraPos", cameraPos);
@@ -448,11 +440,9 @@ namespace Boidsish {
 		_aerialPerspectiveShader->setFloat("u_sunAureoleStrength", _sunAureoleStrength);
 		_aerialPerspectiveShader->setFloat("u_cirrusOpacity", _cirrusOpacity);
 
-
 		_aerialPerspectiveShader->setFloat("hazeDensity", weather.haze_density);
 		_aerialPerspectiveShader->setFloat("hazeHeight", weather.haze_height);
 		_aerialPerspectiveShader->setVec3("hazeColor", weather.haze_color);
-
 
 		glDispatchCompute(32 / 4, 32 / 4, 32 / 4);
 		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
@@ -534,6 +524,7 @@ namespace Boidsish {
 		shader.trySetInt("u_cloudShadowTexture", Constants::TextureUnit::CloudShadowMap());
 		shader.setMat4("u_cloudShadowMatrix", _cloudShadowMatrix);
 		shader.setBool("u_useCloudShadowMap", _enableCloudShadowMap);
+		shader.trySetFloat("u_cloudShadowIntensity", _cloudShadowIntensity);
 		shader.trySetFloat("u_atmosphereHeight", _atmosphereHeight);
 
 		shader.setVec3("u_rayleighScatteringBase", _rayleighScattering);
