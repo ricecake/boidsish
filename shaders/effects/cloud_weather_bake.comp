@@ -47,29 +47,9 @@ float localFbm(vec2 p, float period, out WorleyData2D data) {
 	return val;
 }
 
-
 float posNoise(vec2 p, float scale, float period) {
 	return uncenter(psrdnoise(p * period / scale, vec2(period)));
 }
-
-float schlickGain(float x, float g) {
-	g = clamp(g, 0.001, 0.999);
-	float absDiff = abs(2.0 * x - 1.0);
-	float denominator = g + absDiff * (1.0 - 2.0 * g);
-	return 0.5 + ((x - 0.5) * (1.0 - g)) / denominator;
-}
-
-float schlickBias(float x, float g) {
-	// Guard inputs to safe analytical ranges
-	float xx = clamp(x, 0.0, 1.0);
-	float gg = clamp(g, 1e-4, 1.0 - 1e-4);
-
-	// Convert bias parameter to Schlick formulation factor
-	// Schlick's fast alternative: f(x) = x / ((1/a - 2) * (1.0 - x) + 1.0)
-	float k = (1.0 / gg) - 2.0;
-	return xx / (k * (1.0 - xx) + 1.0);
-}
-
 
 void main() {
 	ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
@@ -82,39 +62,32 @@ void main() {
 
 	vec2 p = uv * mapRange;
 
-	float macro = regionalFbm((p / mapRange), vec2(10.0));
-
 	vec2 warp = vec2(posNoise(p, mapRange, 5), posNoise(p+vec2(123.45,67.89), mapRange, 5)) * 0.25;
 
 	WorleyData2D cellData;
-	float worley = localFbm((p+warp) / cellRange, 2.0, cellData);
+	// Calculate base Worley cell details using the wind/warp coordinates
+	localFbm((p+warp) / cellRange, 2.0, cellData);
 
-	// float micro = clamp(1.0 - (worley), 0.0, 1.0);
+	// 1. Hierarchical Worley sizing:
+	// Use the cell's center cellData.f1 with period 2.0 to get a stable, tiling size factor.
+	// We evaluate a lower-frequency tiling Worley lookup at the cell center.
+	vec2 sizeWorley = worley2d_tiling(cellData.f1, 2.0);
+	float sizeFactor = sizeWorley.y; // Ranges from 0.0 to 1.0
+	float cellSize = mix(0.4, 2.0, sizeFactor);
 
-	float coverage =1.0 - worley;//max(macro * micro, 0);
+	// 2. Scale footprint size: larger cells have smaller scaledDist, expanding their coverage
+	float scaledDist = cellData.f1_dist / cellSize;
+
+	float coverage = 1.0 - scaledDist;
 	float finalCoverage = clamp(coverage, 0.0, 1.0);
-	// finalCoverage = coverage * smoothstep(0.05, 1.0, finalCoverage);
 	finalCoverage = smoothstep(0.05, 1.0, finalCoverage);
 
-	WorleyData2D x;
-	// float height = pow(clamp(localFbm((cellData.f1 + warp)/ mapRange, 10, x), 0.0, 1.0), 2);
+	// Cell-space height/type variation using noise
 	float height = pow(clamp(posNoise((cellData.f1 + warp), mapRange, 10), 0.0, 1.0), 2);
-	// float thickness = clamp(posNoise(p, mapRange, 5), 0.0, (1.0-cellData.f1_dist)*0.125*uCloudThickness/cellRange);
-	float thickness = clamp(posNoise(p, mapRange, 5), 0.0, 1.0);
 	float density = clamp(posNoise(cellData.f1, mapRange, 5), 0.0, finalCoverage);
-	// float density = localFbm(p / mapRange, 5.0);
 
-	imageStore(outWeatherMap, pixel, vec4(cellData.f1_dist, height, thickness, density));
+	// Save to weather map:
+	// R: scaledDist, G: cellSize, B: height, A: density
+	imageStore(outWeatherMap, pixel, vec4(scaledDist, cellSize, height, density));
 	imageStore(outMinMaxMap, pixel, vec4(finalCoverage, finalCoverage, 0.0, 0.0));
-
-	// vec2 cellId = worleyDetails.yz;
-	// float cellID = psrdnoise(cellId, vec2(10.0)) * 0.5 + 0.5;
-	// float distInMeters = micro * cellRange;
-	// float distF1InMeters = worleyDetails.x * cellRange;
-	// // Record seed info if this is the pixel closest to the cell center (f1)
-	// vec2 f1Pixel = (cellId * cellRange) / mapRange * vec2(size);
-	// if (distance(vec2(pixel), f1Pixel) < 1.0) {
-	// 	int cellIdx = int(mod(floor(cellId.y), 10.0) * 10.0 + mod(floor(cellId.x), 10.0));
-	// 	seeds[cellIdx] = vec4(cellId.x * cellRange, cellId.y * cellRange, distInMeters, (finalCoverage > 0.0 ? 1.0 : 0.0));
-	// }
 }

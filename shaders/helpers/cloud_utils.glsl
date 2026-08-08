@@ -441,42 +441,43 @@ float evalSdf(
 	// return d;
 }
 
-CloudWeather loadCloudWeather(vec3 p, CloudProperties props, vec4 tex) {
-	// imageStore(outWeatherMap, pixel, vec4(finalCoverage, distF1InMeters, cellID, density));
+float avoidForbiddenRatio(float sz) {
+	// If cell size is small (< 0.95), we keep the thickness factor small (0.15 to 0.4) so it stays a low-profile cloud (stratus/small cumulus).
+	// If cell size is large (>= 0.95), we allow deep convection with a large thickness factor (1.2 to 2.0).
+	// This bimodal thickness mapping prevents the intermediate range that creates tall, narrow pillars or ice cream cones.
+	if (sz < 0.95) {
+		return mix(0.15, 0.4, sz / 0.95);
+	} else {
+		return mix(1.2, 2.0, (sz - 0.95) / 1.05);
+	}
+}
 
+CloudWeather loadCloudWeather(vec3 p, CloudProperties props, vec4 tex) {
 	CloudWeather weather;
 	weather.p = p;
 
-	float rawCoverage = 1.0-tex.r;
-	// Apply props.coverage as an offset/threshold to the baked coverage map
-	weather.coverage = clamp(clamp(1.0-tex.r, 0, 1) + (props.coverage * 2.0 - 1.0), 0.0, 1.0);
-	weather.heightMap = tex.g;
-	weather.thickness = tex.b;
-	weather.density = tex.a * props.densityBase;
-	if (props.coverage >= 1.0) {
-		weather.coverage = 1.0;
-		// weather.heightMap = 1.0;
-		// weather.thickness = 1.0;
-		weather.density = props.densityBase;
-	}
-	// float thickness = clamp(posNoise(p, mapRange, 5), 0.0, (1.0-cellData.f1_dist)*0.25*uCloudThickness/mapRange);
+	float scaledDist = tex.r;
+	float cellSize = tex.g;
+	float cellNoise = tex.b;
+	float baseDensity = tex.a;
 
-	weather.thickness = clamp(weather.thickness, 0, (2500* rawCoverage)/(props.thickness * weather.thickness));
-	// weather.thickness = schlickBias(weather.coverage, 0.25);
-	// weather.density *= smoothstep(0.0, 0.95, weather.thickness);
+	// Calculate base coverage using the scaled cell distance field, thresholded by global coverage
+	float rawCoverage = clamp(1.0 - scaledDist, 0.0, 1.0);
+	weather.coverage = clamp(rawCoverage + (props.coverage * 2.0 - 1.0), 0.0, 1.0);
+
+	// Map fields cleanly to be used in getCloud3DCoverage:
+	weather.heightMap = cellSize;     // Pass cellSize through heightMap
+	weather.centerDist = scaledDist;  // Pass scaledDist through centerDist
+
+	// Enforce the forbidden ratio avoidance on thickness, and scale by user-defined props.thickness:
+	float thickFactor = avoidForbiddenRatio(cellSize);
+	weather.thickness = thickFactor * props.thickness;
+
+	// Calculate base density
+	weather.density = baseDensity * props.densityBase;
 	weather.density = mix(weather.density, weather.coverage * props.densityBase, 0.4);
 
-	// weather.thickness = mix(weather.thickness, weather.density, 0.8);
-	weather.heightMap = mix(weather.heightMap, 0.0, weather.thickness * 0.9);
-
-	// weather.heightMap = clamp(tex.g, 0.01, 1.0);
-	// weather.thickness = clamp(tex.b, 0.01, 1.0);
-	// weather.density = clamp(tex.a, 0.01, 1.0);
-	// weather.ecentricity = uncenter(psrdnoise(p, vec3(10.0)));
-	// weather.curve = uncenter(psrdnoise(p/2.0, vec3(10.0)));
-	// weather.centerDist = uncenter(psrdnoise(p/3.0, vec3(10.0)));
-
-	weather.sdf = weather.coverage;
+	weather.sdf = weather.coverage; // For backward compatibility with shaders
 
 	return weather;
 }
@@ -556,23 +557,66 @@ float getCloud3DCoverage(vec3 p, CloudWeather weather, CloudLayer layer, float w
 		return 0.0;
 	}
 
-	float type = weather.heightMap;
-	float heightGradient = getDensityHeightGradient(h, type);
+	float cellSize = weather.heightMap; // we stored cellSize in heightMap
+	float coreDist = weather.centerDist; // we stored cell distance in centerDist
+	float baseCoverage = weather.coverage;
 
-	float coverage2D = weather.coverage; //
+	// 1. Organic contours and walls (non-smooth angles, mushrooms, anvils, rolling waves, walls)
+	// We can define a height-dependent shape factor that modifies the coverage threshold.
+	float shapeModifier = 0.0;
 
-	// // Create a flare modifier that increases in the upper half of the cloud.
-	// // Adjust the smoothstep bounds and multiplier to control the flare's altitude and width.
-	// float topFlare = smoothstep(0.4, 0.9, h) * 0.4;
+	// Mushrooms and Anvils:
+	// If it is a large cell (cellSize >= 0.95), it can flare out at the top (anvil/mushroom cap).
+	// An anvil cap expands at h between 0.65 and 0.9.
+	// A mushroom stem is thin at the bottom (h < 0.25) and expands into a cap (h between 0.6 and 0.85).
+	if (cellSize >= 0.95) {
+		// Large storm clouds (anvils / mushrooms)
+		// Let's add an anvil expansion at the top:
+		float anvilExpansion = smoothstep(0.65, 0.85, h) * (1.0 - smoothstep(0.9, 1.0, h)) * 0.45;
+		// Stem thinning at the bottom to avoid blocky cylinders:
+		float stemThinning = (1.0 - smoothstep(0.0, 0.25, h)) * 0.25;
 
-	// // Apply the flare to the 2D coverage, clamping to keep it a valid SDF/mask.
-	// float dynamicCoverage = clamp(coverage2D + topFlare, 0.0, 1.0);
+		shapeModifier += anvilExpansion - stemThinning;
+	} else {
+		// Smaller cells (cumulus / stratus)
+		// Standard puffy cumulus tapering at bottom and top:
+		float cumulusTaper = (1.0 - smoothstep(0.0, 0.2, h)) * 0.15 + smoothstep(0.6, 0.9, h) * 0.35;
+		shapeModifier -= cumulusTaper;
+	}
 
-	// // Replace the static coverage2D with the dynamically flaring one.
-	// float macroVolume = dynamicCoverage * heightGradient; //[cite: 3]
+	// Rolling wave shapes (Kelvin-Helmholtz/billow waves)
+	// Advect the horizontal evaluation coordinates with a sine wave that rolls with height h
+	// and direction of wind.
+	float waveFreq = 0.0005 / max(0.001, worldScale);
+	// Add rolling wave offset to base coverage using sin/cos of position and height
+	float waveOffset = sin(p.x * waveFreq + h * 6.28 + time * 0.5) * cos(p.z * waveFreq + h * 6.28 + time * 0.5) * 0.15;
 
-	float macroVolume = coverage2D * heightGradient;
-	return macroVolume;
+	// Apply shape modifier and wave offset to coverage
+	float modifiedCoverage = clamp(baseCoverage + shapeModifier + waveOffset, 0.0, 1.0);
+
+	// 2. Wizard Hat Density Profile: dense bottoms and cores
+	// "The cloud density should be adjusted to fit with the cloud type, and lean towards dense bottoms and cores, like a wizard hat profile."
+	// Let's model a wizard hat profile for density/coverage:
+	// A core factor: higher density near the cell center (small coreDist)
+	float coreFactor = smoothstep(0.0, 0.8, 1.0 - coreDist);
+
+	// Wizard hat density vertical gradient: very dense at the bottom, tapering exponentially with height, but with a solid core
+	float wizardHatGradient = exp(-h * 1.8) * (1.1 - h);
+
+	// Adjust density gradient based on cloud type (cellSize)
+	float densityProfile;
+	if (cellSize >= 0.95) {
+		// Large storm cells: classic heavy wizard hat with deep dense core
+		densityProfile = mix(wizardHatGradient, 1.0 - h, 0.3) * (0.4 + 0.6 * coreFactor);
+	} else {
+		// Small flat cells: standard flat/thin profile
+		densityProfile = smoothstep(0.0, 0.2, h) * (1.0 - smoothstep(0.7, 1.0, h)) * (0.6 + 0.4 * coreFactor);
+	}
+
+	// Combine to produce the final macro volume
+	float macroVolume = modifiedCoverage * densityProfile;
+
+	return clamp(macroVolume, 0.0, 1.0);
 }
 
 float sampleDeepOpacityMap(vec2 shadowUV, float h, float lod) {
