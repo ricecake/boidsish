@@ -209,6 +209,14 @@ namespace Boidsish {
 
 		const std::vector<glm::vec4>& GetCloudSeeds() const { return _cpuCloudSeeds; }
 
+		void PaintCloud(const glm::vec3& center, float radius, float strength, int type, float lifetime, float time);
+		void UpdatePaintedClouds(float deltaTime, float decayRate);
+		void ClearPaintedClouds();
+
+		void SetPaintDecayRate(float r) { _paintDecayRate = r; }
+		float GetPaintDecayRate() const { return _paintDecayRate; }
+		float GetTime() const { return _lastTime; }
+
 		void SetSunAureoleStrength(float s) { _sunAureoleStrength = s; }
 
 		float GetSunAureoleStrength() const { return _sunAureoleStrength; }
@@ -246,6 +254,9 @@ namespace Boidsish {
 		std::unique_ptr<ComputeShader> _cloudVolumeBakeShader;
 		std::unique_ptr<ComputeShader> _cloudMipShader;
 		std::unique_ptr<ComputeShader> _cloudShadowBakeShader;
+		std::unique_ptr<ComputeShader> _cloudPaintShader;
+		std::unique_ptr<ComputeShader> _cloudUpdateShader;
+		std::unique_ptr<ComputeShader> _cloudCombineShader;
 
 		glm::mat4 _cloudShadowMatrix = glm::mat4(1.0f);
 		glm::mat4 _cloudShadowInvMatrix = glm::mat4(1.0f);
@@ -262,6 +273,8 @@ namespace Boidsish {
 
 		bool _needsPrecompute = true;
 		bool _needsWeatherBake = true;
+		float _paintDecayRate = 0.1f;
+		float _lastTime = 0.0f;
 
 		std::vector<glm::vec4> _cpuWeatherMap;
 		std::vector<glm::vec4> _cpuCloudSeeds;

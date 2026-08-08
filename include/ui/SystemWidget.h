@@ -25,6 +25,14 @@ namespace Boidsish {
 			bool                     m_is_picking_enabled = false;
 			std::optional<glm::vec3> m_last_picked_pos;
 
+			// Cloud Painting state
+			bool  m_is_painting_enabled = false;
+			int   m_paint_mode = 0; // 0 = Add, 1 = Erase
+			float m_brush_radius = 2000.0f;
+			float m_brush_strength = 0.5f;
+			float m_delete_lifetime = 30.0f;
+			float m_decay_rate = 0.1f;
+
 			// Scene management state (migrated from SceneWidget)
 			char m_saveName[128];
 			bool m_saveCamera;
