@@ -15,7 +15,8 @@ struct CloudProperties {
 
 struct CloudWeather {
 	vec3 p;
-	float sdf;        // Signed Distance Field (world space)
+	float sdf;// LEGACY NAME
+	float coverage;
 	float density;
 	float heightMap;  // Altitude variety
 	float thickness;  // Thickness variety
@@ -448,12 +449,12 @@ CloudWeather loadCloudWeather(vec3 p, CloudProperties props, vec4 tex) {
 
 	float rawCoverage = 1.0-tex.r;
 	// Apply props.coverage as an offset/threshold to the baked coverage map
-	weather.sdf = clamp(clamp(1.0-tex.r, 0, 1) + (props.coverage * 2.0 - 1.0), 0.0, 1.0);
+	weather.coverage = clamp(clamp(1.0-tex.r, 0, 1) + (props.coverage * 2.0 - 1.0), 0.0, 1.0);
 	weather.heightMap = tex.g;
 	weather.thickness = tex.b;
 	weather.density = tex.a * props.densityBase;
 	if (props.coverage >= 1.0) {
-		weather.sdf = 1.0;
+		weather.coverage = 1.0;
 		// weather.heightMap = 1.0;
 		// weather.thickness = 1.0;
 		weather.density = props.densityBase;
@@ -461,9 +462,9 @@ CloudWeather loadCloudWeather(vec3 p, CloudProperties props, vec4 tex) {
 	// float thickness = clamp(posNoise(p, mapRange, 5), 0.0, (1.0-cellData.f1_dist)*0.25*uCloudThickness/mapRange);
 
 	weather.thickness = clamp(weather.thickness, 0, (2500* rawCoverage)/(props.thickness * weather.thickness));
-	// weather.thickness = schlickBias(weather.sdf, 0.25);
+	// weather.thickness = schlickBias(weather.coverage, 0.25);
 	// weather.density *= smoothstep(0.0, 0.95, weather.thickness);
-	weather.density = mix(weather.density, weather.sdf * props.densityBase, 0.4);
+	weather.density = mix(weather.density, weather.coverage * props.densityBase, 0.4);
 
 	// weather.thickness = mix(weather.thickness, weather.density, 0.8);
 	weather.heightMap = mix(weather.heightMap, 0.0, weather.thickness * 0.9);
@@ -474,6 +475,8 @@ CloudWeather loadCloudWeather(vec3 p, CloudProperties props, vec4 tex) {
 	// weather.ecentricity = uncenter(psrdnoise(p, vec3(10.0)));
 	// weather.curve = uncenter(psrdnoise(p/2.0, vec3(10.0)));
 	// weather.centerDist = uncenter(psrdnoise(p/3.0, vec3(10.0)));
+
+	weather.sdf = weather.coverage;
 
 	return weather;
 }
@@ -545,7 +548,7 @@ float calculatePuffyCloudSDF(vec3 p, CloudWeather weather, CloudLayer layer, flo
 
 
 
-float getCloud3DSDF(vec3 p, CloudWeather weather, CloudLayer layer, float worldScale) {
+float getCloud3DCoverage(vec3 p, CloudWeather weather, CloudLayer layer, float worldScale) {
 	float localFloor, actualThickness;
 	float h = getCloudRelativeHeight(p, weather, layer, localFloor, actualThickness);
 
@@ -556,7 +559,7 @@ float getCloud3DSDF(vec3 p, CloudWeather weather, CloudLayer layer, float worldS
 	float type = weather.heightMap;
 	float heightGradient = getDensityHeightGradient(h, type);
 
-	float coverage2D = weather.sdf; //
+	float coverage2D = weather.coverage; //
 
 	// // Create a flare modifier that increases in the upper half of the cloud.
 	// // Adjust the smoothstep bounds and multiplier to control the flare's altitude and width.

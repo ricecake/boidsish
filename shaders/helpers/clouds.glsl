@@ -517,7 +517,7 @@ CloudSpotDetails calculateCloudDensityExpV9(
 	vec3 advect = time * advectSpeed;
 	vec3 p_advected = p + advect;
 
-	float baseNoise = getCloud3DSDF(p_advected, weather, layer, props.worldScale);
+	float baseNoise = getCloud3DCoverage(p_advected, weather, layer, props.worldScale);
 
 	// // weather.sdf now holds your 0.0 - 1.0 coverage probability from the bake shader
 	// float coverage2D = weather.sdf;
@@ -528,7 +528,7 @@ CloudSpotDetails calculateCloudDensityExpV9(
 	// // float density = weather.density * smoothstep(0, weather.ecentricity, h) * (1.0 - smoothstep(weather.ecentricity, 1.0, h));
 
 	// float baseNoise = 1.0;
-	// // float baseSdf = getCloud3DSDF(p_advected, weather, layer, props.worldScale);
+	// // float baseSdf = getCloud3DCoverage(p_advected, weather, layer, props.worldScale);
 	// baseNoise = macroVolume;
 
 	// baseNoise *= heightGradient;
@@ -592,7 +592,7 @@ CloudSpotDetails calculateCloudDensityExpV10(
 	vec3 advect = time * advectSpeed;
 	vec3 p_advected = p + advect;
 
-	float baseNoise = getCloud3DSDF(p_advected, weather, layer, props.worldScale);
+	float baseNoise = getCloud3DCoverage(p_advected, weather, layer, props.worldScale);
 	float erodeMask = 1.0 - baseNoise;
 
 	if (erodeMask > 0.0 && simplified <= 1.0) {
