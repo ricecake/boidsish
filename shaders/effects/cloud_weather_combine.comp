@@ -1,0 +1,25 @@
+#version 460 core
+layout(local_size_x = 16, local_size_y = 16) in;
+
+layout(binding = 0) uniform sampler2DArray u_cloudWeatherTexture;
+layout(binding = 1, rg16f) uniform image2D outMinMaxMap;
+
+void main() {
+	ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+	ivec2 size = imageSize(outMinMaxMap).xy;
+	if (pixel.x >= size.x || pixel.y >= size.y) return;
+
+	vec2 uv = (vec2(pixel) + 0.5) / vec2(size);
+
+	vec4 base = textureLod(u_cloudWeatherTexture, vec3(uv, 0.0), 0.0);
+	vec4 add = textureLod(u_cloudWeatherTexture, vec3(uv, 1.0), 0.0);
+	vec4 sub = textureLod(u_cloudWeatherTexture, vec3(uv, 2.0), 0.0);
+
+	float base_cov = 1.0 - base.r;
+	float sub_cov = sub.r * sub.a;
+	float add_cov = add.r;
+
+	float final_cov = clamp(max(0.0, base_cov - sub_cov) + add_cov, 0.0, 1.0);
+
+	imageStore(outMinMaxMap, pixel, vec4(final_cov, final_cov, 0.0, 0.0));
+}

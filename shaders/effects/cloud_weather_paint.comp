@@ -1,0 +1,65 @@
+#version 460 core
+
+layout(local_size_x = 16, local_size_y = 16) in;
+
+layout(binding = 0, rgba16f) uniform image2DArray outWeatherMap;
+
+uniform vec2 uBrushUV;
+uniform float uBrushRadiusMeters;
+uniform float uBrushStrength;
+uniform int uPaintType; // 0 = Add, 1 = Erase
+uniform float uLifetime; // Initial lifetime for erase map
+uniform float uTime;
+uniform float uWorldScale;
+
+#include "../helpers/fast_noise.glsl"
+
+float regionalFbm(vec2 p, vec2 period) {
+	float val = 0.0;
+	float amp = 0.5;
+	float freq = 1.0;
+	for (int i = 0; i < 3; i++) {
+		val += amp * (0.5 + 0.5 * psrdnoise(p * freq, period * freq));
+		amp *= 0.5;
+		freq *= 2.0;
+	}
+	return val;
+}
+
+void main() {
+	ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+	ivec2 size = imageSize(outWeatherMap).xy;
+	if (pixel.x >= size.x || pixel.y >= size.y) return;
+
+	vec2 uv = (vec2(pixel) + 0.5) / vec2(size);
+	float mapRange = 100000.0 * uWorldScale;
+
+	// Calculate toroidal distance
+	vec2 diff = abs(uv - uBrushUV);
+	diff = min(diff, 1.0 - diff);
+	float dist = length(diff * mapRange);
+
+	if (dist < uBrushRadiusMeters) {
+		float falloff = smoothstep(uBrushRadiusMeters, uBrushRadiusMeters * 0.5, dist);
+		float strength = uBrushStrength * falloff;
+
+		if (uPaintType == 0) {
+			// Additive painting (Layer 1)
+			// Generate organic/random cloud density using Fbm
+			float noise = regionalFbm(uv * 15.0 + vec2(uTime * 0.1), vec2(10.0));
+			float coverage = noise * strength;
+
+			// Store coverage in R and density in A, height/thickness in G/B (e.g. 0.5 default)
+			vec4 existing = imageLoad(outWeatherMap, ivec3(pixel, 1));
+			vec4 newVal = clamp(existing + vec4(coverage, coverage * 0.5, coverage * 0.5, coverage), 0.0, 1.0);
+			imageStore(outWeatherMap, ivec3(pixel, 1), newVal);
+		} else {
+			// Subtractive painting / Erasing (Layer 2)
+			vec4 existing = imageLoad(outWeatherMap, ivec3(pixel, 2));
+			vec4 newVal;
+			newVal.rgb = clamp(existing.rgb + vec3(strength), 0.0, 1.0);
+			newVal.a = clamp(max(existing.a, uLifetime), 0.0, 1.0); // Set/accumulate lifetime
+			imageStore(outWeatherMap, ivec3(pixel, 2), newVal);
+		}
+	}
+}
