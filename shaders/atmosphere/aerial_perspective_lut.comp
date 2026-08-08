@@ -16,10 +16,11 @@ uniform float u_time;
 
 uniform float u_colorVarianceScale;
 uniform float u_colorVarianceStrength;
+uniform float u_cloudShadowIntensity;
 
 #define ATMOSPHERE_PRECOMPUTE
 #include "../helpers/fast_noise.glsl"
-#include "../lighting.glsl"
+#include "../helpers/lighting.glsl"
 #include "common.glsl"
 
 vec3 getTransmittance(float r, float mu) {
@@ -92,9 +93,14 @@ void main() {
 		vec3 effectiveAmbient = max(ambient_light, baseAmbientRadiance);
 		vec3 ambientScattering = effectiveAmbient * (s.rayleigh + s.mie) * u_ambientScatScale;
 
+		// Integrate cloud shadowing and ambient occlusion
+		float cloudShadow = calculateCloudShadowFactor(worldPos, u_sunDir, u_cloudShadowIntensity);
+		float cloudAO = calculateCloudAmbientOcclusion(worldPos);
+
 		// Multi-scattering is proportional to sun radiance
-		vec3 inScattered = (phase * u_sunRadiance * Ts + multiScat * u_sunRadiance * (s.rayleigh + s.mie) +
-		                    ambientScattering) *
+		vec3 inScattered = (phase * u_sunRadiance * Ts * cloudShadow +
+		                    multiScat * u_sunRadiance * (s.rayleigh + s.mie) +
+		                    ambientScattering * cloudAO) *
 			dt;
 		L += T * inScattered;
 		T *= exp(-s.extinction * dt);
