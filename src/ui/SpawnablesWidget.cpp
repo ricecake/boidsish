@@ -8,16 +8,8 @@ namespace Boidsish {
 	namespace UI {
 
 		SpawnablesWidget::SpawnablesWidget(Visualizer& visualizer) : m_visualizer(visualizer) {
-			// Wrap visualizer in a shared_ptr with a no-op deleter
-			auto vis_ptr = std::shared_ptr<Visualizer>(&m_visualizer, [](Visualizer*) {});
-			m_entity_handler = std::make_unique<EntityHandler>(m_visualizer.GetThreadPool(), vis_ptr);
-
-			// Register update handler with visualizer to run entity updates every frame
-			m_visualizer.AddUpdateHandler([this](float dt, float total_time) {
-				if (m_entity_handler) {
-					(*m_entity_handler)(total_time);
-				}
-			});
+			// Lazy initialize m_entity_handler and update handler in Draw()
+			// because the Visualizer is still under construction at this point.
 		}
 
 		SpawnablesWidget::~SpawnablesWidget() {
@@ -31,6 +23,8 @@ namespace Boidsish {
 		}
 
 		void SpawnablesWidget::SpawnBalloon() {
+			if (!m_entity_handler) return;
+
 			int id = m_entity_handler->AddEntity<HotAirBalloonEntity>(
 				m_settings.x,
 				m_settings.y,
@@ -51,28 +45,39 @@ namespace Boidsish {
 		void SpawnablesWidget::Draw() {
 			if (!m_show) return;
 
+			if (m_first_draw) {
+				// Wrap visualizer in a shared_ptr with a no-op deleter
+				auto vis_ptr = std::shared_ptr<Visualizer>(&m_visualizer, [](Visualizer*) {});
+				m_entity_handler = std::make_unique<EntityHandler>(m_visualizer.GetThreadPool(), vis_ptr);
+
+				// Register update handler with visualizer to run entity updates every frame
+				m_visualizer.AddUpdateHandler([this](float dt, float total_time) {
+					if (m_entity_handler) {
+						(*m_entity_handler)(total_time);
+					}
+				});
+
+				// Position in front of the camera on first open
+				auto cam_pos = m_visualizer.GetCamera().pos();
+				auto cam_front = m_visualizer.GetCamera().front();
+				glm::vec3 spawn_pos = cam_pos + cam_front * 30.0f;
+
+				// Make sure we're above terrain
+				float terrain_h = 0.0f;
+				auto [h, norm] = m_visualizer.GetTerrainPropertiesAtPoint(spawn_pos.x, spawn_pos.z);
+				terrain_h = h;
+				spawn_pos.y = std::max(spawn_pos.y, terrain_h + 10.0f);
+
+				m_settings.x = spawn_pos.x;
+				m_settings.y = spawn_pos.y;
+				m_settings.z = spawn_pos.z;
+				m_first_draw = false;
+			}
+
 			ImGui::SetNextWindowPos(ImVec2(20, 300), ImGuiCond_FirstUseEver);
 			ImGui::SetNextWindowSize(ImVec2(350, 400), ImGuiCond_FirstUseEver);
 
 			if (ImGui::Begin("Spawnables", &m_show)) {
-				if (m_first_draw) {
-					// Position in front of the camera on first open
-					auto cam_pos = m_visualizer.GetCamera().pos();
-					auto cam_front = m_visualizer.GetCamera().front();
-					glm::vec3 spawn_pos = cam_pos + cam_front * 30.0f;
-
-					// Make sure we're above terrain
-					float terrain_h = 0.0f;
-					auto [h, norm] = m_visualizer.GetTerrainPropertiesAtPoint(spawn_pos.x, spawn_pos.z);
-					terrain_h = h;
-					spawn_pos.y = std::max(spawn_pos.y, terrain_h + 10.0f);
-
-					m_settings.x = spawn_pos.x;
-					m_settings.y = spawn_pos.y;
-					m_settings.z = spawn_pos.z;
-					m_first_draw = false;
-				}
-
 				if (ImGui::CollapsingHeader("Spawn Hot Air Balloon", ImGuiTreeNodeFlags_DefaultOpen)) {
 					ImGui::InputText("Instance Name", m_settings.name, sizeof(m_settings.name));
 
@@ -116,7 +121,7 @@ namespace Boidsish {
 				ImGui::Spacing();
 
 				if (ImGui::CollapsingHeader("Active Spawned Instances", ImGuiTreeNodeFlags_DefaultOpen)) {
-					auto balloons = m_entity_handler->GetEntitiesByType<HotAirBalloonEntity>();
+					auto balloons = m_entity_handler ? m_entity_handler->GetEntitiesByType<HotAirBalloonEntity>() : std::vector<std::shared_ptr<HotAirBalloonEntity>>();
 					if (balloons.empty()) {
 						ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "No active instances spawned.");
 					} else {
