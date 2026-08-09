@@ -119,6 +119,11 @@ namespace Boidsish {
 	}
 
 	void MLPNetwork::SyncToGPU() {
+		// If OpenGL function pointers are not loaded (e.g. in headless unit tests), skip GPU sync.
+		if (glGenBuffers == nullptr) {
+			return;
+		}
+
 		if (ssbo_id_ == 0) {
 			glGenBuffers(1, &ssbo_id_);
 		}
@@ -197,6 +202,46 @@ namespace Boidsish {
 
 		glActiveTexture(GL_TEXTURE0 + unit);
 		glBindTexture(GL_TEXTURE_2D, tex_id);
+	}
+
+	std::vector<float> MLPNetwork::EvaluateCPU(const std::vector<float>& input) const {
+		if (metadata_.num_layers <= 0) return {};
+
+		std::vector<float> current = input;
+
+		for (int l = 0; l < metadata_.num_layers; ++l) {
+			const auto& layer = metadata_.layers[l];
+			std::vector<float> next(layer.output_size, 0.0f);
+
+			for (int j = 0; j < layer.output_size; ++j) {
+				float sum = params_[layer.bias_offset + j];
+				for (int i = 0; i < layer.input_size; ++i) {
+					// Index logic matching shaders/helpers/mlp.glsl
+					sum += current[i] * params_[layer.weight_offset + j * layer.input_size + i];
+				}
+
+				// Activation mapping:
+				// 0 = Identity, 1 = ReLU, 2 = LeakyReLU, 3 = Sigmoid, 4 = Tanh, 5 = Sine
+				float act_val = sum;
+				int act = layer.activation;
+				if (act == 1) { // ReLU
+					act_val = std::max(0.0f, sum);
+				} else if (act == 2) { // LeakyReLU
+					act_val = (sum > 0.0f) ? sum : 0.2f * sum;
+				} else if (act == 3) { // Sigmoid
+					act_val = 1.0f / (1.0f + std::exp(-sum));
+				} else if (act == 4) { // Tanh
+					act_val = std::tanh(sum);
+				} else if (act == 5) { // Sine (SIREN Style)
+					act_val = std::sin(sum);
+				}
+
+				next[j] = act_val;
+			}
+			current = next;
+		}
+
+		return current;
 	}
 
 } // namespace Boidsish

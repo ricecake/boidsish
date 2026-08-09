@@ -22,6 +22,8 @@ namespace Boidsish {
 
 		// Initialize LBM Simulator (scaled to typical terrain range)
 		lbm_simulator_ = std::make_unique<WeatherLbmSimulator>(128, 128);
+		use_nca_weather_ = ConfigManager::GetInstance().GetAppSettingBool("use_nca_weather", false);
+		lbm_simulator_->SetNcaWeatherEnabled(use_nca_weather_);
 
 		// Initialize default paces for various attributes from centralized constants
 		SetPace(WeatherAttribute::SunIntensity, WeatherConstants::SunIntensity.pace);
@@ -200,6 +202,14 @@ namespace Boidsish {
 	void WeatherManager::SetMacroSimEnabled(bool enabled) {
 		macro_sim_enabled_ = enabled;
 		ConfigManager::GetInstance().SetBool("weather_macro_sim_enabled", enabled);
+	}
+
+	void WeatherManager::SetNcaWeatherEnabled(bool enabled) {
+		use_nca_weather_ = enabled;
+		ConfigManager::GetInstance().SetBool("use_nca_weather", enabled);
+		if (lbm_simulator_) {
+			lbm_simulator_->SetNcaWeatherEnabled(enabled);
+		}
 	}
 
 	void WeatherManager::SetHoldThreshold(float threshold) {
@@ -1460,6 +1470,7 @@ namespace Boidsish {
 		time_scale_ = cfg.GetAppSettingFloat("weather_time_scale", 0.005f);
 		spatial_scale_ = cfg.GetAppSettingFloat("weather_spatial_scale", 0.001f);
 		macro_sim_enabled_ = cfg.GetAppSettingBool("weather_macro_sim_enabled", true);
+		use_nca_weather_ = cfg.GetAppSettingBool("use_nca_weather", false);
 		strict_enforcement_ = cfg.GetAppSettingBool("weather_strict_enforcement", false);
 		nudge_stiffness_ = cfg.GetAppSettingFloat("weather_nudge_stiffness", 1.0f);
 		hold_threshold_ = cfg.GetAppSettingFloat("weather_hold_threshold", 0.05f);
@@ -1467,6 +1478,7 @@ namespace Boidsish {
 
 		if (lbm_simulator_) {
 			lbm_simulator_->SetTau(cfg.GetAppSettingFloat("weather_sim_tau", 0.8f));
+			lbm_simulator_->SetNcaWeatherEnabled(use_nca_weather_);
 
 			WeatherLbmSimulator::Constraints c;
 			auto                             loadConstraint = [&](const std::string&                       prefix,

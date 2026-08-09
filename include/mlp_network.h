@@ -69,6 +69,9 @@ namespace Boidsish {
 		const std::vector<float>& GetParams() const { return params_; }
 		std::vector<float>& GetParamsMutable() { return params_; }
 
+		// Evaluates the MLP on the CPU with a given input vector and returns the output vector.
+		std::vector<float> EvaluateCPU(const std::vector<float>& input) const;
+
 	private:
 		MLPMetadata        metadata_;
 		std::vector<float> params_;

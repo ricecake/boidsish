@@ -228,6 +228,9 @@ namespace Boidsish {
 		bool IsMacroSimEnabled() const { return macro_sim_enabled_; }
 		void SetMacroSimEnabled(bool enabled);
 
+		bool IsNcaWeatherEnabled() const { return use_nca_weather_; }
+		void SetNcaWeatherEnabled(bool enabled);
+
 		float GetSimTau() const { return lbm_simulator_ ? lbm_simulator_->GetTau() : 0.8f; }
 		void  SetSimTau(float tau);
 
@@ -364,6 +367,7 @@ namespace Boidsish {
 
 		bool  enabled_ = true;
 		bool  macro_sim_enabled_ = true;
+		bool  use_nca_weather_ = false;
 		bool  strict_enforcement_ = false;
 		float nudge_stiffness_ = 1.0f;
 		float time_scale_ = 0.005f;    // Low frequency over time
