@@ -1,0 +1,22 @@
+#version 460 core
+
+layout(local_size_x = 16, local_size_y = 16) in;
+
+layout(binding = 0, rgba16f) uniform image2DArray outWeatherMap;
+
+uniform float uDeltaTime;
+uniform float uDecayRate;
+
+void main() {
+	ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+	ivec2 size = imageSize(outWeatherMap).xy;
+	if (pixel.x >= size.x || pixel.y >= size.y) return;
+
+	// Decay Layer 1 (paint layer)
+	vec4 paint = imageLoad(outWeatherMap, ivec3(pixel, 1));
+	paint.a = max(0.0, paint.a - uDeltaTime * uDecayRate);
+	if (paint.a <= 0.0) {
+		paint.rgb = vec3(0.0); // Fully clear paint if lifetime ends
+	}
+	imageStore(outWeatherMap, ivec3(pixel, 1), paint);
+}

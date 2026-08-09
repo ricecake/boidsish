@@ -25,7 +25,7 @@ uniform sampler2D u_phasorTexture;
 
 #ifndef CLOUD_WEATHER_TEXTURE_DEFINED
 #define CLOUD_WEATHER_TEXTURE_DEFINED
-layout(binding = [[CLOUD_WEATHER_BINDING]]) uniform sampler2D u_cloudWeatherTexture;
+layout(binding = [[CLOUD_WEATHER_BINDING]]) uniform sampler2DArray u_cloudWeatherTexture;
 #endif
 
 // Tile-aware 2D hash

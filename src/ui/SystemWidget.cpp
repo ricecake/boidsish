@@ -9,6 +9,9 @@
 #include "UIConfigManager.h"
 #include "graphics.h"
 #include "imgui.h"
+#include "service_locator.h"
+#include "atmosphere_manager.h"
+#include "terrain_generator_interface.h"
 #include "post_processing/PostProcessingManager.h"
 #include "post_processing/effects/AtmosphereEffect.h"
 #include "post_processing/effects/BloomEffect.h"
@@ -405,6 +408,66 @@ namespace Boidsish {
 							m_last_picked_pos->y,
 							m_last_picked_pos->z
 						);
+					}
+
+					ImGui::Separator();
+					ImGui::Text("Cloud Painting:");
+					ImGui::Checkbox("Enable Cloud Painting", &m_is_painting_enabled);
+
+					if (m_is_painting_enabled) {
+						ImGui::RadioButton("Paint Additive Clouds", &m_paint_mode, 0);
+						ImGui::SameLine();
+						ImGui::RadioButton("Erase Clouds", &m_paint_mode, 1);
+
+						ImGui::SliderFloat("Brush Radius (m)", &m_brush_radius, 500.0f, 15000.0f, "%.0f m");
+						ImGui::SliderFloat("Brush Strength", &m_brush_strength, 0.01f, 1.0f, "%.2f");
+						ImGui::SliderFloat("Delete Lifetime (s)", &m_delete_lifetime, 1.0f, 120.0f, "%.1f s");
+
+						ImGui::Text("Hold left-click and drag on screen to paint/erase.");
+
+						// Handle painting mouse inputs
+						if (ImGui::IsMouseDown(0) && !ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow)) {
+							ImGuiIO& io = ImGui::GetIO();
+							auto pick_pos = m_visualizer.ScreenToWorld(io.MousePos.x, io.MousePos.y);
+
+							// If terrain raycast fails (e.g. looking at sky), raycast against the cloud altitude plane
+							if (!pick_pos) {
+								Ray ray = m_visualizer.GetRayFromScreen(io.MousePos.x, io.MousePos.y);
+								auto atm_mgr = ServiceLocator::Instance().Get<AtmosphereManager>();
+								auto terrain = m_visualizer.GetTerrain();
+								float world_scale = terrain ? terrain->GetWorldScale() : 1.0f;
+								float cloudAlt = atm_mgr ? atm_mgr->GetCloudAltitude() * world_scale : 1000.0f;
+								if (std::abs(ray.direction.y) > 0.001f) {
+									float t = (cloudAlt - ray.origin.y) / ray.direction.y;
+									if (t > 0.0f) {
+										pick_pos = ray.origin + ray.direction * t;
+									}
+								}
+							}
+
+							if (pick_pos) {
+								auto atm_mgr = ServiceLocator::Instance().Get<AtmosphereManager>();
+								if (atm_mgr) {
+									float decayRate = 1.0f / m_delete_lifetime;
+									atm_mgr->SetPaintDecayRate(decayRate);
+									atm_mgr->PaintCloud(
+										*pick_pos,
+										m_brush_radius,
+										m_brush_strength,
+										m_paint_mode,
+										1.0f, // Initial lifetime (alpha stores 0 to 1 normalized)
+										atm_mgr->GetTime()
+									);
+								}
+							}
+						}
+					}
+
+					if (ImGui::Button("Clear Painted Clouds")) {
+						auto atm_mgr = ServiceLocator::Instance().Get<AtmosphereManager>();
+						if (atm_mgr) {
+							atm_mgr->ClearPaintedClouds();
+						}
 					}
 				}
 
