@@ -15,6 +15,7 @@
 #include "ui/SystemWidget.h"
 #include "ui/ProfilerWidget.h"
 #include "ui/hud_widget.h"
+#include "ui/SpawnablesWidget.h"
 
 #include "imgui.h"
 
