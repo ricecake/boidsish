@@ -233,6 +233,7 @@ namespace Boidsish {
 	private:
 		void CreateTextures();
 		void CreateShaders();
+		void UpdateGPUWeatherPipeline();
 
 		GLuint _transmittanceLUT = 0;
 		GLuint _multiScatteringLUT = 0;
@@ -275,6 +276,8 @@ namespace Boidsish {
 		bool _needsWeatherBake = true;
 		float _paintDecayRate = 0.1f;
 		float _lastTime = 0.0f;
+		bool  _hasActiveDeformations = false;
+		float _deformationTimer = 0.0f;
 
 		std::vector<glm::vec4> _cpuWeatherMap;
 		std::vector<glm::vec4> _cpuCloudSeeds;

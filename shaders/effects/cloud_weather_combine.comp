@@ -1,23 +1,45 @@
 #version 460 core
 layout(local_size_x = 16, local_size_y = 16) in;
 
-layout(binding = 0) uniform sampler2DArray u_cloudWeatherTexture;
+layout(binding = 0, rgba16f) uniform image2DArray outWeatherMap;
 layout(binding = 1, rg16f) uniform image2D outMinMaxMap;
 
+uniform ivec2 uMinPixel;
+uniform ivec2 uMaxPixel;
+
 void main() {
-	ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
-	ivec2 size = imageSize(outMinMaxMap).xy;
-	if (pixel.x >= size.x || pixel.y >= size.y) return;
+	ivec2 offset = ivec2(gl_GlobalInvocationID.xy);
+	ivec2 local_size = uMaxPixel - uMinPixel;
+	if (offset.x > local_size.x || offset.y > local_size.y) return;
 
-	vec2 uv = (vec2(pixel) + 0.5) / vec2(size);
+	ivec2 pixel = (uMinPixel + offset) % 2048;
+	if (pixel.x < 0) pixel.x += 2048;
+	if (pixel.y < 0) pixel.y += 2048;
 
-	vec4 base = textureLod(u_cloudWeatherTexture, vec3(uv, 0.0), 0.0);
-	vec4 paint = textureLod(u_cloudWeatherTexture, vec3(uv, 1.0), 0.0);
+	vec4 base = imageLoad(outWeatherMap, ivec3(pixel, 2)); // Reference (original)
+	vec4 paint = imageLoad(outWeatherMap, ivec3(pixel, 1)); // Change (paint/erase)
 
 	float base_cov = 1.0 - base.r;
+	float base_h = base.g;
+	float base_t = base.b;
+	float base_d = base.a;
+
 	float paint_cov = paint.r * paint.a;
+	float paint_h = paint.g * paint.a;
+	float paint_t = paint.b * paint.a;
+	float paint_d = paint_cov; // use coverage as density modifier
 
 	float final_cov = clamp(base_cov + paint_cov, 0.0, 1.0);
+	float final_h = clamp(base_h + paint_h, 0.0, 1.0);
+	float final_t = clamp(base_t + paint_t, 0.0, 1.0);
+	float final_d = clamp(base_d + paint_d, 0.0, 1.0);
 
-	imageStore(outMinMaxMap, pixel, vec4(final_cov, final_cov, 0.0, 0.0));
+	vec4 merged;
+	merged.r = 1.0 - final_cov;
+	merged.g = final_h;
+	merged.b = final_t;
+	merged.a = final_d;
+
+	imageStore(outWeatherMap, ivec3(pixel, 0), merged); // Write to Live merged Slice 0!
+	imageStore(outMinMaxMap, pixel, vec4(final_cov, final_cov, 0.0, 0.0)); // Write to min-max texture level 0!
 }

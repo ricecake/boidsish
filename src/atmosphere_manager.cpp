@@ -81,10 +81,10 @@ namespace Boidsish {
 		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
 
-		// Cloud Weather Map: 2048x2048x2 RGBA16F (2D Texture Array, 2 layers)
+		// Cloud Weather Map: 2048x2048x3 RGBA16F (2D Texture Array, 3 layers: Slice 0=Live, Slice 1=Change, Slice 2=Ref)
 		glGenTextures(1, &_cloudWeatherTexture);
 		glBindTexture(GL_TEXTURE_2D_ARRAY, _cloudWeatherTexture);
-		glTexStorage3D(GL_TEXTURE_2D_ARRAY, 6, GL_RGBA16F, 2048, 2048, 2);
+		glTexStorage3D(GL_TEXTURE_2D_ARRAY, 6, GL_RGBA16F, 2048, 2048, 3);
 		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_REPEAT);
@@ -175,9 +175,6 @@ namespace Boidsish {
 		_cloudUpdateShader = std::make_unique<ComputeShader>("shaders/effects/cloud_weather_update.comp");
 		_cloudCombineShader = std::make_unique<ComputeShader>("shaders/effects/cloud_weather_combine.comp");
 
-		_cloudCombineShader->use();
-		_cloudCombineShader->setInt("u_cloudWeatherTexture", Constants::TextureUnit::CloudWeatherBake());
-
 		setup_shader(*_transmittanceShader);
 		setup_shader(*_multiScatteringShader);
 		setup_shader(*_skyViewShader);
@@ -186,6 +183,9 @@ namespace Boidsish {
 		setup_shader(*_cloudBakeShader);
 		setup_shader(*_cloudVolumeBakeShader);
 		setup_shader(*_cloudShadowBakeShader);
+		setup_shader(*_cloudPaintShader);
+		setup_shader(*_cloudUpdateShader);
+		setup_shader(*_cloudCombineShader);
 	}
 
 	void AtmosphereManager::Update(
@@ -247,23 +247,28 @@ namespace Boidsish {
 			std::vector<glm::vec4> clearData(100, glm::vec4(0, 0, 100000.0f, 0));
 			glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, 100 * sizeof(glm::vec4), clearData.data());
 
-			// 1. Dispatch 2D weather map bake and initial min-max density map
+			// 1. Dispatch 2D weather map bake and initial min-max density map (written to Layer 2/Reference)
 			_cloudBakeShader->use();
 			_cloudBakeShader->setFloat("uCloudCoverage", _cloudCoverage);
 			_cloudBakeShader->setFloat("uCloudThickness", _cloudThickness);
 			_cloudBakeShader->setFloat("uWorldScale", worldScale);
-			glBindImageTexture(0, _cloudWeatherTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+			glBindImageTexture(0, _cloudWeatherTexture, 0, GL_FALSE, 2, GL_WRITE_ONLY, GL_RGBA16F);
 			glBindImageTexture(1, _cloudWeatherMinMaxTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RG16F);
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::CloudSeeds(), _cloudSeedsBuffer);
 			GpuResourceRegistry::Instance().BindTextures({Constants::TextureUnit::NoiseExtra()});
 			glDispatchCompute(2048 / 16, 2048 / 16, 1);
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
 
-			// Combine layers and write the true combined coverage to Level 0 of _cloudWeatherMinMaxTexture
+			// Combine layers and write the true combined coverage to Level 0 of _cloudWeatherMinMaxTexture, and merged weather to Slice 0
 			if (_cloudCombineShader && _cloudCombineShader->isValid()) {
 				_cloudCombineShader->use();
+				_cloudCombineShader->setIVec2("uMinPixel", 0, 0);
+				_cloudCombineShader->setIVec2("uMaxPixel", 2047, 2047);
+
 				glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::CloudWeatherBake());
 				glBindTexture(GL_TEXTURE_2D_ARRAY, _cloudWeatherTexture);
+
+				glBindImageTexture(0, _cloudWeatherTexture, 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA16F);
 				glBindImageTexture(1, _cloudWeatherMinMaxTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RG16F);
 				glDispatchCompute(2048 / 16, 2048 / 16, 1);
 				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
@@ -316,7 +321,7 @@ namespace Boidsish {
 			glBindTexture(GL_TEXTURE_3D, 0);
 
 			// CPU Readback for weather queries
-			_cpuWeatherMap.resize(2048 * 2048 * 2);
+			_cpuWeatherMap.resize(2048 * 2048 * 3);
 			glBindTexture(GL_TEXTURE_2D_ARRAY, _cloudWeatherTexture);
 			glGetTexImage(GL_TEXTURE_2D_ARRAY, 0, GL_RGBA, GL_FLOAT, _cpuWeatherMap.data());
 
@@ -594,37 +599,11 @@ namespace Boidsish {
 		y = std::clamp(y, 0, 2047);
 
 		size_t idx0 = y * 2048 + x;
-		size_t idx1 = 2048 * 2048 + idx0;
-
-		if (idx1 >= _cpuWeatherMap.size()) {
+		if (idx0 >= _cpuWeatherMap.size()) {
 			return _cpuWeatherMap[idx0 % _cpuWeatherMap.size()];
 		}
 
-		glm::vec4 base = _cpuWeatherMap[idx0];
-		glm::vec4 paint = _cpuWeatherMap[idx1];
-
-		float base_cov = 1.0f - base.x;
-		float base_h = base.y;
-		float base_t = base.z;
-		float base_d = base.w;
-
-		float paint_cov = paint.x * paint.w;
-		float paint_h = paint.y * paint.w;
-		float paint_t = paint.z * paint.w;
-		float paint_d = paint_cov; // use coverage as density modifier
-
-		float final_cov = std::clamp(base_cov + paint_cov, 0.0f, 1.0f);
-		float final_h = std::clamp(base_h + paint_h, 0.0f, 1.0f);
-		float final_t = std::clamp(base_t + paint_t, 0.0f, 1.0f);
-		float final_d = std::clamp(base_d + paint_d, 0.0f, 1.0f);
-
-		glm::vec4 combined;
-		combined.x = 1.0f - final_cov;
-		combined.y = final_h;
-		combined.z = final_t;
-		combined.w = final_d;
-
-		return combined;
+		return _cpuWeatherMap[idx0];
 	}
 
 	void AtmosphereManager::PaintCloud(const glm::vec3& center, float radius, float strength, int type, float lifetime, float time) {
@@ -643,6 +622,18 @@ namespace Boidsish {
 
 		u = fmod(u, 1.0f); if (u < 0.0f) u += 1.0f;
 		v = fmod(v, 1.0f); if (v < 0.0f) v += 1.0f;
+
+		// Compute bounding box around the brush in pixel space
+		float radiusUV = radius / mapRange;
+		glm::vec2 minUV = glm::vec2(u - radiusUV, v - radiusUV);
+		glm::vec2 maxUV = glm::vec2(u + radiusUV, v + radiusUV);
+
+		glm::ivec2 minPixel = glm::ivec2(std::floor(minUV.x * 2048.0f), std::floor(minUV.y * 2048.0f));
+		glm::ivec2 maxPixel = glm::ivec2(std::ceil(maxUV.x * 2048.0f), std::ceil(maxUV.y * 2048.0f));
+
+		glm::ivec2 localSize = maxPixel - minPixel + glm::ivec2(1);
+		int dispatchX = (localSize.x + 15) / 16;
+		int dispatchY = (localSize.y + 15) / 16;
 
 		_cloudPaintShader->use();
 		_cloudPaintShader->setVec2("uBrushUV", glm::vec2(u, v));
@@ -666,10 +657,36 @@ namespace Boidsish {
 		glDispatchCompute(2048 / 16, 2048 / 16, 1);
 		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
 
-		_needsWeatherBake = true;
+		// Run combine shader ONLY on the bounding box!
+		if (_cloudCombineShader && _cloudCombineShader->isValid()) {
+			_cloudCombineShader->use();
+			_cloudCombineShader->setIVec2("uMinPixel", minPixel.x, minPixel.y);
+			_cloudCombineShader->setIVec2("uMaxPixel", maxPixel.x, maxPixel.y);
+
+			glBindImageTexture(0, _cloudWeatherTexture, 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA16F);
+			glBindImageTexture(1, _cloudWeatherMinMaxTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RG16F);
+
+			glDispatchCompute(dispatchX, dispatchY, 1);
+			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+		}
+
+		_hasActiveDeformations = true;
+		_deformationTimer = 1.0f / _paintDecayRate;
+
+		// Instantly update on the GPU with NO CPU stalls
+		UpdateGPUWeatherPipeline();
 	}
 
 	void AtmosphereManager::UpdatePaintedClouds(float deltaTime, float decayRate) {
+		if (!_hasActiveDeformations) return;
+
+		_deformationTimer -= deltaTime;
+		if (_deformationTimer <= 0.0f) {
+			_hasActiveDeformations = false;
+			ClearPaintedClouds();
+			return;
+		}
+
 		if (!_cloudUpdateShader || !_cloudUpdateShader->isValid() || !_cloudWeatherTexture) return;
 
 		_cloudUpdateShader->use();
@@ -681,17 +698,98 @@ namespace Boidsish {
 		glDispatchCompute(2048 / 16, 2048 / 16, 1);
 		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
 
-		_needsWeatherBake = true;
+		// Combine layers globally (decay update is global)
+		if (_cloudCombineShader && _cloudCombineShader->isValid()) {
+			_cloudCombineShader->use();
+			_cloudCombineShader->setIVec2("uMinPixel", 0, 0);
+			_cloudCombineShader->setIVec2("uMaxPixel", 2047, 2047);
+
+			glBindImageTexture(0, _cloudWeatherTexture, 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA16F);
+			glBindImageTexture(1, _cloudWeatherMinMaxTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RG16F);
+
+			glDispatchCompute(2048 / 16, 2048 / 16, 1);
+			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+		}
+
+		// Instantly update on the GPU with NO CPU stalls
+		UpdateGPUWeatherPipeline();
 	}
 
 	void AtmosphereManager::ClearPaintedClouds() {
 		if (!_cloudWeatherTexture) return;
 
 		float clearColor[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
-		// Clear level 0 of Layer 1 (paint layer)
+		// Clear level 0 of Layer 1 (change layer)
 		glClearTexSubImage(_cloudWeatherTexture, 0, 0, 0, 1, 2048, 2048, 1, GL_RGBA, GL_FLOAT, clearColor);
 
-		_needsWeatherBake = true;
+		// Run global combine to copy Layer 2 back to Layer 0
+		if (_cloudCombineShader && _cloudCombineShader->isValid()) {
+			_cloudCombineShader->use();
+			_cloudCombineShader->setIVec2("uMinPixel", 0, 0);
+			_cloudCombineShader->setIVec2("uMaxPixel", 2047, 2047);
+
+			glBindImageTexture(0, _cloudWeatherTexture, 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA16F);
+			glBindImageTexture(1, _cloudWeatherMinMaxTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RG16F);
+
+			glDispatchCompute(2048 / 16, 2048 / 16, 1);
+			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+		}
+
+		_hasActiveDeformations = false;
+		_deformationTimer = 0.0f;
+
+		// Instantly update on the GPU with NO CPU stalls
+		UpdateGPUWeatherPipeline();
+	}
+
+	void AtmosphereManager::UpdateGPUWeatherPipeline() {
+		if (!_cloudMipShader || !_cloudVolumeBakeShader || !_cloudWeatherTexture) return;
+
+		// 1. Generate mipmaps for the 2D weather texture array
+		glBindTexture(GL_TEXTURE_2D_ARRAY, _cloudWeatherTexture);
+		glGenerateMipmap(GL_TEXTURE_2D_ARRAY);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
+
+		// 2. Generate mipmaps for the weather min-max density map using custom min-max-downsampling compute shader
+		_cloudMipShader->use();
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, _cloudWeatherMinMaxTexture);
+		_cloudMipShader->setInt("u_srcWeatherMinMaxMap", 0);
+
+		for (int dstLevel = 1; dstLevel < 12; ++dstLevel) {
+			int srcLevel = dstLevel - 1;
+			int dstWidth = std::max(1, 2048 >> dstLevel);
+			int dstHeight = std::max(1, 2048 >> dstLevel);
+
+			glBindImageTexture(0, _cloudWeatherMinMaxTexture, dstLevel, GL_FALSE, 0, GL_WRITE_ONLY, GL_RG16F);
+			_cloudMipShader->setInt("u_srcLevel", srcLevel);
+
+			glDispatchCompute((dstWidth + 7) / 8, (dstHeight + 7) / 8, 1);
+			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+		}
+		glBindTexture(GL_TEXTURE_2D, 0);
+
+		// 3. Dispatch 3D volume bake, sampling the baked weather map
+		_cloudVolumeBakeShader->use();
+		_cloudVolumeBakeShader->setInt("u_cloudWeatherTexture", Constants::TextureUnit::CloudWeatherBake());
+		glBindImageTexture(0, _cloudVolumeTexture, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::CloudWeatherBake());
+		glBindTexture(GL_TEXTURE_2D_ARRAY, _cloudWeatherTexture);
+
+		GpuResourceRegistry::Instance().BindTextures({
+			Constants::TextureUnit::NoiseSimplex(),
+			Constants::TextureUnit::NoiseCurl(),
+			Constants::TextureUnit::NoiseBlue(),
+			Constants::TextureUnit::NoiseExtra(),
+			Constants::TextureUnit::NoisePhasor()
+		});
+		glDispatchCompute(128 / 4, 128 / 4, 128 / 4);
+		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+		// Generate mipmaps for the weather map
+		glBindTexture(GL_TEXTURE_3D, _cloudVolumeTexture);
+		glGenerateMipmap(GL_TEXTURE_3D);
+		glBindTexture(GL_TEXTURE_3D, 0);
 	}
 
 } // namespace Boidsish

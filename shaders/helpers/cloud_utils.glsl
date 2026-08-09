@@ -490,30 +490,8 @@ CloudWeather computeCloudWeather(vec3 p, CloudProperties props, float lod) {
 	vec2 uv = p_advected.xz / (100000.0 * props.worldScale);
 	float uv_coord = clamp(lod * 6.0, 0.0, 6.0);
 
-	vec4 base = textureLod(u_cloudWeatherTexture, vec3(uv, 0.0), uv_coord);
-	vec4 paint = textureLod(u_cloudWeatherTexture, vec3(uv, 1.0), uv_coord);
-
-	float base_cov = 1.0 - base.r;
-	float base_h = base.g;
-	float base_t = base.b;
-	float base_d = base.a;
-
-	float paint_cov = paint.r * paint.a;
-	float paint_h = paint.g * paint.a;
-	float paint_t = paint.b * paint.a;
-	float paint_d = paint_cov; // use coverage as density modifier
-
-	float final_cov = clamp(base_cov + paint_cov, 0.0, 1.0);
-	float final_h = clamp(base_h + paint_h, 0.0, 1.0);
-	float final_t = clamp(base_t + paint_t, 0.0, 1.0);
-	float final_d = clamp(base_d + paint_d, 0.0, 1.0);
-
-	vec4 bakedWeather;
-	bakedWeather.r = 1.0 - final_cov;
-	bakedWeather.g = final_h;
-	bakedWeather.b = final_t;
-	bakedWeather.a = final_d;
-
+	// Simply read Slice 0 directly (no on-the-fly blending!)
+	vec4 bakedWeather = textureLod(u_cloudWeatherTexture, vec3(uv, 0.0), uv_coord);
 	return loadCloudWeather(p, props, bakedWeather);
 }
 
