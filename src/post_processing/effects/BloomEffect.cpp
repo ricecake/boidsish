@@ -4,6 +4,7 @@
 #include "shader.h"
 #include "constants.h"
 #include <glm/gtc/matrix_transform.hpp>
+#include <algorithm>
 
 namespace Boidsish {
 	namespace PostProcessing {
@@ -23,6 +24,9 @@ namespace Boidsish {
 			}
 			if (_exposureSsbo) {
 				glDeleteBuffers(1, &_exposureSsbo);
+			}
+			if (_cdlGradingSsbo) {
+				glDeleteBuffers(1, &_cdlGradingSsbo);
 			}
 		}
 
@@ -292,6 +296,8 @@ namespace Boidsish {
 				_ltmFuseComputeShader->setInt("depthTexture", 3);
 				_ltmFuseComputeShader->setInt("startMip", _numMips - 1);
 				_ltmFuseComputeShader->setInt("endMip", 0);
+				_ltmFuseComputeShader->setMat4("invView", glm::inverse(viewMatrix));
+				_ltmFuseComputeShader->setMat4("invProjection", glm::inverse(projectionMatrix));
 
 				glActiveTexture(GL_TEXTURE0);
 				glBindTexture(GL_TEXTURE_2D, _ltmExpTexture);
@@ -343,6 +349,55 @@ namespace Boidsish {
 				glDisable(GL_BLEND);
 			}
 
+			// Gather and sort CDL grading entries
+			std::vector<CdlGradingEntry> sortedEntries;
+
+			CdlGradingEntry mainEntry;
+			mainEntry.cdlSlope = _sceneSettings.cdlSlope;
+			mainEntry.cdlOffset = _sceneSettings.cdlOffset;
+			mainEntry.cdlPower = _sceneSettings.cdlPower;
+			mainEntry.cdlSaturation = _sceneSettings.cdlSaturation;
+			mainEntry.isMain = true;
+			mainEntry.priority = 0;
+			mainEntry.enabled = true;
+			sortedEntries.push_back(mainEntry);
+
+			for (const auto& entry : _additionalCdlEntries) {
+				if (entry.enabled) {
+					sortedEntries.push_back(entry);
+				}
+			}
+
+			std::stable_sort(sortedEntries.begin(), sortedEntries.end(), [](const CdlGradingEntry& a, const CdlGradingEntry& b) {
+				return a.priority < b.priority;
+			});
+
+			std::vector<GpuCdlEntry> gpuEntries;
+			gpuEntries.reserve(sortedEntries.size());
+			for (const auto& entry : sortedEntries) {
+				GpuCdlEntry gpu;
+				gpu.cdlSlope = glm::vec4(entry.cdlSlope, 0.0f);
+				gpu.cdlOffset = glm::vec4(entry.cdlOffset, 0.0f);
+				gpu.cdlPower = glm::vec4(entry.cdlPower, 0.0f);
+				gpu.cdlSaturation = entry.cdlSaturation;
+				gpu.targetDepth = entry.targetDepth;
+				gpu.falloffWidth = entry.falloffWidth;
+				gpu.falloffRate = entry.falloffRate;
+				gpu.priority = entry.priority;
+				gpu.enabled = entry.enabled ? 1 : 0;
+				gpu.isMain = entry.isMain ? 1 : 0;
+				gpu.padding = 0.0f;
+				gpuEntries.push_back(gpu);
+			}
+
+			if (_cdlGradingSsbo == 0) {
+				glGenBuffers(1, &_cdlGradingSsbo);
+			}
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, _cdlGradingSsbo);
+			glBufferData(GL_SHADER_STORAGE_BUFFER, gpuEntries.size() * sizeof(GpuCdlEntry), gpuEntries.data(), GL_DYNAMIC_DRAW);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::CdlGradingLayers(), _cdlGradingSsbo);
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+
 			// 4. Final composite with scene and integrated tonemapping
 			glBindFramebuffer(GL_FRAMEBUFFER, originalFBO);
 			glViewport(originalViewport[0], originalViewport[1], originalViewport[2], originalViewport[3]);
@@ -360,6 +415,7 @@ namespace Boidsish {
 			_compositeShader->setMat4("invProjection", glm::inverse(projectionMatrix));
 			_compositeShader->setFloat("gamma", _sceneSettings.gamma);
 			_compositeShader->setBool("uBloomEnabled", _bloomEnabled);
+			_compositeShader->setInt("uNumCdlEntries", (int)gpuEntries.size());
 
 
 			_compositeShader->setFloat("farPlane", Constants::Project::Camera::DefaultFarPlane());

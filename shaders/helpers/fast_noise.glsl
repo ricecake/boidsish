@@ -28,6 +28,40 @@ uniform sampler2D u_phasorTexture;
 layout(binding = [[CLOUD_WEATHER_BINDING]]) uniform sampler2D u_cloudWeatherTexture;
 #endif
 
+// Tile-aware 2D hash
+vec2 hash2Tile(vec2 p, vec2 period)
+{
+	if (period.x > 0.0) p = mod(p, period);
+	p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
+	return fract(sin(p) * 43758.5453123);
+}
+
+vec3 hash3Tile(vec3 p, vec3 period)
+{
+	if (period.x > 0.0) p = mod(p, period);
+    p = vec3( dot(p, vec3(127.1, 311.7, 74.7)),
+            dot(p, vec3(269.5, 183.3, 246.1)),
+            dot(p, vec3(113.5, 271.9, 124.6)));
+    return -1. + 2. * fract(sin(p) * 43758.5453123);
+}
+
+// Tile-aware hash returning a single float
+float hash12Tile(vec2 p, vec2 period) {
+	if (period.x > 0.0) p = mod(p, period);
+	vec3 p3 = fract(vec3(p.xyx) * .1031);
+	p3 += dot(p3, p3.yzx + 33.33);
+	return fract((p3.x + p3.y) * p3.z);
+}
+
+float hash13Tile(in vec3 pos, in vec3 period) {
+	if (period.x > 0.0) pos = mod(pos, period);
+    pos  = fract(pos * vec3(.1031, .1030, .0973));
+    pos += dot(pos, pos.zyx + 31.32);
+    return fract((pos.x + pos.y) * pos.z);
+}
+
+
+
 // Helper to compute curl noise using finite differences with tiling simplex noise
 vec3 computeCurl(vec3 p, float period) {
 	float e = 0.01;
@@ -77,31 +111,105 @@ float simplex3d_tiling(vec3 p, float period) {
 	return psrdnoise(p, vec3(period), 0.0, g);
 }
 
-// Tiling 3D Worley/Cellular noise
-vec2 worley3d_tiling(vec3 p, float period) {
+struct WorleyData3D {
+	float f1_dist;
+	float f2_dist;
+	vec3 f1;
+	vec3 f2;
+	vec3 p;
+};
+
+// Tiling 2D Worley/Cellular noise
+WorleyData3D worley3d_tiling_id(vec3 p, vec3 period) {
 	vec3  i = floor(p);
 	vec3  f = fract(p);
 	float minDistSq = 1.0;
+	float f2DistSq = 1.0;
 	vec3 cellId = vec3(0.0);
+	vec3 f2CellId = vec3(0.0);
 	for (int z = -1; z <= 1; z++) {
 		for (int y = -1; y <= 1; y++) {
 			for (int x = -1; x <= 1; x++) {
 				vec3 neighbor = vec3(float(x), float(y), float(z));
 				// Wrap neighbor + i to [0, period-1]
 				vec3 wrapped_coord = mod(i + neighbor, period);
-				vec3 point = hash33(wrapped_coord);
+				vec3 point = hash3Tile(wrapped_coord, period);
 				vec3 diff = neighbor + point - f;
 				float d = dot(diff, diff);
 				if (d < minDistSq) {
+					f2DistSq = minDistSq;
+					f2CellId = cellId;
 					minDistSq = d;
-					// cellId = random(point); // Use the x component of the cell's random point as the ID
-					cellId = point; // Use the x component of the cell's random point as the ID
+					cellId = i + neighbor + point;
+				}
+				else if (d < f2DistSq) {
+					f2DistSq = d;
+					f2CellId = i + neighbor + point;
 				}
 			}
 		}
 	}
-	return vec2(sqrt(minDistSq), simplex3d_tiling(cellId, period) * 0.5 + 0.5);
+	return WorleyData3D(sqrt(minDistSq), sqrt(f2DistSq), cellId, f2CellId, p);
 }
+
+WorleyData3D worley3d_tiling_id(vec3 p, float period) {
+	return worley3d_tiling_id(p, vec3(period));
+}
+
+// Tiling 3D Worley/Cellular noise
+vec2 worley3d_tiling(vec3 p, float period) {
+	WorleyData3D res = worley3d_tiling_id(p, vec3(period));
+
+	return vec2(res.f1_dist, psrdnoise(res.f1, vec3(period)) * 0.5 + 0.5);
+}
+
+struct WorleyData2D {
+	float f1_dist;
+	float f2_dist;
+	vec2 f1;
+	vec2 f2;
+	vec2 p;
+};
+
+// Tiling 2D Worley/Cellular noise
+WorleyData2D worley2d_tiling_id(vec2 p, float period) {
+	vec2  i = floor(p);
+	vec2  f = fract(p);
+	float minDistSq = 1.0;
+	float f2DistSq = 1.0;
+	vec2 cellId = vec2(0.0);
+	vec2 f2CellId = vec2(0.0);
+	for (int y = -1; y <= 1; y++) {
+		for (int x = -1; x <= 1; x++) {
+			vec2 neighbor = vec2(float(x), float(y));
+			// Wrap neighbor + i to [0, period-1]
+			vec2 wrapped_coord = mod(i + neighbor, period);
+			vec2 point = hash2Tile(wrapped_coord, vec2(period));
+			vec2 diff = neighbor + point - f;
+			float d = dot(diff, diff);
+			if (d < minDistSq) {
+				f2DistSq = minDistSq;
+				f2CellId = cellId;
+				minDistSq = d;
+				cellId = i + neighbor + point;
+			}
+			else if (d < f2DistSq) {
+				f2DistSq = d;
+				f2CellId = i + neighbor + point;
+			}
+		}
+	}
+
+	return WorleyData2D(sqrt(minDistSq), sqrt(f2DistSq), cellId, f2CellId, p);
+}
+
+// Tiling 2D Worley/Cellular noise
+vec2 worley2d_tiling(vec2 p, float period) {
+	WorleyData2D res = worley2d_tiling_id(p, period);
+
+	return vec2(res.f1_dist, psrdnoise(res.f1, vec2(period)) * 0.5 + 0.5);
+}
+
 
 // Tiling 3D FBM Perlin (using pnoise for classic Perlin)
 float fbm3d_tiling(vec3 p, float period) {
@@ -201,6 +309,10 @@ float fastBlueNoise(vec2 uv, int frequencyIndex) {
 
 float fastBlueNoise(vec2 uv) {
 	return textureLod(u_blueNoiseTexture, uv, 0.0).r;
+}
+
+vec4 fastBlueNoiseAll(vec2 uv) {
+	return textureLod(u_blueNoiseTexture, uv, 0.0);
 }
 
 // Spatiotemporal Blue Noise lookup using golden ratio shift

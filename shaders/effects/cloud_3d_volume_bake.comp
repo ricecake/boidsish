@@ -6,24 +6,51 @@ layout(binding = 0, rgba16f) uniform image3D outVolume;
 
 #define CLOUD_BAKE_SHADER
 #include "../helpers/clouds.glsl"
+#include "lygia/generative/psrdnoise.glsl"
 
 float remap_bake(float value, float low1, float high1, float low2, float high2) {
 	return low2 + (value - low1) * (high2 - low2) / max(0.0001, (high1 - low1));
 }
 
+
+float localFbm(vec3 p, vec3 period) {
+	float val = 0.0;
+	float amp = 0.5;
+	float freq = 1.0;
+	for (int i = 0; i < 3; i++) {
+		WorleyData3D worleyDetails = worley3d_tiling_id(p * freq, period * freq);
+		val += amp * worleyDetails.f1_dist;// * (1-(freq*p.y));
+		// val -= amp * 0.25*(worleyDetails.f2_dist - worleyDetails.f1_dist);
+		amp *= 0.5;
+		freq *= 2.0;
+	}
+
+	// amp = 0.5;
+	// freq = 1.0;
+	// for (int i = 0; i < 3; i++) {
+	// 	WorleyData3D worleyDetails = worley3d_tiling_id(p * freq, period * freq);
+	// 	// val += amp * worleyDetails.f1_dist;
+	// 	val -= amp * (worleyDetails.f2_dist - worleyDetails.f1_dist)  * (1-(freq*p.y));
+	// 	amp *= 0.35;
+	// 	freq *= 1.50;
+	// }
+
+	return val;
+}
+
+
 float computeSimplexWorley(vec3 p) {
 	// Base Simplex noise (normalized to [0, 1])
-	float simplex = simplex3d_tiling(p * 8.0, 8.0);
+	float simplex = psrdnoise(p, vec3(10.0, 1.0, 10.0));
 	simplex = clamp(simplex * 0.5 + 0.5, 0.0, 1.0);
 
-	// Worley FBM (cell centers are billowy and puffy)
-	float w0 = 1.0 - worley3d_tiling(p * 8.0, 8.0).x;
-	float w1 = 1.0 - worley3d_tiling(p * 16.0, 16.0).x;
-	float w2 = 1.0 - worley3d_tiling(p * 32.0, 32.0).x;
-	float worleyFbm = w0 * 0.625 + w1 * 0.25 + w2 * 0.125;
+	float worleyFbm = localFbm(p, vec3(5, 1, 5));
+
+	float baseHeightGradient = mix(0.9, 0.6, smoothstep(0.15, 0.85, p.y));
 
 	// Simplex noise carved/remapped by Worley FBM
 	float simplexWorley = remap_bake(simplex, worleyFbm, 1.0, 0.0, 1.0);
+	// float simplexWorley = mix(worleyFbm, simplex, smoothstep(0.15, 0.85, p.y));
 	return clamp(simplexWorley, 0.0, 1.0);
 }
 
@@ -32,7 +59,7 @@ void main() {
 	ivec3 size = imageSize(outVolume); // 128, 128, 128
 	if (voxel.x >= size.x || voxel.y >= size.y || voxel.z >= size.z) return;
 
-	vec3 p = vec3(voxel) / vec3(size); // [0, 1]
+	vec3 p = vec3(voxel);// / vec3(size); // [0, 1]
 
 	// 1. R Channel: Tiling 3D noise (Simplex noise carved by Worley FBM in HZD fashion)
 	float noiseVal = computeSimplexWorley(p);
@@ -58,30 +85,5 @@ void main() {
 	}
 	float aoVal = clamp(1.0 - (densitySum / float(AO_SAMPLES)) * 1.5, 0.0, 1.0);
 
-	// Sample the 2D weather map texture using the horizontal coordinates (p.xz)
-	vec4 bakedWeather = textureLod(u_cloudWeatherTexture, p.xz, 0.0);
-
-	CloudProperties props;
-	props.altitude = cloudAltitude;
-	props.thickness = cloudThickness;
-	props.densityBase = cloudDensity;
-	props.coverage = cloudCoverage;
-	props.worldScale = worldScale;
-
-	CloudWeather weather = loadCloudWeather(vec3(p.x * 100000.0 * worldScale, 0.0, p.z * 100000.0 * worldScale), props, bakedWeather);
-	CloudLayer layer = computeCloudLayer(weather, props);
-
-	// Calculate worldPos corresponding to the vertical position (p.y = h_dynamic)
-	float worldY = (props.altitude + p.y * (2.0 * props.thickness)) * worldScale;
-	vec3 worldPos = vec3(p.x * 100000.0 * worldScale, worldY, p.z * 100000.0 * worldScale);
-
-	// 3. B Channel: Store the precomputed conservative 3D SDF of the cloud layer in meters.
-	float cloud3dSdf = getCloud3DSDF(worldPos, weather, layer, worldScale);
-
-	// 4. A Channel: Store the actual physical density of the cloud volume.
-	CloudDensityResult densityRes = calculateCloudDensityMinimal(worldPos, weather, layer, props);
-
-	float actualDensity = length(densityRes.density);
-
-	imageStore(outVolume, voxel, vec4(noiseVal, aoVal, cloud3dSdf, actualDensity));
+	imageStore(outVolume, voxel, vec4(noiseVal, aoVal, 1.0, 1.0));
 }

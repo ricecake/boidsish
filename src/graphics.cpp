@@ -43,6 +43,7 @@
 #include "polyhedron.h"
 #include "post_processing/PostProcessingManager.h"
 #include "post_processing/effects/ArtisticGbufferEffect.h"
+#include "post_processing/effects/ScreenSpaceWeatherEffect.h"
 #include "post_processing/effects/AtmosphereEffect.h"
 #include "post_processing/effects/VolumetricLightingEffect.h"
 #include "post_processing/effects/BloomEffect.h"
@@ -913,6 +914,10 @@ namespace Boidsish {
 				default_vfx.wind_strength = ConfigManager::GetInstance().GetAppSettingFloat("wind_strength", 0.065f);
 				default_vfx.wind_speed = ConfigManager::GetInstance().GetAppSettingFloat("wind_speed", 0.075f);
 				default_vfx.wind_frequency = ConfigManager::GetInstance().GetAppSettingFloat("wind_frequency", 0.01f);
+				default_vfx.solar_flares_enabled = ConfigManager::GetInstance().GetAppSettingBool("solar_flares_enabled", true) ? 1 : 0;
+				default_vfx.solar_flare_strength = ConfigManager::GetInstance().GetAppSettingFloat("solar_flare_strength", 1.5f);
+				default_vfx.solar_flare_scale = ConfigManager::GetInstance().GetAppSettingFloat("solar_flare_scale", 1.0f);
+				default_vfx.solar_flare_speed = ConfigManager::GetInstance().GetAppSettingFloat("solar_flare_speed", 0.5f);
 				for (int i = 0; i < 3; ++i) {
 					*visual_effects_pb->GetFrameDataPtr(i) = default_vfx;
 				}
@@ -1096,6 +1101,10 @@ namespace Boidsish {
 				auto artistic_gbuffer_effect = std::make_shared<PostProcessing::ArtisticGbufferEffect>();
 				artistic_gbuffer_effect->SetEnabled(false);
 				post_processing_manager_->AddEffect(artistic_gbuffer_effect);
+
+				auto screen_space_weather_effect = std::make_shared<PostProcessing::ScreenSpaceWeatherEffect>();
+				screen_space_weather_effect->SetEnabled(false);
+				post_processing_manager_->AddEffect(screen_space_weather_effect);
 
 				auto unified_ss_effect = std::make_shared<PostProcessing::UnifiedScreenSpaceEffect>();
 				unified_ss_effect->SetEnabled(true);
@@ -1298,6 +1307,11 @@ namespace Boidsish {
 			frame_config_.wind_strength = cfg.GetAppSettingFloat("wind_strength", 0.065f);
 			frame_config_.wind_speed = cfg.GetAppSettingFloat("wind_speed", 0.075f);
 			frame_config_.wind_frequency = cfg.GetAppSettingFloat("wind_frequency", 0.01f);
+
+			frame_config_.solar_flares_enabled = cfg.GetAppSettingBool("solar_flares_enabled", true);
+			frame_config_.solar_flare_strength = cfg.GetAppSettingFloat("solar_flare_strength", 1.5f);
+			frame_config_.solar_flare_scale = cfg.GetAppSettingFloat("solar_flare_scale", 1.0f);
+			frame_config_.solar_flare_speed = cfg.GetAppSettingFloat("solar_flare_speed", 0.5f);
 
 			if (decor_manager) {
 				decor_manager->SetEnabled(frame_config_.render_decor);
@@ -2104,6 +2118,9 @@ namespace Boidsish {
 				atmosphere_manager->SetSunAureoleStrength(atmosphere_effect->GetSunAureoleStrength());
 				atmosphere_manager->SetCirrusOpacity(atmosphere_effect->GetCirrusOpacity());
 				atmosphere_manager->SetCloudCoverage(atmosphere_effect->GetCloudCoverage());
+				atmosphere_manager->SetCloudAltitude(atmosphere_effect->GetCloudAltitude());
+				atmosphere_manager->SetCloudThickness(atmosphere_effect->GetCloudThickness());
+				atmosphere_manager->SetCloudDensity(atmosphere_effect->GetCloudDensity());
 
 				float cloudShadowIntensity = ConfigManager::GetInstance().GetAppSettingFloat("cloud_shadow_intensity", 0.5f);
 				atmosphere_manager->SetCloudShadowIntensity(cloudShadowIntensity);
@@ -2261,6 +2278,10 @@ namespace Boidsish {
 				ubo_data.wind_strength = frame_config_.wind_strength;
 				ubo_data.wind_speed = frame_config_.wind_speed;
 				ubo_data.wind_frequency = frame_config_.wind_frequency;
+				ubo_data.solar_flares_enabled = frame_config_.solar_flares_enabled ? 1 : 0;
+				ubo_data.solar_flare_strength = frame_config_.solar_flare_strength;
+				ubo_data.solar_flare_scale = frame_config_.solar_flare_scale;
+				ubo_data.solar_flare_speed = frame_config_.solar_flare_speed;
 				ubo_data.erosion_strength = frame_config_.erosion_strength;
 				ubo_data.erosion_scale = frame_config_.erosion_scale;
 				ubo_data.erosion_detail = frame_config_.erosion_detail;
@@ -3101,6 +3122,19 @@ namespace Boidsish {
 					if (effect->GetName() == "OpticalFlow") {
 						effect->SetEnabled(!effect->IsEnabled());
 					}
+				}
+			}
+
+			static float f2_cooldown = 0.0f;
+			if (f2_cooldown > 0.0f) {
+				f2_cooldown -= state.delta_time;
+			}
+
+			if (state.key_down[GLFW_KEY_F2] && f2_cooldown <= 0.0f) {
+				auto probe = parent->GetSpaceProbeManager();
+				if (probe) {
+					probe->camera_follow_mode = !probe->camera_follow_mode;
+					f2_cooldown = 0.3f; // 300 ms cooldown to prevent rapid repeat/flutter
 				}
 			}
 		}

@@ -43,9 +43,12 @@ namespace Boidsish {
 				WeatherAerosols = 43,
 				TerrainDisplacementImage = 44,
 				Cloud3D = 45,
-				CloudJFADistance = 46,
-				Ltc1 = 47,
+				Ltc1 = 46,
+				TerrainColorBlend = 47,
 				Ltc2 = 48,
+				CloudWeatherMinMax = 49,
+				CloudMinMaxBounding = 50,
+				CloudShadowMap = 51,
 			};
 
 			enum class Ubo {
@@ -113,7 +116,9 @@ namespace Boidsish {
 				CloudSeeds = 46,
 				LightsBuffer = 52,
 				ClusterGridBuffer = 53,
-				SpaceProbe = 54
+				SpaceProbe = 54,
+				CdlGradingLayers = 55,
+				MlpParams = 57
 			};
 		} // namespace Bindings
 
@@ -312,16 +317,28 @@ namespace Boidsish {
 				return std::to_underlying(Constants::Bindings::Texture::Cloud3D);
 			}
 
-			consteval int CloudJFADistance() {
-				return std::to_underlying(Constants::Bindings::Texture::CloudJFADistance);
-			}
-
 			consteval int Ltc1() {
 				return std::to_underlying(Constants::Bindings::Texture::Ltc1);
 			}
 
 			consteval int Ltc2() {
 				return std::to_underlying(Constants::Bindings::Texture::Ltc2);
+			}
+
+			consteval int CloudWeatherMinMax() {
+				return std::to_underlying(Constants::Bindings::Texture::CloudWeatherMinMax);
+			}
+
+			consteval int CloudMinMaxBounding() {
+				return std::to_underlying(Constants::Bindings::Texture::CloudMinMaxBounding);
+			}
+
+			consteval int TerrainColorBlend() {
+				return std::to_underlying(Constants::Bindings::Texture::TerrainColorBlend);
+			}
+
+			consteval int CloudShadowMap() {
+				return std::to_underlying(Constants::Bindings::Texture::CloudShadowMap);
 			}
 		} // namespace TextureUnit
 
@@ -510,6 +527,14 @@ namespace Boidsish {
 
 			consteval int SpaceProbe() {
 				return std::to_underlying(Constants::Bindings::Ssbo::SpaceProbe);
+			}
+
+			consteval int CdlGradingLayers() {
+				return std::to_underlying(Constants::Bindings::Ssbo::CdlGradingLayers);
+			}
+
+			consteval int MlpParams() {
+				return std::to_underlying(Constants::Bindings::Ssbo::MlpParams);
 			}
 		} // namespace SsboBinding
 

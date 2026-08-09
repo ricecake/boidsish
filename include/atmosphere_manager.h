@@ -163,10 +163,30 @@ namespace Boidsish {
 		void SetCloudCoverage(float c) {
 			if (std::abs(_cloudCoverage - c) > 0.005f) {
 				_cloudCoverage = c;
-				_needsWeatherBake = true;
 			}
 		}
 		float GetCloudCoverage() const { return _cloudCoverage; }
+
+		void SetCloudAltitude(float h) {
+			if (h != _cloudAltitude) {
+				_cloudAltitude = h;
+			}
+		}
+		float GetCloudAltitude() const { return _cloudAltitude; }
+
+		void SetCloudThickness(float t) {
+			if (t != _cloudThickness) {
+				_cloudThickness = t;
+			}
+		}
+		float GetCloudThickness() const { return _cloudThickness; }
+
+		void SetCloudDensity(float d) {
+			if (d != _cloudDensity) {
+				_cloudDensity = d;
+			}
+		}
+		float GetCloudDensity() const { return _cloudDensity; }
 
 		void SetWorldScale(float s) {
 			if (std::abs(_worldScale - s) > 0.001f) {
@@ -177,6 +197,7 @@ namespace Boidsish {
 		float GetWorldScale() const { return _worldScale; }
 
 		GLuint GetCloudWeatherTexture() const { return _cloudWeatherTexture; }
+		GLuint GetCloudWeatherMinMaxTexture() const { return _cloudWeatherMinMaxTexture; }
 
 		/**
 		 * Sample the cloud weather data on the CPU.
@@ -210,7 +231,9 @@ namespace Boidsish {
 		GLuint _skyViewLUT = 0;
 		GLuint _aerialPerspectiveLUT = 0;
 		GLuint _cloudWeatherTexture = 0;
+		GLuint _cloudWeatherMinMaxTexture = 0;
 		GLuint _cloudVolumeTexture = 0;
+		GLuint _cloudShadowTexture = 0;
 		GLuint _cloudSeedsBuffer = 0;
 		GLuint _shCoeffsBuffer = 0;
 
@@ -222,6 +245,18 @@ namespace Boidsish {
 		std::unique_ptr<ComputeShader> _cloudBakeShader;
 		std::unique_ptr<ComputeShader> _cloudVolumeBakeShader;
 		std::unique_ptr<ComputeShader> _cloudMipShader;
+		std::unique_ptr<ComputeShader> _cloudShadowBakeShader;
+
+		glm::mat4 _cloudShadowMatrix = glm::mat4(1.0f);
+		glm::mat4 _cloudShadowInvMatrix = glm::mat4(1.0f);
+		glm::vec3 _lastBakedLightDir = glm::vec3(0.0f);
+		glm::vec3 _lastBakedCameraPos = glm::vec3(0.0f);
+		float     _lastBakedCloudCoverage = 0.0f;
+		float     _lastBakedCloudDensity = 0.0f;
+		float     _lastBakedCloudAltitude = 0.0f;
+		float     _lastBakedCloudThickness = 0.0f;
+		bool      _enableCloudShadowMap = true;
+		int       _frameIndex = 0;
 
 		glm::vec4 _shCoeffs[81];
 
@@ -231,6 +266,9 @@ namespace Boidsish {
 		std::vector<glm::vec4> _cpuWeatherMap;
 		std::vector<glm::vec4> _cpuCloudSeeds;
 		float _cloudCoverage = WeatherConstants::CloudCoverage.normal;
+		float _cloudAltitude = WeatherConstants::CloudAltitude.normal;
+		float _cloudThickness = WeatherConstants::CloudThickness.normal;
+		float _cloudDensity = WeatherConstants::CloudDensity.normal;
 		float _worldScale = 1.0f;
 
 		float     _rayleighScale = WeatherConstants::RayleighScale.normal;

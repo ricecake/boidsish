@@ -55,7 +55,8 @@ struct Emitter {
 	int   slice_data_count;
 	float slice_area;
 	int   request_clear;
-	int   _padding_emitter[2];
+	int   max_particles;
+	int   _padding_emitter[1];
 };
 
 struct ChunkInfo {

@@ -1,0 +1,103 @@
+#version 430 core
+
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+#include "helpers/mlp.glsl"
+
+layout(rgba32f, binding = 0) uniform readonly image2D u_read_state;
+layout(rgba32f, binding = 1) uniform writeonly image2D u_write_state;
+
+uniform float u_time;
+uniform float u_step_size;
+uniform float u_update_probability; // e.g. 0.5 for stochastic updates
+
+// Sobel kernels
+const float sobel_x[3][3] = float[][](
+	float[]( -0.125, 0.0, 0.125 ),
+	float[]( -0.25,  0.0, 0.25 ),
+	float[]( -0.125, 0.0, 0.125 )
+);
+
+const float sobel_y[3][3] = float[][](
+	float[]( -0.125, -0.25, -0.125 ),
+	float[](  0.0,    0.0,   0.0 ),
+	float[](  0.125,  0.25,  0.125 )
+);
+
+// Simple pseudo-random hash based on coordinate and time
+float rand(vec2 co) {
+	return fract(sin(dot(co, vec2(12.9898, 78.233))) * 43758.5453);
+}
+
+vec4 read_state_pixel(ivec2 pos) {
+	ivec2 size = imageSize(u_read_state);
+	// Wrap coordinates for toroidal boundary conditions
+	pos.x = (pos.x + size.x) % size.x;
+	pos.y = (pos.y + size.y) % size.y;
+	return imageLoad(u_read_state, pos);
+}
+
+void main() {
+	ivec2 pos = ivec2(gl_GlobalInvocationID.xy);
+	ivec2 size = imageSize(u_read_state);
+	if (pos.x >= size.x || pos.y >= size.y) return;
+
+	float state[MLP_MAX_NEURONS];
+	for (int i = 0; i < MLP_MAX_NEURONS; ++i) {
+		state[i] = 0.0;
+	}
+
+	// Gather 4-channel neighborhood perception
+	// channels 0-3: cell values (Identity)
+	// channels 4-7: Sobel X derivatives
+	// channels 8-11: Sobel Y derivatives
+	vec4 center = read_state_pixel(pos);
+	state[0] = center.r;
+	state[1] = center.g;
+	state[2] = center.b;
+	state[3] = center.a;
+
+	vec4 sx = vec4(0.0);
+	vec4 sy = vec4(0.0);
+	for (int dy = -1; dy <= 1; ++dy) {
+		for (int dx = -1; dx <= 1; ++dx) {
+			vec4 val = read_state_pixel(pos + ivec2(dx, dy));
+			sx += val * sobel_x[dy + 1][dx + 1];
+			sy += val * sobel_y[dy + 1][dx + 1];
+		}
+	}
+
+	state[4] = sx.r;
+	state[5] = sx.g;
+	state[6] = sx.b;
+	state[7] = sx.a;
+
+	state[8] = sy.r;
+	state[9] = sy.g;
+	state[10] = sy.b;
+	state[11] = sy.a;
+
+	// Evaluate MLP
+	float update[MLP_MAX_NEURONS];
+	for (int i = 0; i < MLP_MAX_NEURONS; ++i) {
+		update[i] = 0.0;
+	}
+
+	evaluate_mlp(state, update);
+
+	// Stochastic update
+	bool do_update = rand(vec2(pos) + vec2(u_time)) < u_update_probability;
+
+	vec4 old_val = read_state_pixel(pos);
+	vec4 dS = vec4(update[0], update[1], update[2], update[3]);
+
+	vec4 new_val = old_val;
+	if (do_update) {
+		new_val += dS * u_step_size;
+	}
+
+	// Clamp output to make visual rendering perfect
+	new_val = clamp(new_val, 0.0, 1.0);
+
+	imageStore(u_write_state, pos, new_val);
+}

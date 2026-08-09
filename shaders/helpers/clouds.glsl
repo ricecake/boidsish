@@ -423,8 +423,7 @@ vec4 calculateCloudDensityExpV8(
 	float localFloor = layer.baseFloor + altitudeShift;
 
 	// h is normalized over the actual local cloud thickness to correctly apply the height gradient and wind shear
-	float altitude = getCurvedAltitude(p);
-	float h = clamp((altitude - localFloor) / max(actualThickness, 0.001), 0.0, 1.0);
+	float h = getCloudRelativeHeight(p, weather, layer);
 
 	vec3 advectSpeed = getCloudAdvectionSpeed(h, time);
 	float type = weather.heightMap;
@@ -435,7 +434,7 @@ vec4 calculateCloudDensityExpV8(
 	float warpy = fastFbm3d(p_advected/5000.0);
 	vec3 warpOffset = vec3(warpy) * 1500.0 * props.worldScale;
 	// float baseSdf = calculatePuffyCloudSDF(p + warpOffset, weather, layer, props.worldScale);
-	float baseSdf = calculateLoftedCloudSDF(p + warpOffset, weather, layer, props.worldScale);
+	float baseSdf = 1.0;//calculateLoftedCloudSDF(p + warpOffset, weather, layer, props.worldScale);
 
 	float d3d = baseSdf;// + (fastRidge3d(p_advected / 15000.0) * 2000.0 * props.worldScale);
 
@@ -518,57 +517,91 @@ CloudSpotDetails calculateCloudDensityExpV9(
 	vec3 advect = time * advectSpeed;
 	vec3 p_advected = p + advect;
 
-	float baseNoise = 1.0;
-	// if (simplified >= 10.0) {
-		float baseSdf = getCloud3DSDF(p_advected, weather, layer, props.worldScale);
-		baseNoise = clamp(-baseSdf, 0, 1);
-	// }
-	// else {
-	// 	vec3 uvw = vec3(
-	// 		p_advected.x / (50000.0 * props.worldScale),
-	// 		h,
-	// 		p_advected.z / (50000.0 * props.worldScale)
-	// 	);
+	float baseNoise = getCloud3DCoverage(p_advected, weather, layer, props.worldScale);
 
-	// 	vec4 volSample = textureLod(u_cloud3DTexture, uvw, 0.0);
-	// 	baseNoise = volSample.r;
-	// }
+	// // weather.sdf now holds your 0.0 - 1.0 coverage probability from the bake shader
+	// float coverage2D = weather.sdf;
+	// float macroVolume = coverage2D * heightGradient;
+	// float domeMask = smoothstep(h, h + 0.2, coverage2D);
 
-	baseNoise *= heightGradient;
+	// macroVolume *= domeMask;
+	// // float density = weather.density * smoothstep(0, weather.ecentricity, h) * (1.0 - smoothstep(weather.ecentricity, 1.0, h));
 
-	bool isCore = baseNoise >= 0.50;
+	// float baseNoise = 1.0;
+	// // float baseSdf = getCloud3DCoverage(p_advected, weather, layer, props.worldScale);
+	// baseNoise = macroVolume;
 
-	float erodeMask = 1.0-smoothstep(0.0, 0.50, baseNoise);
-	if (erodeMask > 0.0 && !isCore) {
+	// baseNoise *= heightGradient;
+	// baseNoise = adjust(baseNoise, weather.density);
+	// baseNoise = smoothstep(0.0, density, baseNoise);
+
+	// bool isCore = baseNoise >= 0.50;
+
+	// float erodeMask = 1.0-smoothstep(0.0, 0.90, baseNoise);
+	float erodeMask = 1.0 - baseNoise;
+	if (erodeMask > 0.0) {
 		float largeScale = abs(fastFbm3d(p_advected/10000)) * erodeMask;
 		baseNoise = adjust(baseNoise, largeScale);
 
-		if (!isCore) {
-			// if (simplified < 1.0) {
-			// 	erodeMask = 1.0 - baseNoise;
-			// 	float coarseScale = abs(fastFbm3d(p_advected/5000.0)) * erodeMask;
-			// 	baseNoise = adjust(baseNoise, coarseScale);
-			// }
+		if (simplified < 1.0 && erodeMask > 0.0) {
+			erodeMask = 1.0 - baseNoise;
+			float coarseScale = abs(fastFbm3d(p_advected/5000.0)) * erodeMask;
+			baseNoise = adjust(baseNoise, coarseScale);
+		}
 
-			// if (simplified < .75) {
-			// 	erodeMask = 1.0 - baseNoise;
-			// 	float mediumScale = (1.0-fastRidge3d(p_advected/4000)) * erodeMask;
-			// 	baseNoise = adjust(baseNoise, mediumScale);
-			// }
+		if (simplified < .75 && erodeMask > 0.0) {
+			erodeMask = 1.0 - baseNoise;
+			float mediumScale = (1.0-fastRidge3d(p_advected/4000)) * erodeMask;
+			baseNoise = adjust(baseNoise, mediumScale);
+		}
 
-			// if (simplified < 0.50) {
-			// 	erodeMask = 1.0 - baseNoise;
-			// 	float fineScale = abs(fastFbm3d(p_advected / 3000.0)) * erodeMask;
-			// 	baseNoise = adjust(baseNoise, fineScale);
-			// }
+		if (simplified < 0.50 && erodeMask > 0.0) {
+			erodeMask = 1.0 - baseNoise;
+			float fineScale = abs(fastFbm3d(p_advected / 3000.0)) * erodeMask;
+			baseNoise = adjust(baseNoise, fineScale);
+		}
 
-			// if (simplified < 0.25) {
-			// 	erodeMask = 1.0 - baseNoise;
-			// 	float detailScale = fastRidge3d(p / vec3(2000.0, 1000.0, 2000.0)) * erodeMask;
-			// 	baseNoise = adjust(baseNoise, detailScale);
-			// }
+		if (simplified < 0.25 && erodeMask > 0.0) {
+			erodeMask = 1.0 - baseNoise;
+			float detailScale = fastRidge3d(p / vec3(2000.0, 1000.0, 2000.0)) * erodeMask;
+			baseNoise = adjust(baseNoise, detailScale);
 		}
 		baseNoise *= smoothstep(0.01, 0.32, baseNoise);
+	}
+
+	return CloudSpotDetails(
+		clamp(baseNoise, 0.00, 1.0),
+		vec3(1.0),
+		advectSpeed
+	);
+}
+
+CloudSpotDetails calculateCloudDensityExpV10(
+	vec3            p,
+	CloudWeather    weather,
+	CloudLayer      layer,
+	CloudProperties props,
+	float           time,
+	float            simplified,
+	float volNoise
+) {
+	float localFloor, actualThickness;
+	float h = getCloudRelativeHeight(p, weather, layer, localFloor, actualThickness);
+
+	vec3 advectSpeed = getCloudAdvectionSpeed(h, time);
+	vec3 advect = time * advectSpeed;
+	vec3 p_advected = p + advect;
+
+	float baseNoise = getCloud3DCoverage(p_advected, weather, layer, props.worldScale);
+	float erodeMask = 1.0 - baseNoise;
+
+	if (erodeMask > 0.0 && simplified <= 1.0) {
+		baseNoise = remapClamp(baseNoise, volNoise * erodeMask, 1.0, 0.0, 1.0);
+
+		if (baseNoise > 0.0 && simplified < 0.25) {
+			float detailNoise = abs(fastFbm3d(p_advected / 3000.0));
+			baseNoise = remapClamp(baseNoise, detailNoise * erodeMask * 0.5, 1.0, 0.0, 1.0);
+		}
 	}
 
 	return CloudSpotDetails(
@@ -586,18 +619,17 @@ CloudDensityResult calculateCloudDensityMinimal(
 	CloudLayer      layer,
 	CloudProperties props
 ) {
-	float altitude = getCurvedAltitude(p);
-	float h = clamp((altitude - layer.baseFloor) / max(2.0 * layer.thickness, 0.001), 0.0, 1.0);
+	float localFloor, actualThickness;
+	float h = getCloudRelativeHeight(p, weather, layer, localFloor, actualThickness);
 	vec3 advectSpeed = getCloudAdvectionSpeed(h, time);
 	CloudDensityResult pointDetails = CloudDensityResult(vec3(0.0), advectSpeed, 1.0, vec3(1.0), vec3(0.0));
-
-	if (altitude < layer.baseFloor || altitude > layer.baseCeiling) {
+	if (p.y < localFloor || p.y > (localFloor + actualThickness)) {
 		return pointDetails;
 	}
 
-	CloudSpotDetails res = calculateCloudDensityExpV9(p, weather, layer, props, time, 1000.0);
+	CloudSpotDetails res = calculateCloudDensityExpV10(p, weather, layer, props, time, 1000.0, 1.0);
 
-	return CloudDensityResult(res.relativeExtinction, advectSpeed, 1.0, vec3(1.0), vec3(0.0));
+	return CloudDensityResult(res.density * res.relativeExtinction, advectSpeed, 1.0, vec3(1.0), vec3(0.0));
 }
 
 
@@ -609,12 +641,11 @@ CloudDensityResult calculateCloudDensity(
 	float           time,
 	float           simplified
 ) {
-	float altitude = getCurvedAltitude(p);
-	float h = clamp((altitude - layer.baseFloor) / max(2.0 * layer.thickness, 0.001), 0.0, 1.0);
+	float localFloor, actualThickness;
+	float h = getCloudRelativeHeight(p, weather, layer, localFloor, actualThickness);
 	vec3 advectSpeed = getCloudAdvectionSpeed(h, time);
 	CloudDensityResult pointDetails = CloudDensityResult(vec3(0.0), advectSpeed, 1.0, vec3(1.0), vec3(0.0));
-
-	if (altitude < layer.baseFloor || altitude > layer.baseCeiling) {
+	if (p.y < localFloor || p.y > (localFloor + actualThickness)) {
 		return pointDetails;
 	}
 
@@ -622,30 +653,32 @@ CloudDensityResult calculateCloudDensity(
 	vec3 advect_3d = time * advectSpeed * 0.75;
 	vec3 p_advected_3d = p + advect_3d;
 	vec3 uvw = vec3(
-		p_advected_3d.x / (50000.0 * props.worldScale),
+		p_advected_3d.x / (100000.0 * props.worldScale),
 		h,
-		p_advected_3d.z / (50000.0 * props.worldScale)
+		p_advected_3d.z / (100000.0 * props.worldScale)
 	);
 
-	vec4 volSample = textureLod(u_cloud3DTexture, uvw, 0.0);
+	vec4 volSample = textureLod(u_cloud3DTexture, uvw, clamp(simplified * 4.0, 0.0, 4.0));
 	float volNoise = volSample.r;
 	float volAo = volSample.g;
-	// float volAlbedoBasis = volSample.b;
+	float volAlbedoBasis = volSample.b;
+	float volDensityBasis = volSample.a;
 
-	CloudSpotDetails res = calculateCloudDensityExpV9(p, weather, layer, props, time, simplified);
+	CloudSpotDetails res = calculateCloudDensityExpV10(p, weather, layer, props, time, simplified, volNoise);
 
 	// Where the current system has density, the 3d volume adds variety and breaks up the linear nature.
 	float finalDensity = res.density;
 	if (finalDensity > 0.0) {
-		// finalDensity *= mix(0.4, 1.6, volNoise);
-		finalDensity = adjust(finalDensity, 1.0-volNoise);
+		finalDensity *= mix(0.4, 1.6, volNoise);
+		// finalDensity = adjust(finalDensity, 1.0-volNoise);
 	}
 
 	vec3 mixedDensity = res.relativeExtinction * finalDensity;
-	// vec3 mixedAlbedo = vec3(volAlbedoBasis);
+	// vec3 mixedDensity = vec3(1)*finalDensity;
+	vec3 mixedAlbedo = vec3(1.0);//vec3(volAlbedoBasis);
 
 	// return CloudDensityResult(mixedDensity, advectSpeed, volAo, mixedAlbedo, smoothstep(0.8, 1.2, mixedDensity) * vec3(0,1,0));
-	return CloudDensityResult(mixedDensity, advectSpeed, volAo, vec3(1.0), vec3(0.0));
+	return CloudDensityResult(mixedDensity, advectSpeed, volAo, mixedAlbedo, vec3(0.0));
 }
 
 #endif // HELPERS_CLOUDS_GLSL

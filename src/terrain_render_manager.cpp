@@ -13,6 +13,11 @@
 #include "service_locator.h"
 #include "shader.h"
 
+#if __has_include("terrain_color_blend_data.h")
+#include "terrain_color_blend_data.h"
+#define HAS_TERRAIN_COLOR_BLEND_DATA 1
+#endif
+
 namespace Boidsish {
 
 	struct TerrainDataUbo {
@@ -153,9 +158,93 @@ namespace Boidsish {
 
 		EnsureTextureCapacity(max_chunks);
 
+		// Create and populate the 8x8x8 3D terrain color blend texture
+		glGenTextures(1, &terrain_color_blend_texture_);
+		glBindTexture(GL_TEXTURE_3D, terrain_color_blend_texture_);
+		glTexStorage3D(GL_TEXTURE_3D, 1, GL_RGBA8, 8, 8, 8);
+		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+
+		// Colors defined in the terrain fragment shader
+		const glm::vec3 COL_SAND_WET = glm::vec3(0.55f, 0.45f, 0.35f);
+		const glm::vec3 COL_SAND_DRY = glm::vec3(0.76f, 0.70f, 0.55f);
+		const glm::vec3 COL_GRASS_LUSH = glm::vec3(0.20f, 0.45f, 0.15f);
+		const glm::vec3 COL_GRASS_DRY = glm::vec3(0.45f, 0.50f, 0.25f);
+		const glm::vec3 COL_FOREST = glm::vec3(0.12f, 0.28f, 0.10f);
+		const glm::vec3 COL_ALPINE_MEADOW = glm::vec3(0.35f, 0.45f, 0.25f);
+		const glm::vec3 COL_ROCK_BROWN = glm::vec3(0.35f, 0.30f, 0.25f);
+		const glm::vec3 COL_ROCK_GREY = glm::vec3(0.45f, 0.45f, 0.48f);
+		const glm::vec3 COL_ROCK_DARK = glm::vec3(0.25f, 0.23f, 0.22f);
+		const glm::vec3 COL_SNOW_FRESH = glm::vec3(0.95f, 0.97f, 1.00f);
+		const glm::vec3 COL_SNOW_OLD = glm::vec3(0.85f, 0.88f, 0.92f);
+		const glm::vec3 COL_DIRT = glm::vec3(0.35f, 0.25f, 0.18f);
+
+		std::vector<uint8_t> texture_data(8 * 8 * 8 * 4); // 8x8x8 RGBA8
+#ifdef HAS_TERRAIN_COLOR_BLEND_DATA
+		std::copy(kTerrainColorBlendData, kTerrainColorBlendData + 2048, texture_data.begin());
+#else
+		for (int z = 0; z < 8; ++z) {     // Roughness (Z)
+			float r = z / 7.0f;
+			for (int y = 0; y < 8; ++y) { // Moisture (Y)
+				float m = y / 7.0f;
+				for (int x = 0; x < 8; ++x) { // Height (X)
+					float h = x / 7.0f;
+
+					// Compute beachColor (Band 0)
+					float wetness = m * (1.0f - r);
+					glm::vec3 beachColor = glm::mix(COL_SAND_DRY, COL_SAND_WET, wetness);
+					beachColor = glm::mix(beachColor, COL_ROCK_DARK, (1.0f - r) * m * 0.5f);
+
+					// Compute lowlandColor (Band 1)
+					glm::vec3 lushColor = glm::mix(COL_GRASS_LUSH, COL_FOREST, m);
+					glm::vec3 dryColor = glm::mix(COL_DIRT, COL_GRASS_DRY, m);
+					glm::vec3 grassColor = glm::mix(dryColor, lushColor, m);
+					glm::vec3 smoothColor = glm::mix(COL_ROCK_DARK, COL_DIRT, m);
+					glm::vec3 lowlandColor = glm::mix(smoothColor, grassColor, r);
+
+					// Compute alpineColor (Band 2)
+					glm::vec3 rockColor = glm::mix(COL_ROCK_BROWN, COL_ROCK_GREY, m);
+					glm::vec3 alpineMeadow = COL_ALPINE_MEADOW;
+					glm::vec3 roughAlpine = glm::mix(rockColor, alpineMeadow, m);
+					glm::vec3 smoothRock = COL_ROCK_DARK;
+					glm::vec3 alpineColor = glm::mix(smoothRock, roughAlpine, r);
+
+					// Compute snowColor (Band 3)
+					glm::vec3 snowColor = glm::mix(COL_SNOW_OLD, COL_SNOW_FRESH, r);
+
+					// Blend bands based on height h
+					glm::vec3 finalColor;
+					if (h < 0.333f) {
+						float t = h / 0.333f;
+						finalColor = glm::mix(beachColor, lowlandColor, t);
+					} else if (h < 0.666f) {
+						float t = (h - 0.333f) / 0.333f;
+						finalColor = glm::mix(lowlandColor, alpineColor, t);
+					} else {
+						float t = (h - 0.666f) / 0.334f;
+						finalColor = glm::mix(alpineColor, snowColor, t);
+					}
+
+					int index = (z * 64 + y * 8 + x) * 4;
+					texture_data[index + 0] = static_cast<uint8_t>(glm::clamp(finalColor.r * 255.0f, 0.0f, 255.0f));
+					texture_data[index + 1] = static_cast<uint8_t>(glm::clamp(finalColor.g * 255.0f, 0.0f, 255.0f));
+					texture_data[index + 2] = static_cast<uint8_t>(glm::clamp(finalColor.b * 255.0f, 0.0f, 255.0f));
+					texture_data[index + 3] = 255;
+				}
+			}
+		}
+#endif
+
+		glTexSubImage3D(GL_TEXTURE_3D, 0, 0, 0, 0, 8, 8, 8, GL_RGBA, GL_UNSIGNED_BYTE, texture_data.data());
+		glBindTexture(GL_TEXTURE_3D, 0);
+
 		auto& reg = GpuResourceRegistry::Instance();
 		reg.PublishTexture(Constants::TextureUnit::TerrainChunkGrid(), chunk_grid_texture_);
 		reg.PublishTexture(Constants::TextureUnit::TerrainShadowMap(), terrain_shadow_map_texture_);
+		reg.PublishTexture(Constants::TextureUnit::TerrainColorBlend(), terrain_color_blend_texture_, GL_TEXTURE_3D);
 	}
 
 	TerrainRenderManager::~TerrainRenderManager() {
@@ -181,6 +270,8 @@ namespace Boidsish {
 			glDeleteTextures(1, &terrain_shadow_map_texture_);
 		if (biome_texture_)
 			glDeleteTextures(1, &biome_texture_);
+		if (terrain_color_blend_texture_)
+			glDeleteTextures(1, &terrain_color_blend_texture_);
 		if (biome_ubo_)
 			glDeleteBuffers(1, &biome_ubo_);
 		if (chunk_grid_texture_)
@@ -1000,6 +1091,10 @@ namespace Boidsish {
 		glBindTexture(GL_TEXTURE_2D, terrain_shadow_map_texture_);
 		shader_base.trySetInt("u_terrainShadowMap", Constants::TextureUnit::TerrainShadowMap());
 
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainColorBlend());
+		glBindTexture(GL_TEXTURE_3D, terrain_color_blend_texture_);
+		shader_base.trySetInt("u_terrainColorBlend", Constants::TextureUnit::TerrainColorBlend());
+
 		if (extra_noise_texture_ != 0) {
 			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::NoiseExtra());
 			glBindTexture(GL_TEXTURE_3D, extra_noise_texture_);
@@ -1250,6 +1345,10 @@ namespace Boidsish {
 			glBindTexture(GL_TEXTURE_2D, phasor_noise_texture_);
 			shader.trySetInt("u_phasorTexture", Constants::TextureUnit::NoisePhasor());
 		}
+
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainColorBlend());
+		glBindTexture(GL_TEXTURE_3D, terrain_color_blend_texture_);
+		shader.trySetInt("u_terrainColorBlend", Constants::TextureUnit::TerrainColorBlend());
 
 		// Bind SSBOs for patch rendering (current frame's segments)
 		patch_draw_data_pb_->BindRange(Constants::SsboBinding::TerrainPatchDrawData());

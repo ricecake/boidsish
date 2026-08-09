@@ -98,7 +98,7 @@ float calculateHeightAndParams(vec2 uv, int slice, vec3 worldOffset, float chunk
 		erosionDelta = erosionResult.x;
 	}
 
-	float waterMask = smoothstep(0.1, -0.1, currentHeight);
+	float waterMask = 1.0 - smoothstep(-0.1, 0.1, currentHeight);
 	if (waterMask > 0.0) {
 		currentHeight = mix(currentHeight, 0.0, waterMask);
 	}

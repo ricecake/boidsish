@@ -72,6 +72,8 @@ namespace Boidsish {
 		T::RegisterConstant("LIGHTS_BUFFER_BINDING", Constants::SsboBinding::LightsBuffer());
 		T::RegisterConstant("CLUSTER_GRID_BINDING", Constants::SsboBinding::ClusterGridBuffer());
 		T::RegisterConstant("SPACE_PROBE_BINDING", Constants::SsboBinding::SpaceProbe());
+		T::RegisterConstant("CDL_GRADING_LAYERS_BINDING", Constants::SsboBinding::CdlGradingLayers());
+		T::RegisterConstant("MLP_PARAMS_BINDING", Constants::SsboBinding::MlpParams());
 
 		// Limits and Sizes
 		T::RegisterConstant("MAX_LIGHTS", Constants::Class::Shadows::MaxLights());
@@ -126,6 +128,10 @@ namespace Boidsish {
 		T::RegisterConstant("LTC1_BINDING", Constants::TextureUnit::Ltc1());
 		T::RegisterConstant("LTC2_BINDING", Constants::TextureUnit::Ltc2());
 		T::RegisterConstant("CLOUD_3D_BINDING", Constants::TextureUnit::Cloud3D());
+		T::RegisterConstant("CLOUD_WEATHER_MIN_MAX_BINDING", Constants::TextureUnit::CloudWeatherMinMax());
+		T::RegisterConstant("CLOUD_MIN_MAX_BOUNDING_BINDING", Constants::TextureUnit::CloudMinMaxBounding());
+		T::RegisterConstant("TERRAIN_COLOR_BLEND_BINDING", Constants::TextureUnit::TerrainColorBlend());
+		T::RegisterConstant("CLOUD_SHADOW_MAP_BINDING", Constants::TextureUnit::CloudShadowMap());
 	}
 
 } // namespace Boidsish

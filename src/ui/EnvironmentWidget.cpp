@@ -504,10 +504,10 @@ namespace Boidsish {
 										ImGui::SameLine();
 										if (ImGui::Button("Unlock##CloudAltitude")) weather->ClearTarget(WeatherAttribute::CloudAltitude);
 									}
-									float cloud_thickness = atmosphere_effect->GetCloudThickness();
-									if (ImGui::SliderFloat("Cloud Thickness", &cloud_thickness, 0.0f, 500.0f)) {
-										if (weather) weather->SetTarget(WeatherAttribute::CloudThickness, cloud_thickness);
-										else atmosphere_effect->SetCloudThickness(cloud_thickness);
+									float cloud_thickness = atmosphere_effect->GetCloudThickness() / 1000.0f;
+									if (ImGui::SliderFloat("Cloud Thickness", &cloud_thickness, 0.0f, 20.0f)) {
+										if (weather) weather->SetTarget(WeatherAttribute::CloudThickness, cloud_thickness * 1000.0f);
+										else atmosphere_effect->SetCloudThickness(cloud_thickness * 1000.0f);
 										changed_atm = true;
 									}
 									if (weather) {
@@ -515,7 +515,7 @@ namespace Boidsish {
 										if (ImGui::Button("Unlock##CloudThickness")) weather->ClearTarget(WeatherAttribute::CloudThickness);
 									}
 									float cloud_coverage = atmosphere_effect->GetCloudCoverage();
-									if (ImGui::SliderFloat("Cloud Coverage", &cloud_coverage, 0.0f, 2.0f)) {
+									if (ImGui::SliderFloat("Cloud Coverage", &cloud_coverage, 0.0f, 1.0f)) {
 										if (weather) weather->SetTarget(WeatherAttribute::CloudCoverage, cloud_coverage);
 										else atmosphere_effect->SetCloudCoverage(cloud_coverage);
 										changed_atm = true;
@@ -599,7 +599,7 @@ namespace Boidsish {
 										"cloud_powder_scale",
 										atmosphere_effect->GetCloudPowderScale()
 									);
-									if (ImGui::SliderFloat("Powder Scale", &p_scale, 0.0f, 2.0f)) {
+									if (ImGui::SliderFloat("Powder Scale", &p_scale, 0.0f, 10.0f)) {
 										atmosphere_effect->SetCloudPowderScale(p_scale);
 										cfg.SetFloat("cloud_powder_scale", p_scale);
 										changed_atm = true;
@@ -608,7 +608,7 @@ namespace Boidsish {
 										"cloud_powder_multiplier",
 										atmosphere_effect->GetCloudPowderMultiplier()
 									);
-									if (ImGui::SliderFloat("Powder Multiplier", &p_mult, 0.0f, 2.0f)) {
+									if (ImGui::SliderFloat("Powder Multiplier", &p_mult, 0.0f, 100.0f)) {
 										atmosphere_effect->SetCloudPowderMultiplier(p_mult);
 										cfg.SetFloat("cloud_powder_multiplier", p_mult);
 										changed_atm = true;
@@ -627,7 +627,7 @@ namespace Boidsish {
 										"cloud_shadow_optical_depth_multiplier",
 										atmosphere_effect->GetCloudShadowOpticalDepthMultiplier()
 									);
-									if (ImGui::SliderFloat("Shadow Optical Depth Mult", &s_opt, 0.0f, 1.0f)) {
+									if (ImGui::SliderFloat("Shadow Optical Depth Mult", &s_opt, 0.0f, 10.0f)) {
 										atmosphere_effect->SetCloudShadowOpticalDepthMultiplier(s_opt);
 										cfg.SetFloat("cloud_shadow_optical_depth_multiplier", s_opt);
 										changed_atm = true;
@@ -636,7 +636,7 @@ namespace Boidsish {
 										"cloud_shadow_step_multiplier",
 										atmosphere_effect->GetCloudShadowStepMultiplier()
 									);
-									if (ImGui::SliderFloat("Shadow Step Mult", &s_step, 0.0f, 1.0f)) {
+									if (ImGui::SliderFloat("Shadow Step Mult", &s_step, 0.0f, 10.0f)) {
 										atmosphere_effect->SetCloudShadowStepMultiplier(s_step);
 										cfg.SetFloat("cloud_shadow_step_multiplier", s_step);
 										changed_atm = true;
@@ -672,7 +672,7 @@ namespace Boidsish {
 									}
 
 									float extinction = atmosphere_effect->GetCloudExtinction();
-									if (ImGui::SliderFloat("Extinction Scale", &extinction, 0.001f, 0.1f, "%.3f")) {
+									if (ImGui::SliderFloat("Extinction Scale", &extinction, 0.001f, 1.0f, "%.3f")) {
 										atmosphere_effect->SetCloudExtinction(extinction);
 										changed_atm = true;
 									}
@@ -877,6 +877,34 @@ namespace Boidsish {
 										changed_atm = true;
 									}
 
+									ImGui::Separator();
+									ImGui::Text("Solar Flares");
+
+									auto& sf_cfg = ConfigManager::GetInstance();
+									bool solar_flares = sf_cfg.GetAppSettingBool("solar_flares_enabled", true);
+									if (ImGui::Checkbox("Enable Solar Flares", &solar_flares)) {
+										sf_cfg.SetBool("solar_flares_enabled", solar_flares);
+										changed_atm = true;
+									}
+
+									if (solar_flares) {
+										float sf_strength = sf_cfg.GetAppSettingFloat("solar_flare_strength", 1.5f);
+										if (ImGui::SliderFloat("Flare Strength", &sf_strength, 0.0f, 10.0f)) {
+											sf_cfg.SetFloat("solar_flare_strength", sf_strength);
+											changed_atm = true;
+										}
+										float sf_scale = sf_cfg.GetAppSettingFloat("solar_flare_scale", 1.0f);
+										if (ImGui::SliderFloat("Flare Scale", &sf_scale, 0.1f, 10.0f)) {
+											sf_cfg.SetFloat("solar_flare_scale", sf_scale);
+											changed_atm = true;
+										}
+										float sf_speed = sf_cfg.GetAppSettingFloat("solar_flare_speed", 0.5f);
+										if (ImGui::SliderFloat("Flare Speed", &sf_speed, 0.0f, 5.0f)) {
+											sf_cfg.SetFloat("solar_flare_speed", sf_speed);
+											changed_atm = true;
+										}
+									}
+
 									if (changed_atm) {
 										atmosphere_effect->FlushHistory();
 									}
@@ -900,58 +928,76 @@ namespace Boidsish {
 							if (is_enabled) {
 								auto vol_effect = std::dynamic_pointer_cast<PostProcessing::VolumetricLightingEffect>(effect);
 								if (vol_effect) {
+									auto& cfg = ConfigManager::GetInstance();
 									bool changed_vol = false;
+
 									float intensity = vol_effect->GetIntensity();
 									if (ImGui::SliderFloat("Intensity##Vol", &intensity, 0.0f, 5.0f)) {
 										vol_effect->SetIntensity(intensity);
+										cfg.SetFloat("volumetric_intensity", intensity);
 										changed_vol = true;
 									}
 
 									float anisotropy = vol_effect->GetScatteringAnisotropy();
 									if (ImGui::SliderFloat("Anisotropy##Vol", &anisotropy, 0.0f, 0.99f)) {
 										vol_effect->SetScatteringAnisotropy(anisotropy);
+										cfg.SetFloat("volumetric_anisotropy", anisotropy);
 										changed_vol = true;
 									}
 
 									float alpha = vol_effect->GetTemporalAlpha();
 									if (ImGui::SliderFloat("Temporal Alpha##Vol", &alpha, 0.0f, 0.99f)) {
 										vol_effect->SetTemporalAlpha(alpha);
+										cfg.SetFloat("volumetric_temporal_alpha", alpha);
 										changed_vol = true;
 									}
 
 									float ambient_scale = vol_effect->GetAmbientScale();
 									if (ImGui::SliderFloat("Ambient Scale##Vol", &ambient_scale, 0.0f, 5.0f)) {
 										vol_effect->SetAmbientScale(ambient_scale);
+										cfg.SetFloat("volumetric_ambient_scale", ambient_scale);
 										changed_vol = true;
 									}
 
 									float rayleigh_scale = vol_effect->GetRayleighScale();
 									if (ImGui::SliderFloat("Rayleigh Scale##Vol", &rayleigh_scale, 0.0f, 5.0f)) {
 										vol_effect->SetRayleighScale(rayleigh_scale);
+										cfg.SetFloat("volumetric_rayleigh_scale", rayleigh_scale);
 										changed_vol = true;
 									}
 
 									float mie_scale = vol_effect->GetMieScale();
 									if (ImGui::SliderFloat("Mie Scale##Vol", &mie_scale, 0.0f, 5.0f)) {
 										vol_effect->SetMieScale(mie_scale);
+										cfg.SetFloat("volumetric_mie_scale", mie_scale);
 										changed_vol = true;
 									}
 
 									float multi_scat_scale = vol_effect->GetMultiScatScale();
 									if (ImGui::SliderFloat("Multi-scatter Scale##Vol", &multi_scat_scale, 0.0f, 5.0f)) {
 										vol_effect->SetMultiScatScale(multi_scat_scale);
+										cfg.SetFloat("volumetric_multi_scat_scale", multi_scat_scale);
 										changed_vol = true;
 									}
 
 									float shadow_sensitivity = vol_effect->GetShadowSensitivity();
-									if (ImGui::SliderFloat("Shadow Sensitivity##Vol", &shadow_sensitivity, 0.0f, 1.0f)) {
+									if (ImGui::SliderFloat("Shadow Sensitivity##Vol", &shadow_sensitivity, 0.0f, 5.0f)) {
 										vol_effect->SetShadowSensitivity(shadow_sensitivity);
+										cfg.SetFloat("volumetric_shadow_sensitivity", shadow_sensitivity);
+										changed_vol = true;
+									}
+
+									float light_accent = vol_effect->GetLightAccent();
+									if (ImGui::SliderFloat("Light Accent / God Ray Boost##Vol", &light_accent, 1.0f, 10.0f)) {
+										vol_effect->SetLightAccent(light_accent);
+										cfg.SetFloat("volumetric_light_accent", light_accent);
 										changed_vol = true;
 									}
 
 									bool use_2d_acc = vol_effect->GetTemporalAccumulation2D();
 									if (ImGui::Checkbox("2D Screenspace Temporal Accumulation##Vol", &use_2d_acc)) {
 										vol_effect->SetTemporalAccumulation2D(use_2d_acc);
+										cfg.SetBool("volumetric_temporal_accumulation_2d", use_2d_acc);
 										changed_vol = true;
 									}
 
