@@ -9,6 +9,8 @@
 
 namespace Boidsish {
 
+    class MLPNetwork;
+
     class WeatherLbmSimulator {
     public:
         WeatherLbmSimulator(int width, int height);
@@ -91,6 +93,9 @@ namespace Boidsish {
         void               SetConstraints(const Constraints& c) { constraints_ = c; }
         const Constraints& GetConstraints() const { return constraints_; }
 
+        bool IsNcaWeatherEnabled() const { return useNcaWeather_; }
+        void SetNcaWeatherEnabled(bool enabled) { useNcaWeather_ = enabled; }
+
     private:
         void Initialize(const ITerrainGenerator& terrain, float totalTime, float timeOfDay);
         void InitializeCell(int x, int z, float totalTime, float timeOfDay, LbmCell& cell);
@@ -126,6 +131,9 @@ namespace Boidsish {
         std::vector<LbmCell>* currentGrid_;
         std::vector<LbmCell>* nextGrid_;
         std::vector<LbmCellConfig> config_;
+
+        bool useNcaWeather_ = false;
+        std::unique_ptr<MLPNetwork> nca_network_;
 
         PhysicallyBasedWeatherOutput currentOutput_;
         bool initialized_ = false;

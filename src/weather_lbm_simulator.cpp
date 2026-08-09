@@ -5,6 +5,8 @@
 #include "biome_properties.h"
 #include "logger.h"
 #include "weather_constants.h"
+#include "mlp_network.h"
+#include "weather_nca_weights.h"
 #include <vector>
 
 namespace Boidsish {
@@ -24,6 +26,15 @@ namespace Boidsish {
         currentGrid_ = &grid1_;
         nextGrid_ = &grid2_;
         config_.resize(width_ * height_);
+
+        // Initialize Neural Cellular Automata (NCA) network on CPU
+        nca_network_ = std::make_unique<MLPNetwork>();
+        nca_network_->Initialize(K_WEATHER_NCA_LAYERS, K_WEATHER_NCA_ACTIVATIONS);
+        #if USE_PREDEFINED_NCA_WEIGHTS
+        nca_network_->GetParamsMutable() = K_WEATHER_NCA_PARAMS;
+        #else
+        nca_network_->RandomizeWeights();
+        #endif
 
         // Initial defaults
         for (auto& cell : *currentGrid_) {
@@ -138,43 +149,91 @@ namespace Boidsish {
     }
 
     void WeatherLbmSimulator::CollisionAndStreaming() {
-        for (int z = 0; z < height_; ++z) {
-            for (int x = 0; x < width_; ++x) {
-                int idx = z * width_ + x;
-                LbmCell& cell = (*currentGrid_)[idx];
+        std::vector<LbmCell> collidedGrid(width_ * height_);
 
-                // 1. Macros
-                float rho = 0.0f;
-                glm::vec2 u(0.0f);
+        for (int idx = 0; idx < width_ * height_; ++idx) {
+            const LbmCell& cell = (*currentGrid_)[idx];
+            LbmCell& collidedCell = collidedGrid[idx];
+
+            // 1. Macros for cell
+            float rho = 0.0f;
+            glm::vec2 u(0.0f);
+            for (int i = 0; i < 9; ++i) {
+                rho += cell.f[i];
+                u.x += cell.f[i] * (float)cx[i];
+                u.y += cell.f[i] * (float)cz[i];
+            }
+            if (rho > 1e-6f) u /= rho;
+
+            // NaN safety: Reset cell if it explodes
+            if (std::isnan(rho) || rho < 0.1f || rho > 10.0f) {
+                rho = 1.0f;
+                u = glm::vec2(0.0f);
+                collidedCell.temperature = 288.15f;
+                collidedCell.aerosols = glm::vec4(0.01f, 0.0f, 0.0f, 0.0f);
+                collidedCell.humidity = 0.5f;
+                collidedCell.vy = 0.0f;
+                collidedCell.viscosityDamping = 0.0f;
+                for (int i = 0; i < 9; ++i) collidedCell.f[i] = weights[i];
+                continue;
+            }
+
+            if (useNcaWeather_) {
+                // Normalize state for neural network stability
+                std::vector<float> input(17);
                 for (int i = 0; i < 9; ++i) {
-                    rho += cell.f[i];
-                    u.x += cell.f[i] * (float)cx[i];
-                    u.y += cell.f[i] * (float)cz[i];
+                    input[i] = cell.f[i];
                 }
-                if (rho > 1e-6f) u /= rho;
+                // Normalize temperature centered around 0-1
+                input[9] = (cell.temperature - 273.15f) / 50.0f;
+                input[10] = cell.aerosols.x;
+                input[11] = cell.aerosols.y;
+                input[12] = cell.aerosols.z;
+                input[13] = cell.aerosols.w;
+                input[14] = cell.humidity;
+                input[15] = cell.vy;
+                input[16] = cell.viscosityDamping;
 
-                // NaN safety: Reset cell if it explodes
-                if (std::isnan(rho) || rho < 0.1f || rho > 10.0f) {
-                    rho = 1.0f;
-                    u = glm::vec2(0.0f);
-                    cell.temperature = 288.15f;
-                    cell.aerosols = glm::vec4(0.01f, 0.0f, 0.0f, 0.0f);
-                    cell.humidity = 0.5f;
-                    cell.vy = 0.0f;
-                    cell.viscosityDamping = 0.0f;
-                    for (int i = 0; i < 9; ++i) cell.f[i] = weights[i];
+                // Evaluate MLP on CPU
+                std::vector<float> output = nca_network_->EvaluateCPU(input);
+
+                // Residual/Delta update for stability and smooth evolution
+                float sum_f_post = 0.0f;
+                for (int i = 0; i < 9; ++i) {
+                    float delta_f = output[i] * 0.1f;
+                    collidedCell.f[i] = std::max(1e-5f, cell.f[i] + delta_f);
+                    sum_f_post += collidedCell.f[i];
                 }
 
+                // Crucial LBM physical constraint: Conserve total mass (density rho) in the collision!
+                if (sum_f_post > 1e-6f) {
+                    for (int i = 0; i < 9; ++i) {
+                        collidedCell.f[i] *= (rho / sum_f_post);
+                    }
+                }
+
+                // Developed scalars
+                collidedCell.temperature = cell.temperature + output[9] * 0.5f;
+                collidedCell.temperature = std::clamp(collidedCell.temperature, 200.0f, 350.0f);
+
+                collidedCell.aerosols.x = std::clamp(cell.aerosols.x + output[10] * 0.05f, 0.0f, 2.0f);
+                collidedCell.aerosols.y = std::clamp(cell.aerosols.y + output[11] * 0.05f, 0.0f, 2.0f);
+                collidedCell.aerosols.z = std::clamp(cell.aerosols.z + output[12] * 0.05f, 0.0f, 2.0f);
+                collidedCell.aerosols.w = std::clamp(cell.aerosols.w + output[13] * 0.05f, 0.0f, 2.0f);
+
+                collidedCell.humidity = std::clamp(cell.humidity + output[14] * 0.05f, 0.0f, 1.2f);
+                collidedCell.vy = std::clamp(cell.vy + output[15] * 0.05f, -2.0f, 2.0f);
+                collidedCell.viscosityDamping = std::clamp(cell.viscosityDamping + output[16] * 0.05f, 0.0f, 1.0f);
+            } else {
                 // Viscosity Modulation (Chaos Dampening)
                 float u2 = glm::dot(u, u);
-                // Questionable velocity squared: 0.01 (u=0.1), Definitely too high: 0.02 (u=0.14)
                 float chaosFactor = glm::smoothstep(0.01f, 0.02f, u2);
 
                 // Asymmetric EMA for viscosity damping (fast attack, slow release)
                 float attackAlpha = 0.2f;
                 float releaseAlpha = 0.01f;
                 float emaAlpha = (chaosFactor > cell.viscosityDamping) ? attackAlpha : releaseAlpha;
-                cell.viscosityDamping = glm::mix(cell.viscosityDamping, chaosFactor, emaAlpha);
+                float updatedViscosity = glm::mix(cell.viscosityDamping, chaosFactor, emaAlpha);
 
                 // If vy is positive (updraft), air leaves the horizontal plane, reducing density.
                 // If vy is negative (downdraft), air hits the ground and spreads, increasing density.
@@ -182,35 +241,62 @@ namespace Boidsish {
                 float dRho = glm::clamp(-cell.vy * massTransferRate * dt_, -0.1f, 0.1f);
 
                 auto lenSq = glm::dot(u, u);
+                glm::vec2 adjusted_u = u;
                 if (lenSq >= 0.09f) {
-                    u *= 0.3f * glm::inversesqrt(lenSq);
+                    adjusted_u *= 0.3f * glm::inversesqrt(lenSq);
                 }
 
-                // Apply density change proportionally across the distributions,
-                // clamping to prevent vacuum collapse numerical instability.
+                float adjusted_rho = rho;
+                std::vector<float> adjusted_f(9);
+                for (int i = 0; i < 9; ++i) adjusted_f[i] = cell.f[i];
+
                 if (rho + dRho > 0.8f && rho + dRho < 1.2f) {
-                    rho += dRho;
+                    adjusted_rho += dRho;
                     for (int i = 0; i < 9; ++i) {
-                        cell.f[i] += dRho * weights[i];
+                        adjusted_f[i] += dRho * weights[i];
                     }
                 }
 
-                // 2. Collision & Streaming
-                // Modulate omega based on viscosity damping: normal omega -> high viscosity (omega close to 0)
-                // A very viscous omega is around 0.15 (tau ~ 6.6)
-                float effectiveOmega = glm::mix(omega_, 0.15f, cell.viscosityDamping);
-
+                // Standard BGK Collision
+                float effectiveOmega = glm::mix(omega_, 0.15f, updatedViscosity);
                 for (int i = 0; i < 9; ++i) {
-                    float feq = CalculateEquilibrium(i, rho, u);
-                    float f_post = cell.f[i] - effectiveOmega * (cell.f[i] - feq);
-
-                    int nx = (x + cx[i] + width_) % width_;
-                    int nz = (z + cz[i] + height_) % height_;
-                    (*nextGrid_)[nz * width_ + nx].f[i] = f_post;
+                    float feq = CalculateEquilibrium(i, adjusted_rho, adjusted_u);
+                    collidedCell.f[i] = adjusted_f[i] - effectiveOmega * (adjusted_f[i] - feq);
                 }
 
-                // Scalar transport - Semi-Lagrangian
-                glm::vec2 p_back = glm::vec2(x, z) - u * 1.0f; // dt is implicit here for LBM lattice
+                collidedCell.temperature = cell.temperature;
+                collidedCell.aerosols = cell.aerosols;
+                collidedCell.humidity = cell.humidity;
+                collidedCell.vy = cell.vy;
+                collidedCell.viscosityDamping = updatedViscosity;
+            }
+        }
+
+        // 2. LBM Streaming and Semi-Lagrangian Advection
+        for (int z = 0; z < height_; ++z) {
+            for (int x = 0; x < width_; ++x) {
+                int idx = z * width_ + x;
+                const LbmCell& collidedCell = collidedGrid[idx];
+
+                // Stream populations
+                for (int i = 0; i < 9; ++i) {
+                    int nx = (x + cx[i] + width_) % width_;
+                    int nz = (z + cz[i] + height_) % height_;
+                    (*nextGrid_)[nz * width_ + nx].f[i] = collidedCell.f[i];
+                }
+
+                // Retrieve macro velocity from collidedCell to guide advection
+                float rho = 0.0f;
+                glm::vec2 u(0.0f);
+                for (int i = 0; i < 9; ++i) {
+                    rho += collidedCell.f[i];
+                    u.x += collidedCell.f[i] * (float)cx[i];
+                    u.y += collidedCell.f[i] * (float)cz[i];
+                }
+                if (rho > 1e-6f) u /= rho;
+
+                // Advect scalars using semi-Lagrangian transport from collidedGrid to nextGrid_
+                glm::vec2 p_back = glm::vec2(x, z) - u * 1.0f;
                 int x0 = (int)std::floor(p_back.x);
                 int z0 = (int)std::floor(p_back.y);
                 float tx = p_back.x - x0;
@@ -219,7 +305,7 @@ namespace Boidsish {
                 auto sample = [&](int sx, int sz) -> const LbmCell& {
                     sx = (sx + width_) % width_;
                     sz = (sz + height_) % height_;
-                    return (*currentGrid_)[sz * width_ + sx];
+                    return collidedGrid[sz * width_ + sx];
                 };
 
                 const LbmCell& c00 = sample(x0, z0);
@@ -229,22 +315,16 @@ namespace Boidsish {
 
                 LbmCell& nextCell = (*nextGrid_)[idx];
 
-            // Inside CollisionAndStreaming's scalar transport phase:
                 float temp_interp = glm::mix(glm::mix(c00.temperature, c10.temperature, tx),
                                             glm::mix(c01.temperature, c11.temperature, tx), tz);
 
-                // Optional: add a tiny bit of anti-diffusion (sharpening) for thermals
-                // This pulls the interpolated temperature slightly closer to the current cell's
-                // original temperature if the difference is small, preserving sharp thermal columns.
-                float diff = cell.temperature - temp_interp;
+                // Optional anti-diffusion for thermals
+                float diff = collidedCell.temperature - temp_interp;
                 if (std::abs(diff) < 0.5f) {
                     temp_interp += diff * 0.1f;
                 }
 
                 nextCell.temperature = temp_interp;
-
-                // nextCell.temperature = glm::mix(glm::mix(c00.temperature, c10.temperature, tx),
-                //                                glm::mix(c01.temperature, c11.temperature, tx), tz);
 
                 nextCell.aerosols = glm::mix(glm::mix(c00.aerosols, c10.aerosols, tx),
                                             glm::mix(c01.aerosols, c11.aerosols, tx), tz);

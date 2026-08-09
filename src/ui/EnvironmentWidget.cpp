@@ -178,6 +178,11 @@ namespace Boidsish {
 								}
 
 								if (macro_enabled) {
+									bool nca_enabled = weather->IsNcaWeatherEnabled();
+									if (ImGui::Checkbox("Enable NCA Weather Simulation", &nca_enabled)) {
+										weather->SetNcaWeatherEnabled(nca_enabled);
+									}
+
 									float tau = weather->GetSimTau();
 									if (ImGui::SliderFloat("Simulation Relaxation (Tau)", &tau, 0.51f, 2.0f, "%.2f")) {
 										weather->SetSimTau(tau);
