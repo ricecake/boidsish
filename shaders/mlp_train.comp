@@ -1,0 +1,207 @@
+#version 430 core
+
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+#include "helpers/mlp.glsl"
+
+layout(std430, binding = 59) coherent buffer MLPGradsSSBO {
+	uint u_mlp_grads[]; // raw bits of float values for atomicCompSwap
+};
+
+// Target texture to learn from
+uniform layout(binding = 0) sampler2D u_target_texture_2d;
+uniform layout(binding = 1) sampler3D u_target_texture_3d;
+
+// Error texture to output squared error for mipmapped loss reduction
+layout(rgba32f, binding = 2) uniform writeonly image2D u_error_texture_2d;
+layout(rgba32f, binding = 3) uniform writeonly image3D u_error_texture_3d;
+
+uniform float u_time;
+uniform int u_dimension;    // 2 = 2D, 3 = 3D
+uniform int u_num_inputs;   // 2, 3, or 4
+uniform int u_num_outputs;  // 1, 2, 3, or 4
+uniform float u_scale;      // UV scale factor for coordinate mapping
+
+void atomicAddGrad(int idx, float val) {
+	uint expected = u_mlp_grads[idx];
+	uint current;
+	do {
+		current = expected;
+		float current_val = uintBitsToFloat(current);
+		float next_val = current_val + val;
+		uint next = floatBitsToUint(next_val);
+		expected = atomicCompSwap(u_mlp_grads[idx], current, next);
+	} while (expected != current);
+}
+
+float mlp_activate_derivative(float x, float act_val, int activation) {
+	if (activation == 1) { // ReLU
+		return x > 0.0 ? 1.0 : 0.0;
+	} else if (activation == 2) { // LeakyReLU
+		return x > 0.0 ? 1.0 : 0.2;
+	} else if (activation == 3) { // Sigmoid
+		return act_val * (1.0 - act_val);
+	} else if (activation == 4) { // Tanh
+		return 1.0 - act_val * act_val;
+	} else if (activation == 5) { // Sine (SIREN Style)
+		return cos(x);
+	}
+	return 1.0; // Identity / None
+}
+
+#define MAX_LAYERS 8
+#define MAX_NEURONS 32
+
+float layer_acts[MAX_LAYERS + 1][MAX_NEURONS]; // activations of each layer (0 is input)
+float layer_zs[MAX_LAYERS][MAX_NEURONS];       // pre-activation sums for each layer
+float layer_deltas[MAX_LAYERS][MAX_NEURONS];   // deltas for each layer
+
+void main() {
+	ivec3 pos = ivec3(gl_GlobalInvocationID.xyz);
+	ivec3 size;
+	if (u_dimension == 2) {
+		size = ivec3(imageSize(u_error_texture_2d), 1);
+		if (pos.x >= size.x || pos.y >= size.y || pos.z >= 1) return;
+	} else {
+		size = imageSize(u_error_texture_3d);
+		if (pos.x >= size.x || pos.y >= size.y || pos.z >= size.z) return;
+	}
+
+	// Calculate normalized coordinates
+	vec3 uvw = vec3(pos) / vec3(size - 1);
+	vec2 uv = (uvw.xy - 0.5) * 2.0 * u_scale; // map to [-u_scale, u_scale]
+
+	// 1. Get MLP input and read target outputs
+	float mlp_inputs[MAX_NEURONS];
+	for (int i = 0; i < MAX_NEURONS; ++i) {
+		mlp_inputs[i] = 0.0;
+	}
+
+	if (u_num_inputs >= 2) {
+		mlp_inputs[0] = uv.x;
+		mlp_inputs[1] = uv.y;
+	}
+	if (u_num_inputs == 3) {
+		if (u_dimension == 3) {
+			mlp_inputs[2] = (uvw.z - 0.5) * 2.0 * u_scale; // 3D Spatial
+		} else {
+			mlp_inputs[2] = u_time * 0.1; // 2D + Time
+		}
+	} else if (u_num_inputs == 4) {
+		mlp_inputs[2] = (uvw.z - 0.5) * 2.0 * u_scale;
+		mlp_inputs[3] = u_time * 0.1; // 3D + Time
+	}
+
+	// Sample target outputs
+	vec4 target_pixel = vec4(0.0);
+	if (u_dimension == 2) {
+		target_pixel = texture(u_target_texture_2d, uvw.xy);
+	} else {
+		target_pixel = texture(u_target_texture_3d, uvw);
+	}
+
+	float target_outputs[MAX_NEURONS];
+	for (int i = 0; i < MAX_NEURONS; ++i) {
+		target_outputs[i] = 0.0;
+	}
+	for (int i = 0; i < u_num_outputs; ++i) {
+		target_outputs[i] = target_pixel[i];
+	}
+
+	// 2. Forward pass (Save all activations and pre-activations)
+	int num_layers = u_mlp_metadata.num_layers;
+	if (num_layers <= 0 || num_layers > MAX_LAYERS) return;
+
+	// Populate input layer
+	int in_size = u_mlp_metadata.layers[0].input_size;
+	for (int i = 0; i < in_size; ++i) {
+		layer_acts[0][i] = mlp_inputs[i];
+	}
+
+	for (int l = 0; l < num_layers; ++l) {
+		int n_in = u_mlp_metadata.layers[l].input_size;
+		int n_out = u_mlp_metadata.layers[l].output_size;
+		int w_off = u_mlp_metadata.layers[l].weight_offset;
+		int b_off = u_mlp_metadata.layers[l].bias_offset;
+		int act = u_mlp_metadata.layers[l].activation;
+
+		for (int j = 0; j < n_out; ++j) {
+			float sum = u_mlp_params[b_off + j];
+			for (int i = 0; i < n_in; ++i) {
+				sum += layer_acts[l][i] * u_mlp_params[w_off + j * n_in + i];
+			}
+			layer_zs[l][j] = sum;
+			layer_acts[l + 1][j] = mlp_activate(sum, act);
+		}
+	}
+
+	// 3. Backward pass: Output layer deltas and losses
+	int out_layer_idx = num_layers - 1;
+	int out_size = u_mlp_metadata.layers[out_layer_idx].output_size;
+	int out_act = u_mlp_metadata.layers[out_layer_idx].activation;
+
+	float sq_error_sum = 0.0;
+	for (int j = 0; j < out_size; ++j) {
+		float pred = layer_acts[num_layers][j];
+		float target_val = target_outputs[j];
+
+		float diff = pred - target_val;
+		sq_error_sum += diff * diff;
+
+		float z = layer_zs[out_layer_idx][j];
+		float deriv = mlp_activate_derivative(z, pred, out_act);
+
+		layer_deltas[out_layer_idx][j] = diff * deriv;
+	}
+
+	// Write error to error texture for mipmapped reduction
+	vec4 error_val = vec4(sq_error_sum, 0.0, 0.0, 1.0);
+	if (u_dimension == 2) {
+		imageStore(u_error_texture_2d, pos.xy, error_val);
+	} else {
+		imageStore(u_error_texture_3d, pos, error_val);
+	}
+
+	// 4. Backward pass: Hidden layers deltas
+	for (int l = out_layer_idx - 1; l >= 0; --l) {
+		int n_out = u_mlp_metadata.layers[l].output_size;
+		int n_next = u_mlp_metadata.layers[l + 1].output_size;
+		int w_off_next = u_mlp_metadata.layers[l + 1].weight_offset;
+		int act = u_mlp_metadata.layers[l].activation;
+
+		for (int j = 0; j < n_out; ++j) {
+			float sum = 0.0;
+			for (int k = 0; k < n_next; ++k) {
+				sum += layer_deltas[l + 1][k] * u_mlp_params[w_off_next + k * n_out + j];
+			}
+			float z = layer_zs[l][j];
+			float act_val = layer_acts[l + 1][j];
+			float deriv = mlp_activate_derivative(z, act_val, act);
+
+			layer_deltas[l][j] = sum * deriv;
+		}
+	}
+
+	// 5. Compute gradients and accumulate
+	for (int l = 0; l < num_layers; ++l) {
+		int n_in = u_mlp_metadata.layers[l].input_size;
+		int n_out = u_mlp_metadata.layers[l].output_size;
+		int w_off = u_mlp_metadata.layers[l].weight_offset;
+		int b_off = u_mlp_metadata.layers[l].bias_offset;
+
+		// Biases gradients
+		for (int j = 0; j < n_out; ++j) {
+			float b_grad = layer_deltas[l][j];
+			atomicAddGrad(b_off + j, b_grad);
+		}
+
+		// Weights gradients
+		for (int j = 0; j < n_out; ++j) {
+			float delta = layer_deltas[l][j];
+			for (int i = 0; i < n_in; ++i) {
+				float w_grad = delta * layer_acts[l][i];
+				atomicAddGrad(w_off + j * n_in + i, w_grad);
+			}
+		}
+	}
+}
