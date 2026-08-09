@@ -81,16 +81,16 @@ namespace Boidsish {
 		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
 
-		// Cloud Weather Map: 2048x2048x3 RGBA16F (2D Texture Array)
+		// Cloud Weather Map: 2048x2048x2 RGBA16F (2D Texture Array, 2 layers)
 		glGenTextures(1, &_cloudWeatherTexture);
 		glBindTexture(GL_TEXTURE_2D_ARRAY, _cloudWeatherTexture);
-		glTexStorage3D(GL_TEXTURE_2D_ARRAY, 6, GL_RGBA16F, 2048, 2048, 3);
+		glTexStorage3D(GL_TEXTURE_2D_ARRAY, 6, GL_RGBA16F, 2048, 2048, 2);
 		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_REPEAT);
 		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
-		// Clear all 3 layers initially to 0.0
+		// Clear all 2 layers initially to 0.0
 		float clearColor[4] = {0.0f, 0.0f, 0.0f, 0.0f};
 		glClearTexImage(_cloudWeatherTexture, 0, GL_RGBA, GL_FLOAT, clearColor);
 
@@ -316,7 +316,7 @@ namespace Boidsish {
 			glBindTexture(GL_TEXTURE_3D, 0);
 
 			// CPU Readback for weather queries
-			_cpuWeatherMap.resize(2048 * 2048 * 3);
+			_cpuWeatherMap.resize(2048 * 2048 * 2);
 			glBindTexture(GL_TEXTURE_2D_ARRAY, _cloudWeatherTexture);
 			glGetTexImage(GL_TEXTURE_2D_ARRAY, 0, GL_RGBA, GL_FLOAT, _cpuWeatherMap.data());
 
@@ -595,40 +595,28 @@ namespace Boidsish {
 
 		size_t idx0 = y * 2048 + x;
 		size_t idx1 = 2048 * 2048 + idx0;
-		size_t idx2 = 2 * 2048 * 2048 + idx0;
 
-		if (idx2 >= _cpuWeatherMap.size()) {
+		if (idx1 >= _cpuWeatherMap.size()) {
 			return _cpuWeatherMap[idx0 % _cpuWeatherMap.size()];
 		}
 
 		glm::vec4 base = _cpuWeatherMap[idx0];
-		glm::vec4 add = _cpuWeatherMap[idx1];
-		glm::vec4 sub = _cpuWeatherMap[idx2];
+		glm::vec4 paint = _cpuWeatherMap[idx1];
 
 		float base_cov = 1.0f - base.x;
 		float base_h = base.y;
 		float base_t = base.z;
 		float base_d = base.w;
 
-		float sub_cov = sub.x * sub.w;
-		float sub_h = sub.y * sub.w;
-		float sub_t = sub.z * sub.w;
-		float sub_d = sub.w * sub.w;
+		float paint_cov = paint.x * paint.w;
+		float paint_h = paint.y * paint.w;
+		float paint_t = paint.z * paint.w;
+		float paint_d = paint_cov; // use coverage as density modifier
 
-		float final_cov = std::max(0.0f, base_cov - sub_cov);
-		float final_h = std::max(0.0f, base_h - sub_h);
-		float final_t = std::max(0.0f, base_t - sub_t);
-		float final_d = std::max(0.0f, base_d - sub_d);
-
-		float add_cov = add.x;
-		float add_h = add.y;
-		float add_t = add.z;
-		float add_d = add.w;
-
-		final_cov = std::clamp(final_cov + add_cov, 0.0f, 1.0f);
-		final_h = std::clamp(final_h + add_h, 0.0f, 1.0f);
-		final_t = std::clamp(final_t + add_t, 0.0f, 1.0f);
-		final_d = std::clamp(final_d + add_d, 0.0f, 1.0f);
+		float final_cov = std::clamp(base_cov + paint_cov, 0.0f, 1.0f);
+		float final_h = std::clamp(base_h + paint_h, 0.0f, 1.0f);
+		float final_t = std::clamp(base_t + paint_t, 0.0f, 1.0f);
+		float final_d = std::clamp(base_d + paint_d, 0.0f, 1.0f);
 
 		glm::vec4 combined;
 		combined.x = 1.0f - final_cov;
@@ -700,10 +688,8 @@ namespace Boidsish {
 		if (!_cloudWeatherTexture) return;
 
 		float clearColor[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
-		// Clear level 0 of Layer 1 (additive)
+		// Clear level 0 of Layer 1 (paint layer)
 		glClearTexSubImage(_cloudWeatherTexture, 0, 0, 0, 1, 2048, 2048, 1, GL_RGBA, GL_FLOAT, clearColor);
-		// Clear level 0 of Layer 2 (subtractive)
-		glClearTexSubImage(_cloudWeatherTexture, 0, 0, 0, 2, 2048, 2048, 1, GL_RGBA, GL_FLOAT, clearColor);
 
 		_needsWeatherBake = true;
 	}

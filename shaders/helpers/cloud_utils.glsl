@@ -491,33 +491,22 @@ CloudWeather computeCloudWeather(vec3 p, CloudProperties props, float lod) {
 	float uv_coord = clamp(lod * 6.0, 0.0, 6.0);
 
 	vec4 base = textureLod(u_cloudWeatherTexture, vec3(uv, 0.0), uv_coord);
-	vec4 add = textureLod(u_cloudWeatherTexture, vec3(uv, 1.0), uv_coord);
-	vec4 sub = textureLod(u_cloudWeatherTexture, vec3(uv, 2.0), uv_coord);
+	vec4 paint = textureLod(u_cloudWeatherTexture, vec3(uv, 1.0), uv_coord);
 
 	float base_cov = 1.0 - base.r;
 	float base_h = base.g;
 	float base_t = base.b;
 	float base_d = base.a;
 
-	float sub_cov = sub.r * sub.a;
-	float sub_h = sub.g * sub.a;
-	float sub_t = sub.b * sub.a;
-	float sub_d = sub.a * sub.a;
+	float paint_cov = paint.r * paint.a;
+	float paint_h = paint.g * paint.a;
+	float paint_t = paint.b * paint.a;
+	float paint_d = paint_cov; // use coverage as density modifier
 
-	float final_cov = max(0.0, base_cov - sub_cov);
-	float final_h = max(0.0, base_h - sub_h);
-	float final_t = max(0.0, base_t - sub_t);
-	float final_d = max(0.0, base_d - sub_d);
-
-	float add_cov = add.r;
-	float add_h = add.g;
-	float add_t = add.b;
-	float add_d = add.a;
-
-	final_cov = clamp(final_cov + add_cov, 0.0, 1.0);
-	final_h = clamp(final_h + add_h, 0.0, 1.0);
-	final_t = clamp(final_t + add_t, 0.0, 1.0);
-	final_d = clamp(final_d + add_d, 0.0, 1.0);
+	float final_cov = clamp(base_cov + paint_cov, 0.0, 1.0);
+	float final_h = clamp(base_h + paint_h, 0.0, 1.0);
+	float final_t = clamp(base_t + paint_t, 0.0, 1.0);
+	float final_d = clamp(base_d + paint_d, 0.0, 1.0);
 
 	vec4 bakedWeather;
 	bakedWeather.r = 1.0 - final_cov;
