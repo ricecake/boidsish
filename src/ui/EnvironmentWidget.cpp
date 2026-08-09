@@ -13,6 +13,8 @@
 #include "post_processing/effects/VolumetricLightingEffect.h"
 #include "terrain_generator_interface.h"
 #include "weather_manager.h"
+#include "spline.h"
+#include "light.h"
 
 namespace Boidsish {
 	namespace UI {
@@ -1098,6 +1100,114 @@ namespace Boidsish {
 						float erosion_max_dist = config.GetAppSettingFloat("erosion_max_dist", 450.0f);
 						if (ImGui::SliderFloat("Erosion Max Dist", &erosion_max_dist, 50.0f, 1000.0f, "%.0f")) {
 							config.SetFloat("erosion_max_dist", erosion_max_dist);
+						}
+					}
+				}
+
+				// 7. LTC Neon Area Lights Creator
+				if (ImGui::CollapsingHeader("LTC Neon Area Lights", ImGuiTreeNodeFlags_DefaultOpen)) {
+					ImGui::DragFloat3("Center Position", m_ltc_pos, 0.1f, -100.0f, 100.0f, "%.1f");
+					ImGui::ColorEdit3("Neon Color", m_ltc_color);
+					ImGui::SliderFloat("Intensity##LTC", &m_ltc_intensity, 0.1f, 100.0f, "%.1f");
+					ImGui::SliderFloat("Width / Radius##LTC", &m_ltc_size, 0.1f, 30.0f, "%.1f");
+					ImGui::SliderFloat("Height##LTC", &m_ltc_height, 0.1f, 10.0f, "%.1f");
+					ImGui::SliderInt("Circle Segments##LTC", &m_ltc_circle_segments, 4, 32);
+
+					ImGui::Separator();
+					ImGui::Text("Spline Shape Offsets:");
+					ImGui::DragFloat3("P0 Offset", m_ltc_p0, 0.1f, -30.0f, 30.0f, "%.1f");
+					ImGui::DragFloat3("P1 Offset", m_ltc_p1, 0.1f, -30.0f, 30.0f, "%.1f");
+					ImGui::DragFloat3("P2 Offset", m_ltc_p2, 0.1f, -30.0f, 30.0f, "%.1f");
+					ImGui::DragFloat3("P3 Offset", m_ltc_p3, 0.1f, -30.0f, 30.0f, "%.1f");
+
+					ImGui::Separator();
+					glm::vec3 center = glm::vec3(m_ltc_pos[0], m_ltc_pos[1], m_ltc_pos[2]);
+					glm::vec3 color = glm::vec3(m_ltc_color[0], m_ltc_color[1], m_ltc_color[2]);
+
+					if (ImGui::Button("Add Area Light (Circle)")) {
+						int num_segments = m_ltc_circle_segments;
+						float r = m_ltc_size;
+						float h = m_ltc_height;
+						for (int i = 0; i < num_segments; ++i) {
+							float angle1 = (float)i / num_segments * 2.0f * 3.14159265f;
+							float angle2 = (float)(i + 1) / num_segments * 2.0f * 3.14159265f;
+							glm::vec3 p1 = glm::vec3(cos(angle1) * r, 0.0f, sin(angle1) * r) + center;
+							glm::vec3 p2 = glm::vec3(cos(angle2) * r, 0.0f, sin(angle2) * r) + center;
+							glm::vec3 segment_center = (p1 + p2) * 0.5f;
+							glm::vec3 tangent = glm::normalize(p2 - p1);
+							glm::vec3 normal = glm::vec3(0.0f, -1.0f, 0.0f);
+							float segment_len = glm::distance(p1, p2);
+
+							m_visualizer.GetLightManager().AddLight(Boidsish::Light::CreateArea(
+								segment_center, normal, tangent, segment_len, h, m_ltc_intensity, color
+							));
+						}
+					}
+
+					ImGui::SameLine();
+					if (ImGui::Button("Add Area Light (Square)")) {
+						float S = m_ltc_size;
+						float h = m_ltc_height;
+						glm::vec3 corners[4] = {
+							center + glm::vec3(-S/2, 0.0f, -S/2),
+							center + glm::vec3(S/2, 0.0f, -S/2),
+							center + glm::vec3(S/2, 0.0f, S/2),
+							center + glm::vec3(-S/2, 0.0f, S/2)
+						};
+						for (int i = 0; i < 4; ++i) {
+							glm::vec3 p1 = corners[i];
+							glm::vec3 p2 = corners[(i + 1) % 4];
+							glm::vec3 segment_center = (p1 + p2) * 0.5f;
+							glm::vec3 tangent = glm::normalize(p2 - p1);
+							glm::vec3 normal = glm::vec3(0.0f, -1.0f, 0.0f);
+							float segment_len = glm::distance(p1, p2);
+
+							m_visualizer.GetLightManager().AddLight(Boidsish::Light::CreateArea(
+								segment_center, normal, tangent, segment_len, h, m_ltc_intensity, color
+							));
+						}
+					}
+
+					ImGui::SameLine();
+					if (ImGui::Button("Add Area Light (Spline)")) {
+						glm::vec3 c_pts[4] = {
+							center + glm::vec3(m_ltc_p0[0], m_ltc_p0[1], m_ltc_p0[2]),
+							center + glm::vec3(m_ltc_p1[0], m_ltc_p1[1], m_ltc_p1[2]),
+							center + glm::vec3(m_ltc_p2[0], m_ltc_p2[1], m_ltc_p2[2]),
+							center + glm::vec3(m_ltc_p3[0], m_ltc_p3[1], m_ltc_p3[2])
+						};
+
+						std::vector<glm::vec3> pts;
+						int num_steps = 10;
+						for (int i = 0; i <= num_steps; ++i) {
+							float t = (float)i / num_steps;
+							glm::vec3 p = Boidsish::Spline::CatmullRom(t,
+								Vector3(c_pts[0]),
+								Vector3(c_pts[1]),
+								Vector3(c_pts[2]),
+								Vector3(c_pts[3])
+							);
+							pts.push_back(p);
+						}
+
+						for (size_t i = 0; i < pts.size() - 1; ++i) {
+							glm::vec3 p1 = pts[i];
+							glm::vec3 p2 = pts[i + 1];
+							glm::vec3 segment_center = (p1 + p2) * 0.5f;
+							glm::vec3 tangent = glm::normalize(p2 - p1);
+							glm::vec3 normal = glm::vec3(0.0f, -1.0f, 0.0f);
+							float segment_len = glm::distance(p1, p2);
+
+							m_visualizer.GetLightManager().AddLight(Boidsish::Light::CreateArea(
+								segment_center, normal, tangent, segment_len, m_ltc_height, m_ltc_intensity, color
+							));
+						}
+					}
+
+					if (ImGui::Button("Clear All Local Lights")) {
+						auto& lights = m_visualizer.GetLightManager().GetLights();
+						if (lights.size() > 2) {
+							lights.erase(lights.begin() + 2, lights.end());
 						}
 					}
 				}
