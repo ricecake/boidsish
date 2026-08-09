@@ -43,10 +43,11 @@ namespace Boidsish {
 				WeatherAerosols = 43,
 				TerrainDisplacementImage = 44,
 				Cloud3D = 45,
-				CloudJFADistance = 46,
+				Ltc1 = 46,
+				TerrainColorBlend = 47,
+				Ltc2 = 48,
 				CloudWeatherMinMax = 49,
 				CloudMinMaxBounding = 50,
-				TerrainColorBlend = 47,
 				CloudShadowMap = 51,
 			};
 
@@ -316,8 +317,12 @@ namespace Boidsish {
 				return std::to_underlying(Constants::Bindings::Texture::Cloud3D);
 			}
 
-			consteval int CloudJFADistance() {
-				return std::to_underlying(Constants::Bindings::Texture::CloudJFADistance);
+			consteval int Ltc1() {
+				return std::to_underlying(Constants::Bindings::Texture::Ltc1);
+			}
+
+			consteval int Ltc2() {
+				return std::to_underlying(Constants::Bindings::Texture::Ltc2);
 			}
 
 			consteval int CloudWeatherMinMax() {

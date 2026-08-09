@@ -65,6 +65,19 @@ namespace Boidsish {
 		packet.uniforms.is_refractive = is_refractive_ ? 1 : 0;
 		packet.uniforms.refractive_index = refractive_index_;
 
+		if (emissive_) {
+			packet.uniforms.emissive_r = emissive_color_.r > 0.0f ? emissive_color_.r : r_;
+			packet.uniforms.emissive_g = emissive_color_.g > 0.0f ? emissive_color_.g : g_;
+			packet.uniforms.emissive_b = emissive_color_.b > 0.0f ? emissive_color_.b : b_;
+			packet.uniforms.emissive_r *= 3.0f;
+			packet.uniforms.emissive_g *= 3.0f;
+			packet.uniforms.emissive_b *= 3.0f;
+		} else {
+			packet.uniforms.emissive_r = 0.0f;
+			packet.uniforms.emissive_g = 0.0f;
+			packet.uniforms.emissive_b = 0.0f;
+		}
+
 		AABB      worldAABB = GetAABB();
 		glm::vec3 velocity = world_pos - GetLastPosition();
 		if (glm::dot(velocity, velocity) > 0.001f) {

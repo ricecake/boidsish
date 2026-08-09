@@ -13,7 +13,8 @@ namespace Boidsish {
 		DIRECTIONAL_LIGHT,
 		SPOT_LIGHT,
 		EMISSIVE_LIGHT, // Glowing object - point light with emissive surface, can cast shadows
-		FLASH_LIGHT     // Explosion/flash - very bright, rapid falloff, typically no shadows
+		FLASH_LIGHT,    // Explosion/flash - very bright, rapid falloff, typically no shadows
+		AREA_LIGHT      // Linearly Transformed Cosines Area light
 	};
 
 	/**
@@ -40,8 +41,10 @@ namespace Boidsish {
 		float     inner_cutoff; // offset 44, 4 bytes
 		float     outer_cutoff; // offset 48, 4 bytes
 		int       flags;        // offset 52, 4 bytes
-		float     _padding[2];  // offset 56, 8 bytes of padding
-	}; // Total: 64 bytes
+		float     _padding1[2]; // offset 56, 8 bytes of padding (aligns the next vec3 to 16 bytes)
+		glm::vec3 tangent;      // offset 64, 12 bytes
+		float     _padding;     // offset 76, 4 bytes of padding to align struct size to 80 bytes
+	}; // Total: 80 bytes
 
 	struct alignas(16) LightsSSBOData {
 		uint32_t count;
@@ -158,6 +161,8 @@ namespace Boidsish {
 		float inner_cutoff;
 		float outer_cutoff;
 
+		glm::vec3 tangent = glm::vec3(1.0f, 0.0f, 0.0f); // Right vector of the light quad
+
 		// CPU-side shadow configuration
 		bool casts_shadow = false;
 		bool volumetric_shadow = false;
@@ -190,6 +195,10 @@ namespace Boidsish {
 			if (volumetric_shadow) gpu.flags |= LIGHT_FLAG_VOLUMETRIC_SHADOW;
 			if (camera_relative) gpu.flags |= LIGHT_FLAG_CAMERA_RELATIVE;
 			if (cloud_emissive) gpu.flags |= LIGHT_FLAG_CLOUD_EMISSIVE;
+			gpu.tangent = tangent;
+			gpu._padding1[0] = 0.0f;
+			gpu._padding1[1] = 0.0f;
+			gpu._padding = 0.0f;
 			return gpu;
 		}
 
@@ -338,6 +347,35 @@ namespace Boidsish {
 			l.type = EMISSIVE_LIGHT;
 			l.inner_cutoff = emissive_radius; // Repurpose for emissive object radius
 			l.outer_cutoff = 0.0f;
+			return l;
+		}
+
+		/**
+		 * Create a rectangular area light.
+		 *
+		 * @param pos Light center position
+		 * @param normal Normal vector of the light quad (emission direction)
+		 * @param right Right vector of the light quad (orthogonal to normal)
+		 * @param width Width of the light quad
+		 * @param height Height of the light quad
+		 * @param intens Brightness/intensity of the area light
+		 * @param col Light color
+		 */
+		static Light CreateArea(
+			const glm::vec3& pos,
+			const glm::vec3& normal,
+			const glm::vec3& right,
+			float            width,
+			float            height,
+			float            intens,
+			const glm::vec3& col
+		) {
+			Light l = Create(pos, intens, col, false);
+			l.type = AREA_LIGHT;
+			l.direction = glm::normalize(normal);
+			l.tangent = glm::normalize(right);
+			l.inner_cutoff = width;
+			l.outer_cutoff = height;
 			return l;
 		}
 

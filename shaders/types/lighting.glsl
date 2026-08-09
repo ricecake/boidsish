@@ -7,11 +7,13 @@ struct Light {
 	vec3  color;
 	int   type;
 	vec3  direction;
-	float inner_cutoff; // Also: emissive_radius (EMISSIVE), flash_radius (FLASH)
-	float outer_cutoff; // Also: falloff_exp (FLASH)
+	float inner_cutoff; // Also: emissive_radius (EMISSIVE), flash_radius (FLASH), width (AREA)
+	float outer_cutoff; // Also: falloff_exp (FLASH), height (AREA)
 	int   flags;
 	float _pad0;
 	float _pad1;
+	vec3  tangent;      // Right direction vector for AREA light
+	float _pad2;
 };
 
 const int LIGHT_FLAG_CASTS_SHADOW = 1;
