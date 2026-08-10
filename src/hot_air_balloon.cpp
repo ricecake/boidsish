@@ -217,6 +217,25 @@ namespace Boidsish {
 		}
 		old_centroid /= static_cast<float>(points_.size());
 
+		// Get weather properties
+		float wind_str = 1.0f;
+		float wind_sp = 1.0f;
+		float temp = 288.15f;
+		if (weather_mgr) {
+			const auto& w = weather_mgr->GetCurrentWeather();
+			wind_str = w.wind_strength;
+			wind_sp = w.wind_speed;
+			temp = w.temperature;
+		}
+
+		// Calculate slowly changing rotating global fallback/ambient wind
+		float wind_t = time * 0.15f * wind_sp;
+		glm::vec3 ambient_wind(
+			cos(wind_t) * wind_str * 6.0f,
+			0.0f,
+			sin(wind_t * 0.7f) * wind_str * 6.0f
+		);
+
 		// 2. Accumulate external forces
 		for (auto& pt : points_) {
 			// Gravity
@@ -227,12 +246,32 @@ namespace Boidsish {
 				pt.force += glm::vec3(0.0f, buoyancy_, 0.0f);
 			}
 
-			// Wind response
+			// Localized wind & updrafts (blend LBM with organic fallback)
+			glm::vec3 point_wind = ambient_wind;
 			if (weather_mgr) {
 				PhysicallyBasedWeatherOutput weather_out = weather_mgr->GetWeatherAtPosition(pt.position);
-				glm::vec3 wind_vel(weather_out.windVelocity.x, weather_out.verticalWind, weather_out.windVelocity.y);
-				pt.force += wind_response_ * (wind_vel - pt.velocity) * 1.5f;
+				// If LBM wind is active/valid, use it
+				if (glm::length(weather_out.windVelocity) > 0.001f || std::abs(weather_out.verticalWind) > 0.001f) {
+					point_wind = glm::vec3(weather_out.windVelocity.x, weather_out.verticalWind, weather_out.windVelocity.y);
+				}
 			}
+
+			// Thermal updraft columns (highly realistic rising/sinking column zones)
+			float terrain_h = 0.0f;
+			if (handler.vis) {
+				auto [h, norm] = handler.GetTerrainPropertiesAtPoint(pt.position.x, pt.position.z);
+				terrain_h = h;
+			}
+
+			// Peaks create strong thermal columns; periodic sin/cos waves create thermal column bands
+			float peak_updraft = std::max(0.0f, terrain_h - 15.0f) * 0.03f;
+			float column_updraft = (sin(pt.position.x * 0.01f) * cos(pt.position.z * 0.01f) + 1.0f) * 0.5f; // 0 to 1 columns
+			float local_updraft = (peak_updraft * 2.0f + column_updraft * 3.0f) * (temp / 288.15f);
+
+			point_wind.y += local_updraft;
+
+			// Wind aerodynamic response / drag
+			pt.force += wind_response_ * (point_wind - pt.velocity) * 1.5f;
 
 			// Subtle organic bobbing
 			if (!pt.is_basket) {
