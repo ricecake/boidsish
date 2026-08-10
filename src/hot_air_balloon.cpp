@@ -27,22 +27,60 @@ namespace Boidsish {
 	}
 
 	HotAirBalloonEntity::~HotAirBalloonEntity() {
-		// Shape is removed from visualizer in EntityHandler or automatically on deletion
+		// Cleanly remove additional shapes from visualizer
+		if (basket_added_ && shape_handler_visualizer_pointer_) {
+			shape_handler_visualizer_pointer_->RemoveShape(basket_shape_->GetId());
+			for (auto& line : line_shapes_) {
+				shape_handler_visualizer_pointer_->RemoveShape(line->GetId());
+			}
+		}
 	}
 
 	void HotAirBalloonEntity::InitializePhysics() {
+		// If we are re-initializing, remove old extra shapes first
+		if (basket_added_ && shape_handler_visualizer_pointer_) {
+			shape_handler_visualizer_pointer_->RemoveShape(basket_shape_->GetId());
+			for (auto& line : line_shapes_) {
+				shape_handler_visualizer_pointer_->RemoveShape(line->GetId());
+			}
+			basket_added_ = false;
+		}
+
 		points_.clear();
 		springs_.clear();
+		line_shapes_.clear();
 
+		// 1. Envelope Shape (DelaunayBlob)
 		shape_ = std::make_shared<DelaunayBlob>(id_);
 		shape_->SetRenderMode(DelaunayBlob::RenderMode::SolidWithWire);
 		shape_->SetSmoothNormals(true);
 
+		// 2. Basket Shape (Polyhedron Cube)
+		basket_shape_ = std::make_shared<Polyhedron>(
+			PolyhedronType::Cube,
+			Shape::s_nextId++,
+			GetXPos(), GetYPos() - size_ * 1.5f, GetZPos(),
+			1.0f, // size multiplier
+			0.4f, 0.25f, 0.15f, 1.0f // Brown basket
+		);
+		basket_shape_->SetScale(glm::vec3(size_ * 0.2f, size_ * 0.15f, size_ * 0.2f));
+
+		// 3. Line Shapes (4 suspension cables)
+		for (int i = 0; i < 4; ++i) {
+			auto line = std::make_shared<Line>(
+				Shape::s_nextId++,
+				glm::vec3(0.0f),
+				glm::vec3(0.0f),
+				size_ * 0.04f, // thickness
+				0.7f, 0.7f, 0.7f, 1.0f // Silver/grey lines
+			);
+			line_shapes_.push_back(line);
+		}
+
 		// Initial position of balloon center
 		glm::vec3 center(GetXPos(), GetYPos(), GetZPos());
 
-		const int N_lat = 6;
-		const int N_lon = 8;
+		const int num_envelope_points = 32;
 		float r_max = size_;
 		float pi = 3.1415926535f;
 
@@ -53,16 +91,16 @@ namespace Boidsish {
 			pt.position = center + rel_pos;
 			pt.velocity = glm::vec3(0.0f);
 			pt.force = glm::vec3(0.0f);
-			pt.mass = is_basket ? 1.5f : 1.0f; // Basket is heavier
+			pt.mass = is_basket ? 2.5f : 1.0f; // Basket is heavy
 			pt.is_basket = is_basket;
 
 			if (is_basket) {
-				pt.color = glm::vec4(0.4f, 0.25f, 0.15f, 1.0f); // Brown basket
+				pt.color = glm::vec4(0.4f, 0.25f, 0.15f, 1.0f);
 			} else {
-				// Stripe pattern based on longitude slice
+				// Stripe pattern based on angle
 				float angle = atan2(rel_pos.z, rel_pos.x);
 				if (angle < 0.0f) angle += 2.0f * pi;
-				int stripe_idx = static_cast<int>(angle / (2.0f * pi / N_lon));
+				int stripe_idx = static_cast<int>(angle / (2.0f * pi / 8.0f));
 				if (stripe_idx % 2 == 0) {
 					pt.color = color_;
 				} else {
@@ -70,49 +108,41 @@ namespace Boidsish {
 				}
 			}
 
-			pt.id = shape_->AddPoint(pt.position);
-			shape_->SetPointColor(pt.id, pt.color);
+			if (!is_basket) {
+				pt.id = shape_->AddPoint(pt.position);
+				shape_->SetPointColor(pt.id, pt.color);
+			} else {
+				pt.id = -1;
+			}
 			points_.push_back(pt);
 			return static_cast<int>(points_.size() - 1);
 		};
 
-		// Add top pole
-		int top_pole_idx = add_point(glm::vec3(0.0f, r_max, 0.0f), false);
+		// Generate envelope points on a beautiful, convex stretched sphere
+		for (int i = 0; i < num_envelope_points; ++i) {
+			float y_norm = 1.0f - (i / (float)(num_envelope_points - 1)) * 2.0f; // -1 to 1
+			float y_rel = y_norm * r_max * 1.2f;
 
-		// Add envelope slices
-		std::vector<std::vector<int>> slice_indices(N_lat - 1);
-		for (int i = 1; i < N_lat; ++i) {
-			float lat_frac = static_cast<float>(i) / N_lat;
-			float y_rel = r_max * (1.0f - 2.0f * lat_frac);
-
-			// Compute radius at y_rel
-			float r_rel = 0.0f;
-			float y_norm = y_rel / r_max; // -1 to 1
-			if (y_norm > 0.0f) {
-				r_rel = r_max * sqrt(1.0f - y_norm * y_norm);
-			} else {
-				float f = (y_norm + 1.0f); // 0 at neck, 1 at equator
-				r_rel = r_max * (0.3f + 0.7f * (1.5f * f - 0.5f * f * f * f));
+			// Taper the bottom part slightly to resemble a teardrop balloon envelope
+			float r_factor = 1.0f;
+			if (y_norm < 0.0f) {
+				r_factor = 1.0f + 0.3f * y_norm; // tapers smoothly down to 0.7 at the bottom pole
 			}
+			float radius_at_y = r_factor * r_max * sqrt(1.0f - y_norm * y_norm);
 
-			for (int j = 0; j < N_lon; ++j) {
-				float theta = j * 2.0f * pi / N_lon;
-				glm::vec3 rel_pos(r_rel * cos(theta), y_rel, r_rel * sin(theta));
-				int idx = add_point(rel_pos, false);
-				slice_indices[i - 1].push_back(idx);
-			}
+			float golden_ratio = 1.6180339887f;
+			float theta = 2.0f * pi * i / golden_ratio;
+
+			glm::vec3 rel_pos(
+				radius_at_y * cos(theta),
+				y_rel,
+				radius_at_y * sin(theta)
+			);
+			add_point(rel_pos, false);
 		}
 
-		// Add bottom pole
-		int bottom_pole_idx = add_point(glm::vec3(0.0f, -r_max * 1.1f, 0.0f), false);
-
-		// Add basket points (4 points forming a square suspended below the balloon)
-		float basket_y = -r_max * 1.5f;
-		float basket_w = r_max * 0.25f;
-		int b1 = add_point(glm::vec3(-basket_w, basket_y, -basket_w), true);
-		int b2 = add_point(glm::vec3(basket_w, basket_y, -basket_w), true);
-		int b3 = add_point(glm::vec3(basket_w, basket_y, basket_w), true);
-		int b4 = add_point(glm::vec3(-basket_w, basket_y, basket_w), true);
+		// Generate 1 basket point at the bottom
+		int basket_idx = add_point(glm::vec3(0.0f, -r_max * 1.6f, 0.0f), true);
 
 		// Helper to add a spring
 		auto add_spring = [&](int idx_a, int idx_b, float stiffness) {
@@ -124,58 +154,30 @@ namespace Boidsish {
 			springs_.push_back(sp);
 		};
 
-		// Connect top pole to top slice
-		for (int idx : slice_indices[0]) {
-			add_spring(top_pole_idx, idx, spring_stiffness_);
-		}
-
-		// Connect slices
-		for (int i = 0; i < N_lat - 1; ++i) {
-			// Latitude springs (horizontal rings)
-			for (int j = 0; j < N_lon; ++j) {
-				int current = slice_indices[i][j];
-				int next = slice_indices[i][(j + 1) % N_lon];
-				add_spring(current, next, spring_stiffness_ * 1.2f);
+		// Structural lattice springs: connect each envelope point to its nearest 5 neighbors
+		for (int i = 0; i < num_envelope_points; ++i) {
+			std::vector<std::pair<float, int>> dists;
+			for (int j = 0; j < num_envelope_points; ++j) {
+				if (i == j) continue;
+				float d = glm::distance(points_[i].rest_offset, points_[j].rest_offset);
+				dists.push_back({d, j});
 			}
-
-			// Longitude springs (vertical connections)
-			if (i < N_lat - 2) {
-				for (int j = 0; j < N_lon; ++j) {
-					add_spring(slice_indices[i][j], slice_indices[i+1][j], spring_stiffness_);
-				}
+			std::sort(dists.begin(), dists.end());
+			for (size_t k = 0; k < std::min<size_t>(5, dists.size()); ++k) {
+				add_spring(i, dists[k].second, spring_stiffness_ * 1.5f);
 			}
 		}
 
-		// Connect bottom pole to bottom slice
-		for (int idx : slice_indices[N_lat - 2]) {
-			add_spring(bottom_pole_idx, idx, spring_stiffness_);
+		// Connect basket point to the 6 lowest envelope points for physical suspension
+		std::vector<std::pair<float, int>> lowest_pts;
+		for (int i = 0; i < num_envelope_points; ++i) {
+			lowest_pts.push_back({points_[i].rest_offset.y, i});
 		}
+		std::sort(lowest_pts.begin(), lowest_pts.end()); // sorts ascending (lowest y first)
 
-		// Radial structural springs (to maintain volume)
-		for (int i = 0; i < N_lat - 1; ++i) {
-			for (int j = 0; j < N_lon; ++j) {
-				int opp_j = (j + N_lon / 2) % N_lon;
-				add_spring(slice_indices[i][j], slice_indices[i][opp_j], spring_stiffness_ * 0.5f);
-			}
+		for (size_t k = 0; k < std::min<size_t>(6, lowest_pts.size()); ++k) {
+			add_spring(basket_idx, lowest_pts[k].second, spring_stiffness_ * 1.5f);
 		}
-
-		// Connect basket points to bottom slice (neck) for suspension
-		int neck_num = static_cast<int>(slice_indices[N_lat - 2].size());
-		for (int j = 0; j < neck_num; ++j) {
-			int neck_idx = slice_indices[N_lat - 2][j];
-			add_spring(b1, neck_idx, spring_stiffness_ * 0.8f);
-			add_spring(b2, neck_idx, spring_stiffness_ * 0.8f);
-			add_spring(b3, neck_idx, spring_stiffness_ * 0.8f);
-			add_spring(b4, neck_idx, spring_stiffness_ * 0.8f);
-		}
-
-		// Basket structural springs
-		add_spring(b1, b2, spring_stiffness_ * 2.0f);
-		add_spring(b2, b3, spring_stiffness_ * 2.0f);
-		add_spring(b3, b4, spring_stiffness_ * 2.0f);
-		add_spring(b4, b1, spring_stiffness_ * 2.0f);
-		add_spring(b1, b3, spring_stiffness_ * 2.0f); // diagonal
-		add_spring(b2, b4, spring_stiffness_ * 2.0f); // diagonal
 
 		shape_->Retetrahedralize();
 	}
@@ -185,6 +187,20 @@ namespace Boidsish {
 			return;
 
 		float dt = std::min(delta_time, 0.05f);
+
+		// Store visualizer pointer for clean deletion later
+		if (handler.vis) {
+			shape_handler_visualizer_pointer_ = handler.vis.get();
+		}
+
+		// Add additional shapes to the visualizer if they haven't been added yet
+		if (!basket_added_ && handler.vis) {
+			handler.vis->AddShape(basket_shape_);
+			for (auto& line : line_shapes_) {
+				handler.vis->AddShape(line);
+			}
+			basket_added_ = true;
+		}
 
 		// Get WeatherManager
 		WeatherManager* weather_mgr = handler.vis ? handler.vis->GetWeatherManager() : nullptr;
@@ -252,7 +268,7 @@ namespace Boidsish {
 			pt.force += restore_force;
 		}
 
-		// 5. Integrate and apply terrain collision
+		// 5. Integrate and apply terrain/ground collision
 		for (auto& pt : points_) {
 			// Acceleration
 			glm::vec3 acc = pt.force / pt.mass;
@@ -281,8 +297,10 @@ namespace Boidsish {
 				pt.velocity.z *= 0.7f;
 			}
 
-			// Update shape's point
-			shape_->SetPointState(pt.id, pt.position, pt.velocity);
+			// Update shape's point if it belongs to the envelope
+			if (!pt.is_basket) {
+				shape_->SetPointState(pt.id, pt.position, pt.velocity);
+			}
 		}
 
 		// Compute new centroid of the balloon
@@ -297,6 +315,38 @@ namespace Boidsish {
 
 		// Retetrahedralize
 		shape_->Retetrahedralize();
+
+		// Update basket shape position
+		int basket_idx = static_cast<int>(points_.size() - 1);
+		glm::vec3 basket_pos = points_[basket_idx].position;
+		basket_shape_->SetPosition(basket_pos.x, basket_pos.y, basket_pos.z);
+
+		// Update line shapes (4 cables hanging down)
+		float w = size_ * 0.2f;
+		float h = size_ * 0.15f;
+		glm::vec3 c1 = basket_pos + glm::vec3(-w, h, -w);
+		glm::vec3 c2 = basket_pos + glm::vec3(w, h, -w);
+		glm::vec3 c3 = basket_pos + glm::vec3(w, h, w);
+		glm::vec3 c4 = basket_pos + glm::vec3(-w, h, w);
+
+		// Find the lowest 4 points on the envelope to attach cables
+		std::vector<std::pair<float, int>> lowest_pts;
+		for (size_t i = 0; i < points_.size() - 1; ++i) {
+			lowest_pts.push_back({points_[i].rest_offset.y, static_cast<int>(i)});
+		}
+		std::sort(lowest_pts.begin(), lowest_pts.end());
+
+		line_shapes_[0]->SetStart(points_[lowest_pts[0].second].position);
+		line_shapes_[0]->SetEnd(c1);
+
+		line_shapes_[1]->SetStart(points_[lowest_pts[1].second].position);
+		line_shapes_[1]->SetEnd(c2);
+
+		line_shapes_[2]->SetStart(points_[lowest_pts[2].second].position);
+		line_shapes_[2]->SetEnd(c3);
+
+		line_shapes_[3]->SetStart(points_[lowest_pts[3].second].position);
+		line_shapes_[3]->SetEnd(c4);
 	}
 
 	std::shared_ptr<Shape> HotAirBalloonEntity::GetShape() const {
@@ -306,7 +356,6 @@ namespace Boidsish {
 	void HotAirBalloonEntity::UpdateShape() {
 		if (shape_) {
 			shape_->SetId(id_);
-			// We update points in UpdateEntity, so we just make sure color and other parameters are correct
 			shape_->SetColor(color_.r, color_.g, color_.b, color_.a);
 			shape_->SetRoughness(roughness_);
 			shape_->SetMetallic(metallic_);

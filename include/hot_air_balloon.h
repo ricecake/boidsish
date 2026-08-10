@@ -6,6 +6,8 @@
 #include <glm/glm.hpp>
 #include "entity.h"
 #include "delaunay_blob.h"
+#include "polyhedron.h"
+#include "line.h"
 
 namespace Boidsish {
 
@@ -52,6 +54,10 @@ namespace Boidsish {
 
 	private:
 		std::shared_ptr<DelaunayBlob> shape_;
+		std::shared_ptr<Polyhedron> basket_shape_;
+		std::vector<std::shared_ptr<Line>> line_shapes_;
+		bool basket_added_ = false;
+		Visualizer* shape_handler_visualizer_pointer_ = nullptr;
 		std::string name_;
 
 		// Simulation settings
@@ -63,7 +69,7 @@ namespace Boidsish {
 
 		// Internal soft-body simulation structures
 		struct SoftPoint {
-			int id; // ID in DelaunayBlob
+			int id; // ID in DelaunayBlob (if envelope)
 			glm::vec3 position;
 			glm::vec3 velocity{0.0f};
 			glm::vec3 force{0.0f};
