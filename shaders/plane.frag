@@ -118,7 +118,7 @@ void main() {
 	float fade = 1.0 - smoothstep(fade_start, fade_end, dist + nebula_noise * 50);
 
 	if (fade < 0.2) {
-		discard;
+		// discard;
 	}
 
 	// --- Grid logic ---
@@ -134,21 +134,21 @@ void main() {
 	float line_major = min(grid_major.x, grid_major.y);
 	float C_major = 1.0 - min(line_major, 1.0);
 
-	float intensity = max(C_minor, C_major * 1.5) * 0.6;
-	vec3  grid_color = vec3(0.0, 0.8, 0.8) * intensity;
+	float intensity = max(C_minor, C_major * 1.5);
+	vec3  grid_color = vec3(0.0, 0.8, 0.8) * intensity * 5000.0 * (1.0-smoothstep(1000, 2000, dist));
 
 	// --- Plane lighting ---
 	vec3 norm = normalize(Normal);
 	vec3 surfaceColor = vec3(0.05, 0.05, 0.08);
 	float primaryShadow;
-	vec3 lighting = apply_lighting(WorldPos, norm, surfaceColor, 0.8, primaryShadow).rgb;
+	vec3 lighting = apply_lighting_pbr(WorldPos, norm, surfaceColor, 0.05, 0.9, 1.0, primaryShadow).rgb;
 
 	// --- Combine colors ---
-	vec3 final_color = lighting * surfaceColor + grid_color;
+	vec3 final_color = lighting + grid_color;
 
 	// --- Distance Fade ---
 	vec4 outColor = vec4(final_color, fade);
-	FragColor = mix(vec4(0.7, 0.1, 0.7, fade) * length(outColor), outColor, step(1, fade));
+	FragColor = outColor;//mix(vec4(0.7, 0.1, 0.7, fade) * length(outColor), outColor, step(1, fade));
 
 	// Calculate screen-space velocity and material properties
 	vec2 a = (CurPosition.xy / CurPosition.w) * 0.5 + 0.5;

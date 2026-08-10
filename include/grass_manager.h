@@ -66,7 +66,6 @@ namespace Boidsish {
             uint32_t transmittanceLUT;
             uint32_t skyViewLUT;
             uint32_t aerialPerspectiveLUT;
-            uint32_t cloudShadowMap;
             float atmosphereHeight;
             uint32_t noiseTexture;
             uint32_t curlTexture;

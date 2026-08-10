@@ -1,4 +1,7 @@
 #version 460 core
+#extension GL_ARB_shader_group_vote : require
+#extension GL_ARB_shader_ballot : require
+#extension GL_ARB_gpu_shader_int64 : enable
 layout(local_size_x = 8, local_size_y = 8) in;
 
 layout(binding = 0, rgba16f) uniform image2D outPackedColor;
@@ -19,11 +22,14 @@ uniform mat4  uPrevViewProjection;
 uniform bool  uHasHistory;
 
 uniform sampler2D u_skyViewLUT;
-
+layout(binding = [[CLOUD_MIN_MAX_BOUNDING_BINDING]]) uniform sampler2D u_cloudMinMaxBoundingTexture;
+layout(binding = [[CLOUD_WEATHER_MIN_MAX_BINDING]]) uniform sampler2D u_cloudWeatherMinMaxTexture;
 uniform float uCloudMaxRayDistance;
 uniform int   uCloudMinSamples;
 uniform int   uCloudMaxSamples;
 uniform float uCloudExtinction;
+uniform vec3  uCloudExtinctionColor;
+uniform vec3  uCloudAlbedo;
 
 #include "../atmosphere/common.glsl"
 #include "../helpers/clouds.glsl"
@@ -34,9 +40,549 @@ uniform float uCloudExtinction;
 #include "lygia/generative/wavelet.glsl"
 #include "lygia/generative/voronoi.glsl"
 #include "lygia/generative/random.glsl"
+#include "helpers/astral.glsl"
 
 float R_earth = kEarthRadius * 1000.0 * worldScale;
 
+struct Reservoir {
+	float t;        // Chosen sample distance along the ray
+	float p_hat;    // Target PDF (scattering/density contribution)
+	float w_sum;    // Sum of candidate weights
+	float M;        // Number of samples processed
+	float W;        // Final weight: w_sum / (M * p_hat)
+};
+
+void updateReservoir(inout Reservoir r, float t, float p_hat, float weight, float seed) {
+	r.w_sum += weight;
+	r.M += 1.0;
+	if (fract(sin(seed) * 43758.5453) * r.w_sum < weight) {
+		r.t = t;
+		r.p_hat = p_hat;
+	}
+}
+
+// Correct merging pattern during history reuse
+void mergeReservoir(inout Reservoir r1, Reservoir r2, float p_hat_at_r1, float seed) {
+    // r2.W already contains w_sum / (M * p_hat) from the previous frame
+    float weight = r2.W * p_hat_at_r1 * r2.M;
+    r1.w_sum += weight;
+    r1.M += r2.M;
+    if (fract(sin(seed) * 43758.5453) * r1.w_sum < weight) {
+        r1.t = r2.t;
+        r1.p_hat = p_hat_at_r1;
+    }
+}
+
+void finalizeReservoir(inout Reservoir r) {
+	if (r.p_hat > 0.0) {
+		r.W = r.w_sum / (r.M * r.p_hat);
+	} else {
+		r.W = 0.0;
+	}
+}
+
+
+/**
+ * Calculates the adaptive step size for a volumetric ray sampling system.
+ *
+ * @param t        Current distance from the camera along the ray.
+ * @param pd       Low-resolution extinction density vector (RGB) of the current macro-cell.
+ * @param D        High-resolution extinction density vector (RGB) at the current sample point.
+ * @param PD       High-resolution extinction density vector (RGB) at the previous sample point.
+ * @param B        Minimum baseline step size near the camera.
+ * @param G        Distance scaling factor (gradient of step growth over distance).
+ * @param K        Low-density space-skipping boost factor.
+ * @param C        High-resolution gradient sensitivity factor.
+ */
+float calculateAdaptiveStepSize(
+    float t, vec3 pd, vec3 D, vec3 PD,
+    float B, float G, float K, float C
+) {
+    // --- TERM 1: Distance from Camera ---
+    // Linearly scales step size up as the ray gets further away. B acts as the floor.
+    float term1 = max(B, t * G);
+
+    // --- TERM 2: Low-Resolution Density (Space-Skipping) ---
+    // Finds the highest density channel. If ANY channel gets dense, we must slow down.
+    float max_pd = max(pd.x, max(pd.y, pd.z));
+    float term2 = 1.0 + (K / max(max_pd, 1e-5));
+
+    // --- TERM 3: High-Resolution Gradient Change ---
+    // Calculates how much the RGB density changed between the current and last sample.
+    // Uses smooth inverse scaling instead of a hard linear clamp to avoid artifacting.
+    float density_change = distance(D, PD);
+    float term3 = 1.0 / (1.0 + C * density_change);
+
+    // Combine all three concepts into the final adaptive step size
+    return term1 * term2 * term3;
+}
+
+/**
+ * Calculates the bifurcated step size for a volumetric ray sampling system.
+ *
+ * @param in_cloud         State flag: true if currently evaluating high-resolution density.
+ * @param zero_count       State counter: tracks consecutive steps with zero density.
+ * @param macro_density    Low-resolution density query (e.g., from a weather map or coarse SDF).
+ * @param B                Minimum baseline step size (the "expensive" step).
+ * @param cheap_mult       Multiplier for the base step size in empty space (e.g., 2.0 to 4.0).
+ * @param escape_threshold Number of zero-density steps required to exit the cloud state.
+ * @return                 The calculated step size for the current iteration.
+ */
+float calculateBifurcatedStepSize(
+    inout bool in_cloud,
+    inout int zero_count,
+    float macro_density,
+    float B,
+    float cheap_mult,
+    int escape_threshold
+) {
+    float cheap_step = B * cheap_mult;
+
+    if (!in_cloud) {
+        // --- STATE: EMPTY SPACE ---
+        if (macro_density > 0.01) {
+            // Cloud boundary detected.
+            // Toggle state and step backward by the cheap step to ensure
+            // we don't overshoot the high-frequency boundary details.
+            in_cloud = true;
+            zero_count = 0;
+            return -cheap_step;
+        }
+        // Remain in empty space
+        return cheap_step;
+
+    } else {
+        // --- STATE: INSIDE CLOUD ---
+        if (macro_density <= 0.0) {
+            // Potential exit detected. Increment the verification counter.
+            zero_count++;
+            if (zero_count >= escape_threshold) {
+                // Threshold met. Officially escaped the cloud volume.
+                in_cloud = false;
+                return cheap_step;
+            }
+        } else {
+            // Still firmly inside the cloud. Reset the escape counter.
+            zero_count = 0;
+        }
+
+        // Remain in dense space evaluation
+        return B;
+    }
+}
+
+
+struct RaymarchState {
+    float t;
+    bool in_cloud;
+    int zero_count;
+    float current_lod;
+    float step_size;
+};
+
+/**
+ * Evaluates the unified step, state, and LOD for the current iteration.
+ */
+void evaluateRaymarchState(
+    inout RaymarchState state,
+    float macro_density,
+    float dist_max,
+    float base_step,
+    float cheap_mult,
+    int escape_threshold
+) {
+    // 1. Quadratic Distance Scaling
+    // Pushes the ray to the horizon efficiently by growing the base step
+    // exponentially after a safe near-field distance.
+    float dist_start = 15000.0 * worldScale;
+    float max_growth = 500.0 * worldScale; // Maximum added step size at horizon
+
+    float depth_factor = clamp((state.t - dist_start) / max(1.0, dist_max - dist_start), 0.0, 1.0);
+    float scaled_base_step = base_step + (max_growth * (depth_factor * depth_factor));
+
+    // 2. LOD Derivation
+    // Slave the LOD directly to the step expansion to guarantee the Nyquist limit
+    // is respected, preventing high-frequency noise from speckling the wide steps.
+    state.current_lod = clamp(log2(scaled_base_step / base_step), 0.0, 6.0);
+
+    // 3. Bifurcation Logic (Using the dynamically scaled base step)
+    float cheap_step = scaled_base_step * cheap_mult;
+
+    if (!state.in_cloud) {
+        if (macro_density > 0.01) {
+            // Cloud boundary detected. Step back by the cheap step[cite: 7].
+            state.in_cloud = true;
+            state.zero_count = 0;
+            state.step_size = -cheap_step;
+        } else {
+            // Space skipping[cite: 7]
+            state.step_size = cheap_step;
+        }
+    } else {
+        if (macro_density <= 0.0) {
+            // Potential exit[cite: 7]
+            state.zero_count++;
+            if (state.zero_count >= escape_threshold) {
+                state.in_cloud = false;
+                state.step_size = cheap_step;
+            } else {
+                state.step_size = scaled_base_step;
+            }
+        } else {
+            // Firmly inside[cite: 7]
+            state.zero_count = 0;
+            state.step_size = scaled_base_step;
+        }
+    }
+}
+
+
+float schlickPhase(float cosTheta, float k) {
+    float kCos = k * cosTheta;
+    float denom = 1.0 - kCos;
+    // 0.079577 is 1 / (4 * PI)
+    return 0.079577 * (1.0 - k * k) / (denom * denom);
+}
+
+float dualLobeSchlick(float cosTheta, float kFwd, float kBck, float weight) {
+    return mix(schlickPhase(cosTheta, -kBck), schlickPhase(cosTheta, kFwd), weight);
+}
+
+void CalculateStochasticClusterLight(
+	vec3 p,
+	vec3 rayDir,
+	float jitter,
+	CloudWeather    weather,
+	CloudLayer      layer,
+	CloudProperties props,
+	vec3 rgbExtinction,
+	vec3 stepOpticalDepth,
+	Cluster light_cluster,
+	float currentLOD,
+	inout vec3 stepScattering,
+	inout vec3 emissiveGlow
+) {
+	for (uint idx = 0; idx < light_cluster.count; idx++) {
+		int j = int(light_cluster.lightIndices[idx]);
+		if (lights[j].intensity <= 0.0) continue;
+
+		if ((lights[j].flags & LIGHT_FLAG_CLOUD_EMISSIVE) != 0) {
+			vec3 A = lights[j].position;
+			vec3 B = lights[j].direction;
+			vec3 AP = p - A;
+			vec3 AB = B - A;
+			float h = clamp(dot(AP, AB) / dot(AB, AB), 0.0, 1.0);
+			float distToSegment = length(AP - AB * h);
+
+			float emissiveRadius = lights[j].inner_cutoff;
+			float falloff = 1.0 / (1.0 + 0.01 * distToSegment + 0.0001 * distToSegment * distToSegment);
+			falloff *= smoothstep(emissiveRadius * 1.5, emissiveRadius * 0.5, distToSegment);
+
+			emissiveGlow += lights[j].color.rgb * lights[j].intensity * falloff;
+		}
+
+		if ((lights[j].flags & LIGHT_FLAG_CASTS_SHADOW) == 0 ||
+			(lights[j].flags & LIGHT_FLAG_VOLUMETRIC_SHADOW) == 0) continue;
+
+		vec3 L;
+		float attenuation;
+		calculateLightContribution(j, p, L, attenuation);
+
+		if (attenuation * lights[j].intensity < 0.001) continue;
+
+		float cosTheta = dot(rayDir, L);
+		float phase = cloudPhase(cosTheta);
+
+		float traceDist = length(lights[j].position - p);
+		if ((lights[j].flags & LIGHT_FLAG_CAMERA_RELATIVE) != 0) {
+			vec3 lp = lights[j].position + viewPos;
+			traceDist = length(lp - p);
+		}
+
+		vec3 opticalDepthToLight = vec3(0.0);
+		if (traceDist > 0.01 * worldScale) {
+			int shadow_steps = 5;
+			// Start with a small step to catch the crisp local self-shadowing
+			float shadow_step_size = 100.0 * worldScale;
+			// Double the distance each step to quickly escape the atmosphere
+			float step_multiplier = 2.0;
+
+			// Dither the start position to hide the banding
+			float current_t = shadow_step_size * (0.5 + 0.5 * jitter);
+
+			for (int k = 0; k < shadow_steps; ++k) {
+				if (current_t > traceDist) break;
+
+				vec3 sp_c = p + L * current_t;
+
+				CloudWeather shadow_weather_c = computeCloudWeather(sp_c, props, currentLOD);
+				CloudLayer shadow_layer_c = computeCloudLayer(shadow_weather_c, props);
+
+				// Use the minimal evaluation to keep the inner loop fast
+				CloudDensityResult shadowRes_c = calculateCloudDensityMinimal(sp_c, shadow_weather_c, shadow_layer_c, props);
+
+				// Accumulate the optical depth linearly
+				opticalDepthToLight += shadowRes_c.density * shadow_step_size * (rgbExtinction * cloudShadowOpticalDepthMultiplier);
+
+				// Accumulate emissive glow, attenuated by the shadow we've marched through so far
+				emissiveGlow += shadowRes_c.emissivity * exp(-opticalDepthToLight);
+
+				// Grow the ray forward
+				current_t += shadow_step_size;
+				shadow_step_size *= step_multiplier;
+			}
+		}
+
+		vec3 shadowTerm = mix(
+			beerPowder(opticalDepthToLight, stepOpticalDepth),
+			exp(-opticalDepthToLight),
+			cloudBeerPowderMix
+		);
+
+		stepScattering += lights[j].color.rgb * shadowTerm * phase *
+			lights[j].intensity * attenuation;
+	}
+}
+
+vec3 EvaluateStepLighting(
+	vec3 p,
+	vec3 rayDir,
+	float jitter,
+	CloudWeather weather,
+	CloudLayer layer,
+	CloudProperties props,
+	vec3 rgbExtinction,
+	vec3 stepDensity,
+	vec3 stepOpticalDepth,
+	float h_norm,
+	vec3 sampleAdvection,
+	float sampleAo,
+	vec3 sampleAlbedo,
+	inout vec3 emissiveGlow,
+	vec3 skySH,
+	vec3 horizonSH,
+	vec3 groundSH,
+	vec3 primaryLightDir,
+	float R_ceiling,
+	float R_floor,
+	vec3 earthCenter,
+	float currentLOD
+) {
+	vec3 stepScattering = vec3(0.0);
+	vec3 localAmbientVisibility = vec3(0.0);
+
+	float stepLength = 100+50*jitter;
+	vec3 ao_offsets[] = vec3[](
+		vec3(0, 1,0),
+		vec3(0,-1,0),
+
+		vec3( 1,0,0),
+		vec3(-1,0,0),
+
+		vec3(0,0, 1),
+		vec3(0,0,-1)
+	);
+
+float totalWeight = 0.0;
+	for (int i = 0; i < ao_offsets.length(); i++) {
+		// vec3 dir = normalize(hash3Tile(p+i*stepLength, vec3(0)));
+		vec3 dir = ao_offsets[i];
+
+		vec3 sp_c = p + dir * stepLength;
+		CloudWeather shadow_weather_c = computeCloudWeather(sp_c, props, currentLOD);
+		CloudLayer shadow_layer_c = computeCloudLayer(shadow_weather_c, props);
+		CloudDensityResult shadowRes_c = calculateCloudDensityMinimal(sp_c, shadow_weather_c, shadow_layer_c, props);
+		// localAmbientVisibility += shadowRes_c.density * stepLength * (1.0-pow(2*pow(dir.y, 2)-1.0, 2)/4);
+
+vec3 tapOD = shadowRes_c.density * stepLength * rgbExtinction;
+
+    // 2. Calculate the orbital weight
+    float weight = 1.0 - pow(2.0 * pow(dir.y, 2.0) - 1.0, 2.0) / 4.0;
+
+    // 3. Accumulate weighted transmittance
+    localAmbientVisibility += exp(-tapOD) * weight;
+    totalWeight += weight;
+	}
+localAmbientVisibility /= max(totalWeight, 0.001);
+
+
+	// PASS 1: Global Directional Lights (Sun/Moon)
+	for (int j = 0; j < min(2, num_lights); j++) {
+		if (lights[j].type != LIGHT_TYPE_DIRECTIONAL) continue;
+		if (lights[j].intensity <= 0.0) continue;
+
+		if ((lights[j].flags & LIGHT_FLAG_CASTS_SHADOW) == 0 ||
+			(lights[j].flags & LIGHT_FLAG_VOLUMETRIC_SHADOW) == 0) continue;
+
+		vec3 L;
+		float attenuation;
+		calculateLightContribution(j, p, L, attenuation);
+
+		if (attenuation * lights[j].intensity < 0.001) continue;
+
+		float traceDist = 0.0;
+		vec3 lightTransmittance = vec3(1.0);
+
+		float r_world = length(p - earthCenter);
+		float r_km = r_world / (1000.0 * worldScale);
+		float mu = dot((p - earthCenter) / r_world, L);
+
+		float st_start = 1e10;
+		float st_end = -1e10;
+		intersectCloudShell(p, L, worldScale, st_start, st_end);
+		traceDist = min(st_end - st_start, props.thickness * 1.5 * worldScale);
+
+		vec2 transUV = getTransmittanceUV(r_km, mu);
+		lightTransmittance = texture(u_transmittanceLUT, transUV).rgb;
+
+		vec3 opticalDepthToLight = vec3(0.0);
+		if (u_useCloudShadowMap && j == 0) {
+			vec4 lightSpacePos = u_cloudShadowMatrix * vec4(p, 1.0);
+			vec2 shadowUV = lightSpacePos.xy * 0.5 + 0.5;
+			float accumulatedDensity = sampleDeepOpacityMap(shadowUV, h_norm, 0.0);
+			opticalDepthToLight = accumulatedDensity * (rgbExtinction * cloudShadowOpticalDepthMultiplier);
+		}
+		else if (traceDist > 0.01 * worldScale) {
+			// float stepLength = 100.0*jitter;
+			float current_t = 20.0 + (100.0 * jitter); // Start just outside the current position
+			float current_dt = 100.0;                  // The physical size of the integration chunk
+			for (int i = 0; i < 5; i++) {
+				if (current_t > traceDist) break;
+				vec3 sp_c = p + L * current_t;
+				CloudWeather shadow_weather_c = computeCloudWeather(sp_c, props, currentLOD);
+				CloudLayer shadow_layer_c = computeCloudLayer(shadow_weather_c, props);
+				CloudDensityResult shadowRes_c = calculateCloudDensityMinimal(sp_c, shadow_weather_c, shadow_layer_c, props);
+				opticalDepthToLight += max(vec3(0.00), shadowRes_c.density) * current_dt * (rgbExtinction * cloudShadowOpticalDepthMultiplier);
+				emissiveGlow += shadowRes_c.emissivity * exp(-opticalDepthToLight);
+				// localAmbientVisibility += exp(-(stepLength * (1.0-pow(3*pow(L.y, 2)-1.0, 2)/4)));
+				current_t += current_dt; // Move the ray forward
+				current_dt *= 2.0;
+			}
+		}
+
+		float cosTheta = dot(rayDir, L);
+		// float phase = cloudPhase(cosTheta);
+
+		// vec3 shadowTerm = mix(
+		// 	beerPowder(opticalDepthToLight, stepOpticalDepth),
+		// 	exp(-opticalDepthToLight),
+		// 	cloudBeerPowderMix
+		// );
+
+		// Setup multi-scattering constants
+		const int OCTAVES = 3;
+		const float extinctionMult = 0.5; // Halve the optical depth each octave
+		const float phaseWidenMult = 0.5; // Broaden the lobe each octave
+		const float energyAttenuation = 0.5; // Reduce energy contribution each octave
+		const float msCatChaos = 0.5;
+
+		// Base parameters for the dual lobe
+		float kFwd = cloudPhaseG1;
+		float kBck = cloudPhaseG2;
+		float phaseWeight = cloudPhaseAlpha;
+
+		vec3 msScattering = vec3(0.0);
+		float currentExtinction = 1.0;
+		float currentKfwd = kFwd;
+		float currentKbck = kBck;
+		float currentEnergy = 1.0;
+		float currentScatChaos = (1.0 - cloudPhaseIsotropic);
+
+		for(int oct = 0; oct < OCTAVES; oct++) {
+			// 1. Widen the phase function for this octave
+			float phase = dualLobeSchlick(cosTheta, currentKfwd, currentKbck, phaseWeight);
+			phase = mix((1.0 / (4.0 * PI)), phase, currentScatChaos);
+
+			// 2. Reduce the optical depth to let light penetrate deeper
+			vec3 octaveOpticalDepth = opticalDepthToLight * currentExtinction;
+			vec3 octaveStepDensity = stepDensity * currentExtinction;
+
+			// 3. Calculate shadow term for this octave (retaining your Beer-Powder mix logic)
+			vec3 shadowTerm = mix(
+				beerPowder(octaveOpticalDepth, octaveStepDensity),
+				exp(-octaveOpticalDepth),
+				cloudBeerPowderMix
+			);
+
+			// 4. Accumulate
+			msScattering += shadowTerm * phase * currentEnergy;
+
+			// 5. Shift parameters for the next octave
+			currentExtinction *= extinctionMult;
+			currentKfwd *= phaseWidenMult;
+			currentKbck *= phaseWidenMult;
+			currentEnergy *= energyAttenuation;
+			currentScatChaos *= msCatChaos;
+		}
+
+		// Apply the accumulated multi-scattering to the final step scattering calculation
+		float lightScale = (j == 0 ? cloudSunLightScale : cloudMoonLightScale);
+		stepScattering += lightTransmittance * lights[j].color.rgb * msScattering *
+			lights[j].intensity * attenuation * lightScale;
+
+
+		// float lightScale = (j == 0 ? cloudSunLightScale : cloudMoonLightScale);
+
+		// stepScattering += lightTransmittance * lights[j].color.rgb * shadowTerm * phase *
+		// 	lights[j].intensity * attenuation * lightScale;
+	}
+
+
+	uint cloud_cluster_index = getClusterIndex(p);
+	Cluster cloud_cluster = clusters[cloud_cluster_index];
+	Cluster global_cloud_cluster = clusters[3456];
+
+	CalculateStochasticClusterLight(
+		p,
+		rayDir,
+		jitter,
+		weather,
+		layer,
+		props,
+		rgbExtinction,
+		stepOpticalDepth,
+		global_cloud_cluster,
+		currentLOD,
+		stepScattering,
+		emissiveGlow
+	);
+
+	CalculateStochasticClusterLight(
+		p,
+		rayDir,
+		jitter,
+		weather,
+		layer,
+		props,
+		rgbExtinction,
+		stepOpticalDepth,
+		cloud_cluster,
+		currentLOD,
+		stepScattering,
+		emissiveGlow
+	);
+
+
+	const float ambientExtinction = 1.0;
+	const float powderScale = 300.0;
+	vec3 powder = vec3(1.0) - exp(-stepDensity * powderScale);
+	float sunHeight = max(primaryLightDir.y, 0.0);
+	float ambientScale = mix(0.3, 1.0, smoothstep(0.0, 0.3, sunHeight));
+
+	vec3 ambientTop    = mix(skySH, horizonSH, 0.4) * ambientScale;
+	vec3 ambientBottom = groundSH * ambientScale;
+
+	vec3 upwardOD = stepDensity * h_norm * layer.thickness;
+	vec3 downwardOD = stepDensity * (1.0 - h_norm) * layer.thickness;
+	vec3 groundAttenuation = exp(-upwardOD * ambientExtinction);
+	vec3 skyAttenuation = exp(-downwardOD * ambientExtinction);
+
+	// vec3 finalAmbient = ((ambientTop * skyAttenuation) + (ambientBottom * groundAttenuation)) * exp(-localAmbientVisibility);
+	vec3 finalAmbient = ((ambientTop * skyAttenuation) + (ambientBottom * groundAttenuation)) * localAmbientVisibility;
+	vec3 S = (stepScattering + (finalAmbient * powder)) * (uCloudAlbedo * sampleAlbedo) + emissiveGlow;
+
+	return S;
+}
 
 void main() {
 	ivec2 packedPixel = ivec2(gl_GlobalInvocationID.xy);
@@ -68,7 +614,8 @@ void main() {
 
 	vec3 rayDir = canonicalRayDir;
 
-	if (depth == 1.0) {
+	if (depth > 0.9999) {
+		// if (depth == 1.0) {
 		dist = uCloudMaxRayDistance * worldScale;
 		worldPos = viewPos + rayDir * dist;
 	}
@@ -81,98 +628,99 @@ void main() {
 	props.worldScale = worldScale;
 
 	float R_floor = R_earth + (cloudAltitude - 500.0) * worldScale;
-	float R_ceiling = R_earth + (cloudAltitude + cloudThickness * 10.0 + 5000.0) * worldScale;
+	float R_ceiling = R_earth + (cloudAltitude + 2.0 * cloudThickness + 500.0) * worldScale;
 
 	vec3 earthCenter = vec3(viewPos.x, -R_earth, viewPos.z);
 	vec3 relRo = viewPos - earthCenter;
 
 	float t_start = 1e10;
 	float t_end = -1e10;
-
-	float t0, t1;
-	if (intersectSphere(relRo, rayDir, R_ceiling, t0, t1)) {
-		t_start = max(0.0, t0);
-		t_end = t1;
-
-		if (intersectSphere(relRo, rayDir, R_floor, t0, t1)) {
-			if (t0 < 0.0) {
-				t_start = max(t_start, t1);
-			} else {
-				t_end = min(t_end, t0);
-			}
-		}
-	}
+	intersectCloudShell(viewPos, rayDir, worldScale, t_start, t_end);
 
 	t_end = min(t_end, dist);
 
-	int samples = 64;
-	float historyVariance = 0.0;
-	float historyLength = 0.0;
+	int samples = uCloudMaxSamples;
 
-	// Guided Marching using history
-	float expectedStart = t_start;
-	float expectedEnd = t_end;
-	float maxEmptyMult = 1.0;
-
-	if (uHasHistory && t_start < t_end) {
-		vec4 prevClip = uPrevViewProjection * vec4(viewPos + rayDir * max(t_start, 0.1), 1.0);
-		vec2 histUV = (prevClip.xy / prevClip.w) * 0.5 + 0.5;
-
-		if (all(greaterThanEqual(histUV, vec2(0.0))) && all(lessThanEqual(histUV, vec2(1.0)))) {
-			vec4 histDepth = texture(uHistoryDepth, histUV);
-			float histFirst = histDepth.r;
-			float histLast = histDepth.g;
-			float histStep = histDepth.b;
-
-			vec4 histMoments = texture(uHistoryMoments, histUV);
-			historyVariance = max(0.0, histMoments.y - histMoments.x * histMoments.x);
-			historyLength = histMoments.w;
-
-			float varianceBoost = smoothstep(0.0, 0.05, historyVariance);
-			float historyBoost = 1.0 - smoothstep(1.0, 16.0, historyLength);
-			float historyConfidence = max(varianceBoost, historyBoost);
-			samples = int(mix(float(uCloudMinSamples), float(uCloudMaxSamples), pow(historyConfidence, 2.0)));
-
-			if (histFirst > 0.0 && histFirst < uCloudMaxRayDistance * 0.4 * worldScale) {
-				float marginScale = mix(1.0, 4.0, historyConfidence);
-				float margin = max(histStep * 2.0 * marginScale, (histLast - histFirst) * 0.5 * marginScale);
-
-				expectedStart = histFirst - margin;
-				expectedEnd = histLast + margin;
-				maxEmptyMult = mix(1.0, 4.0, historyConfidence);
-			}
-		}
-	}
-
-	// float jitter = bayer4x4StepPhase(fullResPixel, frameIndex);
-	// float jitter = fastSpatiotemporalBlueNoise(fullResPixel, 0, uFrameIndex);
 	float jitter = InterleavedGradientNoise(fullResPixel, frameIndex);
-	// float jitter = 0.0;
-
 
 	vec3  cloudColor = vec3(0.0);
-	float cloudTransmittance = 1.0;
+	vec3 cloudTransmittance = vec3(1.0);
 	float totalWeight = 0.0;
 	float weightedDistSum = 0.0;
 	vec3  weightedAdvectionSum = vec3(0.0);
-	float accumulatedOpticalDepth = 0.0;
+	vec3 accumulatedOpticalDepth = vec3(0.0);
 	float firstHitDist = -1.0;
 	float lastHitDist = -1.0;
 	float pathDensity = 0.0;
 
 	float rayDist = t_end - t_start;
 	float precisionLimit = max(1.0, t_end * 1e-5);
-	float baseStepSize = clamp(rayDist / float(samples), precisionLimit, 200.0);
+	float baseStepSize = clamp(rayDist / float(samples), precisionLimit, 25.0);
 
-	float t_offset = jitter * baseStepSize;
+	ivec2 boundingSize = textureSize(u_cloudMinMaxBoundingTexture, 0);
+	float b_firstHit = -1.0;
+	float b_lastHit = -1.0;
+	float b_totalDensity = 0.0;
+
+	for (int y = -1; y <= 1; y++) {
+		for (int x = -1; x <= 1; x++) {
+			ivec2 samplePixel = clamp(packedPixel + ivec2(x, y), ivec2(0), boundingSize - 1);
+			vec4 b = texelFetch(u_cloudMinMaxBoundingTexture, samplePixel, 0);
+
+			if (b.r >= 0.0) {
+				if (b_firstHit < 0.0) {
+					b_firstHit = b.r;
+				} else {
+					b_firstHit = min(b_firstHit, b.r);
+				}
+				b_lastHit = max(b_lastHit, b.g);
+			}
+			b_totalDensity = max(b_totalDensity, b.b);
+		}
+	}
+
+	if (b_firstHit < 0.0 || b_totalDensity < 0.01) {
+		// Output clear sky / no clouds and early return
+		imageStore(outPackedColor, packedPixel, vec4(0.0, 0.0, 0.0, 1.0));
+		imageStore(outPackedDepth, packedPixel, vec4(uCloudMaxRayDistance * 0.5 * worldScale, uCloudMaxRayDistance * 0.5 * worldScale, baseStepSize, 0.0));
+
+		vec3 advectionOffset = getCloudAdvectionSpeed(0.0, time);
+		vec3 advectionDelta = advectionOffset * uDeltaTime;
+		vec3 currentPos = viewPos + canonicalRayDir * 5000.0 * worldScale;
+		vec3 prevPos = currentPos - advectionDelta;
+		vec4 prevClip = uPrevViewProjection * vec4(prevPos, 1.0);
+		vec2 prevScreen = (prevClip.xy / prevClip.w) * 0.5 + 0.5;
+		vec2 finalVelocity = prevScreen - TexCoords;
+		imageStore(outPackedVelocity, packedPixel, vec4(finalVelocity, 0.0, 0.0));
+		return;
+	}
+
+	b_firstHit = max(t_start, b_firstHit - (50.0 * worldScale));
+	b_lastHit = min(t_end, b_lastHit + (50.0 * worldScale));
+
+	t_start = max(t_start, b_firstHit);
+	t_end = min(t_end, b_lastHit);
+
+	float absoluteShellDist = t_end - t_start;
+	rayDist = t_end - t_start;
+	baseStepSize = clamp(rayDist / float(samples), precisionLimit, 25.0);
+	// baseStepSize = clamp(absoluteShellDist / float(samples), precisionLimit, 25.0);
+
 	float firstStepSize = baseStepSize;
-	float minStepSize = 100000;
+	float its = 0.0;
+	int MAX_ITERATIONS = 1000;//int(uCloudMaxRayDistance / 25.0);
+
+	float steps = 0.0;
+	float firstHitStep = 0.0;
+	float magic_stepping = 0.0;
+
+	vec3 rgbExtinction = uCloudExtinctionColor * uCloudExtinction;
 
 	if (t_start < t_end) {
 		vec3 lightEnergy = vec3(0.0);
-		float prevDensity = 0.0;
-		float prevTransmission = -1.0;
-		float prevTransmissionDelta = 0.0;
+		vec3 prevDensity = vec3(0.0);
+		vec3 prevTransmission = vec3(-1.0);
+		vec3 prevTransmissionDelta = vec3(0.0);
 		const int shadow_samples = 5;
 
 		vec3 primaryLightDir = vec3(0, 1, 0);
@@ -187,199 +735,164 @@ void main() {
 		float roDotRd = dot(relRo, rayDir);
 		float h0Term = 2.0 * R_earth * H0 + H0 * H0;
 
-		float lodDistanceThreshold = 25000.0 * worldScale;
+		bool inVolume = false;
+		bool wasInVolume = false;
+		float stepGrowthRate = 0.0125;
 
-		int MAX_ITERATIONS = 500;
+		float t = min(t_end, t_start + jitter * baseStepSize);
+		float t_prev = t_start;
+		prevDensity = vec3(0.0);
+		vec3 prevCheapDensity = vec3(0.0);
 
-		float t = t_start + jitter * baseStepSize;
-		float blendDist = 500.0 * worldScale;
+		vec3 probePos = viewPos + rayDir * max(0.0, t);
+		vec3 skySH     = evalSHIrradianceSpatial(probePos, vec3(0.0, 1.0, 0.0));
+		vec3 horizonSH = evalSHIrradianceSpatial(probePos, normalize(vec3(primaryLightDir.x, 0.15, primaryLightDir.z)));
+		vec3 groundSH;
 
+		CloudWeather weather;
+		float lastWeatherT = -1e9;
+		float lodStartDist = 25000.0 * worldScale;
+		float lodFadeRange = 50000.0 * worldScale;
+
+		// const float weatherUpdateInterval = (2 + (jitter*2.0 - 1.0)) * baseStepSize * worldScale; // Update every 100 meters
+		// const float weatherUpdateInterval = (4 * jitter) * baseStepSize * worldScale; // Update every 100 meters
+		const float weatherUpdateInterval = 48.0 * worldScale; // Update every 100 meters
+		int zero_count = 0;
 		for (int i = 0; i < MAX_ITERATIONS; i++) {
-			if (t >= dist || t >= t_end || cloudTransmittance < 0.01) break;
+			steps = i;
+			if (t_prev >= dist || t_prev >= t_end || all(lessThan(cloudTransmittance, vec3(0.05)))) break;
 
 			vec3 p = viewPos + rayDir * t;
-			CloudWeather weather = computeCloudWeather(p, props);
+			float currentLod = clamp((t - lodStartDist) / lodFadeRange, 0.0, 1.0);
+
+			// Only re-evaluate computeCloudWeather if we've advanced past the interval threshold
+			if (i == 0 || abs(t - lastWeatherT) >= weatherUpdateInterval) {
+				weather = computeCloudWeather(p, props, currentLod);
+				lastWeatherT = t;
+				groundSH  = evalSHIrradianceSpatial(probePos, vec3(0.0, -1.0, 0.0));
+			}
+
 			CloudLayer layer = computeCloudLayer(weather, props);
+			// CloudDensityResult densityResCheap = calculateCloudDensityMinimal(p, weather, layer, props);
+			CloudDensityResult densityResCheap = calculateCloudDensity(p, weather, layer, props, time, currentLod);
 
-			float r2_minus_R2 = h0Term + 2.0 * t * roDotRd + t * t;
-			float r = sqrt(max(0.0, r2_minus_R2 + R_earth * R_earth));
-			float altitude = r2_minus_R2 / (r + R_earth);
+			vec3 d_cheap = densityResCheap.density;
 
-			float rayXZLen = max(length(rayDir.xz), 1e-4);
+			float nextStepSize = calculateBifurcatedStepSize(inVolume, zero_count, max(d_cheap.x,max(d_cheap.y,d_cheap.z)), baseStepSize, 3, 3);
+			// float nextStepSize = calculateBifurcatedStepSize(inVolume, zero_count, 1.0, baseStepSize, 2, 3);
+			// vec3 base_advect = getCloudWindOffset(time);
+			// vec2 weatherUV = (p + base_advect).xz / (100000.0 * worldScale);
+			// vec2 minMax = textureLod(u_cloudWeatherMinMaxTexture, weatherUV, 6.0).rg;
+			// float nextStepSize = calculateBifurcatedStepSize(inVolume, zero_count, minMax.y, baseStepSize, 2.0, 2);
 
-			// 1. Outside XZ Footprint: Jump using 2D SDF
-			if (weather.sdf > 0.0) {
-				float jump = weather.sdf / rayXZLen;
-				t += jump;
-				prevDensity = 0.0;
+			if (nextStepSize < 0.0) {
+				// We overshot. Move 't' backward, but do NOT update 't_prev'.
+				// Continue to bypass integration so we don't calculate negative density.
+				t += nextStepSize;
 				continue;
 			}
 
-			// 2. Inside XZ Footprint, but outside vertical bounds: Jump to floor or ceiling
-			if (altitude < layer.baseFloor - 0.1 || altitude > layer.baseCeiling + 0.1) {
-				float targetAlt = (altitude < layer.baseFloor) ? layer.baseFloor : layer.baseCeiling;
-				float t0, t1;
-				if (intersectSphere(relRo, rayDir, R_earth + targetAlt, t0, t1)) {
-					float jumpT = 1e10;
-					if (t0 > t + 0.1) jumpT = min(jumpT, t0);
-					if (t1 > t + 0.1) jumpT = min(jumpT, t1);
-					if (jumpT < t_end) {
-						t = jumpT;
-						prevDensity = 0.0;
-						continue;
-					}
-				}
-				// If we can't hit the vertical bounds, move across the footprint to find the exit
-				t += max(baseStepSize, abs(weather.sdf) / rayXZLen);
-				prevDensity = 0.0;
+			// 4. Handle Empty Space
+			if (!inVolume) {
+				// Lock in the current position BEFORE moving forward.
+				t_prev = t;
+				t += nextStepSize;
 				continue;
 			}
 
-			// 3. Inside Cloud Volume: Measure thickness and evenly sample
-			float t_entry = t;
-			float t_exit = t_end;
-			float t0, t1;
-			if (intersectSphere(relRo, rayDir, R_earth + layer.baseFloor, t0, t1)) {
-				if (t0 > t + 0.1) t_exit = min(t_exit, t0);
-				if (t1 > t + 0.1) t_exit = min(t_exit, t1);
-			}
-			if (intersectSphere(relRo, rayDir, R_earth + layer.baseCeiling, t0, t1)) {
-				if (t0 > t + 0.1) t_exit = min(t_exit, t0);
-				if (t1 > t + 0.1) t_exit = min(t_exit, t1);
-			}
+			float stepSize = t - t_prev;
+			vec3 d = vec3(0.0);
+			if (stepSize > 0.0) {
+				float altitudeShift = weather.heightMap * layer.thickness;
+				float actualThickness = weather.thickness * layer.thickness;
+				float localFloor = layer.baseFloor + altitudeShift;
 
-			// Estimate SDF exit
-			float t_exit_sdf = t + max(baseStepSize, abs(weather.sdf) / rayXZLen);
-			t_exit = min(t_exit, t_exit_sdf);
+				float h_norm = getCloudRelativeHeight(p, weather, layer);
+				float integrationStep = stepSize;
 
-			/*
-			// Estimate SDF exit
-			CloudWeather exitPointWeather = computeCloudWeather(viewPos + rayDir * t, props);
-			while (exitPointWeather.sdf <= 0) {
-				t += abs(exitPointWeather.sdf);
-				exitPointWeather = computeCloudWeather(viewPos + rayDir * t, props);
-			}
-			float t_exit_sdf = t - (exitPointWeather.sdf/rayXZLen);
-			t_exit = min(t_exit, t_exit_sdf) + 1.0;
-			*/
+				CloudDensityResult densityRes = calculateCloudDensity(p, weather, layer, props, time, currentLod);
+				d = densityRes.density;
+				vec3 sampleAdvection = densityRes.advectionSpeed;
+				vec3 sampleAlbedo = densityRes.albedo;
 
-
-			float cloudVolumeT = t_exit - t_entry;
-			const int innerSamples = 4;
-			float innerStepSize = max(1.0, cloudVolumeT / float(innerSamples));
-
-			for (int k = 0; k < innerSamples; k++) {
-				float subT = t_entry + (float(k) + jitter) * innerStepSize;
-				if (subT >= t_exit || cloudTransmittance < 0.01) break;
-
-				vec3 subP = viewPos + rayDir * subT;
-
-				// Sub-sample altitude and lighting properties
-				float r2_sub = h0Term + 2.0 * subT * roDotRd + subT * subT;
-				float r_sub = sqrt(max(0.0, r2_sub + R_earth * R_earth));
-				float subAltitude = r2_sub / (r_sub + R_earth);
-				float h_norm = clamp((subAltitude - props.altitude * props.worldScale) / max(props.thickness * props.worldScale, 1.0), 0.0, 1.0);
-
-				bool useCheapEval = subT > lodDistanceThreshold;
-				CloudWeather weather = computeCloudWeather(subP, props);
-				CloudLayer layer = computeCloudLayer(weather, props);
-				vec4 densityResult = calculateCloudDensity(subP, weather, layer, props, time, useCheapEval);
-
-				float d = densityResult.x;
-				vec3 sampleAdvection = densityResult.yzw;
-
-				if (d > 0.01) {
+				if (max(d.x, max(d.y, d.z)) > 0.01) {
 					if (firstHitDist < 0.0) {
-						firstHitDist = subT;
-						firstStepSize = innerStepSize;
+						firstHitDist = t;
+						firstStepSize = stepSize;
+						firstHitStep = i;
 					}
-					lastHitDist = subT;
+					lastHitDist = t;
 				}
 
-				pathDensity = max(pathDensity, d);
+				pathDensity = max(pathDensity, max(d.x, max(d.y, d.z)));
 
-				float integrationStep = innerStepSize;
-				if (d > 0.000 || prevDensity > 0.000) {
-					float averageDensity = (prevDensity + d) * 0.5;
-					float stepDensity = averageDensity * integrationStep * uCloudExtinction;
-					float transmittanceAtStep = exp(-stepDensity);
+				if (any(greaterThan(d, vec3(0.000))) || any(greaterThan(prevDensity, vec3(0.000)))) {
+					vec3 averageDensity = (prevDensity + d) * 0.5;
+					vec3 rgbExtinction = uCloudExtinctionColor * uCloudExtinction;
+					vec3 stepDensity = averageDensity * rgbExtinction;
+					vec3 stepOpticalDepth = averageDensity * integrationStep * rgbExtinction;
+					vec3 transmittanceAtStep = exp(-stepOpticalDepth);
+
 					prevTransmissionDelta = prevTransmission - transmittanceAtStep;
 					prevTransmission = transmittanceAtStep;
 
 					vec3 stepScattering = vec3(0.0);
-					for (int j = 0; j < num_lights; j++) {
-						if (lights[j].type != LIGHT_TYPE_DIRECTIONAL) continue;
+					vec3 emissiveGlow = densityRes.emissivity;
 
-						vec3 L = normalize(-lights[j].direction);
-						float r_world = length(subP - earthCenter);
-						float r_km = r_world / (1000.0 * worldScale);
-						float mu = dot((subP - earthCenter) / r_world, L);
-						float cosTheta = dot(rayDir, L);
-						float phase = cloudPhase(cosTheta);
+					vec3 S = EvaluateStepLighting(
+						p,
+						rayDir,
+						jitter,
+						weather,
+						layer,
+						props,
+						rgbExtinction,
+						stepDensity,
+						stepOpticalDepth,
+						h_norm,
+						densityRes.advectionSpeed,
+						densityRes.ao,
+						densityRes.albedo,
+						emissiveGlow,
+						skySH,
+						horizonSH,
+						groundSH,
+						primaryLightDir,
+						R_ceiling,
+						R_floor,
+						earthCenter,
+						currentLod
+					);
 
-						float st_start = 1e10;
-						float st_end = -1e10;
-
-						float t0_s, t1_s;
-						if (intersectSphere(subP, L, R_ceiling, t0_s, t1_s)) {
-							st_start = max(0.0, t0_s);
-							st_end = t1_s;
-							if (intersectSphere(subP, L, R_floor, t0_s, t1_s)) {
-								if (t0_s < 0.0) st_start = max(st_start, t1_s);
-								else st_end = min(st_end, t0_s);
-							}
-						}
-
-						vec2 transUV = getTransmittanceUV(r_km, mu);
-						vec3 sunTransmittance = texture(u_transmittanceLUT, transUV).rgb;
-
-						float maxShadowDist = layer.thickness * 1.5;
-						float traceDist = min(st_end - st_start, maxShadowDist);
-						float shadowStepSize = traceDist / float(shadow_samples);
-
-						float shadowDensity = 0.0;
-						for (int ks = 0; ks < shadow_samples; ks++) {
-							vec3 sp = subP + L * (float(ks) + 0.5) * shadowStepSize;
-							shadowDensity += calculateCloudDensity(sp, weather, layer, props, time, true).x;
-						}
-
-						float opticalDepthToLight = shadowDensity * shadowStepSize * cloudShadowOpticalDepthMultiplier;
-						float shadowTerm = mix(
-							beerPowder(opticalDepthToLight, stepDensity),
-							exp(-opticalDepthToLight),
-							cloudBeerPowderMix
-						);
-
-						stepScattering += sunTransmittance * lights[j].color * shadowTerm * phase * lights[j].intensity *
-							(j == 0 ? cloudSunLightScale : cloudMoonLightScale);
-					}
-
-					vec3  ambientUp = evalSHIrradiance(vec3(0, 1, 0));
-					vec3  ambientHorizon = evalSHIrradiance(normalize(vec3(primaryLightDir.x, 0.15, primaryLightDir.z)));
-					float sunHeight = max(primaryLightDir.y, 0.0);
-					float ambientScale = mix(0.3, 1.0, smoothstep(0.0, 0.3, sunHeight));
-					vec3  ambient = mix(ambientUp, ambientHorizon, 0.4) * ambientScale;
-					vec3  S = (stepScattering + ambient * smoothstep(0.0, 1.0, h_norm));
-
-					float weight = cloudTransmittance * (1.0 - transmittanceAtStep);
-					float bias = exp(-accumulatedOpticalDepth * 2.0);
-					float stepWeight = weight * bias;
-					weightedDistSum += subT * stepWeight;
+					vec3 weight = cloudTransmittance * (vec3(1.0) - transmittanceAtStep);
+					float scalarAccumOD = dot(accumulatedOpticalDepth, vec3(0.3333));
+					float bias = exp(-scalarAccumOD * 15.0);
+					float scalarWeight = dot(weight, vec3(0.3333));
+					float stepWeight = scalarWeight * bias;
+					weightedDistSum += t * stepWeight;
 					weightedAdvectionSum += sampleAdvection * stepWeight;
 					lightEnergy += S * weight;
 					totalWeight += stepWeight;
 
 					cloudTransmittance *= transmittanceAtStep;
+					accumulatedOpticalDepth += stepOpticalDepth;
 				}
 				prevDensity = d;
+				prevCheapDensity = d_cheap;
+				t_prev = t;
 			}
-			t = t_exit;
-			prevDensity = 0.0;
+
+			t += nextStepSize;
+			t = min(t_end, t);
 		}
 		cloudColor = lightEnergy * cloudColorUniform;
 	}
 
-	vec4 finalColor = vec4(cloudColor, cloudTransmittance);
+	vec4 finalColor = vec4(cloudColor, dot(cloudTransmittance, vec3(0.3333)));
+	// vec4 finalColor = vec4(mix(vec3(0,10,0), vec3(10,0,0), smoothstep(0, 100, magic_stepping)), 0.0);
+	// vec4 finalColor = vec4(mix(vec3(0,10,0), vec3(10,0,0), smoothstep(0, 100, firstHitDist/firstHitStep)), 0.0);
+	// finalColor = mix(finalColor, vec4(mix(vec3(0,10000000,0), vec3(10000000,0,0), smoothstep(0, 100, firstHitStep)), 0.0), 0.3);
+	// vec4 finalColor = vec4(magic_stepping * 100, 0.0, 0, 0);
 	vec4 finalDepth;
 	vec2 finalVelocity;
 
@@ -388,17 +901,17 @@ void main() {
 		vec3 avgAdvection = weightedAdvectionSum / totalWeight;
 
 		finalDepth = vec4(firstHitDist, lastHitDist, firstStepSize, pathDensity);
-
 		// Reproject using the accumulated per-sample advection directly
 		vec3 stableHitPos = viewPos + canonicalRayDir * stableHitDist;
-		vec3 advectionDelta = avgAdvection * uDeltaTime;
+		// vec3 advectionDelta = avgAdvection * uDeltaTime;
+		float distanceDamping = 1.0 - smoothstep(10000.0 * worldScale, 50000.0 * worldScale, stableHitDist);
+		vec3 advectionDelta = (avgAdvection * distanceDamping) * uDeltaTime;
 
 		vec3 prevHitPos = stableHitPos - advectionDelta;
 		vec4 prevClipHit = uPrevViewProjection * vec4(prevHitPos, 1.0);
 		vec2 prevScreenUV = (prevClipHit.xy / prevClipHit.w) * 0.5 + 0.5;
 
 		finalVelocity = prevScreenUV - TexCoords;
-		// finalVelocity = vec2(minStepSize/10, 0);
 	} else {
 		finalDepth = vec4(uCloudMaxRayDistance * 0.5 * worldScale, uCloudMaxRayDistance * 0.5 * worldScale, firstStepSize, pathDensity);
 		vec3 advectionOffset = getCloudAdvectionSpeed(0.0, time);
@@ -412,7 +925,7 @@ void main() {
 	}
 
 	imageStore(outPackedColor, packedPixel, finalColor);
-	// imageStore(outPackedColor, packedPixel, vec4(abs(finalVelocity), 0,0));
+	// imageStore(outPackedColor, packedPixel, vec4(vec3(its/10, 0, 0),0));
 	imageStore(outPackedDepth, packedPixel, finalDepth);
 	imageStore(outPackedVelocity, packedPixel, vec4(finalVelocity, 0.0, 0.0));
 }

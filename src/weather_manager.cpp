@@ -13,6 +13,7 @@
 #include "terrain_render_manager.h"
 #include "ConfigManager.h"
 #include "lightning_manager.h"
+#include "atmosphere_manager.h"
 
 namespace Boidsish {
 
@@ -1152,19 +1153,87 @@ namespace Boidsish {
 					if (rand() % 100 < 20) type = LightningType::CLOUD_TO_CLOUD;
 
 					float worldScaleVal = terrain_ ? terrain_->GetWorldScale() : 1.0f;
-					glm::vec3 startPos(
-						cameraPos.x + (rand() % 1000 - 500),
-						current_.cloud_altitude * worldScaleVal,
-						cameraPos.z + (rand() % 1000 - 500)
-					);
+					auto  atm_mgr = ServiceLocator::Instance().Get<AtmosphereManager>();
 
+					// Default random positioning near camera
+					glm::vec3 startPos(
+						cameraPos.x + (rand() % 2000 - 1000),
+						current_.cloud_altitude * worldScaleVal,
+						cameraPos.z + (rand() % 2000 - 1000)
+					);
 					glm::vec3 endPos = startPos;
-					if (type == LightningType::CLOUD_TO_CLOUD) {
-						endPos.x += (rand() % 400 - 200);
-						endPos.z += (rand() % 400 - 200);
-						endPos.y += (rand() % 100 - 50);
-					} else {
-						endPos.y = 0.0f; // Ground
+
+					// Attempt to find actual cloudy regions using baked cloud seeds
+					if (atm_mgr) {
+						std::vector<glm::vec3> candidatePositions;
+						const auto& seeds = atm_mgr->GetCloudSeeds();
+
+						// factor in advection (matches AtmosphereManager::GetCloudWeather)
+						float     angle = 3.14f; // cloudFlow constant
+						glm::vec2 flowDir = glm::vec2(cos(angle), sin(angle));
+						glm::vec2 advect = flowDir * 5.0f * worldScaleVal * 10.0f * totalTime;
+
+						for (const auto& seed : seeds) {
+							// seed.w is isCloudy (sdf < 0)
+							if (seed.w > 0.5f) {
+								glm::vec3 p(seed.x - advect.x, 0.0f, seed.y - advect.y);
+								float d = glm::distance(glm::vec2(cameraPos.x, cameraPos.z), glm::vec2(p.x, p.z));
+								if (d < 4000.0f * worldScaleVal) {
+									candidatePositions.push_back(p);
+								}
+							}
+						}
+
+						if (!candidatePositions.empty()) {
+							startPos = candidatePositions[rand() % candidatePositions.size()];
+							glm::vec4 startWeather = atm_mgr->GetCloudWeather(glm::vec2(startPos.x, startPos.z), totalTime);
+
+							// Calculate actual cloud layer bounds at this position
+							float altitudeShift = startWeather.y * current_.cloud_thickness * 2.0f;
+							float coverage = 1.0f - glm::smoothstep(-500.0f * worldScaleVal, 500.0f * worldScaleVal, startWeather.x);
+							float verticalExpansion = glm::mix(1.0f, 8.0f, startWeather.w * coverage);
+
+							float baseFloor = (current_.cloud_altitude + altitudeShift) * worldScaleVal;
+							float baseCeiling = baseFloor + (current_.cloud_thickness * verticalExpansion) * worldScaleVal;
+
+							// Pick a height within the actual cloud volume
+							startPos.y = glm::mix(baseFloor, baseCeiling, 0.2f + (static_cast<float>(rand()) / RAND_MAX) * 0.6f);
+
+							if (type == LightningType::CLOUD_TO_CLOUD) {
+								// Find another cloudy position for the end point
+								std::vector<glm::vec3> candidateEndPositions;
+								for (const auto& p : candidatePositions) {
+									float d = glm::distance(glm::vec2(startPos.x, startPos.z), glm::vec2(p.x, p.z));
+									if (d > 100.0f * worldScaleVal && d < 1000.0f * worldScaleVal) {
+										candidateEndPositions.push_back(p);
+									}
+								}
+
+								if (!candidateEndPositions.empty()) {
+									endPos = candidateEndPositions[rand() % candidateEndPositions.size()];
+									glm::vec4 endWeather = atm_mgr->GetCloudWeather(glm::vec2(endPos.x, endPos.z), totalTime);
+
+									float eAltitudeShift = endWeather.y * current_.cloud_thickness * 2.0f;
+									float eCoverage = 1.0f - glm::smoothstep(-500.0f * worldScaleVal, 500.0f * worldScaleVal, endWeather.x);
+									float eVerticalExpansion = glm::mix(1.0f, 8.0f, endWeather.w * eCoverage);
+
+									float eBaseFloor = (current_.cloud_altitude + eAltitudeShift) * worldScaleVal;
+									float eBaseCeiling = eBaseFloor + (current_.cloud_thickness * eVerticalExpansion) * worldScaleVal;
+
+									endPos.y = glm::mix(eBaseFloor, eBaseCeiling, 0.2f + (static_cast<float>(rand()) / RAND_MAX) * 0.6f);
+								} else {
+									// Local random fallback for endPos
+									endPos = startPos + glm::vec3((rand() % 800 - 400), (rand() % 200 - 100), (rand() % 800 - 400));
+								}
+							}
+						}
+					}
+
+					// BOLT/FORK endPos: Ensure it's on the ground
+					if (type != LightningType::CLOUD_TO_CLOUD) {
+						endPos.x = startPos.x + (rand() % 200 - 100);
+						endPos.z = startPos.z + (rand() % 200 - 100);
+						endPos.y = 0.0f;
 						if (terrain_) {
 							auto [h, n] = terrain_->GetTerrainPropertiesAtPoint(endPos.x, endPos.z);
 							endPos.y = h;

@@ -1,0 +1,121 @@
+#version 430 core
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
+
+#include "helpers/noise.glsl"
+
+layout(rgba32f, binding = 0) uniform writeonly image2D u_target_image_2d;
+layout(rgba32f, binding = 1) uniform writeonly image3D u_target_image_3d;
+
+uniform int u_dimension;    // 2 = 2D, 3 = 3D
+uniform int u_pattern_type; // 0 = Bark, 1 = Fluids, 2 = Noise, 3 = Vortex Swirl
+uniform float u_time;
+
+void main() {
+	ivec3 pos = ivec3(gl_GlobalInvocationID.xyz);
+	ivec3 size;
+	if (u_dimension == 2) {
+		size = ivec3(imageSize(u_target_image_2d), 1);
+		if (pos.x >= size.x || pos.y >= size.y || pos.z >= 1) return;
+	} else {
+		size = imageSize(u_target_image_3d);
+		if (pos.x >= size.x || pos.y >= size.y || pos.z >= size.z) return;
+	}
+
+	vec3 uvw = vec3(pos) / vec3(size - 1);
+	vec4 color = vec4(0.0);
+
+	if (u_pattern_type == 0) {
+		// --- Pattern 0: Vegetation / Bark ---
+		// Highly anisotropic, layered simplex noise with structural wood grain
+		float n = 0.0;
+		if (u_dimension == 2) {
+			vec2 p = uvw.xy * vec2(8.0, 40.0); // Anisotropic scaling
+			n += 0.500 * snoise(p);
+			n += 0.250 * snoise(p * 2.0);
+			n += 0.125 * snoise(p * 4.0);
+			n = n * 0.5 + 0.5;
+
+			// Add a wood ring / sinusoidal wave
+			float ring = sin(uvw.x * 30.0 + n * 3.0) * 0.5 + 0.5;
+			color = vec4(mix(vec3(0.2, 0.1, 0.05), vec3(0.45, 0.3, 0.15), n * 0.7 + ring * 0.3), 1.0);
+		} else {
+			vec3 p = uvw * vec3(8.0, 40.0, 8.0);
+			n += 0.500 * snoise3d(p);
+			n += 0.250 * snoise3d(p * 2.0);
+			n += 0.125 * snoise3d(p * 4.0);
+			n = n * 0.5 + 0.5;
+
+			float ring = sin(uvw.x * 30.0 + n * 3.0) * 0.5 + 0.5;
+			color = vec4(mix(vec3(0.2, 0.1, 0.05), vec3(0.45, 0.3, 0.15), n * 0.7 + ring * 0.3), 1.0);
+		}
+	} else if (u_pattern_type == 1) {
+		// --- Pattern 1: Fluid / Weather Flow ---
+		// Swirling dynamic fluid simulation style pattern using advected curl noise
+		if (u_dimension == 2) {
+			vec2 flow_uv = uvw.xy;
+			vec2 curl = curlNoise2D(flow_uv * 4.0 + vec2(u_time * 0.05));
+			flow_uv += curl * 0.1;
+
+			float n = snoise(flow_uv * 6.0) * 0.5 + 0.5;
+			float temp = snoise(flow_uv * 12.0 + vec2(0.0, u_time * 0.2)) * 0.5 + 0.5;
+			color = vec4(vec3(n * 0.1, n * 0.4 + temp * 0.3, n * 0.8 + temp * 0.2), 1.0);
+		} else {
+			vec3 flow_uvw = uvw;
+			vec2 curl = curlNoise2D(flow_uvw.xy * 4.0 + vec2(u_time * 0.05));
+			flow_uvw.xy += curl * 0.1;
+
+			float n = snoise3d(flow_uvw * 6.0) * 0.5 + 0.5;
+			float temp = snoise3d(flow_uvw * 12.0 + vec3(0.0, u_time * 0.2, 0.0)) * 0.5 + 0.5;
+			color = vec4(vec3(n * 0.1, n * 0.4 + temp * 0.3, n * 0.8 + temp * 0.2), 1.0);
+		}
+	} else if (u_pattern_type == 2) {
+		// --- Pattern 2: Deeply Layered Procedural Noise with Time Variance ---
+		if (u_dimension == 2) {
+			vec2 p = uvw.xy * 10.0;
+			float n = 0.0;
+			float amp = 1.0;
+			float freq = 1.0;
+			for (int i = 0; i < 4; ++i) {
+				n += amp * snoise(p * freq + vec2(u_time * 0.3 * freq));
+				amp *= 0.5;
+				freq *= 2.0;
+			}
+			n = n * 0.5 + 0.5;
+			color = vec4(vec3(n, n * n, sqrt(n)), 1.0);
+		} else {
+			vec3 p = uvw * 10.0;
+			float n = 0.0;
+			float amp = 1.0;
+			float freq = 1.0;
+			for (int i = 0; i < 4; ++i) {
+				n += amp * snoise3d(p * freq + vec3(0.0, 0.0, u_time * 0.3 * freq));
+				amp *= 0.5;
+				freq *= 2.0;
+			}
+			n = n * 0.5 + 0.5;
+			color = vec4(vec3(n, n * n, sqrt(n)), 1.0);
+		}
+	} else if (u_pattern_type == 3) {
+		// --- Pattern 3: Vortex Swirl / Spiral ---
+		vec2 center = uvw.xy - vec2(0.5);
+		float dist = length(center);
+		float angle = atan(center.y, center.x);
+
+		float swirl = sin(angle * 3.0 + dist * 20.0 - u_time * 2.0) * 0.5 + 0.5;
+		float alpha = smoothstep(0.5, 0.1, dist);
+
+		if (u_dimension == 2) {
+			color = vec4(vec3(swirl * alpha, (1.0 - swirl) * alpha, alpha), 1.0);
+		} else {
+			float z_wave = sin(uvw.z * 15.0 + u_time) * 0.5 + 0.5;
+			color = vec4(vec3(swirl * alpha, (1.0 - swirl) * alpha * z_wave, alpha * z_wave), 1.0);
+		}
+	}
+
+	if (u_dimension == 2) {
+		imageStore(u_target_image_2d, pos.xy, color);
+	} else {
+		imageStore(u_target_image_3d, pos, color);
+	}
+}

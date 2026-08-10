@@ -3,6 +3,7 @@
 
 #include "../helpers/constants.glsl"
 #include "../lighting.glsl"
+#include "clustered_lighting.glsl"
 #ifdef USE_TERRAIN_DATA
 #ifndef TERRAIN_HEIGHT_DEFINED
 #define TERRAIN_HEIGHT_DEFINED
@@ -25,10 +26,9 @@ uniform float u_atmosphereHeight; // usually 100.0 km
 layout(binding = [[ATMOSPHERE_TRANSMITTANCE_BINDING]]) uniform sampler2D u_transmittanceLUT;
 #endif
 
-layout(binding = [[ATMOSPHERE_CLOUD_SHADOW_BINDING]]) uniform sampler2D u_cloudShadowMap;
 #ifndef TERRAIN_GRID_DEFINED
 	#define TERRAIN_GRID_DEFINED
-layout(binding = [[TERRAIN_CHUNK_GRID_BINDING]]) uniform isampler2D u_chunkGrid;
+layout(binding = [[TERRAIN_CHUNK_GRID_BINDING]]) uniform sampler2D u_chunkGrid;
 #endif
 
 /**
@@ -57,10 +57,15 @@ const int LIGHT_TYPE_FLASH = 4;    // Explosion/flash light (rapid falloff)
 void calculateLightContribution(int light_index, vec3 frag_pos, out vec3 light_dir, out float attenuation) {
 	attenuation = 1.0;
 
+	vec3 light_pos = lights[light_index].position;
+	if ((lights[light_index].flags & LIGHT_FLAG_CAMERA_RELATIVE) != 0) {
+		light_pos += viewPos;
+	}
+
 	if (lights[light_index].type == LIGHT_TYPE_POINT) {
 		// Point light: attenuates with distance
-		light_dir = normalize(lights[light_index].position - frag_pos);
-		float distance = length(lights[light_index].position - frag_pos);
+		light_dir = normalize(light_pos - frag_pos);
+		float distance = length(light_pos - frag_pos);
 		// Practical attenuation curve (inverse square falloff with linear term)
 		attenuation = 1.0 / (1.0 + 0.09 * distance + 0.032 * distance * distance);
 
@@ -71,8 +76,8 @@ void calculateLightContribution(int light_index, vec3 frag_pos, out vec3 light_d
 
 	} else if (lights[light_index].type == LIGHT_TYPE_SPOT) {
 		// Spot light: distance attenuation + angular falloff
-		light_dir = normalize(lights[light_index].position - frag_pos);
-		float distance = length(lights[light_index].position - frag_pos);
+		light_dir = normalize(light_pos - frag_pos);
+		float distance = length(light_pos - frag_pos);
 		attenuation = 1.0 / (1.0 + 0.09 * distance + 0.032 * distance * distance);
 
 		// Angular falloff using inner/outer cutoff angles
@@ -84,8 +89,8 @@ void calculateLightContribution(int light_index, vec3 frag_pos, out vec3 light_d
 	} else if (lights[light_index].type == LIGHT_TYPE_EMISSIVE) {
 		// Emissive/glowing object light: similar to point light but with soft near-field
 		// inner_cutoff stores the emissive object radius for soft falloff
-		light_dir = normalize(lights[light_index].position - frag_pos);
-		float distance = length(lights[light_index].position - frag_pos);
+		light_dir = normalize(light_pos - frag_pos);
+		float distance = length(light_pos - frag_pos);
 		float emissive_radius = lights[light_index].inner_cutoff;
 
 		// Soft falloff that accounts for the size of the glowing object
@@ -100,8 +105,8 @@ void calculateLightContribution(int light_index, vec3 frag_pos, out vec3 light_d
 	} else if (lights[light_index].type == LIGHT_TYPE_FLASH) {
 		// Flash/explosion light: very bright with rapid falloff
 		// inner_cutoff = flash radius, outer_cutoff = falloff exponent
-		light_dir = normalize(lights[light_index].position - frag_pos);
-		float distance = length(lights[light_index].position - frag_pos);
+		light_dir = normalize(light_pos - frag_pos);
+		float distance = length(light_pos - frag_pos);
 		float flash_radius = lights[light_index].inner_cutoff;
 		float falloff_exp = lights[light_index].outer_cutoff;
 
@@ -119,45 +124,15 @@ void calculateLightContribution(int light_index, vec3 frag_pos, out vec3 light_d
 
 /**
  * Calculate cloud shadow factor for a fragment position.
- * The shadow map is pre-projected: each texel stores the density of the cloud
- * that casts a shadow at that ground XZ position (already offset by sun angle).
- * So we look up directly by the fragment's XZ.
+ * Uses centralized logic in clouds.glsl.
  */
 float calculateCloudShadow(int light_index, vec3 frag_pos) {
-	if (lights[light_index].type != LIGHT_TYPE_DIRECTIONAL || cloudShadowIntensity <= 0.0) {
+	if (lights[light_index].type != LIGHT_TYPE_DIRECTIONAL) {
 		return 1.0;
 	}
 
 	vec3 L = normalize(-lights[light_index].direction);
-	if (L.y <= 0.001)
-		return 1.0;
-
-	// Skip if fragment is above the cloud layer (it's not in the cloud's shadow)
-	float cloudCeiling = (cloudAltitude + cloudThickness * 8.0) * worldScale;
-	if (frag_pos.y > cloudCeiling)
-		return 1.0;
-
-	// Shadow map is indexed by ground XZ — the map generator projected from
-	// ground to cloud along L. For elevated fragments, project down to ground
-	// along L to find the equivalent ground lookup point.
-	vec2  lookupXZ = frag_pos.xz - L.xz * (frag_pos.y / L.y);
-	vec4  shadowUV = cloudShadowMatrix * vec4(lookupXZ, 0.0, 1.0);
-	float d = 0.0;
-
-	if (shadowUV.x >= 0.0 && shadowUV.x <= 1.0 && shadowUV.y >= 0.0 && shadowUV.y <= 1.0) {
-		d = texture(u_cloudShadowMap, shadowUV.xy).r;
-	} else {
-		// Fallback: project to cloud layer to evaluate density directly
-		float t = (cloudAltitude * worldScale - frag_pos.y) / L.y;
-		if (t < 0.0) return 1.0;
-		vec3 cloudPos = frag_pos + L * t;
-		d = evaluateCloudShadowDensityAtWorldPos(cloudPos.xz, time);
-	}
-
-	// Apply slant-factor (longer path through cloud at oblique angles) and intensity
-	float finalDepth = (d / L.y) * cloudShadowOpticalDepthMultiplier;
-
-	return mix(1.0, exp(-finalDepth), cloudShadowIntensity);
+	return calculateCloudShadowFactor(frag_pos, L, cloudShadowIntensity);
 }
 
 #ifdef USE_TERRAIN_DATA
@@ -383,7 +358,51 @@ vec3 evalSHIrradianceFromCoeffs(vec3 n, vec4 coeffs[9]) {
  * Uses 2nd-order SH coefficients from the Lighting UBO.
  */
 vec3 evalSHIrradiance(vec3 n) {
-	return evalSHIrradianceFromCoeffs(n, sh_coeffs);
+	// Fallback to center probe (Probe 0)
+	vec4 center_coeffs[9];
+	for (int i = 0; i < 9; ++i) center_coeffs[i] = sh_coeffs[i];
+	return evalSHIrradianceFromCoeffs(n, center_coeffs);
+}
+
+/**
+ * Evaluate spatially-interpolated Spherical Harmonics irradiance for a given position and normal.
+ * Interpolates between 9 precomputed sky probes (1 at camera, 8 on 100km perimeter).
+ */
+vec3 evalSHIrradianceSpatial(vec3 pos, vec3 n) {
+	// Probe 0: Camera center
+	// Probes 1-8: Perimeter at 100km radius
+	float radius = 100000.0 * worldScale;
+	vec3 relPos = pos - viewPos;
+	float dist = length(relPos.xz);
+
+	// If very close to center, just use Probe 0
+	if (dist < radius * 0.1) {
+		return evalSHIrradiance(n);
+	}
+
+	// Calculate weights for blending between center and perimeter
+	float edgeWeight = smoothstep(radius * 0.1, radius, dist);
+	float centerWeight = 1.0 - edgeWeight;
+
+	// Calculate weights for blending between the 8 perimeter probes
+	float angle = atan(relPos.x, relPos.z);
+	if (angle < 0.0) angle += 2.0 * PI;
+	float sector = (angle / (2.0 * PI)) * 8.0;
+	int idx1 = 1 + int(floor(sector)) % 8;
+	int idx2 = 1 + (int(floor(sector)) + 1) % 8;
+	float sectorFrac = fract(sector);
+
+	vec4 interpolated[9];
+	for (int i = 0; i < 9; ++i) {
+		vec3 center = sh_coeffs[i].rgb;
+		vec3 p1 = sh_coeffs[idx1 * 9 + i].rgb;
+		vec3 p2 = sh_coeffs[idx2 * 9 + i].rgb;
+
+		vec3 edge = mix(p1, p2, sectorFrac);
+		interpolated[i] = vec4(mix(center, edge, edgeWeight), 1.0);
+	}
+
+	return evalSHIrradianceFromCoeffs(n, interpolated);
 }
 
 #ifdef USE_TERRAIN_DATA
@@ -400,6 +419,9 @@ vec3 getSpatialAmbientSH(vec3 worldPos, vec3 N) {
 	vec2  fracPos = fract(gridPos);
 	ivec2 chunkCoord = ivec2(floor(gridPos)) - u_originSize.xy;
 
+	// Use smoothstep for a non-linear blending curve to ensure smooth transitions between probes
+	vec2  s = smoothstep(0.0, 1.0, fracPos);
+
 	// Simple bilinear interpolation between 4 nearest chunk probes
 	vec3 totalSH[9];
 	for (int i = 0; i < 9; ++i)
@@ -411,8 +433,8 @@ vec3 getSpatialAmbientSH(vec3 worldPos, vec3 N) {
 			ivec2 localCoord = chunkCoord + ivec2(x, z);
 			if (localCoord.x >= 0 && localCoord.x < u_originSize.z && localCoord.y >= 0 && localCoord.y < u_originSize.z) {
 				// Only include this probe if it's actually registered in the current grid
-				if (texelFetch(u_chunkGrid, localCoord, 0).r >= 0) {
-					float weight = (x == 0 ? 1.0 - fracPos.x : fracPos.x) * (z == 0 ? 1.0 - fracPos.y : fracPos.y);
+				if (int(texelFetch(u_chunkGrid, localCoord, 0).r) >= 0) {
+					float weight = (x == 0 ? 1.0 - s.x : s.x) * (z == 0 ? 1.0 - s.y : s.y);
 
 					ivec2 worldChunkCoord = localCoord + u_originSize.xy;
 					ivec2 toroidalCoord = (worldChunkCoord % u_originSize.z + u_originSize.z) % u_originSize.z;
@@ -453,7 +475,7 @@ vec3 getSpatialAmbientSH(vec3 worldPos, vec3 N) {
 
 	// Combine spatially-varying environmental bounce with global sky irradiance
 	vec3 environmentalIrradiance = evalSHIrradianceFromCoeffs(N, interpolatedCoeffs);
-	vec3 skyIrradiance = evalSHIrradiance(N); // Global sky/ambient fallback
+	vec3 skyIrradiance = evalSHIrradianceSpatial(worldPos, N); // Spatially-interpolated sky/ambient fallback
 
 	// Calculate vertical tapering to prevent "light beams" in the sky.
 	// Ambient bounce should be strongest near the ground and fade out with altitude.
@@ -582,9 +604,35 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 	}
 
 	// ------------------------------------------------------------------
-	// PASS 2: Local Lights (Point/Spot)
+	// PASS 2: Local Lights (Point/Spot) - CLUSTERED
 	// ------------------------------------------------------------------
-	for (int i = 2; i < num_lights; ++i) {
+	// Evaluate global lights loop first (index 3456)
+	Cluster global_cluster = clusters[3456];
+	for (uint idx = 0; idx < global_cluster.count; ++idx) {
+		int i = int(global_cluster.lightIndices[idx]);
+		if (lights[i].intensity <= 0.0) {
+			continue;
+		}
+
+		vec3 L;
+		float base_attenuation;
+		calculateLightContribution(i, frag_pos, L, base_attenuation);
+
+		if (dot(N, L) <= 0.0) continue;
+
+		float attenuation = (lights[i].intensity * PBR_INTENSITY_BOOST) * base_attenuation;
+		vec3 radiance = lights[i].color * attenuation;
+
+		float shadow = calculateShadow(i, frag_pos, N, L);
+
+		evaluate_brdf(N, V, L, albedo, roughness, metallic, F0, radiance, shadow, Lo, spec_lum);
+	}
+
+	uint cluster_index = getClusterIndex(frag_pos);
+	Cluster cluster = clusters[cluster_index];
+
+	for (uint idx = 0; idx < cluster.count; ++idx) {
+		int i = int(cluster.lightIndices[idx]);
 		if (lights[i].intensity <= 0.0) {
 			continue;
 		}
@@ -608,7 +656,7 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 	float terrainOcc = calculateTerrainOcclusion(frag_pos, N);
 	vec3  spatialSHAmbient = getSpatialAmbientSH(frag_pos, N);
 
-	float combinedAO = ao * terrainOcc;
+	float combinedAO = ao * terrainOcc * calculateCloudAmbientOcclusion(frag_pos);
 	vec3  ambientDiffuse = spatialSHAmbient * albedo * combinedAO;
 
 	// Scale down ambient overall to maintain shadow contrast and prevent "flat" look
@@ -719,8 +767,31 @@ vec4 apply_lighting_foliage(vec3 frag_pos, vec3 normal, vec3 albedo, float rough
         evaluate_foliage_brdf(N, V, L, albedo, roughness, metallic, F0, radiance, shadow, translucency, Lo, spec_lum);
     }
 
-    // PASS 2: Local Lights
-    for (int i = min(2, num_lights); i < num_lights; ++i) {
+    // PASS 2: Local Lights - CLUSTERED
+    // Evaluate global lights loop first (index 3456)
+    Cluster foliage_global_cluster = clusters[3456];
+    for (uint idx = 0; idx < foliage_global_cluster.count; ++idx) {
+        int i = int(foliage_global_cluster.lightIndices[idx]);
+        if (lights[i].intensity <= 0.0) {
+            continue;
+        }
+
+        vec3 L; float base_atten;
+        calculateLightContribution(i, frag_pos, L, base_atten);
+
+        if (abs(dot(N, L)) < 0.0001) continue;
+
+        vec3 radiance = lights[i].color * (lights[i].intensity * PBR_INTENSITY_BOOST) * base_atten;
+        float shadow = calculateShadow(i, frag_pos, N, L);
+
+        evaluate_foliage_brdf(N, V, L, albedo, roughness, metallic, F0, radiance, shadow, translucency, Lo, spec_lum);
+    }
+
+    uint foliage_cluster_index = getClusterIndex(frag_pos);
+    Cluster foliage_cluster = clusters[foliage_cluster_index];
+
+    for (uint idx = 0; idx < foliage_cluster.count; ++idx) {
+        int i = int(foliage_cluster.lightIndices[idx]);
 		if (lights[i].intensity <= 0.0) {
 			continue;
 		}
@@ -739,7 +810,8 @@ vec4 apply_lighting_foliage(vec3 frag_pos, vec3 normal, vec3 albedo, float rough
 
     // Standard Ambient (using your existing SH logic)
     float terrainOcc = calculateTerrainOcclusion(frag_pos, N);
-    vec3 ambient = (getSpatialAmbientSH(frag_pos, N) * albedo) * (ao * terrainOcc);
+    float cloudAO = calculateCloudAmbientOcclusion(frag_pos);
+    vec3 ambient = (getSpatialAmbientSH(frag_pos, N) * albedo) * (ao * terrainOcc * cloudAO);
 
     return vec4(ambient + Lo, spec_lum);
 }
@@ -760,26 +832,23 @@ vec4 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, floa
 	vec3  Lo = vec3(0.0);
 	float spec_lum = 0.0;
 
-	for (int i = 0; i < num_lights; ++i) {
+	// PASS 1: Global Directional Lights (Sun/Moon)
+	for (int i = 0; i < min(2, num_lights); ++i) {
+		if (lights[i].type != LIGHT_TYPE_DIRECTIONAL) continue;
+		if (lights[i].intensity <= 0.0) continue;
+
 		vec3  L;
 		float base_attenuation;
 		calculateLightContribution(i, frag_pos, L, base_attenuation);
 
 		vec3 H = normalize(V + L);
 
-		float attenuation;
-		vec3  atmosphereTransmittance = vec3(1.0);
+		float attenuation = lights[i].intensity * PBR_INTENSITY_BOOST;
 
-		if (lights[i].type == LIGHT_TYPE_DIRECTIONAL) {
-			attenuation = lights[i].intensity * PBR_INTENSITY_BOOST;
-
-			// Apply atmospheric attenuation
-			float r = kEarthRadiusKM + (frag_pos.y / (1000.0 * worldScale));
-			float mu = L.y;
-			atmosphereTransmittance = texture(u_transmittanceLUT, getTransmittanceUV(r, mu)).rgb;
-		} else {
-			attenuation = (lights[i].intensity * PBR_INTENSITY_BOOST) * base_attenuation;
-		}
+		// Apply atmospheric attenuation
+		float r = kEarthRadiusKM + (frag_pos.y / (1000.0 * worldScale));
+		float mu = L.y;
+		vec3 atmosphereTransmittance = texture(u_transmittanceLUT, getTransmittanceUV(r, mu)).rgb;
 		vec3 radiance = lights[i].color * attenuation * atmosphereTransmittance;
 
 		float NDF = DistributionGGX(N, H, roughness);
@@ -791,16 +860,12 @@ vec4 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, floa
 		vec3  specular = numerator / denominator;
 
 		vec3 kS = F;
-		vec3 kD = vec3(1.0) - kS;
-		kD *= 1.0 - metallic;
+		vec3 kD = (vec3(1.0) - kS) * (1.0 - metallic);
 
 		float NdotL = max(dot(N, L), 0.0);
 
 		// Apply cloud shadow for directional lights
-		float shadow = 1.0;
-		if (lights[i].type == LIGHT_TYPE_DIRECTIONAL) {
-			shadow *= calculateCloudShadow(i, frag_pos);
-		}
+		float shadow = calculateCloudShadow(i, frag_pos);
 
 		if (i == 0)
 			primaryShadow = shadow;
@@ -810,11 +875,79 @@ vec4 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, floa
 		spec_lum += get_luminance(specular_radiance);
 	}
 
+	// PASS 2: Local Lights (Point/Spot) - CLUSTERED
+	// Evaluate global lights loop first (index 3456)
+	Cluster no_shadow_global_cluster = clusters[3456];
+	for (uint idx = 0; idx < no_shadow_global_cluster.count; ++idx) {
+		int i = int(no_shadow_global_cluster.lightIndices[idx]);
+		if (lights[i].intensity <= 0.0) continue;
+
+		vec3  L;
+		float base_attenuation;
+		calculateLightContribution(i, frag_pos, L, base_attenuation);
+
+		vec3 H = normalize(V + L);
+
+		float attenuation = (lights[i].intensity * PBR_INTENSITY_BOOST) * base_attenuation;
+		vec3 radiance = lights[i].color * attenuation;
+
+		float NDF = DistributionGGX(N, H, roughness);
+		float G = GeometrySmith(N, V, L, roughness);
+		vec3  F = fresnelSchlick(max(dot(H, V), 0.0), F0);
+
+		vec3  numerator = NDF * G * F;
+		float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.0001;
+		vec3  specular = numerator / denominator;
+
+		vec3 kS = F;
+		vec3 kD = (vec3(1.0) - kS) * (1.0 - metallic);
+
+		float NdotL = max(dot(N, L), 0.0);
+
+		vec3 specular_radiance = specular * radiance * NdotL;
+		Lo += (kD * albedo / PI) * radiance * NdotL + specular_radiance;
+		spec_lum += get_luminance(specular_radiance);
+	}
+
+	uint no_shadow_cluster_index = getClusterIndex(frag_pos);
+	Cluster no_shadow_cluster = clusters[no_shadow_cluster_index];
+
+	for (uint idx = 0; idx < no_shadow_cluster.count; ++idx) {
+		int i = int(no_shadow_cluster.lightIndices[idx]);
+		if (lights[i].intensity <= 0.0) continue;
+
+		vec3  L;
+		float base_attenuation;
+		calculateLightContribution(i, frag_pos, L, base_attenuation);
+
+		vec3 H = normalize(V + L);
+
+		float attenuation = (lights[i].intensity * PBR_INTENSITY_BOOST) * base_attenuation;
+		vec3 radiance = lights[i].color * attenuation;
+
+		float NDF = DistributionGGX(N, H, roughness);
+		float G = GeometrySmith(N, V, L, roughness);
+		vec3  F = fresnelSchlick(max(dot(H, V), 0.0), F0);
+
+		vec3  numerator = NDF * G * F;
+		float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.0001;
+		vec3  specular = numerator / denominator;
+
+		vec3 kS = F;
+		vec3 kD = (vec3(1.0) - kS) * (1.0 - metallic);
+
+		float NdotL = max(dot(N, L), 0.0);
+
+		vec3 specular_radiance = specular * radiance * NdotL;
+		Lo += (kD * albedo / PI) * radiance * NdotL + specular_radiance;
+		spec_lum += get_luminance(specular_radiance);
+	}
+
 	// Spatially-varying SH ambient augmented with macro occlusion
 	float terrainOcc = calculateTerrainOcclusion(frag_pos, N);
 	vec3  spatialSHAmbient = getSpatialAmbientSH(frag_pos, N);
 
-	float combinedAO = ao * terrainOcc;
+	float combinedAO = ao * terrainOcc * calculateCloudAmbientOcclusion(frag_pos);
 	vec3  ambientDiffuse = spatialSHAmbient * albedo * combinedAO;
 
 	// Scale down ambient overall to maintain shadow contrast
@@ -850,10 +983,15 @@ vec4 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, floa
  */
 vec4 apply_lighting(vec3 frag_pos, vec3 normal, vec3 albedo, float specular_strength, out float primaryShadow) {
 	primaryShadow = 1.0;
-	vec3  result = ambient_light * albedo;
+	float cloudAO = calculateCloudAmbientOcclusion(frag_pos);
+	vec3  result = ambient_light * albedo * cloudAO;
 	float spec_lum = 0.0;
 
-	for (int i = 0; i < num_lights; ++i) {
+	// PASS 1: Global Directional Lights (Sun/Moon)
+	for (int i = 0; i < min(2, num_lights); ++i) {
+		if (lights[i].type != LIGHT_TYPE_DIRECTIONAL) continue;
+		if (lights[i].intensity <= 0.0) continue;
+
 		vec3  light_dir;
 		float attenuation;
 		calculateLightContribution(i, frag_pos, light_dir, attenuation);
@@ -862,15 +1000,12 @@ vec4 apply_lighting(vec3 frag_pos, vec3 normal, vec3 albedo, float specular_stre
 		float shadow = calculateShadow(i, frag_pos, normal, light_dir);
 
 		// Atmospheric attenuation for directional light
-		vec3 atmosphereTransmittance = vec3(1.0);
-		if (lights[i].type == LIGHT_TYPE_DIRECTIONAL) {
-			float r = kEarthRadiusKM + (frag_pos.y / (1000.0 * worldScale));
-			float mu = light_dir.y;
-			atmosphereTransmittance = texture(u_transmittanceLUT, getTransmittanceUV(r, mu)).rgb;
+		float r = kEarthRadiusKM + (frag_pos.y / (1000.0 * worldScale));
+		float mu = light_dir.y;
+		vec3 atmosphereTransmittance = texture(u_transmittanceLUT, getTransmittanceUV(r, mu)).rgb;
 
-			// Apply cloud shadow
-			shadow *= calculateCloudShadow(i, frag_pos);
-		}
+		// Apply cloud shadow
+		shadow *= calculateCloudShadow(i, frag_pos);
 
 		if (i == 0)
 			primaryShadow = shadow;
@@ -891,6 +1026,66 @@ vec4 apply_lighting(vec3 frag_pos, vec3 normal, vec3 albedo, float specular_stre
 		spec_lum += get_luminance(specular_contribution);
 	}
 
+	// PASS 2: Local Lights (Point/Spot) - CLUSTERED
+	// Evaluate global lights loop first (index 3456)
+	Cluster legacy_global_cluster = clusters[3456];
+	for (uint idx = 0; idx < legacy_global_cluster.count; ++idx) {
+		int i = int(legacy_global_cluster.lightIndices[idx]);
+		if (lights[i].intensity <= 0.0) continue;
+
+		vec3  light_dir;
+		float attenuation;
+		calculateLightContribution(i, frag_pos, light_dir, attenuation);
+
+		// Calculate shadow factor for this light with slope-scaled bias
+		float shadow = calculateShadow(i, frag_pos, normal, light_dir);
+
+		// Diffuse
+		float diff = max(dot(normal, light_dir), 0.0);
+		vec3  diffuse = lights[i].color * diff * albedo;
+
+		// Specular (Blinn-Phong)
+		vec3  view_dir = normalize(viewPos - frag_pos);
+		vec3  reflect_dir = reflect(-light_dir, normal);
+		float spec = pow(max(dot(view_dir, reflect_dir), 0.0), 32);
+		vec3  specular_contribution = lights[i].color * spec * specular_strength *
+			lights[i].intensity * shadow * attenuation;
+
+		// Apply shadow and attenuation to diffuse and specular, but not ambient
+		result += (diffuse * lights[i].intensity * shadow * attenuation) + specular_contribution;
+		spec_lum += get_luminance(specular_contribution);
+	}
+
+	uint legacy_cluster_index = getClusterIndex(frag_pos);
+	Cluster legacy_cluster = clusters[legacy_cluster_index];
+
+	for (uint idx = 0; idx < legacy_cluster.count; ++idx) {
+		int i = int(legacy_cluster.lightIndices[idx]);
+		if (lights[i].intensity <= 0.0) continue;
+
+		vec3  light_dir;
+		float attenuation;
+		calculateLightContribution(i, frag_pos, light_dir, attenuation);
+
+		// Calculate shadow factor for this light with slope-scaled bias
+		float shadow = calculateShadow(i, frag_pos, normal, light_dir);
+
+		// Diffuse
+		float diff = max(dot(normal, light_dir), 0.0);
+		vec3  diffuse = lights[i].color * diff * albedo;
+
+		// Specular (Blinn-Phong)
+		vec3  view_dir = normalize(viewPos - frag_pos);
+		vec3  reflect_dir = reflect(-light_dir, normal);
+		float spec = pow(max(dot(view_dir, reflect_dir), 0.0), 32);
+		vec3  specular_contribution = lights[i].color * spec * specular_strength *
+			lights[i].intensity * shadow * attenuation;
+
+		// Apply shadow and attenuation to diffuse and specular, but not ambient
+		result += (diffuse * lights[i].intensity * shadow * attenuation) + specular_contribution;
+		spec_lum += get_luminance(specular_contribution);
+	}
+
 	return vec4(result, spec_lum);
 }
 
@@ -900,21 +1095,23 @@ vec4 apply_lighting(vec3 frag_pos, vec3 normal, vec3 albedo, float specular_stre
  */
 vec4 apply_lighting_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, float specular_strength, out float primaryShadow) {
 	primaryShadow = 1.0;
-	vec3  result = ambient_light * albedo;
+	float cloudAO = calculateCloudAmbientOcclusion(frag_pos);
+	vec3  result = ambient_light * albedo * cloudAO;
 	float spec_lum = 0.0;
 
-	for (int i = 0; i < num_lights; ++i) {
+	// PASS 1: Global Directional Lights (Sun/Moon)
+	for (int i = 0; i < min(2, num_lights); ++i) {
+		if (lights[i].type != LIGHT_TYPE_DIRECTIONAL) continue;
+		if (lights[i].intensity <= 0.0) continue;
+
 		vec3  light_dir;
 		float attenuation;
 		calculateLightContribution(i, frag_pos, light_dir, attenuation);
 
 		// Atmospheric attenuation for directional light
-		vec3  atmosphereTransmittance = vec3(1.0);
-		if (lights[i].type == LIGHT_TYPE_DIRECTIONAL) {
-			float r = kEarthRadiusKM + (frag_pos.y / (1000.0 * worldScale));
-			float mu = light_dir.y;
-			atmosphereTransmittance = texture(u_transmittanceLUT, getTransmittanceUV(r, mu)).rgb;
-		}
+		float r = kEarthRadiusKM + (frag_pos.y / (1000.0 * worldScale));
+		float mu = light_dir.y;
+		vec3 atmosphereTransmittance = texture(u_transmittanceLUT, getTransmittanceUV(r, mu)).rgb;
 
 		// Diffuse
 		float diff = max(dot(normal, light_dir), 0.0);
@@ -925,6 +1122,58 @@ vec4 apply_lighting_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, float sp
 		vec3  reflect_dir = reflect(-light_dir, normal);
 		float spec = pow(max(dot(view_dir, reflect_dir), 0.0), 32);
 		vec3  specular_contribution = lights[i].color * atmosphereTransmittance * spec * specular_strength *
+			lights[i].intensity * attenuation;
+
+		result += (diffuse * lights[i].intensity * attenuation) + specular_contribution;
+		spec_lum += get_luminance(specular_contribution);
+	}
+
+	// PASS 2: Local Lights (Point/Spot) - CLUSTERED
+	// Evaluate global lights loop first (index 3456)
+	Cluster legacy_no_shadow_global_cluster = clusters[3456];
+	for (uint idx = 0; idx < legacy_no_shadow_global_cluster.count; ++idx) {
+		int i = int(legacy_no_shadow_global_cluster.lightIndices[idx]);
+		if (lights[i].intensity <= 0.0) continue;
+
+		vec3  light_dir;
+		float attenuation;
+		calculateLightContribution(i, frag_pos, light_dir, attenuation);
+
+		// Diffuse
+		float diff = max(dot(normal, light_dir), 0.0);
+		vec3  diffuse = lights[i].color * diff * albedo;
+
+		// Specular
+		vec3  view_dir = normalize(viewPos - frag_pos);
+		vec3  reflect_dir = reflect(-light_dir, normal);
+		float spec = pow(max(dot(view_dir, reflect_dir), 0.0), 32);
+		vec3  specular_contribution = lights[i].color * spec * specular_strength *
+			lights[i].intensity * attenuation;
+
+		result += (diffuse * lights[i].intensity * attenuation) + specular_contribution;
+		spec_lum += get_luminance(specular_contribution);
+	}
+
+	uint legacy_no_shadow_cluster_index = getClusterIndex(frag_pos);
+	Cluster legacy_no_shadow_cluster = clusters[legacy_no_shadow_cluster_index];
+
+	for (uint idx = 0; idx < legacy_no_shadow_cluster.count; ++idx) {
+		int i = int(legacy_no_shadow_cluster.lightIndices[idx]);
+		if (lights[i].intensity <= 0.0) continue;
+
+		vec3  light_dir;
+		float attenuation;
+		calculateLightContribution(i, frag_pos, light_dir, attenuation);
+
+		// Diffuse
+		float diff = max(dot(normal, light_dir), 0.0);
+		vec3  diffuse = lights[i].color * diff * albedo;
+
+		// Specular
+		vec3  view_dir = normalize(viewPos - frag_pos);
+		vec3  reflect_dir = reflect(-light_dir, normal);
+		float spec = pow(max(dot(view_dir, reflect_dir), 0.0), 32);
+		vec3  specular_contribution = lights[i].color * spec * specular_strength *
 			lights[i].intensity * attenuation;
 
 		result += (diffuse * lights[i].intensity * attenuation) + specular_contribution;
@@ -999,7 +1248,11 @@ vec4 apply_lighting_pbr_iridescent_no_shadows(
 	vec3  specular_total = vec3(0.0);
 	float spec_lum = 0.0;
 
-	for (int i = 0; i < num_lights; ++i) {
+	// PASS 1: Global Directional Lights (Sun/Moon)
+	for (int i = 0; i < min(2, num_lights); ++i) {
+		if (lights[i].type != LIGHT_TYPE_DIRECTIONAL) continue;
+		if (lights[i].intensity <= 0.0) continue;
+
 		vec3  L;
 		float base_attenuation;
 		calculateLightContribution(i, frag_pos, L, base_attenuation);
@@ -1008,20 +1261,83 @@ vec4 apply_lighting_pbr_iridescent_no_shadows(
 		float NdotL = max(dot(N, L), 0.0);
 		float HdotV = max(dot(H, V), 0.0);
 
-		float attenuation;
-		vec3  atmosphereTransmittance = vec3(1.0);
+		float attenuation = lights[i].intensity * PBR_INTENSITY_BOOST;
 
-		if (lights[i].type == LIGHT_TYPE_DIRECTIONAL) {
-			attenuation = lights[i].intensity * PBR_INTENSITY_BOOST;
-
-			// Apply atmospheric attenuation
-			float r = kEarthRadiusKM + (frag_pos.y / (1000.0 * worldScale));
-			float mu = L.y;
-			atmosphereTransmittance = texture(u_transmittanceLUT, getTransmittanceUV(r, mu)).rgb;
-		} else {
-			attenuation = (lights[i].intensity * PBR_INTENSITY_BOOST) * base_attenuation;
-		}
+		// Apply atmospheric attenuation
+		float r = kEarthRadiusKM + (frag_pos.y / (1000.0 * worldScale));
+		float mu = L.y;
+		vec3 atmosphereTransmittance = texture(u_transmittanceLUT, getTransmittanceUV(r, mu)).rgb;
 		vec3 radiance = lights[i].color * attenuation * atmosphereTransmittance;
+
+		// GGX specular for sharp highlights
+		float NDF = DistributionGGX(N, H, roughness);
+		float G = GeometrySmith(N, V, L, roughness);
+
+		// Fresnel with iridescent F0
+		vec3 F0 = iridescent_color * 0.8 + vec3(0.2);
+		vec3 F = fresnelSchlick(HdotV, F0);
+
+		vec3  numerator = NDF * G * F;
+		float denominator = 4.0 * NdotV * NdotL + 0.0001;
+		vec3  specular = numerator / denominator;
+
+		vec3 specular_contribution = specular * radiance * NdotL;
+		specular_total += specular_contribution;
+		spec_lum += get_luminance(specular_contribution);
+	}
+
+	// PASS 2: Local Lights (Point/Spot) - CLUSTERED
+	// Evaluate global lights loop first (index 3456)
+	Cluster iridescent_global_cluster = clusters[3456];
+	for (uint idx = 0; idx < iridescent_global_cluster.count; ++idx) {
+		int i = int(iridescent_global_cluster.lightIndices[idx]);
+		if (lights[i].intensity <= 0.0) continue;
+
+		vec3  L;
+		float base_attenuation;
+		calculateLightContribution(i, frag_pos, L, base_attenuation);
+
+		vec3  H = normalize(V + L);
+		float NdotL = max(dot(N, L), 0.0);
+		float HdotV = max(dot(H, V), 0.0);
+
+		float attenuation = (lights[i].intensity * PBR_INTENSITY_BOOST) * base_attenuation;
+		vec3 radiance = lights[i].color * attenuation;
+
+		// GGX specular for sharp highlights
+		float NDF = DistributionGGX(N, H, roughness);
+		float G = GeometrySmith(N, V, L, roughness);
+
+		// Fresnel with iridescent F0
+		vec3 F0 = iridescent_color * 0.8 + vec3(0.2);
+		vec3 F = fresnelSchlick(HdotV, F0);
+
+		vec3  numerator = NDF * G * F;
+		float denominator = 4.0 * NdotV * NdotL + 0.0001;
+		vec3  specular = numerator / denominator;
+
+		vec3 specular_contribution = specular * radiance * NdotL;
+		specular_total += specular_contribution;
+		spec_lum += get_luminance(specular_contribution);
+	}
+
+	uint iridescent_cluster_index = getClusterIndex(frag_pos);
+	Cluster iridescent_cluster = clusters[iridescent_cluster_index];
+
+	for (uint idx = 0; idx < iridescent_cluster.count; ++idx) {
+		int i = int(iridescent_cluster.lightIndices[idx]);
+		if (lights[i].intensity <= 0.0) continue;
+
+		vec3  L;
+		float base_attenuation;
+		calculateLightContribution(i, frag_pos, L, base_attenuation);
+
+		vec3  H = normalize(V + L);
+		float NdotL = max(dot(N, L), 0.0);
+		float HdotV = max(dot(H, V), 0.0);
+
+		float attenuation = (lights[i].intensity * PBR_INTENSITY_BOOST) * base_attenuation;
+		vec3 radiance = lights[i].color * attenuation;
 
 		// GGX specular for sharp highlights
 		float NDF = DistributionGGX(N, H, roughness);

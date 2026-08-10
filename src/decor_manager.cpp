@@ -258,30 +258,30 @@ namespace Boidsish {
 		// 	4
 		// );
 
-		// Procedural Rocks
-		AddProceduralDecor(
-			ProceduralType::Rock,
-			{
+		// // Procedural Rocks
+		// AddProceduralDecor(
+		// 	ProceduralType::PineTree,
+		// 	{
 
-				.min_density = 0.001f,
-				.max_density = 0.01f,
-				.base_scale = 0.75f,
-				.scale_variance = 0.5f,
+		// 		.min_density = 0.0001f,
+		// 		.max_density = 0.001f,
+		// 		.base_scale = 0.75f,
+		// 		.scale_variance = 0.5f,
 
 
-				// .min_density = 0.02f,
-				// .max_density = 0.04f,
-				// .base_scale = 0.4f,
-				// .scale_variance = 0.1f,
-				.min_height = 0.01f,
-				.max_height = 1000.0f,
-				.random_yaw = true,
-				.align_to_terrain = true,
-				// .biomes = {Biome::BrownRock, Biome::GreyRock, Biome::DryGrass},
-				.wind_responsiveness = 0
-			},
-			2
-		);
+		// 		// .min_density = 0.02f,
+		// 		// .max_density = 0.04f,
+		// 		// .base_scale = 0.4f,
+		// 		// .scale_variance = 0.1f,
+		// 		.min_height = 0.01f,
+		// 		.max_height = 1000.0f,
+		// 		.random_yaw = true,
+		// 		.align_to_terrain = true,
+		// 		// .biomes = {Biome::BrownRock, Biome::GreyRock, Biome::DryGrass},
+		// 		.wind_responsiveness = 0
+		// 	},
+		// 	2
+		// );
 
 		// // Procedural Grass
 		// AddProceduralDecor(

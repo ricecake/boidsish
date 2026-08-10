@@ -6,7 +6,7 @@ layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 layout(binding = 0) uniform sampler2D u_srcDepth;
 
 // Destination: current mip level being generated
-layout(r32f, binding = 0) uniform writeonly image2D u_dstMip;
+layout(rg32f, binding = 0) uniform writeonly image2D u_dstMip;
 
 // Source level
 uniform int u_srcLevel = 0;
@@ -22,13 +22,13 @@ void main() {
 	ivec2 srcCoord = pixel * 2;
 
 	// Deterministic MAX-downsampling using texelFetch to avoid UV precision issues
-	float d00 = texelFetch(u_srcDepth, srcCoord + ivec2(0, 0), u_srcLevel).r;
-	float d10 = texelFetch(u_srcDepth, srcCoord + ivec2(1, 0), u_srcLevel).r;
-	float d01 = texelFetch(u_srcDepth, srcCoord + ivec2(0, 1), u_srcLevel).r;
-	float d11 = texelFetch(u_srcDepth, srcCoord + ivec2(1, 1), u_srcLevel).r;
+	vec2 d00 = texelFetch(u_srcDepth, srcCoord + ivec2(0, 0), u_srcLevel).rg;
+	vec2 d10 = texelFetch(u_srcDepth, srcCoord + ivec2(1, 0), u_srcLevel).rg;
+	vec2 d01 = texelFetch(u_srcDepth, srcCoord + ivec2(0, 1), u_srcLevel).rg;
+	vec2 d11 = texelFetch(u_srcDepth, srcCoord + ivec2(1, 1), u_srcLevel).rg;
 
 	// MAX for conservative terrain height skipping (farthest depth/height)
-	float maxVal = max(max(d00, d10), max(d01, d11));
+	vec2 maxVal = max(max(d00, d10), max(d01, d11));
 
-	imageStore(u_dstMip, pixel, vec4(maxVal));
+	imageStore(u_dstMip, pixel, vec4(maxVal, 0.0, 0.0));
 }

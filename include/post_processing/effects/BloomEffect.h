@@ -15,21 +15,58 @@ namespace Boidsish {
 
 		class BloomEffect: public IPostProcessingEffect {
 		public:
+			struct CdlGradingEntry {
+				glm::vec3 cdlSlope = glm::vec3(1.0f);
+				glm::vec3 cdlOffset = glm::vec3(0.0f);
+				glm::vec3 cdlPower = glm::vec3(1.0f);
+				float     cdlSaturation = 1.0f;
+
+				float targetDepth = 50.0f;
+				float falloffWidth = 20.0f;
+				float falloffRate = 1.0f;
+				int   priority = 0;
+
+				bool  enabled = true;
+				bool  isMain = false;
+			};
+
+			struct GpuCdlEntry {
+				glm::vec4 cdlSlope = glm::vec4(1.0f);
+				glm::vec4 cdlOffset = glm::vec4(0.0f);
+				glm::vec4 cdlPower = glm::vec4(1.0f);
+				float     cdlSaturation = 1.0f;
+				float     targetDepth = 0.0f;
+				float     falloffWidth = 0.0f;
+				float     falloffRate = 1.0f;
+				int       priority = 0;
+				int       enabled = 1;
+				int       isMain = 0;
+				float     padding = 0.0f;
+			};
+
 			struct LayerSettings {
 				bool  toneMappingEnabled = true;
 				int   toneMappingMode = 5; // Default to Uchimura
 
 				bool  autoExposureEnabled = true;
 				float targetLuminance = 0.25f;
-				float minExposure = 0.01f;
-				float maxExposure = 25.0f;
+				float minExposure = 1e-7f;
+				float maxExposure = 1000.0f;
 				float speedUp = 3.0f;
 				float speedDown = 1.0f;
+
+				float minEV100 = -10.0f;
+				float maxEV100 = 20.0f;
 
 				float centerWeightTightness = 4.0f;
 				glm::vec2 focusPoint = glm::vec2(0.5f, 0.5f);
 				float histogramLowCutoff = 0.1f;
 				float histogramHighCutoff = 0.95f;
+
+				float exposureTime = 0.008f; // 1/125s default
+				float iso = 100.0f;
+				float aperture = 8.0f;
+				float gamma = 2.2f;
 
 				float uchimuraP = 1.0f;
 				float uchimuraA = 1.0f;
@@ -83,6 +120,9 @@ namespace Boidsish {
 			void SetMaxIntensity(float maxIntensity) { maxIntensity_ = maxIntensity; }
 
 			float GetMaxIntensity() const { return maxIntensity_; }
+
+			void SetBloomEnabled(bool enabled) { _bloomEnabled = enabled; }
+			bool IsBloomEnabled() const { return _bloomEnabled; }
 
 			LayerSettings& GetSceneSettings() { return _sceneSettings; }
 			LayerSettings& GetSkySettings() { return _skySettings; }
@@ -167,6 +207,15 @@ namespace Boidsish {
 			void SetLtmBoostLocalContrast(float boost) { _sceneSettings.ltmBoostLocalContrast = boost; }
 			float GetLtmBoostLocalContrast() const { return _sceneSettings.ltmBoostLocalContrast; }
 
+			std::vector<CdlGradingEntry>& GetAdditionalCdlEntries() { return _additionalCdlEntries; }
+			const std::vector<CdlGradingEntry>& GetAdditionalCdlEntries() const { return _additionalCdlEntries; }
+			void AddCdlEntry(const CdlGradingEntry& entry) { _additionalCdlEntries.push_back(entry); }
+			void RemoveCdlEntry(size_t index) {
+				if (index < _additionalCdlEntries.size()) {
+					_additionalCdlEntries.erase(_additionalCdlEntries.begin() + index);
+				}
+			}
+
 			void SetNightFactor(float factor) override { _nightFactor = factor; }
 
 			void SetTime(float time) override;
@@ -211,8 +260,8 @@ namespace Boidsish {
 				float autoUchimuraL;
 				float autoUchimuraC;
 				float autoUchimuraB;
-				float _pad0;
-				float _pad1;
+				float exposureTime;
+				float iso;
 
 				// Manual Uchimura parameters
 				float uchimuraP;
@@ -233,7 +282,7 @@ namespace Boidsish {
 				// White Balance
 				float whiteTemp;
 				float whiteTint;
-				float _pad2;
+				float aperture;
 
 				// Local Tone Mapping (Exposure Fusion)
 				int   ltmEnabled;
@@ -281,6 +330,10 @@ namespace Boidsish {
 			LayerSettings _sceneSettings;
 			LayerSettings _skySettings = { .targetLuminance = 0.5 };
 
+			std::vector<CdlGradingEntry> _additionalCdlEntries;
+			GLuint _cdlGradingSsbo = 0;
+
+			bool  _bloomEnabled = true;
 			float _nightFactor = 0.0f;
 			float _lastTime = 0.0f;
 			float _deltaTime = 0.0f;

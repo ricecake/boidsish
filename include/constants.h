@@ -10,7 +10,6 @@ namespace Boidsish {
 			enum class Texture {
 				ShadowMaps = 10,
 				TerrainChunkGrid = 11,
-				TerrainMaxHeight = 12,
 				TerrainHeightmap = 13,
 				TerrainBiomeMap = 14,
 				Refraction = 15,
@@ -23,7 +22,7 @@ namespace Boidsish {
 				AtmosphereMultiScattering = 22,
 				AtmosphereSkyView = 23,
 				AtmosphereAerialPerspective = 24,
-				AtmosphereCloudShadow = 25,
+				CloudWeatherBake = 25,
 				WindData = 26,
 				HiZ = 27,
 				TerrainBakedParams = 28,
@@ -43,8 +42,12 @@ namespace Boidsish {
 				WeatherScalars = 42,
 				WeatherAerosols = 43,
 				TerrainDisplacementImage = 44,
-				CloudWeatherBake = 45,
+				Cloud3D = 45,
 				CloudJFADistance = 46,
+				CloudWeatherMinMax = 49,
+				CloudMinMaxBounding = 50,
+				TerrainColorBlend = 47,
+				CloudShadowMap = 51,
 			};
 
 			enum class Ubo {
@@ -108,7 +111,13 @@ namespace Boidsish {
 				TerrainPatchIndirect = 49,
 				TerrainPatchVisibility = 50,
 				GrassTasks = 51,
-				ParticleStats = 52,
+				ParticleStats = 44,
+				CloudSeeds = 46,
+				LightsBuffer = 52,
+				ClusterGridBuffer = 53,
+				SpaceProbe = 54,
+				CdlGradingLayers = 55,
+				MlpParams = 57
 			};
 		} // namespace Bindings
 
@@ -175,10 +184,6 @@ namespace Boidsish {
 				return std::to_underlying(Constants::Bindings::Texture::TerrainChunkGrid);
 			}
 
-			consteval int TerrainMaxHeight() {
-				return std::to_underlying(Constants::Bindings::Texture::TerrainMaxHeight);
-			}
-
 			consteval int TerrainHeightmap() {
 				return std::to_underlying(Constants::Bindings::Texture::TerrainHeightmap);
 			}
@@ -225,10 +230,6 @@ namespace Boidsish {
 
 			consteval int AtmosphereAerialPerspective() {
 				return std::to_underlying(Constants::Bindings::Texture::AtmosphereAerialPerspective);
-			}
-
-			consteval int AtmosphereCloudShadow() {
-				return std::to_underlying(Constants::Bindings::Texture::AtmosphereCloudShadow);
 			}
 
 			consteval int WindData() {
@@ -311,8 +312,28 @@ namespace Boidsish {
 				return std::to_underlying(Constants::Bindings::Texture::CloudWeatherBake);
 			}
 
+			consteval int Cloud3D() {
+				return std::to_underlying(Constants::Bindings::Texture::Cloud3D);
+			}
+
 			consteval int CloudJFADistance() {
 				return std::to_underlying(Constants::Bindings::Texture::CloudJFADistance);
+			}
+
+			consteval int CloudWeatherMinMax() {
+				return std::to_underlying(Constants::Bindings::Texture::CloudWeatherMinMax);
+			}
+
+			consteval int CloudMinMaxBounding() {
+				return std::to_underlying(Constants::Bindings::Texture::CloudMinMaxBounding);
+			}
+
+			consteval int TerrainColorBlend() {
+				return std::to_underlying(Constants::Bindings::Texture::TerrainColorBlend);
+			}
+
+			consteval int CloudShadowMap() {
+				return std::to_underlying(Constants::Bindings::Texture::CloudShadowMap);
 			}
 		} // namespace TextureUnit
 
@@ -485,6 +506,30 @@ namespace Boidsish {
 
 			consteval int ParticleStats() {
 				return std::to_underlying(Constants::Bindings::Ssbo::ParticleStats);
+			}
+
+			consteval int CloudSeeds() {
+				return std::to_underlying(Constants::Bindings::Ssbo::CloudSeeds);
+			}
+
+			consteval int LightsBuffer() {
+				return std::to_underlying(Constants::Bindings::Ssbo::LightsBuffer);
+			}
+
+			consteval int ClusterGridBuffer() {
+				return std::to_underlying(Constants::Bindings::Ssbo::ClusterGridBuffer);
+			}
+
+			consteval int SpaceProbe() {
+				return std::to_underlying(Constants::Bindings::Ssbo::SpaceProbe);
+			}
+
+			consteval int CdlGradingLayers() {
+				return std::to_underlying(Constants::Bindings::Ssbo::CdlGradingLayers);
+			}
+
+			consteval int MlpParams() {
+				return std::to_underlying(Constants::Bindings::Ssbo::MlpParams);
 			}
 		} // namespace SsboBinding
 

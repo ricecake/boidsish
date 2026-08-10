@@ -19,6 +19,9 @@ uniform mat4 invProjection;
 uniform float nearPlane; // Set from application (e.g., 0.1)
 uniform float farPlane;  // Set from application (e.g., 1000.0)
 
+uniform float gamma;
+uniform bool  uBloomEnabled;
+
 
 #include "helpers/tonemapping.glsl"
 #include "types/autoexposure.glsl"
@@ -26,6 +29,26 @@ uniform float farPlane;  // Set from application (e.g., 1000.0)
 #include "lygia/color/space.glsl"
 
 #include "types/lighting.glsl";
+
+struct CdlEntry {
+	vec4  cdlSlope;
+	vec4  cdlOffset;
+	vec4  cdlPower;
+	float cdlSaturation;
+	float targetDepth;
+	float falloffWidth;
+	float falloffRate;
+	int   priority;
+	int   enabled;
+	int   isMain;
+	float padding;
+};
+
+layout(std430, binding = [[CDL_GRADING_LAYERS_BINDING]]) buffer CdlGradingLayers {
+	CdlEntry cdlEntries[];
+};
+
+uniform int uNumCdlEntries;
 
 // Planckian locus approximation for temperature to RGB
 vec3 tempToRgb(float temp) {
@@ -73,6 +96,26 @@ float calculateSkyAttenuation(vec3 rawHdrColor, float uchimuraM, float uchimuraL
 	return multiplier;
 }
 
+// Simulates the scotopic rod shift in mesopic lighting conditions
+vec3 ApplyPurkinjeShift(vec3 exposedLinearColor, float avgLuminance, vec3 scotopicTint) {
+    float scotopicMin = 0.001;
+    float photopicMax = 3.0;
+
+    // Calculate logarithmic blend factor
+    float logAvg = log(max(avgLuminance, 1e-5));
+    float logMin = log(scotopicMin);
+    float logMax = log(photopicMax);
+
+    float photopicWeight = clamp((logAvg - logMin) / (logMax - logMin), 0.0, 1.0);
+    photopicWeight = smoothstep(0.0, 1.0, photopicWeight);
+
+    // Calculate scene luminance using Rec. 709 luma
+    float pixelLuminance = dot(exposedLinearColor, vec3(0.2126, 0.7152, 0.0722));
+    vec3 scotopicColor = pixelLuminance * scotopicTint;
+
+    return mix(scotopicColor, exposedLinearColor, photopicWeight);
+}
+
 void main() {
 	vec3 sceneColor = texture(sceneTexture, TexCoords).rgb;
 	vec3 bloomColor = texture(bloomBlur, TexCoords).rgb;
@@ -82,19 +125,29 @@ void main() {
 	float rawDepth = texture(depthTexture, TexCoords).r;
 	int isSky = 0;
 	if (rawDepth > 0.99999) {
-		isSky = 1;
-		// vec2 ndc = TexCoords * 2.0 - 1.0;
-		// vec4 ray_view = invProjection * vec4(ndc, -1.0, 1.0);
-		// ray_view = vec4(ray_view.xy, -1.0, 0.0);
-		// vec3 worldDir = normalize((invView * ray_view).xyz);
-		// if (worldDir.y > 0.0) {
-		// 	isSky = 1;
-		// }
+		vec2 ndc = TexCoords * 2.0 - 1.0;
+		vec4 ray_view = invProjection * vec4(ndc, -1.0, 1.0);
+		ray_view = vec4(ray_view.xy, -1.0, 0.0);
+		vec3 worldDir = normalize((invView * ray_view).xyz);
+
+		if (worldDir.y < 0.0 && viewPos.y > 0.0) {
+			float t = -viewPos.y / worldDir.y;
+			float maxSceneDist = mix(10000.0 * worldScale, 700.0 * worldScale, smoothstep(0.0, 1500.0 * worldScale, viewPos.y));
+			if (t < maxSceneDist) {
+				isSky = 0;
+			} else {
+				isSky = 1;
+			}
+		} else {
+			isSky = 1;
+		}
+	} else {
+		isSky = 0;
 	}
 
-	// Guided Upsampling for LTM (Scene only)
-	if (layers[0].ltmEnabled != 0 && isSky == 0) {
-		float exposure = layers[0].targetLuminance / max(layers[0].avgLuma, 0.0001);
+	// Guided Upsampling for LTM
+	if (layers[isSky].ltmEnabled != 0) {
+		float exposure = layers[isSky].targetLuminance / max(layers[isSky].avgLuma, 0.0001);
 		vec3 currentExposure = result * exposure;
 		vec3 currentAces = aces(currentExposure);
 		float guidanceLuma = sqrt(max(dot(currentAces, vec3(0.2126, 0.7152, 0.0722)), 0.0));
@@ -145,8 +198,9 @@ void main() {
 	}
 
 	// 2. Exposure
+	float exposure = 1.0;
 	if (layers[isSky].useAutoExposure != 0) {
-		float exposure = layers[isSky].targetLuminance / max(layers[isSky].adaptedLuminance, 0.0001);
+		exposure = layers[isSky].targetLuminance / max(layers[isSky].adaptedLuminance, 0.0001);
 		exposure = clamp(exposure, layers[isSky].minExposure, layers[isSky].maxExposure);
 
 		if (isSky == 1) {
@@ -160,11 +214,21 @@ void main() {
 			attenuation = mix(attenuation, 1.0, mask);
 			exposure *= attenuation;
 		}
-
-		result *= exposure;
+	} else {
+		exposure = (layers[isSky].iso / 100.0) * (1.0 / (layers[isSky].aperture * layers[isSky].aperture)) * layers[isSky].exposureTime;
 	}
 
-	result += bloomColor * intensity;
+	result *= exposure;
+
+	// --- PURKINJE SHIFT ---
+	vec3 scotopicTint = vec3(0.15, 0.3, 0.6);
+	// vec3 scotopicTint = vec3(2.0, 0.3, 0.6);
+	result = ApplyPurkinjeShift(result, layers[isSky].adaptedLuminance, scotopicTint);
+	// ----------------------
+
+	if (uBloomEnabled) {
+		result += bloomColor * intensity;
+	}
 
 	// 1. White Balance
 	vec3 whiteGain = 1.0 / max(tempToRgb(layers[isSky].whiteTemp), 0.0001);
@@ -176,8 +240,31 @@ void main() {
 	whiteGain /= max(dot(whiteGain, vec3(0.2126, 0.7152, 0.0722)), 0.0001);
 	result *= whiteGain;
 
-	// 3. ASC CDL Color Grading
-	result = pow(max(result * layers[isSky].cdlSlope.rgb + layers[isSky].cdlOffset.rgb, 0.0), layers[isSky].cdlPower.rgb);
+	// 3. ASC CDL Color Grading (Single or Multi-layer depth based)
+	if (isSky == 0) {
+		float linearZ = linearizeDepth(rawDepth);
+		for (int i = 0; i < uNumCdlEntries; ++i) {
+			CdlEntry entry = cdlEntries[i];
+			if (entry.enabled == 0) continue;
+
+			float weight = 1.0;
+			if (entry.isMain == 0) {
+				float dist = abs(linearZ - entry.targetDepth);
+				float x = clamp(dist / max(entry.falloffWidth, 0.0001), 0.0, 1.0);
+				weight = pow(1.0 - x, entry.falloffRate);
+			}
+
+			if (weight > 0.0) {
+				vec3 graded = pow(max(result * entry.cdlSlope.rgb + entry.cdlOffset.rgb, 0.0), entry.cdlPower.rgb);
+				float layerLuma = dot(graded, vec3(0.2126, 0.7152, 0.0722));
+				graded = layerLuma + entry.cdlSaturation * (graded - layerLuma);
+				result = mix(result, graded, weight);
+			}
+		}
+	} else {
+		// Existing sky color grading
+		result = pow(max(result * layers[1].cdlSlope.rgb + layers[1].cdlOffset.rgb, 0.0), layers[1].cdlPower.rgb);
+	}
 
 	// 4. Tonemapping
 	if (layers[isSky].toneMappingEnabled != 0) {
@@ -194,8 +281,13 @@ void main() {
 	}
 
 	// Saturation
-	float luma = dot(result, vec3(0.2126, 0.7152, 0.0722));
-	result = luma + layers[isSky].cdlSaturation * (result - luma);
+	if (isSky == 1) {
+		float luma = dot(result, vec3(0.2126, 0.7152, 0.0722));
+		result = luma + layers[1].cdlSaturation * (result - luma);
+	}
+
+	// 5. Gamma Correction
+	result = pow(max(result, 0.0), vec3(1.0 / gamma));
 
 	FragColor = vec4(result, 1.0);
 }

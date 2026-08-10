@@ -5,8 +5,26 @@ project(Boidsish VERSION 1.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS ON) # Corresponds to -std=gnu++23
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# Get the current git hash
+# include(CheckIPOSupported)
+# check_ipo_supported(RESULT ipo_supported OUTPUT error)
+
+# if(ipo_supported)
+#     set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
+# else()
+#     message(STATUS "LTO/IPO is not supported: ${error}")
+# endif()
+
+# Get the current git hash and branch
+execute_process(
+    COMMAND git rev-parse --abbrev-ref HEAD
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    OUTPUT_VARIABLE GIT_BRANCH
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+)
+
 execute_process(
     COMMAND git rev-parse --short HEAD
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
@@ -19,7 +37,20 @@ if(NOT GIT_HASH)
     set(GIT_HASH "unknown")
 endif()
 
-add_definitions(-DBOIDSISH_BUILD_ID="${GIT_HASH}")
+if(NOT GIT_BRANCH)
+    set(GIT_BRANCH "unknown")
+endif()
+
+set(BOIDSISH_GIT_IDENT "${GIT_BRANCH}-${GIT_HASH}")
+
+configure_file(include/build_info.h.in ${CMAKE_CURRENT_BINARY_DIR}/include/build_info.h)
+
+find_program(CCACHE_PROGRAM ccache)
+if(CCACHE_PROGRAM)
+    set(CMAKE_C_COMPILER_LAUNCHER   "${CCACHE_PROGRAM}")
+    set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
+endif()
+
 
 option(ENABLE_PROFILING "Enable profiling instrumentation" OFF)
 if(ENABLE_PROFILING)
@@ -51,6 +82,8 @@ find_package(glm REQUIRED)
 find_package(assimp REQUIRED)
 find_package(ZLIB REQUIRED)
 find_package(Threads REQUIRED)
+
+find_package(Backtrace REQUIRED)
 
 # 1. Define ImGui FIRST so FastNoise2 can see it
 add_library(imgui STATIC
@@ -90,9 +123,13 @@ add_library(boidsish ${BOIDSISH_LIB_TYPE} ${LIB_SOURCES})
 target_compile_definitions(boidsish PUBLIC GLM_ENABLE_EXPERIMENTAL)
 target_compile_definitions(boidsish PUBLIC BOIDSISH_BUILD_DIR="${CMAKE_BINARY_DIR}")
 
+target_compile_options(boidsish PRIVATE -march=native -ffast-math)
+
+
 target_include_directories(boidsish
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>
         $<INSTALL_INTERFACE:include>
         external/include
         external/libmorton/include
@@ -121,6 +158,15 @@ target_link_libraries(boidsish
         Threads::Threads
         glm::glm
 )
+
+# Link GCC-specific backtrace libraries manually if necessary
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    if(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 14.0)
+        target_link_libraries(boidsish PRIVATE stdc++exp)
+    else()
+        target_link_libraries(boidsish PRIVATE stdc++_libbacktrace)
+    endif()
+endif()
 
 # 5. Build Examples
 file(GLOB EXAMPLE_DIRS "examples/*")

@@ -10,6 +10,7 @@
 #include "graphics.h"
 #include "imgui.h"
 #include "logger.h"
+#include "SpaceProbeManager.h"
 #include "profiler.h"
 #include "stb_image.h"
 #include <GL/glew.h>
@@ -398,6 +399,69 @@ namespace Boidsish {
 				}
 			}
 		}
+	}
+
+	HudSpaceProbe::HudSpaceProbe(Visualizer& visualizer, HudAlignment alignment, glm::vec2 position):
+		HudElement(alignment, position), m_visualizer(visualizer) {}
+
+	void HudSpaceProbe::Update(float dt, const Camera& camera) {
+		(void)dt;
+		(void)camera;
+	}
+
+	void HudSpaceProbe::Draw(HudManager& /*manager*/) {
+		auto probe = m_visualizer.GetSpaceProbeManager();
+		if (!probe || !probe->camera_follow_mode) {
+			return; // Only draw when follow mode is active
+		}
+
+		const auto& data = probe->GetData();
+
+		// We will draw a beautiful HUD box with a semi-transparent background
+		// showing: Light, Shadow, and Ambient levels.
+
+		char light_buf[64];
+		float light_val = (data.light_directional.r + data.light_directional.g + data.light_directional.b) / 3.0f;
+		snprintf(light_buf, sizeof(light_buf), "Light Level: %.1f Lux", light_val);
+
+		char shadow_buf[64];
+		snprintf(shadow_buf, sizeof(shadow_buf), "Shadow Level: %.3f", data.shadow_level);
+
+		char ambient_buf[64];
+		snprintf(ambient_buf, sizeof(ambient_buf), "Ambient (AO): %.3f", data.ambient_occlusion);
+
+		// Compute the size of our HUD panel
+		ImVec2 light_size = ImGui::CalcTextSize(light_buf);
+		ImVec2 shadow_size = ImGui::CalcTextSize(shadow_buf);
+		ImVec2 ambient_size = ImGui::CalcTextSize(ambient_buf);
+
+		float max_w = std::max({light_size.x, shadow_size.x, ambient_size.x});
+		float panel_w = max_w + 30.0f; // some padding
+		float panel_h = 95.0f;        // height of the panel
+
+		glm::vec2 pos = HudManager::GetAlignmentPosition(m_alignment, {panel_w, panel_h}, m_position);
+
+		// Draw semi-transparent background
+		ImDrawList* draw_list = ImGui::GetWindowDrawList();
+		ImVec2 p_min(pos.x, pos.y);
+		ImVec2 p_max(pos.x + panel_w, pos.y + panel_h);
+		draw_list->AddRectFilled(p_min, p_max, IM_COL32(20, 20, 20, 180), 8.0f); // dark grey, alpha 180, rounded corners
+		draw_list->AddRect(p_min, p_max, IM_COL32(100, 100, 100, 255), 8.0f, 0, 1.5f); // border
+
+		// Draw Text using DrawList functions for perfect coordinate alignment and robustness
+		float text_x = pos.x + 15.0f;
+		float text_y = pos.y + 12.0f;
+
+		// 1. Light level (R: 1.0, G: 0.9, B: 0.6)
+		draw_list->AddText(ImVec2(text_x, text_y), IM_COL32(255, 230, 153, 255), light_buf);
+		text_y += 25.0f;
+
+		// 2. Shadow level (R: 0.8, G: 0.8, B: 0.8)
+		draw_list->AddText(ImVec2(text_x, text_y), IM_COL32(204, 204, 204, 255), shadow_buf);
+		text_y += 25.0f;
+
+		// 3. Ambient level (R: 0.6, G: 0.8, B: 1.0)
+		draw_list->AddText(ImVec2(text_x, text_y), IM_COL32(153, 204, 255, 255), ambient_buf);
 	}
 
 } // namespace Boidsish

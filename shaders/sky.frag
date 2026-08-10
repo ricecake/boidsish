@@ -11,6 +11,8 @@ in vec2 TexCoords;
 #include "atmosphere/common.glsl"
 #include "helpers/fast_noise.glsl"
 #include "helpers/clouds.glsl"
+#include "helpers/astral.glsl"
+#include "visual_effects.glsl"
 
 uniform mat4 invProjection;
 uniform mat4 invView;
@@ -41,103 +43,51 @@ vec3 sampleSkyView(vec3 rd) {
 	return texture(u_skyViewLUT, uv).rgb;
 }
 
-/*
-// Fixed snoise with correct permutation mapping
-vec3 mod289(vec3 x) {
-	return x - floor(x * (1.0 / 289.0)) * 289.0;
+// Simple hash function for Voronoi in the sky shader
+vec2 sky_hash22(vec2 p) {
+    p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
+    return fract(sin(p) * 43758.5453123);
 }
 
-vec4 mod289(vec4 x) {
-	return x - floor(x * (1.0 / 289.0)) * 289.0;
+// Distance-to-edge Voronoi for sharp solar flare loop/filament boundaries
+float voronoiDistanceToEdgeSky(vec2 x) {
+    vec2 n = floor(x);
+    vec2 f = fract(x);
+
+    vec2 mg, mr;
+    float md = 8.0;
+    for (int j = -1; j <= 1; ++j) {
+        for (int i = -1; i <= 1; ++i) {
+            vec2 g = vec2(float(i), float(j));
+            vec2 o = sky_hash22(n + g);
+            o = 0.5 + 0.5 * sin(time * 0.3 * solar_flare_speed + 6.2831 * o);
+            vec2 r = g + o - f;
+            float d = dot(r, r);
+
+            if (d < md) {
+                md = d;
+                mr = r;
+                mg = g;
+            }
+        }
+    }
+
+    md = 8.0;
+    for (int j = -2; j <= 2; ++j) {
+        for (int i = -2; i <= 2; ++i) {
+            vec2 g = mg + vec2(float(i), float(j));
+            vec2 o = sky_hash22(n + g);
+            o = 0.5 + 0.5 * sin(time * 0.3 * solar_flare_speed + 6.2831 * o);
+            vec2 r = g + o - f;
+
+            if (dot(mr - r, mr - r) > 0.00001) {
+                md = min(md, dot(0.5 * (mr + r), normalize(r - mr)));
+            }
+        }
+    }
+    return md;
 }
 
-vec4 permute(vec4 x) {
-	return mod289(((x * 34.0) + 1.0) * x);
-}
-
-vec4 taylorInvSqrt(vec4 r) {
-	return 1.79284291400159 - 0.85373472095314 * r;
-}
-
-vec2 fade(vec2 t) {
-	return t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
-}
-
-vec3 hash33(vec3 p) {
-	p = fract(p * vec3(443.897, 441.423, 437.195));
-	p += dot(p, p.yxz + 19.19);
-	return fract((p.xxy + p.yxx) * p.zyx);
-}
-*/
-
-float snoise(vec3 v) {
-	const vec2 C = vec2(1.0 / 6.0, 1.0 / 3.0);
-	const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
-	vec3       i = floor(v + dot(v, C.yyy));
-	vec3       x0 = v - i + dot(i, C.xxx);
-	vec3       g = step(x0.yzx, x0.xyz);
-	vec3       l = 1.0 - g;
-	vec3       i1 = min(g.xyz, l.zxy);
-	vec3       i2 = max(g.xyz, l.zxy);
-	vec3       x1 = x0 - i1 + C.xxx;
-	vec3       x2 = x0 - i2 + C.yyy;
-	vec3       x3 = x0 - D.yyy;
-	i = mod289(i);
-	vec4 p = permute(
-		permute(permute(i.z + vec4(0.0, i1.z, i2.z, 1.0)) + i.y + vec4(0.0, i1.y, i2.y, 1.0)) + i.x +
-		vec4(0.0, i1.x, i2.x, 1.0)
-	);
-	float n_ = 0.142857142857;
-	vec3  ns = n_ * D.wyz - D.xzx;
-	vec4  j = p - 49.0 * floor(p * ns.z * ns.z);
-	vec4  x_ = floor(j * ns.z);
-	vec4  y_ = floor(j - 7.0 * x_);
-	vec4  x = x_ * ns.x + ns.yyyy;
-	vec4  y = y_ * ns.x + ns.yyyy;
-	vec4  h = 1.0 - abs(x) - abs(y);
-	vec4  b0 = vec4(x.xy, y.xy);
-	vec4  b1 = vec4(x.zw, y.zw);
-	vec4  s0 = floor(b0) * 2.0 + 1.0;
-	vec4  s1 = floor(b1) * 2.0 + 1.0;
-	vec4  sh = -step(h, vec4(0.0));
-	vec4  a0 = b0.xzyw + s0.xzyw * sh.xxyy;
-	vec4  a1 = b1.xzyw + s1.xzyw * sh.zzww; // Fixed: s1.xzyw instead of s1.zzww
-	vec3  p0 = vec3(a0.xy, h.x);
-	vec3  p1 = vec3(a0.zw, h.y);
-	vec3  p2 = vec3(a1.xy, h.z);
-	vec3  p3 = vec3(a1.zw, h.w);
-	vec4  norm = taylorInvSqrt(vec4(dot(p0, p0), dot(p1, p1), dot(p2, p2), dot(p3, p3)));
-	p0 *= norm.x;
-	p1 *= norm.y;
-	p2 *= norm.z;
-	p3 *= norm.w;
-	vec4 m = max(0.6 - vec4(dot(x0, x0), dot(x1, x1), dot(x2, x2), dot(x3, x3)), 0.0);
-	m = m * m;
-	return 42.0 * dot(m * m, vec4(dot(p0, x0), dot(p1, x1), dot(p2, x2), dot(p3, x3)));
-}
-
-float fbm_sky(vec3 p) {
-	float v = 0.0;
-	float a = 0.5;
-	for (int i = 0; i < 4; i++) {
-		v += a * snoise(p);
-		p *= 2.0;
-		a *= 0.5;
-	}
-	return v;
-}
-
-float starLayer(vec3 dir) {
-	float scale = 100.0;
-	vec3  id = floor(dir * scale);
-	vec3  local_uv = fract(dir * scale);
-	vec3  star_pos = hash33(id);
-	float brightness = abs(sin(time / 2 + star_pos.x * 100));
-	vec3  center = vec3(0.5) + (star_pos - 0.5) * 0.8;
-	float dist = length(local_uv - center);
-	float radius = 0.05 * brightness;
-	return smoothstep(radius, radius * 0.5, dist);
-}
 
 void main() {
 	vec4 clip = vec4(TexCoords * 2.0 - 1.0, 1.0, 1.0);
@@ -145,15 +95,69 @@ void main() {
 	vec3 world_ray = (invView * vec4(view_ray.xy, -1.0, 0.0)).xyz;
 	world_ray = normalize(world_ray);
 
+	// 1. Atmospheric Scattering
+	vec3 skyRadiance = sampleSkyView(world_ray);
+
+	if (world_ray.y < 0.0) {
+
+		float cameraHeight = max(0.001 * worldScale, viewPos.y);
+		float t = -cameraHeight / world_ray.y;
+		vec3 intersectPos = viewPos + t * world_ray;
+		intersectPos.y = 0.0; // Force exact level with y=0
+		float dist = length(intersectPos.xz - viewPos.xz);
+
+		// --- Grid logic ---
+		float grid_spacing = 1.0;
+		vec2  coord = intersectPos.xz / grid_spacing;
+		vec2  f = max(fwidth(coord), vec2(0.0001));
+
+		vec2  grid_minor = abs(fract(coord - 0.5) - 0.5) / f;
+		float line_minor = min(grid_minor.x, grid_minor.y);
+		float C_minor = 1.0 - min(line_minor, 1.0);
+
+		vec2  grid_major = abs(fract(coord / 5.0 - 0.5) - 0.5) / f;
+		float line_major = min(grid_major.x, grid_major.y);
+		float C_major = 1.0 - min(line_major, 1.0);
+
+		float intensity = max(C_minor, C_major * 1.5);
+		// vec3  grid_color = vec3(0.0, 0.8, 0.8) * intensity;
+		vec3  grid_color = vec3(0.0, 0.8, 0.8) * intensity * 5000.0 * (1.0-smoothstep(2000, 200000, dist));
+
+		// --- Plane lighting ---
+		vec3 norm = vec3(0.0, 1.0, 0.0);
+		vec3 surfaceColor = vec3(0.05, 0.05, 0.08);
+		float primaryShadow;
+		// vec3 lighting = apply_lighting(intersectPos, norm, surfaceColor, 0.8, primaryShadow).rgb;
+		vec3 lighting = apply_lighting_pbr(intersectPos, norm, surfaceColor, 0.05, 0.9, 1.0, primaryShadow).rgb;
+
+		// --- Combine colors ---
+		vec3 landscapeColor = lighting + grid_color;
+
+		// --- Distance Fade ---
+		float fogFactor = clamp(exp(-dist / (3000.0 * worldScale)), 0.0, 1.0);
+
+		// Blend ground with atmospheric sky radiance at the horizon to prevent leakage of below-horizon scattering
+		vec3 horizonRay = normalize(vec3(world_ray.x, 0.0, world_ray.z));
+		vec3 horizonSkyRadiance = sampleSkyView(horizonRay);
+		vec3 finalColor = mix(horizonSkyRadiance, landscapeColor, fogFactor);
+
+		// Add lightning background pulse
+		vec3 localLightningEffect = lightningColor * lightningPulse * 0.35;
+		finalColor += localLightningEffect;
+
+		FragColor = vec4(finalColor, 1.0);
+		Velocity = vec4(0.0, 0.0, 0.8, 0.0); // Roughness 0.8, Metallic 0.0 (ground)
+		NormalOut = vec4(normalize(mat3(view) * norm), primaryShadow);
+		AlbedoOut = vec4(surfaceColor, 1.0);
+		return;
+	}
+
 	vec3 sunDir = vec3(0, 1, 0);
 	vec3 sunColor = vec3(1);
 	if (num_lights > 0) {
 		sunDir = normalize(-lights[0].direction);
 		sunColor = lights[0].color;
 	}
-
-	// 1. Atmospheric Scattering
-	vec3 skyRadiance = sampleSkyView(world_ray);
 
 	// Fetch weather scalars for humidity-driven effects
 	float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
@@ -184,7 +188,7 @@ void main() {
 	float distToSun = sqrt(max(0.0, distSq));
 
 	// Humidity-driven sun aureole (Mie scattering approximation)
-	float aureoleNoise = pow((fbm_sky(vec3(rayLocalX*3, rayLocalY*3, time*0.01)) * 0.25) + 1.25, 3)/(1+distSq);
+	float aureoleNoise = pow((fbm_astral(vec3(rayLocalX*3, rayLocalY*3, time*0.01)) * 0.5) + 1.5, 3)/(1+distSq);
 	localHumidity *= aureoleNoise;
 	float aureoleScale = 1.1 + smoothstep(0.0, 1.00, localHumidity * sunAureoleStrength);
 	float aureole = exp(-distToSun * (45.0 / (aureoleScale))) * sunAureoleStrength * 3.5 * (1.3 + 1.750 * localHumidity);
@@ -197,10 +201,42 @@ void main() {
 	// Add aureole to the mask with soft-clamping to avoid hard cut-offs at high brightness
 	// Using a more gradual quadratic-rational soft-clamp for a natural look
 	sunMask += aureole;
+
+	// Add dramatically oversized solar flares/prominences flowing radially outwards
+	float solarFlares = 0.0;
+	if (solar_flares_enabled == 1) {
+		float theta = atan(rayLocalY, rayLocalX);
+		float r_sun = length(vec2(rayLocalX, rayLocalY));
+
+		// Warp polar components with Simplex noise for turbulent plasma motion
+		vec3 warpPos = vec3(rayLocalX * 25.0 * solar_flare_scale, rayLocalY * 25.0 * solar_flare_scale, time * 0.1 * solar_flare_speed);
+		float angleWarp = snoise3d(warpPos) * 0.5;
+		float distWarp = snoise3d(warpPos + vec3(19.0, 29.0, 37.0)) * 0.06;
+
+		float warpedTheta = theta + angleWarp;
+		float warpedR = r_sun + distWarp;
+
+		// Map to a radial Voronoi cell space, moving outward with time
+		vec2 cellCoords = vec2(warpedTheta * 6.5, (warpedR - time * 0.06 * solar_flare_speed) * 18.0 * solar_flare_scale);
+		float voronoiDist = voronoiDistanceToEdgeSky(cellCoords);
+
+		// Create sharp filaments and thick prominence loops
+		float filament = 1.0 - smoothstep(0.0, 0.09, voronoiDist);
+		float loopArc = smoothstep(0.04, 0.45, voronoiDist);
+		float prominence = max(filament * 0.95, loopArc * 0.2);
+
+		// Radial decay starting from the sun surface (sunAngularRadius)
+		// Oversized flares: extend decay range
+		float flareDecay = exp(-max(0.0, r_sun - sunAngularRadius) * (14.0 / solar_flare_scale));
+
+		solarFlares = prominence * flareDecay * solar_flare_strength * 2.0;
+	}
+	sunMask += solarFlares;
+
 	sunMask = (sunMask * (1.0 + sunMask * 0.05)) / (1.0 + sunMask * 0.06);
 
 	// Ensure we are in front of the sun
-	// sunMask *= step(0.99, rayLocalZ);
+	sunMask *= step(0.0, rayLocalZ);
 
 	float r = kEarthRadius + max(0.0, viewPos.y / (1000.0 * worldScale));
 	vec3  sunTransmittance = max(getTransmittance(r, sunDir.y), vec3(0.001));
@@ -210,21 +246,21 @@ void main() {
 	vec3 sunDisc = radiance * sunMask * sunTransmittance * smoothstep(-0.01, 0.01, sunDir.y);
 
 	// 3. Stars and Nebula
-	vec3 stars = starLayer(world_ray) * vec3(1.0, 0.9, 0.8);
-
-	vec3  p = world_ray * 4.0;
-	vec3  warp_offset = vec3(fbm_sky(p + time * 0.05));
-	float nebula_noise = fbm_sky(p + warp_offset * 0.5);
-	// vec3  nebula = vec3(0);
-	// vec3  nebula = mix(vec3(0.0, 0.1, 0.4), vec3(0.8, 0.2, 0.7), nebula_noise) * 0.4;
-	vec3  nebula = mix(vec3(0.0, 0.0, 0.0), vec3(0.8, 0.2, 0.7), nebula_noise) * 0.4;
-
-	vec3 skyTransmittance = getTransmittance(r, world_ray.y);
-	// Attenuate stars by sky brightness — on Earth, stars are overwhelmed by
-	// scattered sunlight during the day, not just absorbed
 	float skyBrightness = max(max(skyRadiance.r, skyRadiance.g), skyRadiance.b);
 	float starVisibility = smoothstep(0.5, 0.05, skyBrightness);
-	vec3  spaceBackground = (stars + nebula) * skyTransmittance * starVisibility;
+	vec3 stars = vec3(0);
+	vec3 nebula = vec3(0);
+
+	if (starVisibility > 0.0) {
+		stars = computeStars(world_ray, time) * vec3(1.0, 0.9, 0.8);
+		nebula = computeNebula(world_ray, time);
+	}
+
+	// Attenuate stars by sky brightness — on Earth, stars are overwhelmed by
+	// scattered sunlight during the day, not just absorbed
+	// Note: Nebula is now part of skyRadiance (via SkyViewLUT)
+	vec3 skyTransmittance = getTransmittance(r, world_ray.y);
+	vec3 spaceBackground = (stars + nebula) * skyTransmittance * starVisibility;
 
 	// 4. Moon Disc with Atmospheric Refraction
 	vec3  moonDir = normalize(u_moonDir);
@@ -289,8 +325,8 @@ void main() {
 			vec3 advect = getCloudWindOffset(time * 0.5); // Cirrus moves slower relative to world
 			vec2 uv_cirrus = (p_cirrus.xz + advect.xz) * (0.00005 / worldScale);
 
-			float n = (fbm_sky(vec3(uv_cirrus * 2.0, time * 0.01)) + 1.0) * 0.5;
-			float n2 = (fbm_sky(vec3(uv_cirrus * 5.0, time * 0.02 + 10.0)) + 1.0) * 0.5;
+			float n = (fbm_astral(vec3(uv_cirrus * 2.0, time * 0.01)) + 1.0) * 0.5;
+			float n2 = (fbm_astral(vec3(uv_cirrus * 5.0, time * 0.02 + 10.0)) + 1.0) * 0.5;
 			float noise = smoothstep(0.3, 0.8, n * n2);
 
 			vec3  T_cirrus = texture(u_transmittanceLUT, transmittanceToUV(kEarthRadius + cirrusAlt, sunDir.y)).rgb;

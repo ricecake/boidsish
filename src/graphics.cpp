@@ -1,5 +1,6 @@
 #include "graphics.h"
-
+#include "SpaceProbeManager.h"
+#include <stacktrace> // Requires C++23
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -41,6 +42,7 @@
 #include "polyhedron.h"
 #include "post_processing/PostProcessingManager.h"
 #include "post_processing/effects/ArtisticGbufferEffect.h"
+#include "post_processing/effects/ScreenSpaceWeatherEffect.h"
 #include "post_processing/effects/AtmosphereEffect.h"
 #include "post_processing/effects/VolumetricLightingEffect.h"
 #include "post_processing/effects/BloomEffect.h"
@@ -200,6 +202,8 @@ namespace Boidsish {
 		std::cerr << "\n[OpenGL Debug] " << severityStr << " | " << typeStr << " | " << sourceStr << "\n"
 		          << "  ID: " << id << "\n"
 		          << "  Message: " << message << "\n"
+				  << "  Stacktrace:\n\n"
+		          << std::stacktrace::current() << "\n"
 		          << std::endl;
 
 		// Break into debugger on high severity errors (optional)
@@ -407,6 +411,7 @@ namespace Boidsish {
 		std::shared_ptr<SceneManager>                     scene_manager;
 		std::shared_ptr<DecorManager>                     decor_manager;
 		std::shared_ptr<GrassManager>                     grass_manager;
+		std::shared_ptr<SpaceProbeManager>                space_probe_manager;
 		std::map<int, std::shared_ptr<Trail>>             trails;
 		std::map<int, float>                              trail_last_update;
 		std::shared_ptr<LightManager>                     light_manager;
@@ -461,6 +466,9 @@ namespace Boidsish {
 		std::unique_ptr<PersistentBuffer<LightingUbo>>      lighting_pb;
 		std::unique_ptr<PersistentBuffer<VisualEffectsUbo>> visual_effects_pb;
 		std::unique_ptr<PersistentBuffer<TemporalUbo>>      temporal_pb;
+		std::unique_ptr<PersistentBuffer<LightsSSBOData>>   lights_ssbo;
+		std::unique_ptr<PersistentBuffer<ClusterGPU>>       cluster_grid_ssbo;
+		std::unique_ptr<ComputeShader>                      cluster_light_assignment_shader;
 		glm::mat4               projection;
 		glm::mat4               prev_view_projection{1.0f};
 
@@ -811,6 +819,8 @@ namespace Boidsish {
 			ServiceLocator::SetInstance(&service_locator_);
 			GpuResourceRegistry::SetInstance(&gpu_resources_);
 			RegisterManagers();
+			space_probe_manager = std::make_shared<SpaceProbeManager>();
+			space_probe_manager->Initialize();
 
 			hiz_manager = service_locator_.Get<HiZManager>();
 			noise_manager = service_locator_.Get<NoiseManager>();
@@ -855,9 +865,12 @@ namespace Boidsish {
 
 			lighting_pb = std::make_unique<PersistentBuffer<LightingUbo>>(GL_UNIFORM_BUFFER, 1, 3);
 			temporal_pb = std::make_unique<PersistentBuffer<TemporalUbo>>(GL_UNIFORM_BUFFER, 1, 3);
+			lights_ssbo = std::make_unique<PersistentBuffer<LightsSSBOData>>(GL_SHADER_STORAGE_BUFFER, 1, 3);
+			cluster_grid_ssbo = std::make_unique<PersistentBuffer<ClusterGPU>>(GL_SHADER_STORAGE_BUFFER, 16 * 9 * 24 + 1, 3);
+			cluster_light_assignment_shader = std::make_unique<ComputeShader>("shaders/effects/cluster_light_assignment.comp");
 
 			// Pre-allocate lighting cache for batched UBO updates
-			gpu_lights_cache_.reserve(10);
+			gpu_lights_cache_.reserve(1024);
 
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true)) {
 				visual_effects_pb = std::make_unique<PersistentBuffer<VisualEffectsUbo>>(GL_UNIFORM_BUFFER, 1, 3);
@@ -872,6 +885,10 @@ namespace Boidsish {
 				default_vfx.wind_strength = ConfigManager::GetInstance().GetAppSettingFloat("wind_strength", 0.065f);
 				default_vfx.wind_speed = ConfigManager::GetInstance().GetAppSettingFloat("wind_speed", 0.075f);
 				default_vfx.wind_frequency = ConfigManager::GetInstance().GetAppSettingFloat("wind_frequency", 0.01f);
+				default_vfx.solar_flares_enabled = ConfigManager::GetInstance().GetAppSettingBool("solar_flares_enabled", true) ? 1 : 0;
+				default_vfx.solar_flare_strength = ConfigManager::GetInstance().GetAppSettingFloat("solar_flare_strength", 1.5f);
+				default_vfx.solar_flare_scale = ConfigManager::GetInstance().GetAppSettingFloat("solar_flare_scale", 1.0f);
+				default_vfx.solar_flare_speed = ConfigManager::GetInstance().GetAppSettingFloat("solar_flare_speed", 0.5f);
 				for (int i = 0; i < 3; ++i) {
 					*visual_effects_pb->GetFrameDataPtr(i) = default_vfx;
 				}
@@ -1055,6 +1072,10 @@ namespace Boidsish {
 				auto artistic_gbuffer_effect = std::make_shared<PostProcessing::ArtisticGbufferEffect>();
 				artistic_gbuffer_effect->SetEnabled(false);
 				post_processing_manager_->AddEffect(artistic_gbuffer_effect);
+
+				auto screen_space_weather_effect = std::make_shared<PostProcessing::ScreenSpaceWeatherEffect>();
+				screen_space_weather_effect->SetEnabled(false);
+				post_processing_manager_->AddEffect(screen_space_weather_effect);
 
 				auto unified_ss_effect = std::make_shared<PostProcessing::UnifiedScreenSpaceEffect>();
 				unified_ss_effect->SetEnabled(true);
@@ -1257,6 +1278,11 @@ namespace Boidsish {
 			frame_config_.wind_strength = cfg.GetAppSettingFloat("wind_strength", 0.065f);
 			frame_config_.wind_speed = cfg.GetAppSettingFloat("wind_speed", 0.075f);
 			frame_config_.wind_frequency = cfg.GetAppSettingFloat("wind_frequency", 0.01f);
+
+			frame_config_.solar_flares_enabled = cfg.GetAppSettingBool("solar_flares_enabled", true);
+			frame_config_.solar_flare_strength = cfg.GetAppSettingFloat("solar_flare_strength", 1.5f);
+			frame_config_.solar_flare_scale = cfg.GetAppSettingFloat("solar_flare_scale", 1.0f);
+			frame_config_.solar_flare_speed = cfg.GetAppSettingFloat("solar_flare_speed", 0.5f);
 
 			if (decor_manager) {
 				decor_manager->SetEnabled(frame_config_.render_decor);
@@ -1871,7 +1897,7 @@ namespace Boidsish {
 
 						// Pass full moon radiance (without phase) for disk rendering to avoid double-phasing
 						const auto& cycle = light_manager->GetDayNightCycle();
-						glm::vec3 moonFullRadiance = lights[0].color * 10.0f * cycle.lunar_albedo * cycle.moon_tint;
+						glm::vec3 moonFullRadiance = lights[0].color * 100000.0f * cycle.lunar_albedo * cycle.moon_tint;
 						sky_shader->setVec3("u_moonFullRadiance", moonFullRadiance);
 					} else {
 						sky_shader->setVec3("u_moonRadiance", glm::vec3(0.0f));
@@ -2055,13 +2081,18 @@ namespace Boidsish {
 				atmosphere_manager->SetColorVarianceStrength(atmosphere_effect->GetColorVarianceStrength());
 				atmosphere_manager->SetSunAureoleStrength(atmosphere_effect->GetSunAureoleStrength());
 				atmosphere_manager->SetCirrusOpacity(atmosphere_effect->GetCirrusOpacity());
+				atmosphere_manager->SetCloudCoverage(atmosphere_effect->GetCloudCoverage());
+				atmosphere_manager->SetCloudAltitude(atmosphere_effect->GetCloudAltitude());
+				atmosphere_manager->SetCloudThickness(atmosphere_effect->GetCloudThickness());
+				atmosphere_manager->SetCloudDensity(atmosphere_effect->GetCloudDensity());
 
-			float cloudShadowIntensity = ConfigManager::GetInstance().GetAppSettingFloat("cloud_shadow_intensity", 0.5f);
-			atmosphere_manager->SetCloudShadowIntensity(cloudShadowIntensity);
+				float cloudShadowIntensity = ConfigManager::GetInstance().GetAppSettingFloat("cloud_shadow_intensity", 0.5f);
+				atmosphere_manager->SetCloudShadowIntensity(cloudShadowIntensity);
 			}
 
 			// Update the atmosphere model with the current sun/moon light
 			float world_scale = terrain_generator ? terrain_generator->GetWorldScale() : 1.0f;
+			if (atmosphere_manager) atmosphere_manager->SetWorldScale(world_scale);
 			atmosphere_manager->Update(sun_dir, sun_color, sun_intensity, camera.pos(), simulation_time, world_scale);
 
 			// Sync ambient light from atmosphere to ensure decor and world match
@@ -2132,6 +2163,8 @@ namespace Boidsish {
 			lighting_pb->AdvanceFrame();
 			temporal_pb->AdvanceFrame();
 			if (visual_effects_pb) visual_effects_pb->AdvanceFrame();
+			if (lights_ssbo) lights_ssbo->AdvanceFrame();
+			if (cluster_grid_ssbo) cluster_grid_ssbo->AdvanceFrame();
 
 			int current_idx = uniforms_ssbo->GetCurrentBufferIndex();
 			if (mdi_fences[current_idx]) {
@@ -2209,6 +2242,10 @@ namespace Boidsish {
 				ubo_data.wind_strength = frame_config_.wind_strength;
 				ubo_data.wind_speed = frame_config_.wind_speed;
 				ubo_data.wind_frequency = frame_config_.wind_frequency;
+				ubo_data.solar_flares_enabled = frame_config_.solar_flares_enabled ? 1 : 0;
+				ubo_data.solar_flare_strength = frame_config_.solar_flare_strength;
+				ubo_data.solar_flare_scale = frame_config_.solar_flare_scale;
+				ubo_data.solar_flare_speed = frame_config_.solar_flare_speed;
 				ubo_data.erosion_strength = frame_config_.erosion_strength;
 				ubo_data.erosion_scale = frame_config_.erosion_scale;
 				ubo_data.erosion_detail = frame_config_.erosion_detail;
@@ -2239,17 +2276,25 @@ namespace Boidsish {
 					CheckpointRingShape::GetShader()->setFloat("time", simulation_time);
 				}
 				const auto& lights = light_manager->GetLights();
-				int         num_lights = std::min(static_cast<int>(lights.size()), 10);
+				int         num_lights = std::min(static_cast<int>(lights.size()), 1024);
 
 				gpu_lights_cache_.clear();
 				for (int i = 0; i < num_lights; ++i) {
 					gpu_lights_cache_.push_back(lights[i].ToGPU());
 				}
 
+				LightsSSBOData* ssbo_data = lights_ssbo->GetFrameDataPtr();
+				ssbo_data->count = static_cast<uint32_t>(num_lights);
+				if (num_lights > 0) {
+					std::memcpy(ssbo_data->lights, gpu_lights_cache_.data(), num_lights * sizeof(LightGPU));
+				}
+
+				float world_scale = terrain_generator ? terrain_generator->GetWorldScale() : 1.0f;
+				float far_plane = Constants::Project::Camera::DefaultFarPlane() * std::max(1.0f, world_scale);
+
 				std::memset(&lighting_ubo_data_, 0, sizeof(LightingUbo));
-				std::memcpy(lighting_ubo_data_.lights, gpu_lights_cache_.data(), num_lights * sizeof(LightGPU));
 				lighting_ubo_data_.num_lights = num_lights;
-				lighting_ubo_data_.world_scale = terrain_generator ? terrain_generator->GetWorldScale() : 1.0f;
+				lighting_ubo_data_.world_scale = world_scale;
 				lighting_ubo_data_.day_time = light_manager->GetDayNightCycle().time;
 				lighting_ubo_data_.night_factor = light_manager->GetDayNightCycle().night_factor;
 				if (post_processing_manager_) {
@@ -2348,19 +2393,6 @@ namespace Boidsish {
 					lighting_ubo_data_.sunAureoleStrength = atmosphere_effect->GetSunAureoleStrength();
 					lighting_ubo_data_.cirrusOpacity = atmosphere_effect->GetCirrusOpacity();
 
-					// Calculate cloud shadow matrix (world XZ to shadow map UV)
-					float     mapSize = atmosphere_manager->GetCloudShadowWorldSize();
-					glm::vec3 camPos = camera.pos();
-					glm::mat4 shadowMat(1.0f);
-					// 1. Move to camera-relative XZ
-					shadowMat = glm::translate(shadowMat, glm::vec3(0.5f, 0.5f, 0.0f));
-					// 2. Scale to [0, 1] UV space
-					shadowMat = glm::scale(shadowMat, glm::vec3(1.0f / mapSize, 1.0f / mapSize, 1.0f));
-					// 3. Center on camera
-					shadowMat = glm::translate(shadowMat, glm::vec3(-camPos.x, -camPos.z, 0.0f));
-
-					lighting_ubo_data_.cloudShadowMatrix = shadowMat;
-
 				if (lightning_manager) {
 					lighting_ubo_data_.lightningColor = lightning_manager->GetGlobalColor();
 					lighting_ubo_data_.lightningPulse = lightning_manager->GetGlobalPulse();
@@ -2370,18 +2402,22 @@ namespace Boidsish {
 					lighting_ubo_data_.cloudShadowIntensity = 0.0f;
 				}
 
+				lighting_ubo_data_.zNear = 0.1f;
+				lighting_ubo_data_.zFar = far_plane;
+
 				*lighting_pb->GetFrameDataPtr() = lighting_ubo_data_;
 				glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::Lighting(),
 					lighting_pb->GetBufferId(), lighting_pb->GetFrameOffset(), sizeof(LightingUbo));
 
 				// GPU-side copy of SH coefficients from SSBO into the UBO (no CPU readback)
 				if (atmosphere_manager) {
-					static_assert(offsetof(LightingUbo, sh_coeffs) == 1008, "SH offset mismatch");
+					static_assert(offsetof(LightingUbo, sh_coeffs) == 432, "SH offset mismatch");
 					atmosphere_manager->CopySHToUBO(
 						lighting_pb->GetBufferId(),
-						static_cast<GLintptr>(lighting_pb->GetFrameOffset()) + 1008
+						static_cast<GLintptr>(lighting_pb->GetFrameOffset()) + 432
 					);
 				}
+
 			}
 
 			// Frustum UBO for generic passes
@@ -2424,7 +2460,9 @@ namespace Boidsish {
 				.UboRange(Constants::UboBinding::Lighting(),
 					lighting_pb->GetBufferId(), lighting_pb->GetFrameOffset(), sizeof(LightingUbo))
 				.UboRange(Constants::UboBinding::TemporalData(),
-					temporal_pb->GetBufferId(), temporal_pb->GetFrameOffset(), sizeof(TemporalUbo));
+					temporal_pb->GetBufferId(), temporal_pb->GetFrameOffset(), sizeof(TemporalUbo))
+				.SsboRange(Constants::SsboBinding::LightsBuffer(), *lights_ssbo)
+				.SsboRange(Constants::SsboBinding::ClusterGridBuffer(), *cluster_grid_ssbo);
 			if (visual_effects_pb) {
 				render_state_.global_bindings.UboRange(Constants::UboBinding::VisualEffects(),
 					visual_effects_pb->GetBufferId(), visual_effects_pb->GetFrameOffset(),
@@ -2561,6 +2599,9 @@ namespace Boidsish {
 			}
 
 			clone_manager->Update(simulation_time, camera.pos());
+			if (lights_ssbo) {
+				lights_ssbo->BindRange(Constants::SsboBinding::LightsBuffer());
+			}
 			fire_effect_manager->Update(
 				simulation_delta_time,
 				simulation_time,
@@ -2659,6 +2700,46 @@ namespace Boidsish {
 					terrain_render_manager
 				);
 			}
+
+			if (space_probe_manager) {
+				space_probe_manager->Update(
+					simulation_delta_time,
+					render_state_,
+					atmosphere_manager.get(),
+					terrain_render_manager.get(),
+					shadow_manager.get(),
+					light_manager.get()
+				);
+			}
+		}
+
+		void AssignLightsToClusters() {
+			if (cluster_light_assignment_shader && cluster_light_assignment_shader->isValid()) {
+				cluster_light_assignment_shader->use();
+
+				// Bind the Uniform and SSBO buffers so the compute shader can access them:
+				// 1. Lighting UBO (contains view/projection matrices, nearPlane, farPlane, etc.)
+				glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::Lighting(),
+					lighting_pb->GetBufferId(), lighting_pb->GetFrameOffset(), sizeof(LightingUbo));
+
+				// 2. LightsBuffer SSBO (contains active lights)
+				if (lights_ssbo) {
+					lights_ssbo->BindRange(Constants::SsboBinding::LightsBuffer());
+				}
+
+				// 3. ClusterGridBuffer SSBO (contains output cluster grid)
+				if (cluster_grid_ssbo) {
+					cluster_grid_ssbo->BindRange(Constants::SsboBinding::ClusterGridBuffer());
+				}
+
+				// Dispatch compute shader
+				// Grid size: 16 x 9 x 24. Thread group sizes: (16, 9, 1).
+				// So we dispatch (1, 1, 24) groups to cover 16*9*24 clusters!
+				glDispatchCompute(1, 1, 24);
+
+				// Insert memory barrier to ensure SSBO writes are visible to subsequent shading
+				glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+			}
 		}
 
 		void RenderShadowPasses(const FrameData& frame) {
@@ -2753,7 +2834,6 @@ namespace Boidsish {
 						res.transmittanceLUT = atmosphere_manager->GetTransmittanceLUT();
 						res.skyViewLUT = atmosphere_manager->GetSkyViewLUT();
 						res.aerialPerspectiveLUT = atmosphere_manager->GetAerialPerspectiveLUT();
-						res.cloudShadowMap = atmosphere_manager->GetCloudShadowMap();
 						res.atmosphereHeight = atmosphere_manager->GetAtmosphereHeight();
 					}
 					if (noise_manager) {
@@ -2837,6 +2917,18 @@ namespace Boidsish {
 
 			if (transparent_pass_) {
 				transparent_pass_->Execute(frame, MakeRenderCallbacks(frame));
+			}
+
+			if (space_probe_manager) {
+				space_probe_manager->Render(
+					render_state_,
+					compositor_->GetDepthTexture(),
+					blur_quad_vao,
+					shadow_manager.get(),
+					light_manager.get(),
+					atmosphere_manager.get(),
+					terrain_render_manager.get()
+				);
 			}
 		}
 
@@ -2994,6 +3086,19 @@ namespace Boidsish {
 					if (effect->GetName() == "OpticalFlow") {
 						effect->SetEnabled(!effect->IsEnabled());
 					}
+				}
+			}
+
+			static float f2_cooldown = 0.0f;
+			if (f2_cooldown > 0.0f) {
+				f2_cooldown -= state.delta_time;
+			}
+
+			if (state.key_down[GLFW_KEY_F2] && f2_cooldown <= 0.0f) {
+				auto probe = parent->GetSpaceProbeManager();
+				if (probe) {
+					probe->camera_follow_mode = !probe->camera_follow_mode;
+					f2_cooldown = 0.3f; // 300 ms cooldown to prevent rapid repeat/flutter
 				}
 			}
 		}
@@ -3563,11 +3668,6 @@ namespace Boidsish {
 				impl->atmosphere_effect->SetSunAureoleStrength(w.sun_aureole_strength);
 				impl->atmosphere_effect->SetCirrusOpacity(w.cirrus_opacity);
 
-				impl->atmosphere_effect->SetCloudFlowSpeed(w.wind_speed);
-				impl->atmosphere_effect->SetCloudFlowDirection(glm::radians(180.0f)); // Fixed direction for consistency
-				impl->atmosphere_effect->SetCloudFlowHeightScale(0.2f);
-				impl->atmosphere_effect->SetCloudCurlStrength(5.0f);
-				impl->atmosphere_effect->SetCloudCurlFrequency(1.5f);
 			}
 		}
 
@@ -3673,6 +3773,7 @@ namespace Boidsish {
 		impl->packets_synced_ = false;
 		impl->GenerateRenderPacketsAsync();
 		impl->UpdateSystems(frame);
+		impl->AssignLightsToClusters();
 
 		if (impl->weather_manager && impl->weather_manager->IsEnabled()) {
 			impl->weather_manager->UpdateWindUbo(
@@ -4591,6 +4692,10 @@ namespace Boidsish {
 
 	PostProcessing::PostProcessingManager& Visualizer::GetPostProcessingManager() {
 		return *impl->post_processing_manager_;
+	}
+
+	std::shared_ptr<SpaceProbeManager> Visualizer::GetSpaceProbeManager() const {
+		return impl->space_probe_manager;
 	}
 
 	float Visualizer::GetLastFrameTime() const {

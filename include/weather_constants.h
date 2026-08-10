@@ -25,7 +25,7 @@ namespace Boidsish {
 		constexpr WeatherAttributeInfo WindStrength = {0.01f, 0.05f, 0.5f, 10.0f};
 		constexpr WeatherAttributeInfo WindSpeed = {0.01f, 0.075f, 0.8f, 10.0f};
 		constexpr WeatherAttributeInfo WindFrequency = {0.005f, 0.01f, 0.08f, 10.0f};
-		constexpr WeatherAttributeInfo CloudDensity = {0.1f, 0.20f, 1.0f, 10.0f};
+		constexpr WeatherAttributeInfo CloudDensity = {0.1f, 1.0f, 1.0f, 10.0f};
 		constexpr WeatherAttributeInfo CloudAltitude = {100.0f, 400.0f, 800.0f, 10.0f};
 		constexpr WeatherAttributeInfo CloudThickness = {50.0f, 200.0f, 800.0f, 10.0f};
 		constexpr WeatherAttributeInfo HazeDensity = {0.0f, 1.0f, 10.0f, 10.0f};

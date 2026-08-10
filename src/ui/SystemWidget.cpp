@@ -14,6 +14,7 @@
 #include "post_processing/effects/BloomEffect.h"
 #include "post_processing/effects/FilmGrainEffect.h"
 #include "ui/ProfilerWidget.h"
+#include "ui/SpaceProbeWidget.h"
 
 namespace Boidsish {
 	namespace UI {
@@ -381,6 +382,14 @@ namespace Boidsish {
 						bool show_map = map_widget->IsVisible();
 						if (ImGui::Checkbox("Show Environmental Maps", &show_map)) {
 							map_widget->SetVisible(show_map);
+						}
+					}
+
+					auto probe_widget = m_visualizer.GetUIConfigManager().GetWidget<SpaceProbeWidget>();
+					if (probe_widget) {
+						bool show_probe = probe_widget->IsVisible();
+						if (ImGui::Checkbox("Show Space Probe Menu", &show_probe)) {
+							probe_widget->SetVisible(show_probe);
 						}
 					}
 

@@ -476,8 +476,11 @@ namespace Boidsish {
 			float     metallic;
 			float     ao;
 			glm::vec3 emissive;
+			int       material_type = 0;
 
 			bool operator<(const MaterialKey& o) const {
+				if (material_type != o.material_type)
+					return material_type < o.material_type;
 				if (std::abs(roughness - o.roughness) > 1e-4f)
 					return roughness < o.roughness;
 				if (std::abs(metallic - o.metallic) > 1e-4f)
@@ -634,7 +637,7 @@ namespace Boidsish {
 				bool             first = true;
 				std::vector<int> segment_bones;
 				SkinningMode     chain_mode = SkinningMode::Smooth;
-				MaterialKey      mat = {e.roughness, e.metallic, e.ao, e.emissiveColor};
+				MaterialKey      mat = {e.roughness, e.metallic, e.ao, e.emissiveColor, e.material_type};
 
 				while (curr != -1) {
 					const auto& te = ir.elements[curr];
@@ -719,7 +722,7 @@ namespace Boidsish {
 			if (handled[i])
 				continue;
 
-			MaterialKey mat = {e.roughness, e.metallic, e.ao, e.emissiveColor};
+			MaterialKey mat = {e.roughness, e.metallic, e.ao, e.emissiveColor, e.material_type};
 			if (grouped_meshes.find(mat) == grouped_meshes.end()) {
 				grouped_meshes[mat].material = mat;
 			}
@@ -789,13 +792,30 @@ namespace Boidsish {
 			else
 				pts = {{0, 0, 0}, {0.3f, 0.5f, 0.1f}, {0, 1.0f, 0}, {-0.3f, 0.5f, -0.1f}};
 
-			for (auto& p : pts) {
-				p = pos + ori * (p * size);
+			float min_x = 0.0f, max_x = 0.0f;
+			float min_y = 0.0f, max_y = 0.0f;
+			if (!pts.empty()) {
+				min_x = max_x = pts[0].x;
+				min_y = max_y = pts[0].y;
+				for (const auto& p : pts) {
+					min_x = std::min(min_x, p.x);
+					max_x = std::max(max_x, p.x);
+					min_y = std::min(min_y, p.y);
+					max_y = std::max(max_y, p.y);
+				}
+			}
+
+			for (const auto& local_p : pts) {
+				glm::vec3 world_p = pos + ori * (local_p * size);
 				Vertex v;
-				v.Position = p;
+				v.Position = world_p;
 				v.Normal = ori * glm::vec3(0, 0, 1);
 				v.Color = color;
-				v.TexCoords = glm::vec2(0.5f);
+
+				float u = (max_x - min_x > 1e-5f) ? (local_p.x - min_x) / (max_x - min_x) : 0.5f;
+				float v_coord = (max_y - min_y > 1e-5f) ? (local_p.y - min_y) / (max_y - min_y) : 0.5f;
+				v.TexCoords = glm::vec2(u, v_coord);
+
 				vertices.push_back(v);
 			}
 			for (size_t i = 1; i < pts.size() - 1; ++i) {
@@ -811,7 +831,7 @@ namespace Boidsish {
 		for (int i = 0; i < (int)ir.elements.size(); ++i) {
 			const auto& e = ir.elements[i];
 			if (e.type == ProceduralElementType::Leaf) {
-				MaterialKey mat = {e.roughness, e.metallic, e.ao, e.emissiveColor};
+				MaterialKey mat = {e.roughness, e.metallic, e.ao, e.emissiveColor, e.material_type};
 				if (grouped_meshes.find(mat) == grouped_meshes.end()) {
 					grouped_meshes[mat].material = mat;
 				}
@@ -924,6 +944,7 @@ namespace Boidsish {
 			m.metallic = group.material.metallic;
 			m.ao = group.material.ao;
 			m.emissiveColor = group.material.emissive;
+			m.material_type = group.material.material_type;
 			data->meshes.push_back(m);
 		};
 

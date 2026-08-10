@@ -1,4 +1,5 @@
 #version 460 core
+#extension GL_ARB_shader_group_vote : require
 layout(local_size_x = 8, local_size_y = 8) in;
 
 layout(binding = 0, rgba16f) uniform image2D outColor;
@@ -16,6 +17,8 @@ uniform sampler2D uHistoryMoments;
 
 uniform float uCloudTemporalGamma;
 uniform float uCloudMaxHistoryLength;
+uniform bool  uEnableTemporal;
+uniform bool  uHasHistory;
 
 #include "../atmosphere/common.glsl"
 #include "../helpers/lighting.glsl"
@@ -124,7 +127,7 @@ vec2 getDilatedVelocity_Hybrid(vec2 uv, vec2 texelSize) {
 
 			// Ignore pure sky pixels
 			if (sampleDepth > 40000.0) continue;
-			if (sampleDensity > densityThreshold) continue;
+			if (sampleDensity < densityThreshold) continue;
 
 			// Weight primarily by density to ignore jittered wisps.
 			// You can also divide by depth to slightly favor foregrounds.
@@ -290,15 +293,20 @@ void main() {
 	bool is_new_pixel = (pixel % 2) == current_offset;
 
 	ivec2 packedPixel = pixel / 2;
-	vec2 velocity = getDilatedVelocity_Hybrid(packedPixel, size);
+	vec2 packedSize = vec2(textureSize(uPackedVelocity, 0));
+	vec2 packedTexelSize = 1.0 / packedSize;
+	vec2 velocity = getDilatedVelocity_Thresholded(uv, packedTexelSize);
 	vec2 prevUV = uv + velocity;
-	bool validHistory = all(greaterThanEqual(prevUV, vec2(0.0))) && all(lessThanEqual(prevUV, vec2(1.0)));
+	bool validHistory = uHasHistory && all(greaterThanEqual(prevUV, vec2(0.0))) && all(lessThanEqual(prevUV, vec2(1.0)));
 
 	vec4 currentRGBA = vec4(0.0);
 	vec4 currDepthProps = vec4(0.0);
 	if (is_new_pixel) {
 		currentRGBA = texelFetch(uPackedFrame, packedPixel, 0);
 		currDepthProps = texelFetch(uPackedDepth, packedPixel, 0);
+	} else {
+		currentRGBA = texture(uPackedFrame, uv);
+		currDepthProps = texture(uPackedDepth, uv);
 	}
 
 	float currentPathDensity = currDepthProps.a;
@@ -308,91 +316,144 @@ void main() {
 	vec4 historyDepthProps = vec4(0.0);
 	float historyLength = 0.0;
 
-	if (validHistory) {
-		if (length(velocity) < 0.01) {
-			historyRGBA = texture(uHistoryFrame, prevUV);
-		}
-		else {
-			historyRGBA = textureMitchell(uHistoryFrame, prevUV, vec2(size));
-		}
+	if (uEnableTemporal && validHistory) {
+		historyRGBA = texture(uHistoryFrame, prevUV);
+		// historyRGBA = textureMitchell(uHistoryFrame, prevUV, vec2(size));
 		historyMoments = texture(uHistoryMoments, prevUV);
 		historyDepthProps = texture(uHistoryCloudDepth, prevUV);
 		historyLength = historyMoments.w;
 
-		if (is_new_pixel) {
-			float depthDiff = abs(currDepthProps.r - historyDepthProps.r);
-			if (depthDiff > currDepthProps.b * 8.0) {
-				validHistory = false;
-			}
+		float depthDiff = abs(currDepthProps.r - historyDepthProps.r);
+		float allowedDiff = max(currDepthProps.b * 16.0, 0.15 * currDepthProps.r);
+		allowedDiff = max(allowedDiff, 1000.0 * worldScale);
+		if (depthDiff > allowedDiff) {
+			validHistory = false;
+		}
+
+		if (currentPathDensity < 0.01) {
+			validHistory = false;
 		}
 	}
 
-	historyLength = validHistory ? min(uCloudMaxHistoryLength, historyLength + 1.0) : 1.0;
+	historyLength = (uEnableTemporal && validHistory) ? min(uCloudMaxHistoryLength, historyLength + 1.0) : 1.0;
 
-	if (!validHistory) {
+	if (!uEnableTemporal || !validHistory) {
 		if (is_new_pixel) {
 			historyRGBA = currentRGBA;
 			historyDepthProps = currDepthProps;
 		} else {
-			historyRGBA = vec4(0, 0, 0, 1);
-			historyDepthProps = vec4(50000.0 * worldScale, 50000.0 * worldScale, 100.0, 0.0);
+			// Fallback to bilinear current frame when history is invalid or temporal is disabled
+			historyRGBA = texture(uPackedFrame, uv);
+			historyDepthProps = texture(uPackedDepth, uv);
 		}
 		historyMoments = vec4(0.0);
 	}
 
+
+	vec4 accumulatedRGBA;
+	vec4 accumulatedDepth;
+	vec4 accumulatedMoments;
+
 	float historyPathDensity = historyDepthProps.a;
+	bool isSky = (currentPathDensity < 0.01) && (historyPathDensity < 0.01);
 
-	NeighborhoodStats stats = computeNeighborhoodStats(uPackedFrame, uv, texelSize);
+	if (allInvocationsARB(isSky)) {
+		float alpha = 0.0;
+		if (!uEnableTemporal) {
+			alpha = 1.0;
+			historyLength = 1.0;
+		} else if (is_new_pixel) {
+			alpha = 1.0 / max(historyLength, 1.0);
+		}
 
-	float gamma = uCloudTemporalGamma;
-	vec3 extents = calculateDynamicExtents(stats.stddev, historyMoments, gamma);
-	vec3 minColor = stats.spatialMean - extents;
-	vec3 maxColor = stats.spatialMean + extents;
+		accumulatedRGBA = (is_new_pixel || !uEnableTemporal) ? mix(historyRGBA, currentRGBA, alpha) : historyRGBA;
+		accumulatedDepth = is_new_pixel ? mix(historyDepthProps, currDepthProps, alpha) : historyDepthProps;
 
-	float minAlpha = stats.alphaMean - stats.alphaStddev * gamma;
-	float maxAlpha = stats.alphaMean + stats.alphaStddev * gamma;
-
-	vec3 historyYCoCg = RGBToYCoCg(historyRGBA.rgb);
-	float historyOpacity = clamp(1.0 - historyRGBA.a, 0.0, 1.0);
-
-	// Apply clips
-	historyYCoCg = clipAABB(historyYCoCg, stats.spatialMean, minColor, maxColor);
-	float clippedOpacity = clipAlpha(historyOpacity, minAlpha, maxAlpha, stats.alphaMean);
-
-	historyRGBA.rgb = YCoCgToRGB(historyYCoCg);
-	historyRGBA.a = 1.0 - clamp(clippedOpacity, 0.0, 1.0); // Convert back to transmittance
-
-	// 5. Accumulate
-	float densityDiff = currentPathDensity - historyPathDensity;
-	float maxDensity = max(max(currentPathDensity, historyPathDensity), 0.001);
-	float relativeDiff = densityDiff / maxDensity;
-
-	// Trailing edges (cloud leaves pixel) cause severe sky smearing. Be aggressive.
-	// If density drops by more than 40% (relativeDiff < -0.4), start rejecting.
-	// Leading edges (cloud enters pixel) cause less offensive ghosting. Be forgiving
-	// to prevent the dither noise from surviving the edge.
-	float trailingEdgeRejection = 1.0 - smoothstep(-0.5, -0.3, relativeDiff);
-	float leadingEdgeRejection = smoothstep(0.4, 0.8, relativeDiff);
-
-	float rejectionFactor = max(trailingEdgeRejection, leadingEdgeRejection);
-	float pixelSpeed = length(velocity * size);
-	float motionConfidence = smoothstep(0.1, 1.0, pixelSpeed); // Only reject if actually moving
-
-	rejectionFactor *= motionConfidence;
-
-	float alpha = 0.0;
-	if (is_new_pixel) {
-		historyLength = mix(historyLength, 1.0, rejectionFactor);
-		alpha = 1.0 / max(historyLength, 1.0);
+		float currentLuma = luma(accumulatedRGBA.rgb);
+		vec3 currentM = vec3(currentLuma, currentLuma * currentLuma, accumulatedDepth.a * accumulatedDepth.a);
+		accumulatedMoments = vec4(mix(historyMoments.xyz, currentM, is_new_pixel ? alpha : 0.01), historyLength);
 	}
+	else
+	{
+		NeighborhoodStats stats = computeNeighborhoodStats(uPackedFrame, uv, texelSize);
+
+		float gamma = uCloudTemporalGamma;
+		vec3 extents = calculateDynamicExtents(stats.stddev, historyMoments, gamma);
+		vec3 minColor = stats.spatialMean - extents;
+		vec3 maxColor = stats.spatialMean + extents;
+
+		float minAlpha = stats.alphaMean - stats.alphaStddev * gamma;
+		float maxAlpha = stats.alphaMean + stats.alphaStddev * gamma;
+
+		vec3 historyYCoCg = RGBToYCoCg(historyRGBA.rgb);
+		float historyOpacity = clamp(1.0 - historyRGBA.a, 0.0, 1.0);
+
+		// Calculate luminance-difference-guided temporal confidence
+		float lumaCurrent = luma(texture(uPackedFrame, uv).rgb);
+		float lumaHistory = luma(historyRGBA.rgb);
+		float lumaDiff = abs(lumaCurrent - lumaHistory);
+		float maxLuma = max(max(lumaCurrent, lumaHistory), 0.001);
+		float relativeLumaDiff = lumaDiff / maxLuma;
+
+		// High confidence when relative luma difference is small
+		float lumaConfidence = smoothstep(0.35, 0.05, relativeLumaDiff);
+
+		// High confidence when motion is small
+		float pixelSpeed = length(velocity * size);
+		float motionConfidenceFactor = smoothstep(2.0, 0.2, pixelSpeed);
+
+		float confidence = lumaConfidence * motionConfidenceFactor;
+
+		// Apply clips
+		vec3 clippedHistoryYCoCg = clipAABB(historyYCoCg, stats.spatialMean, minColor, maxColor);
+		float clippedHistoryOpacity = clipAlpha(historyOpacity, minAlpha, maxAlpha, stats.alphaMean);
+
+		// Blend between clipped and unclipped history based on confidence
+		historyYCoCg = mix(clippedHistoryYCoCg, historyYCoCg, confidence * 0.9);
+		float blendedOpacity = mix(clippedHistoryOpacity, historyOpacity, confidence * 0.9);
+
+		historyRGBA.rgb = YCoCgToRGB(historyYCoCg);
+		historyRGBA.a = 1.0 - clamp(blendedOpacity, 0.0, 1.0); // Convert back to transmittance
+
+		// 5. Accumulate
+		float densityDiff = currentPathDensity - historyPathDensity;
+		float maxDensity = max(max(currentPathDensity, historyPathDensity), 0.001);
+		float relativeDiff = densityDiff / maxDensity;
+
+		// Trailing edges (cloud leaves pixel) cause severe sky smearing. Be aggressive.
+		// If density drops by more than 40% (relativeDiff < -0.4), start rejecting.
+		// Leading edges (cloud enters pixel) cause less offensive ghosting. Be forgiving
+		// to prevent the dither noise from surviving the edge.
+		float trailingEdgeRejection = 1.0 - smoothstep(-0.5, -0.3, relativeDiff);
+		float leadingEdgeRejection = smoothstep(0.4, 0.8, relativeDiff);
+
+		float rejectionFactor = max(trailingEdgeRejection, leadingEdgeRejection);
+		float motionConfidence = smoothstep(0.1, 1.0, pixelSpeed); // Only reject if actually moving
+
+		rejectionFactor *= motionConfidence;
+
+		float alpha = 0.0;
+		if (!uEnableTemporal) {
+			alpha = 1.0;
+			historyLength = 1.0;
+		} else if (is_new_pixel) {
+			historyLength = mix(historyLength, 1.0, rejectionFactor);
+			alpha = 1.0 / max(historyLength, 1.0);
+		}
+
+		if (currentPathDensity < 0.01) {
+			alpha = 1.0;
+			historyLength = 1.0;
+		}
 
 
-	vec4 accumulatedRGBA = is_new_pixel ? mix(historyRGBA, currentRGBA, alpha) : historyRGBA;
-	vec4 accumulatedDepth = is_new_pixel ? mix(historyDepthProps, currDepthProps, alpha) : historyDepthProps;
+		accumulatedRGBA = (is_new_pixel || !uEnableTemporal) ? mix(historyRGBA, currentRGBA, alpha) : historyRGBA;
+		accumulatedDepth = is_new_pixel ? mix(historyDepthProps, currDepthProps, alpha) : historyDepthProps;
 
-	float currentLuma = luma(accumulatedRGBA.rgb);
-	vec3 currentM = vec3(currentLuma, currentLuma * currentLuma, accumulatedDepth.a * accumulatedDepth.a);
-	vec4 accumulatedMoments = vec4(mix(historyMoments.xyz, currentM, is_new_pixel ? alpha : 0.01), historyLength);
+		float currentLuma = luma(accumulatedRGBA.rgb);
+		vec3 currentM = vec3(currentLuma, currentLuma * currentLuma, accumulatedDepth.a * accumulatedDepth.a);
+		accumulatedMoments = vec4(mix(historyMoments.xyz, currentM, is_new_pixel ? alpha : 0.01), historyLength);
+	}
 
 	imageStore(outColor, pixel, accumulatedRGBA);
 	imageStore(outDepth, pixel, accumulatedDepth);
