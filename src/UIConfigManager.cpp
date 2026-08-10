@@ -20,6 +20,7 @@
 #include "ui/ProfilerWidget.h"
 #include "ui/SpaceProbeWidget.h"
 #include "ui/hud_widget.h"
+#include "ui/CompetitiveCAWidget.h"
 #include "service_locator.h"
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
@@ -70,6 +71,7 @@ namespace Boidsish {
 			AddWidget(std::make_shared<SystemWidget>(visualizer, scene_manager));
 			AddWidget(std::make_shared<ProfilerWidget>());
 			AddWidget(std::make_shared<SpaceProbeWidget>(visualizer));
+			AddWidget(std::make_shared<CompetitiveCAWidget>(visualizer));
 
 			// Register Space Probe HUD element
 			hud_manager.AddElement(std::make_shared<HudSpaceProbe>(visualizer));

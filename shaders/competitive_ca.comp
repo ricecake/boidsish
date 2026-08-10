@@ -1,0 +1,126 @@
+#version 430 core
+
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+layout(rgba32f, binding = 0) uniform readonly image2D u_read_state;
+layout(rgba32f, binding = 1) uniform writeonly image2D u_write_state;
+
+uniform int u_mode; // 0 = Continuous Growth, 1 = Continuous Cyclic, 2 = Soft Voting
+uniform float u_dt;
+uniform float u_growth;
+uniform float u_competition;
+uniform float u_diffusion;
+uniform float u_sharpness;
+uniform float u_fuzziness;
+uniform int u_radius;
+uniform float u_time;
+
+// Simple pseudo-random hash based on coordinate and time
+float rand(vec2 co) {
+	return fract(sin(dot(co, vec2(12.9898, 78.233))) * 43758.5453);
+}
+
+vec4 read_state_pixel(ivec2 pos) {
+	ivec2 size = imageSize(u_read_state);
+	// Wrap coordinates for toroidal boundary conditions
+	pos.x = (pos.x + size.x) % size.x;
+	pos.y = (pos.y + size.y) % size.y;
+	return imageLoad(u_read_state, pos);
+}
+
+void main() {
+	ivec2 pos = ivec2(gl_GlobalInvocationID.xy);
+	ivec2 size = imageSize(u_read_state);
+	if (pos.x >= size.x || pos.y >= size.y) return;
+
+	// Calculate local average in the neighborhood of radius u_radius
+	vec4 sum = vec4(0.0);
+	float total_weight = 0.0;
+	int r = clamp(u_radius, 1, 5); // Safety clamp to avoid massive nested loops
+
+	for (int dy = -r; dy <= r; ++dy) {
+		for (int dx = -r; dx <= r; ++dx) {
+			sum += read_state_pixel(pos + ivec2(dx, dy));
+			total_weight += 1.0;
+		}
+	}
+	vec4 avg = sum / total_weight;
+
+	vec4 C = read_state_pixel(pos);
+	vec4 new_C = C;
+
+	if (u_mode == 0) {
+		// --- MODE 0: Continuous Competitive Growth ---
+		float total_C = C.r + C.g + C.b + C.a;
+		float total_avg = avg.r + avg.g + avg.b + avg.a;
+
+		// Logistic growth limited by total concentration space
+		vec4 growth_term = u_growth * avg * (1.0 - clamp(total_C, 0.0, 1.0));
+
+		// Competitive inhibition: species suppress other species based on neighbor presence
+		vec4 competition_term = u_competition * C * (total_avg - avg);
+
+		// Diffusion: smoothing out species values
+		vec4 diffusion_term = u_diffusion * (avg - C);
+
+		vec4 net_change = (growth_term - competition_term + diffusion_term) * u_dt;
+		new_C = C + net_change;
+
+	} else if (u_mode == 1) {
+		// --- MODE 1: Continuous Cyclic Dominance (RPS-style) ---
+		// Species cycle: Red (r) -> Green (g) -> Blue (b) -> Alpha (a) -> Red (r)
+		vec4 growth_term = vec4(0.0);
+		growth_term.r = u_growth * C.r * avg.g;
+		growth_term.g = u_growth * C.g * avg.b;
+		growth_term.b = u_growth * C.b * avg.a;
+		growth_term.a = u_growth * C.a * avg.r;
+
+		vec4 loss_term = vec4(0.0);
+		loss_term.r = u_competition * C.r * avg.a;
+		loss_term.g = u_competition * C.g * avg.r;
+		loss_term.b = u_competition * C.b * avg.g;
+		loss_term.a = u_competition * C.a * avg.b;
+
+		vec4 diffusion_term = u_diffusion * (avg - C);
+
+		vec4 net_change = (growth_term - loss_term + diffusion_term) * u_dt;
+		new_C = C + net_change;
+
+	} else if (u_mode == 2) {
+		// --- MODE 2: Soft Voting / Threshold Growth ---
+		// If neighbor species is above threshold (u_competition), it tries to conquer/grow
+		vec4 voting_growth = vec4(0.0);
+		for (int i = 0; i < 4; ++i) {
+			if (avg[i] > u_competition) {
+				voting_growth[i] = u_growth * (avg[i] - u_competition);
+			}
+		}
+		vec4 net_change = (voting_growth + u_diffusion * (avg - C)) * u_dt;
+		new_C = C + net_change;
+	}
+
+	// --- Stochastic Fuzziness ---
+	if (u_fuzziness > 0.0) {
+		vec4 noise_val = vec4(
+			rand(vec2(pos) + vec2(u_time * 1.00)),
+			rand(vec2(pos) + vec2(u_time * 1.11 + 13.0)),
+			rand(vec2(pos) + vec2(u_time * 1.22 + 27.0)),
+			rand(vec2(pos) + vec2(u_time * 1.33 + 41.0))
+		);
+		new_C += (noise_val - 0.5) * u_fuzziness * u_dt;
+	}
+
+	// --- Sharpness / Reinforcing distinct cell boundaries ---
+	if (u_sharpness > 0.0) {
+		float max_val = max(max(new_C.r, new_C.g), max(new_C.b, new_C.a));
+		if (max_val > 0.01) {
+			vec4 sharp_boost = pow(new_C / max_val, vec4(1.0 + u_sharpness * u_dt));
+			new_C = sharp_boost * max_val;
+		}
+	}
+
+	// Safety clamping
+	new_C = clamp(new_C, 0.0, 1.0);
+
+	imageStore(u_write_state, pos, new_C);
+}
