@@ -3,99 +3,72 @@
 layout(local_size_x = 16, local_size_y = 16) in;
 
 layout(binding = 0, rgba16f) uniform image2D outWeatherMap;
+layout(binding = 1, rg16f) uniform image2D outMinMaxMap;
+
+layout(std430, binding = [[CLOUD_SEEDS_BINDING]] ) buffer CloudSeeds {
+	vec4 seeds[]; // x: worldX, y: worldZ, z: SDF, w: isCloudy
+};
 
 #include "../helpers/fast_noise.glsl"
+#include "../helpers/cloud_weather_utils.glsl"
+#include "lygia/space/uncenter.glsl"
+#include "lygia/math/gain.glsl"
 
 uniform float uWorldScale;
 uniform float uCloudCoverage;
+uniform float uCloudThickness;
+uniform float time;
 
-
-
-// Tile-aware 2D hash
-vec2 hash2(vec2 p, vec2 period)
-{
-	if (period.x > 0.0) p = mod(p, period);
-	p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
-	return fract(sin(p) * 43758.5453123);
-}
-
-// Tile-aware 2D value noise for domain warping
-vec2 warpNoise(vec2 p, vec2 period)
-{
-	vec2 i = floor(p);
-	vec2 f = fract(p);
-	f = f * f * (3.0 - 2.0 * f);
-
-	vec2 a = hash2(i + vec2(0,0), period);
-	vec2 b = hash2(i + vec2(1,0), period);
-	vec2 c = hash2(i + vec2(0,1), period);
-	vec2 d = hash2(i + vec2(1,1), period);
-
-	// Remap to [-1, 1] range for displacement
-	return mix(mix(a, b, f.x), mix(c, d, f.x), f.y) * 2.0 - 1.0;
-}
-
-// Exact Voronoi distance to cell edges
-float sdVoronoiEdge(vec2 p, vec2 period)
-{
-	vec2 n = floor(p);
-	vec2 f = fract(p);
-
-	vec2 mg, mr;
-	float md = 8.0;
-
-	// Pass 1: Find closest point
-	for(int j = -1; j <= 1; j++)
-	for(int i = -1; i <= 1; i++)
-	{
-		vec2 g = vec2(float(i), float(j));
-		vec2 o = hash2(n + g, period);
-		// Optional: Animate internal points
-		// o = 0.5 + 0.5 * sin(iTime + 6.2831 * o);
-		vec2 r = g + o - f;
-		float d = dot(r, r);
-		if(d < md) { md = d; mr = r; mg = g; }
-	}
-
-	// Pass 2: Exact distance to the bisector plane
-	md = 8.0;
-	for(int j = -2; j <= 2; j++)
-	for(int i = -2; i <= 2; i++)
-	{
-		vec2 g = mg + vec2(float(i), float(j));
-		vec2 o = hash2(n + g, period);
-		vec2 r = g + o - f;
-
-		if(dot(mr - r, mr - r) > 0.00001)
-		{
-			md = min(md, dot(0.5 * (mr + r), normalize(r - mr)));
-		}
-	}
-	return md;
-}
-
-float sdVoronoiFbm(vec2 p, float lacunarity, float iter, float coverage, vec2 period)
-{
-	vec2 warp = vec2(0.0);
+float regionalFbm(vec2 p, vec2 period) {
+	float val = 0.0;
 	float amp = 0.5;
-	vec2 wp = p;
-	vec2 wPeriod = period;
-
-	// Accumulate warp FBM
-	for(float i = 0.0; i < iter; i++)
-	{
-		warp += amp * warpNoise(wp, wPeriod);
-		wp *= lacunarity;
-		wPeriod *= lacunarity;
+	float freq = 1.0;
+	for (int i = 0; i < 3; i++) {
+		val += amp * (0.5 + 0.5 * psrdnoise(p * freq, period * freq));
 		amp *= 0.5;
+		freq *= 2.0;
 	}
-
-	vec2 warpedP = p + warp * 0.9;
-	float d = sdVoronoiEdge(warpedP, period);
-	d = d - (1.0-coverage);
-	return -1.0*d;// * 0.5;
+	return val;
 }
 
+float localFbm(vec2 p, float period, out WorleyData2D data) {
+	float val = 0.0;
+	float amp = 0.5;
+	float freq = 1.0;
+	for (int i = 0; i < 3; i++) {
+		WorleyData2D worleyDetails = worley2d_tiling_id(p * freq, period * freq);
+		if (i == 0) {
+			data = worleyDetails;
+		}
+		val += amp * (worleyDetails.f1_dist);
+		amp *= 0.5;
+		freq *= 2.0;
+	}
+	return val;
+}
+
+
+float posNoise(vec2 p, float scale, float period) {
+	return uncenter(psrdnoise(p * period / scale, vec2(period)));
+}
+
+float schlickGain(float x, float g) {
+	g = clamp(g, 0.001, 0.999);
+	float absDiff = abs(2.0 * x - 1.0);
+	float denominator = g + absDiff * (1.0 - 2.0 * g);
+	return 0.5 + ((x - 0.5) * (1.0 - g)) / denominator;
+}
+
+float schlickBias(float x, float g) {
+	// Guard inputs to safe analytical ranges
+	float xx = clamp(x, 0.0, 1.0);
+	float gg = clamp(g, 1e-4, 1.0 - 1e-4);
+
+	// Convert bias parameter to Schlick formulation factor
+	// Schlick's fast alternative: f(x) = x / ((1/a - 2) * (1.0 - x) + 1.0)
+	float k = (1.0 / gg) - 2.0;
+	return xx / (k * (1.0 - xx) + 1.0);
+}
 
 
 void main() {
@@ -104,25 +77,44 @@ void main() {
 	if (pixel.x >= size.x || pixel.y >= size.y) return;
 
 	vec2 uv = (vec2(pixel) + 0.5) / vec2(size);
-
 	float mapRange = 100000.0 * uWorldScale;
 	float cellRange = 10000.0 * uWorldScale;
-	vec3 p = vec3(uv.x * mapRange, 0.0, uv.y * mapRange);
 
-	// vec2 weatherData = worley3d_tiling(p / cellRange, 16.0);
-	vec2 weatherData = vec2(sdVoronoiFbm(p.xz/cellRange, 2.0, 3.0, uCloudCoverage, vec2(10.0)), 6);
+	vec2 p = uv * mapRange;
 
-	// Direct SDF generation from Worley noise
-	// uCloudCoverage [0,1] maps to a radius [0, 1] in cell-space
-	float sdf = (weatherData.x) * cellRange;
+	float macro = regionalFbm((p / mapRange), vec2(10.0));
 
-	float cellID = weatherData.y;
+	vec2 warp = vec2(posNoise(p, mapRange, 5), posNoise(p+vec2(123.45,67.89), mapRange, 5)) * 0.25;
 
-	// Height/Altitude needs its own frequency
-	// Use ID variant to get both a gradual distance (G) and a per-cell variety ID (A)
-	vec2 heightData = worley3d_tiling(p / (20000.0 * uWorldScale), 5.0);
-	float altitudeMap = abs(1.0 - heightData.x);
-	float thicknessMap = heightData.y;
+	WorleyData2D cellData;
+	float worley = localFbm((p+warp) / cellRange, 2.0, cellData);
 
-	imageStore(outWeatherMap, pixel, vec4(sdf, altitudeMap, cellID, thicknessMap));
+	// float micro = clamp(1.0 - (worley), 0.0, 1.0);
+
+	float coverage =1.0 - worley;//max(macro * micro, 0);
+	float finalCoverage = clamp(coverage, 0.0, 1.0);
+	// finalCoverage = coverage * smoothstep(0.05, 1.0, finalCoverage);
+	finalCoverage = smoothstep(0.05, 1.0, finalCoverage);
+
+	WorleyData2D x;
+	// float height = pow(clamp(localFbm((cellData.f1 + warp)/ mapRange, 10, x), 0.0, 1.0), 2);
+	float height = pow(clamp(posNoise((cellData.f1 + warp), mapRange, 10), 0.0, 1.0), 2);
+	// float thickness = clamp(posNoise(p, mapRange, 5), 0.0, (1.0-cellData.f1_dist)*0.125*uCloudThickness/cellRange);
+	float thickness = clamp(posNoise(p, mapRange, 5), 0.0, 1.0);
+	float density = clamp(posNoise(cellData.f1, mapRange, 5), 0.0, finalCoverage);
+	// float density = localFbm(p / mapRange, 5.0);
+
+	imageStore(outWeatherMap, pixel, vec4(cellData.f1_dist, height, thickness, density));
+	imageStore(outMinMaxMap, pixel, vec4(finalCoverage, finalCoverage, 0.0, 0.0));
+
+	// vec2 cellId = worleyDetails.yz;
+	// float cellID = psrdnoise(cellId, vec2(10.0)) * 0.5 + 0.5;
+	// float distInMeters = micro * cellRange;
+	// float distF1InMeters = worleyDetails.x * cellRange;
+	// // Record seed info if this is the pixel closest to the cell center (f1)
+	// vec2 f1Pixel = (cellId * cellRange) / mapRange * vec2(size);
+	// if (distance(vec2(pixel), f1Pixel) < 1.0) {
+	// 	int cellIdx = int(mod(floor(cellId.y), 10.0) * 10.0 + mod(floor(cellId.x), 10.0));
+	// 	seeds[cellIdx] = vec4(cellId.x * cellRange, cellId.y * cellRange, distInMeters, (finalCoverage > 0.0 ? 1.0 : 0.0));
+	// }
 }

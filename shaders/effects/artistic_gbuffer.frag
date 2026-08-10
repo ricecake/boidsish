@@ -1,5 +1,6 @@
 #version 460 core
 out vec4 FragColor;
+#include "lygia/generative/snoise.glsl"
 
 in vec2 TexCoords;
 
@@ -20,12 +21,20 @@ float LinearizeDepth(float depth) {
 
 void main() {
     // 1. Sample all textures
-    vec4 scene = texture(sceneTexture, TexCoords);
     float depth = texture(depthTexture, TexCoords).r;
-    vec2 velocity = texture(velocityTexture, TexCoords).rg;
-    vec3 normal = texture(normalTexture, TexCoords).rgb;
-    vec4 albedo = texture(albedoTexture, TexCoords);
-    float rough = texture(velocityTexture, TexCoords).b;
+    float linDepth = LinearizeDepth(depth);
+    vec2 size = textureSize(sceneTexture, 0);
+    // vec4 scene = texture(sceneTexture, TexCoords+distance(size/2, TexCoords) *linDepth/(5*far));
+    // vec4 scene = texture(sceneTexture, TexCoords+ (min(TexCoords, 1.0-TexCoords)*vec2(10*sin(TexCoords*time*3.0)*linDepth/far)/size)   );
+       vec4 scene = texture(sceneTexture, TexCoords+ (min(TexCoords, 1.0-TexCoords)*vec2(10*snoise((((vec2(10*snoise(TexCoords*vec2(0.125, 1.0)*0.1*depth*time)*depth))))+TexCoords*vec2(0.125, 1.0)*0.5*depth*time)*depth)/size)   );
+
+
+
+
+    // vec2 velocity = texture(velocityTexture, TexCoords).rg;
+    // vec3 normal = texture(normalTexture, TexCoords).rgb;
+    // vec4 albedo = texture(albedoTexture, TexCoords);
+    // float rough = texture(velocityTexture, TexCoords).b;
 
 /*
     // 2. Inappropriate combinations
@@ -52,6 +61,8 @@ void main() {
         finalColor = scene.rgb + vec3(sin(time + TexCoords.x * 10.0) * 0.1);
     }
 */
+
+/*
     vec2 perturbedUV = TexCoords + normal.xz;
     vec4 perturbedScene = texture(sceneTexture, perturbedUV);
 
@@ -81,6 +92,6 @@ void main() {
     // vec4 finalColor = grey + rough * vec4(afterImage) * (shapeMask) * smoothstep(0, 0.25, depthBucket) * (1.0-smoothstep(0.35, 0.6, depthBucket));
     vec4 finalColor = mix(grey, scene, dot(normal, vec3(0.5, 0.5, 0)));
 
-
-    FragColor = vec4(finalColor.xyz, 1.0);
+*/
+    FragColor = scene;
 }

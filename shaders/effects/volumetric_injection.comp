@@ -22,6 +22,13 @@ uniform float uAnisotropy;
 uniform float uIntensity;
 uniform float uTemporalAlpha;
 
+uniform float uAmbientScale;
+uniform float uRayleighScale;
+uniform float uMieScale;
+uniform float uMultiScatScale;
+uniform float uShadowSensitivity;
+uniform float uLightAccent;
+
 #define USE_TERRAIN_DATA
 #define SKIP_TERRAIN_RAYCAST
 #include "../helpers/terrain_shadows.glsl"
@@ -100,8 +107,15 @@ void main() {
         // Use jitter in [0, 1] range which is centered on froxel centers (vox + 0.5)
         worldPos = worldFromFroxel(vox, blueNoise);
 
+    if (worldPos.y < 0.0) {
+        current_local = vec4(0.0);
+    } else {
+
     // Calculate scattering and extinction
     Sampling s = getAtmospherePropertiesAtPos(worldPos);
+    s.rayleigh *= uRayleighScale;
+    s.mie *= uMieScale;
+    s.extinction = s.rayleigh + s.mie * (kMieExtinction / max(1e-5, kMieScattering));
 
     vec3 radiance = vec3(0);
     vec3 V = normalize(viewPos - worldPos);
@@ -153,6 +167,7 @@ void main() {
 */
 
     // Direct light (Sun/Moon)
+    float mainLightShadow = 1.0;
     for (int i = 0; i < min(2, num_lights); ++i) {
         if (lights[i].type != LIGHT_TYPE_DIRECTIONAL) continue;
 
@@ -175,6 +190,19 @@ void main() {
             shadow = min(shadow, calculateShadow(i, worldPos, vec3(0, 1, 0), L));
         }
 
+        if (i == 0) {
+            mainLightShadow = shadow;
+        }
+
+        // Make the shadows stand out strongly:
+        // Raise shadow to a power or apply a contrast function based on uShadowSensitivity
+        float adjustedShadow = shadow;
+        if (uShadowSensitivity > 1.0) {
+            adjustedShadow = pow(clamp(shadow, 0.0, 1.0), uShadowSensitivity);
+        } else {
+            adjustedShadow = clamp(mix(1.0, shadow, uShadowSensitivity), 0.0, 1.0);
+        }
+
         float r_km = kEarthRadius + worldPos.y / (1000.0 * max(0.0001, worldScale));
         vec3 atmosphereTransmittance = texture(u_transmittanceLUT, getTransmittanceUV(r_km, L.y)).rgb;
 
@@ -184,13 +212,48 @@ void main() {
 
         vec3 lightRadiance = lights[i].color * max(0.0, lights[i].intensity);
 
-        // Single scattering (shadowed) + multi-scattering (partially shadowed to preserve terrain contrast)
-        float multiScatShadow = mix(1.0, shadow, 0.75);
-        radiance += lightRadiance * (atmosphereTransmittance * shadow * combinedPhase + multiScat * multiScatShadow * (s.rayleigh + s.mie));
+        // Single scattering (shadowed) + multi-scattering (attenuated in shadow to stand out strongly)
+        float multiScatShadow = mix(1.0, adjustedShadow, 0.85 * clamp(uShadowSensitivity, 0.0, 1.0));
+        radiance += lightRadiance * (atmosphereTransmittance * adjustedShadow * combinedPhase * uLightAccent + multiScat * multiScatShadow * (s.rayleigh + s.mie) * uMultiScatScale);
     }
 
-    // Local lights
-    for (int i = 2; i < num_lights; ++i) {
+    // Local lights - CLUSTERED
+    // Evaluate global lights loop first (index 3456)
+    Cluster global_injection_cluster = clusters[3456];
+    for (uint idx = 0; idx < global_injection_cluster.count; ++idx) {
+        int i = int(global_injection_cluster.lightIndices[idx]);
+        vec3 L; float atten;
+        calculateLightContribution(i, worldPos, L, atten);
+        if (atten <= 0.0) continue;
+
+        float cosTheta = dot(-V, L);
+        float miePhase = henyeyGreenstein(uAnisotropy, cosTheta);
+
+        // Simple shadow map lookup for point/spot lights
+        float shadow = 1.0;
+        if ((lights[i].flags & LIGHT_FLAG_CASTS_SHADOW) != 0) {
+            shadow = calculateShadow(i, worldPos, vec3(0.0), L);
+            shadow = clamp(mix(1.0, shadow, uShadowSensitivity), 0.0, 1.0);
+        }
+
+        vec3 lightTransmittance = vec3(1.0);
+        float distToLight = length(lights[i].position - worldPos);
+        if ((lights[i].flags & LIGHT_FLAG_CAMERA_RELATIVE) != 0) {
+            distToLight = length(lights[i].position + viewPos - worldPos);
+        }
+
+        // Analytical transmittance to light source
+        lightTransmittance = exp(-s.extinction * distToLight);
+
+        vec3 lightRadiance = lights[i].color * max(0.0, lights[i].intensity) * atten * shadow;
+        radiance += lightRadiance * (lightTransmittance * miePhase + (1.0 - lightTransmittance) * (s.rayleigh + s.mie));
+    }
+
+    uint injection_cluster_index = getClusterIndex(worldPos);
+    Cluster injection_cluster = clusters[injection_cluster_index];
+
+    for (uint idx = 0; idx < injection_cluster.count; ++idx) {
+        int i = int(injection_cluster.lightIndices[idx]);
         vec3 L; float atten;
         calculateLightContribution(i, worldPos, L, atten);
         if (atten <= 0.0) continue;
@@ -198,6 +261,7 @@ void main() {
         float cosTheta = dot(-V, L);
         float miePhase = henyeyGreenstein(uAnisotropy, cosTheta);
         float shadow = calculateShadow(i, worldPos, vec3(0,1,0), L);
+        shadow = clamp(mix(1.0, shadow, uShadowSensitivity), 0.0, 1.0);
 
         radiance += lights[i].color * lights[i].intensity * atten * shadow * miePhase * s.mie;
     }
@@ -207,8 +271,11 @@ void main() {
     vec3 baseAmbientRadiance = hazeColor * 0.05; // Base glow
     vec3 effectiveAmbient = max(ambient_light, baseAmbientRadiance);
 
-    radiance += getSpatialAmbientSH(worldPos, V) * 0.5; // Spatial bounce
-    radiance += effectiveAmbient * (s.rayleigh + s.mie); // Global atmospheric ambient
+    vec3 ambientContrib = getSpatialAmbientSH(worldPos, V) * 0.5 + effectiveAmbient * (s.rayleigh + s.mie);
+
+    // Attenuate ambient in shadowed regions based on shadow sensitivity to make shadows stand out strongly
+    float ambientShadow = mix(1.0, mainLightShadow, 0.85 * clamp(uShadowSensitivity, 0.0, 1.0));
+    radiance += ambientContrib * uAmbientScale * ambientShadow;
 
     // Lightning illumination
     if (lightningPulse > 0.01) {
@@ -265,111 +332,143 @@ void main() {
 
         current_local = vec4(finalScattering, extinctionCoeff);
     }
-
-    // 2. Populate shared memory for neighborhood clamping
-    ivec3 l_id = ivec3(gl_LocalInvocationID.xyz);
-    int flat_id = int(l_id.z * 64 + l_id.y * 8 + l_id.x);
-    s_current[flat_id] = current_local;
-
-    barrier();
-
-    if (out_of_bounds) return;
-
-    vec4 current = current_local;
+    }
 
     // Temporal accumulation
     if (uTemporalAlpha > 0.0) {
-        vec4 prevClip = uPrevVP * vec4(worldPos, 1.0);
-        vec3 prevNDC = prevClip.xyz / (abs(prevClip.w) > 0.0001 ? prevClip.w : 1.0);
+        // 2. Populate shared memory for neighborhood clamping (All threads participate)
+        ivec3 l_id = ivec3(gl_LocalInvocationID.xyz);
+        int flat_id = int(l_id.z * 64 + l_id.y * 8 + l_id.x);
+        s_current[flat_id] = current_local;
 
-        if (all(greaterThanEqual(prevNDC, vec3(-1.0))) && all(lessThanEqual(prevNDC, vec3(1.0)))) {
-            // Reproject current world position into previous frame's froxel grid
-            vec3 prevUV = prevNDC * 0.5 + 0.5;
+        barrier();
 
-            // Compensation for stochastic jitter to find the correct logical voxel
-            prevUV.xy -= (blueNoise.xy - 0.5) / vec2(u_grid_res.xy);
+        if (!out_of_bounds) {
+            vec4 current = current_local;
+            vec4 prevClip = uPrevVP * vec4(worldPos, 1.0);
+            vec3 prevNDC = prevClip.xyz / (abs(prevClip.w) > 0.0001 ? prevClip.w : 1.0);
 
-            // Find previous cascade using planar depth (Z)
-            float prevLinearZ = dot(worldPos - uPrevCamPos, uPrevCamFront);
+            if (all(greaterThanEqual(prevNDC, vec3(-1.0))) && all(lessThanEqual(prevNDC, vec3(1.0)))) {
+                // Reproject current world position into previous frame's froxel grid
+                vec3 prevUV = prevNDC * 0.5 + 0.5;
 
-            int prevCascade = -1;
-            float z_near = 0.1;
-            float z_far = 0.0;
-            for (int i = 0; i < NUM_CASCADES; ++i) {
-                if (prevLinearZ <= CASCADE_DISTANCES[i]) {
-                    prevCascade = i;
-                    z_far = CASCADE_DISTANCES[i];
-                    if (i > 0) z_near = CASCADE_DISTANCES[i-1];
-                    break;
+                // Compensation for stochastic jitter to find the correct logical voxel
+                prevUV.xy -= (blueNoise.xy - 0.5) / vec2(u_grid_res.xy);
+
+                // Find previous cascade using planar depth (Z)
+                float prevLinearZ = dot(worldPos - uPrevCamPos, uPrevCamFront);
+
+                int prevCascade = -1;
+                float z_near = 0.1;
+                float z_far = 0.0;
+                for (int i = 0; i < NUM_CASCADES; ++i) {
+                    if (prevLinearZ <= CASCADE_DISTANCES[i]) {
+                        prevCascade = i;
+                        z_far = CASCADE_DISTANCES[i];
+                        if (i > 0) z_near = CASCADE_DISTANCES[i-1];
+                        break;
+                    }
                 }
-            }
 
-            if (prevCascade != -1 && prevLinearZ > z_near) {
-                float slice = clamp(log(prevLinearZ / z_near) / log(z_far / z_near), 0.0, 1.0);
+                if (prevCascade != -1 && prevLinearZ > z_near) {
+                    float slice = clamp(log(prevLinearZ / z_near) / log(z_far / z_near), 0.0, 1.0);
 
-                // Compensation for stochastic jitter in depth
-                slice -= (blueNoise.z - 0.5) / float(u_grid_res.z);
-                slice = clamp(slice, 0.0, 1.0);
+                    // Compensation for stochastic jitter in depth
+                    slice -= (blueNoise.z - 0.5) / float(u_grid_res.z);
+                    slice = clamp(slice, 0.0, 1.0);
 
-                // Continuous mapping from cascade/slice to [0,1] 3D texture coordinate.
-                // This matches the mapping in volumetric_composite.frag and ensures
-                // smooth transitions between cascades.
-                float w = (float(prevCascade) + slice) / float(NUM_CASCADES);
+                    // Continuous mapping from cascade/slice to [0,1] 3D texture coordinate.
+                    // This matches the mapping in volumetric_composite.frag and ensures
+                    // smooth transitions between cascades.
+                    float w = (float(prevCascade) + slice) / float(NUM_CASCADES);
 
-                vec4 history = texture(uHistoryTexture, vec3(prevUV.xy, w));
-                if (all(greaterThanEqual(history, vec4(0.0))) && all(lessThanEqual(history, vec4(1000.0)))) {
-                    // --- Neighborhood Clamping ---
-                    vec4 m1 = vec4(0.0);
-                    vec4 m2 = vec4(0.0);
-                    int count = 0;
+                    vec4 history = texture(uHistoryTexture, vec3(prevUV.xy, w));
+                    if (all(greaterThanEqual(history, vec4(0.0))) && all(lessThanEqual(history, vec4(1000.0)))) {
+                        // --- Neighborhood Clamping ---
+                        vec4 m1 = vec4(0.0);
+                        vec4 m2 = vec4(0.0);
+                        int count = 0;
 
-                    for (int z = -1; z <= 1; ++z) {
-                        for (int y = -1; y <= 1; ++y) {
-                            for (int x = -1; x <= 1; ++x) {
-                                ivec3 neighbor_l_id = l_id + ivec3(x, y, z);
-                                if (all(greaterThanEqual(neighbor_l_id, ivec3(0))) && all(lessThan(neighbor_l_id, ivec3(8, 8, 4)))) {
-                                    vec4 val = s_current[neighbor_l_id.z * 64 + neighbor_l_id.y * 8 + neighbor_l_id.x];
-                                    m1 += val;
-                                    m2 += val * val;
-                                    count++;
-                                }
+                        const ivec3 offsets[] = ivec3[](
+                            ivec3( 1, 0, 0),
+                            ivec3(-1, 0, 0),
+                            ivec3( 0, 1, 0),
+                            ivec3( 0,-1, 0),
+                            ivec3( 0, 0, 1),
+                            ivec3( 0, 0,-1)
+
+                            // ivec3( 1, 1, 1),
+                            // ivec3( 1, 1,-1),
+                            // ivec3( 1,-1, 1),
+                            // ivec3( 1,-1,-1),
+                            // ivec3(-1, 1, 1),
+                            // ivec3(-1, 1,-1),
+                            // ivec3(-1,-1, 1),
+                            // ivec3(-1,-1,-1)
+                        );
+                        for (int i = 0; i < offsets.length(); i++) {
+                            ivec3 neighbor_l_id = l_id + offsets[i];
+                            if (all(greaterThanEqual(neighbor_l_id, ivec3(0))) && all(lessThan(neighbor_l_id, ivec3(8, 8, 4)))) {
+                                vec4 val = s_current[neighbor_l_id.z * 64 + neighbor_l_id.y * 8 + neighbor_l_id.x];
+                                m1 += val;
+                                m2 += val * val;
+                                count++;
                             }
                         }
+                        // for (int z = -1; z <= 1; ++z) {
+                        //     for (int y = -1; y <= 1; ++y) {
+                        //         for (int x = -1; x <= 1; ++x) {
+                        //             ivec3 neighbor_l_id = l_id + ivec3(x, y, z);
+                        //             if (all(greaterThanEqual(neighbor_l_id, ivec3(0))) && all(lessThan(neighbor_l_id, ivec3(8, 8, 4)))) {
+                        //                 vec4 val = s_current[neighbor_l_id.z * 64 + neighbor_l_id.y * 8 + neighbor_l_id.x];
+                        //                 m1 += val;
+                        //                 m2 += val * val;
+                        //                 count++;
+                        //             }
+                        //         }
+                        //     }
+                        // }
+
+                        vec4 mean = m1 / float(count);
+                        vec4 stddev = sqrt(max(vec4(0.0), (m2 / float(count)) - (mean * mean)));
+
+                        // Clamp history to current neighborhood
+                        float gamma = 1.2; // Tighter clamping for volume to reduce ghosting
+                        vec4 minColor = mean - gamma * stddev;
+                        vec4 maxColor = mean + gamma * stddev;
+                        history = clamp(history, minColor, maxColor);
+
+                        // --- Adaptive Temporal Alpha ---
+                        float activeAlpha = uTemporalAlpha;
+
+                        // 1. Luminance-based adaptation
+                        float currentLum = dot(current.rgb, vec3(0.2126, 0.7152, 0.0722));
+                        float historyLum = dot(history.rgb, vec3(0.2126, 0.7152, 0.0722));
+                        float lumDiff = abs(currentLum - historyLum) / (max(currentLum, historyLum) + 0.01);
+
+                        // Reduce alpha if there's a significant change in local luminance
+                        activeAlpha *= 1.0 - smoothstep(0.1, 0.5, lumDiff);
+
+                        // 3. Stability check (high variance = low alpha)
+                        float spatialStd = dot(stddev.rgb, vec3(0.2126, 0.7152, 0.0722));
+                        activeAlpha *= clamp(1.0 - (spatialStd / (currentLum + 0.001)), 0.0, 1.0);
+
+                        current = mix(current, history, clamp(activeAlpha, 0.0, 0.99));
                     }
-
-                    vec4 mean = m1 / float(count);
-                    vec4 stddev = sqrt(max(vec4(0.0), (m2 / float(count)) - (mean * mean)));
-
-                    // Clamp history to current neighborhood
-                    float gamma = 1.2; // Tighter clamping for volume to reduce ghosting
-                    vec4 minColor = mean - gamma * stddev;
-                    vec4 maxColor = mean + gamma * stddev;
-                    history = clamp(history, minColor, maxColor);
-
-                    // --- Adaptive Temporal Alpha ---
-                    float activeAlpha = uTemporalAlpha;
-
-                    // 1. Luminance-based adaptation
-                    float currentLum = dot(current.rgb, vec3(0.2126, 0.7152, 0.0722));
-                    float historyLum = dot(history.rgb, vec3(0.2126, 0.7152, 0.0722));
-                    float lumDiff = abs(currentLum - historyLum) / (max(currentLum, historyLum) + 0.01);
-
-                    // Reduce alpha if there's a significant change in local luminance
-                    activeAlpha *= 1.0 - smoothstep(0.1, 0.5, lumDiff);
-
-                    // 3. Stability check (high variance = low alpha)
-                    float spatialStd = dot(stddev.rgb, vec3(0.2126, 0.7152, 0.0722));
-                    activeAlpha *= clamp(1.0 - (spatialStd / (currentLum + 0.001)), 0.0, 1.0);
-
-                    current = mix(current, history, clamp(activeAlpha, 0.0, 0.99));
                 }
             }
+
+            // Safety clamp to prevent NaN/Inf propagation
+            current = clamp(current, vec4(0.0), vec4(1000.0));
+            if (any(isnan(current))) current = vec4(0.0);
+
+            imageStore(outInjection, vox, current);
+        }
+    } else {
+        if (!out_of_bounds) {
+            vec4 current = clamp(current_local, vec4(0.0), vec4(1000.0));
+            if (any(isnan(current))) current = vec4(0.0);
+            imageStore(outInjection, vox, current);
         }
     }
-
-    // Safety clamp to prevent NaN/Inf propagation
-    current = clamp(current, vec4(0.0), vec4(1000.0));
-    if (any(isnan(current))) current = vec4(0.0);
-
-    imageStore(outInjection, vox, current);
 }

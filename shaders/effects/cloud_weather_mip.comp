@@ -1,0 +1,37 @@
+#version 460 core
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+// Source: the weather min-max density map sampler
+layout(binding = 0) uniform sampler2D u_srcWeatherMinMaxMap;
+
+// Destination: the specific mip level being written (RG16F format)
+layout(rg16f, binding = 0) uniform writeonly image2D u_dstMip;
+
+uniform int u_srcLevel;
+
+void main() {
+	ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+	ivec2 dstSize = imageSize(u_dstMip);
+
+	if (pixel.x >= dstSize.x || pixel.y >= dstSize.y)
+		return;
+
+	ivec2 srcCoord = pixel * 2;
+	ivec2 srcSize = textureSize(u_srcWeatherMinMaxMap, u_srcLevel);
+	ivec2 maxCoord = srcSize - 1;
+
+	// Fetch the RG values of the 4 source texels
+	vec2 c00 = texelFetch(u_srcWeatherMinMaxMap, clamp(srcCoord + ivec2(0, 0), ivec2(0), maxCoord), u_srcLevel).rg;
+	vec2 c10 = texelFetch(u_srcWeatherMinMaxMap, clamp(srcCoord + ivec2(1, 0), ivec2(0), maxCoord), u_srcLevel).rg;
+	vec2 c01 = texelFetch(u_srcWeatherMinMaxMap, clamp(srcCoord + ivec2(0, 1), ivec2(0), maxCoord), u_srcLevel).rg;
+	vec2 c11 = texelFetch(u_srcWeatherMinMaxMap, clamp(srcCoord + ivec2(1, 1), ivec2(0), maxCoord), u_srcLevel).rg;
+
+	// Red is the min density: take the minimum of the minimums
+	float minVal = min(min(c00.r, c10.r), min(c01.r, c11.r));
+
+	// Green is the max density: take the maximum of the maximums
+	float maxVal = max(max(c00.g, c10.g), max(c01.g, c11.g));
+
+	imageStore(u_dstMip, pixel, vec4(minVal, maxVal, 0.0, 0.0));
+}

@@ -124,6 +124,7 @@ namespace Boidsish {
 		fire_(fire), explosions_(explosions), akira_(akira), noise_(noise) {}
 
 	void ParticleEffectsPass::Execute(const FrameData& frame) {
+		PROJECT_PROFILE_SCOPE("ParticleEffectsPass");
 		fire_.Render(
 			frame.view,
 			frame.projection,
@@ -280,6 +281,7 @@ namespace Boidsish {
 	// --- TransparentPass ---
 
 	void TransparentPass::Execute(const FrameData& frame, const RenderCallbacks& cb) {
+		PROJECT_PROFILE_SCOPE("TransparentPass");
 		glEnable(GL_BLEND);
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 		glDepthMask(GL_FALSE);

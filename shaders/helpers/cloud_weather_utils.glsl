@@ -1,0 +1,286 @@
+#ifndef HELPERS_CLOUD_WEATHER_UTILS_GLSL
+#define HELPERS_CLOUD_WEATHER_UTILS_GLSL
+
+// Tile-aware 2D hash
+vec2 hash2(vec2 p, vec2 period)
+{
+	if (period.x > 0.0) p = mod(p, period);
+	p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
+	return fract(sin(p) * 43758.5453123);
+}
+
+// Tile-aware hash returning a single float
+float hash12(vec2 p, vec2 period) {
+	if (period.x > 0.0) p = mod(p, period);
+	vec3 p3 = fract(vec3(p.xyx) * .1031);
+	p3 += dot(p3, p3.yzx + 33.33);
+	return fract((p3.x + p3.y) * p3.z);
+}
+
+// 2D Value Noise returning vec3(value, ddx, ddy)
+vec3 valueNoiseGrad(vec2 p, vec2 period) {
+	vec2 i = floor(p);
+	vec2 f = fract(p);
+
+	// Quintic Hermite interpolation for smooth second derivatives
+	vec2 u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
+	vec2 du = 30.0 * f * f * (f * (f - 2.0) + 1.0);
+
+	float a = hash12(i + vec2(0.0, 0.0), period);
+	float b = hash12(i + vec2(1.0, 0.0), period);
+	float c = hash12(i + vec2(0.0, 1.0), period);
+	float d = hash12(i + vec2(1.0, 1.0), period);
+
+	float k0 = a;
+	float k1 = b - a;
+	float k2 = c - a;
+	float k3 = a - b - c + d;
+
+	float val = k0 + k1 * u.x + k2 * u.y + k3 * u.x * u.y;
+
+	// Compute the analytical gradient
+	vec2 grad = du * vec2(k1 + k3 * u.y, k2 + k3 * u.x);
+
+	return vec3(val, grad);
+}
+
+// FBM SDF generation
+float calculateFbmSdf(vec2 p, float coverageThreshold, int octaves, vec2 period) {
+	float val = 0.0;
+	vec2 grad = vec2(0.0);
+
+	float amp = 0.5;
+	float freq = 1.0;
+
+	for (int i = 0; i < octaves; i++) {
+		vec3 n = valueNoiseGrad(p * freq, period * freq);
+
+		val += amp * n.x;
+
+		// Chain rule: scale the gradient by the amplitude and frequency
+		grad += amp * freq * n.yz;
+
+		amp *= 0.5;
+		freq *= 2.0;
+
+		// Optional: Domain rotation matrix here to break up axis alignment
+	}
+
+	// Divide the implicit surface by its gradient magnitude
+	// Adding a tiny epsilon prevents division by zero at gradient singularities
+	float distance = (val - coverageThreshold) / (length(grad) + 0.0001);
+
+	return distance;
+}
+
+// Tile-aware 2D value noise for domain warping
+vec2 warpNoise(vec2 p, vec2 period)
+{
+	vec2 i = floor(p);
+	vec2 f = fract(p);
+	f = f * f * (3.0 - 2.0 * f);
+
+	vec2 a = hash2(i + vec2(0, 0), period);
+	vec2 b = hash2(i + vec2(1, 0), period);
+	vec2 c = hash2(i + vec2(0, 1), period);
+	vec2 d = hash2(i + vec2(1, 1), period);
+
+	// Remap to [-1, 1] range for displacement
+	return mix(mix(a, b, f.x), mix(c, d, f.x), f.y) * 2.0 - 1.0;
+}
+
+struct VoronoiData {
+	float dist;
+	float dist_f1;
+	float dist_f2;
+	vec2 f1;
+	vec2 f2;
+};
+
+// Exact Voronoi distance to cell edges
+VoronoiData sdVoronoiEdge(vec2 p, vec2 period)
+{
+	vec2 n = floor(p);
+	vec2 f = fract(p);
+
+	vec2 mg, mr, mo;
+	float md = 8.0;
+
+	// Pass 1: Find closest point
+	for (int j = -1; j <= 1; j++)
+		for (int i = -1; i <= 1; i++)
+		{
+			vec2 g = vec2(float(i), float(j));
+			vec2 o = hash2(n + g, period);
+			// o = 0.5 + 0.5 * sin(iTime + 6.2831 * o);
+			vec2 r = g + o - f;
+			float d = dot(r, r);
+			if (d < md) {
+				md = d;
+				mr = r;
+				mg = g;
+				mo = o;
+			}
+		}
+
+	// Pass 2: Exact distance to the bisector plane
+	md = 8.0;
+	vec2 f2_g, f2_o;
+	for (int j = -2; j <= 2; j++)
+		for (int i = -2; i <= 2; i++)
+		{
+			vec2 g = mg + vec2(float(i), float(j));
+			vec2 o = hash2(n + g, period);
+			vec2 r = g + o - f;
+
+			if (dot(mr - r, mr - r) > 0.00001) {
+				float edgeDist = dot(0.5 * (mr + r), normalize(r - mr));
+				if (edgeDist < md)
+				{
+					md = edgeDist;
+					f2_g = g;
+					f2_o = o;
+				}
+			}
+		}
+
+	VoronoiData res;
+
+	res.f1 = n + mg + mo;
+	res.f2 = n + f2_g + f2_o;
+
+	res.dist = md;
+	res.dist_f1 = distance(res.f1, f);
+	res.dist_f2 = distance(res.f2, f);
+
+	return res;
+}
+
+VoronoiData sdVoronoiFbm(vec2 p, float lacunarity, float iter, float coverage, vec2 period)
+{
+	vec2 warp = vec2(0.0);
+	float amp = 0.5;
+	vec2 wp = p;
+	vec2 wPeriod = period;
+
+	// Accumulate warp FBM
+	for (float i = 0.0; i < iter; i++)
+	{
+		warp += amp * warpNoise(wp, wPeriod);
+		wp *= lacunarity;
+		wPeriod *= lacunarity;
+		amp *= 0.5;
+	}
+
+	vec2 warpedP = p + warp * 0.5;
+	VoronoiData res = sdVoronoiEdge(warpedP, period);
+
+	res.dist = -(res.dist - (1.0 - coverage));
+	return res;
+}
+
+float getWarpedVoronoiDist(vec2 p, float lacunarity, float iter, float coverage, vec2 period) {
+	return sdVoronoiFbm(p, lacunarity, iter, coverage, period).dist;
+}
+
+VoronoiData sdVoronoiHybrid(vec2 p, float lacunarity, float iter, float coverage, vec2 period) {
+	VoronoiData vd = sdVoronoiFbm(p, lacunarity, iter, coverage, period);
+
+	vec2 eps = vec2(0.001, 0.0);
+
+	float dx = getWarpedVoronoiDist(p + eps.xy, lacunarity, iter, coverage, period) -
+			   getWarpedVoronoiDist(p - eps.xy, lacunarity, iter, coverage, period);
+
+	float dy = getWarpedVoronoiDist(p + eps.yx, lacunarity, iter, coverage, period) -
+			   getWarpedVoronoiDist(p - eps.yx, lacunarity, iter, coverage, period);
+
+	vec2 grad = vec2(dx, dy) / (2.0 * eps.x);
+
+	vd.dist = vd.dist / (length(grad) + 0.0001);
+
+	return vd;
+}
+
+float smin_bake( float a, float b, float k )
+{
+    k *= 4.0;
+    float h = max( k-abs(a-b), 0.0 )/k;
+    return min(a,b) - h*h*k*(1.0/4.0);
+}
+
+float generateOrganicCellSDF(vec2 p, float cellSize, vec2 period, float coverage) {
+	float lCover = 1.0-sqrt((coverage)/3.1415);
+    vec2 p_grid = p / cellSize;
+    vec2 id = floor(p_grid);
+
+    float globalDist = 1e10;
+
+    // --- Tuning Knobs ---
+    float k = 0.4; // Blend strength (higher = more blobby/organic)
+
+    // Parent circle constraints
+    float parentBaseRadius = 0.40;
+    float parentRadiusVar = 0.15;
+    float parentScatter = 0.4;
+
+    // Child circle constraints
+    float childBaseRadius = 0.20;
+    float childRadiusVar = 0.15;
+    float childScatter = 0.30;
+
+    // 3x3 Search to ensure seamless SDF across cell boundaries
+    for (int y = -1; y <= 1; y++) {
+        for (int x = -1; x <= 1; x++) {
+            vec2 neighborId = id + vec2(float(x), float(y));
+            vec2 cellOrigin = neighborId;
+
+            // --- Coverage Integration ---
+            // 1. Hash this cell to determine its natural density (0.0 to 1.0)
+            float cellDensity = hash12(neighborId + 99.9, period);
+
+            // 2. Bias the natural density by the global coverage uniform
+            // A coverage of 0.5 leaves the grid naturally patchy.
+			float localCoverage = clamp(cellDensity + (coverage * 2.0 - 1.0), 0.0, 1.0);
+
+            // 3. Skip heavy math if the cell is completely empty
+            if (localCoverage <= 0.01) continue;
+
+            // 4. Scale the shapes so clouds physically shrink before disappearing
+            float radiusMod = localCoverage;
+
+            // Generate Parent Circle
+            vec2 parentHash = hash2(neighborId, period);
+            vec2 parentCenter = cellOrigin + 0.5 + (parentHash - 0.5) * parentScatter;
+            float parentRadius = (parentBaseRadius + hash12(neighborId + 13.37, period) * parentRadiusVar) * radiusMod;
+
+            float cellDist = length(p_grid - parentCenter) - parentRadius;
+
+            // Generate 4 Child Circles
+            for (int cy = 0; cy <= 1; cy++) {
+                for (int cx = 0; cx <= 1; cx++) {
+                    vec2 childIndex = vec2(float(cx), float(cy));
+                    vec2 childOrigin = cellOrigin + childIndex * 0.5;
+
+                    vec2 childSeed = neighborId * 4.0 + childIndex;
+                    vec2 childHash = hash2(childSeed, period);
+
+                    vec2 childCenter = childOrigin + 0.25 + (childHash - 0.5) * childScatter;
+                    float childRadius = (childBaseRadius + hash12(childSeed + 42.0, period) * childRadiusVar) * radiusMod;
+
+                    float childSdf = length(p_grid - childCenter) - childRadius;
+
+                    // Blend child into the parent structure
+                    cellDist = smin_bake(cellDist, childSdf, k);
+                }
+            }
+
+            // Blend this entire cell structure into the global field
+            globalDist = smin_bake(globalDist, cellDist, k);
+        }
+    }
+
+    // Convert back to world space scale
+    return globalDist * cellSize;
+}
+
+#endif // HELPERS_CLOUD_WEATHER_UTILS_GLSL

@@ -3,6 +3,7 @@
 
 #include <memory>
 #include <vector>
+#include <string>
 
 #include "IManager.h"
 #include <GL/glew.h>
@@ -41,21 +42,13 @@ namespace Boidsish {
 
 		GLuint GetAerialPerspectiveLUT() const { return _aerialPerspectiveLUT; }
 
-		GLuint GetCloudShadowMap() const { return _cloudShadowMap; }
-
 		static constexpr GLuint kTransmittanceUnit = 20;
 		static constexpr GLuint kMultiScatteringUnit = 21;
 		static constexpr GLuint kSkyViewUnit = 22;
 		static constexpr GLuint kAerialPerspectiveUnit = 23;
-		static constexpr GLuint kCloudShadowUnit = 24;
 
 		void BindTextures();
 		void BindToShader(::ShaderBase& shader);
-
-		static constexpr int   kCloudShadowResolution = 512;
-		static constexpr float kCloudShadowWorldSize = 4000.0f;
-
-		float GetCloudShadowWorldSize() const { return kCloudShadowWorldSize; }
 
 		// Parameters
 		void SetRayleighScale(float s) {
@@ -168,6 +161,61 @@ namespace Boidsish {
 
 		float GetCloudShadowIntensity() const { return _cloudShadowIntensity; }
 
+		void SetCloudCoverage(float c) {
+			if (std::abs(_cloudCoverage - c) > 0.005f) {
+				_cloudCoverage = c;
+			}
+		}
+		float GetCloudCoverage() const { return _cloudCoverage; }
+
+		void SetCloudAltitude(float h) {
+			if (h != _cloudAltitude) {
+				_cloudAltitude = h;
+			}
+		}
+		float GetCloudAltitude() const { return _cloudAltitude; }
+
+		void SetCloudThickness(float t) {
+			if (t != _cloudThickness) {
+				_cloudThickness = t;
+			}
+		}
+		float GetCloudThickness() const { return _cloudThickness; }
+
+		void SetCloudDensity(float d) {
+			if (d != _cloudDensity) {
+				_cloudDensity = d;
+			}
+		}
+		float GetCloudDensity() const { return _cloudDensity; }
+
+		void SetWorldScale(float s) {
+			if (std::abs(_worldScale - s) > 0.001f) {
+				_worldScale = s;
+				_needsWeatherBake = true;
+			}
+		}
+		float GetWorldScale() const { return _worldScale; }
+
+		GLuint GetCloudWeatherTexture() const { return _cloudWeatherTexture; }
+		GLuint GetCloudWeatherMinMaxTexture() const { return _cloudWeatherMinMaxTexture; }
+
+		bool IsCustomWeatherMap() const { return _useCustomWeatherMap; }
+		void SetUseCustomWeatherMap(bool b);
+
+		bool ExportCloudWeatherMap(const std::string& filepath);
+		bool ImportCloudWeatherMap(const std::string& filepath);
+
+		/**
+		 * Sample the cloud weather data on the CPU.
+		 * @param worldXZ Position in world space
+		 * @param time Current simulation time
+		 * @return RGBA weather data (x: SDF, y: altitudeMap, z: cellID, w: thicknessMap)
+		 */
+		glm::vec4 GetCloudWeather(glm::vec2 worldXZ, float time) const;
+
+		const std::vector<glm::vec4>& GetCloudSeeds() const { return _cpuCloudSeeds; }
+
 		void SetSunAureoleStrength(float s) { _sunAureoleStrength = s; }
 
 		float GetSunAureoleStrength() const { return _sunAureoleStrength; }
@@ -189,7 +237,11 @@ namespace Boidsish {
 		GLuint _multiScatteringLUT = 0;
 		GLuint _skyViewLUT = 0;
 		GLuint _aerialPerspectiveLUT = 0;
-		GLuint _cloudShadowMap = 0;
+		GLuint _cloudWeatherTexture = 0;
+		GLuint _cloudWeatherMinMaxTexture = 0;
+		GLuint _cloudVolumeTexture = 0;
+		GLuint _cloudShadowTexture = 0;
+		GLuint _cloudSeedsBuffer = 0;
 		GLuint _shCoeffsBuffer = 0;
 
 		std::unique_ptr<ComputeShader> _transmittanceShader;
@@ -197,11 +249,35 @@ namespace Boidsish {
 		std::unique_ptr<ComputeShader> _skyViewShader;
 		std::unique_ptr<ComputeShader> _aerialPerspectiveShader;
 		std::unique_ptr<ComputeShader> _skyToSHShader;
-		std::unique_ptr<ComputeShader> _cloudShadowShader;
+		std::unique_ptr<ComputeShader> _cloudBakeShader;
+		std::unique_ptr<ComputeShader> _cloudVolumeBakeShader;
+		std::unique_ptr<ComputeShader> _cloudMipShader;
+		std::unique_ptr<ComputeShader> _cloudShadowBakeShader;
 
-		glm::vec4 _shCoeffs[9];
+		glm::mat4 _cloudShadowMatrix = glm::mat4(1.0f);
+		glm::mat4 _cloudShadowInvMatrix = glm::mat4(1.0f);
+		glm::vec3 _lastBakedLightDir = glm::vec3(0.0f);
+		glm::vec3 _lastBakedCameraPos = glm::vec3(0.0f);
+		float     _lastBakedCloudCoverage = 0.0f;
+		float     _lastBakedCloudDensity = 0.0f;
+		float     _lastBakedCloudAltitude = 0.0f;
+		float     _lastBakedCloudThickness = 0.0f;
+		bool      _enableCloudShadowMap = true;
+		int       _frameIndex = 0;
+
+		glm::vec4 _shCoeffs[81];
 
 		bool _needsPrecompute = true;
+		bool _needsWeatherBake = true;
+		bool _useCustomWeatherMap = false;
+
+		std::vector<glm::vec4> _cpuWeatherMap;
+		std::vector<glm::vec4> _cpuCloudSeeds;
+		float _cloudCoverage = WeatherConstants::CloudCoverage.normal;
+		float _cloudAltitude = WeatherConstants::CloudAltitude.normal;
+		float _cloudThickness = WeatherConstants::CloudThickness.normal;
+		float _cloudDensity = WeatherConstants::CloudDensity.normal;
+		float _worldScale = 1.0f;
 
 		float     _rayleighScale = WeatherConstants::RayleighScale.normal;
 		float     _mieScale = WeatherConstants::MieScale.normal;

@@ -32,6 +32,8 @@ namespace Boidsish {
 		float intensity;       // Current brightness [0-1]
 		glm::vec3 color;
 		bool has_spawned_flash;
+		int   flash_light_id = -1;
+		glm::vec3 drift_velocity = glm::vec3(0.0f);
 	};
 
 	class LightningManager : public IManager {
@@ -62,6 +64,9 @@ namespace Boidsish {
 		float GetBranchProbability() const { return _branchProbability; }
 		void  SetBranchProbability(float p) { _branchProbability = p; }
 
+		float GetThickness() const { return _thickness; }
+		void  SetThickness(float t) { _thickness = t; }
+
 	private:
 		struct LightningVertex {
 			glm::vec3 pos;
@@ -82,6 +87,7 @@ namespace Boidsish {
 		float _frequencyMultiplier = 1.0f;
 		float _lifetimeMultiplier = 1.0f;
 		float _branchProbability = 0.15f;
+		float _thickness = 1.5f;
 
 		unsigned int _vao = 0;
 		unsigned int _vbo = 0;

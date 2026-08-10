@@ -118,8 +118,8 @@ namespace Boidsish {
 
         // Dry Grass
         GrassProperties dryGrass;
-        dryGrass.colorTop = glm::vec4(0.7f, 0.6f, 0.3f, 1.0f);
-        dryGrass.colorBottom = glm::vec4(0.3f, 0.25f, 0.1f, 1.0f);
+        dryGrass.colorTop = glm::vec4(0.9f, 0.9f, 0.3f, 1.0f);
+        dryGrass.colorBottom = glm::vec4(0.8f, 0.8f, 0.2f, 1.0f);
         dryGrass.height = 0.8f;
         dryGrass.width = 0.08f;
         dryGrass.density = 0.6f;
@@ -300,11 +300,6 @@ namespace Boidsish {
             glBindTexture(GL_TEXTURE_3D, res.aerialPerspectiveLUT);
             grass_shader_->setInt("u_aerialPerspectiveLUT", Constants::TextureUnit::AtmosphereAerialPerspective());
 
-            if (res.cloudShadowMap) {
-                glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereCloudShadow());
-                glBindTexture(GL_TEXTURE_2D, res.cloudShadowMap);
-                grass_shader_->setInt("u_cloudShadowMap", Constants::TextureUnit::AtmosphereCloudShadow());
-            }
 
             grass_shader_->setFloat("u_atmosphereHeight", res.atmosphereHeight);
 

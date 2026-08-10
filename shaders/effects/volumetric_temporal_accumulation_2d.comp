@@ -1,0 +1,138 @@
+#version 460 core
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(rgba16f, binding = 0) uniform image2D outAccumulated;
+
+uniform sampler2D uDepthTexture;
+uniform sampler2D uVelocityTexture;
+uniform sampler2D uPrevAccumulated;
+uniform sampler3D uVolumetric3D;
+
+uniform float uTemporalAlpha;
+
+#include "../types/temporal_data.glsl"
+
+const int NUM_CASCADES = 4;
+const float CASCADE_DISTANCES[4] = { 20.0, 60.0, 200.0, 1000.0 };
+
+void main() {
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = imageSize(outAccumulated);
+    if (pixel.x >= size.x || pixel.y >= size.y)
+        return;
+
+    vec2 uv = (vec2(pixel) + 0.5) / vec2(size);
+
+    // 1. Reconstruct view-space depth
+    float depth = texture(uDepthTexture, uv).r;
+    float z_ndc = depth * 2.0 - 1.0;
+    vec4 clipPos = vec4(uv * 2.0 - 1.0, z_ndc, 1.0);
+    vec4 viewPos = invProjection * clipPos;
+    viewPos /= (abs(viewPos.w) > 0.0001) ? viewPos.w : 1.0;
+
+    float linearZ = max(0.1, -viewPos.z);
+    if (depth >= 1.0) linearZ = 1000.0;
+
+    // Find cascade
+    int cascade = -1;
+    float z_near = 0.1;
+    float z_far = 0.0;
+
+    for (int i = 0; i < NUM_CASCADES; ++i) {
+        if (linearZ <= CASCADE_DISTANCES[i]) {
+            cascade = i;
+            z_far = CASCADE_DISTANCES[i];
+            if (i > 0) z_near = CASCADE_DISTANCES[i-1];
+            break;
+        }
+    }
+
+    vec4 current_vol = vec4(0.0, 0.0, 0.0, 1.0);
+    float w = 1.0;
+    if (cascade != -1) {
+        float slice = clamp(log(linearZ / z_near) / log(z_far / z_near), 0.0, 1.0);
+        w = (float(cascade) + slice) / float(NUM_CASCADES);
+        current_vol = texture(uVolumetric3D, vec3(uv, w));
+    } else {
+        current_vol = texture(uVolumetric3D, vec3(uv, 1.0));
+    }
+
+    if (any(isnan(current_vol))) current_vol = vec4(0.0, 0.0, 0.0, 1.0);
+
+    // If temporal accumulation is disabled or alpha is 0, just write current
+    if (uTemporalAlpha <= 0.0) {
+        imageStore(outAccumulated, pixel, current_vol);
+        return;
+    }
+
+    // 2. Reprojection using velocity
+    // Velocity is stored in uVelocityTexture. RG is velocity.
+    vec2 velocity = texture(uVelocityTexture, uv).rg;
+    vec2 prevUV = uv - velocity;
+
+    // Out of bounds check
+    if (prevUV.x < 0.0 || prevUV.x > 1.0 || prevUV.y < 0.0 || prevUV.y > 1.0) {
+        imageStore(outAccumulated, pixel, current_vol);
+        return;
+    }
+
+    vec4 history_vol = texture(uPrevAccumulated, prevUV);
+    if (any(isnan(history_vol))) history_vol = current_vol;
+
+    // 3. Physical relative depth validation to reduce ghosting
+    float prevDepth = texture(uDepthTexture, prevUV).r;
+    float prev_z_ndc = prevDepth * 2.0 - 1.0;
+    vec4 prevClipPos = vec4(prevUV * 2.0 - 1.0, prev_z_ndc, 1.0);
+    vec4 prevViewPos = invProjection * prevClipPos;
+    prevViewPos /= (abs(prevViewPos.w) > 0.0001) ? prevViewPos.w : 1.0;
+    float prevLinearZ = max(0.1, -prevViewPos.z);
+    if (prevDepth >= 1.0) prevLinearZ = 1000.0;
+
+    // Relative depth check clamped to maximum range to prevent off-camera volumetric clipping
+    float clampedZ = min(linearZ, 200.0);
+    float clampedPrevZ = min(prevLinearZ, 200.0);
+    float depthDiff = abs(clampedZ - clampedPrevZ);
+    float maxAllowedDiff = 0.15 * clampedZ + 1.5; // Relaxed tolerance (15% relative + 1.5m absolute)
+    if (depthDiff > maxAllowedDiff) {
+        imageStore(outAccumulated, pixel, current_vol);
+        return;
+    }
+
+    // 4. Neighborhood Clamping to reduce ghosting (highly effective)
+    vec4 m1 = vec4(0.0);
+    vec4 m2 = vec4(0.0);
+    for (int y = -1; y <= 1; y++) {
+        for (int x = -1; x <= 1; x++) {
+            // Sample neighboring froxels at the current slice w
+            vec2 offset = vec2(x, y) / vec2(160.0, 90.0);
+            vec4 val = texture(uVolumetric3D, vec3(uv + offset, w));
+            m1 += val;
+            m2 += val * val;
+        }
+    }
+    vec4 mean = m1 / 9.0;
+    vec4 stddev = sqrt(max(vec4(0.0), (m2 / 9.0) - (mean * mean)));
+
+    float spatialLum = dot(mean.rgb, vec3(0.2126, 0.7152, 0.0722));
+    float spatialStd = dot(stddev.rgb, vec3(0.2126, 0.7152, 0.0722));
+    float stability = 1.0 - clamp(spatialStd / (spatialLum + 0.001), 0.0, 1.0);
+
+    float gamma = mix(1.2, 3.0, stability);
+    vec4 minColor = mean - gamma * stddev;
+    vec4 maxColor = mean + gamma * stddev;
+    history_vol = clamp(history_vol, minColor, maxColor);
+
+    // 5. Accumulate
+    float activeAlpha = uTemporalAlpha;
+    float currentLum = dot(current_vol.rgb, vec3(0.2126, 0.7152, 0.0722));
+    float historyLum = dot(history_vol.rgb, vec3(0.2126, 0.7152, 0.0722));
+    if (stability > 0.8 && abs(currentLum - historyLum) > 0.1) {
+        activeAlpha *= 0.5; // Adapt faster to stable lighting changes
+    }
+
+    vec4 result = mix(current_vol, history_vol, activeAlpha);
+    result.rgb = clamp(result.rgb, vec3(0.0), vec3(1000.0));
+    result.a = clamp(result.a, 0.0, 1.0); // Transmittance must always be in [0, 1] range
+
+    imageStore(outAccumulated, pixel, result);
+}

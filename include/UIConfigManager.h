@@ -10,8 +10,10 @@
 #include "ui/LightningWidget.h"
 #include "ui/EffectWidget.h"
 #include "ui/RenderWidget.h"
+#include "ui/LightingWidget.h"
 #include "ui/AudioWidget.h"
 #include "ui/SystemWidget.h"
+#include "ui/MapWidget.h"
 #include "ui/ProfilerWidget.h"
 #include "ui/hud_widget.h"
 
@@ -58,6 +60,7 @@ namespace Boidsish {
 			std::vector<std::shared_ptr<IWidget>>         m_widgets;
 			bool                                          m_show_menus = false;
 			std::unordered_map<unsigned int, WindowState> m_window_states;
+			class Visualizer*                             m_visualizer = nullptr;
 		};
 	} // namespace UI
 } // namespace Boidsish

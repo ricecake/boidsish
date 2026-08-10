@@ -6,9 +6,11 @@
 #include "post_processing/PostProcessingManager.h"
 #include "post_processing/effects/BloomEffect.h"
 #include "post_processing/effects/DepthOfFieldEffect.h"
+#include "ui/BloomSettingsComponent.h"
 #include "post_processing/effects/FXAAEffect.h"
 #include "post_processing/effects/FilmGrainEffect.h"
 #include "post_processing/effects/UnifiedScreenSpaceEffect.h"
+#include "post_processing/effects/ScreenSpaceWeatherEffect.h"
 
 namespace Boidsish {
 	namespace UI {
@@ -83,6 +85,99 @@ namespace Boidsish {
 								float intensity = film_grain_effect->GetIntensity();
 								if (ImGui::SliderFloat("Intensity##FilmGrain", &intensity, 0.0f, 1.0f)) {
 									film_grain_effect->SetIntensity(intensity);
+								}
+							}
+						}
+
+						if (effect->GetName() == "Screen Space Weather" && is_enabled) {
+							auto weather_effect = std::dynamic_pointer_cast<PostProcessing::ScreenSpaceWeatherEffect>(effect);
+							if (weather_effect) {
+								if (ImGui::TreeNode("Heat Shimmer (Distortion)")) {
+									float strength = weather_effect->GetHeatStrength();
+									if (ImGui::SliderFloat("Strength##Heat", &strength, 0.0f, 2.0f)) {
+										weather_effect->SetHeatStrength(strength);
+									}
+									float scale = weather_effect->GetHeatScale();
+									if (ImGui::SliderFloat("Scale##Heat", &scale, 0.01f, 10.0f)) {
+										weather_effect->SetHeatScale(scale);
+									}
+									float speed = weather_effect->GetHeatSpeed();
+									if (ImGui::SliderFloat("Speed##Heat", &speed, 0.0f, 10.0f)) {
+										weather_effect->SetHeatSpeed(speed);
+									}
+									float width = weather_effect->GetHeatWidth();
+									if (ImGui::SliderFloat("Wave Width##Heat", &width, 0.01f, 1.0f)) {
+										weather_effect->SetHeatWidth(width);
+									}
+									float height = weather_effect->GetHeatHeight();
+									if (ImGui::SliderFloat("Wave Height##Heat", &height, 0.01f, 1.0f)) {
+										weather_effect->SetHeatHeight(height);
+									}
+									ImGui::TreePop();
+								}
+
+								if (ImGui::TreeNode("Wind-driven Blur")) {
+									float angle = weather_effect->GetWindAngle();
+									if (ImGui::SliderFloat("Wind Angle (Degrees)##Wind", &angle, 0.0f, 360.0f)) {
+										weather_effect->SetWindAngle(angle);
+									}
+									float speed = weather_effect->GetWindSpeed();
+									if (ImGui::SliderFloat("Wind Speed (Multiplier)##Wind", &speed, 0.0f, 20.0f)) {
+										weather_effect->SetWindSpeed(speed);
+									}
+									float blur_scale = weather_effect->GetWindBlurScale();
+									if (ImGui::SliderFloat("Blur Scale##Wind", &blur_scale, 0.0f, 0.1f, "%.4f")) {
+										weather_effect->SetWindBlurScale(blur_scale);
+									}
+									float gust_freq = weather_effect->GetWindGustFrequency();
+									if (ImGui::SliderFloat("Gust Frequency##Wind", &gust_freq, 0.01f, 10.0f)) {
+										weather_effect->SetWindGustFrequency(gust_freq);
+									}
+									float gust_strength = weather_effect->GetWindGustStrength();
+									if (ImGui::SliderFloat("Gust Strength##Wind", &gust_strength, 0.0f, 5.0f)) {
+										weather_effect->SetWindGustStrength(gust_strength);
+									}
+									float roughen = weather_effect->GetWindRoughenStrength();
+									if (ImGui::SliderFloat("Roughen Strength##Wind", &roughen, 0.0f, 5.0f)) {
+										weather_effect->SetWindRoughenStrength(roughen);
+									}
+									float streak_decay = weather_effect->GetWindStreakDecay();
+									if (ImGui::SliderFloat("Streak Decay##Wind", &streak_decay, 0.1f, 5.0f)) {
+										weather_effect->SetWindStreakDecay(streak_decay);
+									}
+									float tint_strength = weather_effect->GetWindTintStrength();
+									if (ImGui::SliderFloat("Tint Strength (Storm Mist)##Wind", &tint_strength, 0.0f, 2.0f)) {
+										weather_effect->SetWindTintStrength(tint_strength);
+									}
+									ImGui::TreePop();
+								}
+
+								if (ImGui::TreeNode("Frost & Ice Crystals")) {
+									bool manual = weather_effect->IsManualIceCoverage();
+									if (ImGui::Checkbox("Use Manual Coverage##Ice", &manual)) {
+										weather_effect->SetManualIceCoverage(manual);
+									}
+									if (manual) {
+										float coverage = weather_effect->GetIceCoverage();
+										if (ImGui::SliderFloat("Coverage##Ice", &coverage, 0.0f, 1.0f)) {
+											weather_effect->SetIceCoverage(coverage);
+										}
+									} else {
+										ImGui::Text("Coverage driven by current temperature.");
+									}
+									float scale = weather_effect->GetIceScale();
+									if (ImGui::SliderFloat("Crystal Scale##Ice", &scale, 1.0f, 30.0f)) {
+										weather_effect->SetIceScale(scale);
+									}
+									float edge_width = weather_effect->GetIceEdgeWidth();
+									if (ImGui::SliderFloat("Edge Width##Ice", &edge_width, 0.05f, 1.5f)) {
+										weather_effect->SetIceEdgeWidth(edge_width);
+									}
+									glm::vec3 color = weather_effect->GetIceColor();
+									if (ImGui::ColorEdit3("Ice Color##Ice", &color.x)) {
+										weather_effect->SetIceColor(color);
+									}
+									ImGui::TreePop();
 								}
 							}
 						}
@@ -234,103 +329,8 @@ namespace Boidsish {
 						}
 
 						if (effect->GetName() == "Bloom" && is_enabled) {
-							auto bloom_effect = std::dynamic_pointer_cast<PostProcessing::BloomEffect>(effect);
-							if (bloom_effect) {
-								float intensity = bloom_effect->GetIntensity();
-								if (ImGui::SliderFloat("Intensity##Bloom", &intensity, 0.0f, 2.0f)) {
-									bloom_effect->SetIntensity(intensity);
-								}
-								float threshold = bloom_effect->GetThreshold();
-								if (ImGui::SliderFloat("Threshold", &threshold, 0.0f, 3.0f)) {
-									bloom_effect->SetThreshold(threshold);
-								}
-								float min_intensity = bloom_effect->GetMinIntensity();
-								if (ImGui::SliderFloat("Min Intensity (AE)", &min_intensity, 0.0f, 5.0f)) {
-									bloom_effect->SetMinIntensity(min_intensity);
-								}
-								float max_intensity = bloom_effect->GetMaxIntensity();
-								if (ImGui::SliderFloat("Max Intensity (AE)", &max_intensity, 0.0f, 10.0f)) {
-									bloom_effect->SetMaxIntensity(max_intensity);
-								}
-
-								if (ImGui::BeginTabBar("BloomTabs")) {
-									auto drawSettings = [&](const char* label, PostProcessing::BloomEffect::LayerSettings& settings, bool isScene) {
-										if (ImGui::BeginTabItem(label)) {
-											ImGui::Text("Auto-Exposure");
-											ImGui::Checkbox("Enable AE", &settings.autoExposureEnabled);
-											if (settings.autoExposureEnabled) {
-												ImGui::SliderFloat("Target Luminance", &settings.targetLuminance, 0.01f, 1.0f);
-												ImGui::SliderFloat("Speed Up", &settings.speedUp, 0.1f, 10.0f);
-												ImGui::SliderFloat("Speed Down", &settings.speedDown, 0.1f, 10.0f);
-												ImGui::SliderFloat("Min Exposure", &settings.minExposure, 0.01f, 10.0f);
-												ImGui::SliderFloat("Max Exposure", &settings.maxExposure, 1.0f, 100.0f);
-												ImGui::SliderFloat("Center Weight", &settings.centerWeightTightness, 0.0f, 10.0f);
-												ImGui::SliderFloat2("Focus Point", &settings.focusPoint.x, 0.0f, 1.0f);
-												ImGui::SliderFloat("Histogram Low Cutoff", &settings.histogramLowCutoff, 0.0f, 1.0f);
-												ImGui::SliderFloat("Histogram High Cutoff", &settings.histogramHighCutoff, 0.0f, 1.0f);
-											}
-											ImGui::Separator();
-											ImGui::Checkbox("Tone Mapping", &settings.toneMappingEnabled);
-											if (settings.toneMappingEnabled) {
-												const char* modes[] = { "ACES", "Filmic", "Lottes", "Reinhard", "Reinhard II", "Uchimura", "Uncharted 2", "Unreal 3", "Debug" };
-												ImGui::Combo("Mode", &settings.toneMappingMode, modes, IM_ARRAYSIZE(modes));
-
-												if (settings.toneMappingMode == 5) { // Uchimura
-													ImGui::SliderFloat("Max Brightness (P)", &settings.uchimuraP, 0.1f, 10.0f);
-													ImGui::SliderFloat("Contrast (a)", &settings.uchimuraA, 0.1f, 5.0f);
-													ImGui::SliderFloat("Linear Start (m)", &settings.uchimuraM, 0.0f, 1.0f);
-													ImGui::SliderFloat("Linear Length (l)", &settings.uchimuraL, 0.0f, 1.0f);
-													ImGui::SliderFloat("Black (c)", &settings.uchimuraC, 1.0f, 5.0f);
-													ImGui::SliderFloat("Pedestal (b)", &settings.uchimuraB, 0.0f, 1.0f);
-												}
-											}
-
-											if (ImGui::TreeNode("Color Pipeline")) {
-												ImGui::Checkbox("Enable Auto-tune", &settings.autoTuneEnabled);
-												if (settings.autoTuneEnabled) {
-													ImGui::SliderFloat("Min Contrast", &settings.minContrast, 0.1f, 1.0f);
-													ImGui::SliderFloat("Max Contrast", &settings.maxContrast, 1.0f, 5.0f);
-													ImGui::SliderFloat("Target Brightness", &settings.targetBrightness, 0.1f, 2.0f);
-												}
-
-												ImGui::Separator();
-												ImGui::Text("ASC CDL");
-												ImGui::ColorEdit3("Slope", &settings.cdlSlope.x);
-												ImGui::ColorEdit3("Offset", &settings.cdlOffset.x);
-												ImGui::ColorEdit3("Power", &settings.cdlPower.x);
-												ImGui::SliderFloat("Saturation", &settings.cdlSaturation, 0.0f, 2.0f);
-
-												ImGui::Separator();
-												ImGui::Text("White Balance");
-												ImGui::SliderFloat("Temperature (K)", &settings.whiteTemp, 2000.0f, 12000.0f);
-												ImGui::SliderFloat("Tint", &settings.whiteTint, -1.0f, 1.0f);
-
-												if (isScene) {
-													ImGui::Separator();
-													ImGui::Text("Local Tone Mapping (Exposure Fusion)");
-													ImGui::Checkbox("Enable LTM", &settings.ltmEnabled);
-													if (settings.ltmEnabled) {
-														ImGui::SliderFloat("EV Spread", &settings.ltmEvSpread, 0.0f, 4.0f);
-														ImGui::SliderFloat("Well Exposed Target", &settings.ltmTarget, 0.0f, 1.0f);
-														ImGui::SliderFloat("Well Exposed Sigma", &settings.ltmSigma, 0.01f, 1.0f);
-														ImGui::SliderFloat("Weight Contrast", &settings.ltmWeightContrast, 0.0f, 1.0f);
-														ImGui::SliderFloat("Weight Saturation", &settings.ltmWeightSaturation, 0.0f, 1.0f);
-														ImGui::SliderFloat("Weight Exposedness", &settings.ltmWeightExposedness, 0.0f, 1.0f);
-														ImGui::SliderFloat("Boost Local Contrast", &settings.ltmBoostLocalContrast, 0.0f, 2.0f);
-													}
-												}
-												ImGui::TreePop();
-											}
-											ImGui::EndTabItem();
-										}
-									};
-
-									drawSettings("Scene", bloom_effect->GetSceneSettings(), true);
-									drawSettings("Sky", bloom_effect->GetSkySettings(), false);
-
-									ImGui::EndTabBar();
-								}
-							}
+							BloomSettingsComponent bloomSettings;
+							bloomSettings.Draw(m_visualizer);
 						}
 					}
 				}

@@ -57,6 +57,7 @@ namespace Boidsish {
 		packet.uniforms.ao = ao_;
 		packet.uniforms.use_texture = false;
 		packet.uniforms.is_colossal = is_colossal_;
+		packet.uniforms.material_type = material_type_;
 
 		packet.uniforms.dissolve_enabled = dissolve_enabled_ ? 1 : 0;
 		packet.uniforms.dissolve_plane_normal = dissolve_plane_normal_;
@@ -120,6 +121,7 @@ namespace Boidsish {
 			shader.setFloat("metallic", GetMetallic());
 			shader.setFloat("ao", GetAO());
 		}
+		shader.setInt("material_type", material_type_);
 
 		OnPreRender(shader);
 

@@ -1,0 +1,2 @@
+#pragma once
+#define BOIDSISH_BUILD_ID "@BOIDSISH_GIT_IDENT@"

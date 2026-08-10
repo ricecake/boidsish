@@ -68,6 +68,12 @@ namespace Boidsish {
 		T::RegisterConstant("TERRAIN_PATCH_VISIBILITY_BINDING", Constants::SsboBinding::TerrainPatchVisibility());
 		T::RegisterConstant("GRASS_TASKS_BINDING", Constants::SsboBinding::GrassTasks());
 		T::RegisterConstant("PARTICLE_STATS_BINDING", Constants::SsboBinding::ParticleStats());
+		T::RegisterConstant("CLOUD_SEEDS_BINDING", Constants::SsboBinding::CloudSeeds());
+		T::RegisterConstant("LIGHTS_BUFFER_BINDING", Constants::SsboBinding::LightsBuffer());
+		T::RegisterConstant("CLUSTER_GRID_BINDING", Constants::SsboBinding::ClusterGridBuffer());
+		T::RegisterConstant("SPACE_PROBE_BINDING", Constants::SsboBinding::SpaceProbe());
+		T::RegisterConstant("CDL_GRADING_LAYERS_BINDING", Constants::SsboBinding::CdlGradingLayers());
+		T::RegisterConstant("MLP_PARAMS_BINDING", Constants::SsboBinding::MlpParams());
 
 		// Limits and Sizes
 		T::RegisterConstant("MAX_LIGHTS", Constants::Class::Shadows::MaxLights());
@@ -83,7 +89,6 @@ namespace Boidsish {
 		// Texture unit bindings
 		T::RegisterConstant("PHASOR_TEXTURE_BINDING", Constants::TextureUnit::NoisePhasor());
 		T::RegisterConstant("ATMOSPHERE_TRANSMITTANCE_BINDING", Constants::TextureUnit::AtmosphereTransmittance());
-		T::RegisterConstant("ATMOSPHERE_CLOUD_SHADOW_BINDING", Constants::TextureUnit::AtmosphereCloudShadow());
 		T::RegisterConstant("WIND_TEXTURE_BINDING", Constants::TextureUnit::WindData());
 		T::RegisterConstant("LBM_WIND_TEXTURE_BINDING", Constants::TextureUnit::LbmWindData());
 		T::RegisterConstant("INTEGRATED_WIND_IMAGE_BINDING", Constants::TextureUnit::WindData());
@@ -94,7 +99,6 @@ namespace Boidsish {
 		T::RegisterConstant("BAKED_DISPLACEMENT_BINDING", Constants::TextureUnit::TerrainDisplacement());
 
 		T::RegisterConstant("TERRAIN_CHUNK_GRID_BINDING", Constants::TextureUnit::TerrainChunkGrid());
-		T::RegisterConstant("TERRAIN_MAX_HEIGHT_BINDING", Constants::TextureUnit::TerrainMaxHeight());
 		T::RegisterConstant("TERRAIN_BIOME_MAP_BINDING", Constants::TextureUnit::TerrainBiomeMap());
 		T::RegisterConstant("HIZ_TEXTURE_BINDING", Constants::TextureUnit::HiZ());
 
@@ -119,6 +123,12 @@ namespace Boidsish {
 
 		T::RegisterConstant("WEATHER_SCALARS_BINDING", Constants::TextureUnit::WeatherScalars());
 		T::RegisterConstant("WEATHER_AEROSOLS_BINDING", Constants::TextureUnit::WeatherAerosols());
+		T::RegisterConstant("CLOUD_WEATHER_BINDING", Constants::TextureUnit::CloudWeatherBake());
+		T::RegisterConstant("CLOUD_3D_BINDING", Constants::TextureUnit::Cloud3D());
+		T::RegisterConstant("CLOUD_WEATHER_MIN_MAX_BINDING", Constants::TextureUnit::CloudWeatherMinMax());
+		T::RegisterConstant("CLOUD_MIN_MAX_BOUNDING_BINDING", Constants::TextureUnit::CloudMinMaxBounding());
+		T::RegisterConstant("TERRAIN_COLOR_BLEND_BINDING", Constants::TextureUnit::TerrainColorBlend());
+		T::RegisterConstant("CLOUD_SHADOW_MAP_BINDING", Constants::TextureUnit::CloudShadowMap());
 	}
 
 } // namespace Boidsish

@@ -13,6 +13,7 @@
 #include <vector>
 #include <filesystem>
 
+#include "profiler.h"
 #include <GL/glew.h>
 #include <glm/glm.hpp>
 
@@ -230,7 +231,10 @@ public:
 
 	// activate the shader
 	// ------------------------------------------------------------------------
-	void use() { glUseProgram(ID); }
+	void use() {
+		PROJECT_PROFILE_SCOPE(m_shaderName.c_str());
+		glUseProgram(ID);
+	}
 
 	UniformGuard createGuard() { return UniformGuard(*this); }
 
@@ -455,7 +459,8 @@ public:
 	}
 
 protected:
-	mutable std::unordered_map<std::string, int>          m_UniformLocationCache;
+	std::string                                  m_shaderName = "unknown";
+	mutable std::unordered_map<std::string, int> m_UniformLocationCache;
 	mutable std::unordered_map<std::string, unsigned int> m_UniformBlockIndexCache;
 	mutable std::unordered_map<std::string, unsigned int> m_ProgramResourceIndexCache;
 	mutable std::unordered_map<std::string, int>          m_AttribLocationCache;
@@ -939,6 +944,7 @@ public:
 		const char* tessEvaluationPath = nullptr,
 		const char* geometryPath = nullptr
 	) {
+		m_shaderName = vertexPath;
 		// 1. retrieve the vertex/fragment source code from filePath
 		std::string vertexCode;
 		std::string fragmentCode;
@@ -1122,6 +1128,8 @@ public:
 	bool valid_{false}; // Track if shader compiled successfully
 
 	ComputeShader(const char* computePath) {
+		m_shaderName = computePath;
+		m_dispatchName = std::string("Dispatch: ") + m_shaderName;
 		std::string           computeCode;
 		std::set<std::string> includedFiles;
 
@@ -1204,9 +1212,13 @@ public:
 
 	void dispatch(unsigned int x, unsigned int y, unsigned int z) {
 		if (valid_) {
+			PROJECT_PROFILE_SCOPE(m_dispatchName.c_str());
 			glDispatchCompute(x, y, z);
 		}
 	}
+
+private:
+	std::string m_dispatchName;
 };
 
 #endif

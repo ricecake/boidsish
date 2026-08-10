@@ -191,6 +191,11 @@ namespace Boidsish {
 		 */
 		GLuint GetBiomeTexture() const { return biome_texture_; }
 
+		GLuint GetChunkGridTexture() const { return chunk_grid_texture_; }
+		GLuint GetTerrainShadowMapTexture() const { return terrain_shadow_map_texture_; }
+		GLuint GetBiomeUbo() const { return biome_ubo_; }
+		GLuint GetTerrainColorBlendTexture() const { return terrain_color_blend_texture_; }
+
 		/**
 		 * @brief Get the patch visibility SSBO.
 		 */
@@ -253,7 +258,7 @@ namespace Boidsish {
 		/**
 		 * @brief Update the global chunk grid and max height textures.
 		 */
-		void UpdateGridTextures(float world_scale, GLuint lighting_ubo = 0, GLintptr lighting_ubo_offset = 0, GLsizeiptr lighting_ubo_size = 0, float day_time = -1.0f);
+		void UpdateGridTextures(float world_scale);
 
 		/**
 		 * @brief Perform deferred terrain baking for queued chunks.
@@ -383,6 +388,7 @@ namespace Boidsish {
 		GLuint horizon_map_texture_ = 0;   // GL_TEXTURE_2D_ARRAY (RGBA16F: 8 directions)
 		GLuint terrain_shadow_map_texture_ = 0; // GL_TEXTURE_2D (R8)
 		GLuint biome_texture_ = 0;         // GL_TEXTURE_2D_ARRAY (RGBA8: low_idx, t, bake_flag, unused)
+		GLuint terrain_color_blend_texture_ = 0; // GL_TEXTURE_3D (RGBA8: height, moisture, roughness)
 		GLuint noise_texture_ = 0;
 		GLuint curl_texture_ = 0;
 		GLuint extra_noise_texture_ = 0;
@@ -391,8 +397,7 @@ namespace Boidsish {
 		GLuint biome_ubo_ = 0; // UBO for BiomeShaderProperties
 
 		// Global terrain grid resources
-		GLuint chunk_grid_texture_ = 0;      // GL_TEXTURE_2D (R16I: texture_slice index, -1 if none)
-		GLuint max_height_grid_texture_ = 0; // GL_TEXTURE_2D (R32F: max_y, mips for hierarchical check)
+		GLuint chunk_grid_texture_ = 0;      // GL_TEXTURE_2D (RG32F: texture_slice, maxHeight, mips for hierarchical check)
 		GLuint terrain_data_ubo_ = 0;        // UBO for grid parameters
 		GLuint probe_ssbo_ = 0;              // SSBO for per-chunk SH probes
 		GLuint bake_ssbo_ = 0;               // SSBO for BakeTask
@@ -415,6 +420,7 @@ namespace Boidsish {
 		GLuint grass_props_ubo_ = 0;
 
 		std::unique_ptr<ComputeShader> grid_mip_shader_;
+		std::unique_ptr<ComputeShader> height_mip_shader_;
 		std::unique_ptr<ComputeShader> probe_compute_shader_;
 		std::unique_ptr<ComputeShader> terrain_bake_shader_;
 		std::unique_ptr<ComputeShader> terrain_horizon_shader_;

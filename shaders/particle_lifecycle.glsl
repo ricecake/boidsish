@@ -111,6 +111,13 @@ void spawnCinder(inout Particle p, vec3 spawn_pos, vec3 random_vec, vec2 seed) {
 	p.vel = vec4(normalize(random_vec) * kCinderSpeed * rand(seed.yx), 12.0);
 }
 
+void spawnPoof(inout Particle p, vec3 spawn_pos, float lifeTimeModifier, vec3 random_vec, vec2 seed) {
+	p.pos = vec4(spawn_pos, kPoofLifetime * (0.8 + 0.4 * lifeTimeModifier));
+	// Start with high velocity
+	p.vel = vec4(normalize(random_vec) * 20.0 * (0.5 + 0.5 * rand(seed)), 10.0);
+	p.phase = rand(seed.yx) * 6.28; // Initial rotation
+}
+
 void spawnEmitterParticle(
 	inout Particle p,
 	uint           gid,
@@ -195,6 +202,8 @@ void spawnEmitterParticle(
 			spawnDebug(p, spawn_pos);
 		} else if (p.style == STYLE_CINDER) {
 			spawnCinder(p, spawn_pos, random_vec, seed);
+		} else if (p.style == STYLE_POOF) {
+			spawnPoof(p, spawn_pos, lifeTimeModifier, random_vec, seed);
 		}
 	}
 }

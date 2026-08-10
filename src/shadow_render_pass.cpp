@@ -228,6 +228,7 @@ namespace Boidsish {
 	}
 
 	void ShadowRenderPass::Execute(const FrameData& frame, ShapeRenderCallback render_shapes) {
+		PROJECT_PROFILE_SCOPE("ShadowRenderPass");
 		if (maps_to_update_.empty())
 			return;
 

@@ -39,6 +39,7 @@ namespace Boidsish {
 		float     ao = 1.0f;
 		glm::vec3 emissiveColor = glm::vec3(0.0f);
 		bool      has_vertex_colors = false;
+		int       material_type = 0;
 
 		// Constructor
 		Mesh(

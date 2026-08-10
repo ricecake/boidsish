@@ -57,7 +57,6 @@ namespace Boidsish {
 			void SetCloudCoverage(float coverage) {
 				if (std::abs(cloud_coverage_ - coverage) > 0.005f) {
 					cloud_coverage_ = coverage;
-					needs_weather_bake_ = true;
 				}
 			}
 
@@ -213,7 +212,6 @@ namespace Boidsish {
 			void SetWorldScale(float scale) {
 				if (std::abs(world_scale_ - scale) > 0.001f) {
 					world_scale_ = scale;
-					needs_weather_bake_ = true;
 				}
 			}
 
@@ -232,6 +230,12 @@ namespace Boidsish {
 			void SetCloudExtinction(float extinction) { cloud_extinction_ = extinction; }
 			float GetCloudExtinction() const { return cloud_extinction_; }
 
+			void SetCloudExtinctionColor(const glm::vec3& color) { cloud_extinction_color_ = color; }
+			glm::vec3 GetCloudExtinctionColor() const { return cloud_extinction_color_; }
+
+			void SetCloudAlbedo(const glm::vec3& albedo) { cloud_albedo_ = albedo; }
+			glm::vec3 GetCloudAlbedo() const { return cloud_albedo_; }
+
 			void SetCloudTemporalGamma(float gamma) { cloud_temporal_gamma_ = gamma; }
 			float GetCloudTemporalGamma() const { return cloud_temporal_gamma_; }
 
@@ -247,16 +251,32 @@ namespace Boidsish {
 			void SetCloudPhiDensity(float phi) { cloud_phi_density_ = phi; }
 			float GetCloudPhiDensity() const { return cloud_phi_density_; }
 
+			void SetCloudEnableTemporal(bool enable) { enable_temporal_ = enable; }
+			bool GetCloudEnableTemporal() const { return enable_temporal_; }
+
+			void SetCloudEnableSpatialFilter(bool enable) { enable_spatial_filter_ = enable; }
+			bool GetCloudEnableSpatialFilter() const { return enable_spatial_filter_; }
+
+			void SetCloudSvgfPasses(int passes) { cloud_svgf_passes_ = passes; }
+			int  GetCloudSvgfPasses() const { return cloud_svgf_passes_; }
+
+			void SetCloudSvgfHistoryBoost(float boost) { cloud_svgf_history_boost_ = boost; }
+			float GetCloudSvgfHistoryBoost() const { return cloud_svgf_history_boost_; }
+
+			void SetCloudSvgfHistoryThreshold(float threshold) { cloud_svgf_history_threshold_ = threshold; }
+			float GetCloudSvgfHistoryThreshold() const { return cloud_svgf_history_threshold_; }
+
+			void FlushHistory() { has_valid_history_ = false; }
+
 		private:
 			void InitializePackedResources();
 			void InitializeTemporalResources();
 
 			std::unique_ptr<ComputeShader> cloud_render_shader_;
+			std::unique_ptr<ComputeShader> cloud_bounding_shader_;
 			std::unique_ptr<Shader>        composite_shader_;
 			std::unique_ptr<ComputeShader> temporal_shader_;
 			std::unique_ptr<ComputeShader> spatial_filter_shader_;
-
-			std::unique_ptr<ComputeShader> cloud_bake_shader_;
 
 			float                          time_ = 0.0f;
 			float                          last_time_ = 0.0f;
@@ -273,17 +293,17 @@ namespace Boidsish {
 			float     cloud_warp_ = 75.0f;
 			glm::vec3 cloud_color_ = WeatherConstants::DefaultCloudColor;
 
-			float cloud_phase_g1_ = 0.875;
-			float cloud_phase_g2_ = -0.3f;
-			float cloud_phase_alpha_ = 0.181f;
-			float cloud_phase_isotropic_ = 0.426f;
-			float cloud_powder_scale_ = 0.125f;
-			float cloud_powder_multiplier_ = 5.000f;
+			float cloud_phase_g1_ = 0.850;
+			float cloud_phase_g2_ = -0.2f;
+			float cloud_phase_alpha_ = 0.5f;
+			float cloud_phase_isotropic_ = 0.05f;
+			float cloud_powder_scale_ = 0.00125f;
+			float cloud_powder_multiplier_ = 50.000f;
 			float cloud_powder_local_scale_ = 5.000f;
-			float cloud_shadow_optical_depth_multiplier_ = 0.05;
-			float cloud_shadow_step_multiplier_ = 0.15f;
-			float cloud_sun_light_scale_ = 25.0f;
-			float cloud_moon_light_scale_ = 2.0f;
+			float cloud_shadow_optical_depth_multiplier_ = 2.0;
+			float cloud_shadow_step_multiplier_ = 1.00f;
+			float cloud_sun_light_scale_ = 1.0f;
+			float cloud_moon_light_scale_ = 1.0f;
 			float cloud_beer_powder_mix_ = 0.600f;
 
 			float cloud_flow_speed_ = 0.250f;
@@ -305,7 +325,7 @@ namespace Boidsish {
 			float     rayleigh_scale_height_ = WeatherConstants::RayleighScaleHeight.normal;
 			float     mie_scale_height_ = WeatherConstants::MieScaleHeight.normal;
 			float     color_variance_scale_ = 1.0f;
-			float     color_variance_strength_ = 0.0f;
+			float     color_variance_strength_ = 0.50f;
 			float     sun_aureole_strength_ = 0.5f;
 			float     cirrus_opacity_ = 0.3f;
 
@@ -316,6 +336,7 @@ namespace Boidsish {
 			GLuint packed_texture_ = 0;
 			GLuint packed_depth_texture_ = 0;
 			GLuint packed_velocity_texture_ = 0;
+			GLuint bounding_texture_ = 0;
 
 			GLuint filtered_texture_ = 0;
 			GLuint spatial_aux_texture_ = 0;
@@ -328,20 +349,26 @@ namespace Boidsish {
 			glm::mat4 prev_view_projection_ = glm::mat4(1.0f);
 			bool      has_valid_history_ = false;
 
-			GLuint cloud_weather_texture_ = 0;
-			bool   needs_weather_bake_ = true;
 			float  world_scale_ = 1.0f;
 
 			// Cloud Quality Defaults
-			float cloud_max_ray_distance_ = 100000.0f;
+			float cloud_max_ray_distance_ = 175000.0f;
 			int   cloud_min_samples_ = 32;
 			int   cloud_max_samples_ = 96;
-			float cloud_extinction_ = 0.01f;
-			float cloud_temporal_gamma_ = 1.5f;
+			float cloud_extinction_ = 1.0f;
+			glm::vec3 cloud_extinction_color_ = glm::vec3(1.0f, 1.0f, 1.0f);
+			glm::vec3 cloud_albedo_ = glm::vec3(0.85f);
+			float cloud_temporal_gamma_ = 1.1f;
 			float cloud_max_history_length_ = 32.0f;
 			float cloud_phi_luma_ = 20.0f;
 			float cloud_phi_depth_ = 1.5f;
 			float cloud_phi_density_ = 0.05f;
+
+			bool  enable_temporal_ = true;
+			bool  enable_spatial_filter_ = true;
+			int   cloud_svgf_passes_ = 2;
+			float cloud_svgf_history_boost_ = 4.0f;
+			float cloud_svgf_history_threshold_ = 10.0f;
 
 		};
 

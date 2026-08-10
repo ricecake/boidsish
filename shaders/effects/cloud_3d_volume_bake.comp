@@ -1,0 +1,89 @@
+#version 460 core
+
+layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
+
+layout(binding = 0, rgba16f) uniform image3D outVolume;
+
+#define CLOUD_BAKE_SHADER
+#include "../helpers/clouds.glsl"
+#include "lygia/generative/psrdnoise.glsl"
+
+float remap_bake(float value, float low1, float high1, float low2, float high2) {
+	return low2 + (value - low1) * (high2 - low2) / max(0.0001, (high1 - low1));
+}
+
+
+float localFbm(vec3 p, vec3 period) {
+	float val = 0.0;
+	float amp = 0.5;
+	float freq = 1.0;
+	for (int i = 0; i < 3; i++) {
+		WorleyData3D worleyDetails = worley3d_tiling_id(p * freq, period * freq);
+		val += amp * worleyDetails.f1_dist;// * (1-(freq*p.y));
+		// val -= amp * 0.25*(worleyDetails.f2_dist - worleyDetails.f1_dist);
+		amp *= 0.5;
+		freq *= 2.0;
+	}
+
+	// amp = 0.5;
+	// freq = 1.0;
+	// for (int i = 0; i < 3; i++) {
+	// 	WorleyData3D worleyDetails = worley3d_tiling_id(p * freq, period * freq);
+	// 	// val += amp * worleyDetails.f1_dist;
+	// 	val -= amp * (worleyDetails.f2_dist - worleyDetails.f1_dist)  * (1-(freq*p.y));
+	// 	amp *= 0.35;
+	// 	freq *= 1.50;
+	// }
+
+	return val;
+}
+
+
+float computeSimplexWorley(vec3 p) {
+	// Base Simplex noise (normalized to [0, 1])
+	float simplex = psrdnoise(p, vec3(10.0, 1.0, 10.0));
+	simplex = clamp(simplex * 0.5 + 0.5, 0.0, 1.0);
+
+	float worleyFbm = localFbm(p, vec3(5, 1, 5));
+
+	float baseHeightGradient = mix(0.9, 0.6, smoothstep(0.15, 0.85, p.y));
+
+	// Simplex noise carved/remapped by Worley FBM
+	float simplexWorley = remap_bake(simplex, worleyFbm, 1.0, 0.0, 1.0);
+	// float simplexWorley = mix(worleyFbm, simplex, smoothstep(0.15, 0.85, p.y));
+	return clamp(simplexWorley, 0.0, 1.0);
+}
+
+void main() {
+	ivec3 voxel = ivec3(gl_GlobalInvocationID.xyz);
+	ivec3 size = imageSize(outVolume); // 128, 128, 128
+	if (voxel.x >= size.x || voxel.y >= size.y || voxel.z >= size.z) return;
+
+	vec3 p = vec3(voxel);// / vec3(size); // [0, 1]
+
+	// 1. R Channel: Tiling 3D noise (Simplex noise carved by Worley FBM in HZD fashion)
+	float noiseVal = computeSimplexWorley(p);
+
+	// 2. G Channel: Local Ambient Occlusion.
+	float densitySum = 0.0;
+	const int AO_SAMPLES = 8;
+	vec3 ao_offsets[AO_SAMPLES] = vec3[](
+		vec3(0.0, 0.02, 0.0),
+		vec3(0.0, 0.05, 0.0),
+		vec3(0.0, 0.10, 0.0),
+		vec3(0.02, 0.04, 0.02),
+		vec3(-0.02, 0.04, -0.02),
+		vec3(0.03, 0.08, -0.03),
+		vec3(-0.03, 0.08, 0.03),
+		vec3(0.0, 0.15, 0.0)
+	);
+
+	for (int i = 0; i < AO_SAMPLES; i++) {
+		vec3 sample_uvw = fract(p + ao_offsets[i]);
+		float sampleNoise = computeSimplexWorley(sample_uvw);
+		densitySum += sampleNoise;
+	}
+	float aoVal = clamp(1.0 - (densitySum / float(AO_SAMPLES)) * 1.5, 0.0, 1.0);
+
+	imageStore(outVolume, voxel, vec4(noiseVal, aoVal, 1.0, 1.0));
+}
