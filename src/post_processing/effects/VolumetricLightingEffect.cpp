@@ -125,7 +125,21 @@ namespace Boidsish {
 
 			// 1. Injection
 			injection_shader_->use();
-			if (shadow_mgr) shadow_mgr->BindForRendering(*injection_shader_);
+			if (shadow_mgr && shadow_mgr->IsInitialized() && light_mgr) {
+				shadow_mgr->BindForRendering(*injection_shader_);
+				std::array<int, 10> shadow_indices;
+				shadow_indices.fill(-1);
+				const auto& lights = light_mgr->GetLights();
+				for (size_t j = 0; j < lights.size() && j < 10; ++j) {
+					shadow_indices[j] = lights[j].shadow_map_index;
+				}
+				injection_shader_->setIntArray("lightShadowIndices", shadow_indices.data(), 10);
+			} else {
+				injection_shader_->setInt("shadowMaps", Constants::TextureUnit::ShadowMaps());
+				std::array<int, 10> shadow_indices;
+				shadow_indices.fill(-1);
+				injection_shader_->setIntArray("lightShadowIndices", shadow_indices.data(), 10);
+			}
 			if (terrain_mgr) terrain_mgr->BindTerrainData(*injection_shader_);
 			if (atmos_mgr) atmos_mgr->BindToShader(*injection_shader_);
 			if (fire_mgr) fire_mgr->BindBuffers(*injection_shader_);
