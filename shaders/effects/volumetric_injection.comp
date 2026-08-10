@@ -187,7 +187,7 @@ void main() {
 
             // Check shadow maps for scene objects (buildings, entities).
             // We use the version that skips redundant terrain raycasts for efficiency.
-            shadow = min(shadow, calculateShadow(i, worldPos, vec3(0, 1, 0), L));
+            shadow = min(shadow, calculateShadowVolumetric(i, worldPos, L));
         }
 
         if (i == 0) {
@@ -232,7 +232,7 @@ void main() {
         // Simple shadow map lookup for point/spot lights
         float shadow = 1.0;
         if ((lights[i].flags & LIGHT_FLAG_CASTS_SHADOW) != 0) {
-            shadow = calculateShadow(i, worldPos, vec3(0.0), L);
+            shadow = calculateShadowVolumetric(i, worldPos, L);
             shadow = clamp(mix(1.0, shadow, uShadowSensitivity), 0.0, 1.0);
         }
 
@@ -260,8 +260,11 @@ void main() {
 
         float cosTheta = dot(-V, L);
         float miePhase = henyeyGreenstein(uAnisotropy, cosTheta);
-        float shadow = calculateShadow(i, worldPos, vec3(0,1,0), L);
-        shadow = clamp(mix(1.0, shadow, uShadowSensitivity), 0.0, 1.0);
+        float shadow = 1.0;
+        if ((lights[i].flags & LIGHT_FLAG_CASTS_SHADOW) != 0) {
+            shadow = calculateShadowVolumetric(i, worldPos, L);
+            shadow = clamp(mix(1.0, shadow, uShadowSensitivity), 0.0, 1.0);
+        }
 
         radiance += lights[i].color * lights[i].intensity * atten * shadow * miePhase * s.mie;
     }

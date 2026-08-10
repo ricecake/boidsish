@@ -146,6 +146,56 @@ float terrainShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) {
 #endif
 
 /**
+ * Fast single-tap shadow lookup for volumetric injection pass to avoid heavy PCF loop overhead.
+ */
+float calculateShadowVolumetric(int light_index, vec3 frag_pos, vec3 light_dir) {
+	int shadow_index = lightShadowIndices[light_index];
+
+	if (shadow_index < 0 || numShadowLights <= 0) {
+		return 1.0;
+	}
+
+	int cascade = 0;
+	if (lights[light_index].type == LIGHT_TYPE_DIRECTIONAL) {
+		float depth = dot(frag_pos - viewPos, viewDir);
+		cascade = -1;
+		for (int i = 0; i < MAX_CASCADES; ++i) {
+			if (depth < cascadeSplits[i]) {
+				cascade = i;
+				break;
+			}
+		}
+		if (cascade == -1) {
+			cascade = MAX_CASCADES - 1;
+		}
+		shadow_index += cascade;
+	}
+
+	if (shadow_index >= MAX_SHADOW_MAPS) {
+		return 1.0;
+	}
+
+	vec4 frag_pos_light_space = lightSpaceMatrices[shadow_index] * vec4(frag_pos, 1.0);
+
+	if (abs(frag_pos_light_space.w) < 0.0001) {
+		return 1.0;
+	}
+	vec3 proj_coords = frag_pos_light_space.xyz / frag_pos_light_space.w;
+	proj_coords = proj_coords * 0.5 + 0.5;
+
+	if (proj_coords.x < 0.0 || proj_coords.x > 1.0 || proj_coords.y < 0.0 || proj_coords.y > 1.0 ||
+	    proj_coords.z > 1.0 || proj_coords.z < 0.0) {
+		return 1.0;
+	}
+
+	float current_depth = proj_coords.z;
+	float bias = 0.001 * (1.0 + float(cascade) * 0.8);
+
+	vec4 shadow_coord = vec4(proj_coords.xy, float(shadow_index), current_depth - bias);
+	return texture(shadowMaps, shadow_coord);
+}
+
+/**
  * Calculate shadow factor for a fragment position using a specific shadow map.
  * Returns 0.0 if fully in shadow, 1.0 if fully lit.
  * Uses PCF (Percentage Closer Filtering) for soft shadow edges.
