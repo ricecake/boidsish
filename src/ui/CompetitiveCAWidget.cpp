@@ -13,7 +13,7 @@ namespace Boidsish {
 
 		void CompetitiveCAWidget::Draw() {
 			if (!m_initialized) {
-				m_ca.Initialize(256, 256);
+				m_ca.Initialize(256, 256, m_mode);
 				m_initialized = true;
 			}
 
@@ -81,17 +81,40 @@ namespace Boidsish {
 				ImGui::TextColored(ImVec4(0, 1, 1, 1), "System Parameters:");
 
 				// System Mode
-				const char* modes[] = { "Continuous Growth", "Continuous Cyclic (RPS)", "Soft Voting / Threshold" };
-				ImGui::Combo("CA Mode", &m_mode, modes, 3);
+				const char* modes[] = {
+					"Continuous Growth",
+					"Continuous Cyclic (RPS)",
+					"Soft Voting / Threshold",
+					"Energy-Conserving (2-Pass)"
+				};
+				int old_mode = m_mode;
+				if (ImGui::Combo("CA Mode", &m_mode, modes, 4)) {
+					if (old_mode != m_mode) {
+						// Re-initialize texture configurations on mode transition
+						m_ca.Initialize(256, 256, m_mode);
+					}
+				}
 
 				ImGui::SliderInt("Species Count", &m_species_count, 1, 4);
-				ImGui::SliderInt("Lobe Radius", &m_radius, 1, 5);
+
+				// Only show neighborhood radius for continuous-state modes
+				if (m_mode < 3) {
+					ImGui::SliderInt("Lobe Radius", &m_radius, 1, 5);
+				}
 
 				ImGui::SliderFloat("Growth Rate", &m_growth, 0.0f, 5.0f, "%.2f");
-				ImGui::SliderFloat("Competition / Limit", &m_competition, 0.0f, 5.0f, "%.2f");
-				ImGui::SliderFloat("Diffusion / Blend", &m_diffusion, 0.0f, 2.0f, "%.2f");
-				ImGui::SliderFloat("Sharpness", &m_sharpness, 0.0f, 5.0f, "%.2f");
-				ImGui::SliderFloat("Edge Fuzziness", &m_fuzziness, 0.0f, 1.0f, "%.2f");
+
+				if (m_mode == 3) {
+					ImGui::TextColored(ImVec4(1, 0.5f, 0, 1), "Note: Competition acts as seed threshold.");
+				}
+				ImGui::SliderFloat(m_mode == 3 ? "Threshold" : "Competition / Limit", &m_competition, 0.0f, 5.0f, "%.2f");
+
+				if (m_mode < 3) {
+					ImGui::SliderFloat("Diffusion / Blend", &m_diffusion, 0.0f, 2.0f, "%.2f");
+					ImGui::SliderFloat("Sharpness", &m_sharpness, 0.0f, 5.0f, "%.2f");
+					ImGui::SliderFloat("Edge Fuzziness", &m_fuzziness, 0.0f, 1.0f, "%.2f");
+				}
+
 				ImGui::SliderFloat("Speed (dt)", &m_dt, 0.01f, 2.0f, "%.2f");
 
 				ImGui::Separator();
@@ -101,7 +124,7 @@ namespace Boidsish {
 				ImGui::Combo("Seed Pattern", &m_seed_pattern, patterns, 4);
 
 				if (ImGui::Button("Re-seed Grid", ImVec2(120, 0))) {
-					m_ca.Seed(m_seed_pattern, m_species_count);
+					m_ca.Seed(m_seed_pattern, m_species_count, m_mode);
 				}
 
 				ImGui::Spacing();

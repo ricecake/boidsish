@@ -18,7 +18,7 @@ namespace Boidsish {
 		CompetitiveCA& operator=(const CompetitiveCA&) = delete;
 
 		// Initialize state textures for the CA (ping-pong + display)
-		void Initialize(int width, int height);
+		void Initialize(int width, int height, int mode = 0);
 
 		// Run one step of the cellular automata using the compute shader
 		void Step(
@@ -34,7 +34,7 @@ namespace Boidsish {
 		);
 
 		// Re-seed the texture with various CPU-based patterns
-		void Seed(int pattern, int species_count = 4);
+		void Seed(int pattern, int species_count = 4, int mode = 0);
 
 		// Getters for textures and dimensions
 		GLuint GetCurrentReadTexture() const { return texture_ids_[current_read_idx_]; }

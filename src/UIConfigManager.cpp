@@ -71,7 +71,7 @@ namespace Boidsish {
 			AddWidget(std::make_shared<SystemWidget>(visualizer, scene_manager));
 			AddWidget(std::make_shared<ProfilerWidget>());
 			AddWidget(std::make_shared<SpaceProbeWidget>(visualizer));
-			AddWidget(std::make_shared<CompetitiveCAWidget>(visualizer));
+			AddWidget(std::make_shared<UI::CompetitiveCAWidget>(visualizer));
 
 			// Register Space Probe HUD element
 			hud_manager.AddElement(std::make_shared<HudSpaceProbe>(visualizer));
