@@ -110,7 +110,7 @@ namespace Boidsish {
 
             if (atmos_effect) {
                 glActiveTexture(GL_TEXTURE0);
-                glBindTexture(GL_TEXTURE_2D, atmos_effect->GetCloudWeatherTexture());
+                glBindTexture(GL_TEXTURE_2D, atmosphere->GetCloudWeatherTexture());
                 m_mapShader->setInt("uCloudWeatherTex", 0);
             }
 
@@ -126,12 +126,14 @@ namespace Boidsish {
             glBindTexture(GL_TEXTURE_2D, weather->GetLbmAerosolTexture());
             m_mapShader->setInt("uLbmAerosolTex", 3);
 
-            glActiveTexture(GL_TEXTURE4);
-            glBindTexture(GL_TEXTURE_2D, atmosphere->GetCloudShadowMap());
-            m_mapShader->setInt("uCloudShadowTex", 4);
+        //     glActiveTexture(GL_TEXTURE4);
+        //     glBindTexture(GL_TEXTURE_2D, atmosphere->GetCloudShadowMap());
+		// reg.PublishTexture(Constants::TextureUnit::CloudShadowMap(), _cloudShadowTexture, GL_TEXTURE_2D_ARRAY);
 
-            float shadowMapSize = atmosphere->GetCloudShadowWorldSize();
-            m_mapShader->setFloat("uCloudShadowWorldSize", shadowMapSize);
+        //     m_mapShader->setInt("uCloudShadowTex", 4);
+
+        //     float shadowMapSize = atmosphere->GetCloudShadowWorldSize();
+        //     m_mapShader->setFloat("uCloudShadowWorldSize", shadowMapSize);
 
             glBindVertexArray(m_quadVao);
             glDrawArrays(GL_TRIANGLES, 0, 6);
