@@ -167,7 +167,10 @@ namespace Boidsish {
 		float GetBoundingRadius() const override;
 
 	protected:
-		void MarkDirty() const { mesh_dirty_ = true; }
+		void MarkDirty() const {
+			mesh_dirty_ = true;
+			const_cast<DelaunayBlob*>(this)->Shape::MarkDirty();
+		}
 
 		void UpdateMeshBuffers() const;
 		void InitializeBuffers() const;

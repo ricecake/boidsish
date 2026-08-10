@@ -20,6 +20,7 @@
 #include "ui/ProfilerWidget.h"
 #include "ui/SpaceProbeWidget.h"
 #include "ui/hud_widget.h"
+#include "ui/SpawnablesWidget.h"
 #include "service_locator.h"
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
@@ -60,6 +61,7 @@ namespace Boidsish {
 		void UIConfigManager::SetupDefaultWidgets(Visualizer& visualizer, SceneManager& scene_manager, HudManager& hud_manager) {
 			m_visualizer = &visualizer;
 			AddWidget(std::make_shared<HudWidget>(hud_manager));
+			AddWidget(std::make_shared<SpawnablesWidget>(visualizer));
 			AddWidget(std::make_shared<EnvironmentWidget>(visualizer));
 			AddWidget(std::make_shared<MoodWidget>(visualizer));
 			AddWidget(std::make_shared<LightningWidget>(visualizer));
@@ -89,6 +91,114 @@ namespace Boidsish {
 			ImGui_ImplOpenGL3_NewFrame();
 			ImGui_ImplGlfw_NewFrame();
 			ImGui::NewFrame();
+
+			if (m_show_menus) {
+				if (ImGui::BeginMainMenuBar()) {
+					if (ImGui::BeginMenu("Spawnables")) {
+						if (ImGui::MenuItem("Hot Air Balloon")) {
+							auto widget = GetWidget<SpawnablesWidget>();
+							if (widget) {
+								widget->SetVisible(true);
+							}
+						}
+						ImGui::EndMenu();
+					}
+
+					if (ImGui::BeginMenu("Windows")) {
+						auto widget_spawn = GetWidget<SpawnablesWidget>();
+						if (widget_spawn) {
+							bool visible = widget_spawn->IsVisible();
+							if (ImGui::MenuItem("Spawnables", nullptr, &visible)) {
+								widget_spawn->SetVisible(visible);
+							}
+						}
+
+						auto widget_env = GetWidget<EnvironmentWidget>();
+						if (widget_env) {
+							bool visible = widget_env->IsVisible();
+							if (ImGui::MenuItem("Environment", nullptr, &visible)) {
+								widget_env->SetVisible(visible);
+							}
+						}
+
+						auto widget_mood = GetWidget<MoodWidget>();
+						if (widget_mood) {
+							bool visible = widget_mood->IsVisible();
+							if (ImGui::MenuItem("Mood Engine", nullptr, &visible)) {
+								widget_mood->SetVisible(visible);
+							}
+						}
+
+						auto widget_light = GetWidget<LightningWidget>();
+						if (widget_light) {
+							bool visible = widget_light->IsVisible();
+							if (ImGui::MenuItem("Lightning Control", nullptr, &visible)) {
+								widget_light->SetVisible(visible);
+							}
+						}
+
+						auto widget_eff = GetWidget<EffectWidget>();
+						if (widget_eff) {
+							bool visible = widget_eff->IsVisible();
+							if (ImGui::MenuItem("Effects", nullptr, &visible)) {
+								widget_eff->SetVisible(visible);
+							}
+						}
+
+						auto widget_rend = GetWidget<RenderWidget>();
+						if (widget_rend) {
+							bool visible = widget_rend->IsVisible();
+							if (ImGui::MenuItem("Render Settings", nullptr, &visible)) {
+								widget_rend->SetVisible(visible);
+							}
+						}
+
+						auto widget_ltg = GetWidget<LightingWidget>();
+						if (widget_ltg) {
+							bool visible = widget_ltg->IsVisible();
+							if (ImGui::MenuItem("Lighting", nullptr, &visible)) {
+								widget_ltg->SetVisible(visible);
+							}
+						}
+
+						auto widget_aud = GetWidget<AudioWidget>();
+						if (widget_aud) {
+							bool visible = widget_aud->IsVisible();
+							if (ImGui::MenuItem("Audio Controls", nullptr, &visible)) {
+								widget_aud->SetVisible(visible);
+							}
+						}
+
+						auto widget_sys = GetWidget<SystemWidget>();
+						if (widget_sys) {
+							bool visible = widget_sys->IsVisible();
+							if (ImGui::MenuItem("System", nullptr, &visible)) {
+								widget_sys->SetVisible(visible);
+							}
+						}
+
+						auto widget_prof = GetWidget<ProfilerWidget>();
+						if (widget_prof) {
+							bool visible = widget_prof->IsVisible();
+							if (ImGui::MenuItem("Profiler", nullptr, &visible)) {
+								widget_prof->SetVisible(visible);
+							}
+						}
+
+						auto widget_probe = GetWidget<SpaceProbeWidget>();
+						if (widget_probe) {
+							bool visible = widget_probe->IsVisible();
+							if (ImGui::MenuItem("Space Probe", nullptr, &visible)) {
+								widget_probe->SetVisible(visible);
+							}
+						}
+
+						ImGui::EndMenu();
+					}
+
+					ImGui::EndMainMenuBar();
+				}
+			}
 
 			for (const auto& widget : m_widgets) {
 				if (widget->IsHud() || m_show_menus) {
