@@ -2,6 +2,7 @@
 #include "graphics.h"
 #include "imgui.h"
 #include <iostream>
+#include <algorithm>
 
 namespace Boidsish {
 	namespace UI {
@@ -43,7 +44,7 @@ namespace Boidsish {
 				float displaySize = std::min(contentRegion.x, 340.0f);
 				ImGui::SetCursorPosX((contentRegion.x - displaySize) * 0.5f);
 				ImGui::Image(
-					(void*)(intptr_t)m_ca.GetCurrentReadTexture(),
+					(void*)(intptr_t)m_ca.GetDisplayTexture(),
 					ImVec2(displaySize, displaySize),
 					ImVec2(0, 1),
 					ImVec2(1, 0)

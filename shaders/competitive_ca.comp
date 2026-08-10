@@ -4,6 +4,7 @@ layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
 layout(rgba32f, binding = 0) uniform readonly image2D u_read_state;
 layout(rgba32f, binding = 1) uniform writeonly image2D u_write_state;
+layout(rgba32f, binding = 2) uniform writeonly image2D u_display_state;
 
 uniform int u_mode; // 0 = Continuous Growth, 1 = Continuous Cyclic, 2 = Soft Voting
 uniform float u_dt;
@@ -123,4 +124,21 @@ void main() {
 	new_C = clamp(new_C, 0.0, 1.0);
 
 	imageStore(u_write_state, pos, new_C);
+
+	// --- Resolve to a high-contrast fully opaque display color ---
+	vec3 display_color = vec3(0.05, 0.05, 0.08); // Solid slate background
+
+	vec3 color_a = vec3(1.0, 0.1, 0.1);   // Vivid Red
+	vec3 color_b = vec3(0.1, 0.9, 0.1);   // Vivid Green
+	vec3 color_c = vec3(0.1, 0.4, 1.0);   // Electric Blue
+	vec3 color_d = vec3(1.0, 0.9, 0.1);   // Gold/Yellow
+
+	float total_conc = new_C.r + new_C.g + new_C.b + new_C.a;
+	if (total_conc > 0.001) {
+		vec3 active_color = (new_C.r * color_a + new_C.g * color_b + new_C.b * color_c + new_C.a * color_d) / total_conc;
+		float blend_factor = clamp(total_conc, 0.0, 1.0);
+		display_color = mix(display_color, active_color, blend_factor);
+	}
+
+	imageStore(u_display_state, pos, vec4(display_color, 1.0));
 }

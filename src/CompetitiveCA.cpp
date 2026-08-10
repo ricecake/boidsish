@@ -4,6 +4,7 @@
 #include <cmath>
 #include <iostream>
 #include <vector>
+#include <algorithm>
 
 namespace Boidsish {
 
@@ -22,7 +23,9 @@ namespace Boidsish {
 		current_read_idx_ = 0;
 
 		glGenTextures(2, texture_ids_);
+		glGenTextures(1, &display_texture_);
 
+		// Initialize state textures
 		for (int i = 0; i < 2; ++i) {
 			glBindTexture(GL_TEXTURE_2D, texture_ids_[i]);
 			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width_, height_, 0, GL_RGBA, GL_FLOAT, nullptr);
@@ -31,6 +34,15 @@ namespace Boidsish {
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 		}
+
+		// Initialize display texture
+		glBindTexture(GL_TEXTURE_2D, display_texture_);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width_, height_, 0, GL_RGBA, GL_FLOAT, nullptr);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
 		glBindTexture(GL_TEXTURE_2D, 0);
 
 		// Seed automatically with random noise on creation
@@ -42,6 +54,10 @@ namespace Boidsish {
 			glDeleteTextures(2, texture_ids_);
 			texture_ids_[0] = 0;
 			texture_ids_[1] = 0;
+		}
+		if (display_texture_ != 0) {
+			glDeleteTextures(1, &display_texture_);
+			display_texture_ = 0;
 		}
 	}
 
@@ -75,6 +91,8 @@ namespace Boidsish {
 		glBindImageTexture(0, GetCurrentReadTexture(), 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA32F);
 		// Unit 1: Write (writeonly)
 		glBindImageTexture(1, GetCurrentWriteTexture(), 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
+		// Unit 2: Display (writeonly)
+		glBindImageTexture(2, display_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
 
 		// Set uniforms
 		compute_shader_->setInt("u_mode", mode);
@@ -166,11 +184,35 @@ namespace Boidsish {
 			// Already initialized to all 0.0f
 		}
 
-		// Upload to both textures
+		// Upload to both state textures
 		for (int i = 0; i < 2; ++i) {
 			glBindTexture(GL_TEXTURE_2D, texture_ids_[i]);
 			glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width_, height_, GL_RGBA, GL_FLOAT, pixels.data());
 		}
+
+		// Resolve and upload starting display texture
+		std::vector<float> display_pixels(width_ * height_ * 4, 1.0f);
+		for (int i = 0; i < width_ * height_; ++i) {
+			float r_val = pixels[i * 4 + 0];
+			float g_val = pixels[i * 4 + 1];
+			float b_val = pixels[i * 4 + 2];
+			float a_val = pixels[i * 4 + 3];
+			float total = r_val + g_val + b_val + a_val;
+
+			if (total > 0.001f) {
+				display_pixels[i * 4 + 0] = (r_val * 1.0f + g_val * 0.1f + b_val * 0.1f + a_val * 1.0f) / total;
+				display_pixels[i * 4 + 1] = (r_val * 0.1f + g_val * 0.9f + b_val * 0.4f + a_val * 0.9f) / total;
+				display_pixels[i * 4 + 2] = (r_val * 0.1f + g_val * 0.1f + b_val * 1.0f + a_val * 0.1f) / total;
+			} else {
+				display_pixels[i * 4 + 0] = 0.05f;
+				display_pixels[i * 4 + 1] = 0.05f;
+				display_pixels[i * 4 + 2] = 0.08f;
+			}
+			display_pixels[i * 4 + 3] = 1.0f; // fully opaque visualizer background!
+		}
+
+		glBindTexture(GL_TEXTURE_2D, display_texture_);
+		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width_, height_, GL_RGBA, GL_FLOAT, display_pixels.data());
 		glBindTexture(GL_TEXTURE_2D, 0);
 	}
 

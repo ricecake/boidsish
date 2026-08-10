@@ -17,7 +17,7 @@ namespace Boidsish {
 		CompetitiveCA(const CompetitiveCA&) = delete;
 		CompetitiveCA& operator=(const CompetitiveCA&) = delete;
 
-		// Initialize state textures for the CA (ping-pong)
+		// Initialize state textures for the CA (ping-pong + display)
 		void Initialize(int width, int height);
 
 		// Run one step of the cellular automata using the compute shader
@@ -39,6 +39,7 @@ namespace Boidsish {
 		// Getters for textures and dimensions
 		GLuint GetCurrentReadTexture() const { return texture_ids_[current_read_idx_]; }
 		GLuint GetCurrentWriteTexture() const { return texture_ids_[1 - current_read_idx_]; }
+		GLuint GetDisplayTexture() const { return display_texture_; }
 		int GetWidth() const { return width_; }
 		int GetHeight() const { return height_; }
 
@@ -48,6 +49,7 @@ namespace Boidsish {
 		void DestroyTextures();
 
 		GLuint texture_ids_[2] = {0, 0};
+		GLuint display_texture_ = 0;
 		int    current_read_idx_ = 0;
 		int    width_ = 0;
 		int    height_ = 0;
