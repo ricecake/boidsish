@@ -199,6 +199,9 @@ namespace Boidsish {
 
 		GLuint GetCloudWeatherTexture() const { return _cloudWeatherTexture; }
 		GLuint GetCloudWeatherMinMaxTexture() const { return _cloudWeatherMinMaxTexture; }
+		GLuint GetCloudShadowTexture() const { return _cloudShadowTexture; }
+		const glm::mat4& GetCloudShadowMatrix() const { return _cloudShadowMatrix; }
+		const glm::mat4& GetCloudShadowInvMatrix() const { return _cloudShadowInvMatrix; }
 
 		bool IsCustomWeatherMap() const { return _useCustomWeatherMap; }
 		void SetUseCustomWeatherMap(bool b);

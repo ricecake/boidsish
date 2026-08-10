@@ -102,6 +102,14 @@ namespace Boidsish {
 							}
 						}
 
+						auto widget_map = GetWidget<MapWidget>();
+						if (widget_map) {
+							bool visible = widget_map->IsVisible();
+							if (ImGui::MenuItem("Environmental Maps", nullptr, &visible)) {
+								widget_map->SetVisible(visible);
+							}
+						}
+
 						auto widget_mood = GetWidget<MoodWidget>();
 						if (widget_mood) {
 							bool visible = widget_mood->IsVisible();

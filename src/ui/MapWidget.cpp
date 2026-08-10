@@ -7,6 +7,9 @@
 #include "imgui.h"
 #include "shader.h"
 #include "constants.h"
+#include "service_locator.h"
+#include "terrain_render_manager.h"
+#include <GLFW/glfw3.h>
 #include <glm/gtc/type_ptr.hpp>
 
 namespace Boidsish {
@@ -126,14 +129,17 @@ namespace Boidsish {
             glBindTexture(GL_TEXTURE_2D, weather->GetLbmAerosolTexture());
             m_mapShader->setInt("uLbmAerosolTex", 3);
 
-        //     glActiveTexture(GL_TEXTURE4);
-        //     glBindTexture(GL_TEXTURE_2D, atmosphere->GetCloudShadowMap());
-		// reg.PublishTexture(Constants::TextureUnit::CloudShadowMap(), _cloudShadowTexture, GL_TEXTURE_2D_ARRAY);
+            glActiveTexture(GL_TEXTURE4);
+            glBindTexture(GL_TEXTURE_2D_ARRAY, atmosphere->GetCloudShadowTexture());
+            m_mapShader->setInt("uCloudShadowTex", 4);
 
-        //     m_mapShader->setInt("uCloudShadowTex", 4);
+            m_mapShader->setMat4("uCloudShadowMatrix", atmosphere->GetCloudShadowMatrix());
+            m_mapShader->setFloat("uTime", (float)glfwGetTime());
 
-        //     float shadowMapSize = atmosphere->GetCloudShadowWorldSize();
-        //     m_mapShader->setFloat("uCloudShadowWorldSize", shadowMapSize);
+            auto terrain_render_mgr = ServiceLocator::Instance().Get<TerrainRenderManager>();
+            if (terrain_render_mgr) {
+                terrain_render_mgr->BindTerrainData(*m_mapShader);
+            }
 
             glBindVertexArray(m_quadVao);
             glDrawArrays(GL_TRIANGLES, 0, 6);
@@ -148,7 +154,7 @@ namespace Boidsish {
             ImGui::SetNextWindowSize(ImVec2(550, 700), ImGuiCond_FirstUseEver);
             if (ImGui::Begin("Environmental Maps", &m_show)) {
 
-                ImGui::Combo("Map Layer", &m_selectedLayer, "Combined\0Cloud Weather SDF\0LBM Simulation\0Cloud Shadow Map\0\0");
+                ImGui::Combo("Map Layer", &m_selectedLayer, "Combined\0Raw Cloud Map\0Cloud Effective Coverage\0Deep Opacity Map\0LBM Simulation\0Terrain Height\0Terrain Color\0\0");
 
                 if (ImGui::CollapsingHeader("Channels", ImGuiTreeNodeFlags_DefaultOpen)) {
                     ImGui::Checkbox("Wind", &m_showWind); ImGui::SameLine();
@@ -172,6 +178,62 @@ namespace Boidsish {
                     if (ImGui::Button("Center on Camera")) {
                         const auto& cam = m_visualizer.GetCamera();
                         m_mapOffset = glm::vec2(cam.x, cam.z);
+                    }
+                }
+
+                if (ImGui::CollapsingHeader("Cloud Weather Map Management")) {
+                    auto atm_mgr = m_visualizer.GetAtmosphereManager();
+                    if (atm_mgr) {
+                        bool is_custom = atm_mgr->IsCustomWeatherMap();
+                        ImGui::Text("Active Mode: %s", is_custom ? "Custom (Imported)" : "Procedural");
+
+                        if (is_custom) {
+                            if (ImGui::Button("Reset to Procedural Map")) {
+                                atm_mgr->SetUseCustomWeatherMap(false);
+                            }
+                        }
+
+                        ImGui::Separator();
+
+                        // Export path and button
+                        static char exportPath[256] = "assets/cloud_weather_map_export.png";
+                        static std::string exportStatus = "";
+                        ImGui::InputText("Export Path", exportPath, IM_ARRAYSIZE(exportPath));
+                        if (ImGui::Button("Export to PNG")) {
+                            if (atm_mgr->ExportCloudWeatherMap(exportPath)) {
+                                exportStatus = "Exported successfully!";
+                            } else {
+                                exportStatus = "Export failed!";
+                            }
+                        }
+                        if (!exportStatus.empty()) {
+                            ImGui::SameLine();
+                            ImGui::TextColored(ImVec4(0.2f, 1.0f, 0.2f, 1.0f), "%s", exportStatus.c_str());
+                        }
+
+                        ImGui::Separator();
+
+                        // Import path and button
+                        static char importPath[256] = "assets/cloud_weather_map_export.png";
+                        static std::string importStatus = "";
+                        ImGui::InputText("Import Path", importPath, IM_ARRAYSIZE(importPath));
+                        if (ImGui::Button("Import from PNG")) {
+                            if (atm_mgr->ImportCloudWeatherMap(importPath)) {
+                                importStatus = "Imported successfully!";
+                            } else {
+                                importStatus = "Import failed!";
+                            }
+                        }
+                        if (!importStatus.empty()) {
+                            ImGui::SameLine();
+                            if (importStatus.find("success") != std::string::npos) {
+                                ImGui::TextColored(ImVec4(0.2f, 1.0f, 0.2f, 1.0f), "%s", importStatus.c_str());
+                            } else {
+                                ImGui::TextColored(ImVec4(1.0f, 0.2f, 0.2f, 1.0f), "%s", importStatus.c_str());
+                            }
+                        }
+                    } else {
+                        ImGui::Text("AtmosphereManager is not available.");
                     }
                 }
 
