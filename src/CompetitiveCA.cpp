@@ -5,6 +5,7 @@
 #include <iostream>
 #include <vector>
 #include <algorithm>
+#include "Simplex.h"
 
 namespace Boidsish {
 
@@ -142,11 +143,23 @@ namespace Boidsish {
 		std::random_device rd;
 		std::mt19937 gen(rd());
 		std::uniform_real_distribution<float> dis(0.0f, 1.0f);
+		std::uniform_real_distribution<float> dis2(0.0f, 5.0f);
 
 		int num_species = std::clamp(species_count, 1, 4);
 
 		if (mode == 3) {
+			num_species = species_count;
 			// Seeding for Energy-Conserving Mode (r = ID, g = Energy, b = Probability, a = Delta)
+			for (int y = 0; y < height_; ++y) {
+				for (int x = 0; x < width_; ++x) {
+					int idx = (y * width_ + x) * 4;
+					pixels[idx + 0] = 0.0f;
+					pixels[idx + 1] = 5.0f*(1.0f-Simplex::worleyNoise({x/8.0f, y/8.0f}))*(0.5f+0.5f*Simplex::fBm({x/8.0f, y/8.0f})); // starting energy
+					pixels[idx + 2] = 0.0f;
+					pixels[idx + 3] = 0.0f;
+				}
+			}
+
 			if (pattern == 0) {
 				// Random noise
 				for (int y = 0; y < height_; ++y) {
@@ -155,7 +168,7 @@ namespace Boidsish {
 						if ((gen() % 100) < 15) { // 15% seed density
 							int species = (gen() % num_species) + 1; // IDs: 1, 2, 3, 4
 							pixels[idx + 0] = static_cast<float>(species);
-							pixels[idx + 1] = 1.0f; // starting energy
+							// pixels[idx + 1] = 1.0f; // starting energy
 							pixels[idx + 2] = 0.8f; // growth probability
 							pixels[idx + 3] = 0.0f; // delta
 						}
@@ -180,7 +193,7 @@ namespace Boidsish {
 							else species = 4 % num_species + 1;
 
 							pixels[idx + 0] = static_cast<float>(species);
-							pixels[idx + 1] = 1.0f;
+							// pixels[idx + 1] = 1.0f;
 							pixels[idx + 2] = 0.8f;
 							pixels[idx + 3] = 0.0f;
 						}
@@ -189,7 +202,7 @@ namespace Boidsish {
 			} else if (pattern == 2) {
 				// Grid of seeds
 				int spacing = 32;
-				int r = 2;
+				int r = 1;
 
 				for (int y = spacing; y < height_ - spacing; y += spacing) {
 					for (int x = spacing; x < width_ - spacing; x += spacing) {
@@ -201,7 +214,7 @@ namespace Boidsish {
 								if (px >= 0 && px < width_ && py >= 0 && py < height_) {
 									int idx = (py * width_ + px) * 4;
 									pixels[idx + 0] = static_cast<float>(species);
-									pixels[idx + 1] = 1.0f;
+									// pixels[idx + 1] = 1.0f;
 									pixels[idx + 2] = 0.8f;
 									pixels[idx + 3] = 0.0f;
 								}

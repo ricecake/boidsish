@@ -13,6 +13,7 @@
 #include "ui/LightingWidget.h"
 #include "ui/AudioWidget.h"
 #include "ui/SystemWidget.h"
+#include "ui/MapWidget.h"
 #include "ui/ProfilerWidget.h"
 #include "ui/hud_widget.h"
 #include "ui/CompetitiveCAWidget.h"

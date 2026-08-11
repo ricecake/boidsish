@@ -69,6 +69,7 @@ namespace Boidsish {
 			AddWidget(std::make_shared<LightingWidget>(visualizer));
 			AddWidget(std::make_shared<AudioWidget>(visualizer));
 			AddWidget(std::make_shared<SystemWidget>(visualizer, scene_manager));
+			AddWidget(std::make_shared<MapWidget>(visualizer));
 			AddWidget(std::make_shared<ProfilerWidget>());
 			AddWidget(std::make_shared<SpaceProbeWidget>(visualizer));
 			AddWidget(std::make_shared<UI::CompetitiveCAWidget>(visualizer));
@@ -100,6 +101,14 @@ namespace Boidsish {
 							bool visible = widget_env->IsVisible();
 							if (ImGui::MenuItem("Environment", nullptr, &visible)) {
 								widget_env->SetVisible(visible);
+							}
+						}
+
+						auto widget_map = GetWidget<MapWidget>();
+						if (widget_map) {
+							bool visible = widget_map->IsVisible();
+							if (ImGui::MenuItem("Environmental Maps", nullptr, &visible)) {
+								widget_map->SetVisible(visible);
 							}
 						}
 
