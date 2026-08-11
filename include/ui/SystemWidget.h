@@ -16,6 +16,9 @@ namespace Boidsish {
 			SystemWidget(Visualizer& visualizer, SceneManager& sceneManager);
 			void Draw() override;
 
+			bool IsVisible() const override { return m_show; }
+			void SetVisible(bool visible) override { m_show = visible; }
+
 		private:
 			Visualizer&   m_visualizer;
 			SceneManager& m_sceneManager;
