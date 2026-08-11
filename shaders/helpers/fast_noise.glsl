@@ -23,11 +23,6 @@ uniform sampler3D u_extraNoiseTexture;
 uniform sampler2D u_phasorTexture;
 #endif
 
-#ifndef CLOUD_WEATHER_TEXTURE_DEFINED
-#define CLOUD_WEATHER_TEXTURE_DEFINED
-layout(binding = [[CLOUD_WEATHER_BINDING]]) uniform sampler2D u_cloudWeatherTexture;
-#endif
-
 // Tile-aware 2D hash
 vec2 hash2Tile(vec2 p, vec2 period)
 {

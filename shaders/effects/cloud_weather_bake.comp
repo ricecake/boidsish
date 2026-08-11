@@ -10,7 +10,6 @@ layout(std430, binding = [[CLOUD_SEEDS_BINDING]] ) buffer CloudSeeds {
 };
 
 #include "../helpers/fast_noise.glsl"
-#include "../helpers/cloud_weather_utils.glsl"
 #include "lygia/space/uncenter.glsl"
 #include "lygia/math/gain.glsl"
 
