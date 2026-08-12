@@ -15,6 +15,9 @@ namespace Boidsish {
 			LightningWidget(Visualizer& visualizer);
 			void Draw() override;
 
+			bool IsVisible() const override { return m_show; }
+			void SetVisible(bool visible) override { m_show = visible; }
+
 		private:
 			struct DelayedStrike {
 				float timeLeft;
