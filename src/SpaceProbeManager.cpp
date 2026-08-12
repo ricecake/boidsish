@@ -75,18 +75,8 @@ namespace Boidsish {
 		collect_shader_->use();
 		collect_shader_->setVec3("u_probePosition", position);
 
-		// Bind textures for atmospheric lookup and fallback
-		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereSkyView());
-		glBindTexture(GL_TEXTURE_2D, atmosphere_manager->GetSkyViewLUT());
-		collect_shader_->setInt("u_skyViewLUT", Constants::TextureUnit::AtmosphereSkyView());
-
-		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereAerialPerspective());
-		glBindTexture(GL_TEXTURE_3D, atmosphere_manager->GetAerialPerspectiveLUT());
-		collect_shader_->setInt("u_aerialPerspectiveLUT", Constants::TextureUnit::AtmosphereAerialPerspective());
-
-		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereTransmittance());
-		glBindTexture(GL_TEXTURE_2D, atmosphere_manager->GetTransmittanceLUT());
-		collect_shader_->setInt("u_transmittanceLUT", Constants::TextureUnit::AtmosphereTransmittance());
+		// Bind atmospheric and cloud system resources and uniforms
+		atmosphere_manager->BindToShader(*collect_shader_);
 
 		// Bind terrain textures and UBOs
 		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainBiomeMap());
@@ -202,18 +192,8 @@ namespace Boidsish {
 		}
 		render_shader_->setIntArray("lightShadowIndices", shadow_indices.data(), 10);
 
-		// Bind textures for atmospheric lookup
-		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereSkyView());
-		glBindTexture(GL_TEXTURE_2D, atmosphere_manager->GetSkyViewLUT());
-		render_shader_->setInt("u_skyViewLUT", Constants::TextureUnit::AtmosphereSkyView());
-
-		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereAerialPerspective());
-		glBindTexture(GL_TEXTURE_3D, atmosphere_manager->GetAerialPerspectiveLUT());
-		render_shader_->setInt("u_aerialPerspectiveLUT", Constants::TextureUnit::AtmosphereAerialPerspective());
-
-		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereTransmittance());
-		glBindTexture(GL_TEXTURE_2D, atmosphere_manager->GetTransmittanceLUT());
-		render_shader_->setInt("u_transmittanceLUT", Constants::TextureUnit::AtmosphereTransmittance());
+		// Bind atmospheric and cloud system resources and uniforms
+		atmosphere_manager->BindToShader(*render_shader_);
 
 		// Bind terrain textures and UBOs
 		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::TerrainBiomeMap());

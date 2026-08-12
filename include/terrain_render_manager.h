@@ -18,6 +18,8 @@ class ComputeShader;
 
 namespace Boidsish {
 
+	class AtmosphereManager;
+
 	class ServiceLocator;
 	struct Frustum;
 
@@ -136,8 +138,7 @@ namespace Boidsish {
 			GLuint           normalTex,
 			GLuint           albedoTex,
 			GLuint           velocityTex,
-			GLuint           skyLUT,
-			GLuint           apLUT,
+			AtmosphereManager* atmosphere_manager,
 			const glm::mat4& view,
 			const glm::mat4& projection,
 			GLuint           lighting_ubo,
