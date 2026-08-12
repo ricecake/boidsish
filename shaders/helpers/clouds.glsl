@@ -43,7 +43,7 @@ CloudSpotDetails calculateCloudDensity(
 	float type = weather.heightMap;
 	float heightGradient = getDensityHeightGradient(h, type);
 
-	float baseNoise = weather.coverage;//getCloud3DCoverage(p_advected, weather, layer, props.worldScale);
+	float baseNoise = weather.coverage * heightGradient;
 	float erodeMask = 1.0 - baseNoise;
 
 	if (simplified <= 1.0) {

@@ -127,7 +127,7 @@ void calculateLightContribution(int light_index, vec3 frag_pos, out vec3 light_d
  * Uses centralized logic in clouds.glsl.
  */
 float calculateCloudShadow(int light_index, vec3 frag_pos) {
-	if (lights[light_index].type != LIGHT_TYPE_DIRECTIONAL) {
+	if (light_index != 0 || lights[light_index].type != LIGHT_TYPE_DIRECTIONAL) {
 		return 1.0;
 	}
 
