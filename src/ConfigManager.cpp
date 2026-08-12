@@ -55,6 +55,15 @@ namespace Boidsish {
 		// Pre-register app-specific keys to ensure they appear in the UI
 		GetAppSettingBool("enable_terrain", true);
 		GetAppSettingBool("enable_floor", true);
+		// Quick Controls Persistence
+		GetAppSettingFloat("quick_day_night_time", 8.0f);
+		GetAppSettingBool("quick_day_night_paused", false);
+		GetAppSettingBool("quick_mood_enabled", true);
+		GetAppSettingFloat("terrain_world_scale", 1.0f);
+		GetAppSettingBool("enable_atmosphere", true);
+		GetAppSettingBool("enable_volumetric_lighting", true);
+		GetAppSettingFloat("quick_cloud_density", 0.4f);
+		GetAppSettingFloat("quick_haze_density", 0.5f);
 		GetAppSettingBool("enable_skybox", true);
 		GetAppSettingBool("enable_effects", true);
 		GetAppSettingBool("enable_floor_reflection", true);

@@ -15,9 +15,13 @@ namespace Boidsish {
 
 			void Draw() override;
 
+			bool IsVisible() const override { return m_show; }
+			void SetVisible(bool visible) override { m_show = visible; }
+
 		private:
 			Visualizer&   m_visualizer;
 			CompetitiveCA m_ca;
+			bool          m_show = false;
 
 			// Parameters
 			float m_dt = 0.5f;

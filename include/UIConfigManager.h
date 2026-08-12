@@ -60,6 +60,7 @@ namespace Boidsish {
 
 			std::vector<std::shared_ptr<IWidget>>         m_widgets;
 			bool                                          m_show_menus = false;
+			bool                                          m_settings_loaded = false;
 			std::unordered_map<unsigned int, WindowState> m_window_states;
 			class Visualizer*                             m_visualizer = nullptr;
 		};

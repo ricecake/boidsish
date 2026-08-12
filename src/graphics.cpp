@@ -4690,6 +4690,10 @@ namespace Boidsish {
 		return impl->lightning_manager.get();
 	}
 
+	bool Visualizer::HasPostProcessingManager() const {
+		return impl->post_processing_manager_ != nullptr;
+	}
+
 	PostProcessing::PostProcessingManager& Visualizer::GetPostProcessingManager() {
 		return *impl->post_processing_manager_;
 	}

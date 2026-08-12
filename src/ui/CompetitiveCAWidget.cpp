@@ -12,6 +12,9 @@ namespace Boidsish {
 		}
 
 		void CompetitiveCAWidget::Draw() {
+			if (!m_show)
+				return;
+
 			if (!m_initialized) {
 				m_ca.Initialize(256, 256, m_mode);
 				m_initialized = true;
@@ -34,7 +37,8 @@ namespace Boidsish {
 			}
 
 			ImGui::SetNextWindowSize(ImVec2(380, 720), ImGuiCond_FirstUseEver);
-			if (ImGui::Begin("Competitive Cellular Automata", nullptr, ImGuiWindowFlags_NoCollapse)) {
+			ImGui::SetNextWindowCollapsed(true, ImGuiCond_Once);
+			if (ImGui::Begin("Competitive Cellular Automata", &m_show)) {
 				ImGui::Text("Biological / Competitive Texture Synthesizer");
 				ImGui::Separator();
 

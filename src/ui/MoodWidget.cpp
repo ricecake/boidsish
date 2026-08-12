@@ -71,6 +71,9 @@ namespace Boidsish {
         }
 
         void MoodWidget::Draw() {
+            if (!m_show)
+                return;
+
             if (!ImGui::Begin("Mood Engine", &m_show)) {
                 ImGui::End();
                 return;
