@@ -106,7 +106,7 @@ CloudDensityResult calculateCloudDensity(
 	vec3 p_advected_3d = p + advect_3d;
 	vec3 uvw = vec3(
 		p_advected_3d.x / (100000.0 * props.worldScale),
-		1.0-h,
+		h,
 		p_advected_3d.z / (100000.0 * props.worldScale)
 	);
 

@@ -173,6 +173,10 @@ void main() {
 			// Clear Delta
 			nextState.a = 0.0;
 			new_C = nextState;
+
+			if (nextState.g < 1.0) {
+				nextState.r = 0.0;
+			}
 		}
 
 	} else {
