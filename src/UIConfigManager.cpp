@@ -82,78 +82,73 @@ namespace Boidsish {
 
 			// Register Space Probe HUD element
 			hud_manager.AddElement(std::make_shared<HudSpaceProbe>(visualizer));
-
-			// Load persisted Quick Controls settings
-			auto& cfg = ConfigManager::GetInstance();
-			auto& cycle = visualizer.GetLightManager().GetDayNightCycle();
-			cycle.time = cfg.GetAppSettingFloat("quick_day_night_time", cycle.time);
-			cycle.paused = cfg.GetAppSettingBool("quick_day_night_paused", cycle.paused);
-
-			auto mood_mgr = visualizer.GetMoodManager();
-			if (mood_mgr) {
-				bool mood_enabled = cfg.GetAppSettingBool("quick_mood_enabled", mood_mgr->IsEnabled());
-				mood_mgr->SetEnabled(mood_enabled);
-			}
-
-			auto terrain = visualizer.GetTerrain();
-			if (terrain) {
-				float world_scale = cfg.GetAppSettingFloat("terrain_world_scale", terrain->GetWorldScale());
-				terrain->SetWorldScale(world_scale);
-			}
-
-			if (visualizer.HasPostProcessingManager()) {
-				auto& ppm = visualizer.GetPostProcessingManager();
-				std::shared_ptr<PostProcessing::AtmosphereEffect> atmos_effect = nullptr;
-				std::shared_ptr<PostProcessing::VolumetricLightingEffect> vol_effect = nullptr;
-				for (auto& effect : ppm.GetPreToneMappingEffects()) {
-					if (effect->GetName() == "Atmosphere") {
-						atmos_effect = std::dynamic_pointer_cast<PostProcessing::AtmosphereEffect>(effect);
-					} else if (effect->GetName() == "Volumetric Lighting") {
-						vol_effect = std::dynamic_pointer_cast<PostProcessing::VolumetricLightingEffect>(effect);
-					}
-				}
-
-				if (atmos_effect) {
-					bool atmos_enabled = cfg.GetAppSettingBool("enable_atmosphere", true);
-					atmos_effect->SetEnabled(atmos_enabled);
-
-					float cloud_density = cfg.GetAppSettingFloat("quick_cloud_density", atmos_effect->GetCloudDensity());
-					auto weather = visualizer.GetWeatherManager();
-					if (weather) {
-						weather->SetTarget(WeatherAttribute::CloudDensity, cloud_density);
-					} else {
-						atmos_effect->SetCloudDensity(cloud_density);
-					}
-
-					float haze_density = cfg.GetAppSettingFloat("quick_haze_density", atmos_effect->GetHazeDensity());
-					if (weather) {
-						weather->SetTarget(WeatherAttribute::HazeDensity, haze_density);
-					} else {
-						atmos_effect->SetHazeDensity(haze_density);
-					}
-					atmos_effect->FlushHistory();
-				}
-
-				if (vol_effect) {
-					bool vol_enabled = cfg.GetAppSettingBool("enable_volumetric_lighting", true);
-					vol_effect->SetEnabled(vol_enabled);
-
-					float vol_intensity = cfg.GetAppSettingFloat("volumetric_intensity", vol_effect->GetIntensity());
-					vol_effect->SetIntensity(vol_intensity);
-					vol_effect->FlushHistory();
-				}
-			}
 		}
 
 		void UIConfigManager::Render() {
 			PROJECT_PROFILE_SCOPE("UIConfigManager::Render");
 
-			bool any_hud_visible = std::any_of(m_widgets.begin(), m_widgets.end(), [](const auto& widget) {
-				return widget->IsHud() && widget->IsVisible();
-			});
+			if (!m_settings_loaded && m_visualizer) {
+				// Load persisted Quick Controls settings
+				auto& cfg = ConfigManager::GetInstance();
+				auto& cycle = m_visualizer->GetLightManager().GetDayNightCycle();
+				cycle.time = cfg.GetAppSettingFloat("quick_day_night_time", cycle.time);
+				cycle.paused = cfg.GetAppSettingBool("quick_day_night_paused", cycle.paused);
 
-			if (!m_show_menus && !any_hud_visible) {
-				return;
+				auto mood_mgr = m_visualizer->GetMoodManager();
+				if (mood_mgr) {
+					bool mood_enabled = cfg.GetAppSettingBool("quick_mood_enabled", mood_mgr->IsEnabled());
+					mood_mgr->SetEnabled(mood_enabled);
+				}
+
+				auto terrain = m_visualizer->GetTerrain();
+				if (terrain) {
+					float world_scale = cfg.GetAppSettingFloat("terrain_world_scale", terrain->GetWorldScale());
+					terrain->SetWorldScale(world_scale);
+				}
+
+				if (m_visualizer->HasPostProcessingManager()) {
+					auto& ppm = m_visualizer->GetPostProcessingManager();
+					std::shared_ptr<PostProcessing::AtmosphereEffect> atmos_effect = nullptr;
+					std::shared_ptr<PostProcessing::VolumetricLightingEffect> vol_effect = nullptr;
+					for (auto& effect : ppm.GetPreToneMappingEffects()) {
+						if (effect->GetName() == "Atmosphere") {
+							atmos_effect = std::dynamic_pointer_cast<PostProcessing::AtmosphereEffect>(effect);
+						} else if (effect->GetName() == "Volumetric Lighting") {
+							vol_effect = std::dynamic_pointer_cast<PostProcessing::VolumetricLightingEffect>(effect);
+						}
+					}
+
+					if (atmos_effect) {
+						bool atmos_enabled = cfg.GetAppSettingBool("enable_atmosphere", true);
+						atmos_effect->SetEnabled(atmos_enabled);
+
+						float cloud_density = cfg.GetAppSettingFloat("quick_cloud_density", atmos_effect->GetCloudDensity());
+						auto weather = m_visualizer->GetWeatherManager();
+						if (weather) {
+							weather->SetTarget(WeatherAttribute::CloudDensity, cloud_density);
+						} else {
+							atmos_effect->SetCloudDensity(cloud_density);
+						}
+
+						float haze_density = cfg.GetAppSettingFloat("quick_haze_density", atmos_effect->GetHazeDensity());
+						if (weather) {
+							weather->SetTarget(WeatherAttribute::HazeDensity, haze_density);
+						} else {
+							atmos_effect->SetHazeDensity(haze_density);
+						}
+						atmos_effect->FlushHistory();
+					}
+
+					if (vol_effect) {
+						bool vol_enabled = cfg.GetAppSettingBool("enable_volumetric_lighting", true);
+						vol_effect->SetEnabled(vol_enabled);
+
+						float vol_intensity = cfg.GetAppSettingFloat("volumetric_intensity", vol_effect->GetIntensity());
+						vol_effect->SetIntensity(vol_intensity);
+						vol_effect->FlushHistory();
+					}
+				}
+				m_settings_loaded = true;
 			}
 
 			ImGui_ImplOpenGL3_NewFrame();
