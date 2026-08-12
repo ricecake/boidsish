@@ -101,45 +101,47 @@ namespace Boidsish {
 				terrain->SetWorldScale(world_scale);
 			}
 
-			auto& ppm = visualizer.GetPostProcessingManager();
-			std::shared_ptr<PostProcessing::AtmosphereEffect> atmos_effect = nullptr;
-			std::shared_ptr<PostProcessing::VolumetricLightingEffect> vol_effect = nullptr;
-			for (auto& effect : ppm.GetPreToneMappingEffects()) {
-				if (effect->GetName() == "Atmosphere") {
-					atmos_effect = std::dynamic_pointer_cast<PostProcessing::AtmosphereEffect>(effect);
-				} else if (effect->GetName() == "Volumetric Lighting") {
-					vol_effect = std::dynamic_pointer_cast<PostProcessing::VolumetricLightingEffect>(effect);
-				}
-			}
-
-			if (atmos_effect) {
-				bool atmos_enabled = cfg.GetAppSettingBool("enable_atmosphere", true);
-				atmos_effect->SetEnabled(atmos_enabled);
-
-				float cloud_density = cfg.GetAppSettingFloat("quick_cloud_density", atmos_effect->GetCloudDensity());
-				auto weather = visualizer.GetWeatherManager();
-				if (weather) {
-					weather->SetTarget(WeatherAttribute::CloudDensity, cloud_density);
-				} else {
-					atmos_effect->SetCloudDensity(cloud_density);
+			if (visualizer.HasPostProcessingManager()) {
+				auto& ppm = visualizer.GetPostProcessingManager();
+				std::shared_ptr<PostProcessing::AtmosphereEffect> atmos_effect = nullptr;
+				std::shared_ptr<PostProcessing::VolumetricLightingEffect> vol_effect = nullptr;
+				for (auto& effect : ppm.GetPreToneMappingEffects()) {
+					if (effect->GetName() == "Atmosphere") {
+						atmos_effect = std::dynamic_pointer_cast<PostProcessing::AtmosphereEffect>(effect);
+					} else if (effect->GetName() == "Volumetric Lighting") {
+						vol_effect = std::dynamic_pointer_cast<PostProcessing::VolumetricLightingEffect>(effect);
+					}
 				}
 
-				float haze_density = cfg.GetAppSettingFloat("quick_haze_density", atmos_effect->GetHazeDensity());
-				if (weather) {
-					weather->SetTarget(WeatherAttribute::HazeDensity, haze_density);
-				} else {
-					atmos_effect->SetHazeDensity(haze_density);
+				if (atmos_effect) {
+					bool atmos_enabled = cfg.GetAppSettingBool("enable_atmosphere", true);
+					atmos_effect->SetEnabled(atmos_enabled);
+
+					float cloud_density = cfg.GetAppSettingFloat("quick_cloud_density", atmos_effect->GetCloudDensity());
+					auto weather = visualizer.GetWeatherManager();
+					if (weather) {
+						weather->SetTarget(WeatherAttribute::CloudDensity, cloud_density);
+					} else {
+						atmos_effect->SetCloudDensity(cloud_density);
+					}
+
+					float haze_density = cfg.GetAppSettingFloat("quick_haze_density", atmos_effect->GetHazeDensity());
+					if (weather) {
+						weather->SetTarget(WeatherAttribute::HazeDensity, haze_density);
+					} else {
+						atmos_effect->SetHazeDensity(haze_density);
+					}
+					atmos_effect->FlushHistory();
 				}
-				atmos_effect->FlushHistory();
-			}
 
-			if (vol_effect) {
-				bool vol_enabled = cfg.GetAppSettingBool("enable_volumetric_lighting", true);
-				vol_effect->SetEnabled(vol_enabled);
+				if (vol_effect) {
+					bool vol_enabled = cfg.GetAppSettingBool("enable_volumetric_lighting", true);
+					vol_effect->SetEnabled(vol_enabled);
 
-				float vol_intensity = cfg.GetAppSettingFloat("volumetric_intensity", vol_effect->GetIntensity());
-				vol_effect->SetIntensity(vol_intensity);
-				vol_effect->FlushHistory();
+					float vol_intensity = cfg.GetAppSettingFloat("volumetric_intensity", vol_effect->GetIntensity());
+					vol_effect->SetIntensity(vol_intensity);
+					vol_effect->FlushHistory();
+				}
 			}
 		}
 
@@ -358,12 +360,14 @@ namespace Boidsish {
 					// Find Atmosphere and Volumetric Lighting effects
 					std::shared_ptr<PostProcessing::AtmosphereEffect> atmos_effect = nullptr;
 					std::shared_ptr<PostProcessing::VolumetricLightingEffect> vol_effect = nullptr;
-					auto& ppm = m_visualizer->GetPostProcessingManager();
-					for (auto& effect : ppm.GetPreToneMappingEffects()) {
-						if (effect->GetName() == "Atmosphere") {
-							atmos_effect = std::dynamic_pointer_cast<PostProcessing::AtmosphereEffect>(effect);
-						} else if (effect->GetName() == "Volumetric Lighting") {
-							vol_effect = std::dynamic_pointer_cast<PostProcessing::VolumetricLightingEffect>(effect);
+					if (m_visualizer->HasPostProcessingManager()) {
+						auto& ppm = m_visualizer->GetPostProcessingManager();
+						for (auto& effect : ppm.GetPreToneMappingEffects()) {
+							if (effect->GetName() == "Atmosphere") {
+								atmos_effect = std::dynamic_pointer_cast<PostProcessing::AtmosphereEffect>(effect);
+							} else if (effect->GetName() == "Volumetric Lighting") {
+								vol_effect = std::dynamic_pointer_cast<PostProcessing::VolumetricLightingEffect>(effect);
+							}
 						}
 					}
 

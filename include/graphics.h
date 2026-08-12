@@ -591,6 +591,7 @@ namespace Boidsish {
 		WeatherManager*                        GetWeatherManager();
 		MoodManager*                           GetMoodManager();
 		LightningManager*                      GetLightningManager();
+		bool                                   HasPostProcessingManager() const;
 		PostProcessing::PostProcessingManager& GetPostProcessingManager();
 		std::shared_ptr<SpaceProbeManager>     GetSpaceProbeManager() const;
 		float                                  GetLastFrameTime() const;
