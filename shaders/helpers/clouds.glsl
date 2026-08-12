@@ -40,11 +40,15 @@ CloudSpotDetails calculateCloudDensity(
 	vec3 advect = time * advectSpeed;
 	vec3 p_advected = p + advect;
 
-	float baseNoise = getCloud3DCoverage(p_advected, weather, layer, props.worldScale);
+	float type = weather.heightMap;
+	float heightGradient = getDensityHeightGradient(h, type);
+
+	float baseNoise = weather.coverage;//getCloud3DCoverage(p_advected, weather, layer, props.worldScale);
 	float erodeMask = 1.0 - baseNoise;
 
-	if (erodeMask > 0.0 && simplified <= 1.0) {
-		baseNoise = remapClamp(baseNoise, volNoise * erodeMask, 1.0, 0.0, 1.0);
+	if (simplified <= 1.0) {
+		// baseNoise = remapClamp(baseNoise, volNoise * erodeMask, 1.0, 0.0, 1.0);
+		baseNoise = remapClamp(volNoise, 1.0 - baseNoise, 1.0, 0.0, 1.0);// * heightGradient;
 
 		if (baseNoise > 0.0 && simplified < 0.25) {
 			float detailNoise = abs(fastFbm3d(p_advected / 3000.0));
@@ -102,11 +106,16 @@ CloudDensityResult calculateCloudDensity(
 	vec3 p_advected_3d = p + advect_3d;
 	vec3 uvw = vec3(
 		p_advected_3d.x / (100000.0 * props.worldScale),
-		h,
+		1.0-h,
 		p_advected_3d.z / (100000.0 * props.worldScale)
 	);
 
+	// float volumeScale = 20000.0 * props.worldScale;
+	// vec3 uvw = p_advected_3d / volumeScale;
 	vec4 volSample = textureLod(u_cloud3DTexture, uvw, clamp(simplified * 4.0, 0.0, 4.0));
+
+
+	// vec4 volSample = textureLod(u_cloud3DTexture, uvw, clamp(simplified * 4.0, 0.0, 4.0));
 	float volNoise = volSample.r;
 	float volAo = volSample.g;
 	float volAlbedoBasis = volSample.b;

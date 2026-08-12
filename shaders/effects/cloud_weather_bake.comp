@@ -228,25 +228,25 @@ void main() {
 
 	vec2 p = uv;
 
-	WorleyData2D cellData;
-	float worley = localFbm(p, period1, cellData);
+	WorleyData2D worleyDetails = worley2d_tiling_id(p * period4, period4);
 
-	float finalCoverage = smoothstep(0.05, 1.0, 1.0 - worley);
+	float worley = worleyDetails.f1_dist;
+	float macro = uncenter(regionalFbm(p, period1));
+
+	float finalCoverage = remapClamp(macro, worley, 1.0, 0.0, 1.0);
 
 	WorleyData2D trash;
 
-	float centerNote1 = posNoise(p, period4);
-	float centerNote2 = posNoise(p, period3);
+	float centerNote1 = posNoise(p, period3);
+	float centerNote2 = posNoise(p, period2);
 	float diff1 = 0.5 - centerNote1;
 	float diff2 = 0.5 - centerNote2;
 
-	// float height = mix(centerNote, clamp(posNoise(p, period1), 0.0, 1.0), 0.25);
-	float height = centerNote1 + diff1 * clamp(1.0 - localFbm(uv, period3, trash), 0.0, 1.0);
-	// float thickness = clamp(localFbm(uv, period3, trash), 0.0, 1.0);
 	float thickness = centerNote2 + diff2 * clamp(localFbm(uv, period2, trash), 0.0, 1.0);
+	float height = smoothstep(thickness, 1.0, centerNote1 + diff1 * clamp(localFbm(uv, period3, trash), 0.0, 1.0));
 	float density = clamp(height - height*localFbm(uv, period2, trash), 0.0, finalCoverage);
 
-	imageStore(outWeatherMap, pixel, vec4(cellData.f1_dist, height, thickness, density));
+	imageStore(outWeatherMap, pixel, vec4(finalCoverage, height, thickness, density));
 	imageStore(outMinMaxMap, pixel, vec4(finalCoverage, finalCoverage, 0.0, 0.0));
 
 	// vec2 cellId = worleyDetails.yz;

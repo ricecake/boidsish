@@ -214,27 +214,26 @@ CloudWeather loadCloudWeather(vec3 p, CloudProperties props, vec4 tex) {
 	CloudWeather weather;
 	weather.p = p;
 
-	float rawCoverage = 1.0-tex.r;
 	// Apply props.coverage as an offset/threshold to the baked coverage map
-	weather.coverage = clamp(clamp(1.0-tex.r, 0, 1) + (props.coverage * 2.0 - 1.0), 0.0, 1.0);
+	weather.coverage = clamp(tex.r + (props.coverage * 2.0 - 1.0), 0.0, 1.0);
 	weather.heightMap = tex.g;
 	weather.thickness = tex.b;
 	weather.density = tex.a * props.densityBase;
 	if (props.coverage >= 1.0) {
 		weather.coverage = 1.0;
-		// weather.heightMap = 1.0;
-		// weather.thickness = 1.0;
 		weather.density = props.densityBase;
 	}
 	// float thickness = clamp(posNoise(p, mapRange, 5), 0.0, (1.0-cellData.f1_dist)*0.25*uCloudThickness/mapRange);
 
-	weather.thickness = clamp(weather.thickness, 0, (2500* rawCoverage)/(props.thickness * weather.thickness));
+	// weather.thickness = clamp(weather.thickness, 0, (2500* rawCoverage)/(props.thickness * weather.thickness));
+	// weather.thickness = clamp(weather.thickness, 0, weather.coverage);
+	weather.thickness = smoothstep(0, weather.thickness, weather.coverage);
 	// weather.thickness = schlickBias(weather.coverage, 0.25);
 	// weather.density *= smoothstep(0.0, 0.95, weather.thickness);
 	weather.density = mix(weather.density, weather.coverage * props.densityBase, 0.4);
 
 	// weather.thickness = mix(weather.thickness, weather.density, 0.8);
-	weather.heightMap = mix(weather.heightMap, 0.0, weather.thickness * 0.9);
+	weather.heightMap = mix(weather.heightMap, 0.0, weather.density * 0.9);
 
 	// weather.heightMap = clamp(tex.g, 0.01, 1.0);
 	// weather.thickness = clamp(tex.b, 0.01, 1.0);
