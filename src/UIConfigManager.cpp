@@ -87,6 +87,14 @@ namespace Boidsish {
 		void UIConfigManager::Render() {
 			PROJECT_PROFILE_SCOPE("UIConfigManager::Render");
 
+			bool any_hud_visible = std::any_of(m_widgets.begin(), m_widgets.end(), [](const auto& widget) {
+				return widget->IsHud() && widget->IsVisible();
+			});
+
+			if (!m_show_menus && !any_hud_visible) {
+				return;
+			}
+
 			if (!m_settings_loaded && m_visualizer) {
 				// Load persisted Quick Controls settings
 				auto& cfg = ConfigManager::GetInstance();
@@ -304,7 +312,7 @@ namespace Boidsish {
 			}
 
 			// Render the floating Quick Controls toolbar
-			if (m_visualizer) {
+			if (m_show_menus && m_visualizer) {
 				ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x * 0.5f - 175.0f, 20.0f), ImGuiCond_FirstUseEver);
 				ImGui::SetNextWindowSize(ImVec2(350, 300), ImGuiCond_FirstUseEver);
 				if (ImGui::Begin("Quick Controls", nullptr, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize)) {
