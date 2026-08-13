@@ -19,6 +19,7 @@ uniform bool uShowCloudHeight;
 uniform bool uShowCloudShadow;
 
 uniform sampler2D uCloudWeatherTex;
+uniform sampler2D uBakedWindTex;
 uniform sampler2D uLbmWindTex;
 uniform sampler2D uLbmScalarTex;
 uniform sampler2D uLbmAerosolTex;
@@ -121,7 +122,7 @@ void main() {
         vec4 wind = vec4(0.0);
 
         if (inLbmBounds) {
-            wind = texture(uLbmWindTex, lbmUV);
+            wind = texture(uBakedWindTex, lbmUV);
             vec4 scalars = texture(uLbmScalarTex, lbmUV);
             vec4 aerosols = texture(uLbmAerosolTex, lbmUV);
 
@@ -231,6 +232,23 @@ void main() {
             combinedColor = terrainShaded;
         } else {
             combinedColor = vec3(0.1, 0.1, 0.15);
+        }
+    }
+    else if (uSelectedLayer == 7) { // Baked Wind
+        combinedColor = vec3(0.0);
+        vec2 lbmLocalPos = (worldXZ - vec2(uLbmGridOrigin.x, uLbmGridOrigin.y) * uLbmSpacing);
+        vec2 lbmUV = lbmLocalPos / (vec2(uLbmGridSize) * uLbmSpacing);
+
+        if (lbmUV.x >= 0.0 && lbmUV.x <= 1.0 && lbmUV.y >= 0.0 && lbmUV.y <= 1.0) {
+            vec4 wind = texture(uBakedWindTex, lbmUV);
+            if (uShowWind) {
+                float v = length(wind.xz) / 20.0;
+                vec2 windDir = normalize(wind.xz + vec2(1e-5));
+                float flow = sin(dot(worldXZ, windDir) * 0.005 - uTime * 5.0) * 0.5 + 0.5;
+                combinedColor = vec3(0.0, v * 0.5 + flow * v * 0.3, v + flow * v * 0.3);
+            }
+        } else {
+            combinedColor = vec3(0.1, 0.0, 0.0); // Outside bounds
         }
     }
 
