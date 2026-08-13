@@ -355,6 +355,7 @@ namespace Boidsish {
 			_lastBakedCloudThickness = _cloudThickness;
 
 			_cloudShadowBakeShader->use();
+			BindToShader(*_cloudShadowBakeShader);
 			_cloudShadowBakeShader->setMat4("u_lightSpaceMatrix", _cloudShadowMatrix);
 			_cloudShadowBakeShader->setMat4("u_invLightSpaceMatrix", _cloudShadowInvMatrix);
 			_cloudShadowBakeShader->setVec3("u_primaryLightDir", primaryLightDir);
@@ -368,10 +369,6 @@ namespace Boidsish {
 			_cloudShadowBakeShader->setInt("u_frameIndex", _frameIndex);
 
 			glBindImageTexture(0, _cloudShadowTexture, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_R16F);
-
-			// Bind u_cloudWeatherMinMaxTexture (Unit 49)
-			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::CloudWeatherMinMax());
-			glBindTexture(GL_TEXTURE_2D, _cloudWeatherMinMaxTexture);
 
 			glDispatchCompute(512 / 8, 512 / 8, 1);
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
