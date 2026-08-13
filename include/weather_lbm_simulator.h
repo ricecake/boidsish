@@ -11,6 +11,8 @@ namespace Boidsish {
 
     class WeatherLbmSimulator {
     public:
+        static constexpr float kGridSpacing = 781.25f;
+
         WeatherLbmSimulator(int width, int height);
         ~WeatherLbmSimulator();
 
