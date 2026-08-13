@@ -118,7 +118,7 @@ namespace Boidsish {
             }
 
             glActiveTexture(GL_TEXTURE1);
-            glBindTexture(GL_TEXTURE_2D, weather->GetLbmWindTexture());
+            glBindTexture(GL_TEXTURE_2D, weather->GetWindTexture());
             m_mapShader->setInt("uLbmWindTex", 1);
 
             glActiveTexture(GL_TEXTURE2);

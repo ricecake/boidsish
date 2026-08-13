@@ -112,24 +112,67 @@ void main() {
     // --- 3. Render Selected Layer ---
     if (uSelectedLayer == 0) { // Combined View
         // Start with Terrain base
-        combinedColor = terrainShaded;
+        vec3 groundColor = terrainShaded;
 
-        // Apply Cloud Shadow
-        if (uShowCloudShadow) {
-            combinedColor = mix(combinedColor, combinedColor * 0.4, 1.0 - shadowTransmittance);
+        // Fetch LBM / Wind data
+        vec2 lbmLocalPos = (worldXZ - vec2(uLbmGridOrigin.x, uLbmGridOrigin.y) * uLbmSpacing);
+        vec2 lbmUV = lbmLocalPos / (vec2(uLbmGridSize) * uLbmSpacing);
+        bool inLbmBounds = (lbmUV.x >= 0.0 && lbmUV.x <= 1.0 && lbmUV.y >= 0.0 && lbmUV.y <= 1.0);
+        vec4 wind = vec4(0.0);
+
+        if (inLbmBounds) {
+            wind = texture(uLbmWindTex, lbmUV);
+            vec4 scalars = texture(uLbmScalarTex, lbmUV);
+            vec4 aerosols = texture(uLbmAerosolTex, lbmUV);
+
+            // Overlay ground/weather diagnostics (Temperature, Humidity, Aerosol) onto terrain
+            if (uShowTemperature) {
+                float tempC = scalars.x - 273.15;
+                vec3 tempColor = mix(vec3(0.0, 0.2, 0.8), vec3(0.8, 0.1, 0.0), clamp((tempC + 10.0) / 50.0, 0.0, 1.0));
+                groundColor = mix(groundColor, tempColor, 0.35);
+            }
+            if (uShowHumidity) {
+                vec3 humidColor = mix(vec3(0.8, 0.8, 0.5), vec3(0.1, 0.4, 0.7), scalars.y);
+                groundColor = mix(groundColor, humidColor, 0.35);
+            }
+            if (uShowAerosol) {
+                vec3 dustCol   = vec3(0.7, 0.4, 0.15) * clamp(aerosols.r * 15.0, 0.0, 1.0);
+                vec3 pollenCol = vec3(0.5, 0.8, 0.1)  * clamp(aerosols.g * 15.0, 0.0, 1.0);
+                vec3 smokeCol  = vec3(0.3, 0.3, 0.35) * clamp(aerosols.b * 15.0, 0.0, 1.0);
+                vec3 mistCol   = vec3(0.4, 0.7, 0.95) * clamp(aerosols.a * 15.0, 0.0, 1.0);
+                groundColor = mix(groundColor, groundColor + dustCol + pollenCol + smokeCol + mistCol, 0.5);
+            }
         }
 
-        // Overlay Cloud Cover (using raw density or effective coverage)
+        // Apply Cloud Shadows on top of Ground
+        if (uShowCloudShadow) {
+            groundColor = mix(groundColor, groundColor * 0.35, 1.0 - shadowTransmittance);
+        }
+
+        // Overlay Cloud Cover (using actual coverage map) on top of Shadows
+        combinedColor = groundColor;
         if (uShowCloudCover) {
-            float cloudAlpha = (1.0 - shadowTransmittance) * 0.85;
+            float cloudAlpha = cloudData.r * 0.75; // Use raw coverage map!
             combinedColor = mix(combinedColor, vec3(0.95, 0.95, 0.95), cloudAlpha);
+        }
+
+        // Overlay Wind flow on top of EVERYTHING
+        if (uShowWind && inLbmBounds) {
+            float v = length(wind.xz) / 25.0;
+            vec2 windDir = normalize(wind.xz + vec2(1e-5));
+            float flow = sin(dot(worldXZ, windDir) * 0.005 - uTime * 5.0) * 0.5 + 0.5;
+
+            // Beautiful, high-contrast, neon cyan-blue wind flow lines
+            vec3 windCol = vec3(0.1, 0.65, 1.0) * (0.6 + 0.4 * flow);
+            float alpha = clamp(v * 0.6, 0.0, 0.8);
+            combinedColor = mix(combinedColor, windCol, alpha);
         }
     }
     else if (uSelectedLayer == 1) { // Raw Cloud Map (the colorful baked weather map)
         combinedColor = cloudData.rgb;
     }
     else if (uSelectedLayer == 2) { // Cloud Effective Coverage
-        combinedColor = vec3(1.0 - shadowTransmittance);
+        combinedColor = vec3(cloudData.r);
     }
     else if (uSelectedLayer == 3) { // Deep Opacity Map (raw optical depth at layer 7)
         combinedColor = vec3(shadowDensity * 0.01); // scale to visible range
@@ -192,38 +235,7 @@ void main() {
     }
 
     // --- 4. Overlays for LBM and other Phenomenon in Combined View ---
-    if (uSelectedLayer == 0) {
-        vec2 lbmLocalPos = (worldXZ - vec2(uLbmGridOrigin.x, uLbmGridOrigin.y) * uLbmSpacing);
-        vec2 lbmUV = lbmLocalPos / (vec2(uLbmGridSize) * uLbmSpacing);
-
-        if (lbmUV.x >= 0.0 && lbmUV.x <= 1.0 && lbmUV.y >= 0.0 && lbmUV.y <= 1.0) {
-            vec4 wind = texture(uLbmWindTex, lbmUV);
-            vec4 scalars = texture(uLbmScalarTex, lbmUV);
-            vec4 aerosols = texture(uLbmAerosolTex, lbmUV);
-
-            if (uShowTemperature) {
-                float tempC = scalars.x - 273.15;
-                vec3 tempColor = mix(vec3(0.0, 0.2, 0.8), vec3(0.8, 0.1, 0.0), clamp((tempC + 10.0) / 50.0, 0.0, 1.0));
-                combinedColor = mix(combinedColor, tempColor, 0.15);
-            }
-            if (uShowHumidity) {
-                combinedColor = mix(combinedColor, vec3(0.1, 0.4, 0.7), scalars.y * 0.15);
-            }
-            if (uShowWind) {
-                float v = length(wind.xz) / 25.0;
-                vec2 windDir = normalize(wind.xz + vec2(1e-5));
-                float flow = sin(dot(worldXZ, windDir) * 0.005 - uTime * 5.0) * 0.5 + 0.5;
-                combinedColor += vec3(0.0, v * 0.2 + flow * v * 0.1, v * 0.4 + flow * v * 0.1);
-            }
-            if (uShowAerosol) {
-                vec3 dustCol   = vec3(0.7, 0.4, 0.15) * clamp(aerosols.r * 15.0, 0.0, 1.0);
-                vec3 pollenCol = vec3(0.5, 0.8, 0.1)  * clamp(aerosols.g * 15.0, 0.0, 1.0);
-                vec3 smokeCol  = vec3(0.3, 0.3, 0.35) * clamp(aerosols.b * 15.0, 0.0, 1.0);
-                vec3 mistCol   = vec3(0.4, 0.7, 0.95) * clamp(aerosols.a * 15.0, 0.0, 1.0);
-                combinedColor = mix(combinedColor, combinedColor + dustCol + pollenCol + smokeCol + mistCol, 0.3);
-            }
-        }
-    }
+    // (Handled directly inside uSelectedLayer == 0 section above to ensure perfect blending order)
 
     // --- 5. Camera Indicator ---
     float distToCam = length(worldXZ - uCameraPos.xz);
