@@ -131,6 +131,21 @@ float calculateCloudShadow(int light_index, vec3 frag_pos) {
 		return 1.0;
 	}
 
+	int primaryIdx = 0;
+	float maxIntensity = -1.0;
+	for (int i = 0; i < min(2, num_lights); ++i) {
+		if (lights[i].type == LIGHT_TYPE_DIRECTIONAL) {
+			if (lights[i].intensity > maxIntensity) {
+				maxIntensity = lights[i].intensity;
+				primaryIdx = i;
+			}
+		}
+	}
+
+	if (light_index != primaryIdx) {
+		return 1.0;
+	}
+
 	vec3 L = normalize(-lights[light_index].direction);
 	return calculateCloudShadowFactor(frag_pos, L, cloudShadowIntensity);
 }

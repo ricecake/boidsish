@@ -105,8 +105,8 @@ void main() {
     float shadowTransmittance = 1.0;
 
     if (shadowUV.x >= 0.0 && shadowUV.x <= 1.0 && shadowUV.y >= 0.0 && shadowUV.y <= 1.0) {
-        shadowDensity = texture(uCloudShadowTex, vec3(shadowUV, 7.0)).r;
-        shadowTransmittance = exp(-shadowDensity * 0.0075);
+        shadowDensity = textureLod(uCloudShadowTex, vec3(shadowUV, 7.0), 1.5).r;
+        shadowTransmittance = exp(-shadowDensity * 0.001 * 2.0 / max(0.001, uWorldScale));
     }
 
     // --- 3. Render Selected Layer ---

@@ -321,10 +321,13 @@ namespace Boidsish {
 		glm::vec3 primaryLightDir = sunDir;
 		if (light_mgr) {
 			const auto& lights = light_mgr->GetLights();
+			float max_intensity = -1.0f;
 			for (const auto& light : lights) {
 				if (light.type == Boidsish::DIRECTIONAL_LIGHT) {
-					primaryLightDir = glm::normalize(-light.direction);
-					break;
+					if (light.intensity > max_intensity) {
+						max_intensity = light.intensity;
+						primaryLightDir = glm::normalize(-light.direction);
+					}
 				}
 			}
 		}
