@@ -11,7 +11,10 @@ layout(std140, binding = [[WIND_DATA_BINDING]]) uniform WindData {
 	ivec4 u_windOriginSize; // x, z = origin in chunks, y = size (width), w = height (60)
 	vec4  u_windParams;     // x = chunkSpacing (32.0), y = time, z = curlScale, w = curlStrength
 };
+#endif
 
+#ifndef WIND_TEXTURES_DEFINED
+#define WIND_TEXTURES_DEFINED
 layout(binding = [[WIND_TEXTURE_BINDING]]) uniform sampler2D u_windTexture;
 #ifdef WIND_COMPUTE
 layout(binding = [[LBM_WIND_TEXTURE_BINDING]]) uniform sampler2D u_lbmWindTexture;

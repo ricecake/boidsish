@@ -42,10 +42,10 @@ namespace Boidsish {
     WeatherLbmSimulator::~WeatherLbmSimulator() {}
 
 	void WeatherLbmSimulator::UpdateAnchor(const glm::vec3& cameraPos, float totalTime, float timeOfDay) {
-		// Anchor grid to camera chunk position
+		// Anchor grid to camera cell position
 		glm::ivec2 newAnchor;
-		newAnchor.x = (int)std::floor(cameraPos.x / 32.0f) - width_ / 2;
-		newAnchor.y = (int)std::floor(cameraPos.z / 32.0f) - height_ / 2;
+		newAnchor.x = (int)std::floor(cameraPos.x / kGridSpacing) - width_ / 2;
+		newAnchor.y = (int)std::floor(cameraPos.z / kGridSpacing) - height_ / 2;
 
 		if (newAnchor != gridAnchor_) {
 			glm::ivec2 shiftOffset = newAnchor - gridAnchor_;
@@ -104,8 +104,8 @@ namespace Boidsish {
     }
 
     void WeatherLbmSimulator::InitializeCell(int x, int z, float totalTime, float timeOfDay, LbmCell& cell) {
-        float worldX = (float)(x + gridAnchor_.x) * 32.0f;
-        float worldZ = (float)(z + gridAnchor_.y) * 32.0f;
+        float worldX = (float)(x + gridAnchor_.x) * kGridSpacing;
+        float worldZ = (float)(z + gridAnchor_.y) * kGridSpacing;
 
         float baseTemp = GetBaseTemperature(worldX, worldZ, totalTime, timeOfDay);
 
@@ -114,7 +114,8 @@ namespace Boidsish {
         float targetHumidity = initialized_ ? currentOutput_.humidity : 0.5f;
         float targetRho = initialized_ ? currentOutput_.pressure / 1013.25f : 1.0f;
 
-        float n = Simplex::noise(glm::vec2(worldX * 0.001f, worldZ * 0.001f));
+        float coordScale = 32.0f / kGridSpacing;
+        float n = Simplex::noise(glm::vec2(worldX * 0.001f * coordScale, worldZ * 0.001f * coordScale));
         cell.temperature = glm::mix(targetTemp, baseTemp, 0.5f) + n * 5.0f;
         cell.aerosols = glm::vec4(0.01f + std::abs(n) * 0.05f, 0.0f, 0.0f, 0.0f);
         cell.humidity = glm::mix(targetHumidity, 0.4f + std::abs(n) * 0.2f, 0.5f);
@@ -122,8 +123,8 @@ namespace Boidsish {
         cell.viscosityDamping = 0.0f;
 
         // Set initial f based on noise-driven wind
-        glm::vec2 u(Simplex::noise(glm::vec2(worldX * 0.002f, worldZ * 0.002f)),
-                             Simplex::noise(glm::vec2(worldX * 0.002f + 100.0f, worldZ * 0.002f + 100.0f)));
+        glm::vec2 u(Simplex::noise(glm::vec2(worldX * 0.002f * coordScale, worldZ * 0.002f * coordScale)),
+                             Simplex::noise(glm::vec2(worldX * 0.002f * coordScale + 100.0f, worldZ * 0.002f * coordScale + 100.0f)));
         u *= 0.1f;
 
         for (int i = 0; i < 9; ++i) {
@@ -268,8 +269,8 @@ namespace Boidsish {
         for (int z = 0; z < height_; ++z) {
             for (int x = 0; x < width_; ++x) {
                 int idx = z * width_ + x;
-                float worldX = (float)(x + gridAnchor_.x) * 32.0f;
-                float worldZ = (float)(z + gridAnchor_.y) * 32.0f;
+                float worldX = (float)(x + gridAnchor_.x) * kGridSpacing;
+                float worldZ = (float)(z + gridAnchor_.y) * kGridSpacing;
 
                 auto [height, normal] = terrain.GetTerrainPropertiesAtPoint(worldX, worldZ);
                 float control = terrain.GetBiomeControlValue(worldX, worldZ);
@@ -299,14 +300,15 @@ namespace Boidsish {
         // A smaller number means the terrain holds heat longer into the evening.
         const float coolingRelaxation = 0.02f;
 
+        float coordScale = 32.0f / kGridSpacing;
         for (int i = 0; i < (int)currentGrid_->size(); ++i) {
             LbmCell& cell = (*currentGrid_)[i];
             const LbmCellConfig& cfg = config_[i];
 
             int x = i % width_;
             int z = i / width_;
-            float worldX = (float)(x + gridAnchor_.x) * 32.0f;
-            float worldZ = (float)(z + gridAnchor_.y) * 32.0f;
+            float worldX = (float)(x + gridAnchor_.x) * kGridSpacing;
+            float worldZ = (float)(z + gridAnchor_.y) * kGridSpacing;
 
             float baseTemp = GetBaseTemperature(worldX, worldZ, totalTime, timeOfDay);
 
@@ -314,7 +316,7 @@ namespace Boidsish {
             cell.temperature += (baseTemp - cell.temperature) * coolingRelaxation;
 
             // 2. Sensible Heat Flux (Solar heating)
-            float solarAngle = (timeOfDay + (worldX * 0.001f) - 14.0f) * (PI / 12.0f);
+            float solarAngle = (timeOfDay + (worldX * 0.001f * coordScale) - 14.0f) * (PI / 12.0f);
             float heating = std::max(0.0f, std::cos(solarAngle)) * cfg.sensibleHeatFactor * 0.1f * seasonalIntensity;
             cell.temperature += heating;
 
@@ -379,33 +381,35 @@ namespace Boidsish {
         }
     }
     glm::vec2 WeatherLbmSimulator::GetTargetVelocity(float worldX, float worldZ, float totalTime, float windSpeed, float windStrength) const {
+        float coordScale = 32.0f / kGridSpacing;
         glm::vec2 prevailingWind(0.02f, 0.01f);
-        prevailingWind += glm::vec2(worldX + worldZ, worldX - worldZ) * 0.0001f;
+        prevailingWind += glm::vec2(worldX + worldZ, worldX - worldZ) * (0.0001f * coordScale);
         prevailingWind = glm::normalize(prevailingWind);
-        auto noiseWind = Simplex::curlNoise(glm::vec2(worldX * 0.001f + totalTime * windSpeed, worldZ * 0.001f + totalTime * windSpeed), atan2(prevailingWind.x, prevailingWind.y));
+        auto noiseWind = Simplex::curlNoise(glm::vec2(worldX * 0.001f * coordScale + totalTime * windSpeed, worldZ * 0.001f * coordScale + totalTime * windSpeed), atan2(prevailingWind.x, prevailingWind.y));
         glm::vec2 targetU = prevailingWind + noiseWind * 0.1f;
-        targetU *= Simplex::noise({worldX, worldZ}) * 0.5f + 0.5f;
+        targetU *= Simplex::noise({worldX * coordScale, worldZ * coordScale}) * 0.5f + 0.5f;
         return glm::clamp(targetU * (0.05f + windStrength * 5.0f), -0.14f, 0.14f);
     }
 
     void WeatherLbmSimulator::ApplyNudging(float /*deltaTime*/, float totalTime, float /*timeOfDay*/, float windSpeed, float windStrength, float targetTemp, float targetPressure, float targetHumidity) {
         const float uNudgeStrength = 0.02f, tempNudgeStrength = 0.01f, humidityNudgeStrength = 0.01f, vyNudgeStrength = 0.005f, aerosolNudgeStrength = 0.01f;
         const float rhoTolerance = 0.01f, uTolerance = 0.01f, tempTolerance = 0.1f, humidityTolerance = 0.01f, aerosolTolerance = 0.01f;
-        const float lbmConversion = 32.0f / 0.1f;
+        const float lbmConversion = kGridSpacing / 0.1f;
+        float coordScale = 32.0f / kGridSpacing;
         for (int z = 0; z < height_; ++z) {
             for (int x = 0; x < width_; ++x) {
                 if (x < kPadding || x >= width_ - kPadding || z < kPadding || z >= height_ - kPadding) continue;
                 int idx = z * width_ + x;
                 LbmCell& cell = (*currentGrid_)[idx];
-                float worldX = (float)(x + gridAnchor_.x) * 32.0f, worldZ = (float)(z + gridAnchor_.y) * 32.0f;
+                float worldX = (float)(x + gridAnchor_.x) * kGridSpacing, worldZ = (float)(z + gridAnchor_.y) * kGridSpacing;
                 float rho = 0.0f; glm::vec2 u(0.0f);
                 for (int j = 0; j < 9; ++j) { rho += cell.f[j]; u.x += cell.f[j] * (float)cx[j]; u.y += cell.f[j] * (float)cz[j]; }
                 if (rho > 1e-6f) u /= rho;
-                float n_rho = Simplex::noise(glm::vec3(worldX * 0.005f, worldZ * 0.005f, totalTime * 0.05f));
-                float n_temp = Simplex::noise(glm::vec3(worldX * 0.005f + 100.0f, worldZ * 0.005f + 100.0f, totalTime * 0.05f));
-                float n_hum = Simplex::noise(glm::vec3(worldX * 0.005f - 100.0f, worldZ * 0.005f - 100.0f, totalTime * 0.05f));
-                float n_u1 = Simplex::noise(glm::vec3(worldX * 0.005f, worldZ * 0.005f + 200.0f, totalTime * 0.05f));
-                float n_u2 = Simplex::noise(glm::vec3(worldX * 0.005f + 200.0f, worldZ * 0.005f, totalTime * 0.05f));
+                float n_rho = Simplex::noise(glm::vec3(worldX * 0.005f * coordScale, worldZ * 0.005f * coordScale, totalTime * 0.05f));
+                float n_temp = Simplex::noise(glm::vec3(worldX * 0.005f * coordScale + 100.0f, worldZ * 0.005f * coordScale + 100.0f, totalTime * 0.05f));
+                float n_hum = Simplex::noise(glm::vec3(worldX * 0.005f * coordScale - 100.0f, worldZ * 0.005f * coordScale - 100.0f, totalTime * 0.05f));
+                float n_u1 = Simplex::noise(glm::vec3(worldX * 0.005f * coordScale, worldZ * 0.005f * coordScale + 200.0f, totalTime * 0.05f));
+                float n_u2 = Simplex::noise(glm::vec3(worldX * 0.005f * coordScale + 200.0f, worldZ * 0.005f * coordScale, totalTime * 0.05f));
                 auto nudgeScalar = [&](auto& val, auto& c, float globT, float noise, float nScale, float str, float tol) {
                     float target = globT; bool nudge = false;
                     if (c.target) { target = *c.target; if (std::abs(val - *c.target) > tol) nudge = true; }
@@ -447,7 +451,7 @@ namespace Boidsish {
             for (int x = 0; x < width_; ++x) {
                 int dist = std::min({x, width_ - 1 - x, z, height_ - 1 - z});
                 if (dist < kPadding) {
-                    int idx = z * width_ + x; float worldX = (float)(x + gridAnchor_.x) * 32.0f, worldZ = (float)(z + gridAnchor_.y) * 32.0f;
+                    int idx = z * width_ + x; float worldX = (float)(x + gridAnchor_.x) * kGridSpacing, worldZ = (float)(z + gridAnchor_.y) * kGridSpacing;
                     glm::vec2 targetU = GetTargetVelocity(worldX, worldZ, totalTime, windSpeed, windStrength);
                     float baseTemp = GetBaseTemperature(worldX, worldZ, totalTime, timeOfDay), finalTargetTemp = glm::mix(baseTemp, targetTemp, 0.5f), blend = std::pow(1.0f - (float)dist / (float)kPadding, 2.0f);
                     for (int i = 0; i < 9; ++i) { float feq = CalculateEquilibrium(i, targetRho, targetU); (*currentGrid_)[idx].f[i] = glm::mix((*currentGrid_)[idx].f[i], feq, blend); }
@@ -470,9 +474,11 @@ namespace Boidsish {
         float seasonalFactor = GetSeasonalFactor(totalTime);
         float seasonalTempOffset = (seasonalFactor - 0.5f) * 25.0f; // +/- 12.5C
 
+        float coordScale = 32.0f / kGridSpacing;
+
         // 2. Diurnal variation with longitudinal offset
         // "east side pegged to be ahead of the west side"
-        float longitudeOffset = worldX * 0.001f;
+        float longitudeOffset = worldX * (0.001f * coordScale);
         float localTimeOfDay = timeOfDay + longitudeOffset;
 
         float solarAngle = (localTimeOfDay - 14.0f) * (PI / 12.0f);
@@ -480,15 +486,15 @@ namespace Boidsish {
 
         // 3. Spatial gradient (slanted midpoint)
         // A prevailing gradient that makes things generally colder towards "North-West" (negative X, positive Z)
-        float spatialGradient = (worldX - worldZ) * 0.02f;
+        float spatialGradient = (worldX - worldZ) * (0.02f * coordScale);
 
         float baseTemp = 285.15f + seasonalTempOffset + diurnalTemp + spatialGradient;
         return baseTemp;
     }
 
     const LbmCell* WeatherLbmSimulator::GetCellAtPosition(const glm::vec3& pos) const {
-        int chunkX = (int)std::floor(pos.x / 32.0f);
-        int chunkZ = (int)std::floor(pos.z / 32.0f);
+        int chunkX = (int)std::floor(pos.x / kGridSpacing);
+        int chunkZ = (int)std::floor(pos.z / kGridSpacing);
 
         int x = chunkX - gridAnchor_.x;
         int z = chunkZ - gridAnchor_.y;
@@ -501,8 +507,8 @@ namespace Boidsish {
     }
 
     void WeatherLbmSimulator::InjectPressure(const glm::vec3& pos, float pressureHpa, float burstStrength) {
-        int chunkX = (int)std::floor(pos.x / 32.0f);
-        int chunkZ = (int)std::floor(pos.z / 32.0f);
+        int chunkX = (int)std::floor(pos.x / kGridSpacing);
+        int chunkZ = (int)std::floor(pos.z / kGridSpacing);
 
         int gx = chunkX - gridAnchor_.x;
         int gz = chunkZ - gridAnchor_.y;
@@ -536,8 +542,8 @@ namespace Boidsish {
     }
 
     void WeatherLbmSimulator::InjectAerosol(const glm::vec3& pos, float concentration) {
-        int chunkX = (int)std::floor(pos.x / 32.0f);
-        int chunkZ = (int)std::floor(pos.z / 32.0f);
+        int chunkX = (int)std::floor(pos.x / kGridSpacing);
+        int chunkZ = (int)std::floor(pos.z / kGridSpacing);
 
         int gx = chunkX - gridAnchor_.x;
         int gz = chunkZ - gridAnchor_.y;
@@ -551,8 +557,8 @@ namespace Boidsish {
     }
 
     void WeatherLbmSimulator::InjectTemperature(const glm::vec3& pos, float temperatureK) {
-        int chunkX = (int)std::floor(pos.x / 32.0f);
-        int chunkZ = (int)std::floor(pos.z / 32.0f);
+        int chunkX = (int)std::floor(pos.x / kGridSpacing);
+        int chunkZ = (int)std::floor(pos.z / kGridSpacing);
 
         int gx = chunkX - gridAnchor_.x;
         int gz = chunkZ - gridAnchor_.y;
@@ -565,7 +571,7 @@ namespace Boidsish {
     }
 
     void WeatherLbmSimulator::PopulateWindData(WindDataUbo& ubo, std::vector<glm::vec4>& grid_out, float totalTime, float curlScale, float curlStrength) const {
-        float gridSpacing = 32.0f;
+        float gridSpacing = kGridSpacing;
         // GLSL: x, z = origin, y = width, w = height
         ubo.originSize = glm::ivec4(gridAnchor_.x, width_, gridAnchor_.y, height_);
         ubo.params = glm::vec4(gridSpacing, totalTime, curlScale, curlStrength);
@@ -632,7 +638,7 @@ namespace Boidsish {
             }
             if (rho > 1e-6f) u /= rho;
 
-            float conversion = 32.0f / dt_;
+            float conversion = kGridSpacing / dt_;
             out.windVelocity = u * conversion;
             out.verticalWind = cell->vy * conversion;
             out.temperature = cell->temperature;
