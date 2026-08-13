@@ -60,6 +60,49 @@ namespace Boidsish {
 		SetPace(WeatherAttribute::CirrusOpacity, 10.0f);
 
 		LoadConfig();
+
+		if (glGenBuffers != nullptr) {
+			glGenBuffers(1, &wind_data_ubo_);
+			glBindBuffer(GL_UNIFORM_BUFFER, wind_data_ubo_);
+			glBufferData(GL_UNIFORM_BUFFER, sizeof(WindDataUbo), nullptr, GL_DYNAMIC_DRAW);
+			glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
+			glGenTextures(1, &wind_texture_);
+			glBindTexture(GL_TEXTURE_2D, wind_texture_);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, 512, 512, 0, GL_RGBA, GL_FLOAT, nullptr);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+			glBindTexture(GL_TEXTURE_2D, 0);
+
+			glGenTextures(1, &lbm_scalar_texture_);
+			glBindTexture(GL_TEXTURE_2D, lbm_scalar_texture_);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, lbm_simulator_->GetWidth(), lbm_simulator_->GetHeight(), 0, GL_RGBA, GL_FLOAT, nullptr);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+			glBindTexture(GL_TEXTURE_2D, 0);
+
+			glGenTextures(1, &lbm_aerosol_texture_);
+			glBindTexture(GL_TEXTURE_2D, lbm_aerosol_texture_);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, lbm_simulator_->GetWidth(), lbm_simulator_->GetHeight(), 0, GL_RGBA, GL_FLOAT, nullptr);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+			glBindTexture(GL_TEXTURE_2D, 0);
+
+			glGenTextures(1, &lbm_wind_texture_);
+			glBindTexture(GL_TEXTURE_2D, lbm_wind_texture_);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, lbm_simulator_->GetWidth(), lbm_simulator_->GetHeight(), 0, GL_RGBA, GL_FLOAT, nullptr);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+			glBindTexture(GL_TEXTURE_2D, 0);
+		}
 	}
 
 	WeatherManager::~WeatherManager() {
@@ -262,8 +305,8 @@ namespace Boidsish {
 		PhysicallyBasedWeatherOutput out = latest_snapshot_.output;
 
 		// Localize if possible using snapshot data
-		int chunkX = (int)std::floor(pos.x / 32.0f);
-		int chunkZ = (int)std::floor(pos.z / 32.0f);
+		int chunkX = (int)std::floor(pos.x / WeatherLbmSimulator::kGridSpacing);
+		int chunkZ = (int)std::floor(pos.z / WeatherLbmSimulator::kGridSpacing);
 		int x = chunkX - latest_snapshot_.gridAnchor.x;
 		int z = chunkZ - latest_snapshot_.gridAnchor.y;
 
@@ -839,7 +882,7 @@ namespace Boidsish {
 				Simplex::noise(glm::vec2(987.654f, wind_t))
 			);
 			// Scale by current tuning controls
-			float     conversion = 32.0f / 0.1f;
+			float     conversion = WeatherLbmSimulator::kGridSpacing / 0.1f;
 			glm::vec2 windVec = windDir * current_.wind_strength * conversion;
 
 			// We still use the snapshot's grid dimensions for metadata but override the content
