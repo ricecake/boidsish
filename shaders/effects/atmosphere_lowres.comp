@@ -331,38 +331,12 @@ vec3 EvaluateStepLighting(
 	float currentLOD
 ) {
 	vec3 stepScattering = vec3(0.0);
-	vec3 localAmbientVisibility = vec3(0.0);
 
-	float stepLength = 100+50*jitter;
-	vec3 ao_offsets[] = vec3[](
-		vec3(0, 1,0),
-		vec3(0,-1,0),
-
-		vec3( 1,0,0),
-		vec3(-1,0,0),
-
-		vec3(0,0, 1),
-		vec3(0,0,-1)
-	);
-
-	float totalWeight = 0.0;
-	for (int i = 0; i < ao_offsets.length(); i++) {
-		// vec3 dir = normalize(hash3Tile(p+i*stepLength, vec3(0)));
-		vec3 dir = ao_offsets[i];
-
-		vec3 sp_c = p + dir * stepLength;
-		CloudWeather shadow_weather_c = computeCloudWeather(sp_c, props, currentLOD);
-		CloudLayer shadow_layer_c = computeCloudLayer(shadow_weather_c, props);
-		CloudDensityResult shadowRes_c = calculateCloudDensityMinimal(sp_c, shadow_weather_c, shadow_layer_c, props);
-		// localAmbientVisibility += shadowRes_c.density * stepLength * (1.0-pow(2*pow(dir.y, 2)-1.0, 2)/4);
-
-		vec3 tapOD = shadowRes_c.density * stepLength * rgbExtinction;
-		float weight = 1.0 - pow(2.0 * pow(dir.y, 2.0) - 1.0, 2.0) / 4.0;
-		localAmbientVisibility += exp(-tapOD) * weight;
-		totalWeight += weight;
-	}
-
-	localAmbientVisibility /= max(totalWeight, 0.001);
+	// Fast ambient occlusion approximation using the distance to the cloud edge
+	float edgeDistance = getDistanceToCloudEdge(weather.coverage, h_norm, weather.heightMap, layer.thickness);
+	// Convert distance to transmittance/visibility using the step density as the local extinction.
+	// We apply a soft multiplier (0.05) to align the occlusion intensity with the visual range.
+	vec3 localAmbientVisibility = exp(-edgeDistance * stepDensity * 0.05);
 
 
 	// PASS 1: Global Directional Lights (Sun/Moon)

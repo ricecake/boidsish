@@ -290,6 +290,27 @@ float getDensityHeightGradient(float h, float type) {
 	return res;
 }
 
+/**
+ * Calculate the approximate distance from the current point inside the cloud to the nearest cloud edge.
+ * Uses the coverage map value, the height within the cloud, and the cloud profile function.
+ */
+float getDistanceToCloudEdge(float coverage, float h, float type, float thickness) {
+	// Evaluate the cloud profile function at this height
+	float heightGradient = getDensityHeightGradient(h, type);
+
+	// Horizontal distance: we are deep inside if coverage is 1.0, at the edge if 0.0.
+	// Scale by a characteristic horizontal scale (e.g., twice the thickness).
+	float horizontalScale = max(thickness * 2.0, 2000.0);
+	float distHorizontal = coverage * horizontalScale;
+
+	// Vertical distance: physically, it is min(h, 1.0 - h) * thickness.
+	// We modulate this by the height gradient to account for vertical tapering/shaping.
+	float distVertical = min(h, 1.0 - h) * thickness * heightGradient;
+
+	// The overall distance to the nearest edge is the minimum of horizontal and vertical distance.
+	return max(0.0, min(distHorizontal, distVertical));
+}
+
 float getCloud3DCoverage(vec3 p, CloudWeather weather, CloudLayer layer, float worldScale) {
 	float localFloor, actualThickness;
 	float h = getCloudRelativeHeight(p, weather, layer, localFloor, actualThickness);
