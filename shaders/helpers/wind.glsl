@@ -93,8 +93,13 @@ vec3 getWindAtPosition(vec3 worldPos) {
 
 	vec3 wind = texture(u_windTexture, uv).xyz;
 
+	vec2 warpUV = worldPos.xz * 0.2;
+	float warp = sin(warpUV.x + u_windParams.y) * cos(warpUV.y - u_windParams.y);
+	vec2 perturbedDir = normalize(wind.xz + vec2(-wind.z, wind.x) * warp * 0.3);
+
+
 	vec2 phacelleOut = fastSimplePhacelle2d(uv * 1024.0, normalize(wind.xz));
-	float phaseShift = -u_windParams.y * 0.50;
+	float phaseShift = u_windParams.y * 0.50;// + warp;
 	float cosShift = cos(phaseShift);
 	float sinShift = sin(phaseShift);
 
@@ -102,7 +107,7 @@ vec3 getWindAtPosition(vec3 worldPos) {
 	float positiveRipple = rawPhacelle * 0.5 + 0.5;
 
 	// return wind * (positiveRipple);
-	return wind * (1.0-(smoothstep(0,0.25,positiveRipple)*(1.0-smoothstep(0.25,1.0, positiveRipple))));
+	return wind * ((smoothstep(0,0.25,positiveRipple)*(1.0-smoothstep(0.25,1.0, positiveRipple))));
 	// return wind * (0.5+positiveRipple);
 	// return gerstnerWave(uv, normalize(wind.xz), 0.5, 64.0, u_windParams.y);
 
