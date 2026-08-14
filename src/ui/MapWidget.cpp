@@ -104,6 +104,10 @@ namespace Boidsish {
             m_mapShader->setBool("uShowCloudHeight", m_showCloudHeight);
             m_mapShader->setBool("uShowCloudShadow", m_showCloudShadow);
 
+            m_mapShader->setFloat("uCloudCoverage", atmosphere->GetCloudCoverage());
+            m_mapShader->setFloat("uCloudAltitude", atmosphere->GetCloudAltitude());
+            m_mapShader->setFloat("uCloudThickness", atmosphere->GetCloudThickness());
+
             const auto& lbm_snap = weather->GetLatestLbmSnapshot();
             if (lbm_snap.valid) {
                 m_mapShader->setIVec2("uLbmGridOrigin", lbm_snap.uboMetadata.originSize.x, lbm_snap.uboMetadata.originSize.z);
