@@ -4,6 +4,10 @@
 #include "fast_noise.glsl"
 #include "terrain_common.glsl"
 #include "lygia/generative/psrdnoise.glsl"
+#include "lygia/generative/gerstnerWave.glsl"
+#ifdef PI
+#undef PI
+#endif
 
 // Wind data UBO - stores macro wind grid and simulation parameters
 #ifndef WIND_DATA_BLOCK
@@ -87,7 +91,21 @@ vec3 getWindAtPosition(vec3 worldPos) {
 	vec2 gridCoord = (worldPos.xz / gridSpacing) - vec2(u_windOriginSize.xz);
 	vec2 uv = gridCoord / vec2(u_windOriginSize.y, u_windOriginSize.w);
 
-	return texture(u_windTexture, uv).xyz;
+	vec3 wind = texture(u_windTexture, uv).xyz;
+
+	vec2 phacelleOut = fastSimplePhacelle2d(uv * 1024.0, normalize(wind.xz));
+	float phaseShift = -u_windParams.y * 0.50;
+	float cosShift = cos(phaseShift);
+	float sinShift = sin(phaseShift);
+
+	float rawPhacelle = phacelleOut.x * cosShift - phacelleOut.y * sinShift;
+	float positiveRipple = rawPhacelle * 0.5 + 0.5;
+
+	// return wind * (positiveRipple);
+	return wind * (1.0-(smoothstep(0,0.25,positiveRipple)*(1.0-smoothstep(0.25,1.0, positiveRipple))));
+	// return wind * (0.5+positiveRipple);
+	// return gerstnerWave(uv, normalize(wind.xz), 0.5, 64.0, u_windParams.y);
+
 }
 
 /**
@@ -173,6 +191,8 @@ vec4 computeWindAtPositionOptimized(vec3 worldPos, float terrainHeight, vec3 nor
 			macroWind = mix(macroWind, deflectedDir * macroSpeed, guidanceStrength);
 		}
 	}
+
+	return vec4(macroWind, drag);
 
 	float time = u_windParams.y;
 	vec2 windDir2D = macroSpeed > 0.001 ? macroWind.xz / macroSpeed : vec2(1.0, 0.0);
