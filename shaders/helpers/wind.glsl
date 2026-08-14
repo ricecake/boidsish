@@ -212,4 +212,77 @@ vec4 computeWindAtPosition(vec3 worldPos) {
 }
 #endif
 
+// Simple hash for random values
+float windHash(uint x) {
+	x = ((x >> 16) ^ x) * 0x45d9f3b;
+	x = ((x >> 16) ^ x) * 0x45d9f3b;
+	x = (x >> 16) ^ x;
+	return float(x) / 4294967295.0;
+}
+
+/**
+ * Helper to rotate a vector around an arbitrary axis using Rodrigues' rotation.
+ */
+vec3 rotateVector(vec3 v, vec3 axis, float angle) {
+    if (angle <= 0.0001) return v;
+    float cosTheta = cos(angle);
+    float sinTheta = sin(angle);
+    return v * cosTheta + cross(axis, v) * sinTheta + axis * dot(axis, v) * (1.0 - cosTheta);
+}
+
+/**
+ * Calculates the combined wind deflection angle and direction.
+ */
+void getWindDeflectionAngleAndAxis(vec3 basePos, float dist, float v, float windInfluence, float biomeRigidity, float globalWindMultiplier, float globalRigidityMultiplier, uint seed, out float totalBendAngle, out vec3 rotationAxis) {
+    float distanceFade = smoothstep(250.0, 75.0, dist);
+    vec3 windNoise = (distanceFade > 0.0 && dist < 150.0) ? distanceFade * getWindAtPosition(basePos) : vec3(0.0);
+    float windStrength = length(windNoise) * windInfluence * globalWindMultiplier;
+
+    vec3 windDir = (length(windNoise) > 0.001) ? normalize(vec3(windNoise.x, 0.0, windNoise.z)) : vec3(1.0, 0.0, 0.0);
+
+    float maxDeflection = 1.3;
+    float rigidity = clamp(biomeRigidity * globalRigidityMultiplier, 0.0, 0.99);
+    float windThreshold = rigidity * 2.0;
+    float effectiveWindStrength = max(0.0, windStrength - windThreshold);
+
+    // wind_strength scaled to a reasonable angle using tanh
+    float resistedWindStrength = maxDeflection * tanh(effectiveWindStrength * 0.15 / maxDeflection);
+
+    float bendFactor = (1.0 - rigidity);
+    // Smooth deflection starting slightly above the base
+    float windBendAngle = bendFactor * resistedWindStrength * pow(v, 1.2) * smoothstep(0.05, 1.0, v);
+
+    // 2. Base Tilt (static variety)
+    float tiltFactor = (windHash(seed + 8888u) * 2.0 - 1.0) * 0.15;
+    float tiltAngle = tiltFactor * v;
+
+    // 3. Random gentle sway (low-frequency variety)
+    float randomSway = (windHash(seed + 4321u) * 2.0 - 1.0) * 0.05 * v * v;
+
+    vec3 staticDeflection = vec3(randomSway, 0.0, tiltAngle);
+    vec3 windDeflection = windDir * windBendAngle;
+
+    vec3 combinedDeflection = staticDeflection + windDeflection;
+    totalBendAngle = length(combinedDeflection);
+
+    if (totalBendAngle <= 0.0001) {
+        rotationAxis = vec3(0.0, 1.0, 0.0);
+    } else {
+        vec3 deflectionDir = normalize(combinedDeflection);
+        rotationAxis = normalize(cross(vec3(0.0, 1.0, 0.0), deflectionDir));
+    }
+}
+
+/**
+ * Calculates unified wind deflection position using Rodrigues' rotation.
+ * Rotates initial relative position in the direction of wind, taking rigidity and distance fade into account.
+ * Both grass and ferns can use this to ensure they deflect realistically and resist the wind based on rigidity.
+ */
+vec3 getWindDeflectedPosition(vec3 initialRelativePos, vec3 basePos, float dist, float v, float windInfluence, float biomeRigidity, float globalWindMultiplier, float globalRigidityMultiplier, uint seed) {
+    float totalBendAngle = 0.0;
+    vec3 rotationAxis = vec3(0.0, 1.0, 0.0);
+    getWindDeflectionAngleAndAxis(basePos, dist, v, windInfluence, biomeRigidity, globalWindMultiplier, globalRigidityMultiplier, seed, totalBendAngle, rotationAxis);
+    return rotateVector(initialRelativePos, rotationAxis, totalBendAngle);
+}
+
 #endif // HELPERS_WIND_GLSL
