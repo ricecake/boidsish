@@ -98,12 +98,11 @@ void main() {
     vec3 forward = vec3(sin(yaw), 0.0, cos(yaw));
     vec3 right = vec3(cos(yaw), 0.0, -sin(yaw));
 
-    // Wind influence
+    // Wind influence & deflection
     float dist = distance(viewPos, basePos);
-    float distanceFade = smoothstep(250.0, 75.0, dist);
-    vec3 windNoise = (distanceFade > 0 && dist < 150.0) ? distanceFade * getWindAtPosition(basePos) : vec3(0);
-    float windStrength = length(windNoise) * biomeProps[biomeIdx].windInfluence * globalProps.windMultiplier;
-    vec3 windDir = (length(windNoise) > 0.001) ? normalize(vec3(windNoise.x, 0.0, windNoise.z)) : vec3(1.0, 0.0, 0.0);
+    float totalBendAngle = 0.0;
+    vec3 rotationAxis = vec3(0.0, 1.0, 0.0);
+    getWindDeflectionAngleAndAxis(basePos, dist, v, biomeProps[biomeIdx].windInfluence, biomeProps[biomeIdx].rigidity, globalProps.windMultiplier, globalProps.rigidityMultiplier, seed, totalBendAngle, rotationAxis);
 
     // Arch curve of the fern frond (pointing outwards and arching down under gravity)
     float heightScale = height * 0.5; // low frond
@@ -113,23 +112,26 @@ void main() {
     // Arching equation
     float y_up = heightScale * (sin(v * 2.0) - 0.3 * v * v);
 
-    // Apply wind deflection to centerline (bends the frond along the wind direction)
-    float rigidity = clamp(biomeProps[biomeIdx].rigidity * globalProps.rigidityMultiplier, 0.0, 0.99);
-    float windBend = (1.0 - rigidity) * windStrength * 0.15 * pow(v, 1.5);
-
-    vec3 centerline = forward * x_forward + vec3(0.0, y_up, 0.0) + windDir * windBend;
-
     // Tapering width profile (starts thin, gets wider at 0.3, then tapers to 0 at tip)
     float widthProfile = smoothstep(0.0, 0.3, v) * (1.0 - v);
     float frondWidth = width * 1.8 * widthProfile;
 
-    // Final vertex position
-    vec3 pos = basePos + centerline + right * (u * frondWidth);
+    // Unbent local relative position
+    vec3 initialRelativePos = forward * x_forward + vec3(0.0, y_up, 0.0) + right * (u * frondWidth);
 
-    // Compute approximate normal
+    // Apply wind deflection using the shared Rodrigues' rotation helper
+    vec3 bentRelativePos = rotateVector(initialRelativePos, rotationAxis, totalBendAngle);
+
+    // Final vertex position
+    vec3 pos = basePos + bentRelativePos;
+
+    // Compute approximate unbent normal
     vec3 tangent = normalize(forward * frondLength + vec3(0.0, heightScale * (2.0 * cos(v * 2.0) - 0.6 * v), 0.0));
     vec3 norm = normalize(cross(tangent, right));
     if (norm.y < 0.0) norm = -norm; // Ensure normal points generally upwards
+
+    // Rotate normal with the same deflection
+    norm = rotateVector(norm, rotationAxis, totalBendAngle);
 
     fNormal = norm;
     fTexCoords = vec2(u * 0.5 + 0.5, v);

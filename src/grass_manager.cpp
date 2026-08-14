@@ -37,7 +37,7 @@ namespace Boidsish {
         placement_shader_ = std::make_unique<ComputeShader>("shaders/grass_placement.comp");
         pre_pass_shader_ = std::make_unique<ComputeShader>("shaders/grass_pre_pass.comp");
         fixup_shader_ = std::make_unique<ComputeShader>("shaders/grass_command_fixup.comp");
-        grass_shader_ = std::make_shared<Shader>("shaders/grass.vert", "shaders/grass.frag", "shaders/grass.tcs", "shaders/grass.tes");
+        grass_shader_ = std::make_shared<Shader>("shaders/grass.vert", "shaders/grass.frag");
         foliage_shader_ = std::make_shared<Shader>("shaders/fern.vert", "shaders/fern.frag");
 
         if (!placement_shader_->isValid() || !pre_pass_shader_->isValid() || !fixup_shader_->isValid() || !grass_shader_->ID || !foliage_shader_->ID) {
@@ -83,7 +83,7 @@ namespace Boidsish {
         // Indirect Buffer
         glGenBuffers(1, &grass_indirect_buffer_);
         glBindBuffer(GL_DRAW_INDIRECT_BUFFER, grass_indirect_buffer_);
-        DrawArraysIndirectCommand cmd = {1, 0, 0, 0}; // 1 vertex per blade (1-vertex patch)
+        DrawArraysIndirectCommand cmd = {30, 0, 0, 0}; // 30 vertices per blade (5 segments * 6 vertices)
         glBufferData(GL_DRAW_INDIRECT_BUFFER, sizeof(DrawArraysIndirectCommand), &cmd, GL_DYNAMIC_DRAW);
         glBindBuffer(GL_DRAW_INDIRECT_BUFFER, 0);
 
@@ -365,10 +365,8 @@ namespace Boidsish {
         glBindVertexArray(dummy_vao_);
         glBindBuffer(GL_DRAW_INDIRECT_BUFFER, grass_indirect_buffer_);
 
-        glPatchParameteri(GL_PATCH_VERTICES, 1);
-
         glDisable(GL_CULL_FACE);
-        glDrawArraysIndirect(GL_PATCHES, (void*)0);
+        glDrawArraysIndirect(GL_TRIANGLES, (void*)0);
         glEnable(GL_CULL_FACE);
         glBindVertexArray(0);
 
