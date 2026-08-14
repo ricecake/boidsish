@@ -54,6 +54,8 @@ namespace Boidsish {
 		T::RegisterConstant("BEHAVIOR_DRAW_COMMAND_BINDING", Constants::SsboBinding::BehaviorDrawCommand());
 		T::RegisterConstant("GRASS_INSTANCES_BINDING", Constants::SsboBinding::GrassInstances());
 		T::RegisterConstant("GRASS_INDIRECT_BINDING", Constants::SsboBinding::GrassIndirect());
+		T::RegisterConstant("FOLIAGE_INSTANCES_BINDING", Constants::SsboBinding::FoliageInstances());
+		T::RegisterConstant("FOLIAGE_INDIRECT_BINDING", Constants::SsboBinding::FoliageIndirect());
 		T::RegisterConstant("WEATHER_GRID_A_BINDING", Constants::SsboBinding::WeatherGridA());
 		T::RegisterConstant("WEATHER_GRID_B_BINDING", Constants::SsboBinding::WeatherGridB());
 		T::RegisterConstant("DECOR_INDIRECT_BINDING", Constants::SsboBinding::DecorIndirect());

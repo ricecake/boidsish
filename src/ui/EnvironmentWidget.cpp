@@ -352,12 +352,12 @@ namespace Boidsish {
 				}
 
 				// 3.5 Grass
-				if (ImGui::CollapsingHeader("Grass", ImGuiTreeNodeFlags_DefaultOpen)) {
+				if (ImGui::CollapsingHeader("Foliage & Grass", ImGuiTreeNodeFlags_DefaultOpen)) {
 					auto grass_manager = m_visualizer.GetGrassManager();
 					if (grass_manager) {
 						auto& cfg = ConfigManager::GetInstance();
 						bool  enabled = grass_manager->IsEnabled();
-						if (ImGui::Checkbox("Enable Grass", &enabled)) {
+						if (ImGui::Checkbox("Enable Foliage & Grass", &enabled)) {
 							grass_manager->SetEnabled(enabled);
 							cfg.SetBool("grass_enabled", enabled);
 						}
@@ -1042,7 +1042,7 @@ namespace Boidsish {
 					if (decor_manager) {
 						auto& cfg = ConfigManager::GetInstance();
 						bool  enabled = decor_manager->IsEnabled();
-						if (ImGui::Checkbox("Enable Foliage", &enabled)) {
+						if (ImGui::Checkbox("Enable Decor", &enabled)) {
 							decor_manager->SetEnabled(enabled);
 							cfg.SetBool("render_decor", enabled);
 						}
@@ -1052,7 +1052,7 @@ namespace Boidsish {
 								"foliage_culling_pixel_threshold",
 								10.0f
 							);
-							if (ImGui::SliderFloat("Foliage Pixel Threshold", &threshold, 0.0f, 50.0f)) {
+							if (ImGui::SliderFloat("Decor Pixel Threshold", &threshold, 0.0f, 50.0f)) {
 								ConfigManager::GetInstance().SetFloat("foliage_culling_pixel_threshold", threshold);
 							}
 							ImGui::Text("Higher = cull larger objects, 0 = disable size culling");
