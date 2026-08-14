@@ -100,7 +100,7 @@ void main() {
 
     float v = (float(segmentIdx) + v_local) / 5.0; // overall v along blade (0 to 1)
 
-    width += 3.0 * width * smoothstep(35.0, 75.0, dist);
+    width += 3.0 * width * smoothstep(64.0, 128.0, dist);
 
     // Wind using our new shared helper!
     float totalBendAngle = 0.0;
@@ -132,11 +132,11 @@ void main() {
 
     // --- Flower Logic ---
     // Taper curve: 1.0 at the base (v=0), 0.0 at the tip (v=1).
-    float shapeExponent = mix(2.0, 4.0, smoothstep(32.0, 128.0, dist));
+    float shapeExponent = mix(2.0, 2.1, smoothstep(64.0, 256.0, dist));
     float shapeProfile = 1.0 - pow(v, shapeExponent);
 
     // Artificially widen the entire blade at distance to preserve density
-    float distanceWidthBoost = mix(1.0, 2.0, smoothstep(32.0, 128.0, dist));
+    float distanceWidthBoost = mix(1.0, 1.1, smoothstep(64.0, 256.0, dist));
 
     float currentWidth;
     if (isFlower) {
