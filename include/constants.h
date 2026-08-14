@@ -98,6 +98,8 @@ namespace Boidsish {
 				BehaviorDrawCommand = 34,
 				GrassInstances = 35,
 				GrassIndirect = 36,
+				FoliageInstances = 56,
+				FoliageIndirect = 58,
 				WeatherGridA = 37,
 				WeatherGridB = 38,
 				DecorIndirect = 39,
@@ -450,6 +452,14 @@ namespace Boidsish {
 
 			consteval int GrassIndirect() {
 				return std::to_underlying(Constants::Bindings::Ssbo::GrassIndirect);
+			}
+
+			consteval int FoliageInstances() {
+				return std::to_underlying(Constants::Bindings::Ssbo::FoliageInstances);
+			}
+
+			consteval int FoliageIndirect() {
+				return std::to_underlying(Constants::Bindings::Ssbo::FoliageIndirect);
 			}
 
 			consteval int WeatherGridA() {

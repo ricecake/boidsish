@@ -39,6 +39,14 @@ layout(std430, binding = [[GRASS_INDIRECT_BINDING]]) buffer GrassIndirect {
     DrawArraysIndirectCommand indirectCommand;
 };
 
+layout(std430, binding = [[FOLIAGE_INSTANCES_BINDING]]) buffer FoliageInstances {
+    GrassInstance foliageInstances[];
+};
+
+layout(std430, binding = [[FOLIAGE_INDIRECT_BINDING]]) buffer FoliageIndirect {
+    DrawArraysIndirectCommand foliageIndirectCommand;
+};
+
 struct GrassProperties {
     vec4  colorTop;
     vec4  colorBottom;
@@ -195,8 +203,9 @@ void spawnBlade(int slice, vec3 patchOffset, float patchSize, ivec2 baseCellID) 
     // float heightFade = smoothstep(1, 2, threshold/stableValue);
     float heightFade = clamp(threshold/stableValue - 1, 0, 1);
 
-    uint idx = atomicAdd(indirectCommand.instanceCount, 1);
-    if (idx >= uint(uMaxInstances)) return;
+    // Deterministic foliage type selection
+    float typeHash = hash(seed + 9999u);
+    int foliageType = (typeHash < 0.15) ? 1 : 0; // Type 1: Fern (15% chance), Type 0: Grass (85% chance)
 
     float patchNoise = fastWorley3d(vec3(worldPosXZ * 0.01, 0.0)) * 0.5 + 0.5;
     float patchLengthBoost = smoothstep(0.4, 0.7, patchNoise) * 0.5;
@@ -206,13 +215,33 @@ void spawnBlade(int slice, vec3 patchOffset, float patchSize, ivec2 baseCellID) 
     float wVar = (hash(seed + 2468) * 2.0 - 1.0) * biomeProps[pickedBiome].widthVariance;
     float rot = hash(seed + 3579) * 6.28318;
 
-    instances[idx].pos_rot = vec4(worldPosXZ.x, height, worldPosXZ.y, rot);
-    instances[idx].scale_seed_biome = vec4(
-        (biomeProps[pickedBiome].height + hVar) * uWorldScale * heightFade * globalProps.lengthMultiplier,
-        (biomeProps[pickedBiome].width + wVar) * uWorldScale * globalProps.widthMultiplier,
-        float(seed),
-        float(pickedBiome)
-    );
+    if (foliageType == 0) {
+        uint idx = atomicAdd(indirectCommand.instanceCount, 1);
+        if (idx >= uint(uMaxInstances)) return;
+
+        instances[idx].pos_rot = vec4(worldPosXZ.x, height, worldPosXZ.y, rot);
+        instances[idx].scale_seed_biome = vec4(
+            (biomeProps[pickedBiome].height + hVar) * uWorldScale * heightFade * globalProps.lengthMultiplier,
+            (biomeProps[pickedBiome].width + wVar) * uWorldScale * globalProps.widthMultiplier,
+            float(seed),
+            float(pickedBiome)
+        );
+    } else {
+        uint idx = atomicAdd(foliageIndirectCommand.instanceCount, 1);
+        if (idx >= uint(uMaxInstances)) return;
+
+        // For fern, height/width can be slightly different or we can scale them appropriately
+        float fernHeight = (biomeProps[pickedBiome].height + hVar) * 0.8; // Low fern
+        float fernWidth = (biomeProps[pickedBiome].width + wVar) * 1.5;
+
+        foliageInstances[idx].pos_rot = vec4(worldPosXZ.x, height, worldPosXZ.y, rot);
+        foliageInstances[idx].scale_seed_biome = vec4(
+            fernHeight * uWorldScale * heightFade * globalProps.lengthMultiplier,
+            fernWidth * uWorldScale * globalProps.widthMultiplier,
+            float(seed),
+            float(pickedBiome)
+        );
+    }
 }
 
 void main() {

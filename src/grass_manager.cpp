@@ -24,6 +24,8 @@ namespace Boidsish {
         if (grass_instances_ssbo_) glDeleteBuffers(1, &grass_instances_ssbo_);
         if (grass_indirect_buffer_) glDeleteBuffers(1, &grass_indirect_buffer_);
         if (grass_tasks_ssbo_) glDeleteBuffers(1, &grass_tasks_ssbo_);
+        if (foliage_instances_ssbo_) glDeleteBuffers(1, &foliage_instances_ssbo_);
+        if (foliage_indirect_buffer_) glDeleteBuffers(1, &foliage_indirect_buffer_);
         if (dummy_vao_) glDeleteVertexArrays(1, &dummy_vao_);
     }
 
@@ -36,9 +38,10 @@ namespace Boidsish {
         pre_pass_shader_ = std::make_unique<ComputeShader>("shaders/grass_pre_pass.comp");
         fixup_shader_ = std::make_unique<ComputeShader>("shaders/grass_command_fixup.comp");
         grass_shader_ = std::make_shared<Shader>("shaders/grass.vert", "shaders/grass.frag", "shaders/grass.tcs", "shaders/grass.tes");
+        foliage_shader_ = std::make_shared<Shader>("shaders/fern.vert", "shaders/fern.frag");
 
-        if (!placement_shader_->isValid() || !pre_pass_shader_->isValid() || !fixup_shader_->isValid() || !grass_shader_->ID) {
-            logger::ERROR("Failed to compile grass shaders");
+        if (!placement_shader_->isValid() || !pre_pass_shader_->isValid() || !fixup_shader_->isValid() || !grass_shader_->ID || !foliage_shader_->ID) {
+            logger::ERROR("Failed to compile grass/foliage shaders");
             return;
         }
 
@@ -53,6 +56,11 @@ namespace Boidsish {
         grass_shader_->bindUniformBlock("Shadows", Constants::UboBinding::Shadows());
         grass_shader_->bindUniformBlock("TerrainData", Constants::UboBinding::TerrainData());
         grass_shader_->bindUniformBlock("BiomeData", Constants::UboBinding::Biomes());
+
+        foliage_shader_->bindUniformBlock("Lighting", Constants::UboBinding::Lighting());
+        foliage_shader_->bindUniformBlock("Shadows", Constants::UboBinding::Shadows());
+        foliage_shader_->bindUniformBlock("TerrainData", Constants::UboBinding::TerrainData());
+        foliage_shader_->bindUniformBlock("BiomeData", Constants::UboBinding::Biomes());
 
         _InitializeResources();
         initialized_ = true;
@@ -77,6 +85,19 @@ namespace Boidsish {
         glBindBuffer(GL_DRAW_INDIRECT_BUFFER, grass_indirect_buffer_);
         DrawArraysIndirectCommand cmd = {1, 0, 0, 0}; // 1 vertex per blade (1-vertex patch)
         glBufferData(GL_DRAW_INDIRECT_BUFFER, sizeof(DrawArraysIndirectCommand), &cmd, GL_DYNAMIC_DRAW);
+        glBindBuffer(GL_DRAW_INDIRECT_BUFFER, 0);
+
+        // Foliage Instance SSBO
+        glGenBuffers(1, &foliage_instances_ssbo_);
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, foliage_instances_ssbo_);
+        glBufferData(GL_SHADER_STORAGE_BUFFER, kMaxGrassInstances * sizeof(GrassInstance), nullptr, GL_DYNAMIC_DRAW);
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+
+        // Foliage Indirect Buffer
+        glGenBuffers(1, &foliage_indirect_buffer_);
+        glBindBuffer(GL_DRAW_INDIRECT_BUFFER, foliage_indirect_buffer_);
+        DrawArraysIndirectCommand foliage_cmd = {144, 0, 0, 0}; // 144 vertices per fern (6 fronds * 4 segments * 6 vertices)
+        glBufferData(GL_DRAW_INDIRECT_BUFFER, sizeof(DrawArraysIndirectCommand), &foliage_cmd, GL_DYNAMIC_DRAW);
         glBindBuffer(GL_DRAW_INDIRECT_BUFFER, 0);
 
         // Task SSBO
@@ -241,6 +262,8 @@ namespace Boidsish {
         glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::GrassProps(), grass_props_ubo_);
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::GrassInstances(), grass_instances_ssbo_);
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::GrassIndirect(), grass_indirect_buffer_);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::FoliageInstances(), foliage_instances_ssbo_);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::FoliageIndirect(), foliage_indirect_buffer_);
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::GrassTasks(), grass_tasks_ssbo_);
 
         placement_shader_->setVec3("uCameraPos", camera.pos());
@@ -248,6 +271,9 @@ namespace Boidsish {
         placement_shader_->setFloat("uMaxInstances", (float)kMaxGrassInstances);
 
         glBindBuffer(GL_DRAW_INDIRECT_BUFFER, grass_indirect_buffer_);
+        glBufferSubData(GL_DRAW_INDIRECT_BUFFER, offsetof(DrawArraysIndirectCommand, instanceCount), sizeof(uint32_t), &zero);
+
+        glBindBuffer(GL_DRAW_INDIRECT_BUFFER, foliage_indirect_buffer_);
         glBufferSubData(GL_DRAW_INDIRECT_BUFFER, offsetof(DrawArraysIndirectCommand, instanceCount), sizeof(uint32_t), &zero);
 
         // Dispatch placement based on taskCount
@@ -343,6 +369,89 @@ namespace Boidsish {
 
         glDisable(GL_CULL_FACE);
         glDrawArraysIndirect(GL_PATCHES, (void*)0);
+        glEnable(GL_CULL_FACE);
+        glBindVertexArray(0);
+
+        glBindBuffer(GL_DRAW_INDIRECT_BUFFER, 0);
+
+        // Render foliage / ferns
+        foliage_shader_->use();
+        foliage_shader_->setMat4("view", view);
+        foliage_shader_->setMat4("projection", projection);
+        foliage_shader_->setFloat("time", (float)glfwGetTime());
+        foliage_shader_->setBool("uIsShadowPass", isShadowPass);
+        foliage_shader_->setVec3("uCameraPos", last_camera_pos_);
+        foliage_shader_->setFloat("worldScale", 1.0f); // Fallback if needed, but usually bound via UBO
+
+        if (renderManager) {
+            renderManager->BindTerrainData(*foliage_shader_);
+        }
+
+        glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::GrassProps(), grass_props_ubo_);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::FoliageInstances(), foliage_instances_ssbo_);
+        if (res.lightingUboSize > 0) {
+            glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::Lighting(),
+                res.lightingUbo, res.lightingUboOffset, res.lightingUboSize);
+        } else {
+            glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Lighting(), res.lightingUbo);
+        }
+        glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Shadows(), res.shadowUbo);
+
+        if (!isShadowPass) {
+            glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::ShadowMaps());
+            glBindTexture(GL_TEXTURE_2D_ARRAY, res.shadowMaps);
+            foliage_shader_->setInt("shadowMaps", Constants::TextureUnit::ShadowMaps());
+
+            glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereTransmittance());
+            glBindTexture(GL_TEXTURE_2D, res.transmittanceLUT);
+            foliage_shader_->setInt("u_transmittanceLUT", Constants::TextureUnit::AtmosphereTransmittance());
+
+            glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereSkyView());
+            glBindTexture(GL_TEXTURE_2D, res.skyViewLUT);
+            foliage_shader_->setInt("u_skyViewLUT", Constants::TextureUnit::AtmosphereSkyView());
+
+            glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::AtmosphereAerialPerspective());
+            glBindTexture(GL_TEXTURE_3D, res.aerialPerspectiveLUT);
+            foliage_shader_->setInt("u_aerialPerspectiveLUT", Constants::TextureUnit::AtmosphereAerialPerspective());
+
+            foliage_shader_->setFloat("u_atmosphereHeight", res.atmosphereHeight);
+
+            if (res.noiseTexture) {
+                glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::NoiseSimplex());
+                glBindTexture(GL_TEXTURE_3D, res.noiseTexture);
+                foliage_shader_->setInt("u_noiseTexture", Constants::TextureUnit::NoiseSimplex());
+            }
+            if (res.curlTexture) {
+                glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::NoiseCurl());
+                glBindTexture(GL_TEXTURE_3D, res.curlTexture);
+                foliage_shader_->setInt("u_curlTexture", Constants::TextureUnit::NoiseCurl());
+            }
+            if (res.extraNoiseTexture) {
+                glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::NoiseExtra());
+                glBindTexture(GL_TEXTURE_3D, res.extraNoiseTexture);
+                foliage_shader_->setInt("u_extraNoiseTexture", Constants::TextureUnit::NoiseExtra());
+            }
+            if (res.blueNoiseTexture) {
+                glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::NoiseBlue());
+                glBindTexture(GL_TEXTURE_2D, res.blueNoiseTexture);
+                foliage_shader_->trySetInt("u_blueNoiseTexture", Constants::TextureUnit::NoiseBlue());
+            }
+            if (res.phasorTexture) {
+                glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::NoisePhasor());
+                glBindTexture(GL_TEXTURE_2D, res.phasorTexture);
+                foliage_shader_->trySetInt("u_phasorTexture", Constants::TextureUnit::NoisePhasor());
+            }
+
+            if (res.shadowIndices) {
+                foliage_shader_->setIntArray("lightShadowIndices", res.shadowIndices, 10);
+            }
+        }
+
+        glBindVertexArray(dummy_vao_);
+        glBindBuffer(GL_DRAW_INDIRECT_BUFFER, foliage_indirect_buffer_);
+
+        glDisable(GL_CULL_FACE);
+        glDrawArraysIndirect(GL_TRIANGLES, (void*)0);
         glEnable(GL_CULL_FACE);
         glBindVertexArray(0);
 

@@ -2823,7 +2823,7 @@ namespace Boidsish {
 				}
 				opaque_pass_->Execute(frame, *compositor_, render_scale, MakeRenderCallbacks(frame), casters);
 
-				if (grass_manager && frame.config.render_decor) {
+				if (grass_manager && frame.config.render_grass) {
 					GrassManager::RenderResources res{};
 					res.lightingUbo = render_state_.lighting.id;
 					res.lightingUboOffset = render_state_.lighting.offset;
