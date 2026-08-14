@@ -327,6 +327,7 @@ namespace Boidsish {
 
 		void SetTerrainGenerator(ITerrainGenerator* terrain) { terrain_ = terrain; }
 
+		unsigned int GetWindTexture() const { return wind_texture_; }
 		unsigned int GetLbmWindTexture() const { return lbm_wind_texture_; }
 		unsigned int GetLbmScalarTexture() const { return lbm_scalar_texture_; }
 		unsigned int GetLbmAerosolTexture() const { return lbm_aerosol_texture_; }

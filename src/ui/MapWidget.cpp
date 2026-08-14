@@ -104,6 +104,10 @@ namespace Boidsish {
             m_mapShader->setBool("uShowCloudHeight", m_showCloudHeight);
             m_mapShader->setBool("uShowCloudShadow", m_showCloudShadow);
 
+            m_mapShader->setFloat("uCloudCoverage", atmosphere->GetCloudCoverage());
+            m_mapShader->setFloat("uCloudAltitude", atmosphere->GetCloudAltitude());
+            m_mapShader->setFloat("uCloudThickness", atmosphere->GetCloudThickness());
+
             const auto& lbm_snap = weather->GetLatestLbmSnapshot();
             if (lbm_snap.valid) {
                 m_mapShader->setIVec2("uLbmGridOrigin", lbm_snap.uboMetadata.originSize.x, lbm_snap.uboMetadata.originSize.z);
@@ -118,8 +122,8 @@ namespace Boidsish {
             }
 
             glActiveTexture(GL_TEXTURE1);
-            glBindTexture(GL_TEXTURE_2D, weather->GetLbmWindTexture());
-            m_mapShader->setInt("uLbmWindTex", 1);
+            glBindTexture(GL_TEXTURE_2D, weather->GetWindTexture());
+            m_mapShader->setInt("uBakedWindTex", 1);
 
             glActiveTexture(GL_TEXTURE2);
             glBindTexture(GL_TEXTURE_2D, weather->GetLbmScalarTexture());
@@ -132,6 +136,10 @@ namespace Boidsish {
             glActiveTexture(GL_TEXTURE4);
             glBindTexture(GL_TEXTURE_2D_ARRAY, atmosphere->GetCloudShadowTexture());
             m_mapShader->setInt("uCloudShadowTex", 4);
+
+            glActiveTexture(GL_TEXTURE5);
+            glBindTexture(GL_TEXTURE_2D, weather->GetLbmWindTexture());
+            m_mapShader->setInt("uLbmWindTex", 5);
 
             m_mapShader->setMat4("uCloudShadowMatrix", atmosphere->GetCloudShadowMatrix());
             m_mapShader->setFloat("uTime", (float)glfwGetTime());
@@ -154,7 +162,7 @@ namespace Boidsish {
             ImGui::SetNextWindowSize(ImVec2(550, 700), ImGuiCond_FirstUseEver);
             if (ImGui::Begin("Environmental Maps", &m_show)) {
 
-                ImGui::Combo("Map Layer", &m_selectedLayer, "Combined\0Raw Cloud Map\0Cloud Effective Coverage\0Deep Opacity Map\0LBM Simulation\0Terrain Height\0Terrain Color\0\0");
+                ImGui::Combo("Map Layer", &m_selectedLayer, "Combined\0Raw Cloud Map\0Cloud Effective Coverage\0Deep Opacity Map\0LBM Simulation\0Terrain Height\0Terrain Color\0Baked Wind\0\0");
 
                 if (ImGui::CollapsingHeader("Channels", ImGuiTreeNodeFlags_DefaultOpen)) {
                     ImGui::Checkbox("Wind", &m_showWind); ImGui::SameLine();
