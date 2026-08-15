@@ -65,13 +65,25 @@ void main() {
         return;
     }
 
-    // 2. Reprojection using velocity
-    // Velocity is stored in uVelocityTexture. RG is velocity.
+    // 2. Reprojection using motion vectors + prevViewProjection fallback
     vec2 velocity = texture(uVelocityTexture, uv).rg;
     vec2 prevUV = uv - velocity;
 
-    // Out of bounds check
-    if (prevUV.x < 0.0 || prevUV.x > 1.0 || prevUV.y < 0.0 || prevUV.y > 1.0) {
+    // Fallback reprojection using viewProjection matrices if motion vector is negligible or uninitialized
+    if (length(velocity) < 0.00001) {
+        vec4 prevClipPosFallback = prevViewProjection * (invView * viewPos);
+        if (abs(prevClipPosFallback.w) > 0.0001) {
+            vec3 prevNDCFallback = prevClipPosFallback.xyz / prevClipPosFallback.w;
+            prevUV = prevNDCFallback.xy * 0.5 + 0.5;
+        }
+    }
+
+    // Screen edge validity / smooth border attenuation
+    // Screen margin of 0.02 (2%) ensures seamless transition near viewport edges
+    vec2 edgeDist = min(prevUV, 1.0 - prevUV);
+    float edgeFactor = smoothstep(0.0, 0.02, edgeDist.x) * smoothstep(0.0, 0.02, edgeDist.y);
+
+    if (edgeFactor <= 0.0) {
         imageStore(outAccumulated, pixel, current_vol);
         return;
     }
@@ -79,7 +91,7 @@ void main() {
     vec4 history_vol = texture(uPrevAccumulated, prevUV);
     if (any(isnan(history_vol))) history_vol = current_vol;
 
-    // 3. Physical relative depth validation to reduce ghosting
+    // 3. Physical relative depth validation to reduce ghosting across depth edges
     float prevDepth = texture(uDepthTexture, prevUV).r;
     float prev_z_ndc = prevDepth * 2.0 - 1.0;
     vec4 prevClipPos = vec4(prevUV * 2.0 - 1.0, prev_z_ndc, 1.0);
@@ -92,38 +104,54 @@ void main() {
     float clampedZ = min(linearZ, 200.0);
     float clampedPrevZ = min(prevLinearZ, 200.0);
     float depthDiff = abs(clampedZ - clampedPrevZ);
-    float maxAllowedDiff = 0.15 * clampedZ + 1.5; // Relaxed tolerance (15% relative + 1.5m absolute)
+    float maxAllowedDiff = 0.12 * clampedZ + 0.8; // Tightened depth tolerance for crisp foreground edges
     if (depthDiff > maxAllowedDiff) {
         imageStore(outAccumulated, pixel, current_vol);
         return;
     }
 
-    // 4. Neighborhood Clamping to reduce ghosting (highly effective)
+    // 4. Depth-Aware Neighborhood Clamping & Variance Bounding
+    // Uses pixel-based screen UV offsets and depth-bilateral weighting
     vec4 m1 = vec4(0.0);
     vec4 m2 = vec4(0.0);
+    float totalWeight = 0.0;
+
     for (int y = -1; y <= 1; y++) {
         for (int x = -1; x <= 1; x++) {
-            // Sample neighboring froxels at the current slice w
-            vec2 offset = vec2(x, y) / vec2(160.0, 90.0);
-            vec4 val = texture(uVolumetric3D, vec3(uv + offset, w));
-            m1 += val;
-            m2 += val * val;
+            vec2 sampleUV = uv + vec2(x, y) / vec2(size);
+            float sampleDepth = texture(uDepthTexture, sampleUV).r;
+            float sample_z_ndc = sampleDepth * 2.0 - 1.0;
+            vec4 sampleClipPos = vec4(sampleUV * 2.0 - 1.0, sample_z_ndc, 1.0);
+            vec4 sampleViewPos = invProjection * sampleClipPos;
+            sampleViewPos /= (abs(sampleViewPos.w) > 0.0001) ? sampleViewPos.w : 1.0;
+            float sampleLinearZ = max(0.1, -sampleViewPos.z);
+            if (sampleDepth >= 1.0) sampleLinearZ = 1000.0;
+
+            // Bilateral weight based on depth similarity to central pixel
+            float depthWeight = exp(-abs(linearZ - sampleLinearZ) / (0.1 * linearZ + 0.5));
+            vec4 val = texture(uVolumetric3D, vec3(sampleUV, w));
+
+            m1 += val * depthWeight;
+            m2 += val * val * depthWeight;
+            totalWeight += depthWeight;
         }
     }
-    vec4 mean = m1 / 9.0;
-    vec4 stddev = sqrt(max(vec4(0.0), (m2 / 9.0) - (mean * mean)));
+
+    totalWeight = max(0.0001, totalWeight);
+    vec4 mean = m1 / totalWeight;
+    vec4 stddev = sqrt(max(vec4(0.0), (m2 / totalWeight) - (mean * mean)));
 
     float spatialLum = dot(mean.rgb, vec3(0.2126, 0.7152, 0.0722));
     float spatialStd = dot(stddev.rgb, vec3(0.2126, 0.7152, 0.0722));
     float stability = 1.0 - clamp(spatialStd / (spatialLum + 0.001), 0.0, 1.0);
 
-    float gamma = mix(1.2, 3.0, stability);
+    float gamma = mix(1.2, 2.5, stability);
     vec4 minColor = mean - gamma * stddev;
     vec4 maxColor = mean + gamma * stddev;
     history_vol = clamp(history_vol, minColor, maxColor);
 
-    // 5. Accumulate
-    float activeAlpha = uTemporalAlpha;
+    // 5. Adaptive Accumulation with Edge & Depth Factor
+    float activeAlpha = uTemporalAlpha * edgeFactor;
     float currentLum = dot(current_vol.rgb, vec3(0.2126, 0.7152, 0.0722));
     float historyLum = dot(history_vol.rgb, vec3(0.2126, 0.7152, 0.0722));
     if (stability > 0.8 && abs(currentLum - historyLum) > 0.1) {
