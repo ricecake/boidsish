@@ -133,7 +133,8 @@ vec3 getWindAtPosition(vec3 worldPos) {
 	float quickAttack = smoothstep(0.0, gridMask, phaseProgression);
 	float slowRelease = 1.0 - smoothstep(1.0-gridMask, 1.0, phaseProgression);
 	float positiveRipple = quickAttack * slowRelease;
-	positiveRipple *= (1.0-(0.5*(0.5+0.5*sin(3.0*phaseProgression * 6.28))*smoothstep(0.15, 0.50, positiveRipple)) );
+	// positiveRipple *= (1.0-(0.5*(0.5+0.5*sin(3.0*phaseProgression * 6.28))*smoothstep(0.15, 0.50, positiveRipple)) );
+	positiveRipple *= (1.0-(0.95*(0.5+0.5*sin(10.0*phaseProgression * 6.28*smoothstep(0.25, 0.70, positiveRipple)))) );
 
 	return wind * positiveRipple;//*gridMask;
 
