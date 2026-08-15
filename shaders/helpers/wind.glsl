@@ -95,16 +95,21 @@ vec3 getWindAtPosition(vec3 worldPos) {
 	float windSpeed = length(wind);
 	// Ensure the wind direction is normalized and safe from zero-length vectors
 	vec2 windDir = windSpeed > 0.001 ? normalize(wind.xz) : vec2(1.0, 0.0);
-	float windFactor = 0.15*log2(windSpeed);
+	float windFactor = clamp(0.05*log2(windSpeed), 0.0, 4.0);
 
 	// vec2 phacelleOut = fastSimplePhacelle2d(uv * 1024.0, normalize(vec2(wind.x+cos(wind.x*uv.x), wind.z+cos(wind.z*uv.y))));
 	vec2 phacelleOut = fastSimplePhacelle2d(uv * 1024.0, normalize(wind.xz));
-	float phaseShift = u_windParams.y * windFactor;
-	float cosShift = cos(phaseShift);
-	float sinShift = sin(phaseShift);
+	float angle = atan(phacelleOut.y, phacelleOut.x);
 
-	float rawPhacelle = phacelleOut.x * cosShift - phacelleOut.y * sinShift;
-	float positiveRipple = smoothstep(0.05, 1.0, rawPhacelle * 0.5 + 0.5);
+	float phaseShift = u_windParams.y * windFactor;
+	float phaseProgression = smoothstep(0.05, 1.0, fract((angle / 6.2831853) + phaseShift));
+
+	// float cosShift = cos(phaseShift);
+	// float sinShift = sin(phaseShift);
+
+	// float rawPhacelle = phacelleOut.x * cosShift - phacelleOut.y * sinShift;
+	// float positiveRipple = smoothstep(0.05, 1.0, rawPhacelle * 0.5 + 0.5);
+
 	// positiveRipple *= mix(1.0, 0.99 + 0.05*sin(10*phaseShift), smoothstep(0.5, 0.8, positiveRipple));
 
 	float maskScale = 0.5;
@@ -123,9 +128,17 @@ vec3 getWindAtPosition(vec3 worldPos) {
 
 	float gridMask = cos(advectedX/13.0) * cos(warpedY/7.0);
 
-	gridMask = gridMask * 0.5 + 0.5;
+	gridMask = clamp(smoothstep(-0.25, 1.25, gridMask * 0.5 + 0.5), 0.15, 0.45);
 
-	return wind * ((smoothstep(0.0, gridMask, positiveRipple) * (1.0 - smoothstep(1.0-gridMask, 1.0, positiveRipple))));
+	float quickAttack = smoothstep(0.0, gridMask, phaseProgression);
+	float slowRelease = 1.0 - smoothstep(1.0-gridMask, 1.0, phaseProgression);
+	float positiveRipple = quickAttack * slowRelease;
+	positiveRipple *= (1.0-(0.5*(0.5+0.5*sin(3.0*phaseProgression * 6.28))*smoothstep(0.15, 0.50, positiveRipple)) );
+
+	return wind * positiveRipple;//*gridMask;
+
+
+	// return wind * ((smoothstep(0.0, gridMask, positiveRipple) * (1.0 - smoothstep(1.0-gridMask, 1.0, positiveRipple))));
 
 
 	// positiveRipple *= clamp(cos(local.x*0.5- 0.5*u_windParams.y)*cos(local.y*0.5-0.5*u_windParams.y), 0, 1);
