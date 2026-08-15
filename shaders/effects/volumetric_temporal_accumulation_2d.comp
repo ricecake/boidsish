@@ -79,9 +79,9 @@ void main() {
     }
 
     // Screen edge validity / smooth border attenuation
-    // Screen margin of 0.02 (2%) ensures seamless transition near viewport edges
+    // Screen margin of 0.08 (8%) ensures seamless transition near viewport edges during camera turns
     vec2 edgeDist = min(prevUV, 1.0 - prevUV);
-    float edgeFactor = smoothstep(0.0, 0.02, edgeDist.x) * smoothstep(0.0, 0.02, edgeDist.y);
+    float edgeFactor = smoothstep(0.0, 0.08, edgeDist.x) * smoothstep(0.0, 0.08, edgeDist.y);
 
     if (edgeFactor <= 0.0) {
         imageStore(outAccumulated, pixel, current_vol);
@@ -150,8 +150,12 @@ void main() {
     vec4 maxColor = mean + gamma * stddev;
     history_vol = clamp(history_vol, minColor, maxColor);
 
-    // 5. Adaptive Accumulation with Edge & Depth Factor
-    float activeAlpha = uTemporalAlpha * edgeFactor;
+    // 5. Adaptive Accumulation with Edge, Velocity, & Depth Factors
+    // High velocity (e.g. rapid camera panning) dynamically reduces activeAlpha to eliminate trailing side lag
+    float speed = length(velocity);
+    float motionAttenuation = clamp(1.0 - smoothstep(0.005, 0.05, speed) * 0.7, 0.2, 1.0);
+
+    float activeAlpha = uTemporalAlpha * edgeFactor * motionAttenuation;
     float currentLum = dot(current_vol.rgb, vec3(0.2126, 0.7152, 0.0722));
     float historyLum = dot(history_vol.rgb, vec3(0.2126, 0.7152, 0.0722));
     if (stability > 0.8 && abs(currentLum - historyLum) > 0.1) {
