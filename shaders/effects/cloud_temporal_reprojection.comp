@@ -358,20 +358,30 @@ void main() {
 	bool isSky = (currentPathDensity < 0.01) && (historyPathDensity < 0.01);
 
 	if (allInvocationsARB(isSky)) {
+		float lumaCurrent = luma(currentRGBA.rgb);
+		float lumaHistory = luma(historyRGBA.rgb);
+		float lumaDiff = abs(lumaCurrent - lumaHistory);
+		float maxLuma = max(max(lumaCurrent, lumaHistory), 0.001);
+		float relativeLumaDiff = lumaDiff / maxLuma;
+		float skyLumaRejection = smoothstep(0.10, 0.45, relativeLumaDiff);
+
 		float alpha = 0.0;
 		if (!uEnableTemporal) {
 			alpha = 1.0;
 			historyLength = 1.0;
 		} else if (is_new_pixel) {
+			historyLength = mix(historyLength, 1.0, skyLumaRejection);
 			alpha = 1.0 / max(historyLength, 1.0);
+			alpha = max(alpha, skyLumaRejection * 0.85);
 		}
 
-		accumulatedRGBA = (is_new_pixel || !uEnableTemporal) ? mix(historyRGBA, currentRGBA, alpha) : historyRGBA;
+		accumulatedRGBA = (is_new_pixel || !uEnableTemporal) ? mix(historyRGBA, currentRGBA, alpha) : mix(historyRGBA, currentRGBA, skyLumaRejection * 0.85);
 		accumulatedDepth = is_new_pixel ? mix(historyDepthProps, currDepthProps, alpha) : historyDepthProps;
 
 		float currentLuma = luma(accumulatedRGBA.rgb);
 		vec3 currentM = vec3(currentLuma, currentLuma * currentLuma, accumulatedDepth.a * accumulatedDepth.a);
-		accumulatedMoments = vec4(mix(historyMoments.xyz, currentM, is_new_pixel ? alpha : 0.01), historyLength);
+		float momentAlpha = (is_new_pixel || !uEnableTemporal) ? alpha : max(0.01, skyLumaRejection * 0.85);
+		accumulatedMoments = vec4(mix(historyMoments.xyz, currentM, momentAlpha), historyLength);
 	}
 	else
 	{
@@ -389,11 +399,14 @@ void main() {
 		float historyOpacity = clamp(1.0 - historyRGBA.a, 0.0, 1.0);
 
 		// Calculate luminance-difference-guided temporal confidence
-		float lumaCurrent = luma(texture(uPackedFrame, uv).rgb);
+		float lumaCurrent = luma(currentRGBA.rgb);
 		float lumaHistory = luma(historyRGBA.rgb);
 		float lumaDiff = abs(lumaCurrent - lumaHistory);
 		float maxLuma = max(max(lumaCurrent, lumaHistory), 0.001);
 		float relativeLumaDiff = lumaDiff / maxLuma;
+
+		// Calculate luminance-guided rejection factor for rapid lighting changes (flashes, sun shifts)
+		float lumaRejection = smoothstep(0.10, 0.45, relativeLumaDiff);
 
 		// High confidence when relative luma difference is small
 		float lumaConfidence = smoothstep(0.35, 0.05, relativeLumaDiff);
@@ -427,18 +440,23 @@ void main() {
 		float trailingEdgeRejection = 1.0 - smoothstep(-0.5, -0.3, relativeDiff);
 		float leadingEdgeRejection = smoothstep(0.4, 0.8, relativeDiff);
 
-		float rejectionFactor = max(trailingEdgeRejection, leadingEdgeRejection);
+		float spatialRejection = max(trailingEdgeRejection, leadingEdgeRejection);
 		float motionConfidence = smoothstep(0.1, 1.0, pixelSpeed); // Only reject if actually moving
 
-		rejectionFactor *= motionConfidence;
+		spatialRejection *= motionConfidence;
+
+		// Total rejection combines spatial/motion edge rejection with sudden luminance changes.
+		// Lighting flashes/changes happen independent of pixel motion!
+		float totalRejection = max(spatialRejection, lumaRejection);
 
 		float alpha = 0.0;
 		if (!uEnableTemporal) {
 			alpha = 1.0;
 			historyLength = 1.0;
 		} else if (is_new_pixel) {
-			historyLength = mix(historyLength, 1.0, rejectionFactor);
+			historyLength = mix(historyLength, 1.0, totalRejection);
 			alpha = 1.0 / max(historyLength, 1.0);
+			alpha = max(alpha, lumaRejection * 0.85);
 		}
 
 		if (currentPathDensity < 0.01) {
@@ -447,12 +465,13 @@ void main() {
 		}
 
 
-		accumulatedRGBA = (is_new_pixel || !uEnableTemporal) ? mix(historyRGBA, currentRGBA, alpha) : historyRGBA;
+		accumulatedRGBA = (is_new_pixel || !uEnableTemporal) ? mix(historyRGBA, currentRGBA, alpha) : mix(historyRGBA, currentRGBA, lumaRejection * 0.85);
 		accumulatedDepth = is_new_pixel ? mix(historyDepthProps, currDepthProps, alpha) : historyDepthProps;
 
 		float currentLuma = luma(accumulatedRGBA.rgb);
 		vec3 currentM = vec3(currentLuma, currentLuma * currentLuma, accumulatedDepth.a * accumulatedDepth.a);
-		accumulatedMoments = vec4(mix(historyMoments.xyz, currentM, is_new_pixel ? alpha : 0.01), historyLength);
+		float momentAlpha = (is_new_pixel || !uEnableTemporal) ? alpha : max(0.01, lumaRejection * 0.85);
+		accumulatedMoments = vec4(mix(historyMoments.xyz, currentM, momentAlpha), historyLength);
 	}
 
 	imageStore(outColor, pixel, accumulatedRGBA);
