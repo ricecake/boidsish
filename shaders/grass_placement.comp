@@ -47,6 +47,14 @@ layout(std430, binding = [[FOLIAGE_INDIRECT_BINDING]]) buffer FoliageIndirect {
     DrawArraysIndirectCommand foliageIndirectCommand;
 };
 
+layout(std430, binding = [[TREE_INSTANCES_BINDING]]) buffer TreeInstances {
+    GrassInstance treeInstances[];
+};
+
+layout(std430, binding = [[TREE_INDIRECT_BINDING]]) buffer TreeIndirect {
+    DrawArraysIndirectCommand treeIndirectCommand;
+};
+
 struct GrassProperties {
     vec4  colorTop;
     vec4  colorBottom;
@@ -205,7 +213,14 @@ void spawnBlade(int slice, vec3 patchOffset, float patchSize, ivec2 baseCellID) 
 
     // Deterministic foliage type selection
     float typeHash = hash(seed + 9999u);
-    int foliageType = (typeHash < 0.01) ? 1 : 0; // Type 1: Fern (15% chance), Type 0: Grass (85% chance)
+    int foliageType = 0;
+    if (typeHash < 0.008) {
+        foliageType = 2; // Type 2: Minimalist Tree
+    } else if (typeHash < 0.02) {
+        foliageType = 1; // Type 1: Fern
+    } else {
+        foliageType = 0; // Type 0: Grass
+    }
 
     float patchNoise = fastWorley3d(vec3(worldPosXZ * 0.01, 0.0)) * 0.5 + 0.5;
     float patchLengthBoost = smoothstep(0.4, 0.7, patchNoise) * 0.5;
@@ -226,7 +241,7 @@ void spawnBlade(int slice, vec3 patchOffset, float patchSize, ivec2 baseCellID) 
             float(seed),
             float(pickedBiome)
         );
-    } else {
+    } else if (foliageType == 1) {
         uint idx = atomicAdd(foliageIndirectCommand.instanceCount, 1);
         if (idx >= uint(uMaxInstances)) return;
 
@@ -238,6 +253,20 @@ void spawnBlade(int slice, vec3 patchOffset, float patchSize, ivec2 baseCellID) 
         foliageInstances[idx].scale_seed_biome = vec4(
             fernHeight * uWorldScale * heightFade * globalProps.lengthMultiplier,
             fernWidth * uWorldScale * globalProps.widthMultiplier,
+            float(seed),
+            float(pickedBiome)
+        );
+    } else {
+        uint idx = atomicAdd(treeIndirectCommand.instanceCount, 1);
+        if (idx >= uint(uMaxInstances)) return;
+
+        float treeHeight = (biomeProps[pickedBiome].height + hVar) * 10.0 + 5.0; // Minimalist Tree height
+        float treeWidth = (biomeProps[pickedBiome].width + wVar) * 4.0 + 1.5;
+
+        treeInstances[idx].pos_rot = vec4(worldPosXZ.x, height, worldPosXZ.y, rot);
+        treeInstances[idx].scale_seed_biome = vec4(
+            treeHeight * uWorldScale * heightFade * globalProps.lengthMultiplier,
+            treeWidth * uWorldScale * globalProps.widthMultiplier,
             float(seed),
             float(pickedBiome)
         );
