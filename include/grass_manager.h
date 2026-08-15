@@ -78,6 +78,7 @@ namespace Boidsish {
         void Render(const glm::mat4& view, const glm::mat4& projection, std::shared_ptr<class TerrainRenderManager> renderManager, const RenderResources& resources, bool isShadowPass = false);
 
         void SetCameraPos(const glm::vec3& pos) { last_camera_pos_ = pos; }
+        void SetAtmosphereManager(class AtmosphereManager* atmosphere_manager) { atmosphere_manager_ = atmosphere_manager; }
 
         void SetGrassProperties(Biome biome, const GrassProperties& props);
         void PopulateDefaultGrassProperties();
@@ -98,6 +99,7 @@ namespace Boidsish {
 
     private:
         bool initialized_ = false;
+        class AtmosphereManager* atmosphere_manager_ = nullptr;
 
         std::array<GrassProperties, 8> biome_grass_props_;
         GlobalGrassProperties global_props_;

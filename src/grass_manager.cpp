@@ -1,5 +1,6 @@
 #include "grass_manager.h"
 
+#include "atmosphere_manager.h"
 #include "service_locator.h"
 #include "graphics.h"
 #include "terrain_render_manager.h"
@@ -299,6 +300,10 @@ namespace Boidsish {
             renderManager->BindTerrainData(*grass_shader_);
         }
 
+        if (atmosphere_manager_) {
+            atmosphere_manager_->BindToShader(*grass_shader_);
+        }
+
         glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::GrassProps(), grass_props_ubo_);
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::GrassInstances(), grass_instances_ssbo_);
         if (res.lightingUboSize > 0) {
@@ -383,6 +388,10 @@ namespace Boidsish {
 
         if (renderManager) {
             renderManager->BindTerrainData(*foliage_shader_);
+        }
+
+        if (atmosphere_manager_) {
+            atmosphere_manager_->BindToShader(*foliage_shader_);
         }
 
         glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::GrassProps(), grass_props_ubo_);
