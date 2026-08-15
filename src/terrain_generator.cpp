@@ -107,70 +107,88 @@ namespace Boidsish {
 
 		// 1. Collect chunks to enqueue with priority based on distance and frustum visibility
 		struct ChunkToEnqueue {
-			int          x, z;
+			ChunkKey     key;
 			TaskPriority priority;
 			float        distance_sq;
 		};
 
 		std::vector<ChunkToEnqueue> chunks_to_enqueue;
-		chunks_to_enqueue.reserve((2 * dynamic_view_distance + 1) * (2 * dynamic_view_distance + 1));
-
 		glm::vec2 camera_pos_2d(camera.x, camera.z);
 
-		const float max_view_dist_sq = (dynamic_view_distance * scaled_chunk_size) *
-			(dynamic_view_distance * scaled_chunk_size);
-		const float immediate_load_dist = std::max(5.0f, dynamic_view_distance * 0.5f) * scaled_chunk_size;
-		const float immediate_load_dist_sq = immediate_load_dist * immediate_load_dist;
+		for (int lod = 0; lod < num_lod_levels_; ++lod) {
+			float scale_mult = std::pow(lod_scale_multiplier_, static_cast<float>(lod));
+			float chunk_world_scale = world_scale_ * scale_mult;
+			float scaled_chunk_size = static_cast<float>(chunk_size_) * chunk_world_scale;
 
-		for (int x = current_chunk_x - dynamic_view_distance; x <= current_chunk_x + dynamic_view_distance; ++x) {
-			for (int z = current_chunk_z - dynamic_view_distance; z <= current_chunk_z + dynamic_view_distance; ++z) {
-				// Calculate distance from chunk center to camera
-				glm::vec2 chunk_center(
-					x * scaled_chunk_size + scaled_chunk_size * 0.5f,
-					z * scaled_chunk_size + scaled_chunk_size * 0.5f
-				);
-				float dist_sq = glm::dot(chunk_center - camera_pos_2d, chunk_center - camera_pos_2d);
+			int current_chunk_x = static_cast<int>(std::floor(camera.x / scaled_chunk_size));
+			int current_chunk_z = static_cast<int>(std::floor(camera.z / scaled_chunk_size));
 
-				// Radial distance check
-				if (dist_sq > max_view_dist_sq) {
-					continue;
-				}
+			int ring_view_dist = std::max(2, dynamic_view_distance);
 
-				std::pair<int, int> chunk_coord = {x, z};
-				if (chunk_cache_.find(chunk_coord) == chunk_cache_.end() &&
-				    pending_chunks_.find(chunk_coord) == pending_chunks_.end()) {
-					// Add a safety margin (two chunk sizes) to frustum culling to prevent edge flickering
-					bool in_frustum = isChunkInFrustum(frustum, x, z, scaled_chunk_size, max_h, 2.0f * scaled_chunk_size);
+			float max_view_dist = ring_view_dist * scaled_chunk_size;
+			float max_view_dist_sq = max_view_dist * max_view_dist;
+			float immediate_load_dist = std::max(5.0f, ring_view_dist * 0.5f) * scaled_chunk_size;
+			float immediate_load_dist_sq = immediate_load_dist * immediate_load_dist;
 
-					// Only load if in frustum OR very close to camera
-					if (in_frustum || dist_sq < immediate_load_dist_sq) {
-						// Priority: HIGH for in-frustum chunks, LOW for out-of-frustum
-						// Within each priority level, distance will determine order
-						TaskPriority priority = in_frustum ? TaskPriority::HIGH : TaskPriority::LOW;
-						chunks_to_enqueue.push_back({x, z, priority, dist_sq});
+			bool  has_inner_ring = (lod > 0);
+			float inner_scale_mult = std::pow(lod_scale_multiplier_, static_cast<float>(lod - 1));
+			float inner_chunk_size = static_cast<float>(chunk_size_) * world_scale_ * inner_scale_mult;
+			float inner_radius = ring_view_dist * inner_chunk_size;
+
+			for (int x = current_chunk_x - ring_view_dist; x <= current_chunk_x + ring_view_dist; ++x) {
+				for (int z = current_chunk_z - ring_view_dist; z <= current_chunk_z + ring_view_dist; ++z) {
+					float min_x = x * scaled_chunk_size;
+					float max_x = min_x + scaled_chunk_size;
+					float min_z = z * scaled_chunk_size;
+					float max_z = min_z + scaled_chunk_size;
+
+					if (has_inner_ring) {
+						float dist_to_cam_x = std::max(0.0f, std::abs(camera.x - (min_x + max_x) * 0.5f) - scaled_chunk_size * 0.5f);
+						float dist_to_cam_z = std::max(0.0f, std::abs(camera.z - (min_z + max_z) * 0.5f) - scaled_chunk_size * 0.5f);
+						if (std::max(dist_to_cam_x, dist_to_cam_z) < inner_radius - scaled_chunk_size * 0.25f) {
+							continue;
+						}
+					}
+
+					glm::vec2 chunk_center((min_x + max_x) * 0.5f, (min_z + max_z) * 0.5f);
+					float dist_sq = glm::dot(chunk_center - camera_pos_2d, chunk_center - camera_pos_2d);
+
+					if (dist_sq > max_view_dist_sq) {
+						continue;
+					}
+
+					ChunkKey key{lod, x, z};
+					if (chunk_cache_.find(key) == chunk_cache_.end() &&
+					    pending_chunks_.find(key) == pending_chunks_.end()) {
+						bool in_frustum = isChunkInFrustum(frustum, x, z, scaled_chunk_size, max_h * scale_mult, 2.0f * scaled_chunk_size);
+
+						if (in_frustum || dist_sq < immediate_load_dist_sq) {
+							TaskPriority priority = in_frustum ? TaskPriority::HIGH : TaskPriority::LOW;
+							chunks_to_enqueue.push_back({key, priority, dist_sq});
+						}
 					}
 				}
 			}
 		}
 
-		// Sort by priority (HIGH first), then by distance within each priority level
 		std::sort(
 			chunks_to_enqueue.begin(),
 			chunks_to_enqueue.end(),
 			[](const ChunkToEnqueue& a, const ChunkToEnqueue& b) {
+				if (a.key.lod != b.key.lod) {
+					return a.key.lod < b.key.lod; // Finer LODs first
+				}
 				if (a.priority != b.priority) {
-					return a.priority > b.priority; // HIGH (1) before LOW (0)
+					return a.priority > b.priority;
 				}
 				return a.distance_sq < b.distance_sq;
 			}
 		);
 
-		// Enqueue in sorted order
 		for (const auto& chunk : chunks_to_enqueue) {
-			std::pair<int, int> chunk_coord = {chunk.x, chunk.z};
 			pending_chunks_.emplace(
-				chunk_coord,
-				thread_pool_.enqueue(chunk.priority, &TerrainGenerator::generateChunkData, this, chunk.x, chunk.z)
+				chunk.key,
+				thread_pool_.enqueue(chunk.priority, &TerrainGenerator::generateChunkData, this, chunk.key.lod, chunk.key.x, chunk.key.z)
 			);
 		}
 
@@ -185,9 +203,8 @@ namespace Boidsish {
 			const float preload_distance_sq = ((dynamic_view_distance + 2.0f) * scaled_chunk_size) *
 				((dynamic_view_distance + 2.0f) * scaled_chunk_size);
 
-			// Collect chunks needing registration with their distances and frustum status
 			struct ChunkToRegister {
-				std::pair<int, int>      key;
+				ChunkKey                 key;
 				std::shared_ptr<Terrain> terrain;
 				float                    distance_sq;
 				bool                     in_frustum;
@@ -196,44 +213,45 @@ namespace Boidsish {
 			std::vector<ChunkToRegister> chunks_to_register;
 			chunks_to_register.reserve(chunk_cache_.size());
 
-			glm::vec2 camera_pos_2d(camera.x, camera.z);
-
 			for (auto const& [key, terrain_chunk] : chunk_cache_) {
 				if (!render_manager_->HasChunk(key)) {
-					// Calculate distance from chunk center to camera
+					float scale_mult = std::pow(lod_scale_multiplier_, static_cast<float>(key.lod));
+					float chunk_world_scale = world_scale_ * scale_mult;
+					float scaled_chunk_size = static_cast<float>(chunk_size_) * chunk_world_scale;
+
 					glm::vec2 chunk_center(
-						key.first * scaled_chunk_size + scaled_chunk_size * 0.5f,
-						key.second * scaled_chunk_size + scaled_chunk_size * 0.5f
+						key.x * scaled_chunk_size + scaled_chunk_size * 0.5f,
+						key.z * scaled_chunk_size + scaled_chunk_size * 0.5f
 					);
 					float dist_sq = glm::dot(chunk_center - camera_pos_2d, chunk_center - camera_pos_2d);
-					// Add a safety margin (two chunk sizes) to frustum culling
 					bool  in_frustum =
-						isChunkInFrustum(frustum, key.first, key.second, scaled_chunk_size, max_h, 2.0f * scaled_chunk_size);
+						isChunkInFrustum(frustum, key.x, key.z, scaled_chunk_size, max_h * scale_mult, 2.0f * scaled_chunk_size);
 
-					// Register if in frustum OR if close enough to preload
-					if (in_frustum || dist_sq < preload_distance_sq) {
+					if (in_frustum || dist_sq < preload_distance_sq * scale_mult * scale_mult) {
 						chunks_to_register.push_back({key, terrain_chunk, dist_sq, in_frustum});
 					}
 				}
 			}
 
-			// Sort by: in_frustum first, then by distance within each group
 			std::sort(
 				chunks_to_register.begin(),
 				chunks_to_register.end(),
 				[](const ChunkToRegister& a, const ChunkToRegister& b) {
 					if (a.in_frustum != b.in_frustum) {
-						return a.in_frustum; // In-frustum chunks first
+						return a.in_frustum;
 					}
 					return a.distance_sq < b.distance_sq;
 				}
 			);
 
-			// Register closest chunks first
 			int registrations_this_frame = 0;
 			for (const auto& chunk : chunks_to_register) {
 				if (registrations_this_frame >= max_registrations_per_frame)
 					break;
+
+				float scale_mult = std::pow(lod_scale_multiplier_, static_cast<float>(chunk.key.lod));
+				float chunk_world_scale = world_scale_ * scale_mult;
+				float scaled_chunk_size = static_cast<float>(chunk_size_) * chunk_world_scale;
 
 				render_manager_->RegisterChunk(
 					chunk.key,
@@ -245,25 +263,26 @@ namespace Boidsish {
 					chunk.terrain->GetIndices(),
 					chunk.terrain->proxy.minY,
 					chunk.terrain->proxy.maxY,
-					glm::vec3(chunk.key.first * scaled_chunk_size, 0, chunk.key.second * scaled_chunk_size),
-					world_scale_,
+					glm::vec3(chunk.key.x * scaled_chunk_size, 0, chunk.key.z * scaled_chunk_size),
+					chunk_world_scale,
 					chunk.terrain->patch_metrics
 				);
 				registrations_this_frame++;
 			}
 		}
 
-		// 4. Unload chunks
-		// Add a buffer (hysteresis) to prevent loading/unloading thrashing.
-		// View distance is used for loading, and unload_limit is used for unloading.
-		const float unload_limit_dist = (dynamic_view_distance + kUnloadDistanceBuffer_ + 2.0f) * scaled_chunk_size;
-		const float unload_limit_dist_sq = unload_limit_dist * unload_limit_dist;
-
-		std::vector<std::pair<int, int>> to_remove;
+		std::vector<ChunkKey> to_remove;
 		for (auto const& [key, val] : chunk_cache_) {
+			float scale_mult = std::pow(lod_scale_multiplier_, static_cast<float>(key.lod));
+			float chunk_world_scale = world_scale_ * scale_mult;
+			float scaled_chunk_size = static_cast<float>(chunk_size_) * chunk_world_scale;
+
+			float unload_limit_dist = (dynamic_view_distance + kUnloadDistanceBuffer_ + 2.0f) * scaled_chunk_size;
+			float unload_limit_dist_sq = unload_limit_dist * unload_limit_dist;
+
 			glm::vec2 chunk_center(
-				key.first * scaled_chunk_size + scaled_chunk_size * 0.5f,
-				key.second * scaled_chunk_size + scaled_chunk_size * 0.5f
+				key.x * scaled_chunk_size + scaled_chunk_size * 0.5f,
+				key.z * scaled_chunk_size + scaled_chunk_size * 0.5f
 			);
 			float dist_sq = glm::dot(chunk_center - camera_pos_2d, chunk_center - camera_pos_2d);
 
@@ -279,11 +298,18 @@ namespace Boidsish {
 			chunk_cache_.erase(key);
 		}
 
-		std::vector<std::pair<int, int>> to_cancel;
+		std::vector<ChunkKey> to_cancel;
 		for (auto const& [key, val] : pending_chunks_) {
+			float scale_mult = std::pow(lod_scale_multiplier_, static_cast<float>(key.lod));
+			float chunk_world_scale = world_scale_ * scale_mult;
+			float scaled_chunk_size = static_cast<float>(chunk_size_) * chunk_world_scale;
+
+			float unload_limit_dist = (dynamic_view_distance + kUnloadDistanceBuffer_ + 2.0f) * scaled_chunk_size;
+			float unload_limit_dist_sq = unload_limit_dist * unload_limit_dist;
+
 			glm::vec2 chunk_center(
-				key.first * scaled_chunk_size + scaled_chunk_size * 0.5f,
-				key.second * scaled_chunk_size + scaled_chunk_size * 0.5f
+				key.x * scaled_chunk_size + scaled_chunk_size * 0.5f,
+				key.z * scaled_chunk_size + scaled_chunk_size * 0.5f
 			);
 			float dist_sq = glm::dot(chunk_center - camera_pos_2d, chunk_center - camera_pos_2d);
 
@@ -320,11 +346,15 @@ namespace Boidsish {
 			glm::vec2 camera_pos_2d(camera.x, camera.z);
 
 			for (auto const& [key, val] : chunk_cache_) {
+				float scale_mult = std::pow(lod_scale_multiplier_, static_cast<float>(key.lod));
+				float chunk_world_scale = world_scale_ * scale_mult;
+				float scaled_chunk_size_l = static_cast<float>(chunk_size_) * chunk_world_scale;
+
 				if (val &&
-				    isChunkInFrustum(frustum, key.first, key.second, scaled_chunk_size, max_h, 2.0f * scaled_chunk_size)) {
+				    isChunkInFrustum(frustum, key.x, key.z, scaled_chunk_size_l, max_h * scale_mult, 2.0f * scaled_chunk_size_l)) {
 					glm::vec2 chunk_center(
-						key.first * scaled_chunk_size + scaled_chunk_size * 0.5f,
-						key.second * scaled_chunk_size + scaled_chunk_size * 0.5f
+						key.x * scaled_chunk_size_l + scaled_chunk_size_l * 0.5f,
+						key.z * scaled_chunk_size_l + scaled_chunk_size_l * 0.5f
 					);
 					float dist_sq = glm::dot(chunk_center - camera_pos_2d, chunk_center - camera_pos_2d);
 					visible_with_distance.push_back({val, dist_sq});
@@ -345,8 +375,7 @@ namespace Boidsish {
 	}
 
 	void TerrainGenerator::ProcessCompletedChunks() {
-		float scaled_chunk_size = static_cast<float>(chunk_size_) * world_scale_;
-		std::vector<std::pair<int, int>> completed_chunks;
+		std::vector<ChunkKey> completed_chunks;
 		{
 			std::lock_guard<std::recursive_mutex> lock(chunk_cache_mutex_);
 			for (auto& pair : pending_chunks_) {
@@ -354,7 +383,11 @@ namespace Boidsish {
 					try {
 						auto&                   future = const_cast<TaskHandle<TerrainGenerationResult>&>(pair.second);
 						TerrainGenerationResult result = future.get();
-						auto                    terrain_chunk = std::make_shared<Terrain>(
+						float scale_mult = std::pow(lod_scale_multiplier_, static_cast<float>(result.lod_level));
+						float chunk_world_scale = world_scale_ * scale_mult;
+						float scaled_chunk_size = static_cast<float>(chunk_size_) * chunk_world_scale;
+
+						auto terrain_chunk = std::make_shared<Terrain>(
 							result.indices,
 							result.positions,
 							result.normals,
@@ -419,6 +452,10 @@ namespace Boidsish {
 
 			for (auto const& [key, terrain_chunk] : chunk_cache_) {
 				if (!render_manager_->HasChunk(key)) {
+					float scale_mult = std::pow(lod_scale_multiplier_, static_cast<float>(key.lod));
+					float chunk_world_scale = world_scale_ * scale_mult;
+					float scaled_chunk_size = static_cast<float>(chunk_size_) * chunk_world_scale;
+
 					render_manager_->RegisterChunk(
 						key,
 						terrain_chunk->vertices,
@@ -429,8 +466,8 @@ namespace Boidsish {
 						terrain_chunk->GetIndices(),
 						terrain_chunk->proxy.minY,
 						terrain_chunk->proxy.maxY,
-						glm::vec3(key.first * scaled_chunk_size, 0, key.second * scaled_chunk_size),
-						world_scale_,
+						glm::vec3(key.x * scaled_chunk_size, 0, key.z * scaled_chunk_size),
+						chunk_world_scale,
 						terrain_chunk->patch_metrics
 					);
 				}
@@ -703,7 +740,7 @@ namespace Boidsish {
 		return pointGenerateAll(x, z).height_data;
 	}
 
-	TerrainGenerationResult TerrainGenerator::generateChunkData(int chunkX, int chunkZ) {
+	TerrainGenerationResult TerrainGenerator::generateChunkData(int lod, int chunkX, int chunkZ) {
 		const int num_vertices_x = chunk_size_ + 1;
 		const int num_vertices_z = chunk_size_ + 1;
 
@@ -715,8 +752,9 @@ namespace Boidsish {
 		std::vector<unsigned int>           indices;
 		bool                                has_terrain = false;
 
-		// Check if this chunk has any deformations
-		float scaled_chunk_size = static_cast<float>(chunk_size_) * world_scale_;
+		float scale_mult = std::pow(lod_scale_multiplier_, static_cast<float>(lod));
+		float chunk_world_scale = world_scale_ * scale_mult;
+		float scaled_chunk_size = static_cast<float>(chunk_size_) * chunk_world_scale;
 		float chunk_min_x = static_cast<float>(chunkX) * scaled_chunk_size;
 		float chunk_min_z = static_cast<float>(chunkZ) * scaled_chunk_size;
 		float chunk_max_x = chunk_min_x + scaled_chunk_size;
@@ -724,18 +762,15 @@ namespace Boidsish {
 		bool  chunk_has_deformations = deformation_manager_
 										   .ChunkHasDeformations(chunk_min_x, chunk_min_z, chunk_max_x, chunk_max_z);
 
-		// Generate heightmap
-
 		for (int i = 0; i < num_vertices_x; ++i) {
 			for (int j = 0; j < num_vertices_z; ++j) {
-				float worldX = (chunkX * chunk_size_ + i) * world_scale_;
-				float worldZ = (chunkZ * chunk_size_ + j) * world_scale_;
+				float worldX = chunk_min_x + static_cast<float>(i) * chunk_world_scale;
+				float worldZ = chunk_min_z + static_cast<float>(j) * chunk_world_scale;
 
 				auto res = pointGenerateAll(worldX, worldZ);
 				heightmap[i][j] = res.height_data;
 				has_terrain = true;
 
-				// Calculate biome info using the synchronized control value
 				int   low_idx;
 				float t;
 				GetBiomeIndicesAndWeights(res.control_value, low_idx, t);
@@ -743,13 +778,12 @@ namespace Boidsish {
 			}
 		}
 
-		// Apply deformations if any affect this chunk
 		if (chunk_has_deformations) {
-			has_terrain = true; // Deformations can create terrain where there was none
+			has_terrain = true;
 			for (int i = 0; i < num_vertices_x; ++i) {
 				for (int j = 0; j < num_vertices_z; ++j) {
-					float worldX = (chunkX * chunk_size_ + i) * world_scale_;
-					float worldZ = (chunkZ * chunk_size_ + j) * world_scale_;
+					float worldX = chunk_min_x + static_cast<float>(i) * chunk_world_scale;
+					float worldZ = chunk_min_z + static_cast<float>(j) * chunk_world_scale;
 
 					if (deformation_manager_.HasDeformationAt(worldX, worldZ)) {
 						float     base_height = heightmap[i][j][0];
@@ -758,26 +792,17 @@ namespace Boidsish {
 						auto result = deformation_manager_.QueryDeformations(worldX, worldZ, base_height, base_normal);
 
 						if (result.has_deformation) {
-							// Apply height delta
 							heightmap[i][j][0] += result.total_height_delta;
-
-							// Recompute gradient approximation for the deformed surface
-							// We store the transformed normal info for later use
-							// The gradient values are approximations - we'll use finite differences
-							// after all heights are computed
 						}
 					}
 				}
 			}
 		}
 
-		// Recompute normals using finite differences for ALL chunks to ensure consistency.
-		// To ensure bit-identical results at boundaries, we sample neighboring heights
-		// even if they're outside the current chunk's data.
 		for (int i = 0; i < num_vertices_x; ++i) {
 			for (int j = 0; j < num_vertices_z; ++j) {
-				float worldX = (chunkX * chunk_size_ + i) * world_scale_;
-				float worldZ = (chunkZ * chunk_size_ + j) * world_scale_;
+				float worldX = chunk_min_x + static_cast<float>(i) * chunk_world_scale;
+				float worldZ = chunk_min_z + static_cast<float>(j) * chunk_world_scale;
 
 				float h_center = heightmap[i][j][0];
 				float h_left, h_right, h_down, h_up;
@@ -785,59 +810,52 @@ namespace Boidsish {
 				if (i > 0)
 					h_left = heightmap[i - 1][j][0];
 				else
-					h_left = std::get<0>(CalculateTerrainPropertiesAtPoint(worldX - world_scale_, worldZ));
+					h_left = std::get<0>(CalculateTerrainPropertiesAtPoint(worldX - chunk_world_scale, worldZ));
 
 				if (i < num_vertices_x - 1)
 					h_right = heightmap[i + 1][j][0];
 				else
-					h_right = std::get<0>(CalculateTerrainPropertiesAtPoint(worldX + world_scale_, worldZ));
+					h_right = std::get<0>(CalculateTerrainPropertiesAtPoint(worldX + chunk_world_scale, worldZ));
 
 				if (j > 0)
 					h_down = heightmap[i][j - 1][0];
 				else
-					h_down = std::get<0>(CalculateTerrainPropertiesAtPoint(worldX, worldZ - world_scale_));
+					h_down = std::get<0>(CalculateTerrainPropertiesAtPoint(worldX, worldZ - chunk_world_scale));
 
 				if (j < num_vertices_z - 1)
 					h_up = heightmap[i][j + 1][0];
 				else
-					h_up = std::get<0>(CalculateTerrainPropertiesAtPoint(worldX, worldZ + world_scale_));
+					h_up = std::get<0>(CalculateTerrainPropertiesAtPoint(worldX, worldZ + chunk_world_scale));
 
-				float dx = (h_right - h_left) / (2.0f * world_scale_);
-				float dz = (h_up - h_down) / (2.0f * world_scale_);
+				float dx = (h_right - h_left) / (2.0f * chunk_world_scale);
+				float dz = (h_up - h_down) / (2.0f * chunk_world_scale);
 
 				heightmap[i][j][1] = dx;
 				heightmap[i][j][2] = dz;
 			}
 		}
 
-
-		// Generate vertices and normals
 		positions.reserve(num_vertices_x * num_vertices_z);
 		normals.reserve(num_vertices_x * num_vertices_z);
 		biomes_flat.reserve(num_vertices_x * num_vertices_z);
 		for (int i = 0; i < num_vertices_x; ++i) {
 			for (int j = 0; j < num_vertices_z; ++j) {
 				float y = heightmap[i][j][0];
-
 				float dx = heightmap[i][j][1];
 				float dz = heightmap[i][j][2];
 
-				positions.emplace_back(i * world_scale_, y, j * world_scale_);
+				positions.emplace_back(i * chunk_world_scale, y, j * chunk_world_scale);
 				normals.push_back(diffToNorm(dx, dz));
 				biomes_flat.push_back(biome_map[i][j]);
 			}
 		}
 
-		// Generate indices for a single quad patch covering the whole chunk.
-		// The corners are at (0,0), (chunk_size, 0), (chunk_size, chunk_size), (0, chunk_size).
-		// This matches the simplified instanced geometry in TerrainRenderManager.
 		indices.reserve(4);
-		indices.push_back(0);                                          // (0,0)
-		indices.push_back(chunk_size_ * num_vertices_z);               // (chunk_size, 0)
-		indices.push_back(chunk_size_ * num_vertices_z + chunk_size_); // (chunk_size, chunk_size)
-		indices.push_back(chunk_size_);                                // (0, chunk_size)
+		indices.push_back(0);
+		indices.push_back(chunk_size_ * num_vertices_z);
+		indices.push_back(chunk_size_ * num_vertices_z + chunk_size_);
+		indices.push_back(chunk_size_);
 
-		// Calculate aggregate data for the PatchProxy
 		PatchProxy proxy;
 		proxy.center = std::accumulate(positions.begin(), positions.end(), glm::vec3(0.0f)) / (float)positions.size();
 		proxy.totalNormal = std::accumulate(normals.begin(), normals.end(), glm::vec3(0.0f));
@@ -862,14 +880,12 @@ namespace Boidsish {
 		}
 		proxy.radiusSq = max_dist_sq;
 
-		// Pre-pack heightmap and biome data for the renderer (Z-major transposition)
 		const int res = chunk_size_ + 1;
 		std::vector<float>   packed_height_normal;
 		std::vector<uint8_t> packed_biomes;
 		packed_height_normal.reserve(res * res * 4);
 		packed_biomes.reserve(res * res * 4);
 
-		// Calculate per-patch metrics for initial loading
 		const int num_patches_side = Constants::Class::Terrain::PatchesPerChunkSide();
 		const int patch_size = Constants::Class::Terrain::PatchSize();
 		std::vector<TerrainRenderManager::PatchMetrics> patch_metrics(num_patches_side * num_patches_side);
@@ -877,8 +893,6 @@ namespace Boidsish {
 		for (int py = 0; py < num_patches_side; ++py) {
 			for (int px = 0; px < num_patches_side; ++px) {
 				float minH = 1e30f, maxH = -1e30f, maxVar = 0.0f;
-				float totalVar = 0.0f;
-				int count = 0;
 
 				for (int y = py * patch_size; y <= (py + 1) * patch_size; ++y) {
 					for (int x = px * patch_size; x <= (px + 1) * patch_size; ++x) {
@@ -887,7 +901,6 @@ namespace Boidsish {
 						minH = std::min(minH, h);
 						maxH = std::max(maxH, h);
 
-						// Coarse variance calculation (neighbor difference)
 						if (x < px * patch_size + patch_size && y < py * patch_size + patch_size) {
 							float h_right = positions[(x + 1) * res + y].y;
 							float h_down = positions[x * res + (y + 1)].y;
@@ -898,8 +911,8 @@ namespace Boidsish {
 				}
 
 				auto& m = patch_metrics[py * num_patches_side + px];
-				m.min_y = minH - 2.0f * world_scale_;
-				m.max_y = maxH + 2.0f * world_scale_;
+				m.min_y = minH - 2.0f * chunk_world_scale;
+				m.max_y = maxH + 2.0f * chunk_world_scale;
 				m.max_variance = maxVar;
 				m.avg_curvature = 0.0f;
 				m.avg_roughness = 0.0f;
@@ -909,7 +922,7 @@ namespace Boidsish {
 
 		for (int z = 0; z < res; ++z) {
 			for (int x = 0; x < res; ++x) {
-				int src_idx = x * res + z; // X-major
+				int src_idx = x * res + z;
 
 				packed_height_normal.push_back(positions[src_idx].y);
 				packed_height_normal.push_back(normals[src_idx].x);
@@ -918,12 +931,12 @@ namespace Boidsish {
 
 				packed_biomes.push_back(static_cast<uint8_t>(biomes_flat[src_idx].x));
 				packed_biomes.push_back(static_cast<uint8_t>(biomes_flat[src_idx].y * 255.0f + 0.5f));
-				packed_biomes.push_back(0); // bake_flag
-				packed_biomes.push_back(0); // unused
+				packed_biomes.push_back(0);
+				packed_biomes.push_back(0);
 			}
 		}
 
-		return {indices, positions, normals, biomes_flat, packed_height_normal, packed_biomes, proxy, chunkX, chunkZ, true, std::move(patch_metrics)};
+		return {indices, positions, normals, biomes_flat, packed_height_normal, packed_biomes, proxy, lod, chunkX, chunkZ, true, std::move(patch_metrics)};
 	}
 
 	bool
@@ -1332,90 +1345,86 @@ namespace Boidsish {
 	// ========== Cache-Preferring Terrain Query Implementations ==========
 
 	std::optional<std::tuple<float, glm::vec3>> TerrainGenerator::InterpolateFromCachedChunk(float x, float z) const {
-		float scaled_chunk_size = static_cast<float>(chunk_size_) * world_scale_;
-
-		// Determine which chunk this position belongs to
-		int chunk_x = static_cast<int>(std::floor(x / scaled_chunk_size));
-		int chunk_z = static_cast<int>(std::floor(z / scaled_chunk_size));
-
 		std::lock_guard<std::recursive_mutex> lock(chunk_cache_mutex_);
 
-		auto it = chunk_cache_.find({chunk_x, chunk_z});
-		if (it == chunk_cache_.end() || !it->second) {
-			return std::nullopt; // Chunk not cached
+		for (int lod = 0; lod < num_lod_levels_; ++lod) {
+			float scale_mult = std::pow(lod_scale_multiplier_, static_cast<float>(lod));
+			float chunk_world_scale = world_scale_ * scale_mult;
+			float scaled_chunk_size = static_cast<float>(chunk_size_) * chunk_world_scale;
+
+			int chunk_x = static_cast<int>(std::floor(x / scaled_chunk_size));
+			int chunk_z = static_cast<int>(std::floor(z / scaled_chunk_size));
+
+			ChunkKey key{lod, chunk_x, chunk_z};
+			auto it = chunk_cache_.find(key);
+			if (it != chunk_cache_.end() && it->second) {
+				const auto& terrain = it->second;
+				const auto& vertices = terrain->vertices;
+				const auto& normals = terrain->normals;
+
+				if (vertices.empty()) continue;
+
+				float chunk_origin_x = static_cast<float>(chunk_x) * scaled_chunk_size;
+				float chunk_origin_z = static_cast<float>(chunk_z) * scaled_chunk_size;
+				float local_x = x - chunk_origin_x;
+				float local_z = z - chunk_origin_z;
+
+				int grid_size = chunk_size_ + 1;
+
+				int ix = static_cast<int>(std::floor(local_x / chunk_world_scale));
+				int iz = static_cast<int>(std::floor(local_z / chunk_world_scale));
+
+				ix = std::clamp(ix, 0, chunk_size_ - 1);
+				iz = std::clamp(iz, 0, chunk_size_ - 1);
+
+				int idx00 = ix * grid_size + iz;
+				int idx10 = ix * grid_size + (iz + 1);
+				int idx01 = (ix + 1) * grid_size + iz;
+				int idx11 = (ix + 1) * grid_size + (iz + 1);
+
+				if (idx11 >= static_cast<int>(vertices.size())) continue;
+
+				float fx = (local_x / chunk_world_scale) - static_cast<float>(ix);
+				float fz = (local_z / chunk_world_scale) - static_cast<float>(iz);
+				fx = std::clamp(fx, 0.0f, 1.0f);
+				fz = std::clamp(fz, 0.0f, 1.0f);
+
+				glm::vec3 v00 = vertices[idx00];
+				glm::vec3 v10 = vertices[idx10];
+				glm::vec3 v01 = vertices[idx01];
+				glm::vec3 v11 = vertices[idx11];
+
+				glm::vec3 q = bilerp(v00, v10, v11, v01, {fx, fz});
+
+				glm::vec3 n00 = normals[idx00];
+				glm::vec3 n10 = normals[idx10];
+				glm::vec3 n01 = normals[idx01];
+				glm::vec3 n11 = normals[idx11];
+
+				glm::vec3 interpolatedNormal = bilerp(n00, n10, n11, n01, {fx, fz});
+				interpolatedNormal = glm::normalize(interpolatedNormal);
+
+				return std::make_tuple(q.y, interpolatedNormal);
+			}
 		}
 
-		const auto& terrain = it->second;
-		const auto& vertices = terrain->vertices;
-		const auto& normals = terrain->normals;
-
-		if (vertices.empty()) {
-			return std::nullopt;
-		}
-
-		// Convert world position to local chunk coordinates
-		float chunk_origin_x = static_cast<float>(chunk_x) * scaled_chunk_size;
-		float chunk_origin_z = static_cast<float>(chunk_z) * scaled_chunk_size;
-		float local_x = x - chunk_origin_x;
-		float local_z = z - chunk_origin_z;
-
-		// Terrain mesh is generated with world_scale_ spacing between vertices
-		// The chunk has (chunk_size_ + 1) vertices along each edge
-		int grid_size = chunk_size_ + 1;
-
-		// Find the grid cell in vertex units [0, chunk_size]
-		int ix = static_cast<int>(std::floor(local_x / world_scale_));
-		int iz = static_cast<int>(std::floor(local_z / world_scale_));
-
-		// Clamp to valid range
-		ix = std::clamp(ix, 0, chunk_size_ - 1);
-		iz = std::clamp(iz, 0, chunk_size_ - 1);
-
-		// Get the 4 corner vertex indices
-		int idx00 = ix * grid_size + iz;
-		int idx10 = ix * grid_size + (iz + 1);
-		int idx01 = (ix + 1) * grid_size + iz;
-		int idx11 = (ix + 1) * grid_size + (iz + 1);
-
-		// Bounds check
-		if (idx11 >= static_cast<int>(vertices.size())) {
-			return std::nullopt;
-		}
-
-		// Bilinear interpolation factors
-		float fx = (local_x / world_scale_) - static_cast<float>(ix);
-		float fz = (local_z / world_scale_) - static_cast<float>(iz);
-		fx = std::clamp(fx, 0.0f, 1.0f);
-		fz = std::clamp(fz, 0.0f, 1.0f);
-
-		// Interpolate position (we really just need height, Y component)
-		glm::vec3 v00 = vertices[idx00];
-		glm::vec3 v10 = vertices[idx10];
-		glm::vec3 v01 = vertices[idx01];
-		glm::vec3 v11 = vertices[idx11];
-
-		// The "flat" position from standard bilinear interpolation
-		glm::vec3 q = bilerp(v00, v10, v11, v01, {fx, fz});
-
-		// Interpolate normal
-		glm::vec3 n00 = normals[idx00];
-		glm::vec3 n10 = normals[idx10];
-		glm::vec3 n01 = normals[idx01];
-		glm::vec3 n11 = normals[idx11];
-
-		glm::vec3 interpolatedNormal = bilerp(n00, n10, n11, n01, {fx, fz});
-		interpolatedNormal = glm::normalize(interpolatedNormal);
-
-		return std::make_tuple(q.y, interpolatedNormal);
+		return std::nullopt;
 	}
 
 	bool TerrainGenerator::IsPositionCached(float x, float z) const {
-		float scaled_chunk_size = static_cast<float>(chunk_size_) * world_scale_;
-		int   chunk_x = static_cast<int>(std::floor(x / scaled_chunk_size));
-		int   chunk_z = static_cast<int>(std::floor(z / scaled_chunk_size));
-
 		std::lock_guard<std::recursive_mutex> lock(chunk_cache_mutex_);
-		return chunk_cache_.find({chunk_x, chunk_z}) != chunk_cache_.end();
+		for (int lod = 0; lod < num_lod_levels_; ++lod) {
+			float scale_mult = std::pow(lod_scale_multiplier_, static_cast<float>(lod));
+			float chunk_world_scale = world_scale_ * scale_mult;
+			float scaled_chunk_size = static_cast<float>(chunk_size_) * chunk_world_scale;
+
+			int chunk_x = static_cast<int>(std::floor(x / scaled_chunk_size));
+			int chunk_z = static_cast<int>(std::floor(z / scaled_chunk_size));
+
+			ChunkKey key{lod, chunk_x, chunk_z};
+			if (chunk_cache_.find(key) != chunk_cache_.end()) return true;
+		}
+		return false;
 	}
 
 	std::tuple<float, glm::vec3> TerrainGenerator::GetTerrainPropertiesAtPoint(float x, float z) const {
@@ -1657,15 +1666,19 @@ namespace Boidsish {
 		float scaled_chunk_size = static_cast<float>(chunk_size_) * world_scale_;
 
 		// 1. Process completed deformation tasks
-		std::vector<std::pair<int, int>> completed_keys;
-		bool                             any_completed = false;
+		std::vector<ChunkKey> completed_keys;
+		bool                  any_completed = false;
 		{
 			std::lock_guard<std::recursive_mutex> lock(chunk_cache_mutex_);
 			for (auto& pair : pending_deformations_) {
 				if (pair.second.is_ready()) {
 					try {
 						TerrainGenerationResult result = pair.second.get();
-						auto                    new_terrain = std::make_shared<Terrain>(
+						float scale_mult = std::pow(lod_scale_multiplier_, static_cast<float>(result.lod_level));
+						float chunk_world_scale = world_scale_ * scale_mult;
+						float scaled_chunk_size_l = static_cast<float>(chunk_size_) * chunk_world_scale;
+
+						auto new_terrain = std::make_shared<Terrain>(
 							result.indices,
 							result.positions,
 							result.normals,
@@ -1676,9 +1689,9 @@ namespace Boidsish {
 							std::move(result.patch_metrics)
 						);
 						new_terrain->SetPosition(
-							result.chunk_x * scaled_chunk_size,
+							result.chunk_x * scaled_chunk_size_l,
 							0,
-							result.chunk_z * scaled_chunk_size
+							result.chunk_z * scaled_chunk_size_l
 						);
 
 						if (render_manager_) {
@@ -1693,8 +1706,8 @@ namespace Boidsish {
 								new_terrain->GetIndices(),
 								new_terrain->proxy.minY,
 								new_terrain->proxy.maxY,
-								glm::vec3(result.chunk_x * scaled_chunk_size, 0, result.chunk_z * scaled_chunk_size),
-								world_scale_,
+								glm::vec3(result.chunk_x * scaled_chunk_size_l, 0, result.chunk_z * scaled_chunk_size_l),
+								chunk_world_scale,
 								new_terrain->patch_metrics
 							);
 						} else {
@@ -1722,7 +1735,7 @@ namespace Boidsish {
 			return;
 
 		// 2. Identify all chunks that need regeneration from NEW deformations
-		std::set<std::pair<int, int>> chunks_to_regenerate;
+		std::set<ChunkKey> chunks_to_regenerate;
 		bool                          all_deformed = false;
 
 		for (uint32_t def_id : current_deformations) {
@@ -1753,10 +1766,14 @@ namespace Boidsish {
 		if (all_deformed) {
 			std::lock_guard<std::recursive_mutex> lock(chunk_cache_mutex_);
 			for (auto const& [key, terrain] : chunk_cache_) {
-				float chunk_min_x = static_cast<float>(key.first) * scaled_chunk_size;
-				float chunk_min_z = static_cast<float>(key.second) * scaled_chunk_size;
-				float chunk_max_x = chunk_min_x + scaled_chunk_size;
-				float chunk_max_z = chunk_min_z + scaled_chunk_size;
+				float scale_mult = std::pow(lod_scale_multiplier_, static_cast<float>(key.lod));
+				float chunk_world_scale = world_scale_ * scale_mult;
+				float scaled_chunk_size_l = static_cast<float>(chunk_size_) * chunk_world_scale;
+
+				float chunk_min_x = static_cast<float>(key.x) * scaled_chunk_size_l;
+				float chunk_min_z = static_cast<float>(key.z) * scaled_chunk_size_l;
+				float chunk_max_x = chunk_min_x + scaled_chunk_size_l;
+				float chunk_max_z = chunk_min_z + scaled_chunk_size_l;
 
 				if (deformation_manager_.ChunkHasDeformations(chunk_min_x, chunk_min_z, chunk_max_x, chunk_max_z)) {
 					chunks_to_regenerate.insert(key);
@@ -1791,8 +1808,9 @@ namespace Boidsish {
 							TaskPriority::HIGH,
 							&TerrainGenerator::generateChunkData,
 							this,
-							key.first,
-							key.second
+							key.lod,
+							key.x,
+							key.z
 						)
 					);
 				}
