@@ -95,7 +95,7 @@ vec3 getWindAtPosition(vec3 worldPos) {
 	float windSpeed = length(wind);
 	// Ensure the wind direction is normalized and safe from zero-length vectors
 	vec2 windDir = windSpeed > 0.001 ? normalize(wind.xz) : vec2(1.0, 0.0);
-	float windFactor = 0.1*log2(windSpeed);
+	float windFactor = 0.15*log2(windSpeed);
 
 	// vec2 phacelleOut = fastSimplePhacelle2d(uv * 1024.0, normalize(vec2(wind.x+cos(wind.x*uv.x), wind.z+cos(wind.z*uv.y))));
 	vec2 phacelleOut = fastSimplePhacelle2d(uv * 1024.0, normalize(wind.xz));
@@ -104,7 +104,8 @@ vec3 getWindAtPosition(vec3 worldPos) {
 	float sinShift = sin(phaseShift);
 
 	float rawPhacelle = phacelleOut.x * cosShift - phacelleOut.y * sinShift;
-	float positiveRipple = rawPhacelle * 0.5 + 0.5;
+	float positiveRipple = smoothstep(0.05, 1.0, rawPhacelle * 0.5 + 0.5);
+	// positiveRipple *= mix(1.0, 0.99 + 0.05*sin(10*phaseShift), smoothstep(0.5, 0.8, positiveRipple));
 
 	float maskScale = 0.5;
 	vec2 samplePos = worldPos.xz * maskScale;
@@ -124,7 +125,7 @@ vec3 getWindAtPosition(vec3 worldPos) {
 
 	gridMask = gridMask * 0.5 + 0.5;
 
-	return wind * ((smoothstep(0.0, 0.05, positiveRipple) * (1.0 - smoothstep(0.25, 1.0, positiveRipple)))) * gridMask;
+	return wind * ((smoothstep(0.0, gridMask, positiveRipple) * (1.0 - smoothstep(1.0-gridMask, 1.0, positiveRipple))));
 
 
 	// positiveRipple *= clamp(cos(local.x*0.5- 0.5*u_windParams.y)*cos(local.y*0.5-0.5*u_windParams.y), 0, 1);
