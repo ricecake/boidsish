@@ -3,6 +3,11 @@
 
 #include "fast_noise.glsl"
 #include "terrain_common.glsl"
+#include "lygia/generative/psrdnoise.glsl"
+#include "lygia/generative/gerstnerWave.glsl"
+#ifdef PI
+#undef PI
+#endif
 
 // Wind data UBO - stores macro wind grid and simulation parameters
 #ifndef WIND_DATA_BLOCK
@@ -25,6 +30,58 @@ layout(binding = [[WEATHER_AEROSOLS_BINDING]]) uniform sampler2D u_weatherAeroso
 #endif
 
 /**
+ * Simple Phacelle Noise (2D)
+ * Approximates highly directional phasor noise using a 16-sample kernel.
+ *
+ * @param uv  - The sampling position. Scale this to change the density of the noise cells.
+ * @param dir - The desired direction of the ripples. Does not need to be normalized if
+ *              you want direction magnitude to influence the phase gradient.
+ * @return    - A normalized vec2 representing [cos(phase), sin(phase)].
+ *              Extract the .x component for the base wave pattern.
+ */
+vec2 fastSimplePhacelle2d(vec2 uv, vec2 dir) {
+    vec2 cell = floor(uv);
+    vec2 frac = fract(uv);
+
+    float sumCos = 0.0;
+    float sumSin = 0.0;
+    float sumWeight = 0.0;
+
+    // Evaluate 4x4 grid for smooth overlapping kernels
+    for (int y = -1; y <= 2; y++) {
+        for (int x = -1; x <= 2; x++) {
+            vec2 offset = vec2(float(x), float(y));
+            vec2 neighborCell = cell + offset;
+
+            // Generate a random, static phase shift for this specific cell [0, 2PI]
+            // Note: Replace hash21 with whatever 2D->1D hash exists in your fast_noise.glsl
+            float cellPhase = fract(sin(dot(neighborCell, vec2(12.9898, 78.233))) * 43758.5453) * 6.28318530718;
+
+            // Vector from current sampling point to the neighboring cell's origin
+            vec2 delta = offset - frac;
+            float distSq = dot(delta, delta);
+
+            // Kernel falloff weight (using a fast polynomial approximation of a Gaussian)
+            // Cutoff at squared distance 4.0
+            float weight = max(0.0, 1.0 - distSq * 0.25);
+            weight = weight * weight * weight;
+
+            // Project the spatial delta onto the desired direction vector to align the wave,
+            // then add the cell's random phase offset.
+            float phase = cellPhase + dot(dir, delta) * 3.14159265;
+
+            // Accumulate both wave components
+            sumCos += cos(phase) * weight;
+            sumSin += sin(phase) * weight;
+            sumWeight += weight;
+        }
+    }
+
+    // Normalize the accumulated vector to rebuild a clean phase
+    return normalize(vec2(sumCos, sumSin) / (sumWeight + 0.0001));
+}
+
+/**
  * Fast lookup for pre-integrated wind data.
  */
 vec3 getWindAtPosition(vec3 worldPos) {
@@ -34,7 +91,64 @@ vec3 getWindAtPosition(vec3 worldPos) {
 	vec2 gridCoord = (worldPos.xz / gridSpacing) - vec2(u_windOriginSize.xz);
 	vec2 uv = gridCoord / vec2(u_windOriginSize.y, u_windOriginSize.w);
 
-	return texture(u_windTexture, uv).xyz;
+	vec3 wind = texture(u_windTexture, uv).xyz;
+	float windSpeed = length(wind);
+	// Ensure the wind direction is normalized and safe from zero-length vectors
+	vec2 windDir = windSpeed > 0.001 ? normalize(wind.xz) : vec2(1.0, 0.0);
+	float windFactor = clamp(0.05*log2(windSpeed), 0.0, 4.0);
+
+	// vec2 phacelleOut = fastSimplePhacelle2d(uv * 1024.0, normalize(vec2(wind.x+cos(wind.x*uv.x), wind.z+cos(wind.z*uv.y))));
+	vec2 phacelleOut = fastSimplePhacelle2d(uv * 1024.0, normalize(wind.xz));
+	float angle = (1.0+0.05*cos(phacelleOut.x - phacelleOut.y))*atan(phacelleOut.y, phacelleOut.x);
+
+	float phaseShift = u_windParams.y * windFactor;
+	float phaseProgression = smoothstep(0.05, 1.0, fract((angle / 6.2831853) + phaseShift));
+
+	// float cosShift = cos(phaseShift);
+	// float sinShift = sin(phaseShift);
+
+	// float rawPhacelle = phacelleOut.x * cosShift - phacelleOut.y * sinShift;
+	// float positiveRipple = smoothstep(0.05, 1.0, rawPhacelle * 0.5 + 0.5);
+
+	// positiveRipple *= mix(1.0, 0.99 + 0.05*sin(10*phaseShift), smoothstep(0.5, 0.8, positiveRipple));
+
+	float maskScale = 0.5;
+	vec2 samplePos = worldPos.xz * maskScale;
+
+	vec2 forward = windDir;
+	vec2 right = vec2(-windDir.y, windDir.x); // 90-degree rotation
+	vec2 alignedPos = vec2(
+		dot(samplePos, forward),
+		dot(samplePos, right)
+	);
+
+	float advectionSpeed = u_windParams.y * windFactor*3.0;
+	float advectedX = alignedPos.x - advectionSpeed;
+	float warpedY = alignedPos.y;
+
+	float gridMask = cos(advectedX/13.0) * cos(warpedY/7.0);
+
+	gridMask = clamp(smoothstep(-0.25, 1.25, gridMask * 0.5 + 0.5), 0.15, 0.45);
+
+	float quickAttack = smoothstep(0.0, gridMask, phaseProgression);
+	float slowRelease = 1.0 - smoothstep(1.0-gridMask, 1.0, phaseProgression);
+	float positiveRipple = quickAttack * slowRelease;
+	// positiveRipple *= (1.0-(0.5*(0.5+0.5*sin(3.0*phaseProgression * 6.28))*smoothstep(0.15, 0.50, positiveRipple)) );
+	positiveRipple *= (1.0-(0.95*(0.5+0.5*sin(10.0*phaseProgression * 6.28*smoothstep(0.25, 0.70, positiveRipple)))) );
+
+	return wind * positiveRipple;//*gridMask;
+
+
+	// return wind * ((smoothstep(0.0, gridMask, positiveRipple) * (1.0 - smoothstep(1.0-gridMask, 1.0, positiveRipple))));
+
+
+	// positiveRipple *= clamp(cos(local.x*0.5- 0.5*u_windParams.y)*cos(local.y*0.5-0.5*u_windParams.y), 0, 1);
+
+	// // return wind * (positiveRipple);
+	// return wind * ((smoothstep(0,0.5,positiveRipple)*(1.0-smoothstep(0.5,1.0, positiveRipple))));
+	// // return wind * (0.5+positiveRipple);
+	// // return gerstnerWave(uv, normalize(wind.xz), 0.5, 64.0, u_windParams.y);
+
 }
 
 /**
@@ -79,6 +193,22 @@ vec4 computeWindAtPositionOptimized(vec3 worldPos, float terrainHeight, vec3 nor
 	// Normalize to [0, 1] for texture sampling
 	vec2 uv = gridCoord / vec2(u_windOriginSize.y, u_windOriginSize.w);
 
+	// float dirPeriod = 1.0;
+	// float ampPeriod = gridSpacing;
+	// float ampRange = 10.0;
+
+	// float noise1 = 3.14*psrdnoise(dirPeriod*uv+0.01*u_windParams.y, vec2(dirPeriod));
+	// vec3 windDir = vec3(cos(noise1), 0.0, sin(noise1));
+	// vec3 windDir2 = vec3(windDir.y, -windDir.x);
+	// // float noise2 = smoothstep(-1.0, 1.0, psrdnoise(uv*500+0.5*u_windParams.y, vec2(500.0)));
+	// // float noise2 = smoothstep(0.35, 1.0, pow(abs(psrdnoise(uv*ampPeriod+windDir.xz*0.15*u_windParams.y, vec2(ampPeriod))), 0.5)  );
+	// WorleyData2D dat = worley2d_tiling_id(uv*ampPeriod+windDir.xz*0.15*u_windParams.y, (ampPeriod));
+	// float noise2 = step(0.6, hash12Tile(dat.f1, vec2(ampPeriod))) * smoothstep(0.35, 1.0, pow(1.0 - dat.f1_dist, 0.5));
+	// //2*(smoothstep(0.35, 1.0, pow(abs(noise(x/2+t)), 0.5)))+(0.5*(smoothstep(0.0, 1.0, pow(abs(noise(x+t)), 1.5))))
+	// float noise3 = smoothstep(0.0, 1.0, pow(abs(psrdnoise(uv*2*ampPeriod+windDir.xz*u_windParams.y, vec2(2*ampPeriod))), 1.5)  );
+	// vec3 wind = ampRange * smoothstep(0.25, 1.75, 2.0*noise2 + 0.5 * noise3 ) * windDir;
+	// return vec4(wind, 0.0);
+
 	// 1. Hardware-accelerated bilinear interpolation of macro wind and drag
 	// Use the RAW LBM texture here for integration
 	vec4 macroData = texture(u_lbmWindTexture, uv);
@@ -105,101 +235,51 @@ vec4 computeWindAtPositionOptimized(vec3 worldPos, float terrainHeight, vec3 nor
 		}
 	}
 
-	// 3. Structured Gusts and Swirls
-	// Use continuous time. Do not wrap it, or the phase math will fracture.
+	return vec4(macroWind, drag);
+
 	float time = u_windParams.y;
-	float curlScale = u_windParams.z;
-	float curlStrength = u_windParams.w;
-
-	// Extract normalized direction for predictable math
 	vec2 windDir2D = macroSpeed > 0.001 ? macroWind.xz / macroSpeed : vec2(1.0, 0.0);
-
-	// Gustiness: Smoothstep the simplex to create wide, rolling "valleys" of stillness
-	float gustAdvectionSpeed = 0.75;
-	vec3 gustPos = worldPos - (macroWind * time * gustAdvectionSpeed);
-	float gustiness = smoothstep(0.1, 0.7, fastSimplex3d(gustPos / 250.0) * 0.5 + 0.5);
-
-	// 4. Phasor Ripples (The "Packets")
-	// Frequency and phase speed adapt to macro speed to prevent high-frequency chaos.
-	// As speed increases, we widen the ripples and slow down their oscillation.
 	float speedSmoothing = 1.0 / (1.0 + macroSpeed * 0.05);
 
-	float rippleFreq = 0.005 * speedSmoothing;
-	vec2 rippleUV = worldPos.xz * rippleFreq;
+	// A. Cheap Wavefront Perturbation (Replacing Curl)
+	// Use a simple sine-based hash or a very cheap 2D noise to warp the direction
+	// This breaks up the wavefront so blades don't move in perfect lockstep
+	vec2 warpUV = worldPos.xz * 0.2;
+	float warp = sin(warpUV.x + time) * cos(warpUV.y - time);
+	vec2 perturbedDir = normalize(windDir2D + vec2(-windDir2D.y, windDir2D.x) * warp * 0.3);
 
-	float rippleTightness = 0.05;
+	// B. Phacelle Evaluation
+	// Phacelle natively handles the directional alignment. We animate the UVs
+	// along the wind direction to create the flow.
+	float rippleFreq = 0.15 * speedSmoothing;
 	float ripplePhaseSpeed = 5.0 * speedSmoothing;
 
-	float phaseShift = dot(windDir2D, worldPos.xz) * rippleTightness - (time * ripplePhaseSpeed);
-	float rawPhasor = fastPhasor2d(rippleUV, phaseShift);
+	// Drift the UVs along the wind direction
+	vec2 phacelleUV = (worldPos.xz * rippleFreq) - (windDir2D * time * ripplePhaseSpeed);
 
-	// Remap and apply an asymmetric power curve to fix the "pulling" vertex snap-back
-	// This makes the gust hit quickly, but release slowly.
-	float positiveRipple = pow(rawPhasor * 0.5 + 0.5, 2.0);
+	// Assuming a simple Phacelle implementation that returns a normalized vector [x, y]
+	// representing cos(phase) and sin(phase)
+	vec2 phacelleOut = fastSimplePhacelle2d(phacelleUV, perturbedDir * 5.0);
 
-	// 5. The Stillness Filter
-	// Attenuate the base wind during lulls, but ONLY if the macro wind is relatively weak.
-	// Storms (high macroSpeed) will ignore the lull and blow continuously.
-	float calmThreshold = smoothstep(50.0, 0.0, macroSpeed);
-	float baseWindMultiplier = mix(1.0, gustiness, calmThreshold);
+	// Extract the phase (equivalent to your rawPhasor)
+	float rawPhacelle = phacelleOut.x; // Taking the cosine component as the base wave
 
-	vec3 finalWind = macroWind * baseWindMultiplier;
+	// Apply your existing asymmetric power curve
+	float positiveRipple = pow(rawPhacelle * 0.5 + 0.5, 2.0);
 
-	// 6. Apply the Gust Surge
+	// C. Gust Surge Application
+	// We can skip the fastSimplex3d entirely and use a lower-frequency Phacelle
+	// pass if you need macro gusts, or just rely on the LBM macro data + ripples.
+	vec3 finalWind = macroWind;
+
 	if (macroSpeed > 0.001) {
 		float surgeStrength = 2.5;
-		// The surge only exists inside the macro gusts
-		float localizedSurge = positiveRipple * gustiness * surgeStrength * macroSpeed;
-		finalWind.xz += windDir2D * localizedSurge;
+		// Localized surge driven purely by the perturbed Phacelle ripples
+		float localizedSurge = positiveRipple * surgeStrength * macroSpeed;
+		finalWind.xz += perturbedDir * localizedSurge;
 	}
 
-	// 7. Local Turbulence (Curl)
-	// Scale and temporal drift also adapt to macro speed for smoother transitions at high intensity.
-	float dynamicCurlScale = curlScale * (0.8 + 0.4 * gustiness) * speedSmoothing;
-	float pulsePeriod = 10.0;
-
-	float phase0 = fract(time / pulsePeriod);
-	float time0 = phase0 * pulsePeriod;
-	vec3 advectedPos0 = worldPos - (finalWind * time0 * 0.250);
-	vec3 curl0 = fastCurl3d(advectedPos0 / 200.0 * dynamicCurlScale + vec3(0.0, time0 * 0.02 * speedSmoothing, 0.0));
-	float weight0 = sin(phase0 * 3.14159);
-
-	float phase1 = fract((time + pulsePeriod * 0.5) / pulsePeriod);
-	float time1 = phase1 * pulsePeriod;
-	vec3 advectedPos1 = worldPos - (finalWind * time1 * 0.250);
-	vec3 curl1 = fastCurl3d(advectedPos1 / 200.0 * dynamicCurlScale + vec3(0.0, time1 * 0.02 * speedSmoothing, 0.0));
-	float weight1 = sin(phase1 * 3.14159);
-
-	vec3 curl = (curl0 * weight0 + curl1 * weight1) / (weight0 + weight1);
-
-	float turbulenceIntensity = drag * length(finalWind) * curlStrength * speedSmoothing;
-
-	// Modulate turbulence intensity and introduce a subtle directional shift to the flow
-	turbulenceIntensity *= (0.8 + 0.4 * (positiveRipple * 0.5 + 0.5));
-	if (macroSpeed > 0.001) {
-		// Apply a small perpendicular shift based on the ripple
-		vec2 perpWind = vec2(-macroWind.z, macroWind.x) / macroSpeed;
-		macroWind.xz += perpWind * (positiveRipple * macroSpeed * 0.15);
-	}
-
-	// 5. Combined Result
-	// Instead of just adding curl, we use it to perturb the direction of the macro wind,
-	// creating the effect of chaotic swirls within the flow.
-	if (macroSpeed > 0.001) {
-		// Use curl to rotate the macro wind vector slightly
-		vec3 rotationAxis = normalize(curl + vec3(0.0, 1.0, 0.0)); // Bias axis toward Up
-		float rotationAngle = turbulenceIntensity * 0.15;
-
-		float cosTheta = cos(rotationAngle);
-		float sinTheta = sin(rotationAngle);
-
-		macroWind = macroWind * cosTheta +
-					cross(rotationAxis, macroWind) * sinTheta +
-					rotationAxis * dot(rotationAxis, macroWind) * (1.0 - cosTheta);
-	}
-
-	// Add curl as a final perturbation
-	return vec4(finalWind + curl * turbulenceIntensity, drag);
+	return vec4(finalWind, drag);
 }
 
 /**
@@ -234,8 +314,8 @@ vec3 rotateVector(vec3 v, vec3 axis, float angle) {
  * Calculates the combined wind deflection angle and direction.
  */
 void getWindDeflectionAngleAndAxis(vec3 basePos, float dist, float v, float windInfluence, float biomeRigidity, float globalWindMultiplier, float globalRigidityMultiplier, uint seed, out float totalBendAngle, out vec3 rotationAxis) {
-    float distanceFade = smoothstep(250.0, 75.0, dist);
-    vec3 windNoise = (distanceFade > 0.0 && dist < 150.0) ? distanceFade * getWindAtPosition(basePos) : vec3(0.0);
+    float distanceFade = 1.0 - smoothstep(450.0, 750.0, dist);
+    vec3 windNoise = (distanceFade > 0.0 && dist < 550.0) ? distanceFade * getWindAtPosition(basePos) : vec3(0.0);
     float windStrength = length(windNoise) * windInfluence * globalWindMultiplier;
 
     vec3 windDir = (length(windNoise) > 0.001) ? normalize(vec3(windNoise.x, 0.0, windNoise.z)) : vec3(1.0, 0.0, 0.0);

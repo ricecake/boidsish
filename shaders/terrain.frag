@@ -887,13 +887,13 @@ void main() {
 	vec3 warpCoord2 = FragPos * (0.015 / worldScale) - vec3(0.0, time * 0.03, 0.0);
 
 	vec3 warp1 = fastCurl3d(warpCoord1);
-	vec3 warp2 = fastCurl3d(warpCoord2);
+	vec3 warp2 = warp1.yzx;
 
 	float speed1 = 25.0 * worldScale;
 	float speed2 = 18.0 * worldScale;
 
 	vec3 p1 = FragPos + (advectDir * time * speed1) + 0.1*warp1;
-	vec3 p2 = FragPos + (advectDir * time * speed2) + cross(warp2, 0.1*warp1);
+	vec3 p2 = FragPos + (advectDir * time * speed2) + 0.2 * warp2;
 
 	p1.y += time * 2.0 * worldScale; // slow vertical drift
 	p2.y -= time * 1.5 * worldScale; // slow vertical drift in opposite direction
@@ -1204,7 +1204,12 @@ void main() {
 
 	vec4 baseColor = vec4(lighting, fade * alphaFade * terrainFlatMask);
 
+	// vec4 windy = computeWindAtPositionOptimized(FragPos, FragPos.y, norm);
+	// vec3 windy = getWindAtPosition(FragPos);
+	// windy.a =1;
+
 	FragColor = mix(vec4(0.0, 0.7, 0.7, baseColor.a) * length(baseColor), baseColor, step(1.0, fade));
+	// FragColor = mix(FragColor, vec4(windy, 1), 1.0);
 	// float up = dot(Normal, vec3(0,1,0));
 	// float range = smoothstep(0.7, 0.75, up) - smoothstep(0.8, 0.9, up);
 	// FragColor = baseColor+3000*mix(vec4(0,0,0, 1), vec4(5,0,0, 1), step(0.0, (-curvature(FragPos, Normal))) *  range  );

@@ -2657,6 +2657,9 @@ namespace Boidsish {
 
 			if (grass_manager && terrain_generator && terrain_render_manager) {
 				grass_manager->SetCameraPos(camera.pos());
+				if (atmosphere_manager) {
+					grass_manager->SetAtmosphereManager(atmosphere_manager.get());
+				}
 
 				// 1. Calculate terrain preparation quality
 				float effective_quality = tess_quality_multiplier_;
@@ -3854,6 +3857,9 @@ namespace Boidsish {
 
 			if (impl->grass_manager) {
 				impl->grass_manager->Initialize();
+				if (impl->atmosphere_manager) {
+					impl->grass_manager->SetAtmosphereManager(impl->atmosphere_manager.get());
+				}
 
 				// Load grass settings from config
 				auto& cfg = ConfigManager::GetInstance();

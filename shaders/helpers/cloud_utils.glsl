@@ -398,10 +398,6 @@ float evaluateCloudShadowDensityAtWorldPos(vec2 worldXZ, float time) {
 float calculateCloudAmbientOcclusion(vec3 frag_pos) {
 	if (!u_useCloudShadowMap) return 1.0;
 
-	// Project fragment pos to light space to get shadowUV
-	vec4 lightSpacePos = u_cloudShadowMatrix * vec4(frag_pos, 1.0);
-	vec2 shadowUV = lightSpacePos.xy * 0.5 + 0.5;
-
 	CloudProperties props;
 	props.altitude = cloudAltitude;
 	props.thickness = cloudThickness;
@@ -411,10 +407,26 @@ float calculateCloudAmbientOcclusion(vec3 frag_pos) {
 
 	CloudWeather weather = computeCloudWeather(frag_pos, props);
 	CloudLayer layer = computeCloudLayer(weather, props);
-	float h = getCloudRelativeHeight(frag_pos, weather, layer);
+
+	float localFloor, actualThickness;
+	float h = getCloudRelativeHeight(frag_pos, weather, layer, localFloor, actualThickness);
+
+	// Find the curved altitude directly above the fragment clamped within the cloud layer
+	float alt_above = clamp(getCurvedAltitude(frag_pos), localFloor, localFloor + actualThickness);
+
+	// Convert curved altitude back to Cartesian coordinates for the point directly above frag_pos
+	float R_earth = 6360.0 * 1000.0 * worldScale;
+	float distXZ_sq = dot(frag_pos.xz - viewPos.xz, frag_pos.xz - viewPos.xz);
+	float rad_above = alt_above + R_earth;
+	float y_above = sqrt(max(0.0, rad_above * rad_above - distXZ_sq)) - R_earth;
+	vec3 P_above = vec3(frag_pos.x, y_above, frag_pos.z);
+
+	// Project P_above to light space to get the correct shadowUV directly above the point
+	vec4 lightSpacePos_above = u_cloudShadowMatrix * vec4(P_above, 1.0);
+	vec2 shadowUV_above = lightSpacePos_above.xy * 0.5 + 0.5;
 
 	// Scale accumulated density by a physical factor (0.02) to match average extinction values and keep ambient occlusion soft/realistic
-	float accumulatedDensity = sampleDeepOpacityMap(shadowUV, h, 1.0) * 0.001 * cloudShadowOpticalDepthMultiplier / max(0.001, worldScale); // high LOD for soft ambient occlusion
+	float accumulatedDensity = sampleDeepOpacityMap(shadowUV_above, h, 1.0) * 0.001 * cloudShadowOpticalDepthMultiplier / max(0.001, worldScale); // high LOD for soft ambient occlusion
 	float cloudAO = exp(-accumulatedDensity); // scaled down for softer ambient occlusion
 
 	return mix(1.0, cloudAO, cloudShadowIntensity);
