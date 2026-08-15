@@ -92,24 +92,47 @@ vec3 getWindAtPosition(vec3 worldPos) {
 	vec2 uv = gridCoord / vec2(u_windOriginSize.y, u_windOriginSize.w);
 
 	vec3 wind = texture(u_windTexture, uv).xyz;
+	float windSpeed = length(wind);
+	// Ensure the wind direction is normalized and safe from zero-length vectors
+	vec2 windDir = windSpeed > 0.001 ? normalize(wind.xz) : vec2(1.0, 0.0);
+	float windFactor = 0.1*log2(windSpeed);
 
-	vec2 warpUV = worldPos.xz * 0.2;
-	float warp = sin(warpUV.x + u_windParams.y) * cos(warpUV.y - u_windParams.y);
-	vec2 perturbedDir = normalize(wind.xz + vec2(-wind.z, wind.x) * warp * 0.3);
-
-
+	// vec2 phacelleOut = fastSimplePhacelle2d(uv * 1024.0, normalize(vec2(wind.x+cos(wind.x*uv.x), wind.z+cos(wind.z*uv.y))));
 	vec2 phacelleOut = fastSimplePhacelle2d(uv * 1024.0, normalize(wind.xz));
-	float phaseShift = u_windParams.y * 0.50;// + warp;
+	float phaseShift = u_windParams.y * windFactor;
 	float cosShift = cos(phaseShift);
 	float sinShift = sin(phaseShift);
 
 	float rawPhacelle = phacelleOut.x * cosShift - phacelleOut.y * sinShift;
 	float positiveRipple = rawPhacelle * 0.5 + 0.5;
 
-	// return wind * (positiveRipple);
-	return wind * ((smoothstep(0,0.25,positiveRipple)*(1.0-smoothstep(0.25,1.0, positiveRipple))));
-	// return wind * (0.5+positiveRipple);
-	// return gerstnerWave(uv, normalize(wind.xz), 0.5, 64.0, u_windParams.y);
+	float maskScale = 0.5;
+	vec2 samplePos = worldPos.xz * maskScale;
+
+	vec2 forward = windDir;
+	vec2 right = vec2(-windDir.y, windDir.x); // 90-degree rotation
+	vec2 alignedPos = vec2(
+		dot(samplePos, forward),
+		dot(samplePos, right)
+	);
+
+	float advectionSpeed = u_windParams.y * windFactor*3.0;
+	float advectedX = alignedPos.x - advectionSpeed;
+	float warpedY = alignedPos.y;
+
+	float gridMask = cos(advectedX/13.0) * cos(warpedY/7.0);
+
+	gridMask = gridMask * 0.5 + 0.5;
+
+	return wind * ((smoothstep(0.0, 0.05, positiveRipple) * (1.0 - smoothstep(0.25, 1.0, positiveRipple)))) * gridMask;
+
+
+	// positiveRipple *= clamp(cos(local.x*0.5- 0.5*u_windParams.y)*cos(local.y*0.5-0.5*u_windParams.y), 0, 1);
+
+	// // return wind * (positiveRipple);
+	// return wind * ((smoothstep(0,0.5,positiveRipple)*(1.0-smoothstep(0.5,1.0, positiveRipple))));
+	// // return wind * (0.5+positiveRipple);
+	// // return gerstnerWave(uv, normalize(wind.xz), 0.5, 64.0, u_windParams.y);
 
 }
 
