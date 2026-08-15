@@ -363,7 +363,9 @@ void main() {
 		float lumaDiff = abs(lumaCurrent - lumaHistory);
 		float maxLuma = max(max(lumaCurrent, lumaHistory), 0.001);
 		float relativeLumaDiff = lumaDiff / maxLuma;
-		float skyLumaRejection = smoothstep(0.10, 0.45, relativeLumaDiff);
+		float relativeLumaRejection = smoothstep(0.02, 0.25, relativeLumaDiff);
+		float absLumaRejection = smoothstep(0.03, 0.30, lumaDiff);
+		float skyLumaRejection = max(relativeLumaRejection, absLumaRejection);
 
 		float alpha = 0.0;
 		if (!uEnableTemporal) {
@@ -405,11 +407,13 @@ void main() {
 		float maxLuma = max(max(lumaCurrent, lumaHistory), 0.001);
 		float relativeLumaDiff = lumaDiff / maxLuma;
 
-		// Calculate luminance-guided rejection factor for rapid lighting changes (flashes, sun shifts)
-		float lumaRejection = smoothstep(0.10, 0.45, relativeLumaDiff);
+		// Calculate luminance-guided rejection factor for rapid or gradual lighting changes (flashes, day/night shifts, dimming)
+		float relativeLumaRejection = smoothstep(0.02, 0.25, relativeLumaDiff);
+		float absLumaRejection = smoothstep(0.03, 0.30, lumaDiff);
+		float lumaRejection = max(relativeLumaRejection, absLumaRejection);
 
 		// High confidence when relative luma difference is small
-		float lumaConfidence = smoothstep(0.35, 0.05, relativeLumaDiff);
+		float lumaConfidence = smoothstep(0.20, 0.02, relativeLumaDiff);
 
 		// High confidence when motion is small
 		float pixelSpeed = length(velocity * size);
