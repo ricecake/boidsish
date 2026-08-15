@@ -34,6 +34,22 @@ namespace Boidsish {
     };
 
     /**
+     * @brief Climate and boundary control parameters for macro weather simulation.
+     */
+    struct ClimateSettings {
+        float macroWindSpeed = 5.0f;           // Macro wind speed in m/s coming in from edges
+        float macroWindDirection = 26.565f;     // Direction angle in degrees (0 - 360)
+        float boundaryPressure = 1013.25f;      // Air pressure of incoming boundary air in hPa
+        float boundaryTemperature = 288.15f;    // Temperature of incoming boundary air in K
+        float sensibleHeatMultiplier = 1.0f;   // Scale factor for converting solar radiation to air temperature
+        float solarHeatingScale = 1.0f;        // Multiplier for solar radiative heating
+        float evaporationScale = 1.0f;         // Multiplier for ground evaporation into humidity
+        float baselineHumidity = 0.5f;          // Baseline/ambient humidity level (0.0 - 1.0)
+        float aerosolEmissionScale = 1.0f;     // Scale factor for aerosol release rate
+        float baselineAerosolLevel = 0.01f;     // Minimum baseline aerosol concentration
+    };
+
+    /**
      * @brief Physically based output of the weather system.
      * Consolidates all derived atmospheric parameters.
      */

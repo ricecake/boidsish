@@ -93,6 +93,9 @@ namespace Boidsish {
         void               SetConstraints(const Constraints& c) { constraints_ = c; }
         const Constraints& GetConstraints() const { return constraints_; }
 
+        void                  SetClimateSettings(const ClimateSettings& c) { climateSettings_ = c; }
+        const ClimateSettings& GetClimateSettings() const { return climateSettings_; }
+
     private:
         void Initialize(const ITerrainGenerator& terrain, float totalTime, float timeOfDay);
         void InitializeCell(int x, int z, float totalTime, float timeOfDay, LbmCell& cell);
@@ -145,6 +148,7 @@ namespace Boidsish {
         static const float weights[9];
 
         Constraints constraints_;
+        ClimateSettings climateSettings_;
     };
 
 } // namespace Boidsish

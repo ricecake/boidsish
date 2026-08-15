@@ -317,6 +317,9 @@ namespace Boidsish {
 
 		void SetSimConstraints(const WeatherLbmSimulator::Constraints& c);
 
+		const ClimateSettings& GetClimateSettings() const { return climate_settings_; }
+		void                   SetClimateSettings(const ClimateSettings& climate);
+
 		void InjectPressure(const glm::vec3& pos, float pressureHpa, float burstStrength);
 
 		void InjectAerosol(const glm::vec3& pos, float concentration);
@@ -366,6 +369,7 @@ namespace Boidsish {
 		void               LoadConfig();
 		void               SaveAttributeTarget(WeatherAttribute attr);
 		void               SaveSimConstraints();
+		void               SaveClimateSettings();
 		static std::string GetAttributeKey(WeatherAttribute attr);
 
 		bool  enabled_ = true;
@@ -391,6 +395,7 @@ namespace Boidsish {
 
 		ITerrainGenerator*                   terrain_ = nullptr;
 		std::unique_ptr<WeatherLbmSimulator> lbm_simulator_;
+		ClimateSettings                      climate_settings_;
 	};
 
 } // namespace Boidsish
