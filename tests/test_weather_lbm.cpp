@@ -209,3 +209,32 @@ TEST(WeatherLbmTest, RangeConstraints) {
     }
     EXPECT_NEAR(sim.GetOutput().temperature, 300.0f, 10.0f);
 }
+
+TEST(WeatherLbmTest, ClimateSettingsControl) {
+    WeatherLbmSimulator sim(16, 16);
+    MockTerrain terrain;
+    glm::vec3 cameraPos(0.0f);
+
+    ClimateSettings climate = sim.GetClimateSettings();
+    EXPECT_FLOAT_EQ(climate.macroWindSpeed, 5.0f);
+    EXPECT_FLOAT_EQ(climate.boundaryPressure, 1013.25f);
+    EXPECT_FLOAT_EQ(climate.boundaryTemperature, 288.15f);
+
+    // 1. Modify boundary temperature and pressure
+    climate.boundaryTemperature = 330.0f;
+    climate.boundaryPressure = 1100.0f;
+    climate.baselineHumidity = 0.8f;
+    climate.aerosolEmissionScale = 3.0f;
+    climate.macroWindSpeed = 25.0f;
+    sim.SetClimateSettings(climate);
+
+    for (int i = 0; i < 50; ++i) {
+        sim.Update(0.1f, i * 0.1f, 12.0f, terrain, cameraPos, 0.075f, 0.065f, 288.15f, 1013.25f, 0.5f);
+    }
+
+    const auto& out = sim.GetOutput();
+    EXPECT_GT(out.temperature, 290.0f);
+    EXPECT_GT(out.pressure, 1013.25f);
+    EXPECT_GT(out.humidity, 0.5f);
+    EXPECT_GT(out.mieScattering, 0.004f);
+}

@@ -111,14 +111,14 @@ namespace Boidsish {
 
         // Bias towards global averages if initialized
         float targetTemp = initialized_ ? currentOutput_.temperature : baseTemp;
-        float targetHumidity = initialized_ ? currentOutput_.humidity : 0.5f;
-        float targetRho = initialized_ ? currentOutput_.pressure / 1013.25f : 1.0f;
+        float targetHumidity = initialized_ ? currentOutput_.humidity : climateSettings_.baselineHumidity;
+        float targetRho = initialized_ ? currentOutput_.pressure / 1013.25f : (climateSettings_.boundaryPressure / 1013.25f);
 
         float coordScale = 32.0f / kGridSpacing;
         float n = Simplex::noise(glm::vec2(worldX * 0.001f * coordScale, worldZ * 0.001f * coordScale));
         cell.temperature = glm::mix(targetTemp, baseTemp, 0.5f) + n * 5.0f;
-        cell.aerosols = glm::vec4(0.01f + std::abs(n) * 0.05f, 0.0f, 0.0f, 0.0f);
-        cell.humidity = glm::mix(targetHumidity, 0.4f + std::abs(n) * 0.2f, 0.5f);
+        cell.aerosols = glm::vec4(climateSettings_.baselineAerosolLevel + std::abs(n) * 0.05f, 0.0f, 0.0f, 0.0f);
+        cell.humidity = glm::mix(targetHumidity, climateSettings_.baselineHumidity + std::abs(n) * 0.1f, 0.5f);
         cell.vy = 0.0f;
         cell.viscosityDamping = 0.0f;
 
@@ -317,7 +317,7 @@ namespace Boidsish {
 
             // 2. Sensible Heat Flux (Solar heating)
             float solarAngle = (timeOfDay + (worldX * 0.001f * coordScale) - 14.0f) * (PI / 12.0f);
-            float heating = std::max(0.0f, std::cos(solarAngle)) * cfg.sensibleHeatFactor * 0.1f * seasonalIntensity;
+            float heating = std::max(0.0f, std::cos(solarAngle)) * cfg.sensibleHeatFactor * climateSettings_.sensibleHeatMultiplier * climateSettings_.solarHeatingScale * 0.1f * seasonalIntensity;
             cell.temperature += heating;
 
             // 3. Boussinesq Buoyancy
@@ -351,15 +351,18 @@ namespace Boidsish {
             }
 
             // 5. Aerosol Release
-            cell.aerosols += cfg.aerosolReleaseRates * 0.001f * seasonalIntensity;
-            // Diffusion / Decay
-            cell.aerosols *= 0.99f;
+            cell.aerosols += cfg.aerosolReleaseRates * climateSettings_.aerosolEmissionScale * 0.001f * seasonalIntensity;
+            // Diffusion / Decay & Baseline Floor
+            cell.aerosols = glm::max(cell.aerosols * 0.99f, glm::vec4(climateSettings_.baselineAerosolLevel, 0.0f, 0.0f, 0.0f));
 
             // 6. Humidity modeling (Evaporation & Condensation)
             // Evaporation based on sensible heat factor (proxy for ground moisture availability) and temperature
             float tc_local = cell.temperature - 273.15f;
-            float evaporation = std::max(0.0f, tc_local) * cfg.sensibleHeatFactor * 0.0001f;
+            float evaporation = std::max(0.0f, tc_local) * cfg.sensibleHeatFactor * climateSettings_.sensibleHeatMultiplier * climateSettings_.evaporationScale * 0.0001f;
             cell.humidity += evaporation;
+
+            // Ambient humidity relaxation towards baseline level
+            cell.humidity += (climateSettings_.baselineHumidity - cell.humidity) * 0.001f;
 
             // Saturation check (Bolton's formula simplified)
             float es_local = 6.112f * std::exp(17.67f * tc_local / (tc_local + 243.5f));
@@ -382,13 +385,23 @@ namespace Boidsish {
     }
     glm::vec2 WeatherLbmSimulator::GetTargetVelocity(float worldX, float worldZ, float totalTime, float windSpeed, float windStrength) const {
         float coordScale = 32.0f / kGridSpacing;
-        glm::vec2 prevailingWind(0.02f, 0.01f);
+        float dirRad = glm::radians(climateSettings_.macroWindDirection);
+        glm::vec2 prevailingWind(std::cos(dirRad), std::sin(dirRad));
         prevailingWind += glm::vec2(worldX + worldZ, worldX - worldZ) * (0.0001f * coordScale);
-        prevailingWind = glm::normalize(prevailingWind);
+        if (glm::length(prevailingWind) > 1e-4f) {
+            prevailingWind = glm::normalize(prevailingWind);
+        } else {
+            prevailingWind = glm::vec2(1.0f, 0.0f);
+        }
+
         auto noiseWind = Simplex::curlNoise(glm::vec2(worldX * 0.001f * coordScale + totalTime * windSpeed, worldZ * 0.001f * coordScale + totalTime * windSpeed), atan2(prevailingWind.x, prevailingWind.y));
-        glm::vec2 targetU = prevailingWind + noiseWind * 0.1f;
+
+        float lbmConversion = kGridSpacing / dt_;
+        float baseLatticeSpeed = climateSettings_.macroWindSpeed / lbmConversion;
+
+        glm::vec2 targetU = prevailingWind * baseLatticeSpeed + prevailingWind * noiseWind * 0.1f * baseLatticeSpeed;
         targetU *= Simplex::noise({worldX * coordScale, worldZ * coordScale}) * 0.5f + 0.5f;
-        return glm::clamp(targetU * (0.05f + windStrength * 5.0f), -0.14f, 0.14f);
+        return glm::clamp(targetU * (1.0f + windStrength * 2.0f), -0.14f, 0.14f);
     }
 
     void WeatherLbmSimulator::ApplyNudging(float /*deltaTime*/, float totalTime, float /*timeOfDay*/, float windSpeed, float windStrength, float targetTemp, float targetPressure, float targetHumidity) {
@@ -446,17 +459,22 @@ namespace Boidsish {
     }
 
     void WeatherLbmSimulator::ApplyBoundaries(float totalTime, float windSpeed, float windStrength, float timeOfDay, float targetTemp, float targetPressure, float targetHumidity) {
-        float targetRho = targetPressure / 1013.25f;
+        float bPressure = (climateSettings_.boundaryPressure != 1013.25f) ? climateSettings_.boundaryPressure : targetPressure;
+        float bTemp = (climateSettings_.boundaryTemperature != 288.15f) ? climateSettings_.boundaryTemperature : targetTemp;
+        float bHum = (climateSettings_.baselineHumidity != 0.5f) ? climateSettings_.baselineHumidity : targetHumidity;
+        float targetRho = bPressure / 1013.25f;
         for (int z = 0; z < height_; ++z) {
             for (int x = 0; x < width_; ++x) {
                 int dist = std::min({x, width_ - 1 - x, z, height_ - 1 - z});
                 if (dist < kPadding) {
                     int idx = z * width_ + x; float worldX = (float)(x + gridAnchor_.x) * kGridSpacing, worldZ = (float)(z + gridAnchor_.y) * kGridSpacing;
                     glm::vec2 targetU = GetTargetVelocity(worldX, worldZ, totalTime, windSpeed, windStrength);
-                    float baseTemp = GetBaseTemperature(worldX, worldZ, totalTime, timeOfDay), finalTargetTemp = glm::mix(baseTemp, targetTemp, 0.5f), blend = std::pow(1.0f - (float)dist / (float)kPadding, 2.0f);
+                    float baseTemp = GetBaseTemperature(worldX, worldZ, totalTime, timeOfDay);
+                    float finalTargetTemp = glm::mix(baseTemp, bTemp, 0.5f);
+                    float blend = std::pow(1.0f - (float)dist / (float)kPadding, 2.0f);
                     for (int i = 0; i < 9; ++i) { float feq = CalculateEquilibrium(i, targetRho, targetU); (*currentGrid_)[idx].f[i] = glm::mix((*currentGrid_)[idx].f[i], feq, blend); }
                     (*currentGrid_)[idx].temperature = glm::mix((*currentGrid_)[idx].temperature, finalTargetTemp, blend * 0.1f);
-                    (*currentGrid_)[idx].humidity = glm::mix((*currentGrid_)[idx].humidity, targetHumidity, blend * 0.1f);
+                    (*currentGrid_)[idx].humidity = glm::mix((*currentGrid_)[idx].humidity, bHum, blend * 0.1f);
                     (*currentGrid_)[idx].vy *= (1.0f - blend * 0.5f);
                 }
             }

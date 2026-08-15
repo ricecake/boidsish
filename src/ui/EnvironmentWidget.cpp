@@ -216,6 +216,41 @@ namespace Boidsish {
 
 									ImGui::Separator();
 
+								if (ImGui::TreeNode("Climate & Edge Boundary Controls")) {
+									auto climate = weather->GetClimateSettings();
+									bool changed = false;
+
+									ImGui::Text("Macro Wind & Edge Boundaries:");
+									if (ImGui::SliderFloat("Macro Wind Speed (m/s)", &climate.macroWindSpeed, 0.0f, 50.0f, "%.1f m/s")) changed = true;
+									if (ImGui::SliderFloat("Macro Wind Direction", &climate.macroWindDirection, 0.0f, 360.0f, "%.1f deg")) changed = true;
+									if (ImGui::SliderFloat("Incoming Air Pressure (hPa)", &climate.boundaryPressure, 800.0f, 1200.0f, "%.1f hPa")) changed = true;
+									if (ImGui::SliderFloat("Incoming Air Temp (K)", &climate.boundaryTemperature, 200.0f, 350.0f, "%.1f K")) changed = true;
+									ImGui::Text("  (%.1f C / %.1f F)", climate.boundaryTemperature - 273.15f, (climate.boundaryTemperature - 273.15f) * 1.8f + 32.0f);
+
+									ImGui::Separator();
+									ImGui::Text("Thermodynamics & Sensible Heat:");
+									if (ImGui::SliderFloat("Sensible Heat Multiplier", &climate.sensibleHeatMultiplier, 0.0f, 5.0f, "%.2f")) changed = true;
+									if (ImGui::SliderFloat("Solar Heating Scale", &climate.solarHeatingScale, 0.0f, 5.0f, "%.2f")) changed = true;
+									if (ImGui::SliderFloat("Evaporation Scale", &climate.evaporationScale, 0.0f, 5.0f, "%.2f")) changed = true;
+
+									ImGui::Separator();
+									ImGui::Text("Baseline Atmosphere & Aerosols:");
+									if (ImGui::SliderFloat("Baseline Humidity", &climate.baselineHumidity, 0.0f, 1.0f, "%.2f")) changed = true;
+									if (ImGui::SliderFloat("Aerosol Emission Scale", &climate.aerosolEmissionScale, 0.0f, 5.0f, "%.2f")) changed = true;
+									if (ImGui::SliderFloat("Baseline Aerosol Level", &climate.baselineAerosolLevel, 0.0f, 0.5f, "%.3f")) changed = true;
+
+									if (ImGui::Button("Reset Climate Defaults")) {
+										climate = ClimateSettings{};
+										changed = true;
+									}
+
+									if (changed) {
+										weather->SetClimateSettings(climate);
+									}
+
+									ImGui::TreePop();
+								}
+
 								if (ImGui::TreeNode("Weather Constraints & Nudges")) {
 									auto& constraints = weather->GetSimConstraints();
 									bool  changed = false;

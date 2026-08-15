@@ -274,6 +274,28 @@ namespace Boidsish {
 		}
 	}
 
+	void WeatherManager::SetClimateSettings(const ClimateSettings& climate) {
+		climate_settings_ = climate;
+		if (lbm_simulator_) {
+			lbm_simulator_->SetClimateSettings(climate);
+		}
+		SaveClimateSettings();
+	}
+
+	void WeatherManager::SaveClimateSettings() {
+		auto& cfg = ConfigManager::GetInstance();
+		cfg.SetFloat("weather_climate_macro_wind_speed", climate_settings_.macroWindSpeed);
+		cfg.SetFloat("weather_climate_macro_wind_direction", climate_settings_.macroWindDirection);
+		cfg.SetFloat("weather_climate_boundary_pressure", climate_settings_.boundaryPressure);
+		cfg.SetFloat("weather_climate_boundary_temperature", climate_settings_.boundaryTemperature);
+		cfg.SetFloat("weather_climate_sensible_heat_multiplier", climate_settings_.sensibleHeatMultiplier);
+		cfg.SetFloat("weather_climate_solar_heating_scale", climate_settings_.solarHeatingScale);
+		cfg.SetFloat("weather_climate_evaporation_scale", climate_settings_.evaporationScale);
+		cfg.SetFloat("weather_climate_baseline_humidity", climate_settings_.baselineHumidity);
+		cfg.SetFloat("weather_climate_aerosol_emission_scale", climate_settings_.aerosolEmissionScale);
+		cfg.SetFloat("weather_climate_baseline_aerosol_level", climate_settings_.baselineAerosolLevel);
+	}
+
 	void WeatherManager::SaveSimConstraints() {
 		auto& cfg = ConfigManager::GetInstance();
 		const auto& c = GetSimConstraints();
@@ -1508,7 +1530,19 @@ namespace Boidsish {
 		hold_threshold_ = cfg.GetAppSettingFloat("weather_hold_threshold", 0.05f);
 		manual_preset_idx_ = cfg.GetAppSettingInt("weather_manual_preset", -1);
 
+		climate_settings_.macroWindSpeed = cfg.GetAppSettingFloat("weather_climate_macro_wind_speed", 5.0f);
+		climate_settings_.macroWindDirection = cfg.GetAppSettingFloat("weather_climate_macro_wind_direction", 26.565f);
+		climate_settings_.boundaryPressure = cfg.GetAppSettingFloat("weather_climate_boundary_pressure", 1013.25f);
+		climate_settings_.boundaryTemperature = cfg.GetAppSettingFloat("weather_climate_boundary_temperature", 288.15f);
+		climate_settings_.sensibleHeatMultiplier = cfg.GetAppSettingFloat("weather_climate_sensible_heat_multiplier", 1.0f);
+		climate_settings_.solarHeatingScale = cfg.GetAppSettingFloat("weather_climate_solar_heating_scale", 1.0f);
+		climate_settings_.evaporationScale = cfg.GetAppSettingFloat("weather_climate_evaporation_scale", 1.0f);
+		climate_settings_.baselineHumidity = cfg.GetAppSettingFloat("weather_climate_baseline_humidity", 0.5f);
+		climate_settings_.aerosolEmissionScale = cfg.GetAppSettingFloat("weather_climate_aerosol_emission_scale", 1.0f);
+		climate_settings_.baselineAerosolLevel = cfg.GetAppSettingFloat("weather_climate_baseline_aerosol_level", 0.01f);
+
 		if (lbm_simulator_) {
+			lbm_simulator_->SetClimateSettings(climate_settings_);
 			lbm_simulator_->SetTau(cfg.GetAppSettingFloat("weather_sim_tau", 0.8f));
 
 			WeatherLbmSimulator::Constraints c;
