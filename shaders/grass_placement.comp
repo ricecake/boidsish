@@ -214,8 +214,8 @@ void spawnBlade(int slice, vec3 patchOffset, float patchSize, ivec2 baseCellID) 
     // Deterministic foliage type selection
     float typeHash = hash(seed + 9999u);
     int foliageType = 0;
-    if (typeHash < 0.008) {
-        foliageType = 2; // Type 2: Minimalist Tree
+    if (typeHash < 0.002) {
+        foliageType = 2; // Type 2: Minimalist Tree (Lower density: 0.2%)
     } else if (typeHash < 0.02) {
         foliageType = 1; // Type 1: Fern
     } else {

@@ -54,7 +54,7 @@ out vec2 fTexCoords;
 out float fHeightFactor;
 out vec3 fWorldPos;
 flat out int fBiomeIdx;
-out float fIsLeaf;   // 0.0 for trunk, 1.0 for leaves
+out float fIsLeaf;   // 0.0 for trunk & branch bark, 1.0 for foliage
 out float fCanopyAo;
 
 // Simple hash for random values
@@ -77,12 +77,13 @@ void main() {
     float dist = distance(viewPos, basePos);
 
     // Seed-based shape variations
-    float leanAngle = (hash(seed + 101u) - 0.5) * 0.25;
+    float leanAngle = (hash(seed + 101u) - 0.5) * 0.20;
     float leanDir = hash(seed + 202u) * 6.283185;
     vec3 leanVector = vec3(cos(leanDir), 0.0, sin(leanDir)) * leanAngle;
 
-    float trunkHeightRatio = 0.65 + hash(seed + 303u) * 0.15; // Trunk spans 65%-80% of height
+    float trunkHeightRatio = 0.55 + hash(seed + 303u) * 0.10; // Trunk height ratio (55%-65%)
     float trunkHeight = height * trunkHeightRatio;
+    vec3 trunkForkPos = basePos + vec3(leanVector.x * trunkHeight, trunkHeight, leanVector.z * trunkHeight);
 
     int vertID = gl_VertexID;
 
@@ -119,9 +120,9 @@ void main() {
 
         float h = v * trunkHeight;
 
-        // Radius tapering from base to trunk top
-        float taper = mix(1.0, 0.25, v * v);
-        float radius = width * 0.45 * taper;
+        // Radius tapering from base to trunk fork
+        float taper = mix(1.0, 0.30, v);
+        float radius = width * 0.40 * taper;
 
         // Side angle
         float angle0 = baseRotation + (float(sideIdx) / 4.0) * 6.2831853;
@@ -147,13 +148,59 @@ void main() {
         texCoords = vec2(float(sideIdx) + u, v * 3.0);
         canopyAo = mix(0.5, 0.9, v);
 
+    } else if (vertID < 192) {
+        // --- BRANCH GEOMETRY (96 Vertices = 4 main branches x 4 quads per branch = 24 verts per branch) ---
+        isLeaf = 0.0;
+        int branchVertID = vertID - 96;
+        int branchIdx = branchVertID / 24;  // 0 to 3 (4 main branches)
+        int inBranch = branchVertID % 24;
+        int quadIdx = inBranch / 6;         // 0 to 3 segments along branch length
+        int triVert = inBranch % 6;
+
+        float u = 0.0;
+        float v_local = 0.0;
+        if (triVert == 0) { u = -1.0; v_local = 0.0; }
+        else if (triVert == 1) { u = 1.0; v_local = 0.0; }
+        else if (triVert == 2) { u = -1.0; v_local = 1.0; }
+        else if (triVert == 3) { u = 1.0; v_local = 0.0; }
+        else if (triVert == 4) { u = 1.0; v_local = 1.0; }
+        else if (triVert == 5) { u = -1.0; v_local = 1.0; }
+
+        float v = (float(quadIdx) + v_local) / 4.0; // 0.0 (trunk fork) to 1.0 (branch tip)
+
+        // Branch direction extending outwards and upwards
+        float branchYaw = baseRotation + (float(branchIdx) / 4.0) * 6.2831853 + hash(seed + uint(branchIdx * 13)) * 0.4;
+        float branchPitch = 0.35 + hash(seed + uint(branchIdx * 19)) * 0.25; // Arch outwards and upwards
+        float branchLength = width * (2.2 + hash(seed + uint(branchIdx * 29)) * 0.8);
+
+        vec3 branchDir = vec3(cos(branchYaw) * cos(branchPitch), sin(branchPitch), sin(branchYaw) * cos(branchPitch));
+        vec3 branchRight = normalize(vec3(-sin(branchYaw), 0.0, cos(branchYaw)));
+
+        float branchThickness = width * 0.18 * (1.0 - v * 0.7);
+
+        vec3 unbentBranchPos = trunkForkPos + branchDir * (v * branchLength) + branchRight * (u * branchThickness);
+
+        // Apply wind deflection along branch
+        float bendAngle = 0.0;
+        vec3 rotAxis = vec3(0.0, 1.0, 0.0);
+        getWindDeflectionAngleAndAxis(basePos, dist, 0.6 + v * 0.4, windInf * 0.7, rigidity * 1.5,
+                                      globalProps.windMultiplier, globalProps.rigidityMultiplier,
+                                      seed, bendAngle, rotAxis);
+
+        worldPos = rotateVector(unbentBranchPos - basePos, rotAxis, bendAngle) + basePos;
+
+        vec3 branchNormal = normalize(cross(branchDir, branchRight));
+        normal = rotateVector(branchNormal, rotAxis, bendAngle);
+        texCoords = vec2(u * 0.5 + 0.5, v * 2.0);
+        canopyAo = mix(0.7, 0.95, v);
+
     } else {
-        // --- CANOPY LEAF CLUSTERS (192 Vertices = 8 clusters x 4 cards x 6 verts) ---
+        // --- FOLIAGE / LEAF CLUSTERS (192 Vertices = 8 clusters x 4 cards x 6 verts) ---
         isLeaf = 1.0;
-        int leafVertID = vertID - 96;
+        int leafVertID = vertID - 192;
         int clusterIdx = leafVertID / 24;  // 0 to 7 (8 leaf clusters)
         int inCluster = leafVertID % 24;
-        int cardIdx = inCluster / 6;       // 0 to 3 cards per cluster
+        int cardIdx = inCluster / 6;       // 0 to 3 leaf cards per cluster
         int triVert = inCluster % 6;
 
         float u = 0.0;
@@ -165,56 +212,58 @@ void main() {
         else if (triVert == 4) { u = 1.0; v_local = 1.0; }
         else if (triVert == 5) { u = -1.0; v_local = 1.0; }
 
-        // Canopy sphere center
-        vec3 canopyCenter = basePos + vec3(leanVector.x * trunkHeight, trunkHeight + height * 0.15, leanVector.z * trunkHeight);
+        // Associated branch for this cluster (2 clusters per branch)
+        int assocBranch = clusterIdx / 2;
+        float branchYaw = baseRotation + (float(assocBranch) / 4.0) * 6.2831853 + hash(seed + uint(assocBranch * 13)) * 0.4;
+        float branchPitch = 0.35 + hash(seed + uint(assocBranch * 19)) * 0.25;
+        float branchLength = width * (2.2 + hash(seed + uint(assocBranch * 29)) * 0.8);
+        vec3 branchDir = vec3(cos(branchYaw) * cos(branchPitch), sin(branchPitch), sin(branchYaw) * cos(branchPitch));
 
-        // Cluster relative center position
-        float clusterAngle = baseRotation + (float(clusterIdx) / 8.0) * 6.2831853 + hash(seed + uint(clusterIdx * 17)) * 0.5;
-        float clusterElevation = (hash(seed + uint(clusterIdx * 31)) - 0.3) * 0.8;
-        float clusterDist = width * (1.2 + hash(seed + uint(clusterIdx * 47)) * 0.8);
+        // Cluster center positioned along and at the tips of branches!
+        float distAlongBranch = (clusterIdx % 2 == 0) ? 0.65 : 1.0; // Mid-branch and tip-branch clusters
+        vec3 branchClusterBase = trunkForkPos + branchDir * (distAlongBranch * branchLength);
 
-        vec3 clusterOffset = vec3(
-            cos(clusterAngle) * clusterDist,
-            clusterElevation * height * 0.3,
-            sin(clusterAngle) * clusterDist
-        );
-        vec3 clusterCenter = canopyCenter + clusterOffset;
+        float clusterSpread = width * (0.8 + hash(seed + uint(clusterIdx * 37)) * 0.6);
+        float clusterAngle = (float(clusterIdx) / 8.0) * 6.2831853 + hash(seed + uint(clusterIdx * 41)) * 0.5;
+        vec3 clusterOffset = vec3(cos(clusterAngle) * clusterSpread, hash(seed + uint(clusterIdx * 53)) * height * 0.15, sin(clusterAngle) * clusterSpread);
 
-        // Card size and rotation
-        float cardWidth = width * (1.4 + hash(seed + uint(clusterIdx * 59)) * 0.6);
-        float cardHeight = width * (1.4 + hash(seed + uint(clusterIdx * 71)) * 0.6);
+        vec3 clusterCenter = branchClusterBase + clusterOffset;
+        vec3 canopyCenter = trunkForkPos + vec3(0.0, height * 0.2, 0.0);
 
-        float cardYaw = baseRotation + (float(cardIdx) / 4.0) * 3.14159265 + hash(seed + uint(clusterIdx * 13 + cardIdx)) * 0.5;
+        // Leafy frond / card styling: anisotropic leaf sprigs extending outward
+        float cardWidth = width * (1.2 + hash(seed + uint(clusterIdx * 59)) * 0.5);
+        float cardHeight = width * (1.5 + hash(seed + uint(clusterIdx * 71)) * 0.5);
+
+        float cardYaw = branchYaw + (float(cardIdx) / 4.0) * 3.14159265 + hash(seed + uint(clusterIdx * 13 + cardIdx)) * 0.6;
         vec3 cardRight = vec3(cos(cardYaw), 0.0, sin(cardYaw));
         vec3 cardUp = vec3(0.0, 1.0, 0.0);
 
-        vec3 localCardPos = cardRight * (u * cardWidth * 0.5) + cardUp * ((v_local - 0.5) * cardHeight);
+        vec3 localCardPos = cardRight * (u * cardWidth * 0.5) + cardUp * ((v_local - 0.2) * cardHeight);
         vec3 unbentCardPos = clusterCenter + localCardPos;
 
-        // Trunk & canopy wind bending
+        // Trunk & branch wind bending
         float trunkBend = 0.0;
         vec3 rotAxis = vec3(0.0, 1.0, 0.0);
         getWindDeflectionAngleAndAxis(basePos, dist, 0.8, windInf, rigidity,
                                       globalProps.windMultiplier, globalProps.rigidityMultiplier,
                                       seed, trunkBend, rotAxis);
 
-        // Leaf flutter high frequency sway
-        float flutterFactor = sin((basePos.x + basePos.z) * 0.5 + time * 4.0 + float(clusterIdx)) * 0.15 * windInf;
+        // High frequency leaf flutter
+        float flutterFactor = sin((basePos.x + basePos.z) * 0.5 + time * 5.0 + float(clusterIdx)) * 0.18 * windInf;
         vec3 bentCardPos = rotateVector(unbentCardPos - basePos, rotAxis, trunkBend + flutterFactor) + basePos;
 
         worldPos = bentCardPos;
 
         // --- SPHERICAL NORMALS ---
-        // Normal points outwards from canopy center for realistic volume lighting!
+        // Normal points outward from the central canopy center for volumetric shading
         vec3 sphereNormal = normalize(worldPos - canopyCenter);
-        vec3 cardFaceNormal = normalize(vec3(-cardRight.z, 0.3, cardRight.x));
+        vec3 cardFaceNormal = normalize(vec3(-cardRight.z, 0.4, cardRight.x));
 
-        // Blend spherical normal with card face normal
-        normal = normalize(mix(cardFaceNormal, sphereNormal, 0.75));
+        normal = normalize(mix(cardFaceNormal, sphereNormal, 0.70));
 
         texCoords = vec2(u * 0.5 + 0.5, v_local);
         heightFactor = (worldPos.y - basePos.y) / max(height, 0.001);
-        canopyAo = clamp(distance(worldPos, canopyCenter) / (width * 2.5), 0.3, 1.0);
+        canopyAo = clamp(distance(worldPos, canopyCenter) / (width * 3.0), 0.35, 1.0);
     }
 
     fNormal = normal;

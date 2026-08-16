@@ -119,7 +119,7 @@ namespace Boidsish {
         // Tree Indirect Buffer
         glGenBuffers(1, &tree_indirect_buffer_);
         glBindBuffer(GL_DRAW_INDIRECT_BUFFER, tree_indirect_buffer_);
-        DrawArraysIndirectCommand tree_cmd = {288, 0, 0, 0}; // 288 vertices per minimalist tree (trunk + canopy quads)
+        DrawArraysIndirectCommand tree_cmd = {384, 0, 0, 0}; // 384 vertices per minimalist tree (trunk + branches + canopy cards)
         glBufferData(GL_DRAW_INDIRECT_BUFFER, sizeof(DrawArraysIndirectCommand), &tree_cmd, GL_DYNAMIC_DRAW);
         glBindBuffer(GL_DRAW_INDIRECT_BUFFER, 0);
 

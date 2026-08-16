@@ -82,13 +82,13 @@ void main() {
     uint seed = uint(abs(fWorldPos.x) * 13.0) ^ uint(abs(fWorldPos.z) * 17.0);
 
     if (fIsLeaf < 0.5) {
-        // --- TRUNK BARK ---
+        // --- TRUNK & BRANCH BARK ---
         // Bark color responds to biome soil/bottom color
         vec3 baseBarkColor = vec3(0.24, 0.17, 0.12); // Natural wood bark
         vec3 biomeSoilColor = biomeProps[fBiomeIdx].colorBottom.rgb;
-        baseBarkColor = mix(baseBarkColor, biomeSoilColor * 0.7, 0.3);
+        baseBarkColor = mix(baseBarkColor, biomeSoilColor * 0.7, 0.35);
 
-        // Bark groove texture along vertical height
+        // Bark groove texture along length
         float groove = sin(fWorldPos.y * 14.0 + fWorldPos.x * 3.0) * 0.08 + (hash(seed) - 0.5) * 0.05;
         albedo = baseBarkColor + vec3(groove);
         albedo = max(vec3(0.02), albedo);
@@ -96,30 +96,37 @@ void main() {
         roughness = 0.85;
         ao *= smoothstep(0.0, 0.25, fHeightFactor);
     } else {
-        // --- LEAF CANOPY ---
-        // Leaf cluster circular alpha mask
-        vec2 leafUV = (fTexCoords - vec2(0.5)) * 2.0;
-        float d = length(leafUV);
+        // --- ORGANIC LEAF CLUSTERS ---
+        vec2 leafUV = (fTexCoords - vec2(0.5, 0.5)) * 2.0; // -1 to 1 across card
+        float distCenter = length(leafUV);
 
-        // Discard outer corners for rounded cluster quads
-        if (d > 0.95) discard;
+        // Serrated / lobed foliage mask using angular modulation
+        float angle = atan(leafUV.y, leafUV.x);
+        float lobes = sin(angle * 7.0 + fWorldPos.x * 2.0) * 0.15 + cos(angle * 4.0) * 0.10;
+        float radiusLimit = 0.85 + lobes;
+
+        if (distCenter > radiusLimit) discard;
 
         // Leaf color responds to biome grass top & bottom color settings
-        vec3 leafBottom = biomeProps[fBiomeIdx].colorBottom.rgb * 0.8;
-        vec3 leafTop = biomeProps[fBiomeIdx].colorTop.rgb * 1.15;
+        vec3 leafBottom = biomeProps[fBiomeIdx].colorBottom.rgb * 0.75;
+        vec3 leafTop = biomeProps[fBiomeIdx].colorTop.rgb * 1.20;
 
-        // Vertical and inner/outer color gradient
-        float colorFactor = clamp(fHeightFactor * 0.8 + (1.0 - d) * 0.3, 0.0, 1.0);
+        // Vertical and inner/outer color gradient with central vein darkening
+        float colorFactor = clamp(fHeightFactor * 0.7 + (1.0 - distCenter) * 0.4, 0.0, 1.0);
         albedo = mix(leafBottom, leafTop, colorFactor);
+
+        // Subtle leaf vein detail
+        float vein = smoothstep(0.0, 0.15, abs(leafUV.x));
+        albedo = mix(albedo * 0.85, albedo, vein);
 
         // Procedural color variation per instance
         float var = (hash(seed) * 2.0 - 1.0) * biomeProps[fBiomeIdx].colorVariability;
         albedo += var * 0.12;
         albedo = max(vec3(0.01), albedo);
 
-        roughness = 0.70;
+        roughness = 0.68;
 
-        // Leaf rim lighting highlight
+        // Translucent leaf rim highlight
         float rim = pow(1.0 - max(dot(N, normalize(viewPos - fWorldPos)), 0.0), 3.0);
         albedo += rim * smoothstep(0.3, 0.8, colorFactor) * vec3(0.2, 0.35, 0.15);
     }
