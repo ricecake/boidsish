@@ -157,9 +157,8 @@ vec3 getWindAtPosition(vec3 worldPos) {
 	// float positiveRipple = damping * (0.5 + 0.5 * cos(scaledPhase));
 	// float positiveRipple = min(exp(((phaseProgression*25)-5)),(exp(-0.2*((phaseProgression*25)-5))+exp(-0.25*((phaseProgression*25)-5))*(0.5*sin(1.4*((phaseProgression*25)-5)))));
 
-float timer = ((phaseProgression*25)-5);
-float decayTerm = exp(-0.2*timer);
-
+	float timer = ((phaseProgression*40)-5);
+	float decayTerm = exp(-0.1*timer);
 	float positiveRipple = min(exp(timer),(decayTerm*(1.0+(0.5*sin(1.4*timer)))));
 
 // float oscillationFrequency = 20.0;
