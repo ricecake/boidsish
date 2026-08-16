@@ -102,7 +102,8 @@ vec3 getWindAtPosition(vec3 worldPos) {
 	float angle = (1.0+0.05*cos(phacelleOut.x - phacelleOut.y))*atan(phacelleOut.y, phacelleOut.x);
 
 	float phaseShift = u_windParams.y * windFactor;
-	float phaseProgression = smoothstep(0.05, 1.0, fract((angle / 6.2831853) + phaseShift));
+	// float phaseProgression = smoothstep(0.05, 1.0, fract((angle / 6.2831853) + phaseShift));
+	float phaseProgression = fract((angle / 6.2831853) + phaseShift);
 
 	// float cosShift = cos(phaseShift);
 	// float sinShift = sin(phaseShift);
@@ -130,13 +131,50 @@ vec3 getWindAtPosition(vec3 worldPos) {
 
 	gridMask = clamp(smoothstep(-0.25, 1.25, gridMask * 0.5 + 0.5), 0.15, 0.45);
 
-	float quickAttack = smoothstep(0.0, gridMask, phaseProgression);
-	float slowRelease = 1.0 - smoothstep(1.0-gridMask, 1.0, phaseProgression);
-	float positiveRipple = quickAttack * slowRelease;
-	// positiveRipple *= (1.0-(0.5*(0.5+0.5*sin(3.0*phaseProgression * 6.28))*smoothstep(0.15, 0.50, positiveRipple)) );
-	positiveRipple *= (1.0-(0.95*(0.5+0.5*sin(10.0*phaseProgression * 6.28*smoothstep(0.25, 0.70, positiveRipple)))) );
+	// float quickAttack = smoothstep(0.0, gridMask, phaseProgression);
+	// float slowRelease = 1.0 - smoothstep(1.0-gridMask, 1.0, phaseProgression);
+	// float positiveRipple = quickAttack * slowRelease;
+	// // positiveRipple *= (1.0-(0.5*(0.5+0.5*sin(3.0*phaseProgression * 6.28))*smoothstep(0.15, 0.50, positiveRipple)) );
+	// positiveRipple *= (1.0-(0.95*(0.5+0.5*sin(10.0*phaseProgression * 6.28*smoothstep(0.25, 0.70, positiveRipple)))) );
 
-	return wind * positiveRipple;//*gridMask;
+	// float positiveRipple = exp(-0.125*phaseProgression)*(0.5+0.5*cos(phaseProgression));
+
+// float oscillationFrequency = 35.0;
+// float scaledPhase = phaseProgression * oscillationFrequency;
+// float decayRate = 2.0;
+// float damping = exp(-decayRate * phaseProgression);
+// float positiveRipple = damping * (0.5 + 0.5 * cos(scaledPhase));
+// abs(exp(-0.25*x)+exp(-0.25*x)*(0.25*cos(5*x)))
+
+
+// min(exp((x)),(exp(-0.2*(x))+exp(-0.25*(x))*(0.5*sin(2*(x)))))
+// f2(((x*25)-5))
+
+// 	float oscillationFrequency = 50.0;
+// 	float scaledPhase = (phaseProgression * oscillationFrequency) - 5;
+// 	float decayRate = 5;
+// 	float damping = exp(-decayRate * phaseProgression);
+	// float positiveRipple = damping * (0.5 + 0.5 * cos(scaledPhase));
+	// float positiveRipple = min(exp(((phaseProgression*25)-5)),(exp(-0.2*((phaseProgression*25)-5))+exp(-0.25*((phaseProgression*25)-5))*(0.5*sin(1.4*((phaseProgression*25)-5)))));
+
+float timer = ((phaseProgression*25)-5);
+float decayTerm = exp(-0.2*timer);
+
+	float positiveRipple = min(exp(timer),(decayTerm*(1.0+(0.5*sin(1.4*timer)))));
+
+// float oscillationFrequency = 20.0;
+// float scaledPhase = phaseProgression * oscillationFrequency;
+// float decayRate = 8.0;
+// float damping = exp(-decayRate * phaseProgression);
+// float positiveRipple = abs(damping+damping * (cos(scaledPhase)));
+
+	// float oscillationFrequency = 16.0;
+	// float scaledPhase = phaseProgression * oscillationFrequency;
+	// float envelope = 1.0 - smoothstep(0.0, 0.95, phaseProgression);
+	// float positiveRipple = envelope * (0.5 + 0.35 * cos(scaledPhase));
+
+
+	return wind * positiveRipple*gridMask;
 
 
 	// return wind * ((smoothstep(0.0, gridMask, positiveRipple) * (1.0 - smoothstep(1.0-gridMask, 1.0, positiveRipple))));
