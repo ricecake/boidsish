@@ -6,10 +6,10 @@ float rand(vec2 co) {
 	return fract(sin(dot(co.xy, vec2(12.9898, 78.233))) * 43758.5453);
 }
 
-// 3D random number generator
-vec3 rand3(vec2 co) {
-	return vec3(rand(co + vec2(0.1, 0.2)), rand(co + vec2(0.3, 0.4)), rand(co + vec2(0.5, 0.6)));
-}
+// // 3D random number generator
+// vec3 rand3(vec2 co) {
+// 	return vec3(rand(co + vec2(0.1, 0.2)), rand(co + vec2(0.3, 0.4)), rand(co + vec2(0.5, 0.6)));
+// }
 
 // A standard 32-bit integer hash
 uint hash(uint x) {

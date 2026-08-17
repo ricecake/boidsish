@@ -29,6 +29,25 @@ layout(binding = [[WEATHER_SCALARS_BINDING]]) uniform sampler2D u_weatherScalars
 layout(binding = [[WEATHER_AEROSOLS_BINDING]]) uniform sampler2D u_weatherAerosolsTexture;
 #endif
 
+
+// float remap(float value, float valueMin, float valueMax) {
+// 	return (value - valueMin) / (valueMax - valueMin);
+// }
+
+// float remapClamp(float value, float inMin, float inMax, float outMin, float outMax) {
+//     float t = clamp((value - inMin) / (inMax - inMin), 0.0, 1.0);
+//     return mix(outMin, outMax, t);
+// }
+
+// float adjust(float value, float scaly) {
+// 	float f = 1.0 - value;
+// 	float h = 0.4; // adjustable filter
+
+// 	float a = scaly * (1.0-h) + h;
+// 	return clamp((remap(a, f, f + h)), 0.0, 1.0);
+// }
+
+
 /**
  * Simple Phacelle Noise (2D)
  * Approximates highly directional phasor noise using a 16-sample kernel.
@@ -84,7 +103,7 @@ vec2 fastSimplePhacelle2d(vec2 uv, vec2 dir) {
 /**
  * Fast lookup for pre-integrated wind data.
  */
-vec3 getWindAtPosition(vec3 worldPos) {
+vec3 getWindAtPosition(vec3 worldPos, out float ripple) {
 	if (u_windOriginSize.y <= 0) return vec3(0.0);
 
 	float gridSpacing = u_windParams.x;
@@ -95,20 +114,23 @@ vec3 getWindAtPosition(vec3 worldPos) {
 	float windSpeed = length(wind);
 	// Ensure the wind direction is normalized and safe from zero-length vectors
 	vec2 windDir = windSpeed > 0.001 ? normalize(wind.xz) : vec2(1.0, 0.0);
-	float windFactor = clamp(0.05*log2(windSpeed), 0.0, 4.0);
+	float windFactor = clamp(0.05*log2(windSpeed), 0.0, 2.0);
 
+/*
 	// vec2 phacelleOut = fastSimplePhacelle2d(uv * 1024.0, normalize(vec2(wind.x+cos(wind.x*uv.x), wind.z+cos(wind.z*uv.y))));
 	vec2 phacelleOut = fastSimplePhacelle2d(uv * 1024.0, normalize(wind.xz));
-	float angle = (1.0+0.05*cos(phacelleOut.x - phacelleOut.y))*atan(phacelleOut.y, phacelleOut.x);
+	// float angle = (1.0+0.05*cos(phacelleOut.x - phacelleOut.y))*atan(phacelleOut.y, phacelleOut.x);
+	float angle = atan(phacelleOut.y, phacelleOut.x);
 
 	float phaseShift = u_windParams.y * windFactor;
 	// float phaseProgression = smoothstep(0.05, 1.0, fract((angle / 6.2831853) + phaseShift));
 	float phaseProgression = fract((angle / 6.2831853) + phaseShift);
+	// float phaseProgression = fract((angle / 6.2831853) + phaseShift+mod(length(gridCoord)*11.0, 23.0));
 
 	// float cosShift = cos(phaseShift);
 	// float sinShift = sin(phaseShift);
 
-	// float rawPhacelle = phacelleOut.x * cosShift - phacelleOut.y * sinShift;
+	// float rawPhacelle = phacelleOut.x * sinShift - phacelleOut.y * cosShift;
 	// float positiveRipple = smoothstep(0.05, 1.0, rawPhacelle * 0.5 + 0.5);
 
 	// positiveRipple *= mix(1.0, 0.99 + 0.05*sin(10*phaseShift), smoothstep(0.5, 0.8, positiveRipple));
@@ -130,6 +152,7 @@ vec3 getWindAtPosition(vec3 worldPos) {
 	float gridMask = cos(advectedX/13.0) * cos(warpedY/7.0);
 
 	gridMask = clamp(smoothstep(-0.25, 1.25, gridMask * 0.5 + 0.5), 0.15, 0.45);
+	// phaseProgression *= gridMask;//step(rawPhacelle, phaseProgression);
 
 	// float quickAttack = smoothstep(0.0, gridMask, phaseProgression);
 	// float slowRelease = 1.0 - smoothstep(1.0-gridMask, 1.0, phaseProgression);
@@ -160,7 +183,25 @@ vec3 getWindAtPosition(vec3 worldPos) {
 	float timer = phaseProgression*40.0-5.0;
 	float decayTerm = exp(-0.1*timer);
 	float harmonic = 0.5*sin(1.4*timer) + 1.0;
-	float positiveRipple = min(exp(timer), decayTerm * harmonic);
+	// float positiveRipple = min(exp(timer), decayTerm * harmonic);
+
+	// vec2 advect = phaseProgression * windDir;
+	// vec2 advect = normalize(wind.xz) * u_windParams.y * 0.5;
+	vec2 advect = vec2(cos(angle), sin(angle)) * phaseProgression;
+
+	// HierarchicalWorleyData2D wd = hierarchicalWorleyTiled(    fract(((worldPos.xz/16)-advect)/gridSpacing)*gridSpacing, gridSpacing    );
+	// HierarchicalWorleyData2D wd = hierarchicalWorleyTiled(    fract(((worldPos.xz/16)-advect)/gridSpacing)*gridSpacing, gridSpacing    );
+	// WorleyData2D wd = worley2d_tiling_id(fract(worldPos.xz/256)*256, 256.0);
+
+	// float positiveRipple = (smoothstep(0.75, 1.0, 1.0-wd.f1_dist)) * (1.0+wd.f1_level);// * step(0.75, hash12Tile(wd.f1_pos, vec2(0))   );
+	// float positiveRipple = smoothstep(0, 1, phaseProgression);
+	// positiveRipple *= exp(-1.5*positiveRipple)*(0.5+0.5*cos(10.0*positiveRipple));
+
+	// 0.1+min(exp((x))-0.1,(exp(-t*(x))+exp(-t*(x))*(0.25*cos(19.*(x)))))
+	// f5(5*x-2.45, 0.05)
+	// positiveRipple = 0.1+min(exp(positiveRipple), exp(-phaseProgression*positiveRipple)+exp(-phaseProgression*positiveRipple) * (0.25*cos(19.0*positiveRipple)));
+	// positiveRipple = 0.5+min(exp(positiveRipple), -0.5+exp(-0.05*positiveRipple)+exp(-0.05*positiveRipple) * (0.95*cos(6.0*positiveRipple)));
+
 
 // float oscillationFrequency = 20.0;
 // float scaledPhase = phaseProgression * oscillationFrequency;
@@ -174,7 +215,57 @@ vec3 getWindAtPosition(vec3 worldPos) {
 	// float positiveRipple = envelope * (0.5 + 0.35 * cos(scaledPhase));
 
 
-	return wind * positiveRipple*gridMask;
+float cellSize = 32.0;    // Each Worley cell spans 32 world units
+float tilePeriod = 16.0;  // The noise seamlessly tiles every 16 cells
+
+// 1. Scale the domain to define the cell size
+vec2 scaledPos = worldPos.xz / cellSize;
+
+// 2. Translate the domain to move the cells over time
+// (Multiply by a wind vector to dictate direction and speed)
+scaledPos -= normalize(wind.xz) * u_windParams.y * 0.5;
+
+// 3. Wrap the coordinates to the exact tile period
+vec2 tiledUV = fract(scaledPos / tilePeriod) * tilePeriod;
+
+// 4. Evaluate the noise using the synchronized period
+WorleyData3D wd = worley3d_tiling_id(vec3(tiledUV.x, 0.125*u_windParams.y, tiledUV.y), tilePeriod);
+float simplex = 0.5+0.5*simplex3d_tiling(vec3(tiledUV.x, 0.125*u_windParams.y, tiledUV.y), tilePeriod);
+float positiveRipple = smoothstep(0.25, 1.0, simplex*(1.0-wd.f1_dist));//(smoothstep(0.75, 1.0, wd.f1_dist));// * (1.0+wd.f1_level);// * step(0.75, hash12Tile(wd.f1_pos, vec2(0))   );
+
+*/
+// 1. Evaluate the Phacelle flow field (using a macro scale)
+vec2 phacelleUV = worldPos.xz / 1024.0;
+vec2 phacelleOut = fastSimplePhacelle2d(phacelleUV, normalize(wind.xz));
+
+// (Optional) Animate the Phacelle phase so the distortion field ripples
+float phaseShift = u_windParams.y * 0.50;
+float angle = atan(phacelleOut.y, phacelleOut.x) + phaseShift;
+vec2 animatedFlow = vec2(cos(angle), sin(angle));
+
+// 2. Set up the Worley coordinate space
+float cellSize = 32.0;
+float tilePeriod = 16.0;
+vec2 scaledPos = worldPos.xz / cellSize;
+
+// 3. Apply the Domain Warp
+// Multiply the flow vector by a distortion strength (relative to cellSize)
+float warpStrength = 0.5;
+scaledPos += animatedFlow * warpStrength;
+
+// (Optional) Apply linear wind advection so the swirling cells also travel downwind
+scaledPos -= normalize(wind.xz) * u_windParams.y * 0.125;
+
+// 4. Wrap and evaluate the Worley noise
+vec2 tiledUV = fract(scaledPos / tilePeriod) * tilePeriod;
+WorleyData2D wd = worley2d_tiling_id(tiledUV, tilePeriod);
+float simplex = 0.5+0.5*simplex3d_tiling(vec3(tiledUV.x, 0.125*u_windParams.y, tiledUV.y), tilePeriod);
+float positiveRipple = smoothstep(0.25, 1.0, simplex*(1.0-wd.f1_dist));//(smoothstep(0.75, 1.0, wd.f1_dist));// * (1.0+wd.f1_level);// * step(0.75, hash12Tile(wd.f1_pos, vec2(0))   );
+
+
+	ripple = positiveRipple;
+
+	return wind * positiveRipple;
 
 
 	// return wind * ((smoothstep(0.0, gridMask, positiveRipple) * (1.0 - smoothstep(1.0-gridMask, 1.0, positiveRipple))));
@@ -187,6 +278,11 @@ vec3 getWindAtPosition(vec3 worldPos) {
 	// // return wind * (0.5+positiveRipple);
 	// // return gerstnerWave(uv, normalize(wind.xz), 0.5, 64.0, u_windParams.y);
 
+}
+
+vec3 getWindAtPosition(vec3 worldPos) {
+	float rip;
+	return getWindAtPosition(worldPos, rip);
 }
 
 /**
