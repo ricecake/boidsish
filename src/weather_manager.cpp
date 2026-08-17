@@ -837,7 +837,7 @@ namespace Boidsish {
 		}
 	}
 
-	void WeatherManager::UpdateWindUbo(float totalTime, NoiseManager* noise, TerrainRenderManager* terrain_render) {
+	void WeatherManager::UpdateWindUbo(float totalTime, float deltaTime, NoiseManager* noise, TerrainRenderManager* terrain_render) {
 		if (!latest_snapshot_.valid)
 			return;
 
@@ -970,6 +970,7 @@ namespace Boidsish {
 
 		// Dispatch Wind Integration Compute Shader
 		wind_compute_shader_->use();
+		wind_compute_shader_->setFloat("u_deltaTime", deltaTime);
 
 		// Bind Metadata UBO
 		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::WindData(), wind_data_ubo_);
@@ -979,8 +980,8 @@ namespace Boidsish {
 		glBindTexture(GL_TEXTURE_2D, lbm_wind_texture_);
 		wind_compute_shader_->setInt("u_lbmWindTexture", Constants::TextureUnit::LbmWindData());
 
-		// Bind Output Integrated Wind Image
-		glBindImageTexture(Constants::TextureUnit::WindData(), wind_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
+		// Bind Output Integrated Wind Image (Read/Write for EMA feedback)
+		glBindImageTexture(Constants::TextureUnit::WindData(), wind_texture_, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
 
 		// Bind Dependencies (Noise & Terrain)
 		if (noise) {

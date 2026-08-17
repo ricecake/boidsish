@@ -3781,6 +3781,7 @@ namespace Boidsish {
 		if (impl->weather_manager && impl->weather_manager->IsEnabled()) {
 			impl->weather_manager->UpdateWindUbo(
 				impl->simulation_time,
+				impl->simulation_delta_time,
 				impl->noise_manager.get(),
 				impl->terrain_render_manager.get()
 			);

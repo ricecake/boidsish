@@ -101,16 +101,21 @@ vec2 fastSimplePhacelle2d(vec2 uv, vec2 dir) {
 }
 
 /**
- * Fast lookup for pre-integrated wind data.
+ * Fast lookup for pre-integrated wind data with tracked standard deviation.
  */
-vec3 getWindAtPosition(vec3 worldPos, out float ripple) {
+vec3 getWindAtPosition(vec3 worldPos, out float ripple, out float stdDev) {
+	ripple = 0.0;
+	stdDev = 0.0;
 	if (u_windOriginSize.y <= 0) return vec3(0.0);
 
 	float gridSpacing = u_windParams.x;
 	vec2 gridCoord = (worldPos.xz / gridSpacing) - vec2(u_windOriginSize.xz);
 	vec2 uv = gridCoord / vec2(u_windOriginSize.y, u_windOriginSize.w);
 
-	vec3 wind = texture(u_windTexture, uv).xyz;
+	vec4 windSample = texture(u_windTexture, uv);
+	vec3 wind = windSample.xyz;
+	stdDev = windSample.w;
+
 	float windSpeed = length(wind);
 	// Ensure the wind direction is normalized and safe from zero-length vectors
 	vec2 windDir = windSpeed > 0.001 ? normalize(wind.xz) : vec2(1.0, 0.0);
@@ -280,26 +285,36 @@ float positiveRipple = smoothstep(0.35, 1.0, simplex*(1.0-wd.f1_dist));//(smooth
 
 	positiveRipple *= wave;
 
+	// Modulate point-to-point spatial variation with tracked standard deviation
+	positiveRipple *= (1.0 + stdDev * 0.25);
+
 	ripple = positiveRipple;
 
 	return wind * positiveRipple;
+}
 
-
-	// return wind * ((smoothstep(0.0, gridMask, positiveRipple) * (1.0 - smoothstep(1.0-gridMask, 1.0, positiveRipple))));
-
-
-	// positiveRipple *= clamp(cos(local.x*0.5- 0.5*u_windParams.y)*cos(local.y*0.5-0.5*u_windParams.y), 0, 1);
-
-	// // return wind * (positiveRipple);
-	// return wind * ((smoothstep(0,0.5,positiveRipple)*(1.0-smoothstep(0.5,1.0, positiveRipple))));
-	// // return wind * (0.5+positiveRipple);
-	// // return gerstnerWave(uv, normalize(wind.xz), 0.5, 64.0, u_windParams.y);
-
+vec3 getWindAtPosition(vec3 worldPos, out float ripple) {
+	float stdDev;
+	return getWindAtPosition(worldPos, ripple, stdDev);
 }
 
 vec3 getWindAtPosition(vec3 worldPos) {
 	float rip;
-	return getWindAtPosition(worldPos, rip);
+	float stdDev;
+	return getWindAtPosition(worldPos, rip, stdDev);
+}
+
+/**
+ * Fast lookup for the tracked standard deviation of wind at a given position.
+ */
+float getWindStdDevAtPosition(vec3 worldPos) {
+	if (u_windOriginSize.y <= 0) return 0.0;
+
+	float gridSpacing = u_windParams.x;
+	vec2 gridCoord = (worldPos.xz / gridSpacing) - vec2(u_windOriginSize.xz);
+	vec2 uv = gridCoord / vec2(u_windOriginSize.y, u_windOriginSize.w);
+
+	return texture(u_windTexture, uv).w;
 }
 
 /**

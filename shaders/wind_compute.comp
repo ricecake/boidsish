@@ -5,7 +5,9 @@
 
 layout(local_size_x = 16, local_size_y = 16) in;
 
-layout(rgba32f, binding = [[INTEGRATED_WIND_IMAGE_BINDING]]) uniform writeonly image2D u_integratedWindImage;
+layout(rgba32f, binding = [[INTEGRATED_WIND_IMAGE_BINDING]]) uniform image2D u_integratedWindImage;
+
+uniform float u_deltaTime;
 
 void main() {
     ivec2 texelCoord = ivec2(gl_GlobalInvocationID.xy);
@@ -27,7 +29,38 @@ void main() {
     TerrainSurface surface = getTerrainSurface(worldXZ);
     float height = surface.height + 1.0;
 
-    vec4 integratedWind = computeWindAtPositionOptimized(vec3(worldXZ.x, height, worldXZ.y), surface.height, surface.normal);
+    vec4 instWindData = computeWindAtPositionOptimized(vec3(worldXZ.x, height, worldXZ.y), surface.height, surface.normal);
+    vec3 instWind = instWindData.xyz;
 
-    imageStore(u_integratedWindImage, texelCoord, integratedWind);
+    vec4 prevData = imageLoad(u_integratedWindImage, texelCoord);
+    vec3 prevEMA = prevData.xyz;
+    float prevStdDev = prevData.w;
+
+    float dt = max(0.0001, u_deltaTime);
+
+    // Initial frame or uninitialized state handling
+    if (length(prevEMA) < 0.0001 && prevStdDev <= 0.0) {
+        imageStore(u_integratedWindImage, texelCoord, vec4(instWind, 0.0));
+        return;
+    }
+
+    vec3 diff = instWind - prevEMA;
+    float diffMag = length(diff);
+
+    // Adaptive exponential moving average:
+    // High-frequency small oscillations are heavily damped (base lambda = 2.5),
+    // while big swings adapt rapidly (fast lambda = 25.0).
+    float adaptFactor = clamp(diffMag / (prevStdDev + 0.5), 0.0, 1.0);
+    float lambdaEff = mix(2.5, 25.0, adaptFactor);
+    float alpha = clamp(1.0 - exp(-lambdaEff * dt), 0.01, 1.0);
+
+    vec3 newEMA = prevEMA + alpha * diff;
+
+    // Moving variance & standard deviation update
+    float instVar = dot(diff, diff);
+    float alphaVar = 1.0 - exp(-3.0 * dt);
+    float newVar = mix(prevStdDev * prevStdDev, instVar, alphaVar);
+    float newStdDev = sqrt(max(0.0, newVar));
+
+    imageStore(u_integratedWindImage, texelCoord, vec4(newEMA, newStdDev));
 }

@@ -326,7 +326,7 @@ namespace Boidsish {
 
 		void InjectTemperature(const glm::vec3& pos, float temperatureK);
 
-		void UpdateWindUbo(float totalTime, NoiseManager* noise, TerrainRenderManager* terrain_render);
+		void UpdateWindUbo(float totalTime, float deltaTime, NoiseManager* noise, TerrainRenderManager* terrain_render);
 
 		void SetTerrainGenerator(ITerrainGenerator* terrain) { terrain_ = terrain; }
 
