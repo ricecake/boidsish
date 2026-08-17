@@ -243,6 +243,9 @@ float phaseShift = u_windParams.y * 0.50;
 float angle = atan(phacelleOut.y, phacelleOut.x) + phaseShift;
 vec2 animatedFlow = vec2(cos(angle), sin(angle));
 
+float phaseProgression = fract((angle / 6.2831853));
+
+
 // 2. Set up the Worley coordinate space
 float cellSize = 32.0;
 float tilePeriod = 16.0;
@@ -258,10 +261,24 @@ scaledPos -= normalize(wind.xz) * u_windParams.y * 0.125;
 
 // 4. Wrap and evaluate the Worley noise
 vec2 tiledUV = fract(scaledPos / tilePeriod) * tilePeriod;
-WorleyData2D wd = worley2d_tiling_id(tiledUV, tilePeriod);
-float simplex = 0.5+0.5*simplex3d_tiling(vec3(tiledUV.x, 0.125*u_windParams.y, tiledUV.y), tilePeriod);
-float positiveRipple = smoothstep(0.25, 1.0, simplex*(1.0-wd.f1_dist));//(smoothstep(0.75, 1.0, wd.f1_dist));// * (1.0+wd.f1_level);// * step(0.75, hash12Tile(wd.f1_pos, vec2(0))   );
+// WorleyData2D wd = worley2d_tiling_id(tiledUV, tilePeriod);
+HierarchicalWorleyData2D wd = hierarchicalWorleyTiled(tiledUV, tilePeriod);
 
+float simplex = 0.5+0.5*simplex3d_tiling(vec3(tiledUV.x, 0.25*u_windParams.y, tiledUV.y), tilePeriod);
+float positiveRipple = smoothstep(0.35, 1.0, simplex*(1.0-wd.f1_dist));//(smoothstep(0.75, 1.0, wd.f1_dist));// * (1.0+wd.f1_level);// * step(0.75, hash12Tile(wd.f1_pos, vec2(0))   );
+
+	vec2 loc = tiledUV - wd.f1_pos;
+
+	// float wave = 0.5+0.5*dot(loc, wind.xz) * 10.0;
+	float wave = pow(0.5+0.5*dot(normalize(loc), windDir), 2);
+
+	float timer = phaseProgression*10.0;
+	float decayTerm = exp(-0.1*timer);
+	float harmonic = 0.5*sin(1.4*timer) + 1.0;
+	wave *= decayTerm * harmonic;
+
+
+	positiveRipple *= wave;
 
 	ripple = positiveRipple;
 
