@@ -29,6 +29,7 @@
 #include "dot.h"
 #include "entity.h"
 #include "fire_effect_manager.h"
+#include "volumetric_fire_smoke_manager.h"
 #include "frame_data.h"
 #include "hiz_manager.h"
 #include "hud.h"
@@ -391,6 +392,7 @@ namespace Boidsish {
 		GpuResourceRegistry                               gpu_resources_;
 		std::shared_ptr<CloneManager>                     clone_manager;
 		std::shared_ptr<FireEffectManager>                fire_effect_manager;
+		std::shared_ptr<VolumetricFireSmokeManager>       fire_smoke_volumetric_manager;
 		std::shared_ptr<NoiseManager>                     noise_manager;
 		std::shared_ptr<MeshExplosionManager>             mesh_explosion_manager;
 		std::shared_ptr<SoundEffectManager>               sound_effect_manager;
@@ -590,6 +592,7 @@ namespace Boidsish {
 			service_locator_.Register<GrassManager>();
 			service_locator_.Register<HudManager>();
 			service_locator_.Register<FireEffectManager>();
+			service_locator_.Register<VolumetricFireSmokeManager>();
 			service_locator_.Register<MeshExplosionManager>();
 			service_locator_.Register<ShockwaveManager>();
 			service_locator_.Register<AkiraEffectManager>();
@@ -828,6 +831,8 @@ namespace Boidsish {
 			clone_manager = service_locator_.Get<CloneManager>();
 			fire_effect_manager = service_locator_.Get<FireEffectManager>();
 			fire_effect_manager->Initialize(); // Must initialize on main thread with GL context
+			fire_smoke_volumetric_manager = service_locator_.Get<VolumetricFireSmokeManager>();
+			fire_smoke_volumetric_manager->Initialize();
 			mesh_explosion_manager = service_locator_.Get<MeshExplosionManager>();
 			mesh_explosion_manager->Initialize(); // Must initialize on main thread with GL context
 			shockwave_manager = service_locator_.Get<ShockwaveManager>();
@@ -2712,6 +2717,16 @@ namespace Boidsish {
 					terrain_render_manager.get(),
 					shadow_manager.get(),
 					light_manager.get()
+				);
+			}
+
+			if (fire_smoke_volumetric_manager) {
+				glm::vec3 wind = weather_manager ? glm::vec3(weather_manager->GetCurrentWeather().wind_strength, 0.0f, 0.0f) : glm::vec3(0.0f);
+				fire_smoke_volumetric_manager->Update(
+					simulation_delta_time,
+					simulation_time,
+					generator_frustum,
+					wind
 				);
 			}
 		}
