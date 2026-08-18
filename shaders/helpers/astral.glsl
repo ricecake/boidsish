@@ -4,6 +4,12 @@
 #include "noise.glsl"
 #include "lygia/color/palette.glsl"
 
+float hash13(in vec3 pos) {
+    pos  = fract(pos * vec4(.1031, .1030, .0973, .1099).xyz);
+    pos += dot(pos, pos.zyx + 31.32);
+    return fract((pos.x + pos.y) * pos.z);
+}
+
 float fbm_astral(vec3 p) {
 	float v = 0.0;
 	float a = 0.5;
@@ -54,15 +60,32 @@ vec3 computeNebula(vec3 dir, float time) {
 }
 
 float computeStars(vec3 dir, float time) {
-    float scale = 100.0;
+    dir = normalize(dir);
+
+    vec3 warp = vec3(2,2,2);
+    float scale = 128.0;
     vec3 id = floor(dir * scale);
     vec3 local_uv = fract(dir * scale);
+
     vec3 star_pos = hash33(id);
-    float brightness = abs(sin(time / 2.0 + star_pos.x * 100.0));
-    vec3 center = vec3(0.5) + (star_pos - 0.5) * 0.8;
+    vec3 center = vec3(0.5) + (star_pos - 0.5) * 0.5;
+
+    vec3 global_star_dir = normalize((id + center) / scale);
+    float starDensity = snoise3d(global_star_dir * warp);
+    float starMask = smoothstep(-1.0, 2.50, starDensity);
+
+    float checkHash = hash13(id);
+    float starExists = step(checkHash, starMask);
+
     float dist = length(local_uv - center);
-    float radius = 0.05 * brightness;
-    return smoothstep(radius, radius * 0.5, dist);
+    float brightness = (10.0 + sin(checkHash + time/(1.0+max(0.01, dir.y)) ))* starExists;
+    float radius = 0.0125 * brightness;
+
+    float visualGlow = snoise3d(dir * warp);
+    float starIntensity = 1.0 - smoothstep(radius * 0.5, radius, dist);
+
+    // return clamp(1.0-dot(dir, normalize(vec3(1.0,1.0,0))), 0.001, 0.005) *pow(smoothstep(-0.40, 0.9, visualGlow),2) + starIntensity;
+    return 0.001*pow(smoothstep(-0.40, 0.9, visualGlow),2) + starIntensity;
 }
 
 #endif // HELPERS_ASTRAL_GLSL
