@@ -119,6 +119,9 @@ namespace Boidsish {
 		float solar_flare_strength = 1.5f;
 		float solar_flare_scale = 1.0f;
 		float solar_flare_speed = 0.5f;
+		bool  nebula_enabled = true;
+		float nebula_intensity = 1.0f;
+		float nebula_threshold = 0.0f;
 	};
 
 	enum class CameraMode { FREE, AUTO, TRACKING, STATIONARY, CHASE, PATH_FOLLOW, FIRST_PERSON };

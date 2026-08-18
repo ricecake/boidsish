@@ -160,6 +160,7 @@ namespace Boidsish {
 			s.use();
 			s.bindUniformBlock("Lighting", Constants::UboBinding::Lighting());
 			s.bindUniformBlock("Shadows", Constants::UboBinding::Shadows());
+			s.bindUniformBlock("VisualEffects", Constants::UboBinding::VisualEffects());
 		};
 
 		_transmittanceShader = std::make_unique<ComputeShader>("shaders/atmosphere/transmittance_lut.comp");
@@ -514,6 +515,7 @@ namespace Boidsish {
 
 	void AtmosphereManager::BindToShader(::ShaderBase& shader) {
 		BindTextures();
+		shader.bindUniformBlock("VisualEffects", Constants::UboBinding::VisualEffects());
 		shader.trySetInt("u_transmittanceLUT", Constants::TextureUnit::AtmosphereTransmittance());
 		shader.trySetInt("u_multiScatteringLUT", Constants::TextureUnit::AtmosphereMultiScattering());
 		shader.trySetInt("u_skyViewLUT", Constants::TextureUnit::AtmosphereSkyView());

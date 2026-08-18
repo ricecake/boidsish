@@ -3,6 +3,7 @@
 
 #include "noise.glsl"
 #include "lygia/color/palette.glsl"
+#include "../visual_effects.glsl"
 
 float hash13(in vec3 pos) {
     pos  = fract(pos * vec4(.1031, .1030, .0973, .1099).xyz);
@@ -49,14 +50,22 @@ vec3 curl_astral(vec3 p) {
 }
 
 vec3 computeNebula(vec3 dir, float time) {
+    if (nebula_enabled == 0 || nebula_intensity <= 0.0001) {
+        return vec3(0.0);
+    }
+
     vec3 p = dir * 4.0;
     vec3 warp_offset = vec3(fbm_astral(p + time * 0.05));
-    float nebula_noise = fbm_astral(p + warp_offset * 0.5);
+    float raw_noise = fbm_astral(p + warp_offset * 0.5);
 
-    // vec3 color = mix(vec3(0.0, 0.0, 0.0), vec3(0.8, 0.2, 0.7) * curl_astral(warp_offset), nebula_noise);
-    // return color * 0.1 * snoise3d(warp_offset);
-    // return mix(vec3(0.0), palette(nebula_noise, vec3(0.5,0.5,0.5),vec3(0.5,0.5,0.5),vec3(1.0,1.0,1.0),vec3(0.0,0.33,0.67)), smoothstep(0.0, 0.125, nebula_noise));
-    return 0.05*snoise3d(warp_offset)*palette(nebula_noise, vec3(0.5,0.5,0.5),vec3(0.5,0.5,0.5),vec3(1.0,1.0,1.0),vec3(0.0,0.33,0.67));
+    // Threshold noise to control net coloration coverage while maintaining physical continuity
+    float nebula_noise = smoothstep(nebula_threshold, 1.0, raw_noise);
+    if (nebula_noise <= 0.0001) {
+        return vec3(0.0);
+    }
+
+    vec3 nebula_color = palette(nebula_noise, vec3(0.5,0.5,0.5), vec3(0.5,0.5,0.5), vec3(1.0,1.0,1.0), vec3(0.0,0.33,0.67));
+    return 0.05 * nebula_intensity * snoise3d(warp_offset) * nebula_color * nebula_noise;
 }
 
 float computeStars(vec3 dir, float time) {
