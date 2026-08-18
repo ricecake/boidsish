@@ -53,6 +53,8 @@ uniform vec3 u_localVolExtents;
 uniform bool u_localVolActive;
 uniform float u_localVolSmokeScale;
 uniform float u_localVolFireScale;
+uniform float u_localVolBlackbodyMult;
+uniform float u_localVolFireOpacityScale;
 uniform vec3 u_localVolFlameColor;
 layout(binding = 54) uniform sampler3D u_fireSmoke3DTexture;
 
@@ -137,14 +139,14 @@ void main() {
 
         float fireEmissive = volData.r * u_localVolFireScale;
         float smokeDensity = volData.g * u_localVolSmokeScale;
-        vec3 flameColor = mix(u_localVolFlameColor, vec3(1.0, 0.9, 0.6), clamp(volData.b / 1000.0, 0.0, 1.0));
+        float fireOpacity  = volData.b;
 
-        // Fire emissive light injection into froxel radiance
-        radiance += fireEmissive * flameColor * 60.0;
+        // Fire emissive radiance injection with HDR boost for intense daylight visibility
+        radiance += fireEmissive * u_localVolFlameColor * 250.0;
 
-        // Smoke scattering & extinction injection into froxel atmosphere properties
-        s.mie += vec3(smokeDensity * 10.0);
-        s.extinction += vec3(smokeDensity * 12.0);
+        // Smoke & Fire extinction: intense fire/smoke drowns out background objects
+        s.mie += vec3(smokeDensity * 15.0 + fireOpacity * 20.0);
+        s.extinction += vec3(smokeDensity * 20.0 + fireOpacity * 50.0);
     }
 
     vec3 V = normalize(viewPos - worldPos);

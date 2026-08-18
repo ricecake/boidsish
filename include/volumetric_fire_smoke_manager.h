@@ -83,6 +83,15 @@ namespace Boidsish {
 		void SetFlameColor(const glm::vec3& color) { flameColor_ = color; }
 		glm::vec3 GetFlameColor() const { return flameColor_; }
 
+		void SetBlackbodyMultiplier(float mult) { blackbodyMultiplier_ = mult; }
+		float GetBlackbodyMultiplier() const { return blackbodyMultiplier_; }
+
+		void SetFireOpacityScale(float opacity) { fireOpacityScale_ = opacity; }
+		float GetFireOpacityScale() const { return fireOpacityScale_; }
+
+		void SetTemperatureScale(float scale) { temperatureScale_ = scale; }
+		float GetTemperatureScale() const { return temperatureScale_; }
+
 		GLuint GetVolume3DTexture() const { return volume3DTex_; }
 		GLuint GetEffectMapTexture() const { return effectMapTex_[pingPongIndex_]; }
 
@@ -108,7 +117,10 @@ namespace Boidsish {
 		float spreadRate_ = 0.8f;
 		float buoyancy_ = 2.5f;
 		float smokeDensityScale_ = 1.2f;
-		float fireIntensityScale_ = 3.0f;
+		float fireIntensityScale_ = 5.0f;
+		float blackbodyMultiplier_ = 12.0f;
+		float fireOpacityScale_ = 10.0f;
+		float temperatureScale_ = 1.0f;
 		glm::vec3 flameColor_ = glm::vec3(1.0f, 0.5f, 0.1f);
 
 		float lastSimTime_ = 0.0f;

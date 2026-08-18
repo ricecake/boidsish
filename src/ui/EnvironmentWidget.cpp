@@ -989,8 +989,23 @@ namespace Boidsish {
 							}
 
 							float fire_scale = fire_smoke_mgr->GetFireIntensityScale();
-							if (ImGui::SliderFloat("Fire Intensity Scale", &fire_scale, 0.0f, 10.0f, "%.2f")) {
+							if (ImGui::SliderFloat("Fire Intensity Scale", &fire_scale, 0.0f, 20.0f, "%.2f")) {
 								fire_smoke_mgr->SetFireIntensityScale(fire_scale);
+							}
+
+							float blackbody = fire_smoke_mgr->GetBlackbodyMultiplier();
+							if (ImGui::SliderFloat("Blackbody Thermal Multiplier", &blackbody, 0.0f, 50.0f, "%.1f")) {
+								fire_smoke_mgr->SetBlackbodyMultiplier(blackbody);
+							}
+
+							float opacity = fire_smoke_mgr->GetFireOpacityScale();
+							if (ImGui::SliderFloat("Fire Opacity / Extinction", &opacity, 0.0f, 30.0f, "%.1f")) {
+								fire_smoke_mgr->SetFireOpacityScale(opacity);
+							}
+
+							float temp_scale = fire_smoke_mgr->GetTemperatureScale();
+							if (ImGui::SliderFloat("Temperature Scale", &temp_scale, 0.1f, 3.0f, "%.2f")) {
+								fire_smoke_mgr->SetTemperatureScale(temp_scale);
 							}
 
 							glm::vec3 flame_color = fire_smoke_mgr->GetFlameColor();

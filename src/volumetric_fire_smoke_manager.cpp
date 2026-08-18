@@ -48,15 +48,15 @@ namespace Boidsish {
 		}
 		glBindTexture(GL_TEXTURE_2D, 0);
 
-		// 2. Create 3D Volumetric Texture (128x128x128 RGBA16F)
-		// Channel R: Fire Emissive / Glow
-		// Channel G: Smoke Extinction / Density
-		// Channel B: Flame Temperature
-		// Channel A: Detail Noise / Turbulence
+		// 2. Create 3D Volumetric Texture (256x256x256 RGBA16F for high-detail fire)
+		// Channel R: Fire Emissive Luminance
+		// Channel G: Smoke Density / Extinction
+		// Channel B: Fire Opacity / Extinction
+		// Channel A: Combined Alpha
 		if (volume3DTex_) glDeleteTextures(1, &volume3DTex_);
 		glGenTextures(1, &volume3DTex_);
 		glBindTexture(GL_TEXTURE_3D, volume3DTex_);
-		glTexImage3D(GL_TEXTURE_3D, 0, GL_RGBA16F, 128, 128, 128, 0, GL_RGBA, GL_FLOAT, nullptr);
+		glTexImage3D(GL_TEXTURE_3D, 0, GL_RGBA16F, 256, 256, 256, 0, GL_RGBA, GL_FLOAT, nullptr);
 		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -130,6 +130,9 @@ namespace Boidsish {
 			bakeShader_->setFloat("uBuoyancy", buoyancy_);
 			bakeShader_->setFloat("uSmokeDensityScale", smokeDensityScale_);
 			bakeShader_->setFloat("uFireIntensityScale", fireIntensityScale_);
+			bakeShader_->setFloat("uBlackbodyMultiplier", blackbodyMultiplier_);
+			bakeShader_->setFloat("uFireOpacityScale", fireOpacityScale_);
+			bakeShader_->setFloat("uTemperatureScale", temperatureScale_);
 			bakeShader_->setVec3("uFlameColor", flameColor_);
 			bakeShader_->setVec3("uWindVelocity", windVel);
 
@@ -139,7 +142,7 @@ namespace Boidsish {
 
 			glBindImageTexture(1, volume3DTex_, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 
-			glDispatchCompute((128 + 3) / 4, (128 + 3) / 4, (128 + 3) / 4);
+			glDispatchCompute((256 + 3) / 4, (256 + 3) / 4, (256 + 3) / 4);
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
 		}
 	}
@@ -158,6 +161,8 @@ namespace Boidsish {
 
 		shader.setFloat("u_localVolSmokeScale", smokeDensityScale_);
 		shader.setFloat("u_localVolFireScale", fireIntensityScale_);
+		shader.setFloat("u_localVolBlackbodyMult", blackbodyMultiplier_);
+		shader.setFloat("u_localVolFireOpacityScale", fireOpacityScale_);
 		shader.setVec3("u_localVolFlameColor", flameColor_);
 
 		// Bind 3D Volume Texture
