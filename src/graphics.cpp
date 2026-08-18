@@ -889,6 +889,9 @@ namespace Boidsish {
 				default_vfx.solar_flare_strength = ConfigManager::GetInstance().GetAppSettingFloat("solar_flare_strength", 1.5f);
 				default_vfx.solar_flare_scale = ConfigManager::GetInstance().GetAppSettingFloat("solar_flare_scale", 1.0f);
 				default_vfx.solar_flare_speed = ConfigManager::GetInstance().GetAppSettingFloat("solar_flare_speed", 0.5f);
+				default_vfx.nebula_enabled = ConfigManager::GetInstance().GetAppSettingBool("nebula_enabled", true) ? 1 : 0;
+				default_vfx.nebula_intensity = ConfigManager::GetInstance().GetAppSettingFloat("nebula_intensity", 1.0f);
+				default_vfx.nebula_threshold = ConfigManager::GetInstance().GetAppSettingFloat("nebula_threshold", 0.0f);
 				for (int i = 0; i < 3; ++i) {
 					*visual_effects_pb->GetFrameDataPtr(i) = default_vfx;
 				}
@@ -1283,6 +1286,9 @@ namespace Boidsish {
 			frame_config_.solar_flare_strength = cfg.GetAppSettingFloat("solar_flare_strength", 1.5f);
 			frame_config_.solar_flare_scale = cfg.GetAppSettingFloat("solar_flare_scale", 1.0f);
 			frame_config_.solar_flare_speed = cfg.GetAppSettingFloat("solar_flare_speed", 0.5f);
+			frame_config_.nebula_enabled = cfg.GetAppSettingBool("nebula_enabled", true);
+			frame_config_.nebula_intensity = cfg.GetAppSettingFloat("nebula_intensity", 1.0f);
+			frame_config_.nebula_threshold = cfg.GetAppSettingFloat("nebula_threshold", 0.0f);
 
 			if (decor_manager) {
 				decor_manager->SetEnabled(frame_config_.render_decor);
@@ -2246,6 +2252,9 @@ namespace Boidsish {
 				ubo_data.solar_flare_strength = frame_config_.solar_flare_strength;
 				ubo_data.solar_flare_scale = frame_config_.solar_flare_scale;
 				ubo_data.solar_flare_speed = frame_config_.solar_flare_speed;
+				ubo_data.nebula_enabled = frame_config_.nebula_enabled ? 1 : 0;
+				ubo_data.nebula_intensity = frame_config_.nebula_intensity;
+				ubo_data.nebula_threshold = frame_config_.nebula_threshold;
 				ubo_data.erosion_strength = frame_config_.erosion_strength;
 				ubo_data.erosion_scale = frame_config_.erosion_scale;
 				ubo_data.erosion_detail = frame_config_.erosion_detail;

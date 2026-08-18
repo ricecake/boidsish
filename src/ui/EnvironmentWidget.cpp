@@ -940,6 +940,29 @@ namespace Boidsish {
 										}
 									}
 
+									ImGui::Separator();
+									ImGui::Text("Sky Nebula / Aurora");
+
+									auto& neb_cfg = ConfigManager::GetInstance();
+									bool nebula_enabled = neb_cfg.GetAppSettingBool("nebula_enabled", true);
+									if (ImGui::Checkbox("Enable Sky Nebula", &nebula_enabled)) {
+										neb_cfg.SetBool("nebula_enabled", nebula_enabled);
+										changed_atm = true;
+									}
+
+									if (nebula_enabled) {
+										float neb_intensity = neb_cfg.GetAppSettingFloat("nebula_intensity", 1.0f);
+										if (ImGui::SliderFloat("Nebula Intensity", &neb_intensity, 0.0f, 5.0f)) {
+											neb_cfg.SetFloat("nebula_intensity", neb_intensity);
+											changed_atm = true;
+										}
+										float neb_threshold = neb_cfg.GetAppSettingFloat("nebula_threshold", 0.0f);
+										if (ImGui::SliderFloat("Nebula Noise Threshold", &neb_threshold, 0.0f, 0.9f)) {
+											neb_cfg.SetFloat("nebula_threshold", neb_threshold);
+											changed_atm = true;
+										}
+									}
+
 									if (changed_atm) {
 										atmosphere_effect->FlushHistory();
 									}
