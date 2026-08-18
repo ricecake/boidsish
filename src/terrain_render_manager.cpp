@@ -948,6 +948,7 @@ namespace Boidsish {
 		int grid_size = Constants::Class::Terrain::SliceMapSize();
 
 		probe_compute_shader_->use();
+		probe_compute_shader_->bindUniformBlock("VisualEffects", Constants::UboBinding::VisualEffects());
 		frame_count_++;
 
 		// Bind textures

@@ -37,5 +37,9 @@ namespace Boidsish {
 		float solar_flare_strength;
 		float solar_flare_scale;
 		float solar_flare_speed;
+		int   nebula_enabled;
+		float nebula_intensity;
+		float nebula_threshold;
+		float nebula_pad;
 	};
 } // namespace Boidsish

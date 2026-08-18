@@ -26,6 +26,10 @@ layout(std140, binding = [[VISUAL_EFFECTS_BINDING]]) uniform VisualEffects {
 	float solar_flare_strength;
 	float solar_flare_scale;
 	float solar_flare_speed;
+	int   nebula_enabled;
+	float nebula_intensity;
+	float nebula_threshold;
+	float nebula_pad;
 };
 
 #endif
