@@ -76,6 +76,15 @@ namespace Boidsish {
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 			glBindTexture(GL_TEXTURE_2D, 0);
 
+			glGenTextures(1, &wind_uv_texture_);
+			glBindTexture(GL_TEXTURE_2D, wind_uv_texture_);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, 512, 512, 0, GL_RGBA, GL_FLOAT, nullptr);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+			glBindTexture(GL_TEXTURE_2D, 0);
+
 			glGenTextures(1, &lbm_scalar_texture_);
 			glBindTexture(GL_TEXTURE_2D, lbm_scalar_texture_);
 			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, lbm_simulator_->GetWidth(), lbm_simulator_->GetHeight(), 0, GL_RGBA, GL_FLOAT, nullptr);
@@ -118,6 +127,9 @@ namespace Boidsish {
 		}
 		if (wind_texture_ != 0) {
 			glDeleteTextures(1, &wind_texture_);
+		}
+		if (wind_uv_texture_ != 0) {
+			glDeleteTextures(1, &wind_uv_texture_);
 		}
 		if (lbm_wind_texture_ != 0) {
 			glDeleteTextures(1, &lbm_wind_texture_);
@@ -859,6 +871,16 @@ namespace Boidsish {
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 			glBindTexture(GL_TEXTURE_2D, 0);
 		}
+		if (wind_uv_texture_ == 0) {
+			glGenTextures(1, &wind_uv_texture_);
+			glBindTexture(GL_TEXTURE_2D, wind_uv_texture_);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, 512, 512, 0, GL_RGBA, GL_FLOAT, nullptr);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+			glBindTexture(GL_TEXTURE_2D, 0);
+		}
 		if (lbm_scalar_texture_ == 0) {
 			glGenTextures(1, &lbm_scalar_texture_);
 			glBindTexture(GL_TEXTURE_2D, lbm_scalar_texture_);
@@ -980,8 +1002,9 @@ namespace Boidsish {
 		glBindTexture(GL_TEXTURE_2D, lbm_wind_texture_);
 		wind_compute_shader_->setInt("u_lbmWindTexture", Constants::TextureUnit::LbmWindData());
 
-		// Bind Output Integrated Wind Image (Read/Write for EMA feedback)
+		// Bind Output Integrated Wind Images (Read/Write for EMA feedback)
 		glBindImageTexture(Constants::TextureUnit::WindData(), wind_texture_, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
+		glBindImageTexture(Constants::TextureUnit::WindUvData(), wind_uv_texture_, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
 
 		// Bind Dependencies (Noise & Terrain)
 		if (noise) {
@@ -998,6 +1021,8 @@ namespace Boidsish {
 		// Final Binding for users of getWindAtPosition
 		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::WindData());
 		glBindTexture(GL_TEXTURE_2D, wind_texture_);
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::WindUvData());
+		glBindTexture(GL_TEXTURE_2D, wind_uv_texture_);
 
 		// Bind Scalar and Aerosol textures for general usage
 		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::WeatherScalars());

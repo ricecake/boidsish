@@ -141,6 +141,10 @@ namespace Boidsish {
             glBindTexture(GL_TEXTURE_2D, weather->GetLbmWindTexture());
             m_mapShader->setInt("uLbmWindTex", 5);
 
+            glActiveTexture(GL_TEXTURE6);
+            glBindTexture(GL_TEXTURE_2D, weather->GetWindUvTexture());
+            m_mapShader->setInt("uBakedWindUvTex", 6);
+
             m_mapShader->setMat4("uCloudShadowMatrix", atmosphere->GetCloudShadowMatrix());
             m_mapShader->setFloat("uTime", (float)glfwGetTime());
 

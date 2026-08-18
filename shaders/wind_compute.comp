@@ -6,6 +6,7 @@
 layout(local_size_x = 16, local_size_y = 16) in;
 
 layout(rgba32f, binding = [[INTEGRATED_WIND_IMAGE_BINDING]]) uniform image2D u_integratedWindImage;
+layout(rgba32f, binding = [[INTEGRATED_WIND_UV_IMAGE_BINDING]]) uniform image2D u_integratedWindUvImage;
 
 uniform float u_deltaTime;
 
@@ -31,36 +32,61 @@ void main() {
 
     vec4 instWindData = computeWindAtPositionOptimized(vec3(worldXZ.x, height, worldXZ.y), surface.height, surface.normal);
     vec3 instWind = instWindData.xyz;
+    float instSpeed = length(instWind);
+    vec2 instDir = instSpeed > 0.001 ? normalize(instWind.xz) : vec2(1.0, 0.0);
 
     vec4 prevData = imageLoad(u_integratedWindImage, texelCoord);
     vec3 prevEMA = prevData.xyz;
-    float prevStdDev = prevData.w;
+    float prevSpeedStdDev = prevData.w;
+
+    vec4 prevUvData = imageLoad(u_integratedWindUvImage, texelCoord);
+    vec2 prevUV = prevUvData.xy;
+    float prevDirStdDev = prevUvData.z; // Directional standard deviation (in radians)
 
     float dt = max(0.0001, u_deltaTime);
 
     // Initial frame or uninitialized state handling
-    if (length(prevEMA) < 0.0001 && prevStdDev <= 0.0) {
+    if (length(prevEMA) < 0.0001 && prevSpeedStdDev <= 0.0) {
         imageStore(u_integratedWindImage, texelCoord, vec4(instWind, 0.0));
+        imageStore(u_integratedWindUvImage, texelCoord, vec4(uv, 0.0, 0.0));
         return;
     }
 
+    // Error between new wind vector and stored EMA value drives adaptation
     vec3 diff = instWind - prevEMA;
-    float diffMag = length(diff);
+    float errorMag = length(diff);
 
     // Adaptive exponential moving average:
-    // High-frequency small oscillations are heavily damped (base lambda = 2.5),
-    // while big swings adapt rapidly (fast lambda = 25.0).
-    float adaptFactor = clamp(diffMag / (prevStdDev + 0.5), 0.0, 1.0);
+    // Damps high-frequency oscillations while adapting quickly to big swings.
+    float adaptFactor = clamp(errorMag / (prevSpeedStdDev + 0.5), 0.0, 1.0);
     float lambdaEff = mix(2.5, 25.0, adaptFactor);
     float alpha = clamp(1.0 - exp(-lambdaEff * dt), 0.01, 1.0);
 
     vec3 newEMA = prevEMA + alpha * diff;
+    float newEmaSpeed = length(newEMA);
+    vec2 newEmaDir = newEmaSpeed > 0.001 ? normalize(newEMA.xz) : vec2(1.0, 0.0);
 
-    // Moving variance & standard deviation update
-    float instVar = dot(diff, diff);
+    // Track directional variance/error between instantaneous wind direction and EMA wind direction
+    float dotDir = clamp(dot(instDir, newEmaDir), -1.0, 1.0);
+    float dirAngleDiff = acos(dotDir); // Angular error in radians
+    float instDirVar = dirAngleDiff * dirAngleDiff;
+
     float alphaVar = 1.0 - exp(-3.0 * dt);
-    float newVar = mix(prevStdDev * prevStdDev, instVar, alphaVar);
-    float newStdDev = sqrt(max(0.0, newVar));
 
-    imageStore(u_integratedWindImage, texelCoord, vec4(newEMA, newStdDev));
+    // Moving variance & standard deviation update for speed/intensity
+    float instSpeedVar = dot(diff, diff);
+    float newSpeedVar = mix(prevSpeedStdDev * prevSpeedStdDev, instSpeedVar, alphaVar);
+    float newSpeedStdDev = sqrt(max(0.0, newSpeedVar));
+
+    // Moving variance & standard deviation update for direction
+    float newDirVar = mix(prevDirStdDev * prevDirStdDev, instDirVar, alphaVar);
+    float newDirStdDev = sqrt(max(0.0, newDirVar));
+
+    // Pre-integrate UV coordinates along EMA wind velocity so ripples advect smoothly
+    // without swinging wildly when wind direction changes
+    vec2 uvVelocity = (newEMA.xz / (vec2(u_windOriginSize.y, u_windOriginSize.w) * gridSpacing));
+    vec2 newUV = fract(prevUV + uvVelocity * dt * 0.1);
+
+    imageStore(u_integratedWindImage, texelCoord, vec4(newEMA, newSpeedStdDev));
+    imageStore(u_integratedWindUvImage, texelCoord, vec4(newUV, newDirStdDev, 0.0));
 }

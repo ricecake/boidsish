@@ -24,6 +24,7 @@ uniform float uCloudThickness;
 
 uniform sampler2D uCloudWeatherTex;
 uniform sampler2D uBakedWindTex;
+uniform sampler2D uBakedWindUvTex;
 uniform sampler2D uLbmWindTex;
 uniform sampler2D uLbmScalarTex;
 uniform sampler2D uLbmAerosolTex;
