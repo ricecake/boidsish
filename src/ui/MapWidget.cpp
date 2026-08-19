@@ -214,21 +214,25 @@ namespace Boidsish {
                     if (atm_mgr) {
                         ImGui::Checkbox("Enable Drawing Mode", &m_enableDrawing);
                         ImGui::SameLine();
+                        if (ImGui::Button("Clear Map (Zeros)")) {
+                            atm_mgr->ClearWeatherMap();
+                        }
+                        ImGui::SameLine();
                         if (ImGui::Button("Rebake Weather Map")) {
                             atm_mgr->ForceRebakeWeatherMap();
                         }
                         ImGui::SameLine();
-                        if (ImGui::Button("Rebake 3D Volume & Mips")) {
+                        if (ImGui::Button("Rebake 3D Volume")) {
                             atm_mgr->RebakeWeatherMinMaxAndVolume();
                         }
 
                         if (m_enableDrawing) {
                             ImGui::TextColored(ImVec4(0.2f, 0.9f, 0.3f, 1.0f), "Drawing Mode Active: Left-click and drag on map to draw.");
                         } else {
-                            ImGui::TextDisabled("Enable drawing mode above or use RMB/MMB to pan.");
+                            ImGui::TextDisabled("Enable drawing mode above or drag RMB/MMB to pan.");
                         }
 
-                        ImGui::Combo("Draw Operation", &m_drawOp, "Erase (0)\0Steep Overwrite (1)\0Smooth Min (2)\0Smooth Max (3)\0\0");
+                        ImGui::Combo("Draw Operation", &m_drawOp, "Erase (Target Val) (0)\0Steep Overwrite (1)\0Smooth Min (2)\0Smooth Max (3)\0\0");
 
                         ImGui::Text("Target Channel Masks (4 Layers):");
                         ImGui::Checkbox("Coverage (R)", &m_channelMask[0]); ImGui::SameLine();
@@ -319,18 +323,32 @@ namespace Boidsish {
                 int renderSize = static_cast<int>(size);
                 RenderMap(renderSize, renderSize);
 
-                ImVec2 imagePos = ImGui::GetCursorScreenPos();
-                ImGui::Image((ImTextureID)(uintptr_t)m_mapTexture, ImVec2(size, size), ImVec2(0, 1), ImVec2(1, 0));
+                ImVec2 canvasPos = ImGui::GetCursorScreenPos();
 
-                if (ImGui::IsItemHovered()) {
+                // InvisibleButton captures mouse focus during click/drag to prevent window movement
+                ImGui::InvisibleButton("##MapCanvas", ImVec2(size, size), ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight | ImGuiButtonFlags_MouseButtonMiddle);
+                bool isHovered = ImGui::IsItemHovered();
+                bool isActive = ImGui::IsItemActive();
+
+                // Render map image over the canvas button
+                ImDrawList* drawList = ImGui::GetWindowDrawList();
+                drawList->AddImage(
+                    (ImTextureID)(uintptr_t)m_mapTexture,
+                    canvasPos,
+                    ImVec2(canvasPos.x + size, canvasPos.y + size),
+                    ImVec2(0, 1),
+                    ImVec2(1, 0)
+                );
+
+                if (isHovered || isActive) {
                     float wheel = ImGui::GetIO().MouseWheel;
                     if (wheel != 0.0f) {
                         m_mapViewScale *= (wheel > 0.0f) ? 1.1f : 0.9f;
                     }
 
                     ImVec2 mousePos = ImGui::GetMousePos();
-                    float uScreen = (mousePos.x - imagePos.x) / size;
-                    float vScreen = 1.0f - (mousePos.y - imagePos.y) / size; // Flipped V for GL
+                    float uScreen = (mousePos.x - canvasPos.x) / size;
+                    float vScreen = 1.0f - (mousePos.y - canvasPos.y) / size; // Flipped V for GL
 
                     float range = 100000.0f / m_mapViewScale;
                     glm::vec2 worldXZ = m_mapOffset + (glm::vec2(uScreen, vScreen) - glm::vec2(0.5f)) * range;
@@ -347,7 +365,6 @@ namespace Boidsish {
 
                     // Visual brush cursor overlay
                     float screenBrushRadius = (m_brushRadiusWorld / range) * size;
-                    ImDrawList* drawList = ImGui::GetWindowDrawList();
                     ImU32 brushCol = m_enableDrawing ? IM_COL32(255, 220, 0, 220) : IM_COL32(200, 200, 200, 120);
                     drawList->AddCircle(mousePos, std::max(2.0f, screenBrushRadius), brushCol, 32, m_enableDrawing ? 2.0f : 1.0f);
 
@@ -355,14 +372,12 @@ namespace Boidsish {
                     if (m_enableDrawing && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
                         auto atm_mgr = m_visualizer.GetAtmosphereManager();
                         if (atm_mgr) {
-                            glm::vec4 brushVal(m_brushTargetValue[0], m_brushTargetValue[1], m_brushTargetValue[2], m_brushTargetValue[3]);
-                            if (m_drawOp == 0) { // Erase target
-                                for (int c = 0; c < 4; ++c) {
-                                    if (m_channelMask[c] && m_brushTargetValue[c] == 0.8f) {
-                                        brushVal[c] = 0.0f;
-                                    }
-                                }
-                            }
+                            glm::vec4 brushVal(
+                                m_brushTargetValue[0],
+                                m_brushTargetValue[1],
+                                m_brushTargetValue[2],
+                                m_brushTargetValue[3]
+                            );
 
                             glm::vec4 maskVal(
                                 m_channelMask[0] ? 1.0f : 0.0f,
@@ -382,7 +397,7 @@ namespace Boidsish {
                             );
                         }
                     }
-                    // Panning view logic when not drawing (or RMB/MMB)
+                    // Panning view logic when drawing mode disabled or using RMB/MMB
                     else if ((!m_enableDrawing && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) ||
                              ImGui::IsMouseDragging(ImGuiMouseButton_Right) ||
                              ImGui::IsMouseDragging(ImGuiMouseButton_Middle)) {

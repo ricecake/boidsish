@@ -798,4 +798,16 @@ namespace Boidsish {
 		_needsWeatherBake = true;
 	}
 
+	void AtmosphereManager::ClearWeatherMap() {
+		if (!_cloudWeatherTexture) return;
+
+		_useCustomWeatherMap = true;
+
+		// Clear cloud weather map Level 0 to zero
+		float zeroColor[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+		glClearTexImage(_cloudWeatherTexture, 0, GL_RGBA, GL_FLOAT, zeroColor);
+
+		RebakeWeatherMinMaxAndVolume();
+	}
+
 } // namespace Boidsish

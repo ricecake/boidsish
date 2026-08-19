@@ -221,6 +221,7 @@ namespace Boidsish {
 
 		void RebakeWeatherMinMaxAndVolume();
 		void ForceRebakeWeatherMap();
+		void ClearWeatherMap();
 
 		/**
 		 * Sample the cloud weather data on the CPU.
