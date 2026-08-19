@@ -48,6 +48,7 @@ namespace Boidsish {
 				CloudMinMaxBounding = 50,
 				TerrainColorBlend = 47,
 				CloudShadowMap = 51,
+				WindUvData = 52,
 			};
 
 			enum class Ubo {
@@ -336,6 +337,10 @@ namespace Boidsish {
 
 			consteval int CloudShadowMap() {
 				return std::to_underlying(Constants::Bindings::Texture::CloudShadowMap);
+			}
+
+			consteval int WindUvData() {
+				return std::to_underlying(Constants::Bindings::Texture::WindUvData);
 			}
 		} // namespace TextureUnit
 

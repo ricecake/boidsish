@@ -1209,6 +1209,7 @@ void main() {
 	// windy.a =1;
 
 	FragColor = mix(vec4(0.0, 0.7, 0.7, baseColor.a) * length(baseColor), baseColor, step(1.0, fade));
+	// FragColor = vec4(100*normalize(mix(vec3(1,0,1), vec3(0,1,0), windy)), 1.0);
 	// FragColor = mix(FragColor, vec4(windy, 1), 1.0);
 	// float up = dot(Normal, vec3(0,1,0));
 	// float range = smoothstep(0.7, 0.75, up) - smoothstep(0.8, 0.9, up);
