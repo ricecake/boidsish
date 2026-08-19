@@ -1,0 +1,76 @@
+#version 460 core
+
+layout(local_size_x = 16, local_size_y = 16) in;
+
+layout(binding = 0, rgba16f) uniform image2D u_weatherMap;
+
+uniform vec2  u_brushCenter;   // UV coordinates [0, 1]
+uniform float u_brushRadius;   // UV radius [0, 1]
+uniform vec4  u_brushValue;    // Target values for (R, G, B, A)
+uniform vec4  u_channelMask;   // (1.0 if channel enabled, 0.0 if disabled)
+uniform int   u_drawOp;        // 0: Erase, 1: Steep Overwrite, 2: Smooth Min, 3: Smooth Max
+uniform float u_brushStrength; // Opacity/Rate [0, 1]
+uniform float u_smoothness;    // Smoothness factor k for smin/smax
+
+float smin(float a, float b, float k) {
+	k = max(k, 0.0001);
+	float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+	return mix(b, a, h) - k * h * (1.0 - h);
+}
+
+float smax(float a, float b, float k) {
+	k = max(k, 0.0001);
+	float h = clamp(0.5 + 0.5 * (a - b) / k, 0.0, 1.0);
+	return mix(b, a, h) + k * h * (1.0 - h);
+}
+
+void main() {
+	ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+	ivec2 size = imageSize(u_weatherMap);
+	if (pixel.x >= size.x || pixel.y >= size.y) return;
+
+	vec2 uv = (vec2(pixel) + 0.5) / vec2(size);
+
+	// Calculate toroidal wrapped distance to brush center
+	vec2 delta = abs(uv - u_brushCenter);
+	delta = min(delta, vec2(1.0) - delta);
+	float dist = length(delta);
+
+	if (dist > u_brushRadius) return;
+
+	// Brush falloff (smooth at edges)
+	float normDist = dist / max(u_brushRadius, 1e-6);
+	float falloff = 1.0 - smoothstep(0.0, 1.0, normDist);
+	float factor = falloff * u_brushStrength;
+
+	vec4 curVal = imageLoad(u_weatherMap, pixel);
+	vec4 newVal = curVal;
+
+	for (int i = 0; i < 4; ++i) {
+		if (u_channelMask[i] <= 0.0) continue;
+
+		float c = curVal[i];
+		float t = u_brushValue[i];
+		float res = c;
+
+		if (u_drawOp == 0) { // Erase
+			res = mix(c, t, factor);
+		}
+		else if (u_drawOp == 1) { // Steep Overwrite
+			float steepFactor = clamp(falloff * 5.0, 0.0, 1.0) * u_brushStrength;
+			res = mix(c, t, steepFactor);
+		}
+		else if (u_drawOp == 2) { // Smooth Min
+			float targetSmin = smin(c, t, u_smoothness);
+			res = mix(c, targetSmin, factor);
+		}
+		else if (u_drawOp == 3) { // Smooth Max
+			float targetSmax = smax(c, t, u_smoothness);
+			res = mix(c, targetSmax, factor);
+		}
+
+		newVal[i] = clamp(res, 0.0, 1.0);
+	}
+
+	imageStore(u_weatherMap, pixel, newVal);
+}
