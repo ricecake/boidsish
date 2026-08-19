@@ -12,6 +12,18 @@ float remap_bake(float value, float low1, float high1, float low2, float high2) 
 	return low2 + (value - low1) * (high2 - low2) / max(0.0001, (high1 - low1));
 }
 
+float regionalFbm(vec3 p, vec3 period) {
+	float val = 0.0;
+	float amp = 0.5;
+	float freq = 1.0;
+	for (int i = 0; i < 3; i++) {
+		val += amp * smoothstep(-0.1, 0.9, 0.5 + 0.5 * psrdnoise(p * freq * period, period * freq));
+		amp *= 0.5;
+		freq *= 2.0;
+	}
+	// return val;
+	return clamp(val, 0.01, 1.01);
+}
 
 float localFbm(vec3 p, vec3 period) {
 	float val = 0.0;
@@ -19,7 +31,7 @@ float localFbm(vec3 p, vec3 period) {
 	float freq = 1.0;
 	for (int i = 0; i < 3; i++) {
 		WorleyData3D worleyDetails = worley3d_tiling_id(p * freq * period, period * freq);
-		val += amp * worleyDetails.f1_dist;// * (1-(freq*p.y));
+		val += amp * pow(worleyDetails.f1_dist, 2);// * (1-(freq*p.y));
 		// val -= amp * 0.25*(worleyDetails.f2_dist - worleyDetails.f1_dist);
 		amp *= 0.5;
 		freq *= 2.0;
@@ -35,15 +47,16 @@ float localFbm(vec3 p, vec3 period) {
 	// 	freq *= 1.50;
 	// }
 
-	return val;
+	return clamp(val, 0.0, 0.99);
 }
 
 
 float computeSimplexWorley(vec3 p) {
-	vec3 period1 = vec3(16.0, 4.0, 16.0);
-	vec3 period2 = vec3(16.0, 4.0, 16.0);
-	float simplex = psrdnoise(p * period1, period1);
-	simplex = clamp(simplex * 0.5 + 0.5, 0.0, 1.0);
+	vec3 period1 = vec3(4.0, 4.0, 4.0);
+	vec3 period2 = vec3(4.0, 4.0, 4.0);
+	// float simplex = psrdnoise(p * period1, period1);
+	float simplex = regionalFbm(p, period1);
+	// simplex = clamp(simplex * 0.5 + 0.5, 0.0, 1.0);
 
 	float worleyFbm = localFbm(p, period2);
 
@@ -62,12 +75,12 @@ void main() {
 	// 1. R Channel: Tiling 3D noise (Simplex noise carved by Worley FBM in HZD fashion)
 	float noiseVal = computeSimplexWorley(p);
 
-	vec3 periodBase = vec3(32.0, 16.0, 32.0);
+	vec3 periodBase = vec3(32.0, 32.0, 32.0);
 
 	float worleySmall = localFbm(p, periodBase * 4);
 	float worleyMedium = localFbm(p, periodBase * 2);
 	float worleyWide = localFbm(p, periodBase * 1);
 
 
-	imageStore(outVolume, voxel, vec4(noiseVal, worleySmall, worleyMedium, worleyWide));
+	imageStore(outVolume, voxel, vec4(noiseVal, worleyWide, worleyMedium, worleySmall));
 }

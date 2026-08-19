@@ -208,6 +208,19 @@ float smin( float a, float b, float k )
 	return min(a, b) - h*h*0.25/k;
 }
 
+float getDensityHeightGradientForPoint(in float relativeHeight, in float cloudType) {
+    relativeHeight = clamp(relativeHeight, 0.0, 1.0);
+
+    float cumulus = max(0.0, remap(relativeHeight, 0.01, 0.3, 0.0, 1.0) * remap(relativeHeight, 0.6, 0.95, 1.0, 0.0));
+    float stratocumulus = max(0.0, remap(relativeHeight, 0.0, 0.25, 0.0, 1.0) * remap(relativeHeight,  0.3, 0.65, 1.0, 0.0));
+    float stratus = max(0.0, remap(relativeHeight, 0, 0.1, 0.0, 1.0) * remap(relativeHeight, 0.2, 0.3, 1.0, 0.0));
+
+    float a = mix(stratus, stratocumulus, clamp(cloudType * 2.0, 0.0, 1.0));
+
+    float b = mix(stratocumulus, stratus, clamp((cloudType - 0.5) * 2.0, 0.0, 1.0));
+    return mix(a, b, cloudType);
+}
+
 CloudWeather loadCloudWeather(vec3 p, CloudProperties props, vec4 tex) {
 	// imageStore(outWeatherMap, pixel, vec4(finalCoverage, distF1InMeters, cellID, density));
 
@@ -219,30 +232,16 @@ CloudWeather loadCloudWeather(vec3 p, CloudProperties props, vec4 tex) {
 	weather.heightMap = tex.g;
 	weather.thickness = tex.b;
 	weather.density = tex.a * props.densityBase;
-	if (props.coverage >= 1.0) {
-		weather.coverage = 1.0;
-		weather.density = props.densityBase;
-	}
-	// float thickness = clamp(posNoise(p, mapRange, 5), 0.0, (1.0-cellData.f1_dist)*0.25*uCloudThickness/mapRange);
 
-	// weather.thickness = clamp(weather.thickness, 0, (2500* rawCoverage)/(props.thickness * weather.thickness));
-	// weather.thickness = clamp(weather.thickness, 0, weather.coverage);
-	weather.thickness = smoothstep(0, weather.thickness, weather.coverage);
-	// weather.thickness = schlickBias(weather.coverage, 0.25);
-	// weather.density *= smoothstep(0.0, 0.95, weather.thickness);
-	weather.density = mix(weather.density, weather.coverage * props.densityBase, 0.4);
+	// if (props.coverage >= 1.0) {
+	// 	weather.coverage = 1.0;
+	// 	weather.density = props.densityBase;
+	// }
 
-	// weather.thickness = mix(weather.thickness, weather.density, 0.8);
-	weather.heightMap = mix(weather.heightMap, 0.0, weather.density * 0.9);
-
-	// weather.heightMap = clamp(tex.g, 0.01, 1.0);
-	// weather.thickness = clamp(tex.b, 0.01, 1.0);
-	// weather.density = clamp(tex.a, 0.01, 1.0);
-	// weather.ecentricity = uncenter(psrdnoise(p, vec3(10.0)));
-	// weather.curve = uncenter(psrdnoise(p/2.0, vec3(10.0)));
-	// weather.centerDist = uncenter(psrdnoise(p/3.0, vec3(10.0)));
-
-	weather.sdf = weather.coverage;
+	// weather.thickness = smoothstep(0, weather.thickness, weather.coverage);
+	// weather.density = mix(weather.density, weather.coverage * props.densityBase, 0.4);
+	// weather.heightMap = mix(weather.heightMap, 0.0, weather.density * 0.9);
+	// weather.sdf = weather.coverage;
 
 	return weather;
 }

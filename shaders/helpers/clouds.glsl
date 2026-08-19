@@ -124,15 +124,22 @@ CloudSpotDetails calculateCloudDensity(
 
 	float type = weather.heightMap;
 	float heightGradient = getDensityHeightGradient(h, type);
+	// float heightGradient = getDensityHeightGradientForPoint(h, type);
 
 	// float baseNoise = clamp(volNoise * heightGradient, 0, 1);
 	// baseNoise *= weather.coverage;
 
 	float baseShape = volNoises.g*0.625 + volNoises.b*0.25 + volNoises.a * 0.125;
-	float baseNoise = remapClamp(volNoises.r, baseShape - 0.9, 1.0, 0.0, 1.0);
+	float baseNoise = remapClamp(volNoises.r, baseShape, 1.0, 0.0, 1.0);
 	// baseNoise = remapClamp(baseNoise, heightGradient, 1.0, 0.0, 1.0);
 	baseNoise *= heightGradient;
-	baseNoise = remapClamp(baseNoise, 1.0-weather.coverage, 1.0, 0.0, 1.0);
+
+	float anvil_bias = 0.7;
+	float cloud_coverage = pow(1.0-weather.coverage, remapClamp(h, 0.7, 0.8, 1.0, mix(1.0, 0.5, anvil_bias)));
+	baseNoise  = remapClamp(baseNoise, cloud_coverage, 1.0, 0.0, 1.0);
+
+
+	// baseNoise = remapClamp(baseNoise, 1.0-weather.coverage, 1.0, 0.0, 1.0);
 
 	float erodeMask = 1.0 - baseNoise;
 	// baseNoise -= erodeMask * volNoises.g;
@@ -197,16 +204,16 @@ CloudDensityResult calculateCloudDensity(
 	}
 
 	// Sample the 3D cloud volume texture with slower advection speed
-	vec3 advect_3d = time * advectSpeed * 0.75;
-	vec3 p_advected_3d = p;// + advect_3d;
-	vec3 uvw = vec3(
-		p_advected_3d.x / (100000.0 * props.worldScale),
-		h,
-		p_advected_3d.z / (100000.0 * props.worldScale)
-	);
+	vec3 advect_3d = time * max(advectSpeed * 0.75, vec3(250.0, 0.0, 250.0));
+	vec3 p_advected_3d = p + advect_3d;
+	// vec3 uvw = vec3(
+	// 	p_advected_3d.x / (100000.0 * props.worldScale),
+	// 	h,
+	// 	p_advected_3d.z / (100000.0 * props.worldScale)
+	// );
 
-	// float volumeScale = 20000.0 * props.worldScale;
-	// vec3 uvw = p_advected_3d / volumeScale;
+	float volumeScale = 5000.0 * props.worldScale;
+	vec3 uvw = p_advected_3d / volumeScale;
 	vec4 volSample = textureLod(u_cloud3DTexture, uvw, clamp(simplified * 4.0, 0.0, 4.0));
 
 
