@@ -261,10 +261,20 @@ void CalculateStochasticClusterLight(
 			float step_multiplier = 2.0;
 			float current_t = shadow_step_size * (0.5 + 0.5 * jitter);
 
+			// Orthonormal basis perpendicular to light ray L for cone-spread sampling (Decima 2017)
+			vec3 coneUp = abs(L.z) < 0.999 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
+			vec3 coneX = normalize(cross(L, coneUp));
+			vec3 coneY = cross(L, coneX);
+
 			for (int k = 0; k < shadow_steps; ++k) {
 				if (current_t > traceDist) break;
 
-				vec3 sp_c = p + L * current_t;
+				// Spread samples outward in a cone proportional to distance current_t (Decima 2017)
+				float coneRadius = current_t * 0.15;
+				float coneAngle = jitter * 6.2831853 + float(k) * 2.39996; // Golden angle spiral
+				vec3 coneOffset = (coneX * cos(coneAngle) + coneY * sin(coneAngle)) * coneRadius;
+
+				vec3 sp_c = p + L * current_t + coneOffset;
 				CloudWeather shadow_weather_c = computeCloudWeather(sp_c, props, currentLOD);
 				CloudLayer shadow_layer_c = computeCloudLayer(shadow_weather_c, props);
 				CloudDensityResult shadowRes_c = calculateCloudDensityMinimal(sp_c, shadow_weather_c, shadow_layer_c, props);
@@ -366,9 +376,18 @@ vec3 EvaluateStepLighting(
 		else if (traceDist > 0.01 * worldScale) {
 			float current_t = 20.0 + (100.0 * jitter);
 			float current_dt = 100.0;
+			vec3 coneUp = abs(L.z) < 0.999 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
+			vec3 coneX = normalize(cross(L, coneUp));
+			vec3 coneY = cross(L, coneX);
+
 			for (int i = 0; i < 5; i++) {
 				if (current_t > traceDist) break;
-				vec3 sp_c = p + L * current_t;
+
+				float coneRadius = current_t * 0.15;
+				float coneAngle = jitter * 6.2831853 + float(i) * 2.39996;
+				vec3 coneOffset = (coneX * cos(coneAngle) + coneY * sin(coneAngle)) * coneRadius;
+
+				vec3 sp_c = p + L * current_t + coneOffset;
 				CloudWeather shadow_weather_c = computeCloudWeather(sp_c, props, currentLOD);
 				CloudLayer shadow_layer_c = computeCloudLayer(shadow_weather_c, props);
 				CloudDensityResult shadowRes_c = calculateCloudDensityMinimal(sp_c, shadow_weather_c, shadow_layer_c, props);
