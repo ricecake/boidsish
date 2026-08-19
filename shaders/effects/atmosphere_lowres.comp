@@ -425,6 +425,7 @@ vec3 EvaluateStepLighting(
 			float phase = dualLobeSchlick(cosTheta, currentKfwd, currentKbck, phaseWeight);
 			phase = mix((1.0 / (4.0 * PI)), phase, currentScatChaos);
 
+
 			// 2. Reduce the optical depth to let light penetrate deeper
 			vec3 octaveOpticalDepth = opticalDepthToLight * currentExtinction;
 			vec3 octaveStepDensity = stepDensity * currentExtinction;
