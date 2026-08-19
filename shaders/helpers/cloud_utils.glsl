@@ -7,6 +7,11 @@ layout(binding = [[CLOUD_SHADOW_MAP_BINDING]]) uniform sampler2DArray u_cloudSha
 uniform mat4 u_cloudShadowMatrix;
 uniform bool u_useCloudShadowMap;
 
+#ifndef UCLOUD_ALBEDO_DEFINED
+#define UCLOUD_ALBEDO_DEFINED
+uniform vec3 uCloudAlbedo;
+#endif
+
 struct CloudProperties {
 	float altitude;
 	float thickness;
@@ -147,6 +152,17 @@ float adjust(float value, float scaly) {
 
 	float a = scaly * (1.0-h) + h;
 	return clamp((remap(a, f, f + h)), 0.0, 1.0);
+}
+
+float schlickPhase(float cosTheta, float k) {
+	float kCos = k * cosTheta;
+	float denom = 1.0 - kCos;
+	// 0.079577 is 1 / (4 * PI)
+	return 0.079577 * (1.0 - k * k) / (denom * denom);
+}
+
+float dualLobeSchlick(float cosTheta, float kFwd, float kBck, float weight) {
+	return mix(schlickPhase(cosTheta, -kBck), schlickPhase(cosTheta, kFwd), weight);
 }
 
 float cloudPhase(float cosTheta) {
@@ -309,6 +325,114 @@ float getDistanceToCloudEdge(float coverage, float h, float type, float thicknes
 
 	// The overall distance to the nearest edge is the minimum of horizontal and vertical distance.
 	return max(0.0, min(distHorizontal, distVertical));
+}
+
+/**
+ * Fast local ambient occlusion approximation using distance to the cloud edge and step density.
+ */
+vec3 calculateCloudLocalAmbientOcclusion(float coverage, float h_norm, float heightMap, float thickness, vec3 stepDensity) {
+	float edgeDistance = getDistanceToCloudEdge(coverage, h_norm, heightMap, thickness);
+	return exp(-edgeDistance * stepDensity * 0.05);
+}
+
+/**
+ * Evaluates ambient lighting for a cloud raymarch step from sky and ground SH irradiances,
+ * attenuated by directional optical depth and local ambient occlusion.
+ */
+vec3 EvaluateCloudAmbientLighting(
+	vec3 skySH,
+	vec3 horizonSH,
+	vec3 groundSH,
+	float h_norm,
+	float layerThickness,
+	vec3 stepDensity,
+	vec3 localAmbientVisibility,
+	vec3 sampleAlbedo,
+	float primaryLightY
+) {
+	const float ambientExtinction = 1.0;
+	const float powderScale = 300.0;
+	vec3 powder = vec3(1.0) - exp(-stepDensity * powderScale);
+	float sunHeight = max(primaryLightY, 0.0);
+	float ambientScale = mix(0.3, 1.0, smoothstep(0.0, 0.3, sunHeight));
+
+	vec3 ambientTop    = mix(skySH, horizonSH, 0.4) * ambientScale;
+	vec3 ambientBottom = groundSH * ambientScale;
+
+	vec3 upwardOD = stepDensity * h_norm * layerThickness;
+	vec3 downwardOD = stepDensity * (1.0 - h_norm) * layerThickness;
+	vec3 groundAttenuation = exp(-upwardOD * ambientExtinction);
+	vec3 skyAttenuation = exp(-downwardOD * ambientExtinction);
+
+	vec3 finalAmbient = ((ambientTop * skyAttenuation) + (ambientBottom * groundAttenuation)) * localAmbientVisibility;
+	return finalAmbient * powder * (uCloudAlbedo * sampleAlbedo);
+}
+
+/**
+ * Calculates in-scattered light contribution from a single light source (directional, point, or spot)
+ * using multi-scattering iterations (controlled by multiscatterOctaves), Decima Engine (SIGGRAPH 2017)
+ * techniques (configurable silver lining peak and max of HG phase functions / Beer-Lambert & Beer-Powder).
+ *
+ * @param cosTheta               Cosine of angle between ray direction and light direction
+ * @param opticalDepthToLight    Optical depth from sample point to light source
+ * @param stepDensity            Local step density (\sigma_e * d)
+ * @param multiscatterOctaves    Number of scattering octaves (e.g. 3 for directional, 1 for local/standard)
+ * @param lightRadiance          Color and intensity contribution of light source
+ * @param sampleAlbedo           Local albedo multiplier
+ * @return In-scattered light energy contribution
+ */
+vec3 CalculateSingleLightScattering(
+	float cosTheta,
+	vec3 opticalDepthToLight,
+	vec3 stepDensity,
+	int multiscatterOctaves,
+	vec3 lightRadiance,
+	vec3 sampleAlbedo
+) {
+	const float extinctionMult = 0.5;
+	const float phaseWidenMult = 0.5;
+	const float energyAttenuation = 0.5;
+	const float msCatChaos = 0.5;
+
+	float kFwd = cloudPhaseG1;
+	float kBck = cloudPhaseG2;
+	float phaseWeight = cloudPhaseAlpha;
+
+	// Configurable cloud silver lining peak (Decima Engine SIGGRAPH 2017)
+	float silverPhase = schlickPhase(cosTheta, 0.95);
+	float cloudSilverIntensity = 0.5;
+
+	vec3 msScattering = vec3(0.0);
+	float currentExtinction = 1.0;
+	float currentKfwd = kFwd;
+	float currentKbck = kBck;
+	float currentEnergy = 1.0;
+	float currentScatChaos = (1.0 - cloudPhaseIsotropic);
+
+	for (int oct = 0; oct < multiscatterOctaves; oct++) {
+		// Dual lobe HG / Schlick phase with max silver lining peak (Decima 2017)
+		float dualLobe = dualLobeSchlick(cosTheta, currentKfwd, currentKbck, phaseWeight);
+		float phase = max(dualLobe, silverPhase * cloudSilverIntensity);
+		phase = mix(1.0 / (4.0 * PI), phase, currentScatChaos);
+
+		vec3 octaveOpticalDepth = opticalDepthToLight * currentExtinction;
+		vec3 octaveStepDensity = stepDensity * currentExtinction;
+
+		// Decima Engine 2017: taking max of Beer-Lambert and Beer-Powder attenuation
+		vec3 beerLambert = exp(-octaveOpticalDepth);
+		vec3 beerPowderTerm = beerPowder(octaveOpticalDepth, octaveStepDensity);
+		vec3 shadowTerm = max(beerLambert, mix(beerPowderTerm, beerLambert, cloudBeerPowderMix));
+
+		msScattering += shadowTerm * phase * currentEnergy;
+
+		currentExtinction *= extinctionMult;
+		currentKfwd *= phaseWidenMult;
+		currentKbck *= phaseWidenMult;
+		currentEnergy *= energyAttenuation;
+		currentScatChaos *= msCatChaos;
+	}
+
+	return lightRadiance * msScattering * (uCloudAlbedo * sampleAlbedo);
 }
 
 float getCloud3DCoverage(vec3 p, CloudWeather weather, CloudLayer layer, float worldScale) {
