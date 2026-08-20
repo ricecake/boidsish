@@ -210,8 +210,11 @@ void updateCinder(inout Particle p, float dt, float time, sampler3D curlTexture)
 
 void updateRain(inout Particle p, float dt, float time) {
 	p.vel.y -= 50.0 * dt;
-	vec3 wind = getWindAtPosition(p.pos.xyz);
-	p.vel.xyz += wind * 5.0 * dt;
+	float ripple, speedStdDev, dirStdDev;
+	vec3 wind = getWindAtPosition(p.pos.xyz, ripple, speedStdDev, dirStdDev);
+	// Rain drops have momentum: slight base wind influence plus variance accent
+	vec3 windAccent = wind * (0.15 + 0.25 * speedStdDev);
+	p.vel.xyz += windAccent * dt;
 	p.vel.xyz *= 0.99;
 	p.color = vec4(0.7, 0.8, 1.0, 1.0) * 2.0;
 	p.color.a *= smoothstep(0.0, 0.1, p.pos.w);
@@ -221,10 +224,15 @@ void updateRain(inout Particle p, float dt, float time) {
 
 void updateSnow(inout Particle p, float dt, float time) {
 	p.vel.y -= 2.0 * dt;
-	vec3 wind = getWindAtPosition(p.pos.xyz);
-	p.vel.xyz += wind * 10.0 * dt;
-	p.vel.x += sin(time * 5.0 + float(gl_GlobalInvocationID.x)) * 0.5 * dt;
-	p.vel.z += cos(time * 4.0 + float(gl_GlobalInvocationID.x)) * 0.5 * dt;
+	float ripple, speedStdDev, dirStdDev;
+	vec3 wind = getWindAtPosition(p.pos.xyz, ripple, speedStdDev, dirStdDev);
+	// Snow has lower mass: gentle wind influence plus subtle drift/swirl scaled by variance
+	vec3 windAccent = wind * (0.3 + 0.4 * speedStdDev);
+	p.vel.xyz += windAccent * dt;
+
+	float varianceFactor = 0.2 + 0.8 * clamp(dirStdDev + speedStdDev, 0.0, 1.0);
+	p.vel.x += sin(time * 3.0 + float(gl_GlobalInvocationID.x)) * 0.3 * varianceFactor * dt;
+	p.vel.z += cos(time * 2.5 + float(gl_GlobalInvocationID.x)) * 0.3 * varianceFactor * dt;
 	p.vel.xyz *= 0.95;
 	p.color = vec4(1.0, 1.0, 1.0, 1.0) * 1.5;
 	p.color.a *= smoothstep(0.0, 0.1, p.pos.w);
@@ -534,6 +542,9 @@ void updateEnvironmentalQueueBehavior(
 	vec3 wind = getWindAtPosition(p.pos.xyz);
 	float maxSpeed = length(wind) * 0.5;
 
+	float ripple, speedStdDev, dirStdDev;
+	vec3 sampledWind = getWindAtPosition(p.pos.xyz, ripple, speedStdDev, dirStdDev);
+
 	if (p.style == STYLE_RAIN) {
 		maxSpeed = 50.0;
 		updateRain(p, dt, time);
@@ -541,19 +552,20 @@ void updateEnvironmentalQueueBehavior(
 		maxSpeed = 25.0;
 		updateSnow(p, dt, time);
 	} else if (p.style == STYLE_DUST) {
-		p.vel.xyz += wind * 3.0 * dt;
+		// Dust motes float subtly with gentle drift and swirl driven by wind variance
+		vec3 windAccent = sampledWind * (0.2 + 0.3 * speedStdDev);
+		p.vel.xyz += windAccent * dt;
 		p.vel.xyz *= pow(0.95, dt / 0.016);
 		p.color = vec4(0.8, 0.8, 0.7, 0.3);
-		// p.phase = mix(0, mix(1, 2, smoothstep(500, 506, temperature)), smoothstep(270.0, 280.0, temperature));
 		p.phase = temperature;
 		p.vel.w = 8.0;
 
 		applyAmbientAvoidance(p, dt, time, viewPos, viewDir, curlTexture);
-
 	}
 
-	// Apply curl noise for non-uniform movement
-	float curlInfluence = (p.style == STYLE_RAIN) ? 0.5 : 2.0;
+	// Apply curl noise as subtle accent proportional to wind variance
+	float varScale = 0.15 + 0.35 * clamp(speedStdDev + dirStdDev, 0.0, 1.0);
+	float curlInfluence = (p.style == STYLE_RAIN) ? (0.1 * varScale) : (p.style == STYLE_SNOW ? 0.25 * varScale : 0.3 * varScale);
 	p.vel.xyz += curlNoise(p.pos.xyz, time, curlTexture) * curlInfluence * dt;
 
 	if (length(p.vel.xyz) > maxSpeed) {
