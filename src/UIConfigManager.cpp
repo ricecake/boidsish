@@ -349,15 +349,6 @@ namespace Boidsish {
 						cfg.SetBool("render_terrain", render_terrain);
 					}
 
-					auto terrain = m_visualizer->GetTerrain();
-					if (terrain) {
-						float world_scale = terrain->GetWorldScale();
-						if (ImGui::SliderFloat("World Scale##Quick", &world_scale, 0.1f, 5.0f)) {
-							terrain->SetWorldScale(world_scale);
-							cfg.SetFloat("terrain_world_scale", world_scale);
-						}
-					}
-
 					ImGui::Separator();
 
 					// Find Atmosphere and Volumetric Lighting effects
@@ -404,27 +395,15 @@ namespace Boidsish {
 						}
 
 						if (atmos_enabled) {
-							float cloud_density = atmos_effect->GetCloudDensity();
-							if (ImGui::SliderFloat("Cloud Density##Quick", &cloud_density, 0.0f, 1.0f)) {
+							float cloud_coverage = atmos_effect->GetCloudCoverage();
+							if (ImGui::SliderFloat("Cloud Coverage##Quick", &cloud_coverage, 0.0f, 1.0f)) {
 								auto weather = m_visualizer->GetWeatherManager();
 								if (weather) {
-									weather->SetTarget(WeatherAttribute::CloudDensity, cloud_density);
+									weather->SetTarget(WeatherAttribute::CloudCoverage, cloud_coverage);
 								} else {
-									atmos_effect->SetCloudDensity(cloud_density);
+									atmos_effect->SetCloudCoverage(cloud_coverage);
 								}
-								cfg.SetFloat("quick_cloud_density", cloud_density);
-								atmos_effect->FlushHistory();
-							}
-
-							float haze_density = atmos_effect->GetHazeDensity();
-							if (ImGui::SliderFloat("Haze Density##Quick", &haze_density, 0.0f, 5.0f, "%.2f")) {
-								auto weather = m_visualizer->GetWeatherManager();
-								if (weather) {
-									weather->SetTarget(WeatherAttribute::HazeDensity, haze_density);
-								} else {
-									atmos_effect->SetHazeDensity(haze_density);
-								}
-								cfg.SetFloat("quick_haze_density", haze_density);
+								cfg.SetFloat("quick_cloud_coverage", cloud_coverage);
 								atmos_effect->FlushHistory();
 							}
 						}
