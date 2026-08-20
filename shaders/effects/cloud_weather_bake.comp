@@ -129,7 +129,7 @@ void main() {
 	// float thickness = localFbm(uv, period3, trash);
 	// float density = localFbm(uv, period2, trash);
 
-	imageStore(outWeatherMap, pixel, vec4(finalCoverage, 1.0-height.f1_dist, 1.0-thickness.f1_dist, 1.0-density.f1_dist));
+	imageStore(outWeatherMap, pixel, vec4(finalCoverage, 0.0, 1.0-thickness.f1_dist, 1.0-density.f1_dist));
 	// imageStore(outWeatherMap, pixel, vec4(finalCoverage, 0.0, 0.5, 1.0));
 	imageStore(outMinMaxMap, pixel, vec4(finalCoverage, finalCoverage, 0.0, 0.0));
 

@@ -17,12 +17,11 @@ float regionalFbm(vec3 p, vec3 period) {
 	float amp = 0.5;
 	float freq = 1.0;
 	for (int i = 0; i < 3; i++) {
-		val += amp * smoothstep(-0.1, 0.9, 0.5 + 0.5 * psrdnoise(p * freq * period, period * freq));
+		val += amp * (0.5 + 0.5 * psrdnoise(p * freq * period, period * freq));
 		amp *= 0.5;
 		freq *= 2.0;
 	}
-	// return val;
-	return clamp(val, 0.01, 1.01);
+	return val;
 }
 
 float localFbm(vec3 p, vec3 period) {
@@ -31,23 +30,12 @@ float localFbm(vec3 p, vec3 period) {
 	float freq = 1.0;
 	for (int i = 0; i < 3; i++) {
 		WorleyData3D worleyDetails = worley3d_tiling_id(p * freq * period, period * freq);
-		val += amp * pow(worleyDetails.f1_dist, 2);// * (1-(freq*p.y));
-		// val -= amp * 0.25*(worleyDetails.f2_dist - worleyDetails.f1_dist);
+		val += amp * pow(worleyDetails.f1_dist,3);
 		amp *= 0.5;
 		freq *= 2.0;
 	}
 
-	// amp = 0.5;
-	// freq = 1.0;
-	// for (int i = 0; i < 3; i++) {
-	// 	WorleyData3D worleyDetails = worley3d_tiling_id(p * freq, period * freq);
-	// 	// val += amp * worleyDetails.f1_dist;
-	// 	val -= amp * (worleyDetails.f2_dist - worleyDetails.f1_dist)  * (1-(freq*p.y));
-	// 	amp *= 0.35;
-	// 	freq *= 1.50;
-	// }
-
-	return clamp(val, 0.0, 0.99);
+	return val;
 }
 
 

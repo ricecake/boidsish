@@ -1,3 +1,30 @@
+float getCloud3DCoverage(vec3 p, CloudWeather weather, CloudLayer layer, float worldScale) {
+	float localFloor, actualThickness;
+	float h = getCloudRelativeHeight(p, weather, layer, localFloor, actualThickness);
+
+	if (p.y < localFloor || p.y > (localFloor + actualThickness)) {
+		return 0.0;
+	}
+
+	float type = weather.heightMap;
+	float heightGradient = getDensityHeightGradient(h, type);
+
+	float coverage2D = weather.coverage; //
+
+	// // Create a flare modifier that increases in the upper half of the cloud.
+	// // Adjust the smoothstep bounds and multiplier to control the flare's altitude and width.
+	// float topFlare = smoothstep(0.4, 0.9, h) * 0.4;
+
+	// // Apply the flare to the 2D coverage, clamping to keep it a valid SDF/mask.
+	// float dynamicCoverage = clamp(coverage2D + topFlare, 0.0, 1.0);
+
+	// // Replace the static coverage2D with the dynamically flaring one.
+	// float macroVolume = dynamicCoverage * heightGradient; //[cite: 3]
+
+	float macroVolume = coverage2D * heightGradient;
+	return macroVolume;
+}
+
 // Warp cloud position away from the camera's view axis (capsule-based sliding warp)
 // Returns the warped position and a fade factor for density
 vec3 getWarpedCloudPos(vec3 p, out float fade) {
@@ -1093,5 +1120,15 @@ float generateOrganicCellSDF(vec2 p, float cellSize, vec2 period, float coverage
     // Convert back to world space scale
     return globalDist * cellSize;
 }
+
+float evaluateCloudShadowDensityAtWorldPos(vec2 worldXZ, float time) {
+	if (!u_useCloudShadowMap) return 0.0;
+	vec4 lightSpacePos = u_cloudShadowMatrix * vec4(worldXZ.x, 0.0, worldXZ.y, 1.0);
+	vec2 shadowUV = lightSpacePos.xy * 0.5 + 0.5;
+	// Sample bottom layer (layer 7) for total optical depth through clouds, scaled appropriately
+	float totalDensity = textureLod(u_cloudShadowTexture, vec3(shadowUV, 7.0), 0.0).r * 0.001 * cloudShadowOpticalDepthMultiplier / max(0.001, worldScale);
+	return totalDensity;
+}
+
 
 #endif // HELPERS_CLOUD_WEATHER_UTILS_GLSL
