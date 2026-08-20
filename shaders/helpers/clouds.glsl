@@ -165,35 +165,14 @@ CloudSpotDetails calculateCloudDensity(
 	);
 }
 
-// Cloud density calculation helper
-// Returns CloudDensityResult based on world-space position
-CloudDensityResult calculateCloudDensityMinimal(
-	vec3            p,
-	CloudWeather    weather,
-	CloudLayer      layer,
-	CloudProperties props
-) {
-	float localFloor, actualThickness;
-	float h = getCloudRelativeHeight(p, weather, layer, localFloor, actualThickness);
-	vec3 advectSpeed = getCloudAdvectionSpeed(h, time);
-	CloudDensityResult pointDetails = CloudDensityResult(vec3(0.0), advectSpeed, 1.0, vec3(1.0), vec3(0.0));
-	if (p.y < localFloor || p.y > (localFloor + actualThickness)) {
-		return pointDetails;
-	}
-
-	CloudSpotDetails res = calculateCloudDensity(p, weather, layer, props, time, 1000.0, vec4(1.0));
-
-	return CloudDensityResult(res.density * res.relativeExtinction, advectSpeed, 1.0, vec3(1.0), vec3(0.0));
-}
-
-
 CloudDensityResult calculateCloudDensity(
 	vec3            p,
 	CloudWeather    weather,
 	CloudLayer      layer,
 	CloudProperties props,
 	float           time,
-	float           simplified
+	float           lod,
+	bool            doCheap
 ) {
 	float localFloor, actualThickness;
 	float h = getCloudRelativeHeight(p, weather, layer, localFloor, actualThickness);
@@ -214,16 +193,16 @@ CloudDensityResult calculateCloudDensity(
 
 	float volumeScale = 15000.0 * props.worldScale;
 	vec3 uvw = p_advected_3d / volumeScale;
-	vec4 volSample = textureLod(u_cloud3DTexture, uvw, clamp(simplified * 4.0, 0.0, 4.0));
+	vec4 volSample = textureLod(u_cloud3DTexture, uvw, clamp(lod * 4.0, 0.0, 4.0));
 
 
-	// vec4 volSample = textureLod(u_cloud3DTexture, uvw, clamp(simplified * 4.0, 0.0, 4.0));
+	// vec4 volSample = textureLod(u_cloud3DTexture, uvw, clamp(lod * 4.0, 0.0, 4.0));
 	// float volNoise = volSample.r;
 	// float volAo = volSample.g;
 	// float volAlbedoBasis = volSample.b;
 	// float volDensityBasis = volSample.a;
 
-	CloudSpotDetails res = calculateCloudDensity(p, weather, layer, props, time, simplified, volSample);
+	CloudSpotDetails res = calculateCloudDensity(p, weather, layer, props, time, lod, volSample);
 
 	// Where the current system has density, the 3d volume adds variety and breaks up the linear nature.
 	float finalDensity = res.density;
