@@ -200,6 +200,8 @@ namespace Boidsish {
 		GLuint GetCloudWeatherTexture() const { return _cloudWeatherTexture; }
 		GLuint GetCloudWeatherMinMaxTexture() const { return _cloudWeatherMinMaxTexture; }
 		GLuint GetCloudShadowTexture() const { return _cloudShadowTexture; }
+		GLuint GetCloud2DPropsLUT() const { return _cloud2DPropsLUT; }
+		GLuint GetCloud3DFrontLUT() const { return _cloud3DFrontLUT; }
 		const glm::mat4& GetCloudShadowMatrix() const { return _cloudShadowMatrix; }
 		const glm::mat4& GetCloudShadowInvMatrix() const { return _cloudShadowInvMatrix; }
 
@@ -258,6 +260,8 @@ namespace Boidsish {
 		GLuint _cloudWeatherMinMaxTexture = 0;
 		GLuint _cloudVolumeTexture = 0;
 		GLuint _cloudShadowTexture = 0;
+		GLuint _cloud2DPropsLUT = 0;
+		GLuint _cloud3DFrontLUT = 0;
 		GLuint _cloudSeedsBuffer = 0;
 		GLuint _shCoeffsBuffer = 0;
 
