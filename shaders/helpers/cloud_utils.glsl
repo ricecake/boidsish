@@ -2,6 +2,7 @@
 
 #include "lygia/generative/psrdnoise.glsl"
 #include "lygia/space/uncenter.glsl"
+#include "lygia/math/mmix.glsl"
 
 layout(binding = [[CLOUD_SHADOW_MAP_BINDING]]) uniform sampler2DArray u_cloudShadowTexture;
 uniform mat4 u_cloudShadowMatrix;
@@ -233,8 +234,10 @@ CloudWeather loadCloudWeather(vec3 p, CloudProperties props, vec4 tex) {
 	// weather.coverage = clamp(tex.r + (props.coverage * 2.0 - 1.0), 0.0, 1.0);
 	// weather.coverage = step(1.0-props.coverage, tex.r);
 	weather.coverage = applyDynamicCoverage(tex.r, props.coverage);
-	weather.heightMap = tex.g;
-	weather.thickness = tex.b;
+	// weather.heightMap = tex.g;
+	// weather.thickness = tex.b;
+	weather.heightMap = mmix(0.05, 0.0, 0.75, tex.g);
+	weather.thickness = mmix(0.15, 1.0, 0.05, tex.g);
 	weather.density = tex.a * props.densityBase;
 
 	// if (props.coverage >= 1.0) {

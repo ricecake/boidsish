@@ -122,7 +122,7 @@ void main() {
 	// float height = smoothstep(thickness, 1.0, centerNote1 + diff1 * clamp(localFbm(uv, period3, trash), 0.0, 1.0));
 	// float density = clamp(height - height*localFbm(uv, period2, trash), 0.0, finalCoverage);
 
-	WorleyData2D height = worley2d_tiling_id(uv, 1.0);
+	WorleyData2D height = worley2d_tiling_id(uv/8.0, 1.0);
 	WorleyData2D thickness = worley2d_tiling_id(uv * period3, period3);
 	WorleyData2D density = worley2d_tiling_id(uv * period2, period2);
 
@@ -130,7 +130,7 @@ void main() {
 	// float thickness = localFbm(uv, period3, trash);
 	// float density = localFbm(uv, period2, trash);
 
-	imageStore(outWeatherMap, pixel, vec4(finalCoverage, 0.10, 0.25, 1.0-density.f1_dist));
+	imageStore(outWeatherMap, pixel, vec4(finalCoverage, 1.0-height.f1_dist, 0.25, 1.0-density.f1_dist));
 	// imageStore(outWeatherMap, pixel, vec4(finalCoverage, 0.0, 0.5, 1.0));
 	imageStore(outMinMaxMap, pixel, vec4(finalCoverage, finalCoverage, 0.0, 0.0));
 
