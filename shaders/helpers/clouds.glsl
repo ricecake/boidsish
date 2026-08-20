@@ -108,7 +108,6 @@ struct VolumeNoise {
 CloudSpotDetails calculateCloudDensity(
 	vec3            p,
 	CloudWeather    weather,
-	CloudLayer      layer,
 	CloudProperties props,
 	float           time,
 	float            simplified,
@@ -116,7 +115,7 @@ CloudSpotDetails calculateCloudDensity(
 ) {
 	float volNoise = volNoises.r;
 	float localFloor, actualThickness;
-	float h = getCloudRelativeHeight(p, weather, layer, localFloor, actualThickness);
+	float h = getCloudRelativeHeight(p, weather, localFloor, actualThickness);
 
 	vec3 advectSpeed = getCloudAdvectionSpeed(h, time);
 	vec3 advect = time * advectSpeed;
@@ -168,14 +167,13 @@ CloudSpotDetails calculateCloudDensity(
 CloudDensityResult calculateCloudDensity(
 	vec3            p,
 	CloudWeather    weather,
-	CloudLayer      layer,
 	CloudProperties props,
 	float           time,
 	float           lod,
 	bool            doCheap
 ) {
 	float localFloor, actualThickness;
-	float h = getCloudRelativeHeight(p, weather, layer, localFloor, actualThickness);
+	float h = getCloudRelativeHeight(p, weather, localFloor, actualThickness);
 	vec3 advectSpeed = getCloudAdvectionSpeed(h, time);
 	CloudDensityResult pointDetails = CloudDensityResult(vec3(0.0), advectSpeed, 1.0, vec3(1.0), vec3(0.0));
 	if (p.y < localFloor || p.y > (localFloor + actualThickness)) {
@@ -202,7 +200,7 @@ CloudDensityResult calculateCloudDensity(
 	// float volAlbedoBasis = volSample.b;
 	// float volDensityBasis = volSample.a;
 
-	CloudSpotDetails res = calculateCloudDensity(p, weather, layer, props, time, lod, volSample);
+	CloudSpotDetails res = calculateCloudDensity(p, weather, props, time, lod, volSample);
 
 	// Where the current system has density, the 3d volume adds variety and breaks up the linear nature.
 	float finalDensity = res.density;

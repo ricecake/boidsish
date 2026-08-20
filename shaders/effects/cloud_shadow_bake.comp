@@ -87,11 +87,10 @@ void main() {
 		vec2 minMax = textureLod(u_cloudWeatherMinMaxTexture, weatherUV, float(L)).rg;
 		float maxDensity = applyDynamicCoverage(minMax.y, cloudCoverage);
 		CloudWeather weather = computeCloudWeather(p, props);
-		CloudLayer layer = computeCloudLayer(weather, props);
 
-		float h = getCloudRelativeHeight(p, weather, layer);
+		float h = getCloudRelativeHeight(p, weather);
 
-		CloudDensityResult densityRes = calculateCloudDensity(p, weather, layer, props, time, 0.0, false);
+		CloudDensityResult densityRes = calculateCloudDensity(p, weather, props, time, 0.0, false);
 		float stepDensity = max(0.0, densityRes.density.r) * baseStepSize;
 
 		for (int k = 0; k < 8; ++k) {

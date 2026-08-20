@@ -17,7 +17,6 @@ struct CloudProperties {
 
 struct CloudWeather {
 	vec3 p;
-	float sdf;// LEGACY NAME
 	float coverage;
 	float density;
 	float heightMap;  // Altitude variety
@@ -25,12 +24,9 @@ struct CloudWeather {
 	float ecentricity;
 	float curve;
 	float centerDist;
-};
-
-struct CloudLayer {
 	float baseFloor;
 	float baseCeiling;
-	float thickness;
+	float height;
 };
 
 vec4 hash41(float p) {
@@ -154,18 +150,18 @@ float getCurvedAltitude(vec3 p) {
 	return length(p - earthCenter) - R_earth;
 }
 
-float getCloudRelativeHeight(vec3 p, CloudWeather weather, CloudLayer layer, out float localFloor, out float actualThickness) {
+float getCloudRelativeHeight(vec3 p, CloudWeather weather, out float localFloor, out float actualThickness) {
 	float altitude = getCurvedAltitude(p);
-	float altitudeShift = weather.heightMap * layer.thickness;
+	float altitudeShift = weather.heightMap * weather.height;
 
-	actualThickness = max(weather.thickness * layer.thickness, 25.0 * worldScale);
-	localFloor = layer.baseFloor + altitudeShift;
+	actualThickness = max(weather.thickness * weather.height, 25.0 * worldScale);
+	localFloor = weather.baseFloor + altitudeShift;
 	return clamp((altitude - localFloor) / actualThickness, 0.0, 1.0);
 }
 
-float getCloudRelativeHeight(vec3 p, CloudWeather weather, CloudLayer layer) {
+float getCloudRelativeHeight(vec3 p, CloudWeather weather) {
 	float localFloor, actualThickness;
-	return getCloudRelativeHeight(p, weather, layer, localFloor, actualThickness);
+	return getCloudRelativeHeight(p, weather, localFloor, actualThickness);
 }
 
 vec3 getCloudWindSpeed(float time) {
@@ -251,6 +247,11 @@ CloudWeather loadCloudWeather(vec3 p, CloudProperties props, vec4 tex) {
 	// weather.heightMap = mix(weather.heightMap, 0.0, weather.density * 0.9);
 	// weather.sdf = weather.coverage;
 
+	weather.baseFloor = props.altitude * props.worldScale;
+	weather.height = max(props.thickness, 0.001) * props.worldScale;
+	// The evaluation volume needs twice the height to account for a full height cloud at maximum altitude.
+	weather.baseCeiling = weather.baseFloor + 2.0 * weather.height;
+
 	return weather;
 }
 
@@ -267,15 +268,6 @@ CloudWeather computeCloudWeather(vec3 p, CloudProperties props, float lod) {
 
 CloudWeather computeCloudWeather(vec3 p, CloudProperties props) {
 	return computeCloudWeather(p, props, 0.0);
-}
-
-CloudLayer computeCloudLayer(CloudWeather weather, CloudProperties props) {
-	CloudLayer layer;
-	layer.baseFloor = props.altitude * props.worldScale;
-	layer.thickness = max(props.thickness, 0.001) * props.worldScale;
-	// The evaluation volume needs twice the thickness to account for a full height cloud at maximum altitude.
-	layer.baseCeiling = layer.baseFloor + 2.0 * layer.thickness;
-	return layer;
 }
 
 float getDensityHeightGradient(float h, float type) {
@@ -353,8 +345,7 @@ float calculateCloudShadowFactor(vec3 frag_pos, vec3 L, float intensity) {
 	props.worldScale = worldScale;
 
 	CloudWeather weather = computeCloudWeather(frag_pos, props);
-	CloudLayer layer = computeCloudLayer(weather, props);
-	float h = getCloudRelativeHeight(frag_pos, weather, layer);
+	float h = getCloudRelativeHeight(frag_pos, weather);
 
 	// Scale accumulated density by a physical factor (0.02) to match average extinction values and keep shadows soft/realistic
 	float accumulatedDensity = sampleDeepOpacityMap(shadowUV, h, 0.0) * 0.001 * cloudShadowOpticalDepthMultiplier / max(0.001, worldScale);
@@ -377,10 +368,9 @@ float calculateCloudAmbientOcclusion(vec3 frag_pos) {
 	props.worldScale = worldScale;
 
 	CloudWeather weather = computeCloudWeather(frag_pos, props);
-	CloudLayer layer = computeCloudLayer(weather, props);
 
 	float localFloor, actualThickness;
-	float h = getCloudRelativeHeight(frag_pos, weather, layer, localFloor, actualThickness);
+	float h = getCloudRelativeHeight(frag_pos, weather, localFloor, actualThickness);
 
 	// Find the curved altitude directly above the fragment clamped within the cloud layer
 	float alt_above = clamp(getCurvedAltitude(frag_pos), localFloor, localFloor + actualThickness);

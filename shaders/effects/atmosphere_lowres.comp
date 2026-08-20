@@ -114,7 +114,6 @@ void CalculateStochasticClusterLight(
 	vec3 rayDir,
 	float jitter,
 	CloudWeather    weather,
-	CloudLayer      layer,
 	CloudProperties props,
 	vec3 rgbExtinction,
 	vec3 stepOpticalDepth,
@@ -177,10 +176,9 @@ void CalculateStochasticClusterLight(
 				vec3 sp_c = p + L * current_t;
 
 				CloudWeather shadow_weather_c = computeCloudWeather(sp_c, props, currentLOD);
-				CloudLayer shadow_layer_c = computeCloudLayer(shadow_weather_c, props);
 
 				// Use the minimal evaluation to keep the inner loop fast
-				CloudDensityResult shadowRes_c = calculateCloudDensity(sp_c, shadow_weather_c, shadow_layer_c, props, time, 0.0, true);
+				CloudDensityResult shadowRes_c = calculateCloudDensity(sp_c, shadow_weather_c, props, time, 0.0, true);
 
 				// Accumulate the optical depth linearly
 				opticalDepthToLight += shadowRes_c.density * shadow_step_size * (rgbExtinction * cloudShadowOpticalDepthMultiplier);
@@ -210,7 +208,6 @@ vec3 EvaluateStepLighting(
 	vec3 rayDir,
 	float jitter,
 	CloudWeather weather,
-	CloudLayer layer,
 	CloudProperties props,
 	vec3 rgbExtinction,
 	vec3 stepDensity,
@@ -232,7 +229,7 @@ vec3 EvaluateStepLighting(
 	vec3 stepScattering = vec3(0.0);
 
 	// Fast ambient occlusion approximation using the distance to the cloud edge
-	float edgeDistance = getDistanceToCloudEdge(weather.coverage, h_norm, weather.heightMap, layer.thickness);
+	float edgeDistance = getDistanceToCloudEdge(weather.coverage, h_norm, weather.heightMap, weather.thickness);
 	// Convert distance to transmittance/visibility using the step density as the local extinction.
 	// We apply a soft multiplier (0.05) to align the occlusion intensity with the visual range.
 	vec3 localAmbientVisibility = exp(-edgeDistance * stepDensity * 0.05);
@@ -281,8 +278,7 @@ vec3 EvaluateStepLighting(
 				if (current_t > traceDist) break;
 				vec3 sp_c = p + L * current_t;
 				CloudWeather shadow_weather_c = computeCloudWeather(sp_c, props, currentLOD);
-				CloudLayer shadow_layer_c = computeCloudLayer(shadow_weather_c, props);
-				CloudDensityResult shadowRes_c = calculateCloudDensity(sp_c, shadow_weather_c, shadow_layer_c, props, time, 0.0, true);
+				CloudDensityResult shadowRes_c = calculateCloudDensity(sp_c, shadow_weather_c, props, time, 0.0, true);
 				opticalDepthToLight += max(vec3(0.00), shadowRes_c.density) * current_dt * (rgbExtinction * cloudShadowOpticalDepthMultiplier);
 				emissiveGlow += shadowRes_c.emissivity * exp(-opticalDepthToLight);
 				// localAmbientVisibility += exp(-(stepLength * (1.0-pow(3*pow(L.y, 2)-1.0, 2)/4)));
@@ -369,7 +365,6 @@ vec3 EvaluateStepLighting(
 		rayDir,
 		jitter,
 		weather,
-		layer,
 		props,
 		rgbExtinction,
 		stepOpticalDepth,
@@ -384,7 +379,6 @@ vec3 EvaluateStepLighting(
 		rayDir,
 		jitter,
 		weather,
-		layer,
 		props,
 		rgbExtinction,
 		stepOpticalDepth,
@@ -404,8 +398,8 @@ vec3 EvaluateStepLighting(
 	vec3 ambientTop    = mix(skySH, horizonSH, 0.4) * ambientScale;
 	vec3 ambientBottom = groundSH * ambientScale;
 
-	vec3 upwardOD = stepDensity * h_norm * layer.thickness;
-	vec3 downwardOD = stepDensity * (1.0 - h_norm) * layer.thickness;
+	vec3 upwardOD = stepDensity * h_norm * weather.thickness;
+	vec3 downwardOD = stepDensity * (1.0 - h_norm) * weather.thickness;
 	vec3 groundAttenuation = exp(-upwardOD * ambientExtinction);
 	vec3 skyAttenuation = exp(-downwardOD * ambientExtinction);
 
@@ -590,8 +584,7 @@ void main() {
 				groundSH  = evalSHIrradianceSpatial(probePos, vec3(0.0, -1.0, 0.0));
 			}
 
-			CloudLayer layer = computeCloudLayer(weather, props);
-			CloudDensityResult densityRes = calculateCloudDensity(p, weather, layer, props, time, currentLod, false);
+			CloudDensityResult densityRes = calculateCloudDensity(p, weather, props, time, currentLod, false);
 
 			vec3 d = densityRes.density;
 
@@ -613,7 +606,7 @@ void main() {
 
 			float stepSize = t - t_prev;
 			if (stepSize > 0.0) {
-				float h_norm = getCloudRelativeHeight(p, weather, layer);
+				float h_norm = getCloudRelativeHeight(p, weather);
 				float integrationStep = stepSize;
 
 				if (max(d.x, max(d.y, d.z)) > 0.01) {
@@ -639,7 +632,6 @@ void main() {
 						rayDir,
 						jitter,
 						weather,
-						layer,
 						props,
 						rgbExtinction,
 						stepDensity,
