@@ -1,3 +1,4 @@
+#include "../atmosphere/common.glsl"
 #include "textures/cloud.glsl"
 
 #include "lygia/generative/psrdnoise.glsl"
@@ -226,36 +227,32 @@ float applyDynamicCoverage(float bakedCoverage, float uniformCoverage) {
 // }
 
 
-CloudWeather loadCloudWeather(vec3 p, CloudProperties props, vec4 tex) {
+CloudWeather loadCloudWeather(vec3 p, CloudProperties props, vec4 tex, vec4 frontSample) {
 	CloudWeather weather;
 	weather.p = p;
 
-	// Apply props.coverage as an offset/threshold to the baked coverage map
-	// weather.coverage = clamp(tex.r + (props.coverage * 2.0 - 1.0), 0.0, 1.0);
-	// weather.coverage = step(1.0-props.coverage, tex.r);
-	weather.coverage = applyDynamicCoverage(tex.r, props.coverage);
-	// weather.heightMap = tex.g;
-	// weather.thickness = tex.b;
-	weather.heightMap = mmix(0.05, 0.0, 0.75, tex.g);
-	weather.thickness = mmix(0.15, 1.0, 0.05, tex.g);
-	weather.density = tex.a * props.densityBase;
+	float baseCoverage = tex.r;
+	float frontCoverageBoost = frontSample.g;
+	weather.coverage = applyDynamicCoverage(baseCoverage * frontCoverageBoost, props.coverage);
 
-	// if (props.coverage >= 1.0) {
-	// 	weather.coverage = 1.0;
-	// 	weather.density = props.densityBase;
-	// }
+	float bakedType = mmix(0.05, 0.0, 0.75, tex.g);
+	weather.heightMap = mix(bakedType, frontSample.r, 0.5);
 
-	// weather.thickness = smoothstep(0, weather.thickness, weather.coverage);
-	// weather.density = mix(weather.density, weather.coverage * props.densityBase, 0.4);
-	// weather.heightMap = mix(weather.heightMap, 0.0, weather.density * 0.9);
-	// weather.sdf = weather.coverage;
+	float frontThicknessMod = frontSample.b;
+	weather.thickness = mmix(0.15, 1.0, 0.05, tex.g) * frontThicknessMod;
+	weather.density = tex.a * props.densityBase * frontCoverageBoost;
+
+	weather.ecentricity = frontSample.a;
 
 	weather.baseFloor = props.altitude * props.worldScale;
-	weather.height = max(props.thickness, 0.001) * props.worldScale;
-	// The evaluation volume needs twice the height to account for a full height cloud at maximum altitude.
+	weather.height = max(props.thickness * frontThicknessMod, 0.001) * props.worldScale;
 	weather.baseCeiling = weather.baseFloor + 2.0 * weather.height;
 
 	return weather;
+}
+
+CloudWeather loadCloudWeather(vec3 p, CloudProperties props, vec4 tex) {
+	return loadCloudWeather(p, props, tex, vec4(0.5, 1.0, 1.0, 1.0));
 }
 
 CloudWeather computeCloudWeather(vec3 p, CloudProperties props, float lod) {
@@ -266,7 +263,28 @@ CloudWeather computeCloudWeather(vec3 p, CloudProperties props, float lod) {
 	// Range is 100,000 * worldScale as defined in the bake shader.
 	vec2 uv = p_advected.xz / (100000.0 * props.worldScale);
 	vec4 bakedWeather = textureLod(u_cloudWeatherTexture, uv, clamp(lod * 6.0, 0.0, 6.0));
-	return loadCloudWeather(p, props, bakedWeather);
+
+	// Evaluate 3D cloud front lookup texture using local weather state (wind speed, temperature, humidity)
+	vec2 weatherUV;
+	if (u_windOriginSize.y > 0) {
+		float gridSpacing = u_windParams.x;
+		vec2 gridCoord = (p.xz / gridSpacing) - vec2(u_windOriginSize.xz);
+		weatherUV = gridCoord / vec2(u_windOriginSize.y, u_windOriginSize.w);
+	} else {
+		float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
+		weatherUV = (p.xz / scaledChunkSize - vec2(u_originSize.xy)) / 128.0;
+	}
+
+	vec4 scalars = textureLod(u_weatherScalars, weatherUV, 0.0);
+	vec4 macroWind = textureLod(u_lbmWindTexture, weatherUV, 0.0);
+
+	float normWind = clamp(length(macroWind.xz) / 30.0, 0.0, 1.0);
+	float normTemp = clamp((scalars.x - 250.0) / 70.0, 0.0, 1.0);
+	float normHum = clamp(scalars.y, 0.0, 1.0);
+
+	vec4 frontSample = textureLod(u_cloud3DFrontLUT, vec3(normWind, normTemp, normHum), 0.0);
+
+	return loadCloudWeather(p, props, bakedWeather, frontSample);
 }
 
 CloudWeather computeCloudWeather(vec3 p, CloudProperties props) {
@@ -274,22 +292,7 @@ CloudWeather computeCloudWeather(vec3 p, CloudProperties props) {
 }
 
 float getDensityHeightGradient(float h, float type) {
-	// 1. Cumulonimbus (Type ~ 0.0): Massive storm chunks
-	// Solid, dark, flat base with a dense core that tapers slightly near the anvil top.
-	float cumulonimbus = smoothstep(0.0, 0.05, h) * (1.0 - smoothstep(0.7, 1.0, h));
-
-	// 2. Cumulus (Type ~ 0.5): Puffy fair-weather clouds
-	// Rounded bottoms and very rounded, billowy tops.
-	float cumulus = smoothstep(0.0, 0.2, h) * (1.0 - smoothstep(0.6, 0.9, h));
-
-	// 3. Stratus (Type ~ 1.0): Thin, patchy plates
-	// Soft fade in, flat middle, soft fade out.
-	float stratus = smoothstep(0.0, 0.3, h) * (1.0 - smoothstep(0.7, 1.0, h));
-
-	float res = mix(cumulonimbus, cumulus, smoothstep(0.0, 0.5, type));
-	res = mix(res, stratus, smoothstep(0.5, 1.0, type));
-
-	return res;
+	return textureLod(u_cloud2DPropsLUT, vec2(clamp(type, 0.0, 1.0), clamp(h, 0.0, 1.0)), 0.0).r;
 }
 
 /**

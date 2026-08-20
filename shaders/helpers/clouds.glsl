@@ -122,40 +122,22 @@ CloudSpotDetails calculateCloudDensity(
 	vec3 p_advected = p + advect;
 
 	float type = weather.heightMap;
-	float heightGradient = getDensityHeightGradient(h, type);
-	// float heightGradient = getDensityHeightGradientForPoint(h, type);
 
-	// float baseNoise = clamp(volNoise * heightGradient, 0, 1);
-	// baseNoise *= weather.coverage;
+	// Evaluate 2D Cloud Properties Lookup Texture PER STEP
+	vec4 props2D = textureLod(u_cloud2DPropsLUT, vec2(clamp(type, 0.0, 1.0), clamp(h, 0.0, 1.0)), 0.0);
+	float heightGradient = props2D.r;
+	float anvil_bias = props2D.g;
+	float noiseBlend = props2D.b;
+	float erosionMult = props2D.a;
 
-	float baseShape = volNoises.g*0.625 + volNoises.b*0.25 + volNoises.a * 0.125;
+	float baseShape = (volNoises.g * 0.625 + volNoises.b * 0.25 + volNoises.a * 0.125) * noiseBlend;
 	float baseNoise = remapClamp(volNoises.r, baseShape, 1.0, 0.0, 1.0);
-	// baseNoise = remapClamp(baseNoise, heightGradient, 1.0, 0.0, 1.0);
 	baseNoise *= heightGradient;
 
-	float anvil_bias = 0.7;
-	float cloud_coverage = pow(1.0-weather.coverage, remapClamp(h, 0.7, 0.8, 1.0, mix(1.0, 0.5, anvil_bias)));
-	baseNoise  = remapClamp(baseNoise, cloud_coverage, 1.0, 0.0, 1.0);
+	float cloud_coverage = pow(1.0 - weather.coverage, remapClamp(h, 0.7, 0.8, 1.0, mix(1.0, 0.5, anvil_bias)));
+	baseNoise = remapClamp(baseNoise, cloud_coverage, 1.0, 0.0, 1.0);
 
-
-	// baseNoise = remapClamp(baseNoise, 1.0-weather.coverage, 1.0, 0.0, 1.0);
-
-	float erodeMask = 1.0 - baseNoise;
-	// baseNoise -= erodeMask * volNoises.g;
-
-	// if (simplified <= 1.0) {
-	// 	// baseNoise = remapClamp(baseNoise, volNoise * erodeMask, 1.0, 0.0, 1.0);
-	// 	baseNoise = remapClamp(baseNoise, volNoise, 1.0, 0.0, 1.0);// * heightGradient;
-
-	// 	if (baseNoise > 0.0 && simplified < 0.25) {
-	// 		float detailNoise = abs(fastFbm3d(p / 3000.0));
-	// 		baseNoise = remapClamp(baseNoise, detailNoise * erodeMask * 0.5, 1.0, 0.0, 1.0);
-	// 	}
-	// 	// if (baseNoise > 0.0 && simplified < 0.25) {
-	// 	// 	float fuzzNoise = abs(fastRidge3d(p / 1000.0));
-	// 	// 	baseNoise = remapClamp(baseNoise, fuzzNoise * erodeMask * 0.25, 1.0, 0.0, 1.0);
-	// 	// }
-	// }
+	float erodeMask = (1.0 - baseNoise) * erosionMult * weather.ecentricity;
 
 	return CloudSpotDetails(
 		clamp(baseNoise, 0.00, 1.0),
