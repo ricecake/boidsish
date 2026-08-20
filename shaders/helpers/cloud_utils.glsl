@@ -206,18 +206,28 @@ float applyDynamicCoverage(float bakedCoverage, float uniformCoverage, float bia
 }
 
 float applyDynamicCoverage(float bakedCoverage, float uniformCoverage) {
-    // uniformCoverage at 0.5 = no change
-    // uniformCoverage at 1.0 = solid overcast
-    // uniformCoverage at 0.0 = clear skies
-	// return 1.0-smoothstep(2*uniformCoverage-1,2*uniformCoverage,bakedCoverage);
-    // return clamp(bakedCoverage + (uniformCoverage * 2.0 - 1.0), 0.0, 1.0);
-	// return 6*(bakedCoverage+(uniformCoverage*2.0 -1));
-	// return 1.0-smoothstep(uniformCoverage-0.25, uniformCoverage, bakedCoverage - (uniformCoverage * 0.25));
-	// return 1.0-smoothstep(uniformCoverage-0.5*uniformCoverage, uniformCoverage, bakedCoverage - (uniformCoverage * uniformCoverage * 0.5));
-	// return schlickBias(clamp(bakedCoverage + (uniformCoverage * 2.0 - 1.0), 0.0, 1.0), uniformCoverage);
-	// return schlickBias(bakedCoverage, uniformCoverage);
-	return applyDynamicCoverage(bakedCoverage, uniformCoverage, 1.0);
+    float coverageFloor = 1.0 - (uniformCoverage * 2.0);
+
+    float remapped = saturate((bakedCoverage - coverageFloor) / (1.0 - min(0.0, coverageFloor)));
+
+	return schlickGain(remapped, 0.1);
 }
+
+
+// float applyDynamicCoverage(float bakedCoverage, float uniformCoverage) {
+//     // uniformCoverage at 0.5 = no change
+//     // uniformCoverage at 1.0 = solid overcast
+//     // uniformCoverage at 0.0 = clear skies
+// 	// return 1.0-smoothstep(2*uniformCoverage-1,2*uniformCoverage,bakedCoverage);
+//     // return clamp(bakedCoverage + (uniformCoverage * 2.0 - 1.0), 0.0, 1.0);
+// 	// return 6*(bakedCoverage+(uniformCoverage*2.0 -1));
+// 	// return 1.0-smoothstep(uniformCoverage-0.25, uniformCoverage, bakedCoverage - (uniformCoverage * 0.25));
+// 	// return 1.0-smoothstep(uniformCoverage-0.5*uniformCoverage, uniformCoverage, bakedCoverage - (uniformCoverage * uniformCoverage * 0.5));
+// 	// return schlickBias(clamp(bakedCoverage + (uniformCoverage * 2.0 - 1.0), 0.0, 1.0), uniformCoverage);
+// 	// return schlickBias(bakedCoverage, uniformCoverage);
+// 	return applyDynamicCoverage(bakedCoverage, uniformCoverage, 1-uniformCoverage);
+// }
+
 
 CloudWeather loadCloudWeather(vec3 p, CloudProperties props, vec4 tex) {
 	CloudWeather weather;
