@@ -204,7 +204,7 @@ CloudDensityResult calculateCloudDensity(
 	}
 
 	// Sample the 3D cloud volume texture with slower advection speed
-	vec3 advect_3d = time * max(advectSpeed * 0.75, vec3(25.0, 0.0, 25.0));
+	vec3 advect_3d = time * max(advectSpeed * 0.75, vec3(50.0, 0.0, 50.0));
 	vec3 p_advected_3d = p + advect_3d;
 	// vec3 uvw = vec3(
 	// 	p_advected_3d.x / (100000.0 * props.worldScale),
@@ -212,7 +212,7 @@ CloudDensityResult calculateCloudDensity(
 	// 	p_advected_3d.z / (100000.0 * props.worldScale)
 	// );
 
-	float volumeScale = 10000.0 * props.worldScale;
+	float volumeScale = 15000.0 * props.worldScale;
 	vec3 uvw = p_advected_3d / volumeScale;
 	vec4 volSample = textureLod(u_cloud3DTexture, uvw, clamp(simplified * 4.0, 0.0, 4.0));
 

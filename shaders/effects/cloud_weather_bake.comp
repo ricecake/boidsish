@@ -40,8 +40,8 @@ float regionalFbm(vec2 p, float period) {
 	float amp = 0.5;
 	float freq = 1.0;
 	vec2 rPeriod = vec2(period);
-	for (int i = 0; i < 3; i++) {
-		val += amp * (0.5 + 0.5 * psrdnoise(p * freq * rPeriod, rPeriod * freq));
+	for (int i = 0; i < 4; i++) {
+		val += amp * (0.5 + 0.5 * psrdnoise((p+val) * freq * rPeriod, rPeriod * freq));
 		amp *= 0.5;
 		freq *= 2.0;
 	}
@@ -103,9 +103,10 @@ void main() {
 
 	vec2 p = uv;
 
-	WorleyData2D worleyDetails = worley2d_tiling_id(p * period4, period4);
+	// WorleyData2D worleyDetails = worley2d_tiling_id(p * period4, period4);
+	HierarchicalWorleyData2D worleyDetails =hierarchicalWorleyTiled(p * period4, period4);
 
-	float worley = pow(worleyDetails.f1_dist, 2);
+	float worley = pow(worleyDetails.f1_dist, 3);
 	float macro = uncenter(regionalFbm(p, period1));
 
 	float finalCoverage = remapClamp(macro, worley, 1.0, 0.0, 1.0);
@@ -129,7 +130,7 @@ void main() {
 	// float thickness = localFbm(uv, period3, trash);
 	// float density = localFbm(uv, period2, trash);
 
-	imageStore(outWeatherMap, pixel, vec4(finalCoverage, 0.0, 1.0-thickness.f1_dist, 1.0-density.f1_dist));
+	imageStore(outWeatherMap, pixel, vec4(finalCoverage, 0.10, 0.25, 1.0-density.f1_dist));
 	// imageStore(outWeatherMap, pixel, vec4(finalCoverage, 0.0, 0.5, 1.0));
 	imageStore(outMinMaxMap, pixel, vec4(finalCoverage, finalCoverage, 0.0, 0.0));
 
