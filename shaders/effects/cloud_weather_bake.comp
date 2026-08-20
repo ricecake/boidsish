@@ -35,36 +35,33 @@ float adjust(float value, float scaly) {
 	return clamp((remap(a, f, f + h)), 0.0, 1.0);
 }
 
-float regionalFbm(vec2 p, float period) {
-	float val = 0.0;
-	float amp = 0.5;
-	float freq = 1.0;
-	vec2 rPeriod = vec2(period);
-	for (int i = 0; i < 4; i++) {
-		val += amp * (0.5 + 0.5 * psrdnoise((p+val) * freq * rPeriod, rPeriod * freq));
-		amp *= 0.5;
-		freq *= 2.0;
-	}
-	return val;
-}
-
-float localFbm(vec2 p, float period, out WorleyData2D data) {
+float localFbm(vec2 p, float period) {
 	float val = 0.0;
 	float amp = 0.5;
 	float freq = 1.0;
 	for (int i = 0; i < 5; i++) {
-		// freq += i / 31.0;
 		WorleyData2D worleyDetails = worley2d_tiling_id(p * freq * period, period * freq);
-		if (i == 0) {
-			data = worleyDetails;
-		}
-		val += amp * (worleyDetails.f1_dist);
+		val += amp * (1.0 - worleyDetails.f1_dist);
 		amp *= 0.5;
 		freq *= 2.0;
 	}
 	return val;
 }
 
+float regionalFbm(vec2 p, float period) {
+	float val = 0.0;
+	float amp = 0.5;
+	float freq = 1.0;
+	// float warp = (0.5 + 0.5 * psrdnoise((p+val) * freq * rPeriod, rPeriod * freq));
+	float warp = localFbm(p, max(period * 0.25, 1.0));
+	vec2 rPeriod = vec2(period);
+	for (int i = 0; i < 4; i++) {
+		val += amp * (0.5 + 0.5 * psrdnoise((p+warp) * freq * rPeriod, rPeriod * freq));
+		amp *= 0.5;
+		freq *= 2.0;
+	}
+	return val;
+}
 
 float posNoise(vec2 p, float period) {
 	return uncenter(psrdnoise(p * period, vec2(period)));
@@ -88,6 +85,27 @@ float schlickBias(float x, float g) {
 	return xx / (k * (1.0 - xx) + 1.0);
 }
 
+// struct HierarchicalWorleyData2D {
+//     float f1_dist;
+//     float f2_dist;
+//     vec2 f1_pos;
+//     vec2 f2_pos;
+//     float f1_level;
+//     float f2_level;
+//     float f1_id;
+//     float f2_id;
+//     vec2 p;
+// };
+
+// struct WorleyData2D {
+// 	float f1_dist;
+// 	float f2_dist;
+// 	vec2 f1;
+// 	vec2 f2;
+// 	vec2 p;
+// };
+
+
 
 void main() {
 	ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
@@ -96,6 +114,8 @@ void main() {
 
 	vec2 uv = (vec2(pixel) + 0.5) / vec2(size);
 
+	float period00 = 64.0;
+	float period0 = 32.0;
 	float period1 = 16.0;
 	float period2 = 8.0;
 	float period3 = 4.0;
@@ -103,35 +123,24 @@ void main() {
 
 	vec2 p = uv;
 
-	// WorleyData2D worleyDetails = worley2d_tiling_id(p * period4, period4);
-	HierarchicalWorleyData2D worleyDetails =hierarchicalWorleyTiled(p * period4, period4);
+	float macro = (regionalFbm(p, period0));
 
-	float worley = pow(worleyDetails.f1_dist, 3);
-	float macro = uncenter(regionalFbm(p, period1));
+	HierarchicalWorleyData2D worleyDetails = hierarchicalWorleyTiled(p * period1, period1);
+	float worley = pow(worleyDetails.f1_dist, 1.5);
 
 	float finalCoverage = remapClamp(macro, worley, 1.0, 0.0, 1.0);
 
-	WorleyData2D trash;
-
-	float centerNote1 = posNoise(p, period3);
-	float centerNote2 = posNoise(p, period2);
-	float diff1 = 0.5 - centerNote1;
-	float diff2 = 0.5 - centerNote2;
-
-	// float thickness = centerNote2 + diff2 * clamp(1.0-localFbm(uv, period3, trash), 0.0, 1.0);
-	// float height = smoothstep(thickness, 1.0, centerNote1 + diff1 * clamp(localFbm(uv, period3, trash), 0.0, 1.0));
-	// float density = clamp(height - height*localFbm(uv, period2, trash), 0.0, finalCoverage);
-
-	WorleyData2D height = worley2d_tiling_id(uv/8.0, 1.0);
-	WorleyData2D thickness = worley2d_tiling_id(uv * period3, period3);
 	WorleyData2D density = worley2d_tiling_id(uv * period2, period2);
+	WorleyData2D thickness = worley2d_tiling_id(uv * period3, period3);
+	WorleyData2D type = worley2d_tiling_id(uv * period4, period4);
 
-	// float height = localFbm(uv, period4, trash);
-	// float thickness = localFbm(uv, period3, trash);
-	// float density = localFbm(uv, period2, trash);
+	float typeTransition = smoothstep(0, 0.005, abs(type.f2_dist - type.f1_dist));
+	float typeValue = mix(hash12Tile(type.f1, vec2(0.0)), hash12Tile(type.f1, vec2(0.0)), typeTransition);
 
-	imageStore(outWeatherMap, pixel, vec4(finalCoverage, 1.0-height.f1_dist, 0.25, 1.0-density.f1_dist));
-	// imageStore(outWeatherMap, pixel, vec4(finalCoverage, 0.0, 0.5, 1.0));
+	finalCoverage *= typeTransition;
+
+	imageStore(outWeatherMap, pixel, vec4(finalCoverage, typeValue, 0, 1.0));
+	// imageStore(outWeatherMap, pixel, vec4(finalCoverage, schlickBias(finalCoverage, 0.2), 0, 1.0));
 	imageStore(outMinMaxMap, pixel, vec4(finalCoverage, finalCoverage, 0.0, 0.0));
 
 	// vec2 cellId = worleyDetails.yz;

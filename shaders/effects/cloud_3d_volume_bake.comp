@@ -63,7 +63,7 @@ void main() {
 	// 1. R Channel: Tiling 3D noise (Simplex noise carved by Worley FBM in HZD fashion)
 	float noiseVal = computeSimplexWorley(p);
 
-	vec3 periodBase = vec3(32.0, 32.0, 32.0);
+	vec3 periodBase = vec3(8.0, 8.0, 8.0);
 
 	float worleySmall = localFbm(p, periodBase * 4);
 	float worleyMedium = localFbm(p, periodBase * 2);
