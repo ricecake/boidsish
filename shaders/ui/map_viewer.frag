@@ -8,7 +8,7 @@ uniform vec3 uCameraFront;
 uniform float uViewScale;
 uniform vec2 uViewOffset;
 
-uniform int uSelectedLayer; // 0: Combined, 1: Raw Cloud Map, 2: Cloud Effective Coverage, 3: Deep Opacity Map, 4: LBM Simulation, 5: Terrain Height, 6: Terrain Color, 7: Baked Wind
+uniform int uSelectedLayer; // 0: Combined, 1: Raw Cloud Map, 2: Cloud Effective Coverage, 3: Rain Level Map, 4: Deep Opacity Map, 5: LBM Simulation, 6: Terrain Height, 7: Terrain Color, 8: Baked Wind
 uniform bool uShowWind;
 uniform bool uShowTemperature;
 uniform bool uShowHumidity;
@@ -125,12 +125,16 @@ void main() {
         // Blend effective coverage over the shaded terrain so you can see where clouds form relative to terrain!
         baseColor = mix(terrainShaded, vec3(1.0, 1.0, 1.0), effectiveCoverage * 0.8);
     }
-    else if (uSelectedLayer == 3) { // Deep Opacity Map (raw optical depth at layer 7)
+    else if (uSelectedLayer == 3) { // Rain Level Map
+        float rainVal = cloudData.a; // .a stores rain level
+        baseColor = mix(terrainShaded, vec3(0.2, 0.5, 0.95), rainVal * 0.85);
+    }
+    else if (uSelectedLayer == 4) { // Deep Opacity Map (raw optical depth at layer 7)
         // Show optical depth as a red-hot thermal map or raw gray on terrain
         float depth = clamp(shadowDensity * 0.01, 0.0, 1.0);
         baseColor = mix(terrainShaded, vec3(1.0, 0.2, 0.1), depth);
     }
-    else if (uSelectedLayer == 4) { // LBM Simulation
+    else if (uSelectedLayer == 5) { // LBM Simulation
         // Start with shaded terrain and apply LBM bounds base if in bounds
         vec2 lbmLocalPos = (worldXZ - vec2(uLbmGridOrigin.x, uLbmGridOrigin.y) * uLbmSpacing);
         vec2 lbmUV = lbmLocalPos / (vec2(uLbmGridSize) * uLbmSpacing);
@@ -140,7 +144,7 @@ void main() {
             baseColor = mix(terrainShaded, terrainShaded * 1.1, 0.1);
         }
     }
-    else if (uSelectedLayer == 5) { // Terrain Height
+    else if (uSelectedLayer == 6) { // Terrain Height
         if (hasTerrain && surface.height > -9000.0) {
             float normHeight = clamp((surface.height + 100.0) / 2000.0, 0.0, 1.0);
             baseColor = vec3(normHeight);
@@ -148,10 +152,10 @@ void main() {
             baseColor = vec3(0.0);
         }
     }
-    else if (uSelectedLayer == 6) { // Terrain Color
+    else if (uSelectedLayer == 7) { // Terrain Color
         baseColor = terrainShaded;
     }
-    else if (uSelectedLayer == 7) { // Baked Wind Base
+    else if (uSelectedLayer == 8) { // Baked Wind Base
         baseColor = terrainShaded;
     }
 

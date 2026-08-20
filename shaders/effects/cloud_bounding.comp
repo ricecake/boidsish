@@ -51,8 +51,14 @@ void main() {
 
 	t_end = min(t_end, dist);
 
+	// Evaluate analytical rain bounding metric along the ray below cloud base
+	vec3 p_rain = viewPos + rayDir * min(dist, max(0.0, t_start));
+	vec3 advect = getCloudWindOffset(time);
+	vec2 rainUV = fract((p_rain + advect).xz / (100000.0 * worldScale));
+	float rainLevel = textureLod(u_cloudWeatherMinMaxTexture, rainUV, 2.0).w;
+
 	if (cloudCoverage >= 1.0) {
-		imageStore(outBoundingMap, pixel, vec4(t_start, t_end, 1.0, 0.0));
+		imageStore(outBoundingMap, pixel, vec4(t_start, t_end, 1.0, rainLevel));
 		return;
 	}
 
@@ -69,15 +75,13 @@ void main() {
 			if (t >= t_end) break;
 
 			vec3 p = viewPos + rayDir * t;
-			vec3 advect = getCloudWindOffset(time);
 			vec3 p_advected = p + advect;
 			vec2 weatherUV = p_advected.xz / (100000.0 * worldScale);
 
 			// Wrap horizontally
 			weatherUV = fract(weatherUV);
 
-			vec2 minMax = textureLod(u_cloudWeatherMinMaxTexture, weatherUV, float(L)).rg;
-			// float maxDensity = clamp(minMax.y + (cloudCoverage * 2.0 - 1.0), 0.0, 1.0);
+			vec4 minMax = textureLod(u_cloudWeatherMinMaxTexture, weatherUV, float(L));
 			float maxDensity = applyDynamicCoverage(minMax.y, cloudCoverage);
 
 			if (maxDensity <= 0.001) {
@@ -105,7 +109,6 @@ void main() {
 
 				dt = clamp(dt, baseStepSize, 2000.0 * worldScale);
 				t += dt;
-				// L = min(6, L + 1);
 				L = clamp(L + 1, 0, 10);
 			}
 			else {
@@ -125,5 +128,5 @@ void main() {
 		}
 	}
 
-	imageStore(outBoundingMap, pixel, vec4(firstHit, lastHit, totalDensity, 0.0));
+	imageStore(outBoundingMap, pixel, vec4(firstHit, lastHit, totalDensity, rainLevel));
 }

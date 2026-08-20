@@ -103,7 +103,17 @@ void main() {
 		t += baseStepSize;
 	}
 
+	// Analytical rain attenuation for shadow layers below cloud base
+	vec3 advect = getCloudWindOffset(time);
+	vec2 rainUV = fract((rayStart + advect).xz / (100000.0 * worldScale));
+	float rainLevel = textureLod(u_cloudWeatherMinMaxTexture, rainUV, 1.0).w;
+
+	float rainDensityContribution = rainLevel * cloudCoverage * 50.0 * worldScale;
+
 	for (int k = 0; k < 8; ++k) {
-		imageStore(outShadowMap, ivec3(pixel, k), vec4(accumulated[k], 0.0, 0.0, 0.0));
+		// Layer 7 is bottom-most slice (ground)
+		float layerRainFactor = float(k + 1) / 8.0;
+		float totalShadowDensity = accumulated[k] + rainDensityContribution * layerRainFactor;
+		imageStore(outShadowMap, ivec3(pixel, k), vec4(totalShadowDensity, 0.0, 0.0, 0.0));
 	}
 }

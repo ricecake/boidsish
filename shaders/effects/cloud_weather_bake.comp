@@ -3,7 +3,7 @@
 layout(local_size_x = 16, local_size_y = 16) in;
 
 layout(binding = 0, rgba16f) uniform image2D outWeatherMap;
-layout(binding = 1, rg16f) uniform image2D outMinMaxMap;
+layout(binding = 1, rgba16f) uniform image2D outMinMaxMap;
 
 layout(std430, binding = [[CLOUD_SEEDS_BINDING]] ) buffer CloudSeeds {
 	vec4 seeds[]; // x: worldX, y: worldZ, z: SDF, w: isCloudy
@@ -126,13 +126,13 @@ void main() {
 	WorleyData2D thickness = worley2d_tiling_id(uv * period3, period3);
 	WorleyData2D density = worley2d_tiling_id(uv * period2, period2);
 
-	// float height = localFbm(uv, period4, trash);
-	// float thickness = localFbm(uv, period3, trash);
-	// float density = localFbm(uv, period2, trash);
+	float densityVal = 1.0 - density.f1_dist;
 
-	imageStore(outWeatherMap, pixel, vec4(finalCoverage, 1.0-height.f1_dist, 0.25, 1.0-density.f1_dist));
-	// imageStore(outWeatherMap, pixel, vec4(finalCoverage, 0.0, 0.5, 1.0));
-	imageStore(outMinMaxMap, pixel, vec4(finalCoverage, finalCoverage, 0.0, 0.0));
+	// Calculate rain level based on cloud coverage and density/thickness
+	float rainLevel = smoothstep(0.35, 0.85, finalCoverage) * smoothstep(0.2, 0.8, densityVal);
+
+	imageStore(outWeatherMap, pixel, vec4(finalCoverage, 1.0-height.f1_dist, 0.25, rainLevel));
+	imageStore(outMinMaxMap, pixel, vec4(finalCoverage, finalCoverage, rainLevel, rainLevel));
 
 	// vec2 cellId = worleyDetails.yz;
 	// float cellID = psrdnoise(cellId, vec2(10.0)) * 0.5 + 0.5;
