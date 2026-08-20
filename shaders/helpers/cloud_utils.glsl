@@ -382,6 +382,91 @@ float calculateCloudShadowFactor(vec3 frag_pos, vec3 L, float intensity) {
 	return mix(1.0, shadowTerm, intensity);
 }
 
+struct RainResult {
+	vec3 transmittance;
+	vec3 scattering;
+};
+
+/**
+ * Analytical rain column evaluation along ray below cloud base down to ground/terrain.
+ * Rain has distinct optical properties (rainExtinction, rainScatteringAlbedo, Henyey-Greenstein rainPhase).
+ */
+RainResult evaluateRainAnalytical(
+	vec3 rayStart,
+	vec3 rayDir,
+	float rayMaxDist,
+	CloudProperties props,
+	float timeVal,
+	vec3 sunDir,
+	vec3 sunColor,
+	vec3 skyAmbient
+) {
+	RainResult res;
+	res.transmittance = vec3(1.0);
+	res.scattering = vec3(0.0);
+
+	float R_earth = 6360.0 * 1000.0 * props.worldScale;
+	float cloudBaseAlt = props.altitude * props.worldScale;
+	float maxRainDist = 15000.0 * props.worldScale;
+
+	vec3 earthCenter = vec3(rayStart.x, -R_earth, rayStart.z);
+	float altStart = length(rayStart - earthCenter) - R_earth;
+
+	// Only compute rain if view/ray passes below the cloud base
+	if (altStart > cloudBaseAlt + 1000.0 * props.worldScale && rayDir.y >= 0.0) {
+		return res;
+	}
+
+	// Calculate distance segment ray spends under cloud base down to ground (altitude 0)
+	float t_entry = 0.0;
+	float t_exit = rayMaxDist;
+
+	if (altStart > cloudBaseAlt) {
+		if (abs(rayDir.y) > 1e-5) {
+			t_entry = max(0.0, (cloudBaseAlt - altStart) / rayDir.y);
+		}
+	}
+
+	if (t_entry >= rayMaxDist) {
+		return res;
+	}
+
+	vec3 p_rain = rayStart + rayDir * t_entry;
+	vec3 windOffset = getCloudWindOffset(timeVal);
+	vec2 rainUV = fract((p_rain + windOffset * 0.5).xz / (100000.0 * props.worldScale));
+
+	vec4 weatherTex = textureLod(u_cloudWeatherTexture, rainUV, 1.0);
+	float rainLevel = clamp(weatherTex.a, 0.0, 1.0);
+	float cloudCoverage = applyDynamicCoverage(weatherTex.r, props.coverage);
+
+	if (rainLevel < 0.01 || cloudCoverage < 0.05) {
+		return res;
+	}
+
+	float pathLength = min(rayMaxDist - t_entry, maxRainDist);
+	if (pathLength <= 0.0) return res;
+
+	// Distinct physical optical properties for rain
+	float rainExtinctionCoeff = rainLevel * cloudCoverage * 0.00015 / max(0.001, props.worldScale);
+	vec3 rainAlbedo = vec3(0.70, 0.80, 0.92); // Rain drop scattering albedo
+
+	float opticalDepth = rainExtinctionCoeff * pathLength;
+	vec3 transmittance = exp(-vec3(opticalDepth));
+
+	// Rain scattering phase function (strong forward lobe)
+	float cosTheta = dot(rayDir, sunDir);
+	float rainPhase = henyeyGreenstein(0.85, cosTheta);
+
+	vec3 directLight = sunColor * rainPhase * rainAlbedo;
+	vec3 ambientLight = skyAmbient * rainAlbedo * 0.5;
+
+	vec3 inScattering = (directLight + ambientLight) * (vec3(1.0) - transmittance);
+
+	res.transmittance = transmittance;
+	res.scattering = inScattering;
+	return res;
+}
+
 /**
  * Calculate local ambient occlusion from clouds at a fragment position using the deep opacity map.
  */

@@ -674,6 +674,33 @@ void main() {
 		cloudColor = lightEnergy * cloudColorUniform;
 	}
 
+	// Analytical Rain Pass (executed independently below cloud base)
+	vec3 primarySunDir = vec3(0, 1, 0);
+	vec3 primarySunColor = vec3(1.0);
+	for (int j = 0; j < num_lights; j++) {
+		if (lights[j].type == LIGHT_TYPE_DIRECTIONAL) {
+			primarySunDir = normalize(-lights[j].direction);
+			primarySunColor = lights[j].color.rgb * lights[j].intensity;
+			break;
+		}
+	}
+
+	vec3 skySHAmbient = evalSHIrradianceSpatial(viewPos, vec3(0, 1, 0));
+	RainResult rainRes = evaluateRainAnalytical(
+		viewPos,
+		canonicalRayDir,
+		dist,
+		props,
+		time,
+		primarySunDir,
+		primarySunColor,
+		skySHAmbient
+	);
+
+	// Composite cloud and analytical rain passes
+	cloudColor = cloudColor * rainRes.transmittance + rainRes.scattering;
+	cloudTransmittance *= rainRes.transmittance;
+
 	vec4 finalColor = vec4(cloudColor, dot(cloudTransmittance, vec3(0.3333)));
 	// vec4 finalColor = vec4(mix(vec3(0,10,0), vec3(10,0,0), smoothstep(0, 100, magic_stepping)), 0.0);
 	// vec4 finalColor = vec4(mix(vec3(0,10,0), vec3(10,0,0), smoothstep(0, 100, firstHitDist/firstHitStep)), 0.0);
