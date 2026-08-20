@@ -94,10 +94,10 @@ namespace Boidsish {
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
-		// Cloud Weather Min-Max Density Map: 2048x2048 RG16F (12 levels, min-max mipmaps)
+		// Cloud Weather Min-Max Density Map: 2048x2048 RGBA16F (12 levels, min-max mipmaps for cloud & rain)
 		glGenTextures(1, &_cloudWeatherMinMaxTexture);
 		glBindTexture(GL_TEXTURE_2D, _cloudWeatherMinMaxTexture);
-		glTexStorage2D(GL_TEXTURE_2D, 12, GL_RG16F, 2048, 2048);
+		glTexStorage2D(GL_TEXTURE_2D, 12, GL_RGBA16F, 2048, 2048);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
@@ -249,7 +249,7 @@ namespace Boidsish {
 			_cloudBakeShader->setFloat("uCloudThickness", _cloudThickness);
 			_cloudBakeShader->setFloat("uWorldScale", worldScale);
 			glBindImageTexture(0, _cloudWeatherTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
-			glBindImageTexture(1, _cloudWeatherMinMaxTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RG16F);
+			glBindImageTexture(1, _cloudWeatherMinMaxTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::CloudSeeds(), _cloudSeedsBuffer);
 			GpuResourceRegistry::Instance().BindTextures({Constants::TextureUnit::NoiseExtra()});
 			glDispatchCompute(2048 / 16, 2048 / 16, 1);
@@ -271,7 +271,7 @@ namespace Boidsish {
 				int dstWidth = std::max(1, 2048 >> dstLevel);
 				int dstHeight = std::max(1, 2048 >> dstLevel);
 
-				glBindImageTexture(0, _cloudWeatherMinMaxTexture, dstLevel, GL_FALSE, 0, GL_WRITE_ONLY, GL_RG16F);
+				glBindImageTexture(0, _cloudWeatherMinMaxTexture, dstLevel, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 				_cloudMipShader->setInt("u_srcLevel", srcLevel);
 
 				glDispatchCompute((dstWidth + 7) / 8, (dstHeight + 7) / 8, 1);
@@ -638,18 +638,19 @@ namespace Boidsish {
 		glGenerateMipmap(GL_TEXTURE_2D);
 		glBindTexture(GL_TEXTURE_2D, 0);
 
-		// 2. Generate min-max texture Level 0 from R-channel (dist/coverage)
-		std::vector<glm::vec2> minMaxData(2048 * 2048);
+		// 2. Generate min-max texture Level 0 from R-channel (coverage) and A-channel (rain)
+		std::vector<glm::vec4> minMaxData(2048 * 2048);
 		for (size_t i = 0; i < floatPixels.size(); ++i) {
 			float f1_dist = floatPixels[i].r;
 			float coverage = 1.0f - f1_dist;
 			float finalCoverage = glm::clamp(coverage, 0.0f, 1.0f);
 			float t = glm::clamp((finalCoverage - 0.05f) / (1.0f - 0.05f), 0.0f, 1.0f);
 			finalCoverage = t * t * (3.0f - 2.0f * t);
-			minMaxData[i] = glm::vec2(finalCoverage, finalCoverage);
+			float rainLevel = glm::clamp(floatPixels[i].a, 0.0f, 1.0f);
+			minMaxData[i] = glm::vec4(finalCoverage, finalCoverage, rainLevel, rainLevel);
 		}
 		glBindTexture(GL_TEXTURE_2D, _cloudWeatherMinMaxTexture);
-		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 2048, 2048, GL_RG, GL_FLOAT, minMaxData.data());
+		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 2048, 2048, GL_RGBA, GL_FLOAT, minMaxData.data());
 		glBindTexture(GL_TEXTURE_2D, 0);
 
 		// 3. Rerun the custom min-max mipmap downsampling shader
@@ -663,7 +664,7 @@ namespace Boidsish {
 			int dstWidth = std::max(1, 2048 >> dstLevel);
 			int dstHeight = std::max(1, 2048 >> dstLevel);
 
-			glBindImageTexture(0, _cloudWeatherMinMaxTexture, dstLevel, GL_FALSE, 0, GL_WRITE_ONLY, GL_RG16F);
+			glBindImageTexture(0, _cloudWeatherMinMaxTexture, dstLevel, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 			_cloudMipShader->setInt("u_srcLevel", srcLevel);
 
 			glDispatchCompute((dstWidth + 7) / 8, (dstHeight + 7) / 8, 1);
@@ -732,12 +733,12 @@ namespace Boidsish {
 	void AtmosphereManager::RebakeWeatherMinMaxAndVolume() {
 		if (!_cloudMinMaxInitShader || !_cloudMipShader || !_cloudVolumeBakeShader) return;
 
-		// 1. Re-initialize Level 0 of _cloudWeatherMinMaxTexture from R channel of _cloudWeatherTexture
+		// 1. Re-initialize Level 0 of _cloudWeatherMinMaxTexture from R and A channels of _cloudWeatherTexture
 		_cloudMinMaxInitShader->use();
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, _cloudWeatherTexture);
 		_cloudMinMaxInitShader->setInt("u_weatherMap", 0);
-		glBindImageTexture(0, _cloudWeatherMinMaxTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RG16F);
+		glBindImageTexture(0, _cloudWeatherMinMaxTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 		glDispatchCompute(2048 / 16, 2048 / 16, 1);
 		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
 
@@ -756,7 +757,7 @@ namespace Boidsish {
 			int dstWidth = std::max(1, 2048 >> dstLevel);
 			int dstHeight = std::max(1, 2048 >> dstLevel);
 
-			glBindImageTexture(0, _cloudWeatherMinMaxTexture, dstLevel, GL_FALSE, 0, GL_WRITE_ONLY, GL_RG16F);
+			glBindImageTexture(0, _cloudWeatherMinMaxTexture, dstLevel, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 			_cloudMipShader->setInt("u_srcLevel", srcLevel);
 
 			glDispatchCompute((dstWidth + 7) / 8, (dstHeight + 7) / 8, 1);

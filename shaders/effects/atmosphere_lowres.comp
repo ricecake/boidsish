@@ -459,7 +459,7 @@ void main() {
 
 	float t_start = 1e10;
 	float t_end = -1e10;
-	intersectCloudShell(viewPos, rayDir, worldScale, t_start, t_end);
+	intersectCloudAndRainShell(viewPos, rayDir, worldScale, t_start, t_end);
 
 	t_end = min(t_end, dist);
 

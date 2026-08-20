@@ -52,7 +52,7 @@ void main() {
 
 	float t_start = 1e10;
 	float t_end = -1e10;
-	intersectCloudShell(rayStart, rayDir, worldScale, t_start, t_end);
+	intersectCloudAndRainShell(rayStart, rayDir, worldScale, t_start, t_end);
 
 	if (t_start >= t_end) {
 		for (int k = 0; k < 8; ++k) {
@@ -84,8 +84,10 @@ void main() {
 		// Wrap horizontally
 		weatherUV = fract(weatherUV);
 
-		vec2 minMax = textureLod(u_cloudWeatherMinMaxTexture, weatherUV, float(L)).rg;
-		float maxDensity = applyDynamicCoverage(minMax.y, cloudCoverage);
+		vec4 minMax = textureLod(u_cloudWeatherMinMaxTexture, weatherUV, float(L));
+		float maxCloud = applyDynamicCoverage(minMax.y, cloudCoverage);
+		float maxRain = minMax.w;
+		float maxDensity = max(maxCloud, maxRain * 0.5);
 		CloudWeather weather = computeCloudWeather(p, props);
 
 		float h = getCloudRelativeHeight(p, weather);

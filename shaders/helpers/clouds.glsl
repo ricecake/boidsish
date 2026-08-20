@@ -176,45 +176,50 @@ CloudDensityResult calculateCloudDensity(
 	float h = getCloudRelativeHeight(p, weather, localFloor, actualThickness);
 	vec3 advectSpeed = getCloudAdvectionSpeed(h, time);
 	CloudDensityResult pointDetails = CloudDensityResult(vec3(0.0), advectSpeed, 1.0, vec3(1.0), vec3(0.0));
-	if (p.y < localFloor || p.y > (localFloor + actualThickness)) {
-		return pointDetails;
+
+	// 1. Inside Cloud Layer
+	if (p.y >= localFloor && p.y <= (localFloor + actualThickness)) {
+		vec3 advect_3d = time * max(advectSpeed * 0.75, vec3(50.0, 0.0, 50.0));
+		vec3 p_advected_3d = p + advect_3d;
+
+		float volumeScale = 15000.0 * props.worldScale;
+		vec3 uvw = p_advected_3d / volumeScale;
+		vec4 volSample = textureLod(u_cloud3DTexture, uvw, clamp(lod * 4.0, 0.0, 4.0));
+
+		CloudSpotDetails res = calculateCloudDensity(p, weather, props, time, lod, volSample);
+		float finalDensity = res.density;
+
+		vec3 mixedDensity = res.relativeExtinction * finalDensity;
+		vec3 mixedAlbedo = vec3(1.0);
+
+		return CloudDensityResult(mixedDensity, advectSpeed, 1.0, mixedAlbedo, vec3(0.0));
 	}
 
-	// Sample the 3D cloud volume texture with slower advection speed
-	vec3 advect_3d = time * max(advectSpeed * 0.75, vec3(50.0, 0.0, 50.0));
-	vec3 p_advected_3d = p + advect_3d;
-	// vec3 uvw = vec3(
-	// 	p_advected_3d.x / (100000.0 * props.worldScale),
-	// 	h,
-	// 	p_advected_3d.z / (100000.0 * props.worldScale)
-	// );
+	// 2. Below Cloud Base (Rain Column Shafts)
+	if (p.y < localFloor && weather.rain > 0.01 && weather.coverage > 0.1) {
+		float distBelowBase = localFloor - p.y;
+		float maxRainDist = 15000.0 * props.worldScale; // Max rain shaft drop height
 
-	float volumeScale = 15000.0 * props.worldScale;
-	vec3 uvw = p_advected_3d / volumeScale;
-	vec4 volSample = textureLod(u_cloud3DTexture, uvw, clamp(lod * 4.0, 0.0, 4.0));
+		if (distBelowBase <= maxRainDist) {
+			float verticalFade = smoothstep(maxRainDist, 0.0, distBelowBase);
 
+			// Shear / wind offset for falling rain
+			vec3 windOffset = getCloudWindOffset(time);
+			vec3 p_rain = p + windOffset * 0.5;
 
-	// vec4 volSample = textureLod(u_cloud3DTexture, uvw, clamp(lod * 4.0, 0.0, 4.0));
-	// float volNoise = volSample.r;
-	// float volAo = volSample.g;
-	// float volAlbedoBasis = volSample.b;
-	// float volDensityBasis = volSample.a;
+			// Vertical streaking for rain columns
+			vec3 rainUV = vec3(p_rain.x / (3000.0 * props.worldScale), p_rain.y / (15000.0 * props.worldScale), p_rain.z / (3000.0 * props.worldScale));
+			float streakNoise = uncenter(psrdnoise(rainUV * vec3(2.0, 0.2, 2.0), vec3(8.0, 1.0, 8.0)));
 
-	CloudSpotDetails res = calculateCloudDensity(p, weather, props, time, lod, volSample);
+			float rainDensity = weather.rain * weather.coverage * verticalFade * (0.6 + 0.4 * streakNoise) * 0.35;
 
-	// Where the current system has density, the 3d volume adds variety and breaks up the linear nature.
-	float finalDensity = res.density;
-	if (finalDensity > 0.0) {
-		// finalDensity *= mix(0.4, 1.6, volNoise);
-		// finalDensity = adjust(finalDensity, 1.0-volNoise);
+			// Bluish/grey tint for rain shaft extinction/albedo
+			vec3 rainAlbedo = vec3(0.75, 0.82, 0.9);
+			return CloudDensityResult(vec3(rainDensity), advectSpeed, 1.0, rainAlbedo, vec3(0.0));
+		}
 	}
 
-	vec3 mixedDensity = res.relativeExtinction * finalDensity;
-	// vec3 mixedDensity = vec3(1)*finalDensity;
-	vec3 mixedAlbedo = vec3(1.0);//vec3(volAlbedoBasis);
-
-	// return CloudDensityResult(mixedDensity, advectSpeed, volAo, mixedAlbedo, smoothstep(0.8, 1.2, mixedDensity) * vec3(0,1,0));
-	return CloudDensityResult(mixedDensity, advectSpeed, 1.0, mixedAlbedo, vec3(0.0));
+	return pointDetails;
 }
 
 #endif // HELPERS_CLOUDS_GLSL

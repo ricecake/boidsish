@@ -3,7 +3,7 @@
 layout(local_size_x = 16, local_size_y = 16) in;
 
 layout(binding = 0) uniform sampler2D u_weatherMap;
-layout(binding = 0, rg16f) uniform writeonly image2D u_outMinMaxMap;
+layout(binding = 0, rgba16f) uniform writeonly image2D u_outMinMaxMap;
 
 void main() {
 	ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
@@ -11,7 +11,9 @@ void main() {
 	if (pixel.x >= size.x || pixel.y >= size.y) return;
 
 	vec2 uv = (vec2(pixel) + 0.5) / vec2(size);
-	float coverage = textureLod(u_weatherMap, uv, 0.0).r;
+	vec4 weather = textureLod(u_weatherMap, uv, 0.0);
+	float coverage = weather.r;
+	float rain = weather.a;
 
-	imageStore(u_outMinMaxMap, pixel, vec4(coverage, coverage, 0.0, 0.0));
+	imageStore(u_outMinMaxMap, pixel, vec4(coverage, coverage, rain, rain));
 }

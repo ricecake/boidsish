@@ -22,6 +22,7 @@ struct CloudWeather {
 	float density;
 	float heightMap;  // Altitude variety
 	float thickness;  // Thickness variety
+	float rain;       // Rain level
 	float ecentricity;
 	float curve;
 	float centerDist;
@@ -144,6 +145,34 @@ bool intersectCloudShell(vec3 ro, vec3 rd, float worldScale, out float t_start, 
 	return false;
 }
 
+bool intersectCloudAndRainShell(vec3 ro, vec3 rd, float worldScale, out float t_start, out float t_end) {
+	float R_earth = 6360.0 * 1000.0 * worldScale;
+	float R_floor = R_earth - 500.0 * worldScale; // Extends shell down to ground level for rain columns
+	float R_ceiling = R_earth + (cloudAltitude + 2.0 * cloudThickness + 500.0) * worldScale;
+
+	vec3 earthCenter = vec3(ro.x, -R_earth, ro.z);
+	vec3 relRo = ro - earthCenter;
+
+	t_start = 1e10;
+	t_end = -1e10;
+
+	float t0, t1;
+	if (intersectSphereLocal(relRo, rd, R_ceiling, t0, t1)) {
+		t_start = max(0.0, t0);
+		t_end = t1;
+
+		if (intersectSphereLocal(relRo, rd, R_floor, t0, t1)) {
+			if (t0 < 0.0) {
+				t_start = max(t_start, t1);
+			} else {
+				t_end = min(t_end, t0);
+			}
+		}
+		return t_start < t_end;
+	}
+	return false;
+}
+
 float getCurvedAltitude(vec3 p) {
 	// return p.y;
 	float R_earth = 6360.0 * 1000.0 * worldScale;
@@ -230,15 +259,11 @@ CloudWeather loadCloudWeather(vec3 p, CloudProperties props, vec4 tex) {
 	CloudWeather weather;
 	weather.p = p;
 
-	// Apply props.coverage as an offset/threshold to the baked coverage map
-	// weather.coverage = clamp(tex.r + (props.coverage * 2.0 - 1.0), 0.0, 1.0);
-	// weather.coverage = step(1.0-props.coverage, tex.r);
 	weather.coverage = applyDynamicCoverage(tex.r, props.coverage);
-	// weather.heightMap = tex.g;
-	// weather.thickness = tex.b;
 	weather.heightMap = mmix(0.05, 0.0, 0.75, tex.g);
 	weather.thickness = mmix(0.15, 1.0, 0.05, tex.g);
-	weather.density = tex.a * props.densityBase;
+	weather.rain = clamp(tex.a, 0.0, 1.0);
+	weather.density = props.densityBase;
 
 	// if (props.coverage >= 1.0) {
 	// 	weather.coverage = 1.0;

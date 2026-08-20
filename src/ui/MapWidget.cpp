@@ -182,7 +182,7 @@ namespace Boidsish {
             ImGui::SetNextWindowSize(ImVec2(650, 800), ImGuiCond_FirstUseEver);
             if (ImGui::Begin("Environmental Maps", &m_show)) {
 
-                ImGui::Combo("Map Layer", &m_selectedLayer, "Combined\0Raw Cloud Map\0Cloud Effective Coverage\0Deep Opacity Map\0LBM Simulation\0Terrain Height\0Terrain Color\0Baked Wind\0\0");
+                ImGui::Combo("Map Layer", &m_selectedLayer, "Combined\0Raw Cloud Map\0Cloud Effective Coverage\0Rain Level Map\0Deep Opacity Map\0LBM Simulation\0Terrain Height\0Terrain Color\0Baked Wind\0\0");
 
                 if (ImGui::CollapsingHeader("Display Channels", ImGuiTreeNodeFlags_DefaultOpen)) {
                     ImGui::Checkbox("Wind", &m_showWind); ImGui::SameLine();
@@ -238,13 +238,13 @@ namespace Boidsish {
                         ImGui::Checkbox("Coverage (R)", &m_channelMask[0]); ImGui::SameLine();
                         ImGui::Checkbox("Height (G)", &m_channelMask[1]); ImGui::SameLine();
                         ImGui::Checkbox("Thickness (B)", &m_channelMask[2]); ImGui::SameLine();
-                        ImGui::Checkbox("Density (A)", &m_channelMask[3]);
+                        ImGui::Checkbox("Rain Level (A)", &m_channelMask[3]);
 
                         ImGui::Text("Target Channel Values:");
                         if (m_channelMask[0]) ImGui::SliderFloat("Coverage (R) Target", &m_brushTargetValue[0], 0.0f, 1.0f);
                         if (m_channelMask[1]) ImGui::SliderFloat("Height (G) Target", &m_brushTargetValue[1], 0.0f, 1.0f);
                         if (m_channelMask[2]) ImGui::SliderFloat("Thickness (B) Target", &m_brushTargetValue[2], 0.0f, 1.0f);
-                        if (m_channelMask[3]) ImGui::SliderFloat("Density (A) Target", &m_brushTargetValue[3], 0.0f, 1.0f);
+                        if (m_channelMask[3]) ImGui::SliderFloat("Rain Level (A) Target", &m_brushTargetValue[3], 0.0f, 1.0f);
 
                         ImGui::SliderFloat("Brush Radius (World)", &m_brushRadiusWorld, 100.0f, 20000.0f);
                         ImGui::SliderFloat("Brush Strength", &m_brushStrength, 0.01f, 1.0f);
