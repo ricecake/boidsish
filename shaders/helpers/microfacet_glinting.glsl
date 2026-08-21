@@ -212,7 +212,7 @@ float calculate_glint_ndf(vec3 H, vec3 N, float roughness, float metallic, vec2 
 	float alpha = max(roughness * roughness, 0.0001);
 
 	// Derive glint parameters based on material properties
-	float g_density = mix(1000.0, 5000.0, clamp(roughness, 0.0, 1.0));
+	float g_density = mix(10000.0, 50000.0, clamp(roughness, 0.0, 1.0));
 	float g_alpha = mix(0.01, 0.005, clamp(roughness, 0.0, 1.0));
 
 	mat3 invTBN = transpose(get_tangent_basis(N));
