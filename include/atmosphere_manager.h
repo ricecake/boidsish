@@ -209,6 +209,20 @@ namespace Boidsish {
 		bool ExportCloudWeatherMap(const std::string& filepath);
 		bool ImportCloudWeatherMap(const std::string& filepath);
 
+		void PaintWeatherMap(
+			const glm::vec2& brushCenterUV,
+			float            brushRadiusUV,
+			const glm::vec4& brushValue,
+			const glm::vec4& channelMask,
+			int              drawOp,
+			float            brushStrength,
+			float            smoothness
+		);
+
+		void RebakeWeatherMinMaxAndVolume();
+		void ForceRebakeWeatherMap();
+		void ClearWeatherMap();
+
 		/**
 		 * Sample the cloud weather data on the CPU.
 		 * @param worldXZ Position in world space
@@ -256,6 +270,8 @@ namespace Boidsish {
 		std::unique_ptr<ComputeShader> _cloudVolumeBakeShader;
 		std::unique_ptr<ComputeShader> _cloudMipShader;
 		std::unique_ptr<ComputeShader> _cloudShadowBakeShader;
+		std::unique_ptr<ComputeShader> _cloudPaintShader;
+		std::unique_ptr<ComputeShader> _cloudMinMaxInitShader;
 
 		glm::mat4 _cloudShadowMatrix = glm::mat4(1.0f);
 		glm::mat4 _cloudShadowInvMatrix = glm::mat4(1.0f);

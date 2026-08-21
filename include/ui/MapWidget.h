@@ -23,13 +23,16 @@ namespace Boidsish {
 
         private:
             void InitializeResources();
-            void RenderMap();
+            void RenderMap(int renderWidth = 512, int renderHeight = 512);
 
             Visualizer& m_visualizer;
             bool m_show = false;
 
             GLuint m_fbo = 0;
             GLuint m_mapTexture = 0;
+            int m_textureWidth = 512;
+            int m_textureHeight = 512;
+
             std::unique_ptr<Shader> m_mapShader;
             GLuint m_quadVao = 0;
             GLuint m_quadVbo = 0;
@@ -48,6 +51,15 @@ namespace Boidsish {
             glm::vec2 m_mapOffset = glm::vec2(0.0f);
 
             int m_selectedLayer = 0; // 0: Auto/Combined, 1: Cloud Weather, 2: LBM Weather, 3: Cloud Shadow
+
+            // Drawing tools state
+            bool m_enableDrawing = false;
+            int m_drawOp = 1; // 0: Erase, 1: Steep Overwrite, 2: Smooth Min, 3: Smooth Max
+            bool m_channelMask[4] = { true, true, true, true }; // R (Coverage), G (Height), B (Thickness), A (Density)
+            float m_brushTargetValue[4] = { 0.8f, 0.5f, 0.5f, 0.5f };
+            float m_brushRadiusWorld = 2000.0f;
+            float m_brushStrength = 0.5f;
+            float m_smoothness = 0.1f;
         };
 
     } // namespace UI

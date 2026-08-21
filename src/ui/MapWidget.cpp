@@ -11,6 +11,7 @@
 #include "terrain_render_manager.h"
 #include <GLFW/glfw3.h>
 #include <glm/gtc/type_ptr.hpp>
+#include <algorithm>
 
 namespace Boidsish {
     namespace UI {
@@ -30,7 +31,7 @@ namespace Boidsish {
             glGenFramebuffers(1, &m_fbo);
             glGenTextures(1, &m_mapTexture);
             glBindTexture(GL_TEXTURE_2D, m_mapTexture);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 512, 512, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, m_textureWidth, m_textureHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
@@ -62,10 +63,25 @@ namespace Boidsish {
             glBindVertexArray(0);
         }
 
-        void MapWidget::RenderMap() {
+        void MapWidget::RenderMap(int renderWidth, int renderHeight) {
             auto weather = m_visualizer.GetWeatherManager();
             auto atmosphere = m_visualizer.GetAtmosphereManager();
             if (!weather || !atmosphere) return;
+
+            renderWidth = std::max(256, renderWidth);
+            renderHeight = std::max(256, renderHeight);
+
+            if (m_textureWidth != renderWidth || m_textureHeight != renderHeight) {
+                m_textureWidth = renderWidth;
+                m_textureHeight = renderHeight;
+
+                glBindTexture(GL_TEXTURE_2D, m_mapTexture);
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, m_textureWidth, m_textureHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+
+                glBindFramebuffer(GL_FRAMEBUFFER, m_fbo);
+                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_mapTexture, 0);
+                glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            }
 
             std::shared_ptr<PostProcessing::AtmosphereEffect> atmos_effect;
             auto& pp_manager = m_visualizer.GetPostProcessingManager();
@@ -80,7 +96,7 @@ namespace Boidsish {
             glGetIntegerv(GL_FRAMEBUFFER_BINDING, &prev_fbo);
 
             glBindFramebuffer(GL_FRAMEBUFFER, m_fbo);
-            glViewport(0, 0, 512, 512);
+            glViewport(0, 0, m_textureWidth, m_textureHeight);
             glClearColor(0, 0, 0, 1);
             glClear(GL_COLOR_BUFFER_BIT);
 
@@ -163,12 +179,12 @@ namespace Boidsish {
         void MapWidget::Draw() {
             if (!m_show) return;
 
-            ImGui::SetNextWindowSize(ImVec2(550, 700), ImGuiCond_FirstUseEver);
+            ImGui::SetNextWindowSize(ImVec2(650, 800), ImGuiCond_FirstUseEver);
             if (ImGui::Begin("Environmental Maps", &m_show)) {
 
                 ImGui::Combo("Map Layer", &m_selectedLayer, "Combined\0Raw Cloud Map\0Cloud Effective Coverage\0Deep Opacity Map\0LBM Simulation\0Terrain Height\0Terrain Color\0Baked Wind\0\0");
 
-                if (ImGui::CollapsingHeader("Channels", ImGuiTreeNodeFlags_DefaultOpen)) {
+                if (ImGui::CollapsingHeader("Display Channels", ImGuiTreeNodeFlags_DefaultOpen)) {
                     ImGui::Checkbox("Wind", &m_showWind); ImGui::SameLine();
                     ImGui::Checkbox("Temperature", &m_showTemperature); ImGui::SameLine();
                     ImGui::Checkbox("Humidity", &m_showHumidity);
@@ -179,7 +195,7 @@ namespace Boidsish {
                     ImGui::Checkbox("Cloud Shadow", &m_showCloudShadow);
                 }
 
-                if (ImGui::CollapsingHeader("View Controls", ImGuiTreeNodeFlags_DefaultOpen)) {
+                if (ImGui::CollapsingHeader("View Controls")) {
                     ImGui::SliderFloat("Zoom", &m_mapViewScale, 0.1f, 10.0f);
                     ImGui::SliderFloat2("Offset", glm::value_ptr(m_mapOffset), -50000.0f, 50000.0f);
                     if (ImGui::Button("Reset View")) {
@@ -193,11 +209,58 @@ namespace Boidsish {
                     }
                 }
 
+                if (ImGui::CollapsingHeader("Cloud Weather Map Drawing Tools", ImGuiTreeNodeFlags_DefaultOpen)) {
+                    auto atm_mgr = m_visualizer.GetAtmosphereManager();
+                    if (atm_mgr) {
+                        ImGui::Checkbox("Enable Drawing Mode", &m_enableDrawing);
+                        ImGui::SameLine();
+                        if (ImGui::Button("Clear Map (Zeros)")) {
+                            atm_mgr->ClearWeatherMap();
+                        }
+                        ImGui::SameLine();
+                        if (ImGui::Button("Rebake Weather Map")) {
+                            atm_mgr->ForceRebakeWeatherMap();
+                        }
+                        ImGui::SameLine();
+                        if (ImGui::Button("Rebake 3D Volume")) {
+                            atm_mgr->RebakeWeatherMinMaxAndVolume();
+                        }
+
+                        if (m_enableDrawing) {
+                            ImGui::TextColored(ImVec4(0.2f, 0.9f, 0.3f, 1.0f), "Drawing Mode Active: Left-click and drag on map to draw.");
+                        } else {
+                            ImGui::TextDisabled("Enable drawing mode above or drag RMB/MMB to pan.");
+                        }
+
+                        ImGui::Combo("Draw Operation", &m_drawOp, "Erase (Target Val) (0)\0Steep Overwrite (1)\0Smooth Min (2)\0Smooth Max (3)\0\0");
+
+                        ImGui::Text("Target Channel Masks (4 Layers):");
+                        ImGui::Checkbox("Coverage (R)", &m_channelMask[0]); ImGui::SameLine();
+                        ImGui::Checkbox("Height (G)", &m_channelMask[1]); ImGui::SameLine();
+                        ImGui::Checkbox("Thickness (B)", &m_channelMask[2]); ImGui::SameLine();
+                        ImGui::Checkbox("Density (A)", &m_channelMask[3]);
+
+                        ImGui::Text("Target Channel Values:");
+                        if (m_channelMask[0]) ImGui::SliderFloat("Coverage (R) Target", &m_brushTargetValue[0], 0.0f, 1.0f);
+                        if (m_channelMask[1]) ImGui::SliderFloat("Height (G) Target", &m_brushTargetValue[1], 0.0f, 1.0f);
+                        if (m_channelMask[2]) ImGui::SliderFloat("Thickness (B) Target", &m_brushTargetValue[2], 0.0f, 1.0f);
+                        if (m_channelMask[3]) ImGui::SliderFloat("Density (A) Target", &m_brushTargetValue[3], 0.0f, 1.0f);
+
+                        ImGui::SliderFloat("Brush Radius (World)", &m_brushRadiusWorld, 100.0f, 20000.0f);
+                        ImGui::SliderFloat("Brush Strength", &m_brushStrength, 0.01f, 1.0f);
+                        if (m_drawOp == 2 || m_drawOp == 3) {
+                            ImGui::SliderFloat("Smoothness (k)", &m_smoothness, 0.001f, 0.5f);
+                        }
+                    } else {
+                        ImGui::Text("AtmosphereManager is not available.");
+                    }
+                }
+
                 if (ImGui::CollapsingHeader("Cloud Weather Map Management")) {
                     auto atm_mgr = m_visualizer.GetAtmosphereManager();
                     if (atm_mgr) {
                         bool is_custom = atm_mgr->IsCustomWeatherMap();
-                        ImGui::Text("Active Mode: %s", is_custom ? "Custom (Imported)" : "Procedural");
+                        ImGui::Text("Active Mode: %s", is_custom ? "Custom / Painted" : "Procedural");
 
                         if (is_custom) {
                             if (ImGui::Button("Reset to Procedural Map")) {
@@ -249,20 +312,97 @@ namespace Boidsish {
                     }
                 }
 
-                RenderMap();
-
                 ImVec2 avail = ImGui::GetContentRegionAvail();
                 float size = std::min(avail.x, avail.y);
-                ImGui::Image((ImTextureID)(uintptr_t)m_mapTexture, ImVec2(size, size), ImVec2(0, 1), ImVec2(1, 0));
+                if (size < 100.0f) size = 100.0f;
 
-                if (ImGui::IsItemHovered()) {
+                // Center texture horizontally if extra space is available
+                float offsetX = (avail.x - size) * 0.5f;
+                if (offsetX > 0.0f) ImGui::SetCursorPosX(ImGui::GetCursorPosX() + offsetX);
+
+                int renderSize = static_cast<int>(size);
+                RenderMap(renderSize, renderSize);
+
+                ImVec2 canvasPos = ImGui::GetCursorScreenPos();
+
+                // InvisibleButton captures mouse focus during click/drag to prevent window movement
+                ImGui::InvisibleButton("##MapCanvas", ImVec2(size, size), ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight | ImGuiButtonFlags_MouseButtonMiddle);
+                bool isHovered = ImGui::IsItemHovered();
+                bool isActive = ImGui::IsItemActive();
+
+                // Render map image over the canvas button
+                ImDrawList* drawList = ImGui::GetWindowDrawList();
+                drawList->AddImage(
+                    (ImTextureID)(uintptr_t)m_mapTexture,
+                    canvasPos,
+                    ImVec2(canvasPos.x + size, canvasPos.y + size),
+                    ImVec2(0, 1),
+                    ImVec2(1, 0)
+                );
+
+                if (isHovered || isActive) {
                     float wheel = ImGui::GetIO().MouseWheel;
                     if (wheel != 0.0f) {
                         m_mapViewScale *= (wheel > 0.0f) ? 1.1f : 0.9f;
                     }
-                    if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+
+                    ImVec2 mousePos = ImGui::GetMousePos();
+                    float uScreen = (mousePos.x - canvasPos.x) / size;
+                    float vScreen = 1.0f - (mousePos.y - canvasPos.y) / size; // Flipped V for GL
+
+                    float range = 100000.0f / m_mapViewScale;
+                    glm::vec2 worldXZ = m_mapOffset + (glm::vec2(uScreen, vScreen) - glm::vec2(0.5f)) * range;
+
+                    float worldScale = m_visualizer.GetTerrain() ? m_visualizer.GetTerrain()->GetWorldScale() : 1.0f;
+                    float mapRange = 100000.0f * worldScale;
+                    glm::vec2 cloudUV = worldXZ / mapRange;
+
+                    // Toroidal wrapping
+                    cloudUV.x = fmod(cloudUV.x, 1.0f); if (cloudUV.x < 0.0f) cloudUV.x += 1.0f;
+                    cloudUV.y = fmod(cloudUV.y, 1.0f); if (cloudUV.y < 0.0f) cloudUV.y += 1.0f;
+
+                    float brushRadiusUV = m_brushRadiusWorld / mapRange;
+
+                    // Visual brush cursor overlay
+                    float screenBrushRadius = (m_brushRadiusWorld / range) * size;
+                    ImU32 brushCol = m_enableDrawing ? IM_COL32(255, 220, 0, 220) : IM_COL32(200, 200, 200, 120);
+                    drawList->AddCircle(mousePos, std::max(2.0f, screenBrushRadius), brushCol, 32, m_enableDrawing ? 2.0f : 1.0f);
+
+                    // Drawing logic on Left-click drag when drawing mode is active
+                    if (m_enableDrawing && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+                        auto atm_mgr = m_visualizer.GetAtmosphereManager();
+                        if (atm_mgr) {
+                            glm::vec4 brushVal(
+                                m_brushTargetValue[0],
+                                m_brushTargetValue[1],
+                                m_brushTargetValue[2],
+                                m_brushTargetValue[3]
+                            );
+
+                            glm::vec4 maskVal(
+                                m_channelMask[0] ? 1.0f : 0.0f,
+                                m_channelMask[1] ? 1.0f : 0.0f,
+                                m_channelMask[2] ? 1.0f : 0.0f,
+                                m_channelMask[3] ? 1.0f : 0.0f
+                            );
+
+                            atm_mgr->PaintWeatherMap(
+                                cloudUV,
+                                brushRadiusUV,
+                                brushVal,
+                                maskVal,
+                                m_drawOp,
+                                m_brushStrength,
+                                m_smoothness
+                            );
+                        }
+                    }
+                    // Panning view logic when drawing mode disabled or using RMB/MMB
+                    else if ((!m_enableDrawing && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) ||
+                             ImGui::IsMouseDragging(ImGuiMouseButton_Right) ||
+                             ImGui::IsMouseDragging(ImGuiMouseButton_Middle)) {
                         ImVec2 delta = ImGui::GetIO().MouseDelta;
-                        float worldDeltaPerPixel = (100000.0f / m_mapViewScale) / size;
+                        float worldDeltaPerPixel = range / size;
                         m_mapOffset.x -= delta.x * worldDeltaPerPixel;
                         m_mapOffset.y += delta.y * worldDeltaPerPixel;
                     }
