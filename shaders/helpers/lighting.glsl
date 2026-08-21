@@ -12,6 +12,7 @@
 #endif
 #include "clouds.glsl"
 #include "brdf.glsl"
+#include "microfacet_glinting.glsl"
 
 // Atmosphere constants for transmittance lookup
 const float kEarthRadiusKM = 6360.0;
@@ -583,9 +584,9 @@ float get_luminance(vec3 color) {
 // PBR is inherently darker than legacy Phong.
 const float PBR_INTENSITY_BOOST = 1.0;
 
-void evaluate_brdf(
+void evaluate_brdf_glint(
     vec3 N, vec3 V, vec3 L, vec3 albedo, float roughness, float metallic, vec3 F0,
-    vec3 radiance, float shadow, inout vec3 Lo, inout float spec_lum)
+    vec3 radiance, float shadow, vec3 frag_pos, float glintFactor, inout vec3 Lo, inout float spec_lum)
 {
     float NdotL = max(dot(N, L), 0.0);
     if (NdotL <= 0.0) return; // Early out
@@ -595,6 +596,13 @@ void evaluate_brdf(
     float HdotV = max(dot(H, V), 0.0);
 
     float NDF = DistributionGGX(N, H, roughness);
+
+    if (glintFactor > 0.001) {
+        mat2 uv_J = mat2(dFdx(frag_pos.xz), dFdy(frag_pos.xz));
+        float glintNDF = calculate_glint_ndf(H, N, roughness, metallic, frag_pos.xz, uv_J);
+        NDF += glintNDF * glintFactor * 3.0;
+    }
+
     float V_term = VisibilitySmithGGXCorrelated(NdotL, NdotV, roughness);
     vec3 F = fresnelSchlickFast(HdotV, F0);
     vec3 specular = NDF * V_term * F;
@@ -609,6 +617,13 @@ void evaluate_brdf(
     spec_lum += get_luminance(specular_radiance);
 }
 
+void evaluate_brdf(
+    vec3 N, vec3 V, vec3 L, vec3 albedo, float roughness, float metallic, vec3 F0,
+    vec3 radiance, float shadow, inout vec3 Lo, inout float spec_lum)
+{
+    evaluate_brdf_glint(N, V, L, albedo, roughness, metallic, F0, radiance, shadow, vec3(0.0), 0.0, Lo, spec_lum);
+}
+
 /**
  * PBR lighting with Cook-Torrance BRDF - supports all light types.
  * Returns vec4(color.rgb, specular_luminance).
@@ -619,8 +634,9 @@ void evaluate_brdf(
  * @param roughness Surface roughness [0=smooth, 1=rough]
  * @param metallic Metallic property [0=dielectric, 1=metal]
  * @param ao Ambient occlusion [0=fully occluded, 1=no occlusion]
+ * @param glintFactor Glinting intensity multiplier (e.g. for snow microfacet glints)
  */
-vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness, float metallic, float ao, out float primaryShadow) {
+vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness, float metallic, float ao, out float primaryShadow, float glintFactor) {
 	primaryShadow = 1.0;
 	vec3 N = normalize(normal);
 	vec3 V = normalize(viewPos - frag_pos);
@@ -665,7 +681,7 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 
 		primaryShadow = min(primaryShadow, shadow);
 
-		evaluate_brdf(N, V, L, albedo, roughness, metallic, F0, radiance, shadow, Lo, spec_lum);
+		evaluate_brdf_glint(N, V, L, albedo, roughness, metallic, F0, radiance, shadow, frag_pos, glintFactor, Lo, spec_lum);
 	}
 
 	// ------------------------------------------------------------------
@@ -690,7 +706,7 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 
 		float shadow = calculateShadow(i, frag_pos, N, L);
 
-		evaluate_brdf(N, V, L, albedo, roughness, metallic, F0, radiance, shadow, Lo, spec_lum);
+		evaluate_brdf_glint(N, V, L, albedo, roughness, metallic, F0, radiance, shadow, frag_pos, glintFactor, Lo, spec_lum);
 	}
 
 	uint cluster_index = getClusterIndex(frag_pos);
@@ -714,7 +730,7 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 
 		float shadow = calculateShadow(i, frag_pos, N, L);
 
-		evaluate_brdf(N, V, L, albedo, roughness, metallic, F0, radiance, shadow, Lo, spec_lum);
+		evaluate_brdf_glint(N, V, L, albedo, roughness, metallic, F0, radiance, shadow, frag_pos, glintFactor, Lo, spec_lum);
 	}
 
 	// Spatially-varying SH ambient augmented with macro occlusion
@@ -754,6 +770,10 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 	vec3 color = ambient + Lo;
 
 	return vec4(color, spec_lum + get_luminance(ambientSpecular));
+}
+
+vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness, float metallic, float ao, out float primaryShadow) {
+	return apply_lighting_pbr(frag_pos, normal, albedo, roughness, metallic, ao, primaryShadow, 0.0);
 }
 
 void evaluate_foliage_brdf(
@@ -886,7 +906,7 @@ vec4 apply_lighting_foliage(vec3 frag_pos, vec3 normal, vec3 albedo, float rough
  * Supports all light types (point, directional, spot).
  * Returns vec4(color.rgb, specular_luminance).
  */
-vec4 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness, float metallic, float ao, out float primaryShadow) {
+vec4 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness, float metallic, float ao, out float primaryShadow, float glintFactor) {
 	primaryShadow = 1.0;
 	vec3 N = normalize(normal);
 	vec3 V = normalize(viewPos - frag_pos);
@@ -906,8 +926,6 @@ vec4 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, floa
 		float base_attenuation;
 		calculateLightContribution(i, frag_pos, L, base_attenuation);
 
-		vec3 H = normalize(V + L);
-
 		float attenuation = lights[i].intensity * PBR_INTENSITY_BOOST;
 
 		// Apply atmospheric attenuation
@@ -916,28 +934,13 @@ vec4 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, floa
 		vec3 atmosphereTransmittance = texture(u_transmittanceLUT, getTransmittanceUV(r, mu)).rgb;
 		vec3 radiance = lights[i].color * attenuation * atmosphereTransmittance;
 
-		float NDF = DistributionGGX(N, H, roughness);
-		float G = GeometrySmith(N, V, L, roughness);
-		vec3  F = fresnelSchlick(max(dot(H, V), 0.0), F0);
-
-		vec3  numerator = NDF * G * F;
-		float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.0001;
-		vec3  specular = numerator / denominator;
-
-		vec3 kS = F;
-		vec3 kD = (vec3(1.0) - kS) * (1.0 - metallic);
-
-		float NdotL = max(dot(N, L), 0.0);
-
 		// Apply cloud shadow for directional lights
 		float shadow = calculateCloudShadow(i, frag_pos);
 
 		if (i == 0)
 			primaryShadow = shadow;
 
-		vec3 specular_radiance = specular * radiance * NdotL * shadow;
-		Lo += (kD * albedo / PI) * radiance * NdotL * shadow + specular_radiance;
-		spec_lum += get_luminance(specular_radiance);
+		evaluate_brdf_glint(N, V, L, albedo, roughness, metallic, F0, radiance, shadow, frag_pos, glintFactor, Lo, spec_lum);
 	}
 
 	// PASS 2: Local Lights (Point/Spot) - CLUSTERED
@@ -951,27 +954,10 @@ vec4 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, floa
 		float base_attenuation;
 		calculateLightContribution(i, frag_pos, L, base_attenuation);
 
-		vec3 H = normalize(V + L);
-
 		float attenuation = (lights[i].intensity * PBR_INTENSITY_BOOST) * base_attenuation;
 		vec3 radiance = lights[i].color * attenuation;
 
-		float NDF = DistributionGGX(N, H, roughness);
-		float G = GeometrySmith(N, V, L, roughness);
-		vec3  F = fresnelSchlick(max(dot(H, V), 0.0), F0);
-
-		vec3  numerator = NDF * G * F;
-		float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.0001;
-		vec3  specular = numerator / denominator;
-
-		vec3 kS = F;
-		vec3 kD = (vec3(1.0) - kS) * (1.0 - metallic);
-
-		float NdotL = max(dot(N, L), 0.0);
-
-		vec3 specular_radiance = specular * radiance * NdotL;
-		Lo += (kD * albedo / PI) * radiance * NdotL + specular_radiance;
-		spec_lum += get_luminance(specular_radiance);
+		evaluate_brdf_glint(N, V, L, albedo, roughness, metallic, F0, radiance, 1.0, frag_pos, glintFactor, Lo, spec_lum);
 	}
 
 	uint no_shadow_cluster_index = getClusterIndex(frag_pos);
@@ -985,27 +971,10 @@ vec4 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, floa
 		float base_attenuation;
 		calculateLightContribution(i, frag_pos, L, base_attenuation);
 
-		vec3 H = normalize(V + L);
-
 		float attenuation = (lights[i].intensity * PBR_INTENSITY_BOOST) * base_attenuation;
 		vec3 radiance = lights[i].color * attenuation;
 
-		float NDF = DistributionGGX(N, H, roughness);
-		float G = GeometrySmith(N, V, L, roughness);
-		vec3  F = fresnelSchlick(max(dot(H, V), 0.0), F0);
-
-		vec3  numerator = NDF * G * F;
-		float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.0001;
-		vec3  specular = numerator / denominator;
-
-		vec3 kS = F;
-		vec3 kD = (vec3(1.0) - kS) * (1.0 - metallic);
-
-		float NdotL = max(dot(N, L), 0.0);
-
-		vec3 specular_radiance = specular * radiance * NdotL;
-		Lo += (kD * albedo / PI) * radiance * NdotL + specular_radiance;
-		spec_lum += get_luminance(specular_radiance);
+		evaluate_brdf_glint(N, V, L, albedo, roughness, metallic, F0, radiance, 1.0, frag_pos, glintFactor, Lo, spec_lum);
 	}
 
 	// Spatially-varying SH ambient augmented with macro occlusion
@@ -1152,6 +1121,10 @@ vec4 apply_lighting(vec3 frag_pos, vec3 normal, vec3 albedo, float specular_stre
 	}
 
 	return vec4(result, spec_lum);
+}
+
+vec4 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness, float metallic, float ao, out float primaryShadow) {
+	return apply_lighting_pbr_no_shadows(frag_pos, normal, albedo, roughness, metallic, ao, primaryShadow, 0.0);
 }
 
 /**

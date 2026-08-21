@@ -1047,32 +1047,45 @@ void main() {
 	// finalMaterial.albedo = mix(finalMaterial.albedo, finalMaterial.albedo * 0.5, ctx.globalWetness * 0.5);
 	// finalMaterial.roughness = mix(finalMaterial.roughness, 0.1, ctx.globalWetness * 0.8);
 	// ========================================================================
-	// Running Water Effect
+	// Rain & Running Water Effect
 	// ========================================================================
 	float waterEffect = 0.0;
 	if (wetness > 0.6 && ctx.freezingScale < 0.1) {
+		// Global rain wetness darkens terrain and reduces roughness
+		float globalRainWetness = smoothstep(0.6, 1.0, wetness);
+		finalMaterial.albedo = mix(finalMaterial.albedo, finalMaterial.albedo * 0.6, globalRainWetness * 0.4);
+		finalMaterial.roughness = mix(finalMaterial.roughness, 0.08, globalRainWetness * 0.7);
+
 		float rockSurface = 1.0 - smoothstep(0.2, 0.5, ctx.slope);
 		rockSurface = max(rockSurface, smoothstep(0.2, -0.6, ctx.substrate));
 		float waterFlowMask = rockSurface * smoothstep(0.6, 0.9, wetness);
 
 		if (waterFlowMask > 0.01) {
-			vec3 surfaceDown = vec3(0.0, -1.0, 0.0) - dot(vec3(0.0, -1.0, 0.0), norm) * norm;
-			vec3 flowDir = normalize(surfaceDown + vec3(0.00001, 0.0, 0.0));
-			float flowSpeed = 2.0;
-			vec3 p_flow = (FragPos + -flowDir * time * flowSpeed) * 1.5;
-			vec3 flowNoise = fastCurl3d(p_flow * 0.08 * mix(1.0, 0.1, smoothstep(50.0, 55.0, ctx.realDist)));
+			// High-frequency noise detail fades with distance to omit noisy ripples at far range
+			float highFreqDetail = 1.0 - smoothstep(25.0, 60.0, ctx.realDist);
+			float effectiveStreaks = 1.0;
+			vec3 flowNoise = vec3(0.0);
 
-			float streaks = smoothstep(0.3, 0.8, abs(flowNoise.x));
-			streaks *= smoothstep(0.4, 0.6, fract(flowNoise.y * 0.5 + time * 0.8));
+			if (highFreqDetail > 0.001) {
+				vec3 surfaceDown = vec3(0.0, -1.0, 0.0) - dot(vec3(0.0, -1.0, 0.0), norm) * norm;
+				vec3 flowDir = normalize(surfaceDown + vec3(0.00001, 0.0, 0.0));
+				float flowSpeed = 2.0;
+				vec3 p_flow = (FragPos + -flowDir * time * flowSpeed) * 1.5;
+				flowNoise = fastCurl3d(p_flow * 0.08);
 
-			waterEffect = waterFlowMask * streaks;
+				float streaks = smoothstep(0.3, 0.8, abs(flowNoise.x));
+				streaks *= smoothstep(0.4, 0.6, fract(flowNoise.y * 0.5 + time * 0.8));
+				effectiveStreaks = mix(1.0, streaks, highFreqDetail);
+			}
+
+			waterEffect = waterFlowMask * effectiveStreaks;
 			finalMaterial.albedo = mix(finalMaterial.albedo, finalMaterial.albedo * 0.5, waterEffect * 0.5);
-			finalMaterial.roughness = mix(finalMaterial.roughness, 0.00, waterEffect);
+			finalMaterial.roughness = mix(finalMaterial.roughness, 0.02, waterEffect);
 			finalMaterial.metallic = mix(finalMaterial.metallic, 0.1, waterEffect);
 
-			if (waterEffect > 0.05) {
+			if (waterEffect > 0.05 && highFreqDetail > 0.01) {
 				vec3 flowNorm = normalize(flowNoise * 2.0 - 1.0);
-				norm = normalize(mix(norm, flowNorm, waterEffect * 0.8));
+				norm = normalize(mix(norm, flowNorm, waterEffect * 0.8 * highFreqDetail));
 			}
 		}
 	}
@@ -1091,6 +1104,8 @@ void main() {
 		waterEffect, largeNoise, perturbedNorm, roughness
 	);
 
+	float snowFactor = max(ctx.freezingScale, smoothstep(HEIGHT_SNOW_START, HEIGHT_PEAK, ctx.perturbedHeight));
+
 	if (ctx.freezingScale > 0.0) {
 		vec3 snowColor = vec3(0.9, 0.95, 1.0 + 0.01 * grassAO);
 		albedo = mix(albedo, snowColor, ctx.freezingScale);
@@ -1106,7 +1121,7 @@ void main() {
 	perturbedNorm = mix(vec3(0.0, 1.0, 0.0), perturbedNorm, floorBlend);
 
 	float primaryShadow;
-	vec3 lighting = apply_lighting_pbr(FragPos, perturbedNorm, albedo, roughness, metallic, 1.0 - grassAO, primaryShadow).rgb;
+	vec3 lighting = apply_lighting_pbr(FragPos, perturbedNorm, albedo, roughness, metallic, 1.0 - grassAO, primaryShadow, snowFactor).rgb;
 	lighting.b *= 1.0 + (0.2 * ctx.freezingScale * (1.0 - primaryShadow));
 
 	// ========================================================================
