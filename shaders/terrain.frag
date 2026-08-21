@@ -819,6 +819,8 @@ TerrainMaterial generateMaterial(TerrainContext ctx, float noise) {
 	mat.albedo = texture(u_terrainColorBlend, vec3(ctx.perturbedHeight/100.0, (ctx.moisture+clamp(ctx.substrate, 0, 1.0)/2.0), mat.roughness)).rgb;
 	mat.metallic = 0.0;
 
+	mat.albedo = mix(mat.albedo, mat.albedo * 0.0, smoothstep(0.45, 0.55, noise));
+
 	return mat;
 }
 
@@ -855,8 +857,59 @@ float calculateAntiAliasedFBM(vec3 pos, float baseFreq, int octaves) {
     return value / totalAmplitude;
 }
 
-
 void main() {
+	if (uIsShadowPass) {
+		return;
+	}
+
+	vec3  norm = normalize(Normal);
+	float slope = dot(norm, vec3(0.0, 1.0, 0.0));
+
+	float dist = length(FragPos.xz - viewPos.xz);
+	float realDist = distance(FragPos, viewPos);
+
+	if (dist > 650) {
+		discard;
+	}
+
+	float baseFreq = 0.1 / worldScale;
+	float largeNoise = fastWarpedFbm3d(FragPos * (baseFreq * 0.1));
+
+	TerrainContext ctx = extractTerrainContext(
+		FragPos, norm, largeNoise,
+		vRidgeMap, vSubstrate,
+		temperature, wetness,
+		dist, realDist
+	);
+
+	TerrainMaterial finalMaterial = generateMaterial(ctx, largeNoise);
+
+	applyDetailNormalPerturbation(
+		ctx, perturbFactor, finalMaterial.normalStrength, finalMaterial.normalScale,
+		0.0, largeNoise, norm, finalMaterial.roughness
+	);
+
+	float snowFactor = max(ctx.freezingScale, smoothstep(HEIGHT_SNOW_START, HEIGHT_PEAK, ctx.perturbedHeight));
+	if (snowFactor > 0.0) {
+		vec3 snowColor = mix(vec3(1.0), vec3(0.9, 0.95, 1.0 + 0.01 * 1.0), 0.5);
+		finalMaterial.albedo = mix(finalMaterial.albedo, snowColor, ctx.freezingScale);
+		finalMaterial.roughness = mix(finalMaterial.roughness, 0.85, ctx.freezingScale);
+		finalMaterial.metallic = mix(finalMaterial.metallic, 0.0, ctx.freezingScale);
+	}
+
+	float primaryShadow;
+	FragColor = apply_lighting_pbr(FragPos, norm, finalMaterial.albedo, finalMaterial.roughness, finalMaterial.metallic, 1.0, primaryShadow, snowFactor);
+	FragColor.b *= 1.0 + (0.2 * ctx.freezingScale * (1.0 - primaryShadow));
+
+	NormalOut = vec4(normalize(mat3(view) * norm), primaryShadow);
+	AlbedoOut = vec4(finalMaterial.albedo, 1.0);
+
+	vec2 a = (CurPosition.xy / CurPosition.w) * 0.5 + 0.5;
+	vec2 b = (PrevPosition.xy / PrevPosition.w) * 0.5 + 0.5;
+	Velocity = vec4(a - b, finalMaterial.roughness, finalMaterial.metallic);
+}
+
+void main_old() {
 	if (uIsShadowPass) {
 		// Output only depth (handled by hardware)
 		return;
