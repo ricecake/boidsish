@@ -60,6 +60,12 @@ float smin( float a, float b, float k )
 	return min(a, b) - h*h*0.25/k;
 }
 
+float smaxCubic(float a, float b, float k) {
+	k *= 1.4;
+	float h = max(k - abs(a - b), 0.0);
+	return max(a, b) + h * h * h / (6.0 * k * k);
+}
+
 float schlickGain(float x, float g) {
 	g = clamp(g, 0.001, 0.999);
 	float absDiff = abs(2.0 * x - 1.0);
@@ -203,11 +209,13 @@ float applyDynamicCoverage(float bakedCoverage, float uniformCoverage, float bia
 }
 
 float applyDynamicCoverage(float bakedCoverage, float uniformCoverage) {
+	// uniformCoverage = 1.0 - uniformCoverage;
+	// return smoothstep(uniformCoverage, uniformCoverage + 0.1, bakedCoverage);
     float coverageFloor = 1.0 - (uniformCoverage * 2.0);
 
     float remapped = saturate((bakedCoverage - coverageFloor) / (1.0 - min(0.0, coverageFloor)));
 
-	return schlickGain(remapped, 0.1);
+	return schlickGain(remapped, 0.25);
 }
 
 
