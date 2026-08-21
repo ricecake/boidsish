@@ -198,6 +198,8 @@ NDF = NDF + glintNDF * glintIntensity;
 */
 
 
+float calculate_glint_ndf(vec3 H, vec3 N, float roughness, float metallic, vec2 uv, mat2 uv_J);
+
 float calculate_glint_ndf(vec3 H, vec3 N, float roughness, float metallic, vec2 uv) {
 	mat2 uv_J = mat2(0.01, 0.0, 0.0, 0.01);
 #ifdef FRAGMENT_SHADER
