@@ -198,28 +198,82 @@ NDF = NDF + glintNDF * glintIntensity;
 */
 
 
+float calculate_glint_ndf(vec3 H, vec3 N, float roughness, float metallic, vec2 uv) {
+	mat2 uv_J = mat2(0.01, 0.0, 0.0, 0.01);
+#ifdef FRAGMENT_SHADER
+	uv_J = mat2(dFdx(uv), dFdy(uv));
+#endif
+	return calculate_glint_ndf(H, N, roughness, metallic, uv, uv_J);
+}
+
 float calculate_glint_ndf(vec3 H, vec3 N, float roughness, float metallic, vec2 uv, mat2 uv_J) {
 	float alpha = max(roughness * roughness, 0.0001);
 
 	// Derive glint parameters based on material properties
-	// Snow-like (rough dielectric): many fine glints
-	// Metal-like: few intense (sharp) glints
-	float g_density, g_alpha;
-	if (metallic > 0.1) {
-		// Metals: few intense glints
-		g_density = mix(1000.0, 200.0, clamp(metallic, 0.0, 1.0));
-		g_alpha = mix(0.01, 0.002, clamp(metallic, 0.0, 1.0));
-	} else {
-		// Dielectrics: more glints as it gets rougher (like snow)
-		g_density = mix(500.0, 4000.0, clamp(roughness, 0.0, 1.0));
-		g_alpha = mix(0.02, 0.01, clamp(roughness, 0.0, 1.0));
-	}
+	float g_density = mix(1000.0, 5000.0, clamp(roughness, 0.0, 1.0));
+	float g_alpha = mix(0.01, 0.005, clamp(roughness, 0.0, 1.0));
 
 	mat3 invTBN = transpose(get_tangent_basis(N));
 	vec3 h_local = invTBN * H;
 
-	// Use the Siggraph Asia 2025 glinting algorithm
-	return glint_ndf(h_local, alpha, g_alpha, uv, uv_J, g_density, DEFAULT_PIXEL_FILTER_SIZE);
+	float ndf = glint_ndf(h_local, alpha, g_alpha, uv, uv_J, g_density, DEFAULT_PIXEL_FILTER_SIZE);
+
+	uvec2 ucell = uvec2(ivec2(floor(uv * 40.0)));
+	uvec2 h = glint_shuffle(ucell);
+	float randVal = float(h.x) * pow(0.5, 32.0);
+	vec3 crystalN = normalize(N + vec3(randVal - 0.5, 0.3, fract(randVal * 17.0) - 0.5) * 0.5);
+	float microSpec = pow(max(0.0, dot(H, crystalN)), 250.0) * smoothstep(0.8, 0.95, randVal);
+
+	return (ndf * 100.0) + (microSpec * 250.0);
+}
+
+/**
+ * Evaluates high-performance microfacet glinting for snow and sparkling surfaces.
+ * Returns additive specular glint intensity.
+ */
+float calculate_snow_glints(vec3 frag_pos, vec3 N, vec3 V, vec3 L, float roughness, float snowFactor) {
+	if (snowFactor <= 0.001) return 0.0;
+
+	vec3 H = normalize(V + L);
+	float NdotL = max(0.0, dot(N, L));
+	if (NdotL <= 0.0) return 0.0;
+
+	// Scale position for fine snow crystal spacing
+	vec3 P = frag_pos * 35.0;
+
+	// Distance fade to avoid sub-pixel noise aliasing far away
+#ifdef FRAGMENT_SHADER
+	float pixelSize = length(fwidth(frag_pos));
+	float distFade = 1.0 - smoothstep(0.02, 0.5, pixelSize);
+#else
+	float distFade = 1.0;
+#endif
+
+	if (distFade <= 0.001) return 0.0;
+
+	// Multi-tap jittered grid for dense, organic micro-crystal glints
+	vec3 baseCell = floor(P);
+	float totalGlint = 0.0;
+
+	for (int x = -1; x <= 1; ++x) {
+		for (int z = -1; z <= 1; ++z) {
+			vec3 cell = baseCell + vec3(float(x), 0.0, float(z));
+
+			uvec2 ucell = uvec2(ivec2(cell.xz));
+			uvec2 h = glint_shuffle(ucell + uvec2(uint(cell.y * 13.0), 0u));
+			vec3 randVal = vec3(vec2(h) * pow(0.5, 32.0), float(h.x ^ h.y) * pow(0.5, 32.0));
+
+			vec3 crystalN = normalize(N + (randVal - 0.5) * 0.7);
+
+			float HdotC = max(0.0, dot(H, crystalN));
+			float microSpec = pow(HdotC, 350.0);
+			float sparkGate = smoothstep(0.85, 0.98, randVal.x);
+
+			totalGlint += microSpec * sparkGate;
+		}
+	}
+
+	return totalGlint * snowFactor * distFade * 150.0 * NdotL;
 }
 
 #endif // MICROFACET_GLINTING_GLSL

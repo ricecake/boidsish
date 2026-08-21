@@ -598,9 +598,19 @@ void evaluate_brdf_glint(
     float NDF = DistributionGGX(N, H, roughness);
 
     if (glintFactor > 0.001) {
+#ifdef FRAGMENT_SHADER
         mat2 uv_J = mat2(dFdx(frag_pos.xz), dFdy(frag_pos.xz));
+#else
+        mat2 uv_J = mat2(0.01, 0.0, 0.0, 0.01);
+#endif
         float glintNDF = calculate_glint_ndf(H, N, roughness, metallic, frag_pos.xz, uv_J);
-        NDF += glintNDF * glintFactor * 3.0;
+        NDF += glintNDF * glintFactor;
+
+        float snowGlint = calculate_snow_glints(frag_pos, N, V, L, roughness, glintFactor);
+        vec3 glintColor = mix(vec3(1.0), vec3(0.9, 0.95, 1.0), 0.5);
+        vec3 glintRadiance = glintColor * snowGlint * radiance * shadow;
+        Lo += glintRadiance;
+        spec_lum += get_luminance(glintRadiance);
     }
 
     float V_term = VisibilitySmithGGXCorrelated(NdotL, NdotV, roughness);
