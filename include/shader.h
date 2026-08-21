@@ -590,7 +590,7 @@ protected:
 		return guard;
 	}
 
-	std::string loadShaderSource(const std::string& path, std::set<std::string>& includedFiles) {
+	std::string loadShaderSource(const std::string& path, std::set<std::string>& includedFiles, const std::string& stageDefine = "") {
 		namespace fs = std::filesystem;
 		fs::path p = fs::absolute(fs::path(path));
 		try {
@@ -768,7 +768,21 @@ protected:
 			preVersionContent = "";
 		}
 
+		std::string shaderStageDefine = stageDefine;
+		if (isTopLevel && shaderStageDefine.empty()) {
+			std::string ext = p.extension().string();
+			if (ext == ".vert") shaderStageDefine = "VERTEX_SHADER";
+			else if (ext == ".frag") shaderStageDefine = "FRAGMENT_SHADER";
+			else if (ext == ".geom") shaderStageDefine = "GEOMETRY_SHADER";
+			else if (ext == ".comp") shaderStageDefine = "COMPUTE_SHADER";
+			else if (ext == ".tcs" || ext == ".tesc") shaderStageDefine = "TESS_CONTROL_SHADER";
+			else if (ext == ".tes" || ext == ".tese") shaderStageDefine = "TESS_EVALUATION_SHADER";
+		}
+
 		finalSource = versionLine;
+		if (isTopLevel && !shaderStageDefine.empty()) {
+			finalSource += "#define " + shaderStageDefine + "\n";
+		}
 		finalSource += "#ifndef " + guard + "\n";
 		finalSource += "#define " + guard + "\n";
 		finalSource += preVersionContent;
@@ -953,21 +967,21 @@ public:
 		std::string geometryCode;
 
 		std::set<std::string> includedFiles;
-		vertexCode = loadShaderSource(vertexPath, includedFiles);
+		vertexCode = loadShaderSource(vertexPath, includedFiles, "VERTEX_SHADER");
 
 		includedFiles.clear();
-		fragmentCode = loadShaderSource(fragmentPath, includedFiles);
+		fragmentCode = loadShaderSource(fragmentPath, includedFiles, "FRAGMENT_SHADER");
 
 		if (tessControlPath != nullptr && tessEvaluationPath != nullptr) {
 			includedFiles.clear();
-			tessControlCode = loadShaderSource(tessControlPath, includedFiles);
+			tessControlCode = loadShaderSource(tessControlPath, includedFiles, "TESS_CONTROL_SHADER");
 			includedFiles.clear();
-			tessEvaluationCode = loadShaderSource(tessEvaluationPath, includedFiles);
+			tessEvaluationCode = loadShaderSource(tessEvaluationPath, includedFiles, "TESS_EVALUATION_SHADER");
 		}
 
 		if (geometryPath != nullptr) {
 			includedFiles.clear();
-			geometryCode = loadShaderSource(geometryPath, includedFiles);
+			geometryCode = loadShaderSource(geometryPath, includedFiles, "GEOMETRY_SHADER");
 		}
 
 		const char* vShaderCode = vertexCode.c_str();
@@ -1133,7 +1147,7 @@ public:
 		std::string           computeCode;
 		std::set<std::string> includedFiles;
 
-		computeCode = loadShaderSource(computePath, includedFiles);
+		computeCode = loadShaderSource(computePath, includedFiles, "COMPUTE_SHADER");
 
 		if (computeCode.empty()) {
 			std::cerr << "ERROR::COMPUTE_SHADER::FILE_NOT_FOUND: " << computePath << std::endl;

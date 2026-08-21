@@ -1,4 +1,5 @@
 #version 460 core
+
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec4 Velocity;
 layout(location = 2) out vec4 NormalOut;
@@ -1107,7 +1108,8 @@ void main() {
 	float snowFactor = max(ctx.freezingScale, smoothstep(HEIGHT_SNOW_START, HEIGHT_PEAK, ctx.perturbedHeight));
 
 	if (ctx.freezingScale > 0.0) {
-		vec3 snowColor = vec3(0.9, 0.95, 1.0 + 0.01 * grassAO);
+		// mix(vec3(1.0), vec3(0.9, 0.95, 1.0), 0.5)
+		vec3 snowColor = mix(vec3(1.0), vec3(0.9, 0.95, 1.0 + 0.01 * grassAO), 0.5);
 		albedo = mix(albedo, snowColor, ctx.freezingScale);
 		roughness = mix(roughness, 0.85, ctx.freezingScale);
 		metallic = mix(metallic, 0.0, ctx.freezingScale);

@@ -4,6 +4,8 @@
 #include "../helpers/constants.glsl"
 #include "../lighting.glsl"
 #include "clustered_lighting.glsl"
+#include "helpers/fast_noise.glsl"
+
 #ifdef USE_TERRAIN_DATA
 #ifndef TERRAIN_HEIGHT_DEFINED
 #define TERRAIN_HEIGHT_DEFINED
@@ -554,7 +556,9 @@ vec3 getSpatialAmbientSH(vec3 worldPos, vec3 N) {
 	// Combine spatially-varying environmental SH (sky + bounce) with global sky irradiance.
 	// We blend between them because probes now capture both sky and ground bounce.
 	float finalWeight = clamp(totalWeight * bounceFade * verticalFade, 0.0, 1.0);
-	return mix(skyIrradiance, environmentalIrradiance, finalWeight);
+	vec3 ambientResult = mix(skyIrradiance, environmentalIrradiance, finalWeight);
+
+	return ambientResult;
 }
 
 // Forward declare macro occlusion from terrain_shadows.glsl
@@ -595,22 +599,15 @@ void evaluate_brdf_glint(
     vec3 H = normalize(V + L);
     float HdotV = max(dot(H, V), 0.0);
 
-    float NDF = DistributionGGX(N, H, roughness);
-
+	float NDF = DistributionGGX(N, H, roughness);
     if (glintFactor > 0.001) {
-#ifdef FRAGMENT_SHADER
+#if defined(FRAGMENT_SHADER)
         mat2 uv_J = mat2(dFdx(frag_pos.xz), dFdy(frag_pos.xz));
 #else
         mat2 uv_J = mat2(0.01, 0.0, 0.0, 0.01);
 #endif
         float glintNDF = calculate_glint_ndf(H, N, roughness, metallic, frag_pos.xz, uv_J);
-        NDF += glintNDF * glintFactor;
-
-        float snowGlint = calculate_snow_glints(frag_pos, N, V, L, roughness, glintFactor);
-        vec3 glintColor = mix(vec3(1.0), vec3(0.9, 0.95, 1.0), 0.5);
-        vec3 glintRadiance = glintColor * snowGlint * radiance * shadow;
-        Lo += glintRadiance;
-        spec_lum += get_luminance(glintRadiance);
+        NDF = mix(NDF, glintNDF, glintFactor);
     }
 
     float V_term = VisibilitySmithGGXCorrelated(NdotL, NdotV, roughness);
@@ -777,6 +774,29 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 
 	// Combine diffuse and specular ambient
 	vec3 ambient = ambientDiffuse * (1.0 - metallic * 0.9) + ambientSpecular;
+
+	if (glintFactor > 0.0) {
+		float microScale = 100.0; // Increase for smaller, denser "flakes"
+		vec3 gridPos = floor(frag_pos * microScale);
+
+		uvec2 ucell = uvec2(ivec2(gridPos.xz)) + uvec2(uint(gridPos.y * 1337.0), 0u);
+		uvec2 h = glint_shuffle(ucell);
+
+		vec2 randVal = vec2(h) * pow(0.5, 32.0);
+
+		float angle = randVal.x * 2.0 * PI;
+		float radius = sqrt(randVal.y) * roughness;
+		vec3 tangentOffset = vec3(cos(angle) * radius, sin(angle) * radius, 0.0);
+
+		mat3 TBN = get_tangent_basis(N);
+		vec3 modifiedLightPos = normalize(N + (TBN * tangentOffset));
+
+		evaluate_brdf_glint(N, V, modifiedLightPos, albedo, roughness, metallic, F0, ambient, combinedAO, frag_pos, glintFactor, Lo, spec_lum);
+		// vec3 modifiedLightPos = N + frag_pos;// + viewPos + V;
+		// // modifiedLightPos += cross(modifiedLightPos, frag_pos) * roughness;
+		// evaluate_brdf_glint(N, V, normalize(modifiedLightPos), albedo, roughness, metallic, F0, ambient, combinedAO, frag_pos, glintFactor, Lo, spec_lum);
+	}
+
 	vec3 color = ambient + Lo;
 
 	return vec4(color, spec_lum + get_luminance(ambientSpecular));
