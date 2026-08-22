@@ -819,7 +819,8 @@ TerrainMaterial generateMaterial(TerrainContext ctx, float noise) {
 	mat.albedo = texture(u_terrainColorBlend, vec3(ctx.perturbedHeight/100.0, (ctx.moisture+clamp(ctx.substrate, 0, 1.0)/2.0), mat.roughness)).rgb;
 	mat.metallic = 0.0;
 
-	mat.albedo = mix(mat.albedo, mat.albedo * 0.0, smoothstep(0.45, 0.55, noise));
+	mat.albedo = mix(mat.albedo, mat.albedo * 0.55, noise);
+	mat.albedo = applyErosionColorMappingDefault(mat.albedo, vRidgeMap, vErosionDelta);
 
 	return mat;
 }
@@ -857,6 +858,134 @@ float calculateAntiAliasedFBM(vec3 pos, float baseFreq, int octaves) {
     return value / totalAmplitude;
 }
 
+// Standard 2D hash for Voronoi seeds
+vec2 hash2(vec2 p) {
+    vec3 p3 = fract(vec3(p.xyx) * vec3(.1031, .1030, .0973));
+    p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.xx + p3.yz) * p3.zy);
+}
+
+// Placeholder: Replace with your engine's existing smooth noise (Simplex/Perlin)
+vec2 warpNoise2D(vec2 p) {
+    // Basic value noise for demonstration
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    vec2 u = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash2(i + vec2(0.0,0.0)), hash2(i + vec2(1.0,0.0)), u.x),
+               mix(hash2(i + vec2(0.0,1.0)), hash2(i + vec2(1.0,1.0)), u.x), u.y);
+}
+
+vec3 cellularBayerDither(vec2 uv, vec3 valA, vec3 valB, float threshold, float warpStrength) {
+    // 1. Domain Warp: Perturb the UVs before evaluating the cellular grid
+    // We offset the noise by a constant to avoid symmetries with the main hash
+    vec2 warpOffset = (warpNoise2D(uv * 0.5 + 13.37) - 0.5) * warpStrength;
+    vec2 warpedUV = uv + warpOffset;
+
+    // 2. Evaluate Worley structure
+    vec2 grid = floor(warpedUV);
+    vec2 local = fract(warpedUV);
+
+    float minDist = 10.0;
+    vec2 closestCellId = vec2(0.0);
+
+    // Standard 3x3 neighbor search
+    for(int y = -1; y <= 1; y++) {
+        for(int x = -1; x <= 1; x++) {
+            vec2 neighbor = vec2(float(x), float(y));
+            vec2 featurePt = hash2(grid + neighbor);
+
+            vec2 diff = neighbor + featurePt - local;
+            float dist = dot(diff, diff);
+
+            if(dist < minDist) {
+                minDist = dist;
+                closestCellId = grid + neighbor;
+            }
+        }
+    }
+
+    // 3. 8x8 Bayer Lookup using the CELL ID, not the fragment
+    ivec2 cellCoord = ivec2(closestCellId);
+
+    // GLSL '%' operator mirrors on negatives. This double-modulo forces it to wrap correctly.
+    cellCoord = ((cellCoord % 8) + 8) % 8;
+
+    const float bayer[64] = float[64](
+        0.0, 32.0,  8.0, 40.0,  2.0, 34.0, 10.0, 42.0,
+        48.0, 16.0, 56.0, 24.0, 50.0, 18.0, 58.0, 26.0,
+        12.0, 44.0,  4.0, 36.0, 14.0, 46.0,  6.0, 38.0,
+        60.0, 28.0, 52.0, 20.0, 62.0, 30.0, 54.0, 22.0,
+         3.0, 35.0, 11.0, 43.0,  1.0, 33.0,  9.0, 41.0,
+        51.0, 19.0, 59.0, 27.0, 49.0, 17.0, 57.0, 25.0,
+        15.0, 47.0,  7.0, 39.0, 13.0, 45.0,  5.0, 37.0,
+        63.0, 31.0, 55.0, 23.0, 61.0, 29.0, 53.0, 21.0
+    );
+
+    float bayerVal = bayer[cellCoord.y * 8 + cellCoord.x] / 64.0;
+
+    // 4. Evaluate Threshold
+    return (threshold > bayerVal) ? valA : valB;
+}
+
+vec3 cellularErosionDither(vec2 uv, vec3 valA, vec3 valB, float threshold, float warpStrength) {
+    // 1. Domain Warp
+    vec2 warpOffset = (warpNoise2D(uv * 0.5 + 13.37) - 0.5) * warpStrength;
+    vec2 warpedUV = uv + warpOffset;
+
+    // 2. Evaluate Worley structure
+    vec2 grid = floor(warpedUV);
+    vec2 local = fract(warpedUV);
+
+    float minDist = 10.0;
+    vec2 closestCellId = vec2(0.0);
+
+    for(int y = -1; y <= 1; y++) {
+        for(int x = -1; x <= 1; x++) {
+            vec2 neighbor = vec2(float(x), float(y));
+            vec2 featurePt = hash2(grid + neighbor);
+
+            vec2 diff = neighbor + featurePt - local;
+            float dist = dot(diff, diff);
+
+            if(dist < minDist) {
+                minDist = dist;
+                closestCellId = grid + neighbor;
+            }
+        }
+    }
+
+    // 3. 8x8 Bayer Lookup
+    ivec2 cellCoord = ivec2(closestCellId);
+    cellCoord = ((cellCoord % 8) + 8) % 8;
+
+    const float bayer[64] = float[64](
+        0.0, 32.0,  8.0, 40.0,  2.0, 34.0, 10.0, 42.0,
+        48.0, 16.0, 56.0, 24.0, 50.0, 18.0, 58.0, 26.0,
+        12.0, 44.0,  4.0, 36.0, 14.0, 46.0,  6.0, 38.0,
+        60.0, 28.0, 52.0, 20.0, 62.0, 30.0, 54.0, 22.0,
+         3.0, 35.0, 11.0, 43.0,  1.0, 33.0,  9.0, 41.0,
+        51.0, 19.0, 59.0, 27.0, 49.0, 17.0, 57.0, 25.0,
+        15.0, 47.0,  7.0, 39.0, 13.0, 45.0,  5.0, 37.0,
+        63.0, 31.0, 55.0, 23.0, 61.0, 29.0, 53.0, 21.0
+    );
+
+    float bayerVal = bayer[cellCoord.y * 8 + cellCoord.x] / 64.0;
+
+    // 4. Erosion Math
+    // Instead of evaluating (threshold > bayerVal), we use the distance to the center.
+    // We scale minDist by a tightness factor to control how fast the erosion happens.
+    float erosionTightness = 1.5;
+
+    // We combine the bayer value (acting as a base offset for the whole cell)
+    // with the distance (acting as a local modifier inside the cell).
+    float cellErosionState = bayerVal + (minDist * erosionTightness);
+
+    // Smoothstep gives a softer edge transition than a hard conditional
+    float mixFactor = smoothstep(threshold - 0.1, threshold + 0.1, cellErosionState);
+
+    return mix(valA, valB, mixFactor);
+}
+
 void main() {
 	if (uIsShadowPass) {
 		return;
@@ -870,6 +999,11 @@ void main() {
 
 	if (dist > 650) {
 		discard;
+	}
+
+	if (vIsWater > 0.5) {
+		processWaterLayer(norm, dist, 1.0);
+		return;
 	}
 
 	float baseFreq = 0.1 / worldScale;
@@ -892,14 +1026,15 @@ void main() {
 	float snowFactor = max(ctx.freezingScale, smoothstep(HEIGHT_SNOW_START, HEIGHT_PEAK, ctx.perturbedHeight));
 	if (snowFactor > 0.0) {
 		vec3 snowColor = mix(vec3(1.0), vec3(0.9, 0.95, 1.0 + 0.01 * 1.0), 0.5);
-		finalMaterial.albedo = mix(finalMaterial.albedo, snowColor, ctx.freezingScale);
+		// finalMaterial.albedo = mix(finalMaterial.albedo, snowColor, ctx.freezingScale);
+		finalMaterial.albedo = cellularErosionDither(FragPos.xz, snowColor, finalMaterial.albedo, snowFactor, 0.0);
 		finalMaterial.roughness = mix(finalMaterial.roughness, 0.85, ctx.freezingScale);
 		finalMaterial.metallic = mix(finalMaterial.metallic, 0.0, ctx.freezingScale);
 	}
 
 	float primaryShadow;
 	FragColor = apply_lighting_pbr(FragPos, norm, finalMaterial.albedo, finalMaterial.roughness, finalMaterial.metallic, 1.0, primaryShadow, snowFactor);
-	FragColor.b *= 1.0 + (0.2 * ctx.freezingScale * (1.0 - primaryShadow));
+	// FragColor.b *= 1.0 + (0.2 * ctx.freezingScale * (1.0 - primaryShadow));
 
 	NormalOut = vec4(normalize(mat3(view) * norm), primaryShadow);
 	AlbedoOut = vec4(finalMaterial.albedo, 1.0);
