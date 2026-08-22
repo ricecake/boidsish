@@ -162,6 +162,8 @@ void main() {
 
 	// Connect consecutive octaves f1_points[0] -> f1_points[1] -> f1_points[2] -> f1_points[3]
 	float minTreeDist = 1e6;
+	float bestTreeProgress = 0.0;
+	float segmentProgressStep = 1.0 / float(NUM_OCTAVES - 1);
 
 	for (int i = 0; i < NUM_OCTAVES - 1; i++) {
 		float segProg = 0.0;
@@ -169,6 +171,7 @@ void main() {
 
 		if (distToSeg < minTreeDist) {
 			minTreeDist = distToSeg;
+			bestTreeProgress = (float(i) + segProg) * segmentProgressStep;
 		}
 	}
 
@@ -180,6 +183,9 @@ void main() {
 	// Weight distance to tree by distance to root $f_{1,0}$
 	float weightedDist = minTreeDist * (1.0 + distToRoot * 4.0);
 
-	imageStore(outWeatherMap, pixel, vec4(finalCoverage, typeValue, weightedDist, 1.0));
+	// Shortest path distance to $f_{1,0}$ combining tree progress outwards from middle point + lateral distance
+	float shortestPathDist = bestTreeProgress + weightedDist;
+
+	imageStore(outWeatherMap, pixel, vec4(finalCoverage, typeValue, shortestPathDist, 1.0));
 	imageStore(outMinMaxMap, pixel, vec4(finalCoverage, finalCoverage, 0.0, 0.0));
 }

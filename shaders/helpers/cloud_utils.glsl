@@ -29,7 +29,7 @@ struct CloudWeather {
 	float baseFloor;
 	float baseCeiling;
 	float height;
-	float treeDistance; // Weighted distance from Worley tree vector field
+	float treePathDistance; // Shortest path distance to 0th octave f1 via Worley tree
 };
 
 // Distance from point p to line segment ab in 2D (in UV space, handling periodic wrapping for torus distance)
@@ -281,7 +281,7 @@ CloudWeather loadCloudWeather(vec3 p, CloudProperties props, vec4 tex, vec4 fron
 	weather.thickness = mmix(0.15, 1.0, 0.05, tex.g) * frontThicknessMod;
 	weather.density = tex.a * props.densityBase * frontCoverageBoost;
 
-	weather.treeDistance = tex.b;
+	weather.treePathDistance = tex.b;
 
 	weather.ecentricity = frontSample.a;
 

@@ -236,21 +236,21 @@ vec3 EvaluateStepLighting(
 
 	// Lightning path emission along Worley tree vector field
 	if (lightningPulse > 0.001) {
-		float pathDist = weather.treeDistance;
-		// Mask emission so it only occurs close to the Worley tree path
-		float pathMask = smoothstep(0.08, 0.0, pathDist);
+		float pathValue = weather.treePathDistance;
 
-		if (pathMask > 0.001) {
-			vec3 advect = getCloudWindOffset(time);
-			vec2 uv = (p + advect).xz / (100000.0 * props.worldScale);
-			float pathProgress = getWorleyTreeProgress(uv);
+		// Extract tree progress (0 to 1 outwards from root) and weighted lateral distance
+		float treeProg = min(pathValue, 1.0);
+		float weightedDist = max(0.0, pathValue - treeProg);
 
-			// Triangle wave along 0-1 path progress synchronized with lightingPulse
-			float wavePhase = fract(pathProgress * 2.0 - lightningPulse * 3.0);
-			float triWave = 1.0 - abs(wavePhase * 2.0 - 1.0); // 0 -> 1 -> 0 triangle wave
-			vec3 pathLightningGlow = lightningColor * lightningPulse * pathMask * smoothstep(0.1, 0.9, triWave) * 35.0;
-			emissiveGlow += pathLightningGlow;
-		}
+		// Triangle wave matching lightning pulse propagating outwards from the 0th octave f_1 root
+		float wavePhase = fract(treeProg * 2.0 - lightningPulse * 4.0);
+		float triWave = 1.0 - abs(wavePhase * 2.0 - 1.0); // 0 -> 1 -> 0 triangle wave
+
+		// Exponential falloff away from the tree vector core
+		float coreGlow = exp(-weightedDist * 30.0);
+
+		vec3 pathLightningGlow = lightningColor * lightningPulse * coreGlow * smoothstep(0.1, 0.9, triWave) * 35.0;
+		emissiveGlow += pathLightningGlow;
 	}
 
 
