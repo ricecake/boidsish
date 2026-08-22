@@ -776,7 +776,7 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 	vec3 ambient = ambientDiffuse * (1.0 - metallic * 0.9) + ambientSpecular;
 
 	if (glintFactor > 0.0) {
-		float microScale = 100.0; // Increase for smaller, denser "flakes"
+		float microScale = 100.0;
 		vec3 gridPos = floor(frag_pos * microScale);
 
 		uvec2 ucell = uvec2(ivec2(gridPos.xz)) + uvec2(uint(gridPos.y * 1337.0), 0u);
