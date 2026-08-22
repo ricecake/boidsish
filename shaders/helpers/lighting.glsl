@@ -619,6 +619,7 @@ void evaluate_brdf_glint(
     kD *= 1.0 - metallic;
 
     vec3 specular_radiance = specular * radiance * NdotL * shadow;
+	specular_radiance = min(specular_radiance, vec3(45000.0));
 
     Lo += (kD * albedo / PI) * radiance * NdotL * shadow + specular_radiance;
     spec_lum += get_luminance(specular_radiance);

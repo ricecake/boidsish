@@ -224,7 +224,8 @@ float calculate_glint_ndf(vec3 H, vec3 N, float roughness, float metallic, vec2 
 	uvec2 h = glint_shuffle(ucell);
 	float randVal = float(h.x) * pow(0.5, 32.0);
 	vec3 crystalN = normalize(N + vec3(randVal - 0.5, 0.3, fract(randVal * 17.0) - 0.5) * 0.5);
-	float microSpec = pow(max(0.0, dot(H, crystalN)), 250.0) * smoothstep(0.8, 0.95, randVal);
+	float HdotC = clamp(dot(H, crystalN), 0.0, 1.0);
+	float microSpec = pow(max(0.0, HdotC), 250.0) * smoothstep(0.8, 0.95, randVal);
 
 	return (ndf * 100.0) + (microSpec * 250.0);
 }
