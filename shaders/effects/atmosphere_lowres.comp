@@ -234,6 +234,25 @@ vec3 EvaluateStepLighting(
 	// We apply a soft multiplier (0.05) to align the occlusion intensity with the visual range.
 	vec3 localAmbientVisibility = exp(-edgeDistance * stepDensity * 0.05);
 
+	// Lightning path emission along Worley tree vector field
+	if (lightningPulse > 0.001) {
+		float pathValue = weather.treePathDistance;
+
+		// Extract tree progress (0 to 1 outwards from root) and weighted lateral distance
+		float treeProg = min(pathValue, 1.0);
+		float weightedDist = max(0.0, pathValue - treeProg);
+
+		// Triangle wave matching lightning pulse propagating outwards from the 0th octave f_1 root
+		float wavePhase = fract(treeProg * 2.0 - lightningPulse * 4.0);
+		float triWave = 1.0 - abs(wavePhase * 2.0 - 1.0); // 0 -> 1 -> 0 triangle wave
+
+		// Exponential falloff away from the tree vector core
+		float coreGlow = exp(-weightedDist * 30.0);
+
+		vec3 pathLightningGlow = lightningColor * lightningPulse * coreGlow * smoothstep(0.1, 0.9, triWave) * 35.0;
+		emissiveGlow += pathLightningGlow;
+	}
+
 
 	// PASS 1: Global Directional Lights (Sun/Moon)
 	for (int j = 0; j < min(2, num_lights); j++) {
@@ -288,13 +307,6 @@ vec3 EvaluateStepLighting(
 		}
 
 		float cosTheta = dot(rayDir, L);
-		// float phase = cloudPhase(cosTheta);
-
-		// vec3 shadowTerm = mix(
-		// 	beerPowder(opticalDepthToLight, stepOpticalDepth),
-		// 	exp(-opticalDepthToLight),
-		// 	cloudBeerPowderMix
-		// );
 
 		// Setup multi-scattering constants
 		const int OCTAVES = 3;
@@ -347,12 +359,6 @@ vec3 EvaluateStepLighting(
 		float lightScale = (j == 0 ? cloudSunLightScale : cloudMoonLightScale);
 		stepScattering += lightTransmittance * lights[j].color.rgb * msScattering *
 			lights[j].intensity * attenuation * lightScale;
-
-
-		// float lightScale = (j == 0 ? cloudSunLightScale : cloudMoonLightScale);
-
-		// stepScattering += lightTransmittance * lights[j].color.rgb * shadowTerm * phase *
-		// 	lights[j].intensity * attenuation * lightScale;
 	}
 
 
@@ -528,11 +534,10 @@ void main() {
 	float absoluteShellDist = t_end - t_start;
 	rayDist = t_end - t_start;
 	baseStepSize = clamp(rayDist / float(samples), precisionLimit, 25.0);
-	// baseStepSize = clamp(absoluteShellDist / float(samples), precisionLimit, 25.0);
 
 	float firstStepSize = baseStepSize;
 	float its = 0.0;
-	int MAX_ITERATIONS = 1000;//int(uCloudMaxRayDistance / 25.0);
+	int MAX_ITERATIONS = 1000;
 
 	float steps = 0.0;
 	float firstHitStep = 0.0;
@@ -675,10 +680,6 @@ void main() {
 	}
 
 	vec4 finalColor = vec4(cloudColor, dot(cloudTransmittance, vec3(0.3333)));
-	// vec4 finalColor = vec4(mix(vec3(0,10,0), vec3(10,0,0), smoothstep(0, 100, magic_stepping)), 0.0);
-	// vec4 finalColor = vec4(mix(vec3(0,10,0), vec3(10,0,0), smoothstep(0, 100, firstHitDist/firstHitStep)), 0.0);
-	// finalColor = mix(finalColor, vec4(mix(vec3(0,10000000,0), vec3(10000000,0,0), smoothstep(0, 100, firstHitStep)), 0.0), 0.3);
-	// vec4 finalColor = vec4(magic_stepping * 100, 0.0, 0, 0);
 	vec4 finalDepth;
 	vec2 finalVelocity;
 
@@ -687,9 +688,7 @@ void main() {
 		vec3 avgAdvection = weightedAdvectionSum / totalWeight;
 
 		finalDepth = vec4(firstHitDist, lastHitDist, firstStepSize, pathDensity);
-		// Reproject using the accumulated per-sample advection directly
 		vec3 stableHitPos = viewPos + canonicalRayDir * stableHitDist;
-		// vec3 advectionDelta = avgAdvection * uDeltaTime;
 		float distanceDamping = 1.0 - smoothstep(10000.0 * worldScale, 50000.0 * worldScale, stableHitDist);
 		vec3 advectionDelta = (avgAdvection * distanceDamping) * uDeltaTime;
 
@@ -711,7 +710,6 @@ void main() {
 	}
 
 	imageStore(outPackedColor, packedPixel, finalColor);
-	// imageStore(outPackedColor, packedPixel, vec4(vec3(its/10, 0, 0),0));
 	imageStore(outPackedDepth, packedPixel, finalDepth);
 	imageStore(outPackedVelocity, packedPixel, vec4(finalVelocity, 0.0, 0.0));
 }

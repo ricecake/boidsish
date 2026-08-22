@@ -29,7 +29,55 @@ struct CloudWeather {
 	float baseFloor;
 	float baseCeiling;
 	float height;
+	float treePathDistance; // Shortest path distance to 0th octave f1 via Worley tree
 };
+
+// Distance from point p to line segment ab in 2D (in UV space, handling periodic wrapping for torus distance)
+float distToSegmentWrapped(vec2 p, vec2 a, vec2 b, out float progressOnSegment) {
+	vec2 ab = b - a;
+	ab -= floor(ab + 0.5); // shortest wrapped vector from a to b
+
+	vec2 ap = p - a;
+	ap -= floor(ap + 0.5); // shortest wrapped vector from a to p
+
+	float ab2 = dot(ab, ab);
+	if (ab2 < 1e-7) {
+		progressOnSegment = 0.0;
+		return length(ap);
+	}
+
+	float t = clamp(dot(ap, ab) / ab2, 0.0, 1.0);
+	progressOnSegment = t;
+	vec2 closest = t * ab; // relative to a
+	return length(ap - closest);
+}
+
+float getWorleyTreeProgress(vec2 uv) {
+	const int NUM_OCTAVES = 4;
+	float octavePeriods[NUM_OCTAVES] = float[NUM_OCTAVES](4.0, 8.0, 16.0, 32.0);
+
+	vec2 f1_points[NUM_OCTAVES];
+	for (int i = 0; i < NUM_OCTAVES; i++) {
+		float per = octavePeriods[i];
+		WorleyData2D wData = worley2d_tiling_id(uv * per, per);
+		f1_points[i] = fract(wData.f1 / per);
+	}
+
+	float minTreeDist = 1e6;
+	float totalProgress = 0.0;
+	float segmentProgressStep = 1.0 / float(NUM_OCTAVES - 1);
+
+	for (int i = 0; i < NUM_OCTAVES - 1; i++) {
+		float segProg = 0.0;
+		float distToSeg = distToSegmentWrapped(uv, f1_points[i], f1_points[i+1], segProg);
+
+		if (distToSeg < minTreeDist) {
+			minTreeDist = distToSeg;
+			totalProgress = (float(i) + segProg) * segmentProgressStep;
+		}
+	}
+	return clamp(totalProgress, 0.0, 1.0);
+}
 
 vec4 hash41(float p) {
     vec4 p4 = fract(p * vec4(443.897, 441.423, .0973, .1099));
@@ -210,29 +258,12 @@ float applyDynamicCoverage(float bakedCoverage, float uniformCoverage, float bia
 }
 
 float applyDynamicCoverage(float bakedCoverage, float uniformCoverage) {
-	// uniformCoverage = 1.0 - uniformCoverage;
-	// return smoothstep(uniformCoverage, uniformCoverage + 0.1, bakedCoverage);
     float coverageFloor = 1.0 - (uniformCoverage * 2.0);
 
     float remapped = saturate((bakedCoverage - coverageFloor) / (1.0 - min(0.0, coverageFloor)));
 
 	return schlickGain(remapped, 0.25);
 }
-
-
-// float applyDynamicCoverage(float bakedCoverage, float uniformCoverage) {
-//     // uniformCoverage at 0.5 = no change
-//     // uniformCoverage at 1.0 = solid overcast
-//     // uniformCoverage at 0.0 = clear skies
-// 	// return 1.0-smoothstep(2*uniformCoverage-1,2*uniformCoverage,bakedCoverage);
-//     // return clamp(bakedCoverage + (uniformCoverage * 2.0 - 1.0), 0.0, 1.0);
-// 	// return 6*(bakedCoverage+(uniformCoverage*2.0 -1));
-// 	// return 1.0-smoothstep(uniformCoverage-0.25, uniformCoverage, bakedCoverage - (uniformCoverage * 0.25));
-// 	// return 1.0-smoothstep(uniformCoverage-0.5*uniformCoverage, uniformCoverage, bakedCoverage - (uniformCoverage * uniformCoverage * 0.5));
-// 	// return schlickBias(clamp(bakedCoverage + (uniformCoverage * 2.0 - 1.0), 0.0, 1.0), uniformCoverage);
-// 	// return schlickBias(bakedCoverage, uniformCoverage);
-// 	return applyDynamicCoverage(bakedCoverage, uniformCoverage, 1-uniformCoverage);
-// }
 
 
 CloudWeather loadCloudWeather(vec3 p, CloudProperties props, vec4 tex, vec4 frontSample) {
@@ -249,6 +280,8 @@ CloudWeather loadCloudWeather(vec3 p, CloudProperties props, vec4 tex, vec4 fron
 	float frontThicknessMod = frontSample.b;
 	weather.thickness = mmix(0.15, 1.0, 0.05, tex.g) * frontThicknessMod;
 	weather.density = tex.a * props.densityBase * frontCoverageBoost;
+
+	weather.treePathDistance = tex.b;
 
 	weather.ecentricity = frontSample.a;
 
