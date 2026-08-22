@@ -87,30 +87,31 @@ float schlickBias(float x, float g) {
 	return xx / (k * (1.0 - xx) + 1.0);
 }
 
-// struct HierarchicalWorleyData2D {
-//     float f1_dist;
-//     float f2_dist;
-//     vec2 f1_pos;
-//     vec2 f2_pos;
-//     float f1_level;
-//     float f2_level;
-//     float f1_id;
-//     float f2_id;
-//     vec2 p;
-// };
-
-// struct WorleyData2D {
-// 	float f1_dist;
-// 	float f2_dist;
-// 	vec2 f1;
-// 	vec2 f2;
-// 	vec2 p;
-// };
-
 float smaxCubic(float a, float b, float k) {
 	k *= 1.4;
 	float h = max(k - abs(a - b), 0.0);
 	return max(a, b) + h * h * h / (6.0 * k * k);
+}
+
+// Distance from point p to line segment ab in 2D (in UV space, handling periodic wrapping for torus distance)
+float distToSegmentWrapped(vec2 p, vec2 a, vec2 b, out float progressOnSegment) {
+	// Calculate shortest displacement vector considering tiling [0,1]^2
+	vec2 ab = b - a;
+	ab -= floor(ab + 0.5); // shortest wrapped vector from a to b
+
+	vec2 ap = p - a;
+	ap -= floor(ap + 0.5); // shortest wrapped vector from a to p
+
+	float ab2 = dot(ab, ab);
+	if (ab2 < 1e-7) {
+		progressOnSegment = 0.0;
+		return length(ap);
+	}
+
+	float t = clamp(dot(ap, ab) / ab2, 0.0, 1.0);
+	progressOnSegment = t;
+	vec2 closest = t * ab; // relative to a
+	return length(ap - closest);
 }
 
 void main() {
@@ -134,34 +135,51 @@ void main() {
 	HierarchicalWorleyData2D worleyDetails = hierarchicalWorleyTiled(p * period1, period1);
 	float worley = pow(worleyDetails.f1_dist, 1.0);
 
-	// float finalCoverage = macro;//remapClamp(macro, worley, 1.0, 0.0, 1.0);
 	float finalCoverage = remapClamp(macro, worley, 1.0, 0.0, 1.0);
 	finalCoverage = smaxCubic(finalCoverage, worley, 0.1);
 
 	WorleyData2D density = worley2d_tiling_id(uv * period2, period2);
 	WorleyData2D thickness = worley2d_tiling_id(uv * period3, period3);
 	WorleyData2D type = worley2d_tiling_id((uv + 0.25*macro) * period4, period4);
-	// HierarchicalWorleyData2D type = hierarchicalWorleyTiled((uv + 0.15*macro) * period4, period4);
-
 
 	float typeTransition = abs(type.f2_dist - type.f1_dist);
-	// float typeValue = mix(hash12Tile(type.f1, vec2(0.0)), hash12Tile(type.f2, vec2(0.0)), smoothstep(0, 0.85, typeTransition));
 	float typeValue = hash12Tile(type.f1, vec2(0.0));
 
 	finalCoverage = pow(finalCoverage, 1.0 + (1.0-smoothstep(0, 0.05, typeTransition)));
 
-	imageStore(outWeatherMap, pixel, vec4(finalCoverage, typeValue, 0, 1.0));
-	// imageStore(outWeatherMap, pixel, vec4(finalCoverage, schlickBias(finalCoverage, 0.2), 0, 1.0));
-	imageStore(outMinMaxMap, pixel, vec4(finalCoverage, finalCoverage, 0.0, 0.0));
+	// --- Worley Tree Vector Field Computation ---
+	// Evaluate 4 octaves of tiling Worley feature points (f1)
+	const int NUM_OCTAVES = 4;
+	float octavePeriods[NUM_OCTAVES] = float[NUM_OCTAVES](4.0, 8.0, 16.0, 32.0);
 
-	// vec2 cellId = worleyDetails.yz;
-	// float cellID = psrdnoise(cellId, vec2(10.0)) * 0.5 + 0.5;
-	// float distInMeters = micro * cellRange;
-	// float distF1InMeters = worleyDetails.x * cellRange;
-	// // Record seed info if this is the pixel closest to the cell center (f1)
-	// vec2 f1Pixel = (cellId * cellRange) / mapRange * vec2(size);
-	// if (distance(vec2(pixel), f1Pixel) < 1.0) {
-	// 	int cellIdx = int(mod(floor(cellId.y), 10.0) * 10.0 + mod(floor(cellId.x), 10.0));
-	// 	seeds[cellIdx] = vec4(cellId.x * cellRange, cellId.y * cellRange, distInMeters, (finalCoverage > 0.0 ? 1.0 : 0.0));
-	// }
+	vec2 f1_points[NUM_OCTAVES];
+	for (int i = 0; i < NUM_OCTAVES; i++) {
+		float per = octavePeriods[i];
+		WorleyData2D wData = worley2d_tiling_id(uv * per, per);
+		// Convert f1 cell ID + point to normalized UV space [0, 1]
+		f1_points[i] = fract(wData.f1 / per);
+	}
+
+	// Connect consecutive octaves f1_points[0] -> f1_points[1] -> f1_points[2] -> f1_points[3]
+	float minTreeDist = 1e6;
+
+	for (int i = 0; i < NUM_OCTAVES - 1; i++) {
+		float segProg = 0.0;
+		float distToSeg = distToSegmentWrapped(uv, f1_points[i], f1_points[i+1], segProg);
+
+		if (distToSeg < minTreeDist) {
+			minTreeDist = distToSeg;
+		}
+	}
+
+	// Distance from pixel to the 0th octave f1 point (root)
+	vec2 rootDelta = uv - f1_points[0];
+	rootDelta -= floor(rootDelta + 0.5);
+	float distToRoot = length(rootDelta);
+
+	// Weight distance to tree by distance to root $f_{1,0}$
+	float weightedDist = minTreeDist * (1.0 + distToRoot * 4.0);
+
+	imageStore(outWeatherMap, pixel, vec4(finalCoverage, typeValue, weightedDist, 1.0));
+	imageStore(outMinMaxMap, pixel, vec4(finalCoverage, finalCoverage, 0.0, 0.0));
 }
