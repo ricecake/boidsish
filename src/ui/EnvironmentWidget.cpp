@@ -531,23 +531,13 @@ namespace Boidsish {
 									}
 									float cloud_altitude = atmosphere_effect->GetCloudAltitude();
 									if (ImGui::SliderFloat("Cloud Altitude", &cloud_altitude, 0.0f, 1000.0f)) {
-										if (weather) weather->SetTarget(WeatherAttribute::CloudAltitude, cloud_altitude);
-										else atmosphere_effect->SetCloudAltitude(cloud_altitude);
+										atmosphere_effect->SetCloudAltitude(cloud_altitude);
 										changed_atm = true;
-									}
-									if (weather) {
-										ImGui::SameLine();
-										if (ImGui::Button("Unlock##CloudAltitude")) weather->ClearTarget(WeatherAttribute::CloudAltitude);
 									}
 									float cloud_thickness = atmosphere_effect->GetCloudThickness() / 1000.0f;
 									if (ImGui::SliderFloat("Cloud Thickness", &cloud_thickness, 0.0f, 20.0f)) {
-										if (weather) weather->SetTarget(WeatherAttribute::CloudThickness, cloud_thickness * 1000.0f);
-										else atmosphere_effect->SetCloudThickness(cloud_thickness * 1000.0f);
+										atmosphere_effect->SetCloudThickness(cloud_thickness * 1000.0f);
 										changed_atm = true;
-									}
-									if (weather) {
-										ImGui::SameLine();
-										if (ImGui::Button("Unlock##CloudThickness")) weather->ClearTarget(WeatherAttribute::CloudThickness);
 									}
 									float cloud_coverage = atmosphere_effect->GetCloudCoverage();
 									if (ImGui::SliderFloat("Cloud Coverage", &cloud_coverage, 0.0f, 1.0f)) {

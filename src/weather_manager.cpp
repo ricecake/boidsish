@@ -1187,8 +1187,6 @@ namespace Boidsish {
 			cached_targets_.wind_speed = blended.wind_speed.Lerp(sampleNoise(3.3f));
 			cached_targets_.wind_frequency = blended.wind_frequency.Lerp(sampleNoise(4.4f));
 			cached_targets_.cloud_density = blended.cloud_density.Lerp(humidity);
-			cached_targets_.cloud_altitude = blended.cloud_altitude.Lerp(sampleNoise(6.6f));
-			cached_targets_.cloud_thickness = blended.cloud_thickness.Lerp(humidity);
 			cached_targets_.haze_density = blended.haze_density.Lerp(humidity);
 			cached_targets_.haze_height = blended.haze_height.Lerp(sampleNoise(9.9f));
 			cached_targets_.rayleigh_scale = blended.rayleigh_scale.Lerp(pressure);
@@ -1220,8 +1218,6 @@ namespace Boidsish {
 			cached_targets_.haze_color = phys.aerosolColor; // LBM aerosol color maps to haze color
 			cached_targets_.cloud_coverage = phys.cloudCoverage;
 			cached_targets_.cloud_density = phys.cloudDensity;
-			cached_targets_.cloud_altitude = phys.cloudAltitude;
-			cached_targets_.cloud_thickness = phys.cloudThickness;
 			cached_targets_.temperature = phys.temperature;
 			cached_targets_.pressure = phys.pressure;
 			cached_targets_.humidity = phys.humidity;
@@ -1245,11 +1241,13 @@ namespace Boidsish {
 
 					float worldScaleVal = terrain_ ? terrain_->GetWorldScale() : 1.0f;
 					auto  atm_mgr = ServiceLocator::Instance().Get<AtmosphereManager>();
+					float cloudAltitude = atm_mgr ? atm_mgr->GetCloudAltitude() : current_.cloud_altitude;
+					float cloudThickness = atm_mgr ? atm_mgr->GetCloudThickness() : current_.cloud_thickness;
 
 					// Default random positioning near camera
 					glm::vec3 startPos(
 						cameraPos.x + (rand() % 2000 - 1000),
-						current_.cloud_altitude * worldScaleVal,
+						cloudAltitude * worldScaleVal,
 						cameraPos.z + (rand() % 2000 - 1000)
 					);
 					glm::vec3 endPos = startPos;
@@ -1280,12 +1278,12 @@ namespace Boidsish {
 							glm::vec4 startWeather = atm_mgr->GetCloudWeather(glm::vec2(startPos.x, startPos.z), totalTime);
 
 							// Calculate actual cloud layer bounds at this position
-							float altitudeShift = startWeather.y * current_.cloud_thickness * 2.0f;
+							float altitudeShift = startWeather.y * cloudThickness * 2.0f;
 							float coverage = 1.0f - glm::smoothstep(-500.0f * worldScaleVal, 500.0f * worldScaleVal, startWeather.x);
 							float verticalExpansion = glm::mix(1.0f, 8.0f, startWeather.w * coverage);
 
-							float baseFloor = (current_.cloud_altitude + altitudeShift) * worldScaleVal;
-							float baseCeiling = baseFloor + (current_.cloud_thickness * verticalExpansion) * worldScaleVal;
+							float baseFloor = (cloudAltitude + altitudeShift) * worldScaleVal;
+							float baseCeiling = baseFloor + (cloudThickness * verticalExpansion) * worldScaleVal;
 
 							// Pick a height within the actual cloud volume
 							startPos.y = glm::mix(baseFloor, baseCeiling, 0.2f + (static_cast<float>(rand()) / RAND_MAX) * 0.6f);
@@ -1304,12 +1302,12 @@ namespace Boidsish {
 									endPos = candidateEndPositions[rand() % candidateEndPositions.size()];
 									glm::vec4 endWeather = atm_mgr->GetCloudWeather(glm::vec2(endPos.x, endPos.z), totalTime);
 
-									float eAltitudeShift = endWeather.y * current_.cloud_thickness * 2.0f;
+									float eAltitudeShift = endWeather.y * cloudThickness * 2.0f;
 									float eCoverage = 1.0f - glm::smoothstep(-500.0f * worldScaleVal, 500.0f * worldScaleVal, endWeather.x);
 									float eVerticalExpansion = glm::mix(1.0f, 8.0f, endWeather.w * eCoverage);
 
-									float eBaseFloor = (current_.cloud_altitude + eAltitudeShift) * worldScaleVal;
-									float eBaseCeiling = eBaseFloor + (current_.cloud_thickness * eVerticalExpansion) * worldScaleVal;
+									float eBaseFloor = (cloudAltitude + eAltitudeShift) * worldScaleVal;
+									float eBaseCeiling = eBaseFloor + (cloudThickness * eVerticalExpansion) * worldScaleVal;
 
 									endPos.y = glm::mix(eBaseFloor, eBaseCeiling, 0.2f + (static_cast<float>(rand()) / RAND_MAX) * 0.6f);
 								} else {
@@ -1350,8 +1348,6 @@ namespace Boidsish {
 		UpdateAttribute(WeatherAttribute::WindSpeed, cached_targets_.wind_speed, deltaTime);
 		UpdateAttribute(WeatherAttribute::WindFrequency, cached_targets_.wind_frequency, deltaTime);
 		UpdateAttribute(WeatherAttribute::CloudDensity, cached_targets_.cloud_density, deltaTime);
-		UpdateAttribute(WeatherAttribute::CloudAltitude, cached_targets_.cloud_altitude, deltaTime);
-		UpdateAttribute(WeatherAttribute::CloudThickness, cached_targets_.cloud_thickness, deltaTime);
 		UpdateAttribute(WeatherAttribute::HazeDensity, cached_targets_.haze_density, deltaTime);
 		UpdateAttribute(WeatherAttribute::HazeHeight, cached_targets_.haze_height, deltaTime);
 		UpdateAttribute(WeatherAttribute::RayleighScale, cached_targets_.rayleigh_scale, deltaTime);

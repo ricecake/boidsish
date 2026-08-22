@@ -3661,8 +3661,6 @@ namespace Boidsish {
 				impl->atmosphere_effect->SetHazeDensity(w.haze_density);
 				impl->atmosphere_effect->SetHazeHeight(w.haze_height);
 				impl->atmosphere_effect->SetCloudDensity(w.cloud_density);
-				impl->atmosphere_effect->SetCloudAltitude(w.cloud_altitude);
-				impl->atmosphere_effect->SetCloudThickness(w.cloud_thickness);
 				impl->atmosphere_effect->SetCloudCoverage(w.cloud_coverage);
 				impl->atmosphere_effect->SetRayleighScale(w.rayleigh_scale);
 				impl->atmosphere_effect->SetMieScale(w.mie_scale);
