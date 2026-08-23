@@ -246,29 +246,17 @@ void main() {
 	TextureSlice = slice;
 
 	float waterMask = 1.0-smoothstep(-0.1, 0.1, FragPos.y);
+	float shallowFactor = clamp((1.0 - vIsWater) / 0.5, 0.0, 1.0);
 	if (waterMask > 0.0) {
-		float landHeight = FragPos.y;
-		float waterHeight = 0.0;
-
-		// // Add gentle ripple displacement
-		// float rippleTime = time * 2.0;
-		// float ripple = sin(FragPos.x * 0.5 + rippleTime) * 0.05 + cos(FragPos.z * 0.5 + rippleTime * 0.8) * 0.05;
-		// waterHeight += ripple;
-
-		// // Approximate normal for the ripple surface
-		// float dx = 0.05 * cos(FragPos.x * 0.5 + rippleTime) * 0.5;
-		// float dz = 0.05 * -sin(FragPos.z * 0.5 + rippleTime * 0.8) * 0.4;
-		// vec3  waterNormal = normalize(vec3(-dx, 1.0, -dz));
-
-		// gerstner
 		vec3 tangent = vec3(1.0, 0.0, 0.0);
 		vec3 binormal = vec3(0.0, 0.0, 1.0);
-		vec3 pos = gerstnerWave(baseFragPos.xz, vec2(0.20, 0.1*cos(time * 0.05)), 1.50, 0.50, time*0.75, tangent, binormal);
+		vec3 pos = gerstnerWave(baseFragPos.xz, vec2(1.0, shallowFactor * 0.5), clamp(0.15 / shallowFactor, 0.1, 0.2), 15.0, time*0.75, tangent, binormal);
+		// pos += gerstnerWave(baseFragPos.xz, vec2(1.0, 1.0), 0.05, 10.0, time, tangent, binormal);
+		// pos += gerstnerWave(baseFragPos.xz, vec2(0.0, 1.0), 0.1, 25.0, time*2.0, tangent, binormal);
 		vec3  waterNormal = normalize(cross(binormal, tangent));
 
-		// FragPos = mix(FragPos, pos, waterMask);
 		FragPos += pos;
-		Normal = waterNormal;//normalize(mix(Normal, waterNormal, waterMask));
+		Normal = waterNormal;
 	}
 
 	// Apply shockwave ripple to terrain
