@@ -221,7 +221,7 @@ void main() {
 	result *= exposure;
 
 	// --- PURKINJE SHIFT ---
-	vec3 scotopicTint = vec3(0.15, 0.3, 0.6);
+	vec3 scotopicTint = mix(vec3(0.15, 0.3, 0.6), result * vec3(0.70, 0.80, 0.90), isSky);
 	// vec3 scotopicTint = vec3(2.0, 0.3, 0.6);
 	result = ApplyPurkinjeShift(result, layers[isSky].adaptedLuminance, scotopicTint);
 	// ----------------------
