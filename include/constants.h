@@ -49,6 +49,8 @@ namespace Boidsish {
 				TerrainColorBlend = 47,
 				CloudShadowMap = 51,
 				WindUvData = 52,
+				Cloud2DProps = 53,
+				Cloud3DFront = 54,
 			};
 
 			enum class Ubo {
@@ -341,6 +343,14 @@ namespace Boidsish {
 
 			consteval int WindUvData() {
 				return std::to_underlying(Constants::Bindings::Texture::WindUvData);
+			}
+
+			consteval int Cloud2DProps() {
+				return std::to_underlying(Constants::Bindings::Texture::Cloud2DProps);
+			}
+
+			consteval int Cloud3DFront() {
+				return std::to_underlying(Constants::Bindings::Texture::Cloud3DFront);
 			}
 		} // namespace TextureUnit
 

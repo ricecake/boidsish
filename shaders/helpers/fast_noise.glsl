@@ -118,8 +118,8 @@ struct WorleyData3D {
 WorleyData3D worley3d_tiling_id(vec3 p, vec3 period) {
 	vec3  i = floor(p);
 	vec3  f = fract(p);
-	float minDistSq = 1.0;
-	float f2DistSq = 1.0;
+	float minDistSq = 1e6;
+	float f2DistSq = 1e6;
 	vec3 cellId = vec3(0.0);
 	vec3 f2CellId = vec3(0.0);
 	for (int z = -1; z <= 1; z++) {
@@ -170,8 +170,8 @@ struct WorleyData2D {
 WorleyData2D worley2d_tiling_id(vec2 p, float period) {
 	vec2  i = floor(p);
 	vec2  f = fract(p);
-	float minDistSq = 1.0;
-	float f2DistSq = 1.0;
+	float minDistSq = 1e6;
+	float f2DistSq = 1e6;
 	vec2 cellId = vec2(0.0);
 	vec2 f2CellId = vec2(0.0);
 	for (int y = -1; y <= 1; y++) {
@@ -186,11 +186,11 @@ WorleyData2D worley2d_tiling_id(vec2 p, float period) {
 				f2DistSq = minDistSq;
 				f2CellId = cellId;
 				minDistSq = d;
-				cellId = i + neighbor + point;
+				cellId = wrapped_coord + point;
 			}
 			else if (d < f2DistSq) {
 				f2DistSq = d;
-				f2CellId = i + neighbor + point;
+				f2CellId = wrapped_coord + point;
 			}
 		}
 	}

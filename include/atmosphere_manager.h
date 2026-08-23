@@ -200,6 +200,8 @@ namespace Boidsish {
 		GLuint GetCloudWeatherTexture() const { return _cloudWeatherTexture; }
 		GLuint GetCloudWeatherMinMaxTexture() const { return _cloudWeatherMinMaxTexture; }
 		GLuint GetCloudShadowTexture() const { return _cloudShadowTexture; }
+		GLuint GetCloud2DPropsLUT() const { return _cloud2DPropsLUT; }
+		GLuint GetCloud3DFrontLUT() const { return _cloud3DFrontLUT; }
 		const glm::mat4& GetCloudShadowMatrix() const { return _cloudShadowMatrix; }
 		const glm::mat4& GetCloudShadowInvMatrix() const { return _cloudShadowInvMatrix; }
 
@@ -208,6 +210,20 @@ namespace Boidsish {
 
 		bool ExportCloudWeatherMap(const std::string& filepath);
 		bool ImportCloudWeatherMap(const std::string& filepath);
+
+		void PaintWeatherMap(
+			const glm::vec2& brushCenterUV,
+			float            brushRadiusUV,
+			const glm::vec4& brushValue,
+			const glm::vec4& channelMask,
+			int              drawOp,
+			float            brushStrength,
+			float            smoothness
+		);
+
+		void RebakeWeatherMinMaxAndVolume();
+		void ForceRebakeWeatherMap();
+		void ClearWeatherMap();
 
 		/**
 		 * Sample the cloud weather data on the CPU.
@@ -244,6 +260,8 @@ namespace Boidsish {
 		GLuint _cloudWeatherMinMaxTexture = 0;
 		GLuint _cloudVolumeTexture = 0;
 		GLuint _cloudShadowTexture = 0;
+		GLuint _cloud2DPropsLUT = 0;
+		GLuint _cloud3DFrontLUT = 0;
 		GLuint _cloudSeedsBuffer = 0;
 		GLuint _shCoeffsBuffer = 0;
 
@@ -256,6 +274,8 @@ namespace Boidsish {
 		std::unique_ptr<ComputeShader> _cloudVolumeBakeShader;
 		std::unique_ptr<ComputeShader> _cloudMipShader;
 		std::unique_ptr<ComputeShader> _cloudShadowBakeShader;
+		std::unique_ptr<ComputeShader> _cloudPaintShader;
+		std::unique_ptr<ComputeShader> _cloudMinMaxInitShader;
 
 		glm::mat4 _cloudShadowMatrix = glm::mat4(1.0f);
 		glm::mat4 _cloudShadowInvMatrix = glm::mat4(1.0f);

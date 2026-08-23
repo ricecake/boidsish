@@ -80,19 +80,29 @@ void main() {
 			float spec = pow(max(dot(n, h), 0.0), 64.0);
 			color = mix(iridescent_color, vec3(1.0), fresnel * 0.5 + 0.2) + spec;
 		} else if (v_style == STYLE_SNOW) {
+			float distToCam = length(view_pos.xyz);
+			float defocus = 1.0 - smoothstep(1.0, 6.0, distToCam);
+
 			float r = 0.5 * length(circ);
 			float a = atan(circ.y, circ.x);
 			float s = abs(sin(a * 3.0));
-			shapeMask = smoothstep(0.1, 0.09, r * s);
+			float sharpMask = smoothstep(0.1, 0.09, r * s);
+			float bokehMask = smoothstep(0.25, 0.05, distSq);
+
+			shapeMask = mix(sharpMask, bokehMask, defocus);
+			alpha *= mix(1.0, 0.15, defocus);
 		} else if (v_style == STYLE_RAIN) {
+			float distToCam = length(view_pos.xyz);
+			float defocus = 1.0 - smoothstep(1.0, 6.0, distToCam);
+
 			vec2 vel_dir = normalize(v_vel_view.xy + vec2(1e-6));
 			float angle = atan(vel_dir.y, vel_dir.x) + 1.5707;
 			mat2 rot = mat2(cos(angle), -sin(angle), sin(angle), cos(angle));
 			vec2 uv = (gl_PointCoord - 0.5) * rot + 0.5;
 			float y = clamp(uv.y, 0.0, 1.0);
-			float width = mix(0.02, 0.15, y);
-			float streak = smoothstep(width*0.25, width * 0.05, abs(uv.x - 0.5)) * smoothstep(0.0, 0.2, uv.y) * smoothstep(1.0, 0.8, uv.y);
-			alpha *= streak;
+			float width = mix(0.02, mix(0.15, 0.45, defocus), y);
+			float streak = smoothstep(width * 0.25, width * 0.05, abs(uv.x - 0.5)) * smoothstep(0.0, 0.2, uv.y) * smoothstep(1.0, 0.8, uv.y);
+			alpha *= streak * mix(1.0, 0.15, defocus);
 			color = vec3(0.2, 0.3, 0.5);
 			shapeMask = 1.0;
 		} else if (v_style == STYLE_IRIDESCENT) {
@@ -109,12 +119,16 @@ void main() {
 			shapeMask = smoothstep(0.2 + n * 0.15, 0.05, distSq);
 		} else if (v_style == STYLE_DUST) {
 			float distToCam = length(view_pos.xyz);
-			shapeMask = exp(-distSq * 15.0);
+			float defocus = 1.0 - smoothstep(1.0, 6.0, distToCam);
+
+			float sharpMask = exp(-distSq * 15.0);
+			float bokehMask = exp(-distSq * 3.0);
+			shapeMask = mix(sharpMask, bokehMask, defocus);
 			color = mix(vec3(1.5), mix(vec3(0.5, 0.8, 0.3), 2*vec3(2,1.2,0.4), smoothstep(316, 320, v_p.phase)), smoothstep(270.0, 280.0, v_p.phase));
 
 			// Match new K_ENV_QUEUE_RADIUS (60.0)
 			float boundaryFade = 1.0 - smoothstep(K_ENV_QUEUE_RADIUS - 10.0, K_ENV_QUEUE_RADIUS, distToCam);
-			alpha *= boundaryFade * smoothstep(0.0, 0.5, v_lifetime);
+			alpha *= boundaryFade * smoothstep(0.0, 0.5, v_lifetime) * mix(1.0, 0.15, defocus);
 			alpha = clamp(alpha, 0.0, 0.5);
 		} else if (v_style == STYLE_BIRDS) {
 			float flap = sin(u_time * 15.0 + v_p.phase);

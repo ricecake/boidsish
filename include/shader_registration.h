@@ -133,6 +133,8 @@ namespace Boidsish {
 		T::RegisterConstant("CLOUD_MIN_MAX_BOUNDING_BINDING", Constants::TextureUnit::CloudMinMaxBounding());
 		T::RegisterConstant("TERRAIN_COLOR_BLEND_BINDING", Constants::TextureUnit::TerrainColorBlend());
 		T::RegisterConstant("CLOUD_SHADOW_MAP_BINDING", Constants::TextureUnit::CloudShadowMap());
+		T::RegisterConstant("CLOUD_2D_PROPS_BINDING", Constants::TextureUnit::Cloud2DProps());
+		T::RegisterConstant("CLOUD_3D_FRONT_BINDING", Constants::TextureUnit::Cloud3DFront());
 	}
 
 } // namespace Boidsish

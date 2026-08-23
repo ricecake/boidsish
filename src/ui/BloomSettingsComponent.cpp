@@ -35,6 +35,10 @@ namespace Boidsish {
 					if (ImGui::SliderFloat("Threshold", &threshold, 0.0f, 3.0f)) {
 						bloom_effect->SetThreshold(threshold);
 					}
+					float softness = bloom_effect->GetSoftness();
+					if (ImGui::SliderFloat("Soft Knee", &softness, 0.0f, 1.0f)) {
+						bloom_effect->SetSoftness(softness);
+					}
 					float min_intensity = bloom_effect->GetMinIntensity();
 					if (ImGui::SliderFloat("Min Intensity (AE)", &min_intensity, 0.0f, 5.0f)) {
 						bloom_effect->SetMinIntensity(min_intensity);

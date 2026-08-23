@@ -36,6 +36,10 @@ namespace Boidsish {
 			glDeleteTextures(1, &_cloudVolumeTexture);
 		if (_cloudShadowTexture)
 			glDeleteTextures(1, &_cloudShadowTexture);
+		if (_cloud2DPropsLUT)
+			glDeleteTextures(1, &_cloud2DPropsLUT);
+		if (_cloud3DFrontLUT)
+			glDeleteTextures(1, &_cloud3DFrontLUT);
 		if (_cloudSeedsBuffer)
 			glDeleteBuffers(1, &_cloudSeedsBuffer);
 		if (_shCoeffsBuffer)
@@ -127,6 +131,97 @@ namespace Boidsish {
 		float border_color[] = {0.0f, 0.0f, 0.0f, 0.0f};
 		glTexParameterfv(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_BORDER_COLOR, border_color);
 
+		// 2D Cloud Properties LUT: 64x64 RGBA16F
+		// X = Cloud Type [0.0 = Cumulonimbus, 0.5 = Cumulus, 1.0 = Stratus]
+		// Y = Relative step height h [0.0, 1.0]
+		glGenTextures(1, &_cloud2DPropsLUT);
+		glBindTexture(GL_TEXTURE_2D, _cloud2DPropsLUT);
+		glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA16F, 64, 64);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+		std::vector<glm::vec4> lut2DData(64 * 64);
+		for (int y = 0; y < 64; ++y) {
+			float h = static_cast<float>(y) / 63.0f;
+			for (int x = 0; x < 64; ++x) {
+				float type = static_cast<float>(x) / 63.0f;
+
+				// R: Density height gradient
+				float cumulonimbus = glm::smoothstep(0.0f, 0.05f, h) * (1.0f - glm::smoothstep(0.7f, 1.0f, h));
+				float cumulus = glm::smoothstep(0.0f, 0.2f, h) * (1.0f - glm::smoothstep(0.6f, 0.9f, h));
+				float stratus = glm::smoothstep(0.0f, 0.3f, h) * (1.0f - glm::smoothstep(0.7f, 1.0f, h));
+
+				float densityGrad = glm::mix(cumulonimbus, cumulus, glm::smoothstep(0.0f, 0.5f, type));
+				densityGrad = glm::mix(densityGrad, stratus, glm::smoothstep(0.5f, 1.0f, type));
+
+				// G: Anvil bias
+				float anvilBiasCb = glm::mix(0.5f, 0.85f, glm::smoothstep(0.6f, 0.9f, h));
+				float anvilBiasCu = 0.5f;
+				float anvilBiasSt = 0.1f;
+				float anvilBias = glm::mix(anvilBiasCb, anvilBiasCu, glm::smoothstep(0.0f, 0.5f, type));
+				anvilBias = glm::mix(anvilBias, anvilBiasSt, glm::smoothstep(0.5f, 1.0f, type));
+
+				// B: Base shape / noise blend factor
+				float noiseBlendCb = 1.2f;
+				float noiseBlendCu = 1.0f;
+				float noiseBlendSt = 0.7f;
+				float noiseBlend = glm::mix(noiseBlendCb, noiseBlendCu, glm::smoothstep(0.0f, 0.5f, type));
+				noiseBlend = glm::mix(noiseBlend, noiseBlendSt, glm::smoothstep(0.5f, 1.0f, type));
+
+				// A: Erosion multiplier
+				float erosionCb = 1.4f;
+				float erosionCu = 1.0f;
+				float erosionSt = 0.4f;
+				float erosion = glm::mix(erosionCb, erosionCu, glm::smoothstep(0.0f, 0.5f, type));
+				erosion = glm::mix(erosion, erosionSt, glm::smoothstep(0.5f, 1.0f, type));
+
+				lut2DData[y * 64 + x] = glm::vec4(densityGrad, anvilBias, noiseBlend, erosion);
+			}
+		}
+		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 64, 64, GL_RGBA, GL_FLOAT, lut2DData.data());
+
+		// 3D Weather Front LUT: 32x32x32 RGBA16F
+		// X = Wind speed [0.0, 1.0]
+		// Y = Temperature [0.0, 1.0]
+		// Z = Humidity [0.0, 1.0]
+		glGenTextures(1, &_cloud3DFrontLUT);
+		glBindTexture(GL_TEXTURE_3D, _cloud3DFrontLUT);
+		glTexStorage3D(GL_TEXTURE_3D, 1, GL_RGBA16F, 32, 32, 32);
+		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+
+		std::vector<glm::vec4> lut3DData(32 * 32 * 32);
+		for (int z = 0; z < 32; ++z) {
+			float hum = static_cast<float>(z) / 31.0f;
+			for (int y = 0; y < 32; ++y) {
+				float temp = static_cast<float>(y) / 31.0f;
+				for (int x = 0; x < 32; ++x) {
+					float wind = static_cast<float>(x) / 31.0f;
+
+					// R: Cloud type (0.0 = Cumulonimbus, 0.5 = Cumulus, 1.0 = Stratus / Thin)
+					float stormFactor = glm::clamp(hum * 1.5f * temp * (0.5f + 0.5f * wind), 0.0f, 1.0f);
+					float type = 1.0f - stormFactor;
+
+					// G: Coverage / density boost modifier
+					float densityBoost = 0.5f + hum * 1.0f + wind * 0.3f;
+
+					// B: Front altitude / thickness modifier
+					float thicknessMod = 0.8f + temp * hum * 1.0f;
+
+					// A: Front turbulence / erosion scale modifier
+					float turbulence = 0.7f + wind * 0.8f + temp * 0.3f;
+
+					lut3DData[(z * 32 + y) * 32 + x] = glm::vec4(type, densityBoost, thicknessMod, turbulence);
+				}
+			}
+		}
+		glTexSubImage3D(GL_TEXTURE_3D, 0, 0, 0, 0, 32, 32, 32, GL_RGBA, GL_FLOAT, lut3DData.data());
+
 		// SH Coefficients SSBO: 9 x vec4
 		// Cloud Seeds SSBO: 100 x vec4 (10x10 Voronoi period)
 		glGenBuffers(1, &_cloudSeedsBuffer);
@@ -153,6 +248,8 @@ namespace Boidsish {
 		reg.PublishTexture(Constants::TextureUnit::CloudWeatherMinMax(), _cloudWeatherMinMaxTexture);
 		reg.PublishTexture(Constants::TextureUnit::Cloud3D(), _cloudVolumeTexture, GL_TEXTURE_3D);
 		reg.PublishTexture(Constants::TextureUnit::CloudShadowMap(), _cloudShadowTexture, GL_TEXTURE_2D_ARRAY);
+		reg.PublishTexture(Constants::TextureUnit::Cloud2DProps(), _cloud2DPropsLUT, GL_TEXTURE_2D);
+		reg.PublishTexture(Constants::TextureUnit::Cloud3DFront(), _cloud3DFrontLUT, GL_TEXTURE_3D);
 	}
 
 	void AtmosphereManager::CreateShaders() {
@@ -172,6 +269,8 @@ namespace Boidsish {
 		_cloudVolumeBakeShader = std::make_unique<ComputeShader>("shaders/effects/cloud_3d_volume_bake.comp");
 		_cloudMipShader = std::make_unique<ComputeShader>("shaders/effects/cloud_weather_mip.comp");
 		_cloudShadowBakeShader = std::make_unique<ComputeShader>("shaders/effects/cloud_shadow_bake.comp");
+		_cloudPaintShader = std::make_unique<ComputeShader>("shaders/effects/cloud_weather_paint.comp");
+		_cloudMinMaxInitShader = std::make_unique<ComputeShader>("shaders/effects/cloud_weather_minmax_init.comp");
 
 		setup_shader(*_transmittanceShader);
 		setup_shader(*_multiScatteringShader);
@@ -511,6 +610,10 @@ namespace Boidsish {
 		glBindTexture(GL_TEXTURE_3D, _cloudVolumeTexture);
 		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::CloudShadowMap());
 		glBindTexture(GL_TEXTURE_2D_ARRAY, _cloudShadowTexture);
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::Cloud2DProps());
+		glBindTexture(GL_TEXTURE_2D, _cloud2DPropsLUT);
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::Cloud3DFront());
+		glBindTexture(GL_TEXTURE_3D, _cloud3DFrontLUT);
 	}
 
 	void AtmosphereManager::BindToShader(::ShaderBase& shader) {
@@ -524,6 +627,8 @@ namespace Boidsish {
 		shader.trySetInt("u_cloudWeatherMinMaxTexture", Constants::TextureUnit::CloudWeatherMinMax());
 		shader.trySetInt("u_cloud3DTexture", Constants::TextureUnit::Cloud3D());
 		shader.trySetInt("u_cloudShadowTexture", Constants::TextureUnit::CloudShadowMap());
+		shader.trySetInt("u_cloud2DPropsLUT", Constants::TextureUnit::Cloud2DProps());
+		shader.trySetInt("u_cloud3DFrontLUT", Constants::TextureUnit::Cloud3DFront());
 		shader.setMat4("u_cloudShadowMatrix", _cloudShadowMatrix);
 		shader.setBool("u_useCloudShadowMap", _enableCloudShadowMap);
 		shader.trySetFloat("u_cloudShadowIntensity", _cloudShadowIntensity);
@@ -696,6 +801,116 @@ namespace Boidsish {
 
 		std::cout << "[AtmosphereManager] Successfully imported custom cloud weather map from " << filepath << std::endl;
 		return true;
+	}
+
+	void AtmosphereManager::PaintWeatherMap(
+		const glm::vec2& brushCenterUV,
+		float            brushRadiusUV,
+		const glm::vec4& brushValue,
+		const glm::vec4& channelMask,
+		int              drawOp,
+		float            brushStrength,
+		float            smoothness
+	) {
+		if (!_cloudPaintShader || !_cloudPaintShader->isValid() || !_cloudWeatherTexture) return;
+
+		_useCustomWeatherMap = true;
+
+		_cloudPaintShader->use();
+		_cloudPaintShader->setVec2("u_brushCenter", brushCenterUV);
+		_cloudPaintShader->setFloat("u_brushRadius", brushRadiusUV);
+		_cloudPaintShader->setVec4("u_brushValue", brushValue);
+		_cloudPaintShader->setVec4("u_channelMask", channelMask);
+		_cloudPaintShader->setInt("u_drawOp", drawOp);
+		_cloudPaintShader->setFloat("u_brushStrength", brushStrength);
+		_cloudPaintShader->setFloat("u_smoothness", smoothness);
+
+		glBindImageTexture(0, _cloudWeatherTexture, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA16F);
+		glDispatchCompute(2048 / 16, 2048 / 16, 1);
+		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+
+		RebakeWeatherMinMaxAndVolume();
+	}
+
+	void AtmosphereManager::RebakeWeatherMinMaxAndVolume() {
+		if (!_cloudMinMaxInitShader || !_cloudMipShader || !_cloudVolumeBakeShader) return;
+
+		// 1. Re-initialize Level 0 of _cloudWeatherMinMaxTexture from R channel of _cloudWeatherTexture
+		_cloudMinMaxInitShader->use();
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, _cloudWeatherTexture);
+		_cloudMinMaxInitShader->setInt("u_weatherMap", 0);
+		glBindImageTexture(0, _cloudWeatherMinMaxTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RG16F);
+		glDispatchCompute(2048 / 16, 2048 / 16, 1);
+		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+
+		// 2. Generate mipmaps for _cloudWeatherTexture
+		glBindTexture(GL_TEXTURE_2D, _cloudWeatherTexture);
+		glGenerateMipmap(GL_TEXTURE_2D);
+
+		// 3. Dispatch _cloudMipShader across min-max pyramid (dstLevel 1 to 11)
+		_cloudMipShader->use();
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, _cloudWeatherMinMaxTexture);
+		_cloudMipShader->setInt("u_srcWeatherMinMaxMap", 0);
+
+		for (int dstLevel = 1; dstLevel < 12; ++dstLevel) {
+			int srcLevel = dstLevel - 1;
+			int dstWidth = std::max(1, 2048 >> dstLevel);
+			int dstHeight = std::max(1, 2048 >> dstLevel);
+
+			glBindImageTexture(0, _cloudWeatherMinMaxTexture, dstLevel, GL_FALSE, 0, GL_WRITE_ONLY, GL_RG16F);
+			_cloudMipShader->setInt("u_srcLevel", srcLevel);
+
+			glDispatchCompute((dstWidth + 7) / 8, (dstHeight + 7) / 8, 1);
+			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+		}
+		glBindTexture(GL_TEXTURE_2D, 0);
+
+		// 4. Dispatch 3D volume bake
+		_cloudVolumeBakeShader->use();
+		_cloudVolumeBakeShader->setInt("u_cloudWeatherTexture", Constants::TextureUnit::CloudWeatherBake());
+		glBindImageTexture(0, _cloudVolumeTexture, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+		glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::CloudWeatherBake());
+		glBindTexture(GL_TEXTURE_2D, _cloudWeatherTexture);
+
+		GpuResourceRegistry::Instance().BindTextures({
+			Constants::TextureUnit::NoiseSimplex(),
+			Constants::TextureUnit::NoiseCurl(),
+			Constants::TextureUnit::NoiseBlue(),
+			Constants::TextureUnit::NoiseExtra(),
+			Constants::TextureUnit::NoisePhasor()
+		});
+		glDispatchCompute(128 / 4, 128 / 4, 128 / 4);
+		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+		// Generate mipmaps for 3D cloud volume
+		glBindTexture(GL_TEXTURE_3D, _cloudVolumeTexture);
+		glGenerateMipmap(GL_TEXTURE_3D);
+		glBindTexture(GL_TEXTURE_3D, 0);
+
+		// 5. Update CPU weather map readback
+		_cpuWeatherMap.resize(2048 * 2048);
+		glBindTexture(GL_TEXTURE_2D, _cloudWeatherTexture);
+		glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_FLOAT, _cpuWeatherMap.data());
+		glBindTexture(GL_TEXTURE_2D, 0);
+	}
+
+	void AtmosphereManager::ForceRebakeWeatherMap() {
+		_useCustomWeatherMap = false;
+		_needsWeatherBake = true;
+	}
+
+	void AtmosphereManager::ClearWeatherMap() {
+		if (!_cloudWeatherTexture) return;
+
+		_useCustomWeatherMap = true;
+
+		// Clear cloud weather map Level 0 to zero
+		float zeroColor[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+		glClearTexImage(_cloudWeatherTexture, 0, GL_RGBA, GL_FLOAT, zeroColor);
+
+		RebakeWeatherMinMaxAndVolume();
 	}
 
 } // namespace Boidsish

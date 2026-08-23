@@ -12,6 +12,17 @@ float remap_bake(float value, float low1, float high1, float low2, float high2) 
 	return low2 + (value - low1) * (high2 - low2) / max(0.0001, (high1 - low1));
 }
 
+float regionalFbm(vec3 p, vec3 period) {
+	float val = 0.0;
+	float amp = 0.5;
+	float freq = 1.0;
+	for (int i = 0; i < 3; i++) {
+		val += amp * (0.5 + 0.5 * psrdnoise(p * freq * period, period * freq));
+		amp *= 0.5;
+		freq *= 2.0;
+	}
+	return val;
+}
 
 float localFbm(vec3 p, vec3 period) {
 	float val = 0.0;
@@ -19,38 +30,25 @@ float localFbm(vec3 p, vec3 period) {
 	float freq = 1.0;
 	for (int i = 0; i < 3; i++) {
 		WorleyData3D worleyDetails = worley3d_tiling_id(p * freq * period, period * freq);
-		val += amp * worleyDetails.f1_dist;// * (1-(freq*p.y));
-		// val -= amp * 0.25*(worleyDetails.f2_dist - worleyDetails.f1_dist);
+		val += amp * pow(worleyDetails.f1_dist,3);
 		amp *= 0.5;
 		freq *= 2.0;
 	}
-
-	// amp = 0.5;
-	// freq = 1.0;
-	// for (int i = 0; i < 3; i++) {
-	// 	WorleyData3D worleyDetails = worley3d_tiling_id(p * freq, period * freq);
-	// 	// val += amp * worleyDetails.f1_dist;
-	// 	val -= amp * (worleyDetails.f2_dist - worleyDetails.f1_dist)  * (1-(freq*p.y));
-	// 	amp *= 0.35;
-	// 	freq *= 1.50;
-	// }
 
 	return val;
 }
 
 
 float computeSimplexWorley(vec3 p) {
-	vec3 period1 = vec3(8.0, 2.0, 8.0);
-	vec3 period2 = vec3(8.0, 2.0, 8.0);
-	float simplex = psrdnoise(p * period1, period1);
-	simplex = clamp(simplex * 0.5 + 0.5, 0.0, 1.0);
+	vec3 period1 = vec3(4.0, 16.0, 4.0);
+	vec3 period2 = vec3(4.0, 16.0, 4.0);
+	// float simplex = psrdnoise(p * period1, period1);
+	float simplex = regionalFbm(p, period1);
+	// simplex = clamp(simplex * 0.5 + 0.5, 0.0, 1.0);
 
 	float worleyFbm = localFbm(p, period2);
 
-	float baseHeightGradient = mix(0.6, 0.9, smoothstep(0.15, 0.85, p.y));
-
-	float blended = mix(1.0 - worleyFbm, simplex, baseHeightGradient);
-	float simplexWorley = remap_bake(blended, worleyFbm, 1.0, 0.0, 1.0);
+	float simplexWorley = remap_bake(simplex, worleyFbm, 1.0, 0.0, 1.0);
 
 	return clamp(simplexWorley, 0.0, 1.0);
 }
@@ -65,26 +63,12 @@ void main() {
 	// 1. R Channel: Tiling 3D noise (Simplex noise carved by Worley FBM in HZD fashion)
 	float noiseVal = computeSimplexWorley(p);
 
-	// 2. G Channel: Local Ambient Occlusion.
-	float densitySum = 0.0;
-	const int AO_SAMPLES = 8;
-	vec3 ao_offsets[AO_SAMPLES] = vec3[](
-		vec3(0.0, 0.02, 0.0),
-		vec3(0.0, 0.05, 0.0),
-		vec3(0.0, 0.10, 0.0),
-		vec3(0.02, 0.04, 0.02),
-		vec3(-0.02, 0.04, -0.02),
-		vec3(0.03, 0.08, -0.03),
-		vec3(-0.03, 0.08, 0.03),
-		vec3(0.0, 0.15, 0.0)
-	);
+	vec3 periodBase = vec3(8.0, 8.0, 8.0);
 
-	for (int i = 0; i < AO_SAMPLES; i++) {
-		vec3 sample_uvw = fract(p + ao_offsets[i]);
-		float sampleNoise = computeSimplexWorley(sample_uvw);
-		densitySum += sampleNoise;
-	}
-	float aoVal = clamp(1.0 - (densitySum / float(AO_SAMPLES)) * 1.5, 0.0, 1.0);
+	float worleySmall = localFbm(p, periodBase * 4);
+	float worleyMedium = localFbm(p, periodBase * 2);
+	float worleyWide = localFbm(p, periodBase * 1);
 
-	imageStore(outVolume, voxel, vec4(noiseVal, aoVal, 1.0, 1.0));
+
+	imageStore(outVolume, voxel, vec4(noiseVal, worleyWide, worleyMedium, worleySmall));
 }
