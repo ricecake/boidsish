@@ -674,7 +674,7 @@ void main() {
 		cloudColor = lightEnergy * cloudColorUniform;
 	}
 
-	vec4 finalColor = vec4(cloudColor, dot(cloudTransmittance, vec3(0.3333)));
+	vec4 finalColor = vec4(cloudColor, dot(smoothstep(0.05, 1, cloudTransmittance), vec3(0.3333)));
 	// vec4 finalColor = vec4(mix(vec3(0,10,0), vec3(10,0,0), smoothstep(0, 100, magic_stepping)), 0.0);
 	// vec4 finalColor = vec4(mix(vec3(0,10,0), vec3(10,0,0), smoothstep(0, 100, firstHitDist/firstHitStep)), 0.0);
 	// finalColor = mix(finalColor, vec4(mix(vec3(0,10000000,0), vec3(10000000,0,0), smoothstep(0, 100, firstHitStep)), 0.0), 0.3);

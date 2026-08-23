@@ -1244,7 +1244,7 @@ void main() {
 		discard;
 	}
 
-	if (vIsWater > 0.5) {
+	if (vIsWater > 0.01) {
 		processWaterLayer(norm, dist, 1.0);
 		return;
 	}
