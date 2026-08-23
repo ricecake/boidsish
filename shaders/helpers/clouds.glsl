@@ -119,7 +119,7 @@ CloudSpotDetails calculateCloudDensity(
 
 	vec3 advectSpeed = getCloudAdvectionSpeed(h, time);
 	vec3 advect = time * advectSpeed;
-	vec3 p_advected = p + advect;
+	vec3 p_advected = p - advect;
 
 	float type = weather.heightMap;
 
@@ -130,7 +130,8 @@ CloudSpotDetails calculateCloudDensity(
 	float noiseBlend = props2D.b;
 	float erosionMult = props2D.a;
 
-	float baseShape = (volNoises.g * 0.625 + volNoises.b * 0.25 + volNoises.a * 0.125) * noiseBlend;
+	// float baseShape = (volNoises.g * 0.625 + volNoises.b * 0.25 + volNoises.a * 0.125) * noiseBlend;
+	float baseShape = (volNoises.g * 0.625 + volNoises.b * 0.375) * noiseBlend;
 	float baseNoise = volNoises.r;//remapClamp(volNoises.r, baseShape, 1.0, 0.0, 1.0);
 	baseNoise *= heightGradient;
 
@@ -138,6 +139,11 @@ CloudSpotDetails calculateCloudDensity(
 	baseNoise = remapClamp(baseNoise, cloud_coverage, 1.0, 0.0, 1.0);
 
 	float erodeMask = (1.0 - baseNoise) * erosionMult * weather.ecentricity;
+
+	// baseNoise *= erodeMask * weather.coverage * fastSimplex3d(p_advected);
+	// float detailNoise = abs(fastFbm3d(p_advected / 2500.0));
+	// baseNoise = remapClamp(baseNoise, detailNoise * erodeMask * 0.5, 1.0, 0.0, 1.0);
+	baseNoise = remapClamp(baseNoise, volNoises.a * erodeMask * 0.5, 1.0, 0.0, 1.0);
 
 	return CloudSpotDetails(
 		clamp(baseNoise, 0.00, 1.0),

@@ -146,10 +146,11 @@ void main() {
 
 	vec3 periodBase = vec3(8.0, 8.0, 8.0);
 
-	float worleySmall = localFbm(p, periodBase * 4);
+	// float worleySmall = localFbm(p, periodBase * 4);
+	float small = 0.5 + 0.5 * psrdnoise(p * periodBase * 8.0, periodBase * 8.0);
 	float worleyMedium = localFbm(p, periodBase * 2);
 	float worleyWide = localFbm(p, periodBase * 1);
 
 
-	imageStore(outVolume, voxel, vec4(noiseVal, worleyWide, worleyMedium, worleySmall));
+	imageStore(outVolume, voxel, vec4(noiseVal, worleyWide, worleyMedium, small));
 }
