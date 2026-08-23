@@ -30,6 +30,8 @@ uniform vec2  srcResolution; // Full resolution of srcTexture
 uniform int   numMips;
 uniform float threshold;
 uniform float softness;
+uniform float karisDampening;
+uniform float maxPoolingFactor;
 uniform float deltaTime;
 uniform mat4  invView;
 uniform mat4  invProjection;
@@ -314,6 +316,7 @@ void main() {
 
 		vec3 weightedColorSum = vec3(0.0);
 		float totalWeight = 0.0;
+		vec3 maxExtractedColor = vec3(0.0);
 
 		// 9-tap Dual Kawase-style filter with Karis average filtering in post-exposure space
 		for (int i = 0; i < 9; ++i) {
@@ -336,15 +339,18 @@ void main() {
 			extractedColor *= clampScale;
 			float finalLuma = extractedLuma * clampScale;
 
-			// D. Karis Average (Using the finalized bloom luminance)
-			float karisWeight = 1.0 / (1.0 + finalLuma);
+			maxExtractedColor = max(maxExtractedColor, extractedColor);
+
+			// D. Karis Average (Using the finalized bloom luminance with dampening factor)
+			float karisWeight = 1.0 / (1.0 + karisDampening * finalLuma);
 			float w = spatialWeights[i] * karisWeight;
 
 			weightedColorSum += extractedColor * w;
 			totalWeight += w;
 		}
 
-		bloomColor = weightedColorSum / max(totalWeight, 0.0001);
+		vec3 avgBloom = weightedColorSum / max(totalWeight, 0.0001);
+		bloomColor = max(avgBloom, maxExtractedColor * maxPoolingFactor);
 		imageStore(outMip0, id, vec4(bloomColor, 1.0));
 	}
 

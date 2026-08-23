@@ -257,6 +257,8 @@ namespace Boidsish {
 			_downsampleComputeShader->setInt("numMips", _numMips);
 			_downsampleComputeShader->setFloat("threshold", threshold_);
 			_downsampleComputeShader->setFloat("softness", softness_);
+			_downsampleComputeShader->setFloat("karisDampening", karisDampening_);
+			_downsampleComputeShader->setFloat("maxPoolingFactor", maxPoolingFactor_);
 			_downsampleComputeShader->setFloat("deltaTime", _deltaTime);
 			_downsampleComputeShader->setMat4("invView", glm::inverse(viewMatrix));
 			_downsampleComputeShader->setMat4("invProjection", glm::inverse(projectionMatrix));
