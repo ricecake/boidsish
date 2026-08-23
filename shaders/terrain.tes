@@ -245,18 +245,61 @@ void main() {
 	// out float tessFactor;
 	TextureSlice = slice;
 
-	float waterMask = 1.0-smoothstep(-0.1, 0.1, FragPos.y);
-	float shallowFactor = clamp((1.0 - vIsWater) / 0.5, 0.0, 1.0);
+	float waterMask = 1.0 - smoothstep(-0.1, 0.1, FragPos.y);
 	if (waterMask > 0.0) {
 		vec3 tangent = vec3(1.0, 0.0, 0.0);
 		vec3 binormal = vec3(0.0, 0.0, 1.0);
-		vec3 pos = gerstnerWave(baseFragPos.xz, vec2(1.0, shallowFactor * 0.5), clamp(0.15 / shallowFactor, 0.1, 0.2), 15.0, time*0.75, tangent, binormal);
-		// pos += gerstnerWave(baseFragPos.xz, vec2(1.0, 1.0), 0.05, 10.0, time, tangent, binormal);
-		// pos += gerstnerWave(baseFragPos.xz, vec2(0.0, 1.0), 0.1, 25.0, time*2.0, tangent, binormal);
-		vec3  waterNormal = normalize(cross(binormal, tangent));
+		vec3 totalPos = vec3(0.0);
 
-		FragPos += pos;
-		Normal = waterNormal;
+		float shallowFactor = clamp((1.0 - vIsWater) / 0.5, 0.0, 1.0);
+
+		// Deep water wind direction
+		vec2 deepWaterDir = normalize(vec2(1.0, 0.5));
+
+		// Uphill vector towards shore (fallback to wind direction if flat)
+		vec2 shoreDir = length(baseNormal.xz) > 0.001 ? normalize(-baseNormal.xz) : deepWaterDir;
+
+		// Refract wave direction based on depth
+		vec2 waveDir = normalize(mix(deepWaterDir, shoreDir, shallowFactor));
+
+		// Base physics parameters
+		float wavelength = 32.0;
+		float steepness = 0.15;
+		float rotationOffset = 0.6; // ~34 degree angular spread
+
+		// Sum octaves
+		for (int i = 0; i < 4; i++) {
+			// Shoaling: Compress wavelength and increase steepness near shore
+			float currentWavelength = wavelength * mix(1.0, 0.6, shallowFactor);
+			float currentSteepness = steepness * mix(1.0, 1.4, shallowFactor);
+
+			totalPos += gerstnerWave(
+				baseFragPos.xz,
+				waveDir,
+				currentSteepness,
+				currentWavelength,
+				time,
+				tangent,
+				binormal
+			);
+
+			// Advance octave: halve wavelength, decay steepness
+			wavelength *= 0.5;
+			steepness *= 0.75;
+
+			// Rotate vector to create intersecting swells
+			float cosR = cos(rotationOffset);
+			float sinR = sin(rotationOffset);
+			waveDir = vec2(waveDir.x * cosR - waveDir.y * sinR, waveDir.x * sinR + waveDir.y * cosR);
+
+			// Alternate rotation direction for subsequent octaves
+			rotationOffset *= -1.2;
+		}
+
+		FragPos.y = mix(FragPos.y, totalPos.y, waterMask);
+		FragPos.xz += totalPos.xz * waterMask;
+
+		Normal = normalize(mix(Normal, normalize(cross(binormal, tangent)), waterMask));
 	}
 
 	// Apply shockwave ripple to terrain

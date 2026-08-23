@@ -533,28 +533,9 @@ TerrainMaterial getCliffMaterial(TerrainContext ctx, float noise) {
  * Process water layers (e.g. wet surfaces, refractions).
  */
 void processWaterLayer(vec3 norm, float dist, float fade) {
-	float grid_spacing = 1.0;
 	float rippleHeight = FragPos.y;
 
 	vec2 refractionOffset = norm.xz * abs(rippleHeight) * 4.0;
-	if (dist <= 75.0) {
-		refractionOffset = fastCurl3d(vec3(norm.xz / 100.0, rippleHeight)).xz * abs(rippleHeight) * 2.0 *
-			smoothstep(75.0, 50.0, dist);
-	}
-	vec2 coord = (FragPos.xz + refractionOffset) / grid_spacing;
-	vec2 f = fwidth(coord);
-
-	vec2  grid_minor = abs(fract(coord - 0.5) - 0.5) / f;
-	float line_minor = min(grid_minor.x, grid_minor.y);
-	float C_minor = 1.0 - min(line_minor, 1.0);
-
-	vec2  grid_major = abs(fract(coord / 5.0 - 0.5) - 0.5) / f;
-	float line_major = min(grid_major.x, grid_major.y);
-	float C_major = 1.0 - min(line_major, 1.0);
-
-	float shimmer = 1.0 + rippleHeight * 2.0;
-	float grid_intensity = max(C_minor, C_major * 1.5) * 0.6 * shimmer;
-	vec3  grid_color = vec3(0.0, 0.8, 0.8) * grid_intensity * 5000.0;
 
 	// --- Shore and Pebble Bottom Logic ---
 	// vIsWater goes from 0.0 to 1.0. Near shore, it's between 0.5 and 1.0.
@@ -590,19 +571,19 @@ void processWaterLayer(vec3 norm, float dist, float fade) {
 	vec3 shadedPebble = pebbleColor * (0.35 + 0.65 * pebbleLight);
 	shadedPebble *= smoothstep(0.8, 0.4, pebbleDist); // darken gaps between pebbles
 
+	// Base surface color of the water
+	vec3 surfaceColor = vec3(0.87, 0.96, 0.99);
 	// Blend pebbles with water tint based on shallowFactor
-	vec3 waterTint = vec3(0.02, 0.22, 0.28);
+	vec3 waterTint = pow(surfaceColor, vec3(2.0 * rippleHeight));
 	vec3 underwaterBottomColor = mix(waterTint * 0.5, shadedPebble, shallowFactor);
 
-	// Base surface color of the water
-	vec3 surfaceColor = vec3(0.03, 0.04, 0.06);
 
 	float primaryShadow;
 	vec3 lighting = apply_lighting_pbr(FragPos, norm, surfaceColor, waterRoughness, waterMetallic, 1.0, primaryShadow).rgb;
 
 	// Combine PBR surface lighting, underwater pebbles, and grid line glow
 	// In deep water, lighting dominates. In shallow water, the underwater pebbles are highly visible.
-	vec3 final_color = mix(lighting, underwaterBottomColor + lighting * 0.2, shallowFactor * 0.8) + grid_color;
+	vec3 final_color = mix(lighting, underwaterBottomColor + lighting * 0.2, shallowFactor * 0.8);
 
 	vec4 baseColor = vec4(final_color, fade);
 	FragColor = mix(vec4(0.0, 0.7, 0.7, baseColor.a) * length(baseColor), baseColor, step(1.0, fade));
