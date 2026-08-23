@@ -1,4 +1,5 @@
 #version 460 core
+
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec4 Velocity;
 layout(location = 2) out vec4 NormalOut;
@@ -818,6 +819,9 @@ TerrainMaterial generateMaterial(TerrainContext ctx, float noise) {
 	mat.albedo = texture(u_terrainColorBlend, vec3(ctx.perturbedHeight/100.0, (ctx.moisture+clamp(ctx.substrate, 0, 1.0)/2.0), mat.roughness)).rgb;
 	mat.metallic = 0.0;
 
+	mat.albedo = mix(mat.albedo, mat.albedo * 0.55, noise);
+	mat.albedo = applyErosionColorMappingDefault(mat.albedo, vRidgeMap, vErosionDelta);
+
 	return mat;
 }
 
@@ -854,8 +858,436 @@ float calculateAntiAliasedFBM(vec3 pos, float baseFreq, int octaves) {
     return value / totalAmplitude;
 }
 
+// Standard 2D hash for Voronoi seeds
+vec2 hash2(vec2 p) {
+    vec3 p3 = fract(vec3(p.xyx) * vec3(.1031, .1030, .0973));
+    p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.xx + p3.yz) * p3.zy);
+}
+
+// Placeholder: Replace with your engine's existing smooth noise (Simplex/Perlin)
+vec2 warpNoise2D(vec2 p) {
+    // Basic value noise for demonstration
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    vec2 u = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash2(i + vec2(0.0,0.0)), hash2(i + vec2(1.0,0.0)), u.x),
+               mix(hash2(i + vec2(0.0,1.0)), hash2(i + vec2(1.0,1.0)), u.x), u.y);
+}
+
+
+struct CellularBayerResult {
+    float ditherVal;     // Combined Bayer + Worley dither value normalized in [0, 1]
+    float bayerVal;      // Raw Bayer matrix value in [0, 1]
+    float minDist;       // Squared distance to closest cell feature point
+    vec2  closestCellId; // Cell grid coordinate
+    vec2  localOffset;   // Vector offset from feature point
+};
+
+CellularBayerResult evalCellularBayer(vec2 uv, float warpStrength) {
+    CellularBayerResult res;
+    vec2 warpOffset = (warpStrength > 0.0) ? (warpNoise2D(uv * 0.5 + 13.37) - 0.5) * warpStrength : vec2(0.0);
+    vec2 warpedUV = uv + warpOffset;
+
+    vec2 grid = floor(warpedUV);
+    vec2 local = fract(warpedUV);
+
+    float minDist = 10.0;
+    vec2 closestCellId = vec2(0.0);
+    vec2 closestDiff = vec2(0.0);
+
+    for (int y = -1; y <= 1; y++) {
+        for (int x = -1; x <= 1; x++) {
+            vec2 neighbor = vec2(float(x), float(y));
+            vec2 featurePt = hash2(grid + neighbor);
+
+            vec2 diff = neighbor + featurePt - local;
+            float dist = dot(diff, diff);
+
+            if (dist < minDist) {
+                minDist = dist;
+                closestCellId = grid + neighbor;
+                closestDiff = diff;
+            }
+        }
+    }
+
+    ivec2 cellCoord = ivec2(closestCellId);
+    cellCoord = ((cellCoord % 8) + 8) % 8;
+
+    const float bayer[64] = float[64](
+        0.0, 32.0,  8.0, 40.0,  2.0, 34.0, 10.0, 42.0,
+        48.0, 16.0, 56.0, 24.0, 50.0, 18.0, 58.0, 26.0,
+        12.0, 44.0,  4.0, 36.0, 14.0, 46.0,  6.0, 38.0,
+        60.0, 28.0, 52.0, 20.0, 62.0, 30.0, 54.0, 22.0,
+         3.0, 35.0, 11.0, 43.0,  1.0, 33.0,  9.0, 41.0,
+        51.0, 19.0, 59.0, 27.0, 49.0, 17.0, 57.0, 25.0,
+        15.0, 47.0,  7.0, 39.0, 13.0, 45.0,  5.0, 37.0,
+        63.0, 31.0, 55.0, 23.0, 61.0, 29.0, 53.0, 21.0
+    );
+
+    float bayerVal = bayer[cellCoord.y * 8 + cellCoord.x] / 64.0;
+
+    // Normalize combined state into [0, 1] range so thresholds transition cleanly
+    float erosionTightness = 0.8;
+    float ditherVal = clamp((bayerVal + sqrt(minDist) * erosionTightness) / 1.5, 0.0, 1.0);
+
+    res.ditherVal = ditherVal;
+    res.bayerVal = bayerVal;
+    res.minDist = minDist;
+    res.closestCellId = closestCellId;
+    res.localOffset = closestDiff;
+    return res;
+}
+
+vec3 cellularBayerDither(vec2 uv, vec3 valA, vec3 valB, float threshold, float warpStrength) {
+    CellularBayerResult cb = evalCellularBayer(uv, warpStrength);
+    float tRemapped = mix(-0.1, 1.1, clamp(threshold, 0.0, 1.0));
+    return (tRemapped > cb.bayerVal) ? valA : valB;
+}
+
+vec3 cellularErosionDither(vec2 uv, vec3 valA, vec3 valB, float threshold, float warpStrength) {
+    CellularBayerResult cb = evalCellularBayer(uv, warpStrength);
+
+    // Smoothly re-map threshold from [0, 1] to [-0.15, 1.15] so threshold==0 guarantees 100% valB
+    // and threshold==1 guarantees 100% valA without premature resetting or clamping artifacts.
+    float tRemapped = mix(-0.15, 1.15, clamp(threshold, 0.0, 1.0));
+    float mixFactor = smoothstep(cb.ditherVal - 0.1, cb.ditherVal + 0.1, tRemapped);
+
+    return mix(valB, valA, mixFactor);
+}
+
+TerrainMaterial cellularErosionDitherMaterial(vec2 uv, TerrainMaterial matA, TerrainMaterial matB, float threshold, float warpStrength) {
+    CellularBayerResult cb = evalCellularBayer(uv, warpStrength);
+    float tRemapped = mix(-0.15, 1.15, clamp(threshold, 0.0, 1.0));
+    float mixFactor = smoothstep(cb.ditherVal - 0.1, cb.ditherVal + 0.1, tRemapped);
+
+    TerrainMaterial res;
+    res.albedo = mix(matB.albedo, matA.albedo, mixFactor);
+    res.roughness = mix(matB.roughness, matA.roughness, mixFactor);
+    res.metallic = mix(matB.metallic, matA.metallic, mixFactor);
+    res.normalScale = mix(matB.normalScale, matA.normalScale, mixFactor);
+    res.normalStrength = mix(matB.normalStrength, matA.normalStrength, mixFactor);
+    return res;
+}
+
+// Dedicated Ground Material Renderers
+
+TerrainMaterial renderGrassGround(vec3 pos, vec3 norm, TerrainContext ctx, float bayerVal, float blueNoise) {
+    TerrainMaterial mat;
+    mat.metallic = 0.0;
+    mat.normalScale = 12.0;
+    mat.normalStrength = 0.08;
+
+    vec3 colLush = mix(COL_GRASS_LUSH, vec3(0.28, 0.52, 0.18), bayerVal * 0.5);
+    vec3 colDry  = mix(COL_GRASS_DRY, vec3(0.52, 0.45, 0.22), bayerVal * 0.5);
+    vec3 colAlpine = mix(COL_ALPINE_MEADOW, vec3(0.42, 0.55, 0.32), bayerVal * 0.5);
+
+    vec3 grassColor = mix(colLush, colDry, clamp(1.0 - ctx.moisture, 0.0, 1.0));
+    grassColor = mix(grassColor, colAlpine, smoothstep(HEIGHT_FOREST_END, HEIGHT_TREELINE, ctx.perturbedHeight));
+
+    if (bayerVal > 0.82 && ctx.moisture > 0.45) {
+        vec3 flowerColor = mix(vec3(0.85, 0.75, 0.2), vec3(0.8, 0.3, 0.5), sin(pos.x * 0.5 + pos.z * 0.5) * 0.5 + 0.5);
+        grassColor = mix(grassColor, flowerColor, 0.4);
+    }
+
+    float tuft = fastWorley3d(pos / ((125.0 + 25.0 * blueNoise) * worldScale));
+    grassColor = mix(grassColor, grassColor * 1.2, tuft * 0.5);
+
+    mat.albedo = grassColor * (0.8 + 0.4 * blueNoise);
+    mat.roughness = mix(0.85, 0.65, ctx.globalWetness);
+    return mat;
+}
+
+TerrainMaterial renderStonesGround(vec3 pos, vec3 norm, TerrainContext ctx, vec2 uv, float warpStrength) {
+    TerrainMaterial mat;
+    mat.metallic = 0.02;
+    mat.normalScale = 25.0;
+    mat.normalStrength = 0.18;
+
+    CellularBayerResult cb = evalCellularBayer(uv * 12.0, warpStrength);
+
+    vec3 stoneColor;
+    if (cb.bayerVal < 0.25) {
+        stoneColor = vec3(0.42, 0.44, 0.46); // slate gray river stone
+    } else if (cb.bayerVal < 0.50) {
+        stoneColor = vec3(0.38, 0.35, 0.32); // brown/tan river stone
+    } else if (cb.bayerVal < 0.75) {
+        stoneColor = vec3(0.48, 0.35, 0.32); // terracotta brick stone
+    } else {
+        stoneColor = vec3(0.65, 0.66, 0.64); // light quartz stone
+    }
+
+    float pebbleDist = sqrt(cb.minDist);
+    float gapShading = smoothstep(0.8, 0.3, pebbleDist);
+
+    mat.albedo = stoneColor * (0.35 + 0.65 * gapShading);
+    mat.roughness = mix(0.65, 0.35, ctx.globalWetness * gapShading);
+    return mat;
+}
+
+TerrainMaterial renderSolidRockGround(vec3 pos, vec3 norm, TerrainContext ctx, float largeNoise) {
+    TerrainMaterial mat;
+    mat.metallic = 0.0;
+    mat.normalScale = 40.0;
+    mat.normalStrength = 0.15;
+
+    CellularBayerResult cb = evalCellularBayer(pos.xz * 0.15, 0.2);
+
+    vec3 baseRock = mix(COL_ROCK_BROWN, COL_ROCK_GREY, cb.bayerVal);
+    baseRock = mix(baseRock, COL_ROCK_DARK, largeNoise * 0.3 + (1.0 - ctx.slope) * 0.2);
+
+    float stripeNoise = fastRidge3d(pos * 0.18) * 0.5 + 0.5;
+    float stripeIntensity = smoothstep(0.82, 0.94, stripeNoise);
+
+    vec3 stripeColor = (cb.bayerVal < 0.5) ? vec3(0.96, 0.96, 0.93) : vec3(0.68, 0.16, 0.10);
+    float stripeMetallic = (cb.bayerVal < 0.5) ? 0.45 : 0.55;
+    float stripeRoughness = (cb.bayerVal < 0.5) ? 0.18 : 0.35;
+
+    mat.albedo = mix(baseRock, stripeColor, stripeIntensity * ctx.cliffMask);
+    mat.metallic = mix(0.0, stripeMetallic, stripeIntensity * ctx.cliffMask);
+    mat.roughness = mix(mix(0.70, 0.35, ctx.globalWetness), stripeRoughness, stripeIntensity * ctx.cliffMask);
+
+    return mat;
+}
+
+TerrainMaterial renderSandSnowGround(vec3 pos, vec3 norm, TerrainContext ctx, float sandFactor, float snowFactor) {
+    TerrainMaterial mat;
+    mat.metallic = 0.0;
+
+    CellularBayerResult cb = evalCellularBayer(pos.xz * 0.2, 0.1);
+
+    vec3 sandColor = mix(COL_SAND_DRY, COL_SAND_WET, clamp(ctx.moisture + ctx.globalWetness * 0.5, 0.0, 1.0));
+    sandColor *= (0.9 + 0.2 * cb.bayerVal);
+
+    vec3 snowColor = mix(COL_SNOW_OLD, COL_SNOW_FRESH, cb.bayerVal);
+
+    float sandSnowThreshold = clamp(snowFactor / max(0.001, sandFactor + snowFactor), 0.0, 1.0);
+    float tRemapped = mix(-0.15, 1.15, sandSnowThreshold);
+    float blendFactor = (sandFactor <= 0.001) ? 1.0 : ((snowFactor <= 0.001) ? 0.0 : smoothstep(cb.ditherVal - 0.1, cb.ditherVal + 0.1, tRemapped));
+
+    mat.albedo = mix(sandColor, snowColor, blendFactor);
+    mat.roughness = mix(mix(0.80, 0.40, ctx.globalWetness), 0.65, blendFactor);
+    mat.normalScale = mix(30.0, 20.0, blendFactor);
+    mat.normalStrength = mix(0.10, 0.05, blendFactor);
+
+    return mat;
+}
+
+// TerrainMaterial generateMaterial(TerrainContext ctx, float noise) {
+//     // 1. Calculate factor weights for each ground type
+//     float snowFactor = max(ctx.freezingScale, smoothstep(HEIGHT_SNOW_START, HEIGHT_PEAK, ctx.perturbedHeight));
+//     float sandFactor = 1.0 - smoothstep(0.0, HEIGHT_BEACH_END, ctx.perturbedHeight);
+//     float rockFactor = ctx.cliffMask;
+
+//     // Stones/pebbles are prevalent in valleys/riverbeds and near beach shores
+//     float stoneFactor = max(smoothstep(0.0, HEIGHT_BEACH_END * 1.5, ctx.perturbedHeight) * (1.0 - smoothstep(HEIGHT_BEACH_END * 1.5, HEIGHT_LOWLAND_END, ctx.perturbedHeight)),
+//                             clamp(-ctx.valleyFactor * 0.6, 0.0, 0.8)) * (1.0 - rockFactor);
+
+//     // Shared noise / cell evaluation for dithering
+//     CellularBayerResult cb = evalCellularBayer(FragPos.xz * 0.1, 0.0);
+//     float blueNoise = fastBlueNoise(FragPos.xz * 0.05, 0) * 0.5 + 0.5;
+
+//     // 2. Render dedicated ground materials
+//     TerrainMaterial matGrass = renderGrassGround(FragPos, Normal, ctx, cb.bayerVal, blueNoise);
+//     TerrainMaterial matStones = renderStonesGround(FragPos, Normal, ctx, FragPos.xz * 0.1, 0.0);
+//     TerrainMaterial matRock = renderSolidRockGround(FragPos, Normal, ctx, noise);
+//     TerrainMaterial matSandSnow = renderSandSnowGround(FragPos, Normal, ctx, sandFactor, snowFactor);
+
+//     // 3. Dither-blend ground materials sequentially using Bayer-Worley methods
+//     TerrainMaterial result = matGrass;
+
+//     if (stoneFactor > 0.01) {
+//         result = cellularErosionDitherMaterial(FragPos.xz * 0.15, matStones, result, stoneFactor, 0.0);
+//     }
+
+//     float sandSnowWeight = max(sandFactor, snowFactor);
+//     if (sandSnowWeight > 0.01) {
+//         result = cellularErosionDitherMaterial(FragPos.xz * 0.12, matSandSnow, result, sandSnowWeight, 0.0);
+//     }
+
+//     if (rockFactor > 0.01) {
+//         result = cellularErosionDitherMaterial(FragPos.xz * 0.18, matRock, result, rockFactor, 0.1);
+//     }
+
+//     vec3 blend3d = texture(u_terrainColorBlend, vec3(ctx.perturbedHeight / 100.0, (ctx.moisture + clamp(ctx.substrate, 0.0, 1.0) / 2.0), result.roughness)).rgb;
+//     result.albedo = mix(result.albedo, blend3d, 0.35);
+//     result.albedo = mix(result.albedo, result.albedo * 0.75, noise * 0.5);
+//     result.albedo = applyErosionColorMappingDefault(result.albedo, vRidgeMap, vErosionDelta);
+
+//     return result;
+// }
+
+// vec3 cellularBayerDither(vec2 uv, vec3 valA, vec3 valB, float threshold, float warpStrength) {
+//     // 1. Domain Warp: Perturb the UVs before evaluating the cellular grid
+//     // We offset the noise by a constant to avoid symmetries with the main hash
+//     vec2 warpOffset = (warpNoise2D(uv * 0.5 + 13.37) - 0.5) * warpStrength;
+//     vec2 warpedUV = uv + warpOffset;
+
+//     // 2. Evaluate Worley structure
+//     vec2 grid = floor(warpedUV);
+//     vec2 local = fract(warpedUV);
+
+//     float minDist = 10.0;
+//     vec2 closestCellId = vec2(0.0);
+
+//     // Standard 3x3 neighbor search
+//     for(int y = -1; y <= 1; y++) {
+//         for(int x = -1; x <= 1; x++) {
+//             vec2 neighbor = vec2(float(x), float(y));
+//             vec2 featurePt = hash2(grid + neighbor);
+
+//             vec2 diff = neighbor + featurePt - local;
+//             float dist = dot(diff, diff);
+
+//             if(dist < minDist) {
+//                 minDist = dist;
+//                 closestCellId = grid + neighbor;
+//             }
+//         }
+//     }
+
+//     // 3. 8x8 Bayer Lookup using the CELL ID, not the fragment
+//     ivec2 cellCoord = ivec2(closestCellId);
+
+//     // GLSL '%' operator mirrors on negatives. This double-modulo forces it to wrap correctly.
+//     cellCoord = ((cellCoord % 8) + 8) % 8;
+
+//     const float bayer[64] = float[64](
+//         0.0, 32.0,  8.0, 40.0,  2.0, 34.0, 10.0, 42.0,
+//         48.0, 16.0, 56.0, 24.0, 50.0, 18.0, 58.0, 26.0,
+//         12.0, 44.0,  4.0, 36.0, 14.0, 46.0,  6.0, 38.0,
+//         60.0, 28.0, 52.0, 20.0, 62.0, 30.0, 54.0, 22.0,
+//          3.0, 35.0, 11.0, 43.0,  1.0, 33.0,  9.0, 41.0,
+//         51.0, 19.0, 59.0, 27.0, 49.0, 17.0, 57.0, 25.0,
+//         15.0, 47.0,  7.0, 39.0, 13.0, 45.0,  5.0, 37.0,
+//         63.0, 31.0, 55.0, 23.0, 61.0, 29.0, 53.0, 21.0
+//     );
+
+//     float bayerVal = bayer[cellCoord.y * 8 + cellCoord.x] / 64.0;
+
+//     // 4. Evaluate Threshold
+//     return (threshold > bayerVal) ? valA : valB;
+// }
+
+// vec3 cellularErosionDither(vec2 uv, vec3 valA, vec3 valB, float threshold, float warpStrength) {
+//     // 1. Domain Warp
+//     vec2 warpOffset = (warpNoise2D(uv * 0.5 + 13.37) - 0.5) * warpStrength;
+//     vec2 warpedUV = uv + warpOffset;
+
+//     // 2. Evaluate Worley structure
+//     vec2 grid = floor(warpedUV);
+//     vec2 local = fract(warpedUV);
+
+//     float minDist = 10.0;
+//     vec2 closestCellId = vec2(0.0);
+
+//     for(int y = -1; y <= 1; y++) {
+//         for(int x = -1; x <= 1; x++) {
+//             vec2 neighbor = vec2(float(x), float(y));
+//             vec2 featurePt = hash2(grid + neighbor);
+
+//             vec2 diff = neighbor + featurePt - local;
+//             float dist = dot(diff, diff);
+
+//             if(dist < minDist) {
+//                 minDist = dist;
+//                 closestCellId = grid + neighbor;
+//             }
+//         }
+//     }
+
+//     // 3. 8x8 Bayer Lookup
+//     ivec2 cellCoord = ivec2(closestCellId);
+//     cellCoord = ((cellCoord % 8) + 8) % 8;
+
+//     const float bayer[64] = float[64](
+//         0.0, 32.0,  8.0, 40.0,  2.0, 34.0, 10.0, 42.0,
+//         48.0, 16.0, 56.0, 24.0, 50.0, 18.0, 58.0, 26.0,
+//         12.0, 44.0,  4.0, 36.0, 14.0, 46.0,  6.0, 38.0,
+//         60.0, 28.0, 52.0, 20.0, 62.0, 30.0, 54.0, 22.0,
+//          3.0, 35.0, 11.0, 43.0,  1.0, 33.0,  9.0, 41.0,
+//         51.0, 19.0, 59.0, 27.0, 49.0, 17.0, 57.0, 25.0,
+//         15.0, 47.0,  7.0, 39.0, 13.0, 45.0,  5.0, 37.0,
+//         63.0, 31.0, 55.0, 23.0, 61.0, 29.0, 53.0, 21.0
+//     );
+
+//     float bayerVal = bayer[cellCoord.y * 8 + cellCoord.x] / 64.0;
+
+//     // 4. Erosion Math
+//     // Instead of evaluating (threshold > bayerVal), we use the distance to the center.
+//     // We scale minDist by a tightness factor to control how fast the erosion happens.
+//     float erosionTightness = 1.5;
+
+//     // We combine the bayer value (acting as a base offset for the whole cell)
+//     // with the distance (acting as a local modifier inside the cell).
+//     float cellErosionState = bayerVal + (minDist * erosionTightness);
+
+//     // Smoothstep gives a softer edge transition than a hard conditional
+//     float mixFactor = smoothstep(threshold - 0.1, threshold + 0.1, cellErosionState);
+
+//     return mix(valA, valB, mixFactor);
+// }
 
 void main() {
+	if (uIsShadowPass) {
+		return;
+	}
+
+	vec3  norm = normalize(Normal);
+	float slope = dot(norm, vec3(0.0, 1.0, 0.0));
+
+	float dist = length(FragPos.xz - viewPos.xz);
+	float realDist = distance(FragPos, viewPos);
+
+	if (dist > 650) {
+		discard;
+	}
+
+	if (vIsWater > 0.01) {
+		processWaterLayer(norm, dist, 1.0);
+		return;
+	}
+
+	float baseFreq = 0.1 / worldScale;
+	float largeNoise = fastWarpedFbm3d(FragPos * (baseFreq * 0.1));
+
+	TerrainContext ctx = extractTerrainContext(
+		FragPos, norm, largeNoise,
+		vRidgeMap, vSubstrate,
+		temperature, wetness,
+		dist, realDist
+	);
+
+	TerrainMaterial finalMaterial = generateMaterial(ctx, largeNoise);
+
+	applyDetailNormalPerturbation(
+		ctx, perturbFactor, finalMaterial.normalStrength, finalMaterial.normalScale,
+		0.0, largeNoise, norm, finalMaterial.roughness
+	);
+
+	float snowFactor = max(ctx.freezingScale, smoothstep(HEIGHT_SNOW_START, HEIGHT_PEAK, ctx.perturbedHeight));
+	if (snowFactor > 0.0) {
+		vec3 snowColor = mix(vec3(1.0), vec3(0.9, 0.95, 1.0 + 0.01 * 1.0), 0.5);
+		// finalMaterial.albedo = mix(finalMaterial.albedo, snowColor, ctx.freezingScale);
+		finalMaterial.albedo = cellularErosionDither(FragPos.xz, snowColor, finalMaterial.albedo, snowFactor, 0.0);
+		finalMaterial.roughness = mix(finalMaterial.roughness, 0.85, ctx.freezingScale);
+		finalMaterial.metallic = mix(finalMaterial.metallic, 0.0, ctx.freezingScale);
+	}
+
+	float primaryShadow;
+	FragColor = apply_lighting_pbr(FragPos, norm, finalMaterial.albedo, finalMaterial.roughness, finalMaterial.metallic, 1.0, primaryShadow, snowFactor);
+	// FragColor.b *= 1.0 + (0.2 * ctx.freezingScale * (1.0 - primaryShadow));
+
+	NormalOut = vec4(normalize(mat3(view) * norm), primaryShadow);
+	AlbedoOut = vec4(finalMaterial.albedo, 1.0);
+
+	vec2 a = (CurPosition.xy / CurPosition.w) * 0.5 + 0.5;
+	vec2 b = (PrevPosition.xy / PrevPosition.w) * 0.5 + 0.5;
+	Velocity = vec4(a - b, finalMaterial.roughness, finalMaterial.metallic);
+}
+
+void main_old() {
 	if (uIsShadowPass) {
 		// Output only depth (handled by hardware)
 		return;
@@ -1047,32 +1479,45 @@ void main() {
 	// finalMaterial.albedo = mix(finalMaterial.albedo, finalMaterial.albedo * 0.5, ctx.globalWetness * 0.5);
 	// finalMaterial.roughness = mix(finalMaterial.roughness, 0.1, ctx.globalWetness * 0.8);
 	// ========================================================================
-	// Running Water Effect
+	// Rain & Running Water Effect
 	// ========================================================================
 	float waterEffect = 0.0;
 	if (wetness > 0.6 && ctx.freezingScale < 0.1) {
+		// Global rain wetness darkens terrain and reduces roughness
+		float globalRainWetness = smoothstep(0.6, 1.0, wetness);
+		finalMaterial.albedo = mix(finalMaterial.albedo, finalMaterial.albedo * 0.6, globalRainWetness * 0.4);
+		finalMaterial.roughness = mix(finalMaterial.roughness, 0.08, globalRainWetness * 0.7);
+
 		float rockSurface = 1.0 - smoothstep(0.2, 0.5, ctx.slope);
 		rockSurface = max(rockSurface, smoothstep(0.2, -0.6, ctx.substrate));
 		float waterFlowMask = rockSurface * smoothstep(0.6, 0.9, wetness);
 
 		if (waterFlowMask > 0.01) {
-			vec3 surfaceDown = vec3(0.0, -1.0, 0.0) - dot(vec3(0.0, -1.0, 0.0), norm) * norm;
-			vec3 flowDir = normalize(surfaceDown + vec3(0.00001, 0.0, 0.0));
-			float flowSpeed = 2.0;
-			vec3 p_flow = (FragPos + -flowDir * time * flowSpeed) * 1.5;
-			vec3 flowNoise = fastCurl3d(p_flow * 0.08 * mix(1.0, 0.1, smoothstep(50.0, 55.0, ctx.realDist)));
+			// High-frequency noise detail fades with distance to omit noisy ripples at far range
+			float highFreqDetail = 1.0 - smoothstep(25.0, 60.0, ctx.realDist);
+			float effectiveStreaks = 1.0;
+			vec3 flowNoise = vec3(0.0);
 
-			float streaks = smoothstep(0.3, 0.8, abs(flowNoise.x));
-			streaks *= smoothstep(0.4, 0.6, fract(flowNoise.y * 0.5 + time * 0.8));
+			if (highFreqDetail > 0.001) {
+				vec3 surfaceDown = vec3(0.0, -1.0, 0.0) - dot(vec3(0.0, -1.0, 0.0), norm) * norm;
+				vec3 flowDir = normalize(surfaceDown + vec3(0.00001, 0.0, 0.0));
+				float flowSpeed = 2.0;
+				vec3 p_flow = (FragPos + -flowDir * time * flowSpeed) * 1.5;
+				flowNoise = fastCurl3d(p_flow * 0.08);
 
-			waterEffect = waterFlowMask * streaks;
+				float streaks = smoothstep(0.3, 0.8, abs(flowNoise.x));
+				streaks *= smoothstep(0.4, 0.6, fract(flowNoise.y * 0.5 + time * 0.8));
+				effectiveStreaks = mix(1.0, streaks, highFreqDetail);
+			}
+
+			waterEffect = waterFlowMask * effectiveStreaks;
 			finalMaterial.albedo = mix(finalMaterial.albedo, finalMaterial.albedo * 0.5, waterEffect * 0.5);
-			finalMaterial.roughness = mix(finalMaterial.roughness, 0.00, waterEffect);
+			finalMaterial.roughness = mix(finalMaterial.roughness, 0.02, waterEffect);
 			finalMaterial.metallic = mix(finalMaterial.metallic, 0.1, waterEffect);
 
-			if (waterEffect > 0.05) {
+			if (waterEffect > 0.05 && highFreqDetail > 0.01) {
 				vec3 flowNorm = normalize(flowNoise * 2.0 - 1.0);
-				norm = normalize(mix(norm, flowNorm, waterEffect * 0.8));
+				norm = normalize(mix(norm, flowNorm, waterEffect * 0.8 * highFreqDetail));
 			}
 		}
 	}
@@ -1091,8 +1536,11 @@ void main() {
 		waterEffect, largeNoise, perturbedNorm, roughness
 	);
 
+	float snowFactor = max(ctx.freezingScale, smoothstep(HEIGHT_SNOW_START, HEIGHT_PEAK, ctx.perturbedHeight));
+
 	if (ctx.freezingScale > 0.0) {
-		vec3 snowColor = vec3(0.9, 0.95, 1.0 + 0.01 * grassAO);
+		// mix(vec3(1.0), vec3(0.9, 0.95, 1.0), 0.5)
+		vec3 snowColor = mix(vec3(1.0), vec3(0.9, 0.95, 1.0 + 0.01 * grassAO), 0.5);
 		albedo = mix(albedo, snowColor, ctx.freezingScale);
 		roughness = mix(roughness, 0.85, ctx.freezingScale);
 		metallic = mix(metallic, 0.0, ctx.freezingScale);
@@ -1106,7 +1554,7 @@ void main() {
 	perturbedNorm = mix(vec3(0.0, 1.0, 0.0), perturbedNorm, floorBlend);
 
 	float primaryShadow;
-	vec3 lighting = apply_lighting_pbr(FragPos, perturbedNorm, albedo, roughness, metallic, 1.0 - grassAO, primaryShadow).rgb;
+	vec3 lighting = apply_lighting_pbr(FragPos, perturbedNorm, albedo, roughness, metallic, 1.0 - grassAO, primaryShadow, snowFactor).rgb;
 	lighting.b *= 1.0 + (0.2 * ctx.freezingScale * (1.0 - primaryShadow));
 
 	// ========================================================================
