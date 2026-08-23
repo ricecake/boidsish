@@ -632,6 +632,11 @@ void evaluate_brdf(
     evaluate_brdf_glint(N, V, L, albedo, roughness, metallic, F0, radiance, shadow, vec3(0.0), 0.0, Lo, spec_lum);
 }
 
+vec3 pal( in float t, in vec3 a, in vec3 b, in vec3 c, in vec3 d )
+{
+	return a + b*cos( 6.28318*(c*t+d) );
+}
+
 /**
  * PBR lighting with Cook-Torrance BRDF - supports all light types.
  * Returns vec4(color.rgb, specular_luminance).
@@ -792,7 +797,8 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 		mat3 TBN = get_tangent_basis(N);
 		vec3 modifiedLightPos = normalize(N + (TBN * tangentOffset));
 
-		evaluate_brdf_glint(N, V, modifiedLightPos, albedo, roughness, metallic, F0, ambient, combinedAO, frag_pos, glintFactor, Lo, spec_lum);
+		vec3 myPalette = pal(randVal.y, vec3(0.5, 0.5, 0.5), vec3(0.5, 0.5, 0.5), vec3(1., 1., 1.), vec3(0, 0.33, 0.67));
+		evaluate_brdf_glint(N, V, modifiedLightPos, albedo, roughness, metallic, F0, ambient * myPalette, combinedAO, frag_pos, glintFactor, Lo, spec_lum);
 		// vec3 modifiedLightPos = N + frag_pos;// + viewPos + V;
 		// // modifiedLightPos += cross(modifiedLightPos, frag_pos) * roughness;
 		// evaluate_brdf_glint(N, V, normalize(modifiedLightPos), albedo, roughness, metallic, F0, ambient, combinedAO, frag_pos, glintFactor, Lo, spec_lum);

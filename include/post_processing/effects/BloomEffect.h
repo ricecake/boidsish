@@ -117,6 +117,14 @@ namespace Boidsish {
 
 			float GetSoftness() const { return softness_; }
 
+			void SetKarisDampening(float karisDampening) { karisDampening_ = karisDampening; }
+
+			float GetKarisDampening() const { return karisDampening_; }
+
+			void SetMaxPoolingFactor(float maxPoolingFactor) { maxPoolingFactor_ = maxPoolingFactor; }
+
+			float GetMaxPoolingFactor() const { return maxPoolingFactor_; }
+
 			void SetMinIntensity(float minIntensity) { minIntensity_ = minIntensity; }
 
 			float GetMinIntensity() const { return minIntensity_; }
@@ -329,6 +337,8 @@ namespace Boidsish {
 			float intensity_ = 0.075f;
 			float threshold_ = 1.0f;
 			float softness_ = 0.5f;
+			float karisDampening_ = 1.0f;
+			float maxPoolingFactor_ = 0.0f;
 			float minIntensity_ = 0.05f;
 			float maxIntensity_ = 0.150f;
 

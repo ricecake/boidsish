@@ -39,6 +39,14 @@ namespace Boidsish {
 					if (ImGui::SliderFloat("Soft Knee", &softness, 0.0f, 1.0f)) {
 						bloom_effect->SetSoftness(softness);
 					}
+					float karis_dampening = bloom_effect->GetKarisDampening();
+					if (ImGui::SliderFloat("Karis Dampening", &karis_dampening, 0.0f, 1.0f)) {
+						bloom_effect->SetKarisDampening(karis_dampening);
+					}
+					float max_pooling = bloom_effect->GetMaxPoolingFactor();
+					if (ImGui::SliderFloat("Max Pooling Factor", &max_pooling, 0.0f, 1.0f)) {
+						bloom_effect->SetMaxPoolingFactor(max_pooling);
+					}
 					float min_intensity = bloom_effect->GetMinIntensity();
 					if (ImGui::SliderFloat("Min Intensity (AE)", &min_intensity, 0.0f, 5.0f)) {
 						bloom_effect->SetMinIntensity(min_intensity);
