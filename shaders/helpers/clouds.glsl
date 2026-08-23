@@ -131,7 +131,7 @@ CloudSpotDetails calculateCloudDensity(
 	float erosionMult = props2D.a;
 
 	float baseShape = (volNoises.g * 0.625 + volNoises.b * 0.25 + volNoises.a * 0.125) * noiseBlend;
-	float baseNoise = remapClamp(volNoises.r, baseShape, 1.0, 0.0, 1.0);
+	float baseNoise = volNoises.r;//remapClamp(volNoises.r, baseShape, 1.0, 0.0, 1.0);
 	baseNoise *= heightGradient;
 
 	float cloud_coverage = pow(1.0 - weather.coverage, remapClamp(h, 0.7, 0.8, 1.0, mix(1.0, 0.5, anvil_bias)));
@@ -171,7 +171,7 @@ CloudDensityResult calculateCloudDensity(
 	// 	p_advected_3d.z / (100000.0 * props.worldScale)
 	// );
 
-	float volumeScale = 15000.0 * props.worldScale;
+	float volumeScale = 10000.0 * props.worldScale;
 	vec3 uvw = p_advected_3d / volumeScale;
 	vec4 volSample = textureLod(u_cloud3DTexture, uvw, clamp(lod * 4.0, 0.0, 4.0));
 
