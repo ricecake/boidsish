@@ -1,7 +1,9 @@
+#include "../atmosphere/common.glsl"
 #include "textures/cloud.glsl"
 
 #include "lygia/generative/psrdnoise.glsl"
 #include "lygia/space/uncenter.glsl"
+#include "lygia/math/mmix.glsl"
 
 layout(binding = [[CLOUD_SHADOW_MAP_BINDING]]) uniform sampler2DArray u_cloudShadowTexture;
 uniform mat4 u_cloudShadowMatrix;
@@ -17,7 +19,6 @@ struct CloudProperties {
 
 struct CloudWeather {
 	vec3 p;
-	float sdf;// LEGACY NAME
 	float coverage;
 	float density;
 	float heightMap;  // Altitude variety
@@ -25,13 +26,46 @@ struct CloudWeather {
 	float ecentricity;
 	float curve;
 	float centerDist;
-};
-
-struct CloudLayer {
 	float baseFloor;
 	float baseCeiling;
-	float thickness;
+	float height;
 };
+
+vec4 hash41(float p) {
+    vec4 p4 = fract(p * vec4(443.897, 441.423, .0973, .1099));
+    p4 += dot(p4, p4.wzxy + 19.19);
+    return fract((p4.xxyz + p4.yzzw) * p4.zywx);
+}
+
+float remap(float value, float valueMin, float valueMax) {
+	return (value - valueMin) / (valueMax - valueMin);
+}
+
+float remapClamp(float value, float inMin, float inMax, float outMin, float outMax) {
+    float t = clamp((value - inMin) / (inMax - inMin), 0.0, 1.0);
+    return mix(outMin, outMax, t);
+}
+
+float adjust(float value, float scaly) {
+	float f = 1.0 - value;
+	float h = 0.4; // adjustable filter
+
+	float a = scaly * (1.0-h) + h;
+	return clamp((remap(a, f, f + h)), 0.0, 1.0);
+}
+
+// https://iquilezles.org/articles/smin
+float smin( float a, float b, float k )
+{
+	float h = max(k-abs(a-b),0.0);
+	return min(a, b) - h*h*0.25/k;
+}
+
+float smaxCubic(float a, float b, float k) {
+	k *= 1.4;
+	float h = max(k - abs(a - b), 0.0);
+	return max(a, b) + h * h * h / (6.0 * k * k);
+}
 
 float schlickGain(float x, float g) {
 	g = clamp(g, 0.001, 0.999);
@@ -51,12 +85,29 @@ float schlickBias(float x, float g) {
 	return xx / (k * (1.0 - xx) + 1.0);
 }
 
+float cloudPhase(float cosTheta) {
+	// Dual-lobe Henyey-Greenstein for forward and back scattering
+	// Blended with a large isotropic component to ensure visibility at all angles
+	float hg = mix(henyeyGreenstein(cloudPhaseG1, cosTheta), henyeyGreenstein(cloudPhaseG2, cosTheta), cloudPhaseAlpha);
+	return mix(hg, (1.0 / (4.0 * PI)), cloudPhaseIsotropic);
+}
 
-float getCurvedAltitude(vec3 p) {
-	// return p.y;
-	float R_earth = 6360.0 * 1000.0 * worldScale;
-	vec3 earthCenter = vec3(viewPos.x, -R_earth, viewPos.z);
-	return length(p - earthCenter) - R_earth;
+float beerPowder(float d, float local_d) {
+	// Approximation of multiple scattering (Beer-Powder law)
+	// Ensuring sunny side isn't black when d is small
+	return max(
+		exp(-d),
+		exp(-d * cloudPowderScale) * cloudPowderMultiplier * (1.0 - exp(-local_d * cloudPowderLocalScale))
+	);
+}
+
+vec3 beerPowder(vec3 d, vec3 local_d) {
+	// Approximation of multiple scattering (Beer-Powder law)
+	// Ensuring sunny side isn't black when d is small
+	return max(
+		exp(-d),
+		exp(-d * cloudPowderScale) * cloudPowderMultiplier * (vec3(1.0) - exp(-local_d * cloudPowderLocalScale))
+	);
 }
 
 bool intersectSphereLocal(vec3 ro, vec3 rd, float radius, out float t0, out float t1) {
@@ -100,78 +151,25 @@ bool intersectCloudShell(vec3 ro, vec3 rd, float worldScale, out float t_start, 
 	return false;
 }
 
-float getCloudRelativeHeight(vec3 p, CloudWeather weather, CloudLayer layer, out float localFloor, out float actualThickness) {
+float getCurvedAltitude(vec3 p) {
+	// return p.y;
+	float R_earth = 6360.0 * 1000.0 * worldScale;
+	vec3 earthCenter = vec3(viewPos.x, -R_earth, viewPos.z);
+	return length(p - earthCenter) - R_earth;
+}
+
+float getCloudRelativeHeight(vec3 p, CloudWeather weather, out float localFloor, out float actualThickness) {
 	float altitude = getCurvedAltitude(p);
-	float altitudeShift = weather.heightMap * layer.thickness;
-	float cellRange = 10000.0 * worldScale;
-	// float thicknessTaper = clamp(1.0 - pow(weather.centerDist / (cellRange * 0.5), 2.0), 0.0, 1.0);
-	// actualThickness = max(weather.thickness * layer.thickness * thicknessTaper, 10.0 * worldScale);
-	actualThickness = max(weather.thickness * layer.thickness, 25.0 * worldScale);
-	localFloor = layer.baseFloor + altitudeShift;
+	float altitudeShift = weather.heightMap * weather.height;
+
+	actualThickness = max(weather.thickness * weather.height, 25.0 * worldScale);
+	localFloor = weather.baseFloor + altitudeShift;
 	return clamp((altitude - localFloor) / actualThickness, 0.0, 1.0);
 }
 
-float getCloudRelativeHeight(vec3 p, CloudWeather weather, CloudLayer layer) {
+float getCloudRelativeHeight(vec3 p, CloudWeather weather) {
 	float localFloor, actualThickness;
-	return getCloudRelativeHeight(p, weather, layer, localFloor, actualThickness);
-	// float altitude = getCurvedAltitude(p);
-	// float altitudeShift = weather.heightMap * layer.thickness;
-	// float actualThickness = weather.thickness * layer.thickness;
-	// float localFloor = layer.baseFloor + altitudeShift;
-	// return clamp((altitude - localFloor) / max(actualThickness, 0.001), 0.0, 1.0);
-}
-
-// float saturate(float value) {
-// 	return clamp(value, 0.0, 1.0);
-// }
-
-vec4 hash41(float p) {
-    vec4 p4 = fract(p * vec4(443.897, 441.423, .0973, .1099));
-    p4 += dot(p4, p4.wzxy + 19.19);
-    return fract((p4.xxyz + p4.yzzw) * p4.zywx);
-}
-
-
-float remap(float value, float valueMin, float valueMax) {
-	return (value - valueMin) / (valueMax - valueMin);
-}
-
-float remapClamp(float value, float inMin, float inMax, float outMin, float outMax) {
-    float t = clamp((value - inMin) / (inMax - inMin), 0.0, 1.0);
-    return mix(outMin, outMax, t);
-}
-
-float adjust(float value, float scaly) {
-	float f = 1.0 - value;
-	float h = 0.4; // adjustable filter
-
-	float a = scaly * (1.0-h) + h;
-	return clamp((remap(a, f, f + h)), 0.0, 1.0);
-}
-
-float cloudPhase(float cosTheta) {
-	// Dual-lobe Henyey-Greenstein for forward and back scattering
-	// Blended with a large isotropic component to ensure visibility at all angles
-	float hg = mix(henyeyGreenstein(cloudPhaseG1, cosTheta), henyeyGreenstein(cloudPhaseG2, cosTheta), cloudPhaseAlpha);
-	return mix(hg, (1.0 / (4.0 * PI)), cloudPhaseIsotropic);
-}
-
-float beerPowder(float d, float local_d) {
-	// Approximation of multiple scattering (Beer-Powder law)
-	// Ensuring sunny side isn't black when d is small
-	return max(
-		exp(-d),
-		exp(-d * cloudPowderScale) * cloudPowderMultiplier * (1.0 - exp(-local_d * cloudPowderLocalScale))
-	);
-}
-
-vec3 beerPowder(vec3 d, vec3 local_d) {
-	// Approximation of multiple scattering (Beer-Powder law)
-	// Ensuring sunny side isn't black when d is small
-	return max(
-		exp(-d),
-		exp(-d * cloudPowderScale) * cloudPowderMultiplier * (vec3(1.0) - exp(-local_d * cloudPowderLocalScale))
-	);
+	return getCloudRelativeHeight(p, weather, localFloor, actualThickness);
 }
 
 vec3 getCloudWindSpeed(float time) {
@@ -201,50 +199,68 @@ vec3 getCloudAdvectionOffset(float h, float time) {
 	return time * getCloudAdvectionSpeed(h, time);
 }
 
-// https://iquilezles.org/articles/smin
-float smin( float a, float b, float k )
-{
-	float h = max(k-abs(a-b),0.0);
-	return min(a, b) - h*h*0.25/k;
+
+float applyDynamicCoverage(float bakedCoverage, float uniformCoverage, float biasTune) {
+    float coverageFloor = 1.0 - (uniformCoverage * 2.0);
+    float remapped = saturate((bakedCoverage - coverageFloor) / (1.0 - min(0.0, coverageFloor)));
+
+    // biasTune > 0.5 = ease-out, biasTune < 0.5 = ease-in
+    float t = clamp(biasTune, 0.001, 0.999);
+    return remapped / (((1.0 / t) - 2.0) * (1.0 - remapped) + 1.0);
 }
 
-CloudWeather loadCloudWeather(vec3 p, CloudProperties props, vec4 tex) {
-	// imageStore(outWeatherMap, pixel, vec4(finalCoverage, distF1InMeters, cellID, density));
+float applyDynamicCoverage(float bakedCoverage, float uniformCoverage) {
+	// uniformCoverage = 1.0 - uniformCoverage;
+	// return smoothstep(uniformCoverage, uniformCoverage + 0.1, bakedCoverage);
+    float coverageFloor = 1.0 - (uniformCoverage * 2.0);
 
+    float remapped = saturate((bakedCoverage - coverageFloor) / (1.0 - min(0.0, coverageFloor)));
+
+	return schlickGain(remapped, 0.25);
+}
+
+
+// float applyDynamicCoverage(float bakedCoverage, float uniformCoverage) {
+//     // uniformCoverage at 0.5 = no change
+//     // uniformCoverage at 1.0 = solid overcast
+//     // uniformCoverage at 0.0 = clear skies
+// 	// return 1.0-smoothstep(2*uniformCoverage-1,2*uniformCoverage,bakedCoverage);
+//     // return clamp(bakedCoverage + (uniformCoverage * 2.0 - 1.0), 0.0, 1.0);
+// 	// return 6*(bakedCoverage+(uniformCoverage*2.0 -1));
+// 	// return 1.0-smoothstep(uniformCoverage-0.25, uniformCoverage, bakedCoverage - (uniformCoverage * 0.25));
+// 	// return 1.0-smoothstep(uniformCoverage-0.5*uniformCoverage, uniformCoverage, bakedCoverage - (uniformCoverage * uniformCoverage * 0.5));
+// 	// return schlickBias(clamp(bakedCoverage + (uniformCoverage * 2.0 - 1.0), 0.0, 1.0), uniformCoverage);
+// 	// return schlickBias(bakedCoverage, uniformCoverage);
+// 	return applyDynamicCoverage(bakedCoverage, uniformCoverage, 1-uniformCoverage);
+// }
+
+
+CloudWeather loadCloudWeather(vec3 p, CloudProperties props, vec4 tex, vec4 frontSample) {
 	CloudWeather weather;
 	weather.p = p;
 
-	// Apply props.coverage as an offset/threshold to the baked coverage map
-	weather.coverage = clamp(tex.r + (props.coverage * 2.0 - 1.0), 0.0, 1.0);
-	weather.heightMap = tex.g;
-	weather.thickness = tex.b;
-	weather.density = tex.a * props.densityBase;
-	if (props.coverage >= 1.0) {
-		weather.coverage = 1.0;
-		weather.density = props.densityBase;
-	}
-	// float thickness = clamp(posNoise(p, mapRange, 5), 0.0, (1.0-cellData.f1_dist)*0.25*uCloudThickness/mapRange);
+	float baseCoverage = tex.r;
+	float frontCoverageBoost = frontSample.g;
+	weather.coverage = applyDynamicCoverage(baseCoverage * frontCoverageBoost, props.coverage);
 
-	// weather.thickness = clamp(weather.thickness, 0, (2500* rawCoverage)/(props.thickness * weather.thickness));
-	// weather.thickness = clamp(weather.thickness, 0, weather.coverage);
-	weather.thickness = smoothstep(0, weather.thickness, weather.coverage);
-	// weather.thickness = schlickBias(weather.coverage, 0.25);
-	// weather.density *= smoothstep(0.0, 0.95, weather.thickness);
-	weather.density = mix(weather.density, weather.coverage * props.densityBase, 0.4);
+	float bakedType = mmix(0.05, 0.0, 0.75, tex.g);
+	weather.heightMap = mix(bakedType, frontSample.r, 0.5);
 
-	// weather.thickness = mix(weather.thickness, weather.density, 0.8);
-	weather.heightMap = mix(weather.heightMap, 0.0, weather.density * 0.9);
+	float frontThicknessMod = frontSample.b;
+	weather.thickness = mmix(0.15, 1.0, 0.05, tex.g) * frontThicknessMod;
+	weather.density = tex.a * props.densityBase * frontCoverageBoost;
 
-	// weather.heightMap = clamp(tex.g, 0.01, 1.0);
-	// weather.thickness = clamp(tex.b, 0.01, 1.0);
-	// weather.density = clamp(tex.a, 0.01, 1.0);
-	// weather.ecentricity = uncenter(psrdnoise(p, vec3(10.0)));
-	// weather.curve = uncenter(psrdnoise(p/2.0, vec3(10.0)));
-	// weather.centerDist = uncenter(psrdnoise(p/3.0, vec3(10.0)));
+	weather.ecentricity = frontSample.a;
 
-	weather.sdf = weather.coverage;
+	weather.baseFloor = props.altitude * props.worldScale;
+	weather.height = max(props.thickness * frontThicknessMod, 0.001) * props.worldScale;
+	weather.baseCeiling = weather.baseFloor + 2.0 * weather.height;
 
 	return weather;
+}
+
+CloudWeather loadCloudWeather(vec3 p, CloudProperties props, vec4 tex) {
+	return loadCloudWeather(p, props, tex, vec4(0.5, 1.0, 1.0, 1.0));
 }
 
 CloudWeather computeCloudWeather(vec3 p, CloudProperties props, float lod) {
@@ -255,39 +271,36 @@ CloudWeather computeCloudWeather(vec3 p, CloudProperties props, float lod) {
 	// Range is 100,000 * worldScale as defined in the bake shader.
 	vec2 uv = p_advected.xz / (100000.0 * props.worldScale);
 	vec4 bakedWeather = textureLod(u_cloudWeatherTexture, uv, clamp(lod * 6.0, 0.0, 6.0));
-	return loadCloudWeather(p, props, bakedWeather);
+
+	// Evaluate 3D cloud front lookup texture using local weather state (wind speed, temperature, humidity)
+	vec2 weatherUV;
+	if (u_windOriginSize.y > 0) {
+		float gridSpacing = u_windParams.x;
+		vec2 gridCoord = (p.xz / gridSpacing) - vec2(u_windOriginSize.xz);
+		weatherUV = gridCoord / vec2(u_windOriginSize.y, u_windOriginSize.w);
+	} else {
+		float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
+		weatherUV = (p.xz / scaledChunkSize - vec2(u_originSize.xy)) / 128.0;
+	}
+
+	vec4 scalars = textureLod(u_weatherScalars, weatherUV, 0.0);
+	vec4 macroWind = textureLod(u_lbmWindTexture, weatherUV, 0.0);
+
+	float normWind = clamp(length(macroWind.xz) / 30.0, 0.0, 1.0);
+	float normTemp = clamp((scalars.x - 250.0) / 70.0, 0.0, 1.0);
+	float normHum = clamp(scalars.y, 0.0, 1.0);
+
+	vec4 frontSample = textureLod(u_cloud3DFrontLUT, vec3(normWind, normTemp, normHum), 0.0);
+
+	return loadCloudWeather(p, props, bakedWeather, frontSample);
 }
 
 CloudWeather computeCloudWeather(vec3 p, CloudProperties props) {
 	return computeCloudWeather(p, props, 0.0);
 }
 
-CloudLayer computeCloudLayer(CloudWeather weather, CloudProperties props) {
-	CloudLayer layer;
-	layer.baseFloor = props.altitude * props.worldScale;
-	layer.thickness = max(props.thickness, 0.001) * props.worldScale;
-	// The evaluation volume needs twice the thickness to account for a full height cloud at maximum altitude.
-	layer.baseCeiling = layer.baseFloor + 2.0 * layer.thickness;
-	return layer;
-}
-
 float getDensityHeightGradient(float h, float type) {
-	// 1. Cumulonimbus (Type ~ 0.0): Massive storm chunks
-	// Solid, dark, flat base with a dense core that tapers slightly near the anvil top.
-	float cumulonimbus = smoothstep(0.0, 0.05, h) * (1.0 - smoothstep(0.7, 1.0, h));
-
-	// 2. Cumulus (Type ~ 0.5): Puffy fair-weather clouds
-	// Rounded bottoms and very rounded, billowy tops.
-	float cumulus = smoothstep(0.0, 0.2, h) * (1.0 - smoothstep(0.6, 0.9, h));
-
-	// 3. Stratus (Type ~ 1.0): Thin, patchy plates
-	// Soft fade in, flat middle, soft fade out.
-	float stratus = smoothstep(0.0, 0.3, h) * (1.0 - smoothstep(0.7, 1.0, h));
-
-	float res = mix(cumulonimbus, cumulus, smoothstep(0.0, 0.5, type));
-	res = mix(res, stratus, smoothstep(0.5, 1.0, type));
-
-	return res;
+	return textureLod(u_cloud2DPropsLUT, vec2(clamp(type, 0.0, 1.0), clamp(h, 0.0, 1.0)), 0.0).r;
 }
 
 /**
@@ -309,33 +322,6 @@ float getDistanceToCloudEdge(float coverage, float h, float type, float thicknes
 
 	// The overall distance to the nearest edge is the minimum of horizontal and vertical distance.
 	return max(0.0, min(distHorizontal, distVertical));
-}
-
-float getCloud3DCoverage(vec3 p, CloudWeather weather, CloudLayer layer, float worldScale) {
-	float localFloor, actualThickness;
-	float h = getCloudRelativeHeight(p, weather, layer, localFloor, actualThickness);
-
-	if (p.y < localFloor || p.y > (localFloor + actualThickness)) {
-		return 0.0;
-	}
-
-	float type = weather.heightMap;
-	float heightGradient = getDensityHeightGradient(h, type);
-
-	float coverage2D = weather.coverage; //
-
-	// // Create a flare modifier that increases in the upper half of the cloud.
-	// // Adjust the smoothstep bounds and multiplier to control the flare's altitude and width.
-	// float topFlare = smoothstep(0.4, 0.9, h) * 0.4;
-
-	// // Apply the flare to the 2D coverage, clamping to keep it a valid SDF/mask.
-	// float dynamicCoverage = clamp(coverage2D + topFlare, 0.0, 1.0);
-
-	// // Replace the static coverage2D with the dynamically flaring one.
-	// float macroVolume = dynamicCoverage * heightGradient; //[cite: 3]
-
-	float macroVolume = coverage2D * heightGradient;
-	return macroVolume;
 }
 
 float sampleDeepOpacityMap(vec2 shadowUV, float h, float lod) {
@@ -373,23 +359,13 @@ float calculateCloudShadowFactor(vec3 frag_pos, vec3 L, float intensity) {
 	props.worldScale = worldScale;
 
 	CloudWeather weather = computeCloudWeather(frag_pos, props);
-	CloudLayer layer = computeCloudLayer(weather, props);
-	float h = getCloudRelativeHeight(frag_pos, weather, layer);
+	float h = getCloudRelativeHeight(frag_pos, weather);
 
 	// Scale accumulated density by a physical factor (0.02) to match average extinction values and keep shadows soft/realistic
 	float accumulatedDensity = sampleDeepOpacityMap(shadowUV, h, 0.0) * 0.001 * cloudShadowOpticalDepthMultiplier / max(0.001, worldScale);
 	float shadowTerm = exp(-accumulatedDensity);
 
 	return mix(1.0, shadowTerm, intensity);
-}
-
-float evaluateCloudShadowDensityAtWorldPos(vec2 worldXZ, float time) {
-	if (!u_useCloudShadowMap) return 0.0;
-	vec4 lightSpacePos = u_cloudShadowMatrix * vec4(worldXZ.x, 0.0, worldXZ.y, 1.0);
-	vec2 shadowUV = lightSpacePos.xy * 0.5 + 0.5;
-	// Sample bottom layer (layer 7) for total optical depth through clouds, scaled appropriately
-	float totalDensity = textureLod(u_cloudShadowTexture, vec3(shadowUV, 7.0), 0.0).r * 0.001 * cloudShadowOpticalDepthMultiplier / max(0.001, worldScale);
-	return totalDensity;
 }
 
 /**
@@ -406,10 +382,9 @@ float calculateCloudAmbientOcclusion(vec3 frag_pos) {
 	props.worldScale = worldScale;
 
 	CloudWeather weather = computeCloudWeather(frag_pos, props);
-	CloudLayer layer = computeCloudLayer(weather, props);
 
 	float localFloor, actualThickness;
-	float h = getCloudRelativeHeight(frag_pos, weather, layer, localFloor, actualThickness);
+	float h = getCloudRelativeHeight(frag_pos, weather, localFloor, actualThickness);
 
 	// Find the curved altitude directly above the fragment clamped within the cloud layer
 	float alt_above = clamp(getCurvedAltitude(frag_pos), localFloor, localFloor + actualThickness);

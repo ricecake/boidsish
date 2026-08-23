@@ -1,3 +1,30 @@
+float getCloud3DCoverage(vec3 p, CloudWeather weather, CloudLayer layer, float worldScale) {
+	float localFloor, actualThickness;
+	float h = getCloudRelativeHeight(p, weather, layer, localFloor, actualThickness);
+
+	if (p.y < localFloor || p.y > (localFloor + actualThickness)) {
+		return 0.0;
+	}
+
+	float type = weather.heightMap;
+	float heightGradient = getDensityHeightGradient(h, type);
+
+	float coverage2D = weather.coverage; //
+
+	// // Create a flare modifier that increases in the upper half of the cloud.
+	// // Adjust the smoothstep bounds and multiplier to control the flare's altitude and width.
+	// float topFlare = smoothstep(0.4, 0.9, h) * 0.4;
+
+	// // Apply the flare to the 2D coverage, clamping to keep it a valid SDF/mask.
+	// float dynamicCoverage = clamp(coverage2D + topFlare, 0.0, 1.0);
+
+	// // Replace the static coverage2D with the dynamically flaring one.
+	// float macroVolume = dynamicCoverage * heightGradient; //[cite: 3]
+
+	float macroVolume = coverage2D * heightGradient;
+	return macroVolume;
+}
+
 // Warp cloud position away from the camera's view axis (capsule-based sliding warp)
 // Returns the warped position and a fade factor for density
 vec3 getWarpedCloudPos(vec3 p, out float fade) {
@@ -1093,5 +1120,115 @@ float generateOrganicCellSDF(vec2 p, float cellSize, vec2 period, float coverage
     // Convert back to world space scale
     return globalDist * cellSize;
 }
+
+float evaluateCloudShadowDensityAtWorldPos(vec2 worldXZ, float time) {
+	if (!u_useCloudShadowMap) return 0.0;
+	vec4 lightSpacePos = u_cloudShadowMatrix * vec4(worldXZ.x, 0.0, worldXZ.y, 1.0);
+	vec2 shadowUV = lightSpacePos.xy * 0.5 + 0.5;
+	// Sample bottom layer (layer 7) for total optical depth through clouds, scaled appropriately
+	float totalDensity = textureLod(u_cloudShadowTexture, vec3(shadowUV, 7.0), 0.0).r * 0.001 * cloudShadowOpticalDepthMultiplier / max(0.001, worldScale);
+	return totalDensity;
+}
+
+struct RaymarchState {
+    float t;
+    bool in_cloud;
+    int zero_count;
+    float current_lod;
+    float step_size;
+};
+
+/**
+ * Evaluates the unified step, state, and LOD for the current iteration.
+ */
+void evaluateRaymarchState(
+    inout RaymarchState state,
+    float macro_density,
+    float dist_max,
+    float base_step,
+    float cheap_mult,
+    int escape_threshold
+) {
+    // 1. Quadratic Distance Scaling
+    // Pushes the ray to the horizon efficiently by growing the base step
+    // exponentially after a safe near-field distance.
+    float dist_start = 15000.0 * worldScale;
+    float max_growth = 500.0 * worldScale; // Maximum added step size at horizon
+
+    float depth_factor = clamp((state.t - dist_start) / max(1.0, dist_max - dist_start), 0.0, 1.0);
+    float scaled_base_step = base_step + (max_growth * (depth_factor * depth_factor));
+
+    // 2. LOD Derivation
+    // Slave the LOD directly to the step expansion to guarantee the Nyquist limit
+    // is respected, preventing high-frequency noise from speckling the wide steps.
+    state.current_lod = clamp(log2(scaled_base_step / base_step), 0.0, 6.0);
+
+    // 3. Bifurcation Logic (Using the dynamically scaled base step)
+    float cheap_step = scaled_base_step * cheap_mult;
+
+    if (!state.in_cloud) {
+        if (macro_density > 0.01) {
+            // Cloud boundary detected. Step back by the cheap step[cite: 7].
+            state.in_cloud = true;
+            state.zero_count = 0;
+            state.step_size = -cheap_step;
+        } else {
+            // Space skipping[cite: 7]
+            state.step_size = cheap_step;
+        }
+    } else {
+        if (macro_density <= 0.0) {
+            // Potential exit[cite: 7]
+            state.zero_count++;
+            if (state.zero_count >= escape_threshold) {
+                state.in_cloud = false;
+                state.step_size = cheap_step;
+            } else {
+                state.step_size = scaled_base_step;
+            }
+        } else {
+            // Firmly inside[cite: 7]
+            state.zero_count = 0;
+            state.step_size = scaled_base_step;
+        }
+    }
+}
+
+
+/**
+ * Calculates the adaptive step size for a volumetric ray sampling system.
+ *
+ * @param t        Current distance from the camera along the ray.
+ * @param pd       Low-resolution extinction density vector (RGB) of the current macro-cell.
+ * @param D        High-resolution extinction density vector (RGB) at the current sample point.
+ * @param PD       High-resolution extinction density vector (RGB) at the previous sample point.
+ * @param B        Minimum baseline step size near the camera.
+ * @param G        Distance scaling factor (gradient of step growth over distance).
+ * @param K        Low-density space-skipping boost factor.
+ * @param C        High-resolution gradient sensitivity factor.
+ */
+float calculateAdaptiveStepSize(
+    float t, vec3 pd, vec3 D, vec3 PD,
+    float B, float G, float K, float C
+) {
+    // --- TERM 1: Distance from Camera ---
+    // Linearly scales step size up as the ray gets further away. B acts as the floor.
+    float term1 = max(B, t * G);
+
+    // --- TERM 2: Low-Resolution Density (Space-Skipping) ---
+    // Finds the highest density channel. If ANY channel gets dense, we must slow down.
+    float max_pd = max(pd.x, max(pd.y, pd.z));
+    float term2 = 1.0 + (K / max(max_pd, 1e-5));
+
+    // --- TERM 3: High-Resolution Gradient Change ---
+    // Calculates how much the RGB density changed between the current and last sample.
+    // Uses smooth inverse scaling instead of a hard linear clamp to avoid artifacting.
+    float density_change = distance(D, PD);
+    float term3 = 1.0 / (1.0 + C * density_change);
+
+    // Combine all three concepts into the final adaptive step size
+    return term1 * term2 * term3;
+}
+
 
 #endif // HELPERS_CLOUD_WEATHER_UTILS_GLSL

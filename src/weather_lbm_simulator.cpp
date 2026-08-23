@@ -746,8 +746,6 @@ namespace Boidsish {
 
         currentOutput_.cloudCoverage = std::clamp(cloudPotential, 0.0f, 1.0f);
         currentOutput_.cloudDensity = std::clamp(cloudPotential, 0.0f, 1.0f);
-        currentOutput_.cloudAltitude = 400.0f + 200.0f * (1.0f - currentOutput_.humidity);
-        currentOutput_.cloudThickness = 100.0f + 400.0f * currentOutput_.cloudDensity;
     }
 
     void WeatherLbmSimulator::ShiftGrid(glm::ivec2 shiftOffset, float totalTime, float timeOfDay) {

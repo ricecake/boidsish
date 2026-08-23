@@ -113,6 +113,10 @@ namespace Boidsish {
 
 			float GetThreshold() const { return threshold_; }
 
+			void SetSoftness(float softness) { softness_ = softness; }
+
+			float GetSoftness() const { return softness_; }
+
 			void SetMinIntensity(float minIntensity) { minIntensity_ = minIntensity; }
 
 			float GetMinIntensity() const { return minIntensity_; }
@@ -324,6 +328,7 @@ namespace Boidsish {
 			int   _width, _height;
 			float intensity_ = 0.075f;
 			float threshold_ = 1.0f;
+			float softness_ = 0.5f;
 			float minIntensity_ = 0.05f;
 			float maxIntensity_ = 0.150f;
 

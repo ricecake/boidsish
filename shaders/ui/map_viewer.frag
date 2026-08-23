@@ -40,6 +40,36 @@ uniform mat4 uCloudShadowMatrix;
 #include "helpers/constants.glsl"
 #include "helpers/terrain_common.glsl"
 
+float schlickGain(float x, float g) {
+	g = clamp(g, 0.001, 0.999);
+	float absDiff = abs(2.0 * x - 1.0);
+	float denominator = g + absDiff * (1.0 - 2.0 * g);
+	return 0.5 + ((x - 0.5) * (1.0 - g)) / denominator;
+}
+
+float schlickBias(float x, float g) {
+	// Guard inputs to safe analytical ranges
+	float xx = clamp(x, 0.0, 1.0);
+	float gg = clamp(g, 1e-4, 1.0 - 1e-4);
+
+	// Convert bias parameter to Schlick formulation factor
+	// Schlick's fast alternative: f(x) = x / ((1/a - 2) * (1.0 - x) + 1.0)
+	float k = (1.0 / gg) - 2.0;
+	return xx / (k * (1.0 - xx) + 1.0);
+}
+
+float saturate(float x) {
+    return clamp(x, 0, 1);
+}
+
+float applyDynamicCoverage(float bakedCoverage, float uniformCoverage) {
+    float coverageFloor = 1.0 - (uniformCoverage * 2.0);
+
+    float remapped = saturate((bakedCoverage - coverageFloor) / (1.0 - min(0.0, coverageFloor)));
+
+	return schlickGain(remapped, 0.1);
+}
+
 void main() {
     // Determine world position from TexCoords and view settings
     float range = 100000.0 / uViewScale;
@@ -113,7 +143,7 @@ void main() {
     }
 
     // Dynamic cloud thresholding/effective coverage
-    float effectiveCoverage = clamp(cloudData.r + (uCloudCoverage * 2.0 - 1.0), 0.0, 1.0);
+    float effectiveCoverage = applyDynamicCoverage(cloudData.r, uCloudCoverage);
 
     // --- 3. Compute Base Diagnostic Color ---
     vec3 baseColor = terrainShaded;

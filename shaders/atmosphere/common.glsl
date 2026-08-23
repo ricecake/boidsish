@@ -35,6 +35,7 @@ layout(std140, binding = [[WIND_DATA_BINDING]]) uniform WindData {
 	#define WEATHER_TEXTURES_DEFINED
 layout(binding = [[WEATHER_SCALARS_BINDING]]) uniform sampler2D u_weatherScalars;
 layout(binding = [[WEATHER_AEROSOLS_BINDING]]) uniform sampler2D u_weatherAerosols;
+layout(binding = [[LBM_WIND_TEXTURE_BINDING]]) uniform sampler2D u_lbmWindTexture;
 #endif
 
 #ifndef TERRAIN_DATA_BLOCK

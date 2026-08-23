@@ -77,7 +77,8 @@ void main() {
 			weatherUV = fract(weatherUV);
 
 			vec2 minMax = textureLod(u_cloudWeatherMinMaxTexture, weatherUV, float(L)).rg;
-			float maxDensity = clamp(minMax.y + (cloudCoverage * 2.0 - 1.0), 0.0, 1.0);
+			// float maxDensity = clamp(minMax.y + (cloudCoverage * 2.0 - 1.0), 0.0, 1.0);
+			float maxDensity = applyDynamicCoverage(minMax.y, cloudCoverage);
 
 			if (maxDensity <= 0.001) {
 				float mapRange = 100000.0 * worldScale;
