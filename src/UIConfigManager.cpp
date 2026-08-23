@@ -130,12 +130,12 @@ namespace Boidsish {
 						bool atmos_enabled = cfg.GetAppSettingBool("enable_atmosphere", true);
 						atmos_effect->SetEnabled(atmos_enabled);
 
-						float cloud_density = cfg.GetAppSettingFloat("quick_cloud_density", atmos_effect->GetCloudDensity());
+						float cloud_coverage = cfg.GetAppSettingFloat("quick_cloud_coverage", atmos_effect->GetCloudDensity());
 						auto weather = m_visualizer->GetWeatherManager();
 						if (weather) {
-							weather->SetTarget(WeatherAttribute::CloudDensity, cloud_density);
+							weather->SetTarget(WeatherAttribute::CloudCoverage, cloud_coverage);
 						} else {
-							atmos_effect->SetCloudDensity(cloud_density);
+							atmos_effect->SetCloudDensity(cloud_coverage);
 						}
 
 						float haze_density = cfg.GetAppSettingFloat("quick_haze_density", atmos_effect->GetHazeDensity());

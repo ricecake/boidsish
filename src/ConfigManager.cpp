@@ -62,7 +62,7 @@ namespace Boidsish {
 		GetAppSettingFloat("terrain_world_scale", 1.0f);
 		GetAppSettingBool("enable_atmosphere", true);
 		GetAppSettingBool("enable_volumetric_lighting", true);
-		GetAppSettingFloat("quick_cloud_density", 0.4f);
+		GetAppSettingFloat("quick_cloud_coverage", 0.4f);
 		GetAppSettingFloat("quick_haze_density", 0.5f);
 		GetAppSettingBool("enable_skybox", true);
 		GetAppSettingBool("enable_effects", true);
