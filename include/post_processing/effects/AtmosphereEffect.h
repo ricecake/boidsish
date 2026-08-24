@@ -352,7 +352,7 @@ namespace Boidsish {
 			float  world_scale_ = 1.0f;
 
 			// Cloud Quality Defaults
-			float cloud_max_ray_distance_ = 175000.0f;
+			float cloud_max_ray_distance_ = 500000.0f;
 			int   cloud_min_samples_ = 32;
 			int   cloud_max_samples_ = 96;
 			float cloud_extinction_ = 1.0f;

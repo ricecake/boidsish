@@ -527,12 +527,11 @@ void main() {
 
 	float absoluteShellDist = t_end - t_start;
 	rayDist = t_end - t_start;
-	baseStepSize = clamp(rayDist / float(samples), precisionLimit, 25.0);
-	// baseStepSize = clamp(absoluteShellDist / float(samples), precisionLimit, 25.0);
+	baseStepSize = max(precisionLimit, rayDist / float(samples));
 
 	float firstStepSize = baseStepSize;
 	float its = 0.0;
-	int MAX_ITERATIONS = 1000;//int(uCloudMaxRayDistance / 25.0);
+	int MAX_ITERATIONS = 1000;
 
 	float steps = 0.0;
 	float firstHitStep = 0.0;
@@ -567,9 +566,8 @@ void main() {
 		CloudWeather weather;
 		float lastWeatherT = -1e9;
 		float lodStartDist = 25000.0 * worldScale;
-		float lodFadeRange = 50000.0 * worldScale;
+		float lodFadeRange = 150000.0 * worldScale;
 
-		const float weatherUpdateInterval = 48.0 * worldScale; // Update every 100 meters
 		int zero_count = 0;
 		for (int i = 0; i < MAX_ITERATIONS; i++) {
 			steps = i;
@@ -577,6 +575,9 @@ void main() {
 
 			vec3 p = viewPos + rayDir * t;
 			float currentLod = clamp((t - lodStartDist) / lodFadeRange, 0.0, 1.0);
+			float dynamicStepMultiplier = max(1.0, t / (50000.0 * worldScale));
+			float currentBaseStepSize = baseStepSize * dynamicStepMultiplier;
+			float weatherUpdateInterval = 48.0 * worldScale * dynamicStepMultiplier;
 
 			if (i == 0 || abs(t - lastWeatherT) >= weatherUpdateInterval) {
 				weather = computeCloudWeather(p, props, currentLod);
@@ -588,7 +589,7 @@ void main() {
 
 			vec3 d = densityRes.density;
 
-			float nextStepSize = calculateBifurcatedStepSize(inVolume, zero_count, max(d.x,max(d.y,d.z)), baseStepSize, 3, 3);
+			float nextStepSize = calculateBifurcatedStepSize(inVolume, zero_count, max(d.x,max(d.y,d.z)), currentBaseStepSize, 3, 3);
 
 			if (nextStepSize < 0.0) {
 				// We overshot. Move 't' backward, but do NOT update 't_prev'.
