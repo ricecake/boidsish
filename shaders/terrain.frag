@@ -591,7 +591,7 @@ void processWaterLayer(vec3 norm, float dist, float fade) {
 
 	vec3 refractionDir = refract(incidentDir, normal, eta);
 	// vec2 uvOffset = vec2(pseudoDepth * tan(acos(dot(normal, refractionDir))));
-	vec2 uvOffset = (refractionDir.xz / max(abs(refractionDir.y), 0.001)) * pseudoDepth;
+	vec2 uvOffset = (refractionDir.xz / max(abs(refractionDir.y), 0.001)) * (FragPos.y+pseudoDepth);
 
     // Generate refracted underwater pebbles
     // Note: Use an undisplaced world position here if the lateral Gerstner displacement causes swimming
@@ -617,7 +617,7 @@ void processWaterLayer(vec3 norm, float dist, float fade) {
     vec3 shadedPebble = pebbleColor * (0.35 + 0.65 * pebbleLight);
     shadedPebble *= smoothstep(0.8, 0.4, pebbleDist);
 
-	shadedPebble += vIsWater* threshold(0.7, 0.90, 0.1, pow(dot_noise_fbm(vec3(FragPos.xz + uvOffset, time), 3),3)) * vec3(3.0);
+	shadedPebble += vIsWater* threshold(0.7, 0.90, 0.1, pow(dot_noise_fbm(vec3(FragPos.xz + uvOffset, time), 3),3)) * vec3(2.0);
 
     // Volumetric Absorption (Beer-Lambert Law)
     // Red (X) absorbs rapidly, Green (Y) absorbs moderately, Blue (Z) penetrates deepest
