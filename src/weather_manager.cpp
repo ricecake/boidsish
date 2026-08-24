@@ -1262,14 +1262,35 @@ namespace Boidsish {
 						glm::vec2 flowDir = glm::vec2(cos(angle), sin(angle));
 						glm::vec2 advect = flowDir * 5.0f * worldScaleVal * 10.0f * totalTime;
 
+						auto evalDynamicCoverage = [](float bakedCoverage, float uniformCoverage) {
+							float coverageFloor = 1.0f - (uniformCoverage * 2.0f);
+							float remapped = std::clamp((bakedCoverage - coverageFloor) / (1.0f - std::min(0.0f, coverageFloor)), 0.0f, 1.0f);
+							float absDiff = std::abs(2.0f * remapped - 1.0f);
+							float denominator = 0.25f + absDiff * 0.5f;
+							return 0.5f + ((remapped - 0.5f) * 0.75f) / denominator;
+						};
+
+						float mapRange = 100000.0f * worldScaleVal;
+
 						for (const auto& seed : seeds) {
-							// seed.w is isCloudy (sdf < 0)
-							if (seed.w > 0.5f) {
+							float bakedCoverage = seed.w;
+							float dynamicCoverage = evalDynamicCoverage(bakedCoverage, current_.cloud_coverage);
+
+							// Filter seed locations where configured coverage uniform allows a cloud to exist
+							if (dynamicCoverage > 0.01f) {
 								glm::vec3 p(seed.x - advect.x, 0.0f, seed.y - advect.y);
-								float d = glm::distance(glm::vec2(cameraPos.x, cameraPos.z), glm::vec2(p.x, p.z));
-								if (d < 4000.0f * worldScaleVal) {
-									candidatePositions.push_back(p);
-								}
+
+								// Toroidal wrapping relative to camera
+								float relX = std::fmod(p.x - cameraPos.x, mapRange);
+								if (relX < 0.0f) relX += mapRange;
+								if (relX > mapRange * 0.5f) relX -= mapRange;
+
+								float relZ = std::fmod(p.z - cameraPos.z, mapRange);
+								if (relZ < 0.0f) relZ += mapRange;
+								if (relZ > mapRange * 0.5f) relZ -= mapRange;
+
+								glm::vec3 worldSeedPos = cameraPos + glm::vec3(relX, 0.0f, relZ);
+								candidatePositions.push_back(worldSeedPos);
 							}
 						}
 

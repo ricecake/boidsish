@@ -150,18 +150,35 @@ void main() {
 
 	finalCoverage = pow(finalCoverage, 1.0 + (1.0-smoothstep(0, 0.05, typeTransition)));
 
-	imageStore(outWeatherMap, pixel, vec4(finalCoverage, typeValue, 0, 1.0));
-	// imageStore(outWeatherMap, pixel, vec4(finalCoverage, schlickBias(finalCoverage, 0.2), 0, 1.0));
+	// Worley 2D seed grid (10x10 Voronoi period for 100 seeds)
+	float seedPeriod = 10.0;
+	WorleyData2D seedWorley = worley2d_tiling_id(uv * seedPeriod, seedPeriod);
+
+	// Evaluate multi-frequency ridge noise and weight by Worley F1 distance
+	// F1 seed point evaluates to 0.0 and cell edges evaluate to 1.0
+	float n1 = psrdnoise(uv * seedPeriod * 2.0, vec2(seedPeriod * 2.0));
+	float n2 = psrdnoise(uv * seedPeriod * 4.0, vec2(seedPeriod * 4.0));
+	float rawRidge = (1.0 - abs(n1)) * 0.7 + (1.0 - abs(n2)) * 0.3;
+	float f1Weight = clamp(seedWorley.f1_dist / 0.7071, 0.0, 1.0);
+	float ridgeChannel = clamp(rawRidge * f1Weight, 0.0, 1.0);
+
+	imageStore(outWeatherMap, pixel, vec4(finalCoverage, typeValue, ridgeChannel, 1.0));
 	imageStore(outMinMaxMap, pixel, vec4(finalCoverage, finalCoverage, 0.0, 0.0));
 
-	// vec2 cellId = worleyDetails.yz;
-	// float cellID = psrdnoise(cellId, vec2(10.0)) * 0.5 + 0.5;
-	// float distInMeters = micro * cellRange;
-	// float distF1InMeters = worleyDetails.x * cellRange;
-	// // Record seed info if this is the pixel closest to the cell center (f1)
-	// vec2 f1Pixel = (cellId * cellRange) / mapRange * vec2(size);
-	// if (distance(vec2(pixel), f1Pixel) < 1.0) {
-	// 	int cellIdx = int(mod(floor(cellId.y), 10.0) * 10.0 + mod(floor(cellId.x), 10.0));
-	// 	seeds[cellIdx] = vec4(cellId.x * cellRange, cellId.y * cellRange, distInMeters, (finalCoverage > 0.0 ? 1.0 : 0.0));
-	// }
+	// Populate cloud seed locations with Worley F1 seed points and baked coverage
+	vec2 f1_uv = mod(seedWorley.f1 / seedPeriod, vec2(1.0));
+	ivec2 f1Pixel = ivec2(floor(f1_uv * vec2(size)));
+
+	if (pixel == f1Pixel) {
+		int gx = int(floor(mod(seedWorley.f1.x, seedPeriod)));
+		int gy = int(floor(mod(seedWorley.f1.y, seedPeriod)));
+		int cellIdx = gy * 10 + gx;
+
+		if (cellIdx >= 0 && cellIdx < 100) {
+			float mapRange = 100000.0 * uWorldScale;
+			float worldX = f1_uv.x * mapRange;
+			float worldZ = f1_uv.y * mapRange;
+			seeds[cellIdx] = vec4(worldX, worldZ, 0.0, finalCoverage);
+		}
+	}
 }
