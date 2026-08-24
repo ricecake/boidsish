@@ -299,8 +299,8 @@ void main() {
 		}
 
 		// Smoothly scale the maximum allowed bloom energy based on scene adaptation
-		float nightCap = 5.0;  // Max post-exposure energy at night
-		float dayCap = 50.0;   // Max post-exposure energy in daylight
+		float nightCap = 10.0;  // Max post-exposure energy at night
+		float dayCap = 500.0;   // Max post-exposure energy in daylight
 		float dynMaxLuma = mix(nightCap, dayCap, smoothstep(0.01, 1000.0, layers[isSky].adaptedLuminance));
 
 		float knee = max(threshold * softness, 0.0001);

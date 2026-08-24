@@ -529,68 +529,118 @@ TerrainMaterial getCliffMaterial(TerrainContext ctx, float noise) {
 	return mat;
 }
 
+
+float dot_noise(vec3 p)
+{
+    //The golden ratio:
+    //https://mini.gmshaders.com/p/phi
+    // const float PHI = 1.618033988;
+
+    //Rotating the golden angle on the vec3(1, phi, phi*phi) axis
+    const mat3 GOLD = mat3(
+    -0.571464913, +0.814921382, +0.096597072,
+    -0.278044873, -0.303026659, +0.911518454,
+    +0.772087367, +0.494042493, +0.399753815);
+
+    //Gyroid with irrational orientations and scales
+    return dot(cos(GOLD * p), sin(PHI * p * GOLD));
+    //Ranges from [-3 to +3]
+}
+
+float dot_noise_fbm(vec3 p, float oct) {
+	float val;
+	float amp = 1.0;
+	float freq = 1.0;
+	for (int i = 0; i < max(0, oct); i++) {
+		val += amp * dot_noise((p+(val/freq)) * freq);
+		amp *= 0.5;
+		freq *= 2.0;
+	}
+	return val;
+}
+
+float gate(float min_val, float max_val, float val) {
+	return val * smoothstep(min_val, max_val, val);
+}
+
+float threshold(float minv, float maxv, float width, float val) {
+	float halfWidth = width * 0.5;
+	return val * smoothstep(minv - halfWidth, minv+halfWidth, val) * (1.0 - smoothstep(maxv - halfWidth, maxv + halfWidth, val));
+}
 /**
  * Process water layers (e.g. wet surfaces, refractions).
  */
 void processWaterLayer(vec3 norm, float dist, float fade) {
-	float rippleHeight = FragPos.y;
+    // Convert vIsWater into a pseudo-depth metric to drive optics
+    // (Assuming vIsWater goes from ~0.0 at shore to 1.0+ in deep water)
+    float pseudoDepth = max(vIsWater * 5.0, 0.1);
+    float shallowFactor = clamp((1.0 - vIsWater) / 0.5, 0.0, 1.0);
 
-	vec2 refractionOffset = norm.xz * abs(rippleHeight) * 4.0;
+    // Refraction offset scales with depth, not vertical wave height
+    vec2 refractionOffset = norm.xz * pseudoDepth * 0.5;
 
-	// --- Shore and Pebble Bottom Logic ---
-	// vIsWater goes from 0.0 to 1.0. Near shore, it's between 0.5 and 1.0.
-	float shallowFactor = clamp((1.0 - vIsWater) / 0.5, 0.0, 1.0);
+    // Dynamic water roughness; metallic remains high to force reflection if your PBR lacks dielectric Fresnel
+    float waterRoughness = mix(0.1, 0.15, shallowFactor);
+    float waterMetallic = 0.0;//mix(0.9, 0.1, shallowFactor);
+	// refract
+	vec3 incidentDir = normalize(FragPos - viewPos);
+	vec3 normal = normalize(norm);
 
-	// Dynamic water roughness and metallic to prevent reflection artifacts near shore
-	float waterRoughness = mix(0.05, 0.45, shallowFactor);
-	float waterMetallic = mix(0.9, 0.05, shallowFactor);
+	// Ratio of refraction (e.g., air to water: 1.0 / 1.33)
+	float eta = 1.0 / 1.33;
 
-	// Generate refracted underwater pebbles
-	vec2 pebbleUV = (FragPos.xz + refractionOffset) * 15.0;
-	vec3 pebbleVor = voronoi(pebbleUV);
-	float pebbleRand = random(pebbleVor.xy);
-	float pebbleDist = pebbleVor.z;
+	vec3 refractionDir = refract(incidentDir, normal, eta);
+	// vec2 uvOffset = vec2(pseudoDepth * tan(acos(dot(normal, refractionDir))));
+	vec2 uvOffset = (refractionDir.xz / max(abs(refractionDir.y), 0.001)) * pseudoDepth;
 
-	// Rounded dome pebble shape
-	float pebbleShape = smoothstep(0.75, 0.0, pebbleDist);
+    // Generate refracted underwater pebbles
+    // Note: Use an undisplaced world position here if the lateral Gerstner displacement causes swimming
+    // vec2 pebbleUV = (FragPos.xz + refractionOffset) * 15.0;
+    vec2 pebbleUV = (FragPos.xz + uvOffset);
+    vec3 pebbleVor = voronoi(pebbleUV);
+    float pebbleRand = random(pebbleVor.xy);
+    float pebbleDist = pebbleVor.z;
 
-	vec3 pebbleColor;
-	if (pebbleRand < 0.25) {
-		pebbleColor = vec3(0.42, 0.44, 0.46); // slate gray river stone
-	} else if (pebbleRand < 0.5) {
-		pebbleColor = vec3(0.38, 0.35, 0.32); // brown/tan river stone
-	} else if (pebbleRand < 0.75) {
-		pebbleColor = vec3(0.48, 0.35, 0.32); // terracotta brick stone
-	} else {
-		pebbleColor = vec3(0.65, 0.66, 0.64); // light quartz stone
-	}
+    vec3 pebbleColor;
+    if (pebbleRand < 0.25) {
+        pebbleColor = vec3(0.42, 0.44, 0.46);
+    } else if (pebbleRand < 0.5) {
+        pebbleColor = vec3(0.38, 0.35, 0.32);
+    } else if (pebbleRand < 0.75) {
+        pebbleColor = vec3(0.48, 0.35, 0.32);
+    } else {
+        pebbleColor = vec3(0.65, 0.66, 0.64);
+    }
 
-	// 3D-shading for pebbles using distance gradient
-	vec2 pebbleOffset = (pebbleUV - pebbleVor.xy) * 2.0;
-	float pebbleLight = clamp(dot(normalize(vec3(pebbleOffset, 1.0)), normalize(vec3(-0.5, 0.5, 1.0))), 0.0, 1.0);
-	vec3 shadedPebble = pebbleColor * (0.35 + 0.65 * pebbleLight);
-	shadedPebble *= smoothstep(0.8, 0.4, pebbleDist); // darken gaps between pebbles
+    vec2 pebbleOffset = (pebbleUV - pebbleVor.xy) * 2.0;
+    float pebbleLight = clamp(dot(normalize(vec3(pebbleOffset, 1.0)), normalize(vec3(-0.5, 0.5, 1.0))), 0.0, 1.0);
+    vec3 shadedPebble = pebbleColor * (0.35 + 0.65 * pebbleLight);
+    shadedPebble *= smoothstep(0.8, 0.4, pebbleDist);
 
-	// Base surface color of the water
-	vec3 surfaceColor = vec3(0.87, 0.96, 0.99);
-	// Blend pebbles with water tint based on shallowFactor
-	vec3 waterTint = pow(surfaceColor, vec3(2.0 * rippleHeight));
-	vec3 underwaterBottomColor = mix(waterTint * 0.5, shadedPebble, shallowFactor);
+	shadedPebble += vIsWater* threshold(0.7, 0.90, 0.1, pow(dot_noise_fbm(vec3(FragPos.xz + uvOffset, time), 3),3)) * vec3(3.0);
 
+    // Volumetric Absorption (Beer-Lambert Law)
+    // Red (X) absorbs rapidly, Green (Y) absorbs moderately, Blue (Z) penetrates deepest
+    vec3 scatterCoefficients = vec3(1.2, 0.4, 0.1);
+    vec3 transmission = exp(-pseudoDepth * scatterCoefficients);
 
-	float primaryShadow;
-	vec3 lighting = apply_lighting_pbr(FragPos, norm, surfaceColor, waterRoughness, waterMetallic, 1.0, primaryShadow).rgb;
+    // Apply volumetric transmission to the bottom texture
+    vec3 underwaterView = shadedPebble * transmission;
 
-	// Combine PBR surface lighting, underwater pebbles, and grid line glow
-	// In deep water, lighting dominates. In shallow water, the underwater pebbles are highly visible.
-	vec3 final_color = mix(lighting, underwaterBottomColor + lighting * 0.2, shallowFactor * 0.8);
+    // The physical surface of water is very dark; visible color comes from transmission and reflection
+    vec3 surfaceAlbedo = underwaterView + vec3(0.1, 0.2, 0.5);//, vec3(1.0), smoothstep(0.7, 1.0, dot(Normal, vec3(0,1,0))));
 
-	vec4 baseColor = vec4(final_color, fade);
-	FragColor = mix(vec4(0.0, 0.7, 0.7, baseColor.a) * length(baseColor), baseColor, step(1.0, fade));
+    float primaryShadow;
+    vec3 lighting = apply_lighting_pbr(FragPos, norm, surfaceAlbedo, waterRoughness, waterMetallic, 1.0, primaryShadow, 1.0).rgb;
 
-	NormalOut = vec4(normalize(mat3(view) * norm), primaryShadow);
-	AlbedoOut = vec4(surfaceColor, 1.0);
-	return;
+    // Additively combine the transmitted underwater light with surface specular reflections
+    vec3 final_color = lighting;//underwaterView + lighting;
+
+    // vec4 baseColor = baseColor;//vec4(final_color, fade);
+    FragColor = vec4(final_color, 1.0);//mix(vec4(0.0, 0.7, 0.7, baseColor.a) * length(baseColor), baseColor, step(1.0, fade));
+
+    NormalOut = vec4(normalize(mat3(view) * norm), primaryShadow);
+    AlbedoOut = vec4(surfaceAlbedo, 1.0);
 }
 
 /**
@@ -1225,13 +1275,14 @@ void main() {
 		discard;
 	}
 
+	float baseFreq = 0.1 / worldScale;
+	float largeNoise = fastWarpedFbm3d(FragPos * (baseFreq * 0.1));
+
 	if (vIsWater > 0.01) {
-		processWaterLayer(norm, dist, 1.0);
+		processWaterLayer(norm, dist, largeNoise);
 		return;
 	}
 
-	float baseFreq = 0.1 / worldScale;
-	float largeNoise = fastWarpedFbm3d(FragPos * (baseFreq * 0.1));
 
 	TerrainContext ctx = extractTerrainContext(
 		FragPos, norm, largeNoise,
