@@ -23,6 +23,7 @@ struct CloudWeather {
 	float density;
 	float heightMap;  // Altitude variety
 	float thickness;  // Thickness variety
+	float ridge;      // Ridge noise weighted by Worley F1 distance
 	float ecentricity;
 	float curve;
 	float centerDist;
@@ -249,6 +250,7 @@ CloudWeather loadCloudWeather(vec3 p, CloudProperties props, vec4 tex, vec4 fron
 	float frontThicknessMod = frontSample.b;
 	weather.thickness = mmix(0.15, 1.0, 0.05, tex.g) * frontThicknessMod;
 	weather.density = tex.a * props.densityBase * frontCoverageBoost;
+	weather.ridge = tex.b;
 
 	weather.ecentricity = frontSample.a;
 
