@@ -114,10 +114,14 @@ namespace Boidsish {
 		alignas(16) glm::mat4 projection;        // offset 352, 64 bytes
 		alignas(16) glm::vec3 lightningColor;    // offset 416, 12 bytes
 		float lightningPulse;                    // offset 428, 4 bytes
-		alignas(16) glm::vec4 sh_coeffs[81];     // offset 432, 1296 bytes (9 probes * 9 coeffs)
-	}; // Total: 1728 bytes
+		float skyExposure = 1.0f;                // offset 432, 4 bytes
+		float starExposure = 1.0f;               // offset 436, 4 bytes
+		float terrainExposure = 1.0f;            // offset 440, 4 bytes
+		float _pad_exposure = 0.0f;              // offset 444, 4 bytes
+		alignas(16) glm::vec4 sh_coeffs[81];     // offset 448, 1296 bytes (9 probes * 9 coeffs)
+	}; // Total: 1744 bytes
 
-	static_assert(sizeof(LightingUbo) == 1728, "LightingUbo size mismatch");
+	static_assert(sizeof(LightingUbo) == 1744, "LightingUbo size mismatch");
 
 	/**
 	 * @brief Light source data structure for rendering.

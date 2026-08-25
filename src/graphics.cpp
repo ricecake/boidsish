@@ -1270,11 +1270,17 @@ namespace Boidsish {
 			);
 			frame_config_.enable_shadows = cfg.GetAppSettingBool("enable_shadows", true);
 
-			frame_config_.sh_probe_scaling = cfg.GetAppSettingFloat("sh_probe_scaling", 0.125f);
+			frame_config_.sh_probe_scaling = cfg.GetAppSettingFloat("sh_probe_scaling", 1.0f);
+			frame_config_.sky_exposure = cfg.GetAppSettingFloat("sky_exposure", 1.0f);
+			frame_config_.star_exposure = cfg.GetAppSettingFloat("star_exposure", 1.0f);
+			frame_config_.terrain_exposure = cfg.GetAppSettingFloat("terrain_exposure", 1.0f);
 			frame_config_.sh_probe_convergence_speed = cfg.GetAppSettingFloat("sh_probe_convergence_speed", 0.5f);
 			frame_config_.sh_probe_ray_count_multiplier = cfg.GetAppSettingInt("sh_probe_ray_count_multiplier", 1);
 
 			light_manager->SetProbeScaling(frame_config_.sh_probe_scaling);
+			light_manager->SetSkyExposure(frame_config_.sky_exposure);
+			light_manager->SetStarExposure(frame_config_.star_exposure);
+			light_manager->SetTerrainExposure(frame_config_.terrain_exposure);
 			light_manager->SetProbeConvergenceSpeed(frame_config_.sh_probe_convergence_speed);
 			light_manager->SetProbeRayCountMultiplier(frame_config_.sh_probe_ray_count_multiplier);
 
@@ -2407,6 +2413,12 @@ namespace Boidsish {
 					lighting_ubo_data_.lightningPulse = lightning_manager->GetGlobalPulse();
 				}
 
+				if (light_manager) {
+					lighting_ubo_data_.skyExposure = light_manager->GetSkyExposure();
+					lighting_ubo_data_.starExposure = light_manager->GetStarExposure();
+					lighting_ubo_data_.terrainExposure = light_manager->GetTerrainExposure();
+				}
+
 				} else {
 					lighting_ubo_data_.cloudShadowIntensity = 0.0f;
 				}
@@ -2420,10 +2432,10 @@ namespace Boidsish {
 
 				// GPU-side copy of SH coefficients from SSBO into the UBO (no CPU readback)
 				if (atmosphere_manager) {
-					static_assert(offsetof(LightingUbo, sh_coeffs) == 432, "SH offset mismatch");
+					static_assert(offsetof(LightingUbo, sh_coeffs) == 448, "SH offset mismatch");
 					atmosphere_manager->CopySHToUBO(
 						lighting_pb->GetBufferId(),
-						static_cast<GLintptr>(lighting_pb->GetFrameOffset()) + 432
+						static_cast<GLintptr>(lighting_pb->GetFrameOffset()) + 448
 					);
 				}
 

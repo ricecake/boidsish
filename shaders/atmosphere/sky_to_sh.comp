@@ -42,7 +42,7 @@ void main() {
 		ivec2 texel = ivec2(idx % size.x, idx / size.x);
 		vec2  uv = (vec2(texel) + 0.5) / vec2(size);
 
-		vec4 radiance = texture(u_skyViewLUT, uv);
+		vec4 skySample = texture(u_skyViewLUT, uv);
 
 		// Map UV to elevation and azimuth (matching sky_view_lut.comp)
 		float azimuth = uv.x * 2.0 * PI;
@@ -51,7 +51,7 @@ void main() {
 
 		// Direction vector
 		vec3 rd = vec3(cos(elevation) * sin(azimuth), sin(elevation), -cos(elevation) * cos(azimuth));
-		radiance.rgb += computeNebula(rd, time);
+		vec4 radiance = vec4(skySample.rgb * skyExposure + computeNebula(rd, time) * starExposure, skySample.a);
 
 		// vec4 ap = texture(u_aerialPerspectiveLUT, vec3(uv.x, elevation/PI+0.5, 1.0));
 		// vec3 inScattering = ap.rgb;

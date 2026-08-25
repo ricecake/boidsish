@@ -40,9 +40,15 @@ namespace Boidsish {
 		glm::vec3           GetAmbientLight() const;
 		void                SetAmbientLight(const glm::vec3& ambient);
 
-		// SH Probe Tuning
+		// SH Probe Tuning & Exposure Controls
 		float GetProbeScaling() const { return _probe_scaling; }
 		void  SetProbeScaling(float scaling) { _probe_scaling = scaling; }
+		float GetSkyExposure() const { return _sky_exposure; }
+		void  SetSkyExposure(float exp) { _sky_exposure = exp; }
+		float GetStarExposure() const { return _star_exposure; }
+		void  SetStarExposure(float exp) { _star_exposure = exp; }
+		float GetTerrainExposure() const { return _terrain_exposure; }
+		void  SetTerrainExposure(float exp) { _terrain_exposure = exp; }
 		float GetProbeConvergenceSpeed() const { return _probe_convergence_speed; }
 		void  SetProbeConvergenceSpeed(float speed) { _probe_convergence_speed = speed; }
 		int   GetProbeRayCountMultiplier() const { return _probe_ray_count_multiplier; }
@@ -76,8 +82,11 @@ namespace Boidsish {
 		DayNightCycle _cycle;
 		int           _next_light_id = 1;
 
-		// SH Probe Tuning
-		float _probe_scaling = 0.125f;
+		// SH Probe Tuning & Exposure Controls
+		float _probe_scaling = 1.0f;
+		float _sky_exposure = 1.0f;
+		float _star_exposure = 1.0f;
+		float _terrain_exposure = 1.0f;
 		float _probe_convergence_speed = 0.50f;
 		int   _probe_ray_count_multiplier = 1;
 		/*

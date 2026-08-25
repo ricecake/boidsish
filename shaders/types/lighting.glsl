@@ -66,6 +66,10 @@ layout(std140, binding = [[LIGHTING_BINDING]]) uniform Lighting {
 	mat4  projection;
 	vec3  lightningColor;
 	float lightningPulse;
+	float skyExposure;
+	float starExposure;
+	float terrainExposure;
+	float _pad_exposure;
 	vec4  sh_coeffs[81];
 };
 
