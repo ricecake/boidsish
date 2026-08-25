@@ -53,7 +53,7 @@ void main() {
 
 			float radius = 0.0;
 			if (lights[i].type == 0 || lights[i].type == 2 || lights[i].type == 3) { // POINT, SPOT, EMISSIVE
-				radius = sqrt(max(0.1, lights[i].intensity)) * 50.0;
+				radius = sqrt(max(0.1, lights[i].intensity)) * 100.0;
 				if (lights[i].type == 3) {
 					radius += lights[i].inner_cutoff;
 				}
@@ -108,7 +108,7 @@ void main() {
 		// Determine light radius of influence
 		float radius = 0.0;
 		if (lights[i].type == 0 || lights[i].type == 2 || lights[i].type == 3) { // POINT, SPOT, EMISSIVE
-			radius = sqrt(max(0.1, lights[i].intensity)) * 50.0;
+			radius = sqrt(max(0.1, lights[i].intensity)) * 100.0;
 			if (lights[i].type == 3) {
 				radius += lights[i].inner_cutoff;
 			}

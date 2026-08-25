@@ -121,7 +121,7 @@ void main() {
 
 		float intensity = max(C_minor, C_major * 1.5);
 		// vec3  grid_color = vec3(0.0, 0.8, 0.8) * intensity;
-		vec3  grid_color = vec3(0.0, 0.8, 0.8) * intensity * 1000.0 * (1.0-smoothstep(2000, 200000, dist));
+		vec3  grid_color = vec3(0.0, 0.8, 0.8) * intensity * 0.1*(1.0-smoothstep(2000, 200000, dist));
 
 		// --- Plane lighting ---
 		vec3 norm = vec3(0.0, 1.0, 0.0);
