@@ -165,23 +165,27 @@ namespace Boidsish {
 				}
 				_lights[0].base_intensity = 100000.0f * sun_fade;
 
-				// Moon reflects sunlight: brightness and color derive from the sun
-				// The sun always illuminates the moon from space regardless of our horizon
+				// Moon reflects sunlight with physical phase angle and opposition surge
 				glm::vec3 sunDir = glm::normalize(-_lights[0].direction);
 				glm::vec3 moonDir = glm::normalize(-_lights[1].direction);
 
-				// Phase: how much of the illuminated face we see
-				// dot = -1 (opposite = full moon), dot = +1 (same side = new moon)
-				float cos_phase = glm::dot(sunDir, moonDir);
-				float phase = glm::clamp((-cos_phase + 1.0f) * 0.5f, 0.05f, 1.0f);
+				// Phase angle alpha in degrees: 0 deg = Full Moon (opposition), 180 deg = New Moon
+				// Note: dot(sunDir, moonDir) is -1 at opposition (Sun and Moon opposite sides of Earth)
+				float cosAlpha = glm::clamp(-glm::dot(sunDir, moonDir), -1.0f, 1.0f);
+				float alphaDeg = glm::degrees(glm::acos(cosAlpha));
 
-				// Lunar albedo with slight warm tint from regolith
-				const float     lunarAlbedo = _cycle.lunar_albedo;
+				// Non-linear Hapke/Kieffer-Stone lunar phase magnitude function with opposition surge
+				// delta_m = 0.018*alpha + 0.00017*alpha^2 - 0.0000013*alpha^3
+				float deltaM = 0.018f * alphaDeg + 0.00017f * alphaDeg * alphaDeg - 0.0000013f * alphaDeg * alphaDeg * alphaDeg;
+				float phaseFactor = std::pow(10.0f, -0.4f * deltaM);
+				phaseFactor = glm::clamp(phaseFactor, 0.001f, 1.0f);
+
+				// Lunar tint
 				const glm::vec3 lunarTint = _cycle.moon_tint;
+				_lights[1].color = lunarTint;
 
-				// Moon color = sun's full output × albedo × phase × tint
-				glm::vec3 sunFullRadiance = _lights[0].color * 100000.0f;
-				_lights[1].color = sunFullRadiance * lunarAlbedo * phase * lunarTint;
+				// Peak full moon direct illuminance is ~0.25 lux (W/m^2)
+				const float peakFullMoonLux = 0.25f;
 
 				// Smoothly fade moon intensity to avoid pop-in/pop-out at the horizon
 				float moon_fade = 1.0f;
@@ -193,7 +197,7 @@ namespace Boidsish {
 					float t = (moon_vis - (-0.05f)) / (0.05f - (-0.05f));
 					moon_fade = glm::smoothstep(0.0f, 1.0f, t);
 				}
-				_lights[1].base_intensity = 1.0f * moon_fade;
+				_lights[1].base_intensity = peakFullMoonLux * phaseFactor * moon_fade;
 
 				_cycle.night_factor = glm::smoothstep(0.2f, -0.2f, sun_vis);
 

@@ -106,8 +106,11 @@ namespace Boidsish {
 		GetAppSettingFloat("particle_ratio_rain", 0.5f);
 		GetAppSettingFloat("particle_ratio_dust", 0.25f);
 
-		// SH Probe settings
+		// SH Probe & Exposure settings
 		GetAppSettingFloat("sh_probe_scaling", 1.0f);
+		GetAppSettingFloat("sky_exposure", 1.0f);
+		GetAppSettingFloat("star_exposure", 1.0f);
+		GetAppSettingFloat("terrain_exposure", 1.0f);
 		GetAppSettingFloat("sh_probe_convergence_speed", 1.0f);
 		GetAppSettingInt("sh_probe_ray_count_multiplier", 1);
 
