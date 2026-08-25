@@ -56,13 +56,13 @@ void main() {
 
 			// Core of the flame (white hot, emissive)
 			float core_intensity = pow(flame_progress, 8.0) * flicker;
-			vec3  core_color = vec3(1.0, 1.0, 0.9);                   // White-hot
-			vec3  flame_emission = core_color * core_intensity * 6.0; // HDR emissive (Increased)
+			vec3  core_color = vec3(1.0, 1.0, 0.9);                    // White-hot
+			vec3  flame_emission = core_color * core_intensity * 35.0; // Rebalanced physical HDR emissive
 
 			// Outer flame glow (orange/yellow, also emissive)
 			float outer_intensity = pow(flame_progress, 2.0) * (1.0 - core_intensity * 0.5);
-			vec3  outer_color = vec3(1.0, 0.4, 0.0);               // More intense Orange
-			flame_emission += outer_color * outer_intensity * 5.0; // Increased
+			vec3  outer_color = vec3(1.0, 0.4, 0.0);                // Intense Orange
+			flame_emission += outer_color * outer_intensity * 25.0; // Rebalanced physical HDR emissive
 
 			// Add subtle blue at the very base (hottest part)
 			float blue_intensity = pow(flame_progress, 12.0) * 0.3;

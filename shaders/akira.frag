@@ -25,7 +25,7 @@ void main() {
 	if (phase == 0) {
 		// Phase 0: Growing - Emissive matte white
 		baseColor = vec3(1.0);
-		emissive = 5.0; // High intensity for bloom
+		emissive = 25.0; // Rebalanced physical HDR intensity for bloom
 	} else {
 		// Phase 1: Fading - Metallic silver + Iridescence
 		vec3 silver = vec3(0.75, 0.75, 0.8);
@@ -37,7 +37,7 @@ void main() {
 		alpha = 1.0 - fadeProgress;
 
 		// Emissive fade out
-		emissive = mix(5.0, 0.0, fadeProgress);
+		emissive = mix(25.0, 0.0, fadeProgress);
 	}
 
 	vec4 litColor;
