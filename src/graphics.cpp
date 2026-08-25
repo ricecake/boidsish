@@ -1907,9 +1907,9 @@ namespace Boidsish {
 						sky_shader->setVec3("u_moonRadiance", lights[1].color * lights[1].intensity);
 						sky_shader->setVec3("u_moonDir", glm::normalize(-lights[1].direction));
 
-						// Pass full moon radiance (without phase) for disk rendering to avoid double-phasing
+						// Pass peak full moon radiance (~0.25 W/m^2/sr scaled for disk) for disk rendering
 						const auto& cycle = light_manager->GetDayNightCycle();
-						glm::vec3 moonFullRadiance = lights[0].color * 100000.0f * cycle.lunar_albedo * cycle.moon_tint;
+						glm::vec3 moonFullRadiance = cycle.moon_tint * 0.25f * 100.0f;
 						sky_shader->setVec3("u_moonFullRadiance", moonFullRadiance);
 					} else {
 						sky_shader->setVec3("u_moonRadiance", glm::vec3(0.0f));
@@ -2058,21 +2058,29 @@ namespace Boidsish {
 			glm::vec3 sun_color = glm::vec3(1.0f);
 			float     sun_intensity = 1.0f;
 
+			glm::vec3 moon_dir = glm::normalize(glm::vec3(0.0f, -1.0f, 0.0f));
+			glm::vec3 moon_radiance = glm::vec3(0.0f);
+
 			if (!light_manager->GetLights().empty()) {
-				// Choose the most dominant light (Sun or Moon) for atmospheric scattering
 				const auto& lights = light_manager->GetLights();
 				const auto& sun = lights[0];
-				const auto& moon = (lights.size() >= 2) ? lights[1] : sun;
-
-				const auto& primary_light = (sun.intensity >= moon.intensity) ? sun : moon;
-
-				if (primary_light.type == DIRECTIONAL_LIGHT) {
-					sun_dir = glm::normalize(-primary_light.direction);
+				if (sun.type == DIRECTIONAL_LIGHT) {
+					sun_dir = glm::normalize(-sun.direction);
 				} else {
-					sun_dir = glm::normalize(primary_light.position - camera.pos());
+					sun_dir = glm::normalize(sun.position - camera.pos());
 				}
-				sun_color = primary_light.color;
-				sun_intensity = primary_light.intensity;
+				sun_color = sun.color;
+				sun_intensity = sun.intensity;
+
+				if (lights.size() >= 2) {
+					const auto& moon = lights[1];
+					if (moon.type == DIRECTIONAL_LIGHT) {
+						moon_dir = glm::normalize(-moon.direction);
+					} else {
+						moon_dir = glm::normalize(moon.position - camera.pos());
+					}
+					moon_radiance = moon.color * moon.intensity;
+				}
 			}
 
 			if (atmosphere_effect) {
@@ -2102,10 +2110,10 @@ namespace Boidsish {
 				atmosphere_manager->SetCloudShadowIntensity(cloudShadowIntensity);
 			}
 
-			// Update the atmosphere model with the current sun/moon light
+			// Update the atmosphere model with the current sun and moon light
 			float world_scale = terrain_generator ? terrain_generator->GetWorldScale() : 1.0f;
 			if (atmosphere_manager) atmosphere_manager->SetWorldScale(world_scale);
-			atmosphere_manager->Update(sun_dir, sun_color, sun_intensity, camera.pos(), simulation_time, world_scale);
+			atmosphere_manager->Update(sun_dir, sun_color, sun_intensity, camera.pos(), simulation_time, world_scale, moon_dir, moon_radiance);
 
 			// Sync ambient light from atmosphere to ensure decor and world match
 			glm::vec3 estimated_ambient = atmosphere_manager->GetAmbientEstimate();

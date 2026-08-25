@@ -288,7 +288,9 @@ namespace Boidsish {
 		float            sunIntensity,
 		const glm::vec3& cameraPos,
 		float            time,
-		float            worldScale
+		float            worldScale,
+		const glm::vec3& moonDir,
+		const glm::vec3& moonRadiance
 	) {
 		PROJECT_PROFILE_SCOPE("AtmosphereManager::Update");
 
@@ -487,6 +489,8 @@ namespace Boidsish {
 
 		_skyViewShader->setVec3("u_sunDir", sunDir);
 		_skyViewShader->setVec3("u_sunRadiance", sunColor * sunIntensity);
+		_skyViewShader->setVec3("u_moonDir", moonDir);
+		_skyViewShader->setVec3("u_moonRadiance", moonRadiance);
 		_skyViewShader->setVec3("u_cameraPos", cameraPos);
 		_skyViewShader->setFloat("u_time", time);
 		_skyViewShader->setFloat("u_rayleighScale", _rayleighScale);
@@ -524,6 +528,8 @@ namespace Boidsish {
 
 		_aerialPerspectiveShader->setVec3("u_sunDir", sunDir);
 		_aerialPerspectiveShader->setVec3("u_sunRadiance", sunColor * sunIntensity);
+		_aerialPerspectiveShader->setVec3("u_moonDir", moonDir);
+		_aerialPerspectiveShader->setVec3("u_moonRadiance", moonRadiance);
 		_aerialPerspectiveShader->setVec3("u_cameraPos", cameraPos);
 		_aerialPerspectiveShader->setFloat("u_time", time);
 		_aerialPerspectiveShader->setFloat("u_rayleighScale", _rayleighScale);
