@@ -137,6 +137,7 @@ struct TerrainMaterial {
 	float metallic;
 	float normalScale;
 	float normalStrength;
+	GlintProperties glint;
 };
 
 struct TerrainContext {
@@ -348,6 +349,7 @@ TerrainContext extractTerrainContext(
  */
 TerrainMaterial getRockTexture(TerrainContext ctx, vec3 baseColor, float noise) {
 	TerrainMaterial mat;
+	mat.glint.intensity = 0.0; mat.glint.density = 0.0; mat.glint.micro_roughness = 0.0; mat.glint.filter_size = 0.0; mat.glint.scale = 1.0;
 	float h = ctx.rawHeight + noise * 8.0;
 
 	vec2 rockFactors = (fastWorley3dID(FragPos / 125.0));
@@ -389,6 +391,7 @@ TerrainMaterial getRockTexture(TerrainContext ctx, vec3 baseColor, float noise) 
 TerrainMaterial getBiomeMaterial(TerrainContext ctx, float noise) {
 	TerrainMaterial mat;
 	mat.metallic = 0.0;
+	mat.glint.intensity = 0.0; mat.glint.density = 0.0; mat.glint.micro_roughness = 0.0; mat.glint.filter_size = 0.0; mat.glint.scale = 1.0;
 	float h = ctx.perturbedHeight;
 
 	// Beach zone (0 - 3)
@@ -401,6 +404,10 @@ TerrainMaterial getBiomeMaterial(TerrainContext ctx, float noise) {
 		mat.roughness = mix(0.9, 0.4, wetness);
 		mat.normalScale = 40.0;
 		mat.normalStrength = mix(0.1, 0.05, wetness);
+
+		GlintProperties sandGlint;
+		sandGlint.intensity = 0.7; sandGlint.density = 2500.0; sandGlint.micro_roughness = 0.012; sandGlint.filter_size = 0.7; sandGlint.scale = 1.2;
+		mat.glint = sandGlint;
 
 		if (rockFactor > 0.5) {
 			vec3 rockBoundary = voronoi((TexCoords + (noise * 0.05)) * int(50.0 * mix(5.0, 0.1, smoothstep(50.0, 250.0, 20.0 * int(ctx.realDist / 20.0)))));
@@ -500,6 +507,7 @@ TerrainMaterial getBiomeMaterial(TerrainContext ctx, float noise) {
  */
 TerrainMaterial getCliffMaterial(TerrainContext ctx, float noise) {
 	TerrainMaterial mat;
+	mat.glint.intensity = 0.0; mat.glint.density = 0.0; mat.glint.micro_roughness = 0.0; mat.glint.filter_size = 0.0; mat.glint.scale = 1.0;
 	float h = ctx.rawHeight + noise * 5.0;
 
 	// Low altitude cliffs: brown/dark rock (often wet)
@@ -631,7 +639,13 @@ void processWaterLayer(vec3 norm, float dist, float fade) {
     vec3 surfaceAlbedo = underwaterView + vec3(0.1, 0.2, 0.5);//, vec3(1.0), smoothstep(0.7, 1.0, dot(Normal, vec3(0,1,0))));
 
     float primaryShadow;
-    vec3 lighting = apply_lighting_pbr(FragPos, norm, surfaceAlbedo, waterRoughness, waterMetallic, 1.0, primaryShadow, 1.0).rgb;
+    GlintProperties waterGlint;
+    waterGlint.intensity = 0.85;
+    waterGlint.density = 4500.0;
+    waterGlint.micro_roughness = 0.003;
+    waterGlint.filter_size = 0.7;
+    waterGlint.scale = 1.0;
+    vec3 lighting = apply_lighting_pbr(FragPos, norm, surfaceAlbedo, waterRoughness, waterMetallic, 1.0, primaryShadow, waterGlint).rgb;
 
     // Additively combine the transmitted underwater light with surface specular reflections
     vec3 final_color = lighting;//underwaterView + lighting;
@@ -658,6 +672,7 @@ TerrainMaterial calculateMaterial(TerrainContext ctx, float largeNoise) {
 	finalMaterial.metallic = mix(biomeMat.metallic, cliffMat.metallic, ctx.cliffMask);
 	finalMaterial.normalScale = mix(biomeMat.normalScale, cliffMat.normalScale, ctx.cliffMask);
 	finalMaterial.normalStrength = mix(biomeMat.normalStrength, cliffMat.normalStrength, ctx.cliffMask);
+	finalMaterial.glint = mixGlintProperties(biomeMat.glint, cliffMat.glint, ctx.cliffMask);
 
 	// Large-scale macro color shifts
 	finalMaterial.albedo *= (1.0 + largeNoise * 0.12);
@@ -827,7 +842,9 @@ void applyDetailNormalPerturbation(
 }
 
 TerrainMaterial generateMaterial(TerrainContext ctx, float noise) {
-	TerrainMaterial mat = TerrainMaterial(vec3(0,0.0,0), 0.0, 0.0, 1.0, 1.0);
+	GlintProperties defaultGlint;
+	defaultGlint.intensity = 0.0; defaultGlint.density = 0.0; defaultGlint.micro_roughness = 0.0; defaultGlint.filter_size = 0.0; defaultGlint.scale = 1.0;
+	TerrainMaterial mat = TerrainMaterial(vec3(0,0.0,0), 0.0, 0.0, 1.0, 1.0, defaultGlint);
 
 	// Balanced Roughness and Metallic Model across sand, rock, grass, snow and damp
 	float snowFactor = max(ctx.freezingScale, smoothstep(HEIGHT_SNOW_START, HEIGHT_PEAK, ctx.perturbedHeight));
@@ -852,6 +869,25 @@ TerrainMaterial generateMaterial(TerrainContext ctx, float noise) {
 
 	mat.albedo = mix(mat.albedo, mat.albedo * 0.55, noise);
 	mat.albedo = applyErosionColorMappingDefault(mat.albedo, vRidgeMap, vErosionDelta);
+
+	GlintProperties grassGlint;
+	grassGlint.intensity = 0.0; grassGlint.density = 0.0; grassGlint.micro_roughness = 0.0; grassGlint.filter_size = 0.0; grassGlint.scale = 1.0;
+
+	GlintProperties rockGlint;
+	rockGlint.intensity = 0.0; rockGlint.density = 0.0; rockGlint.micro_roughness = 0.0; rockGlint.filter_size = 0.0; rockGlint.scale = 1.0;
+
+	GlintProperties sandGlint;
+	sandGlint.intensity = 0.7; sandGlint.density = 2500.0; sandGlint.micro_roughness = 0.012; sandGlint.filter_size = 0.7; sandGlint.scale = 1.2;
+
+	GlintProperties snowGlint;
+	snowGlint.intensity = 1.0; snowGlint.density = 7000.0; snowGlint.micro_roughness = 0.005; snowGlint.filter_size = 0.7; snowGlint.scale = 1.0;
+
+	GlintProperties blendedGlint = grassGlint;
+	blendedGlint = mixGlintProperties(blendedGlint, rockGlint, rockFactor);
+	blendedGlint = mixGlintProperties(blendedGlint, sandGlint, sandFactor);
+	blendedGlint = mixGlintProperties(blendedGlint, snowGlint, snowFactor);
+
+	mat.glint = blendedGlint;
 
 	return mat;
 }
@@ -999,6 +1035,7 @@ TerrainMaterial cellularErosionDitherMaterial(vec2 uv, TerrainMaterial matA, Ter
     res.metallic = mix(matB.metallic, matA.metallic, mixFactor);
     res.normalScale = mix(matB.normalScale, matA.normalScale, mixFactor);
     res.normalStrength = mix(matB.normalStrength, matA.normalStrength, mixFactor);
+    res.glint = mixGlintProperties(matB.glint, matA.glint, mixFactor);
     return res;
 }
 
@@ -1006,6 +1043,7 @@ TerrainMaterial cellularErosionDitherMaterial(vec2 uv, TerrainMaterial matA, Ter
 
 TerrainMaterial renderGrassGround(vec3 pos, vec3 norm, TerrainContext ctx, float bayerVal, float blueNoise) {
     TerrainMaterial mat;
+    mat.glint.intensity = 0.0; mat.glint.density = 0.0; mat.glint.micro_roughness = 0.0; mat.glint.filter_size = 0.0; mat.glint.scale = 1.0;
     mat.metallic = 0.0;
     mat.normalScale = 12.0;
     mat.normalStrength = 0.08;
@@ -1032,6 +1070,7 @@ TerrainMaterial renderGrassGround(vec3 pos, vec3 norm, TerrainContext ctx, float
 
 TerrainMaterial renderStonesGround(vec3 pos, vec3 norm, TerrainContext ctx, vec2 uv, float warpStrength) {
     TerrainMaterial mat;
+    mat.glint.intensity = 0.0; mat.glint.density = 0.0; mat.glint.micro_roughness = 0.0; mat.glint.filter_size = 0.0; mat.glint.scale = 1.0;
     mat.metallic = 0.02;
     mat.normalScale = 25.0;
     mat.normalStrength = 0.18;
@@ -1059,6 +1098,7 @@ TerrainMaterial renderStonesGround(vec3 pos, vec3 norm, TerrainContext ctx, vec2
 
 TerrainMaterial renderSolidRockGround(vec3 pos, vec3 norm, TerrainContext ctx, float largeNoise) {
     TerrainMaterial mat;
+    mat.glint.intensity = 0.0; mat.glint.density = 0.0; mat.glint.micro_roughness = 0.0; mat.glint.filter_size = 0.0; mat.glint.scale = 1.0;
     mat.metallic = 0.0;
     mat.normalScale = 40.0;
     mat.normalStrength = 0.15;
@@ -1101,6 +1141,14 @@ TerrainMaterial renderSandSnowGround(vec3 pos, vec3 norm, TerrainContext ctx, fl
     mat.roughness = mix(mix(0.80, 0.40, ctx.globalWetness), 0.65, blendFactor);
     mat.normalScale = mix(30.0, 20.0, blendFactor);
     mat.normalStrength = mix(0.10, 0.05, blendFactor);
+
+    GlintProperties sandGlint;
+    sandGlint.intensity = 0.7; sandGlint.density = 2500.0; sandGlint.micro_roughness = 0.012; sandGlint.filter_size = 0.7; sandGlint.scale = 1.2;
+
+    GlintProperties snowGlint;
+    snowGlint.intensity = 1.0; snowGlint.density = 7000.0; snowGlint.micro_roughness = 0.005; snowGlint.filter_size = 0.7; snowGlint.scale = 1.0;
+
+    mat.glint = mixGlintProperties(sandGlint, snowGlint, blendFactor);
 
     return mat;
 }
@@ -1305,10 +1353,14 @@ void main() {
 		finalMaterial.albedo = cellularErosionDither(FragPos.xz, snowColor, finalMaterial.albedo, snowFactor, 0.0);
 		finalMaterial.roughness = mix(finalMaterial.roughness, 0.85, ctx.freezingScale);
 		finalMaterial.metallic = mix(finalMaterial.metallic, 0.0, ctx.freezingScale);
+
+		GlintProperties snowGlint;
+		snowGlint.intensity = 1.0; snowGlint.density = 7000.0; snowGlint.micro_roughness = 0.005; snowGlint.filter_size = 0.7; snowGlint.scale = 1.0;
+		finalMaterial.glint = mixGlintProperties(finalMaterial.glint, snowGlint, snowFactor);
 	}
 
 	float primaryShadow;
-	FragColor = apply_lighting_pbr(FragPos, norm, finalMaterial.albedo, finalMaterial.roughness, finalMaterial.metallic, 1.0, primaryShadow, snowFactor);
+	FragColor = apply_lighting_pbr(FragPos, norm, finalMaterial.albedo, finalMaterial.roughness, finalMaterial.metallic, 1.0, primaryShadow, finalMaterial.glint);
 	// FragColor.b *= 1.0 + (0.2 * ctx.freezingScale * (1.0 - primaryShadow));
 
 	NormalOut = vec4(normalize(mat3(view) * norm), primaryShadow);
@@ -1585,8 +1637,14 @@ void main_old() {
 	metallic = mix(0.9, metallic, floorBlend);
 	perturbedNorm = mix(vec3(0.0, 1.0, 0.0), perturbedNorm, floorBlend);
 
+	if (snowFactor > 0.0) {
+		GlintProperties snowGlint;
+		snowGlint.intensity = 1.0; snowGlint.density = 7000.0; snowGlint.micro_roughness = 0.005; snowGlint.filter_size = 0.7; snowGlint.scale = 1.0;
+		finalMaterial.glint = mixGlintProperties(finalMaterial.glint, snowGlint, snowFactor);
+	}
+
 	float primaryShadow;
-	vec3 lighting = apply_lighting_pbr(FragPos, perturbedNorm, albedo, roughness, metallic, 1.0 - grassAO, primaryShadow, snowFactor).rgb;
+	vec3 lighting = apply_lighting_pbr(FragPos, perturbedNorm, albedo, roughness, metallic, 1.0 - grassAO, primaryShadow, finalMaterial.glint).rgb;
 	lighting.b *= 1.0 + (0.2 * ctx.freezingScale * (1.0 - primaryShadow));
 
 	// ========================================================================

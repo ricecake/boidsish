@@ -590,7 +590,7 @@ const float PBR_INTENSITY_BOOST = 1.0;
 
 void evaluate_brdf_glint(
     vec3 N, vec3 V, vec3 L, vec3 albedo, float roughness, float metallic, vec3 F0,
-    vec3 radiance, float shadow, vec3 frag_pos, float glintFactor, inout vec3 Lo, inout float spec_lum)
+    vec3 radiance, float shadow, vec3 frag_pos, GlintProperties glint, inout vec3 Lo, inout float spec_lum)
 {
     float NdotL = max(dot(N, L), 0.0);
     if (NdotL <= 0.0) return; // Early out
@@ -600,14 +600,14 @@ void evaluate_brdf_glint(
     float HdotV = max(dot(H, V), 0.0);
 
 	float NDF = DistributionGGX(N, H, roughness);
-    if (glintFactor > 0.001) {
+    if (glint.intensity > 0.001) {
 #if defined(FRAGMENT_SHADER)
         mat2 uv_J = mat2(dFdx(frag_pos.xz), dFdy(frag_pos.xz));
 #else
         mat2 uv_J = mat2(0.01, 0.0, 0.0, 0.01);
 #endif
-        float glintNDF = calculate_glint_ndf(H, N, roughness, metallic, frag_pos.xz, uv_J);
-        NDF = mix(NDF, glintNDF, glintFactor);
+        float glintNDF = calculate_glint_ndf(H, N, roughness, metallic, frag_pos.xz, uv_J, glint);
+        NDF = mix(NDF, glintNDF, clamp(glint.intensity, 0.0, 1.0));
     }
 
     float V_term = VisibilitySmithGGXCorrelated(NdotL, NdotV, roughness);
@@ -623,6 +623,19 @@ void evaluate_brdf_glint(
 
     Lo += (kD * albedo / PI) * radiance * NdotL * shadow + specular_radiance;
     spec_lum += get_luminance(specular_radiance);
+}
+
+void evaluate_brdf_glint(
+    vec3 N, vec3 V, vec3 L, vec3 albedo, float roughness, float metallic, vec3 F0,
+    vec3 radiance, float shadow, vec3 frag_pos, float glintFactor, inout vec3 Lo, inout float spec_lum)
+{
+    GlintProperties glint;
+    glint.intensity = glintFactor;
+    glint.density = 0.0;
+    glint.micro_roughness = 0.0;
+    glint.filter_size = 0.0;
+    glint.scale = 1.0;
+    evaluate_brdf_glint(N, V, L, albedo, roughness, metallic, F0, radiance, shadow, frag_pos, glint, Lo, spec_lum);
 }
 
 void evaluate_brdf(
@@ -649,7 +662,7 @@ vec3 pal( in float t, in vec3 a, in vec3 b, in vec3 c, in vec3 d )
  * @param ao Ambient occlusion [0=fully occluded, 1=no occlusion]
  * @param glintFactor Glinting intensity multiplier (e.g. for snow microfacet glints)
  */
-vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness, float metallic, float ao, out float primaryShadow, float glintFactor) {
+vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness, float metallic, float ao, out float primaryShadow, GlintProperties glint) {
 	primaryShadow = 1.0;
 	vec3 N = normalize(normal);
 	vec3 V = normalize(viewPos - frag_pos);
@@ -694,7 +707,7 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 
 		primaryShadow = min(primaryShadow, shadow);
 
-		evaluate_brdf_glint(N, V, L, albedo, roughness, metallic, F0, radiance, shadow, frag_pos, glintFactor, Lo, spec_lum);
+		evaluate_brdf_glint(N, V, L, albedo, roughness, metallic, F0, radiance, shadow, frag_pos, glint, Lo, spec_lum);
 	}
 
 	// ------------------------------------------------------------------
@@ -719,7 +732,7 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 
 		float shadow = calculateShadow(i, frag_pos, N, L);
 
-		evaluate_brdf_glint(N, V, L, albedo, roughness, metallic, F0, radiance, shadow, frag_pos, glintFactor, Lo, spec_lum);
+		evaluate_brdf_glint(N, V, L, albedo, roughness, metallic, F0, radiance, shadow, frag_pos, glint, Lo, spec_lum);
 	}
 
 	uint cluster_index = getClusterIndex(frag_pos);
@@ -743,7 +756,7 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 
 		float shadow = calculateShadow(i, frag_pos, N, L);
 
-		evaluate_brdf_glint(N, V, L, albedo, roughness, metallic, F0, radiance, shadow, frag_pos, glintFactor, Lo, spec_lum);
+		evaluate_brdf_glint(N, V, L, albedo, roughness, metallic, F0, radiance, shadow, frag_pos, glint, Lo, spec_lum);
 	}
 
 	// Spatially-varying SH ambient augmented with macro occlusion
@@ -781,7 +794,7 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 	// Combine diffuse and specular ambient
 	vec3 ambient = ambientDiffuse * (1.0 - metallic * 0.9) + ambientSpecular;
 
-	if (glintFactor > 0.0) {
+	if (glint.intensity > 0.0) {
 		float microScale = 100.0;
 		vec3 gridPos = floor(frag_pos * microScale);
 
@@ -798,15 +811,22 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 		vec3 modifiedLightPos = normalize(N + (TBN * tangentOffset));
 
 		vec3 myPalette = pal(randVal.y, vec3(0.5, 0.5, 0.5), vec3(0.5, 0.5, 0.5), vec3(1., 1., 1.), vec3(0, 0.33, 0.67));
-		evaluate_brdf_glint(N, V, modifiedLightPos, albedo, roughness, metallic, F0, ambient * myPalette, combinedAO, frag_pos, glintFactor, Lo, spec_lum);
-		// vec3 modifiedLightPos = N + frag_pos;// + viewPos + V;
-		// // modifiedLightPos += cross(modifiedLightPos, frag_pos) * roughness;
-		// evaluate_brdf_glint(N, V, normalize(modifiedLightPos), albedo, roughness, metallic, F0, ambient, combinedAO, frag_pos, glintFactor, Lo, spec_lum);
+		evaluate_brdf_glint(N, V, modifiedLightPos, albedo, roughness, metallic, F0, ambient * myPalette, combinedAO, frag_pos, glint, Lo, spec_lum);
 	}
 
 	vec3 color = ambient + Lo;
 
 	return vec4(color, spec_lum + get_luminance(ambientSpecular));
+}
+
+vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness, float metallic, float ao, out float primaryShadow, float glintFactor) {
+	GlintProperties glint;
+	glint.intensity = glintFactor;
+	glint.density = 0.0;
+	glint.micro_roughness = 0.0;
+	glint.filter_size = 0.0;
+	glint.scale = 1.0;
+	return apply_lighting_pbr(frag_pos, normal, albedo, roughness, metallic, ao, primaryShadow, glint);
 }
 
 vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness, float metallic, float ao, out float primaryShadow) {
@@ -943,7 +963,7 @@ vec4 apply_lighting_foliage(vec3 frag_pos, vec3 normal, vec3 albedo, float rough
  * Supports all light types (point, directional, spot).
  * Returns vec4(color.rgb, specular_luminance).
  */
-vec4 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness, float metallic, float ao, out float primaryShadow, float glintFactor) {
+vec4 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness, float metallic, float ao, out float primaryShadow, GlintProperties glint) {
 	primaryShadow = 1.0;
 	vec3 N = normalize(normal);
 	vec3 V = normalize(viewPos - frag_pos);
@@ -977,7 +997,7 @@ vec4 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, floa
 		if (i == 0)
 			primaryShadow = shadow;
 
-		evaluate_brdf_glint(N, V, L, albedo, roughness, metallic, F0, radiance, shadow, frag_pos, glintFactor, Lo, spec_lum);
+		evaluate_brdf_glint(N, V, L, albedo, roughness, metallic, F0, radiance, shadow, frag_pos, glint, Lo, spec_lum);
 	}
 
 	// PASS 2: Local Lights (Point/Spot) - CLUSTERED
@@ -994,7 +1014,7 @@ vec4 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, floa
 		float attenuation = (lights[i].intensity * PBR_INTENSITY_BOOST) * base_attenuation;
 		vec3 radiance = lights[i].color * attenuation;
 
-		evaluate_brdf_glint(N, V, L, albedo, roughness, metallic, F0, radiance, 1.0, frag_pos, glintFactor, Lo, spec_lum);
+		evaluate_brdf_glint(N, V, L, albedo, roughness, metallic, F0, radiance, 1.0, frag_pos, glint, Lo, spec_lum);
 	}
 
 	uint no_shadow_cluster_index = getClusterIndex(frag_pos);
@@ -1011,7 +1031,7 @@ vec4 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, floa
 		float attenuation = (lights[i].intensity * PBR_INTENSITY_BOOST) * base_attenuation;
 		vec3 radiance = lights[i].color * attenuation;
 
-		evaluate_brdf_glint(N, V, L, albedo, roughness, metallic, F0, radiance, 1.0, frag_pos, glintFactor, Lo, spec_lum);
+		evaluate_brdf_glint(N, V, L, albedo, roughness, metallic, F0, radiance, 1.0, frag_pos, glint, Lo, spec_lum);
 	}
 
 	// Spatially-varying SH ambient augmented with macro occlusion
@@ -1158,6 +1178,16 @@ vec4 apply_lighting(vec3 frag_pos, vec3 normal, vec3 albedo, float specular_stre
 	}
 
 	return vec4(result, spec_lum);
+}
+
+vec4 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness, float metallic, float ao, out float primaryShadow, float glintFactor) {
+	GlintProperties glint;
+	glint.intensity = glintFactor;
+	glint.density = 0.0;
+	glint.micro_roughness = 0.0;
+	glint.filter_size = 0.0;
+	glint.scale = 1.0;
+	return apply_lighting_pbr_no_shadows(frag_pos, normal, albedo, roughness, metallic, ao, primaryShadow, glint);
 }
 
 vec4 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness, float metallic, float ao, out float primaryShadow) {

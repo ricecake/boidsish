@@ -9,9 +9,47 @@ Code for "Evaluating and Sampling Glinty NDFs in Constant Time"
 	presented at Siggraph Asia 2025. See https://perso.telecom-paristech.fr/boubek/papers/Glinty/
 */
 
+struct GlintProperties {
+	float intensity;       // Overall glint multiplier/strength (0.0 to disable)
+	float density;         // Glint micro-facet spatial density (e.g. 1000.0 - 10000.0)
+	float micro_roughness; // Microfacet roughness / sharpness (e.g. 0.001 - 0.05)
+	float filter_size;     // Pixel filter size (e.g. 0.5 - 1.2)
+	float scale;           // Spatial frequency / coordinate scaling factor
+};
+
 // Default parameters if not provided
 const float DEFAULT_MICROFACET_ROUGHNESS = 0.01; // good values are roughly in [0.001, 0.1]
 const float DEFAULT_PIXEL_FILTER_SIZE = 0.7; // good values are roughly in [0.5, 1.2]
+
+GlintProperties sanitize_glint_properties(GlintProperties g, float macro_roughness) {
+	if (g.intensity <= 0.0) {
+		g.intensity = 0.0;
+		return g;
+	}
+	if (g.density <= 0.0) {
+		g.density = mix(1000.0, 5000.0, clamp(macro_roughness, 0.0, 1.0));
+	}
+	if (g.micro_roughness <= 0.0) {
+		g.micro_roughness = mix(0.01, 0.005, clamp(macro_roughness, 0.0, 1.0));
+	}
+	if (g.filter_size <= 0.0) {
+		g.filter_size = DEFAULT_PIXEL_FILTER_SIZE;
+	}
+	if (g.scale <= 0.0) {
+		g.scale = 1.0;
+	}
+	return g;
+}
+
+GlintProperties mixGlintProperties(GlintProperties a, GlintProperties b, float t) {
+	GlintProperties res;
+	res.intensity       = mix(a.intensity, b.intensity, t);
+	res.density         = mix(a.density, b.density, t);
+	res.micro_roughness = mix(a.micro_roughness, b.micro_roughness, t);
+	res.filter_size     = mix(a.filter_size, b.filter_size, t);
+	res.scale           = mix(a.scale, b.scale, t);
+	return res;
+}
 
 vec2 glint_lambert(vec3 v) {
     return v.xy / sqrt(1. + v.z);
@@ -198,42 +236,53 @@ NDF = NDF + glintNDF * glintIntensity;
 */
 
 
-float calculate_glint_ndf(vec3 H, vec3 N, float roughness, float metallic, vec2 uv, mat2 uv_J);
+float calculate_glint_ndf(vec3 H, vec3 N, float roughness, float metallic, vec2 uv, mat2 uv_J, GlintProperties glint);
 
-float calculate_glint_ndf(vec3 H, vec3 N, float roughness, float metallic, vec2 uv) {
+float calculate_glint_ndf(vec3 H, vec3 N, float roughness, float metallic, vec2 uv, GlintProperties glint) {
 	mat2 uv_J = mat2(0.01, 0.0, 0.0, 0.01);
 #ifdef FRAGMENT_SHADER
 	uv_J = mat2(dFdx(uv), dFdy(uv));
 #endif
-	return calculate_glint_ndf(H, N, roughness, metallic, uv, uv_J);
+	return calculate_glint_ndf(H, N, roughness, metallic, uv, uv_J, glint);
+}
+
+float calculate_glint_ndf(vec3 H, vec3 N, float roughness, float metallic, vec2 uv) {
+	GlintProperties default_glint;
+	default_glint.intensity = 1.0;
+	default_glint.density = 0.0;
+	default_glint.micro_roughness = 0.0;
+	default_glint.filter_size = 0.0;
+	default_glint.scale = 1.0;
+	return calculate_glint_ndf(H, N, roughness, metallic, uv, default_glint);
 }
 
 float calculate_glint_ndf(vec3 H, vec3 N, float roughness, float metallic, vec2 uv, mat2 uv_J) {
-	float alpha = max(roughness * roughness, 0.0001);
+	GlintProperties default_glint;
+	default_glint.intensity = 1.0;
+	default_glint.density = 0.0;
+	default_glint.micro_roughness = 0.0;
+	default_glint.filter_size = 0.0;
+	default_glint.scale = 1.0;
+	return calculate_glint_ndf(H, N, roughness, metallic, uv, uv_J, default_glint);
+}
 
-	// Derive glint parameters based on material properties
-	float g_density = mix(1000.0, 5000.0, clamp(roughness, 0.0, 1.0));
-	float g_alpha = mix(0.01, 0.005, clamp(roughness, 0.0, 1.0));
+float calculate_glint_ndf(vec3 H, vec3 N, float roughness, float metallic, vec2 uv, mat2 uv_J, GlintProperties glint) {
+	glint = sanitize_glint_properties(glint, roughness);
+	if (glint.intensity <= 0.0) return 0.0;
+
+	float alpha = max(roughness * roughness, 0.0001);
 
 	mat3 invTBN = transpose(get_tangent_basis(N));
 	vec3 h_local = invTBN * H;
 
-	float ndf = glint_ndf(h_local, alpha, g_alpha, uv, uv_J, g_density, DEFAULT_PIXEL_FILTER_SIZE);
+	vec2 scaled_uv = uv * glint.scale;
+	mat2 scaled_uv_J = uv_J * glint.scale;
 
-	// uvec2 ucell = uvec2(ivec2(floor(uv * 40.0)));
-	// uvec2 h = glint_shuffle(ucell);
-	// float randVal = float(h.x) * pow(0.5, 32.0);
-	// vec3 crystalN = normalize(N + vec3(randVal - 0.5, 0.3, fract(randVal * 17.0) - 0.5) * 0.5);
-	// float HdotC = clamp(dot(H, crystalN), 0.0, 1.0);
-	// float microSpec = pow(max(0.0, HdotC), 250.0) * smoothstep(0.8, 0.95, randVal);
+	float ndf = glint_ndf(h_local, alpha, glint.micro_roughness, scaled_uv, scaled_uv_J, glint.density, glint.filter_size);
 
-	return (ndf * 100.0);// + (microSpec * 250.0);
+	return ndf * 100.0 * glint.intensity;
 }
 
-/**
- * Evaluates high-performance microfacet glinting for snow and sparkling surfaces.
- * Returns additive specular glint intensity.
- */
 float calculate_snow_glints(vec3 frag_pos, vec3 N, vec3 V, vec3 L, float roughness, float snowFactor) {
 	if (snowFactor <= 0.001) return 0.0;
 
