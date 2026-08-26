@@ -34,6 +34,11 @@ namespace Boidsish {
 					if (ImGui::Checkbox("Enable Shadows", &enable_shadows)) {
 						config_manager.SetBool("enable_shadows", enable_shadows);
 					}
+
+					float shadow_softness = config_manager.GetAppSettingFloat("shadow_softness", 1.0f);
+					if (ImGui::SliderFloat("Shadow Softness", &shadow_softness, 0.0f, 3.0f, "%.2f")) {
+						config_manager.SetFloat("shadow_softness", shadow_softness);
+					}
 				}
 
 				// 2. Mesh Optimization (from ConfigWidget)

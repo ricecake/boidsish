@@ -7,6 +7,7 @@
 #include "decor_manager.h"
 #include "light_manager.h"
 #include "shape.h"
+#include "terrain.h"
 #include "terrain_render_manager.h"
 #include <GL/glew.h>
 
@@ -90,20 +91,22 @@ namespace Boidsish {
 			if (light->type == DIRECTIONAL_LIGHT) {
 				for (int c = 0; c < ShadowManager::kMaxCascades; ++c) {
 					if (next_map_idx < ShadowManager::kMaxShadowMaps) {
-						float weight = (c == 0) ? 8.0f : (c == 1) ? 4.0f : (c == 2) ? 2.0f : 1.0f;
+						// Prioritize closer cascades: near cascade (0) gets highest urgency
+						float weight = (c == 0) ? 10.0f : (c == 1) ? 5.0f : (c == 2) ? 2.5f : 1.0f;
 						shadow_map_registry_.push_back({next_map_idx++, light, c, weight});
 					}
 				}
 			} else {
-				shadow_map_registry_.push_back({next_map_idx++, light, -1, 4.0f});
+				shadow_map_registry_.push_back({next_map_idx++, light, -1, 5.0f});
 			}
 		}
 
-		// Debt-based cascade scheduling
+		// Debt and priority-based cascade scheduling
 		float camera_rotation_delta = 1.0f - glm::dot(frame.camera_front, last_shadow_camera_front_);
 		bool  significant_rotation = camera_rotation_delta > 0.001f;
 		bool  major_rotation = camera_rotation_delta > 0.01f;
 
+		// Allow updating at least 1 cascade per frame when updates are pending, up to budget
 		const int max_updates_per_frame = major_rotation ? 4 : (significant_rotation ? 3 : 2);
 
 		for (const auto& info : shadow_map_registry_) {
@@ -113,45 +116,48 @@ namespace Boidsish {
 			bool  light_moved = glm::distance(info.light->position, state.last_light_pos) > 0.1f ||
 				glm::distance(info.light->direction, state.last_light_dir) > 0.01f;
 
-			float rotation_sensitivity = (info.cascade_index == 0) ? 50.0f
-				: (info.cascade_index == 1)                        ? 100.0f
-				: (info.cascade_index == 2)                        ? 200.0f
+			float rotation_sensitivity = (info.cascade_index == 0) ? 100.0f
+				: (info.cascade_index == 1)                        ? 200.0f
+				: (info.cascade_index == 2)                        ? 300.0f
 																   : 400.0f;
 			state.rotation_accumulator += rotation_change * rotation_sensitivity;
 
-			float movement_threshold = (info.cascade_index == 0) ? 0.5f
-				: (info.cascade_index == 1)                      ? 2.0f
-				: (info.cascade_index == 2)                      ? 5.0f
-																 : 10.0f;
-			float rotation_threshold = (info.cascade_index == 0) ? 1.0f
-				: (info.cascade_index == 1)                      ? 0.7f
-				: (info.cascade_index == 2)                      ? 0.5f
+			float movement_threshold = (info.cascade_index == 0) ? 0.25f
+				: (info.cascade_index == 1)                      ? 1.0f
+				: (info.cascade_index == 2)                      ? 3.0f
+				: (info.cascade_index == 3)                      ? 8.0f
+																 : 0.5f;
+			float rotation_threshold = (info.cascade_index == 0) ? 0.5f
+				: (info.cascade_index == 1)                      ? 0.5f
+				: (info.cascade_index == 2)                      ? 0.4f
 																 : 0.3f;
 
 			bool needs_movement_update = camera_move_dist > movement_threshold;
 			bool needs_rotation_update = state.rotation_accumulator > rotation_threshold;
 			bool movement_detected = any_shadow_caster_moved_ || light_moved ||
-				(frame.has_terrain && (needs_movement_update || needs_rotation_update));
+				(needs_movement_update || needs_rotation_update);
 
 			if (movement_detected && camera_is_close_to_scene_) {
-				float urgency = info.weight;
-				if (needs_rotation_update)
-					urgency *= (1.5f + info.cascade_index * 0.5f);
+				float move_ratio = camera_move_dist / std::max(0.01f, movement_threshold);
+				float rot_ratio = state.rotation_accumulator / std::max(0.01f, rotation_threshold);
+				float urgency = info.weight * std::max(1.0f, std::max(move_ratio, rot_ratio));
 				if (any_shadow_caster_moved_)
 					urgency *= 1.5f;
 				state.debt += urgency;
-			} else {
-				state.debt += (0.02f + info.cascade_index * 0.005f);
 			}
+			// Note: Static terrain/scene does NOT accumulate debt when stationary,
+			// allowing zero shadow updates on completely static frames.
 		}
 
-		// Select cascades by debt
+		// Select cascades sorted by priority (debt * weight, giving highest precedence to Cascade 0)
 		std::vector<std::pair<float, int>> debt_sorted;
-		float                              debt_threshold = significant_rotation ? 1.5f : 2.5f;
+		float debt_threshold = 1.0f;
 		for (const auto& info : shadow_map_registry_) {
 			auto& state = shadow_map_states_[info.map_index];
-			if (state.debt >= debt_threshold)
-				debt_sorted.push_back({state.debt, info.map_index});
+			if (state.debt >= debt_threshold) {
+				float priority = state.debt * info.weight; // Cascade 0 gets highest priority boost
+				debt_sorted.push_back({priority, info.map_index});
+			}
 		}
 		std::sort(debt_sorted.begin(), debt_sorted.end(), std::greater<>());
 
@@ -166,10 +172,18 @@ namespace Boidsish {
 			}
 		}
 
-		// Round-robin background refresh
+		// Background round-robin refresh: refresh 1 cascade per frame if idle for 120 frames
 		if (maps_to_update_.empty() && !shadow_map_registry_.empty()) {
-			shadow_update_round_robin_ = (shadow_update_round_robin_ + 1) % shadow_map_registry_.size();
-			if (frame.frame_count % 2 == 0) {
+			bool long_idle = true;
+			for (const auto& info : shadow_map_registry_) {
+				auto& state = shadow_map_states_[info.map_index];
+				if (frame.frame_count - state.last_update_frame < 120) {
+					long_idle = false;
+					break;
+				}
+			}
+			if (long_idle) {
+				shadow_update_round_robin_ = (shadow_update_round_robin_ + 1) % shadow_map_registry_.size();
 				maps_to_update_.push_back(shadow_map_registry_[shadow_update_round_robin_].map_index);
 			}
 		}
@@ -288,6 +302,23 @@ namespace Boidsish {
 					(float)frame.window_width / (float)frame.window_height,
 					true
 				);
+
+				// Render Terrain into shadow map
+				if (frame.config.render_terrain && terrain_render_manager_ && Terrain::terrain_shader_ && Terrain::terrain_shader_->isValid()) {
+					glCullFace(GL_BACK);
+					Terrain::terrain_shader_->use();
+					Terrain::terrain_shader_->setBool("uIsShadowPass", true);
+					terrain_render_manager_->Render(
+						*Terrain::terrain_shader_,
+						glm::mat4(1.0f),
+						shadow_manager_.GetLightSpaceMatrix(info.map_index),
+						glm::vec2(ShadowManager::kShadowMapSize, ShadowManager::kShadowMapSize),
+						std::nullopt,
+						1.0f
+					);
+					Terrain::terrain_shader_->setBool("uIsShadowPass", false);
+					glCullFace(GL_FRONT);
+				}
 
 				decor_manager_.Render(
 					frame.view,

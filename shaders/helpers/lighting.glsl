@@ -365,7 +365,7 @@ float calculateShadow(int light_index, vec3 frag_pos, vec3 normal, vec3 light_di
 
 	for (int x = -kernel_size; x <= kernel_size; ++x) {
 		for (int y = -kernel_size; y <= kernel_size; ++y) {
-			vec2 offset = vec2(x, y) * texel_size;
+			vec2 offset = vec2(x, y) * texel_size * shadowSoftness;
 			// sampler2DArrayShadow expects (u, v, layer, compare_value)
 			vec4 shadow_coord = vec4(proj_coords.xy + offset, float(shadow_index), current_depth - bias);
 			shadow += texture(shadowMaps, shadow_coord);
@@ -399,7 +399,7 @@ float calculateShadow(int light_index, vec3 frag_pos, vec3 normal, vec3 light_di
 
 					for (int x = -next_kernel_size; x <= next_kernel_size; ++x) {
 						for (int y = -next_kernel_size; y <= next_kernel_size; ++y) {
-							vec2 offset = vec2(x, y) * texel_size;
+							vec2 offset = vec2(x, y) * texel_size * shadowSoftness;
 							vec4 shadow_coord = vec4(
 								next_proj_coords.xy + offset,
 								float(next_shadow_index),
