@@ -77,10 +77,18 @@ void calculateLightContribution(int light_index, vec3 frag_pos, out vec3 light_d
 		// Point light: attenuates with distance
 		light_dir = normalize(light_pos - frag_pos);
 		float distance = length(light_pos - frag_pos);
-		// Practical attenuation curve (inverse square falloff with linear term)
-		attenuation = 1.0 / (1.0 + 0.09 * distance + 0.032 * distance * distance);
-		float radius = sqrt(max(0.1, lights[light_index].intensity)) * 50.0 * exposureScale;
-		attenuation *= smoothstep(1.0, 0.8, distance / max(radius, 0.001));
+		if (lights[light_index].outer_cutoff > 0.0) {
+			float range = lights[light_index].outer_cutoff;
+			float radius = range * exposureScale;
+			float normDist = distance / max(range, 0.001);
+			attenuation = 1.0 / (1.0 + 9.0 * normDist + 32.0 * normDist * normDist);
+			attenuation *= smoothstep(1.0, 0.8, distance / max(radius, 0.001));
+		} else {
+			// Practical attenuation curve (inverse square falloff with linear term)
+			attenuation = 1.0 / (1.0 + 0.09 * distance + 0.032 * distance * distance);
+			float radius = sqrt(max(0.1, lights[light_index].intensity)) * 50.0 * exposureScale;
+			attenuation *= smoothstep(1.0, 0.8, distance / max(radius, 0.001));
+		}
 
 	} else if (lights[light_index].type == LIGHT_TYPE_DIRECTIONAL) {
 		// Directional light: no attenuation, parallel rays
@@ -492,6 +500,8 @@ vec3 evalSHIrradianceSpatial(vec3 pos, vec3 n) {
 #ifdef USE_TERRAIN_DATA
 /**
  * Look up and interpolate Spherical Harmonic ambient irradiance for a fragment.
+ * Uses a 4x4 grid of terrain probes with 3D world-space distance weighting
+ * to apply local terrain bounce & occlusion Delta SH onto wide spatial sky ambient.
  */
 vec3 getSpatialAmbientSH(vec3 worldPos, vec3 N) {
 	if (u_originSize.w < 1)
@@ -503,30 +513,36 @@ vec3 getSpatialAmbientSH(vec3 worldPos, vec3 N) {
 	vec2  fracPos = fract(gridPos);
 	ivec2 chunkCoord = ivec2(floor(gridPos)) - u_originSize.xy;
 
-	// Use smoothstep for a non-linear blending curve to ensure smooth transitions between probes
-	vec2  s = smoothstep(0.0, 1.0, fracPos);
-
-	// Simple bilinear interpolation between 4 nearest chunk probes
+	// Evaluate 4x4 grid of terrain probes around fragment
 	vec3 totalSH[9];
 	for (int i = 0; i < 9; ++i)
 		totalSH[i] = vec3(0.0);
 
 	float totalWeight = 0.0;
-	for (int x = 0; x <= 1; ++x) {
-		for (int z = 0; z <= 1; ++z) {
+
+	for (int x = -1; x <= 2; ++x) {
+		float wx = max(0.0, 1.0 - 0.5 * abs(fracPos.x - float(x)));
+		for (int z = -1; z <= 2; ++z) {
+			float wz = max(0.0, 1.0 - 0.5 * abs(fracPos.y - float(z)));
+			float kernelWeight = wx * wz;
+
 			ivec2 localCoord = chunkCoord + ivec2(x, z);
 			if (localCoord.x >= 0 && localCoord.x < u_originSize.z && localCoord.y >= 0 && localCoord.y < u_originSize.z) {
-				// Only include this probe if it's actually registered in the current grid
 				if (int(texelFetch(u_chunkGrid, localCoord, 0).r) >= 0) {
-					float weight = (x == 0 ? 1.0 - s.x : s.x) * (z == 0 ? 1.0 - s.y : s.y);
-
 					ivec2 worldChunkCoord = localCoord + u_originSize.xy;
 					ivec2 toroidalCoord = (worldChunkCoord % u_originSize.z + u_originSize.z) % u_originSize.z;
 					int   idx = toroidalCoord.y * u_originSize.z + toroidalCoord.x;
 
-					// Verify this probe is for the correct world chunk (using encoded coordinates in w)
 					vec2 probeCoord = vec2(u_terrainProbes[idx].sh_coeffs[0].w, u_terrainProbes[idx].sh_coeffs[1].w);
 					if (distance(probeCoord, vec2(worldChunkCoord)) < 0.1) {
+						float probeY = u_terrainProbes[idx].sh_coeffs[2].w;
+						vec3 probeWorldPos = vec3((probeCoord.x + 0.5) * scaledChunkSize, probeY, (probeCoord.y + 0.5) * scaledChunkSize);
+
+						// Weight contribution by 3D world-space distance between fragment and probe
+						float d3d = distance(worldPos, probeWorldPos);
+						float distWeight = 1.0 / (1.0 + (d3d * d3d) / max(0.001, scaledChunkSize * scaledChunkSize));
+						float weight = kernelWeight * distWeight;
+
 						for (int i = 0; i < 9; ++i) {
 							totalSH[i] += u_terrainProbes[idx].sh_coeffs[i].rgb * weight;
 						}
@@ -537,12 +553,11 @@ vec3 getSpatialAmbientSH(vec3 worldPos, vec3 N) {
 		}
 	}
 
-	// Smooth boundary fading for environmental bounce
 	// Distance from edge of the active grid in chunks
 	vec2 centerOffset = abs(gridPos - (vec2(u_originSize.xy) + float(u_originSize.z) * 0.5));
 	float maxDist = float(u_originSize.z) * 0.5;
 	float distToEdge = maxDist - max(centerOffset.x, centerOffset.y);
-	float bounceFade = clamp(smoothstep(0.0, 0.50, distToEdge), 0.125, 1.0); // Fade over last 2 chunks
+	float bounceFade = clamp(smoothstep(0.0, 0.50, distToEdge), 0.125, 1.0);
 
 	vec4 interpolatedCoeffs[9];
 	if (totalWeight > 0.001) {
@@ -550,29 +565,23 @@ vec3 getSpatialAmbientSH(vec3 worldPos, vec3 N) {
 			interpolatedCoeffs[i] = vec4(totalSH[i] / totalWeight, 1.0);
 		}
 	} else {
-		// No probes available, fallback to global coefficients to avoid NaNs
 		for (int i = 0; i < 9; ++i) {
-			interpolatedCoeffs[i] = sh_coeffs[i];
+			interpolatedCoeffs[i] = vec4(0.0);
 		}
 		bounceFade = 0.0;
 	}
 
-	// Combine spatially-varying environmental bounce with global sky irradiance
-	vec3 environmentalIrradiance = evalSHIrradianceFromCoeffs(N, interpolatedCoeffs);
-	vec3 skyIrradiance = evalSHIrradianceSpatial(worldPos, N); // Spatially-interpolated sky/ambient fallback
+	// Evaluate wide spatial sky ambient irradiance and local terrain bounce/occlusion Delta SH
+	vec3 skyIrradiance = evalSHIrradianceSpatial(worldPos, N);
+	vec3 terrainDeltaIrradiance = evalSHIrradianceFromCoeffs(N, interpolatedCoeffs);
 
-	// Calculate vertical tapering to prevent "light beams" in the sky.
-	// Ambient bounce should be strongest near the ground and fade out with altitude.
+	// Vertical tapering for terrain bounce over altitude
 	float h_surface = getTerrainHeight(worldPos.xz);
 	float heightAboveGround = max(0.0, worldPos.y - h_surface);
-
-	// Fade out the spatial contribution over 100 meters
 	float verticalFade = exp(-heightAboveGround * 0.1);
 
-	// Combine spatially-varying environmental SH (sky + bounce) with global sky irradiance.
-	// We blend between them because probes now capture both sky and ground bounce.
 	float finalWeight = clamp(totalWeight * bounceFade * verticalFade, 0.0, 1.0);
-	vec3 ambientResult = mix(skyIrradiance, environmentalIrradiance, finalWeight);
+	vec3 ambientResult = skyIrradiance + terrainDeltaIrradiance * finalWeight;
 
 	return ambientResult;
 }

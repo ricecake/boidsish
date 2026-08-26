@@ -260,8 +260,8 @@ namespace Boidsish {
 			behavior.morse_index = -1; // Trigger sequence generation
 		}
 
-		// Construct a light with optional shadow casting
-		static Light Create(const glm::vec3& pos, float intens, const glm::vec3& col, bool shadows = false) {
+		// Construct a light with optional shadow casting and explicit range
+		static Light Create(const glm::vec3& pos, float intens, const glm::vec3& col, bool shadows = false, float range = 0.0f) {
 			Light l;
 			l.position = pos;
 			l.intensity = intens;
@@ -269,8 +269,8 @@ namespace Boidsish {
 			l.color = col;
 			l.type = POINT_LIGHT;
 			l.direction = glm::vec3(0.0f, -1.0f, 0.0f);
-			l.inner_cutoff = glm::cos(glm::radians(12.5f));
-			l.outer_cutoff = glm::cos(glm::radians(17.5f));
+			l.inner_cutoff = 0.0f;
+			l.outer_cutoff = range;
 			l.casts_shadow = shadows;
 			l.volumetric_shadow = false;
 			l.camera_relative = false;
@@ -280,6 +280,10 @@ namespace Boidsish {
 			l.last_direction = l.direction;
 			l.behavior.type = LightBehaviorType::NONE;
 			return l;
+		}
+
+		static Light CreatePoint(const glm::vec3& pos, float intens, const glm::vec3& col, float range = 0.0f, bool shadows = false) {
+			return Create(pos, intens, col, shadows, range);
 		}
 
 		static Light
