@@ -11,8 +11,8 @@ public:
 	// Physical properties
 	float     mass_ = 1.0f;
 	glm::vec3 inertia_ = glm::vec3(1.0f, 1.0f, 1.0f);
-	float     linear_friction_ = 7.5f;
-	float     angular_friction_ = 7.5f;
+	float     linear_friction_ = 0.0f;
+	float     angular_friction_ = 0.0f;
 
 private:
 	// Position + Orientation (Pose)
