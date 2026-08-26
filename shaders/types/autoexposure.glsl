@@ -1,3 +1,6 @@
+#ifndef AUTOEXPOSURE_TYPES_GLSL
+#define AUTOEXPOSURE_TYPES_GLSL
+
 // Auto-exposure SSBO layer data
 struct LayerData {
 	float adaptedLuminance;
@@ -81,3 +84,5 @@ layout(std430, binding = [[AUTO_EXPOSURE_BINDING]]) buffer AutoExposure {
 	LayerData layers[2]; // 0: Scene, 1: Sky
 	uint      workgroupCounter;
 };
+
+#endif
