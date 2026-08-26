@@ -1,6 +1,7 @@
 #ifndef HELPERS_LIGHTING_GLSL
 #define HELPERS_LIGHTING_GLSL
 
+#include "../types/autoexposure.glsl"
 #include "../helpers/constants.glsl"
 #include "../lighting.glsl"
 #include "clustered_lighting.glsl"
@@ -65,12 +66,21 @@ void calculateLightContribution(int light_index, vec3 frag_pos, out vec3 light_d
 		light_pos += viewPos;
 	}
 
+	float exposureFactor = 1.0;
+	if (layers[0].useAutoExposure != 0) {
+		exposureFactor = layers[0].targetLuminance / max(layers[0].adaptedLuminance, 0.0001);
+		exposureFactor = clamp(exposureFactor, layers[0].minExposure, layers[0].maxExposure);
+	}
+	float exposureScale = sqrt(max(1.0, exposureFactor));
+
 	if (lights[light_index].type == LIGHT_TYPE_POINT) {
 		// Point light: attenuates with distance
 		light_dir = normalize(light_pos - frag_pos);
 		float distance = length(light_pos - frag_pos);
 		// Practical attenuation curve (inverse square falloff with linear term)
 		attenuation = 1.0 / (1.0 + 0.09 * distance + 0.032 * distance * distance);
+		float radius = sqrt(max(0.1, lights[light_index].intensity)) * 50.0 * exposureScale;
+		attenuation *= smoothstep(1.0, 0.8, distance / max(radius, 0.001));
 
 	} else if (lights[light_index].type == LIGHT_TYPE_DIRECTIONAL) {
 		// Directional light: no attenuation, parallel rays
@@ -82,6 +92,8 @@ void calculateLightContribution(int light_index, vec3 frag_pos, out vec3 light_d
 		light_dir = normalize(light_pos - frag_pos);
 		float distance = length(light_pos - frag_pos);
 		attenuation = 1.0 / (1.0 + 0.09 * distance + 0.032 * distance * distance);
+		float radius = sqrt(max(0.1, lights[light_index].intensity)) * 50.0 * exposureScale;
+		attenuation *= smoothstep(1.0, 0.8, distance / max(radius, 0.001));
 
 		// Angular falloff using inner/outer cutoff angles
 		float theta = dot(light_dir, normalize(-lights[light_index].direction));
@@ -105,6 +117,9 @@ void calculateLightContribution(int light_index, vec3 frag_pos, out vec3 light_d
 		float proximity_boost = smoothstep(emissive_radius * 2.0, 0.0, distance);
 		attenuation = mix(attenuation, 1.0, proximity_boost * 0.5);
 
+		float radius = (sqrt(max(0.1, lights[light_index].intensity)) * 50.0 + emissive_radius) * exposureScale;
+		attenuation *= smoothstep(1.0, 0.8, distance / max(radius, 0.001));
+
 	} else if (lights[light_index].type == LIGHT_TYPE_FLASH) {
 		// Flash/explosion light: very bright with rapid falloff
 		// inner_cutoff = flash radius, outer_cutoff = falloff exponent
@@ -120,8 +135,8 @@ void calculateLightContribution(int light_index, vec3 frag_pos, out vec3 light_d
 		// Falls off rapidly but smoothly
 		attenuation = 1.0 / pow(1.0 + norm_dist, falloff_exp);
 
-		// Hard cutoff at 2x radius to prevent distant influence
-		attenuation *= smoothstep(2.0, 1.5, norm_dist);
+		float radius = 2.0 * flash_radius * exposureScale;
+		attenuation *= smoothstep(1.0, 0.8, distance / max(radius, 0.001));
 	}
 }
 

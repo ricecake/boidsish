@@ -2,6 +2,7 @@
 #define HELPERS_CLUSTERED_LIGHTING_GLSL
 
 #include "../types/clustered_lighting.glsl"
+#include "../types/autoexposure.glsl"
 
 /**
  * Computes the 1D cluster index for a given world-space position.
@@ -35,6 +36,13 @@ vec3 evaluateClusteredLightContribution(vec3 frag_pos, vec3 normal) {
 	vec3 n = normalize(normal);
 	vec3 total_light = vec3(0.0);
 
+	float exposureFactor = 1.0;
+	if (layers[0].useAutoExposure != 0) {
+		exposureFactor = layers[0].targetLuminance / max(layers[0].adaptedLuminance, 0.0001);
+		exposureFactor = clamp(exposureFactor, layers[0].minExposure, layers[0].maxExposure);
+	}
+	float exposureScale = sqrt(max(1.0, exposureFactor));
+
 	// Evaluate global lights loop first (index 3456)
 	Cluster global_cluster = clusters[3456];
 	for (uint i = 0; i < global_cluster.count; ++i) {
@@ -53,10 +61,14 @@ vec3 evaluateClusteredLightContribution(vec3 frag_pos, vec3 normal) {
 			L = normalize(light_pos - frag_pos);
 			float distance = length(light_pos - frag_pos);
 			attenuation = 1.0 / (1.0 + 0.09 * distance + 0.032 * distance * distance);
+			float radius = sqrt(max(0.1, lights[light_index].intensity)) * 50.0 * exposureScale;
+			attenuation *= smoothstep(1.0, 0.8, distance / max(radius, 0.001));
 		} else if (lights[light_index].type == 2) { // SPOT
 			L = normalize(light_pos - frag_pos);
 			float distance = length(light_pos - frag_pos);
 			attenuation = 1.0 / (1.0 + 0.09 * distance + 0.032 * distance * distance);
+			float radius = sqrt(max(0.1, lights[light_index].intensity)) * 50.0 * exposureScale;
+			attenuation *= smoothstep(1.0, 0.8, distance / max(radius, 0.001));
 
 			float theta = dot(L, normalize(-lights[light_index].direction));
 			float epsilon = lights[light_index].inner_cutoff - lights[light_index].outer_cutoff;
@@ -70,6 +82,8 @@ vec3 evaluateClusteredLightContribution(vec3 frag_pos, vec3 normal) {
 			attenuation = 1.0 / (1.0 + 0.09 * effective_dist + 0.032 * effective_dist * effective_dist);
 			float proximity_boost = smoothstep(emissive_radius * 2.0, 0.0, distance);
 			attenuation = mix(attenuation, 1.0, proximity_boost * 0.5);
+			float radius = (sqrt(max(0.1, lights[light_index].intensity)) * 50.0 + emissive_radius) * exposureScale;
+			attenuation *= smoothstep(1.0, 0.8, distance / max(radius, 0.001));
 		} else if (lights[light_index].type == 4) { // FLASH
 			L = normalize(light_pos - frag_pos);
 			float distance = length(light_pos - frag_pos);
@@ -77,7 +91,8 @@ vec3 evaluateClusteredLightContribution(vec3 frag_pos, vec3 normal) {
 			float falloff_exp = lights[light_index].outer_cutoff;
 			float norm_dist = distance / max(flash_radius, 0.001);
 			attenuation = 1.0 / pow(1.0 + norm_dist, falloff_exp);
-			attenuation *= smoothstep(2.0, 1.5, norm_dist);
+			float radius = 2.0 * flash_radius * exposureScale;
+			attenuation *= smoothstep(1.0, 0.8, distance / max(radius, 0.001));
 		} else {
 			continue;
 		}
@@ -105,10 +120,14 @@ vec3 evaluateClusteredLightContribution(vec3 frag_pos, vec3 normal) {
 			L = normalize(light_pos - frag_pos);
 			float distance = length(light_pos - frag_pos);
 			attenuation = 1.0 / (1.0 + 0.09 * distance + 0.032 * distance * distance);
+			float radius = sqrt(max(0.1, lights[light_index].intensity)) * 50.0 * exposureScale;
+			attenuation *= smoothstep(1.0, 0.8, distance / max(radius, 0.001));
 		} else if (lights[light_index].type == 2) { // SPOT
 			L = normalize(light_pos - frag_pos);
 			float distance = length(light_pos - frag_pos);
 			attenuation = 1.0 / (1.0 + 0.09 * distance + 0.032 * distance * distance);
+			float radius = sqrt(max(0.1, lights[light_index].intensity)) * 50.0 * exposureScale;
+			attenuation *= smoothstep(1.0, 0.8, distance / max(radius, 0.001));
 
 			float theta = dot(L, normalize(-lights[light_index].direction));
 			float epsilon = lights[light_index].inner_cutoff - lights[light_index].outer_cutoff;
@@ -122,6 +141,8 @@ vec3 evaluateClusteredLightContribution(vec3 frag_pos, vec3 normal) {
 			attenuation = 1.0 / (1.0 + 0.09 * effective_dist + 0.032 * effective_dist * effective_dist);
 			float proximity_boost = smoothstep(emissive_radius * 2.0, 0.0, distance);
 			attenuation = mix(attenuation, 1.0, proximity_boost * 0.5);
+			float radius = (sqrt(max(0.1, lights[light_index].intensity)) * 50.0 + emissive_radius) * exposureScale;
+			attenuation *= smoothstep(1.0, 0.8, distance / max(radius, 0.001));
 		} else if (lights[light_index].type == 4) { // FLASH
 			L = normalize(light_pos - frag_pos);
 			float distance = length(light_pos - frag_pos);
@@ -129,7 +150,8 @@ vec3 evaluateClusteredLightContribution(vec3 frag_pos, vec3 normal) {
 			float falloff_exp = lights[light_index].outer_cutoff;
 			float norm_dist = distance / max(flash_radius, 0.001);
 			attenuation = 1.0 / pow(1.0 + norm_dist, falloff_exp);
-			attenuation *= smoothstep(2.0, 1.5, norm_dist);
+			float radius = 2.0 * flash_radius * exposureScale;
+			attenuation *= smoothstep(1.0, 0.8, distance / max(radius, 0.001));
 		} else {
 			continue;
 		}
@@ -147,6 +169,13 @@ vec3 evaluateClusteredLightContribution(vec3 frag_pos, vec3 normal) {
 vec3 evaluateClusteredLightContributionSimple(vec3 frag_pos) {
 	vec3 total_light = vec3(0.0);
 
+	float exposureFactor = 1.0;
+	if (layers[0].useAutoExposure != 0) {
+		exposureFactor = layers[0].targetLuminance / max(layers[0].adaptedLuminance, 0.0001);
+		exposureFactor = clamp(exposureFactor, layers[0].minExposure, layers[0].maxExposure);
+	}
+	float exposureScale = sqrt(max(1.0, exposureFactor));
+
 	// Evaluate global lights loop first (index 3456)
 	Cluster global_cluster = clusters[3456];
 	for (uint i = 0; i < global_cluster.count; ++i) {
@@ -163,10 +192,14 @@ vec3 evaluateClusteredLightContributionSimple(vec3 frag_pos) {
 		if (lights[light_index].type == 0) { // POINT
 			float distance = length(light_pos - frag_pos);
 			attenuation = 1.0 / (1.0 + 0.09 * distance + 0.032 * distance * distance);
+			float radius = sqrt(max(0.1, lights[light_index].intensity)) * 50.0 * exposureScale;
+			attenuation *= smoothstep(1.0, 0.8, distance / max(radius, 0.001));
 		} else if (lights[light_index].type == 2) { // SPOT
 			vec3 L = normalize(light_pos - frag_pos);
 			float distance = length(light_pos - frag_pos);
 			attenuation = 1.0 / (1.0 + 0.09 * distance + 0.032 * distance * distance);
+			float radius = sqrt(max(0.1, lights[light_index].intensity)) * 50.0 * exposureScale;
+			attenuation *= smoothstep(1.0, 0.8, distance / max(radius, 0.001));
 
 			float theta = dot(L, normalize(-lights[light_index].direction));
 			float epsilon = lights[light_index].inner_cutoff - lights[light_index].outer_cutoff;
@@ -179,13 +212,16 @@ vec3 evaluateClusteredLightContributionSimple(vec3 frag_pos) {
 			attenuation = 1.0 / (1.0 + 0.09 * effective_dist + 0.032 * effective_dist * effective_dist);
 			float proximity_boost = smoothstep(emissive_radius * 2.0, 0.0, distance);
 			attenuation = mix(attenuation, 1.0, proximity_boost * 0.5);
+			float radius = (sqrt(max(0.1, lights[light_index].intensity)) * 50.0 + emissive_radius) * exposureScale;
+			attenuation *= smoothstep(1.0, 0.8, distance / max(radius, 0.001));
 		} else if (lights[light_index].type == 4) { // FLASH
 			float distance = length(light_pos - frag_pos);
 			float flash_radius = lights[light_index].inner_cutoff;
 			float falloff_exp = lights[light_index].outer_cutoff;
 			float norm_dist = distance / max(flash_radius, 0.001);
 			attenuation = 1.0 / pow(1.0 + norm_dist, falloff_exp);
-			attenuation *= smoothstep(2.0, 1.5, norm_dist);
+			float radius = 2.0 * flash_radius * exposureScale;
+			attenuation *= smoothstep(1.0, 0.8, distance / max(radius, 0.001));
 		} else {
 			continue;
 		}
@@ -210,10 +246,14 @@ vec3 evaluateClusteredLightContributionSimple(vec3 frag_pos) {
 		if (lights[light_index].type == 0) { // POINT
 			float distance = length(light_pos - frag_pos);
 			attenuation = 1.0 / (1.0 + 0.09 * distance + 0.032 * distance * distance);
+			float radius = sqrt(max(0.1, lights[light_index].intensity)) * 50.0 * exposureScale;
+			attenuation *= smoothstep(1.0, 0.8, distance / max(radius, 0.001));
 		} else if (lights[light_index].type == 2) { // SPOT
 			vec3 L = normalize(light_pos - frag_pos);
 			float distance = length(light_pos - frag_pos);
 			attenuation = 1.0 / (1.0 + 0.09 * distance + 0.032 * distance * distance);
+			float radius = sqrt(max(0.1, lights[light_index].intensity)) * 50.0 * exposureScale;
+			attenuation *= smoothstep(1.0, 0.8, distance / max(radius, 0.001));
 
 			float theta = dot(L, normalize(-lights[light_index].direction));
 			float epsilon = lights[light_index].inner_cutoff - lights[light_index].outer_cutoff;
@@ -226,13 +266,16 @@ vec3 evaluateClusteredLightContributionSimple(vec3 frag_pos) {
 			attenuation = 1.0 / (1.0 + 0.09 * effective_dist + 0.032 * effective_dist * effective_dist);
 			float proximity_boost = smoothstep(emissive_radius * 2.0, 0.0, distance);
 			attenuation = mix(attenuation, 1.0, proximity_boost * 0.5);
+			float radius = (sqrt(max(0.1, lights[light_index].intensity)) * 50.0 + emissive_radius) * exposureScale;
+			attenuation *= smoothstep(1.0, 0.8, distance / max(radius, 0.001));
 		} else if (lights[light_index].type == 4) { // FLASH
 			float distance = length(light_pos - frag_pos);
 			float flash_radius = lights[light_index].inner_cutoff;
 			float falloff_exp = lights[light_index].outer_cutoff;
 			float norm_dist = distance / max(flash_radius, 0.001);
 			attenuation = 1.0 / pow(1.0 + norm_dist, falloff_exp);
-			attenuation *= smoothstep(2.0, 1.5, norm_dist);
+			float radius = 2.0 * flash_radius * exposureScale;
+			attenuation *= smoothstep(1.0, 0.8, distance / max(radius, 0.001));
 		} else {
 			continue;
 		}
