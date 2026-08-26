@@ -353,12 +353,18 @@ void main() {
 	float      avgNeighborLum = 0.0;
 	float      neighborLumVariance = 0.0;
 	vec3       neighborAvgSH[9];
-	for (int i = 0; i < 9; ++i)
+	vec3       neighborMinSH[9];
+	vec3       neighborMaxSH[9];
+	for (int i = 0; i < 9; ++i) {
 		neighborAvgSH[i] = vec3(0.0);
+		neighborMinSH[i] = vec3(0.0);
+		neighborMaxSH[i] = vec3(0.0);
+	}
 	float validNeighbors = 0.0;
 
 	ivec2 neighbors[4] = ivec2[](ivec2(1, 0), ivec2(-1, 0), ivec2(0, 1), ivec2(0, -1));
 	float neighborLums[4];
+	float totalNeighborWeight = 0.0;
 
 	for (int i = 0; i < 4; ++i) {
 		ivec2 nChunkCoord = worldChunkCoord + neighbors[i];
@@ -368,20 +374,29 @@ void main() {
 			int   nIdx = nToroidal.y * u_originSize.z + nToroidal.x;
 			vec2  nStored = vec2(u_terrainProbes[nIdx].sh_coeffs[0].w, u_terrainProbes[nIdx].sh_coeffs[1].w);
 			if (distance(nStored, vec2(nChunkCoord)) < 0.1) {
+				float nStoredY = u_terrainProbes[nIdx].sh_coeffs[2].w;
+				vec3 nProbePos = vec3((nStored.x + 0.5) * scaledChunkSize, nStoredY, (nStored.y + 0.5) * scaledChunkSize);
+				float d3d = distance(probeOrigin, nProbePos);
+				float wDist = 1.0 / (1.0 + (d3d * d3d) / max(0.001, scaledChunkSize * scaledChunkSize));
+
 				float nLum = max(dot(u_terrainProbes[nIdx].sh_coeffs[0].rgb, LUMINANCE_WEIGHTS), 0.0);
 				neighborLums[int(validNeighbors)] = nLum;
-				avgNeighborLum += nLum;
-				for (int j = 0; j < 9; ++j)
-					neighborAvgSH[j] += u_terrainProbes[nIdx].sh_coeffs[j].rgb;
+				avgNeighborLum += nLum * wDist;
+				for (int j = 0; j < 9; ++j) {
+					neighborAvgSH[j] += u_terrainProbes[nIdx].sh_coeffs[j].rgb * wDist;
+					neighborMinSH[j] = min(neighborMinSH[j], u_terrainProbes[nIdx].sh_coeffs[j].rgb * wDist);
+					neighborMaxSH[j] = max(neighborMaxSH[j], u_terrainProbes[nIdx].sh_coeffs[j].rgb * wDist);
+				}
+				totalNeighborWeight += wDist;
 				validNeighbors += 1.0;
 			}
 		}
 	}
 
-	if (validNeighbors > 0.0) {
-		avgNeighborLum /= validNeighbors;
+	if (totalNeighborWeight > 0.0) {
+		avgNeighborLum /= totalNeighborWeight;
 		for (int j = 0; j < 9; ++j)
-			neighborAvgSH[j] /= validNeighbors;
+			neighborAvgSH[j] /= totalNeighborWeight;
 		for (int i = 0; i < int(validNeighbors); ++i) {
 			neighborLumVariance += abs(neighborLums[i] - avgNeighborLum);
 		}
@@ -436,39 +451,68 @@ void main() {
 	for (int i = 0; i < 9; ++i)
 		newSH[i] = vec3(0.0);
 
-	ivec2 bnSize = textureSize(u_blueNoiseTexture, 0);
-	vec2  bnUV = (vec2(localCoord) + vec2(u_frameIndex % bnSize.x, (u_frameIndex / bnSize.x) % bnSize.y)) / vec2(bnSize);
-	vec4  bn = texture(u_blueNoiseTexture, bnUV);
+	float jv = InterleavedGradientNoise(vec2(worldChunkCoord), int(u_frameIndex));
+	vec2 ign = vec2(sin(jv), -cos(jv));
 
 	vec2 uv = screenPos.xy * 0.5 + 0.5;
-	// Base samples
-	int baseSamples = isAggressive ? 4 : 2;
-	for (int i = 0; i < baseSamples; ++i) {
-		vec2  jitter = fract(bn.zw + vec2(float(i) * 0.618, float(i) * 0.382));
-		vec3  rd = hemisphereSample(jitter, -worldNormal);
-		shMarchMain(rd, probeOrigin, rayCount + baseSamples, newSH);
-	}
+	int totalRays = (isAggressive ? 4 : 2) + rayCount;
 
-	for (int i = 0; i < rayCount; ++i) {
-		vec2 jitter = fract(bn.xy + vec2(float(i) * 0.618, float(i) * 0.382));
+	// Denser terrain probes focus sampling on ground-facing hemisphere (-worldNormal)
+	for (int i = 0; i < totalRays; ++i) {
+		vec2 jitter =  fract(ign + vec2(float(i) * 0.618, float(i) * 0.382));
 
-		// Full sphere sampling to capture bounce from all angles
-		float phi = 2.0 * PI * jitter.x;
-		float cosTheta = 2.0 * jitter.y - 1.0;
-		float sinTheta = sqrt(max(0.0, 1.0 - cosTheta * cosTheta));
-		vec3  rd = vec3(sinTheta * cos(phi), cosTheta, sinTheta * sin(phi));
-
-		shMarchMain(rd, probeOrigin, rayCount + baseSamples, newSH);
+		vec3 rd = hemisphereSample(jitter, -worldNormal);
+		shMarchMain(rd, probeOrigin, totalRays, newSH);
+		// shMarchMain(normalize(vec3(jitter.x, 0.0, jitter.y)), probeOrigin, totalRays, newSH);
 	}
 
 	for (int i = 0; i < 9; ++i) {
-		vec4 finalSH = vec4(mix(oldSH[i], newSH[i] * u_probeScaling, alpha), 1.0);
+		newSH[i] = clamp(newSH[i], neighborMinSH[i], neighborMaxSH[i]);
+	}
 
-		// Encode world coordinates in w-components of the first two coefficients
+
+	// Evaluate spatial probe ambient SH at probeOrigin to capture Delta from wide spatial grid
+	vec3 spatialSH[9];
+	float radius = 100000.0 * worldScale;
+	vec3 relPos = probeOrigin - viewPos;
+	float dist = length(relPos.xz);
+
+	if (dist < radius * 0.1) {
+		for (int i = 0; i < 9; ++i) spatialSH[i] = sh_coeffs[i].rgb;
+	} else {
+		float edgeWeight = smoothstep(radius * 0.1, radius, dist);
+		float angle = atan(relPos.x, relPos.z);
+		if (angle < 0.0) angle += 2.0 * PI;
+		float sector = (angle / (2.0 * PI)) * 8.0;
+		int idx1 = 1 + int(floor(sector)) % 8;
+		int idx2 = 1 + (int(floor(sector)) + 1) % 8;
+		float sectorFrac = fract(sector);
+
+		for (int i = 0; i < 9; ++i) {
+			vec3 center = sh_coeffs[i].rgb;
+			vec3 p1 = sh_coeffs[idx1 * 9 + i].rgb;
+			vec3 p2 = sh_coeffs[idx2 * 9 + i].rgb;
+			vec3 edge = mix(p1, p2, sectorFrac);
+			spatialSH[i] = mix(center, edge, edgeWeight);
+		}
+	}
+
+	// Compute Delta SH: difference between sampled terrain ambient & wide spatial ambient
+	vec3 deltaSH[9];
+	for (int i = 0; i < 9; ++i) {
+		deltaSH[i] = newSH[i] * u_probeScaling - spatialSH[i];
+	}
+
+	for (int i = 0; i < 9; ++i) {
+		vec4 finalSH = vec4(mix(oldSH[i], deltaSH[i], alpha), 1.0);
+
+		// Encode world coordinates and height in w-components of the first three coefficients
 		if (i == 0)
 			finalSH.w = float(worldChunkCoord.x);
 		if (i == 1)
 			finalSH.w = float(worldChunkCoord.y);
+		if (i == 2)
+			finalSH.w = probeOrigin.y;
 
 		u_terrainProbes[flatIdx].sh_coeffs[i] = finalSH;
 	}

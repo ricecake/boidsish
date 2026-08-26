@@ -47,7 +47,7 @@ float bayer4x4StepPhase(ivec2 pixel, int index) {
 float InterleavedGradientNoise(vec2 uv, int FrameId){
 	// uv += float(FrameId)  * (vec2(47, 17) * 0.695f);
 	//vec3 magic = vec3( 12.9898, 78.233, 43758.5453123 );
-	vec3 magic = vec3( 0.06711056f, 0.00583715f, 52.9829189f );
+	const vec3 magic = vec3( 0.06711056f, 0.00583715f, 52.9829189f );
 	float spatialJitter = fract(magic.z * fract(dot(uv, magic.xy)));
 	float temporalShift = fract(float(FrameId) * 0.61803398);
 	return fract(spatialJitter + temporalShift);
