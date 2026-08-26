@@ -309,7 +309,7 @@ void main() {
 	float moonIllumination = max(0.0, dot(moonSurfaceNormal, sunDir)) * 5.8;
 
 	// Earthshine: dark side gets a faint glow (~8%)
-	float phasedMask = moonMask * mix(0.08, 1.0, moonIllumination);
+	float phasedMask = moonMask * mix(0.01, 1.0, moonIllumination);
 
 	vec3 moonDisc = u_moonFullRadiance * phasedMask * moonTransmittance * smoothstep(-0.01, 0.01, moonDir.y);
 

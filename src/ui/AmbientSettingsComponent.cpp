@@ -12,9 +12,27 @@ namespace Boidsish {
 			auto& light_manager = visualizer.GetLightManager();
 			auto& config_manager = ConfigManager::GetInstance();
 
-			// SH Probe Ambient Scaling
+			// Source Radiance & SH Probe Exposure Scaling
+			float sky_exposure = light_manager.GetSkyExposure();
+			if (ImGui::SliderFloat("Sky Exposure Multiplier", &sky_exposure, 0.0f, 10.0f, "%.2f")) {
+				light_manager.SetSkyExposure(sky_exposure);
+				config_manager.SetFloat("sky_exposure", sky_exposure);
+			}
+
+			float star_exposure = light_manager.GetStarExposure();
+			if (ImGui::SliderFloat("Star & Nebula Exposure Multiplier", &star_exposure, 0.0f, 10.0f, "%.2f")) {
+				light_manager.SetStarExposure(star_exposure);
+				config_manager.SetFloat("star_exposure", star_exposure);
+			}
+
+			float terrain_exposure = light_manager.GetTerrainExposure();
+			if (ImGui::SliderFloat("Terrain Bounce Exposure Multiplier", &terrain_exposure, 0.0f, 10.0f, "%.2f")) {
+				light_manager.SetTerrainExposure(terrain_exposure);
+				config_manager.SetFloat("terrain_exposure", terrain_exposure);
+			}
+
 			float probe_scaling = light_manager.GetProbeScaling();
-			if (ImGui::SliderFloat("Ambient Intensity (SH)", &probe_scaling, 0.0f, 5.0f)) {
+			if (ImGui::SliderFloat("SH Probe Multiplier", &probe_scaling, 0.0f, 5.0f, "%.2f")) {
 				light_manager.SetProbeScaling(probe_scaling);
 				config_manager.SetFloat("sh_probe_scaling", probe_scaling);
 			}

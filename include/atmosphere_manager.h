@@ -29,7 +29,9 @@ namespace Boidsish {
 			float            sunIntensity,
 			const glm::vec3& cameraPos,
 			float            time,
-			float            worldScale
+			float            worldScale,
+			const glm::vec3& moonDir = glm::vec3(0.0f, -1.0f, 0.0f),
+			const glm::vec3& moonRadiance = glm::vec3(0.0f)
 		);
 
 		glm::vec3 GetAmbientEstimate() const { return _ambientEstimate; }

@@ -408,9 +408,10 @@ vec3 evalSHIrradianceFromCoeffs(vec3 n, vec4 coeffs[9]) {
 	float c4 = 0.315392;
 	float c5 = 0.546274;
 
-	float a0 = 3.141593;
-	float a1 = 2.094395;
-	float a2 = 0.785398;
+	// Cosine lobe convolution constants PRE-DIVIDED by PI
+	float a0 = 1.0;                 // Was 3.141593 (PI)
+	float a1 = 0.666667;            // Was 2.094395 (2/3 PI)
+	float a2 = 0.25;                // Was 0.785398 (1/4 PI)
 
 	vec3 res = vec3(0.0);
 	res += a0 * c1 * coeffs[0].rgb;

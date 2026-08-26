@@ -113,6 +113,9 @@ namespace Boidsish {
 		float erosion_max_dist = 450.0f;
 		float ambient_particle_density = 0.15f;
 		float sh_probe_scaling = 1.0f;
+		float sky_exposure = 1.0f;
+		float star_exposure = 1.0f;
+		float terrain_exposure = 1.0f;
 		float sh_probe_convergence_speed = 1.0f;
 		int   sh_probe_ray_count_multiplier = 1;
 		bool  solar_flares_enabled = true;

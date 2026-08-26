@@ -93,8 +93,8 @@ vec3 sampleSkyLUT(vec3 rd, vec3 probeOrigin) {
 	float adjV = sqrt(abs(elevation) / (PI * 0.5));
 	float uvY = (elevation < 0.0) ? (0.5 - 0.5 * adjV) : (0.5 + 0.5 * adjV);
 
-	vec3 skyRadiance = max(texture(u_skyViewLUT, vec2(uvX, uvY)).rgb, vec3(0.01, 0.05, 0.1));
-	skyRadiance += 5.0*computeNebula(rd, time);
+	vec3 skyRadiance = texture(u_skyViewLUT, vec2(uvX, uvY)).rgb * skyExposure;
+	skyRadiance += computeNebula(rd, time) * starExposure;
 
 	// Account for atmosphere between probe and sky (Aerial Perspective)
 	// Mapping for AP LUT (consistent with atmosphere_composite.frag)
@@ -168,7 +168,7 @@ vec3 sampleTerrainFallback(vec3 worldPos, vec3 rayDir) {
 						// Direct illumination contribution to ground bounce (diffuse only for SH)
 						radiance += albedo * lights[l].color * lights[l].intensity * atmosphereTransmittance * NdotL * 0.5 * shadow;
 					}
-					return radiance;
+					return radiance * terrainExposure;
 				}
 			}
 		} else {
@@ -287,6 +287,7 @@ void shMarchMain(vec3 rd, vec3 probeOrigin, int totalRayCount, inout vec3 newSH[
 							radiance += albedo * lights[l].color * lights[l].intensity * atmosphereTransmittance * NdotL * lShadow;
 						}
 
+						radiance *= terrainExposure;
 						hitFound = true;
 					}
 					break;

@@ -65,7 +65,8 @@ vec3 computeNebula(vec3 dir, float time) {
     }
 
     vec3 nebula_color = palette(nebula_noise, vec3(0.5,0.5,0.5), vec3(0.5,0.5,0.5), vec3(1.0,1.0,1.0), vec3(0.0,0.33,0.67));
-    return 0.05 * nebula_intensity * snoise3d(warp_offset) * nebula_color * nebula_noise;
+    // Physically grounded nebula radiance (~0.0003 W/m^2/sr)
+    return 0.0003 * nebula_intensity * snoise3d(warp_offset) * nebula_color * nebula_noise;
 }
 
 vec3 computeStars(vec3 dir, float time) {
@@ -81,25 +82,26 @@ vec3 computeStars(vec3 dir, float time) {
 
     vec3 global_star_dir = normalize((id + center) / scale);
     float starDensity = snoise3d(global_star_dir * warp);
-    // float starMask = smoothstep(-1.0, 2.50, starDensity);
     float starMask = smoothstep(-1.0, 1.50, starDensity);
 
     float checkHash = hash13(id);
     float starExists = step(checkHash, starMask);
 
     float dist = length(local_uv - center);
-    float brightness = (10.0 + sin(checkHash + time/(1.0+max(0.01, dir.y)) ))* starExists;
+    float brightness = (10.0 + sin(checkHash + time/(1.0+max(0.01, dir.y)) )) * starExists;
     float radius = 0.0125 * brightness;
 
     float visualGlow = snoise3d(dir * warp);
     float starIntensity = 1.0 - smoothstep(radius * 0.5, radius, dist);
 
-    // return clamp(1.0-dot(dir, normalize(vec3(1.0,1.0,0))), 0.001, 0.005) *pow(smoothstep(-0.40, 0.9, visualGlow),2) + starIntensity;
-    // vec3 starColor = palette(hash13(id+dir), vec3(0.5,0.5,0.5), vec3(0.5,0.5,0.5), vec3(1.0,1.0,1.0), vec3(0.0,0.33,0.67));
     vec3 starColor1 = palette(hash13(id+dir), vec3(0.17, 0.47, 0.92), vec3(0.55, 0.4, 0.4), vec3(1., 1.7, 1.), vec3(0.5, 0.35, 1));
     vec3 starColor2 = palette(hash13(id+dir), vec3(0.48, 0.47, 0.89), vec3(0.14, 0, 0.63), vec3(1.5, 0., 0.6), vec3(0, 0, 0));
 
-    return 0.001*pow(smoothstep(-0.40, 0.9, visualGlow),2)*starColor2 + 2.0*starIntensity * mix(starColor1, starColor2, checkHash);
+    // Physically grounded starlight radiance (~0.0001 ambient starlight glow, ~0.002 point star peaks)
+    vec3 backgroundGlow = 0.0001 * pow(smoothstep(-0.40, 0.9, visualGlow), 2.0) * starColor2;
+    vec3 pointStars = 0.002 * starIntensity * mix(starColor1, starColor2, checkHash);
+
+    return backgroundGlow + pointStars;
 }
 
 #endif // HELPERS_ASTRAL_GLSL
