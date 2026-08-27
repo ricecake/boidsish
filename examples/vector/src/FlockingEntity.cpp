@@ -9,9 +9,9 @@ namespace Boidsish {
 
 	FlockingEntity::FlockingEntity(int id, const Vector3& start_pos): Entity<>(id) {
 		SetPosition(start_pos);
-		SetSize(5.0f);
-		SetTrailIridescence(true);
-		SetTrailLength(25);
+		GetShape()->SetSize(5.0f);
+		GetShape()->SetTrailIridescence(true);
+		GetShape()->SetTrailLength(25);
 		Vector3 startVel((rand() % 30 - 15) * 2.0f, (rand() % 10 - 5) * 2.0f, (rand() % 16 - 8) * 2.0f);
 
 		SetVelocity(startVel);
@@ -47,7 +47,7 @@ namespace Boidsish {
 
 		if (foodDistance <= 0.6f) {
 			SetVelocity(3 * (food - position));
-			SetColor(1.0f, 0, 0, 1.0f);
+			GetShape()->SetColor(1.0f, 0, 0, 1.0f);
 			hunger_time -= targetInstance->GetValue() / 100 * hunger_time;
 			hunger_time = std::max(0.0f, hunger_time);
 
@@ -93,8 +93,8 @@ namespace Boidsish {
 		float b = (sep_mag + align_mag + coh_mag) / (sep_mag + align_mag + coh_mag + dis_mag + pre_mag + 0.1f);
 		float g = dis_mag / (sep_mag + align_mag + coh_mag + dis_mag + pre_mag + 0.1f);
 		float r = pre_mag / (sep_mag + align_mag + coh_mag + dis_mag + pre_mag + 0.1f);
-		SetColor(r, g, b, 1.0f);
-		SetTrailLength(energy);
+		GetShape()->SetColor(r, g, b, 1.0f);
+		GetShape()->SetTrailLength(energy);
 	}
 
 	Vector3 FlockingEntity::CalculateSeparation(

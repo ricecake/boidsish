@@ -14,7 +14,7 @@ namespace Boidsish {
 		Entity<Model>(id, "assets/utah_teapot.obj", true), leader_id_(leader_id) {
 		SetPosition(pos);
 		shape_->SetScale(glm::vec3(0.5f));
-		SetColor(0.8f, 0.2f, 0.2f); // Reddish
+		GetShape()->SetColor(0.8f, 0.2f, 0.2f); // Reddish
 		spiral_phase_ = static_cast<float>(id) * 0.7f;
 		SetOrientToVelocity(true);
 	}

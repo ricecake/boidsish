@@ -42,8 +42,8 @@ namespace Boidsish {
         // Create an entity with a polyhedron shape
         auto entity = std::make_shared<TestEntity<Polyhedron>>(1, PolyhedronType::Octahedron);
 
-        // Scale the entity
-        entity->SetSize(5.0f);
+        // Scale the shape directly through entity's shape
+        entity->GetShape()->SetSize(5.0f);
         entity->UpdateShape();
 
         // Check if the shape's model matrix reflects the scale

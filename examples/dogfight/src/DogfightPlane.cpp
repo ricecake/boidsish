@@ -26,15 +26,15 @@ namespace Boidsish {
 		Entity<Model>(id, "assets/dogplane.obj", true), team_(team), eng_(rd_()) {
 		SetPosition(pos);
 		if (team == Team::RED) {
-			SetColor(1.0f, 0.1f, 0.1f, 1.0f);
+			GetShape()->SetColor(1.0f, 0.1f, 0.1f, 1.0f);
 		} else {
-			SetColor(0.1f, 0.1f, 1.0f, 1.0f);
+			GetShape()->SetColor(0.1f, 0.1f, 1.0f, 1.0f);
 		}
-		SetSize(35.0f);
-		SetTrailLength(200);
-		SetTrailPBR(true);
-		SetTrailRoughness(0.2f);
-		SetTrailMetallic(0.8f);
+		GetShape()->SetSize(35.0f);
+		GetShape()->SetTrailLength(200);
+		GetShape()->SetTrailPBR(true);
+		GetShape()->SetTrailRoughness(0.2f);
+		GetShape()->SetTrailMetallic(0.8f);
 
 		rigid_body_.linear_friction_ = 1.0f;
 		rigid_body_.angular_friction_ = 5.0f;
@@ -286,7 +286,7 @@ namespace Boidsish {
 		exploded_ = true;
 		lived_ = 0.0f;
 		SetVelocity(0, 0, 0);
-		SetSize(0);
+		GetShape()->SetSize(0);
 
 		auto pos = GetPosition().Toglm();
 		handler.EnqueueVisualizerAction([=, &handler]() {

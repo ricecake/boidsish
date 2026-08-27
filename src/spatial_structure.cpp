@@ -87,10 +87,9 @@ namespace Boidsish {
             if (all_entities.count(id)) return;
 
             all_entities[id] = entity;
-            glm::vec3 pos = entity->GetPosition().Toglm();
-            float half_size = entity->GetSize() * 0.5f;
-            GridKey min_k = GetKey(pos - glm::vec3(half_size));
-            GridKey max_k = GetKey(pos + glm::vec3(half_size));
+            AABB aabb = entity->GetAABB();
+            GridKey min_k = GetKey(aabb.min);
+            GridKey max_k = GetKey(aabb.max);
 
             entity_tracking[id] = {min_k, max_k, entity};
             AddToGrid(id, min_k, max_k);
@@ -122,10 +121,9 @@ namespace Boidsish {
                 std::shared_lock lock(mutex);
                 auto it = entity_tracking.find(id);
                 if (it != entity_tracking.end()) {
-                    glm::vec3 pos = entity->GetPosition().Toglm();
-                    float half_size = entity->GetSize() * 0.5f;
-                    GridKey new_min = GetKey(pos - glm::vec3(half_size));
-                    GridKey new_max = GetKey(pos + glm::vec3(half_size));
+                    AABB aabb = entity->GetAABB();
+                    GridKey new_min = GetKey(aabb.min);
+                    GridKey new_max = GetKey(aabb.max);
 
                     // Only queue if it crossed cell boundary
                     if (new_min == it->second.min_k && new_max == it->second.max_k) {
@@ -175,10 +173,9 @@ namespace Boidsish {
                     continue;
                 }
 
-                glm::vec3 pos = entity->GetPosition().Toglm();
-                float half_size = entity->GetSize() * 0.5f;
-                GridKey new_min = GetKey(pos - glm::vec3(half_size));
-                GridKey new_max = GetKey(pos + glm::vec3(half_size));
+                AABB aabb = entity->GetAABB();
+                GridKey new_min = GetKey(aabb.min);
+                GridKey new_max = GetKey(aabb.max);
 
                 if (!(new_min == it->second.min_k && new_max == it->second.max_k)) {
                     RemoveFromGrid(id, it->second.min_k, it->second.max_k);
@@ -402,10 +399,9 @@ namespace Boidsish {
             tinybvh::BVH bvh;
             std::vector<tinybvh::bvhvec4> bvh_aabbs(candidates.size() * 2);
             for (size_t i = 0; i < candidates.size(); ++i) {
-                auto p = candidates[i]->GetPosition().Toglm();
-                float s = candidates[i]->GetSize() * 0.5f;
-                bvh_aabbs[i * 2] = tinybvh::bvhvec4(p.x - s, p.y - s, p.z - s, 0.0f);
-                bvh_aabbs[i * 2 + 1] = tinybvh::bvhvec4(p.x + s, p.y + s, p.z + s, 0.0f);
+                AABB aabb = candidates[i]->GetAABB();
+                bvh_aabbs[i * 2] = tinybvh::bvhvec4(aabb.min.x, aabb.min.y, aabb.min.z, 0.0f);
+                bvh_aabbs[i * 2 + 1] = tinybvh::bvhvec4(aabb.max.x, aabb.max.y, aabb.max.z, 0.0f);
             }
             bvh.BuildAABB(bvh_aabbs.data(), (uint32_t)candidates.size());
 

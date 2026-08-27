@@ -12,8 +12,8 @@ class OrbitalEntity: public Entity<> {
 public:
 	OrbitalEntity(int id, float radius, float speed, float height_offset = 0.0f):
 		Entity(id), radius_(radius), speed_(speed), height_offset_(height_offset), angle_(0.0f) {
-		SetSize(6.0f + radius * 0.5f);
-		SetTrailLength(80);
+		GetShape()->SetSize(6.0f + radius * 0.5f);
+		GetShape()->SetTrailLength(80);
 	}
 
 	void UpdateEntity(const EntityHandler& handler, float time, float delta_time) override {
@@ -35,7 +35,7 @@ public:
 		float r = 0.5f + 0.5f * sin(angle_ + time * 0.1f);
 		float g = 0.5f + 0.5f * cos(angle_ * 0.7f + time * 0.15f);
 		float b = 0.5f + 0.5f * sin(angle_ * 1.3f + time * 0.2f);
-		SetColor(r, g, b, 1.0f);
+		GetShape()->SetColor(r, g, b, 1.0f);
 	}
 
 private:

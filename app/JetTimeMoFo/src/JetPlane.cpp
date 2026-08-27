@@ -15,9 +15,9 @@ namespace Boidsish {
 		rigid_body_.linear_friction_ = 0.01f;
 		rigid_body_.angular_friction_ = 0.01f;
 
-		SetTrailLength(20);
-		SetTrailIridescence(true);
-		SetColor(0.1f, 0.5f, 1.0f);
+		GetShape()->SetTrailLength(20);
+		GetShape()->SetTrailIridescence(true);
+		GetShape()->SetColor(0.1f, 0.5f, 1.0f);
 		shape_->SetScale(glm::vec3(0.05f));
 
 		SetPosition(0, 100, 0);

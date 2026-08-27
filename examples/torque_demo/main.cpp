@@ -17,7 +17,7 @@ public:
 	ModelEntity(int id, const std::string& model_path, const glm::vec3& position, float scale = 1.0f):
 		Entity<Model>(id, model_path) {
 		SetPosition(position.x, position.y, position.z);
-		SetSize(scale); // For ModelEntity, size is used as a base scale
+		GetShape()->SetSize(scale); // For ModelEntity, size is used as a base scale
 		rigid_body_.linear_friction_ = 0.5f;
 		rigid_body_.angular_friction_ = 0.5f;
 		rigid_body_.mass_ = 1.0f;
@@ -35,8 +35,8 @@ class DotEntity: public Entity<Dot> {
 public:
 	DotEntity(int id, const glm::vec3& position, float size = 50.0f): Entity<Dot>(id) {
 		SetPosition(position.x, position.y, position.z);
-		SetSize(size);
-		SetColor(1.0f, 0.5f, 0.2f);
+		GetShape()->SetSize(size);
+		GetShape()->SetColor(1.0f, 0.5f, 0.2f);
 		rigid_body_.linear_friction_ = 0.5f;
 		rigid_body_.angular_friction_ = 0.5f;
 		rigid_body_.mass_ = 1.0f;

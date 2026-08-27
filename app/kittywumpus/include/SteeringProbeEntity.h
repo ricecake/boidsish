@@ -13,11 +13,11 @@ namespace Boidsish {
 			probe_ = std::make_shared<SteeringProbe>(terrain);
 
 			// Visuals: Shiny silver orb
-			SetColor(0.75f, 0.75f, 0.75f);
-			SetUsePBR(true);
-			SetMetallic(1.0f);
-			SetRoughness(0.1f);
-			SetSize(940.0f);
+			GetShape()->SetColor(0.75f, 0.75f, 0.75f);
+			GetShape()->SetUsePBR(true);
+			GetShape()->SetMetallic(1.0f);
+			GetShape()->SetRoughness(0.1f);
+			GetShape()->SetSize(940.0f);
 
 			// Initial state
 			if (player) {

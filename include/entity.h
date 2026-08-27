@@ -30,18 +30,7 @@ namespace Boidsish {
 		friend class EntityHandler;
 
 	public:
-		EntityBase(int id = 0):
-			id_(id),
-			size_(8.0f),
-			color_{1.0f, 1.0f, 1.0f, 1.0f},
-			trail_length_(50),
-			trail_iridescent_(false),
-			trail_pbr_(false),
-			trail_roughness_(0.3f),
-			trail_metallic_(0.0f),
-			roughness_(0.5f),
-			metallic_(0.0f),
-			use_pbr_(false) {}
+		EntityBase(int id = 0): id_(id) {}
 
 		virtual ~EntityBase() = default;
 
@@ -58,11 +47,25 @@ namespace Boidsish {
 
 		virtual glm::vec3 GetApproachPoint() const { return rigid_body_.GetPosition(); }
 
-		// virtual glm::vec3 GetApproachPoint() const { return rigid_body_.GetPosition(); }
-
 		// Shape management
 		virtual std::shared_ptr<Shape> GetShape() const = 0;
 		virtual void                   UpdateShape() = 0;
+
+		// Spatial bounds queries delegated to underlying Shape
+		virtual float GetBoundingRadius() const {
+			if (auto shape = GetShape()) {
+				return shape->GetBoundingRadius();
+			}
+			return 1.0f;
+		}
+
+		virtual AABB GetAABB() const {
+			if (auto shape = GetShape()) {
+				return shape->GetAABB();
+			}
+			glm::vec3 pos = rigid_body_.GetPosition();
+			return AABB(pos - glm::vec3(1.0f), pos + glm::vec3(1.0f));
+		}
 
 		// Getters and setters
 		int GetId() const { return id_; }
@@ -107,61 +110,6 @@ namespace Boidsish {
 			rigid_body_.AddForceAtPoint(force, point);
 		}
 
-		// Visual properties
-		float GetSize() const { return size_; }
-
-		void SetSize(float size) { size_ = size; }
-
-		void GetColor(float& r, float& g, float& b, float& a) const {
-			r = color_[0];
-			g = color_[1];
-			b = color_[2];
-			a = color_[3];
-		}
-
-		void SetColor(float r, float g, float b, float a = 1.0f) {
-			color_[0] = r;
-			color_[1] = g;
-			color_[2] = b;
-			color_[3] = a;
-		}
-
-		int GetTrailLength() const { return trail_length_; }
-
-		void SetTrailLength(int length) { trail_length_ = length; }
-
-		bool IsTrailIridescent() const { return trail_iridescent_; }
-
-		void SetTrailIridescence(bool enabled) { trail_iridescent_ = enabled; }
-
-		// New method for rocket trail
-		void SetTrailRocket(bool enabled) { trail_rocket_ = enabled; }
-
-		// PBR trail settings
-		void SetTrailPBR(bool enabled) { trail_pbr_ = enabled; }
-
-		void SetTrailRoughness(float roughness) { trail_roughness_ = roughness; }
-
-		void SetTrailMetallic(float metallic) { trail_metallic_ = metallic; }
-
-		bool GetTrailPBR() const { return trail_pbr_; }
-
-		float GetTrailRoughness() const { return trail_roughness_; }
-
-		float GetTrailMetallic() const { return trail_metallic_; }
-
-		float GetRoughness() const { return roughness_; }
-
-		void SetRoughness(float roughness) { roughness_ = roughness; }
-
-		float GetMetallic() const { return metallic_; }
-
-		void SetMetallic(float metallic) { metallic_ = metallic; }
-
-		bool GetUsePBR() const { return use_pbr_; }
-
-		void SetUsePBR(bool use_pbr) { use_pbr_ = use_pbr; }
-
 		void SetOrientToVelocity(bool enabled) { orient_to_velocity_ = enabled; }
 
 		void SetPath(std::shared_ptr<Path> path, float speed) {
@@ -183,17 +131,6 @@ namespace Boidsish {
 	protected:
 		int       id_;
 		RigidBody rigid_body_;
-		float     size_;
-		float     color_[4]; // RGBA
-		int       trail_length_;
-		bool      trail_iridescent_;
-		bool      trail_rocket_ = false; // New member for rocket trail
-		bool      trail_pbr_ = false;    // Enable PBR lighting on trails
-		float     trail_roughness_ = 0.3f;
-		float     trail_metallic_ = 0.0f;
-		float     roughness_ = 0.5f;
-		float     metallic_ = 0.0f;
-		bool      use_pbr_ = false;
 		bool      orient_to_velocity_ = false;
 
 		// Path following
@@ -226,6 +163,7 @@ namespace Boidsish {
 		}
 
 		std::shared_ptr<Shape> GetShape() const override { return shape_; }
+		std::shared_ptr<ShapeType> GetTypedShape() const { return shape_; }
 
 		void SetOrientation(glm::quat orientation) { rigid_body_.SetOrientation(orientation); }
 
@@ -234,18 +172,7 @@ namespace Boidsish {
 				return;
 			shape_->SetId(id_);
 			shape_->SetPosition(GetXPos(), GetYPos(), GetZPos());
-			shape_->SetColor(color_[0], color_[1], color_[2], color_[3]);
-			shape_->SetTrailLength(trail_length_);
-			shape_->SetTrailIridescence(trail_iridescent_);
-			shape_->SetTrailRocket(trail_rocket_); // Propagate rocket trail state
-			shape_->SetTrailPBR(trail_pbr_);       // Propagate PBR trail state
-			shape_->SetTrailRoughness(trail_roughness_);
-			shape_->SetTrailMetallic(trail_metallic_);
-			shape_->SetRoughness(roughness_);
-			shape_->SetMetallic(metallic_);
-			shape_->SetUsePBR(use_pbr_);
 			shape_->SetRotation(rigid_body_.GetOrientation());
-			shape_->SetSize(size_);
 		}
 
 	protected:

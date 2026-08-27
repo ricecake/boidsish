@@ -13,7 +13,7 @@ namespace Boidsish {
 	Swooper::Swooper(int id, Vector3 pos): Entity<Model>(id, "assets/dogplane.obj", true) {
 		SetPosition(pos);
 		shape_->SetScale(glm::vec3(3.5f));
-		SetColor(0.2f, 0.2f, 0.8f); // Bluish
+		GetShape()->SetColor(0.2f, 0.2f, 0.8f); // Bluish
 		SetOrientToVelocity(true);
 
 		std::dynamic_pointer_cast<Model>(shape_)->SetBaseRotation(

@@ -21,7 +21,7 @@ namespace Boidsish {
 		owner_id_(owner_id) {
 		shape_->SetStyle(Line::Style::LASER);
 		SetPosition(pos);
-		SetTrailLength(0); // Remove long lingering trails
+		GetShape()->SetTrailLength(0); // Remove long lingering trails
 		rigid_body_.SetLinearVelocity(velocity);
 		rigid_body_.SetOrientation(orientation);
 		rigid_body_.linear_friction_ = 0.0f;

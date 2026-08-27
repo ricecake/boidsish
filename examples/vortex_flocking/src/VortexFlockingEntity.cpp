@@ -8,8 +8,8 @@
 namespace Boidsish {
 
 	VortexFlockingEntity::VortexFlockingEntity(int id): Entity(id) {
-		SetSize(5.0f);
-		SetTrailLength(30);
+		GetShape()->SetSize(5.0f);
+		GetShape()->SetTrailLength(30);
 	}
 
 	void VortexFlockingEntity::UpdateEntity(const EntityHandler& handler, float time, float delta_time) {
@@ -109,7 +109,7 @@ namespace Boidsish {
 		// Update color based on speed
 		float speed = GetVelocity().Magnitude();
 		float color_mix = std::min(1.0f, dist_to_com / 40.0f);
-		SetColor(0.2f + color_mix * 0.8f, 1.0f - speed / max_speed, 0.8f, 1.0f);
+		GetShape()->SetColor(0.2f + color_mix * 0.8f, 1.0f - speed / max_speed, 0.8f, 1.0f);
 	}
 
 } // namespace Boidsish

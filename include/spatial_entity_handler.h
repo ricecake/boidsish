@@ -14,26 +14,32 @@
 
 namespace Boidsish {
 
-	class SpatialEntityHandler: public EntityHandler {
+	/**
+	 * @brief SpatialComponent acts as a spatial indexing plugin/wrapper for managing entity spatial relationships.
+	 */
+	class SpatialComponent {
 	public:
-		SpatialEntityHandler(
-			task_thread_pool::task_thread_pool& thread_pool,
-			std::shared_ptr<Visualizer>         visualizer = nullptr
-		);
+		SpatialComponent() = default;
+		~SpatialComponent() = default;
 
-		virtual ~SpatialEntityHandler();
+		SpatialStructure&       GetStructure() { return spatial_structure_; }
+		const SpatialStructure& GetStructure() const { return spatial_structure_; }
 
-		void AddEntity(int id, std::shared_ptr<EntityBase> entity) override {
-			EntityHandler::AddEntity(id, entity);
+		void OnAddEntity(std::shared_ptr<EntityBase> entity) {
 			spatial_structure_.BufferAdd(entity);
 		}
 
-		void RemoveEntity(int id) override {
-			EntityHandler::RemoveEntity(id);
+		void OnRemoveEntity(int id) {
 			spatial_structure_.BufferRemove(id);
 		}
 
-		using EntityHandler::AddEntity;
+		void OnEntityUpdated(std::shared_ptr<EntityBase> entity) {
+			spatial_structure_.BufferUpdate(entity);
+		}
+
+		void UpdateSpatialIndexes() {
+			spatial_structure_.ProcessBufferedUpdates();
+		}
 
 		template <typename T>
 		std::vector<std::shared_ptr<T>> GetEntitiesInRadius(const Vector3& center, float radius) const {
@@ -61,7 +67,6 @@ namespace Boidsish {
 			float          expansion_factor = 2.0f,
 			int            max_expansions = 10
 		) const {
-			(void)initial_radius;
 			(void)expansion_factor;
 			(void)max_expansions;
 
@@ -82,6 +87,56 @@ namespace Boidsish {
 			return nullptr;
 		}
 
+		bool Raycast(const Ray& ray, float& out_t, int& out_entity_id) const {
+			return spatial_structure_.Raycast(ray, out_t, out_entity_id);
+		}
+
+	private:
+		SpatialStructure spatial_structure_;
+	};
+
+	/**
+	 * @brief Entity handler subclass that delegates spatial indexing to a SpatialComponent plugin.
+	 */
+	class SpatialEntityHandler: public EntityHandler {
+	public:
+		SpatialEntityHandler(
+			task_thread_pool::task_thread_pool& thread_pool,
+			std::shared_ptr<Visualizer>         visualizer = nullptr
+		);
+
+		virtual ~SpatialEntityHandler();
+
+		void AddEntity(int id, std::shared_ptr<EntityBase> entity) override {
+			EntityHandler::AddEntity(id, entity);
+			spatial_component_.OnAddEntity(entity);
+		}
+
+		void RemoveEntity(int id) override {
+			EntityHandler::RemoveEntity(id);
+			spatial_component_.OnRemoveEntity(id);
+		}
+
+		using EntityHandler::AddEntity;
+
+		template <typename T>
+		std::vector<std::shared_ptr<T>> GetEntitiesInRadius(const Vector3& center, float radius) const {
+			return spatial_component_.GetEntitiesInRadius<T>(center, radius);
+		}
+
+		template <typename T>
+		std::shared_ptr<T> FindNearest(
+			const Vector3& center,
+			float          initial_radius = 1000.0f,
+			float          expansion_factor = 2.0f,
+			int            max_expansions = 10
+		) const {
+			return spatial_component_.FindNearest<T>(center, initial_radius, expansion_factor, max_expansions);
+		}
+
+		SpatialComponent&       GetSpatialComponent() { return spatial_component_; }
+		const SpatialComponent& GetSpatialComponent() const { return spatial_component_; }
+
 		/**
 		 * @brief BVH-accelerated raycasting against all entities.
 		 */
@@ -92,13 +147,13 @@ namespace Boidsish {
 		void PreTimestep(float time, float delta_time) override;
 
 		void OnEntityUpdated(std::shared_ptr<EntityBase> entity) override {
-			spatial_structure_.BufferUpdate(entity);
+			spatial_component_.OnEntityUpdated(entity);
 		}
 
 		void PostTimestep(float time, float delta_time) override;
 
 	private:
-		SpatialStructure spatial_structure_;
+		SpatialComponent spatial_component_;
 	};
 
 } // namespace Boidsish
