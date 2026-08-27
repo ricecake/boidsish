@@ -7,12 +7,16 @@ layout(location = 3) out vec4 AlbedoOut;
 
 in vec2 TexCoords;
 
+#define USE_TERRAIN_DATA
+#include "helpers/terrain_common.glsl"
 #include "helpers/lighting.glsl"
 #include "atmosphere/common.glsl"
 #include "helpers/fast_noise.glsl"
 #include "helpers/clouds.glsl"
 #include "helpers/astral.glsl"
 #include "visual_effects.glsl"
+
+layout(binding = [[TERRAIN_COLOR_BLEND_BINDING]]) uniform sampler3D u_terrainColorBlend;
 
 uniform mat4 invProjection;
 uniform mat4 invView;
@@ -103,50 +107,58 @@ void main() {
 		float cameraHeight = max(0.001 * worldScale, viewPos.y);
 		float t = -cameraHeight / world_ray.y;
 		vec3 intersectPos = viewPos + t * world_ray;
-		intersectPos.y = 0.0; // Force exact level with y=0
+		intersectPos.y = 0.0;
 		float dist = length(intersectPos.xz - viewPos.xz);
 
-		// --- Grid logic ---
-		float grid_spacing = 1.0;
-		vec2  coord = intersectPos.xz / grid_spacing;
-		vec2  f = max(fwidth(coord), vec2(0.0001));
+		// 1. Low cost noise SDF height
+		float noiseScale = 0.01 / worldScale;
+		float noiseHeight = fastWarpedFbm3d(vec3(intersectPos.xz * noiseScale, 0.0)) * 20.0 * worldScale;
 
-		vec2  grid_minor = abs(fract(coord - 0.5) - 0.5) / f;
-		float line_minor = min(grid_minor.x, grid_minor.y);
-		float C_minor = 1.0 - min(line_minor, 1.0);
+		// 2. Sample actual terrain surface & blend towards terrain height as camera gets closer
+		TerrainSurface terrainSurf = getTerrainSurface(intersectPos.xz);
+		float terrainBlend = 0.0;
+		if (terrainSurf.height > -9000.0) {
+			terrainBlend = 1.0 - smoothstep(100.0 * worldScale, 500.0 * worldScale, dist);
+		}
 
-		vec2  grid_major = abs(fract(coord / 5.0 - 0.5) - 0.5) / f;
-		float line_major = min(grid_major.x, grid_major.y);
-		float C_major = 1.0 - min(line_major, 1.0);
+		float finalHeight = mix(noiseHeight, terrainSurf.height, terrainBlend);
+		intersectPos.y = finalHeight;
 
-		float intensity = max(C_minor, C_major * 1.5);
-		// vec3  grid_color = vec3(0.0, 0.8, 0.8) * intensity;
-		vec3  grid_color = vec3(0.0, 0.8, 0.8) * intensity * 0.1*(1.0-smoothstep(2000, 200000, dist));
+		// 3. Compute surface normal
+		float delta = 0.5 * worldScale;
+		float hR = fastWarpedFbm3d(vec3((intersectPos.xz + vec2(delta, 0.0)) * noiseScale, 0.0)) * 20.0 * worldScale;
+		float hL = fastWarpedFbm3d(vec3((intersectPos.xz - vec2(delta, 0.0)) * noiseScale, 0.0)) * 20.0 * worldScale;
+		float hU = fastWarpedFbm3d(vec3((intersectPos.xz + vec2(0.0, delta)) * noiseScale, 0.0)) * 20.0 * worldScale;
+		float hD = fastWarpedFbm3d(vec3((intersectPos.xz - vec2(0.0, delta)) * noiseScale, 0.0)) * 20.0 * worldScale;
+		vec3 noiseNorm = normalize(vec3(hL - hR, 2.0 * delta, hD - hU));
 
-		// --- Plane lighting ---
-		vec3 norm = vec3(0.0, 1.0, 0.0);
-		vec3 surfaceColor = vec3(0.05, 0.05, 0.08);
+		vec3 norm = (terrainBlend > 0.0 && terrainSurf.height > -9000.0)
+			? normalize(mix(noiseNorm, terrainSurf.normal, terrainBlend))
+			: noiseNorm;
+
+		// 4. Sample 3D color palette from terrain
+		float heightNormalized = clamp(finalHeight / (100.0 * worldScale), 0.0, 1.0);
+		float moisture = 0.5;
+		float roughness = 0.8;
+		vec3 surfaceColor = texture(u_terrainColorBlend, vec3(heightNormalized, moisture, roughness)).rgb;
+
+		// 5. Apply PBR lighting
 		float primaryShadow;
-		// vec3 lighting = apply_lighting(intersectPos, norm, surfaceColor, 0.8, primaryShadow).rgb;
-		vec3 lighting = apply_lighting_pbr(intersectPos, norm, surfaceColor, 0.05, 0.9, 1.0, primaryShadow).rgb;
+		vec3 lighting = apply_lighting_pbr(intersectPos, norm, surfaceColor, roughness, 0.0, 1.0, primaryShadow).rgb;
 
-		// --- Combine colors ---
-		vec3 landscapeColor = lighting + grid_color;
-
-		// --- Distance Fade ---
+		// 6. Distance Fog / Horizon Sky blending
 		float fogFactor = clamp(exp(-dist / (3000.0 * worldScale)), 0.0, 1.0);
 
-		// Blend ground with atmospheric sky radiance at the horizon to prevent leakage of below-horizon scattering
 		vec3 horizonRay = normalize(vec3(world_ray.x, 0.0, world_ray.z));
 		vec3 horizonSkyRadiance = sampleSkyView(horizonRay);
-		vec3 finalColor = mix(horizonSkyRadiance, landscapeColor, fogFactor);
+		vec3 finalColor = mix(horizonSkyRadiance, lighting, fogFactor);
 
 		// Add lightning background pulse
 		vec3 localLightningEffect = lightningColor * lightningPulse * 0.35;
 		finalColor += localLightningEffect;
 
 		FragColor = vec4(finalColor, 1.0);
-		Velocity = vec4(0.0, 0.0, 0.8, 0.0); // Roughness 0.8, Metallic 0.0 (ground)
+		Velocity = vec4(0.0, 0.0, roughness, 0.0);
 		NormalOut = vec4(normalize(mat3(view) * norm), primaryShadow);
 		AlbedoOut = vec4(surfaceColor, 1.0);
 		return;
