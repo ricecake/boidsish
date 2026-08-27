@@ -138,7 +138,8 @@ void CalculateStochasticClusterLight(
 			float falloff = 1.0 / (1.0 + 0.01 * distToSegment + 0.0001 * distToSegment * distToSegment);
 			falloff *= smoothstep(emissiveRadius * 1.5, emissiveRadius * 0.5, distToSegment);
 
-			emissiveGlow += lights[j].color.rgb * lights[j].intensity * falloff;
+			float ridgeGlow = mix(1.0, 1.0 - weather.ridge, 0.5);
+			emissiveGlow += lights[j].color.rgb * lights[j].intensity * falloff * ridgeGlow;
 		}
 
 		if ((lights[j].flags & LIGHT_FLAG_CASTS_SHADOW) == 0 ||
@@ -407,6 +408,17 @@ vec3 EvaluateStepLighting(
 	vec3 skyAttenuation = 1.0 / (1.0 + downwardOD);
 
 	vec3 finalAmbient = ((ambientTop * skyAttenuation) + (ambientBottom * groundAttenuation)) * localAmbientVisibility;
+
+	if (lightningPulse > 0.001) {
+		float wavePos = clamp(1.0 - lightningPulse, 0.0, 1.0);
+		float ridgeDist = abs(weather.ridge - wavePos * 0.85);
+		float waveFront = exp(-ridgeDist * ridgeDist * 16.0);
+		float coreGlow = exp(-weather.ridge * 4.0 / max(0.1, lightningPulse));
+		float propagationGlow = (coreGlow * 0.7 + waveFront * 1.3) * lightningPulse;
+
+		emissiveGlow += lightningColor * propagationGlow * 12.0;
+	}
+
 	vec3 S = (stepScattering + (finalAmbient * powder)) * (uCloudAlbedo * sampleAlbedo) + emissiveGlow;
 
 	return S;

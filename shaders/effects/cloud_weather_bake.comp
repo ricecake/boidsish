@@ -56,13 +56,17 @@ float regionalFbm(vec2 p, float period) {
 	float val = 0.0;
 	float amp = 0.5;
 	float freq = 1.0;
+	vec2 g = vec2(0.0);
+	vec2 gsum = vec2(0.0);
 
 	WorleyData2D worleyDetails = worley2d_tiling_id(p * max(1.0, period * 0.25), max(1.0, period * 0.25));
-	float warpMag = 0.05 * posNoise(p, period);
+	float warpMag = 0.01 * posNoise(p, period);
 	vec2 warp = warpMag * normalize(p - worleyDetails.f1);
+
 	vec2 rPeriod = vec2(period);
 	for (int i = 0; i < 4; i++) {
-		val += amp * (0.5 + 0.5 * psrdnoise(mod(p+warp, rPeriod) * freq * rPeriod, rPeriod * freq));
+		val += amp * (0.5 + 0.5 * psrdnoise(mod(p+warp*gsum, rPeriod) * freq * rPeriod, rPeriod * freq, i * freq, g));
+		gsum += amp * g;
 		amp *= 0.5;
 		freq *= 2.0;
 	}
@@ -134,34 +138,41 @@ void main() {
 	HierarchicalWorleyData2D worleyDetails = hierarchicalWorleyTiled(p * period1, period1);
 	float worley = pow(worleyDetails.f1_dist, 1.0);
 
-	// float finalCoverage = macro;//remapClamp(macro, worley, 1.0, 0.0, 1.0);
 	float finalCoverage = remapClamp(macro, worley, 1.0, 0.0, 1.0);
 	finalCoverage = smaxCubic(finalCoverage, worley, 0.1);
 
-	WorleyData2D density = worley2d_tiling_id(uv * period2, period2);
-	WorleyData2D thickness = worley2d_tiling_id(uv * period3, period3);
 	WorleyData2D type = worley2d_tiling_id((uv + 0.25*macro) * period4, period4);
-	// HierarchicalWorleyData2D type = hierarchicalWorleyTiled((uv + 0.15*macro) * period4, period4);
-
 
 	float typeTransition = abs(type.f2_dist - type.f1_dist);
-	// float typeValue = mix(hash12Tile(type.f1, vec2(0.0)), hash12Tile(type.f2, vec2(0.0)), smoothstep(0, 0.85, typeTransition));
 	float typeValue = hash12Tile(type.f1, vec2(0.0));
 
 	finalCoverage = pow(finalCoverage, 1.0 + (1.0-smoothstep(0, 0.05, typeTransition)));
 
-	imageStore(outWeatherMap, pixel, vec4(finalCoverage, typeValue, 0, 1.0));
-	// imageStore(outWeatherMap, pixel, vec4(finalCoverage, schlickBias(finalCoverage, 0.2), 0, 1.0));
-	imageStore(outMinMaxMap, pixel, vec4(finalCoverage, finalCoverage, 0.0, 0.0));
+	float n1 = psrdnoise(uv * period2, vec2(period2));
+	float n2 = psrdnoise(uv * period3, vec2(period3));
+	float rawRidge = (1.0 - abs(n1)) * 0.7 + (1.0 - abs(n2)) * 0.3;
+	float f1Weight = clamp(worleyDetails.f1_dist / 0.7071, 0.0, 1.0);
+	float ridgeChannel = rawRidge * f1Weight;
 
-	// vec2 cellId = worleyDetails.yz;
-	// float cellID = psrdnoise(cellId, vec2(10.0)) * 0.5 + 0.5;
-	// float distInMeters = micro * cellRange;
-	// float distF1InMeters = worleyDetails.x * cellRange;
-	// // Record seed info if this is the pixel closest to the cell center (f1)
-	// vec2 f1Pixel = (cellId * cellRange) / mapRange * vec2(size);
-	// if (distance(vec2(pixel), f1Pixel) < 1.0) {
-	// 	int cellIdx = int(mod(floor(cellId.y), 10.0) * 10.0 + mod(floor(cellId.x), 10.0));
-	// 	seeds[cellIdx] = vec4(cellId.x * cellRange, cellId.y * cellRange, distInMeters, (finalCoverage > 0.0 ? 1.0 : 0.0));
-	// }
+	float squnchWorley = pow(worleyDetails.f1_dist, 1.2);
+	float lightning = remapClamp(ridgeChannel, squnchWorley, 1.0, 0, 1.0 - squnchWorley);
+
+	imageStore(outWeatherMap, pixel, vec4(finalCoverage, typeValue, lightning, macro));
+	imageStore(outMinMaxMap, pixel, vec4(finalCoverage, finalCoverage, macro, 1.0));
+
+	vec2 f1_uv = mod(worleyDetails.f1_pos / period1, vec2(1.0));
+	ivec2 f1Pixel = ivec2(floor(f1_uv * vec2(size)));
+
+	if (pixel == f1Pixel) {
+		int gx = int(floor(mod(worleyDetails.f1_pos.x, period1)));
+		int gy = int(floor(mod(worleyDetails.f1_pos.y, period1)));
+		int cellIdx = gy * 10 + gx;
+
+		if (cellIdx >= 0 && cellIdx < 100) {
+			float mapRange = 100000.0 * uWorldScale;
+			float worldX = f1_uv.x * mapRange;
+			float worldZ = f1_uv.y * mapRange;
+			seeds[cellIdx] = vec4(worldX, worldZ, 0.0, finalCoverage);
+		}
+	}
 }
