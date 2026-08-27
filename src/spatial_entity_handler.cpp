@@ -10,25 +10,35 @@ namespace Boidsish {
 
 	SpatialEntityHandler::~SpatialEntityHandler() = default;
 
-	void SpatialEntityHandler::PreTimestep(float time, float delta_time) {
-		(void)time;
-		(void)delta_time;
-
-		// Process all entity moves, additions, and removals from the previous frame into the grid
-		spatial_structure_.ProcessBufferedUpdates();
-	}
-
 	void SpatialEntityHandler::PostTimestep(float time, float delta_time) {
 		(void)time;
 		(void)delta_time;
+
+		// Collect all current entities
+		std::vector<std::shared_ptr<EntityBase>> entities;
+		auto all_entities = GetAllEntities();
+		entities.reserve(all_entities.size());
+		for (auto const& [id, entity] : all_entities) {
+			entities.push_back(entity);
+		}
+
+		// Rebuild the "next" implementation (write buffer)
+		next_bvh_.Update(entities);
+
+		// Swap it into the active implementation (read buffer)
+		std::unique_lock lock(bvh_mutex_);
+		bvh_.swap(next_bvh_);
 	}
 
 	std::shared_ptr<EntityBase>
 	SpatialEntityHandler::RaycastEntities(const Ray& ray, float& out_t, glm::vec3& out_hit_point) const {
 		int id = -1;
 
-		if (!spatial_structure_.Raycast(ray, out_t, id)) {
-			return nullptr;
+		{
+			std::shared_lock lock(bvh_mutex_);
+			if (!bvh_.Raycast(ray, out_t, id)) {
+				return nullptr;
+			}
 		}
 
 		auto entity = GetEntity(id);
