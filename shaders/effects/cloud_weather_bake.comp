@@ -58,7 +58,7 @@ float regionalFbm(vec2 p, float period) {
 	float freq = 1.0;
 
 	WorleyData2D worleyDetails = worley2d_tiling_id(p * max(1.0, period * 0.25), max(1.0, period * 0.25));
-	float warpMag = 0.5 * posNoise(p, period);
+	float warpMag = 0.05 * posNoise(p, period);
 	vec2 warp = warpMag * normalize(p - worleyDetails.f1);
 	vec2 rPeriod = vec2(period);
 	for (int i = 0; i < 4; i++) {

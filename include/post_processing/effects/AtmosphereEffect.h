@@ -355,7 +355,7 @@ namespace Boidsish {
 			float cloud_max_ray_distance_ = 175000.0f;
 			int   cloud_min_samples_ = 32;
 			int   cloud_max_samples_ = 96;
-			float cloud_extinction_ = 1.0f;
+			float cloud_extinction_ = 0.372f;
 			glm::vec3 cloud_extinction_color_ = glm::vec3(1.0f, 1.0f, 1.0f);
 			glm::vec3 cloud_albedo_ = glm::vec3(0.85f);
 			float cloud_temporal_gamma_ = 1.1f;

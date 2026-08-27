@@ -391,7 +391,8 @@ vec3 EvaluateStepLighting(
 
 	const float ambientExtinction = 1.0;
 	const float powderScale = 300.0;
-	vec3 powder = vec3(1.0) - exp(-stepDensity * powderScale);
+	// vec3 powder = vec3(1.0) - 1.0/(1.0+(stepDensity * powderScale));
+	vec3 powder = vec3(1.0) - 1.0/(1.0+(25*(stepDensity-0.00) * powderScale));
 	float sunHeight = max(primaryLightDir.y, 0.0);
 	float ambientScale = mix(0.3, 1.0, smoothstep(0.0, 0.3, sunHeight));
 
@@ -400,8 +401,10 @@ vec3 EvaluateStepLighting(
 
 	vec3 upwardOD = stepDensity * h_norm * weather.thickness;
 	vec3 downwardOD = stepDensity * (1.0 - h_norm) * weather.thickness;
-	vec3 groundAttenuation = exp(-upwardOD * ambientExtinction);
-	vec3 skyAttenuation = exp(-downwardOD * ambientExtinction);
+	// vec3 groundAttenuation = exp(-upwardOD * ambientExtinction);
+	// vec3 skyAttenuation = exp(-downwardOD * ambientExtinction);
+	vec3 groundAttenuation = 1.0 / (1.0 + upwardOD);
+	vec3 skyAttenuation = 1.0 / (1.0 + downwardOD);
 
 	vec3 finalAmbient = ((ambientTop * skyAttenuation) + (ambientBottom * groundAttenuation)) * localAmbientVisibility;
 	vec3 S = (stepScattering + (finalAmbient * powder)) * (uCloudAlbedo * sampleAlbedo) + emissiveGlow;
@@ -580,8 +583,8 @@ void main() {
 
 			if (i == 0 || abs(t - lastWeatherT) >= weatherUpdateInterval) {
 				weather = computeCloudWeather(p, props, currentLod);
-				lastWeatherT = t;
 				groundSH  = evalSHIrradianceSpatial(probePos, vec3(0.0, -1.0, 0.0));
+				lastWeatherT = t;
 			}
 
 			CloudDensityResult densityRes = calculateCloudDensity(p, weather, props, time, currentLod, false);
@@ -622,7 +625,6 @@ void main() {
 
 				if (any(greaterThan(d, vec3(0.000))) || any(greaterThan(prevDensity, vec3(0.000)))) {
 					vec3 averageDensity = (prevDensity + d) * 0.5;
-					vec3 rgbExtinction = uCloudExtinctionColor * uCloudExtinction;
 					vec3 stepDensity = averageDensity * rgbExtinction;
 					vec3 stepOpticalDepth = averageDensity * integrationStep * rgbExtinction;
 					vec3 transmittanceAtStep = exp(-stepOpticalDepth);
