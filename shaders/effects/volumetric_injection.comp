@@ -182,12 +182,14 @@ void main() {
         // Consolidate shadow checks: Cloud shadow is a fast texture lookup, so check it first.
         float shadow = calculateCloudShadow(i, worldPos);
         if (shadow > 0.0) {
-            // Check CSM shadow maps (which now contain terrain, decor, and scene shapes).
-            float csmShadow = calculateShadowVolumetric(i, worldPos, L);
-            shadow = min(shadow, csmShadow);
+            bool inCSMBounds = false;
+            float csmShadow = calculateShadowVolumetric(i, worldPos, L, inCSMBounds);
 
-            // Fallback to terrain DDA raymarch if beyond CSM shadow map bounds
-            if (csmShadow >= 0.99) {
+            if (inCSMBounds) {
+                // Point is inside CSM bounds (which contains terrain, decor, and shapes)
+                shadow = min(shadow, csmShadow);
+            } else {
+                // Point is outside CSM bounds, fallback to terrain DDA raymarch
                 shadow = min(shadow, terrainShadowVolumetric(worldPos, L));
             }
         }
