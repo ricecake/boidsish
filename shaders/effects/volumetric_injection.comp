@@ -182,12 +182,14 @@ void main() {
         // Consolidate shadow checks: Cloud shadow is a fast texture lookup, so check it first.
         float shadow = calculateCloudShadow(i, worldPos);
         if (shadow > 0.0) {
-            // Use the volumetric-optimized terrain shadow DDA march for terrain.
-            shadow = min(shadow, terrainShadowVolumetric(worldPos, L));
+            // Check CSM shadow maps (which now contain terrain, decor, and scene shapes).
+            float csmShadow = calculateShadowVolumetric(i, worldPos, L);
+            shadow = min(shadow, csmShadow);
 
-            // Check shadow maps for scene objects (buildings, entities).
-            // We use the version that skips redundant terrain raycasts for efficiency.
-            shadow = min(shadow, calculateShadowVolumetric(i, worldPos, L));
+            // Fallback to terrain DDA raymarch if beyond CSM shadow map bounds
+            if (csmShadow >= 0.99) {
+                shadow = min(shadow, terrainShadowVolumetric(worldPos, L));
+            }
         }
 
         if (i == 0) {

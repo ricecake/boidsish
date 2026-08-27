@@ -340,6 +340,27 @@ float sampleDeepOpacityMap(vec2 shadowUV, float h, float lod) {
 	}
 }
 
+float sampleDeepOpacityMapFiltered(vec2 shadowUV, float h, float softness) {
+	if (softness <= 0.01) {
+		return sampleDeepOpacityMap(shadowUV, h, 0.0);
+	}
+	float lod = clamp((softness - 1.0) * 1.25, 0.0, 4.0);
+	vec2 texelSize = 1.0 / vec2(textureSize(u_cloudShadowTexture, 0).xy);
+	float radius = softness * 1.25;
+	float sum = 0.0;
+	float weights = 0.0;
+
+	for (int x = -1; x <= 1; ++x) {
+		for (int y = -1; y <= 1; ++y) {
+			vec2 offset = vec2(x, y) * texelSize * radius;
+			float w = (x == 0 && y == 0) ? 2.0 : 1.0;
+			sum += sampleDeepOpacityMap(shadowUV + offset, h, lod) * w;
+			weights += w;
+		}
+	}
+	return sum / weights;
+}
+
 /**
  * Calculate cloud shadow factor for a fragment position using the deep opacity map.
  */
@@ -362,7 +383,7 @@ float calculateCloudShadowFactor(vec3 frag_pos, vec3 L, float intensity) {
 	float h = getCloudRelativeHeight(frag_pos, weather);
 
 	// Scale accumulated density by a physical factor (0.02) to match average extinction values and keep shadows soft/realistic
-	float accumulatedDensity = sampleDeepOpacityMap(shadowUV, h, 0.0) * 0.001 * cloudShadowOpticalDepthMultiplier / max(0.001, worldScale);
+	float accumulatedDensity = sampleDeepOpacityMapFiltered(shadowUV, h, shadowSoftness) * 0.001 * cloudShadowOpticalDepthMultiplier / max(0.001, worldScale);
 	float shadowTerm = exp(-accumulatedDensity);
 
 	return mix(1.0, shadowTerm, intensity);
