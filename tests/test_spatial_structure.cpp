@@ -61,7 +61,7 @@ TEST(SpatialEntityHandlerTest, Raycast) {
 
     auto id = handler.AddEntity<TestEntity>(Vector3(10, 0, 0));
     auto entity = handler.GetEntity(id);
-    entity->SetSize(2.0f); // Sphere radius 1.0
+    entity->GetShape()->SetSize(100.0f); // Dot size 100 * 0.01 size multiplier = radius 1.0
 
     handler.operator()(1.0f);
 

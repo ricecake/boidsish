@@ -15,7 +15,7 @@ namespace Boidsish {
 		(void)delta_time;
 
 		// Process all entity moves, additions, and removals from the previous frame into the grid
-		spatial_structure_.ProcessBufferedUpdates();
+		spatial_component_.UpdateSpatialIndexes();
 	}
 
 	void SpatialEntityHandler::PostTimestep(float time, float delta_time) {
@@ -27,7 +27,7 @@ namespace Boidsish {
 	SpatialEntityHandler::RaycastEntities(const Ray& ray, float& out_t, glm::vec3& out_hit_point) const {
 		int id = -1;
 
-		if (!spatial_structure_.Raycast(ray, out_t, id)) {
+		if (!spatial_component_.Raycast(ray, out_t, id)) {
 			return nullptr;
 		}
 
