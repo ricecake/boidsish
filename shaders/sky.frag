@@ -8,7 +8,7 @@ layout(location = 3) out vec4 AlbedoOut;
 in vec2 TexCoords;
 
 #define USE_TERRAIN_DATA
-#include "helpers/terrain_common.glsl"
+#include "helpers/terrain_shadows.glsl"
 #include "helpers/lighting.glsl"
 #include "atmosphere/common.glsl"
 #include "helpers/fast_noise.glsl"
