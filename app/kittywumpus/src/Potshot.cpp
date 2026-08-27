@@ -14,7 +14,7 @@ namespace Boidsish {
 	Potshot::Potshot(int id, Vector3 pos): Entity<Model>(id, "assets/smolbird.fbx", true) {
 		SetPosition(pos);
 		shape_->SetScale(glm::vec3(5.0f));
-		SetColor(0.2f, 0.8f, 0.2f); // Greenish
+		GetShape()->SetColor(0.2f, 0.8f, 0.2f); // Greenish
 		SetOrientToVelocity(true);
 	}
 

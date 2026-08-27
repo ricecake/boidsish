@@ -16,10 +16,10 @@ using namespace Boidsish;
 class PlayerEntity: public Entity<Dot> {
 public:
 	PlayerEntity(int id): Entity<Dot>(id) {
-		SetSize(2.0f);
-		SetColor(1.0f, 1.0f, 1.0f);
-		SetTrailLength(100);
-		SetTrailIridescence(true);
+		GetShape()->SetSize(2.0f);
+		GetShape()->SetColor(1.0f, 1.0f, 1.0f);
+		GetShape()->SetTrailLength(100);
+		GetShape()->SetTrailIridescence(true);
 	}
 
 	void UpdateEntity(const EntityHandler& /*handler*/, float /*time*/, float /*delta_time*/) override {

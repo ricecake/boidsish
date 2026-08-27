@@ -17,7 +17,7 @@ namespace Boidsish {
 		auto netVelocity = glm::vec3(vel.x, vel.y, vel.z) + 0.5f * glm::normalize(glm::vec3(dir.x, dir.y, dir.z));
 		SetVelocity(netVelocity.x, netVelocity.y, netVelocity.z);
 
-		SetTrailLength(50);
+		GetShape()->SetTrailLength(50);
 		shape_->SetScale(glm::vec3(0.01f));
 		std::dynamic_pointer_cast<Model>(shape_)->SetBaseRotation(
 			glm::angleAxis(glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f))
@@ -61,7 +61,7 @@ namespace Boidsish {
 		exploded_ = true;
 		lived_ = 0.0f;
 		SetVelocity(Vector3(0, 0, 0));
-		SetTrailLength(0);
+		GetShape()->SetTrailLength(0);
 	}
 
 } // namespace Boidsish

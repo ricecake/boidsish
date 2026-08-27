@@ -61,8 +61,8 @@ namespace Boidsish {
 		glm::vec3 world_eject = orientation * dir;
 		rigid_body_.SetLinearVelocity(glm::vec3(vel.x, vel.y, vel.z) + (5.0f * world_eject));
 
-		SetTrailLength(0);
-		SetTrailRocket(false);
+		GetShape()->SetTrailLength(0);
+		GetShape()->SetTrailRocket(false);
 		shape_->SetScale(glm::vec3(0.05f));
 		std::dynamic_pointer_cast<Model>(shape_)->SetBaseRotation(
 			glm::angleAxis(glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f))
@@ -101,8 +101,8 @@ namespace Boidsish {
 		}
 
 		if (!fired_) {
-			SetTrailLength(300);
-			SetTrailRocket(true);
+			GetShape()->SetTrailLength(300);
+			GetShape()->SetTrailRocket(true);
 			handler.EnqueueVisualizerAction([this, &handler, pos]() {
 				this->launch_sound_ =
 					handler.vis->AddSoundEffect("assets/rocket.wav", pos.Toglm(), GetVelocity().Toglm(), 10.0f);

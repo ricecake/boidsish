@@ -8,9 +8,9 @@ namespace Boidsish {
 
 	VectorDemoEntity::VectorDemoEntity(int id, const Vector3& start_pos): Entity<>(id), phase_(0.0f) {
 		SetPosition(start_pos);
-		SetSize(10.0f);
-		SetTrailLength(100);
-		SetTrailIridescence(false);
+		GetShape()->SetSize(10.0f);
+		GetShape()->SetTrailLength(100);
+		GetShape()->SetTrailIridescence(false);
 	}
 
 	void VectorDemoEntity::UpdateEntity(const EntityHandler& handler, float time, float delta_time) {
@@ -27,7 +27,7 @@ namespace Boidsish {
 			auto distance_to_target = to_target.Magnitude();
 			if (distance_to_target <= 0.4f) {
 				SetVelocity(3 * to_target);
-				SetColor(1.0f, 0, 0, 1.0f);
+				GetShape()->SetColor(1.0f, 0, 0, 1.0f);
 
 				hunger_time -= targetInstance->GetValue() / 100 * hunger_time;
 				hunger_time = std::max(0.0f, hunger_time);
@@ -92,8 +92,8 @@ namespace Boidsish {
 		float r = 0.5f + 0.5f * std::abs(vel_normalized.x);
 		float g = 0.5f + 0.5f * std::abs(vel_normalized.y);
 		float b = 0.5f + 0.3f * (speed / 5.0f); // Blue based on speed
-		SetColor(r, g, b, 1.0f);
-		SetTrailLength(2 * energy);
+		GetShape()->SetColor(r, g, b, 1.0f);
+		GetShape()->SetTrailLength(2 * energy);
 	}
 
 } // namespace Boidsish

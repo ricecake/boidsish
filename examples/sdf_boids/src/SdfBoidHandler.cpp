@@ -10,11 +10,11 @@ namespace Boidsish {
 
 	SdfBoid::SdfBoid(int id, bool predator): Entity<Dot>(id), is_predator_(predator) {
 		if (predator) {
-			SetColor(1.0f, 0.1f, 0.1f);
-			SetSize(12.0f);
+			GetShape()->SetColor(1.0f, 0.1f, 0.1f);
+			GetShape()->SetSize(12.0f);
 		} else {
-			SetColor(0.2f, 0.6f, 1.0f);
-			SetSize(8.0f);
+			GetShape()->SetColor(0.2f, 0.6f, 1.0f);
+			GetShape()->SetSize(8.0f);
 		}
 	}
 

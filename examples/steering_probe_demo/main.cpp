@@ -28,11 +28,11 @@ struct DemoInput {
 class DemoPlayer: public Entity<Dot> {
 public:
 	DemoPlayer(int id): Entity<Dot>(id) {
-		SetSize(20.0f);
-		SetColor(0.0f, 0.8f, 1.0f);
+		GetShape()->SetSize(20.0f);
+		GetShape()->SetColor(0.0f, 0.8f, 1.0f);
 		orientation_ = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
 		forward_speed_ = 40.0f;
-		SetTrailLength(100);
+		GetShape()->SetTrailLength(100);
 	}
 
 	void UpdateEntity(const EntityHandler& /*handler*/, float /*time*/, float delta_time) override {

@@ -11,8 +11,8 @@ namespace Boidsish {
 
 	RedDotEnemy::RedDotEnemy(int id, Vector3 pos) : Entity<Dot>(id) {
 		SetPosition(pos);
-		SetSize(470.0f); // Half the size of SteeringProbe dot
-		SetColor(1.0f, 0.0f, 0.0f); // Red
+		GetShape()->SetSize(470.0f); // Half the size of SteeringProbe dot
+		GetShape()->SetColor(1.0f, 0.0f, 0.0f); // Red
 		PickHoverOffset();
 	}
 
@@ -31,7 +31,7 @@ namespace Boidsish {
 			float t = glm::clamp(death_timer_ / kDeathDuration, 0.0f, 1.0f);
 
 			// Turn black
-			SetColor(1.0f - t, 0.0f, 0.0f);
+			GetShape()->SetColor(1.0f - t, 0.0f, 0.0f);
 
 			if (death_timer_ >= kDeathDuration) {
 				auto pos = GetPosition().Toglm();

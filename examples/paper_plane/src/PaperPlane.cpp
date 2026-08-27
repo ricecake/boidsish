@@ -20,12 +20,12 @@ namespace Boidsish {
 		rigid_body_.linear_friction_ = 0.01f;
 		rigid_body_.angular_friction_ = 0.01f;
 
-		// SetSize(0.1f);
-		SetTrailLength(10);
+		// GetShape()->SetSize(0.1f);
+		GetShape()->SetTrailLength(10);
 		// shape_->SetTrailThickness(0.001f);
-		SetTrailIridescence(true);
+		GetShape()->SetTrailIridescence(true);
 
-		SetColor(1.0f, 0.5f, 0.0f);
+		GetShape()->SetColor(1.0f, 0.5f, 0.0f);
 		shape_->SetScale(glm::vec3(0.04f));
 		std::dynamic_pointer_cast<Model>(shape_)->SetBaseRotation(
 			glm::angleAxis(glm::radians(-180.0f), glm::vec3(0.0f, 1.0f, 0.0f))
@@ -70,7 +70,7 @@ namespace Boidsish {
 				if (super_speed_timer_ <= 0.0f) {
 					super_speed_state_ = SuperSpeedState::ACTIVE;
 					super_speed_intensity_ = 5.0f;
-					SetTrailRocket(true);
+					GetShape()->SetTrailRocket(true);
 					handler.EnqueueVisualizerAction([&handler]() { handler.vis->SetCameraShake(0.5f, 10.0f); });
 				}
 				// While building up, plane slows down
@@ -79,7 +79,7 @@ namespace Boidsish {
 		} else {
 			if (super_speed_state_ == SuperSpeedState::ACTIVE || super_speed_state_ == SuperSpeedState::BUILDUP) {
 				super_speed_state_ = SuperSpeedState::TAPERING;
-				SetTrailRocket(false);
+				GetShape()->SetTrailRocket(false);
 				handler.EnqueueVisualizerAction([&handler]() { handler.vis->SetCameraShake(0.0f, 0.0f); });
 			}
 

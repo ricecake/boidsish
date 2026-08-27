@@ -26,9 +26,9 @@ public:
 	BlobBoid(int id, std::shared_ptr<DelaunayBlob> blob, int point_id):
 		Entity<Dot>(id), blob_(blob), point_id_(point_id) {
 		// Small visualization dot at the control point
-		SetSize(0.5f);
-		SetColor(1.0f, 0.3f, 0.1f);
-		SetTrailLength(0); // No trails for cleaner look
+		GetShape()->SetSize(0.5f);
+		GetShape()->SetColor(1.0f, 0.3f, 0.1f);
+		GetShape()->SetTrailLength(0); // No trails for cleaner look
 		                   // SetHidden(true);    // Hide the dots, just show the blob
 	}
 

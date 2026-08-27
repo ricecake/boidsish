@@ -13,7 +13,7 @@ namespace Boidsish {
 		Entity<Line>(id, glm::vec3(0.0f), glm::vec3(0.0f), kAimingWidth), owner_id_(owner_id) {
 		shape_->SetStyle(Line::Style::LASER);
 		shape_->SetHidden(true);
-		SetSize(0.0f);                 // Disable physical collision radius
+		GetShape()->SetSize(0.0f);                 // Disable physical collision radius
 		SetVelocity(Vector3(0, 0, 0)); // Ensure no physical movement
 	}
 

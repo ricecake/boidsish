@@ -12,8 +12,8 @@ namespace Boidsish {
 		auto start_pos = fruitPlacer(6);
 		start_pos.y += 8;
 		SetPosition(start_pos);
-		SetTrailLength(0);
-		SetColor(1, 0.36f, 1);
+		GetShape()->SetTrailLength(0);
+		GetShape()->SetColor(1, 0.36f, 1);
 		SetVelocity(Vector3(0, 1, 0));
 		phase_ = start_pos.Magnitude();
 	}
@@ -23,7 +23,7 @@ namespace Boidsish {
 
 		auto value_modifier = (sin((4 * phase_) / 8) + 1) / 2;
 		value = value_modifier * 100;
-		SetSize(4 + 12 * value_modifier);
+		GetShape()->SetSize(4 + 12 * value_modifier);
 
 		if (value < 0) {
 			handler.QueueAddEntity<FruitEntity>();

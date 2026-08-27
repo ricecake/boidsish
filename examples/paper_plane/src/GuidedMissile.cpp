@@ -84,8 +84,8 @@ namespace Boidsish {
 		rigid_body_.SetAngularVelocity(glm::vec3(0, 0, 0));
 		rigid_body_.SetLinearVelocity(glm::vec3(0, 0, -100));
 
-		SetTrailLength(100);
-		SetTrailRocket(true);
+		GetShape()->SetTrailLength(100);
+		GetShape()->SetTrailRocket(true);
 		shape_->SetScale(glm::vec3(0.08f));
 		std::dynamic_pointer_cast<Model>(shape_)->SetBaseRotation(
 			glm::angleAxis(glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f))

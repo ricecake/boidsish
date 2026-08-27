@@ -22,10 +22,10 @@ KittywumpusPlane::KittywumpusPlane(int id):
 	rigid_body_.linear_friction_ = 0.01f;
 	rigid_body_.angular_friction_ = 0.01f;
 
-	SetTrailLength(10);
-	SetTrailIridescence(true);
+	GetShape()->SetTrailLength(10);
+	GetShape()->SetTrailIridescence(true);
 
-	SetColor(1.0f, 0.5f, 0.0f);
+	GetShape()->SetColor(1.0f, 0.5f, 0.0f);
 	shape_->SetScale(glm::vec3(0.04f));
 	std::dynamic_pointer_cast<Model>(shape_)->SetBaseRotation(
 		glm::angleAxis(glm::radians(-180.0f), glm::vec3(0.0f, 1.0f, 0.0f))
@@ -68,7 +68,7 @@ void KittywumpusPlane::BeginLanding() {
 	if (shape_) {
 		shape_->SetHidden(true);
 	}
-	SetTrailLength(0);
+	GetShape()->SetTrailLength(0);
 }
 
 void KittywumpusPlane::BeginTakeoff(float yaw_degrees, Visualizer& viz) {
@@ -156,7 +156,7 @@ void KittywumpusPlane::BeginTakeoff(float yaw_degrees, Visualizer& viz) {
 	if (shape_) {
 		shape_->SetHidden(false);
 	}
-	SetTrailLength(10);
+	GetShape()->SetTrailLength(10);
 }
 
 void KittywumpusPlane::SetLandedPosition(const glm::vec3& pos) {
@@ -208,7 +208,7 @@ void KittywumpusPlane::UpdateEntity(const EntityHandler& handler, float time, fl
 			if (super_speed_timer_ <= 0.0f) {
 				super_speed_state_ = SuperSpeedState::ACTIVE;
 				super_speed_intensity_ = 5.0f;
-				SetTrailRocket(true);
+				GetShape()->SetTrailRocket(true);
 				handler.EnqueueVisualizerAction([&handler]() { handler.vis->SetCameraShake(0.5f, 10.0f); });
 			}
 			forward_speed_ = glm::mix(forward_speed_, 0.0f, 1.0f - exp(-delta_time * 5.0f));
@@ -216,7 +216,7 @@ void KittywumpusPlane::UpdateEntity(const EntityHandler& handler, float time, fl
 	} else {
 		if (super_speed_state_ == SuperSpeedState::ACTIVE || super_speed_state_ == SuperSpeedState::BUILDUP) {
 			super_speed_state_ = SuperSpeedState::TAPERING;
-			SetTrailRocket(false);
+			GetShape()->SetTrailRocket(false);
 			handler.EnqueueVisualizerAction([&handler]() { handler.vis->SetCameraShake(0.0f, 0.0f); });
 		}
 
@@ -580,8 +580,8 @@ void KittywumpusPlane::ResetState() {
 	if (shape_) {
 		shape_->SetHidden(false);
 	}
-	SetTrailLength(10);
-	SetTrailRocket(false);
+	GetShape()->SetTrailLength(10);
+	GetShape()->SetTrailRocket(false);
 }
 
 } // namespace Boidsish
