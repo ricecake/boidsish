@@ -288,12 +288,20 @@ void main() {
 	if (pixel.x >= size.x || pixel.y >= size.y) return;
 
 	vec2 uv = (vec2(pixel) + 0.5) / vec2(size);
-	ivec2 bayer_offsets[4] = ivec2[](ivec2(0, 0), ivec2(1, 1), ivec2(1, 0), ivec2(0, 1));
-	ivec2 current_offset = bayer_offsets[frameIndex % 4];
-	bool is_new_pixel = (pixel % 2) == current_offset;
 
-	ivec2 packedPixel = pixel / 2;
 	vec2 packedSize = vec2(textureSize(uPackedVelocity, 0));
+	int scaleFactor = max(1, int(round(float(size.x) / packedSize.x)));
+
+	ivec2 current_offset = ivec2(0);
+	if (scaleFactor > 1) {
+		int numCells = scaleFactor * scaleFactor;
+		int frameMod = frameIndex % numCells;
+		current_offset = ivec2(frameMod % scaleFactor, frameMod / scaleFactor);
+	}
+
+	bool is_new_pixel = (scaleFactor == 1) || ((pixel % scaleFactor) == current_offset);
+
+	ivec2 packedPixel = pixel / scaleFactor;
 	vec2 packedTexelSize = 1.0 / packedSize;
 	vec2 velocity = getDilatedVelocity_Thresholded(uv, packedTexelSize);
 	vec2 prevUV = uv + velocity;

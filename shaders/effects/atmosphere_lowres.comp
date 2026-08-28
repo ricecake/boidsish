@@ -438,16 +438,19 @@ void main() {
 	if (packedPixel.x >= packedSize.x || packedPixel.y >= packedSize.y)
 		return;
 
-	// 2x2 Bayer pattern for interleaving
-	ivec2 bayer_offsets[4] = ivec2[](
-		ivec2(0, 0),
-		ivec2(1, 1),
-		ivec2(1, 0),
-		ivec2(0, 1)
-	);
-	ivec2 offset = bayer_offsets[frameIndex % 4];
-	ivec2 fullResPixel = packedPixel * 2 + offset;
-	ivec2 fullResSize = packedSize * 2;
+	// Dynamically determine scale factor from packed vs full-res texture sizes
+	ivec2 depthSize = textureSize(depthTexture, 0);
+	int scaleFactor = max(1, int(round(float(depthSize.x) / float(packedSize.x))));
+
+	ivec2 offset = ivec2(0);
+	if (scaleFactor > 1) {
+		int numCells = scaleFactor * scaleFactor;
+		int frameMod = frameIndex % numCells;
+		offset = ivec2(frameMod % scaleFactor, frameMod / scaleFactor);
+	}
+
+	ivec2 fullResPixel = packedPixel * scaleFactor + offset;
+	ivec2 fullResSize = depthSize;
 
 	vec2 TexCoords = (vec2(fullResPixel) + 0.5) / vec2(fullResSize);
 
