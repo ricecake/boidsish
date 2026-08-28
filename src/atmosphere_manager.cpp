@@ -156,8 +156,8 @@ namespace Boidsish {
 				float densityGrad = glm::mix(cumulonimbus, cumulus, glm::smoothstep(0.0f, 0.5f, type));
 				densityGrad = glm::mix(densityGrad, stratus, glm::smoothstep(0.5f, 1.0f, type));
 
-				// G: Anvil bias
-				float anvilBiasCb = glm::mix(0.5f, 0.85f, glm::smoothstep(0.6f, 0.9f, h));
+				// G: Anvil bias (enhanced top spread for cumulonimbus clouds)
+				float anvilBiasCb = glm::mix(0.5f, 1.0f, glm::smoothstep(0.5f, 0.95f, h));
 				float anvilBiasCu = 0.5f;
 				float anvilBiasSt = 0.1f;
 				float anvilBias = glm::mix(anvilBiasCb, anvilBiasCu, glm::smoothstep(0.0f, 0.5f, type));
