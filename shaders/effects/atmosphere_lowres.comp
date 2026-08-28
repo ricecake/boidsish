@@ -445,8 +445,24 @@ void main() {
 	ivec2 offset = ivec2(0);
 	if (scaleFactor > 1) {
 		int numCells = scaleFactor * scaleFactor;
-		int frameMod = frameIndex % numCells;
-		offset = ivec2(frameMod % scaleFactor, frameMod / scaleFactor);
+		int step = frameIndex % numCells;
+		int x = 0;
+		int y = 0;
+		int tempFactor = scaleFactor;
+		int bits = 0;
+		while (tempFactor > 1) {
+			bits++;
+			tempFactor >>= 1;
+		}
+		for (int i = 0; i < bits; i++) {
+			int shift = bits - 1 - i;
+			int bitPair = (step >> (2 * shift)) & 3;
+			int bx = (bitPair == 1 || bitPair == 2) ? 1 : 0;
+			int by = (bitPair == 1 || bitPair == 3) ? 1 : 0;
+			x = (x << 1) | bx;
+			y = (y << 1) | by;
+		}
+		offset = ivec2(x, y);
 	}
 
 	ivec2 fullResPixel = packedPixel * scaleFactor + offset;
