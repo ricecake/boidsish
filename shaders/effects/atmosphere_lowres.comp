@@ -528,7 +528,7 @@ void main() {
 
 	for (int y = -1; y <= 1; y++) {
 		for (int x = -1; x <= 1; x++) {
-			ivec2 samplePixel = clamp(packedPixel + ivec2(x, y), ivec2(0), boundingSize - 1);
+			ivec2 samplePixel = clamp(fullResPixel + ivec2(x, y), ivec2(0), boundingSize - 1);
 			vec4 b = texelFetch(u_cloudMinMaxBoundingTexture, samplePixel, 0);
 
 			if (b.r >= 0.0) {

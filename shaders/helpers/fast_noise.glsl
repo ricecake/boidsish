@@ -23,20 +23,24 @@ uniform sampler3D u_extraNoiseTexture;
 uniform sampler2D u_phasorTexture;
 #endif
 
-float dot_noise(vec3 p) {
-	#ifndef PHI
-	#define PHI 1.618033988749894848204586834
-	#endif
+float dot_noise(vec3 p, float phase) {
+    #ifndef PHI
+    #define PHI 1.618033988749894848204586834
+    #endif
 
-    //Rotating the golden angle on the vec3(1, phi, phi*phi) axis
     const mat3 GOLD = mat3(
     -0.571464913, +0.814921382, +0.096597072,
     -0.278044873, -0.303026659, +0.911518454,
     +0.772087367, +0.494042493, +0.399753815);
 
-    //Gyroid with irrational orientations and scales
-    return dot(cos(GOLD * p), sin(PHI * p * GOLD));
-    //Ranges from [-3 to +3]
+    vec3 rotated_p1 = GOLD * p;
+    vec3 rotated_p2 = PHI * p * GOLD;
+
+    // Offset the components differently so they animate out of phase
+    vec3 cos_phase = rotated_p1 + vec3(phase, phase * 1.3, phase * 1.7);
+    vec3 sin_phase = rotated_p2 + vec3(phase * 1.1, phase * 0.7, phase * 1.5);
+
+    return dot(cos(cos_phase), sin(sin_phase));
 }
 
 float dot_noise_fbm(vec3 p, float oct) {
@@ -45,7 +49,7 @@ float dot_noise_fbm(vec3 p, float oct) {
 	float freq = 1.0;
 	float max_amp = 0.0;
 	for (int i = 0; i < max(0, oct); i++) {
-		val += amp * dot_noise((p+(val/freq)) * freq);
+		val += amp * dot_noise((p+(val/freq)) * freq, 0.0);
 		max_amp += amp;
 		// val += amp * dot_noise(p * freq);
 		amp *= 0.5;

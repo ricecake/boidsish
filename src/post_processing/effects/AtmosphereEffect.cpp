@@ -314,7 +314,12 @@ namespace Boidsish {
 
 				temporal_shader_->use();
 				temporal_shader_->setMat4("invProjection", invProj);
+				temporal_shader_->setMat4("uPrevViewProjection", prev_view_projection_);
+				temporal_shader_->setMat4("invProjection", invProj);
+				temporal_shader_->setMat4("invView", invView);
+				temporal_shader_->setVec3("viewPos", cameraPos);
 
+				temporal_shader_->setFloat("uDeltaTime", dt);
 				temporal_shader_->setBool("uEnableTemporal", enable_temporal_);
 				temporal_shader_->setFloat("uRenderScale", render_scale_);
 				temporal_shader_->setFloat("uCloudTemporalGamma", cloud_temporal_gamma_);
