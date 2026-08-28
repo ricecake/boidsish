@@ -189,6 +189,11 @@ CloudDensityResult calculateCloudDensity(
 	vec3 uvw = p_advected_3d / volumeScale;
 
 	// uvw += get3DToroidalField(uvw, 1.0, 5*time);
+	// if(!doCheap){
+	// 	vec3 twist = cross_noise_fbm(uvw, 2, 0.1*time);
+	// 	// uvw += 0.1 * (sin(5*time) + p.zyx)/1000.0;
+	// 	uvw += 0.05 * twist * 0.01* time;
+	// }
 
 	vec4 volSample = textureLod(u_cloud3DTexture, uvw, clamp(lod * 4.0, 0.0, 4.0));
 	// volSample.r = moistureFbm(uvw / 32.0, 16.0);
