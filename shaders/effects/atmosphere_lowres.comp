@@ -465,7 +465,8 @@ void main() {
 		offset = ivec2(x, y);
 	}
 
-	ivec2 fullResPixel = packedPixel * scaleFactor + offset;
+	ivec2 fullResWorkGroupID = ivec2(gl_WorkGroupID.xy) * scaleFactor + offset;
+	ivec2 fullResPixel = fullResWorkGroupID * ivec2(gl_WorkGroupSize.xy) + ivec2(gl_LocalInvocationID.xy);
 	ivec2 fullResSize = depthSize;
 
 	vec2 TexCoords = (vec2(fullResPixel) + 0.5) / vec2(fullResSize);
