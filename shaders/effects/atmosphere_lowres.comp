@@ -422,7 +422,7 @@ vec3 EvaluateStepLighting(
 		float ridgeDist = abs(weather.ridge - wavePos * 0.85);
 		float waveFront = exp(-ridgeDist * ridgeDist * 16.0);
 		float coreGlow = exp(-weather.ridge * 4.0 / max(0.1, lightningPulse));
-		float propagationGlow = (coreGlow * 0.7 + waveFront * 1.3) * lightningPulse * midHeightEnvelope * (0.5 + 0.5 * stagger);
+		float propagationGlow = (coreGlow * 0.7 + waveFront * 1.3) * lightningPulse * midHeightEnvelope * (stagger);
 
 		emissiveGlow += lightningColor * propagationGlow * 12.0;
 	}
@@ -607,7 +607,9 @@ void main() {
 				lastWeatherT = t;
 			}
 
-			CloudDensityResult densityRes = calculateCloudDensity(p, weather, props, time, currentLod, false);
+			bool doCheap = (t_prev >= t_end * 0.5 || all(lessThan(cloudTransmittance, vec3(0.75))));
+
+			CloudDensityResult densityRes = calculateCloudDensity(p, weather, props, time, currentLod, doCheap);
 
 			vec3 d = densityRes.density;
 
@@ -644,9 +646,10 @@ void main() {
 				pathDensity = max(pathDensity, max(d.x, max(d.y, d.z)));
 
 				if (any(greaterThan(d, vec3(0.000))) || any(greaterThan(prevDensity, vec3(0.000)))) {
+					vec3 localExtinction = rgbExtinction * densityRes.relativeExtinction;
 					vec3 averageDensity = (prevDensity + d) * 0.5;
-					vec3 stepDensity = averageDensity * rgbExtinction;
-					vec3 stepOpticalDepth = averageDensity * integrationStep * rgbExtinction;
+					vec3 stepDensity = averageDensity * localExtinction;
+					vec3 stepOpticalDepth = averageDensity * integrationStep * localExtinction;
 					vec3 transmittanceAtStep = exp(-stepOpticalDepth);
 
 					vec3 S = EvaluateStepLighting(
@@ -655,7 +658,7 @@ void main() {
 						jitter,
 						weather,
 						props,
-						rgbExtinction,
+						localExtinction,
 						stepDensity,
 						stepOpticalDepth,
 						h_norm,

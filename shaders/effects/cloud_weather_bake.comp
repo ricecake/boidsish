@@ -61,7 +61,7 @@ float moistureFbm(vec2 p, float period) {
 
 	vec2 rPeriod = vec2(period);
 	for (int i = 0; i < 4; i++) {
-		val += amp * (0.5 + 0.5 * psrdnoise(mod(p, rPeriod) * freq * rPeriod, rPeriod * freq, i * freq, g));
+		val += amp * (0.5 + 0.5 * psrdnoise(mod(p + gsum*0.1, rPeriod) * freq * rPeriod, rPeriod * freq, i * freq, g));
 		gsum += amp * g;
 		amp *= 0.5;
 		freq *= 2.0;
