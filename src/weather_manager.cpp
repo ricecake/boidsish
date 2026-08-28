@@ -1306,8 +1306,8 @@ namespace Boidsish {
 							float baseFloor = (cloudAltitude + altitudeShift) * worldScaleVal;
 							float baseCeiling = baseFloor + (cloudThickness * verticalExpansion) * worldScaleVal;
 
-							// Pick a height within the actual cloud volume
-							startPos.y = glm::mix(baseFloor, baseCeiling, 0.2f + (static_cast<float>(rand()) / RAND_MAX) * 0.6f);
+							// Pick a height near the center of cloud mass (around 0.45 - 0.55 of volume height)
+							startPos.y = glm::mix(baseFloor, baseCeiling, 0.45f + (static_cast<float>(rand()) / RAND_MAX) * 0.10f);
 
 							if (type == LightningType::CLOUD_TO_CLOUD) {
 								// Find another cloudy position for the end point
@@ -1330,10 +1330,10 @@ namespace Boidsish {
 									float eBaseFloor = (cloudAltitude + eAltitudeShift) * worldScaleVal;
 									float eBaseCeiling = eBaseFloor + (cloudThickness * eVerticalExpansion) * worldScaleVal;
 
-									endPos.y = glm::mix(eBaseFloor, eBaseCeiling, 0.2f + (static_cast<float>(rand()) / RAND_MAX) * 0.6f);
+									endPos.y = glm::mix(eBaseFloor, eBaseCeiling, 0.45f + (static_cast<float>(rand()) / RAND_MAX) * 0.10f);
 								} else {
-									// Local random fallback for endPos
-									endPos = startPos + glm::vec3((rand() % 800 - 400), (rand() % 200 - 100), (rand() % 800 - 400));
+									// Local random fallback for endPos near center height
+									endPos = startPos + glm::vec3((rand() % 800 - 400), (rand() % 100 - 50), (rand() % 800 - 400));
 								}
 							}
 						}

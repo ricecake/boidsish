@@ -139,17 +139,15 @@ CloudSpotDetails calculateCloudDensity(
 	// baseNoise = mix(baseNoise, baseShape, h);
 	baseNoise *= heightGradient;
 
-	float cloud_coverage = pow(1.0 - weather.coverage, remapClamp(h, 0.7, 0.8, 1.0, mix(1.0, 0.5, anvil_bias)));
+	float anvilFactor = mix(1.0, 0.25, anvil_bias);
+	float cloud_coverage = pow(1.0 - weather.coverage, remapClamp(h, 0.6, 0.9, 1.0, anvilFactor));
 	baseNoise = remapClamp(baseNoise, cloud_coverage, 1.0, 0.0, 1.0);
 
 	if (!doCheap) {
-		float erodeMask = (1.0 - baseNoise) * erosionMult * weather.ecentricity;
-		// baseNoise -= moistureFbm3(p_advected/32.0, 32.0);
-		// float noise = 0.5 + 0.5 * psrdnoise(mod(p + gsum*0.15, rPeriod) * freq * rPeriod, rPeriod * freq, 0.01*time * freq, g);
-		// baseNoise *= erodeMask * weather.coverage * fastSimplex3d(p_advected);
-		// float detailNoise = abs(fastFbm3d(p_advected / 2500.0));
-		// baseNoise = remapClamp(baseNoise, detailNoise * erodeMask * 0.5, 1.0, 0.0, 1.0);
-		// baseNoise = remapClamp(baseNoise, volNoises.a * erodeMask * 0.5, 1.0, 0.0, 1.0);
+		float detailFbm = (volNoises.g * 0.5 + volNoises.b * 0.35 + volNoises.a * 0.15);
+		float highFreqModifier = mix(detailFbm, 1.0 - detailFbm, clamp(h * 1.5, 0.0, 1.0));
+		float erodeMask = (1.0 - baseNoise) * erosionMult * 0.4;
+		baseNoise = remapClamp(baseNoise, highFreqModifier * erodeMask, 1.0, 0.0, 1.0);
 	}
 
 	float bottomMoistureProfile = clamp(1.0 - smoothstep(0.0, 0.85, h), 0.1, 1.0);

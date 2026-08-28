@@ -583,6 +583,26 @@ namespace Boidsish {
 									ImGui::Separator();
 									ImGui::Text("Advanced Cloud Parameters");
 
+									float current_scale = atmosphere_effect->GetRenderScale();
+									int scale_item = 1; // Default Half (0.5)
+									if (std::abs(current_scale - 1.0f) < 0.05f) scale_item = 0;
+									else if (std::abs(current_scale - 0.5f) < 0.05f) scale_item = 1;
+									else if (std::abs(current_scale - 0.25f) < 0.05f) scale_item = 2;
+									else if (std::abs(current_scale - 0.125f) < 0.05f) scale_item = 3;
+
+									const char* scale_names[] = { "Full (1.0)", "Half (0.5)", "Quarter (0.25)", "Eighth (0.125)" };
+									if (ImGui::Combo("Cloud Render Scale", &scale_item, scale_names, IM_ARRAYSIZE(scale_names))) {
+										float new_scale = 0.5f;
+										if (scale_item == 0) new_scale = 1.0f;
+										else if (scale_item == 1) new_scale = 0.5f;
+										else if (scale_item == 2) new_scale = 0.25f;
+										else if (scale_item == 3) new_scale = 0.125f;
+
+										atmosphere_effect->SetRenderScale(new_scale);
+										cfg.SetFloat("cloud_render_scale", new_scale);
+										changed_atm = true;
+									}
+
 									float g1 = cfg.GetAppSettingFloat(
 										"cloud_phase_g1",
 										atmosphere_effect->GetCloudPhaseG1()

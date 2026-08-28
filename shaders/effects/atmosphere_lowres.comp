@@ -424,7 +424,7 @@ vec3 EvaluateStepLighting(
 		float coreGlow = exp(-weather.ridge * 4.0 / max(0.1, lightningPulse));
 		float propagationGlow = (coreGlow * 0.7 + waveFront * 1.3) * lightningPulse * midHeightEnvelope * (stagger);
 
-		emissiveGlow += lightningColor * propagationGlow * 12.0;
+		emissiveGlow += lightningColor * propagationGlow;
 	}
 
 	vec3 S = (stepScattering + (finalAmbient * powder)) * (uCloudAlbedo * sampleAlbedo) + emissiveGlow;
@@ -714,9 +714,7 @@ void main() {
 		finalDepth = vec4(firstHitDist, lastHitDist, firstStepSize, pathDensity);
 		// Reproject using the accumulated per-sample advection directly
 		vec3 stableHitPos = viewPos + canonicalRayDir * stableHitDist;
-		// vec3 advectionDelta = avgAdvection * uDeltaTime;
-		float distanceDamping = 1.0 - smoothstep(10000.0 * worldScale, 50000.0 * worldScale, stableHitDist);
-		vec3 advectionDelta = (avgAdvection * distanceDamping) * uDeltaTime;
+		vec3 advectionDelta = avgAdvection * uDeltaTime;
 
 		vec3 prevHitPos = stableHitPos - advectionDelta;
 		vec4 prevClipHit = uPrevViewProjection * vec4(prevHitPos, 1.0);

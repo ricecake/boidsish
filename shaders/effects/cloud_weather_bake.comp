@@ -185,8 +185,8 @@ void main() {
 	ivec2 f1Pixel = ivec2(floor(f1_uv * vec2(size)));
 
 	if (pixel == f1Pixel) {
-		int gx = int(floor(mod(worleyDetails.f1_pos.x, period1)));
-		int gy = int(floor(mod(worleyDetails.f1_pos.y, period1)));
+		int gx = int(floor(f1_uv.x * 10.0));
+		int gy = int(floor(f1_uv.y * 10.0));
 		int cellIdx = gy * 10 + gx;
 
 		if (cellIdx >= 0 && cellIdx < 100) {

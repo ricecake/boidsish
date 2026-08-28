@@ -475,6 +475,7 @@ namespace Boidsish {
 
 			// Store current VP for next frame's reprojection
 			prev_view_projection_ = projectionMatrix * viewMatrix;
+			has_valid_history_ = true;
 			frame_index_++;
 		}
 
