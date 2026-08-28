@@ -30,6 +30,8 @@ struct CloudWeather {
 	float baseFloor;
 	float baseCeiling;
 	float height;
+	float moisture;
+	float humidity;
 };
 
 vec4 hash41(float p) {
@@ -251,6 +253,8 @@ CloudWeather loadCloudWeather(vec3 p, CloudProperties props, vec4 tex, vec4 fron
 	weather.thickness = mmix(0.15, 1.0, 0.05, tex.g) * frontThicknessMod;
 	weather.density = tex.a * props.densityBase * frontCoverageBoost;
 	weather.ridge = tex.b;
+	weather.moisture = tex.a;
+	weather.humidity = frontSample.b;
 
 	weather.ecentricity = frontSample.a;
 
