@@ -145,9 +145,15 @@ CloudSpotDetails calculateCloudDensity(
 	// baseNoise = remapClamp(baseNoise, detailNoise * erodeMask * 0.5, 1.0, 0.0, 1.0);
 	baseNoise = remapClamp(baseNoise, volNoises.a * erodeMask * 0.5, 1.0, 0.0, 1.0);
 
+	float bottomMoistureProfile = clamp(1.0 - smoothstep(0.0, 0.85, h), 0.1, 1.0);
+	bottomMoistureProfile = bottomMoistureProfile * bottomMoistureProfile;
+
+	float typeFactor = mix(1.2, 0.7, clamp(weather.heightMap, 0.0, 1.0));
+	float moistureExtinctionMult = (0.5 + 1.5 * weather.moisture) * (0.8 + 0.6 * weather.humidity) * typeFactor * (0.6 + 0.8 * bottomMoistureProfile);
+
 	return CloudSpotDetails(
 		clamp(baseNoise, 0.00, 1.0),
-		vec3(1.0),
+		vec3(moistureExtinctionMult),
 		advectSpeed
 	);
 }

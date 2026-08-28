@@ -52,6 +52,23 @@ float localFbm(vec2 p, float period) {
 	return val;
 }
 
+float moistureFbm(vec2 p, float period) {
+	float val = 0.0;
+	float amp = 0.5;
+	float freq = 1.0;
+	vec2 g = vec2(0.0);
+	vec2 gsum = vec2(0.0);
+
+	vec2 rPeriod = vec2(period);
+	for (int i = 0; i < 4; i++) {
+		val += amp * (0.5 + 0.5 * psrdnoise(mod(p, rPeriod) * freq * rPeriod, rPeriod * freq, i * freq, g));
+		gsum += amp * g;
+		amp *= 0.5;
+		freq *= 2.0;
+	}
+	return val;
+}
+
 float regionalFbm(vec2 p, float period) {
 	float val = 0.0;
 	float amp = 0.5;
@@ -157,8 +174,12 @@ void main() {
 	float squnchWorley = pow(worleyDetails.f1_dist, 1.2);
 	float lightning = remapClamp(ridgeChannel, squnchWorley, 1.0, 0, 1.0 - squnchWorley);
 
-	imageStore(outWeatherMap, pixel, vec4(finalCoverage, typeValue, lightning, macro));
-	imageStore(outMinMaxMap, pixel, vec4(finalCoverage, finalCoverage, macro, 1.0));
+	float moistureRaw = moistureFbm(p, period1);
+	float moistureWeight = clamp(1.0 - worleyDetails.f1_dist, 0.0, 1.0);
+	float moistureMap = clamp(moistureRaw * (0.2 + 0.8 * moistureWeight), 0.0, 1.0);
+
+	imageStore(outWeatherMap, pixel, vec4(finalCoverage, typeValue, lightning, moistureMap));
+	imageStore(outMinMaxMap, pixel, vec4(finalCoverage, finalCoverage, moistureMap, 1.0));
 
 	vec2 f1_uv = mod(worleyDetails.f1_pos / period1, vec2(1.0));
 	ivec2 f1Pixel = ivec2(floor(f1_uv * vec2(size)));
