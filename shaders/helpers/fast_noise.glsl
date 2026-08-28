@@ -58,6 +58,36 @@ float dot_noise_fbm(vec3 p, float oct) {
 	return val / max_amp;
 }
 
+vec3 cross_noise(vec3 p) {
+       #ifndef PHI
+       #define PHI 1.618033988749894848204586834
+       #endif
+
+    //Rotating the golden angle on the vec3(1, phi, phi*phi) axis
+    const mat3 GOLD = mat3(
+    -0.571464913, +0.814921382, +0.096597072,
+    -0.278044873, -0.303026659, +0.911518454,
+    +0.772087367, +0.494042493, +0.399753815);
+
+    //Gyroid with irrational orientations and scales
+    return cross(cos(GOLD * p), sin(PHI * p * GOLD));
+    //Ranges from [-3 to +3]
+}
+
+vec3 cross_noise_fbm(vec3 p, float oct) {
+       vec3 val = vec3(0.0);
+       float amp = 1.0;
+       float freq = 1.0;
+       float max_amp = 0.0;
+       for (int i = 0; i < max(0, oct); i++) {
+               val += amp * cross_noise((p+(val/freq)) * freq);
+               max_amp += amp;
+               // val += amp * dot_noise(p * freq);
+               amp *= 0.5;
+               freq *= 2.0;
+       }
+       return val / max_amp;
+}
 
 // Tile-aware 2D hash
 vec2 hash2Tile(vec2 p, vec2 period)
