@@ -133,32 +133,26 @@ namespace Boidsish {
 				glGenTextures(1, &spatial_aux_texture_);
 			}
 
-			int packed_width = std::max(1, static_cast<int>(width_ * render_scale_));
-			int packed_height = std::max(1, static_cast<int>(height_ * render_scale_));
-
-			// Color: Packed Cloud Color (RGBA16F)
+			// Allocate cloud raymarching targets at full resolution (persistent between frames)
 			glBindTexture(GL_TEXTURE_2D, packed_texture_);
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, packed_width, packed_height, 0, GL_RGBA, GL_FLOAT, NULL);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, width_, height_, 0, GL_RGBA, GL_FLOAT, NULL);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-			// Depth: Packed Cloud Depth (RGBA32F)
 			glBindTexture(GL_TEXTURE_2D, packed_depth_texture_);
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, packed_width, packed_height, 0, GL_RGBA, GL_FLOAT, NULL);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width_, height_, 0, GL_RGBA, GL_FLOAT, NULL);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
-			// Velocity: Packed Cloud Velocity (RG16F)
 			glBindTexture(GL_TEXTURE_2D, packed_velocity_texture_);
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RG16F, packed_width, packed_height, 0, GL_RG, GL_FLOAT, NULL);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RG16F, width_, height_, 0, GL_RG, GL_FLOAT, NULL);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
-			// Bounding Map: Packed Cloud Min-Max Bounding (RGBA32F)
 			glBindTexture(GL_TEXTURE_2D, bounding_texture_);
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, packed_width, packed_height, 0, GL_RGBA, GL_FLOAT, NULL);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width_, height_, 0, GL_RGBA, GL_FLOAT, NULL);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
@@ -242,6 +236,8 @@ namespace Boidsish {
 			if (cloud_bounding_shader_ && cloud_bounding_shader_->isValid()) {
 				cloud_bounding_shader_->use();
 				cloud_bounding_shader_->setFloat("uCloudMaxRayDistance", cloud_max_ray_distance_);
+				cloud_bounding_shader_->setFloat("uRenderScale", render_scale_);
+				cloud_bounding_shader_->setInt("uFrameIndex", frame_index_);
 
 				glActiveTexture(GL_TEXTURE0);
 				glBindTexture(GL_TEXTURE_2D, depthTexture);
@@ -266,6 +262,7 @@ namespace Boidsish {
 				cloud_render_shader_->setFloat("u_atmosphereHeight", atmosphere_height_);
 
 				cloud_render_shader_->setFloat("uCloudMaxRayDistance", cloud_max_ray_distance_);
+				cloud_render_shader_->setFloat("uRenderScale", render_scale_);
 				cloud_render_shader_->setInt("uCloudMinSamples", cloud_min_samples_);
 				cloud_render_shader_->setInt("uCloudMaxSamples", cloud_max_samples_);
 				cloud_render_shader_->setFloat("uCloudExtinction", cloud_extinction_);
@@ -319,6 +316,7 @@ namespace Boidsish {
 				temporal_shader_->setMat4("invProjection", invProj);
 
 				temporal_shader_->setBool("uEnableTemporal", enable_temporal_);
+				temporal_shader_->setFloat("uRenderScale", render_scale_);
 				temporal_shader_->setFloat("uCloudTemporalGamma", cloud_temporal_gamma_);
 				temporal_shader_->setFloat("uCloudMaxHistoryLength", cloud_max_history_length_);
 				temporal_shader_->setBool("uHasHistory", has_valid_history_);

@@ -12,6 +12,8 @@ uniform float u_atmosphereHeight;
 uniform sampler2D u_skyViewLUT;
 
 uniform float uCloudMaxRayDistance;
+uniform float uRenderScale;
+uniform int   uFrameIndex;
 
 // Include standard uniforms and utilities
 #include "../atmosphere/common.glsl"
@@ -24,12 +26,39 @@ uniform float uCloudMaxRayDistance;
 layout(binding = [[CLOUD_WEATHER_MIN_MAX_BINDING]]) uniform sampler2D u_cloudWeatherMinMaxTexture;
 
 void main() {
-	ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
-	ivec2 packedSize = imageSize(outBoundingMap);
-	if (pixel.x >= packedSize.x || pixel.y >= packedSize.y)
+	ivec2 fullResSize = textureSize(depthTexture, 0);
+	int scaleFactor = max(1, int(round(1.0 / max(0.001, uRenderScale))));
+
+	ivec2 offset = ivec2(0);
+	if (scaleFactor > 1) {
+		int numCells = scaleFactor * scaleFactor;
+		int step = uFrameIndex % numCells;
+		int x = 0;
+		int y = 0;
+		int tempFactor = scaleFactor;
+		int bits = 0;
+		while (tempFactor > 1) {
+			bits++;
+			tempFactor >>= 1;
+		}
+		for (int i = 0; i < bits; i++) {
+			int shift = bits - 1 - i;
+			int bitPair = (step >> (2 * shift)) & 3;
+			int bx = (bitPair == 1 || bitPair == 2) ? 1 : 0;
+			int by = (bitPair == 1 || bitPair == 3) ? 1 : 0;
+			x = (x << 1) | bx;
+			y = (y << 1) | by;
+		}
+		offset = ivec2(x, y);
+	}
+
+	ivec2 fullResWorkGroupID = ivec2(gl_WorkGroupID.xy) * scaleFactor + offset;
+	ivec2 pixel = fullResWorkGroupID * ivec2(gl_WorkGroupSize.xy) + ivec2(gl_LocalInvocationID.xy);
+
+	if (pixel.x >= fullResSize.x || pixel.y >= fullResSize.y)
 		return;
 
-	vec2 uv = (vec2(pixel) + 0.5) / vec2(packedSize);
+	vec2 uv = (vec2(pixel) + 0.5) / vec2(fullResSize);
 
 	float depth = texture(depthTexture, uv).r;
 	float z = depth * 2.0 - 1.0;

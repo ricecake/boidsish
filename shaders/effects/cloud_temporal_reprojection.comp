@@ -17,6 +17,7 @@ uniform sampler2D uHistoryMoments;
 
 uniform float uCloudTemporalGamma;
 uniform float uCloudMaxHistoryLength;
+uniform float uRenderScale;
 uniform bool  uEnableTemporal;
 uniform bool  uHasHistory;
 
@@ -288,9 +289,9 @@ void main() {
 	if (pixel.x >= size.x || pixel.y >= size.y) return;
 
 	vec2 uv = (vec2(pixel) + 0.5) / vec2(size);
+	vec2 texelSize = 1.0 / vec2(size);
 
-	vec2 packedSize = vec2(textureSize(uPackedVelocity, 0));
-	int scaleFactor = max(1, int(round(float(size.x) / packedSize.x)));
+	int scaleFactor = max(1, int(round(1.0 / max(0.001, uRenderScale))));
 
 	ivec2 current_offset = ivec2(0);
 	if (scaleFactor > 1) {
@@ -317,14 +318,12 @@ void main() {
 
 	ivec2 wgSize = ivec2(8);
 	ivec2 fullResWorkGroupID = pixel / wgSize;
-	ivec2 localID = pixel % wgSize;
 
 	bool is_new_pixel = false;
-	ivec2 packedPixel = ivec2(0);
+	ivec2 packedPixel = pixel; // Both uPackedFrame and outColor are at full resolution
 
 	if (scaleFactor == 1) {
 		is_new_pixel = true;
-		packedPixel = pixel;
 	} else {
 		ivec2 relWG = fullResWorkGroupID - current_offset;
 		ivec2 rem = ivec2(
@@ -332,11 +331,9 @@ void main() {
 			((relWG.y % scaleFactor) + scaleFactor) % scaleFactor
 		);
 		is_new_pixel = (rem.x == 0 && rem.y == 0 && relWG.x >= 0 && relWG.y >= 0);
-		ivec2 packedWorkGroupID = relWG / scaleFactor;
-		packedPixel = packedWorkGroupID * wgSize + localID;
 	}
-	vec2 packedTexelSize = 1.0 / packedSize;
-	vec2 velocity = getDilatedVelocity_Thresholded(uv, packedTexelSize);
+
+	vec2 velocity = getDilatedVelocity_Thresholded(uv, texelSize);
 	vec2 prevUV = uv + velocity;
 	bool validHistory = uHasHistory && all(greaterThanEqual(prevUV, vec2(0.0))) && all(lessThanEqual(prevUV, vec2(1.0)));
 
