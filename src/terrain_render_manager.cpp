@@ -587,7 +587,7 @@ namespace Boidsish {
 	}
 
 	void TerrainRenderManager::RegisterChunk(
-		std::pair<int, int>              chunk_key,
+		ChunkKey                         chunk_key,
 		const std::vector<glm::vec3>&    positions,
 		const std::vector<glm::vec3>&    normals,
 		const std::vector<glm::vec2>&    biomes,
@@ -602,8 +602,8 @@ namespace Boidsish {
 	) {
 		// Deferred eviction callback to avoid deadlock
 		// (caller may hold terrain generator's mutex, and callback needs that mutex)
-		bool                should_notify_eviction = false;
-		std::pair<int, int> evicted_chunk_key;
+		bool     should_notify_eviction = false;
+		ChunkKey evicted_chunk_key;
 
 		// Update world scale tracking
 		last_world_scale_ = world_scale;
@@ -625,7 +625,7 @@ namespace Boidsish {
 		needs_prep_ = true;
 
 				// Queue for baking
-				bake_queue_.push_back({glm::ivec2(chunk_key.first, chunk_key.second), it->second.texture_slice, 0});
+				bake_queue_.push_back(BakeTask{glm::ivec2(chunk_key.x, chunk_key.z), it->second.texture_slice, chunk_key.lod, world_scale, {0.0f, 0.0f, 0.0f}});
 				return;
 			}
 
@@ -693,7 +693,7 @@ namespace Boidsish {
 			InitializeSliceData(slice, min_y, max_y, patch_metrics);
 
 			// Queue for baking
-			bake_queue_.push_back({glm::ivec2(chunk_key.first, chunk_key.second), slice, 0});
+			bake_queue_.push_back(BakeTask{glm::ivec2(chunk_key.x, chunk_key.z), slice, chunk_key.lod, world_scale, {0.0f, 0.0f, 0.0f}});
 
 			// Store chunk info
 			ChunkInfo info{};
@@ -713,7 +713,7 @@ namespace Boidsish {
 		}
 	}
 
-	void TerrainRenderManager::UnregisterChunk(std::pair<int, int> chunk_key) {
+	void TerrainRenderManager::UnregisterChunk(ChunkKey chunk_key) {
 		std::lock_guard<std::recursive_mutex> lock(mutex_);
 
 		auto it = chunks_.find(chunk_key);
@@ -728,14 +728,14 @@ namespace Boidsish {
 		needs_prep_ = true;
 	}
 
-	bool TerrainRenderManager::HasChunk(std::pair<int, int> chunk_key) const {
+	bool TerrainRenderManager::HasChunk(ChunkKey chunk_key) const {
 		std::lock_guard<std::recursive_mutex> lock(mutex_);
 		return chunks_.count(chunk_key) > 0;
 	}
 
 	bool TerrainRenderManager::IsChunkVisible(const ChunkInfo& chunk, const Frustum& frustum, float world_scale) const {
-		// Build AABB for this chunk
-		float     scaled_chunk_size = chunk_size_ * world_scale;
+		// Build AABB for this chunk using its actual world scale
+		float     scaled_chunk_size = chunk_size_ * chunk.world_scale;
 		glm::vec3 min_corner(chunk.world_offset.x, chunk.min_y, chunk.world_offset.y);
 		glm::vec3 max_corner(
 			chunk.world_offset.x + scaled_chunk_size,
@@ -817,6 +817,7 @@ namespace Boidsish {
 			PROJECT_PROFILE_SCOPE("VisibilityCulling");
 			for (const auto& [key, chunk] : chunks_) {
 				if (IsChunkVisible(chunk, frustum, world_scale)) {
+					float     scaled_chunk_size = chunk_size_ * chunk.world_scale;
 					InstanceData instance{};
 					instance.world_offset_and_slice = glm::vec4(
 						chunk.world_offset.x,
@@ -824,10 +825,9 @@ namespace Boidsish {
 						chunk.world_offset.y, // This is the Z world coordinate
 						static_cast<float>(chunk.texture_slice)
 					);
-					instance.bounds = glm::vec4(chunk.min_y, chunk.max_y, 0.0f, 0.0f);
+					instance.bounds = glm::vec4(chunk.min_y, chunk.max_y, scaled_chunk_size, chunk.world_scale);
 
 					// Calculate distance from chunk center to camera
-					float     scaled_chunk_size = chunk_size_ * world_scale;
 					glm::vec2 chunk_center(
 						chunk.world_offset.x + scaled_chunk_size * 0.5f,
 						chunk.world_offset.y + scaled_chunk_size * 0.5f
@@ -855,11 +855,6 @@ namespace Boidsish {
 		// Upload instance data to GPU for the prepare compute shader
 		PROJECT_PROFILE_SCOPE("UploadInstanceData");
 		if (!visible_instances_.empty()) {
-			// Update bounds with raw chunkSize for the prepare shader's UV calculation
-			for (auto& instance : visible_instances_) {
-				instance.bounds.z = static_cast<float>(chunk_size_);
-			}
-
 			// Use internal instance_vbo_ but bind as SSBO for prepare shader
 			glBindBuffer(GL_SHADER_STORAGE_BUFFER, instance_vbo_);
 			size_t required_size = visible_instances_.size() * sizeof(InstanceData);
@@ -891,16 +886,28 @@ namespace Boidsish {
 
 		std::vector<glm::vec2> grid_data(grid_size * grid_size, glm::vec2(-1.0f, -10000.0f));
 
-		for (const auto& [key, chunk] : chunks_) {
-			int lx = key.first - origin_x;
-			int lz = key.second - origin_z;
+		// Collect chunks sorted by lod_level descending so coarsest chunks write first,
+		// and finer chunks overwrite inner grid cells.
+		std::vector<std::pair<ChunkKey, ChunkInfo>> sorted_chunks(chunks_.begin(), chunks_.end());
+		std::sort(sorted_chunks.begin(), sorted_chunks.end(), [](const auto& a, const auto& b) {
+			return a.first.lod > b.first.lod;
+		});
 
-			if (lx >= 0 && lx < grid_size && lz >= 0 && lz < grid_size) {
-				int idx = lz * grid_size + lx;
-				grid_data[idx].x = static_cast<float>(chunk.texture_slice);
-				// Add a vertical safety buffer to account for dynamic terrain displacements
-				// (erosion, shockwaves, micro-relief) in the Hi-Z structure.
-				grid_data[idx].y = chunk.max_y + (5.0f * world_scale);
+		for (const auto& [key, chunk] : sorted_chunks) {
+			int scale_factor = std::max(1, static_cast<int>(std::round(chunk.world_scale / world_scale)));
+			int start_lx = key.x * scale_factor - origin_x;
+			int end_lx = (key.x + 1) * scale_factor - origin_x;
+			int start_lz = key.z * scale_factor - origin_z;
+			int end_lz = (key.z + 1) * scale_factor - origin_z;
+
+			for (int lz = start_lz; lz < end_lz; ++lz) {
+				if (lz < 0 || lz >= grid_size) continue;
+				for (int lx = start_lx; lx < end_lx; ++lx) {
+					if (lx < 0 || lx >= grid_size) continue;
+					int idx = lz * grid_size + lx;
+					grid_data[idx].x = static_cast<float>(chunk.texture_slice);
+					grid_data[idx].y = chunk.max_y + (5.0f * chunk.world_scale);
+				}
 			}
 		}
 
@@ -1540,7 +1547,7 @@ namespace Boidsish {
 					chunk.world_offset.x, // x world offset
 					chunk.world_offset.y, // z world offset (stored as y in vec2)
 					static_cast<float>(chunk.texture_slice),
-					static_cast<float>(chunk_size_ * world_scale)
+					static_cast<float>(chunk_size_ * chunk.world_scale)
 				)
 			);
 		}
@@ -1641,13 +1648,12 @@ namespace Boidsish {
 		std::lock_guard<std::recursive_mutex> lock(mutex_);
 		std::vector<DecorChunkData> result;
 		result.reserve(chunks_.size());
-		float scaled_chunk_size = static_cast<float>(chunk_size_ * world_scale);
 		for (const auto& [key, chunk] : chunks_) {
 			result.push_back({
 				key,
 				chunk.world_offset,
 				static_cast<float>(chunk.texture_slice),
-				scaled_chunk_size,
+				static_cast<float>(chunk_size_ * chunk.world_scale),
 				chunk.update_count,
 			});
 		}

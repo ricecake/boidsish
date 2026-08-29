@@ -15,6 +15,39 @@ namespace Boidsish {
 	struct Frustum;
 
 	/**
+	 * @brief Multi-level LOD chunk identifier.
+	 *
+	 * Uniquely identifies a terrain chunk across LOD rings.
+	 * Can construct from std::pair<int, int> for backwards compatibility (lod = 0).
+	 */
+	struct ChunkKey {
+		int lod = 0;
+		int x = 0;
+		int z = 0;
+
+		ChunkKey() = default;
+		ChunkKey(int lod_, int x_, int z_) : lod(lod_), x(x_), z(z_) {}
+		ChunkKey(int x_, int z_) : lod(0), x(x_), z(z_) {}
+		ChunkKey(const std::pair<int, int>& p) : lod(0), x(p.first), z(p.second) {}
+
+		bool operator<(const ChunkKey& o) const {
+			if (lod != o.lod) return lod < o.lod;
+			if (x != o.x) return x < o.x;
+			return z < o.z;
+		}
+		bool operator==(const ChunkKey& o) const {
+			return lod == o.lod && x == o.x && z == o.z;
+		}
+		bool operator!=(const ChunkKey& o) const {
+			return !(*this == o);
+		}
+
+		operator std::pair<int, int>() const {
+			return {x, z};
+		}
+	};
+
+	/**
 	 * @brief Common interface for terrain rendering backends.
 	 *
 	 * This provides a unified API for the TerrainGenerator to use,
@@ -31,7 +64,7 @@ namespace Boidsish {
 		 * - V1 (batched): Uses pre-computed vertex mesh data
 		 * - V2 (instanced): Uses heightmap for GPU displacement
 		 *
-		 * @param chunk_key Unique identifier (chunk_x, chunk_z)
+		 * @param chunk_key Unique identifier across LOD levels
 		 * @param positions Position data (chunk_size+1)^2 elements
 		 * @param normals Normal vectors (chunk_size+1)^2 elements
 		 * @param indices Index data for mesh topology
@@ -40,7 +73,7 @@ namespace Boidsish {
 		 * @param world_offset World position offset for this chunk
 		 */
 		virtual void RegisterChunk(
-			std::pair<int, int>              chunk_key,
+			ChunkKey                         chunk_key,
 			const std::vector<glm::vec3>&    positions,
 			const std::vector<glm::vec3>&    normals,
 			const std::vector<glm::vec2>&    biomes,
@@ -56,12 +89,12 @@ namespace Boidsish {
 		/**
 		 * @brief Unregister a terrain chunk.
 		 */
-		virtual void UnregisterChunk(std::pair<int, int> chunk_key) = 0;
+		virtual void UnregisterChunk(ChunkKey chunk_key) = 0;
 
 		/**
 		 * @brief Check if a chunk is registered.
 		 */
-		virtual bool HasChunk(std::pair<int, int> chunk_key) const = 0;
+		virtual bool HasChunk(ChunkKey chunk_key) const = 0;
 
 		/**
 		 * @brief Prepare for rendering (culling, buffer updates, etc.)

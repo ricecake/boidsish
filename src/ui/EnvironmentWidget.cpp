@@ -11,6 +11,7 @@
 #include "post_processing/PostProcessingManager.h"
 #include "post_processing/effects/AtmosphereEffect.h"
 #include "post_processing/effects/VolumetricLightingEffect.h"
+#include "terrain_generator.h"
 #include "terrain_generator_interface.h"
 #include "weather_manager.h"
 #include "service_locator.h"
@@ -1084,6 +1085,20 @@ namespace Boidsish {
 							terrain->SetWorldScale(world_scale);
 						}
 						ImGui::Text("Higher = larger world, Lower = smaller world");
+
+						auto generator = std::dynamic_pointer_cast<TerrainGenerator>(terrain);
+						if (generator) {
+							int lod_levels = generator->GetNumLodLevels();
+							if (ImGui::SliderInt("LOD Ring Levels", &lod_levels, 1, 6)) {
+								generator->SetNumLodLevels(lod_levels);
+							}
+
+							float lod_multiplier = generator->GetLodScaleMultiplier();
+							if (ImGui::SliderFloat("LOD Scale Multiplier", &lod_multiplier, 1.5f, 4.0f, "%.1fx")) {
+								generator->SetLodScaleMultiplier(lod_multiplier);
+							}
+							ImGui::Text("Scale multiplier per concentric LOD ring (2.0x standard)");
+						}
 					}
 
 					auto decor_manager = m_visualizer.GetDecorManager();

@@ -9,6 +9,7 @@
 
 #include "constants.h"
 #include "persistent_buffer.h"
+#include "terrain_render_interface.h"
 #include <GL/glew.h>
 #include <glm/glm.hpp>
 
@@ -64,7 +65,9 @@ namespace Boidsish {
 		struct BakeTask {
 			glm::ivec2 chunk_coord;
 			int        slice;
-			int        _pad;
+			int        lod_level;
+			float      world_scale;
+			float      _pad[3];
 		};
 
 		TerrainRenderManager(ServiceLocator& loc, int chunk_size = Constants::Class::Terrain::ChunkSize(), int max_chunks = 512);
@@ -80,7 +83,7 @@ namespace Boidsish {
 		 * Extracts heights from positions and uploads to texture array.
 		 */
 		void RegisterChunk(
-			std::pair<int, int>              chunk_key,
+			ChunkKey                         chunk_key,
 			const std::vector<glm::vec3>&    positions,
 			const std::vector<glm::vec3>&    normals,
 			const std::vector<glm::vec2>&    biomes,
@@ -97,12 +100,12 @@ namespace Boidsish {
 		/**
 		 * @brief Unregister a terrain chunk, freeing its texture slice.
 		 */
-		void UnregisterChunk(std::pair<int, int> chunk_key);
+		void UnregisterChunk(ChunkKey chunk_key);
 
 		/**
 		 * @brief Check if a chunk is registered.
 		 */
-		bool HasChunk(std::pair<int, int> chunk_key) const;
+		bool HasChunk(ChunkKey chunk_key) const;
 
 		/**
 		 * @brief Perform frustum culling and prepare instance buffer (CPU side).
@@ -172,7 +175,7 @@ namespace Boidsish {
 		 * This allows TerrainGenerator to remove the chunk from its cache
 		 * so it will be regenerated when needed.
 		 */
-		void SetEvictionCallback(std::function<void(std::pair<int, int>)> callback) { eviction_callback_ = callback; }
+		void SetEvictionCallback(std::function<void(ChunkKey)> callback) { eviction_callback_ = callback; }
 
 		/**
 		 * @brief Get statistics.
@@ -224,7 +227,7 @@ namespace Boidsish {
 		 * Avoids repeated key derivation and separate update_count queries.
 		 */
 		struct DecorChunkData {
-			std::pair<int, int> key;          // integer chunk coordinate
+			ChunkKey            key;          // Chunk coordinate with LOD level
 			glm::vec2           world_offset; // world-space offset
 			float               slice;        // texture array slice
 			float               chunk_size;   // world-space chunk size
@@ -326,6 +329,8 @@ namespace Boidsish {
 			float     max_y;            // For frustum culling
 			glm::vec2 world_offset;     // (chunk_x * chunk_size, chunk_z * chunk_size)
 			uint32_t  update_count = 0; // Incremented each time chunk data is re-uploaded
+			int       lod_level = 0;    // LOD level
+			float     world_scale = 1.0f;// World scale factor
 		};
 
 		// Per-instance data sent to GPU (std140 layout)
@@ -439,7 +444,7 @@ namespace Boidsish {
 		size_t grid_index_count_ = 0;
 
 		// Chunk management
-		std::map<std::pair<int, int>, ChunkInfo> chunks_;
+		std::map<ChunkKey, ChunkInfo> chunks_;
 		std::vector<int>                         free_slices_; // Available texture slices
 		int                                      next_slice_ = 0;
 
@@ -479,7 +484,7 @@ namespace Boidsish {
 		bool      needs_prep_ = true;
 
 		// Eviction callback for notifying TerrainGenerator
-		std::function<void(std::pair<int, int>)> eviction_callback_;
+		std::function<void(ChunkKey)> eviction_callback_;
 	};
 
 } // namespace Boidsish

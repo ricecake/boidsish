@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "terrain_deformation_manager.h"
+#include "terrain_render_interface.h"
 #include <glm/glm.hpp>
 
 namespace Boidsish {
@@ -119,9 +120,9 @@ namespace Boidsish {
 		 * from the GPU texture array. Implementations may choose to
 		 * invalidate CPU cache or simply re-register when visible again.
 		 *
-		 * @param chunk_key The (chunk_x, chunk_z) key of the evicted chunk
+		 * @param chunk_key The ChunkKey of the evicted chunk
 		 */
-		virtual void InvalidateChunk(std::pair<int, int> chunk_key) = 0;
+		virtual void InvalidateChunk(ChunkKey chunk_key) = 0;
 
 		// ==================== Terrain Queries ====================
 

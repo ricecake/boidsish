@@ -32,9 +32,10 @@ namespace Boidsish {
 		std::vector<float>        packed_height_normal;
 		std::vector<uint8_t>      packed_biomes;
 		PatchProxy                proxy;
-		int                                            chunk_x;
-		int                                            chunk_z;
-		bool                                           has_terrain;
+		int                                            lod_level = 0;
+		int                                            chunk_x = 0;
+		int                                            chunk_z = 0;
+		bool                                           has_terrain = false;
 		std::vector<TerrainRenderManager::PatchMetrics> patch_metrics;
 	};
 
@@ -71,12 +72,11 @@ namespace Boidsish {
 		 * @brief Invalidate a chunk that was evicted from the render manager.
 		 *
 		 * Called by the render manager when a chunk is LRU-evicted due to GPU
-		 * texture array capacity limits. This removes the chunk from our cache
-		 * so it will be regenerated when it comes back into view.
+		 * texture array capacity limits.
 		 *
-		 * @param chunk_key The (chunk_x, chunk_z) key of the evicted chunk
+		 * @param chunk_key The ChunkKey of the evicted chunk
 		 */
-		void InvalidateChunk(std::pair<int, int> chunk_key) override {
+		void InvalidateChunk(ChunkKey chunk_key) override {
 			// No-op: we want to keep the chunk in our CPU cache even if it's
 			// evicted from GPU memory, to avoid expensive re-generation.
 			// It will be re-registered with the renderer when next visible.
@@ -100,6 +100,11 @@ namespace Boidsish {
 		}
 
 		int GetChunkSize() const override { return chunk_size_; }
+
+		int   GetNumLodLevels() const { return num_lod_levels_; }
+		void  SetNumLodLevels(int levels) { num_lod_levels_ = std::clamp(levels, 1, 8); }
+		float GetLodScaleMultiplier() const { return lod_scale_multiplier_; }
+		void  SetLodScaleMultiplier(float mult) { lod_scale_multiplier_ = std::max(1.1f, mult); }
 
 		void SetWorldScale(float scale) override;
 
@@ -300,7 +305,7 @@ namespace Boidsish {
 			return glm::mix(bot, top, uv.y);
 		}
 
-		TerrainGenerationResult generateChunkData(int chunkX, int chunkZ);
+		TerrainGenerationResult generateChunkData(int lod, int chunkX, int chunkZ);
 
 		// Terrain parameters
 		struct TerrainParameters {
@@ -342,14 +347,18 @@ namespace Boidsish {
 
 		glm::vec3 diffToNorm(float dx, float dz) const { return glm::normalize(glm::vec3(-dx, 1.0f, -dz)); }
 
+		// LOD configuration
+		int   num_lod_levels_ = 4;
+		float lod_scale_multiplier_ = 2.0f;
+
 		// Cache and async management
-		ThreadPool                                                         thread_pool_;
-		std::map<std::pair<int, int>, std::shared_ptr<Terrain>>            chunk_cache_;
-		std::vector<std::shared_ptr<Terrain>>                              visible_chunks_;
-		std::map<std::pair<int, int>, TaskHandle<TerrainGenerationResult>> pending_chunks_;
+		ThreadPool                                                    thread_pool_;
+		std::map<ChunkKey, std::shared_ptr<Terrain>>                  chunk_cache_;
+		std::vector<std::shared_ptr<Terrain>>                         visible_chunks_;
+		std::map<ChunkKey, TaskHandle<TerrainGenerationResult>>       pending_chunks_;
 
 		// Deformation-specific async management
-		std::map<std::pair<int, int>, TaskHandle<TerrainGenerationResult>> pending_deformations_;
+		std::map<ChunkKey, TaskHandle<TerrainGenerationResult>>       pending_deformations_;
 		std::vector<uint32_t>                                              queued_deformation_ids_;
 		mutable std::mutex                                                 deformation_queue_mutex_;
 

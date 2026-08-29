@@ -66,8 +66,8 @@ namespace Boidsish {
 	}
 
 	void Terrain::setupMesh() {
-		if (managed_by_render_manager_) {
-			// Skip legacy GPU setup when managed by render manager
+		if (managed_by_render_manager_ || glGenVertexArrays == nullptr) {
+			// Skip legacy GPU setup when managed by render manager or in headless unit tests
 			return;
 		}
 
