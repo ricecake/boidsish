@@ -3,8 +3,25 @@
 layout(local_size_x = 8, local_size_y = 8) in;
 
 layout(binding = 0, rgba16f) uniform image2D outColor;
-layout(binding = 1, rgba32f)  uniform image2D outDepth;
-layout(binding = 2, rgba32f)  uniform image2D outMoments;
+layout(binding = 1, rgba32f) uniform image2D outDepth;
+layout(binding = 2, rgba32f) uniform image2D outMoments;
+layout(binding = 3, rgba32f) uniform image2D uErrorMap;
+
+struct TileQueueHeader {
+	uint count;
+	uint maxTiles;
+	uint frameIndex;
+	float budgetFraction;
+	uint minRefreshInterval;
+	uint tileCols;
+	uint tileRows;
+	uint totalTiles;
+};
+
+layout(std430, binding = 59) buffer TileQueueSSBO {
+	TileQueueHeader uHeader;
+	uvec2 uTileQueue[];
+};
 
 uniform sampler2D uPackedFrame;
 uniform sampler2D uPackedDepth;
@@ -30,6 +47,9 @@ uniform mat4  uPrevViewProjection;
 #include "lygia/color/luma.glsl"
 #include "helpers/math.glsl"
 
+shared float sharedError[64];
+shared float sharedFlow[64];
+
 vec3 RGBToYCoCg(vec3 rgb) {
 	float y  = dot(rgb, vec3(0.25, 0.5, 0.25));
 	float co = dot(rgb, vec3(0.5, 0.0, -0.5));
@@ -47,109 +67,6 @@ vec3 YCoCgToRGB(vec3 ycocg) {
 	return vec3(r, g, b);
 }
 
-vec2 getDilatedVelocity_Thresholded(vec2 uv, vec2 texelSize) {
-	float closestDist = 50000.0;
-	vec2 bestVelocity = texture(uPackedVelocity, uv).xy;
-
-	// Baseline density of the current pixel to establish expectations
-	float centerDensity = texture(uPackedDepth, uv).a;
-
-	// We only trust depths from pixels that are at least 50% as dense as the center,
-	// or have a baseline solidity, ignoring the ultra-thin jittered shell.
-	float densityThreshold = max(centerDensity * 0.5, 0.1);
-
-	for (int y = -1; y <= 1; y++) {
-		for (int x = -1; x <= 1; x++) {
-			vec2 sampleUV = uv + vec2(x, y) * texelSize;
-
-			vec2 sampleVel = texture(uPackedVelocity, sampleUV).xy;
-			vec4 sampleProps = texture(uPackedDepth, sampleUV);
-
-			float sampleDist = sampleProps.r;
-			float sampleDensity = sampleProps.a;
-
-			// Only accept this depth if it's a solid hit
-			if (sampleDensity > densityThreshold && sampleDist < closestDist) {
-				closestDist = sampleDist;
-				bestVelocity = sampleVel;
-			}
-		}
-	}
-
-	return bestVelocity;
-}
-
-vec2 getDilatedVelocity_Weighted(vec2 uv, vec2 texelSize) {
-	vec2 sumVelocity = vec2(0.0);
-	float sumWeight = 0.0;
-
-	for (int y = -1; y <= 1; y++) {
-		for (int x = -1; x <= 1; x++) {
-			vec2 sampleUV = uv + vec2(x, y) * texelSize;
-
-			vec2 sampleVel = texture(uPackedVelocity, sampleUV).xy;
-			vec4 sampleProps = texture(uPackedDepth, sampleUV);
-
-			float sampleDepth = sampleProps.r;
-			float sampleDensity = sampleProps.a;
-
-			// Ignore pure sky pixels
-			if (sampleDepth > 40000.0) continue;
-
-			// Weight primarily by density to ignore jittered wisps.
-			// You can also divide by depth to slightly favor foregrounds.
-			float weight = sampleDensity * sampleDensity; // Square to penalize fuzzy edges
-
-			sumVelocity += sampleVel * weight;
-			sumWeight += weight;
-		}
-	}
-
-	if (sumWeight > 0.0001) {
-		return sumVelocity / sumWeight;
-	}
-
-	return texture(uPackedVelocity, uv).xy; // Fallback
-}
-
-vec2 getDilatedVelocity_Hybrid(vec2 uv, vec2 texelSize) {
-	vec2 sumVelocity = vec2(0.0);
-	float sumWeight = 0.0;
-
-	float centerDensity = texture(uPackedDepth, uv).a;
-	float densityThreshold = max(centerDensity * 0.25, 0.1);
-
-	for (int y = -1; y <= 1; y++) {
-		for (int x = -1; x <= 1; x++) {
-			vec2 sampleUV = uv + vec2(x, y) * texelSize;
-
-			vec2 sampleVel = texture(uPackedVelocity, sampleUV).xy;
-			vec4 sampleProps = texture(uPackedDepth, sampleUV);
-
-			float sampleDepth = sampleProps.r;
-			float sampleDensity = sampleProps.a;
-
-			// Ignore pure sky pixels
-			if (sampleDepth > 40000.0) continue;
-			if (sampleDensity < densityThreshold) continue;
-
-			// Weight primarily by density to ignore jittered wisps.
-			// You can also divide by depth to slightly favor foregrounds.
-			float weight = sampleDensity * sampleDensity; // Square to penalize fuzzy edges
-
-			sumVelocity += sampleVel * weight;
-			sumWeight += weight;
-		}
-	}
-
-	if (sumWeight > 0.0001) {
-		return sumVelocity / sumWeight;
-	}
-
-	return texture(uPackedVelocity, uv).xy; // Fallback
-}
-
-
 struct NeighborhoodStats {
 	vec3 spatialMean;
 	vec3 stddev;
@@ -164,7 +81,6 @@ NeighborhoodStats computeNeighborhoodStats(sampler2D frameTex, vec2 uv, vec2 tex
 	float alphaM2 = 0.0;
 	float weightSum = 0.0;
 
-	// 3x3 Rounded Gaussian weights
 	float weights[3] = float[](0.25, 0.5, 0.25);
 
 	for (int y = -1; y <= 1; y++) {
@@ -195,18 +111,13 @@ NeighborhoodStats computeNeighborhoodStats(sampler2D frameTex, vec2 uv, vec2 tex
 	return stats;
 }
 
-
 vec3 calculateDynamicExtents(vec3 spatialStdDev, vec4 historyMoments, float baseGamma) {
 	float histLumaMean = historyMoments.x;
 	float histLumaSqMean = historyMoments.y;
 	float temporalVar = max(0.0, histLumaSqMean - (histLumaMean * histLumaMean));
 	float temporalStdDev = sqrt(temporalVar);
 
-	// Combine spatial and temporal variance.
-	// If the history is highly variant, we expand the box to let the dither integrate.
 	vec3 extents = max(spatialStdDev * baseGamma, vec3(temporalStdDev * (baseGamma * 0.75)));
-
-	// Hard floor to prevent the bounding box from collapsing entirely on static edges
 	vec3 minExtents = vec3(0.02);
 	return max(extents, minExtents);
 }
@@ -222,7 +133,7 @@ vec3 clipAABB(vec3 historyYCoCg, vec3 spatialMean, vec3 minColor, vec3 maxColor)
 			else if (historyYCoCg[i] > maxColor[i])
 				clipFactors[i] = (maxColor[i] - historyYCoCg[i]) / clipDir[i];
 			else
-				clipFactors[i] = 0.0; // History is safely inside bounds
+				clipFactors[i] = 0.0;
 		}
 	}
 	float clipT = clamp(max(clipFactors.x, max(clipFactors.y, clipFactors.z)), 0.0, 1.0);
@@ -245,121 +156,29 @@ float clipAlpha(float historyAlpha, float minAlpha, float maxAlpha, float center
 	return mix(historyAlpha, centerAlpha, clamp(clipFactor, 0.0, 1.0));
 }
 
-// Mitchell-Netravali Weight Function
-float mitchell(float x, float B, float C) {
-	float ax = abs(x);
-	if (ax < 1.0) {
-		return ((12.0 - 9.0 * B - 6.0 * C) * ax * ax * ax +
-				(-18.0 + 12.0 * B + 6.0 * C) * ax * ax +
-				(6.0 - 2.0 * B)) / 6.0;
-	} else if (ax < 2.0) {
-		return ((-B - 6.0 * C) * ax * ax * ax +
-				(5.0 * B + 30.0 * C) * ax * ax +
-				(-8.0 * B - 48.0 * C) * ax +
-				(4.0 * B + 24.0 * C)) / 6.0;
-	}
-	return 0.0;
-}
-
-// 2D Bicubic Texture Fetch
-vec4 textureMitchell(sampler2D tex, vec2 uv, vec2 textureSize) {
-	// B = 0.0, C = 0.5 is standard Catmull-Rom
-	// B = 0.0, C = 0.75 or 1.0 adds an aggressive sharpening lobe
-	vec2 texelSize = 1.0 / textureSize;
-	uv = uv * textureSize - 0.5;
-	vec2 f = fract(uv);
-	vec2 c = floor(uv);
-	vec4 color = vec4(0.0);
-	float weightsSum = 0.0;
-	for (int j = -1; j <= 2; j++) {
-		// float wy = mitchell(float(j) - f.y, 1.0/3.0, 1.0/3.0);
-		float wy = mitchell(float(j) - f.y, 0.0, 0.75);
-		for (int i = -1; i <= 2; i++) {
-			// float wx = mitchell(float(i) - f.x, 1.0/3.0, 1.0/3.0);
-			float wx = mitchell(float(i) - f.x, 0.0, 0.75);
-			float weight = wx * wy;
-			vec2 pos = (c + vec2(i, j) + 0.5) * texelSize;
-			color += texture(tex, pos) * weight;
-			weightsSum += weight;
-		}
-	}
-	return color / weightsSum;
-}
-
 void main() {
 	ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
 	ivec2 size = imageSize(outColor);
-	if (pixel.x >= size.x || pixel.y >= size.y) return;
+	uint localIdx = gl_LocalInvocationIndex;
+	bool inBounds = (pixel.x < size.x && pixel.y < size.y);
 
-	vec2 uv = (vec2(pixel) + 0.5) / vec2(size);
+	ivec2 clampedPixel = clamp(pixel, ivec2(0), size - ivec2(1));
+	vec2 uv = (vec2(clampedPixel) + 0.5) / vec2(size);
 	vec2 texelSize = 1.0 / vec2(size);
 
-	int scaleFactor = max(1, int(round(1.0 / max(0.001, uRenderScale))));
+	ivec2 tileCoord = clampedPixel / ivec2(8);
+	vec4 tileErrorData = imageLoad(uErrorMap, ivec2(tileCoord));
+	uint tileLastUpdated = uint(round(tileErrorData.a));
+	bool tileWasRenderedThisFrame = (tileLastUpdated == uHeader.frameIndex);
 
-	ivec2 current_offset = ivec2(0);
-	if (scaleFactor > 1) {
-		int numCells = scaleFactor * scaleFactor;
-		int step = frameIndex % numCells;
-		int x = 0;
-		int y = 0;
-		int tempFactor = scaleFactor;
-		int bits = 0;
-		while (tempFactor > 1) {
-			bits++;
-			tempFactor >>= 1;
-		}
-		for (int i = 0; i < bits; i++) {
-			int shift = bits - 1 - i;
-			int bitPair = (step >> (2 * shift)) & 3;
-			int bx = (bitPair == 1 || bitPair == 2) ? 1 : 0;
-			int by = (bitPair == 1 || bitPair == 3) ? 1 : 0;
-			x = (x << 1) | bx;
-			y = (y << 1) | by;
-		}
-		current_offset = ivec2(x, y);
-	}
-
-	ivec2 wgSize = ivec2(8);
-	ivec2 fullResWorkGroupID = pixel / wgSize;
-
-ivec2 active_wg;
-active_wg.x = int(round(float(fullResWorkGroupID.x - current_offset.x) / float(scaleFactor))) * scaleFactor + current_offset.x;
-active_wg.y = int(round(float(fullResWorkGroupID.y - current_offset.y) / float(scaleFactor))) * scaleFactor + current_offset.y;
-ivec2 active_wg_pixel = active_wg * wgSize + (pixel % wgSize);
-active_wg_pixel = clamp(active_wg_pixel, ivec2(0), size - 1);
-
-	bool is_new_pixel = false;
-	if (scaleFactor == 1) {
-		is_new_pixel = true;
-	} else {
-		ivec2 relWG = fullResWorkGroupID - current_offset;
-		ivec2 rem = ivec2(
-			((relWG.x % scaleFactor) + scaleFactor) % scaleFactor,
-			((relWG.y % scaleFactor) + scaleFactor) % scaleFactor
-		);
-		is_new_pixel = (rem.x == 0 && rem.y == 0 && relWG.x >= 0 && relWG.y >= 0);
-	}
-
-
-// 2. Fetch fresh depth from the active tile
-vec4 activeDepthProps = texelFetch(uPackedDepth, active_wg_pixel, 0);
-
-// 3. Fetch perfectly calculated, advection-aware velocity from the active tile
-vec2 velocity = texelFetch(uPackedVelocity, active_wg_pixel, 0).xy;
-vec2 prevUV = uv + velocity;
+	vec4 currDepthProps = texelFetch(uPackedDepth, clampedPixel, 0);
+	vec2 velocity = texelFetch(uPackedVelocity, clampedPixel, 0).xy;
+	vec2 prevUV = uv + velocity;
 
 	bool validHistory = uHasHistory && all(greaterThanEqual(prevUV, vec2(0.0))) && all(lessThanEqual(prevUV, vec2(1.0)));
 
-// 4. Fetch current data ONLY if it was explicitly rendered this frame
-vec4 currentRGBA = vec4(0.0);
-vec4 currDepthProps = vec4(0.0);
-if (is_new_pixel) {
-    currentRGBA = texelFetch(uPackedFrame, pixel, 0);
-    currDepthProps = activeDepthProps;
-	}
+	vec4 currentRGBA = texelFetch(uPackedFrame, clampedPixel, 0);
 
-
-	// 3. Fetch History
 	vec4 historyRGBA = vec4(0.0);
 	vec4 historyMoments = vec4(0.0);
 	vec4 historyDepthProps = vec4(0.0);
@@ -371,58 +190,84 @@ if (is_new_pixel) {
 		historyDepthProps = texture(uHistoryCloudDepth, prevUV);
 		historyLength = historyMoments.w;
 
-		if (is_new_pixel) {
-			float depthDiff = abs(currDepthProps.r - historyDepthProps.r);
-			float allowedDiff = max(currDepthProps.b * 16.0, 0.15 * currDepthProps.r);
-			allowedDiff = max(allowedDiff, 1000.0 * worldScale);
-			if (depthDiff > allowedDiff) validHistory = false;
-		}
+		float depthDiff = abs(currDepthProps.r - historyDepthProps.r);
+		float allowedDiff = max(currDepthProps.b * 16.0, 0.15 * currDepthProps.r);
+		allowedDiff = max(allowedDiff, 1000.0 * worldScale);
+		if (depthDiff > allowedDiff) validHistory = false;
 	}
 
 	historyLength = (uEnableTemporal && validHistory) ? min(uCloudMaxHistoryLength, historyLength + 1.0) : 1.0;
 
-if (!uEnableTemporal || !validHistory) {
-    if (is_new_pixel) {
-        historyRGBA = currentRGBA;
-        historyDepthProps = currDepthProps;
-    } else {
-        // Spatial fallback for inactive pixel disocclusion.
-        // Fetch strictly from the explicitly rendered active tile, bypassing stale buffer data.
-        historyRGBA = texelFetch(uPackedFrame, active_wg_pixel, 0);
-        historyDepthProps = texelFetch(uPackedDepth, active_wg_pixel, 0);
-    }
-    historyMoments = vec4(0.0);
-}
+	if (!uEnableTemporal || !validHistory) {
+		historyRGBA = currentRGBA;
+		historyDepthProps = currDepthProps;
+		historyMoments = vec4(0.0);
+	}
 
-	// 4. Temporal Accumulation Block
+	float currentPathDensity = currDepthProps.a;
+	float historyPathDensity = historyDepthProps.a;
+
+	float lumaCurrent = luma(currentRGBA.rgb);
+	float lumaHistory = luma(historyRGBA.rgb);
+	float lumaDiff = abs(lumaCurrent - lumaHistory);
+	float maxLuma = max(max(lumaCurrent, lumaHistory), 0.001);
+	float relativeLumaDiff = lumaDiff / maxLuma;
+	float lumaRejection = max(smoothstep(0.02, 0.25, relativeLumaDiff), smoothstep(0.03, 0.30, lumaDiff));
+
+	float densityDelta = abs(currentPathDensity - historyPathDensity);
+	float densityError = smoothstep(0.05, 0.5, densityDelta);
+
+	float disocclusionError = validHistory ? 0.0 : 1.0;
+
+	float centerDensity = currentPathDensity;
+	float rightDensity = texture(uPackedDepth, uv + vec2(texelSize.x, 0.0)).a;
+	float topDensity   = texture(uPackedDepth, uv + vec2(0.0, texelSize.y)).a;
+	vec2 densityGradient = vec2(rightDensity - centerDensity, topDensity - centerDensity);
+	float flowDensityChange = length(densityGradient) * length(velocity * vec2(size));
+	float flowPredictor = clamp(flowDensityChange * 3.0, 0.0, 1.0);
+
+	float perPixelError = inBounds ? (tileWasRenderedThisFrame ? max(max(lumaRejection, densityError), disocclusionError) : 0.5) : 0.0;
+	float perPixelFlow = inBounds ? flowPredictor : 0.0;
+
+	sharedError[localIdx] = perPixelError;
+	sharedFlow[localIdx] = perPixelFlow;
+
+	barrier();
+
+	// Thread 0 aggregates error map metrics for the 8x8 tile
+	if (localIdx == 0u) {
+		float maxTileError = 0.0;
+		float maxTileFlow = 0.0;
+		for (uint i = 0u; i < 64u; i++) {
+			maxTileError = max(maxTileError, sharedError[i]);
+			maxTileFlow = max(maxTileFlow, sharedFlow[i]);
+		}
+		vec4 tileErr = imageLoad(uErrorMap, ivec2(tileCoord));
+		tileErr.r = max(tileErr.r, maxTileError);
+		tileErr.g = max(tileErr.g, maxTileFlow);
+		imageStore(uErrorMap, ivec2(tileCoord), tileErr);
+	}
+
+	if (!inBounds) return;
+
 	vec4 accumulatedRGBA;
 	vec4 accumulatedDepth;
 	vec4 accumulatedMoments;
 
-	if (!is_new_pixel) {
-		// INACTIVE PIXEL BYPASS: Output 100% History
+	if (!tileWasRenderedThisFrame) {
+		// Inactive tile: bypass blending with stale raymarch target and output reprojected history
 		accumulatedRGBA = historyRGBA;
 		accumulatedDepth = historyDepthProps;
 		accumulatedMoments = vec4(historyMoments.xyz, historyLength);
 	} else {
-		// ACTIVE PIXEL: TAA Blending
-		float currentPathDensity = currDepthProps.a;
-		float historyPathDensity = historyDepthProps.a;
 		bool isSky = (currentPathDensity < 0.01) && (historyPathDensity < 0.01);
 
-		if (allInvocationsARB(isSky)) {
-			float lumaCurrent = luma(currentRGBA.rgb);
-			float lumaHistory = luma(historyRGBA.rgb);
-			float lumaDiff = abs(lumaCurrent - lumaHistory);
-			float maxLuma = max(max(lumaCurrent, lumaHistory), 0.001);
-			float relativeLumaDiff = lumaDiff / maxLuma;
-			float skyLumaRejection = max(smoothstep(0.02, 0.25, relativeLumaDiff), smoothstep(0.03, 0.30, lumaDiff));
-
+		if (isSky) {
 			float alpha = 1.0;
 			if (uEnableTemporal) {
-				historyLength = mix(historyLength, 1.0, skyLumaRejection);
+				historyLength = mix(historyLength, 1.0, lumaRejection);
 				alpha = 1.0 / max(historyLength, 1.0);
-				alpha = max(alpha, skyLumaRejection * 0.85);
+				alpha = max(alpha, lumaRejection * 0.85);
 			}
 
 			accumulatedRGBA = mix(historyRGBA, currentRGBA, alpha);
@@ -432,27 +277,19 @@ if (!uEnableTemporal || !validHistory) {
 			vec3 currentM = vec3(currentLuma, currentLuma * currentLuma, accumulatedDepth.a * accumulatedDepth.a);
 			accumulatedMoments = vec4(mix(historyMoments.xyz, currentM, alpha), historyLength);
 		} else {
-NeighborhoodStats stats = computeNeighborhoodStats(uPackedFrame, uv, texelSize);
+			NeighborhoodStats stats = computeNeighborhoodStats(uPackedFrame, uv, texelSize);
 
-float gamma = uCloudTemporalGamma;
-vec3 extents = calculateDynamicExtents(stats.stddev, historyMoments, gamma);
-vec3 minColor = stats.spatialMean - extents;
-vec3 maxColor = stats.spatialMean + extents;
+			float gamma = uCloudTemporalGamma;
+			vec3 extents = calculateDynamicExtents(stats.stddev, historyMoments, gamma);
+			vec3 minColor = stats.spatialMean - extents;
+			vec3 maxColor = stats.spatialMean + extents;
 
-// Add these two missing lines to fix the undeclared variable errors:
-float minAlpha = stats.alphaMean - stats.alphaStddev * gamma;
-float maxAlpha = stats.alphaMean + stats.alphaStddev * gamma;
+			float minAlpha = stats.alphaMean - stats.alphaStddev * gamma;
+			float maxAlpha = stats.alphaMean + stats.alphaStddev * gamma;
 
-vec3 historyYCoCg = RGBToYCoCg(historyRGBA.rgb);
-float historyOpacity = clamp(1.0 - historyRGBA.a, 0.0, 1.0);
+			vec3 historyYCoCg = RGBToYCoCg(historyRGBA.rgb);
+			float historyOpacity = clamp(1.0 - historyRGBA.a, 0.0, 1.0);
 
-			float lumaCurrent = luma(currentRGBA.rgb);
-			float lumaHistory = luma(historyRGBA.rgb);
-			float lumaDiff = abs(lumaCurrent - lumaHistory);
-			float maxLuma = max(max(lumaCurrent, lumaHistory), 0.001);
-			float relativeLumaDiff = lumaDiff / maxLuma;
-
-			float lumaRejection = max(smoothstep(0.02, 0.25, relativeLumaDiff), smoothstep(0.03, 0.30, lumaDiff));
 			float lumaConfidence = smoothstep(0.20, 0.02, relativeLumaDiff);
 			float motionConfidenceFactor = smoothstep(2.0, 0.2, length(velocity * size));
 			float confidence = lumaConfidence * motionConfidenceFactor;
@@ -490,7 +327,7 @@ float historyOpacity = clamp(1.0 - historyRGBA.a, 0.0, 1.0);
 		}
 	}
 
-	imageStore(outColor, pixel, accumulatedRGBA);
-	imageStore(outDepth, pixel, accumulatedDepth);
-	imageStore(outMoments, pixel, accumulatedMoments);
+	imageStore(outColor, clampedPixel, accumulatedRGBA);
+	imageStore(outDepth, clampedPixel, accumulatedDepth);
+	imageStore(outMoments, clampedPixel, accumulatedMoments);
 }
