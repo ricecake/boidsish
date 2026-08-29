@@ -111,12 +111,15 @@ namespace Boidsish {
         uint32_t grass_tasks_ssbo_ = 0;
         uint32_t foliage_instances_ssbo_ = 0;
         uint32_t foliage_indirect_buffer_ = 0;
+        uint32_t tree_instances_ssbo_ = 0;
+        uint32_t tree_indirect_buffer_ = 0;
 
         std::unique_ptr<class ComputeShader> placement_shader_;
         std::unique_ptr<class ComputeShader> pre_pass_shader_;
         std::unique_ptr<class ComputeShader> fixup_shader_;
         std::shared_ptr<class Shader> grass_shader_;
         std::shared_ptr<class Shader> foliage_shader_;
+        std::shared_ptr<class Shader> tree_shader_;
 
         struct GrassInstance {
             glm::vec4 pos_rot; // xyz = world pos, w = rotation
