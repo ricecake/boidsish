@@ -105,7 +105,7 @@ void updateRocketTrail(inout Particle p, float dt) {
 	p.vel.xyz -= p.vel.xyz * kExhaustDrag * 2.0 * (1.0 - (length(p.vel.xyz) / 30.0)) * dt;
 	p.color = vec4(0.1, 0.1, 0.1, p.pos.w * 0.4);
 	p.vel.w = smoothstep(0.0, 1.0, p.pos.w / kExhaustLifetime) * 15.0;
-	p.origin.w = 2.0; // Intensity
+	p.origin.w = 35.0; // Rebalanced physical light intensity
 }
 
 void updateExplosion(inout Particle p, float dt, float time, sampler3D curlTexture) {
@@ -117,7 +117,7 @@ void updateExplosion(inout Particle p, float dt, float time, sampler3D curlTextu
 	float normLife = clamp(p.pos.w / kExplosionLifetime, 0.0, 1.0);
 	p.vel.w = (1.0 - (1.0 - normLife) * (1.0 - normLife)) * 60.0;
 	p.color = vec4(1.0, 0.9, 0.5, normLife);
-	p.origin.w = 5.0 * normLife;
+	p.origin.w = 100.0 * normLife; // Rebalanced physical light intensity
 }
 
 void updateFire(inout Particle p, float dt, float time) {
@@ -128,7 +128,7 @@ void updateFire(inout Particle p, float dt, float time) {
 	float normLife = clamp(p.pos.w / kFireLifetime, 0.0, 1.0);
 	p.vel.w = smoothstep(2.0 * (1.0 - normLife), normLife, normLife / 2.5) * 25.0;
 	p.color = vec4(1.0, 0.6, 0.2, normLife);
-	p.origin.w = 2.0 * normLife;
+	p.origin.w = 25.0 * normLife; // Rebalanced physical light intensity
 }
 
 void updateSparks(inout Particle p, float dt) {
@@ -143,7 +143,7 @@ void updateSparks(inout Particle p, float dt) {
 	p.color.a = smoothstep(0.0, 0.1, p.pos.w);
 
 	p.vel.w = 4.0 + p.pos.w * 20.0;
-	p.origin.w = 1.0 * p.color.a;
+	p.origin.w = 15.0 * p.color.a; // Rebalanced physical light intensity
 }
 
 void updateGlitter(inout Particle p, float dt, float time, sampler3D curlTexture) {
@@ -161,7 +161,7 @@ void updateGlitter(inout Particle p, float dt, float time, sampler3D curlTexture
 	p.color.a = clamp(p.pos.w, 0.0, 1.0);
 
 	p.vel.w = 6.0;
-	p.origin.w = 0.5 * p.color.a;
+	p.origin.w = 10.0 * p.color.a; // Rebalanced physical light intensity
 }
 
 void updateBubbles(inout Particle p, float dt, float time, sampler3D curlTexture) {
@@ -205,7 +205,7 @@ void updateCinder(inout Particle p, float dt, float time, sampler3D curlTexture)
 	p.color.rgb = mix(p.color.rgb, vec3(2.5, 0.8, 0.2), highlights);
 	p.color.a = smoothstep(0.0, 0.5, p.pos.w);
 	p.vel.w = 12.0;
-	p.origin.w = 0.5 * p.color.a;
+	p.origin.w = 8.0 * p.color.a; // Rebalanced physical light intensity
 }
 
 void updateRain(inout Particle p, float dt, float time) {
@@ -422,7 +422,7 @@ void updateAmbientFairy(
 	float twinkle = pow(smoothstep(0.0, 0.3, p.counter) * (1.0 - smoothstep(0.4, 0.6, p.counter)), 2) * step(p.counter, 0.6);
 	p.color.a = (0.2 + step(p.counter, 0.6) * (0.2 + twinkle * 0.6)) * smoothstep(0.0, 0.5, p.pos.w);
 	p.vel.w = 180.0;
-	p.origin.w = 0.5 * p.color.a;
+	p.origin.w = 10.0 * p.color.a; // Rebalanced physical light intensity
 }
 
 void updateAmbientFirefly(
@@ -480,7 +480,7 @@ void updateAmbientFirefly(
 	p.color.rgb = firefly_base * (2.0 + twinkle * 8.0) * flicker;
 	p.color.a = 0.00 + step(p.counter, 0.6) * (0.4 + twinkle * 0.6) * smoothstep(0.0, 0.5, p.pos.w);
 	p.vel.w = 15.0;
-	p.origin.w = 0.5 * p.color.a;
+	p.origin.w = 5.0 * p.color.a; // Rebalanced physical light intensity
 }
 
 
