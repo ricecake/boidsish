@@ -1928,6 +1928,7 @@ namespace Boidsish {
 		}
 
 		void RenderPlane(const glm::mat4& view) {
+			PROJECT_PROFILE_SCOPE("RenderPlane");
 			if (!plane_shader || !ConfigManager::GetInstance().GetAppSettingBool("render_floor", true)) {
 				return;
 			}
@@ -3792,20 +3793,49 @@ namespace Boidsish {
 
 	void Visualizer::Render() {
 		PROJECT_PROFILE_SCOPE("Render");
-		impl->RefreshFrameConfig();
-		impl->PrepareFrame();
+
+		{
+			PROJECT_PROFILE_SCOPE("RefreshFrameConfig");
+			impl->RefreshFrameConfig();
+		}
+
+		{
+			PROJECT_PROFILE_SCOPE("PrepareFrame");
+			impl->PrepareFrame();
+		}
 
 		// Build this frame's data from the temporal chain
-		FrameData frame = impl->current_frame_.NextFrame();
-		impl->PopulateFrameData(frame);
+		FrameData frame;
+		{
+			PROJECT_PROFILE_SCOPE("PopulateFrameData");
+			frame = impl->current_frame_.NextFrame();
+			impl->PopulateFrameData(frame);
+		}
 
-		impl->PrepareUBOs();
+		{
+			PROJECT_PROFILE_SCOPE("PrepareUBOs");
+			impl->PrepareUBOs();
+		}
+
 		impl->packets_synced_ = false;
-		impl->GenerateRenderPacketsAsync();
-		impl->UpdateSystems(frame);
-		impl->AssignLightsToClusters();
+
+		{
+			PROJECT_PROFILE_SCOPE("GenerateRenderPacketsAsync");
+			impl->GenerateRenderPacketsAsync();
+		}
+
+		{
+			PROJECT_PROFILE_SCOPE("UpdateSystems");
+			impl->UpdateSystems(frame);
+		}
+
+		{
+			PROJECT_PROFILE_SCOPE("AssignLightsToClusters");
+			impl->AssignLightsToClusters();
+		}
 
 		if (impl->weather_manager && impl->weather_manager->IsEnabled()) {
+			PROJECT_PROFILE_SCOPE("UpdateWindUbo");
 			impl->weather_manager->UpdateWindUbo(
 				impl->simulation_time,
 				impl->simulation_delta_time,
@@ -3816,18 +3846,30 @@ namespace Boidsish {
 
 		// Shadow decor renders during the overlap window (no packets needed).
 		// The shape callback triggers lazy sync when packets are first needed.
-		impl->RenderShadowPasses(frame);
-		impl->EnsurePacketsSynced(frame); // fallback if no shadow shapes triggered it
+		{
+			PROJECT_PROFILE_SCOPE("RenderShadowPasses");
+			impl->RenderShadowPasses(frame);
+		}
+
+		{
+			PROJECT_PROFILE_SCOPE("EnsurePacketsSynced");
+			impl->EnsurePacketsSynced(frame); // fallback if no shadow shapes triggered it
+		}
 
 		// Pre-dispatch compute effects (like volumetric lighting) so results are available for the scene
 		if (impl->post_processing_manager_) {
+			PROJECT_PROFILE_SCOPE("PreDispatchPostProcessingEffects");
 			impl->post_processing_manager_->PreDispatchEffects(frame.view, frame.projection, frame.camera_pos);
 		}
 
-		impl->RenderOpaqueScene(frame);
+		{
+			PROJECT_PROFILE_SCOPE("RenderOpaqueScene");
+			impl->RenderOpaqueScene(frame);
+		}
 
 		// Update terrain probes based on the opaque scene result
 		if (impl->terrain_render_manager && impl->compositor_ && impl->atmosphere_manager) {
+			PROJECT_PROFILE_SCOPE("DispatchProbeUpdate");
 			impl->terrain_render_manager->DispatchProbeUpdate(
 				impl->compositor_->GetColorTexture(),
 				impl->compositor_->GetDepthTexture(),
@@ -3846,9 +3888,20 @@ namespace Boidsish {
 			);
 		}
 
-		impl->RenderTransparentScene(frame);
-		impl->RenderPostProcessing(frame);
-		impl->FinalizeFrame();
+		{
+			PROJECT_PROFILE_SCOPE("RenderTransparentScene");
+			impl->RenderTransparentScene(frame);
+		}
+
+		{
+			PROJECT_PROFILE_SCOPE("RenderPostProcessing");
+			impl->RenderPostProcessing(frame);
+		}
+
+		{
+			PROJECT_PROFILE_SCOPE("FinalizeFrame");
+			impl->FinalizeFrame();
+		}
 
 		// Commit for next frame's temporal chain
 		impl->current_frame_ = frame;
