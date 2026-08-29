@@ -1,0 +1,91 @@
+#version 460 core
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(binding = 0, rgba32f) uniform image2D uErrorMap;
+
+struct TileQueueHeader {
+	uint count;
+	uint maxTiles;
+	uint frameIndex;
+	float budgetFraction;
+	uint minRefreshInterval;
+	uint tileCols;
+	uint tileRows;
+	uint totalTiles;
+};
+
+layout(std430, binding = 59) buffer TileQueueSSBO {
+	TileQueueHeader uHeader;
+	uvec2 uTileQueue[];
+};
+
+layout(std430, binding = 60) buffer IndirectDispatchSSBO {
+	uint uDispatchCountX;
+	uint uDispatchCountY;
+	uint uDispatchCountZ;
+};
+
+void main() {
+	uint threadIndex = gl_GlobalInvocationID.y * (uHeader.tileCols) + gl_GlobalInvocationID.x;
+	uint totalTiles = uHeader.totalTiles;
+
+	if (gl_GlobalInvocationID.x >= uHeader.tileCols || gl_GlobalInvocationID.y >= uHeader.tileRows || totalTiles == 0u) {
+		return;
+	}
+
+	// Frame-staggered tile evaluation to prevent top-to-bottom budget scanline bias
+	uint shift = (uHeader.frameIndex * 131u) % totalTiles;
+	uint linearIndex = (threadIndex + shift) % totalTiles;
+
+	uvec2 tileCoord = uvec2(linearIndex % uHeader.tileCols, linearIndex / uHeader.tileCols);
+
+	ivec2 tilePixel = ivec2(tileCoord);
+	vec4 errorData = imageLoad(uErrorMap, tilePixel);
+
+	float errorVal = errorData.r;
+	float densityGrad = errorData.g;
+	float currentStepMult = (errorData.b > 0.01) ? errorData.b : 1.0;
+	uint lastUpdatedFrame = uint(round(errorData.a));
+
+	uint age = (uHeader.frameIndex > lastUpdatedFrame) ? (uHeader.frameIndex - lastUpdatedFrame) : 0u;
+
+	// Scale age factor aggressively so stagnant tiles near top or edges never starve
+	float ageRatio = float(age) / float(max(1u, uHeader.minRefreshInterval));
+	float ageFactor = ageRatio * ageRatio * 3.0;
+
+	float priorityScore = errorVal * 2.5 + densityGrad * 2.0 + ageFactor;
+
+	bool needsUpdate = (age >= uHeader.minRefreshInterval) || (priorityScore > 0.05) || (lastUpdatedFrame == 0u);
+
+	// Adaptive Step Size Adjustment (expansion/contraction)
+	float targetStepMult = 1.0;
+	if (priorityScore > 0.35) {
+		targetStepMult = 0.6;
+	} else if (priorityScore < 0.08) {
+		targetStepMult = 1.5;
+	}
+	float updatedStepMult = clamp(mix(currentStepMult, targetStepMult, 0.25), 0.5, 2.0);
+
+	errorData.b = updatedStepMult;
+	imageStore(uErrorMap, tilePixel, errorData);
+
+	if (needsUpdate) {
+		uint slot = atomicAdd(uHeader.count, 1u);
+		if (slot < uHeader.maxTiles) {
+			uTileQueue[slot] = tileCoord;
+			atomicAdd(uDispatchCountX, 1u);
+
+			// // CLEAR the error and reset the frame tracking so the TAA knows it's fresh
+			// errorData.r = 0.0;
+			// errorData.g = 0.0;
+			// errorData.a = float(uHeader.frameIndex);
+		}
+	} else {
+		// Slowly decay error for unrendered tiles so they don't get stuck
+		errorData.r *= 0.99;
+		errorData.g *= 0.99;
+	}
+
+	errorData.b = updatedStepMult;
+	imageStore(uErrorMap, tilePixel, errorData);
+}

@@ -122,7 +122,9 @@ namespace Boidsish {
 				ClusterGridBuffer = 53,
 				SpaceProbe = 54,
 				CdlGradingLayers = 55,
-				MlpParams = 57
+				MlpParams = 57,
+				CloudTileQueue = 59,
+				CloudIndirectDispatch = 60
 			};
 		} // namespace Bindings
 
@@ -555,6 +557,14 @@ namespace Boidsish {
 
 			consteval int MlpParams() {
 				return std::to_underlying(Constants::Bindings::Ssbo::MlpParams);
+			}
+
+			consteval int CloudTileQueue() {
+				return std::to_underlying(Constants::Bindings::Ssbo::CloudTileQueue);
+			}
+
+			consteval int CloudIndirectDispatch() {
+				return std::to_underlying(Constants::Bindings::Ssbo::CloudIndirectDispatch);
 			}
 		} // namespace SsboBinding
 
