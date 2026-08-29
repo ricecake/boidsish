@@ -1,0 +1,127 @@
+#version 460 core
+
+layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
+
+layout(rgba16f, binding = 1) uniform writeonly image3D outVolume3D;
+uniform sampler2D uEffectMap;
+
+uniform float uTime;
+uniform vec3 uCenterPosition;
+uniform vec3 uVolumeExtents;
+uniform float uBuoyancy;
+uniform float uSmokeDensityScale;
+uniform float uFireIntensityScale;
+uniform vec3 uFlameColor;
+uniform vec3 uWindVelocity;
+uniform float uBlackbodyMultiplier;
+uniform float uFireOpacityScale;
+uniform float uTemperatureScale;
+
+#include "lygia/color/space/k2rgb.glsl"
+
+// Fast 3D Hash / Noise helpers
+float hash3D(vec3 p) {
+    p = fract(p * vec3(443.897, 441.423, 437.195));
+    p += dot(p, p.yzx + 19.19);
+    return fract((p.x + p.y) * p.z);
+}
+
+float noise3D(vec3 p) {
+    vec3 i = floor(p);
+    vec3 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+
+    float n000 = hash3D(i + vec3(0,0,0));
+    float n100 = hash3D(i + vec3(1,0,0));
+    float n010 = hash3D(i + vec3(0,1,0));
+    float n110 = hash3D(i + vec3(1,1,0));
+    float n001 = hash3D(i + vec3(0,0,1));
+    float n101 = hash3D(i + vec3(1,0,1));
+    float n011 = hash3D(i + vec3(0,1,1));
+    float n111 = hash3D(i + vec3(1,1,1));
+
+    float nx00 = mix(n000, n100, f.x);
+    float nx10 = mix(n010, n110, f.x);
+    float nx01 = mix(n001, n101, f.x);
+    float nx11 = mix(n011, n111, f.x);
+
+    float nxy0 = mix(nx00, nx10, f.y);
+    float nxy1 = mix(nx01, nx11, f.y);
+
+    return mix(nxy0, nxy1, f.z);
+}
+
+float fbm3D(vec3 p) {
+    float val = 0.0;
+    float amp = 0.5;
+    vec3 shift = vec3(100.0);
+    for (int i = 0; i < 4; ++i) {
+        val += amp * noise3D(p);
+        p = p * 2.02 + shift;
+        amp *= 0.5;
+    }
+    return val;
+}
+
+void main() {
+    ivec3 vox = ivec3(gl_GlobalInvocationID.xyz);
+    ivec3 size = imageSize(outVolume3D);
+
+    if (vox.x >= size.x || vox.y >= size.y || vox.z >= size.z) return;
+
+    vec3 normPos = (vec3(vox) + 0.5) / vec3(size);
+    float height = normPos.y;
+
+    vec2 windAdvection = uWindVelocity.xz * 0.05 * height;
+    vec2 effectUV = clamp(normPos.xz - windAdvection, vec2(0.001), vec2(0.999));
+
+    vec4 effect = textureLod(uEffectMap, effectUV, 0.0);
+    float fuel  = effect.r;
+    float fire  = effect.g;
+    float smoke = effect.b;
+    float heat  = effect.a;
+
+    // 1. High-Detail 3D Flame Structure
+    float fireHeightProfile = exp(-height * 5.0) * smoothstep(0.0, 0.03, height);
+    vec3 fireNoisePos = normPos * vec3(16.0, 24.0, 16.0) - vec3(0.0, uTime * 8.0, 0.0);
+    float fireNoise = fbm3D(fireNoisePos);
+
+    float localFireDensity = fire * fireHeightProfile * smoothstep(0.3, 0.7, fireNoise) * uFireIntensityScale;
+
+    // Convert local heat/fire into Kelvin blackbody temperature (1000K base -> 3800K hot flame)
+    float kelvin = clamp(1000.0 + (heat * 1.5 + localFireDensity * 1200.0) * uTemperatureScale, 800.0, 4000.0);
+    vec3 blackbodyColor = k2rgb(kelvin);
+
+    // Thermal radiance scaling via Planck's / Stefan-Boltzmann relationship (T / 1000)^3.5
+    float thermalRadiance = pow(kelvin / 1000.0, 3.5) * uBlackbodyMultiplier * localFireDensity;
+    vec3 emissiveColor = mix(uFlameColor, blackbodyColor, 0.75) * thermalRadiance;
+
+    // 2. High-Detail 3D Smoke Structure
+    float smokeHeightProfile = smoothstep(0.01, 0.1, height) * (1.0 - smoothstep(0.75, 1.0, height));
+    vec3 smokeNoisePos = normPos * vec3(8.0, 14.0, 8.0) - vec3(uWindVelocity.x, uBuoyancy * 3.5, uWindVelocity.z) * uTime * 0.15;
+    float smokeNoise = fbm3D(smokeNoisePos);
+
+    float localSmokeDensity = (smoke + fire * 0.8) * smokeHeightProfile * smoothstep(0.25, 0.8, smokeNoise) * uSmokeDensityScale;
+
+    // Fire opacity for drowning out background objects behind fire
+    float localFireOpacity = localFireDensity * uFireOpacityScale;
+
+    // Boundary edge fade
+    vec3 edgeDist = min(normPos, 1.0 - normPos);
+    float boundaryFade = smoothstep(0.0, 0.06, edgeDist.x) * smoothstep(0.0, 0.06, edgeDist.y) * smoothstep(0.0, 0.06, edgeDist.z);
+
+    localFireDensity  *= boundaryFade;
+    localSmokeDensity *= boundaryFade;
+    emissiveColor     *= boundaryFade;
+    localFireOpacity  *= boundaryFade;
+
+    // Out Volume 3D:
+    // .r: Fire Emissive Luminance (or peak component)
+    // .g: Smoke Extinction Density
+    // .b: Fire Opacity (for drowning out background)
+    // .a: Combined Alpha
+    float emissiveLum = max(emissiveColor.r, max(emissiveColor.g, emissiveColor.b));
+    vec4 volumeValue = vec4(emissiveLum, localSmokeDensity, localFireOpacity, clamp(localFireOpacity + localSmokeDensity, 0.0, 1.0));
+
+    imageStore(outVolume3D, vox, volumeValue);
+}

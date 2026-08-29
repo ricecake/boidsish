@@ -6,6 +6,7 @@
 #include "terrain_render_manager.h"
 #include "atmosphere_manager.h"
 #include "fire_effect_manager.h"
+#include "volumetric_fire_smoke_manager.h"
 #include "NoiseManager.h"
 #include "weather_manager.h"
 #include "ConfigManager.h"
@@ -143,6 +144,13 @@ namespace Boidsish {
 			if (terrain_mgr) terrain_mgr->BindTerrainData(*injection_shader_);
 			if (atmos_mgr) atmos_mgr->BindToShader(*injection_shader_);
 			if (fire_mgr) fire_mgr->BindBuffers(*injection_shader_);
+
+			auto fire_smoke_mgr = loc.Get<VolumetricFireSmokeManager>();
+			if (fire_smoke_mgr) {
+				fire_smoke_mgr->BindToShader(*injection_shader_);
+			} else {
+				injection_shader_->setBool("u_localVolActive", false);
+			}
 
 			if (noise_mgr) {
 				noise_mgr->BindDefault(*injection_shader_);

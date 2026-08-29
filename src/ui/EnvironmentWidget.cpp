@@ -11,6 +11,7 @@
 #include "post_processing/PostProcessingManager.h"
 #include "post_processing/effects/AtmosphereEffect.h"
 #include "post_processing/effects/VolumetricLightingEffect.h"
+#include "volumetric_fire_smoke_manager.h"
 #include "terrain_generator_interface.h"
 #include "weather_manager.h"
 #include "service_locator.h"
@@ -959,6 +960,71 @@ namespace Boidsish {
 								}
 							}
 							break;
+						}
+					}
+				}
+
+				// 2.4 Volumetric Fire & Smoke
+				if (ImGui::CollapsingHeader("Volumetric Fire & Smoke", ImGuiTreeNodeFlags_DefaultOpen)) {
+					auto fire_smoke_mgr = ServiceLocator::Instance().Get<VolumetricFireSmokeManager>();
+					if (fire_smoke_mgr) {
+						bool enabled = fire_smoke_mgr->IsEnabled();
+						if (ImGui::Checkbox("Enable Volumetric Fire & Smoke", &enabled)) {
+							fire_smoke_mgr->SetEnabled(enabled);
+						}
+
+						if (enabled) {
+							auto cam_pos = m_visualizer.GetCamera().pos();
+							auto cam_front = m_visualizer.GetCamera().front();
+							glm::vec3 spawn_pos = cam_pos + cam_front * 15.0f;
+
+							if (ImGui::Button("Ignite Fire at Camera View")) {
+								fire_smoke_mgr->Ignite(spawn_pos, 8.0f, 1.0f);
+							}
+							ImGui::SameLine();
+							if (ImGui::Button("Reset Fuel Coverage Map")) {
+								fire_smoke_mgr->ResetEffectMap(1.0f);
+							}
+
+							float spread = fire_smoke_mgr->GetSpreadRate();
+							if (ImGui::SliderFloat("Spread Rate", &spread, 0.0f, 3.0f, "%.2f")) {
+								fire_smoke_mgr->SetSpreadRate(spread);
+							}
+
+							float buoyancy = fire_smoke_mgr->GetBuoyancy();
+							if (ImGui::SliderFloat("Thermal Buoyancy", &buoyancy, 0.0f, 10.0f, "%.1f")) {
+								fire_smoke_mgr->SetBuoyancy(buoyancy);
+							}
+
+							float smoke_scale = fire_smoke_mgr->GetSmokeDensityScale();
+							if (ImGui::SliderFloat("Smoke Density Scale", &smoke_scale, 0.0f, 5.0f, "%.2f")) {
+								fire_smoke_mgr->SetSmokeDensityScale(smoke_scale);
+							}
+
+							float fire_scale = fire_smoke_mgr->GetFireIntensityScale();
+							if (ImGui::SliderFloat("Fire Intensity Scale", &fire_scale, 0.0f, 20.0f, "%.2f")) {
+								fire_smoke_mgr->SetFireIntensityScale(fire_scale);
+							}
+
+							float blackbody = fire_smoke_mgr->GetBlackbodyMultiplier();
+							if (ImGui::SliderFloat("Blackbody Thermal Multiplier", &blackbody, 0.0f, 50.0f, "%.1f")) {
+								fire_smoke_mgr->SetBlackbodyMultiplier(blackbody);
+							}
+
+							float opacity = fire_smoke_mgr->GetFireOpacityScale();
+							if (ImGui::SliderFloat("Fire Opacity / Extinction", &opacity, 0.0f, 30.0f, "%.1f")) {
+								fire_smoke_mgr->SetFireOpacityScale(opacity);
+							}
+
+							float temp_scale = fire_smoke_mgr->GetTemperatureScale();
+							if (ImGui::SliderFloat("Temperature Scale", &temp_scale, 0.1f, 3.0f, "%.2f")) {
+								fire_smoke_mgr->SetTemperatureScale(temp_scale);
+							}
+
+							glm::vec3 flame_color = fire_smoke_mgr->GetFlameColor();
+							if (ImGui::ColorEdit3("Flame Color", &flame_color[0])) {
+								fire_smoke_mgr->SetFlameColor(flame_color);
+							}
 						}
 					}
 				}

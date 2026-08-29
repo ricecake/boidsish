@@ -1,0 +1,69 @@
+#version 460 core
+
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+layout(rgba32f, binding = 0) uniform writeonly image2D outEffectMap;
+uniform sampler2D uInEffectMap;
+
+uniform float uDeltaTime;
+uniform float uTime;
+uniform float uSpreadRate;
+uniform vec3 uWindVelocity;
+
+void main() {
+    ivec2 pos = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = textureSize(uInEffectMap, 0);
+
+    if (pos.x >= size.x || pos.y >= size.y) return;
+
+    vec2 uv = (vec2(pos) + 0.5) / vec2(size);
+    vec4 current = textureLod(uInEffectMap, uv, 0.0);
+
+    float fuel  = current.r;
+    float fire  = current.g;
+    float smoke = current.b;
+    float heat  = current.a;
+
+    // Neighbor sampling for heat diffusion & fire spreading
+    vec2 texel = 1.0 / vec2(size);
+    vec4 nN = textureLod(uInEffectMap, uv + vec2(0.0, texel.y), 0.0);
+    vec4 nS = textureLod(uInEffectMap, uv - vec2(0.0, texel.y), 0.0);
+    vec4 nE = textureLod(uInEffectMap, uv + vec2(texel.x, 0.0), 0.0);
+    vec4 nW = textureLod(uInEffectMap, uv - vec2(texel.x, 0.0), 0.0);
+
+    // Wind offset for directional spread
+    vec2 windOffset = uWindVelocity.xz * 0.002 * uSpreadRate;
+    vec4 nWind = textureLod(uInEffectMap, uv - windOffset, 0.0);
+
+    float avgNeighborHeat = (nN.a + nS.a + nE.a + nW.a + nWind.a * 2.0) / 6.0;
+    float avgNeighborFire = (nN.g + nS.g + nE.g + nW.g + nWind.g * 2.0) / 6.0;
+
+    // 1. Ignition & Heat Diffusion
+    heat = mix(heat, avgNeighborHeat, clamp(uDeltaTime * 2.0 * uSpreadRate, 0.0, 1.0));
+
+    if (fuel > 0.05 && (heat > 120.0 || avgNeighborFire > 0.15)) {
+        fire = max(fire, smoothstep(120.0, 300.0, heat) * 0.8 + avgNeighborFire * 0.4);
+    }
+
+    // 2. Combustion Physics
+    if (fire > 0.01 && fuel > 0.0) {
+        float burnAmount = min(fuel, fire * uDeltaTime * 0.12 * uSpreadRate);
+        fuel = max(0.0, fuel - burnAmount);
+        heat += burnAmount * 1200.0;
+        smoke = clamp(smoke + burnAmount * 2.5, 0.0, 1.0);
+    } else {
+        fire *= exp(-uDeltaTime * 1.5);
+    }
+
+    // 3. Thermal Decay & Smoke Dissipation
+    heat *= exp(-uDeltaTime * 0.6);
+    smoke *= exp(-uDeltaTime * 0.15);
+
+    // Safety clamp
+    fuel  = clamp(fuel, 0.0, 1.0);
+    fire  = clamp(fire, 0.0, 1.0);
+    smoke = clamp(smoke, 0.0, 1.0);
+    heat  = clamp(heat, 0.0, 2000.0);
+
+    imageStore(outEffectMap, pos, vec4(fuel, fire, smoke, heat));
+}
