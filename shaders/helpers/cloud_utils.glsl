@@ -356,6 +356,7 @@ float calculateCloudShadowFactor(vec3 frag_pos, vec3 L, float intensity) {
 	// Project fragment pos to light space to get shadowUV
 	vec4 lightSpacePos = u_cloudShadowMatrix * vec4(frag_pos, 1.0);
 	vec2 shadowUV = lightSpacePos.xy * 0.5 + 0.5;
+	if (any(lessThan(shadowUV, vec2(0.0))) || any(greaterThan(shadowUV, vec2(1.0)))) return 1.0;
 
 	CloudProperties props;
 	props.altitude = cloudAltitude;
@@ -405,6 +406,7 @@ float calculateCloudAmbientOcclusion(vec3 frag_pos) {
 	// Project P_above to light space to get the correct shadowUV directly above the point
 	vec4 lightSpacePos_above = u_cloudShadowMatrix * vec4(P_above, 1.0);
 	vec2 shadowUV_above = lightSpacePos_above.xy * 0.5 + 0.5;
+	if (any(lessThan(shadowUV_above, vec2(0.0))) || any(greaterThan(shadowUV_above, vec2(1.0)))) return 1.0;
 
 	// Scale accumulated density by a physical factor (0.02) to match average extinction values and keep ambient occlusion soft/realistic
 	float accumulatedDensity = sampleDeepOpacityMap(shadowUV_above, h, 1.0) * 0.001 * cloudShadowOpticalDepthMultiplier / max(0.001, worldScale); // high LOD for soft ambient occlusion
