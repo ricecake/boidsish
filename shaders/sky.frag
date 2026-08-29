@@ -7,12 +7,30 @@ layout(location = 3) out vec4 AlbedoOut;
 
 in vec2 TexCoords;
 
+#include "helpers/terrain_common.glsl"
 #include "helpers/lighting.glsl"
 #include "atmosphere/common.glsl"
 #include "helpers/fast_noise.glsl"
 #include "helpers/clouds.glsl"
 #include "helpers/astral.glsl"
 #include "visual_effects.glsl"
+
+layout(binding = [[TERRAIN_COLOR_BLEND_BINDING]]) uniform sampler3D u_terrainColorBlend;
+
+float evalNoiseHeightAndGradient(vec2 p, out vec2 grad) {
+	vec2 g1, g2;
+	vec2 scale1 = vec2(0.005 / worldScale);
+	vec2 scale2 = vec2(0.015 / worldScale);
+
+	float n1 = psrdnoise(p * scale1, vec2(0.0), 0.0, g1);
+	float n2 = psrdnoise(p * scale2, vec2(0.0), 0.0, g2);
+
+	float h1 = n1 * 25.0 * worldScale;
+	float h2 = n2 * 10.0 * worldScale;
+
+	grad = g1 * scale1 * 25.0 * worldScale + g2 * scale2 * 10.0 * worldScale;
+	return h1 + h2;
+}
 
 uniform mat4 invProjection;
 uniform mat4 invView;
@@ -100,53 +118,97 @@ void main() {
 
 	if (world_ray.y < 0.0) {
 
-		float cameraHeight = max(0.001 * worldScale, viewPos.y);
-		float t = -cameraHeight / world_ray.y;
-		vec3 intersectPos = viewPos + t * world_ray;
-		intersectPos.y = 0.0; // Force exact level with y=0
-		float dist = length(intersectPos.xz - viewPos.xz);
+		// Raymarch heightfield along world_ray
+		float hMax = 35.0 * worldScale;
+		float hMin = -35.0 * worldScale;
+		float tStart = (viewPos.y > hMax) ? (hMax - viewPos.y) / world_ray.y : 0.0;
+		float tEnd = (hMin - viewPos.y) / world_ray.y;
+		tStart = max(0.0, tStart);
+		tEnd = max(tStart + 0.1, tEnd);
 
-		// --- Grid logic ---
-		float grid_spacing = 1.0;
-		vec2  coord = intersectPos.xz / grid_spacing;
-		vec2  f = max(fwidth(coord), vec2(0.0001));
+		float t = tStart;
+		float dt = (tEnd - tStart) / 10.0;
+		float prevT = tStart;
+		float prevHDiff = 0.0;
+		bool hit = false;
 
-		vec2  grid_minor = abs(fract(coord - 0.5) - 0.5) / f;
-		float line_minor = min(grid_minor.x, grid_minor.y);
-		float C_minor = 1.0 - min(line_minor, 1.0);
+		vec3 p = viewPos + t * world_ray;
 
-		vec2  grid_major = abs(fract(coord / 5.0 - 0.5) - 0.5) / f;
-		float line_major = min(grid_major.x, grid_major.y);
-		float C_major = 1.0 - min(line_major, 1.0);
+		for (int i = 0; i <= 10; ++i) {
+			p = viewPos + t * world_ray;
+			float distToCam = length(p.xz - viewPos.xz);
 
-		float intensity = max(C_minor, C_major * 1.5);
-		// vec3  grid_color = vec3(0.0, 0.8, 0.8) * intensity;
-		vec3  grid_color = vec3(0.0, 0.8, 0.8) * intensity * 0.1*(1.0-smoothstep(2000, 200000, dist));
+			vec2 dummyGrad;
+			float noiseH = evalNoiseHeightAndGradient(p.xz, dummyGrad);
 
-		// --- Plane lighting ---
-		vec3 norm = vec3(0.0, 1.0, 0.0);
-		vec3 surfaceColor = vec3(0.05, 0.05, 0.08);
+			TerrainSurface terrainSurf = getTerrainSurface(p.xz);
+			float terrainBlend = (terrainSurf.height > -9000.0)
+				? (1.0 - smoothstep(100.0 * worldScale, 500.0 * worldScale, distToCam))
+				: 0.0;
+
+			float surfaceH = mix(noiseH, terrainSurf.height, terrainBlend);
+			float hDiff = p.y - surfaceH;
+
+			if (i > 0 && hDiff < 0.0) {
+				float frac = clamp(prevHDiff / (prevHDiff - hDiff + 1e-5), 0.0, 1.0);
+				t = mix(prevT, t, frac);
+				p = viewPos + t * world_ray;
+				hit = true;
+				break;
+			}
+
+			prevT = t;
+			prevHDiff = hDiff;
+			t += dt;
+		}
+
+		if (!hit) {
+			t = -max(0.001 * worldScale, viewPos.y) / world_ray.y;
+			p = viewPos + t * world_ray;
+		}
+
+		float finalDist = length(p.xz - viewPos.xz);
+
+		vec2 noiseGrad;
+		float noiseH = evalNoiseHeightAndGradient(p.xz, noiseGrad);
+
+		TerrainSurface terrainSurf = getTerrainSurface(p.xz);
+		float terrainBlend = (terrainSurf.height > -9000.0)
+			? (1.0 - smoothstep(100.0 * worldScale, 500.0 * worldScale, finalDist))
+			: 0.0;
+
+		float finalHeight = mix(noiseH, terrainSurf.height, terrainBlend);
+		p.y = finalHeight;
+
+		// Analytical noise normal from exact gradients
+		vec3 noiseNorm = normalize(vec3(-noiseGrad.x, 1.0, -noiseGrad.y));
+		vec3 norm = (terrainBlend > 0.0 && terrainSurf.height > -9000.0)
+			? normalize(mix(noiseNorm, terrainSurf.normal, terrainBlend))
+			: noiseNorm;
+
+		// Sample 3D terrain color palette
+		float heightNormalized = clamp(finalHeight / (100.0 * worldScale), 0.0, 1.0);
+		float moisture = 0.5;
+		float roughness = 0.8;
+		vec3 surfaceColor = texture(u_terrainColorBlend, vec3(heightNormalized, moisture, roughness)).rgb;
+
+		// Apply PBR lighting
 		float primaryShadow;
-		// vec3 lighting = apply_lighting(intersectPos, norm, surfaceColor, 0.8, primaryShadow).rgb;
-		vec3 lighting = apply_lighting_pbr(intersectPos, norm, surfaceColor, 0.05, 0.9, 1.0, primaryShadow).rgb;
+		vec3 lighting = apply_lighting_pbr(p, norm, surfaceColor, roughness, 0.0, 1.0, primaryShadow).rgb;
 
-		// --- Combine colors ---
-		vec3 landscapeColor = lighting + grid_color;
+		// Distance Fog / Horizon Sky blending
+		float fogFactor = clamp(exp(-finalDist / (3000.0 * worldScale)), 0.0, 1.0);
 
-		// --- Distance Fade ---
-		float fogFactor = clamp(exp(-dist / (3000.0 * worldScale)), 0.0, 1.0);
-
-		// Blend ground with atmospheric sky radiance at the horizon to prevent leakage of below-horizon scattering
 		vec3 horizonRay = normalize(vec3(world_ray.x, 0.0, world_ray.z));
 		vec3 horizonSkyRadiance = sampleSkyView(horizonRay);
-		vec3 finalColor = mix(horizonSkyRadiance, landscapeColor, fogFactor);
+		vec3 finalColor = mix(horizonSkyRadiance, lighting, fogFactor);
 
 		// Add lightning background pulse
 		vec3 localLightningEffect = lightningColor * lightningPulse * 0.35;
 		finalColor += localLightningEffect;
 
 		FragColor = vec4(finalColor, 1.0);
-		Velocity = vec4(0.0, 0.0, 0.8, 0.0); // Roughness 0.8, Metallic 0.0 (ground)
+		Velocity = vec4(0.0, 0.0, roughness, 0.0);
 		NormalOut = vec4(normalize(mat3(view) * norm), primaryShadow);
 		AlbedoOut = vec4(surfaceColor, 1.0);
 		return;

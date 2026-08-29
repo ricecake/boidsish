@@ -1897,6 +1897,10 @@ namespace Boidsish {
 			sky_shader->setMat4("invProjection", glm::inverse(projection));
 			sky_shader->setMat4("invView", glm::inverse(view));
 
+			if (terrain_render_manager) {
+				terrain_render_manager->BindTerrainData(*sky_shader);
+			}
+
 			if (atmosphere_manager) {
 				atmosphere_manager->BindToShader(*sky_shader);
 
