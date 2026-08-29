@@ -389,8 +389,9 @@ void main() {
 	float tileStepMult = (tileErrorData.b > 0.01) ? tileErrorData.b : 1.0;
 
 	if (gl_LocalInvocationID.x == 0u && gl_LocalInvocationID.y == 0u) {
-		tileErrorData.a = uintBitsToFloat(uHeader.frameIndex);
+		tileErrorData.a = float(uHeader.frameIndex);
 		tileErrorData.r = 0.0;
+		tileErrorData.g = 0.0;
 		imageStore(uErrorMap, ivec2(tileCoord), tileErrorData);
 	}
 

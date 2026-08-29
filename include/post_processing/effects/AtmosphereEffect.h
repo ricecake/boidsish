@@ -382,8 +382,8 @@ namespace Boidsish {
 			float cloud_svgf_history_boost_ = 4.0f;
 			float cloud_svgf_history_threshold_ = 10.0f;
 
-			float cloud_rendering_budget_ = 0.5f;
-			int   cloud_min_refresh_interval_ = 8;
+			float cloud_rendering_budget_ = 0.75f;
+			int   cloud_min_refresh_interval_ = 4;
 
 		};
 

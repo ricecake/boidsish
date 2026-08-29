@@ -7,6 +7,22 @@ layout(binding = 1, rgba32f) uniform image2D outDepth;
 layout(binding = 2, rgba32f) uniform image2D outMoments;
 layout(binding = 3, rgba32f) uniform image2D uErrorMap;
 
+struct TileQueueHeader {
+	uint count;
+	uint maxTiles;
+	uint frameIndex;
+	float budgetFraction;
+	uint minRefreshInterval;
+	uint tileCols;
+	uint tileRows;
+	uint totalTiles;
+};
+
+layout(std430, binding = 59) buffer TileQueueSSBO {
+	TileQueueHeader uHeader;
+	uvec2 uTileQueue[];
+};
+
 uniform sampler2D uPackedFrame;
 uniform sampler2D uPackedDepth;
 uniform sampler2D uPackedVelocity;
@@ -144,26 +160,24 @@ void main() {
 	ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
 	ivec2 size = imageSize(outColor);
 	uint localIdx = gl_LocalInvocationIndex;
+	bool inBounds = (pixel.x < size.x && pixel.y < size.y);
 
-	if (pixel.x >= size.x || pixel.y >= size.y) {
-		sharedError[localIdx] = 0.0;
-		sharedFlow[localIdx] = 0.0;
-		barrier();
-		return;
-	}
-
-	vec2 uv = (vec2(pixel) + 0.5) / vec2(size);
+	ivec2 clampedPixel = clamp(pixel, ivec2(0), size - ivec2(1));
+	vec2 uv = (vec2(clampedPixel) + 0.5) / vec2(size);
 	vec2 texelSize = 1.0 / vec2(size);
 
-	ivec2 tileCoord = pixel / ivec2(8);
+	ivec2 tileCoord = clampedPixel / ivec2(8);
+	vec4 tileErrorData = imageLoad(uErrorMap, ivec2(tileCoord));
+	uint tileLastUpdated = uint(round(tileErrorData.a));
+	bool tileWasRenderedThisFrame = (tileLastUpdated == uHeader.frameIndex);
 
-	vec4 currDepthProps = texelFetch(uPackedDepth, pixel, 0);
-	vec2 velocity = texelFetch(uPackedVelocity, pixel, 0).xy;
+	vec4 currDepthProps = texelFetch(uPackedDepth, clampedPixel, 0);
+	vec2 velocity = texelFetch(uPackedVelocity, clampedPixel, 0).xy;
 	vec2 prevUV = uv + velocity;
 
 	bool validHistory = uHasHistory && all(greaterThanEqual(prevUV, vec2(0.0))) && all(lessThanEqual(prevUV, vec2(1.0)));
 
-	vec4 currentRGBA = texelFetch(uPackedFrame, pixel, 0);
+	vec4 currentRGBA = texelFetch(uPackedFrame, clampedPixel, 0);
 
 	vec4 historyRGBA = vec4(0.0);
 	vec4 historyMoments = vec4(0.0);
@@ -205,7 +219,6 @@ void main() {
 
 	float disocclusionError = validHistory ? 0.0 : 1.0;
 
-	// Optical flow approximation predicting rapid density shifts along motion vector
 	float centerDensity = currentPathDensity;
 	float rightDensity = texture(uPackedDepth, uv + vec2(texelSize.x, 0.0)).a;
 	float topDensity   = texture(uPackedDepth, uv + vec2(0.0, texelSize.y)).a;
@@ -213,10 +226,11 @@ void main() {
 	float flowDensityChange = length(densityGradient) * length(velocity * vec2(size));
 	float flowPredictor = clamp(flowDensityChange * 3.0, 0.0, 1.0);
 
-	float perPixelError = max(max(lumaRejection, densityError), disocclusionError);
+	float perPixelError = inBounds ? (tileWasRenderedThisFrame ? max(max(lumaRejection, densityError), disocclusionError) : 0.5) : 0.0;
+	float perPixelFlow = inBounds ? flowPredictor : 0.0;
 
 	sharedError[localIdx] = perPixelError;
-	sharedFlow[localIdx] = flowPredictor;
+	sharedFlow[localIdx] = perPixelFlow;
 
 	barrier();
 
@@ -228,83 +242,92 @@ void main() {
 			maxTileError = max(maxTileError, sharedError[i]);
 			maxTileFlow = max(maxTileFlow, sharedFlow[i]);
 		}
-		vec4 tileErrorData = imageLoad(uErrorMap, ivec2(tileCoord));
-		tileErrorData.r = max(tileErrorData.r, maxTileError);
-		tileErrorData.g = max(tileErrorData.g, maxTileFlow);
-		imageStore(uErrorMap, ivec2(tileCoord), tileErrorData);
+		vec4 tileErr = imageLoad(uErrorMap, ivec2(tileCoord));
+		tileErr.r = max(tileErr.r, maxTileError);
+		tileErr.g = max(tileErr.g, maxTileFlow);
+		imageStore(uErrorMap, ivec2(tileCoord), tileErr);
 	}
+
+	if (!inBounds) return;
 
 	vec4 accumulatedRGBA;
 	vec4 accumulatedDepth;
 	vec4 accumulatedMoments;
 
-	bool isSky = (currentPathDensity < 0.01) && (historyPathDensity < 0.01);
-
-	if (isSky) {
-		float alpha = 1.0;
-		if (uEnableTemporal) {
-			historyLength = mix(historyLength, 1.0, lumaRejection);
-			alpha = 1.0 / max(historyLength, 1.0);
-			alpha = max(alpha, lumaRejection * 0.85);
-		}
-
-		accumulatedRGBA = mix(historyRGBA, currentRGBA, alpha);
-		accumulatedDepth = mix(historyDepthProps, currDepthProps, alpha);
-
-		float currentLuma = luma(accumulatedRGBA.rgb);
-		vec3 currentM = vec3(currentLuma, currentLuma * currentLuma, accumulatedDepth.a * accumulatedDepth.a);
-		accumulatedMoments = vec4(mix(historyMoments.xyz, currentM, alpha), historyLength);
+	if (!tileWasRenderedThisFrame) {
+		// Inactive tile: bypass blending with stale raymarch target and output reprojected history
+		accumulatedRGBA = historyRGBA;
+		accumulatedDepth = historyDepthProps;
+		accumulatedMoments = vec4(historyMoments.xyz, historyLength);
 	} else {
-		NeighborhoodStats stats = computeNeighborhoodStats(uPackedFrame, uv, texelSize);
+		bool isSky = (currentPathDensity < 0.01) && (historyPathDensity < 0.01);
 
-		float gamma = uCloudTemporalGamma;
-		vec3 extents = calculateDynamicExtents(stats.stddev, historyMoments, gamma);
-		vec3 minColor = stats.spatialMean - extents;
-		vec3 maxColor = stats.spatialMean + extents;
+		if (isSky) {
+			float alpha = 1.0;
+			if (uEnableTemporal) {
+				historyLength = mix(historyLength, 1.0, lumaRejection);
+				alpha = 1.0 / max(historyLength, 1.0);
+				alpha = max(alpha, lumaRejection * 0.85);
+			}
 
-		float minAlpha = stats.alphaMean - stats.alphaStddev * gamma;
-		float maxAlpha = stats.alphaMean + stats.alphaStddev * gamma;
+			accumulatedRGBA = mix(historyRGBA, currentRGBA, alpha);
+			accumulatedDepth = mix(historyDepthProps, currDepthProps, alpha);
 
-		vec3 historyYCoCg = RGBToYCoCg(historyRGBA.rgb);
-		float historyOpacity = clamp(1.0 - historyRGBA.a, 0.0, 1.0);
+			float currentLuma = luma(accumulatedRGBA.rgb);
+			vec3 currentM = vec3(currentLuma, currentLuma * currentLuma, accumulatedDepth.a * accumulatedDepth.a);
+			accumulatedMoments = vec4(mix(historyMoments.xyz, currentM, alpha), historyLength);
+		} else {
+			NeighborhoodStats stats = computeNeighborhoodStats(uPackedFrame, uv, texelSize);
 
-		float lumaConfidence = smoothstep(0.20, 0.02, relativeLumaDiff);
-		float motionConfidenceFactor = smoothstep(2.0, 0.2, length(velocity * size));
-		float confidence = lumaConfidence * motionConfidenceFactor;
+			float gamma = uCloudTemporalGamma;
+			vec3 extents = calculateDynamicExtents(stats.stddev, historyMoments, gamma);
+			vec3 minColor = stats.spatialMean - extents;
+			vec3 maxColor = stats.spatialMean + extents;
 
-		vec3 clippedHistoryYCoCg = clipAABB(historyYCoCg, stats.spatialMean, minColor, maxColor);
-		float clippedHistoryOpacity = clipAlpha(historyOpacity, minAlpha, maxAlpha, stats.alphaMean);
+			float minAlpha = stats.alphaMean - stats.alphaStddev * gamma;
+			float maxAlpha = stats.alphaMean + stats.alphaStddev * gamma;
 
-		historyYCoCg = mix(clippedHistoryYCoCg, historyYCoCg, confidence * 0.9);
-		float blendedOpacity = mix(clippedHistoryOpacity, historyOpacity, confidence * 0.9);
+			vec3 historyYCoCg = RGBToYCoCg(historyRGBA.rgb);
+			float historyOpacity = clamp(1.0 - historyRGBA.a, 0.0, 1.0);
 
-		historyRGBA.rgb = YCoCgToRGB(historyYCoCg);
-		historyRGBA.a = 1.0 - clamp(blendedOpacity, 0.0, 1.0);
+			float lumaConfidence = smoothstep(0.20, 0.02, relativeLumaDiff);
+			float motionConfidenceFactor = smoothstep(2.0, 0.2, length(velocity * size));
+			float confidence = lumaConfidence * motionConfidenceFactor;
 
-		float densityDiff = currentPathDensity - historyPathDensity;
-		float relativeDiff = densityDiff / max(max(currentPathDensity, historyPathDensity), 0.001);
-		float trailingEdgeRejection = 1.0 - smoothstep(-0.5, -0.3, relativeDiff);
-		float leadingEdgeRejection = smoothstep(0.4, 0.8, relativeDiff);
-		float spatialRejection = max(trailingEdgeRejection, leadingEdgeRejection) * smoothstep(0.1, 1.0, length(velocity * size));
+			vec3 clippedHistoryYCoCg = clipAABB(historyYCoCg, stats.spatialMean, minColor, maxColor);
+			float clippedHistoryOpacity = clipAlpha(historyOpacity, minAlpha, maxAlpha, stats.alphaMean);
 
-		float totalRejection = max(spatialRejection, lumaRejection);
+			historyYCoCg = mix(clippedHistoryYCoCg, historyYCoCg, confidence * 0.9);
+			float blendedOpacity = mix(clippedHistoryOpacity, historyOpacity, confidence * 0.9);
 
-		float alpha = 1.0;
-		if (uEnableTemporal) {
-			historyLength = mix(historyLength, 1.0, totalRejection);
-			alpha = 1.0 / max(historyLength, 1.0);
-			alpha = max(alpha, lumaRejection * 0.85);
+			historyRGBA.rgb = YCoCgToRGB(historyYCoCg);
+			historyRGBA.a = 1.0 - clamp(blendedOpacity, 0.0, 1.0);
+
+			float densityDiff = currentPathDensity - historyPathDensity;
+			float relativeDiff = densityDiff / max(max(currentPathDensity, historyPathDensity), 0.001);
+			float trailingEdgeRejection = 1.0 - smoothstep(-0.5, -0.3, relativeDiff);
+			float leadingEdgeRejection = smoothstep(0.4, 0.8, relativeDiff);
+			float spatialRejection = max(trailingEdgeRejection, leadingEdgeRejection) * smoothstep(0.1, 1.0, length(velocity * size));
+
+			float totalRejection = max(spatialRejection, lumaRejection);
+
+			float alpha = 1.0;
+			if (uEnableTemporal) {
+				historyLength = mix(historyLength, 1.0, totalRejection);
+				alpha = 1.0 / max(historyLength, 1.0);
+				alpha = max(alpha, lumaRejection * 0.85);
+			}
+
+			accumulatedRGBA = mix(historyRGBA, currentRGBA, alpha);
+			accumulatedDepth = mix(historyDepthProps, currDepthProps, alpha);
+
+			float currentLuma = luma(accumulatedRGBA.rgb);
+			vec3 currentM = vec3(currentLuma, currentLuma * currentLuma, accumulatedDepth.a * accumulatedDepth.a);
+			accumulatedMoments = vec4(mix(historyMoments.xyz, currentM, alpha), historyLength);
 		}
-
-		accumulatedRGBA = mix(historyRGBA, currentRGBA, alpha);
-		accumulatedDepth = mix(historyDepthProps, currDepthProps, alpha);
-
-		float currentLuma = luma(accumulatedRGBA.rgb);
-		vec3 currentM = vec3(currentLuma, currentLuma * currentLuma, accumulatedDepth.a * accumulatedDepth.a);
-		accumulatedMoments = vec4(mix(historyMoments.xyz, currentM, alpha), historyLength);
 	}
 
-	imageStore(outColor, pixel, accumulatedRGBA);
-	imageStore(outDepth, pixel, accumulatedDepth);
-	imageStore(outMoments, pixel, accumulatedMoments);
+	imageStore(outColor, clampedPixel, accumulatedRGBA);
+	imageStore(outDepth, clampedPixel, accumulatedDepth);
+	imageStore(outMoments, clampedPixel, accumulatedMoments);
 }
