@@ -64,6 +64,7 @@
 #include "render_queue.h"
 #include "scene_compositor.h"
 #include "sdf_volume_manager.h"
+#include "SvoManager.h"
 #include "shape.h"
 #include "shader_table.h"
 #include "shadow_manager.h"
@@ -400,6 +401,7 @@ namespace Boidsish {
 		std::shared_ptr<ShockwaveManager>                 shockwave_manager;
 		std::shared_ptr<AkiraEffectManager>               akira_effect_manager;
 		std::shared_ptr<SdfVolumeManager>                 sdf_volume_manager;
+		std::shared_ptr<SvoManager>                       svo_manager;
 		std::shared_ptr<ShadowManager>                    shadow_manager;
 		std::shared_ptr<AtmosphereManager>                atmosphere_manager;
 		std::shared_ptr<PostProcessing::AtmosphereEffect> atmosphere_effect;
@@ -594,6 +596,7 @@ namespace Boidsish {
 			service_locator_.Register<ShockwaveManager>();
 			service_locator_.Register<AkiraEffectManager>();
 			service_locator_.Register<SdfVolumeManager>();
+			service_locator_.Register<SvoManager>();
 			service_locator_.Register<SoundEffectManager>();
 			service_locator_.Register<TrailRenderManager>();
 
@@ -835,6 +838,8 @@ namespace Boidsish {
 			SetupAkiraBindings();
 			sdf_volume_manager = service_locator_.Get<SdfVolumeManager>();
 			sdf_volume_manager->Initialize();
+			svo_manager = service_locator_.Get<SvoManager>();
+			svo_manager->Initialize();
 			shadow_manager = service_locator_.Get<ShadowManager>();
 			scene_manager = service_locator_.Get<SceneManager>();
 			decor_manager = service_locator_.Get<DecorManager>();
@@ -2662,6 +2667,7 @@ namespace Boidsish {
 
 			sdf_volume_manager->UpdateSSBO();
 			sdf_volume_manager->BindSSBO(Constants::SsboBinding::SdfVolumes());
+			svo_manager->BindSSBOs();
 			shockwave_manager->UpdateShaderData();
 			shockwave_manager->BindUBO(Constants::UboBinding::Shockwaves());
 
