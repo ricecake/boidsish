@@ -111,7 +111,7 @@ vec3 sampleSkyLUT(vec3 rd, vec3 probeOrigin) {
 	// Attenuate sky light by clouds for probes on the ground.
 	// This ensures that bright astral phenomena (now in SkyViewLUT)
 	// only affect the ground where it's not cloudy.
-	float cloudShadow = calculateCloudShadowFactor(probeOrigin, rd, 1.0);
+	vec3 cloudShadow = calculateCloudShadowFactor(probeOrigin, rd, 1.0);
 	return finalSky * cloudShadow;
 }
 
@@ -150,7 +150,7 @@ vec3 sampleTerrainFallback(vec3 worldPos, vec3 rayDir) {
 						if (lights[l].type == 1 && L.y <= 0.0) continue;
 
 						// Coarse shadow/occlusion test for directional lights in fallback
-						float shadow = 1.0;
+						vec3 shadow = vec3(1.0);
 						vec3 atmosphereTransmittance = vec3(1.0);
 
 						if (lights[l].type == 1) {
@@ -275,7 +275,7 @@ void shMarchMain(vec3 rd, vec3 probeOrigin, int totalRayCount, inout vec3 newSH[
 
 							if (lights[l].type == 1 && L.y <= 0.0) continue;
 
-							float lShadow = (l == 0) ? shadow : 1.0;
+							vec3 lShadow = (l == 0) ? vec3(shadow) : vec3(1.0);
 							vec3 atmosphereTransmittance = vec3(1.0);
 
 							if (lights[l].type == 1) {

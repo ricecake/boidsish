@@ -60,7 +60,7 @@ void main() {
 		// radiance.rgb *= transmittance + inScattering;
 
 		// Attenuate sky light by local clouds at probe position
-		float cloudShadow = calculateCloudShadowFactor(probePos, rd, cloudShadowIntensity);
+		vec3 cloudShadow = calculateCloudShadowFactor(probePos, rd, cloudShadowIntensity);
 		radiance.rgb *= cloudShadow;
 
 		// Differential solid angle dW = cos(elevation) * dElevation * dAzimuth

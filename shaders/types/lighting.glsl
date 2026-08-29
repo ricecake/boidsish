@@ -56,11 +56,12 @@ layout(std140, binding = [[LIGHTING_BINDING]]) uniform Lighting {
 	float cloudCurlFrequency;
 	float sunAureoleStrength;
 	float cirrusOpacity;
+	float cloudExtinction;
 	float _pad_cloud_1;
 	float _pad_cloud_2;
 	float _pad_cloud_3;
-	float _pad_cloud_4;
-	vec4  _pad_cloud_shadow_mat[2];
+	vec3  cloudExtinctionColor;
+	vec4  _pad_cloud_shadow_mat[1];
 	mat4  view;
 	mat4  projection;
 	vec3  lightningColor;

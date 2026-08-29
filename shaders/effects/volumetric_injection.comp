@@ -165,14 +165,14 @@ void main() {
         vec3 combinedPhase = s.rayleigh * rayPhase + s.mie * miePhase;
 
         // Consolidate shadow checks: Cloud shadow is a fast texture lookup, so check it first.
-        float shadow = calculateCloudShadow(i, worldPos);
-        if (shadow > 0.0) {
+        vec3 shadow = calculateCloudShadow(i, worldPos);
+        if (any(greaterThan(shadow, vec3(0.0)))) {
             // Use the volumetric-optimized terrain shadow DDA march for terrain.
-            shadow = min(shadow, terrainShadowVolumetric(worldPos, L));
+            shadow *= terrainShadowVolumetric(worldPos, L);
 
             // Check shadow maps for scene objects (buildings, entities).
             // We use the version that skips redundant terrain raycasts for efficiency.
-            shadow = min(shadow, calculateShadow(i, worldPos, vec3(0, 1, 0), L));
+            shadow *= calculateShadow(i, worldPos, vec3(0, 1, 0), L);
         }
 
         float r_km = kEarthRadius + worldPos.y / (1000.0 * max(0.0001, worldScale));
@@ -185,7 +185,7 @@ void main() {
         vec3 lightRadiance = lights[i].color * max(0.0, lights[i].intensity);
 
         // Single scattering (shadowed) + multi-scattering (partially shadowed to preserve terrain contrast)
-        float multiScatShadow = mix(1.0, shadow, 0.75);
+        vec3 multiScatShadow = mix(vec3(1.0), shadow, 0.75);
         radiance += lightRadiance * (atmosphereTransmittance * shadow * combinedPhase + multiScat * multiScatShadow * (s.rayleigh + s.mie));
     }
 

@@ -125,9 +125,9 @@ void calculateLightContribution(int light_index, vec3 frag_pos, out vec3 light_d
  * Calculate cloud shadow factor for a fragment position.
  * Uses centralized logic in clouds.glsl.
  */
-float calculateCloudShadow(int light_index, vec3 frag_pos) {
+vec3 calculateCloudShadow(int light_index, vec3 frag_pos) {
 	if (lights[light_index].type != LIGHT_TYPE_DIRECTIONAL) {
-		return 1.0;
+		return vec3(1.0);
 	}
 
 	vec3 L = normalize(-lights[light_index].direction);
@@ -519,7 +519,7 @@ const float PBR_INTENSITY_BOOST = 1.0;
 
 void evaluate_brdf(
     vec3 N, vec3 V, vec3 L, vec3 albedo, float roughness, float metallic, vec3 F0,
-    vec3 radiance, float shadow, inout vec3 Lo, inout float spec_lum)
+    vec3 radiance, vec3 shadow, inout vec3 Lo, inout float spec_lum)
 {
     float NdotL = max(dot(N, L), 0.0);
     if (NdotL <= 0.0) return; // Early out
@@ -594,10 +594,11 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 		vec3 radiance = lights[i].color * attenuation * atmosphereTransmittance;
 
 		// Cloud shadows isolated outside the loop
-		float shadow = calculateShadow(i, frag_pos, N, L);
-		shadow *= calculateCloudShadow(i, frag_pos);
+		float baseShadow = calculateShadow(i, frag_pos, N, L);
+		vec3 shadow = baseShadow * calculateCloudShadow(i, frag_pos);
 
-		primaryShadow = min(primaryShadow, shadow);
+		float shadowIntensity = (shadow.r + shadow.g + shadow.b) / 3.0;
+		primaryShadow = min(primaryShadow, shadowIntensity);
 
 		evaluate_brdf(N, V, L, albedo, roughness, metallic, F0, radiance, shadow, Lo, spec_lum);
 	}
@@ -622,7 +623,7 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 
 		float shadow = calculateShadow(i, frag_pos, N, L);
 
-		evaluate_brdf(N, V, L, albedo, roughness, metallic, F0, radiance, shadow, Lo, spec_lum);
+		evaluate_brdf(N, V, L, albedo, roughness, metallic, F0, radiance, vec3(shadow), Lo, spec_lum);
 	}
 
 	// Spatially-varying SH ambient augmented with macro occlusion
@@ -666,7 +667,7 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 
 void evaluate_foliage_brdf(
     vec3 N, vec3 V, vec3 L, vec3 albedo, float roughness, float metallic, vec3 F0,
-    vec3 radiance, float shadow, float translucency, inout vec3 Lo, inout float spec_lum)
+    vec3 radiance, vec3 shadow, float translucency, inout vec3 Lo, inout float spec_lum)
 {
     float NdotL = dot(N, L);
     float NdotV = max(dot(N, V), 1e-4);
@@ -733,9 +734,11 @@ vec4 apply_lighting_foliage(vec3 frag_pos, vec3 normal, vec3 albedo, float rough
         vec3 atmosphereTransmittance = texture(u_transmittanceLUT, getTransmittanceUV(r, L.y)).rgb;
         vec3 radiance = lights[i].color * (lights[i].intensity * PBR_INTENSITY_BOOST) * atmosphereTransmittance;
 
-        float shadow = min(calculateShadow(i, frag_pos, N, L), calculateCloudShadow(i, frag_pos));
+        float baseShadow = calculateShadow(i, frag_pos, N, L);
+        vec3 shadow = baseShadow * calculateCloudShadow(i, frag_pos);
 
-		primaryShadow = min(primaryShadow, shadow);
+		float shadowIntensity = (shadow.r + shadow.g + shadow.b) / 3.0;
+		primaryShadow = min(primaryShadow, shadowIntensity);
 
         evaluate_foliage_brdf(N, V, L, albedo, roughness, metallic, F0, radiance, shadow, translucency, Lo, spec_lum);
     }
@@ -755,7 +758,7 @@ vec4 apply_lighting_foliage(vec3 frag_pos, vec3 normal, vec3 albedo, float rough
         vec3 radiance = lights[i].color * (lights[i].intensity * PBR_INTENSITY_BOOST) * base_atten;
         float shadow = calculateShadow(i, frag_pos, N, L);
 
-        evaluate_foliage_brdf(N, V, L, albedo, roughness, metallic, F0, radiance, shadow, translucency, Lo, spec_lum);
+        evaluate_foliage_brdf(N, V, L, albedo, roughness, metallic, F0, radiance, vec3(shadow), translucency, Lo, spec_lum);
     }
 
     // Standard Ambient (using your existing SH logic)
@@ -818,13 +821,13 @@ vec4 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, floa
 		float NdotL = max(dot(N, L), 0.0);
 
 		// Apply cloud shadow for directional lights
-		float shadow = 1.0;
+		vec3 shadow = vec3(1.0);
 		if (lights[i].type == LIGHT_TYPE_DIRECTIONAL) {
 			shadow *= calculateCloudShadow(i, frag_pos);
 		}
 
 		if (i == 0)
-			primaryShadow = shadow;
+			primaryShadow = (shadow.r + shadow.g + shadow.b) / 3.0;
 
 		vec3 specular_radiance = specular * radiance * NdotL * shadow;
 		Lo += (kD * albedo / PI) * radiance * NdotL * shadow + specular_radiance;
@@ -880,7 +883,8 @@ vec4 apply_lighting(vec3 frag_pos, vec3 normal, vec3 albedo, float specular_stre
 		calculateLightContribution(i, frag_pos, light_dir, attenuation);
 
 		// Calculate shadow factor for this light with slope-scaled bias
-		float shadow = calculateShadow(i, frag_pos, normal, light_dir);
+		float baseShadow = calculateShadow(i, frag_pos, normal, light_dir);
+		vec3 shadow = vec3(baseShadow);
 
 		// Atmospheric attenuation for directional light
 		vec3 atmosphereTransmittance = vec3(1.0);
@@ -894,7 +898,7 @@ vec4 apply_lighting(vec3 frag_pos, vec3 normal, vec3 albedo, float specular_stre
 		}
 
 		if (i == 0)
-			primaryShadow = shadow;
+			primaryShadow = (shadow.r + shadow.g + shadow.b) / 3.0;
 
 		// Diffuse
 		float diff = max(dot(normal, light_dir), 0.0);

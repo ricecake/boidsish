@@ -2351,6 +2351,8 @@ namespace Boidsish {
 					lighting_ubo_data_.cloudCurlFrequency = atmosphere_effect->GetCloudCurlFrequency();
 					lighting_ubo_data_.sunAureoleStrength = atmosphere_effect->GetSunAureoleStrength();
 					lighting_ubo_data_.cirrusOpacity = atmosphere_effect->GetCirrusOpacity();
+					lighting_ubo_data_.cloudExtinction = atmosphere_effect->GetCloudExtinction();
+					lighting_ubo_data_.cloudExtinctionColor = atmosphere_effect->GetCloudExtinctionColor();
 
 				if (lightning_manager) {
 					lighting_ubo_data_.lightningColor = lightning_manager->GetGlobalColor();
