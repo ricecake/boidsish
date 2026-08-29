@@ -105,7 +105,7 @@ namespace Boidsish {
 		float cirrusOpacity;                     // offset 152, 4 bytes
 		float zNear;                             // offset 156, 4 bytes
 		float zFar;                              // offset 160, 4 bytes
-		float                 _pad_clouds3_a;      // offset 164, 4 bytes
+		float shadowSoftness = 1.0f;             // offset 164, 4 bytes
 		float                 _pad_clouds3_b;      // offset 168, 4 bytes
 		float                 _pad_clouds3_c;      // offset 172, 4 bytes
 		alignas(16) glm::vec4 _pad_clouds3_vec[3]; // offset 176, 48 bytes of padding

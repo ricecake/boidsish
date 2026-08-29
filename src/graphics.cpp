@@ -1826,9 +1826,6 @@ namespace Boidsish {
 			std::optional<Frustum>          shadow_frustum = std::nullopt,
 			float                           quality_override = -1.0f
 		) {
-			if (is_shadow_pass) {
-				return;
-			}
 			if (!terrain_generator || !ConfigManager::GetInstance().GetAppSettingBool("render_terrain", true))
 				return;
 
@@ -2433,6 +2430,7 @@ namespace Boidsish {
 
 				lighting_ubo_data_.zNear = 0.1f;
 				lighting_ubo_data_.zFar = far_plane;
+				lighting_ubo_data_.shadowSoftness = ConfigManager::GetInstance().GetAppSettingFloat("shadow_softness", 1.0f);
 
 				*lighting_pb->GetFrameDataPtr() = lighting_ubo_data_;
 				glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::Lighting(),

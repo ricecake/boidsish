@@ -57,7 +57,7 @@ layout(std140, binding = [[LIGHTING_BINDING]]) uniform Lighting {
 	float cirrusOpacity;
 	float zNear;
 	float zFar;
-	float _pad_clouds3_a;
+	float shadowSoftness;
 	float _pad_clouds3_b;
 	float _pad_clouds3_c;
 	vec4  _pad_clouds3_vec[3];

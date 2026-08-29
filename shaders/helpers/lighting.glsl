@@ -188,8 +188,10 @@ float terrainShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) {
 
 /**
  * Fast single-tap shadow lookup for volumetric injection pass to avoid heavy PCF loop overhead.
+ * Returns in_bounds = true if the point falls within valid CSM/shadow map frustum bounds.
  */
-float calculateShadowVolumetric(int light_index, vec3 frag_pos, vec3 light_dir) {
+float calculateShadowVolumetric(int light_index, vec3 frag_pos, vec3 light_dir, out bool in_bounds) {
+	in_bounds = false;
 	int shadow_index = lightShadowIndices[light_index];
 
 	if (shadow_index < 0 || numShadowLights <= 0) {
@@ -229,11 +231,17 @@ float calculateShadowVolumetric(int light_index, vec3 frag_pos, vec3 light_dir) 
 		return 1.0;
 	}
 
+	in_bounds = true;
 	float current_depth = proj_coords.z;
 	float bias = 0.001 * (1.0 + float(cascade) * 0.8);
 
 	vec4 shadow_coord = vec4(proj_coords.xy, float(shadow_index), current_depth - bias);
 	return texture(shadowMaps, shadow_coord);
+}
+
+float calculateShadowVolumetric(int light_index, vec3 frag_pos, vec3 light_dir) {
+	bool dummy;
+	return calculateShadowVolumetric(light_index, frag_pos, light_dir, dummy);
 }
 
 /**
@@ -365,7 +373,7 @@ float calculateShadow(int light_index, vec3 frag_pos, vec3 normal, vec3 light_di
 
 	for (int x = -kernel_size; x <= kernel_size; ++x) {
 		for (int y = -kernel_size; y <= kernel_size; ++y) {
-			vec2 offset = vec2(x, y) * texel_size;
+			vec2 offset = vec2(x, y) * texel_size * shadowSoftness;
 			// sampler2DArrayShadow expects (u, v, layer, compare_value)
 			vec4 shadow_coord = vec4(proj_coords.xy + offset, float(shadow_index), current_depth - bias);
 			shadow += texture(shadowMaps, shadow_coord);
@@ -399,7 +407,7 @@ float calculateShadow(int light_index, vec3 frag_pos, vec3 normal, vec3 light_di
 
 					for (int x = -next_kernel_size; x <= next_kernel_size; ++x) {
 						for (int y = -next_kernel_size; y <= next_kernel_size; ++y) {
-							vec2 offset = vec2(x, y) * texel_size;
+							vec2 offset = vec2(x, y) * texel_size * shadowSoftness;
 							vec4 shadow_coord = vec4(
 								next_proj_coords.xy + offset,
 								float(next_shadow_index),
