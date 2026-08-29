@@ -266,12 +266,19 @@ namespace Boidsish {
 			void SetCloudSvgfHistoryThreshold(float threshold) { cloud_svgf_history_threshold_ = threshold; }
 			float GetCloudSvgfHistoryThreshold() const { return cloud_svgf_history_threshold_; }
 
+			void SetCloudRenderingBudget(float budget) { cloud_rendering_budget_ = budget; }
+			float GetCloudRenderingBudget() const { return cloud_rendering_budget_; }
+
+			void SetCloudMinRefreshInterval(int interval) { cloud_min_refresh_interval_ = interval; }
+			int GetCloudMinRefreshInterval() const { return cloud_min_refresh_interval_; }
+
 			void FlushHistory() { has_valid_history_ = false; }
 
 		private:
 			void InitializePackedResources();
 			void InitializeTemporalResources();
 
+			std::unique_ptr<ComputeShader> cloud_tile_scheduler_shader_;
 			std::unique_ptr<ComputeShader> cloud_render_shader_;
 			std::unique_ptr<ComputeShader> cloud_bounding_shader_;
 			std::unique_ptr<Shader>        composite_shader_;
@@ -341,6 +348,11 @@ namespace Boidsish {
 			GLuint filtered_texture_ = 0;
 			GLuint spatial_aux_texture_ = 0;
 
+			// 8x8 Tile Temporal Error Map and Indirect Scheduling Buffers
+			GLuint error_map_texture_ = 0;
+			GLuint tile_queue_ssbo_ = 0;
+			GLuint indirect_dispatch_ssbo_ = 0;
+
 			// Temporal reprojection: double-buffered history at full res
 			GLuint    temporal_textures_[2] = {0, 0};
 			GLuint    temporal_depth_textures_[2] = {0, 0};
@@ -369,6 +381,9 @@ namespace Boidsish {
 			int   cloud_svgf_passes_ = 2;
 			float cloud_svgf_history_boost_ = 4.0f;
 			float cloud_svgf_history_threshold_ = 10.0f;
+
+			float cloud_rendering_budget_ = 0.5f;
+			int   cloud_min_refresh_interval_ = 8;
 
 		};
 
