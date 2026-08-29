@@ -53,8 +53,8 @@ namespace Boidsish {
 			cloud_curl_strength_ = cfg.GetAppSettingFloat("cloud_curl_strength", cloud_curl_strength_);
 			cloud_curl_frequency_ = cfg.GetAppSettingFloat("cloud_curl_frequency", cloud_curl_frequency_);
 
-			cloud_min_refresh_rate_ = cfg.GetAppSettingFloat("cloud_min_refresh_rate", cloud_min_refresh_rate_);
-			cloud_max_refresh_rate_ = cfg.GetAppSettingFloat("cloud_max_refresh_rate", cloud_max_refresh_rate_);
+			cloud_min_refresh_rate_ = SnapToBayerRate(cfg.GetAppSettingFloat("cloud_min_refresh_rate", cloud_min_refresh_rate_));
+			cloud_max_refresh_rate_ = SnapToBayerRate(cfg.GetAppSettingFloat("cloud_max_refresh_rate", cloud_max_refresh_rate_));
 
 			cloud_phase_g1_ = cfg.GetAppSettingFloat("cloud_phase_g1", cloud_phase_g1_);
 			cloud_phase_g2_ = cfg.GetAppSettingFloat("cloud_phase_g2", cloud_phase_g2_);

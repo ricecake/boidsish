@@ -583,51 +583,47 @@ namespace Boidsish {
 									ImGui::Separator();
 									ImGui::Text("Advanced Cloud Parameters");
 
-									float current_scale = atmosphere_effect->GetRenderScale();
-									int scale_item = 1; // Default Half (0.5)
-									if (std::abs(current_scale - 1.0f) < 0.05f) scale_item = 0;
-									else if (std::abs(current_scale - 0.5f) < 0.05f) scale_item = 1;
-									else if (std::abs(current_scale - 0.25f) < 0.05f) scale_item = 2;
-									else if (std::abs(current_scale - 0.125f) < 0.05f) scale_item = 3;
-
-									const char* scale_names[] = { "Full (1.0)", "Half (0.5)", "Quarter (0.25)", "Eighth (0.125)" };
-									if (ImGui::Combo("Cloud Render Scale", &scale_item, scale_names, IM_ARRAYSIZE(scale_names))) {
-										float new_scale = 0.5f;
-										if (scale_item == 0) new_scale = 1.0f;
-										else if (scale_item == 1) new_scale = 0.5f;
-										else if (scale_item == 2) new_scale = 0.25f;
-										else if (scale_item == 3) new_scale = 0.125f;
-
-										atmosphere_effect->SetRenderScale(new_scale);
-										cfg.SetFloat("cloud_render_scale", new_scale);
-										changed_atm = true;
-									}
-
 									ImGui::Separator();
 									ImGui::Text("Cloud Tile Scheduler");
 
-									float min_refresh_rate = atmosphere_effect->GetCloudMinRefreshRate();
-									float max_refresh_rate = atmosphere_effect->GetCloudMaxRefreshRate();
+									const char* bayer_names[] = { "0 (Never)", "1/64 (8x8 Bayer)", "1/16 (4x4 Bayer)", "1/4 (2x2 Bayer)", "1/1 (Always)" };
+									const float bayer_values[] = { 0.0f, 1.0f / 64.0f, 1.0f / 16.0f, 1.0f / 4.0f, 1.0f };
 
-									if (ImGui::SliderFloat("Min Tile Refresh Rate", &min_refresh_rate, 0.01f, 1.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp)) {
-										if (min_refresh_rate > max_refresh_rate) {
-											max_refresh_rate = min_refresh_rate;
-											atmosphere_effect->SetCloudMaxRefreshRate(max_refresh_rate);
-											cfg.SetFloat("cloud_max_refresh_rate", max_refresh_rate);
+									auto get_bayer_idx = [&](float rate) {
+										int idx = 0;
+										float min_diff = std::abs(rate - bayer_values[0]);
+										for (int i = 1; i < 5; ++i) {
+											float diff = std::abs(rate - bayer_values[i]);
+											if (diff < min_diff) {
+												min_diff = diff;
+												idx = i;
+											}
 										}
-										atmosphere_effect->SetCloudMinRefreshRate(min_refresh_rate);
-										cfg.SetFloat("cloud_min_refresh_rate", min_refresh_rate);
+										return idx;
+									};
+
+									int min_idx = get_bayer_idx(atmosphere_effect->GetCloudMinRefreshRate());
+									int max_idx = get_bayer_idx(atmosphere_effect->GetCloudMaxRefreshRate());
+
+									if (ImGui::Combo("Min Tile Refresh Rate", &min_idx, bayer_names, IM_ARRAYSIZE(bayer_names))) {
+										if (min_idx > max_idx) {
+											max_idx = min_idx;
+											atmosphere_effect->SetCloudMaxRefreshRate(bayer_values[max_idx]);
+											cfg.SetFloat("cloud_max_refresh_rate", bayer_values[max_idx]);
+										}
+										atmosphere_effect->SetCloudMinRefreshRate(bayer_values[min_idx]);
+										cfg.SetFloat("cloud_min_refresh_rate", bayer_values[min_idx]);
 										changed_atm = true;
 									}
 
-									if (ImGui::SliderFloat("Max Tile Refresh Rate", &max_refresh_rate, 0.01f, 1.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp)) {
-										if (max_refresh_rate < min_refresh_rate) {
-											min_refresh_rate = max_refresh_rate;
-											atmosphere_effect->SetCloudMinRefreshRate(min_refresh_rate);
-											cfg.SetFloat("cloud_min_refresh_rate", min_refresh_rate);
+									if (ImGui::Combo("Max Tile Refresh Rate", &max_idx, bayer_names, IM_ARRAYSIZE(bayer_names))) {
+										if (max_idx < min_idx) {
+											min_idx = max_idx;
+											atmosphere_effect->SetCloudMinRefreshRate(bayer_values[min_idx]);
+											cfg.SetFloat("cloud_min_refresh_rate", bayer_values[min_idx]);
 										}
-										atmosphere_effect->SetCloudMaxRefreshRate(max_refresh_rate);
-										cfg.SetFloat("cloud_max_refresh_rate", max_refresh_rate);
+										atmosphere_effect->SetCloudMaxRefreshRate(bayer_values[max_idx]);
+										cfg.SetFloat("cloud_max_refresh_rate", bayer_values[max_idx]);
 										changed_atm = true;
 									}
 

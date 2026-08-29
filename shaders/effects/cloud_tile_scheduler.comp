@@ -27,26 +27,67 @@ layout(std430, binding = 60) buffer IndirectDispatchSSBO {
 	uint uDispatchCountZ;
 };
 
-const int bayer4x4[16] = int[16](
-     0,  8,  2, 10,
-    12,  4, 14,  6,
-     3, 11,  1,  9,
-    15,  7, 13,  5
+const int bayer2x2[4] = int[4](
+	0, 2,
+	3, 1
 );
 
-void main() {
-	ivec2 tileCoord = ivec2(gl_GlobalInvocationID.xy);
-	int tileCols = int(uHeader.tileCols);
-	int tileRows = int(uHeader.tileRows);
+const int bayer4x4[16] = int[16](
+	 0,  8,  2, 10,
+	12,  4, 14,  6,
+	 3, 11,  1,  9,
+	15,  7, 13,  5
+);
 
-	if (tileCoord.x >= tileCols || tileCoord.y >= tileRows || uHeader.totalTiles == 0u) {
+const int bayer8x8[64] = int[64](
+	 0, 32,  8, 40,  2, 34, 10, 42,
+	48, 16, 56, 24, 50, 18, 58, 26,
+	12, 44,  4, 36, 14, 46,  6, 38,
+	60, 28, 52, 20, 62, 30, 54, 22,
+	 3, 35, 11, 43,  1, 33,  9, 41,
+	51, 19, 59, 27, 49, 17, 57, 25,
+	15, 47,  7, 39, 13, 45,  5, 37,
+	63, 31, 55, 23, 61, 29, 53, 21
+);
+
+bool evaluateBayer(ivec2 tileCoord, float rate, uint frameIndex) {
+	if (rate <= 0.0001) return false;
+	if (rate >= 0.999) return true;
+	if (abs(rate - 0.25) < 0.01) {
+		uint b = uint(bayer2x2[(tileCoord.y % 2) * 2 + (tileCoord.x % 2)]);
+		return ((b + frameIndex) % 4u) == 0u;
+	}
+	if (abs(rate - 0.0625) < 0.01) {
+		uint b = uint(bayer4x4[(tileCoord.y % 4) * 4 + (tileCoord.x % 4)]);
+		return ((b + frameIndex) % 16u) == 0u;
+	}
+	if (abs(rate - 0.015625) < 0.005) {
+		uint b = uint(bayer8x8[(tileCoord.y % 8) * 8 + (tileCoord.x % 8)]);
+		return ((b + frameIndex) % 64u) == 0u;
+	}
+	uint b = uint(bayer4x4[(tileCoord.y % 4) * 4 + (tileCoord.x % 4)]);
+	uint minCount = clamp(uint(round(rate * 16.0)), 1u, 16u);
+	return ((b + frameIndex) % 16u) < minCount;
+}
+
+void main() {
+	uint threadIndex = gl_GlobalInvocationID.y * uHeader.tileCols + gl_GlobalInvocationID.x;
+	uint totalTiles = uHeader.totalTiles;
+
+	if (gl_GlobalInvocationID.x >= uHeader.tileCols || gl_GlobalInvocationID.y >= uHeader.tileRows || totalTiles == 0u) {
 		return;
 	}
 
-	// 1. Minimum update cycle: Bayer dither pattern scheduling
-	uint bayerVal = uint(bayer4x4[(tileCoord.y % 4) * 4 + (tileCoord.x % 4)]);
-	uint minCountPer16 = clamp(uint(round(uHeader.minRefreshRate * 16.0)), 1u, 16u);
-	bool scheduledByBayer = ((bayerVal + uHeader.frameIndex) % 16u) < minCountPer16;
+	// Frame-staggered tile evaluation order to eliminate top-to-bottom scanline slot starvation
+	uint shift = (uHeader.frameIndex * 131u) % totalTiles;
+	uint linearIndex = (threadIndex + shift) % totalTiles;
+
+	ivec2 tileCoord = ivec2(linearIndex % uHeader.tileCols, linearIndex / uHeader.tileCols);
+	int tileCols = int(uHeader.tileCols);
+	int tileRows = int(uHeader.tileRows);
+
+	// 1. Minimum update cycle: Bayer pattern evaluation (0, 1/64, 1/16, 1/4, 1/1)
+	bool scheduledByBayer = evaluateBayer(tileCoord, uHeader.minRefreshRate, uHeader.frameIndex);
 
 	// 2. Load error and frame tracking for current tile
 	vec4 errorData = imageLoad(uErrorMap, tileCoord);
@@ -57,7 +98,7 @@ void main() {
 
 	uint age = (uHeader.frameIndex > lastUpdatedFrame) ? (uHeader.frameIndex - lastUpdatedFrame) : 0u;
 
-	// 3. Quick check of neighboring tiles to factor into threshold evaluation
+	// 3. Quick check of 4 orthogonal neighboring tiles to factor into threshold evaluation
 	float maxNeighborError = 0.0;
 	float maxNeighborGrad = 0.0;
 	const ivec2 neighbors[4] = ivec2[4](
