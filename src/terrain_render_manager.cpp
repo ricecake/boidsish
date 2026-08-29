@@ -109,7 +109,7 @@ namespace Boidsish {
 
 		glGenBuffers(1, &patch_metrics_ssbo_);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, patch_metrics_ssbo_);
-		glBufferData(GL_SHADER_STORAGE_BUFFER, max_patches * sizeof(PatchMetrics), nullptr, GL_STATIC_DRAW);
+		glBufferData(GL_SHADER_STORAGE_BUFFER, max_patches * sizeof(PatchMetrics), nullptr, GL_DYNAMIC_DRAW);
 
 		glGenBuffers(1, &patch_visibility_ssbo_);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, patch_visibility_ssbo_);
