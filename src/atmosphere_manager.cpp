@@ -390,7 +390,9 @@ namespace Boidsish {
 				Constants::TextureUnit::NoiseCurl(),
 				Constants::TextureUnit::NoiseBlue(),
 				Constants::TextureUnit::NoiseExtra(),
-				Constants::TextureUnit::NoisePhasor()
+				Constants::TextureUnit::NoisePhasor(),
+				Constants::TextureUnit::NoiseNca3D(),
+				Constants::TextureUnit::NoiseNca2D()
 			});
 			glDispatchCompute(128 / 4, 128 / 4, 128 / 4);
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);

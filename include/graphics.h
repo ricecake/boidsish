@@ -53,6 +53,7 @@ namespace Boidsish {
 	class LightningManager;
 	class Path;
 	class SpaceProbeManager;
+	class NoiseManager;
 
 	namespace PostProcessing {
 		class PostProcessingManager;
@@ -595,6 +596,7 @@ namespace Boidsish {
 		AtmosphereManager*                     GetAtmosphereManager();
 		GrassManager*                          GetGrassManager();
 		WeatherManager*                        GetWeatherManager();
+		NoiseManager*                          GetNoiseManager();
 		MoodManager*                           GetMoodManager();
 		LightningManager*                      GetLightningManager();
 		bool                                   HasPostProcessingManager() const;

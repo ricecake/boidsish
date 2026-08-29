@@ -21,6 +21,8 @@ uniform sampler3D u_curlTexture;
 uniform sampler2D u_blueNoiseTexture;
 uniform sampler3D u_extraNoiseTexture;
 uniform sampler2D u_phasorTexture;
+uniform sampler3D u_nca3DTexture;
+uniform sampler2D u_nca2DTexture;
 #endif
 
 float dot_noise(vec3 p) {
@@ -503,6 +505,16 @@ float fastPhasor2d(vec2 uv, float runtimePhase) {
 	float sinPhi = sin(runtimePhase);
 
 	return baked.x * cosPhi - baked.y * sinPhi;
+}
+
+// 3D NCA lookup
+vec4 fastNca3d(vec3 p) {
+	return textureLod(u_nca3DTexture, p, 0.0);
+}
+
+// 2D NCA lookup
+vec4 fastNca2d(vec2 uv) {
+	return textureLod(u_nca2DTexture, uv, 0.0);
 }
 
 #endif // HELPERS_FAST_NOISE_GLSL
