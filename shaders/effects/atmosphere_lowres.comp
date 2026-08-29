@@ -12,12 +12,14 @@ layout(binding = 3, rgba32f) uniform image2D uErrorMap;
 struct TileQueueHeader {
 	uint count;
 	uint maxTiles;
+	uint minTiles;
 	uint frameIndex;
-	float budgetFraction;
-	uint minRefreshInterval;
+	float minRefreshRate;
+	float maxRefreshRate;
 	uint tileCols;
 	uint tileRows;
 	uint totalTiles;
+	uint padding;
 };
 
 layout(std430, binding = 59) buffer TileQueueSSBO {

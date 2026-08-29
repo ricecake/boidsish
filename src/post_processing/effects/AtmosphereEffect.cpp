@@ -53,6 +53,9 @@ namespace Boidsish {
 			cloud_curl_strength_ = cfg.GetAppSettingFloat("cloud_curl_strength", cloud_curl_strength_);
 			cloud_curl_frequency_ = cfg.GetAppSettingFloat("cloud_curl_frequency", cloud_curl_frequency_);
 
+			cloud_min_refresh_rate_ = cfg.GetAppSettingFloat("cloud_min_refresh_rate", cloud_min_refresh_rate_);
+			cloud_max_refresh_rate_ = cfg.GetAppSettingFloat("cloud_max_refresh_rate", cloud_max_refresh_rate_);
+
 			cloud_phase_g1_ = cfg.GetAppSettingFloat("cloud_phase_g1", cloud_phase_g1_);
 			cloud_phase_g2_ = cfg.GetAppSettingFloat("cloud_phase_g2", cloud_phase_g2_);
 			cloud_phase_alpha_ = cfg.GetAppSettingFloat("cloud_phase_alpha", cloud_phase_alpha_);
@@ -198,12 +201,14 @@ namespace Boidsish {
 			struct TileQueueHeader {
 				uint32_t count;
 				uint32_t max_tiles;
+				uint32_t min_tiles;
 				uint32_t frame_index;
-				float budget_fraction;
-				uint32_t min_refresh_interval;
+				float min_refresh_rate;
+				float max_refresh_rate;
 				uint32_t tile_cols;
 				uint32_t tile_rows;
 				uint32_t total_tiles;
+				uint32_t padding;
 			};
 
 			glBindBuffer(GL_SHADER_STORAGE_BUFFER, tile_queue_ssbo_);
@@ -286,28 +291,35 @@ namespace Boidsish {
 			int tile_cols = (width_ + 7) / 8;
 			int tile_rows = (height_ + 7) / 8;
 			uint32_t total_tiles = static_cast<uint32_t>(tile_cols * tile_rows);
-			uint32_t max_budget_tiles = static_cast<uint32_t>(std::max(1.0f, total_tiles * cloud_rendering_budget_));
+			uint32_t min_budget_tiles = static_cast<uint32_t>(std::ceil(total_tiles * cloud_min_refresh_rate_));
+			uint32_t max_budget_tiles = static_cast<uint32_t>(std::floor(total_tiles * cloud_max_refresh_rate_));
+			max_budget_tiles = std::max(min_budget_tiles, max_budget_tiles);
+			max_budget_tiles = std::max(1u, max_budget_tiles);
 
 			struct TileQueueHeader {
 				uint32_t count;
 				uint32_t max_tiles;
+				uint32_t min_tiles;
 				uint32_t frame_index;
-				float budget_fraction;
-				uint32_t min_refresh_interval;
+				float min_refresh_rate;
+				float max_refresh_rate;
 				uint32_t tile_cols;
 				uint32_t tile_rows;
 				uint32_t total_tiles;
+				uint32_t padding;
 			};
 
 			TileQueueHeader header{};
 			header.count = 0;
 			header.max_tiles = max_budget_tiles;
+			header.min_tiles = min_budget_tiles;
 			header.frame_index = static_cast<uint32_t>(frame_index_);
-			header.budget_fraction = cloud_rendering_budget_;
-			header.min_refresh_interval = static_cast<uint32_t>(cloud_min_refresh_interval_);
+			header.min_refresh_rate = cloud_min_refresh_rate_;
+			header.max_refresh_rate = cloud_max_refresh_rate_;
 			header.tile_cols = static_cast<uint32_t>(tile_cols);
 			header.tile_rows = static_cast<uint32_t>(tile_rows);
 			header.total_tiles = total_tiles;
+			header.padding = 0;
 
 			glBindBuffer(GL_SHADER_STORAGE_BUFFER, tile_queue_ssbo_);
 			glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(TileQueueHeader), &header);

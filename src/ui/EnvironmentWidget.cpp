@@ -603,6 +603,34 @@ namespace Boidsish {
 										changed_atm = true;
 									}
 
+									ImGui::Separator();
+									ImGui::Text("Cloud Tile Scheduler");
+
+									float min_refresh_rate = atmosphere_effect->GetCloudMinRefreshRate();
+									float max_refresh_rate = atmosphere_effect->GetCloudMaxRefreshRate();
+
+									if (ImGui::SliderFloat("Min Tile Refresh Rate", &min_refresh_rate, 0.01f, 1.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp)) {
+										if (min_refresh_rate > max_refresh_rate) {
+											max_refresh_rate = min_refresh_rate;
+											atmosphere_effect->SetCloudMaxRefreshRate(max_refresh_rate);
+											cfg.SetFloat("cloud_max_refresh_rate", max_refresh_rate);
+										}
+										atmosphere_effect->SetCloudMinRefreshRate(min_refresh_rate);
+										cfg.SetFloat("cloud_min_refresh_rate", min_refresh_rate);
+										changed_atm = true;
+									}
+
+									if (ImGui::SliderFloat("Max Tile Refresh Rate", &max_refresh_rate, 0.01f, 1.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp)) {
+										if (max_refresh_rate < min_refresh_rate) {
+											min_refresh_rate = max_refresh_rate;
+											atmosphere_effect->SetCloudMinRefreshRate(min_refresh_rate);
+											cfg.SetFloat("cloud_min_refresh_rate", min_refresh_rate);
+										}
+										atmosphere_effect->SetCloudMaxRefreshRate(max_refresh_rate);
+										cfg.SetFloat("cloud_max_refresh_rate", max_refresh_rate);
+										changed_atm = true;
+									}
+
 									float g1 = cfg.GetAppSettingFloat(
 										"cloud_phase_g1",
 										atmosphere_effect->GetCloudPhaseG1()

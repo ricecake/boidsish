@@ -266,11 +266,23 @@ namespace Boidsish {
 			void SetCloudSvgfHistoryThreshold(float threshold) { cloud_svgf_history_threshold_ = threshold; }
 			float GetCloudSvgfHistoryThreshold() const { return cloud_svgf_history_threshold_; }
 
-			void SetCloudRenderingBudget(float budget) { cloud_rendering_budget_ = budget; }
-			float GetCloudRenderingBudget() const { return cloud_rendering_budget_; }
+			void SetCloudMinRefreshRate(float rate) { cloud_min_refresh_rate_ = rate; }
+			float GetCloudMinRefreshRate() const { return cloud_min_refresh_rate_; }
 
-			void SetCloudMinRefreshInterval(int interval) { cloud_min_refresh_interval_ = interval; }
-			int GetCloudMinRefreshInterval() const { return cloud_min_refresh_interval_; }
+			void SetCloudMaxRefreshRate(float rate) { cloud_max_refresh_rate_ = rate; }
+			float GetCloudMaxRefreshRate() const { return cloud_max_refresh_rate_; }
+
+			void SetCloudRenderingBudget(float budget) { SetCloudMaxRefreshRate(budget); }
+			float GetCloudRenderingBudget() const { return GetCloudMaxRefreshRate(); }
+
+			void SetCloudMinRefreshInterval(int interval) {
+				if (interval > 0) {
+					SetCloudMinRefreshRate(1.0f / static_cast<float>(interval));
+				}
+			}
+			int GetCloudMinRefreshInterval() const {
+				return static_cast<int>(std::round(1.0f / std::max(0.0001f, cloud_min_refresh_rate_)));
+			}
 
 			void FlushHistory() { has_valid_history_ = false; }
 
@@ -382,8 +394,8 @@ namespace Boidsish {
 			float cloud_svgf_history_boost_ = 4.0f;
 			float cloud_svgf_history_threshold_ = 10.0f;
 
-			float cloud_rendering_budget_ = 0.75f;
-			int   cloud_min_refresh_interval_ = 4;
+			float cloud_min_refresh_rate_ = 1.0f / 16.0f;
+			float cloud_max_refresh_rate_ = 1.0f / 4.0f;
 
 		};
 
