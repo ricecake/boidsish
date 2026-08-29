@@ -27,6 +27,7 @@ float calculateTerrainOcclusion(vec3 worldPos, vec3 normal) { return 1.0; }
 uniform bool  uSSGIEnabled = true;
 uniform bool  uGTAOEnabled = true;
 uniform bool  uSSSEnabled = true;
+uniform int   uResolutionScale = 1;
 
 // SSGI Parameters
 uniform float uSSGIRadius = 2.0;
@@ -49,6 +50,22 @@ uniform float uSSSIntensity = 0.5;
 uniform float uSSSRadius = 0.5;
 uniform float uSSSBias = 0.05;
 uniform int   uSSSSteps = 16;
+
+// 2x2 Bayer pattern for interleaving
+const ivec2 bayer_offsets_2x2[4] = ivec2[](
+	ivec2(0, 0),
+	ivec2(1, 1),
+	ivec2(1, 0),
+	ivec2(0, 1)
+);
+
+// 4x4 Bayer pattern for interleaving
+const ivec2 bayer_offsets_4x4[16] = ivec2[](
+	ivec2(0, 0), ivec2(2, 2), ivec2(0, 2), ivec2(2, 0),
+	ivec2(1, 1), ivec2(3, 3), ivec2(1, 3), ivec2(3, 1),
+	ivec2(0, 1), ivec2(2, 3), ivec2(0, 3), ivec2(2, 1),
+	ivec2(1, 0), ivec2(3, 2), ivec2(1, 2), ivec2(3, 0)
+);
 
 // Shared Helper Functions
 float hash12(vec2 p) {
@@ -93,8 +110,23 @@ vec3 sampleGGXVNDF(vec3 V, float roughness, float u1, float u2) {
 }
 
 void main() {
-	ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+	ivec2 packedPixel = ivec2(gl_GlobalInvocationID.xy);
 	ivec2 size = imageSize(outIndirectAO);
+	int scale = uResolutionScale;
+	ivec2 packedSize = (size + scale - 1) / scale;
+	if (packedPixel.x >= packedSize.x || packedPixel.y >= packedSize.y) return;
+
+	ivec2 pixel;
+	if (scale <= 1) {
+		pixel = packedPixel;
+	} else if (scale == 2) {
+		ivec2 offset = bayer_offsets_2x2[frameIndex % 4];
+		pixel = packedPixel * 2 + offset;
+	} else if (scale == 4) {
+		ivec2 offset = bayer_offsets_4x4[frameIndex % 16];
+		pixel = packedPixel * 4 + offset;
+	}
+
 	if (pixel.x >= size.x || pixel.y >= size.y) return;
 
 	vec2 uv = (vec2(pixel) + 0.5) / vec2(size);

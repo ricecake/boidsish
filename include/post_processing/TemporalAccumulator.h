@@ -30,9 +30,10 @@ namespace Boidsish {
 			 * @param currentFrame Signal for the current frame.
 			 * @param velocityTexture Velocity buffer (RG16F).
 			 * @param depthTexture Depth buffer.
+			 * @param resolutionScale The resolution scale of the rendering pass.
 			 * @return The accumulated texture.
 			 */
-			GLuint Accumulate(GLuint currentFrame, GLuint velocityTexture, GLuint depthTexture);
+			GLuint Accumulate(GLuint currentFrame, GLuint velocityTexture, GLuint depthTexture, int resolutionScale = 1);
 
 			GLuint GetResult() const { return _historyTextures[_currentIndex]; }
 			GLuint GetHistoryTexture() const { return _historyTextures[1 - _currentIndex]; }
