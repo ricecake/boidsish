@@ -68,4 +68,48 @@ float InterleavedGradientNoise(vec2 uv, int FrameId){
 // 0, 5, 8, 13, 2, 5, 10, 13,
 // 0, 5, 8, 13,
 
+/**
+ * Calculates the world size (width/height) of a screen pixel at a given distance from the camera.
+ *
+ * @param dist Distance from the camera in world units.
+ * @param proj11 Value of projection matrix at index [1][1] (1.0 / tan(fovY / 2)).
+ * @param screenHeight Height of the viewport in pixels.
+ * @return World size of one screen pixel at distance dist.
+ */
+float calculateDistanceToPixelWorldSize(float dist, float proj11, float screenHeight) {
+	return (2.0 * max(0.0, dist)) / max(0.0001, proj11 * screenHeight);
+}
+
+/**
+ * Calculates the area of a pixel (or footprint) from its world dimension.
+ *
+ * @param pixelWorldSize Size of the pixel in world units.
+ * @return Area of the pixel in square world units.
+ */
+float calculatePixelArea(float pixelWorldSize) {
+	return pixelWorldSize * pixelWorldSize;
+}
+
+/**
+ * Calculates texture mipmap LOD level from pixel footprint area relative to single texture texel area.
+ *
+ * @param pixelArea Area of a screen pixel in world space (square units).
+ * @param texelArea World space area covered by a single texel at LOD 0 (square units).
+ * @return Texture mipmap LOD level (unclamped).
+ */
+float calculateAreaToTextureLod(float pixelArea, float texelArea) {
+	return 0.5 * log2(max(1e-8, pixelArea) / max(1e-8, texelArea));
+}
+
+/**
+ * Calculates texture mipmap LOD level directly from screen pixel world size and single texel world size.
+ *
+ * @param pixelWorldSize World size of a screen pixel.
+ * @param texelWorldSize World size of a single texture texel at LOD 0.
+ * @return Texture mipmap LOD level (unclamped).
+ */
+float calculatePixelWorldSizeToTextureLod(float pixelWorldSize, float texelWorldSize) {
+	return log2(max(1e-8, pixelWorldSize) / max(1e-8, texelWorldSize));
+}
+
 // 0,6,8,14,
