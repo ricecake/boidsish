@@ -336,16 +336,6 @@ namespace Boidsish {
 			glBufferSubData(GL_DISPATCH_INDIRECT_BUFFER, 0, sizeof(DispatchIndirectCommand), &indirect_cmd);
 			glBindBuffer(GL_DISPATCH_INDIRECT_BUFFER, 0);
 
-			if (cloud_tile_scheduler_shader_ && cloud_tile_scheduler_shader_->isValid()) {
-				cloud_tile_scheduler_shader_->use();
-				glBindImageTexture(0, error_map_texture_, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
-				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::CloudTileQueue(), tile_queue_ssbo_);
-				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::CloudIndirectDispatch(), indirect_dispatch_ssbo_);
-
-				glDispatchCompute((tile_cols + 7) / 8, (tile_rows + 7) / 8, 1);
-				glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT | GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
-			}
-
 			// --- PASS 0: Hierarchical DDA Bounding pass ---
 			if (cloud_bounding_shader_ && cloud_bounding_shader_->isValid()) {
 				cloud_bounding_shader_->use();
@@ -365,7 +355,22 @@ namespace Boidsish {
 				glBindImageTexture(0, bounding_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
 
 				glDispatchCompute((packed_width + 7) / 8, (packed_height + 7) / 8, 1);
-				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+			}
+
+			// --- PASS 1: Tile Scheduler pass ---
+			if (cloud_tile_scheduler_shader_ && cloud_tile_scheduler_shader_->isValid()) {
+				cloud_tile_scheduler_shader_->use();
+				cloud_tile_scheduler_shader_->setInt("uBoundingMap", 0);
+				glActiveTexture(GL_TEXTURE0);
+				glBindTexture(GL_TEXTURE_2D, bounding_texture_);
+
+				glBindImageTexture(0, error_map_texture_, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
+				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::CloudTileQueue(), tile_queue_ssbo_);
+				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::CloudIndirectDispatch(), indirect_dispatch_ssbo_);
+
+				glDispatchCompute((tile_cols + 7) / 8, (tile_rows + 7) / 8, 1);
+				glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT | GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 			}
 
 			// --- PASS 1: Packed Quarter-res Cloud Rendering ---
