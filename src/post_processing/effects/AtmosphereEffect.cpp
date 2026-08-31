@@ -361,145 +361,191 @@ namespace Boidsish {
 				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
 			}
 
-			// --- PASS 1: Tile Scheduler pass (Two-pass: Spatial Pass 0 then Priority Pass 1) ---
+			// Setup common uniforms & bindings helper for cloud raymarching pass
+			auto run_cloud_render_pass = [&]() {
+				if (cloud_render_shader_ && cloud_render_shader_->isValid()) {
+					cloud_render_shader_->use();
+					cloud_render_shader_->setFloat("uDeltaTime", dt);
+					cloud_render_shader_->setVec3("cloudColorUniform", cloud_color_);
+					cloud_render_shader_->setFloat("u_atmosphereHeight", atmosphere_height_);
+
+					cloud_render_shader_->setFloat("uCloudMaxRayDistance", cloud_max_ray_distance_);
+					cloud_render_shader_->setFloat("uRenderScale", render_scale_);
+					cloud_render_shader_->setInt("uCloudMinSamples", cloud_min_samples_);
+					cloud_render_shader_->setInt("uCloudMaxSamples", cloud_max_samples_);
+					cloud_render_shader_->setFloat("uCloudExtinction", cloud_extinction_);
+					cloud_render_shader_->setVec3("uCloudExtinctionColor", cloud_extinction_color_);
+					cloud_render_shader_->setVec3("uCloudAlbedo", cloud_albedo_);
+
+					cloud_render_shader_->setInt("depthTexture", 0);
+					cloud_render_shader_->setInt("uHistoryDepth", 1);
+					cloud_render_shader_->setInt("uHistoryMoments", 2);
+					cloud_render_shader_->setInt("u_cloudMinMaxBoundingTexture", 3);
+					cloud_render_shader_->setMat4("uPrevViewProjection", prev_view_projection_);
+					cloud_render_shader_->setBool("uHasHistory", has_valid_history_);
+
+					glActiveTexture(GL_TEXTURE0);
+					glBindTexture(GL_TEXTURE_2D, depthTexture);
+					glActiveTexture(GL_TEXTURE1);
+					glBindTexture(GL_TEXTURE_2D, temporal_depth_textures_[temporal_index_]);
+					glActiveTexture(GL_TEXTURE2);
+					glBindTexture(GL_TEXTURE_2D, temporal_moments_textures_[temporal_index_]);
+					glActiveTexture(GL_TEXTURE3);
+					glBindTexture(GL_TEXTURE_2D, bounding_texture_);
+
+					GpuResourceRegistry::Instance().BindTextures({
+						Constants::TextureUnit::AtmosphereTransmittance(),
+						Constants::TextureUnit::AtmosphereSkyView(),
+						Constants::TextureUnit::NoiseSimplex(),
+						Constants::TextureUnit::NoiseCurl(),
+						Constants::TextureUnit::NoiseBlue(),
+						Constants::TextureUnit::NoiseExtra(),
+						Constants::TextureUnit::CloudWeatherBake()
+					});
+
+					auto atm_mgr = ServiceLocator::Instance().Get<AtmosphereManager>();
+					if (atm_mgr) {
+						atm_mgr->BindToShader(*cloud_render_shader_);
+					}
+
+					glBindImageTexture(0, packed_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+					glBindImageTexture(1, packed_depth_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
+					glBindImageTexture(2, packed_velocity_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RG16F);
+					glBindImageTexture(3, error_map_texture_, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
+					glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::CloudTileQueue(), tile_queue_ssbo_);
+
+					glBindBuffer(GL_DISPATCH_INDIRECT_BUFFER, indirect_dispatch_ssbo_);
+					glDispatchComputeIndirect(0);
+					glBindBuffer(GL_DISPATCH_INDIRECT_BUFFER, 0);
+					glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+				}
+			};
+
+			// Helper to setup tile scheduler shader uniforms
+			auto setup_scheduler_shader = [&]() {
+				if (cloud_tile_scheduler_shader_ && cloud_tile_scheduler_shader_->isValid()) {
+					cloud_tile_scheduler_shader_->use();
+					cloud_tile_scheduler_shader_->setInt("uBoundingMap", 0);
+					cloud_tile_scheduler_shader_->setFloat("uPriorityErrorWeight", cloud_priority_error_weight_);
+					cloud_tile_scheduler_shader_->setFloat("uPriorityGradWeight", cloud_priority_grad_weight_);
+					cloud_tile_scheduler_shader_->setFloat("uPriorityAgeWeight", cloud_priority_age_weight_);
+					cloud_tile_scheduler_shader_->setFloat("uPriorityNeighborErrorWeight", cloud_priority_neighbor_error_weight_);
+					cloud_tile_scheduler_shader_->setFloat("uPriorityNeighborGradWeight", cloud_priority_neighbor_grad_weight_);
+					cloud_tile_scheduler_shader_->setFloat("uPriorityThreshold", cloud_priority_threshold_);
+
+					glActiveTexture(GL_TEXTURE0);
+					glBindTexture(GL_TEXTURE_2D, bounding_texture_);
+
+					glBindImageTexture(0, error_map_texture_, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
+					glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::CloudTileQueue(), tile_queue_ssbo_);
+					glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::CloudIndirectDispatch(), indirect_dispatch_ssbo_);
+				}
+			};
+
+			// Helper to reset SSBO tile counts
+			auto reset_tile_queue_counts = [&]() {
+				uint32_t zero_count = 0;
+				glBindBuffer(GL_SHADER_STORAGE_BUFFER, tile_queue_ssbo_);
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(uint32_t), &zero_count);
+				glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+
+				DispatchIndirectCommand indirect_cmd_reset{0, 1, 1};
+				glBindBuffer(GL_DISPATCH_INDIRECT_BUFFER, indirect_dispatch_ssbo_);
+				glBufferSubData(GL_DISPATCH_INDIRECT_BUFFER, 0, sizeof(DispatchIndirectCommand), &indirect_cmd_reset);
+				glBindBuffer(GL_DISPATCH_INDIRECT_BUFFER, 0);
+			};
+
+			int next_temporal = 1 - temporal_index_;
+
+			// Helper to bind image targets & textures and run temporal reprojection pass
+			auto run_temporal_pass = [&](bool use_tile_queue) {
+				if (temporal_shader_ && temporal_shader_->isValid()) {
+					temporal_shader_->use();
+					temporal_shader_->setMat4("invProjection", invProj);
+					temporal_shader_->setMat4("uPrevViewProjection", prev_view_projection_);
+					temporal_shader_->setMat4("invView", invView);
+					temporal_shader_->setVec3("viewPos", cameraPos);
+
+					temporal_shader_->setFloat("uDeltaTime", dt);
+					temporal_shader_->setBool("uEnableTemporal", enable_temporal_);
+					temporal_shader_->setFloat("uRenderScale", render_scale_);
+					temporal_shader_->setFloat("uCloudTemporalGamma", cloud_temporal_gamma_);
+					temporal_shader_->setFloat("uCloudMaxHistoryLength", cloud_max_history_length_);
+					temporal_shader_->setBool("uHasHistory", has_valid_history_);
+					temporal_shader_->setBool("uUseTileQueue", use_tile_queue);
+
+					temporal_shader_->setInt("uPackedFrame", 0);
+					temporal_shader_->setInt("uPackedDepth", 1);
+					temporal_shader_->setInt("uPackedVelocity", 2);
+					temporal_shader_->setInt("uHistoryFrame", 3);
+					temporal_shader_->setInt("uSceneDepth", 4);
+					temporal_shader_->setInt("uHistoryCloudDepth", 5);
+					temporal_shader_->setInt("uHistoryMoments", 6);
+
+					glActiveTexture(GL_TEXTURE0);
+					glBindTexture(GL_TEXTURE_2D, packed_texture_);
+					glActiveTexture(GL_TEXTURE1);
+					glBindTexture(GL_TEXTURE_2D, packed_depth_texture_);
+					glActiveTexture(GL_TEXTURE2);
+					glBindTexture(GL_TEXTURE_2D, packed_velocity_texture_);
+					glActiveTexture(GL_TEXTURE3);
+					glBindTexture(GL_TEXTURE_2D, temporal_textures_[temporal_index_]);
+					glActiveTexture(GL_TEXTURE4);
+					glBindTexture(GL_TEXTURE_2D, depthTexture);
+					glActiveTexture(GL_TEXTURE5);
+					glBindTexture(GL_TEXTURE_2D, temporal_depth_textures_[temporal_index_]);
+					glActiveTexture(GL_TEXTURE6);
+					glBindTexture(GL_TEXTURE_2D, temporal_moments_textures_[temporal_index_]);
+
+					glBindImageTexture(0, temporal_textures_[next_temporal], 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA16F);
+					glBindImageTexture(1, temporal_depth_textures_[next_temporal], 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
+					glBindImageTexture(2, temporal_moments_textures_[next_temporal], 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
+					glBindImageTexture(3, error_map_texture_, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
+					glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::CloudTileQueue(), tile_queue_ssbo_);
+
+					if (use_tile_queue) {
+						glBindBuffer(GL_DISPATCH_INDIRECT_BUFFER, indirect_dispatch_ssbo_);
+						glDispatchComputeIndirect(0);
+						glBindBuffer(GL_DISPATCH_INDIRECT_BUFFER, 0);
+					} else {
+						glDispatchCompute((width_ + 7) / 8, (height_ + 7) / 8, 1);
+					}
+					glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
+				}
+			};
+
+			// --- STEP 1: Spatial Pass Tile Scheduling (Pass 0) ---
+			reset_tile_queue_counts();
 			if (cloud_tile_scheduler_shader_ && cloud_tile_scheduler_shader_->isValid()) {
-				cloud_tile_scheduler_shader_->use();
-				cloud_tile_scheduler_shader_->setInt("uBoundingMap", 0);
-				cloud_tile_scheduler_shader_->setFloat("uPriorityErrorWeight", cloud_priority_error_weight_);
-				cloud_tile_scheduler_shader_->setFloat("uPriorityGradWeight", cloud_priority_grad_weight_);
-				cloud_tile_scheduler_shader_->setFloat("uPriorityAgeWeight", cloud_priority_age_weight_);
-				cloud_tile_scheduler_shader_->setFloat("uPriorityNeighborErrorWeight", cloud_priority_neighbor_error_weight_);
-				cloud_tile_scheduler_shader_->setFloat("uPriorityNeighborGradWeight", cloud_priority_neighbor_grad_weight_);
-				cloud_tile_scheduler_shader_->setFloat("uPriorityThreshold", cloud_priority_threshold_);
-
-				glActiveTexture(GL_TEXTURE0);
-				glBindTexture(GL_TEXTURE_2D, bounding_texture_);
-
-				glBindImageTexture(0, error_map_texture_, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
-				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::CloudTileQueue(), tile_queue_ssbo_);
-				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::CloudIndirectDispatch(), indirect_dispatch_ssbo_);
-
-				// Pass 0: Spatial Pass (Owen scramble Morton distribution)
+				setup_scheduler_shader();
 				cloud_tile_scheduler_shader_->setInt("uPass", 0);
 				glDispatchCompute((tile_cols + 7) / 8, (tile_rows + 7) / 8, 1);
 				glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT | GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+			}
 
-				// Pass 1: Priority Pass (Add high priority / error tiles)
+			// --- STEP 2: Render Spatial Cloud Tiles ---
+			run_cloud_render_pass();
+
+			// --- STEP 3: Full-Resolution Temporal Reprojection (TAA Pass) ---
+			run_temporal_pass(false);
+
+			// --- STEP 4: Priority Pass Tile Scheduling (Pass 1 - Evaluates fresh post-TAA error & disocclusion) ---
+			reset_tile_queue_counts();
+			if (cloud_tile_scheduler_shader_ && cloud_tile_scheduler_shader_->isValid()) {
+				setup_scheduler_shader();
 				cloud_tile_scheduler_shader_->setInt("uPass", 1);
 				glDispatchCompute((tile_cols + 7) / 8, (tile_rows + 7) / 8, 1);
 				glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT | GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 			}
 
-			// --- PASS 1: Packed Quarter-res Cloud Rendering ---
-			if (cloud_render_shader_ && cloud_render_shader_->isValid()) {
-				cloud_render_shader_->use();
-				cloud_render_shader_->setFloat("uDeltaTime", dt);
-				cloud_render_shader_->setVec3("cloudColorUniform", cloud_color_);
-				cloud_render_shader_->setFloat("u_atmosphereHeight", atmosphere_height_);
+			// --- STEP 5: Render Priority Cloud Tiles ---
+			run_cloud_render_pass();
 
-				cloud_render_shader_->setFloat("uCloudMaxRayDistance", cloud_max_ray_distance_);
-				cloud_render_shader_->setFloat("uRenderScale", render_scale_);
-				cloud_render_shader_->setInt("uCloudMinSamples", cloud_min_samples_);
-				cloud_render_shader_->setInt("uCloudMaxSamples", cloud_max_samples_);
-				cloud_render_shader_->setFloat("uCloudExtinction", cloud_extinction_);
-				cloud_render_shader_->setVec3("uCloudExtinctionColor", cloud_extinction_color_);
-				cloud_render_shader_->setVec3("uCloudAlbedo", cloud_albedo_);
+			// --- STEP 6: Patch Priority Tiles into Temporal Target ---
+			run_temporal_pass(true);
 
-				cloud_render_shader_->setInt("depthTexture", 0);
-				cloud_render_shader_->setInt("uHistoryDepth", 1);
-				cloud_render_shader_->setInt("uHistoryMoments", 2);
-				cloud_render_shader_->setInt("u_cloudMinMaxBoundingTexture", 3);
-				cloud_render_shader_->setMat4("uPrevViewProjection", prev_view_projection_);
-				cloud_render_shader_->setBool("uHasHistory", has_valid_history_);
-
-				glActiveTexture(GL_TEXTURE0);
-				glBindTexture(GL_TEXTURE_2D, depthTexture);
-				glActiveTexture(GL_TEXTURE1);
-				glBindTexture(GL_TEXTURE_2D, temporal_depth_textures_[temporal_index_]);
-				glActiveTexture(GL_TEXTURE2);
-				glBindTexture(GL_TEXTURE_2D, temporal_moments_textures_[temporal_index_]);
-				glActiveTexture(GL_TEXTURE3);
-				glBindTexture(GL_TEXTURE_2D, bounding_texture_);
-
-				GpuResourceRegistry::Instance().BindTextures({
-					Constants::TextureUnit::AtmosphereTransmittance(),
-					Constants::TextureUnit::AtmosphereSkyView(),
-					Constants::TextureUnit::NoiseSimplex(),
-					Constants::TextureUnit::NoiseCurl(),
-					Constants::TextureUnit::NoiseBlue(),
-					Constants::TextureUnit::NoiseExtra(),
-					Constants::TextureUnit::CloudWeatherBake()
-				});
-
-				auto atm_mgr = ServiceLocator::Instance().Get<AtmosphereManager>();
-				if (atm_mgr) {
-					atm_mgr->BindToShader(*cloud_render_shader_);
-				}
-
-				glBindImageTexture(0, packed_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
-				glBindImageTexture(1, packed_depth_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
-				glBindImageTexture(2, packed_velocity_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RG16F);
-				glBindImageTexture(3, error_map_texture_, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
-				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::CloudTileQueue(), tile_queue_ssbo_);
-
-				glBindBuffer(GL_DISPATCH_INDIRECT_BUFFER, indirect_dispatch_ssbo_);
-				glDispatchComputeIndirect(0);
-				glBindBuffer(GL_DISPATCH_INDIRECT_BUFFER, 0);
-				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
-			}
-
-			// --- PASS 2: Temporal Reprojection (Full Resolution) ---
-			if (temporal_shader_ && temporal_shader_->isValid()) {
-				int next_temporal = 1 - temporal_index_;
-
-				temporal_shader_->use();
-				temporal_shader_->setMat4("invProjection", invProj);
-				temporal_shader_->setMat4("uPrevViewProjection", prev_view_projection_);
-				temporal_shader_->setMat4("invProjection", invProj);
-				temporal_shader_->setMat4("invView", invView);
-				temporal_shader_->setVec3("viewPos", cameraPos);
-
-				temporal_shader_->setFloat("uDeltaTime", dt);
-				temporal_shader_->setBool("uEnableTemporal", enable_temporal_);
-				temporal_shader_->setFloat("uRenderScale", render_scale_);
-				temporal_shader_->setFloat("uCloudTemporalGamma", cloud_temporal_gamma_);
-				temporal_shader_->setFloat("uCloudMaxHistoryLength", cloud_max_history_length_);
-				temporal_shader_->setBool("uHasHistory", has_valid_history_);
-
-				temporal_shader_->setInt("uPackedFrame", 0);
-				temporal_shader_->setInt("uPackedDepth", 1);
-				temporal_shader_->setInt("uPackedVelocity", 2);
-				temporal_shader_->setInt("uHistoryFrame", 3);
-				temporal_shader_->setInt("uSceneDepth", 4);
-				temporal_shader_->setInt("uHistoryCloudDepth", 5);
-				temporal_shader_->setInt("uHistoryMoments", 6);
-
-				glActiveTexture(GL_TEXTURE0);
-				glBindTexture(GL_TEXTURE_2D, packed_texture_);
-				glActiveTexture(GL_TEXTURE1);
-				glBindTexture(GL_TEXTURE_2D, packed_depth_texture_);
-				glActiveTexture(GL_TEXTURE2);
-				glBindTexture(GL_TEXTURE_2D, packed_velocity_texture_);
-				glActiveTexture(GL_TEXTURE3);
-				glBindTexture(GL_TEXTURE_2D, temporal_textures_[temporal_index_]);
-				glActiveTexture(GL_TEXTURE4);
-				glBindTexture(GL_TEXTURE_2D, depthTexture);
-				glActiveTexture(GL_TEXTURE5);
-				glBindTexture(GL_TEXTURE_2D, temporal_depth_textures_[temporal_index_]);
-				glActiveTexture(GL_TEXTURE6);
-				glBindTexture(GL_TEXTURE_2D, temporal_moments_textures_[temporal_index_]);
-
-				glBindImageTexture(0, temporal_textures_[next_temporal], 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
-				glBindImageTexture(1, temporal_depth_textures_[next_temporal], 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
-				glBindImageTexture(2, temporal_moments_textures_[next_temporal], 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
-				glBindImageTexture(3, error_map_texture_, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
-
-				glDispatchCompute((width_ + 7) / 8, (height_ + 7) / 8, 1);
-				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
-
-				temporal_index_ = next_temporal;
-				has_valid_history_ = true;
-			}
+			temporal_index_ = next_temporal;
+			has_valid_history_ = true;
 
 			// --- PASS 3: Spatial Denoising (Full Resolution) ---
 			GLuint cloud_source = temporal_textures_[temporal_index_];

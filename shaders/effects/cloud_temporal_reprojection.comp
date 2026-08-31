@@ -39,6 +39,7 @@ uniform float uCloudMaxHistoryLength;
 uniform float uRenderScale;
 uniform bool  uEnableTemporal;
 uniform bool  uHasHistory;
+uniform bool  uUseTileQueue;
 
 uniform float uDeltaTime;
 uniform mat4  uPrevViewProjection;
@@ -159,7 +160,15 @@ float clipAlpha(float historyAlpha, float minAlpha, float maxAlpha, float center
 }
 
 void main() {
-	ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+	ivec2 pixel;
+	if (uUseTileQueue) {
+		uint tileIndex = gl_WorkGroupID.x;
+		if (tileIndex >= uHeader.count) return;
+		uvec2 tileCoord = uTileQueue[tileIndex];
+		pixel = ivec2(tileCoord * 8u) + ivec2(gl_LocalInvocationID.xy);
+	} else {
+		pixel = ivec2(gl_GlobalInvocationID.xy);
+	}
 	ivec2 size = imageSize(outColor);
 	uint localIdx = gl_LocalInvocationIndex;
 	bool inBounds = (pixel.x < size.x && pixel.y < size.y);
