@@ -11,6 +11,95 @@ float roundToPlaces(float value, float places) {
 	return round(value * shift) / shift;
 }
 
+float terraceSmooth(float h, float numSteps, float slopeCoarseness) {
+    float stepId = floor(h * numSteps);
+    float fractional = fract(h * numSteps);
+
+    // Smooth the transition edge between steps
+    // slopeCoarseness: 0.0 = perfectly sharp, 1.0 = completely smooth
+    float edge = smoothstep(0.0, slopeCoarseness, fractional);
+
+    return (stepId + edge) / numSteps;
+}
+
+// High-quality 32-bit integer hash to generate deterministic pseudo-random seeds
+uint hashUint(uint x) {
+    x ^= x >> 16;
+    x *= 0x7feb352dU;
+    x ^= x >> 15;
+    x *= 0x846ca68bU;
+    x ^= x >> 16;
+    return x;
+}
+
+// Hierarchical Base-4 Owen Scramble for a 32-bit Morton Code
+uint owenScrambleBase4(uint mortonCode, uint seed) {
+    uint scrambled = 0U;
+    uint currentSeed = seed;
+
+    // Process 16 pairs of bits (32 bits total for a 2D Morton code)
+    // We go from the highest-significance digit to the lowest
+    for (int i = 15; i >= 0; i--) {
+        // Extract the current base-4 digit (2 bits)
+        uint digitShift = uint(i * 2);
+        uint digit = (mortonCode >> digitShift) & 3U;
+
+        // Generate a pseudo-random 2-bit permutation based on the structural path history
+        // Mixing the current path seed with a hash creates the hierarchical scrambling
+        currentSeed = hashUint(currentSeed ^ (digit + uint(i)));
+        uint permutation = currentSeed & 3U;
+
+        // Apply the permutation (XOR is standard for Owen scrambling)
+        uint scrambledDigit = digit ^ permutation;
+
+        // Reconstruct the scrambled code
+        scrambled |= (scrambledDigit << digitShift);
+
+        // Feed the scrambled digit forward to downstream children to preserve hierarchy
+        currentSeed ^= scrambledDigit;
+    }
+
+    return scrambled;
+}
+
+// Spreads 16 bits of a uint out to every other bit (32 bits total)
+uint part1by1(uint n) {
+    n &= 0x0000ffffu;                  // n = ---- ---- ---- ---- fedc ba98 7654 3210
+    n = (n ^ (n <<  8u)) & 0x00ff00ffu; // n = ---- ---- fedc ba98 ---- ---- 7654 3210
+    n = (n ^ (n <<  4u)) & 0x0f0f0f0fu; // n = ---- fedc ---- ba98 ---- 7654 ---- 3210
+    n = (n ^ (n <<  2u)) & 0x33333333u; // n = --fe --dc --ba --98 --76 --54 --32 --10
+    n = (n ^ (n <<  1u)) & 0x55555555u; // n = f e d c b a 9 8 7 6 5 4 3 2 1 0
+    return n;
+}
+
+// Compacts every other bit of a 32-bit uint back into 16 contiguous bits
+uint unpart1by1(uint n) {
+    n &= 0x55555555u;                  // n = f e d c b a 9 8 7 6 5 4 3 2 1 0
+    n = (n ^ (n >>  1u)) & 0x33333333u; // n = --fe --dc --ba --98 --76 --54 --32 --10
+    n = (n ^ (n >>  2u)) & 0x0f0f0f0fu; // n = ---- fedc ---- ba98 ---- 7654 ---- 3210
+    n = (n ^ (n >>  4u)) & 0x00ff00ffu; // n = ---- ---- fedc ba98 ---- ---- 7654 3210
+    n = (n ^ (n >>  8u)) & 0x0000ffffu; // n = ---- ---- ---- ---- fedc ba98 7654 3210
+    return n;
+}
+
+// ENCODE: Interleaves two 16-bit values into a 32-bit index
+uint encodeMorton2D(uvec2 coords) {
+    return part1by1(coords.x) | (part1by1(coords.y) << 1u);
+}
+
+// DECODE: Extracts two 16-bit coordinates from a 32-bit Morton code
+uvec2 decodeMorton2D(uint code) {
+    return uvec2(
+        unpart1by1(code),
+        unpart1by1(code >> 1u)
+    );
+}
+
+uint mortonOwenScramble(uvec2 p, uint seed) {
+	uint morton = encodeMorton2D(p);
+	return owenScrambleBase4(morton, seed);
+}
+
 float henyeyGreenstein(float g, float cosTheta) {
 	float g2 = g * g;
 	return (1.0 - g2) / (4.0 * PI * pow(max(0.0001, 1.0 + g2 - 2.0 * g * cosTheta), 1.5));

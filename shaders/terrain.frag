@@ -1296,6 +1296,18 @@ void main() {
 	float baseFreq = 0.1 / worldScale;
 	float largeNoise = fastWarpedFbm3d(FragPos * (baseFreq * 0.1));
 
+	// WorleyData3D worley = worley3d_tiling_id((FragPos+largeNoise)*vec3(2.5, 0.04, 2.5), 16.0);
+	// float terr = floor(100.0 * terraceSmooth(worley.f1_dist, 5, 0.5));
+
+	// uint blue = mortonOwenScramble(uvec2(terr, terr), uint(0.0));
+
+	// // FragColor = mix(vec4(0.3, 0.30, 30*step(5.0, mod(float(blue), 8)), 1.0), vec4(0.30, 0.30, 0.0, 1.0), mod(terr*2.0, 0.2));
+	// FragColor = mix(vec4(1.0, 0.0, 0.0, 1.0), vec4(0.0, 1.0, 0.0, 1.0), float(mod(float(blue), 8)==0));
+	// NormalOut = vec4(normalize(mat3(view) * Normal), 1.0);
+	// AlbedoOut = FragColor;
+	// Velocity = vec4(0.0);
+	// return;
+
 	if (vIsWater > 0.01) {
 		processWaterLayer(norm, dist, largeNoise);
 		return;
