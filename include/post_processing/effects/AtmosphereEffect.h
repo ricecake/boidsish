@@ -266,11 +266,37 @@ namespace Boidsish {
 			void SetCloudSvgfHistoryThreshold(float threshold) { cloud_svgf_history_threshold_ = threshold; }
 			float GetCloudSvgfHistoryThreshold() const { return cloud_svgf_history_threshold_; }
 
-			void SetCloudRenderingBudget(float budget) { cloud_rendering_budget_ = budget; }
-			float GetCloudRenderingBudget() const { return cloud_rendering_budget_; }
+			static float SnapToBayerRate(float rate) {
+				static const float rates[] = { 0.0f, 1.0f / 64.0f, 1.0f / 16.0f, 1.0f / 4.0f, 1.0f };
+				float best = rates[0];
+				float min_diff = std::abs(rate - best);
+				for (int i = 1; i < 5; ++i) {
+					float diff = std::abs(rate - rates[i]);
+					if (diff < min_diff) {
+						min_diff = diff;
+						best = rates[i];
+					}
+				}
+				return best;
+			}
 
-			void SetCloudMinRefreshInterval(int interval) { cloud_min_refresh_interval_ = interval; }
-			int GetCloudMinRefreshInterval() const { return cloud_min_refresh_interval_; }
+			void SetCloudMinRefreshRate(float rate) { cloud_min_refresh_rate_ = SnapToBayerRate(rate); }
+			float GetCloudMinRefreshRate() const { return cloud_min_refresh_rate_; }
+
+			void SetCloudMaxRefreshRate(float rate) { cloud_max_refresh_rate_ = SnapToBayerRate(rate); }
+			float GetCloudMaxRefreshRate() const { return cloud_max_refresh_rate_; }
+
+			void SetCloudRenderingBudget(float budget) { SetCloudMaxRefreshRate(budget); }
+			float GetCloudRenderingBudget() const { return GetCloudMaxRefreshRate(); }
+
+			void SetCloudMinRefreshInterval(int interval) {
+				if (interval > 0) {
+					SetCloudMinRefreshRate(1.0f / static_cast<float>(interval));
+				}
+			}
+			int GetCloudMinRefreshInterval() const {
+				return static_cast<int>(std::round(1.0f / std::max(0.0001f, cloud_min_refresh_rate_)));
+			}
 
 			void FlushHistory() { has_valid_history_ = false; }
 
@@ -338,7 +364,7 @@ namespace Boidsish {
 
 			int   width_ = 0;
 			int   height_ = 0;
-			float render_scale_ = 0.50f;
+			float render_scale_ = 1.0f;
 
 			GLuint packed_texture_ = 0;
 			GLuint packed_depth_texture_ = 0;
@@ -382,8 +408,8 @@ namespace Boidsish {
 			float cloud_svgf_history_boost_ = 4.0f;
 			float cloud_svgf_history_threshold_ = 10.0f;
 
-			float cloud_rendering_budget_ = 0.75f;
-			int   cloud_min_refresh_interval_ = 4;
+			float cloud_min_refresh_rate_ = 1.0f / 16.0f;
+			float cloud_max_refresh_rate_ = 1.0f / 4.0f;
 
 		};
 
