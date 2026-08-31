@@ -1,0 +1,55 @@
+#version 460 core
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+struct TileQueueHeader {
+	uint count;
+	uint maxTiles;
+	uint minTiles;
+	uint frameIndex;
+	float minRefreshRate;
+	float maxRefreshRate;
+	uint tileCols;
+	uint tileRows;
+	uint totalTiles;
+	uint padding;
+};
+
+layout(std430, binding = 59) buffer TileQueueSSBO {
+	TileQueueHeader uHeader;
+	uvec2 uTileQueue[];
+};
+
+uniform uint uStage; // k
+uniform uint uStep;  // j
+
+void main() {
+	uint i = gl_GlobalInvocationID.x;
+	uint totalTiles = uHeader.totalTiles;
+
+	uint N = 1u;
+	while (N < totalTiles) {
+		N <<= 1u;
+	}
+
+	if (i >= N / 2u) return;
+
+	uint k = uStage;
+	uint j = uStep;
+
+	uint ixj = i ^ j;
+	if (ixj > i) {
+		bool dir = ((i & k) == 0u); // true for descending priority
+
+		uvec2 valI = uTileQueue[i];
+		uvec2 valIXJ = uTileQueue[ixj];
+
+		float scoreI = uintBitsToFloat(valI.y);
+		float scoreIXJ = uintBitsToFloat(valIXJ.y);
+
+		bool swapNeeded = dir ? (scoreI < scoreIXJ) : (scoreI > scoreIXJ);
+		if (swapNeeded) {
+			uTileQueue[i] = valIXJ;
+			uTileQueue[ixj] = valI;
+		}
+	}
+}

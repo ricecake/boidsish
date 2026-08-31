@@ -22,12 +22,6 @@ layout(std430, binding = 59) buffer TileQueueSSBO {
 	uvec2 uTileQueue[];
 };
 
-layout(std430, binding = 60) buffer IndirectDispatchSSBO {
-	uint uDispatchCountX;
-	uint uDispatchCountY;
-	uint uDispatchCountZ;
-};
-
 const int bayer2x2[4] = int[4](
 	0, 2,
 	3, 1
@@ -71,172 +65,92 @@ bool evaluateBayer(ivec2 tileCoord, float rate, uint frameIndex) {
 	return ((b + frameIndex) % 16u) < minCount;
 }
 
-shared uint sharedCount;
-
 void main() {
 	uint totalTiles = uHeader.totalTiles;
-	if (uHeader.tileCols == 0u || uHeader.tileRows == 0u || totalTiles == 0u) {
-		return;
+
+	// Calculate N (power of 2 >= totalTiles)
+	uint N = 1u;
+	while (N < totalTiles) {
+		N <<= 1u;
 	}
 
 	uint threadIndex = gl_GlobalInvocationID.y * uHeader.tileCols + gl_GlobalInvocationID.x;
-	bool validThread = (gl_GlobalInvocationID.x < uHeader.tileCols && gl_GlobalInvocationID.y < uHeader.tileRows && threadIndex < totalTiles);
 
-	if (validThread) {
-		ivec2 tileCoord = ivec2(gl_GlobalInvocationID.xy);
-		int tileCols = int(uHeader.tileCols);
-		int tileRows = int(uHeader.tileRows);
-
-		// 0. Single-call bounding map density check at appropriate LOD
-		ivec2 boundingSize = textureSize(uBoundingMap, 0);
-		vec2 uv = (vec2(tileCoord) + 0.5) / vec2(uHeader.tileCols, uHeader.tileRows);
-		float lod = log2(max(1.0, float(boundingSize.x) / float(uHeader.tileCols)));
-		vec4 bData = textureLod(uBoundingMap, uv, lod);
-		bool tileHasCloudDensity = (bData.r >= 0.0 && bData.b > 0.001);
-
-		// 1. Minimum update cycle: Bayer pattern evaluation evenly distributed across screen
-		bool scheduledByBayer = evaluateBayer(tileCoord, uHeader.minRefreshRate, uHeader.frameIndex);
-
-		// 2. Load error and frame tracking for current tile
-		vec4 errorData = imageLoad(uErrorMap, tileCoord);
-		float errorVal = errorData.r;
-		float densityGrad = errorData.g;
-		float currentStepMult = (errorData.b > 0.01) ? errorData.b : 1.0;
-		uint lastUpdatedFrame = uint(round(errorData.a));
-		uint age = (uHeader.frameIndex > lastUpdatedFrame) ? (uHeader.frameIndex - lastUpdatedFrame) : 0u;
-
-		// 3. Check 4 orthogonal neighboring tiles
-		float maxNeighborError = 0.0;
-		float maxNeighborGrad = 0.0;
-		const ivec2 neighbors[4] = ivec2[4](
-			ivec2(-1, 0), ivec2(1, 0), ivec2(0, -1), ivec2(0, 1)
-		);
-		for (int i = 0; i < 4; ++i) {
-			ivec2 nCoord = clamp(tileCoord + neighbors[i], ivec2(0), ivec2(tileCols - 1, tileRows - 1));
-			vec4 nData = imageLoad(uErrorMap, nCoord);
-			maxNeighborError = max(maxNeighborError, nData.r);
-			maxNeighborGrad = max(maxNeighborGrad, nData.g);
+	// Initialize dummy elements beyond totalTiles up to N
+	if (threadIndex == 0u) {
+		for (uint dummyIdx = totalTiles; dummyIdx < N; ++dummyIdx) {
+			uTileQueue[dummyIdx] = uvec2(0u, floatBitsToUint(-1e9));
 		}
-
-		float selfScore = errorVal * 2.5 + densityGrad * 2.0 + float(age) * 0.05;
-		float neighborScore = maxNeighborError * 1.5 + maxNeighborGrad * 1.0;
-		float priorityScore = selfScore + neighborScore * 0.5;
-
-		// 4. Adaptive step size adjustment
-		float targetStepMult = 1.0;
-		if (priorityScore > 0.35) {
-			targetStepMult = 0.6;
-		} else if (priorityScore < 0.08) {
-			targetStepMult = 1.5;
-		}
-		float updatedStepMult = clamp(mix(currentStepMult, targetStepMult, 0.25), 0.5, 2.0);
-		errorData.b = updatedStepMult;
-		imageStore(uErrorMap, tileCoord, errorData);
-
-		// 5. Priorities:
-		// Scheduled Bayer updates come first if tile has density OR hasn't been refreshed at least once (lastUpdatedFrame == 0u)
-		bool candidateWithDensity = tileHasCloudDensity || (lastUpdatedFrame == 0u);
-		bool isScheduledBayer = scheduledByBayer && candidateWithDensity;
-
-		float finalPriority = -1.0;
-		if (isScheduledBayer) {
-			finalPriority = 10000.0 + priorityScore;
-		} else if (candidateWithDensity) {
-			finalPriority = priorityScore;
-		} else {
-			finalPriority = -1.0;
-		}
-
-		uint packedCoord = uint(tileCoord.x) | (uint(tileCoord.y) << 16u);
-		uTileQueue[threadIndex] = uvec2(packedCoord, floatBitsToUint(finalPriority));
 	}
 
-	memoryBarrierBuffer();
-	barrier();
-
-	uint workgroupsX = (uHeader.tileCols + 7u) / 8u;
-	uint workgroupsY = (uHeader.tileRows + 7u) / 8u;
-	uint totalWorkgroups = workgroupsX * workgroupsY;
-
-	uint workgroupDoneIndex = atomicAdd(uHeader.padding, 1u);
-	if (workgroupDoneIndex == totalWorkgroups - 1u) {
-		// Phase 2: Bitonic sort inline in compute shader
-		uint N = 1u;
-		while (N < totalTiles) {
-			N <<= 1u;
-		}
-
-		for (uint k = 2u; k <= N; k <<= 1u) {
-			for (uint j = k >> 1u; j > 0u; j >>= 1u) {
-				for (uint i = gl_LocalInvocationIndex; i < N / 2u; i += 64u) {
-					uint ixj = i ^ j;
-					if (ixj > i) {
-						bool dir = ((i & k) == 0u); // true for descending
-
-						uvec2 valI = (i < totalTiles) ? uTileQueue[i] : uvec2(0u, floatBitsToUint(-1e9));
-						uvec2 valIXJ = (ixj < totalTiles) ? uTileQueue[ixj] : uvec2(0u, floatBitsToUint(-1e9));
-
-						float scoreI = uintBitsToFloat(valI.y);
-						float scoreIXJ = uintBitsToFloat(valIXJ.y);
-
-						bool swapNeeded = dir ? (scoreI < scoreIXJ) : (scoreI > scoreIXJ);
-						if (swapNeeded) {
-							if (i < totalTiles) uTileQueue[i] = valIXJ;
-							if (ixj < totalTiles) uTileQueue[ixj] = valI;
-						}
-					}
-				}
-				memoryBarrierBuffer();
-				barrier();
-			}
-		}
-
-		// Priority Queue Selection
-		if (gl_LocalInvocationIndex == 0u) {
-			uint minTiles = uHeader.minTiles;
-			uint maxTiles = uHeader.maxTiles;
-			float priorityThreshold = 0.05;
-
-			uint count = 0u;
-			for (uint idx = 0u; idx < totalTiles; idx++) {
-				float score = uintBitsToFloat(uTileQueue[idx].y);
-				if (score < -500.0) break;
-
-				bool includeTile = false;
-				if (idx < minTiles) {
-					// Minimum threshold filled no matter what
-					includeTile = true;
-				} else if (idx < maxTiles) {
-					// Taking from other tiles ordered by priority over threshold
-					if (score > priorityThreshold) {
-						includeTile = true;
-					} else {
-						break;
-					}
-				} else {
-					break;
-				}
-
-				if (includeTile) {
-					count++;
-				}
-			}
-
-			sharedCount = count;
-			uHeader.count = count;
-			uDispatchCountX = count;
-			uDispatchCountY = 1u;
-			uDispatchCountZ = 1u;
-		}
-
-		memoryBarrierBuffer();
-		barrier();
-
-		uint count = sharedCount;
-		for (uint idx = gl_LocalInvocationIndex; idx < count; idx += 64u) {
-			uint packedCoord = uTileQueue[idx].x;
-			uTileQueue[idx] = uvec2(packedCoord & 0xFFFFu, packedCoord >> 16u);
-		}
-		memoryBarrierBuffer();
+	if (gl_GlobalInvocationID.x >= uHeader.tileCols || gl_GlobalInvocationID.y >= uHeader.tileRows || threadIndex >= totalTiles) {
+		return;
 	}
+
+	ivec2 tileCoord = ivec2(gl_GlobalInvocationID.xy);
+	int tileCols = int(uHeader.tileCols);
+	int tileRows = int(uHeader.tileRows);
+
+	// 0. Single-call bounding map density check at appropriate LOD
+	ivec2 boundingSize = textureSize(uBoundingMap, 0);
+	vec2 uv = (vec2(tileCoord) + 0.5) / vec2(uHeader.tileCols, uHeader.tileRows);
+	float lod = log2(max(1.0, float(boundingSize.x) / float(uHeader.tileCols)));
+	vec4 bData = textureLod(uBoundingMap, uv, lod);
+	bool tileHasCloudDensity = (bData.r >= 0.0 && bData.b > 0.001);
+
+	// 1. Minimum update cycle: Bayer pattern evaluation evenly distributed across screen
+	bool scheduledByBayer = evaluateBayer(tileCoord, uHeader.minRefreshRate, uHeader.frameIndex);
+
+	// 2. Load error and frame tracking for current tile
+	vec4 errorData = imageLoad(uErrorMap, tileCoord);
+	float errorVal = errorData.r;
+	float densityGrad = errorData.g;
+	float currentStepMult = (errorData.b > 0.01) ? errorData.b : 1.0;
+	uint lastUpdatedFrame = uint(round(errorData.a));
+	uint age = (uHeader.frameIndex > lastUpdatedFrame) ? (uHeader.frameIndex - lastUpdatedFrame) : 0u;
+
+	// 3. Check 4 orthogonal neighboring tiles
+	float maxNeighborError = 0.0;
+	float maxNeighborGrad = 0.0;
+	const ivec2 neighbors[4] = ivec2[4](
+		ivec2(-1, 0), ivec2(1, 0), ivec2(0, -1), ivec2(0, 1)
+	);
+	for (int i = 0; i < 4; ++i) {
+		ivec2 nCoord = clamp(tileCoord + neighbors[i], ivec2(0), ivec2(tileCols - 1, tileRows - 1));
+		vec4 nData = imageLoad(uErrorMap, nCoord);
+		maxNeighborError = max(maxNeighborError, nData.r);
+		maxNeighborGrad = max(maxNeighborGrad, nData.g);
+	}
+
+	float selfScore = errorVal * 2.5 + densityGrad * 2.0 + float(age) * 0.05;
+	float neighborScore = maxNeighborError * 1.5 + maxNeighborGrad * 1.0;
+	float priorityScore = selfScore + neighborScore * 0.5;
+
+	// 4. Adaptive step size adjustment
+	float targetStepMult = 1.0;
+	if (priorityScore > 0.35) {
+		targetStepMult = 0.6;
+	} else if (priorityScore < 0.08) {
+		targetStepMult = 1.5;
+	}
+	float updatedStepMult = clamp(mix(currentStepMult, targetStepMult, 0.25), 0.5, 2.0);
+	errorData.b = updatedStepMult;
+	imageStore(uErrorMap, tileCoord, errorData);
+
+	// 5. Priority scoring:
+	// Scheduled Bayer updates come first if tile has density OR hasn't been refreshed at least once (lastUpdatedFrame == 0u)
+	bool candidateWithDensity = tileHasCloudDensity || (lastUpdatedFrame == 0u);
+	bool isScheduledBayer = scheduledByBayer && candidateWithDensity;
+
+	float finalPriority = -1.0;
+	if (isScheduledBayer) {
+		finalPriority = 10000.0 + priorityScore;
+	} else if (candidateWithDensity) {
+		finalPriority = priorityScore;
+	} else {
+		finalPriority = -1.0;
+	}
+
+	uint packedCoord = uint(tileCoord.x) | (uint(tileCoord.y) << 16u);
+	uTileQueue[threadIndex] = uvec2(packedCoord, floatBitsToUint(finalPriority));
 }
