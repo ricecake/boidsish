@@ -102,12 +102,13 @@ vec2 fastSimplePhacelle2d(vec2 uv, vec2 dir) {
 }
 
 /**
- * Fast lookup for pre-integrated wind data with tracked speed and direction standard deviations.
+ * Fast lookup for pre-integrated wind data with tracked speed and direction standard deviations and gust phase output.
  */
-vec3 getWindAtPosition(vec3 worldPos, out float ripple, out float speedStdDev, out float dirStdDev) {
+vec3 getWindAtPosition(vec3 worldPos, out float ripple, out float speedStdDev, out float dirStdDev, out float gustPhase) {
 	ripple = 0.0;
 	speedStdDev = 0.0;
 	dirStdDev = 0.0;
+	gustPhase = 0.0;
 	if (u_windOriginSize.y <= 0) return vec3(0.0);
 
 	float gridSpacing = u_windParams.x;
@@ -137,6 +138,7 @@ vec3 getWindAtPosition(vec3 worldPos, out float ripple, out float speedStdDev, o
 	vec2 animatedFlow = vec2(cos(angle), sin(angle));
 
 	float phaseProgression = fract((angle / 6.2831853));
+	gustPhase = phaseProgression;
 
 	// 2. Set up the Worley coordinate space
 	float cellSize = 32.0;
@@ -181,19 +183,33 @@ vec3 getWindAtPosition(vec3 worldPos, out float ripple, out float speedStdDev, o
 	return wind * positiveRipple;
 }
 
+vec3 getWindAtPosition(vec3 worldPos, out float ripple, out float speedStdDev, out float dirStdDev) {
+	float gustPhase;
+	return getWindAtPosition(worldPos, ripple, speedStdDev, dirStdDev, gustPhase);
+}
+
 vec3 getWindAtPosition(vec3 worldPos, out float ripple, out float speedStdDev) {
-	float dirStdDev;
-	return getWindAtPosition(worldPos, ripple, speedStdDev, dirStdDev);
+	float dirStdDev, gustPhase;
+	return getWindAtPosition(worldPos, ripple, speedStdDev, dirStdDev, gustPhase);
 }
 
 vec3 getWindAtPosition(vec3 worldPos, out float ripple) {
-	float speedStdDev, dirStdDev;
-	return getWindAtPosition(worldPos, ripple, speedStdDev, dirStdDev);
+	float speedStdDev, dirStdDev, gustPhase;
+	return getWindAtPosition(worldPos, ripple, speedStdDev, dirStdDev, gustPhase);
 }
 
 vec3 getWindAtPosition(vec3 worldPos) {
-	float rip, speedStdDev, dirStdDev;
-	return getWindAtPosition(worldPos, rip, speedStdDev, dirStdDev);
+	float rip, speedStdDev, dirStdDev, gustPhase;
+	return getWindAtPosition(worldPos, rip, speedStdDev, dirStdDev, gustPhase);
+}
+
+/**
+ * Fast lookup for the gust phase progression at a given position.
+ */
+float getWindGustPhaseAtPosition(vec3 worldPos) {
+	float rip, speedStdDev, dirStdDev, gustPhase;
+	getWindAtPosition(worldPos, rip, speedStdDev, dirStdDev, gustPhase);
+	return gustPhase;
 }
 
 /**
