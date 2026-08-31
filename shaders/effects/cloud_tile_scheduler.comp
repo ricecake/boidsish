@@ -104,23 +104,10 @@ void main() {
 	int tileCols = int(uHeader.tileCols);
 	int tileRows = int(uHeader.tileRows);
 
-	bool tileHasCloudDensity = true;
-	// // 0. Bounding map density check: exclude tiles without cloud density
-	// ivec2 basePixel = tileCoord * 8;
-	// bool tileHasCloudDensity = false;
-	// const ivec2 offsets[4] = ivec2[4](ivec2(2, 2), ivec2(6, 2), ivec2(2, 6), ivec2(6, 6));
-	// for (int k = 0; k < 4; ++k) {
-	// 	vec4 bData = texelFetch(uBoundingMap, basePixel + offsets[k], 0);
-	// 	if (bData.r >= 0.0 && bData.b > 0.001) {
-	// 		tileHasCloudDensity = true;
-	// 		break;
-	// 	}
-	// }
-
 	// 1. Evaluate spatial distribution using Owen scramble Morton code
 	uint spatialFrames = max(1u, uHeader.spatialUpdateFrames);
 	uint scrambled = mortonOwenScramble(uvec2(tileCoord), 0u);
-	bool scheduledBySpatial = tileHasCloudDensity && ((scrambled % spatialFrames) == (uHeader.frameIndex % spatialFrames));
+	bool scheduledBySpatial = ((scrambled % spatialFrames) == (uHeader.frameIndex % spatialFrames));
 
 	if (uPass == 0) {
 		// Stage 1: Spatial Pass
@@ -133,6 +120,12 @@ void main() {
 		}
 	} else {
 		// Stage 2: Priority Pass
+		ivec2 boundingSize = textureSize(uBoundingMap, 0);
+		vec2 uv = (vec2(tileCoord) + 0.5) / vec2(uHeader.tileCols, uHeader.tileRows);
+		float lod = log2(max(1.0, float(boundingSize.x) / float(uHeader.tileCols)));
+		vec4 bData = textureLod(uBoundingMap, uv, lod);
+		bool tileHasCloudDensity = (bData.r >= 0.0 && bData.b > 0.001);
+
 		vec4 errorData = imageLoad(uErrorMap, tileCoord);
 		float errorVal = errorData.r;
 		float densityGrad = errorData.g;
@@ -158,27 +151,23 @@ void main() {
 		float neighborScore = maxNeighborError * uPriorityNeighborErrorWeight + maxNeighborGrad * uPriorityNeighborGradWeight;
 		float priorityScore = selfScore + neighborScore;
 
-// Inside Stage 2 (Priority Pass), right before evaluating needsPriorityUpdate
+		// 1. Fetch a Bayer value based on local pixel coordinates
+		uint bayerVal = uint(bayer8x8[(tileCoord.y % 8) * 8 + (tileCoord.x % 8)]);
 
-// 1. Fetch a Bayer value based on local pixel coordinates
-uint bayerVal = uint(bayer8x8[(tileCoord.y % 8) * 8 + (tileCoord.x % 8)]);
+		// 2. Add a prime temporal shift so the dither mask cycles each frame
+		// This guarantees static high-error areas are fully updated over a few frames
+		uint temporalBayer = (bayerVal + uHeader.frameIndex * 17u) % 64u;
 
-// 2. Add a prime temporal shift so the dither mask cycles each frame
-// This guarantees static high-error areas are fully updated over a few frames
-uint temporalBayer = (bayerVal + uHeader.frameIndex * 17u) % 64u;
+		// 3. Normalize to a 0.0 - 1.0 range
+		float ditherMask = float(temporalBayer) / 64.0;
 
-// 3. Normalize to a 0.0 - 1.0 range
-float ditherMask = float(temporalBayer) / 64.0;
+		// 4. Modulate the baseline threshold.
+		// The multiplier dictates how wide the threshold spread is.
+		// A wider spread (e.g., 0.3) creates smoother noise but slows down localized updates.
+		float dynamicThreshold = uPriorityThreshold + (ditherMask * 0.5);
 
-// 4. Modulate the baseline threshold.
-// The multiplier dictates how wide the threshold spread is.
-// A wider spread (e.g., 0.3) creates smoother noise but slows down localized updates.
-float dynamicThreshold = uPriorityThreshold + (ditherMask * 0.25);
-
-// 5. Evaluate against the dynamic threshold instead of the uniform
-bool needsPriorityUpdate = !scheduledBySpatial && tileHasCloudDensity && ((priorityScore > dynamicThreshold) || (lastUpdatedFrame == 0u));
-
-		// bool needsPriorityUpdate = !scheduledBySpatial && tileHasCloudDensity && ((priorityScore > uPriorityThreshold) || (lastUpdatedFrame == 0u));
+		// 5. Evaluate against the dynamic threshold instead of the uniform
+		bool needsPriorityUpdate = !scheduledBySpatial && tileHasCloudDensity && ((priorityScore > dynamicThreshold) || (lastUpdatedFrame == 0u));
 
 		if (needsPriorityUpdate) {
 			uint slot = atomicAdd(uHeader.count, 1u);
