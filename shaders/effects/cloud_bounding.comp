@@ -154,5 +154,6 @@ void main() {
 		}
 	}
 
-	imageStore(outBoundingMap, pixel, vec4(firstHit, lastHit, totalDensity, 0.0));
+	vec4 previousBounds = imageLoad(outBoundingMap, pixel);
+	imageStore(outBoundingMap, pixel, vec4(firstHit, lastHit, totalDensity, previousBounds.b));
 }

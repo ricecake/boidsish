@@ -355,7 +355,7 @@ namespace Boidsish {
 					glBindTexture(GL_TEXTURE_2D, atm_mgr->GetCloudWeatherMinMaxTexture());
 				}
 
-				glBindImageTexture(0, bounding_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
+				glBindImageTexture(0, bounding_texture_, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
 
 				glDispatchCompute((packed_width + 7) / 8, (packed_height + 7) / 8, 1);
 				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
@@ -481,6 +481,7 @@ namespace Boidsish {
 					temporal_shader_->setInt("uSceneDepth", 4);
 					temporal_shader_->setInt("uHistoryCloudDepth", 5);
 					temporal_shader_->setInt("uHistoryMoments", 6);
+					temporal_shader_->setInt("uBoundingMap", 7);
 
 					glActiveTexture(GL_TEXTURE0);
 					glBindTexture(GL_TEXTURE_2D, packed_texture_);
@@ -496,6 +497,8 @@ namespace Boidsish {
 					glBindTexture(GL_TEXTURE_2D, temporal_depth_textures_[temporal_index_]);
 					glActiveTexture(GL_TEXTURE6);
 					glBindTexture(GL_TEXTURE_2D, temporal_moments_textures_[temporal_index_]);
+					glActiveTexture(GL_TEXTURE7);
+					glBindTexture(GL_TEXTURE_2D, bounding_texture_);
 
 					glBindImageTexture(0, temporal_textures_[next_temporal], 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA16F);
 					glBindImageTexture(1, temporal_depth_textures_[next_temporal], 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);

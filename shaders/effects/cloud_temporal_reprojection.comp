@@ -33,6 +33,7 @@ uniform sampler2D uHistoryFrame;
 uniform sampler2D uSceneDepth;
 uniform sampler2D uHistoryCloudDepth;
 uniform sampler2D uHistoryMoments;
+uniform sampler2D uBoundingMap;
 
 uniform float uCloudTemporalGamma;
 uniform float uCloudMaxHistoryLength;
