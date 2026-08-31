@@ -251,12 +251,21 @@ void main() {
 	float currentPathDensity = currDepthProps.a;
 	float historyPathDensity = historyDepthProps.a;
 
-	float lumaCurrent = luma(currentRGBA.rgb);
-	float lumaHistory = luma(historyRGBA.rgb);
-	float lumaDiff = abs(lumaCurrent - lumaHistory);
-	float maxLuma = max(max(lumaCurrent, lumaHistory), 0.001);
-	float relativeLumaDiff = lumaDiff / maxLuma;
-	float lumaRejection = max(smoothstep(0.02, 0.25, relativeLumaDiff), smoothstep(0.03, 0.30, lumaDiff));
+	// float lumaCurrent = luma(currentRGBA.rgb);
+	// float lumaHistory = luma(historyRGBA.rgb);
+	// float lumaDiff = abs(lumaCurrent - lumaHistory);
+	// float maxLuma = max(max(lumaCurrent, lumaHistory), 0.001);
+	// float relativeLumaDiff = lumaDiff / maxLuma;
+	// float lumaRejection = max(smoothstep(0.02, 0.25, relativeLumaDiff), smoothstep(0.03, 0.30, lumaDiff));
+
+float lumaCurrent = luma(currentRGBA.rgb);
+float lumaHistory = luma(historyRGBA.rgb);
+
+// Weber contrast: Delta L / L
+float relativeLumaDiff = abs(lumaCurrent - lumaHistory) / max(lumaHistory, 0.01);
+
+// Thresholds tuned for human perception of contrast shifts
+float lumaRejection = smoothstep(0.05, 0.25, relativeLumaDiff);
 
 	float densityDelta = abs(currentPathDensity - historyPathDensity);
 	float densityError = smoothstep(0.05, 0.5, densityDelta);

@@ -12,6 +12,7 @@ uniform int       uPassIndex;
 
 uniform float uCloudPhiLuma;
 uniform float uCloudPhiDensity;
+uniform float uCloudPhiDepth;
 
 uniform float uCloudSvgfHistoryBoost;
 uniform float uCloudSvgfHistoryThreshold;
@@ -32,6 +33,8 @@ void main() {
 	ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
 	ivec2 localID = ivec2(gl_LocalInvocationID.xy);
 	ivec2 size = imageSize(outFilteredColor);
+
+	ivec2 centerTileCoord = pixel / ivec2(8);
 
 	vec2 texelSize = 1.0 / vec2(size);
 	vec2 uv = (vec2(pixel) + 0.5) * texelSize;
@@ -61,8 +64,11 @@ void main() {
 
 	if (pixel.x >= size.x || pixel.y >= size.y) return;
 
+
+	float centerDepth = texture(uCloudDepth, uv).r;
 	vec4 centerColor = texture(uCloudColor, uv);
 	vec4 centerMoments = texture(uCloudMoments, uv);
+	float centerTimestamp = texelFetch(uErrorMap, centerTileCoord, 0).a;
 
 	ivec2 tileCoord = pixel / ivec2(8);
 	vec4 tileErrorData = texelFetch(uErrorMap, tileCoord, 0);
@@ -97,6 +103,8 @@ void main() {
 
 	float phiLuma = (uCloudPhiLuma * stdLuma + 0.02) * historyScale * errorBoost;
 	float phiDensity = (uCloudPhiDensity * centerDensity + 0.1) * historyScale * errorBoost;
+	float phiDepth = (uCloudPhiDepth * centerDepth + 0.05) * historyScale * errorBoost; // Tune relative to your worldScale
+	float phiTime = 1.0;
 
 	vec4  sumColor = vec4(0.0);
 	float sumWeight = 0.0;
@@ -105,13 +113,23 @@ void main() {
 		for (int x = -2; x <= 2; x++) {
 			vec2 offset = vec2(x, y) * float(uStepSize) * texelSize;
 
+			ivec2 samplePixel = ivec2((uv + offset) * vec2(size));
+			ivec2 sampleTileCoord = samplePixel / ivec2(8);
+
 			vec4 sampleColor = texture(uCloudColor, uv + offset);
 			float sampleDensity = sampleColor.a;
+			float sampleDepth = texture(uCloudDepth, uv + offset).r;
+			float sampleTimestamp = texelFetch(uErrorMap, sampleTileCoord, 0).a;
+			float timeDelta = abs(centerTimestamp - sampleTimestamp);
 
 			float lumaWeight = exp(-abs(luma(centerColor.rgb) - luma(sampleColor.rgb)) / phiLuma);
 			float densityWeight = exp(-abs(centerDensity - sampleDensity) / phiDensity);
+			float depthWeight = exp(-abs(centerDepth - sampleDepth) / phiDepth);
+			float timeWeight = exp(-timeDelta / phiTime);
 
-			float weight = kernel[x + 2] * kernel[y + 2] * lumaWeight * densityWeight;
+			// float weight = kernel[x + 2] * kernel[y + 2] * lumaWeight * densityWeight;
+			// float weight = kernel[x + 2] * kernel[y + 2] * lumaWeight * densityWeight * depthWeight;
+			float weight = kernel[x + 2] * kernel[y + 2] * lumaWeight * densityWeight * depthWeight * timeWeight;
 			sumColor += sampleColor * weight;
 			sumWeight += weight;
 		}
@@ -119,3 +137,6 @@ void main() {
 
 	imageStore(outFilteredColor, pixel, sumColor / max(sumWeight, 0.0001));
 }
+
+
+// Inside the 5x5 kernel loop:

@@ -100,6 +100,16 @@ uint mortonOwenScramble(uvec2 p, uint seed) {
 	return owenScrambleBase4(morton, seed);
 }
 
+float mortonOwenThreshold(ivec2 uv, int FrameId) {
+	// float temporalShift = fract(float(FrameId) * 0.61803398);
+    uint code = mortonOwenScramble(uvec2(uv), uint(FrameId));
+    return fract(uintBitsToFloat(code));// + temporalShift);
+}
+
+float mortonOwenThreshold(vec2 uv, int FrameId) {
+    return mortonOwenThreshold(ivec2(uv*8192), FrameId);
+}
+
 float henyeyGreenstein(float g, float cosTheta) {
 	float g2 = g * g;
 	return (1.0 - g2) / (4.0 * PI * pow(max(0.0001, 1.0 + g2 - 2.0 * g * cosTheta), 1.5));
@@ -136,9 +146,10 @@ float bayer4x4StepPhase(ivec2 pixel, int index) {
 float InterleavedGradientNoise(vec2 uv, int FrameId){
 	// uv += float(FrameId)  * (vec2(47, 17) * 0.695f);
 	//vec3 magic = vec3( 12.9898, 78.233, 43758.5453123 );
+	const uint prime[] = uint[](2713u, 2719u, 2729u, 2731u, 2741u, 2749u, 2753u, 7919u);
 	const vec3 magic = vec3( 0.06711056f, 0.00583715f, 52.9829189f );
 	float spatialJitter = fract(magic.z * fract(dot(uv, magic.xy)));
-	float temporalShift = fract(float(FrameId) * 0.61803398);
+	float temporalShift = fract(float(prime[FrameId % prime.length()]) * 0.61803398);
 	return fract(spatialJitter + temporalShift);
 }
 

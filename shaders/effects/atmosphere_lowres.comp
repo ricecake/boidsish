@@ -387,6 +387,9 @@ void main() {
 	if (fullResPixel.x >= fullResSize.x || fullResPixel.y >= fullResSize.y)
 		return;
 
+	// if((fullResPixel.y + fullResPixel.x * 8) % 4 == frameIndex % 4) return;
+	// if((gl_LocalInvocationID.y + gl_LocalInvocationID.x * 8) % 4 == frameIndex % 4) return;
+
 	vec4 tileErrorData = imageLoad(uErrorMap, ivec2(tileCoord));
 	float tileStepMult = (tileErrorData.b > 0.01) ? tileErrorData.b : 1.0;
 
@@ -437,6 +440,7 @@ void main() {
 	int samples = uCloudMaxSamples;
 
 	float jitter = InterleavedGradientNoise(fullResPixel, frameIndex);
+	// float jitter = mortonOwenThreshold(fullResPixel, frameIndex);
 
 	vec3  cloudColor = vec3(0.0);
 	vec3 cloudTransmittance = vec3(1.0);

@@ -133,6 +133,7 @@ void main() {
 		uint lastUpdatedFrame = uint(round(errorData.a));
 
 		uint age = (uHeader.frameIndex > lastUpdatedFrame) ? (uHeader.frameIndex - lastUpdatedFrame) : 0u;
+		float velocityWeightedAge = float(age) * (1.0 + densityGrad * 10.0);
 
 		// Quick check of 4 orthogonal neighboring tiles for priority scoring
 		float maxNeighborError = 0.0;
@@ -147,7 +148,7 @@ void main() {
 			maxNeighborGrad = max(maxNeighborGrad, nData.g);
 		}
 
-		float selfScore = errorVal * uPriorityErrorWeight + densityGrad * uPriorityGradWeight + float(age) * uPriorityAgeWeight;
+		float selfScore = errorVal * uPriorityErrorWeight + densityGrad * uPriorityGradWeight + velocityWeightedAge * uPriorityAgeWeight;
 		float neighborScore = maxNeighborError * uPriorityNeighborErrorWeight + maxNeighborGrad * uPriorityNeighborGradWeight;
 		float priorityScore = selfScore + neighborScore;
 
@@ -164,7 +165,7 @@ void main() {
 		// 4. Modulate the baseline threshold.
 		// The multiplier dictates how wide the threshold spread is.
 		// A wider spread (e.g., 0.3) creates smoother noise but slows down localized updates.
-		float dynamicThreshold = uPriorityThreshold + (ditherMask * 0.5);
+		float dynamicThreshold = uPriorityThreshold + (ditherMask * 1.0);
 
 		// 5. Evaluate against the dynamic threshold instead of the uniform
 		bool needsPriorityUpdate = !scheduledBySpatial && tileHasCloudDensity && ((priorityScore > dynamicThreshold) || (lastUpdatedFrame == 0u));
