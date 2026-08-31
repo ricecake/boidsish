@@ -52,7 +52,7 @@ const int bayer8x8[64] = int[64](
 
 void main() {
 	uint totalTiles = uHeader.totalTiles;
-
+/*
 	// Flatten the 2D workgroup ID into a linear index
 	uint totalWorkgroups = gl_NumWorkGroups.x * gl_NumWorkGroups.y;
 	uint linearGroupIndex = gl_WorkGroupID.y * gl_NumWorkGroups.x + gl_WorkGroupID.x;
@@ -73,8 +73,8 @@ void main() {
 	if (tileCoord.x >= uHeader.tileCols || tileCoord.y >= uHeader.tileRows || uHeader.totalTiles == 0u) {
 		return;
 	}
-
-/*
+*/
+// /*
 	// 1. Calculate full dispatch dimensions
 	uint dispatchCols = gl_NumWorkGroups.x * gl_WorkGroupSize.x;
 	uint dispatchRows = gl_NumWorkGroups.y * gl_WorkGroupSize.y;
@@ -100,7 +100,7 @@ void main() {
 	if (tileCoord.x >= uHeader.tileCols || tileCoord.y >= uHeader.tileRows || uHeader.totalTiles == 0u) {
 		return;
 	}
-*/
+// */
 	int tileCols = int(uHeader.tileCols);
 	int tileRows = int(uHeader.tileRows);
 
