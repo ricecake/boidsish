@@ -29,6 +29,15 @@ namespace Boidsish {
 				glDeleteTextures(1, &filtered_texture_);
 				glDeleteTextures(1, &spatial_aux_texture_);
 			}
+			if (error_map_texture_) {
+				glDeleteTextures(1, &error_map_texture_);
+			}
+			if (tile_queue_ssbo_) {
+				glDeleteBuffers(1, &tile_queue_ssbo_);
+			}
+			if (indirect_dispatch_ssbo_) {
+				glDeleteBuffers(1, &indirect_dispatch_ssbo_);
+			}
 			if (temporal_textures_[0]) {
 				glDeleteTextures(2, temporal_textures_);
 				glDeleteTextures(2, temporal_depth_textures_);
@@ -57,6 +66,7 @@ namespace Boidsish {
 			cloud_moon_light_scale_ = cfg.GetAppSettingFloat("cloud_moon_light_scale", cloud_moon_light_scale_);
 			cloud_beer_powder_mix_ = cfg.GetAppSettingFloat("cloud_beer_powder_mix", cloud_beer_powder_mix_);
 
+			cloud_tile_scheduler_shader_ = std::make_unique<ComputeShader>("shaders/effects/cloud_tile_scheduler.comp");
 			cloud_render_shader_ = std::make_unique<ComputeShader>("shaders/effects/atmosphere_lowres.comp");
 			cloud_bounding_shader_ = std::make_unique<ComputeShader>("shaders/effects/cloud_bounding.comp");
 			composite_shader_ = std::make_unique<Shader>(
@@ -131,6 +141,9 @@ namespace Boidsish {
 				glGenTextures(1, &bounding_texture_);
 				glGenTextures(1, &filtered_texture_);
 				glGenTextures(1, &spatial_aux_texture_);
+				glGenTextures(1, &error_map_texture_);
+				glGenBuffers(1, &tile_queue_ssbo_);
+				glGenBuffers(1, &indirect_dispatch_ssbo_);
 			}
 
 			// Allocate cloud raymarching targets at full resolution (persistent between frames)
@@ -167,7 +180,45 @@ namespace Boidsish {
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
+			// 8x8 Tile Temporal Error Map Texture
+			int tile_cols = (width_ + 7) / 8;
+			int tile_rows = (height_ + 7) / 8;
+			int total_tiles = tile_cols * tile_rows;
+
+			glBindTexture(GL_TEXTURE_2D, error_map_texture_);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, tile_cols, tile_rows, 0, GL_RGBA, GL_FLOAT, NULL);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
 			glBindTexture(GL_TEXTURE_2D, 0);
+
+			// Allocate Tile Queue SSBO and Indirect Dispatch Buffer
+			struct TileQueueHeader {
+				uint32_t count;
+				uint32_t max_tiles;
+				uint32_t frame_index;
+				float budget_fraction;
+				uint32_t min_refresh_interval;
+				uint32_t tile_cols;
+				uint32_t tile_rows;
+				uint32_t total_tiles;
+			};
+
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, tile_queue_ssbo_);
+			glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(TileQueueHeader) + total_tiles * sizeof(glm::uvec2), nullptr, GL_DYNAMIC_DRAW);
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+
+			struct DispatchIndirectCommand {
+				uint32_t count_x;
+				uint32_t count_y;
+				uint32_t count_z;
+			};
+
+			glBindBuffer(GL_DISPATCH_INDIRECT_BUFFER, indirect_dispatch_ssbo_);
+			glBufferData(GL_DISPATCH_INDIRECT_BUFFER, sizeof(DispatchIndirectCommand), nullptr, GL_DYNAMIC_DRAW);
+			glBindBuffer(GL_DISPATCH_INDIRECT_BUFFER, 0);
 		}
 
 		void AtmosphereEffect::InitializeTemporalResources() {
@@ -231,6 +282,57 @@ namespace Boidsish {
 
 			glm::mat4 invView = glm::inverse(viewMatrix);
 			glm::mat4 invProj = glm::inverse(projectionMatrix);
+
+			int tile_cols = (width_ + 7) / 8;
+			int tile_rows = (height_ + 7) / 8;
+			uint32_t total_tiles = static_cast<uint32_t>(tile_cols * tile_rows);
+			uint32_t max_budget_tiles = static_cast<uint32_t>(std::max(1.0f, total_tiles * cloud_rendering_budget_));
+
+			struct TileQueueHeader {
+				uint32_t count;
+				uint32_t max_tiles;
+				uint32_t frame_index;
+				float budget_fraction;
+				uint32_t min_refresh_interval;
+				uint32_t tile_cols;
+				uint32_t tile_rows;
+				uint32_t total_tiles;
+			};
+
+			TileQueueHeader header{};
+			header.count = 0;
+			header.max_tiles = max_budget_tiles;
+			header.frame_index = static_cast<uint32_t>(frame_index_);
+			header.budget_fraction = cloud_rendering_budget_;
+			header.min_refresh_interval = static_cast<uint32_t>(cloud_min_refresh_interval_);
+			header.tile_cols = static_cast<uint32_t>(tile_cols);
+			header.tile_rows = static_cast<uint32_t>(tile_rows);
+			header.total_tiles = total_tiles;
+
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, tile_queue_ssbo_);
+			glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(TileQueueHeader), &header);
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+
+			struct DispatchIndirectCommand {
+				uint32_t count_x;
+				uint32_t count_y;
+				uint32_t count_z;
+			};
+
+			DispatchIndirectCommand indirect_cmd{0, 1, 1};
+			glBindBuffer(GL_DISPATCH_INDIRECT_BUFFER, indirect_dispatch_ssbo_);
+			glBufferSubData(GL_DISPATCH_INDIRECT_BUFFER, 0, sizeof(DispatchIndirectCommand), &indirect_cmd);
+			glBindBuffer(GL_DISPATCH_INDIRECT_BUFFER, 0);
+
+			if (cloud_tile_scheduler_shader_ && cloud_tile_scheduler_shader_->isValid()) {
+				cloud_tile_scheduler_shader_->use();
+				glBindImageTexture(0, error_map_texture_, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
+				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::CloudTileQueue(), tile_queue_ssbo_);
+				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::CloudIndirectDispatch(), indirect_dispatch_ssbo_);
+
+				glDispatchCompute((tile_cols + 7) / 8, (tile_rows + 7) / 8, 1);
+				glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT | GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+			}
 
 			// --- PASS 0: Hierarchical DDA Bounding pass ---
 			if (cloud_bounding_shader_ && cloud_bounding_shader_->isValid()) {
@@ -303,8 +405,12 @@ namespace Boidsish {
 				glBindImageTexture(0, packed_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 				glBindImageTexture(1, packed_depth_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
 				glBindImageTexture(2, packed_velocity_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RG16F);
+				glBindImageTexture(3, error_map_texture_, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
+				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::CloudTileQueue(), tile_queue_ssbo_);
 
-				glDispatchCompute((packed_width + 7) / 8, (packed_height + 7) / 8, 1);
+				glBindBuffer(GL_DISPATCH_INDIRECT_BUFFER, indirect_dispatch_ssbo_);
+				glDispatchComputeIndirect(0);
+				glBindBuffer(GL_DISPATCH_INDIRECT_BUFFER, 0);
 				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 			}
 
@@ -352,6 +458,7 @@ namespace Boidsish {
 				glBindImageTexture(0, temporal_textures_[next_temporal], 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 				glBindImageTexture(1, temporal_depth_textures_[next_temporal], 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
 				glBindImageTexture(2, temporal_moments_textures_[next_temporal], 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
+				glBindImageTexture(3, error_map_texture_, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
 
 				glDispatchCompute((width_ + 7) / 8, (height_ + 7) / 8, 1);
 				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
@@ -367,6 +474,7 @@ namespace Boidsish {
 				spatial_filter_shader_->setInt("uCloudColor", 0);
 				spatial_filter_shader_->setInt("uCloudDepth", 1);
 				spatial_filter_shader_->setInt("uCloudMoments", 2);
+				spatial_filter_shader_->setInt("uErrorMap", 3);
 
 				spatial_filter_shader_->setFloat("uCloudPhiLuma", cloud_phi_luma_);
 				spatial_filter_shader_->setFloat("uCloudPhiDepth", cloud_phi_depth_);
@@ -389,6 +497,8 @@ namespace Boidsish {
 					glBindTexture(GL_TEXTURE_2D, temporal_depth_textures_[temporal_index_]);
 					glActiveTexture(GL_TEXTURE2);
 					glBindTexture(GL_TEXTURE_2D, temporal_moments_textures_[temporal_index_]);
+					glActiveTexture(GL_TEXTURE3);
+					glBindTexture(GL_TEXTURE_2D, error_map_texture_);
 
 					glBindImageTexture(0, pong, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
 
