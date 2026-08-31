@@ -70,6 +70,8 @@ namespace Boidsish {
 			cloud_beer_powder_mix_ = cfg.GetAppSettingFloat("cloud_beer_powder_mix", cloud_beer_powder_mix_);
 
 			cloud_tile_scheduler_shader_ = std::make_unique<ComputeShader>("shaders/effects/cloud_tile_scheduler.comp");
+			cloud_tile_sort_shader_ = std::make_unique<ComputeShader>("shaders/effects/cloud_tile_sort.comp");
+			cloud_tile_queue_build_shader_ = std::make_unique<ComputeShader>("shaders/effects/cloud_tile_queue_build.comp");
 			cloud_render_shader_ = std::make_unique<ComputeShader>("shaders/effects/atmosphere_lowres.comp");
 			cloud_bounding_shader_ = std::make_unique<ComputeShader>("shaders/effects/cloud_bounding.comp");
 			composite_shader_ = std::make_unique<Shader>(
@@ -211,8 +213,12 @@ namespace Boidsish {
 				uint32_t padding;
 			};
 
+			uint32_t N = 1u;
+			while (N < static_cast<uint32_t>(total_tiles)) {
+				N <<= 1u;
+			}
 			glBindBuffer(GL_SHADER_STORAGE_BUFFER, tile_queue_ssbo_);
-			glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(TileQueueHeader) + total_tiles * sizeof(glm::uvec2), nullptr, GL_DYNAMIC_DRAW);
+			glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(TileQueueHeader) + N * sizeof(glm::uvec2), nullptr, GL_DYNAMIC_DRAW);
 			glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
 			struct DispatchIndirectCommand {
@@ -358,7 +364,7 @@ namespace Boidsish {
 				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
 			}
 
-			// --- PASS 1: Tile Scheduler pass ---
+			// --- PASS 1: Tile Scheduler (Priority Map Evaluation) ---
 			if (cloud_tile_scheduler_shader_ && cloud_tile_scheduler_shader_->isValid()) {
 				cloud_tile_scheduler_shader_->use();
 				cloud_tile_scheduler_shader_->setInt("uBoundingMap", 0);
@@ -367,10 +373,42 @@ namespace Boidsish {
 
 				glBindImageTexture(0, error_map_texture_, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
 				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::CloudTileQueue(), tile_queue_ssbo_);
-				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::CloudIndirectDispatch(), indirect_dispatch_ssbo_);
 
 				glDispatchCompute((tile_cols + 7) / 8, (tile_rows + 7) / 8, 1);
-				glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT | GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+				glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+			}
+
+			// --- PASS 1b: Parallel GPU Bitonic Sort ---
+			if (cloud_tile_sort_shader_ && cloud_tile_sort_shader_->isValid() && total_tiles > 0) {
+				cloud_tile_sort_shader_->use();
+				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::CloudTileQueue(), tile_queue_ssbo_);
+
+				uint32_t N = 1u;
+				while (N < total_tiles) {
+					N <<= 1u;
+				}
+
+				uint32_t sort_threads = N / 2u;
+				uint32_t sort_groups_x = (sort_threads + 255u) / 256u;
+
+				for (uint32_t k = 2u; k <= N; k <<= 1u) {
+					for (uint32_t j = k >> 1u; j > 0u; j >>= 1u) {
+						cloud_tile_sort_shader_->setInt("uStage", static_cast<int>(k));
+						cloud_tile_sort_shader_->setInt("uStep", static_cast<int>(j));
+						glDispatchCompute(sort_groups_x, 1, 1);
+						glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+					}
+				}
+			}
+
+			// --- PASS 1c: Queue Build & Indirect Command Update ---
+			if (cloud_tile_queue_build_shader_ && cloud_tile_queue_build_shader_->isValid()) {
+				cloud_tile_queue_build_shader_->use();
+				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::CloudTileQueue(), tile_queue_ssbo_);
+				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::CloudIndirectDispatch(), indirect_dispatch_ssbo_);
+
+				glDispatchCompute(1, 1, 1);
+				glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT);
 			}
 
 			// --- PASS 1: Packed Quarter-res Cloud Rendering ---

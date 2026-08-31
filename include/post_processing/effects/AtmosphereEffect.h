@@ -305,6 +305,8 @@ namespace Boidsish {
 			void InitializeTemporalResources();
 
 			std::unique_ptr<ComputeShader> cloud_tile_scheduler_shader_;
+			std::unique_ptr<ComputeShader> cloud_tile_sort_shader_;
+			std::unique_ptr<ComputeShader> cloud_tile_queue_build_shader_;
 			std::unique_ptr<ComputeShader> cloud_render_shader_;
 			std::unique_ptr<ComputeShader> cloud_bounding_shader_;
 			std::unique_ptr<Shader>        composite_shader_;

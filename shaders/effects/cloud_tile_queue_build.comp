@@ -1,0 +1,79 @@
+#version 460 core
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+struct TileQueueHeader {
+	uint count;
+	uint maxTiles;
+	uint minTiles;
+	uint frameIndex;
+	float minRefreshRate;
+	float maxRefreshRate;
+	uint tileCols;
+	uint tileRows;
+	uint totalTiles;
+	uint padding;
+};
+
+layout(std430, binding = 59) buffer TileQueueSSBO {
+	TileQueueHeader uHeader;
+	uvec2 uTileQueue[];
+};
+
+layout(std430, binding = 60) buffer IndirectDispatchSSBO {
+	uint uDispatchCountX;
+	uint uDispatchCountY;
+	uint uDispatchCountZ;
+};
+
+shared uint sharedCount;
+
+void main() {
+	uint totalTiles = uHeader.totalTiles;
+
+	// Single workgroup invocation thread 0 evaluates the final count
+	if (gl_LocalInvocationIndex == 0u) {
+		uint minTiles = uHeader.minTiles;
+		uint maxTiles = uHeader.maxTiles;
+		float priorityThreshold = 0.05;
+
+		uint count = 0u;
+		for (uint idx = 0u; idx < totalTiles; idx++) {
+			float score = uintBitsToFloat(uTileQueue[idx].y);
+			if (score < -500.0) break;
+
+			bool includeTile = false;
+			if (idx < minTiles) {
+				// Minimum threshold filled no matter what
+				includeTile = true;
+			} else if (idx < maxTiles) {
+				// Taking from other tiles ordered by priority over threshold
+				if (score > priorityThreshold) {
+					includeTile = true;
+				} else {
+					break;
+				}
+			} else {
+				break;
+			}
+
+			if (includeTile) {
+				count++;
+			}
+		}
+
+		sharedCount = count;
+		uHeader.count = count;
+		uDispatchCountX = count;
+		uDispatchCountY = 1u;
+		uDispatchCountZ = 1u;
+	}
+
+	barrier();
+
+	// Parallel unpack coordinates for the queued tiles
+	uint count = sharedCount;
+	for (uint idx = gl_LocalInvocationIndex; idx < count; idx += gl_WorkGroupSize.x) {
+		uint packedCoord = uTileQueue[idx].x;
+		uTileQueue[idx] = uvec2(packedCoord & 0xFFFFu, packedCoord >> 16u);
+	}
+}
