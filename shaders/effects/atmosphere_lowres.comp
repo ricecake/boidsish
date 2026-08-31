@@ -12,7 +12,7 @@ layout(binding = 3, rgba32f) uniform image2D uErrorMap;
 struct TileQueueHeader {
 	uint count;
 	uint maxTiles;
-	uint minTiles;
+	uint spatialUpdateFrames;
 	uint frameIndex;
 	float minRefreshRate;
 	float maxRefreshRate;

@@ -586,45 +586,65 @@ namespace Boidsish {
 									ImGui::Separator();
 									ImGui::Text("Cloud Tile Scheduler");
 
-									const char* bayer_names[] = { "0 (Never)", "1/64 (8x8 Bayer)", "1/16 (4x4 Bayer)", "1/4 (2x2 Bayer)", "1/1 (Always)" };
-									const float bayer_values[] = { 0.0f, 1.0f / 64.0f, 1.0f / 16.0f, 1.0f / 4.0f, 1.0f };
-
-									auto get_bayer_idx = [&](float rate) {
-										int idx = 0;
-										float min_diff = std::abs(rate - bayer_values[0]);
-										for (int i = 1; i < 5; ++i) {
-											float diff = std::abs(rate - bayer_values[i]);
-											if (diff < min_diff) {
-												min_diff = diff;
-												idx = i;
-											}
-										}
-										return idx;
-									};
-
-									int min_idx = get_bayer_idx(atmosphere_effect->GetCloudMinRefreshRate());
-									int max_idx = get_bayer_idx(atmosphere_effect->GetCloudMaxRefreshRate());
-
-									if (ImGui::Combo("Min Tile Refresh Rate", &min_idx, bayer_names, IM_ARRAYSIZE(bayer_names))) {
-										if (min_idx > max_idx) {
-											max_idx = min_idx;
-											atmosphere_effect->SetCloudMaxRefreshRate(bayer_values[max_idx]);
-											cfg.SetFloat("cloud_max_refresh_rate", bayer_values[max_idx]);
-										}
-										atmosphere_effect->SetCloudMinRefreshRate(bayer_values[min_idx]);
-										cfg.SetFloat("cloud_min_refresh_rate", bayer_values[min_idx]);
+									int spatial_frames = atmosphere_effect->GetCloudSpatialUpdateFrames();
+									if (ImGui::SliderInt("Full Spatial Update (Frames)", &spatial_frames, 1, 64)) {
+										atmosphere_effect->SetCloudSpatialUpdateFrames(spatial_frames);
+										cfg.SetInt("cloud_spatial_update_frames", spatial_frames);
 										changed_atm = true;
 									}
 
-									if (ImGui::Combo("Max Tile Refresh Rate", &max_idx, bayer_names, IM_ARRAYSIZE(bayer_names))) {
-										if (max_idx < min_idx) {
-											min_idx = max_idx;
-											atmosphere_effect->SetCloudMinRefreshRate(bayer_values[min_idx]);
-											cfg.SetFloat("cloud_min_refresh_rate", bayer_values[min_idx]);
-										}
-										atmosphere_effect->SetCloudMaxRefreshRate(bayer_values[max_idx]);
-										cfg.SetFloat("cloud_max_refresh_rate", bayer_values[max_idx]);
+									float max_rate_pct = atmosphere_effect->GetCloudMaxRefreshRate() * 100.0f;
+									if (ImGui::SliderFloat("Max Screen Update Rate (%)", &max_rate_pct, 1.0f, 100.0f, "%.1f%%")) {
+										float rate = max_rate_pct * 0.01f;
+										atmosphere_effect->SetCloudMaxRefreshRate(rate);
+										cfg.SetFloat("cloud_max_refresh_rate", rate);
 										changed_atm = true;
+									}
+
+									if (ImGui::TreeNode("Priority Pass Tuning")) {
+										float p_err_w = atmosphere_effect->GetCloudPriorityErrorWeight();
+										if (ImGui::SliderFloat("Priority Error Weight", &p_err_w, 0.0f, 10.0f, "%.2f")) {
+											atmosphere_effect->SetCloudPriorityErrorWeight(p_err_w);
+											cfg.SetFloat("cloud_priority_error_weight", p_err_w);
+											changed_atm = true;
+										}
+
+										float p_grad_w = atmosphere_effect->GetCloudPriorityGradWeight();
+										if (ImGui::SliderFloat("Priority Grad Weight", &p_grad_w, 0.0f, 10.0f, "%.2f")) {
+											atmosphere_effect->SetCloudPriorityGradWeight(p_grad_w);
+											cfg.SetFloat("cloud_priority_grad_weight", p_grad_w);
+											changed_atm = true;
+										}
+
+										float p_age_w = atmosphere_effect->GetCloudPriorityAgeWeight();
+										if (ImGui::SliderFloat("Priority Age Weight", &p_age_w, 0.0f, 1.0f, "%.3f")) {
+											atmosphere_effect->SetCloudPriorityAgeWeight(p_age_w);
+											cfg.SetFloat("cloud_priority_age_weight", p_age_w);
+											changed_atm = true;
+										}
+
+										float p_nerr_w = atmosphere_effect->GetCloudPriorityNeighborErrorWeight();
+										if (ImGui::SliderFloat("Neighbor Error Weight", &p_nerr_w, 0.0f, 10.0f, "%.2f")) {
+											atmosphere_effect->SetCloudPriorityNeighborErrorWeight(p_nerr_w);
+											cfg.SetFloat("cloud_priority_neighbor_error_weight", p_nerr_w);
+											changed_atm = true;
+										}
+
+										float p_ngrad_w = atmosphere_effect->GetCloudPriorityNeighborGradWeight();
+										if (ImGui::SliderFloat("Neighbor Grad Weight", &p_ngrad_w, 0.0f, 10.0f, "%.2f")) {
+											atmosphere_effect->SetCloudPriorityNeighborGradWeight(p_ngrad_w);
+											cfg.SetFloat("cloud_priority_neighbor_grad_weight", p_ngrad_w);
+											changed_atm = true;
+										}
+
+										float p_thresh = atmosphere_effect->GetCloudPriorityThreshold();
+										if (ImGui::SliderFloat("Priority Score Threshold", &p_thresh, 0.001f, 1.0f, "%.3f")) {
+											atmosphere_effect->SetCloudPriorityThreshold(p_thresh);
+											cfg.SetFloat("cloud_priority_threshold", p_thresh);
+											changed_atm = true;
+										}
+
+										ImGui::TreePop();
 									}
 
 									float g1 = cfg.GetAppSettingFloat(

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <memory>
 
 #include "weather_constants.h"
@@ -266,36 +267,38 @@ namespace Boidsish {
 			void SetCloudSvgfHistoryThreshold(float threshold) { cloud_svgf_history_threshold_ = threshold; }
 			float GetCloudSvgfHistoryThreshold() const { return cloud_svgf_history_threshold_; }
 
-			static float SnapToBayerRate(float rate) {
-				static const float rates[] = { 0.0f, 1.0f / 64.0f, 1.0f / 16.0f, 1.0f / 4.0f, 1.0f };
-				float best = rates[0];
-				float min_diff = std::abs(rate - best);
-				for (int i = 1; i < 5; ++i) {
-					float diff = std::abs(rate - rates[i]);
-					if (diff < min_diff) {
-						min_diff = diff;
-						best = rates[i];
-					}
-				}
-				return best;
-			}
+			void SetCloudSpatialUpdateFrames(int frames) { cloud_spatial_update_frames_ = std::max(1, frames); }
+			int GetCloudSpatialUpdateFrames() const { return cloud_spatial_update_frames_; }
 
-			void SetCloudMinRefreshRate(float rate) { cloud_min_refresh_rate_ = SnapToBayerRate(rate); }
-			float GetCloudMinRefreshRate() const { return cloud_min_refresh_rate_; }
-
-			void SetCloudMaxRefreshRate(float rate) { cloud_max_refresh_rate_ = SnapToBayerRate(rate); }
+			void SetCloudMaxRefreshRate(float rate) { cloud_max_refresh_rate_ = std::clamp(rate, 0.01f, 1.0f); }
 			float GetCloudMaxRefreshRate() const { return cloud_max_refresh_rate_; }
+
+			void SetCloudPriorityErrorWeight(float w) { cloud_priority_error_weight_ = w; }
+			float GetCloudPriorityErrorWeight() const { return cloud_priority_error_weight_; }
+
+			void SetCloudPriorityGradWeight(float w) { cloud_priority_grad_weight_ = w; }
+			float GetCloudPriorityGradWeight() const { return cloud_priority_grad_weight_; }
+
+			void SetCloudPriorityAgeWeight(float w) { cloud_priority_age_weight_ = w; }
+			float GetCloudPriorityAgeWeight() const { return cloud_priority_age_weight_; }
+
+			void SetCloudPriorityNeighborErrorWeight(float w) { cloud_priority_neighbor_error_weight_ = w; }
+			float GetCloudPriorityNeighborErrorWeight() const { return cloud_priority_neighbor_error_weight_; }
+
+			void SetCloudPriorityNeighborGradWeight(float w) { cloud_priority_neighbor_grad_weight_ = w; }
+			float GetCloudPriorityNeighborGradWeight() const { return cloud_priority_neighbor_grad_weight_; }
+
+			void SetCloudPriorityThreshold(float t) { cloud_priority_threshold_ = t; }
+			float GetCloudPriorityThreshold() const { return cloud_priority_threshold_; }
 
 			void SetCloudRenderingBudget(float budget) { SetCloudMaxRefreshRate(budget); }
 			float GetCloudRenderingBudget() const { return GetCloudMaxRefreshRate(); }
 
 			void SetCloudMinRefreshInterval(int interval) {
-				if (interval > 0) {
-					SetCloudMinRefreshRate(1.0f / static_cast<float>(interval));
-				}
+				SetCloudSpatialUpdateFrames(interval);
 			}
 			int GetCloudMinRefreshInterval() const {
-				return static_cast<int>(std::round(1.0f / std::max(0.0001f, cloud_min_refresh_rate_)));
+				return cloud_spatial_update_frames_;
 			}
 
 			void FlushHistory() { has_valid_history_ = false; }
@@ -408,8 +411,15 @@ namespace Boidsish {
 			float cloud_svgf_history_boost_ = 4.0f;
 			float cloud_svgf_history_threshold_ = 10.0f;
 
-			float cloud_min_refresh_rate_ = 1.0f / 16.0f;
-			float cloud_max_refresh_rate_ = 1.0f / 4.0f;
+			int   cloud_spatial_update_frames_ = 16;
+			float cloud_max_refresh_rate_ = 0.25f;
+
+			float cloud_priority_error_weight_ = 2.5f;
+			float cloud_priority_grad_weight_ = 2.0f;
+			float cloud_priority_age_weight_ = 0.05f;
+			float cloud_priority_neighbor_error_weight_ = 1.5f;
+			float cloud_priority_neighbor_grad_weight_ = 1.0f;
+			float cloud_priority_threshold_ = 0.05f;
 
 		};
 

@@ -53,8 +53,14 @@ namespace Boidsish {
 			cloud_curl_strength_ = cfg.GetAppSettingFloat("cloud_curl_strength", cloud_curl_strength_);
 			cloud_curl_frequency_ = cfg.GetAppSettingFloat("cloud_curl_frequency", cloud_curl_frequency_);
 
-			cloud_min_refresh_rate_ = SnapToBayerRate(cfg.GetAppSettingFloat("cloud_min_refresh_rate", cloud_min_refresh_rate_));
-			cloud_max_refresh_rate_ = SnapToBayerRate(cfg.GetAppSettingFloat("cloud_max_refresh_rate", cloud_max_refresh_rate_));
+			cloud_spatial_update_frames_ = cfg.GetAppSettingInt("cloud_spatial_update_frames", cloud_spatial_update_frames_);
+			cloud_max_refresh_rate_ = std::clamp(cfg.GetAppSettingFloat("cloud_max_refresh_rate", cloud_max_refresh_rate_), 0.01f, 1.0f);
+			cloud_priority_error_weight_ = cfg.GetAppSettingFloat("cloud_priority_error_weight", cloud_priority_error_weight_);
+			cloud_priority_grad_weight_ = cfg.GetAppSettingFloat("cloud_priority_grad_weight", cloud_priority_grad_weight_);
+			cloud_priority_age_weight_ = cfg.GetAppSettingFloat("cloud_priority_age_weight", cloud_priority_age_weight_);
+			cloud_priority_neighbor_error_weight_ = cfg.GetAppSettingFloat("cloud_priority_neighbor_error_weight", cloud_priority_neighbor_error_weight_);
+			cloud_priority_neighbor_grad_weight_ = cfg.GetAppSettingFloat("cloud_priority_neighbor_grad_weight", cloud_priority_neighbor_grad_weight_);
+			cloud_priority_threshold_ = cfg.GetAppSettingFloat("cloud_priority_threshold", cloud_priority_threshold_);
 
 			cloud_phase_g1_ = cfg.GetAppSettingFloat("cloud_phase_g1", cloud_phase_g1_);
 			cloud_phase_g2_ = cfg.GetAppSettingFloat("cloud_phase_g2", cloud_phase_g2_);
@@ -201,7 +207,7 @@ namespace Boidsish {
 			struct TileQueueHeader {
 				uint32_t count;
 				uint32_t max_tiles;
-				uint32_t min_tiles;
+				uint32_t spatial_update_frames;
 				uint32_t frame_index;
 				float min_refresh_rate;
 				float max_refresh_rate;
@@ -291,15 +297,12 @@ namespace Boidsish {
 			int tile_cols = (width_ + 7) / 8;
 			int tile_rows = (height_ + 7) / 8;
 			uint32_t total_tiles = static_cast<uint32_t>(tile_cols * tile_rows);
-			uint32_t min_budget_tiles = static_cast<uint32_t>(std::ceil(total_tiles * cloud_min_refresh_rate_));
-			uint32_t max_budget_tiles = static_cast<uint32_t>(std::floor(total_tiles * cloud_max_refresh_rate_));
-			max_budget_tiles = std::max(min_budget_tiles, max_budget_tiles);
-			max_budget_tiles = std::max(1u, max_budget_tiles);
+			uint32_t max_budget_tiles = static_cast<uint32_t>(std::clamp(std::floor(total_tiles * cloud_max_refresh_rate_), 1.0f, static_cast<float>(total_tiles)));
 
 			struct TileQueueHeader {
 				uint32_t count;
 				uint32_t max_tiles;
-				uint32_t min_tiles;
+				uint32_t spatial_update_frames;
 				uint32_t frame_index;
 				float min_refresh_rate;
 				float max_refresh_rate;
@@ -312,9 +315,9 @@ namespace Boidsish {
 			TileQueueHeader header{};
 			header.count = 0;
 			header.max_tiles = max_budget_tiles;
-			header.min_tiles = min_budget_tiles;
+			header.spatial_update_frames = static_cast<uint32_t>(std::max(1, cloud_spatial_update_frames_));
 			header.frame_index = static_cast<uint32_t>(frame_index_);
-			header.min_refresh_rate = cloud_min_refresh_rate_;
+			header.min_refresh_rate = 1.0f / static_cast<float>(header.spatial_update_frames);
 			header.max_refresh_rate = cloud_max_refresh_rate_;
 			header.tile_cols = static_cast<uint32_t>(tile_cols);
 			header.tile_rows = static_cast<uint32_t>(tile_rows);
@@ -358,10 +361,17 @@ namespace Boidsish {
 				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
 			}
 
-			// --- PASS 1: Tile Scheduler pass ---
+			// --- PASS 1: Tile Scheduler pass (Two-pass: Spatial Pass 0 then Priority Pass 1) ---
 			if (cloud_tile_scheduler_shader_ && cloud_tile_scheduler_shader_->isValid()) {
 				cloud_tile_scheduler_shader_->use();
 				cloud_tile_scheduler_shader_->setInt("uBoundingMap", 0);
+				cloud_tile_scheduler_shader_->setFloat("uPriorityErrorWeight", cloud_priority_error_weight_);
+				cloud_tile_scheduler_shader_->setFloat("uPriorityGradWeight", cloud_priority_grad_weight_);
+				cloud_tile_scheduler_shader_->setFloat("uPriorityAgeWeight", cloud_priority_age_weight_);
+				cloud_tile_scheduler_shader_->setFloat("uPriorityNeighborErrorWeight", cloud_priority_neighbor_error_weight_);
+				cloud_tile_scheduler_shader_->setFloat("uPriorityNeighborGradWeight", cloud_priority_neighbor_grad_weight_);
+				cloud_tile_scheduler_shader_->setFloat("uPriorityThreshold", cloud_priority_threshold_);
+
 				glActiveTexture(GL_TEXTURE0);
 				glBindTexture(GL_TEXTURE_2D, bounding_texture_);
 
@@ -369,6 +379,13 @@ namespace Boidsish {
 				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::CloudTileQueue(), tile_queue_ssbo_);
 				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::CloudIndirectDispatch(), indirect_dispatch_ssbo_);
 
+				// Pass 0: Spatial Pass (Owen scramble Morton distribution)
+				cloud_tile_scheduler_shader_->setInt("uPass", 0);
+				glDispatchCompute((tile_cols + 7) / 8, (tile_rows + 7) / 8, 1);
+				glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT | GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+				// Pass 1: Priority Pass (Add high priority / error tiles)
+				cloud_tile_scheduler_shader_->setInt("uPass", 1);
 				glDispatchCompute((tile_cols + 7) / 8, (tile_rows + 7) / 8, 1);
 				glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT | GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 			}
