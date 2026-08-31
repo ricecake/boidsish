@@ -102,12 +102,13 @@ vec2 fastSimplePhacelle2d(vec2 uv, vec2 dir) {
 }
 
 /**
- * Fast lookup for pre-integrated wind data with tracked speed and direction standard deviations.
+ * Fast lookup for pre-integrated wind data with tracked speed and direction standard deviations and gust phase output.
  */
-vec3 getWindAtPosition(vec3 worldPos, out float ripple, out float speedStdDev, out float dirStdDev) {
+vec3 getWindAtPosition(vec3 worldPos, out float ripple, out float speedStdDev, out float dirStdDev, out float gustPhase) {
 	ripple = 0.0;
 	speedStdDev = 0.0;
 	dirStdDev = 0.0;
+	gustPhase = 0.0;
 	if (u_windOriginSize.y <= 0) return vec3(0.0);
 
 	float gridSpacing = u_windParams.x;
@@ -137,6 +138,7 @@ vec3 getWindAtPosition(vec3 worldPos, out float ripple, out float speedStdDev, o
 	vec2 animatedFlow = vec2(cos(angle), sin(angle));
 
 	float phaseProgression = fract((angle / 6.2831853));
+	gustPhase = phaseProgression;
 
 	// 2. Set up the Worley coordinate space
 	float cellSize = 32.0;
@@ -181,19 +183,33 @@ vec3 getWindAtPosition(vec3 worldPos, out float ripple, out float speedStdDev, o
 	return wind * positiveRipple;
 }
 
+vec3 getWindAtPosition(vec3 worldPos, out float ripple, out float speedStdDev, out float dirStdDev) {
+	float gustPhase;
+	return getWindAtPosition(worldPos, ripple, speedStdDev, dirStdDev, gustPhase);
+}
+
 vec3 getWindAtPosition(vec3 worldPos, out float ripple, out float speedStdDev) {
-	float dirStdDev;
-	return getWindAtPosition(worldPos, ripple, speedStdDev, dirStdDev);
+	float dirStdDev, gustPhase;
+	return getWindAtPosition(worldPos, ripple, speedStdDev, dirStdDev, gustPhase);
 }
 
 vec3 getWindAtPosition(vec3 worldPos, out float ripple) {
-	float speedStdDev, dirStdDev;
-	return getWindAtPosition(worldPos, ripple, speedStdDev, dirStdDev);
+	float speedStdDev, dirStdDev, gustPhase;
+	return getWindAtPosition(worldPos, ripple, speedStdDev, dirStdDev, gustPhase);
 }
 
 vec3 getWindAtPosition(vec3 worldPos) {
-	float rip, speedStdDev, dirStdDev;
-	return getWindAtPosition(worldPos, rip, speedStdDev, dirStdDev);
+	float rip, speedStdDev, dirStdDev, gustPhase;
+	return getWindAtPosition(worldPos, rip, speedStdDev, dirStdDev, gustPhase);
+}
+
+/**
+ * Fast lookup for the gust phase progression at a given position.
+ */
+float getWindGustPhaseAtPosition(vec3 worldPos) {
+	float rip, speedStdDev, dirStdDev, gustPhase;
+	getWindAtPosition(worldPos, rip, speedStdDev, dirStdDev, gustPhase);
+	return gustPhase;
 }
 
 /**
@@ -386,7 +402,9 @@ vec3 rotateVector(vec3 v, vec3 axis, float angle) {
  */
 void getWindDeflectionAngleAndAxis(vec3 basePos, float dist, float v, float windInfluence, float biomeRigidity, float globalWindMultiplier, float globalRigidityMultiplier, uint seed, out float totalBendAngle, out vec3 rotationAxis) {
     float distanceFade = 1.0 - smoothstep(450.0, 750.0, dist);
-    vec3 windNoise = (distanceFade > 0.0 && dist < 550.0) ? distanceFade * getWindAtPosition(basePos) : vec3(0.0);
+	float ripple, speedStdDev, dirStdDev, gustPhase;
+
+    vec3 windNoise = (distanceFade > 0.0 && dist < 550.0) ? distanceFade * getWindAtPosition(basePos, ripple, speedStdDev, dirStdDev, gustPhase) : vec3(0.0);
     float windStrength = length(windNoise) * windInfluence * globalWindMultiplier;
 
     vec3 windDir = (length(windNoise) > 0.001) ? normalize(vec3(windNoise.x, 0.0, windNoise.z)) : vec3(1.0, 0.0, 0.0);
@@ -413,8 +431,9 @@ void getWindDeflectionAngleAndAxis(vec3 basePos, float dist, float v, float wind
     vec3 staticDeflection = vec3(randomSway, 0.0, tiltAngle);
     vec3 windDeflection = windDir * windBendAngle;
 
-    vec3 combinedDeflection = staticDeflection + windDeflection;
+    vec3 combinedDeflection = (staticDeflection + windDeflection);// * (2.0*(0.5+0.5*sin(windHash(seed + 18u)*gustPhase*6.28)));
     totalBendAngle = length(combinedDeflection);
+	totalBendAngle *= smoothstep(0, 1, 1.5*(gustPhase-0.4)+exp(-0.1*-gustPhase)*(0.5+0.3*cos(-30*gustPhase)));
 
     if (totalBendAngle <= 0.0001) {
         rotationAxis = vec3(0.0, 1.0, 0.0);
