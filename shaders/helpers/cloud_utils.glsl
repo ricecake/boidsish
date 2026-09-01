@@ -127,7 +127,7 @@ bool intersectSphereLocal(vec3 ro, vec3 rd, float radius, out float t0, out floa
 	return true;
 }
 
-bool intersectCloudShell(vec3 ro, vec3 rd, float worldScale, out float t_start, out float t_end) {
+bool intersectCloudShell(vec3 ro, vec3 rd, float worldScale, out float t_start1, out float t_end1, out float t_start2, out float t_end2) {
 	float R_earth = 6360.0 * 1000.0 * worldScale;
 	float R_floor = R_earth + (cloudAltitude - 500.0) * worldScale;
 	float R_ceiling = R_earth + (cloudAltitude + 2.0 * cloudThickness + 500.0) * worldScale;
@@ -135,23 +135,88 @@ bool intersectCloudShell(vec3 ro, vec3 rd, float worldScale, out float t_start, 
 	vec3 earthCenter = vec3(viewPos.x, -R_earth, viewPos.z);
 	vec3 relRo = ro - earthCenter;
 
+	t_start1 = 0.0;
+	t_end1 = -1.0;
+	t_start2 = 0.0;
+	t_end2 = -1.0;
+
+	float t_out0, t_out1;
+	if (!intersectSphereLocal(relRo, rd, R_ceiling, t_out0, t_out1) || t_out1 <= 0.0) {
+		return false;
+	}
+
+	// An intersection with the Earth sphere stops the ray
+	float t_e0, t_e1;
+	bool hits_earth = intersectSphereLocal(relRo, rd, R_earth, t_e0, t_e1) && (t_e0 > 0.0);
+	float t_max = hits_earth ? t_e0 : t_out1;
+
+	float t_c_entry = max(0.0, t_out0);
+	float t_c_exit  = min(t_out1, t_max);
+
+	if (t_c_entry >= t_c_exit) {
+		return false;
+	}
+
+	float t_in0, t_in1;
+	if (intersectSphereLocal(relRo, rd, R_floor, t_in0, t_in1)) {
+		if (t_in0 < 0.0) {
+			// Ray origin is inside R_floor (e.g., ground looking up into the sky)
+			float ts = max(t_c_entry, t_in1);
+			float te = t_c_exit;
+			if (ts < te) {
+				t_start1 = ts;
+				t_end1 = te;
+				return true;
+			}
+			return false;
+		} else {
+			// Ray enters R_floor at t_in0 > 0.0
+			// Segment 1: from entry into atmosphere ceiling up to entering R_floor
+			float ts1 = t_c_entry;
+			float te1 = min(t_c_exit, t_in0);
+			if (ts1 < te1) {
+				t_start1 = ts1;
+				t_end1 = te1;
+			}
+
+			// Segment 2: from exiting R_floor at t_in1 up to exiting R_ceiling (if not blocked by Earth)
+			float ts2 = max(t_c_entry, t_in1);
+			float te2 = t_c_exit;
+			if (ts2 < te2) {
+				if (t_start1 >= t_end1) {
+					t_start1 = ts2;
+					t_end1 = te2;
+				} else {
+					t_start2 = ts2;
+					t_end2 = te2;
+				}
+			}
+
+			return (t_start1 < t_end1) || (t_start2 < t_end2);
+		}
+	} else {
+		// Does not intersect R_floor (grazes cloud layer without reaching floor)
+		t_start1 = t_c_entry;
+		t_end1 = t_c_exit;
+		return t_start1 < t_end1;
+	}
+}
+
+bool intersectCloudShell(vec3 ro, vec3 rd, float worldScale, out float t_start, out float t_end) {
+	float t_s1, t_e1, t_s2, t_e2;
+	if (intersectCloudShell(ro, rd, worldScale, t_s1, t_e1, t_s2, t_e2)) {
+		if (t_s1 < t_e1) {
+			t_start = t_s1;
+			t_end = t_e1;
+			return true;
+		} else if (t_s2 < t_e2) {
+			t_start = t_s2;
+			t_end = t_e2;
+			return true;
+		}
+	}
 	t_start = 1e10;
 	t_end = -1e10;
-
-	float t0, t1;
-	if (intersectSphereLocal(relRo, rd, R_ceiling, t0, t1)) {
-		t_start = max(0.0, t0);
-		t_end = t1;
-
-		if (intersectSphereLocal(relRo, rd, R_floor, t0, t1)) {
-			if (t0 < 0.0) {
-				t_start = max(t_start, t1);
-			} else {
-				t_end = min(t_end, t0);
-			}
-		}
-		return t_start < t_end;
-	}
 	return false;
 }
 

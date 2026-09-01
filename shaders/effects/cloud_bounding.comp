@@ -74,16 +74,37 @@ void main() {
 		worldPos = viewPos + rayDir * dist;
 	}
 
-	float t_start = 1e10;
-	float t_end = -1e10;
-	intersectCloudShell(viewPos, rayDir, worldScale, t_start, t_end);
+	float t_start1, t_end1, t_start2, t_end2;
+	bool hitShell = intersectCloudShell(viewPos, rayDir, worldScale, t_start1, t_end1, t_start2, t_end2);
 
-	t_end = min(t_end, dist);
+	int numSegments = 0;
+	float segStart[2];
+	float segEnd[2];
+
+	if (hitShell) {
+		if (t_start1 < t_end1 && t_start1 < dist) {
+			segStart[numSegments] = t_start1;
+			segEnd[numSegments] = min(t_end1, dist);
+			numSegments++;
+		}
+		if (t_start2 < t_end2 && t_start2 < dist) {
+			segStart[numSegments] = t_start2;
+			segEnd[numSegments] = min(t_end2, dist);
+			numSegments++;
+		}
+	}
+
+	if (numSegments == 0) {
+		imageStore(outBoundingMap, pixel, vec4(-1.0, -1.0, 0.0, 0.0));
+		return;
+	}
 
 	vec4 previousBounds = imageLoad(outBoundingMap, pixel);
 
 	if (cloudCoverage >= 1.0) {
-		imageStore(outBoundingMap, pixel, vec4(t_start, t_end, 1.0, previousBounds.b));
+		float global_start = segStart[0];
+		float global_end = segEnd[numSegments - 1];
+		imageStore(outBoundingMap, pixel, vec4(global_start, global_end, 1.0, previousBounds.b));
 		return;
 	}
 
@@ -91,13 +112,14 @@ void main() {
 	float lastHit = -1.0;
 	float totalDensity = 0.0;
 
-	if (t_start < t_end) {
-		float t = t_start;
+	for (int s = 0; s < numSegments; s++) {
+		float t = segStart[s];
+		float seg_end = segEnd[s];
 		int L = 3;
 		float baseStepSize = 25.0 * worldScale;
 
 		for (int i = 0; i < 2048; ++i) {
-			if (t >= t_end) break;
+			if (t >= seg_end) break;
 
 			vec3 p = viewPos + rayDir * t;
 			vec3 advect = getCloudWindOffset(time);
@@ -108,7 +130,6 @@ void main() {
 			weatherUV = fract(weatherUV);
 
 			vec2 minMax = textureLod(u_cloudWeatherMinMaxTexture, weatherUV, float(L)).rg;
-			// float maxDensity = clamp(minMax.y + (cloudCoverage * 2.0 - 1.0), 0.0, 1.0);
 			float maxDensity = applyDynamicCoverage(minMax.y, cloudCoverage);
 
 			if (maxDensity <= 0.001) {
@@ -132,11 +153,10 @@ void main() {
 				dist_to_bound.y = (abs(dir_norm.y) > 1e-6) ? (next_bound.y - p_xz.y) / dir_norm.y : 1e10;
 
 				float dt_2D = min(dist_to_bound.x, dist_to_bound.y);
-				float dt = (dt_2D / len2D) + 0.001; // +0.1 pushes it safely over the boundary line
+				float dt = (dt_2D / len2D) + 0.001; // +0.001 pushes it safely over the boundary line
 
 				dt = clamp(dt, baseStepSize, 2000.0 * worldScale);
 				t += dt;
-				// L = min(6, L + 1);
 				L = clamp(L + 1, 0, 10);
 			}
 			else {
