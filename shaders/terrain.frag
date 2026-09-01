@@ -1113,7 +1113,7 @@ TerrainMaterial renderSandSnowGround(vec3 pos, vec3 norm, TerrainContext ctx, fl
     mat.normalStrength = mix(0.10, 0.05, blendFactor);
 
     GlintProperties sandGlint;
-    sandGlint.intensity = 0.7; sandGlint.density = 2500.0; sandGlint.micro_roughness = 0.012; sandGlint.filter_size = 0.7; sandGlint.scale = 1.2;
+    sandGlint.intensity = 0.5; sandGlint.density = 500.0; sandGlint.micro_roughness = 0.05; sandGlint.filter_size = 0.7; sandGlint.scale = 1.2;
 
     GlintProperties snowGlint;
     snowGlint.intensity = 1.0; snowGlint.density = 7000.0; snowGlint.micro_roughness = 0.005; snowGlint.filter_size = 0.7; snowGlint.scale = 1.0;

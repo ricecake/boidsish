@@ -143,12 +143,13 @@ CloudSpotDetails calculateCloudDensity(
 	float cloud_coverage = pow(1.0 - weather.coverage, remapClamp(h, 0.6, 0.9, 1.0, anvilFactor));
 	baseNoise = remapClamp(baseNoise, cloud_coverage, 1.0, 0.0, 1.0);
 
-	// if (!doCheap) {
+	if (!doCheap) {
 	// 	float detailFbm = (volNoises.g * 0.5 + volNoises.b * 0.35 + volNoises.a * 0.15);
 	// 	float highFreqModifier = mix(detailFbm, 1.0 - detailFbm, clamp(h * 1.5, 0.0, 1.0));
 	// 	float erodeMask = (1.0 - baseNoise) * erosionMult * 0.4;
 	// 	baseNoise = remapClamp(baseNoise, highFreqModifier * erodeMask, 1.0, 0.0, 1.0);
-	// }
+		baseNoise = remapClamp(baseNoise, 0.0, 1.0, 0.0, 0.85);
+	}
 
 	float bottomMoistureProfile = clamp(1.0 - smoothstep(0.0, 0.85, h), 0.1, 1.0);
 	bottomMoistureProfile = bottomMoistureProfile * bottomMoistureProfile;
