@@ -111,21 +111,11 @@ void main() {
 	}
 
 	// 3. Final Composition
-	// result = (Background * CloudTransmittance + CloudScattering) * FrontTransmittance + FrontScattering
-	// where Background is the scene behind the cloud atmosphere.
-
-	// The 'sceneColor' already includes the full atmosphere (sceneColor = raw * atmosTrans + atmosInScat).
-	// To get the "background behind the cloud", we need to 'undo' the front atmosphere.
-	vec3 background = (sceneColor - cloudFrontInScattering);
-
-	// Physically, the cloud layer is inserted into the atmosphere.
-	// Result = background * cloudTransmittance + cloudScattering;
-	// Then re-apply the front atmosphere:
-	// Result = Result * cloudFrontTransmittance + cloudFrontInScattering;
-
-	// However, cloudScattering from the low-res pass ALREADY includes the lighting at that altitude.
-	// The correct formula for a volume integrated into atmosphere is:
-	// Result = (SceneColor_behind_cloud) * cloudTransmittance + cloudScattering_integrated
+	// Skip blending if rays never hit the cloud shell or have no cloud opacity
+	if (cloudTransmittance >= 0.9999 || cloudDepthData.a <= 0.0001) {
+		FragColor = vec4(sceneColor, 1.0);
+		return;
+	}
 
 	vec3 result = max(sceneColor - cloudFrontInScattering, vec3(0.0)) * cloudTransmittance + (cloudScattering * cloudFrontTransmittance + cloudFrontInScattering);
 

@@ -471,6 +471,7 @@ namespace Boidsish {
 					temporal_shader_->setFloat("uRenderScale", render_scale_);
 					temporal_shader_->setFloat("uCloudTemporalGamma", cloud_temporal_gamma_);
 					temporal_shader_->setFloat("uCloudMaxHistoryLength", cloud_max_history_length_);
+					temporal_shader_->setFloat("uCloudMaxRayDistance", cloud_max_ray_distance_);
 					temporal_shader_->setBool("uHasHistory", has_valid_history_);
 					temporal_shader_->setBool("uUseTileQueue", use_tile_queue);
 
