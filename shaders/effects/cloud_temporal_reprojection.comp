@@ -37,6 +37,7 @@ uniform sampler2D uBoundingMap;
 
 uniform float uCloudTemporalGamma;
 uniform float uCloudMaxHistoryLength;
+uniform float uCloudMaxRayDistance;
 uniform float uRenderScale;
 uniform bool  uEnableTemporal;
 uniform bool  uHasHistory;
@@ -250,12 +251,14 @@ void main() {
 		historyDepthProps = texture(uHistoryCloudDepth, prevUV);
 		historyLength = historyMoments.w;
 
-		float depthDiff = abs(currDepthProps.r - historyDepthProps.r);
-		// Constrain depth variance allowedDiff using the boundary map limits [bData.r, bData.g]
-		float boundSpan = max(bData.g - bData.r, 0.0);
-		float allowedDiff = max(currDepthProps.b * 16.0, boundSpan * 0.5);
-		allowedDiff = max(allowedDiff, 1000.0 * worldScale);
-		if (depthDiff > allowedDiff) validHistory = false;
+		if (tileWasRenderedThisFrame) {
+			float depthDiff = abs(currDepthProps.r - historyDepthProps.r);
+			// Constrain depth variance allowedDiff using the boundary map limits [bData.r, bData.g]
+			float boundSpan = max(bData.g - bData.r, 0.0);
+			float allowedDiff = max(currDepthProps.b * 16.0, boundSpan * 0.5);
+			allowedDiff = max(allowedDiff, 1000.0 * worldScale);
+			if (depthDiff > allowedDiff) validHistory = false;
+		}
 	}
 
 	historyLength = (uEnableTemporal && validHistory) ? min(uCloudMaxHistoryLength, historyLength + 1.0) : 1.0;
