@@ -226,16 +226,6 @@ void main() {
 	bool hitCloudShell = (bData.r >= 0.0);
 	bool hasCloudDensity = hitCloudShell && (bData.b > 0.001);
 
-	// Immediately clear areas with no cloud density
-	if (!hasCloudDensity) {
-		if (inBounds) {
-			imageStore(outColor, clampedPixel, vec4(0.0, 0.0, 0.0, 1.0));
-			imageStore(outDepth, clampedPixel, vec4(uCloudMaxRayDistance * 0.5 * worldScale, uCloudMaxRayDistance * 0.5 * worldScale, 50.0, 0.0));
-			imageStore(outMoments, clampedPixel, vec4(0.0));
-		}
-		return;
-	}
-
 	vec2 prevUV = uv + final_velocity;
 	// Do not match history if rays never hit the cloud shell (e.g., angle or obstruction)
 	bool validHistory = uHasHistory && hitCloudShell && all(greaterThanEqual(prevUV, vec2(0.0))) && all(lessThanEqual(prevUV, vec2(1.0)));
@@ -272,21 +262,14 @@ void main() {
 	float currentPathDensity = currDepthProps.a;
 	float historyPathDensity = historyDepthProps.a;
 
-	// float lumaCurrent = luma(currentRGBA.rgb);
-	// float lumaHistory = luma(historyRGBA.rgb);
-	// float lumaDiff = abs(lumaCurrent - lumaHistory);
-	// float maxLuma = max(max(lumaCurrent, lumaHistory), 0.001);
-	// float relativeLumaDiff = lumaDiff / maxLuma;
-	// float lumaRejection = max(smoothstep(0.02, 0.25, relativeLumaDiff), smoothstep(0.03, 0.30, lumaDiff));
+	float lumaCurrent = luma(currentRGBA.rgb);
+	float lumaHistory = luma(historyRGBA.rgb);
 
-float lumaCurrent = luma(currentRGBA.rgb);
-float lumaHistory = luma(historyRGBA.rgb);
+	// Weber contrast: Delta L / L
+	float relativeLumaDiff = abs(lumaCurrent - lumaHistory) / max(lumaHistory, 0.01);
 
-// Weber contrast: Delta L / L
-float relativeLumaDiff = abs(lumaCurrent - lumaHistory) / max(lumaHistory, 0.01);
-
-// Thresholds tuned for human perception of contrast shifts
-float lumaRejection = smoothstep(0.05, 0.25, relativeLumaDiff);
+	// Thresholds tuned for human perception of contrast shifts
+	float lumaRejection = smoothstep(0.05, 0.25, relativeLumaDiff);
 
 	float densityDelta = abs(currentPathDensity - historyPathDensity);
 	float densityError = smoothstep(0.05, 0.5, densityDelta);
@@ -300,12 +283,12 @@ float lumaRejection = smoothstep(0.05, 0.25, relativeLumaDiff);
 	float flowDensityChange = length(densityGradient) * length(final_velocity * vec2(size));
 	float flowPredictor = clamp(flowDensityChange * 3.0, 0.0, 1.0);
 
-	float perPixelFlow = inBounds ? flowPredictor : 0.0;
+	float perPixelFlow = (inBounds && hasCloudDensity) ? flowPredictor : 0.0;
 
 	// Only measure luma/density error if the tile was freshly rendered.
 	// Otherwise, only report disocclusion (e.g. edge of screen tearing).
 	float perPixelError = 0.0;
-	if (inBounds) {
+	if (inBounds && hasCloudDensity) {
 		if (tileWasRenderedThisFrame) {
 			perPixelError = max(max(lumaRejection, densityError), disocclusionError);
 		} else {
@@ -338,7 +321,12 @@ float lumaRejection = smoothstep(0.05, 0.25, relativeLumaDiff);
 	vec4 accumulatedDepth;
 	vec4 accumulatedMoments;
 
-	if (!tileWasRenderedThisFrame) {
+	if (!hasCloudDensity) {
+		// Immediately clear non-dense cloud areas
+		accumulatedRGBA = vec4(0.0, 0.0, 0.0, 1.0);
+		accumulatedDepth = vec4(uCloudMaxRayDistance * 0.5 * worldScale, uCloudMaxRayDistance * 0.5 * worldScale, 50.0, 0.0);
+		accumulatedMoments = vec4(0.0);
+	} else if (!tileWasRenderedThisFrame) {
 		// Inactive tile: bypass blending with stale raymarch target and output reprojected history
 		accumulatedRGBA = historyRGBA;
 		accumulatedDepth = historyDepthProps;
