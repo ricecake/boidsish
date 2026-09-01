@@ -1258,9 +1258,9 @@ namespace Boidsish {
 						const auto& seeds = atm_mgr->GetCloudSeeds();
 
 						// factor in advection (matches AtmosphereManager::GetCloudWeather)
-						float     angle = 3.14f; // cloudFlow constant
+						float     angle = atm_mgr->GetCloudFlowDirection();
 						glm::vec2 flowDir = glm::vec2(cos(angle), sin(angle));
-						glm::vec2 advect = flowDir * 5.0f * worldScaleVal * 10.0f * totalTime;
+						glm::vec2 advect = flowDir * atm_mgr->GetCloudFlowSpeed() * worldScaleVal * 10.0f * totalTime;
 
 						auto evalDynamicCoverage = [](float bakedCoverage, float uniformCoverage) {
 							float coverageFloor = 1.0f - (uniformCoverage * 2.0f);
@@ -1278,7 +1278,7 @@ namespace Boidsish {
 
 							// Filter seed locations where configured coverage uniform allows a cloud to exist
 							if (dynamicCoverage > 0.01f) {
-								glm::vec3 p(seed.x - advect.x, 0.0f, seed.y - advect.y);
+								glm::vec3 p(seed.x + advect.x, 0.0f, seed.y + advect.y);
 
 								// Toroidal wrapping relative to camera
 								float relX = std::fmod(p.x - cameraPos.x, mapRange);

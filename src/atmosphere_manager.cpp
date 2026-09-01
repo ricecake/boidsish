@@ -654,12 +654,12 @@ namespace Boidsish {
 	glm::vec4 AtmosphereManager::GetCloudWeather(glm::vec2 worldXZ, float time) const {
 		if (_cpuWeatherMap.empty()) return glm::vec4(100000.0f, 0, 0, 0);
 
-		// factor in advection (matches shaders/helpers/clouds.glsl)
-		float     angle = 3.14f; // cloudFlow constant
+		// factor in advection (matches shaders/helpers/cloud_utils.glsl computeCloudWeather)
+		float     angle = _cloudFlowDirection;
 		glm::vec2 flowDir = glm::vec2(cos(angle), sin(angle));
-		glm::vec2 advect = flowDir * 5.0f * _worldScale * 10.0f * time;
+		glm::vec2 advect = flowDir * _cloudFlowSpeed * _worldScale * 10.0f * time;
 
-		glm::vec2 p_advected = worldXZ + advect;
+		glm::vec2 p_advected = worldXZ - advect;
 		float     mapRange = 100000.0f * _worldScale;
 
 		float u = p_advected.x / mapRange;

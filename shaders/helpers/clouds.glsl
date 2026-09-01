@@ -180,8 +180,8 @@ CloudDensityResult calculateCloudDensity(
 		return pointDetails;
 	}
 
-	// Sample the 3D cloud volume texture with distinct 3D noise advection speed
-	vec3 noiseAdvectSpeed = getCloud3DNoiseAdvectionSpeed(h, time);
+	// Sample the 3D cloud volume texture with combined wind and 3D noise advection speed
+	vec3 noiseAdvectSpeed = getCloudAdvectionSpeed(h, time);
 	vec3 advect_3d = time * noiseAdvectSpeed;
 	vec3 p_advected_3d = p - advect_3d;
 

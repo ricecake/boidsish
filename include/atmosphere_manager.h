@@ -191,6 +191,12 @@ namespace Boidsish {
 		}
 		float GetCloudDensity() const { return _cloudDensity; }
 
+		void SetCloudFlowSpeed(float s) { _cloudFlowSpeed = s; }
+		float GetCloudFlowSpeed() const { return _cloudFlowSpeed; }
+
+		void SetCloudFlowDirection(float d) { _cloudFlowDirection = d; }
+		float GetCloudFlowDirection() const { return _cloudFlowDirection; }
+
 		void SetWorldScale(float s) {
 			if (std::abs(_worldScale - s) > 0.001f) {
 				_worldScale = s;
@@ -302,6 +308,8 @@ namespace Boidsish {
 		float _cloudAltitude = WeatherConstants::CloudAltitude.normal;
 		float _cloudThickness = WeatherConstants::CloudThickness.normal;
 		float _cloudDensity = WeatherConstants::CloudDensity.normal;
+		float _cloudFlowSpeed = 0.250f;
+		float _cloudFlowDirection = 3.14159265f;
 		float _worldScale = 1.0f;
 
 		float     _rayleighScale = WeatherConstants::RayleighScale.normal;
