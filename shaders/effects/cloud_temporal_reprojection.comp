@@ -221,8 +221,23 @@ void main() {
 		final_velocity += pure_advection;
 	}
 
+	vec4 bData = texture(uBoundingMap, uv);
+	bool hitCloudShell = (bData.r >= 0.0);
+	bool hasCloudDensity = hitCloudShell && (bData.b > 0.001);
+
+	// Immediately clear areas with no cloud density
+	if (!hasCloudDensity) {
+		if (inBounds) {
+			imageStore(outColor, clampedPixel, vec4(0.0, 0.0, 0.0, 1.0));
+			imageStore(outDepth, clampedPixel, vec4(uCloudMaxRayDistance * 0.5 * worldScale, uCloudMaxRayDistance * 0.5 * worldScale, 50.0, 0.0));
+			imageStore(outMoments, clampedPixel, vec4(0.0));
+		}
+		return;
+	}
+
 	vec2 prevUV = uv + final_velocity;
-	bool validHistory = uHasHistory && all(greaterThanEqual(prevUV, vec2(0.0))) && all(lessThanEqual(prevUV, vec2(1.0)));
+	// Do not match history if rays never hit the cloud shell (e.g., angle or obstruction)
+	bool validHistory = uHasHistory && hitCloudShell && all(greaterThanEqual(prevUV, vec2(0.0))) && all(lessThanEqual(prevUV, vec2(1.0)));
 
 	vec4 historyRGBA = vec4(0.0);
 	vec4 historyMoments = vec4(0.0);
@@ -236,7 +251,9 @@ void main() {
 		historyLength = historyMoments.w;
 
 		float depthDiff = abs(currDepthProps.r - historyDepthProps.r);
-		float allowedDiff = max(currDepthProps.b * 16.0, 0.15 * currDepthProps.r);
+		// Constrain depth variance allowedDiff using the boundary map limits [bData.r, bData.g]
+		float boundSpan = max(bData.g - bData.r, 0.0);
+		float allowedDiff = max(currDepthProps.b * 16.0, boundSpan * 0.5);
 		allowedDiff = max(allowedDiff, 1000.0 * worldScale);
 		if (depthDiff > allowedDiff) validHistory = false;
 	}

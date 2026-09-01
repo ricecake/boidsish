@@ -80,8 +80,10 @@ void main() {
 
 	t_end = min(t_end, dist);
 
+	vec4 previousBounds = imageLoad(outBoundingMap, pixel);
+
 	if (cloudCoverage >= 1.0) {
-		imageStore(outBoundingMap, pixel, vec4(t_start, t_end, 1.0, 0.0));
+		imageStore(outBoundingMap, pixel, vec4(t_start, t_end, 1.0, previousBounds.b));
 		return;
 	}
 
@@ -154,6 +156,5 @@ void main() {
 		}
 	}
 
-	vec4 previousBounds = imageLoad(outBoundingMap, pixel);
 	imageStore(outBoundingMap, pixel, vec4(firstHit, lastHit, totalDensity, previousBounds.b));
 }

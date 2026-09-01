@@ -109,9 +109,18 @@ void main() {
 	uint scrambled = mortonOwenScramble(uvec2(tileCoord), 0u);
 	bool scheduledBySpatial = ((scrambled % spatialFrames) == (uHeader.frameIndex % spatialFrames));
 
+	ivec2 boundingSize = textureSize(uBoundingMap, 0);
+	vec2 uv = (vec2(tileCoord) + 0.5) / vec2(uHeader.tileCols, uHeader.tileRows);
+	float lod = log2(max(1.0, float(boundingSize.x) / float(uHeader.tileCols)));
+	vec4 bData = textureLod(uBoundingMap, uv, lod);
+	bool tileHasCloudDensity = (bData.r >= 0.0 && bData.b > 0.001);
+	bool wasEmpty = (bData.a <= 0.001);
+	bool newlyAppeared = tileHasCloudDensity && wasEmpty;
+
 	if (uPass == 0) {
 		// Stage 1: Spatial Pass
-		if (scheduledBySpatial) {
+		// Empty tiles have no density and are cleared immediately without consuming tile budget.
+		if (tileHasCloudDensity && scheduledBySpatial) {
 			uint slot = atomicAdd(uHeader.count, 1u);
 			if (slot < uHeader.maxTiles) {
 				uTileQueue[slot] = uvec2(tileCoord);
@@ -120,12 +129,6 @@ void main() {
 		}
 	} else {
 		// Stage 2: Priority Pass
-		ivec2 boundingSize = textureSize(uBoundingMap, 0);
-		vec2 uv = (vec2(tileCoord) + 0.5) / vec2(uHeader.tileCols, uHeader.tileRows);
-		float lod = log2(max(1.0, float(boundingSize.x) / float(uHeader.tileCols)));
-		vec4 bData = textureLod(uBoundingMap, uv, lod);
-		bool tileHasCloudDensity = (bData.r >= 0.0 && (bData.b+bData.a) > 0.001);
-
 		vec4 errorData = imageLoad(uErrorMap, tileCoord);
 		float errorVal = errorData.r;
 		float densityGrad = errorData.g;
@@ -135,11 +138,7 @@ void main() {
 		uint age = (uHeader.frameIndex > lastUpdatedFrame) ? (uHeader.frameIndex - lastUpdatedFrame) : 0u;
 		float velocityWeightedAge = float(age) * (1.0 + densityGrad * 10.0);
 
-		float densityDeltaScore = max(bData.a, 0.0);
-		bool isEmpty = bData.b > 0.0;
-		bool wasEmpty = bData.a > 0.0;
-		bool ultraPriority = false;
-		if(isEmpty != wasEmpty) ultraPriority = true;//densityDeltaScore = 100.0;
+		float densityDeltaScore = newlyAppeared ? 100.0 : max(bData.b - bData.a, 0.0);
 
 		// Quick check of 4 orthogonal neighboring tiles for priority scoring
 		float maxNeighborError = 0.0;
@@ -147,7 +146,7 @@ void main() {
 		const ivec2 neighbors[4] = ivec2[4](
 			ivec2(-1, 0), ivec2(1, 0), ivec2(0, -1), ivec2(0, 1)
 		);
-		if (!ultraPriority) {
+		if (!newlyAppeared) {
 			for (int i = 0; i < 4; ++i) {
 				ivec2 nCoord = clamp(tileCoord + neighbors[i], ivec2(0), ivec2(tileCols - 1, tileRows - 1));
 				vec4 nData = imageLoad(uErrorMap, nCoord);
@@ -164,32 +163,28 @@ void main() {
 		uint bayerVal = uint(bayer8x8[(tileCoord.y % 8) * 8 + (tileCoord.x % 8)]);
 
 		// 2. Add a prime temporal shift so the dither mask cycles each frame
-		// This guarantees static high-error areas are fully updated over a few frames
 		uint temporalBayer = (bayerVal + uHeader.frameIndex * 17u) % 64u;
 
 		// 3. Normalize to a 0.0 - 1.0 range
 		float ditherMask = float(temporalBayer) / 64.0;
 
 		// 4. Modulate the baseline threshold.
-		// The multiplier dictates how wide the threshold spread is.
-		// A wider spread (e.g., 0.3) creates smoother noise but slows down localized updates.
 		float dynamicThreshold = uPriorityThreshold + (ditherMask * 1.0);
 		float ratio = float(uHeader.maxTiles) / float(totalTiles);
 		dynamicThreshold /= ratio;
 
 		// 5. Evaluate against the dynamic threshold instead of the uniform
-		bool needsPriorityUpdate = !scheduledBySpatial && tileHasCloudDensity && ((priorityScore > dynamicThreshold) || (lastUpdatedFrame == 0u));
+		bool needsPriorityUpdate = !scheduledBySpatial && tileHasCloudDensity && ((priorityScore > dynamicThreshold) || (lastUpdatedFrame == 0u) || newlyAppeared);
 
-		if (needsPriorityUpdate || ultraPriority) {
+		if (needsPriorityUpdate) {
 			uint slot = atomicAdd(uHeader.count, 1u);
 			if (slot < uHeader.maxTiles) {
-			// if (ultraPriority || slot < uHeader.maxTiles) {
 				uTileQueue[slot] = uvec2(tileCoord);
 				atomicAdd(uDispatchCountX, 1u);
 			}
 		}
 
-		bool scheduled = scheduledBySpatial || needsPriorityUpdate;
+		bool scheduled = (scheduledBySpatial || needsPriorityUpdate) && tileHasCloudDensity;
 
 		// Adaptive step size adjustment and error map decay
 		float targetStepMult = 1.0;
