@@ -142,7 +142,7 @@ void main() {
 
 	// 1. R Channel: Tiling 3D noise (Simplex noise carved by Worley FBM in HZD fashion)
 	// float noiseVal = computeSimplexWorley(p);
-	float noiseVal = fractal(p, 4, 5, 2.0, 0.5, true);
+	float noiseVal = fractal(p, 8, 8, 1.8, 0.47, true);
 
 	vec3 periodBase = vec3(8.0, 8.0, 8.0);
 

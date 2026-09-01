@@ -123,7 +123,7 @@ void main() {
 
 			vec3 p = viewPos + rayDir * t;
 			vec3 advect = getCloudWindOffset(time);
-			vec3 p_advected = p + advect;
+			vec3 p_advected = p - advect;
 			vec2 weatherUV = p_advected.xz / (100000.0 * worldScale);
 
 			// Wrap horizontally

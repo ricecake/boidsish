@@ -180,10 +180,10 @@ CloudDensityResult calculateCloudDensity(
 		return pointDetails;
 	}
 
-	// Sample the 3D cloud volume texture with slower advection speed
-	// vec3 advect_3d = time * max(advectSpeed * 0.75, vec3(50.0, 0.0, 50.0));
-	vec3 advect_3d = time * max(advectSpeed * 0.75, vec3(0.0, 0.0, 0.0));
-	vec3 p_advected_3d = p;// + advect_3d;
+	// Sample the 3D cloud volume texture with distinct 3D noise advection speed
+	vec3 noiseAdvectSpeed = getCloud3DNoiseAdvectionSpeed(h, time);
+	vec3 advect_3d = time * noiseAdvectSpeed;
+	vec3 p_advected_3d = p - advect_3d;
 
 	// float volumeScale = max((sin(time*0.1) + 1.0) * 7000.0 * props.worldScale, 250.0);
 	float volumeScale = 7000.0 * props.worldScale;
@@ -192,6 +192,9 @@ CloudDensityResult calculateCloudDensity(
 	// Calculate 3D texel world size for volume texture
 	float texelWorldSize = volumeScale / max(1.0, float(textureSize(u_cloud3DTexture, 0).x));
 	float volumeMip = calculatePixelWorldSizeToTextureLod(lod, texelWorldSize);
+	if (!doCheap) {
+		// uvw += cross_noise_fbm(uvw*0.5, 3, 0.01*time)/4.0;
+	}
 
 	vec4 volSample = textureLod(u_cloud3DTexture, uvw, clamp(volumeMip, 0.0, 4.0));
 	// volSample.r = moistureFbm(uvw / 32.0, 16.0);

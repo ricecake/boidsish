@@ -247,21 +247,29 @@ vec3 getCloudWindSpeed(float time) {
 	return vec3(flowDir.x, 0.0, flowDir.y) * cloudFlowSpeed * worldScale * 10.0;
 }
 
-vec3 getCloudAdvectionSpeed(float h, float time) {
+vec3 getCloud3DNoiseAdvectionSpeed(float h, float time) {
 	float angle = cloudFlowDirection;
 	vec2  flowDir = vec2(cos(angle), sin(angle));
 
-	// Dramatic non-linear shear profile
-	float shear = h * h * cloudFlowHeightScale * 1.0;
+	// Height shear and distinct texture advection
+	float shear = 1.0-(h * h) * cloudFlowHeightScale * 1.0;
 
-	vec3 advect = getCloudWindSpeed(time);
-	advect.xz += flowDir * shear * worldScale * 10.0;
+	vec3 noiseSpeed = -vec3(flowDir.x, 0.05, flowDir.y) * (cloudFlowSpeed * 0.75) * worldScale * 10.0;
+	noiseSpeed.xz += flowDir * shear * worldScale * 10.0;
 
-	return advect;
+	return noiseSpeed;
+}
+
+vec3 getCloudAdvectionSpeed(float h, float time) {
+	return getCloudWindSpeed(time) + getCloud3DNoiseAdvectionSpeed(h, time);
 }
 
 vec3 getCloudWindOffset(float time) {
 	return time * getCloudWindSpeed(time);
+}
+
+vec3 getCloud3DNoiseAdvectionOffset(float h, float time) {
+	return time * getCloud3DNoiseAdvectionSpeed(h, time);
 }
 
 vec3 getCloudAdvectionOffset(float h, float time) {
@@ -337,7 +345,7 @@ CloudWeather loadCloudWeather(vec3 p, CloudProperties props, vec4 tex) {
 
 CloudWeather computeCloudWeather(vec3 p, CloudProperties props, float lod) {
 	vec3 advect = getCloudWindOffset(time);
-	vec3 p_advected = p + advect;
+	vec3 p_advected = p - advect;
 
 	// Use baked weather map. Sampling UV is worldXZ / range.
 	// Range is 100,000 * worldScale as defined in the bake shader.
