@@ -1149,6 +1149,7 @@ namespace Boidsish {
 							};
 
 							drawRatioLimit("Birds", "particle_ratio_birds", stats.count_birds, stats.limit_birds, 0.05f);
+							drawRatioLimit("Butterflies", "particle_ratio_butterflies", stats.count_butterflies, stats.limit_butterflies, 0.15f);
 							drawRatioLimit("Leaves", "particle_ratio_leaves", stats.count_leaves, stats.limit_leaves, 0.25f);
 							drawRatioLimit("Petals", "particle_ratio_petals", stats.count_petals, stats.limit_petals, 0.25f);
 							drawRatioLimit("Bubbles", "particle_ratio_bubbles", stats.count_bubbles, stats.limit_bubbles, 0.15f);

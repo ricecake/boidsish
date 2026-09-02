@@ -273,8 +273,8 @@ bool spawnAmbientParticle(
 		bool valid_biome = (biome_idx >= 0 && biome_idx <= 4) || biome_idx == 7;
 		if (valid_biome) {
 			// Define weighted probabilities for inter-compatible particles
-			// Birds(0), Leaves(1), Petals(2), Bubbles(3), Fireflies(4), Fairy(5)
-			float weights[6] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+			// Birds(0), Leaves(1), Petals(2), Bubbles(3), Fireflies(4), Fairy(5), Butterfly(6)
+			float weights[7] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
 
 			if (biome_idx == 0) { // Ocean/Water (Bubbles)
 				weights[3] = 1.0;
@@ -283,15 +283,17 @@ bool spawnAmbientParticle(
 					weights[4] = 0.8; // Fireflies at night
 					weights[5] = 0.2; // Fairies at night
 				} else {
-					weights[0] = 0.05; // Birds
+					weights[0] = 0.08; // Birds
 					if (biome_idx == 4) { // Forest
-						weights[1] = 0.4; // Leaves
-						weights[2] = 0.4; // Petals
-						weights[5] = 0.2; // Fairies in forest
+						weights[1] = 0.35; // Leaves
+						weights[2] = 0.30; // Petals
+						weights[6] = 0.25; // Butterflies in forest
+						weights[5] = 0.10; // Fairies in forest
 					} else {
-						weights[1] = 0.8; // Leaves
-						weights[2] = 0.15; // Petals
-						weights[5] = 0.05; // Rare fairies elsewhere
+						weights[1] = 0.50; // Leaves
+						weights[2] = 0.20; // Petals
+						weights[6] = 0.20; // Butterflies in open land
+						weights[5] = 0.02; // Rare fairies elsewhere
 					}
 				}
 			}
@@ -303,16 +305,17 @@ bool spawnAmbientParticle(
 			if (stats.count_bubbles >= stats.limit_bubbles) weights[3] = 0.0;
 			if (stats.count_fireflies >= stats.limit_fireflies) weights[4] = 0.0;
 			if (stats.count_fairies >= stats.limit_fairies) weights[5] = 0.0;
+			if (stats.count_butterflies >= stats.limit_butterflies) weights[6] = 0.0;
 
 			float total_weight = 0.0;
-			for (int i = 0; i < 6; i++) total_weight += weights[i];
+			for (int i = 0; i < 7; i++) total_weight += weights[i];
 			if (total_weight <= 0.0) return false;
 
 			// Pick type based on weighted probability
 			float r = rand(spawnSeed + 6.6) * total_weight;
 			int   selected_style = -1;
 			float cumulative = 0.0;
-			for (int i = 0; i < 6; i++) {
+			for (int i = 0; i < 7; i++) {
 				cumulative += weights[i];
 				if (r <= cumulative) {
 					if (i == 0) { if (atomicAdd(stats.count_birds, 1) < stats.limit_birds) selected_style = STYLE_BIRDS; else atomicAdd(stats.count_birds, 0xFFFFFFFFU); }
@@ -321,6 +324,7 @@ bool spawnAmbientParticle(
 					else if (i == 3) { if (atomicAdd(stats.count_bubbles, 1) < stats.limit_bubbles) selected_style = STYLE_BUBBLES; else atomicAdd(stats.count_bubbles, 0xFFFFFFFFU); }
 					else if (i == 4) { if (atomicAdd(stats.count_fireflies, 1) < stats.limit_fireflies) selected_style = STYLE_FIREFLIES; else atomicAdd(stats.count_fireflies, 0xFFFFFFFFU); }
 					else if (i == 5) { if (atomicAdd(stats.count_fairies, 1) < stats.limit_fairies) selected_style = STYLE_FAIRY; else atomicAdd(stats.count_fairies, 0xFFFFFFFFU); }
+					else if (i == 6) { if (atomicAdd(stats.count_butterflies, 1) < stats.limit_butterflies) selected_style = STYLE_BUTTERFLY; else atomicAdd(stats.count_butterflies, 0xFFFFFFFFU); }
 					break;
 				}
 			}
@@ -349,9 +353,14 @@ bool spawnAmbientParticle(
 				p.counter = 0.0;
 			} else if (selected_style == STYLE_BIRDS) {
 				p.phase = rand(spawnSeed + 8.8) * 6.28;
-				p.pos.y = height + 0.1;
+				p.pos.y = height + 6.0 + rand(spawnSeed + 3.3) * 6.0;
 				p.pos.w = 60;
-				p.vel.w = 35.0; // Bird size
+				p.vel.w = 28.0; // Bird size
+			} else if (selected_style == STYLE_BUTTERFLY) {
+				p.phase = rand(spawnSeed + 8.8) * 6.28;
+				p.pos.y = height + 0.8 + rand(spawnSeed + 3.3) * 2.2;
+				p.pos.w = 40;
+				p.vel.w = 18.0; // Butterfly size
 			}
 
 			if (skipped_time > 0.001) {
