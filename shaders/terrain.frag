@@ -549,32 +549,24 @@ float threshold(float minv, float maxv, float width, float val) {
  * Process water layers (e.g. wet surfaces, refractions).
  */
 void processWaterLayer(vec3 norm, float dist, float fade) {
-    // Convert vIsWater into a pseudo-depth metric to drive optics
-    // (Assuming vIsWater goes from ~0.0 at shore to 1.0+ in deep water)
-    float pseudoDepth = max(vIsWater * 5.0, 0.1);
-    float shallowFactor = clamp((1.0 - vIsWater) / 0.5, 0.0, 1.0);
+    // Calculate physically consistent water depth and shallow shore factor
+    float waterDepth = max(vIsWater * 5.0 + max(FragPos.y, 0.0), 0.05);
+    float shallowFactor = clamp(1.0 - waterDepth / 3.0, 0.0, 1.0);
 
-    // Refraction offset scales with depth, not vertical wave height
-    vec2 refractionOffset = norm.xz * pseudoDepth * 0.5;
+    // Dynamic water roughness and metallic model
+    float waterRoughness = mix(0.05, 0.15, shallowFactor);
+    float waterMetallic = 0.0;
 
-    // Dynamic water roughness; metallic remains high to force reflection if your PBR lacks dielectric Fresnel
-    float waterRoughness = mix(0.1, 0.15, shallowFactor);
-    float waterMetallic = 0.0;//mix(0.9, 0.1, shallowFactor);
-	// refract
-	vec3 incidentDir = normalize(FragPos - viewPos);
-	vec3 normal = normalize(norm);
+    // Refraction ray calculation through water surface
+    vec3 incidentDir = normalize(FragPos - viewPos);
+    vec3 normal = normalize(norm);
+    float eta = 1.0 / 1.33; // air to water IOR ratio
 
-	// Ratio of refraction (e.g., air to water: 1.0 / 1.33)
-	float eta = 1.0 / 1.33;
+    vec3 refractionDir = refract(incidentDir, normal, eta);
+    vec2 uvOffset = (refractionDir.xz / max(abs(refractionDir.y), 0.001)) * waterDepth;
 
-	vec3 refractionDir = refract(incidentDir, normal, eta);
-	// vec2 uvOffset = vec2(pseudoDepth * tan(acos(dot(normal, refractionDir))));
-	vec2 uvOffset = (refractionDir.xz / max(abs(refractionDir.y), 0.001)) * (FragPos.y+pseudoDepth);
-
-    // Generate refracted underwater pebbles
-    // Note: Use an undisplaced world position here if the lateral Gerstner displacement causes swimming
-    // vec2 pebbleUV = (FragPos.xz + refractionOffset) * 15.0;
-    vec2 pebbleUV = (FragPos.xz + uvOffset);
+    // Refracted underwater floor pebbles
+    vec2 pebbleUV = FragPos.xz + uvOffset;
     vec3 pebbleVor = voronoi(pebbleUV);
     float pebbleRand = random(pebbleVor.xy);
     float pebbleDist = pebbleVor.z;
@@ -595,18 +587,83 @@ void processWaterLayer(vec3 norm, float dist, float fade) {
     vec3 shadedPebble = pebbleColor * (0.35 + 0.65 * pebbleLight);
     shadedPebble *= smoothstep(0.8, 0.4, pebbleDist);
 
-	shadedPebble += vIsWater* threshold(0.7, 0.90, 0.1, pow(dot_noise_fbm(vec3(FragPos.xz + uvOffset, time), 3),3)) * vec3(2.0);
+    // Wave-correlated subsurface caustics driven by surface wave distortion & light refraction
+    vec2 causticUV = FragPos.xz * 0.7 + norm.xz * (waterDepth * 0.8) + uvOffset * 0.4;
+    float c1 = fastSimplex3d(vec3(causticUV + vec2(time * 0.5, time * 0.3), time * 0.2));
+    float c2 = fastSimplex3d(vec3(causticUV * 1.4 - vec2(time * 0.3, time * 0.4), time * 0.25));
+    float causticPattern = pow(clamp(1.0 - abs(c1 + c2), 0.0, 1.0), 3.5);
+    vec3 caustics = causticPattern * vec3(1.2, 1.4, 1.5) * exp(-waterDepth * 0.35);
+    shadedPebble += caustics;
+
+    // Procedural fish swarm in water column
+    vec2 fishGridScale = vec2(3.5);
+    vec2 fishCell = floor((FragPos.xz + uvOffset * 0.3) / fishGridScale);
+    vec2 cellRand = hash2(fishCell);
+
+    if (cellRand.x > 0.35) { // ~65% probability of fish in grid cell
+        float fishTime = time * (0.9 + cellRand.y * 0.7) + cellRand.x * 6.2831;
+        vec2 cellCenter = (fishCell + 0.5) * fishGridScale;
+        vec2 fishOrbit = cellCenter + vec2(cos(fishTime), sin(fishTime * 1.2)) * (0.7 + cellRand.y * 0.8);
+
+        float fishDepth = 0.4 + cellRand.y * 2.2;
+        if (fishDepth < waterDepth) {
+            vec2 fishVel = vec2(-sin(fishTime), 1.2 * cos(fishTime * 1.2));
+            float fishAngle = atan(fishVel.y, fishVel.x);
+
+            vec2 pRel = (FragPos.xz + uvOffset * 0.3) - fishOrbit;
+            mat2 rot = mat2(cos(fishAngle), sin(fishAngle), -sin(fishAngle), cos(fishAngle));
+            vec2 pFish = rot * pRel;
+
+            // Tail wiggle animation along teardrop axis
+            float wiggle = sin(fishTime * 9.0 + pFish.x * 12.0) * 0.035 * smoothstep(0.1, -0.4, pFish.x);
+            pFish.y -= wiggle;
+
+            // Teardrop shape evaluation
+            float fishLen = 0.45 * (0.7 + cellRand.y * 0.6);
+            float headRadius = 0.11 * (0.7 + cellRand.x * 0.5);
+
+            float normX = clamp((pFish.x + fishLen * 0.5) / fishLen, 0.0, 1.0);
+            float bodyWidth = headRadius * sin(normX * 3.14159) * (1.0 - 0.25 * normX);
+            float fishSdf = abs(pFish.y) - bodyWidth;
+
+            float fishMask = smoothstep(0.02, -0.01, fishSdf) * step(-fishLen * 0.5, pFish.x) * step(pFish.x, fishLen * 0.5);
+
+            if (fishMask > 0.0) {
+                vec3 fishBaseColor = palette(
+                    cellRand.x,
+                    vec3(0.5, 0.5, 0.5),
+                    vec3(0.5, 0.5, 0.5),
+                    vec3(1.0, 0.8, 0.5),
+                    vec3(0.0, 0.33, 0.67)
+                );
+                // Depth-attenuated fish shading
+                vec3 fishTransmission = exp(-fishDepth * vec3(1.0, 0.35, 0.1));
+                vec3 shadedFish = fishBaseColor * fishTransmission * (0.6 + 0.4 * clamp(pFish.y / max(bodyWidth, 0.001), 0.0, 1.0));
+                shadedPebble = mix(shadedPebble, shadedFish, fishMask * exp(-fishDepth * 0.3));
+            }
+        }
+    }
 
     // Volumetric Absorption (Beer-Lambert Law)
-    // Red (X) absorbs rapidly, Green (Y) absorbs moderately, Blue (Z) penetrates deepest
-    vec3 scatterCoefficients = vec3(1.2, 0.4, 0.1);
-    vec3 transmission = exp(-pseudoDepth * scatterCoefficients);
+    vec3 scatterCoefficients = vec3(1.1, 0.35, 0.08);
+    vec3 transmission = exp(-waterDepth * scatterCoefficients);
 
-    // Apply volumetric transmission to the bottom texture
+    // Apply volumetric transmission to underwater view
     vec3 underwaterView = shadedPebble * transmission;
 
-    // The physical surface of water is very dark; visible color comes from transmission and reflection
-    vec3 surfaceAlbedo = underwaterView + vec3(0.1, 0.2, 0.5);//, vec3(1.0), smoothstep(0.7, 1.0, dot(Normal, vec3(0,1,0))));
+    // Shallow shore water coloration and deep water tint
+    vec3 waterTint = mix(vec3(0.02, 0.25, 0.45), vec3(0.1, 0.45, 0.55), shallowFactor);
+    vec3 surfaceAlbedo = underwaterView + waterTint;
+
+    // Wave crest foam & shoreline wash foam
+    float waveSteepness = clamp(1.0 - norm.y, 0.0, 1.0);
+    float crestFoam = smoothstep(0.15, 0.38, waveSteepness) * smoothstep(0.0, 0.25, FragPos.y + 0.05);
+    float shoreWash = smoothstep(0.65, 1.0, shallowFactor) * (0.5 + 0.5 * sin(time * 3.5 + FragPos.x * 0.4 + FragPos.z * 0.4));
+    float totalFoam = clamp(crestFoam * 1.6 + shoreWash * 0.7, 0.0, 1.0);
+
+    vec3 foamColor = vec3(0.95, 0.98, 1.0);
+    surfaceAlbedo = mix(surfaceAlbedo, foamColor, totalFoam);
+    waterRoughness = mix(waterRoughness, 0.6, totalFoam * 0.8);
 
     float primaryShadow;
     GlintProperties waterGlint;
@@ -617,11 +674,12 @@ void processWaterLayer(vec3 norm, float dist, float fade) {
     waterGlint.scale = 1.0;
     vec3 lighting = apply_lighting_pbr(FragPos, norm, surfaceAlbedo, waterRoughness, waterMetallic, 1.0, primaryShadow, waterGlint).rgb;
 
-    // Additively combine the transmitted underwater light with surface specular reflections
-    vec3 final_color = lighting;//underwaterView + lighting;
+    // Add foam specular contribution
+    lighting += foamColor * totalFoam * 0.25 * primaryShadow;
 
-    // vec4 baseColor = baseColor;//vec4(final_color, fade);
-    FragColor = vec4(final_color, 1.0);//mix(vec4(0.0, 0.7, 0.7, baseColor.a) * length(baseColor), baseColor, step(1.0, fade));
+    vec3 final_color = lighting;
+
+    FragColor = vec4(final_color, 1.0);
 
     NormalOut = vec4(normalize(mat3(view) * norm), primaryShadow);
     AlbedoOut = vec4(surfaceAlbedo, 1.0);

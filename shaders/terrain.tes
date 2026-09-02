@@ -256,48 +256,47 @@ void main() {
 		// Deep water wind direction
 		vec2 deepWaterDir = normalize(vec2(1.0, 0.5));
 
-		// Uphill vector towards shore (fallback to wind direction if flat)
-		vec2 shoreDir = length(baseNormal.xz) > 0.001 ? normalize(-baseNormal.xz) : deepWaterDir;
+		// Downhill flow direction vector (downstream / river flow)
+		vec2 riverFlowDir = length(baseNormal.xz) > 0.001 ? normalize(baseNormal.xz) : deepWaterDir;
 
-		// Refract wave direction based on depth
-		vec2 waveDir = vec2(1.0);//normalize(mix(deepWaterDir, shoreDir, shallowFactor));
+		// Refract wave direction towards downstream / shoreline gradient
+		vec2 waveDir = normalize(mix(deepWaterDir, riverFlowDir, shallowFactor * 0.8));
 
 		// Base physics parameters
-		float wavelength = 40.0;
-		float steepness = 0.1;
-		float rotationOffset = 0.6; // ~34 degree angular spread
+		float wavelength = 35.0;
+		float steepness = 0.12;
+		float rotationOffset = 0.55;
 
 		// Sum octaves
 		for (int i = 0; i < 4; i++) {
-			// Shoaling: Compress wavelength and increase steepness near shore
-			float currentWavelength = wavelength;// * mix(1.0, 0.6, shallowFactor);
-			float currentSteepness = steepness;// * mix(1.0, 1.4, shallowFactor);
+			// Shoaling: Compress wavelength and adjust steepness near shore
+			float currentWavelength = wavelength * mix(1.0, 0.65, shallowFactor);
+			float currentSteepness = steepness * mix(1.0, 1.25, shallowFactor);
 
 			totalPos += gerstnerWave(
 				baseFragPos.xz,
 				waveDir,
 				currentSteepness,
 				currentWavelength,
-				time * (1+ i*0.125),
+				time * (1.0 + float(i) * 0.15),
 				tangent,
 				binormal
 			);
 
-			// Advance octave: halve wavelength, decay steepness
+			// Advance octave
 			wavelength *= 0.5;
-			// steepness *= 0.75;
 
-			// Rotate vector to create intersecting swells
+			// Rotate vector for intersecting swells
 			float cosR = cos(rotationOffset);
 			float sinR = sin(rotationOffset);
 			waveDir = vec2(waveDir.x * cosR - waveDir.y * sinR, waveDir.x * sinR + waveDir.y * cosR);
 
-			// Alternate rotation direction for subsequent octaves
-			rotationOffset *= -1.3;
+			rotationOffset *= -1.25;
 		}
 
-		// FragPos.y = mix(FragPos.y, totalPos.y, waterMask);
-		// FragPos.xz += totalPos.xz * waterMask;
+		// Clamp y-displacement above zero in the shore region so waves lap onto land without dipping below
+		totalPos.y = mix(totalPos.y, max(totalPos.y, 0.0), shallowFactor);
+
 		FragPos += totalPos * waterMask;
 
 		Normal = normalize(mix(Normal, normalize(cross(binormal, tangent)), waterMask));
