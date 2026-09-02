@@ -58,12 +58,12 @@ void main() {
 	float alpha = 0.0;
 
 	if (v_style == STYLE_ROCKET_TRAIL || v_style == STYLE_SPARKS || v_style == STYLE_GLITTER || v_style == STYLE_BUBBLES || v_style == STYLE_DEBUG ||
-	    v_style == STYLE_CINDER || v_style == STYLE_IRIDESCENT || v_style == STYLE_RAIN || v_style == STYLE_SNOW || v_style == STYLE_LEAF || v_style == STYLE_PETAL || v_style == STYLE_BIRDS || v_style == STYLE_FAIRY || v_style == STYLE_DUST || v_style == STYLE_FIREFLIES || v_style == STYLE_POOF) {
+	    v_style == STYLE_CINDER || v_style == STYLE_IRIDESCENT || v_style == STYLE_RAIN || v_style == STYLE_SNOW || v_style == STYLE_LEAF || v_style == STYLE_PETAL || v_style == STYLE_BIRDS || v_style == STYLE_FAIRY || v_style == STYLE_DUST || v_style == STYLE_FIREFLIES || v_style == STYLE_POOF || v_style == STYLE_BUTTERFLY) {
 
 		color = v_p.color.rgb;
 		alpha = v_p.color.a;
 
-		if (v_style == STYLE_LEAF || v_style == STYLE_PETAL || v_style == STYLE_BIRDS || v_style == STYLE_FAIRY || v_style == STYLE_FIREFLIES) {
+		if (v_style == STYLE_LEAF || v_style == STYLE_PETAL || v_style == STYLE_FAIRY || v_style == STYLE_FIREFLIES) {
 			vec3 biome_albedo = (v_emitter_index >= 0 && v_emitter_index < 8) ? u_biomeAlbedos[v_emitter_index] : vec3(0.5);
 			color = mix(color, biome_albedo, 0.5);
 		}
@@ -131,17 +131,98 @@ void main() {
 			alpha *= boundaryFade * smoothstep(0.0, 0.5, v_lifetime) * mix(1.0, 0.15, defocus);
 			alpha = clamp(alpha, 0.0, 0.5);
 		} else if (v_style == STYLE_BIRDS) {
-			float flap = sin(u_time * 15.0 + v_p.phase);
-			float wing_y = abs(gl_PointCoord.x - 0.5) * (0.5 + flap * 0.4);
-			float body = (1-smoothstep(0.0, 0.1, abs(gl_PointCoord.y - 0.5 - wing_y)) + abs(gl_PointCoord.x - 0.7) * 0.5);
-			body *= step(0.70, body);
-			shapeMask = body;
-			color = mix(
-				mix(color, vec3(0.5, 0.8, 0.3), 0.43),
-				mix(color * 2.0, vec3(0.2, 0.9, 0.9), 0.63),
-				smoothstep(0.30, 0.40, gl_PointCoord.x) * (1.0 - smoothstep(0.60, 0.70, gl_PointCoord.x))
-			);
-			alpha = 1.0;
+			// Align bird billboard to its view-space velocity vector so it flies forward
+			vec2 vel_dir = (length(v_vel_view.xy) > 0.05) ? normalize(v_vel_view.xy) : vec2(1.0, 0.0);
+			// Birds fly heading in forward direction (upwards/along velocity)
+			float angle = atan(vel_dir.y, vel_dir.x) - 1.5707;
+			mat2 rot = mat2(cos(angle), -sin(angle), sin(angle), cos(angle));
+			vec2 uv = rot * (gl_PointCoord - 0.5) + 0.5;
+
+			// Realistic flapping cycle with arched wing profiles
+			float flapPhase = v_p.phase;
+			float wingFlap = sin(flapPhase);
+
+			// Local UV centering: x in [-0.5, 0.5], y in [-0.5, 0.5]
+			vec2 p = uv - vec2(0.5);
+			float absX = abs(p.x);
+
+			// Dynamic wing arching: upward stroke arches wings down, downward stroke arches wings up
+			float wingArch = absX * (wingFlap * 0.8);
+			// Wing chord thickness decreases towards wingtips
+			float wingThickness = mix(0.14, 0.03, smoothstep(0.05, 0.45, absX));
+
+			// Distance to wing curve centerline
+			float wingDist = abs((p.y - wingArch) + 0.02);
+			float wingMask = smoothstep(wingThickness, wingThickness - 0.03, wingDist) * smoothstep(0.48, 0.40, absX);
+
+			// Slender bird body / head / tail line along y-axis
+			float bodyWidth = mix(0.045, 0.01, smoothstep(0.0, 0.35, abs(p.y)));
+			float bodyMask = smoothstep(bodyWidth, bodyWidth - 0.02, absX) * smoothstep(0.38, 0.30, abs(p.y));
+
+			shapeMask = clamp(wingMask + bodyMask, 0.0, 1.0);
+
+			// Peaceful feathered plumage shading (soft slate blue / warm underside accent)
+			vec3 plumageDark = vec3(0.12, 0.16, 0.22);
+			vec3 plumageHighlight = vec3(0.45, 0.55, 0.65);
+			vec3 bellyAccent = vec3(0.85, 0.75, 0.60);
+
+			float featherShade = smoothstep(0.0, 0.4, absX);
+			vec3 birdColor = mix(plumageDark, plumageHighlight, featherShade);
+			birdColor = mix(birdColor, bellyAccent, bodyMask * 0.5);
+
+			color = birdColor;
+			alpha = v_p.color.a * shapeMask;
+		} else if (v_style == STYLE_BUTTERFLY) {
+			// Align butterfly to velocity or upward float
+			vec2 vel_dir = (length(v_vel_view.xy) > 0.02) ? normalize(v_vel_view.xy) : vec2(0.0, 1.0);
+			float angle = atan(vel_dir.y, vel_dir.x) - 1.5707;
+			mat2 rot = mat2(cos(angle), -sin(angle), sin(angle), cos(angle));
+			vec2 uv = rot * (gl_PointCoord - 0.5) + 0.5;
+
+			vec2 p = uv - vec2(0.5);
+			float absX = abs(p.x);
+
+			// 3D wing fold perspective modulation during flutter
+			float flapPhase = v_p.phase;
+			float foldFactor = cos(flapPhase) * 0.5 + 0.5; // [0, 1] fold
+			float spanScale = mix(1.0, 0.25, foldFactor);  // Wing span compresses during flap
+
+			// Un-fold local X to evaluate 2D wing silhouette
+			float unFoldX = absX / max(0.1, spanScale);
+
+			// Forewing (upper) and Hindwing (lower) shape evaluations
+			float forewingRadius = 0.38;
+			vec2 forewingCenter = vec2(0.18, 0.10);
+			float foreDist = length((vec2(unFoldX, p.y) - forewingCenter) * vec2(1.0, 1.25));
+			float foreMask = smoothstep(forewingRadius, forewingRadius - 0.04, foreDist);
+
+			float hindwingRadius = 0.26;
+			vec2 hindwingCenter = vec2(0.15, -0.12);
+			float hindDist = length((vec2(unFoldX, p.y) - hindwingCenter) * vec2(1.1, 1.0));
+			float hindMask = smoothstep(hindwingRadius, hindwingRadius - 0.04, hindDist);
+
+			float wingSilhouette = clamp(foreMask + hindMask, 0.0, 1.0);
+
+			// Delicate butterfly body & antennae
+			float bodyWidth = mix(0.035, 0.01, smoothstep(0.0, 0.3, abs(p.y)));
+			float bodyMask = smoothstep(bodyWidth, bodyWidth - 0.01, absX) * smoothstep(0.32, 0.25, abs(p.y));
+
+			shapeMask = clamp(wingSilhouette + bodyMask, 0.0, 1.0);
+
+			// Intricate wing margin, veins, and colorful iridescent glow
+			float veinPattern = sin(unFoldX * 35.0 + p.y * 20.0) * 0.5 + 0.5;
+			float borderMask = smoothstep(0.28, 0.36, length(vec2(unFoldX, p.y)));
+
+			vec3 baseWingColor = v_p.color.rgb;
+			vec3 borderDark = vec3(0.05, 0.05, 0.08);
+			vec3 veinGlow = mix(baseWingColor, vec3(1.0, 0.95, 0.8), 0.35);
+
+			vec3 finalButterflyColor = mix(baseWingColor, veinGlow, veinPattern * 0.3);
+			finalButterflyColor = mix(finalButterflyColor, borderDark, borderMask * 0.8);
+			finalButterflyColor = mix(finalButterflyColor, vec3(0.08), bodyMask);
+
+			color = finalButterflyColor;
+			alpha = v_p.color.a * shapeMask;
 		} else if (v_style == STYLE_FAIRY) {
 			float dist = length(circ);
 			float twinkle = clamp((v_p.color.a / smoothstep(0.0, 0.5, v_lifetime)) - 0.2, 0.0, 1.0);
