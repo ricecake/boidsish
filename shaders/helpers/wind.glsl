@@ -433,7 +433,8 @@ void getWindDeflectionAngleAndAxis(vec3 basePos, float dist, float v, float wind
 
     vec3 combinedDeflection = (staticDeflection + windDeflection);// * (2.0*(0.5+0.5*sin(windHash(seed + 18u)*gustPhase*6.28)));
     totalBendAngle = length(combinedDeflection);
-	totalBendAngle *= smoothstep(0, 1, 1.5*(gustPhase-0.4)+exp(-0.1*-gustPhase)*(0.5+0.3*cos(-30*gustPhase)));
+	// totalBendAngle *= smoothstep(0, 1, 1.5*(gustPhase-0.4)+exp(-0.1*-gustPhase)*(0.5+0.3*cos(-30*gustPhase)));
+	totalBendAngle *= abs( exp( -gustPhase ) * (0.5+0.3*cos((-(10+(windBendAngle*5)))*gustPhase)));
 
     if (totalBendAngle <= 0.0001) {
         rotationAxis = vec3(0.0, 1.0, 0.0);

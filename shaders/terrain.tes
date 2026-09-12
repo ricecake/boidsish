@@ -20,6 +20,8 @@ flat out float TextureSlice;
 out float      perturbFactor;
 out float      tessFactor;
 out float      vIsWater;
+out float      vIsShore;
+out vec3      vWaveOffset;
 out float      vErosionDelta;
 out float      vRidgeMap;
 out float      vSubstrate;
@@ -216,9 +218,13 @@ void main() {
 		vIsWater = smoothstep(0.1, -0.1, FragPos.y);
 	}
 
+	float tessFactor1 = mix(tessFactor_TC_out[0], tessFactor_TC_out[1], uv.x);
+	float tessFactor2 = mix(tessFactor_TC_out[3], tessFactor_TC_out[2], uv.x);
+	tessFactor = mix(tessFactor1, tessFactor2, uv.y);
+
 	// Apply detail fade to avoid aliasing and provide smooth transition
 	float dist = distance(viewPos, FragPos);
-	float detailFade = smoothstep(200.0 * worldScale, 50.0 * worldScale, dist) * smoothstep(16.0, 32.0, tessFactor);
+	float detailFade = smoothstep(50.0 * worldScale, 200.0 * worldScale, dist) * smoothstep(16.0, 32.0, tessFactor);
 
 	FragPos = mix(baseFragPos, FragPos, detailFade);
 	Normal = mix(baseNormal, Normal, detailFade);
@@ -234,74 +240,119 @@ void main() {
 	// FragPos += 0.5 * fastWorley3d(FragPos / 50.0) * fastBlueNoise(FragPos.zx) * Normal * smoothstep(10, 1, FragPos.y) *
 	// 	smoothstep(0.01, 1, FragPos.y);
 
-	float tessFactor1 = mix(tessFactor_TC_out[0], tessFactor_TC_out[1], uv.x);
-	float tessFactor2 = mix(tessFactor_TC_out[3], tessFactor_TC_out[2], uv.x);
-	tessFactor = mix(tessFactor1, tessFactor2, uv.y);
-
-	float smoother = smoothstep(650, 700, distance(viewPos, FragPos));
-	FragPos.y = mix(FragPos.y, 0.0, smoother);
-	Normal = mix(Normal, vec3(0.0, 1.0, 0.0), smoother);
+	// float smoother = smoothstep(650, 700, distance(viewPos, FragPos));
+	// FragPos.y = mix(FragPos.y, 0.0, smoother);
+	// Normal = mix(Normal, vec3(0.0, 1.0, 0.0), smoother);
 
 	// out float tessFactor;
 	TextureSlice = slice;
 
 	float waterMask = 1.0 - smoothstep(-0.1, 0.1, FragPos.y);
-	if (waterMask > 0.0) {
+	float shoreMask = (1.0-waterMask)*(1.0 - smoothstep(0.1, 0.3, FragPos.y));
+	vIsShore = shoreMask;
+	vWaveOffset = vec3(0.0);
+
+	// float waterMask = 1.0 - smoothstep(-0.3+0.1*(cos(time)), 0.3+0.1*(sin(time)), FragPos.y);
+	// vIsShore = smoothstep(-0.1, 0.1, FragPos.y);
+	int waveOctaves = 4;
+	if (FragPos.y <= 0.30) {
 		vec3 tangent = vec3(1.0, 0.0, 0.0);
 		vec3 binormal = vec3(0.0, 0.0, 1.0);
 		vec3 totalPos = vec3(0.0);
 
-		float shallowFactor = clamp((1.0 - vIsWater) / 0.5, 0.0, 1.0);
+		// float shallowFactor = clamp((1.0 - vIsWater) / 0.5, 0.0, 1.0);
+		float shallowFactor = smoothstep(-0.05, 0.0, FragPos.y);
 
 		// Deep water wind direction
 		vec2 deepWaterDir = normalize(vec2(1.0, 0.5));
 
-		// Uphill vector towards shore (fallback to wind direction if flat)
-		vec2 shoreDir = length(baseNormal.xz) > 0.001 ? normalize(-baseNormal.xz) : deepWaterDir;
+		// Downhill flow direction vector (downstream / river flow)
+		vec2 riverFlowDir = length(baseNormal.xz) > 0.001 ? normalize(baseNormal.xz) : deepWaterDir;
 
-		// Refract wave direction based on depth
-		vec2 waveDir = vec2(1.0);//normalize(mix(deepWaterDir, shoreDir, shallowFactor));
+		// Refract wave direction towards downstream / shoreline gradient
+		vec2 waveDir = vec2(1.0);//normalize(mix(deepWaterDir, riverFlowDir, shallowFactor * 0.8));
+		// vec2 waveDir = normalize(vec2(sin(baseFragPos.x), -cos(baseFragPos.y)))/100.0;
 
 		// Base physics parameters
-		float wavelength = 40.0;
-		float steepness = 0.1;
-		float rotationOffset = 0.6; // ~34 degree angular spread
+		float wavelength = 35.0;
+		float steepness = 0.12;
+		float rotationOffset = 0.55;
 
 		// Sum octaves
-		for (int i = 0; i < 4; i++) {
-			// Shoaling: Compress wavelength and increase steepness near shore
-			float currentWavelength = wavelength;// * mix(1.0, 0.6, shallowFactor);
-			float currentSteepness = steepness;// * mix(1.0, 1.4, shallowFactor);
+		for (int i = 0; i < waveOctaves; i++) {
+			// Shoaling: Compress wavelength and adjust steepness near shore
+			float currentWavelength = wavelength;// * mix(1.0, 0.65, shallowFactor);
+			float currentSteepness = steepness;// * mix(1.0, 1.25, shallowFactor);
 
 			totalPos += gerstnerWave(
 				baseFragPos.xz,
 				waveDir,
 				currentSteepness,
 				currentWavelength,
-				time * (1+ i*0.125),
+				time * (1.0 + float(i) * 0.15),
 				tangent,
 				binormal
 			);
 
-			// Advance octave: halve wavelength, decay steepness
-			wavelength *= 0.5;
-			// steepness *= 0.75;
+			// Advance octave
+			wavelength *= 0.45;
 
-			// Rotate vector to create intersecting swells
-			float cosR = cos(rotationOffset);
-			float sinR = sin(rotationOffset);
+			// Rotate vector for intersecting swells
+			float cosR = cos(rotationOffset * time * 0.01 + 0.01*baseFragPos.x);
+			float sinR = sin(rotationOffset * time * 0.07 + 0.01*baseFragPos.z);
 			waveDir = vec2(waveDir.x * cosR - waveDir.y * sinR, waveDir.x * sinR + waveDir.y * cosR);
 
-			// Alternate rotation direction for subsequent octaves
-			rotationOffset *= -1.3;
+			rotationOffset *= 3.19 * 0.245;
 		}
 
-		// FragPos.y = mix(FragPos.y, totalPos.y, waterMask);
-		// FragPos.xz += totalPos.xz * waterMask;
-		FragPos += totalPos * waterMask;
+	// 	// Clamp y-displacement above zero in the shore region so waves lap onto land without dipping below
+	// 	vWaveOffset = totalPos;
+	// 	totalPos.y = mix(totalPos.y, max(totalPos.y, 0.0), shallowFactor);
+	// 	totalPos.xz *= shoreMask;
+	// 	totalPos.y *= 1.0-smoothstep(0.15, 0.3, FragPos.y);
 
-		Normal = normalize(mix(Normal, normalize(cross(binormal, tangent)), waterMask));
-	}
+	// 	// totalPos.xz *= waterMask;
+	// 	vIsShore = smoothstep(0.1, 0.3, FragPos.y) * totalPos.y;
+	// 	// vIsShore = smoothstep(0.0, 0.075, FragPos.y * shallowFactor);//smoothstep(0, 0.05, (shallowFactor) * (totalPos.y + FragPos.y));
+	// 	// totalPos.y *= clamp(vIsShore*waterMask, 0.0, 1.0);
+	// 	// FragPos += totalPos;// * float(vIsShore >0 && vIsWater > 0);// * waterMask;
+	// 	FragPos.xz += totalPos.xz;
+	// 	FragPos.y = max(FragPos.y, totalPos.y);
+
+
+	// 	Normal = normalize(mix(Normal, normalize(cross(binormal, tangent)), waterMask));
+	// 	// Normal = normalize(cross(binormal, tangent));
+	// }
+	// vIsShore = waterMask - vIsWater;
+	// vIsWater = waterMask;
+
+
+		vWaveOffset = totalPos;
+        totalPos.y = mix(totalPos.y, max(totalPos.y, 0.0), shallowFactor);
+        totalPos.xz *= shoreMask;
+        totalPos.y *= 1.0-smoothstep(0.15, 0.3, FragPos.y);
+
+        vIsShore = smoothstep(0.1, 0.3, FragPos.y) * totalPos.y;
+
+        FragPos.xz += totalPos.xz;
+
+        // 1. Calculate the mathematical wave normal
+        vec3 waveNormal = normalize(cross(binormal, tangent));
+
+        // 2. Determine which surface is physically higher at this vertex
+        // A tight smoothstep (-0.01 to 0.01) softens the shading transition
+        // to prevent harsh, pixelated lighting artifacts at the exact intersection.
+        float waveDominance = smoothstep(-0.01, 0.01, totalPos.y - FragPos.y);
+
+        // 3. Apply the geometric union
+        FragPos.y = max(FragPos.y, totalPos.y);
+
+        // 4. Combine the static deep-water mask with the dynamic shoreline wave mask
+        float finalWaterMask = clamp(waterMask + waveDominance, 0.0, 1.0);
+
+        Normal = normalize(mix(Normal, waveNormal, finalWaterMask));
+    }
+
 
 	// Apply shockwave ripple to terrain
 	FragPos += getShockwaveDisplacement(FragPos, 0.0, false);

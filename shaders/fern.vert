@@ -102,7 +102,57 @@ void main() {
     float dist = distance(viewPos, basePos);
     float totalBendAngle = 0.0;
     vec3 rotationAxis = vec3(0.0, 1.0, 0.0);
-    getWindDeflectionAngleAndAxis(basePos, dist, v, biomeProps[biomeIdx].windInfluence, biomeProps[biomeIdx].rigidity, globalProps.windMultiplier, globalProps.rigidityMultiplier, seed, totalBendAngle, rotationAxis);
+    // getWindDeflectionAngleAndAxis(basePos, dist, v, biomeProps[biomeIdx].windInfluence, biomeProps[biomeIdx].rigidity, globalProps.windMultiplier, globalProps.rigidityMultiplier, seed, totalBendAngle, rotationAxis);
+
+// 1. Fetch Pure Wind & Setup
+    float ripple = 0.0, speedStdDev = 0.0, dirStdDev = 0.0, gustPhase = 0.0;
+    float distanceFade = 1.0 - smoothstep(450.0, 750.0, dist);
+    vec3 pureWind = vec3(0.0);
+
+    if (distanceFade > 0.0 && dist < 550.0) {
+        pureWind = getWindAtPosition(basePos, ripple, speedStdDev, dirStdDev, gustPhase) * distanceFade;
+    }
+
+    float windSpeed = length(pureWind);
+    vec3 windDir = windSpeed > 0.001 ? normalize(vec3(pureWind.x, 0.0, pureWind.z)) : vec3(1.0, 0.0, 0.0);
+
+    float windInfluence = biomeProps[biomeIdx].windInfluence;
+    float rigidity = clamp(biomeProps[biomeIdx].rigidity * globalProps.rigidityMultiplier, 0.0, 0.99);
+
+    // 2. Directional Compliance
+    // How aligned is this specific frond with the wind direction?
+    float alignment = dot(windDir, forward);
+
+    // 3. Localized Phase Delay
+    // Subtract 'v' so the tip of the frond trails behind the base in the gust wave
+    float localPhase = gustPhase - (v * 0.35);
+    float swayMultiplier = 1.0 + (sin(localPhase * 6.2831853) * ripple);
+
+    // 4. Yield vs. Resist
+    // If alignment < 0, the wind is blowing tip-to-stem. Invert a portion of the bend
+    // so the frond buckles downwards toward the center rather than flipping up.
+    float bendDirection = alignment < 0.0 ? -0.6 : 1.0;
+
+    // 5. Bend Calculation (Adapted from original logic)
+    float windStrength = windSpeed * windInfluence * globalProps.windMultiplier;
+    float effectiveWindStrength = max(0.0, windStrength - (rigidity * 2.0));
+    float resistedWindStrength = 1.3 * tanh(effectiveWindStrength * 0.15 / 1.3);
+
+    float windBendAngle = (1.0 - rigidity) * resistedWindStrength * pow(v, 1.2) * smoothstep(0.05, 1.0, v);
+    float tiltAngle = (hash(seed + 8888u) * 2.0 - 1.0) * 0.15 * v;
+
+    totalBendAngle = (tiltAngle + (windBendAngle * swayMultiplier)) * bendDirection;
+
+    // 6. Drag Shedding Twist
+    // Base axis is perpendicular to wind and UP
+    vec3 orthogonalAxis = normalize(cross(vec3(0.0, 1.0, 0.0), windDir));
+    // As alignment approaches 1.0 or -1.0 (facing directly into/away from wind),
+    // blend the rotation axis towards the frond's outward tangent to induce twisting.
+    rotationAxis = normalize(mix(orthogonalAxis, forward, abs(alignment) * 0.85));
+
+    if (abs(totalBendAngle) <= 0.0001) {
+        rotationAxis = vec3(0.0, 1.0, 0.0);
+    }
 
     // Arch curve of the fern frond (pointing outwards and arching down under gravity)
     float heightScale = height * 0.5; // low frond

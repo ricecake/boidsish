@@ -36,6 +36,7 @@ float dot_noise(vec3 p) {
 
     //Gyroid with irrational orientations and scales
     return dot(cos(GOLD * p), sin(PHI * p * GOLD));
+	// return dot(1.0-cos(cos_phase), phase-sin(sin_phase));
     //Ranges from [-3 to +3]
 }
 
