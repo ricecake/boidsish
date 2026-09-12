@@ -14,6 +14,8 @@ flat in float TextureSlice;
 in float      perturbFactor;
 in float      tessFactor;
 in float      vIsWater;
+in float      vIsShore;
+in vec3      vWaveOffset;
 in float      vErosionDelta;
 in float      vRidgeMap;
 in float      vSubstrate;
@@ -169,6 +171,14 @@ struct TerrainContext {
 	int   biomeIdxB;
 	float biomeT;
 };
+
+// Standard 2D hash for Voronoi seeds
+vec2 hash2(vec2 p) {
+    vec3 p3 = fract(vec3(p.xyx) * vec3(.1031, .1030, .0973));
+    p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.xx + p3.yz) * p3.zy);
+}
+
 
 vec2 worldToFlat(
 	vec3  worldPos,
@@ -542,39 +552,45 @@ float gate(float min_val, float max_val, float val) {
 }
 
 float threshold(float minv, float maxv, float width, float val) {
-	float halfWidth = width * 0.5;
-	return val * smoothstep(minv - halfWidth, minv+halfWidth, val) * (1.0 - smoothstep(maxv - halfWidth, maxv + halfWidth, val));
+	// float halfWidth = width * 0.5;
+	float halfWidth = 0.5 * min((maxv - minv), width);
+	return val * smoothstep(minv - halfWidth, minv, val) * (1.0 - smoothstep(maxv, maxv + halfWidth, val));
 }
+
+float sustain(float minv, float maxv, float width, float val) {
+	// float halfWidth = width * 0.5;
+	float halfWidth = 0.5 * min(abs(maxv - minv), width);
+	return smoothstep(minv - halfWidth, minv, val) * (1.0 - smoothstep(maxv, maxv + halfWidth, val));
+}
+
+float band(float minv, float maxv, float width, float val) {
+	// float halfWidth = width * 0.5;
+	float halfWidth = 0.5 * min(abs(maxv - minv), width);
+	return smoothstep(minv - halfWidth, minv, val)*(1.0-smoothstep(minv, minv+halfWidth, val)) + smoothstep(maxv - halfWidth, maxv, val)*(1.0 - smoothstep(maxv-halfWidth, maxv + halfWidth, val));
+}
+
 /**
  * Process water layers (e.g. wet surfaces, refractions).
  */
 void processWaterLayer(vec3 norm, float dist, float fade) {
-    // Convert vIsWater into a pseudo-depth metric to drive optics
-    // (Assuming vIsWater goes from ~0.0 at shore to 1.0+ in deep water)
-    float pseudoDepth = max(vIsWater * 5.0, 0.1);
-    float shallowFactor = clamp((1.0 - vIsWater) / 0.5, 0.0, 1.0);
+    // Calculate physically consistent water depth and shallow shore factor
+    float waterDepth = max(vIsWater * 5.0 + FragPos.y, 0.05);
+    float shallowFactor = clamp(1.0 - waterDepth / 3.0, 0.0, 1.0);
 
-    // Refraction offset scales with depth, not vertical wave height
-    vec2 refractionOffset = norm.xz * pseudoDepth * 0.5;
-
-    // Dynamic water roughness; metallic remains high to force reflection if your PBR lacks dielectric Fresnel
+    // Dynamic water roughness and metallic model
     float waterRoughness = mix(0.1, 0.15, shallowFactor);
-    float waterMetallic = 0.0;//mix(0.9, 0.1, shallowFactor);
-	// refract
-	vec3 incidentDir = normalize(FragPos - viewPos);
-	vec3 normal = normalize(norm);
+    float waterMetallic = 0.0;
 
-	// Ratio of refraction (e.g., air to water: 1.0 / 1.33)
-	float eta = 1.0 / 1.33;
+    // Refraction ray calculation through water surface
+    vec3 incidentDir = normalize(FragPos - viewPos);
+    vec3 normal = normalize(norm);
+    float eta = 1.0 / 1.33; // air to water IOR ratio
 
-	vec3 refractionDir = refract(incidentDir, normal, eta);
-	// vec2 uvOffset = vec2(pseudoDepth * tan(acos(dot(normal, refractionDir))));
-	vec2 uvOffset = (refractionDir.xz / max(abs(refractionDir.y), 0.001)) * (FragPos.y+pseudoDepth);
+    vec3 refractionDir = refract(incidentDir, normal, eta);
+    vec2 uvOffset = (refractionDir.xz / max(abs(refractionDir.y), 0.001)) * waterDepth;
 
-    // Generate refracted underwater pebbles
-    // Note: Use an undisplaced world position here if the lateral Gerstner displacement causes swimming
-    // vec2 pebbleUV = (FragPos.xz + refractionOffset) * 15.0;
-    vec2 pebbleUV = (FragPos.xz + uvOffset);
+    // Refracted underwater floor pebbles
+    vec2 pebbleUV = FragPos.xz + uvOffset;
     vec3 pebbleVor = voronoi(pebbleUV);
     float pebbleRand = random(pebbleVor.xy);
     float pebbleDist = pebbleVor.z;
@@ -592,21 +608,99 @@ void processWaterLayer(vec3 norm, float dist, float fade) {
 
     vec2 pebbleOffset = (pebbleUV - pebbleVor.xy) * 2.0;
     float pebbleLight = clamp(dot(normalize(vec3(pebbleOffset, 1.0)), normalize(vec3(-0.5, 0.5, 1.0))), 0.0, 1.0);
-    vec3 shadedPebble = pebbleColor * (0.35 + 0.65 * pebbleLight);
-    shadedPebble *= smoothstep(0.8, 0.4, pebbleDist);
+    // vec3 shadedPebble = mix(pebbleColor * (0.35 + 0.65 * pebbleLight) * smoothstep(0.8, 0.4, pebbleDist), vec3(1.0), (1.0-vIsWater) * smoothstep(-0.1, 0.1, FragPos.y));
+    vec3 shadedPebble = pebbleColor * (0.35 + 0.65 * pebbleLight) * smoothstep(0.8, 0.4, pebbleDist);
+	float overShore = smoothstep(0, 0.1, vWaveOffset.y - FragPos.y);//vIsShore;//(1.0-vIsWater) * smoothstep(-0.1, 0.1, FragPos.y);
 
-	shadedPebble += vIsWater* threshold(0.7, 0.90, 0.1, pow(dot_noise_fbm(vec3(FragPos.xz + uvOffset, time), 3),3)) * vec3(2.0);
+	vec3 groundColor = texture(u_terrainColorBlend, vec3(FragPos.y/100.0, 1.0, 0.5)).rgb;
+
+	shadedPebble = mix(mix(shadedPebble, groundColor, shallowFactor), vec3(0.85, 0.9, 1.1), overShore);
+
+    // // Wave-correlated subsurface caustics driven by surface wave distortion & light refraction
+    // vec2 causticUV = FragPos.xz * 0.5 + norm.xz * (waterDepth * 0.6) + uvOffset * 0.4;
+    // float c1 = fastSimplex3d(0.5*vec3(causticUV + vec2(time * 0.15, time * 0.13), time * 0.12));
+    // float c2 = fastSimplex3d(0.5*vec3(causticUV * 1.4 - vec2(time * 0.13, time * 0.14), time * 0.125));
+    // float causticPattern = pow(clamp(1.0 - abs(c1 + c2), 0.0, 1.0), 3.5);
+    // vec3 caustics = causticPattern * vec3(1.2, 1.4, 1.5) * exp(-waterDepth * 0.35);
+    // // shadedPebble += (smoothstep(0.2, 0.3, vIsWater)) * caustics;
+
+	// shadedPebble += vIsWater* threshold(0.7, 0.90, 0.1, pow(dot_noise_fbm(vec3(FragPos.xz + uvOffset, time), 3),3)) * vec3(2.0);
+	shadedPebble += vIsWater* band(-0.1, 0.1, 0.1*waterDepth/4.0, pow(dot_noise_fbm(vec3(FragPos.xz + uvOffset, time), 3),4)) * vec3(10.0) * exp(-waterDepth * 0.35);
+
+
+    // Procedural fish swarm in water column
+    vec2 fishGridScale = vec2(3.5);
+    vec2 fishCell = floor((FragPos.xz + uvOffset * 0.3) / fishGridScale);
+    vec2 cellRand = hash2(fishCell);
+
+    if (cellRand.x > 0.35) { // ~65% probability of fish in grid cell
+        float fishTime = time * (0.9 + cellRand.y * 0.7) + cellRand.x * 6.2831;
+        vec2 cellCenter = (fishCell + 0.5) * fishGridScale;
+        vec2 fishOrbit = cellCenter + vec2(cos(fishTime), sin(fishTime * 1.2)) * (0.7 + cellRand.y * 0.8);
+
+        float fishDepth = 0.1 + cellRand.y * 2.2;
+        if (fishDepth < waterDepth) {
+            vec2 fishVel = vec2(-sin(fishTime), 1.2 * cos(fishTime * 1.2));
+            float fishAngle = atan(fishVel.y, fishVel.x);
+
+            vec2 pRel = (FragPos.xz + uvOffset * 0.3) - fishOrbit;
+            mat2 rot = mat2(cos(fishAngle), sin(fishAngle), -sin(fishAngle), cos(fishAngle));
+            vec2 pFish = rot * pRel;
+
+            // Tail wiggle animation along teardrop axis
+            float wiggle = sin(fishTime * 9.0 + pFish.x * 12.0) * 0.035 * smoothstep(0.1, -0.4, pFish.x);
+            pFish.y -= wiggle;
+
+            // Teardrop shape evaluation
+            float fishLen = 0.45 * (0.8 + cellRand.y * 0.6);
+            float headRadius = 0.11 * (0.8 + cellRand.x * 0.5);
+
+            float normX = clamp((pFish.x + fishLen * 0.5) / fishLen, 0.0, 1.0);
+            float bodyWidth = headRadius * sin(normX * 3.14159) * (1.0 - 0.25 * normX);
+            float fishSdf = abs(pFish.y) - bodyWidth;
+
+            float fishMask = smoothstep(0.02, -0.01, fishSdf) * step(-fishLen * 0.5, pFish.x) * step(pFish.x, fishLen * 0.5);
+
+            if (fishMask > 0.0) {
+                vec3 fishBaseColor = palette(
+                    cellRand.x,
+					vec3(0.51, 0.08, 0.46),
+					vec3(0.78, 1, 0.01),
+					vec3(1., 1.3, 0.),
+					vec3(0, 0.33, 0.67)
+                    // vec3(0.5, 0.5, 0.5),
+                    // vec3(0.5, 0.5, 0.5),
+                    // vec3(1.0, 0.8, 0.5),
+                    // vec3(0.0, 0.33, 0.67)
+                );
+                // Depth-attenuated fish shading
+                vec3 fishTransmission = 1.4*exp(-(0.5*fishDepth) * vec3(1.0, 0.35, 0.1));
+                vec3 shadedFish = fishBaseColor * fishTransmission * (0.6 + 0.4 * clamp(pFish.y / max(bodyWidth, 0.001), 0.0, 1.0));
+                shadedPebble = mix(shadedPebble, shadedFish, step(0.0, fishMask));
+            }
+        }
+    }
 
     // Volumetric Absorption (Beer-Lambert Law)
-    // Red (X) absorbs rapidly, Green (Y) absorbs moderately, Blue (Z) penetrates deepest
-    vec3 scatterCoefficients = vec3(1.2, 0.4, 0.1);
-    vec3 transmission = exp(-pseudoDepth * scatterCoefficients);
+    vec3 scatterCoefficients = vec3(1.1, 0.35, 0.08);
+    vec3 transmission = exp(-waterDepth * scatterCoefficients);
 
-    // Apply volumetric transmission to the bottom texture
+    // Apply volumetric transmission to underwater view
     vec3 underwaterView = shadedPebble * transmission;
 
-    // The physical surface of water is very dark; visible color comes from transmission and reflection
-    vec3 surfaceAlbedo = underwaterView + vec3(0.1, 0.2, 0.5);//, vec3(1.0), smoothstep(0.7, 1.0, dot(Normal, vec3(0,1,0))));
+    // Shallow shore water coloration and deep water tint
+    vec3 waterTint = mix(vec3(0.02, 0.25, 0.45), vec3(0.1, 0.45, 0.55), shallowFactor);
+    vec3 surfaceAlbedo = underwaterView + waterTint;
+
+    // Wave crest foam & shoreline wash foam
+    float waveSteepness = clamp(1.0 - norm.y, 0.0, 1.0);
+    float crestFoam = 0.0;//smoothstep(0.15, 0.38, waveSteepness) * smoothstep(0.0, 0.25, FragPos.y + 0.05);
+    float shoreWash = smoothstep(0.65, 1.0, shallowFactor) * (0.5 + 0.5 * sin(time * 3.5 + FragPos.x * 0.4 + FragPos.z * 0.4));
+    float totalFoam = clamp(crestFoam * 1.6 + shoreWash * 0.7, 0.0, 1.0);
+
+    vec3 foamColor = vec3(0.95, 0.98, 1.0);
+    surfaceAlbedo = mix(surfaceAlbedo, foamColor, totalFoam);
+    waterRoughness = mix(waterRoughness, 0.6, totalFoam * 0.8);
 
     float primaryShadow;
     GlintProperties waterGlint;
@@ -617,11 +711,12 @@ void processWaterLayer(vec3 norm, float dist, float fade) {
     waterGlint.scale = 1.0;
     vec3 lighting = apply_lighting_pbr(FragPos, norm, surfaceAlbedo, waterRoughness, waterMetallic, 1.0, primaryShadow, waterGlint).rgb;
 
-    // Additively combine the transmitted underwater light with surface specular reflections
-    vec3 final_color = lighting;//underwaterView + lighting;
+    // Add foam specular contribution
+    lighting += foamColor * totalFoam * 0.25 * primaryShadow;
 
-    // vec4 baseColor = baseColor;//vec4(final_color, fade);
-    FragColor = vec4(final_color, 1.0);//mix(vec4(0.0, 0.7, 0.7, baseColor.a) * length(baseColor), baseColor, step(1.0, fade));
+    vec3 final_color = lighting;
+
+    FragColor = vec4(final_color, 1.0);
 
     NormalOut = vec4(normalize(mat3(view) * norm), primaryShadow);
     AlbedoOut = vec4(surfaceAlbedo, 1.0);
@@ -893,13 +988,6 @@ float calculateAntiAliasedFBM(vec3 pos, float baseFreq, int octaves) {
     }
 
     return value / totalAmplitude;
-}
-
-// Standard 2D hash for Voronoi seeds
-vec2 hash2(vec2 p) {
-    vec3 p3 = fract(vec3(p.xyx) * vec3(.1031, .1030, .0973));
-    p3 += dot(p3, p3.yzx + 33.33);
-    return fract((p3.xx + p3.yz) * p3.zy);
 }
 
 // Placeholder: Replace with your engine's existing smooth noise (Simplex/Perlin)
@@ -1296,19 +1384,7 @@ void main() {
 	float baseFreq = 0.1 / worldScale;
 	float largeNoise = fastWarpedFbm3d(FragPos * (baseFreq * 0.1));
 
-	// WorleyData3D worley = worley3d_tiling_id((FragPos+largeNoise)*vec3(2.5, 0.04, 2.5), 16.0);
-	// float terr = floor(100.0 * terraceSmooth(worley.f1_dist, 5, 0.5));
-
-	// uint blue = mortonOwenScramble(uvec2(terr, terr), uint(0.0));
-
-	// // FragColor = mix(vec4(0.3, 0.30, 30*step(5.0, mod(float(blue), 8)), 1.0), vec4(0.30, 0.30, 0.0, 1.0), mod(terr*2.0, 0.2));
-	// FragColor = mix(vec4(1.0, 0.0, 0.0, 1.0), vec4(0.0, 1.0, 0.0, 1.0), float(mod(float(blue), 8)==0));
-	// NormalOut = vec4(normalize(mat3(view) * Normal), 1.0);
-	// AlbedoOut = FragColor;
-	// Velocity = vec4(0.0);
-	// return;
-
-	if (vIsWater > 0.01) {
+	if (vIsWater > 0.0 || vIsShore > 0) {
 		processWaterLayer(norm, dist, largeNoise);
 		return;
 	}

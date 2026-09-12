@@ -291,7 +291,7 @@ void updateBirds(
 	vec3  alignment = vec3(0.0);
 	vec3  cohesion = vec3(0.0);
 	int   neighborCount = 0;
-	float perceptionRadius = 8.0;
+	float perceptionRadius = 14.0;
 
 	for (int x = -2; x <= 2; x++) {
 		for (int y = -2; y <= 2; y++) {
@@ -322,10 +322,14 @@ void updateBirds(
 	if (neighborCount > 0) {
 		alignment /= float(neighborCount);
 		cohesion = (cohesion / float(neighborCount)) - p.pos.xyz;
-		p.vel.xyz += alignment * 0.4 * dt;
-		p.vel.xyz += cohesion * 0.1 * dt;
-		p.vel.xyz += separation * 2.5 * dt;
+		p.vel.xyz += alignment * 0.6 * dt;
+		p.vel.xyz += cohesion * 0.15 * dt;
+		p.vel.xyz += separation * 3.0 * dt;
 	}
+
+	// Wind flow influence
+	vec3 wind = getWindAtPosition(p.pos.xyz);
+	p.vel.xyz += wind * 0.25 * dt;
 
 	float terrainHeight = 0.0;
 	bool  foundTerrain = false;
@@ -340,26 +344,99 @@ void updateBirds(
 		}
 	}
 
-	if (p.pos.w < 2.0 && foundTerrain) {
-		vec3  target = vec3(p.pos.x, terrainHeight - 0.2, p.pos.z);
-		vec3  toTarget = target - p.pos.xyz;
-		p.vel.xyz += normalize(toTarget + vec3(0, -0.1, 0)) * 5.0 * dt;
-	} else {
-		p.vel.xyz += curlNoise(p.pos.xyz, time, curlTexture) * 1.5 * dt;
-		if (foundTerrain) {
-			if (p.pos.y < terrainHeight + 2.0)
-				p.vel.y += 2.5 * dt;
-			if (p.pos.y > terrainHeight + 15.0)
-				p.vel.y -= 1.5 * dt;
+	// Soft height band (3.0m to 18.0m above ground)
+	if (foundTerrain) {
+		float desiredMinY = terrainHeight + 4.0;
+		float desiredMaxY = terrainHeight + 20.0;
+		if (p.pos.y < desiredMinY) {
+			float push = (desiredMinY - p.pos.y);
+			p.vel.y += push * 3.5 * dt;
+		} else if (p.pos.y > desiredMaxY) {
+			float push = (p.pos.y - desiredMaxY);
+			p.vel.y -= push * 2.0 * dt;
 		}
 	}
 
-	p.vel.xyz *= pow(0.97, dt / 0.016);
-	p.color = vec4(0.05, 0.05, 0.05, smoothstep(0.0, 1.0, p.pos.w));
-	if (p.pos.w < 1.0 && foundTerrain && p.pos.y < terrainHeight + 0.5) {
-		p.color.a *= smoothstep(0.0, 1.0, p.pos.w);
+	// Smooth thermal uplift & turbulence
+	p.vel.xyz += curlNoise(p.pos.xyz * 0.2, time * 0.5, curlTexture) * 1.8 * dt;
+
+	p.vel.xyz *= pow(0.985, dt / 0.016);
+
+	// Color & Size
+	p.color = vec4(0.2, 0.22, 0.25, smoothstep(0.0, 1.0, p.pos.w));
+	p.vel.w = 28.0; // Point size base
+	p.origin.w = 0.0; // Non-emissive
+
+	p.phase += dt * (12.0 + length(p.vel.xyz) * 2.0);
+}
+
+void updateButterfly(
+	inout Particle p,
+	float          dt,
+	float          time,
+	float          cellSize,
+	uint           gridSize,
+	sampler3D      curlTexture,
+	int            num_chunks,
+	sampler2DArray heightmapArray
+) {
+	// Delicate, fluttery motion driven by wind & micro-turbulence
+	vec3 wind = getWindAtPosition(p.pos.xyz);
+	p.vel.xyz += wind * 0.4 * dt;
+
+	// High frequency erratic bobbing
+	float gid_f = float(gl_GlobalInvocationID.x);
+	vec3 flutter;
+	flutter.x = sin(time * 14.0 + p.pos.y * 3.0 + gid_f * 1.3) * 1.2;
+	flutter.y = cos(time * 18.0 + p.pos.x * 2.5 + gid_f * 0.7) * 1.5;
+	flutter.z = sin(time * 16.0 + p.pos.z * 3.0 + gid_f * 1.9) * 1.2;
+	p.vel.xyz += flutter * dt;
+
+	// Soft turbulence
+	p.vel.xyz += curlNoise(p.pos.xyz * 0.5, time * 0.8, curlTexture) * 1.5 * dt;
+
+	// Terrain hovering (stay between 0.5m and 3.0m above ground)
+	float terrainHeight = 0.0;
+	bool  foundTerrain = false;
+	for (int i = 0; i < num_chunks; i++) {
+		ChunkInfo chunk = chunks[i];
+		if (p.pos.x >= chunk.worldOffset.x && p.pos.x < chunk.worldOffset.x + chunk.size &&
+		    p.pos.z >= chunk.worldOffset.y && p.pos.z < chunk.worldOffset.y + chunk.size) {
+			vec2 uv = (p.pos.xz - chunk.worldOffset) / chunk.size;
+			terrainHeight = texture(heightmapArray, vec3(uv, chunk.slice)).r;
+			foundTerrain = true;
+			break;
+		}
 	}
-	p.phase += dt * length(p.vel.xyz);
+
+	if (foundTerrain) {
+		float targetY = terrainHeight + 1.2 + sin(time * 1.5 + gid_f) * 0.6;
+		float diffY = targetY - p.pos.y;
+		p.vel.y += diffY * 2.5 * dt;
+	}
+
+	p.vel.xyz *= pow(0.96, dt / 0.016);
+
+	// Variety in butterfly species / colors based on particle ID
+	uint pid = hash(uint(gid_f * 37.0));
+	uint species = pid % 4u;
+	vec3 species_color;
+	if (species == 0u) {
+		species_color = vec3(1.0, 0.45, 0.05); // Monarch (Vibrant Orange)
+	} else if (species == 1u) {
+		species_color = vec3(0.15, 0.55, 1.0); // Blue Morpho (Electric Cyan/Blue)
+	} else if (species == 2u) {
+		species_color = vec3(0.98, 0.85, 0.15); // Swallowtail (Sunny Yellow)
+	} else {
+		species_color = vec3(0.85, 0.3, 0.95); // Emerald/Magenta Silk
+	}
+
+	p.color.rgb = species_color;
+	p.color.a = smoothstep(0.0, 0.8, p.pos.w) * 0.95;
+	p.vel.w = 18.0; // Point size base
+	p.origin.w = 0.0; // Non-emissive
+
+	p.phase += dt * 22.0; // Fast wing flap rate
 }
 
 void updateAmbientBubble(inout Particle p, float dt, float time, sampler3D curlTexture) {
@@ -511,7 +588,10 @@ void updateAmbientParticle(
 		updateAmbientFairy(p, dt, time, cellSize, gridSize, curlTexture);
 	} else if (p.style == STYLE_BIRDS) {
 		updateBirds(p, dt, time, cellSize, gridSize, curlTexture, num_chunks, heightmapArray);
-		maxSpeed = 6.0;
+		maxSpeed = 8.0;
+	} else if (p.style == STYLE_BUTTERFLY) {
+		updateButterfly(p, dt, time, cellSize, gridSize, curlTexture, num_chunks, heightmapArray);
+		maxSpeed = 3.0;
 	} else {
 		p.vel.xyz += curlNoise(p.pos.xyz, time, curlTexture) * dt;
 		p.vel.xyz *= pow(0.99, dt / 0.016);

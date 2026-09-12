@@ -24,6 +24,7 @@
 #define STYLE_FAIRY 16
 #define STYLE_POOF 17
 #define STYLE_IRIDESCENT 28
+#define STYLE_BUTTERFLY 29
 
 // Must match the C++ struct layout in fire_effect_manager.cpp
 struct Particle {
@@ -89,6 +90,7 @@ struct ParticleStats {
 	uint count_rain;
 	uint count_fairies;
 	uint count_dust;
+	uint count_butterflies;
 
 	uint limit_birds;
 	uint limit_leaves;
@@ -99,6 +101,7 @@ struct ParticleStats {
 	uint limit_rain;
 	uint limit_fairies;
 	uint limit_dust;
+	uint limit_butterflies;
 };
 
 #ifdef COMPUTE_SHADER

@@ -435,6 +435,7 @@ namespace Boidsish {
 		float ambient_limit = ambient_density_ * Constants::Class::Particles::AmbientParticleScale();
 
 		stats_ptr->limit_birds = static_cast<uint32_t>(cfg.GetAppSettingFloat("particle_ratio_birds", 0.05f) * ambient_limit);
+		stats_ptr->limit_butterflies = static_cast<uint32_t>(cfg.GetAppSettingFloat("particle_ratio_butterflies", 0.15f) * ambient_limit);
 		stats_ptr->limit_leaves = static_cast<uint32_t>(cfg.GetAppSettingFloat("particle_ratio_leaves", 0.25f) * ambient_limit);
 		stats_ptr->limit_petals = static_cast<uint32_t>(cfg.GetAppSettingFloat("particle_ratio_petals", 0.25f) * ambient_limit);
 		stats_ptr->limit_bubbles = static_cast<uint32_t>(cfg.GetAppSettingFloat("particle_ratio_bubbles", 0.15f) * ambient_limit);

@@ -75,6 +75,7 @@ void main() {
 		if (!just_respawned) {
 			if (p.emitter_id == -1) {
 				if (p.style == STYLE_BIRDS) atomicAdd(stats.count_birds, 1);
+				else if (p.style == STYLE_BUTTERFLY) atomicAdd(stats.count_butterflies, 1);
 				else if (p.style == STYLE_LEAF) atomicAdd(stats.count_leaves, 1);
 				else if (p.style == STYLE_PETAL) atomicAdd(stats.count_petals, 1);
 				else if (p.style == STYLE_BUBBLES) atomicAdd(stats.count_bubbles, 1);
